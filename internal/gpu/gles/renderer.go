@@ -18,6 +18,10 @@ type RendererOpts struct {
 	// HasBackground says that Background was set, so that a transparent black
 	// background can be asked for.
 	HasBackground bool
+	// SkipUnsupported makes Render leave out what the renderer cannot draw yet,
+	// and count it in LastFrame, instead of failing with GLNotImplemented. The
+	// development examples use it to show what works.
+	SkipUnsupported bool
 }
 
 // Renderer is the GPU renderer: a gpu.Renderer that draws with OpenGL ES 3.0.
@@ -30,6 +34,8 @@ type Renderer struct {
 	ctx        *Context
 	surfaces   map[*glSurface]struct{}
 	background [4]float32 // premultiplied
+	skip       bool
+	last       FrameStats
 	closed     bool
 	// beforePresent, when set, runs after a frame is drawn and before it is
 	// presented, while its pixels can still be read back (tests).
@@ -72,6 +78,7 @@ func newRenderer(open func(gpu.SurfaceHandle) (*Context, *Surface, error), opts 
 	return &Renderer{
 		open:       open,
 		surfaces:   map[*glSurface]struct{}{},
+		skip:       len(opts) == 1 && opts[0].SkipUnsupported,
 		background: [4]float32{float32(bg.R) * a, float32(bg.G) * a, float32(bg.B) * a, a},
 	}
 }
@@ -103,24 +110,40 @@ func (r *Renderer) Attach(h gpu.SurfaceHandle) (gpu.Surface, error) {
 	return gs, nil
 }
 
-// Render makes the surface current, clears it to the background color and presents
-// it. It fails with RendererSurfaceInvalid when s is not a surface of this
-// renderer or was destroyed, RendererSizeInvalid when the size is not positive,
-// and the errors of MakeCurrent and SwapBuffers. Once step 3.2 lands it draws the
-// scene too.
+// Render makes the surface current, clears it to the background color, draws the
+// scene over it and presents it. A nil scene is an empty one. It fails with
+// RendererSurfaceInvalid when s is not a surface of this renderer or was
+// destroyed, RendererSizeInvalid when the size is not positive, GLNotImplemented
+// when the scene has something the renderer cannot draw yet (unless
+// SkipUnsupported is set), and the errors of MakeCurrent and SwapBuffers. Nothing
+// is presented when it fails.
 //
 // Flutter: no counterpart
 func (r *Renderer) Render(s gpu.Surface, scene *ui.Scene, size ui.Size, dpr float32) error {
+	_, err := r.render(s, scene, size, false)
+	return err
+}
+
+// RenderCapture is Render that also returns the frame it drew, top row first, read
+// back before it was presented (the content of a window is undefined after the
+// swap). It also fails with GLReadPixelsFailed.
+//
+// Flutter: no counterpart
+func (r *Renderer) RenderCapture(s gpu.Surface, scene *ui.Scene, size ui.Size, dpr float32) (*image.RGBA, error) {
+	return r.render(s, scene, size, true)
+}
+
+func (r *Renderer) render(s gpu.Surface, scene *ui.Scene, size ui.Size, capture bool) (*image.RGBA, error) {
 	gs, ok := s.(*glSurface)
 	if r.closed || !ok || gs.r != r || gs.surface.destroyed {
-		return errors.New("RendererSurfaceInvalid", "the surface does not belong to this renderer or was destroyed")
+		return nil, errors.New("RendererSurfaceInvalid", "the surface does not belong to this renderer or was destroyed")
 	}
 	w, h := int(size.Width), int(size.Height)
 	if w <= 0 || h <= 0 {
-		return errors.New("RendererSizeInvalid", "the size to render must be positive", "width", size.Width, "height", size.Height)
+		return nil, errors.New("RendererSizeInvalid", "the size to render must be positive", "width", size.Width, "height", size.Height)
 	}
 	if err := r.ctx.MakeCurrent(gs.surface); err != nil {
-		return err
+		return nil, err
 	}
 	d := r.ctx.dev
 	d.BindFramebuffer(nil)
@@ -128,14 +151,29 @@ func (r *Renderer) Render(s gpu.Surface, scene *ui.Scene, size ui.Size, dpr floa
 	d.ColorMask(true, true, true, true)
 	d.Viewport(0, 0, w, h)
 	r.ctx.Clear(r.background[0], r.background[1], r.background[2], r.background[3])
+	if err := r.drawScene(scene, w, h); err != nil {
+		return nil, err
+	}
 	if r.beforePresent != nil {
 		if err := r.beforePresent(w, h); err != nil {
-			return err
+			return nil, err
+		}
+	}
+	var img *image.RGBA
+	if capture {
+		var err error
+		if img, err = r.ctx.ReadPixels(w, h); err != nil {
+			return nil, err
 		}
 	}
 	d.EndFrame()
-	return r.ctx.SwapBuffers(gs.surface)
+	return img, r.ctx.SwapBuffers(gs.surface)
 }
+
+// LastFrame says what the last call of Render drew and left out.
+//
+// Flutter: no counterpart
+func (r *Renderer) LastFrame() FrameStats { return r.last }
 
 // Snapshot is not available yet: it arrives with step 3.6. It fails with
 // GLNotImplemented.

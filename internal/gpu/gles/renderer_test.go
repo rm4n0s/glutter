@@ -82,7 +82,7 @@ func TestRendererSecondSurfaceSharesContext(t *testing.T) {
 	a.Destroy()
 	a.Destroy()
 	appErr, ok := errors.FromError(r.Render(a, nil, ui.Size{Width: 4, Height: 4}, 1))
-	if !ok || appErr.Tag != "RendererSurfaceInvalid" || !appErr.HasRoute("Renderer.Render.RendererSurfaceInvalid") {
+	if !ok || appErr.Tag != "RendererSurfaceInvalid" || !appErr.HasRoute("Renderer.render.RendererSurfaceInvalid") {
 		t.Errorf("Render on a destroyed surface = %v", appErr)
 	}
 }
@@ -98,9 +98,9 @@ func TestRendererErrors(t *testing.T) {
 		tag   string
 		route string
 	}{
-		{"zero size", func() error { return r.Render(s, nil, ui.Size{Width: 0, Height: 5}, 1) }, "RendererSizeInvalid", "Renderer.Render.RendererSizeInvalid"},
-		{"foreign surface", func() error { return r.Render(foreign, nil, ui.Size{Width: 5, Height: 5}, 1) }, "RendererSurfaceInvalid", "Renderer.Render.RendererSurfaceInvalid"},
-		{"nil surface", func() error { return r.Render(nil, nil, ui.Size{Width: 5, Height: 5}, 1) }, "RendererSurfaceInvalid", "Renderer.Render.RendererSurfaceInvalid"},
+		{"zero size", func() error { return r.Render(s, nil, ui.Size{Width: 0, Height: 5}, 1) }, "RendererSizeInvalid", "Renderer.render.RendererSizeInvalid"},
+		{"foreign surface", func() error { return r.Render(foreign, nil, ui.Size{Width: 5, Height: 5}, 1) }, "RendererSurfaceInvalid", "Renderer.render.RendererSurfaceInvalid"},
+		{"nil surface", func() error { return r.Render(nil, nil, ui.Size{Width: 5, Height: 5}, 1) }, "RendererSurfaceInvalid", "Renderer.render.RendererSurfaceInvalid"},
 		{"snapshot", func() error { _, err := r.Snapshot(nil, ui.Size{Width: 5, Height: 5}); return err }, "GLNotImplemented", "Renderer.Snapshot.GLNotImplemented"},
 		{"swap fails", func() error { egl.swapFails = true; return r.Render(s, nil, ui.Size{Width: 5, Height: 5}, 1) }, "EGLSwapFailed", "Context.SwapBuffers"},
 	}
@@ -162,4 +162,121 @@ func TestNewRendererMultipleOptions(t *testing.T) {
 		}
 	}()
 	NewRenderer(RendererOpts{}, RendererOpts{})
+}
+
+func TestRendererRenderCapture(t *testing.T) {
+	r, egl, gl := newTestRenderer()
+	s, err := r.Attach(waylandHandle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Two rows of two pixels, bottom row first.
+	gl.pixels = []byte{
+		1, 2, 3, 255, 4, 5, 6, 255,
+		7, 8, 9, 255, 10, 11, 12, 255,
+	}
+	img, err := r.RenderCapture(s, nil, ui.Size{Width: 2, Height: 2}, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if img == nil || img.Pix[0] != 7 || img.Pix[8] != 1 {
+		t.Errorf("image = %v, want the rows flipped to top first", img)
+	}
+	// The frame was read before it was presented.
+	read, swap := -1, -1
+	for i, c := range gl.log {
+		if len(c) >= 10 && c[:10] == "readPixels" {
+			read = i
+		}
+	}
+	for i, c := range egl.calls {
+		if c == "swapBuffers" {
+			swap = i
+		}
+	}
+	if read < 0 || swap < 0 {
+		t.Fatalf("read %d, swap %d", read, swap)
+	}
+	// Render itself reads nothing.
+	gl.resetCalls()
+	if err := r.Render(s, nil, ui.Size{Width: 2, Height: 2}, 1); err != nil {
+		t.Fatal(err)
+	}
+	if gl.calls["readPixels"] != 0 {
+		t.Error("Render read the frame back")
+	}
+}
+
+func TestRendererRenderCaptureErrors(t *testing.T) {
+	r, _, gl := newTestRenderer()
+	s, _ := r.Attach(waylandHandle)
+	gl.errCode = 0x502
+	_, err := r.RenderCapture(s, nil, ui.Size{Width: 2, Height: 2}, 1)
+	appErr, ok := errors.FromError(err)
+	if !ok || appErr.Tag != "GLReadPixelsFailed" {
+		t.Errorf("RenderCapture = %v, want GLReadPixelsFailed", err)
+	}
+}
+
+func TestRendererDrawsTheScene(t *testing.T) {
+	r, _, gl := newTestRenderer()
+	s, _ := r.Attach(waylandHandle)
+	rec := ui.NewPictureRecorder()
+	c := ui.NewCanvas(rec)
+	red := ui.NewPaint()
+	red.SetColor(ui.NewColor(0xFFFF0000))
+	c.DrawRect(ui.NewRectFromLTWH(0, 0, 10, 10), red)
+	c.DrawCircle(ui.Offset{Dx: 20, Dy: 20}, 5, red)
+	sb := ui.NewSceneBuilder()
+	sb.AddPicture(ui.Offset{}, rec.EndRecording())
+	if err := r.Render(s, sb.Build(), ui.Size{Width: 64, Height: 64}, 1); err != nil {
+		t.Fatal(err)
+	}
+	st := r.LastFrame()
+	if st.Commands != 2 || st.Drawn != 2 || st.Instances != 2 || st.Batches != 1 || st.Skipped != 0 {
+		t.Errorf("stats = %+v", st)
+	}
+	// One draw call for the batch; the instances were uploaded once, orphaning the old data.
+	if gl.calls["drawArraysInstanced"] != 1 || gl.calls["bufferSubData"] != 1 {
+		t.Errorf("draw calls %d, uploads %d", gl.calls["drawArraysInstanced"], gl.calls["bufferSubData"])
+	}
+	// The scissor is off again afterwards, so the next clear covers the surface.
+	if err := r.Render(s, nil, ui.Size{Width: 64, Height: 64}, 1); err != nil {
+		t.Fatal(err)
+	}
+	if st := r.LastFrame(); st.Commands != 0 {
+		t.Errorf("an empty frame has stats %+v", st)
+	}
+}
+
+func TestRendererStrictAndSkippingModes(t *testing.T) {
+	rec := ui.NewPictureRecorder()
+	c := ui.NewCanvas(rec)
+	c.DrawArc(ui.NewRectFromLTWH(0, 0, 10, 10), 0, 1, true, ui.NewPaint())
+	sb := ui.NewSceneBuilder()
+	sb.AddPicture(ui.Offset{}, rec.EndRecording())
+	scene := sb.Build()
+
+	strict, egl, _ := newTestRenderer()
+	s, _ := strict.Attach(waylandHandle)
+	err := strict.Render(s, scene, ui.Size{Width: 8, Height: 8}, 1)
+	appErr, ok := errors.FromError(err)
+	if !ok || appErr.Tag != "GLNotImplemented" || !appErr.HasRoute("Renderer.render->Renderer.drawScene->frameBuilder.command") {
+		t.Fatalf("Render = %v, want GLNotImplemented from the frame builder", err)
+	}
+	if contains(egl.calls, "swapBuffers") {
+		t.Error("a failed frame was presented")
+	}
+
+	skipping, egl2, _ := newTestRenderer(RendererOpts{SkipUnsupported: true})
+	s2, _ := skipping.Attach(waylandHandle)
+	if err := skipping.Render(s2, scene, ui.Size{Width: 8, Height: 8}, 1); err != nil {
+		t.Fatal(err)
+	}
+	if st := skipping.LastFrame(); st.Skipped != 1 || len(st.Unsupported) != 1 {
+		t.Errorf("stats = %+v", st)
+	}
+	if !contains(egl2.calls, "swapBuffers") {
+		t.Error("the frame was not presented")
+	}
 }

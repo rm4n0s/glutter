@@ -33,6 +33,13 @@ type Hooks struct {
 	Metrics func(view ui.ViewID, metrics platform.ViewMetrics)
 }
 
+// SceneFunc makes the scene of a frame. It gets the size of the window in
+// physical pixels and its device pixel ratio, and is called on the UI thread for
+// each frame the window draws.
+//
+// Flutter: no counterpart (the framework's PlatformDispatcher.onDrawFrame)
+type SceneFunc func(size ui.Size, dpr float64) *ui.Scene
+
 // Config tells Run what to do.
 //
 // Flutter: no counterpart
@@ -53,24 +60,32 @@ type Config struct {
 	ShmFill bool
 	// Hooks watch the engine.
 	Hooks Hooks
+	// Scene, when set, makes the scene each frame draws, with the GPU renderer.
+	// Without it the window is filled with a development color.
+	Scene SceneFunc
+	// SkipUnsupported makes the renderer leave out what it cannot draw yet instead
+	// of ending Run with GLNotImplemented; the log says what was left out.
+	SkipUnsupported bool
 
 	// The fields below are for the tests of this package: a Wayland and an X11
 	// that are not the real ones, and the renderer.
 	wayland     func() (linux.Connection, error)
 	x11         func() (linux.Connection, error)
-	newRenderer func(log *slog.Logger) renderer
+	newRenderer func(cfg *Config, log *slog.Logger) renderer
 }
 
-// developmentColor is what the skeleton draws, #6750A4 (the seed of Material 3's
-// default color scheme), until the Scene arrives with milestone M2.
-var developmentColor = [4]float32{0x67 / 255.0, 0x50 / 255.0, 0xA4 / 255.0, 1}
+// developmentColor is what the window is cleared to before the scene is drawn,
+// #6750A4 (the seed of Material 3's default color scheme), until the framework's
+// Scene arrives with milestone M5.
+const developmentColor = 0xFF6750A4
 
 // renderer draws a frame into a window.
 type renderer interface {
 	// Draw draws one frame into the surface, whose size is width x height pixels,
-	// and presents it. With capture it first reads the frame back, top row first,
-	// and returns it: the back buffer is undefined after the swap.
-	Draw(h gpu.SurfaceHandle, width, height int, capture bool) (*image.RGBA, error)
+	// and presents it. The scene is what to draw over the background; nil is an
+	// empty one. With capture it first reads the frame back, top row first, and
+	// returns it: the back buffer is undefined after the swap.
+	Draw(h gpu.SurfaceHandle, width, height int, scene *ui.Scene, capture bool) (*image.RGBA, error)
 	// Close destroys the renderer's surface and context. The window must still
 	// exist.
 	Close()
@@ -202,9 +217,10 @@ type handler struct {
 	shot   *Screenshot
 	cancel context.CancelFunc
 
-	newRenderer   func(log *slog.Logger) renderer
+	newRenderer   func(cfg *Config, log *slog.Logger) renderer
 	r             renderer
 	width, height int
+	dpr           float64
 
 	armed      bool // the capture is scheduled
 	captureDue bool // the next frame is read back
@@ -215,6 +231,7 @@ var _ platform.Handler = (*handler)(nil)
 
 func (h *handler) OnMetrics(view ui.ViewID, m platform.ViewMetrics) {
 	h.width, h.height = int(m.PhysicalSize.Width), int(m.PhysicalSize.Height)
+	h.dpr = m.DevicePixelRatio
 	if f := h.cfg.Hooks.Metrics; f != nil {
 		f(view, m)
 	}
@@ -236,11 +253,15 @@ func (h *handler) OnPointer(batch []ui.PointerData) {
 // surface needs the window to be mapped.
 func (h *handler) OnFrame(ui.ViewID, time.Duration) {
 	if h.r == nil {
-		h.r = h.newRenderer(h.log)
+		h.r = h.newRenderer(h.cfg, h.log)
 	}
 	capture := h.captureDue
 	h.captureDue = false
-	img, err := h.r.Draw(h.win.NativeSurface(), h.width, h.height, capture)
+	var scene *ui.Scene
+	if h.cfg.Scene != nil {
+		scene = h.cfg.Scene(ui.Size{Width: float64(h.width), Height: float64(h.height)}, h.dpr)
+	}
+	img, err := h.r.Draw(h.win.NativeSurface(), h.width, h.height, scene, capture)
 	if err != nil {
 		h.fail(err)
 		return
@@ -292,37 +313,46 @@ func (h *handler) release() {
 	}
 }
 
-// glesRenderer is the OpenGL ES renderer of the skeleton: it clears the window
-// to developmentColor.
+// glesRenderer is the OpenGL ES renderer of the engine: it draws the scene of the
+// frame over developmentColor.
 type glesRenderer struct {
-	log     *slog.Logger
-	ctx     *gles.Context
-	surface *gles.Surface
+	log      *slog.Logger
+	skip     bool
+	renderer *gles.Renderer
+	surface  gpu.Surface
+	reported int // the number of skipped commands the log last said
 }
 
-func newGLESRenderer(log *slog.Logger) renderer { return &glesRenderer{log: log} }
+func newGLESRenderer(cfg *Config, log *slog.Logger) renderer {
+	return &glesRenderer{log: log, skip: cfg.SkipUnsupported}
+}
 
-func (r *glesRenderer) Draw(h gpu.SurfaceHandle, width, height int, capture bool) (*image.RGBA, error) {
-	if r.ctx == nil {
-		ctx, surface, err := gles.Open(h)
+func (r *glesRenderer) Draw(h gpu.SurfaceHandle, width, height int, scene *ui.Scene, capture bool) (*image.RGBA, error) {
+	if r.renderer == nil {
+		r.renderer = gles.NewRenderer(gles.RendererOpts{
+			Background: ui.NewColor(developmentColor), HasBackground: true, SkipUnsupported: r.skip,
+		})
+		surface, err := r.renderer.Attach(h)
 		if err != nil {
 			return nil, err
 		}
-		r.ctx, r.surface = ctx, surface
-		r.log.Info("OpenGL ES context ready", "version", ctx.Version())
+		r.surface = surface
+		r.log.Info("OpenGL ES renderer ready")
 	}
-	r.ctx.Viewport(width, height)
-	c := developmentColor
-	r.ctx.Clear(c[0], c[1], c[2], c[3])
+	size := ui.Size{Width: float64(width), Height: float64(height)}
 	var img *image.RGBA
+	var err error
 	if capture {
-		var err error
-		if img, err = r.ctx.ReadPixels(width, height); err != nil {
-			return nil, err
-		}
+		img, err = r.renderer.RenderCapture(r.surface, scene, size, 1)
+	} else {
+		err = r.renderer.Render(r.surface, scene, size, 1)
 	}
-	if err := r.ctx.SwapBuffers(r.surface); err != nil {
+	if err != nil {
 		return nil, err
+	}
+	if st := r.renderer.LastFrame(); st.Skipped > 0 && st.Skipped != r.reported {
+		r.reported = st.Skipped
+		r.log.Warn("the GPU renderer left out what it cannot draw yet", "skipped", st.Skipped, "drawn", st.Drawn, "features", st.Unsupported)
 	}
 	return img, nil
 }
@@ -332,8 +362,8 @@ func (r *glesRenderer) Close() {
 		r.surface.Destroy()
 		r.surface = nil
 	}
-	if r.ctx != nil {
-		r.ctx.Close()
-		r.ctx = nil
+	if r.renderer != nil {
+		_ = r.renderer.Close()
+		r.renderer = nil
 	}
 }

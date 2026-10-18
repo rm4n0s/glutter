@@ -52,6 +52,7 @@ type Device struct {
 	textures map[textureKey][]*Texture
 	buffers  map[bufferKey][]*Buffer
 	frames   map[framebufferKey][]*Framebuffer
+	vaos     map[string]uint32
 	frame    uint64
 	live     liveCounts
 	closed   bool
@@ -103,6 +104,7 @@ func newDevice(gl glAPI) (*Device, error) {
 		textures: map[textureKey][]*Texture{},
 		buffers:  map[bufferKey][]*Buffer{},
 		frames:   map[framebufferKey][]*Framebuffer{},
+		vaos:     map[string]uint32{},
 	}
 	d.caps = Caps{
 		Version:             gl.getString(glVersion),
@@ -558,6 +560,22 @@ func (d *Device) compile(program, stage string, kind uint32, source string) (uin
 	return id, nil
 }
 
+// VertexArray returns the vertex array of the name, creating it the first time
+// and calling setup with it (bound) to describe its attributes. The device
+// deletes it when it is closed.
+//
+// Flutter: no counterpart
+func (d *Device) VertexArray(name string, setup func(vao uint32)) uint32 {
+	if vao, ok := d.vaos[name]; ok {
+		return vao
+	}
+	vao := d.gl.genVertexArray()
+	d.vaos[name] = vao
+	d.BindVertexArray(vao)
+	setup(vao)
+	return vao
+}
+
 // Stats says how many GL objects the device has, for tests and diagnostics.
 //
 // Flutter: no counterpart
@@ -661,6 +679,13 @@ func (d *Device) Close() {
 	}
 	d.closed = true
 	d.Trim(0)
+	for _, vao := range d.vaos {
+		if d.state.vao == vao {
+			d.BindVertexArray(0)
+		}
+		d.gl.deleteVertexArray(vao)
+	}
+	d.vaos = nil
 	for _, p := range d.programs {
 		d.gl.deleteProgram(p.id)
 		d.live.programs--

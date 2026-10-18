@@ -42,6 +42,7 @@ func (c *failingWindow) NewWindow(platform.WindowConfig) (platform.Window, error
 type drawCall struct {
 	handle        gpu.SurfaceHandle
 	width, height int
+	scene         *ui.Scene
 	capture       bool
 }
 
@@ -54,10 +55,10 @@ type fakeRenderer struct {
 	img    *image.RGBA
 }
 
-func (r *fakeRenderer) Draw(h gpu.SurfaceHandle, w, ht int, capture bool) (*image.RGBA, error) {
+func (r *fakeRenderer) Draw(h gpu.SurfaceHandle, w, ht int, scene *ui.Scene, capture bool) (*image.RGBA, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.calls = append(r.calls, drawCall{h, w, ht, capture})
+	r.calls = append(r.calls, drawCall{h, w, ht, scene, capture})
 	if r.err != nil {
 		return nil, r.err
 	}
@@ -119,7 +120,7 @@ func newHarness(t *testing.T, env map[string]string) *harness {
 		wayland: func() (linux.Connection, error) {
 			return nil, errors.New("WaylandConnectFailed", "no compositor")
 		},
-		newRenderer: func(*slog.Logger) renderer { return h.r },
+		newRenderer: func(*Config, *slog.Logger) renderer { return h.r },
 	}
 	h.cfg.Hooks.Window = func(win platform.Window, stop func()) {
 		h.mu.Lock()
@@ -429,5 +430,54 @@ func TestRealConnectorsReportTheirFailures(t *testing.T) {
 	appErr, _ := errors.FromError(err)
 	if tried, _ := appErr.Metadata["tried"].([]string); len(tried) != 2 {
 		t.Errorf("tried %v, want Wayland and X11", appErr.Metadata["tried"])
+	}
+}
+
+func TestRunDrawsTheSceneOfTheSceneHook(t *testing.T) {
+	h := newHarness(t, map[string]string{"DISPLAY": ":0"})
+	var mu sync.Mutex
+	type ask struct {
+		size ui.Size
+		dpr  float64
+	}
+	var asks []ask
+	want := ui.NewSceneBuilder().Build()
+	h.cfg.Scene = func(size ui.Size, dpr float64) *ui.Scene {
+		mu.Lock()
+		defer mu.Unlock()
+		asks = append(asks, ask{size, dpr})
+		return want
+	}
+	h.c.Inject(fake.MetricsEvent{View: 0, Metrics: platform.ViewMetrics{PhysicalSize: ui.Size{Width: 300, Height: 200}, DevicePixelRatio: 1.5}})
+	h.c.Inject(fake.FrameEvent{View: 0, FrameTime: time.Millisecond})
+	done := h.run(t)
+	waitFor(t, func() bool { calls, _ := h.r.snapshot(); return len(calls) == 1 })
+	h.stopEngine(t)
+	if err := result(t, done); err != nil {
+		t.Fatal(err)
+	}
+	calls, _ := h.r.snapshot()
+	if calls[0].scene != want {
+		t.Error("the renderer did not get the scene of the hook")
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(asks) != 1 || asks[0].size != (ui.Size{Width: 300, Height: 200}) || asks[0].dpr != 1.5 {
+		t.Errorf("the hook was asked %+v, want one call with the window's size and scale", asks)
+	}
+}
+
+func TestRunWithoutASceneHookDrawsNoScene(t *testing.T) {
+	h := newHarness(t, map[string]string{"DISPLAY": ":0"})
+	h.c.Inject(metrics(100, 100))
+	h.c.Inject(fake.FrameEvent{View: 0, FrameTime: time.Millisecond})
+	done := h.run(t)
+	waitFor(t, func() bool { calls, _ := h.r.snapshot(); return len(calls) == 1 })
+	h.stopEngine(t)
+	if err := result(t, done); err != nil {
+		t.Fatal(err)
+	}
+	if calls, _ := h.r.snapshot(); calls[0].scene != nil {
+		t.Error("a scene came from nowhere")
 	}
 }
