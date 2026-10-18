@@ -25,9 +25,12 @@ import (
 //
 // Flutter: no counterpart
 type Server struct {
-	t       testing.TB
-	fd      int
-	globals []Global
+	t        testing.TB
+	fd       int
+	globals  []Global
+	toplevel ToplevelConfigure
+
+	win windowing // see windowing.go; guarded by mu
 
 	mu      sync.Mutex // guards objects, log, ids and writes
 	objects map[uint32]string
@@ -89,6 +92,9 @@ type Config struct {
 	// Globals is what the registry announces. Nil means DefaultGlobals; use an
 	// empty non-nil slice for none.
 	Globals []Global
+	// Toplevel is what the initial configure of a toplevel window says. The zero
+	// value lets the client choose its size.
+	Toplevel ToplevelConfigure
 }
 
 // New starts a server on one end of a new socket pair and returns the other
@@ -106,7 +112,7 @@ func New(t testing.TB, cfg Config) (s *Server, clientFD int) {
 		globals = DefaultGlobals()
 	}
 	s = &Server{
-		t: t, fd: fds[0], globals: globals,
+		t: t, fd: fds[0], globals: globals, toplevel: cfg.Toplevel,
 		objects:   map[uint32]string{1: "wl_display"},
 		ids:       map[string]uint32{},
 		serverIDs: 0xff000000,
@@ -281,10 +287,6 @@ func (s *Server) handle(id uint32, op uint16, r *reader) {
 			s.Send(surface, 0, output) // wl_surface.enter(output)
 		}
 		s.Send(surface, 2, int32(2)) // preferred_buffer_scale(factor)
-	case "wl_surface.1": // attach(buffer, x, y)
-		s.record("wl_surface.attach buffer=%d x=%d y=%d", r.u32(), r.i32(), r.i32())
-	case "wl_surface.6":
-		s.record("wl_surface.commit")
 	case "wl_surface.3": // frame(callback)
 		cb := r.u32()
 		s.addObject(cb, "wl_callback")
@@ -340,32 +342,12 @@ func (s *Server) handle(id uint32, op uint16, r *reader) {
 		}
 		s.record("wl_shm.create_pool size=%d filesize=%d", size, st.Size)
 		_ = syscall.Close(fd)
-	case "xdg_wm_base.2": // get_xdg_surface(id, surface)
-		xs, surface := r.u32(), r.u32()
-		s.addObject(xs, "xdg_surface")
-		s.record("xdg_wm_base.get_xdg_surface surface=%v", surface == s.ID("wl_surface"))
-	case "xdg_surface.1": // get_toplevel(id)
-		tl := r.u32()
-		s.addObject(tl, "xdg_toplevel")
-		s.record("xdg_surface.get_toplevel")
-		// configure(width, height, states) with states maximized (1) and activated (4)
-		s.Send(tl, 0, int32(800), int32(600), Array([]byte{1, 0, 0, 0, 4, 0, 0, 0}))
-		s.Send(tl, 3, Array([]byte{1, 0, 0, 0, 2, 0, 0, 0})) // wm_capabilities
-		s.Send(id, 0, uint32(77))                            // xdg_surface.configure(serial)
 	case "xdg_wm_base.3": // pong(serial)
 		s.record("xdg_wm_base.pong serial=%d", r.u32())
-	case "xdg_surface.4":
-		s.record("xdg_surface.ack_configure serial=%d", r.u32())
-	case "xdg_toplevel.2":
-		s.record("xdg_toplevel.set_title %q", r.str())
-	case "xdg_toplevel.3":
-		s.record("xdg_toplevel.set_app_id %q", r.str())
-	case "xdg_toplevel.8":
-		s.record("xdg_toplevel.set_min_size %dx%d", r.i32(), r.i32())
-	case "xdg_toplevel.0":
-		s.record("xdg_toplevel.destroy")
 	default:
-		s.t.Errorf("fake server: unexpected request %s opcode %d on object %d", iface, op, id)
+		if !s.handleWindowing(iface, op, id, r) {
+			s.t.Errorf("fake server: unexpected request %s opcode %d on object %d", iface, op, id)
+		}
 	}
 }
 

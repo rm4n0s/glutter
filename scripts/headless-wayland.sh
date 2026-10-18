@@ -18,6 +18,8 @@
 # $RUNTIME/compositor.log, which is printed if it fails to start. Environment:
 #   HEADLESS_SIZE   output size, WIDTHxHEIGHT (default 1280x800)
 #   HEADLESS_SCALE  output scale (default 1; sway only)
+#   HEADLESS_FLOATING  1 (default) opens windows floating at the size they ask
+#                   for; 0 lets sway tile them over the whole output (sway only)
 #   WLR_RENDERER    wlroots renderer for sway (default pixman, needs no GPU)
 #
 # Exit status: the command's own; 2 when no compositor is installed; 3 when the
@@ -45,6 +47,7 @@ fi
 
 size="${HEADLESS_SIZE:-1280x800}"
 scale="${HEADLESS_SCALE:-1}"
+floating="${HEADLESS_FLOATING:-1}"
 
 # A private runtime directory keeps the socket away from the user's own session.
 # Wayland socket paths are short-limited, so the directory is kept short too.
@@ -77,7 +80,13 @@ case "$compositor" in
     cat >"$runtime/sway.conf" <<EOF
 xwayland disable
 output HEADLESS-1 resolution $size scale $scale
+output * bg #3b3b3b solid_color
 EOF
+    if [[ "$floating" == 1 ]]; then
+      # Every window floats, at the size it asks for.
+      echo 'for_window [title=".*"] floating enable' >>"$runtime/sway.conf"
+      echo 'for_window [app_id=".*"] floating enable' >>"$runtime/sway.conf"
+    fi
     WLR_BACKENDS=headless WLR_LIBINPUT_NO_DEVICES=1 WLR_RENDERER="${WLR_RENDERER:-pixman}" \
       sway -c "$runtime/sway.conf" >"$log" 2>&1 &
     pid=$!

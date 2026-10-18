@@ -8,13 +8,14 @@ import (
 	"github.com/rm4n0s/glutter/internal/platform"
 	"github.com/rm4n0s/glutter/internal/platform/linux"
 	"github.com/rm4n0s/glutter/internal/platform/linux/wayland/wl"
+	"github.com/rm4n0s/glutter/ui"
 )
 
-// Platform is the Wayland backend of platform.Platform. It is complete so far
-// as far as the connection goes: Run drives the event loop, and Post wakes it.
+// Platform is the Wayland backend of platform.Platform. So far it has the
+// connection, the event loop and shared-memory windows.
 //
-// TODO(step 1.5): NewWindow, TODO(step 14.3): Displays, TODO(step 10.4):
-// Clipboard, TODO(step 14.5): Settings.
+// TODO(step 14.3): Displays, TODO(step 10.4): Clipboard, TODO(step 14.5):
+// Settings.
 //
 // Flutter: no counterpart
 type Platform struct {
@@ -24,6 +25,15 @@ type Platform struct {
 
 	mu      sync.Mutex
 	running bool
+
+	// The fields below belong to the UI thread.
+	handler   platform.Handler
+	windows   map[ui.ViewID]*window
+	nextView  ui.ViewID
+	hadWindow bool
+	// failure is the first error that a callback could not return; Run returns
+	// it.
+	failure error
 }
 
 var _ platform.Platform = (*Platform)(nil)
@@ -54,7 +64,12 @@ func newPlatform(conn *wl.Conn) (*Platform, error) {
 		sess.close()
 		return nil, err
 	}
-	return &Platform{loop: loop, sess: sess, src: &connSource{conn: conn}}, nil
+	return &Platform{
+		loop:    loop,
+		sess:    sess,
+		src:     &connSource{conn: conn},
+		windows: map[ui.ViewID]*window{},
+	}, nil
 }
 
 // Close releases the event loop and the connection. Do not use the platform
@@ -75,15 +90,14 @@ func (p *Platform) Globals(iface string) ([]Global, bool) {
 	return append([]Global(nil), g...), len(g) > 0
 }
 
-// Run runs the event loop on the calling goroutine, which must be the UI thread.
-// It returns nil when ctx is cancelled, and the error of the connection when it
-// fails: WaylandProtocolError (metadata "interface", "id", "code") when the
+// Run runs the event loop on the calling goroutine, which must be the UI thread,
+// and delivers events to h. It returns nil when ctx is cancelled or when the
+// last window has been closed, and the error of the connection when it fails: WaylandProtocolError (metadata "interface", "id", "code") when the
 // compositor reports a protocol error, WaylandConnectionLost when the socket
 // fails. A second call while Run is active fails with PlatformAlreadyRunning.
 //
 // Flutter: no counterpart
 func (p *Platform) Run(ctx context.Context, h platform.Handler) error {
-	_ = h // TODO(step 1.5): deliver window events to the handler.
 	p.mu.Lock()
 	if p.running {
 		p.mu.Unlock()
@@ -97,14 +111,34 @@ func (p *Platform) Run(ctx context.Context, h platform.Handler) error {
 		p.mu.Unlock()
 	}()
 
+	p.handler = h
+	defer func() { p.handler = nil }()
 	if err := p.loop.AddSource(p.src); err != nil {
 		return err
 	}
 	runErr := p.loop.Run(ctx)
+	if runErr == nil {
+		runErr = p.failure
+		p.failure = nil
+	}
+	// Send what is still buffered, such as the requests that destroyed the
+	// windows; a full socket is not worth waiting for here.
+	if _, err := p.sess.conn.Flush(); err != nil && runErr == nil {
+		runErr = err
+	}
 	if err := p.loop.RemoveSource(p.src); err != nil && runErr == nil {
-		return err
+		runErr = err
 	}
 	return runErr
+}
+
+// fail records an error that happened inside a callback, where it cannot be
+// returned, and stops the loop so that Run returns it.
+func (p *Platform) fail(err error) {
+	if p.failure == nil {
+		p.failure = err
+	}
+	p.loop.Stop()
 }
 
 // Post runs fn on the UI thread inside Run. It is safe from any goroutine and
@@ -112,15 +146,6 @@ func (p *Platform) Run(ctx context.Context, h platform.Handler) error {
 //
 // Flutter: no counterpart
 func (p *Platform) Post(fn func()) { p.loop.Post(fn) }
-
-// NewWindow is not implemented yet.
-//
-// TODO(step 1.5): create the surface, xdg_surface and xdg_toplevel.
-//
-// Flutter: no counterpart
-func (p *Platform) NewWindow(platform.WindowConfig) (platform.Window, error) {
-	return nil, errors.New("NotImplemented", "Wayland windows are not implemented yet")
-}
 
 // Displays returns nil for now.
 //

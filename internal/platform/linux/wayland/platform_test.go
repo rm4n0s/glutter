@@ -16,8 +16,7 @@ import (
 
 const testTimeout = 10 * time.Second
 
-// nopHandler is a platform.Handler that ignores everything.
-type nopHandler struct{ platform.Handler }
+type nopHandler = platform.NopHandler
 
 // connect opens a connection to a fake compositor and builds a Platform on it.
 func connect(t *testing.T, cfg fakecomp.Config) (*Platform, *fakecomp.Server, error) {
@@ -323,14 +322,5 @@ func TestConnectionLossEndsRun(t *testing.T) {
 	appErr, ok := errors.FromError(err)
 	if !ok || appErr.Tag != "WaylandConnectionLost" {
 		t.Errorf("Run returned %v, want WaylandConnectionLost", err)
-	}
-}
-
-func TestWindowsAreNotImplementedYet(t *testing.T) {
-	p, _ := newRunnablePlatform(t)
-	_, err := p.NewWindow(platform.DefaultWindowConfig())
-	appErr, ok := errors.FromError(err)
-	if !ok || appErr.Tag != "NotImplemented" || !appErr.HasRoute("Platform.NewWindow.NotImplemented") {
-		t.Errorf("NewWindow returned %v, want NotImplemented via Platform.NewWindow", err)
 	}
 }

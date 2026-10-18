@@ -75,6 +75,10 @@ type session struct {
 	outputs       []*wl.WlOutput
 	wmBase        *wl.XdgWmBase
 
+	// decorationManager is nil when the compositor has no
+	// zxdg_decoration_manager_v1.
+	decorationManager *wl.ZxdgDecorationManagerV1
+
 	// optionalPresent holds the optional globals that the compositor offers.
 	optionalPresent map[string]Global
 }
@@ -153,6 +157,11 @@ func (s *session) recordOptional() {
 		if globals := s.advertised[iface.Name]; len(globals) > 0 {
 			s.optionalPresent[iface.Name] = globals[0]
 		}
+	}
+	// The optional globals that the code uses already are bound; the others are
+	// bound by the step that needs them.
+	if g, ok := s.optionalPresent[wl.ZxdgDecorationManagerV1Interface.Name]; ok {
+		s.decorationManager = wl.BindZxdgDecorationManagerV1(s.registry, g.Name, bindVersion(g, 1))
 	}
 }
 

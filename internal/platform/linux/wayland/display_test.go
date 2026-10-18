@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/rm4n0s/errors"
+	"github.com/rm4n0s/glutter/internal/platform"
+	"github.com/rm4n0s/glutter/ui"
 )
 
 // These tests need a Wayland compositor. Run them under the headless one:
@@ -84,5 +86,69 @@ func TestDisplayRunAndPost(t *testing.T) {
 	cancel()
 	if err := <-done; err != nil {
 		t.Errorf("Run returned %v, want nil", err)
+	}
+}
+
+// TestDisplayWindowMapsAndCloses opens a window on the real compositor and
+// checks the whole path: the first configure arrives, the window is mapped
+// with a buffer of the asked size, and a close request ends Run.
+func TestDisplayWindowMapsAndCloses(t *testing.T) {
+	p := connectToCompositor(t)
+
+	cfg := platform.DefaultWindowConfig()
+	cfg.Title = "Glutter display test"
+	cfg.AppID = "dev.glutter.displaytest"
+	cfg.Size = ui.Size{Width: 640, Height: 400}
+	if _, err := p.NewWindow(cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	h := &recHandler{allowClose: true}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- p.Run(ctx, h) }()
+
+	waitUntil(t, func() bool { return len(h.metricsSeen()) > 0 }, "no configure arrived, so the window never got a size")
+	var configures int
+	var states WindowStates
+	var w *window
+	finished := make(chan struct{})
+	p.Post(func() {
+		w = p.windows[0]
+		configures, states = w.configures, w.states
+		if !w.mapped {
+			t.Error("the window is not mapped after the first configure")
+		}
+		close(finished)
+	})
+	<-finished
+	if configures < 1 {
+		t.Errorf("configures = %d, want at least 1", configures)
+	}
+	m := h.metricsSeen()[0]
+	if m.PhysicalSize.Width <= 0 || m.PhysicalSize.Height <= 0 || m.DevicePixelRatio != 1 {
+		t.Errorf("metrics = %+v, want a positive size at ratio 1", m)
+	}
+	t.Logf("first configure: %vx%v, states %+v", m.PhysicalSize.Width, m.PhysicalSize.Height, states)
+
+	// The compositor owns the close button; ask the window to close the way the
+	// toolkit would on a close request.
+	closed := make(chan struct{})
+	p.Post(func() {
+		w.onClose()
+		close(closed)
+	})
+	<-closed
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Run returned %v after the window closed", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("Run did not return after the last window closed")
+	}
+	if got := h.closeRequests(); len(got) != 1 || got[0] != 0 {
+		t.Errorf("close requests = %v, want [0]", got)
 	}
 }

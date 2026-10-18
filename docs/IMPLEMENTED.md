@@ -144,3 +144,26 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - `Loop.Close` and `wake` share the loop's mutex: `context.AfterFunc` can call `wake` after the loop was closed, and writing to a recycled descriptor would be a bug. The race detector found this.
   - `loop.go` is `//go:build linux`; `doc.go` of the package is not, so the package still lists on other systems.
   - `libwayland` prints protocol errors to stderr (`wl_shm#6: error 1: invalid format` in the test output).
+
+## 1.5 First Wayland window (shared-memory buffer)
+
+- **Date:** 2026-10-18
+- **Branch:** feat/step-1.5-first-wayland-window
+- **Summary:** `Platform.NewWindow` creates `wl_surface` → `xdg_surface` → `xdg_toplevel`, sets the title, app id, size limits, parent and state, and asks for server-side decorations (`zxdg_decoration_manager_v1`) when the compositor has them, all before the first commit. On each configure it draws an XRGB8888 `memfd`/`mmap` buffer filled with `#6750A4` at the new size, then sends `ack_configure`, attaches and commits; replaced buffers are freed when the compositor releases them. `xdg_toplevel.close` asks `Handler.OnCloseRequest`, and `Run` returns when the last window is closed. `scripts/screenshot-headless.sh` and the example `examples/dev/window` are in.
+- **Main files:** `internal/platform/linux/wayland/{window,shm,memfd_amd64,memfd_arm64,memfd_other}.go`, `internal/platform/nop.go` (`NopHandler`), `internal/platform/linux/wayland/fakecomp/windowing.go`, `scripts/screenshot-headless.sh`, `scripts/headless-wayland.sh` (floating windows and a gray background by default), `examples/dev/window/main.go`.
+- **Tests:**
+  - Against the fake compositor, which now mimics the real ordering (a toplevel is configured only after its first commit; a new buffer releases the old one): the exact request order (title and app id and min/max size before the buffer-less first commit; pool, buffer, ack and the buffer commit after the configure); size from the config, the default 800×600, and the compositor's size; toplevel states (all nine decoded, a 0×0 configure keeps the size); resize draws the new buffer before the ack and frees the replaced one, with `OnMetrics`; decorations (server-side, client-side, protocol missing); close request agreed and refused; `SetTitle`/`SetState`/`SetSize`; two windows and `set_parent`; `StartDrag` `NotImplemented`; an oversized buffer ends `Run` with `ShmBufferFailed`; bad buffer sizes; `fill`; `decodeStates`. Stable over 25 runs under `-race`.
+  - Display test under headless sway (`TestDisplayWindowMapsAndCloses`): the first configure arrives (640×400, activated), the window is mapped, and a close request ends `Run`. Passed 5 times in a row.
+  - No Flutter tests apply.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · display tests ✅ (headless sway)
+- **Proof:**
+  ![1.5 shm window](implemented-proof-images/1.5-shm-window.png)
+  Headless sway's gray output with a floating window titled "Glutter dev window" (sway's server-side title bar) whose content is a solid purple 640×400 rectangle. Checked by pixel count too: exactly 256,000 pixels of `#6750A4` forming a 640×400 box.
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - `scripts/screenshot-headless.sh` needs `jq` besides `sway` and `grim`. It detects a mapped window as a sway tree node with a process id. The screenshot must be taken from a built binary, because the window has to appear within 10 seconds and `go run` compiles too slowly. A bug where the trap used an out-of-scope variable and never stopped the app was found by watching the app print an error at shutdown, and fixed.
+  - `scripts/headless-wayland.sh` now makes windows float by default and paints the background `#3b3b3b` (`HEADLESS_FLOATING=0` tiles them). A tiled window would fill the whole output, hiding the 640×400 size.
+  - `Run` returns when the last window closes, as the `Platform.Run` doc says; the engine (step 1.10) decides what that means for the app. Before `Run` starts, `NewWindow` only queues requests; the window is mapped once `Run` handles the first configure.
+  - `OnMetrics` is called at the first configure and on every size change, with a device pixel ratio of 1 until step 3.7 (TODO in the code). `NativeSurface` returns nil until step 1.6; `SetCursor`, `SetTextInput` and `StartDrag` are stubs with TODOs for steps 1.8, 11.2 and 14.6. `Modal` and `Kind` are not used yet (they need `xdg_dialog_v1`, step 14.2).
+  - `syscall` has no `SYS_MEMFD_CREATE`, so the number is defined per architecture (amd64 319, arm64 279; other architectures fail with `ENOSYS`).
+  - The shm window draws only on configure; frame callbacks arrive with step 1.6.

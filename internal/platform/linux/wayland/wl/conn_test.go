@@ -1,6 +1,7 @@
 package wl
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"reflect"
@@ -38,8 +39,13 @@ type global struct{ name, version uint32 }
 
 func newSession(t *testing.T) *session {
 	t.Helper()
+	return newSessionWith(t, fakecomp.Config{})
+}
+
+func newSessionWith(t *testing.T, cfg fakecomp.Config) *session {
+	t.Helper()
 	skipWithoutLibwayland(t)
-	srv, clientFD := fakecomp.New(t, fakecomp.Config{})
+	srv, clientFD := fakecomp.New(t, cfg)
 	conn, err := ConnectFD(clientFD)
 	if err != nil {
 		t.Fatalf("ConnectFD: %v", err)
@@ -351,7 +357,13 @@ func TestRequestWithFileDescriptor(t *testing.T) {
 }
 
 func TestXdgToplevel(t *testing.T) {
-	s := newSession(t)
+	// configure(800x600, maximized + activated), with wm_capabilities [1 2],
+	// follows the initial commit.
+	s := newSessionWith(t, fakecomp.Config{Toplevel: fakecomp.ToplevelConfigure{
+		Width: 800, Height: 600,
+		States:       []uint32{uint32(XdgToplevelStateMaximized), uint32(XdgToplevelStateActivated)},
+		Capabilities: []uint32{1, 2},
+	}})
 	g := s.g("xdg_wm_base")
 	wm := BindXdgWmBase(s.reg, g.name, g.version)
 	surface := s.compositor().CreateSurface()
@@ -366,6 +378,7 @@ func TestXdgToplevel(t *testing.T) {
 		OnWmCapabilities: func(c []uint32) { capabilities = c },
 	})
 	xdgSurface.SetEvents(&XdgSurfaceEvents{OnConfigure: func(sr uint32) { serial = sr }})
+	surface.Commit() // the compositor configures the toplevel after the first commit
 	s.roundtrip()
 
 	if width != 800 || height != 600 || !reflect.DeepEqual(states, []uint32{uint32(XdgToplevelStateMaximized), uint32(XdgToplevelStateActivated)}) {
@@ -374,8 +387,8 @@ func TestXdgToplevel(t *testing.T) {
 	if !reflect.DeepEqual(capabilities, []uint32{1, 2}) {
 		t.Errorf("wm_capabilities = %v, want [1 2]", capabilities)
 	}
-	if serial != 77 {
-		t.Errorf("xdg_surface.configure serial = %d, want 77", serial)
+	if serial == 0 {
+		t.Errorf("xdg_surface.configure carried serial 0")
 	}
 
 	xdgSurface.AckConfigure(serial)
@@ -386,7 +399,8 @@ func TestXdgToplevel(t *testing.T) {
 	want := []string{
 		"xdg_wm_base.get_xdg_surface surface=true",
 		"xdg_surface.get_toplevel",
-		"xdg_surface.ack_configure serial=77",
+		"wl_surface.commit",
+		fmt.Sprintf("xdg_surface.ack_configure serial=%d", serial),
 		`xdg_toplevel.set_title "Glutter dev window"`,
 		`xdg_toplevel.set_app_id "dev.glutter.test"`,
 		"xdg_toplevel.set_min_size 320x200",
