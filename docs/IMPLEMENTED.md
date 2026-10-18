@@ -121,3 +121,26 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - `Flush` tells a full socket (EAGAIN) from a failure by asking libwayland whether it recorded an error, because purego does not expose `errno`.
   - The handle table behind the single dispatcher is the one piece of package-level mutable state in `wl`, like the callback counter in `dl`; both exist because the purego callback limit is per process.
   - `libwayland` logs protocol errors to stderr (the `wl_surface#N: error 2: bad scale` line in the protocol-error test output).
+
+## 1.4 Wayland connection and event loop
+
+- **Date:** 2026-10-18
+- **Branch:** feat/step-1.4-wayland-connection-and-event-loop
+- **Summary:** `internal/platform/linux` has the UI thread's event loop: epoll over sources, an eventfd for `Post` and a timerfd for timers (`syscall` only), and `internal/platform` pins the main goroutine to the main OS thread in an `init`. `internal/platform/linux/wayland` connects to a compositor, lists the registry, binds the six required globals at the SPEC §8.2 versions (capped at what the compositor offers), records the optional ones, answers `xdg_wm_base` pings, and runs the libwayland external-loop pattern (prepare_read, flush, wait, read_events, dispatch_pending). `scripts/headless-wayland.sh` runs a command inside headless sway (weston as fallback).
+- **Main files:** `internal/platform/thread.go`, `internal/platform/linux/loop.go`, `internal/platform/linux/wayland/{conn,source,platform}.go`, `internal/platform/linux/wayland/fakecomp/` (the fake compositor, moved out of the `wl` tests so more packages can use it), `scripts/headless-wayland.sh`.
+- **Tests:**
+  - Loop: `Post` from 100 goroutines keeps order per goroutine; post before `Run` and from inside a posted function; four ways to stop; timers (deadline order, never early, cancel, nested, overdue); a source's readable, writable-interest and hang-up events; an idle loop does not spin; a source error ends `Run` and comes back unchanged; `RemoveSource`; syscall-failure route tests (`LoopSyscallFailed`).
+  - Wayland, against the fake compositor (no display): required globals bound at `min(offered, ours)` including a second, older `wl_output`; optional globals recorded but not bound; each of the six required globals missing in turn gives `WaylandProtocolMissing` with the interface name and a route test; `WaylandConnectFailed`; ping answered with pong; a protocol error ends `Run` with `WaylandProtocolError` (interface, id, code); a hung-up socket ends it with `WaylandConnectionLost`; `Post` from 20 goroutines; `Run` stops on cancel; a second `Run` gives `PlatformAlreadyRunning`.
+  - Display tests (`-tags glutter_display`, under `scripts/headless-wayland.sh`): connect to headless sway, list the globals, assert the required ones, `Run` and `Post` against the real compositor. They passed 15 times in a row. No Flutter tests apply.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · display tests ✅ (headless sway; they also pass the lint and vet runs with `-tags glutter_display`)
+- **Proof:** none
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - The loop is generic: a `Source` interface (`FD`, `WantsWrite`, `BeforeWait`, `AfterWait`) lets the Wayland connection do its prepare/read/cancel dance and lets X11 and D-Bus plug in later. The Wayland `Platform` implements `Run`, `Post` and `Close`; `NewWindow` returns `NotImplemented` until step 1.5, and `Displays`, `Clipboard` and `Settings` return empty values (TODOs name the steps).
+  - Real sway offers `xdg_wm_base` only up to version 5, so the backend binds 5 there; the `suspended` state and `wm_capabilities` need 6 and are optional (SPEC §8.2).
+  - Real sway has no `xdg_wm_dialog_v1` and no `xdg_toplevel_icon_manager_v1`; both are optional and get recorded as absent. It does offer 21 of the 23 optional globals the backend knows.
+  - weston's headless backend has no `wl_seat`, so Glutter reports `WaylandProtocolMissing` there. The weston fallback of the script is therefore only useful for checks that don't start Glutter; this is documented in the script header. A seat is required by SPEC §8.2, so this is intended.
+  - Timer tests use real time with coarse tolerances. The "fake clock" for key repeat (step 1.7) will need a clock the tests can control; the `Loop` has none yet.
+  - `Loop.Close` and `wake` share the loop's mutex: `context.AfterFunc` can call `wake` after the loop was closed, and writing to a recycled descriptor would be a bug. The race detector found this.
+  - `loop.go` is `//go:build linux`; `doc.go` of the package is not, so the package still lists on other systems.
+  - `libwayland` prints protocol errors to stderr (`wl_shm#6: error 1: invalid format` in the test output).

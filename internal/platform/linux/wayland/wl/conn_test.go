@@ -11,6 +11,7 @@ import (
 
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/internal/platform/linux/dl"
+	"github.com/rm4n0s/glutter/internal/platform/linux/wayland/fakecomp"
 )
 
 // These tests run the real libwayland-client against the fake compositor over a
@@ -28,7 +29,7 @@ func skipWithoutLibwayland(t *testing.T) {
 type session struct {
 	t       *testing.T
 	conn    *Conn
-	srv     *fakeServer
+	srv     *fakecomp.Server
 	reg     *WlRegistry
 	globals map[string]global
 }
@@ -38,7 +39,7 @@ type global struct{ name, version uint32 }
 func newSession(t *testing.T) *session {
 	t.Helper()
 	skipWithoutLibwayland(t)
-	srv, clientFD := newFakeServer(t)
+	srv, clientFD := fakecomp.New(t, fakecomp.Config{})
 	conn, err := ConnectFD(clientFD)
 	if err != nil {
 		t.Fatalf("ConnectFD: %v", err)
@@ -46,7 +47,7 @@ func newSession(t *testing.T) *session {
 	s := &session{t: t, conn: conn, srv: srv, globals: map[string]global{}}
 	t.Cleanup(func() {
 		conn.Close()
-		srv.wait()
+		srv.Wait()
 	})
 	s.reg = conn.Display().GetRegistry()
 	s.reg.SetEvents(&WlRegistryEvents{OnGlobal: func(name uint32, iface string, version uint32) {
@@ -112,6 +113,7 @@ func TestRegistryAndBind(t *testing.T) {
 	want := map[string]global{
 		"wl_compositor": {1, 6}, "wl_output": {2, 4}, "wl_seat": {3, 7},
 		"xdg_wm_base": {4, 6}, "wl_data_device_manager": {5, 3}, "wl_shm": {6, 1},
+		"wl_subcompositor": {7, 1},
 	}
 	if !reflect.DeepEqual(s.globals, want) {
 		t.Errorf("globals = %v, want %v", s.globals, want)
@@ -122,7 +124,7 @@ func TestRegistryAndBind(t *testing.T) {
 		t.Fatal("BindWlCompositor returned nil")
 	}
 	s.roundtrip()
-	if got := s.srv.joined(); !strings.Contains(got, "wl_registry.bind name=1 interface=wl_compositor version=6") {
+	if got := s.srv.Joined(); !strings.Contains(got, "wl_registry.bind name=1 interface=wl_compositor version=6") {
 		t.Errorf("the compositor did not receive a bind with name, interface and version:\n%s", got)
 	}
 	if compositor.ProxyVersion() != 6 || compositor.ProxyID() == 0 {
@@ -196,7 +198,7 @@ func TestSurfaceRequestsAndEvents(t *testing.T) {
 		"wl_surface.frame",
 		"wl_surface.commit",
 	}
-	got := s.srv.requests()
+	got := s.srv.Requests()
 	if len(got) < 3 || !reflect.DeepEqual(got[len(got)-3:], want) {
 		t.Errorf("requests = %q, want to end with %q", got, want)
 	}
@@ -264,8 +266,8 @@ func TestKeyboardFileDescriptorAndArrayEvents(t *testing.T) {
 	})
 	s.roundtrip()
 
-	if keymap != keymapText || size != uint32(len(keymapText)) || format != WlKeyboardKeymapFormatXkbV1 {
-		t.Errorf("keymap = %q (format %d, size %d), want %q", keymap, format, size, keymapText)
+	if keymap != fakecomp.KeymapText || size != uint32(len(fakecomp.KeymapText)) || format != WlKeyboardKeymapFormatXkbV1 {
+		t.Errorf("keymap = %q (format %d, size %d), want %q", keymap, format, size, fakecomp.KeymapText)
 	}
 	if !reflect.DeepEqual(keys, []uint32{30, 31}) {
 		t.Errorf("keys = %v, want [30 31]", keys)
@@ -315,7 +317,7 @@ func TestServerCreatedObjectsInEvents(t *testing.T) {
 	offers[0].Receive("image/png", pipe[1])
 	offers[0].Accept(5, "")
 	s.roundtrip()
-	got := s.srv.requests()
+	got := s.srv.Requests()
 	if n := len(got); n < 2 || got[n-2] != "wl_data_offer.receive mime=image/png fd=true" || got[n-1] != "wl_data_offer.accept serial=5 mime=<null>" {
 		t.Errorf("requests = %q, want receive with an fd, then accept with a NULL mime type", got)
 	}
@@ -343,7 +345,7 @@ func TestRequestWithFileDescriptor(t *testing.T) {
 		t.Fatal("CreatePool returned nil")
 	}
 	s.roundtrip()
-	if got := s.srv.joined(); !strings.Contains(got, "wl_shm.create_pool size=4096 filesize=4096") {
+	if got := s.srv.Joined(); !strings.Contains(got, "wl_shm.create_pool size=4096 filesize=4096") {
 		t.Errorf("the compositor did not receive the file descriptor of the pool:\n%s", got)
 	}
 }
@@ -389,7 +391,7 @@ func TestXdgToplevel(t *testing.T) {
 		`xdg_toplevel.set_app_id "dev.glutter.test"`,
 		"xdg_toplevel.set_min_size 320x200",
 	}
-	got := s.srv.requests()
+	got := s.srv.Requests()
 	if len(got) < len(want) || !reflect.DeepEqual(got[len(got)-len(want):], want) {
 		t.Errorf("requests = %q, want to end with %q", got, want)
 	}
@@ -397,8 +399,8 @@ func TestXdgToplevel(t *testing.T) {
 	before := handleCount()
 	toplevel.Destroy()
 	s.roundtrip()
-	if !strings.HasSuffix(s.srv.joined(), "xdg_toplevel.destroy") {
-		t.Errorf("the destructor request was not sent:\n%s", s.srv.joined())
+	if !strings.HasSuffix(s.srv.Joined(), "xdg_toplevel.destroy") {
+		t.Errorf("the destructor request was not sent:\n%s", s.srv.Joined())
 	}
 	if handleCount() != before-1 {
 		t.Errorf("handle count = %d, want %d: a destroyed object must be forgotten", handleCount(), before-1)
@@ -448,7 +450,7 @@ func TestProtocolError(t *testing.T) {
 	s.roundtrip()
 
 	// wl_display.error(object_id, code, message)
-	s.srv.send(1, 0, surface.ProxyID(), uint32(2), "bad scale")
+	s.srv.Send(1, 0, surface.ProxyID(), uint32(2), "bad scale")
 	err := s.conn.Roundtrip()
 	appErr, ok := errors.FromError(err)
 	if !ok {
@@ -465,8 +467,8 @@ func TestProtocolError(t *testing.T) {
 func TestConnectionLost(t *testing.T) {
 	s := newSession(t)
 	// The compositor hangs up.
-	_ = syscall.Shutdown(s.srv.fd, syscall.SHUT_RDWR)
-	s.srv.wait()
+	s.srv.Hangup()
+	s.srv.Wait()
 
 	err := s.conn.Roundtrip()
 	appErr, ok := errors.FromError(err)
@@ -488,7 +490,7 @@ func TestReadLoop(t *testing.T) {
 	output.SetEvents(&WlOutputEvents{OnScale: func(f int32) { scales = append(scales, f) }})
 
 	// An event the client did not ask for.
-	s.srv.send(s.srv.id("wl_output"), 3, int32(5))
+	s.srv.Send(s.srv.ID("wl_output"), 3, int32(5))
 
 	deadline := time.Now().Add(5 * time.Second)
 	for len(scales) == 0 && time.Now().Before(deadline) {
