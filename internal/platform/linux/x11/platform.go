@@ -75,7 +75,7 @@ var _ platform.Platform = (*Platform)(nil)
 
 // New connects to the X server named by name (empty means $DISPLAY) and sets up
 // the keyboard and pointer input. It fails with X11LoadFailed when libX11 is
-// missing and X11OpenFailed when the display cannot be opened. Without libXi or
+// missing and X11OpenDisplayFailed when the display cannot be opened. Without libXi or
 // without XInput2 on the server there is no keyboard and pointer input (a warning
 // is logged). Close releases the connection.
 //
@@ -92,7 +92,7 @@ func New(name string) (*Platform, error) {
 	}
 	display := x.openDisplay(cname)
 	if display == 0 {
-		return nil, errors.New("X11OpenFailed", "could not open the X display", "display", name)
+		return nil, errors.New("X11OpenDisplayFailed", "could not open the X display", "display", name)
 	}
 	loop, err := linux.NewLoop()
 	if err != nil {

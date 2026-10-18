@@ -778,7 +778,7 @@ func (s *counterPageState) Build(bc m.BuildContext) m.Widget {
 ### 14.1 Environment errors
 
 These are returned from `RunApp`, image/font loading and `desktop` calls, always with tags from `rm4n0s/errors`. The initial tags are:
-- `LibraryLoadFailed`, `NoDisplay`, `WaylandConnectFailed`, `WaylandProtocolMissing`, `WaylandProtocolError`, `X11OpenDisplayFailed`, `IdleInhibitUnavailable`
+- `LibraryLoadFailed`, `NoDisplay`, `BackendUnknown`, `BackendUnavailable`, `WaylandConnectFailed`, `WaylandProtocolMissing`, `WaylandProtocolError`, `X11OpenDisplayFailed`, `IdleInhibitUnavailable`
 - `EGLLoadFailed`, `EGLInitFailed`, `EGLNoConfig`, `GLES3Unsupported`, `ShaderCompileFailed`
 - `AssetNotFound`, `ImageDecodeFailed`, `FontLoadFailed`
 - `DBusConnectFailed`, `TrayUnavailable`, `NotificationsUnavailable`, `FileChooserUnavailable`, `OpenURIUnavailable`

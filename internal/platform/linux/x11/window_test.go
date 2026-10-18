@@ -242,8 +242,8 @@ func assertRoute(t *testing.T, err error, route string) {
 func TestNewFailsWithoutAServer(t *testing.T) {
 	_, err := New(":9999")
 	appErr, ok := errors.FromError(err)
-	if !ok || appErr.Tag != "X11OpenFailed" || !appErr.HasRoute("New.X11OpenFailed") {
-		t.Fatalf("New(:9999) = %v, want X11OpenFailed via New", err)
+	if !ok || appErr.Tag != "X11OpenDisplayFailed" || !appErr.HasRoute("New.X11OpenDisplayFailed") {
+		t.Fatalf("New(:9999) = %v, want X11OpenDisplayFailed via New", err)
 	}
 	if appErr.Metadata["display"] != ":9999" {
 		t.Errorf("metadata %v", appErr.Metadata)
