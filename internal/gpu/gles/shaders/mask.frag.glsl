@@ -3,7 +3,6 @@ precision highp float;
 precision highp int;
 precision highp sampler2D;
 
-uniform vec2 uSurface;
 uniform sampler2D uAtlas; // texture unit 0: 8-bit coverage
 
 flat in vec4 vQuad;
@@ -13,11 +12,14 @@ flat in vec4 vClip;
 
 out vec4 fragColor;
 
+//#include "common.glsl"
 //#include "sdf.glsl"
 //#include "clipmask.glsl"
+//#include "blend.glsl"
+//#include "paint.glsl"
 
 void main() {
-	vec2 dev = vec2(gl_FragCoord.x, uSurface.y - gl_FragCoord.y);
+	vec2 dev = devicePixel();
 	// The quad covers whole pixels, one texel each: the texel of this pixel is the
 	// tile's corner plus its distance from the quad's corner.
 	ivec2 texel = ivec2(vAtlas.xy) + ivec2(floor(dev)) - ivec2(vQuad.xy);
@@ -26,5 +28,5 @@ void main() {
 	if (coverage <= 0.0) {
 		discard;
 	}
-	fragColor = vColor * coverage;
+	fragColor = finish(paintSource(vColor, dev), coverage, dev);
 }

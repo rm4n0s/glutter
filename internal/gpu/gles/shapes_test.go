@@ -331,18 +331,17 @@ func TestBuildDrawsNothingForDst(t *testing.T) {
 
 func TestBuildUnsupported(t *testing.T) {
 	rect := ui.NewRectFromLTWH(10, 10, 60, 40)
-	withShader := solidPaint(0xFF000000)
-	withShader.SetShader(ui.NewGradientLinear(ui.Offset{}, ui.Offset{Dx: 10}, []ui.Color{ui.NewColor(0xFF000000), ui.NewColor(0xFFFFFFFF)}))
-	withColorFilter := solidPaint(0xFF000000)
-	withColorFilter.SetColorFilter(ui.NewColorFilterMode(ui.NewColor(0xFFFF0000), ui.BlendModeSrcIn))
-	inverted := solidPaint(0xFF000000)
-	inverted.SetInvertColors(true)
+	manyColors := solidPaint(0xFF000000)
+	colors := make([]ui.Color, maxStops+1)
+	stops := make([]float64, len(colors))
+	for i := range colors {
+		colors[i], stops[i] = ui.NewColor(0xFF000000+uint32(i)), float64(i)/float64(len(colors)-1)
+	}
+	manyColors.SetShader(ui.NewGradientLinear(ui.Offset{}, ui.Offset{Dx: 10}, colors, ui.GradientLinearOpts{ColorStops: stops}))
 	withImageFilter := solidPaint(0xFF000000)
 	withImageFilter.SetImageFilter(ui.NewImageFilterBlur(ui.ImageFilterBlurOpts{SigmaX: 2, SigmaY: 2}))
 	withMask := solidPaint(0xFF000000)
 	withMask.SetMaskFilter(ui.NewMaskFilterBlur(ui.BlurStyleNormal, 3))
-	xor := solidPaint(0xFF000000)
-	xor.SetBlendMode(ui.BlendModeXor)
 	tests := []struct {
 		name    string
 		feature string
@@ -354,13 +353,9 @@ func TestBuildUnsupported(t *testing.T) {
 			c.DrawPath(p, solidPaint(0xFF000000))
 		}},
 		{"arc", "operation ui.OpDrawArc", func(c *ui.Canvas) { c.DrawArc(rect, 0, 1, true, solidPaint(0xFF000000)) }},
-		{"shader", "paint shader", func(c *ui.Canvas) { c.DrawRect(rect, withShader) }},
-		{"color filter", "paint color filter", func(c *ui.Canvas) { c.DrawRect(rect, withColorFilter) }},
-		{"inverted colors", "paint color filter", func(c *ui.Canvas) { c.DrawRect(rect, inverted) }},
+		{"gradient with too many colors", "gradient with more than 32 colors", func(c *ui.Canvas) { c.DrawRect(rect, manyColors) }},
 		{"image filter", "paint image filter", func(c *ui.Canvas) { c.DrawRect(rect, withImageFilter) }},
 		{"mask filter", "paint mask filter", func(c *ui.Canvas) { c.DrawRect(rect, withMask) }},
-		{"blend mode", "blend mode " + ui.BlendModeXor.String(), func(c *ui.Canvas) { c.DrawRect(rect, xor) }},
-		{"color with a blend mode", "blend mode " + ui.BlendModeSrc.String(), func(c *ui.Canvas) { c.DrawColor(ui.NewColor(0xFF000000), ui.BlendModeSrc) }},
 		{"polygon points", "polygon points", func(c *ui.Canvas) {
 			c.DrawPoints(ui.PointModePolygon, []ui.Offset{{}, {Dx: 5, Dy: 5}, {Dx: 9}}, linePaint(0xFF000000, 2, ui.StrokeCapButt, ui.StrokeJoinMiter))
 		}},
@@ -390,8 +385,8 @@ func TestBuildUnsupported(t *testing.T) {
 			img := ui.NewImageFromRGBA(make([]byte, 16), 2, 2)
 			c.DrawImageRect(img, ui.NewRectFromLTWH(0, 0, 2, 2), rect, solidPaint(0xFF000000))
 		}},
-		{"layer", "layer", func(c *ui.Canvas) {
-			c.SaveLayer(nil, solidPaint(0x80000000))
+		{"layer with an image filter", "paint image filter", func(c *ui.Canvas) {
+			c.SaveLayer(nil, withImageFilter)
 			c.DrawRect(rect, solidPaint(0xFF000000))
 			c.Restore()
 		}},
@@ -424,9 +419,11 @@ func TestBuildUnsupported(t *testing.T) {
 
 func TestBuildSkipsWholeLayers(t *testing.T) {
 	rect := ui.NewRectFromLTWH(10, 10, 20, 20)
+	blurred := solidPaint(0x80000000)
+	blurred.SetImageFilter(ui.NewImageFilterBlur(ui.ImageFilterBlurOpts{SigmaX: 2, SigmaY: 2}))
 	b, err := build(t, true, func(c *ui.Canvas) {
 		c.DrawRect(rect, solidPaint(0xFF000000))
-		c.SaveLayer(nil, solidPaint(0x80000000))
+		c.SaveLayer(nil, blurred)
 		c.DrawRect(rect, solidPaint(0xFF000000)) // inside the layer
 		c.SaveLayer(nil, solidPaint(0x80000000))
 		c.DrawRect(rect, solidPaint(0xFF000000)) // inside the nested layer

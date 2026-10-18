@@ -485,16 +485,9 @@ func TestImageErrorsAndUnsupported(t *testing.T) {
 	// Unsupported paints and modes name their feature.
 	img := testImage(8, 8)
 	filtered := ui.NewPaint()
-	filtered.SetColorFilter(ui.NewColorFilterMode(ui.NewColor(0xFFFF0000), ui.BlendModeSrcIn))
-	xor := ui.NewPaint()
-	xor.SetBlendMode(ui.BlendModeXor)
+	filtered.SetImageFilter(ui.NewImageFilterBlur(ui.ImageFilterBlurOpts{SigmaX: 2, SigmaY: 2}))
 	for feature, fn := range map[string]func(c *ui.Canvas){
-		"paint color filter":                     func(c *ui.Canvas) { c.DrawImage(img, ui.Offset{}, filtered) },
-		"blend mode " + ui.BlendModeXor.String(): func(c *ui.Canvas) { c.DrawImage(img, ui.Offset{}, xor) },
-		"atlas blend mode " + ui.BlendModeHardLight.String(): func(c *ui.Canvas) {
-			c.DrawAtlas(img, []ui.RSTransform{ui.NewRSTransformFromComponents(0, 1, 0, 0, 0, 0)}, []ui.Rect{ui.NewRectFromLTWH(0, 0, 4, 4)},
-				[]ui.Color{ui.NewColor(0xFFFFFFFF)}, ui.BlendModeHardLight, nil, nil)
-		},
+		"paint image filter": func(c *ui.Canvas) { c.DrawImage(img, ui.Offset{}, filtered) },
 	} {
 		res.beginFrame()
 		_, err := buildWith(t, res, false, fn)
@@ -553,11 +546,17 @@ func TestNinePatchAndAtlasInstances(t *testing.T) {
 }
 
 func TestBlendIndex(t *testing.T) {
-	for i, m := range []ui.BlendMode{
-		ui.BlendModeClear, ui.BlendModeSrc, ui.BlendModeDst, ui.BlendModeSrcOver, ui.BlendModeDstOver, ui.BlendModeSrcIn,
-		ui.BlendModeDstIn, ui.BlendModeSrcOut, ui.BlendModeDstOut, ui.BlendModeSrcATop, ui.BlendModeDstATop, ui.BlendModeXor,
-		ui.BlendModePlus, ui.BlendModeModulate, ui.BlendModeScreen,
-	} {
+	// Every mode is its place in the order of BlendMode, as shaders/blend.glsl lists them.
+	names := []string{
+		"clear", "src", "dst", "srcOver", "dstOver", "srcIn", "dstIn", "srcOut", "dstOut", "srcATop", "dstATop", "xor",
+		"plus", "modulate", "screen", "overlay", "darken", "lighten", "colorDodge", "colorBurn", "hardLight", "softLight",
+		"difference", "exclusion", "multiply", "hue", "saturation", "color", "luminosity",
+	}
+	for i, name := range names {
+		m := ui.BlendModeClear + ui.BlendMode(i)
+		if got := m.String(); got != "BlendMode."+name {
+			t.Fatalf("mode %d is %s, want %s", i, got, name)
+		}
 		if got, ok := blendIndex(m); !ok || got != i {
 			t.Errorf("blendIndex(%v) = %d, %v, want %d", m, got, ok, i)
 		}
@@ -565,10 +564,8 @@ func TestBlendIndex(t *testing.T) {
 	if got, ok := blendIndex(ui.BlendModeUnspecified); !ok || got != 3 {
 		t.Errorf("an unspecified mode is srcOver: %d, %v", got, ok)
 	}
-	for _, m := range []ui.BlendMode{ui.BlendModeOverlay, ui.BlendModeHue, ui.BlendModeMultiply} {
-		if _, ok := blendIndex(m); ok {
-			t.Errorf("%v has no index yet", m)
-		}
+	if _, ok := blendIndex(ui.BlendModeLuminosity + 1); ok {
+		t.Error("a mode after luminosity has an index")
 	}
 }
 
@@ -617,13 +614,19 @@ func TestVerticesInstances(t *testing.T) {
 	if b.frame.callsOf(pipeVertices) != 1 || b.frame.items(pipeVertices) != 6 {
 		t.Errorf("calls %d, vertices %d", b.frame.callsOf(pipeVertices), b.frame.items(pipeVertices))
 	}
-	// Unsupported: a mode the shader cannot blend with, a texture-mapped shader.
-	res.beginFrame()
-	_, err := buildWith(t, res, false, func(c *ui.Canvas) {
+	// Any blend mode of the call blends the paint with the vertex colors, and a
+	// shader with texture coordinates is evaluated at them.
+	b = frameWith(t, res, func(c *ui.Canvas) {
 		c.DrawVertices(ui.NewVertices(ui.VertexModeTriangles, pos[:3], ui.VerticesOpts{Colors: colors[:3]}), ui.BlendModeHardLight, solidPaint(0xFF000000))
+		shader := ui.NewPaint()
+		shader.SetShader(ui.NewGradientLinear(ui.Offset{}, ui.Offset{Dx: 5}, []ui.Color{ui.NewColor(0xFF000000), ui.NewColor(0xFFFFFFFF)}))
+		c.DrawVertices(ui.NewVertices(ui.VertexModeTriangles, pos[:3], ui.VerticesOpts{TextureCoordinates: pos[:3]}), ui.BlendModeSrc, shader)
 	})
-	if appErr, ok := errors.FromError(err); !ok || appErr.Tag != "GLNotImplemented" || appErr.Metadata["feature"] != "vertices blend mode "+ui.BlendModeHardLight.String() {
-		t.Errorf("error = %v", err)
+	if b.frame.calls[0].mode != 20 || !b.frame.calls[0].hasColors || b.frame.calls[0].atTexture {
+		t.Errorf("first call = %+v", b.frame.calls[0].callKey)
+	}
+	if call := b.frame.calls[1]; !call.atTexture || call.spec.shader != shaderLinear || call.spec.xf != [6]float32{1, 0, 0, 1, 0, 0} {
+		t.Errorf("second call = %+v, spec %+v", call.callKey, call.spec)
 	}
 }
 
@@ -646,13 +649,13 @@ func TestShapesFallBackToTheAtlas(t *testing.T) {
 		t.Errorf("drawn = %d", b.stats.Drawn)
 	}
 	// Features of the paint still stop a fallback.
-	shader := solidPaint(0xFF000000)
-	shader.SetShader(ui.NewGradientLinear(ui.Offset{}, ui.Offset{Dx: 5}, []ui.Color{ui.NewColor(0xFF000000), ui.NewColor(0xFFFFFFFF)}))
-	shader.SetStyle(ui.PaintingStyleStroke)
-	shader.SetStrokeJoin(ui.StrokeJoinBevel)
+	blurred := solidPaint(0xFF000000)
+	blurred.SetImageFilter(ui.NewImageFilterBlur(ui.ImageFilterBlurOpts{SigmaX: 2, SigmaY: 2}))
+	blurred.SetStyle(ui.PaintingStyleStroke)
+	blurred.SetStrokeJoin(ui.StrokeJoinBevel)
 	res.beginFrame()
-	_, err := buildWith(t, res, false, func(c *ui.Canvas) { c.DrawRect(rect, shader) })
-	if appErr, ok := errors.FromError(err); !ok || appErr.Tag != "GLNotImplemented" || appErr.Metadata["feature"] != "paint shader" {
+	_, err := buildWith(t, res, false, func(c *ui.Canvas) { c.DrawRect(rect, blurred) })
+	if appErr, ok := errors.FromError(err); !ok || appErr.Tag != "GLNotImplemented" || appErr.Metadata["feature"] != "paint image filter" {
 		t.Errorf("error = %v", err)
 	}
 }

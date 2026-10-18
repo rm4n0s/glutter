@@ -187,6 +187,22 @@ func (d *Device) UploadTexture(t *Texture, x, y, w, h int, pixels []byte) error 
 	return d.checkError("texSubImage2D")
 }
 
+// CopyFramebuffer copies the w x h pixels at x, y (counted from the bottom left)
+// of the bound framebuffer into the corner of the texture where its first row
+// starts, after binding the texture to the unit. The texture must be at least that
+// big and RGBA8.
+//
+// Flutter: no counterpart
+func (d *Device) CopyFramebuffer(unit int, t *Texture, x, y, w, h int) error {
+	d.bindTextureID(unit, t.id)
+	if d.state.activeUnit != uint32(unit) {
+		d.state.activeUnit = uint32(unit)
+		d.gl.activeTexture(glTexture0 + uint32(unit))
+	}
+	d.gl.copyTexSubImage2D(glTexture2D, 0, 0, 0, int32(x), int32(y), int32(w), int32(h))
+	return d.checkError("copyTexSubImage2D")
+}
+
 // GenerateMipmaps builds the mipmap chain of a texture from its level 0.
 //
 // Flutter: no counterpart

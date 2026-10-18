@@ -11,7 +11,7 @@ layout(location = 5) in vec4 aBox;    // the rectangle drawn: texels, or pixels 
 layout(location = 6) in vec4 aImg;    // level of detail, quality, blend index (-1 none), unused
 layout(location = 7) in vec4 aTint;   // premultiplied color blended with the image
 
-uniform vec2 uSurface; // the size of the surface in pixels
+//#include "common.glsl"
 
 flat out vec4 vInv0;
 flat out vec4 vInv1;
@@ -24,7 +24,7 @@ flat out vec4 vTint;
 void main() {
 	vec2 corner = vec2(float(gl_VertexID & 1), float(gl_VertexID >> 1));
 	vec2 dev = mix(aQuad.xy, aQuad.zw, corner);
-	gl_Position = vec4(dev.x / uSurface.x * 2.0 - 1.0, 1.0 - dev.y / uSurface.y * 2.0, 0.0, 1.0);
+	gl_Position = toClip(dev);
 	vInv0 = aInv0;
 	vInv1 = aInv1;
 	vColor = aColor;

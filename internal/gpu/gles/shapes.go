@@ -52,13 +52,16 @@ const (
 type blendFunc struct{ srcRGB, dstRGB, srcA, dstA uint32 }
 
 // blendFuncs are the blend modes that glBlendFunc makes exactly when the shape's
-// coverage scales the source. The others need the destination in the shader or
-// a layer (step 3.4).
+// coverage scales the source. The others read a copy of the pixels under the draw
+// in the shader (paintSpec.readBlend), which writes the whole result: replaceBlend.
 var blendFuncs = map[ui.BlendMode]blendFunc{
 	ui.BlendModeSrcOver: {glOne, glOneMinusSrcAlpha, glOne, glOneMinusSrcAlpha},
 	ui.BlendModeDstOver: {glOneMinusDstAlpha, glOne, glOneMinusDstAlpha, glOne},
 	ui.BlendModePlus:    {glOne, glOne, glOne, glOne},
 }
+
+// replaceBlend writes the shader's output as it is.
+var replaceBlend = blendFunc{glOne, glZero, glOne, glZero}
 
 // affine2D is the 2D part of a transform: x' = a*x + c*y + e, y' = b*x + d*y + f.
 type affine2D struct{ a, b, c, d, e, f float64 }
@@ -129,6 +132,15 @@ type frameBuilder struct {
 	skipping int
 	// reasons are the unsupported features seen, to count each once.
 	reasons map[string]bool
+	// specs interns the paint specs of the frame.
+	specs map[paintSpec]*paintSpec
+	// seq numbers the draw calls that read the pixels under them, which are never
+	// merged.
+	seq int
+	// layers are the groups being drawn, innermost last; culled is the depth of a
+	// group with nothing to draw, whose commands are dropped.
+	layers []*layerRec
+	culled int
 }
 
 // FrameStats says what the last frame did.
@@ -179,24 +191,31 @@ func (b *frameBuilder) command(c gpu.Command) error {
 			b.skipping++
 			return nil
 		}
-		// Groups arrive with step 3.4.
-		if err := b.unsupported("layer"); err != nil {
-			return err
+		if b.culled > 0 {
+			b.culled++
+			return nil
 		}
-		b.skipping = 1
-		return nil
+		return b.beginLayer(c)
 	case gpu.CommandEndLayer:
-		if b.skipping > 0 {
+		switch {
+		case b.skipping > 0:
 			b.skipping--
+		case b.culled > 0:
+			b.culled--
+		default:
+			return b.endLayer()
 		}
-		return nil
-	}
-	if b.skipping > 0 {
-		b.stats.Commands++
-		b.stats.Skipped++
 		return nil
 	}
 	b.stats.Commands++
+	switch {
+	case b.skipping > 0:
+		b.stats.Skipped++
+		return nil
+	case b.culled > 0:
+		b.stats.Drawn++
+		return nil
+	}
 	drawn, err := b.draw(c)
 	if err != nil {
 		return err
@@ -342,7 +361,7 @@ type shapeContext struct {
 // command's clip. done says that the command needs no more work: ok tells
 // whether it counts as drawn.
 func (s *shapeContext) setupClip() (done, ok bool, err error) {
-	s.outer = outerPixels(s.c.Clip.Bounds, s.b.w, s.b.h)
+	s.outer = outerPixels(s.c.Clip.Bounds, s.b.w, s.b.h).Intersect(s.b.target())
 	if s.outer.Empty() {
 		return true, true, nil
 	}
@@ -369,11 +388,12 @@ func (s *shapeContext) setupClip() (done, ok bool, err error) {
 // scale is the factor that lengths in the shape's units grow by.
 func (s *shapeContext) scale() float64 { return math.Sqrt(math.Abs(s.t.det())) }
 
-// paintInfo is what a paint gives the shape pipeline.
+// paintInfo is what a paint gives the pipelines.
 type paintInfo struct {
-	color [4]float32 // premultiplied
+	color [4]float32 // premultiplied; for a shader, its alpha in all four components
 	blend blendFunc
 	aa    bool
+	spec  *paintSpec
 }
 
 // paintStatus says what to do with a paint.
@@ -385,31 +405,73 @@ const (
 	paintUnsupported                    // the command is skipped, or failed with the error
 )
 
-// paint reads the parts of a paint that the shape pipeline draws. For
+// paint reads the parts of a paint that the shape pipelines draw. For
 // paintUnsupported, unsupported has been called, and err is its result.
 func (s *shapeContext) paint(p *ui.Paint) (info paintInfo, status paintStatus, err error) {
+	return s.paintWith(p, true, s.t)
+}
+
+// paintWith reads a paint. With useShader false the paint's shader and mask
+// filter do not apply (images); toDevice is the transform the shader is set
+// under.
+func (s *shapeContext) paintWith(p *ui.Paint, useShader bool, toDevice affine2D) (info paintInfo, status paintStatus, err error) {
 	switch {
-	case p.Shader() != nil:
-		return info, paintUnsupported, s.b.unsupported("paint shader")
-	case p.ColorFilter() != nil || p.InvertColors():
-		return info, paintUnsupported, s.b.unsupported("paint color filter")
+	case useShader && p.MaskFilter() != nil:
+		return info, paintUnsupported, s.b.unsupported("paint mask filter")
 	case p.ImageFilter() != nil:
 		return info, paintUnsupported, s.b.unsupported("paint image filter")
-	case p.MaskFilter() != nil:
-		return info, paintUnsupported, s.b.unsupported("paint mask filter")
 	}
 	mode := p.BlendMode()
 	if mode == ui.BlendModeDst {
 		return info, paintNothing, nil
 	}
-	blend, supported := blendFuncs[mode]
-	if !supported {
-		return info, paintUnsupported, s.b.unsupported("blend mode " + mode.String())
+	var sp paintSpec
+	filterSpec(&sp, p.ColorFilter(), p.InvertColors())
+	info.aa = p.IsAntiAlias()
+	if blend, ok := blendFuncs[mode]; ok {
+		info.blend = blend
+	} else {
+		idx, ok := blendIndex(mode)
+		if !ok {
+			return info, paintUnsupported, s.b.unsupported("blend mode " + mode.String())
+		}
+		info.blend = replaceBlend
+		sp.readBlend = int32(idx + 1)
 	}
 	col := p.Color()
-	a := col.A
-	info = paintInfo{color: [4]float32{col.R * a, col.G * a, col.B * a, a}, blend: blend, aa: p.IsAntiAlias()}
+	if sh := p.Shader(); useShader && sh != nil {
+		if status, err := s.shaderSpec(&sp, sh, toDevice); status != paintDraw {
+			return info, status, err
+		}
+		a := float32(col.Alpha()) / 255
+		info.color = [4]float32{a, a, a, a}
+	} else if !useShader {
+		a := float32(col.Alpha()) / 255
+		info.color = [4]float32{a, a, a, a}
+	} else {
+		a := col.A
+		info.color = [4]float32{col.R * a, col.G * a, col.B * a, a}
+	}
+	info.spec = s.b.intern(sp)
 	return info, paintDraw, nil
+}
+
+// key makes the call key of a primitive that covers the pixels of bounds. A draw
+// that reads the pixels under it is its own call, and its scissor box is just
+// those pixels, so that only they are copied; false says that there is nothing to
+// draw.
+func (s *shapeContext) key(pipe pipeline, info paintInfo, tex *Texture, bounds image.Rectangle) (callKey, bool) {
+	k := callKey{pipe: pipe, blend: info.blend, scissor: s.scissor, tex: tex, clip: s.mask, spec: info.spec}
+	if info.spec.readBlend != 0 {
+		r := bounds.Intersect(s.outer)
+		if r.Empty() {
+			return k, false
+		}
+		k.scissor = [4]int{r.Min.X, r.Min.Y, r.Dx(), r.Dy()}
+		s.b.seq++
+		k.seq = s.b.seq
+	}
+	return k, true
 }
 
 // stroke returns the half width of a stroke in the shape's units for a paint, and
@@ -468,7 +530,11 @@ func (s *shapeContext) place(in *instance, local ui.Rect, kind, flags int, info 
 	}
 	copy(in[16:20], s.clip[:])
 	in[47] = float32(s.scale())
-	s.b.frame.add(callKey{pipe: pipeShape, blend: info.blend, scissor: s.scissor, clip: s.mask}, in[:], 1)
+	key, ok := s.key(pipeShape, info, nil, image.Rect(int(x0), int(y0), int(x1), int(y1)))
+	if !ok {
+		return true, nil
+	}
+	s.b.frame.add(key, in[:], 1)
 	return true, nil
 }
 

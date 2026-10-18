@@ -19,7 +19,7 @@ layout(location = 9) in vec4 aBRad1;
 layout(location = 10) in vec4 aBRad2;
 layout(location = 11) in vec4 aParam; // half stroke width, cap, exponent, pixels per local unit
 
-uniform vec2 uSurface; // the size of the surface in pixels
+//#include "common.glsl"
 
 flat out vec4 vInv0;
 flat out vec4 vInv1;
@@ -36,7 +36,7 @@ flat out vec4 vParam;
 void main() {
 	vec2 corner = vec2(float(gl_VertexID & 1), float(gl_VertexID >> 1));
 	vec2 dev = mix(aQuad.xy, aQuad.zw, corner);
-	gl_Position = vec4(dev.x / uSurface.x * 2.0 - 1.0, 1.0 - dev.y / uSurface.y * 2.0, 0.0, 1.0);
+	gl_Position = toClip(dev);
 	vInv0 = aInv0;
 	vInv1 = aInv1;
 	vColor = aColor;

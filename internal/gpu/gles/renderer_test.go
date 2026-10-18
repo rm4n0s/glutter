@@ -252,9 +252,9 @@ func TestRendererDrawsTheScene(t *testing.T) {
 func TestRendererStrictAndSkippingModes(t *testing.T) {
 	rec := ui.NewPictureRecorder()
 	c := ui.NewCanvas(rec)
-	gradient := ui.NewPaint()
-	gradient.SetShader(ui.NewGradientLinear(ui.Offset{}, ui.Offset{Dx: 10}, []ui.Color{ui.NewColor(0xFF000000), ui.NewColor(0xFFFFFFFF)}))
-	c.DrawArc(ui.NewRectFromLTWH(0, 0, 10, 10), 0, 1, true, gradient)
+	blurred := ui.NewPaint()
+	blurred.SetImageFilter(ui.NewImageFilterBlur(ui.ImageFilterBlurOpts{SigmaX: 2, SigmaY: 2}))
+	c.DrawArc(ui.NewRectFromLTWH(0, 0, 10, 10), 0, 1, true, blurred)
 	sb := ui.NewSceneBuilder()
 	sb.AddPicture(ui.Offset{}, rec.EndRecording())
 	scene := sb.Build()

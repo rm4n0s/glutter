@@ -1,6 +1,7 @@
 package gles
 
 import (
+	"image"
 	"math"
 	"unsafe"
 
@@ -91,27 +92,11 @@ const (
 	imageFlagAntialias = 2
 )
 
-// imagePaint reads what the image pipeline takes from a paint: its alpha and
-// blend mode. The paint's shader and mask filter do not apply to images, as in
-// Skia. ok is false when the image is not drawn: unsupported features have been
-// reported.
+// imagePaint reads what the image pipeline takes from a paint: its alpha, color
+// filters and blend mode. The paint's shader and mask filter do not apply to
+// images, as in Skia.
 func (s *shapeContext) imagePaint(p *ui.Paint) (info paintInfo, status paintStatus, err error) {
-	switch {
-	case p.ColorFilter() != nil || p.InvertColors():
-		return info, paintUnsupported, s.b.unsupported("paint color filter")
-	case p.ImageFilter() != nil:
-		return info, paintUnsupported, s.b.unsupported("paint image filter")
-	}
-	mode := p.BlendMode()
-	if mode == ui.BlendModeDst {
-		return info, paintNothing, nil
-	}
-	blend, supported := blendFuncs[mode]
-	if !supported {
-		return info, paintUnsupported, s.b.unsupported("blend mode " + mode.String())
-	}
-	a := float32(p.Color().Alpha()) / 255
-	return paintInfo{color: [4]float32{a, a, a, a}, blend: blend, aa: p.IsAntiAlias()}, paintDraw, nil
+	return s.paintWith(p, false, s.t)
 }
 
 // checkImage fails with GLImageDisposed for an image that cannot be drawn.
@@ -225,7 +210,11 @@ func (s *shapeContext) blit(img *ui.Image, src ui.Rect, toDevice affine2D, p *ui
 		in[26] = float32(t.mode)
 		copy(in[28:32], t.color[:])
 	}
-	s.b.frame.add(callKey{pipe: pipeImage, blend: info.blend, scissor: s.scissor, tex: entry.tex, clip: s.mask}, in[:], 1)
+	key, ok := s.key(pipeImage, info, entry.tex, image.Rect(int(x0), int(y0), int(x1), int(y1)))
+	if !ok {
+		return true, nil
+	}
+	s.b.frame.add(key, in[:], 1)
 	return true, nil
 }
 
@@ -268,25 +257,6 @@ func ninePieces(origin, size float64, src [4]float64) [4]float64 {
 		first, last = first*k, last*k
 	}
 	return [4]float64{origin, origin + first, origin + size - last, origin + size}
-}
-
-// blendIndex is the index of the blend modes that the shaders can blend two colors
-// with (shaders/blendpair.glsl).
-func blendIndex(m ui.BlendMode) (int, bool) {
-	order := [...]ui.BlendMode{
-		ui.BlendModeClear, ui.BlendModeSrc, ui.BlendModeDst, ui.BlendModeSrcOver, ui.BlendModeDstOver, ui.BlendModeSrcIn,
-		ui.BlendModeDstIn, ui.BlendModeSrcOut, ui.BlendModeDstOut, ui.BlendModeSrcATop, ui.BlendModeDstATop, ui.BlendModeXor,
-		ui.BlendModePlus, ui.BlendModeModulate, ui.BlendModeScreen,
-	}
-	if m == ui.BlendModeUnspecified {
-		return 3, true
-	}
-	for i, o := range order {
-		if o == m {
-			return i, true
-		}
-	}
-	return 0, false
 }
 
 // imageAtlas draws the parts of an atlas image, each moved by its transform. With

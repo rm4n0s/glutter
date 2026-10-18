@@ -3,12 +3,15 @@
 
 layout(location = 0) in vec2 aPos;
 layout(location = 1) in vec4 aColor; // not premultiplied
+layout(location = 2) in vec2 aTex;   // texture coordinates, for a shader
 
-uniform vec2 uSurface; // the size of the surface in pixels
+//#include "common.glsl"
 
 out vec4 vColor;
+out vec2 vTex;
 
 void main() {
-	gl_Position = vec4(aPos.x / uSurface.x * 2.0 - 1.0, 1.0 - aPos.y / uSurface.y * 2.0, 0.0, 1.0);
+	gl_Position = toClip(aPos);
 	vColor = aColor;
+	vTex = aTex;
 }

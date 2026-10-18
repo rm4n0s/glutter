@@ -167,7 +167,11 @@ func (s *shapeContext) pathMask(op ui.DisplayOp, p *ui.Paint) (bool, error) {
 			in[8+i] = info.color[i]
 		}
 		copy(in[12:16], s.clip[:])
-		s.b.frame.add(callKey{pipe: pipeMask, blend: info.blend, scissor: s.scissor, tex: t.tex, clip: s.mask}, in[:], 1)
+		key, ok := s.key(pipeMask, info, t.tex, image.Rect(t.x0, t.y0, t.x1, t.y1))
+		if !ok {
+			continue
+		}
+		s.b.frame.add(key, in[:], 1)
 	}
 	return true, nil
 }

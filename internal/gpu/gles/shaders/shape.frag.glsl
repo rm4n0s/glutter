@@ -1,12 +1,12 @@
 #version 300 es
 precision highp float;
+precision highp int;
+precision highp sampler2D;
 
 // The coverage of a pixel by a shape comes from the shape's signed distance
 // field d: negative inside, positive outside, in the shape's own units. The pixel
 // is then 0.5 - d / (the size of a pixel in those units), clamped to 0..1. That is
 // exact along a straight edge and close at corners.
-
-uniform vec2 uSurface;
 
 flat in vec4 vInv0;
 flat in vec4 vInv1;
@@ -33,8 +33,11 @@ const int FLAG_HAS_B = 1;
 const int FLAG_ANTIALIAS = 2;
 const int FLAG_SIMILARITY = 4; // the transform only rotates, flips and scales evenly
 
+//#include "common.glsl"
 //#include "sdf.glsl"
 //#include "clipmask.glsl"
+//#include "blend.glsl"
+//#include "paint.glsl"
 
 // A rounded superellipse: the corner boxes in r1 and r2 are filled by the curve
 // |x|^n + |y|^n = 1.
@@ -82,7 +85,7 @@ float segmentDistance(vec2 p, vec2 a, vec2 b, float hw, float cap) {
 }
 
 void main() {
-	vec2 dev = vec2(gl_FragCoord.x, uSurface.y - gl_FragCoord.y);
+	vec2 dev = devicePixel();
 
 	// The clip rectangle: exact coverage, so anti-aliased clip edges are smooth.
 	float clipCoverage = span(dev.x, vClip.x, vClip.z) * span(dev.y, vClip.y, vClip.w) * clipMaskCoverage(dev);
@@ -103,7 +106,7 @@ void main() {
 		if (cov <= 0.0) {
 			discard;
 		}
-		fragColor = vColor * cov;
+		fragColor = finish(paintSource(vColor, dev), cov, dev);
 		return;
 	}
 
@@ -144,5 +147,5 @@ void main() {
 	if (coverage * clipCoverage <= 0.0) {
 		discard;
 	}
-	fragColor = vColor * (coverage * clipCoverage);
+	fragColor = finish(paintSource(vColor, dev), coverage * clipCoverage, dev);
 }

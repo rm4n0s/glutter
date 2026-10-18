@@ -3,7 +3,6 @@ precision highp float;
 precision highp int;
 precision highp sampler2D;
 
-uniform vec2 uSurface;
 uniform sampler2D uImage; // texture unit 0: premultiplied RGBA with mipmaps
 
 flat in vec4 vInv0;
@@ -24,9 +23,11 @@ const int QUALITY_LOW = 1;
 const int QUALITY_MEDIUM = 2;
 const int QUALITY_HIGH = 3;
 
+//#include "common.glsl"
 //#include "sdf.glsl"
 //#include "clipmask.glsl"
-//#include "blendpair.glsl"
+//#include "blend.glsl"
+//#include "paint.glsl"
 
 // The Mitchell-Netravali cubic with B = C = 1/3.
 float mitchell(float x) {
@@ -66,7 +67,7 @@ vec4 bicubic(vec2 uv, ivec2 base, int level) {
 }
 
 void main() {
-	vec2 dev = vec2(gl_FragCoord.x, uSurface.y - gl_FragCoord.y);
+	vec2 dev = devicePixel();
 	int flags = int(vInv1.z + 0.5);
 	bool aa = (flags & FLAG_ANTIALIAS) != 0;
 	vec2 uv = vec2(
@@ -106,9 +107,9 @@ void main() {
 	if (vImg.z >= 0.0) {
 		color = blendPair(mode, color, vTint);
 	}
-	color *= coverage;
-	if (color.a <= 0.0 && color.r <= 0.0 && color.g <= 0.0 && color.b <= 0.0) {
+	color = applyFilters(color);
+	if (coverage <= 0.0) {
 		discard;
 	}
-	fragColor = color;
+	fragColor = finish(color, coverage, dev);
 }
