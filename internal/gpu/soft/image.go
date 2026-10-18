@@ -44,34 +44,60 @@ func (r *renderer) levels(img *ui.Image) []*mipLevel {
 	return chain
 }
 
-// texel returns the premultiplied color of a pixel of the level, clamping the
-// coordinates to the edge.
-func (l *mipLevel) texel(x, y int) [4]float32 {
-	x, y = min(max(x, 0), l.w-1), min(max(y, 0), l.h-1)
+// tiling says what a texel lookup outside the image gives on each axis; the zero
+// value clamps to the edge.
+type tiling struct{ x, y ui.TileMode }
+
+// wrapIndex applies a tile mode to a pixel index of a side n pixels long; ok is
+// false where the mode draws nothing.
+func wrapIndex(i, n int, mode ui.TileMode) (int, bool) {
+	switch mode {
+	case ui.TileModeRepeated:
+		return ((i % n) + n) % n, true
+	case ui.TileModeMirror:
+		m := ((i % (2 * n)) + 2*n) % (2 * n)
+		if m >= n {
+			m = 2*n - 1 - m
+		}
+		return m, true
+	case ui.TileModeDecal:
+		return i, i >= 0 && i < n
+	}
+	return min(max(i, 0), n-1), true
+}
+
+// texel returns the premultiplied color of a pixel of the level, with the tile
+// modes applied to the coordinates.
+func (l *mipLevel) texel(x, y int, t tiling) rgba {
+	x, okX := wrapIndex(x, l.w, t.x)
+	y, okY := wrapIndex(y, l.h, t.y)
+	if !okX || !okY {
+		return rgba{}
+	}
 	p := l.pix[4*(y*l.w+x):][:4]
-	return [4]float32{float32(p[0]) / 255, float32(p[1]) / 255, float32(p[2]) / 255, float32(p[3]) / 255}
+	return rgba{float32(p[0]) / 255, float32(p[1]) / 255, float32(p[2]) / 255, float32(p[3]) / 255}
 }
 
 // sample reads the level at the point u, v of the image, whose size is w0 x h0.
-func (l *mipLevel) sample(u, v float64, w0, h0 int, q ui.FilterQuality) [4]float32 {
+func (l *mipLevel) sample(u, v float64, w0, h0 int, q ui.FilterQuality, t tiling) rgba {
 	u *= float64(l.w) / float64(w0)
 	v *= float64(l.h) / float64(h0)
 	switch q {
 	case ui.FilterQualityNone:
-		return l.texel(int(math.Floor(u)), int(math.Floor(v)))
+		return l.texel(int(math.Floor(u)), int(math.Floor(v)), t)
 	case ui.FilterQualityHigh:
-		return l.bicubic(u-0.5, v-0.5)
+		return l.bicubic(u-0.5, v-0.5, t)
 	}
-	return l.bilinear(u-0.5, v-0.5)
+	return l.bilinear(u-0.5, v-0.5, t)
 }
 
-func (l *mipLevel) bilinear(fu, fv float64) [4]float32 {
+func (l *mipLevel) bilinear(fu, fv float64, t tiling) rgba {
 	x0, y0 := math.Floor(fu), math.Floor(fv)
 	tx, ty := float32(fu-x0), float32(fv-y0)
 	ix, iy := int(x0), int(y0)
-	c00, c10 := l.texel(ix, iy), l.texel(ix+1, iy)
-	c01, c11 := l.texel(ix, iy+1), l.texel(ix+1, iy+1)
-	var out [4]float32
+	c00, c10 := l.texel(ix, iy, t), l.texel(ix+1, iy, t)
+	c01, c11 := l.texel(ix, iy+1, t), l.texel(ix+1, iy+1, t)
+	var out rgba
 	for k := range out {
 		top := c00[k] + (c10[k]-c00[k])*tx
 		bot := c01[k] + (c11[k]-c01[k])*tx
@@ -94,7 +120,7 @@ func mitchell(x float64) float64 {
 	return 0
 }
 
-func (l *mipLevel) bicubic(fu, fv float64) [4]float32 {
+func (l *mipLevel) bicubic(fu, fv float64, t tiling) rgba {
 	x0, y0 := math.Floor(fu), math.Floor(fv)
 	tx, ty := fu-x0, fv-y0
 	var out [4]float64
@@ -102,7 +128,7 @@ func (l *mipLevel) bicubic(fu, fv float64) [4]float32 {
 		wy := mitchell(float64(j) - ty)
 		for i := -1; i <= 2; i++ {
 			w := wy * mitchell(float64(i)-tx)
-			c := l.texel(int(x0)+i, int(y0)+j)
+			c := l.texel(int(x0)+i, int(y0)+j, t)
 			for k := range out {
 				out[k] += w * float64(c[k])
 			}
@@ -110,7 +136,7 @@ func (l *mipLevel) bicubic(fu, fv float64) [4]float32 {
 	}
 	// The cubic can overshoot; keep a valid premultiplied color.
 	a := math.Min(math.Max(out[3], 0), 1)
-	var res [4]float32
+	var res rgba
 	res[3] = float32(a)
 	for k := 0; k < 3; k++ {
 		res[k] = float32(math.Min(math.Max(out[k], 0), a))
@@ -131,9 +157,6 @@ func (r *renderer) drawImageRect(img *ui.Image, src, dst ui.Rect, p *ui.Paint, s
 	if err := checkImage(img); err != nil {
 		return err
 	}
-	if err := checkPaint(p); err != nil {
-		return err
-	}
 	bounds := ui.NewRectFromLTWH(0, 0, float64(img.Width()), float64(img.Height()))
 	if src.IsEmpty() || dst.IsEmpty() {
 		return nil
@@ -151,12 +174,17 @@ func (r *renderer) drawImageRect(img *ui.Image, src, dst ui.Rect, p *ui.Paint, s
 	toLocal := translation(-src.Left, -src.Top).
 		then(scaling(dst.Width()/src.Width(), dst.Height()/src.Height())).
 		then(translation(dst.Left, dst.Top))
-	return r.blit(img, src, toLocal.then(affineOf(st.m)), p, st)
+	return r.blit(img, src, toLocal.then(affineOf(st.m)), p, st, nil)
 }
 
 // blit draws the part src of the image, whose pixels the transform maps to the
-// surface.
-func (r *renderer) blit(img *ui.Image, src ui.Rect, toDevice affine, p *ui.Paint, st *state) error {
+// surface. The function pre, when it is not nil, changes each color read from the
+// image before the paint's alpha, filters and blend mode apply.
+func (r *renderer) blit(img *ui.Image, src ui.Rect, toDevice affine, p *ui.Paint, st *state, pre filterFunc) error {
+	comp, err := r.compositeOf(p)
+	if err != nil {
+		return err
+	}
 	if st.clip.empty() {
 		return nil
 	}
@@ -183,14 +211,22 @@ func (r *renderer) blit(img *ui.Image, src ui.Rect, toDevice affine, p *ui.Paint
 			level = min(int(-math.Log2(scale)+0.5), len(chain)-1)
 		}
 	}
-	alpha := float32(p.Color().Alpha()) / 255
 	w0, h0 := img.Width(), img.Height()
 	l := chain[level]
-	r.composite(mask, st.clip, func(x, y int) [4]float32 {
+	r.composite(mask, st.clip, paintSetup{mode: comp.mode, src: func(x, y int) rgba {
 		pt := inv.apply(float64(x)+0.5, float64(y)+0.5)
-		c := l.sample(pt.Dx, pt.Dy, w0, h0, quality)
-		return [4]float32{c[0] * alpha, c[1] * alpha, c[2] * alpha, c[3] * alpha}
-	})
+		c := l.sample(pt.Dx, pt.Dy, w0, h0, quality, tiling{})
+		if pre != nil {
+			c = pre(c)
+		}
+		for k := range c {
+			c[k] *= comp.alpha
+		}
+		if comp.filter != nil {
+			c = comp.filter(c)
+		}
+		return c
+	}})
 	return nil
 }
 
@@ -237,12 +273,6 @@ func (r *renderer) drawAtlas(op ui.OpDrawAtlas, st *state) error {
 	if err := checkImage(op.Atlas); err != nil {
 		return err
 	}
-	if err := checkPaint(&op.Paint); err != nil {
-		return err
-	}
-	if len(op.Colors) > 0 {
-		return notImplemented("atlas colors", op.BlendMode)
-	}
 	bounds := ui.NewRectFromLTWH(0, 0, float64(op.Atlas.Width()), float64(op.Atlas.Height()))
 	for i, src := range op.Rects {
 		src = src.Intersect(bounds)
@@ -252,7 +282,15 @@ func (r *renderer) drawAtlas(op ui.OpDrawAtlas, st *state) error {
 		t := op.Transforms[i]
 		rs := affine{a: float64(t.Scos), b: float64(t.Ssin), c: -float64(t.Ssin), d: float64(t.Scos), e: float64(t.Tx), f: float64(t.Ty)}
 		toDevice := translation(-op.Rects[i].Left, -op.Rects[i].Top).then(rs).then(affineOf(st.m))
-		if err := r.blit(op.Atlas, src, toDevice, &op.Paint, st); err != nil {
+		var pre filterFunc
+		if len(op.Colors) > 0 {
+			// The sprite is the source and the color the destination, so that
+			// srcIn with a transparent white scales the sprite's alpha.
+			mode := op.BlendMode
+			fc := solid(op.Colors[i])(0, 0)
+			pre = func(px rgba) rgba { return blend(mode, px, fc) }
+		}
+		if err := r.blit(op.Atlas, src, toDevice, &op.Paint, st, pre); err != nil {
 			return err
 		}
 	}

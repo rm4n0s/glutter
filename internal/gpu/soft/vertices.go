@@ -8,43 +8,70 @@ import (
 )
 
 // vertex is a corner of a triangle in device coordinates, with its color
-// unpremultiplied.
+// unpremultiplied and its texture coordinates.
 type vertex struct {
-	p ui.Offset
-	c [4]float32
+	p   ui.Offset
+	c   rgba
+	tex ui.Offset
 }
 
-// drawVertices draws the triangles of the vertices. The corners' colors are
-// interpolated across each triangle. Triangles are not anti-aliased: a pixel is
-// covered when its center is inside, and where it is on an edge shared by two
-// triangles exactly one of them gets it.
-//
-// A paint shader (gradients and images), and vertex colors combined with the
-// paint's color by a blend mode other than Dst or Src, come with step 2.8.
+// drawVertices draws the triangles of the vertices. The color of a pixel is the
+// paint's (its shader, evaluated at the interpolated texture coordinates when
+// there are some, or its color) blended with the interpolated vertex colors by
+// the blend mode of the call, the paint being the source and the vertices the
+// destination; the paint's color filters and own blend mode then apply.
+// Triangles are not anti-aliased: a pixel is covered when its center is inside,
+// and where it is on an edge shared by two triangles exactly one of them gets it.
 func (r *renderer) drawVertices(op ui.OpDrawVertices, st *state) error {
-	if err := checkPaint(&op.Paint); err != nil {
+	p := &op.Paint
+	if err := checkEffects(p); err != nil {
 		return err
 	}
 	v := op.Vertices
-	colors := v.Colors()
+	colors, tex := v.Colors(), v.TextureCoordinates()
+	var paintAt func(x, y int, t ui.Offset) rgba
+	if sh := p.Shader(); sh != nil && len(tex) > 0 {
+		ev, _, err := r.shaderEval(sh, affine{a: 1, d: 1})
+		if err != nil {
+			return err
+		}
+		a := float32(p.Color().Alpha()) / 255
+		paintAt = func(_, _ int, t ui.Offset) rgba {
+			c := ev(t)
+			return rgba{c[0] * a, c[1] * a, c[2] * a, c[3] * a}
+		}
+	} else {
+		src, _, err := r.baseSource(p, affineOf(st.m))
+		if err != nil {
+			return err
+		}
+		paintAt = func(x, y int, _ ui.Offset) rgba { return src(x, y) }
+	}
+	filter := filtersOf(p)
 	useColors := len(colors) > 0
-	if useColors && op.BlendMode != ui.BlendModeDst && op.BlendMode != ui.BlendModeSrc {
-		return notImplemented("vertices blend mode", op.BlendMode)
+	mode := op.BlendMode
+	shade := func(x, y int, vc rgba, t ui.Offset) rgba {
+		c := paintAt(x, y, t)
+		if useColors {
+			c = blend(mode, c, premul(vc))
+		}
+		if filter != nil {
+			c = filter(c)
+		}
+		return c
 	}
-	if op.BlendMode == ui.BlendModeSrc {
-		useColors = false // the paint wins
-	}
-	paintColor := op.Paint.Color()
+
 	pos := v.Positions()
 	corners := make([]vertex, len(pos))
-	m := st.m
-	for i, p := range pos {
-		corners[i].p = m.TransformPoint(p)
-		c := paintColor
+	for i, pt := range pos {
+		corners[i].p = st.m.TransformPoint(pt)
 		if useColors {
-			c = colors[i]
+			c := colors[i]
+			corners[i].c = rgba{float32(c.Red()) / 255, float32(c.Green()) / 255, float32(c.Blue()) / 255, float32(c.Alpha()) / 255}
 		}
-		corners[i].c = [4]float32{float32(c.Red()) / 255, float32(c.Green()) / 255, float32(c.Blue()) / 255, float32(c.Alpha()) / 255}
+		if len(tex) > 0 {
+			corners[i].tex = tex[i]
+		}
 	}
 	index := func(i int) int { return i }
 	n := len(corners)
@@ -68,13 +95,13 @@ func (r *renderer) drawVertices(op ui.OpDrawVertices, st *state) error {
 		}
 	}
 	for _, t := range tris {
-		r.triangle(corners[t[0]], corners[t[1]], corners[t[2]], st)
+		r.triangle(corners[t[0]], corners[t[1]], corners[t[2]], st, p.BlendMode(), shade)
 	}
 	return nil
 }
 
-// triangle paints one triangle.
-func (r *renderer) triangle(a, b, c vertex, st *state) {
+// triangle paints one triangle with the colors shade gives.
+func (r *renderer) triangle(a, b, c vertex, st *state, mode ui.BlendMode, shade func(x, y int, vc rgba, t ui.Offset) rgba) {
 	area := edge(a.p, b.p, c.p)
 	if area == 0 || math.IsNaN(area) || math.IsInf(area, 0) {
 		return
@@ -106,15 +133,16 @@ func (r *renderer) triangle(a, b, c vertex, st *state) {
 	if !any {
 		return
 	}
-	r.composite(mask, st.clip, func(x, y int) [4]float32 {
+	r.composite(mask, st.clip, paintSetup{mode: mode, src: func(x, y int) rgba {
 		p := ui.Offset{Dx: float64(x) + 0.5, Dy: float64(y) + 0.5}
-		wa, wb, wc := float32(edge(b.p, c.p, p)/area), float32(edge(c.p, a.p, p)/area), float32(edge(a.p, b.p, p)/area)
-		var px [4]float32
-		for k := 0; k < 4; k++ {
-			px[k] = wa*a.c[k] + wb*b.c[k] + wc*c.c[k]
+		wa, wb, wc := edge(b.p, c.p, p)/area, edge(c.p, a.p, p)/area, edge(a.p, b.p, p)/area
+		var vc rgba
+		for k := range vc {
+			vc[k] = float32(wa)*a.c[k] + float32(wb)*b.c[k] + float32(wc)*c.c[k]
 		}
-		return [4]float32{px[0] * px[3], px[1] * px[3], px[2] * px[3], px[3]}
-	})
+		t := ui.Offset{Dx: wa*a.tex.Dx + wb*b.tex.Dx + wc*c.tex.Dx, Dy: wa*a.tex.Dy + wb*b.tex.Dy + wc*c.tex.Dy}
+		return shade(x, y, vc, t)
+	}})
 }
 
 // edge is the cross product (b-a) x (p-a): twice the signed area of a, b, p.

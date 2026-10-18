@@ -79,7 +79,8 @@ func arcPath(oval ui.Rect, start, sweep float64, useCenter, fill bool) *ui.Path 
 // cap; the paint's style is ignored. A point is a round dot with a round cap and
 // a square otherwise.
 func (r *renderer) drawPoints(op ui.OpDrawPoints, st *state) error {
-	if err := checkPaint(&op.Paint); err != nil {
+	ps, err := r.setup(&op.Paint, affineOf(st.m))
+	if err != nil {
 		return err
 	}
 	if st.clip.empty() || len(op.Points) == 0 {
@@ -105,6 +106,6 @@ func (r *renderer) drawPoints(op ui.OpDrawPoints, st *state) error {
 		q.SetStrokeCap(ui.StrokeCapSquare)
 		p = &q
 	}
-	r.fillPolys(strokePolys(contours, p, st.m), FillNonZero, p, st)
+	r.fillPolys(strokePolys(contours, p, st.m), FillNonZero, p, ps, st)
 	return nil
 }

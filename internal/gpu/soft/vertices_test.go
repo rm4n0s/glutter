@@ -113,23 +113,12 @@ func TestVerticesTransformAndClip(t *testing.T) {
 }
 
 func TestVerticesNotImplemented(t *testing.T) {
-	colors := []ui.Color{ui.NewColor(0xFFFF0000), ui.NewColor(0xFF00FF00), ui.NewColor(0xFF0000FF)}
-	v := ui.NewVertices(ui.VertexModeTriangles, pts(0, 0, 8, 0, 0, 8), ui.VerticesOpts{Colors: colors})
-	for name, draw := range map[string]func(c *ui.Canvas){
-		"colors with srcOver":  func(c *ui.Canvas) { c.DrawVertices(v, ui.BlendModeSrcOver, paint(0xFF000000)) },
-		"colors with modulate": func(c *ui.Canvas) { c.DrawVertices(v, ui.BlendModeModulate, paint(0xFF000000)) },
-		"a shader": func(c *ui.Canvas) {
-			p := ui.NewPaint()
-			p.SetShader(ui.NewGradientLinear(ui.Offset{}, ui.Offset{Dx: 1}, colors[:2]))
-			c.DrawVertices(v, ui.BlendModeDst, p)
-		},
-	} {
-		t.Run(name, func(t *testing.T) {
-			_, err := Render(sceneOf(ui.Offset{}, draw), 8, 8)
-			if appErr, ok := errors.FromError(err); !ok || !appErr.HasRoute("SoftNotImplemented") {
-				t.Errorf("expected SoftNotImplemented, got %v", err)
-			}
-		})
+	v := ui.NewVertices(ui.VertexModeTriangles, pts(0, 0, 8, 0, 0, 8))
+	filtered := ui.NewPaint()
+	filtered.SetImageFilter(ui.NewImageFilterBlur())
+	_, err := Render(sceneOf(ui.Offset{}, func(c *ui.Canvas) { c.DrawVertices(v, ui.BlendModeSrcOver, filtered) }), 8, 8)
+	if appErr, ok := errors.FromError(err); !ok || !appErr.HasRoute("SoftNotImplemented") {
+		t.Errorf("expected SoftNotImplemented, got %v", err)
 	}
 }
 

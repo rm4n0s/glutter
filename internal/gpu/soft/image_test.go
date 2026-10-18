@@ -338,14 +338,11 @@ func TestImageErrors(t *testing.T) {
 		{"disposed atlas", func(c *ui.Canvas) {
 			c.DrawAtlas(disposed, []ui.RSTransform{ui.NewRSTransform(1, 0, 0, 0)}, []ui.Rect{ui.NewRectFromLTWH(0, 0, 1, 1)}, nil, ui.BlendModeSrcOver, nil, nil)
 		}, "SoftImageDisposed"},
-		{"atlas colors", func(c *ui.Canvas) {
-			c.DrawAtlas(quads(), []ui.RSTransform{ui.NewRSTransform(1, 0, 0, 0)}, []ui.Rect{ui.NewRectFromLTWH(0, 0, 1, 1)}, []ui.Color{ui.NewColor(0xFFFF0000)}, ui.BlendModeSrcOver, nil, nil)
-		}, "SoftNotImplemented"},
-		{"image with a shader paint", func(c *ui.Canvas) {
+		{"disposed image shader", func(c *ui.Canvas) {
 			p := ui.NewPaint()
-			p.SetShader(ui.NewGradientLinear(ui.Offset{}, ui.Offset{Dx: 1}, []ui.Color{ui.NewColor(0xFF000000), ui.NewColor(0xFFFFFFFF)}))
-			c.DrawImage(quads(), ui.Offset{}, p)
-		}, "SoftNotImplemented"},
+			p.SetShader(ui.NewImageShader(disposed, ui.TileModeClamp, ui.TileModeClamp, nil))
+			c.DrawRect(ui.NewRectFromLTWH(0, 0, 4, 4), p)
+		}, "SoftImageDisposed"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
