@@ -379,3 +379,20 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - The raw typed-data variants (`drawRawPoints`, `drawRawAtlas`) are not provided.
   - `Image` and `Paragraph` are empty stubs here (`TODO(step 2.10)`, `TODO(step 4.2)`).
 
+
+## 2.5 SceneBuilder and Scene
+
+- **Date:** 2026-10-18
+- **Branch:** feat/step-2.5-scenebuilder-scene
+- **Summary:** `ui.SceneBuilder` builds a `ui.Scene`, an immutable tree of layers that the renderers type-switch on: `ContainerLayer` (the root), `TransformLayer` (`PushTransform` and `PushOffset`), `ClipRectLayer`, `ClipRRectLayer`, `ClipRSuperellipseLayer`, `ClipPathLayer`, `OpacityLayer`, `ColorFilterLayer`, `ImageFilterLayer`, `BackdropFilterLayer`, `ShaderMaskLayer` and `PictureLayer`. Every `Push*` returns a typed `*XEngineLayer` handle (so a layer of one kind cannot be the old layer of another) and takes `OldLayer` in its options; `AddRetained` puts the same layer, with its subtree, into another scene; `AddPicture` takes the complexity and will-change hints; `Pop` ends a push (ignored at the root); `Build` closes any open layers. Defaults follow Flutter: clip behavior antiAlias, backdrop blend mode srcOver, shader mask filter quality low. The matrix and the path of a push are copied.
+- **Main files:** `ui/scene.go`, `ui/scene_test.go`.
+- **Tests:**
+  - Tree shape of nested pushes, every kind of push in one chain, a pop at the root, a nil picture, and open layers closed by `Build`.
+  - Layer properties and defaults, and that the matrix is copied.
+  - A retained layer is the same layer in the second scene, at the root and under another push; `OldLayer` is recorded.
+  - Route tests for `EngineLayerDisposed`, `SceneBuilderBuilt` (push, pop and build after build), `MultipleOptions`, `ImageSizeInvalid` and `NotImplemented` (`Scene.ToImage`).
+  - No Flutter tests apply: the Dart tests of `SceneBuilder` need the native engine.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅
+- **Deviations and follow-ups:**
+  - The layer tree is Go types instead of the engine's C++ layers (SPEC §12.10). Texture, platform-view and performance-overlay layers are not provided; they come with the steps that need them.
+  - `PushOffset` makes a `TransformLayer`, since Flutter's `OffsetEngineLayer` is a transform too.

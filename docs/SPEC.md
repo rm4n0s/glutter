@@ -698,6 +698,9 @@ Flutter's `assert` checks become checks that exist only in debug builds (`founda
 | (none) | `Path.Flatten`, `Path.Segments`/`ForEachSegment`, `GetTightBounds` | what the renderers need |
 | `ColorSpace` starts at `sRGB` | `ColorSpaceSRGB` is the zero value; there is no `ColorSpaceUnspecified` | `Color` is a literal-able value type, and the zero value must be sRGB |
 | `Paint` properties (`paint.color = c`) | accessors `p.Color()` / `p.SetColor(c)`; `Paint{}` is Flutter's `Paint()` | the defaults (opaque black, anti-alias on, srcOver, miter limit 4) are not Go zero values, so the fields are unexported |
+| `Scene` is a native C++ layer tree | `ui.Scene` holds an immutable tree of exported `Layer` types (`ContainerLayer`, `TransformLayer`, `ClipRectLayer`, `OpacityLayer`, `PictureLayer`, ...) that the renderers type-switch on | same reason as `ui.DisplayList`; Flutter's `pushOffset` and `pushTransform` both give a `TransformLayer` here |
+| `SceneBuilder.pushX(..., oldLayer: x, clipBehavior: Clip.antiAlias)` | `PushX(args, PushXOpts{OldLayer, ClipBehavior})`; `OldLayer` is the typed handle (`*OpacityEngineLayer`, ...) and the zero `ClipBehavior` is `ClipAntiAlias` | options structs (§12) |
+| `SceneBuilder.addPicture` | a nil picture is ignored; `Pop` at the root is ignored; using the builder after `Build` panics with `SceneBuilderBuilt`; `Scene.ToImage` is synchronous and `NotImplemented` until step 2.10 | programmer errors follow §14 |
 | nullable `double`/`Color` arguments, as in `Color.withValues(alpha: ...)` | `ColorWithValuesOpts{Alpha: ui.Ptr(0.5)}` | package `ui` cannot import `foundation.Opt`; `ui.Ptr` makes the pointer |
 | `ColorFilter`, `ImageFilter` and `MaskFilter` compare with `==` | `a.Equal(b)` | pointers to immutable values |
 | `Gradient`'s and `ImageShader`'s `ArgumentError`s | a panic with the tag `GradientColorCountInvalid` or `GradientStopCountMismatch` | Go has no exceptions (§14.2) |
