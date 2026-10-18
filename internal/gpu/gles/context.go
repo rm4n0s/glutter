@@ -17,6 +17,7 @@ import (
 type Context struct {
 	egl     eglAPI
 	gl      glAPI
+	dev     *Device
 	display uintptr
 	config  uintptr
 	context uintptr
@@ -124,10 +125,15 @@ func openWith(egl eglAPI, loadGL func(eglAPI) (glAPI, error), h gpu.SurfaceHandl
 		return nil, nil, err
 	}
 	c.gl = gl
-	c.version = gl.version()
+	c.version = gl.getString(glVersion)
 	if !isES3(c.version) {
 		c.Close()
 		return nil, nil, errors.New("GLES3Unsupported", "the driver does not provide OpenGL ES 3.0", "version", c.version)
+	}
+	c.dev, err = newDevice(gl)
+	if err != nil {
+		c.Close()
+		return nil, nil, err
 	}
 	return c, s, nil
 }
@@ -151,6 +157,12 @@ func eglError(egl eglAPI, tag, message string, extra ...any) error {
 	md := append([]any{"egl_error", fmt.Sprintf("0x%x", egl.getError())}, extra...)
 	return errors.New(tag, message, md...)
 }
+
+// Device returns the GL device of the context: its programs, pools and state
+// cache.
+//
+// Flutter: no counterpart
+func (c *Context) Device() *Device { return c.dev }
 
 // Version returns the GL_VERSION string of the context.
 //
@@ -185,7 +197,7 @@ func (c *Context) MakeCurrent(s *Surface) error {
 // Viewport sets the GL viewport to the whole of a width x height surface.
 //
 // Flutter: no counterpart
-func (c *Context) Viewport(width, height int) { c.gl.viewport(int32(width), int32(height)) }
+func (c *Context) Viewport(width, height int) { c.dev.Viewport(0, 0, width, height) }
 
 // Clear fills the current framebuffer with the color, given as premultiplied
 // components between 0 and 1.
@@ -193,7 +205,7 @@ func (c *Context) Viewport(width, height int) { c.gl.viewport(int32(width), int3
 // Flutter: no counterpart
 func (c *Context) Clear(r, g, b, a float32) {
 	c.gl.clearColor(r, g, b, a)
-	c.gl.clear()
+	c.gl.clear(glColorBufferBit)
 }
 
 // SwapBuffers presents the frame drawn into s. On Wayland this is the commit of
@@ -218,7 +230,7 @@ func (c *Context) ReadPixels(width, height int) (*image.RGBA, error) {
 		return nil, errors.New("GLReadPixelsFailed", "the size to read must be positive", "width", width, "height", height)
 	}
 	raw := make([]byte, width*height*4)
-	c.gl.readPixels(int32(width), int32(height), raw)
+	c.gl.readPixels(0, 0, int32(width), int32(height), glRgba, glUnsignedByte, raw)
 	if code := c.gl.getError(); code != glNoError {
 		return nil, errors.New("GLReadPixelsFailed", "glReadPixels reported an error", "gl_error", fmt.Sprintf("0x%x", code))
 	}
@@ -253,6 +265,12 @@ func (c *Context) Close() {
 		return
 	}
 	c.closed = true
+	if c.dev != nil {
+		c.dev.Close()
+	}
+	if r, ok := c.gl.(interface{ release() }); ok {
+		r.release()
+	}
 	_ = c.egl.makeCurrent(c.display, 0, 0, 0)
 	for s := range c.surface {
 		s.destroyed = true

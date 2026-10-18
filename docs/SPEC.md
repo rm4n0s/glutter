@@ -718,6 +718,7 @@ Flutter's `assert` checks become checks that exist only in debug builds (`founda
 | nullable `double`/`Color` arguments, as in `Color.withValues(alpha: ...)` | `ColorWithValuesOpts{Alpha: ui.Ptr(0.5)}` | package `ui` cannot import `foundation.Opt`; `ui.Ptr` makes the pointer |
 | `ColorFilter`, `ImageFilter` and `MaskFilter` compare with `==` | `a.Equal(b)` | pointers to immutable values |
 | `Gradient`'s and `ImageShader`'s `ArgumentError`s | a panic with the tag `GradientColorCountInvalid` or `GradientStopCountMismatch` | Go has no exceptions (§14.2) |
+| The engine clears the frame to the scene's background (the embedder's clear color) | `ui.Scene` has no background; `gles.NewRenderer(RendererOpts{Background, HasBackground})` clears each frame to one color (default opaque white), and `Snapshot` is `GLNotImplemented` until step 3.6 | the scene is a layer tree only; the window background is the renderer's setting |
 
 ### 12.11 One import for apps
 

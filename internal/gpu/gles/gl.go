@@ -1,62 +1,274 @@
 package gles
 
 import (
+	"unsafe"
+
 	"github.com/ebitengine/purego"
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/internal/platform/linux/dl"
 )
 
-// GL constants (GLES3/gl3.h).
-const (
-	glNoError        = 0
-	glVersion        = 0x1F02
-	glColorBufferBit = 0x4000
-	glRGBA           = 0x1908
-	glUnsignedByte   = 0x1401
-)
-
-// glAPI is the part of OpenGL ES that the context uses, in Go terms. The real
-// implementation calls the driver's functions through purego; tests supply a
-// fake.
+// glAPI is the part of OpenGL ES 3.0 that the renderer uses, in Go terms: strings
+// and slices instead of pointers, one object at a time instead of arrays of IDs.
+// The real implementation calls the driver's functions through purego; tests
+// supply a fake that records the calls.
+//
+// Every GL call of the renderer goes through this interface (SPEC §6.3 rule 4),
+// and the device (device.go) is its only user besides the context.
 type glAPI interface {
-	// version returns the GL_VERSION string.
-	version() string
-	viewport(width, height int32)
-	clearColor(r, g, b, a float32)
-	clear()
-	// readPixels reads the width x height pixels at the origin of the current
-	// framebuffer as RGBA, bottom row first, into pixels.
-	readPixels(width, height int32, pixels []byte)
+	// Queries.
+	getString(name uint32) string
+	getStringi(name, index uint32) string
+	getInteger(name uint32) int32
 	getError() uint32
+
+	// State.
+	viewport(x, y, w, h int32)
+	scissor(x, y, w, h int32)
+	enable(capability uint32)
+	disable(capability uint32)
+	blendFunc(src, dst uint32)
+	blendFuncSeparate(srcRGB, dstRGB, srcAlpha, dstAlpha uint32)
+	blendEquation(mode uint32)
+	colorMask(r, g, b, a bool)
+	clearColor(r, g, b, a float32)
+	clearStencil(s int32)
+	clear(mask uint32)
+	stencilFunc(fn uint32, ref int32, mask uint32)
+	stencilOp(fail, zfail, zpass uint32)
+	stencilMask(mask uint32)
+	pixelStorei(name uint32, value int32)
+
+	// Shaders and programs.
+	createShader(kind uint32) uint32
+	shaderSource(shader uint32, source string)
+	compileShader(shader uint32)
+	getShaderiv(shader, name uint32) int32
+	getShaderInfoLog(shader uint32) string
+	deleteShader(shader uint32)
+	createProgram() uint32
+	attachShader(program, shader uint32)
+	linkProgram(program uint32)
+	getProgramiv(program, name uint32) int32
+	getProgramInfoLog(program uint32) string
+	useProgram(program uint32)
+	deleteProgram(program uint32)
+	getUniformLocation(program uint32, name string) int32
+	getAttribLocation(program uint32, name string) int32
+	uniform1i(location, v int32)
+	uniform1f(location int32, v float32)
+	uniform2f(location int32, x, y float32)
+	uniform3f(location int32, x, y, z float32)
+	uniform4f(location int32, x, y, z, w float32)
+	uniform1fv(location int32, values []float32)
+	uniform4fv(location int32, values []float32)
+	uniformMatrix3fv(location int32, values []float32)
+	uniformMatrix4fv(location int32, values []float32)
+
+	// Buffers and vertex arrays.
+	genBuffer() uint32
+	deleteBuffer(buffer uint32)
+	bindBuffer(target, buffer uint32)
+	// bufferData allocates size bytes and fills them from data, which may be nil
+	// (and then must not be longer than size).
+	bufferData(target uint32, size int, data []byte, usage uint32)
+	bufferSubData(target uint32, offset int, data []byte)
+	genVertexArray() uint32
+	deleteVertexArray(array uint32)
+	bindVertexArray(array uint32)
+	enableVertexAttribArray(index uint32)
+	disableVertexAttribArray(index uint32)
+	vertexAttribPointer(index uint32, size int32, kind uint32, normalized bool, stride int32, offset int)
+	vertexAttribIPointer(index uint32, size int32, kind uint32, stride int32, offset int)
+	vertexAttribDivisor(index, divisor uint32)
+	drawArrays(mode uint32, first, count int32)
+	drawArraysInstanced(mode uint32, first, count, instances int32)
+	drawElements(mode uint32, count int32, kind uint32, offset int)
+	drawElementsInstanced(mode uint32, count int32, kind uint32, offset int, instances int32)
+
+	// Textures.
+	genTexture() uint32
+	deleteTexture(texture uint32)
+	activeTexture(unit uint32)
+	bindTexture(target, texture uint32)
+	texParameteri(target, name uint32, value int32)
+	// texImage2D allocates a level and fills it from data, which may be nil.
+	texImage2D(target uint32, level int32, internalFormat int32, w, h int32, format, kind uint32, data []byte)
+	texSubImage2D(target uint32, level, x, y, w, h int32, format, kind uint32, data []byte)
+	generateMipmap(target uint32)
+	copyTexSubImage2D(target uint32, level, xoffset, yoffset, x, y, w, h int32)
+
+	// Framebuffers and renderbuffers.
+	genFramebuffer() uint32
+	deleteFramebuffer(framebuffer uint32)
+	bindFramebuffer(target, framebuffer uint32)
+	framebufferTexture2D(target, attachment, texTarget, texture uint32, level int32)
+	checkFramebufferStatus(target uint32) uint32
+	genRenderbuffer() uint32
+	deleteRenderbuffer(renderbuffer uint32)
+	bindRenderbuffer(target, renderbuffer uint32)
+	renderbufferStorage(target, format uint32, w, h int32)
+	framebufferRenderbuffer(target, attachment, rbTarget, renderbuffer uint32)
+	blitFramebuffer(sx0, sy0, sx1, sy1, dx0, dy0, dx1, dy1 int32, mask, filter uint32)
+	// readPixels reads the w x h pixels at x, y of the read framebuffer into
+	// pixels, bottom row first.
+	readPixels(x, y, w, h int32, format, kind uint32, pixels []byte)
+
+	flush()
+	finish()
 }
 
-// glLib is the purego implementation of glAPI.
+// glLib is the purego implementation of glAPI. Each field is one driver function,
+// bound by name in the table of loadGL.
 type glLib struct {
-	getStringFn  func(name uint32) uintptr
-	clearColorFn func(r, g, b, a float32)
-	clearFn      func(mask uint32)
-	viewportFn   func(x, y, w, h int32)
-	readPixelsFn func(x, y, w, h int32, format, typ uint32, pixels uintptr)
-	getErrorFn   func() uint32
+	getStringFn   func(name uint32) uintptr
+	getStringiFn  func(name, index uint32) uintptr
+	getIntegervFn func(name uint32, data uintptr)
+	getErrorFn    func() uint32
+
+	viewportFn          func(x, y, w, h int32)
+	scissorFn           func(x, y, w, h int32)
+	enableFn            func(c uint32)
+	disableFn           func(c uint32)
+	blendFuncFn         func(src, dst uint32)
+	blendFuncSeparateFn func(srcRGB, dstRGB, srcA, dstA uint32)
+	blendEquationFn     func(mode uint32)
+	colorMaskFn         func(r, g, b, a uint32)
+	clearColorFn        func(r, g, b, a float32)
+	clearStencilFn      func(s int32)
+	clearFn             func(mask uint32)
+	stencilFuncFn       func(fn uint32, ref int32, mask uint32)
+	stencilOpFn         func(fail, zfail, zpass uint32)
+	stencilMaskFn       func(mask uint32)
+	pixelStoreiFn       func(name uint32, v int32)
+
+	createShaderFn       func(kind uint32) uint32
+	shaderSourceFn       func(shader uint32, count int32, strs, lengths uintptr)
+	compileShaderFn      func(shader uint32)
+	getShaderivFn        func(shader, name uint32, params uintptr)
+	getShaderInfoLogFn   func(shader uint32, bufSize int32, length, log uintptr)
+	deleteShaderFn       func(shader uint32)
+	createProgramFn      func() uint32
+	attachShaderFn       func(program, shader uint32)
+	linkProgramFn        func(program uint32)
+	getProgramivFn       func(program, name uint32, params uintptr)
+	getProgramInfoLogFn  func(program uint32, bufSize int32, length, log uintptr)
+	useProgramFn         func(program uint32)
+	deleteProgramFn      func(program uint32)
+	getUniformLocationFn func(program uint32, name uintptr) int32
+	getAttribLocationFn  func(program uint32, name uintptr) int32
+	uniform1iFn          func(loc, v int32)
+	uniform1fFn          func(loc int32, v float32)
+	uniform2fFn          func(loc int32, x, y float32)
+	uniform3fFn          func(loc int32, x, y, z float32)
+	uniform4fFn          func(loc int32, x, y, z, w float32)
+	uniform1fvFn         func(loc, count int32, v uintptr)
+	uniform4fvFn         func(loc, count int32, v uintptr)
+	uniformMatrix3fvFn   func(loc, count int32, transpose uint32, v uintptr)
+	uniformMatrix4fvFn   func(loc, count int32, transpose uint32, v uintptr)
+
+	genBuffersFn               func(n int32, buffers uintptr)
+	deleteBuffersFn            func(n int32, buffers uintptr)
+	bindBufferFn               func(target, buffer uint32)
+	bufferDataFn               func(target uint32, size int, data uintptr, usage uint32)
+	bufferSubDataFn            func(target uint32, offset, size int, data uintptr)
+	genVertexArraysFn          func(n int32, arrays uintptr)
+	deleteVertexArraysFn       func(n int32, arrays uintptr)
+	bindVertexArrayFn          func(array uint32)
+	enableVertexAttribArrayFn  func(index uint32)
+	disableVertexAttribArrayFn func(index uint32)
+	vertexAttribPointerFn      func(index uint32, size int32, kind uint32, normalized uint32, stride int32, offset uintptr)
+	vertexAttribIPointerFn     func(index uint32, size int32, kind uint32, stride int32, offset uintptr)
+	vertexAttribDivisorFn      func(index, divisor uint32)
+	drawArraysFn               func(mode uint32, first, count int32)
+	drawArraysInstancedFn      func(mode uint32, first, count, instances int32)
+	drawElementsFn             func(mode uint32, count int32, kind uint32, offset uintptr)
+	drawElementsInstancedFn    func(mode uint32, count int32, kind uint32, offset uintptr, instances int32)
+
+	genTexturesFn       func(n int32, textures uintptr)
+	deleteTexturesFn    func(n int32, textures uintptr)
+	activeTextureFn     func(unit uint32)
+	bindTextureFn       func(target, texture uint32)
+	texParameteriFn     func(target, name uint32, value int32)
+	texImage2DFn        func(target uint32, level, internalFormat, w, h, border int32, format, kind uint32, data uintptr)
+	texSubImage2DFn     func(target uint32, level, x, y, w, h int32, format, kind uint32, data uintptr)
+	generateMipmapFn    func(target uint32)
+	copyTexSubImage2DFn func(target uint32, level, xoffset, yoffset, x, y, w, h int32)
+
+	genFramebuffersFn         func(n int32, ids uintptr)
+	deleteFramebuffersFn      func(n int32, ids uintptr)
+	bindFramebufferFn         func(target, fb uint32)
+	framebufferTexture2DFn    func(target, attachment, texTarget, texture uint32, level int32)
+	checkFramebufferStatusFn  func(target uint32) uint32
+	genRenderbuffersFn        func(n int32, ids uintptr)
+	deleteRenderbuffersFn     func(n int32, ids uintptr)
+	bindRenderbufferFn        func(target, rb uint32)
+	renderbufferStorageFn     func(target, format uint32, w, h int32)
+	framebufferRenderbufferFn func(target, attachment, rbTarget, rb uint32)
+	blitFramebufferFn         func(sx0, sy0, sx1, sy1, dx0, dy0, dx1, dy1 int32, mask, filter uint32)
+	readPixelsFn              func(x, y, w, h int32, format, kind uint32, pixels uintptr)
+
+	flushFn  func()
+	finishFn func()
+
+	// scratch is C memory that Go data is copied into for a call: Go memory is
+	// never handed to the driver. It grows and is freed by release.
+	scratch    uintptr
+	scratchCap int
+	// ids is a small C buffer for the IDs that gen and delete functions pass.
+	ids uintptr
 }
 
-// loadGL binds the GL functions that the context uses. They are resolved
-// through eglGetProcAddress (SPEC §9.1), which needs a current context on older
-// drivers, so call it after makeCurrent. A function that no driver entry point
-// provides gives SymbolMissing.
-func loadGL(egl eglAPI) (glAPI, error) {
-	g := new(glLib)
-	for _, b := range []struct {
+// glSymbols is the table of every driver function the renderer binds, in one
+// place so that a missing one is a clear SymbolMissing (docs/IMPLEMENTATION.md
+// step 3.1).
+func (g *glLib) glSymbols() []struct {
+	fptr   any
+	symbol string
+} {
+	return []struct {
 		fptr   any
 		symbol string
 	}{
-		{&g.getStringFn, "glGetString"},
-		{&g.clearColorFn, "glClearColor"},
-		{&g.clearFn, "glClear"},
-		{&g.viewportFn, "glViewport"},
-		{&g.readPixelsFn, "glReadPixels"},
-		{&g.getErrorFn, "glGetError"},
-	} {
+		{&g.getStringFn, "glGetString"}, {&g.getStringiFn, "glGetStringi"}, {&g.getIntegervFn, "glGetIntegerv"}, {&g.getErrorFn, "glGetError"},
+		{&g.viewportFn, "glViewport"}, {&g.scissorFn, "glScissor"}, {&g.enableFn, "glEnable"}, {&g.disableFn, "glDisable"},
+		{&g.blendFuncFn, "glBlendFunc"}, {&g.blendFuncSeparateFn, "glBlendFuncSeparate"}, {&g.blendEquationFn, "glBlendEquation"},
+		{&g.colorMaskFn, "glColorMask"}, {&g.clearColorFn, "glClearColor"}, {&g.clearStencilFn, "glClearStencil"}, {&g.clearFn, "glClear"},
+		{&g.stencilFuncFn, "glStencilFunc"}, {&g.stencilOpFn, "glStencilOp"}, {&g.stencilMaskFn, "glStencilMask"}, {&g.pixelStoreiFn, "glPixelStorei"},
+		{&g.createShaderFn, "glCreateShader"}, {&g.shaderSourceFn, "glShaderSource"}, {&g.compileShaderFn, "glCompileShader"},
+		{&g.getShaderivFn, "glGetShaderiv"}, {&g.getShaderInfoLogFn, "glGetShaderInfoLog"}, {&g.deleteShaderFn, "glDeleteShader"},
+		{&g.createProgramFn, "glCreateProgram"}, {&g.attachShaderFn, "glAttachShader"}, {&g.linkProgramFn, "glLinkProgram"},
+		{&g.getProgramivFn, "glGetProgramiv"}, {&g.getProgramInfoLogFn, "glGetProgramInfoLog"}, {&g.useProgramFn, "glUseProgram"},
+		{&g.deleteProgramFn, "glDeleteProgram"}, {&g.getUniformLocationFn, "glGetUniformLocation"}, {&g.getAttribLocationFn, "glGetAttribLocation"},
+		{&g.uniform1iFn, "glUniform1i"}, {&g.uniform1fFn, "glUniform1f"}, {&g.uniform2fFn, "glUniform2f"}, {&g.uniform3fFn, "glUniform3f"},
+		{&g.uniform4fFn, "glUniform4f"}, {&g.uniform1fvFn, "glUniform1fv"}, {&g.uniform4fvFn, "glUniform4fv"},
+		{&g.uniformMatrix3fvFn, "glUniformMatrix3fv"}, {&g.uniformMatrix4fvFn, "glUniformMatrix4fv"},
+		{&g.genBuffersFn, "glGenBuffers"}, {&g.deleteBuffersFn, "glDeleteBuffers"}, {&g.bindBufferFn, "glBindBuffer"},
+		{&g.bufferDataFn, "glBufferData"}, {&g.bufferSubDataFn, "glBufferSubData"},
+		{&g.genVertexArraysFn, "glGenVertexArrays"}, {&g.deleteVertexArraysFn, "glDeleteVertexArrays"}, {&g.bindVertexArrayFn, "glBindVertexArray"},
+		{&g.enableVertexAttribArrayFn, "glEnableVertexAttribArray"}, {&g.disableVertexAttribArrayFn, "glDisableVertexAttribArray"},
+		{&g.vertexAttribPointerFn, "glVertexAttribPointer"}, {&g.vertexAttribIPointerFn, "glVertexAttribIPointer"}, {&g.vertexAttribDivisorFn, "glVertexAttribDivisor"},
+		{&g.drawArraysFn, "glDrawArrays"}, {&g.drawArraysInstancedFn, "glDrawArraysInstanced"},
+		{&g.drawElementsFn, "glDrawElements"}, {&g.drawElementsInstancedFn, "glDrawElementsInstanced"},
+		{&g.genTexturesFn, "glGenTextures"}, {&g.deleteTexturesFn, "glDeleteTextures"}, {&g.activeTextureFn, "glActiveTexture"},
+		{&g.bindTextureFn, "glBindTexture"}, {&g.texParameteriFn, "glTexParameteri"}, {&g.texImage2DFn, "glTexImage2D"},
+		{&g.texSubImage2DFn, "glTexSubImage2D"}, {&g.generateMipmapFn, "glGenerateMipmap"}, {&g.copyTexSubImage2DFn, "glCopyTexSubImage2D"},
+		{&g.genFramebuffersFn, "glGenFramebuffers"}, {&g.deleteFramebuffersFn, "glDeleteFramebuffers"}, {&g.bindFramebufferFn, "glBindFramebuffer"},
+		{&g.framebufferTexture2DFn, "glFramebufferTexture2D"}, {&g.checkFramebufferStatusFn, "glCheckFramebufferStatus"},
+		{&g.genRenderbuffersFn, "glGenRenderbuffers"}, {&g.deleteRenderbuffersFn, "glDeleteRenderbuffers"}, {&g.bindRenderbufferFn, "glBindRenderbuffer"},
+		{&g.renderbufferStorageFn, "glRenderbufferStorage"}, {&g.framebufferRenderbufferFn, "glFramebufferRenderbuffer"},
+		{&g.blitFramebufferFn, "glBlitFramebuffer"}, {&g.readPixelsFn, "glReadPixels"},
+		{&g.flushFn, "glFlush"}, {&g.finishFn, "glFinish"},
+	}
+}
+
+// loadGL binds the GL functions that the renderer uses. They are resolved through
+// eglGetProcAddress (SPEC §9.1), which needs a current context on older drivers,
+// so call it after makeCurrent. A function that no driver entry point provides
+// gives SymbolMissing, naming it.
+func loadGL(egl eglAPI) (glAPI, error) {
+	g := new(glLib)
+	for _, b := range g.glSymbols() {
 		address := egl.getProcAddress(b.symbol)
 		if address == 0 {
 			return nil, errors.New("SymbolMissing", "the GL driver has no such function",
@@ -64,22 +276,243 @@ func loadGL(egl eglAPI) (glAPI, error) {
 		}
 		purego.RegisterFunc(b.fptr, address)
 	}
+	g.ids = dl.Calloc(1, 16)
 	return g, nil
 }
 
-func (g *glLib) version() string { return dl.GoString(g.getStringFn(glVersion)) }
+// release frees the C memory the library holds.
+func (g *glLib) release() {
+	if g.scratch != 0 {
+		dl.Free(g.scratch)
+		g.scratch, g.scratchCap = 0, 0
+	}
+	if g.ids != 0 {
+		dl.Free(g.ids)
+		g.ids = 0
+	}
+}
 
-func (g *glLib) viewport(width, height int32) { g.viewportFn(0, 0, width, height) }
+// put copies data into the scratch memory and returns its address; 0 for no data.
+func (g *glLib) put(data []byte) uintptr {
+	if len(data) == 0 {
+		return 0
+	}
+	if len(data) > g.scratchCap {
+		if g.scratch != 0 {
+			dl.Free(g.scratch)
+		}
+		g.scratchCap = max(len(data), 2*g.scratchCap, 4096)
+		g.scratch = dl.Malloc(uintptr(g.scratchCap))
+	}
+	copy(dl.Bytes(g.scratch, len(data)), data)
+	return g.scratch
+}
 
-func (g *glLib) clearColor(r, gr, b, a float32) { g.clearColorFn(r, gr, b, a) }
+func floatBytes(v []float32) []byte {
+	if len(v) == 0 {
+		return nil
+	}
+	return unsafe.Slice((*byte)(unsafe.Pointer(&v[0])), len(v)*4)
+}
 
-func (g *glLib) clear() { g.clearFn(glColorBufferBit) }
+func b2u(b bool) uint32 {
+	if b {
+		return 1
+	}
+	return 0
+}
 
-func (g *glLib) readPixels(width, height int32, pixels []byte) {
+// genOne calls a glGen* function for one object and returns its ID.
+func (g *glLib) genOne(fn func(n int32, ids uintptr)) uint32 {
+	fn(1, g.ids)
+	return *(*uint32)(dl.Pointer(g.ids))
+}
+
+// deleteOne calls a glDelete* function for one ID.
+func (g *glLib) deleteOne(fn func(n int32, ids uintptr), id uint32) {
+	*(*uint32)(dl.Pointer(g.ids)) = id
+	fn(1, g.ids)
+}
+
+func (g *glLib) getString(name uint32) string { return dl.GoString(g.getStringFn(name)) }
+func (g *glLib) getStringi(name, index uint32) string {
+	return dl.GoString(g.getStringiFn(name, index))
+}
+func (g *glLib) getInteger(name uint32) int32 {
+	*(*int32)(dl.Pointer(g.ids)) = 0
+	g.getIntegervFn(name, g.ids)
+	return *(*int32)(dl.Pointer(g.ids))
+}
+func (g *glLib) getError() uint32 { return g.getErrorFn() }
+
+func (g *glLib) viewport(x, y, w, h int32)                  { g.viewportFn(x, y, w, h) }
+func (g *glLib) scissor(x, y, w, h int32)                   { g.scissorFn(x, y, w, h) }
+func (g *glLib) enable(c uint32)                            { g.enableFn(c) }
+func (g *glLib) disable(c uint32)                           { g.disableFn(c) }
+func (g *glLib) blendFunc(src, dst uint32)                  { g.blendFuncFn(src, dst) }
+func (g *glLib) blendFuncSeparate(a, b, c, d uint32)        { g.blendFuncSeparateFn(a, b, c, d) }
+func (g *glLib) blendEquation(mode uint32)                  { g.blendEquationFn(mode) }
+func (g *glLib) colorMask(r, gr, b, a bool)                 { g.colorMaskFn(b2u(r), b2u(gr), b2u(b), b2u(a)) }
+func (g *glLib) clearColor(r, gr, b, a float32)             { g.clearColorFn(r, gr, b, a) }
+func (g *glLib) clearStencil(s int32)                       { g.clearStencilFn(s) }
+func (g *glLib) clear(mask uint32)                          { g.clearFn(mask) }
+func (g *glLib) stencilFunc(fn uint32, ref int32, m uint32) { g.stencilFuncFn(fn, ref, m) }
+func (g *glLib) stencilOp(fail, zfail, zpass uint32)        { g.stencilOpFn(fail, zfail, zpass) }
+func (g *glLib) stencilMask(mask uint32)                    { g.stencilMaskFn(mask) }
+func (g *glLib) pixelStorei(name uint32, v int32)           { g.pixelStoreiFn(name, v) }
+
+func (g *glLib) createShader(kind uint32) uint32 { return g.createShaderFn(kind) }
+func (g *glLib) shaderSource(shader uint32, source string) {
+	str := dl.CString(source)
+	defer dl.Free(str)
+	// glShaderSource takes an array of string pointers; one string, null
+	// terminated, so no lengths.
+	*(*uintptr)(dl.Pointer(g.ids)) = str
+	g.shaderSourceFn(shader, 1, g.ids, 0)
+}
+func (g *glLib) compileShader(shader uint32) { g.compileShaderFn(shader) }
+func (g *glLib) getShaderiv(shader, name uint32) int32 {
+	*(*int32)(dl.Pointer(g.ids)) = 0
+	g.getShaderivFn(shader, name, g.ids)
+	return *(*int32)(dl.Pointer(g.ids))
+}
+func (g *glLib) getShaderInfoLog(shader uint32) string {
+	n := g.getShaderiv(shader, glInfoLogLength)
+	return g.infoLog(n, func(size int32, length, log uintptr) { g.getShaderInfoLogFn(shader, size, length, log) })
+}
+func (g *glLib) deleteShader(shader uint32) { g.deleteShaderFn(shader) }
+func (g *glLib) createProgram() uint32      { return g.createProgramFn() }
+func (g *glLib) attachShader(p, s uint32)   { g.attachShaderFn(p, s) }
+func (g *glLib) linkProgram(p uint32)       { g.linkProgramFn(p) }
+func (g *glLib) getProgramiv(program, name uint32) int32 {
+	*(*int32)(dl.Pointer(g.ids)) = 0
+	g.getProgramivFn(program, name, g.ids)
+	return *(*int32)(dl.Pointer(g.ids))
+}
+func (g *glLib) getProgramInfoLog(program uint32) string {
+	n := g.getProgramiv(program, glInfoLogLength)
+	return g.infoLog(n, func(size int32, length, log uintptr) { g.getProgramInfoLogFn(program, size, length, log) })
+}
+
+// infoLog reads an info log of up to n bytes through the callback.
+func (g *glLib) infoLog(n int32, read func(size int32, length, log uintptr)) string {
+	if n <= 1 {
+		return ""
+	}
+	log := dl.Malloc(uintptr(n))
+	defer dl.Free(log)
+	length := g.ids + 8
+	*(*int32)(dl.Pointer(length)) = 0
+	read(n, length, log)
+	got := int(*(*int32)(dl.Pointer(length)))
+	return string(dl.Bytes(log, min(got, int(n))))
+}
+
+func (g *glLib) useProgram(p uint32)    { g.useProgramFn(p) }
+func (g *glLib) deleteProgram(p uint32) { g.deleteProgramFn(p) }
+func (g *glLib) getUniformLocation(program uint32, name string) int32 {
+	s := dl.CString(name)
+	defer dl.Free(s)
+	return g.getUniformLocationFn(program, s)
+}
+func (g *glLib) getAttribLocation(program uint32, name string) int32 {
+	s := dl.CString(name)
+	defer dl.Free(s)
+	return g.getAttribLocationFn(program, s)
+}
+func (g *glLib) uniform1i(loc, v int32)                  { g.uniform1iFn(loc, v) }
+func (g *glLib) uniform1f(loc int32, v float32)          { g.uniform1fFn(loc, v) }
+func (g *glLib) uniform2f(loc int32, x, y float32)       { g.uniform2fFn(loc, x, y) }
+func (g *glLib) uniform3f(loc int32, x, y, z float32)    { g.uniform3fFn(loc, x, y, z) }
+func (g *glLib) uniform4f(loc int32, x, y, z, w float32) { g.uniform4fFn(loc, x, y, z, w) }
+func (g *glLib) uniform1fv(loc int32, v []float32) {
+	g.uniform1fvFn(loc, int32(len(v)), g.put(floatBytes(v)))
+}
+func (g *glLib) uniform4fv(loc int32, v []float32) {
+	g.uniform4fvFn(loc, int32(len(v)/4), g.put(floatBytes(v)))
+}
+func (g *glLib) uniformMatrix3fv(loc int32, v []float32) {
+	g.uniformMatrix3fvFn(loc, int32(len(v)/9), 0, g.put(floatBytes(v)))
+}
+func (g *glLib) uniformMatrix4fv(loc int32, v []float32) {
+	g.uniformMatrix4fvFn(loc, int32(len(v)/16), 0, g.put(floatBytes(v)))
+}
+
+func (g *glLib) genBuffer() uint32           { return g.genOne(g.genBuffersFn) }
+func (g *glLib) deleteBuffer(b uint32)       { g.deleteOne(g.deleteBuffersFn, b) }
+func (g *glLib) bindBuffer(target, b uint32) { g.bindBufferFn(target, b) }
+func (g *glLib) bufferData(target uint32, size int, data []byte, usage uint32) {
+	g.bufferDataFn(target, size, g.put(data), usage)
+}
+func (g *glLib) bufferSubData(target uint32, offset int, data []byte) {
+	g.bufferSubDataFn(target, offset, len(data), g.put(data))
+}
+func (g *glLib) genVertexArray() uint32            { return g.genOne(g.genVertexArraysFn) }
+func (g *glLib) deleteVertexArray(a uint32)        { g.deleteOne(g.deleteVertexArraysFn, a) }
+func (g *glLib) bindVertexArray(a uint32)          { g.bindVertexArrayFn(a) }
+func (g *glLib) enableVertexAttribArray(i uint32)  { g.enableVertexAttribArrayFn(i) }
+func (g *glLib) disableVertexAttribArray(i uint32) { g.disableVertexAttribArrayFn(i) }
+func (g *glLib) vertexAttribPointer(index uint32, size int32, kind uint32, normalized bool, stride int32, offset int) {
+	g.vertexAttribPointerFn(index, size, kind, b2u(normalized), stride, uintptr(offset))
+}
+func (g *glLib) vertexAttribIPointer(index uint32, size int32, kind uint32, stride int32, offset int) {
+	g.vertexAttribIPointerFn(index, size, kind, stride, uintptr(offset))
+}
+func (g *glLib) vertexAttribDivisor(index, divisor uint32)  { g.vertexAttribDivisorFn(index, divisor) }
+func (g *glLib) drawArrays(mode uint32, first, count int32) { g.drawArraysFn(mode, first, count) }
+func (g *glLib) drawArraysInstanced(mode uint32, first, count, instances int32) {
+	g.drawArraysInstancedFn(mode, first, count, instances)
+}
+func (g *glLib) drawElements(mode uint32, count int32, kind uint32, offset int) {
+	g.drawElementsFn(mode, count, kind, uintptr(offset))
+}
+func (g *glLib) drawElementsInstanced(mode uint32, count int32, kind uint32, offset int, instances int32) {
+	g.drawElementsInstancedFn(mode, count, kind, uintptr(offset), instances)
+}
+
+func (g *glLib) genTexture() uint32                         { return g.genOne(g.genTexturesFn) }
+func (g *glLib) deleteTexture(t uint32)                     { g.deleteOne(g.deleteTexturesFn, t) }
+func (g *glLib) activeTexture(unit uint32)                  { g.activeTextureFn(unit) }
+func (g *glLib) bindTexture(target, t uint32)               { g.bindTextureFn(target, t) }
+func (g *glLib) texParameteri(target, name uint32, v int32) { g.texParameteriFn(target, name, v) }
+func (g *glLib) texImage2D(target uint32, level, internalFormat, w, h int32, format, kind uint32, data []byte) {
+	g.texImage2DFn(target, level, internalFormat, w, h, 0, format, kind, g.put(data))
+}
+func (g *glLib) texSubImage2D(target uint32, level, x, y, w, h int32, format, kind uint32, data []byte) {
+	g.texSubImage2DFn(target, level, x, y, w, h, format, kind, g.put(data))
+}
+func (g *glLib) generateMipmap(target uint32) { g.generateMipmapFn(target) }
+func (g *glLib) copyTexSubImage2D(target uint32, level, xo, yo, x, y, w, h int32) {
+	g.copyTexSubImage2DFn(target, level, xo, yo, x, y, w, h)
+}
+
+func (g *glLib) genFramebuffer() uint32           { return g.genOne(g.genFramebuffersFn) }
+func (g *glLib) deleteFramebuffer(f uint32)       { g.deleteOne(g.deleteFramebuffersFn, f) }
+func (g *glLib) bindFramebuffer(target, f uint32) { g.bindFramebufferFn(target, f) }
+func (g *glLib) framebufferTexture2D(target, attachment, texTarget, texture uint32, level int32) {
+	g.framebufferTexture2DFn(target, attachment, texTarget, texture, level)
+}
+func (g *glLib) checkFramebufferStatus(target uint32) uint32 {
+	return g.checkFramebufferStatusFn(target)
+}
+func (g *glLib) genRenderbuffer() uint32           { return g.genOne(g.genRenderbuffersFn) }
+func (g *glLib) deleteRenderbuffer(r uint32)       { g.deleteOne(g.deleteRenderbuffersFn, r) }
+func (g *glLib) bindRenderbuffer(target, r uint32) { g.bindRenderbufferFn(target, r) }
+func (g *glLib) renderbufferStorage(target, format uint32, w, h int32) {
+	g.renderbufferStorageFn(target, format, w, h)
+}
+func (g *glLib) framebufferRenderbuffer(target, attachment, rbTarget, rb uint32) {
+	g.framebufferRenderbufferFn(target, attachment, rbTarget, rb)
+}
+func (g *glLib) blitFramebuffer(sx0, sy0, sx1, sy1, dx0, dy0, dx1, dy1 int32, mask, filter uint32) {
+	g.blitFramebufferFn(sx0, sy0, sx1, sy1, dx0, dy0, dx1, dy1, mask, filter)
+}
+func (g *glLib) readPixels(x, y, w, h int32, format, kind uint32, pixels []byte) {
 	mem := dl.Malloc(uintptr(len(pixels)))
 	defer dl.Free(mem)
-	g.readPixelsFn(0, 0, width, height, glRGBA, glUnsignedByte, mem)
+	g.readPixelsFn(x, y, w, h, format, kind, mem)
 	copy(pixels, dl.Bytes(mem, len(pixels)))
 }
 
-func (g *glLib) getError() uint32 { return g.getErrorFn() }
+func (g *glLib) flush()  { g.flushFn() }
+func (g *glLib) finish() { g.finishFn() }

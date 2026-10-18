@@ -96,26 +96,6 @@ func (f *fakeEGL) terminate(uintptr) bool               { f.call("terminate"); r
 func (f *fakeEGL) getError() int32                      { return f.errCode }
 func (f *fakeEGL) getProcAddress(name string) uintptr   { return f.procs[name] }
 
-// fakeGL is a glAPI that returns a canned version and framebuffer.
-type fakeGL struct {
-	versionString string
-	pixels        []byte // bottom row first
-	errCode       uint32
-	viewportW     int32
-	viewportH     int32
-	cleared       [4]float32
-	clears        int
-}
-
-func (g *fakeGL) version() string                { return g.versionString }
-func (g *fakeGL) viewport(w, h int32)            { g.viewportW, g.viewportH = w, h }
-func (g *fakeGL) clearColor(r, gr, b, a float32) { g.cleared = [4]float32{r, gr, b, a} }
-func (g *fakeGL) clear()                         { g.clears++ }
-func (g *fakeGL) readPixels(_, _ int32, pixels []byte) {
-	copy(pixels, g.pixels)
-}
-func (g *fakeGL) getError() uint32 { return g.errCode }
-
 func fakeGLLoader(g *fakeGL) func(eglAPI) (glAPI, error) {
 	return func(eglAPI) (glAPI, error) { return g, nil }
 }
