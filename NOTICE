@@ -1,0 +1,54 @@
+Glutter
+Copyright (c) 2026, Manos Ragiadakos
+Licensed under the BSD 3-Clause License (see LICENSE).
+
+Glutter includes, depends on or is derived from the following components
+(docs/SPEC.md section 20).
+
+Flutter framework (BSD-3-Clause)
+  The API, algorithms and tests of the Flutter framework are ported to Go.
+  Ported files carry "// Flutter:" references.
+  Copyright 2014 The Flutter Authors. All rights reserved.
+  License text: third_party/flutter/LICENSE
+
+Flutter key data (BSD-3-Clause)
+  The generated key tables (physical and logical keys) are derived from
+  Flutter's gen_keycodes data (dev/tools/gen_keycodes/data).
+  Copyright 2014 The Flutter Authors. All rights reserved.
+  License text: third_party/flutter/LICENSE
+
+material-color-utilities (Apache-2.0)
+  The Material 3 color algorithms are ported from
+  https://github.com/material-foundation/material-color-utilities
+  Copyright 2021 Google LLC
+
+ebitengine/purego (Apache-2.0)
+  Go dependency, used to call C libraries without cgo.
+  https://github.com/ebitengine/purego
+  Copyright 2022 The Ebitengine Authors
+
+go-text/typesetting (Unlicense OR BSD-3-Clause)
+  Go dependency, used for text shaping and layout.
+  https://github.com/go-text/typesetting
+
+golang.org/x/image (BSD-3-Clause)
+  Go dependency, used for WebP and BMP decoding.
+  https://pkg.go.dev/golang.org/x/image
+  Copyright 2009 The Go Authors
+
+godbus/dbus/v5 (BSD-2-Clause)
+  Go dependency, used for D-Bus.
+  https://github.com/godbus/dbus
+  Copyright 2013 Georg Reinke, Google
+
+rm4n0s/errors
+  Go dependency, used for all error handling.
+  https://github.com/rm4n0s/errors
+
+Roboto and Material Icons (Apache-2.0 / OFL)
+  Embedded in material/fonts together with their license files.
+
+Wayland protocol XML (MIT)
+  Kept next to the generated Wayland bindings in
+  internal/platform/linux/wayland/protocols, with the licenses of the
+  Wayland and wayland-protocols projects.
