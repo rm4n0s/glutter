@@ -2,6 +2,7 @@ package gles
 
 import (
 	"fmt"
+	"image"
 	"math"
 
 	"github.com/rm4n0s/errors"
@@ -59,32 +60,6 @@ var blendFuncs = map[ui.BlendMode]blendFunc{
 	ui.BlendModePlus:    {glOne, glOne, glOne, glOne},
 }
 
-// batch is a run of instances drawn with the same state in one call.
-type batch struct {
-	first, count int
-	blend        blendFunc
-	scissor      [4]int // x, y, width, height from the top left of the surface
-}
-
-// shapeFrame collects the instances of a frame and the batches that draw them.
-type shapeFrame struct {
-	data    []float32
-	batches []batch
-}
-
-func (f *shapeFrame) instances() int { return len(f.data) / shapeFloats }
-
-// add appends one instance to the batch it belongs to.
-func (f *shapeFrame) add(inst *[shapeFloats]float32, blend blendFunc, scissor [4]int) {
-	n := f.instances()
-	if k := len(f.batches); k > 0 && f.batches[k-1].blend == blend && f.batches[k-1].scissor == scissor {
-		f.batches[k-1].count++
-	} else {
-		f.batches = append(f.batches, batch{first: n, count: 1, blend: blend, scissor: scissor})
-	}
-	f.data = append(f.data, inst[:]...)
-}
-
 // affine2D is the 2D part of a transform: x' = a*x + c*y + e, y' = b*x + d*y + f.
 type affine2D struct{ a, b, c, d, e, f float64 }
 
@@ -94,6 +69,31 @@ func affineOf(m *ui.Matrix4) affine2D {
 }
 
 func (t affine2D) det() float64 { return t.a*t.d - t.b*t.c }
+
+func (t affine2D) apply(x, y float64) ui.Offset {
+	return ui.Offset{Dx: t.a*x + t.c*y + t.e, Dy: t.b*x + t.d*y + t.f}
+}
+
+// then returns the transform that applies t first and u after it.
+func (t affine2D) then(u affine2D) affine2D {
+	return affine2D{
+		a: u.a*t.a + u.c*t.b, b: u.b*t.a + u.d*t.b,
+		c: u.a*t.c + u.c*t.d, d: u.b*t.c + u.d*t.d,
+		e: u.a*t.e + u.c*t.f + u.e, f: u.b*t.e + u.d*t.f + u.f,
+	}
+}
+
+func translation(x, y float64) affine2D { return affine2D{a: 1, d: 1, e: x, f: y} }
+
+func scaling(x, y float64) affine2D { return affine2D{a: x, d: y} }
+
+// axisAligned says that the transform keeps rectangles axis-aligned (it may flip
+// them or turn them by a quarter).
+func (t affine2D) axisAligned() bool {
+	const eps = 1e-6
+	near := func(v, with float64) bool { return math.Abs(v) <= eps*math.Abs(with)+1e-12 }
+	return (near(t.b, t.a) && near(t.c, t.d)) || (near(t.a, t.b) && near(t.d, t.c))
+}
 
 func (t affine2D) invert() (affine2D, bool) {
 	det := t.det()
@@ -120,7 +120,10 @@ func (t affine2D) similarity() bool {
 type frameBuilder struct {
 	w, h  int
 	skip  bool // unsupported commands are skipped and counted instead of failing
-	shape shapeFrame
+	frame frame
+	// res holds the caches that paths, clip shapes and images need; without it
+	// (in tests of the builder alone) they are unsupported.
+	res   *resources
 	stats FrameStats
 	// skipping is the depth of the unsupported group being skipped; 0 when none.
 	skipping int
@@ -134,14 +137,19 @@ type frameBuilder struct {
 type FrameStats struct {
 	// Commands is the number of drawing commands in the scene.
 	Commands int
-	// Drawn is the number of commands drawn as shapes.
+	// Drawn is the number of commands drawn.
 	Drawn int
 	// Skipped is the number of commands left out because the renderer cannot draw
 	// them yet; only a renderer with SkipUnsupported skips.
 	Skipped int
-	// Instances is the number of shapes sent to the GPU, Batches the number of draw
-	// calls that sent them.
-	Instances, Batches int
+	// Instances is the number of instanced primitives sent to the GPU (shapes,
+	// coverage tiles and image rectangles), Vertices the number of vertices, and
+	// Batches the number of draw calls that drew them.
+	Instances, Vertices, Batches int
+	// TilesRasterized, ClipMasksBuilt and ImagesUploaded count the work the frame
+	// did that an earlier frame's cache could have saved: coverage tiles
+	// rasterized, clip masks made and images uploaded.
+	TilesRasterized, ClipMasksBuilt, ImagesUploaded int
 	// Unsupported lists the features that caused skipped commands, once each.
 	Unsupported []string
 }
@@ -208,14 +216,21 @@ func (b *frameBuilder) draw(c gpu.Command) (bool, error) {
 	if c.Clip.IsEmpty() {
 		return true, nil
 	}
-	if !c.Clip.IsRect() {
-		return false, b.unsupported("clip shape")
-	}
 	m := c.Transform.Storage()
 	if m[3] != 0 || m[7] != 0 || m[15] != 1 {
 		return false, b.unsupported("perspective transform")
 	}
+	switch c.Op.(type) {
+	case ui.OpDrawPath, ui.OpDrawArc, ui.OpDrawImage, ui.OpDrawImageRect, ui.OpDrawImageNine, ui.OpDrawAtlas, ui.OpDrawVertices:
+		// These need the caches of the coverage atlas, images and vertices.
+		if b.res == nil {
+			return false, b.unsupported("operation " + typeName(c.Op))
+		}
+	}
 	ctx := &shapeContext{b: b, c: c, t: affineOf(&c.Transform)}
+	if done, ok, err := ctx.setupClip(); done {
+		return ok, err
+	}
 	var (
 		ok  bool
 		err error
@@ -238,6 +253,24 @@ func (b *frameBuilder) draw(c gpu.Command) (bool, error) {
 		ok, err = ctx.segments([]ui.Offset{v.P1, v.P2}, &v.Paint, c.Op, ui.PointModeLines)
 	case ui.OpDrawPoints:
 		ok, err = ctx.segments(v.Points, &v.Paint, c.Op, v.Mode)
+	case ui.OpDrawPath:
+		ok, err = ctx.pathMask(c.Op, &v.Paint)
+	case ui.OpDrawArc:
+		ok, err = ctx.pathMask(c.Op, &v.Paint)
+	case ui.OpDrawImage:
+		if err := checkImage(v.Image); err != nil {
+			return false, err
+		}
+		w, h := float64(v.Image.Width()), float64(v.Image.Height())
+		ok, err = ctx.imageRect(v.Image, ui.NewRectFromLTWH(0, 0, w, h), ui.NewRectFromLTWH(v.Offset.Dx, v.Offset.Dy, w, h), &v.Paint)
+	case ui.OpDrawImageRect:
+		ok, err = ctx.imageRect(v.Image, v.Src, v.Dst, &v.Paint)
+	case ui.OpDrawImageNine:
+		ok, err = ctx.imageNine(v)
+	case ui.OpDrawAtlas:
+		ok, err = ctx.imageAtlas(v)
+	case ui.OpDrawVertices:
+		ok, err = ctx.vertices(v)
 	case ui.OpDrawColor:
 		p := ui.NewPaint()
 		p.SetColor(v.Color)
@@ -248,14 +281,89 @@ func (b *frameBuilder) draw(c gpu.Command) (bool, error) {
 	default:
 		return false, b.unsupported("operation " + typeName(c.Op))
 	}
+	if err == errUseMask {
+		// The shape has no analytic form: its coverage comes from the atlas.
+		return ctx.pathMask(c.Op, paintOfOp(c.Op))
+	}
 	return ok, err
 }
 
-// shapeContext is a drawing command being turned into an instance.
+// errUseMask is returned by the analytic shapes for a shape or stroke they cannot
+// draw, which the coverage atlas draws instead.
+var errUseMask = errors.New("UseMask", "the shape has no analytic form")
+
+// paintOfOp returns the paint of the shape-drawing operations.
+func paintOfOp(op ui.DisplayOp) *ui.Paint {
+	switch v := op.(type) {
+	case ui.OpDrawRect:
+		return &v.Paint
+	case ui.OpDrawRRect:
+		return &v.Paint
+	case ui.OpDrawOval:
+		return &v.Paint
+	case ui.OpDrawCircle:
+		return &v.Paint
+	case ui.OpDrawDRRect:
+		return &v.Paint
+	case ui.OpDrawRSuperellipse:
+		return &v.Paint
+	case ui.OpDrawLine:
+		return &v.Paint
+	case ui.OpDrawPoints:
+		return &v.Paint
+	}
+	return ui.NewPaint()
+}
+
+// maskOr is for a shape the analytic pipeline cannot draw: the coverage atlas
+// draws it, or without one the feature is unsupported.
+func (s *shapeContext) maskOr(what string) (bool, error) {
+	if s.b.res != nil {
+		return false, errUseMask
+	}
+	return false, s.b.unsupported(what)
+}
+
+// shapeContext is a drawing command being turned into primitives.
 type shapeContext struct {
 	b *frameBuilder
 	c gpu.Command
 	t affine2D
+
+	// What the clip leaves, set by setupClip: the pixels it reaches (the scissor
+	// box), its rectangle with fractional edges, and the mask of its shapes.
+	scissor [4]int
+	outer   image.Rectangle
+	clip    [4]float32
+	mask    *clipMask
+}
+
+// setupClip works out the scissor box, the clip rectangle and the mask of the
+// command's clip. done says that the command needs no more work: ok tells
+// whether it counts as drawn.
+func (s *shapeContext) setupClip() (done, ok bool, err error) {
+	s.outer = outerPixels(s.c.Clip.Bounds, s.b.w, s.b.h)
+	if s.outer.Empty() {
+		return true, true, nil
+	}
+	s.scissor = [4]int{s.outer.Min.X, s.outer.Min.Y, s.outer.Dx(), s.outer.Dy()}
+	cb := s.c.Clip.Bounds
+	s.clip = [4]float32{float32(cb.Left), float32(cb.Top), float32(cb.Right), float32(cb.Bottom)}
+	if s.c.Clip.IsRect() {
+		return false, false, nil
+	}
+	if s.b.res == nil {
+		return true, false, s.b.unsupported("clip shape")
+	}
+	mask, empty, err := s.b.res.clipMask(s.c.Clip, s.b.w, s.b.h)
+	if err != nil {
+		return true, false, err
+	}
+	if empty {
+		return true, true, nil
+	}
+	s.mask = mask
+	return false, false, nil
 }
 
 // scale is the factor that lengths in the shape's units grow by.
@@ -339,16 +447,10 @@ func (s *shapeContext) place(in *instance, local ui.Rect, kind, flags int, info 
 	if !dev.IsFinite() {
 		return true, nil
 	}
-	clip := s.c.Clip.Bounds
-	outer := [4]int{int(math.Floor(clip.Left)), int(math.Floor(clip.Top)), int(math.Ceil(clip.Right)), int(math.Ceil(clip.Bottom))}
-	outer[0], outer[1] = max(outer[0], 0), max(outer[1], 0)
-	outer[2], outer[3] = min(outer[2], s.b.w), min(outer[3], s.b.h)
-	if outer[2] <= outer[0] || outer[3] <= outer[1] {
-		return true, nil
-	}
 	// One pixel more on each side for the anti-aliased edge, but not beyond the clip.
-	x0, y0 := math.Max(math.Floor(dev.Left)-1, float64(outer[0])), math.Max(math.Floor(dev.Top)-1, float64(outer[1]))
-	x1, y1 := math.Min(math.Ceil(dev.Right)+1, float64(outer[2])), math.Min(math.Ceil(dev.Bottom)+1, float64(outer[3]))
+	o := s.outer
+	x0, y0 := math.Max(math.Floor(dev.Left)-1, float64(o.Min.X)), math.Max(math.Floor(dev.Top)-1, float64(o.Min.Y))
+	x1, y1 := math.Min(math.Ceil(dev.Right)+1, float64(o.Max.X)), math.Min(math.Ceil(dev.Bottom)+1, float64(o.Max.Y))
 	if x1 <= x0 || y1 <= y0 {
 		return true, nil
 	}
@@ -364,10 +466,9 @@ func (s *shapeContext) place(in *instance, local ui.Rect, kind, flags int, info 
 	for i := 0; i < 4; i++ {
 		in[12+i] = info.color[i] * alpha
 	}
-	in[16], in[17], in[18], in[19] = float32(clip.Left), float32(clip.Top), float32(clip.Right), float32(clip.Bottom)
+	copy(in[16:20], s.clip[:])
 	in[47] = float32(s.scale())
-	scissor := [4]int{outer[0], outer[1], outer[2] - outer[0], outer[3] - outer[1]}
-	s.b.shape.add(in, info.blend, scissor)
+	s.b.frame.add(callKey{pipe: pipeShape, blend: info.blend, scissor: s.scissor, clip: s.mask}, in[:], 1)
 	return true, nil
 }
 
@@ -470,9 +571,9 @@ func (s *shapeContext) rrect(r ui.Rect, radii [4]ui.Radius, p *ui.Paint) (bool, 
 	if sharp && !round {
 		switch {
 		case join == ui.StrokeJoinBevel:
-			return false, s.b.unsupported("bevel stroke join")
+			return s.maskOr("bevel stroke join")
 		case p.StrokeMiterLimit() < math.Sqrt2:
-			return false, s.b.unsupported("stroke miter limit below the corner's miter")
+			return s.maskOr("stroke miter limit below the corner's miter")
 		}
 	}
 	if !sharp || round {
@@ -549,7 +650,7 @@ func (s *shapeContext) drrect(v ui.OpDrawDRRect) (bool, error) {
 		return status == paintNothing, err
 	}
 	if v.Paint.Style() == ui.PaintingStyleStroke {
-		return false, s.b.unsupported("stroked DRRect")
+		return s.maskOr("stroked DRRect")
 	}
 	outer, ok1 := partsOf(rectOfRRect(v.Outer), radiiOf(v.Outer))
 	inner, ok2 := partsOf(rectOfRRect(v.Inner), radiiOf(v.Inner))
@@ -574,7 +675,7 @@ func (s *shapeContext) superellipse(v ui.OpDrawRSuperellipse) (bool, error) {
 		return status == paintNothing, err
 	}
 	if v.Paint.Style() == ui.PaintingStyleStroke {
-		return false, s.b.unsupported("stroked superellipse")
+		return s.maskOr("stroked superellipse")
 	}
 	rs := v.RSuperellipse
 	parts, valid := partsOf(rectOfRRect(ui.RRect(rs)), radiiOf(ui.RRect(rs)))
@@ -599,7 +700,7 @@ func (s *shapeContext) segments(pts []ui.Offset, p *ui.Paint, op ui.DisplayOp, m
 		return status == paintNothing, err
 	}
 	if mode == ui.PointModePolygon {
-		return false, s.b.unsupported("polygon points")
+		return s.maskOr("polygon points")
 	}
 	hw, alpha := s.stroke(p)
 	if alpha == 0 || len(pts) == 0 {
@@ -656,7 +757,8 @@ func (s *shapeContext) fill(p *ui.Paint) (bool, error) {
 		return status == paintNothing, err
 	}
 	// The quad is the clip, whatever the transform: the identity places it.
-	id := shapeContext{b: s.b, c: s.c, t: affine2D{a: 1, d: 1}}
+	id := *s
+	id.t = affine2D{a: 1, d: 1}
 	id.c.Transform = *ui.NewMatrix4Identity()
 	var in instance
 	return id.place(&in, s.c.Clip.Bounds, kindFill, 0, info, 1)

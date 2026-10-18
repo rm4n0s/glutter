@@ -387,16 +387,19 @@ func (r *renderer) drawPath(path *ui.Path, p *ui.Paint, st *state, forceStroke b
 	if st.clip.empty() {
 		return nil
 	}
-	var polys [][]ui.Offset
-	rule := FillNonZero
-	if forceStroke || p.Style() == ui.PaintingStyleStroke {
-		polys = strokePolys(path.Flatten(nil, flattenTolerance/math.Max(affineScale(st.m), 1e-6)), p, st.m)
-	} else {
-		polys = flatPolys(path, st.m)
-		rule = fillRuleOf(path)
-	}
+	polys, rule := pathPolys(path, p, st.m, forceStroke)
 	r.fillPolys(polys, rule, p, ps, st)
 	return nil
+}
+
+// pathPolys returns the polygons, in device coordinates, and the fill rule of a
+// path drawn with the paint under the transform: its outline, or the outline of
+// its stroke when the paint strokes or forceStroke is set.
+func pathPolys(path *ui.Path, p *ui.Paint, m *ui.Matrix4, forceStroke bool) ([][]ui.Offset, FillRule) {
+	if forceStroke || p.Style() == ui.PaintingStyleStroke {
+		return strokePolys(path.Flatten(nil, flattenTolerance/math.Max(affineScale(m), 1e-6)), p, m), FillNonZero
+	}
+	return flatPolys(path, m), fillRuleOf(path)
 }
 
 // strokePolys strokes contours given in local coordinates with the paint's

@@ -86,6 +86,15 @@ func (r *renderer) drawPoints(op ui.OpDrawPoints, st *state) error {
 	if st.clip.empty() || len(op.Points) == 0 {
 		return nil
 	}
+	p, polys := pointsPolys(op, st.m)
+	r.fillPolys(polys, FillNonZero, p, ps, st)
+	return nil
+}
+
+// pointsPolys returns the polygons, in device coordinates, of the points, lines
+// or polygon of the operation, and the paint they are drawn with: that of the
+// operation, except that a butt cap draws a point as a square.
+func pointsPolys(op ui.OpDrawPoints, m *ui.Matrix4) (*ui.Paint, [][]ui.Offset) {
 	var contours []ui.FlatContour
 	switch op.Mode {
 	case ui.PointModeLines:
@@ -106,6 +115,5 @@ func (r *renderer) drawPoints(op ui.OpDrawPoints, st *state) error {
 		q.SetStrokeCap(ui.StrokeCapSquare)
 		p = &q
 	}
-	r.fillPolys(strokePolys(contours, p, st.m), FillNonZero, p, ps, st)
-	return nil
+	return p, strokePolys(contours, p, m)
 }

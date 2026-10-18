@@ -143,3 +143,39 @@ func splitCount(squared float64) int {
 	}
 	return int(n)
 }
+
+// Fingerprint returns a 64-bit hash of the path's contents: its verbs, points,
+// conic weights and fill type. Two paths with the same contents have the same
+// fingerprint, so a renderer can recognize a path it has drawn before even when
+// the app built it again. Different paths almost never share one; a renderer that
+// needs certainty compares the paths too.
+//
+// Flutter: no counterpart
+func (p *Path) Fingerprint() uint64 {
+	const (
+		offset = 14695981039346656037
+		prime  = 1099511628211
+	)
+	h := uint64(offset)
+	mix := func(v uint64) {
+		for i := 0; i < 8; i++ {
+			h ^= v & 0xff
+			h *= prime
+			v >>= 8
+		}
+	}
+	mix(uint64(p.FillType()))
+	mix(uint64(len(p.verbs)))
+	for _, v := range p.verbs {
+		mix(uint64(v))
+	}
+	mix(uint64(len(p.points)))
+	for _, pt := range p.points {
+		mix(math.Float64bits(pt.Dx))
+		mix(math.Float64bits(pt.Dy))
+	}
+	for _, w := range p.weights {
+		mix(math.Float64bits(w))
+	}
+	return h
+}

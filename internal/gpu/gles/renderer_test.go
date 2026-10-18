@@ -252,7 +252,9 @@ func TestRendererDrawsTheScene(t *testing.T) {
 func TestRendererStrictAndSkippingModes(t *testing.T) {
 	rec := ui.NewPictureRecorder()
 	c := ui.NewCanvas(rec)
-	c.DrawArc(ui.NewRectFromLTWH(0, 0, 10, 10), 0, 1, true, ui.NewPaint())
+	gradient := ui.NewPaint()
+	gradient.SetShader(ui.NewGradientLinear(ui.Offset{}, ui.Offset{Dx: 10}, []ui.Color{ui.NewColor(0xFF000000), ui.NewColor(0xFFFFFFFF)}))
+	c.DrawArc(ui.NewRectFromLTWH(0, 0, 10, 10), 0, 1, true, gradient)
 	sb := ui.NewSceneBuilder()
 	sb.AddPicture(ui.Offset{}, rec.EndRecording())
 	scene := sb.Build()
@@ -278,5 +280,45 @@ func TestRendererStrictAndSkippingModes(t *testing.T) {
 	}
 	if !contains(egl2.calls, "swapBuffers") {
 		t.Error("the frame was not presented")
+	}
+}
+
+func TestRendererCloseReleasesWhatTheCachesHold(t *testing.T) {
+	r, _, gl := newTestRenderer()
+	s, err := r.Attach(waylandHandle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := ui.NewPictureRecorder()
+	c := ui.NewCanvas(rec)
+	c.ClipRRect(ui.NewRRectFromRectXY(ui.NewRectFromLTWH(5, 5, 50, 50), 10, 10))
+	path := ui.NewPath()
+	path.MoveTo(0, 0)
+	path.LineTo(40, 5)
+	path.LineTo(10, 40)
+	path.Close()
+	c.DrawPath(path, ui.NewPaint())
+	c.DrawImage(ui.NewImageFromRGBA(make([]byte, 4*8*8), 8, 8), ui.Offset{}, nil)
+	c.DrawVertices(ui.NewVertices(ui.VertexModeTriangles, []ui.Offset{{}, {Dx: 10}, {Dy: 10}}), ui.BlendModeSrc, ui.NewPaint())
+	c.DrawRect(ui.NewRectFromLTWH(1, 1, 5, 5), ui.NewPaint())
+	sb := ui.NewSceneBuilder()
+	sb.AddPicture(ui.Offset{}, rec.EndRecording())
+	if err := r.Render(s, sb.Build(), ui.Size{Width: 64, Height: 64}, 1); err != nil {
+		t.Fatal(err)
+	}
+	st := r.LastFrame()
+	if st.Skipped != 0 || st.TilesRasterized == 0 || st.ClipMasksBuilt != 1 || st.ImagesUploaded != 1 || st.Vertices != 3 {
+		t.Errorf("stats = %+v", st)
+	}
+	if gl.liveCount("texture") < 4 || gl.liveCount("buffer") == 0 || gl.liveCount("vao") == 0 {
+		t.Errorf("live: textures %d, buffers %d, vertex arrays %d", gl.liveCount("texture"), gl.liveCount("buffer"), gl.liveCount("vao"))
+	}
+	if err := r.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for _, kind := range []string{"texture", "buffer", "vao", "program", "shader", "framebuffer", "renderbuffer"} {
+		if n := gl.liveCount(kind); n != 0 {
+			t.Errorf("%d %s objects leaked after Close", n, kind)
+		}
 	}
 }

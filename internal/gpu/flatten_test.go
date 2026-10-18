@@ -133,7 +133,7 @@ func TestFlattenClips(t *testing.T) {
 			c.Translate(50, 50)
 			c.Rotate(math.Pi / 4)
 			c.ClipRect(ui.NewRectFromLTWH(0, 0, 10, 10))
-		}, ui.Rect{Left: 50 - 10/math.Sqrt2, Top: 50, Right: 50 + 10/math.Sqrt2, Bottom: 50 + 20/math.Sqrt2}, 1, false},
+		}, ui.Rect{Left: math.Floor(50 - 10/math.Sqrt2), Top: 50, Right: math.Ceil(50 + 10/math.Sqrt2), Bottom: math.Ceil(50 + 20/math.Sqrt2)}, 1, false},
 		{"rect difference is a shape and keeps the bounds", func(c *ui.Canvas) {
 			c.ClipRect(ui.NewRectFromLTWH(10, 10, 10, 10), ui.ClipRectOpts{ClipOp: ui.ClipOpDifference})
 		}, ui.NewRectFromLTWH(0, 0, 100, 100), 1, false},
@@ -399,5 +399,18 @@ func TestIsAxisAligned(t *testing.T) {
 		if got := IsAxisAligned(tt.m); got != tt.want {
 			t.Errorf("%s: IsAxisAligned = %v, want %v", tt.name, got, tt.want)
 		}
+	}
+}
+
+func TestFlattenShapeClipBoundsAreWholePixels(t *testing.T) {
+	// The edge of a clip shape is drawn from the shape; the bounds that narrow the
+	// clip to it must not cut that edge again, so they are whole pixels.
+	pic := pictureOf(func(c *ui.Canvas) {
+		c.ClipRRect(ui.NewRRectFromRectXY(ui.NewRectFromLTWH(5.5, 5.25, 50.2, 40.5), 10, 10))
+		c.DrawRect(ui.NewRectFromLTWH(0, 0, 5, 5), paintOf(0xFF000000))
+	})
+	b := mustFlatten(t, sceneOfPicture(ui.Offset{}, pic)).Commands[0].Clip.Bounds
+	if want := (ui.Rect{Left: 5, Top: 5, Right: 56, Bottom: 46}); b != want {
+		t.Errorf("Bounds = %v, want %v", b, want)
 	}
 }

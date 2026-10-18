@@ -36,6 +36,7 @@ type Renderer struct {
 	background [4]float32 // premultiplied
 	skip       bool
 	last       FrameStats
+	res        *resources // the caches of paths, clip masks and images; made at the first frame
 	closed     bool
 	// beforePresent, when set, runs after a frame is drawn and before it is
 	// presented, while its pixels can still be read back (tests).
@@ -197,6 +198,12 @@ func (r *Renderer) Close() error {
 	}
 	r.surfaces = nil
 	if r.ctx != nil {
+		if r.res != nil {
+			// The context must be current to delete what the caches hold; the last
+			// surface is destroyed already, so Close does it with the display only.
+			r.res.release()
+			r.res = nil
+		}
 		r.ctx.Close()
 	}
 	return nil

@@ -6,6 +6,7 @@ import (
 	"context"
 	"image"
 	"image/png"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -355,8 +356,7 @@ func dumpImage(t *testing.T, name string, img image.Image) {
 	}
 }
 
-// gpuMatchesSoft renders a proof scene with the GPU (skipping what it cannot
-// draw yet) and with the software renderer, and calls check for the two images.
+// gpuMatchesSoft renders a proof scene with the GPU and with the software renderer, and calls check for the two images.
 func gpuMatchesSoft(t *testing.T, name string, check func(t *testing.T, gpuImg, soft *image.RGBA, r *Renderer)) {
 	sc, err := proof.Lookup(name)
 	if err != nil {
@@ -368,7 +368,7 @@ func gpuMatchesSoft(t *testing.T, name string, check func(t *testing.T, gpuImg, 
 		t.Fatal(err)
 	}
 	onDisplay(t, func(h gpu.SurfaceHandle, _, _ int) error {
-		r := NewRenderer(RendererOpts{SkipUnsupported: true})
+		r := NewRenderer()
 		defer func() { _ = r.Close() }()
 		if _, err := r.Attach(h); err != nil {
 			return err
@@ -384,10 +384,10 @@ func gpuMatchesSoft(t *testing.T, name string, check func(t *testing.T, gpuImg, 
 	})
 }
 
-// shapeCells are the cells of the shapes-clips scene that the shape pipeline
-// draws, with their grid index.
-var shapeCells = map[int]string{
-	0: "rect", 1: "rrect", 2: "superellipse", 3: "oval", 4: "circle stroke", 5: "drrect", 7: "lines and points",
+// cellNames are the cells of the shapes-clips scene, by grid index.
+var cellNames = []string{
+	"rect", "rrect", "superellipse", "oval", "circle stroke", "drrect", "arc", "lines and points",
+	"vertices", "nine-patch", "image quality", "clipped image",
 }
 
 // tolerance is how far the GPU may be from the software renderer in a region: of
@@ -408,19 +408,24 @@ func TestDisplayShapesMatchSoftware(t *testing.T) {
 	gpuMatchesSoft(t, "shapes-clips", func(t *testing.T, got, want *image.RGBA, r *Renderer) {
 		st := r.LastFrame()
 		t.Logf("frame: %+v", st)
-		for i := 0; i < 12; i++ {
-			name, ok := shapeCells[i]
-			if !ok {
-				continue
-			}
+		if st.Skipped != 0 {
+			t.Errorf("the GPU skipped %d commands: %v", st.Skipped, st.Unsupported)
+		}
+		for i, name := range cellNames {
 			cell := image.Rect(i%4*160, i/4*160, i%4*160+160, i/4*160+160)
 			tolerance{over8Permille: 30, over32Permille: 3}.check(t, name, diffRect(got, want, cell))
 		}
-		// What the pipeline cannot draw yet is skipped and listed, and the cells'
-		// backgrounds around it are drawn.
-		if st.Skipped == 0 || len(st.Unsupported) == 0 {
-			t.Errorf("expected skipped commands, got %+v", st)
+	})
+}
+
+func TestDisplayBasicShapesMatchSoftware(t *testing.T) {
+	gpuMatchesSoft(t, "shapes-basic", func(t *testing.T, got, want *image.RGBA, r *Renderer) {
+		st := r.LastFrame()
+		t.Logf("frame: %+v", st)
+		if st.Skipped != 0 {
+			t.Errorf("the GPU skipped %d commands: %v", st.Skipped, st.Unsupported)
 		}
+		tolerance{over8Permille: 20, over32Permille: 5}.check(t, "shapes-basic", diffRect(got, want, got.Bounds()))
 	})
 }
 
@@ -586,6 +591,265 @@ func TestDisplayShapeScenesMatchSoftware(t *testing.T) {
 					return err
 				}
 				slug := strings.ReplaceAll(tt.name, " ", "-")
+				dumpImage(t, slug+"-gpu", got)
+				dumpImage(t, slug+"-soft", want)
+				tt.tol.check(t, tt.name, diffRect(got, want, got.Bounds()))
+				return nil
+			})
+		})
+	}
+}
+
+// pattern is an n x n image of a color gradient with a grid and a transparent
+// corner, to show orientation, filtering and alpha.
+func pattern(n int) *ui.Image {
+	pix := make([]byte, 4*n*n)
+	for y := 0; y < n; y++ {
+		for x := 0; x < n; x++ {
+			r, g, b, a := byte(x*255/(n-1)), byte(y*255/(n-1)), byte(255-x*255/(n-1)), byte(255)
+			if x%8 == 0 || y%8 == 0 {
+				r, g, b = 255, 255, 255
+			}
+			if x < n/4 && y < n/4 {
+				a = 128
+			}
+			// Premultiplied.
+			f := float64(a) / 255
+			copy(pix[4*(y*n+x):], []byte{byte(float64(r) * f), byte(float64(g) * f), byte(float64(b) * f), a})
+		}
+	}
+	return ui.NewImageFromRGBA(pix, n, n)
+}
+
+func starPath() *ui.Path {
+	p := ui.NewPath()
+	for i := 0; i < 5; i++ {
+		a := -math.Pi/2 + float64(i)*4*math.Pi/5
+		x, y := 64+50*math.Cos(a), 64+50*math.Sin(a)
+		if i == 0 {
+			p.MoveTo(x, y)
+		} else {
+			p.LineTo(x, y)
+		}
+	}
+	p.Close()
+	return p
+}
+
+func TestDisplayPathsClipsAndImagesMatchSoftware(t *testing.T) {
+	img := pattern(32)
+	quality := func(q ui.FilterQuality) *ui.Paint {
+		p := ui.NewPaint()
+		p.SetFilterQuality(q)
+		return p
+	}
+	curve := func() *ui.Path {
+		p := ui.NewPath()
+		p.MoveTo(10, 100)
+		p.CubicTo(30, 10, 60, 120, 90, 30)
+		p.QuadraticBezierTo(110, 5, 120, 60)
+		return p
+	}
+	tests := []struct {
+		name string
+		tol  tolerance
+		draw func(c *ui.Canvas)
+	}{
+		{"star, both fill rules", tolerance{3, 1, 0}, func(c *ui.Canvas) {
+			evenOdd := starPath()
+			evenOdd.SetFillType(ui.PathFillTypeEvenOdd)
+			c.Save()
+			c.Scale(0.5, 0.5)
+			c.DrawPath(starPath(), fillP(0xFF8040A0))
+			c.Translate(128, 0)
+			c.DrawPath(evenOdd, fillP(0xFF40A080))
+			c.Restore()
+		}},
+		{"stroked curves with every join and cap", tolerance{3, 1, 0}, func(c *ui.Canvas) {
+			for i, cp := range []ui.StrokeCap{ui.StrokeCapButt, ui.StrokeCapRound, ui.StrokeCapSquare} {
+				c.Save()
+				c.Translate(0, float64(i)*40-30)
+				c.Scale(1, 0.4)
+				c.DrawPath(curve(), strokeP(0xFF2040A0, 9, cp, []ui.StrokeJoin{ui.StrokeJoinMiter, ui.StrokeJoinRound, ui.StrokeJoinBevel}[i]))
+				c.Restore()
+			}
+		}},
+		{"bevel and miter limit fall back to the atlas", tolerance{3, 1, 0}, func(c *ui.Canvas) {
+			p := strokeP(0xFF108040, 12, ui.StrokeCapButt, ui.StrokeJoinBevel)
+			c.DrawRect(ui.NewRectFromLTWH(15, 15, 40, 30), p)
+			q := strokeP(0xFF801040, 12, ui.StrokeCapButt, ui.StrokeJoinMiter)
+			q.SetStrokeMiterLimit(1.1)
+			c.DrawRect(ui.NewRectFromLTWH(70, 15, 40, 30), q)
+			c.DrawDRRect(ui.NewRRectFromRectXY(ui.NewRectFromLTWH(15, 70, 45, 45), 10, 10), ui.NewRRectFromRectXY(ui.NewRectFromLTWH(25, 80, 25, 25), 4, 4), strokeP(0xFF404040, 3, ui.StrokeCapButt, ui.StrokeJoinMiter))
+			c.DrawRSuperellipse(ui.NewRSuperellipseFromRectXY(ui.NewRectFromLTWH(70, 70, 45, 45), 12, 12), strokeP(0xFF804000, 4, ui.StrokeCapButt, ui.StrokeJoinMiter))
+		}},
+		{"polygon points and arcs", tolerance{3, 1, 0}, func(c *ui.Canvas) {
+			c.DrawPoints(ui.PointModePolygon, []ui.Offset{{Dx: 10, Dy: 100}, {Dx: 40, Dy: 20}, {Dx: 70, Dy: 90}, {Dx: 118, Dy: 30}}, strokeP(0xFF204080, 7, ui.StrokeCapRound, ui.StrokeJoinRound))
+			c.DrawArc(ui.NewRectFromLTWH(20, 30, 90, 80), 0.2, 4.5, false, strokeP(0xFFC04020, 5, ui.StrokeCapRound, ui.StrokeJoinMiter))
+			c.DrawArc(ui.NewRectFromLTWH(40, 50, 50, 40), -1, 3, true, fillP(0x99208040))
+		}},
+		{"hairlines, thin strokes and no anti-aliasing", tolerance{10, 4, 4}, func(c *ui.Canvas) {
+			c.DrawPath(curve(), strokeP(0xFF000000, 0, ui.StrokeCapButt, ui.StrokeJoinMiter))
+			c.Translate(0, 12)
+			c.DrawPath(curve(), strokeP(0xFF000000, 0.4, ui.StrokeCapButt, ui.StrokeJoinMiter))
+			c.Translate(0, 12)
+			p := strokeP(0xFF2020A0, 3, ui.StrokeCapButt, ui.StrokeJoinMiter)
+			p.SetIsAntiAlias(false)
+			c.DrawPath(curve(), p)
+		}},
+		{"a path larger than a tile, partly off the surface", tolerance{3, 1, 0}, func(c *ui.Canvas) {
+			p := ui.NewPath()
+			p.MoveTo(-300, 20)
+			p.CubicTo(0, 400, 200, -300, 500, 100)
+			p.LineTo(500, 600)
+			p.LineTo(-300, 600)
+			p.Close()
+			c.DrawPath(p, fillP(0xCC2060A0))
+		}},
+		{"transformed paths", tolerance{4, 1, 0}, func(c *ui.Canvas) {
+			c.Translate(64.37, 60.81)
+			c.Rotate(0.5)
+			c.Scale(0.8, 0.5)
+			c.Translate(-64, -64)
+			c.DrawPath(starPath(), fillP(0xFFA04020))
+			c.DrawPath(curve(), strokeP(0xFF000000, 6, ui.StrokeCapRound, ui.StrokeJoinRound))
+		}},
+		{"rounded rectangle, superellipse and path clips", tolerance{4, 1, 0}, func(c *ui.Canvas) {
+			stripes := func() {
+				for i := 0; i < 8; i++ {
+					c.DrawRect(ui.NewRectFromLTWH(0, float64(i)*16, 128, 8), fillP(0xFF3050C0))
+					c.DrawRect(ui.NewRectFromLTWH(0, float64(i)*16+8, 128, 8), fillP(0xFFF0A020))
+				}
+			}
+			c.Save()
+			c.ClipRRect(ui.NewRRectFromRectXY(ui.NewRectFromLTWH(5.5, 5.5, 50, 50), 14, 14))
+			stripes()
+			c.Restore()
+			c.Save()
+			c.ClipRSuperellipse(ui.NewRSuperellipseFromRectXY(ui.NewRectFromLTWH(70, 5, 50, 50), 18, 18))
+			stripes()
+			c.Restore()
+			c.Save()
+			c.ClipPath(starPath().Shift(ui.Offset{Dx: -40, Dy: 20}))
+			stripes()
+			c.Restore()
+		}},
+		{"rotated, difference, hard and nested clips", tolerance{4, 1, 0}, func(c *ui.Canvas) {
+			stripes := func() {
+				for i := 0; i < 8; i++ {
+					c.DrawRect(ui.NewRectFromLTWH(0, float64(i)*16, 128, 8), fillP(0xFF3050C0))
+					c.DrawRect(ui.NewRectFromLTWH(0, float64(i)*16+8, 128, 8), fillP(0xFFF0A020))
+				}
+			}
+			c.Save()
+			c.Translate(35, 35)
+			c.Rotate(0.5)
+			c.ClipRect(ui.NewRectFromLTWH(-25, -20, 50, 40))
+			c.Rotate(-0.5)
+			c.Translate(-35, -35)
+			stripes()
+			c.Restore()
+			c.Save()
+			c.ClipRect(ui.NewRectFromLTWH(70, 10, 50, 50), ui.ClipRectOpts{DoAntiAlias: ui.Ptr(true)})
+			c.ClipRect(ui.NewRectFromLTWH(85, 25, 20, 20), ui.ClipRectOpts{ClipOp: ui.ClipOpDifference})
+			stripes()
+			c.Restore()
+			c.Save()
+			c.ClipRRect(ui.NewRRectFromRectXY(ui.NewRectFromLTWH(10, 70, 60, 50), 20, 20), ui.ClipOpts{DoAntiAlias: ui.Ptr(false)})
+			c.ClipRRect(ui.NewRRectFromRectXY(ui.NewRectFromLTWH(30, 80, 60, 40), 15, 15))
+			stripes()
+			c.Restore()
+		}},
+		{"images of every filter quality, up and down", tolerance{3, 1, 0}, func(c *ui.Canvas) {
+			for i, q := range []ui.FilterQuality{ui.FilterQualityNone, ui.FilterQualityLow, ui.FilterQualityMedium, ui.FilterQualityHigh} {
+				x := float64(i%2) * 64
+				y := float64(i/2) * 64
+				c.DrawImageRect(img, ui.NewRectFromLTWH(0, 0, 32, 32), ui.NewRectFromLTWH(x+2, y+2, 60, 60), quality(q))
+			}
+			c.Save()
+			c.Translate(5, 5)
+			for i, q := range []ui.FilterQuality{ui.FilterQualityNone, ui.FilterQualityLow, ui.FilterQualityMedium, ui.FilterQualityHigh} {
+				c.DrawImageRect(img, ui.NewRectFromLTWH(0, 0, 32, 32), ui.NewRectFromLTWH(float64(i)*12, 2, 9.5, 9.5), quality(q))
+			}
+			c.Restore()
+		}},
+		{"rotated and scaled images, alpha and blend modes", tolerance{6, 2, 0}, func(c *ui.Canvas) {
+			c.Save()
+			c.Translate(40, 40)
+			c.Rotate(0.4)
+			c.DrawImageRect(img, ui.NewRectFromLTWH(0, 0, 32, 32), ui.NewRectFromLTWH(-25, -25, 50, 50), quality(ui.FilterQualityLow))
+			c.Restore()
+			faded := quality(ui.FilterQualityLow)
+			faded.SetColor(ui.NewColor(0x80FFFFFF))
+			c.DrawImage(img, ui.Offset{Dx: 70.5, Dy: 10.25}, faded)
+			plus := quality(ui.FilterQualityNone)
+			plus.SetBlendMode(ui.BlendModePlus)
+			c.DrawImageRect(img, ui.NewRectFromLTWH(8, 8, 40, 40), ui.NewRectFromLTWH(10, 70, 50, 50), plus)
+			noAA := quality(ui.FilterQualityLow)
+			noAA.SetIsAntiAlias(false)
+			c.Save()
+			c.Translate(95, 95)
+			c.Rotate(-0.3)
+			c.DrawImageRect(img, ui.NewRectFromLTWH(0, 0, 32, 32), ui.NewRectFromLTWH(-20, -20, 40, 40), noAA)
+			c.Restore()
+		}},
+		{"nine-patch, squeezed and stretched", tolerance{3, 1, 0}, func(c *ui.Canvas) {
+			center := ui.NewRectFromLTWH(8, 8, 16, 16)
+			c.DrawImageNine(img, center, ui.NewRectFromLTWH(4, 4, 80, 50), quality(ui.FilterQualityLow))
+			c.DrawImageNine(img, center, ui.NewRectFromLTWH(90, 4, 30, 20), quality(ui.FilterQualityNone))
+			c.DrawImageNine(img, center, ui.NewRectFromLTWH(4, 70, 100, 40), quality(ui.FilterQualityNone))
+		}},
+		{"atlas sprites with transforms and colors", tolerance{6, 2, 0}, func(c *ui.Canvas) {
+			xf := []ui.RSTransform{
+				ui.NewRSTransformFromComponents(0, 1, 0, 0, 30, 30),
+				ui.NewRSTransformFromComponents(0.5, 1.5, 8, 8, 90, 30),
+				ui.NewRSTransformFromComponents(-0.3, 0.75, 8, 8, 30, 90),
+				ui.NewRSTransformFromComponents(0.9, 1, 8, 8, 90, 90),
+			}
+			rects := []ui.Rect{ui.NewRectFromLTWH(0, 0, 16, 16), ui.NewRectFromLTWH(16, 0, 16, 16), ui.NewRectFromLTWH(0, 16, 16, 16), ui.NewRectFromLTWH(16, 16, 16, 16)}
+			c.DrawAtlas(img, xf, rects, nil, ui.BlendModeSrc, nil, quality(ui.FilterQualityLow))
+			c.Save()
+			c.Translate(0, 4)
+			colors := []ui.Color{ui.NewColor(0x80FFFFFF), ui.NewColor(0xFF00FF00), ui.NewColor(0xFFFF0000), ui.NewColor(0x80000000)}
+			c.DrawAtlas(img, xf, rects, colors, ui.BlendModeSrcIn, nil, quality(ui.FilterQualityNone))
+			c.Restore()
+		}},
+		{"vertices of every mode", tolerance{3, 1, 0}, func(c *ui.Canvas) {
+			colors := []ui.Color{ui.NewColor(0xFFFF0000), ui.NewColor(0xFF00FF00), ui.NewColor(0xFF0000FF), ui.NewColor(0x80FFFF00)}
+			pos := []ui.Offset{{Dx: 10, Dy: 10}, {Dx: 60, Dy: 15}, {Dx: 20, Dy: 55}, {Dx: 70, Dy: 60}}
+			c.DrawVertices(ui.NewVertices(ui.VertexModeTriangleStrip, pos, ui.VerticesOpts{Colors: colors}), ui.BlendModeDst, fillP(0xFF000000))
+			c.Save()
+			c.Translate(60, 0)
+			c.DrawVertices(ui.NewVertices(ui.VertexModeTriangles, pos[:3], ui.VerticesOpts{Colors: colors[:3]}), ui.BlendModeModulate, fillP(0xFF80C0FF))
+			c.Restore()
+			c.Save()
+			c.Translate(0, 60)
+			c.DrawVertices(ui.NewVertices(ui.VertexModeTriangleFan, pos, ui.VerticesOpts{Colors: colors}), ui.BlendModeSrcOver, fillP(0x8000FFFF))
+			c.Restore()
+			c.Save()
+			c.Translate(60, 60)
+			c.DrawVertices(ui.NewVertices(ui.VertexModeTriangles, pos, ui.VerticesOpts{Indices: []int{0, 1, 2, 1, 2, 3}}), ui.BlendModeSrc, fillP(0xCC208040))
+			c.Restore()
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			scene := canvasScene(128, 128, tt.draw)
+			want, err := soft.Render(scene, 128, 128)
+			if err != nil {
+				t.Fatal(err)
+			}
+			onDisplay(t, func(h gpu.SurfaceHandle, _, _ int) error {
+				r := NewRenderer()
+				defer func() { _ = r.Close() }()
+				if _, err := r.Attach(h); err != nil {
+					return err
+				}
+				got, err := renderGPU(r, scene, 128, 128)
+				if err != nil {
+					return err
+				}
+				slug := strings.ReplaceAll(strings.ReplaceAll(tt.name, " ", "-"), ",", "")
 				dumpImage(t, slug+"-gpu", got)
 				dumpImage(t, slug+"-soft", want)
 				tt.tol.check(t, tt.name, diffRect(got, want, got.Bounds()))

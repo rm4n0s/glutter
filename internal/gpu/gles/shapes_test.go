@@ -28,6 +28,12 @@ func linePaint(argb uint32, width float64, cap ui.StrokeCap, join ui.StrokeJoin)
 // pixels.
 func build(t *testing.T, skip bool, fn func(c *ui.Canvas)) (*frameBuilder, error) {
 	t.Helper()
+	return buildWith(t, nil, skip, fn)
+}
+
+// buildWith is build with the caches of paths, clip masks and images.
+func buildWith(t *testing.T, res *resources, skip bool, fn func(c *ui.Canvas)) (*frameBuilder, error) {
+	t.Helper()
 	rec := ui.NewPictureRecorder()
 	fn(ui.NewCanvas(rec))
 	sb := ui.NewSceneBuilder()
@@ -36,7 +42,7 @@ func build(t *testing.T, skip bool, fn func(c *ui.Canvas)) (*frameBuilder, error
 	if err != nil {
 		t.Fatal(err)
 	}
-	b := &frameBuilder{w: 200, h: 100, skip: skip}
+	b := &frameBuilder{w: 200, h: 100, skip: skip, res: res}
 	for _, c := range list.Commands {
 		if err := b.command(c); err != nil {
 			return b, err
@@ -55,7 +61,7 @@ func mustBuild(t *testing.T, fn func(c *ui.Canvas)) *frameBuilder {
 }
 
 func instanceAt(b *frameBuilder, i int) []float32 {
-	return b.shape.data[i*shapeFloats : (i+1)*shapeFloats]
+	return b.frame.data[pipeShape][i*shapeFloats : (i+1)*shapeFloats]
 }
 
 func TestBuildFillRect(t *testing.T) {
@@ -63,8 +69,8 @@ func TestBuildFillRect(t *testing.T) {
 		c.Translate(10, 20)
 		c.DrawRect(ui.NewRectFromLTWH(5, 5, 40, 30), solidPaint(0x80FF8000))
 	})
-	if b.shape.instances() != 1 {
-		t.Fatalf("%d instances", b.shape.instances())
+	if b.frame.items(pipeShape) != 1 {
+		t.Fatalf("%d instances", b.frame.items(pipeShape))
 	}
 	in := instanceAt(b, 0)
 	// The rectangle is at 15,25 to 55,55; the quad has a pixel more on each side.
@@ -135,8 +141,8 @@ func TestBuildShapeKinds(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			b := mustBuild(t, tt.draw)
-			if b.shape.instances() != 1 {
-				t.Fatalf("%d instances, want 1", b.shape.instances())
+			if b.frame.items(pipeShape) != 1 {
+				t.Fatalf("%d instances, want 1", b.frame.items(pipeShape))
 			}
 			in := instanceAt(b, 0)
 			if in[10] != tt.kind {
@@ -187,7 +193,7 @@ func TestBuildLinesAndPoints(t *testing.T) {
 		b := mustBuild(t, func(c *ui.Canvas) {
 			c.DrawPoints(mode, pts, linePaint(0xFF000000, 8, cap, ui.StrokeJoinMiter))
 		})
-		n = b.shape.instances()
+		n = b.frame.items(pipeShape)
 		if n > 0 {
 			last = instanceAt(b, n-1)
 		}
@@ -211,14 +217,14 @@ func TestBuildLinesAndPoints(t *testing.T) {
 	b := mustBuild(t, func(c *ui.Canvas) {
 		c.DrawLine(p(5, 5), p(5, 5), linePaint(0xFF000000, 8, ui.StrokeCapButt, ui.StrokeJoinMiter))
 	})
-	if b.shape.instances() != 0 {
-		t.Errorf("a butt-capped dot drew %d instances", b.shape.instances())
+	if b.frame.items(pipeShape) != 0 {
+		t.Errorf("a butt-capped dot drew %d instances", b.frame.items(pipeShape))
 	}
 	b = mustBuild(t, func(c *ui.Canvas) {
 		c.DrawLine(p(5, 5), p(5, 5), linePaint(0xFF000000, 8, ui.StrokeCapSquare, ui.StrokeJoinMiter))
 	})
-	if b.shape.instances() != 1 {
-		t.Errorf("a square-capped dot drew %d instances", b.shape.instances())
+	if b.frame.items(pipeShape) != 1 {
+		t.Errorf("a square-capped dot drew %d instances", b.frame.items(pipeShape))
 	}
 }
 
@@ -240,7 +246,7 @@ func TestBuildBatching(t *testing.T) {
 		c.DrawRect(rect, plus)
 	})
 	var counts []int
-	for _, bt := range b.shape.batches {
+	for _, bt := range b.frame.calls {
 		counts = append(counts, bt.count)
 	}
 	want := []int{2, 1, 1, 2, 1}
@@ -252,21 +258,21 @@ func TestBuildBatching(t *testing.T) {
 			t.Fatalf("batch sizes = %v, want %v", counts, want)
 		}
 	}
-	if b.shape.batches[3].scissor != [4]int{0, 0, 100, 50} || b.shape.batches[0].scissor != [4]int{0, 0, 200, 100} {
-		t.Errorf("scissors = %v, %v", b.shape.batches[0].scissor, b.shape.batches[3].scissor)
+	if b.frame.calls[3].scissor != [4]int{0, 0, 100, 50} || b.frame.calls[0].scissor != [4]int{0, 0, 200, 100} {
+		t.Errorf("scissors = %v, %v", b.frame.calls[0].scissor, b.frame.calls[3].scissor)
 	}
 	// Batches are consecutive ranges of the instance data.
 	next := 0
-	for _, bt := range b.shape.batches {
+	for _, bt := range b.frame.calls {
 		if bt.first != next {
 			t.Errorf("batch starts at %d, want %d", bt.first, next)
 		}
 		next += bt.count
 	}
-	if next != b.shape.instances() {
-		t.Errorf("batches hold %d instances of %d", next, b.shape.instances())
+	if next != b.frame.items(pipeShape) {
+		t.Errorf("batches hold %d instances of %d", next, b.frame.items(pipeShape))
 	}
-	if b.shape.batches[2].blend != blendFuncs[ui.BlendModeSrcOver] || b.shape.batches[1].blend != blendFuncs[ui.BlendModeDstOver] {
+	if b.frame.calls[2].blend != blendFuncs[ui.BlendModeSrcOver] || b.frame.calls[1].blend != blendFuncs[ui.BlendModeDstOver] {
 		t.Error("the blend of a batch is the blend of its paint")
 	}
 }
@@ -279,8 +285,8 @@ func TestBuildClipsAndCulling(t *testing.T) {
 		c.DrawRect(rect, solidPaint(0xFF000000)) // outside
 		c.DrawRect(ui.NewRectFromLTWH(0, 0, 60, 60), solidPaint(0xFF000000))
 	})
-	if b.shape.instances() != 1 {
-		t.Fatalf("%d instances, want 1", b.shape.instances())
+	if b.frame.items(pipeShape) != 1 {
+		t.Fatalf("%d instances, want 1", b.frame.items(pipeShape))
 	}
 	in := instanceAt(b, 0)
 	if in[0] != 50 || in[1] != 50 || in[2] != 61 || in[3] != 61 {
@@ -289,7 +295,7 @@ func TestBuildClipsAndCulling(t *testing.T) {
 	if in[16] != 50.5 || in[18] != 70.5 {
 		t.Errorf("clip rect = %v, want the fractional clip for the shader", in[16:20])
 	}
-	if got := b.shape.batches[0].scissor; got != [4]int{50, 50, 21, 21} {
+	if got := b.frame.calls[0].scissor; got != [4]int{50, 50, 21, 21} {
 		t.Errorf("scissor = %v, want the clip's outer pixels", got)
 	}
 	// A clip with nothing in it draws nothing, and is not an unsupported feature.
@@ -298,8 +304,8 @@ func TestBuildClipsAndCulling(t *testing.T) {
 		c.ClipRect(ui.NewRectFromLTWH(50, 50, 10, 10))
 		c.DrawRect(rect, solidPaint(0xFF000000))
 	})
-	if b.shape.instances() != 0 || b.stats.Skipped != 0 {
-		t.Errorf("%d instances, %d skipped", b.shape.instances(), b.stats.Skipped)
+	if b.frame.items(pipeShape) != 0 || b.stats.Skipped != 0 {
+		t.Errorf("%d instances, %d skipped", b.frame.items(pipeShape), b.stats.Skipped)
 	}
 	// Shapes that are off the surface or have no size draw nothing.
 	b = mustBuild(t, func(c *ui.Canvas) {
@@ -309,8 +315,8 @@ func TestBuildClipsAndCulling(t *testing.T) {
 		c.Scale(0, 1)
 		c.DrawRect(rect, solidPaint(0xFF000000))
 	})
-	if b.shape.instances() != 0 {
-		t.Errorf("%d instances, want 0", b.shape.instances())
+	if b.frame.items(pipeShape) != 0 {
+		t.Errorf("%d instances, want 0", b.frame.items(pipeShape))
 	}
 }
 
@@ -318,8 +324,8 @@ func TestBuildDrawsNothingForDst(t *testing.T) {
 	p := solidPaint(0xFF000000)
 	p.SetBlendMode(ui.BlendModeDst)
 	b := mustBuild(t, func(c *ui.Canvas) { c.DrawRect(ui.NewRectFromLTWH(0, 0, 10, 10), p) })
-	if b.shape.instances() != 0 || b.stats.Skipped != 0 || b.stats.Drawn != 1 {
-		t.Errorf("instances %d, stats %+v", b.shape.instances(), b.stats)
+	if b.frame.items(pipeShape) != 0 || b.stats.Skipped != 0 || b.stats.Drawn != 1 {
+		t.Errorf("instances %d, stats %+v", b.frame.items(pipeShape), b.stats)
 	}
 }
 
@@ -409,8 +415,8 @@ func TestBuildUnsupported(t *testing.T) {
 			if len(b.stats.Unsupported) != 1 || b.stats.Unsupported[0] != tt.feature {
 				t.Errorf("unsupported = %v, want [%s]", b.stats.Unsupported, tt.feature)
 			}
-			if b.stats.Skipped == 0 || b.stats.Drawn != 0 || b.shape.instances() != 0 {
-				t.Errorf("stats %+v, %d instances", b.stats, b.shape.instances())
+			if b.stats.Skipped == 0 || b.stats.Drawn != 0 || b.frame.items(pipeShape) != 0 {
+				t.Errorf("stats %+v, %d instances", b.stats, b.frame.items(pipeShape))
 			}
 		})
 	}
@@ -432,8 +438,8 @@ func TestBuildSkipsWholeLayers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if b.stats.Drawn != 2 || b.stats.Skipped != 3 || b.stats.Commands != 5 || b.shape.instances() != 2 {
-		t.Errorf("stats %+v, %d instances", b.stats, b.shape.instances())
+	if b.stats.Drawn != 2 || b.stats.Skipped != 3 || b.stats.Commands != 5 || b.frame.items(pipeShape) != 2 {
+		t.Errorf("stats %+v, %d instances", b.stats, b.frame.items(pipeShape))
 	}
 }
 

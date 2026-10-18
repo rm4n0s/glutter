@@ -585,3 +585,64 @@ func TestConstantsMatchHeaders(t *testing.T) {
 		}
 	}
 }
+
+func TestExpandIncludes(t *testing.T) {
+	files := map[string]string{"a.glsl": "float a;\n", "b.glsl": "float b;"}
+	read := func(f string) ([]byte, error) {
+		if s, ok := files[f]; ok {
+			return []byte(s), nil
+		}
+		return nil, errors.New("Missing", "no such file")
+	}
+	got, err := expandIncludes("p", "frag", "#version 300 es\n//#include \"a.glsl\"\nvoid main() {}\n  //#include \"b.glsl\"  \nend", read)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "#version 300 es\nfloat a;\nvoid main() {}\nfloat b;\nend"
+	if got != want {
+		t.Errorf("expanded = %q, want %q", got, want)
+	}
+	// No include lines: the source is as it was.
+	if got, err := expandIncludes("p", "frag", "x\n// #include is only a comment\n", read); err != nil || got != "x\n// #include is only a comment\n" {
+		t.Errorf("plain source = %q, %v", got, err)
+	}
+	for _, src := range []string{"//#include a.glsl", "//#include \"a.glsl", "//#include \"\"x"} {
+		_, err := expandIncludes("p", "frag", src, read)
+		appErr := routeOf(t, err, "ShaderIncludeInvalid")
+		if !appErr.HasRoute("expandIncludes.ShaderIncludeInvalid") || appErr.Metadata["program"] != "p" {
+			t.Errorf("%q: route %s", src, appErr.Route())
+		}
+	}
+	_, err = expandIncludes("p", "vert", "//#include \"nope.glsl\"", read)
+	appErr := routeOf(t, err, "ShaderSourceMissing")
+	if !appErr.HasRoute("expandIncludes.ShaderSourceMissing") || appErr.Metadata["include"] != "nope.glsl" || appErr.Metadata["stage"] != "vert" {
+		t.Errorf("route %s, metadata %v", appErr.Route(), appErr.Metadata)
+	}
+}
+
+func TestEmbeddedShadersHaveNoUnexpandedIncludes(t *testing.T) {
+	names, _ := ShaderNames()
+	for _, n := range names {
+		for _, stage := range []string{"vert", "frag"} {
+			src, err := ShaderSource(n, stage)
+			if err != nil {
+				t.Fatalf("%s.%s: %v", n, stage, err)
+			}
+			if strings.Contains(src, "//#include") {
+				t.Errorf("%s.%s still has an include line", n, stage)
+			}
+			if !strings.HasPrefix(src, "#version 300 es") {
+				t.Errorf("%s.%s does not start with the version", n, stage)
+			}
+		}
+	}
+	for _, want := range []string{"shape", "mask", "image", "vertices"} {
+		found := false
+		for _, n := range names {
+			found = found || n == want
+		}
+		if !found {
+			t.Errorf("no %s program", want)
+		}
+	}
+}

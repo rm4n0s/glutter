@@ -161,9 +161,11 @@ func (c Clip) Equal(o Clip) bool {
 	return len(c.Shapes) == 0 || &c.Shapes[0] == &o.Shapes[0]
 }
 
-// withShape returns the clip with a shape added. The bounds narrow to the area
+// withShape returns the clip with a shape added. The bounds narrow to the pixels
 // the shape can reach, given as a rectangle in the shape's coordinates, unless
-// the shape is subtracted.
+// the shape is subtracted. They narrow to whole pixels: the shape's own edge,
+// anti-aliased or not, is for the renderer to draw from the shape, and must not
+// be applied again by the bounds.
 func (c Clip) withShape(s ClipShape, extent ui.Rect) Clip {
 	shapes := make([]ClipShape, len(c.Shapes)+1)
 	copy(shapes, c.Shapes)
@@ -172,7 +174,7 @@ func (c Clip) withShape(s ClipShape, extent ui.Rect) Clip {
 	if !s.Difference {
 		reach := s.Transform.TransformRect(extent)
 		if reach.IsFinite() {
-			b = b.Intersect(reach)
+			b = b.Intersect(ui.Rect{Left: math.Floor(reach.Left), Top: math.Floor(reach.Top), Right: math.Ceil(reach.Right), Bottom: math.Ceil(reach.Bottom)})
 		}
 	}
 	return Clip{Bounds: b, Shapes: shapes}

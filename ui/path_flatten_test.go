@@ -133,3 +133,58 @@ func TestPathFlattenIsBounded(t *testing.T) {
 		t.Errorf("%+v", got)
 	}
 }
+
+func TestPathFingerprint(t *testing.T) {
+	build := func(fn func(p *Path)) uint64 {
+		p := NewPath()
+		fn(p)
+		return p.Fingerprint()
+	}
+	square := func(p *Path) { p.AddRect(NewRectFromLTWH(0, 0, 10, 10)) }
+	base := build(square)
+	tests := []struct {
+		name string
+		fn   func(p *Path)
+		same bool
+	}{
+		{"the same contents", square, true},
+		{"built by hand with the same verbs and points", func(p *Path) {
+			p.MoveTo(0, 0)
+			p.LineTo(10, 0)
+			p.LineTo(10, 10)
+			p.LineTo(0, 10)
+			p.Close()
+		}, true}, // the fingerprint is of the contents, not of how the path was built
+		{"the same square with another start", func(p *Path) {
+			p.MoveTo(10, 0)
+			p.LineTo(10, 10)
+			p.LineTo(0, 10)
+			p.LineTo(0, 0)
+			p.Close()
+		}, false},
+		{"moved", func(p *Path) { p.AddRect(NewRectFromLTWH(1, 0, 10, 10)) }, false},
+		{"a different size", func(p *Path) { p.AddRect(NewRectFromLTWH(0, 0, 10, 11)) }, false},
+		{"another fill type", func(p *Path) { square(p); p.SetFillType(PathFillTypeEvenOdd) }, false},
+		{"a second contour", func(p *Path) { square(p); p.AddRect(NewRectFromLTWH(20, 0, 5, 5)) }, false},
+		{"a conic weight", func(p *Path) { p.MoveTo(0, 0); p.ConicTo(5, 0, 5, 5, 0.5) }, false},
+	}
+	for _, tt := range tests {
+		got := build(tt.fn)
+		if (got == base) != tt.same {
+			t.Errorf("%s: fingerprint equal to the square's = %v, want %v", tt.name, got == base, tt.same)
+		}
+	}
+	if build(func(p *Path) { p.MoveTo(0, 0); p.ConicTo(5, 0, 5, 5, 0.5) }) == build(func(p *Path) { p.MoveTo(0, 0); p.ConicTo(5, 0, 5, 5, 0.7) }) {
+		t.Error("conics with different weights have the same fingerprint")
+	}
+	e1, e2 := NewPath(), NewPath()
+	if e1.Fingerprint() != e2.Fingerprint() {
+		t.Error("empty paths differ")
+	}
+	// A fill type left unspecified is the default one.
+	a, b := NewPath(), NewPath()
+	b.SetFillType(PathFillTypeNonZero)
+	if a.Fingerprint() != b.Fingerprint() {
+		t.Error("the default fill type and nonZero differ")
+	}
+}

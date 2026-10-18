@@ -477,7 +477,8 @@ func ShaderNames() ([]string, error) {
 }
 
 // ShaderSource returns the GLSL source of a stage ("vert" or "frag") of a
-// program.
+// program. A line of the form //#include "name.glsl" is replaced by the contents
+// of that file of the shaders directory, so that shaders share code.
 //
 // Flutter: no counterpart
 func ShaderSource(name, stage string) (string, error) {
@@ -485,7 +486,36 @@ func ShaderSource(name, stage string) (string, error) {
 	if err != nil {
 		return "", errors.NewErr("ShaderSourceMissing", err).SetMetadata("program", name, "stage", stage)
 	}
-	return string(data), nil
+	return expandIncludes(name, stage, string(data), func(file string) ([]byte, error) {
+		return shaderFiles.ReadFile("shaders/" + file)
+	})
+}
+
+// expandIncludes replaces the include lines of a shader's source with the files
+// that read returns.
+func expandIncludes(name, stage, source string, read func(file string) ([]byte, error)) (string, error) {
+	var out strings.Builder
+	for _, line := range strings.SplitAfter(source, "\n") {
+		trimmed := strings.TrimSpace(line)
+		rest, ok := strings.CutPrefix(trimmed, "//#include")
+		if !ok {
+			out.WriteString(line)
+			continue
+		}
+		file, ok := strings.CutSuffix(strings.TrimPrefix(strings.TrimSpace(rest), "\""), "\"")
+		if !ok || !strings.HasPrefix(strings.TrimSpace(rest), "\"") {
+			return "", errors.New("ShaderIncludeInvalid", "an include line needs a quoted file name", "program", name, "stage", stage, "line", trimmed)
+		}
+		inc, err := read(file)
+		if err != nil {
+			return "", errors.NewErr("ShaderSourceMissing", err).SetMetadata("program", name, "stage", stage, "include", file)
+		}
+		out.Write(inc)
+		if !strings.HasSuffix(string(inc), "\n") {
+			out.WriteByte('\n')
+		}
+	}
+	return out.String(), nil
 }
 
 // Program returns the program of the named shader files, compiling it the first
