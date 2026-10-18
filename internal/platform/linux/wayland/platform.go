@@ -44,6 +44,9 @@ type Platform struct {
 	handler   platform.Handler
 	windows   map[ui.ViewID]*window
 	keyboard  *keyboard // nil when the seat has none
+	pointer   *pointer  // likewise
+	touch     *touch    // likewise
+	cursors   *cursors
 	nextView  ui.ViewID
 	hadWindow bool
 	// failure is the first error that a callback could not return; Run returns
@@ -100,6 +103,7 @@ func newPlatform(conn *wl.Conn, opts Options) (*Platform, error) {
 		src:     &connSource{conn: conn},
 		windows: map[ui.ViewID]*window{},
 	}
+	p.cursors = newCursors(p)
 	sess.onSeatCaps = p.updateSeat
 	p.updateSeat(sess.seatCaps)
 	return p, nil
@@ -116,10 +120,8 @@ func (p *Platform) Close() error {
 	for _, w := range p.windows {
 		w.Close()
 	}
-	if p.keyboard != nil {
-		p.keyboard.close()
-		p.keyboard = nil
-	}
+	p.closeSeatDevices()
+	p.cursors.close()
 	p.sess.close()
 	return p.loop.Close()
 }

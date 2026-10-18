@@ -4,14 +4,6 @@ package platform
 // live here, in the internal package, so the public ui package gets no stub
 // types. The step that defines the real type replaces its placeholder.
 
-// MouseCursor is the cursor shown over a window.
-//
-// TODO(step 1.8): the cursor kinds (basic, click, text, grab, grabbing,
-// resize*, wait, forbidden, none).
-//
-// Flutter: services/mouse_cursor.dart MouseCursor
-type MouseCursor int
-
 // TextInputState is what the IME needs to know about the focused text field.
 //
 // TODO(step 11.2): enabled flag, cursor rectangle, surrounding text, content

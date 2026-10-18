@@ -101,6 +101,9 @@ type window struct {
 	// request that arrives meanwhile waits for it.
 	frameInFlight  bool
 	frameRequested bool
+
+	// cursor is the cursor over the window, set with SetCursor.
+	cursor platform.MouseCursor
 }
 
 var _ platform.Window = (*window)(nil)
@@ -447,12 +450,16 @@ func (w *window) SetState(state platform.WindowState) {
 	}
 }
 
-// SetCursor does nothing yet.
-//
-// TODO(step 1.8): wp_cursor_shape_v1 or the XCursor theme.
+// SetCursor sets the cursor over the window. It takes effect at once when the
+// pointer is in the window, and whenever the pointer enters it.
 //
 // Flutter: no counterpart
-func (w *window) SetCursor(platform.MouseCursor) {}
+func (w *window) SetCursor(cursor platform.MouseCursor) {
+	w.cursor = cursor
+	if pt := w.p.pointer; pt != nil && pt.focus == w {
+		w.p.cursors.apply(pt, cursor)
+	}
+}
 
 // SetTextInput does nothing yet.
 //
@@ -490,8 +497,16 @@ func (w *window) Close() {
 // window. It does not touch the platform's list of windows.
 func (w *window) destroy() {
 	w.closed = true
+	// The input devices let go of the window while it still counts: held keys are
+	// released, the pointer leaves, and fingers are cancelled.
 	if kb := w.p.keyboard; kb != nil {
-		kb.windowClosed(w) // releases the keys that are held, while the window still counts
+		kb.windowClosed(w)
+	}
+	if pt := w.p.pointer; pt != nil {
+		pt.windowClosed(w)
+	}
+	if t := w.p.touch; t != nil {
+		t.windowClosed(w)
 	}
 	if w.eglWindow != 0 {
 		w.egl.destroy(w.eglWindow) // before the wl_surface it draws on

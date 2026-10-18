@@ -59,19 +59,6 @@ type repeating struct {
 	stop  func()
 }
 
-// updateSeat creates the keyboard when the seat has one, and drops it when the
-// seat loses it.
-func (p *Platform) updateSeat(caps wl.WlSeatCapability) {
-	has := caps&wl.WlSeatCapabilityKeyboard != 0
-	switch {
-	case has && p.keyboard == nil:
-		p.keyboard = newKeyboard(p)
-	case !has && p.keyboard != nil:
-		p.keyboard.close()
-		p.keyboard = nil
-	}
-}
-
 func newKeyboard(p *Platform) *keyboard {
 	k := &keyboard{
 		p:     p,

@@ -89,8 +89,21 @@ func (c *fakeClock) advance(d time.Duration) {
 // keyHandler records the key events.
 type keyHandler struct {
 	platform.NopHandler
-	mu   sync.Mutex
-	keys []ui.KeyData
+	mu      sync.Mutex
+	keys    []ui.KeyData
+	batches [][]ui.PointerData
+}
+
+func (h *keyHandler) OnPointer(batch []ui.PointerData) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.batches = append(h.batches, append([]ui.PointerData(nil), batch...))
+}
+
+func (h *keyHandler) pointerBatches() [][]ui.PointerData {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return append([][]ui.PointerData(nil), h.batches...)
 }
 
 func (h *keyHandler) OnKey(d ui.KeyData) {
@@ -116,6 +129,8 @@ type keyEnv struct {
 	cancel  context.CancelFunc
 	done    chan error
 	seen    int // key events already checked
+
+	seenBatches int // pointer batches already checked
 }
 
 // startKeyboard starts a platform whose keyboard uses the layout, with a window
@@ -176,6 +191,20 @@ func (e *keyEnv) onLoop(fn func() bool) bool {
 	case <-time.After(testTimeout):
 		e.t.Fatal("the loop did not run a posted function")
 		return false
+	}
+}
+
+// onLoopErr runs fn on the UI thread and returns its error.
+func (e *keyEnv) onLoopErr(fn func() error) error {
+	e.t.Helper()
+	res := make(chan error, 1)
+	e.p.Post(func() { res <- fn() })
+	select {
+	case err := <-res:
+		return err
+	case <-time.After(testTimeout):
+		e.t.Fatal("the loop did not run a posted function")
+		return nil
 	}
 }
 

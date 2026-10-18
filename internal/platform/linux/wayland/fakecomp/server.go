@@ -319,9 +319,14 @@ func (s *Server) handle(id uint32, op uint16, r *reader) {
 		ptr := r.u32()
 		s.addObject(ptr, "wl_pointer")
 		s.record("wl_seat.get_pointer")
-		surface := s.ID("wl_surface")
-		s.Send(ptr, 0, uint32(11), surface, Fixed(10.5), Fixed(-3.25)) // enter
-		s.Send(ptr, 2, uint32(1234), Fixed(0.125), Fixed(99))          // motion
+		if surface := s.ID("wl_surface"); surface != 0 {
+			s.Send(ptr, 0, uint32(11), surface, Fixed(10.5), Fixed(-3.25)) // enter
+			s.Send(ptr, 2, uint32(1234), Fixed(0.125), Fixed(99))          // motion
+		}
+	case "wl_seat.2": // get_touch(id)
+		t := r.u32()
+		s.addObject(t, "wl_touch")
+		s.record("wl_seat.get_touch")
 	case "wl_seat.1": // get_keyboard(id)
 		kb := r.u32()
 		s.addObject(kb, "wl_keyboard")
@@ -373,7 +378,7 @@ func (s *Server) handle(id uint32, op uint16, r *reader) {
 	case "xdg_wm_base.3": // pong(serial)
 		s.record("xdg_wm_base.pong serial=%d", r.u32())
 	default:
-		if !s.handleWindowing(iface, op, id, r) {
+		if !s.handleInput(iface, op, id, r) && !s.handleWindowing(iface, op, id, r) {
 			s.t.Errorf("fake server: unexpected request %s opcode %d on object %d", iface, op, id)
 		}
 	}

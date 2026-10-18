@@ -84,6 +84,11 @@ type session struct {
 	// decorationManager is nil when the compositor has no
 	// zxdg_decoration_manager_v1.
 	decorationManager *wl.ZxdgDecorationManagerV1
+	// gestures is nil without zwp_pointer_gestures_v1 (touchpad pinch and swipe).
+	gestures *wl.ZwpPointerGesturesV1
+	// cursorShape is nil without wp_cursor_shape_manager_v1; the cursors then come
+	// from the XCursor theme.
+	cursorShape *wl.WpCursorShapeManagerV1
 
 	// optionalPresent holds the optional globals that the compositor offers.
 	optionalPresent map[string]Global
@@ -177,6 +182,12 @@ func (s *session) recordOptional() {
 	// bound by the step that needs them.
 	if g, ok := s.optionalPresent[wl.ZxdgDecorationManagerV1Interface.Name]; ok {
 		s.decorationManager = wl.BindZxdgDecorationManagerV1(s.registry, g.Name, bindVersion(g, 1))
+	}
+	if g, ok := s.optionalPresent[wl.ZwpPointerGesturesV1Interface.Name]; ok {
+		s.gestures = wl.BindZwpPointerGesturesV1(s.registry, g.Name, bindVersion(g, 1))
+	}
+	if g, ok := s.optionalPresent[wl.WpCursorShapeManagerV1Interface.Name]; ok {
+		s.cursorShape = wl.BindWpCursorShapeManagerV1(s.registry, g.Name, bindVersion(g, 1))
 	}
 }
 

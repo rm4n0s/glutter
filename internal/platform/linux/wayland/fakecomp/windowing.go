@@ -142,6 +142,8 @@ func (s *Server) handleWindowing(iface string, op uint16, id uint32, r *reader) 
 		s.record("wl_shm_pool.create_buffer %dx%d offset=%d stride=%d format=%d", w, h, offset, stride, format)
 	case "wl_shm_pool.1":
 		s.record("wl_shm_pool.destroy")
+	case "wl_shm_pool.2": // resize(size)
+		s.record("wl_shm_pool.resize %d", r.i32())
 	case "wl_buffer.0":
 		s.record("wl_buffer.destroy")
 	case "xdg_wm_base.2": // get_xdg_surface(id, surface)
@@ -321,4 +323,15 @@ func (s *Server) HeldFrames() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return len(s.win.held)
+}
+
+// WindowSurface returns the object ID of the wl_surface of the newest toplevel.
+// ID("wl_surface") is the newest surface of any kind, such as a cursor's.
+//
+// Flutter: no counterpart
+func (s *Server) WindowSurface() uint32 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.win.init()
+	return s.win.xdgSurface[s.win.toplevel[s.win.lastTop]]
 }
