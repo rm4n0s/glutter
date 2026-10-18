@@ -11,7 +11,8 @@
 // window, press buttons, use the wheel, scroll or pinch on a touchpad, touch the
 // screen. Press Escape or close the window to quit.
 //
-// Environment: GLUTTER_DEV_SHM=1 draws through a wl_shm buffer instead of EGL,
+// Environment: GLUTTER_DEV_BACKEND=x11 or wayland picks the windowing system (else
+// the session's), GLUTTER_DEV_SHM=1 draws through a wl_shm buffer instead of EGL,
 // and XCURSOR_THEME and XCURSOR_SIZE choose the cursor theme when the compositor
 // does not draw the cursors itself.
 package main
@@ -26,9 +27,9 @@ import (
 	"time"
 
 	"github.com/rm4n0s/errors"
+	"github.com/rm4n0s/glutter/examples/dev/devbackend"
 	"github.com/rm4n0s/glutter/internal/gpu/gles"
 	"github.com/rm4n0s/glutter/internal/platform"
-	"github.com/rm4n0s/glutter/internal/platform/linux/wayland"
 	"github.com/rm4n0s/glutter/ui"
 )
 
@@ -56,7 +57,7 @@ func run() error {
 	defer cancel()
 
 	useShm := os.Getenv("GLUTTER_DEV_SHM") == "1"
-	p, err := wayland.New("", wayland.Options{ShmFill: useShm})
+	p, err := devbackend.New(useShm)
 	if err != nil {
 		return err
 	}

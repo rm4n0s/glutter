@@ -20,6 +20,14 @@ type fakeEGL struct {
 	configAttribs, contextAttribs                                                                     []int32
 	swapIntervalValue                                                                                 int32
 	procs                                                                                             map[string]uintptr
+	surfaceX11                                                                                        bool
+	visualID                                                                                          int32
+	noVisual                                                                                          bool
+}
+
+func (f *fakeEGL) getConfigAttrib(_, _ uintptr, attribute int32) (int32, bool) {
+	f.call("getConfigAttrib")
+	return f.visualID, attribute == eglNativeVisualID && !f.noVisual
 }
 
 func newFakeEGL() *fakeEGL {
@@ -57,9 +65,9 @@ func (f *fakeEGL) createContext(_, _ uintptr, attribs []int32) uintptr {
 	}
 	return 0xC7
 }
-func (f *fakeEGL) createWindowSurface(_, _, window uintptr) uintptr {
+func (f *fakeEGL) createWindowSurface(_, _, window uintptr, x11 bool) uintptr {
 	f.call("createWindowSurface")
-	f.nativeWindow = window
+	f.nativeWindow, f.surfaceX11 = window, x11
 	if f.surfaceFails {
 		return 0
 	}
@@ -473,5 +481,77 @@ func TestOpenReportsGLESLoadFailed(t *testing.T) {
 	appErr, ok := errors.FromError(err)
 	if !ok || appErr.Tag != "EGLLoadFailed" || appErr.Metadata["library"] != "libGLESv2" {
 		t.Errorf("Open returned %v, want EGLLoadFailed for libGLESv2", err)
+	}
+}
+
+func TestX11VisualReturnsTheVisualOfTheChosenConfig(t *testing.T) {
+	f := newFakeEGL()
+	f.visualID = 0x21
+	id, err := x11VisualWith(f, 0xD0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id != 0x21 {
+		t.Errorf("visual = 0x%x, want 0x21", id)
+	}
+	if f.platform != eglPlatformX11 || f.nativeDisplay != 0xD0 {
+		t.Errorf("platform 0x%x on display 0x%x, want the X11 platform on the Xlib display", f.platform, f.nativeDisplay)
+	}
+	if !reflect.DeepEqual(f.configAttribs, configAttribs) {
+		t.Error("the visual comes from a different config than the one Open uses")
+	}
+	if last := f.calls[len(f.calls)-1]; last != "terminate" {
+		t.Errorf("the last call is %s: the display must be terminated again", last)
+	}
+}
+
+func TestX11VisualFailures(t *testing.T) {
+	tests := []struct {
+		name  string
+		tweak func(*fakeEGL)
+		route string
+	}{
+		{"no display", func(f *fakeEGL) { f.displayFails = true }, "x11VisualWith->eglError.EGLInitFailed"},
+		{"no initialization", func(f *fakeEGL) { f.initFails = true }, "x11VisualWith->eglError.EGLInitFailed"},
+		{"no GLES", func(f *fakeEGL) { f.bindFails = true }, "x11VisualWith->eglError.GLES3Unsupported"},
+		{"no config", func(f *fakeEGL) { f.noConfig = true }, "x11VisualWith->eglError.EGLNoConfig"},
+		{"no native visual", func(f *fakeEGL) { f.noVisual = true }, "x11VisualWith->eglError.EGLConfigQueryFailed"},
+		{"visual 0", func(f *fakeEGL) { f.visualID = 0 }, "x11VisualWith->eglError.EGLConfigQueryFailed"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newFakeEGL()
+			f.visualID = 0x21
+			tt.tweak(f)
+			_, err := x11VisualWith(f, 1)
+			appErr, ok := errors.FromError(err)
+			if !ok {
+				t.Fatalf("expected *errors.Error, got %T", err)
+			}
+			if !appErr.HasRoute(tt.route) {
+				t.Errorf("unexpected failure path: %s, want %s", appErr.Route(), tt.route)
+			}
+		})
+	}
+}
+
+func TestX11SurfaceIsMadeFromTheWindowID(t *testing.T) {
+	f := newFakeEGL()
+	g := &fakeGL{versionString: "OpenGL ES 3.2 Mesa"}
+	h := gpu.SurfaceHandle{Kind: gpu.SurfaceKindX11, Display: 0xD0, Window: 0x4000007}
+	_, s, err := openWith(f, func(eglAPI) (glAPI, error) { return g, nil }, h)
+	if err != nil || s == nil {
+		t.Fatalf("openWith = %v", err)
+	}
+	if !f.surfaceX11 || f.nativeWindow != 0x4000007 || f.platform != eglPlatformX11 {
+		t.Errorf("x11 %v window 0x%x platform 0x%x", f.surfaceX11, f.nativeWindow, f.platform)
+	}
+	// A Wayland surface is not an X11 one.
+	f2 := newFakeEGL()
+	if _, _, err := openWith(f2, func(eglAPI) (glAPI, error) { return g, nil }, gpu.SurfaceHandle{Kind: gpu.SurfaceKindWayland, Display: 1, Window: 2}); err != nil {
+		t.Fatal(err)
+	}
+	if f2.surfaceX11 {
+		t.Error("a Wayland window was passed as an X11 one")
 	}
 }

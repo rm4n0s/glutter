@@ -247,6 +247,14 @@ func (s *State) UpdateMask(depressed, latched, locked, group uint32) {
 	s.lib.stateUpdateMask(s.ptr, depressed, latched, locked, 0, 0, group)
 }
 
+// UpdateMaskGroups is UpdateMask for a source that reports the layout group in
+// three parts, as X11 does: the base (depressed), latched and locked group.
+//
+// Flutter: no counterpart
+func (s *State) UpdateMaskGroups(depressed, latched, locked, baseGroup, latchedGroup, lockedGroup uint32) {
+	s.lib.stateUpdateMask(s.ptr, depressed, latched, locked, baseGroup, latchedGroup, lockedGroup)
+}
+
 // KeyOneSym returns the keysym that the key produces now, with the active
 // modifiers and layout, or 0 when there is none or there are several.
 //

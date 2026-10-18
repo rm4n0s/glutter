@@ -30,6 +30,7 @@ const (
 	eglContextClientVers = 0x3098
 	eglPlatformWayland   = 0x31D8 // EGL_PLATFORM_WAYLAND_KHR
 	eglPlatformX11       = 0x31D5 // EGL_PLATFORM_X11_KHR
+	eglNativeVisualID    = 0x302E // EGL_NATIVE_VISUAL_ID
 	eglSuccess           = 0x3000
 )
 
@@ -43,7 +44,11 @@ type eglAPI interface {
 	chooseConfig(display uintptr, attribs []int32) (config uintptr, ok bool)
 	bindAPI(api uint32) bool
 	createContext(display, config uintptr, attribs []int32) uintptr
-	createWindowSurface(display, config, nativeWindow uintptr) uintptr
+	// createWindowSurface makes a window surface for the native window: a
+	// wl_egl_window, or (x11 true) the ID of an X window.
+	createWindowSurface(display, config, nativeWindow uintptr, x11 bool) uintptr
+	// getConfigAttrib reads one attribute of a config.
+	getConfigAttrib(display, config uintptr, attribute int32) (value int32, ok bool)
 	makeCurrent(display, draw, read, context uintptr) bool
 	swapInterval(display uintptr, interval int32) bool
 	swapBuffers(display, surface uintptr) bool
@@ -68,6 +73,7 @@ type eglLib struct {
 	createContextFn            func(display, config, share, attribs uintptr) uintptr
 	createPlatformWindowSurfFn func(display, config, native, attribs uintptr) uintptr
 	createWindowSurfaceFn      func(display, config, native, attribs uintptr) uintptr
+	getConfigAttribFn          func(display, config uintptr, attribute int32, value uintptr) uint32
 	makeCurrentFn              func(display, draw, read, context uintptr) uint32
 	swapIntervalFn             func(display uintptr, interval int32) uint32
 	swapBuffersFn              func(display, surface uintptr) uint32
@@ -105,6 +111,7 @@ func loadEGL() (*eglLib, error) {
 		{&l.bindAPIFn, "eglBindAPI"},
 		{&l.createContextFn, "eglCreateContext"},
 		{&l.createWindowSurfaceFn, "eglCreateWindowSurface"},
+		{&l.getConfigAttribFn, "eglGetConfigAttrib"},
 		{&l.makeCurrentFn, "eglMakeCurrent"},
 		{&l.swapIntervalFn, "eglSwapInterval"},
 		{&l.swapBuffersFn, "eglSwapBuffers"},
@@ -197,11 +204,29 @@ func (l *eglLib) createContext(display, config uintptr, attribs []int32) uintptr
 	return l.createContextFn(display, config, 0, attrs)
 }
 
-func (l *eglLib) createWindowSurface(display, config, nativeWindow uintptr) uintptr {
+func (l *eglLib) createWindowSurface(display, config, nativeWindow uintptr, x11 bool) uintptr {
 	if l.hasGetPlatformDisplay || l.hasGetPlatformDisplayEXT {
-		return l.createPlatformWindowSurfFn(display, config, nativeWindow, 0)
+		native := nativeWindow
+		if x11 {
+			// The platform function wants a pointer to the X window ID, where the
+			// older one wants the ID itself.
+			mem := dl.Calloc(1, 8)
+			defer dl.Free(mem)
+			*(*uint64)(dl.Pointer(mem)) = uint64(nativeWindow)
+			native = mem
+		}
+		return l.createPlatformWindowSurfFn(display, config, native, 0)
 	}
 	return l.createWindowSurfaceFn(display, config, nativeWindow, 0)
+}
+
+func (l *eglLib) getConfigAttrib(display, config uintptr, attribute int32) (int32, bool) {
+	mem := dl.Calloc(1, 4)
+	defer dl.Free(mem)
+	if l.getConfigAttribFn(display, config, attribute, mem) == 0 {
+		return 0, false
+	}
+	return *(*int32)(dl.Pointer(mem)), true
 }
 
 func (l *eglLib) makeCurrent(display, draw, read, context uintptr) bool {

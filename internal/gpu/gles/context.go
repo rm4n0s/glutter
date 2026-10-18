@@ -162,7 +162,7 @@ func (c *Context) Version() string { return c.version }
 //
 // Flutter: no counterpart
 func (c *Context) NewSurface(h gpu.SurfaceHandle) (*Surface, error) {
-	handle := c.egl.createWindowSurface(c.display, c.config, h.Window)
+	handle := c.egl.createWindowSurface(c.display, c.config, h.Window, h.Kind == gpu.SurfaceKindX11)
 	if handle == 0 {
 		return nil, eglError(c.egl, "EGLSurfaceFailed", "could not create an EGL window surface")
 	}
@@ -261,4 +261,48 @@ func (c *Context) Close() {
 	c.surface = nil
 	_ = c.egl.destroyContext(c.display, c.context)
 	_ = c.egl.terminate(c.display)
+}
+
+// X11Visual returns the ID of the X visual that windows must use to be drawn with
+// OpenGL ES through EGL on the Xlib display: the visual of the EGL config that
+// Open chooses. Create the X window with this visual (and a colormap made for
+// it), or eglCreateWindowSurface fails with BadMatch. It fails with
+//
+//   - EGLLoadFailed, EGLInitFailed and EGLNoConfig as Open does
+//   - EGLConfigQueryFailed when the config has no native visual
+//
+// Flutter: no counterpart
+func X11Visual(display uintptr) (uint32, error) {
+	egl, err := loadEGL()
+	if err != nil {
+		return 0, err
+	}
+	return x11VisualWith(egl, display)
+}
+
+// x11VisualWith is X11Visual with the EGL implementation given, for tests.
+func x11VisualWith(egl eglAPI, display uintptr) (uint32, error) {
+	d := egl.getPlatformDisplay(eglPlatformX11, display)
+	if d == 0 {
+		return 0, eglError(egl, "EGLInitFailed", "EGL has no display for the native display", "step", "eglGetPlatformDisplay")
+	}
+	if _, _, ok := egl.initialize(d); !ok {
+		return 0, eglError(egl, "EGLInitFailed", "eglInitialize failed", "step", "eglInitialize")
+	}
+	// The display is terminated again: EGL keeps the driver's connection to the X
+	// display until then, and the Xlib display may be closed (and its address
+	// reused by the next one) before Open initializes it again.
+	defer egl.terminate(d)
+	if !egl.bindAPI(eglOpenGLESAPI) {
+		return 0, eglError(egl, "GLES3Unsupported", "this EGL has no OpenGL ES API", "step", "eglBindAPI")
+	}
+	config, ok := egl.chooseConfig(d, configAttribs)
+	if !ok {
+		return 0, eglError(egl, "EGLNoConfig", "no EGL config has RGBA8 and OpenGL ES 3 window surfaces")
+	}
+	id, ok := egl.getConfigAttrib(d, config, eglNativeVisualID)
+	if !ok || id == 0 {
+		return 0, eglError(egl, "EGLConfigQueryFailed", "the EGL config has no native visual", "step", "eglGetConfigAttrib")
+	}
+	return uint32(id), nil
 }

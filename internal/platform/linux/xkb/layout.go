@@ -57,11 +57,19 @@ func NewLayout(keymap *Keymap, compose *Compose) (*Layout, error) {
 		}
 		return nil, err
 	}
+	return NewLayoutWithState(keymap, state, compose), nil
+}
+
+// NewLayoutWithState is NewLayout with a state that already exists, such as one
+// from NewStateFromX11. The Layout takes ownership of the state as well.
+//
+// Flutter: no counterpart
+func NewLayoutWithState(keymap *Keymap, state *State, compose *Compose) *Layout {
 	goals := map[Keycode]linux.LayoutGoal{}
 	for _, g := range linux.LayoutGoals() {
 		goals[g.Keycode] = g
 	}
-	return &Layout{keymap: keymap, state: state, compose: compose, goals: goals}, nil
+	return &Layout{keymap: keymap, state: state, compose: compose, goals: goals}
 }
 
 // Close releases the keymap, the state and the compose table.
@@ -79,6 +87,14 @@ func (l *Layout) Close() {
 //
 // Flutter: no counterpart
 func (l *Layout) Keymap() *Keymap { return l.keymap }
+
+// UpdateMaskGroups sets the modifiers and the layout group the way X11 reports
+// them: the group in its base, latched and locked parts.
+//
+// Flutter: no counterpart
+func (l *Layout) UpdateMaskGroups(depressed, latched, locked, baseGroup, latchedGroup, lockedGroup uint32) {
+	l.state.UpdateMaskGroups(depressed, latched, locked, baseGroup, latchedGroup, lockedGroup)
+}
 
 // UpdateMask sets the modifiers and the layout group, as wl_keyboard.modifiers
 // reports them. A pending compose sequence is not touched.

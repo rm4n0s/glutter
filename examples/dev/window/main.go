@@ -1,15 +1,17 @@
-// Command window opens a 640x400 Wayland window titled "Glutter dev window" and
+// Command window opens a 640x400 window (Wayland or X11) titled "Glutter dev window" and
 // fills it with #6750A4 using OpenGL ES, drawing a new frame each time the
 // compositor asks for one. It is the first development example (milestone 1): it
 // uses the internal packages directly, before the public API exists.
 //
 // Run it with: go run ./examples/dev/window
 //
-// It needs a Wayland session. To try it without one, run it under the headless
-// compositor: scripts/headless-wayland.sh -- go run ./examples/dev/window
+// It needs a Wayland or X11 session. To try it without one, run it under a
+// headless server: scripts/headless-wayland.sh -- go run ./examples/dev/window
+// or scripts/headless-x11.sh -- go run ./examples/dev/window
 //
 // Environment (read in debug builds only, as the examples promise):
 //
+//	GLUTTER_DEV_BACKEND=x11|wayland   the windowing system (else the session's)
 //	GLUTTER_DEV_SHM=1                 draw through a wl_shm buffer instead of EGL
 //	GLUTTER_SCREENSHOT=<file.png>     save the window content to the file and exit
 //	GLUTTER_SCREENSHOT_AFTER=<time>   wait that long (such as 500ms) before saving
@@ -26,10 +28,10 @@ import (
 	"time"
 
 	"github.com/rm4n0s/errors"
+	"github.com/rm4n0s/glutter/examples/dev/devbackend"
 	"github.com/rm4n0s/glutter/internal/engine"
 	"github.com/rm4n0s/glutter/internal/gpu/gles"
 	"github.com/rm4n0s/glutter/internal/platform"
-	"github.com/rm4n0s/glutter/internal/platform/linux/wayland"
 	"github.com/rm4n0s/glutter/ui"
 )
 
@@ -62,7 +64,7 @@ func run() error {
 		return errors.New("ScreenshotUnsupported", "GLUTTER_SCREENSHOT reads the frame back through OpenGL, so it does not work with GLUTTER_DEV_SHM=1")
 	}
 
-	p, err := wayland.New("", wayland.Options{ShmFill: useShm})
+	p, err := devbackend.New(useShm)
 	if err != nil {
 		return err
 	}
@@ -99,7 +101,7 @@ func run() error {
 // app is the handler: it draws the window with OpenGL ES.
 type app struct {
 	platform.NopHandler
-	p      *wayland.Platform
+	p      platform.Platform
 	win    platform.Window
 	shot   *engine.Screenshot
 	cancel context.CancelFunc

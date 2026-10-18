@@ -330,7 +330,14 @@ Xlib (through purego, as Ebiten does) with EGL (`EGL_PLATFORM_X11_KHR`). The pie
 - **Xrandr** for monitors and refresh rates
 - **XSETTINGS / `Xft.dpi`** for scaling
 
-Frames are paced by `eglSwapInterval(1)` plus a timer at the monitor's refresh rate.
+Frames are paced by `eglSwapInterval(0)` plus a timer at the monitor's refresh rate (XRandR's `XRRConfigCurrentRate`, 60 Hz when libXrandr is missing or says nothing): the first frame is drawn when the window is mapped and after each resize, other frames come one interval after the previous one, and requests in between are merged. (`eglSwapInterval(1)` would make the swap block on a window that is hidden, the same reason as on Wayland, §8.11.)
+
+How the X11 backend does the rest:
+- The window uses the X visual of the EGL config (`gles.X11Visual`), with a colormap of its own; `eglCreatePlatformWindowSurface` gets a pointer to the window ID.
+- Keyboard, pointer and touch all come from XInput2 events of the master devices, and from nothing else: key events carry the modifier and group state, which goes straight into xkbcommon, so no XKB event handling is needed. The server's auto-repeat arrives as key events flagged `XIKeyRepeat` and becomes `KeyRepeatEvent` (SPEC §8.5 repeat timing is the server's). Without libXi or XInput2 on the server the backend has no keyboard and pointer input.
+- Scrolling uses the scroll valuators of the device (the change in notches, 53 logical pixels each, as a scroll signal); the legacy buttons 4 to 7 count only on devices that have no scroll valuators. There is no pan/zoom gesture on X11, so a touchpad scrolls as scroll signals and pinch does not exist.
+- Focus follows `XI_FocusIn`/`XI_FocusOut`; the held keys are released when the window loses it.
+- An X IO error (the server went away) makes Xlib exit the process, as in every Xlib program; there is no connection-lost error like Wayland's.
 
 ### 8.4 Event loop and threading
 

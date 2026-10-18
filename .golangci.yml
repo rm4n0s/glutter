@@ -19,6 +19,14 @@ linters:
         - name: exported
         - name: package-comments
 
+  exclusions:
+    rules:
+      # Go mirrors of C structs list every field, used or not, so that the offsets
+      # of the fields that are used are right (layout tests check them).
+      - path: internal/platform/linux/x11/structs\.go
+        linters:
+          - unused
+
 formatters:
   enable:
     - gofmt

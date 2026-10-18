@@ -10,6 +10,7 @@ import (
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/internal/platform"
 	"github.com/rm4n0s/glutter/internal/platform/linux/dl"
+	"github.com/rm4n0s/glutter/internal/platform/linux/input"
 	"github.com/rm4n0s/glutter/internal/platform/linux/wayland/fakecomp"
 	"github.com/rm4n0s/glutter/ui"
 )
@@ -85,7 +86,7 @@ func TestPointerBatchesAreDeliveredAtFrame(t *testing.T) {
 	}
 	wantChanges(t, got[0], ui.PointerChangeAdd, ui.PointerChangeHover, ui.PointerChangeDown)
 	if got[0][1].PhysicalX != 12 || got[0][1].PhysicalDeltaY != 2 || got[0][2].Buttons != 1 || got[0][0].ViewID != 0 {
-		t.Errorf("batch = %+v", brief2(got[0]))
+		t.Errorf("batch = %+v", got[0])
 	}
 
 	e.srv.PointerButton(0x110, false)
@@ -209,7 +210,7 @@ func TestTouchThroughTheCompositor(t *testing.T) {
 		t.Fatalf("%d batches after the cancel, want 1", len(got))
 	}
 	wantChanges(t, got[0], ui.PointerChangeCancel, ui.PointerChangeRemove)
-	if got[0][0].Device != touchDeviceBase+1 {
+	if got[0][0].Device != input.TouchDeviceBase+1 {
 		t.Errorf("cancelled device %d, want the second finger", got[0][0].Device)
 	}
 }
