@@ -49,3 +49,15 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Proof:** none
 - **Manual checks:** none
 - **Deviations and follow-ups:** the sparse checkout uses git's cone mode, which takes directories only and always includes root files, so `LICENSE` needs no entry. The `version` file named in the step does not exist in this checkout, so `flutter_version` comes from the release tag that points at the pinned commit (`git ls-remote --tags`). `shellcheck` is not installed, so the script was not linted.
+
+## 0.3 Code generator skeleton
+
+- **Date:** 2026-10-18
+- **Branch:** feat/step-0.3-code-generator-skeleton
+- **Summary:** `glutter-gen` dispatches on its first argument to the subcommands `wayland`, `keys`, `reexport`, `copywith` and `icons`; each returns the tagged error `NotImplemented`. A missing or unknown command gives `MissingCommand` or `UnknownCommand`. Errors are printed to stderr as `ToJson()` output and the exit code is 1. `github.com/rm4n0s/errors` is now in `go.mod`.
+- **Main files:** `cmd/glutter-gen/main.go` (thin), `cmd/glutter-gen/run.go` (dispatch and error formatting), `cmd/glutter-gen/run_test.go`, `cmd/glutter-gen/internal/{wayland,keys,reexport,copywith,icons}/`.
+- **Tests:** table test for the dispatch covering all seven cases (no command, unknown command, the five subcommands), each with a route assertion and the `command` metadata; a test that the JSON output replays through `errors.FromJson` with the same route; a test for non-tagged errors. No Flutter tests ported.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · display tests none
+- **Proof:** none (`go run ./cmd/glutter-gen wayland` prints the `NotImplemented` error and exits 1, as the step requires).
+- **Manual checks:** none
+- **Deviations and follow-ups:** a subcommand's route is `dispatch->Run.NotImplemented` for all five, because the errors package leaves package names out of routes; the `command` metadata tells them apart. `MissingCommand` is an addition to the step (no arguments needs some error). The subcommands' `// TODO(step X.Y)` comments point at 1.3 (wayland), 1.7 (keys), 12.2 (copywith), 12.3 (icons) and 12.4 (reexport). No `//go:generate` directives yet; they arrive with the steps that produce generated files (first 1.3).
