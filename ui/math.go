@@ -153,3 +153,6 @@ func dartDouble(x float64) string {
 	}
 	return s
 }
+
+func boolString(b bool) string { return strconv.FormatBool(b) }
+func itoa(i int) string        { return strconv.Itoa(i) }

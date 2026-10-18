@@ -1,0 +1,10 @@
+go test fuzz v1
+[]byte("0X2")
+float64(1e-09)
+float64(1e-09)
+float64(11.000000001)
+float64(1e-09)
+float64(46.000000005)
+float64(1e-09)
+float64(1e-09)
+float64(1.4285714285714285e-10)
