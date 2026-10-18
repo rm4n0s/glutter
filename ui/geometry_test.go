@@ -34,6 +34,61 @@ func TestToStringAsFixed1(t *testing.T) {
 	}
 }
 
+func TestToStringAsFixedDigits(t *testing.T) {
+	tests := []struct {
+		in     float64
+		digits int
+		want   string
+	}{
+		{0.125, 2, "0.13"}, // exact tie: away from zero
+		{-0.125, 2, "-0.13"},
+		{0.375, 2, "0.38"},
+		{0.12345, 4, "0.1235"}, // 0.12345 is a little above in binary
+		{1, 4, "1.0000"},
+		{0.99995, 4, "1.0000"},
+		{9.5, 0, "10"}, // a tie that carries into a new digit
+		{0.5, 0, "1"},
+		{1.5, 0, "2"},
+		{2.5, 0, "3"},
+		{99.95, 1, "100.0"},
+		{0.9999999, 4, "1.0000"},
+	}
+	for _, tt := range tests {
+		if got := toStringAsFixed(tt.in, tt.digits); got != tt.want {
+			t.Errorf("toStringAsFixed(%v, %d) = %q, want %q", tt.in, tt.digits, got, tt.want)
+		}
+	}
+}
+
+func TestDartDouble(t *testing.T) {
+	tests := []struct {
+		in   float64
+		want string
+	}{
+		{0, "0.0"},
+		{math.Copysign(0, -1), "-0.0"},
+		{1, "1.0"},
+		{-2, "-2.0"},
+		{0.5, "0.5"},
+		{0.2126, "0.2126"},
+		{123456.789, "123456.789"},
+		{0.0001, "0.0001"},
+		{0.00001, "1e-5"},
+		{1.5e-7, "1.5e-7"},
+		{1e21, "1e+21"},
+		{1.5e22, "1.5e+22"},
+		{1e20, "100000000000000000000.0"},
+		{math.NaN(), "NaN"},
+		{math.Inf(1), "Infinity"},
+		{math.Inf(-1), "-Infinity"},
+	}
+	for _, tt := range tests {
+		if got := dartDouble(tt.in); got != tt.want {
+			t.Errorf("dartDouble(%v) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}
+
 func TestClampDoubleAndLerpDouble(t *testing.T) {
 	nan := math.NaN()
 	inf := math.Inf(1)

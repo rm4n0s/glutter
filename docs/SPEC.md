@@ -685,6 +685,11 @@ Flutter's `assert` checks become checks that exist only in debug builds (`founda
 | `~/` on `Offset`, `Size`, `Radius` throws for infinity and NaN | `TruncDiv` returns the infinity or NaN | no exceptions in Go |
 | `Matrix4` is `vector_math_64` (float64) | `ui.Matrix4` has float32 storage (§7); `TransformPoint` and `TransformRect` compute in float64 from it | smaller, and what the GPU wants |
 | `RSuperellipse.contains` asks Impeller's `RoundSuperellipse` | an approximation: superellipse of exponent 5 in a box 1.2924 × the radius | Impeller's geometry is not in `reference/`; revisit with the software renderer (step 2.7) |
+| `ColorSpace` starts at `sRGB` | `ColorSpaceSRGB` is the zero value; there is no `ColorSpaceUnspecified` | `Color` is a literal-able value type, and the zero value must be sRGB |
+| `Paint` properties (`paint.color = c`) | accessors `p.Color()` / `p.SetColor(c)`; `Paint{}` is Flutter's `Paint()` | the defaults (opaque black, anti-alias on, srcOver, miter limit 4) are not Go zero values, so the fields are unexported |
+| nullable `double`/`Color` arguments, as in `Color.withValues(alpha: ...)` | `ColorWithValuesOpts{Alpha: ui.Ptr(0.5)}` | package `ui` cannot import `foundation.Opt`; `ui.Ptr` makes the pointer |
+| `ColorFilter`, `ImageFilter` and `MaskFilter` compare with `==` | `a.Equal(b)` | pointers to immutable values |
+| `Gradient`'s and `ImageShader`'s `ArgumentError`s | a panic with the tag `GradientColorCountInvalid` or `GradientStopCountMismatch` | Go has no exceptions (§14.2) |
 
 ### 12.11 One import for apps
 
