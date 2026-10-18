@@ -3,6 +3,7 @@ package wayland
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/internal/platform"
@@ -10,6 +11,16 @@ import (
 	"github.com/rm4n0s/glutter/internal/platform/linux/wayland/wl"
 	"github.com/rm4n0s/glutter/ui"
 )
+
+// Options configures a Platform.
+//
+// Flutter: no counterpart
+type Options struct {
+	// ShmFill makes every window draw a solid color itself, through wl_shm, and
+	// never call Handler.OnFrame. It is a development and test aid for
+	// machines and tests without EGL (GLUTTER_DEV_SHM=1 in the dev examples).
+	ShmFill bool
+}
 
 // Platform is the Wayland backend of platform.Platform. So far it has the
 // connection, the event loop and shared-memory windows.
@@ -25,6 +36,9 @@ type Platform struct {
 
 	mu      sync.Mutex
 	running bool
+
+	opts  Options
+	start time.Time // the origin of the frame times given to Handler.OnFrame
 
 	// The fields below belong to the UI thread.
 	handler   platform.Handler
@@ -45,16 +59,29 @@ var _ platform.Platform = (*Platform)(nil)
 // required protocol. Close releases the connection.
 //
 // Flutter: no counterpart
-func New(name string) (*Platform, error) {
+func New(name string, opts ...Options) (*Platform, error) {
+	if len(opts) > 1 {
+		panic(errors.New("MultipleOptions", "New takes at most one Options value", "count", len(opts)))
+	}
 	conn, err := wl.Connect(name)
 	if err != nil {
 		return nil, err
 	}
-	return newPlatform(conn)
+	var o Options
+	if len(opts) == 1 {
+		o = opts[0]
+	}
+	return newPlatform(conn, o)
 }
 
+// now returns the time for Handler.OnFrame: monotonic, from the start of the
+// platform.
+//
+// TODO(step 3.7): use the timestamp of the frame callback when there is one.
+func (p *Platform) now() time.Duration { return time.Since(p.start) }
+
 // newPlatform builds the platform on a connection that is already open.
-func newPlatform(conn *wl.Conn) (*Platform, error) {
+func newPlatform(conn *wl.Conn, opts Options) (*Platform, error) {
 	sess, err := newSession(conn)
 	if err != nil {
 		return nil, err
@@ -65,6 +92,8 @@ func newPlatform(conn *wl.Conn) (*Platform, error) {
 		return nil, err
 	}
 	return &Platform{
+		opts:    opts,
+		start:   time.Now(),
 		loop:    loop,
 		sess:    sess,
 		src:     &connSource{conn: conn},
@@ -72,11 +101,17 @@ func newPlatform(conn *wl.Conn) (*Platform, error) {
 	}, nil
 }
 
-// Close releases the event loop and the connection. Do not use the platform
-// afterwards, and do not call it while Run is active.
+// Close closes the windows that are still open, then releases the event loop and
+// the connection. Do not use the platform afterwards, and do not call it while
+// Run is active.
 //
 // Flutter: no counterpart
 func (p *Platform) Close() error {
+	// Windows that are still open go first, as their native windows need the
+	// connection (and the renderer must have destroyed its surfaces already).
+	for _, w := range p.windows {
+		w.Close()
+	}
 	p.sess.close()
 	return p.loop.Close()
 }

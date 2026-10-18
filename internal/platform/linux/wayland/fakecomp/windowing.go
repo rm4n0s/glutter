@@ -31,6 +31,10 @@ type windowing struct {
 	bufferSize map[uint32][2]int32
 	serial     uint32
 	decoration map[uint32]uint32 // zxdg_toplevel_decoration_v1 id -> xdg_toplevel id
+
+	frames  map[uint32][]uint32 // wl_surface id -> frame callbacks requested since its last commit
+	held    []uint32            // committed frame callbacks that wait for FrameDone
+	clockMs uint32              // the time of the next frame callback
 }
 
 func (w *windowing) init() {
@@ -45,6 +49,7 @@ func (w *windowing) init() {
 	w.current = map[uint32]uint32{}
 	w.bufferSize = map[uint32][2]int32{}
 	w.decoration = map[uint32]uint32{}
+	w.frames = map[uint32][]uint32{}
 	w.serial = 100
 }
 
@@ -119,6 +124,13 @@ func (s *Server) handleWindowing(iface string, op uint16, id uint32, r *reader) 
 		s.record("wl_surface.damage %d,%d %dx%d", r.i32(), r.i32(), r.i32(), r.i32())
 	case "wl_surface.9": // damage_buffer
 		s.record("wl_surface.damage_buffer %d,%d %dx%d", r.i32(), r.i32(), r.i32(), r.i32())
+	case "wl_surface.3": // frame(callback)
+		cb := r.u32()
+		s.addObject(cb, "wl_callback")
+		s.mu.Lock()
+		s.win.frames[id] = append(s.win.frames[id], cb)
+		s.mu.Unlock()
+		s.record("wl_surface.frame")
 	case "wl_surface.6": // commit
 		s.commit(id)
 	case "wl_shm_pool.0": // create_buffer(id, offset, width, height, stride, format)
@@ -211,6 +223,12 @@ func (s *Server) commit(surface uint32) {
 	if buffer != 0 {
 		s.win.current[surface] = buffer
 	}
+	callbacks := s.win.frames[surface]
+	s.win.frames[surface] = nil
+	if s.holdFrames {
+		s.win.held = append(s.win.held, callbacks...)
+		callbacks = nil
+	}
 	top := s.win.surfaceTop[surface]
 	sendInitial := top != 0 && !s.win.configured[top]
 	var xs, serial uint32
@@ -229,6 +247,7 @@ func (s *Server) commit(surface uint32) {
 	if old != 0 && buffer != 0 && old != buffer {
 		s.Send(old, 0) // wl_buffer.release
 	}
+	s.finishFrames(callbacks)
 	if sendInitial {
 		c := s.toplevel
 		if c.Capabilities != nil {
@@ -267,4 +286,39 @@ func (s *Server) RequestsWith(substr string) []string {
 		}
 	}
 	return out
+}
+
+// finishFrames answers frame callbacks: done(time), then the display's
+// delete_id for the callback.
+func (s *Server) finishFrames(callbacks []uint32) {
+	for _, cb := range callbacks {
+		s.mu.Lock()
+		s.win.clockMs += 16
+		ms := s.win.clockMs
+		s.mu.Unlock()
+		s.Send(cb, 0, ms) // wl_callback.done(callback_data)
+		s.Send(1, 1, cb)  // wl_display.delete_id(id)
+	}
+}
+
+// FrameDone answers the frame callbacks that Config.HoldFrames kept back, as a
+// compositor does when it has shown the frame.
+//
+// Flutter: no counterpart
+func (s *Server) FrameDone() {
+	s.mu.Lock()
+	s.win.init()
+	held := s.win.held
+	s.win.held = nil
+	s.mu.Unlock()
+	s.finishFrames(held)
+}
+
+// HeldFrames returns how many frame callbacks wait for FrameDone.
+//
+// Flutter: no counterpart
+func (s *Server) HeldFrames() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.win.held)
 }

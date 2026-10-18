@@ -430,7 +430,7 @@ Wayland is the primary backend, and these behaviors are requirements, not nice-t
 - At most one frame is in flight per window. Input arriving between frames is batched into the next one.
 
 **Resizing and scaling**
-- On `configure`: lay out and render at the new size **before** `ack_configure` + commit, in the same iteration, without waiting for a frame callback. Interactive resizing tracks the pointer.
+- On `configure`: lay out and render at the new size and commit it in the same iteration, without waiting for a frame callback. Interactive resizing tracks the pointer. With EGL the buffer swap is the commit, so the backend resizes the `wl_egl_window`, sends `ack_configure`, and then renders and swaps; the first commit after the ack therefore already has the new size.
 - While resizing, subsurfaces (libdecor) are in synchronized mode, so the decoration and the content never get out of step.
 - Fractional scale: the buffer is `ceil(logical size × scale)`, and `wp_viewport` maps it back to the logical size. Text and shapes are rasterized at that buffer resolution, so they stay sharp at 125%/150%/175%.
 - Moving a window between monitors with different scales re-renders at the new scale in the next frame, with no blurry frame in between.

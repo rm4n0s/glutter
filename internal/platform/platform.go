@@ -55,9 +55,15 @@ type Window interface {
 	// SetTextInput tells the IME about the focused text field. A zero
 	// TextInputState with Enabled false disables text input.
 	SetTextInput(state TextInputState)
+	// RequestFrame asks for Handler.OnFrame to be called for this window, at the
+	// next moment the compositor wants a frame. At most one frame is in flight
+	// per window: requests made while one is in flight are merged into one more
+	// frame, after the compositor is done with the first. The handler must
+	// present exactly one frame for each OnFrame, or no further frame follows.
+	RequestFrame()
 	// StartDrag starts a drag-and-drop operation from this window.
 	StartDrag(data DragData) error
-	// Close destroys the window.
+	// Close destroys the window. Destroy the GPU surface of the window first.
 	Close()
 	// TODO(step 1.5): more setters (min/max size, icon, decorations).
 }

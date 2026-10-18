@@ -75,6 +75,12 @@ func newConn(api *clientAPI, display uintptr) *Conn {
 // Flutter: no counterpart
 func (c *Conn) Display() *WlDisplay { return c.disp }
 
+// DisplayPtr returns the wl_display pointer, for the code that creates EGL
+// displays and windows on the connection.
+//
+// Flutter: no counterpart
+func (c *Conn) DisplayPtr() uintptr { return c.display }
+
 // FD returns the file descriptor of the connection, to poll for readability.
 //
 // Flutter: no counterpart

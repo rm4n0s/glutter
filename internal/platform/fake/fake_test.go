@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/rm4n0s/errors"
+	"github.com/rm4n0s/glutter/internal/gpu"
 	"github.com/rm4n0s/glutter/internal/platform"
 	"github.com/rm4n0s/glutter/ui"
 )
@@ -289,8 +290,8 @@ func TestNewWindowRecordsConfigAndAssignsViewIDs(t *testing.T) {
 		if w.ID() != ui.ViewID(i) {
 			t.Errorf("window %d: ID() = %d, want %d", i, w.ID(), i)
 		}
-		if surface, ok := w.NativeSurface().(Surface); !ok || surface.View != w.ID() {
-			t.Errorf("window %d: NativeSurface() = %#v, want Surface for view %d", i, w.NativeSurface(), w.ID())
+		if surface := w.NativeSurface(); surface.Kind != gpu.SurfaceKindFake || surface.Window != uintptr(w.ID()) {
+			t.Errorf("window %d: NativeSurface() = %#v, want a fake surface for view %d", i, surface, w.ID())
 		}
 	}
 	windows := p.Windows()
@@ -324,6 +325,7 @@ func TestWindowRecordsCalls(t *testing.T) {
 	w.SetState(platform.WindowStateMaximized)
 	w.SetCursor(platform.MouseCursor(3))
 	w.SetTextInput(platform.TextInputState{Enabled: true})
+	w.RequestFrame()
 	if err := w.StartDrag(platform.DragData{}); err != nil {
 		t.Errorf("StartDrag: %v", err)
 	}
@@ -340,7 +342,7 @@ func TestWindowRecordsCalls(t *testing.T) {
 	for _, e := range p.Log() {
 		kinds = append(kinds, e.Kind)
 	}
-	want := []EntryKind{EntryNewWindow, EntrySetTitle, EntrySetSize, EntrySetState, EntrySetCursor, EntrySetTextInput, EntryStartDrag, EntryClose}
+	want := []EntryKind{EntryNewWindow, EntrySetTitle, EntrySetSize, EntrySetState, EntrySetCursor, EntrySetTextInput, EntryRequestFrame, EntryStartDrag, EntryClose}
 	if !reflect.DeepEqual(kinds, want) {
 		t.Errorf("log kinds = %v, want %v", kinds, want)
 	}

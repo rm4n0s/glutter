@@ -19,7 +19,9 @@ import (
 
 func connectToCompositor(t *testing.T) *Platform {
 	t.Helper()
-	p, err := New("")
+	// These tests check the shared-memory path; the EGL path is tested in
+	// internal/gpu/gles.
+	p, err := New("", Options{ShmFill: true})
 	if err != nil {
 		if appErr, ok := errors.FromError(err); ok {
 			t.Fatalf("could not connect to the compositor: %s %v (is WAYLAND_DISPLAY set? run under scripts/headless-wayland.sh)", appErr.Tag, appErr.Metadata)

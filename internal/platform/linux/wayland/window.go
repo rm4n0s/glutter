@@ -91,6 +91,16 @@ type window struct {
 
 	buffer *shmBuffer   // on display
 	old    []*shmBuffer // replaced, waiting for the compositor to release them
+
+	// The EGL path: the wl_egl_window that the renderer draws into. Zero in
+	// shared-memory mode.
+	egl       *waylandEGL
+	eglWindow uintptr
+
+	// Frame pacing (SPEC §8.11): at most one frame callback is in flight, and a
+	// request that arrives meanwhile waits for it.
+	frameInFlight  bool
+	frameRequested bool
 }
 
 var _ platform.Window = (*window)(nil)
@@ -103,7 +113,14 @@ var _ platform.Window = (*window)(nil)
 // Flutter: no counterpart
 func (p *Platform) NewWindow(cfg platform.WindowConfig) (platform.Window, error) {
 	s := p.sess
-	w := &window{p: p, id: p.nextView, cfg: cfg}
+	var egl *waylandEGL
+	if !p.opts.ShmFill {
+		var err error
+		if egl, err = loadWaylandEGL(); err != nil {
+			return nil, err
+		}
+	}
+	w := &window{p: p, id: p.nextView, cfg: cfg, egl: egl}
 	p.nextView++
 
 	w.width, w.height = int32(cfg.Size.Width), int32(cfg.Size.Height)
@@ -112,6 +129,13 @@ func (p *Platform) NewWindow(cfg platform.WindowConfig) (platform.Window, error)
 	}
 
 	w.surface = s.compositor.CreateSurface()
+	if egl != nil {
+		w.eglWindow = egl.create(w.surface.Ptr(), w.width, w.height)
+		if w.eglWindow == 0 {
+			w.destroy()
+			return nil, errors.New("EGLWindowFailed", "wl_egl_window_create failed", "width", w.width, "height", w.height)
+		}
+	}
 	w.xdgSurface = s.wmBase.GetXdgSurface(w.surface)
 	w.toplevel = w.xdgSurface.GetToplevel()
 	w.xdgSurface.SetEvents(&wl.XdgSurfaceEvents{OnConfigure: w.onSurfaceConfigure})
@@ -196,6 +220,24 @@ func (w *window) onSurfaceConfigure(serial uint32) {
 	}
 	w.states = w.pendingStates
 
+	if w.egl != nil {
+		// The renderer draws into the wl_egl_window, and its swap is the commit.
+		// So resize the native window, acknowledge, and render the new size at
+		// once, without waiting for a frame callback: the first commit after the
+		// ack already has the new size (SPEC §8.11, "Resizing and scaling").
+		if resized || w.configures == 0 {
+			w.egl.resize(w.eglWindow, w.width, w.height, 0, 0)
+		}
+		w.xdgSurface.AckConfigure(serial)
+		first := w.configures == 0
+		w.configures++
+		if resized || first {
+			w.reportMetrics()
+		}
+		w.renderNow()
+		return
+	}
+
 	// Draw first, then acknowledge and commit, so no frame of the old size is
 	// shown after the ack (SPEC §8.11, "Resizing and scaling").
 	buf, err := newShmBuffer(w.p.sess.shm, w.width, w.height, fillColor, w.onBufferReleased)
@@ -276,12 +318,83 @@ func (w *window) States() WindowStates { return w.states }
 // Flutter: no counterpart
 func (w *window) ID() ui.ViewID { return w.id }
 
-// NativeSurface returns nil for now.
-//
-// TODO(step 1.6): the handle with the wl_display and wl_surface for EGL.
+// NativeSurface returns the handle for the renderer: the wl_display and the
+// wl_egl_window. In shared-memory mode there is nothing to render into, and the
+// handle is empty.
 //
 // Flutter: no counterpart
-func (w *window) NativeSurface() gpu.SurfaceHandle { return nil }
+func (w *window) NativeSurface() gpu.SurfaceHandle {
+	if w.eglWindow == 0 {
+		return gpu.SurfaceHandle{}
+	}
+	return gpu.SurfaceHandle{
+		Kind:    gpu.SurfaceKindWayland,
+		Display: w.p.sess.conn.DisplayPtr(),
+		Window:  w.eglWindow,
+	}
+}
+
+// renderNow asks the handler for a frame at once, as a resize needs. The frame
+// callback for the commit that the handler's swap makes is requested first, so
+// it is attached to that commit.
+func (w *window) renderNow() {
+	h := w.p.handler
+	if h == nil || w.closed {
+		return
+	}
+	w.armFrameCallback()
+	h.OnFrame(w.id, w.p.now())
+}
+
+// armFrameCallback requests a wl_surface.frame callback unless one is in
+// flight.
+func (w *window) armFrameCallback() {
+	if w.frameInFlight {
+		return
+	}
+	w.frameInFlight = true
+	cb := w.surface.Frame()
+	cb.SetEvents(&wl.WlCallbackEvents{OnDone: func(uint32) {
+		cb.ProxyDestroy() // a wl_callback has no destructor request
+		w.onFrameDone()
+	}})
+}
+
+// onFrameDone runs when the compositor is ready for the next frame. A frame that
+// was requested meanwhile is rendered now.
+func (w *window) onFrameDone() {
+	w.frameInFlight = false
+	if w.closed || !w.frameRequested {
+		return
+	}
+	w.frameRequested = false
+	w.renderNow()
+}
+
+// RequestFrame asks for Handler.OnFrame at the next moment the compositor wants
+// a frame. When no frame is in flight, the frame is rendered on the next pass of
+// the loop, not inside this call; otherwise it waits for the frame callback of
+// the frame in flight. The handler must present exactly one frame per OnFrame,
+// or no callback arrives and no further frame follows. Shared-memory windows
+// ignore the request.
+//
+// Flutter: no counterpart
+func (w *window) RequestFrame() {
+	if w.closed || w.egl == nil {
+		return
+	}
+	w.frameRequested = true
+	if w.frameInFlight {
+		return
+	}
+	w.p.loop.Post(func() {
+		if w.closed || !w.frameRequested || w.frameInFlight {
+			return
+		}
+		w.frameRequested = false
+		w.renderNow()
+	})
+}
 
 // SetTitle changes the window title.
 //
@@ -303,6 +416,15 @@ func (w *window) SetSize(size ui.Size) {
 		return
 	}
 	w.width, w.height = width, height
+	if w.egl != nil {
+		if w.configures == 0 {
+			return // the first configure draws at this size
+		}
+		w.egl.resize(w.eglWindow, width, height, 0, 0)
+		w.reportMetrics()
+		w.renderNow()
+		return
+	}
 	if !w.mapped {
 		return // the first configure draws at this size
 	}
@@ -348,20 +470,39 @@ func (w *window) StartDrag(platform.DragData) error {
 	return errors.New("NotImplemented", "drag and drop from a Wayland window is not implemented yet")
 }
 
-// Close destroys the window. When it was the last window, Run returns. Closing
-// twice does nothing.
+// Close destroys the window. Destroy the renderer's surface for it first, since
+// that surface draws into the window's native window. When this was the last
+// window, Run returns. Closing twice does nothing.
 //
 // Flutter: no counterpart
 func (w *window) Close() {
 	if w.closed {
 		return
 	}
+	w.destroy()
+	delete(w.p.windows, w.id)
+	if len(w.p.windows) == 0 {
+		w.p.loop.Stop()
+	}
+}
+
+// destroy releases the protocol objects, the native window and the buffers of the
+// window. It does not touch the platform's list of windows.
+func (w *window) destroy() {
 	w.closed = true
+	if w.eglWindow != 0 {
+		w.egl.destroy(w.eglWindow) // before the wl_surface it draws on
+		w.eglWindow = 0
+	}
 	if w.decoration != nil {
 		w.decoration.Destroy()
 	}
-	w.toplevel.Destroy()
-	w.xdgSurface.Destroy()
+	if w.toplevel != nil {
+		w.toplevel.Destroy()
+	}
+	if w.xdgSurface != nil {
+		w.xdgSurface.Destroy()
+	}
 	w.surface.Destroy()
 	for _, b := range append(w.old, w.buffer) {
 		if b != nil {
@@ -369,8 +510,4 @@ func (w *window) Close() {
 		}
 	}
 	w.old, w.buffer = nil, nil
-	delete(w.p.windows, w.id)
-	if len(w.p.windows) == 0 {
-		w.p.loop.Stop()
-	}
 }

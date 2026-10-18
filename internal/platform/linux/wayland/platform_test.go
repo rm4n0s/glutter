@@ -18,8 +18,15 @@ const testTimeout = 10 * time.Second
 
 type nopHandler = platform.NopHandler
 
-// connect opens a connection to a fake compositor and builds a Platform on it.
+// connect opens a connection to a fake compositor and builds a Platform on it,
+// in shared-memory mode, which needs no GPU.
 func connect(t *testing.T, cfg fakecomp.Config) (*Platform, *fakecomp.Server, error) {
+	t.Helper()
+	return connectWith(t, cfg, Options{ShmFill: true})
+}
+
+// connectWith is connect with the options given.
+func connectWith(t *testing.T, cfg fakecomp.Config, opts Options) (*Platform, *fakecomp.Server, error) {
 	t.Helper()
 	if _, err := wl.Connect("glutter-probe-for-libwayland"); err != nil {
 		if appErr, ok := errors.FromError(err); ok && appErr.Tag == "LibraryLoadFailed" {
@@ -31,7 +38,7 @@ func connect(t *testing.T, cfg fakecomp.Config) (*Platform, *fakecomp.Server, er
 	if err != nil {
 		t.Fatalf("ConnectFD: %v", err)
 	}
-	p, err := newPlatform(conn)
+	p, err := newPlatform(conn, opts)
 	if err != nil {
 		srv.Wait() // newPlatform closed the connection
 		return nil, srv, err

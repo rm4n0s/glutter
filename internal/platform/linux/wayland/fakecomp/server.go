@@ -25,10 +25,11 @@ import (
 //
 // Flutter: no counterpart
 type Server struct {
-	t        testing.TB
-	fd       int
-	globals  []Global
-	toplevel ToplevelConfigure
+	t          testing.TB
+	fd         int
+	globals    []Global
+	toplevel   ToplevelConfigure
+	holdFrames bool
 
 	win windowing // see windowing.go; guarded by mu
 
@@ -92,6 +93,11 @@ type Config struct {
 	// Globals is what the registry announces. Nil means DefaultGlobals; use an
 	// empty non-nil slice for none.
 	Globals []Global
+	// HoldFrames keeps the frame callbacks (wl_surface.frame) until the test calls
+	// FrameDone, instead of answering each one on the commit that follows it. A
+	// real compositor answers when the frame is shown, some time after the
+	// commit.
+	HoldFrames bool
 	// Toplevel is what the initial configure of a toplevel window says. The zero
 	// value lets the client choose its size.
 	Toplevel ToplevelConfigure
@@ -112,7 +118,7 @@ func New(t testing.TB, cfg Config) (s *Server, clientFD int) {
 		globals = DefaultGlobals()
 	}
 	s = &Server{
-		t: t, fd: fds[0], globals: globals, toplevel: cfg.Toplevel,
+		t: t, fd: fds[0], globals: globals, toplevel: cfg.Toplevel, holdFrames: cfg.HoldFrames,
 		objects:   map[uint32]string{1: "wl_display"},
 		ids:       map[string]uint32{},
 		serverIDs: 0xff000000,
@@ -287,10 +293,6 @@ func (s *Server) handle(id uint32, op uint16, r *reader) {
 			s.Send(surface, 0, output) // wl_surface.enter(output)
 		}
 		s.Send(surface, 2, int32(2)) // preferred_buffer_scale(factor)
-	case "wl_surface.3": // frame(callback)
-		cb := r.u32()
-		s.addObject(cb, "wl_callback")
-		s.record("wl_surface.frame")
 	case "wl_seat.0": // get_pointer(id)
 		ptr := r.u32()
 		s.addObject(ptr, "wl_pointer")

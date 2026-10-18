@@ -6,15 +6,6 @@ import (
 	"github.com/rm4n0s/glutter/ui"
 )
 
-// Surface is the gpu.SurfaceHandle of a fake window. No GPU backend renders
-// into it.
-//
-// Flutter: no counterpart
-type Surface struct {
-	// View is the view of the window the surface belongs to.
-	View ui.ViewID
-}
-
 // Window is a fake platform.Window. It records the calls made on it and keeps
 // the last values set, so tests can inspect them.
 //
@@ -40,10 +31,13 @@ var _ platform.Window = (*Window)(nil)
 // Flutter: no counterpart
 func (w *Window) ID() ui.ViewID { return w.id }
 
-// NativeSurface returns a Surface for the window's view.
+// NativeSurface returns a handle of kind gpu.SurfaceKindFake whose Window is the
+// view ID.
 //
 // Flutter: no counterpart
-func (w *Window) NativeSurface() gpu.SurfaceHandle { return Surface{View: w.id} }
+func (w *Window) NativeSurface() gpu.SurfaceHandle {
+	return gpu.SurfaceHandle{Kind: gpu.SurfaceKindFake, Window: uintptr(w.id)}
+}
 
 // set records a call on the window and updates its state under the lock.
 func (w *Window) set(kind EntryKind, value any, update func()) {
@@ -86,6 +80,13 @@ func (w *Window) SetCursor(cursor platform.MouseCursor) {
 // Flutter: no counterpart
 func (w *Window) SetTextInput(state platform.TextInputState) {
 	w.set(EntrySetTextInput, state, func() { w.textInput = state })
+}
+
+// RequestFrame records the request.
+//
+// Flutter: no counterpart
+func (w *Window) RequestFrame() {
+	w.set(EntryRequestFrame, nil, func() {})
 }
 
 // StartDrag records the drag and always succeeds.

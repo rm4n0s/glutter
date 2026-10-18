@@ -167,3 +167,30 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - `OnMetrics` is called at the first configure and on every size change, with a device pixel ratio of 1 until step 3.7 (TODO in the code). `NativeSurface` returns nil until step 1.6; `SetCursor`, `SetTextInput` and `StartDrag` are stubs with TODOs for steps 1.8, 11.2 and 14.6. `Modal` and `Kind` are not used yet (they need `xdg_dialog_v1`, step 14.2).
   - `syscall` has no `SYS_MEMFD_CREATE`, so the number is defined per architecture (amd64 319, arm64 279; other architectures fail with `ENOSYS`).
   - The shm window draws only on configure; frame callbacks arrive with step 1.6.
+
+## 1.6 EGL and GLES on Wayland, and self-capture
+
+- **Date:** 2026-10-18
+- **Branch:** feat/step-1.6-egl-gles-and-self-capture
+- **Summary:** `internal/gpu/gles` loads `libEGL` and `libGLESv2` through purego (`GLUTTER_EGL_LIBRARY` / `GLUTTER_GLES_LIBRARY` override the paths), opens the display with `eglGetPlatformDisplay(EGL_PLATFORM_WAYLAND_KHR)`, picks an RGBA8 `EGL_OPENGL_ES3_BIT` window config, creates an ES 3 context and window surface, sets `eglSwapInterval(0)`, and offers `MakeCurrent`, `Viewport`, `Clear`, `SwapBuffers` and `ReadPixels` (rows flipped to top-first). The Wayland window creates a `wl_egl_window` through `libwayland-egl.so.1` and is paced by `wl_surface.frame` callbacks: at most one frame in flight, `Window.RequestFrame` merges requests, and a configure renders at once. `internal/engine` reads `GLUTTER_SCREENSHOT` / `GLUTTER_SCREENSHOT_AFTER` and saves the PNG. `examples/dev/window` now draws with EGL; the shm path stays behind `GLUTTER_DEV_SHM=1`.
+- **Main files:** `internal/gpu/gles/{egl,gl,context}.go`, `internal/gpu/surface.go`, `internal/platform/linux/wayland/{egl,window,platform}.go`, `internal/platform/linux/wayland/fakecomp/{server,windowing}.go` (frame callbacks), `internal/engine/screenshot.go`, `examples/dev/window/main.go`.
+- **Tests:**
+  - `gles` against a fake EGL and GL: the success path and its call order, each failure with its route and the cleanup calls made (`EGLInitFailed`, `EGLNoConfig`, `GLES3Unsupported`, `EGLSurfaceFailed`, `EGLMakeCurrentFailed`, `EGLSwapFailed`, `GLReadPixelsFailed`); `EGLLoadFailed` through an override that points to a missing file (`Open->loadEGL->loadFailed.EGLLoadFailed`); `ReadPixels` flips rows.
+  - Wayland EGL mode against the fake compositor (which now answers or holds frame callbacks): handshake order, a configure renders while a frame is in flight, one frame in flight and merged requests, close destroys the egl window before the surface, shm mode ignores `RequestFrame`, a second `Options` panics with `MultipleOptions`. Stable over 20 and then 15 runs under `-race`.
+  - Screenshot: environment parsing (including bad and negative delays, route `ScreenshotAfterInvalid`), PNG round trip, write failures (`ScreenshotWriteFailed`).
+  - Display test under headless sway (`TestDisplayClearsTheWindowToPurple`): context creation succeeds on Mesa (OpenGL ES 3.2), a frame is cleared to `#6750A4` and read back with every pixel exact.
+  - No Flutter tests apply.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · display tests ✅ (headless sway)
+- **Proof:**
+  ![1.6 EGL window](implemented-proof-images/1.6-egl-window.png)
+  Self-capture of the EGL window (`GLUTTER_SCREENSHOT` under `scripts/headless-wayland.sh`): a 640×400 image that is evenly purple. Checked by pixel count too: all 256,000 pixels are exactly `#6750A4`. The delayed capture (`GLUTTER_SCREENSHOT_AFTER=300ms`) and the `GLUTTER_DEV_SHM=1` path were run as well.
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - Task 4 said to render before `ack_configure` + commit. With EGL the swap is the commit, so the backend resizes the `wl_egl_window`, sends `ack_configure`, then renders and swaps. The first commit after the ack has the new size, which is what SPEC §8.11 wants; the sentence in §8.11 now says so.
+  - The screenshot reads the pixels before the swap, because the back buffer is undefined afterwards. With a delay, it requests a new frame after the delay and captures that one. Then the app ends `Run` and exits with code 0. A bug that saved the capture twice (the flag was never cleared) was found from the log and fixed.
+  - `platform.Window` gained `RequestFrame()` (the engine needs it to ask for a frame when something changed). `gpu.SurfaceHandle` is now a struct (`Kind`, `Display`, `Window`) in place of the placeholder; the fake platform returns a `SurfaceKindFake` handle.
+  - `wayland.New(name, ...Options)` takes `Options{ShmFill}` to keep the 1.5 shared-memory window for tests and `GLUTTER_DEV_SHM=1`; the shm tests use it.
+  - `Platform.Close` now closes windows that are still open. The renderer must destroy its surface first (the example does, in `OnCloseRequest` and after `Run`).
+  - Only the functions needed now are bound in `gl.go` (`GL_VERSION`, viewport, clear, read pixels). The rest comes with step 2.x.
+  - Mesa prints `MESA-EGL: warning: failed to get driver name for fd -1` on the headless compositor (no DRM device); it is harmless.
+  - `suspended` and occlusion handling (SPEC §8.11) are not done here: nothing drives frames yet. They belong to the engine (step 1.10).

@@ -51,6 +51,10 @@ const (
 	//
 	// Flutter: no counterpart
 	EntrySetTextInput EntryKind = "SetTextInput"
+	// EntryRequestFrame records Window.RequestFrame; Value is nil.
+	//
+	// Flutter: no counterpart
+	EntryRequestFrame EntryKind = "RequestFrame"
 	// EntryStartDrag records Window.StartDrag; Value is the platform.DragData.
 	//
 	// Flutter: no counterpart
