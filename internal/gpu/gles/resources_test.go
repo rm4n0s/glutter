@@ -482,20 +482,6 @@ func TestImageErrorsAndUnsupported(t *testing.T) {
 			t.Errorf("%s: error = %v, want GLImageDisposed", name, err)
 		}
 	}
-	// Unsupported paints and modes name their feature.
-	img := testImage(8, 8)
-	filtered := ui.NewPaint()
-	filtered.SetImageFilter(ui.NewImageFilterBlur(ui.ImageFilterBlurOpts{SigmaX: 2, SigmaY: 2}))
-	for feature, fn := range map[string]func(c *ui.Canvas){
-		"paint image filter": func(c *ui.Canvas) { c.DrawImage(img, ui.Offset{}, filtered) },
-	} {
-		res.beginFrame()
-		_, err := buildWith(t, res, false, fn)
-		appErr, ok := errors.FromError(err)
-		if !ok || appErr.Tag != "GLNotImplemented" || appErr.Metadata["feature"] != feature {
-			t.Errorf("%s: error = %v", feature, err)
-		}
-	}
 }
 
 func TestNinePatchAndAtlasInstances(t *testing.T) {
@@ -649,13 +635,12 @@ func TestShapesFallBackToTheAtlas(t *testing.T) {
 		t.Errorf("drawn = %d", b.stats.Drawn)
 	}
 	// Features of the paint still stop a fallback.
-	blurred := solidPaint(0xFF000000)
-	blurred.SetImageFilter(ui.NewImageFilterBlur(ui.ImageFilterBlurOpts{SigmaX: 2, SigmaY: 2}))
-	blurred.SetStyle(ui.PaintingStyleStroke)
-	blurred.SetStrokeJoin(ui.StrokeJoinBevel)
+	unfit := manyColorsPaint()
+	unfit.SetStyle(ui.PaintingStyleStroke)
+	unfit.SetStrokeJoin(ui.StrokeJoinBevel)
 	res.beginFrame()
-	_, err := buildWith(t, res, false, func(c *ui.Canvas) { c.DrawRect(rect, blurred) })
-	if appErr, ok := errors.FromError(err); !ok || appErr.Tag != "GLNotImplemented" || appErr.Metadata["feature"] != "paint image filter" {
+	_, err := buildWith(t, res, false, func(c *ui.Canvas) { c.DrawRect(rect, unfit) })
+	if appErr, ok := errors.FromError(err); !ok || appErr.Tag != "GLNotImplemented" || appErr.Metadata["feature"] != "gradient with more than 32 colors" {
 		t.Errorf("error = %v", err)
 	}
 }

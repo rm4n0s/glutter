@@ -48,6 +48,8 @@ type callKey struct {
 	clip *clipMask
 	// spec is the paint's shader, color filter and blend; never nil for a draw.
 	spec *paintSpec
+	// eff is what a layer does besides compositing, for opBeginLayer and opComposite.
+	eff *effect
 	// seq is not 0 for a call that must not be merged with any other.
 	seq int
 	op  callOp
@@ -101,8 +103,8 @@ func (f *frame) callsOf(p pipeline) int {
 }
 
 // beginLayer adds the start of a layer covering the pixels of rect.
-func (f *frame) beginLayer(rect image.Rectangle) {
-	f.calls = append(f.calls, drawCall{callKey: callKey{op: opBeginLayer}, rect: rect})
+func (f *frame) beginLayer(rect image.Rectangle, eff *effect) {
+	f.calls = append(f.calls, drawCall{callKey: callKey{op: opBeginLayer, eff: eff}, rect: rect})
 }
 
 // composite adds the end of the innermost layer, which covered rect, and its

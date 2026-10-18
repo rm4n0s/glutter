@@ -28,6 +28,7 @@ const int KIND_SEGMENT = 2;    // a line segment with caps, or a dot
 const int KIND_FILL = 3;       // every pixel
 const int KIND_BOX = 4;        // an axis-aligned rectangle in pixels, minus shape B, by exact area
 const int KIND_OUTLINE = 5;    // every point within a half width of a rounded rectangle's outline
+const int KIND_SHADOW = 6;     // a rounded rectangle in pixels blurred by a Gaussian, see shadow.glsl
 
 const int FLAG_HAS_B = 1;
 const int FLAG_ANTIALIAS = 2;
@@ -38,6 +39,7 @@ const int FLAG_SIMILARITY = 4; // the transform only rotates, flips and scales e
 //#include "clipmask.glsl"
 //#include "blend.glsl"
 //#include "paint.glsl"
+//#include "shadow.glsl"
 
 // A rounded superellipse: the corner boxes in r1 and r2 are filled by the curve
 // |x|^n + |y|^n = 1.
@@ -104,6 +106,24 @@ void main() {
 		}
 		cov *= clipCoverage;
 		if (cov <= 0.0) {
+			discard;
+		}
+		fragColor = finish(paintSource(vColor, dev), cov, dev);
+		return;
+	}
+
+	if (kind == KIND_SHADOW) {
+		// Shape A is in pixels: center, half extents and radii. vParam holds the deviation
+		// of the blur in pixels and the blur style.
+		vec2 c = dev - vA.xy;
+		float blurred = blurredRRect(c, vA.zw, vARad1, vARad2, vParam.x);
+		int style = int(vParam.y + 0.5);
+		float own = 0.0;
+		if (style != 0) {
+			own = clamp(0.5 - rrectDistance(c, vA.zw, vARad1, vARad2), 0.0, 1.0);
+		}
+		float cov = blurStyle(style, blurred, own) * clipCoverage;
+		if (cov < 1.0 / 1024.0) {
 			discard;
 		}
 		fragColor = finish(paintSource(vColor, dev), cov, dev);

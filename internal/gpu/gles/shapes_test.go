@@ -329,19 +329,32 @@ func TestBuildDrawsNothingForDst(t *testing.T) {
 	}
 }
 
-func TestBuildUnsupported(t *testing.T) {
-	rect := ui.NewRectFromLTWH(10, 10, 60, 40)
-	manyColors := solidPaint(0xFF000000)
+// manyColorsPaint is a paint with a gradient of more colors than a shader can hold:
+// the one paint that the renderer cannot draw.
+func manyColorsPaint() *ui.Paint {
+	p := solidPaint(0xFF000000)
 	colors := make([]ui.Color, maxStops+1)
 	stops := make([]float64, len(colors))
 	for i := range colors {
 		colors[i], stops[i] = ui.NewColor(0xFF000000+uint32(i)), float64(i)/float64(len(colors)-1)
 	}
-	manyColors.SetShader(ui.NewGradientLinear(ui.Offset{}, ui.Offset{Dx: 10}, colors, ui.GradientLinearOpts{ColorStops: stops}))
-	withImageFilter := solidPaint(0xFF000000)
-	withImageFilter.SetImageFilter(ui.NewImageFilterBlur(ui.ImageFilterBlurOpts{SigmaX: 2, SigmaY: 2}))
-	withMask := solidPaint(0xFF000000)
-	withMask.SetMaskFilter(ui.NewMaskFilterBlur(ui.BlurStyleNormal, 3))
+	p.SetShader(ui.NewGradientLinear(ui.Offset{}, ui.Offset{Dx: 10}, colors, ui.GradientLinearOpts{ColorStops: stops}))
+	return p
+}
+
+// unknownBlendPaint is a paint with a blend mode that no renderer knows, which cannot
+// be drawn, and unknownBlendFeature the feature it is reported as.
+func unknownBlendPaint() *ui.Paint {
+	p := solidPaint(0x80000000)
+	p.SetBlendMode(ui.BlendMode(200))
+	return p
+}
+
+var unknownBlendFeature = "blend mode " + ui.BlendMode(200).String()
+
+func TestBuildUnsupported(t *testing.T) {
+	rect := ui.NewRectFromLTWH(10, 10, 60, 40)
+	manyColors := manyColorsPaint()
 	tests := []struct {
 		name    string
 		feature string
@@ -354,8 +367,6 @@ func TestBuildUnsupported(t *testing.T) {
 		}},
 		{"arc", "operation ui.OpDrawArc", func(c *ui.Canvas) { c.DrawArc(rect, 0, 1, true, solidPaint(0xFF000000)) }},
 		{"gradient with too many colors", "gradient with more than 32 colors", func(c *ui.Canvas) { c.DrawRect(rect, manyColors) }},
-		{"image filter", "paint image filter", func(c *ui.Canvas) { c.DrawRect(rect, withImageFilter) }},
-		{"mask filter", "paint mask filter", func(c *ui.Canvas) { c.DrawRect(rect, withMask) }},
 		{"polygon points", "polygon points", func(c *ui.Canvas) {
 			c.DrawPoints(ui.PointModePolygon, []ui.Offset{{}, {Dx: 5, Dy: 5}, {Dx: 9}}, linePaint(0xFF000000, 2, ui.StrokeCapButt, ui.StrokeJoinMiter))
 		}},
@@ -385,8 +396,8 @@ func TestBuildUnsupported(t *testing.T) {
 			img := ui.NewImageFromRGBA(make([]byte, 16), 2, 2)
 			c.DrawImageRect(img, ui.NewRectFromLTWH(0, 0, 2, 2), rect, solidPaint(0xFF000000))
 		}},
-		{"layer with an image filter", "paint image filter", func(c *ui.Canvas) {
-			c.SaveLayer(nil, withImageFilter)
+		{"layer with a paint that cannot be drawn", unknownBlendFeature, func(c *ui.Canvas) {
+			c.SaveLayer(nil, unknownBlendPaint())
 			c.DrawRect(rect, solidPaint(0xFF000000))
 			c.Restore()
 		}},
@@ -419,11 +430,9 @@ func TestBuildUnsupported(t *testing.T) {
 
 func TestBuildSkipsWholeLayers(t *testing.T) {
 	rect := ui.NewRectFromLTWH(10, 10, 20, 20)
-	blurred := solidPaint(0x80000000)
-	blurred.SetImageFilter(ui.NewImageFilterBlur(ui.ImageFilterBlurOpts{SigmaX: 2, SigmaY: 2}))
 	b, err := build(t, true, func(c *ui.Canvas) {
 		c.DrawRect(rect, solidPaint(0xFF000000))
-		c.SaveLayer(nil, blurred)
+		c.SaveLayer(nil, unknownBlendPaint())
 		c.DrawRect(rect, solidPaint(0xFF000000)) // inside the layer
 		c.SaveLayer(nil, solidPaint(0x80000000))
 		c.DrawRect(rect, solidPaint(0xFF000000)) // inside the nested layer

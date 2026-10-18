@@ -160,24 +160,23 @@ func (dr *drawer) call(c *drawCall) error {
 	d := dr.r.ctx.dev
 	gl := dr.r.ctx.gl
 	var layer renderTarget
+	var filtered *Framebuffer
 	switch c.op {
 	case opBeginLayer:
-		fb, err := d.AcquireFramebuffer(c.rect.Dx(), c.rect.Dy(), false)
-		if err != nil {
-			return err
-		}
-		dr.open = append(dr.open, dr.cur)
-		dr.enter(renderTarget{fb: fb, rect: c.rect})
-		d.SetScissor(false, 0, 0, 0, 0)
-		d.ColorMask(true, true, true, true)
-		gl.clearColor(0, 0, 0, 0)
-		gl.clear(glColorBufferBit)
-		return nil
+		return dr.beginLayer(c)
 	case opComposite:
 		layer = dr.cur
+		defer d.ReleaseFramebuffer(layer.fb)
+		if c.count != 0 && c.eff != nil && len(c.eff.passes) > 0 {
+			var err error
+			filtered, err = dr.runPasses(layer.fb.Texture(), layer.rect.Dx(), layer.rect.Dy(), [2]int{layer.rect.Min.X, layer.rect.Min.Y}, c.eff.passes, nil)
+			if err != nil {
+				return err
+			}
+			defer d.ReleaseFramebuffer(filtered)
+		}
 		dr.enter(dr.open[len(dr.open)-1])
 		dr.open = dr.open[:len(dr.open)-1]
-		defer d.ReleaseFramebuffer(layer.fb)
 		if c.count == 0 {
 			return nil
 		}
@@ -202,6 +201,7 @@ func (dr *drawer) call(c *drawCall) error {
 		gl.uniform1i(prog.Uniform("uAtlas"), 0)
 		gl.uniform1i(prog.Uniform("uImage"), 0)
 		gl.uniform1i(prog.Uniform("uLayer"), 0)
+		gl.uniform1i(prog.Uniform("uLayerOwn"), 4)
 		gl.uniform1i(prog.Uniform("uClipMask"), 1)
 		gl.uniform1i(prog.Uniform("uPaintImage"), 2)
 		gl.uniform1i(prog.Uniform("uDst"), 3)
@@ -220,7 +220,20 @@ func (dr *drawer) call(c *drawCall) error {
 		}
 	}
 	if c.op == opComposite {
-		d.BindTexture(0, layer.fb.Texture())
+		src := layer.fb.Texture()
+		if filtered != nil {
+			src = filtered.Texture()
+		}
+		d.BindTexture(0, src)
+		maskStyle, drawnOnly := int32(-1), int32(0)
+		if c.eff != nil {
+			maskStyle, drawnOnly = c.eff.mask, b2i(c.eff.drawnOnly)
+			if maskStyle > 0 {
+				d.BindTexture(4, layer.fb.Texture())
+			}
+		}
+		gl.uniform1i(prog.Uniform("uMaskStyle"), maskStyle)
+		gl.uniform1i(prog.Uniform("uDrawnOnly"), drawnOnly)
 		gl.uniform4f(prog.Uniform("uLayerRect"), float32(layer.rect.Min.X), float32(layer.rect.Min.Y), float32(layer.rect.Dx()), float32(layer.rect.Dy()))
 	} else if c.tex != nil {
 		d.BindTexture(0, c.tex)
@@ -261,6 +274,46 @@ func (dr *drawer) call(c *drawCall) error {
 		gl.vertexAttribPointer(uint32(i), 4, glFloat, false, stride, base+i*16)
 	}
 	gl.drawArraysInstanced(glTriangleStrip, 0, 4, int32(c.count))
+	return nil
+}
+
+// beginLayer starts drawing into a new layer, cleared, or for a backdrop filter a
+// filtered copy of the pixels under it.
+func (dr *drawer) beginLayer(c *drawCall) error {
+	d := dr.r.ctx.dev
+	gl := dr.r.ctx.gl
+	w, h := c.rect.Dx(), c.rect.Dy()
+	var backdrop *Texture
+	if c.eff != nil && c.eff.backdrop {
+		// The copy is of the framebuffer that is bound now: the layer's parent.
+		t := dr.cur
+		tex, err := d.AcquireTexture(w, h, TextureFormatRGBA8)
+		if err != nil {
+			return err
+		}
+		defer d.ReleaseTexture(tex)
+		if err := d.CopyFramebuffer(0, tex, c.rect.Min.X-t.rect.Min.X, t.rect.Dy()-(c.rect.Min.Y-t.rect.Min.Y)-h, w, h); err != nil {
+			return err
+		}
+		backdrop = tex
+	}
+	fb, err := d.AcquireFramebuffer(w, h, false)
+	if err != nil {
+		return err
+	}
+	dr.open = append(dr.open, dr.cur)
+	if backdrop != nil {
+		if _, err := dr.runPasses(backdrop, w, h, [2]int{c.rect.Min.X, c.rect.Min.Y}, c.eff.passes, fb); err != nil {
+			return err
+		}
+		dr.enter(renderTarget{fb: fb, rect: c.rect})
+		return nil
+	}
+	dr.enter(renderTarget{fb: fb, rect: c.rect})
+	d.SetScissor(false, 0, 0, 0, 0)
+	d.ColorMask(true, true, true, true)
+	gl.clearColor(0, 0, 0, 0)
+	gl.clear(glColorBufferBit)
 	return nil
 }
 

@@ -5,6 +5,7 @@ import (
 	"math"
 	"testing"
 
+	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/internal/gpu"
 	"github.com/rm4n0s/glutter/ui"
 )
@@ -343,51 +344,37 @@ func TestLayersCullAndNest(t *testing.T) {
 	}
 }
 
-func TestUnsupportedLayersOfAScene(t *testing.T) {
+func TestUnsupportedGroupsAreSkippedWhole(t *testing.T) {
+	feature := unknownBlendFeature
 	rec := ui.NewPictureRecorder()
-	ui.NewCanvas(rec).DrawRect(ui.NewRectFromLTWH(0, 0, 10, 10), solidPaint(0xFF000000))
-	pic := rec.EndRecording()
-	tests := map[string]func(b *ui.SceneBuilder){
-		"layer *ui.ImageFilterLayer": func(b *ui.SceneBuilder) {
-			b.PushImageFilter(ui.NewImageFilterBlur(ui.ImageFilterBlurOpts{SigmaX: 2, SigmaY: 2}))
-		},
-		"layer *ui.BackdropFilterLayer": func(b *ui.SceneBuilder) {
-			b.PushBackdropFilter(ui.NewImageFilterBlur(ui.ImageFilterBlurOpts{SigmaX: 2, SigmaY: 2}))
-		},
-		"layer *ui.ShaderMaskLayer": func(b *ui.SceneBuilder) {
-			b.PushShaderMask(ui.NewGradientLinear(ui.Offset{}, ui.Offset{Dx: 5}, twoColors()), ui.NewRectFromLTWH(0, 0, 10, 10), ui.BlendModeSrcIn)
-		},
+	c := ui.NewCanvas(rec)
+	c.SaveLayer(nil, unknownBlendPaint())
+	c.DrawRect(ui.NewRectFromLTWH(0, 0, 10, 10), solidPaint(0xFF000000))
+	c.Restore()
+	sb := ui.NewSceneBuilder()
+	sb.AddPicture(ui.Offset{}, rec.EndRecording())
+	list, err := gpu.Flatten(sb.Build(), gpu.FlattenOpts{Bounds: ui.NewRectFromLTWH(0, 0, 100, 100)})
+	if err != nil {
+		t.Fatal(err)
 	}
-	for feature, push := range tests {
-		t.Run(feature, func(t *testing.T) {
-			sb := ui.NewSceneBuilder()
-			push(sb)
-			sb.AddPicture(ui.Offset{}, pic)
-			sb.Pop()
-			list, err := gpu.Flatten(sb.Build(), gpu.FlattenOpts{Bounds: ui.NewRectFromLTWH(0, 0, 100, 100)})
-			if err != nil {
-				t.Fatal(err)
-			}
-			strict := &frameBuilder{w: 100, h: 100}
-			var got error
-			for _, c := range list.Commands {
-				if got = strict.command(c); got != nil {
-					break
-				}
-			}
-			if got == nil || got.Error() == "" {
-				t.Fatal("an unsupported layer was accepted")
-			}
-			skipping := &frameBuilder{w: 100, h: 100, skip: true}
-			for _, c := range list.Commands {
-				if err := skipping.command(c); err != nil {
-					t.Fatal(err)
-				}
-			}
-			if len(skipping.stats.Unsupported) != 1 || skipping.stats.Unsupported[0] != feature || skipping.stats.Skipped != 1 || len(skipping.frame.calls) != 0 {
-				t.Errorf("stats = %+v", skipping.stats)
-			}
-		})
+	strict := &frameBuilder{w: 100, h: 100}
+	var got error
+	for _, c := range list.Commands {
+		if got = strict.command(c); got != nil {
+			break
+		}
+	}
+	if appErr, ok := errors.FromError(got); !ok || appErr.Tag != "GLNotImplemented" || appErr.Metadata["feature"] != feature {
+		t.Fatalf("error = %v, want GLNotImplemented for %q", got, feature)
+	}
+	skipping := &frameBuilder{w: 100, h: 100, skip: true}
+	for _, c := range list.Commands {
+		if err := skipping.command(c); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(skipping.stats.Unsupported) != 1 || skipping.stats.Unsupported[0] != feature || skipping.stats.Skipped != 1 || len(skipping.frame.calls) != 0 {
+		t.Errorf("stats = %+v", skipping.stats)
 	}
 }
 

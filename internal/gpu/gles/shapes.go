@@ -31,6 +31,7 @@ const (
 	kindFill    = 3
 	kindBox     = 4
 	kindOutline = 5
+	kindShadow  = 6
 )
 
 // The flags of the shader.
@@ -58,6 +59,9 @@ var blendFuncs = map[ui.BlendMode]blendFunc{
 	ui.BlendModeSrcOver: {glOne, glOneMinusSrcAlpha, glOne, glOneMinusSrcAlpha},
 	ui.BlendModeDstOver: {glOneMinusDstAlpha, glOne, glOneMinusDstAlpha, glOne},
 	ui.BlendModePlus:    {glOne, glOne, glOne, glOne},
+	// What a shape does not cover keeps its pixels, and what it covers loses its
+	// source alpha's share: the coverage scales the source, as for the others.
+	ui.BlendModeDstOut: {glZero, glOneMinusSrcAlpha, glZero, glOneMinusSrcAlpha},
 }
 
 // replaceBlend writes the shader's output as it is.
@@ -246,15 +250,25 @@ func (b *frameBuilder) draw(c gpu.Command) (bool, error) {
 			return false, b.unsupported("operation " + typeName(c.Op))
 		}
 	}
+	if p, with := paintAccess(c.Op); p != nil && p.ImageFilter() != nil {
+		return b.filteredDraw(c, p, with)
+	}
 	ctx := &shapeContext{b: b, c: c, t: affineOf(&c.Transform)}
 	if done, ok, err := ctx.setupClip(); done {
 		return ok, err
+	}
+	if p, with := paintAccess(c.Op); p != nil && p.MaskFilter() != nil {
+		if handled, ok, err := ctx.maskFiltered(p, with); handled {
+			return ok, err
+		}
 	}
 	var (
 		ok  bool
 		err error
 	)
 	switch v := c.Op.(type) {
+	case ui.OpDrawShadow:
+		ok, err = ctx.shadow(v)
 	case ui.OpDrawRect:
 		ok, err = ctx.rrect(v.Rect, [4]ui.Radius{}, &v.Paint)
 	case ui.OpDrawRRect:
@@ -361,7 +375,9 @@ type shapeContext struct {
 // command's clip. done says that the command needs no more work: ok tells
 // whether it counts as drawn.
 func (s *shapeContext) setupClip() (done, ok bool, err error) {
-	s.outer = outerPixels(s.c.Clip.Bounds, s.b.w, s.b.h).Intersect(s.b.target())
+	// A layer that blurs a shape reaches past the surface, and what is drawn into it
+	// does too.
+	s.outer = pixelRect(s.c.Clip.Bounds).Intersect(s.b.target())
 	if s.outer.Empty() {
 		return true, true, nil
 	}
@@ -415,12 +431,8 @@ func (s *shapeContext) paint(p *ui.Paint) (info paintInfo, status paintStatus, e
 // filter do not apply (images); toDevice is the transform the shader is set
 // under.
 func (s *shapeContext) paintWith(p *ui.Paint, useShader bool, toDevice affine2D) (info paintInfo, status paintStatus, err error) {
-	switch {
-	case useShader && p.MaskFilter() != nil:
-		return info, paintUnsupported, s.b.unsupported("paint mask filter")
-	case p.ImageFilter() != nil:
-		return info, paintUnsupported, s.b.unsupported("paint image filter")
-	}
+	// The paint's mask filter and image filter are not part of the info: the commands
+	// that have them are drawn through layers (effects.go).
 	mode := p.BlendMode()
 	if mode == ui.BlendModeDst {
 		return info, paintNothing, nil
@@ -428,15 +440,8 @@ func (s *shapeContext) paintWith(p *ui.Paint, useShader bool, toDevice affine2D)
 	var sp paintSpec
 	filterSpec(&sp, p.ColorFilter(), p.InvertColors())
 	info.aa = p.IsAntiAlias()
-	if blend, ok := blendFuncs[mode]; ok {
-		info.blend = blend
-	} else {
-		idx, ok := blendIndex(mode)
-		if !ok {
-			return info, paintUnsupported, s.b.unsupported("blend mode " + mode.String())
-		}
-		info.blend = replaceBlend
-		sp.readBlend = int32(idx + 1)
+	if !s.b.setBlend(&info, &sp, mode) {
+		return info, paintUnsupported, s.b.unsupported("blend mode " + mode.String())
 	}
 	col := p.Color()
 	if sh := p.Shader(); useShader && sh != nil {
@@ -498,6 +503,11 @@ type instance = [shapeFloats]float32
 // place finishes an instance: the placement of the quad around local bounds, the
 // inverse transform, the color and the clip. It adds the instance to the frame.
 func (s *shapeContext) place(in *instance, local ui.Rect, kind, flags int, info paintInfo, alpha float32) (bool, error) {
+	return s.placePadded(in, local, kind, flags, info, alpha, 1)
+}
+
+// placePadded is place with the quad grown by pad pixels around the shape's bounds.
+func (s *shapeContext) placePadded(in *instance, local ui.Rect, kind, flags int, info paintInfo, alpha float32, pad float64) (bool, error) {
 	inv, ok := s.t.invert()
 	if !ok {
 		return true, nil // a flattened shape covers nothing
@@ -511,8 +521,8 @@ func (s *shapeContext) place(in *instance, local ui.Rect, kind, flags int, info 
 	}
 	// One pixel more on each side for the anti-aliased edge, but not beyond the clip.
 	o := s.outer
-	x0, y0 := math.Max(math.Floor(dev.Left)-1, float64(o.Min.X)), math.Max(math.Floor(dev.Top)-1, float64(o.Min.Y))
-	x1, y1 := math.Min(math.Ceil(dev.Right)+1, float64(o.Max.X)), math.Min(math.Ceil(dev.Bottom)+1, float64(o.Max.Y))
+	x0, y0 := math.Max(math.Floor(dev.Left)-pad, float64(o.Min.X)), math.Max(math.Floor(dev.Top)-pad, float64(o.Min.Y))
+	x1, y1 := math.Min(math.Ceil(dev.Right)+pad, float64(o.Max.X)), math.Min(math.Ceil(dev.Bottom)+pad, float64(o.Max.Y))
 	if x1 <= x0 || y1 <= y0 {
 		return true, nil
 	}

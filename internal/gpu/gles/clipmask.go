@@ -77,12 +77,16 @@ func shapePath(s *gpu.ClipShape) *ui.Path {
 // outerPixels returns the pixels that a rectangle of the surface touches, inside
 // the surface of w x h pixels.
 func outerPixels(r ui.Rect, w, h int) image.Rectangle {
+	return pixelRect(r).Intersect(image.Rect(0, 0, w, h))
+}
+
+// pixelRect returns the pixels that a rectangle touches.
+func pixelRect(r ui.Rect) image.Rectangle {
 	if !r.IsFinite() {
 		return image.Rectangle{}
 	}
 	clamp := func(v float64) int { return int(math.Max(-1e9, math.Min(1e9, v))) }
-	return image.Rect(clamp(math.Floor(r.Left)), clamp(math.Floor(r.Top)), clamp(math.Ceil(r.Right)), clamp(math.Ceil(r.Bottom))).
-		Intersect(image.Rect(0, 0, w, h))
+	return image.Rect(clamp(math.Floor(r.Left)), clamp(math.Floor(r.Top)), clamp(math.Ceil(r.Right)), clamp(math.Ceil(r.Bottom)))
 }
 
 // clipMask returns the mask of the shapes of the clip over the clip's bounds
