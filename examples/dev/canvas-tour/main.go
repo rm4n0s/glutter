@@ -1,6 +1,8 @@
 // Command canvas-tour opens a 640x480 window that shows the proof scenes of
 // milestone 2 (shapes, gradients, blend modes, effects), one per page, drawn by
-// the GPU renderer. It is a development example (milestone 3): it uses the
+// the GPU renderer, and a last page, size-grid, that depends on the size of the
+// window: a grid of lines one pixel wide, which shows whether the buffer is as
+// sharp as the screen (on a display with a fractional scale it must be, step 3.7). It is a development example (milestone 3): it uses the
 // internal packages directly, before the public API exists, and it grows with
 // the renderer. What the GPU cannot draw yet is left out of the page and listed
 // in the log, so each step of milestone 3 makes the pages fuller.
@@ -13,7 +15,7 @@
 //
 // Environment (read in debug builds only, as the examples promise):
 //
-//	GLUTTER_DEV_PAGE=<n or name>      the first page: 1 to 5, or a scene name
+//	GLUTTER_DEV_PAGE=<n or name>      the first page: 1 to 6, or a scene name
 //	                                  such as shapes-clips (default 1)
 //	GLUTTER_BACKEND=x11|wayland       the windowing system (else the session's)
 //	GLUTTER_SCREENSHOT=<file.png>     save the window content to the file and exit
@@ -47,8 +49,13 @@ const (
 )
 
 // order is the order of the pages: the proof scenes in the order of the steps that
-// made them. Scenes registered later are added after these.
+// made them. Scenes registered later are added after these, and the size-grid page
+// is the last of all.
 var order = []string{"shapes-basic", "shapes-clips", "gradients", "blend-modes", "effects"}
+
+// gridPage is the page that is not a proof scene: it is drawn for the size of the
+// window.
+const gridPage = "size-grid"
 
 func main() {
 	if err := run(); err != nil {
@@ -91,6 +98,9 @@ type tour struct {
 	scenes map[string]*ui.Scene
 	win    platform.Window
 	stop   func()
+	// grid is the size-grid page for the size it was made for.
+	grid     *ui.Scene
+	gridSize ui.Size
 }
 
 // newTour makes the tour of the registered scenes, starting at the page the
@@ -111,6 +121,7 @@ func newTour(getenv func(string) string) (*tour, error) {
 			t.pages = append(t.pages, n)
 		}
 	}
+	t.pages = append(t.pages, gridPage)
 	if v := getenv("GLUTTER_DEV_PAGE"); v != "" {
 		page, err := t.find(v)
 		if err != nil {
@@ -165,9 +176,16 @@ func (t *tour) onKey(d ui.KeyData) {
 	}
 }
 
-// scene returns the scene of the page that is showing, built once.
-func (t *tour) scene(ui.Size, float64) *ui.Scene {
+// scene returns the scene of the page that is showing: a proof scene, built once at
+// its own size in pixels, or the grid for the size of the window.
+func (t *tour) scene(size ui.Size, _ float64) *ui.Scene {
 	name := t.pages[t.page]
+	if name == gridPage {
+		if t.grid == nil || t.gridSize != size {
+			t.grid, t.gridSize = gridScene(size), size
+		}
+		return t.grid
+	}
 	s, ok := t.scenes[name]
 	if !ok {
 		sc, err := proof.Lookup(name)
@@ -179,4 +197,46 @@ func (t *tour) scene(ui.Size, float64) *ui.Scene {
 		t.scenes[name] = s
 	}
 	return s
+}
+
+// gridScene draws, for a window of size physical pixels, a border and a grid of lines
+// one pixel wide: a faint one every 16 pixels and a dark one every 80, with a mark at
+// the center. The lines are on whole pixels, so they are as sharp as the buffer is: if
+// the compositor has to scale the buffer, they become uneven and blurred.
+func gridScene(size ui.Size) *ui.Scene {
+	w, h := size.Width, size.Height
+	rec := ui.NewPictureRecorder()
+	c := ui.NewCanvas(rec, ui.CanvasOpts{CullRect: ui.Ptr(ui.NewRectFromLTWH(0, 0, w, h))})
+	c.DrawColor(ui.NewColor(0xFFFFFFFF), ui.BlendModeSrcOver)
+	line := func(argb uint32) *ui.Paint {
+		p := ui.NewPaint()
+		p.SetColor(ui.NewColor(argb))
+		return p
+	}
+	faint, dark, accent := line(0xFFC9C5D4), line(0xFF4A4458), line(0xFF6750A4)
+	for x := 16.0; x < w; x += 16 {
+		p := faint
+		if int(x)%80 == 0 {
+			p = dark
+		}
+		c.DrawRect(ui.NewRectFromLTWH(x, 0, 1, h), p)
+	}
+	for y := 16.0; y < h; y += 16 {
+		p := faint
+		if int(y)%80 == 0 {
+			p = dark
+		}
+		c.DrawRect(ui.NewRectFromLTWH(0, y, w, 1), p)
+	}
+	// The border is the edge of the buffer: all four sides must show.
+	c.DrawRect(ui.NewRectFromLTWH(0, 0, w, 1), accent)
+	c.DrawRect(ui.NewRectFromLTWH(0, h-1, w, 1), accent)
+	c.DrawRect(ui.NewRectFromLTWH(0, 0, 1, h), accent)
+	c.DrawRect(ui.NewRectFromLTWH(w-1, 0, 1, h), accent)
+	cx, cy := float64(int(w/2)), float64(int(h/2))
+	c.DrawRect(ui.NewRectFromLTWH(cx-12, cy, 25, 1), accent)
+	c.DrawRect(ui.NewRectFromLTWH(cx, cy-12, 1, 25), accent)
+	b := ui.NewSceneBuilder()
+	b.AddPicture(ui.Offset{}, rec.EndRecording())
+	return b.Build()
 }

@@ -26,6 +26,7 @@ type drawHandler struct {
 	win  platform.Window
 	done chan<- result
 	w, h int
+	ran  bool
 }
 
 type result struct {
@@ -40,6 +41,11 @@ func (d *drawHandler) OnMetrics(_ ui.ViewID, m platform.ViewMetrics) {
 }
 
 func (d *drawHandler) OnFrame(ui.ViewID, time.Duration) {
+	// The window draws again when its scale becomes known; one frame is enough here.
+	if d.ran {
+		return
+	}
+	d.ran = true
 	h := d.win.NativeSurface()
 	if h.Kind != gpu.SurfaceKindWayland {
 		d.done <- result{err: errors.NewErrf("TestSurfaceKind", "surface kind = %v", h.Kind)}

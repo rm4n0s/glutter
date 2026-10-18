@@ -221,6 +221,8 @@ type handler struct {
 	r             renderer
 	width, height int
 	dpr           float64
+	// input is what arrived since the last frame, which the next one handles first.
+	input inputQueue
 
 	armed      bool // the capture is scheduled
 	captureDue bool // the next frame is read back
@@ -239,19 +241,32 @@ func (h *handler) OnMetrics(view ui.ViewID, m platform.ViewMetrics) {
 
 func (h *handler) OnKey(d ui.KeyData) {
 	if f := h.cfg.Hooks.Key; f != nil {
-		f(d)
+		h.queueInput(func() { f(d) })
 	}
 }
 
 func (h *handler) OnPointer(batch []ui.PointerData) {
 	if f := h.cfg.Hooks.Pointer; f != nil {
-		f(batch)
+		batch = append([]ui.PointerData(nil), batch...)
+		h.queueInput(func() { f(batch) })
 	}
+}
+
+// queueInput has the next frame handle an input event. A window that never draws (the
+// shared-memory mode) has no frame to wait for, so the event is handled at once.
+func (h *handler) queueInput(handle func()) {
+	if h.cfg.ShmFill {
+		handle()
+		return
+	}
+	h.input.add(handle)
+	h.win.RequestFrame()
 }
 
 // OnFrame draws the window. The first frame also creates the renderer: its
 // surface needs the window to be mapped.
 func (h *handler) OnFrame(ui.ViewID, time.Duration) {
+	h.input.flush()
 	if h.r == nil {
 		h.r = h.newRenderer(h.cfg, h.log)
 	}

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/rm4n0s/errors"
+	"github.com/rm4n0s/glutter/internal/gpu/soft"
 	"github.com/rm4n0s/glutter/internal/platform"
 	"github.com/rm4n0s/glutter/internal/platform/fake"
 	"github.com/rm4n0s/glutter/internal/proof"
@@ -17,13 +18,14 @@ func TestPagesAreTheProofScenesInOrder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The pages start with the planned order, and every registered scene is a page.
+	// The pages start with the planned order, every registered scene is a page, and the
+	// grid for the size of the window is the last.
 	for i, n := range order {
 		if tour.pages[i] != n {
 			t.Errorf("page %d = %q, want %q", i+1, tour.pages[i], n)
 		}
 	}
-	if len(tour.pages) != len(proof.Names()) {
+	if len(tour.pages) != len(proof.Names())+1 || tour.pages[len(tour.pages)-1] != gridPage {
 		t.Errorf("%d pages for %d scenes: %v", len(tour.pages), len(proof.Names()), tour.pages)
 	}
 	if tour.page != 0 {
@@ -40,7 +42,9 @@ func TestStartPage(t *testing.T) {
 		{"1", "shapes-basic"},
 		{"2", "shapes-clips"},
 		{"5", "effects"},
+		{"6", gridPage},
 		{"blend-modes", "blend-modes"},
+		{gridPage, gridPage},
 	}
 	for _, tt := range tests {
 		tour, err := newTour(env(map[string]string{"GLUTTER_DEV_PAGE": tt.value}))
@@ -54,7 +58,7 @@ func TestStartPage(t *testing.T) {
 }
 
 func TestStartPageInvalid(t *testing.T) {
-	for _, v := range []string{"0", "6", "-1", "nope", "shapes"} {
+	for _, v := range []string{"0", "7", "-1", "nope", "shapes"} {
 		_, err := newTour(env(map[string]string{"GLUTTER_DEV_PAGE": v}))
 		appErr, ok := errors.FromError(err)
 		if !ok || appErr.Tag != "TourPageInvalid" || !appErr.HasRoute("newTour->tour.find.TourPageInvalid") {
@@ -154,5 +158,52 @@ func TestSceneIsBuiltOnce(t *testing.T) {
 	tour.show(1)
 	if tour.scene(ui.Size{}, 1) == a {
 		t.Error("another page has another scene")
+	}
+}
+
+func TestGridPageDependsOnTheWindowSize(t *testing.T) {
+	tour, _ := newTour(env(map[string]string{"GLUTTER_DEV_PAGE": gridPage}))
+	a := tour.scene(ui.Size{Width: 960, Height: 720}, 1.5)
+	if tour.scene(ui.Size{Width: 960, Height: 720}, 1.5) != a {
+		t.Error("the grid is built once for a size")
+	}
+	b := tour.scene(ui.Size{Width: 800, Height: 600}, 1.5)
+	if b == a {
+		t.Error("a window of another size has another grid")
+	}
+	// The grid's lines are on whole pixels one wide: the picture is 1-pixel rectangles,
+	// the border included.
+	img, err := soft.Render(a, 960, 720)
+	if err != nil {
+		t.Fatal(err)
+	}
+	px := func(x, y int) [4]uint8 {
+		i := img.PixOffset(x, y)
+		return [4]uint8{img.Pix[i], img.Pix[i+1], img.Pix[i+2], img.Pix[i+3]}
+	}
+	accent := [4]uint8{0x67, 0x50, 0xA4, 255}
+	dark := [4]uint8{0x4A, 0x44, 0x58, 255}
+	faint := [4]uint8{0xC9, 0xC5, 0xD4, 255}
+	white := [4]uint8{255, 255, 255, 255}
+	for _, tt := range []struct {
+		name string
+		x, y int
+		want [4]uint8
+	}{
+		{"top left corner", 0, 0, accent},
+		{"bottom right corner", 959, 719, accent},
+		{"left edge", 0, 300, accent},
+		{"bottom edge", 300, 719, accent},
+		{"a faint vertical line", 16, 40, faint},
+		{"the pixel next to it", 17, 40, white},
+		{"a dark vertical line", 80, 40, dark},
+		{"a dark horizontal line", 40, 160, dark},
+		{"a faint horizontal line", 40, 176, faint},
+		{"between lines", 40, 41, white},
+		{"the center's mark", 480, 366, accent},
+	} {
+		if got := px(tt.x, tt.y); got != tt.want {
+			t.Errorf("%s: pixel %d,%d = %v, want %v", tt.name, tt.x, tt.y, got, tt.want)
+		}
 	}
 }

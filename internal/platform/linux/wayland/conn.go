@@ -89,6 +89,14 @@ type session struct {
 	// cursorShape is nil without wp_cursor_shape_manager_v1; the cursors then come
 	// from the XCursor theme.
 	cursorShape *wl.WpCursorShapeManagerV1
+	// fractionalScale and viewporter are nil without wp_fractional_scale_manager_v1
+	// and wp_viewporter; the windows then use the integer scale (SPEC §8.11).
+	fractionalScale *wl.WpFractionalScaleManagerV1
+	viewporter      *wl.WpViewporter
+	// outputScale is the wl_output.scale of each output, 1 until it says;
+	// onOutputScale, when set, is called when one changes.
+	outputScale   map[*wl.WlOutput]int32
+	onOutputScale func()
 
 	// optionalPresent holds the optional globals that the compositor offers.
 	optionalPresent map[string]Global
@@ -103,6 +111,7 @@ func newSession(conn *wl.Conn) (*session, error) {
 		conn:            conn,
 		advertised:      map[string][]Global{},
 		optionalPresent: map[string]Global{},
+		outputScale:     map[*wl.WlOutput]int32{},
 	}
 	s.registry = conn.Display().GetRegistry()
 	s.registry.SetEvents(&wl.WlRegistryEvents{
@@ -159,7 +168,14 @@ func (s *session) bindRequired() error {
 			}})
 		case wl.WlOutputInterface:
 			for _, og := range globals {
-				s.outputs = append(s.outputs, wl.BindWlOutput(s.registry, og.Name, bindVersion(og, r.max)))
+				out := wl.BindWlOutput(s.registry, og.Name, bindVersion(og, r.max))
+				out.SetEvents(&wl.WlOutputEvents{OnScale: func(factor int32) {
+					s.outputScale[out] = factor
+					if s.onOutputScale != nil {
+						s.onOutputScale()
+					}
+				}})
+				s.outputs = append(s.outputs, out)
 			}
 		case wl.XdgWmBaseInterface:
 			s.wmBase = wl.BindXdgWmBase(s.registry, g.Name, v)
@@ -188,6 +204,15 @@ func (s *session) recordOptional() {
 	}
 	if g, ok := s.optionalPresent[wl.WpCursorShapeManagerV1Interface.Name]; ok {
 		s.cursorShape = wl.BindWpCursorShapeManagerV1(s.registry, g.Name, bindVersion(g, 1))
+	}
+	// Fractional scale works through a viewport, so one without the other is no use.
+	fs, hasFS := s.optionalPresent[wl.WpFractionalScaleManagerV1Interface.Name]
+	vp, hasVP := s.optionalPresent[wl.WpViewporterInterface.Name]
+	if hasVP {
+		s.viewporter = wl.BindWpViewporter(s.registry, vp.Name, bindVersion(vp, 1))
+	}
+	if hasFS && hasVP {
+		s.fractionalScale = wl.BindWpFractionalScaleManagerV1(s.registry, fs.Name, bindVersion(fs, 1))
 	}
 }
 

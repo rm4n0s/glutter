@@ -36,6 +36,8 @@ type Server struct {
 	caps       uint32
 	serial     uint32 // the last serial sent with a keyboard event
 
+	outputScale, bufferScale int32
+
 	win windowing // see windowing.go; guarded by mu
 
 	mu      sync.Mutex // guards objects, log, ids and writes
@@ -112,6 +114,13 @@ type Config struct {
 	// Toplevel is what the initial configure of a toplevel window says. The zero
 	// value lets the client choose its size.
 	Toplevel ToplevelConfigure
+	// OutputScale is the wl_output.scale that a wl_output announces when it is bound;
+	// zero means 2.
+	OutputScale int32
+	// PreferredBufferScale is the wl_surface.preferred_buffer_scale that a new
+	// wl_surface announces; zero means 2, and a negative number sends none, as a
+	// compositor with wl_compositor older than version 6 does.
+	PreferredBufferScale int32
 }
 
 // New starts a server on one end of a new socket pair and returns the other
@@ -135,7 +144,15 @@ func New(t testing.TB, cfg Config) (s *Server, clientFD int) {
 	if caps == 0 {
 		caps = 2
 	}
+	outputScale, bufferScale := cfg.OutputScale, cfg.PreferredBufferScale
+	if outputScale == 0 {
+		outputScale = 2
+	}
+	if bufferScale == 0 {
+		bufferScale = 2
+	}
 	s = &Server{
+		outputScale: outputScale, bufferScale: bufferScale,
 		t: t, fd: fds[0], globals: globals, toplevel: cfg.Toplevel, holdFrames: cfg.HoldFrames,
 		keymap: keymap, caps: caps,
 		objects:   map[uint32]string{1: "wl_display"},
@@ -302,7 +319,7 @@ func (s *Server) handle(id uint32, op uint16, r *reader) {
 		if ifaceName == "wl_output" {
 			// geometry(x, y, physical_width, physical_height, subpixel, make, model, transform)
 			s.Send(newID, 0, int32(-10), int32(20), int32(300), int32(200), int32(1), "Glutter", "Test Panel", int32(0))
-			s.Send(newID, 3, int32(2)) // scale(factor)
+			s.Send(newID, 3, s.outputScale) // scale(factor)
 		}
 		if ifaceName == "wl_seat" {
 			s.Send(newID, 0, s.caps) // capabilities
@@ -314,7 +331,9 @@ func (s *Server) handle(id uint32, op uint16, r *reader) {
 		if output := s.ID("wl_output"); output != 0 {
 			s.Send(surface, 0, output) // wl_surface.enter(output)
 		}
-		s.Send(surface, 2, int32(2)) // preferred_buffer_scale(factor)
+		if s.bufferScale > 0 {
+			s.Send(surface, 2, s.bufferScale) // preferred_buffer_scale(factor)
+		}
 	case "wl_seat.0": // get_pointer(id)
 		ptr := r.u32()
 		s.addObject(ptr, "wl_pointer")

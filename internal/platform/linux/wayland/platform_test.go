@@ -33,6 +33,14 @@ func connectWith(t *testing.T, cfg fakecomp.Config, opts Options) (*Platform, *f
 			t.Skipf("libwayland-client is not available: %v", err)
 		}
 	}
+	// A scale of 1 unless the test says otherwise: the fake compositor's own default is 2,
+	// for the tests of the bindings.
+	if cfg.OutputScale == 0 {
+		cfg.OutputScale = 1
+	}
+	if cfg.PreferredBufferScale == 0 {
+		cfg.PreferredBufferScale = 1
+	}
 	srv, fd := fakecomp.New(t, cfg)
 	conn, err := wl.ConnectFD(fd)
 	if err != nil {
@@ -86,7 +94,7 @@ func TestRequiredGlobalsAreBound(t *testing.T) {
 
 func TestOptionalGlobalsAreRecorded(t *testing.T) {
 	globals := append(fakecomp.DefaultGlobals(),
-		fakecomp.Global{Name: 20, Interface: "wp_viewporter", Version: 1},
+		fakecomp.Global{Name: 20, Interface: "wp_content_type_manager_v1", Version: 1},
 		fakecomp.Global{Name: 21, Interface: "zxdg_decoration_manager_v1", Version: 2},
 		fakecomp.Global{Name: 22, Interface: "something_unknown_v1", Version: 1},
 	)
@@ -95,7 +103,7 @@ func TestOptionalGlobalsAreRecorded(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := map[string]Global{
-		"wp_viewporter":              {20, 1},
+		"wp_content_type_manager_v1": {20, 1},
 		"zxdg_decoration_manager_v1": {21, 2},
 		"wl_data_device_manager":     {5, 3}, // part of the default globals
 	}
@@ -108,9 +116,37 @@ func TestOptionalGlobalsAreRecorded(t *testing.T) {
 	if g, ok := p.Globals("zwp_tablet_manager_v2"); ok || len(g) != 0 {
 		t.Errorf("Globals(absent) = %v, %v, want none", g, ok)
 	}
-	// Optional globals are only recorded, not bound.
-	if strings.Contains(strings.Join(srv.Requests(), "\n"), "wp_viewporter") {
+	// Optional globals that no code uses yet are only recorded, not bound.
+	if strings.Contains(strings.Join(srv.Requests(), "\n"), "wp_content_type_manager_v1") {
 		t.Error("an optional global was bound")
+	}
+}
+
+func TestScaleGlobalsAreBoundTogether(t *testing.T) {
+	both := append(fakecomp.DefaultGlobals(),
+		fakecomp.Global{Name: 20, Interface: "wp_viewporter", Version: 1},
+		fakecomp.Global{Name: 21, Interface: "wp_fractional_scale_manager_v1", Version: 1})
+	tests := []struct {
+		name               string
+		globals            []fakecomp.Global
+		viewporter, scaler bool
+	}{
+		{"both", both, true, true},
+		{"a viewporter only", both[:len(both)-1], true, false},
+		// Fractional scale is of no use without a viewport.
+		{"a fractional scale manager only", append(fakecomp.DefaultGlobals(), both[len(both)-1]), false, false},
+		{"neither", fakecomp.DefaultGlobals(), false, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p, _, err := connect(t, fakecomp.Config{Globals: tt.globals})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if (p.sess.viewporter != nil) != tt.viewporter || (p.sess.fractionalScale != nil) != tt.scaler {
+				t.Errorf("viewporter %v, fractional scale manager %v", p.sess.viewporter != nil, p.sess.fractionalScale != nil)
+			}
+		})
 	}
 }
 

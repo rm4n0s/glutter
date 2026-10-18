@@ -304,6 +304,16 @@ func TestRunScreenshotAfterADelay(t *testing.T) {
 	}
 }
 
+func countEntries(c *conn, kind fake.EntryKind) int {
+	n := 0
+	for _, e := range c.Log() {
+		if e.Kind == kind {
+			n++
+		}
+	}
+	return n
+}
+
 func hasEntry(c *conn, kind fake.EntryKind) bool {
 	for _, e := range c.Log() {
 		if e.Kind == kind {
@@ -479,5 +489,74 @@ func TestRunWithoutASceneHookDrawsNoScene(t *testing.T) {
 	}
 	if calls, _ := h.r.snapshot(); calls[0].scene != nil {
 		t.Error("a scene came from nowhere")
+	}
+}
+
+func TestInputWaitsForTheNextFrameAndIsHandledBeforeTheScene(t *testing.T) {
+	h := newHarness(t, map[string]string{"DISPLAY": ":0"})
+	var mu sync.Mutex
+	var order []string
+	note := func(s string) { mu.Lock(); order = append(order, s); mu.Unlock() }
+	h.cfg.Hooks.Key = func(d ui.KeyData) { note(string(rune(d.Logical))) }
+	h.cfg.Hooks.Pointer = func(b []ui.PointerData) { note("pointer" + string(rune('0'+len(b)))) }
+	h.cfg.Scene = func(ui.Size, float64) *ui.Scene { note("scene"); return nil }
+
+	h.c.Inject(metrics(10, 10))
+	h.c.Inject(fake.FrameEvent{View: 0})
+	done := h.run(t)
+	waitFor(t, func() bool { mu.Lock(); defer mu.Unlock(); return len(order) == 1 })
+
+	// Input between frames asks for a frame, and is not handled until it comes.
+	h.c.Inject(fake.KeyEvent{Data: ui.KeyData{Type: ui.KeyEventTypeDown, Logical: 'a'}})
+	h.c.Inject(fake.PointerEvent{Data: []ui.PointerData{{Change: ui.PointerChangeHover}, {Change: ui.PointerChangeHover}}})
+	h.c.Inject(fake.KeyEvent{Data: ui.KeyData{Type: ui.KeyEventTypeDown, Logical: 'b'}})
+	waitFor(t, func() bool { return countEntries(h.c, fake.EntryRequestFrame) == 3 })
+	mu.Lock()
+	if len(order) != 1 {
+		t.Errorf("input was handled before a frame: %v", order)
+	}
+	mu.Unlock()
+
+	// One frame handles all of it, in order, before its scene is built.
+	h.c.Inject(fake.FrameEvent{View: 0})
+	waitFor(t, func() bool { mu.Lock(); defer mu.Unlock(); return len(order) == 5 })
+	mu.Lock()
+	want := []string{"scene", "a", "pointer2", "b", "scene"}
+	for i := range want {
+		if order[i] != want[i] {
+			t.Errorf("order = %v, want %v", order, want)
+			break
+		}
+	}
+	mu.Unlock()
+	h.stopEngine(t)
+	if err := result(t, done); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestInputIsHandledAtOnceInTheSharedMemoryMode(t *testing.T) {
+	var keys []rune
+	h := &handler{cfg: &Config{ShmFill: true, Hooks: Hooks{Key: func(d ui.KeyData) { keys = append(keys, rune(d.Logical)) }}}}
+	h.OnKey(ui.KeyData{Logical: 'x'})
+	if len(keys) != 1 || keys[0] != 'x' || len(h.input.pending) != 0 {
+		t.Errorf("keys %v, queued %d: with no frames there is nothing to wait for", keys, len(h.input.pending))
+	}
+}
+
+func TestInputQueueFlushesInOrder(t *testing.T) {
+	var queue inputQueue
+	var got []int
+	queue.add(func() { got = append(got, 1); queue.add(func() { got = append(got, 3) }) })
+	queue.add(func() { got = append(got, 2) })
+	queue.flush()
+	// What the handling queues waits for the next flush.
+	if len(got) != 2 || got[0] != 1 || got[1] != 2 {
+		t.Fatalf("handled %v", got)
+	}
+	queue.flush()
+	queue.flush()
+	if len(got) != 3 || got[2] != 3 {
+		t.Errorf("handled %v", got)
 	}
 }

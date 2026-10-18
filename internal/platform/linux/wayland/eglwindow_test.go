@@ -28,6 +28,8 @@ type frameHandler struct {
 	mu      sync.Mutex
 	metrics []platform.ViewMetrics
 	frames  []time.Duration
+	// configures is the number of acknowledged configures at each frame.
+	configures []int
 	// onFrame, when set, runs inside OnFrame before the commit (on the UI thread).
 	onFrame func()
 }
@@ -45,6 +47,7 @@ func (h *frameHandler) OnFrame(view ui.ViewID, t time.Duration) {
 	h.p.windows[view].surface.Commit() // the swap
 	h.mu.Lock()
 	h.frames = append(h.frames, t)
+	h.configures = append(h.configures, h.p.windows[view].configures)
 	h.mu.Unlock()
 }
 
@@ -60,7 +63,16 @@ func (h *frameHandler) metricsSeen() []platform.ViewMetrics {
 	return append([]platform.ViewMetrics(nil), h.metrics...)
 }
 
+// resizeCall is one wl_egl_window_resize and how many configures had been
+// acknowledged when it was made.
+type resizeCall struct {
+	width, height int32
+	configures    int
+}
+
 type eglEnv struct {
+	mu       sync.Mutex
+	resizes  []resizeCall
 	t        *testing.T
 	p        *Platform
 	srv      *fakecomp.Server
@@ -73,7 +85,14 @@ type eglEnv struct {
 
 func startEGLWindow(t *testing.T, hold bool, toplevel fakecomp.ToplevelConfigure) *eglEnv {
 	t.Helper()
-	p, srv, err := connectWith(t, fakecomp.Config{HoldFrames: hold, Toplevel: toplevel}, Options{})
+	return startEGLWindowWith(t, fakecomp.Config{HoldFrames: hold, Toplevel: toplevel})
+}
+
+// startEGLWindowWith starts a window against a fake compositor with the config. The
+// window's calls of wl_egl_window_resize are recorded.
+func startEGLWindowWith(t *testing.T, cfg fakecomp.Config) *eglEnv {
+	t.Helper()
+	p, srv, err := connectWith(t, cfg, Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,6 +107,18 @@ func startEGLWindow(t *testing.T, hold bool, toplevel fakecomp.ToplevelConfigure
 	h := &frameHandler{p: p}
 	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 	e := &eglEnv{t: t, p: p, srv: srv, h: h, win: win, finished: make(chan struct{}), cancel: cancel}
+	w := win.(*window)
+	real := w.egl
+	w.egl = &waylandEGL{
+		create: real.create,
+		resize: func(native uintptr, width, height, dx, dy int32) {
+			e.mu.Lock()
+			e.resizes = append(e.resizes, resizeCall{width, height, w.configures})
+			e.mu.Unlock()
+			real.resize(native, width, height, dx, dy)
+		},
+		destroy: real.destroy,
+	}
 	go func() {
 		e.runErr = p.Run(ctx, h)
 		close(e.finished)

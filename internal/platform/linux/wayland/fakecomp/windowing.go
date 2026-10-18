@@ -133,6 +133,26 @@ func (s *Server) handleWindowing(iface string, op uint16, id uint32, r *reader) 
 		s.record("wl_surface.frame")
 	case "wl_surface.6": // commit
 		s.commit(id)
+	case "wl_surface.8": // set_buffer_scale(scale)
+		s.record("wl_surface.set_buffer_scale %d", r.i32())
+	case "wp_viewporter.0":
+		s.record("wp_viewporter.destroy")
+	case "wp_viewporter.1": // get_viewport(id, surface)
+		vp, surface := r.u32(), r.u32()
+		s.addObject(vp, "wp_viewport")
+		s.record("wp_viewporter.get_viewport surface=%v", surface == s.WindowSurface())
+	case "wp_viewport.0":
+		s.record("wp_viewport.destroy")
+	case "wp_viewport.2": // set_destination(width, height)
+		s.record("wp_viewport.set_destination %dx%d", r.i32(), r.i32())
+	case "wp_fractional_scale_manager_v1.0":
+		s.record("wp_fractional_scale_manager_v1.destroy")
+	case "wp_fractional_scale_manager_v1.1": // get_fractional_scale(id, surface)
+		fs, surface := r.u32(), r.u32()
+		s.addObject(fs, "wp_fractional_scale_v1")
+		s.record("wp_fractional_scale_manager_v1.get_fractional_scale surface=%v", surface == s.WindowSurface())
+	case "wp_fractional_scale_v1.0":
+		s.record("wp_fractional_scale_v1.destroy")
 	case "wl_shm_pool.0": // create_buffer(id, offset, width, height, stride, format)
 		buffer, offset, w, h, stride, format := r.u32(), r.i32(), r.i32(), r.i32(), r.i32(), r.u32()
 		s.addObject(buffer, "wl_buffer")
@@ -324,6 +344,49 @@ func (s *Server) HeldFrames() int {
 	defer s.mu.Unlock()
 	return len(s.win.held)
 }
+
+// SendPreferredScale sends wp_fractional_scale_v1.preferred_scale, in 120ths, as a
+// compositor does when the scale of the output changes.
+//
+// Flutter: no counterpart
+func (s *Server) SendPreferredScale(scale uint32) {
+	id := s.ID("wp_fractional_scale_v1")
+	if id == 0 {
+		s.t.Errorf("fake server: SendPreferredScale without a wp_fractional_scale_v1")
+		return
+	}
+	s.Send(id, 0, scale)
+}
+
+// SendPreferredBufferScale sends wl_surface.preferred_buffer_scale for the newest
+// toplevel's surface.
+//
+// Flutter: no counterpart
+func (s *Server) SendPreferredBufferScale(factor int32) {
+	s.Send(s.WindowSurface(), 2, factor)
+}
+
+// SetOutputScale sends wl_output.scale and wl_output.done for the output bound
+// last.
+//
+// Flutter: no counterpart
+func (s *Server) SetOutputScale(factor int32) {
+	id := s.ID("wl_output")
+	s.Send(id, 3, factor)
+	s.Send(id, 2)
+}
+
+// EnterOutput sends wl_surface.enter for the newest toplevel's surface and the output
+// bound last, and LeaveOutput wl_surface.leave.
+//
+// Flutter: no counterpart
+func (s *Server) EnterOutput() { s.Send(s.WindowSurface(), 0, s.ID("wl_output")) }
+
+// LeaveOutput sends wl_surface.leave for the newest toplevel's surface and the
+// output bound last.
+//
+// Flutter: no counterpart
+func (s *Server) LeaveOutput() { s.Send(s.WindowSurface(), 1, s.ID("wl_output")) }
 
 // WindowSurface returns the object ID of the wl_surface of the newest toplevel.
 // ID("wl_surface") is the newest surface of any kind, such as a cursor's.

@@ -1,6 +1,8 @@
 package wayland
 
 import (
+	"fmt"
+
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/internal/gpu"
 	"github.com/rm4n0s/glutter/internal/platform"
@@ -98,12 +100,34 @@ type window struct {
 	eglWindow uintptr
 
 	// Frame pacing (SPEC §8.11): at most one frame callback is in flight, and a
-	// request that arrives meanwhile waits for it.
+	// request that arrives meanwhile waits for it. A suspended window renders
+	// nothing, so a frame callback may never come; frameGen numbers the callbacks
+	// so that one that comes late, after the window resumed, is ignored.
 	frameInFlight  bool
 	frameRequested bool
+	frameGen       int
+
+	// Scale (SPEC §8.11, "Resizing and scaling"): the compositor's wishes, and what
+	// the surface has been told. scale120 is wp_fractional_scale_v1's preferred
+	// scale in 120ths and bufScale wl_surface's preferred_buffer_scale; each is 0
+	// until the compositor sends one. entered are the outputs the surface is on.
+	fractional   *wl.WpFractionalScaleV1
+	viewport     *wl.WpViewport
+	scale120     int32
+	bufScale     int32
+	entered      []*wl.WlOutput
+	scale        int32 // the scale in 120ths that the buffer was sized for; 120 before the first configure
+	bufferScale  int32 // the last wl_surface.set_buffer_scale
+	viewportUsed bool  // wp_viewport.set_destination is in force
+	physW, physH int32 // the size of the buffer in pixels
 
 	// cursor is the cursor over the window, set with SetCursor.
 	cursor platform.MouseCursor
+
+	// trace, when set (tests), is told "ack WxH" when a configure is acknowledged,
+	// with the size of the buffer that goes with it, and "commit WxH" when a buffer
+	// is committed.
+	trace func(event string)
 }
 
 var _ platform.Window = (*window)(nil)
@@ -131,7 +155,23 @@ func (p *Platform) NewWindow(cfg platform.WindowConfig) (platform.Window, error)
 		w.width, w.height = int32(defaultSize.Width), int32(defaultSize.Height)
 	}
 
+	w.scale, w.bufferScale = 120, 1
+	w.physW, w.physH = w.width, w.height
 	w.surface = s.compositor.CreateSurface()
+	w.surface.SetEvents(&wl.WlSurfaceEvents{
+		OnEnter:                w.onEnter,
+		OnLeave:                w.onLeave,
+		OnPreferredBufferScale: func(factor int32) { w.bufScale = factor; w.scaleChanged() },
+	})
+	if s.viewporter != nil {
+		w.viewport = s.viewporter.GetViewport(w.surface)
+	}
+	if s.fractionalScale != nil && w.viewport != nil {
+		w.fractional = s.fractionalScale.GetFractionalScale(w.surface)
+		w.fractional.SetEvents(&wl.WpFractionalScaleV1Events{
+			OnPreferredScale: func(scale uint32) { w.scale120 = int32(scale); w.scaleChanged() },
+		})
+	}
 	if egl != nil {
 		w.eglWindow = egl.create(w.surface.Ptr(), w.width, w.height)
 		if w.eglWindow == 0 {
@@ -221,7 +261,15 @@ func (w *window) onSurfaceConfigure(serial uint32) {
 	if resized {
 		w.width, w.height = w.pendingWidth, w.pendingHeight
 	}
+	wasSuspended := w.states.Suspended
 	w.states = w.pendingStates
+	if wasSuspended && !w.states.Suspended {
+		// The frame callback in flight, if any, will not come now; the window
+		// draws at once, and its time is the time of that frame.
+		w.frameInFlight = false
+		w.frameGen++
+		w.frameRequested = true
+	}
 
 	if w.egl != nil {
 		// The renderer draws into the wl_egl_window, and its swap is the commit.
@@ -229,7 +277,7 @@ func (w *window) onSurfaceConfigure(serial uint32) {
 		// once, without waiting for a frame callback: the first commit after the
 		// ack already has the new size (SPEC §8.11, "Resizing and scaling").
 		if resized || w.configures == 0 {
-			w.egl.resize(w.eglWindow, w.width, w.height, 0, 0)
+			w.resizeBuffer()
 		}
 		w.xdgSurface.AckConfigure(serial)
 		first := w.configures == 0
@@ -243,11 +291,13 @@ func (w *window) onSurfaceConfigure(serial uint32) {
 
 	// Draw first, then acknowledge and commit, so no frame of the old size is
 	// shown after the ack (SPEC §8.11, "Resizing and scaling").
-	buf, err := newShmBuffer(w.p.sess.shm, w.width, w.height, fillColor, w.onBufferReleased)
+	w.applyScale()
+	buf, err := newShmBuffer(w.p.sess.shm, w.physW, w.physH, fillColor, w.onBufferReleased)
 	if err != nil {
 		w.p.fail(err)
 		return
 	}
+	w.note("ack", w.physW, w.physH)
 	w.xdgSurface.AckConfigure(serial)
 	w.configures++
 	w.commit(buf)
@@ -259,6 +309,7 @@ func (w *window) onSurfaceConfigure(serial uint32) {
 // commit puts buf on the surface. The buffer on display until now is freed once
 // the compositor has released it.
 func (w *window) commit(buf *shmBuffer) {
+	w.note("commit", buf.width, buf.height)
 	w.surface.Attach(buf.buffer, 0, 0)
 	w.surface.DamageBuffer(0, 0, buf.width, buf.height)
 	w.surface.Commit()
@@ -268,6 +319,13 @@ func (w *window) commit(buf *shmBuffer) {
 	w.buffer = buf
 	w.mapped = true
 	w.collectReleased()
+}
+
+// note tells the trace of the tests, if there is one, about an event of the buffer.
+func (w *window) note(event string, width, height int32) {
+	if w.trace != nil {
+		w.trace(fmt.Sprintf("%s %dx%d", event, width, height))
+	}
 }
 
 // onBufferReleased runs when the compositor is done with a buffer. One that is
@@ -295,11 +353,115 @@ func (w *window) collectReleased() {
 func (w *window) reportMetrics() {
 	if h := w.p.handler; h != nil {
 		h.OnMetrics(w.id, platform.ViewMetrics{
-			// TODO(step 3.7): the scale of the output; 1 until then.
-			PhysicalSize:     ui.Size{Width: float64(w.width), Height: float64(w.height)},
-			DevicePixelRatio: 1,
+			PhysicalSize:     ui.Size{Width: float64(w.physW), Height: float64(w.physH)},
+			DevicePixelRatio: float64(w.scale) / 120,
 		})
 	}
+}
+
+// onEnter and onLeave track the outputs that the surface is on, whose scales are the
+// last resort for the window's scale.
+func (w *window) onEnter(output *wl.WlOutput) {
+	w.entered = append(w.entered, output)
+	w.scaleChanged()
+}
+
+func (w *window) onLeave(output *wl.WlOutput) {
+	for i, o := range w.entered {
+		if o == output {
+			w.entered = append(w.entered[:i], w.entered[i+1:]...)
+			break
+		}
+	}
+	w.scaleChanged()
+}
+
+// effectiveScale is the scale the window should be drawn at, in 120ths, and whether it
+// is fractional, so that the buffer is mapped to the window by a viewport. In order of
+// preference: wp_fractional_scale_v1's, the surface's preferred_buffer_scale
+// (wl_surface v6), and the largest scale of the outputs that the surface is on.
+func (w *window) effectiveScale() (scale int32, fractional bool) {
+	if w.viewport != nil && w.scale120 > 0 {
+		return w.scale120, true
+	}
+	if w.bufScale > 0 {
+		return w.bufScale * 120, false
+	}
+	best := int32(1)
+	for _, o := range w.entered {
+		if s := w.p.sess.outputScale[o]; s > best {
+			best = s
+		}
+	}
+	return best * 120, false
+}
+
+// applyScale tells the surface how its buffer is sized: with a fractional scale, the
+// buffer is ceil(size × scale) pixels and the viewport maps it to the window's logical
+// size; with an integer scale, the buffer has scale times the pixels and
+// wl_surface.set_buffer_scale says so. It sets physW, physH and scale.
+func (w *window) applyScale() {
+	scale, fractional := w.effectiveScale()
+	w.scale = scale
+	if fractional {
+		w.physW, w.physH = (w.width*scale+119)/120, (w.height*scale+119)/120
+		w.viewport.SetDestination(w.width, w.height)
+		w.viewportUsed = true
+		if w.bufferScale != 1 {
+			w.surface.SetBufferScale(1)
+			w.bufferScale = 1
+		}
+		return
+	}
+	n := scale / 120
+	w.physW, w.physH = w.width*n, w.height*n
+	if w.bufferScale != n {
+		w.surface.SetBufferScale(n)
+		w.bufferScale = n
+	}
+	if w.viewportUsed {
+		w.viewport.SetDestination(-1, -1)
+		w.viewportUsed = false
+	}
+}
+
+// resizeBuffer sizes the wl_egl_window for the logical size and the scale.
+func (w *window) resizeBuffer() {
+	w.applyScale()
+	w.egl.resize(w.eglWindow, w.physW, w.physH, 0, 0)
+}
+
+// scaleChanged runs when something that decides the scale changed. The window draws
+// again at once at the new scale, so that no frame at the old scale (blurry, or too
+// big) is shown in between. Before the first configure there is nothing to redraw: it
+// sizes the buffer. A change in how the same scale is expressed (a viewport instead of
+// the buffer scale, as when a compositor sends its first fractional scale) is told to
+// the surface and waits for the next frame.
+func (w *window) scaleChanged() {
+	if w.closed || w.configures == 0 {
+		return
+	}
+	scale, fractional := w.effectiveScale()
+	if scale == w.scale {
+		if fractional != w.viewportUsed && w.egl != nil {
+			w.applyScale()
+		}
+		return
+	}
+	if w.egl != nil {
+		w.resizeBuffer()
+		w.reportMetrics()
+		w.renderNow()
+		return
+	}
+	w.applyScale()
+	buf, err := newShmBuffer(w.p.sess.shm, w.physW, w.physH, fillColor, w.onBufferReleased)
+	if err != nil {
+		w.p.fail(err)
+		return
+	}
+	w.commit(buf)
+	w.reportMetrics()
 }
 
 // onClose handles xdg_toplevel.close: the user asked to close the window, and
@@ -345,6 +507,12 @@ func (w *window) renderNow() {
 	if h == nil || w.closed {
 		return
 	}
+	if w.states.Suspended {
+		// The compositor hides the window: nothing is drawn until it is shown, and
+		// then the frame is drawn at once (SPEC §8.11, "Frame pacing").
+		w.frameRequested = true
+		return
+	}
 	w.armFrameCallback()
 	h.OnFrame(w.id, w.p.now())
 }
@@ -356,10 +524,14 @@ func (w *window) armFrameCallback() {
 		return
 	}
 	w.frameInFlight = true
+	w.frameGen++
+	gen := w.frameGen
 	cb := w.surface.Frame()
 	cb.SetEvents(&wl.WlCallbackEvents{OnDone: func(uint32) {
 		cb.ProxyDestroy() // a wl_callback has no destructor request
-		w.onFrameDone()
+		if gen == w.frameGen {
+			w.onFrameDone()
+		}
 	}})
 }
 
@@ -387,7 +559,7 @@ func (w *window) RequestFrame() {
 		return
 	}
 	w.frameRequested = true
-	if w.frameInFlight {
+	if w.frameInFlight || w.states.Suspended {
 		return
 	}
 	w.p.loop.Post(func() {
@@ -423,7 +595,7 @@ func (w *window) SetSize(size ui.Size) {
 		if w.configures == 0 {
 			return // the first configure draws at this size
 		}
-		w.egl.resize(w.eglWindow, width, height, 0, 0)
+		w.resizeBuffer()
 		w.reportMetrics()
 		w.renderNow()
 		return
@@ -431,7 +603,8 @@ func (w *window) SetSize(size ui.Size) {
 	if !w.mapped {
 		return // the first configure draws at this size
 	}
-	buf, err := newShmBuffer(w.p.sess.shm, width, height, fillColor, w.onBufferReleased)
+	w.applyScale()
+	buf, err := newShmBuffer(w.p.sess.shm, w.physW, w.physH, fillColor, w.onBufferReleased)
 	if err != nil {
 		w.p.fail(err)
 		return
@@ -511,6 +684,12 @@ func (w *window) destroy() {
 	if w.eglWindow != 0 {
 		w.egl.destroy(w.eglWindow) // before the wl_surface it draws on
 		w.eglWindow = 0
+	}
+	if w.fractional != nil {
+		w.fractional.Destroy()
+	}
+	if w.viewport != nil {
+		w.viewport.Destroy()
 	}
 	if w.decoration != nil {
 		w.decoration.Destroy()

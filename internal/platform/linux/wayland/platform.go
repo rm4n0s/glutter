@@ -104,6 +104,11 @@ func newPlatform(conn *wl.Conn, opts Options) (*Platform, error) {
 		windows: map[ui.ViewID]*window{},
 	}
 	p.cursors = newCursors(p)
+	sess.onOutputScale = func() {
+		for _, w := range p.windows {
+			w.scaleChanged()
+		}
+	}
 	sess.onSeatCaps = p.updateSeat
 	p.updateSeat(sess.seatCaps)
 	return p, nil
