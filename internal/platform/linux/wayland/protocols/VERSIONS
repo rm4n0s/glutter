@@ -1,0 +1,26 @@
+# Written by scripts/fetch-wayland-protocols.sh. Do not edit.
+wayland_repository=https://gitlab.freedesktop.org/wayland/wayland.git
+wayland_tag=1.26.0
+wayland_commit=87cc8a8728a923fc57938faa81ba0e74f34ecdc7
+wayland_protocols_repository=https://gitlab.freedesktop.org/wayland/wayland-protocols.git
+wayland_protocols_tag=1.49
+wayland_protocols_commit=ee78491a237eaff9389a0ccf8680521d074407d3
+# file sha256
+file=cc860987e54f8d85c940e97fa1270c69b6e4ad31fbcf5a7f00107ce1157f5e07  wayland.xml
+file=7ba7f9c8473deee674cb1f154a18abd0bb0cc072604fc055b0c15e459fc4c7df  xdg-shell.xml
+file=68753c4a85a28659e3aa1fe0f138329a8bf3dff0b4789f4663a2c7fedbfecf2f  xdg-decoration-unstable-v1.xml
+file=5941de5d28f427ecdadddc8623a6f6af0a30b0ab4726847236ba7a7652b81316  fractional-scale-v1.xml
+file=dcb12279a03746301fe490aaed4b38a403485a925abfce2ccfceb644e104fe71  viewporter.xml
+file=bb57d91e53a79dadab7c612dab87c233393cee73673feefa7442cfbfdd9aed2f  cursor-shape-v1.xml
+file=ac1128b26c779cf90b9ed71182ba5e34a7262826789adae206d825a4d45908b4  tablet-v2.xml
+file=160815cda13c285a30df1971d8f0a5b3aac07071537df59916d2f748b18e4f59  text-input-unstable-v3.xml
+file=d568482ba84df6e531698b1f531810860995ca24d69495427fe43aee6017f52c  primary-selection-unstable-v1.xml
+file=9f7b6ad542f444001312113395b8de6f24e59d6f0c57c9b44f6c3c498ef004d7  pointer-gestures-unstable-v1.xml
+file=d8418be2d5738d50aff788bef1c7574f33f26659aa045447ff2ef9b78c58fe01  xdg-activation-v1.xml
+file=dffac93bcb2bb1d8c385e72b8a8c2c0d4d79a336866322f3ba886dce2b27b1e2  presentation-time.xml
+file=5e57a72fa9ccf1666c56d49cc86408f068c21e5e6a09ddd468ee65d08478f882  xdg-toplevel-icon-v1.xml
+file=625d83fbb068f48e69e739eafde507f10cdfe7480146f3ac10af9a2ddf551c80  xdg-foreign-unstable-v2.xml
+file=2822956bdf13d51848ff4b5e29c509028c1204c6e06262ee926b001f43a42dbb  xdg-dialog-v1.xml
+file=363d547c3eefe8959160cac903ff90b311d4b183005557d73640d9df2cfd7f79  xdg-output-unstable-v1.xml
+file=c2ac9f002c6669ca6c02eb9b587b8e9108e3ce6deab4a2de58b576f4f864ca38  idle-inhibit-unstable-v1.xml
+file=203d17a26baa2ab4a8c2c9cb737c953fa3263c73a0a8aa6e552a41b3eac2196d  content-type-v1.xml

@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="small">
+  <copyright>
+    Copyright 2026 The Glutter Authors
+
+    A tiny protocol that uses every feature the generator supports.
+  </copyright>
+
+  <interface name="demo_registry" version="1">
+    <description summary="global registry object">The registry of the demo.</description>
+
+    <enum name="kind">
+      <description summary="kinds of globals"/>
+      <entry name="plain" value="0" summary="no special kind"/>
+      <entry name="fancy" value="1" summary="a fancy global"/>
+    </enum>
+
+    <request name="bind">
+      <description summary="bind an object to the display"/>
+      <arg name="name" type="uint" summary="unique numeric name of the object"/>
+      <arg name="id" type="new_id" summary="bounded object"/>
+    </request>
+
+    <event name="global">
+      <description summary="announce global object"/>
+      <arg name="name" type="uint"/>
+      <arg name="interface" type="string"/>
+      <arg name="version" type="uint"/>
+    </event>
+  </interface>
+
+  <interface name="demo_manager" version="3">
+    <description summary="makes things"/>
+
+    <request name="create_thing">
+      <description summary="create a thing"/>
+      <arg name="id" type="new_id" interface="demo_thing"/>
+      <arg name="label" type="string"/>
+    </request>
+
+    <request name="destroy" type="destructor">
+      <description summary="destroy the manager"/>
+    </request>
+  </interface>
+
+  <interface name="demo_thing" version="2">
+    <description summary="a thing"/>
+
+    <enum name="flags" bitfield="true">
+      <description summary="thing flags"/>
+      <entry name="none" value="0x0"/>
+      <entry name="shiny" value="0x1" summary="it shines"/>
+      <entry name="loud" value="0x2" summary="it is loud"/>
+    </enum>
+
+    <enum name="mode">
+      <description summary="rotation modes"/>
+      <entry name="normal" value="0"/>
+      <entry name="90" value="1"/>
+    </enum>
+
+    <request name="destroy" type="destructor">
+      <description summary="destroy the thing"/>
+    </request>
+
+    <request name="set_parent">
+      <description summary="set the parent"/>
+      <arg name="parent" type="object" interface="demo_thing" allow-null="true"/>
+    </request>
+
+    <request name="set_title">
+      <description summary="set a title"/>
+      <arg name="title" type="string" allow-null="true"/>
+    </request>
+
+    <request name="poke" since="2">
+      <description summary="poke it with everything"/>
+      <arg name="x" type="int"/>
+      <arg name="y" type="fixed"/>
+      <arg name="flags" type="uint" enum="flags"/>
+      <arg name="kind" type="uint" enum="demo_registry.kind"/>
+      <arg name="file" type="fd"/>
+      <arg name="data" type="array"/>
+      <arg name="type" type="uint"/>
+      <arg name="other" type="object"/>
+    </request>
+
+    <event name="configure">
+      <description summary="the thing changed"/>
+      <arg name="width" type="int"/>
+      <arg name="height" type="int"/>
+      <arg name="data" type="array"/>
+      <arg name="mode" type="int" enum="mode"/>
+    </event>
+
+    <event name="entered">
+      <description summary="the thing met another"/>
+      <arg name="other" type="object" interface="demo_thing"/>
+      <arg name="anything" type="object"/>
+    </event>
+
+    <event name="child">
+      <description summary="a child appeared"/>
+      <arg name="child" type="new_id" interface="demo_thing"/>
+    </event>
+
+    <event name="motion">
+      <description summary="it moved"/>
+      <arg name="time" type="uint"/>
+      <arg name="x" type="fixed"/>
+      <arg name="y" type="fixed"/>
+      <arg name="file" type="fd"/>
+      <arg name="name" type="string"/>
+    </event>
+  </interface>
+</protocol>

@@ -247,6 +247,30 @@ func TestMallocAndCalloc(t *testing.T) {
 	}
 }
 
+func TestPointerAndBytes(t *testing.T) {
+	ptr := Calloc(1, 8)
+	defer Free(ptr)
+
+	view := Bytes(ptr, 8)
+	if len(view) != 8 {
+		t.Fatalf("len(Bytes) = %d, want 8", len(view))
+	}
+	copy(view, "abcdefg\x00")
+	if got := GoString(ptr); got != "abcdefg" {
+		t.Errorf("GoString after writing through Bytes = %q, want abcdefg", got)
+	}
+	*(*byte)(Pointer(ptr)) = 'X'
+	if view[0] != 'X' {
+		t.Errorf("a write through Pointer is not visible through Bytes: %q", view[0])
+	}
+	if got := Bytes(0, 8); got != nil {
+		t.Errorf("Bytes(0, 8) = %v, want nil", got)
+	}
+	if got := Bytes(ptr, 0); got != nil {
+		t.Errorf("Bytes(ptr, 0) = %v, want nil", got)
+	}
+}
+
 func TestCallbackRegistryLimit(t *testing.T) {
 	var registered int
 	r := &callbackRegistry{limit: 3, register: func(any) uintptr {

@@ -97,10 +97,27 @@ func GoString(ptr uintptr) string {
 	return string(unsafe.Slice((*byte)(pointer(ptr)), n))
 }
 
-// pointer converts the address of C memory to an unsafe.Pointer. It goes
+// pointer is the unexported name of Pointer, for use inside this package.
+func pointer(addr uintptr) unsafe.Pointer { return Pointer(addr) }
+
+// Pointer converts the address of C memory to an unsafe.Pointer. Use it only
+// for addresses of memory that C owns or that came from Malloc, Calloc or
+// CString, never for Go memory, which the garbage collector may move. It goes
 // through a pointer to the address, so go vet's unsafeptr check, which targets
-// Go memory moved by the garbage collector, does not apply: addr is never Go
-// memory.
-func pointer(addr uintptr) unsafe.Pointer {
+// uintptr-to-Pointer conversions of Go memory, does not apply.
+//
+// Flutter: no counterpart
+func Pointer(addr uintptr) unsafe.Pointer {
 	return *(*unsafe.Pointer)(unsafe.Pointer(&addr))
+}
+
+// Bytes returns a slice that views n bytes of C memory at addr, without
+// copying. It is valid until the C memory is freed. Address 0 or n 0 gives nil.
+//
+// Flutter: no counterpart
+func Bytes(addr uintptr, n int) []byte {
+	if addr == 0 || n == 0 {
+		return nil
+	}
+	return unsafe.Slice((*byte)(Pointer(addr)), n)
 }
