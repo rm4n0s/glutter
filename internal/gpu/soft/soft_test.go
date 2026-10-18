@@ -275,10 +275,6 @@ func TestRenderLayersAndState(t *testing.T) {
 }
 
 func TestRenderErrors(t *testing.T) {
-	rec := ui.NewPictureRecorder()
-	ui.NewCanvas(rec).DrawRect(ui.NewRectFromLTWH(0, 0, 1, 1), paint(0xFF000000))
-	rectPic := rec.EndRecording()
-
 	pathWith := func(p *ui.Paint) *ui.Scene {
 		return sceneOf(ui.Offset{}, func(c *ui.Canvas) {
 			path := ui.NewPath()
@@ -286,23 +282,6 @@ func TestRenderErrors(t *testing.T) {
 			c.DrawPath(path, p)
 		})
 	}
-	blurred := paint(0xFF000000)
-	blurred.SetMaskFilter(ui.NewMaskFilterBlur(ui.BlurStyleNormal, 2))
-	filtered := paint(0xFF000000)
-	filtered.SetImageFilter(ui.NewImageFilterBlur())
-
-	layerScene := func(push func(b *ui.SceneBuilder)) *ui.Scene {
-		b := ui.NewSceneBuilder()
-		push(b)
-		b.AddPicture(ui.Offset{}, rectPic)
-		return b.Build()
-	}
-	imageFilterLayer := layerScene(func(b *ui.SceneBuilder) { b.PushImageFilter(ui.NewImageFilterBlur()) })
-	backdropLayer := layerScene(func(b *ui.SceneBuilder) { b.PushBackdropFilter(ui.NewImageFilterBlur()) })
-	maskLayer := layerScene(func(b *ui.SceneBuilder) {
-		b.PushShaderMask(ui.NewGradientLinear(ui.Offset{}, ui.Offset{Dx: 1}, []ui.Color{ui.NewColor(0xFF000000), ui.NewColor(0xFFFFFFFF)}), ui.NewRectFromLTWH(0, 0, 4, 4), ui.BlendModeDstIn)
-	})
-
 	tests := []struct {
 		name  string
 		scene *ui.Scene
@@ -313,13 +292,7 @@ func TestRenderErrors(t *testing.T) {
 		{"zero width", pathWith(paint(0xFF000000)), 0, 10, "SoftSizeInvalid"},
 		{"negative height", pathWith(paint(0xFF000000)), 10, -1, "SoftSizeInvalid"},
 		{"too large", pathWith(paint(0xFF000000)), 1 << 20, 10, "SoftSizeInvalid"},
-		{"image filter layer", imageFilterLayer, 10, 10, "SoftNotImplemented"},
-		{"backdrop filter layer", backdropLayer, 10, 10, "SoftNotImplemented"},
-		{"shader mask layer", maskLayer, 10, 10, "SoftNotImplemented"},
-		{"image filter on a save layer", sceneOf(ui.Offset{}, func(c *ui.Canvas) { c.SaveLayer(nil, filtered) }), 10, 10, "SoftNotImplemented"},
-		{"shadow", sceneOf(ui.Offset{}, func(c *ui.Canvas) { c.DrawShadow(ui.NewPath(), ui.NewColor(0xFF000000), 2, false) }), 10, 10, "SoftNotImplemented"},
-		{"image filter", pathWith(filtered), 10, 10, "SoftNotImplemented"},
-		{"mask filter", pathWith(blurred), 10, 10, "SoftNotImplemented"},
+		{"text", sceneOf(ui.Offset{}, func(c *ui.Canvas) { c.DrawParagraph(&ui.Paragraph{}, ui.Offset{}) }), 10, 10, "SoftNotImplemented"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

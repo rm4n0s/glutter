@@ -67,13 +67,14 @@ type stackEntry struct {
 // changes.
 func (r *renderer) picture(p *ui.Picture, st *state) error {
 	var stack []stackEntry
-	restore := func() {
+	restore := func() error {
 		e := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
 		*st = e.saved
 		if e.layer != nil {
-			r.endLayer(e.layer, st.clip, e.comp)
+			return r.endLayer(e.layer, st.clip, e.comp)
 		}
+		return nil
 	}
 	for _, op := range p.DisplayList().Ops() {
 		switch v := op.(type) {
@@ -84,6 +85,7 @@ func (r *renderer) picture(p *ui.Picture, st *state) error {
 			if err != nil {
 				return err
 			}
+			comp.imageFilter, comp.ctm, comp.tile = v.Paint.ImageFilter(), affineOf(st.m), ui.TileModeClamp
 			bounds := st.clip.bounds
 			if v.HasBounds {
 				bounds = bounds.Intersect(deviceBounds(st.m, v.Bounds))
@@ -91,7 +93,9 @@ func (r *renderer) picture(p *ui.Picture, st *state) error {
 			stack = append(stack, stackEntry{saved: *st.clone(), layer: r.beginLayer(bounds), comp: comp})
 		case ui.OpRestore:
 			if len(stack) > 0 {
-				restore()
+				if err := restore(); err != nil {
+					return err
+				}
 			}
 		case ui.OpTransform:
 			st.m.MultiplyBy(&v.Matrix)
@@ -124,7 +128,9 @@ func (r *renderer) picture(p *ui.Picture, st *state) error {
 	// A recording may end with layers still open; they are composited as if
 	// restored.
 	for len(stack) > 0 {
-		restore()
+		if err := restore(); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -139,8 +145,69 @@ func deviceBounds(m *ui.Matrix4, r ui.Rect) image.Rectangle {
 	return image.Rect(clamp(math.Floor(b.Left)), clamp(math.Floor(b.Top)), clamp(math.Ceil(b.Right)), clamp(math.Ceil(b.Bottom)))
 }
 
+// paintOf returns the paint of a drawing operation and the function that makes
+// the same operation with another paint; nil for the operations without one.
+func paintOf(op ui.DisplayOp) (*ui.Paint, func(*ui.Paint) ui.DisplayOp) {
+	switch v := op.(type) {
+	case ui.OpDrawPath:
+		return &v.Paint, func(p *ui.Paint) ui.DisplayOp { v.Paint = *p; return v }
+	case ui.OpDrawRect:
+		return &v.Paint, func(p *ui.Paint) ui.DisplayOp { v.Paint = *p; return v }
+	case ui.OpDrawRRect:
+		return &v.Paint, func(p *ui.Paint) ui.DisplayOp { v.Paint = *p; return v }
+	case ui.OpDrawRSuperellipse:
+		return &v.Paint, func(p *ui.Paint) ui.DisplayOp { v.Paint = *p; return v }
+	case ui.OpDrawDRRect:
+		return &v.Paint, func(p *ui.Paint) ui.DisplayOp { v.Paint = *p; return v }
+	case ui.OpDrawOval:
+		return &v.Paint, func(p *ui.Paint) ui.DisplayOp { v.Paint = *p; return v }
+	case ui.OpDrawCircle:
+		return &v.Paint, func(p *ui.Paint) ui.DisplayOp { v.Paint = *p; return v }
+	case ui.OpDrawArc:
+		return &v.Paint, func(p *ui.Paint) ui.DisplayOp { v.Paint = *p; return v }
+	case ui.OpDrawLine:
+		return &v.Paint, func(p *ui.Paint) ui.DisplayOp { v.Paint = *p; return v }
+	case ui.OpDrawPoints:
+		return &v.Paint, func(p *ui.Paint) ui.DisplayOp { v.Paint = *p; return v }
+	case ui.OpDrawImage:
+		return &v.Paint, func(p *ui.Paint) ui.DisplayOp { v.Paint = *p; return v }
+	case ui.OpDrawImageRect:
+		return &v.Paint, func(p *ui.Paint) ui.DisplayOp { v.Paint = *p; return v }
+	case ui.OpDrawImageNine:
+		return &v.Paint, func(p *ui.Paint) ui.DisplayOp { v.Paint = *p; return v }
+	case ui.OpDrawAtlas:
+		return &v.Paint, func(p *ui.Paint) ui.DisplayOp { v.Paint = *p; return v }
+	case ui.OpDrawVertices:
+		return &v.Paint, func(p *ui.Paint) ui.DisplayOp { v.Paint = *p; return v }
+	}
+	return nil, nil
+}
+
 // draw runs the drawing operations that make a shape, an image or triangles.
+// When the paint has an image filter, the operation is drawn into a layer
+// without the filter and the blend mode, and the layer is filtered and then
+// composited with the blend mode, as Skia does.
 func (r *renderer) draw(op ui.DisplayOp, st *state) error {
+	if p, with := paintOf(op); p != nil && p.ImageFilter() != nil {
+		// p points into the copy of the operation that with() changes: read what
+		// is needed from it first.
+		comp := compositeParams{alpha: 1, mode: p.BlendMode(), imageFilter: p.ImageFilter(), ctm: affineOf(st.m), tile: ui.TileModeClamp, drawnOnly: true}
+		inner := *p
+		inner.SetImageFilter(nil)
+		inner.SetBlendMode(ui.BlendModeSrcOver)
+		unclipped := &state{m: st.m, clip: newClip(st.clip.bounds)}
+		rec := r.beginLayer(st.clip.bounds)
+		err := r.drawOp(with(&inner), unclipped)
+		if ferr := r.endLayer(rec, st.clip, comp); err == nil {
+			err = ferr
+		}
+		return err
+	}
+	return r.drawOp(op, st)
+}
+
+// drawOp runs a drawing operation whose paint has no image filter.
+func (r *renderer) drawOp(op ui.DisplayOp, st *state) error {
 	switch v := op.(type) {
 	case ui.OpDrawPath:
 		return r.drawPath(v.Path, &v.Paint, st, false)
@@ -176,6 +243,8 @@ func (r *renderer) draw(op ui.DisplayOp, st *state) error {
 		return r.drawAtlas(v, st)
 	case ui.OpDrawVertices:
 		return r.drawVertices(v, st)
+	case ui.OpDrawShadow:
+		return r.drawShadow(v, st)
 	}
 	return notImplemented("operation", op)
 }
@@ -200,6 +269,17 @@ type compositeParams struct {
 	alpha  float32
 	filter filterFunc
 	mode   ui.BlendMode
+	// imageFilter, when it is not nil, filters the pixels of a layer before they
+	// are composited; ctm is the transform it is set under, and tile the mode a
+	// blur without one gets.
+	imageFilter ui.ImageFilter
+	ctm         affine
+	tile        ui.TileMode
+	// drawnOnly composites only the pixels the layer has something in, after
+	// the filter: the layer of a single shape drawn with an image filter is as
+	// big as the shape and its blur, not as big as the clip, so a blend mode
+	// such as clear does not reach beyond it.
+	drawnOnly bool
 }
 
 // filtersOf returns the function that applies the color filter of the paint and
@@ -210,17 +290,6 @@ func filtersOf(p *ui.Paint) filterFunc {
 		inv = invertFunc
 	}
 	return chainFilters(colorFilterFunc(p.ColorFilter()), inv)
-}
-
-// checkEffects returns an error for the paint features that belong to step 2.9.
-func checkEffects(p *ui.Paint) error {
-	if f := p.ImageFilter(); f != nil {
-		return notImplemented("paint feature", f)
-	}
-	if f := p.MaskFilter(); f != nil {
-		return notImplemented("paint feature", f)
-	}
-	return nil
 }
 
 // baseSource returns the color a paint makes at each pixel, before its color
@@ -248,9 +317,6 @@ func (r *renderer) baseSource(p *ui.Paint, toDevice affine) (source, bool, error
 
 // setup builds the setup of a paint for shapes.
 func (r *renderer) setup(p *ui.Paint, toDevice affine) (paintSetup, error) {
-	if err := checkEffects(p); err != nil {
-		return paintSetup{}, err
-	}
 	src, dither, err := r.baseSource(p, toDevice)
 	if err != nil {
 		return paintSetup{}, err
@@ -265,11 +331,9 @@ func (r *renderer) setup(p *ui.Paint, toDevice affine) (paintSetup, error) {
 
 // compositeOf builds the parameters for putting an image or a layer over the
 // surface with the paint: its alpha, color filter, inverted colors and blend
-// mode. A shader of the paint does not apply.
+// mode. A shader of the paint does not apply. The image filter of the paint is not
+// included; layers add it themselves.
 func (r *renderer) compositeOf(p *ui.Paint) (compositeParams, error) {
-	if err := checkEffects(p); err != nil {
-		return compositeParams{}, err
-	}
 	return compositeParams{alpha: float32(p.Color().Alpha()) / 255, filter: filtersOf(p), mode: p.BlendMode()}, nil
 }
 
@@ -360,12 +424,25 @@ func strokePolys(local []ui.FlatContour, p *ui.Paint, m *ui.Matrix4) [][]ui.Offs
 // fillPolys rasterizes the polygons, which are in device coordinates, and paints
 // them.
 func (r *renderer) fillPolys(polys [][]ui.Offset, rule FillRule, p *ui.Paint, ps paintSetup, st *state) {
-	mask := Rasterize(polys, rule, st.clip.limit(r.img.Rect))
+	visible := st.clip.limit(r.img.Rect)
+	area := visible
+	mf := p.MaskFilter()
+	if mf != nil {
+		// The shape may be off the surface and still blur onto it.
+		margin := int(math.Ceil(3 * mf.Sigma() * affineScale(st.m)))
+		area = visible.Inset(-margin)
+	}
+	mask := Rasterize(polys, rule, area)
 	if mask == nil {
 		return
 	}
 	if !p.IsAntiAlias() {
 		mask = threshold(mask)
+	}
+	if mf != nil {
+		if mask = applyMaskFilter(mask, mf, st.m, visible); mask == nil {
+			return
+		}
 	}
 	r.composite(mask, st.clip, ps)
 }

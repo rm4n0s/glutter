@@ -24,9 +24,6 @@ type vertex struct {
 // and where it is on an edge shared by two triangles exactly one of them gets it.
 func (r *renderer) drawVertices(op ui.OpDrawVertices, st *state) error {
 	p := &op.Paint
-	if err := checkEffects(p); err != nil {
-		return err
-	}
 	v := op.Vertices
 	colors, tex := v.Colors(), v.TextureCoordinates()
 	var paintAt func(x, y int, t ui.Offset) rgba

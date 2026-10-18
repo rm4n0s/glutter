@@ -4,7 +4,6 @@ import (
 	"math"
 	"testing"
 
-	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/internal/goldens"
 	"github.com/rm4n0s/glutter/ui"
 )
@@ -109,16 +108,6 @@ func TestVerticesTransformAndClip(t *testing.T) {
 	}
 	if got := px(img, 5, 5)[3]; got != 0 {
 		t.Errorf("outside the shape = %d", got)
-	}
-}
-
-func TestVerticesNotImplemented(t *testing.T) {
-	v := ui.NewVertices(ui.VertexModeTriangles, pts(0, 0, 8, 0, 0, 8))
-	filtered := ui.NewPaint()
-	filtered.SetImageFilter(ui.NewImageFilterBlur())
-	_, err := Render(sceneOf(ui.Offset{}, func(c *ui.Canvas) { c.DrawVertices(v, ui.BlendModeSrcOver, filtered) }), 8, 8)
-	if appErr, ok := errors.FromError(err); !ok || !appErr.HasRoute("SoftNotImplemented") {
-		t.Errorf("expected SoftNotImplemented, got %v", err)
 	}
 }
 
