@@ -490,6 +490,9 @@ func (w *window) Close() {
 // window. It does not touch the platform's list of windows.
 func (w *window) destroy() {
 	w.closed = true
+	if kb := w.p.keyboard; kb != nil {
+		kb.windowClosed(w) // releases the keys that are held, while the window still counts
+	}
 	if w.eglWindow != 0 {
 		w.egl.destroy(w.eglWindow) // before the wl_surface it draws on
 		w.eglWindow = 0

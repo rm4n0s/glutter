@@ -75,6 +75,12 @@ type session struct {
 	outputs       []*wl.WlOutput
 	wmBase        *wl.XdgWmBase
 
+	// seatCaps is what the seat can do now (the last wl_seat.capabilities).
+	// onSeatCaps, when set, is called when it changes.
+	seatCaps    wl.WlSeatCapability
+	seatVersion uint32
+	onSeatCaps  func(wl.WlSeatCapability)
+
 	// decorationManager is nil when the compositor has no
 	// zxdg_decoration_manager_v1.
 	decorationManager *wl.ZxdgDecorationManagerV1
@@ -137,6 +143,15 @@ func (s *session) bindRequired() error {
 			s.shm = wl.BindWlShm(s.registry, g.Name, v)
 		case wl.WlSeatInterface:
 			s.seat = wl.BindWlSeat(s.registry, g.Name, v)
+			s.seatVersion = v
+			// The capabilities arrive in the roundtrip after the binding, so
+			// the handler is set now.
+			s.seat.SetEvents(&wl.WlSeatEvents{OnCapabilities: func(caps wl.WlSeatCapability) {
+				s.seatCaps = caps
+				if s.onSeatCaps != nil {
+					s.onSeatCaps(caps)
+				}
+			}})
 		case wl.WlOutputInterface:
 			for _, og := range globals {
 				s.outputs = append(s.outputs, wl.BindWlOutput(s.registry, og.Name, bindVersion(og, r.max)))

@@ -16,6 +16,8 @@ import (
 	"sync"
 	"syscall"
 	"testing"
+
+	"github.com/rm4n0s/errors"
 )
 
 // Server is a fake compositor on one end of a socket pair.
@@ -30,6 +32,9 @@ type Server struct {
 	globals    []Global
 	toplevel   ToplevelConfigure
 	holdFrames bool
+	keymap     string
+	caps       uint32
+	serial     uint32 // the last serial sent with a keyboard event
 
 	win windowing // see windowing.go; guarded by mu
 
@@ -98,6 +103,12 @@ type Config struct {
 	// real compositor answers when the frame is shown, some time after the
 	// commit.
 	HoldFrames bool
+	// Keymap is the text of the keyboard's keymap. Empty means KeymapText, which is
+	// not a real keymap.
+	Keymap string
+	// Capabilities is what wl_seat.capabilities announces (1 pointer, 2 keyboard, 4
+	// touch). Zero means a keyboard only.
+	Capabilities uint32
 	// Toplevel is what the initial configure of a toplevel window says. The zero
 	// value lets the client choose its size.
 	Toplevel ToplevelConfigure
@@ -117,8 +128,16 @@ func New(t testing.TB, cfg Config) (s *Server, clientFD int) {
 	if globals == nil {
 		globals = DefaultGlobals()
 	}
+	keymap, caps := cfg.Keymap, cfg.Capabilities
+	if keymap == "" {
+		keymap = KeymapText
+	}
+	if caps == 0 {
+		caps = 2
+	}
 	s = &Server{
 		t: t, fd: fds[0], globals: globals, toplevel: cfg.Toplevel, holdFrames: cfg.HoldFrames,
+		keymap: keymap, caps: caps,
 		objects:   map[uint32]string{1: "wl_display"},
 		ids:       map[string]uint32{},
 		serverIDs: 0xff000000,
@@ -285,6 +304,9 @@ func (s *Server) handle(id uint32, op uint16, r *reader) {
 			s.Send(newID, 0, int32(-10), int32(20), int32(300), int32(200), int32(1), "Glutter", "Test Panel", int32(0))
 			s.Send(newID, 3, int32(2)) // scale(factor)
 		}
+		if ifaceName == "wl_seat" {
+			s.Send(newID, 0, s.caps) // capabilities
+		}
 	case "wl_compositor.0": // create_surface(id)
 		surface := r.u32()
 		s.addObject(surface, "wl_surface")
@@ -309,17 +331,21 @@ func (s *Server) handle(id uint32, op uint16, r *reader) {
 			s.t.Errorf("fake server: %v", err)
 			return
 		}
-		if _, err := keymap.WriteString(KeymapText); err != nil {
+		if _, err := keymap.WriteString(s.keymap); err != nil {
 			s.t.Errorf("fake server: %v", err)
 		}
 		if _, err := keymap.Seek(0, 0); err != nil {
 			s.t.Errorf("fake server: %v", err)
 		}
-		s.Send(kb, 0, uint32(1), FD(keymap.Fd()), uint32(len(KeymapText)))                    // keymap(format, fd, size)
-		s.Send(kb, 1, uint32(5), s.ID("wl_surface"), Array([]byte{30, 0, 0, 0, 31, 0, 0, 0})) // enter(serial, surface, keys)
+		s.Send(kb, 0, uint32(1), FD(keymap.Fd()), uint32(len(s.keymap))) // keymap(format, fd, size)
+		if surface := s.ID("wl_surface"); surface != 0 {
+			s.Send(kb, 1, uint32(5), surface, Array([]byte{30, 0, 0, 0, 31, 0, 0, 0})) // enter(serial, surface, keys)
+		}
 		if err := keymap.Close(); err != nil {
 			s.t.Errorf("fake server: %v", err)
 		}
+	case "wl_keyboard.0": // release
+		s.record("wl_keyboard.release")
 	case "wl_data_device_manager.1": // get_data_device(id, seat)
 		dd, seat := r.u32(), r.u32()
 		s.addObject(dd, "wl_data_device")
@@ -399,7 +425,8 @@ func (s *Server) Send(id uint32, op uint16, args ...any) {
 	if len(fds) > 0 {
 		oob = syscall.UnixRights(fds...)
 	}
-	if err := syscall.Sendmsg(s.fd, msg, oob, nil, 0); err != nil {
+	if err := syscall.Sendmsg(s.fd, msg, oob, nil, 0); err != nil && !errors.Is(err, syscall.EPIPE) && !errors.Is(err, syscall.ECONNRESET) {
+		// A client that has already gone away is not a failure of the test.
 		s.t.Errorf("fake server: sendmsg: %v", err)
 	}
 }
@@ -414,7 +441,15 @@ func (s *Server) Joined() string { return strings.Join(s.Requests(), "\n") }
 // Flutter: no counterpart
 func (s *Server) Hangup() { _ = syscall.Shutdown(s.fd, syscall.SHUT_RDWR) }
 
-// KeymapText is the content the fake keyboard sends as its "keymap" file.
+// KeymapText is the content the fake keyboard sends as its "keymap" file, unless
+// Config.Keymap says otherwise: the smallest keymap that libxkbcommon accepts,
+// with one key.
 //
 // Flutter: no counterpart
-const KeymapText = "xkb_keymap { fake };"
+const KeymapText = `xkb_keymap {
+	xkb_keycodes { minimum = 8; maximum = 255; <AC01> = 38; };
+	xkb_types { type "ONE_LEVEL" { modifiers = none; map[none] = Level1; }; };
+	xkb_compat { };
+	xkb_symbols { key <AC01> { [ a ] }; };
+};
+`

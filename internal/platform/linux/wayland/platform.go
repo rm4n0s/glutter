@@ -43,6 +43,7 @@ type Platform struct {
 	// The fields below belong to the UI thread.
 	handler   platform.Handler
 	windows   map[ui.ViewID]*window
+	keyboard  *keyboard // nil when the seat has none
 	nextView  ui.ViewID
 	hadWindow bool
 	// failure is the first error that a callback could not return; Run returns
@@ -91,14 +92,17 @@ func newPlatform(conn *wl.Conn, opts Options) (*Platform, error) {
 		sess.close()
 		return nil, err
 	}
-	return &Platform{
+	p := &Platform{
 		opts:    opts,
 		start:   time.Now(),
 		loop:    loop,
 		sess:    sess,
 		src:     &connSource{conn: conn},
 		windows: map[ui.ViewID]*window{},
-	}, nil
+	}
+	sess.onSeatCaps = p.updateSeat
+	p.updateSeat(sess.seatCaps)
+	return p, nil
 }
 
 // Close closes the windows that are still open, then releases the event loop and
@@ -111,6 +115,10 @@ func (p *Platform) Close() error {
 	// connection (and the renderer must have destroyed its surfaces already).
 	for _, w := range p.windows {
 		w.Close()
+	}
+	if p.keyboard != nil {
+		p.keyboard.close()
+		p.keyboard = nil
 	}
 	p.sess.close()
 	return p.loop.Close()
