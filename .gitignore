@@ -31,3 +31,9 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# Pinned Flutter sources used for porting (docs/SPEC.md §20)
+/reference/
+
+# Personal Claude Code settings (not shared)
+.claude/settings.local.json
