@@ -685,6 +685,11 @@ Flutter's `assert` checks become checks that exist only in debug builds (`founda
 | `~/` on `Offset`, `Size`, `Radius` throws for infinity and NaN | `TruncDiv` returns the infinity or NaN | no exceptions in Go |
 | `Matrix4` is `vector_math_64` (float64) | `ui.Matrix4` has float32 storage (§7); `TransformPoint` and `TransformRect` compute in float64 from it | smaller, and what the GPU wants |
 | `RSuperellipse.contains` asks Impeller's `RoundSuperellipse` | an approximation: superellipse of exponent 5 in a box 1.2924 × the radius | Impeller's geometry is not in `reference/`; revisit with the software renderer (step 2.7) |
+| Flutter records a C++ `DisplayList` | `ui.DisplayList`: a list of exported `Op...` structs (`OpDrawRect`, `OpClipPath`, ...) that the renderers type-switch on; `internal/displaylist` does not exist | an `internal` package cannot hold ops that use `ui` types without an import cycle |
+| `Canvas.drawRawPoints`, `drawRawAtlas` (typed-data variants) | none | Go has slices of `Offset`, `RSTransform` and `Rect` |
+| `Picture.toImage` returns a `Future` | `ToImage(width, height) (*Image, error)` and `ToImageSync` (the same) | both renderers draw on the calling goroutine |
+| `Canvas.clipRect(rect, doAntiAlias: true)` | `ClipRect(rect, ClipRectOpts{DoAntiAlias: ui.Ptr(false)})`; nil means true | no `foundation.Opt` in `ui` |
+| the DisplayListBuilder drops draws outside the clip | every draw is recorded | the renderers clip; culling can be added without changing the API |
 | `Path` wraps `SkPath` (float32 points) | `ui.Path` follows `SkPath`'s rules (injected moves, close, arcs, conic building) with float64 points | no float32 round trips; same structure |
 | `Path.getBounds` | `GetBounds` is `SkPath::computeFiniteBounds`: the box of all points, control points included, and the empty rectangle if a point is not finite. `GetTightBounds` is the exact box | Flutter's behavior; the exact one is also needed |
 | `Path.addRSuperellipse` asks Impeller | corners are 8 cubics per corner on the same superellipse as `RSuperellipse.Contains` | same approximation |

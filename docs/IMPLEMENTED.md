@@ -354,3 +354,28 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - Skia computes the arc unit vectors in float32, which makes sweeps within about 0.014° of a full turn coincide before it nudges them; with float64 points that is imitated by `sameUnitVector` (1.2e-7).
   - A bug the fuzzer found: with huge coordinates adding a closing line to a metric did not increase the float distance and its curve was dropped while its segment was kept (fixed by counting segments); and a conic could be halved 16 times (65,000 points), now at most 12 (fixed by `maxConicFlattenDepth`).
 
+## 2.4 Canvas, PictureRecorder and Picture
+
+- **Date:** 2026-10-18
+- **Branch:** feat/step-2.4-canvas-picture
+- **Summary:** `ui.Canvas` records into a display list that `PictureRecorder.EndRecording` turns into an immutable `Picture`. `NewCanvas(recorder, CanvasOpts{CullRect})` (Flutter's default cull rect is `Rect.largest`) starts the recording; `Save`, `SaveLayer`, `Restore`, `RestoreToCount`, `GetSaveCount`, `Translate`, `Scale`/`ScaleUniform`, `Rotate`, `Skew`, `Transform`, `GetTransform`, `ClipRect` (with `ClipOpDifference` and anti-alias options), `ClipRRect`, `ClipRSuperellipse`, `ClipPath`, `GetLocalClipBounds`, `GetDestinationClipBounds` and every draw call of SPEC §7: `DrawColor`, `DrawPaint`, `DrawLine`, `DrawRect`, `DrawRRect`, `DrawDRRect`, `DrawRSuperellipse`, `DrawOval`, `DrawCircle`, `DrawArc`, `DrawPath`, `DrawImage`, `DrawImageRect`, `DrawImageNine`, `DrawPicture`, `DrawParagraph`, `DrawPoints`, `DrawVertices`, `DrawAtlas`, `DrawShadow`. The canvas keeps the transform and the device clip bounds on a save stack with Skia's `DisplayListBuilder` rules (identity transforms and non-finite values are not recorded; filled empty rects and ovals are not recorded; a `SaveLayer` with bounds clips to them; a rect difference cuts a side off the clip only when the result is a rectangle). Each draw records an `Op...` struct holding copies of the paint, the path and the point lists. `Picture` has `CullRect`, `ApproximateBytesUsed`, `Dispose` and `DisplayList`; `ToImage` returns the error `NotImplemented` (or `ImageSizeInvalid`) until step 2.10. `Vertices`, `VertexMode`, `PointMode`, `ClipOp` and stubs for `Paragraph` (step 4.2) and `Image` (2.10) came with it.
+- **Main files:** `ui/canvas.go`, `ui/picture.go`, `ui/display_list.go`, `ui/vertices.go`, `ui/paragraph.go`, and the tests `ui/{canvas,vertices}_test.go`.
+- **Tests:**
+  - Every canvas call against the exact op it records (35 cases, compared with `reflect.DeepEqual`), including default blend modes, anti-alias options and sorted rectangles.
+  - Copies: the paths, paints and point lists are copied when recorded, so changing them afterwards does not change the picture.
+  - Empty shapes: filled empty rects and ovals are dropped, stroked ones are kept; identity and non-finite transforms are dropped.
+  - Save count semantics: `Save`, `SaveLayer`, `Restore`, `RestoreToCount` to fewer, to more, to 0 and to a negative count, a restore with nothing to restore not being recorded.
+  - Transform stack: order of translate, scale, rotate and skew against points, `GetTransform` being a copy, restore restoring it.
+  - Clip bounds (23 cases): rects, nested and disjoint rects, empty rects, translated and scaled coordinates in local and device terms, a rotated clip being bounded by its box and the cull rect, rrect, superellipse and path clips, an empty path, rect differences (a side, the bottom, the middle, everything, rotated), layers with and without bounds, restore, the default cull rect, a transform that cannot be inverted.
+  - After `EndRecording` the canvas stops recording but keeps its state, and the recorder can be reused. Route tests for `CanvasRecorderBusy`, `PictureRecorderNotRecording` (twice), `AtlasTransformCountMismatch`, `AtlasColorCountMismatch` and `MultipleOptions`; `VerticesColorCountMismatch`, `VerticesTextureCountMismatch` and `VerticesIndexInvalid`.
+  - `Picture`: cull rect, `ApproximateBytesUsed` growing with content and with nesting, `ToImage` errors.
+  - No Flutter tests apply: the Dart tests of `Canvas` (`testing/dart/canvas_test.dart`) are not in `reference/`.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅
+- **Deviations and follow-ups:**
+  - **There is no `internal/displaylist` package.** The operations use `ui` types (`Paint`, `Path`, `Image`, ...), so a package under `internal/` would have to import `ui` while `ui` records into it: an import cycle. The operations are exported structs of `ui` (`ui.DisplayList`, `ui.OpDrawRect`, ...), documented as being for the renderers. The same list is in SPEC §12.10.
+  - The device clip bounds are kept as a rectangle without rounding for anti-aliasing. Flutter's `DisplayListBuilder` rounds some of them out and drops draws outside the clip; this one records everything and leaves clipping to the renderers. If a renderer wants culling it can use the recorded clips.
+  - `DrawShadow` records the elevation in logical pixels; Flutter's engine multiplies it by the device pixel ratio of the view when it records. The renderer (step 2.9) must do that.
+  - `Paint` is passed as `*Paint` (nil is the default paint) and the op holds a copy.
+  - The raw typed-data variants (`drawRawPoints`, `drawRawAtlas`) are not provided.
+  - `Image` and `Paragraph` are empty stubs here (`TODO(step 2.10)`, `TODO(step 4.2)`).
+
