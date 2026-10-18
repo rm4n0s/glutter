@@ -81,3 +81,20 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - `gpu.SurfaceHandle` is `any` until step 1.6. `WindowConfig.Resizable` and `.Decorated` are plain `bool`s with `DefaultWindowConfig()` giving `true`; step 5.1 turns them into `Opt[bool]`.
   - `Platform.Run` returns nil on cancel and is not reentrant. The first window gets view ID 0 (Flutter's implicit view).
   - `runtime.LockOSThread()` is not in this step; the plan assigns it to 1.4.
+
+## 1.2 Library loader (purego)
+
+- **Date:** 2026-10-18
+- **Branch:** feat/step-1.2-library-loader
+- **Summary:** `internal/platform/linux/dl` is the one way to load C libraries and call into them: `Open`, `OpenOverride`, `(*Lib).Bind` and `Has`, libc helpers (`Malloc`, `Calloc`, `Free`, `Strlen`, `CString`, `GoString`), the callback registry (`Callback`, `CallbackCount`, limit 1,500) and the layout test helper `AssertLayout`. purego v0.11.2 is pinned in `go.mod` (SPEC §22).
+- **Main files:** `internal/platform/linux/dl/{doc,dl,libc,callback,layout}.go` and their tests, `go.mod`, `go.sum`.
+- **Tests:** `Open` (5 cases, route test for `LibraryLoadFailed` with `names` and `dlerror` metadata); `OpenOverride` (4 cases: unset, existing absolute override, missing override with no fallback, relative override); `Bind` strlen called from Go, `Bind`/`Has` on a missing symbol (route test for `SymbolMissing`); C strings (empty, ASCII, Unicode, 100 kB); `Malloc`/`Calloc`; the callback counter and the `CallbackLimit` panic (route test); a real C→Go callback, sorting an array with libc's `qsort` and a Go comparator; `AssertLayout` (9 cases, including every kind of mismatch). No Flutter tests apply to this step.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · display tests none
+- **Proof:** none
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - Two tags beyond the step: `LibraryOverrideInvalid` (the override variable is set but not an absolute path) and `CStringAllocFailed` (a panic when `malloc` returns 0). Both are tested except `CStringAllocFailed`, which can't be triggered without exhausting memory.
+  - A set override that fails to load is an error and does not fall back to the default names, because an explicit setting that is silently ignored is worse than an error.
+  - libc is bound on first use (`sync.OnceValue`), not at import, and loading `libc.so.6` failing panics with `LibraryLoadFailed`. The `Callback` registry is the only package-level state; it only counts, because the purego limit is per process.
+  - `AssertLayout` takes a `testing.TB` and additionally requires every named field of the struct to be listed in `offsets`, so a field added later can't escape the test. It is in a non-test file, as the step asks, so `testing` is linked into binaries that import `dl`.
+  - Only `RTLD_NOW|RTLD_LOCAL` with glibc's `libc.so.6` is supported; musl is not.
