@@ -194,6 +194,18 @@ func (c *Context) MakeCurrent(s *Surface) error {
 	return nil
 }
 
+// MakeCurrentSurfaceless makes the context current without any surface, for
+// drawing into framebuffer objects only (EGL_KHR_surfaceless_context, which every
+// OpenGL ES 3 driver has). It fails with EGLMakeCurrentSurfacelessFailed.
+//
+// Flutter: no counterpart
+func (c *Context) MakeCurrentSurfaceless() error {
+	if !c.egl.makeCurrent(c.display, 0, 0, c.context) {
+		return eglError(c.egl, "EGLMakeCurrentSurfacelessFailed", "eglMakeCurrent without a surface failed")
+	}
+	return nil
+}
+
 // Viewport sets the GL viewport to the whole of a width x height surface.
 //
 // Flutter: no counterpart

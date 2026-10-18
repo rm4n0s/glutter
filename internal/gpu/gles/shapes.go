@@ -145,6 +145,8 @@ type frameBuilder struct {
 	// group with nothing to draw, whose commands are dropped.
 	layers []*layerRec
 	culled int
+	// cache is the raster cache, or nil without one.
+	cache *layerCache
 }
 
 // FrameStats says what the last frame did.
@@ -166,6 +168,9 @@ type FrameStats struct {
 	// did that an earlier frame's cache could have saved: coverage tiles
 	// rasterized, clip masks made and images uploaded.
 	TilesRasterized, ClipMasksBuilt, ImagesUploaded int
+	// CachedLayersDrawn is the number of retained layers drawn from the raster
+	// cache's textures, and CachedLayersMade the number drawn into them.
+	CachedLayersDrawn, CachedLayersMade int
 	// Unsupported lists the features that caused skipped commands, once each.
 	Unsupported []string
 }

@@ -101,16 +101,92 @@ func TestRendererErrors(t *testing.T) {
 		{"zero size", func() error { return r.Render(s, nil, ui.Size{Width: 0, Height: 5}, 1) }, "RendererSizeInvalid", "Renderer.render.RendererSizeInvalid"},
 		{"foreign surface", func() error { return r.Render(foreign, nil, ui.Size{Width: 5, Height: 5}, 1) }, "RendererSurfaceInvalid", "Renderer.render.RendererSurfaceInvalid"},
 		{"nil surface", func() error { return r.Render(nil, nil, ui.Size{Width: 5, Height: 5}, 1) }, "RendererSurfaceInvalid", "Renderer.render.RendererSurfaceInvalid"},
-		{"snapshot", func() error { _, err := r.Snapshot(nil, ui.Size{Width: 5, Height: 5}); return err }, "GLNotImplemented", "Renderer.Snapshot.GLNotImplemented"},
+		{"snapshot of no size", func() error { _, err := r.Snapshot(nil, ui.Size{Width: 5, Height: 0}); return err }, "RendererSizeInvalid", "Renderer.Snapshot.RendererSizeInvalid"},
+		{"snapshot before an attach", func() error {
+			_, err := NewRenderer().Snapshot(nil, ui.Size{Width: 5, Height: 5})
+			return err
+		}, "RendererNotAttached", "Renderer.Snapshot.RendererNotAttached"},
+		{"snapshot after a close", func() error {
+			closed, _, _ := newTestRenderer()
+			_, _ = closed.Attach(waylandHandle)
+			_ = closed.Close()
+			_, err := closed.Snapshot(nil, ui.Size{Width: 5, Height: 5})
+			return err
+		}, "RendererClosed", "Renderer.Snapshot.RendererClosed"},
+		{"snapshot without a surface", func() error {
+			bare, bareEGL, _ := newTestRenderer()
+			surface, _ := bare.Attach(waylandHandle)
+			surface.Destroy()
+			bareEGL.surfacelessFails = true
+			_, err := bare.Snapshot(nil, ui.Size{Width: 5, Height: 5})
+			return err
+		}, "EGLMakeCurrentSurfacelessFailed", "Renderer.Snapshot->Context.MakeCurrentSurfaceless->eglError.EGLMakeCurrentSurfacelessFailed"},
+		{"snapshot with a surface that cannot be made current", func() error {
+			stuck, stuckEGL, _ := newTestRenderer()
+			_, _ = stuck.Attach(waylandHandle)
+			stuckEGL.currentFails = true
+			_, err := stuck.Snapshot(nil, ui.Size{Width: 5, Height: 5})
+			return err
+		}, "EGLMakeCurrentFailed", "Renderer.Snapshot->Context.MakeCurrent->eglError.EGLMakeCurrentFailed"},
 		{"swap fails", func() error { egl.swapFails = true; return r.Render(s, nil, ui.Size{Width: 5, Height: 5}, 1) }, "EGLSwapFailed", "Context.SwapBuffers"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			appErr, ok := errors.FromError(tt.do())
 			if !ok || appErr.Tag != tt.tag || !appErr.HasRoute(tt.route) {
-				t.Errorf("got %v, want %s via %s", appErr, tt.tag, tt.route)
+				t.Errorf("got %v, want %s via %s (route %s)", appErr, tt.tag, tt.route, appErr.Route())
 			}
 		})
+	}
+}
+
+func TestRendererSnapshotDrawsOverTransparentPixelsWithoutAWindow(t *testing.T) {
+	r, egl, gl := newTestRenderer(RendererOpts{Background: ui.NewColor(0xFF00FF00), HasBackground: true})
+	s, err := r.Attach(waylandHandle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := ui.NewPictureRecorder()
+	ui.NewCanvas(rec).DrawRect(ui.NewRectFromLTWH(0, 0, 8, 8), solidPaint(0xFFFF0000))
+	sb := ui.NewSceneBuilder()
+	sb.AddPicture(ui.Offset{}, rec.EndRecording())
+	scene := sb.Build()
+
+	gl.resetCalls()
+	img, err := r.Snapshot(scene, ui.Size{Width: 16, Height: 12})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The picture is 16 x 12 pixels, cleared to transparent black whatever the
+	// window's background is, drawn into a framebuffer that goes back to the pool.
+	if img.Bounds().Dx() != 16 || img.Bounds().Dy() != 12 {
+		t.Errorf("image = %v", img.Bounds())
+	}
+	if gl.cleared != [4]float32{} || gl.calls["genFramebuffer"] != 1 || gl.calls["drawArraysInstanced"] != 1 {
+		t.Errorf("cleared %v, framebuffers %d, draws %d", gl.cleared, gl.calls["genFramebuffer"], gl.calls["drawArraysInstanced"])
+	}
+	if ds := r.ctx.dev.Stats(); ds.Framebuffers != 1 || ds.FreeFramebuffers != 1 {
+		t.Errorf("device stats = %+v", ds)
+	}
+	if !contains(egl.calls, "makeCurrent") || contains(egl.calls, "makeCurrent(surfaceless)") || contains(egl.calls, "swapBuffers") {
+		t.Errorf("EGL calls %v: a live surface is made current, and nothing is presented", egl.calls)
+	}
+	// With no surface left the context is made current without one.
+	s.Destroy()
+	egl.calls = nil
+	if _, err := r.Snapshot(scene, ui.Size{Width: 16, Height: 12}); err != nil {
+		t.Fatal(err)
+	}
+	if !contains(egl.calls, "makeCurrent(surfaceless)") {
+		t.Errorf("EGL calls %v", egl.calls)
+	}
+	// It is the renderer of Picture.ToImage and Scene.ToImage.
+	image, err := scene.ToImage(16, 12, ui.ToImageOpts{Rasterizer: r})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if image.Width() != 16 || image.Height() != 12 {
+		t.Errorf("ToImage = %dx%d", image.Width(), image.Height())
 	}
 }
 

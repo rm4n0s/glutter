@@ -61,6 +61,11 @@ type layerRec struct {
 	backdrop   []filterPass
 	isBackdrop bool
 	shaderMask *ui.ShaderMaskLayer
+	// boundary is the layer of a group that the raster cache may keep (a layer that
+	// gpu.FlattenOpts.Boundary made a group), and cacheKey its key at the top level.
+	boundary ui.Layer
+	cacheKey layerKey
+	keyed    bool
 }
 
 // deviceBounds returns the pixels that a rectangle covers under the transform.
@@ -150,6 +155,10 @@ func (b *frameBuilder) beginLayer(c gpu.Command) error {
 			rec.shaderMask = v
 		case *ui.ClipRectLayer, *ui.ClipRRectLayer, *ui.ClipRSuperellipseLayer, *ui.ClipPathLayer:
 			rec.info.color = [4]float32{1, 1, 1, 1}
+		case *ui.TransformLayer, *ui.ContainerLayer:
+			// A group that the raster cache asked for.
+			rec.info.color = [4]float32{1, 1, 1, 1}
+			rec.boundary = c.Layer
 		default:
 			b.skipping = 1
 			return b.unsupported("layer " + fmt.Sprintf("%T", c.Layer))
@@ -171,6 +180,16 @@ func (b *frameBuilder) beginLayer(c gpu.Command) error {
 		return nil
 	}
 	rec.rect = rect
+	if rec.boundary != nil && b.cache != nil && len(b.layers) == 0 {
+		k := keyOf(&c.Transform, rect)
+		if e := b.cache.lookup(rec.boundary, k); e != nil {
+			// The layer's pixels are there: draw them, and drop what is inside.
+			b.stats.CachedLayersDrawn++
+			b.culled = 1
+			return b.composite(rec, e)
+		}
+		rec.cacheKey, rec.keyed = k, true
+	}
 	if rec.isBackdrop {
 		// The backdrop is the copy of the pixels under the layer, filtered.
 		rec.backdrop, _ = filterPasses(rec.filter, rec.ctm, rec.tile, rect.Dx(), rect.Dy())
@@ -209,6 +228,12 @@ func (b *frameBuilder) endLayer() error {
 		}
 	}
 	b.layers = b.layers[:len(b.layers)-1]
+	return b.composite(rec, nil)
+}
+
+// composite draws the layer into the one under it: from the framebuffer it was drawn
+// into, or from the pixels of the raster cache's entry.
+func (b *frameBuilder) composite(rec *layerRec, cached *layerEntry) error {
 	c := rec.cmd
 	var in [12]float32
 	region := rec.rect
@@ -233,6 +258,9 @@ func (b *frameBuilder) endLayer() error {
 	region = region.Intersect(outerPixels(c.Clip.Bounds, b.w, b.h)).Intersect(b.target())
 	key := callKey{blend: rec.info.blend, scissor: [4]int{region.Min.X, region.Min.Y, region.Dx(), region.Dy()}, clip: mask, spec: rec.info.spec}
 	if region.Empty() {
+		if cached != nil {
+			return nil
+		}
 		// Nothing of the layer shows: it is only taken off the stack.
 		b.frame.composite(key, in[:0], rec.rect)
 		b.frame.calls[len(b.frame.calls)-1].count = 0
@@ -241,6 +269,10 @@ func (b *frameBuilder) endLayer() error {
 	if eff := b.layerEffect(rec); eff != nil {
 		key.eff = eff
 	}
+	if rec.keyed && cached == nil && len(b.layers) == 0 {
+		key.keep = &layerKeep{layer: rec.boundary, key: rec.cacheKey}
+		b.stats.CachedLayersMade++
+	}
 	in[0], in[1], in[2], in[3] = float32(region.Min.X), float32(region.Min.Y), float32(region.Max.X), float32(region.Max.Y)
 	copy(in[4:8], rec.info.color[:])
 	cb := c.Clip.Bounds
@@ -248,6 +280,11 @@ func (b *frameBuilder) endLayer() error {
 	if rec.info.spec.readBlend != 0 {
 		b.seq++
 		key.seq = b.seq
+	}
+	if cached != nil {
+		key.cache = cached
+		b.frame.drawCached(key, in[:])
+		return nil
 	}
 	b.frame.composite(key, in[:], rec.rect)
 	return nil

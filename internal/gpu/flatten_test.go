@@ -414,3 +414,79 @@ func TestFlattenShapeClipBoundsAreWholePixels(t *testing.T) {
 		t.Errorf("Bounds = %v, want %v", b, want)
 	}
 }
+
+func TestFlattenBoundaryLayersBecomeGroups(t *testing.T) {
+	rect := ui.NewRectFromLTWH(0, 0, 10, 10)
+	pic := pictureOf(func(c *ui.Canvas) { c.DrawRect(rect, paintOf(0xFF000000)) })
+	b := ui.NewSceneBuilder()
+	b.PushClipRRect(ui.NewRRectFromRectXY(ui.NewRectFromLTWH(2.5, 3.5, 60, 40), 6, 6))
+	offset := b.PushOffset(5, 6)
+	b.AddPicture(ui.Offset{}, pic)
+	b.Pop()
+	b.PushTransform(ui.NewMatrix4Diagonal3Values(2, 2, 1))
+	b.AddPicture(ui.Offset{}, pic)
+	b.Pop()
+	b.Pop()
+	scene := b.Build()
+
+	var asked []ui.Layer
+	l, err := Flatten(scene, FlattenOpts{Bounds: ui.NewRectFromLTWH(0, 0, 100, 100), Boundary: func(l ui.Layer) bool {
+		asked = append(asked, l)
+		return l == offset.Layer()
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []CommandKind{CommandBeginLayer, CommandDraw, CommandEndLayer, CommandDraw}
+	if got := kinds(l); !equalKinds(got, want) {
+		t.Fatalf("kinds = %v, want %v", got, want)
+	}
+	begin, inside, outside := l.Commands[0], l.Commands[1], l.Commands[3]
+	if begin.Layer != offset.Layer() || origin(begin) != (ui.Offset{Dx: 5, Dy: 6}) {
+		t.Errorf("begin = layer %v, contents' origin %v", begin.Layer, origin(begin))
+	}
+	// The group is composited under the clip it is in, and drawn inside under the whole
+	// pixels of its bounds, without the shape.
+	if begin.Clip.IsRect() || len(begin.Clip.Shapes) != 1 || begin.Clip.Bounds != (ui.Rect{Left: 2, Top: 3, Right: 63, Bottom: 44}) {
+		// The bounds of a rounded clip are whole pixels already.
+		t.Errorf("group clip = %+v", begin.Clip)
+	}
+	if !inside.Clip.IsRect() || inside.Clip.Bounds != (ui.Rect{Left: begin.Clip.Bounds.Left, Top: begin.Clip.Bounds.Top, Right: begin.Clip.Bounds.Right, Bottom: begin.Clip.Bounds.Bottom}) {
+		t.Errorf("clip inside the group = %+v", inside.Clip)
+	}
+	if origin(inside) != (ui.Offset{Dx: 5, Dy: 6}) || outside.Clip.IsRect() {
+		t.Errorf("inside origin %v, the other transform's clip %+v", origin(inside), outside.Clip)
+	}
+	// Every layer that is folded is asked about, and only those.
+	if len(asked) < 3 {
+		t.Errorf("asked about %d layers", len(asked))
+	}
+	for _, a := range asked {
+		switch a.(type) {
+		case *ui.ContainerLayer, *ui.TransformLayer:
+		default:
+			t.Errorf("asked about %T", a)
+		}
+	}
+	// Without the option nothing changes.
+	if got := kinds(mustFlatten(t, scene)); len(got) != 2 {
+		t.Errorf("kinds without Boundary = %v", got)
+	}
+	// Fractional bounds are widened to whole pixels inside the group.
+	c := ui.NewSceneBuilder()
+	c.PushClipRect(ui.NewRectFromLTWH(1.25, 1.25, 10, 10))
+	inner := c.PushOffset(0, 0)
+	c.AddPicture(ui.Offset{}, pic)
+	c.Pop()
+	c.Pop()
+	frac, err := Flatten(c.Build(), FlattenOpts{Bounds: ui.NewRectFromLTWH(0, 0, 100, 100), Boundary: func(l ui.Layer) bool { return l == inner.Layer() }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := frac.Commands[0].Clip.Bounds, (ui.Rect{Left: 1.25, Top: 1.25, Right: 11.25, Bottom: 11.25}); got != want {
+		t.Errorf("group clip bounds = %+v, want %+v", got, want)
+	}
+	if got, want := frac.Commands[1].Clip.Bounds, (ui.Rect{Left: 1, Top: 1, Right: 12, Bottom: 12}); got != want {
+		t.Errorf("clip inside the group = %+v, want %+v", got, want)
+	}
+}

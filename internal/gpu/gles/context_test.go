@@ -23,6 +23,7 @@ type fakeEGL struct {
 	surfaceX11                                                                                        bool
 	visualID                                                                                          int32
 	noVisual                                                                                          bool
+	surfacelessFails                                                                                  bool
 }
 
 func (f *fakeEGL) getConfigAttrib(_, _ uintptr, attribute int32) (int32, bool) {
@@ -77,6 +78,10 @@ func (f *fakeEGL) makeCurrent(_, draw, _, ctx uintptr) bool {
 	if draw == 0 && ctx == 0 {
 		f.call("makeCurrent(none)")
 		return true
+	}
+	if draw == 0 {
+		f.call("makeCurrent(surfaceless)")
+		return !f.surfacelessFails
 	}
 	f.call("makeCurrent")
 	return !f.currentFails

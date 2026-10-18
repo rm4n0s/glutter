@@ -208,6 +208,14 @@ type FlattenOpts struct {
 	// Bounds is the surface in pixels; the clip starts as this rectangle. The zero
 	// value starts with an unbounded clip.
 	Bounds ui.Rect
+	// Boundary, when it is not nil, is asked about every ui.TransformLayer and
+	// ui.ContainerLayer (the layers Flatten folds into the commands under them),
+	// and a layer it answers true for becomes a group, so that a renderer can keep
+	// what the group draws for the next frame. The group is composited under the
+	// clip it is in, and what is inside it is drawn under a clip of whole pixels
+	// that has none of that clip's shapes, so that the group's pixels do not depend
+	// on them. The group's Command.Transform is the transform of its contents.
+	Boundary func(l ui.Layer) bool
 }
 
 // Flatten turns a scene into the list of commands that draws it. The layer tree
@@ -238,7 +246,7 @@ func Flatten(scene *ui.Scene, opts ...FlattenOpts) (*DrawList, error) {
 		const huge = 1 << 30
 		bounds = ui.Rect{Left: -huge, Top: -huge, Right: huge, Bottom: huge}
 	}
-	f := &flattener{list: &DrawList{}}
+	f := &flattener{list: &DrawList{}, boundary: o.Boundary}
 	st := state{m: *ui.NewMatrix4Identity(), clip: Clip{Bounds: bounds}}
 	if err := f.layer(scene.Root(), st); err != nil {
 		return nil, err
@@ -253,7 +261,8 @@ type state struct {
 }
 
 type flattener struct {
-	list *DrawList
+	list     *DrawList
+	boundary func(ui.Layer) bool
 }
 
 func (f *flattener) emit(c Command) { f.list.Commands = append(f.list.Commands, c) }
@@ -290,10 +299,16 @@ func (f *flattener) group(l ui.Layer, outer, inner state) error {
 func (f *flattener) layer(l ui.Layer, st state) error {
 	switch v := l.(type) {
 	case *ui.ContainerLayer:
+		if f.boundary != nil && f.boundary(l) {
+			return f.boundaryGroup(l, st, st)
+		}
 		return f.children(l, st)
 	case *ui.TransformLayer:
 		m := st.m
 		m.MultiplyBy(&v.Matrix)
+		if f.boundary != nil && f.boundary(l) {
+			return f.boundaryGroup(l, st, state{m: m, clip: st.clip})
+		}
 		return f.children(l, state{m: m, clip: st.clip})
 	case *ui.PictureLayer:
 		return f.picture(v.Picture, state{m: translated(st.m, v.Offset.Dx, v.Offset.Dy), clip: st.clip})
@@ -317,6 +332,18 @@ func (f *flattener) layer(l ui.Layer, st state) error {
 		return f.group(l, st, state{m: translated(st.m, v.Offset.Dx, v.Offset.Dy), clip: st.clip})
 	}
 	return errors.NewErrf("FlattenLayerUnknown", "Flatten does not know the layer %T.", l)
+}
+
+// boundaryGroup draws the children of l, with the state inner, inside a group that is
+// composited in the state outer; the children are drawn under the whole pixels of
+// the clip's bounds only.
+func (f *flattener) boundaryGroup(l ui.Layer, outer, inner state) error {
+	b := outer.clip.Bounds
+	whole := Clip{Bounds: ui.Rect{Left: math.Floor(b.Left), Top: math.Floor(b.Top), Right: math.Ceil(b.Right), Bottom: math.Ceil(b.Bottom)}}
+	f.emit(Command{Kind: CommandBeginLayer, Layer: l, Transform: inner.m, Clip: outer.clip})
+	err := f.children(l, state{m: inner.m, clip: whole})
+	f.end()
+	return err
 }
 
 // clipLayer draws the children of l clipped by the shape that apply makes.

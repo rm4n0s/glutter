@@ -1,6 +1,10 @@
 package gles
 
-import "image"
+import (
+	"image"
+
+	"github.com/rm4n0s/glutter/ui"
+)
 
 // The frame is what a draw list becomes before any GL call is made: the data of
 // each pipeline's instances or vertices, and the draw calls that use them, in
@@ -33,6 +37,7 @@ const (
 	opDraw       callOp = iota // draws items of its pipeline
 	opBeginLayer               // starts drawing into a new layer, see drawCall.rect
 	opComposite                // ends the innermost layer and draws it into its parent, as one item of pipeLayer
+	opDrawCached               // draws the pixels of a retained layer that the raster cache holds, as one item of pipeLayer
 )
 
 // callKey is everything that two draws must share to be one draw call: the
@@ -50,6 +55,10 @@ type callKey struct {
 	spec *paintSpec
 	// eff is what a layer does besides compositing, for opBeginLayer and opComposite.
 	eff *effect
+	// cache is the entry of the raster cache that opDrawCached draws, and keep says that
+	// the layer that opComposite draws is kept in the cache.
+	cache *layerEntry
+	keep  *layerKeep
 	// seq is not 0 for a call that must not be merged with any other.
 	seq int
 	op  callOp
@@ -105,6 +114,22 @@ func (f *frame) callsOf(p pipeline) int {
 // beginLayer adds the start of a layer covering the pixels of rect.
 func (f *frame) beginLayer(rect image.Rectangle, eff *effect) {
 	f.calls = append(f.calls, drawCall{callKey: callKey{op: opBeginLayer, eff: eff}, rect: rect})
+}
+
+// layerKeep says that a layer's pixels are kept in the raster cache for the layer
+// under the key.
+type layerKeep struct {
+	layer ui.Layer
+	key   layerKey
+}
+
+// drawCached adds the drawing of a cached layer's pixels as one instance of the layer
+// pipeline.
+func (f *frame) drawCached(key callKey, floats []float32) {
+	key.pipe, key.op = pipeLayer, opDrawCached
+	first := f.items(pipeLayer)
+	f.calls = append(f.calls, drawCall{callKey: key, first: first, count: 1, rect: key.cache.rect})
+	f.data[pipeLayer] = append(f.data[pipeLayer], floats...)
 }
 
 // composite adds the end of the innermost layer, which covered rect, and its

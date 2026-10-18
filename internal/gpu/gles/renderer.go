@@ -18,6 +18,11 @@ type RendererOpts struct {
 	// HasBackground says that Background was set, so that a transparent black
 	// background can be asked for.
 	HasBackground bool
+	// RasterCacheAfter turns on the raster cache: a layer that a scene retains (it is
+	// in this many consecutive scenes) is drawn into a texture that later frames draw
+	// instead of its contents. Zero, the default, keeps nothing; the rule that
+	// decides what is cached for RepaintBoundary comes with step 17.2.
+	RasterCacheAfter int
 	// SkipUnsupported makes Render leave out what the renderer cannot draw yet,
 	// and count it in LastFrame, instead of failing with GLNotImplemented. The
 	// development examples use it to show what works.
@@ -37,6 +42,7 @@ type Renderer struct {
 	skip       bool
 	last       FrameStats
 	res        *resources // the caches of paths, clip masks and images; made at the first frame
+	cache      *layerCache
 	closed     bool
 	// beforePresent, when set, runs after a frame is drawn and before it is
 	// presented, while its pixels can still be read back (tests).
@@ -76,7 +82,12 @@ func newRenderer(open func(gpu.SurfaceHandle) (*Context, *Surface, error), opts 
 		bg = opts[0].Background
 	}
 	a := float32(bg.A)
+	var cache *layerCache
+	if len(opts) == 1 && opts[0].RasterCacheAfter > 0 {
+		cache = newLayerCache(opts[0].RasterCacheAfter)
+	}
 	return &Renderer{
+		cache:      cache,
 		open:       open,
 		surfaces:   map[*glSurface]struct{}{},
 		skip:       len(opts) == 1 && opts[0].SkipUnsupported,
@@ -152,7 +163,7 @@ func (r *Renderer) render(s gpu.Surface, scene *ui.Scene, size ui.Size, capture 
 	d.ColorMask(true, true, true, true)
 	d.Viewport(0, 0, w, h)
 	r.ctx.Clear(r.background[0], r.background[1], r.background[2], r.background[3])
-	if err := r.drawScene(scene, w, h); err != nil {
+	if err := r.drawScene(scene, w, h, true); err != nil {
 		return nil, err
 	}
 	if r.beforePresent != nil {
@@ -176,12 +187,75 @@ func (r *Renderer) render(s gpu.Surface, scene *ui.Scene, size ui.Size, capture 
 // Flutter: no counterpart
 func (r *Renderer) LastFrame() FrameStats { return r.last }
 
-// Snapshot is not available yet: it arrives with step 3.6. It fails with
-// GLNotImplemented.
+// Snapshot draws the scene into a new image of the size, without a window: the work
+// of Picture.ToImage and Scene.ToImage. The scene is drawn over transparent pixels
+// into a pooled framebuffer, which is read back; the pixels are premultiplied, top
+// row first. The context must exist, so a surface has to have been attached at
+// some point; it is made current with one of the live surfaces, or without any.
+// It fails with RendererClosed, RendererNotAttached, RendererSizeInvalid,
+// GLNotImplemented as Render does, and the errors of MakeCurrent, of the
+// framebuffer's pool and of reading the pixels back.
 //
 // Flutter: no counterpart
-func (r *Renderer) Snapshot(_ *ui.Scene, _ ui.Size) (*image.RGBA, error) {
-	return nil, errors.New("GLNotImplemented", "the GPU renderer cannot make snapshots yet (step 3.6)")
+func (r *Renderer) Snapshot(scene *ui.Scene, size ui.Size) (*image.RGBA, error) {
+	if r.closed {
+		return nil, errors.New("RendererClosed", "the renderer was closed")
+	}
+	if r.ctx == nil {
+		return nil, errors.New("RendererNotAttached", "a snapshot needs the renderer's GL context, which the first Attach creates")
+	}
+	w, h := int(size.Width), int(size.Height)
+	if w <= 0 || h <= 0 {
+		return nil, errors.New("RendererSizeInvalid", "the size to render must be positive", "width", size.Width, "height", size.Height)
+	}
+	var err error
+	for s := range r.surfaces {
+		if err = r.ctx.MakeCurrent(s.surface); err == nil {
+			break
+		}
+	}
+	if len(r.surfaces) == 0 {
+		err = r.ctx.MakeCurrentSurfaceless()
+	}
+	if err != nil {
+		return nil, err
+	}
+	d := r.ctx.dev
+	fb, err := d.AcquireFramebuffer(w, h, false)
+	if err != nil {
+		return nil, err
+	}
+	defer d.ReleaseFramebuffer(fb)
+	defer d.BindFramebuffer(nil)
+	d.BindFramebuffer(fb)
+	d.SetScissor(false, 0, 0, 0, 0)
+	d.ColorMask(true, true, true, true)
+	d.Viewport(0, 0, w, h)
+	r.ctx.Clear(0, 0, 0, 0)
+	if err := r.drawScene(scene, w, h, false); err != nil {
+		return nil, err
+	}
+	img, err := r.ctx.ReadPixels(w, h)
+	if err != nil {
+		return nil, err
+	}
+	d.EndFrame()
+	return img, nil
+}
+
+var _ ui.Rasterizer = (*Renderer)(nil)
+
+// RasterizeScene draws the scene into a new image of width x height pixels, as
+// Snapshot does: the ui.Rasterizer of the GPU renderer, for Picture.ToImage and
+// Scene.ToImage.
+//
+// Flutter: no counterpart
+func (r *Renderer) RasterizeScene(scene *ui.Scene, width, height int) (*ui.Image, error) {
+	img, err := r.Snapshot(scene, ui.Size{Width: float64(width), Height: float64(height)})
+	if err != nil {
+		return nil, err
+	}
+	return ui.NewImageFromRGBA(img.Pix, width, height), nil
 }
 
 // Close destroys every surface, the device and the context. Closing twice does
@@ -198,6 +272,9 @@ func (r *Renderer) Close() error {
 	}
 	r.surfaces = nil
 	if r.ctx != nil {
+		if r.cache != nil {
+			r.cache.release(r.ctx.dev)
+		}
 		if r.res != nil {
 			// The context must be current to delete what the caches hold; the last
 			// surface is destroyed already, so Close does it with the display only.

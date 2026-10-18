@@ -11,7 +11,7 @@ import (
 // pixels, over what is there. It flattens the scene, turns the commands into the
 // frame's instances and vertices (failing before anything is drawn if one is
 // unsupported, unless the renderer skips them), and draws the calls in order.
-func (r *Renderer) drawScene(scene *ui.Scene, w, h int) error {
+func (r *Renderer) drawScene(scene *ui.Scene, w, h int, useCache bool) error {
 	r.last = FrameStats{}
 	if scene == nil {
 		return nil
@@ -26,11 +26,18 @@ func (r *Renderer) drawScene(scene *ui.Scene, w, h int) error {
 	r.res.beginFrame()
 	defer r.res.endFrame()
 	tiles0, clips0, images0 := r.res.tilesRasterized, r.res.clipMasksBuilt, r.res.imagesUploaded
-	list, err := gpu.Flatten(scene, gpu.FlattenOpts{Bounds: ui.NewRectFromLTWH(0, 0, float64(w), float64(h))})
+	fo := gpu.FlattenOpts{Bounds: ui.NewRectFromLTWH(0, 0, float64(w), float64(h))}
+	var cache *layerCache
+	if useCache && r.cache != nil {
+		cache = r.cache
+		cache.beginFrame(scene.Root())
+		fo.Boundary = cache.boundary
+	}
+	list, err := gpu.Flatten(scene, fo)
 	if err != nil {
 		return err
 	}
-	b := &frameBuilder{w: w, h: h, skip: r.skip, res: r.res}
+	b := &frameBuilder{w: w, h: h, skip: r.skip, res: r.res, cache: cache}
 	for _, c := range list.Commands {
 		if err := b.command(c); err != nil {
 			return err
@@ -47,7 +54,13 @@ func (r *Renderer) drawScene(scene *ui.Scene, w, h int) error {
 	b.stats.ClipMasksBuilt = r.res.clipMasksBuilt - clips0
 	b.stats.ImagesUploaded = r.res.imagesUploaded - images0
 	r.last = b.stats
-	return r.drawFrame(&b.frame, w, h)
+	if err := r.drawFrame(&b.frame, w, h); err != nil {
+		return err
+	}
+	if cache != nil {
+		cache.endFrame(r.ctx.dev)
+	}
+	return nil
 }
 
 // vec4s is the number of vec4 attributes of each instanced pipeline.
@@ -164,9 +177,13 @@ func (dr *drawer) call(c *drawCall) error {
 	switch c.op {
 	case opBeginLayer:
 		return dr.beginLayer(c)
+	case opDrawCached:
+		layer = renderTarget{fb: c.cache.fb, rect: c.cache.rect}
 	case opComposite:
 		layer = dr.cur
-		defer d.ReleaseFramebuffer(layer.fb)
+		if c.count == 0 || c.keep == nil || !dr.r.cache.put(d, c.keep.layer, c.keep.key, layer.fb) {
+			defer d.ReleaseFramebuffer(layer.fb)
+		}
 		if c.count != 0 && c.eff != nil && len(c.eff.passes) > 0 {
 			var err error
 			filtered, err = dr.runPasses(layer.fb.Texture(), layer.rect.Dx(), layer.rect.Dy(), [2]int{layer.rect.Min.X, layer.rect.Min.Y}, c.eff.passes, nil)
@@ -219,7 +236,7 @@ func (dr *drawer) call(c *drawCall) error {
 			return err
 		}
 	}
-	if c.op == opComposite {
+	if c.op == opComposite || c.op == opDrawCached {
 		src := layer.fb.Texture()
 		if filtered != nil {
 			src = filtered.Texture()

@@ -288,7 +288,7 @@ func renderGPU(r *Renderer, scene *ui.Scene, w, h int) (*image.RGBA, error) {
 	d.Viewport(0, 0, w, h)
 	r.ctx.gl.clearColor(0, 0, 0, 0)
 	r.ctx.gl.clear(glColorBufferBit)
-	if err := r.drawScene(scene, w, h); err != nil {
+	if err := r.drawScene(scene, w, h, true); err != nil {
 		return nil, err
 	}
 	raw, err := readFramebuffer(r.ctx, w, h)
