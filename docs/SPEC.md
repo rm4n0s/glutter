@@ -244,6 +244,8 @@ This is the Go translation of `dart:ui`. Values are immutable unless the type is
 | Input data | `PointerData` (change, kind: mouse/touch/trackpad/stylus, device, position, buttons, scroll deltas, pan/zoom), `KeyData` (type, physical, logical, character, synthesized), `TextInputEvent` |
 | Semantics | `SemanticsUpdateBuilder`, `SemanticsAction`, `SemanticsFlag`, `SemanticsRole` |
 
+Numbers follow Dart's types: `Offset`, `Size`, `Rect`, `Radius`, `PointerData` and other geometry-like values use `float64` (Dart's `double`), and only `Matrix4` and `Color` use `float32`. Enums that Flutter declares start with `<Enum>Unspecified` as the zero value, followed by Flutter's values in declaration order (§12.3).
+
 `ui` holds no global state. `RunApp` creates the `PlatformDispatcher` and hands it to the binding (§13).
 
 ---

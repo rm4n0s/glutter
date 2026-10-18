@@ -1,0 +1,138 @@
+package platform
+
+import "github.com/rm4n0s/glutter/ui"
+
+// WindowKind is the kind of a window. The zero value, WindowKindUnspecified,
+// means WindowKindRegular.
+//
+// Flutter: widgets/_window.dart WindowArchetype
+type WindowKind int
+
+// The values of WindowKind.
+const (
+	// WindowKindUnspecified is the zero value and means WindowKindRegular.
+	//
+	// Flutter: no counterpart
+	WindowKindUnspecified WindowKind = iota
+	// WindowKindRegular is an ordinary top-level window.
+	//
+	// Flutter: widgets/_window.dart WindowArchetype.regular
+	WindowKindRegular
+	// WindowKindDialog is a dialog, optionally modal, of a parent window.
+	//
+	// Flutter: widgets/_window.dart WindowArchetype.dialog
+	WindowKindDialog
+	// WindowKindBorderless is a window without decorations, such as a
+	// tooltip-style window.
+	//
+	// Flutter: no counterpart
+	WindowKindBorderless
+)
+
+// WindowState is the state of a window. The zero value, WindowStateUnspecified,
+// means WindowStateNormal.
+//
+// Flutter: no counterpart
+type WindowState int
+
+// The values of WindowState.
+const (
+	// WindowStateUnspecified is the zero value and means WindowStateNormal.
+	//
+	// Flutter: no counterpart
+	WindowStateUnspecified WindowState = iota
+	// WindowStateNormal is a window that is neither maximized, minimized nor
+	// fullscreen.
+	//
+	// Flutter: no counterpart
+	WindowStateNormal
+	// WindowStateMaximized is a maximized window.
+	//
+	// Flutter: no counterpart
+	WindowStateMaximized
+	// WindowStateMinimized is a minimized (iconified) window.
+	//
+	// Flutter: no counterpart
+	WindowStateMinimized
+	// WindowStateFullscreen is a fullscreen window.
+	//
+	// Flutter: no counterpart
+	WindowStateFullscreen
+)
+
+// WindowConfig describes a window to create.
+//
+// Flutter: widgets/_window.dart WindowController
+type WindowConfig struct {
+	// Kind is the kind of window.
+	Kind WindowKind
+	// Parent is the view of the parent window of a dialog.
+	Parent ui.ViewID
+	// HasParent is whether Parent is set.
+	HasParent bool
+	// Modal is whether a dialog blocks its parent.
+	Modal bool
+	// Title is the window title.
+	Title string
+	// AppID is the application ID: the Wayland app_id or the X11 WM_CLASS. It
+	// must match the app's .desktop file.
+	AppID string
+	// Size is the initial size in logical pixels. A zero size lets the backend
+	// choose.
+	Size ui.Size
+	// MinSize is the smallest size in logical pixels; zero means no minimum.
+	MinSize ui.Size
+	// MaxSize is the largest size in logical pixels; zero means no maximum.
+	MaxSize ui.Size
+	// Resizable is whether the user can resize the window. Use
+	// DefaultWindowConfig to get Flutter's default of true.
+	//
+	// TODO(step 5.1): becomes foundation.Opt[bool] so that the zero value is the default.
+	Resizable bool
+	// Decorated is whether the window has a title bar and borders. Use
+	// DefaultWindowConfig to get the default of true.
+	//
+	// TODO(step 5.1): becomes foundation.Opt[bool] so that the zero value is the default.
+	Decorated bool
+	// State is the initial window state.
+	State WindowState
+}
+
+// DefaultWindowConfig returns a WindowConfig with the defaults: a regular,
+// resizable, decorated window of a size the backend chooses.
+//
+// Flutter: no counterpart
+func DefaultWindowConfig() WindowConfig {
+	return WindowConfig{Resizable: true, Decorated: true}
+}
+
+// ViewMetrics describes the size and scale of a view.
+//
+// TODO(step 5.2): padding, insets and the display, when the views are wired
+// into the framework.
+//
+// Flutter: ui/window.dart ViewConfiguration
+type ViewMetrics struct {
+	// PhysicalSize is the size of the view in physical pixels.
+	PhysicalSize ui.Size
+	// DevicePixelRatio is the number of physical pixels per logical pixel.
+	DevicePixelRatio float64
+}
+
+// Display describes one connected display.
+//
+// Flutter: ui/window.dart Display
+type Display struct {
+	// ID identifies the display.
+	ID int
+	// Name is the name the compositor or X server gives the display.
+	Name string
+	// Bounds is the display's position and size in logical pixels.
+	Bounds ui.Rect
+	// DevicePixelRatio is the number of physical pixels per logical pixel.
+	DevicePixelRatio float64
+	// RefreshRate is the refresh rate in frames per second.
+	RefreshRate float64
+	// Primary is whether this is the primary display.
+	Primary bool
+}

@@ -61,3 +61,23 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Proof:** none (`go run ./cmd/glutter-gen wayland` prints the `NotImplemented` error and exits 1, as the step requires).
 - **Manual checks:** none
 - **Deviations and follow-ups:** a subcommand's route is `dispatch->Run.NotImplemented` for all five, because the errors package leaves package names out of routes; the `command` metadata tells them apart. `MissingCommand` is an addition to the step (no arguments needs some error). The subcommands' `// TODO(step X.Y)` comments point at 1.3 (wayland), 1.7 (keys), 12.2 (copywith), 12.3 (icons) and 12.4 (reexport). No `//go:generate` directives yet; they arrive with the steps that produce generated files (first 1.3).
+
+## 1.1 Platform interfaces and the fake platform
+
+- **Date:** 2026-10-18
+- **Branch:** feat/step-1.1-platform-interfaces-and-fake
+- **Summary:** `internal/platform` defines `Platform`, `Window`, `Handler`, `WindowConfig`, `WindowState`, `Display`, `Settings`, `ViewMetrics`, `Clipboard` and `Services` as sketched in SPEC §6.3. `ui` has `Offset`, `Size`, `Rect`, `ViewID`, `AppLifecycleState`, `PointerData` (all fields, plus its enums) and `KeyData` (plus its enums). `internal/platform/fake` is a scriptable platform: `Run` replays a FIFO queue of posted functions and injected events, `Post` works from any goroutine, `NewWindow` records configs and hands out view IDs, and an inspectable log records everything.
+- **Main files:** `ui/{geometry,view,lifecycle,pointer,key,enum}.go`, `internal/gpu/surface.go`, `internal/platform/{platform,window,settings,placeholders}.go`, `internal/platform/fake/{fake,events,window}.go`, `docs/SPEC.md` (§7 note).
+- **Tests:** `ui`: `KeyData.String` (7 cases), enum names and order, `PointerData.Respond` and `String`. `fake`: `Post` from 100 goroutines × 50 posts arrives in order per goroutine; `Run` stops on cancel (3 ways); `PlatformAlreadyRunning` route test; every event type reaches the handler, and posts and events interleave in queue order; close requests close or keep the window; window IDs, configs and recorded calls. Ported from Flutter: the `KeyData.toString` cases are written from `key.dart`; `reference/` has no engine tests for `dart:ui` data classes, so 0 Flutter test cases were ported.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · display tests none
+- **Proof:** none
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - Geometry uses `float64` (Dart's `double`); only `Matrix4` and `Color` are `float32`. SPEC §6.3's sketch has `dpr float32`, which should become `float64` at step 3.1. SPEC §7 now states the rule.
+  - The step names `Offset`, `Size`, `Rect` as types only; their methods are left to 2.1.
+  - Flutter's `PointerData` and `KeyData` have Dart defaults; here every enum starts with `<Enum>Unspecified` (SPEC §12.3), so `PointerData{}` has `Change == PointerChangeUnspecified` where Dart's default is `cancel`. Backends always set it. `KeyData.Character` is `""` where Dart has `null`.
+  - `KeyData.String` copies Flutter's `toString`, which lacks its closing parenthesis.
+  - The placeholder types the sketch calls `ui.MouseCursor`, `ui.TextInputState`, `ui.TextInputEvent` and `ui.ViewMetrics` live in `internal/platform` (`MouseCursor`, `TextInputState`, `TextInputEvent`, `ViewMetrics`), together with `DragData`, `DropEvent`, `Brightness`, `Clipboard` and `Services`, so the public `ui` package gets no stubs. Each carries a `TODO(step X.Y)` for the step that defines it.
+  - `gpu.SurfaceHandle` is `any` until step 1.6. `WindowConfig.Resizable` and `.Decorated` are plain `bool`s with `DefaultWindowConfig()` giving `true`; step 5.1 turns them into `Opt[bool]`.
+  - `Platform.Run` returns nil on cancel and is not reentrant. The first window gets view ID 0 (Flutter's implicit view).
+  - `runtime.LockOSThread()` is not in this step; the plan assigns it to 1.4.
