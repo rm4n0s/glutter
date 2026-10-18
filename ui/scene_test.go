@@ -261,7 +261,7 @@ func TestSceneToImage(t *testing.T) {
 	}{
 		{0, 10, "ImageSizeInvalid"},
 		{10, -1, "ImageSizeInvalid"},
-		{10, 10, "NotImplemented"},
+		{10, 10, "RasterizerMissing"},
 	}
 	for _, tt := range tests {
 		_, err := s.ToImage(tt.w, tt.h)
@@ -270,8 +270,12 @@ func TestSceneToImage(t *testing.T) {
 			t.Errorf("ToImage(%d,%d): expected %s, got %v", tt.w, tt.h, tt.tag, err)
 		}
 	}
-	if _, err := s.ToImageSync(10, 10); err == nil {
-		t.Error("ToImageSync should fail until step 2.10")
+	fake := &fakeRasterizer{}
+	for _, f := range []func(int, int, ...ToImageOpts) (*Image, error){s.ToImage, s.ToImageSync} {
+		img, err := f(12, 8, ToImageOpts{Rasterizer: fake})
+		if err != nil || img.Width() != 12 || img.Height() != 8 || fake.scene != s {
+			t.Errorf("ToImage with a rasterizer = %v, %v (scene %v)", img, err, fake.scene)
+		}
 	}
 	s.Dispose()
 	if s.String() != "Scene" || NewSceneBuilder().String() != "SceneBuilder" {

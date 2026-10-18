@@ -193,24 +193,31 @@ type Scene struct {
 // Flutter: no counterpart
 func (s *Scene) Root() *ContainerLayer { return s.root }
 
-// ToImage draws the scene into an image of the given size in pixels.
+// ToImage draws the scene into an image of the given size in pixels, with the
+// rasterizer in the options. It fails with ImageSizeInvalid for a size that is
+// not positive, and RasterizerMissing when no rasterizer is given.
 //
-// TODO(step 2.10): until then it returns the error NotImplemented.
-//
-// Deviation: Flutter's returns a Future; this one is synchronous.
+// Deviation: Flutter's returns a Future and draws with the engine's rasterizer;
+// this one is synchronous and is given the rasterizer (SPEC §12.10).
 //
 // Flutter: ui/compositing.dart Scene.toImage
-func (s *Scene) ToImage(width, height int) (*Image, error) {
+func (s *Scene) ToImage(width, height int, opts ...ToImageOpts) (*Image, error) {
+	o := oneOpts(opts)
 	if width <= 0 || height <= 0 {
 		return nil, errors.New("ImageSizeInvalid", "Invalid image dimensions.", "width", width, "height", height)
 	}
-	return nil, errors.New("NotImplemented", "Scene.ToImage needs the software renderer's images (step 2.10)")
+	if o.Rasterizer == nil {
+		return nil, errors.New("RasterizerMissing", "Scene.ToImage needs a Rasterizer in its options.")
+	}
+	return o.Rasterizer.RasterizeScene(s, width, height)
 }
 
 // ToImageSync is ToImage.
 //
 // Flutter: ui/compositing.dart Scene.toImageSync
-func (s *Scene) ToImageSync(width, height int) (*Image, error) { return s.ToImage(width, height) }
+func (s *Scene) ToImageSync(width, height int, opts ...ToImageOpts) (*Image, error) {
+	return s.ToImage(width, height, opts...)
+}
 
 // Dispose releases the scene. It does nothing in this implementation, which
 // holds no native resources.

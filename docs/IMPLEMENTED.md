@@ -477,3 +477,22 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - The image filter's `Bounds` option of the blur is ignored.
   - Backdrop filter ids (`BackdropID`) are accepted and do nothing: sharing is an optimization for the GPU renderer.
   - A bug caught on the way: an operation's paint must be read before the operation is rebuilt without the image filter (the paint pointed into the copy).
+
+## 2.10 Images and codecs
+
+- **Date:** 2026-10-19
+- **Branch:** feat/step-2.10-images-codecs
+- **Summary:** `golang.org/x/image` v0.47.0 (SPEC D12) is added to `go.mod`. `ui.InstantiateImageCodec(ctx, data, opts)` decodes PNG, JPEG and GIF from the standard library and BMP and WebP from `x/image`, into premultiplied RGBA, and returns a `Codec` with `FrameCount`, `RepetitionCount`, `GetNextFrame` (frames in turn, wrapping, as new handles on shared pixels) and `Dispose`. A GIF's frames are composited onto the canvas as the previous ones left it, with the disposal methods none, background and previous; each frame is the whole canvas; delays are in 10 ms units with 10 ms or less becoming 100 ms; Go's loop count maps to Flutter's repetition count (forever is -1, once is 0). `TargetWidth` and `TargetHeight` resize every frame with a Catmull-Rom filter, keeping the aspect ratio when one is given, and `AllowUpscaling` (default true) holds the target to the image's size when false. A header check refuses images of more than 67 million pixels before the pixels are allocated. `Image.ToByteData` gives raw premultiplied RGBA, straight RGBA or a PNG. `Picture.ToImage` and `Scene.ToImage` now work: they take a `ui.Rasterizer` in `ToImageOpts` (the `ui` package cannot import the renderers), and `soft.ImageRasterizer` is the software one. `DecodeImageFromPixels` and the `Image` core had come with step 2.7.
+- **Main files:** `ui/codec.go`, `ui/picture.go`, `ui/scene.go`, `internal/gpu/soft/soft.go` (`ImageRasterizer`), `go.mod`, `go.sum`, and their tests.
+- **Tests:**
+  - Decoding PNG (with half transparent pixels premultiplied), JPEG, BMP, WebP and GIF, produced by the encoders of the standard library and `x/image` in the tests (a 26-byte lossless WebP is embedded); sizes, durations and pixel values.
+  - GIF animation: frame count, durations (including the 100 ms rule), the three disposal methods and compositing, repetition counts for forever, a number, once, and a single frame, and the wrap-around of `GetNextFrame`.
+  - Scaling: no target, both, one axis keeping the ratio, rounding, never zero, upscaling allowed and refused (both axes and one), a flat color staying flat, every frame of an animation scaled, and the limits on a huge target.
+  - `ToByteData`: every format, copies rather than the image's own pixels, straight alpha restored, a PNG that decodes back to the same pixels, unknown format, disposed image. `Picture.ToImage` and `Scene.ToImage` with a fake rasterizer (the scene it gets, the size, its own error unchanged) and with the software one (exact pixels, cropping, drawing the result gives it back).
+  - Route tests for `ImageDecodeFailed` (empty, not an image, truncated, too large), `ImageSizeInvalid`, `ImageDecodeCanceled`, `MultipleOptions`, `CodecDisposed`, `ImageFormatUnsupported`, `ImageDisposed`, `RasterizerMissing`.
+  - `FuzzInstantiateImageCodec` (seeds of every format; 4.7 million runs clean): any input either decodes into frames of the requested width or fails with `ImageDecodeFailed`.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅
+- **Deviations and follow-ups:**
+  - `ToImage` takes its rasterizer as an option instead of using a native one (SPEC §12.10). The framework will pass the binding's rasterizer (step 5.x onward); the GLES one comes in M3.
+  - EXIF orientation of JPEGs is not applied, WebP is not animated, and the images are 8 bits per channel (SPEC §12.10).
+  - `Milestone M2` is complete with this step: every `Canvas` operation has a golden, and the software renderer supports the whole of SPEC §7 except text (step 4.2).

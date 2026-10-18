@@ -40,26 +40,53 @@ func (p *Picture) ApproximateBytesUsed() int {
 // Flutter: ui/painting.dart Picture.dispose
 func (p *Picture) Dispose() {}
 
-// ToImage draws the picture into an image of the given size in pixels. The
-// picture is drawn from its origin with no scaling.
+// Rasterizer turns a scene into pixels. The renderers implement it: the software
+// renderer (internal/gpu/soft) draws on the CPU, and the GLES renderer reads back
+// from the GPU. A Picture or a Scene cannot draw itself, so ToImage is given the
+// rasterizer of the binding it is used under.
 //
-// TODO(step 2.10): until then it returns the error NotImplemented.
-//
-// Deviation: Flutter's returns a Future; this one is synchronous, since both
-// renderers draw on the calling goroutine.
+// Flutter: no counterpart (the engine's rasterizer is native)
+type Rasterizer interface {
+	// RasterizeScene draws the scene into a new image of width x height pixels.
+	RasterizeScene(scene *Scene, width, height int) (*Image, error)
+}
+
+// ToImageOpts are the optional arguments of Picture.ToImage and Scene.ToImage.
 //
 // Flutter: ui/painting.dart Picture.toImage
-func (p *Picture) ToImage(width, height int) (*Image, error) {
+type ToImageOpts struct {
+	// Rasterizer draws the image. Nil makes ToImage fail with RasterizerMissing.
+	Rasterizer Rasterizer
+}
+
+// ToImage draws the picture into an image of the given size in pixels. The
+// picture is drawn from its origin with no scaling. It fails with
+// ImageSizeInvalid for a size that is not positive, and RasterizerMissing when no
+// rasterizer is given.
+//
+// Deviation: Flutter's returns a Future and draws with the engine's rasterizer;
+// this one is synchronous and is given the rasterizer (SPEC §12.10).
+//
+// Flutter: ui/painting.dart Picture.toImage
+func (p *Picture) ToImage(width, height int, opts ...ToImageOpts) (*Image, error) {
+	o := oneOpts(opts)
 	if width <= 0 || height <= 0 {
 		return nil, errors.New("ImageSizeInvalid", "Invalid image dimensions.", "width", width, "height", height)
 	}
-	return nil, errors.New("NotImplemented", "Picture.ToImage needs the software renderer's images (step 2.10)")
+	if o.Rasterizer == nil {
+		return nil, errors.New("RasterizerMissing", "Picture.ToImage needs a Rasterizer in its options.")
+	}
+	b := NewSceneBuilder()
+	b.AddPicture(Offset{}, p)
+	return o.Rasterizer.RasterizeScene(b.Build(), width, height)
 }
 
 // ToImageSync is ToImage.
 //
 // Flutter: ui/painting.dart Picture.toImageSync
-func (p *Picture) ToImageSync(width, height int) (*Image, error) { return p.ToImage(width, height) }
+func (p *Picture) ToImageSync(width, height int, opts ...ToImageOpts) (*Image, error) {
+	return p.ToImage(width, height, opts...)
+}
 
 // String describes the picture, as Dart's toString does.
 //

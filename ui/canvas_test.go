@@ -476,10 +476,10 @@ func TestPictureBasics(t *testing.T) {
 	if pic.String() != "Picture" {
 		t.Error("String wrong")
 	}
-	for _, f := range []func(int, int) (*Image, error){pic.ToImage, pic.ToImageSync} {
+	for _, f := range []func(int, int, ...ToImageOpts) (*Image, error){pic.ToImage, pic.ToImageSync} {
 		if _, err := f(10, 10); err == nil {
-			t.Error("ToImage is not implemented yet")
-		} else if appErr, ok := errors.FromError(err); !ok || appErr.Tag != "NotImplemented" {
+			t.Error("ToImage without a rasterizer is an error")
+		} else if appErr, ok := errors.FromError(err); !ok || appErr.Tag != "RasterizerMissing" {
 			t.Errorf("error = %v", err)
 		}
 		if _, err := f(0, 10); err == nil {
@@ -487,5 +487,38 @@ func TestPictureBasics(t *testing.T) {
 		} else if appErr, ok := errors.FromError(err); !ok || appErr.Tag != "ImageSizeInvalid" {
 			t.Errorf("error = %v", err)
 		}
+		fake := &fakeRasterizer{}
+		img, err := f(30, 20, ToImageOpts{Rasterizer: fake})
+		if err != nil || img == nil || img.Width() != 30 || img.Height() != 20 {
+			t.Fatalf("ToImage with a rasterizer = %v, %v", img, err)
+		}
+		layers := fake.scene.Root().Children()
+		if len(layers) != 1 {
+			t.Fatalf("the rasterizer got %d layers", len(layers))
+		}
+		if pl, ok := layers[0].(*PictureLayer); !ok || pl.Picture != pic || pl.Offset != (Offset{}) {
+			t.Errorf("the rasterizer got %+v, want the picture at the origin", layers[0])
+		}
 	}
+	// The rasterizer's own error comes back unchanged.
+	if _, err := pic.ToImage(5, 5, ToImageOpts{Rasterizer: &fakeRasterizer{err: errors.New("RasterFailed", "no")}}); err == nil {
+		t.Error("the rasterizer's error was lost")
+	} else if appErr, ok := errors.FromError(err); !ok || appErr.Tag != "RasterFailed" {
+		t.Errorf("error = %v", err)
+	}
+}
+
+// fakeRasterizer records the scene it is asked to draw and returns a blank
+// image of the size asked for.
+type fakeRasterizer struct {
+	scene *Scene
+	err   error
+}
+
+func (f *fakeRasterizer) RasterizeScene(scene *Scene, width, height int) (*Image, error) {
+	f.scene = scene
+	if f.err != nil {
+		return nil, f.err
+	}
+	return NewImageFromRGBA(make([]byte, 4*width*height), width, height), nil
 }

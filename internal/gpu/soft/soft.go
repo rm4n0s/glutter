@@ -572,3 +572,20 @@ func quantize(v float32) uint8 {
 	}
 	return uint8(v + 0.5)
 }
+
+// ImageRasterizer is the ui.Rasterizer of the software renderer: Picture.ToImage
+// and Scene.ToImage use it to make images in headless tests.
+//
+// Flutter: no counterpart
+type ImageRasterizer struct{}
+
+var _ ui.Rasterizer = ImageRasterizer{}
+
+// RasterizeScene draws the scene into a new image of width x height pixels.
+func (ImageRasterizer) RasterizeScene(scene *ui.Scene, width, height int) (*ui.Image, error) {
+	img, err := Render(scene, width, height)
+	if err != nil {
+		return nil, err
+	}
+	return ui.NewImageFromRGBA(img.Pix, width, height), nil
+}
