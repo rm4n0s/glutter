@@ -662,7 +662,11 @@ func (s *counterPageState) Build(bc m.BuildContext) m.Widget { /* ... */ }
 
 ### 12.8 Operators and cascades
 
-- Operators become methods: `a.Add(b)`, `a.Sub(b)`, `a.Scale(k)`, `a.Neg()`, `rect.Shift(o)`, `m.Multiply(n)`.
+- Operators become methods: `a.Add(b)`, `a.Sub(b)`, `a.Mul(k)`, `a.Div(k)`, `a.TruncDiv(k)`, `a.Mod(k)`, `a.Neg()`, `rect.Shift(o)`, `m.Multiply(n)`. The comparison operators of `Offset` and `Size` are `Lt`, `Le`, `Gt` and `Ge`.
+  - `Offset.Scale(sx, sy)` is Flutter's `Offset.scale`, not the `*` operator; the operator is `Mul(k)`.
+  - `Size - Size` is `Sub` (gives an `Offset`) and `Size - Offset` is `SubOffset` (gives a `Size`).
+  - `Matrix4.Multiply(n)` returns the product `m * n` and leaves `m` alone (Dart's `*`). `MultiplyBy(n)` sets `m = m * n` (vector_math's `multiply`).
+  - The statics `Offset.lerp(a, b, t)` with nullable arguments become `OffsetLerp(a, b *Offset, t) *Offset` (and `SizeLerp`, `RectLerp`, `RadiusLerp`, `RRectLerp`, `RSuperellipseLerp`); the non-null case is the method `a.Lerp(b, t)`.
 - Cascades (`..`) become separate statements.
 
 ### 12.9 Debug-only checks
@@ -677,6 +681,10 @@ Flutter's `assert` checks become checks that exist only in debug builds (`founda
 | `const` widgets | none; reuse package-level values | Go has no const constructors |
 | `Future` APIs | goroutine/channel/callback (§12.6) | idiomatic Go |
 | `widget.x` | `s.Widget().X()` | widgets have unexported fields (§12.1) |
+| `Offset.fromDirection(direction, [distance = 1.0])` | `NewOffsetFromDirection(direction, distance)` | package `ui` cannot import `foundation.Opt`; pass `1` for the default |
+| `~/` on `Offset`, `Size`, `Radius` throws for infinity and NaN | `TruncDiv` returns the infinity or NaN | no exceptions in Go |
+| `Matrix4` is `vector_math_64` (float64) | `ui.Matrix4` has float32 storage (§7); `TransformPoint` and `TransformRect` compute in float64 from it | smaller, and what the GPU wants |
+| `RSuperellipse.contains` asks Impeller's `RoundSuperellipse` | an approximation: superellipse of exponent 5 in a box 1.2924 × the radius | Impeller's geometry is not in `reference/`; revisit with the software renderer (step 2.7) |
 
 ### 12.11 One import for apps
 
