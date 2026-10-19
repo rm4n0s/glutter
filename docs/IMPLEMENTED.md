@@ -1082,3 +1082,15 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · `go test -tags glutter_release` and `-tags glutter_profile` on `./examples/...` ✅
 - **Manual checks:** none
 - **Deviations and follow-ups:** none. The example sets `FontFamily: "Roboto"` itself because there is no `DefaultTextStyle` from a theme yet (the `material` package arrives in M9).
+
+## 7.9 `examples/custompaint`
+
+- **Date:** 2026-10-19
+- **Branch:** feat/step-7.9-custompaint-example
+- **Summary:** The second public example, `examples/custompaint`, shows `CustomPaint` with a custom painter that draws an analog clock: a shadow (`Canvas.DrawShadow`), a face with a radial gradient and a rim, 60 ticks (longer and thicker every five) drawn with `Save`, `Translate` and `Rotate`, and hour, minute and second hands with round caps and a center cap. A `StatefulWidget` (`clockApp`) updates the time every second from a goroutine started with `State.Go` that calls `SetState`; it stops when the state is disposed. The painter repaints only through `ShouldRepaint` (it is true when the second changed). The clock function is given to the widget's constructor (`newClockApp(time.Now)` in `main`, a fixed time in the tests). Window title: "Glutter – custom paint".
+- **Main files:** `examples/custompaint/main.go`, `examples/custompaint/custompaint_test.go`, `examples/custompaint/testdata/goldens/clock.png`.
+- **Proof:** B, `docs/implemented-proof-images/7.9-custompaint.png`, made by running the example in a headless sway session with `GLUTTER_SCREENSHOT` (the OpenGL ES renderer). It shows the clock face with the hands at 13:36:25, the time of the screenshot: the hour hand is between 1 and 2, the minute hand points at 36 minutes and the red second hand at 25 seconds. The edges of the face, the ticks and the hands are antialiased, the gradient is smooth and the shadow is below the face.
+- **Tests:** 4 Go tests (6 with the table cases) in `examples/custompaint/custompaint_test.go`: a golden at 10:08:35 (which was looked at), `ShouldRepaint` (3 cases), the painter paints once for a rebuild in the same second and again for a new second (counted through a hook of the widget), and the real goroutine asks for the time again after a second and stops when the widget leaves the tree.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · `go test -tags glutter_release` and `-tags glutter_profile` on `./examples/...` ✅
+- **Manual checks:** none
+- **Deviations and follow-ups:** none. The goroutine keeps the clock function that the widget had when the state was made, because it must not read the widget from another goroutine.
