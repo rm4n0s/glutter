@@ -73,6 +73,10 @@ type routeEntry struct {
 
 	pendingResult           any
 	reportRemovalToObserver bool
+
+	// waitingForExitingDecision is whether the transition delegate has to decide
+	// how this page-based route leaves.
+	waitingForExitingDecision bool
 }
 
 func newRouteEntry(route Route, initialState routeLifecycle, pageBased bool) *routeEntry {
@@ -93,6 +97,19 @@ func newRouteEntry(route Route, initialState routeLifecycle, pageBased bool) *ro
 }
 
 func (e *routeEntry) base() *RouteBase { return e.route.AsRoute() }
+
+// canUpdateFrom is whether the page can update the route of this entry: the
+// entry is page-based and still present, and the pages are the same one.
+func (e *routeEntry) canUpdateFrom(page Page) bool {
+	if !e.willBePresent() {
+		return false
+	}
+	if !e.pageBased {
+		return false
+	}
+	routePage := e.route.Settings().(Page)
+	return page.CanUpdate(routePage)
+}
 
 func (e *routeEntry) handleAdd(navigator *NavigatorState, previousPresent Route) {
 	e.debugRequireState("handleAdd", routeAdd)
@@ -151,7 +168,11 @@ func (e *routeEntry) handlePush(navigator *NavigatorState, isNewFirst bool, prev
 	}
 	if previousState == routeReplace || previousState == routePushReplace {
 		navigator.observedRouteAdditions = append(navigator.observedRouteAdditions, &navigatorObservation{kind: observationReplace, primary: e.route, secondary: previousPresent})
-		// TODO(step 10.3): tell onDidRemovePage when previousPresent is page-based.
+		if previousPresent != nil && previousPresent.AsRoute().isPageBased() {
+			if onDidRemovePage := navigator.Widget().o.OnDidRemovePage; onDidRemovePage != nil {
+				onDidRemovePage(previousPresent.Settings().(Page))
+			}
+		}
 	} else {
 		navigator.observedRouteAdditions = append(navigator.observedRouteAdditions, &navigatorObservation{kind: observationPush, primary: e.route, secondary: previousPresent})
 	}
@@ -180,8 +201,11 @@ func (e *routeEntry) handlePop(navigator *NavigatorState, previousPresent Route)
 		return false
 	}
 	e.route.OnPopInvokedWithResult(true, e.pendingResult)
-	// TODO(step 10.3): tell onDidRemovePage when the route is page-based and
-	// removed imperatively.
+	if e.pageBased && e.imperativeRemoval {
+		if onDidRemovePage := navigator.Widget().o.OnDidRemovePage; onDidRemovePage != nil {
+			onDidRemovePage(e.route.Settings().(Page))
+		}
+	}
 	e.pendingResult = nil
 	return true
 }
@@ -243,6 +267,89 @@ func (e *routeEntry) complete(result any, isReplaced, imperativeRemoval bool) {
 
 func (e *routeEntry) finalize() {
 	e.currentState = routeDispose
+}
+
+// Route is the route of the entry.
+//
+// Flutter: widgets/navigator.dart _RouteEntry.route
+func (e *routeEntry) Route() Route { return e.route }
+
+// IsWaitingForEnteringDecision is whether the entry waits for the transition
+// delegate to decide how it enters.
+//
+// Flutter: widgets/navigator.dart _RouteEntry.isWaitingForEnteringDecision
+func (e *routeEntry) IsWaitingForEnteringDecision() bool { return e.currentState == routeStaging }
+
+// IsWaitingForExitingDecision is whether the entry waits for the transition
+// delegate to decide how it leaves.
+//
+// Flutter: widgets/navigator.dart _RouteEntry.isWaitingForExitingDecision
+func (e *routeEntry) IsWaitingForExitingDecision() bool { return e.waitingForExitingDecision }
+
+func (e *routeEntry) markNeedsExitingDecision() { e.waitingForExitingDecision = true }
+
+// MarkForPush marks the route to be pushed with a transition.
+//
+// Flutter: widgets/navigator.dart _RouteEntry.markForPush
+func (e *routeEntry) MarkForPush() {
+	if foundation.DebugMode && (!e.IsWaitingForEnteringDecision() || e.IsWaitingForExitingDecision()) {
+		panic(errors.New("RouteEntryPushDecisionInvalid", "this route cannot be marked for push: either a decision has already been made or it does not require an explicit decision on how to transition in",
+			"route", e.route.String()))
+	}
+	e.currentState = routePush
+}
+
+// MarkForAdd marks the route to be added without a transition.
+//
+// Flutter: widgets/navigator.dart _RouteEntry.markForAdd
+func (e *routeEntry) MarkForAdd() {
+	if foundation.DebugMode && (!e.IsWaitingForEnteringDecision() || e.IsWaitingForExitingDecision()) {
+		panic(errors.New("RouteEntryAddDecisionInvalid", "this route cannot be marked for add: either a decision has already been made or it does not require an explicit decision on how to transition in",
+			"route", e.route.String()))
+	}
+	e.currentState = routeAdd
+}
+
+// debugPopAttemptLimit is how many times markForPop lets a route that handles
+// pops internally pop before it reports an error.
+const debugPopAttemptLimit = 100
+
+// MarkForPop marks the route to be popped with a transition.
+//
+// Flutter: widgets/navigator.dart _RouteEntry.markForPop
+func (e *routeEntry) MarkForPop(result ...any) {
+	if foundation.DebugMode && (e.IsWaitingForEnteringDecision() || !e.IsWaitingForExitingDecision() || !e.isPresent()) {
+		panic(errors.New("RouteEntryPopDecisionInvalid", "this route cannot be marked for pop: either a decision has already been made or it does not require an explicit decision on how to transition out",
+			"route", e.route.String()))
+	}
+	r := optionalResult(result)
+	attempt := 0
+	for e.route.WillHandlePopInternally() {
+		attempt++
+		if foundation.DebugMode && attempt >= debugPopAttemptLimit {
+			panic(errors.New("RouteEntryPopAttemptsExceeded", "attempted to pop a route too many times, but it still handles pops internally",
+				"route", e.route.String(), "attempts", debugPopAttemptLimit))
+		}
+		popResult := e.route.DidPop(r)
+		if foundation.DebugMode && popResult {
+			panic(errors.New("RouteEntryPopInvalid", "a route that handles pops internally popped", "route", e.route.String()))
+		}
+	}
+	e.pop(r, false)
+	e.waitingForExitingDecision = false
+}
+
+// MarkForComplete marks the route to be completed and removed without a
+// transition.
+//
+// Flutter: widgets/navigator.dart _RouteEntry.markForComplete
+func (e *routeEntry) MarkForComplete(result ...any) {
+	if foundation.DebugMode && (e.IsWaitingForEnteringDecision() || !e.IsWaitingForExitingDecision() || !e.isPresent()) {
+		panic(errors.New("RouteEntryCompleteDecisionInvalid", "this route cannot be marked for complete: either a decision has already been made or it does not require an explicit decision on how to transition out",
+			"route", e.route.String()))
+	}
+	e.complete(optionalResult(result), false, false)
+	e.waitingForExitingDecision = false
 }
 
 func (e *routeEntry) forcedDispose() {
@@ -401,6 +508,11 @@ func (h *navigatorHistory) removeAt(index int) *routeEntry {
 	return e
 }
 
+func (h *navigatorHistory) clear() {
+	h.entries = nil
+	h.NotifyListeners()
+}
+
 func (h *navigatorHistory) removeLast() *routeEntry { return h.removeAt(len(h.entries) - 1) }
 
 func (h *navigatorHistory) String() string {
@@ -493,6 +605,22 @@ type NavigatorOpts struct {
 	// ClipBehavior is how the overlay of the navigator clips; the default is
 	// ClipHardEdge.
 	ClipBehavior ui.Clip
+	// Pages is the declarative history of the navigator: when the list changes, the
+	// navigator updates its routes to match it, and the TransitionDelegate decides
+	// how the new and the removed routes transition. A nil list means the
+	// imperative API only; a list that is not nil must have at least one page and
+	// either OnDidRemovePage or OnPopPage (not both).
+	Pages []Page
+	// OnPopPage is called when a page-based route is popped; it must remove the
+	// page from Pages and return true to let the pop continue. It is deprecated in
+	// favor of OnDidRemovePage.
+	OnPopPage PopPageCallback
+	// OnDidRemovePage is called when the route of a page was removed with an
+	// imperative call; the page must be removed from Pages.
+	OnDidRemovePage DidRemovePageCallback
+	// TransitionDelegate decides how the routes of new and removed pages
+	// transition; the default is DefaultTransitionDelegate.
+	TransitionDelegate TransitionDelegate
 	// Observers are told about the changes of the history.
 	Observers []NavigatorObserver
 	// RequestFocus is whether the routes request the focus when they become the
@@ -520,8 +648,31 @@ func NewNavigator(opts ...NavigatorOpts) *Navigator {
 	if o.ClipBehavior == ui.ClipUnspecified {
 		o.ClipBehavior = ui.ClipHardEdge
 	}
+	if o.TransitionDelegate == nil {
+		o.TransitionDelegate = DefaultTransitionDelegate{}
+	}
 	return &Navigator{NewStatefulWidgetBase(WidgetOpts{Key: o.Key}), o}
 }
+
+// Pages is the list of pages that the history follows, or nil.
+//
+// Flutter: widgets/navigator.dart Navigator.pages
+func (w *Navigator) Pages() []Page { return w.o.Pages }
+
+// OnPopPage is the callback that decides whether a page-based route may pop.
+//
+// Flutter: widgets/navigator.dart Navigator.onPopPage
+func (w *Navigator) OnPopPage() PopPageCallback { return w.o.OnPopPage }
+
+// OnDidRemovePage is called after the route of a page was removed.
+//
+// Flutter: widgets/navigator.dart Navigator.onDidRemovePage
+func (w *Navigator) OnDidRemovePage() DidRemovePageCallback { return w.o.OnDidRemovePage }
+
+// TransitionDelegate decides how the routes of new and removed pages transition.
+//
+// Flutter: widgets/navigator.dart Navigator.transitionDelegate
+func (w *Navigator) TransitionDelegate() TransitionDelegate { return w.o.TransitionDelegate }
 
 // InitialRoute is the name of the first route, or empty.
 //
@@ -829,6 +980,7 @@ type NavigatorState struct {
 	historyInitialized             bool
 
 	lastTopmostRoute    *routeEntry
+	debugUpdatingPage   bool
 	flushingHistory     bool
 	userGesturesCount   int
 	userGestureNotifier *foundation.ValueNotifier[bool]
@@ -905,6 +1057,7 @@ func (s *NavigatorState) getNavigatorCanHandlePop() bool {
 // Flutter: widgets/navigator.dart NavigatorState.initState
 func (s *NavigatorState) InitState() {
 	s.activePointers = map[int]bool{}
+	s.debugCheckPageAPIParameters()
 	for _, observer := range s.Widget().o.Observers {
 		if foundation.DebugMode && observer.Navigator() != nil {
 			panic(errors.New("NavigatorObserverShared", "a NavigatorObserver can not be shared by two navigators",
@@ -929,16 +1082,24 @@ func (s *NavigatorState) InitState() {
 func (s *NavigatorState) restoreState() {
 	s.forcedDisposeAllRouteEntries()
 	s.overlayKey = NewGlobalKey[*OverlayState]()
+	for _, page := range s.Widget().o.Pages {
+		route := page.CreateRoute(s.Context())
+		s.debugCheckPageRoute(route, page)
+		entry := newRouteEntry(route, routeAdd, true)
+		s.history.add(entry)
+	}
 	initialRoute := s.Widget().o.InitialRoute
-	if initialRoute == "" {
+	if initialRoute == "" && len(s.Widget().o.Pages) == 0 {
 		initialRoute = NavigatorDefaultRouteName
 	}
-	routes := s.Widget().o.OnGenerateInitialRoutes(s, initialRoute)
-	entries := make([]*routeEntry, len(routes))
-	for i, route := range routes {
-		entries[i] = newRouteEntry(route, routeAdd, false)
+	if initialRoute != "" {
+		routes := s.Widget().o.OnGenerateInitialRoutes(s, initialRoute)
+		entries := make([]*routeEntry, len(routes))
+		for i, route := range routes {
+			entries[i] = newRouteEntry(route, routeAdd, false)
+		}
+		s.history.addAll(entries)
 	}
-	s.history.addAll(entries)
 	if foundation.DebugMode && len(s.history.entries) == 0 {
 		panic(errors.New("NavigatorHistoryEmpty", "the Navigator needs at least one initial route; OnGenerateInitialRoutes returned none"))
 	}
@@ -1063,10 +1224,300 @@ func (s *NavigatorState) DidUpdateWidget(old *Navigator) {
 		}
 		s.updateEffectiveObservers()
 	}
+	if pagesChanged(old.o.Pages, s.Widget().o.Pages) {
+		if foundation.DebugMode && s.Widget().o.Pages != nil && len(s.Widget().o.Pages) == 0 {
+			s.reportError(errors.New("NavigatorPagesEmpty", "the Navigator.pages must not be empty to use the Navigator.pages API"))
+		}
+		s.updatePages()
+	}
 	for _, entry := range slices.Clone(s.history.entries) {
 		if entry.route.Navigator() == s {
 			entry.route.ChangedExternalState()
 		}
+	}
+}
+
+// pagesChanged is whether the list of pages is another one: Dart compares the
+// lists by identity, so two lists are the same when they have the same length and
+// the same backing array.
+func pagesChanged(old, updated []Page) bool {
+	if len(old) != len(updated) {
+		return true
+	}
+	if len(old) == 0 {
+		return (old == nil) != (updated == nil)
+	}
+	return &old[0] != &updated[0]
+}
+
+// usingPagesAPI is whether the navigator follows a list of pages.
+func (s *NavigatorState) usingPagesAPI() bool { return s.Widget().o.Pages != nil }
+
+// debugCheckPageAPIParameters reports a navigator that has pages but no way to
+// learn that a page was removed, or two of them.
+func (s *NavigatorState) debugCheckPageAPIParameters() {
+	if !foundation.DebugMode || !s.usingPagesAPI() {
+		return
+	}
+	o := s.Widget().o
+	if len(o.Pages) == 0 {
+		s.reportError(errors.New("NavigatorPagesEmpty", "the Navigator.pages must not be empty to use the Navigator.pages API"))
+	} else if (o.OnDidRemovePage == nil) == (o.OnPopPage == nil) {
+		s.reportError(errors.New("NavigatorPageCallbacksInvalid",
+			"either onDidRemovePage or onPopPage must be provided to use the Navigator.pages API but not both"))
+	}
+}
+
+// debugCheckPageRoute checks that the route made by a page has the page as its
+// settings.
+func (s *NavigatorState) debugCheckPageRoute(route Route, page Page) {
+	if foundation.DebugMode && route.Settings() != RouteSettings(page) {
+		panic(errors.New("PageRouteSettingsInvalid",
+			"the settings getter of a page-based Route must return a Page object; please set the settings to the Page in the Page.CreateRoute method",
+			"page", foundation.RuntimeTypeName(page)))
+	}
+}
+
+func (s *NavigatorState) debugCheckDuplicatedPageKeys() {
+	if !foundation.DebugMode {
+		return
+	}
+	reserved := map[foundation.Key]bool{}
+	for _, page := range s.Widget().o.Pages {
+		if key := page.Key(); key != nil {
+			if reserved[key] {
+				panic(errors.New("NavigatorPageKeyDuplicated", "there are multiple pages with the same key in Navigator.pages", "key", key))
+			}
+			reserved[key] = true
+		}
+	}
+}
+
+// updatePages diffs the new pages with the entries of the history, keeps the
+// routes that can be updated, creates routes for the new pages, and lets the
+// transition delegate decide how the new routes enter and the missing ones leave.
+//
+// Flutter: widgets/navigator.dart NavigatorState._updatePages
+func (s *NavigatorState) updatePages() {
+	if foundation.DebugMode {
+		if s.debugUpdatingPage {
+			panic(errors.New("NavigatorPagesUpdateReentrant", "the pages of the navigator changed while they were being updated"))
+		}
+		s.debugCheckDuplicatedPageKeys()
+		s.debugUpdatingPage = true
+	}
+	pages := s.Widget().o.Pages
+	entries := s.history.entries
+
+	// This attempts to diff the new pages list (Navigator.pages) with the
+	// current _RouteEntry(s) list (history) and produce a new list of
+	// _RouteEntry(s) to be the new list of history. The steps:
+	//
+	// 1. Scan the beginning of the lists for entries that can be updated from a
+	//    page: they are the same page, so the route is kept.
+	// 2. Scan the end of the lists in the same way, skipping the pageless routes
+	//    (the routes pushed above a page without one) and keeping them for the
+	//    page that is below them.
+	// 3. Scan the old entries that are left for those that have page keys.
+	// 4. Walk the new pages that are left: the ones with a key that matches an old
+	//    entry update it; the others get a new entry that waits for a decision.
+	// 5. Walk the old entries that are left: the ones without a matching key leave
+	//    the history, and wait for a decision on how.
+	// 6. Let the transition delegate decide for the entries that wait.
+	needsExplicitDecision := false
+	newPagesBottom := 0
+	oldEntriesBottom := 0
+	newPagesTop := len(pages) - 1
+	oldEntriesTop := len(entries) - 1
+
+	var newHistory []*routeEntry
+	pageRouteToPagelessRoutes := map[*routeEntry][]*routeEntry{}
+
+	// A nil value stands for "the bottom of the history".
+	var previousOldPageRouteEntry *routeEntry
+	for oldEntriesBottom <= oldEntriesTop {
+		oldEntry := entries[oldEntriesBottom]
+		if !oldEntry.pageBased {
+			pageRouteToPagelessRoutes[previousOldPageRouteEntry] = append(pageRouteToPagelessRoutes[previousOldPageRouteEntry], oldEntry)
+			oldEntriesBottom++
+			continue
+		}
+		if newPagesBottom > newPagesTop {
+			break
+		}
+		newPage := pages[newPagesBottom]
+		if !oldEntry.canUpdateFrom(newPage) {
+			break
+		}
+		previousOldPageRouteEntry = oldEntry
+		oldEntry.base().updateSettings(newPage)
+		newHistory = append(newHistory, oldEntry)
+		newPagesBottom++
+		oldEntriesBottom++
+	}
+
+	var unattachedPagelessRoutes []*routeEntry
+	// Scans the top of the list until the first page-based entry that cannot be
+	// updated.
+	for oldEntriesBottom <= oldEntriesTop && newPagesBottom <= newPagesTop {
+		oldEntry := entries[oldEntriesTop]
+		if !oldEntry.pageBased {
+			unattachedPagelessRoutes = append(unattachedPagelessRoutes, oldEntry)
+			oldEntriesTop--
+			continue
+		}
+		newPage := pages[newPagesTop]
+		if !oldEntry.canUpdateFrom(newPage) {
+			break
+		}
+		// Updates the routes at the end; the matching pageless routes belong to it.
+		if len(unattachedPagelessRoutes) > 0 {
+			if _, ok := pageRouteToPagelessRoutes[oldEntry]; !ok {
+				pageRouteToPagelessRoutes[oldEntry] = slices.Clone(unattachedPagelessRoutes)
+			}
+			unattachedPagelessRoutes = unattachedPagelessRoutes[:0]
+		}
+		oldEntriesTop--
+		newPagesTop--
+	}
+	// Reverts the pageless routes that did not find a page.
+	oldEntriesTop += len(unattachedPagelessRoutes)
+
+	// Scans the middle of the old entries for page keys.
+	oldEntriesBottomToScan := oldEntriesBottom
+	pageKeyToOldEntry := map[foundation.Key]*routeEntry{}
+	// A phantom entry is an entry that is being removed: it has a key but it is
+	// not present, so it cannot be updated.
+	phantomEntries := map[*routeEntry]bool{}
+	for oldEntriesBottomToScan <= oldEntriesTop {
+		oldEntry := entries[oldEntriesBottomToScan]
+		oldEntriesBottomToScan++
+		if !oldEntry.pageBased {
+			continue
+		}
+		page := oldEntry.route.Settings().(Page)
+		if page.Key() == nil {
+			continue
+		}
+		if !oldEntry.willBePresent() {
+			phantomEntries[oldEntry] = true
+			continue
+		}
+		pageKeyToOldEntry[page.Key()] = oldEntry
+	}
+
+	// Walks the new pages that are left: updates the entries with a matching key
+	// and creates the others.
+	for newPagesBottom <= newPagesTop {
+		nextPage := pages[newPagesBottom]
+		newPagesBottom++
+		matching, found := (*routeEntry)(nil), false
+		if nextPage.Key() != nil {
+			matching, found = pageKeyToOldEntry[nextPage.Key()]
+		}
+		if !found || !matching.canUpdateFrom(nextPage) {
+			route := nextPage.CreateRoute(s.Context())
+			s.debugCheckPageRoute(route, nextPage)
+			newEntry := newRouteEntry(route, routeStaging, true)
+			needsExplicitDecision = true
+			newHistory = append(newHistory, newEntry)
+		} else {
+			delete(pageKeyToOldEntry, nextPage.Key())
+			matching.base().updateSettings(nextPage)
+			newHistory = append(newHistory, matching)
+		}
+	}
+
+	// Walks the old entries that are left: the ones that did not find a page leave.
+	locationToExitingPageRoute := map[*routeEntry]*routeEntry{}
+	for oldEntriesBottom <= oldEntriesTop {
+		potentialEntryToRemove := entries[oldEntriesBottom]
+		oldEntriesBottom++
+		if !potentialEntryToRemove.pageBased {
+			pageRouteToPagelessRoutes[previousOldPageRouteEntry] = append(pageRouteToPagelessRoutes[previousOldPageRouteEntry], potentialEntryToRemove)
+			if previousOldPageRouteEntry.waitingForExitingDecision && potentialEntryToRemove.willBePresent() {
+				potentialEntryToRemove.markNeedsExitingDecision()
+			}
+			continue
+		}
+		potentialPageToRemove := potentialEntryToRemove.route.Settings().(Page)
+		_, keyedStays := pageKeyToOldEntry[potentialPageToRemove.Key()]
+		if potentialPageToRemove.Key() == nil || keyedStays || phantomEntries[potentialEntryToRemove] {
+			locationToExitingPageRoute[previousOldPageRouteEntry] = potentialEntryToRemove
+			if potentialEntryToRemove.willBePresent() {
+				potentialEntryToRemove.markNeedsExitingDecision()
+			}
+		}
+		previousOldPageRouteEntry = potentialEntryToRemove
+	}
+
+	// Walks the old entries that match the new pages at the end of the lists, which
+	// the second loop skipped.
+	newPagesTop = len(pages) - 1
+	oldEntriesTop = len(entries) - 1
+	for oldEntriesBottom <= oldEntriesTop && newPagesBottom <= newPagesTop {
+		oldEntry := entries[oldEntriesBottom]
+		if !oldEntry.pageBased {
+			pageRouteToPagelessRoutes[previousOldPageRouteEntry] = append(pageRouteToPagelessRoutes[previousOldPageRouteEntry], oldEntry)
+			oldEntriesBottom++
+			continue
+		}
+		previousOldPageRouteEntry = oldEntry
+		newPage := pages[newPagesBottom]
+		oldEntry.base().updateSettings(newPage)
+		newHistory = append(newHistory, oldEntry)
+		oldEntriesBottom++
+		newPagesBottom++
+	}
+
+	// Lets the transition delegate decide for the entries that wait.
+	needsExplicitDecision = needsExplicitDecision || len(locationToExitingPageRoute) > 0
+	results := newHistory
+	if needsExplicitDecision {
+		record := func(e *routeEntry) RouteTransitionRecord {
+			if e == nil {
+				return nil
+			}
+			return e
+		}
+		recordsOf := func(es []*routeEntry) []RouteTransitionRecord {
+			records := make([]RouteTransitionRecord, len(es))
+			for i, e := range es {
+				records[i] = e
+			}
+			return records
+		}
+		locations := make(map[RouteTransitionRecord]RouteTransitionRecord, len(locationToExitingPageRoute))
+		for location, exiting := range locationToExitingPageRoute {
+			locations[record(location)] = exiting
+		}
+		pageless := make(map[RouteTransitionRecord][]RouteTransitionRecord, len(pageRouteToPagelessRoutes))
+		for page, routes := range pageRouteToPagelessRoutes {
+			pageless[record(page)] = recordsOf(routes)
+		}
+		resolved := runTransitionDelegate(s.Widget().o.TransitionDelegate, recordsOf(newHistory), locations, pageless)
+		results = make([]*routeEntry, len(resolved))
+		for i, r := range resolved {
+			results[i] = r.(*routeEntry)
+		}
+	}
+	s.history.clear()
+	if routes, ok := pageRouteToPagelessRoutes[nil]; ok {
+		s.history.addAll(routes)
+	}
+	for _, result := range results {
+		s.history.add(result)
+		if routes, ok := pageRouteToPagelessRoutes[result]; ok {
+			s.history.addAll(routes)
+		}
+	}
+	if foundation.DebugMode {
+		s.debugUpdatingPage = false
+		s.debugLocked = true
+	}
+	s.flushHistoryUpdates(true)
+	if foundation.DebugMode {
+		s.debugLocked = false
 	}
 }
 
@@ -1133,6 +1584,9 @@ func (s *NavigatorState) allRouteOverlayEntries() []*OverlayEntry {
 
 func (s *NavigatorState) flushHistoryUpdates(rearrangeOverlay bool) {
 	s.debugRequireLocked()
+	if foundation.DebugMode && s.debugUpdatingPage {
+		panic(errors.New("NavigatorHistoryFlushReentrant", "the history of the navigator was flushed while the pages were being updated"))
+	}
 	s.flushingHistory = true
 	// Cleans up the list, sending updates to the routes that changed. The
 	// didChangePrevious and didChangeNext updates are not sent to the routes that
@@ -1692,8 +2146,17 @@ func (s *NavigatorState) Pop(result ...any) {
 		}
 		return
 	}
-	// TODO(step 10.3): the Pages API asks onPopPage here for page-based routes.
-	entry.pop(optionalResult(result), true)
+	if onPopPage := s.Widget().o.OnPopPage; entry.pageBased && onPopPage != nil {
+		if onPopPage(entry.route, optionalResult(result)) {
+			if entry.currentState <= routeIdle {
+				// The entry may have been disposed if the pop finishes synchronously.
+				entry.currentState = routePop
+			}
+			entry.route.OnPopInvokedWithResult(true, optionalResult(result))
+		}
+	} else {
+		entry.pop(optionalResult(result), true)
+	}
 	if entry.currentState == routePop {
 		s.flushHistoryUpdates(false)
 	}

@@ -33,6 +33,14 @@ type WidgetsBindingObserver interface {
 	//
 	// Flutter: widgets/binding.dart WidgetsBindingObserver.didPopRoute
 	DidPopRoute() bool
+	// DidPushRouteInformation is called when the system pushes a new route (a
+	// link that opens the app). Return true to handle it.
+	//
+	// Deviation: Flutter's default calls the deprecated didPushRoute with the URI
+	// string; that method is not ported (SPEC §12.10).
+	//
+	// Flutter: widgets/binding.dart WidgetsBindingObserver.didPushRouteInformation
+	DidPushRouteInformation(routeInformation *RouteInformation) bool
 	// DidChangeMetrics is called when the metrics of a view change.
 	//
 	// Flutter: widgets/binding.dart WidgetsBindingObserver.didChangeMetrics
@@ -80,6 +88,11 @@ type WidgetsBindingObserverBase struct{}
 //
 // Flutter: widgets/binding.dart WidgetsBindingObserver.didPopRoute
 func (WidgetsBindingObserverBase) DidPopRoute() bool { return false }
+
+// DidPushRouteInformation does not handle the route.
+//
+// Flutter: widgets/binding.dart WidgetsBindingObserver.didPushRouteInformation
+func (WidgetsBindingObserverBase) DidPushRouteInformation(*RouteInformation) bool { return false }
 
 // DidChangeMetrics does nothing.
 //
@@ -506,6 +519,24 @@ func (b *WidgetsBinding) HandlePopRoute() bool {
 		}
 	}
 	b.d.RequestAppExit()
+	return false
+}
+
+// HandlePushRouteInformation tells the observers, in order of registration, that
+// the system pushes a route; the first that returns true handles it. It reports
+// whether one did.
+//
+// Flutter: widgets/binding.dart WidgetsBinding.handlePushRoute
+func (b *WidgetsBinding) HandlePushRouteInformation(routeInformation *RouteInformation) bool {
+	for _, observer := range slices.Clone(b.observers) {
+		handled := false
+		foundation.Guard(b.report, foundation.CallbackPanicked,
+			"while dispatching notifications for WidgetsBindingObserver.didPushRouteInformation", nil,
+			func() { handled = observer.DidPushRouteInformation(routeInformation) })
+		if handled {
+			return true
+		}
+	}
 	return false
 }
 

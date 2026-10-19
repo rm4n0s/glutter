@@ -3,6 +3,7 @@ package widgets_test
 import (
 	"fmt"
 	"math"
+	"slices"
 	"testing"
 	"time"
 
@@ -1682,5 +1683,126 @@ func TestOnABackSwipeAndSnapOnlyASingleFlightTakesPlace(t *testing.T) {
 	}
 	if shuttlesBuilt != 2 {
 		t.Errorf("shuttles built = %d, want 2", shuttlesBuilt)
+	}
+}
+
+func TestHeroesShouldUnhideIfNoAnimation(t *testing.T) {
+	ts := gluttertest.New(t)
+	key1, key2 := foundation.NewUniqueKey(), foundation.NewUniqueKey()
+	nav := NewGlobalKey[*NavigatorState]()
+	page := func(name string, key foundation.Key) *testPage {
+		return newPage(name, name, func(p *testPage) Route {
+			return heroPageRoute(func(BuildContext) Widget { return NewHero("hero", heroSized(key, 20, 20)) }, p)
+		})
+	}
+	pages := []Page{page("1", key1)}
+	controller := NewHeroController()
+	defer controller.Dispose()
+	// The app reads its home again when it is rebuilt, as WidgetsApp does.
+	build := func() Widget {
+		return navTestApp(navTestAppOpts{homeBuilder: func(BuildContext) Widget {
+			return NewHeroControllerScope(controller, NewNavigator(NavigatorOpts{Key: nav, Pages: pages, OnDidRemovePage: func(Page) {}}))
+		}})
+	}
+	ts.PumpWidget(build())
+	if ts.Count(gluttertest.ByKey(key1)) != 1 {
+		t.Fatal("the first hero should show")
+	}
+	pages = append(slices.Clone(pages), page("2", key2))
+	ts.PumpWidget(build())
+	ts.PumpAndSettle()
+	if heroExists(ts, key1) || ts.Count(gluttertest.ByKey(key2)) != 1 {
+		t.Fatal("the second hero should show")
+	}
+	ShowGeneralDialog(nav.CurrentContext(), func(BuildContext, animation.Animation[float64], animation.Animation[float64]) Widget {
+		return NewText("dialog")
+	}, ShowGeneralDialogOpts{UseRootNavigator: foundation.Some(false)})
+	ts.PumpAndSettle()
+	if textsFound(ts, "dialog", false) != 1 {
+		t.Fatal("the dialog should show")
+	}
+	// Pops the dialog and removes the last page at the same time.
+	navState(t, nav).Pop()
+	pages = slices.Clone(pages[:len(pages)-1])
+	ts.PumpWidget(build())
+	ts.PumpAndSettle()
+	if ts.Count(gluttertest.ByKey(key1)) != 1 {
+		t.Error("the first hero should show again")
+	}
+}
+
+func TestHeroesFlyOnPagesAPI(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		// pages returns the pages before and after the update.
+		pages func(small, large foundation.Key) (before, after []Page)
+	}{
+		{"can add two pages with heroes simultaneously", func(small, large foundation.Key) ([]Page, []Page) {
+			card := func(key foundation.Key, size float64) Widget {
+				return NewCenter(newHeroTestCard(NewHero("foo", NewContainer(nil, ContainerOpts{Key: key, Color: foundation.Some(routesTestGreen),
+					Width: foundation.Some(size), Height: foundation.Some(size)}))))
+			}
+			page1 := newMaterialPage("", card(large, 200))
+			page2 := newMaterialPage("", card(nil, 1000))
+			page3 := newMaterialPage("", card(small, 100))
+			return []Page{page1}, []Page{page1, page2, page3}
+		}},
+		{"can still trigger a hero even if the page underneath changes", func(small, large foundation.Key) ([]Page, []Page) {
+			card := func(key foundation.Key, size float64) Widget {
+				return NewCenter(newHeroTestCard(NewHero("foo", NewContainer(nil, ContainerOpts{Key: key, Color: foundation.Some(routesTestGreen),
+					Width: foundation.Some(size), Height: foundation.Some(size)}))))
+			}
+			unrelated := func(key string) *testPage {
+				return newMaterialPage(key, NewCenter(newHeroTestCard(NewContainer(nil, ContainerOpts{Width: foundation.Some(1000.0), Height: foundation.Some(1000.0)}))))
+			}
+			page1 := newMaterialPage("page1", card(large, 200))
+			page2 := newMaterialPage("page2", card(small, 100))
+			return []Page{unrelated("unrelated1"), page1}, []Page{unrelated("unrelated2"), page2}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ts := gluttertest.New(t)
+			navigator := NewGlobalKey[*NavigatorState]()
+			small, large := foundation.NewUniqueKey(), foundation.NewUniqueKey()
+			controller := NewHeroController()
+			defer controller.Dispose()
+			before, after := tc.pages(small, large)
+			var current []Page
+			app := func(pages []Page) Widget {
+				current = pages
+				return navTestApp(navTestAppOpts{navigatorKey: navigator, homeBuilder: func(BuildContext) Widget {
+					return NewNavigator(NavigatorOpts{
+						Observers: []NavigatorObserver{controller.AsObserver()}, Pages: current, OnPopPage: func(Route, any) bool { return false },
+					})
+				}})
+			}
+			ts.PumpWidget(app(before))
+			if !heroIsOnstage(ts, large) || !heroIsInCard(ts, large) || ts.Count(heroByKey(ts, small, true)) != 0 {
+				t.Fatal("unexpected initial state")
+			}
+			ts.PumpWidget(app(after))
+			if !heroIsOnstage(ts, large) || !heroIsInCard(ts, large) || !heroIsOffstage(ts, small) || !heroIsInCard(ts, small, true) {
+				t.Fatal("the new route should exist offstage")
+			}
+			ts.Pump()
+			// The hero started flying.
+			if heroExists(ts, large) || !heroIsOnstage(ts, small) || heroIsInCard(ts, small) {
+				t.Fatal("the hero should have started flying")
+			}
+			ts.Pump(100 * time.Millisecond)
+			// The hero is in flight.
+			if heroExists(ts, large) || !heroIsOnstage(ts, small) || heroIsInCard(ts, small) {
+				t.Fatal("the hero should be in flight")
+			}
+			size := ts.Size(heroByKey(ts, small))
+			if size.Height <= 100 || size.Width <= 100 || size.Height >= 200 || size.Width >= 200 {
+				t.Errorf("size in flight = %v", size)
+			}
+			ts.PumpAndSettle()
+			// The transition has ended.
+			if heroExists(ts, large) || !heroIsOnstage(ts, small) || !heroIsInCard(ts, small) || ts.Size(heroByKey(ts, small)) != (ui.Size{Width: 100, Height: 100}) {
+				t.Error("the transition should have ended")
+			}
+		})
 	}
 }

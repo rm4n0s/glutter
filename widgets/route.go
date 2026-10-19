@@ -52,6 +52,20 @@ type RouteFactory func(settings RouteSettings) Route
 // Flutter: widgets/navigator.dart RouteListFactory
 type RouteListFactory func(navigator *NavigatorState, initialRoute string) []Route
 
+// PopPageCallback is called when a page-based route is popped; it returns whether
+// the pop succeeded, and a pop that did not succeed leaves the route in place. It
+// is the deprecated way of handling pops, replaced by DidRemovePageCallback.
+//
+// Flutter: widgets/navigator.dart PopPageCallback
+type PopPageCallback func(route Route, result any) bool
+
+// DidRemovePageCallback is called after the route of a page was removed from the
+// navigator by an imperative call such as Pop, so that the page can be removed
+// from Navigator.pages.
+//
+// Flutter: widgets/navigator.dart DidRemovePageCallback
+type DidRemovePageCallback func(page Page)
+
 // RoutePredicate decides for a route; it is used to say where to stop popping or
 // removing routes.
 //
@@ -617,6 +631,24 @@ func (b *RouteBase) isInstalledIn(state *NavigatorState) bool { return b.navigat
 //
 // Flutter: widgets/navigator.dart Route.settings
 func (b *RouteBase) Settings() RouteSettings { return b.settings }
+
+func (b *RouteBase) isPageBased() bool {
+	_, ok := b.settings.(Page)
+	return ok
+}
+
+// updateSettings replaces the settings of the route: the page of a page-based
+// route changed. An installed route is told that its internal state changed.
+//
+// Flutter: widgets/navigator.dart Route._updateSettings
+func (b *RouteBase) updateSettings(newSettings RouteSettings) {
+	if b.settings != newSettings {
+		b.settings = newSettings
+		if b.installed() {
+			b.self.ChangedInternalState()
+		}
+	}
+}
 
 // OverlayEntries is empty; overlay routes have entries.
 //

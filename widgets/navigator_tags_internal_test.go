@@ -80,3 +80,9 @@ func TestModalScopeRouteChanged(t *testing.T) {
 	s.widget, s.hasWidget = newModalScope(nil, one), true
 	requireTag(t, "ModalScopeRouteChanged", func() { s.DidUpdateWidget(newModalScope(nil, two)) })
 }
+
+func TestNavigatorPagesUpdateReentrant(t *testing.T) {
+	skipUnlessDebug(t)
+	s := &NavigatorState{debugUpdatingPage: true}
+	requireTag(t, "NavigatorPagesUpdateReentrant", func() { s.updatePages() })
+}
