@@ -466,8 +466,8 @@ func (b *ElementBase) Deactivate() { b.ensureDeactivated() }
 
 func (b *ElementBase) ensureDeactivated() {
 	for dependency := range b.dependencies {
-		if d, ok := dependency.(interface{ removeDependent(Element) }); ok {
-			d.removeDependent(b.self)
+		if d, ok := dependency.(interface{ RemoveDependent(Element) }); ok {
+			d.RemoveDependent(b.self)
 		}
 	}
 	// The list is not cleared, even though it no longer says what the element
