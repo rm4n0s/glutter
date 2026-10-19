@@ -286,3 +286,102 @@ func TestTextPanics(t *testing.T) {
 		}()
 	}
 }
+
+func TestTextRange(t *testing.T) {
+	r := NewTextRange(2, 5)
+	if !r.IsValid() || r.IsCollapsed() || !r.IsNormalized() {
+		t.Errorf("range %v", r)
+	}
+	text := "0123456789"
+	if r.TextBefore(text) != "01" || r.TextInside(text) != "234" || r.TextAfter(text) != "56789" {
+		t.Errorf("before %q inside %q after %q", r.TextBefore(text), r.TextInside(text), r.TextAfter(text))
+	}
+	if c := NewTextRangeCollapsed(3); !c.IsCollapsed() || c.TextInside(text) != "" {
+		t.Errorf("collapsed = %v", c)
+	}
+	if TextRangeEmpty.IsValid() || TextRangeEmpty.String() != "TextRange(start: -1, end: -1)" {
+		t.Errorf("empty = %v", TextRangeEmpty)
+	}
+	if NewTextRange(5, 2).IsNormalized() {
+		t.Error("a backwards range is normalized")
+	}
+}
+
+func TestTextPositionAndBox(t *testing.T) {
+	if p := NewTextPosition(3); p.Affinity != TextAffinityDownstream || p.String() != "TextPosition(offset: 3, affinity: TextAffinity.downstream)" {
+		t.Errorf("position = %v", p)
+	}
+	// The unspecified affinity is downstream.
+	if !(TextPosition{Offset: 3}).Equal(NewTextPosition(3)) || NewTextPosition(3, TextPositionOpts{Affinity: TextAffinityUpstream}).Equal(NewTextPosition(3)) {
+		t.Error("Equal does not treat the unspecified affinity as downstream")
+	}
+	ltr := NewTextBoxFromLTRBD(1, 2, 3, 4, TextDirectionLTR)
+	rtl := NewTextBoxFromLTRBD(1, 2, 3, 4, TextDirectionRTL)
+	if ltr.Start() != 1 || ltr.End() != 3 || rtl.Start() != 3 || rtl.End() != 1 || ltr.ToRect() != (Rect{1, 2, 3, 4}) {
+		t.Errorf("boxes %v %v", ltr, rtl)
+	}
+	for got, want := range map[string]string{
+		BoxHeightStyleIncludeLineSpacingTop.String(): "BoxHeightStyle.includeLineSpacingTop",
+		BoxWidthStyleMax.String():                    "BoxWidthStyle.max",
+		PlaceholderAlignmentAboveBaseline.String():   "PlaceholderAlignment.aboveBaseline",
+		TextAffinityUpstream.String():                "TextAffinity.upstream",
+	} {
+		if got != want {
+			t.Errorf("got %q, want %q", got, want)
+		}
+	}
+}
+
+func TestParagraphBuilderPlaceholders(t *testing.T) {
+	f := new(recordingFactory)
+	b := NewParagraphBuilder(f, nil)
+	b.AddText("ab")
+	b.AddPlaceholder(10, 20, PlaceholderAlignmentUnspecified)
+	b.AddPlaceholder(5, 6, PlaceholderAlignmentTop, AddPlaceholderOpts{Scale: Ptr(2.0), BaselineOffset: Ptr(3.0), Baseline: TextBaselineIdeographic})
+	if b.PlaceholderCount() != 2 || b.PlaceholderScales()[0] != 1 || b.PlaceholderScales()[1] != 2 {
+		t.Fatalf("count %d scales %v", b.PlaceholderCount(), b.PlaceholderScales())
+	}
+	b.Build()
+	c := f.got
+	if c.Text != "ab￼￼" || len(c.Placeholders) != 2 {
+		t.Fatalf("content = %+v", c)
+	}
+	first, second := c.Placeholders[0], c.Placeholders[1]
+	if first.Offset != 2 || first.Alignment != PlaceholderAlignmentBaseline || first.BaselineOffset != 20 || first.Baseline != TextBaselineAlphabetic || first.Scale != 1 {
+		t.Errorf("first = %+v", first)
+	}
+	if second.Offset != 5 || second.BaselineOffset != 3 || second.Baseline != TextBaselineIdeographic || second.Scale != 2 {
+		t.Errorf("second = %+v", second)
+	}
+}
+
+func TestTextQueryPanics(t *testing.T) {
+	tests := []struct {
+		name  string
+		do    func()
+		tag   string
+		route string
+	}{
+		{"range below -1", func() { NewTextRange(-2, 3) }, "TextRangeInvalid", "NewTextRange.TextRangeInvalid"},
+		{"range not normalized", func() { NewTextRange(5, 2).TextInside("0123456789") }, "TextRangeOutOfBounds", "TextRange.TextInside->TextRange.checked.TextRangeOutOfBounds"},
+		{"range outside the text", func() { NewTextRange(2, 50).TextAfter("0123") }, "TextRangeOutOfBounds", "TextRange.TextAfter->TextRange.checked.TextRangeOutOfBounds"},
+		{"negative placeholder", func() { NewParagraphBuilder(new(recordingFactory), nil).AddPlaceholder(1, -1, PlaceholderAlignmentTop) }, "PlaceholderSizeInvalid", "ParagraphBuilder.AddPlaceholder.PlaceholderSizeInvalid"},
+		{"two position options", func() { NewTextPosition(1, TextPositionOpts{}, TextPositionOpts{}) }, "MultipleOptions", "NewTextPosition->oneOpts[...].MultipleOptions"},
+	}
+	for _, tt := range tests {
+		func() {
+			defer func() {
+				r := recover()
+				if r == nil {
+					t.Errorf("%s: no panic", tt.name)
+					return
+				}
+				appErr, ok := errors.FromError(recoverError(t, r))
+				if !ok || appErr.Tag != tt.tag || !appErr.HasRoute(tt.route) {
+					t.Errorf("%s: got %v, want %s via %s", tt.name, appErr, tt.tag, tt.route)
+				}
+			}()
+			tt.do()
+		}()
+	}
+}

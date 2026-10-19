@@ -2,6 +2,7 @@ package layout
 
 import (
 	"math"
+	"sort"
 
 	ot "github.com/go-text/typesetting/font/opentype"
 	"github.com/go-text/typesetting/segmenter"
@@ -45,6 +46,12 @@ type paragraph struct {
 	base       ui.ResolvedTextStyle
 	strut      ui.ResolvedStrut
 
+	content *ui.ParagraphContent
+	// placeholders are indexed like content.Placeholders; one is nil when the text engine
+	// has not reached it. phAt maps the rune of a placeholder to its index.
+	placeholders []*placeholder
+	phAt         map[int]int
+
 	runes      []rune
 	shapeRunes []rune
 	// byteOffset[i] is the byte offset of rune i; it has len(runes)+1 entries.
@@ -59,6 +66,11 @@ type paragraph struct {
 	adv      []float64
 	boundary []bool
 	segments []segment
+	seg      segmenter.Segmenter
+	// words are the UAX #29 word segments, computed on demand.
+	words []wordSeg
+	// graphemes are the rune indices where grapheme clusters start, and n at the end.
+	graphemes []int
 
 	minIntrinsic, maxIntrinsic float64
 
@@ -77,7 +89,8 @@ var _ ui.ParagraphLayout = (*paragraph)(nil)
 // at once with an infinite width, so that the intrinsic widths are known; Layout
 // lays it out for a width.
 func (e *Engine) BuildParagraph(c *ui.ParagraphContent) ui.ParagraphLayout {
-	p := &paragraph{eng: e, style: c.Style, base: c.Style.BaseTextStyle(), strut: c.Style.Strut()}
+	p := &paragraph{eng: e, style: c.Style, base: c.Style.BaseTextStyle(), strut: c.Style.Strut(), content: c,
+		placeholders: make([]*placeholder, len(c.Placeholders)), phAt: map[int]int{}}
 	if c.Style != nil && c.Style.Options().Locale != nil {
 		p.baseLocale = *c.Style.Options().Locale
 	}
@@ -88,6 +101,12 @@ func (e *Engine) BuildParagraph(c *ui.ParagraphContent) ui.ParagraphLayout {
 	}
 	p.byteOffset = append(p.byteOffset, len(c.Text))
 	p.shapeRunes = shapeText(p.runes)
+	for i, ph := range c.Placeholders {
+		// The placeholder character is found by its byte offset.
+		if k, ok := p.runeAtByte(ph.Offset); ok {
+			p.phAt[k] = i
+		}
+	}
 	p.assignStyles(c)
 	p.shapeRuns()
 	p.measure()
@@ -144,9 +163,8 @@ func (p *paragraph) measure() {
 		p.boundary[r.start] = true
 	}
 
-	var seg segmenter.Segmenter
-	seg.Init(p.runes)
-	it := seg.LineIterator()
+	p.seg.Init(p.runes)
+	it := p.seg.LineIterator()
 	for it.Next() {
 		l := it.Line()
 		s := segment{start: l.Offset, end: l.Offset + len(l.Text)}
@@ -159,6 +177,13 @@ func (p *paragraph) measure() {
 		}
 		p.segments = append(p.segments, s)
 	}
+
+	gi := p.seg.GraphemeIterator()
+	p.graphemes = p.graphemes[:0]
+	for gi.Next() {
+		p.graphemes = append(p.graphemes, gi.Grapheme().Offset)
+	}
+	p.graphemes = append(p.graphemes, n)
 
 	// The intrinsic widths: the widest unbreakable word, and the widest line when only
 	// the mandatory breaks end lines.
@@ -182,6 +207,15 @@ func (p *paragraph) sum(a, b int) float64 {
 		w += p.adv[i]
 	}
 	return w
+}
+
+// runeAtByte returns the index of the rune that starts at the byte offset.
+func (p *paragraph) runeAtByte(off int) (int, bool) {
+	i := sort.SearchInts(p.byteOffset, off)
+	if i < len(p.byteOffset) && p.byteOffset[i] == off && i < len(p.runes) {
+		return i, true
+	}
+	return 0, false
 }
 
 // byteOf is the UTF-8 byte offset of rune i.

@@ -46,6 +46,9 @@ type run struct {
 	// applied (and half the gap added to each side), and without the height.
 	ascentC, descentC float64
 	ascentU           float64
+
+	// ph is set for the run of a placeholder, which has a box instead of glyphs.
+	ph *placeholder
 }
 
 // isLineBreakRune reports whether the rune ends a line when it is in the text.
@@ -157,8 +160,24 @@ func (p *paragraph) shapeRuns() {
 				sub.Language = language.NewLanguage(st.Locale.LanguageTag())
 			}
 			fm := p.eng.fontsFor(st.FontFamilies, st.FontWeight, st.FontStyle == ui.FontStyleItalic, st.Locale, st.FontVariations)
-			for _, in := range shaping.SplitByFace(sub, fm) {
-				p.runs = append(p.runs, p.shapeRun(in, si))
+			// A placeholder is a run of its own; the text between placeholders is shaped.
+			from := start
+			for k := start; k <= end; k++ {
+				ph, isPh := p.phAt[k]
+				if k < end && !isPh {
+					continue
+				}
+				if k > from {
+					chunk := sub
+					chunk.RunStart, chunk.RunEnd = from, k
+					for _, in := range shaping.SplitByFace(chunk, fm) {
+						p.runs = append(p.runs, p.shapeRun(in, si))
+					}
+				}
+				if k < end {
+					p.runs = append(p.runs, p.placeholderRun(k, si, ph, sub))
+					from = k + 1
+				}
 			}
 			start = end
 		}
@@ -196,6 +215,77 @@ func (p *paragraph) shapeRun(in shaping.Input, si int) *run {
 			yOffset: float64(g.YOffset) * scale,
 		}
 	}
+	applySpacing(r, in.Text, st.LetterSpacing, st.WordSpacing)
+	return r
+}
+
+// applySpacing adds the letter spacing after every cluster and the word spacing after every
+// space (CSS and Flutter add them after the glyph; in a right-to-left run the glyph moves
+// to the end of the added room, so that the room is on its left).
+func applySpacing(r *run, text []rune, letter, word float64) {
+	if letter == 0 && word == 0 {
+		return
+	}
+	for i := 0; i < len(r.glyphs); {
+		c := r.glyphs[i].cluster
+		extra := letter
+		if c >= 0 && c < len(text) && isWordSpace(text[c]) {
+			extra += word
+		}
+		if extra != 0 {
+			r.glyphs[i].advance += extra
+			if r.rtl {
+				r.glyphs[i].xOffset += extra
+			}
+		}
+		for i < len(r.glyphs) && r.glyphs[i].cluster == c {
+			i++
+		}
+	}
+}
+
+// isWordSpace says whether word spacing applies to the rune: the white space between words.
+func isWordSpace(r rune) bool { return !isLineBreakRune(r) && unicode.IsSpace(r) }
+
+// placeholder is a box in the text for an inline widget.
+type placeholder struct {
+	spec ui.PlaceholderSpec
+	// index is the order in which it was added, and rune its place in the text.
+	index, rune int
+	// width, height and baselineOffset are scaled.
+	width, height, baselineOffset float64
+	// floating is true for the alignments that depend on the line: top, bottom and middle.
+	floating bool
+}
+
+// placeholderRun makes the run of a placeholder: one glyph of the size of the box.
+func (p *paragraph) placeholderRun(at, si, index int, piece shaping.Input) *run {
+	spec := p.content.Placeholders[index]
+	ph := &placeholder{spec: spec, index: index, rune: at,
+		width: spec.Width * spec.Scale, height: spec.Height * spec.Scale, baselineOffset: spec.BaselineOffset * spec.Scale}
+	p.placeholders[index] = ph
+	st := &p.styles[si]
+	r := &run{start: at, end: at + 1, style: si, size: st.FontSize, ph: ph}
+	r.rtl = piece.Direction.Progression() == di.TowardTopLeft
+	r.level = p.levelOf(r.rtl)
+	r.glyphs = []glyph{{cluster: at, runes: 1, advance: ph.width}}
+	_, descent, gap := fontMetrics(p.eng.fontsFor(st.FontFamilies, st.FontWeight, st.FontStyle == ui.FontStyleItalic, st.Locale, st.FontVariations).ResolveFace(' '), st.FontSize)
+	switch spec.Alignment {
+	case ui.PlaceholderAlignmentAboveBaseline:
+		r.ascentC, r.descentC = ph.height, 0
+	case ui.PlaceholderAlignmentBelowBaseline:
+		r.ascentC, r.descentC = 0, ph.height
+	case ui.PlaceholderAlignmentTop, ui.PlaceholderAlignmentBottom, ui.PlaceholderAlignmentMiddle:
+		ph.floating = true
+	default:
+		offset := ph.baselineOffset
+		if spec.Baseline == ui.TextBaselineIdeographic {
+			// The ideographic baseline of the text is below the alphabetic one.
+			offset -= descent + gap/2
+		}
+		r.ascentC, r.descentC = offset, ph.height-offset
+	}
+	r.ascentU = r.ascentC
 	return r
 }
 

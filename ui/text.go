@@ -274,6 +274,26 @@ type ParagraphLayout interface {
 	DidExceedMaxLines() bool
 	// ComputeLineMetrics returns the metrics of every line.
 	ComputeLineMetrics() []LineMetrics
+	// GetBoxesForRange returns the boxes that enclose the text in the byte range.
+	GetBoxesForRange(start, end int, heightStyle BoxHeightStyle, widthStyle BoxWidthStyle) []TextBox
+	// GetBoxesForPlaceholders returns the boxes of the placeholders, in the order they were added.
+	GetBoxesForPlaceholders() []TextBox
+	// GetPositionForOffset returns the text position closest to the point.
+	GetPositionForOffset(offset Offset) TextPosition
+	// GetClosestGlyphInfoForOffset returns the grapheme cluster closest to the point.
+	GetClosestGlyphInfoForOffset(offset Offset) (GlyphInfo, bool)
+	// GetGlyphInfoAt returns the grapheme cluster that holds the byte offset.
+	GetGlyphInfoAt(offset int) (GlyphInfo, bool)
+	// GetWordBoundary returns the range of the word at the position.
+	GetWordBoundary(position TextPosition) TextRange
+	// GetLineBoundary returns the range of the line at the position, with its newline.
+	GetLineBoundary(position TextPosition) TextRange
+	// GetLineMetricsAt returns the metrics of one line.
+	GetLineMetricsAt(lineNumber int) (LineMetrics, bool)
+	// NumberOfLines is the number of visible lines.
+	NumberOfLines() int
+	// GetLineNumberAt returns the line that holds the byte offset.
+	GetLineNumberAt(offset int) (int, bool)
 }
 
 // Paragraph is a paragraph of text that has been laid out, ready to be drawn with Canvas.DrawParagraph.
@@ -337,6 +357,81 @@ func (p *Paragraph) DidExceedMaxLines() bool { return p.layout.DidExceedMaxLines
 //
 // Flutter: ui/text.dart Paragraph.computeLineMetrics
 func (p *Paragraph) ComputeLineMetrics() []LineMetrics { return p.layout.ComputeLineMetrics() }
+
+// GetBoxesForRange returns a list of text boxes that enclose the given text range (byte offsets). Coordinates are relative to the upper-left corner of the paragraph.
+//
+// Flutter: ui/text.dart Paragraph.getBoxesForRange
+func (p *Paragraph) GetBoxesForRange(start, end int, opts ...BoxesForRangeOpts) []TextBox {
+	o := oneOpts(opts)
+	return p.layout.GetBoxesForRange(start, end, o.HeightStyle, o.WidthStyle)
+}
+
+// BoxesForRangeOpts are the optional parameters of Paragraph.GetBoxesForRange.
+//
+// Flutter: ui/text.dart Paragraph.getBoxesForRange
+type BoxesForRangeOpts struct {
+	// HeightStyle defaults to tight.
+	HeightStyle BoxHeightStyle
+	// WidthStyle defaults to tight.
+	WidthStyle BoxWidthStyle
+}
+
+// GetBoxesForPlaceholders returns a list of text boxes that enclose all placeholders in the paragraph, in the order they were added.
+//
+// Flutter: ui/text.dart Paragraph.getBoxesForPlaceholders
+func (p *Paragraph) GetBoxesForPlaceholders() []TextBox { return p.layout.GetBoxesForPlaceholders() }
+
+// GetPositionForOffset returns the text position closest to the given offset. It always returns a position, even when the paragraph is empty.
+//
+// Flutter: ui/text.dart Paragraph.getPositionForOffset
+func (p *Paragraph) GetPositionForOffset(offset Offset) TextPosition {
+	return p.layout.GetPositionForOffset(offset)
+}
+
+// GetClosestGlyphInfoForOffset returns the glyph closest to the given offset, or false if the text is empty or entirely clipped.
+//
+// Flutter: ui/text.dart Paragraph.getClosestGlyphInfoForOffset
+func (p *Paragraph) GetClosestGlyphInfoForOffset(offset Offset) (GlyphInfo, bool) {
+	return p.layout.GetClosestGlyphInfoForOffset(offset)
+}
+
+// GetGlyphInfoAt returns the glyph located at the given byte offset, or false if the offset is out of the visible lines or is ellipsized.
+//
+// Flutter: ui/text.dart Paragraph.getGlyphInfoAt
+func (p *Paragraph) GetGlyphInfoAt(offset int) (GlyphInfo, bool) {
+	return p.layout.GetGlyphInfoAt(offset)
+}
+
+// GetWordBoundary returns the range of the word at the given position. Characters that are not part of a word have word breaks on both sides: the range is that one character.
+//
+// Flutter: ui/text.dart Paragraph.getWordBoundary
+func (p *Paragraph) GetWordBoundary(position TextPosition) TextRange {
+	return p.layout.GetWordBoundary(position)
+}
+
+// GetLineBoundary returns the range of the line at the given position. The newline, if any, is part of the range.
+//
+// Flutter: ui/text.dart Paragraph.getLineBoundary
+func (p *Paragraph) GetLineBoundary(position TextPosition) TextRange {
+	return p.layout.GetLineBoundary(position)
+}
+
+// GetLineMetricsAt returns the metrics of the line, or false if lineNumber is not a visible line.
+//
+// Flutter: ui/text.dart Paragraph.getLineMetricsAt
+func (p *Paragraph) GetLineMetricsAt(lineNumber int) (LineMetrics, bool) {
+	return p.layout.GetLineMetricsAt(lineNumber)
+}
+
+// NumberOfLines is the total number of visible lines in the paragraph.
+//
+// Flutter: ui/text.dart Paragraph.numberOfLines
+func (p *Paragraph) NumberOfLines() int { return p.layout.NumberOfLines() }
+
+// GetLineNumberAt returns the number of the line that holds the byte at the offset, or false if the offset is out of bounds or after the last visible character.
+//
+// Flutter: ui/text.dart Paragraph.getLineNumberAt
+func (p *Paragraph) GetLineNumberAt(offset int) (int, bool) { return p.layout.GetLineNumberAt(offset) }
 
 // Layouter returns the layout the paragraph wraps, for the renderers and the text queries.
 //

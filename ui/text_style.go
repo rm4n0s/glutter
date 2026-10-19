@@ -532,6 +532,24 @@ type TextRun struct {
 	Style ResolvedTextStyle
 }
 
+// PlaceholderSpec is a box in the text that the paragraph leaves room for: an inline widget.
+//
+// Flutter: no counterpart
+type PlaceholderSpec struct {
+	// Offset is the byte offset of the U+FFFC character that stands for the placeholder in Text.
+	Offset int
+	// Width and Height are the size of the box, in logical pixels, before Scale.
+	Width, Height float64
+	// Alignment is how the box aligns vertically with the text.
+	Alignment PlaceholderAlignment
+	// Scale multiplies Width, Height and BaselineOffset.
+	Scale float64
+	// BaselineOffset is the distance from the top of the box to its baseline, used for the baseline alignments.
+	BaselineOffset float64
+	// Baseline is the text baseline that BaselineOffset aligns with.
+	Baseline TextBaseline
+}
+
 // ParagraphContent is what a ParagraphBuilder collected: the style and the styled text. A text engine lays it out.
 //
 // Flutter: no counterpart
@@ -542,6 +560,8 @@ type ParagraphContent struct {
 	Text string
 	// Runs cover Text in order, with no gaps; there is none for an empty text.
 	Runs []TextRun
+	// Placeholders are the boxes in Text, in order.
+	Placeholders []PlaceholderSpec
 }
 
 // ParagraphFactory is the text engine: it makes a laid-out paragraph from its content. internal/text/layout implements it. The framework reaches it through the PlatformDispatcher, so there is no global font collection.
@@ -561,6 +581,8 @@ type ParagraphBuilder struct {
 	stack   []ResolvedTextStyle
 	text    strings.Builder
 	runs    []TextRun
+
+	placeholders []PlaceholderSpec
 }
 
 // NewParagraphBuilder creates a ParagraphBuilder for the text engine and the paragraph style. The Flutter constructor takes only the style, because Dart has a global font collection; here the engine is a parameter.
@@ -604,11 +626,67 @@ func (b *ParagraphBuilder) AddText(text string) {
 	b.runs = append(b.runs, TextRun{Start: start, End: b.text.Len(), Style: style})
 }
 
+// PlaceholderCount is the number of placeholders added so far.
+//
+// Flutter: ui/text.dart ParagraphBuilder.placeholderCount
+func (b *ParagraphBuilder) PlaceholderCount() int { return len(b.placeholders) }
+
+// PlaceholderScales is the scale of each placeholder added so far.
+//
+// Flutter: ui/text.dart ParagraphBuilder.placeholderScales
+func (b *ParagraphBuilder) PlaceholderScales() []float64 {
+	out := make([]float64, len(b.placeholders))
+	for i, p := range b.placeholders {
+		out[i] = p.Scale
+	}
+	return out
+}
+
+// AddPlaceholderOpts are the optional parameters of ParagraphBuilder.AddPlaceholder.
+//
+// Flutter: ui/text.dart ParagraphBuilder.addPlaceholder
+type AddPlaceholderOpts struct {
+	// Scale multiplies the size and baseline offset; it defaults to 1.
+	Scale *float64
+	// BaselineOffset is the distance from the top of the box to its baseline; it defaults to the height (the bottom edge).
+	BaselineOffset *float64
+	// Baseline is the text baseline BaselineOffset refers to; it defaults to alphabetic.
+	Baseline TextBaseline
+}
+
+// AddPlaceholder reserves a box of the given size in the text. The paragraph lays out the text around it, and GetBoxesForPlaceholders reports where it is. A negative size panics with the tag PlaceholderSizeInvalid.
+//
+// Flutter: ui/text.dart ParagraphBuilder.addPlaceholder
+func (b *ParagraphBuilder) AddPlaceholder(width, height float64, alignment PlaceholderAlignment, opts ...AddPlaceholderOpts) {
+	o := oneOpts(opts)
+	if width < 0 || height < 0 {
+		panic(errors.New("PlaceholderSizeInvalid", "the size of a placeholder must not be negative", "width", width, "height", height))
+	}
+	scale := 1.0
+	if o.Scale != nil {
+		scale = *o.Scale
+	}
+	offset := height
+	if o.BaselineOffset != nil {
+		offset = *o.BaselineOffset
+	}
+	if alignment == PlaceholderAlignmentUnspecified {
+		alignment = PlaceholderAlignmentBaseline
+	}
+	baseline := o.Baseline
+	if baseline == TextBaselineUnspecified {
+		baseline = TextBaselineAlphabetic
+	}
+	b.placeholders = append(b.placeholders, PlaceholderSpec{Offset: b.text.Len(), Width: width, Height: height, Alignment: alignment,
+		Scale: scale, BaselineOffset: offset, Baseline: baseline})
+	b.AddText("\uFFFC")
+}
+
 // Build ends the builder and returns the paragraph. It must be laid out with Layout before it is used.
 //
 // Flutter: ui/text.dart ParagraphBuilder.build
 func (b *ParagraphBuilder) Build() *Paragraph {
-	content := &ParagraphContent{Style: b.style, Text: b.text.String(), Runs: append([]TextRun(nil), b.runs...)}
+	content := &ParagraphContent{Style: b.style, Text: b.text.String(), Runs: append([]TextRun(nil), b.runs...), Placeholders: append([]PlaceholderSpec(nil), b.placeholders...)}
 	return NewParagraph(b.factory.BuildParagraph(content))
 }
 

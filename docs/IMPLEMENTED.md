@@ -667,3 +667,27 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - `ui.LoadFontFromList` and the engine's place in the `PlatformDispatcher` come with step 5.2.
   - `TextStyle.lerp`, `FontWeight.lerp` and the long list of named `FontFeature` constructors are for the painting layer.
   - Bidi levels deeper than one embedding are not distinguished (go-text gives only the direction of a run).
+
+## 4.3 Paragraph queries, placeholders and decorations
+
+- **Date:** 2026-10-19
+- **Branch:** feat/step-4.3-paragraph-queries
+- **Summary:** a laid-out paragraph answers what editing and selection need, and holds inline widgets. Queries (`ui.Paragraph`, implemented by `internal/text/layout`): `GetBoxesForRange` with every `BoxHeightStyle` and `BoxWidthStyle`, `GetPositionForOffset` (never inside a grapheme cluster, upstream at a soft break), `GetWordBoundary`, `GetLineBoundary`, `GetGlyphInfoAt`, `GetClosestGlyphInfoForOffset`, `GetBoxesForPlaceholders`, `GetLineMetricsAt`, `NumberOfLines` and `GetLineNumberAt`, with the new `ui` types `TextBox`, `TextPosition`, `TextAffinity`, `TextRange`, `GlyphInfo`, `BoxHeightStyle`, `BoxWidthStyle`, `PlaceholderAlignment`. `ParagraphBuilder.AddPlaceholder` (with scale, baseline offset and baseline), `PlaceholderCount` and `PlaceholderScales`: a placeholder is a U+FFFC run of its own with a box that aligns as `baseline`, `aboveBaseline`, `belowBaseline`, `top`, `bottom` or `middle`. Letter and word spacing apply in shaping, and font features and variations (and the weight and italic axes) reach the shaper; each variation set has its own shaper. `Decorations()` gives the underline, overline and line-through segments (solid, double, dotted, dashed, wavy styles are data for step 4.4) with extent, position, thickness and color. An ellipsis with no `maxLines` now ellipsizes a word that is wider than the line, as `TextPainter` documents.
+- **Main files:** `ui/{text,text_style,text_query}.go`, `internal/text/layout/{geometry,boxes,decor,shape,lines,paragraph}.go`, tests `internal/text/layout/queries_test.go`, `ui/text_test.go`.
+- **Proof:** none (the step has none).
+- **Tests:** (0 Flutter test cases ported; `text.dart` has none)
+  - spacing (letter, word, both, negative; breaks change; right-to-left room on the left); features and variations (`liga` on and off, bold, `wght` 900, `wdth` 75, a variation over the weight, italic).
+  - boxes: 8 ranges (word, all, middle, empty, backwards, past the end, negative, past the text), 10 height-style cases on a text with a 2.0 line height (boxes of neighbouring lines meet), the strut style, `BoxWidthStyle.max`, a range over several lines, inside a ligature (the characters share its width and add up to the whole), a grapheme cluster, and across a bidi boundary (three boxes with their directions, one right-to-left box, start and end of a right-to-left box, positions at the edges of Hebrew letters).
+  - positions: 10 points on a line (edges, middle of a character, far left and right, above and below), several lines, the soft-break upstream rule and the newline rule, the empty paragraph, and a sweep over a text with a ZWJ family emoji and a combining accent that never lands inside a grapheme cluster.
+  - glyph info (bounds, range, closest, none out of range, cut by `maxLines`), 13 word boundary cases (affinity, spaces, punctuation, an apostrophe, a decimal number, the ends), 8 line boundary cases with the soft break affinity, line numbers and line metrics.
+  - ellipsis with no `maxLines` (wrapping text is not cut, a long word is ellipsized, without an ellipsis it is cut).
+  - placeholders: every alignment (and tall and small boxes for `top`, `bottom`, `middle`), baseline offset, scale, the text around it, its range box, several in order over several lines, one cut by `maxLines`, a negative size.
+  - decorations: none, underline geometry, thickness multiplier, overline above and line through in the middle, hanging spaces, merged and split segments, one per wrapped line, the ellipsis.
+  - `ui`: `TextRange`, `TextPosition`, `TextBox`, the enum strings, the builder's placeholders and the panics with routes (`TextRangeInvalid`, `TextRangeOutOfBounds`, `PlaceholderSizeInvalid`, `MultipleOptions`).
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · display tests none
+- **Manual checks:** none
+- **Deviations and follow-ups:** SPEC §12.10 has the rows for boxes and their styles, positions, word boundaries, placeholders, the ellipsis rule and decorations.
+  - Text offsets are UTF-8 bytes (see 4.2).
+  - Skia's paragraph module is not in `reference/`, so the vertical extent of the "include line spacing" styles follows the documentation (the space between the tight boxes of neighbouring lines), and the dotted, dashed and wavy shapes are drawn in step 4.4.
+  - Line break characters have no box; a range that holds only a newline gives no boxes.
+  - `Paragraph.dispose` has no counterpart (nothing to release).

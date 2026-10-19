@@ -23,6 +23,9 @@ type placedGlyph struct {
 	// x is the position of the glyph from the start of its run, and y the offset of the
 	// glyph below the baseline.
 	x, y float64
+	// pen is where the glyph's advance starts, from the start of its run, and width the
+	// advance with the justification added.
+	pen, width float64
 }
 
 // placedRun is a run, or the part of one that is on a line, with its glyphs placed.
@@ -56,6 +59,9 @@ type line struct {
 	top, baseline            float64
 	// justify is the extra advance added to each space of a justified line.
 	justify float64
+
+	// geo holds the boxes of the runes of the line, computed on demand.
+	geo []runeBox
 }
 
 // lineRange is a line before its glyphs are placed.
@@ -70,9 +76,13 @@ func (p *paragraph) Layout(c ui.ParagraphConstraints) {
 	if math.IsNaN(width) || width < 0 {
 		width = 0
 	}
-	ranges := p.breakLines(width)
-	p.exceededLines = false
-	if maxLines, ok := p.style.MaxLines(); ok && len(ranges) > maxLines {
+	maxLines, hasMax := p.style.MaxLines()
+	// With an ellipsis and no limit on the lines, a word that is wider than the line is not
+	// cut: the line is ellipsized and the text after it dropped (TextPainter.ellipsis).
+	keepWords := p.style.Ellipsis() != "" && !hasMax
+	ranges, overflow := p.breakLines(width, keepWords)
+	p.exceededLines = overflow
+	if hasMax && len(ranges) > maxLines {
 		p.exceededLines = true
 		ranges = ranges[:maxLines]
 	}
@@ -101,7 +111,7 @@ func (p *paragraph) Layout(c ui.ParagraphConstraints) {
 
 // breakLines breaks the text into lines of at most width, at the break opportunities of
 // UAX #14, and inside a word that is wider than the width (at cluster boundaries).
-func (p *paragraph) breakLines(width float64) []lineRange {
+func (p *paragraph) breakLines(width float64, keepWords bool) (_ []lineRange, overflow bool) {
 	n := len(p.runes)
 	const eps = 1e-6
 	var out []lineRange
@@ -130,6 +140,11 @@ func (p *paragraph) breakLines(width float64) []lineRange {
 				// The segment does not fit after the words before it: it starts a line.
 				emit(start, false)
 				continue
+			}
+			if keepWords {
+				// The line holds the word and ends the text.
+				emit(s.end, false)
+				return out, true
 			}
 			// The word alone is wider than the line: put as much of it as fits.
 			cut := start
@@ -163,7 +178,7 @@ func (p *paragraph) breakLines(width float64) []lineRange {
 	if lineStart < n || len(out) == 0 || lastHard {
 		emit(n, false)
 	}
-	return out
+	return out, false
 }
 
 // nextBoundary is the first cluster boundary after i.
@@ -320,6 +335,24 @@ func (p *paragraph) verticalMetrics() {
 		if last && !hb.ApplyHeightToLastDescent {
 			descent = descentU
 		}
+		// Placeholders aligned to the top, bottom or middle of the line make it taller when
+		// they are taller than the text.
+		for _, pr := range l.runs {
+			if pr.run.ph == nil || !pr.run.ph.floating {
+				continue
+			}
+			h := pr.run.ph.height
+			switch pr.run.ph.spec.Alignment {
+			case ui.PlaceholderAlignmentTop:
+				descent = max(descent, h-ascent)
+			case ui.PlaceholderAlignmentBottom:
+				ascent = max(ascent, h-descent)
+			default:
+				if extra := h - (ascent + descent); extra > 0 {
+					ascent, descent = ascent+extra/2, descent+extra/2
+				}
+			}
+		}
 		l.ascent, l.descent, l.ascentU = ascent, descent, ascentU
 		l.height = math.Round(ascent + descent)
 		l.top = top
@@ -456,11 +489,13 @@ func (p *paragraph) placeRun(pr *placedRun, justify float64, visEnd int) float64
 	pen := 0.0
 	for i := range pr.glyphs {
 		g := &pr.glyphs[i]
+		g.pen = pen
 		g.x = pen + g.xOffset
-		pen += g.advance
+		g.width = g.advance
 		if !pr.ellipsis && justify != 0 && g.cluster < visEnd && isJustifySpace(p.runes[g.cluster]) {
-			pen += justify
+			g.width += justify
 		}
+		pen += g.width
 	}
 	pr.width = pen
 	return pen
