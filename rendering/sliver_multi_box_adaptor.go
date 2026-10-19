@@ -296,6 +296,13 @@ func (a *RenderSliverMultiBoxAdaptor) SetupParentData(child RenderObject) {
 	}
 }
 
+// AsRenderSliverMultiBoxAdaptor is the adaptor that the sliver embeds.
+//
+// Flutter: no counterpart (Dart subclasses are the adaptor)
+func (a *RenderSliverMultiBoxAdaptor) AsRenderSliverMultiBoxAdaptor() *RenderSliverMultiBoxAdaptor {
+	return a
+}
+
 // ChildManager is the object that creates and removes the children.
 //
 // Flutter: rendering/sliver_multi_box_adaptor.dart RenderSliverMultiBoxAdaptor.childManager
@@ -468,9 +475,11 @@ func (a *RenderSliverMultiBoxAdaptor) createOrObtainChild(index int, after Box) 
 func (a *RenderSliverMultiBoxAdaptor) destroyOrCacheChild(child Box) {
 	data := SliverMultiBoxAdaptorParentDataOf(child)
 	if data.KeepAlive {
+		// The parent data goes back as it is (it may be a subtype, such as the grid's).
+		parentData := child.ParentData()
 		a.Remove(child)
 		a.keepAliveBucket.set(data.Index.Value(), child)
-		child.AsRenderObject().SetParentData(data)
+		child.AsRenderObject().SetParentData(parentData)
 		a.AdoptChild(child) // not the override that tells the manager: super.adoptChild
 		data.keptAlive = true
 	} else {

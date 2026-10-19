@@ -408,6 +408,16 @@ func LayoutPositionedStackChild(child Box, data *StackParentData, size ui.Size, 
 	return x < 0 || x+childSize.Width > size.Width || y < 0 || y+childSize.Height > size.Height
 }
 
+// StackBaselineForChild is the baseline of the child, in the stack of the size,
+// for a dry layout: the child is laid out with its positioned constraints, or
+// with the constraints of a non-positioned child.
+//
+// Flutter: widgets/overlay.dart _RenderTheaterMixin.baselineForChild
+func StackBaselineForChild(child Box, stackSize ui.Size, nonPositioned BoxConstraints, alignment painting.Alignment,
+	baseline ui.TextBaseline) foundation.Opt[float64] {
+	return stackBaselineForChild(child, stackSize, nonPositioned, alignment, baseline)
+}
+
 func stackBaselineForChild(child Box, stackSize ui.Size, nonPositioned BoxConstraints, alignment painting.Alignment,
 	baseline ui.TextBaseline) foundation.Opt[float64] {
 	data := stackParentData(child)

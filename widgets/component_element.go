@@ -243,6 +243,11 @@ func (e *StatefulElement) Reassemble() {
 func (e *StatefulElement) firstBuild() {
 	sd := e.state.stateInternals().data()
 	sd.owner = e.owner
+	for _, m := range sd.mixins {
+		if h, ok := m.(stateInitMixin); ok {
+			h.initStateMixin()
+		}
+	}
 	if h, ok := e.state.(initStater); ok {
 		h.InitState()
 	}
@@ -298,6 +303,11 @@ func (e *StatefulElement) Activate() {
 //
 // Flutter: widgets/framework.dart StatefulElement.deactivate
 func (e *StatefulElement) Deactivate() {
+	for _, m := range e.state.stateInternals().data().mixins {
+		if h, ok := m.(stateDeactivateMixin); ok {
+			h.deactivateStateMixin()
+		}
+	}
 	if h, ok := e.state.(deactivateStater); ok {
 		h.Deactivate()
 	}

@@ -267,6 +267,11 @@ func NewEdgeDraggingAutoScroller(scrollable *ScrollableState, velocityScalar flo
 	return &EdgeDraggingAutoScroller{scrollable: scrollable, velocityScalar: velocityScalar, onScrollViewScrolled: onScrollViewScrolled}
 }
 
+// Scrollable is the scrollable that the scroller scrolls.
+//
+// Flutter: widgets/scrollable_helpers.dart EdgeDraggingAutoScroller.scrollable
+func (s *EdgeDraggingAutoScroller) Scrollable() *ScrollableState { return s.scrollable }
+
 // Scrolling is whether the scroller is scrolling.
 //
 // Flutter: widgets/scrollable_helpers.dart EdgeDraggingAutoScroller.scrolling

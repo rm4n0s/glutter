@@ -15,8 +15,7 @@ import (
 )
 
 // Ported from packages/flutter/test/widgets/implicit_animations_test.dart. The
-// SliverAnimatedOpacity test is not ported: slivers come with step 12 (SPEC
-// section 12.10).
+// SliverAnimatedOpacity cases are in sliver_transitions_test.go.
 
 const (
 	animationDuration = 1000 * time.Millisecond

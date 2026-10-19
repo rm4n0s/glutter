@@ -17,6 +17,13 @@ type stateMixin interface {
 	disposeStateMixin()
 }
 
+// stateInitMixin is a stateMixin that also runs before the state's InitState.
+type stateInitMixin interface{ initStateMixin() }
+
+// stateDeactivateMixin is a stateMixin that also runs before the state's
+// Deactivate.
+type stateDeactivateMixin interface{ deactivateStateMixin() }
+
 // collectStateMixins finds the stateMixin structs embedded in the state, at any
 // depth, in field order. A mixin embedded under an unexported name can't be
 // reached and is ignored.

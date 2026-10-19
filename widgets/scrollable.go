@@ -77,6 +77,15 @@ type Scrollable struct {
 	dragStartBehavior    gestures.DragStartBehavior
 	scrollBehavior       ScrollBehavior
 	clipBehavior         ui.Clip
+	// fixedItemExtent is the item extent of a scrollable of a ListWheelScrollView,
+	// which a FixedExtentScrollController needs.
+	//
+	// Flutter: widgets/list_wheel_scroll_view.dart _FixedExtentScrollable.itemExtent
+	fixedItemExtent foundation.Opt[float64]
+	// dimension is set on the two scrollables of a TwoDimensionalScrollable.
+	//
+	// Flutter: widgets/scrollable.dart _VerticalOuterDimension, _HorizontalInnerDimension
+	dimension *twoDimensionalDimension
 }
 
 // NewScrollable creates the widget. In debug builds it panics with the tag
@@ -103,6 +112,12 @@ func NewScrollable(viewportBuilder ViewportBuilder, opts ...ScrollableOpts) *Scr
 		excludeFromSemantics: o.ExcludeFromSemantics, hitTestBehavior: o.HitTestBehavior, semanticChildCount: o.SemanticChildCount,
 		dragStartBehavior: o.DragStartBehavior, scrollBehavior: o.ScrollBehavior, clipBehavior: o.ClipBehavior,
 	}
+}
+
+// fixedItemExtent is the item extent of the scrollable of a ListWheelScrollView,
+// or none.
+func (s *ScrollableState) fixedItemExtent() foundation.Opt[float64] {
+	return s.Widget().fixedItemExtent
 }
 
 // AxisDirection is the direction in which the scroll offset increases.
@@ -277,11 +292,12 @@ func ScrollableEnsureVisible(bc BuildContext, opts ...EnsureVisibleOpts) *schedu
 	for scrollable != nil {
 		oo := o
 		oo.TargetRenderObject = targetRenderObject
-		futures = append(futures, scrollable.performEnsureVisible(bc.FindRenderObject(), oo))
+		future, next := scrollable.performEnsureVisible(bc.FindRenderObject(), oo)
+		futures = append(futures, future)
 		if isNil(targetRenderObject) {
 			targetRenderObject = bc.FindRenderObject()
 		}
-		bc = scrollable.Context()
+		bc = next.Context()
 		scrollable = ScrollableMaybeOf(bc)
 	}
 	if len(futures) == 0 || o.Duration == 0 {
@@ -317,6 +333,11 @@ type ScrollableState struct {
 	lastAxis            foundation.Opt[painting.Axis]
 	drag                gestures.Drag
 	hold                ScrollHoldController
+
+	// Used by the dimensions of a TwoDimensionalScrollable.
+	lockedAxis         foundation.Opt[painting.Axis]
+	lastDragOffset     foundation.Opt[ui.Offset]
+	verticalScrollable *ScrollableState
 }
 
 // Position is the scroll position.
@@ -430,6 +451,9 @@ func (s *ScrollableState) InitState() {
 //
 // Flutter: widgets/scrollable.dart ScrollableState.didChangeDependencies
 func (s *ScrollableState) DidChangeDependencies() {
+	if dim := s.Widget().dimension; dim != nil && !dim.vertical {
+		s.verticalScrollable = ScrollableOf(s.Context())
+	}
 	if settings, ok := MediaQueryMaybeGestureSettingsOf(s.Context()); ok {
 		s.mediaQueryGestureSt = foundation.Some(settings)
 	} else {
@@ -536,6 +560,10 @@ func (s *ScrollableState) SetSemanticsActions(actions map[ui.SemanticsAction]str
 //
 // Flutter: widgets/scrollable.dart ScrollableState.setCanDrag
 func (s *ScrollableState) SetCanDrag(value bool) {
+	if dim := s.Widget().dimension; dim != nil && dim.diagonalDragBehavior != DiagonalDragBehaviorNone {
+		s.dimensionSetCanDrag(dim, value)
+		return
+	}
 	axis := s.Widget().Axis()
 	if s.lastCanDrag.IsSome() && value == s.lastCanDrag.Value() && (!value || (s.lastAxis.IsSome() && axis == s.lastAxis.Value())) {
 		// We have already set up the correct gesture recognizers. Return early to
@@ -603,7 +631,15 @@ func (s *ScrollableState) SetIgnorePointer(value bool) {
 	}
 }
 
-func (s *ScrollableState) handleDragDown(gestures.DragDownDetails) {
+func (s *ScrollableState) handleDragDown(details gestures.DragDownDetails) {
+	if dim := s.Widget().dimension; dim != nil && dim.vertical {
+		s.outerDragDown(dim, details)
+		return
+	}
+	s.baseDragDown(details)
+}
+
+func (s *ScrollableState) baseDragDown(gestures.DragDownDetails) {
 	if foundation.DebugMode && (s.drag != nil || s.hold != nil) {
 		panic(errors.New("ScrollableDragStateInvalid", "a drag down arrived while the scrollable has a drag or a hold"))
 	}
@@ -611,6 +647,14 @@ func (s *ScrollableState) handleDragDown(gestures.DragDownDetails) {
 }
 
 func (s *ScrollableState) handleDragStart(details gestures.DragStartDetails) {
+	if dim := s.Widget().dimension; dim != nil && dim.vertical {
+		s.outerDragStart(dim, details)
+		return
+	}
+	s.baseDragStart(details)
+}
+
+func (s *ScrollableState) baseDragStart(details gestures.DragStartDetails) {
 	if foundation.DebugMode && s.drag != nil {
 		panic(errors.New("ScrollableDragStateInvalid", "a drag start arrived while the scrollable has a drag"))
 	}
@@ -621,6 +665,14 @@ func (s *ScrollableState) handleDragStart(details gestures.DragStartDetails) {
 }
 
 func (s *ScrollableState) handleDragUpdate(details gestures.DragUpdateDetails) {
+	if dim := s.Widget().dimension; dim != nil && dim.vertical {
+		s.outerDragUpdate(dim, details)
+		return
+	}
+	s.baseDragUpdate(details)
+}
+
+func (s *ScrollableState) baseDragUpdate(details gestures.DragUpdateDetails) {
 	// _drag might be null if the drag activity ended and called _disposeDrag.
 	if s.drag != nil {
 		s.drag.Update(details)
@@ -628,6 +680,14 @@ func (s *ScrollableState) handleDragUpdate(details gestures.DragUpdateDetails) {
 }
 
 func (s *ScrollableState) handleDragEnd(details gestures.DragEndDetails) {
+	if dim := s.Widget().dimension; dim != nil && dim.vertical {
+		s.outerDragEnd(dim, details)
+		return
+	}
+	s.baseDragEnd(details)
+}
+
+func (s *ScrollableState) baseDragEnd(details gestures.DragEndDetails) {
 	// _drag might be null if the drag activity ended and called _disposeDrag.
 	if s.drag != nil {
 		s.drag.End(details)
@@ -638,6 +698,14 @@ func (s *ScrollableState) handleDragEnd(details gestures.DragEndDetails) {
 }
 
 func (s *ScrollableState) handleDragCancel() {
+	if dim := s.Widget().dimension; dim != nil && dim.vertical {
+		s.outerDragCancel(dim)
+		return
+	}
+	s.baseDragCancel()
+}
+
+func (s *ScrollableState) baseDragCancel() {
 	if s.gestureDetectorKey.CurrentContext() == nil {
 		// The cancel was caused by the GestureDetector getting disposed, which
 		// means we will get disposed momentarily as well and shouldn't do
@@ -729,6 +797,12 @@ func (s *ScrollableState) handleScrollMetricsNotification(notification *ScrollMe
 }
 
 func (s *ScrollableState) buildChrome(bc BuildContext, child Widget) Widget {
+	if s.Widget().dimension != nil {
+		// Skip building a scrollbar here, the dual scrollbar is added in
+		// TwoDimensionalScrollableState.
+		return s.configuration.BuildOverscrollIndicator(bc, child, ScrollableDetails{
+			Direction: s.Widget().axisDirection, Controller: s.effectiveScrollController(), DecorationClipBehavior: foundation.Some(s.Widget().clipBehavior)})
+	}
 	details := ScrollableDetails{
 		Direction:              s.Widget().axisDirection,
 		Controller:             s.effectiveScrollController(),
@@ -761,6 +835,14 @@ func (s *ScrollableState) Build(bc BuildContext) Widget {
 	return s.buildChrome(bc, result)
 }
 
-func (s *ScrollableState) performEnsureVisible(object rendering.RenderObject, opts EnsureVisibleOpts) *scheduler.TickerFuture {
-	return s.position.EnsureVisible(object, opts)
+// performEnsureVisible scrolls the position to reveal the object, and returns
+// the future of that and the scrollable whose context is used to find the next
+// ancestor scrollable.
+//
+// Flutter: widgets/scrollable.dart ScrollableState._performEnsureVisible
+func (s *ScrollableState) performEnsureVisible(object rendering.RenderObject, opts EnsureVisibleOpts) (*scheduler.TickerFuture, *ScrollableState) {
+	if dim := s.Widget().dimension; dim != nil {
+		return s.dimensionEnsureVisible(dim, object, opts)
+	}
+	return s.position.EnsureVisible(object, opts), s
 }

@@ -1,6 +1,7 @@
 package widgets_test
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/rm4n0s/glutter/foundation"
@@ -14,7 +15,7 @@ import (
 // Tests of the small widgets of the scrolling step: PrimaryScrollController,
 // TrackingScrollController and Viewport. The 'TrackingScrollController saves
 // offset' case of tracking_scroll_controller_test.dart builds its pages with a
-// PageView and waits for step 9.3.
+// PageView, which came with step 9.3.
 
 func TestPrimaryScrollControllerShouldInherit(t *testing.T) {
 	controller := NewScrollController()
@@ -163,7 +164,10 @@ func TestViewportBuildsItsSliversInOrderAndKeepsTheCenter(t *testing.T) {
 	slivers := []Widget{sliver(0, 100), sliver(1, 200), sliver(2, 50)}
 	ts.PumpWidget(ltr(NewViewport(offset, slivers, ViewportOpts{Center: key(1)})))
 	// The center sliver is at the offset zero, the one before it above.
-	top := func(i int) float64 { return ts.TopLeft(gluttertest.ByKey(foundation.NewValueKey(100 + i))).Dy }
+	// The sliver above the viewport is offstage.
+	top := func(i int) float64 {
+		return ts.TopLeft(gluttertest.ByKey(foundation.NewValueKey(100+i), gluttertest.FindOpts{IncludeOffstage: true})).Dy
+	}
 	if top(1) != 0 || top(2) != 200 || top(0) != -100 {
 		t.Errorf("tops = %v, %v and %v, want -100, 0 and 200", top(0), top(1), top(2))
 	}
@@ -191,12 +195,49 @@ func TestViewportMovingTheCenterKeepsTheSlivers(t *testing.T) {
 		return newSliverBox(NewSizedBox(nil, SizedBoxOpts{Key: foundation.NewValueKey(100 + i), Height: foundation.Some(100.0)}), WidgetOpts{Key: foundation.NewValueKey(i)})
 	}
 	ts.PumpWidget(ltr(NewViewport(offset, []Widget{sliver(0), sliver(1), sliver(2)}, ViewportOpts{Center: foundation.NewValueKey(0)})))
-	first := ts.Element(gluttertest.ByKey(foundation.NewValueKey(101)))
+	off := gluttertest.FindOpts{IncludeOffstage: true}
+	first := ts.Element(gluttertest.ByKey(foundation.NewValueKey(101), off))
 	ts.PumpWidget(ltr(NewViewport(offset, []Widget{sliver(0), sliver(1), sliver(2)}, ViewportOpts{Center: foundation.NewValueKey(2)})))
-	if ts.Element(gluttertest.ByKey(foundation.NewValueKey(101))) != first {
+	if ts.Element(gluttertest.ByKey(foundation.NewValueKey(101), off)) != first {
 		t.Error("the element of a sliver was rebuilt when the center moved")
 	}
-	if got := ts.TopLeft(gluttertest.ByKey(foundation.NewValueKey(102))).Dy; got != 0 {
+	if got := ts.TopLeft(gluttertest.ByKey(foundation.NewValueKey(102), off)).Dy; got != 0 {
 		t.Errorf("the new center is at %v, want 0", got)
+	}
+}
+
+func TestTrackingScrollControllerSavesTheOffsetAcrossPages(t *testing.T) {
+	useAndroid(t)
+	ts := gluttertest.New(t)
+	controller := NewTrackingScrollController()
+	defer controller.Dispose()
+	const itemHeight = 100.0
+	ts.PumpWidget(ltr(NewPageViewBuilder(func(_ BuildContext, index int) Widget {
+		items := make([]Widget, 10)
+		for i := range items {
+			items[i] = NewSizedBox(NewText(fmt.Sprintf("Page%d-Item%d", index, i)), SizedBoxOpts{Height: foundation.Some(itemHeight)})
+		}
+		return NewListView(items, ListViewOpts{Controller: controller})
+	})))
+	present := func(texts map[string]int) {
+		t.Helper()
+		for text, want := range texts {
+			if got := ts.Count(gluttertest.ByText(text)); got != want {
+				t.Errorf("%q: %d, want %d", text, got, want)
+			}
+		}
+	}
+	present(map[string]int{"Page0-Item1": 1, "Page1-Item1": 0, "Page2-Item0": 0, "Page2-Item1": 0})
+	controller.JumpTo(itemHeight + 10)
+	ts.PumpAndSettle()
+	ts.Fling(gluttertest.ByText("Page0-Item1"), ui.Offset{Dx: -100}, 10000)
+	ts.PumpAndSettle()
+	present(map[string]int{"Page0-Item1": 0, "Page1-Item1": 1, "Page2-Item0": 0, "Page2-Item1": 0})
+	ts.Fling(gluttertest.ByText("Page1-Item1"), ui.Offset{Dx: -100}, 10000)
+	ts.PumpAndSettle()
+	present(map[string]int{"Page0-Item1": 0, "Page1-Item1": 0, "Page2-Item0": 0, "Page2-Item1": 1})
+	ts.PumpWidget(ltr(NewText("Another page")))
+	if controller.InitialScrollOffset() != 0 {
+		t.Errorf("initial offset = %v, want 0", controller.InitialScrollOffset())
 	}
 }

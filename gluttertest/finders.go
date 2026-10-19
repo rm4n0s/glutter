@@ -126,14 +126,19 @@ func (f *elementFinder) Find(t *Tester) []widgets.Element {
 	return found
 }
 
-// walk visits the elements below e, e included, in depth first order. It does not
-// look inside an offstage widget unless includeOffstage.
+// walk visits the elements below e, e included, in depth first order. Unless
+// includeOffstage it visits only the on stage children (DebugVisitOnstageChildren),
+// as Flutter's finders do.
 func walk(e widgets.Element, includeOffstage bool, visit func(widgets.Element)) {
 	visit(e)
-	if !includeOffstage && isOffstage(e) {
+	if includeOffstage {
+		e.VisitChildren(func(c widgets.Element) { walk(c, includeOffstage, visit) })
 		return
 	}
-	e.VisitChildren(func(c widgets.Element) { walk(c, includeOffstage, visit) })
+	if isOffstage(e) {
+		return
+	}
+	e.DebugVisitOnstageChildren(func(c widgets.Element) { walk(c, includeOffstage, visit) })
 }
 
 func isOffstage(e widgets.Element) bool {

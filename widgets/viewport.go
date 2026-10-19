@@ -169,7 +169,9 @@ func (w *Viewport) CreateRenderObject(bc BuildContext) rendering.RenderObject {
 //
 // Flutter: widgets/viewport.dart Viewport.updateRenderObject
 func (w *Viewport) UpdateRenderObject(bc BuildContext, renderObject rendering.RenderObject) {
-	r := renderObject.(*rendering.RenderViewport)
+	r := renderObject.(interface {
+		AsRenderViewport() *rendering.RenderViewport
+	}).AsRenderViewport()
 	r.SetAxisDirection(w.axisDirection)
 	r.SetCrossAxisDirection(w.crossAxis(bc))
 	r.SetAnchor(w.anchor)
@@ -209,7 +211,9 @@ func (e *viewportElement) OnNotification(notification Notification) bool {
 }
 
 func (e *viewportElement) renderViewport() *rendering.RenderViewport {
-	return e.renderObject.(*rendering.RenderViewport)
+	return e.renderObject.(interface {
+		AsRenderViewport() *rendering.RenderViewport
+	}).AsRenderViewport()
 }
 
 // Mount mounts the children and finds the center.
@@ -239,21 +243,21 @@ func (e *viewportElement) Update(newWidget Widget) {
 }
 
 func (e *viewportElement) updateCenter() {
-	viewport := e.widget.(*Viewport)
+	center := e.widget.(interface{ Center() foundation.Key }).Center()
 	children := e.Children()
 	r := e.renderViewport()
 	switch {
-	case viewport.center != nil:
+	case center != nil:
 		elementIndex := 0
 		for _, child := range children {
-			if child.AsElement().widget.Key() == viewport.center {
+			if child.AsElement().widget.Key() == center {
 				r.SetCenter(child.RenderObject().(rendering.Sliver))
 				break
 			}
 			elementIndex++
 		}
 		if foundation.DebugMode && elementIndex >= len(children) {
-			panic(errors.New("ViewportCenterInvalid", "the center of the viewport is not among its children", "center", viewport.center.String()))
+			panic(errors.New("ViewportCenterInvalid", "the center of the viewport is not among its children", "center", center.String()))
 		}
 		e.centerSlotIndex, e.hasCenterSlot = elementIndex, true
 	case len(children) > 0:

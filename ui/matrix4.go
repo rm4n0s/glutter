@@ -14,6 +14,27 @@ type Vector3 struct {
 	Z float32
 }
 
+// Quad is a quadrilateral of four points, in order around its edge.
+//
+// Flutter: package:vector_math Quad
+type Quad struct {
+	// Point0 is the first corner.
+	Point0 Vector3
+	// Point1 is the second corner.
+	Point1 Vector3
+	// Point2 is the third corner.
+	Point2 Vector3
+	// Point3 is the fourth corner.
+	Point3 Vector3
+}
+
+// NewQuadPoints creates the quad with the four corners.
+//
+// Flutter: package:vector_math Quad.points
+func NewQuadPoints(point0, point1, point2, point3 Vector3) Quad {
+	return Quad{point0, point1, point2, point3}
+}
+
 // Vector4 is a 4D vector of float32 components.
 //
 // Flutter: package:vector_math Vector4

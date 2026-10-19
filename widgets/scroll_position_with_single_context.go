@@ -48,9 +48,21 @@ type ScrollPositionWithSingleContextOpts struct {
 //
 // Flutter: widgets/scroll_position_with_single_context.dart ScrollPositionWithSingleContext.new
 func NewScrollPositionWithSingleContext(physics ScrollPhysics, context ScrollContext, opts ...ScrollPositionWithSingleContextOpts) *ScrollPositionWithSingleContext {
+	p := &ScrollPositionWithSingleContext{}
+	InitScrollPositionWithSingleContext(p, p, physics, context, opts...)
+	return p
+}
+
+// InitScrollPositionWithSingleContext sets up the position; self is the outer
+// position, for a type that embeds ScrollPositionWithSingleContext. The fields of
+// the outer type that its Absorb and RestoreScrollOffset methods need must be set
+// before the call, as they run in it.
+//
+// Flutter: widgets/scroll_position_with_single_context.dart ScrollPositionWithSingleContext.new
+func InitScrollPositionWithSingleContext(p *ScrollPositionWithSingleContext, self ScrollPosition, physics ScrollPhysics, context ScrollContext, opts ...ScrollPositionWithSingleContextOpts) {
 	o := firstOpts(opts)
-	p := &ScrollPositionWithSingleContext{userScrollDirection: rendering.ScrollDirectionIdle}
-	InitScrollPositionBase(&p.ScrollPositionBase, p, physics, context, ScrollPositionOpts{
+	p.userScrollDirection = rendering.ScrollDirectionIdle
+	InitScrollPositionBase(&p.ScrollPositionBase, self, physics, context, ScrollPositionOpts{
 		KeepScrollOffset: o.KeepScrollOffset, OldPosition: o.OldPosition, DebugLabel: o.DebugLabel})
 	if !p.HasPixels() && !o.NoInitialPixels {
 		p.CorrectPixels(o.InitialPixels.OrElse(0))
@@ -58,7 +70,6 @@ func NewScrollPositionWithSingleContext(physics ScrollPhysics, context ScrollCon
 	if p.activity == nil {
 		p.GoIdle()
 	}
-	return p
 }
 
 // SetPixels changes the position; in debug builds it panics with the tag

@@ -1047,18 +1047,32 @@ type RenderViewportOpts struct {
 //
 // Flutter: rendering/viewport.dart RenderViewport.new
 func NewRenderViewport(crossAxisDirection painting.AxisDirection, offset ViewportOffset, opts ...RenderViewportOpts) *RenderViewport {
+	r := &RenderViewport{}
+	InitRenderViewport(r, r, crossAxisDirection, offset, opts...)
+	return r
+}
+
+// InitRenderViewport sets up the viewport; self is the outer render object, for a
+// type that embeds RenderViewport. The panics of NewRenderViewport apply.
+//
+// Flutter: rendering/viewport.dart RenderViewport.new
+func InitRenderViewport(r *RenderViewport, self Box, crossAxisDirection painting.AxisDirection, offset ViewportOffset, opts ...RenderViewportOpts) {
 	o := firstOpts(opts)
 	if foundation.DebugMode && (o.Anchor < 0 || o.Anchor > 1) {
 		panic(errors.New("ViewportAnchorInvalid", "the anchor of a viewport must be between 0.0 and 1.0", "anchor", o.Anchor))
 	}
-	r := &RenderViewport{anchor: o.Anchor, center: o.Center}
-	InitRenderViewportBase(&r.RenderViewportBase, r, crossAxisDirection, offset, o.RenderViewportBaseOpts)
+	r.anchor, r.center = o.Anchor, o.Center
+	InitRenderViewportBase(&r.RenderViewportBase, self, crossAxisDirection, offset, o.RenderViewportBaseOpts)
 	r.AddAll(o.Children)
 	if isNil(o.Center) && !isNil(r.FirstChild()) {
 		r.center = r.FirstChild()
 	}
-	return r
 }
+
+// AsRenderViewport is the viewport that the render object embeds.
+//
+// Flutter: no counterpart (Dart subclasses are the viewport)
+func (r *RenderViewport) AsRenderViewport() *RenderViewport { return r }
 
 // SetupParentData gives the child a SliverPhysicalContainerParentData if it has
 // none.

@@ -60,6 +60,8 @@ func TestScrollPositionEnsureVisibleHonorsTheAlignmentPolicy(t *testing.T) {
 
 func TestScrollPositionEnsureVisibleExplicitAndAnimated(t *testing.T) {
 	ts := gluttertest.New(t)
+	// The items outside the viewport are offstage.
+	offstageToo := gluttertest.FindOpts{IncludeOffstage: true}
 	controller := NewScrollController()
 	defer controller.Dispose()
 	children := make([]Widget, 11)
@@ -68,7 +70,7 @@ func TestScrollPositionEnsureVisibleExplicitAndAnimated(t *testing.T) {
 	}
 	ts.PumpWidget(ltr(testList(children, listOpts{ScrollableOpts: ScrollableOpts{Controller: controller}})))
 	item := func(i int) rendering.RenderObject {
-		return ts.RenderObject(gluttertest.ByKey(foundation.NewValueKey(i)))
+		return ts.RenderObject(gluttertest.ByKey(foundation.NewValueKey(i), offstageToo))
 	}
 
 	// Explicit alignment with the leading edge, jumping.
@@ -97,7 +99,7 @@ func TestScrollPositionEnsureVisibleExplicitAndAnimated(t *testing.T) {
 	}
 	// ScrollableEnsureVisible reaches the same position through the context.
 	controller.JumpTo(0)
-	ScrollableEnsureVisible(ts.Element(gluttertest.ByKey(foundation.NewValueKey(5))), EnsureVisibleOpts{})
+	ScrollableEnsureVisible(ts.Element(gluttertest.ByKey(foundation.NewValueKey(5), offstageToo)), EnsureVisibleOpts{})
 	if got := controller.Position().Pixels(); got != 5*110 {
 		t.Errorf("ScrollableEnsureVisible: pixels = %v, want %v", got, 5*110)
 	}

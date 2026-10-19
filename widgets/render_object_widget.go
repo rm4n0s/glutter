@@ -584,10 +584,19 @@ type MultiChildRenderObjectElement struct {
 //
 // Flutter: widgets/framework.dart MultiChildRenderObjectElement.new
 func NewMultiChildRenderObjectElement(w multiChildRenderObjectWidget) *MultiChildRenderObjectElement {
-	DebugChildrenHaveDuplicateKeys(w, w.Children())
-	e := &MultiChildRenderObjectElement{forgotten: map[Element]struct{}{}}
-	InitRenderObjectElement(&e.RenderObjectElement, e, w)
+	e := &MultiChildRenderObjectElement{}
+	InitMultiChildRenderObjectElement(e, e, w)
 	return e
+}
+
+// InitMultiChildRenderObjectElement sets up an element that embeds
+// MultiChildRenderObjectElement, with the outer element as self.
+//
+// Flutter: widgets/framework.dart MultiChildRenderObjectElement.new
+func InitMultiChildRenderObjectElement(e *MultiChildRenderObjectElement, self RenderObjectElementSelf, w multiChildRenderObjectWidget) {
+	DebugChildrenHaveDuplicateKeys(w, w.Children())
+	e.forgotten = map[Element]struct{}{}
+	InitRenderObjectElement(&e.RenderObjectElement, self, w)
 }
 
 // Children are the child elements, except the ones that were forgotten.

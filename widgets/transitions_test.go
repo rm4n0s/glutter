@@ -16,8 +16,8 @@ import (
 )
 
 // Ported from packages/flutter/test/widgets/transitions_test.dart. The
-// SliverFadeTransition test waits for the slivers (step 12), and the 'toString
-// control test' for DebugFillProperties (step 17).
+// SliverFadeTransition test is in sliver_transitions_test.go, and the 'toString
+// control test' waits for DebugFillProperties (step 17).
 
 // newVsyncController makes a controller on the scheduler of the tester, with a
 // duration (TestVSync).

@@ -19,7 +19,7 @@ func (stubDrag) Cancel()                           {}
 func TestScrollableEndedDragMustBeDisposed(t *testing.T) {
 	skipUnlessDebug(t)
 	s := &ScrollableState{drag: stubDrag{}}
-	requireTag(t, "ScrollableDragStateInvalid", func() { s.handleDragEnd(gestures.DragEndDetails{}) })
+	requireTag(t, "ScrollableDragStateInvalid", func() { s.baseDragEnd(gestures.DragEndDetails{}) })
 }
 
 func TestViewportElementMustNotBeReentered(t *testing.T) {
