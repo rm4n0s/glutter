@@ -152,6 +152,10 @@ type DiagnosticsPropertyOpts struct {
 	Style DiagnosticsTreeStyle
 	// Level is the importance of the property; the default is info.
 	Level DiagnosticLevel
+	// ValueToString replaces the description of the value, as an override of
+	// DiagnosticsProperty.valueToString does in Dart. It gets the configuration
+	// of the parent node.
+	ValueToString func(parent *TextTreeConfiguration) string
 }
 
 func optString(s string) Opt[string] {
@@ -180,6 +184,10 @@ func (o DiagnosticsPropertyOpts) config() propertyConfig {
 	}
 	if o.NoNameWrap {
 		c.allowNameWrap = Some(false)
+	}
+	if o.ValueToString != nil {
+		fn := o.ValueToString
+		c.valueToString = func(_ *DiagnosticsProperty, parent *TextTreeConfiguration) string { return fn(parent) }
 	}
 	setDefault(&c, o.DefaultValue)
 	return c

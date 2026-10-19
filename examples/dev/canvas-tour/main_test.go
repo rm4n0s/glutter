@@ -42,8 +42,9 @@ func TestStartPage(t *testing.T) {
 		{"1", "shapes-basic"},
 		{"2", "shapes-clips"},
 		{"5", "effects"},
-		{"6", "text-tour"},
-		{"7", gridPage},
+		{"6", "decorations"},
+		{"7", "text-tour"},
+		{"8", gridPage},
 		{"blend-modes", "blend-modes"},
 		{gridPage, gridPage},
 	}
@@ -59,7 +60,7 @@ func TestStartPage(t *testing.T) {
 }
 
 func TestStartPageInvalid(t *testing.T) {
-	for _, v := range []string{"0", "8", "-1", "nope", "shapes"} {
+	for _, v := range []string{"0", "9", "-1", "nope", "shapes"} {
 		_, err := newTour(env(map[string]string{"GLUTTER_DEV_PAGE": v}))
 		appErr, ok := errors.FromError(err)
 		if !ok || appErr.Tag != "TourPageInvalid" || !appErr.HasRoute("newTour->tour.find.TourPageInvalid") {
