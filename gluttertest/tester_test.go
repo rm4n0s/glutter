@@ -220,3 +220,23 @@ func TestSemanticsLabelFinders(t *testing.T) {
 		})
 	}
 }
+
+// TestPumpRunsPostedWorkBetweenBeginAndDrawFrame checks that the work a transient
+// callback posts (a microtask in Flutter) runs before the draw phase of the same
+// frame, as flutter_test flushes microtasks between the two.
+func TestPumpRunsPostedWorkBetweenBeginAndDrawFrame(t *testing.T) {
+	ts := New(t)
+	ts.PumpWidget(newRow(newSwatch(ui.NewColor(0xFFFF0000), 40, 30)))
+	var order []string
+	sched := ts.Binding.Scheduler()
+	sched.ScheduleFrameCallback(func(time.Duration) {
+		order = append(order, "begin")
+		ts.Binding.Post(func() { order = append(order, "posted") })
+	})
+	sched.AddPostFrameCallback(func(time.Duration) { order = append(order, "post frame") })
+	ts.Pump()
+	want := []string{"begin", "posted", "post frame"}
+	if strings.Join(order, ",") != strings.Join(want, ",") {
+		t.Errorf("order = %v, want %v", order, want)
+	}
+}

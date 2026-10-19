@@ -246,7 +246,9 @@ func (t *Tester) PumpWidget(w widgets.Widget, opts ...PumpWidgetOpts) {
 
 // Pump advances the fake clock by the duration (if there is one), then runs one
 // frame at the new time if a frame is scheduled, and the work that was posted to
-// the UI thread. The timers that come due while the clock advances run first.
+// the UI thread (also between the begin and the draw phase of the frame, like the
+// microtasks of flutter_test). The timers that come due while the clock advances
+// run first.
 //
 // Flutter: flutter_test/lib/src/widget_tester.dart WidgetTester.pump
 func (t *Tester) Pump(duration ...time.Duration) {
@@ -259,6 +261,9 @@ func (t *Tester) Pump(duration ...time.Duration) {
 	sched := t.Binding.Scheduler()
 	if sched.HasScheduledFrame() {
 		sched.HandleBeginFrame(foundation.Some(t.Elapsed()))
+		// The microtasks that the tickers of the frame scheduled run before the
+		// draw phase, as flutter_test flushes them between the two.
+		t.host.RunPosted()
 		sched.HandleDrawFrame()
 	}
 	t.host.RunPosted()

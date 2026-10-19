@@ -157,9 +157,8 @@ func (w *ModalBarrier) ClipDetailsNotifier() *foundation.ValueNotifier[painting.
 // Flutter: widgets/modal_barrier.dart ModalBarrier.semanticsOnTapHint
 func (w *ModalBarrier) SemanticsOnTapHint() string { return w.o.SemanticsOnTapHint }
 
-// navigatorMaybePop is Navigator.maybePop. TODO(step 10.2): pop the route of the
-// Navigator.
-func navigatorMaybePop(BuildContext) {}
+// navigatorMaybePop is Navigator.maybePop.
+func navigatorMaybePop(bc BuildContext) { NavigatorMaybePop(bc) }
 
 // Build builds the barrier: a semantics node, an opaque area that is filled with
 // the color, and a detector of taps of any button.

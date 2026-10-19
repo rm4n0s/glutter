@@ -12,9 +12,8 @@ import (
 	. "github.com/rm4n0s/glutter/widgets"
 )
 
-// Ported from packages/flutter/test/widgets/ticker_provider_test.dart. 'Navigation
-// with TickerMode' needs the Navigator (step 10); the toString tests are replaced
-// by checks of what the mixin keeps (SPEC §12.10).
+// Ported from packages/flutter/test/widgets/ticker_provider_test.dart; the
+// toString tests are replaced by checks of what the mixin keeps (SPEC §12.10).
 
 func transientCount(ts *gluttertest.Tester) int {
 	return ts.Binding.Scheduler().TransientCallbackCount()
@@ -43,6 +42,34 @@ func (s *tickerWidgetState) InitState() {
 }
 func (s *tickerWidgetState) Dispose()                  { s.controller.Dispose() }
 func (s *tickerWidgetState) Build(BuildContext) Widget { return newLeaf() }
+
+func TestNavigationWithTickerMode(t *testing.T) {
+	ts := gluttertest.New(t)
+	ts.PumpWidget(navTestApp(navTestAppOpts{
+		home:   newTickerWidget(),
+		routes: map[string]WidgetBuilder{"/test": func(BuildContext) Widget { return NewText("hello") }},
+	}))
+	expect := func(want int) {
+		t.Helper()
+		if n := transientCount(ts); n != want {
+			t.Fatalf("transient callbacks = %d, want %d", n, want)
+		}
+	}
+	expect(1)
+	state := gluttertest.StateOf[*NavigatorState](ts, gluttertest.ByType[*Navigator]())
+	state.PushNamed("/test")
+	expect(2)
+	ts.Pump()
+	expect(2)
+	ts.Pump(5 * time.Second)
+	expect(0)
+	state.Pop()
+	expect(1)
+	ts.Pump()
+	expect(2)
+	ts.Pump(5 * time.Second)
+	expect(1)
+}
 
 func TestTickerMode(t *testing.T) {
 	ts := gluttertest.New(t)
