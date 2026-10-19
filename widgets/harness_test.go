@@ -84,12 +84,17 @@ type tree struct {
 	owner     *BuildOwner
 	root      *rootElement
 	scheduled int
+	// errs are the errors the owner reported.
+	errs []error
 }
 
 func newTree(t *testing.T) *tree {
 	t.Helper()
 	tr := &tree{t: t}
-	tr.owner = NewBuildOwner(BuildOwnerOpts{OnBuildScheduled: func() { tr.scheduled++ }})
+	tr.owner = NewBuildOwner(BuildOwnerOpts{
+		OnBuildScheduled: func() { tr.scheduled++ },
+		OnError:          func(err error) { tr.errs = append(tr.errs, err) },
+	})
 	return tr
 }
 
@@ -291,3 +296,62 @@ func normalizeHashes(s string) string { return hashRe.ReplaceAllString(s, "#0000
 
 // DebugIsActiveForTest is whether the element is active, in every build mode.
 func (b *ElementBase) DebugIsActiveForTest() bool { return b.lifecycle == lifecycleActive }
+
+// takeError returns the one error that was reported since the last call, or nil;
+// it fails the test when there were more.
+func (tr *tree) takeError() error {
+	tr.t.Helper()
+	return takeError(tr.t, &tr.errs)
+}
+
+func takeError(t *testing.T, errs *[]error) error {
+	t.Helper()
+	switch len(*errs) {
+	case 0:
+		return nil
+	case 1:
+		err := (*errs)[0]
+		*errs = nil
+		return err
+	}
+	t.Fatalf("%d errors were reported, want at most 1: %v", len(*errs), *errs)
+	return nil
+}
+
+// requireErrorTag fails unless err is an *errors.Error whose route ends in tag.
+func requireErrorTag(t *testing.T, err error, tag string) *errors.Error {
+	t.Helper()
+	if err == nil {
+		t.Fatalf("expected an error with tag %s, got none", tag)
+	}
+	appErr, ok := errors.FromError(err)
+	if !ok {
+		t.Fatalf("expected *errors.Error, got %T: %v", err, err)
+	}
+	if !appErr.HasRoute(tag) {
+		t.Errorf("unexpected failure path: %s (want %s)", appErr.Route(), tag)
+	}
+	return appErr
+}
+
+// requireErrorTagFromPanic is requireTag for a value that was already recovered.
+func requireErrorTagFromPanic(t *testing.T, v any, tag string) *errors.Error {
+	t.Helper()
+	err, ok := v.(error)
+	if !ok {
+		t.Fatalf("panic value is %T (%v), want an error", v, v)
+	}
+	return requireErrorTag(t, err, tag)
+}
+
+// tryError runs fn and returns the error it panicked with, or nil.
+func tryError(fn func()) error {
+	v := panicOf(fn)
+	if v == nil {
+		return nil
+	}
+	if err, ok := v.(error); ok {
+		return err
+	}
+	return errors.New("UnexpectedPanic", "not an error", "value", v)
+}

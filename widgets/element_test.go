@@ -323,12 +323,12 @@ func TestElementDiagnostics(t *testing.T) {
 	)))
 	got := normalizeHashes(foundation.ToStringDeep(elementOfType[*wrapper](t, tr)))
 	for _, line := range []string{
-		"wrapper#00000",
-		"└multi#00000",
-		" ├leaf#00000",
-		" ├leaf#00000-[<'k'>]",
-		" └builder#00000(state: builderState#00000)",
-		"  └leaf#00000",
+		"wrapper",
+		"└multi",
+		" ├leaf",
+		" ├leaf-[<'k'>]",
+		" └builder(state: builderState#00000)",
+		"  └leaf",
 	} {
 		if !strings.Contains(got, line) {
 			t.Errorf("the dump does not contain %q:\n%s", line, got)
@@ -344,7 +344,7 @@ func TestElementToStringShort(t *testing.T) {
 	tr := newTree(t)
 	tr.pump(newLeaf(WidgetOpts{Key: foundation.NewKey("k")}))
 	e := tr.find(func(w Widget) bool { return true })[0]
-	if got := normalizeHashes(e.ToStringShort()); got != "leaf#00000-[<'k'>]" {
+	if got := normalizeHashes(e.ToStringShort()); got != "leaf-[<'k'>]" {
 		t.Errorf("ToStringShort = %q", got)
 	}
 	tr.pump(newMulti())
@@ -359,7 +359,7 @@ func TestDebugGetCreatorChain(t *testing.T) {
 	tr.pump(newWrapper(newWrapper(newLeaf())))
 	e := tr.find(func(w Widget) bool { _, ok := w.(*leaf); return ok })[0]
 	got := normalizeHashes(e.AsElement().DebugGetCreatorChain(2))
-	if want := "leaf#00000 \u2190 wrapper#00000 \u2190 \u22EF"; got != want {
+	if want := "leaf \u2190 wrapper \u2190 \u22EF"; got != want {
 		t.Errorf("chain = %q, want %q", got, want)
 	}
 	if n := len(e.AsElement().DebugGetDiagnosticChain()); n != 4 {
@@ -394,8 +394,11 @@ func TestPanicInDisposeStillUnmounts(t *testing.T) {
 	w.onDispose = func(BuildContext) { panic("kaboom") }
 	tr.pump(w)
 	el := tr.find(func(w Widget) bool { return w == Widget(inner) })[0]
-	if v := panicOf(func() { tr.pump(newMulti()) }); v != "kaboom" {
-		t.Fatalf("panic = %v, want kaboom", v)
+	tr.pump(newMulti())
+	// The panic of Dispose is reported, not thrown, when the tree is finalized.
+	appErr := requireErrorTag(t, tr.takeError(), "UnexpectedPanic")
+	if appErr.Metadata["value"] != "kaboom" {
+		t.Errorf("reported value = %v, want kaboom", appErr.Metadata["value"])
 	}
 	if el.AsElement().lifecycle != lifecycleDefunct {
 		t.Errorf("the element is %v, want defunct", el.AsElement().lifecycle)

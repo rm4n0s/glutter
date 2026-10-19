@@ -2,6 +2,8 @@ package widgets
 
 import (
 	"slices"
+	"strconv"
+	"strings"
 
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/foundation"
@@ -133,12 +135,27 @@ type BuildOwner struct {
 	//
 	// Flutter: widgets/framework.dart BuildOwner.onBuildScheduled
 	OnBuildScheduled func()
+	// OnError receives the errors the framework reports instead of throwing:
+	// the problems it finds while it finalizes the tree or applies parent data.
+	// Without it such an error panics, because it must not pass unnoticed. The
+	// binding replaces it with the error reporter in step 7.3.
+	//
+	// Flutter: foundation/assertions.dart FlutterError.reportError
+	OnError func(err error)
 
 	inactive                    inactiveElements
 	scheduledFlushDirtyElements bool
 	debugStateLockLevel         int
 	debugBuilding               bool
 	debugCurrentBuildTarget     Element
+
+	globalKeyRegistry map[AnyGlobalKey]Element
+	// The debug checks of global keys: the elements that lost their key to
+	// another element, which parent reserves which key for which child, and the
+	// parents that lost a child to another parent and must update.
+	debugIllFatedElements      orderedSet[Element]
+	debugGlobalKeyReservations orderedMap[Element, *orderedMap[Element, AnyGlobalKey]]
+	debugToRebuildForKeys      orderedMap[Element, *orderedSet[AnyGlobalKey]]
 }
 
 // BuildOwnerOpts are the optional parameters of NewBuildOwner.
@@ -147,13 +164,16 @@ type BuildOwner struct {
 type BuildOwnerOpts struct {
 	// OnBuildScheduled is called when the first element becomes dirty.
 	OnBuildScheduled func()
+	// OnError receives the errors that are reported instead of thrown.
+	OnError func(err error)
 }
 
 // NewBuildOwner creates a build owner.
 //
 // Flutter: widgets/framework.dart BuildOwner.new
 func NewBuildOwner(opts ...BuildOwnerOpts) *BuildOwner {
-	return &BuildOwner{OnBuildScheduled: firstOpts(opts).OnBuildScheduled}
+	o := firstOpts(opts)
+	return &BuildOwner{OnBuildScheduled: o.OnBuildScheduled, OnError: o.OnError}
 }
 
 func (o *BuildOwner) debugStateLocked() bool { return o.debugStateLockLevel > 0 }
@@ -252,17 +272,288 @@ func (o *BuildOwner) BuildScope(context Element, callback func()) {
 	scope.flushDirtyElements()
 }
 
-// debugElementWasRebuilt is told that an element was built. The GlobalKey
-// bookkeeping of step 7.2 uses it.
-func (o *BuildOwner) debugElementWasRebuilt(Element) {}
+// debugElementWasRebuilt is told that an element was built: it is not a parent
+// that must still update after a global key moved a child away.
+func (o *BuildOwner) debugElementWasRebuilt(node Element) {
+	o.debugToRebuildForKeys.remove(node)
+}
+
+// reportError hands the error to OnError, or panics with it when there is none.
+func (o *BuildOwner) reportError(err error) {
+	if o.OnError == nil {
+		panic(err)
+	}
+	o.OnError(err)
+}
 
 // FinalizeTree completes the build pass by unmounting the elements that are no
-// longer active. The binding calls it at the end of a frame.
+// longer active. In debug builds it also checks the global keys: it reports
+// (see OnError) a key that is used by more than one widget, with the tags
+// GlobalKeyUsedByMultipleWidgets, GlobalKeyUsedByMultipleParents and
+// GlobalKeyDuplicateDetected. The binding calls it at the end of a frame.
 //
 // Flutter: widgets/framework.dart BuildOwner.finalizeTree
 func (o *BuildOwner) FinalizeTree() {
-	o.LockState(o.inactive.unmountAll)
-	// TODO(step 7.2): verify the global keys (reservations, duplicates).
+	// The error is reported directly instead of building an ErrorWidget: the tree
+	// is in a broken state and more widgets would only cause more errors.
+	r := recoverValue(func() {
+		o.LockState(o.inactive.unmountAll)
+		if foundation.DebugMode {
+			o.debugVerifyGlobalKeyReservation()
+			o.debugVerifyIllFatedPopulation()
+			o.debugVerifyKeyShenanigans()
+		}
+	})
+	o.debugToRebuildForKeys.clear()
+	if r != nil {
+		o.reportPanic(r)
+	}
+}
+
+// recoverValue runs fn and returns the value it panicked with, or nil.
+func recoverValue(fn func()) (r any) {
+	defer func() { r = recover() }()
+	fn()
+	return nil
+}
+
+// reportPanic reports a recovered panic value: to OnError as an error, or, when
+// there is none, by panicking with the same value again.
+func (o *BuildOwner) reportPanic(r any) {
+	if o.OnError == nil {
+		panic(r)
+	}
+	if err, ok := r.(error); ok {
+		o.OnError(err)
+		return
+	}
+	o.OnError(errors.New("UnexpectedPanic", "a panic that is not an error", "value", r))
+}
+
+// GlobalKeyCount is the number of global keys that are in use.
+//
+// Flutter: widgets/framework.dart BuildOwner.globalKeyCount
+func (o *BuildOwner) GlobalKeyCount() int { return len(o.globalKeyRegistry) }
+
+func (o *BuildOwner) registerGlobalKey(key AnyGlobalKey, element Element) {
+	if foundation.DebugMode {
+		if old, ok := o.globalKeyRegistry[key]; ok {
+			o.debugIllFatedElements.add(old)
+		}
+	}
+	if o.globalKeyRegistry == nil {
+		o.globalKeyRegistry = map[AnyGlobalKey]Element{}
+	}
+	key.bind(o)
+	o.globalKeyRegistry[key] = element
+}
+
+func (o *BuildOwner) unregisterGlobalKey(key AnyGlobalKey, element Element) {
+	if o.globalKeyRegistry[key] == element {
+		delete(o.globalKeyRegistry, key)
+	}
+}
+
+func (o *BuildOwner) debugReserveGlobalKeyFor(parent, child Element, key AnyGlobalKey) {
+	if !foundation.DebugMode {
+		return
+	}
+	reservations, ok := o.debugGlobalKeyReservations.get(parent)
+	if !ok {
+		reservations = &orderedMap[Element, AnyGlobalKey]{}
+		o.debugGlobalKeyReservations.put(parent, reservations)
+	}
+	reservations.put(child, key)
+}
+
+func (o *BuildOwner) debugRemoveGlobalKeyReservationFor(parent, child Element) {
+	if !foundation.DebugMode {
+		return
+	}
+	if reservations, ok := o.debugGlobalKeyReservations.get(parent); ok {
+		reservations.remove(child)
+	}
+}
+
+func (o *BuildOwner) debugTrackElementThatWillNeedToBeRebuiltDueToGlobalKeyShenanigans(node Element, key AnyGlobalKey) {
+	keys, ok := o.debugToRebuildForKeys.get(node)
+	if !ok {
+		keys = &orderedSet[AnyGlobalKey]{}
+		o.debugToRebuildForKeys.put(node, keys)
+	}
+	keys.add(key)
+}
+
+// debugVerifyGlobalKeyReservation checks that no global key is reserved by two
+// parents, and fixes the tree for the error to end the test cleanly.
+func (o *BuildOwner) debugVerifyGlobalKeyReservation() {
+	keyToParent := map[AnyGlobalKey]Element{}
+	var failure error
+	for _, parent := range o.debugGlobalKeyReservations.keys {
+		childToKey, _ := o.debugGlobalKeyReservations.get(parent)
+		// Parents that are unmounted or detached are ignored.
+		pb := parent.AsElement()
+		if pb.lifecycle == lifecycleDefunct {
+			continue
+		}
+		if ro := parent.RenderObject(); ro != nil && !ro.AsRenderObject().Attached() {
+			continue
+		}
+		for _, child := range childToKey.keys {
+			key, _ := childToKey.get(child)
+			// A child without a parent was deactivated and not put back.
+			if child.AsElement().parent == nil {
+				continue
+			}
+			older, seen := keyToParent[key]
+			if !seen || older == parent {
+				keyToParent[key] = parent
+				continue
+			}
+			newer := parent
+			if failure == nil {
+				if older.String() != newer.String() {
+					failure = errors.New("GlobalKeyUsedByMultipleParents",
+						"Multiple widgets used the same GlobalKey.\nThe key "+key.String()+" was used by multiple widgets. The parents of those widgets were:\n- "+
+							older.String()+"\n- "+newer.String()+"\nA GlobalKey can only be specified on one widget at a time in the widget tree.",
+						"key", key.String())
+				} else {
+					failure = errors.New("GlobalKeyUsedByMultipleParents",
+						"Multiple widgets used the same GlobalKey.\nThe key "+key.String()+" was used by multiple widgets. The parents of those widgets were different widgets that both had the following description:\n  "+
+							parent.String()+"\nA GlobalKey can only be specified on one widget at a time in the widget tree.",
+						"key", key.String())
+				}
+			}
+			// Fix the tree by removing the duplicated child from one of its parents.
+			if child.AsElement().parent != older {
+				older.VisitChildren(func(current Element) {
+					if current == child {
+						older.ForgetChild(child)
+					}
+				})
+			}
+			if child.AsElement().parent != newer {
+				newer.VisitChildren(func(current Element) {
+					if current == child {
+						newer.ForgetChild(child)
+					}
+				})
+			}
+			panic(failure)
+		}
+	}
+	o.debugGlobalKeyReservations.clear()
+}
+
+func (o *BuildOwner) debugVerifyIllFatedPopulation() {
+	var duplicates orderedMap[AnyGlobalKey, *orderedSet[Element]]
+	for _, element := range o.debugIllFatedElements.items {
+		eb := element.AsElement()
+		if eb.lifecycle == lifecycleDefunct {
+			continue
+		}
+		key, ok := eb.widget.Key().(AnyGlobalKey)
+		if !ok {
+			continue
+		}
+		elements, ok := duplicates.get(key)
+		if !ok {
+			elements = &orderedSet[Element]{}
+			duplicates.put(key, elements)
+		}
+		elements.add(element)
+		if current, ok := o.globalKeyRegistry[key]; ok {
+			elements.add(current)
+		}
+	}
+	o.debugIllFatedElements.clear()
+	if duplicates.len() == 0 {
+		return
+	}
+	var msg strings.Builder
+	msg.WriteString("Multiple widgets used the same GlobalKey.")
+	var keys []string
+	for _, key := range duplicates.keys {
+		elements, _ := duplicates.get(key)
+		keys = append(keys, key.String())
+		msg.WriteString("\nThe key " + key.String() + " was used by " + strconv.Itoa(elements.len()) + " widgets:")
+		for _, e := range elements.items {
+			msg.WriteString("\n- " + e.String())
+		}
+	}
+	msg.WriteString("\nA GlobalKey can only be specified on one widget at a time in the widget tree.")
+	panic(errors.New("GlobalKeyUsedByMultipleWidgets", msg.String(), "keys", strings.Join(keys, ", ")))
+}
+
+// debugVerifyKeyShenanigans checks that the parents that lost a child to a
+// global key updated afterwards, which they did not if the key is duplicated.
+func (o *BuildOwner) debugVerifyKeyShenanigans() {
+	if o.debugToRebuildForKeys.len() == 0 {
+		return
+	}
+	var keys orderedSet[AnyGlobalKey]
+	for _, element := range o.debugToRebuildForKeys.keys {
+		if element.AsElement().lifecycle != lifecycleDefunct {
+			ks, _ := o.debugToRebuildForKeys.get(element)
+			for _, k := range ks.items {
+				keys.add(k)
+			}
+		}
+	}
+	if keys.len() == 0 {
+		return
+	}
+	keyLabels := countLabels(mapStrings(keys.items, func(k AnyGlobalKey) string { return k.String() }),
+		"different affected keys had this toString representation")
+	elementLabels := countLabels(mapStrings(o.debugToRebuildForKeys.keys, func(e Element) string { return e.String() }),
+		"different affected elements had this toString representation")
+	the, s, were, their, those := "", "s", "were", "their", "those"
+	if keys.len() == 1 {
+		the, s, were, their, those = " the", "", "was", "its", "that"
+	}
+	respective, s2, those2, they, think, are := " respective", "s", "those", "they", "think", "are"
+	if len(elementLabels) == 1 {
+		respective, s2, those2, they, think, are = "", "", "that", "it", "thinks", "is"
+	}
+	panic(errors.New("GlobalKeyDuplicateDetected",
+		"Duplicate GlobalKey"+s+" detected in widget tree.\n"+
+			"The following GlobalKey"+s+" "+were+" specified multiple times in the widget tree. This will lead to parts of the widget tree being truncated unexpectedly, because the second time a key is seen, the previous instance is moved to the new location. The key"+s+" "+were+":\n"+
+			"- "+strings.Join(keyLabels, "\n  ")+"\n"+
+			"This was determined by noticing that after"+the+" widget"+s+" with the above global key"+s+" "+were+" moved out of "+their+respective+" previous parent"+s2+", "+those2+" previous parent"+s2+" never updated during this frame, meaning that "+they+" either did not update at all or updated before the widget"+s+" "+were+" moved, in either case implying that "+they+" still "+think+" that "+they+" should have a child with "+those+" global key"+s+".\n"+
+			"The specific parent"+s2+" that did not update after having one or more children forcibly removed due to GlobalKey reparenting "+are+":\n"+
+			"- "+strings.Join(elementLabels, "\n  ")+
+			"\nA GlobalKey can only be specified on one widget at a time in the widget tree.",
+		"keys", strings.Join(keyLabels, ", ")))
+}
+
+func mapStrings[T any](items []T, f func(T) string) []string {
+	out := make([]string, len(items))
+	for i, it := range items {
+		out[i] = f(it)
+	}
+	return out
+}
+
+// countLabels merges equal strings: a string that occurs more than once gets a
+// count and the suffix.
+func countLabels(items []string, suffix string) []string {
+	var order []string
+	counts := map[string]int{}
+	for _, it := range items {
+		if counts[it] == 0 {
+			order = append(order, it)
+		}
+		counts[it]++
+	}
+	out := make([]string, len(order))
+	for i, it := range order {
+		if counts[it] == 1 {
+			out[i] = it
+		} else {
+			out[i] = it + " (" + strconv.Itoa(counts[it]) + " " + suffix + ")"
+		}
+	}
+	return out
 }
 
 // inactiveElements holds the elements that were removed from the tree during a

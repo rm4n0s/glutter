@@ -2,6 +2,7 @@ package widgets
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 
 	"github.com/rm4n0s/errors"
@@ -171,9 +172,17 @@ type Element interface {
 	//
 	// Flutter: widgets/framework.dart Element.deactivateChild
 	DeactivateChild(child Element)
+	// RenderObject is the render object of this element, or of its first
+	// descendant that has one; nil when there is none.
+	//
+	// Flutter: widgets/framework.dart Element.renderObject
+	RenderObject() rendering.RenderObject
 	// ownRenderObject is the render object this element creates itself, if it
 	// is a render object element.
 	ownRenderObject() (rendering.RenderObject, bool)
+	// updateInheritance sets the inherited elements this element sees: those
+	// of its parent, plus itself for an inherited element.
+	updateInheritance()
 }
 
 // RebuildOpts are the optional parameters of Element.Rebuild.
@@ -202,9 +211,12 @@ type ElementBase struct {
 
 	// The inherited widgets above this element, by type, and the ones this
 	// element depends on.
-	inheritedElements          map[any]Element
+	inheritedElements          map[reflect.Type]Element
 	dependencies               map[Element]struct{}
 	hadUnsatisfiedDependencies bool
+	// forgottenWithGlobalKey are the children with a global key that moved to
+	// another parent; their reservations are released when this element updates.
+	forgottenWithGlobalKey orderedSet[Element]
 }
 
 // InitElement sets up the base of an element: self is the outer element and

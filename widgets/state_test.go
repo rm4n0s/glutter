@@ -122,7 +122,9 @@ func TestSetStateRules(t *testing.T) {
 		w.onInitState = func(bc BuildContext) { st = bc.(*StatefulElement).State().(*spyState) }
 		w.onDispose = func(BuildContext) { st.SetState(nil) }
 		tr.pump(w)
-		requireTag(t, "MarkNeedsBuildOnDefunctElement", func() { tr.pump(newLeaf()) })
+		tr.pump(newLeaf())
+		// The panic of Dispose is reported when the tree is finalized.
+		_ = requireErrorTag(t, tr.takeError(), "MarkNeedsBuildOnDefunctElement")
 	})
 
 	t.Run("after dispose", func(t *testing.T) {

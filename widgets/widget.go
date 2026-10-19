@@ -134,15 +134,31 @@ type statefulWidget interface {
 }
 
 // CreateElement inflates a widget to an element: its CreateElement method if
-// it has one, a StatefulElement for a widget with CreateState and a
-// StatelessElement for a widget with Build. A widget of any other kind panics
-// with the tag WidgetKindUnknown.
+// it has one, otherwise the element of the kind of its embedded base: an
+// InheritedElement, a ParentDataElement, a LeafRenderObjectElement, a
+// SingleChildRenderObjectElement, a MultiChildRenderObjectElement, a
+// StatefulElement (CreateState) or a StatelessElement (Build). A widget of any
+// other kind panics with the tag WidgetKindUnknown.
 //
 // Flutter: widgets/framework.dart Widget.createElement
 func CreateElement(w Widget) Element {
 	switch x := w.(type) {
 	case ElementCreator:
 		return x.CreateElement()
+	case modelWidget:
+		return NewInheritedModelElement(x)
+	case notifierWidget:
+		return NewInheritedNotifierElement(x)
+	case InheritedWidgetInterface:
+		return NewInheritedElement(x)
+	case parentDataWidget:
+		return NewParentDataElement(x)
+	case leafRenderObjectWidget:
+		return NewLeafRenderObjectElement(x)
+	case singleChildRenderObjectWidget:
+		return NewSingleChildRenderObjectElement(x)
+	case multiChildRenderObjectWidget:
+		return NewMultiChildRenderObjectElement(x)
 	case statefulWidget:
 		return NewStatefulElement(x)
 	case statelessWidget:
@@ -162,8 +178,8 @@ func CanUpdate(oldWidget, newWidget Widget) bool {
 	return reflect.TypeOf(oldWidget) == reflect.TypeOf(newWidget) && oldWidget.Key() == newWidget.Key()
 }
 
-// WidgetToStringShort describes a widget in a few words: its type with a short
-// hash, followed by its key if it has one ("Foo#1a2b3-[<'k'>]").
+// WidgetToStringShort describes a widget in a few words: its type, followed by
+// its key if it has one ("Foo-[<'k'>]"). Unlike other objects it has no hash.
 //
 // Deviation: it is a function, because the embedded base struct of a widget
 // cannot see the outer type (SPEC §12.10).
@@ -173,7 +189,7 @@ func WidgetToStringShort(w Widget) string {
 	if s, ok := w.(foundation.ShortDescriber); ok {
 		return s.ToStringShort()
 	}
-	short := foundation.DescribeIdentity(w)
+	short := foundation.RuntimeTypeName(w)
 	if k := w.Key(); k != nil {
 		return short + "-" + k.String()
 	}

@@ -360,3 +360,71 @@ func (m *LayoutCallbackMixin) ScheduleLayoutCallback() {
 	}
 	hb.MarkNeedsLayout()
 }
+
+// ChildObject is the child as a RenderObject, or nil. The widgets library uses it
+// to reach the child of a render object without knowing its type.
+//
+// Flutter: no counterpart (RenderObjectWithChildMixin<RenderObject>.child)
+func (m *RenderObjectWithChild[C]) ChildObject() RenderObject {
+	if isNil(m.child) {
+		return nil
+	}
+	return m.child
+}
+
+// SetChildObject replaces the child with a RenderObject that must be a C, or nil
+// for none. It panics with the tag RenderChildTypeMismatch in debug builds when
+// the child is of the wrong type.
+//
+// Flutter: widgets/framework.dart SingleChildRenderObjectElement.insertRenderObjectChild
+func (m *RenderObjectWithChild[C]) SetChildObject(child RenderObject) {
+	if child == nil {
+		var zero C
+		m.SetChild(zero)
+		return
+	}
+	typed, ok := child.(C)
+	if !ok {
+		panic(errors.New("RenderChildTypeMismatch", "the render object is not of the type this render object accepts as a child",
+			"parent", foundation.DescribeIdentity(m.host), "child", foundation.DescribeIdentity(child)))
+	}
+	m.SetChild(typed)
+}
+
+// InsertObject inserts the child after a sibling (nil for the start); both must
+// be a C. It panics with the tag RenderChildTypeMismatch when one is of the
+// wrong type.
+//
+// Flutter: widgets/framework.dart MultiChildRenderObjectElement.insertRenderObjectChild
+func (m *ContainerRenderObject[C]) InsertObject(child, after RenderObject) {
+	m.Insert(m.typed(child), m.typedOrZero(after))
+}
+
+// MoveObject moves the child after a sibling (nil for the start).
+//
+// Flutter: widgets/framework.dart MultiChildRenderObjectElement.moveRenderObjectChild
+func (m *ContainerRenderObject[C]) MoveObject(child, after RenderObject) {
+	m.Move(m.typed(child), m.typedOrZero(after))
+}
+
+// RemoveObject removes the child.
+//
+// Flutter: widgets/framework.dart MultiChildRenderObjectElement.removeRenderObjectChild
+func (m *ContainerRenderObject[C]) RemoveObject(child RenderObject) { m.Remove(m.typed(child)) }
+
+func (m *ContainerRenderObject[C]) typed(child RenderObject) C {
+	typed, ok := child.(C)
+	if !ok {
+		panic(errors.New("RenderChildTypeMismatch", "the render object is not of the type this render object accepts as a child",
+			"parent", foundation.DescribeIdentity(m.host), "child", foundation.DescribeIdentity(child)))
+	}
+	return typed
+}
+
+func (m *ContainerRenderObject[C]) typedOrZero(child RenderObject) C {
+	var zero C
+	if child == nil {
+		return zero
+	}
+	return m.typed(child)
+}

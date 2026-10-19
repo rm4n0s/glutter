@@ -105,8 +105,8 @@ func TestWidgetToStringShort(t *testing.T) {
 		widget Widget
 		want   string
 	}{
-		{"no key", newLeaf(), "leaf#00000"},
-		{"value key", newLeaf(WidgetOpts{Key: foundation.NewKey("k")}), "leaf#00000-[<'k'>]"},
+		{"no key", newLeaf(), "leaf"},
+		{"value key", newLeaf(WidgetOpts{Key: foundation.NewKey("k")}), "leaf-[<'k'>]"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -120,7 +120,7 @@ func TestWidgetToStringShort(t *testing.T) {
 func TestDescribeWidget(t *testing.T) {
 	skipUnlessDebug(t)
 	got := normalizeHashes(foundation.ToStringDeep(&widgetDescriptionTree{newLeaf(WidgetOpts{Key: foundation.NewKey("k")})}))
-	if !strings.HasPrefix(got, "leaf#00000-[<'k'>]") {
+	if !strings.HasPrefix(got, "leaf-[<'k'>]") {
 		t.Errorf("description = %q", got)
 	}
 	if n := DescribeWidget(newLeaf()); n == nil {

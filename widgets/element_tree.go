@@ -1,6 +1,7 @@
 package widgets
 
 import (
+	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/foundation"
 )
 
@@ -44,8 +45,14 @@ func (b *ElementBase) UpdateChild(child Element, newWidget Widget, newSlot any) 
 		b.self.DeactivateChild(child)
 		newChild = b.self.InflateWidget(newWidget, newSlot)
 	}
-	// TODO(step 7.2): reserve the GlobalKey of newWidget for the debug check of
-	// duplicates.
+	if foundation.DebugMode {
+		if child != nil {
+			b.debugRemoveGlobalKeyReservation(child)
+		}
+		if key, ok := newWidget.Key().(AnyGlobalKey); ok {
+			b.owner.debugReserveGlobalKeyFor(b.self, newChild, key)
+		}
+	}
 	return newChild
 }
 
@@ -211,8 +218,14 @@ func (b *ElementBase) Mount(parent Element, newSlot any) {
 		b.owner = pb.owner
 		b.parentScope = parent.BuildScope()
 	}
-	// TODO(step 7.2): register the GlobalKey of the widget.
-	b.updateInheritance()
+	if key, ok := b.widget.Key().(AnyGlobalKey); ok {
+		b.owner.registerGlobalKey(key, b.self)
+	}
+	b.self.updateInheritance()
+}
+
+func (b *ElementBase) debugRemoveGlobalKeyReservation(child Element) {
+	b.owner.debugRemoveGlobalKeyReservationFor(b.self, child)
 }
 
 // Update changes the configuration of the element to a new widget that
@@ -222,8 +235,14 @@ func (b *ElementBase) Mount(parent Element, newSlot any) {
 // Flutter: widgets/framework.dart Element.update
 func (b *ElementBase) Update(newWidget Widget) {
 	// This element was told to update, so the global key reservations of its
-	// forgotten children can go.
-	// TODO(step 7.2): release them.
+	// forgotten children can go. They could not go earlier: the forgotten
+	// children are still a duplicate of their key if this element never updates.
+	if foundation.DebugMode {
+		for _, child := range b.forgottenWithGlobalKey.items {
+			b.debugRemoveGlobalKeyReservation(child)
+		}
+		b.forgottenWithGlobalKey.clear()
+	}
 	b.widget = newWidget
 }
 
@@ -276,17 +295,60 @@ func (b *ElementBase) updateBuildScopeRecursively() {
 //
 // Flutter: widgets/framework.dart Element.inflateWidget
 func (b *ElementBase) InflateWidget(newWidget Widget, newSlot any) Element {
-	// TODO(step 7.2): retake an inactive element that has the same GlobalKey.
-	newChild := CreateElement(newWidget)
-	mounted := false
+	var inactiveChild Element
+	if key, ok := newWidget.Key().(AnyGlobalKey); ok {
+		inactiveChild = b.retakeInactiveElement(key, newWidget)
+	}
+	newChild := inactiveChild
+	if newChild == nil {
+		newChild = CreateElement(newWidget)
+	}
+	completed := false
 	defer func() {
-		if !mounted {
+		if !completed {
+			// Clean up on a best-effort basis when activation or mount fails.
 			b.deactivateFailedChildSilently(newChild)
 		}
 	}()
+	if inactiveChild != nil {
+		inactiveChild.AsElement().activateWithParent(b.self, newSlot)
+		updated := b.self.UpdateChild(inactiveChild, newWidget, newSlot)
+		completed = true
+		return updated
+	}
 	newChild.Mount(b.self, newSlot)
-	mounted = true
+	completed = true
 	return newChild
+}
+
+// retakeInactiveElement takes the element that has the global key from where it
+// is: from its parent, which is told to forget it, or from the inactive list.
+// It returns nil when there is no such element or its widget cannot be updated
+// to the new one.
+//
+// Flutter: widgets/framework.dart Element._retakeInactiveElement
+func (b *ElementBase) retakeInactiveElement(key AnyGlobalKey, newWidget Widget) Element {
+	// The element may be forward-looking inactive: if it is taken from a parent
+	// that still has it as a child, that parent will soon not have it. The only
+	// way that is wrong is a duplicated key, which is tracked below.
+	element := key.currentElementIn(b.owner)
+	if element == nil || !CanUpdate(element.AsElement().widget, newWidget) {
+		return nil
+	}
+	if parent := element.AsElement().parent; parent != nil {
+		if foundation.DebugMode {
+			if parent == b.self {
+				panic(errors.New("GlobalKeyUsedTwiceInChildList",
+					"a GlobalKey was used multiple times inside one widget's child list; a GlobalKey can only be specified on one widget at a time in the widget tree",
+					"key", key.String(), "parent", parent.String(), "first child", element.String(), "second widget", foundation.RuntimeTypeName(newWidget)))
+			}
+			b.owner.debugTrackElementThatWillNeedToBeRebuiltDueToGlobalKeyShenanigans(parent, key)
+		}
+		parent.ForgetChild(element)
+		parent.DeactivateChild(element)
+	}
+	b.owner.inactive.remove(element)
+	return element
 }
 
 // DeactivateChild moves the child to the inactive list of the owner: it is
@@ -333,13 +395,17 @@ func tryCall(fn func()) (panicked bool) {
 }
 
 // ForgetChild is called on the old parent when the child, which has a global
-// key, is given a new parent.
+// key, is given a new parent. The reservation of the key cannot be released
+// here: the forgotten child is not removed from the tree until this element
+// updates, and if it never does, the child is still a duplicate of the key.
 //
 // Flutter: widgets/framework.dart Element.forgetChild
 func (b *ElementBase) ForgetChild(child Element) {
-	// TODO(step 7.2): remember a child with a GlobalKey for the debug check of
-	// duplicates.
-	_ = child
+	if foundation.DebugMode {
+		if _, ok := child.AsElement().widget.Key().(AnyGlobalKey); ok {
+			b.forgottenWithGlobalKey.add(child)
+		}
+	}
 }
 
 func (b *ElementBase) activateWithParent(parent Element, newSlot any) {
@@ -368,7 +434,7 @@ func (b *ElementBase) Activate() {
 	// element is reused now.
 	clear(b.dependencies)
 	b.hadUnsatisfiedDependencies = false
-	b.updateInheritance()
+	b.self.updateInheritance()
 	if b.dirty {
 		b.owner.ScheduleBuildFor(b.self)
 	}
@@ -406,12 +472,20 @@ func (b *ElementBase) DebugDeactivated() {}
 //
 // Flutter: widgets/framework.dart Element.unmount
 func (b *ElementBase) Unmount() {
-	// TODO(step 7.2): unregister the GlobalKey of the widget.
+	if b.widget != nil {
+		if key, ok := b.widget.Key().(AnyGlobalKey); ok {
+			b.owner.unregisterGlobalKey(key, b.self)
+		}
+	}
 	b.widget = nil
 	b.dependencies = nil
 	b.lifecycle = lifecycleDefunct
 }
 
+// updateInheritance copies the inherited elements of the parent. An
+// InheritedElement adds itself.
+//
+// Flutter: widgets/framework.dart Element._updateInheritance
 func (b *ElementBase) updateInheritance() {
 	if b.parent != nil {
 		b.inheritedElements = b.parent.AsElement().inheritedElements
