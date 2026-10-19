@@ -1,13 +1,18 @@
 package engine
 
 import (
+	"context"
 	"reflect"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
 
+	godbus "github.com/godbus/dbus/v5"
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/foundation"
+	"github.com/rm4n0s/glutter/internal/dbus"
+	"github.com/rm4n0s/glutter/internal/dbus/fakebus"
 	"github.com/rm4n0s/glutter/internal/platform"
 	"github.com/rm4n0s/glutter/internal/platform/fake"
 	"github.com/rm4n0s/glutter/ui"
@@ -338,6 +343,45 @@ func TestSettingsAndLifecycleReachTheDispatcher(t *testing.T) {
 		"locale fr", "brightness BrightnessDark",
 		"scale", "accessibility AccessibilityFeatures[disableAnimations, reduceMotion]",
 		"lifecycle AppLifecycleStateInactive",
+	}
+	if got := r.snapshot(); !reflect.DeepEqual(got, want) {
+		t.Errorf("callbacks = %v\nwant %v", got, want)
+	}
+}
+
+func TestPortalSettingsReachTheDispatcher(t *testing.T) {
+	h, r := newDispatcherHarness(t)
+	h.cfg.Start = func(d *ui.PlatformDispatcher) error {
+		d.OnPlatformBrightnessChanged = func() { r.add("brightness " + d.PlatformBrightness().String()) }
+		d.OnTextScaleFactorChanged = func() { r.add("scale " + strconv.FormatFloat(d.TextScaleFactor(), 'f', -1, 64)) }
+		d.OnAccessibilityFeaturesChanged = func() { r.add("accessibility " + d.AccessibilityFeatures().String()) }
+		return r.start(d)
+	}
+	bus := fakebus.New(":1.5")
+	bus.Handle(dbus.PortalDest, dbus.PortalPath, "org.freedesktop.portal.Settings.ReadAll", func(fakebus.Call) ([]any, error) {
+		return []any{map[string]map[string]godbus.Variant{}}, nil
+	})
+	// The platform posts to its UI thread; the fake one delivers an injected
+	// event to the handler there, which is what a real platform does with
+	// the settings it reads.
+	dbus.WatchSettings(context.Background(), bus, func(string) string { return "" }, h.c.Post, func(s platform.Settings) {
+		h.c.Inject(fake.SettingsEvent{Settings: s})
+	})
+	changed := func(key string, value any) {
+		bus.Emit(&godbus.Signal{Path: dbus.PortalPath, Name: "org.freedesktop.portal.Settings.SettingChanged",
+			Body: []any{"org.gnome.desktop.interface", key, godbus.MakeVariant(value)}})
+	}
+	bus.Emit(&godbus.Signal{Path: dbus.PortalPath, Name: "org.freedesktop.portal.Settings.SettingChanged",
+		Body: []any{"org.freedesktop.appearance", "color-scheme", godbus.MakeVariant(uint32(1))}})
+	changed("text-scaling-factor", 1.5)
+	changed("enable-animations", false)
+	done := h.run(t)
+	waitFor(t, func() bool { return len(r.snapshot()) >= 3 })
+	finish(t, h, done)
+	want := []string{
+		"brightness BrightnessDark",
+		"scale 1.5",
+		"accessibility AccessibilityFeatures[disableAnimations, reduceMotion]",
 	}
 	if got := r.snapshot(); !reflect.DeepEqual(got, want) {
 		t.Errorf("callbacks = %v\nwant %v", got, want)
