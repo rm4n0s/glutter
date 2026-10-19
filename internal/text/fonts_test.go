@@ -377,3 +377,53 @@ func TestVariationsKey(t *testing.T) {
 		})
 	}
 }
+
+func TestFallback(t *testing.T) {
+	ctx := context.Background()
+	t.Run("a matcher that cannot look for a character has none", func(t *testing.T) {
+		c := NewCollection(CollectionOpts{Matcher: &fakeMatcher{}})
+		if _, ok, err := c.Fallback(ctx, "sans-serif", 400, false, "", 'x'); ok || err != nil {
+			t.Errorf("Fallback = %v, %v", ok, err)
+		}
+	})
+	t.Run("fontscan finds a font that has the character", func(t *testing.T) {
+		c := NewCollection()
+		if _, err := c.Match(ctx, "sans-serif", 400, false, ""); err != nil {
+			t.Fatal(err)
+		}
+		f, ok, err := c.Fallback(ctx, "sans-serif", 400, false, "", 'A')
+		if err != nil || !ok {
+			t.Fatalf("Fallback('A') = %v, %v", ok, err)
+		}
+		face, err := c.Face(ctx, f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, has := face.NominalGlyph('A'); !has {
+			t.Errorf("the fallback font %+v has no glyph for A", f)
+		}
+		// A private use character in the plane that no font has.
+		if _, ok, err := c.Fallback(ctx, "sans-serif", 400, false, "", 0x10FFFD); ok || err != nil {
+			t.Errorf("Fallback(U+10FFFD) = %v, %v", ok, err)
+		}
+	})
+	t.Run("canceled", func(t *testing.T) {
+		canceled, cancel := context.WithCancel(ctx)
+		cancel()
+		_, _, err := NewCollection(CollectionOpts{Matcher: &fakeMatcher{}}).Fallback(canceled, "sans-serif", 400, false, "", 'x')
+		if appErr := routeOf(t, err); !appErr.HasRoute("Collection.Fallback.FontMatchCanceled") {
+			t.Errorf("unexpected failure path: %s", appErr.Route())
+		}
+	})
+	t.Run("font scan cannot make its cache directory", func(t *testing.T) {
+		dir := t.TempDir()
+		file := filepath.Join(dir, "file")
+		if err := os.WriteFile(file, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		_, _, err := NewCollection(CollectionOpts{CacheDir: filepath.Join(file, "cache")}).Fallback(ctx, "sans-serif", 400, false, "", 'x')
+		if appErr := routeOf(t, err); !appErr.HasRoute("Collection.Fallback->Collection.matcher->newScanMatcher.FontScanFailed") {
+			t.Errorf("unexpected failure path: %s", appErr.Route())
+		}
+	})
+}

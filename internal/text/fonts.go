@@ -64,6 +64,15 @@ type Matcher interface {
 	Match(ctx context.Context, family string, weight int, italic bool, lang string) ([]FontFile, error)
 }
 
+// Fallbacker is a Matcher that can also find a font for one character that the fonts of
+// Match do not have. A Collection uses it when the Matcher implements it.
+//
+// Flutter: no counterpart
+type Fallbacker interface {
+	// Fallback returns a font with a glyph for r, or false when there is none.
+	Fallback(ctx context.Context, family string, weight int, italic bool, lang string, r rune) (FontFile, bool, error)
+}
+
 // CollectionOpts are the optional parameters of NewCollection.
 //
 // Flutter: no counterpart
@@ -184,6 +193,29 @@ func supportedFont(path string) bool {
 		return true
 	}
 	return false
+}
+
+// Fallback returns a system font that has a glyph for r, when the fonts of Match do not; it
+// is false when there is none (or the Matcher cannot look for a character). It fails like Match.
+//
+// Flutter: engine/src/flutter/third_party/txt/src/txt/font_collection.cc FontCollection::GetFallbackFontForRune
+func (c *Collection) Fallback(ctx context.Context, family string, weight int, italic bool, lang string, r rune) (FontFile, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return FontFile{}, false, errors.NewErr("FontMatchCanceled", err).SetMetadata("family", family)
+	}
+	matcher, err := c.matcher()
+	if err != nil {
+		return FontFile{}, false, err
+	}
+	fb, ok := matcher.(Fallbacker)
+	if !ok {
+		return FontFile{}, false, nil
+	}
+	f, found, err := fb.Fallback(ctx, family, weight, italic, lang, r)
+	if err != nil || !found || !supportedFont(f.Path) {
+		return FontFile{}, false, err
+	}
+	return f, true, nil
 }
 
 // matcher returns the Matcher of the options, or the font scan.

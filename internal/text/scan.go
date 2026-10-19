@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"sync"
 
 	"github.com/go-text/typesetting/font"
 	"github.com/go-text/typesetting/fontscan"
@@ -22,7 +23,9 @@ func (discardLogger) Printf(string, ...any) {}
 // in a cache directory.
 type scanMatcher struct {
 	footprints []fontscan.Footprint
-	fm         *fontscan.FontMap
+
+	mu sync.Mutex // fontscan's FontMap is not safe for concurrent use
+	fm *fontscan.FontMap
 }
 
 // defaultCacheDir is $XDG_CACHE_HOME/glutter/fonts, with ~/.cache for the
@@ -83,6 +86,8 @@ func (s *scanMatcher) Match(ctx context.Context, family string, weight int, ital
 		out = append(out, FontFile{Path: loc.File, Index: int(loc.Index), Family: fam})
 	}
 
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	want := font.NormalizeFamily(family)
 	var exact []fontscan.Footprint
 	for _, fp := range s.footprints {
@@ -111,6 +116,32 @@ func (s *scanMatcher) Match(ctx context.Context, family string, weight int, ital
 		}
 	}
 	return out, nil
+}
+
+// Fallback finds the font that has a glyph for r, as fontscan picks it (by the script of the
+// rune and the families it substitutes for the requested one).
+func (s *scanMatcher) Fallback(ctx context.Context, family string, weight int, italic bool, lang string, r rune) (FontFile, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return FontFile{}, false, errors.NewErr("FontMatchCanceled", err).SetMetadata("family", family)
+	}
+	aspect := font.Aspect{Style: font.StyleNormal, Weight: font.Weight(weight), Stretch: font.StretchNormal}
+	if italic {
+		aspect.Style = font.StyleItalic
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.fm.SetQuery(fontscan.Query{Families: []string{family}, Aspect: aspect})
+	s.fm.SetScript(language.LookupScript(r))
+	face := s.fm.ResolveFace(r)
+	if face == nil {
+		return FontFile{}, false, nil
+	}
+	if _, ok := face.NominalGlyph(r); !ok {
+		return FontFile{}, false, nil
+	}
+	fam, _ := s.fm.FontMetadata(face.Font)
+	loc := s.fm.FontLocation(face.Font)
+	return FontFile{Path: loc.File, Index: int(loc.Index), Family: fam}, true, nil
 }
 
 // aspectDistance says how far a font is from the wanted style: a different slant

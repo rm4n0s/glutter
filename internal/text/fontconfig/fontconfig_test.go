@@ -5,6 +5,9 @@ import (
 	"testing"
 
 	"github.com/rm4n0s/glutter/internal/text"
+	"github.com/rm4n0s/glutter/internal/text/layout"
+	"github.com/rm4n0s/glutter/material/fonts"
+	"github.com/rm4n0s/glutter/ui"
 )
 
 func TestCollectionOverFontconfig(t *testing.T) {
@@ -44,5 +47,35 @@ func TestCollectionOverFontconfig(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestEngineLaysOutMixedScriptsOverFontconfig(t *testing.T) {
+	ctx := context.Background()
+	m, err := Open(ctx)
+	if err != nil {
+		t.Skipf("fontconfig is not available: %v", err)
+	}
+	defer m.Close()
+	c := text.NewCollection(text.CollectionOpts{Matcher: m})
+	if err := fonts.Register(c); err != nil {
+		t.Fatal(err)
+	}
+	var fontErrors []error
+	e := layout.NewEngine(ctx, c, layout.EngineOpts{OnFontError: func(err error) { fontErrors = append(fontErrors, err) }})
+	style := ui.NewTextStyle(ui.TextStyleOpts{FontFamily: fonts.RobotoFamily, FontSize: ui.Ptr(16.0)})
+	b := ui.NewParagraphBuilder(e, ui.NewParagraphStyle(ui.ParagraphStyleOpts{TextDirection: ui.TextDirectionLTR}))
+	b.PushStyle(style)
+	b.AddText("Hello שלום مرحبا 日本語 world")
+	p := b.Build()
+	p.Layout(ui.NewParagraphConstraints(200))
+	if len(fontErrors) != 0 {
+		t.Errorf("font errors: %v", fontErrors)
+	}
+	if p.Height() <= 0 || p.LongestLine() <= 0 || p.LongestLine() > 200+1e-6 {
+		t.Errorf("height %v, longest line %v", p.Height(), p.LongestLine())
+	}
+	if p.MaxIntrinsicWidth() < p.MinIntrinsicWidth() {
+		t.Errorf("max %v < min %v", p.MaxIntrinsicWidth(), p.MinIntrinsicWidth())
 	}
 }
