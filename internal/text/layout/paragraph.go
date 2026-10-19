@@ -3,9 +3,11 @@ package layout
 import (
 	"math"
 	"sort"
+	"unicode/utf8"
 
 	ot "github.com/go-text/typesetting/font/opentype"
 	"github.com/go-text/typesetting/segmenter"
+	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/internal/opts"
 	"github.com/rm4n0s/glutter/ui"
 )
@@ -170,12 +172,18 @@ func (p *paragraph) measure() {
 		p.segments = append(p.segments, s)
 	}
 
-	gi := p.seg.GraphemeIterator()
+	// The clusters come from foundation, which fixes the emoji sequences that the
+	// segmenter splits.
 	p.graphemes = p.graphemes[:0]
-	for gi.Next() {
-		p.graphemes = append(p.graphemes, gi.Grapheme().Offset)
+	runeAt := 0
+	byteAt := 0
+	for _, b := range foundation.GraphemeBoundaries(string(p.runes)) {
+		for byteAt < b {
+			byteAt += utf8.RuneLen(p.runes[runeAt])
+			runeAt++
+		}
+		p.graphemes = append(p.graphemes, runeAt)
 	}
-	p.graphemes = append(p.graphemes, n)
 
 	// The intrinsic widths: the widest unbreakable word, and the widest line when only
 	// the mandatory breaks end lines.

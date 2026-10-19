@@ -978,3 +978,50 @@ func (c *TextInputConnection) Close() {
 func (c *TextInputConnection) ConnectionClosedReceived() {
 	c.input.currentConnection = nil
 }
+
+// HandleUnhandledKey gives the text field a key that no handler took, as the
+// text input plugin of Flutter's Linux embedder does: a key with a character
+// types it, and Enter is the action of the field (or a new line, for a multiline
+// one). The keys pressed with Control, Alt or Meta, and the characters that
+// control the terminal (Escape, Backspace, Tab, ...), type nothing. Without a
+// client, nothing happens. The binding calls it for the key data it did not
+// handle.
+//
+// Deviation: Flutter's engine hands the key to the platform's input method, which
+// commits the text; here the input method has already had the key (SPEC §8.6),
+// so the text is typed from the character of the key (SPEC §12.10).
+//
+// Flutter: services/hardware_keyboard.dart (the embedder's text input plugin)
+func (t *TextInput) HandleUnhandledKey(data ui.KeyData, controlHeld bool) {
+	if t.currentConnection == nil {
+		return
+	}
+	if data.Type != ui.KeyEventTypeDown && data.Type != ui.KeyEventTypeRepeat {
+		return
+	}
+	if controlHeld {
+		return
+	}
+	logical := LogicalKeyboardKey(data.Logical)
+	if logical == LogicalKeyboardKeyEnter || logical == LogicalKeyboardKeyNumpadEnter {
+		action := t.currentConfiguration.InputAction
+		if t.currentConfiguration.InputType == TextInputTypeMultiline {
+			t.HandleTextInput(ui.TextInputEvent{Commit: "\n", PreeditCursorBegin: -1, PreeditCursorEnd: -1})
+			action = TextInputActionNewline
+		} else if action == TextInputActionUnspecified {
+			action = TextInputActionDone
+		}
+		t.HandlePerformAction(t.currentConnection.id, action)
+		return
+	}
+	text := data.Character
+	if text == "" {
+		return
+	}
+	for _, r := range text {
+		if r < 0x20 || (r >= 0x7F && r < 0xA0) {
+			return
+		}
+	}
+	t.HandleTextInput(ui.TextInputEvent{Commit: text, PreeditCursorBegin: -1, PreeditCursorEnd: -1})
+}

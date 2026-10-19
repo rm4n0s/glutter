@@ -360,7 +360,6 @@ func (h *handler) OnKey(d ui.KeyData) {
 		if f := h.cfg.Hooks.Key; f != nil {
 			f(d)
 		}
-		// TODO(step 11.4): an unhandled key goes on to the text input.
 		h.disp.DispatchKeyData(d)
 	})
 }

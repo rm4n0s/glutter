@@ -4,7 +4,6 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/go-text/typesetting/segmenter"
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/internal/opts"
@@ -367,23 +366,7 @@ func (f *LengthLimitingTextInputFormatter) FormatEditUpdate(oldValue, newValue T
 
 // graphemeCount is the number of characters (grapheme clusters) of the text: Dart's
 // text.characters.length.
-func graphemeCount(text string) int {
-	var seg segmenter.Segmenter
-	seg.InitWithString(text)
-	n := 0
-	for it := seg.GraphemeIterator(); it.Next(); {
-		n++
-	}
-	return n
-}
+func graphemeCount(text string) int { return foundation.GraphemeCount(text) }
 
 // graphemeOffset is the byte offset where the n-th character of the text ends.
-func graphemeOffset(text string, n int) int {
-	var seg segmenter.Segmenter
-	seg.InitWithString(text)
-	bytes := 0
-	for it := seg.GraphemeIterator(); n > 0 && it.Next(); n-- {
-		bytes += len(string(it.Grapheme().Text))
-	}
-	return bytes
-}
+func graphemeOffset(text string, n int) int { return foundation.GraphemeOffset(text, n) }

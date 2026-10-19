@@ -299,12 +299,12 @@ func TestPseudoKeysSendTheLeftKey(t *testing.T) {
 	}
 }
 
-func TestEnterTextIsNotYetImplemented(t *testing.T) {
+func TestEnterTextWithoutAFieldFails(t *testing.T) {
 	appErr := failure(t, func(ts *Tester) {
 		ts.PumpWidget(newRow(newSwatch(grey, 5, 5)))
 		ts.EnterText(ByType[*swatch](), "hi")
 	})
-	requireRoute(t, appErr, "EnterTextNotImplemented")
+	requireRoute(t, appErr, "EnterTextNoField")
 }
 
 func TestKeyEvents(t *testing.T) {

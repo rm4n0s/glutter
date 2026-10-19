@@ -426,10 +426,11 @@ func TestPositionForOffsetOnSeveralLines(t *testing.T) {
 			t.Errorf("next line start = %v", next)
 		}
 	})
-	t.Run("the end of a line with a newline is before the newline", func(t *testing.T) {
+	t.Run("the end of a line with a newline is before the newline, upstream", func(t *testing.T) {
+		// As in Skia: the end of any line but the last is upstream.
 		got := p.GetPositionForOffset(ui.Offset{Dx: 5000, Dy: mid(0)})
-		if got.Offset != 7 || got.Affinity.IsUpstream() {
-			t.Errorf("position = %v, want offset 7 (before the newline)", got)
+		if got.Offset != 7 || !got.Affinity.IsUpstream() {
+			t.Errorf("position = %v, want offset 7 upstream (before the newline)", got)
 		}
 	})
 }
@@ -559,6 +560,8 @@ func TestLineBoundaryAndNumbers(t *testing.T) {
 	for i, l := range p.lines {
 		ranges[i] = ui.TextRange{Start: p.byteOf(l.start), End: p.byteOf(l.end)}
 	}
+	// The newline that ends the first line is not part of its range.
+	ranges[0].End--
 	down, up := ui.TextAffinityDownstream, ui.TextAffinityUpstream
 	tests := []struct {
 		name string
@@ -567,7 +570,7 @@ func TestLineBoundaryAndNumbers(t *testing.T) {
 	}{
 		{"start of the text", ui.TextPosition{Offset: 0, Affinity: down}, ranges[0]},
 		{"inside the first line", ui.TextPosition{Offset: 3, Affinity: down}, ranges[0]},
-		{"the newline belongs to its line", ui.TextPosition{Offset: 7, Affinity: down}, ranges[0]},
+		{"the end of the first line is before its newline", ui.TextPosition{Offset: 7, Affinity: down}, ranges[0]},
 		{"inside the second line", ui.TextPosition{Offset: ranges[1].Start + 2, Affinity: down}, ranges[1]},
 		{"at a soft break, downstream is the next line", ui.TextPosition{Offset: ranges[1].End, Affinity: down}, ranges[2]},
 		{"at a soft break, upstream is the line before", ui.TextPosition{Offset: ranges[1].End, Affinity: up}, ranges[1]},
@@ -952,4 +955,66 @@ func TestQueriesOnTextStyles(t *testing.T) {
 	if !near(small.Right, big.Left) || math.IsNaN(small.Left) {
 		t.Errorf("small %v big %v", small, big)
 	}
+}
+
+func TestLineBreakGlyphAndBox(t *testing.T) {
+	e := bundledEngine(t)
+	p := laidOut(t, e, "ab\n\ncd", 16, 200, nil)
+	if len(p.lines) != 3 {
+		t.Fatalf("lines = %d, want 3", len(p.lines))
+	}
+	end := p.lines[0].left + p.lines[0].width
+	tests := []struct {
+		name  string
+		off   int
+		wantX float64
+		line  int
+		rng   ui.TextRange
+	}{
+		{"the line break after a text is at the end of the text", 2, end, 0, ui.TextRange{Start: 2, End: 3}},
+		{"the line break of an empty line is at its start", 3, p.lines[1].left, 1, ui.TextRange{Start: 3, End: 4}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			g, ok := p.GetGlyphInfoAt(tc.off)
+			if !ok {
+				t.Fatal("no glyph")
+			}
+			if g.GraphemeClusterRange != tc.rng {
+				t.Errorf("range = %v, want %v", g.GraphemeClusterRange, tc.rng)
+			}
+			b := g.GraphemeClusterLayoutBounds
+			if b.Left != tc.wantX || b.Right != tc.wantX || b.Top != p.lines[tc.line].top {
+				t.Errorf("bounds = %v, want a box without width at x %v on line %d", b, tc.wantX, tc.line)
+			}
+			boxes := p.GetBoxesForRange(tc.rng.Start, tc.rng.End, ui.BoxHeightStyleStrut, ui.BoxWidthStyleTight)
+			if len(boxes) != 1 || boxes[0].Left != tc.wantX || boxes[0].Right != tc.wantX {
+				t.Errorf("boxes = %v, want one without width at x %v", boxes, tc.wantX)
+			}
+		})
+	}
+	t.Run("the text after the line break has no such box", func(t *testing.T) {
+		if boxes := p.GetBoxesForRange(0, 6, ui.BoxHeightStyleTight, ui.BoxWidthStyleTight); len(boxes) != 2 {
+			t.Errorf("boxes = %v, want those of 'ab' and 'cd'", boxes)
+		}
+	})
+	t.Run("the end of the text has no glyph", func(t *testing.T) {
+		if _, ok := p.GetGlyphInfoAt(len(p.content.Text)); ok {
+			t.Error("found a glyph past the end")
+		}
+	})
+	t.Run("the end of a line that is not the last is upstream", func(t *testing.T) {
+		pos := p.GetPositionForOffset(ui.Offset{Dx: 5000, Dy: p.lines[0].top + 1})
+		if pos.Offset != 2 || !pos.Affinity.IsUpstream() {
+			t.Errorf("position = %v", pos)
+		}
+		empty := p.GetPositionForOffset(ui.Offset{Dx: 5000, Dy: p.lines[1].top + 1})
+		if empty.Offset != 3 || empty.Affinity.IsUpstream() {
+			t.Errorf("position on the empty line = %v", empty)
+		}
+		last := p.GetPositionForOffset(ui.Offset{Dx: 5000, Dy: p.lines[2].top + 1})
+		if last.Offset != 6 || last.Affinity.IsUpstream() {
+			t.Errorf("position on the last line = %v", last)
+		}
+	})
 }

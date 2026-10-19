@@ -275,7 +275,16 @@ func NewWidgetsBinding(ctx context.Context, d *ui.PlatformDispatcher, opts ...Wi
 		DebugPrintKeyboardEvents: func() bool { return b.debug.PrintKeyboardEvents },
 		DebugPrint:               b.debug.DebugPrint,
 	})
-	d.OnKeyData = b.keyboard.HandleKeyData
+	d.OnKeyData = func(data ui.KeyData) bool {
+		handled := b.keyboard.HandleKeyData(data)
+		if !handled {
+			held := b.keyboard.IsLogicalKeyPressed(services.LogicalKeyboardKeyControlLeft) || b.keyboard.IsLogicalKeyPressed(services.LogicalKeyboardKeyControlRight) ||
+				b.keyboard.IsLogicalKeyPressed(services.LogicalKeyboardKeyAltLeft) || b.keyboard.IsLogicalKeyPressed(services.LogicalKeyboardKeyAltRight) ||
+				b.keyboard.IsLogicalKeyPressed(services.LogicalKeyboardKeyMetaLeft) || b.keyboard.IsLogicalKeyPressed(services.LogicalKeyboardKeyMetaRight)
+			b.textInput.HandleUnhandledKey(data, held)
+		}
+		return handled
+	}
 	b.navigator = &services.SystemNavigator{OnPop: func(foundation.Opt[bool]) { d.RequestAppExit() }}
 	b.sound = &services.SystemSound{}
 	b.clipboard = services.NewClipboard(d)

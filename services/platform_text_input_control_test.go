@@ -406,3 +406,52 @@ func TestPlatformControlDeltaWithMultibyteText(t *testing.T) {
 		t.Errorf("applied text = %q, want é你", got.Text)
 	}
 }
+
+func TestHandleUnhandledKeyTypesOrActs(t *testing.T) {
+	key := func(logical services.LogicalKeyboardKey, char string, typ ui.KeyEventType) ui.KeyData {
+		return ui.KeyData{Type: typ, Logical: uint64(logical), Character: char}
+	}
+	multiline := services.NewTextInputConfiguration(services.TextInputConfigurationOpts{InputType: services.TextInputTypeMultiline})
+	tests := []struct {
+		name        string
+		cfg         services.TextInputConfiguration
+		data        ui.KeyData
+		controlHeld bool
+		wantText    string // "" when the client gets no value
+		wantActions []services.TextInputAction
+	}{
+		{"a character is typed", services.NewTextInputConfiguration(), key(services.LogicalKeyboardKeyKeyC, "c", ui.KeyEventTypeDown), false, "abc", nil},
+		{"a repeat is typed", services.NewTextInputConfiguration(), key(services.LogicalKeyboardKeyKeyC, "c", ui.KeyEventTypeRepeat), false, "abc", nil},
+		{"a character of several bytes", services.NewTextInputConfiguration(), key(services.LogicalKeyboardKeyKeyC, "你", ui.KeyEventTypeDown), false, "ab你", nil},
+		{"a release is ignored", services.NewTextInputConfiguration(), key(services.LogicalKeyboardKeyKeyC, "c", ui.KeyEventTypeUp), false, "", nil},
+		{"a key with control held is ignored", services.NewTextInputConfiguration(), key(services.LogicalKeyboardKeyKeyC, "c", ui.KeyEventTypeDown), true, "", nil},
+		{"a key without a character is ignored", services.NewTextInputConfiguration(), key(services.LogicalKeyboardKeyArrowLeft, "", ui.KeyEventTypeDown), false, "", nil},
+		{"a control character is ignored", services.NewTextInputConfiguration(), key(services.LogicalKeyboardKeyBackspace, "\b", ui.KeyEventTypeDown), false, "", nil},
+		{"enter is done in a single line field", services.NewTextInputConfiguration(), key(services.LogicalKeyboardKeyEnter, "\r", ui.KeyEventTypeDown), false, "",
+			[]services.TextInputAction{services.TextInputActionDone}},
+		{"enter is the action of the field", services.NewTextInputConfiguration(services.TextInputConfigurationOpts{InputAction: services.TextInputActionSearch}),
+			key(services.LogicalKeyboardKeyNumpadEnter, "", ui.KeyEventTypeDown), false, "", []services.TextInputAction{services.TextInputActionSearch}},
+		{"enter is a new line in a multiline field", multiline, key(services.LogicalKeyboardKeyEnter, "\r", ui.KeyEventTypeDown), false, "ab\n",
+			[]services.TextInputAction{services.TextInputActionNewline}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newSession(t, tc.cfg, caretAt("ab", 2))
+			s.ti.HandleUnhandledKey(tc.data, tc.controlHeld)
+			if tc.wantText == "" {
+				if len(s.client.values) != 0 {
+					t.Errorf("the client got %v", s.client.values)
+				}
+			} else if len(s.client.values) != 1 || s.client.values[0].Text != tc.wantText {
+				t.Errorf("the client got %v, want the text %q", s.client.values, tc.wantText)
+			}
+			if !reflect.DeepEqual(s.client.actions, tc.wantActions) {
+				t.Errorf("actions = %v, want %v", s.client.actions, tc.wantActions)
+			}
+		})
+	}
+	t.Run("without a client nothing happens", func(t *testing.T) {
+		ti := services.NewTextInput(services.TextInputOpts{Backend: &fakeBackend{}})
+		ti.HandleUnhandledKey(key(services.LogicalKeyboardKeyKeyC, "c", ui.KeyEventTypeDown), false)
+	})
+}

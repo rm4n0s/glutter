@@ -114,6 +114,41 @@ func (p *paragraph) boxVertical(li int, pr *placedRun, hs ui.BoxHeightStyle) (to
 	return top, bottom
 }
 
+// onlyLineBreaks reports whether the runes [lo, hi) are all line breaks.
+func (p *paragraph) onlyLineBreaks(lo, hi int) bool {
+	for r := lo; r < hi; r++ {
+		if !isLineBreakRune(p.runes[r]) {
+			return false
+		}
+	}
+	return true
+}
+
+// lineEnd is the x where the text of the line ends, and whether it is right to left.
+func (p *paragraph) lineEnd(l *line) (x float64, rtl bool) {
+	gs := p.graphemesOf(l)
+	if len(gs) == 0 {
+		return l.left, p.style.Direction() == ui.TextDirectionRTL
+	}
+	// The graphemes are in visual order: the end of the line is on the side of the
+	// last one in the logical order of the paragraph direction.
+	if p.style.Direction() == ui.TextDirectionRTL {
+		return gs[0].x0, true
+	}
+	return gs[len(gs)-1].x1, false
+}
+
+// lineBoxVertical is the top and bottom of a box that has the height of the line.
+func (p *paragraph) lineBoxVertical(li int, hs ui.BoxHeightStyle) (top, bottom float64) {
+	l := p.lines[li]
+	if hs == ui.BoxHeightStyleStrut {
+		if st := p.strutMetrics(); st.enabled {
+			return l.baseline - st.ascent, l.baseline + st.descent
+		}
+	}
+	return l.baseline - l.ascent, l.baseline + l.descent
+}
+
 func dirOf(rtl bool) ui.TextDirection {
 	if rtl {
 		return ui.TextDirectionRTL
@@ -174,6 +209,13 @@ func (p *paragraph) GetBoxesForRange(start, end int, hs ui.BoxHeightStyle, ws ui
 				}
 			}
 			merged = append(merged, bx)
+		}
+		if len(merged) == 0 && l.hardBreak && lo == a && hi == b && hi == l.end && p.onlyLineBreaks(lo, hi) {
+			// The line break alone has a box without width at the end of its line,
+			// where the caret goes.
+			x, rtl := p.lineEnd(l)
+			top, bottom := p.lineBoxVertical(li, hs)
+			merged = append(merged, ui.TextBox{Left: x, Top: top, Right: x, Bottom: bottom, Direction: dirOf(rtl)})
 		}
 		if len(merged) > 0 {
 			perLine = append(perLine, lineBoxes{li, merged})

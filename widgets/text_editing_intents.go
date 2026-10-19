@@ -5,12 +5,11 @@ import (
 	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/gestures"
 	"github.com/rm4n0s/glutter/services"
+	"github.com/rm4n0s/glutter/ui"
 )
 
-// The intents of the text editing shortcuts. The text field (EditableText, step
-// 11.4) binds actions to them, and DefaultTextEditingShortcuts maps the keys to
-// them. ReplaceTextIntent and UpdateSelectionIntent need TextEditingValue, which
-// comes with the text input service (step 11.2).
+// The intents of the text editing shortcuts. EditableText binds actions to them,
+// and DefaultTextEditingShortcuts maps the keys to them.
 
 // DoNothingAndStopPropagationTextIntent is an intent that does nothing and stops
 // a key from reaching the handlers above, in a text field: a shortcut that would
@@ -447,4 +446,61 @@ type EditableTextTapUpOutsideIntent struct {
 	//
 	// Flutter: widgets/text_editing_intents.dart EditableTextTapUpOutsideIntent.pointerUpEvent
 	PointerUpEvent *gestures.PointerUpEvent
+}
+
+// ReplaceTextIntent is an intent that replaces the text in a range with another
+// text, in a value.
+//
+// Flutter: widgets/text_editing_intents.dart ReplaceTextIntent
+type ReplaceTextIntent struct {
+	IntentBase
+	// CurrentTextEditingValue is the value the replacement is made in.
+	//
+	// Flutter: widgets/text_editing_intents.dart ReplaceTextIntent.currentTextEditingValue
+	CurrentTextEditingValue services.TextEditingValue
+	// ReplacementText is the text that replaces the range.
+	//
+	// Flutter: widgets/text_editing_intents.dart ReplaceTextIntent.replacementText
+	ReplacementText string
+	// ReplacementRange is the range that is replaced.
+	//
+	// Flutter: widgets/text_editing_intents.dart ReplaceTextIntent.replacementRange
+	ReplacementRange ui.TextRange
+	// Cause is what caused the change.
+	//
+	// Flutter: widgets/text_editing_intents.dart ReplaceTextIntent.cause
+	Cause services.SelectionChangedCause
+}
+
+// NewReplaceTextIntent creates the intent.
+//
+// Flutter: widgets/text_editing_intents.dart ReplaceTextIntent.new
+func NewReplaceTextIntent(currentTextEditingValue services.TextEditingValue, replacementText string, replacementRange ui.TextRange, cause services.SelectionChangedCause) ReplaceTextIntent {
+	return ReplaceTextIntent{CurrentTextEditingValue: currentTextEditingValue, ReplacementText: replacementText, ReplacementRange: replacementRange, Cause: cause}
+}
+
+// UpdateSelectionIntent is an intent that sets the selection of a value.
+//
+// Flutter: widgets/text_editing_intents.dart UpdateSelectionIntent
+type UpdateSelectionIntent struct {
+	IntentBase
+	// CurrentTextEditingValue is the value whose selection is set.
+	//
+	// Flutter: widgets/text_editing_intents.dart UpdateSelectionIntent.currentTextEditingValue
+	CurrentTextEditingValue services.TextEditingValue
+	// NewSelection is the selection to set.
+	//
+	// Flutter: widgets/text_editing_intents.dart UpdateSelectionIntent.newSelection
+	NewSelection services.TextSelection
+	// Cause is what caused the change.
+	//
+	// Flutter: widgets/text_editing_intents.dart UpdateSelectionIntent.cause
+	Cause services.SelectionChangedCause
+}
+
+// NewUpdateSelectionIntent creates the intent.
+//
+// Flutter: widgets/text_editing_intents.dart UpdateSelectionIntent.new
+func NewUpdateSelectionIntent(currentTextEditingValue services.TextEditingValue, newSelection services.TextSelection, cause services.SelectionChangedCause) UpdateSelectionIntent {
+	return UpdateSelectionIntent{CurrentTextEditingValue: currentTextEditingValue, NewSelection: newSelection, Cause: cause}
 }

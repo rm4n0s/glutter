@@ -8,6 +8,7 @@ import (
 	"github.com/rm4n0s/glutter/gestures"
 	"github.com/rm4n0s/glutter/services"
 	"github.com/rm4n0s/glutter/ui"
+	"github.com/rm4n0s/glutter/widgets"
 )
 
 // DragSlopDefault is how far a drag moves first so that it passes the touch
@@ -364,15 +365,47 @@ func (t *Tester) Scroll(f Finder, delta ui.Offset) {
 	t.ScrollAt(t.Center(f), delta)
 }
 
-// EnterText types the text into the text field the finder finds. Text input
-// arrives with the text input service (step 11.4); until then the test fails
-// with the tag EnterTextNotImplemented.
+// ShowKeyboard gives the focus to the text field the finder finds (or whose
+// descendant it finds) and opens its input connection, as the tap on a field
+// does. The test fails with the tag EnterTextNoField when the finder finds no
+// EditableText.
+//
+// Flutter: flutter_test/lib/src/widget_tester.dart WidgetTester.showKeyboard
+func (t *Tester) ShowKeyboard(f Finder) *widgets.EditableTextState {
+	t.tb.Helper()
+	t.adopt()
+	found := Descendant(f, ByType[*widgets.EditableText](), DescendantOpts{MatchRoot: true})
+	els := t.Elements(found)
+	if len(els) == 0 {
+		t.fail(errors.New("EnterTextNoField", "the finder found no EditableText", "finder", f.Describe()))
+		return nil
+	}
+	stateful, ok := els[0].(*widgets.StatefulElement)
+	if !ok {
+		t.fail(errors.New("EnterTextNoField", "the EditableText element has no state", "finder", f.Describe()))
+		return nil
+	}
+	state := stateful.State().(*widgets.EditableTextState)
+	state.RequestKeyboard()
+	t.Pump()
+	return state
+}
+
+// EnterText types the text into the text field the finder finds: the field gets
+// the focus, and its text becomes the text, with the caret at the end, as if the
+// input method had sent the new value.
 //
 // Flutter: flutter_test/lib/src/widget_tester.dart WidgetTester.enterText
 func (t *Tester) EnterText(f Finder, text string) {
 	t.tb.Helper()
-	t.fail(errors.New("EnterTextNotImplemented", "EnterText needs the text input service, which comes with step 11.4",
-		"finder", f.Describe(), "text", text))
+	state := t.ShowKeyboard(f)
+	if state == nil {
+		return
+	}
+	state.UpdateEditingValue(services.NewTextEditingValue(services.TextEditingValueOpts{
+		Text: text, Selection: foundation.Some(services.NewTextSelectionCollapsed(len(text))),
+	}))
+	t.Pump()
 }
 
 // KeyOpts are the optional parameters of the key events of the tester.

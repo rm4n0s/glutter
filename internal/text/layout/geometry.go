@@ -197,13 +197,21 @@ func (p *paragraph) GetPositionForOffset(o ui.Offset) ui.TextPosition {
 	return p.positionAt(li, rune)
 }
 
-// positionAt makes the position of a rune index on a line: at the end of a line that ends
-// in a soft break it is upstream, as the end of that line.
+// positionAt makes the position of a rune index on a line: at the end of a line that is not
+// the last it is upstream, as the end of that line.
 func (p *paragraph) positionAt(li, rune int) ui.TextPosition {
 	pos := ui.NewTextPosition(p.byteOf(rune))
 	l := p.lines[li]
-	if rune == l.end && li < len(p.lines)-1 && !l.hardBreak {
-		pos.Affinity = ui.TextAffinityUpstream
+	if li < len(p.lines)-1 {
+		contentEnd := l.end
+		for l.hardBreak && contentEnd > l.start && isLineBreakRune(p.runes[contentEnd-1]) {
+			contentEnd--
+		}
+		// A hard break ends the line before its line break, which also is the end
+		// of the line (unless the line is empty).
+		if (rune == l.end && !l.hardBreak) || (l.hardBreak && rune == contentEnd && rune > l.start) {
+			pos.Affinity = ui.TextAffinityUpstream
+		}
 	}
 	return pos
 }
@@ -253,10 +261,17 @@ func (p *paragraph) GetGlyphInfoAt(off int) (ui.GlyphInfo, bool) {
 		return ui.GlyphInfo{}, false
 	}
 	r := p.runeIndex(off)
-	for _, g := range p.graphemesOf(p.lines[li]) {
+	l := p.lines[li]
+	for _, g := range p.graphemesOf(l) {
 		if r >= g.start && r < g.end {
 			return p.glyphInfoFor(li, g), true
 		}
+	}
+	if l.hardBreak && isLineBreakRune(p.runes[r]) {
+		// The line break is a glyph without width at the end of its line.
+		gi := sort.SearchInts(p.graphemes, r+1) - 1
+		x, rtl := p.lineEnd(l)
+		return p.glyphInfoFor(li, graphemeBox{start: p.graphemes[gi], end: p.graphemes[gi+1], x0: x, x1: x, rtl: rtl}), true
 	}
 	return ui.GlyphInfo{}, false
 }
@@ -308,7 +323,12 @@ func (p *paragraph) GetLineBoundary(pos ui.TextPosition) ui.TextRange {
 		li--
 		l = p.lines[li]
 	}
-	return ui.TextRange{Start: p.byteOf(l.start), End: p.byteOf(l.end)}
+	// The newline that ends a line is not part of its range.
+	end := l.end
+	if l.hardBreak && end > l.start && p.runes[end-1] == '\n' {
+		end--
+	}
+	return ui.TextRange{Start: p.byteOf(l.start), End: p.byteOf(end)}
 }
 
 // GetWordBoundary implements ui.ParagraphLayout.

@@ -114,7 +114,6 @@ Use `github.com/rm4n0s/errors` for all errors. Never use `fmt.Errorf`, and never
 
 ## Working through the steps
 - Never stop to ask for confirmation, and never end a turn with a question such as "Should I start the next step?", until every step in `docs/IMPLEMENTATION.md` is finished (through the last one). After a step is published, report it briefly and start the next step in the same turn
-- Stop early only for the cases in the Rules section of `docs/IMPLEMENTATION.md`: an ambiguous step, a spec that contradicts Flutter, a missing tool, a dependency not on the allowed list, a need for sudo, a check that still fails after a real fix, or a failed push (authentication or network)
 - A request such as "publish to main" that is already satisfied gets a one-line answer, then work continues with the next step
 
 ## Don't

@@ -651,11 +651,12 @@ func (s *widgetsAppState) Build(bc BuildContext) Widget {
 			NewDefaultTextEditingShortcuts(
 				NewActions(actions,
 					NewFocusTraversalGroup(
-						NewShortcutRegistrar(
-							NewListenableBuilder(resolver, func(bc BuildContext, _ Widget) Widget {
-								return NewLocalizations(resolver.Locale(), resolver.LocalizationsDelegates(), content,
-									LocalizationsOpts{IsApplicationLevel: true})
-							}, nil)),
+						NewTapRegionSurface(
+							NewShortcutRegistrar(
+								NewListenableBuilder(resolver, func(bc BuildContext, _ Widget) Widget {
+									return NewLocalizations(resolver.Locale(), resolver.LocalizationsDelegates(), content,
+										LocalizationsOpts{IsApplicationLevel: true})
+								}, nil))),
 						FocusTraversalGroupOpts{Policy: NewReadingOrderTraversalPolicy()}))),
 			ShortcutsOpts{DebugLabel: "<Default WidgetsApp Shortcuts>"}),
 		onNavigation)
