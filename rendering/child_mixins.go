@@ -154,7 +154,11 @@ func (m *ContainerRenderObject[C]) insertIntoChildList(child, after C) {
 // itself, is after itself, or is a child already.
 //
 // Flutter: rendering/object.dart ContainerRenderObjectMixin.insert
-func (m *ContainerRenderObject[C]) Insert(child, after C) {
+func (m *ContainerRenderObject[C]) Insert(child, after C) { m.insertAdopting(child, after, nil) }
+
+// insertAdopting is Insert, with a function that runs after the child is adopted
+// and before it is linked: for a render object that overrides adoptChild.
+func (m *ContainerRenderObject[C]) insertAdopting(child, after C, onAdopt func()) {
 	if foundation.DebugMode {
 		var msg string
 		switch {
@@ -173,6 +177,9 @@ func (m *ContainerRenderObject[C]) Insert(child, after C) {
 		}
 	}
 	m.host.AsRenderObject().AdoptChild(child)
+	if onAdopt != nil {
+		onAdopt()
+	}
 	m.insertIntoChildList(child, after)
 }
 
