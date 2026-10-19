@@ -172,6 +172,12 @@ type RenderObject interface {
 	//
 	// Flutter: rendering/object.dart RenderObject.parent
 	Parent() RenderObject
+	// DebugLayoutParent is the parent in the layout protocol (debug builds);
+	// it differs from Parent for a render object that is laid out by another
+	// one than the one it is a child of.
+	//
+	// Flutter: rendering/object.dart RenderObject.debugLayoutParent
+	DebugLayoutParent() RenderObject
 	// ParentData is the data the parent stores on the object.
 	//
 	// Flutter: rendering/object.dart RenderObject.parentData
@@ -535,7 +541,7 @@ func (b *RenderObjectBase) debugClosestMutationRoot() (RenderObject, bool, bool)
 	case b.debugMutationsLocked:
 		return b.self, false, true
 	}
-	if p := b.DebugLayoutParent(); p != nil {
+	if p := b.self.DebugLayoutParent(); p != nil {
 		return p.AsRenderObject().debugClosestMutationRoot()
 	}
 	return nil, false, false

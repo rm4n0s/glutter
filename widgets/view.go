@@ -55,11 +55,12 @@ func (w *View) Child() Widget { return w.child }
 func (w *View) CreateState() State { return &viewState{} }
 
 // MaybeViewOf is the view that the closest View or RawView above the context
-// shows its child in, or nil. The context depends on it.
+// shows its child in, or nil. The context depends on it. The lookup does not go
+// past a LookupBoundary.
 //
 // Flutter: widgets/view.dart View.maybeOf
 func MaybeViewOf(bc BuildContext) *ui.View {
-	if scope, ok := DependOn[*viewScope](bc); ok {
+	if scope, ok := LookupBoundaryDependOnInheritedWidgetOfExactType[*viewScope](bc); ok {
 		return scope.view
 	}
 	return nil
@@ -72,9 +73,11 @@ func MaybeViewOf(bc BuildContext) *ui.View {
 func ViewOf(bc BuildContext) *ui.View {
 	v := MaybeViewOf(bc)
 	if v == nil {
-		panic(errors.New("ViewOfWithoutView",
-			"ViewOf was called with a context that does not contain a View widget; no View widget ancestor could be found starting from the context that was passed to ViewOf; this usually means that the provided context is not associated with a View",
-			"context", bc.(Element).String()))
+		msg := "ViewOf was called with a context that does not contain a View widget; no View widget ancestor could be found starting from the context that was passed to ViewOf; this usually means that the provided context is not associated with a View"
+		if LookupBoundaryDebugIsHidingAncestorWidgetOfExactType[*viewScope](bc) {
+			msg = "ViewOf was called with a context that does not have access to a View widget; the context provided to ViewOf does have a View widget ancestor, but it is hidden by a LookupBoundary; this usually means that the provided context is not associated with a View"
+		}
+		panic(errors.New("ViewOfWithoutView", msg, "context", bc.(Element).String()))
 	}
 	return v
 }

@@ -6,8 +6,6 @@ import (
 
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/foundation"
-	"github.com/rm4n0s/glutter/painting"
-	"github.com/rm4n0s/glutter/rendering"
 	"github.com/rm4n0s/glutter/scheduler"
 	"github.com/rm4n0s/glutter/ui"
 )
@@ -29,9 +27,6 @@ type OverlayEntryOpts struct {
 
 // OverlayEntry is a place in an Overlay that can contain a widget. Entries are
 // inserted into an Overlay with OverlayState.Insert and removed with Remove.
-//
-// Deviation: OverlayPortal arrives with step 10.1; until then an entry has no
-// portal children (SPEC §12.10).
 //
 // Flutter: widgets/overlay.dart OverlayEntry
 type OverlayEntry struct {
@@ -242,6 +237,15 @@ func (w *overlayEntryWidget) CreateState() State { return &overlayEntryWidgetSta
 type overlayEntryWidgetState struct {
 	StateOf[*overlayEntryWidget]
 	theater *renderTheater
+	// firstSibling and lastSibling are the ends of the list of the theater children
+	// whose paint order is sorted by their z-order index. The children that
+	// OverlayPortals add to it are shown above the OverlayEntry of this widget; the
+	// ones with larger z-order indexes (those that were shown most recently) are
+	// painted last. The list is only read by the theater, as part of its child model:
+	// adding or removing a child does not rebuild this widget. It would ideally be in
+	// a render object, but there may be none between the theater and the subtree of
+	// the entry.
+	firstSibling, lastSibling *overlayEntryLocation
 }
 
 func (s *overlayEntryWidgetState) InitState() {
@@ -258,6 +262,7 @@ func (s *overlayEntryWidgetState) DidUpdateWidget(oldWidget *overlayEntryWidget)
 }
 
 func (s *overlayEntryWidgetState) Dispose() {
+	s.firstSibling, s.lastSibling = nil, nil
 	entry := s.Widget().entry
 	if entry.notifier != nil {
 		entry.notifier.SetValue(nil)
@@ -292,21 +297,40 @@ func (w *renderTheaterMarker) UpdateShouldNotify(old Widget) bool {
 }
 
 // renderTheaterMarkerMaybeOf is the closest marker, or the one of the root
-// overlay when targetRootOverlay.
-//
-// Deviation: Flutter does not look past a LookupBoundary; Glutter has none
-// (SPEC §12.10).
+// overlay when targetRootOverlay. It does not look past a LookupBoundary. The
+// context depends on the marker when createDependency.
 //
 // Flutter: widgets/overlay.dart _RenderTheaterMarker.maybeOf
-func renderTheaterMarkerMaybeOf(bc BuildContext, targetRootOverlay bool) *renderTheaterMarker {
+func renderTheaterMarkerMaybeOf(bc BuildContext, targetRootOverlay, createDependency bool) *renderTheaterMarker {
 	if targetRootOverlay {
-		ancestor := rootRenderTheaterMarkerOf(GetElementForInheritedWidget[*renderTheaterMarker](bc))
+		ancestor := rootRenderTheaterMarkerOf(LookupBoundaryGetElementForInheritedWidgetOfExactType[*renderTheaterMarker](bc))
 		if ancestor == nil {
 			return nil
 		}
-		return ancestor.Widget().(*renderTheaterMarker)
+		if createDependency {
+			return bc.DependOnInheritedElement(ancestor, nil).(*renderTheaterMarker)
+		}
+		return ancestor.AsElement().widget.(*renderTheaterMarker)
 	}
-	marker, _ := GetInherited[*renderTheaterMarker](bc)
+	if createDependency {
+		marker, _ := LookupBoundaryDependOnInheritedWidgetOfExactType[*renderTheaterMarker](bc)
+		return marker
+	}
+	marker, _ := LookupBoundaryGetInheritedWidgetOfExactType[*renderTheaterMarker](bc)
+	return marker
+}
+
+// renderTheaterMarkerOf is renderTheaterMarkerMaybeOf that panics with the tag
+// OverlayMissing in debug builds when there is none.
+//
+// Flutter: widgets/overlay.dart _RenderTheaterMarker.of
+func renderTheaterMarkerOf(bc BuildContext, targetRootOverlay bool) *renderTheaterMarker {
+	marker := renderTheaterMarkerMaybeOf(bc, targetRootOverlay, true)
+	if marker == nil {
+		panic(errors.New("OverlayMissing", "No Overlay widget found. "+foundation.RuntimeTypeName(bc.Widget())+
+			" widgets require an Overlay widget ancestor; an overlay lets widgets float on top of other widget children; to introduce an Overlay widget, you can either directly include one, or use a widget that contains an Overlay itself, such as a Navigator, WidgetApp, MaterialApp, or CupertinoApp",
+			"context", bc.(Element).String()))
+	}
 	return marker
 }
 
@@ -316,7 +340,7 @@ func rootRenderTheaterMarkerOf(marker InheritedElementSelf) InheritedElementSelf
 	}
 	var ancestor InheritedElementSelf
 	marker.VisitAncestorElements(func(element Element) bool {
-		ancestor = GetElementForInheritedWidget[*renderTheaterMarker](element)
+		ancestor = LookupBoundaryGetElementForInheritedWidgetOfExactType[*renderTheaterMarker](element)
 		return false
 	})
 	if ancestor == nil {
@@ -423,7 +447,7 @@ type OverlayOfOpts struct {
 //
 // Flutter: widgets/overlay.dart Overlay.maybeOf
 func OverlayMaybeOf(bc BuildContext, opts ...OverlayOfOpts) (*OverlayState, bool) {
-	marker := renderTheaterMarkerMaybeOf(bc, firstOpts(opts).RootOverlay)
+	marker := renderTheaterMarkerMaybeOf(bc, firstOpts(opts).RootOverlay, false)
 	if marker == nil {
 		return nil, false
 	}
@@ -442,7 +466,11 @@ func OverlayOf(bc BuildContext, opts ...OverlayOfOpts) *OverlayState {
 		if o.DebugRequiredFor != nil {
 			required = foundation.RuntimeTypeName(o.DebugRequiredFor)
 		}
-		panic(errors.New("OverlayMissing", "No Overlay widget found. "+required+" widgets require an Overlay widget ancestor for correct operation. "+
+		summary := "No Overlay widget found."
+		if LookupBoundaryDebugIsHidingAncestorStateOfType[*OverlayState](bc) {
+			summary = "No Overlay widget found within the closest LookupBoundary. There is an ancestor Overlay widget, but it is hidden by a LookupBoundary."
+		}
+		panic(errors.New("OverlayMissing", summary+" "+required+" widgets require an Overlay widget ancestor for correct operation. "+
 			"The most common way to add an Overlay to an application is to include a MaterialApp, CupertinoApp or Navigator widget in the runApp() call.",
 			"context", bc.(Element).String()))
 	}
@@ -717,350 +745,22 @@ func (s *wrappingOverlayState) Build(BuildContext) Widget {
 	return NewOverlay(OverlayOpts{ClipBehavior: w.clipBehavior, AlwaysSizeToContent: w.alwaysSizeToContent, InitialEntries: []*OverlayEntry{s.entry}})
 }
 
-// theater is the widget of the render object that paints and lays out the entries
-// of an overlay.
-//
-// Flutter: widgets/overlay.dart _Theater
-type theater struct {
-	MultiChildRenderObjectWidget
-	skipCount           int
-	clipBehavior        ui.Clip
-	alwaysSizeToContent bool
-}
-
-func newTheater(skipCount int, clipBehavior ui.Clip, alwaysSizeToContent bool, children []Widget) *theater {
-	return &theater{NewMultiChildRenderObjectWidgetBase(children), skipCount, clipBehavior, alwaysSizeToContent}
-}
-
-func (w *theater) CreateElement() Element {
-	e := &theaterElement{}
-	InitMultiChildRenderObjectElement(&e.MultiChildRenderObjectElement, e, w)
-	return e
-}
-
-func (w *theater) CreateRenderObject(bc BuildContext) rendering.RenderObject {
-	r := &renderTheater{skipCount: w.skipCount, textDirection: DirectionalityOf(bc), clipBehavior: w.clipBehavior,
-		alwaysSizeToContent: w.alwaysSizeToContent, clipRectLayer: rendering.NewLayerHandle[*rendering.ClipRectLayer](nil),
-		entries: map[rendering.Box]*OverlayEntry{}}
-	rendering.InitRenderBox(&r.RenderBox, r)
-	rendering.InitContainerRenderObject(&r.ContainerRenderObject, r)
-	return r
-}
-
-func (w *theater) UpdateRenderObject(bc BuildContext, ro rendering.RenderObject) {
-	r := ro.(*renderTheater)
-	r.setSkipCount(w.skipCount)
-	r.setTextDirection(DirectionalityOf(bc))
-	r.setClipBehavior(w.clipBehavior)
-	r.setAlwaysSizeToContent(w.alwaysSizeToContent)
-}
-
-// theaterElement is the element of a theater: it tells the render object which
-// overlay entry made each child.
-//
-// Flutter: widgets/overlay.dart _TheaterElement
-type theaterElement struct {
-	MultiChildRenderObjectElement
-}
-
-func (e *theaterElement) InsertRenderObjectChild(child rendering.RenderObject, slot any) {
-	e.MultiChildRenderObjectElement.InsertRenderObjectChild(child, slot)
-	entryWidget := e.widget.(*theater).Children()[slot.(IndexedSlot).Index].(*overlayEntryWidget)
-	e.renderObject.(*renderTheater).entries[child.(rendering.Box)] = entryWidget.entry
-}
-
-// DebugVisitOnstageChildren visits the children that are on stage.
-//
-// Flutter: widgets/overlay.dart _TheaterElement.debugVisitOnstageChildren
-func (e *theaterElement) DebugVisitOnstageChildren(visitor ElementVisitor) {
-	children := e.Children()
-	skip := e.widget.(*theater).skipCount
-	if foundation.DebugMode && len(children) < skip {
-		panic(errors.New("TheaterSkipCountInvalid", "the skip count is greater than the number of children"))
-	}
-	for _, c := range children[skip:] {
-		visitor(c)
-	}
-}
-
-// renderTheater is a box that sizes itself to its parent (or to the entry that
-// can size the overlay), implements the stack layout algorithm and renders its
-// children, the entries that are on stage after the first skipCount ones.
-//
-// Flutter: widgets/overlay.dart _RenderTheater
-type renderTheater struct {
-	rendering.RenderBox
-	rendering.ContainerRenderObject[rendering.Box]
-	textDirection       ui.TextDirection
-	skipCount           int
-	clipBehavior        ui.Clip
-	alwaysSizeToContent bool
-	alignmentCache      foundation.Opt[painting.Alignment]
-	clipRectLayer       *rendering.LayerHandle[*rendering.ClipRectLayer]
-	// entries is the overlay entry that created each child.
-	entries map[rendering.Box]*OverlayEntry
-}
-
-func (r *renderTheater) SetupParentData(child rendering.RenderObject) {
-	if _, ok := child.ParentData().(*rendering.StackParentData); !ok {
-		child.AsRenderObject().SetParentData(&rendering.StackParentData{})
-	}
-}
-
-func (r *renderTheater) resolvedAlignment() painting.Alignment {
-	if a, ok := r.alignmentCache.Get(); ok {
-		return a
-	}
-	a := painting.AlignmentDirectionalTopStart.Resolve(r.textDirection)
-	r.alignmentCache = foundation.Some(a)
-	return a
-}
-
-func (r *renderTheater) setTextDirection(value ui.TextDirection) {
-	if r.textDirection == value {
-		return
-	}
-	r.textDirection = value
-	r.alignmentCache = foundation.None[painting.Alignment]()
-	r.MarkNeedsLayout()
-}
-
-func (r *renderTheater) setSkipCount(value int) {
-	if r.skipCount != value {
-		r.skipCount = value
-		r.MarkNeedsLayout()
-	}
-}
-
-func (r *renderTheater) setClipBehavior(value ui.Clip) {
-	if value != r.clipBehavior {
-		r.clipBehavior = value
-		r.MarkNeedsPaint()
-		r.MarkNeedsSemanticsUpdate()
-	}
-}
-
-func (r *renderTheater) setAlwaysSizeToContent(value bool) {
-	if r.alwaysSizeToContent != value {
-		r.alwaysSizeToContent = value
-		r.MarkNeedsLayout()
-	}
-}
-
-func (r *renderTheater) data(child rendering.Box) *rendering.StackParentData {
-	return child.ParentData().(*rendering.StackParentData)
-}
-
-func (r *renderTheater) firstOnstageChild() rendering.Box {
-	if r.skipCount == r.ChildCount() {
-		return nil
-	}
-	child := r.FirstChild()
-	for toSkip := r.skipCount; toSkip > 0; toSkip-- {
-		child = r.data(child).NextSibling
-	}
-	return child
-}
-
-func (r *renderTheater) lastOnstageChild() rendering.Box {
-	if r.skipCount == r.ChildCount() {
-		return nil
-	}
-	return r.LastChild()
-}
-
-// childrenInPaintOrder is the children on stage, from the farthest to the closest
-// to the user.
-func (r *renderTheater) childrenInPaintOrder() []rendering.Box {
-	var out []rendering.Box
-	for child := r.firstOnstageChild(); child != nil; child = r.data(child).NextSibling {
-		out = append(out, child)
-	}
-	return out
-}
-
-func (r *renderTheater) ComputeMinIntrinsicWidth(height float64) float64 {
-	return rendering.StackIntrinsicDimension(r.firstOnstageChild(), func(c rendering.Box) float64 { return c.GetMinIntrinsicWidth(height) })
-}
-
-func (r *renderTheater) ComputeMaxIntrinsicWidth(height float64) float64 {
-	return rendering.StackIntrinsicDimension(r.firstOnstageChild(), func(c rendering.Box) float64 { return c.GetMaxIntrinsicWidth(height) })
-}
-
-func (r *renderTheater) ComputeMinIntrinsicHeight(width float64) float64 {
-	return rendering.StackIntrinsicDimension(r.firstOnstageChild(), func(c rendering.Box) float64 { return c.GetMinIntrinsicHeight(width) })
-}
-
-func (r *renderTheater) ComputeMaxIntrinsicHeight(width float64) float64 {
-	return rendering.StackIntrinsicDimension(r.firstOnstageChild(), func(c rendering.Box) float64 { return c.GetMaxIntrinsicHeight(width) })
-}
-
-func (r *renderTheater) ComputeDistanceToActualBaseline(baseline ui.TextBaseline) foundation.Opt[float64] {
-	baselineOffset := rendering.NoBaseline
-	for _, child := range r.childrenInPaintOrder() {
-		baselineOffset = baselineOffset.MinOf(rendering.NewBaselineOffset(child.GetDistanceToActualBaseline(baseline)).Add(r.data(child).Offset.Dy))
-	}
-	return baselineOffset.Offset
-}
-
-func (r *renderTheater) ComputeDryBaseline(constraints rendering.BoxConstraints, baseline ui.TextBaseline) foundation.Opt[float64] {
-	size := r.ComputeDryLayout(constraints)
-	nonPositionedChildConstraints := rendering.NewBoxConstraintsTight(size)
-	alignment := r.resolvedAlignment()
-	baselineOffset := rendering.NoBaseline
-	for _, child := range r.childrenInPaintOrder() {
-		baselineOffset = baselineOffset.MinOf(rendering.NewBaselineOffset(
-			rendering.StackBaselineForChild(child, size, nonPositionedChildConstraints, alignment, baseline)))
-	}
-	return baselineOffset.Offset
-}
-
-func (r *renderTheater) ComputeDryLayout(constraints rendering.BoxConstraints) ui.Size {
-	if !r.alwaysSizeToContent && constraints.Biggest().IsFinite() {
-		return constraints.Biggest()
-	}
-	return r.findSizeDeterminingChild().GetDryLayout(constraints)
-}
-
-func (r *renderTheater) layoutChild(child rendering.Box, nonPositionedChildConstraints rendering.BoxConstraints) {
-	data := r.data(child)
-	alignment := r.resolvedAlignment()
-	if !data.IsPositioned() {
-		child.Layout(nonPositionedChildConstraints, rendering.LayoutOpts{ParentUsesSize: true})
-		data.Offset = ui.Offset{}
-	} else {
-		rendering.LayoutPositionedStackChild(child, data, r.Size(), alignment)
-	}
-}
-
-func (r *renderTheater) PerformLayout() {
-	constraints := r.BoxConstraints()
-	var sizeDeterminingChild rendering.Box
-	if !r.alwaysSizeToContent && constraints.Biggest().IsFinite() {
-		r.SetSize(constraints.Biggest())
-	} else {
-		sizeDeterminingChild = r.findSizeDeterminingChild()
-		r.layoutChild(sizeDeterminingChild, constraints)
-		r.SetSize(sizeDeterminingChild.Size())
-	}
-	// Equivalent to the BoxConstraints used by RenderStack for StackFit.expand.
-	nonPositionedChildConstraints := rendering.NewBoxConstraintsTight(r.Size())
-	for _, child := range r.childrenInPaintOrder() {
-		if child != sizeDeterminingChild {
-			r.layoutChild(child, nonPositionedChildConstraints)
-		}
-	}
-}
-
-func (r *renderTheater) findSizeDeterminingChild() rendering.Box {
-	for child := r.lastOnstageChild(); child != nil; child = r.data(child).PreviousSibling {
-		if entry := r.entries[child]; entry != nil && entry.canSizeOverlay && !r.data(child).IsPositioned() {
-			return child
-		}
-	}
-	constraints := r.BoxConstraints()
-	if r.alwaysSizeToContent {
-		panic(errors.New("OverlaySizeToContentInvalid",
-			"Overlay was asked to size itself to content but does not have a suitable child; when alwaysSizeToContent is true, the Overlay requires at least one non-positioned OverlayEntry with canSizeOverlay set to true to determine its size; try removing alwaysSizeToContent=true or provide a suitable child that can size the Overlay"))
-	}
-	panic(errors.New("OverlayUnbounded",
-		"Overlay was given infinite constraints and cannot be sized by a suitable child; the constraints given to the overlay ("+constraints.String()+") would result in an illegal infinite size ("+constraints.Biggest().String()+
-			"); to avoid that, the Overlay tried to size itself to one of its children, but no suitable non-positioned child that belongs to an OverlayEntry with canSizeOverlay set to true could be found; try wrapping the Overlay in a SizedBox to give it a finite size or use an OverlayEntry with canSizeOverlay set to true"))
-}
-
-func (r *renderTheater) HitTestChildren(result *rendering.BoxHitTestResult, position ui.Offset) bool {
-	childLeft := r.ChildCount() - r.skipCount
-	child := r.lastOnstageChild()
-	for child != nil && childLeft > 0 {
-		data := r.data(child)
-		c := child
-		offset := data.Offset
-		if result.AddWithPaintOffset(&offset, position, func(result *rendering.BoxHitTestResult, transformed ui.Offset) bool {
-			return c.HitTest(result, transformed)
-		}) {
-			return true
-		}
-		childLeft--
-		child = data.PreviousSibling
-	}
-	return false
-}
-
-func (r *renderTheater) paintChildren(context *rendering.PaintingContext, offset ui.Offset) {
-	for _, child := range r.childrenInPaintOrder() {
-		context.PaintChild(child, r.data(child).Offset.Add(offset))
-	}
-}
-
-func (r *renderTheater) Paint(context *rendering.PaintingContext, offset ui.Offset) {
-	if r.clipBehavior != ui.ClipNone {
-		r.clipRectLayer.SetLayer(context.PushClipRect(r.NeedsCompositing(), offset, ui.OffsetZero.And(r.Size()), r.paintChildren,
-			rendering.PushClipRectOpts{ClipBehavior: r.clipBehavior, OldLayer: r.clipRectLayer.Layer()}))
-	} else {
-		r.clipRectLayer.SetLayer(nil)
-		r.paintChildren(context, offset)
-	}
-}
-
-func (r *renderTheater) Dispose() {
-	r.clipRectLayer.SetLayer(nil)
-	r.RenderBox.Dispose()
-}
-
-func (r *renderTheater) RemoveObject(child rendering.RenderObject) {
-	delete(r.entries, child.(rendering.Box))
-	r.ContainerRenderObject.RemoveObject(child)
-}
-
-func (r *renderTheater) VisitChildrenForSemantics(visitor rendering.RenderObjectVisitor) {
-	for _, child := range r.childrenInPaintOrder() {
-		visitor(child)
-	}
-}
-
-func (r *renderTheater) DescribeApproximatePaintClip(rendering.RenderObject) foundation.Opt[ui.Rect] {
-	if r.clipBehavior == ui.ClipNone {
-		return foundation.None[ui.Rect]()
-	}
-	return foundation.Some(ui.OffsetZero.And(r.Size()))
-}
-
-func (r *renderTheater) DebugDescribeChildren() []foundation.DiagnosticsNode {
-	var offstage, onstage []foundation.DiagnosticsNode
-	count := 1
-	isOnstage := false
-	first := r.firstOnstageChild()
-	for child := r.FirstChild(); child != nil; child = r.data(child).NextSibling {
-		if child == first {
-			isOnstage = true
-			count = 1
-		}
-		if isOnstage {
-			onstage = append(onstage, foundation.ToDiagnosticsNode(child, foundation.DiagnosticsNodeOpts{Name: foundation.Some("onstage " + strconv.Itoa(count))}))
-		} else {
-			offstage = append(offstage, foundation.ToDiagnosticsNode(child, foundation.DiagnosticsNodeOpts{
-				Name: foundation.Some("offstage " + strconv.Itoa(count)), Style: foundation.DiagnosticsTreeStyleOffstage}))
-		}
-		count++
-	}
-	out := onstage
-	if len(offstage) > 0 {
-		out = append(out, offstage...)
-	} else {
-		out = append(out, foundation.NewDiagnosticsNodeMessage("no offstage children", foundation.DiagnosticsNodeMessageOpts{Style: foundation.DiagnosticsTreeStyleOffstage}))
-	}
-	return out
-}
-
 // DebugCheckHasOverlay panics with the tag OverlayMissing in debug builds if
-// there is no Overlay widget above the context, and returns true.
+// there is no Overlay widget above the context (within the closest
+// LookupBoundary), and returns true.
 //
 // Flutter: widgets/debug.dart debugCheckHasOverlay
 func DebugCheckHasOverlay(bc BuildContext) bool {
 	if foundation.DebugMode {
-		if _, ok := FindAncestorWidgetOfExactType[*Overlay](bc); !ok {
-			panic(errors.New("OverlayMissing", "No Overlay widget found. "+foundation.RuntimeTypeName(bc.Widget())+
-				" widgets require an Overlay widget ancestor; an overlay lets widgets float on top of other widget children; to introduce an Overlay widget, you can either directly include one, or use a widget that contains an Overlay itself, such as a Navigator, WidgetApp, MaterialApp, or CupertinoApp",
+		if _, ok := LookupBoundaryFindAncestorWidgetOfExactType[*Overlay](bc); !ok {
+			hiddenByBoundary := LookupBoundaryDebugIsHidingAncestorWidgetOfExactType[*Overlay](bc)
+			summary, within := "No Overlay widget found.", ""
+			if hiddenByBoundary {
+				summary = "No Overlay widget found within the closest LookupBoundary. There is an ancestor Overlay widget, but it is hidden by a LookupBoundary."
+				within = " within the closest LookupBoundary"
+			}
+			panic(errors.New("OverlayMissing", summary+" "+foundation.RuntimeTypeName(bc.Widget())+
+				" widgets require an Overlay widget ancestor"+within+"; an overlay lets widgets float on top of other widget children; to introduce an Overlay widget, you can either directly include one, or use a widget that contains an Overlay itself, such as a Navigator, WidgetApp, MaterialApp, or CupertinoApp",
 				"context", bc.(Element).String()))
 		}
 	}

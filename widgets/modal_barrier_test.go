@@ -9,15 +9,16 @@ import (
 	"github.com/rm4n0s/glutter/gluttertest"
 	"github.com/rm4n0s/glutter/painting"
 	"github.com/rm4n0s/glutter/rendering"
+	"github.com/rm4n0s/glutter/semantics"
 	"github.com/rm4n0s/glutter/ui"
 	. "github.com/rm4n0s/glutter/widgets"
 )
 
 // Ported from packages/flutter/test/widgets/modal_barrier_test.dart. Not ported:
 // the hover tests (the mouse tracker, step 10.4), the system alert sound
-// (services), the Navigator tests (step 10.2), the semantics tree tests (the
-// semantics tester, step 14) and the default mouse cursor (SystemMouseCursors,
-// step 10.4).
+// (services), the Navigator tests (step 10.2) and the default mouse cursor
+// (SystemMouseCursors, step 10.4). The semantics tree tests read the nodes of the
+// tree, as there is no semantics tester.
 
 const testRed = 0xFFFF0000
 
@@ -194,4 +195,71 @@ func TestAnimatedModalBarrier(t *testing.T) {
 			t.Errorf("size = %v", size)
 		}
 	})
+}
+
+// rootSemanticsNode is the root of the semantics tree of the view.
+func rootSemanticsNode(ts *gluttertest.Tester) *semantics.SemanticsNode {
+	return ts.Binding.Renderer().RenderViews()[0].Owner().SemanticsOwner().RootSemanticsNode()
+}
+
+func TestModalBarrierSemanticsTree(t *testing.T) {
+	skipUnlessDebug(t) // the semantics nodes are read from the render objects
+	size := ui.Size{Width: 800, Height: 600}
+	t.Run("an undismissible barrier is hidden in the semantics tree", func(t *testing.T) {
+		for name, barrier := range map[string]Widget{
+			"ModalBarrier":         NewModalBarrier(ModalBarrierOpts{Dismissible: foundation.Some(false)}),
+			"AnimatedModalBarrier": NewAnimatedModalBarrier(animation.NewAlwaysStoppedAnimation(foundation.Some(ui.NewColor(testRed))), AnimatedModalBarrierOpts{Dismissible: foundation.Some(false)}),
+		} {
+			ts := gluttertest.New(t, gluttertest.Opts{Size: size})
+			ts.EnsureSemantics()
+			ts.PumpWidget(barrier)
+			root := rootSemanticsNode(ts)
+			if root == nil || root.ChildrenCount() != 0 {
+				t.Errorf("%s: the semantics tree has children", name)
+			}
+		}
+	})
+	dismissButton := func(t *testing.T, ts *gluttertest.Tester, rect ui.Rect) {
+		t.Helper()
+		root := rootSemanticsNode(ts)
+		if root == nil || root.ChildrenCount() != 1 {
+			t.Fatalf("the root has %d children, want 1", root.ChildrenCount())
+		}
+		var node *semantics.SemanticsNode
+		root.VisitChildren(func(n *semantics.SemanticsNode) bool { node = n; return true })
+		data := node.GetSemanticsData()
+		if node.Label() != "Dismiss" || node.TextDirection() != ui.TextDirectionLTR || node.Rect() != rect ||
+			!data.HasAction(ui.SemanticsActionTap) || !data.HasAction(ui.SemanticsActionDismiss) {
+			t.Errorf("node = label %q, direction %v, rect %v, tap %v, dismiss %v; want the Dismiss button at %v",
+				node.Label(), node.TextDirection(), node.Rect(), data.HasAction(ui.SemanticsActionTap), data.HasAction(ui.SemanticsActionDismiss), rect)
+		}
+	}
+	for _, platform := range []foundation.TargetPlatform{foundation.TargetPlatformIOS, foundation.TargetPlatformMacOS, foundation.TargetPlatformAndroid} {
+		t.Run("a dismissible barrier includes a button on "+platform.String(), func(t *testing.T) {
+			foundation.SetDebugDefaultTargetPlatformOverride(foundation.Some(platform))
+			defer foundation.SetDebugDefaultTargetPlatformOverride(foundation.None[foundation.TargetPlatform]())
+			for name, barrier := range map[string]Widget{
+				"ModalBarrier": NewModalBarrier(ModalBarrierOpts{SemanticsLabel: "Dismiss"}),
+				"AnimatedModalBarrier": NewAnimatedModalBarrier(animation.NewAlwaysStoppedAnimation(foundation.Some(ui.NewColor(testRed))),
+					AnimatedModalBarrierOpts{SemanticsLabel: "Dismiss"}),
+			} {
+				t.Run(name, func(t *testing.T) {
+					ts := gluttertest.New(t, gluttertest.Opts{Size: size})
+					ts.EnsureSemantics()
+					ts.PumpWidget(ltr(barrier))
+					dismissButton(t, ts, ui.NewRectFromLTWH(0, 0, 800, 600))
+				})
+			}
+		})
+		t.Run("the semantics clipper clips the rect in four directions on "+platform.String(), func(t *testing.T) {
+			foundation.SetDebugDefaultTargetPlatformOverride(foundation.Some(platform))
+			defer foundation.SetDebugDefaultTargetPlatformOverride(foundation.None[foundation.TargetPlatform]())
+			ts := gluttertest.New(t, gluttertest.Opts{Size: size})
+			ts.EnsureSemantics()
+			notifier := foundation.NewValueNotifier(painting.NewEdgeInsetsFromLTRB(10, 20, 30, 40))
+			defer notifier.Dispose()
+			ts.PumpWidget(ltr(NewModalBarrier(ModalBarrierOpts{SemanticsLabel: "Dismiss", ClipDetailsNotifier: notifier})))
+			dismissButton(t, ts, ui.NewRectFromLTRB(10, 20, 800-30, 600-40))
+		})
+	}
 }
