@@ -6,14 +6,13 @@ import (
 
 	"github.com/rm4n0s/errors"
 
+	"github.com/rm4n0s/glutter/animation"
 	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/semantics"
 	"github.com/rm4n0s/glutter/ui"
 )
 
 // ShowOnScreenOpts are the optional parameters of RenderObject.ShowOnScreen.
-//
-// TODO(step 8.1): Curve.
 //
 // Flutter: rendering/object.dart RenderObject.showOnScreen
 type ShowOnScreenOpts struct {
@@ -25,6 +24,9 @@ type ShowOnScreenOpts struct {
 	Rect foundation.Opt[ui.Rect]
 	// Duration is how long the scrolling takes; zero jumps.
 	Duration time.Duration
+	// Curve is the curve of the scrolling animation; the default (nil) is
+	// animation.Curves.Linear.
+	Curve animation.Curve
 }
 
 // ShowOnScreen scrolls the object into view: it asks its parent, which can be a

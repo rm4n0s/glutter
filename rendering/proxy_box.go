@@ -6,6 +6,7 @@ import (
 
 	"github.com/rm4n0s/errors"
 
+	"github.com/rm4n0s/glutter/animation"
 	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/ui"
 )
@@ -1176,6 +1177,178 @@ func (r *RenderOpacity) Paint(context *PaintingContext, offset ui.Offset) {
 func (r *RenderOpacity) DebugFillProperties(b *foundation.DiagnosticPropertiesBuilder) {
 	r.RenderProxyBox.DebugFillProperties(b)
 	b.Add(foundation.NewDoubleProperty("opacity", foundation.Some(r.opacity)))
+	b.Add(foundation.NewFlagProperty("alwaysIncludeSemantics", foundation.Some(r.alwaysIncludeSemantics),
+		foundation.FlagPropertyOpts{IfTrue: "alwaysIncludeSemantics"}))
+}
+
+// RenderAnimatedOpacity makes its child partially transparent, driven by an
+// animation: the opacity layer is updated when the animation changes, and the
+// child is not repainted.
+//
+// Flutter: rendering/proxy_box.dart RenderAnimatedOpacity
+type RenderAnimatedOpacity struct {
+	RenderProxyBox
+	opacity                 animation.Animation[float64]
+	opacityHandle           foundation.ListenerHandle
+	alpha                   foundation.Opt[int]
+	currentlyIsRepaintBound foundation.Opt[bool]
+	alwaysIncludeSemantics  bool
+}
+
+// RenderAnimatedOpacityOpts are the optional parameters of
+// NewRenderAnimatedOpacity.
+//
+// Flutter: rendering/proxy_box.dart RenderAnimatedOpacity.new
+type RenderAnimatedOpacityOpts struct {
+	// AlwaysIncludeSemantics keeps the semantics of the child when it is not
+	// visible.
+	AlwaysIncludeSemantics bool
+}
+
+// NewRenderAnimatedOpacity creates the box. The opacity animation drives the
+// alpha of the child once the box is attached; before that, the alpha is read
+// once, when the box is created.
+//
+// Flutter: rendering/proxy_box.dart RenderAnimatedOpacity.new
+func NewRenderAnimatedOpacity(opacity animation.Animation[float64], child Box, opts ...RenderAnimatedOpacityOpts) *RenderAnimatedOpacity {
+	o := firstOpts(opts)
+	r := &RenderAnimatedOpacity{}
+	InitRenderProxyBox(&r.RenderProxyBox, r, child)
+	r.SetOpacity(opacity)
+	r.alwaysIncludeSemantics = o.AlwaysIncludeSemantics
+	return r
+}
+
+// IsRepaintBoundary is true if there is a child and the alpha is not 0.
+//
+// Flutter: rendering/proxy_box.dart RenderAnimatedOpacityMixin.isRepaintBoundary
+func (r *RenderAnimatedOpacity) IsRepaintBoundary() bool {
+	return r.hasChild() && r.currentlyIsRepaintBound.OrElse(false)
+}
+
+// UpdateCompositedLayer sets the alpha of the opacity layer.
+//
+// Flutter: rendering/proxy_box.dart RenderAnimatedOpacityMixin.updateCompositedLayer
+func (r *RenderAnimatedOpacity) UpdateCompositedLayer(oldLayer OffsetLayerLike) OffsetLayerLike {
+	layer, _ := oldLayer.(*OpacityLayer)
+	if layer == nil {
+		layer = NewOpacityLayer()
+	}
+	layer.SetAlpha(r.alpha.OrElse(0))
+	return layer
+}
+
+// Opacity is the animation that drives the opacity of the child.
+//
+// Flutter: rendering/proxy_box.dart RenderAnimatedOpacityMixin.opacity
+func (r *RenderAnimatedOpacity) Opacity() animation.Animation[float64] { return r.opacity }
+
+// SetOpacity changes the animation. The box listens to it while it is attached.
+//
+// Flutter: rendering/proxy_box.dart RenderAnimatedOpacityMixin.opacity
+func (r *RenderAnimatedOpacity) SetOpacity(value animation.Animation[float64]) {
+	if r.opacity == value {
+		return
+	}
+	if r.Attached() && r.opacity != nil {
+		r.opacity.RemoveListener(r.opacityHandle)
+	}
+	r.opacity = value
+	if r.Attached() {
+		r.opacityHandle = r.opacity.AddListener(r.updateOpacity)
+	}
+	r.updateOpacity()
+}
+
+// AlwaysIncludeSemantics is whether the semantics of the child are kept when the
+// child is not visible.
+//
+// Flutter: rendering/proxy_box.dart RenderAnimatedOpacityMixin.alwaysIncludeSemantics
+func (r *RenderAnimatedOpacity) AlwaysIncludeSemantics() bool { return r.alwaysIncludeSemantics }
+
+// SetAlwaysIncludeSemantics changes the flag.
+//
+// Flutter: rendering/proxy_box.dart RenderAnimatedOpacityMixin.alwaysIncludeSemantics
+func (r *RenderAnimatedOpacity) SetAlwaysIncludeSemantics(value bool) {
+	if value == r.alwaysIncludeSemantics {
+		return
+	}
+	r.alwaysIncludeSemantics = value
+	r.MarkNeedsSemanticsUpdate()
+}
+
+// Attach starts listening to the opacity animation.
+//
+// Flutter: rendering/proxy_box.dart RenderAnimatedOpacityMixin.attach
+func (r *RenderAnimatedOpacity) Attach(owner *PipelineOwner) {
+	r.RenderProxyBox.Attach(owner)
+	r.opacityHandle = r.opacity.AddListener(r.updateOpacity)
+	r.updateOpacity() // in case it changed while we weren't listening
+}
+
+// Detach stops listening to the opacity animation.
+//
+// Flutter: rendering/proxy_box.dart RenderAnimatedOpacityMixin.detach
+func (r *RenderAnimatedOpacity) Detach() {
+	r.opacity.RemoveListener(r.opacityHandle)
+	r.opacityHandle = foundation.ListenerHandle{}
+	r.RenderProxyBox.Detach()
+}
+
+func (r *RenderAnimatedOpacity) updateOpacity() {
+	oldAlpha, hadAlpha := r.alpha.Get()
+	newAlpha := ui.ColorGetAlphaFromOpacity(r.opacity.Value())
+	r.alpha = foundation.Some(newAlpha)
+	if !hadAlpha || oldAlpha != newAlpha {
+		wasRepaintBoundary := r.currentlyIsRepaintBound
+		r.currentlyIsRepaintBound = foundation.Some(newAlpha > 0)
+		if r.hasChild() && wasRepaintBoundary != r.currentlyIsRepaintBound {
+			r.MarkNeedsCompositingBitsUpdate()
+		}
+		r.MarkNeedsCompositedLayerUpdate()
+		if oldAlpha == 0 || newAlpha == 0 {
+			r.MarkNeedsSemanticsUpdate()
+		}
+	}
+}
+
+// PaintsChild is true if the opacity is not 0.
+//
+// Flutter: rendering/proxy_box.dart RenderAnimatedOpacityMixin.paintsChild
+func (r *RenderAnimatedOpacity) PaintsChild(child RenderObject) bool {
+	if foundation.DebugMode && child.Parent() != RenderObject(r.self) {
+		panic(errors.New("RenderObjectNotChild", "PaintsChild was called with a render object that is not a child",
+			"object", foundation.DescribeIdentity(r.self), "child", foundation.DescribeIdentity(child)))
+	}
+	return r.opacity.Value() > 0
+}
+
+// Paint paints the child unless it is invisible.
+//
+// Flutter: rendering/proxy_box.dart RenderAnimatedOpacityMixin.paint
+func (r *RenderAnimatedOpacity) Paint(context *PaintingContext, offset ui.Offset) {
+	if !r.hasChild() || r.alpha.OrElse(0) == 0 {
+		return
+	}
+	r.RenderProxyBox.Paint(context, offset)
+}
+
+// VisitChildrenForSemantics visits the child only if it is visible or
+// AlwaysIncludeSemantics.
+//
+// Flutter: rendering/proxy_box.dart RenderAnimatedOpacityMixin.visitChildrenForSemantics
+func (r *RenderAnimatedOpacity) VisitChildrenForSemantics(visitor RenderObjectVisitor) {
+	if r.hasChild() && (r.alpha.OrElse(0) != 0 || r.alwaysIncludeSemantics) {
+		visitor(r.Child())
+	}
+}
+
+// DebugFillProperties adds the opacity animation and the semantics flag.
+//
+// Flutter: rendering/proxy_box.dart RenderAnimatedOpacityMixin.debugFillProperties
+func (r *RenderAnimatedOpacity) DebugFillProperties(b *foundation.DiagnosticPropertiesBuilder) {
+	r.RenderProxyBox.DebugFillProperties(b)
+	b.Add(foundation.NewDiagnosticsProperty("opacity", r.opacity))
 	b.Add(foundation.NewFlagProperty("alwaysIncludeSemantics", foundation.Some(r.alwaysIncludeSemantics),
 		foundation.FlagPropertyOpts{IfTrue: "alwaysIncludeSemantics"}))
 }

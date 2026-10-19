@@ -3,6 +3,7 @@ package rendering_test
 import (
 	"testing"
 
+	"github.com/rm4n0s/glutter/animation"
 	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/gestures"
 	"github.com/rm4n0s/glutter/internal/gpu/soft"
@@ -620,5 +621,41 @@ func TestRenderProxyBoxDryLayoutWithoutChild(t *testing.T) {
 	box := rendering.NewRenderProxyBox(nil)
 	if got := box.ComputeDryLayout(rendering.BoxConstraints{MinHeight: 8, MaxWidth: 100, MaxHeight: 100}); got != (ui.Size{Width: 0, Height: 8}) {
 		t.Errorf("dry layout = %v, want 0x8", got)
+	}
+}
+
+func TestRenderAnimatedOpacityUpdatesItsLayer(t *testing.T) {
+	h := newHarness(t)
+	controller := animation.NewAnimationController(tickerProvider{h}, animation.AnimationControllerOpts{Value: foundation.Some(0.5)})
+	defer controller.Dispose()
+	box := rendering.NewRenderAnimatedOpacity(controller, rendering.NewRenderRepaintBoundary(newSizedBox(1, 1)))
+	layout(t, h, box, atPhase(withConstraints(rendering.NewBoxConstraintsTight(ui.Size{Width: 10, Height: 10})), phasePaint))
+	layer, _ := box.Layer().(*rendering.OpacityLayer)
+	if layer == nil {
+		t.Fatalf("layer is %T, want an OpacityLayer", box.Layer())
+	}
+	if got := layer.Alpha().OrElse(-1); got != ui.ColorGetAlphaFromOpacity(0.5) {
+		t.Errorf("alpha = %d, want %d", got, ui.ColorGetAlphaFromOpacity(0.5))
+	}
+	if !box.IsRepaintBoundary() || !box.NeedsCompositing() {
+		t.Errorf("repaint boundary = %v, needs compositing = %v, want true", box.IsRepaintBoundary(), box.NeedsCompositing())
+	}
+
+	controller.SetValue(0.25)
+	pumpFrame(h, phasePaint)
+	if box.Layer() != rendering.ContainerLayerLike(layer) {
+		t.Error("the layer should be reused when the opacity changes")
+	}
+	if got := layer.Alpha().OrElse(-1); got != ui.ColorGetAlphaFromOpacity(0.25) {
+		t.Errorf("alpha = %d, want %d", got, ui.ColorGetAlphaFromOpacity(0.25))
+	}
+
+	controller.SetValue(0)
+	pumpFrame(h, phasePaint)
+	if box.IsRepaintBoundary() {
+		t.Error("an invisible child is not a repaint boundary")
+	}
+	if box.PaintsChild(box.Child()) {
+		t.Error("an invisible child is not painted")
 	}
 }

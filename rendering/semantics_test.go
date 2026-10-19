@@ -3,10 +3,13 @@ package rendering_test
 import (
 	"testing"
 
+	"github.com/rm4n0s/glutter/animation"
 	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/gestures"
+	"github.com/rm4n0s/glutter/internal/renderingtest"
 	"github.com/rm4n0s/glutter/painting"
 	"github.com/rm4n0s/glutter/rendering"
+	"github.com/rm4n0s/glutter/scheduler"
 	"github.com/rm4n0s/glutter/semantics"
 	"github.com/rm4n0s/glutter/ui"
 )
@@ -14,8 +17,6 @@ import (
 // Tests ported from flutter/test/rendering/semantics_and_children_test.dart,
 // simple_semantics_test.dart and semantics_layout_sized_test.dart, and the
 // render-object tests of flutter/test/semantics/semantics_test.dart.
-//
-// The animated opacity test waits for step 8.1 (RenderAnimatedOpacity).
 
 func TestOpacityChildrenAndSemantics(t *testing.T) {
 	box := rendering.NewRenderOpacity(newSemNode(nil))
@@ -32,6 +33,43 @@ func TestOpacityChildrenAndSemantics(t *testing.T) {
 	if got := countSemanticsChildren(box); got != 1 {
 		t.Errorf("alwaysIncludeSemantics: %d semantics children, want 1", got)
 	}
+}
+
+// tickerProvider makes the tickers of the harness's scheduler (TestVSync).
+type tickerProvider struct{ h *renderingtest.Harness }
+
+func (p tickerProvider) CreateTicker(onTick scheduler.TickerCallback) *scheduler.Ticker {
+	return scheduler.NewTicker(p.h.Scheduler, onTick)
+}
+
+func TestAnimatedOpacityChildrenAndSemantics(t *testing.T) {
+	h := newHarness(t)
+	controller := animation.NewAnimationController(tickerProvider{h})
+	defer controller.Dispose()
+	p := rendering.NewRenderParagraph(painting.NewTextSpan(painting.TextSpanOpts{}), ui.TextDirectionLTR, rendering.RenderParagraphOpts{TextEngine: h.TextEngine})
+	box := rendering.NewRenderAnimatedOpacity(controller, p)
+	check := func(step string, want int) {
+		t.Helper()
+		if got := countSemanticsChildren(box); got != want {
+			t.Errorf("%s: %d semantics children, want %d", step, got, want)
+		}
+	}
+	check("controller defaults to 0", 0)
+	controller.SetValue(0.2) // has no effect, box isn't subscribed yet
+	check("0.2 before attach", 0)
+	controller.SetValue(1.0)      // ditto
+	check("1.0 before attach", 0) // alpha is still 0
+	layout(t, h, box)             // this causes the box to attach, which makes it subscribe
+	check("attached", 1)
+	for _, tc := range []struct {
+		value float64
+		want  int
+	}{{1, 1}, {0.5, 1}, {0.25, 1}, {0.125, 1}, {0, 0}, {0.125, 1}, {0, 0}} {
+		controller.SetValue(tc.value)
+		check("value", tc.want)
+	}
+	box.SetAlwaysIncludeSemantics(true)
+	check("alwaysIncludeSemantics", 1)
 }
 
 func noIndex(children ...rendering.Box) *rendering.RenderIndexedStack {
