@@ -106,3 +106,11 @@ type ContainerBoxParentData[C RenderObject] struct {
 func (d *ContainerBoxParentData[C]) Detach() { d.checkDetach() }
 
 func isNil[T any](v T) bool { return any(v) == nil }
+
+// BoxParentDataOf is the BoxParentData of a render box that its parent laid out,
+// or the one embedded in the parent data of the child.
+//
+// Flutter: no counterpart (the cast `child.parentData! as BoxParentData`)
+func BoxParentDataOf(child RenderObject) *BoxParentData {
+	return child.ParentData().(boxParentDataHolder).boxParentData()
+}

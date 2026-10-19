@@ -984,7 +984,9 @@ func (r *RenderBox) DebugPaint(context *PaintingContext, offset ui.Offset) {
 		r.debugVerifyDryBaselines()
 	}
 	if o.PaintSizeEnabled {
-		r.DebugPaintSize(context, offset)
+		r.self.(interface {
+			DebugPaintSize(*PaintingContext, ui.Offset)
+		}).DebugPaintSize(context, offset)
 	}
 	if o.PaintBaselinesEnabled {
 		r.DebugPaintBaselines(context, offset)

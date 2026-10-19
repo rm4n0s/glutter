@@ -39,6 +39,12 @@ var DefaultRepaintColor = painting.NewHSVColorFromAHSV(0.4, 60, 1, 1)
 //
 // Flutter: rendering/debug.dart
 type DebugOptions struct {
+	// ReportError is called with the errors that the render objects report and
+	// that do not stop the frame, such as an overflow; nil prints them with
+	// DebugPrint. The binding sets it from RendererBindingOpts.ReportError.
+	//
+	// Flutter: foundation/assertions.dart FlutterError.reportError
+	ReportError func(err error)
 	// PaintSizeEnabled paints a box around every render box
 	// (debugPaintSizeEnabled).
 	PaintSizeEnabled bool

@@ -67,6 +67,9 @@ func NewRendererBinding(d *ui.PlatformDispatcher, s *scheduler.SchedulerBinding,
 		o.Debug = NewDebugOptions()
 	}
 	b := &RendererBinding{d: d, scheduler: s, gesture: g, debug: o.Debug, reportError: o.ReportError}
+	if o.ReportError != nil && o.Debug.ReportError == nil {
+		o.Debug.ReportError = o.ReportError
+	}
 	if b.reportError == nil {
 		b.reportError = func(err error) { panic(err) }
 	}
