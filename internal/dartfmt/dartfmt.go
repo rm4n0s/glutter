@@ -4,9 +4,11 @@
 package dartfmt
 
 import (
+	"fmt"
 	"math"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // ToStringAsFixed formats x with the given number of decimals as Dart's
@@ -89,4 +91,20 @@ func Double(x float64) string {
 		s += ".0"
 	}
 	return s
+}
+
+// Duration formats d as Dart's Duration.toString does: "H:MM:SS.mmmmmm", with
+// a leading "-" for a negative duration and any number of hour digits.
+func Duration(d time.Duration) string {
+	us := d.Microseconds()
+	sign := ""
+	if us < 0 {
+		sign = "-"
+		us = -us
+	}
+	hours := us / 3_600_000_000
+	minutes := us / 60_000_000 % 60
+	seconds := us / 1_000_000 % 60
+	micros := us % 1_000_000
+	return fmt.Sprintf("%s%d:%02d:%02d.%06d", sign, hours, minutes, seconds, micros)
 }

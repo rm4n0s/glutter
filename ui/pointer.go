@@ -140,6 +140,27 @@ func (k PointerDeviceKind) String() string {
 	return enumName(pointerDeviceKindNames[:], int(k), "PointerDeviceKind")
 }
 
+// Name returns the Dart name of the kind, such as "mouse". It is what Flutter's
+// EnumProperty prints. The zero value is named "touch", which is what the
+// framework treats it as.
+//
+// Flutter: ui/pointer.dart PointerDeviceKind
+func (k PointerDeviceKind) Name() string {
+	switch k {
+	case PointerDeviceKindMouse:
+		return "mouse"
+	case PointerDeviceKindStylus:
+		return "stylus"
+	case PointerDeviceKindInvertedStylus:
+		return "invertedStylus"
+	case PointerDeviceKindTrackpad:
+		return "trackpad"
+	case PointerDeviceKindUnknown:
+		return "unknown"
+	}
+	return "touch"
+}
+
 // PointerSignalKind is the kind of pointer signal event. The zero value,
 // PointerSignalKindUnspecified, is Flutter's null signalKind: the data is not
 // a signal.
