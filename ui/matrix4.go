@@ -212,6 +212,11 @@ func (m *Matrix4) SetZero() { m.storage = [16]float32{} }
 // Flutter: package:vector_math Matrix4.setFrom
 func (m *Matrix4) SetFrom(other *Matrix4) { m.storage = other.storage }
 
+// IsZero reports whether every entry is zero.
+//
+// Flutter: vector_math Matrix4.isZero
+func (m *Matrix4) IsZero() bool { return m.storage == [16]float32{} }
+
 // IsIdentity reports whether m is exactly the identity matrix.
 //
 // Flutter: painting/matrix_utils.dart MatrixUtils.isIdentity

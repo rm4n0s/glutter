@@ -27,6 +27,25 @@ type Host struct {
 	Scheduled int
 	// RenderErr is returned by RenderView, to test a failing renderer.
 	RenderErr error
+	// SemanticsUpdates are the semantics updates that the view sent.
+	SemanticsUpdates []*ui.SemanticsUpdate
+	// SemanticsTreeEnabled is what the framework last said about producing a
+	// semantics tree.
+	SemanticsTreeEnabled bool
+}
+
+// UpdateSemantics keeps the update.
+func (h *Host) UpdateSemantics(_ ui.ViewID, update *ui.SemanticsUpdate) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.SemanticsUpdates = append(h.SemanticsUpdates, update)
+}
+
+// SetSemanticsTreeEnabled keeps the flag.
+func (h *Host) SetSemanticsTreeEnabled(enabled bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.SemanticsTreeEnabled = enabled
 }
 
 // ScheduleFrame counts the frames asked for.
@@ -117,7 +136,7 @@ func New(opts ...Opts) *Stack {
 	})
 	s.View = s.Dispatcher.AddView(ui.ImplicitViewID, ui.ViewConfiguration{PhysicalSize: o.Size, DevicePixelRatio: o.DevicePixelRatio})
 	s.RenderView = rendering.NewRenderView(s.View)
-	s.Owner = rendering.NewPipelineOwner(rendering.PipelineOwnerOpts{})
+	s.Owner = rendering.NewViewPipelineOwner()
 	s.Binding.RootPipelineOwner().AdoptChild(s.Owner)
 	s.Owner.SetRootNode(s.RenderView)
 	s.Binding.AddRenderView(s.RenderView)

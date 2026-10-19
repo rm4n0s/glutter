@@ -6,6 +6,7 @@ import (
 	"github.com/rm4n0s/errors"
 
 	"github.com/rm4n0s/glutter/foundation"
+	"github.com/rm4n0s/glutter/semantics"
 )
 
 // PipelineManifold is the connection between a tree of pipeline owners and the
@@ -40,8 +41,15 @@ type PipelineOwnerOpts struct {
 	// uses its parent's.
 	Debug *DebugOptions
 
-	// TODO(step 6.7): OnSemanticsOwnerCreated, OnSemanticsUpdate and
-	// OnSemanticsOwnerDisposed.
+	// OnSemanticsOwnerCreated is called when the owner creates its semantics
+	// owner, because the manifold wants semantics.
+	OnSemanticsOwnerCreated func()
+	// OnSemanticsUpdate receives the semantics updates. A tree whose manifold
+	// enables semantics needs it (the tag SemanticsUpdateCallbackMissing).
+	OnSemanticsUpdate semantics.SemanticsUpdateCallback
+	// OnSemanticsOwnerDisposed is called when the owner disposes its semantics
+	// owner.
+	OnSemanticsOwnerDisposed func()
 }
 
 // renderDebugState is the debug state that Flutter keeps in static variables of
@@ -77,6 +85,16 @@ type PipelineOwner struct {
 	manifold                PipelineManifold
 	debugParent             *PipelineOwner
 	disallowRootNode        bool
+	semanticsListener       foundation.ListenerHandle
+
+	onSemanticsOwnerCreated  func()
+	onSemanticsUpdate        semantics.SemanticsUpdateCallback
+	onSemanticsOwnerDisposed func()
+	semanticsOwner           *semantics.SemanticsOwner
+	debugDoingSemantics      bool
+
+	nodesNeedingSemanticsUpdate         orderedSet[RenderObject]
+	nodesNeedingSemanticsGeometryUpdate orderedSet[RenderObject]
 }
 
 // NewPipelineOwner creates a pipeline owner.
@@ -87,7 +105,8 @@ func NewPipelineOwner(opts ...PipelineOwnerOpts) *PipelineOwner {
 	if o.Debug == nil {
 		o.Debug = NewDebugOptions()
 	}
-	p := &PipelineOwner{onNeedVisualUpdate: o.OnNeedVisualUpdate, debug: o.Debug, debugState: &renderDebugState{}, disallowRootNode: o.DisallowRootNode}
+	p := &PipelineOwner{onNeedVisualUpdate: o.OnNeedVisualUpdate, debug: o.Debug, debugState: &renderDebugState{}, disallowRootNode: o.DisallowRootNode,
+		onSemanticsOwnerCreated: o.OnSemanticsOwnerCreated, onSemanticsUpdate: o.OnSemanticsUpdate, onSemanticsOwnerDisposed: o.OnSemanticsOwnerDisposed}
 	return p
 }
 
@@ -268,13 +287,162 @@ func (p *PipelineOwner) FlushPaint() {
 	}
 }
 
-// FlushSemantics updates the semantics tree, if there is one, and then those of
-// the child owners.
+// SemanticsOwner is the owner of the semantics tree, or nil while the manifold
+// does not want semantics. A nil owner makes the pipeline skip all the
+// semantics steps.
 //
-// TODO(step 6.7): the semantics owner and the semantics update.
+// Flutter: rendering/object.dart PipelineOwner.semanticsOwner
+func (p *PipelineOwner) SemanticsOwner() *semantics.SemanticsOwner { return p.semanticsOwner }
+
+// DebugDoingSemantics reports whether FlushSemantics is running.
+//
+// Flutter: rendering/object.dart PipelineOwner._debugDoingSemantics
+func (p *PipelineOwner) DebugDoingSemantics() bool { return p.debugDoingSemantics }
+
+func (p *PipelineOwner) updateSemanticsOwner() {
+	if p.manifold != nil && p.manifold.SemanticsEnabled() {
+		if p.semanticsOwner == nil {
+			if p.onSemanticsUpdate == nil {
+				panic(errors.New("SemanticsUpdateCallbackMissing", "attempted to enable semantics without configuring an OnSemanticsUpdate callback"))
+			}
+			p.semanticsOwner = semantics.NewSemanticsOwner(p.onSemanticsUpdate)
+			if p.onSemanticsOwnerCreated != nil {
+				p.onSemanticsOwnerCreated()
+			}
+		}
+	} else if p.semanticsOwner != nil {
+		p.semanticsOwner.Dispose()
+		p.semanticsOwner = nil
+		if p.onSemanticsOwnerDisposed != nil {
+			p.onSemanticsOwnerDisposed()
+		}
+	}
+}
+
+// FlushSemantics updates the semantics tree, if there is one, and then those of
+// the child owners. Initially only the root, as scheduled by
+// ScheduleInitialSemantics, needs an update.
 //
 // Flutter: rendering/object.dart PipelineOwner.flushSemantics
 func (p *PipelineOwner) FlushSemantics() {
+	if p.semanticsOwner == nil {
+		return
+	}
+	if foundation.DebugMode {
+		p.debugDoingSemantics = true
+	}
+	defer func() {
+		if foundation.DebugMode {
+			p.debugDoingSemantics = false
+		}
+	}()
+	// Top-down order: a change of a parent can invalidate the whole subtree.
+	var nodesToProcess []RenderObject
+	for _, o := range p.nodesNeedingSemanticsUpdate.take() {
+		if ob := o.AsRenderObject(); !ob.needsLayout && ob.owner == p {
+			nodesToProcess = append(nodesToProcess, o)
+		}
+	}
+	sort.SliceStable(nodesToProcess, func(i, j int) bool { return nodesToProcess[i].Depth() < nodesToProcess[j].Depth() })
+	for _, node := range nodesToProcess {
+		sem := node.AsRenderObject().semantics()
+		if sem.parentDataDirty() {
+			// The node is blocked by a sibling or hidden by its parent; the
+			// parent data must not be updated now, or the gap of render
+			// objects with dirty parent data would remain when the branch
+			// rejoins the tree.
+			continue
+		}
+		sem.updateChildren()
+	}
+
+	// updateChildren can add nodes needing geometry updates.
+	var nodesToProcessGeometry []RenderObject
+	for _, o := range p.nodesNeedingSemanticsGeometryUpdate.take() {
+		if ob := o.AsRenderObject(); !ob.needsLayout && ob.owner == p && !ob.semantics().parentDataDirty() {
+			nodesToProcessGeometry = append(nodesToProcessGeometry, o)
+		}
+	}
+	for _, node := range nodesToProcessGeometry {
+		sem := node.AsRenderObject().semantics()
+		if sem.shouldFormSemanticsNode() && sem.geometryDirty() {
+			continue
+		}
+		if sem.shouldFormSemanticsNode() && node.AsRenderObject().isRelayoutBoundary.OrElse(false) {
+			sem.geometry = nil
+			continue
+		}
+		if !sem.contributesToSemanticsTree() {
+			for _, f := range sem.mergeUp {
+				child, ok := f.(*renderObjectSemantics)
+				if !ok {
+					continue
+				}
+				if child.shouldFormSemanticsNode() {
+					child.geometry = nil
+				} else {
+					for _, inSubtree := range child.children {
+						inSubtree.geometry = nil
+					}
+				}
+			}
+			continue
+		}
+		for _, child := range sem.children {
+			child.geometry = nil
+		}
+	}
+
+	// The token invalidates the cache of the closest ancestor with clean geometry.
+	treeShapeToken := new(struct{})
+	var ensure orderedSet[*renderObjectSemantics]
+	for _, node := range nodesToProcessGeometry {
+		sem := node.AsRenderObject().semantics()
+		sem.computeAncestorInfo(treeShapeToken)
+		if sem.firstAncestorNodeWithCleanGeometry != nil {
+			ensure.add(sem.firstAncestorNodeWithCleanGeometry)
+		}
+	}
+	toEnsure := ensure.take()
+	sort.SliceStable(toEnsure, func(i, j int) bool { return toEnsure[i].renderObject.Depth() < toEnsure[j].renderObject.Depth() })
+	for _, node := range toEnsure {
+		node.ensureGeometry()
+	}
+
+	for i := len(nodesToProcess) - 1; i >= 0; i-- {
+		sem := nodesToProcess[i].AsRenderObject().semantics()
+		sem.computeAncestorInfo(treeShapeToken)
+		var targets []*renderObjectSemantics
+		if sem.geometryDirty() {
+			if sem.firstAncestorNodeWithCleanGeometry != nil {
+				targets = append(targets, sem.firstAncestorNodeWithCleanGeometry)
+			}
+		} else {
+			// A node that is a semantics boundary and a layout boundary can
+			// become invisible after ensureGeometry: its parent must then
+			// update its subtree to drop the node.
+			if !sem.geometry.isVisible() && !sem.isRoot() {
+				if parentInTree := sem.parentInSemanticsTree; parentInTree != nil {
+					if !parentInTree.geometryDirty() {
+						targets = append(targets, parentInTree)
+					} else if first := parentInTree.firstAncestorNodeWithCleanGeometry; first != nil {
+						// Nil if this is a blocked branch.
+						targets = append(targets, first)
+					}
+				}
+			}
+			targets = append(targets, sem)
+		}
+		for _, target := range targets {
+			if target.parentDataDirty() {
+				// The node is not in the tree.
+				continue
+			}
+			target.ensureSemanticsNode()
+		}
+	}
+
+	p.semanticsOwner.SendSemanticsUpdate()
 	for _, child := range p.children {
 		child.FlushSemantics()
 	}
@@ -303,14 +471,14 @@ func (p *PipelineOwner) String() string { return foundation.DiagnosticableString
 
 // Attach connects the owner and its children to the manifold.
 //
-// TODO(step 6.7): listen to SemanticsEnabled changes.
-//
 // Flutter: rendering/object.dart PipelineOwner.attach
 func (p *PipelineOwner) Attach(manifold PipelineManifold) {
 	if foundation.DebugMode && p.manifold != nil {
 		panic(errors.New("PipelineOwnerAttached", "the pipeline owner is attached to a manifold already"))
 	}
 	p.manifold = manifold
+	p.semanticsListener = manifold.AddListener(p.updateSemanticsOwner)
+	p.updateSemanticsOwner()
 	for _, child := range p.children {
 		child.Attach(manifold)
 	}
@@ -323,7 +491,10 @@ func (p *PipelineOwner) Detach() {
 	if foundation.DebugMode && p.manifold == nil {
 		panic(errors.New("PipelineOwnerNotAttached", "the pipeline owner is not attached to a manifold"))
 	}
+	p.manifold.RemoveListener(p.semanticsListener)
 	p.manifold = nil
+	// The semantics owner stays, so as not to disrupt its clients in case of a
+	// re-attach; Attach updates it, and Dispose disposes it.
 	for _, child := range p.children {
 		child.Detach()
 	}
@@ -408,7 +579,12 @@ func (p *PipelineOwner) Dispose() {
 	if foundation.DebugMode && (len(p.children) > 0 || p.rootNode != nil || p.manifold != nil || p.debugParent != nil) {
 		panic(errors.New("PipelineOwnerDisposeBusy", "a pipeline owner can only be disposed when it has no children, root, manifold or parent"))
 	}
+	if p.semanticsOwner != nil {
+		p.semanticsOwner.Dispose()
+		p.semanticsOwner = nil
+	}
 	p.nodesNeedingLayout = nil
 	p.nodesNeedingCompositing = nil
 	p.nodesNeedingPaint = nil
+	p.nodesNeedingSemanticsUpdate.take()
 }

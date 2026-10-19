@@ -26,11 +26,10 @@ func TestTableControlTight(t *testing.T) {
 		t.Errorf("size = %v, want 800x600", table.Size())
 	}
 	skipUnlessDebug(t)
-	// Flutter's dump also has a "semantic boundary" line after the constraints;
-	// that is added with the semantics of step 6.7.
 	want := "RenderTable#00000 NEEDS-PAINT\n" +
 		" │ parentData: <none>\n" +
 		" │ constraints: BoxConstraints(w=800.0, h=600.0)\n" +
+		" │ semantic boundary\n" +
 		" │ size: Size(800.0, 600.0)\n" +
 		" │ default column width: FlexColumnWidth(1.0)\n" +
 		" │ table size: 0×0\n" +

@@ -7,13 +7,15 @@ import (
 	"github.com/rm4n0s/errors"
 
 	"github.com/rm4n0s/glutter/foundation"
+	"github.com/rm4n0s/glutter/semantics"
 	"github.com/rm4n0s/glutter/ui"
 )
 
 // CustomPainter is the interface that custom painters implement: it paints on a
 // canvas of a given size and tells when it needs to paint again.
 //
-// TODO(step 6.7): SemanticsBuilder and ShouldRebuildSemantics.
+// The semantics of a painter are optional interfaces: SemanticsPainter and
+// SemanticsRebuildPainter.
 //
 // Flutter: rendering/custom_paint.dart CustomPainter
 type CustomPainter interface {
@@ -86,6 +88,11 @@ type RenderCustomPaint struct {
 	preferredSize     ui.Size
 	IsComplex         bool
 	WillChange        bool
+
+	backgroundSemanticsBuilder SemanticsBuilderCallback
+	foregroundSemanticsBuilder SemanticsBuilderCallback
+	backgroundSemanticsNodes   []*semantics.SemanticsNode
+	foregroundSemanticsNodes   []*semantics.SemanticsNode
 }
 
 // RenderCustomPaintOpts are the optional parameters of NewRenderCustomPaint.
@@ -165,7 +172,14 @@ func (r *RenderCustomPaint) didUpdatePainter(newPainter, oldPainter CustomPainte
 			*handle = newPainter.AddListener(r.MarkNeedsPaint)
 		}
 	}
-	// TODO(step 6.7): mark the semantics as needing an update.
+	if newPainter == nil {
+		if r.Attached() {
+			r.MarkNeedsSemanticsUpdate()
+		}
+	} else if oldPainter == nil || foundation.RuntimeTypeName(newPainter) != foundation.RuntimeTypeName(oldPainter) ||
+		shouldRebuildPainterSemantics(newPainter, oldPainter) {
+		r.MarkNeedsSemanticsUpdate()
+	}
 }
 
 // PreferredSize is the size that this render object would like to be when it has

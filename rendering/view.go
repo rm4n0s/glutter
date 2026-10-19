@@ -341,6 +341,42 @@ func (r *RenderView) SemanticBounds() ui.Rect {
 	return r.rootTransform.TransformRect(ui.OffsetZero.And(r.size))
 }
 
+// UpdateSemantics sends the semantics update to the view of the engine.
+//
+// Flutter: rendering/view.dart RenderView.updateSemantics
+func (r *RenderView) UpdateSemantics(update *ui.SemanticsUpdate) { r.view.UpdateSemantics(update) }
+
+// NewViewPipelineOwner creates the pipeline owner for a tree whose root is a
+// RenderView: it starts, sends and clears the semantics through that view.
+// Flutter's View widget wires its owner the same way.
+//
+// Flutter: widgets/view.dart _ViewScope (PipelineOwner callbacks)
+func NewViewPipelineOwner(opts ...PipelineOwnerOpts) *PipelineOwner {
+	o := firstOpts(opts)
+	var owner *PipelineOwner
+	root := func() *RenderView {
+		v, _ := owner.RootNode().(*RenderView)
+		return v
+	}
+	o.OnSemanticsOwnerCreated = func() {
+		if v := root(); v != nil {
+			v.ScheduleInitialSemantics()
+		}
+	}
+	o.OnSemanticsUpdate = func(update *ui.SemanticsUpdate) {
+		if v := root(); v != nil {
+			v.UpdateSemantics(update)
+		}
+	}
+	o.OnSemanticsOwnerDisposed = func() {
+		if v := root(); v != nil {
+			v.ClearSemantics()
+		}
+	}
+	owner = NewPipelineOwner(o)
+	return owner
+}
+
 // DebugFillProperties adds the view size, the pixel ratio and the configuration.
 //
 // Flutter: rendering/view.dart RenderView.debugFillProperties
@@ -350,4 +386,7 @@ func (r *RenderView) DebugFillProperties(p *foundation.DiagnosticPropertiesBuild
 	p.Add(foundation.NewDoubleProperty("device pixel ratio", foundation.Some(r.view.DevicePixelRatio()),
 		foundation.NumberPropertyOpts{Tooltip: "physical pixels per logical pixel"}))
 	p.Add(foundation.NewDiagnosticsPropertyOpt("configuration", r.configuration, foundation.DiagnosticsPropertyOpts{Tooltip: "in logical pixels"}))
+	if r.view.PlatformDispatcher().SemanticsEnabled() {
+		p.Add(foundation.NewDiagnosticsNodeMessage("semantics enabled"))
+	}
 }

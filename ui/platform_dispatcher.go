@@ -22,6 +22,18 @@ type PlatformHost interface {
 	Post(fn func())
 }
 
+// SemanticsHost is what the engine implements to take part in semantics. The
+// dispatcher uses it when the host has it; a host without it ignores semantics.
+//
+// Flutter: no counterpart (the engine's native side of dart:ui)
+type SemanticsHost interface {
+	// UpdateSemantics gives the view the changes to its semantics tree.
+	UpdateSemantics(view ViewID, update *SemanticsUpdate)
+	// SetSemanticsTreeEnabled says whether the framework produces a semantics
+	// tree; the engine then keeps its accessibility bridge in step.
+	SetSemanticsTreeEnabled(enabled bool)
+}
+
 // PlatformConfiguration is the system-wide configuration the app follows. The
 // engine hands one to the dispatcher whenever it changes.
 //
@@ -79,6 +91,16 @@ type PlatformDispatcher struct {
 	//
 	// Flutter: ui/platform_dispatcher.dart PlatformDispatcher.onAccessibilityFeaturesChanged
 	OnAccessibilityFeaturesChanged func()
+	// OnSemanticsEnabledChanged is called when an assistive technology starts or
+	// stops asking for semantics.
+	//
+	// Flutter: ui/platform_dispatcher.dart PlatformDispatcher.onSemanticsEnabledChanged
+	OnSemanticsEnabledChanged func()
+	// OnSemanticsActionEvent is called when an assistive technology asks a node
+	// to perform an action.
+	//
+	// Flutter: ui/platform_dispatcher.dart PlatformDispatcher.onSemanticsActionEvent
+	OnSemanticsActionEvent func(event SemanticsActionEvent)
 	// OnBeginFrame is called to start a frame, with the time of the frame
 	// since an arbitrary fixed point. The times never go back. Animation
 	// tickers run here.
@@ -113,6 +135,7 @@ type PlatformDispatcher struct {
 	lifecycle     AppLifecycleState
 	lastFrameTime time.Duration
 	textEngine    ParagraphFactory
+	semanticsOn   bool
 }
 
 // NewPlatformDispatcher creates a dispatcher with no views. The host is the
@@ -406,3 +429,42 @@ func (d *PlatformDispatcher) SetTextEngine(engine ParagraphFactory) { d.textEngi
 //
 // Flutter: no counterpart (Dart reaches the engine's font collection globally)
 func (d *PlatformDispatcher) TextEngine() ParagraphFactory { return d.textEngine }
+
+// SemanticsEnabled reports whether an assistive technology asks for semantics.
+//
+// Flutter: ui/platform_dispatcher.dart PlatformDispatcher.semanticsEnabled
+func (d *PlatformDispatcher) SemanticsEnabled() bool { return d.semanticsOn }
+
+// SetSemanticsEnabled says whether an assistive technology asks for semantics,
+// and calls OnSemanticsEnabledChanged if that changed. Called by the engine.
+//
+// Flutter: ui/platform_dispatcher.dart PlatformDispatcher._updateSemanticsEnabled
+func (d *PlatformDispatcher) SetSemanticsEnabled(enabled bool) {
+	if d.semanticsOn == enabled {
+		return
+	}
+	d.semanticsOn = enabled
+	if d.OnSemanticsEnabledChanged != nil {
+		d.OnSemanticsEnabledChanged()
+	}
+}
+
+// DispatchSemanticsActionEvent reports an action that an assistive technology
+// asked for. Called by the engine.
+//
+// Flutter: ui/platform_dispatcher.dart PlatformDispatcher._dispatchSemanticsAction
+func (d *PlatformDispatcher) DispatchSemanticsActionEvent(event SemanticsActionEvent) {
+	if d.OnSemanticsActionEvent != nil {
+		d.OnSemanticsActionEvent(event)
+	}
+}
+
+// SetSemanticsTreeEnabled tells the engine whether the framework produces a
+// semantics tree.
+//
+// Flutter: ui/platform_dispatcher.dart PlatformDispatcher.setSemanticsTreeEnabled
+func (d *PlatformDispatcher) SetSemanticsTreeEnabled(enabled bool) {
+	if h, ok := d.host.(SemanticsHost); ok {
+		h.SetSemanticsTreeEnabled(enabled)
+	}
+}

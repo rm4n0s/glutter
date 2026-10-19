@@ -9,6 +9,7 @@ import (
 
 	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/painting"
+	"github.com/rm4n0s/glutter/semantics"
 	"github.com/rm4n0s/glutter/ui"
 )
 
@@ -434,6 +435,10 @@ type RenderTable struct {
 	rowTops               []float64
 	columnLefts           []float64
 	tableWidth            float64
+
+	idToIndexMap map[int]tableIndex
+	cachedRows   map[int]*semantics.SemanticsNode
+	cachedCells  map[tableIndex]*semantics.SemanticsNode
 }
 
 // RenderTableOpts are the optional parameters of NewRenderTable.

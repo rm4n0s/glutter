@@ -8,6 +8,7 @@ import (
 	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/gestures"
 	"github.com/rm4n0s/glutter/painting"
+	"github.com/rm4n0s/glutter/semantics"
 	"github.com/rm4n0s/glutter/services"
 	"github.com/rm4n0s/glutter/ui"
 )
@@ -507,8 +508,9 @@ func (r *RenderRepaintBoundary) DebugFillProperties(b *foundation.DiagnosticProp
 
 // RenderIgnorePointer is invisible to hit testing when ignoring.
 //
-// Deviation: the deprecated ignoringSemantics parameter is not ported; the
-// semantics of an ignored subtree are handled in step 6.7 (SPEC §12.10).
+// Deviation: the deprecated ignoringSemantics parameter is not ported, so it is
+// always null: the pointer-ignoring subtree blocks user actions and keeps its
+// semantics (SPEC §12.10).
 //
 // Flutter: rendering/proxy_box.dart RenderIgnorePointer
 type RenderIgnorePointer struct {
@@ -547,6 +549,15 @@ func (r *RenderIgnorePointer) SetIgnoring(value bool) {
 	}
 	r.ignoring = value
 	r.MarkNeedsSemanticsUpdate()
+}
+
+// DescribeSemanticsConfiguration blocks the user actions of the subtree when
+// ignoring.
+//
+// Flutter: rendering/proxy_box.dart RenderIgnorePointer.describeSemanticsConfiguration
+func (r *RenderIgnorePointer) DescribeSemanticsConfiguration(config *semantics.SemanticsConfiguration) {
+	r.RenderProxyBox.DescribeSemanticsConfiguration(config)
+	config.IsBlockingUserActions = r.ignoring
 }
 
 // HitTest is false when ignoring.
@@ -742,6 +753,16 @@ func (r *RenderOffstage) DebugFillProperties(b *foundation.DiagnosticPropertiesB
 	b.Add(foundation.NewDiagnosticsProperty("offstage", r.offstage))
 }
 
+// VisitChildrenForSemantics visits no child when offstage.
+//
+// Flutter: rendering/proxy_box.dart RenderOffstage.visitChildrenForSemantics
+func (r *RenderOffstage) VisitChildrenForSemantics(visitor RenderObjectVisitor) {
+	if r.offstage {
+		return
+	}
+	r.RenderProxyBox.VisitChildrenForSemantics(visitor)
+}
+
 // DebugDescribeChildren describes the child in the offstage style when offstage.
 //
 // Flutter: rendering/proxy_box.dart RenderOffstage.debugDescribeChildren
@@ -759,8 +780,8 @@ func (r *RenderOffstage) DebugDescribeChildren() []foundation.DiagnosticsNode {
 
 // RenderAbsorbPointer absorbs pointer events when absorbing.
 //
-// Deviation: the deprecated ignoringSemantics parameter is not ported (SPEC
-// §12.10).
+// Deviation: the deprecated ignoringSemantics parameter is not ported, so it is
+// always null (SPEC §12.10).
 //
 // Flutter: rendering/proxy_box.dart RenderAbsorbPointer
 type RenderAbsorbPointer struct {
@@ -799,6 +820,15 @@ func (r *RenderAbsorbPointer) SetAbsorbing(value bool) {
 	}
 	r.absorbing = value
 	r.MarkNeedsSemanticsUpdate()
+}
+
+// DescribeSemanticsConfiguration blocks the user actions of the subtree when
+// absorbing.
+//
+// Flutter: rendering/proxy_box.dart RenderAbsorbPointer.describeSemanticsConfiguration
+func (r *RenderAbsorbPointer) DescribeSemanticsConfiguration(config *semantics.SemanticsConfiguration) {
+	r.RenderProxyBox.DescribeSemanticsConfiguration(config)
+	config.IsBlockingUserActions = r.absorbing
 }
 
 // HitTest is true inside the box when absorbing, without testing the child.

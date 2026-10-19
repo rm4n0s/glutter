@@ -1127,6 +1127,16 @@ func (r *RenderOpacity) SetAlwaysIncludeSemantics(value bool) {
 	r.MarkNeedsSemanticsUpdate()
 }
 
+// VisitChildrenForSemantics visits the child only if it is visible or
+// AlwaysIncludeSemantics.
+//
+// Flutter: rendering/proxy_box.dart RenderOpacity.visitChildrenForSemantics
+func (r *RenderOpacity) VisitChildrenForSemantics(visitor RenderObjectVisitor) {
+	if r.hasChild() && (r.alpha != 0 || r.alwaysIncludeSemantics) {
+		visitor(r.Child())
+	}
+}
+
 // PaintsChild is true if the opacity is not 0.
 //
 // Flutter: rendering/proxy_box.dart RenderOpacity.paintsChild

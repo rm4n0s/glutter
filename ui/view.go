@@ -142,12 +142,20 @@ func (v *View) Display() Display { return v.cfg.Display }
 // as a lost GPU context; a dispatcher without an engine behind it returns
 // PlatformHostMissing.
 //
-// TODO(step 6.7): UpdateSemantics.
-//
 // Flutter: ui/window.dart FlutterView.render
 func (v *View) Render(scene *Scene) error {
 	if v.d.host == nil {
 		return errors.New("PlatformHostMissing", "the dispatcher has no engine to render with", "view", int64(v.id))
 	}
 	return v.d.host.RenderView(v.id, scene)
+}
+
+// UpdateSemantics gives the engine the changes to the semantics tree of the
+// view. A host that does not take part in semantics ignores it.
+//
+// Flutter: ui/window.dart FlutterView.updateSemantics
+func (v *View) UpdateSemantics(update *SemanticsUpdate) {
+	if h, ok := v.d.host.(SemanticsHost); ok {
+		h.UpdateSemantics(v.id, update)
+	}
 }

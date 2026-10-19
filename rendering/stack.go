@@ -628,6 +628,15 @@ func (s *RenderIndexedStack) childAtIndex() Box {
 	return child
 }
 
+// VisitChildrenForSemantics visits only the displayed child.
+//
+// Flutter: rendering/stack.dart RenderIndexedStack.visitChildrenForSemantics
+func (s *RenderIndexedStack) VisitChildrenForSemantics(visitor RenderObjectVisitor) {
+	if displayed := s.childAtIndex(); !isNil(displayed) {
+		visitor(displayed)
+	}
+}
+
 // ComputeDistanceToActualBaseline is the baseline of the displayed child.
 //
 // Flutter: rendering/stack.dart RenderIndexedStack.computeDistanceToActualBaseline

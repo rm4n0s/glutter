@@ -188,6 +188,7 @@ type RenderParagraph struct {
 	needsClipping           bool
 	overflowShader          *ui.Gradient
 	placeholderDimensions   []painting.PlaceholderDimensions
+	psem                    paragraphSemantics
 }
 
 // RenderParagraphOpts are the optional parameters of NewRenderParagraph.
@@ -295,14 +296,17 @@ func (r *RenderParagraph) SetText(value painting.InlineSpan) {
 		return
 	case painting.RenderComparisonMetadata:
 		r.textPainter.SetText(value)
+		r.psem.haveCombinedInfos = false
 		r.MarkNeedsSemanticsUpdate()
 	case painting.RenderComparisonPaint:
 		r.textPainter.SetText(value)
+		r.psem.haveCachedLabels, r.psem.haveCombinedInfos = false, false
 		r.MarkNeedsPaint()
 		r.MarkNeedsSemanticsUpdate()
 	case painting.RenderComparisonLayout:
 		r.textPainter.SetText(value)
 		r.overflowShader = nil
+		r.psem.haveCachedLabels, r.psem.haveCombinedInfos = false, false
 		r.MarkNeedsLayout()
 		r.removeSelectionRegistrarSubscription()
 		r.disposeSelectableFragments()

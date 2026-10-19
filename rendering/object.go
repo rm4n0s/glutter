@@ -7,6 +7,7 @@ import (
 
 	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/gestures"
+	"github.com/rm4n0s/glutter/semantics"
 	"github.com/rm4n0s/glutter/ui"
 )
 
@@ -202,6 +203,41 @@ type RenderObject interface {
 	//
 	// Flutter: rendering/object.dart RenderObject.debugDoingThisLayoutWithCallback
 	DebugDoingThisLayoutWithCallback() bool
+
+	// MarkNeedsSemanticsUpdate marks the semantics of the object as changed.
+	//
+	// Flutter: rendering/object.dart RenderObject.markNeedsSemanticsUpdate
+	MarkNeedsSemanticsUpdate()
+	// DescribeSemanticsConfiguration fills the configuration with the
+	// semantics of the object.
+	//
+	// Flutter: rendering/object.dart RenderObject.describeSemanticsConfiguration
+	DescribeSemanticsConfiguration(config *semantics.SemanticsConfiguration)
+	// VisitChildrenForSemantics visits the children that take part in
+	// semantics, in paint order.
+	//
+	// Flutter: rendering/object.dart RenderObject.visitChildrenForSemantics
+	VisitChildrenForSemantics(visitor RenderObjectVisitor)
+	// AssembleSemanticsNode gives the node its configuration and children.
+	//
+	// Flutter: rendering/object.dart RenderObject.assembleSemanticsNode
+	AssembleSemanticsNode(node *semantics.SemanticsNode, config *semantics.SemanticsConfiguration, children []*semantics.SemanticsNode)
+	// DescribeSemanticsClip is the clip of the semantics of the child.
+	//
+	// Flutter: rendering/object.dart RenderObject.describeSemanticsClip
+	DescribeSemanticsClip(child RenderObject) foundation.Opt[ui.Rect]
+	// ClearSemantics throws away the semantics of the object and its subtree.
+	//
+	// Flutter: rendering/object.dart RenderObject.clearSemantics
+	ClearSemantics()
+	// ShowOnScreen asks the ancestors to scroll the object into view.
+	//
+	// Flutter: rendering/object.dart RenderObject.showOnScreen
+	ShowOnScreen(opts ShowOnScreenOpts)
+	// SendSemanticsEvent sends the event about the object.
+	//
+	// Flutter: rendering/object.dart RenderObject.sendSemanticsEvent
+	SendSemanticsEvent(event semantics.SemanticsEvent)
 }
 
 // renderChildModel is how RenderObjectBase reaches the children that a mixin
@@ -246,6 +282,8 @@ type RenderObjectBase struct {
 	debugCanParentUseSize foundation.Opt[bool]
 	debugMutationsLocked  bool
 	ownDebugState         *renderDebugState
+
+	sem *renderObjectSemantics
 
 	// DebugCreator is the object that created this render object, such as the
 	// widget's element, for debug output.
@@ -593,6 +631,9 @@ func (b *RenderObjectBase) Attach(owner *PipelineOwner) {
 	if b.needsPaint && !isNil(b.layerHandle.Layer()) {
 		b.needsPaint = false
 		b.MarkNeedsPaint()
+	}
+	if sem := b.semantics(); sem.configProv.effective().IsSemanticBoundary() && (sem.parentDataDirty() || !sem.built) {
+		b.self.MarkNeedsSemanticsUpdate()
 	}
 	if b.model != nil {
 		b.model.attachChildren(owner)
@@ -1314,13 +1355,6 @@ func (b *RenderObjectBase) DescribeApproximatePaintClip(RenderObject) foundation
 	return foundation.None[ui.Rect]()
 }
 
-// MarkNeedsSemanticsUpdate marks the object's semantics as changed.
-//
-// TODO(step 6.7): the semantics tree.
-//
-// Flutter: rendering/object.dart RenderObject.markNeedsSemanticsUpdate
-func (b *RenderObjectBase) MarkNeedsSemanticsUpdate() {}
-
 // HandleEvent does nothing; a render object that reacts to pointer events
 // overrides it.
 //
@@ -1390,6 +1424,14 @@ func (b *RenderObjectBase) DebugFillProperties(p *foundation.DiagnosticPropertie
 	p.Add(foundation.NewDiagnosticsProperty("constraints", b.constraints, foundation.DiagnosticsPropertyOpts{MissingIfNull: true}))
 	p.Add(foundation.NewDiagnosticsProperty("layer", b.layerHandle.Layer(),
 		foundation.DiagnosticsPropertyOpts{DefaultValue: foundation.DefaultNull}))
+	if node := b.DebugSemantics(); node != nil {
+		p.Add(foundation.NewDiagnosticsProperty("semantics node", node))
+	}
+	eff := b.semantics().configProv.effective()
+	p.Add(foundation.NewFlagProperty("isBlockingSemanticsOfPreviouslyPaintedNodes", foundation.Some(eff.IsBlockingSemanticsOfPreviouslyPaintedNodes),
+		foundation.FlagPropertyOpts{IfTrue: "blocks semantics of earlier render objects below the common boundary"}))
+	p.Add(foundation.NewFlagProperty("isSemanticBoundary", foundation.Some(eff.IsSemanticBoundary()),
+		foundation.FlagPropertyOpts{IfTrue: "semantic boundary"}))
 }
 
 // DebugDescribeChildren describes the children through the child model.

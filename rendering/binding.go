@@ -8,6 +8,7 @@ import (
 	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/gestures"
 	"github.com/rm4n0s/glutter/scheduler"
+	"github.com/rm4n0s/glutter/semantics"
 	"github.com/rm4n0s/glutter/services"
 	"github.com/rm4n0s/glutter/ui"
 )
@@ -50,6 +51,7 @@ type RendererBinding struct {
 	manifold       *bindingPipelineManifold
 	rootOwner      *PipelineOwner
 	mouseTracker   *MouseTracker
+	semantics      *semantics.SemanticsBinding
 	views          []*RenderView
 	firstFrameDefs int
 	firstFrameSent bool
@@ -73,7 +75,9 @@ func NewRendererBinding(d *ui.PlatformDispatcher, s *scheduler.SchedulerBinding,
 	if b.reportError == nil {
 		b.reportError = func(err error) { panic(err) }
 	}
+	b.semantics = semantics.NewSemanticsBinding(d, s, semantics.SemanticsBindingOpts{PerformSemanticsAction: b.performSemanticsAction})
 	b.manifold = &bindingPipelineManifold{binding: b}
+	b.semantics.AddSemanticsEnabledListener(b.manifold.NotifyListeners)
 	b.rootOwner = b.CreateRootPipelineOwner()
 	previous := d.OnMetricsChanged
 	d.OnMetricsChanged = func() {
@@ -106,7 +110,11 @@ func (b *RendererBinding) DebugOptions() *DebugOptions { return b.debug }
 //
 // Flutter: rendering/binding.dart RendererBinding.createRootPipelineOwner
 func (b *RendererBinding) CreateRootPipelineOwner() *PipelineOwner {
-	return NewPipelineOwner(PipelineOwnerOpts{DisallowRootNode: true, Debug: b.debug})
+	return NewPipelineOwner(PipelineOwnerOpts{
+		DisallowRootNode: true, Debug: b.debug,
+		// Never called: the root owner has no root node.
+		OnSemanticsUpdate: func(*ui.SemanticsUpdate) {},
+	})
 }
 
 // RootPipelineOwner is the root of the tree of pipeline owners; render views'
@@ -114,6 +122,16 @@ func (b *RendererBinding) CreateRootPipelineOwner() *PipelineOwner {
 //
 // Flutter: rendering/binding.dart RendererBinding.rootPipelineOwner
 func (b *RendererBinding) RootPipelineOwner() *PipelineOwner { return b.rootOwner }
+
+// SemanticsBinding is the semantics binding that the renderer binding made: it
+// says whether semantics are enabled, and passes the actions of assistive
+// technologies to the semantics owners of the render views.
+//
+// Deviation: Flutter's RendererBinding is mixed with SemanticsBinding; this one
+// owns it (SPEC §12.10).
+//
+// Flutter: semantics/binding.dart SemanticsBinding.instance
+func (b *RendererBinding) SemanticsBinding() *semantics.SemanticsBinding { return b.semantics }
 
 // Scheduler is the scheduler binding.
 func (b *RendererBinding) Scheduler() *scheduler.SchedulerBinding { return b.scheduler }
@@ -377,5 +395,97 @@ type bindingPipelineManifold struct {
 
 func (m *bindingPipelineManifold) RequestVisualUpdate() { m.binding.scheduler.EnsureVisualUpdate() }
 
-// TODO(step 6.7): follow the semantics binding's semanticsEnabled.
-func (m *bindingPipelineManifold) SemanticsEnabled() bool { return false }
+func (m *bindingPipelineManifold) SemanticsEnabled() bool {
+	return m.binding.semantics.SemanticsEnabled()
+}
+
+func (b *RendererBinding) viewByID(id ui.ViewID) *RenderView {
+	for _, v := range b.views {
+		if v.FlutterView().ViewID() == id {
+			return v
+		}
+	}
+	return nil
+}
+
+// performSemanticsAction performs the action on the semantics node of a view.
+// Actions for views or nodes that no longer exist are ignored, since a screen
+// reader may not have processed the last semantics update yet.
+//
+// Flutter: rendering/binding.dart RendererBinding.performSemanticsAction
+func (b *RendererBinding) performSemanticsAction(action ui.SemanticsActionEvent) {
+	v := b.viewByID(action.ViewID)
+	if v == nil || v.Owner() == nil || v.Owner().SemanticsOwner() == nil {
+		return
+	}
+	v.Owner().SemanticsOwner().PerformAction(action.NodeID, action.Type, action.Arguments)
+}
+
+// GetRectOfSemanticsNodeInViewCoordinates is the rectangle of the semantics node
+// in the logical pixels of the view. The second result is false for an unknown
+// view or node, or if the view has no semantics owner (the tag
+// SemanticsLookupFailed in debug builds).
+//
+// Flutter: rendering/binding.dart RendererBinding.getRectOfSemanticsNodeInViewCoordinates
+func (b *RendererBinding) GetRectOfSemanticsNodeInViewCoordinates(viewID ui.ViewID, nodeID int) (ui.Rect, bool) {
+	fail := func(msg string) (ui.Rect, bool) {
+		if foundation.DebugMode {
+			panic(errors.New("SemanticsLookupFailed", msg, "view", int(viewID), "node", nodeID))
+		}
+		return ui.Rect{}, false
+	}
+	v := b.viewByID(viewID)
+	if v == nil {
+		return fail("GetRectOfSemanticsNodeInViewCoordinates was called for an unknown view")
+	}
+	if v.Owner() == nil || v.Owner().SemanticsOwner() == nil {
+		return fail("GetRectOfSemanticsNodeInViewCoordinates was called for a view that has no SemanticsOwner: semantics must be enabled for the lookup to succeed")
+	}
+	node := v.Owner().SemanticsOwner().GetSemanticsNode(nodeID)
+	if node == nil {
+		return fail("GetRectOfSemanticsNodeInViewCoordinates was called for an unknown node")
+	}
+	transform := ui.NewMatrix4Identity()
+	for current := node; current != nil; current = current.Parent() {
+		if t := current.Transform(); t != nil {
+			transform = t.Multiply(transform)
+		}
+	}
+	// The walk accumulated the root transform of the view, which scales from
+	// logical to physical pixels: undo it with the matrix the framework applied.
+	rootInverse := v.Configuration().ToMatrix().Clone()
+	rootInverse.Invert()
+	transform = rootInverse.Multiply(transform)
+	return transform.TransformRect(node.Rect()), true
+}
+
+// DebugDumpSemanticsTree is the text dump of the semantics tree of every render
+// view, children in the given order; a view without semantics gets a notice.
+//
+// Flutter: rendering/binding.dart debugDumpSemanticsTree
+func (b *RendererBinding) DebugDumpSemanticsTree(order semantics.DebugSemanticsDumpOrder) string {
+	if len(b.views) == 0 {
+		return "No render tree root was added to the binding."
+	}
+	const explanation = "For performance reasons, the framework only generates semantics when asked to do so by the platform.\n" +
+		"Usually, platforms only ask for semantics when assistive technologies (like screen readers) are running.\n" +
+		"To generate semantics, try turning on an assistive technology (like VoiceOver or TalkBack) on your device."
+	out := ""
+	printedExplanation := false
+	for i, v := range b.views {
+		if i > 0 {
+			out += "\n\n"
+		}
+		if node := v.DebugSemantics(); node != nil {
+			out += node.ToStringDeep(semantics.SemanticsToStringDeepOpts{ChildOrder: order})
+			continue
+		}
+		msg := "Semantics not generated for " + v.ToStringShort() + "."
+		if !printedExplanation {
+			printedExplanation = true
+			msg += "\n" + explanation
+		}
+		out += msg
+	}
+	return out
+}
