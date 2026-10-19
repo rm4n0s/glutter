@@ -13,9 +13,8 @@ import (
 // direction, the platform and the asset bundle and painting binding of the
 // binding.
 //
-// Deviation: it has no locale yet (Localizations come in step 7.7), and the
-// bundle is the one of the painting binding, as there is no DefaultAssetBundle
-// widget (SPEC §12.10).
+// Deviation: the bundle is the one of the painting binding, as there is no
+// DefaultAssetBundle widget (SPEC §12.10).
 //
 // Flutter: widgets/image.dart createLocalImageConfiguration
 func CreateLocalImageConfiguration(bc BuildContext, size foundation.Opt[ui.Size]) painting.ImageConfiguration {
@@ -31,6 +30,9 @@ func CreateLocalImageConfiguration(bc BuildContext, size foundation.Opt[ui.Size]
 	}
 	if r, ok := MediaQueryMaybeDevicePixelRatioOf(bc); ok {
 		c.DevicePixelRatio = foundation.Some(r)
+	}
+	if l, ok := LocalizationsMaybeLocaleOf(bc); ok {
+		c.Locale = foundation.Some(l)
 	}
 	return c
 }

@@ -79,6 +79,26 @@ type FindOpts struct {
 	// IncludeOffstage also looks inside the widgets that are offstage; Flutter's
 	// skipOffstage: false.
 	IncludeOffstage bool
+	// FindRichText makes ByText and ByTextContaining also match RichText widgets,
+	// not only Text; Flutter's findRichText: true.
+	FindRichText bool
+}
+
+func findRichText(opts []FindOpts) bool { return len(opts) > 0 && opts[0].FindRichText }
+
+// richTextWidget is implemented by RichText, which the text finders skip unless
+// FindRichText is set.
+type richTextWidget interface{ IsRichText() bool }
+
+func textWidgetOf(e widgets.Element, withRich bool) (TextWidget, bool) {
+	w, ok := e.Widget().(TextWidget)
+	if !ok {
+		return nil, false
+	}
+	if r, isRich := w.(richTextWidget); isRich && r.IsRichText() && !withRich {
+		return nil, false
+	}
+	return w, true
 }
 
 func includeOffstage(opts []FindOpts) bool { return len(opts) > 0 && opts[0].IncludeOffstage }
@@ -122,14 +142,14 @@ func isOffstage(e widgets.Element) bool {
 }
 
 // ByText finds the widgets that show exactly this text: those that implement
-// TextWidget.
+// TextWidget (Text, and RichText with FindRichText).
 //
 // Flutter: flutter_test/lib/src/finders.dart CommonFinders.text
 func ByText(text string, opts ...FindOpts) Finder {
 	return &elementFinder{
 		desc: fmt.Sprintf("text %q", text),
 		match: func(e widgets.Element) bool {
-			w, ok := e.Widget().(TextWidget)
+			w, ok := textWidgetOf(e, findRichText(opts))
 			return ok && w.PlainText() == text
 		},
 		includeOffstage: includeOffstage(opts),
@@ -143,7 +163,7 @@ func ByTextContaining(substring string, opts ...FindOpts) Finder {
 	return &elementFinder{
 		desc: fmt.Sprintf("text containing %q", substring),
 		match: func(e widgets.Element) bool {
-			w, ok := e.Widget().(TextWidget)
+			w, ok := textWidgetOf(e, findRichText(opts))
 			return ok && strings.Contains(w.PlainText(), substring)
 		},
 		includeOffstage: includeOffstage(opts),

@@ -147,12 +147,43 @@ type WidgetsBinding struct {
 	thread    *foundation.UIThread
 
 	observers   []WidgetsBindingObserver
+	switcher    ApplicationSwitcherDescription
 	rootElement *RootElement
 
 	readyToProduceFrames       bool
 	needToReportFirstFrame     bool
 	firstFrameDone             chan struct{}
 	debugBuildingDirtyElements bool
+}
+
+// ApplicationSwitcherDescription is how the app is described to the system's
+// task switcher and window title: a label and the primary color.
+//
+// Flutter: services/system_chrome.dart ApplicationSwitcherDescription
+type ApplicationSwitcherDescription struct {
+	// Label is the title of the app.
+	Label string
+	// PrimaryColor is the color of the app's task switcher entry.
+	PrimaryColor ui.Color
+}
+
+// ApplicationSwitcherDescription is the description that the last Title widget
+// set.
+//
+// Deviation: Flutter's SystemChrome sends it to the embedder through a platform
+// channel; here the binding keeps it, and the window title is wired to it in
+// step 10 (SPEC §12.10).
+//
+// Flutter: services/system_chrome.dart SystemChrome.setApplicationSwitcherDescription
+func (b *WidgetsBinding) ApplicationSwitcherDescription() ApplicationSwitcherDescription {
+	return b.switcher
+}
+
+// SetApplicationSwitcherDescription sets the description of the app.
+//
+// Flutter: services/system_chrome.dart SystemChrome.setApplicationSwitcherDescription
+func (b *WidgetsBinding) SetApplicationSwitcherDescription(d ApplicationSwitcherDescription) {
+	b.switcher = d
 }
 
 // WidgetsBindingOpts are the optional parameters of NewWidgetsBinding.

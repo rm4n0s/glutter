@@ -413,9 +413,6 @@ type TableCellOpts struct {
 
 // TableCell controls how a cell of a Table is aligned vertically.
 //
-// Deviation: the cell is not wrapped in a Semantics with the cell role yet
-// (Semantics comes in step 7.7) (SPEC §12.10).
-//
 // Flutter: widgets/table.dart TableCell
 type TableCell struct {
 	StatelessWidget
@@ -447,7 +444,7 @@ func (w *TableCell) Child() Widget { return w.child }
 //
 // Flutter: widgets/table.dart TableCell.build
 func (w *TableCell) Build(BuildContext) Widget {
-	return &tableCellData{NewParentDataWidgetBase[*rendering.TableCellParentData](w.child), w.verticalAlignment}
+	return &tableCellData{NewParentDataWidgetBase[*rendering.TableCellParentData](NewSemantics(w.child, SemanticsOpts{Role: foundation.Some(ui.SemanticsRoleCell)})), w.verticalAlignment}
 }
 
 // tableCellData writes the vertical alignment of a cell.

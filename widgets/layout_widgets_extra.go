@@ -17,6 +17,15 @@ func firstDirection(given ui.TextDirection, bc BuildContext) ui.TextDirection {
 	return maybeTextDirection(bc)
 }
 
+// requiredDirection is the given direction, or the one of the closest
+// Directionality, which must exist.
+func requiredDirection(given ui.TextDirection, bc BuildContext) ui.TextDirection {
+	if given != ui.TextDirectionUnspecified {
+		return given
+	}
+	return DirectionalityOf(bc)
+}
+
 // ConstraintsTransformUnconstrained removes every constraint.
 //
 // Flutter: widgets/basic.dart ConstraintsTransformBox.unconstrained
