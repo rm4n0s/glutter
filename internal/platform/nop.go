@@ -28,7 +28,7 @@ func (NopHandler) OnKey(ui.KeyData) {}
 // OnTextInput ignores the text-input event.
 //
 // Flutter: no counterpart
-func (NopHandler) OnTextInput(TextInputEvent) {}
+func (NopHandler) OnTextInput(ui.TextInputEvent) {}
 
 // OnFrame ignores the frame request.
 //

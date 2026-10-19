@@ -474,10 +474,10 @@ func (w *window) SetCursor(cursor platform.MouseCursor) {
 
 // SetTextInput does nothing yet.
 //
-// TODO(step 11.2): IBus and Fcitx5 over D-Bus (SPEC §8.3).
+// TODO(step 11.3): IBus and Fcitx5 over D-Bus (SPEC §8.3).
 //
 // Flutter: no counterpart
-func (w *window) SetTextInput(platform.TextInputState) {}
+func (w *window) SetTextInput(ui.TextInputState) {}
 
 // StartDrag is not implemented yet.
 //

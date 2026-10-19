@@ -634,12 +634,18 @@ func (w *window) SetCursor(cursor platform.MouseCursor) {
 	}
 }
 
-// SetTextInput does nothing yet.
-//
-// TODO(step 11.2): zwp_text_input_v3.
+// SetTextInput gives the input method the state of the text field of the window:
+// zwp_text_input_v3 is enabled while the field has the focus and the window has
+// the text-input focus, and disabled otherwise. Without the protocol (the
+// compositor lacks zwp_text_input_manager_v3) it does nothing, and the app gets
+// the keys with the compose table of xkbcommon.
 //
 // Flutter: no counterpart
-func (w *window) SetTextInput(platform.TextInputState) {}
+func (w *window) SetTextInput(state ui.TextInputState) {
+	if t := w.p.text; t != nil {
+		t.set(w, state)
+	}
+}
 
 // StartDrag is not implemented yet.
 //
@@ -680,6 +686,9 @@ func (w *window) destroy() {
 	}
 	if t := w.p.touch; t != nil {
 		t.windowClosed(w)
+	}
+	if t := w.p.text; t != nil {
+		t.forget(w)
 	}
 	if w.eglWindow != 0 {
 		w.egl.destroy(w.eglWindow) // before the wl_surface it draws on

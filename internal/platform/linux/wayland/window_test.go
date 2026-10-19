@@ -351,7 +351,7 @@ func TestWindowMethods(t *testing.T) {
 		w.SetSize(ui.Size{Width: 500, Height: 300}) // same size: nothing to do
 		w.SetSize(ui.Size{Width: 0, Height: 10})    // invalid: ignored
 		w.SetCursor(0)
-		w.SetTextInput(platform.TextInputState{})
+		w.SetTextInput(ui.TextInputState{})
 	})
 	waitUntil(t, func() bool { w, h, ok := e.srv.Mapped(); return ok && w == 500 && h == 300 }, "SetSize did not show a 500x300 buffer")
 

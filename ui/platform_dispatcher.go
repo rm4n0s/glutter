@@ -37,6 +37,17 @@ type SemanticsHost interface {
 	SetSemanticsTreeEnabled(enabled bool)
 }
 
+// TextInputHost is what the engine implements to give the input method (IME) of
+// the platform the state of the focused text field. The dispatcher uses it when
+// the host has it; a host without it has no input method.
+//
+// Flutter: no counterpart (the engine's side of the flutter/textinput channel)
+type TextInputHost interface {
+	// SetTextInput gives the input method the state of the focused text field.
+	// A state with Enabled false turns the input method off.
+	SetTextInput(state TextInputState)
+}
+
 // CursorHost is what the engine implements to show the system mouse cursors. The
 // dispatcher uses it when the host has it; a host without it shows none.
 //
@@ -153,6 +164,11 @@ type PlatformDispatcher struct {
 	//
 	// Flutter: ui/platform_dispatcher.dart PlatformDispatcher.onKeyData
 	OnKeyData func(data KeyData) bool
+	// OnTextInput is called with a change that the input method asks of the
+	// focused text field (preedit, commit or a deletion).
+	//
+	// Flutter: services/text_input.dart TextInput._handleTextInputInvocation
+	OnTextInput func(event TextInputEvent)
 	// OnAppLifecycleStateChanged is called when the app lifecycle state
 	// changes.
 	//
@@ -319,6 +335,19 @@ func (d *PlatformDispatcher) Post(fn func()) {
 func (d *PlatformDispatcher) ActivateSystemCursor(device int, kind string) {
 	if h, ok := d.host.(CursorHost); ok {
 		h.ActivateSystemCursor(device, kind)
+	}
+}
+
+// SetTextInput gives the input method of the platform the state of the focused
+// text field. Nothing happens when the host has no input method.
+//
+// Deviation: Flutter sends it as the TextInput.* calls of the flutter/textinput
+// platform channel (SPEC §12.10).
+//
+// Flutter: services/text_input.dart _PlatformTextInputControl
+func (d *PlatformDispatcher) SetTextInput(state TextInputState) {
+	if h, ok := d.host.(TextInputHost); ok {
+		h.SetTextInput(state)
 	}
 }
 
@@ -524,6 +553,16 @@ func (d *PlatformDispatcher) DispatchKeyData(data KeyData) bool {
 		return false
 	}
 	return d.OnKeyData(data)
+}
+
+// DispatchTextInput gives a change asked by the input method to OnTextInput.
+// Called by the engine.
+//
+// Flutter: services/text_input.dart TextInput._handleTextInputInvocation
+func (d *PlatformDispatcher) DispatchTextInput(event TextInputEvent) {
+	if d.OnTextInput != nil {
+		d.OnTextInput(event)
+	}
 }
 
 // SetTextEngine sets the text engine that lays out paragraphs. The engine calls

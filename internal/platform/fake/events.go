@@ -47,7 +47,7 @@ const (
 	// Flutter: no counterpart
 	EntrySetCursor EntryKind = "SetCursor"
 	// EntrySetTextInput records Window.SetTextInput; Value is the
-	// platform.TextInputState.
+	// ui.TextInputState.
 	//
 	// Flutter: no counterpart
 	EntrySetTextInput EntryKind = "SetTextInput"
@@ -121,7 +121,7 @@ func (e KeyEvent) dispatch(_ *Platform, h platform.Handler) { h.OnKey(e.Data) }
 // Flutter: no counterpart
 type TextInputEvent struct {
 	// Event is the IME event.
-	Event platform.TextInputEvent
+	Event ui.TextInputEvent
 }
 
 func (e TextInputEvent) view() ui.ViewID                          { return ui.ImplicitViewID }

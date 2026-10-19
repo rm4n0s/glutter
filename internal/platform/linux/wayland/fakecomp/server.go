@@ -27,14 +27,15 @@ import (
 //
 // Flutter: no counterpart
 type Server struct {
-	t          testing.TB
-	fd         int
-	globals    []Global
-	toplevel   ToplevelConfigure
-	holdFrames bool
-	keymap     string
-	caps       uint32
-	serial     uint32 // the last serial sent with a keyboard event
+	t           testing.TB
+	fd          int
+	globals     []Global
+	toplevel    ToplevelConfigure
+	holdFrames  bool
+	keymap      string
+	caps        uint32
+	serial      uint32 // the last serial sent with a keyboard event
+	textCommits uint32 // the zwp_text_input_v3.commit requests received, guarded by mu
 
 	selection string // the text of the selection, guarded by mu
 	stall     bool
@@ -449,7 +450,7 @@ func (s *Server) handle(id uint32, op uint16, r *reader) {
 	case "xdg_wm_base.3": // pong(serial)
 		s.record("xdg_wm_base.pong serial=%d", r.u32())
 	default:
-		if !s.handleInput(iface, op, id, r) && !s.handleWindowing(iface, op, id, r) {
+		if !s.handleInput(iface, op, id, r) && !s.handleWindowing(iface, op, id, r) && !s.handleTextInput(iface, op, id, r) {
 			s.t.Errorf("fake server: unexpected request %s opcode %d on object %d", iface, op, id)
 		}
 	}

@@ -1,6 +1,10 @@
 package platform
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/rm4n0s/glutter/ui"
+)
 
 func TestNopHandlerAgreesToClose(t *testing.T) {
 	var h Handler = NopHandler{}
@@ -9,7 +13,7 @@ func TestNopHandlerAgreesToClose(t *testing.T) {
 	}
 	// The rest must not panic.
 	h.OnPointer(nil)
-	h.OnTextInput(TextInputEvent{})
+	h.OnTextInput(ui.TextInputEvent{})
 	h.OnMetrics(0, ViewMetrics{})
 	h.OnSettings(Settings{})
 	h.OnLifecycle(0)

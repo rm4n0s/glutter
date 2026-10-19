@@ -30,7 +30,7 @@ func (h *recordingHandler) add(format string, args ...any) {
 }
 func (h *recordingHandler) OnPointer(data []ui.PointerData) { h.add("OnPointer %d", len(data)) }
 func (h *recordingHandler) OnKey(data ui.KeyData)           { h.add("OnKey %d", data.Physical) }
-func (h *recordingHandler) OnTextInput(platform.TextInputEvent) {
+func (h *recordingHandler) OnTextInput(ui.TextInputEvent) {
 	h.add("OnTextInput")
 }
 func (h *recordingHandler) OnFrame(view ui.ViewID, t time.Duration) {
@@ -325,7 +325,7 @@ func TestWindowRecordsCalls(t *testing.T) {
 	w.SetSize(ui.Size{Width: 800, Height: 600})
 	w.SetState(platform.WindowStateMaximized)
 	w.SetCursor(platform.MouseCursor(3))
-	w.SetTextInput(platform.TextInputState{Enabled: true})
+	w.SetTextInput(ui.TextInputState{Enabled: true})
 	w.RequestFrame()
 	if err := w.StartDrag(platform.DragData{}); err != nil {
 		t.Errorf("StartDrag: %v", err)

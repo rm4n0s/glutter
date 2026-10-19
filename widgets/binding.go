@@ -159,6 +159,7 @@ type WidgetsBinding struct {
 	navigator    *services.SystemNavigator
 	sound        *services.SystemSound
 	clipboard    *services.Clipboard
+	textInput    *services.TextInput
 	focusManager *FocusManager
 	owner        *BuildOwner
 	debug        *DebugOptions
@@ -278,6 +279,8 @@ func NewWidgetsBinding(ctx context.Context, d *ui.PlatformDispatcher, opts ...Wi
 	b.navigator = &services.SystemNavigator{OnPop: func(foundation.Opt[bool]) { d.RequestAppExit() }}
 	b.sound = &services.SystemSound{}
 	b.clipboard = services.NewClipboard(d)
+	b.textInput = services.NewTextInput(services.TextInputOpts{Backend: d, Post: d.Post})
+	d.OnTextInput = b.textInput.HandleTextInput
 	b.owner = NewBuildOwner(BuildOwnerOpts{
 		OnBuildScheduled: b.handleBuildScheduled, OnError: o.ErrorReporter, Debug: o.Debug,
 		Post: d.Post, UIThread: o.UIThread, ErrorWidgetBuilder: o.ErrorWidgetBuilder,
@@ -444,6 +447,12 @@ func (b *WidgetsBinding) SystemSound() *services.SystemSound { return b.sound }
 //
 // Flutter: services/clipboard.dart Clipboard
 func (b *WidgetsBinding) Clipboard() *services.Clipboard { return b.clipboard }
+
+// TextInput is the text input service: the text fields attach to it to use the
+// input method (IME) of the platform; see services.TextInput.
+//
+// Flutter: services/text_input.dart TextInput
+func (b *WidgetsBinding) TextInput() *services.TextInput { return b.textInput }
 
 // IsRootWidgetAttached is whether the root widget was attached.
 //

@@ -47,6 +47,7 @@ type Platform struct {
 	pointer  *pointer   // likewise
 	touch    *touch     // likewise
 	clip     *clipboard // nil without wl_data_device_manager
+	text     *textInput // nil without zwp_text_input_manager_v3
 	cursors  *cursors
 	// inputSerial is the serial of the last input event of the seat, which
 	// set_selection needs.
@@ -109,6 +110,7 @@ func newPlatform(conn *wl.Conn, opts Options) (*Platform, error) {
 	}
 	p.cursors = newCursors(p)
 	p.clip = newClipboard(p)
+	p.text = newTextInput(p)
 	sess.onOutputScale = func() {
 		for _, w := range p.windows {
 			w.scaleChanged()
@@ -131,6 +133,9 @@ func (p *Platform) Close() error {
 		w.Close()
 	}
 	p.closeSeatDevices()
+	if p.text != nil {
+		p.text.close()
+	}
 	if p.clip != nil {
 		p.clip.close()
 	}

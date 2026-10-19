@@ -53,8 +53,8 @@ type Window interface {
 	// SetCursor sets the mouse cursor shown over the window.
 	SetCursor(cursor MouseCursor)
 	// SetTextInput tells the IME about the focused text field. A zero
-	// TextInputState with Enabled false disables text input.
-	SetTextInput(state TextInputState)
+	// ui.TextInputState with Enabled false disables text input.
+	SetTextInput(state ui.TextInputState)
 	// RequestFrame asks for Handler.OnFrame to be called for this window, at the
 	// next moment the compositor wants a frame. At most one frame is in flight
 	// per window: requests made while one is in flight are merged into one more
@@ -78,7 +78,7 @@ type Handler interface {
 	// OnKey delivers one key event.
 	OnKey(data ui.KeyData)
 	// OnTextInput delivers a text-input event from the IME.
-	OnTextInput(event TextInputEvent)
+	OnTextInput(event ui.TextInputEvent)
 	// OnFrame asks for a frame of the view. The duration is the frame time
 	// since an arbitrary fixed point in the past.
 	OnFrame(view ui.ViewID, frameTime time.Duration)

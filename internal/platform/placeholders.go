@@ -4,24 +4,6 @@ package platform
 // live here, in the internal package, so the public ui package gets no stub
 // types. The step that defines the real type replaces its placeholder.
 
-// TextInputState is what the IME needs to know about the focused text field.
-//
-// TODO(step 11.2): enabled flag, cursor rectangle, surrounding text, content
-// type.
-//
-// Flutter: services/text_input.dart TextInputConfiguration
-type TextInputState struct {
-	// Enabled is whether a text field has focus.
-	Enabled bool
-}
-
-// TextInputEvent is an event from the IME: preedit, commit or a deletion.
-//
-// TODO(step 11.2): the event fields.
-//
-// Flutter: services/text_input.dart TextInputClient
-type TextInputEvent struct{}
-
 // DragData is the payload of a drag-and-drop operation started by the app.
 //
 // TODO(step 14.6): the data formats.

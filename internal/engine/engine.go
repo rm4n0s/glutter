@@ -261,6 +261,7 @@ var (
 	_ ui.PlatformHost  = (*handler)(nil)
 	_ ui.CursorHost    = (*handler)(nil)
 	_ ui.ClipboardHost = (*handler)(nil)
+	_ ui.TextInputHost = (*handler)(nil)
 )
 
 func (h *handler) OnMetrics(view ui.ViewID, m platform.ViewMetrics) {
@@ -433,6 +434,16 @@ func (h *handler) ActivateSystemCursor(_ int, kind string) {
 		return
 	}
 	h.win.SetCursor(cursor)
+}
+
+// SetTextInput gives the input method of the window the state of the focused
+// text field (ui.TextInputHost). The engine has one window.
+func (h *handler) SetTextInput(state ui.TextInputState) { h.win.SetTextInput(state) }
+
+// OnTextInput passes a change that the input method asks for to the dispatcher,
+// at the start of the next frame like the other input.
+func (h *handler) OnTextInput(event ui.TextInputEvent) {
+	h.queueInput(func() { h.disp.DispatchTextInput(event) })
 }
 
 // SetClipboardText puts text on the system clipboard (ui.ClipboardHost).

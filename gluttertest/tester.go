@@ -262,6 +262,27 @@ func (t *Tester) ClearClipboard() {
 	t.host.Clipboard, t.host.HasClipboard = "", false
 }
 
+// TextInputStates are the states of the text field that the framework gave to the
+// input method of the fake platform, in order: the last one is what the
+// input method knows now.
+//
+// Flutter: flutter_test/lib/src/test_text_input.dart TestTextInput
+func (t *Tester) TextInputStates() []ui.TextInputState {
+	t.host.Lock()
+	defer t.host.Unlock()
+	return append([]ui.TextInputState(nil), t.host.TextInputStates...)
+}
+
+// SendTextInputEvent plays the input method: it asks the focused text field for
+// a change (a commit, a preedit, a deletion), and runs what that posted.
+//
+// Flutter: flutter_test/lib/src/test_text_input.dart TestTextInput.updateEditingValue
+func (t *Tester) SendTextInputEvent(event ui.TextInputEvent) {
+	t.tb.Helper()
+	t.d.DispatchTextInput(event)
+	t.FlushPosted()
+}
+
 // Elapsed is how much fake time has passed since the tester was made.
 //
 // Flutter: flutter_test/lib/src/binding.dart AutomatedTestWidgetsFlutterBinding.clock

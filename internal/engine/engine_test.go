@@ -801,3 +801,46 @@ func TestClipboardReachesThePlatform(t *testing.T) {
 		t.Errorf("platform clipboard = %q, %v", text, ok)
 	}
 }
+
+// TestTextInputReachesThePlatformAndBack checks that the dispatcher gives the
+// state of the text field to the window, and that the events of the input method
+// come back to the dispatcher.
+func TestTextInputReachesThePlatformAndBack(t *testing.T) {
+	h := newHarness(t, map[string]string{"DISPLAY": ":0"})
+	started := make(chan *ui.PlatformDispatcher, 1)
+	got := make(chan ui.TextInputEvent, 1)
+	h.cfg.Start = func(d *ui.PlatformDispatcher) error {
+		d.OnTextInput = func(e ui.TextInputEvent) { got <- e }
+		started <- d
+		return nil
+	}
+	h.c.Inject(metrics(1, 1))
+	done := h.run(t)
+	var d *ui.PlatformDispatcher
+	select {
+	case d = <-started:
+	case <-time.After(10 * time.Second):
+		t.Fatal("Start was not called")
+	}
+	want := ui.TextInputState{Enabled: true, Text: "abc", SelectionAnchor: 3, SelectionCursor: 3, Purpose: ui.TextInputPurposeEmail}
+	set := make(chan struct{})
+	h.c.Post(func() { d.SetTextInput(want); close(set) })
+	<-set
+	h.c.Inject(fake.TextInputEvent{Event: ui.TextInputEvent{Commit: "x", PreeditCursorBegin: -1, PreeditCursorEnd: -1}})
+	h.c.Inject(fake.FrameEvent{View: 0}) // like the other input, the event waits for a frame
+	select {
+	case e := <-got:
+		if e.Commit != "x" {
+			t.Errorf("event = %+v", e)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the event of the input method did not arrive")
+	}
+	h.stopEngine(t)
+	if err := result(t, done); err != nil {
+		t.Fatal(err)
+	}
+	if st := h.c.Windows()[0].TextInput(); st != want {
+		t.Errorf("window text input = %+v, want %+v", st, want)
+	}
+}

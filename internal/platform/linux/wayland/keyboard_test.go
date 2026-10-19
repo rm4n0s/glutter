@@ -92,6 +92,19 @@ type keyHandler struct {
 	mu      sync.Mutex
 	keys    []ui.KeyData
 	batches [][]ui.PointerData
+	texts   []ui.TextInputEvent
+}
+
+func (h *keyHandler) OnTextInput(e ui.TextInputEvent) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.texts = append(h.texts, e)
+}
+
+func (h *keyHandler) textEvents() []ui.TextInputEvent {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return append([]ui.TextInputEvent(nil), h.texts...)
 }
 
 func (h *keyHandler) OnPointer(batch []ui.PointerData) {

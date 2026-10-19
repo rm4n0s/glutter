@@ -42,6 +42,16 @@ type Host struct {
 	// text. A test can set them to play another application.
 	Clipboard    string
 	HasClipboard bool
+	// TextInputStates are the states of the text field that the framework gave
+	// to the input method, in order.
+	TextInputStates []ui.TextInputState
+}
+
+// SetTextInput keeps the state.
+func (h *Host) SetTextInput(state ui.TextInputState) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.TextInputStates = append(h.TextInputStates, state)
 }
 
 // Lock and Unlock guard the fields of the host that tests set.

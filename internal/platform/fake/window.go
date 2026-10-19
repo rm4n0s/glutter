@@ -20,7 +20,7 @@ type Window struct {
 	size      ui.Size
 	state     platform.WindowState
 	cursor    platform.MouseCursor
-	textInput platform.TextInputState
+	textInput ui.TextInputState
 	closed    bool
 }
 
@@ -78,7 +78,7 @@ func (w *Window) SetCursor(cursor platform.MouseCursor) {
 // SetTextInput records the new text input state.
 //
 // Flutter: no counterpart
-func (w *Window) SetTextInput(state platform.TextInputState) {
+func (w *Window) SetTextInput(state ui.TextInputState) {
 	w.set(EntrySetTextInput, state, func() { w.textInput = state })
 }
 
@@ -155,7 +155,7 @@ func (w *Window) Cursor() platform.MouseCursor {
 // TextInput returns the last text input state set.
 //
 // Flutter: no counterpart
-func (w *Window) TextInput() platform.TextInputState {
+func (w *Window) TextInput() ui.TextInputState {
 	w.p.mu.Lock()
 	defer w.p.mu.Unlock()
 	return w.textInput
