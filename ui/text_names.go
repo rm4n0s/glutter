@@ -57,3 +57,13 @@ func (e BoxHeightStyle) Name() string { return strings.TrimPrefix(e.String(), "B
 //
 // Flutter: dart:core Enum.name
 func (e BoxWidthStyle) Name() string { return strings.TrimPrefix(e.String(), "BoxWidthStyle.") }
+
+// Name returns the Dart enum name, such as "srcOver".
+//
+// Flutter: dart:core Enum.name
+func (e BlendMode) Name() string { return strings.TrimPrefix(e.String(), "BlendMode.") }
+
+// Name returns the Dart enum name, such as "hardEdge".
+//
+// Flutter: dart:core Enum.name
+func (e Clip) Name() string { return strings.TrimPrefix(e.String(), "Clip.") }
