@@ -48,6 +48,7 @@ type RendererBinding struct {
 
 	debug          *DebugOptions
 	reportError    func(error)
+	drawFrame      func(super func() error) error
 	manifold       *bindingPipelineManifold
 	rootOwner      *PipelineOwner
 	mouseTracker   *MouseTracker
@@ -239,8 +240,22 @@ func (b *RendererBinding) HitTestInView(result *gestures.HitTestResult, position
 	b.gesture.HitTestInView(result, position, viewID)
 }
 
+// WrapDrawFrame makes the persistent frame callback call wrap instead of
+// DrawFrame; wrap gets DrawFrame as super and may do work before and after it.
+// The widgets binding uses it to build the widgets first and to finalize the
+// tree after (Flutter's WidgetsBinding.drawFrame overrides the mixin's).
+//
+// Flutter: widgets/binding.dart WidgetsBinding.drawFrame
+func (b *RendererBinding) WrapDrawFrame(wrap func(super func() error) error) { b.drawFrame = wrap }
+
 func (b *RendererBinding) handlePersistentFrame(_ time.Duration) {
-	if err := b.DrawFrame(); err != nil {
+	var err error
+	if b.drawFrame != nil {
+		err = b.drawFrame(b.DrawFrame)
+	} else {
+		err = b.DrawFrame()
+	}
+	if err != nil {
 		b.reportError(err)
 	}
 	b.scheduleMouseTrackerUpdate()

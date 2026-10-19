@@ -126,3 +126,22 @@ type reassembleState struct{ StateOf[*reassembleWidget] }
 
 func (s *reassembleState) Reassemble()               { s.Widget().spy.hook() }
 func (s *reassembleState) Build(BuildContext) Widget { return newLeaf() }
+
+// TestErrorWidgetInTheTreeOfABinding checks that the error box of a binding's
+// tree is made (with the text engine of the dispatcher) and laid out in the view.
+func TestErrorWidgetInTheTreeOfABinding(t *testing.T) {
+	skipUnlessDebug(t)
+	bt := newBindingTree(t, bindingTreeOpts{collectPanics: true})
+	bt.pump(builderOf(func(BuildContext) Widget { panic("shown in the error box") }))
+	if len(bt.errs) != 1 {
+		t.Fatalf("%d errors, want 1: %v", len(bt.errs), bt.errs)
+	}
+	ews := bt.find(func(w Widget) bool { _, ok := w.(*ErrorWidget); return ok })
+	if len(ews) != 1 {
+		t.Fatalf("%d ErrorWidgets, want 1", len(ews))
+	}
+	box := ews[0].AsElement().RenderObject().(*rendering.RenderErrorBox)
+	if size := box.Size(); size.Width != 800 || size.Height != 600 {
+		t.Errorf("the error box has size %v, want the 800x600 of the view", size)
+	}
+}

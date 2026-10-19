@@ -561,3 +561,160 @@ func TestInputQueueFlushesInOrder(t *testing.T) {
 		t.Errorf("handled %v", got)
 	}
 }
+
+// idleHarness is a screenshot run whose app says when it is idle.
+func idleHarness(t *testing.T) (*harness, string) {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "idle.png")
+	h := newHarness(t, map[string]string{"DISPLAY": ":0", ScreenshotEnv: path})
+	h.r.img = image.NewRGBA(image.Rect(0, 0, 1, 1))
+	h.cfg.idlePoll = 5 * time.Millisecond
+	return h, path
+}
+
+func TestScreenshotWaitsForTheAppToBeIdle(t *testing.T) {
+	h, path := idleHarness(t)
+	var mu sync.Mutex
+	idle, asked := false, 0
+	h.cfg.Start = func(d *ui.PlatformDispatcher) error {
+		d.IsIdle = func() bool {
+			mu.Lock()
+			defer mu.Unlock()
+			asked++
+			return idle
+		}
+		return nil
+	}
+	h.c.Inject(metrics(1, 1))
+	h.c.Inject(fake.FrameEvent{View: 0})
+	done := h.run(t)
+	waitFor(t, func() bool { mu.Lock(); defer mu.Unlock(); return asked >= 3 })
+	if hasEntry(h.c, fake.EntryRequestFrame) {
+		t.Fatal("the frame to capture was requested while the app was not idle")
+	}
+	mu.Lock()
+	idle = true
+	mu.Unlock()
+	waitFor(t, func() bool { return hasEntry(h.c, fake.EntryRequestFrame) })
+	h.c.Inject(fake.FrameEvent{View: 0})
+	if err := result(t, done); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Errorf("no screenshot: %v", err)
+	}
+}
+
+func TestScreenshotCapturesAnywayWhenTheAppNeverGetsIdle(t *testing.T) {
+	h, path := idleHarness(t)
+	h.cfg.idleMax = 60 * time.Millisecond
+	var logBuf bytes.Buffer
+	h.cfg.Logger = slog.New(slog.NewTextHandler(&logBuf, nil))
+	h.cfg.Start = func(d *ui.PlatformDispatcher) error {
+		d.IsIdle = func() bool { return false }
+		return nil
+	}
+	h.c.Inject(metrics(1, 1))
+	h.c.Inject(fake.FrameEvent{View: 0})
+	start := time.Now()
+	done := h.run(t)
+	waitFor(t, func() bool { return hasEntry(h.c, fake.EntryRequestFrame) })
+	if elapsed := time.Since(start); elapsed < 60*time.Millisecond {
+		t.Errorf("captured after %v, before the 60ms limit", elapsed)
+	}
+	h.c.Inject(fake.FrameEvent{View: 0})
+	if err := result(t, done); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Errorf("no screenshot: %v", err)
+	}
+	if !bytes.Contains(logBuf.Bytes(), []byte("not idle")) {
+		t.Errorf("log = %q, want a warning that the app was not idle", logBuf.String())
+	}
+}
+
+func TestCloseRequestAsksTheApp(t *testing.T) {
+	tests := []struct {
+		name     string
+		response ui.AppExitResponse
+		wantShut bool
+	}{
+		{"the app agrees", ui.AppExitResponseExit, true},
+		{"the app cancels", ui.AppExitResponseCancel, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHarness(t, map[string]string{"DISPLAY": ":0"})
+			asked := make(chan ui.ViewID, 1)
+			h.cfg.Start = func(d *ui.PlatformDispatcher) error {
+				d.OnExitRequested = func(v ui.ViewID) ui.AppExitResponse { asked <- v; return tc.response }
+				return nil
+			}
+			h.c.Inject(metrics(1, 1))
+			h.c.Inject(fake.FrameEvent{View: 0})
+			h.c.Inject(fake.CloseRequestEvent{View: 0})
+			done := h.run(t)
+			select {
+			case v := <-asked:
+				if v != 0 {
+					t.Errorf("asked about view %d, want 0", v)
+				}
+			case <-time.After(10 * time.Second):
+				t.Fatal("the app was not asked")
+			}
+			h.stopEngine(t)
+			if err := result(t, done); err != nil {
+				t.Fatal(err)
+			}
+			decided := false
+			for _, e := range h.c.Log() {
+				if e.Kind == fake.EntryCloseDecision {
+					decided = true
+					if closed, _ := e.Value.(bool); closed != tc.wantShut {
+						t.Errorf("the window closed = %v, want %v", closed, tc.wantShut)
+					}
+				}
+			}
+			if !decided {
+				t.Error("no close decision was recorded")
+			}
+		})
+	}
+}
+
+// TestAFrameBeforeTheFirstConfigureIsNotDrawn checks that a frame that comes
+// before the window has a size does not reach the renderer (it would fail with a
+// zero size); the configure that follows draws.
+func TestAFrameBeforeTheFirstConfigureIsNotDrawn(t *testing.T) {
+	h := newHarness(t, map[string]string{"DISPLAY": ":0"})
+	var mu sync.Mutex
+	frames := 0
+	h.cfg.Start = func(d *ui.PlatformDispatcher) error {
+		d.OnDrawFrame = func() {
+			mu.Lock()
+			frames++
+			mu.Unlock()
+			if v := d.View(0); v != nil {
+				_ = v.Render(&ui.Scene{})
+			}
+		}
+		return nil
+	}
+	h.c.Inject(fake.FrameEvent{View: 0})
+	done := h.run(t)
+	waitFor(t, func() bool { mu.Lock(); defer mu.Unlock(); return frames == 1 })
+	if calls, _ := h.r.snapshot(); len(calls) != 0 {
+		t.Errorf("%d draw calls before the window had a size, want none", len(calls))
+	}
+	h.c.Inject(metrics(10, 10))
+	h.c.Inject(fake.FrameEvent{View: 0})
+	waitFor(t, func() bool { calls, _ := h.r.snapshot(); return len(calls) > 0 })
+	h.stopEngine(t)
+	if err := result(t, done); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if calls, _ := h.r.snapshot(); calls[0].width != 10 || calls[0].height != 10 {
+		t.Errorf("first draw at %dx%d, want 10x10", calls[0].width, calls[0].height)
+	}
+}

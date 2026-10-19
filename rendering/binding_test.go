@@ -189,3 +189,24 @@ func TestRepaintBoundaryLayersAreReused(t *testing.T) {
 		t.Error("the layer of a repaint boundary was replaced between frames")
 	}
 }
+
+// TestRendererBindingWrapDrawFrame checks that the widgets binding can put its
+// work before and after the frame of the renderer binding.
+func TestRendererBindingWrapDrawFrame(t *testing.T) {
+	h := newHarness(t)
+	h.SetRoot(newTBox(10, 10))
+	var order []string
+	h.Binding.WrapDrawFrame(func(super func() error) error {
+		order = append(order, "before")
+		err := super()
+		order = append(order, "after")
+		return err
+	})
+	h.Pump()
+	if strings.Join(order, ",") != "before,after" {
+		t.Errorf("order = %v, want before and after the frame", order)
+	}
+	if len(h.Scenes()) != 1 {
+		t.Errorf("%d scenes, want the wrapped frame to draw one", len(h.Scenes()))
+	}
+}

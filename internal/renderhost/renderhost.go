@@ -25,6 +25,8 @@ type Host struct {
 	posted    []func()
 	scenes    []*ui.Scene
 	Scheduled int
+	// ExitRequests counts the calls of RequestAppExit.
+	ExitRequests int
 	// RenderErr is returned by RenderView, to test a failing renderer.
 	RenderErr error
 	// SemanticsUpdates are the semantics updates that the view sent.
@@ -59,8 +61,8 @@ func (h *Host) RenderView(_ ui.ViewID, scene *ui.Scene) error {
 	return h.RenderErr
 }
 
-// RequestAppExit does nothing.
-func (h *Host) RequestAppExit() {}
+// RequestAppExit counts the requests.
+func (h *Host) RequestAppExit() { h.mu.Lock(); h.ExitRequests++; h.mu.Unlock() }
 
 // Post keeps the function.
 func (h *Host) Post(fn func()) { h.mu.Lock(); h.posted = append(h.posted, fn); h.mu.Unlock() }
@@ -176,4 +178,11 @@ func (s *Stack) LastScene() *ui.Scene {
 		return nil
 	}
 	return sc[len(sc)-1]
+}
+
+// Scenes are the scenes that the views rendered so far.
+func (h *Host) Scenes() []*ui.Scene {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return append([]*ui.Scene(nil), h.scenes...)
 }

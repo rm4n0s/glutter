@@ -150,6 +150,11 @@ type SchedulerBinding struct {
 	//
 	// Flutter: foundation/assertions.dart FlutterError.onError
 	ErrorReporter foundation.ErrorReporter
+	// FramesGate, when set, is a further condition for FramesEnabled: the
+	// widgets binding keeps frames off until the root widget is attached.
+	//
+	// Flutter: widgets/binding.dart WidgetsBinding.framesEnabled
+	FramesGate func() bool
 
 	lifecycle     ui.AppLifecycleState
 	framesEnabled bool
@@ -503,7 +508,9 @@ func (b *SchedulerBinding) SchedulerPhase() SchedulerPhase { return b.phase }
 // is hidden, paused or detached.
 //
 // Flutter: scheduler/binding.dart SchedulerBinding.framesEnabled
-func (b *SchedulerBinding) FramesEnabled() bool { return b.framesEnabled }
+func (b *SchedulerBinding) FramesEnabled() bool {
+	return b.framesEnabled && (b.FramesGate == nil || b.FramesGate())
+}
 
 func (b *SchedulerBinding) setFramesEnabledState(enabled bool) {
 	if b.framesEnabled == enabled {
@@ -546,7 +553,7 @@ func (b *SchedulerBinding) EnsureVisualUpdate() {
 //
 // Flutter: scheduler/binding.dart SchedulerBinding.scheduleFrame
 func (b *SchedulerBinding) ScheduleFrame() {
-	if b.hasScheduledFrame || !b.framesEnabled {
+	if b.hasScheduledFrame || !b.FramesEnabled() {
 		return
 	}
 	b.EnsureFrameCallbacksRegistered()

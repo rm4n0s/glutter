@@ -76,6 +76,8 @@ type Config struct {
 
 	// The fields below are for the tests of this package: a Wayland and an X11
 	// that are not the real ones, and the renderer.
+	idlePoll    time.Duration // how often the capture asks whether the app is idle
+	idleMax     time.Duration // how long it waits for the app to become idle
 	wayland     func() (linux.Connection, error)
 	x11         func() (linux.Connection, error)
 	newRenderer func(cfg *Config, log *slog.Logger) renderer
@@ -436,6 +438,11 @@ func (h *handler) RenderView(view ui.ViewID, scene *ui.Scene) error {
 
 // draw draws one frame of the window, and handles the self-capture.
 func (h *handler) draw(scene *ui.Scene) error {
+	if h.width <= 0 || h.height <= 0 {
+		// The window has no size yet: the first frame the framework asked for came
+		// before the first configure. The configure renders again.
+		return nil
+	}
 	if h.r == nil {
 		h.r = h.newRenderer(h.cfg, h.log)
 	}
@@ -454,9 +461,14 @@ func (h *handler) draw(scene *ui.Scene) error {
 		}
 		h.cancel() // done: Run returns, and the program exits with code 0
 	case h.shot != nil && !h.armed:
-		// The first frame is presented. Capture the one that follows the delay.
+		// The first frame is presented. Capture the one that follows the delay,
+		// or, with no delay, the first one after which the app is idle.
 		h.armed = true
 		if h.shot.After() == 0 {
+			if h.disp.IsIdle != nil {
+				h.waitIdle(time.Now().Add(h.idleMax()))
+				return nil
+			}
 			h.captureDue = true
 			h.win.RequestFrame()
 			return nil
@@ -471,9 +483,46 @@ func (h *handler) draw(scene *ui.Scene) error {
 	return nil
 }
 
-// OnCloseRequest destroys the renderer, whose surface draws into the window, and
-// then lets the window close.
+// idleMax is how long the self-capture waits for the app to become idle.
+func (h *handler) idleMax() time.Duration {
+	if h.cfg.idleMax > 0 {
+		return h.cfg.idleMax
+	}
+	return 5 * time.Second
+}
+
+// waitIdle asks the app whether it is idle until it is, or until the deadline,
+// and then asks for the frame that is read back. A frame that is scheduled or a
+// task that is pending shows up only after the frame that is being drawn ended,
+// so the question is asked from the event loop, not from the frame.
+func (h *handler) waitIdle(deadline time.Time) {
+	poll := h.cfg.idlePoll
+	if poll <= 0 {
+		poll = 20 * time.Millisecond
+	}
+	time.AfterFunc(poll, func() {
+		h.conn.Post(func() {
+			idle := h.disp.IsIdle()
+			if !idle && time.Now().Before(deadline) {
+				h.waitIdle(deadline)
+				return
+			}
+			if !idle {
+				h.log.Warn("the app was not idle after waiting; capturing the window anyway", "waited", h.idleMax())
+			}
+			h.captureDue = true
+			h.win.RequestFrame()
+		})
+	})
+}
+
+// OnCloseRequest asks the app whether the window may close (the dispatcher's
+// OnExitRequested); if it may, it destroys the renderer, whose surface draws
+// into the window, and then lets the window close.
 func (h *handler) OnCloseRequest(view ui.ViewID) bool {
+	if !h.disp.RequestClose(view) {
+		return false
+	}
 	h.release()
 	h.disp.RemoveView(view)
 	return true

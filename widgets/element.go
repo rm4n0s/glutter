@@ -198,16 +198,18 @@ type RebuildOpts struct {
 //
 // Flutter: widgets/framework.dart Element
 type ElementBase struct {
-	self        Element
-	parent      Element
-	slot        any
-	depth       int
-	widget      Widget
-	owner       *BuildOwner
-	parentScope *BuildScope
-	lifecycle   elementLifecycle
-	dirty       bool
-	inDirtyList bool
+	self   Element
+	parent Element
+	slot   any
+	depth  int
+	widget Widget
+	owner  *BuildOwner
+	// debugBuiltOnce is whether the element was built before (debug builds).
+	debugBuiltOnce bool
+	parentScope    *BuildScope
+	lifecycle      elementLifecycle
+	dirty          bool
+	inDirtyList    bool
 
 	// The inherited widgets above this element, by type, and the ones this
 	// element depends on.
@@ -689,6 +691,14 @@ func (b *ElementBase) Rebuild(opts ...RebuildOpts) {
 	}
 	var previous Element
 	if foundation.DebugMode {
+		if d := b.owner.Debug; d != nil && d.PrintRebuildDirtyWidgets {
+			if !b.debugBuiltOnce {
+				d.DebugPrint("Building " + b.self.String())
+				b.debugBuiltOnce = true
+			} else {
+				d.DebugPrint("Rebuilding " + b.self.String())
+			}
+		}
 		previous = b.owner.debugCurrentBuildTarget
 		b.owner.debugCurrentBuildTarget = b.self
 	}

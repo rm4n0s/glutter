@@ -595,3 +595,34 @@ func TestSchedulerPhaseNames(t *testing.T) {
 		}
 	}
 }
+
+// TestFramesGate checks the extra condition of FramesEnabled that the widgets
+// binding uses to keep frames off until the root widget is attached.
+func TestFramesGate(t *testing.T) {
+	tt := newTester()
+	open := false
+	tt.FramesGate = func() bool { return open }
+	if tt.FramesEnabled() {
+		t.Fatal("frames are enabled with a closed gate")
+	}
+	tt.ScheduleFrame()
+	if tt.HasScheduledFrame() || tt.host.scheduled != 0 {
+		t.Error("a frame was scheduled with a closed gate")
+	}
+	tt.ScheduleForcedFrame()
+	if !tt.HasScheduledFrame() {
+		t.Error("a forced frame should work with a closed gate")
+	}
+	tt.tick(0)
+	open = true
+	tt.ScheduleFrame()
+	if !tt.FramesEnabled() || !tt.HasScheduledFrame() {
+		t.Error("no frame was scheduled with an open gate")
+	}
+	tt.tick(16 * time.Millisecond)
+	// The lifecycle still wins over an open gate.
+	tt.HandleAppLifecycleStateChanged(ui.AppLifecycleStatePaused)
+	if tt.FramesEnabled() {
+		t.Error("frames are enabled while paused")
+	}
+}

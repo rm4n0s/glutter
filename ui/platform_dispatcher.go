@@ -127,6 +127,21 @@ type PlatformDispatcher struct {
 	//
 	// Flutter: services/binding.dart (the flutter/lifecycle channel)
 	OnAppLifecycleStateChanged func(state AppLifecycleState)
+	// OnExitRequested is called when the user asks to close a view (the close
+	// button of a window). It returns the response of the app: with
+	// AppExitResponseCancel the window stays open. Nil lets the window close.
+	// The framework installs it to ask the observers of the widgets binding
+	// (SPEC §8.7 "Closing").
+	//
+	// Flutter: services/binding.dart ServicesBinding.handleRequestAppExit
+	OnExitRequested func(view ViewID) AppExitResponse
+	// IsIdle reports whether the framework has nothing more to show: no frame is
+	// scheduled and no work that changes the picture is pending (an image that is
+	// loading, an animation). The engine asks it to decide when the
+	// self-capture (GLUTTER_SCREENSHOT) may save the window. Nil counts as idle.
+	//
+	// Flutter: no counterpart
+	IsIdle func() bool
 
 	host          PlatformHost
 	views         map[ViewID]*View
@@ -271,6 +286,17 @@ func (d *PlatformDispatcher) RequestAppExit() {
 	if d.host != nil {
 		d.host.RequestAppExit()
 	}
+}
+
+// RequestClose is called by the engine when the user asks to close the view. It
+// returns whether the view may close: false when OnExitRequested cancels.
+//
+// Flutter: services/binding.dart ServicesBinding.handleRequestAppExit
+func (d *PlatformDispatcher) RequestClose(id ViewID) bool {
+	if d.OnExitRequested == nil {
+		return true
+	}
+	return d.OnExitRequested(id) != AppExitResponseCancel
 }
 
 // AddView makes a view with the ID and configuration and returns it. A second

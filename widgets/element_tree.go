@@ -335,6 +335,13 @@ func (b *ElementBase) retakeInactiveElement(key AnyGlobalKey, newWidget Widget) 
 	if element == nil || !CanUpdate(element.AsElement().widget, newWidget) {
 		return nil
 	}
+	if foundation.DebugMode && b.owner.printsKeyedLifecycle() {
+		from := "inactive elements list"
+		if p := element.AsElement().parent; p != nil {
+			from = p.String()
+		}
+		b.owner.Debug.DebugPrint("Attempting to take " + element.String() + " from " + from + " to put in " + b.self.String() + ".")
+	}
 	if parent := element.AsElement().parent; parent != nil {
 		if foundation.DebugMode {
 			if parent == b.self {
@@ -360,6 +367,11 @@ func (b *ElementBase) DeactivateChild(child Element) {
 	cb.parent = nil
 	child.DetachRenderObject()
 	b.owner.inactive.add(child)
+	if foundation.DebugMode && b.owner.printsKeyedLifecycle() {
+		if _, ok := cb.widget.Key().(AnyGlobalKey); ok {
+			b.owner.Debug.DebugPrint("Deactivated " + child.String() + " (keyed child of " + b.self.String() + ")")
+		}
+	}
 }
 
 func (b *ElementBase) deactivateFailedChildSilently(child Element) {
@@ -411,6 +423,9 @@ func (b *ElementBase) ForgetChild(child Element) {
 func (b *ElementBase) activateWithParent(parent Element, newSlot any) {
 	b.parent = parent
 	b.owner = parent.AsElement().owner
+	if foundation.DebugMode && b.owner.printsKeyedLifecycle() {
+		b.owner.Debug.DebugPrint("Reactivating " + b.self.String() + " (now child of " + parent.String() + ").")
+	}
 	b.updateDepth(b.parent.AsElement().depth)
 	b.updateBuildScopeRecursively()
 	activateRecursively(b.self)

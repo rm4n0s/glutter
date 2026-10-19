@@ -348,3 +348,50 @@ func TestPlatformTypeStrings(t *testing.T) {
 		}
 	}
 }
+
+func TestRequestClose(t *testing.T) {
+	tests := []struct {
+		name     string
+		response func(ViewID) AppExitResponse
+		want     bool
+	}{
+		{"no hook lets the window close", nil, true},
+		{"exit", func(ViewID) AppExitResponse { return AppExitResponseExit }, true},
+		{"unspecified counts as exit", func(ViewID) AppExitResponse { return AppExitResponseUnspecified }, true},
+		{"cancel keeps the window", func(ViewID) AppExitResponse { return AppExitResponseCancel }, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			d := NewPlatformDispatcher(nil)
+			d.OnExitRequested = tc.response
+			if got := d.RequestClose(3); got != tc.want {
+				t.Errorf("RequestClose = %v, want %v", got, tc.want)
+			}
+		})
+	}
+	d := NewPlatformDispatcher(nil)
+	var got ViewID
+	d.OnExitRequested = func(v ViewID) AppExitResponse { got = v; return AppExitResponseExit }
+	d.RequestClose(7)
+	if got != 7 {
+		t.Errorf("the hook got view %d, want 7", got)
+	}
+}
+
+func TestAppExitEnumNames(t *testing.T) {
+	tests := []struct{ got, want string }{
+		{AppExitTypeCancelable.String(), "AppExitTypeCancelable"},
+		{AppExitTypeRequired.String(), "AppExitTypeRequired"},
+		{AppExitTypeUnspecified.String(), "AppExitTypeUnspecified"},
+		{AppExitType(9).String(), "AppExitType(9)"},
+		{AppExitResponseExit.String(), "AppExitResponseExit"},
+		{AppExitResponseCancel.String(), "AppExitResponseCancel"},
+		{AppExitResponseUnspecified.String(), "AppExitResponseUnspecified"},
+		{AppExitResponse(9).String(), "AppExitResponse(9)"},
+	}
+	for _, tc := range tests {
+		if tc.got != tc.want {
+			t.Errorf("String = %q, want %q", tc.got, tc.want)
+		}
+	}
+}

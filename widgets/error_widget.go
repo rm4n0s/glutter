@@ -54,13 +54,17 @@ func (w *ErrorWidget) Message() string { return w.message }
 // Flutter: widgets/framework.dart ErrorWidget._flutterError
 func (w *ErrorWidget) Err() error { return w.err }
 
-// CreateRenderObject creates the red box. The text engine is not reachable from
-// the context yet, so the box has no text until the binding exists (step 7.4).
+// CreateRenderObject creates the red box. The text engine is the one of the
+// binding that the context belongs to; a tree without a binding makes a box
+// without text.
 //
 // Flutter: widgets/framework.dart ErrorWidget.createRenderObject
-func (w *ErrorWidget) CreateRenderObject(BuildContext) rendering.RenderObject {
-	// TODO(step 7.4): pass the text engine of the binding.
-	return rendering.NewRenderErrorBox(w.message)
+func (w *ErrorWidget) CreateRenderObject(bc BuildContext) rendering.RenderObject {
+	var o rendering.RenderErrorBoxOpts
+	if b := MaybeWidgetsBindingOf(bc); b != nil {
+		o.TextEngine = b.PlatformDispatcher().TextEngine()
+	}
+	return rendering.NewRenderErrorBox(w.message, o)
 }
 
 // DebugFillProperties adds the message.

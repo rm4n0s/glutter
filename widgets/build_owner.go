@@ -1,6 +1,7 @@
 package widgets
 
 import (
+	"fmt"
 	"slices"
 	"strconv"
 	"strings"
@@ -155,6 +156,10 @@ type BuildOwner struct {
 	//
 	// Flutter: foundation/assertions.dart FlutterError.onError
 	OnError foundation.ErrorReporter
+	// Debug are the debug flags that the build reads; nil means all off.
+	//
+	// Flutter: widgets/debug.dart
+	Debug *DebugOptions
 	// Post runs a function on the UI thread, from any goroutine; the binding
 	// passes its own. SetState called from another goroutine and the errors of
 	// State.Go go through it (SPEC §13). Without it, only the UI thread may call
@@ -178,9 +183,11 @@ type BuildOwner struct {
 
 	inactive                    inactiveElements
 	scheduledFlushDirtyElements bool
-	debugStateLockLevel         int
-	debugBuilding               bool
-	debugCurrentBuildTarget     Element
+	// binding is the widgets binding that made the owner, or nil.
+	binding                 *WidgetsBinding
+	debugStateLockLevel     int
+	debugBuilding           bool
+	debugCurrentBuildTarget Element
 
 	globalKeyRegistry map[AnyGlobalKey]Element
 	// The debug checks of global keys: the elements that lost their key to
@@ -199,6 +206,8 @@ type BuildOwnerOpts struct {
 	OnBuildScheduled func()
 	// OnError is the framework's error reporter (see BuildOwner.OnError).
 	OnError foundation.ErrorReporter
+	// Debug are the debug flags; nil means all off.
+	Debug *DebugOptions
 	// Post runs a function on the UI thread, from any goroutine (see
 	// BuildOwner.Post).
 	Post func(fn func())
@@ -214,7 +223,12 @@ type BuildOwnerOpts struct {
 func NewBuildOwner(opts ...BuildOwnerOpts) *BuildOwner {
 	o := firstOpts(opts)
 	return &BuildOwner{OnBuildScheduled: o.OnBuildScheduled, OnError: o.OnError, Post: o.Post, UIThread: o.UIThread,
-		ErrorWidgetBuilder: o.ErrorWidgetBuilder}
+		Debug: o.Debug, ErrorWidgetBuilder: o.ErrorWidgetBuilder}
+}
+
+// printsKeyedLifecycle is whether DebugOptions.PrintGlobalKeyedWidgetLifecycle is on.
+func (o *BuildOwner) printsKeyedLifecycle() bool {
+	return o != nil && o.Debug != nil && o.Debug.PrintGlobalKeyedWidgetLifecycle
 }
 
 func (o *BuildOwner) debugStateLocked() bool { return o.debugStateLockLevel > 0 }
@@ -246,12 +260,27 @@ func (o *BuildOwner) ScheduleBuildFor(element Element) {
 				"element", element.String()))
 		}
 	}
+	if foundation.DebugMode && o.Debug != nil && o.Debug.PrintScheduleBuildForStacks {
+		o.Debug.DebugPrint("scheduleBuildFor() called for " + element.String() + "\n" + debugStack())
+	}
 	scope := element.BuildScope()
 	if !o.scheduledFlushDirtyElements && o.OnBuildScheduled != nil {
 		o.scheduledFlushDirtyElements = true
 		o.OnBuildScheduled()
 	}
 	scope.scheduleBuildFor(element)
+}
+
+// Reassemble marks the root element and everything below it for a rebuild, as
+// after a hot reload. The element must be the root of this owner's tree.
+//
+// Flutter: widgets/framework.dart BuildOwner.reassemble
+func (o *BuildOwner) Reassemble(root Element) {
+	if foundation.DebugMode && (root.AsElement().owner != o || root.AsElement().parent != nil) {
+		panic(errors.New("ReassembleNotRoot", "BuildOwner.Reassemble needs the root element of the owner's tree",
+			"element", root.String()))
+	}
+	root.Reassemble()
 }
 
 // LockState runs the callback with the tree locked: in debug builds, marking
@@ -281,6 +310,10 @@ func (o *BuildOwner) BuildScope(context Element, callback func()) {
 		return
 	}
 	if foundation.DebugMode {
+		if o.Debug != nil && o.Debug.PrintBuildScope {
+			o.Debug.DebugPrint(fmt.Sprintf("buildScope called with context %s; its build scope's dirty list is: %v",
+				context.String(), scope.dirtyElements))
+		}
 		o.debugStateLockLevel++
 		o.debugBuilding = true
 	}
@@ -290,6 +323,9 @@ func (o *BuildOwner) BuildScope(context Element, callback func()) {
 		if foundation.DebugMode {
 			o.debugBuilding = false
 			o.debugStateLockLevel--
+			if o.Debug != nil && o.Debug.PrintBuildScope {
+				o.Debug.DebugPrint("buildScope finished")
+			}
 		}
 	}()
 	o.scheduledFlushDirtyElements = true
@@ -637,6 +673,13 @@ func (ie *inactiveElements) contains(e Element) bool {
 }
 
 func unmountInactive(element Element) {
+	if foundation.DebugMode {
+		if o := element.AsElement().owner; o.printsKeyedLifecycle() {
+			if _, ok := element.AsElement().widget.Key().(AnyGlobalKey); ok {
+				o.Debug.DebugPrint("Discarding " + element.String() + " from inactive elements list.")
+			}
+		}
+	}
 	element.VisitChildren(unmountInactive)
 	element.Unmount()
 }
