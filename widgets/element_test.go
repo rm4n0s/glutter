@@ -434,9 +434,11 @@ func TestInflateFailureCleansUp(t *testing.T) {
 	boom := newBuilder(func(BuildContext, func(func())) Widget { panic("kaboom") })
 	tr.pump(newMulti())
 	parent := elementOfType[*multi](t, tr).(*multiElement)
+	// The harness panics again with the reported error, which has the tag
+	// BuildPanicked and the text of the panic.
 	v := panicOf(func() { parent.InflateWidget(boom, nil) })
-	if v != "kaboom" {
-		t.Fatalf("panic = %v, want kaboom", v)
+	if err, ok := v.(error); !ok || !strings.Contains(err.Error(), "kaboom") {
+		t.Fatalf("panic = %v, want an error about kaboom", v)
 	}
 	// A widget that cannot be inflated panics before anything is mounted.
 	requireTag(t, "CreateElement.WidgetKindUnknown", func() { parent.InflateWidget(&badWidget{}, nil) })

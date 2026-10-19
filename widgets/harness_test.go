@@ -86,6 +86,10 @@ type tree struct {
 	scheduled int
 	// errs are the errors the owner reported.
 	errs []error
+	// collectPanics makes the tree collect the panics that the framework
+	// recovers in errs. By default it panics again with them, so that a test that
+	// does not expect one fails where it happens.
+	collectPanics bool
 }
 
 func newTree(t *testing.T) *tree {
@@ -93,7 +97,12 @@ func newTree(t *testing.T) *tree {
 	tr := &tree{t: t}
 	tr.owner = NewBuildOwner(BuildOwnerOpts{
 		OnBuildScheduled: func() { tr.scheduled++ },
-		OnError:          func(err error) { tr.errs = append(tr.errs, err) },
+		OnError: func(err error) {
+			if !tr.collectPanics && foundation.IsRecoveredPanic(err) {
+				panic(err)
+			}
+			tr.errs = append(tr.errs, err)
+		},
 	})
 	return tr
 }

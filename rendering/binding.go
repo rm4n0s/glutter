@@ -26,9 +26,9 @@ type RendererBindingOpts struct {
 	// TODO(step 10.4): default to SystemMouseCursors.basic.
 	FallbackCursor services.MouseCursor
 	// ReportError is called with the error of a frame that could not be sent to
-	// the engine; the default panics with the error.
-	//
-	// TODO(step 7.3): report through the framework's error reporter.
+	// the engine, and with the panics that the render objects recover in layout
+	// and paint (tags LayoutPanicked and PaintPanicked). The default panics with
+	// the error. The widgets binding passes the framework's error reporter.
 	ReportError func(err error)
 }
 

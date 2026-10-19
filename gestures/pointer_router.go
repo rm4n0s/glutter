@@ -31,9 +31,11 @@ type routeEntry struct {
 //
 // Flutter: gestures/pointer_router.dart PointerRouter
 type PointerRouter struct {
-	nextID       uint64
-	routes       map[int][]routeEntry
-	globalRoutes []routeEntry
+	// errorReporter receives the panics of routes; the binding sets it.
+	errorReporter foundation.ErrorReporter
+	nextID        uint64
+	routes        map[int][]routeEntry
+	globalRoutes  []routeEntry
 }
 
 // NewPointerRouter creates a router without routes.
@@ -123,11 +125,13 @@ func (r *PointerRouter) DebugGlobalRouteCount() int {
 	return len(r.globalRoutes)
 }
 
-func dispatchToRoute(event PointerEvent, route PointerRoute, transform *ui.Matrix4) {
-	// TODO(step 7.3): recover a panic in the route and report it, as
-	// Flutter's PointerRouter does with FlutterError.reportError, then go on
-	// with the next route.
-	route(event.Transformed(transform))
+// dispatchToRoute calls a route. A route that panics is reported and the next
+// one is called.
+//
+// Flutter: gestures/pointer_router.dart PointerRouter._dispatch
+func (r *PointerRouter) dispatchToRoute(event PointerEvent, route PointerRoute, transform *ui.Matrix4) {
+	foundation.Guard(r.errorReporter, foundation.CallbackPanicked, "while routing a pointer event", func() []any { return []any{"event", event.String()} },
+		func() { route(event.Transformed(transform)) })
 }
 
 // Route calls the routes of the event's pointer, then the global routes. A
@@ -148,7 +152,7 @@ func (r *PointerRouter) Route(event PointerEvent) {
 func (r *PointerRouter) dispatchToRoutes(event PointerEvent, current func() []routeEntry, copied []routeEntry) {
 	for _, e := range copied {
 		if indexOfRoute(current(), e.id) >= 0 {
-			dispatchToRoute(event, e.route, e.transform)
+			r.dispatchToRoute(event, e.route, e.transform)
 		}
 	}
 }

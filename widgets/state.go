@@ -96,6 +96,10 @@ type stateData struct {
 	lifecycle StateLifecycle
 	lifetime  context.Context
 	cancel    context.CancelFunc
+	// owner is the build owner of the element. It is set once, on the UI thread,
+	// when the state is first built, and never cleared, so that other goroutines
+	// can read it.
+	owner *BuildOwner
 }
 
 // StateOf is the embedded base of a State for the widget type W. It gives the
@@ -197,8 +201,12 @@ func (s *StateOf[W]) DebugLifecycleState() StateLifecycle { return s.lifecycle }
 
 // SetState notifies the framework that the internal state of this object has
 // changed in a way that may affect the user interface: it runs fn and marks the
-// element dirty, so that Build runs again. Call it on the UI thread (the
-// goroutine-safe form is part of step 7.3).
+// element dirty, so that Build runs again.
+//
+// SetState is safe to call from any goroutine (SPEC §13). On another goroutine
+// it posts fn and the rebuild to the UI thread, where they run in order; if the
+// state has been unmounted by then, both are dropped. Without a Post on the
+// build owner it must be called on the UI thread.
 //
 // Calling it after Dispose panics with the tag SetStateAfterDispose, and
 // calling it before the state is in the tree panics with SetStateBeforeMount
@@ -206,6 +214,14 @@ func (s *StateOf[W]) DebugLifecycleState() StateLifecycle { return s.lifecycle }
 //
 // Flutter: widgets/framework.dart State.setState
 func (s *StateOf[W]) SetState(fn func()) {
+	if o := s.owner; o != nil && o.Post != nil && !o.UIThread.IsCurrent() {
+		o.Post(func() {
+			if s.element != nil {
+				s.SetState(fn)
+			}
+		})
+		return
+	}
 	if foundation.DebugMode {
 		if s.lifecycle == StateLifecycleDefunct {
 			panic(errors.New("SetStateAfterDispose",
@@ -224,6 +240,34 @@ func (s *StateOf[W]) SetState(fn func()) {
 	if s.element != nil {
 		s.element.MarkNeedsBuild()
 	}
+}
+
+// Go runs fn on a new goroutine with the Lifetime of the state as its context,
+// which is cancelled when the state is disposed. A panic in fn does not crash
+// the program: it is recovered and reported as a CallbackPanicked error through
+// the framework's error reporter, on the UI thread, like the panics in the
+// other callbacks (SPEC §14.2). Call Go on the UI thread, after InitState began;
+// in debug builds calling it before the state is built panics with the tag
+// StateGoBeforeMount. Inside fn, use SetState to touch the UI.
+//
+// Flutter: no counterpart (SPEC §12.6)
+func (s *StateOf[W]) Go(fn func(ctx context.Context)) {
+	o := s.owner
+	if o == nil {
+		panic(errors.New("StateGoBeforeMount",
+			"Go was called on a State that has not been built yet; call it from InitState or later",
+			"state", foundation.RuntimeTypeName(s.self)))
+	}
+	o.UIThread.AssertCurrent("State.Go")
+	ctx := s.Lifetime()
+	var report foundation.ErrorReporter
+	if o.OnError != nil {
+		report = o.reportFromAnyGoroutine
+	}
+	state := foundation.RuntimeTypeName(s.self)
+	go foundation.Guard(report, foundation.CallbackPanicked, "in a goroutine started by State.Go of "+state,
+		func() []any { return []any{"library", "widgets library", "state", state} },
+		func() { fn(ctx) })
 }
 
 // ToStringShort describes the state by its type and short hash.

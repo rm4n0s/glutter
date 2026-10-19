@@ -9,7 +9,7 @@ import (
 
 // Ported from packages/flutter/test/gestures/pointer_router_test.dart. The tests
 // 'Exceptions do not stop pointer routing' and 'Exceptions include router, route
-// & event' come with step 7.3, which adds the error reporting.
+// & event' are in error_test.go.
 
 func TestRouterShouldRoutePointers(t *testing.T) {
 	callbackRan := false

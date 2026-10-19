@@ -368,9 +368,10 @@ func (r *GestureRecognizerBase) Dispose() {}
 // Flutter: gestures/recognizer.dart GestureRecognizer.invokeCallback
 func (r *GestureRecognizerBase) InvokeCallback(name string, callback func(), debugReport ...func() string) {
 	r.traceCallback(name, debugReport)
-	// TODO(step 7.3): recover a panic in the callback and report it, as
-	// Flutter does with FlutterError.reportError.
-	callback()
+	// A callback that panics is reported (CallbackPanicked) and the recognizer
+	// goes on, as Flutter's does.
+	foundation.Guard(r.binding.errorReporter, foundation.CallbackPanicked, "while handling a gesture",
+		func() []any { return []any{"recognizer", foundation.DescribeIdentity(r.self), "callback", name} }, callback)
 }
 
 // InvokeCallbackResult is InvokeCallback for a callback that returns a value.
@@ -378,8 +379,11 @@ func (r *GestureRecognizerBase) InvokeCallback(name string, callback func(), deb
 // Flutter: gestures/recognizer.dart GestureRecognizer.invokeCallback
 func InvokeCallbackResult[T any](r *GestureRecognizerBase, name string, callback func() T, debugReport ...func() string) T {
 	r.traceCallback(name, debugReport)
-	// TODO(step 7.3): recover a panic in the callback and report it.
-	return callback()
+	var result T
+	foundation.Guard(r.binding.errorReporter, foundation.CallbackPanicked, "while handling a gesture",
+		func() []any { return []any{"recognizer", foundation.DescribeIdentity(r.self), "callback", name} },
+		func() { result = callback() })
+	return result
 }
 
 func (r *GestureRecognizerBase) traceCallback(name string, debugReport []func() string) {

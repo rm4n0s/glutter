@@ -3,6 +3,7 @@ package widgets
 import (
 	"testing"
 
+	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/internal/renderhost"
 	"github.com/rm4n0s/glutter/painting"
 	"github.com/rm4n0s/glutter/rendering"
@@ -70,12 +71,19 @@ type renderTree struct {
 	owner *BuildOwner
 	root  *viewRootElement
 	errs  []error
+	// collectPanics: see tree.collectPanics.
+	collectPanics bool
 }
 
 func newRenderTree(t *testing.T) *renderTree {
 	t.Helper()
 	rt := &renderTree{t: t, stack: renderhost.New()}
-	rt.owner = NewBuildOwner(BuildOwnerOpts{OnError: func(err error) { rt.errs = append(rt.errs, err) }})
+	rt.owner = NewBuildOwner(BuildOwnerOpts{OnError: func(err error) {
+		if !rt.collectPanics && foundation.IsRecoveredPanic(err) {
+			panic(err)
+		}
+		rt.errs = append(rt.errs, err)
+	}})
 	return rt
 }
 

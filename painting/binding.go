@@ -73,9 +73,12 @@ type PaintingBindingOpts struct {
 	// HTTPClient makes the requests of NetworkImage; the default is a new
 	// http.Client.
 	HTTPClient *http.Client
-	// ErrorReporter receives the errors nobody handled. TODO(step 7.3): the
-	// default will be the framework's FlutterError.reportError.
+	// ErrorReporter receives the details of the errors nobody handled. When it
+	// is nil they go to Reporter.
 	ErrorReporter func(ImageErrorDetails)
+	// Reporter is the framework's error reporter (SPEC §14.2); it receives the
+	// error of each report that ErrorReporter does not take.
+	Reporter foundation.ErrorReporter
 }
 
 // PaintingBinding is the glue between the painting library and the Flutter
@@ -89,6 +92,7 @@ type PaintingBinding struct {
 	afterFunc     func(d time.Duration, fn func()) (stop func())
 	imageCache    *ImageCache
 	errorReporter func(ImageErrorDetails)
+	reporter      foundation.ErrorReporter
 	systemFonts   *foundation.ChangeNotifier
 	assetBundle   services.AssetBundle
 	httpClient    *http.Client
@@ -101,7 +105,7 @@ type PaintingBinding struct {
 func NewPaintingBinding(ctx context.Context, sched *scheduler.SchedulerBinding, opts ...PaintingBindingOpts) *PaintingBinding {
 	o := firstOpts(opts)
 	b := &PaintingBinding{ctx: ctx, scheduler: sched, post: o.Post, afterFunc: o.AfterFunc, imageCache: o.ImageCache,
-		errorReporter: o.ErrorReporter, systemFonts: foundation.NewChangeNotifier(), assetBundle: o.AssetBundle, httpClient: o.HTTPClient}
+		errorReporter: o.ErrorReporter, reporter: o.Reporter, systemFonts: foundation.NewChangeNotifier(), assetBundle: o.AssetBundle, httpClient: o.HTTPClient}
 	if b.httpClient == nil {
 		b.httpClient = &http.Client{}
 	}
@@ -167,14 +171,33 @@ func (b *PaintingBinding) TextEngine() ui.ParagraphFactory {
 	return b.scheduler.PlatformDispatcher().TextEngine()
 }
 
-// ReportError gives an error nobody handled to the reporter.
+// ReportError gives an error nobody handled to the reporter: ErrorReporter if
+// it was set, else the framework's error reporter.
 //
 // Flutter: foundation/assertions.dart FlutterError.reportError
 func (b *PaintingBinding) ReportError(details ImageErrorDetails) {
-	// TODO(step 7.3): route this to the framework's error reporter.
-	if b != nil && b.errorReporter != nil {
+	switch {
+	case b == nil:
+	case b.errorReporter != nil:
 		b.errorReporter(details)
+	case b.reporter != nil && details.Err != nil:
+		b.reporter(details.Err)
 	}
+}
+
+// panicReporter is the reporter for the panics recovered in image listeners: the
+// framework's error reporter, or ErrorReporter when only that was set; nil when
+// the binding has neither, and then the panic goes on.
+func (b *PaintingBinding) panicReporter() foundation.ErrorReporter {
+	switch {
+	case b == nil:
+		return nil
+	case b.reporter != nil:
+		return b.reporter
+	case b.errorReporter != nil:
+		return func(err error) { b.errorReporter(ImageErrorDetails{Err: err, Library: "image resource service"}) }
+	}
+	return nil
 }
 
 // InstantiateImageCodecWithSize decodes an image at the size getTargetSize

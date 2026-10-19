@@ -27,7 +27,7 @@ func (c *counter) setValue(v int) {
 
 func TestChangeNotifierOrder(t *testing.T) {
 	// The first test of the Flutter file, without badListener (a panic in a
-	// listener is reported in step 7.3).
+	// listener is tested in error_report_test.go).
 	n := &testNotifier{}
 	var log []string
 	logger := func(s string) VoidCallback { return func() { log = append(log, s) } }
@@ -397,8 +397,7 @@ func TestRemoveListenersWhileNotifyingOnListThatWillNotResize(t *testing.T) {
 
 func TestChangeNotifierPanicKeepsState(t *testing.T) {
 	// A listener that panics must not leave the notifier thinking it is still
-	// notifying (TODO(step 7.3): the panic is reported and the other
-	// listeners still run).
+	// notifying (without a reporter the panic goes on).
 	n := &testNotifier{}
 	var h ListenerHandle
 	h = n.AddListener(func() { n.RemoveListener(h); panic("bad") })

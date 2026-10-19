@@ -199,6 +199,9 @@ type GestureBindingOpts struct {
 	//
 	// Flutter: gestures/binding.dart GestureBinding.debugSamplingClock
 	Clock SamplingClock
+	// ErrorReporter receives the panics the binding recovers from; see
+	// SetErrorReporter.
+	ErrorReporter foundation.ErrorReporter
 }
 
 // GestureBinding is the glue between the engine's pointer data and the gestures
@@ -233,6 +236,8 @@ type GestureBinding struct {
 
 	// Debug holds the diagnostics flags.
 	Debug *DebugOptions
+
+	errorReporter foundation.ErrorReporter
 
 	// OnHitTestInView, if set, is called by HitTestInView before the binding
 	// adds itself to the result. The renderer binding uses it to hit test the
@@ -287,6 +292,7 @@ func NewGestureBinding(d *ui.PlatformDispatcher, s GestureScheduler, opts ...Ges
 	b.PointerRouter = NewPointerRouter()
 	b.GestureArena = NewGestureArenaManager(d.Post, GestureArenaManagerOpts{Debug: b.Debug})
 	b.PointerSignalResolver = NewPointerSignalResolver()
+	b.SetErrorReporter(o.ErrorReporter)
 	b.resampler = newResampler(b)
 	d.OnPointerDataPacket = b.handlePointerDataPacket
 	s.AddUnlockedCallback(b.flushPointerEventQueue)
@@ -301,14 +307,26 @@ func (b *GestureBinding) devicePixelRatioForView(viewID ui.ViewID) foundation.Op
 	return foundation.Some(v.DevicePixelRatio())
 }
 
+// SetErrorReporter sets the function that receives the panics the binding
+// recovers from: in the conversion of pointer data, in the targets of a hit test,
+// in the routes of the pointer router and in the signal resolver. Without one a
+// panic goes on (SPEC §14.2).
+//
+// Flutter: foundation/assertions.dart FlutterError.onError
+func (b *GestureBinding) SetErrorReporter(r foundation.ErrorReporter) {
+	b.errorReporter = r
+	b.PointerRouter.errorReporter = r
+	b.PointerSignalResolver.errorReporter = r
+}
+
 func (b *GestureBinding) handlePointerDataPacket(packet ui.PointerDataPacket) {
-	// TODO(step 7.3): recover a panic in the conversion and report it, as
-	// Flutter does with FlutterError.reportError.
-	b.pendingPointerEvents = append(b.pendingPointerEvents,
-		PointerEventConverterExpand(packet.Data, b.devicePixelRatioForView)...)
-	if !b.scheduler.Locked() {
-		b.flushPointerEventQueue()
-	}
+	foundation.Guard(b.errorReporter, foundation.CallbackPanicked, "while handling a pointer data packet", nil, func() {
+		b.pendingPointerEvents = append(b.pendingPointerEvents,
+			PointerEventConverterExpand(packet.Data, b.devicePixelRatioForView)...)
+		if !b.scheduler.Locked() {
+			b.flushPointerEventQueue()
+		}
+	})
 }
 
 // CancelPointer dispatches a cancel event for the pointer, before the events
@@ -429,14 +447,14 @@ func (b *GestureBinding) DispatchEvent(event PointerEvent, hitTestResult *HitTes
 					"event", event.String()))
 			}
 		}
-		// TODO(step 7.3): recover a panic while routing and report it.
-		b.PointerRouter.Route(event)
+		foundation.Guard(b.errorReporter, foundation.CallbackPanicked, "while routing a pointer event", nil, func() { b.PointerRouter.Route(event) })
 		return
 	}
 	for _, entry := range hitTestResult.Path() {
-		// TODO(step 7.3): recover a panic in the target and report it, then
-		// go on with the next entry.
-		entry.Target().HandleEvent(event.Transformed(entry.Transform()), entry)
+		// A target that panics is reported and the next one still gets the event.
+		foundation.Guard(b.errorReporter, foundation.CallbackPanicked, "while dispatching a pointer event to "+foundation.DescribeIdentity(entry.Target()),
+			func() []any { return []any{"event", event.String()} },
+			func() { entry.Target().HandleEvent(event.Transformed(entry.Transform()), entry) })
 	}
 }
 

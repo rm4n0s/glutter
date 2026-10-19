@@ -643,6 +643,9 @@ func (b *ElementBase) DebugDescribeChildren() []foundation.DiagnosticsNode {
 //
 // Flutter: widgets/framework.dart Element.markNeedsBuild
 func (b *ElementBase) MarkNeedsBuild() {
+	if foundation.DebugMode && b.owner != nil {
+		b.owner.UIThread.AssertCurrent("Element.MarkNeedsBuild")
+	}
 	if foundation.DebugMode && b.lifecycle == lifecycleDefunct {
 		panic(errors.New("MarkNeedsBuildOnDefunctElement",
 			"SetState or MarkNeedsBuild was called on an element that has been unmounted",

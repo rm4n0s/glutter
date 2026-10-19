@@ -1,6 +1,7 @@
 package rendering
 
 import (
+	"fmt"
 	"strconv"
 
 	"github.com/rm4n0s/errors"
@@ -681,6 +682,9 @@ func (b *RenderObjectBase) DebugAssertDoesMeetConstraints() {}
 //
 // Flutter: rendering/object.dart RenderObject.markNeedsLayout
 func (b *RenderObjectBase) MarkNeedsLayout() {
+	if foundation.DebugMode && b.owner != nil {
+		b.owner.debug.UIThread.AssertCurrent("RenderObject.MarkNeedsLayout")
+	}
 	b.debugCheckCanPerformMutations()
 	if b.needsLayout {
 		return
@@ -743,7 +747,8 @@ func (b *RenderObjectBase) ScheduleInitialLayout() {
 // layoutWithoutResize lays out a relayout boundary again with the same
 // constraints, without calling PerformResize.
 //
-// TODO(step 7.3): recover from a panic in PerformLayout (SPEC §14.2).
+// A panic in PerformLayout is reported through the debug options' ReportError
+// with the tag LayoutPanicked, and the layout goes on (SPEC §14.2).
 func (b *RenderObjectBase) layoutWithoutResize() {
 	var previousActive RenderObject
 	if foundation.DebugMode {
@@ -755,8 +760,10 @@ func (b *RenderObjectBase) layoutWithoutResize() {
 			b.DebugOptions().DebugPrint("Laying out (without resize) " + foundation.ToStringShort(b.self))
 		}
 	}
-	b.self.PerformLayout()
-	b.MarkNeedsSemanticsUpdate()
+	b.guard(foundation.LayoutPanicked, "PerformLayout", func() {
+		b.self.PerformLayout()
+		b.MarkNeedsSemanticsUpdate()
+	})
 	if foundation.DebugMode {
 		b.dbg().activeLayout = previousActive
 		b.debugDoingThisLayout = false
@@ -766,13 +773,28 @@ func (b *RenderObjectBase) layoutWithoutResize() {
 	b.MarkNeedsPaint()
 }
 
+// guard runs fn and, when the debug options have a ReportError, recovers from a
+// panic in it and reports it with the tag and the method that was running. The
+// object is added to the report. Without a reporter the panic goes on.
+//
+// Flutter: rendering/object.dart RenderObject._reportException
+func (b *RenderObjectBase) guard(tag, method string, fn func()) {
+	foundation.Guard(b.DebugOptions().ReportError, tag, "during "+method+"()", func() []any {
+		kv := []any{"library", "rendering library", "method", method, "object", foundation.DescribeIdentity(b.self)}
+		if b.DebugCreator != nil {
+			kv = append(kv, "creator", fmt.Sprint(b.DebugCreator))
+		}
+		return kv
+	}, fn)
+}
+
 // Layout computes the layout of the object for the constraints. The parent
 // calls it on each child from its own PerformLayout. Pass ParentUsesSize when
 // the parent reads the size of the child.
 //
-// Layout is a recovery point (SPEC §14.2).
-//
-// TODO(step 7.3): recover from a panic in PerformResize and PerformLayout.
+// Layout is a recovery point (SPEC §14.2): a panic in PerformResize or
+// PerformLayout is reported through the debug options' ReportError with the tag
+// LayoutPanicked, and the layout goes on.
 //
 // Flutter: rendering/object.dart RenderObject.layout
 func (b *RenderObjectBase) Layout(constraints Constraints, opts ...LayoutOpts) {
@@ -829,9 +851,13 @@ func (b *RenderObjectBase) Layout(constraints Constraints, opts ...LayoutOpts) {
 		if foundation.DebugMode {
 			b.debugDoingThisResize = true
 		}
-		self.PerformResize()
+		b.guard(foundation.LayoutPanicked, "PerformResize", func() {
+			self.PerformResize()
+			if foundation.DebugMode {
+				self.DebugAssertDoesMeetConstraints()
+			}
+		})
 		if foundation.DebugMode {
-			self.DebugAssertDoesMeetConstraints()
 			b.debugDoingThisResize = false
 		}
 	}
@@ -841,10 +867,14 @@ func (b *RenderObjectBase) Layout(constraints Constraints, opts ...LayoutOpts) {
 		previousActive = b.dbg().activeLayout
 		b.dbg().activeLayout = self
 	}
-	self.PerformLayout()
-	b.MarkNeedsSemanticsUpdate()
+	b.guard(foundation.LayoutPanicked, "PerformLayout", func() {
+		self.PerformLayout()
+		b.MarkNeedsSemanticsUpdate()
+		if foundation.DebugMode {
+			self.DebugAssertDoesMeetConstraints()
+		}
+	})
 	if foundation.DebugMode {
-		self.DebugAssertDoesMeetConstraints()
 		b.dbg().activeLayout = previousActive
 		b.debugDoingThisLayout = false
 		b.debugMutationsLocked = false
@@ -1176,7 +1206,8 @@ func (b *RenderObjectBase) ReplaceRootLayer(rootLayer OffsetLayerLike) {
 
 // paintWithContext paints the object into the context, unless it needs layout.
 //
-// TODO(step 7.3): recover from a panic in Paint (SPEC §14.2).
+// A panic in Paint is reported through the debug options' ReportError with the
+// tag PaintPanicked, and the painting goes on (SPEC §14.2).
 func (b *RenderObjectBase) paintWithContext(context *PaintingContext, offset ui.Offset) {
 	self := b.self
 	if foundation.DebugMode {
@@ -1206,11 +1237,13 @@ func (b *RenderObjectBase) paintWithContext(context *PaintingContext, offset ui.
 	b.needsPaint = false
 	b.needsCompositedLayerUpdate = false
 	b.wasRepaintBoundary = self.IsRepaintBoundary()
-	self.Paint(context, offset)
-	if foundation.DebugMode && (b.needsLayout || b.needsPaint) {
-		panic(errors.New("PaintMarkedDirty", "Paint marked the render object as needing layout or paint again",
-			"object", foundation.DescribeIdentity(self)))
-	}
+	b.guard(foundation.PaintPanicked, "paint", func() {
+		self.Paint(context, offset)
+		if foundation.DebugMode && (b.needsLayout || b.needsPaint) {
+			panic(errors.New("PaintMarkedDirty", "Paint marked the render object as needing layout or paint again",
+				"object", foundation.DescribeIdentity(self)))
+		}
+	})
 	if foundation.DebugMode {
 		self.DebugPaint(context, offset)
 		b.dbg().activePaint = lastActivePaint

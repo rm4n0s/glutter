@@ -100,3 +100,12 @@ func assertRoute(t *testing.T, err error, route string) {
 		t.Errorf("unexpected failure path: %s", appErr.Route())
 	}
 }
+
+// skipUnlessDebug skips a test of the debug-only checks in release and profile
+// builds.
+func skipUnlessDebug(t *testing.T) {
+	t.Helper()
+	if !foundation.DebugMode {
+		t.Skip("needs the debug-only checks of the framework")
+	}
+}

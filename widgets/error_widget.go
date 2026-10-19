@@ -7,9 +7,9 @@ import (
 
 // ErrorWidget is the widget that replaces a widget that failed to build: a box
 // with the message of the error. In debug builds the box is dark red with the
-// message in yellow monospace text; in release builds it is gray. The display
-// rules (which errors become one, and the builder an app can replace) come in
-// step 7.3.
+// message in yellow monospace text; in release builds it is gray.
+// ComponentElement.PerformRebuild puts one in place of a widget whose Build or
+// update panicked, built by BuildOwner.ErrorWidgetBuilder (SPEC §14.2).
 //
 // Flutter: widgets/framework.dart ErrorWidget
 type ErrorWidget struct {

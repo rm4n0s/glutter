@@ -63,6 +63,7 @@ func (c *ComponentElement) firstBuild() { c.self.Rebuild() }
 //
 // Flutter: widgets/framework.dart ComponentElement.performRebuild
 func (c *ComponentElement) PerformRebuild() {
+	owner := c.owner
 	var built Widget
 	func() {
 		// The element is marked clean only after Build, so that attempts to
@@ -72,16 +73,48 @@ func (c *ComponentElement) PerformRebuild() {
 			c.debugDoingBuild = true
 			defer func() { c.debugDoingBuild = false }()
 		}
-		built = c.cself.Build()
-		if foundation.DebugMode && built == nil {
-			panic(errors.New("BuildReturnedNil",
-				"a build function returned nil; build functions must never return nil, to return an empty space that causes the building widget to fill available room, return a Container{}; to return an empty space that takes as little room as possible, return a SizedBox{}",
-				"widget", foundation.RuntimeTypeName(c.widget)))
+		// Build is a recovery point (SPEC §14.2): with a reporter, a panic is
+		// reported and the ErrorWidget takes the place of the built widget.
+		var buildErr error
+		report := func(err error) { buildErr = err }
+		if owner == nil || owner.OnError == nil {
+			report = nil
+		}
+		foundation.Guard(report, foundation.BuildPanicked, "while building "+c.String(), c.panicInfo, func() {
+			built = c.cself.Build()
+			if foundation.DebugMode && built == nil {
+				panic(errors.New("BuildReturnedNil",
+					"a build function returned nil; build functions must never return nil, to return an empty space that causes the building widget to fill available room, return a Container{}; to return an empty space that takes as little room as possible, return a SizedBox{}",
+					"widget", foundation.RuntimeTypeName(c.widget)))
+			}
+		})
+		if buildErr != nil {
+			c.debugDoingBuild = false
+			owner.OnError(buildErr)
+			built = owner.errorWidgetFor(buildErr)
 		}
 	}()
-	// TODO(step 7.3): when Build or the update of the child panics, build the
-	// ErrorWidget in its place and report the error.
-	c.child = c.UpdateChild(c.child, built, c.slot)
+	if owner == nil || owner.OnError == nil {
+		c.child = c.UpdateChild(c.child, built, c.slot)
+		return
+	}
+	var updateErr error
+	foundation.Guard(func(err error) { updateErr = err }, foundation.BuildPanicked, "while building "+c.String(), c.panicInfo, func() {
+		c.child = c.UpdateChild(c.child, built, c.slot)
+	})
+	if updateErr != nil {
+		owner.OnError(updateErr)
+		// As in Flutter the old child is left to the tree: the update stopped
+		// half way, and the error widget is built from scratch.
+		c.child = c.UpdateChild(nil, owner.errorWidgetFor(updateErr), c.slot)
+	}
+}
+
+// panicInfo is the metadata of a report about this element: the widget and the
+// chain of the elements that created it.
+func (c *ComponentElement) panicInfo() []any {
+	return []any{"library", "widgets library", "element", c.String(), "widget", foundation.RuntimeTypeName(c.widget),
+		"creatorChain", c.DebugGetCreatorChain(12)}
 }
 
 // VisitChildren visits the built child.
@@ -205,6 +238,7 @@ func (e *StatefulElement) Reassemble() {
 // Flutter: widgets/framework.dart StatefulElement._firstBuild
 func (e *StatefulElement) firstBuild() {
 	sd := e.state.stateInternals().data()
+	sd.owner = e.owner
 	if h, ok := e.state.(initStater); ok {
 		h.InitState()
 	}

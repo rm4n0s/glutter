@@ -81,10 +81,22 @@ func compareElements(a, b Element) int {
 	return 0
 }
 
+// tryRebuild rebuilds the element. It is a recovery point (SPEC §14.2): with a
+// reporter a panic is reported and the next dirty element is built. A panic in
+// Build itself never gets here, because PerformRebuild turns it into an
+// ErrorWidget; this catches the other failures of a rebuild, such as the
+// lifecycle hooks of a state.
+//
+// Flutter: widgets/framework.dart BuildScope._tryRebuild
 func (s *BuildScope) tryRebuild(element Element) {
-	// TODO(step 7.3): recover from a panic here, report it and go on with the
-	// next dirty element.
-	element.Rebuild()
+	var report foundation.ErrorReporter
+	if o := element.AsElement().owner; o != nil && o.OnError != nil {
+		report = o.OnError
+	}
+	foundation.Guard(report, foundation.BuildPanicked, "while rebuilding dirty elements", func() []any {
+		return []any{"library", "widgets library", "element", element.String(),
+			"creatorChain", element.AsElement().DebugGetCreatorChain(12)}
+	}, func() { element.Rebuild() })
 }
 
 func (s *BuildScope) flushDirtyElements() {
@@ -135,13 +147,34 @@ type BuildOwner struct {
 	//
 	// Flutter: widgets/framework.dart BuildOwner.onBuildScheduled
 	OnBuildScheduled func()
-	// OnError receives the errors the framework reports instead of throwing:
-	// the problems it finds while it finalizes the tree or applies parent data.
-	// Without it such an error panics, because it must not pass unnoticed. The
-	// binding replaces it with the error reporter in step 7.3.
+	// OnError is the framework's error reporter: it receives the errors the
+	// framework reports instead of throwing, such as the problems it finds while
+	// it finalizes the tree or applies parent data, and the panics it recovers
+	// from in Build and in the lifecycle hooks of a state (SPEC §14.2). Without
+	// it these errors panic, because they must not pass unnoticed.
 	//
-	// Flutter: foundation/assertions.dart FlutterError.reportError
-	OnError func(err error)
+	// Flutter: foundation/assertions.dart FlutterError.onError
+	OnError foundation.ErrorReporter
+	// Post runs a function on the UI thread, from any goroutine; the binding
+	// passes its own. SetState called from another goroutine and the errors of
+	// State.Go go through it (SPEC §13). Without it, only the UI thread may call
+	// SetState.
+	//
+	// Flutter: no counterpart
+	Post func(fn func())
+	// UIThread says which goroutine is the UI thread. Debug builds check it in
+	// MarkNeedsBuild, and SetState uses it to tell the UI thread from the
+	// goroutines that must post. Without it nothing is checked.
+	//
+	// Flutter: no counterpart
+	UIThread *foundation.UIThread
+	// ErrorWidgetBuilder builds the widget that takes the place of a widget that
+	// panicked in Build. The default is NewErrorWidgetWithDetails, with the text
+	// of the error as the message in debug builds and an empty message in
+	// release builds.
+	//
+	// Flutter: widgets/framework.dart ErrorWidget.builder
+	ErrorWidgetBuilder func(err error) Widget
 
 	inactive                    inactiveElements
 	scheduledFlushDirtyElements bool
@@ -164,8 +197,15 @@ type BuildOwner struct {
 type BuildOwnerOpts struct {
 	// OnBuildScheduled is called when the first element becomes dirty.
 	OnBuildScheduled func()
-	// OnError receives the errors that are reported instead of thrown.
-	OnError func(err error)
+	// OnError is the framework's error reporter (see BuildOwner.OnError).
+	OnError foundation.ErrorReporter
+	// Post runs a function on the UI thread, from any goroutine (see
+	// BuildOwner.Post).
+	Post func(fn func())
+	// UIThread is the UI thread (see BuildOwner.UIThread).
+	UIThread *foundation.UIThread
+	// ErrorWidgetBuilder replaces the default ErrorWidget builder.
+	ErrorWidgetBuilder func(err error) Widget
 }
 
 // NewBuildOwner creates a build owner.
@@ -173,7 +213,8 @@ type BuildOwnerOpts struct {
 // Flutter: widgets/framework.dart BuildOwner.new
 func NewBuildOwner(opts ...BuildOwnerOpts) *BuildOwner {
 	o := firstOpts(opts)
-	return &BuildOwner{OnBuildScheduled: o.OnBuildScheduled, OnError: o.OnError}
+	return &BuildOwner{OnBuildScheduled: o.OnBuildScheduled, OnError: o.OnError, Post: o.Post, UIThread: o.UIThread,
+		ErrorWidgetBuilder: o.ErrorWidgetBuilder}
 }
 
 func (o *BuildOwner) debugStateLocked() bool { return o.debugStateLockLevel > 0 }
@@ -276,6 +317,28 @@ func (o *BuildOwner) BuildScope(context Element, callback func()) {
 // that must still update after a global key moved a child away.
 func (o *BuildOwner) debugElementWasRebuilt(node Element) {
 	o.debugToRebuildForKeys.remove(node)
+}
+
+// reportFromAnyGoroutine gives the error to OnError on the UI thread: it posts it
+// when the caller is another goroutine and Post is set.
+func (o *BuildOwner) reportFromAnyGoroutine(err error) {
+	if o.Post != nil && !o.UIThread.IsCurrent() {
+		o.Post(func() { o.OnError(err) })
+		return
+	}
+	o.OnError(err)
+}
+
+// errorWidgetFor builds the widget that replaces one that failed to build.
+func (o *BuildOwner) errorWidgetFor(err error) Widget {
+	if o.ErrorWidgetBuilder != nil {
+		return o.ErrorWidgetBuilder(err)
+	}
+	message := ""
+	if foundation.DebugMode {
+		message = err.Error()
+	}
+	return NewErrorWidgetWithDetails(message, err)
 }
 
 // reportError hands the error to OnError, or panics with it when there is none.

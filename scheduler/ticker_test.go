@@ -14,6 +14,7 @@ import (
 const frame = 10 * time.Millisecond
 
 func TestTickerMuteControl(t *testing.T) {
+	skipUnlessDebug(t)
 	tt := newTester()
 	ticks := 0
 	ticker := NewTicker(tt.SchedulerBinding, func(time.Duration) { ticks++ })
@@ -73,6 +74,7 @@ func TestTickerElapsedTimeStartsAtTheFirstFrame(t *testing.T) {
 }
 
 func TestTickerToString(t *testing.T) {
+	skipUnlessDebug(t)
 	tt := newTester()
 	tests := []struct {
 		label string
@@ -218,6 +220,7 @@ func TestTickerStopAndStartInsideTheCallback(t *testing.T) {
 }
 
 func TestTickerDisposeCancelsTheFuture(t *testing.T) {
+	skipUnlessDebug(t)
 	tt := newTester()
 	ticker := NewTicker(tt.SchedulerBinding, func(time.Duration) {})
 	f := ticker.Start()
@@ -282,6 +285,7 @@ func TestTickerFutureCompletion(t *testing.T) {
 }
 
 func TestTickerFutureCancel(t *testing.T) {
+	skipUnlessDebug(t)
 	tt := newTester()
 	ticker := NewTicker(tt.SchedulerBinding, func(time.Duration) {}, TickerOpts{DebugLabel: "spinner"})
 	f := ticker.Start()
@@ -337,6 +341,7 @@ func TestTickerStopOfAnInactiveTickerDoesNothing(t *testing.T) {
 }
 
 func TestTickerAbsorbTicker(t *testing.T) {
+	skipUnlessDebug(t)
 	tt := newTester()
 	var origTicks, newTicks []time.Duration
 	orig := NewTicker(tt.SchedulerBinding, func(e time.Duration) { origTicks = append(origTicks, e) })

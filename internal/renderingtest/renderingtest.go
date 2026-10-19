@@ -14,6 +14,7 @@ import (
 
 	"github.com/rm4n0s/errors"
 
+	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/internal/gpu/soft"
 	"github.com/rm4n0s/glutter/internal/renderhost"
 	"github.com/rm4n0s/glutter/internal/text"
@@ -36,6 +37,10 @@ type Opts struct {
 	Debug *rendering.DebugOptions
 	// TextEngine lays out the text; the default is BundledTextEngine().
 	TextEngine ui.ParagraphFactory
+	// CollectPanics makes the harness collect the panics that layout and paint
+	// recover in Errors. By default it panics again with them, so that a test
+	// that does not expect one fails where it happens.
+	CollectPanics bool
 }
 
 // Harness is a rendering binding on a fake engine, with one view.
@@ -60,7 +65,12 @@ func New(t *testing.T, opts ...Opts) *Harness {
 	}
 	h := &Harness{TextEngine: o.TextEngine}
 	h.Stack = renderhost.New(renderhost.Opts{Size: o.Size, DevicePixelRatio: o.DevicePixelRatio, Debug: o.Debug,
-		TextEngine: o.TextEngine, ReportError: func(err error) { h.Errors = append(h.Errors, err) }})
+		TextEngine: o.TextEngine, ReportError: func(err error) {
+			if !o.CollectPanics && foundation.IsRecoveredPanic(err) {
+				panic(err)
+			}
+			h.Errors = append(h.Errors, err)
+		}})
 	return h
 }
 

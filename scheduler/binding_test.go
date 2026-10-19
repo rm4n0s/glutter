@@ -185,6 +185,7 @@ func TestFrameCallbacksRunInOrderOnceAndCanBeCanceled(t *testing.T) {
 }
 
 func TestCanceledIDsAreForgottenAfterTheFrame(t *testing.T) {
+	skipUnlessDebug(t)
 	tt := newTester()
 	id := tt.ScheduleFrameCallback(func(time.Duration) { t.Error("canceled callback ran") })
 	tt.CancelFrameCallbackWithID(id)
@@ -316,6 +317,7 @@ func TestPhasesDuringAFrame(t *testing.T) {
 }
 
 func TestFrameOrderErrors(t *testing.T) {
+	skipUnlessDebug(t)
 	tt := newTester()
 	assertRoute(t, recoverError(t, func() { tt.HandleDrawFrame() }), "SchedulerBinding.HandleDrawFrame.FrameNotBegun")
 	tt.HandleBeginFrame(foundation.None[time.Duration]())
@@ -357,6 +359,7 @@ func TestCurrentSystemFrameTimeStampIsTheRawTimeStamp(t *testing.T) {
 }
 
 func TestTimeDilation(t *testing.T) {
+	skipUnlessDebug(t)
 	tt := newTester()
 	if tt.TimeDilation() != 1 {
 		t.Errorf("time dilation starts at %v, want 1", tt.TimeDilation())
@@ -372,6 +375,7 @@ func TestTimeDilation(t *testing.T) {
 }
 
 func TestDebugAssertNoTimeDilation(t *testing.T) {
+	skipUnlessDebug(t)
 	tt := newTester()
 	tt.SetTimeDilation(2)
 	tt.SetTimeDilation(1)
@@ -383,6 +387,7 @@ func TestDebugAssertNoTimeDilation(t *testing.T) {
 }
 
 func TestDebugAssertNoTransientCallbacks(t *testing.T) {
+	skipUnlessDebug(t)
 	tt := newTester()
 	if !tt.DebugAssertNoTransientCallbacks("reason") {
 		t.Error("no callbacks, no error")

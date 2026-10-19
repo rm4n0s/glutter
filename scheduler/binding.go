@@ -144,6 +144,13 @@ type SchedulerBinding struct {
 	// Flutter: scheduler/binding.dart SchedulerBinding.schedulingStrategy
 	SchedulingStrategy SchedulingStrategy
 
+	// ErrorReporter receives the panics of tasks and frame callbacks, which are
+	// recovered so that the others still run. Without one, a panic goes on and
+	// ends the frame. The binding that owns the scheduler sets it (SPEC §14.2).
+	//
+	// Flutter: foundation/assertions.dart FlutterError.onError
+	ErrorReporter foundation.ErrorReporter
+
 	lifecycle     ui.AppLifecycleState
 	framesEnabled bool
 	timeDilation  float64
@@ -350,7 +357,8 @@ func (b *SchedulerBinding) runTasks() {
 // one that the strategy did not allow yet. The event loop calls it; tests call
 // it too.
 //
-// TODO(step 7.3): report a panic of a task and go on.
+// A task that panics is reported to the ErrorReporter (CallbackPanicked, "during
+// a task callback") and the event loop goes on.
 //
 // Flutter: scheduler/binding.dart SchedulerBinding.handleEventLoopCallback
 func (b *SchedulerBinding) HandleEventLoopCallback() bool {
@@ -360,7 +368,7 @@ func (b *SchedulerBinding) HandleEventLoopCallback() bool {
 	entry := b.tasks[0]
 	if b.SchedulingStrategy(entry.priority, b) {
 		heap.Pop(&b.tasks)
-		entry.run()
+		foundation.Guard(b.ErrorReporter, foundation.CallbackPanicked, "during a task callback", nil, entry.run)
 		return len(b.tasks) > 0
 	}
 	return true
@@ -419,7 +427,8 @@ func (b *SchedulerBinding) CancelFrameCallbackWithID(id int) {
 // DebugAssertNoTransientCallbacks panics with the tag TransientCallbacksPending
 // in debug builds when transient callbacks are still waiting. It returns true.
 //
-// TODO(step 7.3): report it as Flutter does, with the stack of each callback.
+// Flutter lists the stack of each callback that is still waiting; Go keeps no such
+// stacks, so the count is all there is.
 //
 // Flutter: scheduler/binding.dart SchedulerBinding.debugAssertNoTransientCallbacks
 func (b *SchedulerBinding) DebugAssertNoTransientCallbacks(reason string) bool {
@@ -604,7 +613,8 @@ func (b *SchedulerBinding) CurrentSystemFrameTimeStamp() time.Duration { return 
 // next frame; one canceled by an earlier callback of the same frame does not
 // run.
 //
-// TODO(step 7.3): report a panic of a callback and go on with the others.
+// A callback that panics is reported to the ErrorReporter (CallbackPanicked,
+// "during a scheduler callback") and the others still run.
 //
 // Flutter: scheduler/binding.dart SchedulerBinding.handleBeginFrame
 func (b *SchedulerBinding) HandleBeginFrame(rawTimeStamp foundation.Opt[time.Duration]) {
@@ -629,7 +639,7 @@ func (b *SchedulerBinding) HandleBeginFrame(rawTimeStamp foundation.Opt[time.Dur
 	b.transientCallbacks = nil
 	for _, entry := range callbacks {
 		if !b.removedIDs[entry.id] {
-			entry.callback(b.currentFrameTimeStamp.Value())
+			b.invokeFrameCallback(entry.callback, b.currentFrameTimeStamp.Value())
 		}
 	}
 	clear(b.removedIDs)
@@ -639,7 +649,8 @@ func (b *SchedulerBinding) HandleBeginFrame(rawTimeStamp foundation.Opt[time.Dur
 // post-frame callbacks, and the binding is idle again. The dispatcher's
 // OnDrawFrame calls it, after HandleBeginFrame.
 //
-// TODO(step 7.3): report a panic of a callback and go on with the others.
+// A callback that panics is reported to the ErrorReporter (CallbackPanicked,
+// "during a scheduler callback") and the others still run.
 //
 // Flutter: scheduler/binding.dart SchedulerBinding.handleDrawFrame
 func (b *SchedulerBinding) HandleDrawFrame() {
@@ -653,12 +664,19 @@ func (b *SchedulerBinding) HandleDrawFrame() {
 	ts := b.currentFrameTimeStamp.Value()
 	b.phase = SchedulerPhasePersistentCallbacks
 	for _, callback := range slices.Clone(b.persistentCallbacks) {
-		callback(ts)
+		b.invokeFrameCallback(callback, ts)
 	}
 	b.phase = SchedulerPhasePostFrameCallbacks
 	postFrame := b.postFrameCallbacks
 	b.postFrameCallbacks = nil
 	for _, callback := range postFrame {
-		callback(ts)
+		b.invokeFrameCallback(callback, ts)
 	}
+}
+
+// invokeFrameCallback calls a frame callback and reports its panic.
+//
+// Flutter: scheduler/binding.dart SchedulerBinding._invokeFrameCallback
+func (b *SchedulerBinding) invokeFrameCallback(callback FrameCallback, ts time.Duration) {
+	foundation.Guard(b.ErrorReporter, foundation.CallbackPanicked, "during a scheduler callback", nil, func() { callback(ts) })
 }

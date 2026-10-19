@@ -29,6 +29,9 @@ func originalOrSelf(e PointerEvent) PointerEvent {
 //
 // Flutter: gestures/pointer_signal_resolver.dart PointerSignalResolver
 type PointerSignalResolver struct {
+	// errorReporter receives the panic of the callback; the binding sets it.
+	errorReporter foundation.ErrorReporter
+
 	firstRegisteredCallback PointerSignalResolvedCallback
 	currentEvent            PointerSignalEvent
 }
@@ -68,9 +71,9 @@ func (r *PointerSignalResolver) Resolve(event PointerSignalEvent) {
 	if foundation.DebugMode && !isSameEvent(r.currentEvent, event) {
 		panic(errors.New("PointerSignalEventMismatch", "a different signal event was resolved than the one registered"))
 	}
-	// TODO(step 7.3): recover a panic in the callback and report it, as
-	// Flutter does with FlutterError.reportError.
-	r.firstRegisteredCallback(r.currentEvent)
+	callback, current := r.firstRegisteredCallback, r.currentEvent
 	r.firstRegisteredCallback = nil
 	r.currentEvent = nil
+	// A callback that panics is reported (CallbackPanicked).
+	foundation.Guard(r.errorReporter, foundation.CallbackPanicked, "while resolving a PointerSignalEvent", nil, func() { callback(current) })
 }

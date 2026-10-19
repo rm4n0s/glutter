@@ -12,7 +12,7 @@ import (
 // Ported from packages/flutter/test/gestures/gesture_binding_test.dart, and from
 // gesture_binding_resample_event_test.dart. The tests of the platform view hit
 // test (ui.HitTestRequest) are not ported: Glutter has no platform views. The
-// 'Error handling' test comes with step 7.3.
+// 'Error handling' test is in error_test.go.
 
 // recordingTarget is a hit test target that records the events it gets, as the
 // overridden handleEvent of Flutter's TestGestureFlutterBinding does.

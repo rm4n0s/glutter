@@ -395,10 +395,12 @@ func (c *ImageStreamCompleter) AddListener(listener *ImageStreamListener) {
 	}
 	c.listeners = append(c.listeners, listener)
 	if c.currentImage != nil {
-		listener.OnImage(c.currentImage.Clone(), !c.addingInitialListeners)
+		c.callListener("by a synchronously-called image listener", func() {
+			listener.OnImage(c.currentImage.Clone(), !c.addingInitialListeners)
+		})
 	}
 	if c.currentError != nil && listener.OnError != nil {
-		listener.OnError(c.currentError.Err)
+		c.callListener("by a synchronously-called image error listener", func() { listener.OnError(c.currentError.Err) })
 	}
 }
 
@@ -520,8 +522,19 @@ func (c *ImageStreamCompleter) SetImage(image *ImageInfo) {
 		return
 	}
 	for _, l := range append([]*ImageStreamListener{}, c.listeners...) {
-		l.OnImage(image.Clone(), false)
+		c.callListener("by an image listener", func() { l.OnImage(image.Clone(), false) })
 	}
+}
+
+// callListener runs a listener. It is a recovery point (SPEC §14.2): when the
+// binding has an error reporter, a panic in the listener is reported with the
+// tag CallbackPanicked and the other listeners are still called.
+//
+// Flutter: painting/image_stream.dart ImageStreamCompleter.setImage
+func (c *ImageStreamCompleter) callListener(context string, fn func()) {
+	foundation.Guard(c.binding.panicReporter(), foundation.CallbackPanicked, context, func() []any {
+		return []any{"library", "image resource service"}
+	}, fn)
 }
 
 // ReportError tells the error listeners that loading failed. If none handled it
@@ -543,7 +556,7 @@ func (c *ImageStreamCompleter) ReportError(details ImageErrorDetails) {
 	c.ephemeralErrorListeners = nil
 	handled := false
 	for _, l := range errorListeners {
-		l(details.Err)
+		c.callListener("by an image error listener", func() { l(details.Err) })
 		handled = true
 	}
 	if !handled {

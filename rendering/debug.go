@@ -45,6 +45,12 @@ type DebugOptions struct {
 	//
 	// Flutter: foundation/assertions.dart FlutterError.reportError
 	ReportError func(err error)
+	// UIThread says which goroutine is the UI thread. Debug builds check it in
+	// MarkNeedsLayout and panic with the tag WrongThread; nil
+	// checks nothing (SPEC §13).
+	//
+	// Flutter: no counterpart
+	UIThread *foundation.UIThread
 	// PaintSizeEnabled paints a box around every render box
 	// (debugPaintSizeEnabled).
 	PaintSizeEnabled bool

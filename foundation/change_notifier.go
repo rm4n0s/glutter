@@ -79,7 +79,23 @@ type ChangeNotifier struct {
 	// a notification.
 	removedWhileNotifying int
 	disposed              bool
+	reporter              ErrorReporter
+	uiThread              *UIThread
 }
+
+// SetErrorReporter sets the function that receives the panics of listeners. The
+// owner of the notifier (the binding, a controller) sets it. Without one, a
+// listener that panics does not stop the others, and the first panic goes on
+// when the last one has been called.
+//
+// Flutter: foundation/change_notifier.dart ChangeNotifier.notifyListeners
+func (n *ChangeNotifier) SetErrorReporter(r ErrorReporter) { n.reporter = r }
+
+// SetUIThread makes debug builds check that NotifyListeners is called from the UI
+// thread, with the tag WrongThread (SPEC §13).
+//
+// Flutter: no counterpart
+func (n *ChangeNotifier) SetUIThread(t *UIThread) { n.uiThread = t }
 
 // NewChangeNotifier creates a ChangeNotifier. The zero value works too; this
 // constructor is for a notifier used on its own.
@@ -168,23 +184,49 @@ func (n *ChangeNotifier) Dispose() {
 // Listeners added during the call are not called by it, and a listener
 // removed during the call is not called after its removal.
 //
-// TODO(step 7.3): report a panic of a listener and go on with the others, as
-// Flutter reports the exception.
+// A listener that panics does not stop the others. The panic is reported to the
+// error reporter, if the notifier has one (SetErrorReporter), as a
+// CallbackPanicked error; without a reporter the first panic goes on after the
+// last listener was called. In debug builds, a notifier that has a UI thread
+// (SetUIThread) panics with the tag WrongThread when it is notified from another
+// goroutine.
 //
 // Flutter: foundation/change_notifier.dart ChangeNotifier.notifyListeners
 func (n *ChangeNotifier) NotifyListeners() {
 	n.DebugAssertNotDisposed()
+	n.uiThread.AssertCurrent("ChangeNotifier.NotifyListeners")
 	if len(n.listeners) == 0 {
 		return
 	}
 	n.notifyDepth++
 	// The deferred call keeps the bookkeeping right if a listener panics.
 	defer n.endNotify()
+	var first any
 	end := len(n.listeners)
 	for i := 0; i < end; i++ {
-		if fn := n.listeners[i].fn; fn != nil {
-			fn()
+		fn := n.listeners[i].fn
+		if fn == nil {
+			continue
 		}
+		func() {
+			defer func() {
+				r := recover()
+				if r == nil {
+					return
+				}
+				if n.reporter == nil {
+					if first == nil {
+						first = r
+					}
+					return
+				}
+				n.reporter(PanicError(CallbackPanicked, "while dispatching notifications for "+DescribeIdentity(n), r))
+			}()
+			fn()
+		}()
+	}
+	if first != nil {
+		panic(first)
 	}
 }
 
