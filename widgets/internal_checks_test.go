@@ -3,6 +3,7 @@ package widgets
 import (
 	"testing"
 
+	"github.com/rm4n0s/glutter/services"
 	"github.com/rm4n0s/glutter/ui"
 )
 
@@ -68,4 +69,16 @@ func TestFocusTraversalInternalChecks(t *testing.T) {
 	nodes := []*FocusNode{node}
 	requireTag(t, "TraversalDirectionInvalid", func() { sortAndFilterHorizontally(TraversalDirectionUp, ui.Rect{}, nodes, true) })
 	requireTag(t, "TraversalDirectionInvalid", func() { sortAndFilterVertically(TraversalDirectionLeft, ui.Rect{}, nodes, true) })
+}
+
+func TestShortcutRegistryForeignEntry(t *testing.T) {
+	skipUnlessDebug(t)
+	bt := newBindingTree(t)
+	registry := NewShortcutRegistry(bt.b.Scheduler())
+	other := NewShortcutRegistry(bt.b.Scheduler())
+	defer registry.Dispose()
+	defer other.Dispose()
+	token := other.AddAll(ShortcutMap{{NewSingleActivator(services.LogicalKeyboardKeyKeyA), DoNothingIntent{}}})
+	defer token.Dispose()
+	requireTag(t, "ShortcutRegistryEntryForeign", func() { registry.replaceAll(token, ShortcutMap{}) })
 }

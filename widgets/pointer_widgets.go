@@ -150,7 +150,7 @@ type MouseRegionOpts struct {
 	// pointers; the default is true.
 	Opaque foundation.Opt[bool]
 	// HitTestBehavior is how to behave during hit testing; the default is
-	// HitTestBehaviorDeferToChild.
+	// HitTestBehaviorOpaque.
 	HitTestBehavior rendering.HitTestBehavior
 }
 
@@ -170,9 +170,6 @@ func NewMouseRegion(child Widget, opts ...MouseRegionOpts) *MouseRegion {
 	o := firstOpts(opts)
 	if o.Cursor == nil {
 		o.Cursor = services.MouseCursorDefer
-	}
-	if o.HitTestBehavior == rendering.HitTestBehaviorUnspecified {
-		o.HitTestBehavior = rendering.HitTestBehaviorDeferToChild
 	}
 	return &MouseRegion{NewSingleChildRenderObjectWidgetBase(child, WidgetOpts{Key: o.Key}), o}
 }

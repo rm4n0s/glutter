@@ -2,6 +2,7 @@ package widgets
 
 import (
 	"math"
+	"reflect"
 	"strings"
 	"time"
 
@@ -205,11 +206,9 @@ type ScrollIncrementCalculator func(details ScrollIncrementDetails) float64
 // ScrollIntent is what a request to scroll (a key press, a click on the track
 // of a scrollbar) is: a direction and an increment type.
 //
-// Deviation: Flutter's extends Intent; the Intent type comes with the actions
-// system (step 10.6), where ScrollAction is ported too (SPEC §12.10).
-//
 // Flutter: widgets/scrollable_helpers.dart ScrollIntent
 type ScrollIntent struct {
+	IntentBase
 	// Direction is the direction to scroll in.
 	//
 	// Flutter: widgets/scrollable_helpers.dart ScrollIntent.direction
@@ -218,6 +217,78 @@ type ScrollIntent struct {
 	//
 	// Flutter: widgets/scrollable_helpers.dart ScrollIntent.type
 	Type ScrollIncrementType
+}
+
+// ScrollAction is the action that scrolls the Scrollable around the primary focus
+// (or the one attached to the PrimaryScrollController) for a ScrollIntent.
+//
+// Flutter: widgets/scrollable_helpers.dart ScrollAction
+type ScrollAction struct{ ContextActionBase }
+
+// NewScrollAction creates the action.
+//
+// Flutter: widgets/scrollable_helpers.dart ScrollAction.new
+func NewScrollAction() *ScrollAction {
+	a := &ScrollAction{}
+	InitContextActionBase(&a.ContextActionBase, a)
+	return a
+}
+
+// IntentType is ScrollIntent.
+//
+// Flutter: widgets/actions.dart Action.intentType
+func (a *ScrollAction) IntentType() reflect.Type { return reflect.TypeFor[ScrollIntent]() }
+
+// IsEnabledWithContext is whether there is a Scrollable around the context, or the
+// primary scroll controller has a client.
+//
+// Flutter: widgets/scrollable_helpers.dart ScrollAction.isEnabled
+func (a *ScrollAction) IsEnabledWithContext(_ Intent, bc BuildContext) bool {
+	if bc == nil {
+		return false
+	}
+	if ScrollableMaybeOf(bc) != nil {
+		return true
+	}
+	primary := PrimaryScrollControllerMaybeOf(bc)
+	return !isNil(primary) && primary.HasClients()
+}
+
+// InvokeWithContext scrolls the scrollable by an increment in the direction of the
+// intent, with a short animation.
+//
+// Flutter: widgets/scrollable_helpers.dart ScrollAction.invoke
+func (a *ScrollAction) InvokeWithContext(intent Intent, bc BuildContext) any {
+	if bc == nil {
+		panic(errors.New("ScrollActionContextMissing", "cannot scroll without a context"))
+	}
+	state := ScrollableMaybeOf(bc)
+	if state == nil {
+		primary := PrimaryScrollControllerOf(bc)
+		if foundation.DebugMode && len(primary.Positions()) != 1 {
+			panic(errors.New("ScrollActionPositionsInvalid",
+				"a ScrollAction was invoked with the PrimaryScrollController, but more than one ScrollPosition is attached: only one ScrollPosition can be manipulated by a ScrollAction at a time",
+				"positions", len(primary.Positions())))
+		}
+		if notificationContext := primary.Position().Context().NotificationContext(); notificationContext != nil {
+			state = ScrollableMaybeOf(notificationContext)
+		}
+		if state == nil {
+			return nil
+		}
+	}
+	if foundation.DebugMode && !state.Position().HasPixels() {
+		panic(errors.New("ScrollActionNotLaidOut", "the Scrollable must be laid out before it can be scrolled via a ScrollAction"))
+	}
+	if physics := state.ResolvedPhysics(); physics != nil && !physics.ShouldAcceptUserOffset(state.Position()) {
+		return nil
+	}
+	increment := ScrollActionGetDirectionalIncrement(state, intent.(ScrollIntent))
+	if increment == 0 {
+		return nil
+	}
+	state.Position().MoveTo(state.Position().Pixels()+increment, rendering.ViewportOffsetMoveToOpts{Duration: foundation.Some(100 * time.Millisecond), Curve: animation.Curves.EaseInOut})
+	return nil
 }
 
 // ScrollActionGetDirectionalIncrement is the signed number of pixels to scroll

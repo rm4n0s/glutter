@@ -15,9 +15,9 @@ import (
 	. "github.com/rm4n0s/glutter/widgets"
 )
 
-// Ported from packages/flutter/test/widgets/focus_traversal_test.dart. The cases
-// that use Shortcuts, Actions and Intents (NextFocusAction and its siblings, the
-// Tab key) wait for step 10.6.
+// Ported from packages/flutter/test/widgets/focus_traversal_test.dart. The
+// cases that need EditableText (the arrow keys in a text field) wait for step
+// 11.4.
 
 type gkey = *GlobalKey[State]
 
@@ -1184,14 +1184,14 @@ func TestDirectionalFocusTraversal(t *testing.T) {
 	})
 }
 
-// moveFocus is the DirectionalFocusAction that an arrow key runs in Dart: the
-// primary focus moves in the direction. (Shortcuts and Actions come with step
-// 10.6; the tests below use the Navigator of the app, whose node has the primary
-// focus at the start.)
+// moveFocus sends the arrow key of the direction, which the default shortcuts of
+// the app map to a DirectionalFocusIntent.
 func moveFocus(ts *gluttertest.Tester, dir TraversalDirection) {
-	if primary := ts.Binding.FocusManager().PrimaryFocus(); primary != nil {
-		primary.FocusInDirection(dir)
-	}
+	key := map[TraversalDirection]services.LogicalKeyboardKey{
+		TraversalDirectionLeft: services.LogicalKeyboardKeyArrowLeft, TraversalDirectionRight: services.LogicalKeyboardKeyArrowRight,
+		TraversalDirectionUp: services.LogicalKeyboardKeyArrowUp, TraversalDirectionDown: services.LogicalKeyboardKeyArrowDown,
+	}[dir]
+	ts.SendKeyEvent(key)
 	ts.Pump()
 }
 
@@ -1477,14 +1477,9 @@ func TestCustomRequestFocusCallbackIsCalledOnFocusInDirection(t *testing.T) {
 }
 
 // focusTestButton is TestButton of button_tester.dart: a focusable, tappable widget
-// that can not take the focus when it is disabled (onPressed is nil). The Dart one
-// is built with FocusableActionDetector, which comes with step 10.6.
+// that can not take the focus when it is disabled (onPressed is nil).
 func focusTestButton(node *FocusNode, label string, onPressed func(), autofocus ...bool) Widget {
-	opts := FocusOpts{FocusNode: node, CanRequestFocus: foundation.Some(onPressed != nil)}
-	if len(autofocus) > 0 {
-		opts.Autofocus = autofocus[0]
-	}
-	return NewFocus(NewGestureDetector(navText(label), GestureDetectorOpts{OnTap: onPressed}), opts)
+	return newTestButton(navText(label), testButtonOpts{focusNode: node, autofocus: len(autofocus) > 0 && autofocus[0], onPressed: onPressed})
 }
 
 func TestFocusTraversalGroup(t *testing.T) {
@@ -1695,17 +1690,17 @@ func TestExcludeFocusTraversal(t *testing.T) {
 	})
 }
 
-// nextFocus and previousFocus run what NextFocusIntent and PreviousFocusIntent do:
-// the primary focus moves to the next (previous) node. (The Intents come with step
-// 10.6.)
+// nextFocus and previousFocus invoke the NextFocusIntent and the PreviousFocusIntent
+// at the primary focus, and return what the action returned: whether the focus
+// moved.
 func nextFocus(ts *gluttertest.Tester) bool {
-	result := ts.Binding.FocusManager().PrimaryFocus().NextFocus()
+	result := ActionsInvoke(ts.Binding.FocusManager().PrimaryFocus().Context(), NextFocusIntent{}).(bool)
 	ts.Pump()
 	return result
 }
 
 func previousFocus(ts *gluttertest.Tester) bool {
-	result := ts.Binding.FocusManager().PrimaryFocus().PreviousFocus()
+	result := ActionsInvoke(ts.Binding.FocusManager().PrimaryFocus().Context(), PreviousFocusIntent{}).(bool)
 	ts.Pump()
 	return result
 }
@@ -1943,5 +1938,119 @@ func TestFocusTraversalDoesNotBreakWhenNoFocusableIsAvailableOnAnApp(t *testing.
 				t.Errorf("got %d key events, want 2", len(events))
 			}
 		})
+	}
+}
+
+func TestFocusTraversalActionsAreInvokedWhenShortcutsAreUsed(t *testing.T) {
+	ts := gluttertest.New(t)
+	k := newKeys(4)
+	upperLeft, upperRight, lowerLeft, lowerRight := k[0], k[1], k[2], k[3]
+	ts.PumpWidget(testWidgetsApp(testWidgetsAppOpts{home: ltr(NewFocusScope(NewColumn([]Widget{
+		NewRow([]Widget{
+			NewFocus(sizedBoxKey(upperLeft), FocusOpts{Autofocus: true, DebugLabel: "upperLeft"}),
+			NewFocus(sizedBoxKey(upperRight), FocusOpts{DebugLabel: "upperRight"}),
+		}),
+		NewRow([]Widget{
+			NewFocus(sizedBoxKey(lowerLeft), FocusOpts{DebugLabel: "lowerLeft"}),
+			NewFocus(sizedBoxKey(lowerRight), FocusOpts{DebugLabel: "lowerRight"}),
+		}),
+	}), FocusScopeOpts{DebugLabel: "scope"}))}))
+	hasPrimary := func(k gkey) bool { return FocusOf(elemOf(ts, k)).HasPrimaryFocus() }
+	requireFocus := func(step string, k gkey) {
+		t.Helper()
+		if !hasPrimary(k) {
+			t.Fatalf("%s: the wrong node has the primary focus: %s", step, ts.Binding.FocusManager().PrimaryFocus().ToStringShort())
+		}
+	}
+	shiftTab := func() {
+		ts.SendKeyDownEvent(services.LogicalKeyboardKeyShift)
+		ts.SendKeyEvent(services.LogicalKeyboardKeyTab)
+		ts.SendKeyUpEvent(services.LogicalKeyboardKeyShift)
+	}
+	requireFocus("start", upperLeft)
+	for i, want := range []gkey{upperRight, lowerLeft, lowerRight, upperLeft} {
+		ts.SendKeyEvent(services.LogicalKeyboardKeyTab)
+		requireFocus("tab "+string(rune('1'+i)), want)
+	}
+	for i, want := range []gkey{lowerRight, lowerLeft, upperRight, upperLeft} {
+		shiftTab()
+		requireFocus("shift+tab "+string(rune('1'+i)), want)
+	}
+	// Traverse in a direction.
+	for _, step := range []struct {
+		key  services.LogicalKeyboardKey
+		want gkey
+	}{
+		{services.LogicalKeyboardKeyArrowRight, upperRight}, {services.LogicalKeyboardKeyArrowDown, lowerRight},
+		{services.LogicalKeyboardKeyArrowLeft, lowerLeft}, {services.LogicalKeyboardKeyArrowUp, upperLeft},
+	} {
+		ts.SendKeyEvent(step.key)
+		requireFocus(step.key.String(), step.want)
+	}
+}
+
+func TestFocusTraversalActionsWorkWhenCurrentFocusSkipsTraversal(t *testing.T) {
+	ts := gluttertest.New(t)
+	k := newKeys(3)
+	ts.PumpWidget(testWidgetsApp(testWidgetsAppOpts{home: ltr(NewFocusScope(NewColumn([]Widget{
+		NewRow([]Widget{
+			NewFocus(sizedBoxKey(k[0]), FocusOpts{Autofocus: true, SkipTraversal: foundation.Some(true), DebugLabel: "1"}),
+			NewFocus(sizedBoxKey(k[1]), FocusOpts{DebugLabel: "2"}),
+			NewFocus(sizedBoxKey(k[2]), FocusOpts{DebugLabel: "3"}),
+		}),
+	}), FocusScopeOpts{DebugLabel: "scope"}))}))
+	hasPrimary := func(i int) bool { return FocusOf(elemOf(ts, k[i])).HasPrimaryFocus() }
+	if !hasPrimary(0) {
+		t.Fatal("the first node should have the primary focus")
+	}
+	// The first node is skipped from then on, because it skips traversal.
+	for i, want := range []int{1, 2, 1, 2} {
+		ts.SendKeyEvent(services.LogicalKeyboardKeyTab)
+		if !hasPrimary(want) {
+			t.Fatalf("tab %d: node %d should have the primary focus", i+1, want+1)
+		}
+	}
+}
+
+func TestNextAndPreviousFocusActionsConvertTheInvokeResultToKeyEventResult(t *testing.T) {
+	for name, action := range map[string]Action{
+		"NextFocusAction":     NewNextFocusAction(),
+		"PreviousFocusAction": NewPreviousFocusAction(),
+	} {
+		intent := Intent(NextFocusIntent{})
+		if name == "PreviousFocusAction" {
+			intent = PreviousFocusIntent{}
+		}
+		if got := action.ToKeyEventResult(intent, true); got != KeyEventResultHandled {
+			t.Errorf("%s: true → %v, want handled", name, got)
+		}
+		if got := action.ToKeyEventResult(intent, false); got != KeyEventResultSkipRemainingHandlers {
+			t.Errorf("%s: false → %v, want skipRemainingHandlers", name, got)
+		}
+	}
+}
+
+func TestRequestFocusActionCallsTheRequestFocusCallbackOfTheIntent(t *testing.T) {
+	ts := gluttertest.New(t)
+	nodeA := NewFocusNode()
+	defer nodeA.Dispose()
+	ts.PumpWidget(testWidgetsApp(testWidgetsAppOpts{home: NewSingleChildScrollView(
+		newTestButton(navText("A"), testButtonOpts{focusNode: nodeA, onPressed: func() {}}))}))
+	action := NewRequestFocusAction()
+	action.Invoke(RequestFocusIntent{FocusNode: nodeA})
+	ts.Pump()
+	if !nodeA.HasFocus() {
+		t.Fatal("the action should have given the focus to the node")
+	}
+	nodeA.Unfocus()
+	ts.Pump()
+	if nodeA.HasFocus() {
+		t.Fatal("the node should have lost the focus")
+	}
+	called := false
+	action.Invoke(RequestFocusIntent{FocusNode: nodeA, RequestFocusCallback: func(*FocusNode, TraversalRequestFocusOpts) { called = true }})
+	ts.Pump()
+	if !called {
+		t.Error("the callback of the intent was not called")
 	}
 }

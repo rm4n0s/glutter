@@ -10,8 +10,8 @@ import (
 )
 
 // The focus cases of packages/flutter/test/widgets/navigator_test.dart. The
-// MaterialApp of the Dart tests is navTestApp, and the arrow keys are
-// FocusInDirection on the primary focus (Shortcuts come with step 10.6). Not
+// MaterialApp of the Dart tests is navTestApp (a WidgetsApp with a hero
+// controller). Not
 // ported: the accessibility focus cases (the platform channel of Android and
 // iOS).
 

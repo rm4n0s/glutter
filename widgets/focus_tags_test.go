@@ -160,3 +160,28 @@ func (p *dropsCurrentPolicy) SortDescendants(descendants []*FocusNode, current *
 	}
 	return out
 }
+
+func TestFocusActionsWithoutAPrimaryFocus(t *testing.T) {
+	skipUnlessDebug(t)
+	ts := gluttertest.New(t)
+	ts.PumpWidget(NewContainer(nil))
+	for name, action := range map[string]interface {
+		InvokeWithContext(Intent, BuildContext) any
+	}{
+		"NextFocusAction":        NewNextFocusAction(),
+		"PreviousFocusAction":    NewPreviousFocusAction(),
+		"DirectionalFocusAction": NewDirectionalFocusAction(),
+	} {
+		intent := Intent(NextFocusIntent{})
+		switch name {
+		case "PreviousFocusAction":
+			intent = PreviousFocusIntent{}
+		case "DirectionalFocusAction":
+			intent = DirectionalFocusIntent{Direction: TraversalDirectionUp}
+		}
+		// Without a context, and with a context where nothing has the primary focus.
+		requireTag(t, "FocusActionWithoutFocus", func() { action.InvokeWithContext(intent, nil) })
+		viewContext := ts.Element(gluttertest.ByType[*View]()).(BuildContext)
+		requireTag(t, "FocusActionWithoutFocus", func() { action.InvokeWithContext(intent, viewContext) })
+	}
+}

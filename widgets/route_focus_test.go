@@ -13,7 +13,7 @@ import (
 
 // The focus cases of packages/flutter/test/widgets/routes_test.dart. A Focus
 // widget stands in for the TestTextField of the Dart tests (EditableText comes
-// with step 11.4), and the Escape shortcut ones wait for step 10.6.
+// with step 11.4).
 
 func routePage(builder func(bc BuildContext) Widget, opts ...PageRouteBuilderOpts) *PageRouteBuilder {
 	var o PageRouteBuilderOpts

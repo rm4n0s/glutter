@@ -16,8 +16,7 @@ import (
 // These tests are ported from
 // packages/flutter/test/widgets/route_notification_messages_test.dart. The mock
 // handler of SystemChannels.navigation is the hooks of the binding's
-// SystemNavigator. The case 'PlatformRouteInformationProvider reports URL' needs
-// WidgetsApp.router (step 10.6); router_test.go has the provider's reports.
+// SystemNavigator. The provider's reports are also tested in router_test.go.
 
 // navLog records the calls of the SystemNavigator.
 type navLog struct{ calls []routeUpdate }
@@ -147,5 +146,36 @@ func TestNavigatorNamelessRoutesSendNoPlatformMessages(t *testing.T) {
 	ts.Pump(time.Second)
 	if got := log.take(); len(got) != 0 {
 		t.Errorf("log = %v, want none", got)
+	}
+}
+
+func TestPlatformRouteInformationProviderReportsURLInAWidgetsAppRouter(t *testing.T) {
+	ts := gluttertest.New(t)
+	var log []routeUpdate
+	logSystemNavigator(ts, &log)
+	provider := NewPlatformRouteInformationProvider(ts.Binding, uriInfo("initial"))
+	defer provider.Dispose()
+	delegate := newSimpleDelegate(func(_ BuildContext, i *routeInfo) Widget { return infoText(i) }, nil)
+	defer delegate.Dispose()
+	delegate.reportConfiguration = true
+	delegate.routeInformation = uriInfo("initial")
+	ts.PumpWidget(NewWidgetsAppRouter(ui.NewColor(0xFFFFFFFF), WidgetsAppRouterOpts[*routeInfo]{
+		RouteInformationProvider: provider, RouteInformationParser: newSimpleParser(), RouterDelegate: delegate,
+	}))
+	if !shows(ts, "initial") {
+		t.Fatal("the initial route information should be shown")
+	}
+	if want := updated("initial", nil, false); !slices.Equal(log, want) {
+		t.Fatalf("log = %v, want %v", log, want)
+	}
+	log = nil
+	// Triggers a router rebuild and verifies that the route information is reported.
+	delegate.setRouteInformation(stateInfo("update", "state"))
+	ts.Pump()
+	if !shows(ts, "update") {
+		t.Fatal("the new route information should be shown")
+	}
+	if want := updated("update", "state", false); !slices.Equal(log, want) {
+		t.Errorf("log = %v, want %v", log, want)
 	}
 }

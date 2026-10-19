@@ -4,7 +4,9 @@ import (
 	"cmp"
 	"fmt"
 	"math"
+	"reflect"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/rm4n0s/errors"
@@ -43,6 +45,13 @@ const (
 	// Flutter: widgets/focus_traversal.dart TraversalDirection.left
 	TraversalDirectionLeft
 )
+
+// Name is the name of the direction without the type, such as "right".
+//
+// Flutter: widgets/focus_traversal.dart TraversalDirection
+func (d TraversalDirection) Name() string {
+	return strings.TrimPrefix(d.String(), "TraversalDirection.")
+}
 
 // String is the name of the direction, like Dart's enum toString.
 //
@@ -1702,4 +1711,236 @@ func (w *ExcludeFocusTraversal) Build(BuildContext) Widget {
 		CanRequestFocus: foundation.Some(false), SkipTraversal: foundation.Some(true), ExcludeSemantics: true,
 		DescendantsAreTraversable: foundation.Some(!w.excluding),
 	})
+}
+
+// RequestFocusIntent is an intent that requests the focus for a node. It does it
+// with its callback, so that the node is also scrolled into view.
+//
+// Flutter: widgets/focus_traversal.dart RequestFocusIntent
+type RequestFocusIntent struct {
+	IntentBase
+	// FocusNode is the node to request the focus for.
+	//
+	// Flutter: widgets/focus_traversal.dart RequestFocusIntent.focusNode
+	FocusNode *FocusNode
+	// RequestFocusCallback gives the focus to the node; the default is
+	// DefaultTraversalRequestFocusCallback.
+	//
+	// Flutter: widgets/focus_traversal.dart RequestFocusIntent.requestFocusCallback
+	RequestFocusCallback TraversalRequestFocusCallback
+}
+
+// RequestFocusAction is the action that handles a RequestFocusIntent.
+//
+// Flutter: widgets/focus_traversal.dart RequestFocusAction
+type RequestFocusAction struct{ ActionBase }
+
+// NewRequestFocusAction creates the action.
+//
+// Flutter: widgets/focus_traversal.dart RequestFocusAction.new
+func NewRequestFocusAction() *RequestFocusAction {
+	a := &RequestFocusAction{}
+	InitActionBase(&a.ActionBase, a)
+	return a
+}
+
+// IntentType is RequestFocusIntent.
+//
+// Flutter: widgets/actions.dart Action.intentType
+func (a *RequestFocusAction) IntentType() reflect.Type { return reflect.TypeFor[RequestFocusIntent]() }
+
+// Invoke requests the focus with the callback of the intent.
+//
+// Flutter: widgets/focus_traversal.dart RequestFocusAction.invoke
+func (a *RequestFocusAction) Invoke(intent Intent) any {
+	i := intent.(RequestFocusIntent)
+	callback := i.RequestFocusCallback
+	if callback == nil {
+		callback = DefaultTraversalRequestFocusCallback
+	}
+	callback(i.FocusNode, TraversalRequestFocusOpts{})
+	return nil
+}
+
+// NextFocusIntent is an intent that moves the focus to the next node (Tab by
+// default).
+//
+// Flutter: widgets/focus_traversal.dart NextFocusIntent
+type NextFocusIntent struct{ IntentBase }
+
+// NextFocusAction is the action that handles a NextFocusIntent: the primary focus
+// moves to the next node. It results in handled if a node was found, else in
+// skipRemainingHandlers.
+//
+// Deviation: it is a ContextAction, because the primary focus is found through the
+// context (there is no FocusManager.instance) (SPEC §12.10).
+//
+// Flutter: widgets/focus_traversal.dart NextFocusAction
+type NextFocusAction struct{ ContextActionBase }
+
+// NewNextFocusAction creates the action.
+//
+// Flutter: widgets/focus_traversal.dart NextFocusAction.new
+func NewNextFocusAction() *NextFocusAction {
+	a := &NextFocusAction{}
+	InitContextActionBase(&a.ContextActionBase, a)
+	return a
+}
+
+// IntentType is NextFocusIntent.
+//
+// Flutter: widgets/actions.dart Action.intentType
+func (a *NextFocusAction) IntentType() reflect.Type { return reflect.TypeFor[NextFocusIntent]() }
+
+// InvokeWithContext moves the primary focus to the next node and says whether it
+// found one.
+//
+// Flutter: widgets/focus_traversal.dart NextFocusAction.invoke
+func (a *NextFocusAction) InvokeWithContext(_ Intent, bc BuildContext) any {
+	return requirePrimaryFocus(bc, "NextFocusAction").NextFocus()
+}
+
+// ToKeyEventResult is handled when a node was found, else skipRemainingHandlers.
+//
+// Flutter: widgets/focus_traversal.dart NextFocusAction.toKeyEventResult
+func (a *NextFocusAction) ToKeyEventResult(_ Intent, invokeResult any) KeyEventResult {
+	if found, _ := invokeResult.(bool); found {
+		return KeyEventResultHandled
+	}
+	return KeyEventResultSkipRemainingHandlers
+}
+
+// PreviousFocusIntent is an intent that moves the focus to the previous node
+// (Shift+Tab by default).
+//
+// Flutter: widgets/focus_traversal.dart PreviousFocusIntent
+type PreviousFocusIntent struct{ IntentBase }
+
+// PreviousFocusAction is the action that handles a PreviousFocusIntent.
+//
+// Deviation: it is a ContextAction, like NextFocusAction (SPEC §12.10).
+//
+// Flutter: widgets/focus_traversal.dart PreviousFocusAction
+type PreviousFocusAction struct{ ContextActionBase }
+
+// NewPreviousFocusAction creates the action.
+//
+// Flutter: widgets/focus_traversal.dart PreviousFocusAction.new
+func NewPreviousFocusAction() *PreviousFocusAction {
+	a := &PreviousFocusAction{}
+	InitContextActionBase(&a.ContextActionBase, a)
+	return a
+}
+
+// IntentType is PreviousFocusIntent.
+//
+// Flutter: widgets/actions.dart Action.intentType
+func (a *PreviousFocusAction) IntentType() reflect.Type {
+	return reflect.TypeFor[PreviousFocusIntent]()
+}
+
+// InvokeWithContext moves the primary focus to the previous node and says whether
+// it found one.
+//
+// Flutter: widgets/focus_traversal.dart PreviousFocusAction.invoke
+func (a *PreviousFocusAction) InvokeWithContext(_ Intent, bc BuildContext) any {
+	return requirePrimaryFocus(bc, "PreviousFocusAction").PreviousFocus()
+}
+
+// ToKeyEventResult is handled when a node was found, else skipRemainingHandlers.
+//
+// Flutter: widgets/focus_traversal.dart PreviousFocusAction.toKeyEventResult
+func (a *PreviousFocusAction) ToKeyEventResult(_ Intent, invokeResult any) KeyEventResult {
+	if found, _ := invokeResult.(bool); found {
+		return KeyEventResultHandled
+	}
+	return KeyEventResultSkipRemainingHandlers
+}
+
+// DirectionalFocusIntent is an intent that moves the focus in a direction (the
+// arrow keys by default).
+//
+// Flutter: widgets/focus_traversal.dart DirectionalFocusIntent
+type DirectionalFocusIntent struct {
+	IntentBase
+	// Direction is the direction to move the focus in.
+	//
+	// Flutter: widgets/focus_traversal.dart DirectionalFocusIntent.direction
+	Direction TraversalDirection
+	// AllowTextFields lets a DirectionalFocusAction made for text fields move the
+	// focus too (Flutter's ignoreTextFields is true by default).
+	AllowTextFields bool
+}
+
+// IgnoreTextFields is whether the action of a text field leaves the intent alone.
+//
+// Flutter: widgets/focus_traversal.dart DirectionalFocusIntent.ignoreTextFields
+func (i DirectionalFocusIntent) IgnoreTextFields() bool { return !i.AllowTextFields }
+
+// DebugFillProperties adds the direction.
+//
+// Flutter: widgets/focus_traversal.dart DirectionalFocusIntent.debugFillProperties
+func (i DirectionalFocusIntent) DebugFillProperties(p *foundation.DiagnosticPropertiesBuilder) {
+	p.Add(foundation.NewEnumProperty("direction", foundation.Some(i.Direction)))
+}
+
+// DirectionalFocusAction is the action that handles a DirectionalFocusIntent.
+//
+// Deviation: it is a ContextAction, like NextFocusAction (SPEC §12.10).
+//
+// Flutter: widgets/focus_traversal.dart DirectionalFocusAction
+type DirectionalFocusAction struct {
+	ContextActionBase
+	isForTextField bool
+}
+
+// NewDirectionalFocusAction creates the action.
+//
+// Flutter: widgets/focus_traversal.dart DirectionalFocusAction.new
+func NewDirectionalFocusAction() *DirectionalFocusAction {
+	a := &DirectionalFocusAction{}
+	InitContextActionBase(&a.ContextActionBase, a)
+	return a
+}
+
+// NewDirectionalFocusActionForTextField creates the action for a text field: it
+// does nothing for an intent that ignores text fields.
+//
+// Flutter: widgets/focus_traversal.dart DirectionalFocusAction.forTextField
+func NewDirectionalFocusActionForTextField() *DirectionalFocusAction {
+	a := &DirectionalFocusAction{isForTextField: true}
+	InitContextActionBase(&a.ContextActionBase, a)
+	return a
+}
+
+// IntentType is DirectionalFocusIntent.
+//
+// Flutter: widgets/actions.dart Action.intentType
+func (a *DirectionalFocusAction) IntentType() reflect.Type {
+	return reflect.TypeFor[DirectionalFocusIntent]()
+}
+
+// InvokeWithContext moves the primary focus in the direction of the intent.
+//
+// Flutter: widgets/focus_traversal.dart DirectionalFocusAction.invoke
+func (a *DirectionalFocusAction) InvokeWithContext(intent Intent, bc BuildContext) any {
+	i := intent.(DirectionalFocusIntent)
+	if !i.IgnoreTextFields() || !a.isForTextField {
+		requirePrimaryFocus(bc, "DirectionalFocusAction").FocusInDirection(i.Direction)
+	}
+	return nil
+}
+
+// requirePrimaryFocus is the primary focus of the context's binding. It panics
+// with the tag FocusActionWithoutFocus when there is no context or no primary
+// focus, as Dart's null check does.
+func requirePrimaryFocus(bc BuildContext, action string) *FocusNode {
+	var focus *FocusNode
+	if bc != nil {
+		focus = PrimaryFocus(bc)
+	}
+	if focus == nil {
+		panic(errors.New("FocusActionWithoutFocus", action+" was invoked without a context or without a primary focus"))
+	}
+	return focus
 }

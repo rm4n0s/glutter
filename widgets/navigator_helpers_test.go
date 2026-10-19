@@ -140,45 +140,41 @@ type navTestAppOpts struct {
 	observers       []NavigatorObserver
 	routes          map[string]WidgetBuilder
 	pageRoute       navPageRouteFactory
-	requestFocus    foundation.Opt[bool]
 }
 
-// navTestApp is TestWidgetsApp: a Navigator that creates the routes of home and
-// routes with a page route, wrapped in the Directionality that text needs. This
-// is the part of WidgetsApp the navigation tests use.
+// navTestApp is TestWidgetsApp with a hero controller, as MaterialApp has one: a
+// WidgetsApp whose page routes have the page route builder of the test (none by
+// default).
 func navTestApp(o navTestAppOpts) Widget {
 	pageRoute := o.pageRoute
 	if pageRoute == nil {
 		pageRoute = defaultNavPageRoute
 	}
-	onGenerateRoute := func(settings RouteSettings) Route {
-		var content WidgetBuilder
-		if settings.Name() == NavigatorDefaultRouteName && o.homeBuilder != nil {
-			content = o.homeBuilder
-		} else if settings.Name() == NavigatorDefaultRouteName && o.home != nil {
-			content = func(BuildContext) Widget { return o.home }
-		} else {
-			content = o.routes[settings.Name()]
-		}
-		if content != nil {
-			return pageRoute(settings, content)
-		}
-		if o.onGenerateRoute != nil {
-			return o.onGenerateRoute(settings)
-		}
-		return nil
+	opts := WidgetsAppOpts{
+		NavigatorObservers: o.observers,
+		InitialRoute:       o.initialRoute,
+		OnGenerateRoute:    o.onGenerateRoute,
+		Routes:             o.routes,
+		PageRouteBuilder:   func(settings RouteSettings, builder WidgetBuilder) PageRoute { return pageRoute(settings, builder) },
+		Builder: func(_ BuildContext, child Widget) Widget {
+			// MaterialApp has a hero controller, which also moves routes offstage
+			// while they are measured.
+			return NewHeroControllerScope(NewHeroController(), child)
+		},
 	}
-	// WidgetsApp has a hero controller, which also moves routes offstage while
-	// they are measured.
-	return NewDirectionality(ui.TextDirectionLTR, NewHeroControllerScope(NewHeroController(), NewNavigator(NavigatorOpts{
-		Key:             navigatorKeyOf(o.navigatorKey),
-		InitialRoute:    o.initialRoute,
-		OnGenerateRoute: onGenerateRoute,
-		Observers:       o.observers,
-		RequestFocus:    o.requestFocus,
-		// WidgetsApp reports the route names to the system.
-		ReportsRouteUpdateToEngine: true,
-	})))
+	if o.navigatorKey != nil {
+		opts.NavigatorKey = o.navigatorKey
+	}
+	switch {
+	case o.homeBuilder != nil:
+		opts.Routes = map[string]WidgetBuilder{NavigatorDefaultRouteName: o.homeBuilder}
+		for k, v := range o.routes {
+			opts.Routes[k] = v
+		}
+	case o.home != nil:
+		opts.Home = o.home
+	}
+	return NewWidgetsApp(ui.NewColor(0xFFFFFFFF), opts)
 }
 
 func navigatorKeyOf(k *GlobalKey[*NavigatorState]) foundation.Key {

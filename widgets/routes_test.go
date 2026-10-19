@@ -13,13 +13,13 @@ import (
 	"github.com/rm4n0s/glutter/physics"
 	"github.com/rm4n0s/glutter/rendering"
 	"github.com/rm4n0s/glutter/scheduler"
+	"github.com/rm4n0s/glutter/services"
 	"github.com/rm4n0s/glutter/ui"
 	. "github.com/rm4n0s/glutter/widgets"
 )
 
 // These tests are ported from packages/flutter/test/widgets/routes_test.dart.
-// The focus cases are in route_focus_test.go. Not ported here: the Escape
-// shortcut (step 10.6), semantics-tester trees of the modal route, state
+// The focus cases are in route_focus_test.go. Not ported here: semantics-tester trees of the modal route, state
 // restoration, WillPopScope (removed in Flutter 3.x and not ported), the
 // display-feature cases of showGeneralDialog, and the delegated-transition cases
 // that use CupertinoSheetRoute and CupertinoPageRoute (no Cupertino package).
@@ -1394,5 +1394,38 @@ func TestNavigationNotifications(t *testing.T) {
 	// because there is no other route to pop.
 	if len(notifications) != 1 || notifications[0].CanHandlePop {
 		t.Errorf("notifications = %v, want one with CanHandlePop false", notifications)
+	}
+}
+
+func TestDialogEscapeKeyboardShortcut(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		dismissible bool
+		wantShown   int
+	}{
+		{"can be dismissed with the escape keyboard shortcut", true, 0},
+		{"can not be dismissed with the escape keyboard shortcut if the barrier is not dismissible", false, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ts := gluttertest.New(t)
+			key := NewGlobalKey[*NavigatorState]()
+			ts.PumpWidget(testWidgetsApp(testWidgetsAppOpts{navigatorKey: key, home: navTextExt("dummy1")}))
+			// Show a simple dialog.
+			ShowGeneralDialog(ts.Element(gluttertest.ByText("dummy1")),
+				func(BuildContext, animation.Animation[float64], animation.Animation[float64]) Widget {
+					return navTextExt("dialog1")
+				},
+				ShowGeneralDialogOpts{BarrierDismissible: tc.dismissible, BarrierLabel: "Dismiss"})
+			ts.PumpAndSettle()
+			if ts.Count(gluttertest.ByText("dialog1")) != 1 {
+				t.Fatal("the dialog should be shown")
+			}
+			// Try to dismiss the dialog with the shortcut key.
+			ts.SendKeyEvent(services.LogicalKeyboardKeyEscape)
+			ts.PumpAndSettle()
+			if got := ts.Count(gluttertest.ByText("dialog1")); got != tc.wantShown {
+				t.Errorf("the dialog is shown %d times, want %d", got, tc.wantShown)
+			}
+		})
 	}
 }

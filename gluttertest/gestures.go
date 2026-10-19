@@ -412,7 +412,11 @@ func (t *Tester) sendKey(typ ui.KeyEventType, logical services.LogicalKeyboardKe
 	if typ != ui.KeyEventTypeUp {
 		d.Character = o.Character
 	}
-	return t.d.DispatchKeyData(d)
+	handled := t.d.DispatchKeyData(d)
+	// Flutter's simulation awaits the event, which runs the microtasks it queued,
+	// such as the focus changes of a Tab key.
+	t.FlushPosted()
+	return handled
 }
 
 // SendKeyDownEvent sends a key down for the logical key and returns whether

@@ -536,9 +536,12 @@ func TestScrollableHitTestBehaviorTranslucentLetsWidgetsUnderneathCatchTheHit(t 
 	ts.PumpWidget(ltr(NewStack([]Widget{
 		NewPositionedFill(NewGestureDetector(NewSizedBox(nil, SizedBoxOpts{Key: key, Height: foundation.Some(300.0)}),
 			GestureDetectorOpts{Behavior: rendering.HitTestBehaviorOpaque, OnTap: func() { tapped = true }})),
-		NewScrollable(func(_ BuildContext, position rendering.ViewportOffset) Widget {
-			return NewViewport(position, nil, ViewportOpts{})
-		}, ScrollableOpts{HitTestBehavior: rendering.HitTestBehaviorTranslucent}),
+		// The test platform is Linux, whose scrollbar has an opaque mouse region;
+		// the Dart test runs on Android, which has none.
+		NewScrollConfiguration(NewScrollBehavior().CopyWith(ScrollBehaviorCopy{Scrollbars: foundation.Some(false)}),
+			NewScrollable(func(_ BuildContext, position rendering.ViewportOffset) Widget {
+				return NewViewport(position, nil, ViewportOpts{})
+			}, ScrollableOpts{HitTestBehavior: rendering.HitTestBehaviorTranslucent})),
 	})))
 	ts.TapAt(ts.Center(gluttertest.ByKey(key)))
 	if !tapped {

@@ -1079,28 +1079,27 @@ func (s *modalScopeState) Build(bc BuildContext) Widget {
 	base := route.modalBase()
 	// Only the top most route can participate in focus traversal.
 	s.focusScopeNode.SetSkipTraversal(!route.IsCurrent())
-	// TODO(step 10.6): Actions with the DismissIntent map the Escape key to
-	// MaybePop.
 	return &modalScopeStatus{
 		InheritedModel: NewInheritedModelBase(
 			NewOffstage(
 				NewPageStorage(base.storageBucket,
 					NewBuilder(func(bc BuildContext) Widget {
-						return NewPrimaryScrollController(s.primaryScrollController,
-							NewFocusScopeWithExternalFocusNode(
-								NewRepaintBoundary(
-									NewListenableBuilder(s.listenable, func(bc BuildContext, child Widget) Widget {
-										return route.modalBase().buildFlexibleTransitions(bc, route.Animation(), route.SecondaryAnimation(),
-											// This additional ListenableBuilder is included because if the
-											// value of the userGestureInProgressNotifier changes, only the
-											// IgnorePointer needs to be rebuilt.
-											NewListenableBuilder(s.userGestureNotifier(route), func(bc BuildContext, child Widget) Widget {
-												ignoreEvents := s.shouldIgnoreFocusRequest()
-												s.focusScopeNode.SetCanRequestFocus(!ignoreEvents)
-												return NewIgnorePointer(child, IgnorePointerOpts{Ignoring: foundation.Some(ignoreEvents)})
-											}, child))
-									}, s.cachedPage(route)),
-								), s.focusScopeNode)) // the node is immutable
+						return NewActions(ActionMap{IntentTypeOf[DismissIntent](): newDismissModalAction(bc)},
+							NewPrimaryScrollController(s.primaryScrollController,
+								NewFocusScopeWithExternalFocusNode(
+									NewRepaintBoundary(
+										NewListenableBuilder(s.listenable, func(bc BuildContext, child Widget) Widget {
+											return route.modalBase().buildFlexibleTransitions(bc, route.Animation(), route.SecondaryAnimation(),
+												// This additional ListenableBuilder is included because if the
+												// value of the userGestureInProgressNotifier changes, only the
+												// IgnorePointer needs to be rebuilt.
+												NewListenableBuilder(s.userGestureNotifier(route), func(bc BuildContext, child Widget) Widget {
+													ignoreEvents := s.shouldIgnoreFocusRequest()
+													s.focusScopeNode.SetCanRequestFocus(!ignoreEvents)
+													return NewIgnorePointer(child, IgnorePointerOpts{Ignoring: foundation.Some(ignoreEvents)})
+												}, child))
+										}, s.cachedPage(route)),
+									), s.focusScopeNode))) // the node is immutable
 					}),
 				),
 				OffstageOpts{Offstage: foundation.Some(route.Offstage())},
@@ -1112,6 +1111,29 @@ func (s *modalScopeState) Build(bc BuildContext) Widget {
 		impliesAppBarDismissal: route.ImpliesAppBarDismissal(),
 		route:                  route,
 	}
+}
+
+// dismissModalAction maps the DismissIntent (Escape) to MaybePop, when the route
+// can be dismissed by its barrier.
+//
+// Flutter: widgets/routes.dart _DismissModalAction
+type dismissModalAction struct {
+	DismissAction
+	bc BuildContext
+}
+
+func newDismissModalAction(bc BuildContext) *dismissModalAction {
+	a := &dismissModalAction{bc: bc}
+	InitActionBase(&a.ActionBase, a)
+	return a
+}
+
+func (a *dismissModalAction) IsEnabled(Intent) bool {
+	return ModalRouteOf(a.bc).BarrierDismissible()
+}
+
+func (a *dismissModalAction) Invoke(Intent) any {
+	return NavigatorOf(a.bc).MaybePop()
 }
 
 func (s *modalScopeState) userGestureNotifier(route ModalRoute) foundation.Listenable {
