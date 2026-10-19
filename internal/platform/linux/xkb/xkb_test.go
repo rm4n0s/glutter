@@ -33,6 +33,7 @@ const (
 	maskShift = 1 << 0
 	maskLock  = 1 << 1
 	maskCtrl  = 1 << 2
+	maskAlt   = 1 << 3 // Mod1
 	maskNum   = 1 << 4 // Mod2
 	maskAltGr = 1 << 7 // Mod5 (ISO_Level3_Shift)
 )
@@ -483,5 +484,32 @@ func TestCloseTwice(t *testing.T) {
 		st.Close()
 		km.Close()
 		ctx.Close()
+	}
+}
+
+func TestKeysymAndXState(t *testing.T) {
+	l := newLayout(t, Names{Layout: "us"})
+	const evdevA = 30
+	if got := l.Keysym(evdevA); got != 'a' {
+		t.Errorf("Keysym(A) = 0x%x, want 'a'", got)
+	}
+	if got := l.XState(); got != 0 {
+		t.Errorf("XState() = %d with no modifier, want 0", got)
+	}
+	l.UpdateMask(maskShift|maskCtrl, 0, 0, 0)
+	if got := l.Keysym(evdevA); got != 'A' {
+		t.Errorf("Keysym(A) with Shift = 0x%x, want 'A'", got)
+	}
+	// Shift 1, Control 4.
+	if got := l.XState(); got != 1|4 {
+		t.Errorf("XState() = %d, want 5", got)
+	}
+	l.UpdateMask(0, 0, maskLock, 0)
+	if got := l.XState(); got != 2 {
+		t.Errorf("XState() = %d with Caps Lock, want 2", got)
+	}
+	l.UpdateMask(maskAlt|maskNum, 0, 0, 0)
+	if got := l.XState(); got != 8|16 {
+		t.Errorf("XState() = %d with Alt and NumLock, want 24", got)
 	}
 }

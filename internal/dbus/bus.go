@@ -176,3 +176,25 @@ func (c *sessionBus) Close() error {
 	}
 	return nil
 }
+
+// ConnectAddress opens a bus at an address, such as the private bus of the IBus
+// daemon ("unix:path=/run/user/1000/ibus/dbus-xyz,guid=..."). The connection
+// is private to the caller; close it with Close. It fails with
+// DBusAddressDialFailed, DBusAddressAuthFailed or DBusAddressHelloFailed.
+//
+// Flutter: no counterpart
+func ConnectAddress(ctx context.Context, address string) (Bus, error) {
+	conn, err := godbus.Dial(address, godbus.WithContext(ctx))
+	if err != nil {
+		return nil, errors.NewErr("DBusAddressDialFailed", err).SetMetadata("address", address)
+	}
+	if err := conn.Auth(nil); err != nil {
+		_ = conn.Close() // the authentication error is the one to report
+		return nil, errors.NewErr("DBusAddressAuthFailed", err).SetMetadata("address", address)
+	}
+	if err := conn.Hello(); err != nil {
+		_ = conn.Close() // the hello error is the one to report
+		return nil, errors.NewErr("DBusAddressHelloFailed", err).SetMetadata("address", address)
+	}
+	return &sessionBus{conn: conn}, nil
+}

@@ -71,47 +71,48 @@ const (
 
 // xlib holds the bound functions of libX11 and libX11-xcb.
 type xlib struct {
-	openDisplay         func(name uintptr) uintptr
-	closeDisplay        func(display uintptr) int32
-	connectionNumber    func(display uintptr) int32
-	pending             func(display uintptr) int32
-	nextEvent           func(display, event uintptr) int32
-	createWindow        func(display uintptr, parent uint64, x, y int32, width, height, border uint32, depth int32, class uint32, visual uintptr, mask uint64, attrs uintptr) uint64
-	mapWindow           func(display uintptr, window uint64) int32
-	destroyWindow       func(display uintptr, window uint64) int32
-	internAtom          func(display, name uintptr, onlyIfExists int32) uint64
-	changeProperty      func(display uintptr, window, property, typ uint64, format, mode int32, data uintptr, count int32) int32
-	deleteProperty      func(display uintptr, window, property uint64) int32
-	setWMProtocols      func(display uintptr, window uint64, protocols uintptr, count int32) int32
-	selectInput         func(display uintptr, window uint64, mask int64) int32
-	flush               func(display uintptr) int32
-	sync                func(display uintptr, discard int32) int32
-	setErrorHandler     func(handler uintptr) uintptr
-	defaultRootWindow   func(display uintptr) uint64
-	defaultScreen       func(display uintptr) int32
-	getEventData        func(display, cookie uintptr) int32
-	freeEventData       func(display, cookie uintptr)
-	queryExtension      func(display, name, opcode, event, errorBase uintptr) int32
-	sendEvent           func(display uintptr, window uint64, propagate int32, mask int64, event uintptr) int32
-	resizeWindow        func(display uintptr, window uint64, width, height uint32) int32
-	setWMNormalHints    func(display uintptr, window uint64, hints uintptr)
-	setClassHint        func(display uintptr, window uint64, hint uintptr) int32
-	setTransientForHint func(display uintptr, window, parent uint64) int32
-	iconifyWindow       func(display uintptr, window uint64, screen int32) int32
-	getVisualInfo       func(display uintptr, mask int64, template uintptr, count uintptr) uintptr
-	free                func(ptr uintptr) int32
-	createColormap      func(display uintptr, window uint64, visual uintptr, alloc int32) uint64
-	freeColormap        func(display uintptr, colormap uint64) int32
-	defineCursor        func(display uintptr, window, cursor uint64) int32
-	freeCursor          func(display uintptr, cursor uint64) int32
-	getXCBConnection    func(display uintptr) uintptr
-	createBitmap        func(display uintptr, drawable uint64, data uintptr, width, height uint32) uint64
-	createPixmapCursor  func(display uintptr, source, mask uint64, foreground, background uintptr, x, y uint32) uint64
-	freePixmap          func(display uintptr, pixmap uint64) int32
-	setSelectionOwner   func(display uintptr, selection, owner, time uint64) int32
-	getSelectionOwner   func(display uintptr, selection uint64) uint64
-	convertSelection    func(display uintptr, selection, target, property, requestor, time uint64) int32
-	getWindowProperty   func(display uintptr, window, property uint64, offset, length int64, del int32, reqType uint64, actualType, actualFormat, nitems, bytesAfter, prop uintptr) int32
+	openDisplay          func(name uintptr) uintptr
+	closeDisplay         func(display uintptr) int32
+	connectionNumber     func(display uintptr) int32
+	pending              func(display uintptr) int32
+	nextEvent            func(display, event uintptr) int32
+	createWindow         func(display uintptr, parent uint64, x, y int32, width, height, border uint32, depth int32, class uint32, visual uintptr, mask uint64, attrs uintptr) uint64
+	mapWindow            func(display uintptr, window uint64) int32
+	destroyWindow        func(display uintptr, window uint64) int32
+	internAtom           func(display, name uintptr, onlyIfExists int32) uint64
+	changeProperty       func(display uintptr, window, property, typ uint64, format, mode int32, data uintptr, count int32) int32
+	deleteProperty       func(display uintptr, window, property uint64) int32
+	setWMProtocols       func(display uintptr, window uint64, protocols uintptr, count int32) int32
+	selectInput          func(display uintptr, window uint64, mask int64) int32
+	flush                func(display uintptr) int32
+	sync                 func(display uintptr, discard int32) int32
+	setErrorHandler      func(handler uintptr) uintptr
+	defaultRootWindow    func(display uintptr) uint64
+	defaultScreen        func(display uintptr) int32
+	getEventData         func(display, cookie uintptr) int32
+	freeEventData        func(display, cookie uintptr)
+	queryExtension       func(display, name, opcode, event, errorBase uintptr) int32
+	sendEvent            func(display uintptr, window uint64, propagate int32, mask int64, event uintptr) int32
+	resizeWindow         func(display uintptr, window uint64, width, height uint32) int32
+	setWMNormalHints     func(display uintptr, window uint64, hints uintptr)
+	setClassHint         func(display uintptr, window uint64, hint uintptr) int32
+	setTransientForHint  func(display uintptr, window, parent uint64) int32
+	iconifyWindow        func(display uintptr, window uint64, screen int32) int32
+	getVisualInfo        func(display uintptr, mask int64, template uintptr, count uintptr) uintptr
+	free                 func(ptr uintptr) int32
+	createColormap       func(display uintptr, window uint64, visual uintptr, alloc int32) uint64
+	freeColormap         func(display uintptr, colormap uint64) int32
+	defineCursor         func(display uintptr, window, cursor uint64) int32
+	freeCursor           func(display uintptr, cursor uint64) int32
+	getXCBConnection     func(display uintptr) uintptr
+	createBitmap         func(display uintptr, drawable uint64, data uintptr, width, height uint32) uint64
+	createPixmapCursor   func(display uintptr, source, mask uint64, foreground, background uintptr, x, y uint32) uint64
+	freePixmap           func(display uintptr, pixmap uint64) int32
+	setSelectionOwner    func(display uintptr, selection, owner, time uint64) int32
+	getSelectionOwner    func(display uintptr, selection uint64) uint64
+	convertSelection     func(display uintptr, selection, target, property, requestor, time uint64) int32
+	getWindowProperty    func(display uintptr, window, property uint64, offset, length int64, del int32, reqType uint64, actualType, actualFormat, nitems, bytesAfter, prop uintptr) int32
+	translateCoordinates func(display uintptr, src, dest uint64, srcX, srcY int32, destX, destY, child uintptr) int32
 }
 
 // loadXlib opens libX11 and libX11-xcb and binds the functions. It fails with
@@ -138,6 +139,7 @@ func loadXlib() (*xlib, error) {
 		{&l.nextEvent, "XNextEvent"},
 		{&l.createWindow, "XCreateWindow"},
 		{&l.mapWindow, "XMapWindow"},
+		{&l.translateCoordinates, "XTranslateCoordinates"},
 		{&l.destroyWindow, "XDestroyWindow"},
 		{&l.internAtom, "XInternAtom"},
 		{&l.changeProperty, "XChangeProperty"},

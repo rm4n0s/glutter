@@ -373,7 +373,7 @@ How the X11 backend does the rest:
 
 This is Flutter's text-input model (`TextInputConnection`, `TextEditingValue`, composing range) mapped to:
 - **Wayland** `zwp_text_input_v3`: enable/disable, surrounding text, cursor rectangle, content type, preedit, commit, delete surrounding text
-- **X11**: IBus or Fcitx5 over D-Bus (§8.3)
+- **X11**, and **Wayland** on a compositor without `zwp_text_input_v3`: IBus or Fcitx5 over D-Bus (§8.3)
 
 IBus and Fcitx5 work through both.
 
@@ -1148,6 +1148,8 @@ Flutter's `assert` checks become checks that exist only in debug builds (`founda
 | `ScribbleClient` and `TextInput.registerScribbleElement` (stylus handwriting on iOS); `SystemContextMenuController` (iOS) | not ported | no platform of Glutter has them |
 | `AutofillScopeMixin.attach` sends the configurations of all the fields of the scope | `AutofillScopeAttach(scope, textInput, trigger, configuration)` checks that every field enables autofill (`AutofillClientDisabled` in a debug build) and attaches the trigger | no platform of Glutter fills fields |
 | Wayland `zwp_text_input_v3` is not part of Flutter (the GTK embedder uses `GtkIMContext`) | `internal/platform/linux/wayland` binds the manager (version 1) when the compositor offers it: `enable`, surrounding text (at most 4000 bytes around the cursor), content type with the preedit-shown hint, cursor rectangle and `commit` follow `SetTextInput`; `done` delivers one `ui.TextInputEvent`; `leave` removes the preedit. The actions (`action`) are not used | §8.6 |
+| IBus and Fcitx5 are reached through `GtkIMContext` and its input-method modules (the GTK embedder) | `internal/dbus` talks to them directly (`InputMethod`, `OpenInputMethod`): IBus on the private bus of its daemon (`IBUS_ADDRESS`, or the file `ibus/bus/<machine-id>-<host>-<display>` of the config directory) and, when that bus cannot be reached, through its portal `org.freedesktop.portal.IBus` on the session bus; Fcitx5 on `org.fcitx.Fcitx5` or `org.freedesktop.portal.Fcitx`. The framework named by `XMODIFIERS`, `GTK_IM_MODULE` or `QT_IM_MODULE` goes first; with no name, Fcitx5, then IBus. `ForwardKeyEvent` (IBus) and `ForwardKey` (Fcitx5), the content hints and the Fcitx5 cursor scale are not used. The same code serves X11 and Wayland without `zwp_text_input_v3` | SPEC §8.3 names only `org.freedesktop.IBus`, which a sandboxed app cannot reach; Gio reads the same file |
+| `GtkIMContext` gets a key event and answers synchronously | while a text field has the focus every key goes to the input method first, on a goroutine of its own (`internal/platform/linux/ime`), with a limit of one second per call; the keys the input method does not consume are sent on in their order, and the key-up of a consumed key is dropped. On Wayland the key is translated (and the compose state advanced) before the input method answers | the UI thread must not wait for D-Bus (SPEC §13) |
 
 ### 12.11 One import for apps
 

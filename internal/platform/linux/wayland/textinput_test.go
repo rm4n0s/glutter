@@ -278,6 +278,8 @@ func TestTextInputWithoutTheManager(t *testing.T) {
 	if e.p.text != nil {
 		t.Fatal("a text input exists without the manager")
 	}
+	// The input method over D-Bus takes over; keep this test off the real bus.
+	e.onLoop(func() bool { e.p.dbusIME.close(); e.p.dbusIME = nil; return true })
 	e.srv.KeyboardEnter(e.surface)
 	te := &textEnv{keyEnv: e}
 	te.set(field("abc", 3)) // must do nothing

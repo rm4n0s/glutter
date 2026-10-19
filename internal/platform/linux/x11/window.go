@@ -472,12 +472,15 @@ func (w *window) SetCursor(cursor platform.MouseCursor) {
 	}
 }
 
-// SetTextInput does nothing yet.
-//
-// TODO(step 11.3): IBus and Fcitx5 over D-Bus (SPEC §8.3).
+// SetTextInput gives the input method the state of the text field of the
+// window. IBus or Fcitx5 is reached over D-Bus (SPEC §8.3, §8.6); when neither
+// is running the state is dropped and the keys go to the app, with the compose
+// table of xkbcommon.
 //
 // Flutter: no counterpart
-func (w *window) SetTextInput(ui.TextInputState) {}
+func (w *window) SetTextInput(state ui.TextInputState) {
+	w.p.setTextInput(w, state)
+}
 
 // StartDrag is not implemented yet.
 //
@@ -498,6 +501,9 @@ func (w *window) Close() {
 	}
 	w.closed = true
 	w.cancelFrame()
+	if w.p.text != nil {
+		w.p.text.windowClosed(w)
+	}
 	if w.p.input != nil {
 		w.p.input.windowClosed(w)
 	}

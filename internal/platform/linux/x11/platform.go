@@ -66,6 +66,7 @@ type Platform struct {
 	input   *inputState // nil when XInput2 is not available
 	cursors *cursors
 	clip    *clipboard // nil when its window could not be created
+	text    *textInput // the input method over D-Bus
 
 	// visualFor returns the X visual that EGL wants for windows on the display;
 	// tests replace it.
@@ -119,6 +120,7 @@ func New(name string) (*Platform, error) {
 	registerErrorHandler(p)
 	p.input = newInputState(p)
 	p.clip = newClipboard(p)
+	p.text = newTextInput(p, p.loop, sessionOpener())
 	return p, nil
 }
 
@@ -182,6 +184,10 @@ func (p *Platform) now() time.Duration { return time.Since(p.start) }
 func (p *Platform) Close() error {
 	for _, w := range p.windows {
 		w.Close()
+	}
+	if p.text != nil {
+		p.text.close()
+		p.text = nil
 	}
 	if p.input != nil {
 		p.input.close()

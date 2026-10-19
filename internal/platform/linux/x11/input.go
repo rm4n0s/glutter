@@ -305,6 +305,18 @@ func (in *inputState) onKey(ev *xiDeviceEvent, press bool) {
 	if in.layout == nil || ev.detail < evdevOffset {
 		return
 	}
+	if t := in.p.text; t != nil && t.bridge.Active() {
+		in.onKeyViaIME(ev, press)
+		return
+	}
+	in.dispatchKey(ev, press)
+}
+
+// dispatchKey sends a key event to the app.
+func (in *inputState) dispatchKey(ev *xiDeviceEvent, press bool) {
+	if in.layout == nil || ev.detail < evdevOffset {
+		return
+	}
 	code := uint32(ev.detail - evdevOffset)
 	// The event carries the modifiers and the layout group that apply to it.
 	in.layout.UpdateMaskGroups(uint32(ev.mods.base), uint32(ev.mods.latched), uint32(ev.mods.locked),
@@ -359,11 +371,17 @@ func (in *inputState) onFocus(w *window, ev *xiEnterEvent, in2 bool) {
 	}
 	if in2 {
 		in.focus = w
+		if t := in.p.text; t != nil {
+			t.focusChanged(w, true)
+		}
 		return
 	}
 	if in.focus == w {
 		in.focus = nil
 		in.releaseKeys()
+		if t := in.p.text; t != nil {
+			t.focusChanged(w, false)
+		}
 	}
 }
 

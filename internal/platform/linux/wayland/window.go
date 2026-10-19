@@ -638,12 +638,15 @@ func (w *window) SetCursor(cursor platform.MouseCursor) {
 // zwp_text_input_v3 is enabled while the field has the focus and the window has
 // the text-input focus, and disabled otherwise. Without the protocol (the
 // compositor lacks zwp_text_input_manager_v3) it does nothing, and the app gets
-// the keys with the compose table of xkbcommon.
+// the keys with the compose table of xkbcommon. Without the protocol the input
+// method is IBus or Fcitx5 over D-Bus, if one is running (SPEC §8.3).
 //
 // Flutter: no counterpart
 func (w *window) SetTextInput(state ui.TextInputState) {
 	if t := w.p.text; t != nil {
 		t.set(w, state)
+	} else if d := w.p.dbusIME; d != nil {
+		d.set(w, state)
 	}
 }
 
@@ -689,6 +692,9 @@ func (w *window) destroy() {
 	}
 	if t := w.p.text; t != nil {
 		t.forget(w)
+	}
+	if d := w.p.dbusIME; d != nil {
+		d.forget(w)
 	}
 	if w.eglWindow != 0 {
 		w.egl.destroy(w.eglWindow) // before the wl_surface it draws on

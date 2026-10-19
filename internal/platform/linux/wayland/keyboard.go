@@ -171,6 +171,9 @@ func (k *keyboard) onEnter(serial uint32, surface *wl.WlSurface, keys []uint32) 
 	}
 	k.loseFocus() // normally the leave came first
 	k.focus = w
+	if d := k.p.dbusIME; d != nil {
+		defer d.focusChanged(w, true)
+	}
 	if k.layout == nil {
 		return
 	}
@@ -201,6 +204,9 @@ func (k *keyboard) loseFocus() {
 	k.cancelRepeat()
 	released := k.pressed
 	k.pressed = nil
+	if d := k.p.dbusIME; d != nil && k.focus != nil {
+		d.focusChanged(k.focus, false)
+	}
 	k.focus = nil
 	for _, pk := range released {
 		up := pk.data
@@ -247,7 +253,7 @@ func (k *keyboard) press(evdev uint32) {
 		Physical: key.Physical, Logical: key.Logical, Character: key.Character,
 	}
 	k.pressed = append(k.pressed, pressedKey{evdev, data})
-	k.deliver(data)
+	k.route(evdev, data)
 
 	// Pressing another key ends the repeat of the previous one.
 	k.cancelRepeat()
@@ -272,7 +278,7 @@ func (k *keyboard) release(evdev uint32) {
 	up.Type = ui.KeyEventTypeUp
 	up.Character = ""
 	up.Synthesized = false
-	k.deliver(up)
+	k.route(evdev, up)
 }
 
 // fireRepeat sends one repeat event and schedules the next.
@@ -283,7 +289,7 @@ func (k *keyboard) fireRepeat(r *repeating) {
 	data := r.data
 	data.TimeStamp = k.p.now()
 	data.Type = ui.KeyEventTypeRepeat
-	k.deliver(data)
+	k.route(r.evdev, data)
 	// deliver may have ended this repeat (the handler closed the window).
 	if k.repeat == r {
 		r.stop = k.after(time.Second/time.Duration(k.rate), func() { k.fireRepeat(r) })

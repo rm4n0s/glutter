@@ -233,3 +233,44 @@ func (l *Layout) character(sym Keysym, press bool) (string, error) {
 	}
 	return string(r), nil
 }
+
+// Keysym returns the keysym that the key has with the modifiers and the group
+// that apply now, without touching the compose state. An input method gets
+// this together with XState.
+//
+// Flutter: no counterpart
+func (l *Layout) Keysym(evdev uint32) Keysym { return l.state.KeyOneSym(evdev + evdevOffset) }
+
+// X11 core modifier bits, the "state" that an input method expects.
+const (
+	xShiftMask   = 1 << 0
+	xLockMask    = 1 << 1
+	xControlMask = 1 << 2
+	xMod1Mask    = 1 << 3
+	xMod2Mask    = 1 << 4
+	xMod3Mask    = 1 << 5
+	xMod4Mask    = 1 << 6
+	xMod5Mask    = 1 << 7
+)
+
+// XState returns the effective modifiers as the X11 core modifier mask (Shift 1,
+// Lock 2, Control 4, Mod1 8, Mod2 16, Mod3 32, Mod4 64, Mod5 128), which IBus
+// and Fcitx5 take as the state of a key event.
+//
+// Flutter: no counterpart
+func (l *Layout) XState() uint32 {
+	var mask uint32
+	for _, m := range [...]struct {
+		name string
+		bit  uint32
+	}{
+		{"Shift", xShiftMask}, {"Lock", xLockMask}, {"Control", xControlMask},
+		{"Mod1", xMod1Mask}, {"Mod2", xMod2Mask}, {"Mod3", xMod3Mask},
+		{"Mod4", xMod4Mask}, {"Mod5", xMod5Mask},
+	} {
+		if l.state.ModActive(m.name) {
+			mask |= m.bit
+		}
+	}
+	return mask
+}

@@ -15,6 +15,7 @@ func (p *Platform) handleEvent() {
 		ev := view[xConfigureEvent](p.event)
 		if w := p.windows[ev.window]; w != nil {
 			w.onConfigure(ev.width, ev.height)
+			p.textInputMoved(w)
 		}
 	case mapNotify:
 		ev := view[xMapEvent](p.event)
