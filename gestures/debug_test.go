@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rm4n0s/errors"
+	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/internal/fakeclock"
 	"github.com/rm4n0s/glutter/scheduler"
 	"github.com/rm4n0s/glutter/ui"
@@ -33,7 +35,7 @@ func TestArenaErrors(t *testing.T) {
 		}, "Sweep.GestureArenaOpenOnSweep"},
 		{"resolving for a member that is not in the arena", func(a *arenaTester) {
 			a.addFirst()
-			stranger := &GestureArenaEntry{a.arena, primaryKey, &testGestureArenaMember{t: a.t, key: primaryKey}}
+			stranger := &arenaEntry{a.arena, primaryKey, &testGestureArenaMember{t: a.t, key: primaryKey}}
 			stranger.Resolve(GestureAccepted)
 		}, "resolve.GestureArenaMemberUnknown"},
 	}
@@ -109,20 +111,13 @@ func TestBindingErrors(t *testing.T) {
 		"HandlePointerEvent.GestureBindingLocked")
 }
 
-type sampleClock struct{ *fakeclock.Fake }
-
-func (c sampleClock) AfterFunc(d time.Duration, f func()) SamplingTimer {
-	return c.Fake.AfterFunc(d, f)
-}
-
 func TestBindingResamplesEvents(t *testing.T) {
 	// Pointer event resampling, from gesture_binding_resample_event_test.dart.
 	d := ui.NewPlatformDispatcher(nil) // posts run at once, as timers fire inside the fake clock
 	d.AddView(ui.ImplicitViewID, ui.ViewConfiguration{PhysicalSize: ui.Size{Width: 800, Height: 600}, DevicePixelRatio: 1})
 	clock := fakeclock.New(time.Date(2015, 1, 1, 0, 0, 0, 0, time.UTC))
 	sched := &fakeScheduler{}
-	b := NewGestureBinding(d, sched)
-	b.DebugSamplingClock = sampleClock{clock}
+	b := NewGestureBinding(d, sched, GestureBindingOpts{Clock: sampleClock{clock}})
 	var events []PointerEvent
 	b.OnHitTestInView = func(result *HitTestResult, _ ui.Offset, _ ui.ViewID) {
 		result.Add(NewHitTestEntry(recordingTarget{events: &events}))
@@ -206,16 +201,6 @@ func TestBindingResamplesEvents(t *testing.T) {
 	}
 	b.ResamplingEnabled = false
 }
-
-type fakeScheduler struct {
-	postFrameCallback scheduler.FrameCallback
-	frameTime         time.Duration
-}
-
-func (*fakeScheduler) Locked() bool                                      { return false }
-func (*fakeScheduler) AddUnlockedCallback(func())                        {}
-func (s *fakeScheduler) AddPostFrameCallback(cb scheduler.FrameCallback) { s.postFrameCallback = cb }
-func (s *fakeScheduler) CurrentSystemFrameTimeStamp() time.Duration      { return s.frameTime }
 
 func TestEventsToStringControl(t *testing.T) {
 	e := NewPointerDownEvent()
@@ -346,3 +331,209 @@ func TestPointerSignalResolverErrors(t *testing.T) {
 			"Resolve.PointerSignalEventMismatch")
 	})
 }
+
+func TestLeastSquaresSolverLengthMismatch(t *testing.T) {
+	err := recoverError(t, func() { NewLeastSquaresSolver([]float64{1, 2}, []float64{1}, []float64{1, 1}) })
+	appErr, ok := errors.FromError(err)
+	if !ok || appErr.Tag != "LeastSquaresLengthMismatch" {
+		t.Errorf("unexpected error %v", err)
+	}
+}
+
+func TestVelocityTrackerErrors(t *testing.T) {
+	clock := sampleClock{fakeclock.New(time.Date(2015, 1, 1, 0, 0, 0, 0, time.UTC))}
+	t.Run("no points", func(t *testing.T) {
+		tracker := NewIOSScrollViewFlingVelocityTracker(clock, ui.PointerDeviceKindTouch)
+		assertRoute(t, recoverError(t, func() { tracker.GetVelocity() }), "VelocityNoSamples")
+	})
+	t.Run("a point that precedes the previous one", func(t *testing.T) {
+		tracker := NewIOSScrollViewFlingVelocityTracker(clock, ui.PointerDeviceKindTouch)
+		tracker.AddPosition(time.Hour, ui.Offset{})
+		assertRoute(t, recoverError(t, func() { tracker.AddPosition(time.Second, ui.Offset{}) }), "VelocityPositionPrecedesPredecessor")
+	})
+}
+
+func TestDragAcceptGestureToleratesNoLastPendingEventTimestamp(t *testing.T) {
+	g := newGestureTester(t)
+	recognizer := NewVerticalDragGestureRecognizer(g.binding)
+	event := NewPointerDownEvent(PointerEventOpts{TimeStamp: 240 * time.Hour})
+	if recognizer.DebugLastPendingEventTimestamp().IsSome() {
+		t.Fatal("the timestamp is set before any pointer")
+	}
+	recognizer.AddAllowedPointer(event)
+	if got := recognizer.DebugLastPendingEventTimestamp(); got != foundation.Some(event.TimeStamp()) {
+		t.Fatalf("timestamp = %v, want %v", got, event.TimeStamp())
+	}
+	recognizer.AcceptGesture(event.Pointer())
+	if recognizer.DebugLastPendingEventTimestamp().IsSome() {
+		t.Error("the timestamp is kept after accepting")
+	}
+	recognizer.RejectGesture(event.Pointer())
+	recognizer.AcceptGesture(event.Pointer())
+	if recognizer.DebugLastPendingEventTimestamp().IsSome() {
+		t.Error("the timestamp is set after rejecting")
+	}
+}
+
+func TestGestureRecognizerSmoke(t *testing.T) {
+	g := newGestureTester(t)
+	r := &testGestureRecognizer{}
+	r.Init(g.binding, r, GestureRecognizerOpts{DebugOwner: 0})
+	if s := foundation.ToDiagnosticsNode(r).ToStringDeep(); s == "" {
+		t.Error("the recognizer has no description")
+	}
+}
+
+// The failure cases of the recognizers: each tag has a test of its route.
+func TestRecognizerErrors(t *testing.T) {
+	someTime := ms(1)
+	for _, tc := range []struct {
+		name  string
+		route string
+		fn    func(g *gestureTester)
+	}{
+		{"drag update primary delta", "NewDragUpdateDetails.DragUpdatePrimaryDeltaInvalid", func(*gestureTester) {
+			NewDragUpdateDetails(ui.Offset{}, DragUpdateOpts{Delta: off(1, 1), PrimaryDelta: foundation.Some(5.0)})
+		}},
+		{"drag end primary velocity", "NewDragEndDetails.DragEndPrimaryVelocityInvalid", func(*gestureTester) {
+			NewDragEndDetails(DragEndOpts{Velocity: NewVelocity(off(1, 1)), PrimaryVelocity: foundation.Some(5.0)})
+		}},
+		{"drag event while ready", "HandleEvent.DragEventWhileReady", func(g *gestureTester) {
+			NewHorizontalDragGestureRecognizer(g.binding).HandleEvent(evMove(1, off(1, 1)))
+		}},
+		{"drag stopped while ready", "DidStopTrackingLastPointer.DragStoppedWhileReady", func(g *gestureTester) {
+			NewHorizontalDragGestureRecognizer(g.binding).DidStopTrackingLastPointer(1)
+		}},
+		{"drag pointer accepted twice", "AcceptGesture.DragPointerAcceptedTwice", func(g *gestureTester) {
+			r := NewHorizontalDragGestureRecognizer(g.binding)
+			r.AddAllowedPointer(evDown(1, off(1, 1)))
+			r.AcceptGesture(1)
+			r.AcceptGesture(1)
+		}},
+		{"drag without a max delta pointer", "resolveDelta.DragNoMaxDeltaPointer", func(g *gestureTester) {
+			NewHorizontalDragGestureRecognizer(g.binding).resolveDelta(1, dragDirectionHorizontal, off(5, 0))
+		}},
+		{"long press unhandled button", "currentCallbacks.LongPressButtonUnhandled", func(g *gestureTester) {
+			r := NewLongPressGestureRecognizer(g.binding)
+			r.initialButtons = foundation.Some(12)
+			r.currentCallbacks()
+		}},
+		{"multi drag state unknown", "removeState.MultiDragStateUnknown", func(g *gestureTester) {
+			NewImmediateMultiDragGestureRecognizer(g.binding).removeState(7)
+		}},
+		{"multi tap pointer added twice", "AddAllowedPointer.MultiTapPointerAddedTwice", func(g *gestureTester) {
+			r := NewMultiTapGestureRecognizer(g.binding)
+			r.AddAllowedPointer(evDown(1, off(1, 1)))
+			r.AddAllowedPointer(evDown(1, off(1, 1)))
+		}},
+		{"recognizer entries left", "Dispose.RecognizerEntriesLeft", func(g *gestureTester) {
+			r := &stuckRecognizer{}
+			r.InitOneSequence(g.binding, r, GestureRecognizerOpts{})
+			r.StartTrackingPointer(1, nil)
+			r.Dispose()
+		}},
+		{"recognizer event while ready", "HandleEvent.RecognizerEventWhileReady", func(g *gestureTester) {
+			var res []string
+			newTestPrimaryPointer(g.binding, GestureAccepted, isUp, &res, SlopTolerance{}, SlopTolerance{}).HandleEvent(evMove(1, off(1, 1)))
+		}},
+		{"recognizer without a deadline override", "DidExceedDeadline.RecognizerNoDeadline", func(g *gestureTester) {
+			r := &testPrimaryPointerRecognizer{resolutions: new([]string)}
+			r.InitPrimaryPointer(g.binding, r, PrimaryPointerOpts{Deadline: foundation.Some(ms(5))})
+			r.DidExceedDeadline()
+		}},
+		{"recognizer unknown pointer (kind)", "GetKindForPointer.RecognizerPointerUnknown", func(g *gestureTester) {
+			NewTapGestureRecognizer(g.binding).GetKindForPointer(99)
+		}},
+		{"recognizer unknown pointer (buttons)", "GetButtonsForPointer.RecognizerPointerUnknown", func(g *gestureTester) {
+			NewTapGestureRecognizer(g.binding).GetButtonsForPointer(99)
+		}},
+		{"recognizer stopped while ready", "DidStopTrackingLastPointer.RecognizerStoppedWhileReady", func(g *gestureTester) {
+			var res []string
+			newTestPrimaryPointer(g.binding, GestureAccepted, isUp, &res, SlopTolerance{}, SlopTolerance{}).DidStopTrackingLastPointer(1)
+		}},
+		{"recognizer team set to nil", "SetTeam.RecognizerTeamSetTwice", func(g *gestureTester) {
+			NewTapGestureRecognizer(g.binding).SetTeam(nil)
+		}},
+		{"recognizer team set twice", "SetTeam.RecognizerTeamSetTwice", func(g *gestureTester) {
+			r := NewTapGestureRecognizer(g.binding)
+			team := NewGestureArenaTeam(g.binding.GestureArena)
+			r.SetTeam(team)
+			r.SetTeam(team)
+		}},
+		{"negative slop tolerance", "InitPrimaryPointer.SlopToleranceNegative", func(g *gestureTester) {
+			NewTapGestureRecognizer(g.binding, TapGestureRecognizerOpts{PreAcceptSlopTolerance: NewSlopTolerance(-1)})
+		}},
+		{"scale event while ready", "HandleEvent.ScaleEventWhileReady", func(g *gestureTester) {
+			NewScaleGestureRecognizer(g.binding).HandleEvent(evMove(1, off(1, 1)))
+		}},
+		{"negative scale", "NewScaleUpdateDetails.ScaleNegative", func(*gestureTester) {
+			NewScaleUpdateDetails(ScaleUpdateOpts{Scale: foundation.Some(-1.0)})
+		}},
+		{"scale pointer queue short", "updateLines.ScalePointerQueueShort", func(g *gestureTester) {
+			r := NewScaleGestureRecognizer(g.binding)
+			r.pointerLocations.set(1, off(0, 0))
+			r.updateLines()
+		}},
+		{"scale stopped in an invalid state", "DidStopTrackingLastPointer.ScaleStoppedInInvalidState", func(g *gestureTester) {
+			NewScaleGestureRecognizer(g.binding).DidStopTrackingLastPointer(1)
+		}},
+		{"serial tap count", "NewSerialTapCancelDetails->serialCount.SerialTapCountInvalid", func(*gestureTester) {
+			NewSerialTapCancelDetails(-1)
+		}},
+		{"tap cancel without down", "Resolve.TapCancelWithoutDown", func(g *gestureTester) {
+			r := NewTapGestureRecognizer(g.binding)
+			r.wonArenaForPrimaryPointer = true
+			r.Resolve(GestureRejected)
+		}},
+		{"tap tracking without down", "StartTrackingPointer.TapTrackingWithoutDown", func(g *gestureTester) {
+			NewTapGestureRecognizer(g.binding).StartTrackingPointer(1, nil)
+		}},
+		{"tap and drag pointer accepted twice", "AcceptGesture.TapDragPointerAcceptedTwice", func(g *gestureTester) {
+			r := NewTapAndPanGestureRecognizer(g.binding)
+			r.OnTapDown = func(TapDragDownDetails) {}
+			r.AddPointer(evDown(1, off(1, 1)))
+			r.AcceptGesture(1)
+			r.AcceptGesture(1)
+		}},
+		{"team accept for the wrong pointer", "AcceptGesture.TeamAcceptInvalid", func(g *gestureTester) {
+			team := NewGestureArenaTeam(g.binding.GestureArena)
+			team.Add(1, fakeArenaMember{})
+			team.combiners[1].AcceptGesture(2)
+		}},
+		{"team add for the wrong pointer", "add.TeamAddInvalid", func(g *gestureTester) {
+			team := NewGestureArenaTeam(g.binding.GestureArena)
+			team.Add(1, fakeArenaMember{})
+			team.combiners[1].add(2, fakeArenaMember{})
+		}},
+		{"team resolved twice", "close.TeamResolvedTwice", func(g *gestureTester) {
+			team := NewGestureArenaTeam(g.binding.GestureArena)
+			team.Add(1, fakeArenaMember{})
+			c := team.combiners[1]
+			c.close()
+			c.close()
+		}},
+		{"velocity bounds", "ClampMagnitude.VelocityBoundsInvalid", func(*gestureTester) {
+			VelocityZero.ClampMagnitude(-1, 5)
+		}},
+		{"velocity times going back", "previousVelocityAt.VelocityTimesNotIncreasing", func(g *gestureTester) {
+			tracker := NewIOSScrollViewFlingVelocityTracker(sampleClock{g.clock}, ui.PointerDeviceKindTouch)
+			tracker.touchSamples[0] = &pointAtTime{time: 5 * someTime}
+			tracker.touchSamples[1] = &pointAtTime{time: someTime}
+			tracker.index = 1
+			tracker.previousVelocityAt(0)
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			g := newGestureTester(t)
+			assertRoute(t, recoverError(t, func() { tc.fn(g) }), tc.route)
+		})
+	}
+}
+
+// stuckRecognizer never resolves, so its entries stay after Dispose.
+type stuckRecognizer struct{ OneSequenceGestureRecognizer }
+
+func (*stuckRecognizer) DebugDescription() string       { return "stuck" }
+func (*stuckRecognizer) HandleEvent(PointerEvent)       {}
+func (*stuckRecognizer) DidStopTrackingLastPointer(int) {}
+func (*stuckRecognizer) Resolve(GestureDisposition)     {}

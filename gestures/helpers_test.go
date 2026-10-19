@@ -1,6 +1,8 @@
 package gestures
 
 import (
+	"github.com/rm4n0s/glutter/internal/fakeclock"
+	"github.com/rm4n0s/glutter/scheduler"
 	"testing"
 	"time"
 
@@ -52,6 +54,7 @@ type testPointer struct {
 	buttons  int
 	isDown   bool
 	location ui.Offset
+	pan      ui.Offset
 }
 
 func newTestPointer(pointer ...int) *testPointer {
@@ -125,3 +128,158 @@ func assertRoute(t *testing.T, err error, route string) {
 }
 
 func us(n int) time.Duration { return time.Duration(n) * time.Microsecond }
+
+type sampleClock struct{ *fakeclock.Fake }
+
+func (c sampleClock) AfterFunc(d time.Duration, f func()) SamplingTimer {
+	return c.Fake.AfterFunc(d, f)
+}
+
+type fakeScheduler struct {
+	postFrameCallback scheduler.FrameCallback
+	frameTime         time.Duration
+}
+
+func (*fakeScheduler) Locked() bool                                      { return false }
+func (*fakeScheduler) AddUnlockedCallback(func())                        {}
+func (s *fakeScheduler) AddPostFrameCallback(cb scheduler.FrameCallback) { s.postFrameCallback = cb }
+func (s *fakeScheduler) CurrentSystemFrameTimeStamp() time.Duration      { return s.frameTime }
+
+// gestureTester is flutter_test's GestureTester: a binding with a fake clock,
+// whose microtasks run when the test says so.
+type gestureTester struct {
+	t       *testing.T
+	host    *fakeHost
+	clock   *fakeclock.Fake
+	binding *GestureBinding
+}
+
+func newGestureTester(t *testing.T) *gestureTester {
+	t.Helper()
+	host := &fakeHost{}
+	d := ui.NewPlatformDispatcher(host)
+	d.AddView(ui.ImplicitViewID, ui.ViewConfiguration{PhysicalSize: ui.Size{Width: 800, Height: 600}, DevicePixelRatio: 1})
+	clock := fakeclock.New(time.Date(2015, 1, 1, 0, 0, 0, 0, time.UTC))
+	b := NewGestureBinding(d, &fakeScheduler{}, GestureBindingOpts{Clock: sampleClock{clock}})
+	return &gestureTester{t: t, host: host, clock: clock, binding: b}
+}
+
+func (g *gestureTester) closeArena(pointer int) { g.binding.GestureArena.Close(pointer) }
+
+func (g *gestureTester) route(event PointerEvent) {
+	g.binding.PointerRouter.Route(event)
+	g.host.flush()
+}
+
+// elapse moves the clock and runs the timers that fire, then the microtasks.
+func (g *gestureTester) elapse(d time.Duration) {
+	g.clock.Advance(d)
+	g.host.flush()
+}
+
+// flush runs the microtasks.
+func (g *gestureTester) flush() { g.host.flush() }
+
+// log records what happened, in order.
+type log struct{ entries []string }
+
+func (l *log) add(s string) { l.entries = append(l.entries, s) }
+func (l *log) clear()       { l.entries = nil }
+func (l *log) check(t *testing.T, want ...string) {
+	t.Helper()
+	if len(l.entries) != len(want) {
+		t.Fatalf("log = %q, want %q", l.entries, want)
+	}
+	for i := range want {
+		if l.entries[i] != want[i] {
+			t.Fatalf("log = %q, want %q", l.entries, want)
+		}
+	}
+}
+
+// A step of a scripted gesture test.
+type step func(g *gestureTester, l *log)
+
+func route(e PointerEvent) step { return func(g *gestureTester, _ *log) { g.route(e) } }
+func elapse(d time.Duration) step {
+	return func(g *gestureTester, _ *log) { g.elapse(d) }
+}
+func closeArena(p int) step { return func(g *gestureTester, _ *log) { g.closeArena(p) } }
+func flushMicrotasks() step { return func(g *gestureTester, _ *log) { g.flush() } }
+func do(fn func()) step     { return func(*gestureTester, *log) { fn() } }
+
+// want checks the log; the next steps start with an empty log if clear is true.
+func want(entries ...string) step {
+	return func(g *gestureTester, l *log) {
+		g.t.Helper()
+		l.check(g.t, entries...)
+	}
+}
+
+// wantClear checks the log and empties it.
+func wantClear(entries ...string) step {
+	return func(g *gestureTester, l *log) {
+		g.t.Helper()
+		l.check(g.t, entries...)
+		l.clear()
+	}
+}
+
+func run(g *gestureTester, l *log, steps ...step) {
+	for _, s := range steps {
+		s(g, l)
+	}
+}
+
+func (p *testPointer) downAt(location ui.Offset, ts time.Duration) *PointerDownEvent {
+	p.isDown = true
+	p.location = location
+	return NewPointerDownEvent(PointerEventOpts{
+		Pointer: p.pointer, Kind: p.kind, Device: p.device, Position: location, TimeStamp: ts,
+		Buttons: someInt(p.buttons),
+	})
+}
+
+func (p *testPointer) moveAt(location ui.Offset, ts time.Duration) *PointerMoveEvent {
+	delta := location.Sub(p.location)
+	p.location = location
+	return NewPointerMoveEvent(PointerEventOpts{
+		Pointer: p.pointer, Kind: p.kind, Device: p.device, Position: location, Delta: delta, TimeStamp: ts,
+		Buttons: someInt(p.buttons),
+	})
+}
+
+// moveButtons moves with other buttons than the pointer's.
+func (p *testPointer) moveButtons(location ui.Offset, buttons int) *PointerMoveEvent {
+	delta := location.Sub(p.location)
+	p.location = location
+	return NewPointerMoveEvent(PointerEventOpts{
+		Pointer: p.pointer, Kind: p.kind, Device: p.device, Position: location, Delta: delta,
+		Buttons: someInt(buttons),
+	})
+}
+
+func (p *testPointer) upAt(ts time.Duration) *PointerUpEvent {
+	p.isDown = false
+	return NewPointerUpEvent(PointerEventOpts{
+		Pointer: p.pointer, Kind: p.kind, Device: p.device, Position: p.location, TimeStamp: ts,
+	})
+}
+
+func (p *testPointer) panZoomStart(location ui.Offset) *PointerPanZoomStartEvent {
+	p.location, p.pan = location, ui.Offset{}
+	return NewPointerPanZoomStartEvent(PointerEventOpts{Pointer: p.pointer, Kind: p.kind, Device: p.device, Position: location})
+}
+
+func (p *testPointer) panZoomUpdate(location, pan ui.Offset, scale float64, ts time.Duration) *PointerPanZoomUpdateEvent {
+	e := NewPointerPanZoomUpdateEvent(PointerEventOpts{
+		Pointer: p.pointer, Kind: p.kind, Device: p.device, Position: location, Pan: pan, PanDelta: pan.Sub(p.pan),
+		Scale: someFloat(scale), TimeStamp: ts,
+	})
+	p.pan = pan
+	return e
+}
+
+func (p *testPointer) panZoomEnd(ts time.Duration) *PointerPanZoomEndEvent {
+	return NewPointerPanZoomEndEvent(PointerEventOpts{Pointer: p.pointer, Kind: p.kind, Device: p.device, Position: p.location, TimeStamp: ts})
+}

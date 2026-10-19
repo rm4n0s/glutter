@@ -59,17 +59,21 @@ type GestureArenaMember interface {
 // uses it to resolve.
 //
 // Flutter: gestures/arena.dart GestureArenaEntry
-type GestureArenaEntry struct {
+type GestureArenaEntry interface {
+	// Resolve accepts or rejects the entry's member in the arena. Resolving
+	// again after the arena is resolved has no effect.
+	//
+	// Flutter: gestures/arena.dart GestureArenaEntry.resolve
+	Resolve(disposition GestureDisposition)
+}
+
+type arenaEntry struct {
 	arena   *GestureArenaManager
 	pointer int
 	member  GestureArenaMember
 }
 
-// Resolve accepts or rejects the entry's member in the arena. Resolving again
-// after the arena is resolved has no effect.
-//
-// Flutter: gestures/arena.dart GestureArenaEntry.resolve
-func (e *GestureArenaEntry) Resolve(disposition GestureDisposition) {
+func (e *arenaEntry) Resolve(disposition GestureDisposition) {
 	e.arena.resolve(e.pointer, e.member, disposition)
 }
 
@@ -154,7 +158,7 @@ func NewGestureArenaManager(scheduleMicrotask func(fn func()), opts ...GestureAr
 // does not exist. Members can only join an open arena.
 //
 // Flutter: gestures/arena.dart GestureArenaManager.add
-func (m *GestureArenaManager) Add(pointer int, member GestureArenaMember) *GestureArenaEntry {
+func (m *GestureArenaManager) Add(pointer int, member GestureArenaMember) GestureArenaEntry {
 	state, ok := m.arenas[pointer]
 	if !ok {
 		state = &gestureArena{isOpen: true}
@@ -166,7 +170,7 @@ func (m *GestureArenaManager) Add(pointer int, member GestureArenaMember) *Gestu
 	}
 	state.members = append(state.members, member)
 	m.log(pointer, "Adding: "+describeMember(member), nil)
-	return &GestureArenaEntry{m, pointer, member}
+	return &arenaEntry{m, pointer, member}
 }
 
 // Close prevents new members from entering the arena of the pointer, and

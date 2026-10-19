@@ -33,7 +33,7 @@ type arenaTester struct {
 	micro                   *microtasks
 	arena                   *GestureArenaManager
 	first, second           *testGestureArenaMember
-	firstEntry, secondEntry *GestureArenaEntry
+	firstEntry, secondEntry GestureArenaEntry
 }
 
 func newArenaTester(t *testing.T) *arenaTester {

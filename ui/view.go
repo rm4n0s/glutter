@@ -40,6 +40,21 @@ type ViewConfiguration struct {
 	PhysicalConstraints ViewConstraints
 	// Display is the display the view is on.
 	Display Display
+	// GestureSettings are the platform's gesture thresholds.
+	GestureSettings GestureSettings
+}
+
+// GestureSettings are the gesture thresholds the platform sets, in physical
+// pixels. A value of 0 means the platform gives none, and the framework uses
+// its own default.
+//
+// Flutter: ui/window.dart GestureSettings
+type GestureSettings struct {
+	// PhysicalTouchSlop is how far a touch may move before it is a drag.
+	PhysicalTouchSlop float64
+	// PhysicalDoubleTapSlop is how far apart two taps may be to make a double
+	// tap.
+	PhysicalDoubleTapSlop float64
 }
 
 // View is one top-level surface that the app renders into, such as a window.
@@ -87,6 +102,11 @@ func (v *View) PhysicalConstraints() ViewConstraints {
 	}
 	return v.cfg.PhysicalConstraints
 }
+
+// GestureSettings are the platform's gesture thresholds, in physical pixels.
+//
+// Flutter: ui/window.dart FlutterView.gestureSettings
+func (v *View) GestureSettings() GestureSettings { return v.cfg.GestureSettings }
 
 // ViewPadding is the area of the view that the system covers or that is not
 // usable, in physical pixels.

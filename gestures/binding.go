@@ -20,7 +20,7 @@ type SamplingTimer interface {
 }
 
 // SamplingClock is the clock the event resampler reads. The default is the
-// system clock; tests replace it through GestureBinding.DebugSamplingClock.
+// system clock; tests replace it through GestureBindingOpts.Clock.
 //
 // Flutter: gestures/binding.dart SamplingClock
 type SamplingClock interface {
@@ -162,7 +162,7 @@ func (r *resampler) sample(samplingOffset time.Duration, clock SamplingClock) {
 			// We use the frame timestamp as the original frame time, since the
 			// clock's own time may be a bit late.
 			r.frameTime = r.b.scheduler.CurrentSystemFrameTimeStamp()
-			r.frameTimeAgeStart = r.b.samplingClock().Now()
+			r.frameTimeAgeStart = r.b.Clock().Now()
 			// Reset the timer so that it is in phase with the frames.
 			r.timer.cancel()
 			r.startTimer()
@@ -193,6 +193,12 @@ func (r *resampler) onSampleTimeChanged() {
 type GestureBindingOpts struct {
 	// Debug holds the diagnostics flags of the gestures library.
 	Debug DebugOptions
+	// Clock is the clock of the resampler, the recognizers' timers and the
+	// velocity trackers; the default is the system clock. Tests give a fake
+	// one.
+	//
+	// Flutter: gestures/binding.dart GestureBinding.debugSamplingClock
+	Clock SamplingClock
 }
 
 // GestureBinding is the glue between the engine's pointer data and the gestures
@@ -251,12 +257,8 @@ type GestureBinding struct {
 	//
 	// Flutter: gestures/binding.dart GestureBinding.samplingOffset
 	SamplingOffset time.Duration
-	// DebugSamplingClock, if set, replaces the system clock of the
-	// resampler. It is meant for tests.
-	//
-	// Flutter: gestures/binding.dart GestureBinding.debugSamplingClock
-	DebugSamplingClock SamplingClock
 
+	clock                SamplingClock
 	pendingPointerEvents []PointerEvent
 	hitTests             map[int]*HitTestResult
 	resampler            *resampler
@@ -278,6 +280,7 @@ func NewGestureBinding(d *ui.PlatformDispatcher, s GestureScheduler, opts ...Ges
 		d:              d,
 		scheduler:      s,
 		Debug:          &o.Debug,
+		clock:          o.Clock,
 		SamplingOffset: defaultSamplingOffset,
 		hitTests:       map[int]*HitTestResult{},
 	}
@@ -342,7 +345,7 @@ func (b *GestureBinding) HandlePointerEvent(event PointerEvent) {
 	}
 	if b.ResamplingEnabled {
 		b.resampler.addOrDispatch(event)
-		b.resampler.sample(b.SamplingOffset, b.samplingClock())
+		b.resampler.sample(b.SamplingOffset, b.Clock())
 		return
 	}
 	// Stop resampling if it was enabled before.
@@ -459,16 +462,70 @@ func (b *GestureBinding) HandleEvent(event PointerEvent, _ HitTestEntry) {
 // Flutter: gestures/binding.dart GestureBinding.resetGestureBinding
 func (b *GestureBinding) ResetGestureBinding() { b.hitTests = map[int]*HitTestResult{} }
 
-func (b *GestureBinding) samplingClock() SamplingClock {
-	if foundation.DebugMode && b.DebugSamplingClock != nil {
-		return b.DebugSamplingClock
+// Clock is the clock of the binding: the one given in the options, or the
+// system clock.
+//
+// Flutter: gestures/binding.dart GestureBinding.samplingClock
+func (b *GestureBinding) Clock() SamplingClock {
+	if b.clock != nil {
+		return b.clock
 	}
 	return systemSamplingClock{}
 }
 
+// Timer is a function that runs once, a while from now, on the UI thread.
+//
+// Flutter: dart:async Timer
+type Timer struct {
+	stopped bool
+	timer   SamplingTimer
+}
+
+// NewTimer runs fn on the UI thread after d, unless the timer is cancelled
+// first. The binding's clock says when.
+//
+// Flutter: dart:async Timer.new
+func (b *GestureBinding) NewTimer(d time.Duration, fn func()) *Timer {
+	t := &Timer{}
+	t.timer = b.Clock().AfterFunc(d, func() {
+		b.d.Post(func() {
+			if t.stopped {
+				return
+			}
+			t.stopped = true
+			fn()
+		})
+	})
+	return t
+}
+
+// Cancel stops the timer if it did not run yet.
+//
+// Flutter: dart:async Timer.cancel
+func (t *Timer) Cancel() {
+	t.stopped = true
+	if t.timer != nil {
+		t.timer.Stop()
+	}
+}
+
+// IsActive reports whether the timer has not run or been cancelled.
+//
+// Flutter: dart:async Timer.isActive
+func (t *Timer) IsActive() bool { return !t.stopped }
+
+// Scheduler is the scheduler the binding was made with.
+func (b *GestureBinding) Scheduler() GestureScheduler { return b.scheduler }
+
+// Post runs fn on the UI thread, after the work that is running now: the
+// microtask of Dart.
+//
+// Flutter: dart:async scheduleMicrotask
+func (b *GestureBinding) Post(fn func()) { b.d.Post(fn) }
+
 func (b *GestureBinding) startPeriodic(interval time.Duration, tick func()) *periodicTimer {
 	p := &periodicTimer{}
-	clock := b.samplingClock()
+	clock := b.Clock()
 	var arm func()
 	arm = func() {
 		p.timer = clock.AfterFunc(interval, func() {
@@ -488,7 +545,7 @@ func (b *GestureBinding) startPeriodic(interval time.Duration, tick func()) *per
 func (b *GestureBinding) handleSampleTimeChanged() {
 	if !b.scheduler.Locked() {
 		if b.ResamplingEnabled {
-			b.resampler.sample(b.SamplingOffset, b.samplingClock())
+			b.resampler.sample(b.SamplingOffset, b.Clock())
 		} else {
 			b.resampler.stop()
 		}
