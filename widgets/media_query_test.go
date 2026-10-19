@@ -1,7 +1,9 @@
-package widgets
+package widgets_test
 
 import (
 	"fmt"
+	"github.com/rm4n0s/glutter/gluttertest"
+	. "github.com/rm4n0s/glutter/widgets"
 	"slices"
 	"strings"
 	"testing"
@@ -39,19 +41,18 @@ func fullData() MediaQueryData {
 // transforms it with a child MediaQuery, and returns what the child reads.
 func dataSeenBelow(t *testing.T, data MediaQueryData, wrap func(bc BuildContext, child Widget) Widget) MediaQueryData {
 	t.Helper()
-	tr := newTree(t)
+	ts := gluttertest.New(t)
 	var got MediaQueryData
 	inner := builderOf(func(bc BuildContext) Widget { got = MediaQueryOf(bc); return newLeaf() })
-	tr.pump(NewMediaQuery(data, builderOf(func(bc BuildContext) Widget { return wrap(bc, inner) })))
+	ts.PumpWidget(NewMediaQuery(data, builderOf(func(bc BuildContext) Widget { return wrap(bc, inner) })))
 	return got
 }
 
 func TestMediaQueryDoesNotHaveADefault(t *testing.T) {
 	skipUnlessDebug(t)
-	tr := newTree(t)
-	tr.collectPanics = true
+	ts := gluttertest.New(t)
 	var maybe bool
-	tr.pump(builderOf(func(bc BuildContext) Widget {
+	pumpRaw(ts, builderOf(func(bc BuildContext) Widget {
 		_, maybe = MediaQueryMaybeOf(bc)
 		MediaQueryOf(bc)
 		return newLeaf()
@@ -59,7 +60,7 @@ func TestMediaQueryDoesNotHaveADefault(t *testing.T) {
 	if maybe {
 		t.Error("MediaQueryMaybeOf found a MediaQuery in a tree that has none")
 	}
-	appErr := requireErrorTag(t, tr.errs[0], "MediaQueryMissing")
+	appErr := requireErrorTag(t, takeFirst(t, ts), "MediaQueryMissing")
 	if !strings.Contains(appErr.Message, "MediaQuery") {
 		t.Errorf("message = %q", appErr.Message)
 	}
@@ -67,10 +68,10 @@ func TestMediaQueryDoesNotHaveADefault(t *testing.T) {
 
 func TestMediaQueryOfFindsTheDataWhenThereIsOne(t *testing.T) {
 	data := NewMediaQueryData(MediaQueryDataOpts{Size: ui.Size{Width: 100, Height: 200}})
-	tr := newTree(t)
+	ts := gluttertest.New(t)
 	var of, maybe MediaQueryData
 	var ok bool
-	tr.pump(NewMediaQuery(data, builderOf(func(bc BuildContext) Widget {
+	ts.PumpWidget(NewMediaQuery(data, builderOf(func(bc BuildContext) Widget {
 		of = MediaQueryOf(bc)
 		maybe, ok = MediaQueryMaybeOf(bc)
 		return newLeaf()
@@ -104,8 +105,8 @@ func TestMediaQueryDataDefaults(t *testing.T) {
 }
 
 func TestMediaQueryDataFromViewIsSane(t *testing.T) {
-	bt := newBindingTree(t, bindingTreeOpts{size: ui.Size{Width: 1600, Height: 1200}, ratio: 2})
-	data := NewMediaQueryDataFromView(bt.view, nil)
+	ts := gluttertest.New(t, gluttertest.Opts{DevicePixelRatio: 2})
+	data := NewMediaQueryDataFromView(ts.View, nil)
 	if data.Size != (ui.Size{Width: 800, Height: 600}) || data.DevicePixelRatio != 2 {
 		t.Errorf("size = %v, ratio = %v; want 800x600 at 2", data.Size, data.DevicePixelRatio)
 	}
@@ -124,8 +125,8 @@ func TestMediaQueryDataFromViewIsSane(t *testing.T) {
 }
 
 func TestMediaQueryDataFromViewUsesThePlatformData(t *testing.T) {
-	bt := newBindingTree(t, bindingTreeOpts{ratio: 2})
-	bt.setView(func(c *ui.ViewConfiguration) {
+	ts := gluttertest.New(t, gluttertest.Opts{Size: ui.Size{Width: 400, Height: 300}, DevicePixelRatio: 2})
+	ts.SetViewConfiguration(func(c *ui.ViewConfiguration) {
 		c.Padding = ui.ViewPadding{Left: 2, Top: 4, Right: 6, Bottom: 8}
 		c.ViewPadding = ui.ViewPadding{Left: 4, Top: 8, Right: 12, Bottom: 16}
 		c.ViewInsets = ui.ViewPadding{Left: 2, Top: 4, Right: 6, Bottom: 8}
@@ -137,7 +138,7 @@ func TestMediaQueryDataFromViewUsesThePlatformData(t *testing.T) {
 		InvertColors: true, DisableAnimations: true, BoldText: true, HighContrast: true, OnOffSwitchLabels: true,
 		AlwaysUse24HourFormat: true, NavigationMode: NavigationModeDirectional, SupportsShowingSystemContextMenu: true,
 	})
-	data := NewMediaQueryDataFromView(bt.view, &platform)
+	data := NewMediaQueryDataFromView(ts.View, &platform)
 	if data.Size != (ui.Size{Width: 400, Height: 300}) || data.DevicePixelRatio != 2 {
 		t.Errorf("size = %v, ratio = %v; want 400x300 at 2", data.Size, data.DevicePixelRatio)
 	}
@@ -145,10 +146,10 @@ func TestMediaQueryDataFromViewUsesThePlatformData(t *testing.T) {
 		name      string
 		got, want any
 	}{
-		{"padding", data.Padding, painting.NewEdgeInsetsFromViewPadding(bt.view.Padding(), 2)},
-		{"viewPadding", data.ViewPadding, painting.NewEdgeInsetsFromViewPadding(bt.view.ViewPadding(), 2)},
-		{"viewInsets", data.ViewInsets, painting.NewEdgeInsetsFromViewPadding(bt.view.ViewInsets(), 2)},
-		{"systemGestureInsets", data.SystemGestureInsets, painting.NewEdgeInsetsFromViewPadding(bt.view.SystemGestureInsets(), 2)},
+		{"padding", data.Padding, painting.NewEdgeInsetsFromViewPadding(ts.View.Padding(), 2)},
+		{"viewPadding", data.ViewPadding, painting.NewEdgeInsetsFromViewPadding(ts.View.ViewPadding(), 2)},
+		{"viewInsets", data.ViewInsets, painting.NewEdgeInsetsFromViewPadding(ts.View.ViewInsets(), 2)},
+		{"systemGestureInsets", data.SystemGestureInsets, painting.NewEdgeInsetsFromViewPadding(ts.View.SystemGestureInsets(), 2)},
 		{"brightness", data.PlatformBrightness, platform.PlatformBrightness},
 		{"accessibleNavigation", data.AccessibleNavigation, true},
 		{"invertColors", data.InvertColors, true},
@@ -159,7 +160,7 @@ func TestMediaQueryDataFromViewUsesThePlatformData(t *testing.T) {
 		{"alwaysUse24HourFormat", data.AlwaysUse24HourFormat, true},
 		{"navigationMode", data.NavigationMode, NavigationModeDirectional},
 		{"supportsShowingSystemContextMenu", data.SupportsShowingSystemContextMenu, true},
-		{"gestureSettings", data.GestureSettings, gestures.NewDeviceGestureSettingsFromView(bt.view)},
+		{"gestureSettings", data.GestureSettings, gestures.NewDeviceGestureSettingsFromView(ts.View)},
 	}
 	for _, tc := range tests {
 		if tc.got != tc.want {
@@ -175,15 +176,15 @@ func TestMediaQueryDataFromViewUsesThePlatformData(t *testing.T) {
 }
 
 func TestMediaQueryDataFromViewUsesTheDispatcherWithoutPlatformData(t *testing.T) {
-	bt := newBindingTree(t)
-	bt.setPlatform(func(c *ui.PlatformConfiguration) {
+	ts := gluttertest.New(t)
+	ts.SetPlatformConfiguration(func(c *ui.PlatformConfiguration) {
 		c.TextScaleFactor = 123
 		c.PlatformBrightness = ui.BrightnessDark
 		c.AccessibilityFeatures = ui.AccessibilityFeatures{
 			AccessibleNavigation: true, InvertColors: true, DisableAnimations: true, BoldText: true, HighContrast: true, OnOffSwitchLabels: true,
 		}
 	})
-	data := NewMediaQueryDataFromView(bt.view, nil)
+	data := NewMediaQueryDataFromView(ts.View, nil)
 	if !painting.TextScalerEqual(data.TextScaler, painting.NewTextScalerLinear(123)) || data.TextScaler.TextScaleFactor() != 123 {
 		t.Errorf("text scaler = %v, want 123", data.TextScaler)
 	}
@@ -320,8 +321,8 @@ func TestMediaQueryTextScalingWrappers(t *testing.T) {
 // TestMediaQueryAccessorsDefaults checks the defaults of the accessors that do
 // not panic without a MediaQuery, and that every Maybe accessor says so.
 func TestMediaQueryAccessorsDefaults(t *testing.T) {
-	tr := newTree(t)
-	tr.pump(builderOf(func(bc BuildContext) Widget {
+	ts := gluttertest.New(t)
+	pumpRaw(ts, builderOf(func(bc BuildContext) Widget {
 		if !painting.TextScalerEqual(MediaQueryTextScalerOf(bc), painting.TextScalerNoScaling) {
 			t.Error("TextScalerOf without a MediaQuery should be no scaling")
 		}
@@ -373,8 +374,8 @@ func TestMediaQueryAccessors(t *testing.T) {
 		GestureSettings:     foundation.Some(gestures.NewDeviceGestureSettings(foundation.Some(5.0))),
 		PlatformBrightness:  foundation.Some(ui.BrightnessDark),
 	})
-	tr := newTree(t)
-	tr.pump(NewMediaQuery(data, builderOf(func(bc BuildContext) Widget {
+	ts := gluttertest.New(t)
+	ts.PumpWidget(NewMediaQuery(data, builderOf(func(bc BuildContext) Widget {
 		checks := []struct {
 			name      string
 			got, want any
@@ -454,14 +455,14 @@ func TestMediaQueryPartialDependencies(t *testing.T) {
 		for _, change := range aspectCases {
 			affects := reader.name == change.name || slices.Contains(change.also, reader.name)
 			t.Run(reader.name+" reader, "+change.name+" change", func(t *testing.T) {
-				tr := newTree(t)
+				ts := gluttertest.New(t)
 				builds := 0
 				child := builderOf(func(bc BuildContext) Widget { builds++; reader.read(bc); return newLeaf() })
-				tr.pump(NewMediaQuery(base, child))
+				ts.PumpWidget(NewMediaQuery(base, child))
 				if builds != 1 {
 					t.Fatalf("built %d times, want 1", builds)
 				}
-				tr.pump(NewMediaQuery(base.CopyWith(change.change), child))
+				ts.PumpWidget(NewMediaQuery(base.CopyWith(change.change), child))
 				want := 1
 				if affects {
 					want = 2
@@ -478,21 +479,21 @@ func TestMediaQueryPartialDependencies(t *testing.T) {
 // and height can be listened to independently'.
 func TestMediaQueryWidthAndHeightAreListenedToIndependently(t *testing.T) {
 	data := NewMediaQueryData(MediaQueryDataOpts{Size: ui.Size{Width: 800, Height: 600}})
-	tr := newTree(t)
+	ts := gluttertest.New(t)
 	widthBuilds, heightBuilds := 0, 0
 	var width, height float64
 	column := newMulti(
 		builderOf(func(bc BuildContext) Widget { widthBuilds++; width = MediaQueryWidthOf(bc); return newLeaf() }),
 		builderOf(func(bc BuildContext) Widget { heightBuilds++; height = MediaQueryHeightOf(bc); return newLeaf() }),
 	)
-	tr.pump(NewMediaQuery(data, column))
+	ts.PumpWidget(NewMediaQuery(data, column))
 	data = data.CopyWith(MediaQueryDataCopyOpts{Size: foundation.Some(ui.Size{Width: 900, Height: 600})})
-	tr.pump(NewMediaQuery(data, column))
+	ts.PumpWidget(NewMediaQuery(data, column))
 	if width != 900 || widthBuilds != 2 || heightBuilds != 1 {
 		t.Errorf("after a width change: width = %v, builds = %d/%d; want 900, 2/1", width, widthBuilds, heightBuilds)
 	}
 	data = data.CopyWith(MediaQueryDataCopyOpts{Size: foundation.Some(ui.Size{Width: 900, Height: 700})})
-	tr.pump(NewMediaQuery(data, column))
+	ts.PumpWidget(NewMediaQuery(data, column))
 	if height != 700 || widthBuilds != 2 || heightBuilds != 2 {
 		t.Errorf("after a height change: height = %v, builds = %d/%d; want 700, 2/2", height, widthBuilds, heightBuilds)
 	}
@@ -501,15 +502,15 @@ func TestMediaQueryWidthAndHeightAreListenedToIndependently(t *testing.T) {
 // TestMediaQueryFromViewCreatesAMediaQuery is 'MediaQuery.fromView creates a
 // MediaQuery', and 'creates a SystemTextScaler'.
 func TestMediaQueryFromViewCreatesAMediaQuery(t *testing.T) {
-	bt := newBindingTree(t, bindingTreeOpts{ratio: 2})
-	bt.setPlatform(func(c *ui.PlatformConfiguration) { c.TextScaleFactor = 2 })
+	ts := gluttertest.New(t, gluttertest.Opts{Size: ui.Size{Width: 400, Height: 300}, DevicePixelRatio: 2})
+	ts.SetPlatformConfiguration(func(c *ui.PlatformConfiguration) { c.TextScaleFactor = 2 })
 	var got MediaQueryData
 	var found bool
-	bt.attachUnwrapped(NewMediaQueryFromView(bt.view, builderOf(func(bc BuildContext) Widget {
+	pumpRaw(ts, NewMediaQueryFromView(ts.View, builderOf(func(bc BuildContext) Widget {
 		got, found = MediaQueryMaybeOf(bc)
 		return newLeaf()
 	})))
-	bt.frame()
+	ts.Pump()
 	if !found || got.Size != (ui.Size{Width: 400, Height: 300}) || got.DevicePixelRatio != 2 {
 		t.Errorf("found = %v, data = %v; want 400x300 at 2", found, got)
 	}
@@ -527,21 +528,21 @@ func TestMediaQueryFromViewUpdatesOnNotifications(t *testing.T) {
 		parent *MediaQueryData
 		// touch changes the platform; platformWins is whether the data below
 		// follows the change (it does only without parent data).
-		touch        func(bt *bindingTree)
+		touch        func(ts *gluttertest.Tester)
 		read         func(d MediaQueryData) any
 		platformWins any
 	}{
-		{"metrics", nil, func(bt *bindingTree) {
-			bt.setView(func(c *ui.ViewConfiguration) { c.PhysicalSize = ui.Size{Width: 200, Height: 100} })
+		{"metrics", nil, func(ts *gluttertest.Tester) {
+			ts.SetViewConfiguration(func(c *ui.ViewConfiguration) { c.PhysicalSize = ui.Size{Width: 200, Height: 100} })
 		}, func(d MediaQueryData) any { return d.Size }, ui.Size{Width: 200, Height: 100}},
-		{"text scale", nil, func(bt *bindingTree) {
-			bt.setPlatform(func(c *ui.PlatformConfiguration) { c.TextScaleFactor = 3 })
+		{"text scale", nil, func(ts *gluttertest.Tester) {
+			ts.SetPlatformConfiguration(func(c *ui.PlatformConfiguration) { c.TextScaleFactor = 3 })
 		}, func(d MediaQueryData) any { return d.TextScaler.TextScaleFactor() }, 3.0},
-		{"brightness", nil, func(bt *bindingTree) {
-			bt.setPlatform(func(c *ui.PlatformConfiguration) { c.PlatformBrightness = ui.BrightnessDark })
+		{"brightness", nil, func(ts *gluttertest.Tester) {
+			ts.SetPlatformConfiguration(func(c *ui.PlatformConfiguration) { c.PlatformBrightness = ui.BrightnessDark })
 		}, func(d MediaQueryData) any { return d.PlatformBrightness }, ui.BrightnessDark},
-		{"accessibility", nil, func(bt *bindingTree) {
-			bt.setPlatform(func(c *ui.PlatformConfiguration) { c.AccessibilityFeatures.BoldText = true })
+		{"accessibility", nil, func(ts *gluttertest.Tester) {
+			ts.SetPlatformConfiguration(func(c *ui.PlatformConfiguration) { c.AccessibilityFeatures.BoldText = true })
 		}, func(d MediaQueryData) any { return d.BoldText }, true},
 	}
 	for _, tc := range tests {
@@ -551,21 +552,21 @@ func TestMediaQueryFromViewUpdatesOnNotifications(t *testing.T) {
 				name = tc.name + " with parent data"
 			}
 			t.Run(name, func(t *testing.T) {
-				bt := newBindingTree(t, bindingTreeOpts{})
+				ts := gluttertest.New(t)
 				parent := NewMediaQueryData(MediaQueryDataOpts{
 					TextScaler: painting.NewTextScalerLinear(1.5), PlatformBrightness: ui.BrightnessLight, BoldText: false,
 				})
 				var seen []MediaQueryData
 				child := builderOf(func(bc BuildContext) Widget { seen = append(seen, MediaQueryOf(bc)); return newLeaf() })
-				root := NewMediaQueryFromView(bt.view, child)
+				root := NewMediaQueryFromView(ts.View, child)
 				if withParent {
 					root = NewMediaQuery(parent, root)
 				}
-				bt.attachUnwrapped(root)
-				bt.frame()
+				pumpRaw(ts, root)
+				ts.Pump()
 				before := tc.read(seen[len(seen)-1])
-				tc.touch(bt)
-				bt.frame()
+				tc.touch(ts)
+				ts.Pump()
 				after := tc.read(seen[len(seen)-1])
 				followsPlatform := !withParent || tc.name == "metrics"
 				switch {
@@ -582,16 +583,16 @@ func TestMediaQueryFromViewUpdatesOnNotifications(t *testing.T) {
 // TestMediaQueryFromViewUpdatesWhenTheParentDataChanges is 'MediaQuery.fromView
 // updates when parent data changes'.
 func TestMediaQueryFromViewUpdatesWhenTheParentDataChanges(t *testing.T) {
-	bt := newBindingTree(t)
+	ts := gluttertest.New(t)
 	var scalers []float64
 	child := builderOf(func(bc BuildContext) Widget {
 		scalers = append(scalers, MediaQueryOf(bc).TextScaler.TextScaleFactor())
 		return newLeaf()
 	})
-	mq := NewMediaQueryFromView(bt.view, child)
+	mq := NewMediaQueryFromView(ts.View, child)
 	set := func(f float64) {
-		bt.b.AttachRootWidget(NewMediaQuery(NewMediaQueryData(MediaQueryDataOpts{TextScaler: painting.NewTextScalerLinear(f)}), mq))
-		bt.frame()
+		pumpRaw(ts, NewMediaQuery(NewMediaQueryData(MediaQueryDataOpts{TextScaler: painting.NewTextScalerLinear(f)}), mq))
+		ts.Pump()
 	}
 	set(1.5)
 	set(2.5)
@@ -605,32 +606,15 @@ func TestMediaQueryFromViewBrightnessOverride(t *testing.T) {
 	skipUnlessDebug(t)
 	debug := NewDebugOptions()
 	debug.BrightnessOverride = ui.BrightnessDark
-	bt := newBindingTree(t, bindingTreeOpts{debug: debug})
+	ts := gluttertest.New(t, gluttertest.Opts{Debug: debug})
 	var got ui.Brightness
-	bt.attachUnwrapped(NewMediaQueryFromView(bt.view, builderOf(func(bc BuildContext) Widget {
+	pumpRaw(ts, NewMediaQueryFromView(ts.View, builderOf(func(bc BuildContext) Widget {
 		got = MediaQueryOf(bc).PlatformBrightness
 		return newLeaf()
 	})))
-	bt.frame()
+	ts.Pump()
 	if got != ui.BrightnessDark {
 		t.Errorf("brightness = %v, want the override", got)
-	}
-}
-
-// TestMediaQueryFromViewStopsListeningWhenRemoved checks that the state removes
-// its observer in Dispose.
-func TestMediaQueryFromViewStopsListeningWhenRemoved(t *testing.T) {
-	bt := newBindingTree(t)
-	bt.attachUnwrapped(NewMediaQueryFromView(bt.view, newLeaf()))
-	bt.frame()
-	before := len(bt.b.observers)
-	if before != 1 {
-		t.Fatalf("%d observers, want 1", before)
-	}
-	bt.b.AttachRootWidget(newLeaf())
-	bt.frame()
-	if n := len(bt.b.observers); n != 0 {
-		t.Errorf("%d observers after the MediaQuery left the tree, want 0", n)
 	}
 }
 

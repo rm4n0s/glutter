@@ -170,6 +170,10 @@ type WidgetsBindingOpts struct {
 	ErrorWidgetBuilder func(err error) Widget
 	// Logger gets the log of the default error reporter; slog.Default() when nil.
 	Logger *slog.Logger
+	// Clock is the clock of the gesture binding (the recognizers' timers, the
+	// velocity trackers and the resampler); the default is the system clock.
+	// Tests give a fake one.
+	Clock gestures.SamplingClock
 	// Painting are the options of the painting binding (image cache, asset
 	// bundle, HTTP client). Its Post, AfterFunc and Reporter are set by default
 	// from the dispatcher and the error reporter.
@@ -206,7 +210,7 @@ func NewWidgetsBinding(ctx context.Context, d *ui.PlatformDispatcher, opts ...Wi
 	b.scheduler = scheduler.NewSchedulerBinding(d)
 	b.scheduler.ErrorReporter = o.ErrorReporter
 	b.scheduler.FramesGate = func() bool { return b.readyToProduceFrames }
-	b.gesture = gestures.NewGestureBinding(d, b.scheduler, gestures.GestureBindingOpts{ErrorReporter: o.ErrorReporter})
+	b.gesture = gestures.NewGestureBinding(d, b.scheduler, gestures.GestureBindingOpts{ErrorReporter: o.ErrorReporter, Clock: o.Clock})
 	po := o.Painting
 	if po.Reporter == nil {
 		po.Reporter = o.ErrorReporter

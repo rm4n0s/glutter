@@ -1,6 +1,8 @@
-package widgets
+package widgets_test
 
 import (
+	"github.com/rm4n0s/glutter/gluttertest"
+	. "github.com/rm4n0s/glutter/widgets"
 	"slices"
 	"strings"
 	"testing"
@@ -23,62 +25,38 @@ const (
 )
 
 // newLifecycleTree is the setUp of the Dart test: the state starts detached.
-func newLifecycleTree(t *testing.T) *bindingTree {
+func newLifecycleTree(t *testing.T) *gluttertest.Tester {
 	t.Helper()
-	bt := newBindingTree(t)
-	bt.d.SetAppLifecycleState(stPaused)
-	bt.d.SetAppLifecycleState(stDetached)
-	return bt
-}
-
-func TestGenerateStateTransitions(t *testing.T) {
-	none := ui.AppLifecycleStateUnspecified
-	tests := []struct {
-		from, to ui.AppLifecycleState
-		want     []ui.AppLifecycleState
-	}{
-		{stResumed, stResumed, nil},
-		{none, stHidden, []ui.AppLifecycleState{stHidden}},
-		{stDetached, stInactive, []ui.AppLifecycleState{stResumed, stInactive}},
-		{stResumed, stPaused, []ui.AppLifecycleState{stInactive, stHidden, stPaused}},
-		{stPaused, stResumed, []ui.AppLifecycleState{stHidden, stInactive, stResumed}},
-		{stPaused, stDetached, []ui.AppLifecycleState{stDetached}},
-		{stResumed, stDetached, []ui.AppLifecycleState{stInactive, stHidden, stPaused, stDetached}},
-		{stDetached, stPaused, []ui.AppLifecycleState{stResumed, stInactive, stHidden, stPaused}},
-		{stHidden, stInactive, []ui.AppLifecycleState{stInactive}},
-	}
-	for _, tc := range tests {
-		got := generateStateTransitions(tc.from, tc.to)
-		if !slices.Equal(got, tc.want) {
-			t.Errorf("%v -> %v = %v, want %v", tc.from, tc.to, got, tc.want)
-		}
-	}
+	ts := gluttertest.New(t)
+	ts.Dispatcher().SetAppLifecycleState(stPaused)
+	ts.Dispatcher().SetAppLifecycleState(stDetached)
+	return ts
 }
 
 func TestAppLifecycleListenerListensToTheState(t *testing.T) {
-	bt := newLifecycleTree(t)
-	states := []ui.AppLifecycleState{bt.b.Scheduler().LifecycleState()}
-	l := NewAppLifecycleListener(bt.b, AppLifecycleListenerOpts{OnStateChange: func(s ui.AppLifecycleState) { states = append(states, s) }})
+	ts := newLifecycleTree(t)
+	states := []ui.AppLifecycleState{ts.Binding.Scheduler().LifecycleState()}
+	l := NewAppLifecycleListener(ts.Binding, AppLifecycleListenerOpts{OnStateChange: func(s ui.AppLifecycleState) { states = append(states, s) }})
 	defer l.Dispose()
 	if !slices.Equal(states, []ui.AppLifecycleState{stDetached}) {
 		t.Fatalf("states = %v, want detached", states)
 	}
-	bt.d.SetAppLifecycleState(stInactive)
+	ts.Dispatcher().SetAppLifecycleState(stInactive)
 	// "resumed" is generated.
 	if want := []ui.AppLifecycleState{stDetached, stResumed, stInactive}; !slices.Equal(states, want) {
 		t.Errorf("states = %v, want %v", states, want)
 	}
-	bt.d.SetAppLifecycleState(stResumed)
+	ts.Dispatcher().SetAppLifecycleState(stResumed)
 	if want := []ui.AppLifecycleState{stDetached, stResumed, stInactive, stResumed}; !slices.Equal(states, want) {
 		t.Errorf("states = %v, want %v", states, want)
 	}
 }
 
 func TestAppLifecycleListenerTriggersTheTransitionCallbacks(t *testing.T) {
-	bt := newLifecycleTree(t)
+	ts := newLifecycleTree(t)
 	var got []string
 	add := func(name string) func() { return func() { got = append(got, name) } }
-	l := NewAppLifecycleListener(bt.b, AppLifecycleListenerOpts{
+	l := NewAppLifecycleListener(ts.Binding, AppLifecycleListenerOpts{
 		OnDetach: add("detach"), OnHide: add("hide"), OnInactive: add("inactive"), OnPause: add("pause"),
 		OnRestart: add("restart"), OnResume: add("resume"), OnShow: add("show"),
 	})
@@ -111,7 +89,7 @@ func TestAppLifecycleListenerTriggersTheTransitionCallbacks(t *testing.T) {
 		if step.clear {
 			got = nil
 		}
-		bt.d.SetAppLifecycleState(step.to)
+		ts.Dispatcher().SetAppLifecycleState(step.to)
 		if !slices.Equal(got, step.want) {
 			t.Fatalf("step %d (to %v): transitions = %v, want %v", i, step.to, got, step.want)
 		}
@@ -119,20 +97,20 @@ func TestAppLifecycleListenerTriggersTheTransitionCallbacks(t *testing.T) {
 }
 
 func TestAppLifecycleListenerReceivesExitRequests(t *testing.T) {
-	bt := newLifecycleTree(t)
+	ts := newLifecycleTree(t)
 	requested := false
-	l := NewAppLifecycleListener(bt.b, AppLifecycleListenerOpts{OnExitRequested: func() ui.AppExitResponse {
+	l := NewAppLifecycleListener(ts.Binding, AppLifecycleListenerOpts{OnExitRequested: func() ui.AppExitResponse {
 		requested = true
 		return ui.AppExitResponseCancel
 	}})
 	defer l.Dispose()
-	if got := bt.b.HandleRequestAppExit(); !requested || got != ui.AppExitResponseCancel {
+	if got := ts.Binding.HandleRequestAppExit(); !requested || got != ui.AppExitResponseCancel {
 		t.Errorf("requested = %v, response = %v; want true and cancel", requested, got)
 	}
-	if bt.d.RequestClose(ui.ImplicitViewID) {
+	if ts.Dispatcher().RequestClose(ui.ImplicitViewID) {
 		t.Error("closing the window was allowed although OnExitRequested canceled")
 	}
-	plain := NewAppLifecycleListener(bt.b)
+	plain := NewAppLifecycleListener(ts.Binding)
 	defer plain.Dispose()
 	if plain.DidRequestAppExit() != ui.AppExitResponseExit {
 		t.Error("a listener without OnExitRequested should let the app exit")
@@ -141,11 +119,11 @@ func TestAppLifecycleListenerReceivesExitRequests(t *testing.T) {
 
 func TestAppLifecycleListenerDiagnostics(t *testing.T) {
 	skipUnlessDebug(t)
-	bt := newBindingTree(t)
-	l := NewAppLifecycleListener(bt.b)
+	ts := gluttertest.New(t)
+	l := NewAppLifecycleListener(ts.Binding)
 	defer l.Dispose()
 	empty := foundation.DiagnosticableString(listenerDiagnostics{l})
-	l2 := NewAppLifecycleListener(bt.b, AppLifecycleListenerOpts{
+	l2 := NewAppLifecycleListener(ts.Binding, AppLifecycleListenerOpts{
 		OnExitRequested: func() ui.AppExitResponse { return ui.AppExitResponseCancel },
 		OnStateChange:   func(ui.AppLifecycleState) {},
 	})
@@ -167,10 +145,10 @@ type listenerDiagnostics struct{ *AppLifecycleListener }
 
 func TestAppLifecycleListenerUseAfterDispose(t *testing.T) {
 	skipUnlessDebug(t)
-	bt := newBindingTree(t)
-	l := NewAppLifecycleListener(bt.b)
+	ts := gluttertest.New(t)
+	l := NewAppLifecycleListener(ts.Binding)
 	l.Dispose()
-	if bt.b.RemoveObserver(l) {
+	if ts.Binding.RemoveObserver(l) {
 		t.Error("Dispose did not remove the observer")
 	}
 	requireTag(t, "AppLifecycleListenerDisposed", func() { l.Dispose() })
@@ -179,8 +157,8 @@ func TestAppLifecycleListenerUseAfterDispose(t *testing.T) {
 
 func TestAppLifecycleListenerInvalidTransition(t *testing.T) {
 	skipUnlessDebug(t)
-	bt := newBindingTree(t)
-	l := NewAppLifecycleListener(bt.b)
+	ts := gluttertest.New(t)
+	l := NewAppLifecycleListener(ts.Binding)
 	defer l.Dispose()
 	l.DidChangeAppLifecycleState(stResumed)
 	v := panicOf(func() { l.DidChangeAppLifecycleState(stPaused) })

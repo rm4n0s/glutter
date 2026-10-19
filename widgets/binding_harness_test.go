@@ -11,8 +11,11 @@ import (
 	"github.com/rm4n0s/glutter/ui"
 )
 
-// bindingTree is a widgets binding on a fake engine with one view: what
-// gluttertest's tester will be (step 7.5), without its API.
+// bindingTree is a widgets binding on a fake engine with one view: a small
+// version of gluttertest's Tester, for the tests of package widgets that need
+// unexported identifiers and so cannot import gluttertest (which imports
+// widgets). The tests that use only the public API run on gluttertest in
+// package widgets_test.
 type bindingTree struct {
 	t    *testing.T
 	host *renderhost.Host
@@ -22,7 +25,6 @@ type bindingTree struct {
 	raw  time.Duration
 	errs []error
 	cfg  ui.ViewConfiguration
-	plat ui.PlatformConfiguration
 }
 
 type bindingTreeOpts struct {
@@ -87,18 +89,6 @@ func (bt *bindingTree) pump(w Widget) {
 		bt.b.AttachRootWidget(bt.b.WrapWithDefaultView(w))
 	}
 	bt.frame()
-}
-
-// setView changes the metrics of the view.
-func (bt *bindingTree) setView(change func(c *ui.ViewConfiguration)) {
-	change(&bt.cfg)
-	bt.d.UpdateViewConfiguration(ui.ImplicitViewID, bt.cfg)
-}
-
-// setPlatform changes the system settings.
-func (bt *bindingTree) setPlatform(change func(c *ui.PlatformConfiguration)) {
-	change(&bt.plat)
-	bt.d.UpdatePlatformConfiguration(bt.plat)
 }
 
 // find returns the elements below the root, in depth-first order, whose widget
