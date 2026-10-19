@@ -115,10 +115,9 @@ func (c WindowConfig) IsDecorated() bool { return c.Decorated.OrElse(true) }
 // Flutter: no counterpart
 func DefaultWindowConfig() WindowConfig { return WindowConfig{} }
 
-// ViewMetrics describes the size and scale of a view.
-//
-// TODO(step 5.2): padding, insets and the display, when the views are wired
-// into the framework.
+// ViewMetrics describes the size, scale and system areas of a view. Only
+// the size and the scale are required; the engine fills in the rest from the
+// display and the defaults.
 //
 // Flutter: ui/window.dart ViewConfiguration
 type ViewMetrics struct {
@@ -126,6 +125,15 @@ type ViewMetrics struct {
 	PhysicalSize ui.Size
 	// DevicePixelRatio is the number of physical pixels per logical pixel.
 	DevicePixelRatio float64
+	// ViewPadding is the area the system covers, in physical pixels.
+	ViewPadding ui.ViewPadding
+	// ViewInsets is the area covered by system UI the app can draw below.
+	ViewInsets ui.ViewPadding
+	// SystemGestureInsets is the area where the system handles gestures.
+	SystemGestureInsets ui.ViewPadding
+	// Display is the display the view is on. None means the engine chooses
+	// (the primary display).
+	Display foundation.Opt[int]
 }
 
 // Display describes one connected display.

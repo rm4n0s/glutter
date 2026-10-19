@@ -1,0 +1,502 @@
+package engine
+
+import (
+	"reflect"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/rm4n0s/errors"
+	"github.com/rm4n0s/glutter/foundation"
+	"github.com/rm4n0s/glutter/internal/platform"
+	"github.com/rm4n0s/glutter/internal/platform/fake"
+	"github.com/rm4n0s/glutter/ui"
+)
+
+// recorder collects what the dispatcher's callbacks saw, from the fake UI thread.
+type recorder struct {
+	mu   sync.Mutex
+	log  []string
+	disp *ui.PlatformDispatcher
+}
+
+func (r *recorder) add(s string) { r.mu.Lock(); r.log = append(r.log, s); r.mu.Unlock() }
+
+func (r *recorder) snapshot() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]string(nil), r.log...)
+}
+
+func (r *recorder) dispatcher() *ui.PlatformDispatcher {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.disp
+}
+
+// start is Config.Start: it keeps the dispatcher for the test.
+func (r *recorder) start(d *ui.PlatformDispatcher) error {
+	r.mu.Lock()
+	r.disp = d
+	r.mu.Unlock()
+	return nil
+}
+
+// onUI runs fn on the fake UI thread and waits for it, so that a test can read
+// the dispatcher, which belongs to that thread, while Run is going.
+func onUI(t *testing.T, h *harness, fn func()) {
+	t.Helper()
+	done := make(chan struct{})
+	h.c.Post(func() { fn(); close(done) })
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the UI thread did not run the function")
+	}
+}
+
+func newDispatcherHarness(t *testing.T) (*harness, *recorder) {
+	t.Helper()
+	h := newHarness(t, map[string]string{"DISPLAY": ":0"})
+	r := &recorder{}
+	h.cfg.Start = r.start
+	return h, r
+}
+
+// finish stops the engine and checks that Run returned without an error.
+func finish(t *testing.T, h *harness, done <-chan error) {
+	t.Helper()
+	h.stopEngine(t)
+	if err := result(t, done); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestStartGetsTheDispatcherWithItsViewSettingsAndDisplays(t *testing.T) {
+	h, r := newDispatcherHarness(t)
+	h.c.SetDisplays([]platform.Display{
+		{ID: 1, Bounds: ui.NewRectFromLTRB(0, 0, 960, 540), DevicePixelRatio: 2, RefreshRate: 144},
+		{ID: 2, Bounds: ui.NewRectFromLTRB(960, 0, 2880, 1080), DevicePixelRatio: 1, RefreshRate: 60, Primary: true},
+	})
+	h.c.SetSettings(platform.Settings{
+		PlatformBrightness: ui.BrightnessDark,
+		TextScaleFactor:    1.5,
+		HasAccentColor:     true,
+		AccentColor:        ui.NewColor(0xFF336699),
+		DisableAnimations:  true,
+		HighContrast:       true,
+		Locales:            []ui.Locale{ui.NewLocale("de", "DE"), ui.NewLocale("en")},
+	})
+	var seen struct {
+		views    int
+		implicit bool
+		started  bool
+	}
+	h.cfg.Start = func(d *ui.PlatformDispatcher) error {
+		seen.views, seen.implicit, seen.started = len(d.Views()), d.ImplicitView() != nil, true
+		return r.start(d)
+	}
+	done := h.run(t)
+	finish(t, h, done)
+	d := r.dispatcher()
+	if !seen.started || seen.views != 1 || !seen.implicit {
+		t.Errorf("at Start: %+v, want one implicit view", seen)
+	}
+	if got := d.Displays(); len(got) != 2 || got[0].Size != (ui.Size{Width: 1920, Height: 1080}) || got[0].RefreshRate != 144 ||
+		got[1].Size != (ui.Size{Width: 1920, Height: 1080}) || got[1].ID != 2 {
+		t.Errorf("displays = %v", got)
+	}
+	if d.PlatformBrightness() != ui.BrightnessDark || d.TextScaleFactor() != 1.5 || d.Locale() != ui.NewLocale("de", "DE") ||
+		!d.AccessibilityFeatures().DisableAnimations || !d.AccessibilityFeatures().HighContrast ||
+		d.AccentColor() == nil || *d.AccentColor() != ui.NewColor(0xFF336699) {
+		t.Errorf("platform configuration: %v %v %v %v", d.PlatformBrightness(), d.TextScaleFactor(), d.Locales(), d.AccessibilityFeatures())
+	}
+}
+
+func TestStartErrorEndsRun(t *testing.T) {
+	h, _ := newDispatcherHarness(t)
+	h.cfg.Start = func(*ui.PlatformDispatcher) error { return errors.New("StartFailed", "no") }
+	err := Run(t.Context(), h.cfg)
+	assertRoute(t, err, "StartFailed", "StartFailed")
+	if !h.c.closed {
+		t.Error("the connection was not closed")
+	}
+}
+
+func TestMetricsReachTheView(t *testing.T) {
+	h, r := newDispatcherHarness(t)
+	h.c.SetDisplays([]platform.Display{
+		{ID: 1, Bounds: ui.NewRectFromLTRB(0, 0, 100, 100), DevicePixelRatio: 1, RefreshRate: 50, Primary: true},
+		{ID: 2, Bounds: ui.NewRectFromLTRB(100, 0, 300, 100), DevicePixelRatio: 2, RefreshRate: 90},
+	})
+	type snap struct {
+		size    ui.Size
+		dpr     float64
+		padding ui.ViewPadding
+		insets  ui.ViewPadding
+		display ui.Display
+	}
+	var mu sync.Mutex
+	var snaps []snap
+	h.cfg.Start = func(d *ui.PlatformDispatcher) error {
+		d.OnMetricsChanged = func() {
+			v := d.ImplicitView()
+			mu.Lock()
+			snaps = append(snaps, snap{v.PhysicalSize(), v.DevicePixelRatio(), v.Padding(), v.ViewInsets(), v.Display()})
+			mu.Unlock()
+		}
+		return r.start(d)
+	}
+	h.c.Inject(metrics(640, 400))
+	h.c.Inject(fake.MetricsEvent{View: 0, Metrics: platform.ViewMetrics{
+		PhysicalSize: ui.Size{Width: 800, Height: 600}, DevicePixelRatio: 1.5,
+		ViewPadding: ui.ViewPadding{Top: 24, Bottom: 10}, ViewInsets: ui.ViewPadding{Bottom: 30},
+		Display: foundation.Some(2),
+	}})
+	done := h.run(t)
+	waitFor(t, func() bool { mu.Lock(); defer mu.Unlock(); return len(snaps) == 2 })
+	finish(t, h, done)
+	mu.Lock()
+	defer mu.Unlock()
+	if s := snaps[0]; s.size.Width != 640 || s.size.Height != 400 || s.dpr != 1 || s.display.ID != 1 || s.display.RefreshRate != 50 {
+		t.Errorf("first metrics = %+v: the primary display is the default", s)
+	}
+	// The padding is the view padding the insets do not already cover.
+	if s := snaps[1]; s.size.Width != 800 || s.dpr != 1.5 || s.padding != (ui.ViewPadding{Top: 24}) ||
+		s.insets != (ui.ViewPadding{Bottom: 30}) || s.display.ID != 2 || s.display.Size.Width != 400 {
+		t.Errorf("second metrics = %+v", s)
+	}
+}
+
+func TestMetricsWithoutDisplaysGetADefaultDisplay(t *testing.T) {
+	h, r := newDispatcherHarness(t)
+	h.c.Inject(metrics(320, 200))
+	done := h.run(t)
+	var disp ui.Display
+	waitFor(t, func() bool {
+		ok := false
+		onUI(t, h, func() {
+			d := r.dispatcher()
+			ok = d != nil && d.ImplicitView().PhysicalSize().Width == 320
+			if ok {
+				disp = d.ImplicitView().Display()
+			}
+		})
+		return ok
+	})
+	finish(t, h, done)
+	if disp.RefreshRate != 60 || disp.Size.Width != 320 || disp.DevicePixelRatio != 1 {
+		t.Errorf("display = %v", disp)
+	}
+}
+
+func TestFramesCallBeginAndDrawWithMonotonicTimes(t *testing.T) {
+	h, r := newDispatcherHarness(t)
+	var times []time.Duration
+	var mu sync.Mutex
+	h.cfg.Start = func(d *ui.PlatformDispatcher) error {
+		d.OnBeginFrame = func(ft time.Duration) { r.add("begin"); mu.Lock(); times = append(times, ft); mu.Unlock() }
+		d.OnDrawFrame = func() {
+			r.add("draw")
+			if err := d.ImplicitView().Render(&ui.Scene{}); err != nil {
+				t.Error(err)
+			}
+		}
+		return r.start(d)
+	}
+	h.c.Inject(metrics(100, 50))
+	for _, ft := range []time.Duration{16 * time.Millisecond, 33 * time.Millisecond, 20 * time.Millisecond, 66 * time.Millisecond} {
+		h.c.Inject(fake.FrameEvent{View: 0, FrameTime: ft})
+	}
+	done := h.run(t)
+	waitFor(t, func() bool { calls, _ := h.r.snapshot(); return len(calls) == 4 })
+	finish(t, h, done)
+	want := []string{"begin", "draw", "begin", "draw", "begin", "draw", "begin", "draw"}
+	if got := r.snapshot(); !reflect.DeepEqual(got, want) {
+		t.Errorf("callbacks = %v", got)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	wantTimes := []time.Duration{16 * time.Millisecond, 33 * time.Millisecond, 33 * time.Millisecond, 66 * time.Millisecond}
+	if !reflect.DeepEqual(times, wantTimes) {
+		t.Errorf("frame times = %v, want %v", times, wantTimes)
+	}
+	calls, _ := h.r.snapshot()
+	for i, c := range calls {
+		if c.width != 100 || c.height != 50 || c.scene == nil {
+			t.Errorf("draw %d = %+v, want the scene at 100x50", i, c)
+		}
+	}
+}
+
+func TestScheduleFrameAsksTheWindowForAFrame(t *testing.T) {
+	h, r := newDispatcherHarness(t)
+	done := h.run(t)
+	waitFor(t, func() bool { return r.dispatcher() != nil })
+	count := func() int {
+		n := 0
+		for _, e := range h.c.Log() {
+			if e.Kind == fake.EntryRequestFrame {
+				n++
+			}
+		}
+		return n
+	}
+	before := count()
+	onUI(t, h, func() { r.dispatcher().ScheduleFrame(); r.dispatcher().ScheduleFrame() })
+	if got := count() - before; got != 2 {
+		t.Errorf("RequestFrame entries = %d, want 2 (the platform merges the requests)", got)
+	}
+	finish(t, h, done)
+}
+
+func TestAFrameThatRendersNothingDrawsTheLastSceneAgain(t *testing.T) {
+	h, r := newDispatcherHarness(t)
+	scene := &ui.Scene{}
+	renderOnce := true
+	h.cfg.Start = func(d *ui.PlatformDispatcher) error {
+		d.OnDrawFrame = func() {
+			if renderOnce {
+				renderOnce = false
+				if err := d.ImplicitView().Render(scene); err != nil {
+					t.Error(err)
+				}
+			}
+		}
+		return r.start(d)
+	}
+	h.c.Inject(metrics(64, 64))
+	h.c.Inject(fake.FrameEvent{View: 0, FrameTime: time.Millisecond})
+	h.c.Inject(fake.FrameEvent{View: 0, FrameTime: 2 * time.Millisecond})
+	h.c.Inject(fake.FrameEvent{View: 0, FrameTime: 3 * time.Millisecond})
+	done := h.run(t)
+	waitFor(t, func() bool { calls, _ := h.r.snapshot(); return len(calls) == 3 })
+	finish(t, h, done)
+	calls, _ := h.r.snapshot()
+	for i, c := range calls {
+		if c.scene != scene {
+			t.Errorf("draw %d got scene %p, want the one the framework rendered (%p)", i, c.scene, scene)
+		}
+	}
+}
+
+func TestAFrameWithNoFrameworkDrawsTheDevelopmentColor(t *testing.T) {
+	h := newHarness(t, map[string]string{"DISPLAY": ":0"})
+	h.c.Inject(metrics(10, 10))
+	h.c.Inject(fake.FrameEvent{View: 0})
+	done := h.run(t)
+	waitFor(t, func() bool { calls, _ := h.r.snapshot(); return len(calls) == 1 })
+	finish(t, h, done)
+	if calls, _ := h.r.snapshot(); calls[0].scene != nil {
+		t.Errorf("scene = %v, want nil: the background only", calls[0].scene)
+	}
+}
+
+func TestSceneFuncStillWorksOnTheDispatcher(t *testing.T) {
+	h := newHarness(t, map[string]string{"DISPLAY": ":0"})
+	scene := &ui.Scene{}
+	var mu sync.Mutex
+	var sizes []ui.Size
+	var dprs []float64
+	h.cfg.Scene = func(size ui.Size, dpr float64) *ui.Scene {
+		mu.Lock()
+		sizes, dprs = append(sizes, size), append(dprs, dpr)
+		mu.Unlock()
+		return scene
+	}
+	h.c.Inject(fake.MetricsEvent{View: 0, Metrics: platform.ViewMetrics{PhysicalSize: ui.Size{Width: 90, Height: 30}, DevicePixelRatio: 2}})
+	h.c.Inject(fake.FrameEvent{View: 0})
+	done := h.run(t)
+	waitFor(t, func() bool { calls, _ := h.r.snapshot(); return len(calls) == 1 })
+	finish(t, h, done)
+	mu.Lock()
+	defer mu.Unlock()
+	if calls, _ := h.r.snapshot(); calls[0].scene != scene || len(sizes) != 1 || sizes[0].Width != 90 || dprs[0] != 2 {
+		t.Errorf("scene func: sizes %v dprs %v", sizes, dprs)
+	}
+}
+
+func TestSettingsAndLifecycleReachTheDispatcher(t *testing.T) {
+	h, r := newDispatcherHarness(t)
+	h.cfg.Start = func(d *ui.PlatformDispatcher) error {
+		d.OnPlatformBrightnessChanged = func() { r.add("brightness " + d.PlatformBrightness().String()) }
+		d.OnTextScaleFactorChanged = func() { r.add("scale") }
+		d.OnLocaleChanged = func() { r.add("locale " + d.Locale().String()) }
+		d.OnAccessibilityFeaturesChanged = func() { r.add("accessibility " + d.AccessibilityFeatures().String()) }
+		d.OnAppLifecycleStateChanged = func(s ui.AppLifecycleState) { r.add("lifecycle " + s.String()) }
+		return r.start(d)
+	}
+	h.c.Inject(fake.LifecycleEvent{State: ui.AppLifecycleStateResumed})
+	h.c.Inject(fake.SettingsEvent{Settings: platform.Settings{PlatformBrightness: ui.BrightnessDark, Locales: []ui.Locale{ui.NewLocale("fr")}}})
+	h.c.Inject(fake.SettingsEvent{Settings: platform.Settings{PlatformBrightness: ui.BrightnessDark, Locales: []ui.Locale{ui.NewLocale("fr")}, TextScaleFactor: 2, DisableAnimations: true}})
+	h.c.Inject(fake.LifecycleEvent{State: ui.AppLifecycleStateInactive})
+	done := h.run(t)
+	waitFor(t, func() bool { return len(r.snapshot()) >= 6 })
+	finish(t, h, done)
+	want := []string{
+		"lifecycle AppLifecycleStateResumed",
+		"locale fr", "brightness BrightnessDark",
+		"scale", "accessibility AccessibilityFeatures[disableAnimations, reduceMotion]",
+		"lifecycle AppLifecycleStateInactive",
+	}
+	if got := r.snapshot(); !reflect.DeepEqual(got, want) {
+		t.Errorf("callbacks = %v\nwant %v", got, want)
+	}
+}
+
+func TestInputReachesTheDispatcherAtTheStartOfTheFrame(t *testing.T) {
+	h, r := newDispatcherHarness(t)
+	h.cfg.Start = func(d *ui.PlatformDispatcher) error {
+		d.OnPointerDataPacket = func(p ui.PointerDataPacket) { r.add("pointer " + itoa(len(p.Data))) }
+		d.OnKeyData = func(k ui.KeyData) bool { r.add("key " + string(rune(k.Logical))); return true }
+		d.OnBeginFrame = func(time.Duration) { r.add("begin") }
+		d.OnDrawFrame = func() {
+			r.add("draw")
+			_ = d.ImplicitView().Render(&ui.Scene{})
+		}
+		return r.start(d)
+	}
+	h.c.Inject(metrics(10, 10))
+	h.c.Inject(fake.KeyEvent{Data: ui.KeyData{Type: ui.KeyEventTypeDown, Logical: 'q'}})
+	h.c.Inject(fake.PointerEvent{Data: []ui.PointerData{{Change: ui.PointerChangeAdd}, {Change: ui.PointerChangeHover}}})
+	h.c.Inject(fake.FrameEvent{View: 0})
+	done := h.run(t)
+	waitFor(t, func() bool { return len(r.snapshot()) == 4 })
+	finish(t, h, done)
+	want := []string{"key q", "pointer 2", "begin", "draw"}
+	if got := r.snapshot(); !reflect.DeepEqual(got, want) {
+		t.Errorf("callbacks = %v, want %v", got, want)
+	}
+	// Each event asked for a frame.
+	n := 0
+	for _, e := range h.c.Log() {
+		if e.Kind == fake.EntryRequestFrame {
+			n++
+		}
+	}
+	if n < 2 {
+		t.Errorf("RequestFrame entries = %d, want one for each event", n)
+	}
+}
+
+func itoa(i int) string { return string(rune('0' + i)) }
+
+func TestRequestAppExitEndsRun(t *testing.T) {
+	h, r := newDispatcherHarness(t)
+	done := h.run(t)
+	waitFor(t, func() bool { return r.dispatcher() != nil })
+	h.c.Post(func() { r.dispatcher().RequestAppExit() })
+	if err := result(t, done); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRenderOfUnknownViewFails(t *testing.T) {
+	h, r := newDispatcherHarness(t)
+	var got error
+	var mu sync.Mutex
+	h.cfg.Start = func(d *ui.PlatformDispatcher) error {
+		d.OnDrawFrame = func() {
+			v := d.AddView(99, ui.ViewConfiguration{})
+			mu.Lock()
+			got = v.Render(&ui.Scene{})
+			mu.Unlock()
+			_ = d.ImplicitView().Render(nil)
+		}
+		return r.start(d)
+	}
+	h.c.Inject(metrics(10, 10))
+	h.c.Inject(fake.FrameEvent{View: 0})
+	done := h.run(t)
+	waitFor(t, func() bool { mu.Lock(); defer mu.Unlock(); return got != nil })
+	finish(t, h, done)
+	mu.Lock()
+	defer mu.Unlock()
+	assertRoute(t, got, "ViewNotFound", "handler.RenderView.ViewNotFound")
+}
+
+func TestRendererFailureEndsRunWithTheError(t *testing.T) {
+	h, r := newDispatcherHarness(t)
+	h.r.err = errors.New("EGLContextLost", "lost")
+	var renderErr error
+	var mu sync.Mutex
+	h.cfg.Start = func(d *ui.PlatformDispatcher) error {
+		d.OnDrawFrame = func() {
+			err := d.ImplicitView().Render(&ui.Scene{})
+			mu.Lock()
+			renderErr = err
+			mu.Unlock()
+		}
+		return r.start(d)
+	}
+	h.c.Inject(metrics(10, 10))
+	h.c.Inject(fake.FrameEvent{View: 0})
+	done := h.run(t)
+	err := result(t, done)
+	assertRoute(t, err, "EGLContextLost", "EGLContextLost")
+	mu.Lock()
+	defer mu.Unlock()
+	assertRoute(t, renderErr, "EGLContextLost", "EGLContextLost")
+}
+
+func TestClosingTheWindowRemovesTheView(t *testing.T) {
+	h, r := newDispatcherHarness(t)
+	h.c.Inject(fake.CloseRequestEvent{View: 0})
+	done := h.run(t)
+	waitFor(t, func() bool {
+		gone := false
+		onUI(t, h, func() { d := r.dispatcher(); gone = d != nil && d.ImplicitView() == nil })
+		return gone
+	})
+	finish(t, h, done)
+}
+
+func TestPlatformConfigurationConversion(t *testing.T) {
+	tests := []struct {
+		name string
+		in   platform.Settings
+		want ui.PlatformConfiguration
+	}{
+		{"empty", platform.Settings{}, ui.PlatformConfiguration{}},
+		{"accessibility", platform.Settings{DisableAnimations: true, HighContrast: true},
+			ui.PlatformConfiguration{AccessibilityFeatures: ui.AccessibilityFeatures{DisableAnimations: true, ReduceMotion: true, HighContrast: true}}},
+		{"accent without flag is ignored", platform.Settings{AccentColor: ui.NewColor(0xFF000000)}, ui.PlatformConfiguration{}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := platformConfiguration(tt.in); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("got %+v, want %+v", got, tt.want)
+			}
+		})
+	}
+	accent := platformConfiguration(platform.Settings{HasAccentColor: true, AccentColor: ui.NewColor(0xFF010203)})
+	if accent.AccentColor == nil || *accent.AccentColor != ui.NewColor(0xFF010203) {
+		t.Errorf("accent = %v", accent.AccentColor)
+	}
+}
+
+func TestScheduleFrameDoesNothingInTheSharedMemoryMode(t *testing.T) {
+	p := fake.New()
+	win, err := p.NewWindow(platform.DefaultWindowConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := &handler{cfg: &Config{ShmFill: true}, win: win}
+	h.ScheduleFrame()
+	for _, e := range p.Log() {
+		if e.Kind == fake.EntryRequestFrame {
+			t.Error("the shared-memory mode has no frames to ask for")
+		}
+	}
+	h.cfg.ShmFill = false
+	h.ScheduleFrame()
+	n := 0
+	for _, e := range p.Log() {
+		if e.Kind == fake.EntryRequestFrame {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Errorf("RequestFrame entries = %d, want 1", n)
+	}
+}

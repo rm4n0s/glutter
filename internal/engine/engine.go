@@ -66,6 +66,13 @@ type Config struct {
 	// SkipUnsupported makes the renderer leave out what it cannot draw yet instead
 	// of ending Run with GLNotImplemented; the log says what was left out.
 	SkipUnsupported bool
+	// Start, when set, is called once on the UI thread, after the first window
+	// exists and the dispatcher knows its view, the settings and the displays,
+	// and before the event loop runs. The framework attaches itself to the
+	// dispatcher here (its callbacks, then ScheduleFrame). An error ends Run
+	// with that error. Start replaces Scene: a Scene is drawn only when Start is
+	// nil.
+	Start func(d *ui.PlatformDispatcher) error
 
 	// The fields below are for the tests of this package: a Wayland and an X11
 	// that are not the real ones, and the renderer.
@@ -102,8 +109,11 @@ type renderer interface {
 // renderer's (EGLLoadFailed, EGLNoConfig, GLES3Unsupported, ...) and the
 // screenshot's.
 //
-// TODO(step 5.2): the framework's run loop replaces the clear color: the frame
-// builds, lays out, paints and renders a Scene.
+// The engine owns a ui.PlatformDispatcher: it reports the views, the input, the
+// settings, the lifecycle and the frames to it, and draws the scenes that the
+// framework renders into a view. A frame the framework did not render into draws
+// the previous scene again, because the platform needs one presented frame for
+// each frame it asks for (platform.Window.RequestFrame).
 //
 // Flutter: engine/src/flutter/shell (the shell that runs an app)
 func Run(ctx context.Context, cfg Config) (err error) {
@@ -153,6 +163,17 @@ func Run(ctx context.Context, cfg Config) (err error) {
 		h.newRenderer = cfg.newRenderer
 	} else {
 		h.newRenderer = newGLESRenderer
+	}
+	h.disp = ui.NewPlatformDispatcher(h)
+	h.disp.SetDisplays(h.displays())
+	h.disp.UpdatePlatformConfiguration(platformConfiguration(conn.Settings()))
+	h.disp.AddView(win.ID(), ui.ViewConfiguration{})
+	if cfg.Start != nil {
+		if err := cfg.Start(h.disp); err != nil {
+			return err
+		}
+	} else if cfg.Scene != nil {
+		h.disp.OnDrawFrame = h.drawSceneFunc
 	}
 	if cfg.Hooks.Window != nil {
 		cfg.Hooks.Window(win, cancel)
@@ -217,39 +238,136 @@ type handler struct {
 	shot   *Screenshot
 	cancel context.CancelFunc
 
+	disp          *ui.PlatformDispatcher
 	newRenderer   func(cfg *Config, log *slog.Logger) renderer
 	r             renderer
 	width, height int
-	dpr           float64
 	// input is what arrived since the last frame, which the next one handles first.
 	input inputQueue
+	// rendered is whether the framework rendered a scene in the current frame;
+	// lastScene is the scene it rendered last.
+	rendered  bool
+	lastScene *ui.Scene
 
 	armed      bool // the capture is scheduled
 	captureDue bool // the next frame is read back
 	err        error
 }
 
-var _ platform.Handler = (*handler)(nil)
+var (
+	_ platform.Handler = (*handler)(nil)
+	_ ui.PlatformHost  = (*handler)(nil)
+)
 
 func (h *handler) OnMetrics(view ui.ViewID, m platform.ViewMetrics) {
 	h.width, h.height = int(m.PhysicalSize.Width), int(m.PhysicalSize.Height)
-	h.dpr = m.DevicePixelRatio
+	h.disp.UpdateViewConfiguration(view, h.viewConfiguration(m))
 	if f := h.cfg.Hooks.Metrics; f != nil {
 		f(view, m)
 	}
 }
 
-func (h *handler) OnKey(d ui.KeyData) {
-	if f := h.cfg.Hooks.Key; f != nil {
-		h.queueInput(func() { f(d) })
+// viewConfiguration turns the metrics of a window into the configuration of its
+// view: the padding is the part of the view padding that the insets do not
+// already cover, and the display is the one the platform names, else the
+// primary one.
+func (h *handler) viewConfiguration(m platform.ViewMetrics) ui.ViewConfiguration {
+	cfg := ui.ViewConfiguration{
+		PhysicalSize:        m.PhysicalSize,
+		DevicePixelRatio:    m.DevicePixelRatio,
+		ViewPadding:         m.ViewPadding,
+		ViewInsets:          m.ViewInsets,
+		SystemGestureInsets: m.SystemGestureInsets,
+		Padding: ui.ViewPadding{
+			Left:   max(0, m.ViewPadding.Left-m.ViewInsets.Left),
+			Top:    max(0, m.ViewPadding.Top-m.ViewInsets.Top),
+			Right:  max(0, m.ViewPadding.Right-m.ViewInsets.Right),
+			Bottom: max(0, m.ViewPadding.Bottom-m.ViewInsets.Bottom),
+		},
 	}
+	displays := h.displays()
+	cfg.Display = ui.Display{DevicePixelRatio: m.DevicePixelRatio, Size: m.PhysicalSize, RefreshRate: defaultRefreshRate}
+	if id, ok := m.Display.Get(); ok {
+		for _, d := range displays {
+			if d.ID == id {
+				cfg.Display = d
+				return cfg
+			}
+		}
+	}
+	for i, d := range h.conn.Displays() {
+		if d.Primary && i < len(displays) {
+			cfg.Display = displays[i]
+			break
+		}
+	}
+	return cfg
+}
+
+// defaultRefreshRate is the refresh rate of a view whose display the platform
+// does not report, in frames per second.
+const defaultRefreshRate = 60
+
+// displays lists the connected displays for the dispatcher.
+func (h *handler) displays() []ui.Display {
+	var out []ui.Display
+	for _, d := range h.conn.Displays() {
+		dpr := d.DevicePixelRatio
+		if dpr == 0 {
+			dpr = 1
+		}
+		out = append(out, ui.Display{
+			ID:               d.ID,
+			DevicePixelRatio: dpr,
+			Size:             ui.Size{Width: d.Bounds.Width() * dpr, Height: d.Bounds.Height() * dpr},
+			RefreshRate:      d.RefreshRate,
+		})
+	}
+	return out
+}
+
+// platformConfiguration turns the platform's settings into the dispatcher's.
+func platformConfiguration(s platform.Settings) ui.PlatformConfiguration {
+	c := ui.PlatformConfiguration{
+		Locales:            s.Locales,
+		TextScaleFactor:    s.TextScaleFactor,
+		PlatformBrightness: s.PlatformBrightness,
+		AccessibilityFeatures: ui.AccessibilityFeatures{
+			DisableAnimations: s.DisableAnimations,
+			ReduceMotion:      s.DisableAnimations,
+			HighContrast:      s.HighContrast,
+		},
+	}
+	if s.HasAccentColor {
+		c.AccentColor = ui.Ptr(s.AccentColor)
+	}
+	return c
+}
+
+func (h *handler) OnSettings(s platform.Settings) {
+	h.disp.UpdatePlatformConfiguration(platformConfiguration(s))
+}
+
+func (h *handler) OnLifecycle(state ui.AppLifecycleState) { h.disp.SetAppLifecycleState(state) }
+
+func (h *handler) OnKey(d ui.KeyData) {
+	h.queueInput(func() {
+		if f := h.cfg.Hooks.Key; f != nil {
+			f(d)
+		}
+		// TODO(step 10.4): an unhandled key goes on to the text input.
+		h.disp.DispatchKeyData(d)
+	})
 }
 
 func (h *handler) OnPointer(batch []ui.PointerData) {
-	if f := h.cfg.Hooks.Pointer; f != nil {
-		batch = append([]ui.PointerData(nil), batch...)
-		h.queueInput(func() { f(batch) })
-	}
+	batch = append([]ui.PointerData(nil), batch...)
+	h.queueInput(func() {
+		if f := h.cfg.Hooks.Pointer; f != nil {
+			f(batch)
+		}
+		h.disp.DispatchPointerDataPacket(ui.PointerDataPacket{Data: batch})
+	})
 }
 
 // queueInput has the next frame handle an input event. A window that never draws (the
@@ -263,29 +381,73 @@ func (h *handler) queueInput(handle func()) {
 	h.win.RequestFrame()
 }
 
-// OnFrame draws the window. The first frame also creates the renderer: its
-// surface needs the window to be mapped.
-func (h *handler) OnFrame(ui.ViewID, time.Duration) {
+// OnFrame runs a frame: the input that arrived since the last one, then the
+// dispatcher's OnBeginFrame and OnDrawFrame. The framework renders its scene in
+// OnDrawFrame; if it did not, the previous scene is drawn again, so that exactly
+// one frame is presented. The first frame also creates the renderer: its surface
+// needs the window to be mapped.
+func (h *handler) OnFrame(_ ui.ViewID, frameTime time.Duration) {
 	h.input.flush()
+	h.rendered = false
+	h.disp.BeginFrame(frameTime)
+	h.disp.DrawFrame()
+	if !h.rendered && h.err == nil {
+		_ = h.draw(h.lastScene) // a failure is recorded by draw and ends Run
+	}
+}
+
+// drawSceneFunc is OnDrawFrame for a Config that has a Scene: it renders the
+// scene that Config.Scene makes.
+func (h *handler) drawSceneFunc() {
+	v := h.disp.View(h.win.ID())
+	if v == nil {
+		return
+	}
+	scene := h.cfg.Scene(v.PhysicalSize(), v.DevicePixelRatio())
+	if err := v.Render(scene); err != nil {
+		h.fail(err)
+	}
+}
+
+// ScheduleFrame asks the window for a frame (ui.PlatformHost).
+func (h *handler) ScheduleFrame() {
+	if h.cfg.ShmFill {
+		return // the shared-memory mode has no frames
+	}
+	h.win.RequestFrame()
+}
+
+// RequestAppExit ends Run (ui.PlatformHost).
+func (h *handler) RequestAppExit() { h.cancel() }
+
+// RenderView draws the scene the framework rendered into the view
+// (ui.PlatformHost).
+func (h *handler) RenderView(view ui.ViewID, scene *ui.Scene) error {
+	if view != h.win.ID() {
+		return errors.New("ViewNotFound", "there is no window for the view", "view", int64(view))
+	}
+	h.rendered = true
+	h.lastScene = scene
+	return h.draw(scene)
+}
+
+// draw draws one frame of the window, and handles the self-capture.
+func (h *handler) draw(scene *ui.Scene) error {
 	if h.r == nil {
 		h.r = h.newRenderer(h.cfg, h.log)
 	}
 	capture := h.captureDue
 	h.captureDue = false
-	var scene *ui.Scene
-	if h.cfg.Scene != nil {
-		scene = h.cfg.Scene(ui.Size{Width: float64(h.width), Height: float64(h.height)}, h.dpr)
-	}
 	img, err := h.r.Draw(h.win.NativeSurface(), h.width, h.height, scene, capture)
 	if err != nil {
 		h.fail(err)
-		return
+		return err
 	}
 	switch {
 	case img != nil:
 		if err := h.shot.Save(img); err != nil {
 			h.fail(err)
-			return
+			return err
 		}
 		h.cancel() // done: Run returns, and the program exits with code 0
 	case h.shot != nil && !h.armed:
@@ -294,7 +456,7 @@ func (h *handler) OnFrame(ui.ViewID, time.Duration) {
 		if h.shot.After() == 0 {
 			h.captureDue = true
 			h.win.RequestFrame()
-			return
+			return nil
 		}
 		time.AfterFunc(h.shot.After(), func() {
 			h.conn.Post(func() {
@@ -303,12 +465,14 @@ func (h *handler) OnFrame(ui.ViewID, time.Duration) {
 			})
 		})
 	}
+	return nil
 }
 
 // OnCloseRequest destroys the renderer, whose surface draws into the window, and
 // then lets the window close.
-func (h *handler) OnCloseRequest(ui.ViewID) bool {
+func (h *handler) OnCloseRequest(view ui.ViewID) bool {
 	h.release()
+	h.disp.RemoveView(view)
 	return true
 }
 

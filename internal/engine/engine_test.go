@@ -538,7 +538,7 @@ func TestInputWaitsForTheNextFrameAndIsHandledBeforeTheScene(t *testing.T) {
 
 func TestInputIsHandledAtOnceInTheSharedMemoryMode(t *testing.T) {
 	var keys []rune
-	h := &handler{cfg: &Config{ShmFill: true, Hooks: Hooks{Key: func(d ui.KeyData) { keys = append(keys, rune(d.Logical)) }}}}
+	h := &handler{disp: ui.NewPlatformDispatcher(nil), cfg: &Config{ShmFill: true, Hooks: Hooks{Key: func(d ui.KeyData) { keys = append(keys, rune(d.Logical)) }}}}
 	h.OnKey(ui.KeyData{Logical: 'x'})
 	if len(keys) != 1 || keys[0] != 'x' || len(h.input.pending) != 0 {
 		t.Errorf("keys %v, queued %d: with no frames there is nothing to wait for", keys, len(h.input.pending))

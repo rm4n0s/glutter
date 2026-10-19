@@ -199,7 +199,7 @@ func TestInjectDeliversEventsInOrder(t *testing.T) {
 		{"metrics", MetricsEvent{View: 2, Metrics: platform.ViewMetrics{PhysicalSize: ui.Size{Width: 640, Height: 400}, DevicePixelRatio: 1.5}}, "OnMetrics 2 640x400@1.5"},
 		{"lifecycle", LifecycleEvent{State: ui.AppLifecycleStateResumed}, "OnLifecycle AppLifecycleStateResumed"},
 		{"drop", DropEvent{View: 3}, "OnDrop 3"},
-		{"settings", SettingsEvent{Settings: platform.Settings{PlatformBrightness: platform.BrightnessDark}}, "OnSettings 1"},
+		{"settings", SettingsEvent{Settings: platform.Settings{PlatformBrightness: ui.BrightnessDark}}, "OnSettings BrightnessDark"},
 		{"close request", CloseRequestEvent{View: 4}, "OnCloseRequest 4"},
 	}
 	for _, tt := range tests {
@@ -235,7 +235,7 @@ func TestInjectDeliversEventsInOrder(t *testing.T) {
 
 func TestSettingsEventUpdatesSettings(t *testing.T) {
 	p := New()
-	want := platform.Settings{PlatformBrightness: platform.BrightnessDark, TextScaleFactor: 1.25}
+	want := platform.Settings{PlatformBrightness: ui.BrightnessDark, TextScaleFactor: 1.25}
 	p.Inject(SettingsEvent{Settings: want})
 	runQueued(t, p, &recordingHandler{})
 	if got := p.Settings(); !reflect.DeepEqual(got, want) {
