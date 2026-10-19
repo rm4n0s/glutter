@@ -77,8 +77,8 @@ func (p *paragraph) Layout(c ui.ParagraphConstraints) {
 		width = 0
 	}
 	maxLines, hasMax := p.style.MaxLines()
-	// With an ellipsis and no limit on the lines, a word that is wider than the line is not
-	// cut: the line is ellipsized and the text after it dropped (TextPainter.ellipsis).
+	// With an ellipsis and no limit on the lines, the first line that does not fit is not
+	// wrapped: it is ellipsized and the text after it dropped (TextPainter.ellipsis).
 	keepWords := p.style.Ellipsis() != "" && !hasMax
 	ranges, overflow := p.breakLines(width, keepWords)
 	p.exceededLines = overflow
@@ -136,15 +136,16 @@ func (p *paragraph) breakLines(width float64, keepWords bool) (_ []lineRange, ov
 				used += full
 				break
 			}
+			if keepWords {
+				// The line holds the words up to this one and ends the text; the
+				// ellipsis cuts the line to the width afterwards.
+				emit(s.end, false)
+				return out, true
+			}
 			if lineStart < start {
 				// The segment does not fit after the words before it: it starts a line.
 				emit(start, false)
 				continue
-			}
-			if keepWords {
-				// The line holds the word and ends the text.
-				emit(s.end, false)
-				return out, true
 			}
 			// The word alone is wider than the line: put as much of it as fits.
 			cut := start

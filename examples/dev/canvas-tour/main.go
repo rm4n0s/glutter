@@ -15,7 +15,7 @@
 //
 // Environment (read in debug builds only, as the examples promise):
 //
-//	GLUTTER_DEV_PAGE=<n or name>      the first page: 1 to 7, or a scene name
+//	GLUTTER_DEV_PAGE=<n or name>      the first page: 1 to 9, or a scene name
 //	                                  such as shapes-clips (default 1)
 //	GLUTTER_BACKEND=x11|wayland       the windowing system (else the session's)
 //	GLUTTER_SCREENSHOT=<file.png>     save the window content to the file and exit

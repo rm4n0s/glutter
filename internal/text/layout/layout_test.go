@@ -95,7 +95,9 @@ func TestMaxLinesAndEllipsis(t *testing.T) {
 		wantExceed  bool
 		wantEllipsi bool
 	}{
-		{"no limit", nil, ellipsis, pangram, 150, []string{"The quick brown fox ", "jumps over the lazy ", "dog"}, false, false},
+		{"no limit, text that wraps", nil, ellipsis, pangram, 150, []string{"The quick brown fo"}, true, true},
+		{"no limit, text that fits", nil, ellipsis, "The quick", 150, []string{"The quick"}, false, false},
+		{"no limit, no ellipsis", nil, "", pangram, 150, []string{"The quick brown fox ", "jumps over the lazy ", "dog"}, false, false},
 		{"limit not reached", ui.Ptr(5), ellipsis, pangram, 150, []string{"The quick brown fox ", "jumps over the lazy ", "dog"}, false, false},
 		{"exactly the limit", ui.Ptr(3), ellipsis, pangram, 150, []string{"The quick brown fox ", "jumps over the lazy ", "dog"}, false, false},
 		{"two lines with ellipsis", ui.Ptr(2), ellipsis, pangram, 150, []string{"The quick brown fox ", "jumps over the lazy"}, true, true},

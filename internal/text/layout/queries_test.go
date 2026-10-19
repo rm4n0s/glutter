@@ -618,21 +618,26 @@ func TestLineBoundaryAndNumbers(t *testing.T) {
 func TestEllipsisWithoutAMaximumNumberOfLines(t *testing.T) {
 	e := bundledEngine(t)
 	ps := paraStyle(ui.ParagraphStyleOpts{Ellipsis: "…"})
-	t.Run("text that wraps is not cut", func(t *testing.T) {
+	t.Run("text that would wrap is ellipsized on its first line", func(t *testing.T) {
 		p := laidOut(t, e, pangram, 16, 100, ps)
-		if len(p.lines) != 4 || p.DidExceedMaxLines() {
+		if len(p.lines) != 1 || !p.DidExceedMaxLines() || !p.lines[0].runs[len(p.lines[0].runs)-1].ellipsis {
+			t.Errorf("lines %q, exceeded %v", lineTexts(p), p.DidExceedMaxLines())
+		}
+	})
+	t.Run("text that fits is not cut", func(t *testing.T) {
+		if p := laidOut(t, e, "short", 16, 100, ps); len(p.lines) != 1 || p.DidExceedMaxLines() {
 			t.Errorf("lines %q, exceeded %v", lineTexts(p), p.DidExceedMaxLines())
 		}
 	})
 	t.Run("a word wider than the line is ellipsized and ends the text", func(t *testing.T) {
 		p := laidOut(t, e, "short supercalifragilisticexpialidocious tail", 16, 100, ps)
-		if got := lineTexts(p); len(got) != 2 || got[0] != "short " || !strings.HasPrefix(got[1], "supercal") || strings.Contains(got[1], "tail") {
+		if got := lineTexts(p); len(got) != 1 || !strings.HasPrefix(got[0], "short supe") || strings.Contains(got[0], "tail") {
 			t.Fatalf("lines = %q", got)
 		}
 		if !p.DidExceedMaxLines() {
 			t.Error("DidExceedMaxLines is false")
 		}
-		last := p.lines[1]
+		last := p.lines[0]
 		if !last.runs[len(last.runs)-1].ellipsis || last.width > 100+1e-3 {
 			t.Errorf("the last line is not an ellipsized line that fits: width %v", last.width)
 		}

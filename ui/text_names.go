@@ -67,3 +67,8 @@ func (e BlendMode) Name() string { return strings.TrimPrefix(e.String(), "BlendM
 //
 // Flutter: dart:core Enum.name
 func (e Clip) Name() string { return strings.TrimPrefix(e.String(), "Clip.") }
+
+// Name returns the Dart enum name, such as "medium".
+//
+// Flutter: dart:core Enum.name
+func (e FilterQuality) Name() string { return strings.TrimPrefix(e.String(), "FilterQuality.") }
