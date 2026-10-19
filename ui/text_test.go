@@ -104,7 +104,7 @@ func TestTextStyleResolve(t *testing.T) {
 		t.Errorf("a color should replace the foreground: %+v", back)
 	}
 	// Decoration color defaults to the text color until it is set.
-	deco := NewTextStyle(TextStyleOpts{Decoration: TextDecorationUnderline}).Resolve(first)
+	deco := NewTextStyle(TextStyleOpts{Decoration: Ptr(TextDecorationUnderline)}).Resolve(first)
 	if deco.HasDecorationColor || deco.Decoration != TextDecorationUnderline {
 		t.Errorf("decoration = %+v", deco)
 	}

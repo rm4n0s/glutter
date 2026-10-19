@@ -78,7 +78,7 @@ func TestPaintOrderIsBackgroundShadowGlyphsDecoration(t *testing.T) {
 	blue := ui.NewColor(0xFF0000FF)
 	p := styled(e, "HH", 20, ui.TextStyleOpts{
 		Background: bg,
-		Decoration: ui.TextDecorationUnderline,
+		Decoration: ui.Ptr(ui.TextDecorationUnderline),
 		Shadows:    []ui.Shadow{ui.NewShadow(ui.ShadowOpts{Color: &blue, Offset: ui.Offset{Dx: 2, Dy: 3}, BlurRadius: 4})},
 	}, nil)
 	got := paintOf(p)
@@ -174,7 +174,7 @@ func TestPaintDecorationStyles(t *testing.T) {
 		}},
 	}
 	for _, tt := range tests {
-		p := styled(e, "Wave", 40, ui.TextStyleOpts{Decoration: ui.TextDecorationUnderline, DecorationStyle: tt.style}, nil)
+		p := styled(e, "Wave", 40, ui.TextStyleOpts{Decoration: ui.Ptr(ui.TextDecorationUnderline), DecorationStyle: tt.style}, nil)
 		// The four glyphs come first, then the decoration.
 		decor := paintOf(p)[4:]
 		t.Run(tt.name, func(t *testing.T) { tt.check(t, decor) })
@@ -185,7 +185,7 @@ func TestPaintLineThroughAndOverline(t *testing.T) {
 	e := bundledEngine(t)
 	red := ui.NewColor(0xFFFF0000)
 	p := styled(e, "H", 40, ui.TextStyleOpts{
-		Decoration:      ui.CombineTextDecorations(ui.TextDecorationOverline, ui.TextDecorationLineThrough, ui.TextDecorationUnderline),
+		Decoration:      ui.Ptr(ui.CombineTextDecorations(ui.TextDecorationOverline, ui.TextDecorationLineThrough, ui.TextDecorationUnderline)),
 		DecorationColor: &red,
 	}, nil)
 	got := paintOf(p)[1:]

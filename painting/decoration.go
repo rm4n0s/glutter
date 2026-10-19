@@ -1,12 +1,9 @@
 package painting
 
 import (
-	"strings"
-
 	"github.com/rm4n0s/errors"
 
 	"github.com/rm4n0s/glutter/foundation"
-	"github.com/rm4n0s/glutter/internal/dartfmt"
 	"github.com/rm4n0s/glutter/ui"
 )
 
@@ -150,85 +147,4 @@ type BoxPainter interface {
 	Paint(canvas *ui.Canvas, offset ui.Offset, configuration ImageConfiguration)
 	// Dispose discards any resources used by the painter.
 	Dispose()
-}
-
-// ImageConfiguration configures an image provider to the situation in which the
-// image is used: the device pixel ratio, locale, size and so on.
-//
-// Flutter: painting/image_provider.dart ImageConfiguration
-type ImageConfiguration struct {
-	// DevicePixelRatio is the device pixel ratio where the image will be used.
-	DevicePixelRatio foundation.Opt[float64]
-	// Locale is the language and region for which to select the image.
-	Locale foundation.Opt[ui.Locale]
-	// TextDirection is the reading direction, for directional images;
-	// ui.TextDirectionUnspecified for none.
-	TextDirection ui.TextDirection
-	// Size is the size at which the image will be rendered.
-	Size foundation.Opt[ui.Size]
-	// Platform is the platform the image is for.
-	Platform foundation.Opt[foundation.TargetPlatform]
-}
-
-// ImageConfigurationEmpty is an image configuration that provides no
-// additional information.
-//
-// Flutter: painting/image_provider.dart ImageConfiguration.empty
-var ImageConfigurationEmpty = ImageConfiguration{}
-
-// ImageConfigurationCopy holds the replacements for ImageConfiguration.CopyWith.
-//
-// Flutter: painting/image_provider.dart ImageConfiguration.copyWith
-type ImageConfigurationCopy struct {
-	DevicePixelRatio foundation.Opt[float64]
-	Locale           foundation.Opt[ui.Locale]
-	TextDirection    foundation.Opt[ui.TextDirection]
-	Size             foundation.Opt[ui.Size]
-	Platform         foundation.Opt[foundation.TargetPlatform]
-}
-
-// CopyWith returns a copy with the given fields replaced.
-//
-// Flutter: painting/image_provider.dart ImageConfiguration.copyWith
-func (c ImageConfiguration) CopyWith(r ImageConfigurationCopy) ImageConfiguration {
-	out := c
-	if r.DevicePixelRatio.IsSome() {
-		out.DevicePixelRatio = r.DevicePixelRatio
-	}
-	if r.Locale.IsSome() {
-		out.Locale = r.Locale
-	}
-	if r.TextDirection.IsSome() {
-		out.TextDirection = r.TextDirection.Value()
-	}
-	if r.Size.IsSome() {
-		out.Size = r.Size
-	}
-	if r.Platform.IsSome() {
-		out.Platform = r.Platform
-	}
-	return out
-}
-
-// String describes the configuration.
-//
-// Flutter: painting/image_provider.dart ImageConfiguration.toString
-func (c ImageConfiguration) String() string {
-	var parts []string
-	if v, ok := c.DevicePixelRatio.Get(); ok {
-		parts = append(parts, "devicePixelRatio: "+dartfmt.ToStringAsFixed(v, 1))
-	}
-	if v, ok := c.Locale.Get(); ok {
-		parts = append(parts, "locale: "+v.String())
-	}
-	if c.TextDirection != ui.TextDirectionUnspecified {
-		parts = append(parts, "textDirection: "+c.TextDirection.String())
-	}
-	if v, ok := c.Size.Get(); ok {
-		parts = append(parts, "size: "+v.String())
-	}
-	if v, ok := c.Platform.Get(); ok {
-		parts = append(parts, "platform: "+v.Name())
-	}
-	return "ImageConfiguration(" + strings.Join(parts, ", ") + ")"
 }

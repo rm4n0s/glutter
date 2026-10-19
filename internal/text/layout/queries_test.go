@@ -816,7 +816,7 @@ func TestDecorations(t *testing.T) {
 	e := bundledEngine(t)
 	red := ui.NewColor(0xFFFF0000)
 	deco := func(d ui.TextDecoration, st ui.TextDecorationStyle, thickness float64) *ui.TextStyle {
-		o := ui.TextStyleOpts{FontFamily: fonts.RobotoFamily, FontSize: ui.Ptr(20.0), Decoration: d, DecorationStyle: st, DecorationColor: &red}
+		o := ui.TextStyleOpts{FontFamily: fonts.RobotoFamily, FontSize: ui.Ptr(20.0), Decoration: ui.Ptr(d), DecorationStyle: st, DecorationColor: &red}
 		if thickness != 0 {
 			o.DecorationThickness = ui.Ptr(thickness)
 		}

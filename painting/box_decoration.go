@@ -10,8 +10,9 @@ import (
 )
 
 // DecorationImageSource is the image of a BoxDecoration or ShapeDecoration: an
-// image, how to fit it, and so on. Step 6.2 adds *DecorationImage, which
-// implements it. A nil DecorationImageSource is Flutter's null.
+// image, how to fit it, and so on. *DecorationImage
+// implements it, as does the blend of two images. A nil DecorationImageSource is
+// Flutter's null.
 //
 // Flutter: painting/decoration_image.dart DecorationImage
 type DecorationImageSource interface {
@@ -32,7 +33,7 @@ type DecorationImageSource interface {
 type DecorationImagePainter interface {
 	// Paint draws the image onto the canvas in the rect, clipped to clipPath
 	// when it is not nil.
-	Paint(canvas *ui.Canvas, rect ui.Rect, clipPath *ui.Path, configuration ImageConfiguration)
+	Paint(canvas *ui.Canvas, rect ui.Rect, clipPath *ui.Path, configuration ImageConfiguration, opts ...DecorationImagePaintOpts)
 	// Dispose discards the resources used by the painter.
 	Dispose()
 }

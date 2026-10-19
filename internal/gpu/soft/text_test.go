@@ -207,7 +207,7 @@ func TestShadowsBackgroundsAndDecorations(t *testing.T) {
 	})
 	t.Run("underline is on the line below the baseline", func(t *testing.T) {
 		red := ui.NewColor(0xFFFF0000)
-		img := renderText(t, e, "xx", ui.TextStyleOpts{FontSize: ui.Ptr(30.0), Color: ui.Ptr(ui.NewColor(0x00000000)), Decoration: ui.TextDecorationUnderline, DecorationColor: &red}, ui.ParagraphStyleOpts{}, ui.Offset{Dx: 10, Dy: 5}, nil)
+		img := renderText(t, e, "xx", ui.TextStyleOpts{FontSize: ui.Ptr(30.0), Color: ui.Ptr(ui.NewColor(0x00000000)), Decoration: ui.Ptr(ui.TextDecorationUnderline), DecorationColor: &red}, ui.ParagraphStyleOpts{}, ui.Offset{Dx: 10, Dy: 5}, nil)
 		ink := inkBounds(img)
 		if ink.Empty() {
 			t.Fatal("nothing drawn")

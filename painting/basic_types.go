@@ -197,3 +197,47 @@ func (d VerticalDirection) Name() string { return strings.TrimPrefix(d.String(),
 //
 // Flutter: painting/basic_types.dart AxisDirection.name
 func (d AxisDirection) Name() string { return strings.TrimPrefix(d.String(), "AxisDirection.") }
+
+// RenderComparison is the description of the difference between two objects, in
+// terms of how much work is needed to apply it: nothing, the metadata, a repaint
+// or a new layout.
+//
+// Flutter: painting/basic_types.dart RenderComparison
+type RenderComparison int
+
+// The values of RenderComparison follow Flutter's declaration order.
+const (
+	// RenderComparisonIdentical means the objects are the same: no work is needed.
+	//
+	// Flutter: painting/basic_types.dart RenderComparison.identical
+	RenderComparisonIdentical RenderComparison = iota
+	// RenderComparisonMetadata means that only the metadata, such as the
+	// semantics, changed.
+	//
+	// Flutter: painting/basic_types.dart RenderComparison.metadata
+	RenderComparisonMetadata
+	// RenderComparisonPaint means that the object needs to be repainted.
+	//
+	// Flutter: painting/basic_types.dart RenderComparison.paint
+	RenderComparisonPaint
+	// RenderComparisonLayout means that the object needs a new layout.
+	//
+	// Flutter: painting/basic_types.dart RenderComparison.layout
+	RenderComparisonLayout
+)
+
+// Name returns the Dart enum name, such as "layout".
+func (c RenderComparison) Name() string {
+	switch c {
+	case RenderComparisonMetadata:
+		return "metadata"
+	case RenderComparisonPaint:
+		return "paint"
+	case RenderComparisonLayout:
+		return "layout"
+	}
+	return "identical"
+}
+
+// String returns the name Dart prints, such as "RenderComparison.layout".
+func (c RenderComparison) String() string { return "RenderComparison." + c.Name() }

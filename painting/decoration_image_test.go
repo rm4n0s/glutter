@@ -22,7 +22,7 @@ type fakePainter struct {
 	disposed  int
 }
 
-func (p *fakePainter) Paint(_ *ui.Canvas, rect ui.Rect, clip *ui.Path, cfg ImageConfiguration) {
+func (p *fakePainter) Paint(_ *ui.Canvas, rect ui.Rect, clip *ui.Path, cfg ImageConfiguration, _ ...DecorationImagePaintOpts) {
 	p.rects = append(p.rects, rect)
 	p.clips = append(p.clips, clip)
 	p.configs = append(p.configs, cfg)

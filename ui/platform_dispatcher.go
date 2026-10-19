@@ -112,6 +112,7 @@ type PlatformDispatcher struct {
 	config        PlatformConfiguration
 	lifecycle     AppLifecycleState
 	lastFrameTime time.Duration
+	textEngine    ParagraphFactory
 }
 
 // NewPlatformDispatcher creates a dispatcher with no views. The host is the
@@ -393,3 +394,15 @@ func (d *PlatformDispatcher) DispatchKeyData(data KeyData) bool {
 	}
 	return d.OnKeyData(data)
 }
+
+// SetTextEngine sets the text engine that lays out paragraphs. The engine calls
+// it at startup.
+//
+// Flutter: no counterpart (Dart reaches the engine's font collection globally)
+func (d *PlatformDispatcher) SetTextEngine(engine ParagraphFactory) { d.textEngine = engine }
+
+// TextEngine is the text engine that lays out paragraphs; it is nil until the
+// engine sets one. The framework gives it to ParagraphBuilder.
+//
+// Flutter: no counterpart (Dart reaches the engine's font collection globally)
+func (d *PlatformDispatcher) TextEngine() ParagraphFactory { return d.textEngine }

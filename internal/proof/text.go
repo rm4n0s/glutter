@@ -155,7 +155,7 @@ func drawText(c *ui.Canvas, e *layout.Engine, latinOnly bool) {
 	label(lx, y, "DECORATIONS")
 	y += 12
 	deco := func(word string, d ui.TextDecoration, st ui.TextDecorationStyle) run {
-		return run{word + " ", ui.TextStyleOpts{Color: colorOf(black), FontSize: size(16), Decoration: d, DecorationStyle: st, DecorationColor: colorOf(0xFFD81B60)}}
+		return run{word + " ", ui.TextStyleOpts{Color: colorOf(black), FontSize: size(16), Decoration: ui.Ptr(d), DecorationStyle: st, DecorationColor: colorOf(0xFFD81B60)}}
 	}
 	y += 4 + t.draw(lx, y, lw, ui.ParagraphStyleOpts{},
 		deco("solid", ui.TextDecorationUnderline, ui.TextDecorationStyleSolid),

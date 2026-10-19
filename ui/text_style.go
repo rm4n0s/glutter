@@ -22,7 +22,7 @@ type TextStyleOpts struct {
 	// Color is the color to use when painting the text; it must not be given together with Foreground.
 	Color *Color
 	// Decoration is the decorations to paint near the text (underline, overline, line through).
-	Decoration TextDecoration
+	Decoration *TextDecoration
 	// DecorationColor is the color in which to paint the text decorations; it defaults to the text color.
 	DecorationColor *Color
 	// DecorationStyle is the style in which to paint the text decorations.
@@ -180,8 +180,8 @@ func (s *TextStyle) Resolve(parent ResolvedTextStyle) ResolvedTextStyle {
 	if o.Background != nil {
 		r.Background = NewPaintFrom(o.Background)
 	}
-	if o.Decoration != 0 {
-		r.Decoration = o.Decoration
+	if o.Decoration != nil {
+		r.Decoration = *o.Decoration
 	}
 	if o.DecorationColor != nil {
 		r.DecorationColor, r.HasDecorationColor = *o.DecorationColor, true
@@ -246,8 +246,8 @@ func (s *TextStyle) String() string {
 	if o.Color != nil {
 		add("color", *o.Color)
 	}
-	if o.Decoration != 0 {
-		add("decoration", o.Decoration)
+	if o.Decoration != nil {
+		add("decoration", *o.Decoration)
 	}
 	if o.FontWeight != 0 {
 		add("fontWeight", o.FontWeight)
