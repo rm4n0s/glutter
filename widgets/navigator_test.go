@@ -23,7 +23,7 @@ import (
 // 10.3; the restorable* methods and the restoration cases (no state restoration);
 // the cases of MaterialPageRoute, Scaffold, TabBarView and the other Material
 // widgets (they use navTestApp and page routes of this package instead); the
-// focus cases (step 10.5); the Android predictive back cases (they need the
+// focus cases (navigator_focus_test.go); the Android predictive back cases (they need the
 // platform channel of the back gesture) and the memory events case.
 
 type navObservation struct {

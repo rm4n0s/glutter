@@ -28,6 +28,14 @@ type PageRouteOpts struct {
 	DisallowSnapshotting bool
 	// BarrierDismissible is whether tapping the barrier pops the route.
 	BarrierDismissible bool
+	// TraversalEdgeBehavior controls the transfer of focus beyond the first and the
+	// last items of the focus scope of the route; Unspecified uses
+	// Navigator.RouteTraversalEdgeBehavior.
+	TraversalEdgeBehavior TraversalEdgeBehavior
+	// DirectionalTraversalEdgeBehavior controls the directional transfer of focus
+	// beyond the first and the last items of the focus scope of the route;
+	// Unspecified uses Navigator.RouteDirectionalTraversalEdgeBehavior.
+	DirectionalTraversalEdgeBehavior TraversalEdgeBehavior
 }
 
 // PageRouteBase implements PageRoute: it is opaque and only transitions with
@@ -47,7 +55,8 @@ type PageRouteBase struct {
 //
 // Flutter: widgets/pages.dart PageRoute.new
 func InitPageRouteBase(b *PageRouteBase, self PageRoute, opts PageRouteOpts) {
-	InitModalRouteBase(&b.ModalRouteBase, self, ModalRouteOpts{RouteOpts: opts.RouteOpts})
+	InitModalRouteBase(&b.ModalRouteBase, self, ModalRouteOpts{RouteOpts: opts.RouteOpts,
+		TraversalEdgeBehavior: opts.TraversalEdgeBehavior, DirectionalTraversalEdgeBehavior: opts.DirectionalTraversalEdgeBehavior})
 	b.pself = self
 	b.fullscreenDialog = opts.FullscreenDialog
 	b.disallowSnapshotting = opts.DisallowSnapshotting

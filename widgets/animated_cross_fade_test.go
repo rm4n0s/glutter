@@ -13,8 +13,8 @@ import (
 	. "github.com/rm4n0s/glutter/widgets"
 )
 
-// Ported from packages/flutter/test/widgets/animated_cross_fade_test.dart. The
-// two focus tests wait for ExcludeFocus (step 10).
+// Ported from packages/flutter/test/widgets/animated_cross_fade_test.dart. (The
+// two focus tests are in focus_exclusion_test.go.)
 
 func sizedBox(w, h float64, key ...foundation.Key) Widget {
 	o := SizedBoxOpts{Width: foundation.Some(w), Height: foundation.Some(h)}

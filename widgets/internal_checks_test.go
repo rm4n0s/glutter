@@ -38,15 +38,16 @@ func TestViewInternalChecks(t *testing.T) {
 // its observer in Dispose.
 func TestMediaQueryFromViewStopsListeningWhenRemoved(t *testing.T) {
 	bt := newBindingTree(t)
+	// The focus manager of the binding is an observer too.
+	base := len(bt.b.observers)
 	bt.attachUnwrapped(NewMediaQueryFromView(bt.view, newLeaf()))
 	bt.frame()
-	before := len(bt.b.observers)
-	if before != 1 {
-		t.Fatalf("%d observers, want 1", before)
+	if n := len(bt.b.observers) - base; n != 1 {
+		t.Fatalf("%d observers, want 1", n)
 	}
 	bt.attachUnwrapped(newLeaf())
 	bt.frame()
-	if n := len(bt.b.observers); n != 0 {
+	if n := len(bt.b.observers) - base; n != 0 {
 		t.Errorf("%d observers after the MediaQuery left the tree, want 0", n)
 	}
 }
@@ -56,4 +57,15 @@ func TestWidgetsBindingOfWithoutBinding(t *testing.T) {
 	tr.collectPanics = true
 	tr.pump(builderOf(func(bc BuildContext) Widget { WidgetsBindingOf(bc); return newLeaf() }))
 	_ = requireErrorTag(t, tr.errs[0], "WidgetsBindingMissing") // the ErrorWidget has no render tree to attach to, which is a second error
+}
+
+func TestFocusTraversalInternalChecks(t *testing.T) {
+	skipUnlessDebug(t)
+	bt := newBindingTree(t)
+	node := NewFocusNode()
+	defer node.Dispose()
+	bt.pump(NewFocus(newBox(10, 10), FocusOpts{FocusNode: node}))
+	nodes := []*FocusNode{node}
+	requireTag(t, "TraversalDirectionInvalid", func() { sortAndFilterHorizontally(TraversalDirectionUp, ui.Rect{}, nodes, true) })
+	requireTag(t, "TraversalDirectionInvalid", func() { sortAndFilterVertically(TraversalDirectionLeft, ui.Rect{}, nodes, true) })
 }

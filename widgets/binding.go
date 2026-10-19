@@ -150,19 +150,20 @@ func (WidgetsBindingObserverBase) DidChangeAccessibilityFeatures() {}
 //
 // Flutter: widgets/binding.dart WidgetsBinding
 type WidgetsBinding struct {
-	d         *ui.PlatformDispatcher
-	scheduler *scheduler.SchedulerBinding
-	gesture   *gestures.GestureBinding
-	painting  *painting.PaintingBinding
-	renderer  *rendering.RendererBinding
-	keyboard  *services.HardwareKeyboard
-	navigator *services.SystemNavigator
-	sound     *services.SystemSound
-	clipboard *services.Clipboard
-	owner     *BuildOwner
-	debug     *DebugOptions
-	report    foundation.ErrorReporter
-	thread    *foundation.UIThread
+	d            *ui.PlatformDispatcher
+	scheduler    *scheduler.SchedulerBinding
+	gesture      *gestures.GestureBinding
+	painting     *painting.PaintingBinding
+	renderer     *rendering.RendererBinding
+	keyboard     *services.HardwareKeyboard
+	navigator    *services.SystemNavigator
+	sound        *services.SystemSound
+	clipboard    *services.Clipboard
+	focusManager *FocusManager
+	owner        *BuildOwner
+	debug        *DebugOptions
+	report       foundation.ErrorReporter
+	thread       *foundation.UIThread
 
 	observers   []WidgetsBindingObserver
 	switcher    ApplicationSwitcherDescription
@@ -282,6 +283,8 @@ func NewWidgetsBinding(ctx context.Context, d *ui.PlatformDispatcher, opts ...Wi
 		Post: d.Post, UIThread: o.UIThread, ErrorWidgetBuilder: o.ErrorWidgetBuilder,
 	})
 	b.owner.binding = b
+	b.focusManager = NewFocusManager(b)
+	b.focusManager.RegisterGlobalHandlers()
 	b.renderer.WrapDrawFrame(b.drawFrame)
 
 	// The callbacks that the layers below set are called first (the renderer

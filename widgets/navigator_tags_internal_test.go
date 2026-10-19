@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/rm4n0s/glutter/animation"
+	"github.com/rm4n0s/glutter/ui"
 )
 
 // Route tests of the failure tags of step 10.2 that guard the invariants of the
@@ -85,4 +86,37 @@ func TestNavigatorPagesUpdateReentrant(t *testing.T) {
 	skipUnlessDebug(t)
 	s := &NavigatorState{debugUpdatingPage: true}
 	requireTag(t, "NavigatorPagesUpdateReentrant", func() { s.updatePages() })
+}
+
+// TestHeroSizeMissing builds a hero without running a frame, so that its render
+// object has no size, and starts a flight (and measures it) anyway.
+func TestHeroSizeMissing(t *testing.T) {
+	skipUnlessDebug(t)
+	bt := newBindingTree(t)
+	bt.attach(NewHero("tag", newBox(10, 10)))
+	elements := bt.find(func(w Widget) bool { _, ok := w.(*Hero); return ok })
+	if len(elements) != 1 {
+		t.Fatalf("%d heroes, want 1", len(elements))
+	}
+	state := elements[0].(*StatefulElement).State().(*heroState)
+	requireTag(t, "HeroSizeMissing", func() { state.startFlight(false) })
+	requireTag(t, "HeroSizeMissing", func() { heroBoundingBoxFor(elements[0], elements[0]) })
+}
+
+// TestHeroNavigatorSizeMissing starts a hero transition in a navigator that has
+// not been laid out.
+func TestHeroNavigatorSizeMissing(t *testing.T) {
+	skipUnlessDebug(t)
+	bt := newBindingTree(t)
+	controller := NewHeroController()
+	bt.attach(NewDirectionality(ui.TextDirectionLTR, NewHeroControllerScope(controller, NewNavigator(NavigatorOpts{
+		OnGenerateRoute: func(RouteSettings) Route { return tagsTestRoute() },
+	}))))
+	if controller.Navigator() == nil || controller.Navigator().Overlay() == nil {
+		t.Fatal("the navigator and its overlay should exist before the first frame")
+	}
+	from, to := tagsTestRoute().(PageRoute), tagsTestRoute().(PageRoute)
+	requireTag(t, "HeroNavigatorSizeMissing", func() {
+		controller.startHeroTransition(from, to, HeroFlightDirectionPush, false)
+	})
 }

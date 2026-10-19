@@ -782,12 +782,11 @@ func (v *TwoDimensionalScrollView) Build(bc BuildContext) Widget {
 	scrollable := NewTwoDimensionalScrollable(horizontalDetails, verticalDetails, v.self.BuildViewport, TwoDimensionalScrollableOpts{
 		DiagonalDragBehavior: v.diagonalDragBehavior, DragStartBehavior: v.dragStartBehavior, HitTestBehavior: v.hitTestBehavior,
 	})
-	// Deviation: the keyboardDismissBehavior onDrag unfocuses the primary focus;
-	// that waits for the focus system of step 10.5 (SPEC §12.10).
+	var result Widget = scrollable
 	if effectivePrimary {
 		// Further descendant ScrollViews will not inherit the same
 		// PrimaryScrollController.
-		return NewPrimaryScrollControllerNone(scrollable)
+		result = NewPrimaryScrollControllerNone(scrollable)
 	}
-	return scrollable
+	return wrapKeyboardDismiss(bc, v.keyboardDismissBehavior, nil, result)
 }

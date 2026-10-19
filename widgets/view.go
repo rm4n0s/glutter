@@ -20,9 +20,11 @@ type ViewOpts struct {
 // descendants with ViewOf and MaybeViewOf, and provides the MediaQuery of the
 // view. RunApp wraps the app in a View for the first window.
 //
-// Deviation: it does not manage focus yet (the focus scope and the view focus
-// events come with the focus system, step 10.5), and the key of the internal
-// widget is an ObjectKey of the view, not a GlobalKey (SPEC §12.10).
+// Deviation: the view focus events (ViewFocusEvent, requestViewFocusChange) are
+// not ported: nothing tells the view that its window got or lost the keyboard
+// focus, so the view scope takes the focus only when a widget asks for it
+// (TODO(step 14.2): the windows). The key of the internal widget is an ObjectKey
+// of the view, not a GlobalKey (SPEC §12.10).
 //
 // Flutter: widgets/view.dart View
 type View struct {
@@ -96,16 +98,37 @@ func PipelineOwnerOf(bc BuildContext) *rendering.PipelineOwner {
 
 type viewState struct {
 	StateOf[*View]
+	scopeNode *FocusScopeNode
+	policy    FocusTraversalPolicy
 }
 
-// Build shows the child in a RawView with the MediaQuery of the view.
-func (s *viewState) Build(BuildContext) Widget {
+func (s *viewState) InitState() {
+	label := ""
+	if foundation.DebugMode {
+		label = "View Scope"
+	}
+	s.scopeNode = NewFocusScopeNode(FocusScopeNodeOpts{FocusNodeOpts: FocusNodeOpts{DebugLabel: label}})
+	s.policy = NewReadingOrderTraversalPolicy()
+}
+
+func (s *viewState) Dispose() { s.scopeNode.Dispose() }
+
+// Build shows the child in a RawView with the MediaQuery of the view, a
+// FocusTraversalGroup and the view's focus scope.
+func (s *viewState) Build(bc BuildContext) Widget {
 	w := s.Widget()
-	return NewRawView(w.view, NewMediaQueryFromView(w.view, w.child))
+	return NewRawView(w.view, NewMediaQueryFromView(w.view,
+		// This view's focus subtree is attached directly to the root scope rather
+		// than nested under the scope of an enclosing view (which happens when a
+		// view is rendered inside another via a ViewAnchor): each view is an
+		// independent focus root.
+		NewFocusTraversalGroup(
+			NewFocusScopeWithExternalFocusNode(w.child, s.scopeNode, FocusScopeWithExternalFocusNodeOpts{ExcludeSemantics: true}),
+			FocusTraversalGroupOpts{Policy: s.policy, ParentNode: &bc.Owner().FocusManager().rootScope.FocusNode},
+		)))
 }
 
-// RawView is a View without the MediaQuery (and, later, without the focus
-// scope): the bridge between the widget tree and a view, nothing else. It
+// RawView is a View without the MediaQuery and the focus scope: the bridge between the widget tree and a view, nothing else. It
 // creates the render view of the view and owns the pipeline owner of its render
 // tree.
 //

@@ -342,6 +342,7 @@ type HardwareKeyboard struct {
 	modifiedHandlers []keyHandlerEntry
 	hasModified      bool
 	nextHandlerID    uint64
+	messageHandler   KeyEventCallback
 }
 
 // NewHardwareKeyboard creates a keyboard with no keys pressed.
@@ -600,6 +601,23 @@ func (k *HardwareKeyboard) HandleKeyEvent(event KeyEvent) bool {
 	return k.dispatchKeyEvent(event)
 }
 
+// SetKeyMessageHandler sets the function that sees each key event after the
+// handlers of the keyboard have: the focus system's. It returns whether it
+// handled the event. nil removes it. All the events of HandleKeyData go to it,
+// also those the handlers handled.
+//
+// Deviation: Flutter's KeyEventManager.keyMessageHandler takes a KeyMessage that
+// holds the key events and the deprecated raw event; here it is one KeyEvent
+// (SPEC §12.10).
+//
+// Flutter: services/hardware_keyboard.dart KeyEventManager.keyMessageHandler
+func (k *HardwareKeyboard) SetKeyMessageHandler(handler KeyEventCallback) { k.messageHandler = handler }
+
+// KeyMessageHandlerSet is whether a handler was set with SetKeyMessageHandler.
+//
+// Flutter: services/hardware_keyboard.dart KeyEventManager.keyMessageHandler
+func (k *HardwareKeyboard) KeyMessageHandlerSet() bool { return k.messageHandler != nil }
+
 // HandleKeyData makes the event of the engine's key data and handles it. The
 // engine sends key data with no physical and no logical key to say that it
 // sends key data at all; Flutter ignores it, and so does this: it returns false.
@@ -621,7 +639,17 @@ func (k *HardwareKeyboard) HandleKeyData(data ui.KeyData) bool {
 		}
 		panic(err)
 	}
-	return k.HandleKeyEvent(event)
+	handled := k.HandleKeyEvent(event)
+	if k.messageHandler != nil {
+		foundation.Guard(k.o.ErrorReporter, foundation.CallbackPanicked, "while processing the key message handler",
+			func() []any { return []any{"library", "services library", "Event", fmt.Sprint(event)} },
+			func() {
+				if k.messageHandler(event) {
+					handled = true
+				}
+			})
+	}
+	return handled
 }
 
 // SetPressedKeys replaces the pressed keys with the state that the platform

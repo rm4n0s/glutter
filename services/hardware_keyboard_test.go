@@ -15,7 +15,7 @@ import (
 // The key simulator of flutter_test is the key data that the engine would send;
 // the cases that need the raw key events (RawKeyboard, the transit modes and the
 // KeyMessage handler) or the Focus widgets are not ported: Glutter has no raw
-// key events, and the focus handlers come with step 10.5.
+// key events; the focus handlers are tested with the focus manager.
 
 // simulate sends the key data of an event to the keyboard and returns whether it
 // was handled.

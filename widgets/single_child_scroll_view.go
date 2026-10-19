@@ -153,12 +153,11 @@ func (w *SingleChildScrollView) Build(bc BuildContext) Widget {
 		DragStartBehavior: w.dragStartBehavior, AxisDirection: axisDirection, Controller: scrollController, Physics: w.physics,
 		ClipBehavior: w.clipBehavior, HitTestBehavior: w.hitTestBehavior,
 	})
-	// Deviation: the keyboardDismissBehavior onDrag unfocuses the primary focus;
-	// that waits for the focus system of step 10.5 (SPEC §12.10).
 	if effectivePrimary && !isNil(scrollController) {
-		return NewPrimaryScrollControllerNone(scrollable)
+		// Further descendant ScrollViews will not inherit the same PrimaryScrollController.
+		scrollable = NewPrimaryScrollControllerNone(scrollable)
 	}
-	return scrollable
+	return wrapKeyboardDismiss(bc, w.keyboardDismissBehavior, nil, scrollable)
 }
 
 // singleChildViewport is the viewport of a SingleChildScrollView.

@@ -299,12 +299,12 @@ func (v *ScrollView) Build(bc BuildContext) Widget {
 		ClipBehavior: v.clipBehavior,
 	})
 
-	// Deviation: the keyboardDismissBehavior onDrag unfocuses the primary focus;
-	// that waits for the focus system of step 10.5 (SPEC §12.10).
+	var result Widget = scrollable
 	if effectivePrimary && !isNil(scrollController) {
-		return NewPrimaryScrollControllerNone(scrollable)
+		// Further descendant ScrollViews will not inherit the same PrimaryScrollController.
+		result = NewPrimaryScrollControllerNone(scrollable)
 	}
-	return scrollable
+	return wrapKeyboardDismiss(bc, v.keyboardDismissBehavior, v.scrollBehavior, result)
 }
 
 // CustomScrollViewOpts are the optional parameters of NewCustomScrollView.

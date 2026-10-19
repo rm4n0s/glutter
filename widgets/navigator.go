@@ -627,6 +627,14 @@ type NavigatorOpts struct {
 	// RequestFocus is whether the routes request the focus when they become the
 	// top one, unless the route says otherwise; the default is true.
 	RequestFocus foundation.Opt[bool]
+	// RouteTraversalEdgeBehavior controls the transfer of focus beyond the first and
+	// the last items of the focus scope of a route; a route can override it. The
+	// default is TraversalEdgeBehaviorParentScope.
+	RouteTraversalEdgeBehavior TraversalEdgeBehavior
+	// RouteDirectionalTraversalEdgeBehavior controls the directional transfer of
+	// focus beyond the first and the last items of the focus scope of a route; a
+	// route can override it. The default is TraversalEdgeBehaviorStop.
+	RouteDirectionalTraversalEdgeBehavior TraversalEdgeBehavior
 	// ReportsRouteUpdateToEngine is whether the navigator tells the system the
 	// name of the top route, through SystemNavigator.RouteInformationUpdated,
 	// each time it changes. It also selects the single-entry history.
@@ -708,6 +716,28 @@ func (w *Navigator) ClipBehavior() ui.Clip { return w.o.ClipBehavior }
 //
 // Flutter: widgets/navigator.dart Navigator.requestFocus
 func (w *Navigator) RequestFocus() bool { return w.o.RequestFocus.OrElse(true) }
+
+// RouteTraversalEdgeBehavior controls the transfer of focus beyond the first and
+// the last items of the focus scope of a route.
+//
+// Flutter: widgets/navigator.dart Navigator.routeTraversalEdgeBehavior
+func (w *Navigator) RouteTraversalEdgeBehavior() TraversalEdgeBehavior {
+	if w.o.RouteTraversalEdgeBehavior == TraversalEdgeBehaviorUnspecified {
+		return TraversalEdgeBehaviorParentScope
+	}
+	return w.o.RouteTraversalEdgeBehavior
+}
+
+// RouteDirectionalTraversalEdgeBehavior controls the directional transfer of
+// focus beyond the first and the last items of the focus scope of a route.
+//
+// Flutter: widgets/navigator.dart Navigator.routeDirectionalTraversalEdgeBehavior
+func (w *Navigator) RouteDirectionalTraversalEdgeBehavior() TraversalEdgeBehavior {
+	if w.o.RouteDirectionalTraversalEdgeBehavior == TraversalEdgeBehaviorUnspecified {
+		return TraversalEdgeBehaviorStop
+	}
+	return w.o.RouteDirectionalTraversalEdgeBehavior
+}
 
 // OnGenerateInitialRoutes creates the routes to start with.
 //
@@ -991,7 +1021,14 @@ type NavigatorState struct {
 	userGesturesCount   int
 	userGestureNotifier *foundation.ValueNotifier[bool]
 	activePointers      map[int]bool
+	focusNode           *FocusNode
 }
+
+// FocusNode is the node of the focus of the navigator: the routes are in its
+// enclosing scope.
+//
+// Flutter: widgets/navigator.dart NavigatorState.focusNode
+func (s *NavigatorState) FocusNode() *FocusNode { return s.focusNode }
 
 func (s *NavigatorState) reportError(err error) {
 	if binding := MaybeWidgetsBindingOf(s.Context()); binding != nil {
@@ -1062,6 +1099,7 @@ func (s *NavigatorState) getNavigatorCanHandlePop() bool {
 //
 // Flutter: widgets/navigator.dart NavigatorState.initState
 func (s *NavigatorState) InitState() {
+	s.focusNode = NewFocusNode(FocusNodeOpts{DebugLabel: "Navigator"})
 	s.activePointers = map[int]bool{}
 	s.debugCheckPageAPIParameters()
 	for _, observer := range s.Widget().o.Observers {
@@ -1569,6 +1607,7 @@ func (s *NavigatorState) Dispose() {
 	}
 	s.history.RemoveListener(s.historyHandle)
 	s.history.Dispose()
+	s.focusNode.Dispose()
 	// The navigator stays locked, so that the object becomes unusable.
 }
 
@@ -2385,9 +2424,13 @@ func (s *NavigatorState) Build(bc BuildContext) Widget {
 		NewNotificationListener(
 			NewListener(
 				NewAbsorbPointer(
-					// TODO(step 10.5): FocusTraversalGroup and Focus (the navigator's
-					// focus node) wrap the overlay.
-					NewOverlay(OverlayOpts{Key: s.overlayKey, ClipBehavior: s.Widget().o.ClipBehavior, InitialEntries: initialEntries}),
+					NewFocusTraversalGroup(
+						NewFocus(
+							NewOverlay(OverlayOpts{Key: s.overlayKey, ClipBehavior: s.Widget().o.ClipBehavior, InitialEntries: initialEntries}),
+							FocusOpts{FocusNode: s.focusNode, Autofocus: true, SkipTraversal: foundation.Some(true), ExcludeSemantics: true},
+						),
+						FocusTraversalGroupOpts{Policy: FocusTraversalGroupMaybeOf(bc)},
+					),
 					AbsorbPointerOpts{Absorbing: foundation.Some(false)},
 				),
 				ListenerOpts{

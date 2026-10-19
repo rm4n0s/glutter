@@ -14,8 +14,9 @@ import (
 )
 
 // These tests are ported from packages/flutter/test/widgets/scroll_view_test.dart.
-// Not ported: the keyboardDismissBehavior tests (they wait for the focus system
-// of step 10.5), the tests that make a builder throw (the error widget), the
+// Not ported: the keyboardDismissBehavior tests, which need an EditableText
+// (step 11.4): TestKeyboardDismissBehaviorUnfocusesOnDrag in
+// focus_exclusion_test.go covers the focus part with Focus widgets; the tests that make a builder throw (the error widget), the
 // fallback ScrollActions tests (step 10.2) and the semantics.
 
 func primaryScrollControllerApp(child Widget, controller ScrollController) Widget {

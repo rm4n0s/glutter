@@ -40,10 +40,6 @@ type VisibilityOpts struct {
 
 // Visibility controls whether its child is included in the subtree or not.
 //
-// Deviation: the TickerMode and ExcludeFocus that Flutter puts around a hidden
-// child are not there yet; they come with the tickers (step 8.2) and the focus
-// system (step 10.5) (SPEC §12.10).
-//
 // Flutter: widgets/indexed_stack.dart Visibility
 type Visibility struct {
 	StatelessWidget
@@ -151,12 +147,15 @@ func (w *Visibility) MaintainFocusability() bool { return w.maintainFocusability
 //
 // Flutter: widgets/indexed_stack.dart Visibility.build
 func (w *Visibility) Build(BuildContext) Widget {
-	result := w.child
+	var result Widget = NewExcludeFocus(w.child, ExcludeFocusOpts{NotExcluding: w.visible || w.maintainFocusability})
 	switch {
 	case w.maintainSize:
 		result = newRenderVisibility(w.visible, w.maintainSemantics,
 			NewIgnorePointer(result, IgnorePointerOpts{Ignoring: foundation.Some(!w.visible && !w.maintainInteractivity)}))
 	case w.maintainState:
+		if !w.maintainAnimation {
+			result = NewTickerMode(w.visible, result)
+		}
 		result = NewOffstage(result, OffstageOpts{Offstage: foundation.Some(!w.visible)})
 	case w.visible:
 		result = w.child

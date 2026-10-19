@@ -666,16 +666,43 @@ func (b *RouteBase) Install() {}
 // Flutter: widgets/navigator.dart Route.didPush
 func (b *RouteBase) DidPush() *scheduler.TickerFuture {
 	f := scheduler.NewTickerFutureComplete()
-	// TODO(step 10.5): when RequestFocus is true, request focus for the
-	// enclosing scope of the navigator's focus node, as Route.didPush does.
+	if b.RequestFocus() {
+		b.requestNavigatorFocus()
+	}
 	return f
+}
+
+// requestNavigatorFocus requests the focus for the scope that encloses the focus
+// node of the navigator, once the pending work of the frame is done (Dart runs the
+// callback of a future in a microtask). The navigator can be gone by then, if the
+// route was disposed in the same frame.
+func (b *RouteBase) requestNavigatorFocus() {
+	navigator := b.navigator
+	if navigator == nil {
+		return
+	}
+	request := func() {
+		if b.navigator == nil {
+			return
+		}
+		if scope := b.navigator.FocusNode().EnclosingScope(); scope != nil {
+			scope.RequestFocus()
+		}
+	}
+	if binding := MaybeWidgetsBindingOf(navigator.Context()); binding != nil {
+		binding.Post(request)
+		return
+	}
+	request()
 }
 
 // DidAdd asks for focus on the navigator when the route requests focus.
 //
 // Flutter: widgets/navigator.dart Route.didAdd
 func (b *RouteBase) DidAdd() {
-	// TODO(step 10.5): request focus, as Route.didAdd does.
+	if b.RequestFocus() {
+		b.requestNavigatorFocus()
+	}
 }
 
 // DidReplace does nothing.

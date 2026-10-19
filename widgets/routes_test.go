@@ -18,9 +18,8 @@ import (
 )
 
 // These tests are ported from packages/flutter/test/widgets/routes_test.dart.
-// Not ported here: the cases that need focus (steps 10.5 and 10.6: autofocus,
-// focus traversal, requestFocus in showGeneralDialog, directionalTraversalEdgeBehavior,
-// the Escape shortcut), semantics-tester trees of the modal route, state
+// The focus cases are in route_focus_test.go. Not ported here: the Escape
+// shortcut (step 10.6), semantics-tester trees of the modal route, state
 // restoration, WillPopScope (removed in Flutter 3.x and not ported), the
 // display-feature cases of showGeneralDialog, and the delegated-transition cases
 // that use CupertinoSheetRoute and CupertinoPageRoute (no Cupertino package).

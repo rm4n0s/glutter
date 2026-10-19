@@ -247,8 +247,7 @@ type IndexedStackOpts struct {
 
 // IndexedStack is a Stack that shows a single child from a list of children.
 //
-// Deviation: it does not wrap the children in an ExcludeFocus yet (the focus
-// system comes with step 10.5), and index: null is NoIndex (SPEC §12.10).
+// Deviation: index: null is NoIndex (SPEC §12.10).
 //
 // Flutter: widgets/indexed_stack.dart IndexedStack
 type IndexedStack struct {
@@ -319,7 +318,8 @@ func (w *IndexedStack) Children() []Widget { return w.children }
 func (w *IndexedStack) Build(BuildContext) Widget {
 	wrapped := make([]Widget, len(w.children))
 	for i, c := range w.children {
-		wrapped[i] = newVisibilityScope(index(w.index, i), c)
+		selected := index(w.index, i)
+		wrapped[i] = newVisibilityScope(selected, NewExcludeFocus(c, ExcludeFocusOpts{NotExcluding: selected}))
 	}
 	return newRawIndexedStack(w, wrapped)
 }

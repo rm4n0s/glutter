@@ -12,8 +12,8 @@ import (
 // Ported from packages/flutter/test/widgets/view_test.dart: the tests of View
 // (finding the view, the pipeline owner and the media query from inside, and
 // attaching and detaching the render view). ViewCollection, ViewAnchor, the
-// LookupBoundary test and the focus tests wait for the windows (step 14.2) and
-// the focus system (step 10.5).
+// LookupBoundary test and the view focus event tests wait for the windows (step
+// 14.2).
 
 func TestWidgetsRunWithTheDefaultViewCanFindTheView(t *testing.T) {
 	ts := gluttertest.New(t)

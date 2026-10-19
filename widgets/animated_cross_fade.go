@@ -74,8 +74,6 @@ type AnimatedCrossFadeOpts struct {
 	LayoutBuilder AnimatedCrossFadeBuilder
 	// ExcludeBottomFocus is whether the child that is fading out is excluded
 	// from focus; the default is true.
-	//
-	// Deviation: it has no effect until ExcludeFocus exists (step 10).
 	ExcludeBottomFocus foundation.Opt[bool]
 	// ClipBehavior is how the children are clipped; the default is ClipHardEdge.
 	ClipBehavior ui.Clip
@@ -275,17 +273,18 @@ func (s *animatedCrossFadeState) Build(BuildContext) Widget {
 		bottomKey, bottomChild, bottomAnimation = secondKey, w.secondChild, s.secondAnimation
 	}
 
-	// Deviation: Flutter puts an ExcludeFocus (excluding when ExcludeBottomFocus)
-	// around each FadeTransition; focus arrives in step 10 (SPEC §12.10).
 	bottomChild = NewTickerMode(s.controller.IsAnimating(),
 		NewIgnorePointer(
 			// Always exclude the semantics of the widget that is fading out.
-			NewExcludeSemantics(NewFadeTransition(bottomAnimation, bottomChild))),
+			NewExcludeSemantics(
+				NewExcludeFocus(NewFadeTransition(bottomAnimation, bottomChild), ExcludeFocusOpts{NotExcluding: !w.excludeBottomFocus}))),
 		TickerModeOpts{Key: bottomKey})
 	topChild = NewTickerMode(true, // the top widget always has its animations enabled
 		NewIgnorePointer(
 			// Always publish the semantics of the widget that is fading in.
-			NewExcludeSemantics(NewFadeTransition(topAnimation, topChild), ExcludeSemanticsOpts{Excluding: foundation.Some(false)}),
+			NewExcludeSemantics(
+				NewExcludeFocus(NewFadeTransition(topAnimation, topChild), ExcludeFocusOpts{NotExcluding: true}),
+				ExcludeSemanticsOpts{Excluding: foundation.Some(false)}),
 			IgnorePointerOpts{Ignoring: foundation.Some(false)}),
 		TickerModeOpts{Key: topKey})
 

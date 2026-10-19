@@ -59,6 +59,33 @@ var touchLikeDeviceTypes = []ui.PointerDeviceKind{
 	ui.PointerDeviceKindUnknown,
 }
 
+// wrapKeyboardDismiss makes a drag of the scrollable unfocus the primary focus,
+// when the effective keyboard dismiss behavior is onDrag. The behavior is the one
+// given, then the one of the scroll behavior (if any), then the one of the
+// ScrollConfiguration above.
+func wrapKeyboardDismiss(bc BuildContext, behavior ScrollViewKeyboardDismissBehavior, scrollBehavior ScrollBehavior, scrollable Widget) Widget {
+	effective := behavior
+	if effective == ScrollViewKeyboardDismissBehaviorUnspecified {
+		if scrollBehavior != nil {
+			effective = scrollBehavior.GetKeyboardDismissBehavior(bc)
+		} else {
+			effective = ScrollConfigurationOf(bc).GetKeyboardDismissBehavior(bc)
+		}
+	}
+	if effective != ScrollViewKeyboardDismissBehaviorOnDrag {
+		return scrollable
+	}
+	return NewNotificationListener(scrollable, func(notification *ScrollUpdateNotification) bool {
+		currentScope := FocusScopeOf(bc)
+		if notification.DragDetails.IsSome() && !currentScope.HasPrimaryFocus() && currentScope.HasFocus() {
+			if primary := bc.Owner().FocusManager().PrimaryFocus(); primary != nil {
+				primary.Unfocus()
+			}
+		}
+		return false
+	})
+}
+
 // ScrollBehavior describes how a scrollable behaves on a platform: which
 // pointers drag it, its physics, its scrollbar and its overscroll indicator.
 // ScrollConfiguration gives it to the scrollables below it.

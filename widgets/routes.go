@@ -995,9 +995,12 @@ type modalScopeState struct {
 	// listenable is the combination of the two animations of the route.
 	listenable              foundation.Listenable
 	primaryScrollController ScrollController
+	// focusScopeNode is the node of the root FocusScope of the route.
+	focusScopeNode *FocusScopeNode
 }
 
 func (s *modalScopeState) InitState() {
+	s.focusScopeNode = NewFocusScopeNode(FocusScopeNodeOpts{FocusNodeOpts: FocusNodeOpts{DebugLabel: "_ModalScopeState Focus Scope"}})
 	route := s.Widget().route
 	var animations []foundation.Listenable
 	if a := route.Animation(); a != nil {
@@ -1014,13 +1017,32 @@ func (s *modalScopeState) DidUpdateWidget(old *modalScope) {
 	if foundation.DebugMode && s.Widget().route != old.route {
 		panic(errors.New("ModalScopeRouteChanged", "the route of a modal scope can not change"))
 	}
-	// TODO(step 10.5): update the traversal edge behavior of the focus scope node.
+	s.updateFocusScopeNode()
 }
 
 func (s *modalScopeState) DidChangeDependencies() {
 	s.page = nil
-	// TODO(step 10.5): update the focus scope node, and set it as the first focus
-	// of the navigator when the route is current and requests focus.
+	s.updateFocusScopeNode()
+}
+
+func (s *modalScopeState) updateFocusScopeNode() {
+	route := s.Widget().route
+	navigator := route.Navigator()
+	traversalEdgeBehavior := route.TraversalEdgeBehavior()
+	if traversalEdgeBehavior == TraversalEdgeBehaviorUnspecified {
+		traversalEdgeBehavior = navigator.Widget().RouteTraversalEdgeBehavior()
+	}
+	directionalTraversalEdgeBehavior := route.DirectionalTraversalEdgeBehavior()
+	if directionalTraversalEdgeBehavior == TraversalEdgeBehaviorUnspecified {
+		directionalTraversalEdgeBehavior = navigator.Widget().RouteDirectionalTraversalEdgeBehavior()
+	}
+	s.focusScopeNode.SetTraversalEdgeBehavior(traversalEdgeBehavior)
+	s.focusScopeNode.SetDirectionalTraversalEdgeBehavior(directionalTraversalEdgeBehavior)
+	if route.IsCurrent() && route.RequestFocus() {
+		if scope := navigator.FocusNode().EnclosingScope(); scope != nil {
+			scope.SetFirstFocus(s.focusScopeNode)
+		}
+	}
 }
 
 func (s *modalScopeState) forceRebuildPage() {
@@ -1028,6 +1050,7 @@ func (s *modalScopeState) forceRebuildPage() {
 }
 
 func (s *modalScopeState) Dispose() {
+	s.focusScopeNode.Dispose()
 	s.primaryScrollController.Dispose()
 }
 
@@ -1042,15 +1065,20 @@ func (s *modalScopeState) shouldIgnoreFocusRequest() bool {
 // routeSetState should wrap any change to route.IsCurrent, route.CanPop and
 // route.Offstage.
 func (s *modalScopeState) routeSetState(fn func()) {
-	// TODO(step 10.5): set the first focus of the navigator when the route is
-	// current, requests focus and is not ignoring focus requests.
+	route := s.Widget().route
+	if route.IsCurrent() && !s.shouldIgnoreFocusRequest() && route.RequestFocus() {
+		if scope := route.Navigator().FocusNode().EnclosingScope(); scope != nil {
+			scope.SetFirstFocus(s.focusScopeNode)
+		}
+	}
 	s.SetState(fn)
 }
 
 func (s *modalScopeState) Build(bc BuildContext) Widget {
 	route := s.Widget().route
 	base := route.modalBase()
-	// TODO(step 10.5): only the top most route takes part in the focus traversal.
+	// Only the top most route can participate in focus traversal.
+	s.focusScopeNode.SetSkipTraversal(!route.IsCurrent())
 	// TODO(step 10.6): Actions with the DismissIntent map the Escape key to
 	// MaybePop.
 	return &modalScopeStatus{
@@ -1059,18 +1087,20 @@ func (s *modalScopeState) Build(bc BuildContext) Widget {
 				NewPageStorage(base.storageBucket,
 					NewBuilder(func(bc BuildContext) Widget {
 						return NewPrimaryScrollController(s.primaryScrollController,
-							NewRepaintBoundary(
-								NewListenableBuilder(s.listenable, func(bc BuildContext, child Widget) Widget {
-									return route.modalBase().buildFlexibleTransitions(bc, route.Animation(), route.SecondaryAnimation(),
-										// This additional ListenableBuilder is included because if the
-										// value of the userGestureInProgressNotifier changes, only the
-										// IgnorePointer needs to be rebuilt.
-										NewListenableBuilder(s.userGestureNotifier(route), func(bc BuildContext, child Widget) Widget {
-											ignoreEvents := s.shouldIgnoreFocusRequest()
-											return NewIgnorePointer(child, IgnorePointerOpts{Ignoring: foundation.Some(ignoreEvents)})
-										}, child))
-								}, s.cachedPage(route)),
-							))
+							NewFocusScopeWithExternalFocusNode(
+								NewRepaintBoundary(
+									NewListenableBuilder(s.listenable, func(bc BuildContext, child Widget) Widget {
+										return route.modalBase().buildFlexibleTransitions(bc, route.Animation(), route.SecondaryAnimation(),
+											// This additional ListenableBuilder is included because if the
+											// value of the userGestureInProgressNotifier changes, only the
+											// IgnorePointer needs to be rebuilt.
+											NewListenableBuilder(s.userGestureNotifier(route), func(bc BuildContext, child Widget) Widget {
+												ignoreEvents := s.shouldIgnoreFocusRequest()
+												s.focusScopeNode.SetCanRequestFocus(!ignoreEvents)
+												return NewIgnorePointer(child, IgnorePointerOpts{Ignoring: foundation.Some(ignoreEvents)})
+											}, child))
+									}, s.cachedPage(route)),
+								), s.focusScopeNode)) // the node is immutable
 					}),
 				),
 				OffstageOpts{Offstage: foundation.Some(route.Offstage())},
@@ -1178,6 +1208,16 @@ type ModalRoute interface {
 	//
 	// Flutter: widgets/routes.dart ModalRoute.offstage
 	SetOffstage(value bool)
+	// TraversalEdgeBehavior is what the focus does at the edges of the focus scope
+	// of the route, or Unspecified to use the navigator's.
+	//
+	// Flutter: widgets/routes.dart ModalRoute.traversalEdgeBehavior
+	TraversalEdgeBehavior() TraversalEdgeBehavior
+	// DirectionalTraversalEdgeBehavior is what the directional focus does at the
+	// edges of the focus scope of the route, or Unspecified to use the navigator's.
+	//
+	// Flutter: widgets/routes.dart ModalRoute.directionalTraversalEdgeBehavior
+	DirectionalTraversalEdgeBehavior() TraversalEdgeBehavior
 	// SubtreeContext is the context of the subtree of the page, or nil.
 	//
 	// Flutter: widgets/routes.dart ModalRoute.subtreeContext
@@ -1213,6 +1253,14 @@ type ModalRouteOpts struct {
 	RouteOpts
 	// Filter is applied to everything below the route, behind the barrier.
 	Filter ui.ImageFilter
+	// TraversalEdgeBehavior controls the transfer of focus beyond the first and the
+	// last items of the focus scope of the route; Unspecified uses
+	// Navigator.RouteTraversalEdgeBehavior.
+	TraversalEdgeBehavior TraversalEdgeBehavior
+	// DirectionalTraversalEdgeBehavior controls the directional transfer of focus
+	// beyond the first and the last items of the focus scope of the route;
+	// Unspecified uses Navigator.RouteDirectionalTraversalEdgeBehavior.
+	DirectionalTraversalEdgeBehavior TraversalEdgeBehavior
 }
 
 // ModalRouteBase implements the parts of ModalRoute that are shared. Embed it and
@@ -1224,6 +1272,9 @@ type ModalRouteBase struct {
 	TransitionRouteBase
 	mself  ModalRoute
 	filter ui.ImageFilter
+
+	traversalEdgeBehavior            TraversalEdgeBehavior
+	directionalTraversalEdgeBehavior TraversalEdgeBehavior
 
 	receivedTransition DelegatedTransitionBuilder
 	offstage           bool
@@ -1250,6 +1301,8 @@ func InitModalRouteBase(b *ModalRouteBase, self ModalRoute, opts ModalRouteOpts)
 	InitTransitionRouteBase(&b.TransitionRouteBase, self, opts.RouteOpts)
 	b.mself = self
 	b.filter = opts.Filter
+	b.traversalEdgeBehavior = opts.TraversalEdgeBehavior
+	b.directionalTraversalEdgeBehavior = opts.DirectionalTraversalEdgeBehavior
 	b.scopeKey = NewGlobalKey[*modalScopeState]()
 	b.subtreeKey = NewGlobalKey[State]()
 	b.storageBucket = NewPageStorageBucket()
@@ -1381,6 +1434,24 @@ func (b *ModalRouteBase) SetState(fn func()) {
 // Flutter: widgets/routes.dart ModalRoute.filter
 func (b *ModalRouteBase) Filter() ui.ImageFilter { return b.filter }
 
+// TraversalEdgeBehavior controls the transfer of focus beyond the first and the
+// last items of the focus scope of the route; Unspecified (Flutter's null) uses
+// Navigator.RouteTraversalEdgeBehavior.
+//
+// Flutter: widgets/routes.dart ModalRoute.traversalEdgeBehavior
+func (b *ModalRouteBase) TraversalEdgeBehavior() TraversalEdgeBehavior {
+	return b.traversalEdgeBehavior
+}
+
+// DirectionalTraversalEdgeBehavior controls the directional transfer of focus
+// beyond the first and the last items of the focus scope of the route;
+// Unspecified (Flutter's null) uses Navigator.RouteDirectionalTraversalEdgeBehavior.
+//
+// Flutter: widgets/routes.dart ModalRoute.directionalTraversalEdgeBehavior
+func (b *ModalRouteBase) DirectionalTraversalEdgeBehavior() TraversalEdgeBehavior {
+	return b.directionalTraversalEdgeBehavior
+}
+
 // BuildTransitions returns the child.
 //
 // Flutter: widgets/routes.dart ModalRoute.buildTransitions
@@ -1434,21 +1505,32 @@ func (b *ModalRouteBase) Install() {
 	b.secondaryProxy = animation.NewProxyAnimation(b.TransitionRouteBase.SecondaryAnimation())
 }
 
-// DidPush pushes the route; focus is requested for the route here in step 10.5.
+// DidPush makes the focus scope of the route the first focus of the navigator,
+// when the scope exists and the navigator requests focus.
 //
 // Flutter: widgets/routes.dart ModalRoute.didPush
 func (b *ModalRouteBase) DidPush() *scheduler.TickerFuture {
-	// TODO(step 10.5): when the scope exists and the navigator requests focus, set
-	// the focus scope node of the route as the first focus of the navigator.
+	b.setFirstFocusToScope()
 	return b.TransitionRouteBase.DidPush()
 }
 
-// DidAdd adds the route; focus is requested for the route here in step 10.5.
+// DidAdd makes the focus scope of the route the first focus of the navigator,
+// as DidPush does.
 //
 // Flutter: widgets/routes.dart ModalRoute.didAdd
 func (b *ModalRouteBase) DidAdd() {
-	// TODO(step 10.5): set the first focus, as DidPush does.
+	b.setFirstFocusToScope()
 	b.TransitionRouteBase.DidAdd()
+}
+
+func (b *ModalRouteBase) setFirstFocusToScope() {
+	state, ok := b.scopeKey.CurrentState()
+	if !ok || !b.Navigator().Widget().RequestFocus() {
+		return
+	}
+	if scope := b.Navigator().FocusNode().EnclosingScope(); scope != nil {
+		scope.SetFirstFocus(state.focusScopeNode)
+	}
 }
 
 // BarrierDismissible is false by default through the page route; modal routes
@@ -1755,9 +1837,9 @@ func (b *ModalRouteBase) buildModalBarrier(bc BuildContext) Widget {
 func (b *ModalRouteBase) BuildModalBarrier() Widget {
 	if color, ok := b.mself.BarrierColor().Get(); ok && color.Alpha() != 0 && !b.offstage {
 		// ChangedInternalState is called if the barrier color or offstage updates.
-		if foundation.DebugMode && color == color.WithOpacity(0) {
-			panic(errors.New("ModalRouteBarrierColorInvisible", "the barrier color of a modal route can not be invisible when its alpha is not zero"))
-		}
+		// Deviation: the assertion that the barrier color differs from the same
+		// color with zero opacity is not ported: with the alpha check above it can
+		// not fail.
 		colorAnimation := animation.Drive[foundation.Opt[ui.Color]](b.mself.Animation(),
 			animation.NewColorTween(foundation.Some(color.WithOpacity(0)), foundation.Some(color)).
 				Chain(animation.NewCurveTween(b.mself.BarrierCurve())))

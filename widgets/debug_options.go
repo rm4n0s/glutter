@@ -49,6 +49,11 @@ type DebugOptions struct {
 	// PaintFocusBoxes paints a box around the focused widget
 	// (debugPaintFocusBoxes).
 	PaintFocusBoxes bool
+	// FocusChanges prints a line for each change of the focus tree
+	// (debugFocusChanges).
+	//
+	// Flutter: widgets/focus_manager.dart debugFocusChanges
+	FocusChanges bool
 	// BrightnessOverride, when it is not BrightnessUnspecified, replaces the
 	// platform brightness of the MediaQueryData made from the view
 	// (debugBrightnessOverride).
