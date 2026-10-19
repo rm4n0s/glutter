@@ -25,6 +25,12 @@ type GestureOpts struct {
 	Buttons foundation.Opt[int]
 	// Pointer is the ID of the pointer; the default is a new one each time.
 	Pointer int
+	// TouchSlopX and TouchSlopY are how far Drag and DragFrom move first, along
+	// each axis, so that the recognizers of drags win; the default is
+	// DragSlopDefault.
+	//
+	// Flutter: flutter_test/lib/src/controller.dart WidgetController.drag touchSlopX
+	TouchSlopX, TouchSlopY foundation.Opt[float64]
 }
 
 func (t *Tester) gestureOpts(opts []GestureOpts) GestureOpts {
@@ -52,18 +58,21 @@ type TestGesture struct {
 	opts     GestureOpts
 	position ui.Offset
 	down     bool
+	stamp    foundation.Opt[time.Duration]
 }
 
 func (g *TestGesture) eventOpts(delta ui.Offset) gestures.PointerEventOpts {
 	return gestures.PointerEventOpts{
-		TimeStamp: g.t.Elapsed(), Pointer: g.opts.Pointer, Kind: g.opts.Kind,
+		TimeStamp: g.timeStamp(), Pointer: g.opts.Pointer, Kind: g.opts.Kind,
 		Position: g.position, Delta: delta, Buttons: g.opts.Buttons,
 	}
 }
 
 // StartGesture presses a pointer at the position (logical pixels) and returns
 // the gesture to move and release it. A mouse is added first, as a real one
-// would be.
+// would be. The tester runs the posted functions after the press (and after every
+// move, up and cancel), as the await in Flutter's test gestures runs the
+// microtasks: a recognizer alone in the arena wins at once.
 //
 // Flutter: flutter_test/lib/src/controller.dart WidgetController.startGesture
 func (t *Tester) StartGesture(at ui.Offset, opts ...GestureOpts) *TestGesture {
@@ -74,7 +83,15 @@ func (t *Tester) StartGesture(at ui.Offset, opts ...GestureOpts) *TestGesture {
 		t.Binding.Gestures().HandlePointerEvent(gestures.NewPointerAddedEvent(g.eventOpts(ui.Offset{})))
 	}
 	t.Binding.Gestures().HandlePointerEvent(gestures.NewPointerDownEvent(g.eventOpts(ui.Offset{})))
+	t.host.RunPosted() // the await of Flutter's startGesture runs the microtasks (the arena's default resolution)
 	return g
+}
+
+func (g *TestGesture) timeStamp() time.Duration {
+	if g.stamp.IsSome() {
+		return g.stamp.Value()
+	}
+	return g.t.Elapsed()
 }
 
 // Position is where the pointer is.
@@ -91,6 +108,7 @@ func (g *TestGesture) MoveTo(to ui.Offset) {
 	delta := to.Sub(g.position)
 	g.position = to
 	g.t.Binding.Gestures().HandlePointerEvent(gestures.NewPointerMoveEvent(g.eventOpts(delta)))
+	g.t.host.RunPosted()
 }
 
 // MoveBy moves the pressed pointer by the offset.
@@ -99,6 +117,17 @@ func (g *TestGesture) MoveTo(to ui.Offset) {
 func (g *TestGesture) MoveBy(by ui.Offset) {
 	g.t.tb.Helper()
 	g.MoveTo(g.position.Add(by))
+}
+
+// MoveByAt moves the pressed pointer by the offset with the event time stamp
+// set to timeStamp (since the start of the test), instead of the time of the fake
+// clock. The next events keep the time stamp until another call sets it.
+//
+// Flutter: flutter_test/lib/src/test_pointer.dart TestGesture.moveBy timeStamp
+func (g *TestGesture) MoveByAt(by ui.Offset, timeStamp time.Duration) {
+	g.t.tb.Helper()
+	g.stamp = foundation.Some(timeStamp)
+	g.MoveBy(by)
 }
 
 // Up releases the pointer.
@@ -110,6 +139,7 @@ func (g *TestGesture) Up() {
 	g.down = false
 	o := g.eventOpts(ui.Offset{})
 	g.t.Binding.Gestures().HandlePointerEvent(gestures.NewPointerUpEvent(o))
+	g.t.host.RunPosted()
 	if g.opts.Kind == ui.PointerDeviceKindMouse {
 		g.t.Binding.Gestures().HandlePointerEvent(gestures.NewPointerRemovedEvent(o))
 	}
@@ -123,6 +153,7 @@ func (g *TestGesture) Cancel() {
 	g.requireDown("Cancel")
 	g.down = false
 	g.t.Binding.Gestures().HandlePointerEvent(gestures.NewPointerCancelEvent(g.eventOpts(ui.Offset{})))
+	g.t.host.RunPosted()
 }
 
 func (g *TestGesture) requireDown(method string) {
@@ -177,7 +208,11 @@ func (t *Tester) LongPress(f Finder, opts ...GestureOpts) {
 func (t *Tester) DragFrom(at, by ui.Offset, opts ...GestureOpts) {
 	t.tb.Helper()
 	g := t.StartGesture(at, opts...)
-	slop := ui.Offset{Dx: sign(by.Dx) * DragSlopDefault, Dy: sign(by.Dy) * DragSlopDefault}
+	var o GestureOpts
+	if len(opts) > 0 {
+		o = opts[0]
+	}
+	slop := ui.Offset{Dx: sign(by.Dx) * o.TouchSlopX.OrElse(DragSlopDefault), Dy: sign(by.Dy) * o.TouchSlopY.OrElse(DragSlopDefault)}
 	g.MoveBy(slop)
 	g.MoveBy(by.Sub(slop))
 	g.Up()
@@ -344,4 +379,112 @@ func (t *Tester) SendKeyEvent(logical uint64, opts ...KeyOpts) bool {
 	handled := t.sendKey(ui.KeyEventTypeDown, logical, opts)
 	t.sendKey(ui.KeyEventTypeUp, logical, opts)
 	return handled
+}
+
+// TestTrackpadGesture is a pan/zoom gesture of a trackpad that the test updates:
+// it sent a pan/zoom start event when it was created and sends the updates or the
+// end when the test calls them.
+//
+// Flutter: flutter_test/lib/src/test_pointer.dart TestPointer.panZoomStart
+type TestTrackpadGesture struct {
+	t        *Tester
+	pointer  int
+	position ui.Offset
+	pan      ui.Offset
+	scale    float64
+	rotation float64
+	active   bool
+}
+
+func (g *TestTrackpadGesture) eventOpts() gestures.PointerEventOpts {
+	return gestures.PointerEventOpts{TimeStamp: g.t.Elapsed(), Pointer: g.pointer, Kind: ui.PointerDeviceKindTrackpad, Position: g.position}
+}
+
+// StartTrackpadGesture starts a pan/zoom gesture of a trackpad at the position
+// (logical pixels). The tester runs the posted functions after every event, as
+// StartGesture does.
+//
+// Flutter: flutter_test/lib/src/test_pointer.dart TestPointer.panZoomStart
+func (t *Tester) StartTrackpadGesture(at ui.Offset) *TestTrackpadGesture {
+	t.adopt()
+	t.tb.Helper()
+	t.pointerID++
+	g := &TestTrackpadGesture{t: t, pointer: t.pointerID, position: at, scale: 1, active: true}
+	t.Binding.Gestures().HandlePointerEvent(gestures.NewPointerPanZoomStartEvent(g.eventOpts()))
+	t.host.RunPosted()
+	return g
+}
+
+// Update reports the totals of the gesture since it started: the pan, the scale
+// and the rotation (radians).
+//
+// Flutter: flutter_test/lib/src/test_pointer.dart TestPointer.panZoomUpdate
+func (g *TestTrackpadGesture) Update(pan ui.Offset, scale, rotation float64) {
+	g.t.adopt()
+	g.t.tb.Helper()
+	g.requireActive("Update")
+	o := g.eventOpts()
+	o.Pan, o.PanDelta, o.Scale, o.Rotation = pan, pan.Sub(g.pan), foundation.Some(scale), rotation
+	g.pan, g.scale, g.rotation = pan, scale, rotation
+	g.t.Binding.Gestures().HandlePointerEvent(gestures.NewPointerPanZoomUpdateEvent(o))
+	g.t.host.RunPosted()
+}
+
+// PanBy pans the gesture by the offset from where it is.
+//
+// Flutter: flutter_test/lib/src/test_pointer.dart TestPointer.panZoomUpdate
+func (g *TestTrackpadGesture) PanBy(by ui.Offset) {
+	g.t.tb.Helper()
+	g.Update(g.pan.Add(by), g.scale, g.rotation)
+}
+
+// End ends the gesture.
+//
+// Flutter: flutter_test/lib/src/test_pointer.dart TestPointer.panZoomEnd
+func (g *TestTrackpadGesture) End() {
+	g.t.adopt()
+	g.t.tb.Helper()
+	g.requireActive("End")
+	g.active = false
+	g.t.Binding.Gestures().HandlePointerEvent(gestures.NewPointerPanZoomEndEvent(g.eventOpts()))
+	g.t.host.RunPosted()
+}
+
+func (g *TestTrackpadGesture) requireActive(method string) {
+	g.t.tb.Helper()
+	if !g.active {
+		g.t.fail(errors.New("GestureNotDown", "TestTrackpadGesture."+method+" was called on a gesture that has ended", "method", method))
+	}
+}
+
+// TrackpadFlingFrom starts a trackpad pan at the position and pans it by the
+// offset in 50 steps at the speed (logical pixels per second), pumping between
+// the steps, then ends it.
+//
+// Flutter: flutter_test/lib/src/controller.dart WidgetController.trackpadFlingFrom
+func (t *Tester) TrackpadFlingFrom(at, by ui.Offset, speed float64) {
+	t.tb.Helper()
+	const moveCount = 50
+	if speed <= 0 || by.Distance() == 0 {
+		t.fail(errors.New("FlingInvalid", "a fling needs a speed above zero and an offset that is not zero",
+			"speed", speed, "offset", by.Distance()))
+		return
+	}
+	step := by.Mul(1.0 / moveCount)
+	interval := time.Duration(float64(time.Second) * by.Distance() / speed / moveCount)
+	g := t.StartTrackpadGesture(at)
+	for i := 0; i < moveCount; i++ {
+		t.Pump(interval)
+		g.PanBy(step)
+	}
+	g.End()
+}
+
+// TrackpadFling flings a trackpad from the center of the one element the finder
+// finds.
+//
+// Flutter: flutter_test/lib/src/controller.dart WidgetController.trackpadFling
+func (t *Tester) TrackpadFling(f Finder, by ui.Offset, speed float64) {
+	t.tb.Helper()
+	t.TrackpadFlingFrom(t.Center(f), by, speed)
 }

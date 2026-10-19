@@ -465,6 +465,11 @@ func (w *RawGestureDetector) Gestures() map[reflect.Type]GestureRecognizerFactor
 	return w.o.Gestures
 }
 
+// Behavior is how the detector behaves during hit testing.
+//
+// Flutter: widgets/gesture_detector.dart RawGestureDetector.behavior
+func (w *RawGestureDetector) Behavior() rendering.HitTestBehavior { return w.o.Behavior }
+
 // CreateState creates the state.
 //
 // Flutter: widgets/gesture_detector.dart RawGestureDetector.createState

@@ -293,6 +293,44 @@ func NewTickerFutureComplete() *TickerFuture {
 	return f
 }
 
+// NewTickerFuturePending creates a future that is not complete, and the function
+// that completes it. Code that has no ticker (a scroll activity that completes
+// when it is disposed) uses it where Dart uses a Completer<void>. Calling the
+// function again does nothing.
+//
+// Flutter: no counterpart (dart:async Completer<void>)
+func NewTickerFuturePending() (future *TickerFuture, complete func()) {
+	f := newTickerFuture()
+	return f, func() {
+		if !f.completed.IsSome() {
+			f.complete()
+		}
+	}
+}
+
+// WaitTickerFutures returns a future that completes when all the futures have
+// completed (immediately if there are none). A future that is canceled never
+// completes it.
+//
+// Flutter: no counterpart (dart:async Future.wait)
+func WaitTickerFutures(futures ...*TickerFuture) *TickerFuture {
+	result, complete := NewTickerFuturePending()
+	remaining := len(futures)
+	if remaining == 0 {
+		complete()
+		return result
+	}
+	for _, f := range futures {
+		f.Then(func() {
+			remaining--
+			if remaining == 0 {
+				complete()
+			}
+		})
+	}
+	return result
+}
+
 func (f *TickerFuture) complete() {
 	f.completed = foundation.Some(true)
 	close(f.done)

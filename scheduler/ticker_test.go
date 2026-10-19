@@ -410,3 +410,75 @@ func TestTickerOnDisposeIsCalledOnce(t *testing.T) {
 		t.Errorf("OnDispose was called %d times, want 1", calls)
 	}
 }
+
+func TestTickerFuturePending(t *testing.T) {
+	f, complete := NewTickerFuturePending()
+	var log []string
+	f.Then(func() { log = append(log, "then") })
+	if v, ended := f.Completed(); ended || v {
+		t.Fatalf("a pending future has ended: %v %v", v, ended)
+	}
+	complete()
+	complete() // calling it again does nothing
+	if got := strings.Join(log, ","); got != "then" {
+		t.Errorf("callbacks = %q, want then once", got)
+	}
+	select {
+	case <-f.Done():
+	default:
+		t.Error("Done is not closed after completing")
+	}
+	if v, ended := f.Completed(); !ended || !v {
+		t.Errorf("Completed = %v %v", v, ended)
+	}
+}
+
+func TestWaitTickerFutures(t *testing.T) {
+	tests := []struct {
+		name   string
+		count  int
+		finish []int // the futures to complete, in order
+		want   []bool
+	}{
+		{"none", 0, nil, nil},
+		{"one", 1, []int{0}, []bool{true}},
+		{"two in order", 2, []int{0, 1}, []bool{false, true}},
+		{"two in reverse", 2, []int{1, 0}, []bool{false, true}},
+		{"three", 3, []int{2, 0, 1}, []bool{false, false, true}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			futures := make([]*TickerFuture, tt.count)
+			completes := make([]func(), tt.count)
+			for i := range futures {
+				futures[i], completes[i] = NewTickerFuturePending()
+			}
+			all := WaitTickerFutures(futures...)
+			if tt.count == 0 {
+				if v, ended := all.Completed(); !ended || !v {
+					t.Error("waiting for no futures should be complete at once")
+				}
+				return
+			}
+			for i, idx := range tt.finish {
+				completes[idx]()
+				if _, ended := all.Completed(); ended != tt.want[i] {
+					t.Errorf("after completing %v, ended = %v, want %v", tt.finish[:i+1], ended, tt.want[i])
+				}
+			}
+		})
+	}
+}
+
+func TestWaitTickerFuturesNeverCompletesWithACanceledFuture(t *testing.T) {
+	tt := newTester()
+	ticker := NewTicker(tt.SchedulerBinding, func(time.Duration) {})
+	canceled := ticker.Start()
+	other, complete := NewTickerFuturePending()
+	all := WaitTickerFutures(canceled, other)
+	ticker.Stop(TickerStopOpts{Canceled: true})
+	complete()
+	if _, ended := all.Completed(); ended {
+		t.Error("the wait completed although one of the futures was canceled")
+	}
+}

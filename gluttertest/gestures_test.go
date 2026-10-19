@@ -4,7 +4,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/gestures"
+	"github.com/rm4n0s/glutter/rendering"
 	"github.com/rm4n0s/glutter/ui"
 	"github.com/rm4n0s/glutter/widgets"
 )
@@ -178,8 +180,9 @@ func TestDragRecognizedByAPanRecognizer(t *testing.T) {
 	l := newListener(newSwatch(grey, 300, 300))
 	l.onDown = func(e *gestures.PointerDownEvent) { rec.AddPointer(e) }
 	ts.PumpWidget(newRow(l))
-	// The move that makes the recognizer win is reported by OnStart, not by
-	// OnUpdate (DragStartBehavior.start); the next ones are updates.
+	// A recognizer alone in the arena wins at the pointer down, when the tester
+	// runs the microtasks as the await of Flutter's startGesture does, so every
+	// move is an update.
 	g := ts.StartGesture(ui.Offset{Dx: 100, Dy: 100})
 	g.MoveBy(ui.Offset{Dx: 50})
 	g.MoveBy(ui.Offset{Dx: 30})
@@ -187,8 +190,8 @@ func TestDragRecognizedByAPanRecognizer(t *testing.T) {
 	if started != 1 || ended != 1 {
 		t.Errorf("started %d, ended %d", started, ended)
 	}
-	if total != (ui.Offset{Dx: 30}) {
-		t.Errorf("total drag = %v, want 30 to the right", total)
+	if total != (ui.Offset{Dx: 80}) {
+		t.Errorf("total drag = %v, want 80 to the right", total)
 	}
 	ts.Drag(ByType[*listener](), ui.Offset{Dx: 80})
 	if started != 2 || ended != 2 {
@@ -320,4 +323,125 @@ func TestStateGoPostsWorkToTheTester(t *testing.T) {
 		t.Errorf("taps = %d, swatches = %d", s.taps, ts.Count(ByType[*swatch]()))
 	}
 	var _ widgets.State = s
+}
+
+func TestTrackpadGestureSendsPanZoomEvents(t *testing.T) {
+	ts := New(t)
+	var starts []*gestures.PointerPanZoomStartEvent
+	var updates []*gestures.PointerPanZoomUpdateEvent
+	var ends []*gestures.PointerPanZoomEndEvent
+	ts.PumpWidget(newRow(widgets.NewListener(newSwatch(grey, 200, 200), widgets.ListenerOpts{
+		Behavior:               rendering.HitTestBehaviorOpaque,
+		OnPointerPanZoomStart:  func(e *gestures.PointerPanZoomStartEvent) { starts = append(starts, e) },
+		OnPointerPanZoomUpdate: func(e *gestures.PointerPanZoomUpdateEvent) { updates = append(updates, e) },
+		OnPointerPanZoomEnd:    func(e *gestures.PointerPanZoomEndEvent) { ends = append(ends, e) },
+	})))
+	ts.Pump(time.Second)
+
+	g := ts.StartTrackpadGesture(ui.Offset{Dx: 10, Dy: 20})
+	ts.Pump(50 * time.Millisecond)
+	g.PanBy(ui.Offset{Dx: 3, Dy: 4})
+	g.PanBy(ui.Offset{Dx: 1, Dy: 1})
+	g.Update(ui.Offset{Dx: 4, Dy: 5}, 2, 0.5)
+	g.End()
+
+	if len(starts) != 1 || len(updates) != 3 || len(ends) != 1 {
+		t.Fatalf("events: %d start, %d update, %d end", len(starts), len(updates), len(ends))
+	}
+	if starts[0].Position() != (ui.Offset{Dx: 10, Dy: 20}) || starts[0].TimeStamp() != time.Second {
+		t.Errorf("start at %v, %v", starts[0].Position(), starts[0].TimeStamp())
+	}
+	tests := []struct {
+		i         int
+		pan, step ui.Offset
+		scale     float64
+		rotation  float64
+	}{
+		{0, ui.Offset{Dx: 3, Dy: 4}, ui.Offset{Dx: 3, Dy: 4}, 1, 0},
+		{1, ui.Offset{Dx: 4, Dy: 5}, ui.Offset{Dx: 1, Dy: 1}, 1, 0},
+		{2, ui.Offset{Dx: 4, Dy: 5}, ui.Offset{}, 2, 0.5},
+	}
+	for _, tt := range tests {
+		u := updates[tt.i]
+		if u.Pan() != tt.pan || u.PanDelta() != tt.step || u.Scale() != tt.scale || u.Rotation() != tt.rotation {
+			t.Errorf("update %d: pan %v delta %v scale %v rotation %v", tt.i, u.Pan(), u.PanDelta(), u.Scale(), u.Rotation())
+		}
+		if u.Position() != (ui.Offset{Dx: 10, Dy: 20}) || u.Kind() != ui.PointerDeviceKindTrackpad {
+			t.Errorf("update %d: at %v by %v", tt.i, u.Position(), u.Kind())
+		}
+		if u.Pointer() != starts[0].Pointer() {
+			t.Errorf("update %d has the pointer %d, the start has %d", tt.i, u.Pointer(), starts[0].Pointer())
+		}
+	}
+}
+
+func TestTrackpadGestureMisuse(t *testing.T) {
+	tests := []struct {
+		name string
+		do   func(g *TestTrackpadGesture)
+	}{
+		{"update after end", func(g *TestTrackpadGesture) { g.End(); g.PanBy(ui.Offset{Dx: 1}) }},
+		{"end twice", func(g *TestTrackpadGesture) { g.End(); g.End() }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			appErr := failure(t, func(ts *Tester) {
+				ts.PumpWidget(newRow())
+				tt.do(ts.StartTrackpadGesture(ui.Offset{}))
+			})
+			requireRoute(t, appErr, "GestureNotDown")
+		})
+	}
+}
+
+func TestTrackpadFlingHasTheSpeedAndIsInvalidWithoutOne(t *testing.T) {
+	ts := New(t)
+	var updates []*gestures.PointerPanZoomUpdateEvent
+	ts.PumpWidget(newRow(widgets.NewListener(newSwatch(grey, 200, 200), widgets.ListenerOpts{
+		Behavior:               rendering.HitTestBehaviorOpaque,
+		OnPointerPanZoomUpdate: func(e *gestures.PointerPanZoomUpdateEvent) { updates = append(updates, e) },
+	})))
+	start := ts.Elapsed()
+	ts.TrackpadFlingFrom(ui.Offset{Dx: 50, Dy: 50}, ui.Offset{Dy: -100}, 1000)
+	if len(updates) != 50 {
+		t.Fatalf("updates = %d, want 50", len(updates))
+	}
+	if got := updates[49].Pan(); got != (ui.Offset{Dy: -100}) {
+		t.Errorf("total pan = %v", got)
+	}
+	if got := ts.Elapsed() - start; got != 100*time.Millisecond {
+		t.Errorf("the fling took %v, want 100ms", got)
+	}
+	appErr := failure(t, func(ts *Tester) {
+		ts.PumpWidget(newRow())
+		ts.TrackpadFlingFrom(ui.Offset{}, ui.Offset{Dy: 1}, 0)
+	})
+	requireRoute(t, appErr, "FlingInvalid")
+}
+
+func TestMoveByAtSetsTheEventTimeStamp(t *testing.T) {
+	ts := New(t)
+	var moves []*gestures.PointerMoveEvent
+	l := newListener(newSwatch(grey, 200, 200))
+	l.onMove = func(e *gestures.PointerMoveEvent) { moves = append(moves, e) }
+	ts.PumpWidget(newRow(l))
+	g := ts.StartGesture(ui.Offset{Dx: 10, Dy: 10})
+	g.MoveByAt(ui.Offset{Dy: 1}, 20*time.Millisecond)
+	g.MoveBy(ui.Offset{Dy: 1}) // keeps the time stamp
+	if len(moves) != 2 || moves[0].TimeStamp() != 20*time.Millisecond || moves[1].TimeStamp() != 20*time.Millisecond {
+		t.Fatalf("moves: %v", moves)
+	}
+	g.Up()
+}
+
+func TestDragTouchSlopOptions(t *testing.T) {
+	ts := New(t)
+	var moves []*gestures.PointerMoveEvent
+	l := newListener(newSwatch(grey, 200, 200))
+	l.onMove = func(e *gestures.PointerMoveEvent) { moves = append(moves, e) }
+	ts.PumpWidget(newRow(l))
+	ts.DragFrom(ui.Offset{Dx: 10, Dy: 10}, ui.Offset{Dy: 50}, GestureOpts{TouchSlopY: foundation.Some(5.0)})
+	if len(moves) != 2 || moves[0].Delta() != (ui.Offset{Dy: 5}) || moves[1].Delta() != (ui.Offset{Dy: 45}) {
+		t.Fatalf("moves: %v", moves)
+	}
 }

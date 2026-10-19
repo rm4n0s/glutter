@@ -787,6 +787,16 @@ func NewVerticalDragGestureRecognizer(binding *GestureBinding, opts ...DragGestu
 	return r
 }
 
+// InitVerticalDragGestureRecognizer sets up a recognizer that embeds a
+// VerticalDragGestureRecognizer: self is the outer value, which the recognizer
+// calls for the methods it overrides (IsPointerAllowed and the like). It is how a
+// type of your own extends the recognizer, where Dart subclasses it.
+//
+// Flutter: no counterpart (Go embedding)
+func InitVerticalDragGestureRecognizer(r *VerticalDragGestureRecognizer, self OneSequenceHooks, binding *GestureBinding, opts ...DragGestureRecognizerOpts) {
+	r.initDrag(binding, self, verticalAxis{}, oneOpts(opts))
+}
+
 // HorizontalDragGestureRecognizer recognizes movement in the horizontal
 // direction.
 //
@@ -801,6 +811,14 @@ func NewHorizontalDragGestureRecognizer(binding *GestureBinding, opts ...DragGes
 	r := &HorizontalDragGestureRecognizer{}
 	r.initDrag(binding, r, horizontalAxis{}, oneOpts(opts))
 	return r
+}
+
+// InitHorizontalDragGestureRecognizer is InitVerticalDragGestureRecognizer for a
+// type that embeds a HorizontalDragGestureRecognizer.
+//
+// Flutter: no counterpart (Go embedding)
+func InitHorizontalDragGestureRecognizer(r *HorizontalDragGestureRecognizer, self OneSequenceHooks, binding *GestureBinding, opts ...DragGestureRecognizerOpts) {
+	r.initDrag(binding, self, horizontalAxis{}, oneOpts(opts))
 }
 
 // PanGestureRecognizer recognizes movement in any direction.

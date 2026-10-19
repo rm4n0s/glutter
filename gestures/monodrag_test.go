@@ -105,3 +105,60 @@ func TestPanStartsAfterPanSlop(t *testing.T) {
 	}
 	pan.Dispose()
 }
+
+// pickyVertical is a vertical drag recognizer that takes the pointers of one
+// button only, as a subclass in Dart that overrides isPointerAllowed.
+type pickyVertical struct {
+	VerticalDragGestureRecognizer
+	asked int
+}
+
+func (p *pickyVertical) IsPointerAllowed(event *PointerDownEvent) bool {
+	p.asked++
+	return event.Pointer() == 1 && p.VerticalDragGestureRecognizer.IsPointerAllowed(event)
+}
+
+func TestInitVerticalDragGestureRecognizerCallsTheOverrides(t *testing.T) {
+	g := newGestureTester(t)
+	p := &pickyVertical{}
+	InitVerticalDragGestureRecognizer(&p.VerticalDragGestureRecognizer, p, g.binding)
+	var l log
+	p.OnStart = func(DragStartDetails) { l.add("start") }
+	p.OnEnd = func(DragEndDetails) { l.add("end") }
+	for _, pointer := range []int{1, 2} {
+		down, up := evDown(pointer, off(10, 10)), evUp(pointer, off(10, 10))
+		p.AddPointer(down)
+		g.closeArena(pointer)
+		g.route(down)
+		g.route(up)
+	}
+	if p.asked != 2 {
+		t.Errorf("the override was asked %d times, want 2", p.asked)
+	}
+	l.check(t, "start", "end") // the second pointer is not allowed
+	p.Dispose()
+}
+
+type pickyHorizontal struct {
+	HorizontalDragGestureRecognizer
+	asked int
+}
+
+func (p *pickyHorizontal) IsPointerAllowed(event *PointerDownEvent) bool {
+	p.asked++
+	return p.HorizontalDragGestureRecognizer.IsPointerAllowed(event)
+}
+
+func TestInitHorizontalDragGestureRecognizerCallsTheOverrides(t *testing.T) {
+	g := newGestureTester(t)
+	p := &pickyHorizontal{}
+	InitHorizontalDragGestureRecognizer(&p.HorizontalDragGestureRecognizer, p, g.binding)
+	down := evDown(3, off(10, 10))
+	p.AddPointer(down)
+	if p.asked != 1 {
+		t.Errorf("the override was asked %d times, want 1", p.asked)
+	}
+	g.closeArena(3)
+	g.route(evUp(3, off(10, 10)))
+	p.Dispose()
+}
