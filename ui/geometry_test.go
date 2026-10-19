@@ -636,7 +636,7 @@ func TestMultipleOptionsPanics(t *testing.T) {
 		if !ok {
 			t.Fatalf("expected *errors.Error, got %T", err)
 		}
-		if appErr.Tag != "MultipleOptions" || !appErr.HasRoute("Radius.Clamp->oneOpts[...].MultipleOptions") {
+		if appErr.Tag != "MultipleOptions" || !appErr.HasRoute("Radius.Clamp->oneOpts[...]->First[...].MultipleOptions") {
 			t.Errorf("unexpected failure path: %s", appErr.Route())
 		}
 	}()

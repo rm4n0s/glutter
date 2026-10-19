@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/rm4n0s/errors"
+	"github.com/rm4n0s/glutter/internal/opts"
 )
 
 // Offset is an immutable 2D floating-point offset: a point or a vector in
@@ -892,17 +892,7 @@ func (r Radius) String() string {
 // isFinite reports whether x is neither infinite nor NaN.
 func isFinite(x float64) bool { return !math.IsInf(x, 0) && !math.IsNaN(x) }
 
-// oneOpts returns the one options value, or the zero value when there is none.
-// More than one panics with the tag MultipleOptions (SPEC §12.1).
-//
-// TODO(step 5.1): use the shared opts.First helper.
-func oneOpts[T any](opts []T) T {
-	var zero T
-	switch len(opts) {
-	case 0:
-		return zero
-	case 1:
-		return opts[0]
-	}
-	panic(errors.New("MultipleOptions", "more than one options value was passed"))
-}
+// oneOpts returns the one options value of a trailing `opts ...XOpts`
+// parameter (SPEC §12.1). It wraps opts.First, because a parameter named opts
+// hides the package.
+func oneOpts[T any](o []T) T { return opts.First(o) }

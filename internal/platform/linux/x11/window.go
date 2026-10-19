@@ -152,7 +152,7 @@ func (w *window) setProperties() {
 	p.setLongs(w.xid, at.netWMPID, xaCardinal, []uint64{uint64(os.Getpid())})
 	w.setSizeHints()
 
-	if !cfg.Decorated || cfg.Kind == platform.WindowKindBorderless {
+	if !cfg.IsDecorated() || cfg.Kind == platform.WindowKindBorderless {
 		// _MOTIF_WM_HINTS: flags (MWM_HINTS_DECORATIONS), functions, decorations,
 		// input mode, status. No decorations.
 		p.setLongs(w.xid, at.motifWMHints, at.motifWMHints, []uint64{1 << 1, 0, 0, 0, 0})
@@ -205,7 +205,7 @@ func (w *window) setSizeHints() {
 // sizeLimits returns the smallest and largest size of a window, or nil for no
 // limit. A window that cannot be resized is limited to its own size.
 func sizeLimits(cfg platform.WindowConfig, width, height int32) (min, max *[2]int32) {
-	if !cfg.Resizable {
+	if !cfg.IsResizable() {
 		return &[2]int32{width, height}, &[2]int32{width, height}
 	}
 	if cfg.MinSize.Width > 0 || cfg.MinSize.Height > 0 {

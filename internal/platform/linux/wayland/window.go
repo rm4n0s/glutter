@@ -222,7 +222,7 @@ func (w *window) requestDecorations() {
 		OnConfigure: func(mode wl.ZxdgToplevelDecorationV1Mode) { w.decorationMode = mode },
 	})
 	mode := wl.ZxdgToplevelDecorationV1ModeServerSide
-	if !w.cfg.Decorated {
+	if !w.cfg.IsDecorated() {
 		mode = wl.ZxdgToplevelDecorationV1ModeClientSide
 	}
 	w.decoration.SetMode(mode)

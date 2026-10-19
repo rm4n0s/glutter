@@ -6,24 +6,14 @@ import (
 
 	ot "github.com/go-text/typesetting/font/opentype"
 	"github.com/go-text/typesetting/segmenter"
-	"github.com/rm4n0s/errors"
+	"github.com/rm4n0s/glutter/internal/opts"
 	"github.com/rm4n0s/glutter/ui"
 )
 
-// oneOpts returns the one options value, or the zero value when there is none.
-// More than one panics with the tag MultipleOptions (SPEC §12.1).
-//
-// TODO(step 5.1): use the shared opts.First helper.
-func oneOpts[T any](opts []T) T {
-	var zero T
-	switch len(opts) {
-	case 0:
-		return zero
-	case 1:
-		return opts[0]
-	}
-	panic(errors.New("MultipleOptions", "more than one options value was passed"))
-}
+// oneOpts returns the one options value of a trailing `opts ...XOpts`
+// parameter (SPEC §12.1). It wraps opts.First, because a parameter named opts
+// hides the package.
+func oneOpts[T any](o []T) T { return opts.First(o) }
 
 // tagOf makes the OpenType tag of a four-letter feature name.
 func tagOf(name string) ot.Tag { return ot.MustNewTag(name) }

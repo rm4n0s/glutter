@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/rm4n0s/errors"
+	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/internal/platform"
 	"github.com/rm4n0s/glutter/internal/platform/linux/wayland/fakecomp"
 	"github.com/rm4n0s/glutter/ui"
@@ -272,7 +273,7 @@ func TestDecorations(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := config640()
-			cfg.Decorated = tt.decorated
+			cfg.Decorated = foundation.Some(tt.decorated)
 			e := startWindows(t, fakecomp.Config{Globals: tt.globals}, cfg)
 			e.waitMapped()
 			got := e.srv.RequestsWith("zxdg_toplevel_decoration_v1.set_mode")

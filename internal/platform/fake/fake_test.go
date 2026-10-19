@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/rm4n0s/errors"
+	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/internal/gpu"
 	"github.com/rm4n0s/glutter/internal/platform"
 	"github.com/rm4n0s/glutter/ui"
@@ -279,7 +280,7 @@ func TestCloseRequest(t *testing.T) {
 func TestNewWindowRecordsConfigAndAssignsViewIDs(t *testing.T) {
 	p := New()
 	cfgs := []platform.WindowConfig{
-		{Title: "main", AppID: "dev.glutter.test", Size: ui.Size{Width: 640, Height: 400}, Resizable: true, Decorated: true},
+		{Title: "main", AppID: "dev.glutter.test", Size: ui.Size{Width: 640, Height: 400}, Resizable: foundation.Some(true), Decorated: foundation.Some(true)},
 		{Kind: platform.WindowKindDialog, HasParent: true, Parent: 0, Modal: true, Title: "dialog"},
 	}
 	for i, cfg := range cfgs {

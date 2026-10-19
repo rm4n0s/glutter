@@ -265,9 +265,9 @@ func TestTextPanics(t *testing.T) {
 			b.Pop()
 			b.Pop()
 		}, "ParagraphBuilderPopEmpty", "ParagraphBuilder.Pop.ParagraphBuilderPopEmpty"},
-		{"two text style options", func() { NewTextStyle(TextStyleOpts{}, TextStyleOpts{}) }, "MultipleOptions", "NewTextStyle->oneOpts[...].MultipleOptions"},
-		{"two paragraph style options", func() { NewParagraphStyle(ParagraphStyleOpts{}, ParagraphStyleOpts{}) }, "MultipleOptions", "NewParagraphStyle->oneOpts[...].MultipleOptions"},
-		{"two strut style options", func() { NewStrutStyle(StrutStyleOpts{}, StrutStyleOpts{}) }, "MultipleOptions", "NewStrutStyle->oneOpts[...].MultipleOptions"},
+		{"two text style options", func() { NewTextStyle(TextStyleOpts{}, TextStyleOpts{}) }, "MultipleOptions", "NewTextStyle->oneOpts[...]->First[...].MultipleOptions"},
+		{"two paragraph style options", func() { NewParagraphStyle(ParagraphStyleOpts{}, ParagraphStyleOpts{}) }, "MultipleOptions", "NewParagraphStyle->oneOpts[...]->First[...].MultipleOptions"},
+		{"two strut style options", func() { NewStrutStyle(StrutStyleOpts{}, StrutStyleOpts{}) }, "MultipleOptions", "NewStrutStyle->oneOpts[...]->First[...].MultipleOptions"},
 	}
 	for _, tt := range tests {
 		func() {
@@ -366,7 +366,7 @@ func TestTextQueryPanics(t *testing.T) {
 		{"range not normalized", func() { NewTextRange(5, 2).TextInside("0123456789") }, "TextRangeOutOfBounds", "TextRange.TextInside->TextRange.checked.TextRangeOutOfBounds"},
 		{"range outside the text", func() { NewTextRange(2, 50).TextAfter("0123") }, "TextRangeOutOfBounds", "TextRange.TextAfter->TextRange.checked.TextRangeOutOfBounds"},
 		{"negative placeholder", func() { NewParagraphBuilder(new(recordingFactory), nil).AddPlaceholder(1, -1, PlaceholderAlignmentTop) }, "PlaceholderSizeInvalid", "ParagraphBuilder.AddPlaceholder.PlaceholderSizeInvalid"},
-		{"two position options", func() { NewTextPosition(1, TextPositionOpts{}, TextPositionOpts{}) }, "MultipleOptions", "NewTextPosition->oneOpts[...].MultipleOptions"},
+		{"two position options", func() { NewTextPosition(1, TextPositionOpts{}, TextPositionOpts{}) }, "MultipleOptions", "NewTextPosition->oneOpts[...]->First[...].MultipleOptions"},
 	}
 	for _, tt := range tests {
 		func() {

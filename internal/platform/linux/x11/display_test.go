@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/rm4n0s/errors"
+	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/internal/gpu/gles"
 	"github.com/rm4n0s/glutter/internal/platform"
 	"github.com/rm4n0s/glutter/internal/platform/linux/dl"
@@ -505,8 +506,8 @@ func TestDisplayWindowKinds(t *testing.T) {
 	dialog := windowConfig()
 	dialog.Kind = platform.WindowKindDialog
 	dialog.Modal = true
-	dialog.Decorated = false
-	dialog.Resizable = false
+	dialog.Decorated = foundation.Some(false)
+	dialog.Resizable = foundation.Some(false)
 	dialog.Title = "dialog"
 	e := startDisplay(t, dialog)
 	e.waitMapped()

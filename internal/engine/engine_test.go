@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/rm4n0s/errors"
+	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/internal/gpu"
 	"github.com/rm4n0s/glutter/internal/platform"
 	"github.com/rm4n0s/glutter/internal/platform/fake"
@@ -164,7 +165,7 @@ func TestRunDrawsTheWindowAndPassesInputToTheHooks(t *testing.T) {
 	h.cfg.Hooks.Key = func(d ui.KeyData) { mu.Lock(); keys = append(keys, d); mu.Unlock() }
 	h.cfg.Hooks.Pointer = func(b []ui.PointerData) { mu.Lock(); batches = append(batches, b); mu.Unlock() }
 	h.cfg.Hooks.Metrics = func(_ ui.ViewID, m platform.ViewMetrics) { mu.Lock(); gotMetrics = append(gotMetrics, m); mu.Unlock() }
-	h.cfg.Window = platform.WindowConfig{Title: "mine", AppID: "dev.glutter.x", Resizable: true, Decorated: true}
+	h.cfg.Window = platform.WindowConfig{Title: "mine", AppID: "dev.glutter.x", Resizable: foundation.Some(true), Decorated: foundation.Some(true)}
 
 	h.c.Inject(metrics(640, 400))
 	h.c.Inject(fake.FrameEvent{View: 0, FrameTime: time.Millisecond})

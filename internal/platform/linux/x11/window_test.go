@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/rm4n0s/errors"
+	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/internal/platform"
 	"github.com/rm4n0s/glutter/internal/platform/linux/dl"
 	"github.com/rm4n0s/glutter/ui"
@@ -13,7 +14,7 @@ import (
 func TestSizeLimits(t *testing.T) {
 	resizable := platform.DefaultWindowConfig()
 	fixed := platform.DefaultWindowConfig()
-	fixed.Resizable = false
+	fixed.Resizable = foundation.Some(false)
 	limited := platform.DefaultWindowConfig()
 	limited.MinSize = ui.Size{Width: 200, Height: 100}
 	limited.MaxSize = ui.Size{Width: 1000, Height: 800}

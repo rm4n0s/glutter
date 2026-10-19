@@ -1,6 +1,9 @@
 package platform
 
-import "github.com/rm4n0s/glutter/ui"
+import (
+	"github.com/rm4n0s/glutter/foundation"
+	"github.com/rm4n0s/glutter/ui"
+)
 
 // WindowKind is the kind of a window. The zero value, WindowKindUnspecified,
 // means WindowKindRegular.
@@ -84,27 +87,33 @@ type WindowConfig struct {
 	MinSize ui.Size
 	// MaxSize is the largest size in logical pixels; zero means no maximum.
 	MaxSize ui.Size
-	// Resizable is whether the user can resize the window. Use
-	// DefaultWindowConfig to get Flutter's default of true.
-	//
-	// TODO(step 5.1): becomes foundation.Opt[bool] so that the zero value is the default.
-	Resizable bool
-	// Decorated is whether the window has a title bar and borders. Use
-	// DefaultWindowConfig to get the default of true.
-	//
-	// TODO(step 5.1): becomes foundation.Opt[bool] so that the zero value is the default.
-	Decorated bool
+	// Resizable is whether the user can resize the window. None means the
+	// default, true; use IsResizable to read it.
+	Resizable foundation.Opt[bool]
+	// Decorated is whether the window has a title bar and borders. None means
+	// the default, true; use IsDecorated to read it.
+	Decorated foundation.Opt[bool]
 	// State is the initial window state.
 	State WindowState
 }
 
-// DefaultWindowConfig returns a WindowConfig with the defaults: a regular,
-// resizable, decorated window of a size the backend chooses.
+// IsResizable is whether the user can resize the window; the default is true.
 //
 // Flutter: no counterpart
-func DefaultWindowConfig() WindowConfig {
-	return WindowConfig{Resizable: true, Decorated: true}
-}
+func (c WindowConfig) IsResizable() bool { return c.Resizable.OrElse(true) }
+
+// IsDecorated is whether the window has a title bar and borders; the default
+// is true.
+//
+// Flutter: no counterpart
+func (c WindowConfig) IsDecorated() bool { return c.Decorated.OrElse(true) }
+
+// DefaultWindowConfig returns a WindowConfig with the defaults: a regular,
+// resizable, decorated window of a size the backend chooses. It is the zero
+// value.
+//
+// Flutter: no counterpart
+func DefaultWindowConfig() WindowConfig { return WindowConfig{} }
 
 // ViewMetrics describes the size and scale of a view.
 //

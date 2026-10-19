@@ -416,7 +416,7 @@ func TestCanvasPanics(t *testing.T) {
 		}, "AtlasColorCountMismatch", "Canvas.DrawAtlas.AtlasColorCountMismatch"},
 		{"two canvas options", func() {
 			NewCanvas(NewPictureRecorder(), CanvasOpts{}, CanvasOpts{})
-		}, "MultipleOptions", "NewCanvas->oneOpts[...].MultipleOptions"},
+		}, "MultipleOptions", "NewCanvas->oneOpts[...]->First[...].MultipleOptions"},
 	}
 	for _, tt := range tests {
 		func() {
