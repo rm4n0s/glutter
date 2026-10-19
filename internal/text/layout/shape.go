@@ -128,59 +128,77 @@ func fontMetrics(face *font.Face, size float64) (ascent, descent, gap float64) {
 	return float64(ext.Ascender) / upem * size, -float64(ext.Descender) / upem * size, float64(ext.LineGap) / upem * size
 }
 
-// shapeRuns splits the text into runs and shapes them.
+// shapeRuns splits the text into runs and shapes them. The text is split by the levels of the
+// bidi algorithm, then by script (go-text), then by style, then by the font that has the glyphs.
 func (p *paragraph) shapeRuns() {
 	n := len(p.runes)
 	if n == 0 {
 		return
 	}
-	dir := di.DirectionLTR
-	if p.style.Direction() == ui.TextDirectionRTL {
-		dir = di.DirectionRTL
-	}
+	baseRTL := p.style.Direction() == ui.TextDirectionRTL
+	p.levels = resolveLevels(p.runes, baseRTL)
 	lang := language.NewLanguage(p.baseLocale.LanguageTag())
-	whole := shaping.Input{Text: p.shapeRunes, RunStart: 0, RunEnd: n, Direction: dir, Size: shapeSize * 64, Language: lang}
 	var seg shaping.Segmenter
-	pieces := append([]shaping.Input(nil), seg.Split(whole, sentinelFontmap{})...)
 
-	for _, piece := range pieces {
-		// Split the piece at the style boundaries, then by face.
-		start := piece.RunStart
-		for start < piece.RunEnd {
-			si := p.styleAt[start]
-			end := start
-			for end < piece.RunEnd && p.styleAt[end] == si {
-				end++
-			}
-			sub := piece
-			sub.RunStart, sub.RunEnd = start, end
-			sub.Face = nil
-			st := &p.styles[si]
-			if st.Locale.LanguageCode != "" {
-				sub.Language = language.NewLanguage(st.Locale.LanguageTag())
-			}
-			fm := p.eng.fontsFor(st.FontFamilies, st.FontWeight, st.FontStyle == ui.FontStyleItalic, st.Locale, st.FontVariations)
-			// A placeholder is a run of its own; the text between placeholders is shaped.
-			from := start
-			for k := start; k <= end; k++ {
-				ph, isPh := p.phAt[k]
-				if k < end && !isPh {
-					continue
-				}
-				if k > from {
-					chunk := sub
-					chunk.RunStart, chunk.RunEnd = from, k
-					for _, in := range shaping.SplitByFace(chunk, fm) {
-						p.runs = append(p.runs, p.shapeRun(in, si))
-					}
-				}
-				if k < end {
-					p.runs = append(p.runs, p.placeholderRun(k, si, ph, sub))
-					from = k + 1
-				}
-			}
-			start = end
+	// One piece per run of equal level, split by script.
+	for lo := 0; lo < n; {
+		hi := lo
+		for hi < n && p.levels[hi] == p.levels[lo] {
+			hi++
 		}
+		dir := di.DirectionLTR
+		if p.levels[lo]%2 == 1 {
+			dir = di.DirectionRTL
+		}
+		whole := shaping.Input{Text: p.shapeRunes, RunStart: lo, RunEnd: hi, Direction: dir, Size: shapeSize * 64, Language: lang}
+		for _, piece := range seg.Split(whole, sentinelFontmap{}) {
+			// The segmenter resolves bidi too, with the first strong character; the level
+			// run is one direction already.
+			piece.Direction = dir
+			p.splitPiece(piece)
+		}
+		lo = hi
+	}
+}
+
+// splitPiece splits a piece of one level and script by style, placeholders and font, and
+// shapes the parts.
+func (p *paragraph) splitPiece(piece shaping.Input) {
+	start := piece.RunStart
+	for start < piece.RunEnd {
+		si := p.styleAt[start]
+		end := start
+		for end < piece.RunEnd && p.styleAt[end] == si {
+			end++
+		}
+		sub := piece
+		sub.RunStart, sub.RunEnd = start, end
+		sub.Face = nil
+		st := &p.styles[si]
+		if st.Locale.LanguageCode != "" {
+			sub.Language = language.NewLanguage(st.Locale.LanguageTag())
+		}
+		fm := p.eng.fontsFor(st.FontFamilies, st.FontWeight, st.FontStyle == ui.FontStyleItalic, st.Locale, st.FontVariations)
+		// A placeholder is a run of its own; the text between placeholders is shaped.
+		from := start
+		for k := start; k <= end; k++ {
+			ph, isPh := p.phAt[k]
+			if k < end && !isPh {
+				continue
+			}
+			if k > from {
+				chunk := sub
+				chunk.RunStart, chunk.RunEnd = from, k
+				for _, in := range shaping.SplitByFace(chunk, fm) {
+					p.runs = append(p.runs, p.shapeRun(in, si))
+				}
+			}
+			if k < end {
+				p.runs = append(p.runs, p.placeholderRun(k, si, ph, sub))
+				from = k + 1
+			}
+		}
+		start = end
 	}
 }
 
@@ -188,7 +206,9 @@ func (p *paragraph) shapeRuns() {
 func (p *paragraph) shapeRun(in shaping.Input, si int) *run {
 	st := &p.styles[si]
 	r := &run{start: in.RunStart, end: in.RunEnd, rtl: in.Direction.Progression() == di.TowardTopLeft, style: si, face: in.Face, size: st.FontSize}
-	r.level = p.levelOf(r.rtl)
+	if in.RunStart < len(p.levels) {
+		r.level = int(p.levels[in.RunStart])
+	}
 	r.ascent, r.descent, r.gap = fontMetrics(in.Face, r.size)
 	even := st.LeadingDistribution == ui.TextLeadingDistributionEven
 	r.ascentC, r.descentC = correctedMetrics(r.ascent, r.descent, r.gap, r.size, st.Height, st.HasHeight, even)
@@ -267,7 +287,7 @@ func (p *paragraph) placeholderRun(at, si, index int, piece shaping.Input) *run 
 	st := &p.styles[si]
 	r := &run{start: at, end: at + 1, style: si, size: st.FontSize, ph: ph}
 	r.rtl = piece.Direction.Progression() == di.TowardTopLeft
-	r.level = p.levelOf(r.rtl)
+	r.level = int(p.levels[at])
 	r.glyphs = []glyph{{cluster: at, runes: 1, advance: ph.width}}
 	_, descent, gap := fontMetrics(p.eng.fontsFor(st.FontFamilies, st.FontWeight, st.FontStyle == ui.FontStyleItalic, st.Locale, st.FontVariations).ResolveFace(' '), st.FontSize)
 	switch spec.Alignment {
@@ -302,18 +322,4 @@ func (p *paragraph) missingGlyphs(r *run) []glyph {
 		}
 	}
 	return gs
-}
-
-// levelOf is the embedding level of a run from its direction: the levels 0 and 1 of a
-// left-to-right paragraph, 1 and 2 of a right-to-left one.
-func (p *paragraph) levelOf(rtl bool) int {
-	switch {
-	case p.style.Direction() != ui.TextDirectionRTL && !rtl:
-		return 0
-	case p.style.Direction() != ui.TextDirectionRTL && rtl:
-		return 1
-	case rtl:
-		return 1
-	}
-	return 2
 }

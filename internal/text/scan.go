@@ -130,6 +130,14 @@ func (s *scanMatcher) Fallback(ctx context.Context, family string, weight int, i
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if IsEmoji(r) {
+		// The color emoji font, when there is one, rather than a black and white symbol font.
+		for _, fp := range s.footprints {
+			if fp.Family == "notocoloremoji" && fp.Runes.Contains(r) {
+				return FontFile{Path: fp.Location.File, Index: int(fp.Location.Index), Family: "Noto Color Emoji"}, true, nil
+			}
+		}
+	}
 	s.fm.SetQuery(fontscan.Query{Families: []string{family}, Aspect: aspect})
 	s.fm.SetScript(language.LookupScript(r))
 	face := s.fm.ResolveFace(r)

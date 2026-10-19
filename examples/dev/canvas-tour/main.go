@@ -1,5 +1,5 @@
 // Command canvas-tour opens a 640x480 window that shows the proof scenes of
-// milestone 2 (shapes, gradients, blend modes, effects), one per page, drawn by
+// milestones 2 to 4 (shapes, gradients, blend modes, effects, text), one per page, drawn by
 // the GPU renderer, and a last page, size-grid, that depends on the size of the
 // window: a grid of lines one pixel wide, which shows whether the buffer is as
 // sharp as the screen (on a display with a fractional scale it must be, step 3.7). It is a development example (milestone 3): it uses the
@@ -15,7 +15,7 @@
 //
 // Environment (read in debug builds only, as the examples promise):
 //
-//	GLUTTER_DEV_PAGE=<n or name>      the first page: 1 to 6, or a scene name
+//	GLUTTER_DEV_PAGE=<n or name>      the first page: 1 to 7, or a scene name
 //	                                  such as shapes-clips (default 1)
 //	GLUTTER_BACKEND=x11|wayland       the windowing system (else the session's)
 //	GLUTTER_SCREENSHOT=<file.png>     save the window content to the file and exit

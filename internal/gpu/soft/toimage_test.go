@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/ui"
 )
 
@@ -47,12 +46,9 @@ func TestPictureAndSceneToImage(t *testing.T) {
 		t.Error("drawing the rasterized image does not give the image back")
 	}
 
-	// A rasterizer's own failure comes back as it is.
-	failing := rec2(t)
-	if _, err := failing.ToImage(1, 1, opts); err == nil {
-		t.Error("an unsupported picture should fail")
-	} else if appErr, ok := errors.FromError(err); !ok || !appErr.HasRoute("SoftNotImplemented") {
-		t.Errorf("error = %v", err)
+	// A picture of text is rasterized like any other (a paragraph that cannot draw draws nothing).
+	if _, err := rec2(t).ToImage(1, 1, opts); err != nil {
+		t.Errorf("a picture with a paragraph failed: %v", err)
 	}
 	var rasterizer ImageRasterizer
 	if _, err := rasterizer.RasterizeScene(scene, 0, 5); err == nil {

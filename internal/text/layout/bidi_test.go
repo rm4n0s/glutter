@@ -227,3 +227,84 @@ func TestLigaturesAreOneCluster(t *testing.T) {
 		t.Errorf("advances inside the ligature differ: %v %v (total %v)", p.adv[1], p.adv[2], total)
 	}
 }
+
+func TestResolveLevels(t *testing.T) {
+	tests := []struct {
+		name string
+		text string
+		rtl  bool
+		want []uint8
+	}{
+		{"latin in an ltr paragraph", "abc", false, []uint8{0, 0, 0}},
+		{"latin in an rtl paragraph", "abc", true, []uint8{2, 2, 2}},
+		{"hebrew in an ltr paragraph", "שלום", false, []uint8{1, 1, 1, 1}},
+		{"hebrew, a space, latin: ltr base", "ש abc", false, []uint8{1, 0, 0, 0, 0}},
+		{"hebrew, a space, latin: rtl base", "ש abc", true, []uint8{1, 1, 2, 2, 2}},
+		{"digits after latin are latin", "abc 123", false, []uint8{0, 0, 0, 0, 0, 0, 0}},
+		{"digits after hebrew stay numbers, a level up", "ש 12", false, []uint8{1, 1, 2, 2}},
+		{"digits after an arabic letter are arabic numbers", "م 12", false, []uint8{1, 1, 2, 2}},
+		{"a number separator between digits", "ש 1,2", false, []uint8{1, 1, 2, 2, 2}},
+		{"a percent sign after digits", "ש 5%", false, []uint8{1, 1, 2, 2}},
+		{"a mark takes the level of its letter", "שְ", false, []uint8{1, 1}},
+		{"trailing spaces take the base level", "ש  ", true, []uint8{1, 1, 1}},
+		{"trailing spaces in an ltr paragraph", "ש  ", false, []uint8{1, 0, 0}},
+		{"a newline starts a new paragraph", "ש\nab", false, []uint8{1, 0, 0, 0}},
+		{"an empty text", "", false, []uint8{}},
+		{"neutrals between two hebrew words are hebrew", "ש,ש", false, []uint8{1, 1, 1}},
+		{"the right-to-left mark is strong", "\u200fa", false, []uint8{1, 0}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := resolveLevels([]rune(tt.text), tt.rtl)
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("levels = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestParagraphDirectionDecidesTheBaseLevel(t *testing.T) {
+	// Hebrew first, then English: first-strong detection would make the paragraph right to
+	// left; the paragraph's own direction decides.
+	const text = "שלום abc"
+	e := systemEngine(t, text)
+	for _, tt := range []struct {
+		dir  ui.TextDirection
+		want []int // the order of the runs from left to right, by their first rune
+	}{
+		{ui.TextDirectionLTR, []int{0, 5}},
+		{ui.TextDirectionRTL, []int{5, 0}},
+	} {
+		p := build(e, text, roboto(16), paraStyle(ui.ParagraphStyleOpts{TextDirection: tt.dir})).(*paragraph)
+		p.Layout(ui.NewParagraphConstraints(1000))
+		var first []int
+		for _, r := range p.lines[0].runs {
+			first = append(first, r.start)
+		}
+		// The space belongs to the run of the base direction's neighbour: compare the order only.
+		if len(first) < 2 || (first[0] < first[len(first)-1]) != (tt.want[0] < tt.want[1]) {
+			t.Errorf("%v: runs from left to right start at %v, want the order %v", tt.dir, first, tt.want)
+		}
+	}
+}
+
+func TestNumbersBetweenRightToLeftWordsReorder(t *testing.T) {
+	const text = "abc שלום 123 مرحبا def"
+	e := systemEngine(t, text)
+	p := build(e, text, roboto(16), nil).(*paragraph)
+	p.Layout(ui.NewParagraphConstraints(1000))
+	// Visually, left to right: abc, then the right-to-left sequence reversed (Arabic, 123,
+	// Hebrew), then def.
+	hebrewAt, digitsAt, arabicAt := 4, 9, 13
+	pos := func(start int) int {
+		for i, r := range p.lines[0].runs {
+			if r.start <= start && start < r.end {
+				return i
+			}
+		}
+		return -1
+	}
+	if pos(arabicAt) >= pos(digitsAt) || pos(digitsAt) >= pos(hebrewAt) {
+		t.Errorf("run indices from left to right: arabic %d, digits %d, hebrew %d", pos(arabicAt), pos(digitsAt), pos(hebrewAt))
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"math"
 
 	"github.com/rm4n0s/errors"
+	"github.com/rm4n0s/glutter/internal/gpu/textdraw"
 	"github.com/rm4n0s/glutter/ui"
 )
 
@@ -403,6 +404,25 @@ func (f *flattener) picture(p *ui.Picture, st state) error {
 			st.clip = clipPath(st.clip, &st.m, v.Path, v.AntiAlias)
 		case ui.OpDrawPicture:
 			if err := f.picture(v.Picture, st); err != nil {
+				return err
+			}
+		case ui.OpDrawParagraph:
+			// A paragraph is drawn as the glyphs, shadows, backgrounds and decorations it
+			// is made of, each under its own transform.
+			var err error
+			textdraw.Expand(v, &st.m, func(op ui.DisplayOp, m *ui.Matrix4) {
+				if err != nil {
+					return
+				}
+				sub := st
+				sub.m = *m
+				if pic, ok := op.(ui.OpDrawPicture); ok {
+					err = f.picture(pic.Picture, sub)
+					return
+				}
+				f.emit(Command{Kind: CommandDraw, Op: op, Transform: *m, Clip: st.clip})
+			})
+			if err != nil {
 				return err
 			}
 		default:

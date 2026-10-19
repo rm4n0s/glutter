@@ -60,7 +60,9 @@ type paragraph struct {
 	// styleAt is the index of the style of each rune.
 	styleAt []int
 
-	runs []*run
+	// levels are the bidi embedding levels of the runes.
+	levels []uint8
+	runs   []*run
 	// adv is the advance of each rune and boundary says whether a cluster starts at the
 	// rune (len(runes)+1 entries: the last is true).
 	adv      []float64

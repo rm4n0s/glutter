@@ -5,6 +5,7 @@ import (
 	"math"
 
 	"github.com/rm4n0s/errors"
+	"github.com/rm4n0s/glutter/internal/gpu/textdraw"
 	"github.com/rm4n0s/glutter/ui"
 )
 
@@ -21,8 +22,7 @@ const flattenTolerance = 0.05
 // Not everything is supported yet. A layer, an operation or a paint feature that
 // is not returns the error SoftNotImplemented naming it, and no image. What works
 // now: container, transform, offset, clip, opacity and color filter layers and
-// picture layers; every operation except text, shadows and the ones that need a
-// blur; paints with colors, gradients, image shaders, all 29 blend modes, color
+// picture layers; every operation, text included; paints with colors, gradients, image shaders, all 29 blend modes, color
 // filters and inverted colors; and SaveLayer with a paint. The blurs, shadows,
 // image filters and the backdrop filter and shader mask layers come with step
 // 2.9, text with 4.x.
@@ -245,8 +245,29 @@ func (r *renderer) drawOp(op ui.DisplayOp, st *state) error {
 		return r.drawVertices(v, st)
 	case ui.OpDrawShadow:
 		return r.drawShadow(v, st)
+	case ui.OpDrawParagraph:
+		return r.drawParagraph(v, st)
 	}
 	return notImplemented("operation", op)
+}
+
+// drawParagraph draws the glyphs, shadows, backgrounds and decorations of a paragraph, each as
+// the operation the paragraph makes it, under its own transform. A paragraph that cannot draw
+// itself draws nothing.
+func (r *renderer) drawParagraph(v ui.OpDrawParagraph, st *state) error {
+	var err error
+	textdraw.Expand(v, st.m, func(op ui.DisplayOp, m *ui.Matrix4) {
+		if err != nil {
+			return
+		}
+		sub := &state{m: m, clip: st.clip}
+		if pic, ok := op.(ui.OpDrawPicture); ok {
+			err = r.picture(pic.Picture, sub)
+			return
+		}
+		err = r.draw(op, sub)
+	})
+	return err
 }
 
 // notImplemented is the error for what a step after this one adds.

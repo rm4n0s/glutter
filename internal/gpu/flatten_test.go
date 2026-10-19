@@ -490,3 +490,63 @@ func TestFlattenBoundaryLayersBecomeGroups(t *testing.T) {
 		t.Errorf("clip inside the group = %+v, want %+v", got, want)
 	}
 }
+
+// glyphs is a paragraph that draws itself as the pieces it holds.
+type glyphs struct {
+	ui.ParagraphLayout
+	draws []ui.ParagraphDraw
+}
+
+func (g glyphs) PaintParagraph(emit func(ui.ParagraphDraw)) {
+	for _, d := range g.draws {
+		emit(d)
+	}
+}
+
+func TestFlattenParagraphBecomesItsPieces(t *testing.T) {
+	path := ui.NewPath()
+	path.AddRect(ui.NewRectFromLTWH(0, 0, 1, 1))
+	inner := pictureOf(func(c *ui.Canvas) { c.DrawRect(ui.NewRectFromLTWH(0, 0, 2, 2), paintOf(0xFF00FF00)) })
+	para := ui.NewParagraph(glyphs{draws: []ui.ParagraphDraw{
+		{Op: ui.OpDrawPath{Path: path, Paint: *paintOf(0xFF000000)}, Offset: ui.Offset{Dx: 1.3, Dy: 2.6}, Snap: true},
+		{Op: ui.OpDrawPicture{Picture: inner}, Offset: ui.Offset{Dx: 20, Dy: 4}},
+		{Op: ui.OpDrawRect{Rect: ui.NewRectFromLTWH(0, 0, 5, 1), Paint: *paintOf(0xFFFF0000)}, Offset: ui.Offset{Dx: 0, Dy: 9}},
+	}})
+	pic := pictureOf(func(c *ui.Canvas) {
+		c.ClipRect(ui.NewRectFromLTWH(0, 0, 50, 50))
+		c.DrawParagraph(para, ui.Offset{Dx: 10, Dy: 10})
+	})
+	l := mustFlatten(t, sceneOfPicture(ui.Offset{}, pic))
+	if len(l.Commands) != 3 {
+		t.Fatalf("%d commands: %v", len(l.Commands), kinds(l))
+	}
+	want := []ui.Offset{{Dx: 11.25, Dy: 13}, {Dx: 30, Dy: 14}, {Dx: 10, Dy: 19}}
+	for i, c := range l.Commands {
+		if c.Kind != CommandDraw {
+			t.Errorf("command %d: kind %v", i, c.Kind)
+		}
+		if got := origin(c); got != want[i] {
+			t.Errorf("command %d at %v, want %v", i, got, want[i])
+		}
+		if c.Clip.Bounds != ui.NewRectFromLTWH(0, 0, 50, 50) {
+			t.Errorf("command %d: clip %v", i, c.Clip.Bounds)
+		}
+	}
+	if _, ok := l.Commands[0].Op.(ui.OpDrawPath); !ok {
+		t.Errorf("a glyph is a path: %T", l.Commands[0].Op)
+	}
+	// The picture's own commands come out under the piece's transform.
+	if _, ok := l.Commands[1].Op.(ui.OpDrawRect); !ok {
+		t.Errorf("a color glyph's picture is flattened into its drawing: %T", l.Commands[1].Op)
+	}
+}
+
+func TestFlattenParagraphThatCannotDrawItselfDrawsNothing(t *testing.T) {
+	pic := pictureOf(func(c *ui.Canvas) {
+		c.DrawParagraph(ui.NewParagraph(struct{ ui.ParagraphLayout }{}), ui.Offset{})
+		c.DrawRect(ui.NewRectFromLTWH(0, 0, 1, 1), paintOf(0xFF000000))
+	})
+	if l := mustFlatten(t, sceneOfPicture(ui.Offset{}, pic)); len(l.Commands) != 1 {
+		t.Errorf("%d commands: %v", len(l.Commands), kinds(l))
+	}
+}

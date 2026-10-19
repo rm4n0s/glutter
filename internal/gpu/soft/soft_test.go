@@ -292,7 +292,6 @@ func TestRenderErrors(t *testing.T) {
 		{"zero width", pathWith(paint(0xFF000000)), 0, 10, "SoftSizeInvalid"},
 		{"negative height", pathWith(paint(0xFF000000)), 10, -1, "SoftSizeInvalid"},
 		{"too large", pathWith(paint(0xFF000000)), 1 << 20, 10, "SoftSizeInvalid"},
-		{"text", sceneOf(ui.Offset{}, func(c *ui.Canvas) { c.DrawParagraph(&ui.Paragraph{}, ui.Offset{}) }), 10, 10, "SoftNotImplemented"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -40,6 +40,10 @@ type Engine struct {
 	opts  EngineOpts
 
 	byStyle map[string]*styleFonts
+
+	// paths and pictures cache the outlines and the color glyphs that paragraphs draw.
+	paths    map[glyphKey]*ui.Path
+	pictures map[colorKey]*ui.Picture
 }
 
 var _ ui.ParagraphFactory = (*Engine)(nil)
@@ -50,7 +54,8 @@ var _ ui.ParagraphFactory = (*Engine)(nil)
 //
 // Flutter: no counterpart
 func NewEngine(ctx context.Context, fonts *text.Collection, opts ...EngineOpts) *Engine {
-	return &Engine{ctx: ctx, fonts: fonts, opts: oneOpts(opts), byStyle: map[string]*styleFonts{}}
+	return &Engine{ctx: ctx, fonts: fonts, opts: oneOpts(opts), byStyle: map[string]*styleFonts{},
+		paths: map[glyphKey]*ui.Path{}, pictures: map[colorKey]*ui.Picture{}}
 }
 
 func (e *Engine) fontError(err error) {
@@ -76,8 +81,11 @@ type styleFonts struct {
 
 	files  []text.FontFile
 	loaded bool
-	faces  map[rune]*font.Face
-	first  *font.Face // the first face that loads: the one for a rune no face has
+
+	emoji      map[rune]*font.Face
+	emojiFiles []text.FontFile
+	faces      map[rune]*font.Face
+	first      *font.Face // the first face that loads: the one for a rune no face has
 }
 
 // fontsFor returns the font finder for a style.
@@ -131,6 +139,33 @@ func (f *styleFonts) candidates() []text.FontFile {
 	return f.files
 }
 
+// emojiFace returns the face of the "emoji" family (the color emoji font, as fontconfig
+// prefers it) that has a glyph for r, or nil.
+func (f *styleFonts) emojiFace(r rune) *font.Face {
+	if f.emoji == nil {
+		f.emoji = map[rune]*font.Face{}
+		files, err := f.e.fonts.Match(f.e.ctx, "emoji", f.weight, f.italic, f.lang)
+		if err != nil {
+			f.e.fontError(err)
+		}
+		f.emojiFiles = files
+	}
+	if face, ok := f.emoji[r]; ok {
+		return face
+	}
+	var found *font.Face
+	for _, file := range f.emojiFiles {
+		if face := f.face(file); face != nil {
+			if _, ok := face.NominalGlyph(r); ok {
+				found = face
+				break
+			}
+		}
+	}
+	f.emoji[r] = found
+	return found
+}
+
 // face loads the face of a candidate, reporting a failure and skipping it.
 func (f *styleFonts) face(file text.FontFile) *font.Face {
 	face, err := f.e.fonts.Face(f.e.ctx, file, f.variations...)
@@ -149,7 +184,13 @@ func (f *styleFonts) ResolveFace(r rune) *font.Face {
 		return face
 	}
 	var found *font.Face
+	if text.IsEmoji(r) {
+		found = f.emojiFace(r)
+	}
 	for _, file := range f.candidates() {
+		if found != nil {
+			break
+		}
 		face := f.face(file)
 		if face == nil {
 			continue

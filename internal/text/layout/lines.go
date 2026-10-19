@@ -263,6 +263,11 @@ func (p *paragraph) shapeEllipsis(text []rune, si int) *run {
 		Script: language.LookupScript(text[0]), Language: language.NewLanguage(st.Locale.LanguageTag())}
 	r := p.shapeRun(in, si)
 	r.rtl = dir == di.DirectionRTL
+	// The ellipsis is at the paragraph's level, after the text.
+	r.level = 0
+	if r.rtl {
+		r.level = 1
+	}
 	return r
 }
 
