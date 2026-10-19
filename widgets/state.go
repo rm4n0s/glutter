@@ -100,6 +100,9 @@ type stateData struct {
 	// when the state is first built, and never cleared, so that other goroutines
 	// can read it.
 	owner *BuildOwner
+	// mixins are the structs embedded in the state that hook into its
+	// lifecycle.
+	mixins []stateMixin
 }
 
 // StateOf is the embedded base of a State for the widget type W. It gives the

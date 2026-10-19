@@ -152,6 +152,13 @@ func isNil(v any) bool {
 	return false
 }
 
+// ValuesEqual is Dart's `==` for two values: Go equality for values that can be
+// compared, and identity for slices, maps and functions. A type with its own
+// notion of equality (a pointer to a struct, say) needs a function of its own.
+//
+// Flutter: no counterpart (the == operator)
+func ValuesEqual(a, b any) bool { return equalValues(a, b) }
+
 // equalValues is Dart's `==` for two values: Go equality for values that can
 // be compared, and identity for slices, maps and functions (which Dart
 // compares by identity too).

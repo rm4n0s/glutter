@@ -191,6 +191,12 @@ type Tween[T any] struct {
 	End  T
 	lerp TweenLerp[T]
 	name string
+	// noBegin is whether the tween was made with only an end (Flutter's null
+	// begin): TweenAnimationBuilder starts such a tween at its end.
+	noBegin bool
+	// isNone says which values are null (Flutter's nullable tweens, such as
+	// ColorTween), so that a null begin counts as no begin.
+	isNone func(T) bool
 }
 
 // NewTween creates a tween from begin to end with the built-in interpolation of
@@ -215,6 +221,67 @@ func NewTweenFunc[T any](begin, end T, lerp TweenLerp[T]) *Tween[T] {
 	t := &Tween[T]{Begin: begin, End: end, lerp: lerp}
 	InitAnimatableBase(&t.AnimatableBase, Animatable[T](t))
 	return t
+}
+
+// NewTweenEnd creates a tween that has only an end, like Flutter's
+// Tween(end: x) with a null begin. See NewTween for the interpolation.
+//
+// Flutter: animation/tween.dart Tween.new
+func NewTweenEnd[T any](end T) *Tween[T] { return NewTween(end, end).WithoutBegin() }
+
+// WithoutBegin makes the tween one that has only an end (Flutter's null begin):
+// HasBegin is false and FillBegin gives it a beginning. It returns the tween.
+//
+// Flutter: animation/tween.dart Tween.begin (null)
+func (t *Tween[T]) WithoutBegin() *Tween[T] {
+	t.noBegin = true
+	return t
+}
+
+// SetNullable says which values of the tween are null, for the tweens of
+// nullable types (ColorTween's none): a null begin counts as no begin, like
+// Flutter's `begin ??= end`. It returns the tween.
+//
+// Flutter: no counterpart (Dart's null)
+func (t *Tween[T]) SetNullable(isNone func(T) bool) *Tween[T] {
+	t.isNone = isNone
+	return t
+}
+
+// NewTweenFuncEnd creates a tween that has only an end and interpolates with
+// the function.
+//
+// Flutter: animation/tween.dart Tween.new
+func NewTweenFuncEnd[T any](end T, lerp TweenLerp[T]) *Tween[T] {
+	return NewTweenFunc(end, end, lerp).WithoutBegin()
+}
+
+// SetName sets the name that String shows, such as "AlignmentTween"; a tween of
+// your own type uses it as the class name. It returns the tween.
+//
+// Flutter: no counterpart (the name of the Dart class)
+func (t *Tween[T]) SetName(name string) *Tween[T] {
+	t.name = name
+	return t
+}
+
+// HasBegin is false for a tween made with NewTweenEnd or NewTweenFuncEnd until
+// FillBegin is called.
+//
+// Flutter: animation/tween.dart Tween.begin (null)
+func (t *Tween[T]) HasBegin() bool {
+	return !t.noBegin && (t.isNone == nil || !t.isNone(t.Begin))
+}
+
+// FillBegin sets the beginning to the end if the tween has none, which is
+// Flutter's `tween.begin ??= tween.end`.
+//
+// Flutter: animation/tween.dart Tween.begin
+func (t *Tween[T]) FillBegin() {
+	if !t.HasBegin() {
+		t.Begin = t.End
+		t.noBegin = false
+	}
 }
 
 func defaultLerp[T any]() (TweenLerp[T], bool) {
@@ -289,6 +356,7 @@ func NewColorTween(begin, end foundation.Opt[ui.Color]) *Tween[foundation.Opt[ui
 		return foundation.None[ui.Color]()
 	})
 	t.name = "ColorTween"
+	t.isNone = func(v foundation.Opt[ui.Color]) bool { return v.IsNone() }
 	return t
 }
 
@@ -311,6 +379,7 @@ func NewSizeTween(begin, end foundation.Opt[ui.Size]) *Tween[foundation.Opt[ui.S
 		return foundation.None[ui.Size]()
 	})
 	t.name = "SizeTween"
+	t.isNone = func(v foundation.Opt[ui.Size]) bool { return v.IsNone() }
 	return t
 }
 
@@ -333,6 +402,7 @@ func NewRectTween(begin, end foundation.Opt[ui.Rect]) *Tween[foundation.Opt[ui.R
 		return foundation.None[ui.Rect]()
 	})
 	t.name = "RectTween"
+	t.isNone = func(v foundation.Opt[ui.Rect]) bool { return v.IsNone() }
 	return t
 }
 

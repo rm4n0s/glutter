@@ -398,3 +398,15 @@ func ignoreHash(s string) string {
 	}
 	return s[:i] + "#00000" + s[i+6:]
 }
+
+func TestTickerOnDisposeIsCalledOnce(t *testing.T) {
+	tt := newTester()
+	calls := 0
+	ticker := NewTicker(tt.SchedulerBinding, func(time.Duration) {})
+	ticker.OnDispose = func() { calls++ }
+	ticker.Start()
+	ticker.Dispose()
+	if calls != 1 {
+		t.Errorf("OnDispose was called %d times, want 1", calls)
+	}
+}

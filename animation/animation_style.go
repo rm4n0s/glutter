@@ -78,6 +78,13 @@ func (s AnimationStyle) Merge(other *AnimationStyle) AnimationStyle {
 	return s.CopyWith(*other)
 }
 
+// CurveEqual reports whether two curves are the same value: equal curves of the
+// same type (a Cubic with the same numbers), or the same pointer. A CurveFunc
+// can't be compared, so it is never equal to anything but a nil curve.
+//
+// Flutter: no counterpart (the == operator of Curve)
+func CurveEqual(a, b Curve) bool { return curveEqual(a, b) }
+
 // curveEqual compares two curves; curves that can't be compared (functions) are
 // equal only when they are both nil.
 func curveEqual(a, b Curve) (equal bool) {

@@ -48,6 +48,12 @@ type Ticker struct {
 	// Flutter: scheduler/ticker.dart Ticker.debugLabel
 	DebugLabel string
 
+	// OnDispose, if set, is called when the ticker is disposed, before it stops.
+	// A TickerProvider uses it to forget the tickers it made.
+	//
+	// Deviation: Flutter's _WidgetTicker overrides dispose in a subclass.
+	OnDispose func()
+
 	future      *TickerFuture
 	muted       bool
 	startTime   foundation.Opt[time.Duration]
@@ -232,6 +238,9 @@ func (t *Ticker) AbsorbTicker(original *Ticker) {
 //
 // Flutter: scheduler/ticker.dart Ticker.dispose
 func (t *Ticker) Dispose() {
+	if t.OnDispose != nil {
+		t.OnDispose()
+	}
 	if t.future != nil {
 		local := t.future
 		t.future = nil

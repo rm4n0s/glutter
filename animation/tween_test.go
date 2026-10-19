@@ -9,8 +9,8 @@ import (
 )
 
 // Ported from packages/flutter/test/animation/tween_test.dart. The tests of
-// BorderTween, BorderRadiusTween and Matrix4Tween come with those tweens in
-// step 8.2 (they live in widgets/implicit_animations.dart).
+// BorderTween, BorderRadiusTween and Matrix4Tween are in
+// widgets/implicit_tweens_test.go (they live in widgets/implicit_animations.dart).
 
 type noLerp struct{ n int }
 
@@ -159,4 +159,59 @@ func TestCurveTweenWithAnInvalidCurveEndpoint(t *testing.T) {
 func sameColor(a, b ui.Color) bool {
 	d := func(x, y float32) bool { return math.Abs(float64(x-y)) <= 0.004 }
 	return d(a.A, b.A) && d(a.R, b.R) && d(a.G, b.G) && d(a.B, b.B)
+}
+
+func TestTweenWithoutBegin(t *testing.T) {
+	tw := NewTweenEnd(10.0)
+	if tw.HasBegin() {
+		t.Error("a tween made with NewTweenEnd has a begin")
+	}
+	tw.FillBegin()
+	if !tw.HasBegin() || tw.Begin != 10 || tw.Lerp(0.5) != 10 {
+		t.Errorf("after FillBegin: begin %v, has %v, lerp %v", tw.Begin, tw.HasBegin(), tw.Lerp(0.5))
+	}
+	both := NewTween(1.0, 3.0)
+	both.FillBegin()
+	if !both.HasBegin() || both.Begin != 1 {
+		t.Errorf("FillBegin changed a tween that has a begin: %v", both.Begin)
+	}
+	named := NewTween(1.0, 3.0).SetName("Mine")
+	if got := named.String(); got == "" {
+		t.Error("a named tween has no description")
+	}
+}
+
+func TestNullableTweenBeginIsFilled(t *testing.T) {
+	none := foundation.None[float64]()
+	tw := NewTweenFunc(none, foundation.Some(4.0), func(b, e foundation.Opt[float64], at float64) foundation.Opt[float64] { return e }).
+		SetNullable(func(o foundation.Opt[float64]) bool { return o.IsNone() })
+	if tw.HasBegin() {
+		t.Error("a none begin counts as a begin")
+	}
+	tw.FillBegin()
+	if v, _ := tw.Begin.Get(); !tw.HasBegin() || v != 4 {
+		t.Errorf("FillBegin gave %v", tw.Begin)
+	}
+}
+
+func TestCurveEqual(t *testing.T) {
+	fn := CurveFunc(func(x float64) float64 { return x })
+	tests := []struct {
+		name string
+		a, b Curve
+		want bool
+	}{
+		{"same constant", Curves.Linear, Curves.Linear, true},
+		{"different constants", Curves.Linear, Curves.EaseIn, false},
+		{"equal intervals", NewInterval(0, 0.5), NewInterval(0, 0.5), true},
+		{"different intervals", NewInterval(0, 0.5), NewInterval(0, 0.6), false},
+		{"functions never equal", fn, fn, false},
+		{"both nil", nil, nil, true},
+		{"one nil", nil, Curves.Linear, false},
+	}
+	for _, tt := range tests {
+		if got := CurveEqual(tt.a, tt.b); got != tt.want {
+			t.Errorf("%s: CurveEqual = %v, want %v", tt.name, got, tt.want)
+		}
+	}
 }

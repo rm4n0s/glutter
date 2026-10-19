@@ -468,3 +468,30 @@ func TestEnumNames(t *testing.T) {
 		t.Errorf("got %q", got)
 	}
 }
+
+func TestValuesEqual(t *testing.T) {
+	f := func() {}
+	s := []int{1}
+	tests := []struct {
+		name string
+		a, b any
+		want bool
+	}{
+		{"equal ints", 3, 3, true},
+		{"different ints", 3, 4, false},
+		{"different types", 3, 3.0, false},
+		{"both nil", nil, nil, true},
+		{"one nil", nil, 3, false},
+		{"same function", f, f, true},
+		{"another function", f, func() {}, false},
+		{"same slice", s, s, true},
+		{"equal slices with other backing", []int{1}, []int{1}, false},
+		{"comparable struct", ui.Offset{Dx: 1}, ui.Offset{Dx: 1}, true},
+		{"strings", "a", "a", true},
+	}
+	for _, tt := range tests {
+		if got := ValuesEqual(tt.a, tt.b); got != tt.want {
+			t.Errorf("%s: ValuesEqual = %v, want %v", tt.name, got, tt.want)
+		}
+	}
+}

@@ -203,6 +203,10 @@ func NewStatefulElement(w statefulWidget) *StatefulElement {
 	sd.element = e
 	sd.lifecycle = StateLifecycleCreated
 	e.state = state
+	sd.mixins = collectStateMixins(state)
+	for _, m := range sd.mixins {
+		m.attachStateMixin(state)
+	}
 	return e
 }
 
@@ -281,6 +285,9 @@ func (e *StatefulElement) Update(newWidget Widget) {
 // Flutter: widgets/framework.dart StatefulElement.activate
 func (e *StatefulElement) Activate() {
 	e.ComponentElement.Activate()
+	for _, m := range e.state.stateInternals().data().mixins {
+		m.activateStateMixin()
+	}
 	if h, ok := e.state.(activateStater); ok {
 		h.Activate()
 	}
@@ -305,6 +312,9 @@ func (e *StatefulElement) Unmount() {
 	sd := e.state.stateInternals().data()
 	if h, ok := e.state.(disposeStater); ok {
 		h.Dispose()
+	}
+	for _, m := range sd.mixins {
+		m.disposeStateMixin()
 	}
 	sd.lifecycle = StateLifecycleDefunct
 	if sd.cancel != nil {
