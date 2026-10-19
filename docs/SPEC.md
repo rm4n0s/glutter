@@ -783,6 +783,11 @@ Flutter's `assert` checks become checks that exist only in debug builds (`founda
 | `scheduleWarmUpFrame`, `onReportTimings`/`FrameTiming`, performance mode, service extensions, `debugPrint*Banner` flags | not ported yet | the engine has no warm-up frame or timings (the performance overlay is step 17.3); the flags go in `DebugOptions` (step 7.4) |
 | `TickerFuture` is a `Future<void>` | a struct with `Done()` (closed on completion only), `Then(fn)`, `OrCancel()` (a channel that gets nil, or a `TickerCanceled` error) and `WhenCompleteOrCancel(fn)`; callbacks run at once on the UI thread, not in a later microtask | futures are channels and callbacks (§12.6) |
 | callbacks that throw are reported and the frame goes on | a panic in a frame callback or task propagates for now | recovery points are wired in step 7.3 (§14.2) |
+| `Simulation` is an abstract class with a mutable `tolerance` | `physics.Simulation` is an interface (`X`, `Dx`, `IsDone`, `Tolerance`, `SetTolerance`); a simulation embeds `SimulationBase`, whose tolerance is the default until set. `Tolerance{}` has all fields 0, so `NewTolerance(ToleranceOpts{...})` is the constructor that gives Flutter's 1e-3 defaults | Go embedding; a zero value cannot be the default (§12.3) |
+| `BouncingScrollSimulation` and `ClampingScrollSimulation` are in `widgets/scroll_simulation.dart` | they are in package `physics`, as the §11.1 row lists them (step 5.4); step 9.2 does not port that file again | the scroll simulations depend on nothing but the physics |
+| `BoundedFrictionSimulation extends FrictionSimulation` and `timeAtX`, `finalX` call the overridden `x` | `BoundedFrictionSimulation` embeds `*FrictionSimulation` and has its own `X`, `FinalX`, `TimeAtX` | Go embedding has no virtual calls |
+| `nearEqual(double? a, double? b, epsilon)` | `NearEqual(a, b, epsilon float64)` and `NearEqualOpt(a, b Opt[float64], epsilon)` | no nullable numbers |
+| `FrictionSimulation.through`, `SpringDescription.withDampingRatio` and `.withDurationAndBounce` | `NewFrictionSimulationThrough`, `NewSpringDescriptionWithDampingRatio` and `NewSpringDescriptionWithDurationAndBounce` | §12.4 |
 
 ### 12.11 One import for apps
 

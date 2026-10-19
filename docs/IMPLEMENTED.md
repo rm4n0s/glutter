@@ -762,3 +762,17 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Manual checks:** none
 - **Deviations and follow-ups:** SPEC §12.10 has the rows: the binding as a struct without a singleton, `ScheduleTask` returning a channel, `LockEvents`, what was not ported (warm-up frame, timings, performance mode, service extensions, debug banners), `TickerFuture`, and callbacks that panic.
   - `TODO(step 7.3)`: report a panic in a frame callback or task and go on. The app binding of step 7.4 calls `HandleAppLifecycleStateChanged` from the dispatcher's lifecycle callback.
+
+## 5.4 physics
+
+- **Date:** 2026-10-19
+- **Branch:** feat/step-5.4-physics
+- **Summary:** package `physics` has `Simulation` and `SimulationBase`, `Tolerance`, `FrictionSimulation` (with `through`, `TimeAtX`, `FinalX` and a constant deceleration) and `BoundedFrictionSimulation`, `GravitySimulation`, `ClampedSimulation`, `SpringDescription` (damping ratio, duration and bounce constructors), `SpringSimulation` with its three closed-form solutions, `ScrollSpringSimulation`, `BouncingScrollSimulation` and `ClampingScrollSimulation` (ported from `widgets/scroll_simulation.dart`, because SPEC §11.1 lists them here), and `NearEqual`/`NearZero`.
+- **Main files:** `physics/{simulation,tolerance,utils,friction,gravity,clamped,spring,scroll,options}.go`.
+- **Proof:** none (the step has none).
+- **Tests:** (about 45 Flutter test cases ported)
+  - `near_equal_test.dart` (2), `utils_test.dart` (1), `tolerance_test.dart` (1), `to_string_test.dart` (1, with 8 strings), `gravity_simulation_test.dart` (2), `clamped_simulation_test.dart` (2), `friction_simulation_test.dart` (3), `spring_simulation_test.dart` (6: snap to end, continuity near critical damping, the four `withDurationAndBounce` cases and the invalid durations), `newton_test.dart` (14: friction, through in both directions, bounded friction, gravity, spring types, critical, over and underdamped springs, kinetic scroll in both directions, infinite edges, over and underscroll).
+  - Added: `NearEqualOpt`, the `Tolerance` defaults, scrolls that start outside the extents, a bouncing scroll with a constant deceleration, the clamping simulation (the shape of the fling for four velocities, the friction option, zero velocity), and every tag with its route (`EpsilonNegative`, `FrictionThroughInvalid`, `FrictionPositionOutOfBounds`, `GravityEndDistanceNegative`, `ClampedRangeInvalid`, `SpringDurationInvalid`, `ScrollExtentsInvalid`).
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · display tests none
+- **Manual checks:** none
+- **Deviations and follow-ups:** SPEC §12.10 has the rows: `Simulation` as an interface with a base struct, the scroll simulations in `physics`, `BoundedFrictionSimulation` by embedding, `NearEqual` without nullable numbers, and the constructor names. `docs/IMPLEMENTATION.md` step 9.2 no longer lists `scroll_simulation.dart`.

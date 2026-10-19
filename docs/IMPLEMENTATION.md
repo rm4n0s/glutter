@@ -609,7 +609,7 @@ This file breaks the milestones in `docs/SPEC.md` §18 into small steps. Each st
 ### 5.4 physics
 **Port from:** `packages/flutter/lib/src/physics/`.
 **Tests:** `packages/flutter/test/physics/`.
-**Tasks:** every simulation in SPEC §11.1's `physics` row, plus `Tolerance`.
+**Tasks:** every simulation in SPEC §11.1's `physics` row, plus `Tolerance`. That includes `BouncingScrollSimulation` and `ClampingScrollSimulation`, which Flutter keeps in `widgets/scroll_simulation.dart`: port that file here (step 9.2 does not).
 
 ### 5.5 gestures, part 1: events, hit testing, arena
 **Read:** SPEC §11.1 (`gestures` row), §8.5.
@@ -810,7 +810,7 @@ A `Text` shows `Curves` names.
 **Tasks:** the sliver protocol (`SliverConstraints`, `SliverGeometry`), `RenderViewport`, `RenderShrinkWrappingViewport`, `RenderAbstractViewport`, and every sliver render object in SPEC §11.1's `rendering` row, including the grid delegates.
 
 ### 9.2 Scrollable, physics and scrollbars
-**Port from:** `widgets/scrollable.dart`, `scroll_controller.dart`, `scroll_position.dart`, `scroll_position_with_single_context.dart`, `scroll_physics.dart`, `scroll_simulation.dart`, `scroll_activity.dart`, `scroll_configuration.dart`, `scroll_notification.dart`, `scroll_metrics.dart`, `scrollbar.dart`, `scroll_delegate.dart`, `scroll_context.dart`, `scrollable_helpers.dart`.
+**Port from:** `widgets/scrollable.dart`, `scroll_controller.dart`, `scroll_position.dart`, `scroll_position_with_single_context.dart`, `scroll_physics.dart`, `scroll_activity.dart`, `scroll_configuration.dart`, `scroll_notification.dart`, `scroll_metrics.dart`, `scrollbar.dart`, `scroll_delegate.dart`, `scroll_context.dart`, `scrollable_helpers.dart`.
 **Tests:** `widgets/scrollable_test.dart`, `scroll_controller_test.dart`, `scroll_physics_test.dart`, `scroll_activity_test.dart`, `scroll_behavior_test.dart`, `scrollbar_test.dart`, `scroll_notification_test.dart` (the relevant cases).
 **Tasks:**
 1. `Scrollable`, `ScrollController`, `ScrollPosition` and the physics.
