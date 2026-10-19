@@ -747,3 +747,18 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Deviations and follow-ups:** SPEC §12.10 has the rows: callbacks as fields and the exported "Called by the engine" methods, `Render` returning an error and drawing at once, the lifecycle without platform channels, `ViewConfiguration` and `PlatformConfiguration`, `[]ui.Locale` and `ui.Brightness`, and `Config.Start`.
   - `TODO(step 6.7)`: `View.UpdateSemantics` and the semantics callbacks. `TODO(step 10.4)`: a key the framework does not handle goes on to the text input. Text input events and drops (`OnTextInput`, `OnDrop`) are not wired yet (steps 11.2 and 14.6).
   - The engine still has one window; several views come with step 14.2.
+
+## 5.3 scheduler
+
+- **Date:** 2026-10-19
+- **Branch:** feat/step-5.3-scheduler
+- **Summary:** package `scheduler` has `SchedulerBinding` (tasks with priorities and a scheduling strategy, transient, persistent and post-frame callbacks, `SchedulerPhase`, frame scheduling and forced frames through the dispatcher, the epoch and `TimeDilation`, `EndOfFrame`, lifecycle-driven enabling of frames, `LockEvents`), `Priority`, and `Ticker`, `TickerProvider` and `TickerFuture` (a channel plus callbacks). `ui.PlatformDispatcher` got `Post` (the event loop turn that `Timer.run` stands for), and `internal/fakeclock` is a fake clock with timers for tests.
+- **Main files:** `scheduler/{binding,ticker,priority,options}.go`, `internal/fakeclock/`, `ui/platform_dispatcher.go` (`Post`), `internal/engine/engine.go` (`Post`).
+- **Proof:** none (the step has none).
+- **Tests:** (about 25 Flutter test cases ported)
+  - `priority_test.dart` (1), `time_dilation_test.dart` (1), `animation_test.dart` (2), `binding_test.dart` (5: forced frames, ticker forced frames, the two `debugAssertNoTimeDilation` cases, a persistent callback added during one), `scheduler_test.dart` (6: task order, futures to completion, frame callbacks with and without a new frame, the system frame time stamp with the time dilation; the warm-up, timings and `Flutter.Frame` tests are not ported), `ticker_test.dart` (6: mute control, time dilation both ways, pause, created while paused; the `toString` and memory-event cases became `String` tests).
+  - Added: same-priority tasks in order, the default strategy holding idle tasks during animations, `LockEvents` nesting, cancelling a callback by ID, callbacks scheduled inside a frame, the phases of a frame, `EnsureVisualUpdate` in each phase, `EndOfFrame`, lifecycle and frames, ticker start inside a frame, stop and start inside the callback, dispose cancelling the future, `TickerFuture` completion, cancel and late asks, `AbsorbTicker`, and the tags with their routes (`TimeDilationInvalid`, `TimeDilationActive`, `TransientCallbacksPending`, `FrameCallbackIDInvalid`, `FrameAlreadyBegun`, `FrameNotBegun`, `NoFrameInProgress`, `TickerStartedTwice`, `TickerUsedAfterDispose`, `TickerCanceled`). `fakeclock`: ordering, nested timers, stop, `Set`, the real clock.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · display tests none
+- **Manual checks:** none
+- **Deviations and follow-ups:** SPEC §12.10 has the rows: the binding as a struct without a singleton, `ScheduleTask` returning a channel, `LockEvents`, what was not ported (warm-up frame, timings, performance mode, service extensions, debug banners), `TickerFuture`, and callbacks that panic.
+  - `TODO(step 7.3)`: report a panic in a frame callback or task and go on. The app binding of step 7.4 calls `HandleAppLifecycleStateChanged` from the dispatcher's lifecycle callback.

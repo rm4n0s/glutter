@@ -13,6 +13,7 @@ type fakeHost struct {
 	scheduled int
 	rendered  []renderedScene
 	exits     int
+	posted    []func()
 	err       error
 }
 
@@ -27,6 +28,7 @@ func (h *fakeHost) RenderView(v ViewID, s *Scene) error {
 	return h.err
 }
 func (h *fakeHost) RequestAppExit() { h.exits++ }
+func (h *fakeHost) Post(fn func())  { h.posted = append(h.posted, fn) }
 
 func TestDispatcherViews(t *testing.T) {
 	d := NewPlatformDispatcher(&fakeHost{})
@@ -273,6 +275,20 @@ func TestAppLifecycleState(t *testing.T) {
 	want := []AppLifecycleState{AppLifecycleStateResumed, AppLifecycleStateInactive, AppLifecycleStateHidden}
 	if !reflect.DeepEqual(states, want) || d.AppLifecycleState() != AppLifecycleStateHidden {
 		t.Errorf("states = %v", states)
+	}
+}
+
+func TestPost(t *testing.T) {
+	host := &fakeHost{}
+	ran := 0
+	NewPlatformDispatcher(host).Post(func() { ran++ })
+	if ran != 0 || len(host.posted) != 1 {
+		t.Fatalf("a posted function must wait for the engine: ran %d, posted %d", ran, len(host.posted))
+	}
+	host.posted[0]()
+	NewPlatformDispatcher(nil).Post(func() { ran++ }) // no engine: at once
+	if ran != 2 {
+		t.Errorf("ran = %d, want 2", ran)
 	}
 }
 

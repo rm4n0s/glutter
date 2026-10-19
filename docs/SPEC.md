@@ -777,6 +777,12 @@ Flutter's `assert` checks become checks that exist only in debug builds (`founda
 | the platform tells the locales as `Locale` objects | `platform.Settings.Locales` is `[]ui.Locale`, parsed by `ui.ParseLocale` from BCP 47 tags and POSIX names such as `en_US.UTF-8` | the Linux backends read tags |
 | `Brightness` is in `dart:ui` | `ui.Brightness` with the unspecified zero value, which the dispatcher reads as light | enum convention (§12.3) |
 | the embedder starts the framework by calling `main` | `engine.Config.Start(d *ui.PlatformDispatcher) error` runs once, on the UI thread, after the window exists and before the loop; the dev examples' `Config.Scene` is built on the dispatcher (an `OnDrawFrame` that renders its scene) and is used only when `Start` is nil | `RunApp` (step 7.4) attaches the binding in `Start` |
+| `SchedulerBinding` is a mixin with `SchedulerBinding.instance`, and `timeDilation` is a global | `scheduler.SchedulerBinding` is a struct made by `NewSchedulerBinding(dispatcher)` (the framework's bindings embed it); `TimeDilation()`/`SetTimeDilation(v)` are on the binding | no singletons (CLAUDE.md); `Ticker` takes the binding in `NewTicker` |
+| `scheduleTask<T>` returns a `Future<T>`; tasks wait for `Timer.run` | `ScheduleTask[T](b, task, priority)` returns a `<-chan T` and asks the event loop through `PlatformDispatcher.Post`; tasks of one priority run in the order scheduled (Dart's heap does not promise it) | futures are channels (§12.6) |
+| `lockEvents(callback)` unlocks when the callback's `Future` completes | `LockEvents()` returns the function that unlocks; `AddUnlockedCallback` stands for overriding `unlocked()` | no futures |
+| `scheduleWarmUpFrame`, `onReportTimings`/`FrameTiming`, performance mode, service extensions, `debugPrint*Banner` flags | not ported yet | the engine has no warm-up frame or timings (the performance overlay is step 17.3); the flags go in `DebugOptions` (step 7.4) |
+| `TickerFuture` is a `Future<void>` | a struct with `Done()` (closed on completion only), `Then(fn)`, `OrCancel()` (a channel that gets nil, or a `TickerCanceled` error) and `WhenCompleteOrCancel(fn)`; callbacks run at once on the UI thread, not in a later microtask | futures are channels and callbacks (§12.6) |
+| callbacks that throw are reported and the frame goes on | a panic in a frame callback or task propagates for now | recovery points are wired in step 7.3 (§14.2) |
 
 ### 12.11 One import for apps
 

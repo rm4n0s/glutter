@@ -17,6 +17,9 @@ type PlatformHost interface {
 	RenderView(view ViewID, scene *Scene) error
 	// RequestAppExit asks the engine to end the app.
 	RequestAppExit()
+	// Post runs fn on the UI thread, after the work that is running now. It is
+	// safe to call from any goroutine.
+	Post(fn func())
 }
 
 // PlatformConfiguration is the system-wide configuration the app follows. The
@@ -220,6 +223,20 @@ func (d *PlatformDispatcher) ScheduleFrame() {
 	if d.host != nil {
 		d.host.ScheduleFrame()
 	}
+}
+
+// Post runs fn on the UI thread, after the work that is running now, and
+// wakes the event loop. It is safe to call from any goroutine; functions
+// posted by one goroutine run in the order it posted them. Without an engine
+// behind the dispatcher, fn runs at once.
+//
+// Flutter: dart:async Timer.run, scheduleMicrotask (the event loop of the UI isolate)
+func (d *PlatformDispatcher) Post(fn func()) {
+	if d.host == nil {
+		fn()
+		return
+	}
+	d.host.Post(fn)
 }
 
 // RequestAppExit asks the engine to end the app: the windows close and the

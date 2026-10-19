@@ -16,7 +16,11 @@ linters:
     revive:
       rules:
         # Exported identifiers need a doc comment (CLAUDE.md "Definition of done").
+        # Names follow Flutter (scheduler.SchedulerBinding, rendering.RenderBox),
+        # so the check for names that repeat the package name is off.
         - name: exported
+          arguments:
+            - disableStutteringCheck
         - name: package-comments
 
   exclusions:

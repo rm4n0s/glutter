@@ -420,6 +420,9 @@ func (h *handler) ScheduleFrame() {
 // RequestAppExit ends Run (ui.PlatformHost).
 func (h *handler) RequestAppExit() { h.cancel() }
 
+// Post runs fn on the UI thread (ui.PlatformHost).
+func (h *handler) Post(fn func()) { h.conn.Post(fn) }
+
 // RenderView draws the scene the framework rendered into the view
 // (ui.PlatformHost).
 func (h *handler) RenderView(view ui.ViewID, scene *ui.Scene) error {
