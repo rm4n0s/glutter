@@ -259,6 +259,8 @@ type handler struct {
 var (
 	_ platform.Handler = (*handler)(nil)
 	_ ui.PlatformHost  = (*handler)(nil)
+	_ ui.CursorHost    = (*handler)(nil)
+	_ ui.ClipboardHost = (*handler)(nil)
 )
 
 func (h *handler) OnMetrics(view ui.ViewID, m platform.ViewMetrics) {
@@ -357,7 +359,7 @@ func (h *handler) OnKey(d ui.KeyData) {
 		if f := h.cfg.Hooks.Key; f != nil {
 			f(d)
 		}
-		// TODO(step 10.4): an unhandled key goes on to the text input.
+		// TODO(step 11.4): an unhandled key goes on to the text input.
 		h.disp.DispatchKeyData(d)
 	})
 }
@@ -421,6 +423,27 @@ func (h *handler) ScheduleFrame() {
 
 // RequestAppExit ends Run (ui.PlatformHost).
 func (h *handler) RequestAppExit() { h.cancel() }
+
+// ActivateSystemCursor shows the cursor of the kind over the window
+// (ui.CursorHost). The engine has one window, so the device does not matter.
+func (h *handler) ActivateSystemCursor(_ int, kind string) {
+	cursor, ok := platform.MouseCursorFromKind(kind)
+	if !ok {
+		h.log.Warn("glutter: unknown system mouse cursor", "kind", kind)
+		return
+	}
+	h.win.SetCursor(cursor)
+}
+
+// SetClipboardText puts text on the system clipboard (ui.ClipboardHost).
+func (h *handler) SetClipboardText(ctx context.Context, text string, done func(error)) {
+	h.conn.Clipboard().SetText(ctx, text, done)
+}
+
+// GetClipboardText reads the text of the system clipboard (ui.ClipboardHost).
+func (h *handler) GetClipboardText(ctx context.Context, done func(string, bool, error)) {
+	h.conn.Clipboard().GetText(ctx, done)
+}
 
 // Post runs fn on the UI thread (ui.PlatformHost).
 func (h *handler) Post(fn func()) { h.conn.Post(fn) }

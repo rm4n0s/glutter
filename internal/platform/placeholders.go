@@ -36,14 +36,6 @@ type DragData struct{}
 // Flutter: no counterpart
 type DropEvent struct{}
 
-// Clipboard is the system clipboard.
-//
-// TODO(step 10.4): text access; TODO(step 11.6): primary selection and rich
-// formats.
-//
-// Flutter: services/clipboard.dart Clipboard
-type Clipboard interface{}
-
 // Services groups the optional desktop capabilities. Each accessor returns nil
 // when the capability is absent.
 //

@@ -16,16 +16,18 @@ import (
 //
 // Flutter: no counterpart
 type Platform struct {
-	mu        sync.Mutex
-	queue     []func(h platform.Handler)
-	wake      chan struct{} // capacity 1: a pending wakeup for Run
-	running   bool
-	nextView  ui.ViewID
-	windows   []*Window
-	log       []Entry
-	displays  []platform.Display
-	settings  platform.Settings
-	clipboard platform.Clipboard
+	mu       sync.Mutex
+	queue    []func(h platform.Handler)
+	wake     chan struct{} // capacity 1: a pending wakeup for Run
+	running  bool
+	nextView ui.ViewID
+	windows  []*Window
+	log      []Entry
+	displays []platform.Display
+	settings platform.Settings
+
+	clipboardText string
+	hasClipboard  bool
 }
 
 var _ platform.Platform = (*Platform)(nil)
@@ -160,13 +162,46 @@ func (p *Platform) SetDisplays(displays []platform.Display) {
 	p.displays = append([]platform.Display(nil), displays...)
 }
 
-// Clipboard returns nil: the fake has no clipboard yet.
-//
-// TODO(step 10.4): an in-memory clipboard.
+// Clipboard returns the in-memory clipboard. Its results come back through Post,
+// like the real ones.
 //
 // Flutter: no counterpart
 func (p *Platform) Clipboard() platform.Clipboard {
-	return p.clipboard
+	return &clipboard{p: p}
+}
+
+// ClipboardText is the text that the in-memory clipboard holds, and whether it
+// holds any.
+//
+// Flutter: no counterpart
+func (p *Platform) ClipboardText() (string, bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.clipboardText, p.hasClipboard
+}
+
+// SetClipboardText sets the text of the in-memory clipboard, as another
+// application would.
+//
+// Flutter: no counterpart
+func (p *Platform) SetClipboardText(text string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.clipboardText, p.hasClipboard = text, true
+}
+
+type clipboard struct{ p *Platform }
+
+func (c *clipboard) SetText(_ context.Context, text string, done func(error)) {
+	c.p.SetClipboardText(text)
+	if done != nil {
+		c.p.Post(func() { done(nil) })
+	}
+}
+
+func (c *clipboard) GetText(ctx context.Context, done func(string, bool, error)) {
+	text, ok := c.p.ClipboardText()
+	c.p.Post(func() { done(text, ok, ctx.Err()) })
 }
 
 // Settings returns the current settings: the zero value, or what the last

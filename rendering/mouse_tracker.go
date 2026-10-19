@@ -108,6 +108,16 @@ func NewMouseTracker(hitTestInView MouseTrackerHitTest, fallbackCursor services.
 	}
 }
 
+// SetSystemCursorActivator sets the function that shows a system cursor on a
+// device: the dispatcher's, in an app.
+//
+// Deviation: Flutter's cursor sessions use a platform channel (SPEC §12.10).
+//
+// Flutter: services/mouse_cursor.dart _SystemMouseCursorSession.activate
+func (t *MouseTracker) SetSystemCursorActivator(activate services.SystemCursorActivator) {
+	t.mouseCursorManager.ActivateSystemCursor = activate
+}
+
 // MouseIsConnected is whether any mouse is connected.
 //
 // Flutter: rendering/mouse_tracker.dart MouseTracker.mouseIsConnected

@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"reflect"
 	"testing"
 	"time"
@@ -29,6 +30,14 @@ func (h *fakeHost) RenderView(v ViewID, s *Scene) error {
 }
 func (h *fakeHost) RequestAppExit() { h.exits++ }
 func (h *fakeHost) Post(fn func())  { h.posted = append(h.posted, fn) }
+
+func (h *fakeHost) runPosted() {
+	for len(h.posted) > 0 {
+		fn := h.posted[0]
+		h.posted = h.posted[1:]
+		fn()
+	}
+}
 
 func TestDispatcherViews(t *testing.T) {
 	d := NewPlatformDispatcher(&fakeHost{})
@@ -392,6 +401,78 @@ func TestAppExitEnumNames(t *testing.T) {
 	for _, tc := range tests {
 		if tc.got != tc.want {
 			t.Errorf("String = %q, want %q", tc.got, tc.want)
+		}
+	}
+}
+
+type cursorHost struct {
+	fakeHost
+	activated []string
+}
+
+func (h *cursorHost) ActivateSystemCursor(device int, kind string) {
+	h.activated = append(h.activated, kind)
+}
+
+func TestActivateSystemCursor(t *testing.T) {
+	host := &cursorHost{}
+	NewPlatformDispatcher(host).ActivateSystemCursor(3, "click")
+	if len(host.activated) != 1 || host.activated[0] != "click" {
+		t.Errorf("activated = %v", host.activated)
+	}
+	// A host that cannot show cursors ignores the call.
+	NewPlatformDispatcher(&fakeHost{}).ActivateSystemCursor(3, "click")
+}
+
+type clipboardHost struct {
+	fakeHost
+	text string
+	has  bool
+}
+
+func (h *clipboardHost) SetClipboardText(_ context.Context, text string, done func(error)) {
+	h.text, h.has = text, true
+	if done != nil {
+		h.Post(func() { done(nil) })
+	}
+}
+
+func (h *clipboardHost) GetClipboardText(_ context.Context, done func(string, bool, error)) {
+	h.Post(func() { done(h.text, h.has, nil) })
+}
+
+func TestClipboardCallsReachTheHost(t *testing.T) {
+	host := &clipboardHost{}
+	d := NewPlatformDispatcher(host)
+	var setErr error = errors.New("NotCalled", "set was not called")
+	d.SetClipboardText(context.Background(), "hello", func(err error) { setErr = err })
+	var got string
+	var gotOK bool
+	d.GetClipboardText(context.Background(), func(text string, ok bool, err error) { got, gotOK = text, ok })
+	host.runPosted()
+	if setErr != nil || got != "hello" || !gotOK {
+		t.Errorf("set error = %v, got %q ok=%v", setErr, got, gotOK)
+	}
+}
+
+func TestClipboardUnavailable(t *testing.T) {
+	host := &fakeHost{}
+	d := NewPlatformDispatcher(host)
+	var setErr, getErr error
+	d.SetClipboardText(context.Background(), "x", func(err error) { setErr = err })
+	d.GetClipboardText(context.Background(), func(_ string, ok bool, err error) { getErr = err })
+	if setErr != nil || getErr != nil {
+		t.Fatal("the results must not arrive before the calls return")
+	}
+	host.runPosted()
+	for name, err := range map[string]error{"set": setErr, "get": getErr} {
+		appErr, ok := errors.FromError(err)
+		if !ok {
+			t.Errorf("%s: expected *errors.Error, got %T", name, err)
+			continue
+		}
+		if !appErr.HasRoute("errClipboardUnavailable.ClipboardUnavailable") {
+			t.Errorf("%s: unexpected failure path: %s", name, appErr.Route())
 		}
 	}
 }

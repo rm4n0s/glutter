@@ -1,8 +1,11 @@
 package ui
 
 import (
+	"context"
 	"slices"
 	"time"
+
+	"github.com/rm4n0s/errors"
 )
 
 // PlatformHost is what the dispatcher asks of the engine. The engine
@@ -32,6 +35,34 @@ type SemanticsHost interface {
 	// SetSemanticsTreeEnabled says whether the framework produces a semantics
 	// tree; the engine then keeps its accessibility bridge in step.
 	SetSemanticsTreeEnabled(enabled bool)
+}
+
+// CursorHost is what the engine implements to show the system mouse cursors. The
+// dispatcher uses it when the host has it; a host without it shows none.
+//
+// Flutter: no counterpart (the engine's side of the flutter/mousecursor channel)
+type CursorHost interface {
+	// ActivateSystemCursor shows the system cursor of the kind (the kind of a
+	// SystemMouseCursor, such as "click") over the window that the device's
+	// pointer is in.
+	ActivateSystemCursor(device int, kind string)
+}
+
+// ClipboardHost is what the engine implements to give access to the system
+// clipboard. The dispatcher uses it when the host has it; a host without it
+// fails the clipboard calls with ClipboardUnavailable. The functions that the
+// methods take are called later on the UI thread, never before the method has
+// returned.
+//
+// Flutter: no counterpart (the engine's side of the Clipboard calls of the
+// flutter/platform channel)
+type ClipboardHost interface {
+	// SetClipboardText makes text the content of the clipboard; done, when it is
+	// not nil, gets the error if any.
+	SetClipboardText(ctx context.Context, text string, done func(err error))
+	// GetClipboardText reads the text of the clipboard; ok is false when the
+	// clipboard has no text.
+	GetClipboardText(ctx context.Context, done func(text string, ok bool, err error))
 }
 
 // PlatformConfiguration is the system-wide configuration the app follows. The
@@ -276,6 +307,57 @@ func (d *PlatformDispatcher) Post(fn func()) {
 		return
 	}
 	d.host.Post(fn)
+}
+
+// ActivateSystemCursor asks the engine to show the system cursor of the kind for
+// the device. Nothing happens when the host cannot show cursors.
+//
+// Deviation: Flutter sends it as the activateSystemCursor call of the
+// flutter/mousecursor platform channel (SPEC §12.10).
+//
+// Flutter: services/mouse_cursor.dart _SystemMouseCursorSession.activate
+func (d *PlatformDispatcher) ActivateSystemCursor(device int, kind string) {
+	if h, ok := d.host.(CursorHost); ok {
+		h.ActivateSystemCursor(device, kind)
+	}
+}
+
+// SetClipboardText asks the engine to put text on the system clipboard. done,
+// when it is not nil, is called later on the UI thread with the error if any.
+// A host without a clipboard fails with ClipboardUnavailable.
+//
+// Deviation: Flutter sends it as the Clipboard.setData call of the
+// flutter/platform channel (SPEC §12.10).
+//
+// Flutter: services/clipboard.dart Clipboard.setData
+func (d *PlatformDispatcher) SetClipboardText(ctx context.Context, text string, done func(err error)) {
+	if h, ok := d.host.(ClipboardHost); ok {
+		h.SetClipboardText(ctx, text, done)
+		return
+	}
+	if done != nil {
+		d.Post(func() { done(errClipboardUnavailable()) })
+	}
+}
+
+// GetClipboardText asks the engine to read the text of the system clipboard.
+// done is called later on the UI thread; ok is false when the clipboard has no
+// text. A host without a clipboard fails with ClipboardUnavailable.
+//
+// Deviation: Flutter sends it as the Clipboard.getData call of the
+// flutter/platform channel (SPEC §12.10).
+//
+// Flutter: services/clipboard.dart Clipboard.getData
+func (d *PlatformDispatcher) GetClipboardText(ctx context.Context, done func(text string, ok bool, err error)) {
+	if h, ok := d.host.(ClipboardHost); ok {
+		h.GetClipboardText(ctx, done)
+		return
+	}
+	d.Post(func() { done("", false, errClipboardUnavailable()) })
+}
+
+func errClipboardUnavailable() error {
+	return errors.New("ClipboardUnavailable", "the engine has no system clipboard")
 }
 
 // RequestAppExit asks the engine to end the app: the windows close and the

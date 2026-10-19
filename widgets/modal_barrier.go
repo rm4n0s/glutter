@@ -9,6 +9,7 @@ import (
 	"github.com/rm4n0s/glutter/painting"
 	"github.com/rm4n0s/glutter/rendering"
 	"github.com/rm4n0s/glutter/semantics"
+	"github.com/rm4n0s/glutter/services"
 	"github.com/rm4n0s/glutter/ui"
 )
 
@@ -186,8 +187,9 @@ func (w *ModalBarrier) Build(bc BuildContext) Widget {
 				navigatorMaybePop(bc)
 			}
 		}
-		// TODO(no step yet): SystemSound.play(SystemSoundType.alert) when not
-		// dismissible.
+		if !dismissible {
+			WidgetsBindingOf(bc).SystemSound().Play(services.SystemSoundTypeAlert)
+		}
 	}
 
 	semanticsOpts := SemanticsOpts{}
@@ -206,9 +208,8 @@ func (w *ModalBarrier) Build(bc BuildContext) Widget {
 	if c, ok := o.Color.Get(); ok {
 		fill = NewColoredBox(c, nil)
 	}
-	// TODO(step 10.4): MouseRegion(cursor: SystemMouseCursors.basic).
 	var barrier Widget = NewSemantics(
-		NewMouseRegion(NewConstrainedBox(rendering.NewBoxConstraintsExpand(), fill)),
+		NewMouseRegion(NewConstrainedBox(rendering.NewBoxConstraintsExpand(), fill), MouseRegionOpts{Cursor: services.SystemMouseCursors.Basic}),
 		semanticsOpts)
 
 	// Developers can set dismissible and barrierSemanticsDismissible to let

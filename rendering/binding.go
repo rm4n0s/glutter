@@ -21,9 +21,7 @@ type RendererBindingOpts struct {
 	// fresh set with every flag off.
 	Debug *DebugOptions
 	// FallbackCursor is the cursor of the mouse tracker when no region asks for
-	// one. Without it the binding has no mouse tracker.
-	//
-	// TODO(step 10.4): default to SystemMouseCursors.basic.
+	// one; the default is SystemMouseCursors.Basic.
 	FallbackCursor services.MouseCursor
 	// ReportError is called with the error of a frame that could not be sent to
 	// the engine, and with the panics that the render objects recover in layout
@@ -88,13 +86,16 @@ func NewRendererBinding(d *ui.PlatformDispatcher, s *scheduler.SchedulerBinding,
 		b.handleMetricsChanged()
 	}
 	s.AddPersistentFrameCallback(b.handlePersistentFrame)
-	if o.FallbackCursor != nil {
-		b.InitMouseTracker(NewMouseTracker(func(position ui.Offset, viewID ui.ViewID) *gestures.HitTestResult {
-			result := gestures.NewHitTestResult()
-			b.HitTestInView(result, position, viewID)
-			return result
-		}, o.FallbackCursor))
+	if o.FallbackCursor == nil {
+		o.FallbackCursor = services.SystemMouseCursors.Basic
 	}
+	tracker := NewMouseTracker(func(position ui.Offset, viewID ui.ViewID) *gestures.HitTestResult {
+		result := gestures.NewHitTestResult()
+		b.HitTestInView(result, position, viewID)
+		return result
+	}, o.FallbackCursor)
+	tracker.SetSystemCursorActivator(d.ActivateSystemCursor)
+	b.InitMouseTracker(tracker)
 	g.OnHitTestInView = b.hitTestRenderView
 	g.OnDispatchEvent = b.onDispatchEvent
 	b.rootOwner.Attach(b.manifold)

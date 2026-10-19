@@ -155,8 +155,7 @@ func TestListenerBehavior(t *testing.T) {
 }
 
 // TestMouseRegionHover checks the hover callback, which reaches the region
-// through the pointer events. The enter and exit callbacks come from the mouse
-// tracker, which the bindings get with the fallback cursor (step 10.4).
+// through the pointer events.
 func TestMouseRegionHover(t *testing.T) {
 	var hovers []ui.Offset
 	ts := gluttertest.New(t, gluttertest.Opts{})

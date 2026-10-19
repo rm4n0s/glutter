@@ -12,6 +12,7 @@ import (
 	"github.com/rm4n0s/glutter/painting"
 	"github.com/rm4n0s/glutter/rendering"
 	"github.com/rm4n0s/glutter/scheduler"
+	"github.com/rm4n0s/glutter/services"
 	"github.com/rm4n0s/glutter/ui"
 )
 
@@ -154,6 +155,10 @@ type WidgetsBinding struct {
 	gesture   *gestures.GestureBinding
 	painting  *painting.PaintingBinding
 	renderer  *rendering.RendererBinding
+	keyboard  *services.HardwareKeyboard
+	navigator *services.SystemNavigator
+	sound     *services.SystemSound
+	clipboard *services.Clipboard
 	owner     *BuildOwner
 	debug     *DebugOptions
 	report    foundation.ErrorReporter
@@ -263,6 +268,15 @@ func NewWidgetsBinding(ctx context.Context, d *ui.PlatformDispatcher, opts ...Wi
 	b.renderer = rendering.NewRendererBinding(d, b.scheduler, b.gesture, rendering.RendererBindingOpts{
 		Debug: o.Debug.Rendering, ReportError: o.ErrorReporter,
 	})
+	b.keyboard = services.NewHardwareKeyboard(services.HardwareKeyboardOpts{
+		ErrorReporter:            o.ErrorReporter,
+		DebugPrintKeyboardEvents: func() bool { return b.debug.PrintKeyboardEvents },
+		DebugPrint:               b.debug.DebugPrint,
+	})
+	d.OnKeyData = b.keyboard.HandleKeyData
+	b.navigator = &services.SystemNavigator{OnPop: func(foundation.Opt[bool]) { d.RequestAppExit() }}
+	b.sound = &services.SystemSound{}
+	b.clipboard = services.NewClipboard(d)
 	b.owner = NewBuildOwner(BuildOwnerOpts{
 		OnBuildScheduled: b.handleBuildScheduled, OnError: o.ErrorReporter, Debug: o.Debug,
 		Post: d.Post, UIThread: o.UIThread, ErrorWidgetBuilder: o.ErrorWidgetBuilder,
@@ -405,6 +419,29 @@ func (b *WidgetsBinding) Post(fn func()) { b.d.Post(fn) }
 // Flutter: widgets/binding.dart WidgetsBinding.rootElement
 func (b *WidgetsBinding) RootElement() *RootElement { return b.rootElement }
 
+// Keyboard is the hardware keyboard: the keys that are pressed, the lock modes,
+// and the handlers that see the key events first. The binding feeds it the
+// engine's key data.
+//
+// Flutter: services/binding.dart ServicesBinding.keyboard
+func (b *WidgetsBinding) Keyboard() *services.HardwareKeyboard { return b.keyboard }
+
+// SystemNavigator is the navigation of the system around the app. Its Pop ends
+// the app.
+//
+// Flutter: services/system_navigator.dart SystemNavigator
+func (b *WidgetsBinding) SystemNavigator() *services.SystemNavigator { return b.navigator }
+
+// SystemSound plays the sounds of the system; see services.SystemSound.
+//
+// Flutter: services/system_sound.dart SystemSound
+func (b *WidgetsBinding) SystemSound() *services.SystemSound { return b.sound }
+
+// Clipboard is the system clipboard; see services.Clipboard.
+//
+// Flutter: services/clipboard.dart Clipboard
+func (b *WidgetsBinding) Clipboard() *services.Clipboard { return b.clipboard }
+
 // IsRootWidgetAttached is whether the root widget was attached.
 //
 // Flutter: widgets/binding.dart WidgetsBinding.isRootWidgetAttached
@@ -518,7 +555,7 @@ func (b *WidgetsBinding) HandlePopRoute() bool {
 			return true
 		}
 	}
-	b.d.RequestAppExit()
+	b.navigator.Pop()
 	return false
 }
 

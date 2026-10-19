@@ -2,6 +2,7 @@ package widgets
 
 import (
 	"fmt"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -626,6 +627,10 @@ type NavigatorOpts struct {
 	// RequestFocus is whether the routes request the focus when they become the
 	// top one, unless the route says otherwise; the default is true.
 	RequestFocus foundation.Opt[bool]
+	// ReportsRouteUpdateToEngine is whether the navigator tells the system the
+	// name of the top route, through SystemNavigator.RouteInformationUpdated,
+	// each time it changes. It also selects the single-entry history.
+	ReportsRouteUpdateToEngine bool
 }
 
 // Navigator manages a stack of Route objects and offers methods for managing
@@ -980,6 +985,7 @@ type NavigatorState struct {
 	historyInitialized             bool
 
 	lastTopmostRoute    *routeEntry
+	lastAnnouncedRoute  string
 	debugUpdatingPage   bool
 	flushingHistory     bool
 	userGesturesCount   int
@@ -1072,6 +1078,9 @@ func (s *NavigatorState) InitState() {
 		s.updateHeroController(el.AsElement().widget.(*HeroControllerScope).controller)
 	} else {
 		s.updateHeroController(nil)
+	}
+	if s.Widget().o.ReportsRouteUpdateToEngine {
+		WidgetsBindingOf(s.Context()).SystemNavigator().SelectSingleEntryHistory()
 	}
 	s.historyHandle = s.history.AddListener(s.handleHistoryChanged)
 }
@@ -1710,6 +1719,13 @@ func (s *NavigatorState) flushHistoryUpdates(rearrangeOverlay bool) {
 		}
 	}
 	s.lastTopmostRoute = lastEntry
+	// Announces the route name changes.
+	if s.Widget().o.ReportsRouteUpdateToEngine && lastEntry != nil {
+		if name := lastEntry.route.Settings().Name(); name != "" && name != s.lastAnnouncedRoute {
+			s.announceRouteName(name)
+			s.lastAnnouncedRoute = name
+		}
+	}
 	// Lastly, removes the overlay entries of all the marked entries and disposes
 	// them.
 	for _, e := range toBeDisposed {
@@ -1721,6 +1737,18 @@ func (s *NavigatorState) flushHistoryUpdates(rearrangeOverlay bool) {
 		}
 	}
 	s.flushingHistory = false
+}
+
+// announceRouteName tells the system the name of the top route.
+//
+// Deviation: Flutter's Uri.parse throws a FormatException for a malformed name;
+// here the name is not announced (SPEC §12.10).
+func (s *NavigatorState) announceRouteName(name string) {
+	uri, err := url.Parse(name)
+	if err != nil {
+		return
+	}
+	WidgetsBindingOf(s.Context()).SystemNavigator().RouteInformationUpdated(uri, nil, false)
 }
 
 func (e *routeEntry) routeOrNil() Route {

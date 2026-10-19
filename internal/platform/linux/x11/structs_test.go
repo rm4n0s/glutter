@@ -34,6 +34,20 @@ func TestStructLayouts(t *testing.T) {
 	dl.AssertLayout(t, "XDestroyWindowEvent", 48, map[string]uintptr{
 		"typ": 0, "serial": 8, "sendEvent": 16, "display": 24, "event": 32, "window": 40,
 	}, xDestroyWindowEvent{})
+	dl.AssertLayout(t, "XSelectionRequestEvent", 80, map[string]uintptr{
+		"typ": 0, "serial": 8, "sendEvent": 16, "display": 24, "owner": 32, "requestor": 40, "selection": 48, "target": 56,
+		"property": 64, "time": 72,
+	}, xSelectionRequestEvent{})
+	dl.AssertLayout(t, "XSelectionEvent", 72, map[string]uintptr{
+		"typ": 0, "serial": 8, "sendEvent": 16, "display": 24, "requestor": 32, "selection": 40, "target": 48,
+		"property": 56, "time": 64,
+	}, xSelectionEvent{})
+	dl.AssertLayout(t, "XSelectionClearEvent", 56, map[string]uintptr{
+		"typ": 0, "serial": 8, "sendEvent": 16, "display": 24, "window": 32, "selection": 40, "time": 48,
+	}, xSelectionClearEvent{})
+	dl.AssertLayout(t, "XPropertyEvent", 64, map[string]uintptr{
+		"typ": 0, "serial": 8, "sendEvent": 16, "display": 24, "window": 32, "atom": 40, "time": 48, "state": 56,
+	}, xPropertyEvent{})
 	dl.AssertLayout(t, "XGenericEventCookie", 56, map[string]uintptr{
 		"typ": 0, "serial": 8, "sendEvent": 16, "display": 24, "extension": 32, "evtype": 36, "cookie": 40, "data": 48,
 	}, xGenericEventCookie{})

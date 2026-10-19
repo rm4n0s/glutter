@@ -25,9 +25,7 @@ type TextSpanOpts struct {
 	// Recognizer receives the pointer down events on the span.
 	Recognizer gestures.GestureRecognizer
 	// MouseCursor is the cursor over the span; the default is MouseCursorDefer,
-	// and the click cursor when there is a recognizer (TODO(step 10.4): the
-	// click cursor exists once SystemMouseCursors does; until then the default
-	// is MouseCursorDefer).
+	// and the click cursor when there is a recognizer.
 	MouseCursor services.MouseCursor
 	// OnEnter is called when a mouse pointer enters the span.
 	OnEnter services.PointerEnterEventListener
@@ -86,8 +84,11 @@ func NewTextSpan(opts ...TextSpanOpts) *TextSpan {
 	}
 	cursor := o.MouseCursor
 	if cursor == nil {
-		// TODO(step 10.4): SystemMouseCursors.click when there is a recognizer.
-		cursor = services.MouseCursorDefer
+		if o.Recognizer == nil {
+			cursor = services.MouseCursorDefer
+		} else {
+			cursor = services.SystemMouseCursors.Click
+		}
 	}
 	return &TextSpan{
 		InlineSpanBase: NewInlineSpanBase(o.Style), Text: o.Text, Children: o.Children, Recognizer: o.Recognizer,

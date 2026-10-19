@@ -8,6 +8,7 @@ import (
 	"github.com/rm4n0s/glutter/gluttertest"
 	"github.com/rm4n0s/glutter/painting"
 	"github.com/rm4n0s/glutter/rendering"
+	"github.com/rm4n0s/glutter/services"
 	"github.com/rm4n0s/glutter/ui"
 	. "github.com/rm4n0s/glutter/widgets"
 )
@@ -15,8 +16,7 @@ import (
 // Ported from packages/flutter/test/widgets/scrollable_test.dart. The cases that
 // need CustomScrollView, SingleChildScrollView, ListView, PageView, nested
 // scrollables of the sliver widgets or the semantics tester wait for step 9.3;
-// the shift and custom axis modifiers (pointerAxisModifiers) wait for step 10.4,
-// which brings the keyboard state; the engine notification of pointer signals
+// the engine notification of pointer signals
 // (onRespond) is not ported.
 
 var allDeviceKinds = []ui.PointerDeviceKind{
@@ -40,12 +40,14 @@ type pumpTestOpts struct {
 	horizontal    bool
 	controller    ScrollController
 	noMouseDrag   bool
+	// axisModifiers replaces the keys that flip the axis of the wheel.
+	axisModifiers []services.LogicalKeyboardKey
 }
 
 // pumpTest pumps a scrollable with a sliver of 2000 pixels and no scrollbar, as
 // the pumpTest of the Dart test does with a CustomScrollView.
 func pumpTest(ts *gluttertest.Tester, o pumpTestOpts) {
-	behavior := NewScrollBehavior().CopyWith(ScrollBehaviorCopy{Scrollbars: foundation.Some(false)})
+	behavior := NewScrollBehavior().CopyWith(ScrollBehaviorCopy{Scrollbars: foundation.Some(false), PointerAxisModifiers: o.axisModifiers})
 	if !o.noMouseDrag {
 		behavior = behavior.CopyWith(ScrollBehaviorCopy{DragDevices: allDeviceKinds})
 	}
@@ -541,5 +543,70 @@ func TestScrollableHitTestBehaviorTranslucentLetsWidgetsUnderneathCatchTheHit(t 
 	ts.TapAt(ts.Center(gluttertest.ByKey(key)))
 	if !tapped {
 		t.Error("the widget underneath did not get the tap")
+	}
+}
+
+// wheelAt is the horizontal and vertical offset of the scrollable after a wheel
+// notch of dy pixels from a device of the kind.
+func wheelFrom(ts *gluttertest.Tester, kind ui.PointerDeviceKind, dy float64) {
+	ts.ScrollKindAt(kind, ts.Center(gluttertest.ByType[*Viewport]()), ui.Offset{Dy: dy})
+}
+
+// The four cases of scrollable_test.dart about pointerAxisModifiers.
+func TestScrollablePointerAxisModifiers(t *testing.T) {
+	tests := []struct {
+		name      string
+		kind      ui.PointerDeviceKind
+		modifiers []services.LogicalKeyboardKey
+		down      []services.LogicalKeyboardKey
+		// flips is whether the vertical wheel scrolls the horizontal scrollable
+		// while the keys are down.
+		flips bool
+	}{
+		{name: "Scrolls horizontally when shift is pressed by default", kind: ui.PointerDeviceKindMouse,
+			down: []services.LogicalKeyboardKey{services.LogicalKeyboardKeyShift}, flips: true},
+		{name: "Scroll axis is not flipped for trackpad", kind: ui.PointerDeviceKindTrackpad,
+			down: []services.LogicalKeyboardKey{services.LogicalKeyboardKeyShift}},
+		{name: "Scrolls horizontally when custom key is pressed", kind: ui.PointerDeviceKindMouse,
+			modifiers: []services.LogicalKeyboardKey{services.LogicalKeyboardKeyAltLeft},
+			down:      []services.LogicalKeyboardKey{services.LogicalKeyboardKeyAltLeft}, flips: true},
+		{name: "Still scrolls horizontally when other keys are pressed at the same time", kind: ui.PointerDeviceKindMouse,
+			modifiers: []services.LogicalKeyboardKey{services.LogicalKeyboardKeyAltLeft},
+			down:      []services.LogicalKeyboardKey{services.LogicalKeyboardKeyAltLeft, services.LogicalKeyboardKeySpace}, flips: true},
+		{name: "Shift is not the modifier when a custom key is set", kind: ui.PointerDeviceKindMouse,
+			modifiers: []services.LogicalKeyboardKey{services.LogicalKeyboardKeyAltLeft},
+			down:      []services.LogicalKeyboardKey{services.LogicalKeyboardKeyShift}},
+	}
+	for _, tt := range tests {
+		for _, platform := range []foundation.TargetPlatform{foundation.TargetPlatformAndroid, foundation.TargetPlatformLinux, foundation.TargetPlatformMacOS} {
+			t.Run(tt.name+"/"+platform.String(), func(t *testing.T) {
+				usePlatform(t, platform)
+				ts := gluttertest.New(t)
+				pumpTest(ts, pumpTestOpts{horizontal: true, axisModifiers: tt.modifiers})
+				wheelFrom(ts, tt.kind, 20)
+				if got := scrollOffset(ts); got != 0 {
+					t.Fatalf("vertical input was accepted: offset = %v", got)
+				}
+				for _, key := range tt.down {
+					ts.SendKeyDownEvent(key)
+				}
+				wheelFrom(ts, tt.kind, 20)
+				want := 0.0
+				if tt.flips {
+					want = 20
+				}
+				if got := scrollOffset(ts); got != want {
+					t.Errorf("offset with the keys down = %v, want %v", got, want)
+				}
+				for _, key := range tt.down {
+					ts.SendKeyUpEvent(key)
+				}
+				ts.Pump()
+				wheelFrom(ts, tt.kind, 20)
+				if got := scrollOffset(ts); got != want {
+					t.Errorf("offset after the keys are up = %v, want %v", got, want)
+				}
+			})
+		}
 	}
 }

@@ -169,7 +169,7 @@ func TestFailures(t *testing.T) {
 		ref := writeData(t, validFiles())
 		err := Run([]string{"-reference", ref, "-out", filepath.Join(t.TempDir(), "missing-dir", "out.go")})
 		appErr, ok := errors.FromError(err)
-		if !ok || appErr.Tag != "KeysWriteFailed" || !appErr.HasRoute("Run.KeysWriteFailed") {
+		if !ok || appErr.Tag != "KeysWriteFailed" || !appErr.HasRoute("Run->writeIfChanged.KeysWriteFailed") {
 			t.Errorf("error = %v, want KeysWriteFailed via Run", err)
 		}
 	})
@@ -197,5 +197,27 @@ func TestCommittedTablesAreCurrent(t *testing.T) {
 	}
 	if !bytes.Equal(got, committed) {
 		t.Error("internal/platform/linux/keymap_gen.go is stale: run go generate ./internal/platform/linux/")
+	}
+}
+
+func TestCommittedServicesKeysAreCurrent(t *testing.T) {
+	ref := filepath.Join("..", "..", "..", "..", "reference", "flutter")
+	if _, err := os.Stat(filepath.Join(ref, dataDir)); err != nil {
+		t.Skipf("reference/ is missing, so the tables cannot be regenerated: run scripts/fetch-reference.sh (%v)", err)
+	}
+	out := filepath.Join(t.TempDir(), "keyboard_key_gen.go")
+	if err := Run([]string{"-reference", ref, "-out", "", "-services-out", out}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	committed, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "services", "keyboard_key_gen.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, committed) {
+		t.Error("services/keyboard_key_gen.go is stale: run go generate ./services/")
 	}
 }

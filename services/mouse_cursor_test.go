@@ -110,3 +110,48 @@ func TestMouseCursorErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestSystemMouseCursors(t *testing.T) {
+	if SystemMouseCursors.Click == SystemMouseCursors.Basic {
+		t.Fatal("click equals basic")
+	}
+	if SystemMouseCursors.Click != (SystemMouseCursor{"click"}) || SystemMouseCursors.Click.Kind() != "click" {
+		t.Errorf("click = %v", SystemMouseCursors.Click)
+	}
+	if got := SystemMouseCursors.ResizeUpLeftDownRight.DebugDescription(); got != "SystemMouseCursor(resizeUpLeftDownRight)" {
+		t.Errorf("DebugDescription = %q", got)
+	}
+	if SystemMouseCursors.Text.String() != "SystemMouseCursor(text)" {
+		t.Errorf("String = %q", SystemMouseCursors.Text.String())
+	}
+}
+
+func TestSystemMouseCursorSessionsActivateThroughTheManager(t *testing.T) {
+	type call struct {
+		device int
+		kind   string
+	}
+	var calls []call
+	m := NewMouseCursorManager(SystemMouseCursors.Basic)
+	m.ActivateSystemCursor = func(device int, kind string) { calls = append(calls, call{device, kind}) }
+	add := gestures.NewPointerAddedEvent(gestures.PointerEventOpts{})
+
+	m.HandleDeviceCursorUpdate(1, add, []MouseCursor{MouseCursorDefer, SystemMouseCursors.Click})
+	// The same cursor does not activate again.
+	m.HandleDeviceCursorUpdate(1, add, []MouseCursor{SystemMouseCursors.Click})
+	// When all candidates defer, the fallback is activated.
+	m.HandleDeviceCursorUpdate(1, add, []MouseCursor{MouseCursorDefer})
+	// Another device has its own cursor.
+	m.HandleDeviceCursorUpdate(2, add, []MouseCursor{SystemMouseCursors.Text})
+	want := []call{{1, "click"}, {1, "basic"}, {2, "text"}}
+	if !reflect.DeepEqual(calls, want) {
+		t.Errorf("activations = %v, want %v", calls, want)
+	}
+	if c, ok := m.DebugDeviceActiveCursor(2); foundation.DebugMode && (!ok || c != SystemMouseCursors.Text) {
+		t.Errorf("the active cursor of device 2 is %v", c)
+	}
+
+	// Without an activator, nothing happens.
+	m = NewMouseCursorManager(SystemMouseCursors.Basic)
+	m.HandleDeviceCursorUpdate(1, add, []MouseCursor{SystemMouseCursors.Click})
+}

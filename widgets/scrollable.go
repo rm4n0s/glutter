@@ -734,14 +734,25 @@ func (s *ScrollableState) targetScrollOffsetForPointerScroll(delta float64) floa
 }
 
 // pointerSignalEventDelta is the number of pixels a scroll event scrolls the
-// position by.
-//
-// Deviation: Flutter flips the axes of a mouse wheel while one of the
-// pointerAxisModifiers (shift) is held; the keyboard state comes with step 10.4
-// (SPEC §12.10).
+// position by. The axes flip while one of the pointerAxisModifiers is held, for
+// a mouse wheel only: a trackpad has both axes.
 func (s *ScrollableState) pointerSignalEventDelta(event *gestures.PointerScrollEvent) float64 {
+	flipAxes := false
+	if event.Kind() == ui.PointerDeviceKindMouse {
+		pressed := WidgetsBindingOf(s.Context()).Keyboard().LogicalKeysPressed()
+		for _, key := range s.configuration.PointerAxisModifiers() {
+			if pressed.Contains(key) {
+				flipAxes = true
+				break
+			}
+		}
+	}
+	axis := s.Widget().Axis()
+	if flipAxes {
+		axis = painting.FlipAxis(axis)
+	}
 	var delta float64
-	if s.Widget().Axis() == painting.AxisHorizontal {
+	if axis == painting.AxisHorizontal {
 		delta = event.ScrollDelta().Dx
 	} else {
 		delta = event.ScrollDelta().Dy

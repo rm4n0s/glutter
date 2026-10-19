@@ -19,6 +19,7 @@ const (
 // X11 constants from X.h, Xlib.h and Xutil.h.
 const (
 	inputOutput = 1 // InputOutput
+	inputOnly   = 2 // InputOnly
 
 	cwBackPixel   = 1 << 1  // CWBackPixel
 	cwBorderPixel = 1 << 3  // CWBorderPixel
@@ -52,6 +53,14 @@ const (
 	mapNotify               = 19
 	unmapNotify             = 18
 	propertyNotify          = 28
+	selectionClear          = 29
+	selectionRequest        = 30
+	selectionNotify         = 31
+	propertyNewValue        = 0 // PropertyNewValue
+	propertyDelete          = 1 // PropertyDelete
+	anyPropertyType         = 0 // AnyPropertyType
+	currentTime             = 0 // CurrentTime
+	xNone                   = 0 // None
 	netWMStateRemove        = 0
 	netWMStateAdd           = 1
 	xiAllMasterDevices      = 1
@@ -99,6 +108,10 @@ type xlib struct {
 	createBitmap        func(display uintptr, drawable uint64, data uintptr, width, height uint32) uint64
 	createPixmapCursor  func(display uintptr, source, mask uint64, foreground, background uintptr, x, y uint32) uint64
 	freePixmap          func(display uintptr, pixmap uint64) int32
+	setSelectionOwner   func(display uintptr, selection, owner, time uint64) int32
+	getSelectionOwner   func(display uintptr, selection uint64) uint64
+	convertSelection    func(display uintptr, selection, target, property, requestor, time uint64) int32
+	getWindowProperty   func(display uintptr, window, property uint64, offset, length int64, del int32, reqType uint64, actualType, actualFormat, nitems, bytesAfter, prop uintptr) int32
 }
 
 // loadXlib opens libX11 and libX11-xcb and binds the functions. It fails with
@@ -154,6 +167,10 @@ func loadXlib() (*xlib, error) {
 		{&l.createBitmap, "XCreateBitmapFromData"},
 		{&l.createPixmapCursor, "XCreatePixmapCursor"},
 		{&l.freePixmap, "XFreePixmap"},
+		{&l.setSelectionOwner, "XSetSelectionOwner"},
+		{&l.getSelectionOwner, "XGetSelectionOwner"},
+		{&l.convertSelection, "XConvertSelection"},
+		{&l.getWindowProperty, "XGetWindowProperty"},
 	} {
 		if err := x11.Bind(b.fptr, b.symbol); err != nil {
 			return nil, err

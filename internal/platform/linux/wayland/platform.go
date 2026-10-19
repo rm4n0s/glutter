@@ -25,7 +25,7 @@ type Options struct {
 // Platform is the Wayland backend of platform.Platform. So far it has the
 // connection, the event loop and shared-memory windows.
 //
-// TODO(step 14.3): Displays, TODO(step 10.4): Clipboard, TODO(step 14.5):
+// TODO(step 14.3): Displays, TODO(step 14.5):
 // Settings.
 //
 // Flutter: no counterpart
@@ -41,14 +41,18 @@ type Platform struct {
 	start time.Time // the origin of the frame times given to Handler.OnFrame
 
 	// The fields below belong to the UI thread.
-	handler   platform.Handler
-	windows   map[ui.ViewID]*window
-	keyboard  *keyboard // nil when the seat has none
-	pointer   *pointer  // likewise
-	touch     *touch    // likewise
-	cursors   *cursors
-	nextView  ui.ViewID
-	hadWindow bool
+	handler  platform.Handler
+	windows  map[ui.ViewID]*window
+	keyboard *keyboard  // nil when the seat has none
+	pointer  *pointer   // likewise
+	touch    *touch     // likewise
+	clip     *clipboard // nil without wl_data_device_manager
+	cursors  *cursors
+	// inputSerial is the serial of the last input event of the seat, which
+	// set_selection needs.
+	inputSerial uint32
+	nextView    ui.ViewID
+	hadWindow   bool
 	// failure is the first error that a callback could not return; Run returns
 	// it.
 	failure error
@@ -104,6 +108,7 @@ func newPlatform(conn *wl.Conn, opts Options) (*Platform, error) {
 		windows: map[ui.ViewID]*window{},
 	}
 	p.cursors = newCursors(p)
+	p.clip = newClipboard(p)
 	sess.onOutputScale = func() {
 		for _, w := range p.windows {
 			w.scaleChanged()
@@ -126,6 +131,9 @@ func (p *Platform) Close() error {
 		w.Close()
 	}
 	p.closeSeatDevices()
+	if p.clip != nil {
+		p.clip.close()
+	}
 	p.cursors.close()
 	p.sess.close()
 	return p.loop.Close()
@@ -204,10 +212,16 @@ func (p *Platform) Post(fn func()) { p.loop.Post(fn) }
 // Flutter: no counterpart
 func (p *Platform) Displays() []platform.Display { return nil }
 
-// Clipboard returns nil for now.
+// Clipboard returns the clipboard of the seat, or nil when the compositor has no
+// wl_data_device_manager.
 //
 // Flutter: no counterpart
-func (p *Platform) Clipboard() platform.Clipboard { return nil }
+func (p *Platform) Clipboard() platform.Clipboard {
+	if p.clip == nil {
+		return nil
+	}
+	return p.clip
+}
 
 // Settings returns the zero Settings for now.
 //

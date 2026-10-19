@@ -8,6 +8,7 @@
 package renderhost
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -34,6 +35,52 @@ type Host struct {
 	// SemanticsTreeEnabled is what the framework last said about producing a
 	// semantics tree.
 	SemanticsTreeEnabled bool
+	// ActivatedCursors are the system cursors that the framework activated, in
+	// order.
+	ActivatedCursors []CursorActivation
+	// Clipboard is the in-memory clipboard; HasClipboard says whether it holds
+	// text. A test can set them to play another application.
+	Clipboard    string
+	HasClipboard bool
+}
+
+// Lock and Unlock guard the fields of the host that tests set.
+func (h *Host) Lock() { h.mu.Lock() }
+
+// Unlock ends what Lock began.
+func (h *Host) Unlock() { h.mu.Unlock() }
+
+// SetClipboardText keeps the text. done is posted, like the engine's results.
+func (h *Host) SetClipboardText(_ context.Context, text string, done func(error)) {
+	h.mu.Lock()
+	h.Clipboard, h.HasClipboard = text, true
+	h.mu.Unlock()
+	if done != nil {
+		h.Post(func() { done(nil) })
+	}
+}
+
+// GetClipboardText posts the text that was kept.
+func (h *Host) GetClipboardText(ctx context.Context, done func(string, bool, error)) {
+	h.mu.Lock()
+	text, ok := h.Clipboard, h.HasClipboard
+	h.mu.Unlock()
+	h.Post(func() { done(text, ok, ctx.Err()) })
+}
+
+// CursorActivation is one call of ActivateSystemCursor.
+type CursorActivation struct {
+	// Device is the pointer device the cursor is for.
+	Device int
+	// Kind is the kind of the system cursor, such as "click".
+	Kind string
+}
+
+// ActivateSystemCursor keeps the activation.
+func (h *Host) ActivateSystemCursor(device int, kind string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.ActivatedCursors = append(h.ActivatedCursors, CursorActivation{device, kind})
 }
 
 // UpdateSemantics keeps the update.

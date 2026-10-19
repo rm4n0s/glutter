@@ -26,6 +26,22 @@ func (p *Platform) handleEvent() {
 		if w := p.windows[ev.window]; w != nil && ev.count == 0 {
 			w.onExpose()
 		}
+	case selectionRequest:
+		if p.clip != nil {
+			p.clip.onSelectionRequest(*view[xSelectionRequestEvent](p.event))
+		}
+	case selectionNotify:
+		if p.clip != nil {
+			p.clip.onSelectionNotify(*view[xSelectionEvent](p.event))
+		}
+	case selectionClear:
+		if p.clip != nil {
+			p.clip.onSelectionClear(*view[xSelectionClearEvent](p.event))
+		}
+	case propertyNotify:
+		if p.clip != nil {
+			p.clip.onPropertyNotify(*view[xPropertyEvent](p.event))
+		}
 	case destroyNotify:
 		ev := view[xDestroyWindowEvent](p.event)
 		if w := p.windows[ev.window]; w != nil {

@@ -31,7 +31,7 @@ type atoms struct {
 // Platform is the X11 backend of platform.Platform: Xlib and XInput2 through
 // purego, with EGL for drawing (SPEC §8.3). It belongs to the UI thread.
 //
-// TODO(step 14.3): Displays, TODO(step 10.4): Clipboard, TODO(step 14.5):
+// TODO(step 14.3): Displays, TODO(step 14.5):
 // Settings.
 //
 // Flutter: no counterpart
@@ -65,6 +65,7 @@ type Platform struct {
 
 	input   *inputState // nil when XInput2 is not available
 	cursors *cursors
+	clip    *clipboard // nil when its window could not be created
 
 	// visualFor returns the X visual that EGL wants for windows on the display;
 	// tests replace it.
@@ -117,6 +118,7 @@ func New(name string) (*Platform, error) {
 	p.cursors = newCursors(p)
 	registerErrorHandler(p)
 	p.input = newInputState(p)
+	p.clip = newClipboard(p)
 	return p, nil
 }
 
@@ -184,6 +186,10 @@ func (p *Platform) Close() error {
 	if p.input != nil {
 		p.input.close()
 		p.input = nil
+	}
+	if p.clip != nil {
+		p.clip.close()
+		p.clip = nil
 	}
 	p.cursors.close()
 	unregisterErrorHandler(p)
@@ -254,10 +260,15 @@ func (p *Platform) Post(fn func()) { p.loop.Post(fn) }
 // Flutter: no counterpart
 func (p *Platform) Displays() []platform.Display { return nil }
 
-// Clipboard returns nil for now.
+// Clipboard returns the CLIPBOARD selection.
 //
 // Flutter: no counterpart
-func (p *Platform) Clipboard() platform.Clipboard { return nil }
+func (p *Platform) Clipboard() platform.Clipboard {
+	if p.clip == nil {
+		return nil
+	}
+	return p.clip
+}
 
 // Settings returns the zero Settings for now.
 //

@@ -176,6 +176,8 @@ func navTestApp(o navTestAppOpts) Widget {
 		OnGenerateRoute: onGenerateRoute,
 		Observers:       o.observers,
 		RequestFocus:    o.requestFocus,
+		// WidgetsApp reports the route names to the system.
+		ReportsRouteUpdateToEngine: true,
 	})))
 }
 

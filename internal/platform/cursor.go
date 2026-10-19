@@ -193,3 +193,31 @@ func (c MouseCursor) String() string {
 	}
 	return mouseCursorNames[c]
 }
+
+// mouseCursorKinds maps the kind of a Flutter system mouse cursor (the name in
+// SystemMouseCursors) to the cursor.
+var mouseCursorKinds = map[string]MouseCursor{
+	"none": MouseCursorNone, "basic": MouseCursorBasic, "click": MouseCursorClick,
+	"forbidden": MouseCursorForbidden, "wait": MouseCursorWait, "progress": MouseCursorProgress,
+	"contextMenu": MouseCursorContextMenu, "help": MouseCursorHelp, "text": MouseCursorText,
+	"verticalText": MouseCursorVerticalText, "cell": MouseCursorCell, "precise": MouseCursorPrecise,
+	"move": MouseCursorMove, "grab": MouseCursorGrab, "grabbing": MouseCursorGrabbing,
+	"noDrop": MouseCursorNoDrop, "alias": MouseCursorAlias, "copy": MouseCursorCopy,
+	"disappearing": MouseCursorDisappearing, "allScroll": MouseCursorAllScroll,
+	"resizeLeftRight": MouseCursorResizeLeftRight, "resizeUpDown": MouseCursorResizeUpDown,
+	"resizeUpLeftDownRight": MouseCursorResizeUpLeftDownRight, "resizeUpRightDownLeft": MouseCursorResizeUpRightDownLeft,
+	"resizeUp": MouseCursorResizeUp, "resizeDown": MouseCursorResizeDown, "resizeLeft": MouseCursorResizeLeft,
+	"resizeRight": MouseCursorResizeRight, "resizeUpLeft": MouseCursorResizeUpLeft,
+	"resizeUpRight": MouseCursorResizeUpRight, "resizeDownLeft": MouseCursorResizeDownLeft,
+	"resizeDownRight": MouseCursorResizeDownRight, "resizeColumn": MouseCursorResizeColumn,
+	"resizeRow": MouseCursorResizeRow, "zoomIn": MouseCursorZoomIn, "zoomOut": MouseCursorZoomOut,
+}
+
+// MouseCursorFromKind returns the cursor of a Flutter system mouse cursor kind
+// ("click", "resizeUpDown"), and false for a kind it does not know.
+//
+// Flutter: services/mouse_cursor.dart SystemMouseCursor.kind
+func MouseCursorFromKind(kind string) (MouseCursor, bool) {
+	c, ok := mouseCursorKinds[kind]
+	return c, ok
+}

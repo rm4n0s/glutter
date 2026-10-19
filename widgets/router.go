@@ -1125,19 +1125,6 @@ type PlatformRouteInformationProvider struct {
 	value         *RouteInformation
 	valueInEngine *RouteInformation
 	observing     bool
-	updated       func(*RouteInformation, bool)
-}
-
-// PlatformRouteInformationProviderOpts are the optional parameters of
-// NewPlatformRouteInformationProvider.
-//
-// Flutter: widgets/router.dart PlatformRouteInformationProvider.new
-type PlatformRouteInformationProviderOpts struct {
-	// OnRouteInformationUpdated is called when the router reports route
-	// information, with replace true when the report replaces the entry of the
-	// history that the platform has and false when it adds one. It stands for
-	// SystemNavigator.routeInformationUpdated until services has SystemNavigator.
-	OnRouteInformationUpdated func(routeInformation *RouteInformation, replace bool)
 }
 
 // NewPlatformRouteInformationProvider creates the provider with the route
@@ -1147,13 +1134,12 @@ type PlatformRouteInformationProviderOpts struct {
 // the binding is a parameter (SPEC §12.10).
 //
 // Flutter: widgets/router.dart PlatformRouteInformationProvider.new
-func NewPlatformRouteInformationProvider(binding *WidgetsBinding, initialRouteInformation *RouteInformation, opts ...PlatformRouteInformationProviderOpts) *PlatformRouteInformationProvider {
+func NewPlatformRouteInformationProvider(binding *WidgetsBinding, initialRouteInformation *RouteInformation) *PlatformRouteInformationProvider {
 	defaultRoute, _ := url.Parse(NavigatorDefaultRouteName)
 	return &PlatformRouteInformationProvider{
 		binding:       binding,
 		value:         initialRouteInformation,
 		valueInEngine: NewRouteInformation(RouteInformationOpts{URI: defaultRoute}),
-		updated:       firstOpts(opts).OnRouteInformationUpdated,
 	}
 }
 
@@ -1187,18 +1173,16 @@ func routeURIsEqual(a, b *url.URL) bool {
 // for a neglect report, or for a report without intention whose location is the
 // same as the one the platform has, and as a new entry otherwise.
 //
-// Deviation: Flutter calls SystemNavigator.selectMultiEntryHistory and
-// SystemNavigator.routeInformationUpdated; services has no SystemNavigator yet
-// (step 10.4), so the call goes to the OnRouteInformationUpdated option (SPEC
-// §12.10).
+// It calls SelectMultiEntryHistory and RouteInformationUpdated of the binding's
+// SystemNavigator.
 //
 // Flutter: widgets/router.dart PlatformRouteInformationProvider.routerReportsNewRouteInformation
 func (p *PlatformRouteInformationProvider) RouterReportsNewRouteInformation(routeInformation *RouteInformation, reportingType RouteInformationReportingType) {
 	replace := reportingType == RouteInformationReportingTypeNeglect ||
 		(reportingType != RouteInformationReportingTypeNavigate && routeURIsEqual(p.valueInEngine.URI(), routeInformation.URI()))
-	if p.updated != nil {
-		p.updated(routeInformation, replace)
-	}
+	navigator := p.binding.SystemNavigator()
+	navigator.SelectMultiEntryHistory()
+	navigator.RouteInformationUpdated(routeInformation.URI(), routeInformation.State(), replace)
 	p.value = routeInformation
 	p.valueInEngine = routeInformation
 }

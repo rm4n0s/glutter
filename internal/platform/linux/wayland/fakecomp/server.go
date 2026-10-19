@@ -36,6 +36,10 @@ type Server struct {
 	caps       uint32
 	serial     uint32 // the last serial sent with a keyboard event
 
+	selection string // the text of the selection, guarded by mu
+	stall     bool
+	stalled   []int // the pipes that a stalled owner holds
+
 	outputScale, bufferScale int32
 
 	win windowing // see windowing.go; guarded by mu
@@ -121,6 +125,14 @@ type Config struct {
 	// wl_surface announces; zero means 2, and a negative number sends none, as a
 	// compositor with wl_compositor older than version 6 does.
 	PreferredBufferScale int32
+	// Selection, when it is not empty, is the text of the clipboard that another
+	// application owns: the data device announces it as the selection, in the
+	// formats "text/plain;charset=utf-8" and "image/png", and a receive request
+	// for a text format gets it.
+	Selection string
+	// StallSelection makes the owner of the selection never write the data: the
+	// pipe of a receive request stays open and empty until the server stops.
+	StallSelection bool
 }
 
 // New starts a server on one end of a new socket pair and returns the other
@@ -154,7 +166,7 @@ func New(t testing.TB, cfg Config) (s *Server, clientFD int) {
 	s = &Server{
 		outputScale: outputScale, bufferScale: bufferScale,
 		t: t, fd: fds[0], globals: globals, toplevel: cfg.Toplevel, holdFrames: cfg.HoldFrames,
-		keymap: keymap, caps: caps,
+		keymap: keymap, caps: caps, selection: cfg.Selection, stall: cfg.StallSelection,
 		objects:   map[uint32]string{1: "wl_display"},
 		ids:       map[string]uint32{},
 		serverIDs: 0xff000000,
@@ -243,6 +255,11 @@ func (s *Server) fill() bool {
 // serve reads requests until the client hangs up.
 func (s *Server) serve() {
 	defer close(s.done)
+	defer func() {
+		for _, fd := range s.stalled {
+			_ = syscall.Close(fd)
+		}
+	}()
 	for {
 		for len(s.buf) < 8 {
 			if !s.fill() {
@@ -379,10 +396,45 @@ func (s *Server) handle(id uint32, op uint16, r *reader) {
 		s.Send(dd, 0, offer)                         // data_offer(id): the server creates the object
 		s.Send(offer, 0, "text/plain;charset=utf-8") // offer(mime_type)
 		s.Send(offer, 0, "image/png")
+		s.mu.Lock()
+		hasSelection := s.selection != ""
+		s.mu.Unlock()
+		if hasSelection {
+			s.Send(dd, 5, offer) // selection(id)
+		}
+	case "wl_data_device_manager.0": // create_data_source(id)
+		src := r.u32()
+		s.addObject(src, "wl_data_source")
+		s.record("wl_data_device_manager.create_data_source")
+	case "wl_data_source.0": // offer(mime_type)
+		s.record("wl_data_source.offer mime=%s", r.str())
+	case "wl_data_source.1": // destroy
+		s.record("wl_data_source.destroy")
+	case "wl_data_device.1": // set_selection(source, serial)
+		src, serial := r.u32(), r.u32()
+		s.record("wl_data_device.set_selection source=%d serial=%d", src, serial)
+	case "wl_data_device.2": // release
+		s.record("wl_data_device.release")
 	case "wl_data_offer.1": // receive(mime_type, fd)
 		mime, fd := r.str(), r.fd()
 		s.record("wl_data_offer.receive mime=%s fd=%v", mime, fd >= 0)
-		_ = syscall.Close(fd)
+		s.mu.Lock()
+		text := s.selection
+		s.mu.Unlock()
+		if fd >= 0 && s.stall {
+			s.stalled = append(s.stalled, fd) // closed when the server stops
+		} else if fd >= 0 && text != "" && (strings.HasPrefix(mime, "text/") || mime == "UTF8_STRING") {
+			// The other application writes the text from its own goroutine.
+			go func(fd int) {
+				f := os.NewFile(uintptr(fd), "selection")
+				_, _ = f.WriteString(text)
+				_ = f.Close()
+			}(fd)
+		} else {
+			_ = syscall.Close(fd)
+		}
+	case "wl_data_offer.2": // destroy
+		s.record("wl_data_offer.destroy")
 	case "wl_data_offer.0": // accept(serial, mime_type)
 		s.record("wl_data_offer.accept serial=%d mime=%s", r.u32(), r.str())
 	case "wl_shm.0": // create_pool(id, fd, size)
@@ -453,6 +505,35 @@ func (s *Server) Send(id uint32, op uint16, args ...any) {
 		// A client that has already gone away is not a failure of the test.
 		s.t.Errorf("fake server: sendmsg: %v", err)
 	}
+}
+
+// OfferSelection makes another application the owner of the clipboard, with the
+// text: the data device gets a new offer in the formats and a selection event.
+// A receive request for a text format gets the text.
+//
+// Flutter: no counterpart
+func (s *Server) OfferSelection(text string, mimes ...string) {
+	s.mu.Lock()
+	s.selection = text
+	s.mu.Unlock()
+	offer := s.newServerID()
+	s.addObject(offer, "wl_data_offer")
+	dd := s.ID("wl_data_device")
+	s.Send(dd, 0, offer) // data_offer(id)
+	for _, m := range mimes {
+		s.Send(offer, 0, m) // offer(mime_type)
+	}
+	s.Send(dd, 5, offer) // selection(id)
+}
+
+// ClearSelection empties the clipboard: the data device announces no selection.
+//
+// Flutter: no counterpart
+func (s *Server) ClearSelection() {
+	s.mu.Lock()
+	s.selection = ""
+	s.mu.Unlock()
+	s.Send(s.ID("wl_data_device"), 5, uint32(0)) // selection(null)
 }
 
 // Joined returns the log of requests as one string.

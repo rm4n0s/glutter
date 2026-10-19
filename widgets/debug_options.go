@@ -55,6 +55,11 @@ type DebugOptions struct {
 	//
 	// Flutter: foundation/debug.dart debugBrightnessOverride
 	BrightnessOverride ui.Brightness
+	// PrintKeyboardEvents prints what the hardware keyboard does with each key
+	// event (debugPrintKeyboardEvents).
+	//
+	// Flutter: services/debug.dart debugPrintKeyboardEvents
+	PrintKeyboardEvents bool
 	// Print writes a line of debug output; nil writes to standard error
 	// (debugPrint).
 	//

@@ -20,48 +20,76 @@ import (
 const (
 	defaultReference = "reference/flutter"
 	defaultOut       = "internal/platform/linux/keymap_gen.go"
+	defaultSvcOut    = "services/keyboard_key_gen.go"
 	dataDir          = "dev/tools/gen_keycodes/data"
 )
 
-// Run executes `glutter-gen keys [-reference dir] [-out file]` with the
-// arguments that follow the subcommand name. It reads Flutter's key data
-// (physical_key_data.g.json, logical_key_data.g.json and layout_goals.json under
-// dev/tools/gen_keycodes/data of the Flutter checkout in the reference
-// directory) and writes the Go tables to the output file.
+// Run executes `glutter-gen keys [-reference dir] [-out file] [-services-out file]`
+// with the arguments that follow the subcommand name. It reads Flutter's key data
+// (physical_key_data.g.json, logical_key_data.g.json, layout_goals.json and
+// synonyms.json under dev/tools/gen_keycodes/data of the Flutter checkout in the
+// reference directory) and writes the Go tables of the platform layer to the
+// output file, and the key constants of package services to the services file.
+// An empty file name skips that file; the services file is written by default
+// only when the platform file is.
 //
 // Flutter: dev/tools/gen_keycodes
 func Run(args []string) error {
 	flags := flag.NewFlagSet("keys", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	reference := flags.String("reference", defaultReference, "directory with the Flutter sources (see scripts/fetch-reference.sh)")
-	out := flags.String("out", defaultOut, "file to write the Go tables to")
+	out := flags.String("out", defaultOut, "file to write the platform tables to (empty: none)")
+	svcOut := flags.String("services-out", "", "file to write the key constants of package services to (empty: none, or "+defaultSvcOut+" with the default -out)")
 	if err := flags.Parse(args); err != nil {
 		return errors.NewErr("KeysBadFlags", err).SetMetadata("args", args)
 	}
-	src, err := loadData(filepath.Join(*reference, dataDir))
+	if *svcOut == "" && *out == defaultOut {
+		*svcOut = defaultSvcOut
+	}
+	src, err := loadData(filepath.Join(*reference, dataDir), *svcOut != "")
 	if err != nil {
 		return err
 	}
-	code, err := generate(src)
-	if err != nil {
-		return err
+	if *out != "" {
+		code, err := generate(src)
+		if err != nil {
+			return err
+		}
+		if err := writeIfChanged(*out, code); err != nil {
+			return err
+		}
 	}
-	if old, err := os.ReadFile(*out); err == nil && bytes.Equal(old, code) {
+	if *svcOut != "" {
+		code, err := generateServices(src)
+		if err != nil {
+			return err
+		}
+		if err := writeIfChanged(*svcOut, code); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func writeIfChanged(path string, code []byte) error {
+	if old, err := os.ReadFile(path); err == nil && bytes.Equal(old, code) {
 		return nil
 	}
-	if err := os.WriteFile(*out, code, 0o644); err != nil {
-		return errors.NewErr("KeysWriteFailed", err).SetMetadata("file", *out)
+	if err := os.WriteFile(path, code, 0o644); err != nil {
+		return errors.NewErr("KeysWriteFailed", err).SetMetadata("file", path)
 	}
 	return nil
 }
 
 // physicalKey is an entry of physical_key_data.g.json.
 type physicalKey struct {
+	Names     map[string]string          `json:"names"`
 	ScanCodes map[string]json.RawMessage `json:"scanCodes"`
 }
 
 // logicalKey is an entry of logical_key_data.g.json.
 type logicalKey struct {
+	Name   string              `json:"name"`
 	Value  uint64              `json:"value"`
 	Values map[string][]uint64 `json:"values"`
 }
@@ -71,18 +99,27 @@ type data struct {
 	physical map[string]physicalKey
 	logical  map[string]logicalKey
 	goals    map[string]bool
+	// synonyms maps a pseudo-key (Shift) to the keys it stands for.
+	synonyms map[string][]string
 }
 
-func loadData(dir string) (*data, error) {
+func loadData(dir string, withSynonyms bool) (*data, error) {
 	d := &data{}
-	for _, f := range []struct {
+	files := []struct {
 		name string
 		into any
 	}{
 		{"physical_key_data.g.json", &d.physical},
 		{"logical_key_data.g.json", &d.logical},
 		{"layout_goals.json", &d.goals},
-	} {
+	}
+	if withSynonyms {
+		files = append(files, struct {
+			name string
+			into any
+		}{"synonyms.json", &d.synonyms})
+	}
+	for _, f := range files {
 		path := filepath.Join(dir, f.name)
 		raw, err := os.ReadFile(path)
 		if err != nil {

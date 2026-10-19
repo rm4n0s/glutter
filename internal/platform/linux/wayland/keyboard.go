@@ -163,7 +163,8 @@ func (k *keyboard) onRepeatInfo(rate, delay int32) {
 // onEnter gives the window focus and reports the keys that are already held as
 // synthesized key-down events, so that the framework's pressed-key state matches
 // the keyboard.
-func (k *keyboard) onEnter(_ uint32, surface *wl.WlSurface, keys []uint32) {
+func (k *keyboard) onEnter(serial uint32, surface *wl.WlSurface, keys []uint32) {
+	k.p.inputSerial = serial
 	w := k.p.windowOf(surface)
 	if w == nil {
 		return // a surface that is not ours
@@ -218,7 +219,8 @@ func (k *keyboard) windowClosed(w *window) {
 	}
 }
 
-func (k *keyboard) onKey(_ uint32, _ uint32, evdev uint32, state wl.WlKeyboardKeyState) {
+func (k *keyboard) onKey(serial uint32, _ uint32, evdev uint32, state wl.WlKeyboardKeyState) {
+	k.p.inputSerial = serial
 	if k.focus == nil || k.layout == nil {
 		return
 	}

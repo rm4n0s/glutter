@@ -7,6 +7,7 @@ import (
 	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/gestures"
 	"github.com/rm4n0s/glutter/rendering"
+	"github.com/rm4n0s/glutter/services"
 	"github.com/rm4n0s/glutter/ui"
 	"github.com/rm4n0s/glutter/widgets"
 )
@@ -260,6 +261,44 @@ func TestHoverAndScroll(t *testing.T) {
 	}
 }
 
+func TestScrollKindAtUsesTheKindsPointer(t *testing.T) {
+	ts := New(t)
+	var kinds []ui.PointerDeviceKind
+	var pointers []int
+	l := newListener(newSwatch(grey, 300, 300))
+	l.onSignal = func(e gestures.PointerSignalEvent) {
+		if s, ok := e.(*gestures.PointerScrollEvent); ok {
+			kinds = append(kinds, s.Kind())
+			pointers = append(pointers, s.Device())
+		}
+	}
+	ts.PumpWidget(newRow(l))
+	at := ts.Center(ByType[*listener]())
+	ts.ScrollKindAt(ui.PointerDeviceKindTrackpad, at, ui.Offset{Dy: 1})
+	ts.ScrollKindAt(ui.PointerDeviceKindTrackpad, at, ui.Offset{Dy: 2})
+	ts.ScrollKindAt(ui.PointerDeviceKindMouse, at, ui.Offset{Dy: 3})
+	if len(kinds) != 3 || kinds[0] != ui.PointerDeviceKindTrackpad || kinds[2] != ui.PointerDeviceKindMouse {
+		t.Fatalf("kinds = %v", kinds)
+	}
+	if pointers[0] != pointers[1] || pointers[0] == pointers[2] {
+		t.Errorf("pointers = %v, want one per device kind", pointers)
+	}
+}
+
+func TestPseudoKeysSendTheLeftKey(t *testing.T) {
+	ts := New(t)
+	ts.PumpWidget(newRow(newSwatch(grey, 5, 5)))
+	ts.SendKeyDownEvent(services.LogicalKeyboardKeyShift)
+	pressed := ts.Binding.Keyboard().LogicalKeysPressed()
+	if !pressed.Contains(services.LogicalKeyboardKeyShiftLeft) || pressed.Contains(services.LogicalKeyboardKeyShiftRight) {
+		t.Errorf("pressed = %v, want ShiftLeft only", pressed)
+	}
+	ts.SendKeyUpEvent(services.LogicalKeyboardKeyShift)
+	if len(ts.Binding.Keyboard().LogicalKeysPressed()) != 0 {
+		t.Error("a key is still pressed after the key up")
+	}
+}
+
 func TestEnterTextIsNotYetImplemented(t *testing.T) {
 	appErr := failure(t, func(ts *Tester) {
 		ts.PumpWidget(newRow(newSwatch(grey, 5, 5)))
@@ -274,7 +313,7 @@ func TestKeyEvents(t *testing.T) {
 	ts.d.OnKeyData = func(d ui.KeyData) bool { got = append(got, d); return d.Type == ui.KeyEventTypeDown }
 	ts.Pump(250 * time.Millisecond)
 
-	if !ts.SendKeyDownEvent(0x61, KeyOpts{Physical: 0x70004, Character: "a"}) {
+	if !ts.SendKeyDownEvent(0x61, KeyOpts{Character: "a"}) {
 		t.Errorf("the key down was not handled")
 	}
 	if ts.SendKeyUpEvent(0x61) {
@@ -285,9 +324,9 @@ func TestKeyEvents(t *testing.T) {
 	}
 	want := []ui.KeyData{
 		{TimeStamp: 250 * time.Millisecond, Type: ui.KeyEventTypeDown, Logical: 0x61, Physical: 0x70004, Character: "a"},
-		{TimeStamp: 250 * time.Millisecond, Type: ui.KeyEventTypeUp, Logical: 0x61},
-		{TimeStamp: 250 * time.Millisecond, Type: ui.KeyEventTypeDown, Logical: 0x62, Character: "b"},
-		{TimeStamp: 250 * time.Millisecond, Type: ui.KeyEventTypeUp, Logical: 0x62},
+		{TimeStamp: 250 * time.Millisecond, Type: ui.KeyEventTypeUp, Logical: 0x61, Physical: 0x70004},
+		{TimeStamp: 250 * time.Millisecond, Type: ui.KeyEventTypeDown, Logical: 0x62, Physical: 0x70005, Character: "b"},
+		{TimeStamp: 250 * time.Millisecond, Type: ui.KeyEventTypeUp, Logical: 0x62, Physical: 0x70005},
 	}
 	if len(got) != len(want) {
 		t.Fatalf("events = %v", got)

@@ -109,6 +109,68 @@ type xDestroyWindowEvent struct {
 	window    uint64
 }
 
+// xSelectionRequestEvent is XSelectionRequestEvent: another client asks the owner
+// of a selection for its content.
+type xSelectionRequestEvent struct {
+	typ       int32
+	_         int32
+	serial    uint64
+	sendEvent int32
+	_         int32
+	display   uintptr
+	owner     uint64
+	requestor uint64
+	selection uint64
+	target    uint64
+	property  uint64
+	time      uint64
+}
+
+// xSelectionEvent is XSelectionEvent: the owner answers a request for a
+// selection.
+type xSelectionEvent struct {
+	typ       int32
+	_         int32
+	serial    uint64
+	sendEvent int32
+	_         int32
+	display   uintptr
+	requestor uint64
+	selection uint64
+	target    uint64
+	property  uint64
+	time      uint64
+}
+
+// xSelectionClearEvent is XSelectionClearEvent: another client took a selection
+// that this one owned.
+type xSelectionClearEvent struct {
+	typ       int32
+	_         int32
+	serial    uint64
+	sendEvent int32
+	_         int32
+	display   uintptr
+	window    uint64
+	selection uint64
+	time      uint64
+}
+
+// xPropertyEvent is XPropertyEvent: a property of a window changed.
+type xPropertyEvent struct {
+	typ       int32
+	_         int32
+	serial    uint64
+	sendEvent int32
+	_         int32
+	display   uintptr
+	window    uint64
+	atom      uint64
+	time      uint64
+	state     int32
+	_         int32
+}
+
 // xGenericEventCookie is XGenericEventCookie: the event of an extension, with its
 // data fetched by XGetEventData.
 type xGenericEventCookie struct {

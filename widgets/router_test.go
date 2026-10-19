@@ -3,6 +3,7 @@ package widgets_test
 import (
 	"fmt"
 	"net/url"
+	"slices"
 	"testing"
 
 	"github.com/rm4n0s/glutter/animation"
@@ -15,10 +16,9 @@ import (
 // These tests are ported from packages/flutter/test/widgets/router_test.dart.
 // buildBoilerPlate (TestWidgetsApp) is a Directionality; the messages of the
 // 'flutter/navigation' channel (pushRouteInformation, popRoute) are calls to the
-// binding, and the log of the SystemNavigator is the OnRouteInformationUpdated
-// option of the provider (SystemNavigator comes in step 10.4). Not ported: the
-// memory allocation event test and the RouteInformation.location getter
-// (deprecated, not ported).
+// binding, and the mock method handler that logs the SystemNavigator calls is the
+// hooks of the binding's SystemNavigator. Not ported: the memory allocation event
+// test and the RouteInformation.location getter (deprecated, not ported).
 
 type routeInfo = RouteInformation
 
@@ -936,35 +936,47 @@ func TestRouteInformationURIAPI(t *testing.T) {
 }
 
 type routeUpdate struct {
+	call    string
 	uri     string
 	state   any
 	replace bool
 }
 
+// logSystemNavigator records the calls of the SystemNavigator like the mock method
+// handler of the test does.
+func logSystemNavigator(ts *gluttertest.Tester, log *[]routeUpdate) {
+	n := ts.Binding.SystemNavigator()
+	n.OnSelectMultiEntryHistory = func() { *log = append(*log, routeUpdate{call: "selectMultiEntryHistory"}) }
+	n.OnRouteInformationUpdated = func(u *url.URL, state any, replace bool) {
+		*log = append(*log, routeUpdate{"routeInformationUpdated", u.String(), state, replace})
+	}
+}
+
+func updated(uri string, state any, replace bool) []routeUpdate {
+	return []routeUpdate{{call: "selectMultiEntryHistory"}, {"routeInformationUpdated", uri, state, replace}}
+}
+
 func TestPlatformRouteInformationProviderUpdatesRouteInformation(t *testing.T) {
 	ts := gluttertest.New(t)
 	var log []routeUpdate
-	provider := NewPlatformRouteInformationProvider(ts.Binding, uriInfo("initial"), PlatformRouteInformationProviderOpts{
-		OnRouteInformationUpdated: func(i *routeInfo, replace bool) {
-			log = append(log, routeUpdate{i.URI().String(), i.State(), replace})
-		},
-	})
+	logSystemNavigator(ts, &log)
+	provider := NewPlatformRouteInformationProvider(ts.Binding, uriInfo("initial"))
 	steps := []struct {
 		info *routeInfo
 		typ  RouteInformationReportingType
-		want routeUpdate
+		want []routeUpdate
 	}{
 		// Implicit reporting pushes a new history entry if the location changes.
-		{stateInfo("a", true), RouteInformationReportingTypeNone, routeUpdate{"a", true, false}},
+		{stateInfo("a", true), RouteInformationReportingTypeNone, updated("a", true, false)},
 		// Since the location is the same, the provider replaces.
-		{stateInfo("a", false), RouteInformationReportingTypeNone, routeUpdate{"a", false, true}},
-		{stateInfo("b", false), RouteInformationReportingTypeNeglect, routeUpdate{"b", false, true}},
-		{stateInfo("b", false), RouteInformationReportingTypeNavigate, routeUpdate{"b", false, false}},
+		{stateInfo("a", false), RouteInformationReportingTypeNone, updated("a", false, true)},
+		{stateInfo("b", false), RouteInformationReportingTypeNeglect, updated("b", false, true)},
+		{stateInfo("b", false), RouteInformationReportingTypeNavigate, updated("b", false, false)},
 	}
 	for i, step := range steps {
 		log = nil
 		provider.RouterReportsNewRouteInformation(step.info, step.typ)
-		if len(log) != 1 || log[0] != step.want {
+		if !slices.Equal(log, step.want) {
 			t.Errorf("step %d: log = %v, want %v", i, log, step.want)
 		}
 	}
@@ -973,12 +985,9 @@ func TestPlatformRouteInformationProviderUpdatesRouteInformation(t *testing.T) {
 func TestPlatformRouteInformationProviderDoesNotPushIfQueryIsSemanticallyTheSame(t *testing.T) {
 	ts := gluttertest.New(t)
 	var log []routeUpdate
+	logSystemNavigator(ts, &log)
 	initial := uriInfo("initial?a=ws/abcd")
-	provider := NewPlatformRouteInformationProvider(ts.Binding, initial, PlatformRouteInformationProviderOpts{
-		OnRouteInformationUpdated: func(i *routeInfo, replace bool) {
-			log = append(log, routeUpdate{i.URI().String(), i.State(), replace})
-		},
-	})
+	provider := NewPlatformRouteInformationProvider(ts.Binding, initial)
 	// Makes sure the engine is updated with the initial route.
 	provider.RouterReportsNewRouteInformation(initial, RouteInformationReportingTypeNone)
 	log = nil
@@ -987,8 +996,8 @@ func TestPlatformRouteInformationProviderDoesNotPushIfQueryIsSemanticallyTheSame
 	if got := provider.Value().URI().String(); got != "initial?a=ws%2Fabcd" {
 		t.Errorf("value = %q", got)
 	}
-	if len(log) != 1 || log[0] != (routeUpdate{"initial?a=ws%2Fabcd", nil, true}) {
-		t.Errorf("escaped query: %v", log)
+	if want := updated("initial?a=ws%2Fabcd", nil, true); !slices.Equal(log, want) {
+		t.Errorf("escaped query: %v, want %v", log, want)
 	}
 	for _, tc := range []struct{ first, second string }{
 		{"initial?a=1&b=2", "initial?b=2&a=1"}, // other order of the parameters
@@ -997,8 +1006,8 @@ func TestPlatformRouteInformationProviderDoesNotPushIfQueryIsSemanticallyTheSame
 		provider.RouterReportsNewRouteInformation(uriInfo(tc.first), RouteInformationReportingTypeNone)
 		log = nil
 		provider.RouterReportsNewRouteInformation(uriInfo(tc.second), RouteInformationReportingTypeNone)
-		if len(log) != 1 || log[0] != (routeUpdate{tc.second, nil, true}) {
-			t.Errorf("%s then %s: %v", tc.first, tc.second, log)
+		if want := updated(tc.second, nil, true); !slices.Equal(log, want) {
+			t.Errorf("%s then %s: %v, want %v", tc.first, tc.second, log, want)
 		}
 	}
 }

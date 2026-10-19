@@ -6,6 +6,7 @@ import (
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/gestures"
+	"github.com/rm4n0s/glutter/services"
 	"github.com/rm4n0s/glutter/ui"
 )
 
@@ -42,8 +43,13 @@ func (t *Tester) gestureOpts(opts []GestureOpts) GestureOpts {
 		o.Kind = ui.PointerDeviceKindTouch
 	}
 	if o.Pointer == 0 {
-		t.pointerID++
-		o.Pointer = t.pointerID
+		if o.Kind == ui.PointerDeviceKindMouse {
+			// There is one mouse: Hover and the mouse gestures share it.
+			o.Pointer = t.mousePointer()
+		} else {
+			t.pointerID++
+			o.Pointer = t.pointerID
+		}
 	}
 	return o
 }
@@ -59,6 +65,8 @@ type TestGesture struct {
 	position ui.Offset
 	down     bool
 	stamp    foundation.Opt[time.Duration]
+	// addedMouse is whether this gesture added the mouse, and so removes it.
+	addedMouse bool
 }
 
 func (g *TestGesture) eventOpts(delta ui.Offset) gestures.PointerEventOpts {
@@ -80,7 +88,12 @@ func (t *Tester) StartGesture(at ui.Offset, opts ...GestureOpts) *TestGesture {
 	t.tb.Helper()
 	g := &TestGesture{t: t, opts: t.gestureOpts(opts), position: at, down: true}
 	if g.opts.Kind == ui.PointerDeviceKindMouse {
-		t.Binding.Gestures().HandlePointerEvent(gestures.NewPointerAddedEvent(g.eventOpts(ui.Offset{})))
+		if !t.mouseAdded {
+			t.mouseAdded = true
+			g.addedMouse = true
+			t.Binding.Gestures().HandlePointerEvent(gestures.NewPointerAddedEvent(g.eventOpts(ui.Offset{})))
+		}
+		t.mousePosition = at
 	}
 	t.Binding.Gestures().HandlePointerEvent(gestures.NewPointerDownEvent(g.eventOpts(ui.Offset{})))
 	t.host.RunPosted() // the await of Flutter's startGesture runs the microtasks (the arena's default resolution)
@@ -107,6 +120,9 @@ func (g *TestGesture) MoveTo(to ui.Offset) {
 	g.requireDown("MoveTo")
 	delta := to.Sub(g.position)
 	g.position = to
+	if g.opts.Kind == ui.PointerDeviceKindMouse {
+		g.t.mousePosition = to
+	}
 	g.t.Binding.Gestures().HandlePointerEvent(gestures.NewPointerMoveEvent(g.eventOpts(delta)))
 	g.t.host.RunPosted()
 }
@@ -140,7 +156,8 @@ func (g *TestGesture) Up() {
 	o := g.eventOpts(ui.Offset{})
 	g.t.Binding.Gestures().HandlePointerEvent(gestures.NewPointerUpEvent(o))
 	g.t.host.RunPosted()
-	if g.opts.Kind == ui.PointerDeviceKindMouse {
+	if g.addedMouse {
+		g.t.mouseAdded = false
 		g.t.Binding.Gestures().HandlePointerEvent(gestures.NewPointerRemovedEvent(o))
 	}
 }
@@ -310,6 +327,35 @@ func (t *Tester) ScrollAt(at, delta ui.Offset) {
 	g.HandlePointerEvent(gestures.NewPointerScrollEvent(o))
 }
 
+// ScrollKindAt is ScrollAt for a device of another kind, such as a trackpad. Each
+// kind has one pointer of its own, which stays for the life of the tester.
+//
+// Flutter: flutter_test/lib/src/test_pointer.dart TestPointer.scroll
+func (t *Tester) ScrollKindAt(kind ui.PointerDeviceKind, at, delta ui.Offset) {
+	if kind == ui.PointerDeviceKindMouse {
+		t.ScrollAt(at, delta)
+		return
+	}
+	t.adopt()
+	t.tb.Helper()
+	if t.scrollPointers == nil {
+		t.scrollPointers = map[ui.PointerDeviceKind]int{}
+	}
+	g := t.Binding.Gestures()
+	id, ok := t.scrollPointers[kind]
+	if !ok {
+		t.pointerID++
+		id = t.pointerID
+		t.scrollPointers[kind] = id
+	}
+	o := gestures.PointerEventOpts{TimeStamp: t.Elapsed(), Pointer: id, Device: id, Kind: kind, Position: at}
+	if !ok {
+		g.HandlePointerEvent(gestures.NewPointerAddedEvent(o))
+	}
+	o.ScrollDelta = delta
+	g.HandlePointerEvent(gestures.NewPointerScrollEvent(o))
+}
+
 // Scroll scrolls the wheel over the center of the one element the finder finds.
 //
 // Flutter: flutter_test/lib/src/controller.dart WidgetController.scroll
@@ -333,20 +379,37 @@ func (t *Tester) EnterText(f Finder, text string) {
 //
 // Flutter: flutter_test/lib/src/event_simulation.dart simulateKeyDownEvent
 type KeyOpts struct {
-	// Physical is the ID of the physical key; 0 for none.
-	Physical uint64
-	// Character is the text the key produces, for a key down.
+	// Physical is the physical key; the default is the key of the same name as the
+	// logical key (services.PhysicalKeyOf), or none.
+	Physical services.PhysicalKeyboardKey
+	// Character is the text the key produces, for a key down or a repeat.
 	Character string
 }
 
-func (t *Tester) sendKey(typ ui.KeyEventType, logical uint64, opts []KeyOpts) bool {
+// leftKeyOf maps the pseudo-keys to the key on the left of the pair.
+var leftKeyOf = map[services.LogicalKeyboardKey]services.LogicalKeyboardKey{
+	services.LogicalKeyboardKeyShift:   services.LogicalKeyboardKeyShiftLeft,
+	services.LogicalKeyboardKeyControl: services.LogicalKeyboardKeyControlLeft,
+	services.LogicalKeyboardKeyAlt:     services.LogicalKeyboardKeyAltLeft,
+	services.LogicalKeyboardKeyMeta:    services.LogicalKeyboardKeyMetaLeft,
+}
+
+func (t *Tester) sendKey(typ ui.KeyEventType, logical services.LogicalKeyboardKey, opts []KeyOpts) bool {
 	t.adopt()
 	var o KeyOpts
 	if len(opts) > 0 {
 		o = opts[0]
 	}
-	d := ui.KeyData{TimeStamp: t.Elapsed(), Type: typ, Logical: logical, Physical: o.Physical}
-	if typ == ui.KeyEventTypeDown {
+	// A pseudo-key stands for a real one: the left key of the pair, as the
+	// platform key maps of Flutter's test simulation give.
+	if left, ok := leftKeyOf[logical]; ok {
+		logical = left
+	}
+	if o.Physical == 0 {
+		o.Physical, _ = services.PhysicalKeyOf(logical)
+	}
+	d := ui.KeyData{TimeStamp: t.Elapsed(), Type: typ, Logical: logical.KeyID(), Physical: o.Physical.USBHidUsage()}
+	if typ != ui.KeyEventTypeUp {
 		d.Character = o.Character
 	}
 	return t.d.DispatchKeyData(d)
@@ -356,16 +419,25 @@ func (t *Tester) sendKey(typ ui.KeyEventType, logical uint64, opts []KeyOpts) bo
 // something handled it.
 //
 // Flutter: flutter_test/lib/src/widget_tester.dart WidgetTester.sendKeyDownEvent
-func (t *Tester) SendKeyDownEvent(logical uint64, opts ...KeyOpts) bool {
+func (t *Tester) SendKeyDownEvent(logical services.LogicalKeyboardKey, opts ...KeyOpts) bool {
 	t.tb.Helper()
 	return t.sendKey(ui.KeyEventTypeDown, logical, opts)
+}
+
+// SendKeyRepeatEvent sends a key repeat for the logical key and returns whether
+// something handled it.
+//
+// Flutter: flutter_test/lib/src/widget_tester.dart WidgetTester.sendKeyRepeatEvent
+func (t *Tester) SendKeyRepeatEvent(logical services.LogicalKeyboardKey, opts ...KeyOpts) bool {
+	t.tb.Helper()
+	return t.sendKey(ui.KeyEventTypeRepeat, logical, opts)
 }
 
 // SendKeyUpEvent sends a key up for the logical key and returns whether
 // something handled it.
 //
 // Flutter: flutter_test/lib/src/widget_tester.dart WidgetTester.sendKeyUpEvent
-func (t *Tester) SendKeyUpEvent(logical uint64, opts ...KeyOpts) bool {
+func (t *Tester) SendKeyUpEvent(logical services.LogicalKeyboardKey, opts ...KeyOpts) bool {
 	t.tb.Helper()
 	return t.sendKey(ui.KeyEventTypeUp, logical, opts)
 }
@@ -374,7 +446,7 @@ func (t *Tester) SendKeyUpEvent(logical uint64, opts ...KeyOpts) bool {
 // whether the down was handled.
 //
 // Flutter: flutter_test/lib/src/widget_tester.dart WidgetTester.sendKeyEvent
-func (t *Tester) SendKeyEvent(logical uint64, opts ...KeyOpts) bool {
+func (t *Tester) SendKeyEvent(logical services.LogicalKeyboardKey, opts ...KeyOpts) bool {
 	t.tb.Helper()
 	handled := t.sendKey(ui.KeyEventTypeDown, logical, opts)
 	t.sendKey(ui.KeyEventTypeUp, logical, opts)

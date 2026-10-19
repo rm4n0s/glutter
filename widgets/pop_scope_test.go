@@ -12,7 +12,7 @@ import (
 
 // These tests are ported from packages/flutter/test/widgets/pop_scope_test.dart.
 // Not ported: the checks of SystemNavigator.setFrameworkHandlesBack (Android
-// only; the platform channel is step 10.4) and the TargetPlatform variants that
+// only; SetFrameworkHandlesBack does nothing on the desktop) and the TargetPlatform variants that
 // only they depend on. The system back button is simulated as WidgetsApp does it:
 // the binding tells its observers, and the navigator tries to pop.
 

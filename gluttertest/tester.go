@@ -78,9 +78,11 @@ type Tester struct {
 	handle    *semantics.SemanticsHandle
 	pointerID int
 
-	mouseID       int
-	mouseAdded    bool
-	mousePosition ui.Offset
+	mouseID    int
+	mouseAdded bool
+	// scrollPointers are the pointers of the non-mouse devices that scrolled.
+	scrollPointers map[ui.PointerDeviceKind]int
+	mousePosition  ui.Offset
 }
 
 // New creates a tester. It fails the test, when the test ends, if the framework
@@ -207,6 +209,58 @@ func (t *Tester) Dispatcher() *ui.PlatformDispatcher { return t.d }
 //
 // Flutter: no counterpart
 func (t *Tester) ExitRequests() int { return t.host.ExitRequests }
+
+// CursorActivation is a system mouse cursor that the framework asked the platform
+// to show.
+//
+// Flutter: no counterpart (a call of the flutter/mousecursor channel)
+type CursorActivation struct {
+	// Device is the pointer device the cursor is for.
+	Device int
+	// Kind is the kind of the system cursor, such as "click".
+	Kind string
+}
+
+// ActivatedCursors are the system mouse cursors that the framework asked the
+// platform to show, in order.
+//
+// Flutter: no counterpart (the log of a mock handler of SystemChannels.mouseCursor)
+func (t *Tester) ActivatedCursors() []CursorActivation {
+	out := make([]CursorActivation, len(t.host.ActivatedCursors))
+	for i, a := range t.host.ActivatedCursors {
+		out[i] = CursorActivation{a.Device, a.Kind}
+	}
+	return out
+}
+
+// ClipboardText is the text on the fake system clipboard, and whether there is
+// any. The framework's Clipboard calls use it.
+//
+// Flutter: no counterpart (the state of flutter_test's MockClipboard)
+func (t *Tester) ClipboardText() (string, bool) {
+	t.host.Lock()
+	defer t.host.Unlock()
+	return t.host.Clipboard, t.host.HasClipboard
+}
+
+// SetClipboardText puts text on the fake system clipboard, as another
+// application would.
+//
+// Flutter: no counterpart (MockClipboard.clipboardData)
+func (t *Tester) SetClipboardText(text string) {
+	t.host.Lock()
+	defer t.host.Unlock()
+	t.host.Clipboard, t.host.HasClipboard = text, true
+}
+
+// ClearClipboard empties the fake system clipboard.
+//
+// Flutter: no counterpart (MockClipboard.clipboardData = null)
+func (t *Tester) ClearClipboard() {
+	t.host.Lock()
+	defer t.host.Unlock()
+	t.host.Clipboard, t.host.HasClipboard = "", false
+}
 
 // Elapsed is how much fake time has passed since the tester was made.
 //

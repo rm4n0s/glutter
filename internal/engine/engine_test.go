@@ -718,3 +718,86 @@ func TestAFrameBeforeTheFirstConfigureIsNotDrawn(t *testing.T) {
 		t.Errorf("first draw at %dx%d, want 10x10", calls[0].width, calls[0].height)
 	}
 }
+
+// TestSystemCursorsReachTheWindow checks that a system cursor the framework
+// activates is set on the window, and that an unknown kind is not.
+func TestSystemCursorsReachTheWindow(t *testing.T) {
+	h := newHarness(t, map[string]string{"DISPLAY": ":0"})
+	started := make(chan *ui.PlatformDispatcher, 1)
+	h.cfg.Start = func(d *ui.PlatformDispatcher) error { started <- d; return nil }
+	h.c.Inject(metrics(1, 1))
+	done := h.run(t)
+	var d *ui.PlatformDispatcher
+	select {
+	case d = <-started:
+	case <-time.After(10 * time.Second):
+		t.Fatal("Start was not called")
+	}
+	// The dispatcher belongs to the UI thread: post the calls to it.
+	called := make(chan struct{})
+	h.c.Post(func() {
+		d.ActivateSystemCursor(0, "click")
+		d.ActivateSystemCursor(0, "nope")
+		close(called)
+	})
+	select {
+	case <-called:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the posted function did not run")
+	}
+	h.stopEngine(t)
+	if err := result(t, done); err != nil {
+		t.Fatal(err)
+	}
+	if got := h.c.Windows()[0].Cursor(); got != platform.MouseCursorClick {
+		t.Errorf("the window cursor is %v, want click", got)
+	}
+}
+
+// TestClipboardReachesThePlatform checks that the dispatcher's clipboard calls
+// go to the platform's clipboard and that the results come back on the UI thread.
+func TestClipboardReachesThePlatform(t *testing.T) {
+	h := newHarness(t, map[string]string{"DISPLAY": ":0"})
+	started := make(chan *ui.PlatformDispatcher, 1)
+	h.cfg.Start = func(d *ui.PlatformDispatcher) error { started <- d; return nil }
+	h.c.Inject(metrics(1, 1))
+	done := h.run(t)
+	var d *ui.PlatformDispatcher
+	select {
+	case d = <-started:
+	case <-time.After(10 * time.Second):
+		t.Fatal("Start was not called")
+	}
+	type readResult struct {
+		text string
+		ok   bool
+		err  error
+	}
+	got := make(chan readResult, 1)
+	h.c.Post(func() {
+		d.SetClipboardText(context.Background(), "copied", func(err error) {
+			if err != nil {
+				got <- readResult{err: err}
+				return
+			}
+			d.GetClipboardText(context.Background(), func(text string, ok bool, err error) {
+				got <- readResult{text, ok, err}
+			})
+		})
+	})
+	select {
+	case r := <-got:
+		if r.err != nil || !r.ok || r.text != "copied" {
+			t.Errorf("clipboard read = %+v, want copied", r)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the clipboard result did not arrive")
+	}
+	h.stopEngine(t)
+	if err := result(t, done); err != nil {
+		t.Fatal(err)
+	}
+	if text, ok := h.c.ClipboardText(); !ok || text != "copied" {
+		t.Errorf("platform clipboard = %q, %v", text, ok)
+	}
+}

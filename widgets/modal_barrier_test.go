@@ -10,15 +10,14 @@ import (
 	"github.com/rm4n0s/glutter/painting"
 	"github.com/rm4n0s/glutter/rendering"
 	"github.com/rm4n0s/glutter/semantics"
+	"github.com/rm4n0s/glutter/services"
 	"github.com/rm4n0s/glutter/ui"
 	. "github.com/rm4n0s/glutter/widgets"
 )
 
-// Ported from packages/flutter/test/widgets/modal_barrier_test.dart. Not ported:
-// the hover tests (the mouse tracker, step 10.4), the system alert sound
-// (services), the Navigator tests (step 10.2) and the default mouse cursor
-// (SystemMouseCursors, step 10.4). The semantics tree tests read the nodes of the
-// tree, as there is no semantics tester.
+// Ported from packages/flutter/test/widgets/modal_barrier_test.dart. The
+// Navigator tests are in modal_barrier_navigator_test.go. The semantics tree tests
+// read the nodes of the tree, as there is no semantics tester.
 
 const testRed = 0xFFFF0000
 
@@ -60,6 +59,97 @@ func TestModalBarrierInteractions(t *testing.T) {
 			t.Error("the drag was prevented by ModalBarrier")
 		}
 	})
+}
+
+func TestModalBarrierHoverInteractions(t *testing.T) {
+	hovered := false
+	hoverTarget := func() Widget {
+		mark := func() { hovered = true }
+		return NewMouseRegion(NewSizedBoxSquare(foundation.Some(10.0), NewText("target", TextOpts{TextDirection: ui.TextDirectionLTR})),
+			MouseRegionOpts{
+				OnHover: func(*gestures.PointerHoverEvent) { mark() },
+				OnEnter: func(*gestures.PointerEnterEvent) { mark() },
+				OnExit:  func(*gestures.PointerExitEvent) { mark() },
+			})
+	}
+	barrier := func() Widget { return NewModalBarrier(ModalBarrierOpts{Dismissible: foundation.Some(false)}) }
+
+	t.Run("prevents hover interactions with widgets behind it", func(t *testing.T) {
+		hovered = false
+		ts := gluttertest.New(t)
+		subject := NewStack([]Widget{hoverTarget(), barrier()}, StackOpts{TextDirection: ui.TextDirectionLTR})
+		// Starts out of the hover target.
+		ts.Hover(ui.Offset{Dx: 100, Dy: 100})
+		ts.PumpWidget(subject)
+		// Moves into the hover target and taps.
+		g := ts.StartGesture(ui.Offset{Dx: 5, Dy: 5}, gluttertest.GestureOpts{Kind: ui.PointerDeviceKindMouse})
+		ts.PumpWidget(subject)
+		g.Up()
+		ts.PumpWidget(subject)
+		// Moves out.
+		ts.Hover(ui.Offset{Dx: 100, Dy: 100})
+		ts.PumpWidget(subject)
+		if hovered {
+			t.Error("the hover was not prevented by ModalBarrier")
+		}
+	})
+	t.Run("does not prevent hover interactions with widgets in front of it", func(t *testing.T) {
+		hovered = false
+		ts := gluttertest.New(t)
+		subject := NewStack([]Widget{barrier(), hoverTarget()}, StackOpts{TextDirection: ui.TextDirectionLTR})
+		// Starts out of the hover target.
+		ts.Hover(ui.Offset{Dx: 100, Dy: 100})
+		ts.PumpWidget(subject)
+		if hovered {
+			t.Fatal("hovered before the pointer entered")
+		}
+		// Moves into the hover target.
+		ts.Hover(ui.Offset{Dx: 5, Dy: 5})
+		ts.PumpWidget(subject)
+		if !hovered {
+			t.Error("the hover was prevented by ModalBarrier")
+		}
+		hovered = false
+		// Moves out.
+		ts.Hover(ui.Offset{Dx: 100, Dy: 100})
+		ts.PumpWidget(subject)
+		if !hovered {
+			t.Error("the exit was prevented by ModalBarrier")
+		}
+	})
+	t.Run("uses the default mouse cursor", func(t *testing.T) {
+		ts := gluttertest.New(t)
+		ts.PumpWidget(NewStack([]Widget{
+			NewMouseRegion(nil, MouseRegionOpts{Cursor: services.SystemMouseCursors.Click}),
+			NewModalBarrier(ModalBarrierOpts{Dismissible: foundation.Some(false)}),
+		}, StackOpts{TextDirection: ui.TextDirectionLTR}))
+		ts.Hover(ts.Center(gluttertest.ByType[*ModalBarrier]()))
+		ts.Pump()
+		if !foundation.DebugMode {
+			return
+		}
+		if c, ok := ts.Binding.Renderer().MouseTracker().DebugDeviceActiveCursor(0); !ok || c != services.SystemMouseCursors.Basic {
+			t.Errorf("cursor = %v, want basic", c)
+		}
+		if got := ts.ActivatedCursors(); len(got) == 0 || got[len(got)-1].Kind != "basic" {
+			t.Errorf("activated cursors = %v, want basic last", got)
+		}
+	})
+}
+
+func TestModalBarrierPlaysTheAlertSound(t *testing.T) {
+	ts := gluttertest.New(t)
+	var played []string
+	ts.Binding.SystemSound().OnPlay = func(s services.SystemSoundType) { played = append(played, s.String()) }
+	target := NewGestureDetector(NewSizedBoxSquare(foundation.Some(10.0), NewText("target", TextOpts{TextDirection: ui.TextDirectionLTR})),
+		GestureDetectorOpts{OnTap: func() {}})
+	subject := NewStack([]Widget{target, NewModalBarrier(ModalBarrierOpts{Dismissible: foundation.Some(false)})}, StackOpts{TextDirection: ui.TextDirectionLTR})
+	ts.PumpWidget(subject)
+	ts.TapAt(ts.TopLeft(gluttertest.ByText("target")).Add(ui.Offset{Dx: 1, Dy: 1}))
+	ts.PumpWidget(subject)
+	if len(played) != 1 || played[0] != "SystemSoundType.alert" {
+		t.Errorf("played = %v, want one alert", played)
+	}
 }
 
 func TestModalBarrierDismissal(t *testing.T) {

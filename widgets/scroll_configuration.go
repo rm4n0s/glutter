@@ -6,6 +6,7 @@ import (
 
 	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/gestures"
+	"github.com/rm4n0s/glutter/services"
 	"github.com/rm4n0s/glutter/ui"
 )
 
@@ -65,10 +66,8 @@ var touchLikeDeviceTypes = []ui.PointerDeviceKind{
 // Implement it by embedding ScrollBehaviorBase (InitScrollBehaviorBase) and
 // overriding what differs.
 //
-// Deviation: Flutter's has pointerAxisModifiers, the keys that make the wheel
-// scroll the other axis; they come with the keyboard (step 10.4), and
-// buildOverscrollIndicator returns the child on every platform because the
-// Android indicators are not ported (SPEC §12.10).
+// Deviation: buildOverscrollIndicator returns the child on every platform
+// because the Android indicators are not ported (SPEC §12.10).
 //
 // Flutter: widgets/scroll_configuration.dart ScrollBehavior
 type ScrollBehavior interface {
@@ -90,6 +89,11 @@ type ScrollBehavior interface {
 	//
 	// Flutter: widgets/scroll_configuration.dart ScrollBehavior.getMultitouchDragStrategy
 	GetMultitouchDragStrategy(bc BuildContext) gestures.MultitouchDragStrategy
+	// PointerAxisModifiers are the keys that make a mouse wheel scroll the other
+	// axis while one of them is held; the default is the two Shift keys.
+	//
+	// Flutter: widgets/scroll_configuration.dart ScrollBehavior.pointerAxisModifiers
+	PointerAxisModifiers() []services.LogicalKeyboardKey
 	// BuildScrollbar wraps the child in a scrollbar; the default is a
 	// RawScrollbar on Linux, macOS and Windows.
 	//
@@ -138,6 +142,9 @@ type ScrollBehaviorCopy struct {
 	// MultitouchDragStrategy replaces the strategy; the Unspecified value keeps
 	// it.
 	MultitouchDragStrategy gestures.MultitouchDragStrategy
+	// PointerAxisModifiers replaces the keys that flip the axis of the wheel; nil
+	// keeps them.
+	PointerAxisModifiers []services.LogicalKeyboardKey
 	// Physics replaces the physics; nil keeps them.
 	Physics ScrollPhysics
 	// Platform replaces the platform; the Unspecified value keeps it.
@@ -184,7 +191,8 @@ func (b *ScrollBehaviorBase) CopyWith(changes ...ScrollBehaviorCopy) ScrollBehav
 	return newWrappedScrollBehavior(b.self, wrappedScrollBehaviorOpts{
 		scrollbars: c.Scrollbars.OrElse(true), overscroll: c.Overscroll.OrElse(true),
 		dragDevices: c.DragDevices, multitouchDragStrategy: c.MultitouchDragStrategy,
-		physics: c.Physics, platform: c.Platform, keyboardDismissBehavior: c.KeyboardDismissBehavior,
+		pointerAxisModifiers: c.PointerAxisModifiers,
+		physics:              c.Physics, platform: c.Platform, keyboardDismissBehavior: c.KeyboardDismissBehavior,
 	})
 }
 
@@ -200,6 +208,13 @@ func (b *ScrollBehaviorBase) GetPlatform(BuildContext) foundation.TargetPlatform
 // Flutter: widgets/scroll_configuration.dart ScrollBehavior.dragDevices
 func (b *ScrollBehaviorBase) DragDevices() []ui.PointerDeviceKind {
 	return slices.Clone(touchLikeDeviceTypes)
+}
+
+// PointerAxisModifiers are the two Shift keys.
+//
+// Flutter: widgets/scroll_configuration.dart ScrollBehavior.pointerAxisModifiers
+func (b *ScrollBehaviorBase) PointerAxisModifiers() []services.LogicalKeyboardKey {
+	return []services.LogicalKeyboardKey{services.LogicalKeyboardKeyShiftLeft, services.LogicalKeyboardKeyShiftRight}
 }
 
 // GetMultitouchDragStrategy is the average of the boundary pointers on macOS and
@@ -305,6 +320,7 @@ type wrappedScrollBehaviorOpts struct {
 	scrollbars, overscroll  bool
 	dragDevices             []ui.PointerDeviceKind
 	multitouchDragStrategy  gestures.MultitouchDragStrategy
+	pointerAxisModifiers    []services.LogicalKeyboardKey
 	physics                 ScrollPhysics
 	platform                foundation.TargetPlatform
 	keyboardDismissBehavior ScrollViewKeyboardDismissBehavior
@@ -328,6 +344,13 @@ func (w *wrappedScrollBehavior) DragDevices() []ui.PointerDeviceKind {
 		return w.dragDevices
 	}
 	return w.delegate.DragDevices()
+}
+
+func (w *wrappedScrollBehavior) PointerAxisModifiers() []services.LogicalKeyboardKey {
+	if w.pointerAxisModifiers != nil {
+		return w.pointerAxisModifiers
+	}
+	return w.delegate.PointerAxisModifiers()
 }
 
 func (w *wrappedScrollBehavior) GetMultitouchDragStrategy(bc BuildContext) gestures.MultitouchDragStrategy {
@@ -361,6 +384,10 @@ func (w *wrappedScrollBehavior) CopyWith(changes ...ScrollBehaviorCopy) ScrollBe
 	if multitouch == gestures.MultitouchDragStrategyUnspecified {
 		multitouch = w.multitouchDragStrategy
 	}
+	modifiers := c.PointerAxisModifiers
+	if modifiers == nil {
+		modifiers = w.PointerAxisModifiers()
+	}
 	physics := c.Physics
 	if isNil(physics) {
 		physics = w.physics
@@ -375,7 +402,7 @@ func (w *wrappedScrollBehavior) CopyWith(changes ...ScrollBehaviorCopy) ScrollBe
 	}
 	return w.delegate.CopyWith(ScrollBehaviorCopy{
 		Scrollbars: foundation.Some(c.Scrollbars.OrElse(w.scrollbars)), Overscroll: foundation.Some(c.Overscroll.OrElse(w.overscroll)),
-		DragDevices: dragDevices, MultitouchDragStrategy: multitouch, Physics: physics, Platform: platform, KeyboardDismissBehavior: dismiss,
+		DragDevices: dragDevices, MultitouchDragStrategy: multitouch, PointerAxisModifiers: modifiers, Physics: physics, Platform: platform, KeyboardDismissBehavior: dismiss,
 	})
 }
 
@@ -410,12 +437,25 @@ func (w *wrappedScrollBehavior) ShouldNotify(oldDelegate ScrollBehavior) bool {
 		old.overscroll != w.overscroll ||
 		!sameKinds(old.DragDevices(), w.DragDevices()) ||
 		old.multitouchDragStrategy != w.multitouchDragStrategy ||
+		!sameKeys(old.PointerAxisModifiers(), w.PointerAxisModifiers()) ||
 		old.physics != w.physics ||
 		old.platform != w.platform ||
 		w.delegate.ShouldNotify(old.delegate)
 }
 
 func sameKinds(a, b []ui.PointerDeviceKind) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for _, k := range a {
+		if !slices.Contains(b, k) {
+			return false
+		}
+	}
+	return true
+}
+
+func sameKeys(a, b []services.LogicalKeyboardKey) bool {
 	if len(a) != len(b) {
 		return false
 	}
