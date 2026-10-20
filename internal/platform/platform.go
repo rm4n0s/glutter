@@ -47,6 +47,9 @@ type Window interface {
 	SetTitle(title string)
 	// SetSize asks for a new window size, in logical pixels.
 	SetSize(size ui.Size)
+	// SetSizeConstraints sets the smallest and the largest size of the window in
+	// logical pixels; zero means no limit. The compositor may ignore it.
+	SetSizeConstraints(min, max ui.Size)
 	// SetState asks for the window to be maximized, minimized, fullscreen or
 	// back to normal.
 	SetState(state WindowState)
@@ -70,7 +73,7 @@ type Window interface {
 	PerformWindowAction(action ui.WindowAction)
 	// Close destroys the window. Destroy the GPU surface of the window first.
 	Close()
-	// TODO(step 1.5): more setters (min/max size, icon).
+	// TODO(step 14.7): the icon.
 }
 
 // Handler receives everything the platform reports. The engine implements it.
@@ -95,6 +98,9 @@ type Handler interface {
 	OnDrop(view ui.ViewID, event DropEvent)
 	// OnSettings reports changed system settings.
 	OnSettings(settings Settings)
+	// OnViewFocus reports that the keyboard focus moved to a view (true) or left it
+	// (false). When it moves from one view to another, the old view is told first.
+	OnViewFocus(view ui.ViewID, focused bool)
 	// OnCloseRequest reports that the user asked to close the view. Returning
 	// true closes the window; false keeps it open.
 	OnCloseRequest(view ui.ViewID) bool

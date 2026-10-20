@@ -172,6 +172,20 @@ const (
 	//
 	// Flutter: no counterpart
 	WindowActionClose
+	// WindowActionFullscreen makes the window fullscreen.
+	//
+	// Flutter: widgets/_window.dart RegularWindowController.setFullscreen
+	WindowActionFullscreen
+	// WindowActionUnfullscreen takes the window out of fullscreen.
+	//
+	// Flutter: widgets/_window.dart RegularWindowController.setFullscreen
+	WindowActionUnfullscreen
+	// WindowActionActivate asks for the window to be shown at its size and position,
+	// out of the minimized state, and to get the focus. The platform may refuse the
+	// focus and the stacking order.
+	//
+	// Flutter: widgets/_window.dart RegularWindowController.activate
+	WindowActionActivate
 )
 
 // WindowAction is a request of a title bar that the app draws.

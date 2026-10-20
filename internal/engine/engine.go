@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/rm4n0s/errors"
+	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/internal/gpu"
 	"github.com/rm4n0s/glutter/internal/gpu/gles"
 	"github.com/rm4n0s/glutter/internal/platform"
@@ -95,7 +96,10 @@ type renderer interface {
 	// empty one. With capture it first reads the frame back, top row first, and
 	// returns it: the back buffer is undefined after the swap.
 	Draw(h gpu.SurfaceHandle, width, height int, scene *ui.Scene, capture bool) (*image.RGBA, error)
-	// Close destroys the renderer's surface and context. The window must still
+	// Release destroys the surface of the window with the handle. The window must
+	// still exist. A handle that was never drawn into is ignored.
+	Release(h gpu.SurfaceHandle)
+	// Close destroys the renderer's surfaces and context. The windows must still
 	// exist.
 	Close()
 }
@@ -181,7 +185,9 @@ func Run(ctx context.Context, cfg Config) (err error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	h := &handler{cfg: &cfg, log: log, conn: conn, win: win, shot: shot, cancel: cancel}
+	h := &handler{cfg: &cfg, log: log, conn: conn, shot: shot, cancel: cancel, windows: map[ui.ViewID]*window{},
+		appID: wcfg.AppID, decorations: wcfg.Decorations}
+	h.first = h.addWindow(win)
 	if cfg.newRenderer != nil {
 		h.newRenderer = cfg.newRenderer
 	} else {
@@ -250,27 +256,53 @@ func (c *Config) x11Connector() func() (linux.Connection, error) {
 	}
 }
 
-// handler is the platform.Handler of the engine: it draws the window, captures
+// window is one native window of the engine and what the engine keeps for it.
+type window struct {
+	platform.Window
+	id            ui.ViewID
+	width, height int
+	// lastScene is the scene the framework rendered into the view last.
+	lastScene *ui.Scene
+	// rendered is whether the framework rendered a scene into the view in the
+	// current frame.
+	rendered bool
+	// wanted is whether a frame of the window was asked for and has not come yet.
+	wanted bool
+	// pending is whether lastScene was rendered during the frame of another window:
+	// the frame of this window then only presents it.
+	pending bool
+}
+
+// handler is the platform.Handler of the engine: it draws the windows, captures
 // the self-capture screenshot, and passes input to the hooks.
 type handler struct {
 	platform.NopHandler
 	cfg    *Config
 	log    *slog.Logger
 	conn   linux.Connection
-	win    platform.Window
 	shot   *Screenshot
 	cancel context.CancelFunc
 
-	disp          *ui.PlatformDispatcher
-	newRenderer   func(cfg *Config, log *slog.Logger) renderer
-	r             renderer
-	width, height int
+	disp        *ui.PlatformDispatcher
+	newRenderer func(cfg *Config, log *slog.Logger) renderer
+	// r draws every window: one renderer, one GL context, a surface for each window.
+	r renderer
+	// windows are the windows that exist, by view. first is the first one, the one
+	// the self-capture reads.
+	windows map[ui.ViewID]*window
+	first   *window
+	// appID and decorations are what the first window was made with; the other
+	// windows get them too.
+	appID       string
+	decorations platform.Decorations
+	// frameView is the view whose frame is being run, and hasFrame is whether one is.
+	frameView ui.ViewID
+	hasFrame  bool
+	// pointerView is the view the pointer was last over, and focusView the view that
+	// has the keyboard focus; the cursor and the input method follow them.
+	pointerView, focusView ui.ViewID
 	// input is what arrived since the last frame, which the next one handles first.
 	input inputQueue
-	// rendered is whether the framework rendered a scene in the current frame;
-	// lastScene is the scene it rendered last.
-	rendered  bool
-	lastScene *ui.Scene
 
 	armed      bool // the capture is scheduled
 	captureDue bool // the next frame is read back
@@ -282,21 +314,149 @@ var (
 	_ ui.PlatformHost      = (*handler)(nil)
 	_ ui.CursorHost        = (*handler)(nil)
 	_ ui.WindowHost        = (*handler)(nil)
+	_ ui.WindowControlHost = (*handler)(nil)
+	_ ui.ViewFocusHost     = (*handler)(nil)
 	_ ui.ClipboardHost     = (*handler)(nil)
 	_ ui.RichClipboardHost = (*handler)(nil)
 	_ ui.TextInputHost     = (*handler)(nil)
 )
 
+// addWindow keeps the window of the platform and returns it.
+func (h *handler) addWindow(win platform.Window) *window {
+	w := &window{Window: win, id: win.ID()}
+	if h.windows == nil {
+		h.windows = map[ui.ViewID]*window{}
+	}
+	h.windows[w.id] = w
+	return w
+}
+
+// windowOf is the window of the view; when the view is not known (it was closed),
+// the first window that is left, or nil when there is none.
+func (h *handler) windowOf(view ui.ViewID) *window {
+	if w, ok := h.windows[view]; ok {
+		return w
+	}
+	var found *window
+	for _, w := range h.windows {
+		if found == nil || w.id < found.id {
+			found = w
+		}
+	}
+	return found
+}
+
 // PerformWindowAction carries out the action of a title bar that the app draws on
 // the window.
-func (h *handler) PerformWindowAction(_ ui.ViewID, action ui.WindowAction) {
-	if h.win != nil {
-		h.win.PerformWindowAction(action)
+func (h *handler) PerformWindowAction(view ui.ViewID, action ui.WindowAction) {
+	if w, ok := h.windows[view]; ok {
+		w.PerformWindowAction(action)
 	}
 }
 
+// CreateWindow makes a window for the framework (ui.WindowControlHost): the
+// platform makes it, and the view starts with the requested size until the
+// platform says what it got.
+func (h *handler) CreateWindow(spec ui.WindowSpec) (ui.ViewID, ui.ViewConfiguration, error) {
+	cfg := platform.WindowConfig{
+		Title: spec.Title, AppID: h.appID, Size: spec.Size, MinSize: spec.MinSize, MaxSize: spec.MaxSize,
+		Decorations: h.decorations,
+	}
+	if spec.NotResizable {
+		cfg.Resizable = foundation.Some(false)
+	}
+	if spec.AppDecorations {
+		cfg.Decorations = platform.DecorationsApp
+	}
+	if spec.Kind == ui.WindowKindDialog {
+		cfg.Kind = platform.WindowKindDialog
+	}
+	if spec.HasParent {
+		cfg.Parent, cfg.HasParent = spec.Parent, true
+		// A dialog with a parent is modal to it, as in Flutter.
+		cfg.Modal = spec.Kind == ui.WindowKindDialog
+	}
+	win, err := h.conn.NewWindow(cfg)
+	if err != nil {
+		return 0, ui.ViewConfiguration{}, err
+	}
+	w := h.addWindow(win)
+	return w.id, ui.ViewConfiguration{PhysicalSize: spec.Size, DevicePixelRatio: 1}, nil
+}
+
+// DestroyWindow closes the window of the view (ui.WindowControlHost): the surface
+// of the renderer goes first.
+func (h *handler) DestroyWindow(view ui.ViewID) {
+	w, ok := h.windows[view]
+	if !ok {
+		return
+	}
+	h.forget(w)
+	w.Close()
+}
+
+// forget destroys the surface of the window and drops it. The window must still
+// exist.
+func (h *handler) forget(w *window) {
+	if h.r != nil {
+		h.r.Release(w.NativeSurface())
+	}
+	delete(h.windows, w.id)
+}
+
+// SetWindowTitle sets the title of the window (ui.WindowControlHost).
+func (h *handler) SetWindowTitle(view ui.ViewID, title string) {
+	if w, ok := h.windows[view]; ok {
+		w.SetTitle(title)
+	}
+}
+
+// SetWindowSize asks for a new size of the window (ui.WindowControlHost).
+func (h *handler) SetWindowSize(view ui.ViewID, size ui.Size) {
+	if w, ok := h.windows[view]; ok {
+		w.SetSize(size)
+	}
+}
+
+// SetWindowConstraints sets the limits on the size of the window
+// (ui.WindowControlHost).
+func (h *handler) SetWindowConstraints(view ui.ViewID, min, max ui.Size) {
+	if w, ok := h.windows[view]; ok {
+		w.SetSizeConstraints(min, max)
+	}
+}
+
+// RequestViewFocus asks the platform to give the focus to the window of the view
+// (ui.ViewFocusHost). Taking the focus away is up to the user.
+func (h *handler) RequestViewFocus(view ui.ViewID, state ui.ViewFocusState, _ ui.ViewFocusDirection) {
+	if w, ok := h.windows[view]; ok && state == ui.ViewFocusStateFocused && h.focusView != view {
+		w.PerformWindowAction(ui.WindowAction{Kind: ui.WindowActionActivate})
+	}
+}
+
+// OnViewFocus tells the dispatcher that a view got or lost the keyboard focus,
+// with the input that came before it.
+func (h *handler) OnViewFocus(view ui.ViewID, focused bool) {
+	w, ok := h.windows[view]
+	if !ok {
+		return
+	}
+	state := ui.ViewFocusStateUnfocused
+	if focused {
+		state = ui.ViewFocusStateFocused
+		h.focusView = view
+	}
+	h.queueInput(w, func() {
+		h.disp.DispatchViewFocus(ui.ViewFocusEvent{ViewID: view, State: state, Direction: ui.ViewFocusDirectionUndefined})
+	})
+}
+
 func (h *handler) OnMetrics(view ui.ViewID, m platform.ViewMetrics) {
-	h.width, h.height = int(m.PhysicalSize.Width), int(m.PhysicalSize.Height)
+	w, ok := h.windows[view]
+	if !ok {
+		return
+	}
+	w.width, w.height = int(m.PhysicalSize.Width), int(m.PhysicalSize.Height)
 	h.disp.UpdateViewConfiguration(view, h.viewConfiguration(m))
 	if f := h.cfg.Hooks.Metrics; f != nil {
 		f(view, m)
@@ -388,7 +548,7 @@ func (h *handler) OnSettings(s platform.Settings) {
 func (h *handler) OnLifecycle(state ui.AppLifecycleState) { h.disp.SetAppLifecycleState(state) }
 
 func (h *handler) OnKey(d ui.KeyData) {
-	h.queueInput(func() {
+	h.queueInput(h.windowOf(h.focusView), func() {
 		if f := h.cfg.Hooks.Key; f != nil {
 			f(d)
 		}
@@ -398,7 +558,10 @@ func (h *handler) OnKey(d ui.KeyData) {
 
 func (h *handler) OnPointer(batch []ui.PointerData) {
 	batch = append([]ui.PointerData(nil), batch...)
-	h.queueInput(func() {
+	if len(batch) > 0 {
+		h.pointerView = batch[len(batch)-1].ViewID
+	}
+	h.queueInput(h.windowOf(h.pointerView), func() {
 		if f := h.cfg.Hooks.Pointer; f != nil {
 			f(batch)
 		}
@@ -406,36 +569,67 @@ func (h *handler) OnPointer(batch []ui.PointerData) {
 	})
 }
 
-// queueInput has the next frame handle an input event. A window that never draws (the
-// shared-memory mode) has no frame to wait for, so the event is handled at once.
-func (h *handler) queueInput(handle func()) {
+// queueInput has the next frame of the window handle an input event. A window that
+// never draws (the shared-memory mode) has no frame to wait for, so the event is
+// handled at once.
+func (h *handler) queueInput(w *window, handle func()) {
 	if h.cfg.ShmFill {
 		handle()
 		return
 	}
 	h.input.add(handle)
-	h.win.RequestFrame()
+	h.askFrame(w)
 }
 
-// OnFrame runs a frame: the input that arrived since the last one, then the
-// dispatcher's OnBeginFrame and OnDrawFrame. The framework renders its scene in
-// OnDrawFrame; if it did not, the previous scene is drawn again, so that exactly
-// one frame is presented. The first frame also creates the renderer: its surface
-// needs the window to be mapped.
-func (h *handler) OnFrame(_ ui.ViewID, frameTime time.Duration) {
+// askFrame asks the platform for a frame of the window.
+func (h *handler) askFrame(w *window) {
+	if w == nil {
+		return
+	}
+	w.wanted = true
+	w.RequestFrame()
+}
+
+// OnFrame runs a frame of a window: the input that arrived since the last one, then
+// the dispatcher's OnBeginFrame and OnDrawFrame. The framework renders its scenes
+// in OnDrawFrame, one for each view; the window whose frame this is draws its own
+// at once, and the other windows present theirs in their own frames. If the
+// framework rendered nothing into the window, the previous scene is drawn again, so
+// that exactly one frame is presented. The first frame also creates the renderer:
+// its surface needs the window to be mapped.
+func (h *handler) OnFrame(view ui.ViewID, frameTime time.Duration) {
+	w, ok := h.windows[view]
+	if !ok {
+		return
+	}
+	w.wanted = false
+	if w.pending && len(h.input.pending) == 0 {
+		// The framework rendered this window during the frame of another one, and
+		// nothing arrived since that needs a frame of the framework.
+		w.pending = false
+		if h.err == nil {
+			_ = h.draw(w, w.lastScene) // a failure is recorded by draw and ends Run
+		}
+		return
+	}
+	w.pending = false
 	h.input.flush()
-	h.rendered = false
+	for _, o := range h.windows {
+		o.rendered = false
+	}
+	h.frameView, h.hasFrame = view, true
 	h.disp.BeginFrame(frameTime)
 	h.disp.DrawFrame()
-	if !h.rendered && h.err == nil {
-		_ = h.draw(h.lastScene) // a failure is recorded by draw and ends Run
+	h.hasFrame = false
+	if !w.rendered && h.err == nil {
+		_ = h.draw(w, w.lastScene)
 	}
 }
 
 // drawSceneFunc is OnDrawFrame for a Config that has a Scene: it renders the
-// scene that Config.Scene makes.
+// scene that Config.Scene makes into the first window.
 func (h *handler) drawSceneFunc() {
-	v := h.disp.View(h.win.ID())
+	v := h.disp.View(h.first.id)
 	if v == nil {
 		return
 	}
@@ -445,36 +639,45 @@ func (h *handler) drawSceneFunc() {
 	}
 }
 
-// ScheduleFrame asks the window for a frame (ui.PlatformHost).
+// ScheduleFrame asks every window for a frame (ui.PlatformHost): the framework
+// does not say which of its views changed.
 func (h *handler) ScheduleFrame() {
 	if h.cfg.ShmFill {
 		return // the shared-memory mode has no frames
 	}
-	h.win.RequestFrame()
+	for _, w := range h.windows {
+		h.askFrame(w)
+	}
 }
 
 // RequestAppExit ends Run (ui.PlatformHost).
 func (h *handler) RequestAppExit() { h.cancel() }
 
-// ActivateSystemCursor shows the cursor of the kind over the window
-// (ui.CursorHost). The engine has one window, so the device does not matter.
+// ActivateSystemCursor shows the cursor of the kind over the window the pointer is
+// in (ui.CursorHost).
 func (h *handler) ActivateSystemCursor(_ int, kind string) {
 	cursor, ok := platform.MouseCursorFromKind(kind)
 	if !ok {
 		h.log.Warn("glutter: unknown system mouse cursor", "kind", kind)
 		return
 	}
-	h.win.SetCursor(cursor)
+	if w := h.windowOf(h.pointerView); w != nil {
+		w.SetCursor(cursor)
+	}
 }
 
-// SetTextInput gives the input method of the window the state of the focused
-// text field (ui.TextInputHost). The engine has one window.
-func (h *handler) SetTextInput(state ui.TextInputState) { h.win.SetTextInput(state) }
+// SetTextInput gives the input method of the window that has the keyboard focus the
+// state of the focused text field (ui.TextInputHost).
+func (h *handler) SetTextInput(state ui.TextInputState) {
+	if w := h.windowOf(h.focusView); w != nil {
+		w.SetTextInput(state)
+	}
+}
 
 // OnTextInput passes a change that the input method asks for to the dispatcher,
 // at the start of the next frame like the other input.
 func (h *handler) OnTextInput(event ui.TextInputEvent) {
-	h.queueInput(func() { h.disp.DispatchTextInput(event) })
+	h.queueInput(h.windowOf(h.focusView), func() { h.disp.DispatchTextInput(event) })
 }
 
 // SetClipboardText puts text on the system clipboard (ui.ClipboardHost).
@@ -503,19 +706,32 @@ func (h *handler) GetClipboard(ctx context.Context, kind ui.ClipboardKind, forma
 func (h *handler) Post(fn func()) { h.conn.Post(fn) }
 
 // RenderView draws the scene the framework rendered into the view
-// (ui.PlatformHost).
+// (ui.PlatformHost). The window whose frame is running draws it now; another window
+// presents it in its own frame, which it is asked for if none was. A window that
+// had no frame coming is not drawn again: it did not change.
 func (h *handler) RenderView(view ui.ViewID, scene *ui.Scene) error {
-	if view != h.win.ID() {
+	w, ok := h.windows[view]
+	if !ok {
 		return errors.New("ViewNotFound", "there is no window for the view", "view", int64(view))
 	}
-	h.rendered = true
-	h.lastScene = scene
-	return h.draw(scene)
+	w.rendered = true
+	w.lastScene = scene
+	if !h.hasFrame || view == h.frameView {
+		return h.draw(w, scene)
+	}
+	if w.wanted {
+		w.pending = true
+	}
+	return nil
 }
 
-// draw draws one frame of the window, and handles the self-capture.
-func (h *handler) draw(scene *ui.Scene) error {
-	if h.width <= 0 || h.height <= 0 {
+// draw draws one frame of the window, and handles the self-capture of the first
+// window.
+func (h *handler) draw(w *window, scene *ui.Scene) error {
+	if h.windows[w.id] != w {
+		return nil // the window was destroyed while its frame ran
+	}
+	if w.width <= 0 || w.height <= 0 {
 		// The window has no size yet: the first frame the framework asked for came
 		// before the first configure. The configure renders again.
 		return nil
@@ -523,12 +739,15 @@ func (h *handler) draw(scene *ui.Scene) error {
 	if h.r == nil {
 		h.r = h.newRenderer(h.cfg, h.log)
 	}
-	capture := h.captureDue
+	capture := w == h.first && h.captureDue
 	h.captureDue = false
-	img, err := h.r.Draw(h.win.NativeSurface(), h.width, h.height, scene, capture)
+	img, err := h.r.Draw(w.NativeSurface(), w.width, w.height, scene, capture)
 	if err != nil {
 		h.fail(err)
 		return err
+	}
+	if w != h.first {
+		return nil
 	}
 	switch {
 	case img != nil:
@@ -547,13 +766,13 @@ func (h *handler) draw(scene *ui.Scene) error {
 				return nil
 			}
 			h.captureDue = true
-			h.win.RequestFrame()
+			h.first.RequestFrame()
 			return nil
 		}
 		time.AfterFunc(h.shot.After(), func() {
 			h.conn.Post(func() {
 				h.captureDue = true
-				h.win.RequestFrame()
+				h.first.RequestFrame()
 			})
 		})
 	}
@@ -588,19 +807,24 @@ func (h *handler) waitIdle(deadline time.Time) {
 				h.log.Warn("the app was not idle after waiting; capturing the window anyway", "waited", h.idleMax())
 			}
 			h.captureDue = true
-			h.win.RequestFrame()
+			h.first.RequestFrame()
 		})
 	})
 }
 
 // OnCloseRequest asks the app whether the window may close (the dispatcher's
-// OnExitRequested); if it may, it destroys the renderer, whose surface draws
-// into the window, and then lets the window close.
+// OnExitRequested, or the owner of the window controller of the window); if it may,
+// it destroys the surface of the renderer, which draws into the window, and then
+// lets the window close.
 func (h *handler) OnCloseRequest(view ui.ViewID) bool {
+	w, ok := h.windows[view]
+	if !ok {
+		return true
+	}
 	if !h.disp.RequestClose(view) {
 		return false
 	}
-	h.release()
+	h.forget(w)
 	h.disp.RemoveView(view)
 	return true
 }
@@ -622,17 +846,18 @@ func (h *handler) release() {
 }
 
 // glesRenderer is the OpenGL ES renderer of the engine: it draws the scene of the
-// frame over developmentColor.
+// frame over developmentColor, into the surface of any window, with one GL context
+// for all of them.
 type glesRenderer struct {
 	log      *slog.Logger
 	skip     bool
 	renderer *gles.Renderer
-	surface  gpu.Surface
+	surfaces map[gpu.SurfaceHandle]gpu.Surface
 	reported int // the number of skipped commands the log last said
 }
 
 func newGLESRenderer(cfg *Config, log *slog.Logger) renderer {
-	return &glesRenderer{log: log, skip: cfg.SkipUnsupported}
+	return &glesRenderer{log: log, skip: cfg.SkipUnsupported, surfaces: map[gpu.SurfaceHandle]gpu.Surface{}}
 }
 
 func (r *glesRenderer) Draw(h gpu.SurfaceHandle, width, height int, scene *ui.Scene, capture bool) (*image.RGBA, error) {
@@ -640,20 +865,23 @@ func (r *glesRenderer) Draw(h gpu.SurfaceHandle, width, height int, scene *ui.Sc
 		r.renderer = gles.NewRenderer(gles.RendererOpts{
 			Background: ui.NewColor(developmentColor), HasBackground: true, SkipUnsupported: r.skip,
 		})
-		surface, err := r.renderer.Attach(h)
-		if err != nil {
+		r.log.Info("OpenGL ES renderer ready")
+	}
+	surface, ok := r.surfaces[h]
+	if !ok {
+		var err error
+		if surface, err = r.renderer.Attach(h); err != nil {
 			return nil, err
 		}
-		r.surface = surface
-		r.log.Info("OpenGL ES renderer ready")
+		r.surfaces[h] = surface
 	}
 	size := ui.Size{Width: float64(width), Height: float64(height)}
 	var img *image.RGBA
 	var err error
 	if capture {
-		img, err = r.renderer.RenderCapture(r.surface, scene, size, 1)
+		img, err = r.renderer.RenderCapture(surface, scene, size, 1)
 	} else {
-		err = r.renderer.Render(r.surface, scene, size, 1)
+		err = r.renderer.Render(surface, scene, size, 1)
 	}
 	if err != nil {
 		return nil, err
@@ -665,10 +893,17 @@ func (r *glesRenderer) Draw(h gpu.SurfaceHandle, width, height int, scene *ui.Sc
 	return img, nil
 }
 
+func (r *glesRenderer) Release(h gpu.SurfaceHandle) {
+	if surface, ok := r.surfaces[h]; ok {
+		surface.Destroy()
+		delete(r.surfaces, h)
+	}
+}
+
 func (r *glesRenderer) Close() {
-	if r.surface != nil {
-		r.surface.Destroy()
-		r.surface = nil
+	for h, surface := range r.surfaces {
+		surface.Destroy()
+		delete(r.surfaces, h)
 	}
 	if r.renderer != nil {
 		_ = r.renderer.Close()

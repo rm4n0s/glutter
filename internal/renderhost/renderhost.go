@@ -49,9 +49,116 @@ type Host struct {
 	Primary       ui.ClipboardContent
 	// WindowActions are the actions that a title bar asked of the window, in order.
 	WindowActions []ui.WindowAction
+	// ViewActions are the same actions with the view they were for.
+	ViewActions []ViewAction
 	// TextInputStates are the states of the text field that the framework gave
 	// to the input method, in order.
 	TextInputStates []ui.TextInputState
+	// Windows are the windows the framework asked for, in order, destroyed ones
+	// included.
+	Windows []*FakeWindow
+	// CreateErr is returned by CreateWindow, to test a platform that cannot make
+	// windows.
+	CreateErr error
+	// FocusEvents are the focus changes the framework asked the platform for, in
+	// order.
+	FocusEvents []ui.ViewFocusEvent
+
+	nextView ui.ViewID
+	byView   map[ui.ViewID][]*ui.Scene
+}
+
+// FakeWindow is a window the framework asked the fake engine for.
+type FakeWindow struct {
+	// View is the view of the window.
+	View ui.ViewID
+	// Spec is what the framework asked for.
+	Spec ui.WindowSpec
+	// Title is the last title set; the spec's until then.
+	Title string
+	// Size is the last size asked for; the spec's until then.
+	Size ui.Size
+	// Min and Max are the last limits set; the spec's until then.
+	Min, Max ui.Size
+	// Destroyed is whether the framework destroyed the window.
+	Destroyed bool
+}
+
+// CreateWindow records the window and gives it the next view ID, after the
+// implicit one. The view starts at the size asked for, or 800x600.
+func (h *Host) CreateWindow(spec ui.WindowSpec) (ui.ViewID, ui.ViewConfiguration, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.CreateErr != nil {
+		return 0, ui.ViewConfiguration{}, h.CreateErr
+	}
+	h.nextView++
+	size := spec.Size
+	if size == (ui.Size{}) {
+		size = ui.Size{Width: 800, Height: 600}
+	}
+	h.Windows = append(h.Windows, &FakeWindow{View: h.nextView, Spec: spec, Title: spec.Title, Size: size, Min: spec.MinSize, Max: spec.MaxSize})
+	return h.nextView, ui.ViewConfiguration{PhysicalSize: size, DevicePixelRatio: 1}, nil
+}
+
+// window finds the window of the view.
+func (h *Host) window(view ui.ViewID) *FakeWindow {
+	for _, w := range h.Windows {
+		if w.View == view {
+			return w
+		}
+	}
+	return nil
+}
+
+// DestroyWindow marks the window destroyed.
+func (h *Host) DestroyWindow(view ui.ViewID) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if w := h.window(view); w != nil {
+		w.Destroyed = true
+	}
+}
+
+// SetWindowTitle keeps the title.
+func (h *Host) SetWindowTitle(view ui.ViewID, title string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if w := h.window(view); w != nil {
+		w.Title = title
+	}
+}
+
+// SetWindowSize keeps the size.
+func (h *Host) SetWindowSize(view ui.ViewID, size ui.Size) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if w := h.window(view); w != nil {
+		w.Size = size
+	}
+}
+
+// SetWindowConstraints keeps the limits.
+func (h *Host) SetWindowConstraints(view ui.ViewID, min, max ui.Size) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if w := h.window(view); w != nil {
+		w.Min, w.Max = min, max
+	}
+}
+
+// RequestViewFocus keeps the request.
+func (h *Host) RequestViewFocus(view ui.ViewID, state ui.ViewFocusState, direction ui.ViewFocusDirection) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.FocusEvents = append(h.FocusEvents, ui.ViewFocusEvent{ViewID: view, State: state, Direction: direction})
+}
+
+// ScenesOf are the scenes that the view rendered so far.
+func (h *Host) ScenesOf(view ui.ViewID) []*ui.Scene {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return append([]*ui.Scene(nil), h.byView[view]...)
 }
 
 // SetTextInput keeps the state.
@@ -120,10 +227,19 @@ func (h *Host) GetClipboard(ctx context.Context, kind ui.ClipboardKind, format s
 }
 
 // PerformWindowAction keeps the action.
-func (h *Host) PerformWindowAction(_ ui.ViewID, action ui.WindowAction) {
+func (h *Host) PerformWindowAction(view ui.ViewID, action ui.WindowAction) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.WindowActions = append(h.WindowActions, action)
+	h.ViewActions = append(h.ViewActions, ViewAction{View: view, Action: action})
+}
+
+// ViewAction is an action of a title bar and the view it was for.
+type ViewAction struct {
+	// View is the view of the window.
+	View ui.ViewID
+	// Action is what was asked.
+	Action ui.WindowAction
 }
 
 // CursorActivation is one call of ActivateSystemCursor.
@@ -159,10 +275,14 @@ func (h *Host) SetSemanticsTreeEnabled(enabled bool) {
 func (h *Host) ScheduleFrame() { h.mu.Lock(); h.Scheduled++; h.mu.Unlock() }
 
 // RenderView keeps the scene.
-func (h *Host) RenderView(_ ui.ViewID, scene *ui.Scene) error {
+func (h *Host) RenderView(view ui.ViewID, scene *ui.Scene) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.scenes = append(h.scenes, scene)
+	if h.byView == nil {
+		h.byView = map[ui.ViewID][]*ui.Scene{}
+	}
+	h.byView[view] = append(h.byView[view], scene)
 	return h.RenderErr
 }
 

@@ -757,6 +757,11 @@ type BannerPainter = widgets.BannerPainter
 // Flutter: widgets.dart BannerPainterOpts
 type BannerPainterOpts = widgets.BannerPainterOpts
 
+// BaseWindowController is widgets.BaseWindowController.
+//
+// Flutter: widgets.dart BaseWindowController
+type BaseWindowController = widgets.BaseWindowController
+
 // Baseline is widgets.Baseline.
 //
 // Flutter: widgets.dart Baseline
@@ -1698,6 +1703,36 @@ const DiagonalDragBehaviorWeightedContinuous = widgets.DiagonalDragBehaviorWeigh
 //
 // Flutter: widgets.dart DiagonalDragBehaviorWeightedEvent
 const DiagonalDragBehaviorWeightedEvent = widgets.DiagonalDragBehaviorWeightedEvent
+
+// DialogWindow is widgets.DialogWindow.
+//
+// Flutter: widgets.dart DialogWindow
+type DialogWindow = widgets.DialogWindow
+
+// DialogWindowController is widgets.DialogWindowController.
+//
+// Flutter: widgets.dart DialogWindowController
+type DialogWindowController = widgets.DialogWindowController
+
+// DialogWindowControllerDelegate is widgets.DialogWindowControllerDelegate.
+//
+// Flutter: widgets.dart DialogWindowControllerDelegate
+type DialogWindowControllerDelegate = widgets.DialogWindowControllerDelegate
+
+// DialogWindowControllerDelegateBase is widgets.DialogWindowControllerDelegateBase.
+//
+// Flutter: widgets.dart DialogWindowControllerDelegateBase
+type DialogWindowControllerDelegateBase = widgets.DialogWindowControllerDelegateBase
+
+// DialogWindowControllerOpts is widgets.DialogWindowControllerOpts.
+//
+// Flutter: widgets.dart DialogWindowControllerOpts
+type DialogWindowControllerOpts = widgets.DialogWindowControllerOpts
+
+// DialogWindowOpts is widgets.DialogWindowOpts.
+//
+// Flutter: widgets.dart DialogWindowOpts
+type DialogWindowOpts = widgets.DialogWindowOpts
 
 // DidRemovePageCallback is widgets.DidRemovePageCallback.
 //
@@ -5214,6 +5249,20 @@ func NewDesktopTextSelectionToolbarLayoutDelegate(anchor ui.Offset) *widgets.Des
 	return widgets.NewDesktopTextSelectionToolbarLayoutDelegate(anchor)
 }
 
+// NewDialogWindow is widgets.NewDialogWindow.
+//
+// Flutter: widgets.dart NewDialogWindow
+func NewDialogWindow(controller *widgets.DialogWindowController, child widgets.Widget, opts ...widgets.DialogWindowOpts) *widgets.DialogWindow {
+	return widgets.NewDialogWindow(controller, child, opts...)
+}
+
+// NewDialogWindowController is widgets.NewDialogWindowController.
+//
+// Flutter: widgets.dart NewDialogWindowController
+func NewDialogWindowController(bc widgets.BuildContext, size ui.Size, opts ...widgets.DialogWindowControllerOpts) (*widgets.DialogWindowController, error) {
+	return widgets.NewDialogWindowController(bc, size, opts...)
+}
+
 // NewDirectionalFocusAction is widgets.NewDirectionalFocusAction.
 //
 // Flutter: widgets.dart NewDirectionalFocusAction
@@ -6740,6 +6789,20 @@ func NewReadingOrderTraversalPolicy(opts ...widgets.FocusTraversalPolicyOpts) *w
 	return widgets.NewReadingOrderTraversalPolicy(opts...)
 }
 
+// NewRegularWindow is widgets.NewRegularWindow.
+//
+// Flutter: widgets.dart NewRegularWindow
+func NewRegularWindow(controller *widgets.RegularWindowController, child widgets.Widget, opts ...widgets.RegularWindowOpts) *widgets.RegularWindow {
+	return widgets.NewRegularWindow(controller, child, opts...)
+}
+
+// NewRegularWindowController is widgets.NewRegularWindowController.
+//
+// Flutter: widgets.dart NewRegularWindowController
+func NewRegularWindowController(bc widgets.BuildContext, size ui.Size, opts ...widgets.RegularWindowControllerOpts) (*widgets.RegularWindowController, error) {
+	return widgets.NewRegularWindowController(bc, size, opts...)
+}
+
 // NewRelativePositionedTransition is widgets.NewRelativePositionedTransition.
 //
 // Flutter: widgets.dart NewRelativePositionedTransition
@@ -7884,6 +7947,20 @@ func NewView(view *ui.View, child widgets.Widget, opts ...widgets.ViewOpts) *wid
 	return widgets.NewView(view, child, opts...)
 }
 
+// NewViewAnchor is widgets.NewViewAnchor.
+//
+// Flutter: widgets.dart NewViewAnchor
+func NewViewAnchor(child widgets.Widget, opts ...widgets.ViewAnchorOpts) *widgets.ViewAnchor {
+	return widgets.NewViewAnchor(child, opts...)
+}
+
+// NewViewCollection is widgets.NewViewCollection.
+//
+// Flutter: widgets.dart NewViewCollection
+func NewViewCollection(views []widgets.Widget, opts ...widgets.ViewCollectionOpts) *widgets.ViewCollection {
+	return widgets.NewViewCollection(views, opts...)
+}
+
 // NewViewport is widgets.NewViewport.
 //
 // Flutter: widgets.dart NewViewport
@@ -7987,6 +8064,34 @@ func NewWidgetsBinding(ctx context.Context, d *ui.PlatformDispatcher, opts ...wi
 // Flutter: widgets.dart NewWindowDecoration
 func NewWindowDecoration(child widgets.Widget, opts ...widgets.WindowDecorationOpts) *widgets.WindowDecoration {
 	return widgets.NewWindowDecoration(child, opts...)
+}
+
+// NewWindowEntry is widgets.NewWindowEntry.
+//
+// Flutter: widgets.dart NewWindowEntry
+func NewWindowEntry(controller widgets.BaseWindowController, builder widgets.WidgetBuilder) *widgets.WindowEntry {
+	return widgets.NewWindowEntry(controller, builder)
+}
+
+// NewWindowManager is widgets.NewWindowManager.
+//
+// Flutter: widgets.dart NewWindowManager
+func NewWindowManager(child widgets.Widget, opts ...widgets.WindowManagerOpts) *widgets.WindowManager {
+	return widgets.NewWindowManager(child, opts...)
+}
+
+// NewWindowRegistry is widgets.NewWindowRegistry.
+//
+// Flutter: widgets.dart NewWindowRegistry
+func NewWindowRegistry() *widgets.WindowRegistry {
+	return widgets.NewWindowRegistry()
+}
+
+// NewWindowScope is widgets.NewWindowScope.
+//
+// Flutter: widgets.dart NewWindowScope
+func NewWindowScope(controller widgets.BaseWindowController, child widgets.Widget, opts ...widgets.WidgetOpts) *widgets.WindowScope {
+	return widgets.NewWindowScope(controller, child, opts...)
 }
 
 // NewWrap is widgets.NewWrap.
@@ -8878,6 +8983,36 @@ type RebuildOpts = widgets.RebuildOpts
 //
 // Flutter: widgets.dart RedoTextIntent
 type RedoTextIntent = widgets.RedoTextIntent
+
+// RegularWindow is widgets.RegularWindow.
+//
+// Flutter: widgets.dart RegularWindow
+type RegularWindow = widgets.RegularWindow
+
+// RegularWindowController is widgets.RegularWindowController.
+//
+// Flutter: widgets.dart RegularWindowController
+type RegularWindowController = widgets.RegularWindowController
+
+// RegularWindowControllerDelegate is widgets.RegularWindowControllerDelegate.
+//
+// Flutter: widgets.dart RegularWindowControllerDelegate
+type RegularWindowControllerDelegate = widgets.RegularWindowControllerDelegate
+
+// RegularWindowControllerDelegateBase is widgets.RegularWindowControllerDelegateBase.
+//
+// Flutter: widgets.dart RegularWindowControllerDelegateBase
+type RegularWindowControllerDelegateBase = widgets.RegularWindowControllerDelegateBase
+
+// RegularWindowControllerOpts is widgets.RegularWindowControllerOpts.
+//
+// Flutter: widgets.dart RegularWindowControllerOpts
+type RegularWindowControllerOpts = widgets.RegularWindowControllerOpts
+
+// RegularWindowOpts is widgets.RegularWindowOpts.
+//
+// Flutter: widgets.dart RegularWindowOpts
+type RegularWindowOpts = widgets.RegularWindowOpts
 
 // RelativePositionedTransition is widgets.RelativePositionedTransition.
 //
@@ -11244,6 +11379,26 @@ type ValueWidgetBuilder[T any] = widgets.ValueWidgetBuilder[T]
 // Flutter: widgets.dart View
 type View = widgets.View
 
+// ViewAnchor is widgets.ViewAnchor.
+//
+// Flutter: widgets.dart ViewAnchor
+type ViewAnchor = widgets.ViewAnchor
+
+// ViewAnchorOpts is widgets.ViewAnchorOpts.
+//
+// Flutter: widgets.dart ViewAnchorOpts
+type ViewAnchorOpts = widgets.ViewAnchorOpts
+
+// ViewCollection is widgets.ViewCollection.
+//
+// Flutter: widgets.dart ViewCollection
+type ViewCollection = widgets.ViewCollection
+
+// ViewCollectionOpts is widgets.ViewCollectionOpts.
+//
+// Flutter: widgets.dart ViewCollectionOpts
+type ViewCollectionOpts = widgets.ViewCollectionOpts
+
 // ViewOf is widgets.ViewOf.
 //
 // Flutter: widgets.dart ViewOf
@@ -11698,6 +11853,143 @@ type WindowDecoration = widgets.WindowDecoration
 // Flutter: widgets.dart WindowDecorationOpts
 type WindowDecorationOpts = widgets.WindowDecorationOpts
 
+// WindowEntry is widgets.WindowEntry.
+//
+// Flutter: widgets.dart WindowEntry
+type WindowEntry = widgets.WindowEntry
+
+// WindowManager is widgets.WindowManager.
+//
+// Flutter: widgets.dart WindowManager
+type WindowManager = widgets.WindowManager
+
+// WindowManagerOpts is widgets.WindowManagerOpts.
+//
+// Flutter: widgets.dart WindowManagerOpts
+type WindowManagerOpts = widgets.WindowManagerOpts
+
+// WindowRegistry is widgets.WindowRegistry.
+//
+// Flutter: widgets.dart WindowRegistry
+type WindowRegistry = widgets.WindowRegistry
+
+// WindowRegistryMaybeOf is widgets.WindowRegistryMaybeOf.
+//
+// Flutter: widgets.dart WindowRegistryMaybeOf
+func WindowRegistryMaybeOf(bc widgets.BuildContext) *widgets.WindowRegistry {
+	return widgets.WindowRegistryMaybeOf(bc)
+}
+
+// WindowRegistryOf is widgets.WindowRegistryOf.
+//
+// Flutter: widgets.dart WindowRegistryOf
+func WindowRegistryOf(bc widgets.BuildContext) *widgets.WindowRegistry {
+	return widgets.WindowRegistryOf(bc)
+}
+
+// WindowScope is widgets.WindowScope.
+//
+// Flutter: widgets.dart WindowScope
+type WindowScope = widgets.WindowScope
+
+// WindowScopeContentSizeOf is widgets.WindowScopeContentSizeOf.
+//
+// Flutter: widgets.dart WindowScopeContentSizeOf
+func WindowScopeContentSizeOf(bc widgets.BuildContext) ui.Size {
+	return widgets.WindowScopeContentSizeOf(bc)
+}
+
+// WindowScopeIsActivatedOf is widgets.WindowScopeIsActivatedOf.
+//
+// Flutter: widgets.dart WindowScopeIsActivatedOf
+func WindowScopeIsActivatedOf(bc widgets.BuildContext) bool {
+	return widgets.WindowScopeIsActivatedOf(bc)
+}
+
+// WindowScopeIsFullscreenOf is widgets.WindowScopeIsFullscreenOf.
+//
+// Flutter: widgets.dart WindowScopeIsFullscreenOf
+func WindowScopeIsFullscreenOf(bc widgets.BuildContext) bool {
+	return widgets.WindowScopeIsFullscreenOf(bc)
+}
+
+// WindowScopeIsMaximizedOf is widgets.WindowScopeIsMaximizedOf.
+//
+// Flutter: widgets.dart WindowScopeIsMaximizedOf
+func WindowScopeIsMaximizedOf(bc widgets.BuildContext) bool {
+	return widgets.WindowScopeIsMaximizedOf(bc)
+}
+
+// WindowScopeIsMinimizedOf is widgets.WindowScopeIsMinimizedOf.
+//
+// Flutter: widgets.dart WindowScopeIsMinimizedOf
+func WindowScopeIsMinimizedOf(bc widgets.BuildContext) bool {
+	return widgets.WindowScopeIsMinimizedOf(bc)
+}
+
+// WindowScopeMaybeContentSizeOf is widgets.WindowScopeMaybeContentSizeOf.
+//
+// Flutter: widgets.dart WindowScopeMaybeContentSizeOf
+func WindowScopeMaybeContentSizeOf(bc widgets.BuildContext) (ui.Size, bool) {
+	return widgets.WindowScopeMaybeContentSizeOf(bc)
+}
+
+// WindowScopeMaybeIsActivatedOf is widgets.WindowScopeMaybeIsActivatedOf.
+//
+// Flutter: widgets.dart WindowScopeMaybeIsActivatedOf
+func WindowScopeMaybeIsActivatedOf(bc widgets.BuildContext) (bool, bool) {
+	return widgets.WindowScopeMaybeIsActivatedOf(bc)
+}
+
+// WindowScopeMaybeIsFullscreenOf is widgets.WindowScopeMaybeIsFullscreenOf.
+//
+// Flutter: widgets.dart WindowScopeMaybeIsFullscreenOf
+func WindowScopeMaybeIsFullscreenOf(bc widgets.BuildContext) (bool, bool) {
+	return widgets.WindowScopeMaybeIsFullscreenOf(bc)
+}
+
+// WindowScopeMaybeIsMaximizedOf is widgets.WindowScopeMaybeIsMaximizedOf.
+//
+// Flutter: widgets.dart WindowScopeMaybeIsMaximizedOf
+func WindowScopeMaybeIsMaximizedOf(bc widgets.BuildContext) (bool, bool) {
+	return widgets.WindowScopeMaybeIsMaximizedOf(bc)
+}
+
+// WindowScopeMaybeIsMinimizedOf is widgets.WindowScopeMaybeIsMinimizedOf.
+//
+// Flutter: widgets.dart WindowScopeMaybeIsMinimizedOf
+func WindowScopeMaybeIsMinimizedOf(bc widgets.BuildContext) (bool, bool) {
+	return widgets.WindowScopeMaybeIsMinimizedOf(bc)
+}
+
+// WindowScopeMaybeOf is widgets.WindowScopeMaybeOf.
+//
+// Flutter: widgets.dart WindowScopeMaybeOf
+func WindowScopeMaybeOf(bc widgets.BuildContext) widgets.BaseWindowController {
+	return widgets.WindowScopeMaybeOf(bc)
+}
+
+// WindowScopeMaybeTitleOf is widgets.WindowScopeMaybeTitleOf.
+//
+// Flutter: widgets.dart WindowScopeMaybeTitleOf
+func WindowScopeMaybeTitleOf(bc widgets.BuildContext) (string, bool) {
+	return widgets.WindowScopeMaybeTitleOf(bc)
+}
+
+// WindowScopeOf is widgets.WindowScopeOf.
+//
+// Flutter: widgets.dart WindowScopeOf
+func WindowScopeOf(bc widgets.BuildContext) widgets.BaseWindowController {
+	return widgets.WindowScopeOf(bc)
+}
+
+// WindowScopeTitleOf is widgets.WindowScopeTitleOf.
+//
+// Flutter: widgets.dart WindowScopeTitleOf
+func WindowScopeTitleOf(bc widgets.BuildContext) string {
+	return widgets.WindowScopeTitleOf(bc)
+}
+
 // WindowState is widgets.WindowState.
 //
 // Flutter: widgets.dart WindowState
@@ -11727,6 +12019,11 @@ const WindowStateNormal = widgets.WindowStateNormal
 //
 // Flutter: widgets.dart WindowStateUnspecified
 const WindowStateUnspecified = widgets.WindowStateUnspecified
+
+// WindowingOwner is widgets.WindowingOwner.
+//
+// Flutter: widgets.dart WindowingOwner
+type WindowingOwner = widgets.WindowingOwner
 
 // Wrap is widgets.Wrap.
 //

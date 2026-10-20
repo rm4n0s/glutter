@@ -59,6 +59,11 @@ const (
 	//
 	// Flutter: no counterpart
 	EntryStartDrag EntryKind = "StartDrag"
+	// EntrySetSizeConstraints records Window.SetSizeConstraints; Value is a
+	// SizeConstraints.
+	//
+	// Flutter: no counterpart
+	EntrySetSizeConstraints EntryKind = "SetSizeConstraints"
 	// EntryWindowAction records Window.PerformWindowAction; Value is the
 	// ui.WindowAction.
 	//
@@ -157,6 +162,19 @@ type MetricsEvent struct {
 
 func (e MetricsEvent) view() ui.ViewID                          { return e.View }
 func (e MetricsEvent) dispatch(_ *Platform, h platform.Handler) { h.OnMetrics(e.View, e.Metrics) }
+
+// ViewFocusEvent delivers a keyboard focus change to Handler.OnViewFocus.
+//
+// Flutter: no counterpart
+type ViewFocusEvent struct {
+	// View is the view whose focus changed.
+	View ui.ViewID
+	// Focused is whether the view has the focus now.
+	Focused bool
+}
+
+func (e ViewFocusEvent) view() ui.ViewID                          { return e.View }
+func (e ViewFocusEvent) dispatch(_ *Platform, h platform.Handler) { h.OnViewFocus(e.View, e.Focused) }
 
 // LifecycleEvent delivers a lifecycle change to Handler.OnLifecycle.
 //

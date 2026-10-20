@@ -46,6 +46,11 @@ type WidgetsBindingObserver interface {
 	//
 	// Flutter: widgets/binding.dart WidgetsBindingObserver.didChangeMetrics
 	DidChangeMetrics()
+	// DidChangeViewFocus is called when a view gets or loses the focus of the
+	// platform (the keyboard focus of its window).
+	//
+	// Flutter: widgets/binding.dart WidgetsBindingObserver.didChangeViewFocus
+	DidChangeViewFocus(event ui.ViewFocusEvent)
 	// DidChangeTextScaleFactor is called when the system text scale factor
 	// changes.
 	//
@@ -104,6 +109,11 @@ func (WidgetsBindingObserverBase) DidChangeMetrics() {}
 //
 // Flutter: widgets/binding.dart WidgetsBindingObserver.didChangeTextScaleFactor
 func (WidgetsBindingObserverBase) DidChangeTextScaleFactor() {}
+
+// DidChangeViewFocus does nothing.
+//
+// Flutter: widgets/binding.dart WidgetsBindingObserver.didChangeViewFocus
+func (WidgetsBindingObserverBase) DidChangeViewFocus(ui.ViewFocusEvent) {}
 
 // DidChangePlatformBrightness does nothing.
 //
@@ -167,6 +177,7 @@ type WidgetsBinding struct {
 	thread       *foundation.UIThread
 
 	observers   []WidgetsBindingObserver
+	windowing   *WindowingOwner
 	switcher    ApplicationSwitcherDescription
 	contextMenu contextMenuState
 	// rawTooltips are the tooltips that are open, and the state their mouse
@@ -311,6 +322,7 @@ func NewWidgetsBinding(ctx context.Context, d *ui.PlatformDispatcher, opts ...Wi
 		if previousMetrics != nil {
 			previousMetrics()
 		}
+		b.windowing.refresh()
 		b.notifyObservers("didChangeMetrics", WidgetsBindingObserver.DidChangeMetrics)
 	}
 	previousFeatures := d.OnAccessibilityFeaturesChanged
@@ -329,6 +341,11 @@ func NewWidgetsBinding(ctx context.Context, d *ui.PlatformDispatcher, opts ...Wi
 	d.OnLocaleChanged = b.handleLocaleChanged
 	d.OnAppLifecycleStateChanged = b.handleAppLifecycleStateChanged
 	d.OnExitRequested = func(ui.ViewID) ui.AppExitResponse { return b.HandleRequestAppExit() }
+	d.OnViewFocusChange = func(event ui.ViewFocusEvent) {
+		b.notifyObservers("didChangeViewFocus", func(o WidgetsBindingObserver) { o.DidChangeViewFocus(event) })
+	}
+	b.windowing = newWindowingOwner(b)
+	d.OnWindowCloseRequested = b.windowing.handleCloseRequested
 	return b
 }
 

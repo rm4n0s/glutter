@@ -504,13 +504,66 @@ func (w *window) StartDrag(platform.DragData) error {
 	return errors.New("NotImplemented", "drag and drop from an X11 window is not implemented yet")
 }
 
-// PerformWindowAction does nothing yet: the window manager draws the title bar
-// of an X11 window, and the window manager moves and resizes it.
+// PerformWindowAction does the actions that the window manager does for a title
+// bar of the app: minimize, maximize, restore, fullscreen, activate and close. The
+// window manager draws the title bar of an X11 window and moves and resizes it, so
+// the moves, the resizes and the menu are ignored.
 //
 // TODO(step 14.4): _NET_WM_MOVERESIZE, for the title bar that the app draws.
 //
 // Flutter: no counterpart
-func (w *window) PerformWindowAction(ui.WindowAction) {}
+func (w *window) PerformWindowAction(action ui.WindowAction) {
+	if w.closed {
+		return
+	}
+	p, at := w.p, &w.p.atoms
+	switch action.Kind {
+	case ui.WindowActionMinimize:
+		w.SetState(platform.WindowStateMinimized)
+	case ui.WindowActionMaximize:
+		w.sendState(netWMStateAdd, at.netWMStateMaxVert, at.netWMStateMaxHorz)
+	case ui.WindowActionRestore:
+		w.sendState(netWMStateRemove, at.netWMStateMaxVert, at.netWMStateMaxHorz)
+	case ui.WindowActionFullscreen:
+		w.sendState(netWMStateAdd, at.netWMStateFullscreen, 0)
+	case ui.WindowActionUnfullscreen:
+		w.sendState(netWMStateRemove, at.netWMStateFullscreen, 0)
+	case ui.WindowActionActivate:
+		p.x.mapWindow(p.display, w.xid) // brings back a window that was iconified
+		w.sendActivate()
+	case ui.WindowActionClose:
+		w.onClose()
+	}
+	p.x.flush(p.display)
+}
+
+// sendActivate asks the window manager to activate the window
+// (_NET_ACTIVE_WINDOW, from an application).
+func (w *window) sendActivate() {
+	p := w.p
+	mem := dl.Calloc(1, xEventSize)
+	defer dl.Free(mem)
+	ev := view[xClientMessageEvent](mem)
+	ev.typ = clientMessage
+	ev.window = w.xid
+	ev.messageType = p.atoms.netActiveWindow
+	ev.format = 32
+	ev.data = [5]int64{1 /* from an application */, 0, 0, 0, 0}
+	p.x.sendEvent(p.display, p.root, 0, substructureNotifyMask|substructureRedirMask, mem)
+}
+
+// SetSizeConstraints sets the smallest and the largest size of the window
+// (WM_NORMAL_HINTS). The window manager may ignore them.
+//
+// Flutter: widgets/_window.dart RegularWindowController.setConstraints
+func (w *window) SetSizeConstraints(min, max ui.Size) {
+	if w.closed {
+		return
+	}
+	w.cfg.MinSize, w.cfg.MaxSize = min, max
+	w.setSizeHints()
+	w.p.x.flush(w.p.display)
+}
 
 // Close destroys the window. Destroy the renderer's surface for it first. When
 // this was the last window, Run returns. Closing twice does nothing.

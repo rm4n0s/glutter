@@ -55,6 +55,11 @@ func (NopHandler) OnDrop(ui.ViewID, DropEvent) {}
 // Flutter: no counterpart
 func (NopHandler) OnSettings(Settings) {}
 
+// OnViewFocus ignores the focus change.
+//
+// Flutter: no counterpart
+func (NopHandler) OnViewFocus(ui.ViewID, bool) {}
+
 // OnCloseRequest agrees to close the view.
 //
 // Flutter: no counterpart

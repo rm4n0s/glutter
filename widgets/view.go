@@ -20,11 +20,8 @@ type ViewOpts struct {
 // descendants with ViewOf and MaybeViewOf, and provides the MediaQuery of the
 // view. RunApp wraps the app in a View for the first window.
 //
-// Deviation: the view focus events (ViewFocusEvent, requestViewFocusChange) are
-// not ported: nothing tells the view that its window got or lost the keyboard
-// focus, so the view scope takes the focus only when a widget asks for it
-// (TODO(step 14.2): the windows). The key of the internal widget is an ObjectKey
-// of the view, not a GlobalKey (SPEC §12.10).
+// Deviation: the key of the internal widget is an ObjectKey of the view, not a
+// GlobalKey (SPEC §12.10).
 //
 // Flutter: widgets/view.dart View
 type View struct {
@@ -98,9 +95,14 @@ func PipelineOwnerOf(bc BuildContext) *rendering.PipelineOwner {
 
 type viewState struct {
 	StateOf[*View]
-	scopeNode *FocusScopeNode
-	policy    FocusTraversalPolicy
+	WidgetsBindingObserverBase
+	scopeNode   *FocusScopeNode
+	policy      FocusTraversalPolicy
+	viewFocus   bool
+	scopeHandle foundation.ListenerHandle
 }
+
+func (s *viewState) binding() *WidgetsBinding { return WidgetsBindingOf(s.Context()) }
 
 func (s *viewState) InitState() {
 	label := ""
@@ -109,9 +111,59 @@ func (s *viewState) InitState() {
 	}
 	s.scopeNode = NewFocusScopeNode(FocusScopeNodeOpts{FocusNodeOpts: FocusNodeOpts{DebugLabel: label}})
 	s.policy = NewReadingOrderTraversalPolicy()
+	s.binding().AddObserver(s)
+	s.scopeHandle = s.scopeNode.AddListener(s.scopeFocusChanged)
 }
 
-func (s *viewState) Dispose() { s.scopeNode.Dispose() }
+func (s *viewState) Dispose() {
+	s.binding().RemoveObserver(s)
+	s.scopeNode.RemoveListener(s.scopeHandle)
+	s.scopeNode.Dispose()
+}
+
+// scopeFocusChanged tells the view that its scope gained the focus, when the view
+// itself does not have the focus of the platform yet, so that the platform moves
+// the focus to the window of the view.
+//
+// Flutter: widgets/view.dart _ViewState._scopeFocusChangeListener
+func (s *viewState) scopeFocusChanged() {
+	if s.viewFocus == s.scopeNode.HasFocus() || !s.scopeNode.HasFocus() {
+		return
+	}
+	s.binding().PlatformDispatcher().RequestViewFocusChange(s.Widget().view.ViewID(), ui.ViewFocusStateFocused, ui.ViewFocusDirectionForward)
+}
+
+// DidChangeViewFocus moves the focus into the scope of the view when the window of
+// the view got the focus of the platform, and parks it on the root scope when the
+// window lost it.
+//
+// Flutter: widgets/view.dart _ViewState.didChangeViewFocus
+func (s *viewState) DidChangeViewFocus(event ui.ViewFocusEvent) {
+	id := s.Widget().view.ViewID()
+	s.viewFocus = event.State == ui.ViewFocusStateFocused && event.ViewID == id
+	if event.ViewID != id {
+		return
+	}
+	switch event.State {
+	case ui.ViewFocusStateFocused:
+		var next *FocusNode
+		switch event.Direction {
+		case ui.ViewFocusDirectionForward:
+			if next = s.policy.FindFirstFocus(&s.scopeNode.FocusNode, true); next == nil {
+				next = &s.scopeNode.FocusNode
+			}
+		case ui.ViewFocusDirectionBackward:
+			next = s.policy.FindLastFocus(&s.scopeNode.FocusNode, true)
+		default:
+			next = &s.scopeNode.FocusNode
+		}
+		next.RequestFocus()
+	case ui.ViewFocusStateUnfocused:
+		// Focusing the root scope "parks" the focus: no descendant has it, so no
+		// widget receives the keyboard events.
+		s.Context().Owner().FocusManager().rootScope.RequestScopeFocus()
+	}
+}
 
 // Build shows the child in a RawView with the MediaQuery of the view, a
 // FocusTraversalGroup and the view's focus scope.

@@ -129,7 +129,7 @@ func (p *Platform) Inject(event Event) {
 // Flutter: no counterpart
 func (p *Platform) NewWindow(cfg platform.WindowConfig) (platform.Window, error) {
 	p.mu.Lock()
-	w := &Window{p: p, id: p.nextView, config: cfg, title: cfg.Title, size: cfg.Size, state: cfg.State}
+	w := &Window{p: p, id: p.nextView, config: cfg, title: cfg.Title, size: cfg.Size, minSize: cfg.MinSize, maxSize: cfg.MaxSize, state: cfg.State}
 	p.nextView++
 	p.windows = append(p.windows, w)
 	p.log = append(p.log, Entry{Kind: EntryNewWindow, View: w.id, Value: cfg})

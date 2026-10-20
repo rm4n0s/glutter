@@ -211,10 +211,27 @@ func startApp(ctx context.Context, d *ui.PlatformDispatcher, app Widget, wrap bo
 			// asked for DecorationsApp places its own.
 			app = NewWindowDecoration(app)
 		}
+		app = b.WrapWithWindowScope(app)
 		root = b.WrapWithDefaultView(app)
 	}
 	b.AttachRootWidget(root)
 	return b, nil
+}
+
+// WrapWithWindowScope wraps the widget in a WindowScope for the controller of the
+// implicit view, so that its descendants reach the first window with WindowScopeOf
+// and a dialog can name it as its parent. RunApp does it for the app; the widget is
+// returned as it is when there is no implicit view.
+//
+// Flutter: no counterpart
+func (b *WidgetsBinding) WrapWithWindowScope(root Widget) Widget {
+	controller, ok := b.WindowingOwner().ImplicitWindowController()
+	if !ok {
+		return root
+	}
+	return NewListenableBuilder(controller, func(_ BuildContext, child Widget) Widget {
+		return NewWindowScope(controller, child)
+	}, root)
 }
 
 // IsIdle is whether the app has nothing more to show: the root widget is

@@ -182,6 +182,17 @@ type PlatformDispatcher struct {
 	//
 	// Flutter: services/binding.dart ServicesBinding.handleRequestAppExit
 	OnExitRequested func(view ViewID) AppExitResponse
+	// OnViewFocusChange is called when a view gets or loses the focus.
+	//
+	// Flutter: ui/platform_dispatcher.dart PlatformDispatcher.onViewFocusChange
+	OnViewFocusChange func(event ViewFocusEvent)
+	// OnWindowCloseRequested is called when the user asks to close the window of a
+	// view. It returns true when the framework takes over, as the owner of a window
+	// controller does: it decides whether to destroy the window, and the engine does
+	// not close it. OnExitRequested is not asked then.
+	//
+	// Flutter: widgets/_window.dart RegularWindowControllerDelegate.onWindowCloseRequested
+	OnWindowCloseRequested func(view ViewID) bool
 	// IsIdle reports whether the framework has nothing more to show: no frame is
 	// scheduled and no work that changes the picture is pending (an image that is
 	// loading, an animation). The engine asks it to decide when the
@@ -451,6 +462,9 @@ func (d *PlatformDispatcher) RequestAppExit() {
 //
 // Flutter: services/binding.dart ServicesBinding.handleRequestAppExit
 func (d *PlatformDispatcher) RequestClose(id ViewID) bool {
+	if d.OnWindowCloseRequested != nil && d.OnWindowCloseRequested(id) {
+		return false
+	}
 	if d.OnExitRequested == nil {
 		return true
 	}
@@ -470,7 +484,12 @@ func (d *PlatformDispatcher) AddView(id ViewID, cfg ViewConfiguration) *View {
 // RemoveView removes the view with the ID. Called by the engine.
 //
 // Flutter: ui/platform_dispatcher.dart PlatformDispatcher.removeView (the engine's _removeView)
-func (d *PlatformDispatcher) RemoveView(id ViewID) { delete(d.views, id) }
+func (d *PlatformDispatcher) RemoveView(id ViewID) {
+	if v, ok := d.views[id]; ok {
+		v.destroyed = true // the framework may still render into it until its widget goes
+		delete(d.views, id)
+	}
+}
 
 // UpdateViewConfiguration sets the configuration of the view and calls
 // OnMetricsChanged. A view that does not exist is ignored. Called by the

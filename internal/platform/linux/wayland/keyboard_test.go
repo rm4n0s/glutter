@@ -3,6 +3,7 @@ package wayland
 import (
 	"context"
 	"reflect"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -93,6 +94,23 @@ type keyHandler struct {
 	keys    []ui.KeyData
 	batches [][]ui.PointerData
 	texts   []ui.TextInputEvent
+	focus   []string
+}
+
+func (h *keyHandler) OnViewFocus(view ui.ViewID, focused bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	state := "lost"
+	if focused {
+		state = "got"
+	}
+	h.focus = append(h.focus, state+" "+strconv.Itoa(int(view)))
+}
+
+func (h *keyHandler) focusEvents() []string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return append([]string(nil), h.focus...)
 }
 
 func (h *keyHandler) OnTextInput(e ui.TextInputEvent) {

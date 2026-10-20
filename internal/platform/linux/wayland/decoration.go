@@ -94,6 +94,9 @@ func (w *window) decorateWithLibdecor(cfg platform.WindowConfig) error {
 			w.frame.SetParent(parent.frame)
 		}
 	}
+	if top := w.frame.Toplevel(); top != 0 {
+		w.makeModal(w.p.sess.conn.WrapXdgToplevel(top))
+	}
 	w.requestState(cfg.State)
 	w.frame.Map() // the first configure follows
 	return nil
@@ -259,6 +262,18 @@ func (w *window) PerformWindowAction(action ui.WindowAction) {
 		}
 	case ui.WindowActionClose:
 		w.onClose()
+	case ui.WindowActionFullscreen:
+		w.requestState(platform.WindowStateFullscreen)
+	case ui.WindowActionUnfullscreen:
+		if w.frame != nil {
+			w.frame.UnsetFullscreen()
+		} else {
+			w.toplevel.UnsetFullscreen()
+		}
+	case ui.WindowActionActivate:
+		// xdg-shell cannot raise a window or take the focus for it; a window that is
+		// minimized comes back through the compositor's own shell, or through an
+		// activation token (TODO(step 14.7)).
 	}
 }
 

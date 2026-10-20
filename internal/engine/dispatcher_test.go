@@ -525,7 +525,8 @@ func TestScheduleFrameDoesNothingInTheSharedMemoryMode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := &handler{cfg: &Config{ShmFill: true}, win: win}
+	h := &handler{cfg: &Config{ShmFill: true}}
+	h.first = h.addWindow(win)
 	h.ScheduleFrame()
 	for _, e := range p.Log() {
 		if e.Kind == fake.EntryRequestFrame {

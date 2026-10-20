@@ -13,3 +13,17 @@ func (c *Conn) WrapBuffer(ptr uintptr) *WlBuffer {
 	b.ptr = ptr
 	return b
 }
+
+// WrapXdgToplevel returns a *XdgToplevel for an xdg_toplevel that another library
+// created on this connection, such as libdecor, so that it can be the argument of
+// a request (xdg_wm_dialog_v1.get_xdg_dialog). The wrapper has no event handler
+// and is not registered: the library that made the toplevel owns it, and the Go
+// side must not destroy it.
+//
+// Flutter: no counterpart
+func (c *Conn) WrapXdgToplevel(ptr uintptr) *XdgToplevel {
+	t := new(XdgToplevel)
+	t.conn = c
+	t.ptr = ptr
+	return t
+}

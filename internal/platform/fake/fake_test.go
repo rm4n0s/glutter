@@ -46,6 +46,9 @@ func (h *recordingHandler) OnDrop(view ui.ViewID, _ platform.DropEvent) {
 func (h *recordingHandler) OnSettings(s platform.Settings) {
 	h.add("OnSettings %v", s.PlatformBrightness)
 }
+func (h *recordingHandler) OnViewFocus(view ui.ViewID, focused bool) {
+	h.add("OnViewFocus %d %v", view, focused)
+}
 func (h *recordingHandler) OnCloseRequest(view ui.ViewID) bool {
 	h.add("OnCloseRequest %d", view)
 	return h.allowClose
@@ -201,6 +204,7 @@ func TestInjectDeliversEventsInOrder(t *testing.T) {
 		{"drop", DropEvent{View: 3}, "OnDrop 3"},
 		{"settings", SettingsEvent{Settings: platform.Settings{PlatformBrightness: ui.BrightnessDark}}, "OnSettings BrightnessDark"},
 		{"close request", CloseRequestEvent{View: 4}, "OnCloseRequest 4"},
+		{"view focus", ViewFocusEvent{View: 5, Focused: true}, "OnViewFocus 5 true"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -324,6 +328,7 @@ func TestWindowRecordsCalls(t *testing.T) {
 	w.SetTitle("hello")
 	w.SetSize(ui.Size{Width: 800, Height: 600})
 	w.SetState(platform.WindowStateMaximized)
+	w.SetSizeConstraints(ui.Size{Width: 100, Height: 50}, ui.Size{Width: 900, Height: 700})
 	w.SetCursor(platform.MouseCursor(3))
 	w.SetTextInput(ui.TextInputState{Enabled: true})
 	w.RequestFrame()
@@ -335,7 +340,8 @@ func TestWindowRecordsCalls(t *testing.T) {
 
 	if fw.Title() != "hello" || fw.Size() != (ui.Size{Width: 800, Height: 600}) ||
 		fw.State() != platform.WindowStateMaximized || fw.Cursor() != 3 ||
-		!fw.TextInput().Enabled || !fw.Closed() {
+		!fw.TextInput().Enabled || !fw.Closed() ||
+		fw.SizeConstraints() != (SizeConstraints{Min: ui.Size{Width: 100, Height: 50}, Max: ui.Size{Width: 900, Height: 700}}) {
 		t.Errorf("window state was not recorded: title=%q size=%v state=%v cursor=%v input=%v closed=%v",
 			fw.Title(), fw.Size(), fw.State(), fw.Cursor(), fw.TextInput(), fw.Closed())
 	}
@@ -343,7 +349,7 @@ func TestWindowRecordsCalls(t *testing.T) {
 	for _, e := range p.Log() {
 		kinds = append(kinds, e.Kind)
 	}
-	want := []EntryKind{EntryNewWindow, EntrySetTitle, EntrySetSize, EntrySetState, EntrySetCursor, EntrySetTextInput, EntryRequestFrame, EntryStartDrag, EntryClose}
+	want := []EntryKind{EntryNewWindow, EntrySetTitle, EntrySetSize, EntrySetState, EntrySetSizeConstraints, EntrySetCursor, EntrySetTextInput, EntryRequestFrame, EntryStartDrag, EntryClose}
 	if !reflect.DeepEqual(kinds, want) {
 		t.Errorf("log kinds = %v, want %v", kinds, want)
 	}

@@ -65,9 +65,10 @@ type GestureSettings struct {
 //
 // Flutter: ui/window.dart FlutterView
 type View struct {
-	d   *PlatformDispatcher
-	id  ViewID
-	cfg ViewConfiguration
+	d         *PlatformDispatcher
+	id        ViewID
+	cfg       ViewConfiguration
+	destroyed bool
 }
 
 // Window is what the platform says about the decorations and the state of the
@@ -82,6 +83,12 @@ func (v *View) Window() WindowInfo { return v.cfg.Window }
 //
 // Flutter: no counterpart
 func (v *View) PerformWindowAction(action WindowAction) { v.d.performWindowAction(v.id, action) }
+
+// Destroyed is whether the window of the view was destroyed. Rendering into a
+// destroyed view does nothing.
+//
+// Flutter: no counterpart
+func (v *View) Destroyed() bool { return v.destroyed }
 
 // ViewID is the ID of the view.
 //
@@ -160,6 +167,9 @@ func (v *View) Display() Display { return v.cfg.Display }
 //
 // Flutter: ui/window.dart FlutterView.render
 func (v *View) Render(scene *Scene) error {
+	if v.destroyed {
+		return nil
+	}
 	if v.d.host == nil {
 		return errors.New("PlatformHostMissing", "the dispatcher has no engine to render with", "view", int64(v.id))
 	}

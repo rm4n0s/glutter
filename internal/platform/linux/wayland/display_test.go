@@ -370,3 +370,135 @@ func TestDisplayLibdecorWindowMaps(t *testing.T) {
 		t.Errorf("Run returned %v", err)
 	}
 }
+
+// viewsHandler records the views that reported their metrics and the close requests.
+type viewsHandler struct {
+	platform.NopHandler
+	mu      sync.Mutex
+	metrics map[ui.ViewID]bool
+	closed  []ui.ViewID
+}
+
+func (h *viewsHandler) OnMetrics(view ui.ViewID, _ platform.ViewMetrics) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.metrics == nil {
+		h.metrics = map[ui.ViewID]bool{}
+	}
+	h.metrics[view] = true
+}
+
+func (h *viewsHandler) OnCloseRequest(view ui.ViewID) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.closed = append(h.closed, view)
+	return true
+}
+
+func (h *viewsHandler) mapped() int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return len(h.metrics)
+}
+
+// swayTitles are the titles of the windows that sway has with the app ID, or nil
+// when the compositor is not sway.
+func swayTitles(t *testing.T, appID string) []string {
+	t.Helper()
+	if _, err := exec.LookPath("swaymsg"); err != nil || os.Getenv("SWAYSOCK") == "" {
+		return nil
+	}
+	out, err := exec.Command("swaymsg", "-t", "get_tree").Output()
+	if err != nil {
+		t.Fatalf("swaymsg get_tree: %v", err)
+	}
+	var titles []string
+	rest := string(out)
+	for {
+		i := strings.Index(rest, `"app_id": "`+appID+`"`)
+		if i < 0 {
+			break
+		}
+		// The name of the window comes before its app ID in the same node.
+		before := rest[:i]
+		j := strings.LastIndex(before, `"name": "`)
+		if j >= 0 {
+			name := before[j+len(`"name": "`):]
+			titles = append(titles, name[:strings.Index(name, `"`)])
+		}
+		rest = rest[i+1:]
+	}
+	sort.Strings(titles)
+	return titles
+}
+
+// TestDisplayThreeWindowsAndADialog creates two windows and a modal dialog of the
+// first one on the real compositor: all of them are configured and mapped, sway
+// has all three, and closing them one at a time, the parent first, ends Run with
+// the last. sway shows no sign of the parent of a dialog (it centers every
+// floating window), so what the compositor accepts is the proof: a parent or a
+// dialog object that was wrong would be a protocol error and end the connection.
+func TestDisplayThreeWindowsAndADialog(t *testing.T) {
+	p := connectToCompositor(t)
+	const appID = "dev.glutter.windowstest"
+	main := platform.WindowConfig{Title: "Glutter main", AppID: appID, Size: ui.Size{Width: 400, Height: 300}}
+	second := platform.WindowConfig{Title: "Glutter second", AppID: appID, Size: ui.Size{Width: 400, Height: 300}}
+	dialog := platform.WindowConfig{
+		Title: "Glutter dialog", AppID: appID, Size: ui.Size{Width: 300, Height: 200},
+		Kind: platform.WindowKindDialog, HasParent: true, Parent: 0, Modal: true,
+	}
+	for _, cfg := range []platform.WindowConfig{main, second, dialog} {
+		if _, err := p.NewWindow(cfg); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_, hasDialogs := p.Globals("xdg_wm_dialog_v1")
+	t.Logf("the compositor has xdg_wm_dialog_v1: %v", hasDialogs)
+
+	h := &viewsHandler{}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- p.Run(ctx, h) }()
+	waitUntil(t, func() bool { return h.mapped() == 3 }, "the three windows were not all configured")
+
+	if titles := swayTitles(t, appID); titles != nil {
+		want := []string{"Glutter dialog", "Glutter main", "Glutter second"}
+		if strings.Join(titles, "|") != strings.Join(want, "|") {
+			t.Errorf("sway has the windows %q, want %q", titles, want)
+		}
+	}
+
+	closeView := func(view ui.ViewID) {
+		finished := make(chan struct{})
+		p.Post(func() {
+			if w, ok := p.windows[view]; ok {
+				w.onClose()
+			}
+			close(finished)
+		})
+		<-finished
+	}
+	closeView(0) // the parent goes first, the dialog stays
+	select {
+	case err := <-done:
+		t.Fatalf("Run returned %v while two windows are open", err)
+	case <-time.After(300 * time.Millisecond):
+	}
+	if titles := swayTitles(t, appID); titles != nil && len(titles) != 2 {
+		t.Errorf("sway has %q after the first window closed, want 2 windows", titles)
+	}
+	closeView(2)
+	closeView(1)
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Run returned %v after the last window closed", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("Run did not return after the last window closed")
+	}
+	if got := h.closed; len(got) != 3 || got[0] != 0 {
+		t.Errorf("close requests = %v, want the three windows, the first one first", got)
+	}
+}

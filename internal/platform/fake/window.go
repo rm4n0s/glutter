@@ -18,6 +18,8 @@ type Window struct {
 	// The fields below are guarded by p.mu.
 	title     string
 	size      ui.Size
+	minSize   ui.Size
+	maxSize   ui.Size
 	state     platform.WindowState
 	cursor    platform.MouseCursor
 	textInput ui.TextInputState
@@ -59,6 +61,32 @@ func (w *Window) SetTitle(title string) {
 // Flutter: no counterpart
 func (w *Window) SetSize(size ui.Size) {
 	w.set(EntrySetSize, size, func() { w.size = size })
+}
+
+// SizeConstraints is the value of an EntrySetSizeConstraints entry.
+//
+// Flutter: no counterpart
+type SizeConstraints struct {
+	// Min is the smallest size in logical pixels; zero means no limit.
+	Min ui.Size
+	// Max is the largest size in logical pixels; zero means no limit.
+	Max ui.Size
+}
+
+// SetSizeConstraints records the new limits.
+//
+// Flutter: no counterpart
+func (w *Window) SetSizeConstraints(min, max ui.Size) {
+	w.set(EntrySetSizeConstraints, SizeConstraints{Min: min, Max: max}, func() { w.minSize, w.maxSize = min, max })
+}
+
+// SizeConstraints returns the last limits set; the config's until then.
+//
+// Flutter: no counterpart
+func (w *Window) SizeConstraints() SizeConstraints {
+	w.p.mu.Lock()
+	defer w.p.mu.Unlock()
+	return SizeConstraints{Min: w.minSize, Max: w.maxSize}
 }
 
 // SetState records the new state.

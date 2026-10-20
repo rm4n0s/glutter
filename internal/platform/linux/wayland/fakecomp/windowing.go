@@ -223,6 +223,18 @@ func (s *Server) handleWindowing(iface string, op uint16, id uint32, r *reader) 
 		s.record("xdg_toplevel.unset_fullscreen")
 	case "xdg_toplevel.13":
 		s.record("xdg_toplevel.set_minimized")
+	case "xdg_wm_dialog_v1.0":
+		s.record("xdg_wm_dialog_v1.destroy")
+	case "xdg_wm_dialog_v1.1": // get_xdg_dialog(id, toplevel)
+		dlg, top := r.u32(), r.u32()
+		s.addObject(dlg, "xdg_dialog_v1")
+		s.record("xdg_wm_dialog_v1.get_xdg_dialog toplevel=%d", top)
+	case "xdg_dialog_v1.0":
+		s.record("xdg_dialog_v1.destroy")
+	case "xdg_dialog_v1.1":
+		s.record("xdg_dialog_v1.set_modal")
+	case "xdg_dialog_v1.2":
+		s.record("xdg_dialog_v1.unset_modal")
 	case "zxdg_decoration_manager_v1.0":
 		s.record("zxdg_decoration_manager_v1.destroy")
 	case "zxdg_decoration_manager_v1.1": // get_toplevel_decoration(id, toplevel)

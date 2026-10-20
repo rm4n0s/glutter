@@ -84,6 +84,9 @@ type session struct {
 	// decorationManager is nil when the compositor has no
 	// zxdg_decoration_manager_v1.
 	decorationManager *wl.ZxdgDecorationManagerV1
+	// dialogManager is nil without xdg_wm_dialog_v1; a modal dialog is then only a
+	// transient window of its parent.
+	dialogManager *wl.XdgWmDialogV1
 	// gestures is nil without zwp_pointer_gestures_v1 (touchpad pinch and swipe).
 	gestures *wl.ZwpPointerGesturesV1
 	// cursorShape is nil without wp_cursor_shape_manager_v1; the cursors then come
@@ -198,6 +201,9 @@ func (s *session) recordOptional() {
 	// bound by the step that needs them.
 	if g, ok := s.optionalPresent[wl.ZxdgDecorationManagerV1Interface.Name]; ok {
 		s.decorationManager = wl.BindZxdgDecorationManagerV1(s.registry, g.Name, bindVersion(g, 1))
+	}
+	if g, ok := s.optionalPresent[wl.XdgWmDialogV1Interface.Name]; ok {
+		s.dialogManager = wl.BindXdgWmDialogV1(s.registry, g.Name, bindVersion(g, 1))
 	}
 	if g, ok := s.optionalPresent[wl.ZwpPointerGesturesV1Interface.Name]; ok {
 		s.gestures = wl.BindZwpPointerGesturesV1(s.registry, g.Name, bindVersion(g, 1))

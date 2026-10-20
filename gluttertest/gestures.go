@@ -33,6 +33,26 @@ type GestureOpts struct {
 	//
 	// Flutter: flutter_test/lib/src/controller.dart WidgetController.drag touchSlopX
 	TouchSlopX, TouchSlopY foundation.Opt[float64]
+	// View is the view the pointer is in; the default is the implicit view. The
+	// gestures that take a Finder use the view of the element it finds.
+	//
+	// Flutter: flutter_test/lib/src/controller.dart WidgetController.startGesture
+	View ui.ViewID
+}
+
+// viewOpts is opts with the view of the one element the finder finds, unless the
+// test chose a view.
+func (t *Tester) viewOpts(f Finder, opts []GestureOpts) []GestureOpts {
+	var o GestureOpts
+	if len(opts) > 0 {
+		o = opts[0]
+	}
+	if o.View == ui.ImplicitViewID {
+		if v := widgets.MaybeViewOf(t.Element(f)); v != nil {
+			o.View = v.ViewID()
+		}
+	}
+	return []GestureOpts{o}
 }
 
 func (t *Tester) gestureOpts(opts []GestureOpts) GestureOpts {
@@ -71,7 +91,7 @@ type TestGesture struct {
 func (g *TestGesture) eventOpts(delta ui.Offset) gestures.PointerEventOpts {
 	return gestures.PointerEventOpts{
 		TimeStamp: g.timeStamp(), Pointer: g.opts.Pointer, Kind: g.opts.Kind,
-		Position: g.position, Delta: delta, Buttons: g.opts.Buttons,
+		Position: g.position, Delta: delta, Buttons: g.opts.Buttons, ViewID: g.opts.View,
 	}
 }
 
@@ -219,7 +239,7 @@ func (t *Tester) TapAt(at ui.Offset, opts ...GestureOpts) {
 // Flutter: flutter_test/lib/src/controller.dart WidgetController.tap
 func (t *Tester) Tap(f Finder, opts ...GestureOpts) {
 	t.tb.Helper()
-	t.TapAt(t.Center(f), opts...)
+	t.TapAt(t.Center(f), t.viewOpts(f, opts)...)
 }
 
 // LongPressAt presses a pointer at the position, lets enough fake time pass for
@@ -238,7 +258,7 @@ func (t *Tester) LongPressAt(at ui.Offset, opts ...GestureOpts) {
 // Flutter: flutter_test/lib/src/controller.dart WidgetController.longPress
 func (t *Tester) LongPress(f Finder, opts ...GestureOpts) {
 	t.tb.Helper()
-	t.LongPressAt(t.Center(f), opts...)
+	t.LongPressAt(t.Center(f), t.viewOpts(f, opts)...)
 }
 
 // DragFrom presses a pointer at the position and moves it by the offset, first
@@ -264,7 +284,7 @@ func (t *Tester) DragFrom(at, by ui.Offset, opts ...GestureOpts) {
 // Flutter: flutter_test/lib/src/controller.dart WidgetController.drag
 func (t *Tester) Drag(f Finder, by ui.Offset, opts ...GestureOpts) {
 	t.tb.Helper()
-	t.DragFrom(t.Center(f), by, opts...)
+	t.DragFrom(t.Center(f), by, t.viewOpts(f, opts)...)
 }
 
 func sign(v float64) float64 {
@@ -305,7 +325,7 @@ func (t *Tester) FlingFrom(at, by ui.Offset, speed float64, opts ...GestureOpts)
 // Flutter: flutter_test/lib/src/controller.dart WidgetController.fling
 func (t *Tester) Fling(f Finder, by ui.Offset, speed float64, opts ...GestureOpts) {
 	t.tb.Helper()
-	t.FlingFrom(t.Center(f), by, speed, opts...)
+	t.FlingFrom(t.Center(f), by, speed, t.viewOpts(f, opts)...)
 }
 
 // Hover moves a mouse to the position without pressing it; the first hover adds

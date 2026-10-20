@@ -25,7 +25,7 @@ type atoms struct {
 	netWMState, netWMStateMaxVert, netWMStateMaxHorz              uint64
 	netWMStateFullscreen, netWMStateModal                         uint64
 	netWMWindowType, netWMWindowTypeNormal, netWMWindowTypeDialog uint64
-	motifWMHints                                                  uint64
+	motifWMHints, netActiveWindow                                 uint64
 }
 
 // Platform is the X11 backend of platform.Platform: Xlib and XInput2 through
@@ -138,7 +138,7 @@ func (p *Platform) internAtoms() atoms {
 		netWMStateMaxHorz: intern("_NET_WM_STATE_MAXIMIZED_HORZ"), netWMStateFullscreen: intern("_NET_WM_STATE_FULLSCREEN"),
 		netWMStateModal: intern("_NET_WM_STATE_MODAL"), netWMWindowType: intern("_NET_WM_WINDOW_TYPE"),
 		netWMWindowTypeNormal: intern("_NET_WM_WINDOW_TYPE_NORMAL"), netWMWindowTypeDialog: intern("_NET_WM_WINDOW_TYPE_DIALOG"),
-		motifWMHints: intern("_MOTIF_WM_HINTS"),
+		motifWMHints: intern("_MOTIF_WM_HINTS"), netActiveWindow: intern("_NET_ACTIVE_WINDOW"),
 	}
 }
 

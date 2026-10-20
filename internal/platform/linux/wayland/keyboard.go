@@ -171,6 +171,9 @@ func (k *keyboard) onEnter(serial uint32, surface *wl.WlSurface, keys []uint32) 
 	}
 	k.loseFocus() // normally the leave came first
 	k.focus = w
+	if h := k.p.handler; h != nil {
+		h.OnViewFocus(w.id, true)
+	}
 	if d := k.p.dbusIME; d != nil {
 		defer d.focusChanged(w, true)
 	}
@@ -206,6 +209,9 @@ func (k *keyboard) loseFocus() {
 	k.pressed = nil
 	if d := k.p.dbusIME; d != nil && k.focus != nil {
 		d.focusChanged(k.focus, false)
+	}
+	if h, w := k.p.handler, k.focus; h != nil && w != nil {
+		h.OnViewFocus(w.id, false)
 	}
 	k.focus = nil
 	for _, pk := range released {

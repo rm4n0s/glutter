@@ -78,6 +78,9 @@ type window struct {
 	xdgSurface *wl.XdgSurface
 	toplevel   *wl.XdgToplevel
 	decoration *wl.ZxdgToplevelDecorationV1
+	// dialog marks the toplevel as a modal dialog (xdg_dialog_v1); nil when the
+	// compositor has no xdg_wm_dialog_v1 or the window is not a modal dialog.
+	dialog *wl.XdgDialogV1
 
 	// frame is the libdecor frame of a window that libdecor decorates. Such a
 	// window has no xdgSurface and no toplevel of its own: libdecor made them.
@@ -224,6 +227,13 @@ func (p *Platform) NewWindow(cfg platform.WindowConfig) (platform.Window, error)
 				w.toplevel.SetParent(parent.toplevel)
 			}
 		}
+		if !cfg.IsResizable() && cfg.Size.Width > 0 && cfg.Size.Height > 0 {
+			// xdg-shell has no flag for it: a window whose smallest and largest sizes
+			// are the same is not resizable.
+			w.toplevel.SetMinSize(w.width, w.height)
+			w.toplevel.SetMaxSize(w.width, w.height)
+		}
+		w.makeModal(w.toplevel)
 		w.requestState(cfg.State)
 		w.requestDecorations()
 
@@ -235,6 +245,37 @@ func (p *Platform) NewWindow(cfg platform.WindowConfig) (platform.Window, error)
 	p.windows[w.id] = w
 	p.hadWindow = true
 	return w, nil
+}
+
+// makeModal tells the compositor that the window is a modal dialog of its parent
+// (xdg_dialog_v1.set_modal), which is what a dialog with a parent is. Without
+// xdg_wm_dialog_v1 the dialog is only a transient window of its parent.
+func (w *window) makeModal(toplevel *wl.XdgToplevel) {
+	mgr := w.p.sess.dialogManager
+	if mgr == nil || w.cfg.Kind != platform.WindowKindDialog || !w.cfg.HasParent || !w.cfg.Modal {
+		return
+	}
+	w.dialog = mgr.GetXdgDialog(toplevel)
+	w.dialog.SetModal()
+}
+
+// SetSizeConstraints sets the smallest and the largest size of the window; the
+// compositor applies them with the next commit, so a frame is asked for.
+//
+// Flutter: widgets/_window.dart RegularWindowController.setConstraints
+func (w *window) SetSizeConstraints(min, max ui.Size) {
+	if w.closed {
+		return
+	}
+	w.cfg.MinSize, w.cfg.MaxSize = min, max
+	if w.frame != nil {
+		w.frame.SetMinContentSize(int(min.Width), int(min.Height))
+		w.frame.SetMaxContentSize(int(max.Width), int(max.Height))
+	} else if w.toplevel != nil {
+		w.toplevel.SetMinSize(int32(min.Width), int32(min.Height))
+		w.toplevel.SetMaxSize(int32(max.Width), int32(max.Height))
+	}
+	w.RequestFrame()
 }
 
 // requestDecorations asks for server-side decorations, or for none, when the
@@ -764,6 +805,10 @@ func (w *window) destroy() {
 	}
 	if w.decoration != nil {
 		w.decoration.Destroy()
+	}
+	if w.dialog != nil {
+		w.dialog.Destroy()
+		w.dialog = nil
 	}
 	if w.frame != nil {
 		w.frame.Free() // destroys the xdg_toplevel and the xdg_surface it made
