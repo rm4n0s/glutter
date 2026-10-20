@@ -433,22 +433,21 @@ func (s *navigationDestinationBuilderState) Build(bc widgets.BuildContext) widge
 		message = w.label
 	}
 	return newNavigationBarDestinationSemantics(w.enabled,
-		tempTooltip(message,
-			NewInkResponse(
-				widgets.NewRow([]widgets.Widget{
-					widgets.NewExpanded(newNavigationBarDestinationLayout(w.buildIcon(bc), s.iconKey, w.buildLabel(bc))),
-				}),
-				InkResponseOpts{
-					OnTap: onTap, ContainedInkWell: true, HighlightColor: foundation.Some(Colors.Transparent),
-					CustomBorder: customBorder, OverlayColor: overlayColor,
-					GetRectCallback: func(referenceBox rendering.Box) RectCallback {
-						return func() ui.Rect {
-							iconBox := s.iconKey.CurrentContext().FindRenderObject().(rendering.Box)
-							iconRect := iconBox.LocalToGlobal(ui.OffsetZero, nil).And(iconBox.Size())
-							return referenceBox.GlobalToLocal(iconRect.TopLeft(), nil).And(iconBox.Size())
-						}
-					},
-				})))
+		NewTooltip(NewInkResponse(
+			widgets.NewRow([]widgets.Widget{
+				widgets.NewExpanded(newNavigationBarDestinationLayout(w.buildIcon(bc), s.iconKey, w.buildLabel(bc))),
+			}),
+			InkResponseOpts{
+				OnTap: onTap, ContainedInkWell: true, HighlightColor: foundation.Some(Colors.Transparent),
+				CustomBorder: customBorder, OverlayColor: overlayColor,
+				GetRectCallback: func(referenceBox rendering.Box) RectCallback {
+					return func() ui.Rect {
+						iconBox := s.iconKey.CurrentContext().FindRenderObject().(rendering.Box)
+						iconRect := iconBox.LocalToGlobal(ui.OffsetZero, nil).And(iconBox.Size())
+						return referenceBox.GlobalToLocal(iconRect.TopLeft(), nil).And(iconBox.Size())
+					}
+				},
+			}), TooltipOpts{Message: message}))
 }
 
 // navigationDestinationInfo is what a NavigationBar tells its destinations.

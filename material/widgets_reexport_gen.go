@@ -2017,6 +2017,45 @@ type Expanded = widgets.Expanded
 // Flutter: widgets.dart ExpandedOpts
 type ExpandedOpts = widgets.ExpandedOpts
 
+// Expansible is widgets.Expansible.
+//
+// Flutter: widgets.dart Expansible
+type Expansible = widgets.Expansible
+
+// ExpansibleBuilder is widgets.ExpansibleBuilder.
+//
+// Flutter: widgets.dart ExpansibleBuilder
+type ExpansibleBuilder = widgets.ExpansibleBuilder
+
+// ExpansibleComponentBuilder is widgets.ExpansibleComponentBuilder.
+//
+// Flutter: widgets.dart ExpansibleComponentBuilder
+type ExpansibleComponentBuilder = widgets.ExpansibleComponentBuilder
+
+// ExpansibleController is widgets.ExpansibleController.
+//
+// Flutter: widgets.dart ExpansibleController
+type ExpansibleController = widgets.ExpansibleController
+
+// ExpansibleControllerMaybeOf is widgets.ExpansibleControllerMaybeOf.
+//
+// Flutter: widgets.dart ExpansibleControllerMaybeOf
+func ExpansibleControllerMaybeOf(bc widgets.BuildContext) *widgets.ExpansibleController {
+	return widgets.ExpansibleControllerMaybeOf(bc)
+}
+
+// ExpansibleControllerOf is widgets.ExpansibleControllerOf.
+//
+// Flutter: widgets.dart ExpansibleControllerOf
+func ExpansibleControllerOf(bc widgets.BuildContext) *widgets.ExpansibleController {
+	return widgets.ExpansibleControllerOf(bc)
+}
+
+// ExpansibleOpts is widgets.ExpansibleOpts.
+//
+// Flutter: widgets.dart ExpansibleOpts
+type ExpansibleOpts = widgets.ExpansibleOpts
+
 // ExtendSelectionByCharacterIntent is widgets.ExtendSelectionByCharacterIntent.
 //
 // Flutter: widgets.dart ExtendSelectionByCharacterIntent
@@ -5326,6 +5365,20 @@ func NewExpandSelectionToLineBreakIntent(forward bool) widgets.ExpandSelectionTo
 // Flutter: widgets.dart NewExpanded
 func NewExpanded(child widgets.Widget, opts ...widgets.ExpandedOpts) *widgets.Expanded {
 	return widgets.NewExpanded(child, opts...)
+}
+
+// NewExpansible is widgets.NewExpansible.
+//
+// Flutter: widgets.dart NewExpansible
+func NewExpansible(controller *widgets.ExpansibleController, headerBuilder widgets.ExpansibleComponentBuilder, bodyBuilder widgets.ExpansibleComponentBuilder, opts ...widgets.ExpansibleOpts) *widgets.Expansible {
+	return widgets.NewExpansible(controller, headerBuilder, bodyBuilder, opts...)
+}
+
+// NewExpansibleController is widgets.NewExpansibleController.
+//
+// Flutter: widgets.dart NewExpansibleController
+func NewExpansibleController() *widgets.ExpansibleController {
+	return widgets.NewExpansibleController()
 }
 
 // NewExtendSelectionByCharacterIntent is widgets.NewExtendSelectionByCharacterIntent.

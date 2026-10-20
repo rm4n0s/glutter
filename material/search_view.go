@@ -156,9 +156,7 @@ func (s *searchViewContentState) Build(bc widgets.BuildContext) widgets.Widget {
 		}
 	}
 	effectiveShape = outlinedWithSide(effectiveShape, effectiveSide)
-	// TODO(step 13.9): the color of the DividerTheme goes between the color of the
-	// view theme and the default.
-	effectiveDividerColor := firstOptColor(o.DividerColor, viewTheme.DividerColor, viewDefaults.DividerColor).Value()
+	effectiveDividerColor := firstOptColor(o.DividerColor, viewTheme.DividerColor, DividerThemeOf(bc).Color, viewDefaults.DividerColor).Value()
 	effectiveHeaderHeight := firstOptDouble(o.HeaderHeight, viewTheme.HeaderHeight)
 	var headerConstraints foundation.Opt[rendering.BoxConstraints]
 	if h, ok := effectiveHeaderHeight.Get(); ok {
@@ -174,7 +172,7 @@ func (s *searchViewContentState) Build(bc widgets.BuildContext) widgets.Widget {
 	minHeight := math.Min(effectiveConstraints.MinHeight, s.viewRect.Height())
 	effectiveShrinkWrap := firstOpt(o.ShrinkWrap, viewTheme.ShrinkWrap, viewDefaults.ShrinkWrap).Value()
 
-	viewDivider := tempDivider(bc, tempDividerOpts{height: 1, color: foundation.Some(effectiveDividerColor)})
+	viewDivider := NewDivider(DividerOpts{Height: foundation.Some(1.0), Color: foundation.Some(effectiveDividerColor)})
 
 	leading := o.ViewLeading
 	if leading == nil {

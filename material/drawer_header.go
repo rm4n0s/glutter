@@ -98,6 +98,6 @@ func (w *DrawerHeader) Build(bc widgets.BuildContext) widgets.Widget {
 			Height: foundation.Some(statusBarHeight + drawerHeaderHeight),
 			Margin: w.o.Margin,
 			Decoration: painting.NewBoxDecoration(painting.BoxDecorationOpts{
-				Border: painting.Border{Bottom: createDividerBorderSide(bc, 0.0)}}),
+				Border: painting.Border{Bottom: DividerCreateBorderSide(bc, DividerBorderSideOpts{Width: foundation.Some(0.0)})}}),
 		})
 }

@@ -396,7 +396,7 @@ func (s *SegmentedButtonState[T]) Build(bc widgets.BuildContext) widgets.Widget 
 			OnFocusChange:    func(focused bool) { s.SetState(func() { s.focused = focused }) },
 		})
 		if segment.Tooltip != "" {
-			button = tempTooltip(segment.Tooltip, button)
+			button = NewTooltip(button, TooltipOpts{Message: segment.Tooltip})
 		}
 		semantics := widgets.SemanticsOpts{Selected: foundation.Some(segmentSelected)}
 		if !w.o.MultiSelectionEnabled {

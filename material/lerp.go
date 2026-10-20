@@ -344,3 +344,22 @@ func lerpOptInsets(a, b foundation.Opt[painting.EdgeInsetsGeometry], t float64) 
 	}
 	return foundation.None[painting.EdgeInsetsGeometry]()
 }
+
+// lerpOptOffset interpolates two optional offsets: None stays None when both are
+// None, and an offset that is missing on one side is zero there.
+//
+// Flutter: dart:ui Offset.lerp
+func lerpOptOffset(a, b foundation.Opt[ui.Offset], t float64) foundation.Opt[ui.Offset] {
+	if a.IsNone() && b.IsNone() {
+		return foundation.None[ui.Offset]()
+	}
+	return foundation.Some(*ui.OffsetLerp(optPtr(a), optPtr(b), t))
+}
+
+// optPtr is a pointer to the value of an Opt, or nil for None.
+func optPtr[T any](o foundation.Opt[T]) *T {
+	if v, ok := o.Get(); ok {
+		return &v
+	}
+	return nil
+}

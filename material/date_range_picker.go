@@ -753,7 +753,7 @@ func (s *calendarDateRangePickerState) Build(bc widgets.BuildContext) widgets.Wi
 	a := s.Widget().a
 	children := []widgets.Widget{newDayHeaders()}
 	if s.showWeekBottomDivider {
-		children = append(children, tempDivider(bc, tempDividerOpts{}))
+		children = append(children, NewDivider(DividerOpts{Height: foundation.Some(0.0)}))
 	}
 	children = append(children, widgets.NewExpanded(newCalendarKeyboardNavigator(calendarKeyboardNavigatorArgs{
 		calendarDelegate: a.calendarDelegate, firstDate: a.firstDate, lastDate: a.lastDate,

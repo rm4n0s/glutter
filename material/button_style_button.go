@@ -559,7 +559,7 @@ func (s *buttonStyleState) Build(bc widgets.BuildContext) widgets.Widget {
 		AnimatedThemeOpts{Duration: foundation.Some(animationDurationOrTick(resolvedAnimationDuration))})
 
 	if w.o.Tooltip != "" {
-		result = tempTooltip(w.o.Tooltip, result)
+		result = NewTooltip(result, TooltipOpts{Message: w.o.Tooltip})
 	}
 
 	minSize := ui.Size{}

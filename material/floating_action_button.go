@@ -389,7 +389,7 @@ func (w *FloatingActionButton) Build(bc widgets.BuildContext) widgets.Widget {
 	})
 
 	if o.Tooltip != "" {
-		result = tempTooltip(o.Tooltip, result)
+		result = NewTooltip(result, TooltipOpts{Message: o.Tooltip})
 	}
 	if !o.NoHero {
 		var tag any = fabDefaultHeroTag

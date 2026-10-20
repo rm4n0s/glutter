@@ -1236,12 +1236,12 @@ func (s *yearPickerState) buildYearItem(bc widgets.BuildContext, index int) widg
 func (s *yearPickerState) Build(bc widgets.BuildContext) widgets.Widget {
 	w := s.Widget()
 	return widgets.NewColumn([]widgets.Widget{
-		tempDivider(bc, tempDividerOpts{height: 16}),
+		NewDivider(DividerOpts{Height: foundation.Some(16.0)}),
 		widgets.NewExpanded(NewMaterial(widgets.NewGridViewBuilder(&yearPickerGridDelegate{bc: bc}, s.buildYearItem, widgets.GridViewOpts{
 			Controller: s.scrollController, DragStartBehavior: w.o.DragStartBehavior, ItemCount: foundation.Some(max(s.itemCount(), yearPickerMinYears)),
 			Padding: painting.NewEdgeInsetsSymmetric(0, yearPickerPadding),
 		}), MaterialOpts{Type: MaterialTypeTransparency})),
-		tempDivider(bc, tempDividerOpts{height: 16}),
+		NewDivider(DividerOpts{Height: foundation.Some(16.0)}),
 	})
 }
 

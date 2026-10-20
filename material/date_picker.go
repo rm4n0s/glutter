@@ -532,7 +532,7 @@ func (s *datePickerDialogState) Build(bc widgets.BuildContext) widgets.Widget {
 					children = append(children, header)
 				}
 				if useMaterial3 {
-					children = append(children, tempDivider(bc, tempDividerOpts{color: datePickerTheme.DividerColor}))
+					children = append(children, NewDivider(DividerOpts{Height: foundation.Some(0.0), Color: datePickerTheme.DividerColor}))
 				}
 				if showPicker {
 					children = append(children, widgets.NewExpanded(picker), actions)
@@ -541,7 +541,7 @@ func (s *datePickerDialogState) Build(bc widgets.BuildContext) widgets.Widget {
 			}
 			children := []widgets.Widget{header}
 			if useMaterial3 {
-				children = append(children, tempVerticalDivider(bc, tempVerticalDividerOpts{color: datePickerTheme.DividerColor}))
+				children = append(children, NewVerticalDivider(VerticalDividerOpts{Width: foundation.Some(0.0), Color: datePickerTheme.DividerColor}))
 			}
 			children = append(children, widgets.NewFlexible(widgets.NewColumn([]widgets.Widget{widgets.NewExpanded(picker), actions},
 				widgets.ColumnOpts{MainAxisSize: rendering.MainAxisSizeMin, CrossAxisAlignment: rendering.CrossAxisAlignmentStretch})))

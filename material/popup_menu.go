@@ -104,8 +104,8 @@ func (w *PopupMenuDivider) Represents(any) bool { return false }
 //
 // Flutter: material/popup_menu.dart _PopupMenuDividerState.build
 func (w *PopupMenuDivider) Build(bc widgets.BuildContext) widgets.Widget {
-	return tempDivider(bc, tempDividerOpts{
-		height: w.Height(), thickness: w.o.Thickness, indent: w.o.Indent, endIndent: w.o.EndIndent, radius: w.o.Radius, color: w.o.Color})
+	return NewDivider(DividerOpts{
+		Height: foundation.Some(w.Height()), Thickness: w.o.Thickness, Indent: w.o.Indent, EndIndent: w.o.EndIndent, Radius: w.o.Radius, Color: w.o.Color})
 }
 
 // popupMenuItemLayout reports the size of each menu item: the sizes are used by
@@ -393,9 +393,8 @@ func (s *popupMenuItemState[T]) Build(bc widgets.BuildContext) widgets.Widget {
 	if w.Enabled() {
 		onTap = s.handleTap
 	}
-	// TODO(step 13.9): a ListTileTheme.merge around the item, which gives the
-	// ListTiles of the label no content padding and the style of the label.
-	return widgets.NewMergeSemantics(s.buildSemantics(NewInkWell(item, InkWellOpts{
+	// The ListTiles of the label get no content padding and the style of the label.
+	return widgets.NewMergeSemantics(s.buildSemantics(NewInkWell(ListTileThemeMerge(ListTileThemeData{ContentPadding: painting.EdgeInsetsZero, TitleTextStyle: style}, item), InkWellOpts{
 		OnTap:           onTap,
 		CanRequestFocus: foundation.Some(w.Enabled()),
 		MouseCursor:     popupEffectiveMouseCursor(w.o.MouseCursor, popupMenuTheme.MouseCursor),
@@ -442,10 +441,9 @@ func (s *popupMenuItemState[T]) buildCheckedChild(bc widgets.BuildContext) widge
 	} else {
 		check = widgets.NewIcon(Icons.Done())
 	}
-	// TODO(step 13.9): ListTile.
-	return widgets.NewIgnorePointer(tempListTile(bc, tempListTileOpts{
-		enabled: w.Enabled(), titleStyle: titleStyle, title: w.child,
-		leading: widgets.NewFadeTransition(s.controller, check),
+	return widgets.NewIgnorePointer(NewListTile(ListTileOpts{
+		Disabled: !w.Enabled(), TitleTextStyle: titleStyle, Title: w.child,
+		Leading: widgets.NewFadeTransition(s.controller, check),
 	}))
 }
 
@@ -1209,13 +1207,13 @@ func (s *popupMenuButtonState[T]) Build(bc widgets.BuildContext) widgets.Widget 
 		onPressed = s.showButtonMenu
 	}
 	if w.o.Child != nil {
-		child := tempTooltip(tooltip, NewInkWell(w.o.Child, InkWellOpts{
+		child := NewTooltip(NewInkWell(w.o.Child, InkWellOpts{
 			BorderRadius:    w.o.BorderRadius,
 			OnTap:           onPressed,
 			CanRequestFocus: foundation.Some(!w.o.Disabled),
 			Radius:          w.o.SplashRadius,
 			EnableFeedback:  foundation.Some(enableFeedback),
-		}))
+		}), TooltipOpts{Message: tooltip})
 		tapTargetSize := MaterialTapTargetSizeShrinkWrap
 		if w.o.Style != nil && w.o.Style.TapTargetSize != MaterialTapTargetSizeUnspecified {
 			tapTargetSize = w.o.Style.TapTargetSize

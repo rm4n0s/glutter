@@ -380,7 +380,7 @@ func (w *IconButton) Build(bc widgets.BuildContext) widgets.Widget {
 			(effectiveIconSize+math.Min(effectivePadding.Horizontal(), effectivePadding.Vertical()))*0.7))),
 	})
 	if o.Tooltip != "" {
-		result = tempTooltip(o.Tooltip, result)
+		result = NewTooltip(result, TooltipOpts{Message: o.Tooltip})
 	}
 	return widgets.NewSemantics(result, widgets.SemanticsOpts{Button: foundation.Some(true), Enabled: foundation.Some(w.onPressed != nil)})
 }

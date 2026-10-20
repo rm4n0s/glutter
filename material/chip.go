@@ -506,8 +506,7 @@ func wrapWithChipTooltip(tooltip foundation.Opt[string], enabled bool, child wid
 	if child == nil || !enabled || tooltip.IsNone() {
 		return child
 	}
-	// TODO(step 13.9): Tooltip.
-	return tempTooltip(tooltip.Value(), child)
+	return NewTooltip(child, TooltipOpts{Message: tooltip.Value()})
 }
 
 // Flutter: material/chip.dart _RawChipState._buildDeleteIcon

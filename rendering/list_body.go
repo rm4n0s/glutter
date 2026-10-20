@@ -43,11 +43,24 @@ func NewRenderListBody(children []Box, opts ...RenderListBodyOpts) *RenderListBo
 	if o.AxisDirection == painting.AxisDirectionUnspecified {
 		o.AxisDirection = painting.AxisDirectionDown
 	}
-	r := &RenderListBody{axisDirection: o.AxisDirection}
-	InitRenderBox(&r.RenderBox, r)
-	InitContainerRenderObject(&r.ContainerRenderObject, r)
+	r := &RenderListBody{}
+	InitRenderListBody(r, r, o)
 	r.AddAll(children)
 	return r
+}
+
+// InitRenderListBody sets up a RenderListBody that a render object outside
+// rendering subclasses: self is the outer object.
+//
+// Flutter: rendering/list_body.dart RenderListBody.new
+func InitRenderListBody(r *RenderListBody, self Box, opts ...RenderListBodyOpts) {
+	o := firstOpts(opts)
+	if o.AxisDirection == painting.AxisDirectionUnspecified {
+		o.AxisDirection = painting.AxisDirectionDown
+	}
+	r.axisDirection = o.AxisDirection
+	InitRenderBox(&r.RenderBox, self)
+	InitContainerRenderObject(&r.ContainerRenderObject, self)
 }
 
 // SetupParentData gives the child a ListBodyParentData if it has none.

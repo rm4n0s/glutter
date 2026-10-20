@@ -3,6 +3,7 @@
 package material
 
 import (
+	animation "github.com/rm4n0s/glutter/animation"
 	foundation "github.com/rm4n0s/glutter/foundation"
 	painting "github.com/rm4n0s/glutter/painting"
 	rendering "github.com/rm4n0s/glutter/rendering"
@@ -126,6 +127,53 @@ func (x AppBarThemeData) CopyWith(c AppBarThemeDataCopy) AppBarThemeData {
 	return r
 }
 
+// BadgeThemeDataCopy holds the replacements for BadgeThemeData.CopyWith: a field that is None keeps the value of the
+// copied one.
+//
+// Flutter: material/badge_theme.dart BadgeThemeData.copyWith
+type BadgeThemeDataCopy struct {
+	BackgroundColor foundation.Opt[ui.Color]
+	TextColor       foundation.Opt[ui.Color]
+	SmallSize       foundation.Opt[float64]
+	LargeSize       foundation.Opt[float64]
+	TextStyle       foundation.Opt[*painting.TextStyle]
+	Padding         foundation.Opt[painting.EdgeInsetsGeometry]
+	Alignment       foundation.Opt[painting.AlignmentGeometry]
+	Offset          foundation.Opt[ui.Offset]
+}
+
+// CopyWith returns a copy of the BadgeThemeData with the fields that the BadgeThemeDataCopy sets replaced.
+//
+// Flutter: material/badge_theme.dart BadgeThemeData.copyWith
+func (x BadgeThemeData) CopyWith(c BadgeThemeDataCopy) BadgeThemeData {
+	r := x
+	if c.BackgroundColor.IsSome() {
+		r.BackgroundColor = c.BackgroundColor
+	}
+	if c.TextColor.IsSome() {
+		r.TextColor = c.TextColor
+	}
+	if c.SmallSize.IsSome() {
+		r.SmallSize = c.SmallSize
+	}
+	if c.LargeSize.IsSome() {
+		r.LargeSize = c.LargeSize
+	}
+	if v, ok := c.TextStyle.Get(); ok {
+		r.TextStyle = v
+	}
+	if v, ok := c.Padding.Get(); ok {
+		r.Padding = v
+	}
+	if v, ok := c.Alignment.Get(); ok {
+		r.Alignment = v
+	}
+	if c.Offset.IsSome() {
+		r.Offset = c.Offset
+	}
+	return r
+}
+
 // BottomAppBarThemeDataCopy holds the replacements for BottomAppBarThemeData.CopyWith: a field that is None keeps the value of the
 // copied one.
 //
@@ -232,6 +280,49 @@ func (x BottomSheetThemeData) CopyWith(c BottomSheetThemeDataCopy) BottomSheetTh
 	}
 	if c.Constraints.IsSome() {
 		r.Constraints = c.Constraints
+	}
+	return r
+}
+
+// CardThemeDataCopy holds the replacements for CardThemeData.CopyWith: a field that is None keeps the value of the
+// copied one.
+//
+// Flutter: material/card_theme.dart CardThemeData.copyWith
+type CardThemeDataCopy struct {
+	ClipBehavior     foundation.Opt[ui.Clip]
+	Color            foundation.Opt[ui.Color]
+	ShadowColor      foundation.Opt[ui.Color]
+	SurfaceTintColor foundation.Opt[ui.Color]
+	Elevation        foundation.Opt[float64]
+	Margin           foundation.Opt[painting.EdgeInsetsGeometry]
+	Shape            foundation.Opt[painting.ShapeBorder]
+}
+
+// CopyWith returns a copy of the CardThemeData with the fields that the CardThemeDataCopy sets replaced.
+//
+// Flutter: material/card_theme.dart CardThemeData.copyWith
+func (x CardThemeData) CopyWith(c CardThemeDataCopy) CardThemeData {
+	r := x
+	if v, ok := c.ClipBehavior.Get(); ok {
+		r.ClipBehavior = v
+	}
+	if c.Color.IsSome() {
+		r.Color = c.Color
+	}
+	if c.ShadowColor.IsSome() {
+		r.ShadowColor = c.ShadowColor
+	}
+	if c.SurfaceTintColor.IsSome() {
+		r.SurfaceTintColor = c.SurfaceTintColor
+	}
+	if c.Elevation.IsSome() {
+		r.Elevation = c.Elevation
+	}
+	if v, ok := c.Margin.Get(); ok {
+		r.Margin = v
+	}
+	if v, ok := c.Shape.Get(); ok {
+		r.Shape = v
 	}
 	return r
 }
@@ -652,6 +743,45 @@ func (x DialogThemeData) CopyWith(c DialogThemeDataCopy) DialogThemeData {
 	return r
 }
 
+// DividerThemeDataCopy holds the replacements for DividerThemeData.CopyWith: a field that is None keeps the value of the
+// copied one.
+//
+// Flutter: material/divider_theme.dart DividerThemeData.copyWith
+type DividerThemeDataCopy struct {
+	Color     foundation.Opt[ui.Color]
+	Space     foundation.Opt[float64]
+	Thickness foundation.Opt[float64]
+	Indent    foundation.Opt[float64]
+	EndIndent foundation.Opt[float64]
+	Radius    foundation.Opt[painting.BorderRadiusGeometry]
+}
+
+// CopyWith returns a copy of the DividerThemeData with the fields that the DividerThemeDataCopy sets replaced.
+//
+// Flutter: material/divider_theme.dart DividerThemeData.copyWith
+func (x DividerThemeData) CopyWith(c DividerThemeDataCopy) DividerThemeData {
+	r := x
+	if c.Color.IsSome() {
+		r.Color = c.Color
+	}
+	if c.Space.IsSome() {
+		r.Space = c.Space
+	}
+	if c.Thickness.IsSome() {
+		r.Thickness = c.Thickness
+	}
+	if c.Indent.IsSome() {
+		r.Indent = c.Indent
+	}
+	if c.EndIndent.IsSome() {
+		r.EndIndent = c.EndIndent
+	}
+	if v, ok := c.Radius.Get(); ok {
+		r.Radius = v
+	}
+	return r
+}
+
 // DrawerThemeDataCopy holds the replacements for DrawerThemeData.CopyWith: a field that is None keeps the value of the
 // copied one.
 //
@@ -730,6 +860,73 @@ func (x DropdownMenuThemeData) CopyWith(c DropdownMenuThemeDataCopy) DropdownMen
 	}
 	if c.DisabledColor.IsSome() {
 		r.DisabledColor = c.DisabledColor
+	}
+	return r
+}
+
+// ExpansionTileThemeDataCopy holds the replacements for ExpansionTileThemeData.CopyWith: a field that is None keeps the value of the
+// copied one.
+//
+// Flutter: material/expansion_tile_theme.dart ExpansionTileThemeData.copyWith
+type ExpansionTileThemeDataCopy struct {
+	BackgroundColor          foundation.Opt[ui.Color]
+	CollapsedBackgroundColor foundation.Opt[ui.Color]
+	TilePadding              foundation.Opt[painting.EdgeInsetsGeometry]
+	ExpandedAlignment        foundation.Opt[painting.AlignmentGeometry]
+	ChildrenPadding          foundation.Opt[painting.EdgeInsetsGeometry]
+	IconColor                foundation.Opt[ui.Color]
+	CollapsedIconColor       foundation.Opt[ui.Color]
+	TextColor                foundation.Opt[ui.Color]
+	CollapsedTextColor       foundation.Opt[ui.Color]
+	Shape                    foundation.Opt[painting.ShapeBorder]
+	CollapsedShape           foundation.Opt[painting.ShapeBorder]
+	ClipBehavior             foundation.Opt[ui.Clip]
+	ExpansionAnimationStyle  foundation.Opt[animation.AnimationStyle]
+}
+
+// CopyWith returns a copy of the ExpansionTileThemeData with the fields that the ExpansionTileThemeDataCopy sets replaced.
+//
+// Flutter: material/expansion_tile_theme.dart ExpansionTileThemeData.copyWith
+func (x ExpansionTileThemeData) CopyWith(c ExpansionTileThemeDataCopy) ExpansionTileThemeData {
+	r := x
+	if c.BackgroundColor.IsSome() {
+		r.BackgroundColor = c.BackgroundColor
+	}
+	if c.CollapsedBackgroundColor.IsSome() {
+		r.CollapsedBackgroundColor = c.CollapsedBackgroundColor
+	}
+	if v, ok := c.TilePadding.Get(); ok {
+		r.TilePadding = v
+	}
+	if v, ok := c.ExpandedAlignment.Get(); ok {
+		r.ExpandedAlignment = v
+	}
+	if v, ok := c.ChildrenPadding.Get(); ok {
+		r.ChildrenPadding = v
+	}
+	if c.IconColor.IsSome() {
+		r.IconColor = c.IconColor
+	}
+	if c.CollapsedIconColor.IsSome() {
+		r.CollapsedIconColor = c.CollapsedIconColor
+	}
+	if c.TextColor.IsSome() {
+		r.TextColor = c.TextColor
+	}
+	if c.CollapsedTextColor.IsSome() {
+		r.CollapsedTextColor = c.CollapsedTextColor
+	}
+	if v, ok := c.Shape.Get(); ok {
+		r.Shape = v
+	}
+	if v, ok := c.CollapsedShape.Get(); ok {
+		r.CollapsedShape = v
+	}
+	if v, ok := c.ClipBehavior.Get(); ok {
+		r.ClipBehavior = v
+	}
+	if v, ok := c.ExpansionAnimationStyle.Get(); ok {
+		r.ExpansionAnimationStyle = v
 	}
 	return r
 }
@@ -992,6 +1189,109 @@ func (x InputDecorationThemeData) CopyWith(c InputDecorationThemeDataCopy) Input
 	}
 	if c.VisualDensity.IsSome() {
 		r.VisualDensity = c.VisualDensity
+	}
+	return r
+}
+
+// ListTileThemeDataCopy holds the replacements for ListTileThemeData.CopyWith: a field that is None keeps the value of the
+// copied one.
+//
+// Flutter: material/list_tile_theme.dart ListTileThemeData.copyWith
+type ListTileThemeDataCopy struct {
+	Dense                       foundation.Opt[bool]
+	Shape                       foundation.Opt[painting.ShapeBorder]
+	Style                       foundation.Opt[ListTileStyle]
+	SelectedColor               foundation.Opt[ui.Color]
+	IconColor                   foundation.Opt[ui.Color]
+	TextColor                   foundation.Opt[ui.Color]
+	TitleTextStyle              foundation.Opt[*painting.TextStyle]
+	SubtitleTextStyle           foundation.Opt[*painting.TextStyle]
+	LeadingAndTrailingTextStyle foundation.Opt[*painting.TextStyle]
+	ContentPadding              foundation.Opt[painting.EdgeInsetsGeometry]
+	TileColor                   foundation.Opt[ui.Color]
+	SelectedTileColor           foundation.Opt[ui.Color]
+	HorizontalTitleGap          foundation.Opt[float64]
+	MinVerticalPadding          foundation.Opt[float64]
+	MinLeadingWidth             foundation.Opt[float64]
+	MinTileHeight               foundation.Opt[float64]
+	EnableFeedback              foundation.Opt[bool]
+	MouseCursor                 foundation.Opt[widgets.WidgetStateProperty[services.MouseCursor]]
+	VisualDensity               foundation.Opt[VisualDensity]
+	TitleAlignment              foundation.Opt[ListTileTitleAlignment]
+	ControlAffinity             foundation.Opt[ListTileControlAffinity]
+	IsThreeLine                 foundation.Opt[bool]
+}
+
+// CopyWith returns a copy of the ListTileThemeData with the fields that the ListTileThemeDataCopy sets replaced.
+//
+// Flutter: material/list_tile_theme.dart ListTileThemeData.copyWith
+func (x ListTileThemeData) CopyWith(c ListTileThemeDataCopy) ListTileThemeData {
+	r := x
+	if c.Dense.IsSome() {
+		r.Dense = c.Dense
+	}
+	if v, ok := c.Shape.Get(); ok {
+		r.Shape = v
+	}
+	if v, ok := c.Style.Get(); ok {
+		r.Style = v
+	}
+	if c.SelectedColor.IsSome() {
+		r.SelectedColor = c.SelectedColor
+	}
+	if c.IconColor.IsSome() {
+		r.IconColor = c.IconColor
+	}
+	if c.TextColor.IsSome() {
+		r.TextColor = c.TextColor
+	}
+	if v, ok := c.TitleTextStyle.Get(); ok {
+		r.TitleTextStyle = v
+	}
+	if v, ok := c.SubtitleTextStyle.Get(); ok {
+		r.SubtitleTextStyle = v
+	}
+	if v, ok := c.LeadingAndTrailingTextStyle.Get(); ok {
+		r.LeadingAndTrailingTextStyle = v
+	}
+	if v, ok := c.ContentPadding.Get(); ok {
+		r.ContentPadding = v
+	}
+	if c.TileColor.IsSome() {
+		r.TileColor = c.TileColor
+	}
+	if c.SelectedTileColor.IsSome() {
+		r.SelectedTileColor = c.SelectedTileColor
+	}
+	if c.HorizontalTitleGap.IsSome() {
+		r.HorizontalTitleGap = c.HorizontalTitleGap
+	}
+	if c.MinVerticalPadding.IsSome() {
+		r.MinVerticalPadding = c.MinVerticalPadding
+	}
+	if c.MinLeadingWidth.IsSome() {
+		r.MinLeadingWidth = c.MinLeadingWidth
+	}
+	if c.MinTileHeight.IsSome() {
+		r.MinTileHeight = c.MinTileHeight
+	}
+	if c.EnableFeedback.IsSome() {
+		r.EnableFeedback = c.EnableFeedback
+	}
+	if v, ok := c.MouseCursor.Get(); ok {
+		r.MouseCursor = v
+	}
+	if c.VisualDensity.IsSome() {
+		r.VisualDensity = c.VisualDensity
+	}
+	if v, ok := c.TitleAlignment.Get(); ok {
+		r.TitleAlignment = v
+	}
+	if v, ok := c.ControlAffinity.Get(); ok {
+		r.ControlAffinity = v
+	}
+	if c.IsThreeLine.IsSome() {
+		r.IsThreeLine = c.IsThreeLine
 	}
 	return r
 }
@@ -2075,6 +2375,77 @@ func (x TimePickerThemeData) CopyWith(c TimePickerThemeDataCopy) TimePickerTheme
 	}
 	if v, ok := c.TimeSelectorSeparatorTextStyle.Get(); ok {
 		r.TimeSelectorSeparatorTextStyle = v
+	}
+	return r
+}
+
+// TooltipThemeDataCopy holds the replacements for TooltipThemeData.CopyWith: a field that is None keeps the value of the
+// copied one.
+//
+// Flutter: material/tooltip_theme.dart TooltipThemeData.copyWith
+type TooltipThemeDataCopy struct {
+	Constraints          foundation.Opt[rendering.BoxConstraints]
+	Padding              foundation.Opt[painting.EdgeInsetsGeometry]
+	Margin               foundation.Opt[painting.EdgeInsetsGeometry]
+	VerticalOffset       foundation.Opt[float64]
+	PreferBelow          foundation.Opt[bool]
+	ExcludeFromSemantics foundation.Opt[bool]
+	Decoration           foundation.Opt[painting.Decoration]
+	TextStyle            foundation.Opt[*painting.TextStyle]
+	TextAlign            foundation.Opt[ui.TextAlign]
+	WaitDuration         foundation.Opt[time.Duration]
+	ShowDuration         foundation.Opt[time.Duration]
+	ExitDuration         foundation.Opt[time.Duration]
+	TriggerMode          foundation.Opt[widgets.TooltipTriggerMode]
+	EnableFeedback       foundation.Opt[bool]
+}
+
+// CopyWith returns a copy of the TooltipThemeData with the fields that the TooltipThemeDataCopy sets replaced.
+//
+// Flutter: material/tooltip_theme.dart TooltipThemeData.copyWith
+func (x TooltipThemeData) CopyWith(c TooltipThemeDataCopy) TooltipThemeData {
+	r := x
+	if c.Constraints.IsSome() {
+		r.Constraints = c.Constraints
+	}
+	if v, ok := c.Padding.Get(); ok {
+		r.Padding = v
+	}
+	if v, ok := c.Margin.Get(); ok {
+		r.Margin = v
+	}
+	if c.VerticalOffset.IsSome() {
+		r.VerticalOffset = c.VerticalOffset
+	}
+	if c.PreferBelow.IsSome() {
+		r.PreferBelow = c.PreferBelow
+	}
+	if c.ExcludeFromSemantics.IsSome() {
+		r.ExcludeFromSemantics = c.ExcludeFromSemantics
+	}
+	if v, ok := c.Decoration.Get(); ok {
+		r.Decoration = v
+	}
+	if v, ok := c.TextStyle.Get(); ok {
+		r.TextStyle = v
+	}
+	if v, ok := c.TextAlign.Get(); ok {
+		r.TextAlign = v
+	}
+	if c.WaitDuration.IsSome() {
+		r.WaitDuration = c.WaitDuration
+	}
+	if c.ShowDuration.IsSome() {
+		r.ShowDuration = c.ShowDuration
+	}
+	if c.ExitDuration.IsSome() {
+		r.ExitDuration = c.ExitDuration
+	}
+	if v, ok := c.TriggerMode.Get(); ok {
+		r.TriggerMode = v
+	}
+	if c.EnableFeedback.IsSome() {
+		r.EnableFeedback = c.EnableFeedback
 	}
 	return r
 }

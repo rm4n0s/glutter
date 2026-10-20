@@ -575,12 +575,10 @@ func (s *DrawerControllerState) buildDrawer(bc widgets.BuildContext) widgets.Wid
 // Build builds the drawer: the scrim and the sliding drawer, or the area of the
 // edge that opens it.
 //
-// TODO(step 13.9): a ListTileTheme with the drawer style wraps the drawer.
-//
 // Flutter: material/drawer.dart DrawerControllerState.build
 func (s *DrawerControllerState) Build(bc widgets.BuildContext) widgets.Widget {
 	DebugCheckHasMaterialLocalizations(bc)
-	return s.buildDrawer(bc)
+	return ListTileThemeMerge(ListTileThemeData{Style: ListTileStyleDrawer}, s.buildDrawer(bc))
 }
 
 func infinity() float64 { return math.Inf(1) }

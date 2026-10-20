@@ -961,7 +961,7 @@ func (s *ScaffoldState) Build(bc widgets.BuildContext) widgets.Widget {
 	if o.PersistentFooterButtons != nil {
 		decoration := o.PersistentFooterDecoration
 		if decoration == nil {
-			decoration = painting.NewBoxDecoration(painting.BoxDecorationOpts{Border: painting.Border{Top: createDividerBorderSide(bc, 1.0)}})
+			decoration = painting.NewBoxDecoration(painting.BoxDecorationOpts{Border: painting.Border{Top: DividerCreateBorderSide(bc, DividerBorderSideOpts{Width: foundation.Some(1.0)})}})
 		}
 		alignment := o.PersistentFooterAlignment
 		if alignment == nil {
@@ -1098,19 +1098,6 @@ type scaffoldScope struct {
 
 func (w *scaffoldScope) UpdateShouldNotify(old widgets.Widget) bool {
 	return w.hasDrawer != old.(*scaffoldScope).hasDrawer
-}
-
-// createDividerBorderSide is Divider.createBorderSide for the Material 3 and
-// Material 2 defaults of a Divider.
-//
-// TODO(step 13.9): Divider.createBorderSide, with the divider theme.
-func createDividerBorderSide(bc widgets.BuildContext, width float64) painting.BorderSide {
-	theme := ThemeOf(bc)
-	color := theme.DividerColor
-	if theme.UseMaterial3 {
-		color = theme.ColorScheme.OutlineVariant()
-	}
-	return painting.NewBorderSide(painting.BorderSideOpts{Color: foundation.Some(color), Width: foundation.Some(width)})
 }
 
 func scaffoldMissingError(bc widgets.BuildContext) error {

@@ -495,7 +495,7 @@ func (b *MaterialScrollBehavior) BuildScrollbar(bc widgets.BuildContext, child w
 	if painting.AxisDirectionToAxis(details.Direction) == painting.AxisHorizontal {
 		return child
 	}
-	// TODO(step 13.9): a Material Scrollbar, which takes its colors from the theme.
+	// TODO(step 13.10): a Material Scrollbar, which takes its colors from the theme.
 	return b.ScrollBehaviorBase.BuildScrollbar(bc, child, details)
 }
 

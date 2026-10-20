@@ -123,8 +123,6 @@ type MaterialBannerOpts struct {
 // that is displayed at the top of the screen and pushes the page content down.
 // Show it with ScaffoldMessengerState.ShowMaterialBanner.
 //
-// TODO(step 13.9): the divider is a stand-in for Divider.
-//
 // Flutter: material/banner.dart MaterialBanner
 type MaterialBanner struct {
 	widgets.StatefulWidget
@@ -355,7 +353,7 @@ func (s *materialBannerState) Build(bc widgets.BuildContext) widgets.Widget {
 		column = append(column, actionsBar)
 	}
 	if elevation == 0 {
-		column = append(column, tempHairlineDivider(dividerColor))
+		column = append(column, NewDivider(DividerOpts{Height: foundation.Some(0.0), Color: dividerColor}))
 	}
 	var banner widgets.Widget = widgets.NewPadding(margin, NewMaterial(
 		widgets.NewColumn(column, widgets.ColumnOpts{MainAxisSize: rendering.MainAxisSizeMin}),
