@@ -18,6 +18,8 @@
 # $RUNTIME/compositor.log, which is printed if it fails to start. Environment:
 #   HEADLESS_SIZE   output size, WIDTHxHEIGHT (default 1280x800)
 #   HEADLESS_SCALE  output scale (default 1; sway only)
+#   HEADLESS_SECOND a second output (HEADLESS-2) to the right of the first, as
+#                   WIDTHxHEIGHT@SCALE, e.g. 800x600@2 (sway only)
 #   HEADLESS_FLOATING  1 (default) opens windows floating at the size they ask
 #                   for; 0 lets sway tile them over the whole output (sway only)
 #   WLR_RENDERER    wlroots renderer for sway (default pixman, needs no GPU)
@@ -48,6 +50,7 @@ fi
 size="${HEADLESS_SIZE:-1280x800}"
 scale="${HEADLESS_SCALE:-1}"
 floating="${HEADLESS_FLOATING:-1}"
+second="${HEADLESS_SECOND:-}"
 
 # A private runtime directory keeps the socket away from the user's own session.
 # Wayland socket paths are short-limited, so the directory is kept short too.
@@ -82,6 +85,17 @@ xwayland disable
 output HEADLESS-1 resolution $size scale $scale
 output * bg #3b3b3b solid_color
 EOF
+    if [[ -n "$second" ]]; then
+      if [[ ! "$second" =~ ^([0-9]+)x([0-9]+)@([0-9.]+)$ ]]; then
+        echo "error: HEADLESS_SECOND must look like 800x600@2, got '$second'" >&2
+        exit 64
+      fi
+      # The second output is placed at the right edge of the first one, in layout
+      # (logical) pixels. The configuration is kept by sway until the output exists.
+      first_width=$(awk -v w="${size%x*}" -v s="$scale" 'BEGIN { printf "%d", w / s }')
+      echo "output HEADLESS-1 position 0 0" >>"$runtime/sway.conf"
+      echo "output HEADLESS-2 resolution ${BASH_REMATCH[1]}x${BASH_REMATCH[2]} scale ${BASH_REMATCH[3]} position $first_width 0" >>"$runtime/sway.conf"
+    fi
     if [[ "$floating" == 1 ]]; then
       # Every window floats, at the size it asks for.
       echo 'for_window [title=".*"] floating enable' >>"$runtime/sway.conf"
@@ -127,6 +141,9 @@ if [[ "$compositor" == sway ]]; then
   for sock in "$runtime"/sway-ipc.*.sock; do
     [[ -S "$sock" ]] && export SWAYSOCK="$sock"
   done
+  if [[ -n "$second" ]]; then
+    swaymsg create_output >/dev/null
+  fi
 fi
 
 # Run the command and keep its exit status; the trap stops the compositor.

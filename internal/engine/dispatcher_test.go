@@ -619,3 +619,44 @@ func TestDecorationsEnvChoosesTheWayToDecorate(t *testing.T) {
 		})
 	}
 }
+
+func TestDisplayChangesReachTheDispatcherAndTheViews(t *testing.T) {
+	h, r := newDispatcherHarness(t)
+	h.c.SetDisplays([]platform.Display{
+		{ID: 1, Bounds: ui.NewRectFromLTRB(0, 0, 100, 100), DevicePixelRatio: 1, RefreshRate: 60, Primary: true},
+		{ID: 2, Bounds: ui.NewRectFromLTRB(100, 0, 300, 100), DevicePixelRatio: 2, RefreshRate: 60},
+	})
+	h.c.Inject(fake.MetricsEvent{View: 0, Metrics: platform.ViewMetrics{
+		PhysicalSize: ui.Size{Width: 400, Height: 200}, DevicePixelRatio: 2, Display: foundation.Some(2),
+	}})
+	done := h.run(t)
+	display := func() (ui.Display, int) {
+		var d ui.Display
+		var n int
+		onUI(t, h, func() {
+			if disp := r.dispatcher(); disp != nil && disp.ImplicitView() != nil {
+				d, n = disp.ImplicitView().Display(), len(disp.Displays())
+			}
+		})
+		return d, n
+	}
+	waitFor(t, func() bool { d, _ := display(); return d.ID == 2 })
+
+	// The refresh rate of the window's display changes, and a third display appears.
+	h.c.Inject(fake.DisplaysEvent{Displays: []platform.Display{
+		{ID: 1, Bounds: ui.NewRectFromLTRB(0, 0, 100, 100), DevicePixelRatio: 1, RefreshRate: 60, Primary: true},
+		{ID: 2, Bounds: ui.NewRectFromLTRB(100, 0, 300, 100), DevicePixelRatio: 2, RefreshRate: 144},
+		{ID: 3, Bounds: ui.NewRectFromLTRB(300, 0, 400, 100), DevicePixelRatio: 1},
+	}})
+	waitFor(t, func() bool { d, n := display(); return n == 3 && d.ID == 2 && d.RefreshRate == 144 })
+	d, _ := display()
+	if d.Size.Width != 400 || d.DevicePixelRatio != 2 {
+		t.Errorf("display of the view = %+v", d)
+	}
+	var third ui.Display
+	onUI(t, h, func() { third = r.dispatcher().Displays()[2] })
+	if third.RefreshRate != 60 {
+		t.Errorf("a display without a refresh rate must get the default 60, got %v", third.RefreshRate)
+	}
+	finish(t, h, done)
+}

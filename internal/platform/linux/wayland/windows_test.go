@@ -50,6 +50,11 @@ func TestDialogs(t *testing.T) {
 			// Closing the dialog destroys its xdg_dialog_v1 before the toplevel.
 			e.onLoop(func() { e.p.windows[1].Close() })
 			if tt.wantDialog {
+				// The server reads the requests in its own goroutine.
+				waitUntil(t, func() bool {
+					lines := e.srv.Requests()
+					return index(lines, 0, "xdg_dialog_v1.destroy") >= 0 && index(lines, 0, "xdg_toplevel.destroy") >= 0
+				}, "the dialog and its toplevel were not both destroyed")
 				lines := e.srv.Requests()
 				if index(lines, 0, "xdg_dialog_v1.destroy") > index(lines, 0, "xdg_toplevel.destroy") {
 					t.Error("the dialog object was destroyed after its toplevel")
@@ -69,9 +74,7 @@ func TestSizeConstraints(t *testing.T) {
 		e.p.windows[0].SetSizeConstraints(ui.Size{Width: 300, Height: 200}, ui.Size{Width: 900, Height: 700})
 	})
 	waitUntil(t, func() bool { return len(e.srv.RequestsWith("xdg_toplevel.set_min_size 300x200")) == 1 }, "the minimum size was not sent")
-	if got := e.srv.RequestsWith("xdg_toplevel.set_max_size 900x700"); len(got) != 1 {
-		t.Errorf("set_max_size requests = %q", got)
-	}
+	waitUntil(t, func() bool { return len(e.srv.RequestsWith("xdg_toplevel.set_max_size 900x700")) == 1 }, "the maximum size was not sent")
 	if err := e.stop(); err != nil {
 		t.Fatal(err)
 	}

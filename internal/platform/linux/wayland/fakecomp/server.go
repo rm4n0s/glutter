@@ -50,6 +50,10 @@ type Server struct {
 	stalled                  []int // the pipes that a stalled owner holds
 
 	outputScale, bufferScale int32
+	output                   Output
+	xdgOutput                *XdgOutput
+	outputObjects            map[uint32]uint32 // wl_output global name -> object ID
+	outputOrder              []uint32          // the global names, in the order of the binds
 
 	win windowing // see windowing.go; guarded by mu
 
@@ -106,6 +110,26 @@ func DefaultGlobals() []Global {
 	}
 }
 
+// Output is what a wl_output announces besides its scale.
+//
+// Flutter: no counterpart
+type Output struct {
+	// Width, Height and Refresh are the current mode, in pixels and millihertz.
+	Width, Height, Refresh int32
+	// Transform is the wl_output.transform value; 0 is none, 1 is 90 degrees.
+	Transform int32
+	// Name is the name of wl_output version 4; "TEST-1" when empty.
+	Name string
+}
+
+// XdgOutput is what a zxdg_output_v1 announces.
+//
+// Flutter: no counterpart
+type XdgOutput struct {
+	// X and Y are the logical position, Width and Height the logical size.
+	X, Y, Width, Height int32
+}
+
 // Config configures a Server.
 //
 // Flutter: no counterpart
@@ -134,6 +158,12 @@ type Config struct {
 	// wl_surface announces; zero means 2, and a negative number sends none, as a
 	// compositor with wl_compositor older than version 6 does.
 	PreferredBufferScale int32
+	// Output is what a wl_output announces besides its scale; the zero value is a
+	// 1920x1080 mode at 60 Hz, not rotated, named "TEST-1".
+	Output Output
+	// XdgOutput, when set, adds zxdg_output_manager_v1 (as global 9, version 3), and
+	// each zxdg_output_v1 announces this logical geometry.
+	XdgOutput *XdgOutput
 	// PrimarySelection adds the primary selection manager to the globals (as global
 	// 8, zwp_primary_selection_device_manager_v1 version 1).
 	PrimarySelection bool
@@ -164,6 +194,16 @@ func New(t testing.TB, cfg Config) (s *Server, clientFD int) {
 	if cfg.PrimarySelection {
 		globals = append(append([]Global(nil), globals...), Global{8, "zwp_primary_selection_device_manager_v1", 1})
 	}
+	if cfg.XdgOutput != nil {
+		globals = append(append([]Global(nil), globals...), Global{9, "zxdg_output_manager_v1", 3})
+	}
+	out := cfg.Output
+	if out.Width == 0 {
+		out.Width, out.Height, out.Refresh = 1920, 1080, 60000
+	}
+	if out.Name == "" {
+		out.Name = "TEST-1"
+	}
 	keymap, caps := cfg.Keymap, cfg.Capabilities
 	if keymap == "" {
 		keymap = KeymapText
@@ -179,8 +219,9 @@ func New(t testing.TB, cfg Config) (s *Server, clientFD int) {
 		bufferScale = 2
 	}
 	s = &Server{
-		outputScale: outputScale, bufferScale: bufferScale,
-		t: t, fd: fds[0], globals: globals, toplevel: cfg.Toplevel, holdFrames: cfg.HoldFrames,
+		outputScale: outputScale, bufferScale: bufferScale, output: out, xdgOutput: cfg.XdgOutput,
+		outputObjects: map[uint32]uint32{},
+		t:             t, fd: fds[0], globals: globals, toplevel: cfg.Toplevel, holdFrames: cfg.HoldFrames,
 		keymap: keymap, caps: caps, selection: cfg.Selection, stall: cfg.StallSelection,
 		objects:   map[uint32]string{1: "wl_display"},
 		ids:       map[string]uint32{},
@@ -352,9 +393,18 @@ func (s *Server) handle(id uint32, op uint16, r *reader) {
 		s.addObject(newID, ifaceName)
 		s.record("wl_registry.bind name=%d interface=%s version=%d", name, ifaceName, version)
 		if ifaceName == "wl_output" {
+			s.mu.Lock()
+			s.outputObjects[name] = newID
+			s.outputOrder = append(s.outputOrder, name)
+			s.mu.Unlock()
 			// geometry(x, y, physical_width, physical_height, subpixel, make, model, transform)
-			s.Send(newID, 0, int32(-10), int32(20), int32(300), int32(200), int32(1), "Glutter", "Test Panel", int32(0))
-			s.Send(newID, 3, s.outputScale) // scale(factor)
+			s.Send(newID, 0, int32(-10), int32(20), int32(300), int32(200), int32(1), "Glutter", "Test Panel", s.output.Transform)
+			s.Send(newID, 1, uint32(3), s.output.Width, s.output.Height, s.output.Refresh) // mode(current | preferred, ...)
+			s.Send(newID, 3, s.outputScale)                                                // scale(factor)
+			if version >= 4 {
+				s.Send(newID, 4, s.output.Name) // name
+			}
+			s.Send(newID, 2) // done
 		}
 		if ifaceName == "wl_seat" {
 			s.Send(newID, 0, s.caps) // capabilities

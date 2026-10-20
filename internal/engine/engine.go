@@ -268,6 +268,9 @@ type window struct {
 	rendered bool
 	// wanted is whether a frame of the window was asked for and has not come yet.
 	wanted bool
+	// metrics are the last the platform reported, and hasMetrics says it did.
+	metrics    platform.ViewMetrics
+	hasMetrics bool
 	// pending is whether lastScene was rendered during the frame of another window:
 	// the frame of this window then only presents it.
 	pending bool
@@ -451,12 +454,24 @@ func (h *handler) OnViewFocus(view ui.ViewID, focused bool) {
 	})
 }
 
+// OnDisplaysChanged gives the dispatcher the new list of displays, and the views
+// the display and the pixel ratio they now have.
+func (h *handler) OnDisplaysChanged() {
+	h.disp.SetDisplays(h.displays())
+	for _, w := range h.windows {
+		if w.hasMetrics {
+			h.disp.UpdateViewConfiguration(w.id, h.viewConfiguration(w.metrics))
+		}
+	}
+}
+
 func (h *handler) OnMetrics(view ui.ViewID, m platform.ViewMetrics) {
 	w, ok := h.windows[view]
 	if !ok {
 		return
 	}
 	w.width, w.height = int(m.PhysicalSize.Width), int(m.PhysicalSize.Height)
+	w.metrics, w.hasMetrics = m, true
 	h.disp.UpdateViewConfiguration(view, h.viewConfiguration(m))
 	if f := h.cfg.Hooks.Metrics; f != nil {
 		f(view, m)
@@ -513,11 +528,15 @@ func (h *handler) displays() []ui.Display {
 		if dpr == 0 {
 			dpr = 1
 		}
+		rate := d.RefreshRate
+		if rate <= 0 {
+			rate = defaultRefreshRate
+		}
 		out = append(out, ui.Display{
 			ID:               d.ID,
 			DevicePixelRatio: dpr,
 			Size:             ui.Size{Width: d.Bounds.Width() * dpr, Height: d.Bounds.Height() * dpr},
-			RefreshRate:      d.RefreshRate,
+			RefreshRate:      rate,
 		})
 	}
 	return out

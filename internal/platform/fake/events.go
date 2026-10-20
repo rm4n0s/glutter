@@ -215,6 +215,21 @@ func (e SettingsEvent) dispatch(p *Platform, h platform.Handler) {
 	h.OnSettings(e.Settings)
 }
 
+// DisplaysEvent changes the displays that Platform.Displays reports and then tells
+// Handler.OnDisplaysChanged.
+//
+// Flutter: no counterpart
+type DisplaysEvent struct {
+	// Displays is the new list of displays.
+	Displays []platform.Display
+}
+
+func (e DisplaysEvent) view() ui.ViewID { return ui.ImplicitViewID }
+func (e DisplaysEvent) dispatch(p *Platform, h platform.Handler) {
+	p.SetDisplays(e.Displays)
+	h.OnDisplaysChanged()
+}
+
 // CloseRequestEvent delivers a close request to Handler.OnCloseRequest. When
 // the handler returns true, the fake closes the view's window.
 //

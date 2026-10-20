@@ -50,6 +50,11 @@ func (NopHandler) OnLifecycle(ui.AppLifecycleState) {}
 // Flutter: no counterpart
 func (NopHandler) OnDrop(ui.ViewID, DropEvent) {}
 
+// OnDisplaysChanged ignores the change.
+//
+// Flutter: no counterpart
+func (NopHandler) OnDisplaysChanged() {}
+
 // OnSettings ignores the new settings.
 //
 // Flutter: no counterpart

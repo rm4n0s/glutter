@@ -2,11 +2,13 @@ package x11
 
 import (
 	"log/slog"
+	"math"
 	"os"
 	"time"
 	"unsafe"
 
 	"github.com/rm4n0s/errors"
+	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/internal/gpu"
 	"github.com/rm4n0s/glutter/internal/platform"
 	"github.com/rm4n0s/glutter/internal/platform/linux"
@@ -39,6 +41,11 @@ type window struct {
 	// refresh interval after the last frame.
 	frameTimer *linux.Timer
 	lastFrame  time.Time
+	// scale is the device pixel ratio of the monitor the window is on, display the ID
+	// of that monitor (hasDisplay is false when there are no monitors).
+	scale      float64
+	display    int
+	hasDisplay bool
 	// frameWanted is a frame asked for before the window was mapped.
 	frameWanted bool
 }
@@ -57,9 +64,11 @@ var _ platform.Window = (*window)(nil)
 func (p *Platform) NewWindow(cfg platform.WindowConfig) (platform.Window, error) {
 	w := &window{p: p, id: p.nextView, cfg: cfg}
 	p.nextView++
-	w.width, w.height = int32(cfg.Size.Width), int32(cfg.Size.Height)
+	// The window is made on the monitor at the origin, or the primary one.
+	w.scale, w.display, w.hasDisplay = p.scaleAt(0, 0)
+	w.width, w.height = w.px(cfg.Size.Width), w.px(cfg.Size.Height)
 	if w.width <= 0 || w.height <= 0 {
-		w.width, w.height = int32(defaultSize.Width), int32(defaultSize.Height)
+		w.width, w.height = w.px(defaultSize.Width), w.px(defaultSize.Height)
 	}
 
 	visual, depth := w.chooseVisual()
@@ -190,7 +199,7 @@ func (w *window) setSizeHints() {
 	h := view[xSizeHints](mem)
 	h.flags = pSize
 	h.width, h.height = w.width, w.height
-	min, max := sizeLimits(w.cfg, w.width, w.height)
+	min, max := sizeLimits(w.cfg, w.width, w.height, w.scale)
 	if min != nil {
 		h.flags |= pMinSize
 		h.minWidth, h.minHeight = min[0], min[1]
@@ -204,15 +213,15 @@ func (w *window) setSizeHints() {
 
 // sizeLimits returns the smallest and largest size of a window, or nil for no
 // limit. A window that cannot be resized is limited to its own size.
-func sizeLimits(cfg platform.WindowConfig, width, height int32) (min, max *[2]int32) {
+func sizeLimits(cfg platform.WindowConfig, width, height int32, scale float64) (min, max *[2]int32) {
 	if !cfg.IsResizable() {
 		return &[2]int32{width, height}, &[2]int32{width, height}
 	}
 	if cfg.MinSize.Width > 0 || cfg.MinSize.Height > 0 {
-		min = &[2]int32{int32(cfg.MinSize.Width), int32(cfg.MinSize.Height)}
+		min = &[2]int32{int32(math.Round(cfg.MinSize.Width * scale)), int32(math.Round(cfg.MinSize.Height * scale))}
 	}
 	if cfg.MaxSize.Width > 0 || cfg.MaxSize.Height > 0 {
-		max = &[2]int32{int32(cfg.MaxSize.Width), int32(cfg.MaxSize.Height)}
+		max = &[2]int32{int32(math.Round(cfg.MaxSize.Width * scale)), int32(math.Round(cfg.MaxSize.Height * scale))}
 	}
 	return min, max
 }
@@ -272,11 +281,17 @@ func (w *window) onClose() {
 // onConfigure handles the new size of the window.
 func (w *window) onConfigure(width, height int32) {
 	if width <= 0 || height <= 0 || (width == w.width && height == w.height) {
+		// The window may still have moved to another monitor.
+		w.updateScale()
 		return
 	}
 	w.width, w.height = width, height
+	scale := w.scale
+	w.updateScale() // may report the metrics with the new scale
 	if w.mapped {
-		w.reportMetrics()
+		if scale == w.scale {
+			w.reportMetrics()
+		}
 		w.renderNow() // track the resize without waiting for the timer
 	}
 }
@@ -314,12 +329,19 @@ func (w *window) onDestroyedByServer() {
 // reportMetrics tells the handler the size of the window.
 func (w *window) reportMetrics() {
 	if h := w.p.handler; h != nil {
-		// TODO(step 3.7): the scale from XSETTINGS or Xft.dpi.
-		h.OnMetrics(w.id, platform.ViewMetrics{
+		scale := w.scale
+		if scale <= 0 {
+			scale = 1
+		}
+		m := platform.ViewMetrics{
 			PhysicalSize:     ui.Size{Width: float64(w.width), Height: float64(w.height)},
-			DevicePixelRatio: 1,
+			DevicePixelRatio: scale,
 			Window:           w.info(),
-		})
+		}
+		if w.hasDisplay {
+			m.Display = foundation.Some(w.display)
+		}
+		h.OnMetrics(w.id, m)
 	}
 }
 
@@ -429,7 +451,7 @@ func latin1(s string) string {
 //
 // Flutter: no counterpart
 func (w *window) SetSize(size ui.Size) {
-	width, height := int32(size.Width), int32(size.Height)
+	width, height := w.px(size.Width), w.px(size.Height)
 	if w.closed || width <= 0 || height <= 0 {
 		return
 	}

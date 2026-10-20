@@ -68,6 +68,10 @@ func TestStructLayouts(t *testing.T) {
 		"maxHeight": 36, "widthInc": 40, "heightInc": 44, "minAspect": 48, "maxAspect": 56, "baseWidth": 64,
 		"baseHeight": 68, "winGravity": 72,
 	}, xSizeHints{})
+	dl.AssertLayout(t, "XRRMonitorInfo", 56, map[string]uintptr{
+		"name": 0, "primary": 8, "automatic": 12, "noutput": 16, "x": 20, "y": 24, "width": 28, "height": 32,
+		"mmWidth": 36, "mmHeight": 40, "outputs": 48,
+	}, xrrMonitorInfo{})
 	dl.AssertLayout(t, "XClassHint", 16, map[string]uintptr{"resName": 0, "resClass": 8}, xClassHint{})
 	dl.AssertLayout(t, "XIEventMask", 16, map[string]uintptr{"deviceID": 0, "maskLen": 4, "mask": 8}, xiEventMask{})
 	dl.AssertLayout(t, "XIButtonState", 16, map[string]uintptr{"maskLen": 0, "mask": 8}, xiButtonState{})

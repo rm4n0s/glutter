@@ -33,7 +33,7 @@ func TestSizeLimits(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			min, max := sizeLimits(tt.cfg, 640, 400)
+			min, max := sizeLimits(tt.cfg, 640, 400, 1)
 			if (min == nil) != (tt.min == nil) || (min != nil && *min != *tt.min) {
 				t.Errorf("min = %v, want %v", min, tt.min)
 			}

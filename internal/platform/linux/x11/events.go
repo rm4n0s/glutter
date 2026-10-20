@@ -3,6 +3,13 @@ package x11
 // handleEvent handles the event that XNextEvent put in p.event.
 func (p *Platform) handleEvent() {
 	any := view[xAnyEvent](p.event)
+	if p.rrEventBase != 0 && any.typ == p.rrEventBase+rrScreenChange {
+		if r, err := loadXrandrOnce(); err == nil {
+			r.updateConfig(p.event)
+		}
+		p.monitorsChanged()
+		return
+	}
 	switch any.typ {
 	case genericEvent:
 		p.handleGenericEvent()
@@ -40,6 +47,12 @@ func (p *Platform) handleEvent() {
 			p.clip.onSelectionClear(*view[xSelectionClearEvent](p.event))
 		}
 	case propertyNotify:
+		if ev := view[xPropertyEvent](p.event); ev.window == p.root {
+			if ev.atom == p.atoms.resourceManager {
+				p.monitorsChanged()
+			}
+			return
+		}
 		if p.clip != nil {
 			p.clip.onPropertyNotify(*view[xPropertyEvent](p.event))
 		}

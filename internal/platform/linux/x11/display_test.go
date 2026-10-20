@@ -6,6 +6,7 @@ import (
 	"context"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -535,5 +536,73 @@ func TestDisplayWindowKinds(t *testing.T) {
 	if got := out("WM_NORMAL_HINTS"); !strings.Contains(got, "program specified minimum size: 400 by 300") ||
 		!strings.Contains(got, "program specified maximum size: 400 by 300") {
 		t.Errorf("WM_NORMAL_HINTS: %s", got)
+	}
+}
+
+// setXftDPI writes Xft.dpi to RESOURCE_MANAGER of the root window over a connection
+// of its own, as a settings daemon does.
+func setXftDPI(t *testing.T, dpi int) {
+	t.Helper()
+	other, err := New("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := other.Close(); err != nil {
+			t.Errorf("Close: %v", err)
+		}
+	}()
+	text := "Xft.dpi:\t" + strconv.Itoa(dpi) + "\n"
+	c := dl.CString(text)
+	defer dl.Free(c)
+	other.x.changeProperty(other.display, other.root, other.atoms.resourceManager, xaString, 8, propModeReplace, c, int32(len(text)))
+	other.x.sync(other.display, 0)
+}
+
+func TestDisplayXftDPIScalesTheWindowAndFollowsChanges(t *testing.T) {
+	setXftDPI(t, 96)
+	e := startDisplay(t, windowConfig())
+	e.waitMapped()
+	last := func() platform.ViewMetrics {
+		m, _, _, _, _ := e.h.snapshot()
+		return m[len(m)-1]
+	}
+	if m := last(); m.DevicePixelRatio != 1 || m.PhysicalSize != (ui.Size{Width: 400, Height: 300}) {
+		t.Fatalf("metrics at 96 dpi = %+v", m)
+	}
+	var displays []platform.Display
+	e.onLoop(func() { displays = e.p.Displays() })
+	if len(displays) == 0 {
+		t.Fatal("the X server has no monitors")
+	}
+	if displays[0].DevicePixelRatio != 1 || !displays[0].Primary || displays[0].RefreshRate <= 0 {
+		t.Errorf("displays = %+v", displays)
+	}
+	if m := last(); m.Display.IsNone() {
+		t.Errorf("the metrics do not name the monitor of the window: %+v", m)
+	}
+
+	// 192 dpi: the pixel size stays, the ratio is 2, and a frame is drawn at it.
+	_, frames, _, _, _ := e.h.snapshot()
+	setXftDPI(t, 192)
+	waitFor(t, func() bool { return last().DevicePixelRatio == 2 }, "Xft.dpi 192 never reached the metrics")
+	waitFor(t, func() bool { _, f, _, _, _ := e.h.snapshot(); return f > frames }, "no frame at the new scale")
+	e.onLoop(func() { displays = e.p.Displays() })
+	if displays[0].DevicePixelRatio != 2 {
+		t.Errorf("the display scale after the change = %v", displays[0].DevicePixelRatio)
+	}
+
+	setXftDPI(t, 96)
+	waitFor(t, func() bool { return last().DevicePixelRatio == 1 }, "Xft.dpi 96 never reached the metrics")
+}
+
+func TestDisplayWindowIsMadeInLogicalPixels(t *testing.T) {
+	setXftDPI(t, 192)
+	t.Cleanup(func() { setXftDPI(t, 96) })
+	e := startDisplay(t, windowConfig())
+	e.waitMapped()
+	m, _, _, _, _ := e.h.snapshot()
+	if got := m[len(m)-1]; got.DevicePixelRatio != 2 || got.PhysicalSize != (ui.Size{Width: 800, Height: 600}) {
+		t.Errorf("a 400x300 window at 192 dpi has metrics %+v, want 800x600 pixels at 2", got)
 	}
 }

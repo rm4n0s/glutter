@@ -72,8 +72,14 @@ type session struct {
 	subcompositor *wl.WlSubcompositor
 	shm           *wl.WlShm
 	seat          *wl.WlSeat
-	outputs       []*wl.WlOutput
-	wmBase        *wl.XdgWmBase
+	outputs       []*output
+	// xdgOutputs is nil without zxdg_output_manager_v1.
+	xdgOutputs *wl.ZxdgOutputManagerV1
+	// onOutputsChanged, when set, is called when the outputs or what they say change.
+	onOutputsChanged func()
+	// outputMax is the version of wl_output that the backend binds, at most.
+	outputMax uint32
+	wmBase    *wl.XdgWmBase
 
 	// seatCaps is what the seat can do now (the last wl_seat.capabilities).
 	// onSeatCaps, when set, is called when it changes.
@@ -101,6 +107,10 @@ type session struct {
 	outputScale   map[*wl.WlOutput]int32
 	onOutputScale func()
 
+	// live is set when the session is set up: from then on the registry's news of
+	// outputs are acted on.
+	live bool
+
 	// optionalPresent holds the optional globals that the compositor offers.
 	optionalPresent map[string]Global
 }
@@ -120,6 +130,15 @@ func newSession(conn *wl.Conn) (*session, error) {
 	s.registry.SetEvents(&wl.WlRegistryEvents{
 		OnGlobal: func(name uint32, iface string, version uint32) {
 			s.advertised[iface] = append(s.advertised[iface], Global{name, version})
+			if s.live && iface == wl.WlOutputInterface.Name {
+				// A monitor that was plugged in.
+				s.newOutput(Global{name, version}, s.outputMax)
+			}
+		},
+		OnGlobalRemove: func(name uint32) {
+			if s.live {
+				s.removeOutput(name)
+			}
 		},
 	})
 	if err := conn.Roundtrip(); err != nil {
@@ -136,6 +155,7 @@ func newSession(conn *wl.Conn) (*session, error) {
 		conn.Close()
 		return nil, err
 	}
+	s.live = true
 	return s, nil
 }
 
@@ -170,15 +190,9 @@ func (s *session) bindRequired() error {
 				}
 			}})
 		case wl.WlOutputInterface:
+			s.outputMax = r.max
 			for _, og := range globals {
-				out := wl.BindWlOutput(s.registry, og.Name, bindVersion(og, r.max))
-				out.SetEvents(&wl.WlOutputEvents{OnScale: func(factor int32) {
-					s.outputScale[out] = factor
-					if s.onOutputScale != nil {
-						s.onOutputScale()
-					}
-				}})
-				s.outputs = append(s.outputs, out)
+				s.newOutput(og, r.max)
 			}
 		case wl.XdgWmBaseInterface:
 			s.wmBase = wl.BindXdgWmBase(s.registry, g.Name, v)
@@ -201,6 +215,12 @@ func (s *session) recordOptional() {
 	// bound by the step that needs them.
 	if g, ok := s.optionalPresent[wl.ZxdgDecorationManagerV1Interface.Name]; ok {
 		s.decorationManager = wl.BindZxdgDecorationManagerV1(s.registry, g.Name, bindVersion(g, 1))
+	}
+	if g, ok := s.optionalPresent[wl.ZxdgOutputManagerV1Interface.Name]; ok {
+		s.xdgOutputs = wl.BindZxdgOutputManagerV1(s.registry, g.Name, bindVersion(g, 3))
+		for _, o := range s.outputs {
+			s.attachXdgOutput(o)
+		}
 	}
 	if g, ok := s.optionalPresent[wl.XdgWmDialogV1Interface.Name]; ok {
 		s.dialogManager = wl.BindXdgWmDialogV1(s.registry, g.Name, bindVersion(g, 1))

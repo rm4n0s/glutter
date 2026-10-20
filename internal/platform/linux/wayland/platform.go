@@ -28,10 +28,9 @@ type Options struct {
 }
 
 // Platform is the Wayland backend of platform.Platform. So far it has the
-// connection, the event loop and shared-memory windows.
+// connection, the event loop, windows and the outputs.
 //
-// TODO(step 14.3): Displays, TODO(step 14.5):
-// Settings.
+// TODO(step 14.5): Settings.
 //
 // Flutter: no counterpart
 type Platform struct {
@@ -133,6 +132,14 @@ func newPlatform(conn *wl.Conn, opts Options) (*Platform, error) {
 			w.scaleChanged()
 		}
 	}
+	sess.onOutputsChanged = func() {
+		for _, w := range p.windows {
+			w.displayChanged()
+		}
+		if p.handler != nil {
+			p.handler.OnDisplaysChanged()
+		}
+	}
 	sess.onSeatCaps = p.updateSeat
 	p.updateSeat(sess.seatCaps)
 	return p, nil
@@ -229,13 +236,6 @@ func (p *Platform) fail(err error) {
 //
 // Flutter: no counterpart
 func (p *Platform) Post(fn func()) { p.loop.Post(fn) }
-
-// Displays returns nil for now.
-//
-// TODO(step 14.3): the outputs with their scale and size.
-//
-// Flutter: no counterpart
-func (p *Platform) Displays() []platform.Display { return nil }
 
 // Clipboard returns the clipboard of the seat, or nil when the compositor has no
 // wl_data_device_manager.

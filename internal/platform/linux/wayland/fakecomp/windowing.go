@@ -223,6 +223,22 @@ func (s *Server) handleWindowing(iface string, op uint16, id uint32, r *reader) 
 		s.record("xdg_toplevel.unset_fullscreen")
 	case "xdg_toplevel.13":
 		s.record("xdg_toplevel.set_minimized")
+	case "zxdg_output_manager_v1.0":
+		s.record("zxdg_output_manager_v1.destroy")
+	case "zxdg_output_manager_v1.1": // get_xdg_output(id, output)
+		id2, output := r.u32(), r.u32()
+		s.addObject(id2, "zxdg_output_v1")
+		s.record("zxdg_output_manager_v1.get_xdg_output output=%d", output)
+		if x := s.xdgOutput; x != nil {
+			s.Send(id2, 0, x.X, x.Y)          // logical_position
+			s.Send(id2, 1, x.Width, x.Height) // logical_size
+			s.Send(id2, 2)                    // done (deprecated: for the clients that bound less than version 3)
+			s.Send(output, 2)                 // wl_output.done
+		}
+	case "zxdg_output_v1.0":
+		s.record("zxdg_output_v1.destroy")
+	case "wl_output.0": // release
+		s.record("wl_output.release")
 	case "xdg_wm_dialog_v1.0":
 		s.record("xdg_wm_dialog_v1.destroy")
 	case "xdg_wm_dialog_v1.1": // get_xdg_dialog(id, toplevel)
@@ -421,4 +437,59 @@ func (s *Server) WindowSurface() uint32 {
 	defer s.mu.Unlock()
 	s.win.init()
 	return s.win.xdgSurface[s.win.toplevel[s.win.lastTop]]
+}
+
+// AddOutput announces a new wl_output global, as a compositor does when a monitor
+// is plugged in. The client binds it and gets the same description as the others.
+//
+// Flutter: no counterpart
+func (s *Server) AddOutput(name uint32) {
+	reg := s.ID("wl_registry")
+	s.Send(reg, 0, name, "wl_output", uint32(4)) // wl_registry.global
+}
+
+// RemoveOutput announces that a wl_output global is gone, as a compositor does when
+// a monitor is unplugged.
+//
+// Flutter: no counterpart
+func (s *Server) RemoveOutput(name uint32) {
+	reg := s.ID("wl_registry")
+	s.Send(reg, 1, name) // wl_registry.global_remove
+}
+
+// SetScaleOfOutput sends the scale of the wl_output with the global name, and done.
+//
+// Flutter: no counterpart
+func (s *Server) SetScaleOfOutput(name uint32, scale int32) {
+	s.mu.Lock()
+	obj := s.outputObjects[name]
+	s.mu.Unlock()
+	if obj == 0 {
+		s.t.Errorf("fake server: SetScaleOfOutput for an output that was not bound: %d", name)
+		return
+	}
+	s.Send(obj, 3, scale) // scale
+	s.Send(obj, 2)        // done
+}
+
+// EnterOutputNamed sends wl_surface.enter of the newest toplevel's surface for the
+// wl_output with the global name, as when the window is shown on that monitor.
+//
+// Flutter: no counterpart
+func (s *Server) EnterOutputNamed(name uint32) {
+	s.mu.Lock()
+	obj := s.outputObjects[name]
+	s.mu.Unlock()
+	s.Send(s.WindowSurface(), 0, obj)
+}
+
+// LeaveOutputNamed sends wl_surface.leave of the newest toplevel's surface for the
+// wl_output with the global name.
+//
+// Flutter: no counterpart
+func (s *Server) LeaveOutputNamed(name uint32) {
+	s.mu.Lock()
+	obj := s.outputObjects[name]
+	s.mu.Unlock()
+	s.Send(s.WindowSurface(), 1, obj)
 }

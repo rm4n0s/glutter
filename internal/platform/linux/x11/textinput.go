@@ -90,14 +90,12 @@ func (t *textInput) send() {
 }
 
 // caret returns the rectangle of the caret in screen pixels: the input method
-// places its candidate window with it.
-//
-// TODO(step 3.7): the scale from XSETTINGS or Xft.dpi; until then a logical
-// pixel is a device pixel.
+// places its candidate window with it. The caret is in logical pixels of the
+// window, which the scale of its monitor turns into screen pixels.
 func (t *textInput) caret(w *window) ime.Rect {
 	x, y := t.origin(w)
 	r := t.want.CaretRect
-	return ime.Rect{X: x + int(r.Left), Y: y + int(r.Top), W: int(r.Width()), H: int(r.Height())}
+	return ime.Rect{X: x + int(w.px(r.Left)), Y: y + int(w.px(r.Top)), W: int(w.px(r.Width())), H: int(w.px(r.Height()))}
 }
 
 // rootOrigin returns the position of the window's content in the root window.

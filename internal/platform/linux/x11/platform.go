@@ -25,14 +25,13 @@ type atoms struct {
 	netWMState, netWMStateMaxVert, netWMStateMaxHorz              uint64
 	netWMStateFullscreen, netWMStateModal                         uint64
 	netWMWindowType, netWMWindowTypeNormal, netWMWindowTypeDialog uint64
-	motifWMHints, netActiveWindow                                 uint64
+	motifWMHints, netActiveWindow, resourceManager                uint64
 }
 
 // Platform is the X11 backend of platform.Platform: Xlib and XInput2 through
 // purego, with EGL for drawing (SPEC §8.3). It belongs to the UI thread.
 //
-// TODO(step 14.3): Displays, TODO(step 14.5):
-// Settings.
+// TODO(step 14.5): Settings.
 //
 // Flutter: no counterpart
 type Platform struct {
@@ -62,6 +61,12 @@ type Platform struct {
 	failure   error
 	// xErrors counts the errors the server reported for our requests.
 	xErrors int
+
+	// monitors are the monitors of the screen, xftDPI is Xft.dpi (0 when not set), and
+	// rrEventBase is the first event of RandR (0 when the server has none).
+	monitors    []monitor
+	xftDPI      float64
+	rrEventBase int32
 
 	input   *inputState // nil when XInput2 is not available
 	cursors *cursors
@@ -116,6 +121,8 @@ func New(name string) (*Platform, error) {
 	p.src = &connSource{p: p}
 	p.atoms = p.internAtoms()
 	p.interval = p.refreshInterval()
+	p.selectMonitorEvents()
+	p.refreshMonitors()
 	p.cursors = newCursors(p)
 	registerErrorHandler(p)
 	p.input = newInputState(p)
@@ -139,6 +146,7 @@ func (p *Platform) internAtoms() atoms {
 		netWMStateModal: intern("_NET_WM_STATE_MODAL"), netWMWindowType: intern("_NET_WM_WINDOW_TYPE"),
 		netWMWindowTypeNormal: intern("_NET_WM_WINDOW_TYPE_NORMAL"), netWMWindowTypeDialog: intern("_NET_WM_WINDOW_TYPE_DIALOG"),
 		motifWMHints: intern("_MOTIF_WM_HINTS"), netActiveWindow: intern("_NET_ACTIVE_WINDOW"),
+		resourceManager: intern("RESOURCE_MANAGER"),
 	}
 }
 
@@ -258,13 +266,6 @@ func (p *Platform) fail(err error) {
 //
 // Flutter: no counterpart
 func (p *Platform) Post(fn func()) { p.loop.Post(fn) }
-
-// Displays returns nil for now.
-//
-// TODO(step 14.3): the monitors from XRandR.
-//
-// Flutter: no counterpart
-func (p *Platform) Displays() []platform.Display { return nil }
 
 // Clipboard returns the CLIPBOARD selection.
 //

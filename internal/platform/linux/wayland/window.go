@@ -2,6 +2,7 @@ package wayland
 
 import (
 	"fmt"
+	"github.com/rm4n0s/glutter/foundation"
 	"log/slog"
 
 	"github.com/rm4n0s/errors"
@@ -126,11 +127,14 @@ type window struct {
 	// the surface has been told. scale120 is wp_fractional_scale_v1's preferred
 	// scale in 120ths and bufScale wl_surface's preferred_buffer_scale; each is 0
 	// until the compositor sends one. entered are the outputs the surface is on.
-	fractional   *wl.WpFractionalScaleV1
-	viewport     *wl.WpViewport
-	scale120     int32
-	bufScale     int32
-	entered      []*wl.WlOutput
+	fractional *wl.WpFractionalScaleV1
+	viewport   *wl.WpViewport
+	scale120   int32
+	bufScale   int32
+	entered    []*wl.WlOutput
+	// display is the display that the last metrics named; hasDisplay says it did.
+	display      int
+	hasDisplay   bool
 	scale        int32 // the scale in 120ths that the buffer was sized for; 120 before the first configure
 	bufferScale  int32 // the last wl_surface.set_buffer_scale
 	viewportUsed bool  // wp_viewport.set_destination is in force
@@ -436,11 +440,16 @@ func (w *window) collectReleased() {
 // reportMetrics tells the handler the size of the view.
 func (w *window) reportMetrics() {
 	if h := w.p.handler; h != nil {
-		h.OnMetrics(w.id, platform.ViewMetrics{
+		m := platform.ViewMetrics{
 			PhysicalSize:     ui.Size{Width: float64(w.physW), Height: float64(w.physH)},
 			DevicePixelRatio: float64(w.scale) / 120,
 			Window:           w.info(),
-		})
+		}
+		if id, ok := w.displayOf(); ok {
+			m.Display = foundation.Some(id)
+		}
+		w.display, w.hasDisplay = w.displayOf()
+		h.OnMetrics(w.id, m)
 	}
 }
 
@@ -448,7 +457,7 @@ func (w *window) reportMetrics() {
 // last resort for the window's scale.
 func (w *window) onEnter(output *wl.WlOutput) {
 	w.entered = append(w.entered, output)
-	w.scaleChanged()
+	w.displayChanged()
 }
 
 func (w *window) onLeave(output *wl.WlOutput) {
@@ -458,7 +467,23 @@ func (w *window) onLeave(output *wl.WlOutput) {
 			break
 		}
 	}
+	w.displayChanged()
+}
+
+// displayChanged runs when the outputs the window is on, or what they say, changed:
+// the scale may have changed, and the display the window is on, with the same scale
+// or not, is told to the app.
+func (w *window) displayChanged() {
+	if w.closed {
+		return
+	}
 	w.scaleChanged()
+	if w.configures == 0 {
+		return
+	}
+	if id, ok := w.displayOf(); ok != w.hasDisplay || id != w.display {
+		w.reportMetrics()
+	}
 }
 
 // effectiveScale is the scale the window should be drawn at, in 120ths, and whether it

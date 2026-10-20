@@ -30,6 +30,8 @@ type frameHandler struct {
 	frames  []time.Duration
 	// configures is the number of acknowledged configures at each frame.
 	configures []int
+	// displays has what Displays returned at each OnDisplaysChanged.
+	displays [][]platform.Display
 	// onFrame, when set, runs inside OnFrame before the commit (on the UI thread).
 	onFrame func()
 }
@@ -38,6 +40,23 @@ func (h *frameHandler) OnMetrics(_ ui.ViewID, m platform.ViewMetrics) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.metrics = append(h.metrics, m)
+}
+
+func (h *frameHandler) OnDisplaysChanged() {
+	d := h.p.Displays()
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.displays = append(h.displays, d)
+}
+
+// lastDisplays returns what Displays returned the last time the outputs changed.
+func (h *frameHandler) lastDisplays() []platform.Display {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if len(h.displays) == 0 {
+		return nil
+	}
+	return h.displays[len(h.displays)-1]
 }
 
 func (h *frameHandler) OnFrame(view ui.ViewID, t time.Duration) {

@@ -2,6 +2,7 @@ package wayland
 
 import (
 	"fmt"
+	"github.com/rm4n0s/glutter/foundation"
 	"strconv"
 	"strings"
 	"testing"
@@ -31,6 +32,7 @@ func (e *eglEnv) lastMetrics() platform.ViewMetrics {
 	}
 	last := m[len(m)-1]
 	last.Window = ui.WindowInfo{} // these tests are about the size and the scale
+	last.Display = foundation.None[int]()
 	return last
 }
 

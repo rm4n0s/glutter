@@ -8,6 +8,7 @@ import (
 	"math"
 	"os"
 	"os/exec"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -500,5 +501,105 @@ func TestDisplayThreeWindowsAndADialog(t *testing.T) {
 	}
 	if got := h.closed; len(got) != 3 || got[0] != 0 {
 		t.Errorf("close requests = %v, want the three windows, the first one first", got)
+	}
+}
+
+// TestDisplayMovingBetweenOutputsRescalesTheNextFrame moves a window between two
+// outputs of different scales and checks that the metrics follow at once and that the
+// next buffer committed has the size of the new scale (no blurry frame, SPEC §8.11).
+// Run it with HEADLESS_SECOND=800x600@2.
+func TestDisplayMovingBetweenOutputsRescalesTheNextFrame(t *testing.T) {
+	if _, err := exec.LookPath("swaymsg"); err != nil || os.Getenv("SWAYSOCK") == "" || os.Getenv("HEADLESS_SECOND") == "" {
+		t.Skip("this test moves the window between two outputs through sway (HEADLESS_SECOND=800x600@2 scripts/headless-wayland.sh)")
+	}
+	p := connectToCompositor(t)
+	cfg := platform.DefaultWindowConfig()
+	cfg.Title = "Glutter outputs test"
+	cfg.AppID = "dev.glutter.outputstest"
+	cfg.Size = ui.Size{Width: 300, Height: 200}
+	win, err := p.NewWindow(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var mu sync.Mutex
+	var trace []string
+	win.(*window).trace = func(e string) { mu.Lock(); trace = append(trace, e); mu.Unlock() }
+	commits := func() []string {
+		mu.Lock()
+		defer mu.Unlock()
+		var out []string
+		for _, e := range trace {
+			if strings.HasPrefix(e, "commit ") {
+				out = append(out, strings.TrimPrefix(e, "commit "))
+			}
+		}
+		return out
+	}
+
+	h := &recHandler{allowClose: true}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	done := make(chan error, 1)
+	go func() { done <- p.Run(ctx, h) }()
+	defer func() {
+		cancel()
+		if err := <-done; err != nil {
+			t.Errorf("Run returned %v", err)
+		}
+	}()
+
+	last := func() platform.ViewMetrics { m := h.metricsSeen(); return m[len(m)-1] }
+	waitUntil(t, func() bool { return len(h.metricsSeen()) > 0 && last().Display.IsSome() }, "the window never got a size and a display")
+	first := last()
+
+	// Two outputs: the first at the scale of HEADLESS_SCALE, the second at 2.
+	var displays []platform.Display
+	finished := make(chan struct{})
+	p.Post(func() { displays = p.Displays(); close(finished) })
+	<-finished
+	if len(displays) != 2 {
+		t.Fatalf("Displays() = %+v, want the two outputs", displays)
+	}
+	if !displays[0].Primary || displays[1].Primary || displays[1].DevicePixelRatio != 2 {
+		t.Errorf("Displays() = %+v", displays)
+	}
+	t.Logf("displays: %+v", displays)
+
+	move := func(output string) {
+		t.Helper()
+		out, err := exec.Command("swaymsg", "[app_id=dev.glutter.outputstest]", "move", "container", "to", "output", output).CombinedOutput()
+		if err != nil {
+			t.Fatalf("swaymsg: %v: %s", err, out)
+		}
+	}
+	scaleOf := func(display int) float64 {
+		for _, d := range displays {
+			if d.ID == display {
+				return d.DevicePixelRatio
+			}
+		}
+		return 0
+	}
+
+	for _, step := range []struct {
+		output string
+		scale  float64
+	}{{"HEADLESS-2", 2}, {"HEADLESS-1", scaleOf(first.Display.Value())}} {
+		before := len(commits())
+		move(step.output)
+		waitUntil(t, func() bool { return last().DevicePixelRatio == step.scale },
+			fmt.Sprintf("the scale never became %v after moving to %s (metrics: %+v)", step.scale, step.output, last()))
+		m := last()
+		if m.Display.IsNone() || scaleOf(m.Display.Value()) != step.scale {
+			t.Errorf("after moving to %s the metrics name display %v", step.output, m.Display)
+		}
+		// The next buffer committed has the pixel size the metrics promise.
+		want := fmt.Sprintf("%dx%d", int(m.PhysicalSize.Width), int(m.PhysicalSize.Height))
+		waitUntil(t, func() bool {
+			c := commits()
+			return len(c) > before && slices.Contains(c[before:], want)
+		}, fmt.Sprintf("no buffer of %s was committed after moving to %s (commits: %v)", want, step.output, commits()[before:]))
+		if c := commits(); c[len(c)-1] != want && !slices.Contains(c[before:], want) {
+			t.Errorf("the commits after the move were %v, want %s", c[before:], want)
+		}
 	}
 }

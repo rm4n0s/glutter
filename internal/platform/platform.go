@@ -96,6 +96,10 @@ type Handler interface {
 	OnLifecycle(state ui.AppLifecycleState)
 	// OnDrop delivers a drag-and-drop event over the view.
 	OnDrop(view ui.ViewID, event DropEvent)
+	// OnDisplaysChanged reports that the displays changed: one was connected or
+	// disconnected, or one changed its size, scale or refresh rate. Platform.Displays
+	// has the new list.
+	OnDisplaysChanged()
 	// OnSettings reports changed system settings.
 	OnSettings(settings Settings)
 	// OnViewFocus reports that the keyboard focus moved to a view (true) or left it

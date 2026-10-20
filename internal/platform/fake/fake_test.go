@@ -43,6 +43,8 @@ func (h *recordingHandler) OnLifecycle(s ui.AppLifecycleState) { h.add("OnLifecy
 func (h *recordingHandler) OnDrop(view ui.ViewID, _ platform.DropEvent) {
 	h.add("OnDrop %d", view)
 }
+func (h *recordingHandler) OnDisplaysChanged() { h.add("OnDisplaysChanged") }
+
 func (h *recordingHandler) OnSettings(s platform.Settings) {
 	h.add("OnSettings %v", s.PlatformBrightness)
 }
@@ -203,6 +205,7 @@ func TestInjectDeliversEventsInOrder(t *testing.T) {
 		{"lifecycle", LifecycleEvent{State: ui.AppLifecycleStateResumed}, "OnLifecycle AppLifecycleStateResumed"},
 		{"drop", DropEvent{View: 3}, "OnDrop 3"},
 		{"settings", SettingsEvent{Settings: platform.Settings{PlatformBrightness: ui.BrightnessDark}}, "OnSettings BrightnessDark"},
+		{"displays", DisplaysEvent{Displays: []platform.Display{{ID: 1}}}, "OnDisplaysChanged"},
 		{"close request", CloseRequestEvent{View: 4}, "OnCloseRequest 4"},
 		{"view focus", ViewFocusEvent{View: 5, Focused: true}, "OnViewFocus 5 true"},
 	}

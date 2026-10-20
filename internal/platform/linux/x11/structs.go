@@ -403,3 +403,19 @@ type xColor struct {
 func view[T any](addr uintptr) *T {
 	return (*T)(*(*unsafe.Pointer)(unsafe.Pointer(&addr)))
 }
+
+// xrrMonitorInfo is XRRMonitorInfo: a monitor, a rectangle of the screen that one or
+// more outputs show.
+type xrrMonitorInfo struct {
+	name      uint64
+	primary   int32
+	automatic int32
+	noutput   int32
+	x, y      int32
+	width     int32
+	height    int32
+	mmWidth   int32
+	mmHeight  int32
+	_         int32
+	outputs   uintptr
+}

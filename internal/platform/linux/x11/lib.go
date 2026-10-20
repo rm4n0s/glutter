@@ -114,6 +114,7 @@ type xlib struct {
 	convertSelection     func(display uintptr, selection, target, property, requestor, time uint64) int32
 	getWindowProperty    func(display uintptr, window, property uint64, offset, length int64, del int32, reqType uint64, actualType, actualFormat, nitems, bytesAfter, prop uintptr) int32
 	translateCoordinates func(display uintptr, src, dest uint64, srcX, srcY int32, destX, destY, child uintptr) int32
+	getAtomName          func(display uintptr, atom uint64) uintptr
 }
 
 // loadXlib opens libX11 and libX11-xcb and binds the functions. It fails with
@@ -174,6 +175,7 @@ func loadXlib() (*xlib, error) {
 		{&l.getSelectionOwner, "XGetSelectionOwner"},
 		{&l.convertSelection, "XConvertSelection"},
 		{&l.getWindowProperty, "XGetWindowProperty"},
+		{&l.getAtomName, "XGetAtomName"},
 	} {
 		if err := x11.Bind(b.fptr, b.symbol); err != nil {
 			return nil, err
@@ -226,11 +228,18 @@ func loadXi() (*xi, error) {
 	return l, nil
 }
 
-// xrandr holds the one function of libXrandr that the frame pacer needs.
+// xrandr holds the functions of libXrandr: the refresh rate for the frame pacer,
+// and the monitors.
 type xrandr struct {
 	getScreenInfo  func(display uintptr, root uint64) uintptr
 	currentRate    func(config uintptr) int16
 	freeScreenInfo func(config uintptr)
+
+	queryExtension func(display, eventBase, errorBase uintptr) int32
+	selectInput    func(display uintptr, window uint64, mask int32)
+	getMonitors    func(display uintptr, window uint64, activeOnly int32, count uintptr) uintptr
+	freeMonitors   func(monitors uintptr)
+	updateConfig   func(event uintptr) int32
 }
 
 func loadXrandr() (*xrandr, error) {
@@ -246,6 +255,11 @@ func loadXrandr() (*xrandr, error) {
 		{&l.getScreenInfo, "XRRGetScreenInfo"},
 		{&l.currentRate, "XRRConfigCurrentRate"},
 		{&l.freeScreenInfo, "XRRFreeScreenConfigInfo"},
+		{&l.queryExtension, "XRRQueryExtension"},
+		{&l.selectInput, "XRRSelectInput"},
+		{&l.getMonitors, "XRRGetMonitors"},
+		{&l.freeMonitors, "XRRFreeMonitors"},
+		{&l.updateConfig, "XRRUpdateConfiguration"},
 	} {
 		if err := lib.Bind(b.fptr, b.symbol); err != nil {
 			return nil, err
