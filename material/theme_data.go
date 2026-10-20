@@ -317,6 +317,9 @@ type ThemeDataOpts struct {
 	// Typography is the color and geometry of the text themes; the default is
 	// Material 2021 (or 2014 without Material 3).
 	Typography *Typography
+	// PageTransitionsTheme is the transitions of the pages that Material makes;
+	// the default is the one of NewPageTransitionsTheme.
+	PageTransitionsTheme *PageTransitionsTheme
 
 	// DEPRECATED
 
@@ -400,6 +403,8 @@ type ThemeData struct {
 	TextTheme *TextTheme
 	// Typography is the color and geometry of the text themes.
 	Typography *Typography
+	// PageTransitionsTheme is the transitions of the pages that Material makes.
+	PageTransitionsTheme *PageTransitionsTheme
 
 	// DEPRECATED
 
@@ -549,6 +554,11 @@ func NewThemeData(opts ...ThemeDataOpts) *ThemeData {
 	}
 	splashColor := orSome(o.SplashColor, pick(ui.NewColor(0x40CCCCCC), ui.NewColor(0x66C8C8C8)))
 
+	pageTransitionsTheme := o.PageTransitionsTheme
+	if pageTransitionsTheme == nil {
+		pageTransitionsTheme = NewPageTransitionsTheme()
+	}
+
 	// TYPOGRAPHY & ICONOGRAPHY
 	typography := o.Typography
 	if typography == nil {
@@ -631,6 +641,8 @@ func NewThemeData(opts ...ThemeDataOpts) *ThemeData {
 		TextTheme:        defaultTextTheme.Merge(o.TextTheme),
 		Typography:       typography,
 
+		PageTransitionsTheme: pageTransitionsTheme,
+
 		DialogBackgroundColor: dialogBackgroundColor.Value(),
 		IndicatorColor:        indicatorColor.Value(),
 	}
@@ -672,6 +684,7 @@ type ThemeDataCopy struct {
 	PrimaryTextTheme        foundation.Opt[*TextTheme]
 	TextTheme               foundation.Opt[*TextTheme]
 	Typography              foundation.Opt[*Typography]
+	PageTransitionsTheme    foundation.Opt[*PageTransitionsTheme]
 	DialogBackgroundColor   foundation.Opt[ui.Color]
 	IndicatorColor          foundation.Opt[ui.Color]
 }
@@ -716,6 +729,7 @@ func (d *ThemeData) CopyWith(c ThemeDataCopy) *ThemeData {
 	out.PrimaryTextTheme = c.PrimaryTextTheme.OrElse(d.PrimaryTextTheme)
 	out.TextTheme = c.TextTheme.OrElse(d.TextTheme)
 	out.Typography = c.Typography.OrElse(d.Typography)
+	out.PageTransitionsTheme = c.PageTransitionsTheme.OrElse(d.PageTransitionsTheme)
 	out.DialogBackgroundColor = c.DialogBackgroundColor.OrElse(d.DialogBackgroundColor)
 	out.IndicatorColor = c.IndicatorColor.OrElse(d.IndicatorColor)
 	return &out
@@ -927,6 +941,7 @@ func ThemeDataLerp(a, b *ThemeData, t float64) *ThemeData {
 	out.Platform = src.Platform
 	out.UseMaterial3 = src.UseMaterial3
 	out.SplashFactory = src.SplashFactory
+	out.PageTransitionsTheme = src.PageTransitionsTheme
 	for _, f := range themeColorFields {
 		*f.get(out) = lerpColor(*f.get(a), *f.get(b), t)
 	}
@@ -946,7 +961,7 @@ func (d *ThemeData) Equal(other *ThemeData) bool {
 	if d.ApplyElevationOverlayColor != other.ApplyElevationOverlayColor || d.MaterialTapTargetSize != other.MaterialTapTargetSize ||
 		d.Platform != other.Platform || d.UseMaterial3 != other.UseMaterial3 || !foundation.ValuesEqual(d.SplashFactory, other.SplashFactory) || d.VisualDensity != other.VisualDensity ||
 		!d.ColorScheme.Equal(other.ColorScheme) || !d.IconTheme.Equal(other.IconTheme) || !d.PrimaryIconTheme.Equal(other.PrimaryIconTheme) ||
-		!d.PrimaryTextTheme.Equal(other.PrimaryTextTheme) || !d.TextTheme.Equal(other.TextTheme) || !d.Typography.Equal(other.Typography) {
+		!d.PrimaryTextTheme.Equal(other.PrimaryTextTheme) || !d.TextTheme.Equal(other.TextTheme) || !d.Typography.Equal(other.Typography) || !d.PageTransitionsTheme.Equal(other.PageTransitionsTheme) {
 		return false
 	}
 	for _, f := range themeColorFields {
@@ -1007,4 +1022,5 @@ func (d *ThemeData) DebugFillProperties(properties *foundation.DiagnosticPropert
 	properties.Add(foundation.NewDiagnosticsProperty("primaryTextTheme", d.PrimaryTextTheme, dbg(def.PrimaryTextTheme)))
 	properties.Add(foundation.NewDiagnosticsProperty("textTheme", d.TextTheme, dbg(def.TextTheme)))
 	properties.Add(foundation.NewDiagnosticsProperty("typography", d.Typography, dbg(def.Typography)))
+	properties.Add(foundation.NewDiagnosticsProperty("pageTransitionsTheme", d.PageTransitionsTheme, dbg(def.PageTransitionsTheme)))
 }

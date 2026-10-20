@@ -685,6 +685,12 @@ func NewHeroController(createRectTween ...CreateRectTween) *HeroController {
 	return c
 }
 
+// CreateRectTween creates the tween of the flights unless the hero says
+// otherwise; nil means a RectTween.
+//
+// Flutter: widgets/heroes.dart HeroController.createRectTween
+func (c *HeroController) CreateRectTween() CreateRectTween { return c.createRectTween }
+
 // InitHeroController sets the outer observer of a controller that is embedded in
 // another type, so that the navigators call the methods that the outer type
 // overrides (Flutter subclasses HeroController).

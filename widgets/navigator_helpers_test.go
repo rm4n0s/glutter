@@ -174,6 +174,7 @@ func navTestApp(o navTestAppOpts) Widget {
 	case o.home != nil:
 		opts.Home = o.home
 	}
+	opts.DebugShowCheckedModeBanner = foundation.Some(false)
 	return NewWidgetsApp(ui.NewColor(0xFFFFFFFF), opts)
 }
 

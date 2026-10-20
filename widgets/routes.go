@@ -1253,6 +1253,11 @@ type ModalRoute interface {
 	//
 	// Flutter: widgets/routes.dart ModalRoute.impliesAppBarDismissal
 	ImpliesAppBarDismissal() bool
+	// PopGestureInProgress is whether a user gesture that may pop the route is
+	// going on.
+	//
+	// Flutter: widgets/routes.dart ModalRoute.popGestureInProgress
+	PopGestureInProgress() bool
 	// FullscreenDialog is whether the route is a fullscreen dialog.
 	//
 	// Flutter: widgets/routes.dart ModalRoute.fullscreenDialog

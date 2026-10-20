@@ -20,7 +20,7 @@ func TestDispatch(t *testing.T) {
 		{name: "unknown command", args: []string{"bogus"}, wantTag: "UnknownCommand", wantRoute: "dispatch.UnknownCommand", wantCmd: "bogus"},
 		{name: "wayland reaches the real subcommand", args: []string{"wayland", "-nope"}, wantTag: "WaylandBadFlags", wantRoute: "dispatch->Run.WaylandBadFlags"},
 		{name: "keys reaches the real subcommand", args: []string{"keys", "-nope"}, wantTag: "KeysBadFlags", wantRoute: "dispatch->Run.KeysBadFlags"},
-		{name: "reexport", args: []string{"reexport"}, wantTag: "NotImplemented", wantRoute: "dispatch->Run.NotImplemented", wantCmd: "reexport"},
+		{name: "reexport reaches the real subcommand", args: []string{"reexport", "-nope"}, wantTag: "ReexportBadFlags", wantRoute: "dispatch->Run.ReexportBadFlags"},
 		{name: "copywith reaches the real subcommand", args: []string{"copywith", "-nope"}, wantTag: "CopyWithBadFlags", wantRoute: "dispatch->Run.CopyWithBadFlags"},
 		{name: "icons reaches the real subcommand", args: []string{"icons", "-nope"}, wantTag: "IconsBadFlags", wantRoute: "dispatch->Run.IconsBadFlags"},
 	}
@@ -61,7 +61,7 @@ func (plainError) Error() string { return "plain failure" }
 
 func TestFormatError(t *testing.T) {
 	t.Run("tagged error is printed as replayable JSON", func(t *testing.T) {
-		out := formatError(dispatch([]string{"reexport"}))
+		out := formatError(dispatch([]string{"reexport", "-nope"}))
 
 		var errJSON errors.ErrorJson
 		if err := json.Unmarshal([]byte(out), &errJSON); err != nil {
@@ -71,10 +71,10 @@ func TestFormatError(t *testing.T) {
 		if err != nil {
 			t.Fatalf("FromJson: %v", err)
 		}
-		if replayed.Tag != "NotImplemented" {
-			t.Errorf("Tag = %q, want NotImplemented", replayed.Tag)
+		if replayed.Tag != "ReexportBadFlags" {
+			t.Errorf("Tag = %q, want ReexportBadFlags", replayed.Tag)
 		}
-		if !replayed.HasRoute("dispatch->Run.NotImplemented") {
+		if !replayed.HasRoute("dispatch->Run.ReexportBadFlags") {
 			t.Errorf("unexpected failure path: %s", replayed.Route())
 		}
 	})

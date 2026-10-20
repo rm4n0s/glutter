@@ -85,6 +85,9 @@ type WidgetsAppOpts struct {
 	Shortcuts ShortcutMap
 	// Actions replaces the default actions of the app (WidgetsAppDefaultActions).
 	Actions ActionMap
+	// DebugShowCheckedModeBanner turns on a little "DEBUG" banner in debug builds;
+	// the default is true.
+	DebugShowCheckedModeBanner foundation.Opt[bool]
 }
 
 // WidgetsAppRouterOpts are the optional parameters of NewWidgetsAppRouter.
@@ -129,6 +132,9 @@ type WidgetsAppRouterOpts[T any] struct {
 	Shortcuts ShortcutMap
 	// Actions replaces the default actions of the app.
 	Actions ActionMap
+	// DebugShowCheckedModeBanner turns on a little "DEBUG" banner in debug builds;
+	// the default is true.
+	DebugShowCheckedModeBanner foundation.Opt[bool]
 }
 
 // WidgetsApp is a convenience widget that wraps a number of widgets that
@@ -235,7 +241,7 @@ func NewWidgetsAppRouter[T any](color ui.Color, opts ...WidgetsAppRouterOpts[T])
 		OnNavigationNotification: o.OnNavigationNotification, TextStyle: o.TextStyle, Locale: o.Locale,
 		LocalizationsDelegates: o.LocalizationsDelegates, LocaleListResolutionCallback: o.LocaleListResolutionCallback,
 		LocaleResolutionCallback: o.LocaleResolutionCallback, SupportedLocales: o.SupportedLocales,
-		Shortcuts: o.Shortcuts, Actions: o.Actions,
+		Shortcuts: o.Shortcuts, Actions: o.Actions, DebugShowCheckedModeBanner: o.DebugShowCheckedModeBanner,
 	}
 	return w
 }
@@ -615,6 +621,9 @@ func (s *widgetsAppState) Build(bc BuildContext) Widget {
 	}
 	if w.o.TextStyle != nil {
 		result = NewDefaultTextStyle(w.o.TextStyle, result)
+	}
+	if foundation.DebugMode && w.o.DebugShowCheckedModeBanner.OrElse(true) {
+		result = NewCheckedModeBanner(result)
 	}
 
 	// TODO in Flutter (issue 180319): use actions and shortcuts to dismiss the

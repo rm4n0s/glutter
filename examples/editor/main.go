@@ -220,8 +220,10 @@ type saveIntent struct {
 // The route gives the page the Overlay that the EditableText needs.
 func newApp(o options) widgets.Widget {
 	return widgets.NewWidgetsApp(surface, widgets.WidgetsAppOpts{
-		Title:     "Glutter editor",
-		TextStyle: textStyle(16, onSurface, ui.FontWeightW400),
+		Title: "Glutter editor",
+		// The window is a proof image: it has no debug ribbon.
+		DebugShowCheckedModeBanner: foundation.Some(false),
+		TextStyle:                  textStyle(16, onSurface, ui.FontWeightW400),
 		OnGenerateRoute: func(settings widgets.RouteSettings) widgets.Route {
 			return widgets.NewPageRouteBuilder(
 				func(widgets.BuildContext, animation.Animation[float64], animation.Animation[float64]) widgets.Widget {

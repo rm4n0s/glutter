@@ -164,10 +164,12 @@ func escapeToPop(page widgets.Widget) widgets.Widget {
 func newApp(o options) widgets.Widget {
 	heroes := widgets.NewHeroController()
 	return widgets.NewWidgetsApp(surface, widgets.WidgetsAppOpts{
-		Title:           "Glutter navigation",
-		TextStyle:       textStyle(15, onSurface, ui.FontWeightW400),
-		InitialRoute:    o.route,
-		OnGenerateRoute: func(s widgets.RouteSettings) widgets.Route { return generateRoute(s, o) },
+		Title: "Glutter navigation",
+		// The window is a proof image: it has no debug ribbon.
+		DebugShowCheckedModeBanner: foundation.Some(false),
+		TextStyle:                  textStyle(15, onSurface, ui.FontWeightW400),
+		InitialRoute:               o.route,
+		OnGenerateRoute:            func(s widgets.RouteSettings) widgets.Route { return generateRoute(s, o) },
 		// MaterialApp gives its navigator a HeroController; here the app does.
 		Builder: func(_ widgets.BuildContext, child widgets.Widget) widgets.Widget {
 			return widgets.NewHeroControllerScope(heroes, child)

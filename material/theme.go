@@ -155,8 +155,8 @@ type AnimatedThemeOpts struct {
 	// Curve is the curve of the animation; the default is Curves.Linear.
 	Curve animation.Curve
 	// Duration is the duration of the animation; the default is
-	// ThemeAnimationDuration.
-	Duration time.Duration
+	// ThemeAnimationDuration, and a zero duration makes the change at once.
+	Duration foundation.Opt[time.Duration]
 	// OnEnd is called every time an animation completes.
 	OnEnd func()
 }
@@ -176,10 +176,7 @@ type AnimatedTheme struct {
 // Flutter: material/theme.dart AnimatedTheme.new
 func NewAnimatedTheme(data *ThemeData, child widgets.Widget, opts ...AnimatedThemeOpts) *AnimatedTheme {
 	o := firstOpts(opts)
-	if o.Duration == 0 {
-		o.Duration = ThemeAnimationDuration
-	}
-	return &AnimatedTheme{widgets.NewImplicitlyAnimatedWidgetBase(o.Duration, widgets.ImplicitlyAnimatedWidgetOpts{Key: o.Key, Curve: o.Curve, OnEnd: o.OnEnd}), data, child}
+	return &AnimatedTheme{widgets.NewImplicitlyAnimatedWidgetBase(o.Duration.OrElse(ThemeAnimationDuration), widgets.ImplicitlyAnimatedWidgetOpts{Key: o.Key, Curve: o.Curve, OnEnd: o.OnEnd}), data, child}
 }
 
 // Data is the specification of the color and typography to use in this

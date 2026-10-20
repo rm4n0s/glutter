@@ -2,6 +2,7 @@ package widgets_test
 
 import (
 	"github.com/rm4n0s/glutter/animation"
+	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/painting"
 	"github.com/rm4n0s/glutter/ui"
 	. "github.com/rm4n0s/glutter/widgets"
@@ -61,5 +62,7 @@ func testWidgetsApp(opts ...testWidgetsAppOpts) Widget {
 		Builder:            o.builder,
 		Shortcuts:          o.shortcuts,
 		Actions:            o.actions,
+		// The banner is not in the golden images of the tests.
+		DebugShowCheckedModeBanner: foundation.Some(false),
 	})
 }
