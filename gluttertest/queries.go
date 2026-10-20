@@ -167,12 +167,12 @@ func (t *Tester) Size(f Finder) ui.Size {
 // Flutter: flutter_test/lib/src/widget_tester.dart WidgetController.getCenter
 func (t *Tester) Center(f Finder) ui.Offset {
 	t.tb.Helper()
-	b, pos := t.box(f)
+	b, _ := t.box(f)
 	if b == nil {
 		return ui.Offset{}
 	}
 	s := b.Size()
-	return ui.Offset{Dx: pos.Dx + s.Width/2, Dy: pos.Dy + s.Height/2}
+	return b.LocalToGlobal(ui.Offset{Dx: s.Width / 2, Dy: s.Height / 2}, nil)
 }
 
 // BottomRight is the position of the bottom right corner of the one widget the
@@ -181,10 +181,10 @@ func (t *Tester) Center(f Finder) ui.Offset {
 // Flutter: flutter_test/lib/src/widget_tester.dart WidgetController.getBottomRight
 func (t *Tester) BottomRight(f Finder) ui.Offset {
 	t.tb.Helper()
-	b, pos := t.box(f)
+	b, _ := t.box(f)
 	if b == nil {
 		return ui.Offset{}
 	}
 	s := b.Size()
-	return ui.Offset{Dx: pos.Dx + s.Width, Dy: pos.Dy + s.Height}
+	return b.LocalToGlobal(ui.Offset{Dx: s.Width, Dy: s.Height}, nil)
 }

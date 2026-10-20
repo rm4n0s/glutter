@@ -194,6 +194,11 @@ func (s *EditableTextState) RenderEditable() *rendering.RenderEditable {
 	if bc == nil {
 		return nil
 	}
+	// The callbacks of the composition and the post-frame callbacks can come after
+	// the field was taken out of the tree: its element is inactive then.
+	if el, ok := bc.(Element); ok && el.AsElement().lifecycle != lifecycleActive {
+		return nil
+	}
 	r, _ := bc.FindRenderObject().(*rendering.RenderEditable)
 	return r
 }

@@ -389,6 +389,14 @@ type FormFieldOpts[T any] struct {
 	// OnReset is an optional method to call when the form field is reset via
 	// FormFieldState.Reset.
 	OnReset foundation.VoidCallback
+	// OnDidChange is called at the end of FormFieldState.DidChange with the new
+	// value.
+	//
+	// Deviation: a subclass of FormFieldState overrides didChange in Flutter, as
+	// Material's TextFormField does to update its controller; Go state types
+	// cannot be extended, so this callback stands in for the override (SPEC
+	// §12.10).
+	OnDidChange func(value foundation.Opt[T])
 	// ForceErrorText forces an error to be shown, and skips the validator.
 	ForceErrorText foundation.Opt[string]
 	// Validator is an optional method that validates an input; it returns the
@@ -574,6 +582,9 @@ func (s *FormFieldState[T]) DidChange(value foundation.Opt[T]) {
 	})
 	if form := FormMaybeOf(s.Context()); form != nil {
 		form.fieldDidChange()
+	}
+	if f := s.Widget().o.OnDidChange; f != nil {
+		f(value)
 	}
 }
 

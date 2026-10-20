@@ -189,7 +189,8 @@ func (s *EditableTextState) updateSizeAndTransform() {
 }
 
 func (s *EditableTextState) schedulePeriodicPostFrameCallbacks() {
-	if !s.hasInputConnection() {
+	// The field can be out of the tree by the time the callback runs.
+	if !s.hasInputConnection() || s.RenderEditable() == nil {
 		return
 	}
 	s.updateComposingRectIfNeeded()

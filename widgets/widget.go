@@ -155,6 +155,8 @@ func CreateElement(w Widget) Element {
 		return NewParentDataElement(x)
 	case leafRenderObjectWidget:
 		return NewLeafRenderObjectElement(x)
+	case SlottedRenderObjectWidget:
+		return NewSlottedRenderObjectElement(x)
 	case singleChildRenderObjectWidget:
 		return NewSingleChildRenderObjectElement(x)
 	case multiChildRenderObjectWidget:

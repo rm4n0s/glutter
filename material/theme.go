@@ -18,10 +18,8 @@ const ThemeAnimationDuration = 200 * time.Millisecond
 // Theme applies a theme to descendant widgets. A theme describes the colors and
 // typographic choices of an application.
 //
-// Deviation: Flutter's Theme also provides a CupertinoTheme and a
-// DefaultSelectionStyle from the text selection theme; the former does not
-// exist in Glutter, and the latter is added with TextSelectionThemeData (step
-// 13.7).
+// Deviation: Flutter's Theme also provides a CupertinoTheme; it does not exist
+// in Glutter.
 //
 // Flutter: material/theme.dart Theme
 type Theme struct {
@@ -106,8 +104,17 @@ func ThemeMaybeBrightnessOf(bc widgets.BuildContext) (ui.Brightness, bool) {
 // Build wraps the child in the inherited theme and the icon theme of the data.
 //
 // Flutter: material/theme.dart Theme.build
-func (w *Theme) Build(widgets.BuildContext) widgets.Widget {
-	return newInheritedMaterialTheme(w, widgets.NewIconTheme(w.data.IconTheme, w.child))
+func (w *Theme) Build(bc widgets.BuildContext) widgets.Widget {
+	// The inherited themes of the widgets library cannot infer their values from the
+	// Theme of the material library: the child is wrapped in these inherited themes
+	// to override their values directly.
+	selectionStyle := widgets.DefaultSelectionStyleOf(bc)
+	selection := w.data.TextSelectionTheme
+	child := widgets.NewIconTheme(w.data.IconTheme, widgets.NewDefaultSelectionStyle(w.child, widgets.DefaultSelectionStyleOpts{
+		SelectionColor: firstOpt(selection.SelectionColor, selectionStyle.SelectionColor()),
+		CursorColor:    firstOpt(selection.CursorColor, selectionStyle.CursorColor()),
+	}))
+	return newInheritedMaterialTheme(w, child)
 }
 
 // DebugFillProperties adds the data.

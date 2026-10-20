@@ -196,3 +196,16 @@ func TestFormOfWithoutAFormPanics(t *testing.T) {
 		t.Fatal("FormMaybeOf found a form")
 	}
 }
+
+func TestFormFieldOnDidChangeIsCalledWithTheNewValue(t *testing.T) {
+	ts := gluttertest.New(t)
+	var got []foundation.Opt[string]
+	var field *FormFieldState[string]
+	pumpContainer(ts, stringField(&field, FormFieldOpts[string]{OnDidChange: func(v foundation.Opt[string]) { got = append(got, v) }}))
+	field.DidChange(foundation.Some("one"))
+	field.DidChange(foundation.None[string]())
+	ts.Pump()
+	if len(got) != 2 || got[0] != foundation.Some("one") || got[1].IsSome() {
+		t.Errorf("OnDidChange calls = %v, want [one, none]", got)
+	}
+}

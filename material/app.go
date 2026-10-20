@@ -410,9 +410,8 @@ func (s *materialAppState) themeBuilder(bc widgets.BuildContext) *ThemeData {
 func (s *materialAppState) materialBuilder(bc widgets.BuildContext, child widgets.Widget) widgets.Widget {
 	w := s.Widget()
 	theme := s.themeBuilder(bc)
-	// TODO(step 13.7): the text selection theme gives the selection and cursor colors.
-	selectionColor := theme.ColorScheme.Primary().WithOpacity(0.40)
-	cursorColor := theme.ColorScheme.Primary()
+	selectionColor := theme.TextSelectionTheme.SelectionColor.OrElse(theme.ColorScheme.Primary().WithOpacity(0.40))
+	cursorColor := theme.TextSelectionTheme.CursorColor.OrElse(theme.ColorScheme.Primary())
 	var result widgets.Widget = widgets.NewSizedBoxShrink(nil)
 	if child != nil {
 		result = child

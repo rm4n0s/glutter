@@ -754,3 +754,190 @@ func (e *RenderTreeRootElement) debugCheckMustNotAttachRenderObjectToAncestor() 
 			"ownership chain", e.DebugGetCreatorChain(10)))
 	}
 }
+
+// SlottedRenderObjectWidget is a render object widget whose children are in
+// named slots, such as the parts of an input decorator. Embed
+// SlottedMultiChildRenderObjectWidget and implement Slots, ChildForSlot,
+// CreateRenderObject and UpdateRenderObject; the render object embeds
+// rendering.SlottedContainer and implements SetSlotChild, MoveSlotChild and
+// SlotChildObject.
+//
+// Flutter: widgets/slotted_render_object_widget.dart SlottedMultiChildRenderObjectWidget
+type SlottedRenderObjectWidget interface {
+	renderObjectWidget
+	// Slots are the slots of the widget; they must not change.
+	//
+	// Flutter: widgets/slotted_render_object_widget.dart SlottedMultiChildRenderObjectWidgetMixin.slots
+	Slots() []any
+	// ChildForSlot is the widget in the slot, or nil.
+	//
+	// Flutter: widgets/slotted_render_object_widget.dart SlottedMultiChildRenderObjectWidgetMixin.childForSlot
+	ChildForSlot(slot any) Widget
+}
+
+// SlottedMultiChildRenderObjectWidget is the base of a render object widget
+// whose children are in slots.
+//
+// Flutter: widgets/slotted_render_object_widget.dart SlottedMultiChildRenderObjectWidget
+type SlottedMultiChildRenderObjectWidget struct{ RenderObjectWidget }
+
+// NewSlottedMultiChildRenderObjectWidgetBase creates the base of a render
+// object widget with slots.
+//
+// Flutter: widgets/slotted_render_object_widget.dart SlottedMultiChildRenderObjectWidget.new
+func NewSlottedMultiChildRenderObjectWidgetBase(opts ...WidgetOpts) SlottedMultiChildRenderObjectWidget {
+	return SlottedMultiChildRenderObjectWidget{NewRenderObjectWidgetBase(opts...)}
+}
+
+// slottedHolder is a render object that holds children in slots.
+type slottedHolder interface {
+	SlotChild(slot any) rendering.RenderObject
+	SetSlotChild(child rendering.RenderObject, slot any)
+	MoveSlotChild(child rendering.RenderObject, slot, oldSlot any)
+}
+
+// SlottedRenderObjectElement is the element of a SlottedMultiChildRenderObjectWidget.
+//
+// Flutter: widgets/slotted_render_object_widget.dart SlottedRenderObjectElement
+type SlottedRenderObjectElement struct {
+	RenderObjectElement
+	slotToChild   map[any]Element
+	keyedChildren map[foundation.Key]Element
+	previousSlots []any
+}
+
+// NewSlottedRenderObjectElement creates the element of a render object widget
+// with slots.
+//
+// Flutter: widgets/slotted_render_object_widget.dart SlottedRenderObjectElement.new
+func NewSlottedRenderObjectElement(w SlottedRenderObjectWidget) *SlottedRenderObjectElement {
+	e := &SlottedRenderObjectElement{slotToChild: map[any]Element{}, keyedChildren: map[foundation.Key]Element{}}
+	InitRenderObjectElement(&e.RenderObjectElement, e, w)
+	return e
+}
+
+// VisitChildren visits the children.
+//
+// Flutter: widgets/slotted_render_object_widget.dart SlottedRenderObjectElement.visitChildren
+func (e *SlottedRenderObjectElement) VisitChildren(visitor ElementVisitor) {
+	for _, slot := range e.widget.(SlottedRenderObjectWidget).Slots() {
+		if c, ok := e.slotToChild[slot]; ok {
+			visitor(c)
+		}
+	}
+}
+
+// ForgetChild forgets the child, which went to another parent.
+//
+// Flutter: widgets/slotted_render_object_widget.dart SlottedRenderObjectElement.forgetChild
+func (e *SlottedRenderObjectElement) ForgetChild(child Element) {
+	delete(e.slotToChild, child.Slot())
+	e.ElementBase.ForgetChild(child)
+}
+
+// Mount creates the render object and the children.
+//
+// Flutter: widgets/slotted_render_object_widget.dart SlottedRenderObjectElement.mount
+func (e *SlottedRenderObjectElement) Mount(parent Element, newSlot any) {
+	e.RenderObjectElement.Mount(parent, newSlot)
+	e.updateChildren()
+}
+
+// Update updates the render object and the children.
+//
+// Flutter: widgets/slotted_render_object_widget.dart SlottedRenderObjectElement.update
+func (e *SlottedRenderObjectElement) Update(newWidget Widget) {
+	e.RenderObjectElement.Update(newWidget)
+	e.updateChildren()
+}
+
+func (e *SlottedRenderObjectElement) updateChildren() {
+	w := e.widget.(SlottedRenderObjectWidget)
+	slots := w.Slots()
+	if foundation.DebugMode {
+		if e.previousSlots == nil {
+			e.previousSlots = append([]any(nil), slots...)
+		}
+		if !slices.Equal(e.previousSlots, slots) {
+			panic(errors.New("SlottedSlotsChanged", "the slots of a slotted render object widget must not change",
+				"widget", foundation.RuntimeTypeName(w)))
+		}
+		seen := map[any]struct{}{}
+		for _, s := range slots {
+			if _, dup := seen[s]; dup {
+				panic(errors.New("SlottedSlotsNotUnique", "the slots of a slotted render object widget must be unique",
+					"widget", foundation.RuntimeTypeName(w), "slot", s))
+			}
+			seen[s] = struct{}{}
+		}
+	}
+	oldKeyed := e.keyedChildren
+	e.keyedChildren = map[foundation.Key]Element{}
+	oldSlotToChild := e.slotToChild
+	e.slotToChild = map[any]Element{}
+	var duplicateKey foundation.Key
+	for _, slot := range slots {
+		child := w.ChildForSlot(slot)
+		var newKey foundation.Key
+		if child != nil {
+			newKey = child.Key()
+		}
+		oldSlotChild := oldSlotToChild[slot]
+		var oldKeyChild Element
+		if newKey != nil {
+			oldKeyChild = oldKeyed[newKey]
+		}
+		// Try to find the element that the widget should update. If key matching
+		// fails, resort to the child of the same slot.
+		var from Element
+		switch {
+		case oldKeyChild != nil:
+			from = oldSlotToChild[oldKeyChild.Slot()]
+			delete(oldSlotToChild, oldKeyChild.Slot())
+		case oldSlotChild == nil || oldSlotChild.AsElement().widget.Key() == nil:
+			from = oldSlotChild
+			delete(oldSlotToChild, slot)
+		}
+		newChild := e.UpdateChild(from, child, slot)
+		if newChild != nil {
+			e.slotToChild[slot] = newChild
+			if newKey != nil {
+				if _, dup := e.keyedChildren[newKey]; dup && foundation.DebugMode {
+					duplicateKey = newKey
+				}
+				e.keyedChildren[newKey] = newChild
+			}
+		}
+	}
+	for _, c := range oldSlotToChild {
+		e.DeactivateChild(c)
+	}
+	if foundation.DebugMode && duplicateKey != nil {
+		panic(errors.New("SlottedDuplicateKeys", "multiple widgets used the same key in a slotted render object widget; a key can only be specified on one widget at a time in the same parent widget",
+			"widget", foundation.RuntimeTypeName(w), "key", duplicateKey.String()))
+	}
+}
+
+// InsertRenderObjectChild puts the child in the slot of the render object.
+//
+// Flutter: widgets/slotted_render_object_widget.dart SlottedRenderObjectElement.insertRenderObjectChild
+func (e *SlottedRenderObjectElement) InsertRenderObjectChild(child rendering.RenderObject, slot any) {
+	e.renderObject.(slottedHolder).SetSlotChild(child, slot)
+}
+
+// RemoveRenderObjectChild takes the child out of the slot of the render object.
+//
+// Flutter: widgets/slotted_render_object_widget.dart SlottedRenderObjectElement.removeRenderObjectChild
+func (e *SlottedRenderObjectElement) RemoveRenderObjectChild(child rendering.RenderObject, slot any) {
+	holder := e.renderObject.(slottedHolder)
+	if holder.SlotChild(slot) == child {
+		holder.SetSlotChild(nil, slot)
+	}
+}
+
+// MoveRenderObjectChild moves the child to another slot of the render object.
+//
+// Flutter: widgets/slotted_render_object_widget.dart SlottedRenderObjectElement.moveRenderObjectChild
+func (e *SlottedRenderObjectElement) MoveRenderObjectChild(child rendering.RenderObject, oldSlot, newSlot any) {
+	e.renderObject.(slottedHolder).MoveSlotChild(child, newSlot, oldSlot)
+}

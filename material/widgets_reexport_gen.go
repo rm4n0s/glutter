@@ -1654,6 +1654,11 @@ func DescribeWidget(w widgets.Widget, opts ...foundation.DiagnosticsNodeOpts) fo
 	return widgets.DescribeWidget(w, opts...)
 }
 
+// DesktopTextSelectionToolbarLayoutDelegate is widgets.DesktopTextSelectionToolbarLayoutDelegate.
+//
+// Flutter: widgets.dart DesktopTextSelectionToolbarLayoutDelegate
+type DesktopTextSelectionToolbarLayoutDelegate = widgets.DesktopTextSelectionToolbarLayoutDelegate
+
 // DiagonalDragBehavior is widgets.DiagonalDragBehavior.
 //
 // Flutter: widgets.dart DiagonalDragBehavior
@@ -5148,6 +5153,13 @@ func NewDeleteToNextWordBoundaryIntent(forward bool) widgets.DeleteToNextWordBou
 	return widgets.NewDeleteToNextWordBoundaryIntent(forward)
 }
 
+// NewDesktopTextSelectionToolbarLayoutDelegate is widgets.NewDesktopTextSelectionToolbarLayoutDelegate.
+//
+// Flutter: widgets.dart NewDesktopTextSelectionToolbarLayoutDelegate
+func NewDesktopTextSelectionToolbarLayoutDelegate(anchor ui.Offset) *widgets.DesktopTextSelectionToolbarLayoutDelegate {
+	return widgets.NewDesktopTextSelectionToolbarLayoutDelegate(anchor)
+}
+
 // NewDirectionalFocusAction is widgets.NewDirectionalFocusAction.
 //
 // Flutter: widgets.dart NewDirectionalFocusAction
@@ -7445,6 +7457,20 @@ func NewSliverVariedExtentListBuilder(itemBuilder widgets.NullableIndexedWidgetB
 // Flutter: widgets.dart NewSliverVariedExtentListList
 func NewSliverVariedExtentListList(itemExtentBuilder rendering.ItemExtentBuilder, children []widgets.Widget, opts ...widgets.SliverListOpts) *widgets.SliverVariedExtentList {
 	return widgets.NewSliverVariedExtentListList(itemExtentBuilder, children, opts...)
+}
+
+// NewSlottedMultiChildRenderObjectWidgetBase is widgets.NewSlottedMultiChildRenderObjectWidgetBase.
+//
+// Flutter: widgets.dart NewSlottedMultiChildRenderObjectWidgetBase
+func NewSlottedMultiChildRenderObjectWidgetBase(opts ...widgets.WidgetOpts) widgets.SlottedMultiChildRenderObjectWidget {
+	return widgets.NewSlottedMultiChildRenderObjectWidgetBase(opts...)
+}
+
+// NewSlottedRenderObjectElement is widgets.NewSlottedRenderObjectElement.
+//
+// Flutter: widgets.dart NewSlottedRenderObjectElement
+func NewSlottedRenderObjectElement(w widgets.SlottedRenderObjectWidget) *widgets.SlottedRenderObjectElement {
+	return widgets.NewSlottedRenderObjectElement(w)
 }
 
 // NewSpacer is widgets.NewSpacer.
@@ -10310,6 +10336,21 @@ type SliverToBoxAdapterOpts = widgets.SliverToBoxAdapterOpts
 //
 // Flutter: widgets.dart SliverVariedExtentList
 type SliverVariedExtentList = widgets.SliverVariedExtentList
+
+// SlottedMultiChildRenderObjectWidget is widgets.SlottedMultiChildRenderObjectWidget.
+//
+// Flutter: widgets.dart SlottedMultiChildRenderObjectWidget
+type SlottedMultiChildRenderObjectWidget = widgets.SlottedMultiChildRenderObjectWidget
+
+// SlottedRenderObjectElement is widgets.SlottedRenderObjectElement.
+//
+// Flutter: widgets.dart SlottedRenderObjectElement
+type SlottedRenderObjectElement = widgets.SlottedRenderObjectElement
+
+// SlottedRenderObjectWidget is widgets.SlottedRenderObjectWidget.
+//
+// Flutter: widgets.dart SlottedRenderObjectWidget
+type SlottedRenderObjectWidget = widgets.SlottedRenderObjectWidget
 
 // Spacer is widgets.Spacer.
 //

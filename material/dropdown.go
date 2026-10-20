@@ -13,6 +13,7 @@ import (
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/animation"
 	"github.com/rm4n0s/glutter/foundation"
+	"github.com/rm4n0s/glutter/gestures"
 	"github.com/rm4n0s/glutter/painting"
 	"github.com/rm4n0s/glutter/rendering"
 	"github.com/rm4n0s/glutter/services"
@@ -747,6 +748,12 @@ type DropdownButton[T comparable] struct {
 	items     []*DropdownMenuItem[T]
 	onChanged func(value foundation.Opt[T])
 	o         DropdownButtonOpts[T]
+	// inputDecoration and isEmpty are set by DropdownButtonFormField, which
+	// gives the button an InputDecorator.
+	//
+	// Flutter: material/dropdown.dart DropdownButton._formField
+	inputDecoration *InputDecoration
+	isEmpty         bool
 }
 
 // NewDropdownButton creates the button; a nil list of items or a nil onChanged
@@ -812,6 +819,7 @@ type dropdownButtonState[T comparable] struct {
 	actionMap       widgets.ActionMap
 	hasPrimaryFocus bool
 	isMenuExpanded  bool
+	isHovering      bool
 	focusedNode     *widgets.FocusNode
 	focusHandle     foundation.ListenerHandle
 }
@@ -1097,6 +1105,9 @@ func (s *dropdownButtonState[T]) Build(bc widgets.BuildContext) widgets.Widget {
 	}
 
 	icon := w.o.Icon
+	if icon == nil && w.inputDecoration != nil {
+		icon = w.inputDecoration.SuffixIcon
+	}
 	if icon == nil {
 		icon = widgets.NewIcon(Icons.ArrowDropDown())
 	}
@@ -1107,7 +1118,9 @@ func (s *dropdownButtonState[T]) Build(bc widgets.BuildContext) widgets.Widget {
 	if w.o.IsExpanded {
 		rowChildren[0] = widgets.NewExpanded(innerItems)
 	}
-	rowChildren = append(rowChildren, effectiveSuffixIcon)
+	if w.inputDecoration == nil {
+		rowChildren = append(rowChildren, effectiveSuffixIcon)
+	}
 	style := textStyle
 	if !s.enabled() {
 		style = textStyle.CopyWith(painting.TextStyleCopy{Color: foundation.Some(theme.DisabledColor)})
@@ -1161,18 +1174,71 @@ func (s *dropdownButtonState[T]) Build(bc widgets.BuildContext) widgets.Widget {
 	if w.o.Padding != nil {
 		inner = widgets.NewPadding(w.o.Padding, result)
 	}
-	// Deviation: Flutter's DropdownButtonFormField, which gives the button an
-	// InputDecorator, comes with step 13.5, with the InputDecorator.
-	result = NewInkWell(inner, InkWellOpts{
-		MouseCursor:     effectiveCursor,
-		OnTap:           onTap,
-		CanRequestFocus: foundation.Some(s.enabled()),
-		BorderRadius:    w.o.BorderRadius,
-		FocusNode:       s.focusNode(),
-		Autofocus:       w.o.Autofocus,
-		FocusColor:      firstOpt(w.o.FocusColor, foundation.Some(theme.FocusColor)),
-		EnableFeedback:  foundation.Some(false),
-	})
+	// When an InputDecoration is provided, use it instead of using an InkWell
+	// that overflows in some cases (such as showing an errorText) and requires
+	// additional logic to manage clipping properly.
+	// A filled InputDecoration is able to fill the InputDecorator container
+	// without overflowing. It also supports blending the hovered color.
+	// According to the Material specification, the overlay colors should be
+	// visible only for filled dropdown button, see:
+	// https://m2.material.io/components/menus#dropdown-menu
+	if w.inputDecoration != nil {
+		inputTheme := InputDecorationThemeOf(bc)
+		filled := w.inputDecoration.Filled.OrElse(inputTheme.Filled)
+		outlined := false
+		if w.inputDecoration.Border != nil {
+			outlined = w.inputDecoration.Border.IsOutline()
+		} else if inputTheme.Border != nil {
+			outlined = inputTheme.Border.IsOutline()
+		}
+		suffixIconEndMargin := 0.0
+		if filled || outlined {
+			suffixIconEndMargin = 12.0
+		}
+		effectiveDecoration := w.inputDecoration.CopyWith(InputDecorationCopy{
+			SuffixIconConstraints: foundation.Some(rendering.NewBoxConstraints(rendering.BoxConstraintsOpts{
+				MinWidth: foundation.Some(w.iconSize() + suffixIconEndMargin), MinHeight: foundation.Some(w.iconSize())})),
+			SuffixIcon: foundation.Some[widgets.Widget](widgets.NewPadding(painting.EdgeInsetsDirectional{End: suffixIconEndMargin}, effectiveSuffixIcon)),
+		})
+		if s.hasPrimaryFocus {
+			focusColor := firstOpt(w.o.FocusColor, effectiveDecoration.FocusColor)
+			if c, ok := focusColor.Get(); ok {
+				effectiveDecoration = effectiveDecoration.CopyWith(InputDecorationCopy{
+					FillColor: foundation.Some[widgets.WidgetStateProperty[ui.Color]](widgets.NewWidgetStatePropertyAll(c))})
+			}
+		}
+		result = widgets.NewFocus(
+			widgets.NewMouseRegion(
+				widgets.NewGestureDetector(
+					NewInputDecorator(effectiveDecoration, InputDecoratorOpts{
+						IsEmpty: w.isEmpty, IsFocused: s.hasPrimaryFocus, IsHovering: s.isHovering, Child: inner}),
+					widgets.GestureDetectorOpts{OnTap: onTap, Behavior: rendering.HitTestBehaviorOpaque}),
+				widgets.MouseRegionOpts{
+					OnEnter: func(*gestures.PointerEnterEvent) {
+						if !s.isHovering {
+							s.SetState(func() { s.isHovering = true })
+						}
+					},
+					OnExit: func(*gestures.PointerExitEvent) {
+						if s.isHovering {
+							s.SetState(func() { s.isHovering = false })
+						}
+					},
+					Cursor: effectiveCursor,
+				}),
+			widgets.FocusOpts{CanRequestFocus: foundation.Some(s.enabled()), FocusNode: s.focusNode(), Autofocus: w.o.Autofocus})
+	} else {
+		result = NewInkWell(inner, InkWellOpts{
+			MouseCursor:     effectiveCursor,
+			OnTap:           onTap,
+			CanRequestFocus: foundation.Some(s.enabled()),
+			BorderRadius:    w.o.BorderRadius,
+			FocusNode:       s.focusNode(),
+			Autofocus:       w.o.Autofocus,
+			FocusColor:      firstOpt(w.o.FocusColor, foundation.Some(theme.FocusColor)),
+			EnableFeedback:  foundation.Some(false),
+		})
+	}
 	childHasButtonSemantic := hintIndex.IsSome() || (s.selectedIndex.IsSome() && w.o.SelectedItemBuilder == nil)
 	return widgets.NewSemantics(widgets.NewActions(s.actionMap, result), widgets.SemanticsOpts{
 		Button: foundation.Some(!childHasButtonSemantic), Expanded: foundation.Some(s.isMenuExpanded)})

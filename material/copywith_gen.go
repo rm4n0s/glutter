@@ -9,6 +9,7 @@ import (
 	services "github.com/rm4n0s/glutter/services"
 	ui "github.com/rm4n0s/glutter/ui"
 	widgets "github.com/rm4n0s/glutter/widgets"
+	time "time"
 )
 
 // ActionIconThemeDataCopy holds the replacements for ActionIconThemeData.CopyWith: a field that is None keeps the value of the
@@ -286,6 +287,37 @@ func (x DrawerThemeData) CopyWith(c DrawerThemeDataCopy) DrawerThemeData {
 	return r
 }
 
+// DropdownMenuThemeDataCopy holds the replacements for DropdownMenuThemeData.CopyWith: a field that is None keeps the value of the
+// copied one.
+//
+// Flutter: material/dropdown_menu_theme.dart DropdownMenuThemeData.copyWith
+type DropdownMenuThemeDataCopy struct {
+	TextStyle            foundation.Opt[*painting.TextStyle]
+	InputDecorationTheme foundation.Opt[*InputDecorationThemeData]
+	MenuStyle            foundation.Opt[*MenuStyle]
+	DisabledColor        foundation.Opt[ui.Color]
+}
+
+// CopyWith returns a copy of the DropdownMenuThemeData with the fields that the DropdownMenuThemeDataCopy sets replaced.
+//
+// Flutter: material/dropdown_menu_theme.dart DropdownMenuThemeData.copyWith
+func (x DropdownMenuThemeData) CopyWith(c DropdownMenuThemeDataCopy) DropdownMenuThemeData {
+	r := x
+	if v, ok := c.TextStyle.Get(); ok {
+		r.TextStyle = v
+	}
+	if v, ok := c.InputDecorationTheme.Get(); ok {
+		r.InputDecorationTheme = v
+	}
+	if v, ok := c.MenuStyle.Get(); ok {
+		r.MenuStyle = v
+	}
+	if c.DisabledColor.IsSome() {
+		r.DisabledColor = c.DisabledColor
+	}
+	return r
+}
+
 // FloatingActionButtonThemeDataCopy holds the replacements for FloatingActionButtonThemeData.CopyWith: a field that is None keeps the value of the
 // copied one.
 //
@@ -381,6 +413,169 @@ func (x FloatingActionButtonThemeData) CopyWith(c FloatingActionButtonThemeDataC
 	}
 	if v, ok := c.MouseCursor.Get(); ok {
 		r.MouseCursor = v
+	}
+	return r
+}
+
+// InputDecorationThemeDataCopy holds the replacements for InputDecorationThemeData.CopyWith: a field that is None keeps the value of the
+// copied one.
+//
+// Flutter: material/input_decorator.dart InputDecorationThemeData.copyWith
+type InputDecorationThemeDataCopy struct {
+	LabelStyle             foundation.Opt[widgets.WidgetStateProperty[*painting.TextStyle]]
+	FloatingLabelStyle     foundation.Opt[widgets.WidgetStateProperty[*painting.TextStyle]]
+	HelperStyle            foundation.Opt[widgets.WidgetStateProperty[*painting.TextStyle]]
+	HelperMaxLines         foundation.Opt[int]
+	HintStyle              foundation.Opt[widgets.WidgetStateProperty[*painting.TextStyle]]
+	HintFadeDuration       foundation.Opt[time.Duration]
+	HintMaxLines           foundation.Opt[int]
+	ErrorStyle             foundation.Opt[widgets.WidgetStateProperty[*painting.TextStyle]]
+	ErrorMaxLines          foundation.Opt[int]
+	FloatingLabelBehavior  foundation.Opt[FloatingLabelBehavior]
+	FloatingLabelAlignment foundation.Opt[FloatingLabelAlignment]
+	IsDense                foundation.Opt[bool]
+	ContentPadding         foundation.Opt[painting.EdgeInsetsGeometry]
+	IsCollapsed            foundation.Opt[bool]
+	IconColor              foundation.Opt[widgets.WidgetStateProperty[ui.Color]]
+	PrefixStyle            foundation.Opt[widgets.WidgetStateProperty[*painting.TextStyle]]
+	PrefixIconColor        foundation.Opt[widgets.WidgetStateProperty[ui.Color]]
+	PrefixIconConstraints  foundation.Opt[rendering.BoxConstraints]
+	SuffixStyle            foundation.Opt[widgets.WidgetStateProperty[*painting.TextStyle]]
+	SuffixIconColor        foundation.Opt[widgets.WidgetStateProperty[ui.Color]]
+	SuffixIconConstraints  foundation.Opt[rendering.BoxConstraints]
+	CounterStyle           foundation.Opt[widgets.WidgetStateProperty[*painting.TextStyle]]
+	Filled                 foundation.Opt[bool]
+	FillColor              foundation.Opt[widgets.WidgetStateProperty[ui.Color]]
+	ActiveIndicatorBorder  foundation.Opt[widgets.WidgetStateProperty[foundation.Opt[painting.BorderSide]]]
+	OutlineBorder          foundation.Opt[widgets.WidgetStateProperty[foundation.Opt[painting.BorderSide]]]
+	FocusColor             foundation.Opt[ui.Color]
+	HoverColor             foundation.Opt[ui.Color]
+	ErrorBorder            foundation.Opt[InputBorder]
+	FocusedBorder          foundation.Opt[InputBorder]
+	FocusedErrorBorder     foundation.Opt[InputBorder]
+	DisabledBorder         foundation.Opt[InputBorder]
+	EnabledBorder          foundation.Opt[InputBorder]
+	Border                 foundation.Opt[InputBorder]
+	AlignLabelWithHint     foundation.Opt[bool]
+	Constraints            foundation.Opt[rendering.BoxConstraints]
+	VisualDensity          foundation.Opt[VisualDensity]
+}
+
+// CopyWith returns a copy of the InputDecorationThemeData with the fields that the InputDecorationThemeDataCopy sets replaced.
+//
+// Flutter: material/input_decorator.dart InputDecorationThemeData.copyWith
+func (x InputDecorationThemeData) CopyWith(c InputDecorationThemeDataCopy) InputDecorationThemeData {
+	r := x
+	if v, ok := c.LabelStyle.Get(); ok {
+		r.LabelStyle = v
+	}
+	if v, ok := c.FloatingLabelStyle.Get(); ok {
+		r.FloatingLabelStyle = v
+	}
+	if v, ok := c.HelperStyle.Get(); ok {
+		r.HelperStyle = v
+	}
+	if c.HelperMaxLines.IsSome() {
+		r.HelperMaxLines = c.HelperMaxLines
+	}
+	if v, ok := c.HintStyle.Get(); ok {
+		r.HintStyle = v
+	}
+	if c.HintFadeDuration.IsSome() {
+		r.HintFadeDuration = c.HintFadeDuration
+	}
+	if c.HintMaxLines.IsSome() {
+		r.HintMaxLines = c.HintMaxLines
+	}
+	if v, ok := c.ErrorStyle.Get(); ok {
+		r.ErrorStyle = v
+	}
+	if c.ErrorMaxLines.IsSome() {
+		r.ErrorMaxLines = c.ErrorMaxLines
+	}
+	if v, ok := c.FloatingLabelBehavior.Get(); ok {
+		r.FloatingLabelBehavior = v
+	}
+	if c.FloatingLabelAlignment.IsSome() {
+		r.FloatingLabelAlignment = c.FloatingLabelAlignment
+	}
+	if v, ok := c.IsDense.Get(); ok {
+		r.IsDense = v
+	}
+	if v, ok := c.ContentPadding.Get(); ok {
+		r.ContentPadding = v
+	}
+	if v, ok := c.IsCollapsed.Get(); ok {
+		r.IsCollapsed = v
+	}
+	if v, ok := c.IconColor.Get(); ok {
+		r.IconColor = v
+	}
+	if v, ok := c.PrefixStyle.Get(); ok {
+		r.PrefixStyle = v
+	}
+	if v, ok := c.PrefixIconColor.Get(); ok {
+		r.PrefixIconColor = v
+	}
+	if c.PrefixIconConstraints.IsSome() {
+		r.PrefixIconConstraints = c.PrefixIconConstraints
+	}
+	if v, ok := c.SuffixStyle.Get(); ok {
+		r.SuffixStyle = v
+	}
+	if v, ok := c.SuffixIconColor.Get(); ok {
+		r.SuffixIconColor = v
+	}
+	if c.SuffixIconConstraints.IsSome() {
+		r.SuffixIconConstraints = c.SuffixIconConstraints
+	}
+	if v, ok := c.CounterStyle.Get(); ok {
+		r.CounterStyle = v
+	}
+	if v, ok := c.Filled.Get(); ok {
+		r.Filled = v
+	}
+	if v, ok := c.FillColor.Get(); ok {
+		r.FillColor = v
+	}
+	if v, ok := c.ActiveIndicatorBorder.Get(); ok {
+		r.ActiveIndicatorBorder = v
+	}
+	if v, ok := c.OutlineBorder.Get(); ok {
+		r.OutlineBorder = v
+	}
+	if c.FocusColor.IsSome() {
+		r.FocusColor = c.FocusColor
+	}
+	if c.HoverColor.IsSome() {
+		r.HoverColor = c.HoverColor
+	}
+	if v, ok := c.ErrorBorder.Get(); ok {
+		r.ErrorBorder = v
+	}
+	if v, ok := c.FocusedBorder.Get(); ok {
+		r.FocusedBorder = v
+	}
+	if v, ok := c.FocusedErrorBorder.Get(); ok {
+		r.FocusedErrorBorder = v
+	}
+	if v, ok := c.DisabledBorder.Get(); ok {
+		r.DisabledBorder = v
+	}
+	if v, ok := c.EnabledBorder.Get(); ok {
+		r.EnabledBorder = v
+	}
+	if v, ok := c.Border.Get(); ok {
+		r.Border = v
+	}
+	if v, ok := c.AlignLabelWithHint.Get(); ok {
+		r.AlignLabelWithHint = v
+	}
+	if c.Constraints.IsSome() {
+		r.Constraints = c.Constraints
+	}
+	if c.VisualDensity.IsSome() {
+		r.VisualDensity = c.VisualDensity
 	}
 	return r
 }
@@ -903,6 +1098,33 @@ func (x TabBarThemeData) CopyWith(c TabBarThemeDataCopy) TabBarThemeData {
 	}
 	if c.SplashBorderRadius.IsSome() {
 		r.SplashBorderRadius = c.SplashBorderRadius
+	}
+	return r
+}
+
+// TextSelectionThemeDataCopy holds the replacements for TextSelectionThemeData.CopyWith: a field that is None keeps the value of the
+// copied one.
+//
+// Flutter: material/text_selection_theme.dart TextSelectionThemeData.copyWith
+type TextSelectionThemeDataCopy struct {
+	CursorColor          foundation.Opt[ui.Color]
+	SelectionColor       foundation.Opt[ui.Color]
+	SelectionHandleColor foundation.Opt[ui.Color]
+}
+
+// CopyWith returns a copy of the TextSelectionThemeData with the fields that the TextSelectionThemeDataCopy sets replaced.
+//
+// Flutter: material/text_selection_theme.dart TextSelectionThemeData.copyWith
+func (x TextSelectionThemeData) CopyWith(c TextSelectionThemeDataCopy) TextSelectionThemeData {
+	r := x
+	if c.CursorColor.IsSome() {
+		r.CursorColor = c.CursorColor
+	}
+	if c.SelectionColor.IsSome() {
+		r.SelectionColor = c.SelectionColor
+	}
+	if c.SelectionHandleColor.IsSome() {
+		r.SelectionHandleColor = c.SelectionHandleColor
 	}
 	return r
 }
