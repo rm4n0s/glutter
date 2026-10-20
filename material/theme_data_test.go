@@ -552,7 +552,7 @@ func TestThemeDataDiagnosticsIncludeAllProperties(t *testing.T) {
 		"colorScheme", "primaryColor", "primaryColorLight", "primaryColorDark", "focusColor", "hoverColor", "shadowColor", "canvasColor",
 		"scaffoldBackgroundColor", "cardColor", "dividerColor", "highlightColor", "splashColor", "unselectedWidgetColor", "disabledColor",
 		"secondaryHeaderColor", "hintColor", "typography", "textTheme", "primaryTextTheme", "iconTheme", "primaryIconTheme",
-		"dialogBackgroundColor", "indicatorColor", "appBarTheme", "bannerTheme", "bottomAppBarTheme", "snackBarTheme"}
+		"dialogBackgroundColor", "indicatorColor", "appBarTheme", "bannerTheme", "bottomAppBarTheme", "snackBarTheme", "drawerTheme", "bottomSheetTheme", "navigationBarTheme", "navigationRailTheme", "navigationDrawerTheme", "tabBarTheme"}
 	builder := foundation.NewDiagnosticPropertiesBuilder()
 	NewThemeData().DebugFillProperties(builder)
 	var names []string

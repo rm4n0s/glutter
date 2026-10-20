@@ -210,6 +210,32 @@ func TestSnackBarErrors(t *testing.T) {
 		{"overflow threshold", func(*testing.T) {
 			NewSnackBar(widgets.NewText("x"), SnackBarOpts{ActionOverflowThreshold: foundation.Some(2.0)})
 		}, "SnackBarOverflowThreshold"},
+		{"margin without floating", func(t *testing.T) {
+			ts, key := snackApp(t, plainScaffold)
+			state, _ := key.CurrentState()
+			state.ShowSnackBar(NewSnackBar(widgets.NewText("x"), SnackBarOpts{Margin: painting.NewEdgeInsetsAll(8)}))
+			ts.Pump()
+			if errs := ts.TakeErrors(); len(errs) > 0 {
+				panic(errs[0])
+			}
+		}, "SnackBarFloatingOnly"},
+		{"floating snack bar off screen", func(t *testing.T) {
+			key := widgets.NewGlobalKey[*ScaffoldMessengerState]()
+			ts := gluttertest.New(t, gluttertest.Opts{Size: ui.Size{Width: 400, Height: 600}})
+			// The bottom view padding makes a snack bar as high as the screen not fit.
+			ts.PumpWidget(NewMaterialApp(MaterialAppOpts{ScaffoldMessengerKey: key, Home: widgets.NewBuilder(func(bc widgets.BuildContext) widgets.Widget {
+				data := widgets.MediaQueryOf(bc).CopyWith(widgets.MediaQueryDataCopyOpts{ViewPadding: foundation.Some(painting.NewEdgeInsetsFromLTRB(0, 0, 0, 50))})
+				return widgets.NewMediaQuery(data, plainScaffold())
+			})}))
+			state, _ := key.CurrentState()
+			state.ShowSnackBar(NewSnackBar(widgets.NewSizedBox(nil, widgets.SizedBoxOpts{Height: foundation.Some(700.0)}),
+				SnackBarOpts{Behavior: SnackBarBehaviorFloating}))
+			ts.Pump()
+			ts.Pump(time.Second)
+			if errs := ts.TakeErrors(); len(errs) > 0 {
+				panic(errs[0])
+			}
+		}, "FloatingSnackBarOffScreen"},
 		{"no messenger", func(t *testing.T) {
 			ts := gluttertest.New(t, gluttertest.Opts{Size: ui.Size{Width: 400, Height: 600}})
 			var err error

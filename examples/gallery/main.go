@@ -124,7 +124,7 @@ func (w *GalleryShell) Build(bc m.BuildContext) m.Widget {
 			Actions: []m.Widget{NewIconAction(icon, tooltip, w.onToggleMode), m.NewSizedBox(nil, m.SizedBoxOpts{Width: m.Some(8.0)})},
 		}),
 		Body: m.NewRow([]m.Widget{
-			m.NewSizedBox(NewPageList(w.page, w.onPage), m.SizedBoxOpts{Width: m.Some(240.0)}),
+			NewPageRail(w.page, w.onPage),
 			m.NewColoredBox(colors.OutlineVariant(), m.NewSizedBox(nil, m.SizedBoxOpts{Width: m.Some(1.0)})),
 			m.NewExpanded(galleryPages[w.page].Build(bc)),
 		}, m.RowOpts{CrossAxisAlignment: m.CrossAxisAlignmentStretch}),
@@ -155,40 +155,13 @@ func (w *iconAction) Build(bc m.BuildContext) m.Widget {
 		m.SemanticsOpts{Button: m.Some(true), Tooltip: m.Some(w.tooltip)})
 }
 
-// PageList is the list on the side of the page names.
-//
-// TODO(step 13.2): a NavigationRail replaces it.
-type PageList struct {
-	m.StatelessWidget
-	selected int
-	onSelect func(int)
-}
-
-// NewPageList creates the list with the page at the index selected.
-func NewPageList(selected int, onSelect func(int)) *PageList {
-	return &PageList{selected: selected, onSelect: onSelect}
-}
-
-func (w *PageList) Build(bc m.BuildContext) m.Widget {
-	theme := m.ThemeOf(bc)
-	items := make([]m.Widget, len(galleryPages))
+// NewPageRail is the navigation rail on the side with a destination for each
+// page, extended so that the names of the pages show next to the icons.
+func NewPageRail(selected int, onSelect func(int)) m.Widget {
+	destinations := make([]m.NavigationRailDestination, len(galleryPages))
 	for i, p := range galleryPages {
-		i, selected := i, i == w.selected
-		bg := m.Colors.Transparent
-		style := theme.TextTheme.LabelLarge
-		if selected {
-			bg = theme.ColorScheme.SecondaryContainer()
-			style = style.CopyWith(m.TextStyleCopy{Color: m.Some(theme.ColorScheme.OnSecondaryContainer())})
-		}
-		items[i] = m.NewPadding(m.NewEdgeInsetsSymmetric(2, 12),
-			m.NewMaterial(
-				m.NewInkWell(
-					m.NewSizedBox(
-						m.NewPadding(m.NewEdgeInsetsSymmetric(0, 16), m.NewAlign(m.NewText(p.Name, m.TextOpts{Style: style}),
-							m.AlignOpts{Alignment: m.AlignmentCenterLeft})),
-						m.SizedBoxOpts{Height: m.Some(56.0)}),
-					m.InkWellOpts{OnTap: func() { w.onSelect(i) }, CustomBorder: m.NewStadiumBorder()}),
-				m.MaterialOpts{Color: m.Some(bg), Shape: m.NewStadiumBorder()}))
+		destinations[i] = m.NewNavigationRailDestination(m.NewIcon(p.Icon), m.NewText(p.Name))
 	}
-	return m.NewListView(items, m.ListViewOpts{Padding: m.NewEdgeInsetsSymmetric(12, 0)})
+	return m.NewNavigationRail(destinations, m.Some(selected), m.NavigationRailOpts{
+		Extended: true, MinExtendedWidth: m.Some(240.0), OnDestinationSelected: onSelect})
 }

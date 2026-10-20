@@ -10,7 +10,9 @@ import (
 	"math"
 
 	"github.com/rm4n0s/errors"
+	"github.com/rm4n0s/glutter/animation"
 	"github.com/rm4n0s/glutter/foundation"
+	"github.com/rm4n0s/glutter/gestures"
 	"github.com/rm4n0s/glutter/painting"
 	"github.com/rm4n0s/glutter/rendering"
 	"github.com/rm4n0s/glutter/ui"
@@ -36,8 +38,12 @@ const (
 	scaffoldSlotPersistentFooter
 	scaffoldSlotBottomNavigationBar
 	scaffoldSlotFloatingActionButton
-	// TODO(step 13.2): bodyScrim, bottomSheet, drawer and endDrawer. TODO(step
-	// 13.2 or later): statusBar, the tap target for the status bar of iOS.
+	scaffoldSlotBodyScrim
+	scaffoldSlotBottomSheet
+	scaffoldSlotDrawer
+	scaffoldSlotEndDrawer
+	// Deviation: the statusBar slot, the tap target for the status bar of iOS and
+	// macOS, is not ported: the tap is not sent on the Linux desktop (SPEC §12.10).
 )
 
 // ScaffoldPrelayoutGeometry holds the geometry that a FloatingActionButtonLocation
@@ -292,11 +298,23 @@ func (d *scaffoldLayout) PerformLayout(size ui.Size) {
 		d.PositionChild(scaffoldSlotBody, ui.Offset{Dx: 0, Dy: contentTop})
 	}
 
-	// TODO(step 13.2): the body scrim and the bottom sheet.
 	bottomSheetSize := ui.Size{}
 	snackBarSize := ui.Size{}
+	if d.HasChild(scaffoldSlotBodyScrim) {
+		d.LayoutChild(scaffoldSlotBodyScrim, rendering.BoxConstraints{MaxWidth: fullWidthConstraints.MaxWidth, MaxHeight: contentBottom})
+		d.PositionChild(scaffoldSlotBodyScrim, ui.Offset{})
+	}
+
+	// Set the size of the SnackBar early if the behavior is fixed so the FAB can
+	// be positioned correctly.
 	if d.HasChild(scaffoldSlotSnackBar) && !d.isSnackBarFloating {
 		snackBarSize = d.LayoutChild(scaffoldSlotSnackBar, fullWidthConstraints)
+	}
+
+	if d.HasChild(scaffoldSlotBottomSheet) {
+		bottomSheetSize = d.LayoutChild(scaffoldSlotBottomSheet, rendering.BoxConstraints{
+			MaxWidth: fullWidthConstraints.MaxWidth, MaxHeight: math.Max(0.0, contentBottom-contentTop)})
+		d.PositionChild(scaffoldSlotBottomSheet, ui.Offset{Dx: (size.Width - bottomSheetSize.Width) / 2.0, Dy: contentBottom - bottomSheetSize.Height})
 	}
 
 	floatingActionButtonRect := ui.Rect{}
@@ -362,7 +380,14 @@ func (d *scaffoldLayout) PerformLayout(size ui.Size) {
 		}
 	}
 
-	// TODO(step 13.2): the status bar, drawer and end drawer slots.
+	if d.HasChild(scaffoldSlotDrawer) {
+		d.LayoutChild(scaffoldSlotDrawer, rendering.NewBoxConstraintsTight(size))
+		d.PositionChild(scaffoldSlotDrawer, ui.Offset{})
+	}
+	if d.HasChild(scaffoldSlotEndDrawer) {
+		d.LayoutChild(scaffoldSlotEndDrawer, rendering.NewBoxConstraintsTight(size))
+		d.PositionChild(scaffoldSlotEndDrawer, ui.Offset{})
+	}
 
 	var fabArea foundation.Opt[ui.Rect]
 	if d.HasChild(scaffoldSlotFloatingActionButton) {
@@ -424,10 +449,41 @@ type ScaffoldOpts struct {
 	// scaffold, behind the app bar.
 	ExtendBodyBehindAppBar bool
 
-	// TODO(step 13.2): Drawer, EndDrawer, OnDrawerChanged, OnEndDrawerChanged,
-	// DrawerDragStartBehavior, DrawerBarrierDismissible, DrawerScrimColor,
-	// DrawerEdgeDragWidth, the drawer drag flags, BottomSheet and
-	// BottomSheetScrimBuilder. TODO: RestorationId.
+	// Drawer is a panel displayed to the side of the body, often hidden on mobile
+	// devices; ScaffoldState.OpenDrawer opens it.
+	Drawer widgets.Widget
+	// OnDrawerChanged is called when the drawer is opened or closed.
+	OnDrawerChanged func(isOpened bool)
+	// EndDrawer is a panel displayed to the side of the body, at the end of the
+	// screen.
+	EndDrawer widgets.Widget
+	// OnEndDrawerChanged is called when the end drawer is opened or closed.
+	OnEndDrawerChanged func(isOpened bool)
+	// DrawerScrimColor is the color of the scrim that obscures the body while a
+	// drawer is open.
+	DrawerScrimColor foundation.Opt[ui.Color]
+	// NoDrawerBarrierDismissible says that tapping the scrim does not close the
+	// drawer (Flutter's drawerBarrierDismissible: false).
+	NoDrawerBarrierDismissible bool
+	// DrawerEdgeDragWidth is the width of the area of the edge of the screen that
+	// opens a drawer by a drag.
+	DrawerEdgeDragWidth foundation.Opt[float64]
+	// NoDrawerEnableOpenDragGesture says that the drawer cannot be opened by a drag
+	// from the edge.
+	NoDrawerEnableOpenDragGesture bool
+	// NoEndDrawerEnableOpenDragGesture says that the end drawer cannot be opened by
+	// a drag from the edge.
+	NoEndDrawerEnableOpenDragGesture bool
+	// DrawerDragStartBehavior is how the drags of the drawers start.
+	DrawerDragStartBehavior gestures.DragStartBehavior
+	// BottomSheet is the persistent bottom sheet, shown at the bottom of the
+	// scaffold, over the body.
+	BottomSheet widgets.Widget
+	// BottomSheetScrimBuilder builds the scrim over the body while a bottom sheet
+	// dominates the screen; the default darkens the body.
+	BottomSheetScrimBuilder func(bc widgets.BuildContext, animation animation.Animation[float64]) widgets.Widget
+
+	// TODO: RestorationId (no state restoration, SPEC §20).
 }
 
 // Scaffold implements the basic Material Design visual layout structure: an app
@@ -435,9 +491,8 @@ type ScaffoldOpts struct {
 // footer buttons, plus the snack bars and the banners that a ScaffoldMessenger
 // shows.
 //
-// TODO(step 13.2): the drawers, the bottom sheets (Scaffold.bottomSheet and
-// showBottomSheet) and the status bar tap. TODO(step 13.3): the floating action
-// button locations, animator and transition.
+// TODO(step 13.3): the floating action button locations, animator and
+// transition, and its hiding while a bottom sheet dominates the screen.
 //
 // Flutter: material/scaffold.dart Scaffold
 type Scaffold struct {
@@ -452,6 +507,9 @@ func NewScaffold(opts ...ScaffoldOpts) *Scaffold {
 	o := firstOpts(opts)
 	if o.FloatingActionButtonLocation == nil {
 		o.FloatingActionButtonLocation = FloatingActionButtonLocationEndFloat
+	}
+	if o.BottomSheetScrimBuilder == nil {
+		o.BottomSheetScrimBuilder = defaultBottomSheetScrimBuilder
 	}
 	return &Scaffold{StatefulWidget: widgets.NewStatefulWidgetBase(widgets.WidgetOpts{Key: o.Key}), o: o}
 }
@@ -550,13 +608,27 @@ func ScaffoldHasDrawer(bc widgets.BuildContext, registerForUpdates bool) bool {
 	return s != nil && s.HasDrawer()
 }
 
-// ScaffoldState is the state of a Scaffold: it manages the snack bars and the
-// banners that the ScaffoldMessenger above shows and the geometry of the
-// floating action button.
+// ScaffoldState is the state of a Scaffold: it manages the drawers, the bottom
+// sheets, the snack bars and the banners that the ScaffoldMessenger above shows
+// and the geometry of the floating action button.
 //
 // Flutter: material/scaffold.dart ScaffoldState
 type ScaffoldState struct {
 	widgets.StateOf[*Scaffold]
+	widgets.TickerProvider
+
+	drawerKey       *widgets.GlobalKey[*DrawerControllerState]
+	endDrawerKey    *widgets.GlobalKey[*DrawerControllerState]
+	drawerOpened    bool
+	endDrawerOpened bool
+
+	// Contains bottom sheets that may still be animating out of view. Important if
+	// the app/user takes an action that could repeatedly show a bottom sheet.
+	dismissedBottomSheets      []*standardBottomSheet
+	currentBottomSheet         *PersistentBottomSheetController
+	currentBottomSheetKey      *widgets.GlobalKey[widgets.State]
+	showBodyScrim              bool
+	bottomSheetScrimController *animation.AnimationController
 
 	appBarMaxHeight  foundation.Opt[float64]
 	geometryNotifier *scaffoldGeometryNotifier
@@ -573,16 +645,15 @@ type ScaffoldState struct {
 // Flutter: material/scaffold.dart ScaffoldState.hasAppBar
 func (s *ScaffoldState) HasAppBar() bool { return s.Widget().o.AppBar != nil }
 
-// HasDrawer is whether the scaffold has a drawer. It is false until step 13.2.
+// HasDrawer is whether the scaffold has a drawer.
 //
 // Flutter: material/scaffold.dart ScaffoldState.hasDrawer
-func (s *ScaffoldState) HasDrawer() bool { return false }
+func (s *ScaffoldState) HasDrawer() bool { return s.Widget().o.Drawer != nil }
 
-// HasEndDrawer is whether the scaffold has an end drawer. It is false until step
-// 13.2.
+// HasEndDrawer is whether the scaffold has an end drawer.
 //
 // Flutter: material/scaffold.dart ScaffoldState.hasEndDrawer
-func (s *ScaffoldState) HasEndDrawer() bool { return false }
+func (s *ScaffoldState) HasEndDrawer() bool { return s.Widget().o.EndDrawer != nil }
 
 // HasFloatingActionButton is whether the scaffold has a floating action button.
 //
@@ -597,16 +668,101 @@ func (s *ScaffoldState) HasFloatingActionButton() bool {
 // Flutter: material/scaffold.dart ScaffoldState.appBarMaxHeight
 func (s *ScaffoldState) AppBarMaxHeight() foundation.Opt[float64] { return s.appBarMaxHeight }
 
-// IsDrawerOpen is whether the drawer is opened. It is false until step 13.2.
+// IsDrawerOpen is whether the drawer is opened.
 //
 // Flutter: material/scaffold.dart ScaffoldState.isDrawerOpen
-func (s *ScaffoldState) IsDrawerOpen() bool { return false }
+func (s *ScaffoldState) IsDrawerOpen() bool { return s.drawerOpened }
 
-// IsEndDrawerOpen is whether the end drawer is opened. It is false until step
-// 13.2.
+// IsDrawerBarrierDismissible is whether tapping the scrim of a drawer, or the
+// dismiss key, closes it.
+//
+// Flutter: material/scaffold.dart ScaffoldState.isDrawerBarrierDismissible
+func (s *ScaffoldState) IsDrawerBarrierDismissible() bool {
+	return !s.Widget().o.NoDrawerBarrierDismissible
+}
+
+// IsEndDrawerOpen is whether the end drawer is opened.
 //
 // Flutter: material/scaffold.dart ScaffoldState.isEndDrawerOpen
-func (s *ScaffoldState) IsEndDrawerOpen() bool { return false }
+func (s *ScaffoldState) IsEndDrawerOpen() bool { return s.endDrawerOpened }
+
+func (s *ScaffoldState) drawerOpenedCallback(isOpened bool) {
+	if _, ok := s.drawerKey.CurrentState(); s.drawerOpened != isOpened && ok {
+		s.SetState(func() { s.drawerOpened = isOpened })
+		if cb := s.Widget().o.OnDrawerChanged; cb != nil {
+			cb(isOpened)
+		}
+	}
+}
+
+func (s *ScaffoldState) endDrawerOpenedCallback(isOpened bool) {
+	if _, ok := s.endDrawerKey.CurrentState(); s.endDrawerOpened != isOpened && ok {
+		s.SetState(func() { s.endDrawerOpened = isOpened })
+		if cb := s.Widget().o.OnEndDrawerChanged; cb != nil {
+			cb(isOpened)
+		}
+	}
+}
+
+// OpenDrawer opens the drawer, closing the end drawer first when it is open.
+//
+// Flutter: material/scaffold.dart ScaffoldState.openDrawer
+func (s *ScaffoldState) OpenDrawer() {
+	if end, ok := s.endDrawerKey.CurrentState(); ok && s.endDrawerOpened {
+		end.Close()
+	}
+	if d, ok := s.drawerKey.CurrentState(); ok {
+		d.Open()
+	}
+}
+
+// OpenEndDrawer opens the end drawer, closing the drawer first when it is open.
+//
+// Flutter: material/scaffold.dart ScaffoldState.openEndDrawer
+func (s *ScaffoldState) OpenEndDrawer() {
+	if d, ok := s.drawerKey.CurrentState(); ok && s.drawerOpened {
+		d.Close()
+	}
+	if end, ok := s.endDrawerKey.CurrentState(); ok {
+		end.Open()
+	}
+}
+
+// CloseDrawer closes the drawer.
+//
+// Flutter: material/scaffold.dart ScaffoldState.closeDrawer
+func (s *ScaffoldState) CloseDrawer() {
+	if s.HasDrawer() && s.IsDrawerOpen() {
+		if d, ok := s.drawerKey.CurrentState(); ok {
+			d.Close()
+		}
+	}
+}
+
+// CloseEndDrawer closes the end drawer.
+//
+// Flutter: material/scaffold.dart ScaffoldState.closeEndDrawer
+func (s *ScaffoldState) CloseEndDrawer() {
+	if s.HasEndDrawer() && s.IsEndDrawerOpen() {
+		if d, ok := s.endDrawerKey.CurrentState(); ok {
+			d.Close()
+		}
+	}
+}
+
+// ShowBodyScrim shows or hides the scrim over the body that a bottom sheet
+// that dominates the screen puts there; animationValue is the progress that the
+// scrim builder gets.
+//
+// Flutter: material/scaffold.dart ScaffoldState.showBodyScrim
+func (s *ScaffoldState) ShowBodyScrim(value bool, animationValue float64) {
+	if s.showBodyScrim != value {
+		s.SetState(func() { s.showBodyScrim = value })
+	}
+	if s.bottomSheetScrimController.Value() != animationValue {
+		s.bottomSheetScrimController.SetValue(animationValue)
+	}
+}
 
 func (s *ScaffoldState) updateSnackBar() {
 	var current *ScaffoldFeatureController[*SnackBar, SnackBarClosedReason]
@@ -638,6 +794,10 @@ func (s *ScaffoldState) resizeToAvoidBottomInset() bool {
 func (s *ScaffoldState) InitState() {
 	s.geometryNotifier = &scaffoldGeometryNotifier{}
 	s.bodyKey = widgets.NewGlobalKey[widgets.State]()
+	s.drawerKey = widgets.NewGlobalKey[*DrawerControllerState]()
+	s.endDrawerKey = widgets.NewGlobalKey[*DrawerControllerState]()
+	s.currentBottomSheetKey = widgets.NewGlobalKey[widgets.State]()
+	s.bottomSheetScrimController = animation.NewAnimationController(s)
 	// TODO(step 13.3): the floating action button transition scales the button in
 	// and out; until then it is fully shown.
 	s.updateGeometryScale()
@@ -654,7 +814,23 @@ func (s *ScaffoldState) updateGeometryScale() {
 // DidUpdateWidget keeps the geometry scale of the button.
 //
 // Flutter: material/scaffold.dart ScaffoldState.didUpdateWidget
-func (s *ScaffoldState) DidUpdateWidget(*Scaffold) { s.updateGeometryScale() }
+func (s *ScaffoldState) DidUpdateWidget(old *Scaffold) {
+	s.updateGeometryScale()
+	w := s.Widget()
+	if w.o.BottomSheet != old.o.BottomSheet {
+		if foundation.DebugMode && w.o.BottomSheet != nil && s.currentBottomSheet != nil && s.currentBottomSheet.isLocalHistoryEntry {
+			panic(errors.New("ScaffoldBottomSheetUpdateConflict", "Scaffold.bottomSheet cannot be specified while a bottom sheet displayed with showBottomSheet() is still visible. Use the PersistentBottomSheetController returned by showBottomSheet() to close the old bottom sheet before creating a Scaffold with a (non null) bottomSheet."))
+		}
+		switch {
+		case w.o.BottomSheet == nil:
+			s.closeCurrentBottomSheet()
+		case old.o.BottomSheet == nil:
+			s.maybeBuildPersistentBottomSheet()
+		default:
+			s.updatePersistentBottomSheet()
+		}
+	}
+}
 
 // DidChangeDependencies registers the scaffold with the closest
 // ScaffoldMessenger.
@@ -669,6 +845,7 @@ func (s *ScaffoldState) DidChangeDependencies() {
 	if s.scaffoldMessenger != nil {
 		s.scaffoldMessenger.register(s)
 	}
+	s.maybeBuildPersistentBottomSheet()
 }
 
 // Dispose unregisters the scaffold.
@@ -676,6 +853,7 @@ func (s *ScaffoldState) DidChangeDependencies() {
 // Flutter: material/scaffold.dart ScaffoldState.dispose
 func (s *ScaffoldState) Dispose() {
 	s.geometryNotifier.Dispose()
+	s.bottomSheetScrimController.Dispose()
 	if s.scaffoldMessenger != nil {
 		s.scaffoldMessenger.unregister(s)
 	}
@@ -729,7 +907,10 @@ func (s *ScaffoldState) Build(bc widgets.BuildContext) widgets.Widget {
 		removeTopPadding: o.AppBar != nil, removeBottomPadding: o.BottomNavigationBar != nil || o.PersistentFooterButtons != nil,
 		removeBottomInset: resize})
 
-	// TODO(step 13.2): the body scrim.
+	if s.showBodyScrim {
+		children = s.addSlot(children, o.BottomSheetScrimBuilder(bc, s.bottomSheetScrimController.View()), scaffoldSlotBodyScrim, slotOpts{
+			removeLeftPadding: true, removeTopPadding: true, removeRightPadding: true, removeBottomPadding: true})
+	}
 
 	if o.AppBar != nil {
 		topPadding := 0.0
@@ -743,7 +924,17 @@ func (s *ScaffoldState) Build(bc widgets.BuildContext) widgets.Widget {
 			scaffoldSlotAppBar, slotOpts{removeBottomPadding: true})
 	}
 
-	// TODO(step 13.2): the bottom sheets.
+	if s.currentBottomSheet != nil || len(s.dismissedBottomSheets) > 0 {
+		sheets := make([]widgets.Widget, 0, len(s.dismissedBottomSheets)+1)
+		for _, sheet := range s.dismissedBottomSheets {
+			sheets = append(sheets, sheet)
+		}
+		if s.currentBottomSheet != nil {
+			sheets = append(sheets, s.currentBottomSheet.Widget())
+		}
+		children = s.addSlot(children, widgets.NewStack(sheets, widgets.StackOpts{Alignment: painting.AlignmentBottomCenter}),
+			scaffoldSlotBottomSheet, slotOpts{removeTopPadding: true, removeBottomPadding: resize})
+	}
 
 	isSnackBarFloating := false
 	snackBarWidth := foundation.None[float64]()
@@ -806,7 +997,13 @@ func (s *ScaffoldState) Build(bc widgets.BuildContext) widgets.Widget {
 	children = s.addSlot(children, o.FloatingActionButton, scaffoldSlotFloatingActionButton, slotOpts{
 		removeLeftPadding: true, removeTopPadding: true, removeRightPadding: true, removeBottomPadding: true})
 
-	// TODO(step 13.2): the status bar tap target (iOS and macOS) and the drawers.
+	if s.endDrawerOpened {
+		children = s.buildDrawer(children, textDirection)
+		children = s.buildEndDrawer(children, textDirection)
+	} else {
+		children = s.buildEndDrawer(children, textDirection)
+		children = s.buildDrawer(children, textDirection)
+	}
 
 	minInsets := mq.Padding.CopyWith(painting.EdgeInsetsCopy{Bottom: foundation.Some(0.0)})
 	if resize {
@@ -821,25 +1018,79 @@ func (s *ScaffoldState) Build(bc widgets.BuildContext) widgets.Widget {
 		InheritedWidget: widgets.NewInheritedWidgetBase(
 			widgets.NewScrollNotificationObserver(
 				NewMaterial(
-					// TODO(step 13.2): an Actions widget with a DismissIntent action that
-					// closes the drawers wraps the layout.
-					widgets.NewCustomMultiChildLayout(&scaffoldLayout{
-						MultiChildLayoutDelegateBase:   rendering.NewMultiChildLayoutDelegateBase(nil),
-						extendBody:                     o.ExtendBody,
-						extendBodyBehindAppBar:         o.ExtendBodyBehindAppBar,
-						minInsets:                      minInsets,
-						minViewPadding:                 minViewPadding,
-						floatingActionButtonLocation:   o.FloatingActionButtonLocation,
-						geometryNotifier:               s.geometryNotifier,
-						textDirection:                  textDirection,
-						isSnackBarFloating:             isSnackBarFloating,
-						extendBodyBehindMaterialBanner: extendBodyBehindMaterialBanner,
-						snackBarWidth:                  snackBarWidth,
-						bodyInfo:                       &s.bodyInfo,
-					}, children),
+					widgets.NewBuilder(func(bc widgets.BuildContext) widgets.Widget {
+						return widgets.NewActions(widgets.ActionMap{widgets.IntentTypeOf[widgets.DismissIntent](): newDismissDrawerAction(bc)},
+							widgets.NewCustomMultiChildLayout(&scaffoldLayout{
+								MultiChildLayoutDelegateBase:   rendering.NewMultiChildLayoutDelegateBase(nil),
+								extendBody:                     o.ExtendBody,
+								extendBodyBehindAppBar:         o.ExtendBodyBehindAppBar,
+								minInsets:                      minInsets,
+								minViewPadding:                 minViewPadding,
+								floatingActionButtonLocation:   o.FloatingActionButtonLocation,
+								geometryNotifier:               s.geometryNotifier,
+								textDirection:                  textDirection,
+								isSnackBarFloating:             isSnackBarFloating,
+								extendBodyBehindMaterialBanner: extendBodyBehindMaterialBanner,
+								snackBarWidth:                  snackBarWidth,
+								bodyInfo:                       &s.bodyInfo,
+							}, children))
+					}),
 					MaterialOpts{Color: foundation.Some(o.BackgroundColor.OrElse(theme.ScaffoldBackgroundColor))}))),
 		hasDrawer: s.HasDrawer(), geometryNotifier: s.geometryNotifier,
 	}
+}
+
+func (s *ScaffoldState) buildEndDrawer(children []widgets.Widget, textDirection ui.TextDirection) []widgets.Widget {
+	o := s.Widget().o
+	if o.EndDrawer == nil {
+		return children
+	}
+	// Remove the side padding from the side we're not touching.
+	return s.addSlot(children, NewDrawerController(o.EndDrawer, DrawerAlignmentEnd, DrawerControllerOpts{
+		Key: s.endDrawerKey, DrawerCallback: s.endDrawerOpenedCallback, DragStartBehavior: o.DrawerDragStartBehavior,
+		ScrimColor: o.DrawerScrimColor, EdgeDragWidth: o.DrawerEdgeDragWidth, NoEnableOpenDragGesture: o.NoEndDrawerEnableOpenDragGesture,
+		IsDrawerOpen: s.endDrawerOpened, NoDrawerBarrierDismissible: o.NoDrawerBarrierDismissible}),
+		scaffoldSlotEndDrawer, slotOpts{removeLeftPadding: textDirection == ui.TextDirectionLTR, removeRightPadding: textDirection == ui.TextDirectionRTL})
+}
+
+func (s *ScaffoldState) buildDrawer(children []widgets.Widget, textDirection ui.TextDirection) []widgets.Widget {
+	o := s.Widget().o
+	if o.Drawer == nil {
+		return children
+	}
+	return s.addSlot(children, NewDrawerController(o.Drawer, DrawerAlignmentStart, DrawerControllerOpts{
+		Key: s.drawerKey, DrawerCallback: s.drawerOpenedCallback, DragStartBehavior: o.DrawerDragStartBehavior,
+		ScrimColor: o.DrawerScrimColor, EdgeDragWidth: o.DrawerEdgeDragWidth, NoEnableOpenDragGesture: o.NoDrawerEnableOpenDragGesture,
+		IsDrawerOpen: s.drawerOpened, NoDrawerBarrierDismissible: o.NoDrawerBarrierDismissible}),
+		scaffoldSlotDrawer, slotOpts{removeLeftPadding: textDirection == ui.TextDirectionRTL, removeRightPadding: textDirection == ui.TextDirectionLTR})
+}
+
+// dismissDrawerAction closes the drawers when the DismissIntent (Escape) runs.
+//
+// Flutter: material/scaffold.dart _DismissDrawerAction
+type dismissDrawerAction struct {
+	widgets.DismissAction
+	bc widgets.BuildContext
+}
+
+func newDismissDrawerAction(bc widgets.BuildContext) *dismissDrawerAction {
+	a := &dismissDrawerAction{bc: bc}
+	widgets.InitActionBase(&a.ActionBase, a)
+	return a
+}
+
+func (a *dismissDrawerAction) IsEnabled(widgets.Intent) bool {
+	scaffold := ScaffoldOf(a.bc)
+	return (scaffold.IsDrawerOpen() || scaffold.IsEndDrawerOpen()) && scaffold.IsDrawerBarrierDismissible()
+}
+
+func (a *dismissDrawerAction) Invoke(i widgets.Intent) any {
+	if a.IsEnabled(i) {
+		scaffold := ScaffoldOf(a.bc)
+		scaffold.CloseDrawer()
+		scaffold.CloseEndDrawer()
+	}
+	return nil
 }
 
 // scaffoldScope gives the descendants of a scaffold its geometry and whether it

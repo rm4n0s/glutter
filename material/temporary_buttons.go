@@ -81,6 +81,9 @@ func (w *tempTextButton) Build(bc widgets.BuildContext) widgets.Widget {
 // TODO(step 13.3): IconButton.
 type tempIconButton struct {
 	widgets.StatelessWidget
+	// child, when it is not nil, is the content instead of the icon: it takes the
+	// color of the icon theme of its context.
+	child     widgets.Widget
 	icon      widgets.IconData
 	size      float64
 	color     foundation.Opt[ui.Color]
@@ -90,10 +93,14 @@ type tempIconButton struct {
 
 func (w *tempIconButton) Build(bc widgets.BuildContext) widgets.Widget {
 	color := w.color.OrElse(ThemeOf(bc).ColorScheme.OnSurfaceVariant())
+	content := w.child
+	if content == nil {
+		content = widgets.NewIcon(w.icon, widgets.IconOpts{Size: foundation.Some(w.size), Color: foundation.Some(color)})
+	}
 	return widgets.NewSemantics(
 		NewMaterial(
 			NewInkWell(
-				widgets.NewSizedBox(widgets.NewCenter(widgets.NewIcon(w.icon, widgets.IconOpts{Size: foundation.Some(w.size), Color: foundation.Some(color)})),
+				widgets.NewSizedBox(widgets.NewCenter(content),
 					widgets.SizedBoxOpts{Width: foundation.Some(48.0), Height: foundation.Some(48.0)}),
 				InkWellOpts{OnTap: w.onPressed, CustomBorder: painting.NewCircleBorder(), HoverColor: foundation.Some(color.WithOpacity(0.08)),
 					FocusColor: foundation.Some(color.WithOpacity(0.1)), HighlightColor: foundation.Some(color.WithOpacity(0.1)), SplashColor: foundation.Some(color.WithOpacity(0.1))}),
@@ -114,4 +121,12 @@ func tempHairlineDivider(color foundation.Opt[ui.Color]) widgets.Widget {
 			Decoration: painting.NewBoxDecoration(painting.BoxDecorationOpts{Border: painting.Border{Bottom: side}}),
 		})),
 		widgets.SizedBoxOpts{Height: foundation.Some(0.0)})
+}
+
+// tempTooltip stands in for a Tooltip: it only gives the child the tooltip
+// semantics.
+//
+// TODO(step 13.9): Tooltip.
+func tempTooltip(message string, child widgets.Widget) widgets.Widget {
+	return widgets.NewSemantics(child, widgets.SemanticsOpts{Tooltip: foundation.Some(message)})
 }

@@ -427,7 +427,17 @@ type RenderFlexOpts struct {
 //
 // Flutter: rendering/flex.dart RenderFlex.new
 func NewRenderFlex(children []Box, opts ...RenderFlexOpts) *RenderFlex {
-	o := firstOpts(opts)
+	r := &RenderFlex{}
+	InitRenderFlex(r, r, children, firstOpts(opts))
+	return r
+}
+
+// InitRenderFlex initializes the flex embedded in a render object that extends
+// it (Dart's subclass): self is the outer value, whose methods the framework
+// calls, such as PerformLayout.
+//
+// Flutter: rendering/flex.dart RenderFlex.new
+func InitRenderFlex(r *RenderFlex, self Box, children []Box, o RenderFlexOpts) {
 	if o.Direction == painting.AxisUnspecified {
 		o.Direction = painting.AxisHorizontal
 	}
@@ -440,16 +450,13 @@ func NewRenderFlex(children []Box, opts ...RenderFlexOpts) *RenderFlex {
 	if o.Spacing < 0 {
 		panic(errors.New("FlexSpacingNegative", "the spacing of a RenderFlex must not be negative", "spacing", o.Spacing))
 	}
-	r := &RenderFlex{
-		direction: o.Direction, mainAxisSize: o.MainAxisSize.orMax(), mainAxisAlignment: o.MainAxisAlignment.orStart(),
-		crossAxisAlignment: o.CrossAxisAlignment.orCenter(), textDirection: o.TextDirection,
-		verticalDirection: o.VerticalDirection, textBaseline: o.TextBaseline, clipBehavior: o.ClipBehavior,
-		spacing: o.Spacing, clipRectLayer: NewLayerHandle[*ClipRectLayer](nil),
-	}
-	InitRenderBox(&r.RenderBox, r)
-	InitContainerRenderObject(&r.ContainerRenderObject, r)
+	r.direction, r.mainAxisSize, r.mainAxisAlignment = o.Direction, o.MainAxisSize.orMax(), o.MainAxisAlignment.orStart()
+	r.crossAxisAlignment, r.textDirection = o.CrossAxisAlignment.orCenter(), o.TextDirection
+	r.verticalDirection, r.textBaseline, r.clipBehavior = o.VerticalDirection, o.TextBaseline, o.ClipBehavior
+	r.spacing, r.clipRectLayer = o.Spacing, NewLayerHandle[*ClipRectLayer](nil)
+	InitRenderBox(&r.RenderBox, self)
+	InitContainerRenderObject(&r.ContainerRenderObject, self)
 	r.AddAll(children)
-	return r
 }
 
 // Direction is the direction to use as the main axis.

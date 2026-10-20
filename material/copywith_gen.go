@@ -5,6 +5,7 @@ package material
 import (
 	foundation "github.com/rm4n0s/glutter/foundation"
 	painting "github.com/rm4n0s/glutter/painting"
+	rendering "github.com/rm4n0s/glutter/rendering"
 	services "github.com/rm4n0s/glutter/services"
 	ui "github.com/rm4n0s/glutter/ui"
 	widgets "github.com/rm4n0s/glutter/widgets"
@@ -136,6 +137,124 @@ func (x BottomAppBarThemeData) CopyWith(c BottomAppBarThemeDataCopy) BottomAppBa
 	return r
 }
 
+// BottomSheetThemeDataCopy holds the replacements for BottomSheetThemeData.CopyWith: a field that is None keeps the value of the
+// copied one.
+//
+// Flutter: material/bottom_sheet_theme.dart BottomSheetThemeData.copyWith
+type BottomSheetThemeDataCopy struct {
+	BackgroundColor      foundation.Opt[ui.Color]
+	SurfaceTintColor     foundation.Opt[ui.Color]
+	Elevation            foundation.Opt[float64]
+	ModalBackgroundColor foundation.Opt[ui.Color]
+	ModalBarrierColor    foundation.Opt[ui.Color]
+	ShadowColor          foundation.Opt[ui.Color]
+	ModalElevation       foundation.Opt[float64]
+	Shape                foundation.Opt[painting.ShapeBorder]
+	ShowDragHandle       foundation.Opt[bool]
+	DragHandleColor      foundation.Opt[widgets.WidgetStateProperty[ui.Color]]
+	DragHandleSize       foundation.Opt[ui.Size]
+	ClipBehavior         foundation.Opt[ui.Clip]
+	Constraints          foundation.Opt[rendering.BoxConstraints]
+}
+
+// CopyWith returns a copy of the BottomSheetThemeData with the fields that the BottomSheetThemeDataCopy sets replaced.
+//
+// Flutter: material/bottom_sheet_theme.dart BottomSheetThemeData.copyWith
+func (x BottomSheetThemeData) CopyWith(c BottomSheetThemeDataCopy) BottomSheetThemeData {
+	r := x
+	if c.BackgroundColor.IsSome() {
+		r.BackgroundColor = c.BackgroundColor
+	}
+	if c.SurfaceTintColor.IsSome() {
+		r.SurfaceTintColor = c.SurfaceTintColor
+	}
+	if c.Elevation.IsSome() {
+		r.Elevation = c.Elevation
+	}
+	if c.ModalBackgroundColor.IsSome() {
+		r.ModalBackgroundColor = c.ModalBackgroundColor
+	}
+	if c.ModalBarrierColor.IsSome() {
+		r.ModalBarrierColor = c.ModalBarrierColor
+	}
+	if c.ShadowColor.IsSome() {
+		r.ShadowColor = c.ShadowColor
+	}
+	if c.ModalElevation.IsSome() {
+		r.ModalElevation = c.ModalElevation
+	}
+	if v, ok := c.Shape.Get(); ok {
+		r.Shape = v
+	}
+	if c.ShowDragHandle.IsSome() {
+		r.ShowDragHandle = c.ShowDragHandle
+	}
+	if v, ok := c.DragHandleColor.Get(); ok {
+		r.DragHandleColor = v
+	}
+	if c.DragHandleSize.IsSome() {
+		r.DragHandleSize = c.DragHandleSize
+	}
+	if v, ok := c.ClipBehavior.Get(); ok {
+		r.ClipBehavior = v
+	}
+	if c.Constraints.IsSome() {
+		r.Constraints = c.Constraints
+	}
+	return r
+}
+
+// DrawerThemeDataCopy holds the replacements for DrawerThemeData.CopyWith: a field that is None keeps the value of the
+// copied one.
+//
+// Flutter: material/drawer_theme.dart DrawerThemeData.copyWith
+type DrawerThemeDataCopy struct {
+	BackgroundColor  foundation.Opt[ui.Color]
+	ScrimColor       foundation.Opt[ui.Color]
+	Elevation        foundation.Opt[float64]
+	ShadowColor      foundation.Opt[ui.Color]
+	SurfaceTintColor foundation.Opt[ui.Color]
+	Shape            foundation.Opt[painting.ShapeBorder]
+	EndShape         foundation.Opt[painting.ShapeBorder]
+	Width            foundation.Opt[float64]
+	ClipBehavior     foundation.Opt[ui.Clip]
+}
+
+// CopyWith returns a copy of the DrawerThemeData with the fields that the DrawerThemeDataCopy sets replaced.
+//
+// Flutter: material/drawer_theme.dart DrawerThemeData.copyWith
+func (x DrawerThemeData) CopyWith(c DrawerThemeDataCopy) DrawerThemeData {
+	r := x
+	if c.BackgroundColor.IsSome() {
+		r.BackgroundColor = c.BackgroundColor
+	}
+	if c.ScrimColor.IsSome() {
+		r.ScrimColor = c.ScrimColor
+	}
+	if c.Elevation.IsSome() {
+		r.Elevation = c.Elevation
+	}
+	if c.ShadowColor.IsSome() {
+		r.ShadowColor = c.ShadowColor
+	}
+	if c.SurfaceTintColor.IsSome() {
+		r.SurfaceTintColor = c.SurfaceTintColor
+	}
+	if v, ok := c.Shape.Get(); ok {
+		r.Shape = v
+	}
+	if v, ok := c.EndShape.Get(); ok {
+		r.EndShape = v
+	}
+	if c.Width.IsSome() {
+		r.Width = c.Width
+	}
+	if v, ok := c.ClipBehavior.Get(); ok {
+		r.ClipBehavior = v
+	}
+	return r
+}
+
 // MaterialBannerThemeDataCopy holds the replacements for MaterialBannerThemeData.CopyWith: a field that is None keeps the value of the
 // copied one.
 //
@@ -179,6 +298,191 @@ func (x MaterialBannerThemeData) CopyWith(c MaterialBannerThemeDataCopy) Materia
 	}
 	if v, ok := c.LeadingPadding.Get(); ok {
 		r.LeadingPadding = v
+	}
+	return r
+}
+
+// NavigationBarThemeDataCopy holds the replacements for NavigationBarThemeData.CopyWith: a field that is None keeps the value of the
+// copied one.
+//
+// Flutter: material/navigation_bar_theme.dart NavigationBarThemeData.copyWith
+type NavigationBarThemeDataCopy struct {
+	Height           foundation.Opt[float64]
+	BackgroundColor  foundation.Opt[ui.Color]
+	Elevation        foundation.Opt[float64]
+	ShadowColor      foundation.Opt[ui.Color]
+	SurfaceTintColor foundation.Opt[ui.Color]
+	IndicatorColor   foundation.Opt[ui.Color]
+	IndicatorShape   foundation.Opt[painting.ShapeBorder]
+	LabelTextStyle   foundation.Opt[widgets.WidgetStateProperty[*painting.TextStyle]]
+	IconTheme        foundation.Opt[widgets.WidgetStateProperty[widgets.IconThemeData]]
+	LabelBehavior    foundation.Opt[NavigationDestinationLabelBehavior]
+	OverlayColor     foundation.Opt[widgets.WidgetStateProperty[foundation.Opt[ui.Color]]]
+	LabelPadding     foundation.Opt[painting.EdgeInsetsGeometry]
+}
+
+// CopyWith returns a copy of the NavigationBarThemeData with the fields that the NavigationBarThemeDataCopy sets replaced.
+//
+// Flutter: material/navigation_bar_theme.dart NavigationBarThemeData.copyWith
+func (x NavigationBarThemeData) CopyWith(c NavigationBarThemeDataCopy) NavigationBarThemeData {
+	r := x
+	if c.Height.IsSome() {
+		r.Height = c.Height
+	}
+	if c.BackgroundColor.IsSome() {
+		r.BackgroundColor = c.BackgroundColor
+	}
+	if c.Elevation.IsSome() {
+		r.Elevation = c.Elevation
+	}
+	if c.ShadowColor.IsSome() {
+		r.ShadowColor = c.ShadowColor
+	}
+	if c.SurfaceTintColor.IsSome() {
+		r.SurfaceTintColor = c.SurfaceTintColor
+	}
+	if c.IndicatorColor.IsSome() {
+		r.IndicatorColor = c.IndicatorColor
+	}
+	if v, ok := c.IndicatorShape.Get(); ok {
+		r.IndicatorShape = v
+	}
+	if v, ok := c.LabelTextStyle.Get(); ok {
+		r.LabelTextStyle = v
+	}
+	if v, ok := c.IconTheme.Get(); ok {
+		r.IconTheme = v
+	}
+	if v, ok := c.LabelBehavior.Get(); ok {
+		r.LabelBehavior = v
+	}
+	if v, ok := c.OverlayColor.Get(); ok {
+		r.OverlayColor = v
+	}
+	if v, ok := c.LabelPadding.Get(); ok {
+		r.LabelPadding = v
+	}
+	return r
+}
+
+// NavigationDrawerThemeDataCopy holds the replacements for NavigationDrawerThemeData.CopyWith: a field that is None keeps the value of the
+// copied one.
+//
+// Flutter: material/navigation_drawer_theme.dart NavigationDrawerThemeData.copyWith
+type NavigationDrawerThemeDataCopy struct {
+	TileHeight       foundation.Opt[float64]
+	BackgroundColor  foundation.Opt[ui.Color]
+	Elevation        foundation.Opt[float64]
+	ShadowColor      foundation.Opt[ui.Color]
+	SurfaceTintColor foundation.Opt[ui.Color]
+	IndicatorColor   foundation.Opt[ui.Color]
+	IndicatorShape   foundation.Opt[painting.ShapeBorder]
+	IndicatorSize    foundation.Opt[ui.Size]
+	LabelTextStyle   foundation.Opt[widgets.WidgetStateProperty[*painting.TextStyle]]
+	IconTheme        foundation.Opt[widgets.WidgetStateProperty[widgets.IconThemeData]]
+}
+
+// CopyWith returns a copy of the NavigationDrawerThemeData with the fields that the NavigationDrawerThemeDataCopy sets replaced.
+//
+// Flutter: material/navigation_drawer_theme.dart NavigationDrawerThemeData.copyWith
+func (x NavigationDrawerThemeData) CopyWith(c NavigationDrawerThemeDataCopy) NavigationDrawerThemeData {
+	r := x
+	if c.TileHeight.IsSome() {
+		r.TileHeight = c.TileHeight
+	}
+	if c.BackgroundColor.IsSome() {
+		r.BackgroundColor = c.BackgroundColor
+	}
+	if c.Elevation.IsSome() {
+		r.Elevation = c.Elevation
+	}
+	if c.ShadowColor.IsSome() {
+		r.ShadowColor = c.ShadowColor
+	}
+	if c.SurfaceTintColor.IsSome() {
+		r.SurfaceTintColor = c.SurfaceTintColor
+	}
+	if c.IndicatorColor.IsSome() {
+		r.IndicatorColor = c.IndicatorColor
+	}
+	if v, ok := c.IndicatorShape.Get(); ok {
+		r.IndicatorShape = v
+	}
+	if c.IndicatorSize.IsSome() {
+		r.IndicatorSize = c.IndicatorSize
+	}
+	if v, ok := c.LabelTextStyle.Get(); ok {
+		r.LabelTextStyle = v
+	}
+	if v, ok := c.IconTheme.Get(); ok {
+		r.IconTheme = v
+	}
+	return r
+}
+
+// NavigationRailThemeDataCopy holds the replacements for NavigationRailThemeData.CopyWith: a field that is None keeps the value of the
+// copied one.
+//
+// Flutter: material/navigation_rail_theme.dart NavigationRailThemeData.copyWith
+type NavigationRailThemeDataCopy struct {
+	BackgroundColor          foundation.Opt[ui.Color]
+	Elevation                foundation.Opt[float64]
+	UnselectedLabelTextStyle foundation.Opt[*painting.TextStyle]
+	SelectedLabelTextStyle   foundation.Opt[*painting.TextStyle]
+	UnselectedIconTheme      foundation.Opt[widgets.IconThemeData]
+	SelectedIconTheme        foundation.Opt[widgets.IconThemeData]
+	GroupAlignment           foundation.Opt[float64]
+	LabelType                foundation.Opt[NavigationRailLabelType]
+	UseIndicator             foundation.Opt[bool]
+	IndicatorColor           foundation.Opt[ui.Color]
+	IndicatorShape           foundation.Opt[painting.ShapeBorder]
+	MinWidth                 foundation.Opt[float64]
+	MinExtendedWidth         foundation.Opt[float64]
+}
+
+// CopyWith returns a copy of the NavigationRailThemeData with the fields that the NavigationRailThemeDataCopy sets replaced.
+//
+// Flutter: material/navigation_rail_theme.dart NavigationRailThemeData.copyWith
+func (x NavigationRailThemeData) CopyWith(c NavigationRailThemeDataCopy) NavigationRailThemeData {
+	r := x
+	if c.BackgroundColor.IsSome() {
+		r.BackgroundColor = c.BackgroundColor
+	}
+	if c.Elevation.IsSome() {
+		r.Elevation = c.Elevation
+	}
+	if v, ok := c.UnselectedLabelTextStyle.Get(); ok {
+		r.UnselectedLabelTextStyle = v
+	}
+	if v, ok := c.SelectedLabelTextStyle.Get(); ok {
+		r.SelectedLabelTextStyle = v
+	}
+	if c.UnselectedIconTheme.IsSome() {
+		r.UnselectedIconTheme = c.UnselectedIconTheme
+	}
+	if c.SelectedIconTheme.IsSome() {
+		r.SelectedIconTheme = c.SelectedIconTheme
+	}
+	if c.GroupAlignment.IsSome() {
+		r.GroupAlignment = c.GroupAlignment
+	}
+	if v, ok := c.LabelType.Get(); ok {
+		r.LabelType = v
+	}
+	if c.UseIndicator.IsSome() {
+		r.UseIndicator = c.UseIndicator
+	}
+	if c.IndicatorColor.IsSome() {
+		r.IndicatorColor = c.IndicatorColor
+	}
+	if v, ok := c.IndicatorShape.Get(); ok {
+		r.IndicatorShape = v
+	}
+	if c.MinWidth.IsSome() {
+		r.MinWidth = c.MinWidth
+	}
+	if c.MinExtendedWidth.IsSome() {
+		r.MinExtendedWidth = c.MinExtendedWidth
 	}
 	return r
 }
@@ -254,6 +558,89 @@ func (x SnackBarThemeData) CopyWith(c SnackBarThemeDataCopy) SnackBarThemeData {
 	}
 	if v, ok := c.DismissDirection.Get(); ok {
 		r.DismissDirection = v
+	}
+	return r
+}
+
+// TabBarThemeDataCopy holds the replacements for TabBarThemeData.CopyWith: a field that is None keeps the value of the
+// copied one.
+//
+// Flutter: material/tab_bar_theme.dart TabBarThemeData.copyWith
+type TabBarThemeDataCopy struct {
+	Indicator            foundation.Opt[painting.Decoration]
+	IndicatorColor       foundation.Opt[ui.Color]
+	IndicatorSize        foundation.Opt[TabBarIndicatorSize]
+	DividerColor         foundation.Opt[ui.Color]
+	DividerHeight        foundation.Opt[float64]
+	LabelColor           foundation.Opt[ui.Color]
+	LabelPadding         foundation.Opt[painting.EdgeInsetsGeometry]
+	LabelStyle           foundation.Opt[*painting.TextStyle]
+	UnselectedLabelColor foundation.Opt[ui.Color]
+	UnselectedLabelStyle foundation.Opt[*painting.TextStyle]
+	OverlayColor         foundation.Opt[widgets.WidgetStateProperty[foundation.Opt[ui.Color]]]
+	SplashFactory        foundation.Opt[InteractiveInkFeatureFactory]
+	MouseCursor          foundation.Opt[widgets.WidgetStateProperty[services.MouseCursor]]
+	TabAlignment         foundation.Opt[TabAlignment]
+	TextScaler           foundation.Opt[painting.TextScaler]
+	IndicatorAnimation   foundation.Opt[TabIndicatorAnimation]
+	SplashBorderRadius   foundation.Opt[painting.BorderRadius]
+}
+
+// CopyWith returns a copy of the TabBarThemeData with the fields that the TabBarThemeDataCopy sets replaced.
+//
+// Flutter: material/tab_bar_theme.dart TabBarThemeData.copyWith
+func (x TabBarThemeData) CopyWith(c TabBarThemeDataCopy) TabBarThemeData {
+	r := x
+	if v, ok := c.Indicator.Get(); ok {
+		r.Indicator = v
+	}
+	if c.IndicatorColor.IsSome() {
+		r.IndicatorColor = c.IndicatorColor
+	}
+	if v, ok := c.IndicatorSize.Get(); ok {
+		r.IndicatorSize = v
+	}
+	if c.DividerColor.IsSome() {
+		r.DividerColor = c.DividerColor
+	}
+	if c.DividerHeight.IsSome() {
+		r.DividerHeight = c.DividerHeight
+	}
+	if c.LabelColor.IsSome() {
+		r.LabelColor = c.LabelColor
+	}
+	if v, ok := c.LabelPadding.Get(); ok {
+		r.LabelPadding = v
+	}
+	if v, ok := c.LabelStyle.Get(); ok {
+		r.LabelStyle = v
+	}
+	if c.UnselectedLabelColor.IsSome() {
+		r.UnselectedLabelColor = c.UnselectedLabelColor
+	}
+	if v, ok := c.UnselectedLabelStyle.Get(); ok {
+		r.UnselectedLabelStyle = v
+	}
+	if v, ok := c.OverlayColor.Get(); ok {
+		r.OverlayColor = v
+	}
+	if v, ok := c.SplashFactory.Get(); ok {
+		r.SplashFactory = v
+	}
+	if v, ok := c.MouseCursor.Get(); ok {
+		r.MouseCursor = v
+	}
+	if v, ok := c.TabAlignment.Get(); ok {
+		r.TabAlignment = v
+	}
+	if v, ok := c.TextScaler.Get(); ok {
+		r.TextScaler = v
+	}
+	if v, ok := c.IndicatorAnimation.Get(); ok {
+		r.IndicatorAnimation = v
+	}
+	if c.SplashBorderRadius.IsSome() {
+		r.SplashBorderRadius = c.SplashBorderRadius
 	}
 	return r
 }

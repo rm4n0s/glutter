@@ -42,9 +42,6 @@ type AppBarOpts struct {
 	// NoAutomaticallyImplyLeading says that the app bar does not try to make a
 	// leading widget (a drawer button or a back button) when Leading is nil
 	// (Flutter's automaticallyImplyLeading: false).
-	//
-	// TODO(step 13.2): the drawer button. TODO(step 13.3): the back and close
-	// buttons, which need IconButton; until then no leading widget is implied.
 	NoAutomaticallyImplyLeading bool
 	// Title is the primary widget displayed in the app bar, usually a Text.
 	Title widgets.Widget
@@ -52,8 +49,6 @@ type AppBarOpts struct {
 	Actions []widgets.Widget
 	// NoAutomaticallyImplyActions says that the app bar does not make an end
 	// drawer button (Flutter's automaticallyImplyActions: false).
-	//
-	// TODO(step 13.2): the end drawer button.
 	NoAutomaticallyImplyActions bool
 	// FlexibleSpace is stacked behind the toolbar and the bottom widget; its
 	// height is the same as the app bar's.
@@ -135,9 +130,8 @@ type AppBarOpts struct {
 // other widgets, such as a TabBar and a FlexibleSpaceBar. It is the Scaffold's
 // top row.
 //
-// TODO(step 13.2): the drawer and end drawer buttons. TODO(step 13.3): the back
-// and close buttons, and the icon button themes of the leading and the actions
-// (they need IconButton).
+// TODO(step 13.3): the icon button themes of the leading and the actions (they
+// need IconButton; the drawer, back and close buttons are built on a stand-in).
 //
 // Flutter: material/app_bar.dart AppBar
 type AppBar struct {
@@ -412,7 +406,10 @@ func (s *appBarState) Build(bc widgets.BuildContext) widgets.Widget {
 	appBarTheme := AppBarThemeOf(bc)
 	defaults := appBarDefaults(theme)
 	scaffold := ScaffoldMaybeOf(bc)
-	_ = scaffold // TODO(step 13.2): the drawer buttons use scaffold.HasDrawer and HasEndDrawer.
+	parentRoute := widgets.ModalRouteOf(bc)
+	hasDrawer := scaffold != nil && scaffold.HasDrawer()
+	hasEndDrawer := scaffold != nil && scaffold.HasEndDrawer()
+	useCloseButton := parentRoute != nil && parentRoute.FullscreenDialog()
 	settings, hasSettings := widgets.DependOn[*FlexibleSpaceBarSettings](bc)
 	scrolledUnder := s.scrolledUnder
 	if hasSettings && settings.isScrolledUnder.IsSome() {
@@ -495,9 +492,20 @@ func (s *appBarState) Build(bc widgets.BuildContext) widgets.Widget {
 	}
 
 	leading := o.Leading
-	// TODO(step 13.2, 13.3): when leading is nil and the app bar implies it, a
-	// drawer button (the scaffold has a drawer) or a back or close button (the
-	// route can be dismissed) goes here.
+	if leading == nil && !o.NoAutomaticallyImplyLeading {
+		switch {
+		case hasDrawer:
+			// TODO(step 13.3): the button takes the icon size of the theme through
+			// IconButton.styleFrom.
+			leading = NewDrawerButton()
+		case parentRoute != nil && parentRoute.ImpliesAppBarDismissal():
+			if useCloseButton {
+				leading = NewCloseButton()
+			} else {
+				leading = NewBackButton()
+			}
+		}
+	}
 	if leading != nil {
 		// TODO(step 13.3): in Material 3 an IconButton leading is centered and gets
 		// an IconButtonTheme with the icon theme of the app bar.
@@ -534,7 +542,9 @@ func (s *appBarState) Build(bc widgets.BuildContext) widgets.Widget {
 			CrossAxisAlignment: cross,
 		}))
 	}
-	// TODO(step 13.2): an end drawer button when the scaffold has an end drawer.
+	if actions == nil && hasEndDrawer && !o.NoAutomaticallyImplyActions {
+		actions = NewEndDrawerButton()
+	}
 	if actions != nil {
 		// TODO(step 13.3): the IconButtonTheme with the actions icon theme.
 		actions = widgets.NewIconThemeMerge(actionsIconTheme, actions)

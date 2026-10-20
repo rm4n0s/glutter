@@ -41,6 +41,80 @@ func TestShell(t *testing.T) {
 	}
 }
 
+// openNavigationPage opens the second page through the navigation rail.
+func openNavigationPage(t *testing.T) *gluttertest.Tester {
+	t.Helper()
+	ts := newTester(t)
+	ts.Tap(gluttertest.ByText("Navigation & tabs"))
+	ts.PumpAndSettle()
+	return ts
+}
+
+func TestRailSwitchesPages(t *testing.T) {
+	ts := openNavigationPage(t)
+	for _, text := range []string{"NavigationBar", "TabBar and TabBarView", "NavigationRail", "NavigationDrawer", "Explore page"} {
+		if !ts.Exists(gluttertest.ByText(text)) {
+			t.Errorf("the text %q is not shown", text)
+		}
+	}
+	if ts.Exists(gluttertest.ByText("SliverAppBar: medium and large")) {
+		t.Error("the first page is still shown")
+	}
+	ts.Tap(gluttertest.ByText("App bars & snack bars"))
+	ts.PumpAndSettle()
+	if !ts.Exists(gluttertest.ByText("SliverAppBar: medium and large")) {
+		t.Error("the first page is not back")
+	}
+}
+
+func TestNavigationDemos(t *testing.T) {
+	ts := openNavigationPage(t)
+	// The navigation bar and the rail of the demos select their own pages.
+	ts.Tap(gluttertest.Descendant(gluttertest.ByType[*m.NavigationBar](), gluttertest.ByText("Inbox")))
+	ts.PumpAndSettle()
+	if !ts.Exists(gluttertest.ByText("Inbox page")) {
+		t.Error("the navigation bar did not select the second page")
+	}
+	ts.Tap(gluttertest.Descendant(gluttertest.ByType[*m.NavigationRail](), gluttertest.ByText("Settings")))
+	ts.PumpAndSettle()
+	if n := ts.Count(gluttertest.ByText("Settings page")); n != 1 {
+		t.Errorf("the rail of the demo shows %d settings pages, want 1", n)
+	}
+	// The tabs of the demo select their views.
+	ts.Tap(gluttertest.ByText("Trips"))
+	ts.PumpAndSettle()
+	if !ts.Exists(gluttertest.Descendant(gluttertest.ByType[*m.TabBarView](), gluttertest.ByText("Trips"))) {
+		t.Error("the tab bar did not select the second view")
+	}
+}
+
+func TestSheetDemos(t *testing.T) {
+	ts := openNavigationPage(t)
+	scroll := gluttertest.ByType[*m.ListView]()
+	ts.Drag(gluttertest.First(scroll), m.Offset{Dx: 0, Dy: -300})
+	ts.PumpAndSettle()
+	ts.Tap(gluttertest.ByText("Modal bottom sheet"))
+	ts.PumpAndSettle()
+	if !ts.Exists(gluttertest.ByText("A modal bottom sheet")) {
+		t.Fatal("the modal sheet is not shown")
+	}
+	ts.Tap(gluttertest.ByText("Close"))
+	ts.PumpAndSettle()
+	if ts.Exists(gluttertest.ByText("A modal bottom sheet")) {
+		t.Error("the modal sheet is still shown")
+	}
+	ts.Tap(gluttertest.ByText("Persistent bottom sheet"))
+	ts.PumpAndSettle()
+	if !ts.Exists(gluttertest.ByText("A persistent bottom sheet")) {
+		t.Fatal("the persistent sheet is not shown")
+	}
+	ts.Tap(gluttertest.ByText("Close"))
+	ts.PumpAndSettle()
+	if ts.Exists(gluttertest.ByText("A persistent bottom sheet")) {
+		t.Error("the persistent sheet is still shown")
+	}
+}
+
 func TestThemeToggle(t *testing.T) {
 	ts := newTester(t)
 	brightness := func() m.Brightness {
@@ -165,6 +239,13 @@ func TestGalleryGolden(t *testing.T) {
 	ts.PumpAndSettle()
 	ts.Pump(time.Second)
 	ts.MatchesGolden("gallery-app-bars")
+}
+
+// TestNavigationGolden draws the second page in the light theme.
+func TestNavigationGolden(t *testing.T) {
+	ts := openNavigationPage(t)
+	ts.Pump(time.Second)
+	ts.MatchesGolden("gallery-navigation")
 }
 
 func TestDevSnackBar(t *testing.T) {
