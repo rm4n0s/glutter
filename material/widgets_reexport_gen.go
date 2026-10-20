@@ -16524,6 +16524,13 @@ const PaintingStyleUnspecified = ui.PaintingStyleUnspecified
 // Flutter: dart:ui Path
 type Path = ui.Path
 
+// PathCombine is ui.PathCombine.
+//
+// Flutter: dart:ui PathCombine
+func PathCombine(op ui.PathOperation, path1 *ui.Path, path2 *ui.Path) *ui.Path {
+	return ui.PathCombine(op, path1, path2)
+}
+
 // PathFillType is ui.PathFillType.
 //
 // Flutter: dart:ui PathFillType
@@ -16553,6 +16560,41 @@ type PathMetric = ui.PathMetric
 //
 // Flutter: dart:ui PathMetrics
 type PathMetrics = ui.PathMetrics
+
+// PathOperation is ui.PathOperation.
+//
+// Flutter: dart:ui PathOperation
+type PathOperation = ui.PathOperation
+
+// PathOperationDifference is ui.PathOperationDifference.
+//
+// Flutter: dart:ui PathOperationDifference
+const PathOperationDifference = ui.PathOperationDifference
+
+// PathOperationIntersect is ui.PathOperationIntersect.
+//
+// Flutter: dart:ui PathOperationIntersect
+const PathOperationIntersect = ui.PathOperationIntersect
+
+// PathOperationReverseDifference is ui.PathOperationReverseDifference.
+//
+// Flutter: dart:ui PathOperationReverseDifference
+const PathOperationReverseDifference = ui.PathOperationReverseDifference
+
+// PathOperationUnion is ui.PathOperationUnion.
+//
+// Flutter: dart:ui PathOperationUnion
+const PathOperationUnion = ui.PathOperationUnion
+
+// PathOperationUnspecified is ui.PathOperationUnspecified.
+//
+// Flutter: dart:ui PathOperationUnspecified
+const PathOperationUnspecified = ui.PathOperationUnspecified
+
+// PathOperationXor is ui.PathOperationXor.
+//
+// Flutter: dart:ui PathOperationXor
+const PathOperationXor = ui.PathOperationXor
 
 // PathSegment is ui.PathSegment.
 //

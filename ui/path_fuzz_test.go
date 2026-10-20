@@ -91,3 +91,55 @@ func FuzzPathFlatten(f *testing.F) {
 		}
 	})
 }
+
+// FuzzPathCombine checks that combining two paths made of finite numbers never panics,
+// gives finite points inside the box of the points of the inputs, and a bounded number
+// of verbs, whatever the operation and the fill types.
+func FuzzPathCombine(f *testing.F) {
+	f.Add([]byte{0, 1, 1, 5}, []byte{0, 1, 1, 5}, byte(0), 0.0, 0.0, 10.0, 0.0, 10.0, 10.0, 5.0, 5.0)
+	f.Add([]byte{0, 2, 5}, []byte{0, 3, 5}, byte(1), 0.0, 0.0, 50.0, 100.0, 100.0, 0.0, 20.0, 80.0)
+	f.Add([]byte{6, 6}, []byte{8, 4, 5}, byte(2), 0.0, 0.0, 100.0, 100.0, 1.0, 5.0, 60.0, 30.0)
+	f.Add([]byte{0, 1, 1, 1, 1, 5}, []byte{0, 1, 1, 1, 1, 5}, byte(3), 0.0, 0.0, 100.0, 0.0, 0.0, 100.0, 100.0, 100.0)
+	f.Add([]byte{0, 1, 5}, []byte{0, 1, 5}, byte(4), 1e-7, 1e-7, 1e-7, 2e-7, 3e-7, 1e-7, 2e-7, 3e-7)
+	f.Fuzz(func(t *testing.T, opsA, opsB []byte, mode byte, n0, n1, n2, n3, n4, n5, n6, n7 float64) {
+		nums := []float64{n0, n1, n2, n3, n4, n5, n6, n7}
+		if !finiteInputs(nums) || len(opsA) > 24 || len(opsB) > 24 {
+			t.Skip()
+		}
+		a := buildFuzzPath(opsA, nums)
+		b := buildFuzzPath(opsB, nums[len(nums)/2:])
+		if mode&16 != 0 {
+			a.SetFillType(PathFillTypeEvenOdd)
+		}
+		if mode&32 != 0 {
+			b.SetFillType(PathFillTypeEvenOdd)
+		}
+		op := PathOperation(1 + int(mode)%5)
+		res := PathCombine(op, a, b)
+		if len(res.verbs) > 1<<20 {
+			t.Fatalf("%d verbs", len(res.verbs))
+		}
+		box, ok := combineBounds(a, b)
+		if !ok {
+			if !res.IsEmpty() {
+				t.Fatal("a result from nothing")
+			}
+			return
+		}
+		slack := 1e-6 * math.Max(box.Right-box.Left, box.Bottom-box.Top)
+		for _, pt := range res.points {
+			if !pt.IsFinite() || pt.Dx < box.Left-slack || pt.Dx > box.Right+slack || pt.Dy < box.Top-slack || pt.Dy > box.Bottom+slack {
+				t.Fatalf("the point %v is outside %v", pt, box)
+			}
+		}
+		for _, w := range res.weights {
+			if !(w >= 0) || math.IsInf(w, 0) {
+				t.Fatalf("a conic weight of %v", w)
+			}
+		}
+		// The result is a path that the rest of the package can use.
+		res.GetBounds()
+		res.Contains(Offset{box.Left, box.Top})
+		res.Flatten(nil, 0)
+	})
+}
