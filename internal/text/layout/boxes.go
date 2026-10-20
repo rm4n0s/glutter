@@ -231,12 +231,20 @@ func (p *paragraph) GetBoxesForRange(start, end int, hs ui.BoxHeightStyle, ws ui
 		for i := range perLine {
 			bs := perLine[i].boxes
 			first, last := bs[0], bs[len(bs)-1]
+			l := p.lines[perLine[i].line]
+			// A box is extended only where the selection goes on past the edge of
+			// the line: at the start of the line when the selection holds its first
+			// character, and at the end when it holds the line break or goes on to
+			// the next line. A word in the middle of a line, or the last line of the
+			// text, keeps tight boxes.
+			startsLine := max(a, l.start) == l.start
+			endsLine := min(b, l.end) == l.end && (l.hardBreak || perLine[i].line < len(p.lines)-1)
 			var out []ui.TextBox
-			if first.Left > minLeft+1e-3 {
+			if startsLine && first.Left > minLeft+1e-3 {
 				out = append(out, ui.TextBox{Left: minLeft, Top: first.Top, Right: first.Left, Bottom: first.Bottom, Direction: paraDir})
 			}
 			out = append(out, bs...)
-			if last.Right < maxRight-1e-3 {
+			if endsLine && last.Right < maxRight-1e-3 {
 				out = append(out, ui.TextBox{Left: last.Right, Top: last.Top, Right: maxRight, Bottom: last.Bottom, Direction: paraDir})
 			}
 			perLine[i].boxes = out

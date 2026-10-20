@@ -215,20 +215,38 @@ func TestBoxHeightStyles(t *testing.T) {
 
 func TestBoxWidthStyleMax(t *testing.T) {
 	e := bundledEngine(t)
-	p := laidOut(t, e, "a long first line\nshort", 16, 1000, nil)
+	p := laidOut(t, e, "a long first line\nshort\nend", 16, 1000, nil)
 	long := p.lines[0].width
-	// The tight box of "short" is as wide as the text; the max box reaches the widest line.
-	tight := p.GetBoxesForRange(p.byteOf(p.lines[1].start), len(p.content.Text), ui.BoxHeightStyleTight, ui.BoxWidthStyleTight)
-	max := p.GetBoxesForRange(p.byteOf(p.lines[1].start), len(p.content.Text), ui.BoxHeightStyleTight, ui.BoxWidthStyleMax)
+	second, third := p.byteOf(p.lines[1].start), p.byteOf(p.lines[2].start)
+	// The selection holds the line break of "short", so the box reaches the widest line.
+	tight := p.GetBoxesForRange(second, third, ui.BoxHeightStyleTight, ui.BoxWidthStyleTight)
+	max := p.GetBoxesForRange(second, third, ui.BoxHeightStyleTight, ui.BoxWidthStyleMax)
 	if len(tight) != 1 || len(max) != 2 {
 		t.Fatalf("tight %v, max %v", tight, max)
 	}
 	if !near(max[0].Left, tight[0].Left) || !near(max[1].Right, long) || !near(max[1].Left, tight[0].Right) {
 		t.Errorf("max boxes %v do not extend %v to the widest line %v", max, tight, long)
 	}
-	// The line that is the widest gets no extra box.
-	if bs := p.GetBoxesForRange(0, 6, ui.BoxHeightStyleTight, ui.BoxWidthStyleMax); len(bs) != 2 {
-		t.Errorf("boxes of the widest line = %v", bs)
+	// Flutter's paragraph test: the last line of the text stays tight, as does a
+	// word in the middle of a line or the end of a line without its break.
+	for _, tc := range []struct {
+		name       string
+		start, end int
+		want       int
+	}{
+		{"last line", third, len(p.content.Text), 1},
+		{"middle of a line", second + 1, second + 3, 1},
+		{"end of a line without the break", second + 2, third - 1, 1},
+		{"the widest line", 0, 6, 1},
+	} {
+		if bs := p.GetBoxesForRange(tc.start, tc.end, ui.BoxHeightStyleTight, ui.BoxWidthStyleMax); len(bs) != tc.want {
+			t.Errorf("%s: boxes = %v, want %d", tc.name, bs, tc.want)
+		}
+	}
+	// A selection over every line extends all but the last one.
+	all := p.GetBoxesForRange(0, len(p.content.Text), ui.BoxHeightStyleTight, ui.BoxWidthStyleMax)
+	if len(all) != 4 {
+		t.Errorf("boxes over every line = %v, want 4 (the widest line, short with its extension, end)", all)
 	}
 }
 
