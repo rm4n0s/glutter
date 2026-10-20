@@ -4169,6 +4169,21 @@ const NavigationModeUnspecified = widgets.NavigationModeUnspecified
 // Flutter: widgets.dart NavigationNotification
 type NavigationNotification = widgets.NavigationNotification
 
+// NavigationToolbar is widgets.NavigationToolbar.
+//
+// Flutter: widgets.dart NavigationToolbar
+type NavigationToolbar = widgets.NavigationToolbar
+
+// NavigationToolbarMiddleSpacing is widgets.NavigationToolbarMiddleSpacing.
+//
+// Flutter: widgets.dart NavigationToolbarMiddleSpacing
+const NavigationToolbarMiddleSpacing = widgets.NavigationToolbarMiddleSpacing
+
+// NavigationToolbarOpts is widgets.NavigationToolbarOpts.
+//
+// Flutter: widgets.dart NavigationToolbarOpts
+type NavigationToolbarOpts = widgets.NavigationToolbarOpts
+
 // Navigator is widgets.Navigator.
 //
 // Flutter: widgets.dart Navigator
@@ -6100,6 +6115,13 @@ func NewMouseRegion(child widgets.Widget, opts ...widgets.MouseRegionOpts) *widg
 // Flutter: widgets.dart NewMultiChildRenderObjectWidgetBase
 func NewMultiChildRenderObjectWidgetBase(children []widgets.Widget, opts ...widgets.WidgetOpts) widgets.MultiChildRenderObjectWidget {
 	return widgets.NewMultiChildRenderObjectWidgetBase(children, opts...)
+}
+
+// NewNavigationToolbar is widgets.NewNavigationToolbar.
+//
+// Flutter: widgets.dart NewNavigationToolbar
+func NewNavigationToolbar(opts ...widgets.NavigationToolbarOpts) *widgets.NavigationToolbar {
+	return widgets.NewNavigationToolbar(opts...)
 }
 
 // NewNavigator is widgets.NewNavigator.
@@ -8335,6 +8357,11 @@ func PrecacheImage(provider painting.ImageProvider, bc widgets.BuildContext, opt
 //
 // Flutter: widgets.dart PrecacheImageOpts
 type PrecacheImageOpts = widgets.PrecacheImageOpts
+
+// PreferredSizeWidget is widgets.PreferredSizeWidget.
+//
+// Flutter: widgets.dart PreferredSizeWidget
+type PreferredSizeWidget = widgets.PreferredSizeWidget
 
 // PreviousFocusAction is widgets.PreviousFocusAction.
 //

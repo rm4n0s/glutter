@@ -1444,7 +1444,7 @@ Each milestone is broken into steps in `docs/IMPLEMENTATION.md` (written after t
 | Component | License | Notes |
 |---|---|---|
 | Glutter | BSD-3-Clause | |
-| Flutter framework (API, algorithms and tests ported from it) | BSD-3-Clause | `third_party/flutter/LICENSE` plus a NOTICE entry; ported files carry `// Flutter:` references |
+| Flutter framework (API, algorithms and tests ported from it) | BSD-3-Clause | `third_party/flutter/LICENSE` plus a NOTICE entry; ported files carry `// Flutter:` references and begin with Flutter's copyright notice (a four-line header: "Copyright 2014 The Flutter Authors. All rights reserved.", the BSD license sentence pointing at `third_party/flutter/LICENSE`, and "This file is ported from the Flutter framework (see NOTICE)."); generated files that come from Flutter's data say so in their own header |
 | go-text/typesetting | Unlicense OR BSD-3-Clause | Go dependency |
 | golang.org/x/image | BSD-3-Clause | Go dependency (WebP, BMP) |
 | golang.org/x/text | BSD-3-Clause | Go dependency that go-text already requires; `internal/text/layout` uses its `unicode/bidi` class table for UAX #9 (§12.10), added in step 4.4. Flagged for review |

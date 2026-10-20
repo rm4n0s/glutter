@@ -69,6 +69,7 @@ Before reporting a task as finished, run `gofmt`, `go vet ./...`, `golangci-lint
 - End each exported identifier's doc comment with its source, e.g. `// Flutter: widgets/basic.dart Padding`
 - A deliberate difference from Flutter goes in a `// Deviation:` comment and in SPEC §12.10
 - Ported code is a derivative of Flutter (BSD-3-Clause). Keep `third_party/flutter/LICENSE` and the NOTICE entry (SPEC §20) intact
+- Every new Go file that ports Flutter code (it has `// Flutter:` references, or ports a Flutter test) begins with Flutter's copyright header, exactly as the existing ported files do (copy it from `widgets/banner.go`; after a `//go:build` line it comes after a blank line). Generators that emit code derived from Flutter's data put the notice in the generated header
 
 ## Error handling
 Use `github.com/rm4n0s/errors` for all errors. Never use `fmt.Errorf`, and never import the standard library `errors` package: this package re-exports `errors.Is`, `errors.As` and `errors.Unwrap`, so a single import covers everything.

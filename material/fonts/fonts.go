@@ -1,3 +1,9 @@
+// Copyright 2014 The Flutter Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in third_party/flutter/LICENSE.
+//
+// This file is ported from the Flutter framework (see NOTICE).
+
 // Package fonts holds the fonts that Glutter bundles with the program: Roboto, the
 // first family of Flutter's Linux typography, and Material Icons. scripts/fetch-fonts.sh
 // downloads them (the pins and hashes are in VERSIONS), and the licenses sit next to

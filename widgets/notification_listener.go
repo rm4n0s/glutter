@@ -1,3 +1,9 @@
+// Copyright 2014 The Flutter Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in third_party/flutter/LICENSE.
+//
+// This file is ported from the Flutter framework (see NOTICE).
+
 package widgets
 
 // Notification is a message that bubbles up the tree from the widget that

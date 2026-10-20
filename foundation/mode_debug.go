@@ -1,5 +1,11 @@
 //go:build !glutter_release && !glutter_profile
 
+// Copyright 2014 The Flutter Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in third_party/flutter/LICENSE.
+//
+// This file is ported from the Flutter framework (see NOTICE).
+
 package foundation
 
 // DebugMode is true in a debug build, the default. Debug-only checks (Flutter's
