@@ -34,3 +34,6 @@ func UseProgram(bc widgets.BuildContext, run func(ctx context.Context, env []str
 func UseFlatpak(bc widgets.BuildContext, in bool) {
 	servicesOf(widgets.WidgetsBindingOf(bc)).flatpak = func() bool { return in }
 }
+
+// FilterName is filterName, for the tests.
+var FilterName = filterName
