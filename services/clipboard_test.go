@@ -52,7 +52,7 @@ func TestClipboardGetData(t *testing.T) {
 		{name: "returns text", has: true, text: "Hello world", format: ClipboardKTextPlain, wantText: "Hello world"},
 		{name: "returns nil", format: ClipboardKTextPlain, wantNil: true},
 		{name: "returns empty text", has: true, text: "", format: ClipboardKTextPlain, wantText: ""},
-		{name: "unknown format", has: true, text: "Hello", format: "image/png", wantNil: true},
+		{name: "unknown format", has: true, text: "Hello", format: "application/json", wantNil: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -687,6 +687,7 @@ func (s *EditableTextState) handleSelectionChanged(selection services.TextSelect
 		s.RequestKeyboard()
 	}
 	s.updateSelectionOverlayAfterSelectionChange()
+	s.schedulePrimarySelection()
 	if w.o.OnSelectionChanged != nil {
 		s.report("EditableTextCallbackPanicked", "while calling onSelectionChanged for "+cause.String(), func() { w.o.OnSelectionChanged(selection, cause) })
 	}

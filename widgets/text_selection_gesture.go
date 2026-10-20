@@ -459,6 +459,23 @@ func (b *TextSelectionGestureDetectorBuilder) OnSecondaryTap() {
 	}
 }
 
+// OnTertiaryTapUp handles a tap with the tertiary (middle) button: on Linux
+// desktops it puts the caret where the pointer is and pastes the primary
+// selection there.
+//
+// Flutter: no counterpart
+func (b *TextSelectionGestureDetectorBuilder) OnTertiaryTapUp(details gestures.TapUpDetails) {
+	if !b.delegate.SelectionEnabled() || foundation.DefaultTargetPlatform() != foundation.TargetPlatformLinux {
+		return
+	}
+	e := b.EditableText()
+	if e.Widget().o.ReadOnly {
+		return
+	}
+	b.RenderEditable().SelectPositionAt(details.GlobalPosition, foundation.None[ui.Offset](), services.SelectionChangedCauseTap)
+	e.PastePrimarySelection(services.SelectionChangedCauseTap)
+}
+
 // OnSecondaryTapDown handles a pointer that goes down with the secondary
 // button.
 //
@@ -663,7 +680,12 @@ func (b *TextSelectionGestureDetectorBuilder) OnDragSelectionEnd(details gesture
 func (b *TextSelectionGestureDetectorBuilder) BuildGestureDetector(child Widget, opts ...TextSelectionGestureDetectorBuildOpts) Widget {
 	o := firstOpts(opts)
 	h := b.self
+	var tertiary gestures.GestureTapUpCallback
+	if t, ok := h.(interface{ OnTertiaryTapUp(gestures.TapUpDetails) }); ok {
+		tertiary = t.OnTertiaryTapUp
+	}
 	return NewTextSelectionGestureDetector(child, TextSelectionGestureDetectorOpts{
+		OnTertiaryTapUp:      tertiary,
 		Key:                  o.Key,
 		OnTapTrackStart:      h.OnTapTrackStart,
 		OnTapTrackReset:      h.OnTapTrackReset,
@@ -734,6 +756,10 @@ type TextSelectionGestureDetectorOpts struct {
 	OnSecondaryTap gestures.GestureTapCallback
 	// OnSecondaryTapDown is called when the secondary button goes down.
 	OnSecondaryTapDown gestures.GestureTapDownCallback
+	// OnTertiaryTapUp is called for a tap with the tertiary (middle) button.
+	//
+	// Flutter: no counterpart
+	OnTertiaryTapUp gestures.GestureTapUpCallback
 	// OnSingleTapUp is called when a tap that is not part of a double tap ends.
 	OnSingleTapUp gestures.GestureTapDragUpCallback
 	// OnSingleTapCancel is called when a tap is cancelled.
@@ -839,6 +865,7 @@ func (s *textSelectionGestureDetectorState) Build(bc BuildContext) Widget {
 		},
 		func(r *gestures.TapGestureRecognizer) {
 			r.OnSecondaryTap, r.OnSecondaryTapDown = o.OnSecondaryTap, o.OnSecondaryTapDown
+			r.OnTertiaryTapUp = o.OnTertiaryTapUp
 		})
 	if o.OnSingleLongTapStart != nil || o.OnSingleLongTapMoveUpdate != nil || o.OnSingleLongTapEnd != nil || o.OnSingleLongTapCancel != nil {
 		g[reflect.TypeFor[*gestures.LongPressGestureRecognizer]()] = NewGestureRecognizerFactoryWithHandlers(

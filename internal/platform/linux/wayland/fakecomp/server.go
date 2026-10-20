@@ -38,8 +38,16 @@ type Server struct {
 	textCommits uint32 // the zwp_text_input_v3.commit requests received, guarded by mu
 
 	selection string // the text of the selection, guarded by mu
-	stall     bool
-	stalled   []int // the pipes that a stalled owner holds
+	// data is the data of the selection by format, when a test set it with
+	// OfferSelectionData; primaryData is that of the primary selection. Both are
+	// guarded by mu. sources are the data sources of the client by ID, and
+	// clientSel and clientPrimary the ones it made the selections (see
+	// selection.go).
+	data, primaryData        map[string][]byte
+	sources                  map[uint32]*clientSource
+	clientSel, clientPrimary *clientSource
+	stall                    bool
+	stalled                  []int // the pipes that a stalled owner holds
 
 	outputScale, bufferScale int32
 
@@ -126,6 +134,9 @@ type Config struct {
 	// wl_surface announces; zero means 2, and a negative number sends none, as a
 	// compositor with wl_compositor older than version 6 does.
 	PreferredBufferScale int32
+	// PrimarySelection adds the primary selection manager to the globals (as global
+	// 8, zwp_primary_selection_device_manager_v1 version 1).
+	PrimarySelection bool
 	// Selection, when it is not empty, is the text of the clipboard that another
 	// application owns: the data device announces it as the selection, in the
 	// formats "text/plain;charset=utf-8" and "image/png", and a receive request
@@ -149,6 +160,9 @@ func New(t testing.TB, cfg Config) (s *Server, clientFD int) {
 	globals := cfg.Globals
 	if globals == nil {
 		globals = DefaultGlobals()
+	}
+	if cfg.PrimarySelection {
+		globals = append(append([]Global(nil), globals...), Global{8, "zwp_primary_selection_device_manager_v1", 1})
 	}
 	keymap, caps := cfg.Keymap, cfg.Capabilities
 	if keymap == "" {
@@ -317,6 +331,9 @@ func (s *Server) handle(id uint32, op uint16, r *reader) {
 	s.mu.Lock()
 	iface := s.objects[id]
 	s.mu.Unlock()
+	if s.handleSelection(id, iface, op, r) {
+		return
+	}
 	switch iface + "." + fmt.Sprint(op) {
 	case "wl_display.0": // sync(callback)
 		cb := r.u32()
@@ -403,36 +420,19 @@ func (s *Server) handle(id uint32, op uint16, r *reader) {
 		if hasSelection {
 			s.Send(dd, 5, offer) // selection(id)
 		}
-	case "wl_data_device_manager.0": // create_data_source(id)
-		src := r.u32()
-		s.addObject(src, "wl_data_source")
-		s.record("wl_data_device_manager.create_data_source")
-	case "wl_data_source.0": // offer(mime_type)
-		s.record("wl_data_source.offer mime=%s", r.str())
-	case "wl_data_source.1": // destroy
-		s.record("wl_data_source.destroy")
-	case "wl_data_device.1": // set_selection(source, serial)
-		src, serial := r.u32(), r.u32()
-		s.record("wl_data_device.set_selection source=%d serial=%d", src, serial)
 	case "wl_data_device.2": // release
 		s.record("wl_data_device.release")
 	case "wl_data_offer.1": // receive(mime_type, fd)
 		mime, fd := r.str(), r.fd()
 		s.record("wl_data_offer.receive mime=%s fd=%v", mime, fd >= 0)
 		s.mu.Lock()
-		text := s.selection
+		text, data := s.selection, s.data
 		s.mu.Unlock()
-		if fd >= 0 && s.stall {
-			s.stalled = append(s.stalled, fd) // closed when the server stops
-		} else if fd >= 0 && text != "" && (strings.HasPrefix(mime, "text/") || mime == "UTF8_STRING") {
-			// The other application writes the text from its own goroutine.
-			go func(fd int) {
-				f := os.NewFile(uintptr(fd), "selection")
-				_, _ = f.WriteString(text)
-				_ = f.Close()
-			}(fd)
+		if data != nil {
+			d, ok := data[mime]
+			s.writeSelection(fd, d, ok)
 		} else {
-			_ = syscall.Close(fd)
+			s.writeSelection(fd, []byte(text), text != "" && (strings.HasPrefix(mime, "text/") || mime == "UTF8_STRING"))
 		}
 	case "wl_data_offer.2": // destroy
 		s.record("wl_data_offer.destroy")

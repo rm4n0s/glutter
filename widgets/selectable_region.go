@@ -417,6 +417,24 @@ func (s *SelectableRegionState) finalizeSelectableRegionStatus() {
 		return
 	}
 	s.selectionStatusNotifier.set(SelectableRegionSelectionStatusFinalized)
+	s.setPrimarySelection()
+}
+
+// setPrimarySelection puts the selected content on the primary selection, so
+// that a middle click pastes it on Linux desktops; the other platforms have none.
+//
+// Flutter: no counterpart
+func (s *SelectableRegionState) setPrimarySelection() {
+	if s.selectable == nil || foundation.DefaultTargetPlatform() != foundation.TargetPlatformLinux {
+		return
+	}
+	content := s.selectable.GetSelectedContent()
+	if content == nil || content.PlainText == "" {
+		return
+	}
+	// A platform without a primary selection fails the call; there is nothing to
+	// do about it.
+	s.binding().Clipboard().SetPrimaryData(s.Lifetime(), services.NewClipboardData(content.PlainText), nil)
 }
 
 func (s *SelectableRegionState) setChanging() {

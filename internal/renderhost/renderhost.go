@@ -42,6 +42,11 @@ type Host struct {
 	// text. A test can set them to play another application.
 	Clipboard    string
 	HasClipboard bool
+	// ClipboardPNG and ClipboardURIs are the other formats of the in-memory
+	// system clipboard; Primary is the in-memory primary selection.
+	ClipboardPNG  []byte
+	ClipboardURIs []string
+	Primary       ui.ClipboardContent
 	// TextInputStates are the states of the text field that the framework gave
 	// to the input method, in order.
 	TextInputStates []ui.TextInputState
@@ -63,7 +68,7 @@ func (h *Host) Unlock() { h.mu.Unlock() }
 // SetClipboardText keeps the text. done is posted, like the engine's results.
 func (h *Host) SetClipboardText(_ context.Context, text string, done func(error)) {
 	h.mu.Lock()
-	h.Clipboard, h.HasClipboard = text, true
+	h.Clipboard, h.HasClipboard, h.ClipboardPNG, h.ClipboardURIs = text, true, nil, nil
 	h.mu.Unlock()
 	if done != nil {
 		h.Post(func() { done(nil) })
@@ -76,6 +81,40 @@ func (h *Host) GetClipboardText(ctx context.Context, done func(string, bool, err
 	text, ok := h.Clipboard, h.HasClipboard
 	h.mu.Unlock()
 	h.Post(func() { done(text, ok, ctx.Err()) })
+}
+
+// SetClipboard keeps the content on the selection of the kind. done is posted.
+func (h *Host) SetClipboard(_ context.Context, kind ui.ClipboardKind, content ui.ClipboardContent, done func(error)) {
+	h.mu.Lock()
+	if kind == ui.ClipboardKindPrimary {
+		h.Primary = content
+	} else {
+		h.Clipboard, h.HasClipboard, h.ClipboardPNG, h.ClipboardURIs = content.Text, content.HasText, content.PNG, content.URIs
+	}
+	h.mu.Unlock()
+	if done != nil {
+		h.Post(func() { done(nil) })
+	}
+}
+
+// GetClipboard posts the content that was kept, in the format.
+func (h *Host) GetClipboard(ctx context.Context, kind ui.ClipboardKind, format string, done func(ui.ClipboardContent, error)) {
+	h.mu.Lock()
+	content := h.Primary
+	if kind != ui.ClipboardKindPrimary {
+		content = ui.ClipboardContent{Text: h.Clipboard, HasText: h.HasClipboard, PNG: h.ClipboardPNG, URIs: h.ClipboardURIs}
+	}
+	h.mu.Unlock()
+	var out ui.ClipboardContent
+	switch format {
+	case ui.ClipboardFormatText:
+		out.Text, out.HasText = content.Text, content.HasText
+	case ui.ClipboardFormatPNG:
+		out.PNG = content.PNG
+	case ui.ClipboardFormatURIList:
+		out.URIs = content.URIs
+	}
+	h.Post(func() { done(out, ctx.Err()) })
 }
 
 // CursorActivation is one call of ActivateSystemCursor.

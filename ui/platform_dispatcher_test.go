@@ -476,3 +476,93 @@ func TestClipboardUnavailable(t *testing.T) {
 		}
 	}
 }
+
+type richClipboardHost struct {
+	fakeHost
+	system, primary ClipboardContent
+}
+
+func (h *richClipboardHost) SetClipboard(_ context.Context, kind ClipboardKind, c ClipboardContent, done func(error)) {
+	if kind == ClipboardKindPrimary {
+		h.primary = c
+	} else {
+		h.system = c
+	}
+	if done != nil {
+		h.Post(func() { done(nil) })
+	}
+}
+
+func (h *richClipboardHost) GetClipboard(_ context.Context, kind ClipboardKind, _ string, done func(ClipboardContent, error)) {
+	c := h.system
+	if kind == ClipboardKindPrimary {
+		c = h.primary
+	}
+	h.Post(func() { done(c, nil) })
+}
+
+func TestRichClipboardCallsReachTheHost(t *testing.T) {
+	host := &richClipboardHost{}
+	d := NewPlatformDispatcher(host)
+	var setErr error = errors.New("NotCalled", "set was not called")
+	d.SetClipboard(context.Background(), ClipboardKindPrimary, ClipboardContent{Text: "picked", HasText: true}, func(err error) { setErr = err })
+	var got ClipboardContent
+	d.GetClipboard(context.Background(), ClipboardKindPrimary, ClipboardFormatText, func(c ClipboardContent, err error) { got = c })
+	host.runPosted()
+	if setErr != nil || got.Text != "picked" || !got.Has(ClipboardFormatText) || host.system.HasText {
+		t.Errorf("set error = %v, got %+v, system %+v", setErr, got, host.system)
+	}
+}
+
+func TestRichClipboardFallsBackToTheTextHost(t *testing.T) {
+	host := &clipboardHost{}
+	d := NewPlatformDispatcher(host)
+	d.SetClipboard(context.Background(), ClipboardKindSystem, ClipboardContent{Text: "plain", HasText: true}, nil)
+	var got ClipboardContent
+	d.GetClipboard(context.Background(), ClipboardKindUnspecified, ClipboardFormatText, func(c ClipboardContent, err error) { got = c })
+	host.runPosted()
+	if host.text != "plain" || got.Text != "plain" || !got.HasText {
+		t.Errorf("host text = %q, got %+v", host.text, got)
+	}
+}
+
+func TestRichClipboardUnavailable(t *testing.T) {
+	tests := []struct {
+		name string
+		set  ClipboardContent
+		kind ClipboardKind
+		fmt  string
+	}{
+		{"primary text", ClipboardContent{Text: "x", HasText: true}, ClipboardKindPrimary, ClipboardFormatText},
+		{"system image", ClipboardContent{PNG: []byte("p")}, ClipboardKindSystem, ClipboardFormatPNG},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			host := &clipboardHost{}
+			d := NewPlatformDispatcher(host)
+			var setErr, getErr error
+			d.SetClipboard(context.Background(), tc.kind, tc.set, func(err error) { setErr = err })
+			d.GetClipboard(context.Background(), tc.kind, tc.fmt, func(_ ClipboardContent, err error) { getErr = err })
+			host.runPosted()
+			for name, err := range map[string]error{"set": setErr, "get": getErr} {
+				appErr, ok := errors.FromError(err)
+				if !ok || !appErr.HasRoute("errClipboardUnavailable.ClipboardUnavailable") {
+					t.Errorf("%s: err = %v, want ClipboardUnavailable", name, err)
+				}
+			}
+		})
+	}
+}
+
+func TestClipboardContentFormats(t *testing.T) {
+	c := ClipboardContent{PNG: []byte("p"), URIs: []string{"file:///a"}}
+	if c.IsEmpty() || c.Has(ClipboardFormatText) || !c.Has(ClipboardFormatPNG) || !c.Has(ClipboardFormatURIList) || c.Has("x") {
+		t.Errorf("formats of %+v are wrong", c)
+	}
+	if !(ClipboardContent{}).IsEmpty() || (ClipboardContent{HasText: true}).IsEmpty() {
+		t.Error("IsEmpty is wrong")
+	}
+	if ClipboardKindPrimary.String() != "ClipboardKind.primary" || ClipboardKindUnspecified.String() != "ClipboardKind.system" || ClipboardKind(9).String() != "ClipboardKind.invalid" {
+		t.Error("ClipboardKind.String is wrong")
+	}
+}

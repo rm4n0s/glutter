@@ -250,7 +250,7 @@ func (t *Tester) ClipboardText() (string, bool) {
 func (t *Tester) SetClipboardText(text string) {
 	t.host.Lock()
 	defer t.host.Unlock()
-	t.host.Clipboard, t.host.HasClipboard = text, true
+	t.host.Clipboard, t.host.HasClipboard, t.host.ClipboardPNG, t.host.ClipboardURIs = text, true, nil, nil
 }
 
 // ClearClipboard empties the fake system clipboard.
@@ -259,7 +259,65 @@ func (t *Tester) SetClipboardText(text string) {
 func (t *Tester) ClearClipboard() {
 	t.host.Lock()
 	defer t.host.Unlock()
-	t.host.Clipboard, t.host.HasClipboard = "", false
+	t.host.Clipboard, t.host.HasClipboard, t.host.ClipboardPNG, t.host.ClipboardURIs = "", false, nil, nil
+}
+
+// PrimaryText is the text on the fake primary selection, and whether there is
+// any. Selecting text in a text field puts it there.
+//
+// Flutter: no counterpart
+func (t *Tester) PrimaryText() (string, bool) {
+	t.host.Lock()
+	defer t.host.Unlock()
+	return t.host.Primary.Text, t.host.Primary.HasText
+}
+
+// SetPrimaryText puts text on the fake primary selection, as another
+// application would.
+//
+// Flutter: no counterpart
+func (t *Tester) SetPrimaryText(text string) {
+	t.host.Lock()
+	defer t.host.Unlock()
+	t.host.Primary = ui.ClipboardContent{Text: text, HasText: true}
+}
+
+// ClipboardPNG is the image on the fake system clipboard, or nil.
+//
+// Flutter: no counterpart
+func (t *Tester) ClipboardPNG() []byte {
+	t.host.Lock()
+	defer t.host.Unlock()
+	return t.host.ClipboardPNG
+}
+
+// SetClipboardPNG puts an image on the fake system clipboard, as another
+// application would.
+//
+// Flutter: no counterpart
+func (t *Tester) SetClipboardPNG(png []byte) {
+	t.host.Lock()
+	defer t.host.Unlock()
+	t.host.ClipboardPNG = png
+}
+
+// ClipboardURIs are the URIs on the fake system clipboard, or nil.
+//
+// Flutter: no counterpart
+func (t *Tester) ClipboardURIs() []string {
+	t.host.Lock()
+	defer t.host.Unlock()
+	return t.host.ClipboardURIs
+}
+
+// SetClipboardURIs puts URIs (such as copied files) on the fake system
+// clipboard, as another application would.
+//
+// Flutter: no counterpart
+func (t *Tester) SetClipboardURIs(uris []string) {
+	t.host.Lock()
+	defer t.host.Unlock()
+	t.host.ClipboardURIs = uris
 }
 
 // TextInputStates are the states of the text field that the framework gave to the

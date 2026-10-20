@@ -28,6 +28,9 @@ type Platform struct {
 
 	clipboardText string
 	hasClipboard  bool
+	clipboardPNG  []byte
+	clipboardURIs []string
+	primary       ui.ClipboardContent
 }
 
 var _ platform.Platform = (*Platform)(nil)
@@ -197,6 +200,54 @@ func (c *clipboard) SetText(_ context.Context, text string, done func(error)) {
 	if done != nil {
 		c.p.Post(func() { done(nil) })
 	}
+}
+
+// SetClipboardContent sets the in-memory clipboard (kind system) or primary
+// selection (kind primary), as another application would.
+//
+// Flutter: no counterpart
+func (p *Platform) SetClipboardContent(kind ui.ClipboardKind, content ui.ClipboardContent) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if kind == ui.ClipboardKindPrimary {
+		p.primary = content
+		return
+	}
+	p.clipboardText, p.hasClipboard, p.clipboardPNG, p.clipboardURIs = content.Text, content.HasText, content.PNG, content.URIs
+}
+
+// ClipboardContent is what the in-memory clipboard (kind system) or primary
+// selection (kind primary) holds.
+//
+// Flutter: no counterpart
+func (p *Platform) ClipboardContent(kind ui.ClipboardKind) ui.ClipboardContent {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if kind == ui.ClipboardKindPrimary {
+		return p.primary
+	}
+	return ui.ClipboardContent{Text: p.clipboardText, HasText: p.hasClipboard, PNG: p.clipboardPNG, URIs: p.clipboardURIs}
+}
+
+func (c *clipboard) SetContent(_ context.Context, kind ui.ClipboardKind, content ui.ClipboardContent, done func(error)) {
+	c.p.SetClipboardContent(kind, content)
+	if done != nil {
+		c.p.Post(func() { done(nil) })
+	}
+}
+
+func (c *clipboard) GetContent(ctx context.Context, kind ui.ClipboardKind, format string, done func(ui.ClipboardContent, error)) {
+	content := c.p.ClipboardContent(kind)
+	var out ui.ClipboardContent
+	switch format {
+	case ui.ClipboardFormatText:
+		out.Text, out.HasText = content.Text, content.HasText
+	case ui.ClipboardFormatPNG:
+		out.PNG = content.PNG
+	case ui.ClipboardFormatURIList:
+		out.URIs = content.URIs
+	}
+	c.p.Post(func() { done(out, ctx.Err()) })
 }
 
 func (c *clipboard) GetText(ctx context.Context, done func(string, bool, error)) {

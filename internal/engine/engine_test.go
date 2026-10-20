@@ -802,6 +802,53 @@ func TestClipboardReachesThePlatform(t *testing.T) {
 	}
 }
 
+// TestRichClipboardReachesThePlatformAndBack checks that the primary selection
+// and the formats beyond text go through the dispatcher to the platform.
+func TestRichClipboardReachesThePlatformAndBack(t *testing.T) {
+	h := newHarness(t, map[string]string{"DISPLAY": ":0"})
+	started := make(chan *ui.PlatformDispatcher, 1)
+	h.cfg.Start = func(d *ui.PlatformDispatcher) error { started <- d; return nil }
+	h.c.Inject(metrics(1, 1))
+	done := h.run(t)
+	var d *ui.PlatformDispatcher
+	select {
+	case d = <-started:
+	case <-time.After(10 * time.Second):
+		t.Fatal("Start was not called")
+	}
+	got := make(chan ui.ClipboardContent, 2)
+	h.c.Post(func() {
+		d.SetClipboard(context.Background(), ui.ClipboardKindPrimary, ui.ClipboardContent{Text: "picked", HasText: true}, nil)
+		d.SetClipboard(context.Background(), ui.ClipboardKindSystem, ui.ClipboardContent{PNG: []byte("png"), URIs: []string{"file:///a"}}, func(err error) {
+			if err != nil {
+				t.Errorf("SetClipboard: %v", err)
+			}
+			d.GetClipboard(context.Background(), ui.ClipboardKindPrimary, ui.ClipboardFormatText, func(c ui.ClipboardContent, err error) { got <- c })
+			d.GetClipboard(context.Background(), ui.ClipboardKindSystem, ui.ClipboardFormatPNG, func(c ui.ClipboardContent, err error) { got <- c })
+		})
+	})
+	for range 2 {
+		select {
+		case c := <-got:
+			if c.Text != "picked" && string(c.PNG) != "png" {
+				t.Errorf("content = %+v", c)
+			}
+		case <-time.After(10 * time.Second):
+			t.Fatal("the clipboard result did not arrive")
+		}
+	}
+	h.stopEngine(t)
+	if err := result(t, done); err != nil {
+		t.Fatal(err)
+	}
+	if c := h.c.ClipboardContent(ui.ClipboardKindPrimary); c.Text != "picked" {
+		t.Errorf("platform primary = %+v", c)
+	}
+	if c := h.c.ClipboardContent(ui.ClipboardKindSystem); string(c.PNG) != "png" || len(c.URIs) != 1 {
+		t.Errorf("platform clipboard = %+v", c)
+	}
+}
+
 // TestTextInputReachesThePlatformAndBack checks that the dispatcher gives the
 // state of the text field to the window, and that the events of the input method
 // come back to the dispatcher.

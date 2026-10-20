@@ -99,6 +99,7 @@ type EditableTextState struct {
 	hadFocusOnTapDown      bool
 	nextFocusChangeIntern  bool
 	showCaretScheduled     bool
+	primaryScheduled       bool
 	restartConnScheduled   bool
 	currentPromptRectRange foundation.Opt[ui.TextRange]
 
@@ -317,6 +318,55 @@ func (s *EditableTextState) CopySelection(cause services.SelectionChangedCause) 
 		}
 	}
 	s.clipboardStatus.Update()
+}
+
+// schedulePrimarySelection puts the selected text on the primary selection
+// after the frame, once for all the changes of the selection of the frame (a
+// drag changes it at every move). Linux desktops paste the primary selection
+// with a middle click; the other platforms have none.
+//
+// Flutter: no counterpart
+func (s *EditableTextState) schedulePrimarySelection() {
+	if s.primaryScheduled || foundation.DefaultTargetPlatform() != foundation.TargetPlatformLinux {
+		return
+	}
+	s.primaryScheduled = true
+	s.binding().RunPostFrame(func(time.Duration) {
+		s.primaryScheduled = false
+		if !s.Mounted() {
+			return
+		}
+		v := s.value()
+		selection := v.Selection
+		if !selection.IsValid() || selection.IsCollapsed() || s.Widget().o.ObscureText || selection.End() > len(v.Text) {
+			return
+		}
+		// A platform without a primary selection fails the call; there is
+		// nothing to do about it.
+		s.binding().Clipboard().SetPrimaryData(s.Lifetime(), services.NewClipboardData(selection.Range().TextInside(v.Text)), nil)
+	})
+}
+
+// PastePrimarySelection pastes the primary selection over the selection, as a
+// middle click does on Linux desktops.
+//
+// Flutter: no counterpart
+func (s *EditableTextState) PastePrimarySelection(cause services.SelectionChangedCause) {
+	if !s.allowPaste() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(s.Lifetime(), 5*time.Second)
+	s.binding().Clipboard().GetPrimaryData(ctx, services.ClipboardKTextPlain, func(data *services.ClipboardData, err error) {
+		cancel()
+		if err != nil {
+			// A platform without a primary selection fails the call.
+			return
+		}
+		if data == nil || !s.Mounted() {
+			return
+		}
+		s.pasteText(cause, data.Text)
+	})
 }
 
 // CutSelection copies the selected text to the clipboard and removes it.

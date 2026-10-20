@@ -299,20 +299,32 @@ func (c *connSource) WantsWrite() bool { return false }
 func (c *connSource) BeforeWait() error {
 	// Events may already sit in Xlib's queue without the socket being readable,
 	// and a handler may have made requests that wait in its buffer.
-	c.p.dispatchEvents()
-	c.p.x.flush(c.p.display)
+	//
+	// Flushing can read events too: Xlib reads while it waits to write a large
+	// request. They would sit in the queue with an empty socket and the loop
+	// would sleep on them, so flush first and handle again until a flush brings
+	// nothing.
+	for c.p.display != 0 {
+		c.p.x.flush(c.p.display)
+		if !c.p.dispatchEvents() {
+			break
+		}
+	}
 	return nil
 }
 
 func (c *connSource) AfterWait(linux.Events) error {
-	c.p.dispatchEvents()
+	_ = c.p.dispatchEvents()
 	return nil
 }
 
-// dispatchEvents handles every event that is available now.
-func (p *Platform) dispatchEvents() {
+// dispatchEvents handles every event that is available now and reports whether
+// there was one.
+func (p *Platform) dispatchEvents() (handled bool) {
 	for p.display != 0 && p.x.pending(p.display) > 0 {
 		p.x.nextEvent(p.display, p.event)
 		p.handleEvent()
+		handled = true
 	}
+	return handled
 }

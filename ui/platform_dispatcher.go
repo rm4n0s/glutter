@@ -385,6 +385,47 @@ func (d *PlatformDispatcher) GetClipboardText(ctx context.Context, done func(tex
 	d.Post(func() { done("", false, errClipboardUnavailable()) })
 }
 
+// SetClipboard asks the engine to put the content on the selection of the kind
+// (the system clipboard or the primary selection). done, when it is not nil, is
+// called later on the UI thread with the error if any. A host without a rich
+// clipboard fails with ClipboardUnavailable, except for the text of the system
+// clipboard.
+//
+// Flutter: no counterpart
+func (d *PlatformDispatcher) SetClipboard(ctx context.Context, kind ClipboardKind, content ClipboardContent, done func(err error)) {
+	if h, ok := d.host.(RichClipboardHost); ok {
+		h.SetClipboard(ctx, kind, content, done)
+		return
+	}
+	if kind != ClipboardKindPrimary && content.HasText && len(content.PNG) == 0 && len(content.URIs) == 0 {
+		d.SetClipboardText(ctx, content.Text, done)
+		return
+	}
+	if done != nil {
+		d.Post(func() { done(errClipboardUnavailable()) })
+	}
+}
+
+// GetClipboard asks the engine to read the selection of the kind in the format.
+// done is called later on the UI thread; the content is empty when the selection
+// has no such format. A host without a rich clipboard fails with
+// ClipboardUnavailable, except for the text of the system clipboard.
+//
+// Flutter: no counterpart
+func (d *PlatformDispatcher) GetClipboard(ctx context.Context, kind ClipboardKind, format string, done func(content ClipboardContent, err error)) {
+	if h, ok := d.host.(RichClipboardHost); ok {
+		h.GetClipboard(ctx, kind, format, done)
+		return
+	}
+	if kind != ClipboardKindPrimary && format == ClipboardFormatText {
+		d.GetClipboardText(ctx, func(text string, ok bool, err error) {
+			done(ClipboardContent{Text: text, HasText: ok}, err)
+		})
+		return
+	}
+	d.Post(func() { done(ClipboardContent{}, errClipboardUnavailable()) })
+}
+
 func errClipboardUnavailable() error {
 	return errors.New("ClipboardUnavailable", "the engine has no system clipboard")
 }

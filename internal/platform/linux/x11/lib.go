@@ -36,6 +36,7 @@ const (
 	visualIDMask            = 0x1 // VisualIDMask
 	allocNone               = 0   // AllocNone
 	propModeReplace         = 0   // PropModeReplace
+	xaPrimary               = 1   // XA_PRIMARY
 	xaAtom                  = 4   // XA_ATOM
 	xaCardinal              = 6   // XA_CARDINAL
 	xaString                = 31  // XA_STRING

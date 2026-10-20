@@ -257,11 +257,12 @@ type handler struct {
 }
 
 var (
-	_ platform.Handler = (*handler)(nil)
-	_ ui.PlatformHost  = (*handler)(nil)
-	_ ui.CursorHost    = (*handler)(nil)
-	_ ui.ClipboardHost = (*handler)(nil)
-	_ ui.TextInputHost = (*handler)(nil)
+	_ platform.Handler     = (*handler)(nil)
+	_ ui.PlatformHost      = (*handler)(nil)
+	_ ui.CursorHost        = (*handler)(nil)
+	_ ui.ClipboardHost     = (*handler)(nil)
+	_ ui.RichClipboardHost = (*handler)(nil)
+	_ ui.TextInputHost     = (*handler)(nil)
 )
 
 func (h *handler) OnMetrics(view ui.ViewID, m platform.ViewMetrics) {
@@ -453,6 +454,18 @@ func (h *handler) SetClipboardText(ctx context.Context, text string, done func(e
 // GetClipboardText reads the text of the system clipboard (ui.ClipboardHost).
 func (h *handler) GetClipboardText(ctx context.Context, done func(string, bool, error)) {
 	h.conn.Clipboard().GetText(ctx, done)
+}
+
+// SetClipboard puts the content on the system clipboard or the primary selection
+// (ui.RichClipboardHost).
+func (h *handler) SetClipboard(ctx context.Context, kind ui.ClipboardKind, content ui.ClipboardContent, done func(error)) {
+	h.conn.Clipboard().SetContent(ctx, kind, content, done)
+}
+
+// GetClipboard reads the system clipboard or the primary selection in the format
+// (ui.RichClipboardHost).
+func (h *handler) GetClipboard(ctx context.Context, kind ui.ClipboardKind, format string, done func(ui.ClipboardContent, error)) {
+	h.conn.Clipboard().GetContent(ctx, kind, format, done)
 }
 
 // Post runs fn on the UI thread (ui.PlatformHost).
