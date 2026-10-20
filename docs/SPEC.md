@@ -1532,6 +1532,8 @@ Benchmarks (`go test -bench`) in `rendering`, `widgets` and `internal/gpu/soft` 
   - The automated part runs under headless compositors (`weston --backend=headless`, `sway` with `WLR_BACKENDS=headless`, `mutter --headless`, `kwin_wayland --virtual`).
   - The rest is a manual checklist in `docs/IMPLEMENTATION.md` covering every item in §8.11.
 - **D-Bus services** are tested against an in-process fake bus that records method calls and emits signals. Real-desktop checks are listed per milestone in `docs/IMPLEMENTATION.md`.
+  - The tests of an app that uses package `desktop` call `tester.FakeDesktop()` (`gluttertest`): a notification service, a StatusNotifierWatcher and a file chooser portal on the fake bus. The test reads `Notifications()`, `TrayMenu()` and `TrayProperty`, and acts like the user with `ClickTrayMenuItem`, `ActivateTray`, `InvokeNotificationAction`, `CloseNotification`, `AnswerFileChooser` and `CancelFileChooser`; `WaitFor` runs the UI thread's posted functions while the app's goroutines work.
+  - What the fake bus cannot show is tested against a real `dbus-daemon` that a test starts (it is skipped when the daemon is not installed): the types that godbus gives and takes (the layout `(ia{sv}av)`, the pixmaps, the errors of a missing service, which are values and not pointers) and the life of the connection.
 - **Both build modes**:
   - `go test -race ./...` runs with cgo (purego uses the real cgo runtime)
   - `CGO_ENABLED=0 go test ./...` runs purego's cgo-free path, which users get

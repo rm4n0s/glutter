@@ -46,6 +46,21 @@ func servicesOf(b *widgets.WidgetsBinding) *services {
 	}).(*services)
 }
 
+// connectResult is what opening the session bus gave.
+type connectResult struct {
+	bus dbus.Bus
+	err error
+}
+
+// closeLate closes the connection that arrives later on done: nobody waits for it.
+func closeLate(done <-chan connectResult) {
+	go func() {
+		if r := <-done; r.bus != nil {
+			_ = r.bus.Close()
+		}
+	}()
+}
+
 // connect returns the connection to the session bus, opening it when this is the
 // first call. A failure is DBusConnectFailed, and is tried again by the next call.
 func (s *services) connect(ctx context.Context) (dbus.Bus, error) {
@@ -54,15 +69,30 @@ func (s *services) connect(ctx context.Context) (dbus.Bus, error) {
 	if s.bus != nil {
 		return s.bus, nil
 	}
-	// The connection outlives the call that opened it: only the dial is bounded.
-	dialCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), connectTimeout)
-	defer cancel()
-	b, err := s.open(dialCtx)
-	if err != nil {
-		return nil, err
+	// The connection outlives the call that opened it, and godbus closes a connection
+	// when the context it was made with ends: the connection gets a context that never
+	// ends, and only the wait for it is bounded.
+	done := make(chan connectResult, 1)
+	go func() {
+		b, err := s.open(context.Background())
+		done <- connectResult{b, err}
+	}()
+	timer := time.NewTimer(connectTimeout)
+	defer timer.Stop()
+	select {
+	case r := <-done:
+		if r.err != nil {
+			return nil, r.err
+		}
+		s.bus = r.bus
+		return r.bus, nil
+	case <-timer.C:
+		closeLate(done)
+		return nil, errors.New("DBusConnectFailed", "the session bus did not answer in time", "timeout", connectTimeout.String())
+	case <-ctx.Done():
+		closeLate(done)
+		return nil, errors.NewErr("DBusConnectFailed", ctx.Err())
 	}
-	s.bus = b
-	return b, nil
 }
 
 // runProgram starts the program with the environment added to the app's and waits

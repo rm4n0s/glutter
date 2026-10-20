@@ -341,11 +341,19 @@ func portalMissing(err error) bool {
 	if appErr, ok := errors.FromError(err); ok && appErr.Tag == "DBusConnectFailed" {
 		return true
 	}
-	var dbusErr *godbus.Error
-	if !errors.As(err, &dbusErr) {
+	// A real bus gives the error as a godbus.Error value; a test double may give a pointer.
+	var name string
+	var dbusErr godbus.Error
+	var dbusErrPtr *godbus.Error
+	switch {
+	case errors.As(err, &dbusErr):
+		name = dbusErr.Name
+	case errors.As(err, &dbusErrPtr):
+		name = dbusErrPtr.Name
+	default:
 		return false
 	}
-	switch dbusErr.Name {
+	switch name {
 	case "org.freedesktop.DBus.Error.ServiceUnknown", "org.freedesktop.DBus.Error.NameHasNoOwner",
 		"org.freedesktop.DBus.Error.UnknownMethod", "org.freedesktop.DBus.Error.UnknownObject",
 		"org.freedesktop.DBus.Error.UnknownInterface", "org.freedesktop.DBus.Error.NoReply",

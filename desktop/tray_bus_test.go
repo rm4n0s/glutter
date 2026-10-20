@@ -205,3 +205,84 @@ func TestSystemTrayOnARealBus(t *testing.T) {
 		}
 	}
 }
+
+// realNotifyServer is a notification service on a real bus.
+type realNotifyServer struct {
+	mu    sync.Mutex
+	calls int
+}
+
+func (n *realNotifyServer) Notify(string, uint32, string, string, string, []string, map[string]godbus.Variant, int32) (uint32, *godbus.Error) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.calls++
+	return uint32(10 + n.calls), nil
+}
+
+func (n *realNotifyServer) GetCapabilities() ([]string, *godbus.Error) { return []string{"body"}, nil }
+
+// TestTheSessionBusStaysOpen opens the session bus the way an app does (from
+// DBUS_SESSION_BUS_ADDRESS, with the default opener) and uses it for several calls:
+// godbus closes a connection when the context it was made with ends, so a connection
+// made with the context of the first call would be dead by the second.
+func TestTheSessionBusStaysOpen(t *testing.T) {
+	addr := startPrivateBus(t)
+	t.Setenv("DBUS_SESSION_BUS_ADDRESS", addr)
+	service := &realNotifyServer{}
+	host := dialBus(t, addr)
+	if err := host.Export(service, "/org/freedesktop/Notifications", "org.freedesktop.Notifications"); err != nil {
+		t.Fatal(err)
+	}
+	if reply, err := host.RequestName("org.freedesktop.Notifications", godbus.NameFlagDoNotQueue); err != nil || reply != godbus.RequestNameReplyPrimaryOwner {
+		t.Fatalf("notification service name: %v, %v", reply, err)
+	}
+
+	ts, bc := app(t)
+	for i := 1; i <= 3; i++ {
+		var id desktop.NotificationID
+		err := inGoroutine(t, ts, func() (err error) {
+			id, err = desktop.ShowNotification(context.Background(), bc, "hello")
+			return err
+		})
+		if err != nil {
+			t.Fatalf("call %d: %v", i, err)
+		}
+		if id != desktop.NotificationID(10+i) {
+			t.Errorf("call %d: id = %d", i, id)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// TestMissingServicesOnARealBus checks that the errors of a real bus for a service that is
+// not there are taken as that: godbus gives them as values, not pointers. The tray is
+// unavailable, the notifications are, and OpenURI falls back to xdg-open.
+func TestMissingServicesOnARealBus(t *testing.T) {
+	addr := startPrivateBus(t)
+	t.Setenv("DBUS_SESSION_BUS_ADDRESS", addr)
+
+	ts, bc := app(t)
+	progs := &programs{}
+	desktop.UseProgram(bc, progs.run)
+	err := inGoroutine(t, ts, func() error {
+		_, err := desktop.ShowNotification(context.Background(), bc, "hello")
+		return err
+	})
+	assertTag(t, err, "NotificationsUnavailable")
+	if err := inGoroutine(t, ts, func() error { return desktop.OpenURI(context.Background(), bc, "https://example.org") }); err != nil {
+		t.Fatal(err)
+	}
+	if runs := progs.all(); len(runs) != 1 || runs[0].name != "xdg-open" {
+		t.Errorf("runs = %+v, want xdg-open", runs)
+	}
+	err = inGoroutine(t, ts, func() error {
+		_, err := desktop.OpenFiles(context.Background(), bc)
+		return err
+	})
+	assertTag(t, err, "FileChooserUnavailable")
+
+	ts.PumpWidget(trayTree(ui.WindowIcon{Name: "x"}, desktop.SystemTrayOpts{}))
+	var trayErr error
+	waitFor(t, ts, "the tray error", func() bool { trayErr = ts.TakeError(); return trayErr != nil })
+	assertTag(t, trayErr, "TrayUnavailable")
+}
