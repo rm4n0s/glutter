@@ -129,6 +129,10 @@ type WindowConfig struct {
 	// Decorations is how the title bar is made; it does not matter when Decorated
 	// is false.
 	Decorations Decorations
+	// Icon is the icon of the window; the zero value is none.
+	Icon ui.WindowIcon
+	// ContentType is the hint about what the window shows.
+	ContentType ui.ContentType
 }
 
 // IsResizable is whether the user can resize the window; the default is true.

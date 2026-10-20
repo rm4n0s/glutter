@@ -131,7 +131,7 @@ func (p *Platform) Inject(event Event) {
 // Flutter: no counterpart
 func (p *Platform) NewWindow(cfg platform.WindowConfig) (platform.Window, error) {
 	p.mu.Lock()
-	w := &Window{p: p, id: p.nextView, config: cfg, title: cfg.Title, size: cfg.Size, minSize: cfg.MinSize, maxSize: cfg.MaxSize, state: cfg.State}
+	w := &Window{p: p, id: p.nextView, config: cfg, title: cfg.Title, size: cfg.Size, minSize: cfg.MinSize, maxSize: cfg.MaxSize, state: cfg.State, icon: cfg.Icon, content: cfg.ContentType}
 	p.nextView++
 	p.windows = append(p.windows, w)
 	p.log = append(p.log, Entry{Kind: EntryNewWindow, View: w.id, Value: cfg})
@@ -309,4 +309,20 @@ func (p *Platform) DropAnswers() []ui.DropActions {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return append([]ui.DropActions(nil), p.dropAnswers...)
+}
+
+// FakeActivationToken is the token that RequestActivationToken gives.
+//
+// Flutter: no counterpart
+const FakeActivationToken = "fake-activation-token"
+
+var _ platform.ActivationTokenProvider = (*Platform)(nil)
+
+// RequestActivationToken records the request and answers with
+// FakeActivationToken on the platform's thread.
+//
+// Flutter: no counterpart
+func (p *Platform) RequestActivationToken(view ui.ViewID, done func(token string)) {
+	p.record(Entry{Kind: EntryActivationToken, View: view})
+	p.Post(func() { done(FakeActivationToken) })
 }

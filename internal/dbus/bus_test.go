@@ -274,6 +274,30 @@ func TestRealBusSubscribeAndClose(t *testing.T) {
 	}
 }
 
+// Closing the bus while a subscription is live ends the subscription: godbus closes
+// its signal channels, which the forwarder must not mistake for a signal.
+func TestRealBusCloseWhileSubscribed(t *testing.T) {
+	addr := startPrivateBus(t)
+	bus := dbus.NewBus(dial(t, addr))
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	sigs, err := bus.Subscribe(ctx, dbus.SignalMatch{Interface: "org.example.I", Member: "Ping"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := bus.Close(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case sig, ok := <-sigs:
+		if ok {
+			t.Errorf("unexpected signal %v", sig)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the channel was not closed after the connection was")
+	}
+}
+
 // failingCloser is a connection whose Close fails.
 type failingCloser struct{ net.Conn }
 

@@ -19,6 +19,10 @@ func (s *Server) handleInput(iface string, op uint16, id uint32, r *reader) bool
 		dev := r.u32()
 		s.addObject(dev, "wp_cursor_shape_device_v1")
 		s.record("wp_cursor_shape_manager_v1.get_pointer")
+	case "wp_cursor_shape_manager_v1.2": // get_tablet_tool_v2(id, tablet_tool)
+		dev := r.u32()
+		s.addObject(dev, "wp_cursor_shape_device_v1")
+		s.record("wp_cursor_shape_manager_v1.get_tablet_tool_v2")
 	case "wp_cursor_shape_device_v1.0":
 		s.record("wp_cursor_shape_device_v1.destroy")
 	case "wp_cursor_shape_device_v1.1": // set_shape(serial, shape)

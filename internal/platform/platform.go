@@ -73,7 +73,32 @@ type Window interface {
 	PerformWindowAction(action ui.WindowAction)
 	// Close destroys the window. Destroy the GPU surface of the window first.
 	Close()
-	// TODO(step 14.7): the icon.
+	// SetIcon sets the icon of the window; the zero icon removes it. It fails with
+	// the platform's error when the icon cannot be used. A platform that has no
+	// window icons ignores it.
+	SetIcon(icon ui.WindowIcon) error
+	// SetContentType gives the compositor a hint about what the window shows. A
+	// platform without such hints ignores it.
+	SetContentType(contentType ui.ContentType)
+	// KeepScreenOn stops the screen from going idle while the window is visible
+	// (on is true), or lets it go idle again. It fails with IdleInhibitUnavailable
+	// when the platform cannot.
+	KeepScreenOn(on bool) error
+}
+
+// ActivationTokenProvider is implemented by a Platform that can ask the desktop
+// for an activation token: a proof of a user action that lets another app, one
+// that this app launches, take the focus (Wayland's xdg_activation_v1). The
+// services that launch apps (opening a URI, notifications) pass the token on
+// through XDG_ACTIVATION_TOKEN.
+//
+// Flutter: no counterpart
+type ActivationTokenProvider interface {
+	// RequestActivationToken asks for a token for the window of the view. done is
+	// called on the UI thread with the token, or with an empty token when the
+	// desktop gave none. The platform has the app id of the window and the last
+	// input event of the seat.
+	RequestActivationToken(view ui.ViewID, done func(token string))
 }
 
 // Handler receives everything the platform reports. The engine implements it.

@@ -138,7 +138,11 @@ func (c *sessionBus) forward(ctx context.Context, match SignalMatch, opts []godb
 		case <-ctx.Done():
 			c.unsubscribe(opts, raw)
 			return
-		case sig := <-raw:
+		case sig, ok := <-raw:
+			if !ok {
+				// godbus closes the signal channels when the connection is closed.
+				return
+			}
 			if !match.Matches(sig) {
 				continue
 			}
@@ -161,9 +165,13 @@ func (c *sessionBus) unsubscribe(opts []godbus.MatchOption, raw chan *godbus.Sig
 		// already be closed, and the bus drops the rule with it.
 		_ = c.conn.RemoveMatchSignal(opts...)
 	}()
+	drain := raw // the goroutine above uses raw
 	for {
 		select {
-		case <-raw:
+		case _, ok := <-drain:
+			if !ok {
+				drain = nil // closed with the connection: nothing left to drain
+			}
 		case <-done:
 			return
 		}

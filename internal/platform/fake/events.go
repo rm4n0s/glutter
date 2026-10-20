@@ -69,6 +69,24 @@ const (
 	//
 	// Flutter: no counterpart
 	EntryWindowAction EntryKind = "WindowAction"
+	// EntrySetIcon records Window.SetIcon; Value is the ui.WindowIcon.
+	//
+	// Flutter: no counterpart
+	EntrySetIcon EntryKind = "SetIcon"
+	// EntrySetContentType records Window.SetContentType; Value is the
+	// ui.ContentType.
+	//
+	// Flutter: no counterpart
+	EntrySetContentType EntryKind = "SetContentType"
+	// EntryKeepScreenOn records Window.KeepScreenOn; Value is the bool.
+	//
+	// Flutter: no counterpart
+	EntryKeepScreenOn EntryKind = "KeepScreenOn"
+	// EntryActivationToken records Platform.RequestActivationToken; Value is the
+	// ui.ViewID.
+	//
+	// Flutter: no counterpart
+	EntryActivationToken EntryKind = "ActivationToken"
 	// EntryClose records Window.Close; Value is nil.
 	//
 	// Flutter: no counterpart

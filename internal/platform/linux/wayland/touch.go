@@ -14,11 +14,11 @@ type touch struct {
 
 func newTouch(p *Platform) *touch {
 	t := &touch{p: p, b: input.NewTouchBatcher(p.now)}
-	// TODO(step 3.7): t.b.Scale = the scale of the output.
 	t.obj = p.sess.seat.GetTouch()
 	t.obj.SetEvents(&wl.WlTouchEvents{
 		OnDown: func(_ uint32, _ uint32, surface *wl.WlSurface, id int32, x, y float64) {
 			if w := p.windowOf(surface); w != nil {
+				t.b.Scale = w.scaleFactor()
 				t.b.Down(w.id, id, x, y)
 			}
 		},

@@ -98,6 +98,9 @@ func (w *window) decorateWithLibdecor(cfg platform.WindowConfig) error {
 		w.makeModal(w.p.sess.conn.WrapXdgToplevel(top))
 	}
 	w.requestState(cfg.State)
+	if err := w.SetIcon(cfg.Icon); err != nil {
+		return err
+	}
 	w.frame.Map() // the first configure follows
 	return nil
 }
@@ -271,9 +274,10 @@ func (w *window) PerformWindowAction(action ui.WindowAction) {
 			w.toplevel.UnsetFullscreen()
 		}
 	case ui.WindowActionActivate:
-		// xdg-shell cannot raise a window or take the focus for it; a window that is
-		// minimized comes back through the compositor's own shell, or through an
-		// activation token (TODO(step 14.7)).
+		// xdg-shell cannot raise a window or take the focus for it; xdg_activation_v1
+		// can, with a token. Without the protocol a window that is minimized comes
+		// back only through the compositor's own shell.
+		w.activate()
 	}
 }
 

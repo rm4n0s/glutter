@@ -11,13 +11,20 @@
 #   SWAYSOCK          sway's IPC socket (only with sway), for swaymsg
 #   DISPLAY           unset, so nothing falls back to the real X server
 #
-# The compositor is sway when it is installed, else weston. Prefer sway: weston's
+# The compositor is HEADLESS_COMPOSITOR (sway, weston, mutter or kwin) when that is
+# set, else sway when it is installed, else weston. Prefer sway: weston's
 # headless backend has no input devices and so no wl_seat, which Glutter requires
 # (it fails with WaylandProtocolMissing), so weston only serves checks that do
-# not need Glutter to start. The compositor's own output goes to
-# $RUNTIME/compositor.log, which is printed if it fails to start. Environment:
+# not need Glutter to start. mutter (`mutter --headless`) and kwin
+# (`kwin_wayland --virtual`) need a D-Bus session bus; they run on a private one
+# (dbus-run-session) so the user's session stays out of the run. The compositor's
+# own output goes to $RUNTIME/compositor.log, which is printed if it fails to
+# start. Environment:
+#   HEADLESS_COMPOSITOR  sway, weston, mutter or kwin
+#   HEADLESS_PRIVATE_BUS 1 runs the command on a private session bus (the default
+#                   for mutter and kwin), 0 uses the bus of the environment
 #   HEADLESS_SIZE   output size, WIDTHxHEIGHT (default 1280x800)
-#   HEADLESS_SCALE  output scale (default 1; sway only)
+#   HEADLESS_SCALE  output scale (default 1; sway and kwin)
 #   HEADLESS_SECOND a second output (HEADLESS-2) to the right of the first, as
 #                   WIDTHxHEIGHT@SCALE, e.g. 800x600@2 (sway only)
 #   HEADLESS_FLOATING  1 (default) opens windows floating at the size they ask
@@ -37,14 +44,45 @@ usage() {
 shift
 [[ $# -gt 0 ]] || usage
 
-if command -v sway >/dev/null 2>&1; then
-  compositor=sway
-elif command -v weston >/dev/null 2>&1; then
-  compositor=weston
-else
-  echo "error: neither sway nor weston is installed." >&2
-  echo "       install them with: sudo dnf install sway grim weston" >&2
-  exit 2
+case "${HEADLESS_COMPOSITOR:-}" in
+  "")
+    if command -v sway >/dev/null 2>&1; then
+      compositor=sway
+    elif command -v weston >/dev/null 2>&1; then
+      compositor=weston
+    else
+      echo "error: neither sway nor weston is installed." >&2
+      echo "       install them with: sudo dnf install sway grim weston" >&2
+      exit 2
+    fi
+    ;;
+  sway | weston | mutter | kwin)
+    compositor="$HEADLESS_COMPOSITOR"
+    binary="$compositor"
+    [[ "$compositor" == kwin ]] && binary=kwin_wayland
+    if ! command -v "$binary" >/dev/null 2>&1; then
+      echo "error: $binary is not installed." >&2
+      exit 2
+    fi
+    ;;
+  *)
+    echo "error: HEADLESS_COMPOSITOR must be sway, weston, mutter or kwin, got '$HEADLESS_COMPOSITOR'" >&2
+    exit 64
+    ;;
+esac
+
+# mutter and kwin want a session bus; a private one keeps the run away from the
+# user's session (the settings portal, the input methods).
+private_bus="${HEADLESS_PRIVATE_BUS:-}"
+if [[ -z "$private_bus" ]]; then
+  case "$compositor" in mutter | kwin) private_bus=1 ;; *) private_bus=0 ;; esac
+fi
+if [[ "$private_bus" == 1 && -z "${HEADLESS_BUS_STARTED:-}" ]]; then
+  if ! command -v dbus-run-session >/dev/null 2>&1; then
+    echo "error: dbus-run-session is not installed (package dbus-daemon)." >&2
+    exit 2
+  fi
+  exec dbus-run-session -- env HEADLESS_BUS_STARTED=1 HEADLESS_PRIVATE_BUS=1 "$0" -- "$@"
 fi
 
 size="${HEADLESS_SIZE:-1280x800}"
@@ -103,6 +141,16 @@ EOF
     fi
     WLR_BACKENDS=headless WLR_LIBINPUT_NO_DEVICES=1 WLR_RENDERER="${WLR_RENDERER:-pixman}" \
       sway -c "$runtime/sway.conf" >"$log" 2>&1 &
+    pid=$!
+    ;;
+  mutter)
+    mutter --headless --no-x11 --virtual-monitor "$size" --wayland-display glutter-headless \
+      >"$log" 2>&1 &
+    pid=$!
+    ;;
+  kwin)
+    kwin_wayland --virtual --no-lockscreen --no-global-shortcuts --socket glutter-headless \
+      --width "${size%x*}" --height "${size#*x}" --scale "$scale" >"$log" 2>&1 &
     pid=$!
     ;;
   weston)

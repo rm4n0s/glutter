@@ -61,6 +61,7 @@ func (pt *pointer) onEnter(serial uint32, surface *wl.WlSurface, x, y float64) {
 		return // a surface that is not ours, such as the cursor's
 	}
 	pt.focus, pt.serial = w, serial
+	pt.b.Scale = w.scaleFactor()
 	pt.b.Enter(w.id, x, y)
 	// The cursor of the previous window or app is gone once the pointer enters:
 	// the client sets its own.

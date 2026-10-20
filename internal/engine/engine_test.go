@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -232,7 +233,7 @@ func TestRunGivesTheDefaultWindowWhenTheConfigHasNone(t *testing.T) {
 	cfg := h.c.Windows()[0].Config()
 	want := platform.DefaultWindowConfig()
 	want.Title = "Glutter"
-	if cfg != want {
+	if !reflect.DeepEqual(cfg, want) {
 		t.Errorf("window config %+v, want %+v", cfg, want)
 	}
 }

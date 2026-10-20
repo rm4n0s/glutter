@@ -365,3 +365,16 @@ func TestCursorsAreLoadedAgainForAnotherScaleOrSettings(t *testing.T) {
 		t.Errorf("themes = %v, want the default theme after the settings lost theirs", got)
 	}
 }
+
+func TestKeepScreenOnIsUnavailableOnX11(t *testing.T) {
+	var w window
+	err := w.KeepScreenOn(true)
+	appErr, ok := errors.FromError(err)
+	if !ok || !appErr.HasRoute("IdleInhibitUnavailable") {
+		t.Fatalf("err = %v, want the tag IdleInhibitUnavailable", err)
+	}
+	if err := w.SetIcon(ui.WindowIcon{Name: "x"}); err != nil {
+		t.Errorf("SetIcon: %v", err)
+	}
+	w.SetContentType(ui.ContentTypeGame)
+}

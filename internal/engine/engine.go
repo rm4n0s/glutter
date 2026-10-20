@@ -5,6 +5,7 @@ import (
 	"image"
 	"log/slog"
 	"os"
+	"reflect"
 	"time"
 
 	"github.com/rm4n0s/errors"
@@ -217,9 +218,12 @@ func Run(ctx context.Context, cfg Config) (err error) {
 
 // windowConfig returns the config of the first window.
 func (c *Config) windowConfig() platform.WindowConfig {
-	if c.Window == (platform.WindowConfig{}) {
+	rest := c.Window
+	rest.Icon = ui.WindowIcon{} // the icon has slices, which cannot be compared
+	if reflect.DeepEqual(rest, platform.WindowConfig{}) {
 		w := platform.DefaultWindowConfig()
 		w.Title = "Glutter"
+		w.Icon = c.Window.Icon
 		return w
 	}
 	return c.Window
@@ -313,15 +317,17 @@ type handler struct {
 }
 
 var (
-	_ platform.Handler     = (*handler)(nil)
-	_ ui.PlatformHost      = (*handler)(nil)
-	_ ui.CursorHost        = (*handler)(nil)
-	_ ui.WindowHost        = (*handler)(nil)
-	_ ui.WindowControlHost = (*handler)(nil)
-	_ ui.ViewFocusHost     = (*handler)(nil)
-	_ ui.ClipboardHost     = (*handler)(nil)
-	_ ui.RichClipboardHost = (*handler)(nil)
-	_ ui.TextInputHost     = (*handler)(nil)
+	_ platform.Handler        = (*handler)(nil)
+	_ ui.PlatformHost         = (*handler)(nil)
+	_ ui.CursorHost           = (*handler)(nil)
+	_ ui.WindowHost           = (*handler)(nil)
+	_ ui.WindowControlHost    = (*handler)(nil)
+	_ ui.WindowAppearanceHost = (*handler)(nil)
+	_ ui.IdleInhibitHost      = (*handler)(nil)
+	_ ui.ViewFocusHost        = (*handler)(nil)
+	_ ui.ClipboardHost        = (*handler)(nil)
+	_ ui.RichClipboardHost    = (*handler)(nil)
+	_ ui.TextInputHost        = (*handler)(nil)
 )
 
 // addWindow keeps the window of the platform and returns it.
@@ -357,6 +363,32 @@ func (h *handler) PerformWindowAction(view ui.ViewID, action ui.WindowAction) {
 	}
 }
 
+// SetWindowIcon sets the icon of the window of the view (ui.WindowAppearanceHost).
+func (h *handler) SetWindowIcon(view ui.ViewID, icon ui.WindowIcon) error {
+	if w, ok := h.windows[view]; ok {
+		return w.SetIcon(icon)
+	}
+	return nil
+}
+
+// SetWindowContentType gives the compositor a hint about the window of the view
+// (ui.WindowAppearanceHost).
+func (h *handler) SetWindowContentType(view ui.ViewID, contentType ui.ContentType) {
+	if w, ok := h.windows[view]; ok {
+		w.SetContentType(contentType)
+	}
+}
+
+// KeepScreenOn stops the screen from going idle while the window of the view is
+// visible (ui.IdleInhibitHost).
+func (h *handler) KeepScreenOn(view ui.ViewID, on bool) error {
+	w, ok := h.windows[view]
+	if !ok {
+		return errors.New("IdleInhibitUnavailable", "the window of the view does not exist", "view", view)
+	}
+	return w.KeepScreenOn(on)
+}
+
 // CreateWindow makes a window for the framework (ui.WindowControlHost): the
 // platform makes it, and the view starts with the requested size until the
 // platform says what it got.
@@ -379,6 +411,10 @@ func (h *handler) CreateWindow(spec ui.WindowSpec) (ui.ViewID, ui.ViewConfigurat
 		// A dialog with a parent is modal to it, as in Flutter.
 		cfg.Modal = spec.Kind == ui.WindowKindDialog
 	}
+	if err := spec.Icon.Validate(); err != nil {
+		return 0, ui.ViewConfiguration{}, err
+	}
+	cfg.Icon, cfg.ContentType = spec.Icon, spec.ContentType
 	win, err := h.conn.NewWindow(cfg)
 	if err != nil {
 		return 0, ui.ViewConfiguration{}, err

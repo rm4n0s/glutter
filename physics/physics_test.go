@@ -604,8 +604,10 @@ func TestBouncingScrollFromOutsideTheExtents(t *testing.T) {
 	if s.LeadingExtent() != 0 || s.TrailingExtent() != 10 || s.Spring() != spring {
 		t.Error("accessors")
 	}
-	assertRoute(t, recoverError(t, func() { NewBouncingScrollSimulation(0, 0, 10, 0, spring) }),
-		"NewBouncingScrollSimulation.ScrollExtentsInvalid")
+	if foundation.DebugMode { // the check of the extents is a debug-only assertion
+		assertRoute(t, recoverError(t, func() { NewBouncingScrollSimulation(0, 0, 10, 0, spring) }),
+			"NewBouncingScrollSimulation.ScrollExtentsInvalid")
+	}
 	if got := s.String(); got != "BouncingScrollSimulation(leadingExtent: 0.0, trailingExtent: 10.0)" {
 		t.Errorf("String() = %q", got)
 	}

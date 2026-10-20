@@ -74,6 +74,12 @@ type WindowConfig struct {
 	// the compositor's, then libdecor's, then the WindowDecoration of the
 	// framework; DecorationsApp leaves it to the app (SPEC §8.2).
 	Decorations Decorations
+	// Icon is the icon of the window: a name of the icon theme, pictures, or both.
+	// Without one the compositor takes the icon from the app's .desktop file (SPEC §8.2).
+	Icon ui.WindowIcon
+	// ContentType tells the compositor what the window shows, so that it can pick
+	// the refresh rate and the latency that suit it (SPEC §8.11).
+	ContentType ui.ContentType
 }
 
 // Decorations is how the title bar of a window is made. The zero value is
@@ -186,7 +192,8 @@ func (o RunAppOpts) platformWindow() platform.WindowConfig {
 		decorations = platform.DecorationsApp
 	}
 	return platform.WindowConfig{Title: title, AppID: o.AppID, Size: w.Size, MinSize: w.MinSize, MaxSize: w.MaxSize,
-		Resizable: w.Resizable, Decorated: w.Decorated, State: state, Decorations: decorations}
+		Resizable: w.Resizable, Decorated: w.Decorated, State: state, Decorations: decorations,
+		Icon: w.Icon, ContentType: w.ContentType}
 }
 
 // startApp creates the widgets binding on the dispatcher and attaches the app:

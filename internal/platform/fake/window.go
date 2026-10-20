@@ -23,6 +23,9 @@ type Window struct {
 	state     platform.WindowState
 	cursor    platform.MouseCursor
 	textInput ui.TextInputState
+	icon      ui.WindowIcon
+	content   ui.ContentType
+	screenOn  bool
 	closed    bool
 }
 
@@ -130,6 +133,56 @@ func (w *Window) StartDrag(data ui.DragRequest) error {
 // Flutter: no counterpart
 func (w *Window) PerformWindowAction(action ui.WindowAction) {
 	w.set(EntryWindowAction, action, func() {})
+}
+
+// SetIcon records the icon.
+//
+// Flutter: no counterpart
+func (w *Window) SetIcon(icon ui.WindowIcon) error {
+	w.set(EntrySetIcon, icon, func() { w.icon = icon })
+	return nil
+}
+
+// SetContentType records the hint.
+//
+// Flutter: no counterpart
+func (w *Window) SetContentType(contentType ui.ContentType) {
+	w.set(EntrySetContentType, contentType, func() { w.content = contentType })
+}
+
+// KeepScreenOn records the request and always succeeds.
+//
+// Flutter: no counterpart
+func (w *Window) KeepScreenOn(on bool) error {
+	w.set(EntryKeepScreenOn, on, func() { w.screenOn = on })
+	return nil
+}
+
+// Icon returns the last icon set; the config's icon until then.
+//
+// Flutter: no counterpart
+func (w *Window) Icon() ui.WindowIcon {
+	w.p.mu.Lock()
+	defer w.p.mu.Unlock()
+	return w.icon
+}
+
+// ContentType returns the last content type set; the config's until then.
+//
+// Flutter: no counterpart
+func (w *Window) ContentType() ui.ContentType {
+	w.p.mu.Lock()
+	defer w.p.mu.Unlock()
+	return w.content
+}
+
+// ScreenKeptOn returns whether the last KeepScreenOn was with true.
+//
+// Flutter: no counterpart
+func (w *Window) ScreenKeptOn() bool {
+	w.p.mu.Lock()
+	defer w.p.mu.Unlock()
+	return w.screenOn
 }
 
 // Close marks the window closed and records it. Closing a closed window

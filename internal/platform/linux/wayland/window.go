@@ -143,6 +143,13 @@ type window struct {
 	// title is the current title of the window.
 	title string
 
+	// inhibitor is the idle inhibitor of KeepScreenOn, nil when the screen may go
+	// idle. contentType is the wp_content_type_v1 of the surface, made on the first
+	// hint. iconBuffers are the pictures of the icon the compositor was given.
+	inhibitor   *wl.ZwpIdleInhibitorV1
+	contentType *wl.WpContentTypeV1
+	iconBuffers []*shmBuffer
+
 	// cursor is the cursor over the window, set with SetCursor.
 	cursor platform.MouseCursor
 
@@ -202,6 +209,7 @@ func (p *Platform) NewWindow(cfg platform.WindowConfig) (platform.Window, error)
 		}
 	}
 	w.caps = ui.AllWindowCapabilities
+	w.SetContentType(cfg.ContentType)
 	w.title = cfg.Title
 	w.deco = p.chooseDecoration(cfg)
 	slog.Default().Debug("window decorations", "mode", w.deco.Name())
@@ -240,6 +248,10 @@ func (p *Platform) NewWindow(cfg platform.WindowConfig) (platform.Window, error)
 		w.makeModal(w.toplevel)
 		w.requestState(cfg.State)
 		w.requestDecorations()
+		if err := w.SetIcon(cfg.Icon); err != nil {
+			w.destroy()
+			return nil, err
+		}
 
 		// The initial commit, without a buffer, asks the compositor for the first
 		// configure.
@@ -370,6 +382,9 @@ func (w *window) onSurfaceConfigure(serial uint32) {
 		w.ackConfigure(serial)
 		first := w.configures == 0
 		w.configures++
+		if first {
+			w.p.useStartupToken(w)
+		}
 		if resized || first || infoChanged {
 			w.reportMetrics()
 		}
@@ -388,6 +403,9 @@ func (w *window) onSurfaceConfigure(serial uint32) {
 	w.note("ack", w.physW, w.physH)
 	w.ackConfigure(serial)
 	w.configures++
+	if w.configures == 1 {
+		w.p.useStartupToken(w)
+	}
 	w.commit(buf)
 	if resized || w.configures == 1 || infoChanged {
 		w.reportMetrics()
@@ -453,6 +471,9 @@ func (w *window) reportMetrics() {
 	}
 }
 
+// scaleFactor is the number of physical pixels per logical pixel of the window.
+func (w *window) scaleFactor() float64 { return float64(w.scale) / 120 }
+
 // onEnter and onLeave track the outputs that the surface is on, whose scales are the
 // last resort for the window's scale.
 func (w *window) onEnter(output *wl.WlOutput) {
@@ -516,6 +537,7 @@ func (w *window) applyScale() {
 		defer w.p.cursors.scaleChanged(w)
 	}
 	w.scale = scale
+	defer w.p.inputScaleChanged(w)
 	if fractional {
 		w.physW, w.physH = (w.width*scale+119)/120, (w.height*scale+119)/120
 		w.viewport.SetDestination(w.width, w.height)
@@ -757,6 +779,9 @@ func (w *window) SetCursor(cursor platform.MouseCursor) {
 	if pt := w.p.pointer; pt != nil && pt.focus == w {
 		w.p.cursors.apply(pt, cursor)
 	}
+	if t := w.p.tablet; t != nil {
+		t.cursorChanged(w)
+	}
 }
 
 // SetTextInput gives the input method the state of the text field of the window:
@@ -815,6 +840,9 @@ func (w *window) destroy() {
 	if t := w.p.touch; t != nil {
 		t.windowClosed(w)
 	}
+	if t := w.p.tablet; t != nil {
+		t.windowClosed(w)
+	}
 	if t := w.p.text; t != nil {
 		t.forget(w)
 	}
@@ -824,6 +852,14 @@ func (w *window) destroy() {
 	if w.eglWindow != 0 {
 		w.egl.destroy(w.eglWindow) // before the wl_surface it draws on
 		w.eglWindow = 0
+	}
+	if w.inhibitor != nil {
+		w.inhibitor.Destroy()
+		w.inhibitor = nil
+	}
+	if w.contentType != nil {
+		w.contentType.Destroy()
+		w.contentType = nil
 	}
 	if w.fractional != nil {
 		w.fractional.Destroy()
@@ -855,4 +891,5 @@ func (w *window) destroy() {
 		}
 	}
 	w.old, w.buffer = nil, nil
+	w.freeIconBuffers()
 }

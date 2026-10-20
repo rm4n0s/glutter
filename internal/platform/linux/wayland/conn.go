@@ -102,6 +102,21 @@ type session struct {
 	// and wp_viewporter; the windows then use the integer scale (SPEC §8.11).
 	fractionalScale *wl.WpFractionalScaleManagerV1
 	viewporter      *wl.WpViewporter
+	// activation is nil without xdg_activation_v1: the focus requests are then
+	// ignored.
+	activation *wl.XdgActivationV1
+	// idleInhibit is nil without zwp_idle_inhibit_manager_v1; KeepScreenOn then
+	// fails with IdleInhibitUnavailable.
+	idleInhibit *wl.ZwpIdleInhibitManagerV1
+	// contentType is nil without wp_content_type_manager_v1.
+	contentType *wl.WpContentTypeManagerV1
+	// iconManager is nil without xdg_toplevel_icon_manager_v1; the window icon then
+	// comes only from the .desktop file.
+	iconManager *wl.XdgToplevelIconManagerV1
+	// iconSizes are the icon sizes the compositor prefers (icon_size), in pixels.
+	iconSizes []int32
+	// tabletManager is nil without zwp_tablet_manager_v2: no stylus input.
+	tabletManager *wl.ZwpTabletManagerV2
 	// outputScale is the wl_output.scale of each output, 1 until it says;
 	// onOutputScale, when set, is called when one changes.
 	outputScale   map[*wl.WlOutput]int32
@@ -230,6 +245,24 @@ func (s *session) recordOptional() {
 	}
 	if g, ok := s.optionalPresent[wl.WpCursorShapeManagerV1Interface.Name]; ok {
 		s.cursorShape = wl.BindWpCursorShapeManagerV1(s.registry, g.Name, bindVersion(g, 1))
+	}
+	if g, ok := s.optionalPresent[wl.XdgActivationV1Interface.Name]; ok {
+		s.activation = wl.BindXdgActivationV1(s.registry, g.Name, bindVersion(g, 1))
+	}
+	if g, ok := s.optionalPresent[wl.ZwpIdleInhibitManagerV1Interface.Name]; ok {
+		s.idleInhibit = wl.BindZwpIdleInhibitManagerV1(s.registry, g.Name, bindVersion(g, 1))
+	}
+	if g, ok := s.optionalPresent[wl.WpContentTypeManagerV1Interface.Name]; ok {
+		s.contentType = wl.BindWpContentTypeManagerV1(s.registry, g.Name, bindVersion(g, 1))
+	}
+	if g, ok := s.optionalPresent[wl.XdgToplevelIconManagerV1Interface.Name]; ok {
+		s.iconManager = wl.BindXdgToplevelIconManagerV1(s.registry, g.Name, bindVersion(g, 1))
+		s.iconManager.SetEvents(&wl.XdgToplevelIconManagerV1Events{
+			OnIconSize: func(size int32) { s.iconSizes = append(s.iconSizes, size) },
+		})
+	}
+	if g, ok := s.optionalPresent[wl.ZwpTabletManagerV2Interface.Name]; ok {
+		s.tabletManager = wl.BindZwpTabletManagerV2(s.registry, g.Name, bindVersion(g, 2))
 	}
 	// Fractional scale works through a viewport, so one without the other is no use.
 	fs, hasFS := s.optionalPresent[wl.WpFractionalScaleManagerV1Interface.Name]

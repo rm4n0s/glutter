@@ -378,3 +378,50 @@ func TestDisplaysSettingsAndServices(t *testing.T) {
 		t.Errorf("Settings() = %+v, want the zero value", got)
 	}
 }
+
+func TestIconContentTypeScreenAndActivation(t *testing.T) {
+	p := New()
+	cfg := platform.DefaultWindowConfig()
+	cfg.Icon = ui.WindowIcon{Name: "first"}
+	cfg.ContentType = ui.ContentTypeVideo
+	win, err := p.NewWindow(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fw := p.Windows()[0]
+	if fw.Icon().Name != "first" || fw.ContentType() != ui.ContentTypeVideo || fw.ScreenKeptOn() {
+		t.Errorf("start: icon %+v, content type %v, screen on %v", fw.Icon(), fw.ContentType(), fw.ScreenKeptOn())
+	}
+	if err := win.SetIcon(ui.WindowIcon{Name: "second"}); err != nil {
+		t.Fatal(err)
+	}
+	win.SetContentType(ui.ContentTypeGame)
+	if err := win.KeepScreenOn(true); err != nil {
+		t.Fatal(err)
+	}
+	if fw.Icon().Name != "second" || fw.ContentType() != ui.ContentTypeGame || !fw.ScreenKeptOn() {
+		t.Errorf("after: icon %+v, content type %v, screen on %v", fw.Icon(), fw.ContentType(), fw.ScreenKeptOn())
+	}
+
+	var token string
+	p.RequestActivationToken(win.ID(), func(tok string) { token = tok })
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- p.Run(ctx, platform.NopHandler{}) }()
+	p.Post(cancel)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if token != FakeActivationToken {
+		t.Errorf("token = %q, want %q", token, FakeActivationToken)
+	}
+	var kinds []EntryKind
+	for _, e := range p.Log() {
+		kinds = append(kinds, e.Kind)
+	}
+	want := []EntryKind{EntryNewWindow, EntrySetIcon, EntrySetContentType, EntryKeepScreenOn, EntryActivationToken}
+	if !reflect.DeepEqual(kinds, want) {
+		t.Errorf("log kinds = %v, want %v", kinds, want)
+	}
+}

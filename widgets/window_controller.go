@@ -136,6 +136,28 @@ func (c *windowControllerBase) SetTitle(title string) {
 	c.refresh()
 }
 
+// SetIcon sets the icon of the window; an empty icon removes it. It fails with
+// WindowIconInvalid when a picture of the icon is wrong, and with the platform's
+// error when it cannot use the icon. A platform that has no window icons ignores it.
+//
+// Flutter: no counterpart
+func (c *windowControllerBase) SetIcon(icon ui.WindowIcon) error {
+	if c.destroyed {
+		return nil
+	}
+	return c.view.SetIcon(icon)
+}
+
+// SetContentType tells the compositor what the window shows (a game, a video or
+// pictures), so that it can pick the refresh rate and the latency that suit it.
+//
+// Flutter: no counterpart
+func (c *windowControllerBase) SetContentType(contentType ui.ContentType) {
+	if !c.destroyed {
+		c.view.SetContentType(contentType)
+	}
+}
+
 // Activate asks for the window to be shown at its size and position, out of the
 // minimized state, and to get the focus. The platform decides whether it gets the
 // focus and the top of the stack of windows.
@@ -404,6 +426,11 @@ type RegularWindowControllerOpts struct {
 	Delegate RegularWindowControllerDelegate
 	// Decorations is how the title bar is made; the default is DecorationsAuto.
 	Decorations Decorations
+	// Icon is the icon of the window; the default is none, and the desktop takes
+	// the icon of the app.
+	Icon ui.WindowIcon
+	// ContentType is the hint about what the window shows.
+	ContentType ui.ContentType
 }
 
 // DialogWindowControllerOpts are the optional parameters of
@@ -424,6 +451,10 @@ type DialogWindowControllerOpts struct {
 	Delegate DialogWindowControllerDelegate
 	// Decorations is how the title bar is made; the default is DecorationsAuto.
 	Decorations Decorations
+	// Icon is the icon of the window; the default is none.
+	Icon ui.WindowIcon
+	// ContentType is the hint about what the window shows.
+	ContentType ui.ContentType
 }
 
 // NewRegularWindowController creates a regular window of the size, in logical
@@ -500,7 +531,8 @@ func (o *WindowingOwner) CreateRegularWindowController(size ui.Size, opts ...Reg
 	if c.delegate == nil {
 		c.delegate = RegularWindowControllerDelegateBase{}
 	}
-	spec := ui.WindowSpec{Kind: ui.WindowKindRegular, Size: size, AppDecorations: opt.Decorations == DecorationsApp}
+	spec := ui.WindowSpec{Kind: ui.WindowKindRegular, Size: size, AppDecorations: opt.Decorations == DecorationsApp,
+		Icon: opt.Icon, ContentType: opt.ContentType}
 	if err := o.newController(c, spec, opt.Constraints, opt.Title); err != nil {
 		return nil, err
 	}
@@ -521,7 +553,8 @@ func (o *WindowingOwner) CreateDialogWindowController(size ui.Size, opts ...Dial
 	if c.delegate == nil {
 		c.delegate = DialogWindowControllerDelegateBase{}
 	}
-	spec := ui.WindowSpec{Kind: ui.WindowKindDialog, Size: size, AppDecorations: opt.Decorations == DecorationsApp}
+	spec := ui.WindowSpec{Kind: ui.WindowKindDialog, Size: size, AppDecorations: opt.Decorations == DecorationsApp,
+		Icon: opt.Icon, ContentType: opt.ContentType}
 	var parent *windowControllerBase
 	if opt.Parent != nil {
 		parent = opt.Parent.windowBase()

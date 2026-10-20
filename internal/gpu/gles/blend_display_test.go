@@ -160,8 +160,11 @@ func TestDisplayPaintsAndLayersMatchSoftware(t *testing.T) {
 			inv.SetInvertColors(true)
 			c.DrawCircle(ui.Offset{Dx: 100, Dy: 120}, 6, inv)
 			// Nearest-neighbor sampling at a pixel center that is exactly on the edge of
-			// a texel picks either by rounding, so the size is one with no such pixel.
-			c.DrawImageRect(img, ui.NewRectFromLTWH(0, 0, 32, 32), ui.NewRectFromLTWH(4, 112, 13, 13), func() *ui.Paint {
+			// a texel picks either by rounding, and GPUs round differently, so the
+			// source is an odd number of texels wide: with an even destination
+			// size no pixel center can fall on an edge, and with an odd one
+			// (13 here) the center of the middle pixel is the center of a texel.
+			c.DrawImageRect(img, ui.NewRectFromLTWH(0, 0, 31, 31), ui.NewRectFromLTWH(4, 112, 13, 13), func() *ui.Paint {
 				p := ui.NewPaint()
 				p.SetFilterQuality(ui.FilterQualityNone)
 				p.SetInvertColors(true)

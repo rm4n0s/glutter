@@ -104,6 +104,10 @@ func TestTheFrameworkCreatesWindows(t *testing.T) {
 			func(c platform.WindowConfig) bool { return c.Decorations == platform.DecorationsApp }},
 		{"not resizable", ui.WindowSpec{NotResizable: true},
 			func(c platform.WindowConfig) bool { return !c.IsResizable() }},
+		{"with an icon and a content type", ui.WindowSpec{Icon: ui.WindowIcon{Name: "game"}, ContentType: ui.ContentTypeGame},
+			func(c platform.WindowConfig) bool {
+				return c.Icon.Name == "game" && c.ContentType == ui.ContentTypeGame
+			}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -496,5 +500,49 @@ func TestAWindowDestroyedDuringItsFrameIsNotDrawn(t *testing.T) {
 	}
 	if !e.p.Windows()[1].Closed() {
 		t.Error("the platform window is open")
+	}
+}
+
+func TestWindowAppearanceGoesToTheWindow(t *testing.T) {
+	e := newWindowsEngine(t)
+	v, err := e.d.CreateWindow(ui.WindowSpec{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := v.SetIcon(ui.WindowIcon{Name: "applications-graphics"}); err != nil {
+		t.Fatal(err)
+	}
+	v.SetContentType(ui.ContentTypePhoto)
+	if err := v.KeepScreenOn(true); err != nil {
+		t.Fatal(err)
+	}
+	w := e.p.Windows()[1]
+	if w.Icon().Name != "applications-graphics" || w.ContentType() != ui.ContentTypePhoto || !w.ScreenKeptOn() {
+		t.Errorf("window: icon %+v, content type %v, screen on %v", w.Icon(), w.ContentType(), w.ScreenKeptOn())
+	}
+	if e.p.Windows()[0].ScreenKeptOn() {
+		t.Error("the first window was changed")
+	}
+	// A wrong icon never reaches the platform.
+	err = v.SetIcon(ui.WindowIcon{Images: []ui.WindowIconImage{{Size: 2}}})
+	assertRoute(t, err, "WindowIconInvalid", "WindowIconInvalid")
+	if w.Icon().Name != "applications-graphics" {
+		t.Errorf("the icon is %+v", w.Icon())
+	}
+	// A window with a wrong icon is not made.
+	_, err = e.d.CreateWindow(ui.WindowSpec{Icon: ui.WindowIcon{Images: []ui.WindowIconImage{{Size: 2}}}})
+	assertRoute(t, err, "WindowIconInvalid", "WindowIconInvalid")
+	if len(e.p.Windows()) != 2 {
+		t.Errorf("%d windows", len(e.p.Windows()))
+	}
+}
+
+func TestKeepScreenOnForAWindowThatDoesNotExist(t *testing.T) {
+	e := newWindowsEngine(t)
+	err := e.h.KeepScreenOn(99, true)
+	assertRoute(t, err, "IdleInhibitUnavailable", "IdleInhibitUnavailable")
+	e.h.SetWindowContentType(99, ui.ContentTypeGame) // nothing to do, nothing to fail
+	if err := e.h.SetWindowIcon(99, ui.WindowIcon{Name: "x"}); err != nil {
+		t.Errorf("SetWindowIcon: %v", err)
 	}
 }

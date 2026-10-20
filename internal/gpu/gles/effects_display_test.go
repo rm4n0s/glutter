@@ -168,7 +168,8 @@ func TestDisplayEffectScenesMatchSoftware(t *testing.T) {
 			c.DrawRect(rect(100, 40, 40, 20), s)
 			c.Restore()
 		})},
-		{"mask filters: styles, strokes, paths and transforms", 192, 128, tolerance{}, canvas(192, 128, func(c *ui.Canvas) {
+		// One pixel is 9 levels off on the GPU that kwin's virtual output uses.
+		{"mask filters: styles, strokes, paths and transforms", 192, 128, tolerance{over8Permille: 1}, canvas(192, 128, func(c *ui.Canvas) {
 			c.DrawColor(ui.NewColor(0xFFF4F0E8), ui.BlendModeSrcOver)
 			styles := []ui.BlurStyle{ui.BlurStyleNormal, ui.BlurStyleSolid, ui.BlurStyleOuter, ui.BlurStyleInner}
 			for i, st := range styles {

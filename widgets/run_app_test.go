@@ -2,6 +2,7 @@ package widgets
 
 import (
 	"context"
+	"reflect"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -140,6 +141,8 @@ func TestRunAppWindowConfig(t *testing.T) {
 		}}, platform.WindowConfig{Title: "Counter", AppID: "dev.example.app", Size: ui.Size{Width: 400, Height: 300},
 			MinSize: ui.Size{Width: 100, Height: 100}, MaxSize: ui.Size{Width: 900, Height: 900},
 			Resizable: foundation.Some(false), Decorated: foundation.Some(false), State: platform.WindowStateMaximized}},
+		{"icon and content type", RunAppOpts{Window: WindowConfig{Icon: ui.WindowIcon{Name: "game"}, ContentType: ui.ContentTypeGame}},
+			platform.WindowConfig{Title: "Glutter", Icon: ui.WindowIcon{Name: "game"}, ContentType: ui.ContentTypeGame}},
 		{"fullscreen", RunAppOpts{Window: WindowConfig{State: WindowStateFullscreen}},
 			platform.WindowConfig{Title: "Glutter", State: platform.WindowStateFullscreen}},
 		{"minimized", RunAppOpts{Window: WindowConfig{State: WindowStateMinimized}},
@@ -149,7 +152,7 @@ func TestRunAppWindowConfig(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := tc.opts.platformWindow(); got != tc.want {
+			if got := tc.opts.platformWindow(); !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("window = %+v, want %+v", got, tc.want)
 			}
 		})

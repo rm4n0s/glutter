@@ -199,3 +199,40 @@ func (t *Tester) FailDrags(err error) {
 	defer t.host.Unlock()
 	t.host.DragErr = err
 }
+
+// WindowIcon is the last icon the app set for the view; the zero icon if none.
+//
+// Flutter: no counterpart
+func (t *Tester) WindowIcon(view ui.ViewID) ui.WindowIcon {
+	t.host.Lock()
+	defer t.host.Unlock()
+	return t.host.Icons[view]
+}
+
+// WindowContentType is the last content type hint the app set for the view.
+//
+// Flutter: no counterpart
+func (t *Tester) WindowContentType(view ui.ViewID) ui.ContentType {
+	t.host.Lock()
+	defer t.host.Unlock()
+	return t.host.ContentTypes[view]
+}
+
+// ScreenKeptOn is whether the app asked to keep the screen on for the view.
+//
+// Flutter: no counterpart
+func (t *Tester) ScreenKeptOn(view ui.ViewID) bool {
+	t.host.Lock()
+	defer t.host.Unlock()
+	return t.host.ScreenOn[view]
+}
+
+// FailKeepScreenOn makes the fake platform refuse to keep the screen on with err,
+// as a platform that cannot.
+//
+// Flutter: no counterpart
+func (t *Tester) FailKeepScreenOn(err error) {
+	t.host.Lock()
+	defer t.host.Unlock()
+	t.host.KeepScreenOnErr = err
+}

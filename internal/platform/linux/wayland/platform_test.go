@@ -94,7 +94,7 @@ func TestRequiredGlobalsAreBound(t *testing.T) {
 
 func TestOptionalGlobalsAreRecorded(t *testing.T) {
 	globals := append(fakecomp.DefaultGlobals(),
-		fakecomp.Global{Name: 20, Interface: "wp_content_type_manager_v1", Version: 1},
+		fakecomp.Global{Name: 20, Interface: "wp_presentation", Version: 1},
 		fakecomp.Global{Name: 21, Interface: "zxdg_decoration_manager_v1", Version: 2},
 		fakecomp.Global{Name: 22, Interface: "something_unknown_v1", Version: 1},
 	)
@@ -103,7 +103,7 @@ func TestOptionalGlobalsAreRecorded(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := map[string]Global{
-		"wp_content_type_manager_v1": {20, 1},
+		"wp_presentation":            {20, 1},
 		"zxdg_decoration_manager_v1": {21, 2},
 		"wl_data_device_manager":     {5, 3}, // part of the default globals
 	}
@@ -117,7 +117,7 @@ func TestOptionalGlobalsAreRecorded(t *testing.T) {
 		t.Errorf("Globals(absent) = %v, %v, want none", g, ok)
 	}
 	// Optional globals that no code uses yet are only recorded, not bound.
-	if strings.Contains(strings.Join(srv.Requests(), "\n"), "wp_content_type_manager_v1") {
+	if strings.Contains(strings.Join(srv.Requests(), "\n"), "wp_presentation") {
 		t.Error("an optional global was bound")
 	}
 }

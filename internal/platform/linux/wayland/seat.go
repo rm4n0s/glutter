@@ -29,3 +29,19 @@ func (p *Platform) updateSeat(caps wl.WlSeatCapability) {
 func (p *Platform) closeSeatDevices() {
 	p.updateSeat(0)
 }
+
+// inputScaleChanged tells the pointer that the window with its focus has another
+// scale: the positions of the seat are in logical pixels and the framework wants
+// physical ones.
+func (p *Platform) inputScaleChanged(w *window) {
+	if pt := p.pointer; pt != nil && pt.focus == w {
+		pt.b.Scale = w.scaleFactor()
+	}
+	if t := p.tablet; t != nil {
+		for _, tool := range t.tools {
+			if tool.focus == w {
+				t.b.Scale = w.scaleFactor()
+			}
+		}
+	}
+}

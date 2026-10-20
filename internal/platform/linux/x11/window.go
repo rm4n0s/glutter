@@ -527,6 +527,26 @@ func (w *window) StartDrag(request ui.DragRequest) error {
 	return w.p.xdnd.startDrag(w, request)
 }
 
+// SetIcon does nothing yet.
+//
+// TODO(step 14.8): _NET_WM_ICON.
+//
+// Flutter: no counterpart
+func (w *window) SetIcon(ui.WindowIcon) error { return nil }
+
+// SetContentType does nothing: X11 has no content type hint.
+//
+// Flutter: no counterpart
+func (w *window) SetContentType(ui.ContentType) {}
+
+// KeepScreenOn fails with IdleInhibitUnavailable: the X11 backend has no way to
+// inhibit the screensaver yet.
+//
+// Flutter: no counterpart
+func (w *window) KeepScreenOn(bool) error {
+	return errors.New("IdleInhibitUnavailable", "the X11 backend cannot keep the screen on")
+}
+
 // PerformWindowAction does the actions that the window manager does for a title
 // bar of the app: minimize, maximize, restore, fullscreen, activate and close. The
 // window manager draws the title bar of an X11 window and moves and resizes it, so

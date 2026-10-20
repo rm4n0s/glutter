@@ -1,6 +1,7 @@
 package physics
 
 import (
+	"github.com/rm4n0s/glutter/foundation"
 	"math"
 	"testing"
 
@@ -27,9 +28,18 @@ func check(t *testing.T, name string, got, want, epsilon float64) {
 	}
 }
 
+// skipUnlessDebug skips a test of the checks that only debug builds make.
+func skipUnlessDebug(t *testing.T) {
+	t.Helper()
+	if !foundation.DebugMode {
+		t.Skip("needs the debug-only checks of the framework")
+	}
+}
+
 // recoverError runs fn and returns the error it panicked with.
 func recoverError(t *testing.T, fn func()) (err error) {
 	t.Helper()
+	skipUnlessDebug(t) // the panics of this package are assertions of debug builds
 	defer func() {
 		r := recover()
 		if r == nil {

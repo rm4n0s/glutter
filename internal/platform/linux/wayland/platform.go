@@ -50,6 +50,7 @@ type Platform struct {
 	keyboard *keyboard  // nil when the seat has none
 	pointer  *pointer   // likewise
 	touch    *touch     // likewise
+	tablet   *tablet    // nil without zwp_tablet_manager_v2
 	clip     *clipboard // nil without wl_data_device_manager
 	text     *textInput // nil without zwp_text_input_manager_v3
 	// dbusIME is the input method over D-Bus, used when text is nil.
@@ -57,6 +58,9 @@ type Platform struct {
 	cursors *cursors
 	// settings follows the system settings (Settings, applySettings).
 	settings *linux.SettingsWatcher
+	// startupToken is the activation token of the launcher, until the first window
+	// uses it (useStartupToken).
+	startupToken string
 	// inputSerial is the serial of the last input event of the seat, which
 	// set_selection needs.
 	inputSerial uint32
@@ -123,6 +127,7 @@ func newPlatform(conn *wl.Conn, opts Options) (*Platform, error) {
 		src:     &connSource{conn: conn},
 		windows: map[ui.ViewID]*window{},
 	}
+	p.takeStartupToken()
 	p.cursors = newCursors(p)
 	p.settings = &linux.SettingsWatcher{Post: p.Post, Apply: p.applySettings}
 	p.clip = newClipboard(p)
@@ -143,6 +148,7 @@ func newPlatform(conn *wl.Conn, opts Options) (*Platform, error) {
 			p.handler.OnDisplaysChanged()
 		}
 	}
+	p.tablet = newTablet(p)
 	sess.onSeatCaps = p.updateSeat
 	p.updateSeat(sess.seatCaps)
 	return p, nil
@@ -160,6 +166,9 @@ func (p *Platform) Close() error {
 		w.Close()
 	}
 	p.closeSeatDevices()
+	if p.tablet != nil {
+		p.tablet.close()
+	}
 	if p.text != nil {
 		p.text.close()
 	}

@@ -62,6 +62,8 @@ type Server struct {
 
 	win windowing // see windowing.go; guarded by mu
 
+	extras extras // see extras.go; guarded by mu
+
 	mu      sync.Mutex // guards objects, log, ids and writes
 	objects map[uint32]string
 	log     []string
@@ -414,6 +416,7 @@ func (s *Server) handle(id uint32, op uint16, r *reader) {
 		if ifaceName == "wl_seat" {
 			s.Send(newID, 0, s.caps) // capabilities
 		}
+		s.bindExtras(ifaceName, newID)
 	case "wl_compositor.0": // create_surface(id)
 		surface := r.u32()
 		s.addObject(surface, "wl_surface")
@@ -509,7 +512,7 @@ func (s *Server) handle(id uint32, op uint16, r *reader) {
 	case "xdg_wm_base.3": // pong(serial)
 		s.record("xdg_wm_base.pong serial=%d", r.u32())
 	default:
-		if !s.handleInput(iface, op, id, r) && !s.handleWindowing(iface, op, id, r) && !s.handleTextInput(iface, op, id, r) {
+		if !s.handleInput(iface, op, id, r) && !s.handleWindowing(iface, op, id, r) && !s.handleTextInput(iface, op, id, r) && !s.handleExtras(iface, op, id, r) {
 			s.t.Errorf("fake server: unexpected request %s opcode %d on object %d", iface, op, id)
 		}
 	}

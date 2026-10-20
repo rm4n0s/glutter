@@ -23,6 +23,10 @@ var proofTolerances = map[string]tolerance{
 	"blend-modes":  {over8Permille: 15, over32Permille: 5},
 	"effects":      {over8Permille: 1},
 	"text-tour":    {over8Permille: 1},
+	// decorations: 1.0 permille over 8 levels (the edges of the rounded corners and
+	// the shadow), one pixel over 32; rendering-tour: 0.1 permille over 8 levels.
+	"decorations":    {over8Permille: 3, over32Permille: 1},
+	"rendering-tour": {over8Permille: 1},
 }
 
 func TestDisplayEveryProofSceneMatchesSoftware(t *testing.T) {

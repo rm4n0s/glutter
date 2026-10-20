@@ -44,6 +44,10 @@ type WindowSpec struct {
 	// AppDecorations is true when the app draws the title bar of the window, so the
 	// platform does not ask the compositor or libdecor for one.
 	AppDecorations bool
+	// Icon is the icon of the window; the zero value is none.
+	Icon WindowIcon
+	// ContentType is the hint about what the window shows.
+	ContentType ContentType
 }
 
 // WindowControlHost is what the engine implements to create, change and destroy

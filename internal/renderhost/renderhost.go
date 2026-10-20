@@ -64,6 +64,14 @@ type Host struct {
 	Drags []ui.DragRequest
 	// DragErr is returned by StartDrag, to test a platform that cannot drag.
 	DragErr error
+	// Icons, ContentTypes and ScreenOn are what the framework set for each view: the
+	// window icon, the content type hint, and whether the screen is kept on.
+	Icons        map[ui.ViewID]ui.WindowIcon
+	ContentTypes map[ui.ViewID]ui.ContentType
+	ScreenOn     map[ui.ViewID]bool
+	// KeepScreenOnErr is returned by KeepScreenOn, to test a platform that cannot
+	// keep the screen on.
+	KeepScreenOnErr error
 	// FocusEvents are the focus changes the framework asked the platform for, in
 	// order.
 	FocusEvents []ui.ViewFocusEvent
@@ -95,6 +103,9 @@ func (h *Host) CreateWindow(spec ui.WindowSpec) (ui.ViewID, ui.ViewConfiguration
 	defer h.mu.Unlock()
 	if h.CreateErr != nil {
 		return 0, ui.ViewConfiguration{}, h.CreateErr
+	}
+	if err := spec.Icon.Validate(); err != nil {
+		return 0, ui.ViewConfiguration{}, err
 	}
 	h.nextView++
 	size := spec.Size
@@ -238,6 +249,42 @@ func (h *Host) StartDrag(_ ui.ViewID, request ui.DragRequest) error {
 		return h.DragErr
 	}
 	h.Drags = append(h.Drags, request)
+	return nil
+}
+
+// SetWindowIcon keeps the icon of the view.
+func (h *Host) SetWindowIcon(view ui.ViewID, icon ui.WindowIcon) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.Icons == nil {
+		h.Icons = map[ui.ViewID]ui.WindowIcon{}
+	}
+	h.Icons[view] = icon
+	return nil
+}
+
+// SetWindowContentType keeps the content type of the view.
+func (h *Host) SetWindowContentType(view ui.ViewID, contentType ui.ContentType) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.ContentTypes == nil {
+		h.ContentTypes = map[ui.ViewID]ui.ContentType{}
+	}
+	h.ContentTypes[view] = contentType
+}
+
+// KeepScreenOn keeps the request of the view; it fails with KeepScreenOnErr when
+// that is set.
+func (h *Host) KeepScreenOn(view ui.ViewID, on bool) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.KeepScreenOnErr != nil {
+		return h.KeepScreenOnErr
+	}
+	if h.ScreenOn == nil {
+		h.ScreenOn = map[ui.ViewID]bool{}
+	}
+	h.ScreenOn[view] = on
 	return nil
 }
 

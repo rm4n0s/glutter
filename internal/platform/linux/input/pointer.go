@@ -52,6 +52,10 @@ const (
 	//
 	// Flutter: no counterpart
 	TouchDeviceBase = 1000
+	// StylusDeviceBase is added to the id of a tablet tool to make its device id.
+	//
+	// Flutter: no counterpart
+	StylusDeviceBase = 2000
 )
 
 // panKind says what started the pan/zoom gesture that is in progress.
