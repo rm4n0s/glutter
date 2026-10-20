@@ -344,12 +344,15 @@ func (d *Device) bindTextureID(unit int, id uint32) {
 	if unit < 0 || unit >= maxTrackedUnits {
 		panic(errors.New("GLTextureUnitInvalid", "the texture unit is out of range", "unit", unit, "max", maxTrackedUnits-1))
 	}
-	if d.state.texture[unit] == id {
-		return
-	}
+	// The unit is made the active one even when the texture is bound to it
+	// already: the calls that follow (texImage2D, texSubImage2D, texParameteri,
+	// generateMipmap) act on the texture of the active unit.
 	if d.state.activeUnit != uint32(unit) {
 		d.state.activeUnit = uint32(unit)
 		d.gl.activeTexture(glTexture0 + uint32(unit))
+	}
+	if d.state.texture[unit] == id {
+		return
 	}
 	d.state.texture[unit] = id
 	d.gl.bindTexture(glTexture2D, id)

@@ -2,6 +2,7 @@ package gles
 
 import (
 	"bufio"
+	"fmt"
 	"os"
 	"regexp"
 	"strings"
@@ -644,5 +645,52 @@ func TestEmbeddedShadersHaveNoUnexpandedIncludes(t *testing.T) {
 		if !found {
 			t.Errorf("no %s program", want)
 		}
+	}
+}
+
+// TestTextureEditsUseUnitZero is the regression test of a crash in the counter
+// example: after a texture was bound to another unit (a copy of the framebuffer
+// for the ripple), an upload to a texture that the cache said was bound to unit 0
+// went to the texture of the active unit, and GL answered INVALID_VALUE.
+func TestTextureEditsUseUnitZero(t *testing.T) {
+	d, gl := newTestDevice(t)
+	page, err := d.AcquireTexture(64, 64, TextureFormatR8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := d.AcquireTexture(8, 8, TextureFormatRGBA8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name string
+		edit func() error
+	}{
+		{"upload", func() error { return d.UploadTexture(page, 0, 0, 2, 2, make([]byte, 4)) }},
+		{"mipmaps", func() error { d.GenerateMipmaps(page); return nil }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := d.UploadTexture(page, 0, 0, 1, 1, []byte{1}); err != nil {
+				t.Fatal(err)
+			}
+			d.BindTexture(1, other) // the active unit is now 1
+			gl.resetCalls()
+			if err := tt.edit(); err != nil {
+				t.Fatal(err)
+			}
+			// The last activeTexture before the edit must be unit 0.
+			active := ""
+			for _, call := range gl.log {
+				switch {
+				case strings.HasPrefix(call, "activeTexture"):
+					active = call
+				case strings.HasPrefix(call, "texSubImage2D"), strings.HasPrefix(call, "generateMipmap"):
+					if active != "activeTexture"+fmt.Sprint(uint32(glTexture0)) {
+						t.Errorf("%s ran with %q as the last activeTexture, want unit 0", call, active)
+					}
+				}
+			}
+		})
 	}
 }
