@@ -1869,3 +1869,22 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Proof:** the screenshot of the tray window (C, headless sway), `docs/implemented-proof-images/18.2-tray-window.png`.
 - **Manual checks:** none new. The tray menu and notification screenshots of 15.5 are still pending from the user.
 - **Deviations and follow-ups:** the README has no badge, no module-proxy link and no `go install` line: the module is not published yet (18.3 asks the user before the tag). The screenshots are those of the steps that made the examples (the goldens of each example keep them current).
+
+## 18.3 Release checklist
+
+- **Date:** 2026-10-21
+- **Branch:** feat/step-18.3-release-checklist
+- **Summary:** the checklist of the guide, run on `main` after step 18.2. **No tag was made and nothing was pushed as a tag: the guide asks the user first (see the end of this entry).**
+
+| Item | State |
+|---|---|
+| Standard checks on `main` | gofmt ✅ · go vet ✅ · golangci-lint ✅ · `go test -race ./...` ✅ · `CGO_ENABLED=0 go build ./...` ✅ · `CGO_ENABLED=0 go test ./...` ✅ · `go generate ./...` stable ✅ · `-tags glutter_release` and `-tags glutter_profile` tests ✅ · display tests under headless sway (wayland, gles, engine) and under Xvfb (x11, engine) ✅ |
+| Wayland matrix (14.7), automated part: `scripts/wayland-matrix.sh` | sway: display tests 2 pass, 10 examples pass · weston (seatless: every example refuses to start with `WaylandProtocolMissing`, as designed): 10 pass · mutter `--headless`: 2 pass, 10 pass · kwin `--virtual`: 2 pass, 10 pass |
+| Wayland matrix, manual part: `docs/wayland-checklist.md` | **pending, the user fills it in** (46 items, none ticked): it needs real desktops, GPUs and monitors |
+| Orca check (16.2) | **pending, the user runs it** (Orca on GNOME or KDE with `examples/gallery`); the AT-SPI2 bridge is tested against a fake bus and a real `dbus-daemon` |
+| Performance targets (17.4) | met on this machine: idle CPU, frame rate, animation-only frame, full rebuild of the gallery page (4.4 ms), allocations of a frame that does not repaint. **Not met, pending the user's approval of the exceptions in `docs/PERFORMANCE.md`:** cold start 300 ms (target 150), resident memory 287 MB (target 60), allocations of a frame in which a `CustomPaint` repaints. The first two were measured on Mesa's software renderer and need the reference laptop |
+| API check (18.1) | `go run ./cmd/glutter-gen apicheck -allow cmd/glutter-gen/apicheck.allow`: 0 violations, 45 accepted ones (listed with reasons in the allow file and SPEC §12.10), which the user confirms |
+| Documentation (18.2) | README, `docs/GUIDE.md`, the ten examples with their screenshots |
+
+- **Manual checks and proofs still pending from the user** (none blocks the release by itself, but they are the part that this machine cannot do): 14.1 (GNOME title bar screenshot), 14.5 (dark mode toggle in GNOME), 14.6 (drag and drop from GNOME Files or Dolphin), 14.7 (the Wayland checklist), 14.8 (a real X11 session), 15.1 (`OpenURI` on a desktop), 15.2 (file dialogs on GNOME and KDE), 15.3 (notifications), 15.4 and 15.5 (the tray, with the screenshots `15.5-tray-menu.png` and `15.5-notification.png`), 16.1 and 16.2 (Orca), 17.4 (`scripts/perf.sh` on the reference laptop).
+- **Tag:** `v1.0.0` is **not** made. The module has not been tagged or published; the guide says to ask the user before tagging and pushing the tag, so the question is put to the user in the report of this step. The tag would be made on `main` at the commit of this entry with `git tag -a v1.0.0` and pushed with `git push origin v1.0.0`.
