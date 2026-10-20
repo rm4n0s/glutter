@@ -234,3 +234,78 @@ func TestLayerCacheBoundary(t *testing.T) {
 		}
 	}
 }
+
+// TestRasterCacheRuleOfThreeFramesNeverRasterizesACachedLayerAgain is the rule the
+// engine uses (SPEC §9.1): a retained layer is drawn as it is for two frames, drawn
+// into a texture in the third, and from the fourth on one instance draws it; the
+// coverage tiles of the path inside it are made once, and the layer's contents are not
+// walked again.
+func TestRasterCacheRuleOfThreeFramesNeverRasterizesACachedLayerAgain(t *testing.T) {
+	r, _, gl := newTestRenderer(RendererOpts{RasterCacheAfter: 3})
+	s, err := r.Attach(waylandHandle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	star := ui.NewPath()
+	star.MoveTo(10, 0)
+	star.LineTo(13, 8)
+	star.LineTo(22, 8)
+	star.LineTo(15, 13)
+	star.LineTo(18, 22)
+	star.LineTo(10, 16)
+	star.LineTo(2, 22)
+	star.LineTo(5, 13)
+	star.LineTo(-2, 8)
+	star.LineTo(7, 8)
+	star.Close()
+	rec := ui.NewPictureRecorder()
+	ui.NewCanvas(rec).DrawPath(star, solidPaint(0xFF00AA44))
+	inside := rec.EndRecording()
+	sceneWith := func(kept *ui.OffsetEngineLayer) (*ui.Scene, *ui.OffsetEngineLayer) {
+		b := ui.NewSceneBuilder()
+		if kept == nil {
+			kept = b.PushOffset(5, 5)
+			b.AddPicture(ui.Offset{}, inside)
+			b.Pop()
+		} else {
+			b.AddRetained(kept)
+		}
+		return b.Build(), kept
+	}
+	type frame struct {
+		tiles, made, drawn, instances, framebuffers int
+	}
+	var frames []frame
+	scene, kept := sceneWith(nil)
+	for i := 0; i < 8; i++ {
+		gl.resetCalls()
+		if err := r.Render(s, scene, ui.Size{Width: 64, Height: 64}, 1); err != nil {
+			t.Fatal(err)
+		}
+		st := r.LastFrame()
+		frames = append(frames, frame{st.TilesRasterized, st.CachedLayersMade, st.CachedLayersDrawn, st.Instances, gl.calls["genFramebuffer"]})
+		scene, _ = sceneWith(kept)
+	}
+	if frames[0].tiles == 0 {
+		t.Fatalf("the path made no coverage tiles in the first frame: %+v", frames[0])
+	}
+	for i, f := range frames {
+		switch {
+		case i < 2: // drawn as it is
+			if f.made != 0 || f.drawn != 0 {
+				t.Errorf("frame %d: %+v, want it drawn as it is", i+1, f)
+			}
+		case i == 2: // the third frame makes the texture
+			if f.made != 1 || f.drawn != 0 || f.framebuffers != 1 {
+				t.Errorf("frame 3: %+v, want the texture made", f)
+			}
+		default: // one instance, no tiles, no new framebuffer
+			if f.made != 0 || f.drawn != 1 || f.tiles != 0 || f.framebuffers != 0 || f.instances != 1 {
+				t.Errorf("frame %d: %+v, want the layer drawn from its texture alone", i+1, f)
+			}
+		}
+		if i > 0 && f.tiles != 0 {
+			t.Errorf("frame %d made %d coverage tiles: the path was rasterized again", i+1, f.tiles)
+		}
+	}
+}

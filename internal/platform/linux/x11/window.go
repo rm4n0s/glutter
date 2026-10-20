@@ -323,6 +323,11 @@ func (w *window) onMap() {
 // onExpose redraws a window that was uncovered.
 func (w *window) onExpose() {
 	if w.mapped {
+		// The server keeps nothing of the window when it is not composited: the next
+		// frame must present all of it.
+		if h := w.p.handler; h != nil {
+			h.OnContentLost(w.id)
+		}
 		w.RequestFrame()
 	}
 }

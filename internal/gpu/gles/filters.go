@@ -188,7 +188,7 @@ func (dr *drawer) runPasses(src *Texture, w, h int, origin [2]int, passes []filt
 	dr.current = -1
 	d.SetScissor(false, 0, 0, 0, 0)
 	d.BlendFunc(glOne, glZero, glOne, glZero)
-	gl.uniform1i(prog.Uniform("uSrc"), 0)
+	prog.SetInt("uSrc", 0)
 	if len(passes) == 0 {
 		passes = []filterPass{{kind: passCopy, outW: w, outH: h}}
 	}
@@ -208,28 +208,28 @@ func (dr *drawer) runPasses(src *Texture, w, h int, origin [2]int, passes []filt
 		d.BindFramebuffer(out)
 		d.Viewport(0, 0, ps.outW, ps.outH)
 		d.BindTexture(0, cur)
-		gl.uniform1i(prog.Uniform("uPass"), int32(ps.kind))
-		gl.uniform2f(prog.Uniform("uSrcSize"), float32(curW), float32(curH))
-		gl.uniform2f(prog.Uniform("uOutSize"), float32(ps.outW), float32(ps.outH))
-		gl.uniform1i(prog.Uniform("uAxis"), ps.axis)
-		gl.uniform1i(prog.Uniform("uTile"), ps.tile)
+		prog.SetInt("uPass", int32(ps.kind))
+		prog.SetVec2("uSrcSize", float32(curW), float32(curH))
+		prog.SetVec2("uOutSize", float32(ps.outW), float32(ps.outH))
+		prog.SetInt("uAxis", ps.axis)
+		prog.SetInt("uTile", ps.tile)
 		switch ps.kind {
 		case passBlur:
-			gl.uniform1f(prog.Uniform("uSigma"), ps.sigma)
-			gl.uniform1i(prog.Uniform("uRadius"), ps.radius)
-			gl.uniform1f(prog.Uniform("uNorm"), ps.norm)
+			prog.SetFloat("uSigma", ps.sigma)
+			prog.SetInt("uRadius", ps.radius)
+			prog.SetFloat("uNorm", ps.norm)
 		case passMorph:
-			gl.uniform1i(prog.Uniform("uRadius"), ps.radius)
-			gl.uniform1i(prog.Uniform("uDilate"), b2i(ps.dilate))
+			prog.SetInt("uRadius", ps.radius)
+			prog.SetInt("uDilate", b2i(ps.dilate))
 		case passDown, passUp:
-			gl.uniform2f(prog.Uniform("uFactor"), float32(ps.factor[0]), float32(ps.factor[1]))
+			prog.SetVec2("uFactor", float32(ps.factor[0]), float32(ps.factor[1]))
 		case passMatrix:
-			gl.uniform4f(prog.Uniform("uMat0"), ps.inv[0], ps.inv[1], ps.inv[2], ps.inv[3])
-			gl.uniform2f(prog.Uniform("uMat1"), ps.inv[4], ps.inv[5])
-			gl.uniform2f(prog.Uniform("uRectOrigin"), float32(origin[0]), float32(origin[1]))
-			gl.uniform1i(prog.Uniform("uQuality"), ps.quality)
+			prog.SetVec4("uMat0", ps.inv[0], ps.inv[1], ps.inv[2], ps.inv[3])
+			prog.SetVec2("uMat1", ps.inv[4], ps.inv[5])
+			prog.SetVec2("uRectOrigin", float32(origin[0]), float32(origin[1]))
+			prog.SetInt("uQuality", ps.quality)
 		case passColor:
-			applySpec(gl, prog, ps.spec)
+			applySpec(prog, ps.spec)
 		}
 		gl.drawArrays(glTriangleStrip, 0, 4)
 		if owned != nil {

@@ -53,6 +53,7 @@ func (h *recordingHandler) OnSettings(s platform.Settings) {
 func (h *recordingHandler) OnViewFocus(view ui.ViewID, focused bool) {
 	h.add("OnViewFocus %d %v", view, focused)
 }
+func (h *recordingHandler) OnContentLost(view ui.ViewID) { h.add("OnContentLost %d", view) }
 func (h *recordingHandler) OnCloseRequest(view ui.ViewID) bool {
 	h.add("OnCloseRequest %d", view)
 	return h.allowClose

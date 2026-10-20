@@ -24,6 +24,8 @@ type Context struct {
 	version string
 	surface map[*Surface]struct{}
 	closed  bool
+	// damage says whether the display can swap buffers with a damage region.
+	damage bool
 }
 
 // Surface is an EGL window surface of a Context.
@@ -125,6 +127,7 @@ func openWith(egl eglAPI, loadGL func(eglAPI) (glAPI, error), h gpu.SurfaceHandl
 		return nil, nil, err
 	}
 	c.gl = gl
+	c.damage = egl.canSwapWithDamage(display)
 	c.version = gl.getString(glVersion)
 	if !isES3(c.version) {
 		c.Close()
@@ -216,7 +219,7 @@ func (c *Context) Viewport(width, height int) { c.dev.Viewport(0, 0, width, heig
 //
 // Flutter: no counterpart
 func (c *Context) Clear(r, g, b, a float32) {
-	c.gl.clearColor(r, g, b, a)
+	c.dev.ClearColor(r, g, b, a)
 	c.gl.clear(glColorBufferBit)
 }
 
@@ -228,6 +231,35 @@ func (c *Context) Clear(r, g, b, a float32) {
 func (c *Context) SwapBuffers(s *Surface) error {
 	if !c.egl.swapBuffers(c.display, s.handle) {
 		return eglError(c.egl, "EGLSwapFailed", "eglSwapBuffers failed")
+	}
+	return nil
+}
+
+// CanSwapWithDamage says whether the display has EGL_KHR_swap_buffers_with_damage (or
+// the EXT extension), so that SwapBuffersWithDamage tells the compositor what changed.
+//
+// Flutter: no counterpart
+func (c *Context) CanSwapWithDamage() bool { return c.damage }
+
+// SwapBuffersWithDamage presents the frame drawn into s as SwapBuffers does, and
+// tells the compositor that only the rectangles changed from the frame before it:
+// pixels from the top left of a surface that is height pixels high. The whole frame
+// is drawn in the buffer anyway, so a compositor or driver that ignores the damage
+// shows the same window. Without the extension it is SwapBuffers. It fails with
+// EGLSwapFailed.
+//
+// Flutter: no counterpart
+func (c *Context) SwapBuffersWithDamage(s *Surface, height int, rects []image.Rectangle) error {
+	if !c.damage || len(rects) == 0 {
+		return c.SwapBuffers(s)
+	}
+	// EGL counts from the bottom left.
+	flat := make([]int32, 0, len(rects)*4)
+	for _, r := range rects {
+		flat = append(flat, int32(r.Min.X), int32(height-r.Max.Y), int32(r.Dx()), int32(r.Dy()))
+	}
+	if !c.egl.swapBuffersWithDamage(c.display, s.handle, flat) {
+		return eglError(c.egl, "EGLSwapFailed", "eglSwapBuffersWithDamage failed")
 	}
 	return nil
 }

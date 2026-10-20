@@ -198,6 +198,17 @@ type ViewFocusEvent struct {
 func (e ViewFocusEvent) view() ui.ViewID                          { return e.View }
 func (e ViewFocusEvent) dispatch(_ *Platform, h platform.Handler) { h.OnViewFocus(e.View, e.Focused) }
 
+// ContentLostEvent delivers a window whose content was lost to Handler.OnContentLost.
+//
+// Flutter: no counterpart
+type ContentLostEvent struct {
+	// View is the view that lost its content.
+	View ui.ViewID
+}
+
+func (e ContentLostEvent) view() ui.ViewID                          { return e.View }
+func (e ContentLostEvent) dispatch(_ *Platform, h platform.Handler) { h.OnContentLost(e.View) }
+
 // LifecycleEvent delivers a lifecycle change to Handler.OnLifecycle.
 //
 // Flutter: no counterpart

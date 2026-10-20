@@ -70,6 +70,11 @@ func (NopHandler) OnSettings(Settings) {}
 // Flutter: no counterpart
 func (NopHandler) OnViewFocus(ui.ViewID, bool) {}
 
+// OnContentLost ignores the loss.
+//
+// Flutter: no counterpart
+func (NopHandler) OnContentLost(ui.ViewID) {}
+
 // OnCloseRequest agrees to close the view.
 //
 // Flutter: no counterpart

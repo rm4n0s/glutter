@@ -24,6 +24,8 @@ type fakeEGL struct {
 	visualID                                                                                          int32
 	noVisual                                                                                          bool
 	surfacelessFails                                                                                  bool
+	damageOK                                                                                          bool
+	damageRects                                                                                       [][]int32
 }
 
 func (f *fakeEGL) getConfigAttrib(_, _ uintptr, attribute int32) (int32, bool) {
@@ -93,6 +95,12 @@ func (f *fakeEGL) swapInterval(_ uintptr, interval int32) bool {
 }
 func (f *fakeEGL) swapBuffers(uintptr, uintptr) bool {
 	f.call("swapBuffers")
+	return !f.swapFails
+}
+func (f *fakeEGL) canSwapWithDamage(uintptr) bool { return f.damageOK }
+func (f *fakeEGL) swapBuffersWithDamage(_, _ uintptr, rects []int32) bool {
+	f.call("swapBuffersWithDamage")
+	f.damageRects = append(f.damageRects, rects)
 	return !f.swapFails
 }
 func (f *fakeEGL) destroySurface(uintptr, uintptr) bool { f.call("destroySurface"); return true }

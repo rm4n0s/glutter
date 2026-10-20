@@ -108,56 +108,7 @@ func (b *frameBuilder) filteredDraw(c gpu.Command, p *ui.Paint, with func(*ui.Pa
 
 // opBounds returns the bounds of what a shape-drawing operation covers in its own
 // coordinates, strokes included.
-func opBounds(op ui.DisplayOp) (ui.Rect, bool) {
-	var r ui.Rect
-	var p *ui.Paint
-	switch v := op.(type) {
-	case ui.OpDrawRect:
-		r, p = v.Rect, &v.Paint
-	case ui.OpDrawRRect:
-		r, p = rectOfRRect(v.RRect), &v.Paint
-	case ui.OpDrawOval:
-		r, p = v.Rect, &v.Paint
-	case ui.OpDrawCircle:
-		r, p = ui.NewRectFromCircle(v.Center, v.Radius), &v.Paint
-	case ui.OpDrawDRRect:
-		r, p = rectOfRRect(v.Outer), &v.Paint
-	case ui.OpDrawRSuperellipse:
-		r, p = rectOfRRect(ui.RRect(v.RSuperellipse)), &v.Paint
-	case ui.OpDrawArc:
-		r, p = v.Rect, &v.Paint
-	case ui.OpDrawPath:
-		r, p = v.Path.GetBounds(), &v.Paint
-	case ui.OpDrawLine:
-		r = ui.Rect{Left: math.Min(v.P1.Dx, v.P2.Dx), Top: math.Min(v.P1.Dy, v.P2.Dy), Right: math.Max(v.P1.Dx, v.P2.Dx), Bottom: math.Max(v.P1.Dy, v.P2.Dy)}
-		p = &v.Paint
-	case ui.OpDrawPoints:
-		if len(v.Points) == 0 {
-			return ui.Rect{}, false
-		}
-		r = ui.Rect{Left: math.Inf(1), Top: math.Inf(1), Right: math.Inf(-1), Bottom: math.Inf(-1)}
-		for _, pt := range v.Points {
-			r = ui.Rect{Left: math.Min(r.Left, pt.Dx), Top: math.Min(r.Top, pt.Dy), Right: math.Max(r.Right, pt.Dx), Bottom: math.Max(r.Bottom, pt.Dy)}
-		}
-		p = &v.Paint
-	default:
-		return ui.Rect{}, false
-	}
-	if p.Style() == ui.PaintingStyleStroke || isLineOrPoints(op) {
-		// A stroke reaches half its width, or a miter's length, past the geometry.
-		grow := math.Max(p.StrokeWidth(), 0) / 2 * math.Max(math.Sqrt2, p.StrokeMiterLimit())
-		r = ui.Rect{Left: r.Left - grow, Top: r.Top - grow, Right: r.Right + grow, Bottom: r.Bottom + grow}
-	}
-	return r, r.IsFinite()
-}
-
-func isLineOrPoints(op ui.DisplayOp) bool {
-	switch op.(type) {
-	case ui.OpDrawLine, ui.OpDrawPoints:
-		return true
-	}
-	return false
-}
+func opBounds(op ui.DisplayOp) (ui.Rect, bool) { return gpu.ShapeBounds(op) }
 
 // styleCode is the number of a blur style in the shaders.
 func styleCode(s ui.BlurStyle) int32 {

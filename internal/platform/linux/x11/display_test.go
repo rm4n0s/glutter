@@ -60,8 +60,23 @@ type displayHandler struct {
 	dragEnds []ui.DragResult
 	answer   func(ui.DropEvent) ui.DropActions
 
+	// lost counts the OnContentLost calls.
+	lost int
+
 	// draw, when set, is called for each frame on the UI thread.
 	draw func()
+}
+
+func (h *displayHandler) OnContentLost(ui.ViewID) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.lost++
+}
+
+func (h *displayHandler) contentLost() int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.lost
 }
 
 func (h *displayHandler) OnMetrics(_ ui.ViewID, m platform.ViewMetrics) {
@@ -423,6 +438,22 @@ func TestDisplayFramesArePacedAndMerged(t *testing.T) {
 	if frames, limit := n1-n0, 22; frames > limit || frames < 5 {
 		t.Errorf("%d frames in 20 intervals, want between 5 and %d", frames, limit)
 	}
+}
+
+// TestDisplayExposeReportsLostContentAndAsksForAFrame checks that an exposed window
+// has its next frame presented whole: the handler is told, then a frame is asked for.
+func TestDisplayExposeReportsLostContentAndAsksForAFrame(t *testing.T) {
+	e := startDisplay(t, windowConfig())
+	e.waitMapped()
+	// The server's own expose after the map may or may not have come yet.
+	time.Sleep(3 * e.p.interval)
+	_, frames, _, _, _ := e.h.snapshot()
+	lost := e.h.contentLost()
+	e.onLoop(func() { e.win.(*window).onExpose() })
+	if got := e.h.contentLost(); got != lost+1 {
+		t.Errorf("OnContentLost was called %d times by the expose, want 1", got-lost)
+	}
+	waitFor(t, func() bool { _, f, _, _, _ := e.h.snapshot(); return f > frames }, "no frame followed the expose")
 }
 
 // second is a second connection to the server, which plays the window manager and

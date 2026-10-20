@@ -20,9 +20,15 @@ type RendererOpts struct {
 	HasBackground bool
 	// RasterCacheAfter turns on the raster cache: a layer that a scene retains (it is
 	// in this many consecutive scenes) is drawn into a texture that later frames draw
-	// instead of its contents. Zero, the default, keeps nothing; the rule that
-	// decides what is cached for RepaintBoundary comes with step 17.2.
+	// instead of its contents. Zero, the default, keeps nothing. The engine sets 3: the
+	// layer of a RepaintBoundary that the framework did not repaint for three frames.
 	RasterCacheAfter int
+	// Damage makes Render tell the compositor which part of the window changed from
+	// the frame before it, when the display has EGL_KHR_swap_buffers_with_damage (or
+	// the EXT extension): the scene is compared with the last one of the window, and
+	// the frame is still drawn whole. It costs a walk of the scene's layers for each
+	// frame.
+	Damage bool
 	// SkipUnsupported makes Render leave out what the renderer cannot draw yet,
 	// and count it in LastFrame, instead of failing with GLNotImplemented. The
 	// development examples use it to show what works.
@@ -43,6 +49,7 @@ type Renderer struct {
 	last       FrameStats
 	res        *resources // the caches of paths, clip masks and images; made at the first frame
 	cache      *layerCache
+	damage     bool // RendererOpts.Damage
 	closed     bool
 	// beforePresent, when set, runs after a frame is drawn and before it is
 	// presented, while its pixels can still be read back (tests).
@@ -55,6 +62,9 @@ var _ gpu.Renderer = (*Renderer)(nil)
 type glSurface struct {
 	r       *Renderer
 	surface *Surface
+	// tracker finds what a frame changes from the one before it, for
+	// RendererOpts.Damage.
+	tracker *gpu.DamageTracker
 }
 
 // Destroy releases the EGL surface; doing it twice is safe.
@@ -88,6 +98,7 @@ func newRenderer(open func(gpu.SurfaceHandle) (*Context, *Surface, error), opts 
 	}
 	return &Renderer{
 		cache:      cache,
+		damage:     len(opts) == 1 && opts[0].Damage,
 		open:       open,
 		surfaces:   map[*glSurface]struct{}{},
 		skip:       len(opts) == 1 && opts[0].SkipUnsupported,
@@ -117,7 +128,7 @@ func (r *Renderer) Attach(h gpu.SurfaceHandle) (gpu.Surface, error) {
 			return nil, err
 		}
 	}
-	gs := &glSurface{r: r, surface: s}
+	gs := &glSurface{r: r, surface: s, tracker: gpu.NewDamageTracker()}
 	r.surfaces[gs] = struct{}{}
 	return gs, nil
 }
@@ -164,7 +175,13 @@ func (r *Renderer) render(s gpu.Surface, scene *ui.Scene, size ui.Size, capture 
 	d.Viewport(0, 0, w, h)
 	r.ctx.Clear(r.background[0], r.background[1], r.background[2], r.background[3])
 	if err := r.drawScene(scene, w, h, true); err != nil {
+		gs.tracker.Invalidate()
 		return nil, err
+	}
+	useDamage := r.damage && r.ctx.CanSwapWithDamage()
+	var dmg gpu.Damage
+	if useDamage {
+		dmg = gs.tracker.Update(scene, w, h)
 	}
 	if r.beforePresent != nil {
 		if err := r.beforePresent(w, h); err != nil {
@@ -179,7 +196,42 @@ func (r *Renderer) render(s gpu.Surface, scene *ui.Scene, size ui.Size, capture 
 		}
 	}
 	d.EndFrame()
-	return img, r.ctx.SwapBuffers(gs.surface)
+	if !useDamage {
+		return img, r.ctx.SwapBuffers(gs.surface)
+	}
+	r.last.DamagedPixels = w * h
+	if dmg.Full {
+		return img, r.swapOrForget(gs, r.ctx.SwapBuffers(gs.surface))
+	}
+	rects := dmg.Rects
+	if len(rects) == 0 {
+		// Nothing changed: a pixel is the smallest damage there is.
+		rects = []image.Rectangle{image.Rect(0, 0, 1, 1)}
+	}
+	r.last.DamagedPixels, r.last.DamageRects = 0, len(rects)
+	for _, rc := range rects {
+		r.last.DamagedPixels += rc.Dx() * rc.Dy()
+	}
+	return img, r.swapOrForget(gs, r.ctx.SwapBuffersWithDamage(gs.surface, h, rects))
+}
+
+// swapOrForget returns the error of a swap, after forgetting the surface's last frame
+// if it failed: what the compositor shows is then not that frame.
+func (r *Renderer) swapOrForget(gs *glSurface, err error) error {
+	if err != nil {
+		gs.tracker.Invalidate()
+	}
+	return err
+}
+
+// Invalidate says that the window of the surface lost its content (it was exposed),
+// so that its next frame reports the whole window as changed.
+//
+// Flutter: no counterpart
+func (r *Renderer) Invalidate(s gpu.Surface) {
+	if gs, ok := s.(*glSurface); ok && gs.r == r {
+		gs.tracker.Invalidate()
+	}
 }
 
 // LastFrame says what the last call of Render drew and left out.

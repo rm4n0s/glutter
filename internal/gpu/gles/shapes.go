@@ -171,6 +171,11 @@ type FrameStats struct {
 	// CachedLayersDrawn is the number of retained layers drawn from the raster
 	// cache's textures, and CachedLayersMade the number drawn into them.
 	CachedLayersDrawn, CachedLayersMade int
+	// DamagedPixels is the number of pixels the frame told the compositor to
+	// update, and DamageRects the number of rectangles they were in: the whole
+	// window and 0 when the frame was presented whole. Both are 0 unless
+	// RendererOpts.Damage is set and the display can swap with damage.
+	DamagedPixels, DamageRects int
 	// Unsupported lists the features that caused skipped commands, once each.
 	Unsupported []string
 }

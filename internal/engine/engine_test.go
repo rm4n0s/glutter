@@ -54,8 +54,10 @@ type fakeRenderer struct {
 	calls    []drawCall
 	closed   int
 	released []gpu.SurfaceHandle
-	err      error
-	img      *image.RGBA
+	// invalidated are the windows that lost their content.
+	invalidated []gpu.SurfaceHandle
+	err         error
+	img         *image.RGBA
 }
 
 func (r *fakeRenderer) Draw(h gpu.SurfaceHandle, w, ht int, scene *ui.Scene, capture bool) (*image.RGBA, error) {
@@ -69,6 +71,12 @@ func (r *fakeRenderer) Draw(h gpu.SurfaceHandle, w, ht int, scene *ui.Scene, cap
 		return r.img, nil
 	}
 	return nil, nil
+}
+
+func (r *fakeRenderer) Invalidate(h gpu.SurfaceHandle) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.invalidated = append(r.invalidated, h)
 }
 
 func (r *fakeRenderer) Release(h gpu.SurfaceHandle) {

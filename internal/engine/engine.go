@@ -68,6 +68,14 @@ type Config struct {
 	// SkipUnsupported makes the renderer leave out what it cannot draw yet instead
 	// of ending Run with GLNotImplemented; the log says what was left out.
 	SkipUnsupported bool
+	// DisableRasterCache turns off the raster cache of the GPU renderer (the layers
+	// that RepaintBoundary retains for three frames are drawn as textures). The
+	// GLUTTER_RASTER_CACHE environment variable set to "0" does the same.
+	DisableRasterCache bool
+	// DisableDamage stops the GPU renderer from telling the compositor which part of
+	// the window changed (eglSwapBuffersWithDamage). GLUTTER_DAMAGE set to "0" does
+	// the same.
+	DisableDamage bool
 	// Start, when set, is called once on the UI thread, after the first window
 	// exists and the dispatcher knows its view, the settings and the displays,
 	// and before the event loop runs. The framework attaches itself to the
@@ -100,6 +108,9 @@ type renderer interface {
 	// Release destroys the surface of the window with the handle. The window must
 	// still exist. A handle that was never drawn into is ignored.
 	Release(h gpu.SurfaceHandle)
+	// Invalidate says that the window with the handle lost its content, so that the
+	// next frame is presented whole. A handle that was never drawn into is ignored.
+	Invalidate(h gpu.SurfaceHandle)
 	// Close destroys the renderer's surfaces and context. The windows must still
 	// exist.
 	Close()
@@ -111,6 +122,18 @@ type renderer interface {
 //
 // Flutter: no counterpart
 const DecorationsEnv = "GLUTTER_DECORATIONS"
+
+// RasterCacheEnv is the environment variable that, set to "0", turns off the raster cache of the GPU renderer, as
+// Config.DisableRasterCache does.
+//
+// Flutter: no counterpart
+const RasterCacheEnv = "GLUTTER_RASTER_CACHE"
+
+// DamageEnv is the environment variable that, set to "0", stops the GPU renderer from telling the compositor what
+// changed in a frame, as Config.DisableDamage does.
+//
+// Flutter: no counterpart
+const DamageEnv = "GLUTTER_DAMAGE"
 
 // Run connects to the display (Wayland or X11, SPEC §6.3 rule 5), opens the first
 // window and draws it, and runs the event loop on the calling goroutine, which
@@ -538,6 +561,13 @@ func (h *handler) SetWindowConstraints(view ui.ViewID, min, max ui.Size) {
 func (h *handler) RequestViewFocus(view ui.ViewID, state ui.ViewFocusState, _ ui.ViewFocusDirection) {
 	if w, ok := h.windows[view]; ok && state == ui.ViewFocusStateFocused && h.focusView != view {
 		w.PerformWindowAction(ui.WindowAction{Kind: ui.WindowActionActivate})
+	}
+}
+
+// OnContentLost has the next frame of the window presented whole (platform.Handler).
+func (h *handler) OnContentLost(view ui.ViewID) {
+	if w, ok := h.windows[view]; ok && h.r != nil {
+		h.r.Invalidate(w.NativeSurface())
 	}
 }
 
@@ -1026,20 +1056,39 @@ func (h *handler) release() {
 type glesRenderer struct {
 	log      *slog.Logger
 	skip     bool
+	cache    bool // the raster cache is on
+	damage   bool // frames tell the compositor what changed
 	renderer *gles.Renderer
 	surfaces map[gpu.SurfaceHandle]gpu.Surface
 	reported int // the number of skipped commands the log last said
 }
 
 func newGLESRenderer(cfg *Config, log *slog.Logger) renderer {
-	return &glesRenderer{log: log, skip: cfg.SkipUnsupported, surfaces: map[gpu.SurfaceHandle]gpu.Surface{}}
+	getenv := cfg.Getenv
+	if getenv == nil {
+		getenv = os.Getenv
+	}
+	return &glesRenderer{
+		log: log, skip: cfg.SkipUnsupported, surfaces: map[gpu.SurfaceHandle]gpu.Surface{},
+		cache:  !cfg.DisableRasterCache && getenv(RasterCacheEnv) != "0",
+		damage: !cfg.DisableDamage && getenv(DamageEnv) != "0",
+	}
 }
+
+// rasterCacheAfter is how many frames in a row a retained layer must be in the scene
+// to be drawn from a texture: three, as Flutter's raster cache does.
+const rasterCacheAfter = 3
 
 func (r *glesRenderer) Draw(h gpu.SurfaceHandle, width, height int, scene *ui.Scene, capture bool) (*image.RGBA, error) {
 	if r.renderer == nil {
-		r.renderer = gles.NewRenderer(gles.RendererOpts{
+		opts := gles.RendererOpts{
 			Background: ui.NewColor(developmentColor), HasBackground: true, SkipUnsupported: r.skip,
-		})
+			Damage: r.damage,
+		}
+		if r.cache {
+			opts.RasterCacheAfter = rasterCacheAfter
+		}
+		r.renderer = gles.NewRenderer(opts)
 		r.log.Info("OpenGL ES renderer ready")
 	}
 	surface, ok := r.surfaces[h]
@@ -1066,6 +1115,12 @@ func (r *glesRenderer) Draw(h gpu.SurfaceHandle, width, height int, scene *ui.Sc
 		r.log.Warn("the GPU renderer left out what it cannot draw yet", "skipped", st.Skipped, "drawn", st.Drawn, "features", st.Unsupported)
 	}
 	return img, nil
+}
+
+func (r *glesRenderer) Invalidate(h gpu.SurfaceHandle) {
+	if surface, ok := r.surfaces[h]; ok && r.renderer != nil {
+		r.renderer.Invalidate(surface)
+	}
 }
 
 func (r *glesRenderer) Release(h gpu.SurfaceHandle) {

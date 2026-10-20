@@ -1,6 +1,7 @@
 package gles
 
 import (
+	"strings"
 	"unsafe"
 
 	"github.com/ebitengine/purego"
@@ -32,6 +33,7 @@ const (
 	eglPlatformX11       = 0x31D5 // EGL_PLATFORM_X11_KHR
 	eglNativeVisualID    = 0x302E // EGL_NATIVE_VISUAL_ID
 	eglSuccess           = 0x3000
+	eglExtensions        = 0x3055 // EGL_EXTENSIONS
 )
 
 // eglAPI is the part of EGL that the context uses, in Go terms. The real
@@ -52,6 +54,13 @@ type eglAPI interface {
 	makeCurrent(display, draw, read, context uintptr) bool
 	swapInterval(display uintptr, interval int32) bool
 	swapBuffers(display, surface uintptr) bool
+	// canSwapWithDamage says whether the display has EGL_KHR_swap_buffers_with_damage
+	// or the EXT extension of the same name, so that swapBuffersWithDamage works.
+	canSwapWithDamage(display uintptr) bool
+	// swapBuffersWithDamage presents the surface and tells the compositor which
+	// rectangles changed: x, y, width and height for each, from the bottom left of
+	// the surface (as EGL counts).
+	swapBuffersWithDamage(display, surface uintptr, rects []int32) bool
 	destroySurface(display, surface uintptr) bool
 	destroyContext(display, context uintptr) bool
 	terminate(display uintptr) bool
@@ -77,6 +86,8 @@ type eglLib struct {
 	makeCurrentFn              func(display, draw, read, context uintptr) uint32
 	swapIntervalFn             func(display uintptr, interval int32) uint32
 	swapBuffersFn              func(display, surface uintptr) uint32
+	queryStringFn              func(display uintptr, name int32) uintptr
+	swapWithDamageFn           func(display, surface, rects uintptr, n int32) uint32
 	destroySurfaceFn           func(display, surface uintptr) uint32
 	destroyContextFn           func(display, context uintptr) uint32
 	terminateFn                func(display uintptr) uint32
@@ -115,6 +126,7 @@ func loadEGL() (*eglLib, error) {
 		{&l.makeCurrentFn, "eglMakeCurrent"},
 		{&l.swapIntervalFn, "eglSwapInterval"},
 		{&l.swapBuffersFn, "eglSwapBuffers"},
+		{&l.queryStringFn, "eglQueryString"},
 		{&l.destroySurfaceFn, "eglDestroySurface"},
 		{&l.destroyContextFn, "eglDestroyContext"},
 		{&l.terminateFn, "eglTerminate"},
@@ -238,6 +250,37 @@ func (l *eglLib) swapInterval(display uintptr, interval int32) bool {
 func (l *eglLib) swapBuffers(display, surface uintptr) bool {
 	return l.swapBuffersFn(display, surface) != 0
 }
+
+// canSwapWithDamage looks for the extension in the display's extension string and
+// binds its function; both the KHR and the EXT form are the same call.
+func (l *eglLib) canSwapWithDamage(display uintptr) bool {
+	if l.swapWithDamageFn != nil {
+		return true
+	}
+	exts := dl.GoString(l.queryStringFn(display, eglExtensions))
+	for _, ext := range strings.Fields(exts) {
+		if ext != "EGL_KHR_swap_buffers_with_damage" && ext != "EGL_EXT_swap_buffers_with_damage" {
+			continue
+		}
+		for _, name := range []string{"eglSwapBuffersWithDamageKHR", "eglSwapBuffersWithDamageEXT"} {
+			if addr := l.procAddress(name); addr != 0 {
+				registerFunc(&l.swapWithDamageFn, addr)
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (l *eglLib) swapBuffersWithDamage(display, surface uintptr, rects []int32) bool {
+	if l.swapWithDamageFn == nil {
+		return false
+	}
+	mem := int32Array(rects)
+	defer dl.Free(mem)
+	return l.swapWithDamageFn(display, surface, mem, int32(len(rects)/4)) != 0
+}
+
 func (l *eglLib) destroySurface(display, surface uintptr) bool {
 	return l.destroySurfaceFn(display, surface) != 0
 }

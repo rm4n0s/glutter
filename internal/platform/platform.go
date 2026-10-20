@@ -146,6 +146,10 @@ type Handler interface {
 	// OnViewFocus reports that the keyboard focus moved to a view (true) or left it
 	// (false). When it moves from one view to another, the old view is told first.
 	OnViewFocus(view ui.ViewID, focused bool)
+	// OnContentLost reports that what the window shows is no longer the last frame
+	// that was presented (an X11 window was exposed, and the server kept nothing of
+	// it), so that the next frame must be presented whole, whatever changed in it.
+	OnContentLost(view ui.ViewID)
 	// OnCloseRequest reports that the user asked to close the view. Returning
 	// true closes the window; false keeps it open.
 	OnCloseRequest(view ui.ViewID) bool

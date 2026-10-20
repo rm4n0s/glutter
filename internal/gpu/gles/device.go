@@ -55,7 +55,14 @@ type Device struct {
 	vaos     map[string]uint32
 	frame    uint64
 	live     liveCounts
+	counts   callCounts
 	closed   bool
+}
+
+// callCounts is how many GL calls the state cache saved and made, since the device
+// was made.
+type callCounts struct {
+	stateSkipped, uniformsSet, uniformsSkipped uint64
 }
 
 // liveCounts is how many GL objects the device has made and not deleted.
@@ -76,6 +83,8 @@ type glState struct {
 	blendDstA      uint32
 	blendEquation  uint32
 	colorMask      [4]bool
+	clearColor     [4]float32
+	clearKnown     bool
 	program        uint32
 	activeUnit     uint32
 	texture        [maxTrackedUnits]uint32
@@ -169,6 +178,9 @@ func (d *Device) resetState() {
 	gl.bindFramebuffer(glFramebuffer, 0)
 	gl.bindVertexArray(0)
 	gl.bindBuffer(glArrayBuffer, 0)
+	for _, p := range d.programs {
+		p.forgetUniforms()
+	}
 	d.state = glState{
 		viewport:  [4]int32{-1, -1, -1, -1},
 		scissorOn: false, blendOn: true,
@@ -193,6 +205,7 @@ func (d *Device) ResetState() { d.resetState() }
 func (d *Device) Viewport(x, y, w, h int) {
 	v := [4]int32{int32(x), int32(y), int32(w), int32(h)}
 	if d.state.viewport == v {
+		d.counts.stateSkipped++
 		return
 	}
 	d.state.viewport = v
@@ -209,6 +222,7 @@ func (d *Device) SetScissor(on bool, x, y, w, h int) {
 			d.state.scissorOn = false
 			d.gl.disable(glScissorTest)
 		}
+		d.counts.stateSkipped++
 		return
 	}
 	if !d.state.scissorOn {
@@ -227,6 +241,7 @@ func (d *Device) SetScissor(on bool, x, y, w, h int) {
 // Flutter: no counterpart
 func (d *Device) SetBlend(on bool) {
 	if d.state.blendOn == on {
+		d.counts.stateSkipped++
 		return
 	}
 	d.state.blendOn = on
@@ -243,6 +258,7 @@ func (d *Device) SetBlend(on bool) {
 func (d *Device) BlendFunc(srcRGB, dstRGB, srcAlpha, dstAlpha uint32) {
 	s := &d.state
 	if s.blendSrcRGB == srcRGB && s.blendDstRGB == dstRGB && s.blendSrcA == srcAlpha && s.blendDstA == dstAlpha {
+		d.counts.stateSkipped++
 		return
 	}
 	s.blendSrcRGB, s.blendDstRGB, s.blendSrcA, s.blendDstA = srcRGB, dstRGB, srcAlpha, dstAlpha
@@ -254,10 +270,24 @@ func (d *Device) BlendFunc(srcRGB, dstRGB, srcAlpha, dstAlpha uint32) {
 // Flutter: no counterpart
 func (d *Device) BlendEquation(mode uint32) {
 	if d.state.blendEquation == mode {
+		d.counts.stateSkipped++
 		return
 	}
 	d.state.blendEquation = mode
 	d.gl.blendEquation(mode)
+}
+
+// ClearColor sets the color that Clear fills with, as premultiplied components.
+//
+// Flutter: no counterpart
+func (d *Device) ClearColor(r, g, b, a float32) {
+	c := [4]float32{r, g, b, a}
+	if d.state.clearKnown && d.state.clearColor == c {
+		d.counts.stateSkipped++
+		return
+	}
+	d.state.clearColor, d.state.clearKnown = c, true
+	d.gl.clearColor(r, g, b, a)
 }
 
 // ColorMask says which color channels are written.
@@ -266,6 +296,7 @@ func (d *Device) BlendEquation(mode uint32) {
 func (d *Device) ColorMask(r, g, b, a bool) {
 	m := [4]bool{r, g, b, a}
 	if d.state.colorMask == m {
+		d.counts.stateSkipped++
 		return
 	}
 	d.state.colorMask = m
@@ -277,6 +308,7 @@ func (d *Device) ColorMask(r, g, b, a bool) {
 // Flutter: no counterpart
 func (d *Device) SetStencil(on bool) {
 	if d.state.stencilOn == on {
+		d.counts.stateSkipped++
 		return
 	}
 	d.state.stencilOn = on
@@ -293,6 +325,7 @@ func (d *Device) SetStencil(on bool) {
 func (d *Device) StencilFunc(fn uint32, ref int32, mask uint32) {
 	s := &d.state
 	if s.stencilFunc == fn && s.stencilRef == ref && s.stencilFuncMsk == mask {
+		d.counts.stateSkipped++
 		return
 	}
 	s.stencilFunc, s.stencilRef, s.stencilFuncMsk = fn, ref, mask
@@ -305,6 +338,7 @@ func (d *Device) StencilFunc(fn uint32, ref int32, mask uint32) {
 func (d *Device) StencilOp(fail, zfail, zpass uint32) {
 	s := &d.state
 	if s.stencilFail == fail && s.stencilZFail == zfail && s.stencilZPass == zpass {
+		d.counts.stateSkipped++
 		return
 	}
 	s.stencilFail, s.stencilZFail, s.stencilZPass = fail, zfail, zpass
@@ -316,6 +350,7 @@ func (d *Device) StencilOp(fail, zfail, zpass uint32) {
 // Flutter: no counterpart
 func (d *Device) StencilMask(mask uint32) {
 	if d.state.stencilMask == mask {
+		d.counts.stateSkipped++
 		return
 	}
 	d.state.stencilMask = mask
@@ -327,6 +362,7 @@ func (d *Device) StencilMask(mask uint32) {
 // Flutter: no counterpart
 func (d *Device) UseProgram(p *Program) {
 	if d.state.program == p.id {
+		d.counts.stateSkipped++
 		return
 	}
 	d.state.program = p.id
@@ -352,6 +388,7 @@ func (d *Device) bindTextureID(unit int, id uint32) {
 		d.gl.activeTexture(glTexture0 + uint32(unit))
 	}
 	if d.state.texture[unit] == id {
+		d.counts.stateSkipped++
 		return
 	}
 	d.state.texture[unit] = id
@@ -361,6 +398,7 @@ func (d *Device) bindTextureID(unit int, id uint32) {
 // bindFramebufferID binds a framebuffer for drawing and reading; 0 is the window's.
 func (d *Device) bindFramebufferID(id uint32) {
 	if d.state.framebuffer == id {
+		d.counts.stateSkipped++
 		return
 	}
 	d.state.framebuffer = id
@@ -374,6 +412,7 @@ func (d *Device) bindFramebufferID(id uint32) {
 func (d *Device) BindFramebuffer(f *Framebuffer) {
 	if f == nil {
 		d.bindFramebufferID(0)
+		d.counts.stateSkipped++
 		return
 	}
 	d.bindFramebufferID(f.id)
@@ -384,6 +423,7 @@ func (d *Device) BindFramebuffer(f *Framebuffer) {
 // Flutter: no counterpart
 func (d *Device) BindVertexArray(vao uint32) {
 	if d.state.vao == vao {
+		d.counts.stateSkipped++
 		return
 	}
 	d.state.vao = vao
@@ -399,6 +439,7 @@ func (d *Device) BindArrayBuffer(b *Buffer) {
 		id = b.id
 	}
 	if d.state.arrayBuffer == id {
+		d.counts.stateSkipped++
 		return
 	}
 	d.state.arrayBuffer = id
@@ -424,6 +465,8 @@ type Program struct {
 	dev      *Device
 	uniforms map[string]int32
 	attribs  map[string]int32
+	// values are the last values set to the uniforms, by location (uniforms.go).
+	values map[int32]*uniformValue
 }
 
 // Name is the name of the program: the name of its shader files.
@@ -576,7 +619,7 @@ func (d *Device) NewProgram(name, vertexSource, fragmentSource string) (*Program
 			"program", name, "stage", "link", "log", log)
 	}
 	d.live.programs++
-	return &Program{name: name, id: id, dev: d, uniforms: map[string]int32{}, attribs: map[string]int32{}}, nil
+	return &Program{name: name, id: id, dev: d, uniforms: map[string]int32{}, attribs: map[string]int32{}, values: map[int32]*uniformValue{}}, nil
 }
 
 // compile compiles one shader stage.
@@ -617,6 +660,11 @@ type Stats struct {
 	Textures, Buffers, Framebuffers, Renderbuffers, Programs int
 	// Pooled objects: free, waiting to be reused.
 	FreeTextures, FreeBuffers, FreeFramebuffers int
+	// StateSkipped is how many state changes (viewport, scissor, blend, color mask,
+	// stencil, program, texture, framebuffer, vertex array and buffer bindings, clear
+	// color) were not sent to GL because it had the value already. UniformsSet and
+	// UniformsSkipped are the same for the uniforms of the programs.
+	StateSkipped, UniformsSet, UniformsSkipped uint64
 }
 
 // Stats returns the counts of GL objects.
@@ -627,6 +675,7 @@ func (d *Device) Stats() Stats {
 		Textures: d.live.textures, Buffers: d.live.buffers, Framebuffers: d.live.framebuffers,
 		Renderbuffers: d.live.renderbuffers, Programs: d.live.programs,
 	}
+	s.StateSkipped, s.UniformsSet, s.UniformsSkipped = d.counts.stateSkipped, d.counts.uniformsSet, d.counts.uniformsSkipped
 	for _, l := range d.textures {
 		s.FreeTextures += len(l)
 	}
