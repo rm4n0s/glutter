@@ -25,6 +25,9 @@ const (
 	maxScale        = 4.0
 	rrScreenChange  = 0        // RRScreenChangeNotify, relative to the event base of RandR
 	rrScreenMask    = 1 << 0   // RRScreenChangeNotifyMask
+	rrCrtcMask      = 1 << 1   // RRCrtcChangeNotifyMask
+	rrOutputMask    = 1 << 2   // RROutputChangeNotifyMask
+	rrNotify        = 1        // RRNotify, relative to the event base of RandR: a CRTC or an output changed
 	rrMonitorActive = int32(1) // get_active of XRRGetMonitors: only the monitors that show something
 	mmPerInch       = 25.4
 )
@@ -136,7 +139,9 @@ func (p *Platform) selectMonitorEvents() {
 		return
 	}
 	p.rrEventBase = *view[int32](base)
-	r.selectInput(p.display, p.root, rrScreenMask)
+	// A monitor that is plugged in or taken away changes an output and a CRTC, and
+	// usually the size of the screen, which is the event that every client gets.
+	r.selectInput(p.display, p.root, rrScreenMask|rrCrtcMask|rrOutputMask)
 }
 
 // monitorAt is the monitor that has the point, the primary one when none has.
@@ -189,11 +194,14 @@ func (p *Platform) Displays() []platform.Display {
 // monitorsChanged follows a change of the screen or of Xft.dpi: the windows get the
 // scale of the monitor they are on now, and the handler the new displays.
 func (p *Platform) monitorsChanged() {
+	before, dpi := slices.Clone(p.monitors), p.xftDPI
 	p.refreshMonitors()
 	for _, w := range p.windows {
 		w.updateScale()
 	}
-	if p.handler != nil {
+	// One plugged in monitor makes several events (the output, the CRTC, the
+	// screen); the app is told once, when the monitors or the scale are not the same.
+	if p.handler != nil && (!slices.Equal(before, p.monitors) || dpi != p.xftDPI) {
 		p.handler.OnDisplaysChanged()
 	}
 }

@@ -90,6 +90,9 @@ type WindowInfo struct {
 	Fullscreen bool
 	// Activated is whether the window has the keyboard focus.
 	Activated bool
+	// Minimized is whether the window is minimized (iconified). Only the X11 backend
+	// knows: xdg-shell does not say, so a Wayland window never reports it.
+	Minimized bool
 	// Tiled is whether the compositor tiles the window: its edges touch other
 	// windows or the screen, so it has no borders to resize from.
 	Tiled bool

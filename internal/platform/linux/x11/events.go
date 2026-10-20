@@ -10,6 +10,10 @@ func (p *Platform) handleEvent() {
 		p.monitorsChanged()
 		return
 	}
+	if p.rrEventBase != 0 && any.typ == p.rrEventBase+rrNotify {
+		p.monitorsChanged() // an output or a CRTC changed
+		return
+	}
 	switch any.typ {
 	case genericEvent:
 		p.handleGenericEvent()
@@ -72,6 +76,8 @@ func (p *Platform) handleEvent() {
 		} else if p.xs != nil && ev.window == p.xs.owner && ev.atom == p.atoms.xsettingsProperty {
 			p.xsettingsChanged()
 			return
+		} else if w := p.windows[ev.window]; w != nil {
+			w.onStateProperty(ev.atom)
 		}
 		if p.clip != nil {
 			p.clip.onPropertyNotify(*view[xPropertyEvent](p.event))

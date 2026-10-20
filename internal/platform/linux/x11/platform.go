@@ -29,6 +29,10 @@ type atoms struct {
 	netWMWindowType, netWMWindowTypeNormal, netWMWindowTypeDialog uint64
 	motifWMHints, netActiveWindow, resourceManager                uint64
 	manager, xsettingsSelection, xsettingsProperty                uint64
+	wmState, netWMStateHidden, netWMAllowedActions                uint64
+	netWMActionMaximizeHorz, netWMActionMaximizeVert              uint64
+	netWMActionFullscreen, netWMActionMinimize                    uint64
+	netWMIcon, netWMMoveResize, gtkShowWindowMenu                 uint64
 }
 
 // Platform is the X11 backend of platform.Platform: Xlib and XInput2 through
@@ -164,6 +168,10 @@ func (p *Platform) internAtoms() atoms {
 		motifWMHints: intern("_MOTIF_WM_HINTS"), netActiveWindow: intern("_NET_ACTIVE_WINDOW"),
 		resourceManager: intern("RESOURCE_MANAGER"), manager: intern("MANAGER"),
 		xsettingsSelection: intern("_XSETTINGS_S" + strconv.Itoa(int(p.screen))), xsettingsProperty: intern("_XSETTINGS_SETTINGS"),
+		wmState: intern("WM_STATE"), netWMStateHidden: intern("_NET_WM_STATE_HIDDEN"), netWMAllowedActions: intern("_NET_WM_ALLOWED_ACTIONS"),
+		netWMActionMaximizeHorz: intern("_NET_WM_ACTION_MAXIMIZE_HORZ"), netWMActionMaximizeVert: intern("_NET_WM_ACTION_MAXIMIZE_VERT"),
+		netWMActionFullscreen: intern("_NET_WM_ACTION_FULLSCREEN"), netWMActionMinimize: intern("_NET_WM_ACTION_MINIMIZE"),
+		netWMIcon: intern("_NET_WM_ICON"), netWMMoveResize: intern("_NET_WM_MOVERESIZE"), gtkShowWindowMenu: intern("_GTK_SHOW_WINDOW_MENU"),
 	}
 }
 

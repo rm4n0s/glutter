@@ -73,7 +73,7 @@ func TestDisplayOptionalProtocolsOfTheCompositor(t *testing.T) {
 		return
 	}
 	// A protocol error would end Run; give the compositor a moment to send one.
-	p.Post(func() { p.windows[0].KeepScreenOn(false) })
+	p.Post(func() { _ = p.windows[0].KeepScreenOn(false) })
 	select {
 	case err := <-done:
 		t.Fatalf("Run ended early: %v", err)

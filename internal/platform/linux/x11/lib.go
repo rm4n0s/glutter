@@ -204,6 +204,9 @@ type xi struct {
 	selectEvents func(display uintptr, window uint64, masks uintptr, count int32) int32
 	queryDevice  func(display uintptr, device int32, count uintptr) uintptr
 	freeInfo     func(info uintptr)
+	// ungrabDevice (XIUngrabDevice) ends the grab that a pressed button gives the
+	// window, so that the window manager can take the pointer for a move or a resize.
+	ungrabDevice func(display uintptr, device int32, time uint64) int32
 }
 
 func loadXi() (*xi, error) {
@@ -220,6 +223,7 @@ func loadXi() (*xi, error) {
 		{&l.selectEvents, "XISelectEvents"},
 		{&l.queryDevice, "XIQueryDevice"},
 		{&l.freeInfo, "XIFreeDeviceInfo"},
+		{&l.ungrabDevice, "XIUngrabDevice"},
 	} {
 		if err := lib.Bind(b.fptr, b.symbol); err != nil {
 			return nil, err

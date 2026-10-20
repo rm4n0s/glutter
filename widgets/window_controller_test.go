@@ -455,6 +455,31 @@ func TestMinimizedEndsWhenTheWindowIsActivated(t *testing.T) {
 	}
 }
 
+func TestAPlatformThatSaysWhenAWindowIsMinimizedIsBelieved(t *testing.T) {
+	ts, bc := windowApp(t)
+	c, err := NewRegularWindowController(bc, ui.Size{Width: 400, Height: 300})
+	if err != nil {
+		t.Fatal(err)
+	}
+	view := c.RootView().ViewID()
+	// The user minimizes the window with the task bar, not the app.
+	ts.SetWindowInfo(view, ui.WindowInfo{Minimized: true})
+	if !c.IsMinimized() {
+		t.Error("the platform says the window is minimized")
+	}
+	// The user brings it back without it being active (the manager restored it).
+	ts.SetWindowInfo(view, ui.WindowInfo{})
+	if c.IsMinimized() {
+		t.Error("the platform says the window is not minimized any more")
+	}
+	// A platform that never says leaves the answer to what the app asked for.
+	c.SetMinimized(true)
+	ts.SetWindowInfo(view, ui.WindowInfo{})
+	if !c.IsMinimized() {
+		t.Error("a platform that does not say changed the answer")
+	}
+}
+
 func TestWindowScope(t *testing.T) {
 	ts, bc := windowApp(t)
 	c, err := NewRegularWindowController(bc, ui.Size{Width: 400, Height: 300}, RegularWindowControllerOpts{Title: "One"})

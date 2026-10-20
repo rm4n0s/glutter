@@ -84,6 +84,15 @@ type inputState struct {
 	lastX, lastY  float64
 	// buttonsDown has a bit for each pointer button that is down (by its number).
 	buttonsDown uint32
+	// press is the last press of a button of the pointer (1 to 3), which a move or a
+	// resize by the window manager needs: where it happened on the screen, which
+	// button, which master device.
+	press struct {
+		valid        bool
+		rootX, rootY float64
+		button       int32
+		device       int32
+	}
 	// scroll holds the axes that scroll, by device and valuator number; devices
 	// is the devices that have any, whose button 4 to 7 events are emulated.
 	scroll map[scrollKey]*scrollAxis
@@ -387,6 +396,7 @@ func (in *inputState) onFocus(w *window, ev *xiEnterEvent, in2 bool) {
 	}
 	if in2 {
 		in.focus = w
+		w.setActivated(true)
 		if t := in.p.text; t != nil {
 			t.focusChanged(w, true)
 		}
@@ -397,6 +407,7 @@ func (in *inputState) onFocus(w *window, ev *xiEnterEvent, in2 bool) {
 	}
 	if in.focus == w {
 		in.focus = nil
+		w.setActivated(false)
 		in.releaseKeys()
 		if t := in.p.text; t != nil {
 			t.focusChanged(w, false)
@@ -447,6 +458,15 @@ func wheelButton(detail int32) (axis input.Axis, direction int32, ok bool) {
 		return input.AxisHorizontal, 1, true
 	}
 	return 0, 0, false
+}
+
+// ungrabPointer ends the grab that the pressed button gave the app, which the window
+// manager needs to take the pointer.
+func (in *inputState) ungrabPointer() {
+	if in.press.valid {
+		in.xi.ungrabDevice(in.p.display, in.press.device, 0) // 0 is CurrentTime
+		in.p.x.flush(in.p.display)
+	}
 }
 
 func (in *inputState) flushPointer() {
@@ -549,6 +569,9 @@ func (in *inputState) onButton(w *window, ev *xiDeviceEvent, press bool) {
 	code := linuxButton(ev.detail)
 	if code == 0 {
 		return
+	}
+	if press && ev.detail <= 3 {
+		in.press.valid, in.press.rootX, in.press.rootY, in.press.button, in.press.device = true, ev.rootX, ev.rootY, ev.detail, ev.deviceID
 	}
 	in.moveTo(ev.eventX, ev.eventY)
 	in.pointer.Button(code, press)

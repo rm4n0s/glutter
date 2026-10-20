@@ -52,6 +52,8 @@ type displayHandler struct {
 	allowClose bool
 
 	settings []platform.Settings
+	// displays counts the OnDisplaysChanged calls.
+	displays int
 	// drops and dragEnds are the drag and drop events; answer is what OnDrop returns.
 	drops    []ui.DropEvent
 	dragEnds []ui.DragResult
@@ -65,6 +67,18 @@ func (h *displayHandler) OnMetrics(_ ui.ViewID, m platform.ViewMetrics) {
 	h.mu.Lock()
 	h.metrics = append(h.metrics, m)
 	h.mu.Unlock()
+}
+
+func (h *displayHandler) OnDisplaysChanged() {
+	h.mu.Lock()
+	h.displays++
+	h.mu.Unlock()
+}
+
+func (h *displayHandler) displayChanges() int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.displays
 }
 
 func (h *displayHandler) OnSettings(s platform.Settings) {
@@ -146,6 +160,14 @@ func (h *displayHandler) snapshot() (metrics []platform.ViewMetrics, frames int,
 
 func startDisplay(t *testing.T, cfg platform.WindowConfig) *x11Env {
 	t.Helper()
+	return startDisplayWith(t, cfg, nil)
+}
+
+// startDisplayWith is startDisplay that calls before(p) when the platform is made
+// and before its window is: the place to start a window manager, which must be there
+// for the window's map request.
+func startDisplayWith(t *testing.T, cfg platform.WindowConfig, before func(*Platform)) *x11Env {
+	t.Helper()
 	if os.Getenv("DISPLAY") == "" {
 		t.Skip("DISPLAY is not set: run the X11 display tests under scripts/headless-x11.sh")
 	}
@@ -162,6 +184,9 @@ func startDisplay(t *testing.T, cfg platform.WindowConfig) *x11Env {
 			t.Errorf("Close: %v", err)
 		}
 	})
+	if before != nil {
+		before(p)
+	}
 	win, err := p.NewWindow(cfg)
 	if err != nil {
 		t.Fatal(err)

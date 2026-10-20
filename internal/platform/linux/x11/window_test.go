@@ -367,7 +367,7 @@ func TestCursorsAreLoadedAgainForAnotherScaleOrSettings(t *testing.T) {
 }
 
 func TestKeepScreenOnIsUnavailableOnX11(t *testing.T) {
-	var w window
+	w := window{closed: true}
 	err := w.KeepScreenOn(true)
 	appErr, ok := errors.FromError(err)
 	if !ok || !appErr.HasRoute("IdleInhibitUnavailable") {

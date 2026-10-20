@@ -48,6 +48,10 @@ type window struct {
 	hasDisplay bool
 	// frameWanted is a frame asked for before the window was mapped.
 	frameWanted bool
+
+	// state is what the window manager says about the window; title is its title.
+	state windowState
+	title string
 }
 
 var _ platform.Window = (*window)(nil)
@@ -62,6 +66,9 @@ var _ platform.Window = (*window)(nil)
 //
 // Flutter: no counterpart
 func (p *Platform) NewWindow(cfg platform.WindowConfig) (platform.Window, error) {
+	if err := cfg.Icon.Validate(); err != nil {
+		return nil, err
+	}
 	w := &window{p: p, id: p.nextView, cfg: cfg}
 	p.nextView++
 	// The window is made on the monitor at the origin, or the primary one.
@@ -147,6 +154,9 @@ func (w *window) setProperties() {
 	dl.Free(protocols)
 
 	w.SetTitle(cfg.Title)
+	if err := w.SetIcon(cfg.Icon); err != nil {
+		slog.Warn("the window icon was not set", "error", err)
+	}
 
 	appID := cfg.AppID
 	if appID == "" {
@@ -162,9 +172,10 @@ func (w *window) setProperties() {
 	p.setLongs(w.xid, at.netWMPID, xaCardinal, []uint64{uint64(os.Getpid())})
 	w.setSizeHints()
 
-	if !cfg.IsDecorated() || cfg.Kind == platform.WindowKindBorderless {
+	if !cfg.IsDecorated() || cfg.Kind == platform.WindowKindBorderless || cfg.Decorations == platform.DecorationsApp {
 		// _MOTIF_WM_HINTS: flags (MWM_HINTS_DECORATIONS), functions, decorations,
-		// input mode, status. No decorations.
+		// input mode, status. No decorations: there is no title bar, or the app draws
+		// it.
 		p.setLongs(w.xid, at.motifWMHints, at.motifWMHints, []uint64{1 << 1, 0, 0, 0, 0})
 	}
 	windowType := at.netWMWindowTypeNormal
@@ -304,6 +315,7 @@ func (w *window) onMap() {
 		return
 	}
 	w.mapped = true
+	w.refreshState()
 	w.reportMetrics()
 	w.renderNow()
 }
@@ -344,18 +356,6 @@ func (w *window) reportMetrics() {
 		}
 		h.OnMetrics(w.id, m)
 	}
-}
-
-// info is what the app is told about the decorations of the window: the window
-// manager draws the title bar of every decorated window, even for an app that
-// asked to draw its own (an app-drawn bar needs _NET_WM_MOVERESIZE, which comes
-// with step 14.4).
-func (w *window) info() ui.WindowInfo {
-	mode := ui.DecorationServerSide
-	if !w.cfg.IsDecorated() || w.cfg.Kind == platform.WindowKindBorderless {
-		mode = ui.DecorationNone
-	}
-	return ui.WindowInfo{Decoration: mode, Capabilities: ui.AllWindowCapabilities, Title: w.cfg.Title}
 }
 
 // renderNow asks the handler for a frame at once, and starts the interval to the
@@ -430,6 +430,7 @@ func (w *window) SetTitle(title string) {
 		return
 	}
 	p := w.p
+	w.title = title
 	p.setBytes(w.xid, p.atoms.netWMName, p.atoms.utf8String, []byte(title))
 	p.setBytes(w.xid, xaWMName, xaString, []byte(latin1(title)))
 }
@@ -527,13 +528,6 @@ func (w *window) StartDrag(request ui.DragRequest) error {
 	return w.p.xdnd.startDrag(w, request)
 }
 
-// SetIcon does nothing yet.
-//
-// TODO(step 14.8): _NET_WM_ICON.
-//
-// Flutter: no counterpart
-func (w *window) SetIcon(ui.WindowIcon) error { return nil }
-
 // SetContentType does nothing: X11 has no content type hint.
 //
 // Flutter: no counterpart
@@ -547,12 +541,12 @@ func (w *window) KeepScreenOn(bool) error {
 	return errors.New("IdleInhibitUnavailable", "the X11 backend cannot keep the screen on")
 }
 
-// PerformWindowAction does the actions that the window manager does for a title
-// bar of the app: minimize, maximize, restore, fullscreen, activate and close. The
-// window manager draws the title bar of an X11 window and moves and resizes it, so
-// the moves, the resizes and the menu are ignored.
-//
-// TODO(step 14.4): _NET_WM_MOVERESIZE, for the title bar that the app draws.
+// PerformWindowAction does what the title bar of the app asks: minimize, maximize,
+// restore, fullscreen, activate and close are requests to the window manager
+// (_NET_WM_STATE, ICCCM iconify, _NET_ACTIVE_WINDOW), and the move, the resize from
+// an edge and the window menu are too (_NET_WM_MOVERESIZE and _GTK_SHOW_WINDOW_MENU,
+// for a window whose title bar the app draws). They need the pointer button that is
+// down; without one they do nothing.
 //
 // Flutter: no counterpart
 func (w *window) PerformWindowAction(action ui.WindowAction) {
@@ -576,6 +570,12 @@ func (w *window) PerformWindowAction(action ui.WindowAction) {
 		w.sendActivate()
 	case ui.WindowActionClose:
 		w.onClose()
+	case ui.WindowActionMove:
+		w.moveResize(moveResizeMove)
+	case ui.WindowActionResize:
+		w.moveResize(edgeDirection(action.Edge))
+	case ui.WindowActionShowMenu:
+		w.showMenu(action.Position)
 	}
 	p.x.flush(p.display)
 }

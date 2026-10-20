@@ -57,8 +57,11 @@ type windowControllerBase struct {
 	parent    BaseWindowController
 	title     string
 	minimized bool
-	destroyed bool
-	implicit  bool
+	// reportedMinimized is whether the platform has ever said the window is minimized,
+	// so that it is trusted when it says the window is not.
+	reportedMinimized bool
+	destroyed         bool
+	implicit          bool
 	// dialog is true for a dialog, which is never maximized or fullscreen.
 	dialog bool
 	// appDecorations is whether the app draws the title bar itself.
@@ -94,9 +97,9 @@ func (c *windowControllerBase) Title() string { return c.title }
 // Flutter: widgets/_window.dart RegularWindowController.isActivated
 func (c *windowControllerBase) IsActivated() bool { return c.view.Window().Activated }
 
-// IsMinimized is whether the window is minimized. The platform does not say whether
-// a window is minimized, so this is what the controller last asked for; it ends
-// when the window is activated.
+// IsMinimized is whether the window is minimized. Where the platform says so (X11)
+// it is what the window manager did; otherwise (Wayland, whose xdg-shell does not
+// say) it is what the controller last asked for, until the window is activated.
 //
 // Flutter: widgets/_window.dart RegularWindowController.isMinimized
 func (c *windowControllerBase) IsMinimized() bool { return c.minimized }
@@ -207,7 +210,12 @@ func (c *windowControllerBase) refresh() {
 	if info.Title != "" {
 		c.title = info.Title
 	}
-	if info.Activated {
+	switch {
+	case info.Minimized:
+		c.minimized, c.reportedMinimized = true, true
+	case c.reportedMinimized:
+		c.minimized, c.reportedMinimized = false, false // the platform says, and it says no
+	case info.Activated:
 		c.minimized = false
 	}
 	if s := c.snapshot(); s != c.last {
