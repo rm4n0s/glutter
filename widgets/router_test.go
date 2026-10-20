@@ -655,7 +655,7 @@ func TestBackButtonListenerTakesPriorityOverRoot(t *testing.T) {
 	provider := newSimpleProvider("initial")
 	outer := NewRootBackButtonDispatcher(ts.Binding)
 	delegate := newSimpleDelegate(func(_ BuildContext, i *routeInfo) Widget {
-		return NewColumn([]Widget{infoText(i), NewBackButtonListener(NewContainer(nil), poppingTo(provider, "popped inner1", true))})
+		return NewColumn([]Widget{infoText(i), NewBackButtonListener(poppingTo(provider, "popped inner1", true), NewContainer(nil))})
 	}, poppedOuter(provider))
 	ts.PumpWidget(listenerApp(ts, provider, outer, delegate))
 	if !shows(ts, "initial") || !outer.InvokeCallback(false) {
@@ -674,7 +674,7 @@ func TestBackButtonListenerUpdatesCallbackIfChanged(t *testing.T) {
 	delegate := newSimpleDelegate(nil, poppedOuter(provider))
 	build := func(name string) func(BuildContext, *routeInfo) Widget {
 		return func(_ BuildContext, i *routeInfo) Widget {
-			return NewColumn([]Widget{infoText(i), NewBackButtonListener(NewContainer(nil), poppingTo(provider, name, true))})
+			return NewColumn([]Widget{infoText(i), NewBackButtonListener(poppingTo(provider, name, true), NewContainer(nil))})
 		}
 	}
 	delegate.builder = build("first callback")
@@ -695,7 +695,7 @@ func TestBackButtonListenerClearsCallbackIfDisposed(t *testing.T) {
 	outer := NewRootBackButtonDispatcher(ts.Binding)
 	delegate := newSimpleDelegate(nil, poppedOuter(provider))
 	delegate.builder = func(_ BuildContext, i *routeInfo) Widget {
-		return NewColumn([]Widget{infoText(i), NewBackButtonListener(NewContainer(nil), poppingTo(provider, "first callback", true))})
+		return NewColumn([]Widget{infoText(i), NewBackButtonListener(poppingTo(provider, "first callback", true), NewContainer(nil))})
 	}
 	ts.PumpWidget(listenerApp(ts, provider, outer, delegate))
 	delegate.builder = func(_ BuildContext, i *routeInfo) Widget { return NewColumn([]Widget{infoText(i)}) }
@@ -714,8 +714,8 @@ func TestNestedBackButtonListenerTakesPriority(t *testing.T) {
 	outer := NewRootBackButtonDispatcher(ts.Binding)
 	delegate := newSimpleDelegate(func(_ BuildContext, i *routeInfo) Widget {
 		return NewColumn([]Widget{infoText(i), NewBackButtonListener(
-			NewBackButtonListener(NewContainer(nil), poppingTo(provider, "popped inner2", true)),
-			poppingTo(provider, "popped inner1", true))})
+			poppingTo(provider, "popped inner1", true),
+			NewBackButtonListener(poppingTo(provider, "popped inner2", true), NewContainer(nil)))})
 	}, poppedOuter(provider))
 	ts.PumpWidget(listenerApp(ts, provider, outer, delegate))
 	if !shows(ts, "initial") || !outer.InvokeCallback(false) {
@@ -733,8 +733,8 @@ func TestNestedBackButtonListenerReturningFalseCallsNext(t *testing.T) {
 	outer := NewRootBackButtonDispatcher(ts.Binding)
 	delegate := newSimpleDelegate(func(_ BuildContext, i *routeInfo) Widget {
 		return NewColumn([]Widget{infoText(i), NewBackButtonListener(
-			NewBackButtonListener(NewContainer(nil), poppingTo(provider, "popped inner2", false)),
-			poppingTo(provider, "popped inner1", true))})
+			poppingTo(provider, "popped inner1", true),
+			NewBackButtonListener(poppingTo(provider, "popped inner2", false), NewContainer(nil)))})
 	}, poppedOuter(provider))
 	ts.PumpWidget(listenerApp(ts, provider, outer, delegate))
 	if !shows(ts, "initial") || !outer.InvokeCallback(false) {
@@ -755,10 +755,10 @@ func TestRouterDidUpdateWidgetOnlyUpdatesBackButtonListener(t *testing.T) {
 	delegate := newSimpleDelegate(func(_ BuildContext, i *routeInfo) Widget {
 		return NewColumn([]Widget{infoText(i), newBuilder(func(_ BuildContext, setter func(func())) Widget {
 			setState = setter
-			return NewBackButtonListener(NewContainer(nil), func() bool {
+			return NewBackButtonListener(func() bool {
 				provider.setValue(uriInfo(location))
 				return true
-			})
+			}, NewContainer(nil))
 		})})
 	}, poppedOuter(provider))
 	ts.PumpWidget(listenerApp(ts, provider, outer, delegate))

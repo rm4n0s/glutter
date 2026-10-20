@@ -52,3 +52,40 @@ func TestEditableTextRemovedWhileFocusedReportsNoError(t *testing.T) {
 	}
 	ts.TakeErrors()
 }
+
+func TestEditableTextDeterministicCursorDoesNotBlink(t *testing.T) {
+	if !foundation.DebugMode {
+		t.Skip("DebugOptions.DeterministicCursor has an effect in debug builds only")
+	}
+	tests := []struct {
+		name          string
+		deterministic bool
+		wantTimer     bool
+	}{
+		{"blinks by default", false, true},
+		{"deterministic cursor", true, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			debug := NewDebugOptions()
+			debug.DeterministicCursor = tt.deterministic
+			ts := gluttertest.New(t, gluttertest.Opts{Debug: debug})
+			controller := NewTextEditingController("hello")
+			focus := NewFocusNode(FocusNodeOpts{DebugLabel: "t"})
+			style := painting.NewTextStyle(painting.TextStyleOpts{FontSize: foundation.Some(16.0), Color: foundation.Some(ui.NewColor(0xFF000000))})
+			ts.PumpWidget(testWidgetsApp(testWidgetsAppOpts{home: NewCenter(NewSizedBox(NewEditableText(controller, focus, style, ui.NewColor(0xFF000000), ui.NewColor(0xFF888888)),
+				SizedBoxOpts{Width: foundation.Some(200.0)}))}))
+			state := gluttertest.StateOf[*EditableTextState](ts, gluttertest.ByType[*EditableText]())
+			state.RequestKeyboard()
+			ts.Pump()
+			seen := map[bool]bool{}
+			for i := 0; i < 6; i++ {
+				ts.PumpFrame(state.CursorBlinkInterval())
+				seen[state.CursorCurrentlyVisible()] = true
+			}
+			if blinked := len(seen) == 2; blinked != tt.wantTimer {
+				t.Errorf("the caret blinked = %v, want %v (states seen: %v)", blinked, tt.wantTimer, seen)
+			}
+		})
+	}
+}

@@ -393,21 +393,21 @@ func TestFocusScopeSettingParentNodeDeterminesFocusTreeHierarchy(t *testing.T) {
 	defer insertedNode.Dispose()
 	child := func(inner Widget) Widget { return inner }
 	_ = child
-	ts.PumpWidget(NewFocusScope(NewFocusWithExternalFocusNode(NewColumn([]Widget{
-		NewFocusWithExternalFocusNode(NewSizedBox(nil), parentNode),
-		NewFocusWithExternalFocusNode(NewSizedBox(nil), childNode, FocusWithExternalFocusNodeOpts{ParentNode: parentNode, Autofocus: true}),
-	}), topNode)))
+	ts.PumpWidget(NewFocusScope(NewFocusWithExternalFocusNode(topNode, NewColumn([]Widget{
+		NewFocusWithExternalFocusNode(parentNode, NewSizedBox(nil)),
+		NewFocusWithExternalFocusNode(childNode, NewSizedBox(nil), FocusWithExternalFocusNodeOpts{ParentNode: parentNode, Autofocus: true}),
+	}))))
 	ts.Pump()
 	if !childNode.HasPrimaryFocus() || !parentNode.HasFocus() || !topNode.HasFocus() {
 		t.Fatal("the child should have the focus")
 	}
 	// Inserting a Focus in between does not reparent the child.
-	ts.PumpWidget(NewFocusScope(NewFocusWithExternalFocusNode(NewColumn([]Widget{
-		NewFocusWithExternalFocusNode(NewSizedBox(nil), parentNode),
+	ts.PumpWidget(NewFocusScope(NewFocusWithExternalFocusNode(topNode, NewColumn([]Widget{
+		NewFocusWithExternalFocusNode(parentNode, NewSizedBox(nil)),
 		NewFocusWithExternalFocusNode(
-			NewFocusWithExternalFocusNode(NewSizedBox(nil), childNode, FocusWithExternalFocusNodeOpts{ParentNode: parentNode, Autofocus: true}),
-			insertedNode),
-	}), topNode)))
+			insertedNode,
+			NewFocusWithExternalFocusNode(childNode, NewSizedBox(nil), FocusWithExternalFocusNodeOpts{ParentNode: parentNode, Autofocus: true})),
+	}))))
 	ts.Pump()
 	if !childNode.HasPrimaryFocus() || !parentNode.HasFocus() || !topNode.HasFocus() || insertedNode.HasFocus() {
 		t.Error("the child should still be below the parent node")
@@ -421,22 +421,22 @@ func TestFocusScopeSettingParentNodeDeterminesFocusScopeTreeHierarchy(t *testing
 	defer parentNode.Dispose()
 	defer childNode.Dispose()
 	defer insertedNode.Dispose()
-	ts.PumpWidget(NewFocusScopeWithExternalFocusNode(NewColumn([]Widget{
-		NewFocusScopeWithExternalFocusNode(NewSizedBox(nil), parentNode),
-		NewFocusScopeWithExternalFocusNode(NewFocus(NewSizedBox(nil), FocusOpts{Autofocus: true}), childNode,
+	ts.PumpWidget(NewFocusScopeWithExternalFocusNode(topNode, NewColumn([]Widget{
+		NewFocusScopeWithExternalFocusNode(parentNode, NewSizedBox(nil)),
+		NewFocusScopeWithExternalFocusNode(childNode, NewFocus(NewSizedBox(nil), FocusOpts{Autofocus: true}),
 			FocusScopeWithExternalFocusNodeOpts{ParentNode: parentNode.Node()}),
-	}), topNode))
+	})))
 	ts.Pump()
 	if !childNode.HasFocus() || !parentNode.HasFocus() || !topNode.HasFocus() {
 		t.Fatal("the child scope should have the focus")
 	}
-	ts.PumpWidget(NewFocusScopeWithExternalFocusNode(NewColumn([]Widget{
-		NewFocusScopeWithExternalFocusNode(NewSizedBox(nil), parentNode),
+	ts.PumpWidget(NewFocusScopeWithExternalFocusNode(topNode, NewColumn([]Widget{
+		NewFocusScopeWithExternalFocusNode(parentNode, NewSizedBox(nil)),
 		NewFocusScopeWithExternalFocusNode(
-			NewFocusScopeWithExternalFocusNode(NewFocus(NewSizedBox(nil), FocusOpts{Autofocus: true}), childNode,
-				FocusScopeWithExternalFocusNodeOpts{ParentNode: parentNode.Node()}),
-			insertedNode),
-	}), topNode))
+			insertedNode,
+			NewFocusScopeWithExternalFocusNode(childNode, NewFocus(NewSizedBox(nil), FocusOpts{Autofocus: true}),
+				FocusScopeWithExternalFocusNodeOpts{ParentNode: parentNode.Node()})),
+	})))
 	ts.Pump()
 	if !childNode.HasFocus() || !parentNode.HasFocus() || !topNode.HasFocus() || insertedNode.HasFocus() {
 		t.Error("the child scope should still be below the parent scope")
@@ -703,7 +703,7 @@ func TestFocusScopeExternalNodeAttributesAreNotUpdatedByTheWidget(t *testing.T) 
 	focusScopeNode.SetSkipTraversal(false)
 	focusScopeNode.SetCanRequestFocus(true)
 	widget := func() *FocusScope {
-		return NewFocusScopeWithExternalFocusNode(NewContainer(nil, ContainerOpts{Key: key1}), focusScopeNode)
+		return NewFocusScopeWithExternalFocusNode(focusScopeNode, NewContainer(nil, ContainerOpts{Key: key1}))
 	}
 	check := func(w *FocusScope, descendantsFocusable, descendantsTraversable bool) {
 		t.Helper()
@@ -1194,7 +1194,7 @@ func TestFocusExternalNodeAttributesAreNotUpdatedByTheWidget(t *testing.T) {
 	focusNode.SetSkipTraversal(false)
 	focusNode.SetCanRequestFocus(true)
 	widget := func() *Focus {
-		return NewFocusWithExternalFocusNode(NewContainer(nil, ContainerOpts{Key: key1}), focusNode)
+		return NewFocusWithExternalFocusNode(focusNode, NewContainer(nil, ContainerOpts{Key: key1}))
 	}
 	check := func(w *Focus, focusable, traversable bool) {
 		t.Helper()

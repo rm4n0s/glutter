@@ -169,19 +169,19 @@ func (s *ScrollNotificationObserverState) notifyListeners(notification ScrollNot
 // Flutter: widgets/scroll_notification_observer.dart ScrollNotificationObserverState.build
 func (s *ScrollNotificationObserverState) Build(BuildContext) Widget {
 	return NewNotificationListener[*ScrollMetricsNotification](
-		NewNotificationListener[ScrollNotification](
-			&scrollNotificationObserverScope{NewInheritedWidgetBase(s.Widget().child), s},
-			func(notification ScrollNotification) bool {
-				s.notifyListeners(notification)
-				return false
-			}),
 		func(notification *ScrollMetricsNotification) bool {
 			// A ScrollMetricsNotification allows listeners to be notified for an
 			// initial state, as well as if the content dimensions change without
 			// scrolling.
 			s.notifyListeners(notification.AsScrollUpdate())
 			return false
-		})
+		},
+		NewNotificationListener[ScrollNotification](
+			func(notification ScrollNotification) bool {
+				s.notifyListeners(notification)
+				return false
+			},
+			&scrollNotificationObserverScope{NewInheritedWidgetBase(s.Widget().child), s}))
 }
 
 // Dispose drops the listeners.

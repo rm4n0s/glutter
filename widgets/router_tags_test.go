@@ -55,7 +55,7 @@ func TestRouterTags(t *testing.T) {
 	t.Run("BackButtonDispatcherMissing", func(t *testing.T) {
 		ts := gluttertest.New(t)
 		delegate := newSimpleDelegate(func(BuildContext, *routeInfo) Widget {
-			return NewBackButtonListener(NewContainer(nil), func() bool { return true })
+			return NewBackButtonListener(func() bool { return true }, NewContainer(nil))
 		}, nil)
 		ts.PumpWidget(routerOf(delegate, RouterOpts[*routeInfo]{}))
 		_ = requireErrorTag(t, takeFirst(t, ts), "BackButtonDispatcherMissing")

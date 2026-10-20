@@ -110,10 +110,10 @@ func TestScrollViewCanJumpToDuringADrag(t *testing.T) {
 	for i, state := range kStates {
 		children[i] = NewSizedBox(NewText(state), SizedBoxOpts{Height: foundation.Some(200.0)})
 	}
-	ts.PumpWidget(ltr(NewNotificationListener[ScrollNotification](NewListView(children, ListViewOpts{Controller: controller}), func(n ScrollNotification) bool {
+	ts.PumpWidget(ltr(NewNotificationListener[ScrollNotification](func(n ScrollNotification) bool {
 		log = append(log, fmt.Sprintf("%T", n))
 		return false
-	})))
+	}, NewListView(children, ListViewOpts{Controller: controller}))))
 	if len(log) != 0 {
 		t.Fatalf("log = %v", log)
 	}
@@ -244,10 +244,10 @@ func TestListViewPrimaryLeadsToScrolling(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			ts := gluttertest.New(t, gluttertest.Opts{})
 			scrolled := false
-			ts.PumpWidget(ltr(NewNotificationListener[*OverscrollNotification](NewListView(nil, tc.opts), func(*OverscrollNotification) bool {
+			ts.PumpWidget(ltr(NewNotificationListener[*OverscrollNotification](func(*OverscrollNotification) bool {
 				scrolled = true
 				return false
-			})))
+			}, NewListView(nil, tc.opts))))
 			ts.DragFrom(ui.Offset{Dx: 100, Dy: 100}, ui.Offset{Dy: 100})
 			if scrolled != tc.want {
 				t.Errorf("scrolled = %v, want %v", scrolled, tc.want)

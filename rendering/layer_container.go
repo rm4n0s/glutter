@@ -38,6 +38,8 @@ func (c *ContainerLayer) AsContainerLayer() *ContainerLayer { return c }
 
 // ContainerLayerLike is a layer that has children: every type that embeds
 // ContainerLayer.
+//
+// Flutter: no counterpart
 type ContainerLayerLike interface {
 	Layer
 	AsContainerLayer() *ContainerLayer
@@ -354,6 +356,8 @@ type OffsetLayer struct {
 
 // OffsetLayerLike is a layer that is an OffsetLayer: the layer of a repaint
 // boundary can be any of them.
+//
+// Flutter: no counterpart
 type OffsetLayerLike interface {
 	ContainerLayerLike
 	AsOffsetLayer() *OffsetLayer

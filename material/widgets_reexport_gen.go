@@ -5,10 +5,6 @@ package material
 // Not re-exported, because the package declares an identifier of the same name:
 //   widgets.MinInteractiveDimension
 
-// Not re-exported, because a copy of a variable of a basic type would not follow
-// the writes to the original; use the package that declares it:
-//   widgets.EditableTextDebugDeterministicCursor
-
 import (
 	"context"
 	"log/slog"
@@ -4979,8 +4975,8 @@ func NewAutomaticKeepAlive(child widgets.Widget, opts ...widgets.AutomaticKeepAl
 // NewBackButtonListener is widgets.NewBackButtonListener.
 //
 // Flutter: widgets.dart NewBackButtonListener
-func NewBackButtonListener(child widgets.Widget, onBackButtonPressed widgets.BackButtonCallback, opts ...widgets.WidgetOpts) *widgets.BackButtonListener {
-	return widgets.NewBackButtonListener(child, onBackButtonPressed, opts...)
+func NewBackButtonListener(onBackButtonPressed widgets.BackButtonCallback, child widgets.Widget, opts ...widgets.WidgetOpts) *widgets.BackButtonListener {
+	return widgets.NewBackButtonListener(onBackButtonPressed, child, opts...)
 }
 
 // NewBackdropFilter is widgets.NewBackdropFilter.
@@ -5483,8 +5479,8 @@ func NewDraggable[T any](feedback widgets.Widget, child widgets.Widget, opts ...
 // NewDrivenScrollActivity is widgets.NewDrivenScrollActivity.
 //
 // Flutter: widgets.dart NewDrivenScrollActivity
-func NewDrivenScrollActivity(delegate widgets.ScrollActivityDelegate, o widgets.DrivenScrollActivityOpts) *widgets.DrivenScrollActivity {
-	return widgets.NewDrivenScrollActivity(delegate, o)
+func NewDrivenScrollActivity(delegate widgets.ScrollActivityDelegate, opts ...widgets.DrivenScrollActivityOpts) *widgets.DrivenScrollActivity {
+	return widgets.NewDrivenScrollActivity(delegate, opts...)
 }
 
 // NewDrivenScrollActivitySimulation is widgets.NewDrivenScrollActivitySimulation.
@@ -5784,8 +5780,8 @@ func NewFocusScopeNode(opts ...widgets.FocusScopeNodeOpts) *widgets.FocusScopeNo
 // NewFocusScopeWithExternalFocusNode is widgets.NewFocusScopeWithExternalFocusNode.
 //
 // Flutter: widgets.dart NewFocusScopeWithExternalFocusNode
-func NewFocusScopeWithExternalFocusNode(child widgets.Widget, focusScopeNode *widgets.FocusScopeNode, opts ...widgets.FocusScopeWithExternalFocusNodeOpts) *widgets.FocusScope {
-	return widgets.NewFocusScopeWithExternalFocusNode(child, focusScopeNode, opts...)
+func NewFocusScopeWithExternalFocusNode(focusScopeNode *widgets.FocusScopeNode, child widgets.Widget, opts ...widgets.FocusScopeWithExternalFocusNodeOpts) *widgets.FocusScope {
+	return widgets.NewFocusScopeWithExternalFocusNode(focusScopeNode, child, opts...)
 }
 
 // NewFocusTraversalGroup is widgets.NewFocusTraversalGroup.
@@ -5805,8 +5801,8 @@ func NewFocusTraversalOrder(order widgets.FocusOrder, child widgets.Widget, opts
 // NewFocusWithExternalFocusNode is widgets.NewFocusWithExternalFocusNode.
 //
 // Flutter: widgets.dart NewFocusWithExternalFocusNode
-func NewFocusWithExternalFocusNode(child widgets.Widget, focusNode *widgets.FocusNode, opts ...widgets.FocusWithExternalFocusNodeOpts) *widgets.Focus {
-	return widgets.NewFocusWithExternalFocusNode(child, focusNode, opts...)
+func NewFocusWithExternalFocusNode(focusNode *widgets.FocusNode, child widgets.Widget, opts ...widgets.FocusWithExternalFocusNodeOpts) *widgets.Focus {
+	return widgets.NewFocusWithExternalFocusNode(focusNode, child, opts...)
 }
 
 // NewFocusableActionDetector is widgets.NewFocusableActionDetector.
@@ -6183,8 +6179,8 @@ func NewKeyedSubtree(child widgets.Widget, opts ...widgets.WidgetOpts) *widgets.
 // NewKeyedSubtreeWrap is widgets.NewKeyedSubtreeWrap.
 //
 // Flutter: widgets.dart NewKeyedSubtreeWrap
-func NewKeyedSubtreeWrap(child widgets.Widget, childIndex int) *widgets.KeyedSubtree {
-	return widgets.NewKeyedSubtreeWrap(child, childIndex)
+func NewKeyedSubtreeWrap(childIndex int, child widgets.Widget) *widgets.KeyedSubtree {
+	return widgets.NewKeyedSubtreeWrap(childIndex, child)
 }
 
 // NewLayoutBuilder is widgets.NewLayoutBuilder.
@@ -6519,8 +6515,8 @@ func NewNestedScrollView(headerSliverBuilder widgets.NestedScrollViewHeaderSlive
 // NewNestedScrollViewViewport is widgets.NewNestedScrollViewViewport.
 //
 // Flutter: widgets.dart NewNestedScrollViewViewport
-func NewNestedScrollViewViewport(offset rendering.ViewportOffset, slivers []widgets.Widget, handle *widgets.SliverOverlapAbsorberHandle, opts ...widgets.ViewportOpts) *widgets.NestedScrollViewViewport {
-	return widgets.NewNestedScrollViewViewport(offset, slivers, handle, opts...)
+func NewNestedScrollViewViewport(offset rendering.ViewportOffset, handle *widgets.SliverOverlapAbsorberHandle, slivers []widgets.Widget, opts ...widgets.ViewportOpts) *widgets.NestedScrollViewViewport {
+	return widgets.NewNestedScrollViewViewport(offset, handle, slivers, opts...)
 }
 
 // NewNeverScrollableScrollPhysics is widgets.NewNeverScrollableScrollPhysics.
@@ -6540,8 +6536,8 @@ func NewNextFocusAction() *widgets.NextFocusAction {
 // NewNotificationListener is widgets.NewNotificationListener.
 //
 // Flutter: widgets.dart NewNotificationListener
-func NewNotificationListener[T any](child widgets.Widget, onNotification widgets.NotificationListenerCallback[T], opts ...widgets.WidgetOpts) *widgets.NotificationListener[T] {
-	return widgets.NewNotificationListener[T](child, onNotification, opts...)
+func NewNotificationListener[T any](onNotification widgets.NotificationListenerCallback[T], child widgets.Widget, opts ...widgets.WidgetOpts) *widgets.NotificationListener[T] {
+	return widgets.NewNotificationListener[T](onNotification, child, opts...)
 }
 
 // NewNumericFocusOrder is widgets.NewNumericFocusOrder.
@@ -7065,8 +7061,8 @@ func NewRepaintBoundary(child widgets.Widget, opts ...widgets.RepaintBoundaryOpt
 // NewRepaintBoundaryWrap is widgets.NewRepaintBoundaryWrap.
 //
 // Flutter: widgets.dart NewRepaintBoundaryWrap
-func NewRepaintBoundaryWrap(child widgets.Widget, childIndex int) *widgets.RepaintBoundary {
-	return widgets.NewRepaintBoundaryWrap(child, childIndex)
+func NewRepaintBoundaryWrap(childIndex int, child widgets.Widget) *widgets.RepaintBoundary {
+	return widgets.NewRepaintBoundaryWrap(childIndex, child)
 }
 
 // NewReplaceTextIntent is widgets.NewReplaceTextIntent.
@@ -7121,8 +7117,8 @@ func NewRotationTransition(turns animation.Animation[float64], child widgets.Wid
 // NewRouteInformation is widgets.NewRouteInformation.
 //
 // Flutter: widgets.dart NewRouteInformation
-func NewRouteInformation(opts widgets.RouteInformationOpts) *widgets.RouteInformation {
-	return widgets.NewRouteInformation(opts)
+func NewRouteInformation(options ...widgets.RouteInformationOpts) *widgets.RouteInformation {
+	return widgets.NewRouteInformation(options...)
 }
 
 // NewRouteObserver is widgets.NewRouteObserver.
@@ -14686,8 +14682,8 @@ func NewMemoryImage(bytes []byte, scale ...float64) *painting.MemoryImage {
 // NewMultiFrameImageStreamCompleter is painting.NewMultiFrameImageStreamCompleter.
 //
 // Flutter: painting.dart NewMultiFrameImageStreamCompleter
-func NewMultiFrameImageStreamCompleter(binding *painting.PaintingBinding, opts painting.MultiFrameImageStreamCompleterOpts) *painting.ImageStreamCompleter {
-	return painting.NewMultiFrameImageStreamCompleter(binding, opts)
+func NewMultiFrameImageStreamCompleter(binding *painting.PaintingBinding, options ...painting.MultiFrameImageStreamCompleterOpts) *painting.ImageStreamCompleter {
+	return painting.NewMultiFrameImageStreamCompleter(binding, options...)
 }
 
 // NewNetworkImage is painting.NewNetworkImage.

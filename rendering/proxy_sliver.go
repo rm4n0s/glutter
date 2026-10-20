@@ -640,7 +640,7 @@ type RenderSliverSemanticsAnnotations struct {
 // NewRenderSliverSemanticsAnnotations creates the sliver; the child may be nil.
 //
 // Flutter: rendering/proxy_sliver.dart RenderSliverSemanticsAnnotations.new
-func NewRenderSliverSemanticsAnnotations(child Sliver, properties *semantics.SemanticsProperties, opts ...SemanticsAnnotationsOpts) *RenderSliverSemanticsAnnotations {
+func NewRenderSliverSemanticsAnnotations(properties *semantics.SemanticsProperties, child Sliver, opts ...SemanticsAnnotationsOpts) *RenderSliverSemanticsAnnotations {
 	r := &RenderSliverSemanticsAnnotations{}
 	InitRenderProxySliver(&r.RenderProxySliver, r, child)
 	InitSemanticsAnnotations(&r.SemanticsAnnotations, r, properties, opts...)

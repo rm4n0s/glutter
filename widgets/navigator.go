@@ -2422,6 +2422,17 @@ func (s *NavigatorState) Build(bc BuildContext) Widget {
 	// navigators underneath do not pick up the hero controller above this level.
 	return NewHeroControllerScopeNone(
 		NewNotificationListener(
+			func(notification NavigationNotification) bool {
+				// If the state of this Navigator does not change whether or not the
+				// whole framework can pop, the notification is propagated as it is.
+				if notification.CanHandlePop || !s.getNavigatorCanHandlePop() {
+					return false
+				}
+				// Otherwise, a new notification with the correct canPop is
+				// dispatched, and the propagation of the old one stops.
+				DispatchNotification(bc, NavigationNotification{CanHandlePop: true})
+				return true
+			},
 			NewListener(
 				NewAbsorbPointer(
 					NewFocusTraversalGroup(
@@ -2439,17 +2450,6 @@ func (s *NavigatorState) Build(bc BuildContext) Widget {
 					OnPointerCancel: s.handlePointerCancel,
 				},
 			),
-			func(notification NavigationNotification) bool {
-				// If the state of this Navigator does not change whether or not the
-				// whole framework can pop, the notification is propagated as it is.
-				if notification.CanHandlePop || !s.getNavigatorCanHandlePop() {
-					return false
-				}
-				// Otherwise, a new notification with the correct canPop is
-				// dispatched, and the propagation of the old one stops.
-				DispatchNotification(bc, NavigationNotification{CanHandlePop: true})
-				return true
-			},
 		),
 	)
 }

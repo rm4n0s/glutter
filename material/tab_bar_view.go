@@ -329,7 +329,7 @@ func (s *tabBarViewState) Build(widgets.BuildContext) widgets.Widget {
 		physics = widgets.NewPageScrollPhysics(w.o.Physics)
 	}
 	return widgets.NewNotificationListener(
+		s.handleScrollNotification,
 		widgets.NewPageView(s.childrenWithKey, widgets.PageViewOpts{
-			DragStartBehavior: w.o.DragStartBehavior, ClipBehavior: w.o.ClipBehavior, Controller: s.pageController, Physics: physics}),
-		s.handleScrollNotification)
+			DragStartBehavior: w.o.DragStartBehavior, ClipBehavior: w.o.ClipBehavior, Controller: s.pageController, Physics: physics}))
 }

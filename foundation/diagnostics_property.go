@@ -602,6 +602,8 @@ type EnumPropertyOpts struct {
 
 // EnumValue is a value of an enum type that can name itself, as Dart's
 // Enum.name does. The enum types of Glutter have a Name method.
+//
+// Flutter: no counterpart
 type EnumValue interface {
 	comparable
 	Name() string
@@ -719,6 +721,8 @@ type FlagsSummaryOpts struct {
 
 // FlagEntry is one entry of a FlagsSummary: a description and whether it
 // applies (Flutter's non-null value).
+//
+// Flutter: no counterpart
 type FlagEntry struct {
 	// Description is shown when Present is true.
 	Description string

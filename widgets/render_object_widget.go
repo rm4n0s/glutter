@@ -151,6 +151,8 @@ func (c DebugCreator) String() string { return c.Element.AsElement().DebugGetCre
 
 // RenderObjectElementSelf is what a render object element needs from the outer
 // type: where to put the children's render objects.
+//
+// Flutter: no counterpart
 type RenderObjectElementSelf interface {
 	Element
 	// InsertRenderObjectChild puts the render object of a child into this

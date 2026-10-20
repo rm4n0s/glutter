@@ -160,7 +160,7 @@ func (s *navigatorPopHandlerState) Build(bc BuildContext) Widget {
 	// When the widget subtree indicates it can handle a pop, popping here is
 	// disabled, so that it can be handled manually in canPop.
 	return NewPopScope(
-		NewNotificationListener(w.child, func(notification NavigationNotification) bool {
+		NewNotificationListener(func(notification NavigationNotification) bool {
 			// If the subtree can't handle a pop, canPop is true so that the
 			// PopScope lets the navigator higher in the tree handle the pop.
 			nextCanPop := !notification.CanHandlePop
@@ -168,7 +168,7 @@ func (s *navigatorPopHandlerState) Build(bc BuildContext) Widget {
 				s.SetState(func() { s.canPop = nextCanPop })
 			}
 			return false
-		}),
+		}, w.child),
 		PopScopeOpts{
 			CanPop: foundation.Some(!w.enabled || s.canPop),
 			OnPopInvokedWithResult: func(didPop bool, result any) {

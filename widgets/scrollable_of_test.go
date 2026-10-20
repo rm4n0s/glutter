@@ -90,10 +90,10 @@ func TestScrollableOfIsPossibleUsingScrollNotificationContext(t *testing.T) {
 	useAndroid(t)
 	ts := gluttertest.New(t)
 	var notification ScrollNotification
-	ts.PumpWidget(ltr(NewNotificationListener[ScrollNotification](tall(1200), func(n ScrollNotification) bool {
+	ts.PumpWidget(ltr(NewNotificationListener[ScrollNotification](func(n ScrollNotification) bool {
 		notification = n
 		return false
-	})))
+	}, tall(1200))))
 	g := ts.StartGesture(ui.Offset{Dx: 100, Dy: 100})
 	ts.Pump(time.Second)
 	if got := ScrollableOf(notification.Context()); got != scrollableOf(ts) {

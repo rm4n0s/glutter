@@ -432,10 +432,10 @@ func TestNotificationListener(t *testing.T) {
 			var in, out int
 			ts := gluttertest.New(t, gluttertest.Opts{})
 			var target BuildContext
-			pumpLoose(ts, NewNotificationListener(NewNotificationListener(
-				NewBuilder(func(bc BuildContext) Widget { target = bc; return newLeaf() }),
-				func(n scrolled) bool { in++; return tt.handle }),
-				func(n scrolled) bool { out++; return true }), ui.TextDirectionLTR)
+			pumpLoose(ts, NewNotificationListener(func(n scrolled) bool { out++; return true },
+				NewNotificationListener(
+					func(n scrolled) bool { in++; return tt.handle },
+					NewBuilder(func(bc BuildContext) Widget { target = bc; return newLeaf() }))), ui.TextDirectionLTR)
 			DispatchNotification(target, scrolled{3})
 			if in != tt.wantIn || out != tt.wantOut {
 				t.Errorf("inner = %d, outer = %d, want %d and %d", in, out, tt.wantIn, tt.wantOut)
@@ -448,13 +448,14 @@ func TestNotificationListenerTypeFilter(t *testing.T) {
 	var layouts, scrolls int
 	ts := gluttertest.New(t, gluttertest.Opts{})
 	var target BuildContext
-	pumpLoose(ts, NewNotificationListener(NewNotificationListener(NewBuilder(func(bc BuildContext) Widget { target = bc; return newLeaf() }),
-		func(LayoutChangedNotification) bool { layouts++; return false }), func(scrolled) bool { scrolls++; return false }), ui.TextDirectionLTR)
+	pumpLoose(ts, NewNotificationListener(func(scrolled) bool { scrolls++; return false }, NewNotificationListener(
+		func(LayoutChangedNotification) bool { layouts++; return false },
+		NewBuilder(func(bc BuildContext) Widget { target = bc; return newLeaf() }))), ui.TextDirectionLTR)
 	DispatchNotification(target, LayoutChangedNotification{})
 	DispatchNotification(target, scrolled{1})
 	DispatchNotification(nil, scrolled{1})
 	// A listener without a callback lets everything through.
-	pumpLoose(ts, NewNotificationListener[scrolled](NewBuilder(func(bc BuildContext) Widget { target = bc; return newLeaf() }), nil), ui.TextDirectionLTR)
+	pumpLoose(ts, NewNotificationListener[scrolled](nil, NewBuilder(func(bc BuildContext) Widget { target = bc; return newLeaf() })), ui.TextDirectionLTR)
 	DispatchNotification(target, scrolled{1})
 	if layouts != 1 || scrolls != 1 {
 		t.Errorf("layouts = %d, scrolls = %d, want 1 and 1", layouts, scrolls)
@@ -466,7 +467,7 @@ func TestNotificationListenerUpdatesItsCallback(t *testing.T) {
 	var target BuildContext
 	got := ""
 	mk := func(label string) Widget {
-		return NewNotificationListener(NewBuilder(func(bc BuildContext) Widget { target = bc; return newLeaf() }), func(scrolled) bool { got = label; return true })
+		return NewNotificationListener(func(scrolled) bool { got = label; return true }, NewBuilder(func(bc BuildContext) Widget { target = bc; return newLeaf() }))
 	}
 	pumpLoose(ts, mk("a"), ui.TextDirectionLTR)
 	pumpLoose(ts, mk("b"), ui.TextDirectionLTR)

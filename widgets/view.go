@@ -175,7 +175,7 @@ func (s *viewState) Build(bc BuildContext) Widget {
 		// view is rendered inside another via a ViewAnchor): each view is an
 		// independent focus root.
 		NewFocusTraversalGroup(
-			NewFocusScopeWithExternalFocusNode(w.child, s.scopeNode, FocusScopeWithExternalFocusNodeOpts{ExcludeSemantics: true}),
+			NewFocusScopeWithExternalFocusNode(s.scopeNode, w.child, FocusScopeWithExternalFocusNodeOpts{ExcludeSemantics: true}),
 			FocusTraversalGroupOpts{Policy: s.policy, ParentNode: &bc.Owner().FocusManager().rootScope.FocusNode},
 		)))
 }

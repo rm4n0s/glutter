@@ -1087,7 +1087,7 @@ func (s *modalScopeState) Build(bc BuildContext) Widget {
 						return NewActions(ActionMap{IntentTypeOf[DismissIntent](): newDismissModalAction(bc)},
 							NewPrimaryScrollController(s.primaryScrollController,
 								NewFocusScopeWithExternalFocusNode(
-									NewRepaintBoundary(
+									s.focusScopeNode, NewRepaintBoundary(
 										NewListenableBuilder(s.listenable, func(bc BuildContext, child Widget) Widget {
 											return route.modalBase().buildFlexibleTransitions(bc, route.Animation(), route.SecondaryAnimation(),
 												// This additional ListenableBuilder is included because if the
@@ -1099,7 +1099,7 @@ func (s *modalScopeState) Build(bc BuildContext) Widget {
 													return NewIgnorePointer(child, IgnorePointerOpts{Ignoring: foundation.Some(ignoreEvents)})
 												}, child))
 										}, s.cachedPage(route)),
-									), s.focusScopeNode))) // the node is immutable
+									)))) // the node is immutable
 					}),
 				),
 				OffstageOpts{Offstage: foundation.Some(route.Offstage())},

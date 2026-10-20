@@ -373,7 +373,7 @@ func (w *Semantics) textDirection(bc BuildContext) ui.TextDirection {
 //
 // Flutter: widgets/basic.dart Semantics.createRenderObject
 func (w *Semantics) CreateRenderObject(bc BuildContext) rendering.RenderObject {
-	return rendering.NewRenderSemanticsAnnotations(nil, w.properties, rendering.SemanticsAnnotationsOpts{
+	return rendering.NewRenderSemanticsAnnotations(w.properties, nil, rendering.SemanticsAnnotationsOpts{
 		Container: w.container, ExplicitChildNodes: w.explicitChildNodes, ExcludeSemantics: w.excludeSemantics,
 		BlockUserActions: w.blockUserActions, LocaleForSubtree: w.localeForSubtree, TextDirection: w.textDirection(bc)})
 }
@@ -530,7 +530,7 @@ func (w *IndexedSemantics) Index() int { return w.index }
 //
 // Flutter: widgets/basic.dart IndexedSemantics.createRenderObject
 func (w *IndexedSemantics) CreateRenderObject(BuildContext) rendering.RenderObject {
-	return rendering.NewRenderIndexedSemantics(nil, w.index)
+	return rendering.NewRenderIndexedSemantics(w.index, nil)
 }
 
 // UpdateRenderObject copies the index to the render object.

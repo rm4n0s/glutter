@@ -210,7 +210,7 @@ type RenderCustomMultiChildLayoutBox struct {
 // none).
 //
 // Flutter: rendering/custom_layout.dart RenderCustomMultiChildLayoutBox.new
-func NewRenderCustomMultiChildLayoutBox(children []Box, delegate MultiChildLayoutDelegate) *RenderCustomMultiChildLayoutBox {
+func NewRenderCustomMultiChildLayoutBox(delegate MultiChildLayoutDelegate, children []Box) *RenderCustomMultiChildLayoutBox {
 	r := &RenderCustomMultiChildLayoutBox{delegate: delegate}
 	InitRenderBox(&r.RenderBox, r)
 	InitContainerRenderObject(&r.ContainerRenderObject, r)

@@ -79,7 +79,7 @@ func noIndex(children ...rendering.Box) *rendering.RenderIndexedStack {
 }
 
 func annotated(child rendering.Box, text string, container bool) *rendering.RenderSemanticsAnnotations {
-	return rendering.NewRenderSemanticsAnnotations(child, label(text),
+	return rendering.NewRenderSemanticsAnnotations(label(text), child,
 		rendering.SemanticsAnnotationsOpts{Container: container, TextDirection: ui.TextDirectionLTR})
 }
 
@@ -100,7 +100,7 @@ func TestChildrenForSemanticsOfProxyBoxes(t *testing.T) {
 		{"onstage", rendering.NewRenderOffstage(child(), rendering.RenderOffstageOpts{Offstage: foundation.Some(false)}), 1},
 		{"exclude semantics", rendering.NewRenderExcludeSemantics(child()), 0},
 		{"include semantics", rendering.NewRenderExcludeSemantics(child(), rendering.RenderExcludeSemanticsOpts{Excluding: foundation.Some(false)}), 1},
-		{"annotations excluding", rendering.NewRenderSemanticsAnnotations(child(), semantics.NewSemanticsProperties(semantics.SemanticsProperties{}),
+		{"annotations excluding", rendering.NewRenderSemanticsAnnotations(semantics.NewSemanticsProperties(semantics.SemanticsProperties{}), child(),
 			rendering.SemanticsAnnotationsOpts{ExcludeSemantics: true}), 0},
 		{"indexed stack", rendering.NewRenderIndexedStack([]rendering.Box{child(), child()}, rendering.RenderIndexedStackOpts{Index: foundation.Some(1)}), 1},
 		{"indexed stack without index", noIndex(child(), child()), 0},
@@ -368,7 +368,7 @@ func TestExcludeAndBlockSemantics(t *testing.T) {
 func TestIndexedSemanticsSetsIndexInParent(t *testing.T) {
 	h, _ := withSemantics(t)
 	inner := annotated(newSemNode(nil), "item", true)
-	indexed := rendering.NewRenderIndexedSemantics(inner, 3)
+	indexed := rendering.NewRenderIndexedSemantics(3, inner)
 	layout(t, h, indexed, atPhase(layoutOpts{}, phaseComposite))
 	node := indexed.DebugSemantics()
 	if node == nil {
@@ -386,7 +386,7 @@ func TestSemanticsAnnotationsPropertiesReachTheNode(t *testing.T) {
 		Label: foundation.Some("Press"), Button: foundation.Some(true), Enabled: foundation.Some(true),
 		OnTap: func() { taps++ },
 	})
-	box := rendering.NewRenderSemanticsAnnotations(newSemNode(nil), props, rendering.SemanticsAnnotationsOpts{Container: true, TextDirection: ui.TextDirectionLTR})
+	box := rendering.NewRenderSemanticsAnnotations(props, newSemNode(nil), rendering.SemanticsAnnotationsOpts{Container: true, TextDirection: ui.TextDirectionLTR})
 	layout(t, h, box, atPhase(layoutOpts{}, phaseComposite))
 	node := box.DebugSemantics()
 	data := node.GetSemanticsData()
@@ -702,7 +702,7 @@ func TestSemanticsErrorRoutesInRendering(t *testing.T) {
 		h, _ := withSemantics(t)
 		props := semantics.NewSemanticsProperties(semantics.SemanticsProperties{ScopesRoute: foundation.Some(true)})
 		requireTag(t, "SemanticsScopesRouteNeedsExplicitChildNodes", func() {
-			h.SetRoot(rendering.NewRenderSemanticsAnnotations(newSemNode(nil), props))
+			h.SetRoot(rendering.NewRenderSemanticsAnnotations(props, newSemNode(nil)))
 			h.Pump()
 		})
 	})
@@ -710,7 +710,7 @@ func TestSemanticsErrorRoutesInRendering(t *testing.T) {
 		h, _ := withSemantics(t)
 		props := semantics.NewSemanticsProperties(semantics.SemanticsProperties{Toggled: foundation.Some(true), Checked: foundation.Some(true)})
 		requireTag(t, "SemanticsToggledAndChecked", func() {
-			h.SetRoot(rendering.NewRenderSemanticsAnnotations(newSemNode(nil), props))
+			h.SetRoot(rendering.NewRenderSemanticsAnnotations(props, newSemNode(nil)))
 			h.Pump()
 		})
 	})

@@ -367,17 +367,17 @@ func (s *materialState) Build(bc widgets.BuildContext) widgets.Widget {
 		}
 		contents = widgets.NewAnimatedDefaultTextStyle(style, w.o.AnimationDuration, contents)
 	}
-	contents = widgets.NewNotificationListener(widgets.Widget(&inkFeatures{
-		SingleChildRenderObjectWidget: widgets.NewSingleChildRenderObjectWidgetBase(contents, widgets.WidgetOpts{Key: s.inkFeatureRenderer}),
-		color:                         backgroundColor,
-		vsync:                         s,
-		absorbHitTest:                 w.o.Type != MaterialTypeTransparency,
-	}), func(widgets.LayoutChangedNotification) bool {
+	contents = widgets.NewNotificationListener(func(widgets.LayoutChangedNotification) bool {
 		if ctx := s.inkFeatureRenderer.CurrentContext(); ctx != nil {
 			ctx.FindRenderObject().(*renderInkFeatures).didChangeLayout()
 		}
 		return false
-	})
+	}, widgets.Widget(&inkFeatures{
+		SingleChildRenderObjectWidget: widgets.NewSingleChildRenderObjectWidgetBase(contents, widgets.WidgetOpts{Key: s.inkFeatureRenderer}),
+		color:                         backgroundColor,
+		vsync:                         s,
+		absorbHitTest:                 w.o.Type != MaterialTypeTransparency,
+	}))
 
 	shape := w.o.Shape
 	if w.o.BorderRadius != nil {

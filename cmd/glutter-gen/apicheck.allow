@@ -1,0 +1,61 @@
+# The violations of `glutter-gen apicheck` that SPEC §12.10 accepts (step 18.1). Each line is
+# "rule pkg.Name". A line that no longer matches a violation is an error, so the file cannot
+# grow stale.
+#
+#   go run ./cmd/glutter-gen apicheck -allow cmd/glutter-gen/apicheck.allow
+
+# ctor-size: Flutter's constructors have this many required parameters (SPEC §12.1 says such
+# constructors are reviewed one by one; these were, and the friendlier forms are the
+# options structs or CopyWith).
+ctor-size material.NewColorScheme
+ctor-size material.NewFixedExtentMetricsSnapshot
+ctor-size material.NewFixedPageMetrics
+ctor-size material.NewRawRadio
+ctor-size material.NewSelectionOverlay
+ctor-size material.NewTextSelectionOverlay
+ctor-size ui.NewFrameTiming
+ctor-size widgets.NewFixedExtentMetricsSnapshot
+ctor-size widgets.NewFixedPageMetrics
+ctor-size widgets.NewRawRadio
+ctor-size widgets.NewSelectionOverlay
+ctor-size widgets.NewTextSelectionOverlay
+
+# enum-zero: the zero value is either Flutter's default for the enum (so "Unspecified" would
+# stand for the same thing), or the enum is a result, an event or a state that no options
+# struct takes, so there is nothing to leave unspecified.
+enum-zero desktop.NotificationCloseReason
+enum-zero material.DatePickerMode
+enum-zero material.DayPeriod
+enum-zero material.HourFormat
+enum-zero material.RefreshIndicatorStatus
+enum-zero material.ScriptCategory
+enum-zero material.TimeOfDayFormat
+enum-zero painting.RenderComparison
+enum-zero semantics.AccessibilityFocusBlockType
+enum-zero semantics.Assertiveness
+enum-zero semantics.DebugSemanticsDumpOrder
+enum-zero ui.CheckedState
+enum-zero ui.ColorSpace
+enum-zero ui.DecorationMode
+enum-zero ui.DropPhase
+enum-zero ui.PathVerb
+enum-zero ui.ResizeEdge
+enum-zero ui.SemanticsHitTestBehavior
+enum-zero ui.SemanticsInputType
+enum-zero ui.SemanticsRole
+enum-zero ui.SemanticsValidationResult
+enum-zero ui.Tristate
+enum-zero ui.ViewFocusDirection
+enum-zero ui.ViewFocusState
+enum-zero ui.WindowActionKind
+enum-zero ui.WindowKind
+enum-zero widgets.Decorations
+enum-zero widgets.DiagonalDragBehavior
+enum-zero widgets.RoutePopDisposition
+enum-zero widgets.ScrollPositionAlignmentPolicy
+enum-zero widgets.StateLifecycle
+
+# mutable-var: Flutter's const tables. Go has no constant maps; the tables are read-only and
+# changing them is a bug of the app (like Colors, Icons and Curves, which are structs).
+mutable-var material.ElevationToShadow
+mutable-var material.MaterialEdges

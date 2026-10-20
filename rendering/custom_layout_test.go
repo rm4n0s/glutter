@@ -44,7 +44,7 @@ func (d *multiLayoutDelegate) ShouldRelayout(rendering.MultiChildLayoutDelegate)
 }
 
 func newLayoutBox(delegate rendering.MultiChildLayoutDelegate, ids ...any) (*rendering.RenderCustomMultiChildLayoutBox, []rendering.Box) {
-	box := rendering.NewRenderCustomMultiChildLayoutBox(nil, delegate)
+	box := rendering.NewRenderCustomMultiChildLayoutBox(delegate, nil)
 	var children []rendering.Box
 	for i, id := range ids {
 		c := newTBox(float64(10*(i+1)), 20)

@@ -654,7 +654,7 @@ type RenderSemanticsAnnotations struct {
 // attributed label, a text direction should be given.
 //
 // Flutter: rendering/proxy_box.dart RenderSemanticsAnnotations.new
-func NewRenderSemanticsAnnotations(child Box, properties *semantics.SemanticsProperties, opts ...SemanticsAnnotationsOpts) *RenderSemanticsAnnotations {
+func NewRenderSemanticsAnnotations(properties *semantics.SemanticsProperties, child Box, opts ...SemanticsAnnotationsOpts) *RenderSemanticsAnnotations {
 	r := &RenderSemanticsAnnotations{}
 	InitRenderProxyBox(&r.RenderProxyBox, r, child)
 	InitSemanticsAnnotations(&r.SemanticsAnnotations, r, properties, opts...)
@@ -821,7 +821,7 @@ type RenderIndexedSemantics struct {
 // NewRenderIndexedSemantics creates the box.
 //
 // Flutter: rendering/proxy_box.dart RenderIndexedSemantics.new
-func NewRenderIndexedSemantics(child Box, index int) *RenderIndexedSemantics {
+func NewRenderIndexedSemantics(index int, child Box) *RenderIndexedSemantics {
 	r := &RenderIndexedSemantics{index: index}
 	InitRenderProxyBox(&r.RenderProxyBox, r, child)
 	return r

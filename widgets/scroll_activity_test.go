@@ -109,13 +109,13 @@ func TestDrivenScrollActivityAllowsOverridingApplyMoveTo(t *testing.T) {
 	defer controller.Dispose()
 	var notifications []*OverscrollNotification
 	ts.PumpWidget(ltr(NewNotificationListener[ScrollNotification](
-		testList(hundreds(10), listOpts{ScrollableOpts: ScrollableOpts{Controller: controller}}),
 		func(n ScrollNotification) bool {
 			if o, ok := n.(*OverscrollNotification); ok {
 				notifications = append(notifications, o)
 			}
 			return false
-		})))
+		},
+		testList(hundreds(10), listOpts{ScrollableOpts: ScrollableOpts{Controller: controller}}))))
 	position := controller.Position().(*ScrollPositionWithSingleContext)
 	end := position.MaxScrollExtent()
 	opts := DrivenScrollActivityOpts{From: 0, To: end + 10, Duration: 100 * time.Millisecond, Curve: animation.Curves.Linear, Vsync: position.Context().Vsync()}

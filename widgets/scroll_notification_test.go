@@ -27,10 +27,10 @@ func TestScrollMetricsNotification(t *testing.T) {
 	ts := gluttertest.New(t)
 	var events []any
 	frame := func(height float64) Widget {
-		return ltr(NewNotificationListener[Notification](tall(height), func(n Notification) bool {
+		return ltr(NewNotificationListener[Notification](func(n Notification) bool {
 			events = append(events, n)
 			return false
-		}))
+		}, tall(height)))
 	}
 	check := func(height, before, inside, after, total float64) {
 		t.Helper()
@@ -103,13 +103,13 @@ func TestScrollNotificationBasics(t *testing.T) {
 	useAndroid(t)
 	ts := gluttertest.New(t)
 	var last ScrollNotification
-	ts.PumpWidget(ltr(NewNotificationListener[ScrollNotification](tall(1200), func(n ScrollNotification) bool {
+	ts.PumpWidget(ltr(NewNotificationListener[ScrollNotification](func(n ScrollNotification) bool {
 		switch n.(type) {
 		case *ScrollStartNotification, *ScrollUpdateNotification, *ScrollEndNotification:
 			last = n
 		}
 		return false
-	})))
+	}, tall(1200))))
 	g := ts.StartGesture(ui.Offset{Dx: 100, Dy: 100})
 	ts.Pump(time.Second)
 	start, ok := last.(*ScrollStartNotification)
@@ -139,12 +139,12 @@ func nestedScrollables(dragStart gestures.DragStartBehavior, outer, inner func(S
 	}, ScrollableOpts{DragStartBehavior: dragStart})
 	var innerWidget Widget = NewContainer(innerScrollable, ContainerOpts{Padding: painting.NewEdgeInsetsAll(50)})
 	if inner != nil {
-		innerWidget = NewNotificationListener[ScrollNotification](innerWidget, inner)
+		innerWidget = NewNotificationListener[ScrollNotification](inner, innerWidget)
 	}
 	outerScrollable := NewScrollable(func(_ BuildContext, p rendering.ViewportOffset) Widget {
 		return NewViewport(p, []Widget{newSliverBox(NewSizedBox(innerWidget, SizedBoxOpts{Height: foundation.Some(1200.0)}))}, ViewportOpts{})
 	}, ScrollableOpts{DragStartBehavior: dragStart})
-	return ltr(NewNotificationListener[ScrollNotification](outerScrollable, outer))
+	return ltr(NewNotificationListener[ScrollNotification](outer, outerScrollable))
 }
 
 func TestScrollNotificationDepth(t *testing.T) {
@@ -252,13 +252,13 @@ func TestScrollbarThumbDragTriggersScrollStartUpdateEndNotifications(t *testing.
 	defer controller.Dispose()
 	var last ScrollNotification
 	scrollable := testList([]Widget{NewSizedBox(nil, SizedBoxOpts{Height: foundation.Some(1200.0)})}, listOpts{ScrollableOpts: ScrollableOpts{Controller: controller}})
-	ts.PumpWidget(ltr(NewMediaQuery(MediaQueryData{}, NewSizedBox(NewRawScrollbar(NewNotificationListener[ScrollNotification](scrollable, func(n ScrollNotification) bool {
+	ts.PumpWidget(ltr(NewMediaQuery(MediaQueryData{}, NewSizedBox(NewRawScrollbar(NewNotificationListener[ScrollNotification](func(n ScrollNotification) bool {
 		switch n.(type) {
 		case *ScrollStartNotification, *ScrollUpdateNotification, *ScrollEndNotification:
 			last = n
 		}
 		return true
-	}), RawScrollbarOpts{ThumbVisibility: foundation.Some(true), Controller: controller}), SizedBoxOpts{Width: foundation.Some(800.0), Height: foundation.Some(600.0)}))))
+	}, scrollable), RawScrollbarOpts{ThumbVisibility: foundation.Some(true), Controller: controller}), SizedBoxOpts{Width: foundation.Some(800.0), Height: foundation.Some(600.0)}))))
 	ts.PumpAndSettle()
 	if controller.Offset() != 0 || last != nil {
 		t.Fatalf("offset %v, notification %v", controller.Offset(), last)

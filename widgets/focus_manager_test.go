@@ -1159,12 +1159,12 @@ func TestFocusManagerScopesCanBeFocusedWithoutSendingFocusToDescendants(t *testi
 	defer scopeNode.Dispose()
 	defer childFocusNode.Dispose()
 	ts.PumpWidget(NewFocusScopeWithExternalFocusNode(
+		scopeNode,
 		NewFocus(
 			NewFocusScope(
-				NewFocusWithExternalFocusNode(NewSizedBox(nil), childFocusNode),
+				NewFocusWithExternalFocusNode(childFocusNode, NewSizedBox(nil)),
 				FocusScopeOpts{DebugLabel: "Scope2"}),
-			FocusOpts{DebugLabel: "Parent1"}),
-		scopeNode))
+			FocusOpts{DebugLabel: "Parent1"})))
 	childFocusNode.RequestFocus()
 	ts.Pump()
 	if !scopeNode.HasFocus() || !childFocusNode.HasPrimaryFocus() {

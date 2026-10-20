@@ -6,6 +6,7 @@ import (
 	"sort"
 
 	"github.com/rm4n0s/errors"
+	"github.com/rm4n0s/glutter/cmd/glutter-gen/internal/apicheck"
 	"github.com/rm4n0s/glutter/cmd/glutter-gen/internal/copywith"
 	"github.com/rm4n0s/glutter/cmd/glutter-gen/internal/icons"
 	"github.com/rm4n0s/glutter/cmd/glutter-gen/internal/keys"
@@ -15,6 +16,7 @@ import (
 
 // commands maps each subcommand name to its implementation. It is read-only.
 var commands = map[string]func(args []string) error{
+	"apicheck": apicheck.Run,
 	"wayland":  wayland.Run,
 	"keys":     keys.Run,
 	"reexport": reexport.Run,

@@ -42,7 +42,7 @@ func CreateLocalImageConfiguration(bc BuildContext, size foundation.Opt[ui.Size]
 // boundaries of a list of children keep their identity.
 //
 // Flutter: widgets/basic.dart RepaintBoundary.wrap
-func NewRepaintBoundaryWrap(child Widget, childIndex int) *RepaintBoundary {
+func NewRepaintBoundaryWrap(childIndex int, child Widget) *RepaintBoundary {
 	var key foundation.Key
 	if k := child.Key(); k != nil {
 		key = foundation.NewValueKey[foundation.Key](k)
@@ -59,7 +59,7 @@ func NewRepaintBoundaryWrap(child Widget, childIndex int) *RepaintBoundary {
 func RepaintBoundaryWrapAll(widgets []Widget) []Widget {
 	out := make([]Widget, len(widgets))
 	for i, w := range widgets {
-		out[i] = NewRepaintBoundaryWrap(w, i)
+		out[i] = NewRepaintBoundaryWrap(i, w)
 	}
 	return out
 }
@@ -322,7 +322,7 @@ func (w *KeyedSubtree) Build(BuildContext) Widget { return w.child }
 // child's key, or of the index when it has none.
 //
 // Flutter: widgets/framework.dart KeyedSubtree.wrap
-func NewKeyedSubtreeWrap(child Widget, childIndex int) *KeyedSubtree {
+func NewKeyedSubtreeWrap(childIndex int, child Widget) *KeyedSubtree {
 	var key foundation.Key
 	if k := child.Key(); k != nil {
 		key = foundation.NewValueKey[foundation.Key](k)
@@ -339,7 +339,7 @@ func NewKeyedSubtreeWrap(child Widget, childIndex int) *KeyedSubtree {
 func KeyedSubtreeWrapList(items []Widget, baseIndex int) []Widget {
 	out := make([]Widget, len(items))
 	for i, w := range items {
-		out[i] = NewKeyedSubtreeWrap(w, baseIndex+i)
+		out[i] = NewKeyedSubtreeWrap(baseIndex+i, w)
 	}
 	return out
 }

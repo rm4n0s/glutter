@@ -109,7 +109,8 @@ type ButtonStyleButton struct {
 // OnLongPress) disables the button. The child may be nil.
 //
 // Flutter: material/button_style_button.dart ButtonStyleButton.new
-func NewButtonStyleButtonBase(onPressed func(), child widgets.Widget, o ButtonStyleButtonOpts) ButtonStyleButton {
+func NewButtonStyleButtonBase(onPressed func(), child widgets.Widget, opts ...ButtonStyleButtonOpts) ButtonStyleButton {
+	o := firstOpts(opts)
 	return ButtonStyleButton{StatefulWidget: widgets.NewStatefulWidgetBase(widgets.WidgetOpts{Key: o.Key}), onPressed: onPressed, child: child, o: o}
 }
 

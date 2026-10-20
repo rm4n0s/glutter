@@ -77,17 +77,17 @@ func TestNestedScrollViewScrollDirection(t *testing.T) {
 	ts := gluttertest.New(t, gluttertest.Opts{})
 	var received []rendering.ScrollDirection
 	ts.PumpWidget(ltr(NewMediaQuery(NewMediaQueryData(), NewNotificationListener[ScrollNotification](
-		NewNestedScrollView(func(BuildContext, bool) []Widget {
-			return []Widget{NewSliverPersistentHeader(nestedHeaderDelegate{max: 250, min: 56}, SliverPersistentHeaderOpts{Pinned: true})}
-		}, NewListViewBuilder(func(_ BuildContext, i int) Widget {
-			return NewSizedBox(NewCenter(NewText(fmt.Sprintf("Item %d", i))), SizedBoxOpts{Height: foundation.Some(50.0)})
-		}, ListViewOpts{ItemCount: foundation.Some(30), Padding: painting.NewEdgeInsetsAll(8)})),
 		func(n ScrollNotification) bool {
 			if u, ok := n.(*UserScrollNotification); ok && u.Depth() == 1 {
 				received = append(received, u.Direction)
 			}
 			return true
-		}))))
+		},
+		NewNestedScrollView(func(BuildContext, bool) []Widget {
+			return []Widget{NewSliverPersistentHeader(nestedHeaderDelegate{max: 250, min: 56}, SliverPersistentHeaderOpts{Pinned: true})}
+		}, NewListViewBuilder(func(_ BuildContext, i int) Widget {
+			return NewSizedBox(NewCenter(NewText(fmt.Sprintf("Item %d", i))), SizedBoxOpts{Height: foundation.Some(50.0)})
+		}, ListViewOpts{ItemCount: foundation.Some(30), Padding: painting.NewEdgeInsetsAll(8)}))))))
 	// Fling to trigger ballistic activity.
 	ts.Fling(gluttertest.ByText("Item 3"), ui.Offset{Dy: -250}, 10000)
 	ts.PumpAndSettle()

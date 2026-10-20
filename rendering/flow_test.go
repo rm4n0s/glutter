@@ -46,7 +46,7 @@ func (d *testFlowDelegate) ShouldRelayout(rendering.FlowDelegate) bool { return 
 func TestFlowPaintsAndHitTestsWithTransforms(t *testing.T) {
 	boxes := []rendering.Box{newSizedBox(10, 10), newSizedBox(10, 10), newSizedBox(10, 10)}
 	delegate := newTestFlowDelegate(nil)
-	flow := rendering.NewRenderFlow(boxes, delegate)
+	flow := rendering.NewRenderFlow(delegate, boxes)
 	h := newHarness(t)
 	layout(t, h, flow, atPhase(withConstraints(rendering.NewBoxConstraintsTight(ui.Size{Width: 100, Height: 50})), phaseComposite))
 	if flow.Size() != (ui.Size{Width: 100, Height: 50}) {
@@ -85,7 +85,7 @@ func TestFlowPaintChildTwiceAndOpacity(t *testing.T) {
 	skipUnlessDebug(t)
 	delegate := newTestFlowDelegate(nil)
 	delegate.paintTwice = true
-	flow := rendering.NewRenderFlow([]rendering.Box{newSizedBox(10, 10)}, delegate)
+	flow := rendering.NewRenderFlow(delegate, []rendering.Box{newSizedBox(10, 10)})
 	h := newHarness(t)
 	layout(t, h, flow, atPhase(withConstraints(rendering.NewBoxConstraintsTight(ui.Size{Width: 100, Height: 50})), phaseCompositingBits))
 	requireTag(t, "FlowChildPaintedTwice", func() { pumpFrame(h, phasePaint) })
@@ -95,7 +95,7 @@ func TestFlowOpacityZeroSkipsPaint(t *testing.T) {
 	a, b := newTBox(10, 10), newTBox(10, 10)
 	delegate := newTestFlowDelegate(nil)
 	delegate.opacities = map[int]float64{0: 0, 1: 0.5}
-	flow := rendering.NewRenderFlow([]rendering.Box{a, b}, delegate)
+	flow := rendering.NewRenderFlow(delegate, []rendering.Box{a, b})
 	layout(t, newHarness(t), flow, atPhase(withConstraints(rendering.NewBoxConstraintsTight(ui.Size{Width: 100, Height: 50})), phaseComposite))
 	if a.paints != 0 || b.paints != 1 {
 		t.Errorf("paints: %d and %d, want 0 and 1", a.paints, b.paints)
@@ -106,7 +106,7 @@ func TestFlowDelegateChanges(t *testing.T) {
 	notifier := foundation.NewChangeNotifier()
 	first := newTestFlowDelegate(notifier)
 	box := newTBox(10, 10)
-	flow := rendering.NewRenderFlow([]rendering.Box{box}, first)
+	flow := rendering.NewRenderFlow(first, []rendering.Box{box})
 	h := newHarness(t)
 	layout(t, h, flow, atPhase(withConstraints(rendering.NewBoxConstraintsTight(ui.Size{Width: 100, Height: 50})), phaseComposite))
 	before := first.paintCalls
@@ -144,7 +144,7 @@ func TestFlowDelegateChanges(t *testing.T) {
 }
 
 func TestFlowIntrinsicsAndClip(t *testing.T) {
-	flow := rendering.NewRenderFlow(nil, newTestFlowDelegate(nil))
+	flow := rendering.NewRenderFlow(newTestFlowDelegate(nil), nil)
 	if flow.GetMinIntrinsicWidth(40) != 0 || flow.GetMaxIntrinsicHeight(40) != 0 {
 		t.Error("intrinsics of an unbounded flow are not 0")
 	}
@@ -152,7 +152,7 @@ func TestFlowIntrinsicsAndClip(t *testing.T) {
 		t.Errorf("default clip = %v, want hardEdge", flow.ClipBehavior())
 	}
 	for _, tc := range clipCases(ui.ClipHardEdge) {
-		flow := rendering.NewRenderFlow([]rendering.Box{newTBox(200, 200)}, newTestFlowDelegate(nil), rendering.RenderFlowOpts{ClipBehavior: tc.clip})
+		flow := rendering.NewRenderFlow(newTestFlowDelegate(nil), []rendering.Box{newTBox(200, 200)}, rendering.RenderFlowOpts{ClipBehavior: tc.clip})
 		h := newHarness(t)
 		layout(t, h, flow, atPhase(withConstraints(rendering.NewBoxConstraintsTight(ui.Size{Width: 100, Height: 100})), phaseComposite))
 		root := rendering.NewContainerLayer()

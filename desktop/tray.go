@@ -65,13 +65,11 @@ func (s TrayStatus) protocol() string {
 	return "Active"
 }
 
-// TraySizes are the sizes in pixels of the pictures that TrayIconFromRGBA makes.
-//
-// Flutter: no counterpart
-var TraySizes = [...]int{16, 22, 24, 32, 48}
+// traySizes are the sizes in pixels of the pictures that TrayIconFromRGBA makes.
+var traySizes = [...]int{16, 22, 24, 32, 48}
 
 // TrayIconFromRGBA makes the icon of a system tray from one square picture: the
-// picture is scaled to each size of TraySizes (16, 22, 24, 32 and 48 pixels), so the
+// picture is scaled to each of the sizes 16, 22, 24, 32 and 48 pixels, so the
 // desktop picks the one that fits its panel. rgba holds size*size*4 bytes, the rows
 // from the top, each pixel as red, green, blue and alpha, not premultiplied. It fails
 // with TrayIconInvalid when rgba has another length.
@@ -84,7 +82,7 @@ func TrayIconFromRGBA(size int, rgba []byte) (ui.WindowIcon, error) {
 	}
 	src := &image.NRGBA{Pix: rgba, Stride: size * 4, Rect: image.Rect(0, 0, size, size)}
 	var icon ui.WindowIcon
-	for _, s := range TraySizes {
+	for _, s := range traySizes {
 		dst := image.NewNRGBA(image.Rect(0, 0, s, s))
 		xdraw.CatmullRom.Scale(dst, dst.Bounds(), src, src.Bounds(), xdraw.Src, nil)
 		icon.Images = append(icon.Images, ui.WindowIconImage{Size: s, Scale: 1, RGBA: dst.Pix})

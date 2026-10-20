@@ -42,6 +42,8 @@ func (systemSamplingClock) AfterFunc(d time.Duration, f func()) SamplingTimer {
 
 // GestureScheduler is what the GestureBinding needs of the scheduler binding.
 // *scheduler.SchedulerBinding implements it.
+//
+// Flutter: no counterpart
 type GestureScheduler interface {
 	// Locked reports whether events are held back.
 	Locked() bool

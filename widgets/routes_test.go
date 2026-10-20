@@ -1380,16 +1380,16 @@ func TestNavigationNotifications(t *testing.T) {
 	var notifications []NavigationNotification
 	ts := gluttertest.New(t)
 	ts.PumpWidget(NewNotificationListener(
+		func(n NavigationNotification) bool {
+			notifications = append(notifications, n)
+			return true
+		},
 		NewDirectionality(ui.TextDirectionLTR, NewNavigator(NavigatorOpts{
 			InitialRoute: "/",
 			OnGenerateRoute: func(settings RouteSettings) Route {
 				return NewPageRouteBuilder(routesSizedBox(), PageRouteBuilderOpts{PageRouteOpts: PageRouteOpts{RouteOpts: RouteOpts{Settings: settings}}})
 			},
-		})),
-		func(n NavigationNotification) bool {
-			notifications = append(notifications, n)
-			return true
-		}))
+		}))))
 	// One notification, from the initial route, where a pop can't be handled
 	// because there is no other route to pop.
 	if len(notifications) != 1 || notifications[0].CanHandlePop {

@@ -256,7 +256,7 @@ type DrawerController struct {
 // NewDrawerController creates the controller of a drawer.
 //
 // Flutter: material/drawer.dart DrawerController.new
-func NewDrawerController(child widgets.Widget, alignment DrawerAlignment, opts ...DrawerControllerOpts) *DrawerController {
+func NewDrawerController(alignment DrawerAlignment, child widgets.Widget, opts ...DrawerControllerOpts) *DrawerController {
 	o := firstOpts(opts)
 	return &DrawerController{StatefulWidget: widgets.NewStatefulWidgetBase(widgets.WidgetOpts{Key: o.Key}), child: child, alignment: alignment, o: o}
 }

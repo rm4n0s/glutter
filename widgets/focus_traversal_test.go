@@ -1514,11 +1514,11 @@ func TestFocusTraversalGroup(t *testing.T) {
 				NewFocus(
 					// This makes focusNode be a child of parentFocusNode instead of
 					// the surrounding Focus.
-					NewFocusWithExternalFocusNode(NewContainer(nil, ContainerOpts{Key: k[2]}), focusNode,
+					NewFocusWithExternalFocusNode(focusNode, NewContainer(nil, ContainerOpts{Key: k[2]}),
 						FocusWithExternalFocusNodeOpts{Key: k[1], ParentNode: parentFocusNode})),
 				FocusTraversalGroupOpts{Policy: NewWidgetOrderTraversalPolicy()}),
 			NewFocusTraversalGroup(
-				NewFocusScope(NewFocusWithExternalFocusNode(NewContainer(nil, ContainerOpts{Key: k[4]}), parentFocusNode, FocusWithExternalFocusNodeOpts{Key: k[3]})),
+				NewFocusScope(NewFocusWithExternalFocusNode(parentFocusNode, NewContainer(nil, ContainerOpts{Key: k[4]}), FocusWithExternalFocusNodeOpts{Key: k[3]})),
 				FocusTraversalGroupOpts{Policy: newSkipAllButFirstAndLastPolicy()}),
 		}))
 		if focusNode.Parent() != parentFocusNode {
@@ -1540,11 +1540,11 @@ func TestFocusTraversalGroup(t *testing.T) {
 		defer childNode.Dispose()
 		root := ts.Binding.FocusManager().RootScope()
 		ts.PumpWidget(NewFocusScopeWithExternalFocusNode(
+			parentNode,
 			// Without parentNode, this group would attach under the enclosing
 			// FocusScope above. parentNode reparents it to the root scope.
 			NewFocusScope(NewFocusTraversalGroup(NewFocus(NewSizedBox(nil), FocusOpts{FocusNode: childNode}),
-				FocusTraversalGroupOpts{ParentNode: root.Node()})),
-			parentNode))
+				FocusTraversalGroupOpts{ParentNode: root.Node()}))))
 		// The group's node (the parent of childNode) is attached to the root
 		// scope, not to the enclosing parentNode.
 		groupNode := childNode.Parent()

@@ -507,7 +507,7 @@ func (s *RefreshIndicatorState) Show(opts ...RefreshIndicatorShowOpts) <-chan st
 // Flutter: material/refresh_indicator.dart RefreshIndicatorState.build
 func (s *RefreshIndicatorState) Build(bc widgets.BuildContext) widgets.Widget {
 	w := s.Widget()
-	child := widgets.NewNotificationListener[widgets.ScrollNotification](w.child, s.handleScrollNotification)
+	child := widgets.NewNotificationListener[widgets.ScrollNotification](s.handleScrollNotification, w.child)
 	showIndeterminate := s.status == RefreshIndicatorStatusRefresh || s.status == RefreshIndicatorStatusDone
 	children := []widgets.Widget{child}
 	if s.status != RefreshIndicatorStatusNone {

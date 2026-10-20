@@ -67,6 +67,14 @@ type DebugOptions struct {
 	//
 	// Flutter: services/debug.dart debugPrintKeyboardEvents
 	PrintKeyboardEvents bool
+	// DeterministicCursor makes the caret of a text field not blink, for tests
+	// that need a deterministic look (EditableText.debugDeterministicCursor).
+	//
+	// Deviation: Flutter's flag is a static variable of EditableText; this one is a
+	// field of the options that the binding holds (SPEC §12.10).
+	//
+	// Flutter: widgets/editable_text.dart EditableText.debugDeterministicCursor
+	DeterministicCursor bool
 	// Print writes a line of debug output; nil writes to standard error
 	// (debugPrint).
 	//

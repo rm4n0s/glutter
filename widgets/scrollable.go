@@ -840,8 +840,8 @@ func (s *ScrollableState) Build(bc BuildContext) Widget {
 			ListenerOpts{OnPointerSignal: s.receivedPointerSignal}))
 	if !w.excludeFromSemantics {
 		result = NewNotificationListener[*ScrollMetricsNotification](
-			newScrollSemantics(s.position, s.physics.AllowImplicitScrolling(), w.Axis(), w.semanticChildCount, result, s.scrollSemanticsKey),
-			s.handleScrollMetricsNotification)
+			s.handleScrollMetricsNotification,
+			newScrollSemantics(s.position, s.physics.AllowImplicitScrolling(), w.Axis(), w.semanticChildCount, result, s.scrollSemanticsKey))
 	}
 	result = s.buildChrome(bc, result)
 	// Selection is only enabled when there is a parent registrar.

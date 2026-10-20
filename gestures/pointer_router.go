@@ -17,6 +17,8 @@ type PointerRoute func(event PointerEvent)
 //
 // Deviation: Flutter removes a route by passing the same function again; Go
 // functions can't be compared, so AddRoute returns a handle (SPEC §12.10).
+//
+// Flutter: no counterpart
 type PointerRouteHandle struct{ id uint64 }
 
 type routeEntry struct {

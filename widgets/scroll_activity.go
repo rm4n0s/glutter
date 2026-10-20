@@ -810,9 +810,9 @@ type DrivenScrollActivityOpts struct {
 // the duration is not positive.
 //
 // Flutter: widgets/scroll_activity.dart DrivenScrollActivity.new
-func NewDrivenScrollActivity(delegate ScrollActivityDelegate, o DrivenScrollActivityOpts) *DrivenScrollActivity {
+func NewDrivenScrollActivity(delegate ScrollActivityDelegate, opts ...DrivenScrollActivityOpts) *DrivenScrollActivity {
 	a := &DrivenScrollActivity{}
-	InitDrivenScrollActivity(a, a, delegate, o)
+	InitDrivenScrollActivity(a, a, delegate, firstOpts(opts))
 	return a
 }
 

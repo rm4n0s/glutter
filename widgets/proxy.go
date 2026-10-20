@@ -43,6 +43,8 @@ type proxyWidget interface {
 }
 
 // ProxyElementSelf is what a proxy element needs from the outer type.
+//
+// Flutter: no counterpart
 type ProxyElementSelf interface {
 	ComponentElementSelf
 	// NotifyClients tells the dependents of the widget about the change, when the
@@ -256,6 +258,8 @@ func (e *ParentDataElement) NotifyClients(Widget) { e.applyParentData(e.widget.(
 // InheritedElementSelf is what an inherited element needs from the outer type;
 // InheritedElement implements all of it, so an element that embeds it overrides
 // only the hooks it changes (InheritedModel and InheritedNotifier do).
+//
+// Flutter: no counterpart
 type InheritedElementSelf interface {
 	ProxyElementSelf
 	// GetDependencies is the information the dependent keeps about what it

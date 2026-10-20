@@ -727,6 +727,8 @@ type MemoryImage struct {
 }
 
 // MemoryImageKey is the key of a MemoryImage.
+//
+// Flutter: no counterpart
 type MemoryImageKey struct {
 	id    *byte
 	n     int

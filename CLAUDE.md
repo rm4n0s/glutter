@@ -18,6 +18,7 @@ Glutter is a cgo-free GUI toolkit for Go that reproduces Flutter's framework API
 - Lint: `golangci-lint run`
 - Format: `gofmt -w .` (or `goimports -w .`)
 - Generate (Wayland protocol bindings, key tables, material re-exports): `go generate ./...`
+- API conventions check (SPEC §12.13): `go run ./cmd/glutter-gen apicheck -allow cmd/glutter-gen/apicheck.allow`; a new violation is fixed, or accepted in that file with a reason and a row in SPEC §12.10
 - Run an example: `go run ./examples/counter`
 - After changing dependencies: `go mod tidy`
 

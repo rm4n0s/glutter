@@ -705,7 +705,8 @@ type multiFrame struct {
 // frame callbacks, while it has listeners.
 //
 // Flutter: painting/image_stream.dart MultiFrameImageStreamCompleter
-func NewMultiFrameImageStreamCompleter(binding *PaintingBinding, opts MultiFrameImageStreamCompleterOpts) *ImageStreamCompleter {
+func NewMultiFrameImageStreamCompleter(binding *PaintingBinding, options ...MultiFrameImageStreamCompleterOpts) *ImageStreamCompleter {
+	opts := firstOpts(options)
 	c := NewImageStreamCompleter(binding)
 	c.DebugLabel = opts.DebugLabel
 	m := &multiFrame{binding: binding, informationCollector: opts.InformationCollector, scale: opts.Scale, done: make(chan struct{})}

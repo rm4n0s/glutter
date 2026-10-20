@@ -614,6 +614,8 @@ func (e *twoDimensionalViewportElement) EndLayout() {
 
 // TwoDimensionalScrollViewSelf is what TwoDimensionalScrollView needs of the type
 // that embeds it.
+//
+// Flutter: no counterpart
 type TwoDimensionalScrollViewSelf interface {
 	// BuildViewport builds the viewport with the offset of each axis.
 	//

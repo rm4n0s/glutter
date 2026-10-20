@@ -748,16 +748,6 @@ func (s *pageViewState) Build(bc BuildContext) Widget {
 		scrollBehavior = ScrollConfigurationOf(bc).CopyWith(ScrollBehaviorCopy{Scrollbars: foundation.Some(false)})
 	}
 	return NewNotificationListener[ScrollNotification](
-		NewScrollable(func(bc BuildContext, position rendering.ViewportOffset) Widget {
-			return NewViewport(position, []Widget{
-				NewSliverFillViewport(w.childrenDelegate, SliverFillViewportOpts{
-					ViewportFraction: foundation.Some(s.controller.viewportFraction), PadEnds: foundation.Some(w.padEnds),
-					AllowImplicitScrolling: foundation.Some(w.allowImplicitScrolling)}),
-			}, ViewportOpts{ScrollCacheExtent: foundation.Some(w.scrollCacheExtent), AxisDirection: axisDirection, ClipBehavior: w.clipBehavior})
-		}, ScrollableOpts{
-			DragStartBehavior: w.dragStartBehavior, AxisDirection: axisDirection, Controller: s.controller, Physics: physics,
-			HitTestBehavior: w.hitTestBehavior, ScrollBehavior: scrollBehavior,
-		}),
 		func(notification ScrollNotification) bool {
 			if _, ok := notification.(*ScrollUpdateNotification); ok && notification.Depth() == 0 && w.onPageChanged != nil {
 				metrics := notification.Metrics().(PageMetrics)
@@ -768,5 +758,15 @@ func (s *pageViewState) Build(bc BuildContext) Widget {
 				}
 			}
 			return false
-		})
+		},
+		NewScrollable(func(bc BuildContext, position rendering.ViewportOffset) Widget {
+			return NewViewport(position, []Widget{
+				NewSliverFillViewport(w.childrenDelegate, SliverFillViewportOpts{
+					ViewportFraction: foundation.Some(s.controller.viewportFraction), PadEnds: foundation.Some(w.padEnds),
+					AllowImplicitScrolling: foundation.Some(w.allowImplicitScrolling)}),
+			}, ViewportOpts{ScrollCacheExtent: foundation.Some(w.scrollCacheExtent), AxisDirection: axisDirection, ClipBehavior: w.clipBehavior})
+		}, ScrollableOpts{
+			DragStartBehavior: w.dragStartBehavior, AxisDirection: axisDirection, Controller: s.controller, Physics: physics,
+			HitTestBehavior: w.hitTestBehavior, ScrollBehavior: scrollBehavior,
+		}))
 }

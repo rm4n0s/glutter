@@ -234,7 +234,7 @@ func (s *animatedSwitcherState) newEntry(child Widget, builder AnimatedSwitcherT
 	controller *animation.AnimationController, curved *animation.CurvedAnimation) *switcherEntry {
 	entry := &switcherEntry{
 		widgetChild: child,
-		transition:  NewKeyedSubtreeWrap(builder(child, curved), s.childNumber),
+		transition:  NewKeyedSubtreeWrap(s.childNumber, builder(child, curved)),
 		animation:   curved,
 		controller:  controller,
 	}

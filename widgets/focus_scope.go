@@ -98,7 +98,7 @@ type FocusWithExternalFocusNodeOpts struct {
 // skipped) are the node's, and the widget never changes them.
 //
 // Flutter: widgets/focus_scope.dart Focus.withExternalFocusNode
-func NewFocusWithExternalFocusNode(child Widget, focusNode *FocusNode, opts ...FocusWithExternalFocusNodeOpts) *Focus {
+func NewFocusWithExternalFocusNode(focusNode *FocusNode, child Widget, opts ...FocusWithExternalFocusNodeOpts) *Focus {
 	o := firstOpts(opts)
 	return &Focus{
 		StatefulWidget: NewStatefulWidgetBase(WidgetOpts{Key: o.Key}), child: child, external: true,
@@ -618,7 +618,7 @@ type FocusScopeWithExternalFocusNodeOpts struct {
 // the scope node given, never changing its properties.
 //
 // Flutter: widgets/focus_scope.dart FocusScope.withExternalFocusNode
-func NewFocusScopeWithExternalFocusNode(child Widget, focusScopeNode *FocusScopeNode, opts ...FocusScopeWithExternalFocusNodeOpts) *FocusScope {
+func NewFocusScopeWithExternalFocusNode(focusScopeNode *FocusScopeNode, child Widget, opts ...FocusScopeWithExternalFocusNodeOpts) *FocusScope {
 	o := firstOpts(opts)
 	return &FocusScope{Focus{
 		StatefulWidget: NewStatefulWidgetBase(WidgetOpts{Key: o.Key}), child: child, external: true, scope: true,

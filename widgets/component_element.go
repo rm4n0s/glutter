@@ -7,6 +7,8 @@ import (
 
 // ComponentElementSelf is what a component element needs from the outer type:
 // the Build method, which is Flutter's abstract ComponentElement.build.
+//
+// Flutter: no counterpart
 type ComponentElementSelf interface {
 	Element
 	// Build describes the widget this element builds.

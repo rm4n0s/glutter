@@ -75,7 +75,7 @@ func wrapKeyboardDismiss(bc BuildContext, behavior ScrollViewKeyboardDismissBeha
 	if effective != ScrollViewKeyboardDismissBehaviorOnDrag {
 		return scrollable
 	}
-	return NewNotificationListener(scrollable, func(notification *ScrollUpdateNotification) bool {
+	return NewNotificationListener(func(notification *ScrollUpdateNotification) bool {
 		currentScope := FocusScopeOf(bc)
 		if notification.DragDetails.IsSome() && !currentScope.HasPrimaryFocus() && currentScope.HasFocus() {
 			if primary := bc.Owner().FocusManager().PrimaryFocus(); primary != nil {
@@ -83,7 +83,7 @@ func wrapKeyboardDismiss(bc BuildContext, behavior ScrollViewKeyboardDismissBeha
 			}
 		}
 		return false
-	})
+	}, scrollable)
 }
 
 // ScrollBehavior describes how a scrollable behaves on a platform: which

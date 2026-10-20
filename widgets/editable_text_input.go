@@ -20,15 +20,13 @@ func (s *EditableTextState) onCursorColorTick() {
 	if r := s.RenderEditable(); r != nil {
 		r.SetCursorColor(foundation.Some(s.cursorColor()))
 	}
-	s.cursorVisibility.SetValue(w.showCursor && (EditableTextDebugDeterministicCursor || s.blinkController().Value() > 0))
+	s.cursorVisibility.SetValue(w.showCursor && (s.deterministicCursor() || s.blinkController().Value() > 0))
 }
 
-// EditableTextDebugDeterministicCursor makes the caret not blink, for tests that
-// need a deterministic look. It is a setting of the tests, never changed by the
-// framework.
-//
-// Flutter: widgets/editable_text.dart EditableText.debugDeterministicCursor
-var EditableTextDebugDeterministicCursor = false
+// deterministicCursor says whether DebugOptions.DeterministicCursor is on.
+func (s *EditableTextState) deterministicCursor() bool {
+	return foundation.DebugMode && s.binding().DebugOptions().DeterministicCursor
+}
 
 func (s *EditableTextState) showBlinkingCursor() bool {
 	return s.hasFocus() && s.value().Selection.IsCollapsed() && s.Widget().showCursor && s.tickersEnabled && true
@@ -52,7 +50,7 @@ func (s *EditableTextState) startCursorBlink() {
 		s.cursorTimer.cancel()
 	}
 	s.blinkController().SetValue(1.0)
-	if EditableTextDebugDeterministicCursor {
+	if s.deterministicCursor() {
 		return
 	}
 	s.cursorTimer = newPeriodicTimer(s.binding().Gestures(), cursorBlinkHalfPeriod, s.onCursorTick)

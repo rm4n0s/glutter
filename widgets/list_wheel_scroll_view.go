@@ -715,7 +715,7 @@ func (s *listWheelScrollViewState) Build(bc BuildContext) Widget {
 	}, ScrollableOpts{Controller: s.effectiveController(), Physics: w.o.Physics, HitTestBehavior: w.o.HitTestBehavior,
 		ScrollBehavior: scrollBehavior, DragStartBehavior: w.o.DragStartBehavior})
 	scrollable.fixedItemExtent = foundation.Some(w.itemExtent)
-	return NewNotificationListener[ScrollNotification](scrollable, s.handleScrollNotification)
+	return NewNotificationListener[ScrollNotification](s.handleScrollNotification, scrollable)
 }
 
 // ListWheelViewportOpts are the optional parameters of NewListWheelViewport.

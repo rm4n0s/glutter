@@ -9,6 +9,8 @@ import (
 )
 
 // BuildTextSpanFunc builds the span that a TextEditingController shows.
+//
+// Flutter: no counterpart
 type BuildTextSpanFunc func(bc BuildContext, style *painting.TextStyle, withComposing bool) *painting.TextSpan
 
 // TextEditingController is a controller for an editable text field: it holds the

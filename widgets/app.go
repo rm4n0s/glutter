@@ -686,6 +686,7 @@ func (s *widgetsAppState) Build(bc BuildContext) Widget {
 	}
 	resolver, content := s.localizations, result
 	return NewNotificationListener[NavigationNotification](
+		onNavigation,
 		// DefaultTextEditingShortcuts is nested inside Shortcuts so that it can fall
 		// through to the default shortcuts.
 		NewShortcuts(shortcuts,
@@ -699,6 +700,5 @@ func (s *widgetsAppState) Build(bc BuildContext) Widget {
 										LocalizationsOpts{IsApplicationLevel: true})
 								}, nil))),
 						FocusTraversalGroupOpts{Policy: NewReadingOrderTraversalPolicy()}))),
-			ShortcutsOpts{DebugLabel: "<Default WidgetsApp Shortcuts>"}),
-		onNavigation)
+			ShortcutsOpts{DebugLabel: "<Default WidgetsApp Shortcuts>"}))
 }

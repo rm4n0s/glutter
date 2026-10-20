@@ -33,7 +33,7 @@ type AdaptiveTextSelectionToolbar struct {
 // which are the buttons.
 //
 // Flutter: material/adaptive_text_selection_toolbar.dart AdaptiveTextSelectionToolbar.new
-func NewAdaptiveTextSelectionToolbar(children []widgets.Widget, anchors widgets.TextSelectionToolbarAnchors, opts ...widgets.WidgetOpts) *AdaptiveTextSelectionToolbar {
+func NewAdaptiveTextSelectionToolbar(anchors widgets.TextSelectionToolbarAnchors, children []widgets.Widget, opts ...widgets.WidgetOpts) *AdaptiveTextSelectionToolbar {
 	return &AdaptiveTextSelectionToolbar{StatelessWidget: widgets.NewStatelessWidgetBase(firstOpts(opts)), children: children, anchors: anchors}
 }
 

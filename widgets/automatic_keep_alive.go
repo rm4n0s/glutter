@@ -168,7 +168,7 @@ func (s *automaticKeepAliveState) InitState() { s.updateChild() }
 func (s *automaticKeepAliveState) DidUpdateWidget(*AutomaticKeepAlive) { s.updateChild() }
 
 func (s *automaticKeepAliveState) updateChild() {
-	s.child = NewNotificationListener[KeepAliveNotification](s.Widget().child, s.addClient)
+	s.child = NewNotificationListener[KeepAliveNotification](s.addClient, s.Widget().child)
 }
 
 func (s *automaticKeepAliveState) Dispose() {

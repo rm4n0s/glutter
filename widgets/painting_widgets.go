@@ -1179,7 +1179,7 @@ func (w *CustomMultiChildLayout) Delegate() rendering.MultiChildLayoutDelegate {
 //
 // Flutter: widgets/basic.dart CustomMultiChildLayout.createRenderObject
 func (w *CustomMultiChildLayout) CreateRenderObject(bc BuildContext) rendering.RenderObject {
-	return rendering.NewRenderCustomMultiChildLayoutBox(nil, w.delegate)
+	return rendering.NewRenderCustomMultiChildLayoutBox(w.delegate, nil)
 }
 
 // UpdateRenderObject copies the configuration to the render object.

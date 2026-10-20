@@ -34,7 +34,7 @@ type EditableTextContextMenuBuilder func(bc BuildContext, state *EditableTextSta
 // NewTextFieldTapRegion.
 //
 // Flutter: widgets/editable_text.dart EditableText.groupId
-var EditableTextGroupID any = TextFieldTapRegionGroupID{}
+var EditableTextGroupID = TextFieldTapRegionGroupID{}
 
 // EditableTextOpts are the optional parameters of NewEditableText.
 //

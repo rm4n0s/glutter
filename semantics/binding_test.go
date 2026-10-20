@@ -51,8 +51,8 @@ func TestSemanticsActionEventsReachListenersAndTheNode(t *testing.T) {
 
 	taps := 0
 	props := semantics.NewSemanticsProperties(semantics.SemanticsProperties{OnTap: func() { taps++ }})
-	box := rendering.NewRenderSemanticsAnnotations(rendering.NewRenderConstrainedBox(rendering.NewBoxConstraintsTight(ui.Size{Width: 10, Height: 10}), nil),
-		props, rendering.SemanticsAnnotationsOpts{Container: true})
+	box := rendering.NewRenderSemanticsAnnotations(props,
+		rendering.NewRenderConstrainedBox(rendering.NewBoxConstraintsTight(ui.Size{Width: 10, Height: 10}), nil), rendering.SemanticsAnnotationsOpts{Container: true})
 	s.SetRoot(box)
 	s.Pump()
 
@@ -83,8 +83,8 @@ func TestSemanticsActionEventsReachListenersAndTheNode(t *testing.T) {
 func TestSemanticsUpdateReachesTheView(t *testing.T) {
 	skipUnlessDebug(t)
 	s := renderhost.New()
-	box := rendering.NewRenderSemanticsAnnotations(rendering.NewRenderConstrainedBox(rendering.NewBoxConstraintsTight(ui.Size{Width: 10, Height: 10}), nil),
-		semantics.NewSemanticsProperties(semantics.SemanticsProperties{Label: foundation.Some("hello")}),
+	box := rendering.NewRenderSemanticsAnnotations(semantics.NewSemanticsProperties(semantics.SemanticsProperties{Label: foundation.Some("hello")}),
+		rendering.NewRenderConstrainedBox(rendering.NewBoxConstraintsTight(ui.Size{Width: 10, Height: 10}), nil),
 		rendering.SemanticsAnnotationsOpts{Container: true, TextDirection: ui.TextDirectionLTR})
 	s.SetRoot(box)
 	s.Pump()

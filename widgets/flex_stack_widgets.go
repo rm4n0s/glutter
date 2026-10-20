@@ -459,7 +459,7 @@ func (w *Flow) ClipBehavior() ui.Clip { return w.clipBehavior }
 //
 // Flutter: widgets/basic.dart Flow.createRenderObject
 func (w *Flow) CreateRenderObject(bc BuildContext) rendering.RenderObject {
-	return rendering.NewRenderFlow(nil, w.delegate, rendering.RenderFlowOpts{ClipBehavior: w.clipBehavior})
+	return rendering.NewRenderFlow(w.delegate, nil, rendering.RenderFlowOpts{ClipBehavior: w.clipBehavior})
 }
 
 // UpdateRenderObject copies the configuration to the render object.

@@ -1370,7 +1370,7 @@ func (s *SelectableRegionState) Build(bc BuildContext) Widget {
 	return NewTapRegion(
 		NewCompositedTransformTarget(s.toolbarLink,
 			NewRawGestureDetector(
-				NewActions(s.actions, NewFocusWithExternalFocusNode(result, s.focusNode(), FocusWithExternalFocusNodeOpts{ExcludeSemantics: true})),
+				NewActions(s.actions, NewFocusWithExternalFocusNode(s.focusNode(), result, FocusWithExternalFocusNodeOpts{ExcludeSemantics: true})),
 				RawGestureDetectorOpts{Gestures: s.gestureRecognizers, Behavior: rendering.HitTestBehaviorTranslucent, ExcludeFromSemantics: true})),
 		TapRegionOpts{GroupID: SelectableRegionTapRegionGroupID{}})
 }

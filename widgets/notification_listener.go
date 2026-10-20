@@ -57,7 +57,7 @@ type NotificationListener[T any] struct {
 // not nil, for the notifications of type T that reach it.
 //
 // Flutter: widgets/notification_listener.dart NotificationListener.new
-func NewNotificationListener[T any](child Widget, onNotification NotificationListenerCallback[T], opts ...WidgetOpts) *NotificationListener[T] {
+func NewNotificationListener[T any](onNotification NotificationListenerCallback[T], child Widget, opts ...WidgetOpts) *NotificationListener[T] {
 	return &NotificationListener[T]{NewProxyWidgetBase(child, opts...), onNotification}
 }
 

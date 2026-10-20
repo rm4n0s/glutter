@@ -1833,8 +1833,8 @@ func (s *RawScrollbarState) Build(bc BuildContext) Widget {
 				RawGestureDetectorOpts{Key: s.gestureDetectorKey, Gestures: s.thumbAndTrackGestures()}),
 			ListenerOpts{OnPointerSignal: s.receivedPointerSignal}))
 	return NewNotificationListener[*ScrollMetricsNotification](
-		NewNotificationListener[ScrollNotification](child, s.handleScrollNotification),
-		s.handleScrollMetricsNotification)
+		s.handleScrollMetricsNotification,
+		NewNotificationListener[ScrollNotification](s.handleScrollNotification, child))
 }
 
 func scrollbarControllerMissingError() error {

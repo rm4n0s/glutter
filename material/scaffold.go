@@ -1039,7 +1039,7 @@ func (s *ScaffoldState) buildEndDrawer(children []widgets.Widget, textDirection 
 		return children
 	}
 	// Remove the side padding from the side we're not touching.
-	return s.addSlot(children, NewDrawerController(o.EndDrawer, DrawerAlignmentEnd, DrawerControllerOpts{
+	return s.addSlot(children, NewDrawerController(DrawerAlignmentEnd, o.EndDrawer, DrawerControllerOpts{
 		Key: s.endDrawerKey, DrawerCallback: s.endDrawerOpenedCallback, DragStartBehavior: o.DrawerDragStartBehavior,
 		ScrimColor: o.DrawerScrimColor, EdgeDragWidth: o.DrawerEdgeDragWidth, NoEnableOpenDragGesture: o.NoEndDrawerEnableOpenDragGesture,
 		IsDrawerOpen: s.endDrawerOpened, NoDrawerBarrierDismissible: o.NoDrawerBarrierDismissible}),
@@ -1051,7 +1051,7 @@ func (s *ScaffoldState) buildDrawer(children []widgets.Widget, textDirection ui.
 	if o.Drawer == nil {
 		return children
 	}
-	return s.addSlot(children, NewDrawerController(o.Drawer, DrawerAlignmentStart, DrawerControllerOpts{
+	return s.addSlot(children, NewDrawerController(DrawerAlignmentStart, o.Drawer, DrawerControllerOpts{
 		Key: s.drawerKey, DrawerCallback: s.drawerOpenedCallback, DragStartBehavior: o.DrawerDragStartBehavior,
 		ScrimColor: o.DrawerScrimColor, EdgeDragWidth: o.DrawerEdgeDragWidth, NoEnableOpenDragGesture: o.NoDrawerEnableOpenDragGesture,
 		IsDrawerOpen: s.drawerOpened, NoDrawerBarrierDismissible: o.NoDrawerBarrierDismissible}),

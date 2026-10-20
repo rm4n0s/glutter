@@ -249,7 +249,7 @@ func (v *nestedScrollViewCustomScrollView) BuildViewport(_ BuildContext, offset 
 	if foundation.DebugMode && v.shrinkWrap {
 		panic(errors.New("NestedScrollViewShrinkWrap", "a NestedScrollView can not shrink-wrap its content"))
 	}
-	return NewNestedScrollViewViewport(offset, slivers, v.handle, ViewportOpts{AxisDirection: axisDirection, ClipBehavior: v.clipBehavior})
+	return NewNestedScrollViewViewport(offset, v.handle, slivers, ViewportOpts{AxisDirection: axisDirection, ClipBehavior: v.clipBehavior})
 }
 
 // inheritedNestedScrollView gives the state to the descendants.
@@ -1451,7 +1451,7 @@ type NestedScrollViewViewport struct {
 // NewNestedScrollViewViewport creates a viewport of the slivers at the offset.
 //
 // Flutter: widgets/nested_scroll_view.dart NestedScrollViewViewport.new
-func NewNestedScrollViewViewport(offset rendering.ViewportOffset, slivers []Widget, handle *SliverOverlapAbsorberHandle, opts ...ViewportOpts) *NestedScrollViewViewport {
+func NewNestedScrollViewViewport(offset rendering.ViewportOffset, handle *SliverOverlapAbsorberHandle, slivers []Widget, opts ...ViewportOpts) *NestedScrollViewViewport {
 	w := &NestedScrollViewViewport{handle: handle}
 	w.Viewport = *NewViewport(offset, slivers, opts...)
 	return w

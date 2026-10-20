@@ -36,7 +36,8 @@ type RouteInformationOpts struct {
 // Deviation: Flutter's deprecated location parameter, a string, is not ported.
 //
 // Flutter: widgets/router.dart RouteInformation.new
-func NewRouteInformation(opts RouteInformationOpts) *RouteInformation {
+func NewRouteInformation(options ...RouteInformationOpts) *RouteInformation {
+	opts := firstOpts(options)
 	if foundation.DebugMode && opts.URI == nil {
 		panic(errors.New("RouteInformationURIMissing", "a RouteInformation needs a URI"))
 	}
@@ -897,7 +898,7 @@ type BackButtonListener struct {
 // it handled the button.
 //
 // Flutter: widgets/router.dart BackButtonListener.new
-func NewBackButtonListener(child Widget, onBackButtonPressed BackButtonCallback, opts ...WidgetOpts) *BackButtonListener {
+func NewBackButtonListener(onBackButtonPressed BackButtonCallback, child Widget, opts ...WidgetOpts) *BackButtonListener {
 	return &BackButtonListener{NewStatefulWidgetBase(opts...), child, onBackButtonPressed}
 }
 

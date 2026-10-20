@@ -116,7 +116,7 @@ func (s *swatch) CreateRenderObject(widgets.BuildContext) rendering.RenderObject
 	var box rendering.Box = rendering.NewRenderDecoratedBox(painting.NewBoxDecoration(painting.BoxDecorationOpts{Color: foundation.Some(s.color)}),
 		rendering.NewRenderConstrainedBox(rendering.NewBoxConstraintsTight(ui.Size{Width: s.width, Height: s.height}), nil))
 	if s.label != "" {
-		box = rendering.NewRenderSemanticsAnnotations(box, &semantics.SemanticsProperties{Label: foundation.Some(s.label)},
+		box = rendering.NewRenderSemanticsAnnotations(&semantics.SemanticsProperties{Label: foundation.Some(s.label)}, box,
 			rendering.SemanticsAnnotationsOpts{TextDirection: ui.TextDirectionLTR})
 	}
 	return box

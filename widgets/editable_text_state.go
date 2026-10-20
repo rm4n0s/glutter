@@ -793,10 +793,10 @@ func (s *EditableTextState) Build(bc BuildContext) Widget {
 						NewUndoHistory[services.TextEditingValue](w.controller, func(v services.TextEditingValue) {
 							s.UserUpdateTextEditingValue(v, services.SelectionChangedCauseKeyboard)
 						}, w.focusNode,
-							NewFocus(NewNotificationListener(s.buildScrollable(bc, textScaler, inputType), func(n ScrollNotification) bool {
+							NewFocus(NewNotificationListener(func(n ScrollNotification) bool {
 								s.handleContextMenuOnScroll(n)
 								return false
-							}),
+							}, s.buildScrollable(bc, textScaler, inputType)),
 								FocusOpts{FocusNode: w.focusNode, ExcludeSemantics: true, DebugLabel: "EditableText"}),
 							UndoHistoryOpts[services.TextEditingValue]{
 								ShouldChangeUndoStack: s.shouldChangeUndoStack, UndoStackModifier: undoStackModifier, Controller: w.o.UndoController,

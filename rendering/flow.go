@@ -161,7 +161,7 @@ type RenderFlowOpts struct {
 // NewRenderFlow creates a flow with the children (nil for none).
 //
 // Flutter: rendering/flow.dart RenderFlow.new
-func NewRenderFlow(children []Box, delegate FlowDelegate, opts ...RenderFlowOpts) *RenderFlow {
+func NewRenderFlow(delegate FlowDelegate, children []Box, opts ...RenderFlowOpts) *RenderFlow {
 	o := firstOpts(opts)
 	if o.ClipBehavior == ui.ClipUnspecified {
 		o.ClipBehavior = ui.ClipHardEdge
