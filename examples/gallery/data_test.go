@@ -12,7 +12,7 @@ import (
 func openDataPage(t *testing.T) *gluttertest.Tester {
 	t.Helper()
 	ts := newTester(t)
-	ts.Tap(gluttertest.ByText("Data & progress"))
+	ts.Tap(gluttertest.First(gluttertest.ByText("Data & progress")))
 	ts.PumpAndSettle()
 	return ts
 }
@@ -67,8 +67,10 @@ func TestDataStepperContinue(t *testing.T) {
 
 func TestDataPaginatedTablePages(t *testing.T) {
 	ts := openDataPage(t)
-	ts.Drag(gluttertest.First(gluttertest.ByType[*m.ListView]()), m.Offset{Dx: 0, Dy: -1000})
-	ts.PumpAndSettle()
+	for range 2 {
+		ts.Drag(gluttertest.First(gluttertest.ByType[*m.ListView]()), m.Offset{Dx: 0, Dy: -1000})
+		ts.PumpAndSettle()
+	}
 	if !ts.Exists(gluttertest.ByText("Dessert 1")) || ts.Exists(gluttertest.ByText("Dessert 6")) {
 		t.Fatal("the first page does not show the first five rows")
 	}

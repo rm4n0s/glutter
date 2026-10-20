@@ -12,7 +12,7 @@ import (
 func openButtonsPage(t *testing.T) *gluttertest.Tester {
 	t.Helper()
 	ts := newTester(t)
-	ts.Tap(gluttertest.ByText("Buttons"))
+	ts.Tap(gluttertest.First(gluttertest.ByText("Buttons")))
 	ts.PumpAndSettle()
 	return ts
 }

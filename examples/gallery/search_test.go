@@ -13,7 +13,7 @@ import (
 func openSearchPage(t *testing.T) *gluttertest.Tester {
 	t.Helper()
 	ts := newTester(t)
-	ts.Tap(gluttertest.ByText("Search"))
+	ts.Tap(gluttertest.First(gluttertest.ByText("Search")))
 	ts.PumpAndSettle()
 	return ts
 }

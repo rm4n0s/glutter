@@ -273,6 +273,13 @@ func (w *CarouselDemos) Build(bc m.BuildContext) m.Widget {
 		m.NewSizedBox(nil, m.SizedBoxOpts{Height: m.Some(16.0)}),
 		m.NewText("Weighted: 1, 6, 1"),
 		m.NewSizedBox(m.NewCarouselViewWeighted([]int{1, 6, 1}, items, m.CarouselViewOpts{ItemSnapping: true}), m.SizedBoxOpts{Height: m.Some(150.0)}),
+		m.NewSizedBox(nil, m.SizedBoxOpts{Height: m.Some(16.0)}),
+		m.NewText("Builders, for a list that is long or comes later"),
+		m.NewSizedBox(m.NewCarouselViewBuilder(150, func(bc m.BuildContext, i int) m.Widget { return item(i) }, m.CarouselViewOpts{ItemCount: m.Some(20)}),
+			m.SizedBoxOpts{Height: m.Some(100.0)}),
+		m.NewSizedBox(nil, m.SizedBoxOpts{Height: m.Some(8.0)}),
+		m.NewSizedBox(m.NewCarouselViewWeightedBuilder([]int{2, 5, 2}, func(bc m.BuildContext, i int) m.Widget { return item(i) }, m.CarouselViewOpts{Infinite: true, ItemCount: m.Some(6)}),
+			m.SizedBoxOpts{Height: m.Some(100.0)}),
 	}, m.ColumnOpts{CrossAxisAlignment: m.CrossAxisAlignmentStretch})
 }
 

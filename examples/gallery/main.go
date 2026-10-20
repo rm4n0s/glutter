@@ -2,6 +2,9 @@
 // group of them, with a side list to choose the page and a toggle between the
 // light and the dark theme. It uses only package material, imported as m.
 //
+// The first page is the home page, with an index of the components and the choice
+// of the seed color and of the light, dark or system mode.
+//
 // Run it with: go run ./examples/gallery
 //
 // Environment: GLUTTER_BACKEND=x11|wayland, GLUTTER_SCREENSHOT=<file.png>,
@@ -25,15 +28,65 @@ import (
 func main() {
 	err := m.RunApp(NewGalleryApp(), m.RunAppOpts{
 		AppID:  "dev.glutter.gallery",
-		Window: m.WindowConfig{Title: "Glutter gallery", Size: m.Size{Width: 1100, Height: 760}},
+		Window: m.WindowConfig{Title: appTitle, Size: m.Size{Width: 1100, Height: 760}},
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
 }
 
-// seed is the color that the light and the dark theme are made from.
-var seed = m.Colors.Blue.Primary
+// appTitle is the title of the window and of the app.
+const appTitle = "Glutter \u2013 Material 3 gallery"
+
+// seedOption is a color that the light and the dark theme can be made from.
+type seedOption struct {
+	name  string
+	color m.Color
+}
+
+// seedOptions are the colors of the seed picker; the first is the default.
+var seedOptions = []seedOption{
+	{"Blue", m.Colors.Blue.Primary},
+	{"Teal", m.Colors.Teal.Primary},
+	{"Green", m.Colors.Green.Primary},
+	{"Orange", m.Colors.Orange.Primary},
+	{"Pink", m.Colors.Pink.Primary},
+	{"Purple", m.Colors.Purple.Primary},
+	{"Red", m.Colors.Red.Primary},
+}
+
+// GalleryScope gives the pages the state of the app: the seed color and the theme
+// mode, and the ways to change them and to open another page.
+type GalleryScope struct {
+	m.InheritedWidget
+	seed   int
+	mode   m.ThemeMode
+	onSeed func(index int)
+	onMode func(mode m.ThemeMode)
+	onPage func(slug string)
+	// pages are the pages of the gallery, for the index of the home page.
+	pages []Page
+}
+
+// NewGalleryScope creates the scope around the shell.
+func NewGalleryScope(pages []Page, seed int, mode m.ThemeMode, onSeed func(int), onMode func(m.ThemeMode), onPage func(string), child m.Widget) *GalleryScope {
+	return &GalleryScope{InheritedWidget: m.NewInheritedWidgetBase(child), seed: seed, mode: mode, onSeed: onSeed, onMode: onMode, onPage: onPage, pages: pages}
+}
+
+// UpdateShouldNotify is whether the seed or the mode changed.
+func (w *GalleryScope) UpdateShouldNotify(old m.Widget) bool {
+	o := old.(*GalleryScope)
+	return o.seed != w.seed || o.mode != w.mode
+}
+
+// GalleryScopeOf is the scope above the context.
+func GalleryScopeOf(bc m.BuildContext) *GalleryScope {
+	scope, ok := m.DependOn[*GalleryScope](bc)
+	if !ok {
+		panic("the gallery pages need a GalleryScope above them")
+	}
+	return scope
+}
 
 // GalleryApp is the app: it owns the page that is open and the theme mode.
 type GalleryApp struct{ m.StatefulWidget }
@@ -47,6 +100,7 @@ func (a *GalleryApp) CreateState() m.State { return &galleryAppState{} }
 type galleryAppState struct {
 	m.StateOf[*GalleryApp]
 	page int
+	seed int
 	mode m.ThemeMode
 }
 
@@ -56,23 +110,34 @@ func (s *galleryAppState) InitState() {
 }
 
 func (s *galleryAppState) Build(bc m.BuildContext) m.Widget {
+	seed := seedOptions[s.seed].color
 	return m.NewMaterialApp(m.MaterialAppOpts{
-		Title:                      "Glutter gallery",
+		Title:                      appTitle,
 		Theme:                      m.NewThemeData(m.ThemeDataOpts{ColorSchemeSeed: m.Some(seed)}),
 		DarkTheme:                  m.NewThemeData(m.ThemeDataOpts{ColorSchemeSeed: m.Some(seed), Brightness: m.BrightnessDark}),
 		ThemeMode:                  s.mode,
 		DebugShowCheckedModeBanner: m.Some(false),
-		Home: NewGalleryShell(s.page, s.mode == m.ThemeModeDark,
-			func(page int) { s.SetState(func() { s.page = page }) },
-			func() {
-				s.SetState(func() {
-					if s.mode == m.ThemeModeDark {
-						s.mode = m.ThemeModeLight
-					} else {
-						s.mode = m.ThemeModeDark
+		Home: NewGalleryScope(galleryPages, s.seed, s.mode,
+			func(seed int) { s.SetState(func() { s.seed = seed }) },
+			func(mode m.ThemeMode) { s.SetState(func() { s.mode = mode }) },
+			func(slug string) {
+				for i, p := range galleryPages {
+					if p.Slug == slug {
+						s.SetState(func() { s.page = i })
 					}
-				})
-			}),
+				}
+			},
+			NewGalleryShell(s.page, s.mode == m.ThemeModeDark,
+				func(page int) { s.SetState(func() { s.page = page }) },
+				func() {
+					s.SetState(func() {
+						if s.mode == m.ThemeModeDark {
+							s.mode = m.ThemeModeLight
+						} else {
+							s.mode = m.ThemeModeDark
+						}
+					})
+				})),
 	})
 }
 

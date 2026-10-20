@@ -12,7 +12,7 @@ import (
 func openListsPage(t *testing.T) *gluttertest.Tester {
 	t.Helper()
 	ts := newTester(t)
-	ts.Tap(gluttertest.ByText("Lists & cards"))
+	ts.Tap(gluttertest.First(gluttertest.ByText("Lists & cards")))
 	ts.PumpAndSettle()
 	return ts
 }

@@ -12,7 +12,7 @@ import (
 func openSelectionPage(t *testing.T) *gluttertest.Tester {
 	t.Helper()
 	ts := newTester(t)
-	ts.Tap(gluttertest.ByText("Selection & chips"))
+	ts.Tap(gluttertest.First(gluttertest.ByText("Selection & chips")))
 	ts.PumpAndSettle()
 	return ts
 }

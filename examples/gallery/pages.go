@@ -14,6 +14,9 @@ type Page struct {
 	Name string
 	// Icon is the icon in the navigation rail.
 	Icon m.IconData
+	// Components names the components that the page shows, for the index of the
+	// home page.
+	Components string
 	// Build makes the content of the page.
 	Build func(bc m.BuildContext) m.Widget
 }
@@ -21,16 +24,19 @@ type Page struct {
 // galleryPages are the pages, in the order of the navigation rail. Each step of
 // the Material components adds its own.
 var galleryPages = []Page{
-	{Slug: "app-bars", Name: "App bars & snack bars", Icon: m.Icons.WebAsset(), Build: buildAppBarsPage},
-	{Slug: "navigation", Name: "Navigation & tabs", Icon: m.Icons.Explore(), Build: buildNavigationPage},
-	{Slug: "buttons", Name: "Buttons", Icon: m.Icons.TouchApp(), Build: buildButtonsPage},
-	{Slug: "menus", Name: "Menus", Icon: m.Icons.Menu(), Build: buildMenusPage},
-	{Slug: "text-fields", Name: "Text fields", Icon: m.Icons.EditNote(), Build: buildTextFieldsPage},
-	{Slug: "selection", Name: "Selection & chips", Icon: m.Icons.CheckBox(), Build: buildSelectionPage},
-	{Slug: "search", Name: "Search", Icon: m.Icons.Search(), Build: buildSearchPage},
-	{Slug: "dialogs", Name: "Dialogs & pickers", Icon: m.Icons.Event(), Build: buildDialogsPage},
-	{Slug: "lists", Name: "Lists & cards", Icon: m.Icons.ViewList(), Build: buildListsPage},
-	{Slug: "data", Name: "Data & progress", Icon: m.Icons.TableChart(), Build: buildDataPage},
+	{Slug: "home", Name: "Home", Icon: m.Icons.Home(), Build: buildHomePage},
+	{Slug: "app-bars", Components: "Scaffold, AppBar, SliverAppBar, BottomAppBar, SnackBar, MaterialBanner", Name: "App bars & snack bars", Icon: m.Icons.WebAsset(), Build: buildAppBarsPage},
+	{Slug: "navigation", Components: "NavigationBar, NavigationRail, NavigationDrawer, Drawer, TabBar, TabBarView, BottomSheet", Name: "Navigation & tabs", Icon: m.Icons.Explore(), Build: buildNavigationPage},
+	{Slug: "buttons", Components: "ElevatedButton, FilledButton, OutlinedButton, TextButton, IconButton, FloatingActionButton, SegmentedButton", Name: "Buttons", Icon: m.Icons.TouchApp(), Build: buildButtonsPage},
+	{Slug: "menus", Components: "MenuBar, MenuAnchor, PopupMenuButton, DropdownButton", Name: "Menus", Icon: m.Icons.Menu(), Build: buildMenusPage},
+	{Slug: "text-fields", Components: "TextField, TextFormField, InputDecorator, DropdownMenu, SelectionArea", Name: "Text fields", Icon: m.Icons.EditNote(), Build: buildTextFieldsPage},
+	{Slug: "selection", Components: "Checkbox, Radio, Switch, Slider, RangeSlider, Chip, FilterChip, InputChip, CircleAvatar", Name: "Selection & chips", Icon: m.Icons.CheckBox(), Build: buildSelectionPage},
+	{Slug: "search", Components: "SearchBar, SearchAnchor, Autocomplete", Name: "Search", Icon: m.Icons.Search(), Build: buildSearchPage},
+	{Slug: "dialogs", Components: "AlertDialog, SimpleDialog, Dialog.fullscreen, DatePicker, DateRangePicker, TimePicker", Name: "Dialogs & pickers", Icon: m.Icons.Event(), Build: buildDialogsPage},
+	{Slug: "lists", Components: "Card, ListTile, ExpansionTile, ExpansionPanelList, Divider, Badge, Tooltip", Name: "Lists & cards", Icon: m.Icons.ViewList(), Build: buildListsPage},
+	{Slug: "data", Components: "DataTable, PaginatedDataTable, progress indicators, RefreshIndicator, Scrollbar, Stepper, CarouselView", Name: "Data & progress", Icon: m.Icons.TableChart(), Build: buildDataPage},
+	{Slug: "themes", Components: "The theme widget of each component, from CardTheme to TooltipTheme", Name: "Component themes", Icon: m.Icons.Palette(), Build: buildThemesPage},
+	{Slug: "more", Components: "Adaptive forms, action buttons, Ink, RawChip, Dialog and BottomSheet in place, SliverAppBar", Name: "More components", Icon: m.Icons.Widgets(), Build: buildMorePage},
 }
 
 // columnWidth is the width of a section, for two of them side by side in the page.

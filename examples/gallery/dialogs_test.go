@@ -13,7 +13,7 @@ import (
 func openDialogsPage(t *testing.T) *gluttertest.Tester {
 	t.Helper()
 	ts := newTester(t)
-	ts.Tap(gluttertest.ByText("Dialogs & pickers"))
+	ts.Tap(gluttertest.First(gluttertest.ByText("Dialogs & pickers")))
 	ts.PumpAndSettle()
 	return ts
 }

@@ -13,7 +13,7 @@ import (
 func openTextFieldsPage(t *testing.T) *gluttertest.Tester {
 	t.Helper()
 	ts := newTester(t)
-	ts.Tap(gluttertest.ByText("Text fields"))
+	ts.Tap(gluttertest.First(gluttertest.ByText("Text fields")))
 	ts.PumpAndSettle()
 	return ts
 }

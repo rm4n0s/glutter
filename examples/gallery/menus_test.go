@@ -12,7 +12,7 @@ import (
 func openMenusPage(t *testing.T) *gluttertest.Tester {
 	t.Helper()
 	ts := newTester(t)
-	ts.Tap(gluttertest.ByText("Menus"))
+	ts.Tap(gluttertest.First(gluttertest.ByText("Menus")))
 	ts.PumpAndSettle()
 	return ts
 }

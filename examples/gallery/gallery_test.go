@@ -28,8 +28,18 @@ func newTester(t *testing.T) *gluttertest.Tester {
 	return ts
 }
 
-func TestShell(t *testing.T) {
+// openAppBarsPage opens the App bars & snack bars page through the navigation
+// rail.
+func openAppBarsPage(t *testing.T) *gluttertest.Tester {
+	t.Helper()
 	ts := newTester(t)
+	ts.Tap(gluttertest.First(gluttertest.ByText("App bars & snack bars")))
+	ts.PumpAndSettle()
+	return ts
+}
+
+func TestShell(t *testing.T) {
+	ts := openAppBarsPage(t)
 	for _, text := range []string{"Glutter gallery", "AppBar", "SliverAppBar: medium and large", "SnackBar and MaterialBanner", "BottomAppBar", "Show SnackBar"} {
 		if !ts.Exists(gluttertest.ByText(text)) {
 			t.Errorf("the text %q is not shown", text)
@@ -45,7 +55,7 @@ func TestShell(t *testing.T) {
 func openNavigationPage(t *testing.T) *gluttertest.Tester {
 	t.Helper()
 	ts := newTester(t)
-	ts.Tap(gluttertest.ByText("Navigation & tabs"))
+	ts.Tap(gluttertest.First(gluttertest.ByText("Navigation & tabs")))
 	ts.PumpAndSettle()
 	return ts
 }
@@ -58,12 +68,12 @@ func TestRailSwitchesPages(t *testing.T) {
 		}
 	}
 	if ts.Exists(gluttertest.ByText("SliverAppBar: medium and large")) {
-		t.Error("the first page is still shown")
+		t.Error("the app bars page is still shown")
 	}
-	ts.Tap(gluttertest.ByText("App bars & snack bars"))
+	ts.Tap(gluttertest.First(gluttertest.ByText("App bars & snack bars")))
 	ts.PumpAndSettle()
 	if !ts.Exists(gluttertest.ByText("SliverAppBar: medium and large")) {
-		t.Error("the first page is not back")
+		t.Error("the app bars page is not back")
 	}
 }
 
@@ -155,7 +165,7 @@ func TestSnackBarAndBannerButtons(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			ts := newTester(t)
+			ts := openAppBarsPage(t)
 			button := gluttertest.ByText(tc.button)
 			ts.Tap(button)
 			ts.PumpAndSettle()
@@ -172,7 +182,7 @@ func TestSnackBarAndBannerButtons(t *testing.T) {
 }
 
 func TestBannerDismiss(t *testing.T) {
-	ts := newTester(t)
+	ts := openAppBarsPage(t)
 	ts.Tap(gluttertest.ByText("Show MaterialBanner"))
 	ts.PumpAndSettle()
 	ts.Tap(gluttertest.ByText("DISMISS"))
@@ -234,7 +244,7 @@ func TestDevThemeMode(t *testing.T) {
 // TestGalleryGolden draws the first page in the light theme, after the snack bar
 // of the first button is shown.
 func TestGalleryGolden(t *testing.T) {
-	ts := newTester(t)
+	ts := openAppBarsPage(t)
 	ts.Tap(gluttertest.ByText("With an action"))
 	ts.PumpAndSettle()
 	ts.Pump(time.Second)
