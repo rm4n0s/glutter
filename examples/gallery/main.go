@@ -14,7 +14,8 @@
 // GLUTTER_DEV_OPEN_MENU=file/recent opens those menus of the Menus page, and
 // GLUTTER_DEV_TEXT_FIELDS=focus,validate focuses a field and validates the form
 // of the Text fields page, and GLUTTER_DEV_QUERY=gr opens the search view of the
-// Search page with that text.
+// Search page with that text, and GLUTTER_DEV_PERFORMANCE_OVERLAY=1 shows the
+// performance overlay at the top of the window.
 package main
 
 import (
@@ -117,6 +118,7 @@ func (s *galleryAppState) Build(bc m.BuildContext) m.Widget {
 		DarkTheme:                  m.NewThemeData(m.ThemeDataOpts{ColorSchemeSeed: m.Some(seed), Brightness: m.BrightnessDark}),
 		ThemeMode:                  s.mode,
 		DebugShowCheckedModeBanner: m.Some(false),
+		ShowPerformanceOverlay:     devPerformanceOverlay(os.Getenv),
 		Home: NewGalleryScope(galleryPages, s.seed, s.mode,
 			func(seed int) { s.SetState(func() { s.seed = seed }) },
 			func(mode m.ThemeMode) { s.SetState(func() { s.mode = mode }) },
@@ -164,6 +166,12 @@ func devThemeMode(getenv func(string) string) m.ThemeMode {
 		return m.ThemeModeDark
 	}
 	return m.ThemeModeLight
+}
+
+// devPerformanceOverlay is true when GLUTTER_DEV_PERFORMANCE_OVERLAY is "1" in a debug
+// build.
+func devPerformanceOverlay(getenv func(string) string) bool {
+	return foundation.DebugMode && getenv("GLUTTER_DEV_PERFORMANCE_OVERLAY") == "1"
 }
 
 // GalleryShell is the frame of every page: the app bar with the theme toggle,

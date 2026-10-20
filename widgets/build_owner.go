@@ -309,6 +309,7 @@ func (o *BuildOwner) BuildScope(context Element, callback func()) {
 	if callback == nil && len(scope.dirtyElements) == 0 {
 		return
 	}
+	defer foundation.StartTraceRegion("BUILD").End()
 	if foundation.DebugMode {
 		if o.Debug != nil && o.Debug.PrintBuildScope {
 			o.Debug.DebugPrint(fmt.Sprintf("buildScope called with context %s; its build scope's dirty list is: %v",
@@ -393,6 +394,7 @@ func (o *BuildOwner) reportError(err error) {
 //
 // Flutter: widgets/framework.dart BuildOwner.finalizeTree
 func (o *BuildOwner) FinalizeTree() {
+	defer foundation.StartTraceRegion("FINALIZE TREE").End()
 	// The error is reported directly instead of building an ErrorWidget: the tree
 	// is in a broken state and more widgets would only cause more errors.
 	r := recoverValue(func() {

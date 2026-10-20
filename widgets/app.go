@@ -88,6 +88,9 @@ type WidgetsAppOpts struct {
 	// DebugShowCheckedModeBanner turns on a little "DEBUG" banner in debug builds;
 	// the default is true.
 	DebugShowCheckedModeBanner foundation.Opt[bool]
+	// ShowPerformanceOverlay turns on an overlay at the top of the app with the graphs
+	// and the statistics of the time to build and to draw each frame.
+	ShowPerformanceOverlay bool
 }
 
 // WidgetsAppRouterOpts are the optional parameters of NewWidgetsAppRouter.
@@ -135,6 +138,9 @@ type WidgetsAppRouterOpts[T any] struct {
 	// DebugShowCheckedModeBanner turns on a little "DEBUG" banner in debug builds;
 	// the default is true.
 	DebugShowCheckedModeBanner foundation.Opt[bool]
+	// ShowPerformanceOverlay turns on an overlay at the top of the app with the graphs
+	// and the statistics of the time to build and to draw each frame.
+	ShowPerformanceOverlay bool
 }
 
 // WidgetsApp is a convenience widget that wraps a number of widgets that
@@ -242,6 +248,7 @@ func NewWidgetsAppRouter[T any](color ui.Color, opts ...WidgetsAppRouterOpts[T])
 		LocalizationsDelegates: o.LocalizationsDelegates, LocaleListResolutionCallback: o.LocaleListResolutionCallback,
 		LocaleResolutionCallback: o.LocaleResolutionCallback, SupportedLocales: o.SupportedLocales,
 		Shortcuts: o.Shortcuts, Actions: o.Actions, DebugShowCheckedModeBanner: o.DebugShowCheckedModeBanner,
+		ShowPerformanceOverlay: o.ShowPerformanceOverlay,
 	}
 	return w
 }
@@ -621,6 +628,12 @@ func (s *widgetsAppState) Build(bc BuildContext) Widget {
 	}
 	if w.o.TextStyle != nil {
 		result = NewDefaultTextStyle(w.o.TextStyle, result)
+	}
+	if w.o.ShowPerformanceOverlay {
+		result = NewStack([]Widget{
+			result,
+			NewPositioned(NewPerformanceOverlayAllEnabled(), PositionedOpts{Top: foundation.Some(0.0), Left: foundation.Some(0.0), Right: foundation.Some(0.0)}),
+		})
 	}
 	if foundation.DebugMode && w.o.DebugShowCheckedModeBanner.OrElse(true) {
 		result = NewCheckedModeBanner(result)

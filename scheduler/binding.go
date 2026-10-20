@@ -170,6 +170,8 @@ type SchedulerBinding struct {
 	transientCallbacks  []frameCallbackEntry
 	removedIDs          map[int]bool
 	persistentCallbacks []FrameCallback
+	timingsCallbacks    []timingsEntry
+	nextTimingsID       int
 	postFrameCallbacks  []FrameCallback
 	nextFrameWaiters    []chan struct{}
 	hasScheduledFrame   bool
@@ -640,6 +642,7 @@ func (b *SchedulerBinding) HandleBeginFrame(rawTimeStamp foundation.Opt[time.Dur
 		panic(errors.New("FrameAlreadyBegun", "HandleBeginFrame was called while a frame is being built", "phase", b.phase.Name()))
 	}
 	b.hasScheduledFrame = false
+	defer foundation.StartTraceRegion("Animate").End()
 	defer func() { b.phase = SchedulerPhaseMidFrameMicrotasks }()
 	b.phase = SchedulerPhaseTransientCallbacks
 	callbacks := b.transientCallbacks
@@ -664,6 +667,7 @@ func (b *SchedulerBinding) HandleDrawFrame() {
 	if foundation.DebugMode && b.phase != SchedulerPhaseMidFrameMicrotasks {
 		panic(errors.New("FrameNotBegun", "HandleDrawFrame was called without HandleBeginFrame", "phase", b.phase.Name()))
 	}
+	defer foundation.StartTraceRegion("Frame").End()
 	defer func() {
 		b.phase = SchedulerPhaseIdle
 		b.currentFrameTimeStamp = foundation.None[time.Duration]()

@@ -342,6 +342,9 @@ type handler struct {
 	// acc is the bridge to the assistive technologies of the platform, or nil.
 	acc platform.Accessibility
 
+	// clock measures the frames for the dispatcher's OnReportTimings.
+	clock frameClock
+
 	armed      bool // the capture is scheduled
 	captureDue bool // the next frame is read back
 	err        error
@@ -770,10 +773,12 @@ func (h *handler) OnFrame(view ui.ViewID, frameTime time.Duration) {
 		w.pending = false
 		if h.err == nil {
 			_ = h.draw(w, w.lastScene) // a failure is recorded by draw and ends Run
+			h.reportFrame(false)
 		}
 		return
 	}
 	w.pending = false
+	h.clock.beginFrame()
 	h.input.flush()
 	for _, o := range h.windows {
 		o.rendered = false
@@ -785,6 +790,7 @@ func (h *handler) OnFrame(view ui.ViewID, frameTime time.Duration) {
 	if !w.rendered && h.err == nil {
 		_ = h.draw(w, w.lastScene)
 	}
+	h.reportFrame(true)
 }
 
 // drawSceneFunc is OnDrawFrame for a Config that has a Scene: it renders the
@@ -902,7 +908,11 @@ func (h *handler) draw(w *window, scene *ui.Scene) error {
 	}
 	capture := w == h.first && h.captureDue
 	h.captureDue = false
+	h.clock.beginRaster()
+	region := traceRaster()
 	img, err := h.r.Draw(w.NativeSurface(), w.width, w.height, scene, capture)
+	region.End()
+	h.clock.endRaster()
 	if err != nil {
 		h.fail(err)
 		return err

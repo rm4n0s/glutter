@@ -3,7 +3,9 @@ package widgets
 import (
 	"fmt"
 	"os"
+	"reflect"
 	"runtime/debug"
+	"strings"
 
 	"github.com/rm4n0s/glutter/rendering"
 	"github.com/rm4n0s/glutter/ui"
@@ -92,6 +94,29 @@ func (o *DebugOptions) DebugPrint(line string) {
 	default:
 		fmt.Fprintln(os.Stderr, line)
 	}
+}
+
+// frameworkPackagePrefix is the module path of the framework; the widgets in packages
+// under it, other than the examples, are the framework's.
+const frameworkPackagePrefix = "github.com/rm4n0s/glutter/"
+
+// isUserWidget says whether the widget's type was declared by the app: outside this
+// module, in one of its examples, or in a test package. Flutter asks whether the widget was created in
+// a file of the local project.
+//
+// Deviation: Flutter asks where the widget was created (the creation location that
+// its tooling adds); here it is where the widget's type is declared (SPEC §12.10).
+func isUserWidget(w Widget) bool {
+	t := reflect.TypeOf(w)
+	for t != nil && t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	if t == nil {
+		return false
+	}
+	pkg := t.PkgPath()
+	return !strings.HasPrefix(pkg, frameworkPackagePrefix) || strings.HasPrefix(pkg, frameworkPackagePrefix+"examples/") ||
+		strings.HasSuffix(pkg, "_test")
 }
 
 // debugStack is the stack of the caller, for PrintScheduleBuildForStacks.

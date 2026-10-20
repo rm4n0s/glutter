@@ -702,6 +702,14 @@ func (b *ElementBase) Rebuild(opts ...RebuildOpts) {
 		previous = b.owner.debugCurrentBuildTarget
 		b.owner.debugCurrentBuildTarget = b.self
 	}
+	if foundation.DebugMode {
+		if d := b.owner.Debug; d != nil && (d.ProfileBuildsEnabled || (d.ProfileBuildsEnabledUserWidgets && isUserWidget(b.widget))) {
+			defer foundation.StartTraceRegion(foundation.RuntimeTypeName(b.widget)).End()
+			if d.EnhanceBuildTimelineArguments && foundation.TraceEnabled() {
+				foundation.TraceLog("widget", b.self.String())
+			}
+		}
+	}
 	defer func() {
 		if foundation.DebugMode {
 			b.owner.debugElementWasRebuilt(b.self)

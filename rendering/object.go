@@ -1133,6 +1133,22 @@ func (b *RenderObjectBase) MarkNeedsPaint() {
 	}
 }
 
+// MarkNeedsPaintQuietly marks the object as needing paint like MarkNeedsPaint, but
+// does not ask for a frame: the next frame that something else asks for paints it. It
+// is for what shows data that arrives between frames and must not keep the app drawing
+// (the performance overlay).
+//
+// Flutter: no counterpart
+func (b *RenderObjectBase) MarkNeedsPaintQuietly() {
+	if b.owner == nil {
+		b.MarkNeedsPaint()
+		return
+	}
+	b.owner.quiet++
+	defer func() { b.owner.quiet-- }()
+	b.MarkNeedsPaint()
+}
+
 // MarkNeedsCompositedLayerUpdate marks a repaint boundary as needing only an
 // update of its layer's properties, not a repaint.
 //

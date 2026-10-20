@@ -49,3 +49,39 @@ func TestGPUOptionsFollowTheConfigAndTheEnvironment(t *testing.T) {
 		})
 	}
 }
+
+func TestFramesAreReportedToOnReportTimingsOnlyWhenSomethingListens(t *testing.T) {
+	e := newWindowsEngine(t)
+	e.size(0, 400, 300)
+	e.renderAll(map[ui.ViewID]*ui.Scene{0: {}})
+	e.h.OnFrame(0, time.Millisecond) // nobody listens: nothing is measured
+	var got [][]ui.FrameTiming
+	e.d.OnReportTimings = func(t []ui.FrameTiming) { got = append(got, t) }
+	for i := 0; i < 3; i++ {
+		e.h.OnFrame(0, time.Duration(i+2)*time.Millisecond)
+	}
+	if len(got) != 3 {
+		t.Fatalf("%d reports for 3 frames", len(got))
+	}
+	for i, batch := range got {
+		if len(batch) != 1 {
+			t.Fatalf("report %d has %d timings", i, len(batch))
+		}
+		ft := batch[0]
+		if ft.FrameNumber() != i+1 {
+			t.Errorf("report %d: frame number %d, want %d", i, ft.FrameNumber(), i+1)
+		}
+		if ft.BuildDuration() < 0 || ft.RasterDuration() < 0 || ft.TotalSpan() < ft.BuildDuration()+ft.RasterDuration() {
+			t.Errorf("report %d: %v", i, ft)
+		}
+		if ft.TimestampOf(ui.FramePhaseRasterFinishWallTime) <= 0 {
+			t.Errorf("report %d has no wall time", i)
+		}
+	}
+	// Removing the callback stops the reports.
+	e.d.OnReportTimings = nil
+	e.h.OnFrame(0, 10*time.Millisecond)
+	if len(got) != 3 {
+		t.Errorf("a frame was reported after the callback was removed")
+	}
+}

@@ -28,6 +28,11 @@ type PaintingContext struct {
 	currentLayer *PictureLayer
 	recorder     *ui.PictureRecorder
 	canvas       *ui.Canvas
+
+	// debug are the flags that the repaint rainbow and the layer borders read. The
+	// layer of the context is not attached to a render object while it paints, so the
+	// object that makes the context gives them (Deviation: Flutter's are global).
+	debug *DebugOptions
 }
 
 // NewPaintingContext creates a context that adds its layers to the container
@@ -89,6 +94,7 @@ func repaintCompositedChild(child RenderObject, debugAlsoPaintedParent bool, chi
 	}
 	if childContext == nil {
 		childContext = NewPaintingContext(childLayer.AsContainerLayer(), child.PaintBounds())
+		childContext.debug = cb.DebugOptions()
 	}
 	cb.paintWithContext(childContext, ui.OffsetZero)
 	childContext.StopRecordingIfNeeded()
@@ -252,8 +258,8 @@ func (c *PaintingContext) StopRecordingIfNeeded() {
 		return
 	}
 	if foundation.DebugMode {
-		var o *DebugOptions
-		if owner := c.containerLayer.owner; owner != nil {
+		o := c.debug
+		if owner := c.containerLayer.owner; o == nil && owner != nil {
 			if d, ok := owner.(interface{ DebugOptions() *DebugOptions }); ok {
 				o = d.DebugOptions()
 			}
@@ -322,6 +328,7 @@ func (c *PaintingContext) PushLayer(childLayer ContainerLayerLike, painter Paint
 	c.StopRecordingIfNeeded()
 	c.AppendLayer(childLayer)
 	childContext := NewPaintingContext(cl, childPaintBounds.OrElse(c.estimatedBounds))
+	childContext.debug = c.debug
 	painter(childContext, offset)
 	childContext.StopRecordingIfNeeded()
 }

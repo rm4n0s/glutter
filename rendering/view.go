@@ -304,6 +304,7 @@ func (r *RenderView) ApplyPaintTransform(child RenderObject, transform *ui.Matri
 //
 // Flutter: rendering/view.dart RenderView.compositeFrame
 func (r *RenderView) CompositeFrame() error {
+	defer foundation.StartTraceRegion("COMPOSITING").End()
 	if foundation.DebugMode && (!r.HasConfiguration() || r.rootTransform == nil || isNil(r.layerHandle.Layer())) {
 		panic(errors.New("CompositeFrameNotPrepared",
 			"the RenderView needs a configuration and PrepareInitialFrame before CompositeFrame"))

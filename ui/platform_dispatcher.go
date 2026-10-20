@@ -154,6 +154,12 @@ type PlatformDispatcher struct {
 	//
 	// Flutter: ui/platform_dispatcher.dart PlatformDispatcher.onDrawFrame
 	OnDrawFrame func()
+	// OnReportTimings is called with the timings of the frames that were drawn since
+	// the last call: the engine reports a batch after each frame. The engine measures
+	// the frames only while this is set (NeedsReportTimings).
+	//
+	// Flutter: ui/platform_dispatcher.dart PlatformDispatcher.onReportTimings
+	OnReportTimings func(timings []FrameTiming)
 	// OnPointerDataPacket is called with the pointer reports that arrived
 	// since the last frame, at the start of a frame.
 	//
@@ -607,6 +613,22 @@ func (d *PlatformDispatcher) BeginFrame(frameTime time.Duration) {
 func (d *PlatformDispatcher) DrawFrame() {
 	if d.OnDrawFrame != nil {
 		d.OnDrawFrame()
+	}
+}
+
+// NeedsReportTimings says whether anything listens for frame timings, so that the
+// engine measures them only when they are used. Called by the engine.
+//
+// Flutter: ui/platform_dispatcher.dart PlatformDispatcher._setNeedsReportTimings
+func (d *PlatformDispatcher) NeedsReportTimings() bool { return d.OnReportTimings != nil }
+
+// ReportTimings gives the timings of the frames that were drawn to OnReportTimings.
+// Called by the engine.
+//
+// Flutter: ui/platform_dispatcher.dart PlatformDispatcher._reportTimings
+func (d *PlatformDispatcher) ReportTimings(timings []FrameTiming) {
+	if d.OnReportTimings != nil && len(timings) > 0 {
+		d.OnReportTimings(timings)
 	}
 }
 

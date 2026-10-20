@@ -89,7 +89,7 @@ func (m ThemeMode) IsDark() bool { return m == ThemeModeDark }
 
 // MaterialAppOpts are the optional parameters of NewMaterialApp.
 //
-// Not part of them: as the framework has no counterpart, ShowPerformanceOverlay, CheckerboardRasterCacheImages,
+// Not part of them: as the framework has no counterpart, CheckerboardRasterCacheImages,
 // CheckerboardOffscreenLayers, ShowSemanticsDebugger, DebugShowMaterialGrid and
 // RestorationScopeId (see SPEC §12.10).
 //
@@ -167,6 +167,9 @@ type MaterialAppOpts struct {
 	// DebugShowCheckedModeBanner turns on a "DEBUG" banner in debug builds; the
 	// default is true.
 	DebugShowCheckedModeBanner foundation.Opt[bool]
+	// ShowPerformanceOverlay turns on an overlay at the top of the app with the graphs
+	// and the statistics of the time to build and to draw each frame.
+	ShowPerformanceOverlay bool
 	// Shortcuts are the keyboard shortcuts of the app.
 	Shortcuts widgets.ShortcutMap
 	// Actions are the actions of the app.
@@ -239,6 +242,9 @@ type MaterialAppRouterOpts[T any] struct {
 	// DebugShowCheckedModeBanner turns on a "DEBUG" banner in debug builds; the
 	// default is true.
 	DebugShowCheckedModeBanner foundation.Opt[bool]
+	// ShowPerformanceOverlay turns on an overlay at the top of the app with the graphs
+	// and the statistics of the time to build and to draw each frame.
+	ShowPerformanceOverlay bool
 	// Shortcuts are the keyboard shortcuts of the app.
 	Shortcuts widgets.ShortcutMap
 	// Actions are the actions of the app.
@@ -309,8 +315,8 @@ func NewMaterialApp(opts ...MaterialAppOpts) *MaterialApp {
 			Locale: o.Locale, LocalizationsDelegates: delegates,
 			LocaleResolutionCallback: o.LocaleResolutionCallback, LocaleListResolutionCallback: o.LocaleListResolutionCallback,
 			SupportedLocales:           o.SupportedLocales,
-			DebugShowCheckedModeBanner: o.DebugShowCheckedModeBanner,
-			Shortcuts:                  o.Shortcuts, Actions: o.Actions,
+			DebugShowCheckedModeBanner: o.DebugShowCheckedModeBanner, ShowPerformanceOverlay: o.ShowPerformanceOverlay,
+			Shortcuts: o.Shortcuts, Actions: o.Actions,
 		})
 	}
 	return a
@@ -343,8 +349,8 @@ func NewMaterialAppRouter[T any](opts ...MaterialAppRouterOpts[T]) *MaterialApp 
 			Locale: o.Locale, LocalizationsDelegates: delegates,
 			LocaleResolutionCallback: o.LocaleResolutionCallback, LocaleListResolutionCallback: o.LocaleListResolutionCallback,
 			SupportedLocales:           o.SupportedLocales,
-			DebugShowCheckedModeBanner: o.DebugShowCheckedModeBanner,
-			Shortcuts:                  o.Shortcuts, Actions: o.Actions,
+			DebugShowCheckedModeBanner: o.DebugShowCheckedModeBanner, ShowPerformanceOverlay: o.ShowPerformanceOverlay,
+			Shortcuts: o.Shortcuts, Actions: o.Actions,
 		})
 	}
 	return a

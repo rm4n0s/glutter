@@ -70,7 +70,10 @@ type renderDebugState struct {
 type PipelineOwner struct {
 	onNeedVisualUpdate func()
 	debug              *DebugOptions
-	debugState         *renderDebugState
+	// quiet is above 0 while RenderObject.MarkNeedsPaintQuietly runs: RequestVisualUpdate
+	// asks for no frame then.
+	quiet      int
+	debugState *renderDebugState
 
 	rootNode                RenderObject
 	shouldMergeDirtyNodes   bool
@@ -120,6 +123,9 @@ func (p *PipelineOwner) DebugOptions() *DebugOptions { return p.debug }
 //
 // Flutter: rendering/object.dart PipelineOwner.requestVisualUpdate
 func (p *PipelineOwner) RequestVisualUpdate() {
+	if p.quiet > 0 {
+		return
+	}
 	if p.onNeedVisualUpdate != nil {
 		p.onNeedVisualUpdate()
 	} else if p.manifold != nil {
@@ -172,6 +178,7 @@ func byDepthAscending(nodes []RenderObject) {
 //
 // Flutter: rendering/object.dart PipelineOwner.flushLayout
 func (p *PipelineOwner) FlushLayout() {
+	defer foundation.StartTraceRegion("LAYOUT").End()
 	if foundation.DebugMode {
 		p.debugDoingLayout = true
 	}
@@ -229,6 +236,7 @@ func (p *PipelineOwner) enableMutationsToDirtySubtrees(callback func()) {
 //
 // Flutter: rendering/object.dart PipelineOwner.flushCompositingBits
 func (p *PipelineOwner) FlushCompositingBits() {
+	defer foundation.StartTraceRegion("UPDATING COMPOSITING BITS").End()
 	byDepthAscending(p.nodesNeedingCompositing)
 	for _, node := range p.nodesNeedingCompositing {
 		nb := node.AsRenderObject()
@@ -257,6 +265,7 @@ func (p *PipelineOwner) DebugDoingPaint() bool { return p.debugDoingPaint }
 //
 // Flutter: rendering/object.dart PipelineOwner.flushPaint
 func (p *PipelineOwner) FlushPaint() {
+	defer foundation.StartTraceRegion("PAINT").End()
 	if foundation.DebugMode {
 		p.debugDoingPaint = true
 	}
@@ -328,6 +337,7 @@ func (p *PipelineOwner) FlushSemantics() {
 	if p.semanticsOwner == nil {
 		return
 	}
+	defer foundation.StartTraceRegion("SEMANTICS").End()
 	if foundation.DebugMode {
 		p.debugDoingSemantics = true
 	}

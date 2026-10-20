@@ -1451,11 +1451,46 @@ func DebugDescribeFocusTree(bc widgets.BuildContext) string {
 	return widgets.DebugDescribeFocusTree(bc)
 }
 
+// DebugDumpApp is widgets.DebugDumpApp.
+//
+// Flutter: widgets.dart DebugDumpApp
+func DebugDumpApp(bc widgets.BuildContext) {
+	widgets.DebugDumpApp(bc)
+}
+
 // DebugDumpFocusTree is widgets.DebugDumpFocusTree.
 //
 // Flutter: widgets.dart DebugDumpFocusTree
 func DebugDumpFocusTree(bc widgets.BuildContext) {
 	widgets.DebugDumpFocusTree(bc)
+}
+
+// DebugDumpLayerTree is widgets.DebugDumpLayerTree.
+//
+// Flutter: widgets.dart DebugDumpLayerTree
+func DebugDumpLayerTree(bc widgets.BuildContext) {
+	widgets.DebugDumpLayerTree(bc)
+}
+
+// DebugDumpPipelineOwnerTree is widgets.DebugDumpPipelineOwnerTree.
+//
+// Flutter: widgets.dart DebugDumpPipelineOwnerTree
+func DebugDumpPipelineOwnerTree(bc widgets.BuildContext) {
+	widgets.DebugDumpPipelineOwnerTree(bc)
+}
+
+// DebugDumpRenderTree is widgets.DebugDumpRenderTree.
+//
+// Flutter: widgets.dart DebugDumpRenderTree
+func DebugDumpRenderTree(bc widgets.BuildContext) {
+	widgets.DebugDumpRenderTree(bc)
+}
+
+// DebugDumpSemanticsTree is widgets.DebugDumpSemanticsTree.
+//
+// Flutter: widgets.dart DebugDumpSemanticsTree
+func DebugDumpSemanticsTree(bc widgets.BuildContext, order ...semantics.DebugSemanticsDumpOrder) {
+	widgets.DebugDumpSemanticsTree(bc, order...)
 }
 
 // DebugItemsHaveDuplicateKeys is widgets.DebugItemsHaveDuplicateKeys.
@@ -6705,6 +6740,20 @@ func NewParentDataWidgetBase[T rendering.ParentData](child widgets.Widget, opts 
 	return widgets.NewParentDataWidgetBase[T](child, opts...)
 }
 
+// NewPerformanceOverlay is widgets.NewPerformanceOverlay.
+//
+// Flutter: widgets.dart NewPerformanceOverlay
+func NewPerformanceOverlay(opts ...widgets.PerformanceOverlayOpts) *widgets.PerformanceOverlay {
+	return widgets.NewPerformanceOverlay(opts...)
+}
+
+// NewPerformanceOverlayAllEnabled is widgets.NewPerformanceOverlayAllEnabled.
+//
+// Flutter: widgets.dart NewPerformanceOverlayAllEnabled
+func NewPerformanceOverlayAllEnabled(opts ...widgets.PerformanceOverlayAllEnabledOpts) *widgets.PerformanceOverlay {
+	return widgets.NewPerformanceOverlayAllEnabled(opts...)
+}
+
 // NewPhysicalModel is widgets.NewPhysicalModel.
 //
 // Flutter: widgets.dart NewPhysicalModel
@@ -8686,6 +8735,21 @@ type ParentDataWidgetOf[T rendering.ParentData] = widgets.ParentDataWidgetOf[T]
 //
 // Flutter: widgets.dart PasteTextIntent
 type PasteTextIntent = widgets.PasteTextIntent
+
+// PerformanceOverlay is widgets.PerformanceOverlay.
+//
+// Flutter: widgets.dart PerformanceOverlay
+type PerformanceOverlay = widgets.PerformanceOverlay
+
+// PerformanceOverlayAllEnabledOpts is widgets.PerformanceOverlayAllEnabledOpts.
+//
+// Flutter: widgets.dart PerformanceOverlayAllEnabledOpts
+type PerformanceOverlayAllEnabledOpts = widgets.PerformanceOverlayAllEnabledOpts
+
+// PerformanceOverlayOpts is widgets.PerformanceOverlayOpts.
+//
+// Flutter: widgets.dart PerformanceOverlayOpts
+type PerformanceOverlayOpts = widgets.PerformanceOverlayOpts
 
 // PhysicalModel is widgets.PhysicalModel.
 //

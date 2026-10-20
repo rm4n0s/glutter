@@ -5,7 +5,8 @@
 //
 // Run it with: go run ./examples/layout
 //
-// Environment: GLUTTER_BACKEND=x11|wayland, GLUTTER_SCREENSHOT=<file.png>.
+// Environment: GLUTTER_BACKEND=x11|wayland, GLUTTER_SCREENSHOT=<file.png>,
+// GLUTTER_DEV_DEBUG_PAINT=1 to paint the box of every widget (DebugPaintSizeEnabled).
 package main
 
 import (
@@ -195,10 +196,19 @@ func (*layoutApp) Build(widgets.BuildContext) widgets.Widget {
 		widgets.NewColoredBox(surface, widgets.NewPadding(painting.NewEdgeInsetsAll(16), body)))
 }
 
+// debugFromEnv makes the debug flags that the environment asks for: GLUTTER_DEV_DEBUG_PAINT
+// paints the size of every box, as Flutter's debugPaintSizeEnabled does.
+func debugFromEnv(getenv func(string) string) *widgets.DebugOptions {
+	debug := widgets.NewDebugOptions()
+	debug.Rendering.PaintSizeEnabled = getenv("GLUTTER_DEV_DEBUG_PAINT") == "1"
+	return debug
+}
+
 func main() {
 	err := widgets.RunApp(newLayoutApp(), widgets.RunAppOpts{
 		AppID:  "dev.glutter.layout",
 		Window: widgets.WindowConfig{Title: "Glutter – layout", Size: ui.Size{Width: 960, Height: 480}},
+		Debug:  debugFromEnv(os.Getenv),
 	})
 	if err != nil {
 		if appErr, ok := errors.FromError(err); ok {
