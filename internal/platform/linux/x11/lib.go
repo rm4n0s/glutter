@@ -271,6 +271,8 @@ func loadXrandr() (*xrandr, error) {
 // xcursor holds the functions of libXcursor that load cursors.
 type xcursor struct {
 	libraryLoadCursor func(display, name uintptr) uint64
+	setTheme          func(display, name uintptr) int32
+	setDefaultSize    func(display uintptr, size int32) int32
 }
 
 func loadXcursor() (*xcursor, error) {
@@ -284,6 +286,8 @@ func loadXcursor() (*xcursor, error) {
 		symbol string
 	}{
 		{&l.libraryLoadCursor, "XcursorLibraryLoadCursor"},
+		{&l.setTheme, "XcursorSetTheme"},
+		{&l.setDefaultSize, "XcursorSetDefaultSize"},
 	} {
 		if err := lib.Bind(b.fptr, b.symbol); err != nil {
 			return nil, err

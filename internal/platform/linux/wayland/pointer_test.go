@@ -2,9 +2,11 @@ package wayland
 
 import (
 	"encoding/binary"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/rm4n0s/errors"
@@ -12,6 +14,7 @@ import (
 	"github.com/rm4n0s/glutter/internal/platform/linux/dl"
 	"github.com/rm4n0s/glutter/internal/platform/linux/input"
 	"github.com/rm4n0s/glutter/internal/platform/linux/wayland/fakecomp"
+	"github.com/rm4n0s/glutter/internal/platform/linux/wayland/wl"
 	"github.com/rm4n0s/glutter/ui"
 )
 
@@ -495,7 +498,7 @@ func TestCursorFailures(t *testing.T) {
 
 	// The theme has no such cursor.
 	err := e.onLoopErr(func() error {
-		_, _, err := e.p.cursors.find(platform.MouseCursorZoomOut)
+		_, _, err := e.p.cursors.find(platform.MouseCursorZoomOut, 1)
 		return err
 	})
 	assertRoute(t, err, "cursors.find.CursorNotFound")
@@ -510,7 +513,7 @@ func TestCursorFailures(t *testing.T) {
 		c.load = func() (*waylandCursor, error) {
 			return nil, errors.New("LibraryLoadFailed", "x", "names", []string{"libwayland-cursor.so.0"}, "dlerror", "missing")
 		}
-		_, _, err := c.find(platform.MouseCursorBasic)
+		_, _, err := c.find(platform.MouseCursorBasic, 1)
 		if !c.failed {
 			t.Error("a failed load is retried")
 		}
@@ -521,7 +524,7 @@ func TestCursorFailures(t *testing.T) {
 	err = e.onLoopErr(func() error {
 		c := newCursors(e.p)
 		c.api = &waylandCursor{themeLoad: func(uintptr, int32, uintptr) uintptr { return 0 }}
-		_, _, err := c.find(platform.MouseCursorBasic)
+		_, _, err := c.find(platform.MouseCursorBasic, 1)
 		return err
 	})
 	assertRoute(t, err, "cursors.find->cursors.loadTheme.CursorThemeFailed")
@@ -553,7 +556,7 @@ func TestCursorThemeSizeFromTheEnvironment(t *testing.T) {
 					gotSize, gotName = size, dl.GoString(name)
 					return 0
 				}}
-				_ = c.loadTheme() // fails: the fake returns no theme
+				_, _ = c.loadTheme(1) // fails: the fake returns no theme
 				return true
 			})
 			if gotSize != tt.want || gotName != "" {
@@ -574,7 +577,7 @@ func TestCursorThemeSizeFromTheEnvironment(t *testing.T) {
 			gotName = dl.GoString(name)
 			return 0
 		}}
-		_ = c.loadTheme()
+		_, _ = c.loadTheme(1)
 		return true
 	})
 	if gotName != "Adwaita" {
@@ -605,5 +608,144 @@ func assertRoute(t *testing.T, err error, route string) {
 	}
 	if !appErr.HasRoute(route) {
 		t.Errorf("unexpected failure path: %s, want %s", appErr.Route(), route)
+	}
+}
+
+// recordThemeLoads makes the cursors load the theme through a wrapper that records
+// the name and the size of every wl_cursor_theme_load. Call it before the pointer
+// enters.
+func recordThemeLoads(t *testing.T, e *keyEnv) func() []string {
+	t.Helper()
+	var mu sync.Mutex
+	var loads []string
+	e.onLoop(func() bool {
+		e.p.cursors.load = func() (*waylandCursor, error) {
+			real, err := loadWaylandCursor()
+			if err != nil {
+				return nil, err
+			}
+			wrapped := *real
+			wrapped.themeLoad = func(name uintptr, size int32, shm uintptr) uintptr {
+				mu.Lock()
+				loads = append(loads, fmt.Sprintf("%s@%d", dl.GoString(name), size))
+				mu.Unlock()
+				return real.themeLoad(name, size, shm)
+			}
+			return &wrapped, nil
+		}
+		return true
+	})
+	return func() []string {
+		mu.Lock()
+		defer mu.Unlock()
+		return append([]string(nil), loads...)
+	}
+}
+
+func TestCursorFromTheThemeIsLoadedAtTheScaleOfTheWindow(t *testing.T) {
+	if _, err := loadWaylandCursor(); err != nil {
+		t.Skipf("libwayland-cursor is not available: %v", err)
+	}
+	dir := t.TempDir()
+	writeXCursor(t, filepath.Join(dir, "glutter-test", "cursors", "left_ptr"), 48, 48, 8, 12)
+	useTheme(t, dir)
+
+	e := startKeyboardNoFocus(t, fakecomp.Config{Capabilities: capPointer, PreferredBufferScale: 2})
+	loads := recordThemeLoads(t, e)
+	e.srv.PointerEnter(e.surface, 1, 1)
+	e.srv.PointerFrame()
+	waitUntil(t, func() bool { return len(e.srv.RequestsWith("wl_pointer.set_cursor")) == 1 }, "the cursor was not set on enter")
+	// At scale 2 the theme is loaded at twice the size, the cursor surface has buffer
+	// scale 2 and the hotspot is in surface coordinates.
+	if got := loads(); len(got) != 1 || got[0] != "glutter-test@48" {
+		t.Errorf("theme loads = %v, want glutter-test@48", got)
+	}
+	if got := e.srv.RequestsWith("wl_pointer.set_cursor")[0]; !strings.HasSuffix(got, "hotspot=4,6") {
+		t.Errorf("set_cursor: %s, want the hotspot halved", got)
+	}
+	if got := e.srv.RequestsWith("wl_surface.set_buffer_scale 2"); len(got) < 2 { // the window's and the cursor's
+		t.Errorf("buffer scale requests = %v, want one for the cursor surface", got)
+	}
+
+	// The window gets the scale 1: the cursor is set again from a theme of size 24.
+	e.srv.SendPreferredBufferScale(1)
+	waitUntil(t, func() bool { return len(e.srv.RequestsWith("wl_pointer.set_cursor")) == 2 }, "the cursor was not set again for the new scale")
+	if got := loads(); len(got) != 2 || got[1] != "glutter-test@24" {
+		t.Errorf("theme loads = %v, want a second one at 24", got)
+	}
+	if got := e.srv.RequestsWith("wl_pointer.set_cursor")[1]; !strings.HasSuffix(got, "hotspot=8,12") {
+		t.Errorf("set_cursor: %s, want the whole hotspot", got)
+	}
+}
+
+func TestCursorThemeAndSizeFromTheSettings(t *testing.T) {
+	if _, err := loadWaylandCursor(); err != nil {
+		t.Skipf("libwayland-cursor is not available: %v", err)
+	}
+	dir := t.TempDir()
+	writeXCursor(t, filepath.Join(dir, "glutter-test", "cursors", "left_ptr"), 8, 8, 1, 2)
+	writeXCursor(t, filepath.Join(dir, "other", "cursors", "left_ptr"), 16, 16, 3, 4)
+	useTheme(t, dir)
+
+	e := startInput(t, capPointer, 0)
+	loads := recordThemeLoads(t, e)
+	e.srv.PointerEnter(e.surface, 1, 1)
+	e.srv.PointerFrame()
+	waitUntil(t, func() bool { return len(e.srv.RequestsWith("wl_pointer.set_cursor")) == 1 }, "the cursor was not set on enter")
+
+	// The settings win over the environment, and the cursor over the pointer changes.
+	e.onLoop(func() bool { e.p.cursors.configure("other", 36); return true })
+	waitUntil(t, func() bool { return len(e.srv.RequestsWith("wl_pointer.set_cursor")) == 2 }, "the cursor did not change with the settings")
+	if got := loads(); len(got) != 2 || got[0] != "glutter-test@24" || got[1] != "other@36" {
+		t.Errorf("theme loads = %v", got)
+	}
+	if got := e.srv.RequestsWith("wl_pointer.set_cursor")[1]; !strings.HasSuffix(got, "hotspot=3,4") {
+		t.Errorf("set_cursor: %s, want the cursor of the other theme", got)
+	}
+
+	// The same settings change nothing; empty settings go back to the environment.
+	e.onLoop(func() bool { e.p.cursors.configure("other", 36); return true })
+	e.settle()
+	if n := len(e.srv.RequestsWith("wl_pointer.set_cursor")); n != 2 {
+		t.Errorf("%d set_cursor requests after the same settings, want 2", n)
+	}
+	e.onLoop(func() bool { e.p.cursors.configure("", 0); return true })
+	waitUntil(t, func() bool { return len(e.srv.RequestsWith("wl_pointer.set_cursor")) == 3 }, "the cursor did not go back")
+	if got := loads(); len(got) != 3 || got[2] != "glutter-test@24" {
+		t.Errorf("theme loads = %v", got)
+	}
+}
+
+func TestEveryCursorHasItsShape(t *testing.T) {
+	// The values of wp_cursor_shape_device_v1.shape.
+	tests := []struct {
+		cursor platform.MouseCursor
+		shape  wl.WpCursorShapeDeviceV1Shape
+	}{
+		{platform.MouseCursorUnspecified, 1}, {platform.MouseCursorBasic, 1}, {platform.MouseCursorContextMenu, 2},
+		{platform.MouseCursorHelp, 3}, {platform.MouseCursorClick, 4}, {platform.MouseCursorProgress, 5},
+		{platform.MouseCursorWait, 6}, {platform.MouseCursorCell, 7}, {platform.MouseCursorPrecise, 8},
+		{platform.MouseCursorText, 9}, {platform.MouseCursorVerticalText, 10}, {platform.MouseCursorAlias, 11},
+		{platform.MouseCursorCopy, 12}, {platform.MouseCursorMove, 13}, {platform.MouseCursorNoDrop, 14},
+		{platform.MouseCursorForbidden, 15}, {platform.MouseCursorGrab, 16}, {platform.MouseCursorGrabbing, 17},
+		{platform.MouseCursorResizeRight, 18}, {platform.MouseCursorResizeUp, 19}, {platform.MouseCursorResizeUpRight, 20},
+		{platform.MouseCursorResizeUpLeft, 21}, {platform.MouseCursorResizeDown, 22}, {platform.MouseCursorResizeDownRight, 23},
+		{platform.MouseCursorResizeDownLeft, 24}, {platform.MouseCursorResizeLeft, 25}, {platform.MouseCursorResizeLeftRight, 26},
+		{platform.MouseCursorResizeUpDown, 27}, {platform.MouseCursorResizeUpRightDownLeft, 28},
+		{platform.MouseCursorResizeUpLeftDownRight, 29}, {platform.MouseCursorResizeColumn, 30}, {platform.MouseCursorResizeRow, 31},
+		{platform.MouseCursorAllScroll, 32}, {platform.MouseCursorZoomIn, 33}, {platform.MouseCursorZoomOut, 34},
+		{platform.MouseCursorDisappearing, 1},
+	}
+	covered := map[platform.MouseCursor]bool{platform.MouseCursorNone: true}
+	for _, tt := range tests {
+		if got := cursorShapes[tt.cursor]; got != tt.shape {
+			t.Errorf("%s has shape %d, want %d", tt.cursor, got, tt.shape)
+		}
+		covered[tt.cursor] = true
+	}
+	for c := platform.MouseCursorUnspecified; c.Valid(); c++ {
+		if !covered[c] {
+			t.Errorf("%s is not in the table", c)
+		}
 	}
 }

@@ -1,6 +1,8 @@
 package x11
 
 import (
+	"reflect"
+	"slices"
 	"testing"
 	"time"
 
@@ -87,6 +89,8 @@ type fakeCursors struct {
 	ids     map[string]uint64
 	freed   []uint64
 	images  int
+	themes  []string // the names given to XcursorSetTheme
+	sizes   []int32  // the sizes given to XcursorSetDefaultSize
 }
 
 func newFakeCursors(ids map[string]uint64) *fakeCursors {
@@ -114,8 +118,17 @@ func newFakeCursors(ids map[string]uint64) *fakeCursors {
 		freeCursor: func(_ uintptr, id uint64) int32 { f.freed = append(f.freed, id); return 0 },
 	}}
 	f.c = newCursors(p)
+	f.c.getenv = func(string) string { return "" }
 	f.c.load = func() (*xcursor, error) {
 		return &xcursor{
+			setTheme: func(_ uintptr, name uintptr) int32 {
+				f.themes = append(f.themes, dl.GoString(name))
+				return 1
+			},
+			setDefaultSize: func(_ uintptr, size int32) int32 {
+				f.sizes = append(f.sizes, size)
+				return 1
+			},
 			libraryLoadCursor: func(_ uintptr, name uintptr) uint64 {
 				n := dl.GoString(name)
 				f.loads = append(f.loads, n)
@@ -146,7 +159,7 @@ func TestCursorsLoadOnceAndSetOnTheWindow(t *testing.T) {
 func TestCursorsTryTheNamesInOrder(t *testing.T) {
 	// The theme has only the old X name for the pointing hand.
 	f := newFakeCursors(map[string]uint64{"hand2": 21})
-	id, err := f.c.find(platform.MouseCursorClick)
+	id, err := f.c.find(platform.MouseCursorClick, 24)
 	if err != nil || id != 21 {
 		t.Fatalf("find = %d, %v", id, err)
 	}
@@ -157,7 +170,7 @@ func TestCursorsTryTheNamesInOrder(t *testing.T) {
 
 func TestCursorNotFoundIsReportedOnceAndFallsBackToTheDefault(t *testing.T) {
 	f := newFakeCursors(map[string]uint64{})
-	_, err := f.c.find(platform.MouseCursorZoomIn)
+	_, err := f.c.find(platform.MouseCursorZoomIn, 24)
 	assertRoute(t, err, "cursors.find.CursorNotFound")
 	if appErr, _ := errors.FromError(err); appErr.Metadata["cursor"] != "MouseCursorZoomIn" {
 		t.Errorf("metadata %v", appErr.Metadata)
@@ -183,7 +196,7 @@ func TestCursorLibraryFailureIsReportedOnce(t *testing.T) {
 		calls++
 		return nil, errors.New("LibraryLoadFailed", "x", "names", []string{"libXcursor.so.1"}, "dlerror", "missing")
 	}
-	_, err := f.c.find(platform.MouseCursorBasic)
+	_, err := f.c.find(platform.MouseCursorBasic, 24)
 	assertRoute(t, err, "cursors.find.CursorLibraryFailed")
 	f.c.apply(&window{xid: 1}, platform.MouseCursorBasic)
 	f.c.apply(&window{xid: 1}, platform.MouseCursorText)
@@ -215,11 +228,11 @@ func TestHiddenCursorIsAnEmptyBitmap(t *testing.T) {
 func TestCursorsCloseFreesTheLoadedOnes(t *testing.T) {
 	f := newFakeCursors(map[string]uint64{"default": 11, "text": 12})
 	for _, c := range []platform.MouseCursor{platform.MouseCursorBasic, platform.MouseCursorText} {
-		if _, err := f.c.find(c); err != nil {
+		if _, err := f.c.find(c, 24); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, err := f.c.find(platform.MouseCursorZoomIn); err == nil { // a miss: nothing to free
+	if _, err := f.c.find(platform.MouseCursorZoomIn, 24); err == nil { // a miss: nothing to free
 		t.Fatal("a cursor that the theme lacks was found")
 	}
 	f.c.close()
@@ -277,5 +290,78 @@ func TestNewWindowFailsWhenTheServerCreatesNoWindow(t *testing.T) {
 	assertRoute(t, err, "Platform.NewWindow.X11WindowFailed")
 	if created != 1 || len(p.windows) != 0 {
 		t.Errorf("created %d windows, %d registered; want 1 and 0", created, len(p.windows))
+	}
+}
+
+func TestCursorSizeAndThemeFollowTheSettingsAndTheScale(t *testing.T) {
+	tests := []struct {
+		name      string
+		env       map[string]string
+		theme     string
+		size      int
+		scale     float64
+		wantSize  int32
+		wantTheme []string
+	}{
+		{"defaults", nil, "", 0, 1, 24, nil},
+		{"environment", map[string]string{"XCURSOR_SIZE": "32", "XCURSOR_THEME": "Adwaita"}, "", 0, 1, 32, []string{"Adwaita"}},
+		{"bad size in the environment", map[string]string{"XCURSOR_SIZE": "big"}, "", 0, 1, 24, nil},
+		{"settings win", map[string]string{"XCURSOR_SIZE": "32", "XCURSOR_THEME": "Adwaita"}, "Bibata", 48, 1, 48, []string{"Bibata"}},
+		{"scale 2", nil, "", 0, 2, 48, nil},
+		{"fractional scale", nil, "", 0, 1.5, 36, nil},
+		{"settings and scale", nil, "Bibata", 36, 1.75, 63, []string{"Bibata"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newFakeCursors(map[string]uint64{"default": 11})
+			f.c.getenv = func(k string) string { return tt.env[k] }
+			f.c.themeName, f.c.baseSize = tt.theme, int32(tt.size)
+			f.c.apply(&window{xid: 1, scale: tt.scale}, platform.MouseCursorBasic)
+			if len(f.sizes) != 1 || f.sizes[0] != tt.wantSize {
+				t.Errorf("sizes = %v, want [%d]", f.sizes, tt.wantSize)
+			}
+			if !reflect.DeepEqual(f.themes, tt.wantTheme) {
+				t.Errorf("themes = %v, want %v", f.themes, tt.wantTheme)
+			}
+		})
+	}
+}
+
+func TestCursorsAreLoadedAgainForAnotherScaleOrSettings(t *testing.T) {
+	f := newFakeCursors(map[string]uint64{"default": 11})
+	one, two := &window{xid: 1, scale: 1}, &window{xid: 2, scale: 2}
+	f.c.p.windows = map[uint64]*window{1: one, 2: two}
+	f.c.apply(one, platform.MouseCursorBasic)
+	f.c.apply(two, platform.MouseCursorBasic)
+	f.c.apply(one, platform.MouseCursorBasic) // cached
+	if want := []int32{24, 48}; !reflect.DeepEqual(f.sizes, want) {
+		t.Errorf("sizes = %v, want one load per size %v", f.sizes, want)
+	}
+
+	// New settings free the cursors and set them again on every window.
+	f.defined, f.freed = nil, nil
+	f.c.configure("Bibata", 32)
+	if len(f.freed) != 2 {
+		t.Errorf("freed %v, want the two cursors of the old settings", f.freed)
+	}
+	if len(f.defined) != 2 {
+		t.Errorf("defined %v, want both windows to get a cursor", f.defined)
+	}
+	if got := f.themes; len(got) != 1 || got[0] != "Bibata" {
+		t.Errorf("themes = %v", got)
+	}
+	got := slices.Sorted(slices.Values(f.sizes[len(f.sizes)-2:])) // the windows are visited in no order
+	if !reflect.DeepEqual(got, []int32{32, 64}) {
+		t.Errorf("sizes after the settings = %v, want 32 and 64", got)
+	}
+	// The same settings change nothing; settings without a theme go back to the default.
+	f.defined = nil
+	f.c.configure("Bibata", 32)
+	if len(f.defined) != 0 {
+		t.Error("the same settings set the cursors again")
+	}
+	f.c.configure("", 0)
+	if got := f.themes; len(got) != 2 || got[1] != "default" {
+		t.Errorf("themes = %v, want the default theme after the settings lost theirs", got)
 	}
 }

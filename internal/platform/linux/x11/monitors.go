@@ -227,6 +227,9 @@ func (w *window) updateScale() {
 	}
 	changed := scale != w.scale
 	w.scale, w.display, w.hasDisplay = scale, id, ok
+	if changed {
+		w.p.cursors.apply(w, w.cursor) // the cursor has the size of the new scale
+	}
 	if w.mapped {
 		w.reportMetrics()
 		if changed {

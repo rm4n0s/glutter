@@ -64,12 +64,18 @@ type cursors struct {
 	p *Platform
 
 	// The XCursor path. api is loaded on first use; a theme that cannot be used
-	// is not tried again.
+	// is not tried again. A theme is loaded for each integer scale in use, at the
+	// cursor size times the scale, so the cursor is sharp on every output.
 	api      *waylandCursor
-	theme    uintptr
+	themes   map[int32]uintptr // by scale
 	failed   bool
 	surface  *wl.WlSurface
-	wrappers map[uintptr]*wl.WlBuffer // the buffers of the theme, by address
+	scale    int32                    // the buffer scale of the cursor surface
+	wrappers map[uintptr]*wl.WlBuffer // the buffers of the themes, by address
+	// themeName and baseSize come from the system settings (configure); empty and 0
+	// mean XCURSOR_THEME, XCURSOR_SIZE and then 24.
+	themeName string
+	baseSize  int32
 	// getenv reads the environment, and load opens libwayland-cursor; tests
 	// replace them.
 	getenv func(string) string
@@ -77,7 +83,7 @@ type cursors struct {
 }
 
 func newCursors(p *Platform) *cursors {
-	return &cursors{p: p, wrappers: map[uintptr]*wl.WlBuffer{}, getenv: os.Getenv, load: loadWaylandCursor}
+	return &cursors{p: p, themes: map[int32]uintptr{}, wrappers: map[uintptr]*wl.WlBuffer{}, getenv: os.Getenv, load: loadWaylandCursor}
 }
 
 // apply sets the cursor for the pointer, which must be in a window: the serial of
@@ -104,7 +110,11 @@ func (c *cursors) applyFromTheme(pt *pointer, cursor platform.MouseCursor) error
 	if c.failed {
 		return nil // already reported
 	}
-	image, buffer, err := c.find(cursor)
+	scale := int32(1)
+	if pt.focus != nil {
+		scale = max(1, (pt.focus.scale+119)/120) // the integer scale above a fractional one
+	}
+	image, buffer, err := c.find(cursor, scale)
 	if err != nil {
 		return err
 	}
@@ -116,12 +126,15 @@ func (c *cursors) applyFromTheme(pt *pointer, cursor platform.MouseCursor) error
 		wrapper = c.p.sess.conn.WrapBuffer(buffer)
 		c.wrappers[buffer] = wrapper
 	}
-	// TODO(step 3.7): load the theme at the scale of the output and set the
-	// buffer scale to it.
+	if c.scale != scale {
+		c.surface.SetBufferScale(scale)
+		c.scale = scale
+	}
 	c.surface.Attach(wrapper, 0, 0)
-	c.surface.Damage(0, 0, int32(image.width), int32(image.height))
+	c.surface.Damage(0, 0, (int32(image.width)+scale-1)/scale, (int32(image.height)+scale-1)/scale)
 	c.surface.Commit()
-	pt.obj.SetCursor(pt.serial, c.surface, int32(image.hotspotX), int32(image.hotspotY))
+	// The hotspot is in the surface's coordinates, the image in pixels.
+	pt.obj.SetCursor(pt.serial, c.surface, int32(image.hotspotX)/scale, int32(image.hotspotY)/scale)
 	return nil
 }
 
@@ -129,16 +142,18 @@ func (c *cursors) applyFromTheme(pt *pointer, cursor platform.MouseCursor) error
 // buffer. It fails with CursorLibraryFailed when libwayland-cursor is unusable
 // (reported once), CursorThemeFailed when the theme cannot be loaded (also once),
 // and CursorNotFound when the theme has none of the names of the cursor.
-func (c *cursors) find(cursor platform.MouseCursor) (wlCursorImage, uintptr, error) {
-	if c.theme == 0 {
-		if err := c.loadTheme(); err != nil {
+func (c *cursors) find(cursor platform.MouseCursor, scale int32) (wlCursorImage, uintptr, error) {
+	theme := c.themes[scale]
+	if theme == 0 {
+		var err error
+		if theme, err = c.loadTheme(scale); err != nil {
 			c.failed = true
 			return wlCursorImage{}, 0, err
 		}
 	}
 	names := linux.CursorNames(cursor)
 	for _, name := range names {
-		if image, buffer, ok := c.api.cursorImage(c.theme, name); ok {
+		if image, buffer, ok := c.api.cursorImage(theme, name); ok {
 			return image, buffer, nil
 		}
 	}
@@ -146,7 +161,32 @@ func (c *cursors) find(cursor platform.MouseCursor) (wlCursorImage, uintptr, err
 		"cursor", cursor.String(), "names", names)
 }
 
-func (c *cursors) loadTheme() error {
+// size is the cursor size in pixels at scale 1: the settings', else XCURSOR_SIZE,
+// else 24.
+func (c *cursors) size() int32 {
+	if c.baseSize > 0 {
+		return c.baseSize
+	}
+	if v := c.getenv("XCURSOR_SIZE"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return int32(n)
+		}
+	}
+	return defaultCursorSize
+}
+
+// name is the theme name: the settings', else XCURSOR_THEME, else "" for the default
+// theme.
+func (c *cursors) name() string {
+	if c.themeName != "" {
+		return c.themeName
+	}
+	return c.getenv("XCURSOR_THEME")
+}
+
+// loadTheme loads the theme for an integer scale: at the cursor size times the
+// scale.
+func (c *cursors) loadTheme(scale int32) (uintptr, error) {
 	if c.api == nil {
 		api, err := c.load()
 		if err != nil {
@@ -154,26 +194,57 @@ func (c *cursors) loadTheme() error {
 			if appErr, ok := errors.FromError(err); ok {
 				md = appErr.Metadata
 			}
-			return errors.New("CursorLibraryFailed", "could not load libwayland-cursor", "dlerror", md["dlerror"], "names", md["names"])
+			return 0, errors.New("CursorLibraryFailed", "could not load libwayland-cursor", "dlerror", md["dlerror"], "names", md["names"])
 		}
 		c.api = api
 	}
-	size := int32(defaultCursorSize)
-	if v := c.getenv("XCURSOR_SIZE"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n > 0 {
-			size = int32(n)
-		}
-	}
+	size := c.size() * scale
 	name := uintptr(0) // NULL: the default theme
-	if v := c.getenv("XCURSOR_THEME"); v != "" {
+	if v := c.name(); v != "" {
 		name = dl.CString(v)
 		defer dl.Free(name)
 	}
-	c.theme = c.api.themeLoad(name, size, c.p.sess.shm.Ptr())
-	if c.theme == 0 {
-		return errors.New("CursorThemeFailed", "wl_cursor_theme_load failed", "theme", c.getenv("XCURSOR_THEME"), "size", size)
+	theme := c.api.themeLoad(name, size, c.p.sess.shm.Ptr())
+	if theme == 0 {
+		return 0, errors.New("CursorThemeFailed", "wl_cursor_theme_load failed", "theme", c.name(), "size", size)
 	}
-	return nil
+	c.themes[scale] = theme
+	return theme, nil
+}
+
+// configure sets the theme and the size from the system settings (SPEC §8.8); an
+// empty name and a size of 0 mean the environment and then the defaults. A change
+// loads the themes again, and the cursor over the window with the pointer is set
+// again.
+//
+// TODO(step 14.5): the platform calls it with the settings it reads and follows.
+func (c *cursors) configure(theme string, size int) {
+	if theme == c.themeName && int32(size) == c.baseSize {
+		return
+	}
+	c.themeName, c.baseSize = theme, int32(max(size, 0))
+	c.destroyThemes()
+	c.failed = false
+	if pt := c.p.pointer; pt != nil && pt.focus != nil {
+		c.apply(pt, pt.focus.cursor)
+	}
+}
+
+// destroyThemes destroys the themes with their buffers.
+func (c *cursors) destroyThemes() {
+	for scale, theme := range c.themes {
+		c.api.themeDestroy(theme)
+		delete(c.themes, scale)
+	}
+	clear(c.wrappers)
+}
+
+// scaleChanged sets the cursor again when the window with the pointer got another
+// scale: the theme for that scale draws it.
+func (c *cursors) scaleChanged(w *window) {
+	if pt := c.p.pointer; pt != nil && pt.focus == w && pt.shape == nil && w.cursor != platform.MouseCursorNone {
+		c.apply(pt, w.cursor)
+	}
 }
 
 // close destroys the cursor surface and the theme with its buffers.
@@ -182,9 +253,5 @@ func (c *cursors) close() {
 		c.surface.Destroy()
 		c.surface = nil
 	}
-	if c.theme != 0 {
-		c.api.themeDestroy(c.theme)
-		c.theme = 0
-	}
-	clear(c.wrappers)
+	c.destroyThemes()
 }

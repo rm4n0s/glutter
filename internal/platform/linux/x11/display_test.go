@@ -486,10 +486,10 @@ func TestDisplayCursors(t *testing.T) {
 	var basic, hidden uint64
 	var missing []string
 	e.onLoop(func() {
-		basic = e.p.cursors.loaded[platform.MouseCursorBasic]
+		basic = loadedCursor(e.p.cursors, platform.MouseCursorBasic)
 		hidden = e.p.cursors.invisible
 		for c := platform.MouseCursorBasic; c.Valid(); c++ {
-			if e.p.cursors.loaded[c] == 0 {
+			if loadedCursor(e.p.cursors, c) == 0 {
 				missing = append(missing, c.String())
 			}
 		}
@@ -604,5 +604,36 @@ func TestDisplayWindowIsMadeInLogicalPixels(t *testing.T) {
 	m, _, _, _, _ := e.h.snapshot()
 	if got := m[len(m)-1]; got.DevicePixelRatio != 2 || got.PhysicalSize != (ui.Size{Width: 800, Height: 600}) {
 		t.Errorf("a 400x300 window at 192 dpi has metrics %+v, want 800x600 pixels at 2", got)
+	}
+}
+
+// loadedCursor is the X cursor ID of a cursor that was loaded, at any size, or 0.
+func loadedCursor(c *cursors, cursor platform.MouseCursor) uint64 {
+	for key, id := range c.loaded {
+		if key.cursor == cursor && id != 0 {
+			return id
+		}
+	}
+	return 0
+}
+
+func TestDisplayCursorsHaveTheSizeOfTheScale(t *testing.T) {
+	setXftDPI(t, 192)
+	t.Cleanup(func() { setXftDPI(t, 96) })
+	t.Setenv("XCURSOR_SIZE", "")
+	e := startDisplay(t, windowConfig())
+	e.waitMapped()
+	e.onLoop(func() { e.win.SetCursor(platform.MouseCursorText); e.p.x.sync(e.p.display, 0) })
+	var sizes []int32
+	e.onLoop(func() {
+		for key := range e.p.cursors.loaded {
+			sizes = append(sizes, key.size)
+		}
+	})
+	if len(sizes) != 1 || sizes[0] != 48 {
+		t.Errorf("cursors loaded at sizes %v, want one at 48 (24 at a scale of 2)", sizes)
+	}
+	if e.p.xErrors != 0 {
+		t.Errorf("the X server reported %d errors", e.p.xErrors)
 	}
 }

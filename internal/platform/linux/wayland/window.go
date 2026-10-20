@@ -512,6 +512,9 @@ func (w *window) effectiveScale() (scale int32, fractional bool) {
 // wl_surface.set_buffer_scale says so. It sets physW, physH and scale.
 func (w *window) applyScale() {
 	scale, fractional := w.effectiveScale()
+	if scale != w.scale {
+		defer w.p.cursors.scaleChanged(w)
+	}
 	w.scale = scale
 	if fractional {
 		w.physW, w.physH = (w.width*scale+119)/120, (w.height*scale+119)/120
