@@ -1,0 +1,558 @@
+# Glutter for Flutter developers
+
+Glutter has Flutter's framework API on its own engine, so what you know carries over: the
+widget tree, `BuildContext`, `setState`, `Theme.of`, `Navigator`, animation controllers,
+`CustomPaint`. This page shows ten things side by side, in Dart and in Go. The rules behind
+them are in [SPEC §12](SPEC.md#12-api-conventions-flutter--go); this is the short version.
+
+**The rules in one paragraph.** A widget is made by `NewX(required..., opts ...XOpts)`. The
+parameters that Flutter marks `required` are positional, in Flutter's order, except `child`
+and `children`, which come last; the rest are fields of the options struct `XOpts`, named as
+in Flutter. A nullable parameter whose `null` is not Go's zero value is `m.Some(v)`
+(`foundation.Opt[T]`). Every enum's zero value is `XUnspecified`, which means "the widget's
+default". A named constructor `ListView.builder` is `NewListViewBuilder`; a static method
+`Theme.of` is `ThemeOf`; `maybeOf` returns `(value, ok)`. Widgets are immutable and their
+fields are read through methods (`w.Title()`). Apps import one package:
+
+```go
+import m "github.com/rm4n0s/glutter/material"
+```
+
+Each Go snippet below is checked by `go vet` in the test of this directory
+(`docs/docs_test.go`). The imports that they use, and that are left out for brevity, are
+`m` (`material`), `foundation`, `ui`, `painting`, `rendering`, `animation`, `context`,
+`strconv` and `time`.
+
+## 1. A widget without state
+
+Flutter:
+
+```dart
+class Greeting extends StatelessWidget {
+  const Greeting({super.key, required this.name});
+  final String name;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Text('Hello, $name', style: Theme.of(context).textTheme.titleLarge),
+    );
+  }
+}
+```
+
+Glutter:
+
+```go
+type Greeting struct {
+	m.StatelessWidget
+	name string
+}
+
+func NewGreeting(name string, opts ...m.WidgetOpts) *Greeting {
+	return &Greeting{StatelessWidget: m.NewStatelessWidgetBase(opts...), name: name}
+}
+
+func (g *Greeting) Name() string { return g.name }
+
+func (g *Greeting) Build(bc m.BuildContext) m.Widget {
+	return m.NewPadding(m.NewEdgeInsetsAll(16),
+		m.NewText("Hello, "+g.name, m.TextOpts{Style: m.ThemeOf(bc).TextTheme.TitleLarge}))
+}
+```
+
+The widget embeds `m.StatelessWidget` (Flutter's superclass), and `key` is the `Key` field of
+`m.WidgetOpts`, which the constructor passes on. `Theme.of(context).textTheme.titleLarge` is
+`m.ThemeOf(bc).TextTheme.TitleLarge`: a function for the static method, an exported field for
+the property.
+
+## 2. A widget with state
+
+Flutter:
+
+```dart
+class Counter extends StatefulWidget {
+  const Counter({super.key});
+  @override
+  State<Counter> createState() => _CounterState();
+}
+
+class _CounterState extends State<Counter> {
+  int _count = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextButton(
+      onPressed: () => setState(() => _count++),
+      child: Text('Pushed $_count times'),
+    );
+  }
+}
+```
+
+Glutter:
+
+```go
+type Counter struct{ m.StatefulWidget }
+
+func NewCounter(opts ...m.WidgetOpts) *Counter {
+	return &Counter{StatefulWidget: m.NewStatefulWidgetBase(opts...)}
+}
+
+func (c *Counter) CreateState() m.State { return &counterState{} }
+
+type counterState struct {
+	m.StateOf[*Counter]
+	count int
+}
+
+func (s *counterState) Build(bc m.BuildContext) m.Widget {
+	return m.NewTextButton(
+		func() { s.SetState(func() { s.count++ }) },
+		m.NewText("Pushed "+strconv.Itoa(s.count)+" times"))
+}
+```
+
+`State<Counter>` is `m.StateOf[*Counter]`, which gives `s.Widget()` (Flutter's `widget`),
+`s.Context()`, `s.SetState(...)` and the lifecycle methods you override (`InitState`,
+`DidUpdateWidget`, `Dispose`). `onPressed` is a required parameter, so it is positional, and
+`nil` disables the button, as `null` does in Flutter.
+
+## 3. Layout, with options
+
+Flutter:
+
+```dart
+Column(
+  crossAxisAlignment: CrossAxisAlignment.start,
+  children: [
+    const Text('Title'),
+    const SizedBox(height: 8),
+    Row(children: [
+      const Expanded(child: Text('Left')),
+      Container(width: 80, color: Colors.amber, child: const Text('Right')),
+    ]),
+  ],
+)
+```
+
+Glutter:
+
+```go
+func layout() m.Widget {
+	return m.NewColumn([]m.Widget{
+		m.NewText("Title"),
+		m.NewSizedBox(nil, m.SizedBoxOpts{Height: m.Some(8.0)}),
+		m.NewRow([]m.Widget{
+			m.NewExpanded(m.NewText("Left")),
+			m.NewContainer(m.NewText("Right"), m.ContainerOpts{
+				Width: m.Some(80.0),
+				Color: m.Some(m.Colors.Amber.Primary),
+			}),
+		}),
+	}, m.ColumnOpts{CrossAxisAlignment: m.CrossAxisAlignmentStart})
+}
+```
+
+`children` is positional and the first argument because `Column` has nothing required before
+it; `child` of `Expanded` and `Container` is the first positional argument as well, and `nil`
+stands for "no child". `width: 80` is `m.Some(80.0)`, since a `null` width means "not
+constrained" and `0` is a width. The enum is `m.CrossAxisAlignmentStart`.
+
+## 4. Named constructors and builders
+
+Flutter:
+
+```dart
+ListView.builder(
+  itemCount: names.length,
+  itemBuilder: (context, i) => ListTile(
+    leading: const Icon(Icons.person),
+    title: Text(names[i]),
+    onTap: () => debugPrint('tapped $i'),
+  ),
+)
+```
+
+Glutter:
+
+```go
+func nameList(names []string) m.Widget {
+	return m.NewListViewBuilder(func(bc m.BuildContext, i int) m.Widget {
+		return m.NewListTile(m.ListTileOpts{
+			Leading: m.NewIcon(m.Icons.Person()),
+			Title:   m.NewText(names[i]),
+			OnTap:   func() { println("tapped", i) },
+		})
+	}, m.ListViewOpts{ItemCount: m.Some(len(names))})
+}
+```
+
+`ListView.builder` is `NewListViewBuilder`; the builder is a required parameter and so is
+positional. `Icons.person` is the method `m.Icons.Person()` (SPEC §12.10 says why: 8,800 icons
+as fields make the Go compiler run out of memory).
+
+## 5. Inherited data and `of`
+
+Flutter:
+
+```dart
+Widget build(BuildContext context) {
+  final scheme = Theme.of(context).colorScheme;
+  final width = MediaQuery.sizeOf(context).width;
+  final brightness = Theme.maybeBrightnessOf(context);
+  return Container(
+    color: width > 600 ? scheme.primaryContainer : scheme.surface,
+    child: TextButton(
+      onPressed: () => Navigator.of(context).pop(),
+      child: const Text('Close'),
+    ),
+  );
+}
+```
+
+Glutter:
+
+```go
+func buildResponsive(bc m.BuildContext) m.Widget {
+	scheme := m.ThemeOf(bc).ColorScheme
+	width := m.MediaQuerySizeOf(bc).Width
+	brightness, haveTheme := m.ThemeMaybeBrightnessOf(bc)
+	_, _ = brightness, haveTheme
+	color := scheme.Surface()
+	if width > 600 {
+		color = scheme.PrimaryContainer()
+	}
+	return m.NewContainer(
+		m.NewTextButton(func() { m.NavigatorPop(bc) }, m.NewText("Close")),
+		m.ContainerOpts{Color: m.Some(color)})
+}
+```
+
+The colors of a `ColorScheme` are methods (`scheme.Surface()`), because the scheme computes the
+ones that were not set from the others. Static methods are functions named after the class (`ThemeOf`, `NavigatorPop`), `of` and the
+aspect-specific `sizeOf` keep their meaning, and `maybeOf` returns a second value that says
+whether there was an ancestor, so there is no `null` to check. `Navigator.of(context).pop()`
+has the shortcut `NavigatorPop(bc)`; the result of a route, which in Dart is the `Future` of
+the push, is a channel (next example).
+
+## 6. Navigation and results
+
+Flutter:
+
+```dart
+Future<void> pick(BuildContext context) async {
+  final color = await Navigator.of(context).push<String>(
+    MaterialPageRoute(builder: (context) => const PickerPage()),
+  );
+  if (color != null) setState(() => picked = color);
+}
+```
+
+Glutter:
+
+```go
+type Picker struct{ m.StatefulWidget }
+
+type pickerState struct {
+	m.StateOf[*Picker]
+	picked string
+}
+
+func (s *pickerState) pick() {
+	result := m.NavigatorPush(s.Context(), m.NewMaterialPageRoute(func(bc m.BuildContext) m.Widget {
+		return m.NewScaffold(m.ScaffoldOpts{
+			Body: m.NewTextButton(func() { m.NavigatorPop(bc, "blue") }, m.NewText("Blue")),
+		})
+	}))
+	s.Go(func(ctx context.Context) {
+		select {
+		case v := <-result:
+			if color, ok := v.(string); ok {
+				s.SetState(func() { s.picked = color })
+			}
+		case <-ctx.Done():
+		}
+	})
+}
+```
+
+A route's result is not generic: `NavigatorPush` returns a `<-chan any` that gets the value
+once and is closed. Waiting for it is waiting on a channel, and `State.Go` runs the goroutine
+for you: its `ctx` ends when the state is disposed, so nothing outlives the widget. Only the
+UI goroutine may touch the framework, so the goroutine hands its result over with
+`SetState` (SPEC §13).
+
+## 7. Animation
+
+Flutter:
+
+```dart
+class _PulseState extends State<Pulse> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 1),
+  )..repeat(reverse: true);
+  late final Animation<double> _scale = Tween(begin: 0.7, end: 1.2)
+      .animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      ScaleTransition(scale: _scale, child: widget.child);
+}
+```
+
+Glutter:
+
+```go
+type Pulse struct {
+	m.StatefulWidget
+	child m.Widget
+}
+
+func NewPulse(child m.Widget, opts ...m.WidgetOpts) *Pulse {
+	return &Pulse{StatefulWidget: m.NewStatefulWidgetBase(opts...), child: child}
+}
+
+func (p *Pulse) CreateState() m.State { return &pulseState{} }
+
+type pulseState struct {
+	m.StateOf[*Pulse]
+	m.SingleTickerProvider
+	controller *animation.AnimationController
+	curved     *animation.CurvedAnimation
+	scale      animation.Animation[float64]
+}
+
+func (s *pulseState) InitState() {
+	s.controller = animation.NewAnimationController(s, animation.AnimationControllerOpts{
+		Duration: m.Some(time.Second),
+	})
+	s.controller.Repeat(animation.RepeatOpts{Reverse: true})
+	s.curved = animation.NewCurvedAnimation(s.controller, animation.Curves.EaseInOut)
+	s.scale = animation.NewTween(0.7, 1.2).Animate(s.curved)
+}
+
+func (s *pulseState) Dispose() {
+	s.curved.Dispose()
+	s.controller.Dispose()
+}
+
+func (s *pulseState) Build(bc m.BuildContext) m.Widget {
+	return m.NewScaleTransition(s.scale, s.Widget().child)
+}
+```
+
+The mixin `SingleTickerProviderStateMixin` is the embedded `m.SingleTickerProvider`, and
+`vsync: this` is the state itself, the first argument. Go has no `late final`, so the fields
+are made in `InitState`. A `Tween` is generic (`NewTween(0.7, 1.2)` is a `*Tween[float64]`),
+and `Curves.easeInOut` is the read-only value `animation.Curves.EaseInOut`. You dispose what
+you made, as in Flutter; the debug build tells you about a controller that is left over.
+
+## 8. Asynchronous data
+
+Flutter:
+
+```dart
+FutureBuilder<String>(
+  future: fetchGreeting(),
+  builder: (context, snapshot) {
+    if (snapshot.hasError) return Text('Error: ${snapshot.error}');
+    if (!snapshot.hasData) return const CircularProgressIndicator();
+    return Text(snapshot.data!);
+  },
+)
+```
+
+Glutter:
+
+```go
+func greeting() m.Widget {
+	return m.NewFutureBuilder(func(ctx context.Context) (string, error) {
+		return fetchGreeting(ctx)
+	}, func(bc m.BuildContext, snapshot m.AsyncSnapshot[string]) m.Widget {
+		if snapshot.HasError() {
+			return m.NewText("Error: " + snapshot.Error().Error())
+		}
+		if !snapshot.HasData() {
+			return m.NewCircularProgressIndicator()
+		}
+		return m.NewText(snapshot.Data())
+	})
+}
+
+func fetchGreeting(ctx context.Context) (string, error) {
+	select {
+	case <-time.After(time.Second):
+		return "Hello", nil
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+}
+```
+
+A `Future` is a function that takes a `context.Context` and returns a value and an error (a
+`Stream` is a `<-chan T`). The widget runs the function on its own goroutine, cancels the
+context when it is disposed, and builds with the snapshot on the UI thread. Everything that
+does I/O takes a `ctx` first, as in the rest of Go.
+
+## 9. Text input and forms
+
+Flutter:
+
+```dart
+final _formKey = GlobalKey<FormState>();
+final _controller = TextEditingController();
+
+Form(
+  key: _formKey,
+  child: Column(children: [
+    TextFormField(
+      controller: _controller,
+      decoration: const InputDecoration(labelText: 'Name'),
+      validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
+    ),
+    ElevatedButton(
+      onPressed: () {
+        if (_formKey.currentState!.validate()) save(_controller.text);
+      },
+      child: const Text('Save'),
+    ),
+  ]),
+)
+```
+
+Glutter:
+
+```go
+type nameForm struct {
+	m.StatefulWidget
+}
+
+func (f *nameForm) CreateState() m.State { return &nameFormState{} }
+
+type nameFormState struct {
+	m.StateOf[*nameForm]
+	formKey    *m.GlobalKey[*m.FormState]
+	controller *m.TextEditingController
+}
+
+func (s *nameFormState) InitState() {
+	s.formKey = m.NewGlobalKey[*m.FormState]()
+	s.controller = m.NewTextEditingController()
+}
+
+func (s *nameFormState) Dispose() { s.controller.Dispose() }
+
+func (s *nameFormState) Build(bc m.BuildContext) m.Widget {
+	return m.NewForm(m.NewColumn([]m.Widget{
+		m.NewTextFormField(m.TextFormFieldOpts{
+			Controller: s.controller,
+			Decoration: ptr(m.NewInputDecoration(m.InputDecorationOpts{LabelText: m.Some("Name")})),
+			Validator: func(v m.Opt[string]) m.Opt[string] {
+				if text, ok := v.Get(); !ok || text == "" {
+					return m.Some("Required")
+				}
+				return m.None[string]()
+			},
+		}),
+		m.NewElevatedButton(func() {
+			if form, ok := s.formKey.CurrentState(); ok && form.Validate() {
+				println("saved", s.controller.Text())
+			}
+		}, m.NewText("Save")),
+	}), m.FormOpts{Key: s.formKey})
+}
+
+func ptr[T any](v T) *T { return &v }
+```
+
+`TextEditingController()` is `m.NewTextEditingController()`; the optional initial text is
+the one variadic parameter. `InputDecoration` is an immutable value class with many fields:
+it is passed as a pointer (`nil` is `null`), made by `NewInputDecoration`. A global key is generic in the
+state it finds (`m.GlobalKey[*m.FormState]`), and `CurrentState()` returns the state and whether
+there is one. A validator gets the value and returns the error text, both as `m.Opt[string]`
+in place of a nullable `String`. A
+controller is a `Listenable` that you dispose, as in Dart.
+
+## 10. Custom painting
+
+Flutter:
+
+```dart
+class DiscPainter extends CustomPainter {
+  DiscPainter(this.color);
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..color = color;
+    canvas.drawCircle(size.center(Offset.zero), size.shortestSide / 2, paint);
+  }
+
+  @override
+  bool shouldRepaint(DiscPainter old) => old.color != color;
+}
+
+CustomPaint(painter: DiscPainter(Colors.teal), size: const Size(100, 100))
+```
+
+Glutter:
+
+```go
+type DiscPainter struct {
+	rendering.CustomPainterBase
+	color ui.Color
+}
+
+func NewDiscPainter(color ui.Color) *DiscPainter {
+	return &DiscPainter{CustomPainterBase: rendering.NewCustomPainterBase(nil), color: color}
+}
+
+func (p *DiscPainter) Paint(canvas *ui.Canvas, size ui.Size) {
+	paint := ui.NewPaint()
+	paint.SetColor(p.color)
+	canvas.DrawCircle(ui.Offset{Dx: size.Width / 2, Dy: size.Height / 2}, min(size.Width, size.Height)/2, paint)
+}
+
+func (p *DiscPainter) ShouldRepaint(old rendering.CustomPainter) bool {
+	o, ok := old.(*DiscPainter)
+	return !ok || o.color != p.color
+}
+
+func disc() m.Widget {
+	return m.NewCustomPaint(nil, m.CustomPaintOpts{
+		Painter: NewDiscPainter(m.Colors.Teal.Primary),
+		Size:    ui.Size{Width: 100, Height: 100},
+	})
+}
+```
+
+`CustomPainter` is an interface, and `rendering.CustomPainterBase` is the part you embed to
+get the `Listenable` (the `repaint` argument) and the defaults for `HitTest`. `Paint()` with
+its cascade `..color =` is `ui.NewPaint()` and a setter, `paint.SetColor(...)`. `canvas` is a `*ui.Canvas`
+with Flutter's methods (`DrawCircle`, `DrawPath`, `Save`, `Translate`, ...).
+
+## What is not the same
+
+- **No `const` widgets.** Go has no const constructors. Build a widget once and reuse it
+  (a package-level value, or a field of the state), which is what `const` achieves.
+- **Threads.** The framework runs on one goroutine, the UI thread. Other goroutines hand
+  work over with `SetState` or the binding's `Post`; `State.Go` starts a goroutine that is
+  cancelled with the state. There is no `async` and `await`: blocking is fine on your own
+  goroutines.
+- **Errors.** Flutter's exceptions are panics only for programmer errors (a debug-build
+  `assert` is a check that exists in debug builds, `-tags glutter_release` removes it). A
+  failure that can happen at run time is an `error` value.
+- **Hot reload** is not possible in Go; `go run` is fast and the examples take no state.
+- **Platform code.** `dart:io`, plugins and platform channels are the packages of the
+  standard library, and `desktop` (file dialogs, notifications, the tray, opening a URL).
+- **Where the list of every difference is.** SPEC §12.10, one row per deviation, kept up to
+  date.

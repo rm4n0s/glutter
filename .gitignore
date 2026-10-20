@@ -41,3 +41,6 @@ go.work.sum
 # Golden test output of a failed comparison (internal/goldens)
 *.actual.png
 *.diff.png
+
+# Temporary packages of the documentation test (docs/docs_test.go)
+/docs/_guidecheck/

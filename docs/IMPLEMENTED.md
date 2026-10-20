@@ -1857,3 +1857,15 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Proof:** none listed for this step.
 - **Manual checks:** none.
 - **Deviations and follow-ups:** the rules check what the source says; they do not type-check. `child` is found by the name of the parameter. The methods of the types are not looked at (only constructors, functions, types and variables). The 45 accepted reports are for the user to confirm.
+
+## 18.2 Documentation and examples
+
+- **Date:** 2026-10-21
+- **Branch:** feat/step-18.2-docs
+- **Summary:** `README.md` (what Glutter is, install with Go alone, the counter as the quick start, a Flutter → Glutter table that links SPEC §12 and §12.10, the runtime requirements of SPEC §16, the ten examples with a screenshot each from `docs/implemented-proof-images/`, the performance page, how to work on the repository, the license). `docs/GUIDE.md`, "Glutter for Flutter developers": the rules in a paragraph, ten side-by-side translations (a stateless widget, a stateful widget, layout with options, `ListView.builder` and named constructors, `of` / `maybeOf` / `sizeOf`, navigation with a result, an animation controller with a tween, `FutureBuilder`, a form with a validator, `CustomPaint`), and what is not the same (`const`, threads, errors, hot reload, platform code). *The examples of SPEC §19:* all ten exist; each was started under headless sway (`GLUTTER_SCREENSHOT`) and wrote a screenshot; each has a proof image (`tray` has `18.2-tray-window.png`, the window alone, because a tray needs a desktop).
+- **Main files:** `README.md`, `docs/GUIDE.md`, `docs/docs_test.go`, `examples/examples_test.go`, `docs/implemented-proof-images/18.2-tray-window.png`, `.gitignore`.
+- **Tests:** `docs/docs_test.go`: every Go block of the README and the guide is type-checked with `go vet` (a block that starts with `package` is a program, any other is a fragment that gets the imports the guide names); the first run found the API that the draft of the guide had wrong (`ScaffoldMessengerMaybeOf`, the generic `GlobalKey`, the validator's `Opt`, `Paint.SetColor`, the color scheme's methods). `examples/examples_test.go`: each example named by SPEC §19 has a `main.go`, a README row with a screenshot, and the file of the screenshot; every image of the README exists.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · `go generate ./...` stable ✅ · `glutter_release` and `glutter_profile` tests ✅.
+- **Proof:** the screenshot of the tray window (C, headless sway), `docs/implemented-proof-images/18.2-tray-window.png`.
+- **Manual checks:** none new. The tray menu and notification screenshots of 15.5 are still pending from the user.
+- **Deviations and follow-ups:** the README has no badge, no module-proxy link and no `go install` line: the module is not published yet (18.3 asks the user before the tag). The screenshots are those of the steps that made the examples (the goldens of each example keep them current).
