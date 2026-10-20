@@ -279,3 +279,68 @@ func lerpWidgetSide(a foundation.Opt[painting.BorderSide], aStates widgets.Widge
 	}
 	return lerpOptBorderSide(a, b, t)
 }
+
+// lerpStateOptDouble is WidgetStateProperty.lerp<double?>(a, b, t, lerpDouble).
+func lerpStateOptDouble(a, b widgets.WidgetStateProperty[foundation.Opt[float64]], t float64) widgets.WidgetStateProperty[foundation.Opt[float64]] {
+	if a == nil && b == nil {
+		return nil
+	}
+	return widgets.WidgetStatePropertyResolveWith(func(states widgets.WidgetStates) foundation.Opt[float64] {
+		var ca, cb foundation.Opt[float64]
+		if a != nil {
+			ca = a.Resolve(states)
+		}
+		if b != nil {
+			cb = b.Resolve(states)
+		}
+		return lerpOptDouble(ca, cb, t)
+	})
+}
+
+// lerpStateOptSide is WidgetStateBorderSide.lerp(a, b, t): the sides of the two
+// properties, in each state, interpolate.
+//
+// Flutter: widgets/widget_state.dart WidgetStateBorderSide.lerp
+func lerpStateOptSide(a, b widgets.WidgetStateProperty[foundation.Opt[painting.BorderSide]], t float64) widgets.WidgetStateProperty[foundation.Opt[painting.BorderSide]] {
+	if a == nil && b == nil {
+		return nil
+	}
+	return widgets.WidgetStatePropertyResolveWith(func(states widgets.WidgetStates) foundation.Opt[painting.BorderSide] {
+		var ca, cb foundation.Opt[painting.BorderSide]
+		if a != nil {
+			ca = a.Resolve(states)
+		}
+		if b != nil {
+			cb = b.Resolve(states)
+		}
+		return lerpOptBorderSide(ca, cb, t)
+	})
+}
+
+// lerpStateOutlined is WidgetStateProperty.lerp<OutlinedBorder?>(a, b, t,
+// OutlinedBorder.lerp): a nil border is null.
+func lerpStateOutlined(a, b widgets.WidgetStateProperty[painting.OutlinedBorder], t float64) widgets.WidgetStateProperty[painting.OutlinedBorder] {
+	if a == nil && b == nil {
+		return nil
+	}
+	return widgets.WidgetStatePropertyResolveWith(func(states widgets.WidgetStates) painting.OutlinedBorder {
+		var ca, cb painting.OutlinedBorder
+		if a != nil {
+			ca = a.Resolve(states)
+		}
+		if b != nil {
+			cb = b.Resolve(states)
+		}
+		return painting.OutlinedBorderLerp(ca, cb, t)
+	})
+}
+
+// lerpOptInsets is EdgeInsetsGeometry.lerp on nullable insets.
+func lerpOptInsets(a, b foundation.Opt[painting.EdgeInsetsGeometry], t float64) foundation.Opt[painting.EdgeInsetsGeometry] {
+	pa, _ := a.Get()
+	pb, _ := b.Get()
+	if r := painting.EdgeInsetsGeometryLerp(pa, pb, t); r != nil {
+		return foundation.Some(r)
+	}
+	return foundation.None[painting.EdgeInsetsGeometry]()
+}

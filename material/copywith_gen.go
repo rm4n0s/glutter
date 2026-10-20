@@ -1142,6 +1142,136 @@ func (x RadioThemeData) CopyWith(c RadioThemeDataCopy) RadioThemeData {
 	return r
 }
 
+// SearchBarThemeDataCopy holds the replacements for SearchBarThemeData.CopyWith: a field that is None keeps the value of the
+// copied one.
+//
+// Flutter: material/search_bar_theme.dart SearchBarThemeData.copyWith
+type SearchBarThemeDataCopy struct {
+	Elevation          foundation.Opt[widgets.WidgetStateProperty[foundation.Opt[float64]]]
+	BackgroundColor    foundation.Opt[widgets.WidgetStateProperty[foundation.Opt[ui.Color]]]
+	ShadowColor        foundation.Opt[widgets.WidgetStateProperty[foundation.Opt[ui.Color]]]
+	SurfaceTintColor   foundation.Opt[widgets.WidgetStateProperty[foundation.Opt[ui.Color]]]
+	OverlayColor       foundation.Opt[widgets.WidgetStateProperty[foundation.Opt[ui.Color]]]
+	Side               foundation.Opt[widgets.WidgetStateProperty[foundation.Opt[painting.BorderSide]]]
+	Shape              foundation.Opt[widgets.WidgetStateProperty[painting.OutlinedBorder]]
+	Padding            foundation.Opt[widgets.WidgetStateProperty[painting.EdgeInsetsGeometry]]
+	TextStyle          foundation.Opt[widgets.WidgetStateProperty[*painting.TextStyle]]
+	HintStyle          foundation.Opt[widgets.WidgetStateProperty[*painting.TextStyle]]
+	Constraints        foundation.Opt[rendering.BoxConstraints]
+	TextCapitalization foundation.Opt[services.TextCapitalization]
+}
+
+// CopyWith returns a copy of the SearchBarThemeData with the fields that the SearchBarThemeDataCopy sets replaced.
+//
+// Flutter: material/search_bar_theme.dart SearchBarThemeData.copyWith
+func (x SearchBarThemeData) CopyWith(c SearchBarThemeDataCopy) SearchBarThemeData {
+	r := x
+	if v, ok := c.Elevation.Get(); ok {
+		r.Elevation = v
+	}
+	if v, ok := c.BackgroundColor.Get(); ok {
+		r.BackgroundColor = v
+	}
+	if v, ok := c.ShadowColor.Get(); ok {
+		r.ShadowColor = v
+	}
+	if v, ok := c.SurfaceTintColor.Get(); ok {
+		r.SurfaceTintColor = v
+	}
+	if v, ok := c.OverlayColor.Get(); ok {
+		r.OverlayColor = v
+	}
+	if v, ok := c.Side.Get(); ok {
+		r.Side = v
+	}
+	if v, ok := c.Shape.Get(); ok {
+		r.Shape = v
+	}
+	if v, ok := c.Padding.Get(); ok {
+		r.Padding = v
+	}
+	if v, ok := c.TextStyle.Get(); ok {
+		r.TextStyle = v
+	}
+	if v, ok := c.HintStyle.Get(); ok {
+		r.HintStyle = v
+	}
+	if c.Constraints.IsSome() {
+		r.Constraints = c.Constraints
+	}
+	if v, ok := c.TextCapitalization.Get(); ok {
+		r.TextCapitalization = v
+	}
+	return r
+}
+
+// SearchViewThemeDataCopy holds the replacements for SearchViewThemeData.CopyWith: a field that is None keeps the value of the
+// copied one.
+//
+// Flutter: material/search_view_theme.dart SearchViewThemeData.copyWith
+type SearchViewThemeDataCopy struct {
+	BackgroundColor  foundation.Opt[ui.Color]
+	Elevation        foundation.Opt[float64]
+	SurfaceTintColor foundation.Opt[ui.Color]
+	Side             foundation.Opt[painting.BorderSide]
+	Shape            foundation.Opt[painting.OutlinedBorder]
+	HeaderHeight     foundation.Opt[float64]
+	HeaderTextStyle  foundation.Opt[*painting.TextStyle]
+	HeaderHintStyle  foundation.Opt[*painting.TextStyle]
+	Constraints      foundation.Opt[rendering.BoxConstraints]
+	Padding          foundation.Opt[painting.EdgeInsetsGeometry]
+	BarPadding       foundation.Opt[painting.EdgeInsetsGeometry]
+	ShrinkWrap       foundation.Opt[bool]
+	DividerColor     foundation.Opt[ui.Color]
+}
+
+// CopyWith returns a copy of the SearchViewThemeData with the fields that the SearchViewThemeDataCopy sets replaced.
+//
+// Flutter: material/search_view_theme.dart SearchViewThemeData.copyWith
+func (x SearchViewThemeData) CopyWith(c SearchViewThemeDataCopy) SearchViewThemeData {
+	r := x
+	if c.BackgroundColor.IsSome() {
+		r.BackgroundColor = c.BackgroundColor
+	}
+	if c.Elevation.IsSome() {
+		r.Elevation = c.Elevation
+	}
+	if c.SurfaceTintColor.IsSome() {
+		r.SurfaceTintColor = c.SurfaceTintColor
+	}
+	if c.Side.IsSome() {
+		r.Side = c.Side
+	}
+	if v, ok := c.Shape.Get(); ok {
+		r.Shape = v
+	}
+	if c.HeaderHeight.IsSome() {
+		r.HeaderHeight = c.HeaderHeight
+	}
+	if v, ok := c.HeaderTextStyle.Get(); ok {
+		r.HeaderTextStyle = v
+	}
+	if v, ok := c.HeaderHintStyle.Get(); ok {
+		r.HeaderHintStyle = v
+	}
+	if c.Constraints.IsSome() {
+		r.Constraints = c.Constraints
+	}
+	if v, ok := c.Padding.Get(); ok {
+		r.Padding = v
+	}
+	if v, ok := c.BarPadding.Get(); ok {
+		r.BarPadding = v
+	}
+	if c.ShrinkWrap.IsSome() {
+		r.ShrinkWrap = c.ShrinkWrap
+	}
+	if c.DividerColor.IsSome() {
+		r.DividerColor = c.DividerColor
+	}
+	return r
+}
+
 // SegmentedButtonThemeDataCopy holds the replacements for SegmentedButtonThemeData.CopyWith: a field that is None keeps the value of the
 // copied one.
 //
