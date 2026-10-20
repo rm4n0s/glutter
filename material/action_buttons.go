@@ -12,10 +12,6 @@ import (
 	"github.com/rm4n0s/glutter/widgets"
 )
 
-// The back, close and drawer buttons are built on a stand-in of IconButton until
-// step 13.3 brings it, with the ActionIconTheme that gives the icons of these
-// buttons (TODO(step 13.3)).
-
 // ActionButtonOpts are the optional parameters of the action buttons.
 //
 // Flutter: material/action_buttons.dart BackButton.new
@@ -24,6 +20,8 @@ type ActionButtonOpts struct {
 	Key foundation.Key
 	// Color is the color of the icon; the default is the one of the icon theme.
 	Color foundation.Opt[ui.Color]
+	// Style customizes the appearance of the IconButton of the button.
+	Style *ButtonStyle
 	// OnPressed is called when the button is pressed; the default does what the
 	// button is for (pops the route, opens the drawer).
 	OnPressed func()
@@ -32,7 +30,10 @@ type ActionButtonOpts struct {
 // actionIcon is the icon of an action button, with the label that Android reads.
 //
 // Flutter: material/action_buttons.dart _ActionIcon
-func actionIcon(bc widgets.BuildContext, data widgets.IconData, androidLabel func(MaterialLocalizations) string) widgets.Widget {
+func actionIcon(bc widgets.BuildContext, builder func(ActionIconThemeData) widgets.WidgetBuilder, data widgets.IconData, androidLabel func(MaterialLocalizations) string) widgets.Widget {
+	if b := builder(ActionIconThemeOf(bc)); b != nil {
+		return b(bc)
+	}
 	opts := widgets.IconOpts{}
 	// This can't use the platform from Theme because it is the Android OS that
 	// expects the duplicated tooltip and label.
@@ -64,7 +65,7 @@ func (w *BackButtonIcon) Build(bc widgets.BuildContext) widgets.Widget {
 	case foundation.TargetPlatformIOS, foundation.TargetPlatformMacOS:
 		data = Icons.ArrowBackIosNewRounded()
 	}
-	return actionIcon(bc, data, MaterialLocalizations.BackButtonTooltip)
+	return actionIcon(bc, func(t ActionIconThemeData) widgets.WidgetBuilder { return t.BackButtonIconBuilder }, data, MaterialLocalizations.BackButtonTooltip)
 }
 
 // BackButton is an icon button with a platform specific back icon that pops the
@@ -89,15 +90,13 @@ func NewBackButton(opts ...ActionButtonOpts) *BackButton {
 // Flutter: material/action_buttons.dart _ActionButton.build
 func (w *BackButton) Build(bc widgets.BuildContext) widgets.Widget {
 	DebugCheckHasMaterialLocalizations(bc)
-	return &tempIconButton{StatelessWidget: widgets.NewStatelessWidgetBase(), child: NewBackButtonIcon(), color: w.o.Color,
-		tooltip: MaterialLocalizationsOf(bc).BackButtonTooltip(),
-		onPressed: func() {
-			if w.o.OnPressed != nil {
-				w.o.OnPressed()
-			} else {
-				widgets.NavigatorMaybePop(bc)
-			}
-		}}
+	return NewIconButton(func() {
+		if w.o.OnPressed != nil {
+			w.o.OnPressed()
+		} else {
+			widgets.NavigatorMaybePop(bc)
+		}
+	}, NewBackButtonIcon(), IconButtonOpts{Style: w.o.Style, Color: w.o.Color, Tooltip: MaterialLocalizationsOf(bc).BackButtonTooltip()})
 }
 
 // CloseButtonIcon is the icon of a CloseButton.
@@ -116,7 +115,7 @@ func NewCloseButtonIcon(opts ...widgets.WidgetOpts) *CloseButtonIcon {
 //
 // Flutter: material/action_buttons.dart CloseButtonIcon.build
 func (w *CloseButtonIcon) Build(bc widgets.BuildContext) widgets.Widget {
-	return actionIcon(bc, Icons.Close(), MaterialLocalizations.CloseButtonTooltip)
+	return actionIcon(bc, func(t ActionIconThemeData) widgets.WidgetBuilder { return t.CloseButtonIconBuilder }, Icons.Close(), MaterialLocalizations.CloseButtonTooltip)
 }
 
 // CloseButton is an icon button with a close icon that pops the route.
@@ -140,15 +139,13 @@ func NewCloseButton(opts ...ActionButtonOpts) *CloseButton {
 // Flutter: material/action_buttons.dart _ActionButton.build
 func (w *CloseButton) Build(bc widgets.BuildContext) widgets.Widget {
 	DebugCheckHasMaterialLocalizations(bc)
-	return &tempIconButton{StatelessWidget: widgets.NewStatelessWidgetBase(), child: NewCloseButtonIcon(), color: w.o.Color,
-		tooltip: MaterialLocalizationsOf(bc).CloseButtonTooltip(),
-		onPressed: func() {
-			if w.o.OnPressed != nil {
-				w.o.OnPressed()
-			} else {
-				widgets.NavigatorMaybePop(bc)
-			}
-		}}
+	return NewIconButton(func() {
+		if w.o.OnPressed != nil {
+			w.o.OnPressed()
+		} else {
+			widgets.NavigatorMaybePop(bc)
+		}
+	}, NewCloseButtonIcon(), IconButtonOpts{Style: w.o.Style, Color: w.o.Color, Tooltip: MaterialLocalizationsOf(bc).CloseButtonTooltip()})
 }
 
 // DrawerButtonIcon is the icon of a DrawerButton: a menu.
@@ -167,7 +164,7 @@ func NewDrawerButtonIcon(opts ...widgets.WidgetOpts) *DrawerButtonIcon {
 //
 // Flutter: material/action_buttons.dart DrawerButtonIcon.build
 func (w *DrawerButtonIcon) Build(bc widgets.BuildContext) widgets.Widget {
-	return actionIcon(bc, Icons.Menu(), MaterialLocalizations.OpenAppDrawerTooltip)
+	return actionIcon(bc, func(t ActionIconThemeData) widgets.WidgetBuilder { return t.DrawerButtonIconBuilder }, Icons.Menu(), MaterialLocalizations.OpenAppDrawerTooltip)
 }
 
 // DrawerButton is an icon button that opens the drawer of the Scaffold.
@@ -191,15 +188,13 @@ func NewDrawerButton(opts ...ActionButtonOpts) *DrawerButton {
 // Flutter: material/action_buttons.dart _ActionButton.build
 func (w *DrawerButton) Build(bc widgets.BuildContext) widgets.Widget {
 	DebugCheckHasMaterialLocalizations(bc)
-	return &tempIconButton{StatelessWidget: widgets.NewStatelessWidgetBase(), child: NewDrawerButtonIcon(), color: w.o.Color,
-		tooltip: MaterialLocalizationsOf(bc).OpenAppDrawerTooltip(),
-		onPressed: func() {
-			if w.o.OnPressed != nil {
-				w.o.OnPressed()
-			} else {
-				ScaffoldOf(bc).OpenDrawer()
-			}
-		}}
+	return NewIconButton(func() {
+		if w.o.OnPressed != nil {
+			w.o.OnPressed()
+		} else {
+			ScaffoldOf(bc).OpenDrawer()
+		}
+	}, NewDrawerButtonIcon(), IconButtonOpts{Style: w.o.Style, Color: w.o.Color, Tooltip: MaterialLocalizationsOf(bc).OpenAppDrawerTooltip()})
 }
 
 // EndDrawerButtonIcon is the icon of an EndDrawerButton: a menu.
@@ -218,7 +213,7 @@ func NewEndDrawerButtonIcon(opts ...widgets.WidgetOpts) *EndDrawerButtonIcon {
 //
 // Flutter: material/action_buttons.dart EndDrawerButtonIcon.build
 func (w *EndDrawerButtonIcon) Build(bc widgets.BuildContext) widgets.Widget {
-	return actionIcon(bc, Icons.Menu(), MaterialLocalizations.OpenAppDrawerTooltip)
+	return actionIcon(bc, func(t ActionIconThemeData) widgets.WidgetBuilder { return t.EndDrawerButtonIconBuilder }, Icons.Menu(), MaterialLocalizations.OpenAppDrawerTooltip)
 }
 
 // EndDrawerButton is an icon button that opens the end drawer of the Scaffold.
@@ -242,13 +237,11 @@ func NewEndDrawerButton(opts ...ActionButtonOpts) *EndDrawerButton {
 // Flutter: material/action_buttons.dart _ActionButton.build
 func (w *EndDrawerButton) Build(bc widgets.BuildContext) widgets.Widget {
 	DebugCheckHasMaterialLocalizations(bc)
-	return &tempIconButton{StatelessWidget: widgets.NewStatelessWidgetBase(), child: NewEndDrawerButtonIcon(), color: w.o.Color,
-		tooltip: MaterialLocalizationsOf(bc).OpenAppDrawerTooltip(),
-		onPressed: func() {
-			if w.o.OnPressed != nil {
-				w.o.OnPressed()
-			} else {
-				ScaffoldOf(bc).OpenEndDrawer()
-			}
-		}}
+	return NewIconButton(func() {
+		if w.o.OnPressed != nil {
+			w.o.OnPressed()
+		} else {
+			ScaffoldOf(bc).OpenEndDrawer()
+		}
+	}, NewEndDrawerButtonIcon(), IconButtonOpts{Style: w.o.Style, Color: w.o.Color, Tooltip: MaterialLocalizationsOf(bc).OpenAppDrawerTooltip()})
 }

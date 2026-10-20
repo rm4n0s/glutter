@@ -320,6 +320,22 @@ type ThemeDataOpts struct {
 	// PageTransitionsTheme is the transitions of the pages that Material makes;
 	// the default is the one of NewPageTransitionsTheme.
 	PageTransitionsTheme *PageTransitionsTheme
+	// ActionIconTheme is the theme of the icons of the BackButtons, CloseButtons and drawer buttons.
+	ActionIconTheme ActionIconThemeData
+	// SegmentedButtonTheme is the theme of the SegmentedButtons.
+	SegmentedButtonTheme SegmentedButtonThemeData
+	// FloatingActionButtonTheme is the theme of the FloatingActionButtons.
+	FloatingActionButtonTheme FloatingActionButtonThemeData
+	// IconButtonTheme is the theme of the IconButtons.
+	IconButtonTheme IconButtonThemeData
+	// OutlinedButtonTheme is the theme of the OutlinedButtons.
+	OutlinedButtonTheme OutlinedButtonThemeData
+	// FilledButtonTheme is the theme of the FilledButtons.
+	FilledButtonTheme FilledButtonThemeData
+	// ElevatedButtonTheme is the theme of the ElevatedButtons.
+	ElevatedButtonTheme ElevatedButtonThemeData
+	// TextButtonTheme is the theme of the TextButtons.
+	TextButtonTheme TextButtonThemeData
 	// TabBarTheme is the default configuration of TabBar.
 	TabBarTheme TabBarThemeData
 	// NavigationDrawerTheme is the default configuration of NavigationDrawer.
@@ -425,6 +441,22 @@ type ThemeData struct {
 	Typography *Typography
 	// PageTransitionsTheme is the transitions of the pages that Material makes.
 	PageTransitionsTheme *PageTransitionsTheme
+	// ActionIconTheme is the theme of the icons of the BackButtons, CloseButtons and drawer buttons.
+	ActionIconTheme ActionIconThemeData
+	// SegmentedButtonTheme is the theme of the SegmentedButtons.
+	SegmentedButtonTheme SegmentedButtonThemeData
+	// FloatingActionButtonTheme is the theme of the FloatingActionButtons.
+	FloatingActionButtonTheme FloatingActionButtonThemeData
+	// IconButtonTheme is the theme of the IconButtons.
+	IconButtonTheme IconButtonThemeData
+	// OutlinedButtonTheme is the theme of the OutlinedButtons.
+	OutlinedButtonTheme OutlinedButtonThemeData
+	// FilledButtonTheme is the theme of the FilledButtons.
+	FilledButtonTheme FilledButtonThemeData
+	// ElevatedButtonTheme is the theme of the ElevatedButtons.
+	ElevatedButtonTheme ElevatedButtonThemeData
+	// TextButtonTheme is the theme of the TextButtons.
+	TextButtonTheme TextButtonThemeData
 	// TabBarTheme is the default configuration of TabBar.
 	TabBarTheme TabBarThemeData
 	// NavigationDrawerTheme is the default configuration of NavigationDrawer.
@@ -681,17 +713,25 @@ func NewThemeData(opts ...ThemeDataOpts) *ThemeData {
 		TextTheme:        defaultTextTheme.Merge(o.TextTheme),
 		Typography:       typography,
 
-		PageTransitionsTheme:  pageTransitionsTheme,
-		TabBarTheme:           o.TabBarTheme,
-		NavigationDrawerTheme: o.NavigationDrawerTheme,
-		NavigationRailTheme:   o.NavigationRailTheme,
-		NavigationBarTheme:    o.NavigationBarTheme,
-		BottomSheetTheme:      o.BottomSheetTheme,
-		DrawerTheme:           o.DrawerTheme,
-		SnackBarTheme:         o.SnackBarTheme,
-		BottomAppBarTheme:     o.BottomAppBarTheme,
-		BannerTheme:           o.BannerTheme,
-		AppBarTheme:           o.AppBarTheme,
+		PageTransitionsTheme:      pageTransitionsTheme,
+		ActionIconTheme:           o.ActionIconTheme,
+		SegmentedButtonTheme:      o.SegmentedButtonTheme,
+		FloatingActionButtonTheme: o.FloatingActionButtonTheme,
+		IconButtonTheme:           o.IconButtonTheme,
+		OutlinedButtonTheme:       o.OutlinedButtonTheme,
+		FilledButtonTheme:         o.FilledButtonTheme,
+		ElevatedButtonTheme:       o.ElevatedButtonTheme,
+		TextButtonTheme:           o.TextButtonTheme,
+		TabBarTheme:               o.TabBarTheme,
+		NavigationDrawerTheme:     o.NavigationDrawerTheme,
+		NavigationRailTheme:       o.NavigationRailTheme,
+		NavigationBarTheme:        o.NavigationBarTheme,
+		BottomSheetTheme:          o.BottomSheetTheme,
+		DrawerTheme:               o.DrawerTheme,
+		SnackBarTheme:             o.SnackBarTheme,
+		BottomAppBarTheme:         o.BottomAppBarTheme,
+		BannerTheme:               o.BannerTheme,
+		AppBarTheme:               o.AppBarTheme,
 
 		DialogBackgroundColor: dialogBackgroundColor.Value(),
 		IndicatorColor:        indicatorColor.Value(),
@@ -713,40 +753,48 @@ type ThemeDataCopy struct {
 	CardColor                  foundation.Opt[ui.Color]
 	ColorScheme                foundation.Opt[*ColorScheme]
 	// Brightness replaces the brightness of the color scheme (the one given by ColorScheme, if any, or the one of the theme).
-	Brightness              ui.Brightness
-	DisabledColor           foundation.Opt[ui.Color]
-	DividerColor            foundation.Opt[ui.Color]
-	FocusColor              foundation.Opt[ui.Color]
-	HighlightColor          foundation.Opt[ui.Color]
-	HintColor               foundation.Opt[ui.Color]
-	HoverColor              foundation.Opt[ui.Color]
-	PrimaryColor            foundation.Opt[ui.Color]
-	PrimaryColorDark        foundation.Opt[ui.Color]
-	PrimaryColorLight       foundation.Opt[ui.Color]
-	ScaffoldBackgroundColor foundation.Opt[ui.Color]
-	SecondaryHeaderColor    foundation.Opt[ui.Color]
-	ShadowColor             foundation.Opt[ui.Color]
-	SplashColor             foundation.Opt[ui.Color]
-	SplashFactory           foundation.Opt[InteractiveInkFeatureFactory]
-	UnselectedWidgetColor   foundation.Opt[ui.Color]
-	IconTheme               foundation.Opt[widgets.IconThemeData]
-	PrimaryIconTheme        foundation.Opt[widgets.IconThemeData]
-	PrimaryTextTheme        foundation.Opt[*TextTheme]
-	TextTheme               foundation.Opt[*TextTheme]
-	Typography              foundation.Opt[*Typography]
-	PageTransitionsTheme    foundation.Opt[*PageTransitionsTheme]
-	TabBarTheme             foundation.Opt[TabBarThemeData]
-	NavigationDrawerTheme   foundation.Opt[NavigationDrawerThemeData]
-	NavigationRailTheme     foundation.Opt[NavigationRailThemeData]
-	NavigationBarTheme      foundation.Opt[NavigationBarThemeData]
-	BottomSheetTheme        foundation.Opt[BottomSheetThemeData]
-	DrawerTheme             foundation.Opt[DrawerThemeData]
-	SnackBarTheme           foundation.Opt[SnackBarThemeData]
-	BottomAppBarTheme       foundation.Opt[BottomAppBarThemeData]
-	BannerTheme             foundation.Opt[MaterialBannerThemeData]
-	AppBarTheme             foundation.Opt[AppBarThemeData]
-	DialogBackgroundColor   foundation.Opt[ui.Color]
-	IndicatorColor          foundation.Opt[ui.Color]
+	Brightness                ui.Brightness
+	DisabledColor             foundation.Opt[ui.Color]
+	DividerColor              foundation.Opt[ui.Color]
+	FocusColor                foundation.Opt[ui.Color]
+	HighlightColor            foundation.Opt[ui.Color]
+	HintColor                 foundation.Opt[ui.Color]
+	HoverColor                foundation.Opt[ui.Color]
+	PrimaryColor              foundation.Opt[ui.Color]
+	PrimaryColorDark          foundation.Opt[ui.Color]
+	PrimaryColorLight         foundation.Opt[ui.Color]
+	ScaffoldBackgroundColor   foundation.Opt[ui.Color]
+	SecondaryHeaderColor      foundation.Opt[ui.Color]
+	ShadowColor               foundation.Opt[ui.Color]
+	SplashColor               foundation.Opt[ui.Color]
+	SplashFactory             foundation.Opt[InteractiveInkFeatureFactory]
+	UnselectedWidgetColor     foundation.Opt[ui.Color]
+	IconTheme                 foundation.Opt[widgets.IconThemeData]
+	PrimaryIconTheme          foundation.Opt[widgets.IconThemeData]
+	PrimaryTextTheme          foundation.Opt[*TextTheme]
+	TextTheme                 foundation.Opt[*TextTheme]
+	Typography                foundation.Opt[*Typography]
+	PageTransitionsTheme      foundation.Opt[*PageTransitionsTheme]
+	ActionIconTheme           foundation.Opt[ActionIconThemeData]
+	SegmentedButtonTheme      foundation.Opt[SegmentedButtonThemeData]
+	FloatingActionButtonTheme foundation.Opt[FloatingActionButtonThemeData]
+	IconButtonTheme           foundation.Opt[IconButtonThemeData]
+	OutlinedButtonTheme       foundation.Opt[OutlinedButtonThemeData]
+	FilledButtonTheme         foundation.Opt[FilledButtonThemeData]
+	ElevatedButtonTheme       foundation.Opt[ElevatedButtonThemeData]
+	TextButtonTheme           foundation.Opt[TextButtonThemeData]
+	TabBarTheme               foundation.Opt[TabBarThemeData]
+	NavigationDrawerTheme     foundation.Opt[NavigationDrawerThemeData]
+	NavigationRailTheme       foundation.Opt[NavigationRailThemeData]
+	NavigationBarTheme        foundation.Opt[NavigationBarThemeData]
+	BottomSheetTheme          foundation.Opt[BottomSheetThemeData]
+	DrawerTheme               foundation.Opt[DrawerThemeData]
+	SnackBarTheme             foundation.Opt[SnackBarThemeData]
+	BottomAppBarTheme         foundation.Opt[BottomAppBarThemeData]
+	BannerTheme               foundation.Opt[MaterialBannerThemeData]
+	AppBarTheme               foundation.Opt[AppBarThemeData]
+	DialogBackgroundColor     foundation.Opt[ui.Color]
+	IndicatorColor            foundation.Opt[ui.Color]
 }
 
 // CopyWith creates a copy of this theme but with the fields of c that are set
@@ -790,6 +838,14 @@ func (d *ThemeData) CopyWith(c ThemeDataCopy) *ThemeData {
 	out.TextTheme = c.TextTheme.OrElse(d.TextTheme)
 	out.Typography = c.Typography.OrElse(d.Typography)
 	out.PageTransitionsTheme = c.PageTransitionsTheme.OrElse(d.PageTransitionsTheme)
+	out.ActionIconTheme = c.ActionIconTheme.OrElse(d.ActionIconTheme)
+	out.SegmentedButtonTheme = c.SegmentedButtonTheme.OrElse(d.SegmentedButtonTheme)
+	out.FloatingActionButtonTheme = c.FloatingActionButtonTheme.OrElse(d.FloatingActionButtonTheme)
+	out.IconButtonTheme = c.IconButtonTheme.OrElse(d.IconButtonTheme)
+	out.OutlinedButtonTheme = c.OutlinedButtonTheme.OrElse(d.OutlinedButtonTheme)
+	out.FilledButtonTheme = c.FilledButtonTheme.OrElse(d.FilledButtonTheme)
+	out.ElevatedButtonTheme = c.ElevatedButtonTheme.OrElse(d.ElevatedButtonTheme)
+	out.TextButtonTheme = c.TextButtonTheme.OrElse(d.TextButtonTheme)
 	out.TabBarTheme = c.TabBarTheme.OrElse(d.TabBarTheme)
 	out.NavigationDrawerTheme = c.NavigationDrawerTheme.OrElse(d.NavigationDrawerTheme)
 	out.NavigationRailTheme = c.NavigationRailTheme.OrElse(d.NavigationRailTheme)
@@ -993,24 +1049,32 @@ func ThemeDataLerp(a, b *ThemeData, t float64) *ThemeData {
 	}
 	pickFirst := t < 0.5
 	out := &ThemeData{
-		Extensions:            lerpThemeExtensions(a, b, t),
-		VisualDensity:         VisualDensityLerp(a.VisualDensity, b.VisualDensity, t),
-		ColorScheme:           ColorSchemeLerp(a.ColorScheme, b.ColorScheme, t),
-		IconTheme:             widgets.IconThemeDataLerp(&a.IconTheme, &b.IconTheme, t),
-		PrimaryIconTheme:      widgets.IconThemeDataLerp(&a.PrimaryIconTheme, &b.PrimaryIconTheme, t),
-		PrimaryTextTheme:      TextThemeLerp(a.PrimaryTextTheme, b.PrimaryTextTheme, t),
-		TextTheme:             TextThemeLerp(a.TextTheme, b.TextTheme, t),
-		Typography:            TypographyLerp(a.Typography, b.Typography, t),
-		TabBarTheme:           TabBarThemeDataLerp(a.TabBarTheme, b.TabBarTheme, t),
-		NavigationDrawerTheme: NavigationDrawerThemeDataLerp(a.NavigationDrawerTheme, b.NavigationDrawerTheme, t),
-		NavigationRailTheme:   NavigationRailThemeDataLerp(a.NavigationRailTheme, b.NavigationRailTheme, t),
-		NavigationBarTheme:    NavigationBarThemeDataLerp(a.NavigationBarTheme, b.NavigationBarTheme, t),
-		BottomSheetTheme:      BottomSheetThemeDataLerp(a.BottomSheetTheme, b.BottomSheetTheme, t),
-		DrawerTheme:           DrawerThemeDataLerp(a.DrawerTheme, b.DrawerTheme, t),
-		SnackBarTheme:         SnackBarThemeDataLerp(a.SnackBarTheme, b.SnackBarTheme, t),
-		BottomAppBarTheme:     BottomAppBarThemeDataLerp(a.BottomAppBarTheme, b.BottomAppBarTheme, t),
-		BannerTheme:           MaterialBannerThemeDataLerp(a.BannerTheme, b.BannerTheme, t),
-		AppBarTheme:           AppBarThemeDataLerp(a.AppBarTheme, b.AppBarTheme, t),
+		Extensions:                lerpThemeExtensions(a, b, t),
+		VisualDensity:             VisualDensityLerp(a.VisualDensity, b.VisualDensity, t),
+		ColorScheme:               ColorSchemeLerp(a.ColorScheme, b.ColorScheme, t),
+		IconTheme:                 widgets.IconThemeDataLerp(&a.IconTheme, &b.IconTheme, t),
+		PrimaryIconTheme:          widgets.IconThemeDataLerp(&a.PrimaryIconTheme, &b.PrimaryIconTheme, t),
+		PrimaryTextTheme:          TextThemeLerp(a.PrimaryTextTheme, b.PrimaryTextTheme, t),
+		TextTheme:                 TextThemeLerp(a.TextTheme, b.TextTheme, t),
+		Typography:                TypographyLerp(a.Typography, b.Typography, t),
+		ActionIconTheme:           ActionIconThemeDataLerp(a.ActionIconTheme, b.ActionIconTheme, t),
+		SegmentedButtonTheme:      SegmentedButtonThemeDataLerp(a.SegmentedButtonTheme, b.SegmentedButtonTheme, t),
+		FloatingActionButtonTheme: FloatingActionButtonThemeDataLerp(a.FloatingActionButtonTheme, b.FloatingActionButtonTheme, t),
+		IconButtonTheme:           IconButtonThemeDataLerp(a.IconButtonTheme, b.IconButtonTheme, t),
+		OutlinedButtonTheme:       OutlinedButtonThemeDataLerp(a.OutlinedButtonTheme, b.OutlinedButtonTheme, t),
+		FilledButtonTheme:         FilledButtonThemeDataLerp(a.FilledButtonTheme, b.FilledButtonTheme, t),
+		ElevatedButtonTheme:       ElevatedButtonThemeDataLerp(a.ElevatedButtonTheme, b.ElevatedButtonTheme, t),
+		TextButtonTheme:           TextButtonThemeDataLerp(a.TextButtonTheme, b.TextButtonTheme, t),
+		TabBarTheme:               TabBarThemeDataLerp(a.TabBarTheme, b.TabBarTheme, t),
+		NavigationDrawerTheme:     NavigationDrawerThemeDataLerp(a.NavigationDrawerTheme, b.NavigationDrawerTheme, t),
+		NavigationRailTheme:       NavigationRailThemeDataLerp(a.NavigationRailTheme, b.NavigationRailTheme, t),
+		NavigationBarTheme:        NavigationBarThemeDataLerp(a.NavigationBarTheme, b.NavigationBarTheme, t),
+		BottomSheetTheme:          BottomSheetThemeDataLerp(a.BottomSheetTheme, b.BottomSheetTheme, t),
+		DrawerTheme:               DrawerThemeDataLerp(a.DrawerTheme, b.DrawerTheme, t),
+		SnackBarTheme:             SnackBarThemeDataLerp(a.SnackBarTheme, b.SnackBarTheme, t),
+		BottomAppBarTheme:         BottomAppBarThemeDataLerp(a.BottomAppBarTheme, b.BottomAppBarTheme, t),
+		BannerTheme:               MaterialBannerThemeDataLerp(a.BannerTheme, b.BannerTheme, t),
+		AppBarTheme:               AppBarThemeDataLerp(a.AppBarTheme, b.AppBarTheme, t),
 	}
 	src := b
 	if pickFirst {
@@ -1041,7 +1105,7 @@ func (d *ThemeData) Equal(other *ThemeData) bool {
 	if d.ApplyElevationOverlayColor != other.ApplyElevationOverlayColor || d.MaterialTapTargetSize != other.MaterialTapTargetSize ||
 		d.Platform != other.Platform || d.UseMaterial3 != other.UseMaterial3 || !foundation.ValuesEqual(d.SplashFactory, other.SplashFactory) || d.VisualDensity != other.VisualDensity ||
 		!d.ColorScheme.Equal(other.ColorScheme) || !d.IconTheme.Equal(other.IconTheme) || !d.PrimaryIconTheme.Equal(other.PrimaryIconTheme) ||
-		!d.PrimaryTextTheme.Equal(other.PrimaryTextTheme) || !d.TextTheme.Equal(other.TextTheme) || !d.Typography.Equal(other.Typography) || !d.PageTransitionsTheme.Equal(other.PageTransitionsTheme) || !d.AppBarTheme.Equal(other.AppBarTheme) || !d.BannerTheme.Equal(other.BannerTheme) || !d.BottomAppBarTheme.Equal(other.BottomAppBarTheme) || !d.SnackBarTheme.Equal(other.SnackBarTheme) || !d.DrawerTheme.Equal(other.DrawerTheme) || !d.BottomSheetTheme.Equal(other.BottomSheetTheme) || !d.NavigationBarTheme.Equal(other.NavigationBarTheme) || !d.NavigationRailTheme.Equal(other.NavigationRailTheme) || !d.NavigationDrawerTheme.Equal(other.NavigationDrawerTheme) || !d.TabBarTheme.Equal(other.TabBarTheme) {
+		!d.PrimaryTextTheme.Equal(other.PrimaryTextTheme) || !d.TextTheme.Equal(other.TextTheme) || !d.Typography.Equal(other.Typography) || !d.PageTransitionsTheme.Equal(other.PageTransitionsTheme) || !d.AppBarTheme.Equal(other.AppBarTheme) || !d.BannerTheme.Equal(other.BannerTheme) || !d.BottomAppBarTheme.Equal(other.BottomAppBarTheme) || !d.SnackBarTheme.Equal(other.SnackBarTheme) || !d.DrawerTheme.Equal(other.DrawerTheme) || !d.BottomSheetTheme.Equal(other.BottomSheetTheme) || !d.NavigationBarTheme.Equal(other.NavigationBarTheme) || !d.NavigationRailTheme.Equal(other.NavigationRailTheme) || !d.NavigationDrawerTheme.Equal(other.NavigationDrawerTheme) || !d.TabBarTheme.Equal(other.TabBarTheme) || !d.TextButtonTheme.Equal(other.TextButtonTheme) || !d.ElevatedButtonTheme.Equal(other.ElevatedButtonTheme) || !d.FilledButtonTheme.Equal(other.FilledButtonTheme) || !d.OutlinedButtonTheme.Equal(other.OutlinedButtonTheme) || !d.IconButtonTheme.Equal(other.IconButtonTheme) || !d.FloatingActionButtonTheme.Equal(other.FloatingActionButtonTheme) || !d.SegmentedButtonTheme.Equal(other.SegmentedButtonTheme) || !d.ActionIconTheme.Equal(other.ActionIconTheme) {
 		return false
 	}
 	for _, f := range themeColorFields {
@@ -1103,6 +1167,14 @@ func (d *ThemeData) DebugFillProperties(properties *foundation.DiagnosticPropert
 	properties.Add(foundation.NewDiagnosticsProperty("textTheme", d.TextTheme, dbg(def.TextTheme)))
 	properties.Add(foundation.NewDiagnosticsProperty("typography", d.Typography, dbg(def.Typography)))
 	properties.Add(foundation.NewDiagnosticsProperty("pageTransitionsTheme", d.PageTransitionsTheme, dbg(def.PageTransitionsTheme)))
+	properties.Add(foundation.NewDiagnosticsProperty("actionIconTheme", d.ActionIconTheme, dbg(def.ActionIconTheme)))
+	properties.Add(foundation.NewDiagnosticsProperty("segmentedButtonTheme", d.SegmentedButtonTheme, dbg(def.SegmentedButtonTheme)))
+	properties.Add(foundation.NewDiagnosticsProperty("floatingActionButtonTheme", d.FloatingActionButtonTheme, dbg(def.FloatingActionButtonTheme)))
+	properties.Add(foundation.NewDiagnosticsProperty("iconButtonTheme", d.IconButtonTheme, dbg(def.IconButtonTheme)))
+	properties.Add(foundation.NewDiagnosticsProperty("outlinedButtonTheme", d.OutlinedButtonTheme, dbg(def.OutlinedButtonTheme)))
+	properties.Add(foundation.NewDiagnosticsProperty("filledButtonTheme", d.FilledButtonTheme, dbg(def.FilledButtonTheme)))
+	properties.Add(foundation.NewDiagnosticsProperty("elevatedButtonTheme", d.ElevatedButtonTheme, dbg(def.ElevatedButtonTheme)))
+	properties.Add(foundation.NewDiagnosticsProperty("textButtonTheme", d.TextButtonTheme, dbg(def.TextButtonTheme)))
 	properties.Add(foundation.NewDiagnosticsProperty("tabBarTheme", d.TabBarTheme, dbg(def.TabBarTheme)))
 	properties.Add(foundation.NewDiagnosticsProperty("navigationDrawerTheme", d.NavigationDrawerTheme, dbg(def.NavigationDrawerTheme)))
 	properties.Add(foundation.NewDiagnosticsProperty("navigationRailTheme", d.NavigationRailTheme, dbg(def.NavigationRailTheme)))

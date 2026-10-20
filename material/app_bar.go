@@ -130,9 +130,6 @@ type AppBarOpts struct {
 // other widgets, such as a TabBar and a FlexibleSpaceBar. It is the Scaffold's
 // top row.
 //
-// TODO(step 13.3): the icon button themes of the leading and the actions (they
-// need IconButton; the drawer, back and close buttons are built on a stand-in).
-//
 // Flutter: material/app_bar.dart AppBar
 type AppBar struct {
 	widgets.StatefulWidget
@@ -405,6 +402,7 @@ func (s *appBarState) Build(bc widgets.BuildContext) widgets.Widget {
 	theme := ThemeOf(bc)
 	appBarTheme := AppBarThemeOf(bc)
 	defaults := appBarDefaults(theme)
+	iconButtonTheme := IconButtonThemeOf(bc)
 	scaffold := ScaffoldMaybeOf(bc)
 	parentRoute := widgets.ModalRouteOf(bc)
 	hasDrawer := scaffold != nil && scaffold.HasDrawer()
@@ -495,9 +493,7 @@ func (s *appBarState) Build(bc widgets.BuildContext) widgets.Widget {
 	if leading == nil && !o.NoAutomaticallyImplyLeading {
 		switch {
 		case hasDrawer:
-			// TODO(step 13.3): the button takes the icon size of the theme through
-			// IconButton.styleFrom.
-			leading = NewDrawerButton()
+			leading = NewDrawerButton(ActionButtonOpts{Style: IconButtonStyleFrom(IconButtonStyleFromOpts{IconSize: foundation.Some(overallIconTheme.Size().OrElse(24))})})
 		case parentRoute != nil && parentRoute.ImpliesAppBarDismissal():
 			if useCloseButton {
 				leading = NewCloseButton()
@@ -507,8 +503,19 @@ func (s *appBarState) Build(bc widgets.BuildContext) widgets.Widget {
 		}
 	}
 	if leading != nil {
-		// TODO(step 13.3): in Material 3 an IconButton leading is centered and gets
-		// an IconButtonTheme with the icon theme of the app bar.
+		if theme.UseMaterial3 {
+			var effectiveIconButtonTheme IconButtonThemeData
+			if defaults.IconTheme.IsSome() && overallIconTheme.Equal(defaults.IconTheme.Value()) {
+				effectiveIconButtonTheme = iconButtonTheme
+			} else {
+				leadingIconButtonStyle := IconButtonStyleFrom(IconButtonStyleFromOpts{ForegroundColor: overallIconTheme.Color(), IconSize: overallIconTheme.Size()})
+				effectiveIconButtonTheme = IconButtonThemeData{Style: copyIconButtonThemeStyle(iconButtonTheme.Style, leadingIconButtonStyle)}
+			}
+			if isIconButtonWidget(leading) {
+				leading = widgets.NewCenter(leading)
+			}
+			leading = NewIconButtonTheme(effectiveIconButtonTheme, leading)
+		}
 		leading = widgets.NewConstrainedBox(
 			rendering.NewBoxConstraintsTightFor(rendering.TightForOpts{Width: foundation.Some(o.LeadingWidth.OrElse(appBarTheme.LeadingWidth.OrElse(appBarLeadingWidth)))}),
 			leading)
@@ -543,11 +550,17 @@ func (s *appBarState) Build(bc widgets.BuildContext) widgets.Widget {
 		}))
 	}
 	if actions == nil && hasEndDrawer && !o.NoAutomaticallyImplyActions {
-		actions = NewEndDrawerButton()
+		actions = NewEndDrawerButton(ActionButtonOpts{Style: IconButtonStyleFrom(IconButtonStyleFromOpts{IconSize: foundation.Some(overallIconTheme.Size().OrElse(24))})})
 	}
 	if actions != nil {
-		// TODO(step 13.3): the IconButtonTheme with the actions icon theme.
-		actions = widgets.NewIconThemeMerge(actionsIconTheme, actions)
+		var effectiveActionsIconButtonTheme IconButtonThemeData
+		if defaults.ActionsIconTheme.IsSome() && actionsIconTheme.Equal(defaults.ActionsIconTheme.Value()) {
+			effectiveActionsIconButtonTheme = iconButtonTheme
+		} else {
+			actionsIconButtonStyle := IconButtonStyleFrom(IconButtonStyleFromOpts{ForegroundColor: actionsIconTheme.Color(), IconSize: actionsIconTheme.Size()})
+			effectiveActionsIconButtonTheme = IconButtonThemeData{Style: copyIconButtonThemeStyle(iconButtonTheme.Style, actionsIconButtonStyle)}
+		}
+		actions = NewIconButtonTheme(effectiveActionsIconButtonTheme, widgets.NewIconThemeMerge(actionsIconTheme, actions))
 	}
 
 	toolbar := widgets.NewNavigationToolbar(widgets.NavigationToolbarOpts{
@@ -773,4 +786,23 @@ func (r *renderAppBarTitleBox) PerformLayout() {
 	r.Child().Layout(inner, rendering.LayoutOpts{ParentUsesSize: true})
 	r.SetSize(constraints.Constrain(r.Child().Size()))
 	r.AlignChild()
+}
+
+// copyIconButtonThemeStyle is the style of the theme with the foreground color,
+// overlay color and icon size of the app bar: nil when the theme has no style.
+func copyIconButtonThemeStyle(themeStyle, appBarStyle *ButtonStyle) *ButtonStyle {
+	if themeStyle == nil {
+		return nil
+	}
+	return themeStyle.CopyWith(ButtonStyleOpts{ForegroundColor: appBarStyle.ForegroundColor, OverlayColor: appBarStyle.OverlayColor, IconSize: appBarStyle.IconSize})
+}
+
+// isIconButtonWidget says whether the widget is an IconButton, or one of the
+// buttons that Flutter derives from it (the back, close and drawer buttons).
+func isIconButtonWidget(w widgets.Widget) bool {
+	switch w.(type) {
+	case *IconButton, *BackButton, *CloseButton, *DrawerButton, *EndDrawerButton:
+		return true
+	}
+	return false
 }

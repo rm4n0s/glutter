@@ -156,16 +156,8 @@ func (w *BottomAppBarDemo) Build(bc m.BuildContext) m.Widget {
 			}),
 		}),
 		FloatingActionButton:         m.NewFloatingActionButton(func() {}, m.NewIcon(m.Icons.Add()), m.FloatingActionButtonOpts{Tooltip: "Add"}),
-		FloatingActionButtonLocation: dockedLocation{},
+		FloatingActionButtonLocation: m.FloatingActionButtonLocationCenterDocked,
 	})), m.SizedBoxOpts{Width: m.Some(columnWidth), Height: m.Some(230.0)})
-}
-
-// dockedLocation docks the button at the center of the top of the bottom bar,
-// like FloatingActionButtonLocation.centerDocked.
-type dockedLocation struct{}
-
-func (dockedLocation) GetOffset(g m.ScaffoldPrelayoutGeometry) m.Offset {
-	return m.Offset{Dx: (g.ScaffoldSize.Width - g.FloatingActionButtonSize.Width) / 2, Dy: g.ContentBottom - g.FloatingActionButtonSize.Height/2}
 }
 
 // devSnackBar is whether GLUTTER_DEV_SNACKBAR is "1" in a debug build.

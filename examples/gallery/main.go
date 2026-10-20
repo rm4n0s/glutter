@@ -131,28 +131,9 @@ func (w *GalleryShell) Build(bc m.BuildContext) m.Widget {
 	})
 }
 
-// NewIconAction is a round 48 by 48 target around an icon.
-//
-// TODO(step 13.3): IconButton replaces it.
+// NewIconAction is an icon button with a tooltip.
 func NewIconAction(icon m.IconData, tooltip string, onTap func()) m.Widget {
-	return &iconAction{icon: icon, tooltip: tooltip, onTap: onTap}
-}
-
-type iconAction struct {
-	m.StatelessWidget
-	icon    m.IconData
-	tooltip string
-	onTap   func()
-}
-
-func (w *iconAction) Build(bc m.BuildContext) m.Widget {
-	return m.NewSemantics(
-		m.NewMaterial(
-			m.NewInkWell(
-				m.NewSizedBox(m.NewCenter(m.NewIcon(w.icon)), m.SizedBoxOpts{Width: m.Some(48.0), Height: m.Some(48.0)}),
-				m.InkWellOpts{OnTap: w.onTap, CustomBorder: m.NewCircleBorder()}),
-			m.MaterialOpts{Type: m.MaterialTypeTransparency}),
-		m.SemanticsOpts{Button: m.Some(true), Tooltip: m.Some(w.tooltip)})
+	return m.NewIconButton(onTap, m.NewIcon(icon), m.IconButtonOpts{Tooltip: tooltip})
 }
 
 // NewPageRail is the navigation rail on the side with a destination for each

@@ -19,12 +19,6 @@ import (
 	"github.com/rm4n0s/glutter/widgets"
 )
 
-// FloatingActionButtonMargin is the margin between a floating action button
-// and the edges of the scaffold.
-//
-// Flutter: material/floating_action_button_location.dart kFloatingActionButtonMargin
-const FloatingActionButtonMargin = 16.0
-
 // scaffoldSlot is the id of a child of the layout of a scaffold.
 //
 // Flutter: material/scaffold.dart _ScaffoldSlot
@@ -73,52 +67,6 @@ type ScaffoldPrelayoutGeometry struct {
 	MaterialBannerSize ui.Size
 	// TextDirection is the direction of the scaffold.
 	TextDirection ui.TextDirection
-}
-
-// FloatingActionButtonLocation places the floating action button in a scaffold.
-//
-// TODO(step 13.3): the other locations, the animator and the transition.
-//
-// Flutter: material/floating_action_button_location.dart FloatingActionButtonLocation
-type FloatingActionButtonLocation interface {
-	// GetOffset is the position of the top left of the button for the geometry.
-	//
-	// Flutter: material/floating_action_button_location.dart FloatingActionButtonLocation.getOffset
-	GetOffset(geometry ScaffoldPrelayoutGeometry) ui.Offset
-}
-
-type fabLocationEndFloat struct{}
-
-// FloatingActionButtonLocationEndFloat places the button at the end of the
-// screen, floating above the bottom widgets, with a margin. It is the default.
-//
-// Flutter: material/floating_action_button_location.dart FloatingActionButtonLocation.endFloat
-var FloatingActionButtonLocationEndFloat FloatingActionButtonLocation = fabLocationEndFloat{}
-
-func (fabLocationEndFloat) GetOffset(g ScaffoldPrelayoutGeometry) ui.Offset {
-	var x float64
-	if g.TextDirection == ui.TextDirectionRTL {
-		// Left offset.
-		x = FloatingActionButtonMargin + g.MinInsets.Left
-	} else {
-		// Right offset.
-		x = g.ScaffoldSize.Width - FloatingActionButtonMargin - g.MinInsets.Right - g.FloatingActionButtonSize.Width
-	}
-	// FabFloatOffsetY.
-	contentBottom := g.ContentBottom
-	bottomContentHeight := g.ScaffoldSize.Height - contentBottom
-	bottomSheetHeight := g.BottomSheetSize.Height
-	fabHeight := g.FloatingActionButtonSize.Height
-	snackBarHeight := g.SnackBarSize.Height
-	safeMargin := math.Max(FloatingActionButtonMargin, g.MinViewPadding.Bottom-bottomContentHeight+FloatingActionButtonMargin)
-	fabY := contentBottom - fabHeight - safeMargin
-	if snackBarHeight > 0.0 {
-		fabY = math.Min(fabY, contentBottom-snackBarHeight-fabHeight-FloatingActionButtonMargin)
-	}
-	if bottomSheetHeight > 0.0 {
-		fabY = math.Min(fabY, contentBottom-bottomSheetHeight-fabHeight/2.0)
-	}
-	return ui.Offset{Dx: x, Dy: fabY}
 }
 
 // ScaffoldGeometry holds the geometry of the parts of a scaffold that its
@@ -177,6 +125,11 @@ func (n *scaffoldGeometryNotifier) Value() ScaffoldGeometry {
 	return n.geometry.scaleFloatingActionButton(n.floatingActionButtonScale)
 }
 
+func (n *scaffoldGeometryNotifier) updateScale(scale float64) {
+	n.floatingActionButtonScale = scale
+	n.NotifyListeners()
+}
+
 func (n *scaffoldGeometryNotifier) updateWith(bottomNavigationBarTop foundation.Opt[float64], floatingActionButtonArea foundation.Opt[ui.Rect]) {
 	n.geometry = n.geometry.CopyWith(bottomNavigationBarTop, floatingActionButtonArea)
 	n.NotifyListeners()
@@ -221,17 +174,20 @@ func scaffoldBodyBuilder(extendBody, extendBodyBehindAppBar bool, info *scaffold
 // Flutter: material/scaffold.dart _ScaffoldLayout
 type scaffoldLayout struct {
 	rendering.MultiChildLayoutDelegateBase
-	extendBody                     bool
-	extendBodyBehindAppBar         bool
-	minInsets                      painting.EdgeInsets
-	minViewPadding                 painting.EdgeInsets
-	textDirection                  ui.TextDirection
-	geometryNotifier               *scaffoldGeometryNotifier
-	floatingActionButtonLocation   FloatingActionButtonLocation
-	isSnackBarFloating             bool
-	snackBarWidth                  foundation.Opt[float64]
-	extendBodyBehindMaterialBanner bool
-	bodyInfo                       *scaffoldBodyInfo
+	extendBody                           bool
+	extendBodyBehindAppBar               bool
+	minInsets                            painting.EdgeInsets
+	minViewPadding                       painting.EdgeInsets
+	textDirection                        ui.TextDirection
+	geometryNotifier                     *scaffoldGeometryNotifier
+	currentFloatingActionButtonLocation  FloatingActionButtonLocation
+	previousFloatingActionButtonLocation FloatingActionButtonLocation
+	floatingActionButtonMoveAnimation    animation.Animation[float64]
+	floatingActionButtonMotionAnimator   FloatingActionButtonAnimator
+	isSnackBarFloating                   bool
+	snackBarWidth                        foundation.Opt[float64]
+	extendBodyBehindMaterialBanner       bool
+	bodyInfo                             *scaffoldBodyInfo
 }
 
 func (d *scaffoldLayout) PerformLayout(size ui.Size) {
@@ -320,14 +276,14 @@ func (d *scaffoldLayout) PerformLayout(size ui.Size) {
 	floatingActionButtonRect := ui.Rect{}
 	if d.HasChild(scaffoldSlotFloatingActionButton) {
 		fabSize := d.LayoutChild(scaffoldSlotFloatingActionButton, looseConstraints)
-		// TODO(step 13.3): the previous location and the animator move the button
-		// from the old position to the new one.
 		currentGeometry := ScaffoldPrelayoutGeometry{
 			BottomSheetSize: bottomSheetSize, ContentBottom: contentBottom, ContentTop: appBarHeight, FloatingActionButtonSize: fabSize,
 			MinInsets: d.minInsets, ScaffoldSize: size, SnackBarSize: snackBarSize, MaterialBannerSize: materialBannerSize,
 			TextDirection: d.textDirection, MinViewPadding: d.minViewPadding,
 		}
-		fabOffset := d.floatingActionButtonLocation.GetOffset(currentGeometry)
+		currentFabOffset := d.currentFloatingActionButtonLocation.GetOffset(currentGeometry)
+		previousFabOffset := d.previousFloatingActionButtonLocation.GetOffset(currentGeometry)
+		fabOffset := d.floatingActionButtonMotionAnimator.GetOffset(previousFabOffset, currentFabOffset, d.floatingActionButtonMoveAnimation.Value())
 		d.PositionChild(scaffoldSlotFloatingActionButton, fabOffset)
 		floatingActionButtonRect = ui.NewRectFromLTWH(fabOffset.Dx, fabOffset.Dy, fabSize.Width, fabSize.Height)
 	}
@@ -342,9 +298,7 @@ func (d *scaffoldLayout) PerformLayout(size ui.Size) {
 			snackBarSize = d.LayoutChild(scaffoldSlotSnackBar, c)
 		}
 		var snackBarYOffsetBase float64
-		// TODO(step 13.3): the locations at the top of the screen do not show the
-		// snack bar above the button; endFloat does.
-		showAboveFab := true
+		showAboveFab := !fabLocationIsTop(d.currentFloatingActionButtonLocation)
 		if floatingActionButtonRect.Size() != (ui.Size{}) && d.isSnackBarFloating && showAboveFab {
 			if top, ok := bottomNavigationBarTop.Get(); ok {
 				snackBarYOffsetBase = math.Min(top, floatingActionButtonRect.Top)
@@ -399,7 +353,7 @@ func (d *scaffoldLayout) PerformLayout(size ui.Size) {
 func (d *scaffoldLayout) ShouldRelayout(old rendering.MultiChildLayoutDelegate) bool {
 	o := old.(*scaffoldLayout)
 	return o.minInsets != d.minInsets || o.minViewPadding != d.minViewPadding || o.textDirection != d.textDirection ||
-		o.floatingActionButtonLocation != d.floatingActionButtonLocation || o.extendBody != d.extendBody ||
+		o.previousFloatingActionButtonLocation != d.previousFloatingActionButtonLocation || o.currentFloatingActionButtonLocation != d.currentFloatingActionButtonLocation || o.extendBody != d.extendBody ||
 		o.extendBodyBehindAppBar != d.extendBodyBehindAppBar
 }
 
@@ -419,8 +373,11 @@ type ScaffoldOpts struct {
 	// FloatingActionButtonLocation places the floating action button; the default
 	// is FloatingActionButtonLocationEndFloat.
 	//
-	// TODO(step 13.3): changing it animates the button, with the animator.
+	// Changing it animates the button to the new location, with the animator.
 	FloatingActionButtonLocation FloatingActionButtonLocation
+	// FloatingActionButtonAnimator animates the button when it moves to another
+	// location; the default is FloatingActionButtonAnimatorScaling.
+	FloatingActionButtonAnimator FloatingActionButtonAnimator
 	// PersistentFooterButtons are the buttons that are displayed at the bottom of
 	// the scaffold, below the body.
 	PersistentFooterButtons []widgets.Widget
@@ -490,9 +447,6 @@ type ScaffoldOpts struct {
 // bar, a body, a floating action button, a bottom navigation bar and persistent
 // footer buttons, plus the snack bars and the banners that a ScaffoldMessenger
 // shows.
-//
-// TODO(step 13.3): the floating action button locations, animator and
-// transition, and its hiding while a bottom sheet dominates the screen.
 //
 // Flutter: material/scaffold.dart Scaffold
 type Scaffold struct {
@@ -621,6 +575,12 @@ type ScaffoldState struct {
 	endDrawerKey    *widgets.GlobalKey[*DrawerControllerState]
 	drawerOpened    bool
 	endDrawerOpened bool
+
+	floatingActionButtonMoveController       *animation.AnimationController
+	floatingActionButtonAnimator             FloatingActionButtonAnimator
+	previousFloatingActionButtonLocation     FloatingActionButtonLocation
+	floatingActionButtonLocation             FloatingActionButtonLocation
+	floatingActionButtonVisibilityController *animation.AnimationController
 
 	// Contains bottom sheets that may still be animating out of view. Important if
 	// the app/user takes an action that could repeatedly show a bottom sheet.
@@ -798,25 +758,53 @@ func (s *ScaffoldState) InitState() {
 	s.endDrawerKey = widgets.NewGlobalKey[*DrawerControllerState]()
 	s.currentBottomSheetKey = widgets.NewGlobalKey[widgets.State]()
 	s.bottomSheetScrimController = animation.NewAnimationController(s)
-	// TODO(step 13.3): the floating action button transition scales the button in
-	// and out; until then it is fully shown.
-	s.updateGeometryScale()
+	o := s.Widget().o
+	s.floatingActionButtonLocation = o.FloatingActionButtonLocation
+	s.floatingActionButtonAnimator = floatingActionButtonAnimatorOr(o.FloatingActionButtonAnimator)
+	s.previousFloatingActionButtonLocation = s.floatingActionButtonLocation
+	s.floatingActionButtonMoveController = animation.NewAnimationController(s, animation.AnimationControllerOpts{
+		Value: foundation.Some(1.0), Duration: foundation.Some(FloatingActionButtonSegue * 2)})
+	s.floatingActionButtonVisibilityController = animation.NewAnimationController(s, animation.AnimationControllerOpts{
+		Duration: foundation.Some(FloatingActionButtonSegue)})
 }
 
-func (s *ScaffoldState) updateGeometryScale() {
-	scale := 0.0
-	if s.Widget().o.FloatingActionButton != nil {
-		scale = 1.0
+func floatingActionButtonAnimatorOr(a FloatingActionButtonAnimator) FloatingActionButtonAnimator {
+	if a == nil {
+		return FloatingActionButtonAnimatorScaling
 	}
-	s.geometryNotifier.floatingActionButtonScale = scale
+	return a
 }
 
-// DidUpdateWidget keeps the geometry scale of the button.
+// moveFloatingActionButton moves the button to the new location with the
+// animator, starting from where it is when a move is under way.
+//
+// Flutter: material/scaffold.dart ScaffoldState._moveFloatingActionButton
+func (s *ScaffoldState) moveFloatingActionButton(newLocation FloatingActionButtonLocation) {
+	previousLocation := s.floatingActionButtonLocation
+	restartAnimationFrom := 0.0
+	if s.floatingActionButtonMoveController.IsAnimating() {
+		previousLocation = &fabTransitionSnapshotLocation{begin: s.previousFloatingActionButtonLocation, end: s.floatingActionButtonLocation,
+			animator: s.floatingActionButtonAnimator, progress: s.floatingActionButtonMoveController.Value()}
+		restartAnimationFrom = s.floatingActionButtonAnimator.GetAnimationRestart(s.floatingActionButtonMoveController.Value())
+	}
+	s.SetState(func() {
+		s.previousFloatingActionButtonLocation = previousLocation
+		s.floatingActionButtonLocation = newLocation
+	})
+	s.floatingActionButtonMoveController.Forward(restartAnimationFrom)
+}
+
+// DidUpdateWidget moves the floating action button to a new location, and updates the bottom sheet.
 //
 // Flutter: material/scaffold.dart ScaffoldState.didUpdateWidget
 func (s *ScaffoldState) DidUpdateWidget(old *Scaffold) {
-	s.updateGeometryScale()
 	w := s.Widget()
+	if w.o.FloatingActionButtonAnimator != old.o.FloatingActionButtonAnimator {
+		s.floatingActionButtonAnimator = floatingActionButtonAnimatorOr(w.o.FloatingActionButtonAnimator)
+	}
+	if w.o.FloatingActionButtonLocation != old.o.FloatingActionButtonLocation {
+		s.moveFloatingActionButton(w.o.FloatingActionButtonLocation)
+	}
 	if w.o.BottomSheet != old.o.BottomSheet {
 		if foundation.DebugMode && w.o.BottomSheet != nil && s.currentBottomSheet != nil && s.currentBottomSheet.isLocalHistoryEntry {
 			panic(errors.New("ScaffoldBottomSheetUpdateConflict", "Scaffold.bottomSheet cannot be specified while a bottom sheet displayed with showBottomSheet() is still visible. Use the PersistentBottomSheetController returned by showBottomSheet() to close the old bottom sheet before creating a Scaffold with a (non null) bottomSheet."))
@@ -853,6 +841,8 @@ func (s *ScaffoldState) DidChangeDependencies() {
 // Flutter: material/scaffold.dart ScaffoldState.dispose
 func (s *ScaffoldState) Dispose() {
 	s.geometryNotifier.Dispose()
+	s.floatingActionButtonMoveController.Dispose()
+	s.floatingActionButtonVisibilityController.Dispose()
 	s.bottomSheetScrimController.Dispose()
 	if s.scaffoldMessenger != nil {
 		s.scaffoldMessenger.unregister(s)
@@ -993,8 +983,8 @@ func (s *ScaffoldState) Build(bc widgets.BuildContext) widgets.Widget {
 		children = s.addSlot(children, o.BottomNavigationBar, scaffoldSlotBottomNavigationBar, slotOpts{removeTopPadding: true, maintainBottomViewPadding: !resize})
 	}
 
-	// TODO(step 13.3): the floating action button transition wraps the child.
-	children = s.addSlot(children, o.FloatingActionButton, scaffoldSlotFloatingActionButton, slotOpts{
+	children = s.addSlot(children, newFloatingActionButtonTransition(o.FloatingActionButton, s.floatingActionButtonMoveController,
+		s.floatingActionButtonAnimator, s.geometryNotifier, s.floatingActionButtonVisibilityController), scaffoldSlotFloatingActionButton, slotOpts{
 		removeLeftPadding: true, removeTopPadding: true, removeRightPadding: true, removeBottomPadding: true})
 
 	if s.endDrawerOpened {
@@ -1021,18 +1011,21 @@ func (s *ScaffoldState) Build(bc widgets.BuildContext) widgets.Widget {
 					widgets.NewBuilder(func(bc widgets.BuildContext) widgets.Widget {
 						return widgets.NewActions(widgets.ActionMap{widgets.IntentTypeOf[widgets.DismissIntent](): newDismissDrawerAction(bc)},
 							widgets.NewCustomMultiChildLayout(&scaffoldLayout{
-								MultiChildLayoutDelegateBase:   rendering.NewMultiChildLayoutDelegateBase(nil),
-								extendBody:                     o.ExtendBody,
-								extendBodyBehindAppBar:         o.ExtendBodyBehindAppBar,
-								minInsets:                      minInsets,
-								minViewPadding:                 minViewPadding,
-								floatingActionButtonLocation:   o.FloatingActionButtonLocation,
-								geometryNotifier:               s.geometryNotifier,
-								textDirection:                  textDirection,
-								isSnackBarFloating:             isSnackBarFloating,
-								extendBodyBehindMaterialBanner: extendBodyBehindMaterialBanner,
-								snackBarWidth:                  snackBarWidth,
-								bodyInfo:                       &s.bodyInfo,
+								MultiChildLayoutDelegateBase:         rendering.NewMultiChildLayoutDelegateBase(s.floatingActionButtonMoveController),
+								extendBody:                           o.ExtendBody,
+								extendBodyBehindAppBar:               o.ExtendBodyBehindAppBar,
+								minInsets:                            minInsets,
+								minViewPadding:                       minViewPadding,
+								currentFloatingActionButtonLocation:  s.floatingActionButtonLocation,
+								previousFloatingActionButtonLocation: s.previousFloatingActionButtonLocation,
+								floatingActionButtonMoveAnimation:    s.floatingActionButtonMoveController,
+								floatingActionButtonMotionAnimator:   s.floatingActionButtonAnimator,
+								geometryNotifier:                     s.geometryNotifier,
+								textDirection:                        textDirection,
+								isSnackBarFloating:                   isSnackBarFloating,
+								extendBodyBehindMaterialBanner:       extendBodyBehindMaterialBanner,
+								snackBarWidth:                        snackBarWidth,
+								bodyInfo:                             &s.bodyInfo,
 							}, children))
 					}),
 					MaterialOpts{Color: foundation.Some(o.BackgroundColor.OrElse(theme.ScaffoldBackgroundColor))}))),

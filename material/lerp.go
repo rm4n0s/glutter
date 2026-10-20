@@ -205,3 +205,62 @@ func lerpStateOptColor(a, b widgets.WidgetStateProperty[foundation.Opt[ui.Color]
 		return lerpOptColor(ca, cb, t)
 	})
 }
+
+// lerpStateNil is WidgetStateProperty.lerp(a, b, t, lerp) for the properties whose
+// value type has a nil: nil is Dart's null for the property and for its value.
+//
+// Flutter: widgets/widget_state.dart WidgetStateProperty.lerp
+func lerpStateNil[T any](a, b widgets.WidgetStateProperty[T], t float64, lerp func(a, b T, t float64) T) widgets.WidgetStateProperty[T] {
+	if a == nil && b == nil {
+		return nil
+	}
+	return widgets.WidgetStatePropertyResolveWith(func(states widgets.WidgetStates) T {
+		var va, vb T
+		if a != nil {
+			va = a.Resolve(states)
+		}
+		if b != nil {
+			vb = b.Resolve(states)
+		}
+		return lerp(va, vb, t)
+	})
+}
+
+// lerpStateOpt is WidgetStateProperty.lerp(a, b, t, lerp) for the properties whose
+// value is nullable and an Opt.
+//
+// Flutter: widgets/widget_state.dart WidgetStateProperty.lerp
+func lerpStateOpt[T any](a, b widgets.WidgetStateProperty[foundation.Opt[T]], t float64,
+	lerp func(a, b foundation.Opt[T], t float64) foundation.Opt[T]) widgets.WidgetStateProperty[foundation.Opt[T]] {
+	if a == nil && b == nil {
+		return nil
+	}
+	return widgets.WidgetStatePropertyResolveWith(func(states widgets.WidgetStates) foundation.Opt[T] {
+		var va, vb foundation.Opt[T]
+		if a != nil {
+			va = a.Resolve(states)
+		}
+		if b != nil {
+			vb = b.Resolve(states)
+		}
+		return lerp(va, vb, t)
+	})
+}
+
+// lerpOptBorderSide is how WidgetStateBorderSide.lerp interpolates two sides: a
+// missing one is a side of no width and the transparent color of the other.
+//
+// Flutter: painting/borders.dart WidgetStateBorderSide.lerp
+func lerpOptBorderSide(a, b foundation.Opt[painting.BorderSide], t float64) foundation.Opt[painting.BorderSide] {
+	sa, okA := a.Get()
+	sb, okB := b.Get()
+	switch {
+	case !okA && !okB:
+		return foundation.None[painting.BorderSide]()
+	case !okA:
+		return foundation.Some(painting.BorderSideLerp(painting.NewBorderSide(painting.BorderSideOpts{Width: foundation.Some(0.0), Color: foundation.Some(sb.Color.WithAlpha(0))}), sb, t))
+	case !okB:
+		return foundation.Some(painting.BorderSideLerp(sa, painting.NewBorderSide(painting.BorderSideOpts{Width: foundation.Some(0.0), Color: foundation.Some(sa.Color.WithAlpha(0))}), t))
+	}
+	return foundation.Some(painting.BorderSideLerp(sa, sb, t))
+}

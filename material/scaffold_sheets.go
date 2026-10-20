@@ -15,6 +15,7 @@ import (
 	"github.com/rm4n0s/glutter/gestures"
 	"github.com/rm4n0s/glutter/painting"
 	"github.com/rm4n0s/glutter/rendering"
+	"github.com/rm4n0s/glutter/scheduler"
 	"github.com/rm4n0s/glutter/ui"
 	"github.com/rm4n0s/glutter/widgets"
 )
@@ -187,6 +188,14 @@ func (s *ScaffoldState) maybeBuildPersistentBottomSheet() {
 	}, buildBottomSheetOpts{isPersistent: true, animationController: controller})
 }
 
+// showFloatingActionButton shows the floating action button again, which a bottom
+// sheet that fills the screen hides.
+//
+// Flutter: material/scaffold.dart ScaffoldState._showFloatingActionButton
+func (s *ScaffoldState) showFloatingActionButton() *scheduler.TickerFuture {
+	return s.floatingActionButtonVisibilityController.Forward()
+}
+
 func (s *ScaffoldState) closeCurrentBottomSheet() {
 	if s.currentBottomSheet != nil && !s.currentBottomSheet.isLocalHistoryEntry {
 		s.currentBottomSheet.Close()
@@ -214,6 +223,7 @@ func (s *ScaffoldState) buildBottomSheet(builder widgets.WidgetBuilder, o buildB
 		if s.currentBottomSheet == nil {
 			return
 		}
+		s.showFloatingActionButton()
 		if st, ok := bottomSheetKey.CurrentState(); ok {
 			st.close()
 		}

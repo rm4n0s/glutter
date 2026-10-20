@@ -11,6 +11,37 @@ import (
 	widgets "github.com/rm4n0s/glutter/widgets"
 )
 
+// ActionIconThemeDataCopy holds the replacements for ActionIconThemeData.CopyWith: a field that is None keeps the value of the
+// copied one.
+//
+// Flutter: material/action_icons_theme.dart ActionIconThemeData.copyWith
+type ActionIconThemeDataCopy struct {
+	BackButtonIconBuilder      foundation.Opt[widgets.WidgetBuilder]
+	CloseButtonIconBuilder     foundation.Opt[widgets.WidgetBuilder]
+	DrawerButtonIconBuilder    foundation.Opt[widgets.WidgetBuilder]
+	EndDrawerButtonIconBuilder foundation.Opt[widgets.WidgetBuilder]
+}
+
+// CopyWith returns a copy of the ActionIconThemeData with the fields that the ActionIconThemeDataCopy sets replaced.
+//
+// Flutter: material/action_icons_theme.dart ActionIconThemeData.copyWith
+func (x ActionIconThemeData) CopyWith(c ActionIconThemeDataCopy) ActionIconThemeData {
+	r := x
+	if v, ok := c.BackButtonIconBuilder.Get(); ok {
+		r.BackButtonIconBuilder = v
+	}
+	if v, ok := c.CloseButtonIconBuilder.Get(); ok {
+		r.CloseButtonIconBuilder = v
+	}
+	if v, ok := c.DrawerButtonIconBuilder.Get(); ok {
+		r.DrawerButtonIconBuilder = v
+	}
+	if v, ok := c.EndDrawerButtonIconBuilder.Get(); ok {
+		r.EndDrawerButtonIconBuilder = v
+	}
+	return r
+}
+
 // AppBarThemeDataCopy holds the replacements for AppBarThemeData.CopyWith: a field that is None keeps the value of the
 // copied one.
 //
@@ -255,6 +286,105 @@ func (x DrawerThemeData) CopyWith(c DrawerThemeDataCopy) DrawerThemeData {
 	return r
 }
 
+// FloatingActionButtonThemeDataCopy holds the replacements for FloatingActionButtonThemeData.CopyWith: a field that is None keeps the value of the
+// copied one.
+//
+// Flutter: material/floating_action_button_theme.dart FloatingActionButtonThemeData.copyWith
+type FloatingActionButtonThemeDataCopy struct {
+	ForegroundColor          foundation.Opt[ui.Color]
+	BackgroundColor          foundation.Opt[ui.Color]
+	FocusColor               foundation.Opt[ui.Color]
+	HoverColor               foundation.Opt[ui.Color]
+	SplashColor              foundation.Opt[ui.Color]
+	Elevation                foundation.Opt[float64]
+	FocusElevation           foundation.Opt[float64]
+	HoverElevation           foundation.Opt[float64]
+	DisabledElevation        foundation.Opt[float64]
+	HighlightElevation       foundation.Opt[float64]
+	Shape                    foundation.Opt[painting.ShapeBorder]
+	EnableFeedback           foundation.Opt[bool]
+	IconSize                 foundation.Opt[float64]
+	SizeConstraints          foundation.Opt[rendering.BoxConstraints]
+	SmallSizeConstraints     foundation.Opt[rendering.BoxConstraints]
+	LargeSizeConstraints     foundation.Opt[rendering.BoxConstraints]
+	ExtendedSizeConstraints  foundation.Opt[rendering.BoxConstraints]
+	ExtendedIconLabelSpacing foundation.Opt[float64]
+	ExtendedPadding          foundation.Opt[painting.EdgeInsetsGeometry]
+	ExtendedTextStyle        foundation.Opt[*painting.TextStyle]
+	MouseCursor              foundation.Opt[widgets.WidgetStateProperty[services.MouseCursor]]
+}
+
+// CopyWith returns a copy of the FloatingActionButtonThemeData with the fields that the FloatingActionButtonThemeDataCopy sets replaced.
+//
+// Flutter: material/floating_action_button_theme.dart FloatingActionButtonThemeData.copyWith
+func (x FloatingActionButtonThemeData) CopyWith(c FloatingActionButtonThemeDataCopy) FloatingActionButtonThemeData {
+	r := x
+	if c.ForegroundColor.IsSome() {
+		r.ForegroundColor = c.ForegroundColor
+	}
+	if c.BackgroundColor.IsSome() {
+		r.BackgroundColor = c.BackgroundColor
+	}
+	if c.FocusColor.IsSome() {
+		r.FocusColor = c.FocusColor
+	}
+	if c.HoverColor.IsSome() {
+		r.HoverColor = c.HoverColor
+	}
+	if c.SplashColor.IsSome() {
+		r.SplashColor = c.SplashColor
+	}
+	if c.Elevation.IsSome() {
+		r.Elevation = c.Elevation
+	}
+	if c.FocusElevation.IsSome() {
+		r.FocusElevation = c.FocusElevation
+	}
+	if c.HoverElevation.IsSome() {
+		r.HoverElevation = c.HoverElevation
+	}
+	if c.DisabledElevation.IsSome() {
+		r.DisabledElevation = c.DisabledElevation
+	}
+	if c.HighlightElevation.IsSome() {
+		r.HighlightElevation = c.HighlightElevation
+	}
+	if v, ok := c.Shape.Get(); ok {
+		r.Shape = v
+	}
+	if c.EnableFeedback.IsSome() {
+		r.EnableFeedback = c.EnableFeedback
+	}
+	if c.IconSize.IsSome() {
+		r.IconSize = c.IconSize
+	}
+	if c.SizeConstraints.IsSome() {
+		r.SizeConstraints = c.SizeConstraints
+	}
+	if c.SmallSizeConstraints.IsSome() {
+		r.SmallSizeConstraints = c.SmallSizeConstraints
+	}
+	if c.LargeSizeConstraints.IsSome() {
+		r.LargeSizeConstraints = c.LargeSizeConstraints
+	}
+	if c.ExtendedSizeConstraints.IsSome() {
+		r.ExtendedSizeConstraints = c.ExtendedSizeConstraints
+	}
+	if c.ExtendedIconLabelSpacing.IsSome() {
+		r.ExtendedIconLabelSpacing = c.ExtendedIconLabelSpacing
+	}
+	if v, ok := c.ExtendedPadding.Get(); ok {
+		r.ExtendedPadding = v
+	}
+	if v, ok := c.ExtendedTextStyle.Get(); ok {
+		r.ExtendedTextStyle = v
+	}
+	if v, ok := c.MouseCursor.Get(); ok {
+		r.MouseCursor = v
+	}
+	return r
+}
+
 // MaterialBannerThemeDataCopy holds the replacements for MaterialBannerThemeData.CopyWith: a field that is None keeps the value of the
 // copied one.
 //
@@ -483,6 +613,29 @@ func (x NavigationRailThemeData) CopyWith(c NavigationRailThemeDataCopy) Navigat
 	}
 	if c.MinExtendedWidth.IsSome() {
 		r.MinExtendedWidth = c.MinExtendedWidth
+	}
+	return r
+}
+
+// SegmentedButtonThemeDataCopy holds the replacements for SegmentedButtonThemeData.CopyWith: a field that is None keeps the value of the
+// copied one.
+//
+// Flutter: material/segmented_button_theme.dart SegmentedButtonThemeData.copyWith
+type SegmentedButtonThemeDataCopy struct {
+	Style        foundation.Opt[*ButtonStyle]
+	SelectedIcon foundation.Opt[widgets.Widget]
+}
+
+// CopyWith returns a copy of the SegmentedButtonThemeData with the fields that the SegmentedButtonThemeDataCopy sets replaced.
+//
+// Flutter: material/segmented_button_theme.dart SegmentedButtonThemeData.copyWith
+func (x SegmentedButtonThemeData) CopyWith(c SegmentedButtonThemeDataCopy) SegmentedButtonThemeData {
+	r := x
+	if v, ok := c.Style.Get(); ok {
+		r.Style = v
+	}
+	if v, ok := c.SelectedIcon.Get(); ok {
+		r.SelectedIcon = v
 	}
 	return r
 }

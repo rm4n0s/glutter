@@ -203,3 +203,58 @@ func TestAppBarNegativeElevation(t *testing.T) {
 		t.Errorf("error = %v", appErr)
 	}
 }
+
+func TestAppBarIconButtonThemes(t *testing.T) {
+	red, green := ui.NewColor(0xFFFF0000), ui.NewColor(0xFF00FF00)
+	theme := NewThemeData(ThemeDataOpts{VisualDensity: foundation.Some(VisualDensityStandard()), MaterialTapTargetSize: MaterialTapTargetSizeShrinkWrap})
+	icon := func(ts *gluttertest.Tester, button gluttertest.Finder) widgets.IconThemeData {
+		return widgets.IconThemeOf(ts.Element(gluttertest.First(gluttertest.Descendant(button, gluttertest.ByType[*widgets.Icon]()))))
+	}
+	pump := func(bar *AppBar, drawer widgets.Widget) *gluttertest.Tester {
+		ts := gluttertest.New(t, gluttertest.Opts{Size: ui.Size{Width: 400, Height: 600}})
+		ts.PumpWidget(NewMaterialApp(MaterialAppOpts{Theme: theme, Home: NewScaffold(ScaffoldOpts{AppBar: bar, Drawer: drawer})}))
+		return ts
+	}
+
+	t.Run("the leading drawer button is an icon button, centered in 56 pixels", func(t *testing.T) {
+		ts := pump(NewAppBar(), widgets.NewSizedBox(nil))
+		button := gluttertest.ByType[*DrawerButton]()
+		if !ts.Exists(gluttertest.Descendant(button, gluttertest.ByType[*IconButton]())) {
+			t.Fatal("the drawer button has no icon button")
+		}
+		if got := ts.TopLeft(gluttertest.ByType[*IconButton]()).Dx; got != 8 {
+			t.Errorf("left of the icon button = %v, want 8 (centered in 56)", got)
+		}
+		if got := ts.Size(gluttertest.ByType[*IconButton]()); got != (ui.Size{Width: 40, Height: 40}) {
+			t.Errorf("size of the icon button = %v, want 40x40", got)
+		}
+	})
+	t.Run("the icon theme of the app bar colors the leading button", func(t *testing.T) {
+		ts := pump(NewAppBar(AppBarOpts{IconTheme: foundation.Some(widgets.NewIconThemeData(widgets.IconThemeDataOpts{Color: foundation.Some(red), Size: foundation.Some(30.0)}))}), widgets.NewSizedBox(nil))
+		it := icon(ts, gluttertest.ByType[*DrawerButton]())
+		if it.Color() != foundation.Some(red) || it.Size() != foundation.Some(30.0) {
+			t.Errorf("icon theme = %v, want red and 30", it)
+		}
+	})
+	t.Run("the actions icon theme colors the action buttons", func(t *testing.T) {
+		ts := pump(NewAppBar(AppBarOpts{
+			ActionsIconTheme: foundation.Some(widgets.NewIconThemeData(widgets.IconThemeDataOpts{Color: foundation.Some(green)})),
+			Actions:          []widgets.Widget{NewIconButton(func() {}, NewIcon(Icons.Search()))}}), nil)
+		it := icon(ts, gluttertest.ByType[*IconButton]())
+		if it.Color() != foundation.Some(green) {
+			t.Errorf("icon color = %v, want green", it.Color())
+		}
+	})
+	t.Run("the end drawer button takes the size of the icon theme", func(t *testing.T) {
+		ts := gluttertest.New(t, gluttertest.Opts{Size: ui.Size{Width: 400, Height: 600}})
+		ts.PumpWidget(NewMaterialApp(MaterialAppOpts{Theme: theme, Home: NewScaffold(ScaffoldOpts{
+			AppBar:    NewAppBar(AppBarOpts{IconTheme: foundation.Some(widgets.NewIconThemeData(widgets.IconThemeDataOpts{Size: foundation.Some(36.0)}))}),
+			EndDrawer: widgets.NewSizedBox(nil)})}))
+		if !ts.Exists(gluttertest.ByType[*EndDrawerButton]()) {
+			t.Fatal("there is no end drawer button")
+		}
+		if got := icon(ts, gluttertest.ByType[*EndDrawerButton]()).Size(); got != foundation.Some(36.0) {
+			t.Errorf("icon size = %v, want 36", got)
+		}
+	})
+}

@@ -23,6 +23,7 @@ type Page struct {
 var galleryPages = []Page{
 	{Slug: "app-bars", Name: "App bars & snack bars", Icon: m.Icons.WebAsset(), Build: buildAppBarsPage},
 	{Slug: "navigation", Name: "Navigation & tabs", Icon: m.Icons.Explore(), Build: buildNavigationPage},
+	{Slug: "buttons", Name: "Buttons", Icon: m.Icons.TouchApp(), Build: buildButtonsPage},
 }
 
 // columnWidth is the width of a section, for two of them side by side in the page.
@@ -37,21 +38,9 @@ func section(bc m.BuildContext, title string, child m.Widget) m.Widget {
 	}, m.ColumnOpts{CrossAxisAlignment: m.CrossAxisAlignmentStart}), m.SizedBoxOpts{Width: m.Some(columnWidth)}))
 }
 
-// demoButton is a button with the Material 3 look of a filled tonal button.
-//
-// TODO(step 13.3): the real buttons replace it.
-func demoButton(bc m.BuildContext, label string, onTap func()) m.Widget {
-	colors := m.ThemeOf(bc).ColorScheme
-	shape := m.NewStadiumBorder()
-	return m.NewMaterial(
-		m.NewInkWell(
-			m.NewSizedBox(
-				m.NewPadding(m.NewEdgeInsetsSymmetric(0, 24), m.NewCenter(m.NewText(label, m.TextOpts{
-					Style: m.ThemeOf(bc).TextTheme.LabelLarge.CopyWith(m.TextStyleCopy{Color: m.Some(colors.OnSecondaryContainer())})}),
-					m.CenterOpts{WidthFactor: m.Some(1.0)})),
-				m.SizedBoxOpts{Height: m.Some(40.0)}),
-			m.InkWellOpts{OnTap: onTap, CustomBorder: shape}),
-		m.MaterialOpts{Color: m.Some(colors.SecondaryContainer()), Shape: shape})
+// demoButton is a filled tonal button.
+func demoButton(_ m.BuildContext, label string, onTap func()) m.Widget {
+	return m.NewFilledButtonTonal(onTap, m.NewText(label))
 }
 
 // framed draws a thin outline around a demo.

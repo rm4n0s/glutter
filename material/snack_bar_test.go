@@ -268,3 +268,43 @@ func TestSnackBarErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestSnackBarActionAndCloseIcon(t *testing.T) {
+	ts, key := snackApp(t, plainScaffold)
+	messenger, _ := key.CurrentState()
+	pressed := 0
+	messenger.ShowSnackBar(NewSnackBar(widgets.NewText("snack"), SnackBarOpts{
+		Action:        NewSnackBarAction("Undo", func() { pressed++ }),
+		ShowCloseIcon: foundation.Some(true),
+		Duration:      foundation.Some(10 * time.Second),
+	}))
+	ts.PumpAndSettle()
+
+	// A single line of text has 14 pixels above and below it: the snack bar is 48
+	// high, and its content has horizontal margins only around the action.
+	if got := ts.Size(gluttertest.ByType[*SnackBar]()).Height; got != 48 {
+		t.Errorf("height = %v, want 48", got)
+	}
+	action := gluttertest.Descendant(gluttertest.ByType[*SnackBarAction](), gluttertest.ByType[*TextButton]())
+	if !ts.Exists(action) {
+		t.Fatal("the action is not a TextButton")
+	}
+	closeButton := gluttertest.ByType[*IconButton]()
+	if !ts.Exists(closeButton) {
+		t.Fatal("the close icon is not an IconButton")
+	}
+	if got := gluttertest.WidgetAs[*IconButton](ts, closeButton).Tooltip(); got != "Close" {
+		t.Errorf("tooltip of the close icon = %q, want Close", got)
+	}
+	// The action and the close icon are next to each other, 12 pixels
+	// horizontally: the right margin of the action and the left one of the icon.
+	actionRight := ts.TopLeft(action).Dx + ts.Size(action).Width
+	if gap := ts.TopLeft(closeButton).Dx - actionRight; gap <= 0 || gap > 40 {
+		t.Errorf("gap between the action and the close icon = %v, want a small positive one", gap)
+	}
+	ts.Tap(action)
+	ts.PumpAndSettle()
+	if pressed != 1 {
+		t.Errorf("the action was pressed %d times, want 1", pressed)
+	}
+}

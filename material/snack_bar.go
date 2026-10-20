@@ -112,8 +112,6 @@ type SnackBarActionOpts struct {
 // actions are always enabled; instead of disabling a snack bar action, avoid
 // including it in the snack bar in the first place.
 //
-// TODO(step 13.3): the button is a stand-in for TextButton.
-//
 // Flutter: material/snack_bar.dart SnackBarAction
 type SnackBarAction struct {
 	widgets.StatefulWidget
@@ -206,8 +204,18 @@ func (s *snackBarActionState) Build(bc widgets.BuildContext) widgets.Widget {
 	if !s.haveTriggeredAction {
 		onPressed = s.handlePressed
 	}
-	return &tempTextButton{StatelessWidget: widgets.NewStatelessWidgetBase(), label: w.label, onPressed: onPressed,
-		foreground: foreground, background: background, horizontalInset: 12}
+	asOpt := func(p widgets.WidgetStateProperty[ui.Color]) widgets.WidgetStateProperty[foundation.Opt[ui.Color]] {
+		return widgets.WidgetStatePropertyResolveWith(func(states widgets.WidgetStates) foundation.Opt[ui.Color] {
+			return foundation.Some(p.Resolve(states))
+		})
+	}
+	return NewTextButton(onPressed, widgets.NewText(w.label), TextButtonOpts{
+		Style: TextButtonStyleFrom(ButtonStyleFromOpts{}).CopyWith(ButtonStyleOpts{
+			OverlayColor:    asOpt(foreground),
+			ForegroundColor: asOpt(foreground),
+			BackgroundColor: asOpt(background),
+		}),
+	})
 }
 
 // SnackBarOpts are the optional parameters of NewSnackBar.
@@ -267,8 +275,7 @@ type SnackBarOpts struct {
 // displays at the bottom of the screen. Show it with
 // ScaffoldMessengerState.ShowSnackBar.
 //
-// TODO(step 13.3): the close icon and the action are stand-ins for IconButton and
-// TextButton. TODO: swiping the snack bar away needs Dismissible, which is not
+// TODO: swiping the snack bar away needs Dismissible, which is not
 // ported; the dismiss direction is stored but has no effect, and only the
 // semantics dismiss action and the close icon close the bar by hand.
 //
@@ -528,10 +535,10 @@ func (s *snackBarState) Build(bc widgets.BuildContext) widgets.Widget {
 	var iconButton widgets.Widget
 	const closeIconSize = 24.0
 	if showCloseIcon {
-		iconButton = &tempIconButton{StatelessWidget: widgets.NewStatelessWidgetBase(), icon: Icons.Close(), size: closeIconSize,
-			color:     foundation.Some(o.CloseIconColor.OrElse(snackBarTheme.CloseIconColor.OrElse(defaults.CloseIconColor.Value()))),
-			onPressed: func() { ScaffoldMessengerOf(bc).HideCurrentSnackBar(SnackBarClosedReasonDismiss) },
-			tooltip:   MaterialLocalizationsOf(bc).CloseButtonTooltip()}
+		iconButton = NewIconButton(func() { ScaffoldMessengerOf(bc).HideCurrentSnackBar(SnackBarClosedReasonDismiss) }, NewIcon(Icons.Close()), IconButtonOpts{
+			IconSize: foundation.Some(closeIconSize),
+			Color:    foundation.Some(o.CloseIconColor.OrElse(snackBarTheme.CloseIconColor.OrElse(defaults.CloseIconColor.Value()))),
+			Tooltip:  MaterialLocalizationsOf(bc).CloseButtonTooltip()})
 	}
 
 	// Calculate combined width of Action, Icon, and their padding, if they are present.
@@ -565,14 +572,15 @@ func (s *snackBarState) Build(bc widgets.BuildContext) widgets.Widget {
 
 	var maybeActionAndIcon []widgets.Widget
 	if o.Action != nil {
-		maybeActionAndIcon = append(maybeActionAndIcon, widgets.NewPadding(painting.NewEdgeInsetsSymmetric(actionHorizontalMargin, 0),
-			&snackBarActionPadding{StatelessWidget: widgets.NewStatelessWidgetBase(), action: o.Action, foreground: buttonColor, horizontalPadding: horizontalPadding}))
+		maybeActionAndIcon = append(maybeActionAndIcon, widgets.NewPadding(painting.NewEdgeInsetsSymmetric(0, actionHorizontalMargin),
+			NewTextButtonTheme(TextButtonThemeData{Style: TextButtonStyleFrom(ButtonStyleFromOpts{
+				ForegroundColor: foundation.Some(buttonColor), Padding: painting.NewEdgeInsetsSymmetric(0, horizontalPadding)})}, o.Action)))
 	}
 	if showCloseIcon {
-		maybeActionAndIcon = append(maybeActionAndIcon, widgets.NewPadding(painting.NewEdgeInsetsSymmetric(iconHorizontalMargin, 0), iconButton))
+		maybeActionAndIcon = append(maybeActionAndIcon, widgets.NewPadding(painting.NewEdgeInsetsSymmetric(0, iconHorizontalMargin), iconButton))
 	}
 
-	contentPadding := painting.EdgeInsetsGeometry(painting.NewEdgeInsetsSymmetric(0, snackBarSingleLineVerticalPadding))
+	contentPadding := painting.EdgeInsetsGeometry(painting.NewEdgeInsetsSymmetric(snackBarSingleLineVerticalPadding, 0))
 	if o.Padding != nil {
 		contentPadding = painting.EdgeInsetsZero
 	}
@@ -647,21 +655,6 @@ func (s *snackBarState) Build(bc widgets.BuildContext) widgets.Widget {
 	return widgets.NewHero(fmt.Sprintf("<SnackBar Hero tag - %v>", w.content),
 		widgets.NewClipRect(transition, widgets.ClipRectOpts{ClipBehavior: o.ClipBehavior}),
 		widgets.HeroOpts{TransitionOnUserGestures: true})
-}
-
-// snackBarActionPadding applies the text color of the snack bar action's theme
-// (the TextButtonTheme of Flutter's SnackBar), through the action's own theme.
-//
-// TODO(step 13.3): TextButtonTheme.
-type snackBarActionPadding struct {
-	widgets.StatelessWidget
-	action            *SnackBarAction
-	foreground        ui.Color
-	horizontalPadding float64
-}
-
-func (w *snackBarActionPadding) Build(widgets.BuildContext) widgets.Widget {
-	return w.action
 }
 
 // measureTextWidth is the width of the text in one line with the style, which

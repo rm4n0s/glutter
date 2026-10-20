@@ -125,8 +125,8 @@ func TestThemeToggle(t *testing.T) {
 	}
 	toggle := func(tooltip string) gluttertest.Finder {
 		return gluttertest.ByPredicate("the theme toggle", func(w m.Widget) bool {
-			a, ok := w.(*iconAction)
-			return ok && a.tooltip == tooltip
+			b, ok := w.(*m.IconButton)
+			return ok && b.Tooltip() == tooltip
 		})
 	}
 	ts.Tap(toggle("Switch to the dark theme"))
