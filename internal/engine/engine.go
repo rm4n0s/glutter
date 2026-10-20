@@ -100,6 +100,13 @@ type renderer interface {
 	Close()
 }
 
+// DecorationsEnv is the environment variable that chooses how the title bar of
+// the first window is made: "auto" (the default), "app", or "libdecor" (libdecor
+// even where the compositor has title bars of its own, to try it).
+//
+// Flutter: no counterpart
+const DecorationsEnv = "GLUTTER_DECORATIONS"
+
 // Run connects to the display (Wayland or X11, SPEC §6.3 rule 5), opens the first
 // window and draws it, and runs the event loop on the calling goroutine, which
 // must be the UI thread. It returns nil when ctx is cancelled or the last window
@@ -153,7 +160,21 @@ func Run(ctx context.Context, cfg Config) (err error) {
 		}
 	}()
 
-	win, err := conn.NewWindow(cfg.windowConfig())
+	wcfg := cfg.windowConfig()
+	if wcfg.Decorations == platform.DecorationsUnspecified {
+		// GLUTTER_DECORATIONS=app makes the app draw the title bar of its first
+		// window, as WindowConfig.Decorations does; "auto" is the default.
+		switch v := getenv(DecorationsEnv); v {
+		case "app":
+			wcfg.Decorations = platform.DecorationsApp
+		case "libdecor":
+			wcfg.Decorations = platform.DecorationsLibdecor
+		case "", "auto":
+		default:
+			return errors.New("DecorationsUnknown", "GLUTTER_DECORATIONS is not auto, app or libdecor", "value", v)
+		}
+	}
+	win, err := conn.NewWindow(wcfg)
 	if err != nil {
 		return err
 	}
@@ -260,10 +281,19 @@ var (
 	_ platform.Handler     = (*handler)(nil)
 	_ ui.PlatformHost      = (*handler)(nil)
 	_ ui.CursorHost        = (*handler)(nil)
+	_ ui.WindowHost        = (*handler)(nil)
 	_ ui.ClipboardHost     = (*handler)(nil)
 	_ ui.RichClipboardHost = (*handler)(nil)
 	_ ui.TextInputHost     = (*handler)(nil)
 )
+
+// PerformWindowAction carries out the action of a title bar that the app draws on
+// the window.
+func (h *handler) PerformWindowAction(_ ui.ViewID, action ui.WindowAction) {
+	if h.win != nil {
+		h.win.PerformWindowAction(action)
+	}
+}
 
 func (h *handler) OnMetrics(view ui.ViewID, m platform.ViewMetrics) {
 	h.width, h.height = int(m.PhysicalSize.Width), int(m.PhysicalSize.Height)
@@ -284,6 +314,7 @@ func (h *handler) viewConfiguration(m platform.ViewMetrics) ui.ViewConfiguration
 		ViewPadding:         m.ViewPadding,
 		ViewInsets:          m.ViewInsets,
 		SystemGestureInsets: m.SystemGestureInsets,
+		Window:              m.Window,
 		Padding: ui.ViewPadding{
 			Left:   max(0, m.ViewPadding.Left-m.ViewInsets.Left),
 			Top:    max(0, m.ViewPadding.Top-m.ViewInsets.Top),

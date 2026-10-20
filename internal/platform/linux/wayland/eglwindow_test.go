@@ -92,7 +92,7 @@ func startEGLWindow(t *testing.T, hold bool, toplevel fakecomp.ToplevelConfigure
 // window's calls of wl_egl_window_resize are recorded.
 func startEGLWindowWith(t *testing.T, cfg fakecomp.Config) *eglEnv {
 	t.Helper()
-	p, srv, err := connectWith(t, cfg, Options{})
+	p, srv, err := connectWith(t, cfg, Options{NoLibdecor: true})
 	if err != nil {
 		t.Fatal(err)
 	}

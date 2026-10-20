@@ -2,10 +2,12 @@ package wayland
 
 import (
 	"fmt"
+	"log/slog"
 
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/internal/gpu"
 	"github.com/rm4n0s/glutter/internal/platform"
+	"github.com/rm4n0s/glutter/internal/platform/linux/wayland/decor"
 	"github.com/rm4n0s/glutter/internal/platform/linux/wayland/wl"
 	"github.com/rm4n0s/glutter/ui"
 )
@@ -77,6 +79,16 @@ type window struct {
 	toplevel   *wl.XdgToplevel
 	decoration *wl.ZxdgToplevelDecorationV1
 
+	// frame is the libdecor frame of a window that libdecor decorates. Such a
+	// window has no xdgSurface and no toplevel of its own: libdecor made them.
+	// conf is the configure that the frame has not been told the answer to.
+	frame *decor.Frame
+	conf  decor.Configuration
+	// deco is who draws the title bar; caps are what the user may do with the
+	// window (xdg_toplevel.wm_capabilities, all of it until the compositor says).
+	deco ui.DecorationMode
+	caps ui.WindowCapabilities
+
 	// width and height are the logical size of the content.
 	width, height int32
 
@@ -120,6 +132,9 @@ type window struct {
 	bufferScale  int32 // the last wl_surface.set_buffer_scale
 	viewportUsed bool  // wp_viewport.set_destination is in force
 	physW, physH int32 // the size of the buffer in pixels
+
+	// title is the current title of the window.
+	title string
 
 	// cursor is the cursor over the window, set with SetCursor.
 	cursor platform.MouseCursor
@@ -179,31 +194,43 @@ func (p *Platform) NewWindow(cfg platform.WindowConfig) (platform.Window, error)
 			return nil, errors.New("EGLWindowFailed", "wl_egl_window_create failed", "width", w.width, "height", w.height)
 		}
 	}
-	w.xdgSurface = s.wmBase.GetXdgSurface(w.surface)
-	w.toplevel = w.xdgSurface.GetToplevel()
-	w.xdgSurface.SetEvents(&wl.XdgSurfaceEvents{OnConfigure: w.onSurfaceConfigure})
-	w.toplevel.SetEvents(&wl.XdgToplevelEvents{
-		OnConfigure: w.onToplevelConfigure,
-		OnClose:     w.onClose,
-	})
-
-	w.toplevel.SetTitle(cfg.Title)
-	if cfg.AppID != "" {
-		w.toplevel.SetAppId(cfg.AppID)
-	}
-	w.toplevel.SetMinSize(int32(cfg.MinSize.Width), int32(cfg.MinSize.Height))
-	w.toplevel.SetMaxSize(int32(cfg.MaxSize.Width), int32(cfg.MaxSize.Height))
-	if cfg.HasParent {
-		if parent, ok := p.windows[cfg.Parent]; ok {
-			w.toplevel.SetParent(parent.toplevel)
+	w.caps = ui.AllWindowCapabilities
+	w.title = cfg.Title
+	w.deco = p.chooseDecoration(cfg)
+	slog.Default().Debug("window decorations", "mode", w.deco.Name())
+	if w.deco == ui.DecorationLibdecor {
+		if err := w.decorateWithLibdecor(cfg); err != nil {
+			w.destroy()
+			return nil, err
 		}
-	}
-	w.requestState(cfg.State)
-	w.requestDecorations()
+	} else {
+		w.xdgSurface = s.wmBase.GetXdgSurface(w.surface)
+		w.toplevel = w.xdgSurface.GetToplevel()
+		w.xdgSurface.SetEvents(&wl.XdgSurfaceEvents{OnConfigure: w.onSurfaceConfigure})
+		w.toplevel.SetEvents(&wl.XdgToplevelEvents{
+			OnConfigure:      w.onToplevelConfigure,
+			OnClose:          w.onClose,
+			OnWmCapabilities: w.onWmCapabilities,
+		})
 
-	// The initial commit, without a buffer, asks the compositor for the first
-	// configure.
-	w.surface.Commit()
+		w.toplevel.SetTitle(cfg.Title)
+		if cfg.AppID != "" {
+			w.toplevel.SetAppId(cfg.AppID)
+		}
+		w.toplevel.SetMinSize(int32(cfg.MinSize.Width), int32(cfg.MinSize.Height))
+		w.toplevel.SetMaxSize(int32(cfg.MaxSize.Width), int32(cfg.MaxSize.Height))
+		if cfg.HasParent {
+			if parent, ok := p.windows[cfg.Parent]; ok && parent.toplevel != nil {
+				w.toplevel.SetParent(parent.toplevel)
+			}
+		}
+		w.requestState(cfg.State)
+		w.requestDecorations()
+
+		// The initial commit, without a buffer, asks the compositor for the first
+		// configure.
+		w.surface.Commit()
+	}
 
 	p.windows[w.id] = w
 	p.hadWindow = true
@@ -219,10 +246,10 @@ func (w *window) requestDecorations() {
 	}
 	w.decoration = mgr.GetToplevelDecoration(w.toplevel)
 	w.decoration.SetEvents(&wl.ZxdgToplevelDecorationV1Events{
-		OnConfigure: func(mode wl.ZxdgToplevelDecorationV1Mode) { w.decorationMode = mode },
+		OnConfigure: w.onDecorationMode,
 	})
 	mode := wl.ZxdgToplevelDecorationV1ModeServerSide
-	if !w.cfg.IsDecorated() {
+	if w.deco != ui.DecorationServerSide {
 		mode = wl.ZxdgToplevelDecorationV1ModeClientSide
 	}
 	w.decoration.SetMode(mode)
@@ -230,6 +257,20 @@ func (w *window) requestDecorations() {
 
 // requestState asks the compositor for a window state.
 func (w *window) requestState(state platform.WindowState) {
+	if w.frame != nil {
+		switch state {
+		case platform.WindowStateMaximized:
+			w.frame.SetMaximized()
+		case platform.WindowStateMinimized:
+			w.frame.SetMinimized()
+		case platform.WindowStateFullscreen:
+			w.frame.SetFullscreen(0)
+		case platform.WindowStateNormal:
+			w.frame.UnsetMaximized()
+			w.frame.UnsetFullscreen()
+		}
+		return
+	}
 	switch state {
 	case platform.WindowStateMaximized:
 		w.toplevel.SetMaximized()
@@ -262,7 +303,9 @@ func (w *window) onSurfaceConfigure(serial uint32) {
 		w.width, w.height = w.pendingWidth, w.pendingHeight
 	}
 	wasSuspended := w.states.Suspended
+	infoBefore := w.info()
 	w.states = w.pendingStates
+	infoChanged := w.info() != infoBefore
 	if wasSuspended && !w.states.Suspended {
 		// The frame callback in flight, if any, will not come now; the window
 		// draws at once, and its time is the time of that frame.
@@ -279,10 +322,10 @@ func (w *window) onSurfaceConfigure(serial uint32) {
 		if resized || w.configures == 0 {
 			w.resizeBuffer()
 		}
-		w.xdgSurface.AckConfigure(serial)
+		w.ackConfigure(serial)
 		first := w.configures == 0
 		w.configures++
-		if resized || first {
+		if resized || first || infoChanged {
 			w.reportMetrics()
 		}
 		w.renderNow()
@@ -298,10 +341,10 @@ func (w *window) onSurfaceConfigure(serial uint32) {
 		return
 	}
 	w.note("ack", w.physW, w.physH)
-	w.xdgSurface.AckConfigure(serial)
+	w.ackConfigure(serial)
 	w.configures++
 	w.commit(buf)
-	if resized || w.configures == 1 {
+	if resized || w.configures == 1 || infoChanged {
 		w.reportMetrics()
 	}
 }
@@ -355,6 +398,7 @@ func (w *window) reportMetrics() {
 		h.OnMetrics(w.id, platform.ViewMetrics{
 			PhysicalSize:     ui.Size{Width: float64(w.physW), Height: float64(w.physH)},
 			DevicePixelRatio: float64(w.scale) / 120,
+			Window:           w.info(),
 		})
 	}
 }
@@ -575,8 +619,17 @@ func (w *window) RequestFrame() {
 //
 // Flutter: no counterpart
 func (w *window) SetTitle(title string) {
-	if !w.closed {
-		w.toplevel.SetTitle(title)
+	if w.closed {
+		return
+	}
+	w.title = title
+	if w.frame != nil {
+		w.frame.SetTitle(title)
+		return
+	}
+	w.toplevel.SetTitle(title)
+	if w.deco == ui.DecorationApp {
+		w.reportMetrics() // the title bar of the app shows it
 	}
 }
 
@@ -594,6 +647,9 @@ func (w *window) SetSize(size ui.Size) {
 	if w.egl != nil {
 		if w.configures == 0 {
 			return // the first configure draws at this size
+		}
+		if w.frame != nil {
+			w.frame.Commit(int(w.width), int(w.height), decor.Configuration{})
 		}
 		w.resizeBuffer()
 		w.reportMetrics()
@@ -708,6 +764,10 @@ func (w *window) destroy() {
 	}
 	if w.decoration != nil {
 		w.decoration.Destroy()
+	}
+	if w.frame != nil {
+		w.frame.Free() // destroys the xdg_toplevel and the xdg_surface it made
+		w.frame = nil
 	}
 	if w.toplevel != nil {
 		w.toplevel.Destroy()

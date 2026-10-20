@@ -233,6 +233,16 @@ func (t *Tester) ActivatedCursors() []CursorActivation {
 	return out
 }
 
+// WindowActions are the actions that a title bar of the app asked of the window
+// (move, resize, minimize, ...), in order.
+//
+// Flutter: no counterpart
+func (t *Tester) WindowActions() []ui.WindowAction {
+	t.host.Lock()
+	defer t.host.Unlock()
+	return append([]ui.WindowAction(nil), t.host.WindowActions...)
+}
+
 // ClipboardText is the text on the fake system clipboard, and whether there is
 // any. The framework's Clipboard calls use it.
 //

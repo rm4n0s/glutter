@@ -300,3 +300,73 @@ func TestDisplayResizeNeverCommitsTheOldSize(t *testing.T) {
 		t.Errorf("only %d configures were acknowledged: %v", acks, trace)
 	}
 }
+
+// TestDisplayDecorationModeFollowsTheCompositor checks that the way the window is
+// decorated is the first of SPEC §8.2 that the compositor allows: server-side
+// where it has zxdg_decoration_manager_v1 (sway), libdecor where it has not
+// (GNOME), and the title bar of the app when the app asks for it.
+func TestDisplayDecorationModeFollowsTheCompositor(t *testing.T) {
+	p := connectToCompositor(t)
+	_, serverSide := p.Globals("zxdg_decoration_manager_v1")
+	want := ui.DecorationLibdecor
+	switch {
+	case serverSide:
+		want = ui.DecorationServerSide
+	case p.libdecorContext() == nil:
+		want = ui.DecorationApp
+	}
+	for _, tt := range []struct {
+		name string
+		set  func(*platform.WindowConfig)
+		want ui.DecorationMode
+	}{
+		{"auto", func(*platform.WindowConfig) {}, want},
+		{"the app draws it", func(c *platform.WindowConfig) { c.Decorations = platform.DecorationsApp }, ui.DecorationApp},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := platform.DefaultWindowConfig()
+			cfg.Title = "Glutter display test"
+			tt.set(&cfg)
+			w, err := p.NewWindow(cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer w.Close()
+			if got := w.(*window).deco; got != tt.want {
+				t.Errorf("decoration = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestDisplayLibdecorWindowMaps makes a window with libdecor on whatever
+// compositor there is (sway answers with its own title bar through
+// xdg-decoration, which libdecor follows) and checks that its configure is
+// answered, so that the window is mapped and reports its size.
+func TestDisplayLibdecorWindowMaps(t *testing.T) {
+	p := connectToCompositor(t)
+	if p.libdecorContext() == nil {
+		t.Skip("libdecor is not available")
+	}
+	cfg := platform.DefaultWindowConfig()
+	cfg.Title = "Glutter libdecor test"
+	cfg.Size = ui.Size{Width: 300, Height: 200}
+	cfg.Decorations = platform.DecorationsLibdecor
+	if _, err := p.NewWindow(cfg); err != nil {
+		t.Fatal(err)
+	}
+	h := &recHandler{allowClose: true}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- p.Run(ctx, h) }()
+	waitUntil(t, func() bool { return len(h.metricsSeen()) > 0 }, "the window never reported its metrics: libdecor's configure was not answered")
+	info, _ := h.lastWindowInfo()
+	if info.Decoration != ui.DecorationLibdecor || info.Title != cfg.Title {
+		t.Errorf("window info = %+v", info)
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Errorf("Run returned %v", err)
+	}
+}

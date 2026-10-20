@@ -1478,6 +1478,21 @@ type DecoratedBoxTransition = widgets.DecoratedBoxTransition
 // Flutter: widgets.dart DecoratedBoxTransitionOpts
 type DecoratedBoxTransitionOpts = widgets.DecoratedBoxTransitionOpts
 
+// Decorations is widgets.Decorations.
+//
+// Flutter: widgets.dart Decorations
+type Decorations = widgets.Decorations
+
+// DecorationsApp is widgets.DecorationsApp.
+//
+// Flutter: widgets.dart DecorationsApp
+const DecorationsApp = widgets.DecorationsApp
+
+// DecorationsAuto is widgets.DecorationsAuto.
+//
+// Flutter: widgets.dart DecorationsAuto
+const DecorationsAuto = widgets.DecorationsAuto
+
 // DefaultErrorReporter is widgets.DefaultErrorReporter.
 //
 // Flutter: widgets.dart DefaultErrorReporter
@@ -7967,6 +7982,13 @@ func NewWidgetsBinding(ctx context.Context, d *ui.PlatformDispatcher, opts ...wi
 	return widgets.NewWidgetsBinding(ctx, d, opts...)
 }
 
+// NewWindowDecoration is widgets.NewWindowDecoration.
+//
+// Flutter: widgets.dart NewWindowDecoration
+func NewWindowDecoration(child widgets.Widget, opts ...widgets.WindowDecorationOpts) *widgets.WindowDecoration {
+	return widgets.NewWindowDecoration(child, opts...)
+}
+
 // NewWrap is widgets.NewWrap.
 //
 // Flutter: widgets.dart NewWrap
@@ -11665,6 +11687,16 @@ func WidgetsLocalizationsOf(bc widgets.BuildContext) widgets.WidgetsLocalization
 //
 // Flutter: widgets.dart WindowConfig
 type WindowConfig = widgets.WindowConfig
+
+// WindowDecoration is widgets.WindowDecoration.
+//
+// Flutter: widgets.dart WindowDecoration
+type WindowDecoration = widgets.WindowDecoration
+
+// WindowDecorationOpts is widgets.WindowDecorationOpts.
+//
+// Flutter: widgets.dart WindowDecorationOpts
+type WindowDecorationOpts = widgets.WindowDecorationOpts
 
 // WindowState is widgets.WindowState.
 //

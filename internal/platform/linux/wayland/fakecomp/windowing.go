@@ -84,6 +84,9 @@ func (s *Server) ConfigureToplevel(c ToplevelConfigure) {
 		s.t.Errorf("fake server: ConfigureToplevel without a toplevel")
 		return
 	}
+	if c.Capabilities != nil {
+		s.Send(top, 3, uint32Array(c.Capabilities)) // xdg_toplevel.wm_capabilities
+	}
 	s.Send(top, 0, c.Width, c.Height, uint32Array(c.States)) // xdg_toplevel.configure
 	s.Send(xs, 0, serial)                                    // xdg_surface.configure
 }
@@ -197,6 +200,15 @@ func (s *Server) handleWindowing(iface string, op uint16, id uint32, r *reader) 
 		s.record("xdg_toplevel.set_title %q", r.str())
 	case "xdg_toplevel.3":
 		s.record("xdg_toplevel.set_app_id %q", r.str())
+	case "xdg_toplevel.4": // show_window_menu(seat, serial, x, y)
+		_ = r.u32()
+		s.record("xdg_toplevel.show_window_menu serial=%d at %d,%d", r.u32(), r.i32(), r.i32())
+	case "xdg_toplevel.5": // move(seat, serial)
+		_ = r.u32()
+		s.record("xdg_toplevel.move serial=%d", r.u32())
+	case "xdg_toplevel.6": // resize(seat, serial, edges)
+		_ = r.u32()
+		s.record("xdg_toplevel.resize serial=%d edges=%d", r.u32(), r.u32())
 	case "xdg_toplevel.7":
 		s.record("xdg_toplevel.set_max_size %dx%d", r.i32(), r.i32())
 	case "xdg_toplevel.8":

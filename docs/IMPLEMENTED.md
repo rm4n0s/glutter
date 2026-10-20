@@ -1582,3 +1582,29 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   Method B, the real gallery on the GLES renderer under the user's Wayland session (`GLUTTER_SCREENSHOT_AFTER=3s`, and with `GLUTTER_DEV_THEME=dark` for the second; both checked by looking at them): the home page with "Home" selected in the rail, the mode picker (Light, or Dark, with its check mark), the seven seed colors with the blue one checked, and the first cards of the index of the components.
 - **Manual checks:** none.
 - **Deviations and follow-ups:** none in the framework. The gallery has no deviation of the spec. **Defects of earlier steps found and fixed:** none. **Left for later steps:** none: M13 is complete.
+
+## 14.1 Window decorations
+
+- **Date:** 2026-10-20
+- **Branch:** feat/step-14.1-window-decorations
+- **Summary:** a Wayland window is decorated by the first of these that works (SPEC §8.2): the compositor (`zxdg_decoration_manager_v1`), libdecor (a new binding of `libdecor-0.so.0` through purego, with its file descriptor in the event loop), and Glutter's `WindowDecoration` widget (title, minimize, maximize or restore and close buttons limited by `wm_capabilities`, a drag of the bar to move, a double tap to maximize or restore, a right click for the window menu, and edge and corner resizing). `WindowConfig.Decorations` (`DecorationsAuto`, `DecorationsApp`) and `GLUTTER_DECORATIONS=auto|app|libdecor` choose; the platform reports the mode, the title, the capabilities and the state of the window in `ViewMetrics.Window`, which the framework reads with `View.Window()`, and the title bar of the app asks for moves and resizes with `View.PerformWindowAction`. `RunApp` shows a `WindowDecoration` when the window needs one.
+- **Main files:** `internal/platform/linux/wayland/decor/` (the libdecor binding), `internal/platform/linux/wayland/decoration.go`, `window.go`, `platform.go`, `pointer.go`, `fakecomp/windowing.go`; `internal/platform/window.go`, `platform.go`, `fake/`, `linux/x11/window.go`; `internal/engine/engine.go`; `ui/window_info.go`, `view.go`, `platform_dispatcher.go`; `widgets/window_decoration.go`, `run_app.go`; `gluttertest/tester.go` (`WindowActions`), `internal/renderhost`; `material/widgets_reexport_gen.go` (generated).
+- **Tests:** `decor` (the layouts of the two interface structs, the routes of `LibdecorInitFailed`, `LibdecorDecorateFailed` and `LibdecorDispatchFailed` through functions that fail), `wayland/decoration_test` (the mode for each compositor and config, the state and the capabilities reported, every action of the title bar as an `xdg_toplevel` request, and the close), `engine` (the info and the actions both ways, `GLUTTER_DECORATIONS` and the route of `DecorationsUnknown`), `widgets/window_decoration_test` (the bar only when the app draws it, each button and the capabilities that limit them, the drag, the double tap and the right click, the eight resize handles and none when maximized, fullscreen or tiled, the state of the child kept when the bar appears, the options). Display tests under sway: the mode follows the compositor, and a libdecor window answers its configure and maps. The existing tests of the Wayland platform and the scale tests ignore `ViewMetrics.Window`.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · `go generate ./...` stable ✅ · display tests (`-tags glutter_display`, the two new ones, under sway) ✅
+- **Measurements (item 4), the counter example on the GNOME 50 session of this machine, the window open for two seconds, three runs each:**
+
+  | | first window (from the connection to "renderer ready") | peak RSS |
+  |---|---|---|
+  | `GLUTTER_DECORATIONS=app` (no libdecor) | 0.0 s | 212 MB |
+  | libdecor with the GTK plugin | 2.1 s | 236–241 MB |
+  | libdecor with the cairo plugin only (`LIBDECOR_PLUGIN_DIR`) | 0.0 s | 218 MB |
+
+  So the GTK plugin (GTK 3 in the process) costs about two seconds and 25 MB; the cairo plugin costs 5 MB and no time, but draws its own look, not Adwaita. The GTK plugin is the one that matches Flutter on GNOME, so it stays the default; a program that does not want it sets `DecorationsApp` or `LIBDECOR_PLUGIN_DIR`.
+- **Proof:**
+  ![14.1 server-side title bar under sway](implemented-proof-images/14.1-ssd-sway.png)
+  Method C, the counter under sway (`WLR_BACKENDS=headless`, grim): the title bar of sway ("Counter"), which the mode `serverSide` asks for.
+  ![14.1 title bar of the app](implemented-proof-images/14.1-app-decoration.png)
+  Method B, the counter with `GLUTTER_DECORATIONS=app` on the GLES renderer under the user's Wayland session, three taps in: the `WindowDecoration` with the title "Counter" and the minimize, maximize and close buttons, and the thin outline.
+  `14.1-libdecor-gnome.png` (method C, the user's desktop): **not yet taken.** It needs the user to run the counter on GNOME and take a window screenshot.
+- **Manual checks:** pending: the user's GNOME screenshot, which must show the Adwaita title bar.
+- **Deviations and follow-ups:** in SPEC §12.10 (the decoration choice and `ViewMetrics.Window`, `WindowDecoration`, the missing shadow, X11). Not tested on a compositor without server-side decorations: the libdecor look itself (sway answers libdecor with its own title bar), so the GNOME screenshot is also the test of it. libdecor with no plugin starts with a dummy one and leaves the window bare; Glutter cannot tell. Left for later steps: the shadow and the geometry of the surface (14.2), `_NET_WM_MOVERESIZE` for the title bar of the app on X11 (14.4).

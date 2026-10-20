@@ -79,6 +79,7 @@ func (pt *pointer) onLeave(_ uint32, surface *wl.WlSurface) {
 
 func (pt *pointer) onButton(serial uint32, _ uint32, button uint32, state wl.WlPointerButtonState) {
 	pt.p.inputSerial = serial
+	pt.p.pointerSerial = serial
 	pt.b.Button(button, state == wl.WlPointerButtonStatePressed)
 	pt.eventDone()
 }

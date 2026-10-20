@@ -47,6 +47,8 @@ type Host struct {
 	ClipboardPNG  []byte
 	ClipboardURIs []string
 	Primary       ui.ClipboardContent
+	// WindowActions are the actions that a title bar asked of the window, in order.
+	WindowActions []ui.WindowAction
 	// TextInputStates are the states of the text field that the framework gave
 	// to the input method, in order.
 	TextInputStates []ui.TextInputState
@@ -115,6 +117,13 @@ func (h *Host) GetClipboard(ctx context.Context, kind ui.ClipboardKind, format s
 		out.URIs = content.URIs
 	}
 	h.Post(func() { done(out, ctx.Err()) })
+}
+
+// PerformWindowAction keeps the action.
+func (h *Host) PerformWindowAction(_ ui.ViewID, action ui.WindowAction) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.WindowActions = append(h.WindowActions, action)
 }
 
 // CursorActivation is one call of ActivateSystemCursor.

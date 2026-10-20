@@ -42,6 +42,9 @@ type ViewConfiguration struct {
 	Display Display
 	// GestureSettings are the platform's gesture thresholds.
 	GestureSettings GestureSettings
+	// Window is what the platform says about the decorations and the state of the
+	// window of the view.
+	Window WindowInfo
 }
 
 // GestureSettings are the gesture thresholds the platform sets, in physical
@@ -66,6 +69,19 @@ type View struct {
 	id  ViewID
 	cfg ViewConfiguration
 }
+
+// Window is what the platform says about the decorations and the state of the
+// window that the view shows: who draws the title bar, what the user may do with
+// the window, and whether it is maximized or has the focus.
+//
+// Flutter: no counterpart
+func (v *View) Window() WindowInfo { return v.cfg.Window }
+
+// PerformWindowAction asks the window of the view to do the action: the way a
+// title bar that the app draws moves, resizes, minimizes, maximizes or closes it.
+//
+// Flutter: no counterpart
+func (v *View) PerformWindowAction(action WindowAction) { v.d.performWindowAction(v.id, action) }
 
 // ViewID is the ID of the view.
 //

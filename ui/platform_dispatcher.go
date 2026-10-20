@@ -338,6 +338,12 @@ func (d *PlatformDispatcher) ActivateSystemCursor(device int, kind string) {
 	}
 }
 
+func (d *PlatformDispatcher) performWindowAction(view ViewID, action WindowAction) {
+	if h, ok := d.host.(WindowHost); ok {
+		h.PerformWindowAction(view, action)
+	}
+}
+
 // SetTextInput gives the input method of the platform the state of the focused
 // text field. Nothing happens when the host has no input method.
 //

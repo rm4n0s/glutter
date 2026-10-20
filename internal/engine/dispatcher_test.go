@@ -544,3 +544,77 @@ func TestScheduleFrameDoesNothingInTheSharedMemoryMode(t *testing.T) {
 		t.Errorf("RequestFrame entries = %d, want 1", n)
 	}
 }
+
+// TestWindowInfoAndActionsReachTheFramework checks both ways of the title bar of
+// the app: what the platform says about the window reaches the view, and an
+// action of the view reaches the window.
+func TestWindowInfoAndActionsReachTheFramework(t *testing.T) {
+	h, r := newDispatcherHarness(t)
+	want := ui.WindowInfo{Decoration: ui.DecorationApp, Capabilities: ui.WindowCapabilities{Maximize: true}, Title: "T", Maximized: true, Activated: true}
+	h.c.Inject(fake.MetricsEvent{View: 0, Metrics: platform.ViewMetrics{PhysicalSize: ui.Size{Width: 640, Height: 400}, DevicePixelRatio: 1, Window: want}})
+	done := h.run(t)
+	waitFor(t, func() bool {
+		if r.dispatcher() == nil {
+			return false
+		}
+		var got ui.WindowInfo
+		onUI(t, h, func() { got = r.dispatcher().ImplicitView().Window() })
+		return got == want
+	})
+	actions := []ui.WindowAction{
+		{Kind: ui.WindowActionMove},
+		{Kind: ui.WindowActionResize, Edge: ui.ResizeEdgeBottomLeft},
+		{Kind: ui.WindowActionShowMenu, Position: ui.Offset{Dx: 3, Dy: 4}},
+		{Kind: ui.WindowActionClose},
+	}
+	onUI(t, h, func() {
+		for _, a := range actions {
+			r.dispatcher().ImplicitView().PerformWindowAction(a)
+		}
+	})
+	var got []ui.WindowAction
+	for _, e := range h.c.Log() {
+		if e.Kind == fake.EntryWindowAction {
+			got = append(got, e.Value.(ui.WindowAction))
+		}
+	}
+	if !reflect.DeepEqual(got, actions) {
+		t.Errorf("the window got %+v, want %+v", got, actions)
+	}
+	finish(t, h, done)
+}
+
+// TestDecorationsEnvChoosesTheWayToDecorate checks GLUTTER_DECORATIONS and that a
+// choice of the app wins over it.
+func TestDecorationsEnvChoosesTheWayToDecorate(t *testing.T) {
+	tests := []struct {
+		name   string
+		env    string
+		config platform.Decorations
+		want   platform.Decorations
+	}{
+		{"unset", "", platform.DecorationsUnspecified, platform.DecorationsUnspecified},
+		{"auto", "auto", platform.DecorationsUnspecified, platform.DecorationsUnspecified},
+		{"app", "app", platform.DecorationsUnspecified, platform.DecorationsApp},
+		{"libdecor", "libdecor", platform.DecorationsUnspecified, platform.DecorationsLibdecor},
+		{"the app's choice wins", "app", platform.DecorationsAuto, platform.DecorationsAuto},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := newHarness(t, map[string]string{"DISPLAY": ":0", DecorationsEnv: tt.env})
+			h.cfg.Window = platform.WindowConfig{Title: "T", Decorations: tt.config}
+			done := h.run(t)
+			waitFor(t, func() bool { _, _, n := h.hooked(); return n == 1 })
+			finish(t, h, done)
+			var got platform.Decorations
+			for _, e := range h.c.Log() {
+				if e.Kind == fake.EntryNewWindow {
+					got = e.Value.(platform.WindowConfig).Decorations
+				}
+			}
+			if got != tt.want {
+				t.Errorf("the window was made with %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

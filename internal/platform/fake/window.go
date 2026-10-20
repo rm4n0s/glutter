@@ -97,6 +97,13 @@ func (w *Window) StartDrag(data platform.DragData) error {
 	return nil
 }
 
+// PerformWindowAction records the action.
+//
+// Flutter: no counterpart
+func (w *Window) PerformWindowAction(action ui.WindowAction) {
+	w.set(EntryWindowAction, action, func() {})
+}
+
 // Close marks the window closed and records it. Closing a closed window
 // records nothing.
 //

@@ -70,7 +70,31 @@ type WindowConfig struct {
 	Decorated foundation.Opt[bool]
 	// State is the initial state of the window.
 	State WindowState
+	// Decorations is how the title bar is made: DecorationsAuto, the default, uses
+	// the compositor's, then libdecor's, then the WindowDecoration of the
+	// framework; DecorationsApp leaves it to the app (SPEC §8.2).
+	Decorations Decorations
 }
+
+// Decorations is how the title bar of a window is made. The zero value is
+// DecorationsAuto.
+//
+// Flutter: no counterpart
+type Decorations int
+
+// The values of Decorations.
+const (
+	// DecorationsAuto uses the title bar of the compositor, then libdecor's, then
+	// the WindowDecoration of the framework.
+	//
+	// Flutter: no counterpart
+	DecorationsAuto Decorations = iota
+	// DecorationsApp skips the compositor's and libdecor's title bars: the app places
+	// a WindowDecoration or a title bar of its own.
+	//
+	// Flutter: no counterpart
+	DecorationsApp
+)
 
 // RunAppOpts are the optional parameters of RunApp and RunWidget (SPEC §13).
 //
@@ -157,8 +181,12 @@ func (o RunAppOpts) platformWindow() platform.WindowConfig {
 	case WindowStateFullscreen:
 		state = platform.WindowStateFullscreen
 	}
+	decorations := platform.DecorationsUnspecified // auto, unless GLUTTER_DECORATIONS says app
+	if w.Decorations == DecorationsApp {
+		decorations = platform.DecorationsApp
+	}
 	return platform.WindowConfig{Title: title, AppID: o.AppID, Size: w.Size, MinSize: w.MinSize, MaxSize: w.MaxSize,
-		Resizable: w.Resizable, Decorated: w.Decorated, State: state}
+		Resizable: w.Resizable, Decorated: w.Decorated, State: state, Decorations: decorations}
 }
 
 // startApp creates the widgets binding on the dispatcher and attaches the app:
@@ -178,6 +206,11 @@ func startApp(ctx context.Context, d *ui.PlatformDispatcher, app Widget, wrap bo
 	}
 	root := app
 	if wrap {
+		if o.Window.Decorations != DecorationsApp {
+			// Shows a title bar when the window has none (SPEC §8.2); the app that
+			// asked for DecorationsApp places its own.
+			app = NewWindowDecoration(app)
+		}
 		root = b.WrapWithDefaultView(app)
 	}
 	b.AttachRootWidget(root)

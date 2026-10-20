@@ -351,6 +351,10 @@ func TestRunErrors(t *testing.T) {
 		h := newHarness(t, nil)
 		assertRoute(t, Run(context.Background(), h.cfg), "NoDisplay", "Run->Select.NoDisplay")
 	})
+	t.Run("an unknown way to decorate", func(t *testing.T) {
+		h := newHarness(t, map[string]string{"DISPLAY": ":0", DecorationsEnv: "gnome"})
+		assertRoute(t, Run(context.Background(), h.cfg), "DecorationsUnknown", "Run.DecorationsUnknown")
+	})
 	t.Run("an unknown backend", func(t *testing.T) {
 		h := newHarness(t, map[string]string{"DISPLAY": ":0"})
 		h.cfg.Backend = "quartz"

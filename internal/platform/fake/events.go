@@ -59,6 +59,11 @@ const (
 	//
 	// Flutter: no counterpart
 	EntryStartDrag EntryKind = "StartDrag"
+	// EntryWindowAction records Window.PerformWindowAction; Value is the
+	// ui.WindowAction.
+	//
+	// Flutter: no counterpart
+	EntryWindowAction EntryKind = "WindowAction"
 	// EntryClose records Window.Close; Value is nil.
 	//
 	// Flutter: no counterpart

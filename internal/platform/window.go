@@ -63,6 +63,37 @@ const (
 	WindowStateFullscreen
 )
 
+// Decorations is how the title bar and the borders of a window are made. The
+// zero value, DecorationsUnspecified, means DecorationsAuto.
+//
+// Flutter: no counterpart
+type Decorations int
+
+// The values of Decorations.
+const (
+	// DecorationsUnspecified is the zero value and means DecorationsAuto.
+	//
+	// Flutter: no counterpart
+	DecorationsUnspecified Decorations = iota
+	// DecorationsAuto uses the first of these that works: the compositor's own
+	// (server-side), libdecor, and the title bar of the framework (SPEC §8.2).
+	//
+	// Flutter: no counterpart
+	DecorationsAuto
+	// DecorationsApp skips the first two: the app places a WindowDecoration or its
+	// own title bar.
+	//
+	// Flutter: no counterpart
+	DecorationsApp
+	// DecorationsLibdecor uses libdecor even where the compositor has its own title
+	// bars; without libdecor it is DecorationsAuto. It is a test aid
+	// (GLUTTER_DECORATIONS=libdecor): the apps ask for DecorationsAuto or
+	// DecorationsApp.
+	//
+	// Flutter: no counterpart
+	DecorationsLibdecor
+)
+
 // WindowConfig describes a window to create.
 //
 // Flutter: widgets/_window.dart WindowController
@@ -95,6 +126,9 @@ type WindowConfig struct {
 	Decorated foundation.Opt[bool]
 	// State is the initial window state.
 	State WindowState
+	// Decorations is how the title bar is made; it does not matter when Decorated
+	// is false.
+	Decorations Decorations
 }
 
 // IsResizable is whether the user can resize the window; the default is true.
@@ -134,6 +168,9 @@ type ViewMetrics struct {
 	// Display is the display the view is on. None means the engine chooses
 	// (the primary display).
 	Display foundation.Opt[int]
+	// Window says who draws the title bar and what state the window is in. A
+	// backend that does not know leaves the zero value.
+	Window ui.WindowInfo
 }
 
 // Display describes one connected display.

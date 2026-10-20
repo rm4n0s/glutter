@@ -63,9 +63,14 @@ type Window interface {
 	RequestFrame()
 	// StartDrag starts a drag-and-drop operation from this window.
 	StartDrag(data DragData) error
+	// PerformWindowAction does what the title bar of the app asks: move, resize,
+	// the window menu, minimize, maximize, restore and close. Moves, resizes and
+	// the menu need the input event that is going on. An action that the platform
+	// cannot do is ignored.
+	PerformWindowAction(action ui.WindowAction)
 	// Close destroys the window. Destroy the GPU surface of the window first.
 	Close()
-	// TODO(step 1.5): more setters (min/max size, icon, decorations).
+	// TODO(step 1.5): more setters (min/max size, icon).
 }
 
 // Handler receives everything the platform reports. The engine implements it.

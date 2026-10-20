@@ -29,7 +29,9 @@ func (e *eglEnv) lastMetrics() platform.ViewMetrics {
 	if len(m) == 0 {
 		return platform.ViewMetrics{}
 	}
-	return m[len(m)-1]
+	last := m[len(m)-1]
+	last.Window = ui.WindowInfo{} // these tests are about the size and the scale
+	return last
 }
 
 func (e *eglEnv) waitMetrics(want platform.ViewMetrics) {

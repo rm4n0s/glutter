@@ -318,8 +318,21 @@ func (w *window) reportMetrics() {
 		h.OnMetrics(w.id, platform.ViewMetrics{
 			PhysicalSize:     ui.Size{Width: float64(w.width), Height: float64(w.height)},
 			DevicePixelRatio: 1,
+			Window:           w.info(),
 		})
 	}
+}
+
+// info is what the app is told about the decorations of the window: the window
+// manager draws the title bar of every decorated window, even for an app that
+// asked to draw its own (an app-drawn bar needs _NET_WM_MOVERESIZE, which comes
+// with step 14.4).
+func (w *window) info() ui.WindowInfo {
+	mode := ui.DecorationServerSide
+	if !w.cfg.IsDecorated() || w.cfg.Kind == platform.WindowKindBorderless {
+		mode = ui.DecorationNone
+	}
+	return ui.WindowInfo{Decoration: mode, Capabilities: ui.AllWindowCapabilities, Title: w.cfg.Title}
 }
 
 // renderNow asks the handler for a frame at once, and starts the interval to the
@@ -490,6 +503,14 @@ func (w *window) SetTextInput(state ui.TextInputState) {
 func (w *window) StartDrag(platform.DragData) error {
 	return errors.New("NotImplemented", "drag and drop from an X11 window is not implemented yet")
 }
+
+// PerformWindowAction does nothing yet: the window manager draws the title bar
+// of an X11 window, and the window manager moves and resizes it.
+//
+// TODO(step 14.4): _NET_WM_MOVERESIZE, for the title bar that the app draws.
+//
+// Flutter: no counterpart
+func (w *window) PerformWindowAction(ui.WindowAction) {}
 
 // Close destroys the window. Destroy the renderer's surface for it first. When
 // this was the last window, Run returns. Closing twice does nothing.

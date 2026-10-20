@@ -22,7 +22,7 @@ type nopHandler = platform.NopHandler
 // in shared-memory mode, which needs no GPU.
 func connect(t *testing.T, cfg fakecomp.Config) (*Platform, *fakecomp.Server, error) {
 	t.Helper()
-	return connectWith(t, cfg, Options{ShmFill: true})
+	return connectWith(t, cfg, Options{ShmFill: true, NoLibdecor: true})
 }
 
 // connectWith is connect with the options given.

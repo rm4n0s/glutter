@@ -8,6 +8,7 @@ import (
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/internal/platform"
 	"github.com/rm4n0s/glutter/internal/platform/linux"
+	"github.com/rm4n0s/glutter/internal/platform/linux/wayland/decor"
 	"github.com/rm4n0s/glutter/internal/platform/linux/wayland/wl"
 	"github.com/rm4n0s/glutter/ui"
 )
@@ -20,6 +21,10 @@ type Options struct {
 	// never call Handler.OnFrame. It is a development and test aid for
 	// machines and tests without EGL (GLUTTER_DEV_SHM=1 in the dev examples).
 	ShmFill bool
+	// NoLibdecor stops the platform from loading libdecor: a window on a
+	// compositor without server-side decorations then draws its own title bar. The
+	// tests that run on a fake compositor use it, since libdecor needs a real one.
+	NoLibdecor bool
 }
 
 // Platform is the Wayland backend of platform.Platform. So far it has the
@@ -54,8 +59,15 @@ type Platform struct {
 	// inputSerial is the serial of the last input event of the seat, which
 	// set_selection needs.
 	inputSerial uint32
-	nextView    ui.ViewID
-	hadWindow   bool
+	// pointerSerial is the serial of the last pointer button event, which moves,
+	// resizes and the window menu need.
+	pointerSerial uint32
+	// libdecor is the libdecor context, made when the first window needs it;
+	// libdecorTried is whether that was tried, so that a failure is not repeated.
+	libdecor      *decor.Context
+	libdecorTried bool
+	nextView      ui.ViewID
+	hadWindow     bool
 	// failure is the first error that a callback could not return; Run returns
 	// it.
 	failure error
