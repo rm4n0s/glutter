@@ -20,8 +20,13 @@ const connectTimeout = 10 * time.Second
 // WidgetsBinding (widgets.WidgetsBinding.Extension): the connection to the session
 // bus, made on first use, and the seams that tests replace.
 type services struct {
+	// binding is the binding of the app, whose UI thread gets the callbacks.
+	binding *widgets.WidgetsBinding
+
 	mu  sync.Mutex
 	bus dbus.Bus
+	// notify is the state of the notifications (notifications.go).
+	notify notifyState
 
 	// open connects to the session bus; run starts a program and waits for it;
 	// flatpak says whether the app runs inside a Flatpak sandbox.
@@ -35,7 +40,7 @@ type servicesKey struct{}
 // servicesOf returns the services of the binding.
 func servicesOf(b *widgets.WidgetsBinding) *services {
 	return b.Extension(servicesKey{}, func() any {
-		return &services{open: dbus.Connect, run: runProgram, flatpak: inFlatpak}
+		return &services{binding: b, open: dbus.Connect, run: runProgram, flatpak: inFlatpak}
 	}).(*services)
 }
 
@@ -83,6 +88,7 @@ type call struct {
 	s      *services
 	handle string
 	token  string
+	appID  string
 }
 
 // begin gathers what a call needs. It must not be called on the UI thread, which
@@ -108,6 +114,7 @@ func begin(ctx context.Context, bc widgets.BuildContext) (*call, error) {
 			return
 		}
 		d, id := v.PlatformDispatcher(), v.ViewID()
+		c.appID = d.AppID()
 		// The platform answers on the UI thread, in turn: the handle first, then the
 		// token, which ends the wait.
 		d.PortalParentHandle(id, func(handle string) {

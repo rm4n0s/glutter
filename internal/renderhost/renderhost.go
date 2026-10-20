@@ -76,6 +76,8 @@ type Host struct {
 	// functions.
 	ParentHandle         func(view ui.ViewID) string
 	ActivationTokenValue string
+	// AppIDValue is the application ID of the app; the default is empty.
+	AppIDValue string
 	// KeepScreenOnErr is returned by KeepScreenOn, to test a platform that cannot
 	// keep the screen on.
 	KeepScreenOnErr error
@@ -316,6 +318,13 @@ func (h *Host) ActivationToken(_ ui.ViewID, done func(token string)) {
 		token = "test-token"
 	}
 	h.Post(func() { done(token) })
+}
+
+// AppID is the application ID that the test set.
+func (h *Host) AppID() string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.AppIDValue
 }
 
 // PerformWindowAction keeps the action.

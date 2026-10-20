@@ -395,6 +395,9 @@ func (h *handler) PortalParentHandle(view ui.ViewID, done func(handle string)) {
 	done("")
 }
 
+// AppID is the application ID the windows were made with (ui.PortalHost).
+func (h *handler) AppID() string { return h.appID }
+
 // ActivationToken asks the platform for an activation token for the window of the
 // view (ui.PortalHost); done gets an empty token when the platform has none.
 func (h *handler) ActivationToken(view ui.ViewID, done func(token string)) {

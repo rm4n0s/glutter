@@ -15,6 +15,10 @@ type PortalHost interface {
 	// the focus (XDG_ACTIVATION_TOKEN, and the activation_token of the portals). done
 	// is called on the UI thread, with an empty string when there is none.
 	ActivationToken(view ViewID, done func(token string))
+	// AppID is the application ID of the app: the Wayland app_id and the X11
+	// WM_CLASS, which must match its .desktop file. Notifications and the tray use
+	// it to name the app to the desktop. It may be empty.
+	AppID() string
 }
 
 // PortalParentHandle gives done the handle that the portals take as the parent of
@@ -41,4 +45,15 @@ func (d *PlatformDispatcher) ActivationToken(view ViewID, done func(token string
 		return
 	}
 	done("")
+}
+
+// AppID is the application ID of the app (RunAppOpts.AppID), or an empty string when
+// the host does not know it.
+//
+// Flutter: no counterpart
+func (d *PlatformDispatcher) AppID() string {
+	if h, ok := d.host.(PortalHost); ok {
+		return h.AppID()
+	}
+	return ""
 }

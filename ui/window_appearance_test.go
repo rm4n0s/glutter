@@ -133,13 +133,14 @@ func (portalHost) PortalParentHandle(v ViewID, done func(string)) {
 	done("host:" + string(rune('0'+v)))
 }
 func (portalHost) ActivationToken(_ ViewID, done func(string)) { done("tok") }
+func (portalHost) AppID() string                               { return "org.example.App" }
 
 func TestPortalThroughTheDispatcher(t *testing.T) {
 	var handle, token string
 	d := NewPlatformDispatcher(&portalHost{})
 	d.PortalParentHandle(3, func(h string) { handle = h })
 	d.ActivationToken(3, func(tk string) { token = tk })
-	if handle != "host:3" || token != "tok" {
+	if handle != "host:3" || token != "tok" || d.AppID() != "org.example.App" {
 		t.Errorf("handle %q, token %q", handle, token)
 	}
 	// A host without portals gives nothing, at once.
@@ -147,7 +148,7 @@ func TestPortalThroughTheDispatcher(t *testing.T) {
 	d = NewPlatformDispatcher(&fakeHost{})
 	d.PortalParentHandle(3, func(h string) { handle = h })
 	d.ActivationToken(3, func(tk string) { token = tk })
-	if handle != "" || token != "" {
-		t.Errorf("handle %q, token %q, want none", handle, token)
+	if handle != "" || token != "" || d.AppID() != "" {
+		t.Errorf("handle %q, token %q, app id %q, want none", handle, token, d.AppID())
 	}
 }
