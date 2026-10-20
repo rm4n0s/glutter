@@ -66,7 +66,7 @@ type TextSelectionGestureHandler interface {
 //
 // Deviation: the magnifier, the floating cursor, the stylus handwriting, the
 // force press and the spell check toolbar of the mobile platforms are not
-// ported, and the toolbar comes with the context menus (SPEC §12.10).
+// ported (SPEC §12.10).
 //
 // Flutter: widgets/text_selection.dart TextSelectionGestureDetectorBuilder
 type TextSelectionGestureDetectorBuilder struct {
@@ -309,15 +309,55 @@ func (b *TextSelectionGestureDetectorBuilder) OnSingleTapUp(details gestures.Tap
 			return
 		}
 		if k := details.Kind; k == ui.PointerDeviceKindTouch || k == ui.PointerDeviceKindUnknown {
-			// TODO(step 11.5): select the word edge and toggle the toolbar on a
-			// second tap.
-			r.SelectWordEdge(services.SelectionChangedCauseTap)
+			// Toggle the toolbar when the tap is exclusively within the bounds of a
+			// non-collapsed previous selection, and the editable is focused.
+			//
+			// Toggle the toolbar if the previous selection is collapsed, the tap is on
+			// the selection, the TextAffinity remains the same, the editable field is
+			// not read only, and the editable is focused. The TextAffinity is important
+			// when the cursor is on the boundary of a line wrap: if the affinity is
+			// different (i.e. it is downstream), the selection should move to the
+			// following line and not toggle the toolbar.
+			//
+			// Selects the word edge closest to the tap when the editable is not
+			// focused, or if the tap was neither exclusively or inclusively on the
+			// previous selection. If the selection remains the same after selecting the
+			// word edge, then we toggle the toolbar, if the editable field is not read
+			// only. If the selection changes then we hide the toolbar.
+			previous := e.TextEditingValue().Selection
+			if sel, ok := r.Selection().Get(); ok {
+				previous = sel
+			}
+			textPosition := r.GetPositionForPoint(details.GlobalPosition)
+			isAffinityTheSame := textPosition.Affinity == previous.Affinity
+			switch {
+			case ((b.positionWasOnSelectionExclusive(textPosition) && !previous.IsCollapsed()) ||
+				(b.positionWasOnSelectionInclusive(textPosition) && previous.IsCollapsed() && isAffinityTheSame && !r.ReadOnly())) && r.HasFocus():
+				e.ToggleToolbar(false)
+			default:
+				r.SelectWordEdge(services.SelectionChangedCauseTap)
+				if previous == e.TextEditingValue().Selection && r.HasFocus() && !r.ReadOnly() {
+					e.ToggleToolbar(false)
+				} else {
+					e.HideToolbar(false)
+				}
+			}
 		} else {
 			r.SelectPosition(services.SelectionChangedCauseTap)
 			e.HideToolbar(true)
 		}
 	}
 	e.RequestKeyboard()
+}
+
+func (b *TextSelectionGestureDetectorBuilder) positionWasOnSelectionExclusive(p ui.TextPosition) bool {
+	sel, ok := b.RenderEditable().Selection().Get()
+	return ok && sel.Start() < p.Offset && sel.End() > p.Offset
+}
+
+func (b *TextSelectionGestureDetectorBuilder) positionWasOnSelectionInclusive(p ui.TextPosition) bool {
+	sel, ok := b.RenderEditable().Selection().Get()
+	return ok && sel.Start() <= p.Offset && sel.End() >= p.Offset
 }
 
 // OnSingleTapCancel is called when a tap is cancelled.

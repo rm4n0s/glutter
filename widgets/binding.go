@@ -168,6 +168,10 @@ type WidgetsBinding struct {
 
 	observers   []WidgetsBindingObserver
 	switcher    ApplicationSwitcherDescription
+	contextMenu contextMenuState
+	// rawTooltips are the tooltips that are open, and the state their mouse
+	// regions share while hit testing.
+	rawTooltips rawTooltipRegistry
 	rootElement *RootElement
 
 	readyToProduceFrames       bool

@@ -76,6 +76,13 @@ type EditableTextState struct {
 	editableKey        *GlobalKey[State]
 	scrollableKey      *GlobalKey[State]
 	clipboardStatus    *ClipboardStatusNotifier
+	selectionOverlay   *TextSelectionOverlay
+
+	scrollObserver               *ScrollNotificationObserverState
+	scrollObserverHandle         ScrollNotificationListenerHandle
+	listeningToScrollObserver    bool
+	dataWhenToolbarShow          *toolbarShowData
+	showToolbarOnScreenScheduled bool
 
 	textInputConnection *services.TextInputConnection
 	internalScrollCtl   ScrollController
@@ -102,6 +109,7 @@ type EditableTextState struct {
 	focusHandle            foundation.ListenerHandle
 	clipboardHandle        foundation.ListenerHandle
 	cursorTickHandle       foundation.ListenerHandle
+	lastBottomViewInset    float64
 }
 
 type focusManagerListeners struct {
@@ -539,8 +547,7 @@ func (s *EditableTextState) DidUpdateWidget(old *EditableText) {
 		s.controllerHandle = w.controller.AddListener(s.didChangeTextEditingValue)
 		s.updateRemoteEditingValueIfNeeded()
 	}
-	// TODO(step 11.5): rebuild the selection overlay when the selection
-	// controls, the context menu builder or the magnifier change.
+	s.updateSelectionOverlayAfterWidgetChange(old)
 	if w.focusNode != old.focusNode {
 		old.focusNode.RemoveListener(s.focusHandle)
 		s.focusHandle = w.focusNode.AddListener(s.handleFocusChanged)
@@ -612,9 +619,14 @@ func (s *EditableTextState) Dispose() {
 		s.cursorBlinkOpacity.Dispose()
 		s.cursorBlinkOpacity = nil
 	}
+	if s.selectionOverlay != nil {
+		s.selectionOverlay.Dispose()
+		s.selectionOverlay = nil
+	}
 	w.focusNode.RemoveListener(s.focusHandle)
 	b := s.binding()
 	b.RemoveObserver(s)
+	s.disposeScrollNotificationObserver()
 	s.clipboardStatus.RemoveListener(s.clipboardHandle)
 	s.clipboardStatus.Dispose()
 	s.cursorVisibility.Dispose()
@@ -726,7 +738,10 @@ func (s *EditableTextState) Build(bc BuildContext) Widget {
 						NewUndoHistory[services.TextEditingValue](w.controller, func(v services.TextEditingValue) {
 							s.UserUpdateTextEditingValue(v, services.SelectionChangedCauseKeyboard)
 						}, w.focusNode,
-							NewFocus(s.buildScrollable(bc, textScaler, inputType),
+							NewFocus(NewNotificationListener(s.buildScrollable(bc, textScaler, inputType), func(n ScrollNotification) bool {
+								s.handleContextMenuOnScroll(n)
+								return false
+							}),
 								FocusOpts{FocusNode: w.focusNode, ExcludeSemantics: true, DebugLabel: "EditableText"}),
 							UndoHistoryOpts[services.TextEditingValue]{
 								ShouldChangeUndoStack: s.shouldChangeUndoStack, UndoStackModifier: undoStackModifier, Controller: w.o.UndoController,
@@ -850,4 +865,28 @@ func (s *EditableTextState) semanticsOnPaste() func() {
 		return func() { s.PasteText(services.SelectionChangedCauseToolbar) }
 	}
 	return nil
+}
+
+// DidChangeMetrics updates the selection overlay and shows the caret when the
+// keyboard shows up.
+//
+// Flutter: widgets/editable_text.dart EditableTextState.didChangeMetrics
+func (s *EditableTextState) DidChangeMetrics() {
+	if !s.Mounted() {
+		return
+	}
+	insets, _ := MediaQueryMaybeViewInsetsOf(s.Context())
+	if s.lastBottomViewInset != insets.Bottom {
+		s.binding().RunPostFrame(func(time.Duration) {
+			if s.selectionOverlay != nil {
+				s.selectionOverlay.UpdateForScroll()
+			}
+		})
+		if s.lastBottomViewInset < insets.Bottom {
+			// Because the metrics change signal from the engine comes here every
+			// frame, there is no need to show the caret with animation.
+			s.scheduleShowCaretOnScreen(false)
+		}
+	}
+	s.lastBottomViewInset = insets.Bottom
 }

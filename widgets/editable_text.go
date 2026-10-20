@@ -118,6 +118,8 @@ type EditableTextOpts struct {
 	OnAppPrivateCommand AppPrivateCommandCallback
 	// OnSelectionChanged is called when the selection changes.
 	OnSelectionChanged SelectionChangedCallback
+	// SelectionControls build the selection handles; nil for none.
+	SelectionControls TextSelectionControls
 	// OnSelectionHandleTapped is called when a selection handle is tapped.
 	OnSelectionHandleTapped func()
 	// GroupID is the group of the tap region of the field; the default is
@@ -200,8 +202,7 @@ type EditableTextOpts struct {
 	// MagnifierConfiguration is reserved for the magnifier of the selection
 	// handles.
 	//
-	// Deviation: the selection handles and their magnifier come with the context
-	// menus (SPEC §12.10).
+	// Deviation: the magnifier is not ported (SPEC §12.10).
 	MagnifierConfiguration any
 }
 
@@ -211,9 +212,8 @@ type EditableTextOpts struct {
 // built on it.
 //
 // Deviation: spell check, the stylus handwriting, Live Text, the processing of
-// the text by other apps, the floating cursor, the toolbar options, the selection
-// controls with the handles and the autofill groups are not ported (SPEC
-// §12.10); the toolbar and the handles come with the context menus (step 11.5).
+// the text by other apps, the floating cursor, the magnifier and the autofill
+// groups are not ported (SPEC §12.10).
 //
 // Flutter: widgets/editable_text.dart EditableText
 type EditableText struct {

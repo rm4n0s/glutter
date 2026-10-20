@@ -5,6 +5,7 @@ import (
 	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/painting"
 	"github.com/rm4n0s/glutter/rendering"
+	"github.com/rm4n0s/glutter/services"
 	"github.com/rm4n0s/glutter/ui"
 )
 
@@ -324,9 +325,8 @@ type TextOpts struct {
 
 // Text displays a string of text with a single style.
 //
-// Deviation: there are no selection containers yet, and the MediaQuery text
-// spacing overrides (line height, letter and word spacing) are not applied
-// (SPEC §12.10).
+// Deviation: the MediaQuery text spacing overrides (line height, letter and
+// word spacing) are not applied (SPEC §12.10).
 //
 // Flutter: widgets/text.dart Text
 type Text struct {
@@ -430,15 +430,31 @@ func (w *Text) Build(bc BuildContext) Widget {
 	if heightBehavior == nil {
 		heightBehavior = DefaultTextHeightBehaviorMaybeOf(bc)
 	}
+	registrar := SelectionContainerMaybeOf(bc)
+	style := DefaultSelectionStyleOf(bc)
 	selectionColor := o.SelectionColor
+	if selectionColor.IsNone() {
+		selectionColor = style.selectionColor
+	}
 	if selectionColor.IsNone() {
 		selectionColor = foundation.Some(DefaultSelectionColor)
 	}
-	var result Widget = NewRichText(effectiveSpan, RichTextOpts{
+	richOpts := RichTextOpts{
 		TextAlign: textAlign, TextDirection: o.TextDirection, Locale: o.Locale, SoftWrap: foundation.Some(softWrap), Overflow: overflow,
 		TextScaler: textScaler, MaxLines: maxLines, StrutStyle: o.StrutStyle, TextWidthBasis: widthBasis,
 		TextHeightBehavior: heightBehavior, SelectionColor: selectionColor,
-	})
+	}
+	var result Widget
+	if registrar != nil {
+		cursor := style.mouseCursor
+		if cursor == nil {
+			cursor = services.SystemMouseCursors.Text
+		}
+		result = NewMouseRegion(&selectableTextContainer{StatefulWidget: NewStatefulWidgetBase(), text: NewRichText(effectiveSpan, richOpts)},
+			MouseRegionOpts{Cursor: cursor})
+	} else {
+		result = NewRichText(effectiveSpan, richOpts)
+	}
 	if o.SemanticsLabel.IsSome() || o.SemanticsIdentifier.IsSome() {
 		result = NewSemantics(NewExcludeSemantics(result, ExcludeSemanticsOpts{Excluding: foundation.Some(o.SemanticsLabel.IsSome())}),
 			SemanticsOpts{TextDirection: o.TextDirection, Label: o.SemanticsLabel, Identifier: o.SemanticsIdentifier})

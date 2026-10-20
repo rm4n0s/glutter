@@ -139,9 +139,8 @@ type WidgetsAppRouterOpts[T any] struct {
 //
 // Deviation: the restoration scope, SharedAppData, TapRegionSurface, the window
 // manager, the performance overlay, the semantics debugger, the widget
-// inspector, the checked-mode banner and the dismissal of tooltips on Escape
-// are not part of it yet; each is added by the step that ports the widget it
-// needs (SPEC §12.10).
+// inspector and the checked-mode banner are not part of it yet; each is added
+// by the step that ports the widget it needs (SPEC §12.10).
 //
 // Flutter: widgets/app.dart WidgetsApp
 type WidgetsApp struct {
@@ -617,6 +616,26 @@ func (s *widgetsAppState) Build(bc BuildContext) Widget {
 	if w.o.TextStyle != nil {
 		result = NewDefaultTextStyle(w.o.TextStyle, result)
 	}
+
+	// TODO in Flutter (issue 180319): use actions and shortcuts to dismiss the
+	// tooltips when Escape is pressed instead of using a Focus widget.
+	inner := result
+	result = NewBuilder(func(bc BuildContext) Widget {
+		return NewFocus(inner, FocusOpts{
+			CanRequestFocus: foundation.Some(false),
+			OnKeyEvent: func(_ *FocusNode, event services.KeyEvent) KeyEventResult {
+				_, down := event.(*services.KeyDownEvent)
+				_, repeat := event.(*services.KeyRepeatEvent)
+				if (!down && !repeat) || event.LogicalKey() != services.LogicalKeyboardKeyEscape {
+					return KeyEventResultIgnored
+				}
+				if RawTooltipDismissAll(bc) {
+					return KeyEventResultHandled
+				}
+				return KeyEventResultIgnored
+			},
+		})
+	})
 
 	opaque := w.color.WithOpacity(1)
 	if w.o.OnGenerateTitle != nil {

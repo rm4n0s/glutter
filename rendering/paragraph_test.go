@@ -625,8 +625,8 @@ func TestParagraphSelectionRegistrar(t *testing.T) {
 	if len(f.BoundingBoxes()) != 1 {
 		t.Errorf("bounding boxes = %v", f.BoundingBoxes())
 	}
-	if f.Size() != p.TextSize() {
-		t.Errorf("fragment size = %v, want %v", f.Size(), p.TextSize())
+	if f.Size() != f.BoundingBoxes()[0].Size() {
+		t.Errorf("fragment size = %v, want the size of its box %v", f.Size(), f.BoundingBoxes()[0].Size())
 	}
 	p.SetText(painting.NewTextSpan(painting.TextSpanOpts{Text: foundation.Some("")}))
 	if len(registrar.selectables) != 0 {

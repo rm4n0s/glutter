@@ -60,8 +60,8 @@ type ScrollableOpts struct {
 // the scroll position and the semantics. It does not draw anything: the viewport
 // that ViewportBuilder returns shows the content.
 //
-// Deviation: Flutter's has restorationId, the selection support and
-// TwoDimensionalScrollable (SPEC §12.10).
+// Deviation: Flutter's has restorationId and TwoDimensionalScrollable (SPEC
+// §12.10).
 //
 // Flutter: widgets/scrollable.dart Scrollable
 type Scrollable struct {
@@ -843,7 +843,12 @@ func (s *ScrollableState) Build(bc BuildContext) Widget {
 			newScrollSemantics(s.position, s.physics.AllowImplicitScrolling(), w.Axis(), w.semanticChildCount, result, s.scrollSemanticsKey),
 			s.handleScrollMetricsNotification)
 	}
-	return s.buildChrome(bc, result)
+	result = s.buildChrome(bc, result)
+	// Selection is only enabled when there is a parent registrar.
+	if registrar := SelectionContainerMaybeOf(bc); registrar != nil {
+		result = &scrollableSelectionHandler{StatefulWidget: NewStatefulWidgetBase(), state: s, position: s.position, registrar: registrar, child: result}
+	}
+	return result
 }
 
 // performEnsureVisible scrolls the position to reveal the object, and returns

@@ -234,17 +234,82 @@ type RenderMouseRegionOpts struct {
 //
 // Flutter: rendering/proxy_box.dart RenderMouseRegion.new
 func NewRenderMouseRegion(child Box, opts ...RenderMouseRegionOpts) *RenderMouseRegion {
-	o := firstOpts(opts)
+	r := &RenderMouseRegion{}
+	InitRenderMouseRegion(r, r, child, firstOpts(opts))
+	return r
+}
+
+// InitRenderMouseRegion sets up the region embedded in the outer object, which
+// is the box that the framework sees.
+//
+// Flutter: no counterpart (the self pattern, SPEC §12.5)
+func InitRenderMouseRegion(r *RenderMouseRegion, self Box, child Box, o RenderMouseRegionOpts) {
 	if o.Cursor == nil {
 		o.Cursor = services.MouseCursorDefer
 	}
 	if o.HitTestBehavior == HitTestBehaviorUnspecified {
 		o.HitTestBehavior = HitTestBehaviorOpaque
 	}
-	r := &RenderMouseRegion{onEnter: o.OnEnter, onHover: o.OnHover, onExit: o.OnExit, cursor: o.Cursor,
-		validForMouseTracker: o.ValidForMouseTracker.OrElse(true), opaque: o.Opaque.OrElse(true)}
-	InitRenderProxyBoxWithHitTestBehavior(&r.RenderProxyBoxWithHitTestBehavior, r, o.HitTestBehavior, child)
+	r.onEnter, r.onHover, r.onExit, r.cursor = o.OnEnter, o.OnHover, o.OnExit, o.Cursor
+	r.validForMouseTracker, r.opaque = o.ValidForMouseTracker.OrElse(true), o.Opaque.OrElse(true)
+	InitRenderProxyBoxWithHitTestBehavior(&r.RenderProxyBoxWithHitTestBehavior, self, o.HitTestBehavior, child)
+}
+
+// ExclusiveMouseRegionState is the state that the exclusive mouse regions of an
+// app share while hit testing. Make one per app (the binding does) and give it
+// to every NewRenderExclusiveMouseRegion.
+//
+// Deviation: Flutter keeps this state in static fields of
+// _RenderExclusiveMouseRegion; Go has no global mutable state (SPEC §12.10).
+//
+// Flutter: widgets/raw_tooltip.dart _RenderExclusiveMouseRegion
+type ExclusiveMouseRegionState struct {
+	notOutermost, foundInnermost bool
+}
+
+// RenderExclusiveMouseRegion is a mouse region that only the innermost of the
+// regions of its kind that are hit receives mouse events: the outer ones are
+// hit, but do not register with the mouse tracker.
+//
+// Deviation: Flutter defines it in widgets/raw_tooltip.dart as the private
+// _RenderExclusiveMouseRegion; it lives in rendering here because it embeds
+// RenderMouseRegion (SPEC §12.10).
+//
+// Flutter: widgets/raw_tooltip.dart _RenderExclusiveMouseRegion
+type RenderExclusiveMouseRegion struct {
+	RenderMouseRegion
+	state *ExclusiveMouseRegionState
+}
+
+// NewRenderExclusiveMouseRegion creates the box.
+//
+// Flutter: widgets/raw_tooltip.dart _RenderExclusiveMouseRegion.new
+func NewRenderExclusiveMouseRegion(state *ExclusiveMouseRegionState, child Box, opts ...RenderMouseRegionOpts) *RenderExclusiveMouseRegion {
+	r := &RenderExclusiveMouseRegion{state: state}
+	InitRenderMouseRegion(&r.RenderMouseRegion, r, child, firstOpts(opts))
 	return r
+}
+
+// HitTest registers the region only if it is the innermost one hit.
+//
+// Flutter: widgets/raw_tooltip.dart _RenderExclusiveMouseRegion.hitTest
+func (r *RenderExclusiveMouseRegion) HitTest(result *BoxHitTestResult, position ui.Offset) bool {
+	isHit := false
+	outermost := !r.state.notOutermost
+	r.state.notOutermost = true
+	if r.Size().Contains(position) {
+		isHit = r.HitTestChildren(result, position) || r.HitTestSelf(position)
+		if (isHit || r.Behavior == HitTestBehaviorTranslucent) && !r.state.foundInnermost {
+			r.state.foundInnermost = true
+			result.Add(NewBoxHitTestEntry(r, position))
+		}
+	}
+	if outermost {
+		// The outermost region resets the global states.
+		r.state.notOutermost = false
+		r.state.foundInnermost = false
+	}
+	return isHit
 }
 
 // HitTest also requires the region to be opaque.

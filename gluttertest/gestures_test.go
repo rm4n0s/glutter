@@ -125,6 +125,29 @@ func TestGestureMisuse(t *testing.T) {
 	}
 }
 
+func TestGestureDownAgainAfterUp(t *testing.T) {
+	ts := New(t)
+	downs := 0
+	l := newListener(newSwatch(grey, 200, 200))
+	l.onDown = func(*gestures.PointerDownEvent) { downs++ }
+	ts.PumpWidget(newRow(l))
+	g := ts.StartGesture(ui.Offset{Dx: 1, Dy: 1}, GestureOpts{Kind: ui.PointerDeviceKindMouse})
+	g.Up()
+	g.Down(ui.Offset{Dx: 5, Dy: 5})
+	if downs != 2 || g.Position() != (ui.Offset{Dx: 5, Dy: 5}) {
+		t.Errorf("downs = %d, position = %v", downs, g.Position())
+	}
+	g.Up()
+}
+
+func TestGestureDownWhilePressed(t *testing.T) {
+	appErr := failure(t, func(ts *Tester) {
+		ts.PumpWidget(newRow())
+		ts.StartGesture(ui.Offset{}).Down(ui.Offset{})
+	})
+	requireRoute(t, appErr, "GestureAlreadyDown")
+}
+
 func TestLongPressWaitsForTheTimer(t *testing.T) {
 	ts := New(t)
 	longPresses := 0

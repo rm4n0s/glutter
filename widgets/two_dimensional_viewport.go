@@ -166,7 +166,7 @@ func wrapTwoDimensionalChild(child Widget, addRepaintBoundaries, addAutomaticKee
 		child = NewRepaintBoundary(child)
 	}
 	if addAutomaticKeepAlives {
-		child = NewAutomaticKeepAlive(child)
+		child = NewAutomaticKeepAlive(newSelectionKeepAlive(child))
 	}
 	return child
 }

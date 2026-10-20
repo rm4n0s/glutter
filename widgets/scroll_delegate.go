@@ -133,7 +133,7 @@ func wrapSliverChild(child Widget, index int, addRepaintBoundaries, addSemanticI
 		}
 	}
 	if addAutomaticKeepAlives {
-		child = NewAutomaticKeepAlive(child)
+		child = NewAutomaticKeepAlive(newSelectionKeepAlive(child))
 	}
 	return NewKeyedSubtree(child, WidgetOpts{Key: key})
 }

@@ -209,10 +209,7 @@ func (s *EditableTextState) buildActions() ActionMap {
 	add(NewCallbackAction(func(i ReplaceTextIntent) any { s.replaceText(i); return nil }))
 	add(NewCallbackAction(s.updateSelection))
 	add(NewDirectionalFocusActionForTextField())
-	add(NewCallbackAction(func(i DismissIntent) any {
-		// TODO(step 11.5): hide the toolbar first when it is visible.
-		return ActionsInvoke(s.Context(), i)
-	}))
+	add(NewCallbackAction(s.hideToolbarIfVisible))
 	// Delete
 	add(s.makeOverridable(newDeleteTextAction[DeleteCharacterIntent](s, s.characterBoundary, beyond)))
 	add(s.makeOverridable(newDeleteTextAction[DeleteToNextWordBoundaryIntent](s, s.nextWordBoundary, beyond)))

@@ -44,13 +44,11 @@ func (t *Tester) gestureOpts(opts []GestureOpts) GestureOpts {
 		o.Kind = ui.PointerDeviceKindTouch
 	}
 	if o.Pointer == 0 {
-		if o.Kind == ui.PointerDeviceKindMouse {
-			// There is one mouse: Hover and the mouse gestures share it.
-			o.Pointer = t.mousePointer()
-		} else {
-			t.pointerID++
-			o.Pointer = t.pointerID
-		}
+		// Every gesture gets a new pointer ID, as in Flutter: the arena of a pointer
+		// is not reused, so a recognizer's entry of a past gesture is harmless.
+		// The mouse device is the same for all of them (Hover uses its own ID).
+		t.pointerID++
+		o.Pointer = t.pointerID
 	}
 	return o
 }
@@ -106,6 +104,31 @@ func (g *TestGesture) timeStamp() time.Duration {
 		return g.stamp.Value()
 	}
 	return g.t.Elapsed()
+}
+
+// Down presses the pointer again at the position, after Up or Cancel. A mouse
+// that Up removed is added again first.
+//
+// Flutter: flutter_test/lib/src/test_pointer.dart TestGesture.down
+func (g *TestGesture) Down(at ui.Offset) {
+	g.t.tb.Helper()
+	g.t.adopt()
+	if g.down {
+		g.t.fail(errors.New("GestureAlreadyDown", "TestGesture.Down was called on a pointer that is already pressed"))
+		return
+	}
+	g.down = true
+	g.position = at
+	if g.opts.Kind == ui.PointerDeviceKindMouse {
+		if !g.t.mouseAdded {
+			g.t.mouseAdded = true
+			g.addedMouse = true
+			g.t.Binding.Gestures().HandlePointerEvent(gestures.NewPointerAddedEvent(g.eventOpts(ui.Offset{})))
+		}
+		g.t.mousePosition = at
+	}
+	g.t.Binding.Gestures().HandlePointerEvent(gestures.NewPointerDownEvent(g.eventOpts(ui.Offset{})))
+	g.t.host.RunPosted()
 }
 
 // Position is where the pointer is.

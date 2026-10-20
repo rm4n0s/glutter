@@ -101,7 +101,7 @@ func (s *EditableTextState) didChangeTextEditingValue() {
 	}
 	s.updateRemoteEditingValueIfNeeded()
 	s.startOrStopCursorTimerIfNeeded()
-	// TODO(step 11.5): update or dispose the selection overlay.
+	s.updateOrDisposeSelectionOverlayIfNeeded()
 	s.SetState(func() {})
 	s.verticalSelectionMover.stopCurrentVerticalRunIfSelectionChanges()
 }
@@ -110,6 +110,9 @@ func (s *EditableTextState) handleFocusChanged() {
 	s.openOrCloseInputConnectionIfNeeded()
 	s.startOrStopCursorTimerIfNeeded()
 	if s.hasFocus() {
+		// Listen for changing view insets, which indicates the keyboard showing up.
+		insets, _ := MediaQueryMaybeViewInsetsOf(s.Context())
+		s.lastBottomViewInset = insets.Bottom
 		if !s.Widget().o.ReadOnly {
 			s.scheduleShowCaretOnScreen(true)
 		}
@@ -603,22 +606,53 @@ func (s *EditableTextState) ShowToolbar() { s.TryShowToolbar() }
 //
 // Flutter: widgets/editable_text.dart EditableTextState.showToolbar
 func (s *EditableTextState) TryShowToolbar() bool {
-	// TODO(step 11.5): show the context menu through the selection overlay.
-	return false
+	if s.selectionOverlay == nil || s.selectionOverlay.ToolbarIsVisible() {
+		return false
+	}
+	s.clipboardStatus.Update()
+	s.selectionOverlay.ShowToolbar()
+	// Listen to parent scroll events when the toolbar is visible so it can be
+	// hidden during a scroll on supported platforms.
+	if platformSupportsFadeOnScroll() {
+		s.listeningToScrollObserver = true
+		if s.scrollObserver != nil {
+			s.scrollObserver.RemoveListener(s.scrollObserverHandle)
+		}
+		s.scrollObserver = ScrollNotificationObserverMaybeOf(s.Context())
+		if s.scrollObserver != nil {
+			s.scrollObserverHandle = s.scrollObserver.AddListener(s.handleContextMenuOnParentScroll)
+		}
+	}
+	return true
 }
 
 // HideToolbar hides the toolbar, and the handles when hideHandles is set.
 //
 // Flutter: widgets/editable_text.dart EditableTextState.hideToolbar
 func (s *EditableTextState) HideToolbar(hideHandles bool) {
-	// TODO(step 11.5): hide the selection overlay.
+	// Stop listening to parent scroll events when the toolbar is hidden.
+	s.disposeScrollNotificationObserver()
+	switch {
+	case hideHandles:
+		// Hide the handles and the toolbar.
+		if s.selectionOverlay != nil {
+			s.selectionOverlay.Hide()
+		}
+	case s.selectionOverlay != nil && s.selectionOverlay.ToolbarIsVisible():
+		// Hide only the toolbar but not the handles.
+		s.selectionOverlay.HideToolbar()
+	}
 }
 
 // ToggleToolbar shows the toolbar if it is hidden and hides it if it is shown.
 //
 // Flutter: widgets/editable_text.dart EditableTextState.toggleToolbar
 func (s *EditableTextState) ToggleToolbar(hideHandles bool) {
-	// TODO(step 11.5): toggle the selection overlay.
+	if s.ensureSelectionOverlay().ToolbarIsVisible() {
+		s.HideToolbar(hideHandles)
+	} else {
+		s.TryShowToolbar()
+	}
 }
 
 // RequestKeyboard opens the input method, and gives the focus to the field.
@@ -652,7 +686,7 @@ func (s *EditableTextState) handleSelectionChanged(selection services.TextSelect
 	if cause != services.SelectionChangedCauseKeyboard {
 		s.RequestKeyboard()
 	}
-	// TODO(step 11.5): create or update the selection overlay and show its handles.
+	s.updateSelectionOverlayAfterSelectionChange()
 	if w.o.OnSelectionChanged != nil {
 		s.report("EditableTextCallbackPanicked", "while calling onSelectionChanged for "+cause.String(), func() { w.o.OnSelectionChanged(selection, cause) })
 	}
@@ -686,7 +720,7 @@ func (s *EditableTextState) scheduleShowCaretOnScreen(withAnimation bool) {
 		}
 		// Enlarge the target rect by scrollPadding to ensure that the caret is not
 		// positioned directly at the edge after scrolling.
-		padding := s.Widget().o.ScrollPadding.OrElse(defaultEditableScrollPadding)
+		padding := s.caretPadding(r.PreferredLineHeight())
 		caretRect := r.GetLocalRectForCaret(sel.Extent())
 		target := s.getOffsetToRevealCaret(caretRect)
 		var rectToReveal ui.Rect
@@ -744,7 +778,7 @@ func (s *EditableTextState) UserUpdateTextEditingValue(value services.TextEditin
 		if !s.hasFocus() {
 			s.flagInternalFocus()
 			s.Widget().focusNode.RequestFocus()
-			// TODO(step 11.5): create the selection overlay if there is none.
+			s.ensureSelectionOverlay()
 		}
 		return
 	}
