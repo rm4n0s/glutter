@@ -152,3 +152,28 @@ func equalInt32s(a, b []int32) bool {
 	}
 	return true
 }
+
+// TestAFrameCompilesOnlyTheProgramsItUses checks that opening the GL context compiles no
+// shader and that a frame of rectangles compiles the ones that draw them, not every
+// program of the renderer: a cold compile is several milliseconds on a software driver.
+func TestAFrameCompilesOnlyTheProgramsItUses(t *testing.T) {
+	r, _, _ := newTestRenderer()
+	s, err := r.Attach(waylandHandle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names, err := ShaderNames()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := r.ctx.dev.Stats().Programs; got != 0 {
+		t.Fatalf("opening the context compiled %d programs", got)
+	}
+	scene := damageScene(damagePicture(ui.NewRectFromLTWH(10, 10, 30, 30)))
+	if err := r.Render(s, scene, ui.Size{Width: 64, Height: 64}, 1); err != nil {
+		t.Fatal(err)
+	}
+	if got := r.ctx.dev.Stats().Programs; got == 0 || got >= len(names) {
+		t.Errorf("a frame of one rectangle compiled %d of %d programs", got, len(names))
+	}
+}

@@ -49,6 +49,11 @@ type Opts struct {
 	TextEngine ui.ParagraphFactory
 	// Debug are the debug flags; the default is a fresh set, all off.
 	Debug *widgets.DebugOptions
+	// DiscardScenes drops the scenes that the view renders instead of keeping them
+	// for Scenes and Screenshot: for benchmarks that run many frames.
+	//
+	// Flutter: no counterpart
+	DiscardScenes bool
 	// ErrorWidgetBuilder replaces the widget that is built for a widget that
 	// panicked in Build.
 	ErrorWidgetBuilder func(err error) widgets.Widget
@@ -104,7 +109,7 @@ func New(tb TB, opts ...Opts) *Tester {
 	if o.TextEngine == nil {
 		o.TextEngine = renderingtest.BundledTextEngine()
 	}
-	t := &Tester{tb: tb, host: &renderhost.Host{}, Clock: fakeclock.New(time.Time{})}
+	t := &Tester{tb: tb, host: &renderhost.Host{DiscardScenes: o.DiscardScenes}, Clock: fakeclock.New(time.Time{})}
 	t.start = t.Clock.Now()
 	t.d = ui.NewPlatformDispatcher(t.host)
 	t.d.SetTextEngine(o.TextEngine)
@@ -397,8 +402,25 @@ func (t *Tester) PumpWidget(w widgets.Widget, opts ...PumpWidgetOpts) {
 func (t *Tester) Pump(duration ...time.Duration) {
 	t.adopt()
 	t.tb.Helper()
-	if len(duration) > 0 && duration[0] > 0 {
-		t.Clock.Advance(duration[0])
+	t.PumpFrame(firstDuration(duration))
+}
+
+func firstDuration(d []time.Duration) time.Duration {
+	if len(d) > 0 {
+		return d[0]
+	}
+	return 0
+}
+
+// PumpFrame is Pump for a caller that is the UI thread already (the goroutine that
+// made the tester, or the last one that called Pump): it does not look for the
+// calling goroutine, which costs an allocation, so that a benchmark measures the
+// frame and not the harness.
+//
+// Flutter: no counterpart
+func (t *Tester) PumpFrame(duration time.Duration) {
+	if duration > 0 {
+		t.Clock.Advance(duration)
 	}
 	t.host.RunPosted()
 	sched := t.Binding.Scheduler()

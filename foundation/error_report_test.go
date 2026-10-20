@@ -100,6 +100,33 @@ func TestGuard(t *testing.T) {
 	})
 }
 
+func TestGuardLazy(t *testing.T) {
+	tests := []struct {
+		name         string
+		panics       bool
+		wantContexts int
+	}{
+		{"no panic makes no context", false, 0},
+		{"a panic makes the context once", true, 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			contexts, reports := 0, 0
+			panicked := GuardLazy(func(err error) { reports++ }, BuildPanicked,
+				func() string { contexts++; return "while testing" },
+				func() []any { return nil },
+				func() {
+					if tt.panics {
+						panic("bad")
+					}
+				})
+			if panicked != tt.panics || contexts != tt.wantContexts || reports != tt.wantContexts {
+				t.Errorf("panicked = %v, contexts = %d, reports = %d", panicked, contexts, reports)
+			}
+		})
+	}
+}
+
 func TestUIThread(t *testing.T) {
 	ui := NewUIThread()
 	if !ui.IsCurrent() {

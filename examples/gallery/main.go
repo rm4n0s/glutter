@@ -8,8 +8,9 @@
 // Run it with: go run ./examples/gallery
 //
 // Environment: GLUTTER_BACKEND=x11|wayland, GLUTTER_SCREENSHOT=<file.png>,
-// GLUTTER_SCREENSHOT_AFTER=<duration>. In debug builds: GLUTTER_DEV_PAGE=<slug>
-// opens the page with that slug, GLUTTER_DEV_THEME=dark starts in dark mode, and
+// GLUTTER_SCREENSHOT_AFTER=<duration>, GLUTTER_GALLERY_PAGE=<slug> opens the page with that
+// slug (in every build; scripts/perf.sh uses it), and GLUTTER_GALLERY_ANIMATE=1 starts its progress indicators animating. In debug builds: GLUTTER_DEV_PAGE=<slug>
+// does the same, GLUTTER_DEV_THEME=dark starts in dark mode, and
 // GLUTTER_DEV_SNACKBAR=1 shows a snack bar when the first page opens, and
 // GLUTTER_DEV_OPEN_MENU=file/recent opens those menus of the Menus page, and
 // GLUTTER_DEV_TEXT_FIELDS=focus,validate focuses a field and validates the form
@@ -143,14 +144,14 @@ func (s *galleryAppState) Build(bc m.BuildContext) m.Widget {
 	})
 }
 
-// devPage is the index of the page that GLUTTER_DEV_PAGE asks for: the page with
-// that slug, or the first one in release and profile builds and when no page has
-// the slug.
+// devPage is the index of the page that GLUTTER_GALLERY_PAGE asks for, in every build, or
+// GLUTTER_DEV_PAGE, in debug builds: the page with that slug, or the first one when
+// neither is set and when no page has the slug.
 func devPage(getenv func(string) string, pages []Page) int {
-	if !foundation.DebugMode {
-		return 0
+	slug := getenv("GLUTTER_GALLERY_PAGE")
+	if slug == "" && foundation.DebugMode {
+		slug = getenv("GLUTTER_DEV_PAGE")
 	}
-	slug := getenv("GLUTTER_DEV_PAGE")
 	for i, p := range pages {
 		if p.Slug == slug {
 			return i

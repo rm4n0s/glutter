@@ -49,7 +49,14 @@ func TestNewDeviceCapsAndShaders(t *testing.T) {
 	if err != nil || len(names) == 0 {
 		t.Fatalf("ShaderNames = %v, %v", names, err)
 	}
-	// Every embedded program is built at startup, from GLSL ES 3.00 sources.
+	// The programs are built when they are first used, and CompileAll makes every
+	// embedded one, from GLSL ES 3.00 sources.
+	if got := d.Stats().Programs; got != 0 {
+		t.Errorf("a new device has %d programs, want none", got)
+	}
+	if err := d.CompileAll(); err != nil {
+		t.Fatal(err)
+	}
 	if got := d.Stats().Programs; got != len(names) {
 		t.Errorf("programs = %d, want %d", got, len(names))
 	}
@@ -86,7 +93,7 @@ func TestNewDeviceErrors(t *testing.T) {
 	}{
 		{"old GL", &fakeGL{versionString: "OpenGL ES 2.0 Old"}, "GLES3Unsupported", "newDevice.GLES3Unsupported", map[string]any{"version": "OpenGL ES 2.0 Old"}},
 		{"vertex shader", &fakeGL{versionString: "OpenGL ES 3.0", failShader: "vertex"}, "ShaderCompileFailed",
-			"newDevice->Device.Program->Device.NewProgram->Device.compile.ShaderCompileFailed", map[string]any{"stage": "vertex shader", "log": "0:1: error: fake compile error"}},
+			"Device.CompileAll->Device.Program->Device.NewProgram->Device.compile.ShaderCompileFailed", map[string]any{"stage": "vertex shader", "log": "0:1: error: fake compile error"}},
 		{"fragment shader", &fakeGL{versionString: "OpenGL ES 3.0", failShader: "fragment", shaderLog: "syntax error"}, "ShaderCompileFailed",
 			"Device.compile.ShaderCompileFailed", map[string]any{"stage": "fragment shader", "log": "syntax error"}},
 		{"link", &fakeGL{versionString: "OpenGL ES 3.0", failLink: true}, "ShaderCompileFailed",
@@ -95,7 +102,14 @@ func TestNewDeviceErrors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			d, err := newDevice(tt.gl)
-			if d != nil {
+			if err == nil {
+				// The shaders are compiled when they are used; CompileAll finds the broken one.
+				if tt.tag == "GLES3Unsupported" {
+					t.Fatal("no error for an old GL")
+				}
+				err = d.CompileAll()
+				d.Close()
+			} else if d != nil {
 				t.Error("a device came back with the error")
 			}
 			appErr := routeOf(t, err, tt.tag)

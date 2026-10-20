@@ -96,6 +96,30 @@ func Guard(report ErrorReporter, tag, context string, kv func() []any, fn func()
 	return false
 }
 
+// GuardLazy is Guard with the context made only when there is a panic to report: the
+// context of a build is the description of the element, which costs a walk of its
+// properties and is wasted on every build that does not panic.
+//
+// Flutter: no counterpart
+func GuardLazy(report ErrorReporter, tag string, context func() string, kv func() []any, fn func()) (panicked bool) {
+	if report == nil {
+		fn()
+		return false
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			var extra []any
+			if kv != nil {
+				extra = kv()
+			}
+			report(PanicError(tag, context(), r, extra...))
+			panicked = true
+		}
+	}()
+	fn()
+	return false
+}
+
 // IsRecoveredPanic reports whether err was made by PanicError, that is, whether
 // it is the report of a panic that the framework recovered.
 //

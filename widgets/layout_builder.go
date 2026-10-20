@@ -284,6 +284,9 @@ func (e *layoutBuilderElement) Unmount() {
 	e.RenderObjectElement.Unmount()
 }
 
+// buildContext says what was happening when a build panicked.
+func (e *layoutBuilderElement) buildContext() string { return "while building " + e.String() }
+
 func (e *layoutBuilderElement) panicInfo() []any {
 	return []any{"library", "widgets library", "element", e.String(), "widget", foundation.RuntimeTypeName(e.widget),
 		"creatorChain", e.DebugGetCreatorChain(12)}
@@ -300,7 +303,7 @@ func (e *layoutBuilderElement) rebuildWithConstraints(rendering.Constraints) {
 		if e.owner.OnError == nil {
 			report = nil
 		}
-		foundation.Guard(report, foundation.BuildPanicked, "while building "+e.String(), e.panicInfo, func() {
+		foundation.GuardLazy(report, foundation.BuildPanicked, e.buildContext, e.panicInfo, func() {
 			built = e.widget.(layoutBuilderWidget).buildLayout(e, info)
 			if foundation.DebugMode && built == nil {
 				panic(errors.New("BuildReturnedNil", "a layout builder returned nil; builders must never return nil",
@@ -316,7 +319,7 @@ func (e *layoutBuilderElement) rebuildWithConstraints(rendering.Constraints) {
 		if e.owner.OnError == nil {
 			report = nil
 		}
-		foundation.Guard(report, foundation.BuildPanicked, "while building "+e.String(), e.panicInfo, func() {
+		foundation.GuardLazy(report, foundation.BuildPanicked, e.buildContext, e.panicInfo, func() {
 			e.child = e.UpdateChild(e.child, built, nil)
 		})
 		if updateErr != nil {

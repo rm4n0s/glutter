@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"sort"
 	"time"
 
@@ -140,6 +141,12 @@ func (w *ProgressDemos) CreateState() m.State { return &progressDemosState{} }
 type progressDemosState struct {
 	m.StateOf[*ProgressDemos]
 	indeterminate bool
+}
+
+// InitState starts the indicators indeterminate, so that they animate, when
+// GLUTTER_GALLERY_ANIMATE is "1" (scripts/perf.sh measures the frames of an animation).
+func (s *progressDemosState) InitState() {
+	s.indeterminate = os.Getenv("GLUTTER_GALLERY_ANIMATE") == "1"
 }
 
 func (s *progressDemosState) Build(bc m.BuildContext) m.Widget {

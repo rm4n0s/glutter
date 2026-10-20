@@ -193,29 +193,26 @@ func TestBannerDismiss(t *testing.T) {
 }
 
 func TestDevPage(t *testing.T) {
-	if !foundation.DebugMode {
-		t.Skip("GLUTTER_DEV_PAGE is read in debug builds only")
-	}
-	pages := []Page{{Slug: "a"}, {Slug: "b"}}
+	pages := []Page{{Slug: "a"}, {Slug: "b"}, {Slug: "c"}}
 	tests := []struct {
 		name  string
-		value string
+		env   map[string]string
+		debug bool // the case is for debug builds only
 		want  int
 	}{
-		{"unset", "", 0},
-		{"second", "b", 1},
-		{"unknown", "x", 0},
+		{"unset", nil, false, 0},
+		{"the gallery's own variable", map[string]string{"GLUTTER_GALLERY_PAGE": "b"}, false, 1},
+		{"unknown", map[string]string{"GLUTTER_GALLERY_PAGE": "x"}, false, 0},
+		{"the dev variable", map[string]string{"GLUTTER_DEV_PAGE": "c"}, true, 2},
+		{"the gallery's variable wins", map[string]string{"GLUTTER_GALLERY_PAGE": "b", "GLUTTER_DEV_PAGE": "c"}, true, 1},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := devPage(func(k string) string {
-				if k != "GLUTTER_DEV_PAGE" {
-					t.Errorf("read %q", k)
-				}
-				return tc.value
-			}, pages)
-			if got != tc.want {
-				t.Errorf("devPage(%q) = %d, want %d", tc.value, got, tc.want)
+			if tc.debug && !foundation.DebugMode {
+				t.Skip("GLUTTER_DEV_PAGE is read in debug builds only")
+			}
+			if got := devPage(func(k string) string { return tc.env[k] }, pages); got != tc.want {
+				t.Errorf("devPage(%v) = %d, want %d", tc.env, got, tc.want)
 			}
 		})
 	}

@@ -93,6 +93,24 @@ func TestThemeFallback(t *testing.T) {
 	}
 }
 
+func TestThemeOfMemoizesTheLocalizedTheme(t *testing.T) {
+	ts := gluttertest.New(t, gluttertest.Opts{})
+	data := NewThemeData()
+	first := capture(ts, data)
+	ts.PumpWidget(widgets.NewSizedBox(nil))
+	second := capture(ts, data)
+	if first != second {
+		t.Error("ThemeOf made a new localized theme for the same ThemeData")
+	}
+	if first == data || !first.Equal(ThemeDataLocalize(data, TypographyEnglishLike2021)) {
+		t.Error("the memoized theme is not the localized copy")
+	}
+	copied := data.CopyWith(ThemeDataCopy{UseMaterial3: foundation.Some(false)})
+	if got := capture(ts, copied); got == first || got.UseMaterial3 {
+		t.Error("a copy of the ThemeData reuses the memo of the original")
+	}
+}
+
 func TestThemeOfWithoutThemeIsTheFallback(t *testing.T) {
 	ts := gluttertest.New(t, gluttertest.Opts{})
 	var theme *ThemeData

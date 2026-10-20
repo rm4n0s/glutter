@@ -65,7 +65,24 @@ func ThemeOf(bc widgets.BuildContext) *ThemeData {
 	if localizations, ok := MaterialLocalizationsMaybeOf(bc); ok {
 		category = localizations.ScriptCategory()
 	}
-	return ThemeDataLocalize(theme, theme.Typography.GeometryThemeFor(category))
+	return theme.localizedFor(category)
+}
+
+// localizedFor is ThemeDataLocalize with the geometry of the category, memoized
+// in the theme.
+//
+// Deviation: Flutter caches the last five results of ThemeData.localize in a
+// static; the cache here lives in the ThemeData it was made from, so the package
+// keeps no mutable global state (SPEC §12.10). The fields of a ThemeData must not
+// change after the first ThemeOf, as in Flutter, where it is immutable.
+func (d *ThemeData) localizedFor(category ScriptCategory) *ThemeData {
+	if category < 0 || int(category) >= len(d.localized) {
+		return ThemeDataLocalize(d, d.Typography.GeometryThemeFor(category))
+	}
+	if d.localized[category] == nil {
+		d.localized[category] = ThemeDataLocalize(d, d.Typography.GeometryThemeFor(category))
+	}
+	return d.localized[category]
 }
 
 // fallbackTheme is the theme that ThemeOf returns when there is no Theme.

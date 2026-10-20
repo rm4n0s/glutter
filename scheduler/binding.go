@@ -674,7 +674,9 @@ func (b *SchedulerBinding) HandleDrawFrame() {
 	}()
 	ts := b.currentFrameTimeStamp.Value()
 	b.phase = SchedulerPhasePersistentCallbacks
-	for _, callback := range slices.Clone(b.persistentCallbacks) {
+	// The slice header is read once: a callback added by a callback goes after the end
+	// that the loop saw, and so runs in the next frame, with no copy of the slice.
+	for _, callback := range b.persistentCallbacks {
 		b.invokeFrameCallback(callback, ts)
 	}
 	b.phase = SchedulerPhasePostFrameCallbacks

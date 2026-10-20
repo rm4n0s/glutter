@@ -425,6 +425,10 @@ type ThemeDataOpts struct {
 //
 // Flutter: material/theme_data.dart ThemeData
 type ThemeData struct {
+	// localized memoizes ThemeOf's localized copies, one per script category. It
+	// is not copied by CopyWith.
+	localized [3]*ThemeData
+
 	// GENERAL CONFIGURATION
 
 	// ApplyElevationOverlayColor says whether a surface at elevation gets a
@@ -966,6 +970,7 @@ type ThemeDataCopy struct {
 // Flutter: material/theme_data.dart ThemeData.copyWith
 func (d *ThemeData) CopyWith(c ThemeDataCopy) *ThemeData {
 	out := *d
+	out.localized = [3]*ThemeData{}
 	out.ApplyElevationOverlayColor = c.ApplyElevationOverlayColor.OrElse(d.ApplyElevationOverlayColor)
 	out.Extensions = c.Extensions.OrElse(d.Extensions)
 	out.MaterialTapTargetSize = c.MaterialTapTargetSize.OrElse(d.MaterialTapTargetSize)

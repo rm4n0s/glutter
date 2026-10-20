@@ -29,6 +29,11 @@ type Host struct {
 	Scheduled int
 	// ExitRequests counts the calls of RequestAppExit.
 	ExitRequests int
+	// DiscardScenes makes RenderView drop the scenes instead of keeping them, for
+	// benchmarks that run many frames.
+	//
+	// Flutter: no counterpart
+	DiscardScenes bool
 	// RenderErr is returned by RenderView, to test a failing renderer.
 	RenderErr error
 	// SemanticsUpdates are the semantics updates that the view sent.
@@ -379,6 +384,9 @@ func (h *Host) ScheduleFrame() { h.mu.Lock(); h.Scheduled++; h.mu.Unlock() }
 func (h *Host) RenderView(view ui.ViewID, scene *ui.Scene) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	if h.DiscardScenes {
+		return h.RenderErr
+	}
 	h.scenes = append(h.scenes, scene)
 	if h.byView == nil {
 		h.byView = map[ui.ViewID][]*ui.Scene{}

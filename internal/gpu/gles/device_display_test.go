@@ -118,6 +118,9 @@ func TestDisplayDeviceCompilesEveryShader(t *testing.T) {
 		}
 		caps := c.Device().Caps()
 		t.Logf("%s | %s | %s | max texture %d, %d extensions", caps.Version, caps.Vendor, caps.Renderer, caps.MaxTextureSize, len(caps.Extensions))
+		if err := c.Device().CompileAll(); err != nil {
+			return err
+		}
 		if got := c.Device().Stats().Programs; got != len(names) {
 			return errors.NewErrf("TestPrograms", "%d programs for %d shader pairs", got, len(names))
 		}

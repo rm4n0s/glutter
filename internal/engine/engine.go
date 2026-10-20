@@ -123,6 +123,13 @@ type renderer interface {
 // Flutter: no counterpart
 const DecorationsEnv = "GLUTTER_DECORATIONS"
 
+// FrameStatsEnv is the environment variable that, set to "1", makes the engine log a line every second with the frames it
+// drew: how many, the average and the worst time to build and to draw a frame, and how
+// many took longer than 1/60 s. scripts/perf.sh reads it.
+//
+// Flutter: no counterpart
+const FrameStatsEnv = "GLUTTER_FRAME_STATS"
+
 // RasterCacheEnv is the environment variable that, set to "0", turns off the raster cache of the GPU renderer, as
 // Config.DisableRasterCache does.
 //
@@ -154,6 +161,7 @@ const DamageEnv = "GLUTTER_DAMAGE"
 //
 // Flutter: engine/src/flutter/shell (the shell that runs an app)
 func Run(ctx context.Context, cfg Config) (err error) {
+	runStart := time.Now()
 	getenv := cfg.Getenv
 	if getenv == nil {
 		getenv = os.Getenv
@@ -171,6 +179,11 @@ func Run(ctx context.Context, cfg Config) (err error) {
 			"GLUTTER_SCREENSHOT reads the frame back through OpenGL, so it does not work with the shared-memory mode")
 	}
 
+	stage := func(name string) {
+		if getenv(FrameStatsEnv) == "1" {
+			log.Info("startup", "stage", name, "since_run", time.Since(runStart).Round(time.Millisecond))
+		}
+	}
 	conn, _, err := linux.Select(linux.Selection{
 		Backend: cfg.Backend,
 		Getenv:  getenv,
@@ -188,6 +201,7 @@ func Run(ctx context.Context, cfg Config) (err error) {
 		}
 	}()
 
+	stage("connected to the display")
 	wcfg := cfg.windowConfig()
 	if wcfg.Decorations == platform.DecorationsUnspecified {
 		// GLUTTER_DECORATIONS=app makes the app draw the title bar of its first
@@ -206,11 +220,12 @@ func Run(ctx context.Context, cfg Config) (err error) {
 	if err != nil {
 		return err
 	}
+	stage("window created")
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	h := &handler{cfg: &cfg, log: log, conn: conn, shot: shot, cancel: cancel, windows: map[ui.ViewID]*window{},
-		appID: wcfg.AppID, decorations: wcfg.Decorations}
+		appID: wcfg.AppID, decorations: wcfg.Decorations, runStart: runStart, frameStats: getenv(FrameStatsEnv) == "1"}
 	h.first = h.addWindow(win)
 	h.first.title = wcfg.Title
 	if cfg.newRenderer != nil {
@@ -229,10 +244,12 @@ func Run(ctx context.Context, cfg Config) (err error) {
 	} else if cfg.Scene != nil {
 		h.disp.OnDrawFrame = h.drawSceneFunc
 	}
+	stage("framework started")
 	if cfg.Hooks.Window != nil {
 		cfg.Hooks.Window(win, cancel)
 	}
 	h.startAccessibility(ctx)
+	stage("accessibility started")
 	runErr := conn.Run(ctx, h)
 	h.release()
 	if runErr != nil {
@@ -344,6 +361,14 @@ type handler struct {
 
 	// clock measures the frames for the dispatcher's OnReportTimings.
 	clock frameClock
+	// runStart is when Run began, for the log of the first frame; firstLogged is set
+	// once it was logged. frameStats asks for a line of frame statistics every second
+	// (FrameStatsEnv).
+	runStart    time.Time
+	firstLogged bool
+	drewOnce    bool
+	frameStats  bool
+	stats       frameStats
 
 	armed      bool // the capture is scheduled
 	captureDue bool // the next frame is read back
@@ -908,11 +933,19 @@ func (h *handler) draw(w *window, scene *ui.Scene) error {
 	}
 	capture := w == h.first && h.captureDue
 	h.captureDue = false
+	first := !h.drewOnce
+	h.drewOnce = true
 	h.clock.beginRaster()
 	region := traceRaster()
 	img, err := h.r.Draw(w.NativeSurface(), w.width, w.height, scene, capture)
 	region.End()
 	h.clock.endRaster()
+	if first && h.frameStats {
+		h.log.Info("startup", "stage", "first draw (renderer, GL context, shaders, first frame)", "took", (h.clock.rasterFinish - h.clock.rasterStart).Round(time.Millisecond))
+	}
+	if err == nil {
+		h.noteFrame()
+	}
 	if err != nil {
 		h.fail(err)
 		return err

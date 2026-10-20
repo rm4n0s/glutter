@@ -80,7 +80,7 @@ func (c *ComponentElement) PerformRebuild() {
 		if owner == nil || owner.OnError == nil {
 			report = nil
 		}
-		foundation.Guard(report, foundation.BuildPanicked, "while building "+c.String(), c.panicInfo, func() {
+		foundation.GuardLazy(report, foundation.BuildPanicked, c.buildContext, c.panicInfo, func() {
 			built = c.cself.Build()
 			if foundation.DebugMode && built == nil {
 				panic(errors.New("BuildReturnedNil",
@@ -99,7 +99,7 @@ func (c *ComponentElement) PerformRebuild() {
 		return
 	}
 	var updateErr error
-	foundation.Guard(func(err error) { updateErr = err }, foundation.BuildPanicked, "while building "+c.String(), c.panicInfo, func() {
+	foundation.GuardLazy(func(err error) { updateErr = err }, foundation.BuildPanicked, c.buildContext, c.panicInfo, func() {
 		c.child = c.UpdateChild(c.child, built, c.slot)
 	})
 	if updateErr != nil {
@@ -109,6 +109,9 @@ func (c *ComponentElement) PerformRebuild() {
 		c.child = c.UpdateChild(nil, owner.errorWidgetFor(updateErr), c.slot)
 	}
 }
+
+// buildContext says what was happening when a build panicked.
+func (c *ComponentElement) buildContext() string { return "while building " + c.String() }
 
 // panicInfo is the metadata of a report about this element: the widget and the
 // chain of the elements that created it.

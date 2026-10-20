@@ -101,11 +101,11 @@ type glState struct {
 	stencilMask    uint32
 }
 
-// newDevice reads the driver's capabilities, sets the GL state the renderer
-// starts from, and compiles every shader program, so that a broken shader shows
-// at startup and not in the middle of a frame. It fails with GLES3Unsupported when
-// GL_VERSION is older than 3.0 and ShaderCompileFailed when a shader does not
-// build.
+// newDevice reads the driver's capabilities and sets the GL state the renderer
+// starts from. The shader programs are compiled when they are first used (a cold
+// compile costs several milliseconds each on a software driver, and a window needs
+// only some of them): CompileAll makes them all at once. It fails with
+// GLES3Unsupported when GL_VERSION is older than 3.0.
 func newDevice(gl glAPI) (*Device, error) {
 	d := &Device{
 		gl:       gl,
@@ -131,17 +131,25 @@ func newDevice(gl glAPI) (*Device, error) {
 		d.caps.Extensions[gl.getStringi(glExtensions, i)] = true
 	}
 	d.resetState()
+	return d, nil
+}
+
+// CompileAll compiles every shader program now, so that a broken shader shows here
+// and not in the middle of a frame. It fails with ShaderCompileFailed when a shader
+// does not build, and ShaderSourceMissing when the sources are not in the executable.
+//
+// Flutter: no counterpart
+func (d *Device) CompileAll() error {
 	names, err := ShaderNames()
 	if err != nil {
-		return nil, err
+		return err
 	}
 	for _, name := range names {
 		if _, err := d.Program(name); err != nil {
-			d.Close()
-			return nil, err
+			return err
 		}
 	}
-	return d, nil
+	return nil
 }
 
 // Caps returns what the driver reported.
