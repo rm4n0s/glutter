@@ -94,3 +94,25 @@ func (c CircularNotchedRectangle) GetOuterPath(host ui.Rect, guestOpt foundation
 	path.Close()
 	return path
 }
+
+// AutomaticNotchedShape is a NotchedShape defined by a ShapeBorder: the shape
+// of the widget that uses the notched shape, typically a BottomAppBar.
+//
+// Deviation: Flutter's second ShapeBorder, the guest that is subtracted from the
+// host to make the notch, is not ported because ui.Path has no boolean
+// operations yet (SPEC §12.10); the guest rectangle is ignored, as it is in
+// Flutter when the guest shape is null.
+//
+// Flutter: painting/notched_shapes.dart AutomaticNotchedShape
+type AutomaticNotchedShape struct {
+	// Host is the shape of the widget that uses the notched shape. It cannot
+	// depend on the text direction, as no text direction is available.
+	Host ShapeBorder
+}
+
+// GetOuterPath is the outer path of the host shape in the host rectangle.
+//
+// Flutter: painting/notched_shapes.dart AutomaticNotchedShape.getOuterPath
+func (s AutomaticNotchedShape) GetOuterPath(host ui.Rect, _ foundation.Opt[ui.Rect]) *ui.Path {
+	return s.Host.GetOuterPath(host, ui.TextDirectionUnspecified)
+}

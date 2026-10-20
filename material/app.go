@@ -89,8 +89,7 @@ func (m ThemeMode) IsDark() bool { return m == ThemeModeDark }
 
 // MaterialAppOpts are the optional parameters of NewMaterialApp.
 //
-// Not part of them yet: ScaffoldMessengerKey (step 13.1); and, as the framework
-// has no counterpart, ShowPerformanceOverlay, CheckerboardRasterCacheImages,
+// Not part of them: as the framework has no counterpart, ShowPerformanceOverlay, CheckerboardRasterCacheImages,
 // CheckerboardOffscreenLayers, ShowSemanticsDebugger, DebugShowMaterialGrid and
 // RestorationScopeId (see SPEC §12.10).
 //
@@ -100,6 +99,9 @@ type MaterialAppOpts struct {
 	Key foundation.Key
 	// NavigatorKey is the key of the Navigator of the app.
 	NavigatorKey widgets.AnyGlobalKey
+	// ScaffoldMessengerKey is the key of the ScaffoldMessenger of the app, to show
+	// snack bars and banners without a BuildContext.
+	ScaffoldMessengerKey widgets.AnyGlobalKey
 	// Home is the widget for the default route of the app ("/").
 	Home widgets.Widget
 	// Routes is the application's top-level routing table.
@@ -186,6 +188,9 @@ type MaterialAppRouterOpts[T any] struct {
 	RouteInformationParser widgets.RouteInformationParser[T]
 	// RouterDelegate builds the content of the app from the configuration.
 	RouterDelegate widgets.RouterDelegate[T]
+	// ScaffoldMessengerKey is the key of the ScaffoldMessenger of the app, to show
+	// snack bars and banners without a BuildContext.
+	ScaffoldMessengerKey widgets.AnyGlobalKey
 	// RouterConfig has all of the above in one value.
 	RouterConfig *widgets.RouterConfig[T]
 	// BackButtonDispatcher dispatches the back button.
@@ -254,6 +259,7 @@ type materialAppTheming struct {
 	scrollBehavior                                             widgets.ScrollBehavior
 	builder                                                    widgets.TransitionBuilder
 	localizationsDelegates                                     []widgets.LocalizationsDelegate
+	scaffoldMessengerKey                                       widgets.AnyGlobalKey
 }
 
 // MaterialApp is a convenience widget that wraps a number of widgets that are
@@ -286,7 +292,8 @@ func NewMaterialApp(opts ...MaterialAppOpts) *MaterialApp {
 		materialAppTheming: materialAppTheming{theme: o.Theme, darkTheme: o.DarkTheme, highContrastTheme: o.HighContrastTheme,
 			highContrastDarkTheme: o.HighContrastDarkTheme, themeMode: o.ThemeMode, themeAnimationDuration: o.ThemeAnimationDuration,
 			themeAnimationCurve: o.ThemeAnimationCurve, themeAnimationStyle: o.ThemeAnimationStyle, color: o.Color,
-			scrollBehavior: o.ScrollBehavior, builder: o.Builder, localizationsDelegates: o.LocalizationsDelegates},
+			scrollBehavior: o.ScrollBehavior, builder: o.Builder, localizationsDelegates: o.LocalizationsDelegates,
+			scaffoldMessengerKey: o.ScaffoldMessengerKey},
 	}
 	a.buildWidgetsApp = func(key foundation.Key, color ui.Color, delegates []widgets.LocalizationsDelegate, builder widgets.TransitionBuilder) *widgets.WidgetsApp {
 		return widgets.NewWidgetsApp(color, widgets.WidgetsAppOpts{
@@ -323,7 +330,8 @@ func NewMaterialAppRouter[T any](opts ...MaterialAppRouterOpts[T]) *MaterialApp 
 		materialAppTheming: materialAppTheming{theme: o.Theme, darkTheme: o.DarkTheme, highContrastTheme: o.HighContrastTheme,
 			highContrastDarkTheme: o.HighContrastDarkTheme, themeMode: o.ThemeMode, themeAnimationDuration: o.ThemeAnimationDuration,
 			themeAnimationCurve: o.ThemeAnimationCurve, themeAnimationStyle: o.ThemeAnimationStyle, color: o.Color,
-			scrollBehavior: o.ScrollBehavior, builder: o.Builder, localizationsDelegates: o.LocalizationsDelegates},
+			scrollBehavior: o.ScrollBehavior, builder: o.Builder, localizationsDelegates: o.LocalizationsDelegates,
+			scaffoldMessengerKey: o.ScaffoldMessengerKey},
 	}
 	a.buildWidgetsApp = func(key foundation.Key, color ui.Color, delegates []widgets.LocalizationsDelegate, builder widgets.TransitionBuilder) *widgets.WidgetsApp {
 		return widgets.NewWidgetsAppRouter(color, widgets.WidgetsAppRouterOpts[T]{
@@ -413,7 +421,7 @@ func (s *materialAppState) materialBuilder(bc widgets.BuildContext, child widget
 		builder, inner := w.builder, child
 		result = widgets.NewBuilder(func(bc widgets.BuildContext) widgets.Widget { return builder(bc, inner) })
 	}
-	// TODO(step 13.1): a ScaffoldMessenger goes here, with the scaffoldMessengerKey of the app.
+	result = NewScaffoldMessenger(result, ScaffoldMessengerOpts{Key: w.scaffoldMessengerKey})
 	result = widgets.NewDefaultSelectionStyle(result, widgets.DefaultSelectionStyleOpts{
 		SelectionColor: foundation.Some(selectionColor), CursorColor: foundation.Some(cursorColor),
 	})

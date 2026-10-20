@@ -473,6 +473,16 @@ type AnimatedWidgetBaseState[W widgets.ImplicitlyAnimated] = widgets.AnimatedWid
 // Flutter: widgets.dart AnimatedWidgetInterface
 type AnimatedWidgetInterface = widgets.AnimatedWidgetInterface
 
+// AnnotatedRegion is widgets.AnnotatedRegion.
+//
+// Flutter: widgets.dart AnnotatedRegion
+type AnnotatedRegion = widgets.AnnotatedRegion
+
+// AnnotatedRegionOpts is widgets.AnnotatedRegionOpts.
+//
+// Flutter: widgets.dart AnnotatedRegionOpts
+type AnnotatedRegionOpts = widgets.AnnotatedRegionOpts
+
 // AnyGlobalKey is widgets.AnyGlobalKey.
 //
 // Flutter: widgets.dart AnyGlobalKey
@@ -1720,6 +1730,51 @@ func DirectionalityOf(bc widgets.BuildContext) ui.TextDirection {
 //
 // Flutter: widgets.dart DismissAction
 type DismissAction = widgets.DismissAction
+
+// DismissDirection is widgets.DismissDirection.
+//
+// Flutter: widgets.dart DismissDirection
+type DismissDirection = widgets.DismissDirection
+
+// DismissDirectionDown is widgets.DismissDirectionDown.
+//
+// Flutter: widgets.dart DismissDirectionDown
+const DismissDirectionDown = widgets.DismissDirectionDown
+
+// DismissDirectionEndToStart is widgets.DismissDirectionEndToStart.
+//
+// Flutter: widgets.dart DismissDirectionEndToStart
+const DismissDirectionEndToStart = widgets.DismissDirectionEndToStart
+
+// DismissDirectionHorizontal is widgets.DismissDirectionHorizontal.
+//
+// Flutter: widgets.dart DismissDirectionHorizontal
+const DismissDirectionHorizontal = widgets.DismissDirectionHorizontal
+
+// DismissDirectionNone is widgets.DismissDirectionNone.
+//
+// Flutter: widgets.dart DismissDirectionNone
+const DismissDirectionNone = widgets.DismissDirectionNone
+
+// DismissDirectionStartToEnd is widgets.DismissDirectionStartToEnd.
+//
+// Flutter: widgets.dart DismissDirectionStartToEnd
+const DismissDirectionStartToEnd = widgets.DismissDirectionStartToEnd
+
+// DismissDirectionUnspecified is widgets.DismissDirectionUnspecified.
+//
+// Flutter: widgets.dart DismissDirectionUnspecified
+const DismissDirectionUnspecified = widgets.DismissDirectionUnspecified
+
+// DismissDirectionUp is widgets.DismissDirectionUp.
+//
+// Flutter: widgets.dart DismissDirectionUp
+const DismissDirectionUp = widgets.DismissDirectionUp
+
+// DismissDirectionVertical is widgets.DismissDirectionVertical.
+//
+// Flutter: widgets.dart DismissDirectionVertical
+const DismissDirectionVertical = widgets.DismissDirectionVertical
 
 // DismissIntent is widgets.DismissIntent.
 //
@@ -4169,6 +4224,21 @@ const NavigationModeUnspecified = widgets.NavigationModeUnspecified
 // Flutter: widgets.dart NavigationNotification
 type NavigationNotification = widgets.NavigationNotification
 
+// NavigationToolbar is widgets.NavigationToolbar.
+//
+// Flutter: widgets.dart NavigationToolbar
+type NavigationToolbar = widgets.NavigationToolbar
+
+// NavigationToolbarMiddleSpacing is widgets.NavigationToolbarMiddleSpacing.
+//
+// Flutter: widgets.dart NavigationToolbarMiddleSpacing
+const NavigationToolbarMiddleSpacing = widgets.NavigationToolbarMiddleSpacing
+
+// NavigationToolbarOpts is widgets.NavigationToolbarOpts.
+//
+// Flutter: widgets.dart NavigationToolbarOpts
+type NavigationToolbarOpts = widgets.NavigationToolbarOpts
+
 // Navigator is widgets.Navigator.
 //
 // Flutter: widgets.dart Navigator
@@ -4595,6 +4665,13 @@ func NewAnimatedSwitcher(duration time.Duration, child widgets.Widget, opts ...w
 // Flutter: widgets.dart NewAnimatedWidgetBase
 func NewAnimatedWidgetBase(listenable foundation.Listenable, opts ...widgets.WidgetOpts) widgets.AnimatedWidget {
 	return widgets.NewAnimatedWidgetBase(listenable, opts...)
+}
+
+// NewAnnotatedRegion is widgets.NewAnnotatedRegion.
+//
+// Flutter: widgets.dart NewAnnotatedRegion
+func NewAnnotatedRegion(value any, child widgets.Widget, opts ...widgets.AnnotatedRegionOpts) *widgets.AnnotatedRegion {
+	return widgets.NewAnnotatedRegion(value, child, opts...)
 }
 
 // NewAppLifecycleListener is widgets.NewAppLifecycleListener.
@@ -6102,6 +6179,13 @@ func NewMultiChildRenderObjectWidgetBase(children []widgets.Widget, opts ...widg
 	return widgets.NewMultiChildRenderObjectWidgetBase(children, opts...)
 }
 
+// NewNavigationToolbar is widgets.NewNavigationToolbar.
+//
+// Flutter: widgets.dart NewNavigationToolbar
+func NewNavigationToolbar(opts ...widgets.NavigationToolbarOpts) *widgets.NavigationToolbar {
+	return widgets.NewNavigationToolbar(opts...)
+}
+
 // NewNavigator is widgets.NewNavigator.
 //
 // Flutter: widgets.dart NewNavigator
@@ -6191,6 +6275,13 @@ func NewOrderedTraversalPolicy(opts ...widgets.OrderedTraversalPolicyOpts) *widg
 // Flutter: widgets.dart NewOrientationBuilder
 func NewOrientationBuilder(builder widgets.OrientationWidgetBuilder, opts ...widgets.WidgetOpts) *widgets.OrientationBuilder {
 	return widgets.NewOrientationBuilder(builder, opts...)
+}
+
+// NewOverflowBar is widgets.NewOverflowBar.
+//
+// Flutter: widgets.dart NewOverflowBar
+func NewOverflowBar(children []widgets.Widget, opts ...widgets.OverflowBarOpts) *widgets.OverflowBar {
+	return widgets.NewOverflowBar(children, opts...)
 }
 
 // NewOverflowBox is widgets.NewOverflowBox.
@@ -6429,6 +6520,13 @@ func NewPositionedTransition(rect animation.Animation[rendering.RelativeRect], c
 // Flutter: widgets.dart NewPositionedWithDirection
 func NewPositionedWithDirection(textDirection ui.TextDirection, child widgets.Widget, opts ...widgets.PositionedDirectionalOpts) *widgets.Positioned {
 	return widgets.NewPositionedWithDirection(textDirection, child, opts...)
+}
+
+// NewPreferredSize is widgets.NewPreferredSize.
+//
+// Flutter: widgets.dart NewPreferredSize
+func NewPreferredSize(preferredSize ui.Size, child widgets.Widget, opts ...widgets.PreferredSizeOpts) *widgets.PreferredSize {
+	return widgets.NewPreferredSize(preferredSize, child, opts...)
 }
 
 // NewPreviousFocusAction is widgets.NewPreviousFocusAction.
@@ -7899,6 +7997,16 @@ const OrientationUnspecified = widgets.OrientationUnspecified
 // Flutter: widgets.dart OrientationWidgetBuilder
 type OrientationWidgetBuilder = widgets.OrientationWidgetBuilder
 
+// OverflowBar is widgets.OverflowBar.
+//
+// Flutter: widgets.dart OverflowBar
+type OverflowBar = widgets.OverflowBar
+
+// OverflowBarOpts is widgets.OverflowBarOpts.
+//
+// Flutter: widgets.dart OverflowBarOpts
+type OverflowBarOpts = widgets.OverflowBarOpts
+
 // OverflowBox is widgets.OverflowBox.
 //
 // Flutter: widgets.dart OverflowBox
@@ -8335,6 +8443,21 @@ func PrecacheImage(provider painting.ImageProvider, bc widgets.BuildContext, opt
 //
 // Flutter: widgets.dart PrecacheImageOpts
 type PrecacheImageOpts = widgets.PrecacheImageOpts
+
+// PreferredSize is widgets.PreferredSize.
+//
+// Flutter: widgets.dart PreferredSize
+type PreferredSize = widgets.PreferredSize
+
+// PreferredSizeOpts is widgets.PreferredSizeOpts.
+//
+// Flutter: widgets.dart PreferredSizeOpts
+type PreferredSizeOpts = widgets.PreferredSizeOpts
+
+// PreferredSizeWidget is widgets.PreferredSizeWidget.
+//
+// Flutter: widgets.dart PreferredSizeWidget
+type PreferredSizeWidget = widgets.PreferredSizeWidget
 
 // PreviousFocusAction is widgets.PreviousFocusAction.
 //
@@ -12259,6 +12382,11 @@ type AssetImage = painting.AssetImage
 //
 // Flutter: painting.dart AssetImageOpts
 type AssetImageOpts = painting.AssetImageOpts
+
+// AutomaticNotchedShape is painting.AutomaticNotchedShape.
+//
+// Flutter: painting.dart AutomaticNotchedShape
+type AutomaticNotchedShape = painting.AutomaticNotchedShape
 
 // Axis is painting.Axis.
 //

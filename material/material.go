@@ -558,6 +558,12 @@ func (r *renderInkFeatures) Paint(context *rendering.PaintingContext, offset ui.
 type InkFeature interface {
 	// AsInkFeature returns the base of the feature.
 	AsInkFeature() *InkFeatureBase
+	// Dispose frees the resources of the feature and removes it from the
+	// controller. A feature that owns more than the base, like the animations of a
+	// splash, overrides it.
+	//
+	// Flutter: material/material.dart InkFeature.dispose
+	Dispose()
 	// PaintFeature paints the feature onto the canvas. The transform takes a
 	// point in the coordinate space of the reference box to the coordinate space
 	// of the material, as the canvas of the material has the origin at its

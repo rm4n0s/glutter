@@ -55,13 +55,13 @@ func TestTapIncrements(t *testing.T) {
 	}
 }
 
-// TestLayout checks the Material 3 geometry: a 64 px app bar with the title
+// TestLayout checks the Material 3 geometry: a 56 px app bar with the title
 // 16 px from the start, and the 56 px button 16 px from the end and the bottom.
 func TestLayout(t *testing.T) {
 	ts := newTester(t)
 	bar := ts.Size(gluttertest.ByType[*m.AppBar]())
-	if bar.Width != 480 || bar.Height != 64 {
-		t.Errorf("app bar size = %v, want 480 x 64", bar)
+	if bar.Width != 480 || bar.Height != 56 {
+		t.Errorf("app bar size = %v, want 480 x 56", bar)
 	}
 	if tl := ts.TopLeft(gluttertest.ByText("Counter")); tl.Dx != 16 {
 		t.Errorf("title left = %v, want 16", tl.Dx)

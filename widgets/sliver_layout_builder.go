@@ -26,7 +26,7 @@ type SliverLayoutBuilder struct {
 //
 // Flutter: widgets/sliver_layout_builder.dart SliverLayoutBuilder.new
 func NewSliverLayoutBuilder(builder SliverLayoutWidgetBuilder, opts ...LayoutBuilderOpts) *SliverLayoutBuilder {
-	return &SliverLayoutBuilder{NewRenderObjectWidgetBase(WidgetOpts(firstOpts(opts))), builder}
+	return &SliverLayoutBuilder{NewRenderObjectWidgetBase(WidgetOpts{Key: firstOpts(opts).Key}), builder}
 }
 
 // Builder is the function that builds the child.

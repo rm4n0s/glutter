@@ -337,6 +337,10 @@ func writeTarget(b *bytes.Buffer, t target, foundation string) {
 	}
 	fmt.Fprintf(b, "// CopyWith returns a copy of the %s with the fields that the %s sets replaced.\n//\n// %s\nfunc (x %s) CopyWith(c %s) %s {\n\t%s\n", t.name, copyName, ref, recv, copyName, ret, start)
 	for _, f := range t.fields {
+		if f.isOpt {
+			fmt.Fprintf(b, "\tif c.%s.IsSome() {\n\t\tr.%s = c.%s\n\t}\n", f.exported, f.name, f.exported)
+			continue
+		}
 		fmt.Fprintf(b, "\tif v, ok := c.%s.Get(); ok {\n\t\tr.%s = v\n\t}\n", f.exported, f.name)
 	}
 	fmt.Fprintf(b, "\t%s\n}\n", end)

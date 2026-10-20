@@ -802,7 +802,7 @@ func (s *inkResponseState) Deactivate() {
 		s.splashes = nil
 		s.hasSplashes = false
 		for _, splash := range splashes {
-			splash.AsInkFeature().Dispose()
+			splash.Dispose()
 		}
 		s.currentSplash = nil
 	}

@@ -8,4 +8,5 @@
 package material
 
 //go:generate go run ../cmd/glutter-gen icons -reference ../reference/flutter -out icons_gen.go
+//go:generate go run ../cmd/glutter-gen copywith -dir . -out copywith_gen.go
 //go:generate go run ../cmd/glutter-gen reexport -target . -out widgets_reexport_gen.go

@@ -45,6 +45,13 @@ type layoutBuilderRender interface {
 type LayoutBuilderOpts struct {
 	// Key is the key of the widget.
 	Key foundation.Key
+	// Extra, when set, is called at layout time, and the builder runs again when
+	// its value (a comparable value) differs from the one of the last build, even
+	// if the constraints did not change. It takes the place of the extra fields of
+	// the BoxConstraints subclass that Flutter's Scaffold passes to its body
+	// builder, which Go's BoxConstraints cannot carry (SPEC §12.10). The function
+	// of the first widget that creates the render object stays.
+	Extra func() any
 }
 
 // LayoutBuilder builds a widget tree that can depend on the parent widget's
@@ -55,6 +62,7 @@ type LayoutBuilderOpts struct {
 type LayoutBuilder struct {
 	RenderObjectWidget
 	builder LayoutWidgetBuilder
+	extra   func() any
 }
 
 // NewLayoutBuilder creates a widget that builds its child with the constraints
@@ -62,7 +70,8 @@ type LayoutBuilder struct {
 //
 // Flutter: widgets/layout_builder.dart LayoutBuilder.new
 func NewLayoutBuilder(builder LayoutWidgetBuilder, opts ...LayoutBuilderOpts) *LayoutBuilder {
-	return &LayoutBuilder{NewRenderObjectWidgetBase(WidgetOpts(firstOpts(opts))), builder}
+	o := firstOpts(opts)
+	return &LayoutBuilder{RenderObjectWidget: NewRenderObjectWidgetBase(WidgetOpts{Key: o.Key}), builder: builder, extra: o.Extra}
 }
 
 // Builder is the function that builds the child.
@@ -71,7 +80,17 @@ func NewLayoutBuilder(builder LayoutWidgetBuilder, opts ...LayoutBuilderOpts) *L
 func (w *LayoutBuilder) Builder() LayoutWidgetBuilder { return w.builder }
 
 func (w *LayoutBuilder) buildLayout(bc BuildContext, info any) Widget {
+	if x, ok := info.(layoutBuilderExtraInfo); ok {
+		return w.builder(bc, x.constraints)
+	}
 	return w.builder(bc, info.(rendering.BoxConstraints))
+}
+
+// layoutBuilderExtraInfo is the layout information of a LayoutBuilder with an
+// Extra function: the constraints and the extra value.
+type layoutBuilderExtraInfo struct {
+	constraints rendering.BoxConstraints
+	extra       any
 }
 
 func (w *LayoutBuilder) updateShouldRebuild(Widget) bool { return true }
@@ -80,7 +99,7 @@ func (w *LayoutBuilder) updateShouldRebuild(Widget) bool { return true }
 //
 // Flutter: widgets/layout_builder.dart LayoutBuilder.createRenderObject
 func (w *LayoutBuilder) CreateRenderObject(BuildContext) rendering.RenderObject {
-	r := &renderLayoutBuilder{}
+	r := &renderLayoutBuilder{extra: w.extra}
 	rendering.InitRenderProxyBox(&r.RenderProxyBox, r, nil)
 	rendering.InitLayoutCallbackMixin(&r.LayoutCallbackMixin, r, r.layoutCallback)
 	return r
@@ -102,6 +121,7 @@ type renderLayoutBuilder struct {
 	rendering.RenderProxyBox
 	rendering.LayoutCallbackMixin
 	callback func(rendering.Constraints)
+	extra    func() any
 }
 
 func (r *renderLayoutBuilder) updateCallback(f func(rendering.Constraints)) {
@@ -114,7 +134,12 @@ func (r *renderLayoutBuilder) updateCallback(f func(rendering.Constraints)) {
 
 func (r *renderLayoutBuilder) clearCallback()          { r.callback = nil }
 func (r *renderLayoutBuilder) scheduleLayoutCallback() { r.ScheduleLayoutCallback() }
-func (r *renderLayoutBuilder) layoutInfo() any         { return r.BoxConstraints() }
+func (r *renderLayoutBuilder) layoutInfo() any {
+	if r.extra != nil {
+		return layoutBuilderExtraInfo{r.BoxConstraints(), r.extra()}
+	}
+	return r.BoxConstraints()
+}
 
 func (r *renderLayoutBuilder) layoutCallback() {
 	if r.callback != nil {

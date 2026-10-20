@@ -110,8 +110,8 @@ func (x *Scheme) CopyWith(c SchemeCopy) *Scheme {
 	if v, ok := c.Style.Get(); ok {
 		r.style = v
 	}
-	if v, ok := c.Extra.Get(); ok {
-		r.extra = v
+	if c.Extra.IsSome() {
+		r.extra = c.Extra
 	}
 	if v, ok := c.Names.Get(); ok {
 		r.Names = v
@@ -171,6 +171,11 @@ type A struct {
 	}
 	if !strings.Contains(string(got), "Width  foundation.Opt[float64]\n") || strings.Contains(string(got), "Opt[foundation.Opt") {
 		t.Errorf("generated:\n%s", got)
+	}
+	// A field that is an Opt is replaced as it is when the replacement is set; the
+	// others are replaced by the value in the Opt.
+	if !strings.Contains(string(got), "if c.Width.IsSome() {\n\t\tr.Width = c.Width\n") || !strings.Contains(string(got), "if v, ok := c.Height.Get(); ok {") {
+		t.Errorf("replacement of the fields:\n%s", got)
 	}
 }
 

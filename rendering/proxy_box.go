@@ -1061,12 +1061,21 @@ type RenderOpacityOpts struct {
 //
 // Flutter: rendering/proxy_box.dart RenderOpacity.new
 func NewRenderOpacity(child Box, opts ...RenderOpacityOpts) *RenderOpacity {
+	r := &RenderOpacity{}
+	InitRenderOpacity(r, r, child, opts...)
+	return r
+}
+
+// InitRenderOpacity sets the outer object of an opacity box, for a render box
+// that embeds RenderOpacity and overrides some of its methods.
+//
+// Flutter: rendering/proxy_box.dart RenderOpacity.new
+func InitRenderOpacity(r *RenderOpacity, self Box, child Box, opts ...RenderOpacityOpts) {
 	o := firstOpts(opts)
 	opacity := o.Opacity.OrElse(1)
 	assertOpacity(opacity)
-	r := &RenderOpacity{opacity: opacity, alwaysIncludeSemantics: o.AlwaysIncludeSemantics, alpha: ui.ColorGetAlphaFromOpacity(opacity)}
-	InitRenderProxyBox(&r.RenderProxyBox, r, child)
-	return r
+	r.opacity, r.alwaysIncludeSemantics, r.alpha = opacity, o.AlwaysIncludeSemantics, ui.ColorGetAlphaFromOpacity(opacity)
+	InitRenderProxyBox(&r.RenderProxyBox, self, child)
 }
 
 func assertOpacity(v float64) {
