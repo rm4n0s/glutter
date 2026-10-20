@@ -33,6 +33,8 @@ type Platform struct {
 	clipboardPNG  []byte
 	clipboardURIs []string
 	primary       ui.ClipboardContent
+
+	acc *Accessibility
 }
 
 var _ platform.Platform = (*Platform)(nil)
@@ -277,11 +279,11 @@ func (p *Platform) SetSettings(settings platform.Settings) {
 	p.settings = settings
 }
 
-// Services returns nil: the fake has no optional capabilities.
+// Services returns the fake services: the fake accessibility bridge.
 //
 // Flutter: no counterpart
 func (p *Platform) Services() platform.Services {
-	return nil
+	return services{p.Accessibility()}
 }
 
 // record appends an entry to the log.

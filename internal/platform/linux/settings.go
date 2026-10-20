@@ -4,9 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"os"
-	"path/filepath"
 	"reflect"
-	"strconv"
 	"time"
 
 	"github.com/rm4n0s/glutter/internal/dbus"
@@ -109,17 +107,5 @@ func (w *SettingsWatcher) Stop() {
 	}
 }
 
-// sessionBusPresent is whether a session bus can be reached without starting one:
-// DBUS_SESSION_BUS_ADDRESS names it, or the socket of systemd's user bus is there.
-// (A connection without either would start a bus with dbus-launch.)
-func sessionBusPresent(getenv func(string) string) bool {
-	if getenv("DBUS_SESSION_BUS_ADDRESS") != "" {
-		return true
-	}
-	dir := getenv("XDG_RUNTIME_DIR")
-	if dir == "" {
-		dir = "/run/user/" + strconv.Itoa(os.Getuid())
-	}
-	_, err := os.Stat(filepath.Join(dir, "bus"))
-	return err == nil
-}
+// sessionBusPresent is whether a session bus can be reached without starting one.
+func sessionBusPresent(getenv func(string) string) bool { return dbus.SessionBusPresent(getenv) }

@@ -58,6 +58,7 @@ type Platform struct {
 	cursors *cursors
 	// settings follows the system settings (Settings, applySettings).
 	settings *linux.SettingsWatcher
+	services *linux.Services
 	// startupToken is the activation token of the launcher, until the first window
 	// uses it (useStartupToken).
 	startupToken string
@@ -130,6 +131,7 @@ func newPlatform(conn *wl.Conn, opts Options) (*Platform, error) {
 	p.takeStartupToken()
 	p.cursors = newCursors(p)
 	p.settings = &linux.SettingsWatcher{Post: p.Post, Apply: p.applySettings}
+	p.services = linux.NewServices(p.Post)
 	p.clip = newClipboard(p)
 	p.text = newTextInput(p)
 	if p.text == nil {
@@ -281,7 +283,7 @@ func (p *Platform) applySettings(s platform.Settings) {
 	}
 }
 
-// Services returns nil: the Wayland backend adds no desktop services itself.
+// Services returns the services that the Linux backends share (the accessibility bridge).
 //
 // Flutter: no counterpart
-func (p *Platform) Services() platform.Services { return nil }
+func (p *Platform) Services() platform.Services { return p.services }

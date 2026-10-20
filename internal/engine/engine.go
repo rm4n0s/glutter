@@ -189,6 +189,7 @@ func Run(ctx context.Context, cfg Config) (err error) {
 	h := &handler{cfg: &cfg, log: log, conn: conn, shot: shot, cancel: cancel, windows: map[ui.ViewID]*window{},
 		appID: wcfg.AppID, decorations: wcfg.Decorations}
 	h.first = h.addWindow(win)
+	h.first.title = wcfg.Title
 	if cfg.newRenderer != nil {
 		h.newRenderer = cfg.newRenderer
 	} else {
@@ -208,6 +209,7 @@ func Run(ctx context.Context, cfg Config) (err error) {
 	if cfg.Hooks.Window != nil {
 		cfg.Hooks.Window(win, cancel)
 	}
+	h.startAccessibility(ctx)
 	runErr := conn.Run(ctx, h)
 	h.release()
 	if runErr != nil {
@@ -278,6 +280,10 @@ type window struct {
 	// pending is whether lastScene was rendered during the frame of another window:
 	// the frame of this window then only presents it.
 	pending bool
+	// title is the title of the window, which names its frame for a screen reader, and
+	// focused is whether the platform said it has the keyboard focus.
+	title   string
+	focused bool
 }
 
 // handler is the platform.Handler of the engine: it draws the windows, captures
@@ -310,6 +316,8 @@ type handler struct {
 	pointerView, focusView ui.ViewID
 	// input is what arrived since the last frame, which the next one handles first.
 	input inputQueue
+	// acc is the bridge to the assistive technologies of the platform, or nil.
+	acc platform.Accessibility
 
 	armed      bool // the capture is scheduled
 	captureDue bool // the next frame is read back
@@ -328,6 +336,9 @@ var (
 	_ ui.ClipboardHost        = (*handler)(nil)
 	_ ui.RichClipboardHost    = (*handler)(nil)
 	_ ui.TextInputHost        = (*handler)(nil)
+	_ ui.SemanticsHost        = (*handler)(nil)
+
+	_ platform.AccessibilityHost = (*handler)(nil)
 )
 
 // addWindow keeps the window of the platform and returns it.
@@ -449,6 +460,10 @@ func (h *handler) CreateWindow(spec ui.WindowSpec) (ui.ViewID, ui.ViewConfigurat
 		return 0, ui.ViewConfiguration{}, err
 	}
 	w := h.addWindow(win)
+	w.title = spec.Title
+	if h.acc != nil {
+		h.acc.SetWindow(w.id, w.title, false)
+	}
 	return w.id, ui.ViewConfiguration{PhysicalSize: spec.Size, DevicePixelRatio: 1}, nil
 }
 
@@ -460,6 +475,9 @@ func (h *handler) DestroyWindow(view ui.ViewID) {
 		return
 	}
 	h.forget(w)
+	if h.acc != nil {
+		h.acc.RemoveView(view)
+	}
 	w.Close()
 }
 
@@ -493,6 +511,10 @@ func (h *handler) OnDragEnd(result ui.DragResult) { h.disp.DispatchDragEnd(resul
 func (h *handler) SetWindowTitle(view ui.ViewID, title string) {
 	if w, ok := h.windows[view]; ok {
 		w.SetTitle(title)
+		w.title = title
+		if h.acc != nil {
+			h.acc.SetWindow(view, title, w.focused)
+		}
 	}
 }
 
@@ -530,6 +552,10 @@ func (h *handler) OnViewFocus(view ui.ViewID, focused bool) {
 	if focused {
 		state = ui.ViewFocusStateFocused
 		h.focusView = view
+	}
+	w.focused = focused
+	if h.acc != nil {
+		h.acc.SetWindow(view, w.title, focused)
 	}
 	h.queueInput(w, func() {
 		h.disp.DispatchViewFocus(ui.ViewFocusEvent{ViewID: view, State: state, Direction: ui.ViewFocusDirectionUndefined})
@@ -942,8 +968,52 @@ func (h *handler) fail(err error) {
 	h.cancel()
 }
 
-// release destroys the renderer. It is safe to call twice.
+// startAccessibility starts the bridge to the assistive technologies, when the platform
+// has one.
+func (h *handler) startAccessibility(ctx context.Context) {
+	svc := h.conn.Services()
+	if svc == nil {
+		return
+	}
+	acc := svc.Accessibility()
+	if acc == nil {
+		return
+	}
+	h.acc = acc
+	acc.SetWindow(h.first.id, h.first.title, false)
+	acc.Start(ctx, h)
+}
+
+// ScreenReaderChanged turns the semantics tree of the framework on or off, as a screen
+// reader starts or stops (platform.AccessibilityHost).
+func (h *handler) ScreenReaderChanged(enabled bool) { h.disp.SetSemanticsEnabled(enabled) }
+
+// PerformAction gives the framework an action that an assistive technology asked for
+// (platform.AccessibilityHost).
+func (h *handler) PerformAction(event ui.SemanticsActionEvent) {
+	h.disp.DispatchSemanticsActionEvent(event)
+}
+
+// UpdateSemantics gives the bridge the changes to the semantics tree of a view
+// (ui.SemanticsHost).
+func (h *handler) UpdateSemantics(view ui.ViewID, update *ui.SemanticsUpdate) {
+	if h.acc != nil {
+		h.acc.UpdateSemantics(view, update)
+	}
+}
+
+// SetSemanticsTreeEnabled does nothing: the bridge asks for the tree through
+// ScreenReaderChanged, and an app that sets the tree on by itself still gets it in
+// UpdateSemantics (ui.SemanticsHost).
+func (h *handler) SetSemanticsTreeEnabled(bool) {}
+
+// release destroys the renderer and stops the accessibility bridge. It is safe to call
+// twice.
 func (h *handler) release() {
+	if h.acc != nil {
+		h.acc.Close()
+		h.acc = nil
+	}
 	if h.r != nil {
 		h.r.Close()
 		h.r = nil

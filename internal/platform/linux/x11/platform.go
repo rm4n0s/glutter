@@ -72,6 +72,7 @@ type Platform struct {
 	// settings follows the system settings (Settings); xs is the XSETTINGS daemon,
 	// used when there is no portal (xsettingsInUse). getenv reads the environment.
 	settings       *linux.SettingsWatcher
+	services       *linux.Services
 	xs             *xsettingsState
 	xsettingsInUse bool
 	getenv         func(string) string
@@ -139,6 +140,7 @@ func New(name string) (*Platform, error) {
 	p.interval = p.refreshInterval()
 	p.getenv = os.Getenv
 	p.settings = &linux.SettingsWatcher{Post: p.Post, Apply: p.applySettings}
+	p.services = linux.NewServices(p.Post)
 	p.selectMonitorEvents()
 	p.findXSettings()
 	p.refreshMonitors()
@@ -328,10 +330,10 @@ func (p *Platform) applySettings(s platform.Settings) {
 	}
 }
 
-// Services returns nil: the X11 backend adds no desktop services itself.
+// Services returns the services that the Linux backends share (the accessibility bridge).
 //
 // Flutter: no counterpart
-func (p *Platform) Services() platform.Services { return nil }
+func (p *Platform) Services() platform.Services { return p.services }
 
 // connSource plugs the X connection into the event loop: before each wait it
 // handles what Xlib has queued and flushes the output, after it it reads and

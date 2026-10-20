@@ -1,14 +1,11 @@
 package platform
 
-// The types below are placeholders for things that later steps define. They
-// live here, in the internal package, so the public ui package gets no stub
-// types. The step that defines the real type replaces its placeholder.
-
-// Services groups the optional desktop capabilities. Each accessor returns nil
-// when the capability is absent.
-//
-// TODO(steps 15.1-15.4): the accessors (tray, notifications, file chooser, open URI,
-// accessibility bridge).
+// Services groups the optional capabilities of a platform that the engine uses. Each
+// accessor returns nil when the capability is absent. (The desktop services of
+// package desktop, such as the tray and the notifications, are made by the app.)
 //
 // Flutter: no counterpart
-type Services interface{}
+type Services interface {
+	// Accessibility returns the bridge to the assistive technologies, or nil.
+	Accessibility() Accessibility
+}

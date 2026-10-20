@@ -237,3 +237,39 @@ func TestFakeBusInvoke(t *testing.T) {
 		t.Errorf("names = %v, err %v", b.Names(), err)
 	}
 }
+
+// TestConnectOutlivesItsContext checks that the connection from Connect is not closed
+// when the context given to it ends, which callers do as soon as Connect returns
+// (godbus ties a connection to the context it is made with).
+func TestConnectOutlivesItsContext(t *testing.T) {
+	addr := startPrivateBus(t)
+	t.Setenv("DBUS_SESSION_BUS_ADDRESS", addr)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	bus, err := dbus.Connect(ctx)
+	cancel()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = bus.Close() })
+	time.Sleep(20 * time.Millisecond)
+	reply, err := bus.Call(context.Background(), "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus.GetId")
+	if err != nil || len(reply) != 1 {
+		t.Fatalf("a call on the connection after its context ended: %v, %v", reply, err)
+	}
+}
+
+func TestConnectWithACancelledContext(t *testing.T) {
+	t.Setenv("DBUS_SESSION_BUS_ADDRESS", startPrivateBus(t))
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	// The connection may win the race against the context; either way no error but
+	// DBusConnectFailed comes out, and a connection that arrives late is closed.
+	bus, err := dbus.Connect(ctx)
+	if err != nil {
+		if tag := tagOf(t, err); tag != "DBusConnectFailed" {
+			t.Errorf("tag = %s", tag)
+		}
+		return
+	}
+	_ = bus.Close()
+}

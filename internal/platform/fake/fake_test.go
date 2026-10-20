@@ -371,8 +371,8 @@ func TestDisplaysSettingsAndServices(t *testing.T) {
 	if got := p.Displays(); !reflect.DeepEqual(got, displays) {
 		t.Errorf("Displays() = %v, want %v", got, displays)
 	}
-	if p.Services() != nil {
-		t.Errorf("Services() = %v, want nil", p.Services())
+	if svc := p.Services(); svc == nil || svc.Accessibility() == nil {
+		t.Errorf("Services() = %v, want the fake accessibility bridge", p.Services())
 	}
 	if got := p.Settings(); !reflect.DeepEqual(got, platform.Settings{}) {
 		t.Errorf("Settings() = %+v, want the zero value", got)

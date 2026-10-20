@@ -236,3 +236,14 @@ func (t *Tester) FailKeepScreenOn(err error) {
 	defer t.host.Unlock()
 	t.host.KeepScreenOnErr = err
 }
+
+// SemanticsUpdates are the semantics updates that the views sent to the engine, oldest
+// first, as an accessibility bridge gets them. Ask for semantics first (EnsureSemantics)
+// and pump a frame.
+//
+// Flutter: no counterpart (the embedder's side of the semantics update)
+func (t *Tester) SemanticsUpdates() []*ui.SemanticsUpdate {
+	t.host.Lock()
+	defer t.host.Unlock()
+	return append([]*ui.SemanticsUpdate(nil), t.host.SemanticsUpdates...)
+}

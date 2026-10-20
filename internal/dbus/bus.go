@@ -2,6 +2,9 @@ package dbus
 
 import (
 	"context"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 
 	godbus "github.com/godbus/dbus/v5"
@@ -78,16 +81,64 @@ type Bus interface {
 	Close() error
 }
 
+// SessionBusPresent says whether a session bus can be reached without starting one:
+// DBUS_SESSION_BUS_ADDRESS names it, or the socket of systemd's user bus is there. A
+// connection without either would start a bus with dbus-launch, which an app must not do.
+//
+// Flutter: no counterpart
+func SessionBusPresent(getenv func(string) string) bool {
+	if getenv("DBUS_SESSION_BUS_ADDRESS") != "" {
+		return true
+	}
+	dir := getenv("XDG_RUNTIME_DIR")
+	if dir == "" {
+		dir = "/run/user/" + strconv.Itoa(os.Getuid())
+	}
+	_, err := os.Stat(filepath.Join(dir, "bus"))
+	return err == nil
+}
+
 // Connect opens the session bus. The connection is private to the caller;
-// close it with Close.
+// close it with Close. ctx bounds the wait for the connection, and nothing else: the
+// connection does not end with it (godbus closes a connection when the context it was
+// made with is done, which would end every connection as soon as the caller's
+// timeout is cancelled).
 //
 // Flutter: no counterpart
 func Connect(ctx context.Context) (Bus, error) {
-	conn, err := godbus.ConnectSessionBus(godbus.WithContext(ctx))
+	conn, err := dialWithoutContext(ctx, func(connCtx context.Context) (*godbus.Conn, error) {
+		return godbus.ConnectSessionBus(godbus.WithContext(connCtx))
+	})
 	if err != nil {
 		return nil, errors.NewErr("DBusConnectFailed", err)
 	}
 	return &sessionBus{conn: conn}, nil
+}
+
+// dialWithoutContext runs dial on a goroutine and waits for it for as long as ctx lasts.
+// The connection is made with a context that never ends (see Connect).
+func dialWithoutContext(ctx context.Context, dial func(connCtx context.Context) (*godbus.Conn, error)) (*godbus.Conn, error) {
+	type result struct {
+		conn *godbus.Conn
+		err  error
+	}
+	done := make(chan result, 1)
+	go func() {
+		conn, err := dial(context.WithoutCancel(ctx))
+		done <- result{conn, err}
+	}()
+	select {
+	case r := <-done:
+		return r.conn, r.err
+	case <-ctx.Done():
+		// A connection that comes later is of no use to anybody: close it.
+		go func() {
+			if r := <-done; r.conn != nil {
+				_ = r.conn.Close()
+			}
+		}()
+		return nil, ctx.Err()
+	}
 }
 
 // NewBus wraps an open connection, for example one to a private test bus.
