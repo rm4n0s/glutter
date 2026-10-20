@@ -4076,6 +4076,11 @@ func MenuControllerMaybeOf(bc widgets.BuildContext) *widgets.MenuController {
 	return widgets.MenuControllerMaybeOf(bc)
 }
 
+// MenuSerializableShortcut is widgets.MenuSerializableShortcut.
+//
+// Flutter: widgets.dart MenuSerializableShortcut
+type MenuSerializableShortcut = widgets.MenuSerializableShortcut
+
 // MergeSemantics is widgets.MergeSemantics.
 //
 // Flutter: widgets.dart MergeSemantics
@@ -7029,6 +7034,20 @@ func NewShortcutRegistry(frames interface{ AddPostFrameCallback(scheduler.FrameC
 	return widgets.NewShortcutRegistry(frames)
 }
 
+// NewShortcutSerializationCharacter is widgets.NewShortcutSerializationCharacter.
+//
+// Flutter: widgets.dart NewShortcutSerializationCharacter
+func NewShortcutSerializationCharacter(character string, opts ...widgets.ShortcutSerializationOpts) widgets.ShortcutSerialization {
+	return widgets.NewShortcutSerializationCharacter(character, opts...)
+}
+
+// NewShortcutSerializationModifier is widgets.NewShortcutSerializationModifier.
+//
+// Flutter: widgets.dart NewShortcutSerializationModifier
+func NewShortcutSerializationModifier(trigger services.LogicalKeyboardKey, opts ...widgets.ShortcutSerializationOpts) widgets.ShortcutSerialization {
+	return widgets.NewShortcutSerializationModifier(trigger, opts...)
+}
+
 // NewShortcuts is widgets.NewShortcuts.
 //
 // Flutter: widgets.dart NewShortcuts
@@ -9817,6 +9836,16 @@ func ShortcutRegistryMaybeOf(bc widgets.BuildContext) *widgets.ShortcutRegistry 
 func ShortcutRegistryOf(bc widgets.BuildContext) *widgets.ShortcutRegistry {
 	return widgets.ShortcutRegistryOf(bc)
 }
+
+// ShortcutSerialization is widgets.ShortcutSerialization.
+//
+// Flutter: widgets.dart ShortcutSerialization
+type ShortcutSerialization = widgets.ShortcutSerialization
+
+// ShortcutSerializationOpts is widgets.ShortcutSerializationOpts.
+//
+// Flutter: widgets.dart ShortcutSerializationOpts
+type ShortcutSerializationOpts = widgets.ShortcutSerializationOpts
 
 // Shortcuts is widgets.Shortcuts.
 //

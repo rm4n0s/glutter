@@ -432,6 +432,48 @@ func (x MaterialBannerThemeData) CopyWith(c MaterialBannerThemeDataCopy) Materia
 	return r
 }
 
+// MenuBarThemeDataCopy holds the replacements for MenuBarThemeData.CopyWith: a field that is None keeps the value of the
+// copied one.
+//
+// Flutter: material/menu_bar_theme.dart MenuBarThemeData.copyWith
+type MenuBarThemeDataCopy struct {
+	Style foundation.Opt[*MenuStyle]
+}
+
+// CopyWith returns a copy of the MenuBarThemeData with the fields that the MenuBarThemeDataCopy sets replaced.
+//
+// Flutter: material/menu_bar_theme.dart MenuBarThemeData.copyWith
+func (x MenuBarThemeData) CopyWith(c MenuBarThemeDataCopy) MenuBarThemeData {
+	r := x
+	if v, ok := c.Style.Get(); ok {
+		r.Style = v
+	}
+	return r
+}
+
+// MenuThemeDataCopy holds the replacements for MenuThemeData.CopyWith: a field that is None keeps the value of the
+// copied one.
+//
+// Flutter: material/menu_theme.dart MenuThemeData.copyWith
+type MenuThemeDataCopy struct {
+	Style       foundation.Opt[*MenuStyle]
+	SubmenuIcon foundation.Opt[widgets.WidgetStateProperty[widgets.Widget]]
+}
+
+// CopyWith returns a copy of the MenuThemeData with the fields that the MenuThemeDataCopy sets replaced.
+//
+// Flutter: material/menu_theme.dart MenuThemeData.copyWith
+func (x MenuThemeData) CopyWith(c MenuThemeDataCopy) MenuThemeData {
+	r := x
+	if v, ok := c.Style.Get(); ok {
+		r.Style = v
+	}
+	if v, ok := c.SubmenuIcon.Get(); ok {
+		r.SubmenuIcon = v
+	}
+	return r
+}
+
 // NavigationBarThemeDataCopy holds the replacements for NavigationBarThemeData.CopyWith: a field that is None keeps the value of the
 // copied one.
 //
@@ -613,6 +655,73 @@ func (x NavigationRailThemeData) CopyWith(c NavigationRailThemeDataCopy) Navigat
 	}
 	if c.MinExtendedWidth.IsSome() {
 		r.MinExtendedWidth = c.MinExtendedWidth
+	}
+	return r
+}
+
+// PopupMenuThemeDataCopy holds the replacements for PopupMenuThemeData.CopyWith: a field that is None keeps the value of the
+// copied one.
+//
+// Flutter: material/popup_menu_theme.dart PopupMenuThemeData.copyWith
+type PopupMenuThemeDataCopy struct {
+	Color            foundation.Opt[ui.Color]
+	Shape            foundation.Opt[painting.ShapeBorder]
+	MenuPadding      foundation.Opt[painting.EdgeInsetsGeometry]
+	Elevation        foundation.Opt[float64]
+	ShadowColor      foundation.Opt[ui.Color]
+	SurfaceTintColor foundation.Opt[ui.Color]
+	TextStyle        foundation.Opt[*painting.TextStyle]
+	LabelTextStyle   foundation.Opt[widgets.WidgetStateProperty[*painting.TextStyle]]
+	EnableFeedback   foundation.Opt[bool]
+	MouseCursor      foundation.Opt[widgets.WidgetStateProperty[services.MouseCursor]]
+	Position         foundation.Opt[PopupMenuPosition]
+	IconColor        foundation.Opt[ui.Color]
+	IconSize         foundation.Opt[float64]
+}
+
+// CopyWith returns a copy of the PopupMenuThemeData with the fields that the PopupMenuThemeDataCopy sets replaced.
+//
+// Flutter: material/popup_menu_theme.dart PopupMenuThemeData.copyWith
+func (x PopupMenuThemeData) CopyWith(c PopupMenuThemeDataCopy) PopupMenuThemeData {
+	r := x
+	if c.Color.IsSome() {
+		r.Color = c.Color
+	}
+	if v, ok := c.Shape.Get(); ok {
+		r.Shape = v
+	}
+	if v, ok := c.MenuPadding.Get(); ok {
+		r.MenuPadding = v
+	}
+	if c.Elevation.IsSome() {
+		r.Elevation = c.Elevation
+	}
+	if c.ShadowColor.IsSome() {
+		r.ShadowColor = c.ShadowColor
+	}
+	if c.SurfaceTintColor.IsSome() {
+		r.SurfaceTintColor = c.SurfaceTintColor
+	}
+	if v, ok := c.TextStyle.Get(); ok {
+		r.TextStyle = v
+	}
+	if v, ok := c.LabelTextStyle.Get(); ok {
+		r.LabelTextStyle = v
+	}
+	if c.EnableFeedback.IsSome() {
+		r.EnableFeedback = c.EnableFeedback
+	}
+	if v, ok := c.MouseCursor.Get(); ok {
+		r.MouseCursor = v
+	}
+	if v, ok := c.Position.Get(); ok {
+		r.Position = v
+	}
+	if c.IconColor.IsSome() {
+		r.IconColor = c.IconColor
+	}
+	if c.IconSize.IsSome() {
+		r.IconSize = c.IconSize
 	}
 	return r
 }

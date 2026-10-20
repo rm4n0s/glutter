@@ -750,6 +750,13 @@ func (b *RouteBase) CurrentResult() any { return nil }
 // Flutter: widgets/navigator.dart Route.popped
 func (b *RouteBase) Popped() <-chan any { return b.popCompleter.Chan() }
 
+// PoppedThen calls fn with the result of the route when the route is popped,
+// at once on the UI thread (and at once when it was popped already). It is the
+// callback form of Popped, for code that has to run on the UI thread.
+//
+// Flutter: widgets/navigator.dart Route.popped
+func (b *RouteBase) PoppedThen(fn func(result any)) { b.popCompleter.Then(fn) }
+
 // DidPop completes the route and returns true.
 //
 // Flutter: widgets/navigator.dart Route.didPop

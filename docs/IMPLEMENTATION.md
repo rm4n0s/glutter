@@ -1022,13 +1022,13 @@ For every step in M13:
 **Proof:** `13.3-gallery-buttons.png`.
 
 ### 13.4 Menus
-**Port from:** `material/menu_anchor.dart`, `menu_style.dart`, `menu_theme.dart`, `menu_bar_theme.dart`, `menu_button_theme.dart`, `popup_menu.dart`, `dropdown.dart`, `dropdown_menu.dart`, and their theme files.
+**Port from:** `material/menu_anchor.dart`, `menu_style.dart`, `menu_theme.dart`, `menu_bar_theme.dart`, `menu_button_theme.dart`, `popup_menu.dart`, `popup_menu_theme.dart`, `dropdown.dart`.
 **Tasks:** the rest of SPEC §11.2 "Actions", plus `ShowMenu`. Menus open inside the window's `Overlay` (SPEC §8.7). Include keyboard navigation and nested submenus. New page: "Menus", with a `MenuBar` (File/Edit/View, with shortcuts shown), a popup menu and dropdowns.
 **Proof:** `13.4-gallery-menus.png`, with the File menu and one submenu open (`GLUTTER_DEV_OPEN_MENU=file/recent`).
 
 ### 13.5 Text fields
 **Port from:** `material/input_decorator.dart`, `text_field.dart`, `text_form_field.dart`, `adaptive_text_selection_toolbar.dart`, `desktop_text_selection.dart`, `desktop_text_selection_toolbar.dart`, `desktop_text_selection_toolbar_button.dart`, `text_selection.dart`, `selection_area.dart`, `text_selection_theme.dart`.
-**Tasks:** `InputDecoration`/`InputDecorator`, `TextField`, `TextFormField` (with `Form` validation), the desktop context menu on right-click, and the material `SelectionArea`. New page: "Text fields" (filled, outlined, with errors, prefix/suffix, multi-line, password).
+**Tasks:** `InputDecoration`/`InputDecorator`, `TextField`, `TextFormField` (with `Form` validation), `DropdownButtonFormField`, `DropdownMenu` with `DropdownMenuTheme` and `DropdownMenuEntry` (from `material/dropdown_menu.dart` and `dropdown_menu_theme.dart`, moved from 13.4: they are text fields with a menu), the desktop context menu on right-click, and the material `SelectionArea`. New page: "Text fields" (filled, outlined, with errors, prefix/suffix, multi-line, password).
 **Proof:** `13.5-gallery-text-fields.png`, with one field focused and one showing a validation error.
 
 ### 13.6 Selection controls and chips

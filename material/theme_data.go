@@ -320,6 +320,14 @@ type ThemeDataOpts struct {
 	// PageTransitionsTheme is the transitions of the pages that Material makes;
 	// the default is the one of NewPageTransitionsTheme.
 	PageTransitionsTheme *PageTransitionsTheme
+	// PopupMenuTheme defines the colors, shape, text styles and position of the popup menus.
+	PopupMenuTheme PopupMenuThemeData
+	// MenuButtonTheme defines the style of the buttons of the menus.
+	MenuButtonTheme MenuButtonThemeData
+	// MenuBarTheme defines the style of the menu bars.
+	MenuBarTheme MenuBarThemeData
+	// MenuTheme defines the style and the submenu icon of the menus.
+	MenuTheme MenuThemeData
 	// ActionIconTheme is the theme of the icons of the BackButtons, CloseButtons and drawer buttons.
 	ActionIconTheme ActionIconThemeData
 	// SegmentedButtonTheme is the theme of the SegmentedButtons.
@@ -441,6 +449,14 @@ type ThemeData struct {
 	Typography *Typography
 	// PageTransitionsTheme is the transitions of the pages that Material makes.
 	PageTransitionsTheme *PageTransitionsTheme
+	// PopupMenuTheme defines the colors, shape, text styles and position of the popup menus.
+	PopupMenuTheme PopupMenuThemeData
+	// MenuButtonTheme defines the style of the buttons of the menus.
+	MenuButtonTheme MenuButtonThemeData
+	// MenuBarTheme defines the style of the menu bars.
+	MenuBarTheme MenuBarThemeData
+	// MenuTheme defines the style and the submenu icon of the menus.
+	MenuTheme MenuThemeData
 	// ActionIconTheme is the theme of the icons of the BackButtons, CloseButtons and drawer buttons.
 	ActionIconTheme ActionIconThemeData
 	// SegmentedButtonTheme is the theme of the SegmentedButtons.
@@ -714,6 +730,10 @@ func NewThemeData(opts ...ThemeDataOpts) *ThemeData {
 		Typography:       typography,
 
 		PageTransitionsTheme:      pageTransitionsTheme,
+		PopupMenuTheme:            o.PopupMenuTheme,
+		MenuButtonTheme:           o.MenuButtonTheme,
+		MenuBarTheme:              o.MenuBarTheme,
+		MenuTheme:                 o.MenuTheme,
 		ActionIconTheme:           o.ActionIconTheme,
 		SegmentedButtonTheme:      o.SegmentedButtonTheme,
 		FloatingActionButtonTheme: o.FloatingActionButtonTheme,
@@ -775,6 +795,10 @@ type ThemeDataCopy struct {
 	TextTheme                 foundation.Opt[*TextTheme]
 	Typography                foundation.Opt[*Typography]
 	PageTransitionsTheme      foundation.Opt[*PageTransitionsTheme]
+	PopupMenuTheme            foundation.Opt[PopupMenuThemeData]
+	MenuButtonTheme           foundation.Opt[MenuButtonThemeData]
+	MenuBarTheme              foundation.Opt[MenuBarThemeData]
+	MenuTheme                 foundation.Opt[MenuThemeData]
 	ActionIconTheme           foundation.Opt[ActionIconThemeData]
 	SegmentedButtonTheme      foundation.Opt[SegmentedButtonThemeData]
 	FloatingActionButtonTheme foundation.Opt[FloatingActionButtonThemeData]
@@ -838,6 +862,10 @@ func (d *ThemeData) CopyWith(c ThemeDataCopy) *ThemeData {
 	out.TextTheme = c.TextTheme.OrElse(d.TextTheme)
 	out.Typography = c.Typography.OrElse(d.Typography)
 	out.PageTransitionsTheme = c.PageTransitionsTheme.OrElse(d.PageTransitionsTheme)
+	out.PopupMenuTheme = c.PopupMenuTheme.OrElse(d.PopupMenuTheme)
+	out.MenuButtonTheme = c.MenuButtonTheme.OrElse(d.MenuButtonTheme)
+	out.MenuBarTheme = c.MenuBarTheme.OrElse(d.MenuBarTheme)
+	out.MenuTheme = c.MenuTheme.OrElse(d.MenuTheme)
 	out.ActionIconTheme = c.ActionIconTheme.OrElse(d.ActionIconTheme)
 	out.SegmentedButtonTheme = c.SegmentedButtonTheme.OrElse(d.SegmentedButtonTheme)
 	out.FloatingActionButtonTheme = c.FloatingActionButtonTheme.OrElse(d.FloatingActionButtonTheme)
@@ -1057,6 +1085,10 @@ func ThemeDataLerp(a, b *ThemeData, t float64) *ThemeData {
 		PrimaryTextTheme:          TextThemeLerp(a.PrimaryTextTheme, b.PrimaryTextTheme, t),
 		TextTheme:                 TextThemeLerp(a.TextTheme, b.TextTheme, t),
 		Typography:                TypographyLerp(a.Typography, b.Typography, t),
+		PopupMenuTheme:            PopupMenuThemeDataLerp(a.PopupMenuTheme, b.PopupMenuTheme, t),
+		MenuButtonTheme:           MenuButtonThemeDataLerp(a.MenuButtonTheme, b.MenuButtonTheme, t),
+		MenuBarTheme:              MenuBarThemeDataLerp(a.MenuBarTheme, b.MenuBarTheme, t),
+		MenuTheme:                 MenuThemeDataLerp(a.MenuTheme, b.MenuTheme, t),
 		ActionIconTheme:           ActionIconThemeDataLerp(a.ActionIconTheme, b.ActionIconTheme, t),
 		SegmentedButtonTheme:      SegmentedButtonThemeDataLerp(a.SegmentedButtonTheme, b.SegmentedButtonTheme, t),
 		FloatingActionButtonTheme: FloatingActionButtonThemeDataLerp(a.FloatingActionButtonTheme, b.FloatingActionButtonTheme, t),
@@ -1105,7 +1137,7 @@ func (d *ThemeData) Equal(other *ThemeData) bool {
 	if d.ApplyElevationOverlayColor != other.ApplyElevationOverlayColor || d.MaterialTapTargetSize != other.MaterialTapTargetSize ||
 		d.Platform != other.Platform || d.UseMaterial3 != other.UseMaterial3 || !foundation.ValuesEqual(d.SplashFactory, other.SplashFactory) || d.VisualDensity != other.VisualDensity ||
 		!d.ColorScheme.Equal(other.ColorScheme) || !d.IconTheme.Equal(other.IconTheme) || !d.PrimaryIconTheme.Equal(other.PrimaryIconTheme) ||
-		!d.PrimaryTextTheme.Equal(other.PrimaryTextTheme) || !d.TextTheme.Equal(other.TextTheme) || !d.Typography.Equal(other.Typography) || !d.PageTransitionsTheme.Equal(other.PageTransitionsTheme) || !d.AppBarTheme.Equal(other.AppBarTheme) || !d.BannerTheme.Equal(other.BannerTheme) || !d.BottomAppBarTheme.Equal(other.BottomAppBarTheme) || !d.SnackBarTheme.Equal(other.SnackBarTheme) || !d.DrawerTheme.Equal(other.DrawerTheme) || !d.BottomSheetTheme.Equal(other.BottomSheetTheme) || !d.NavigationBarTheme.Equal(other.NavigationBarTheme) || !d.NavigationRailTheme.Equal(other.NavigationRailTheme) || !d.NavigationDrawerTheme.Equal(other.NavigationDrawerTheme) || !d.TabBarTheme.Equal(other.TabBarTheme) || !d.TextButtonTheme.Equal(other.TextButtonTheme) || !d.ElevatedButtonTheme.Equal(other.ElevatedButtonTheme) || !d.FilledButtonTheme.Equal(other.FilledButtonTheme) || !d.OutlinedButtonTheme.Equal(other.OutlinedButtonTheme) || !d.IconButtonTheme.Equal(other.IconButtonTheme) || !d.FloatingActionButtonTheme.Equal(other.FloatingActionButtonTheme) || !d.SegmentedButtonTheme.Equal(other.SegmentedButtonTheme) || !d.ActionIconTheme.Equal(other.ActionIconTheme) {
+		!d.PrimaryTextTheme.Equal(other.PrimaryTextTheme) || !d.TextTheme.Equal(other.TextTheme) || !d.Typography.Equal(other.Typography) || !d.PageTransitionsTheme.Equal(other.PageTransitionsTheme) || !d.AppBarTheme.Equal(other.AppBarTheme) || !d.BannerTheme.Equal(other.BannerTheme) || !d.BottomAppBarTheme.Equal(other.BottomAppBarTheme) || !d.SnackBarTheme.Equal(other.SnackBarTheme) || !d.DrawerTheme.Equal(other.DrawerTheme) || !d.BottomSheetTheme.Equal(other.BottomSheetTheme) || !d.NavigationBarTheme.Equal(other.NavigationBarTheme) || !d.NavigationRailTheme.Equal(other.NavigationRailTheme) || !d.NavigationDrawerTheme.Equal(other.NavigationDrawerTheme) || !d.TabBarTheme.Equal(other.TabBarTheme) || !d.TextButtonTheme.Equal(other.TextButtonTheme) || !d.ElevatedButtonTheme.Equal(other.ElevatedButtonTheme) || !d.FilledButtonTheme.Equal(other.FilledButtonTheme) || !d.OutlinedButtonTheme.Equal(other.OutlinedButtonTheme) || !d.IconButtonTheme.Equal(other.IconButtonTheme) || !d.FloatingActionButtonTheme.Equal(other.FloatingActionButtonTheme) || !d.SegmentedButtonTheme.Equal(other.SegmentedButtonTheme) || !d.ActionIconTheme.Equal(other.ActionIconTheme) || !d.MenuTheme.Equal(other.MenuTheme) || !d.MenuBarTheme.Equal(other.MenuBarTheme) || !d.MenuButtonTheme.Equal(other.MenuButtonTheme) || !d.PopupMenuTheme.Equal(other.PopupMenuTheme) {
 		return false
 	}
 	for _, f := range themeColorFields {
@@ -1167,6 +1199,10 @@ func (d *ThemeData) DebugFillProperties(properties *foundation.DiagnosticPropert
 	properties.Add(foundation.NewDiagnosticsProperty("textTheme", d.TextTheme, dbg(def.TextTheme)))
 	properties.Add(foundation.NewDiagnosticsProperty("typography", d.Typography, dbg(def.Typography)))
 	properties.Add(foundation.NewDiagnosticsProperty("pageTransitionsTheme", d.PageTransitionsTheme, dbg(def.PageTransitionsTheme)))
+	properties.Add(foundation.NewDiagnosticsProperty("popupMenuTheme", d.PopupMenuTheme, dbg(def.PopupMenuTheme)))
+	properties.Add(foundation.NewDiagnosticsProperty("menuButtonTheme", d.MenuButtonTheme, dbg(def.MenuButtonTheme)))
+	properties.Add(foundation.NewDiagnosticsProperty("menuBarTheme", d.MenuBarTheme, dbg(def.MenuBarTheme)))
+	properties.Add(foundation.NewDiagnosticsProperty("menuTheme", d.MenuTheme, dbg(def.MenuTheme)))
 	properties.Add(foundation.NewDiagnosticsProperty("actionIconTheme", d.ActionIconTheme, dbg(def.ActionIconTheme)))
 	properties.Add(foundation.NewDiagnosticsProperty("segmentedButtonTheme", d.SegmentedButtonTheme, dbg(def.SegmentedButtonTheme)))
 	properties.Add(foundation.NewDiagnosticsProperty("floatingActionButtonTheme", d.FloatingActionButtonTheme, dbg(def.FloatingActionButtonTheme)))

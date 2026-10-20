@@ -7,7 +7,8 @@
 // Environment: GLUTTER_BACKEND=x11|wayland, GLUTTER_SCREENSHOT=<file.png>,
 // GLUTTER_SCREENSHOT_AFTER=<duration>. In debug builds: GLUTTER_DEV_PAGE=<slug>
 // opens the page with that slug, GLUTTER_DEV_THEME=dark starts in dark mode, and
-// GLUTTER_DEV_SNACKBAR=1 shows a snack bar when the first page opens.
+// GLUTTER_DEV_SNACKBAR=1 shows a snack bar when the first page opens, and
+// GLUTTER_DEV_OPEN_MENU=file/recent opens those menus of the Menus page.
 package main
 
 import (

@@ -24,6 +24,7 @@ var galleryPages = []Page{
 	{Slug: "app-bars", Name: "App bars & snack bars", Icon: m.Icons.WebAsset(), Build: buildAppBarsPage},
 	{Slug: "navigation", Name: "Navigation & tabs", Icon: m.Icons.Explore(), Build: buildNavigationPage},
 	{Slug: "buttons", Name: "Buttons", Icon: m.Icons.TouchApp(), Build: buildButtonsPage},
+	{Slug: "menus", Name: "Menus", Icon: m.Icons.Menu(), Build: buildMenusPage},
 }
 
 // columnWidth is the width of a section, for two of them side by side in the page.
