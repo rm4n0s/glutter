@@ -15,6 +15,7 @@ import (
 	"github.com/rm4n0s/glutter/internal/goldens"
 	"github.com/rm4n0s/glutter/internal/gpu/soft"
 	"github.com/rm4n0s/glutter/internal/proof"
+	_ "github.com/rm4n0s/glutter/internal/proof/widgetscenes" // registers the scenes made with gluttertest
 )
 
 func main() {

@@ -63,8 +63,10 @@ func ThemeOf(bc widgets.BuildContext) *ThemeData {
 	} else {
 		theme = fallbackTheme()
 	}
-	// TODO(step 12.3): the script category comes from MaterialLocalizations.
 	category := ScriptCategoryEnglishLike
+	if localizations, ok := MaterialLocalizationsMaybeOf(bc); ok {
+		category = localizations.ScriptCategory()
+	}
 	return ThemeDataLocalize(theme, theme.Typography.GeometryThemeFor(category))
 }
 

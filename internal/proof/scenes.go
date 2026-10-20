@@ -34,6 +34,11 @@ func register(s Scene) {
 	scenes[s.Name] = s
 }
 
+// Register adds a scene made by a package that package proof cannot import, such
+// as internal/proof/widgetscenes; it is called from init functions and panics
+// with the tag ProofSceneDuplicate when the name is taken.
+func Register(s Scene) { register(s) }
+
 // Names returns the names of the registered scenes in alphabetical order.
 func Names() []string {
 	names := make([]string, 0, len(scenes))

@@ -291,6 +291,9 @@ type ThemeDataOpts struct {
 	ShadowColor foundation.Opt[ui.Color]
 	// SplashColor is the splash color of the ink responses.
 	SplashColor foundation.Opt[ui.Color]
+	// SplashFactory defines the appearance of ink splashes; the default is
+	// InkRippleFactory (Material 3) or InkSplashFactory (Material 2).
+	SplashFactory InteractiveInkFeatureFactory
 	// UnselectedWidgetColor is the color of inactive toggleables.
 	UnselectedWidgetColor foundation.Opt[ui.Color]
 
@@ -380,6 +383,8 @@ type ThemeData struct {
 	ShadowColor ui.Color
 	// SplashColor is the splash color of the ink responses.
 	SplashColor ui.Color
+	// SplashFactory defines the appearance of ink splashes.
+	SplashFactory InteractiveInkFeatureFactory
 	// UnselectedWidgetColor is the color of inactive toggleables.
 	UnselectedWidgetColor ui.Color
 
@@ -534,6 +539,14 @@ func NewThemeData(opts ...ThemeDataOpts) *ThemeData {
 	hintColor := orSome(o.HintColor, pick(Colors.White60, Colors.Black.WithOpacity(0.6)))
 	disabledColor := orSome(o.DisabledColor, pick(Colors.White38, Colors.Black38))
 	highlightColor := orSome(o.HighlightColor, pick(ui.NewColor(0x40CCCCCC), ui.NewColor(0x66BCBCBC)))
+	splashFactory := o.SplashFactory
+	if splashFactory == nil {
+		// Deviation: Flutter picks InkSparkle for Material 3 on Android; every platform here uses InkRipple.
+		splashFactory = InkSplashFactory
+		if useMaterial3 {
+			splashFactory = InkRippleFactory
+		}
+	}
 	splashColor := orSome(o.SplashColor, pick(ui.NewColor(0x40CCCCCC), ui.NewColor(0x66C8C8C8)))
 
 	// TYPOGRAPHY & ICONOGRAPHY
@@ -609,6 +622,7 @@ func NewThemeData(opts ...ThemeDataOpts) *ThemeData {
 		SecondaryHeaderColor:    secondaryHeaderColor.Value(),
 		ShadowColor:             shadowColor.Value(),
 		SplashColor:             splashColor.Value(),
+		SplashFactory:           splashFactory,
 		UnselectedWidgetColor:   unselectedWidgetColor.Value(),
 
 		IconTheme:        o.IconTheme.OrElse(iconTheme),
@@ -651,6 +665,7 @@ type ThemeDataCopy struct {
 	SecondaryHeaderColor    foundation.Opt[ui.Color]
 	ShadowColor             foundation.Opt[ui.Color]
 	SplashColor             foundation.Opt[ui.Color]
+	SplashFactory           foundation.Opt[InteractiveInkFeatureFactory]
 	UnselectedWidgetColor   foundation.Opt[ui.Color]
 	IconTheme               foundation.Opt[widgets.IconThemeData]
 	PrimaryIconTheme        foundation.Opt[widgets.IconThemeData]
@@ -694,6 +709,7 @@ func (d *ThemeData) CopyWith(c ThemeDataCopy) *ThemeData {
 	out.SecondaryHeaderColor = c.SecondaryHeaderColor.OrElse(d.SecondaryHeaderColor)
 	out.ShadowColor = c.ShadowColor.OrElse(d.ShadowColor)
 	out.SplashColor = c.SplashColor.OrElse(d.SplashColor)
+	out.SplashFactory = c.SplashFactory.OrElse(d.SplashFactory)
 	out.UnselectedWidgetColor = c.UnselectedWidgetColor.OrElse(d.UnselectedWidgetColor)
 	out.IconTheme = c.IconTheme.OrElse(d.IconTheme)
 	out.PrimaryIconTheme = c.PrimaryIconTheme.OrElse(d.PrimaryIconTheme)
@@ -910,6 +926,7 @@ func ThemeDataLerp(a, b *ThemeData, t float64) *ThemeData {
 	out.MaterialTapTargetSize = src.MaterialTapTargetSize
 	out.Platform = src.Platform
 	out.UseMaterial3 = src.UseMaterial3
+	out.SplashFactory = src.SplashFactory
 	for _, f := range themeColorFields {
 		*f.get(out) = lerpColor(*f.get(a), *f.get(b), t)
 	}
@@ -927,7 +944,7 @@ func (d *ThemeData) Equal(other *ThemeData) bool {
 		return false
 	}
 	if d.ApplyElevationOverlayColor != other.ApplyElevationOverlayColor || d.MaterialTapTargetSize != other.MaterialTapTargetSize ||
-		d.Platform != other.Platform || d.UseMaterial3 != other.UseMaterial3 || d.VisualDensity != other.VisualDensity ||
+		d.Platform != other.Platform || d.UseMaterial3 != other.UseMaterial3 || !foundation.ValuesEqual(d.SplashFactory, other.SplashFactory) || d.VisualDensity != other.VisualDensity ||
 		!d.ColorScheme.Equal(other.ColorScheme) || !d.IconTheme.Equal(other.IconTheme) || !d.PrimaryIconTheme.Equal(other.PrimaryIconTheme) ||
 		!d.PrimaryTextTheme.Equal(other.PrimaryTextTheme) || !d.TextTheme.Equal(other.TextTheme) || !d.Typography.Equal(other.Typography) {
 		return false
@@ -979,6 +996,7 @@ func (d *ThemeData) DebugFillProperties(properties *foundation.DiagnosticPropert
 	properties.Add(foundation.NewDiagnosticsProperty("materialTapTargetSize", d.MaterialTapTargetSize, dbg(nil)))
 	properties.Add(foundation.NewEnumProperty("platform", foundation.Some(d.Platform), foundation.EnumPropertyOpts{DefaultValue: foundation.DefaultTargetPlatform(), Level: foundation.DiagnosticLevelDebug}))
 	properties.Add(foundation.NewDiagnosticsProperty("useMaterial3", d.UseMaterial3, dbg(def.UseMaterial3)))
+	properties.Add(foundation.NewDiagnosticsProperty("splashFactory", d.SplashFactory, dbg(def.SplashFactory)))
 	properties.Add(foundation.NewDiagnosticsProperty("visualDensity", d.VisualDensity, dbg(def.VisualDensity)))
 	properties.Add(foundation.NewDiagnosticsProperty("colorScheme", d.ColorScheme, dbg(def.ColorScheme)))
 	for _, f := range themeColorFields {

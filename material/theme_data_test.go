@@ -479,13 +479,36 @@ func TestThemeDataCopyWithCopiesAllArguments(t *testing.T) {
 		PrimaryColorLight: foundation.Some(other.PrimaryColorLight), ScaffoldBackgroundColor: foundation.Some(other.ScaffoldBackgroundColor),
 		SecondaryHeaderColor: foundation.Some(other.SecondaryHeaderColor), ShadowColor: foundation.Some(other.ShadowColor),
 		SplashColor: foundation.Some(other.SplashColor), UnselectedWidgetColor: foundation.Some(other.UnselectedWidgetColor),
-		IconTheme: foundation.Some(other.IconTheme), PrimaryIconTheme: foundation.Some(other.PrimaryIconTheme),
+		SplashFactory: foundation.Some(other.SplashFactory),
+		IconTheme:     foundation.Some(other.IconTheme), PrimaryIconTheme: foundation.Some(other.PrimaryIconTheme),
 		PrimaryTextTheme: foundation.Some(other.PrimaryTextTheme), TextTheme: foundation.Some(other.TextTheme),
 		Typography:            foundation.Some(other.Typography),
 		DialogBackgroundColor: foundation.Some(other.DialogBackgroundColor), IndicatorColor: foundation.Some(other.IndicatorColor),
 	})
 	if !copied.Equal(other) {
 		t.Error("a theme copied with every field of another is not equal to it")
+	}
+}
+
+func TestThemeDataSplashFactory(t *testing.T) {
+	tests := []struct {
+		name string
+		o    ThemeDataOpts
+		want InteractiveInkFeatureFactory
+	}{
+		{"Material 3 ripples", ThemeDataOpts{}, InkRippleFactory},
+		{"Material 2 splashes", ThemeDataOpts{UseMaterial3: foundation.Some(false)}, InkSplashFactory},
+		{"explicit", ThemeDataOpts{SplashFactory: InkSplashFactory}, InkSplashFactory},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := NewThemeData(tt.o).SplashFactory; got != tt.want {
+				t.Errorf("SplashFactory = %T, want %T", got, tt.want)
+			}
+		})
+	}
+	if NewThemeData().Equal(NewThemeData(ThemeDataOpts{SplashFactory: InkSplashFactory})) {
+		t.Error("themes with different splash factories are equal")
 	}
 }
 
