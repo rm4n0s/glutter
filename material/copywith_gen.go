@@ -236,6 +236,172 @@ func (x BottomSheetThemeData) CopyWith(c BottomSheetThemeDataCopy) BottomSheetTh
 	return r
 }
 
+// CheckboxThemeDataCopy holds the replacements for CheckboxThemeData.CopyWith: a field that is None keeps the value of the
+// copied one.
+//
+// Flutter: material/checkbox_theme.dart CheckboxThemeData.copyWith
+type CheckboxThemeDataCopy struct {
+	MouseCursor           foundation.Opt[widgets.WidgetStateProperty[services.MouseCursor]]
+	FillColor             foundation.Opt[widgets.WidgetStateProperty[foundation.Opt[ui.Color]]]
+	CheckColor            foundation.Opt[widgets.WidgetStateProperty[foundation.Opt[ui.Color]]]
+	OverlayColor          foundation.Opt[widgets.WidgetStateProperty[foundation.Opt[ui.Color]]]
+	SplashRadius          foundation.Opt[float64]
+	MaterialTapTargetSize foundation.Opt[MaterialTapTargetSize]
+	VisualDensity         foundation.Opt[VisualDensity]
+	Shape                 foundation.Opt[painting.OutlinedBorder]
+	Side                  foundation.Opt[painting.BorderSide]
+	StateSide             foundation.Opt[widgets.WidgetStateProperty[foundation.Opt[painting.BorderSide]]]
+}
+
+// CopyWith returns a copy of the CheckboxThemeData with the fields that the CheckboxThemeDataCopy sets replaced.
+//
+// Flutter: material/checkbox_theme.dart CheckboxThemeData.copyWith
+func (x CheckboxThemeData) CopyWith(c CheckboxThemeDataCopy) CheckboxThemeData {
+	r := x
+	if v, ok := c.MouseCursor.Get(); ok {
+		r.MouseCursor = v
+	}
+	if v, ok := c.FillColor.Get(); ok {
+		r.FillColor = v
+	}
+	if v, ok := c.CheckColor.Get(); ok {
+		r.CheckColor = v
+	}
+	if v, ok := c.OverlayColor.Get(); ok {
+		r.OverlayColor = v
+	}
+	if c.SplashRadius.IsSome() {
+		r.SplashRadius = c.SplashRadius
+	}
+	if v, ok := c.MaterialTapTargetSize.Get(); ok {
+		r.MaterialTapTargetSize = v
+	}
+	if c.VisualDensity.IsSome() {
+		r.VisualDensity = c.VisualDensity
+	}
+	if v, ok := c.Shape.Get(); ok {
+		r.Shape = v
+	}
+	if c.Side.IsSome() {
+		r.Side = c.Side
+	}
+	if v, ok := c.StateSide.Get(); ok {
+		r.StateSide = v
+	}
+	return r
+}
+
+// ChipThemeDataCopy holds the replacements for ChipThemeData.CopyWith: a field that is None keeps the value of the
+// copied one.
+//
+// Flutter: material/chip_theme.dart ChipThemeData.copyWith
+type ChipThemeDataCopy struct {
+	Color                    foundation.Opt[widgets.WidgetStateProperty[foundation.Opt[ui.Color]]]
+	BackgroundColor          foundation.Opt[ui.Color]
+	DeleteIconColor          foundation.Opt[ui.Color]
+	DisabledColor            foundation.Opt[ui.Color]
+	SelectedColor            foundation.Opt[ui.Color]
+	SecondarySelectedColor   foundation.Opt[ui.Color]
+	ShadowColor              foundation.Opt[ui.Color]
+	SurfaceTintColor         foundation.Opt[ui.Color]
+	SelectedShadowColor      foundation.Opt[ui.Color]
+	ShowCheckmark            foundation.Opt[bool]
+	CheckmarkColor           foundation.Opt[ui.Color]
+	LabelPadding             foundation.Opt[painting.EdgeInsetsGeometry]
+	Padding                  foundation.Opt[painting.EdgeInsetsGeometry]
+	Side                     foundation.Opt[painting.BorderSide]
+	StateSide                foundation.Opt[widgets.WidgetStateProperty[foundation.Opt[painting.BorderSide]]]
+	Shape                    foundation.Opt[painting.OutlinedBorder]
+	LabelStyle               foundation.Opt[*painting.TextStyle]
+	SecondaryLabelStyle      foundation.Opt[*painting.TextStyle]
+	Brightness               foundation.Opt[ui.Brightness]
+	Elevation                foundation.Opt[float64]
+	PressElevation           foundation.Opt[float64]
+	IconTheme                foundation.Opt[widgets.IconThemeData]
+	AvatarBoxConstraints     foundation.Opt[rendering.BoxConstraints]
+	DeleteIconBoxConstraints foundation.Opt[rendering.BoxConstraints]
+}
+
+// CopyWith returns a copy of the ChipThemeData with the fields that the ChipThemeDataCopy sets replaced.
+//
+// Flutter: material/chip_theme.dart ChipThemeData.copyWith
+func (x ChipThemeData) CopyWith(c ChipThemeDataCopy) ChipThemeData {
+	r := x
+	if v, ok := c.Color.Get(); ok {
+		r.Color = v
+	}
+	if c.BackgroundColor.IsSome() {
+		r.BackgroundColor = c.BackgroundColor
+	}
+	if c.DeleteIconColor.IsSome() {
+		r.DeleteIconColor = c.DeleteIconColor
+	}
+	if c.DisabledColor.IsSome() {
+		r.DisabledColor = c.DisabledColor
+	}
+	if c.SelectedColor.IsSome() {
+		r.SelectedColor = c.SelectedColor
+	}
+	if c.SecondarySelectedColor.IsSome() {
+		r.SecondarySelectedColor = c.SecondarySelectedColor
+	}
+	if c.ShadowColor.IsSome() {
+		r.ShadowColor = c.ShadowColor
+	}
+	if c.SurfaceTintColor.IsSome() {
+		r.SurfaceTintColor = c.SurfaceTintColor
+	}
+	if c.SelectedShadowColor.IsSome() {
+		r.SelectedShadowColor = c.SelectedShadowColor
+	}
+	if c.ShowCheckmark.IsSome() {
+		r.ShowCheckmark = c.ShowCheckmark
+	}
+	if c.CheckmarkColor.IsSome() {
+		r.CheckmarkColor = c.CheckmarkColor
+	}
+	if v, ok := c.LabelPadding.Get(); ok {
+		r.LabelPadding = v
+	}
+	if v, ok := c.Padding.Get(); ok {
+		r.Padding = v
+	}
+	if c.Side.IsSome() {
+		r.Side = c.Side
+	}
+	if v, ok := c.StateSide.Get(); ok {
+		r.StateSide = v
+	}
+	if v, ok := c.Shape.Get(); ok {
+		r.Shape = v
+	}
+	if v, ok := c.LabelStyle.Get(); ok {
+		r.LabelStyle = v
+	}
+	if v, ok := c.SecondaryLabelStyle.Get(); ok {
+		r.SecondaryLabelStyle = v
+	}
+	if c.Brightness.IsSome() {
+		r.Brightness = c.Brightness
+	}
+	if c.Elevation.IsSome() {
+		r.Elevation = c.Elevation
+	}
+	if c.PressElevation.IsSome() {
+		r.PressElevation = c.PressElevation
+	}
+	if c.IconTheme.IsSome() {
+		r.IconTheme = c.IconTheme
+	}
+	if c.AvatarBoxConstraints.IsSome() {
+		r.AvatarBoxConstraints = c.AvatarBoxConstraints
+	}
+	if c.DeleteIconBoxConstraints.IsSome() {
+		r.DeleteIconBoxConstraints = c.DeleteIconBoxConstraints
+	}
+	return r
+}
+
 // DrawerThemeDataCopy holds the replacements for DrawerThemeData.CopyWith: a field that is None keeps the value of the
 // copied one.
 //
@@ -921,6 +1087,61 @@ func (x PopupMenuThemeData) CopyWith(c PopupMenuThemeDataCopy) PopupMenuThemeDat
 	return r
 }
 
+// RadioThemeDataCopy holds the replacements for RadioThemeData.CopyWith: a field that is None keeps the value of the
+// copied one.
+//
+// Flutter: material/radio_theme.dart RadioThemeData.copyWith
+type RadioThemeDataCopy struct {
+	MouseCursor           foundation.Opt[widgets.WidgetStateProperty[services.MouseCursor]]
+	FillColor             foundation.Opt[widgets.WidgetStateProperty[foundation.Opt[ui.Color]]]
+	OverlayColor          foundation.Opt[widgets.WidgetStateProperty[foundation.Opt[ui.Color]]]
+	SplashRadius          foundation.Opt[float64]
+	MaterialTapTargetSize foundation.Opt[MaterialTapTargetSize]
+	VisualDensity         foundation.Opt[VisualDensity]
+	BackgroundColor       foundation.Opt[widgets.WidgetStateProperty[foundation.Opt[ui.Color]]]
+	Side                  foundation.Opt[painting.BorderSide]
+	StateSide             foundation.Opt[widgets.WidgetStateProperty[foundation.Opt[painting.BorderSide]]]
+	InnerRadius           foundation.Opt[widgets.WidgetStateProperty[foundation.Opt[float64]]]
+}
+
+// CopyWith returns a copy of the RadioThemeData with the fields that the RadioThemeDataCopy sets replaced.
+//
+// Flutter: material/radio_theme.dart RadioThemeData.copyWith
+func (x RadioThemeData) CopyWith(c RadioThemeDataCopy) RadioThemeData {
+	r := x
+	if v, ok := c.MouseCursor.Get(); ok {
+		r.MouseCursor = v
+	}
+	if v, ok := c.FillColor.Get(); ok {
+		r.FillColor = v
+	}
+	if v, ok := c.OverlayColor.Get(); ok {
+		r.OverlayColor = v
+	}
+	if c.SplashRadius.IsSome() {
+		r.SplashRadius = c.SplashRadius
+	}
+	if v, ok := c.MaterialTapTargetSize.Get(); ok {
+		r.MaterialTapTargetSize = v
+	}
+	if c.VisualDensity.IsSome() {
+		r.VisualDensity = c.VisualDensity
+	}
+	if v, ok := c.BackgroundColor.Get(); ok {
+		r.BackgroundColor = v
+	}
+	if c.Side.IsSome() {
+		r.Side = c.Side
+	}
+	if v, ok := c.StateSide.Get(); ok {
+		r.StateSide = v
+	}
+	if v, ok := c.InnerRadius.Get(); ok {
+		r.InnerRadius = v
+	}
+	return r
+}
+
 // SegmentedButtonThemeDataCopy holds the replacements for SegmentedButtonThemeData.CopyWith: a field that is None keeps the value of the
 // copied one.
 //
@@ -940,6 +1161,169 @@ func (x SegmentedButtonThemeData) CopyWith(c SegmentedButtonThemeDataCopy) Segme
 	}
 	if v, ok := c.SelectedIcon.Get(); ok {
 		r.SelectedIcon = v
+	}
+	return r
+}
+
+// SliderThemeDataCopy holds the replacements for SliderThemeData.CopyWith: a field that is None keeps the value of the
+// copied one.
+//
+// Flutter: material/slider_theme.dart SliderThemeData.copyWith
+type SliderThemeDataCopy struct {
+	TrackHeight                       foundation.Opt[float64]
+	ActiveTrackColor                  foundation.Opt[ui.Color]
+	InactiveTrackColor                foundation.Opt[ui.Color]
+	SecondaryActiveTrackColor         foundation.Opt[ui.Color]
+	DisabledActiveTrackColor          foundation.Opt[ui.Color]
+	DisabledInactiveTrackColor        foundation.Opt[ui.Color]
+	DisabledSecondaryActiveTrackColor foundation.Opt[ui.Color]
+	ActiveTickMarkColor               foundation.Opt[ui.Color]
+	InactiveTickMarkColor             foundation.Opt[ui.Color]
+	DisabledActiveTickMarkColor       foundation.Opt[ui.Color]
+	DisabledInactiveTickMarkColor     foundation.Opt[ui.Color]
+	ThumbColor                        foundation.Opt[ui.Color]
+	OverlappingShapeStrokeColor       foundation.Opt[ui.Color]
+	DisabledThumbColor                foundation.Opt[ui.Color]
+	OverlayColor                      foundation.Opt[ui.Color]
+	StateOverlayColor                 foundation.Opt[widgets.WidgetStateProperty[foundation.Opt[ui.Color]]]
+	ValueIndicatorColor               foundation.Opt[ui.Color]
+	ValueIndicatorStrokeColor         foundation.Opt[ui.Color]
+	OverlayShape                      foundation.Opt[SliderComponentShape]
+	TickMarkShape                     foundation.Opt[SliderTickMarkShape]
+	ThumbShape                        foundation.Opt[SliderComponentShape]
+	TrackShape                        foundation.Opt[SliderTrackShape]
+	ValueIndicatorShape               foundation.Opt[SliderComponentShape]
+	RangeTickMarkShape                foundation.Opt[RangeSliderTickMarkShape]
+	RangeThumbShape                   foundation.Opt[RangeSliderThumbShape]
+	RangeTrackShape                   foundation.Opt[RangeSliderTrackShape]
+	RangeValueIndicatorShape          foundation.Opt[RangeSliderValueIndicatorShape]
+	ShowValueIndicator                foundation.Opt[ShowValueIndicator]
+	ValueIndicatorTextStyle           foundation.Opt[*painting.TextStyle]
+	MinThumbSeparation                foundation.Opt[float64]
+	ThumbSelector                     foundation.Opt[RangeThumbSelector]
+	MouseCursor                       foundation.Opt[widgets.WidgetStateProperty[services.MouseCursor]]
+	AllowedInteraction                foundation.Opt[SliderInteraction]
+	Padding                           foundation.Opt[painting.EdgeInsetsGeometry]
+	ThumbSize                         foundation.Opt[widgets.WidgetStateProperty[foundation.Opt[ui.Size]]]
+	TrackGap                          foundation.Opt[float64]
+	Year2023                          foundation.Opt[bool]
+}
+
+// CopyWith returns a copy of the SliderThemeData with the fields that the SliderThemeDataCopy sets replaced.
+//
+// Flutter: material/slider_theme.dart SliderThemeData.copyWith
+func (x SliderThemeData) CopyWith(c SliderThemeDataCopy) SliderThemeData {
+	r := x
+	if c.TrackHeight.IsSome() {
+		r.TrackHeight = c.TrackHeight
+	}
+	if c.ActiveTrackColor.IsSome() {
+		r.ActiveTrackColor = c.ActiveTrackColor
+	}
+	if c.InactiveTrackColor.IsSome() {
+		r.InactiveTrackColor = c.InactiveTrackColor
+	}
+	if c.SecondaryActiveTrackColor.IsSome() {
+		r.SecondaryActiveTrackColor = c.SecondaryActiveTrackColor
+	}
+	if c.DisabledActiveTrackColor.IsSome() {
+		r.DisabledActiveTrackColor = c.DisabledActiveTrackColor
+	}
+	if c.DisabledInactiveTrackColor.IsSome() {
+		r.DisabledInactiveTrackColor = c.DisabledInactiveTrackColor
+	}
+	if c.DisabledSecondaryActiveTrackColor.IsSome() {
+		r.DisabledSecondaryActiveTrackColor = c.DisabledSecondaryActiveTrackColor
+	}
+	if c.ActiveTickMarkColor.IsSome() {
+		r.ActiveTickMarkColor = c.ActiveTickMarkColor
+	}
+	if c.InactiveTickMarkColor.IsSome() {
+		r.InactiveTickMarkColor = c.InactiveTickMarkColor
+	}
+	if c.DisabledActiveTickMarkColor.IsSome() {
+		r.DisabledActiveTickMarkColor = c.DisabledActiveTickMarkColor
+	}
+	if c.DisabledInactiveTickMarkColor.IsSome() {
+		r.DisabledInactiveTickMarkColor = c.DisabledInactiveTickMarkColor
+	}
+	if c.ThumbColor.IsSome() {
+		r.ThumbColor = c.ThumbColor
+	}
+	if c.OverlappingShapeStrokeColor.IsSome() {
+		r.OverlappingShapeStrokeColor = c.OverlappingShapeStrokeColor
+	}
+	if c.DisabledThumbColor.IsSome() {
+		r.DisabledThumbColor = c.DisabledThumbColor
+	}
+	if c.OverlayColor.IsSome() {
+		r.OverlayColor = c.OverlayColor
+	}
+	if v, ok := c.StateOverlayColor.Get(); ok {
+		r.StateOverlayColor = v
+	}
+	if c.ValueIndicatorColor.IsSome() {
+		r.ValueIndicatorColor = c.ValueIndicatorColor
+	}
+	if c.ValueIndicatorStrokeColor.IsSome() {
+		r.ValueIndicatorStrokeColor = c.ValueIndicatorStrokeColor
+	}
+	if v, ok := c.OverlayShape.Get(); ok {
+		r.OverlayShape = v
+	}
+	if v, ok := c.TickMarkShape.Get(); ok {
+		r.TickMarkShape = v
+	}
+	if v, ok := c.ThumbShape.Get(); ok {
+		r.ThumbShape = v
+	}
+	if v, ok := c.TrackShape.Get(); ok {
+		r.TrackShape = v
+	}
+	if v, ok := c.ValueIndicatorShape.Get(); ok {
+		r.ValueIndicatorShape = v
+	}
+	if v, ok := c.RangeTickMarkShape.Get(); ok {
+		r.RangeTickMarkShape = v
+	}
+	if v, ok := c.RangeThumbShape.Get(); ok {
+		r.RangeThumbShape = v
+	}
+	if v, ok := c.RangeTrackShape.Get(); ok {
+		r.RangeTrackShape = v
+	}
+	if v, ok := c.RangeValueIndicatorShape.Get(); ok {
+		r.RangeValueIndicatorShape = v
+	}
+	if v, ok := c.ShowValueIndicator.Get(); ok {
+		r.ShowValueIndicator = v
+	}
+	if v, ok := c.ValueIndicatorTextStyle.Get(); ok {
+		r.ValueIndicatorTextStyle = v
+	}
+	if c.MinThumbSeparation.IsSome() {
+		r.MinThumbSeparation = c.MinThumbSeparation
+	}
+	if v, ok := c.ThumbSelector.Get(); ok {
+		r.ThumbSelector = v
+	}
+	if v, ok := c.MouseCursor.Get(); ok {
+		r.MouseCursor = v
+	}
+	if v, ok := c.AllowedInteraction.Get(); ok {
+		r.AllowedInteraction = v
+	}
+	if v, ok := c.Padding.Get(); ok {
+		r.Padding = v
+	}
+	if v, ok := c.ThumbSize.Get(); ok {
+		r.ThumbSize = v
+	}
+	if c.TrackGap.IsSome() {
+		r.TrackGap = c.TrackGap
+	}
+	if c.Year2023.IsSome() {
+		r.Year2023 = c.Year2023
 	}
 	return r
 }
@@ -1015,6 +1399,61 @@ func (x SnackBarThemeData) CopyWith(c SnackBarThemeDataCopy) SnackBarThemeData {
 	}
 	if v, ok := c.DismissDirection.Get(); ok {
 		r.DismissDirection = v
+	}
+	return r
+}
+
+// SwitchThemeDataCopy holds the replacements for SwitchThemeData.CopyWith: a field that is None keeps the value of the
+// copied one.
+//
+// Flutter: material/switch_theme.dart SwitchThemeData.copyWith
+type SwitchThemeDataCopy struct {
+	ThumbColor            foundation.Opt[widgets.WidgetStateProperty[foundation.Opt[ui.Color]]]
+	TrackColor            foundation.Opt[widgets.WidgetStateProperty[foundation.Opt[ui.Color]]]
+	TrackOutlineColor     foundation.Opt[widgets.WidgetStateProperty[foundation.Opt[ui.Color]]]
+	TrackOutlineWidth     foundation.Opt[widgets.WidgetStateProperty[foundation.Opt[float64]]]
+	MaterialTapTargetSize foundation.Opt[MaterialTapTargetSize]
+	MouseCursor           foundation.Opt[widgets.WidgetStateProperty[services.MouseCursor]]
+	OverlayColor          foundation.Opt[widgets.WidgetStateProperty[foundation.Opt[ui.Color]]]
+	SplashRadius          foundation.Opt[float64]
+	ThumbIcon             foundation.Opt[widgets.WidgetStateProperty[*widgets.Icon]]
+	Padding               foundation.Opt[painting.EdgeInsetsGeometry]
+}
+
+// CopyWith returns a copy of the SwitchThemeData with the fields that the SwitchThemeDataCopy sets replaced.
+//
+// Flutter: material/switch_theme.dart SwitchThemeData.copyWith
+func (x SwitchThemeData) CopyWith(c SwitchThemeDataCopy) SwitchThemeData {
+	r := x
+	if v, ok := c.ThumbColor.Get(); ok {
+		r.ThumbColor = v
+	}
+	if v, ok := c.TrackColor.Get(); ok {
+		r.TrackColor = v
+	}
+	if v, ok := c.TrackOutlineColor.Get(); ok {
+		r.TrackOutlineColor = v
+	}
+	if v, ok := c.TrackOutlineWidth.Get(); ok {
+		r.TrackOutlineWidth = v
+	}
+	if v, ok := c.MaterialTapTargetSize.Get(); ok {
+		r.MaterialTapTargetSize = v
+	}
+	if v, ok := c.MouseCursor.Get(); ok {
+		r.MouseCursor = v
+	}
+	if v, ok := c.OverlayColor.Get(); ok {
+		r.OverlayColor = v
+	}
+	if c.SplashRadius.IsSome() {
+		r.SplashRadius = c.SplashRadius
+	}
+	if v, ok := c.ThumbIcon.Get(); ok {
+		r.ThumbIcon = v
+	}
+	if v, ok := c.Padding.Get(); ok {
+		r.Padding = v
 	}
 	return r
 }

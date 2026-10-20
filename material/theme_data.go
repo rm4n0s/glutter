@@ -320,6 +320,16 @@ type ThemeDataOpts struct {
 	// PageTransitionsTheme is the transitions of the pages that Material makes;
 	// the default is the one of NewPageTransitionsTheme.
 	PageTransitionsTheme *PageTransitionsTheme
+	// ChipTheme is the default configuration of the chips.
+	ChipTheme ChipThemeData
+	// SliderTheme is the theme of the Slider and RangeSlider widgets.
+	SliderTheme SliderThemeData
+	// SwitchTheme is the theme of the Switch widgets.
+	SwitchTheme SwitchThemeData
+	// RadioTheme is the theme of the Radio widgets.
+	RadioTheme RadioThemeData
+	// CheckboxTheme is the theme of the Checkbox widgets.
+	CheckboxTheme CheckboxThemeData
 	// DropdownMenuTheme defines the text style, input decoration theme, menu style and disabled color of the dropdown menus.
 	DropdownMenuTheme DropdownMenuThemeData
 	// TextSelectionTheme defines the appearance of the cursor and the selection of the text fields and the selectable text.
@@ -455,6 +465,16 @@ type ThemeData struct {
 	Typography *Typography
 	// PageTransitionsTheme is the transitions of the pages that Material makes.
 	PageTransitionsTheme *PageTransitionsTheme
+	// ChipTheme is the default configuration of the chips.
+	ChipTheme ChipThemeData
+	// SliderTheme is the theme of the Slider and RangeSlider widgets.
+	SliderTheme SliderThemeData
+	// SwitchTheme is the theme of the Switch widgets.
+	SwitchTheme SwitchThemeData
+	// RadioTheme is the theme of the Radio widgets.
+	RadioTheme RadioThemeData
+	// CheckboxTheme is the theme of the Checkbox widgets.
+	CheckboxTheme CheckboxThemeData
 	// DropdownMenuTheme defines the text style, input decoration theme, menu style and disabled color of the dropdown menus.
 	DropdownMenuTheme DropdownMenuThemeData
 	// TextSelectionTheme defines the appearance of the cursor and the selection of the text fields and the selectable text.
@@ -742,6 +762,11 @@ func NewThemeData(opts ...ThemeDataOpts) *ThemeData {
 		Typography:       typography,
 
 		PageTransitionsTheme:      pageTransitionsTheme,
+		ChipTheme:                 o.ChipTheme,
+		SliderTheme:               o.SliderTheme,
+		SwitchTheme:               o.SwitchTheme,
+		RadioTheme:                o.RadioTheme,
+		CheckboxTheme:             o.CheckboxTheme,
 		DropdownMenuTheme:         o.DropdownMenuTheme,
 		TextSelectionTheme:        o.TextSelectionTheme,
 		InputDecorationTheme:      o.InputDecorationTheme,
@@ -810,6 +835,11 @@ type ThemeDataCopy struct {
 	TextTheme                 foundation.Opt[*TextTheme]
 	Typography                foundation.Opt[*Typography]
 	PageTransitionsTheme      foundation.Opt[*PageTransitionsTheme]
+	ChipTheme                 foundation.Opt[ChipThemeData]
+	SliderTheme               foundation.Opt[SliderThemeData]
+	SwitchTheme               foundation.Opt[SwitchThemeData]
+	RadioTheme                foundation.Opt[RadioThemeData]
+	CheckboxTheme             foundation.Opt[CheckboxThemeData]
 	DropdownMenuTheme         foundation.Opt[DropdownMenuThemeData]
 	TextSelectionTheme        foundation.Opt[TextSelectionThemeData]
 	InputDecorationTheme      foundation.Opt[InputDecorationThemeData]
@@ -880,6 +910,11 @@ func (d *ThemeData) CopyWith(c ThemeDataCopy) *ThemeData {
 	out.TextTheme = c.TextTheme.OrElse(d.TextTheme)
 	out.Typography = c.Typography.OrElse(d.Typography)
 	out.PageTransitionsTheme = c.PageTransitionsTheme.OrElse(d.PageTransitionsTheme)
+	out.ChipTheme = c.ChipTheme.OrElse(d.ChipTheme)
+	out.SliderTheme = c.SliderTheme.OrElse(d.SliderTheme)
+	out.SwitchTheme = c.SwitchTheme.OrElse(d.SwitchTheme)
+	out.RadioTheme = c.RadioTheme.OrElse(d.RadioTheme)
+	out.CheckboxTheme = c.CheckboxTheme.OrElse(d.CheckboxTheme)
 	out.DropdownMenuTheme = c.DropdownMenuTheme.OrElse(d.DropdownMenuTheme)
 	out.TextSelectionTheme = c.TextSelectionTheme.OrElse(d.TextSelectionTheme)
 	out.InputDecorationTheme = c.InputDecorationTheme.OrElse(d.InputDecorationTheme)
@@ -1106,6 +1141,11 @@ func ThemeDataLerp(a, b *ThemeData, t float64) *ThemeData {
 		PrimaryTextTheme:          TextThemeLerp(a.PrimaryTextTheme, b.PrimaryTextTheme, t),
 		TextTheme:                 TextThemeLerp(a.TextTheme, b.TextTheme, t),
 		Typography:                TypographyLerp(a.Typography, b.Typography, t),
+		ChipTheme:                 ChipThemeDataLerp(a.ChipTheme, b.ChipTheme, t),
+		SliderTheme:               SliderThemeDataLerp(a.SliderTheme, b.SliderTheme, t),
+		SwitchTheme:               SwitchThemeDataLerp(a.SwitchTheme, b.SwitchTheme, t),
+		RadioTheme:                RadioThemeDataLerp(a.RadioTheme, b.RadioTheme, t),
+		CheckboxTheme:             CheckboxThemeDataLerp(a.CheckboxTheme, b.CheckboxTheme, t),
 		DropdownMenuTheme:         DropdownMenuThemeDataLerp(a.DropdownMenuTheme, b.DropdownMenuTheme, t),
 		TextSelectionTheme:        TextSelectionThemeDataLerp(a.TextSelectionTheme, b.TextSelectionTheme, t),
 		InputDecorationTheme:      InputDecorationThemeDataLerp(a.InputDecorationTheme, b.InputDecorationTheme, t),
@@ -1161,7 +1201,7 @@ func (d *ThemeData) Equal(other *ThemeData) bool {
 	if d.ApplyElevationOverlayColor != other.ApplyElevationOverlayColor || d.MaterialTapTargetSize != other.MaterialTapTargetSize ||
 		d.Platform != other.Platform || d.UseMaterial3 != other.UseMaterial3 || !foundation.ValuesEqual(d.SplashFactory, other.SplashFactory) || d.VisualDensity != other.VisualDensity ||
 		!d.ColorScheme.Equal(other.ColorScheme) || !d.IconTheme.Equal(other.IconTheme) || !d.PrimaryIconTheme.Equal(other.PrimaryIconTheme) ||
-		!d.PrimaryTextTheme.Equal(other.PrimaryTextTheme) || !d.TextTheme.Equal(other.TextTheme) || !d.Typography.Equal(other.Typography) || !d.PageTransitionsTheme.Equal(other.PageTransitionsTheme) || !d.AppBarTheme.Equal(other.AppBarTheme) || !d.BannerTheme.Equal(other.BannerTheme) || !d.BottomAppBarTheme.Equal(other.BottomAppBarTheme) || !d.SnackBarTheme.Equal(other.SnackBarTheme) || !d.DrawerTheme.Equal(other.DrawerTheme) || !d.BottomSheetTheme.Equal(other.BottomSheetTheme) || !d.NavigationBarTheme.Equal(other.NavigationBarTheme) || !d.NavigationRailTheme.Equal(other.NavigationRailTheme) || !d.NavigationDrawerTheme.Equal(other.NavigationDrawerTheme) || !d.TabBarTheme.Equal(other.TabBarTheme) || !d.TextButtonTheme.Equal(other.TextButtonTheme) || !d.ElevatedButtonTheme.Equal(other.ElevatedButtonTheme) || !d.FilledButtonTheme.Equal(other.FilledButtonTheme) || !d.OutlinedButtonTheme.Equal(other.OutlinedButtonTheme) || !d.IconButtonTheme.Equal(other.IconButtonTheme) || !d.FloatingActionButtonTheme.Equal(other.FloatingActionButtonTheme) || !d.SegmentedButtonTheme.Equal(other.SegmentedButtonTheme) || !d.ActionIconTheme.Equal(other.ActionIconTheme) || !d.MenuTheme.Equal(other.MenuTheme) || !d.MenuBarTheme.Equal(other.MenuBarTheme) || !d.MenuButtonTheme.Equal(other.MenuButtonTheme) || !d.PopupMenuTheme.Equal(other.PopupMenuTheme) || !d.InputDecorationTheme.Equal(other.InputDecorationTheme) || !d.TextSelectionTheme.Equal(other.TextSelectionTheme) || !d.DropdownMenuTheme.Equal(other.DropdownMenuTheme) {
+		!d.PrimaryTextTheme.Equal(other.PrimaryTextTheme) || !d.TextTheme.Equal(other.TextTheme) || !d.Typography.Equal(other.Typography) || !d.PageTransitionsTheme.Equal(other.PageTransitionsTheme) || !d.AppBarTheme.Equal(other.AppBarTheme) || !d.BannerTheme.Equal(other.BannerTheme) || !d.BottomAppBarTheme.Equal(other.BottomAppBarTheme) || !d.SnackBarTheme.Equal(other.SnackBarTheme) || !d.DrawerTheme.Equal(other.DrawerTheme) || !d.BottomSheetTheme.Equal(other.BottomSheetTheme) || !d.NavigationBarTheme.Equal(other.NavigationBarTheme) || !d.NavigationRailTheme.Equal(other.NavigationRailTheme) || !d.NavigationDrawerTheme.Equal(other.NavigationDrawerTheme) || !d.TabBarTheme.Equal(other.TabBarTheme) || !d.TextButtonTheme.Equal(other.TextButtonTheme) || !d.ElevatedButtonTheme.Equal(other.ElevatedButtonTheme) || !d.FilledButtonTheme.Equal(other.FilledButtonTheme) || !d.OutlinedButtonTheme.Equal(other.OutlinedButtonTheme) || !d.IconButtonTheme.Equal(other.IconButtonTheme) || !d.FloatingActionButtonTheme.Equal(other.FloatingActionButtonTheme) || !d.SegmentedButtonTheme.Equal(other.SegmentedButtonTheme) || !d.ActionIconTheme.Equal(other.ActionIconTheme) || !d.MenuTheme.Equal(other.MenuTheme) || !d.MenuBarTheme.Equal(other.MenuBarTheme) || !d.MenuButtonTheme.Equal(other.MenuButtonTheme) || !d.PopupMenuTheme.Equal(other.PopupMenuTheme) || !d.InputDecorationTheme.Equal(other.InputDecorationTheme) || !d.TextSelectionTheme.Equal(other.TextSelectionTheme) || !d.DropdownMenuTheme.Equal(other.DropdownMenuTheme) || !d.CheckboxTheme.Equal(other.CheckboxTheme) || !d.RadioTheme.Equal(other.RadioTheme) || !d.SwitchTheme.Equal(other.SwitchTheme) || !d.SliderTheme.Equal(other.SliderTheme) || !d.ChipTheme.Equal(other.ChipTheme) {
 		return false
 	}
 	for _, f := range themeColorFields {
@@ -1223,6 +1263,11 @@ func (d *ThemeData) DebugFillProperties(properties *foundation.DiagnosticPropert
 	properties.Add(foundation.NewDiagnosticsProperty("textTheme", d.TextTheme, dbg(def.TextTheme)))
 	properties.Add(foundation.NewDiagnosticsProperty("typography", d.Typography, dbg(def.Typography)))
 	properties.Add(foundation.NewDiagnosticsProperty("pageTransitionsTheme", d.PageTransitionsTheme, dbg(def.PageTransitionsTheme)))
+	properties.Add(foundation.NewDiagnosticsProperty("chipTheme", d.ChipTheme, dbg(def.ChipTheme)))
+	properties.Add(foundation.NewDiagnosticsProperty("sliderTheme", d.SliderTheme, dbg(def.SliderTheme)))
+	properties.Add(foundation.NewDiagnosticsProperty("switchTheme", d.SwitchTheme, dbg(def.SwitchTheme)))
+	properties.Add(foundation.NewDiagnosticsProperty("radioTheme", d.RadioTheme, dbg(def.RadioTheme)))
+	properties.Add(foundation.NewDiagnosticsProperty("checkboxTheme", d.CheckboxTheme, dbg(def.CheckboxTheme)))
 	properties.Add(foundation.NewDiagnosticsProperty("dropdownMenuTheme", d.DropdownMenuTheme, dbg(def.DropdownMenuTheme)))
 	properties.Add(foundation.NewDiagnosticsProperty("textSelectionTheme", d.TextSelectionTheme, dbg(def.TextSelectionTheme)))
 	properties.Add(foundation.NewDiagnosticsProperty("inputDecorationTheme", d.InputDecorationTheme, dbg(def.InputDecorationTheme)))

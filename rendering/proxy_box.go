@@ -327,6 +327,18 @@ func NewRenderConstrainedBox(additionalConstraints BoxConstraints, child Box) *R
 	return r
 }
 
+// InitRenderConstrainedBox sets up a RenderConstrainedBox embedded in the
+// render object self, which subclasses it (the self pattern, SPEC §12.5).
+//
+// Flutter: no counterpart (the self pattern, SPEC §12.5)
+func InitRenderConstrainedBox(r *RenderConstrainedBox, self Box, additionalConstraints BoxConstraints, child Box) {
+	if foundation.DebugMode {
+		additionalConstraints.DebugAssertIsValid()
+	}
+	r.additionalConstraints = additionalConstraints
+	InitRenderProxyBox(&r.RenderProxyBox, self, child)
+}
+
 // AdditionalConstraints are the constraints that are enforced on the child.
 //
 // Flutter: rendering/proxy_box.dart RenderConstrainedBox.additionalConstraints

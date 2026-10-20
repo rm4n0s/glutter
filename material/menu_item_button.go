@@ -386,8 +386,8 @@ func (w *CheckboxMenuButton) Build(bc widgets.BuildContext) widgets.Widget {
 		OnHover:   w.o.OnHover, OnFocusChange: w.o.OnFocusChange, FocusNode: w.o.FocusNode, Style: w.o.Style, Shortcut: w.o.Shortcut,
 		StatesController: w.o.StatesController, ClipBehavior: w.o.ClipBehavior, TrailingIcon: w.o.TrailingIcon, NoCloseOnActivate: w.o.NoCloseOnActivate,
 		LeadingIcon: widgets.NewExcludeFocus(widgets.NewIgnorePointer(widgets.NewConstrainedBox(
-			rendering.NewBoxConstraints(rendering.BoxConstraintsOpts{MaxWidth: foundation.Some(menuCheckboxWidth), MaxHeight: foundation.Some(menuCheckboxWidth)}),
-			tempCheckbox(bc, w.value, w.onChanged != nil, w.o.IsError)))),
+			rendering.NewBoxConstraints(rendering.BoxConstraintsOpts{MaxWidth: foundation.Some(CheckboxWidth), MaxHeight: foundation.Some(CheckboxWidth)}),
+			NewCheckbox(w.value, w.onChanged, CheckboxOpts{Tristate: w.o.Tristate, IsError: w.o.IsError})))),
 		Child: w.child,
 	})
 }
@@ -466,8 +466,8 @@ func (w *RadioMenuButton[T]) Build(bc widgets.BuildContext) widgets.Widget {
 		OnHover:   w.o.OnHover, OnFocusChange: w.o.OnFocusChange, FocusNode: w.o.FocusNode, Style: w.o.Style, Shortcut: w.o.Shortcut,
 		StatesController: w.o.StatesController, ClipBehavior: w.o.ClipBehavior, TrailingIcon: w.o.TrailingIcon, NoCloseOnActivate: w.o.NoCloseOnActivate,
 		LeadingIcon: widgets.NewExcludeFocus(widgets.NewIgnorePointer(widgets.NewConstrainedBox(
-			rendering.NewBoxConstraints(rendering.BoxConstraintsOpts{MaxWidth: foundation.Some(menuCheckboxWidth), MaxHeight: foundation.Some(menuCheckboxWidth)}),
-			tempRadio(bc, w.groupValue == foundation.Some(w.value), w.onChanged != nil)))),
+			rendering.NewBoxConstraints(rendering.BoxConstraintsOpts{MaxWidth: foundation.Some(CheckboxWidth), MaxHeight: foundation.Some(CheckboxWidth)}),
+			NewRadio(w.value, RadioOpts[T]{GroupValue: w.groupValue, OnChanged: w.onChanged, Toggleable: w.o.Toggleable})))),
 		Child: w.child,
 	})
 }

@@ -264,3 +264,18 @@ func lerpOptBorderSide(a, b foundation.Opt[painting.BorderSide], t float64) foun
 	}
 	return foundation.Some(painting.BorderSideLerp(sa, sb, t))
 }
+
+// lerpWidgetSide is how the themes of Checkbox and Radio interpolate their sides:
+// a side that depends on the states is resolved for no state first.
+//
+// Flutter: material/checkbox_theme.dart CheckboxThemeData._lerpSides
+func lerpWidgetSide(a foundation.Opt[painting.BorderSide], aStates widgets.WidgetStateProperty[foundation.Opt[painting.BorderSide]],
+	b foundation.Opt[painting.BorderSide], bStates widgets.WidgetStateProperty[foundation.Opt[painting.BorderSide]], t float64) foundation.Opt[painting.BorderSide] {
+	if aStates != nil {
+		a = aStates.Resolve(0)
+	}
+	if bStates != nil {
+		b = bStates.Resolve(0)
+	}
+	return lerpOptBorderSide(a, b, t)
+}

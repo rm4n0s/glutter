@@ -454,6 +454,41 @@ func (w *Icon) Icon() IconData { return w.icon }
 // Flutter: no counterpart (used by finders)
 func (w *Icon) IconValue() any { return w.icon }
 
+// Size is the size of the icon; the default comes from the icon theme.
+//
+// Flutter: widgets/icon.dart Icon.size
+func (w *Icon) Size() foundation.Opt[float64] { return w.o.Size }
+
+// Fill is the fill of the icon; the default comes from the icon theme.
+//
+// Flutter: widgets/icon.dart Icon.fill
+func (w *Icon) Fill() foundation.Opt[float64] { return w.o.Fill }
+
+// Weight is the weight of the icon; the default comes from the icon theme.
+//
+// Flutter: widgets/icon.dart Icon.weight
+func (w *Icon) Weight() foundation.Opt[float64] { return w.o.Weight }
+
+// Grade is the grade of the icon; the default comes from the icon theme.
+//
+// Flutter: widgets/icon.dart Icon.grade
+func (w *Icon) Grade() foundation.Opt[float64] { return w.o.Grade }
+
+// OpticalSize is the optical size of the icon; the default comes from the icon theme.
+//
+// Flutter: widgets/icon.dart Icon.opticalSize
+func (w *Icon) OpticalSize() foundation.Opt[float64] { return w.o.OpticalSize }
+
+// Color is the color of the icon; the default comes from the icon theme.
+//
+// Flutter: widgets/icon.dart Icon.color
+func (w *Icon) Color() foundation.Opt[ui.Color] { return w.o.Color }
+
+// Shadows is the shadows of the icon; the default comes from the icon theme.
+//
+// Flutter: widgets/icon.dart Icon.shadows
+func (w *Icon) Shadows() []ui.Shadow { return w.o.Shadows }
+
 // SemanticLabel is the semantics label of the icon.
 //
 // Flutter: widgets/icon.dart Icon.semanticLabel

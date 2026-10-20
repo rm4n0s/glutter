@@ -26,6 +26,7 @@ var galleryPages = []Page{
 	{Slug: "buttons", Name: "Buttons", Icon: m.Icons.TouchApp(), Build: buildButtonsPage},
 	{Slug: "menus", Name: "Menus", Icon: m.Icons.Menu(), Build: buildMenusPage},
 	{Slug: "text-fields", Name: "Text fields", Icon: m.Icons.EditNote(), Build: buildTextFieldsPage},
+	{Slug: "selection", Name: "Selection & chips", Icon: m.Icons.CheckBox(), Build: buildSelectionPage},
 }
 
 // columnWidth is the width of a section, for two of them side by side in the page.

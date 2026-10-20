@@ -6581,6 +6581,13 @@ func NewProxyWidgetBase(child widgets.Widget, opts ...widgets.WidgetOpts) widget
 	return widgets.NewProxyWidgetBase(child, opts...)
 }
 
+// NewRadioGroup is widgets.NewRadioGroup.
+//
+// Flutter: widgets.dart NewRadioGroup
+func NewRadioGroup[T comparable](onChanged func(value foundation.Opt[T]), child widgets.Widget, opts ...widgets.RadioGroupOpts[T]) *widgets.RadioGroup[T] {
+	return widgets.NewRadioGroup[T](onChanged, child, opts...)
+}
+
 // NewRangeMaintainingScrollPhysics is widgets.NewRangeMaintainingScrollPhysics.
 //
 // Flutter: widgets.dart NewRangeMaintainingScrollPhysics
@@ -6628,6 +6635,13 @@ func NewRawMenuAnchor(controller *widgets.MenuController, overlayBuilder widgets
 // Flutter: widgets.dart NewRawMenuAnchorGroup
 func NewRawMenuAnchorGroup(controller *widgets.MenuController, child widgets.Widget, opts ...widgets.WidgetOpts) *widgets.RawMenuAnchorGroup {
 	return widgets.NewRawMenuAnchorGroup(controller, child, opts...)
+}
+
+// NewRawRadio is widgets.NewRawRadio.
+//
+// Flutter: widgets.dart NewRawRadio
+func NewRawRadio[T comparable](value T, mouseCursor widgets.WidgetStateProperty[services.MouseCursor], toggleable bool, focusNode *widgets.FocusNode, autofocus bool, groupRegistry widgets.RadioGroupRegistry[T], enabled bool, builder widgets.RadioBuilder, opts ...widgets.RawRadioOpts) *widgets.RawRadio[T] {
+	return widgets.NewRawRadio[T](value, mouseCursor, toggleable, focusNode, autofocus, groupRegistry, enabled, builder, opts...)
 }
 
 // NewRawScrollbar is widgets.NewRawScrollbar.
@@ -8577,6 +8591,43 @@ type ProxyElementSelf = widgets.ProxyElementSelf
 // Flutter: widgets.dart ProxyWidget
 type ProxyWidget = widgets.ProxyWidget
 
+// RadioBuilder is widgets.RadioBuilder.
+//
+// Flutter: widgets.dart RadioBuilder
+type RadioBuilder = widgets.RadioBuilder
+
+// RadioClient is widgets.RadioClient.
+//
+// Flutter: widgets.dart RadioClient
+type RadioClient[T comparable] = widgets.RadioClient[T]
+
+// RadioClientRegistration is widgets.RadioClientRegistration.
+//
+// Flutter: widgets.dart RadioClientRegistration
+type RadioClientRegistration[T comparable] = widgets.RadioClientRegistration[T]
+
+// RadioGroup is widgets.RadioGroup.
+//
+// Flutter: widgets.dart RadioGroup
+type RadioGroup[T comparable] = widgets.RadioGroup[T]
+
+// RadioGroupMaybeOf is widgets.RadioGroupMaybeOf.
+//
+// Flutter: widgets.dart RadioGroupMaybeOf
+func RadioGroupMaybeOf[T comparable](bc widgets.BuildContext) (widgets.RadioGroupRegistry[T], bool) {
+	return widgets.RadioGroupMaybeOf[T](bc)
+}
+
+// RadioGroupOpts is widgets.RadioGroupOpts.
+//
+// Flutter: widgets.dart RadioGroupOpts
+type RadioGroupOpts[T comparable] = widgets.RadioGroupOpts[T]
+
+// RadioGroupRegistry is widgets.RadioGroupRegistry.
+//
+// Flutter: widgets.dart RadioGroupRegistry
+type RadioGroupRegistry[T comparable] = widgets.RadioGroupRegistry[T]
+
 // RangeMaintainingScrollPhysics is widgets.RangeMaintainingScrollPhysics.
 //
 // Flutter: widgets.dart RangeMaintainingScrollPhysics
@@ -8673,6 +8724,16 @@ type RawMenuAnchorOverlayBuilder = widgets.RawMenuAnchorOverlayBuilder
 //
 // Flutter: widgets.dart RawMenuOverlayInfo
 type RawMenuOverlayInfo = widgets.RawMenuOverlayInfo
+
+// RawRadio is widgets.RawRadio.
+//
+// Flutter: widgets.dart RawRadio
+type RawRadio[T comparable] = widgets.RawRadio[T]
+
+// RawRadioOpts is widgets.RawRadioOpts.
+//
+// Flutter: widgets.dart RawRadioOpts
+type RawRadioOpts = widgets.RawRadioOpts
 
 // RawScrollbar is widgets.RawScrollbar.
 //
@@ -10681,6 +10742,31 @@ type Title = widgets.Title
 //
 // Flutter: widgets.dart TitleOpts
 type TitleOpts = widgets.TitleOpts
+
+// ToggleableOpts is widgets.ToggleableOpts.
+//
+// Flutter: widgets.dart ToggleableOpts
+type ToggleableOpts = widgets.ToggleableOpts
+
+// ToggleableOwner is widgets.ToggleableOwner.
+//
+// Flutter: widgets.dart ToggleableOwner
+type ToggleableOwner = widgets.ToggleableOwner
+
+// ToggleablePainter is widgets.ToggleablePainter.
+//
+// Flutter: widgets.dart ToggleablePainter
+type ToggleablePainter = widgets.ToggleablePainter
+
+// ToggleableStateMixin is widgets.ToggleableStateMixin.
+//
+// Flutter: widgets.dart ToggleableStateMixin
+type ToggleableStateMixin = widgets.ToggleableStateMixin
+
+// ToggleableStateMixinOpts is widgets.ToggleableStateMixinOpts.
+//
+// Flutter: widgets.dart ToggleableStateMixinOpts
+type ToggleableStateMixinOpts = widgets.ToggleableStateMixinOpts
 
 // ToolbarBuilder is widgets.ToolbarBuilder.
 //
