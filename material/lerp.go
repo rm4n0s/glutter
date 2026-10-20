@@ -363,3 +363,14 @@ func optPtr[T any](o foundation.Opt[T]) *T {
 	}
 	return nil
 }
+
+// lerpOptRadius is Radius.lerp on nullable radii.
+//
+// Flutter: dart:ui Radius.lerp
+func lerpOptRadius(a, b foundation.Opt[ui.Radius], t float64) foundation.Opt[ui.Radius] {
+	ra, rb := optPtr(a), optPtr(b)
+	if r := ui.RadiusLerp(ra, rb, t); r != nil {
+		return foundation.Some(*r)
+	}
+	return foundation.None[ui.Radius]()
+}

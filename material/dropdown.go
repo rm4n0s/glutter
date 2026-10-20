@@ -203,6 +203,8 @@ func (w *DropdownMenuItem[T]) Enabled() bool { return !w.o.Disabled }
 func (w *DropdownMenuItem[T]) Child() widgets.Widget { return w.child }
 
 // Build builds the container of the item.
+//
+// Flutter: material/dropdown.dart DropdownMenuItem.build
 func (w *DropdownMenuItem[T]) Build(widgets.BuildContext) widgets.Widget {
 	return dropdownMenuItemContainer(w.o.Alignment, w.child)
 }
@@ -547,10 +549,9 @@ func (s *dropdownMenuState[T]) Build(bc widgets.BuildContext) widgets.Widget {
 								Scrollbars: foundation.Some(false), Overscroll: foundation.Some(false),
 								Physics: widgets.NewClampingScrollPhysics(nil), Platform: theme.Platform}),
 							widgets.NewPrimaryScrollController(w.scrollController,
-								tempScrollbar(bc, true,
-									widgets.NewListView(children, widgets.ListViewOpts{
-										// Ensure this always inherits the PrimaryScrollController.
-										Primary: foundation.Some(true), Padding: MaterialListPadding, ShrinkWrap: true})))),
+								NewScrollbar(widgets.NewListView(children, widgets.ListViewOpts{
+									// Ensure this always inherits the PrimaryScrollController.
+									Primary: foundation.Some(true), Padding: MaterialListPadding, ShrinkWrap: true}), ScrollbarOpts{ThumbVisibility: foundation.Some(true)}))),
 						MaterialOpts{Type: MaterialTypeTransparency, TextStyle: route.style}),
 					widgets.ClipRRectOpts{BorderRadius: radius, ClipBehavior: clip}),
 				widgets.SemanticsOpts{

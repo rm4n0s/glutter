@@ -168,14 +168,13 @@ func (s *menuPanelState) Build(bc widgets.BuildContext) widgets.Widget {
 			widgets.ScrollConfigurationOf(bc).CopyWith(widgets.ScrollBehaviorCopy{
 				Scrollbars: foundation.Some(false), Overscroll: foundation.Some(false), Physics: widgets.NewClampingScrollPhysics(nil)}),
 			widgets.NewPrimaryScrollController(s.scrollController,
-				tempScrollbar(bc, displayScrollbar,
-					widgets.NewSingleChildScrollView(
-						widgets.NewFlex(w.o.orientation, children, widgets.FlexOpts{
-							CrossAxisAlignment: rendering.CrossAxisAlignmentStart,
-							TextDirection:      widgets.DirectionalityOf(bc),
-							MainAxisSize:       rendering.MainAxisSizeMin,
-						}),
-						widgets.SingleChildScrollViewOpts{Controller: s.scrollController, ScrollDirection: w.o.orientation})))))
+				NewScrollbar(widgets.NewSingleChildScrollView(
+					widgets.NewFlex(w.o.orientation, children, widgets.FlexOpts{
+						CrossAxisAlignment: rendering.CrossAxisAlignmentStart,
+						TextDirection:      widgets.DirectionalityOf(bc),
+						MainAxisSize:       rendering.MainAxisSizeMin,
+					}),
+					widgets.SingleChildScrollViewOpts{Controller: s.scrollController, ScrollDirection: w.o.orientation}), ScrollbarOpts{ThumbVisibility: foundation.Some(displayScrollbar)}))))
 	if w.o.heightAnimation != nil {
 		// An AnimatedBuilder is used instead of SizeTransition because Material
 		// already introduces its own ClipRRect for the shape.

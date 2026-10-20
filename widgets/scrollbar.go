@@ -941,7 +941,64 @@ type RawScrollbarOpts struct {
 	// Padding is the padding around the scrollbar; the MediaQuery's padding by
 	// default.
 	Padding painting.EdgeInsetsGeometry
+	// Subclass makes what a subclass of RawScrollbarState overrides (the Material
+	// scrollbar is one). The function gets the base state, which the subclass
+	// keeps to call the methods that Flutter's super calls. Go has no
+	// inheritance, so the base calls the subclass where Flutter's dispatch is
+	// virtual.
+	Subclass func(base *RawScrollbarState) RawScrollbarSubclass
 }
+
+// RawScrollbarSubclass is what a subclass of RawScrollbarState overrides: the
+// methods that RawScrollbarState calls on itself with a virtual dispatch in
+// Flutter, and the lifecycle of the state.
+//
+// Flutter: widgets/scrollbar.dart RawScrollbarState
+type RawScrollbarSubclass interface {
+	// ShowScrollbar overrides RawScrollbarState.ShowScrollbar.
+	ShowScrollbar() bool
+	// EnableGestures overrides RawScrollbarState.EnableGestures.
+	EnableGestures() bool
+	// UpdateScrollbarPainter overrides RawScrollbarState.UpdateScrollbarPainter.
+	UpdateScrollbarPainter()
+	// HandleThumbPressStart overrides RawScrollbarState.HandleThumbPressStart.
+	HandleThumbPressStart(localPosition ui.Offset)
+	// HandleThumbPressEnd overrides RawScrollbarState.HandleThumbPressEnd.
+	HandleThumbPressEnd(localPosition ui.Offset, velocity gestures.Velocity)
+	// HandleHover overrides RawScrollbarState.HandleHover.
+	HandleHover(event *gestures.PointerHoverEvent)
+	// HandleHoverExit overrides RawScrollbarState.HandleHoverExit.
+	HandleHoverExit(event *gestures.PointerExitEvent)
+	// InitState runs after the initState of RawScrollbarState.
+	InitState()
+	// BeforeDidChangeDependencies runs before the didChangeDependencies of
+	// RawScrollbarState, which a subclass calls last.
+	BeforeDidChangeDependencies()
+	// BeforeDispose runs before the dispose of RawScrollbarState, which a
+	// subclass calls last.
+	BeforeDispose()
+}
+
+// virtual is the object whose methods the framework calls: the subclass, or the
+// state itself.
+func (s *RawScrollbarState) virtual() RawScrollbarSubclass {
+	if s.sub != nil {
+		return s.sub
+	}
+	return s
+}
+
+// BeforeDidChangeDependencies is part of RawScrollbarSubclass for the state
+// itself, which runs nothing before its own.
+//
+// Flutter: widgets/scrollbar.dart RawScrollbarState.didChangeDependencies
+func (s *RawScrollbarState) BeforeDidChangeDependencies() {}
+
+// BeforeDispose is part of RawScrollbarSubclass for the state itself, which runs
+// nothing before its own.
+//
+// Flutter: widgets/scrollbar.dart RawScrollbarState.dispose
+func (s *RawScrollbarState) BeforeDispose() {}
 
 // RawScrollbar is a scrollbar without a visual style: it paints a thumb (and
 // optionally a track) over the scrollable it wraps, fades it in and out, and lets
@@ -990,16 +1047,22 @@ func NewRawScrollbar(child Widget, opts ...RawScrollbarOpts) *RawScrollbar {
 func (w *RawScrollbar) Child() Widget { return w.child }
 
 // Options are the options the widget was made with.
+//
+// Flutter: widgets/scrollbar.dart RawScrollbar.new
 func (w *RawScrollbar) Options() RawScrollbarOpts { return w.o }
 
 // CreateState creates the state.
 //
 // Flutter: widgets/scrollbar.dart RawScrollbar.createState
 func (w *RawScrollbar) CreateState() State {
-	return &RawScrollbarState{
+	st := &RawScrollbarState{
 		scrollbarPainterKey: NewGlobalKey[State](),
 		gestureDetectorKey:  NewGlobalKey[*RawGestureDetectorState](),
 	}
+	if w.o.Subclass != nil {
+		st.sub = w.o.Subclass(st)
+	}
+	return st
 }
 
 // RawScrollbarState is the state of a RawScrollbar.
@@ -1025,6 +1088,7 @@ type RawScrollbarState struct {
 	gestureDetectorKey           *GlobalKey[*RawGestureDetectorState]
 
 	scrollbarPainter *ScrollbarPainter
+	sub              RawScrollbarSubclass
 }
 
 // ScrollbarPainter is the painter of the scrollbar.
@@ -1045,7 +1109,7 @@ func (s *RawScrollbarState) effectiveScrollController() ScrollController {
 func (s *RawScrollbarState) ShowScrollbar() bool { return s.Widget().o.ThumbVisibility.OrElse(false) }
 
 func (s *RawScrollbarState) showTrack() bool {
-	return s.ShowScrollbar() && s.Widget().o.TrackVisibility.OrElse(false)
+	return s.virtual().ShowScrollbar() && s.Widget().o.TrackVisibility.OrElse(false)
 }
 
 // EnableGestures is whether the scrollbar responds to the pointer.
@@ -1080,6 +1144,9 @@ func (s *RawScrollbarState) InitState() {
 		ScrollbarOrientation: o.ScrollbarOrientation, MainAxisMargin: o.MainAxisMargin, Shape: o.Shape,
 		CrossAxisMargin: o.CrossAxisMargin, MinLength: foundation.Some(s.minThumbLength()), MinOverscrollLength: foundation.Some(minOverscroll),
 	})
+	if s.sub != nil {
+		s.sub.InitState()
+	}
 }
 
 // DidChangeDependencies checks, after the frame, that the controller has a
@@ -1087,13 +1154,16 @@ func (s *RawScrollbarState) InitState() {
 //
 // Flutter: widgets/scrollbar.dart RawScrollbarState.didChangeDependencies
 func (s *RawScrollbarState) DidChangeDependencies() {
+	if s.sub != nil {
+		s.sub.BeforeDidChangeDependencies()
+	}
 	if foundation.DebugMode {
 		s.debugScheduleCheckHasValidScrollPosition()
 	}
 }
 
 func (s *RawScrollbarState) debugScheduleCheckHasValidScrollPosition() {
-	if !s.ShowScrollbar() {
+	if !s.virtual().ShowScrollbar() {
 		return
 	}
 	WidgetsBindingOf(s.Context()).RunPostFrame(func(time.Duration) { s.debugCheckHasValidScrollPosition() })
@@ -1104,7 +1174,7 @@ func (s *RawScrollbarState) validateInteractions(status animation.AnimationStatu
 		if foundation.DebugMode && s.fadeoutOpacityAnimation.Value() != 0.0 {
 			panic(errors.New("RawScrollbarFadeInvalid", "a dismissed scrollbar fade must have an opacity of zero"))
 		}
-	} else if !isNil(s.effectiveScrollController()) && s.EnableGestures() {
+	} else if !isNil(s.effectiveScrollController()) && s.virtual().EnableGestures() {
 		// Interactive scrollbars should be properly mounted, otherwise
 		// interaction (hover/drag) would fail; they are mounted if the fade
 		// goes forward or completes.
@@ -1134,7 +1204,7 @@ func (s *RawScrollbarState) debugCheckHasValidScrollPosition() {
 	when := "using the Scrollbar"
 	if s.Widget().o.ThumbVisibility.OrElse(false) {
 		when = "Scrollbar.thumbVisibility is true"
-	} else if s.EnableGestures() {
+	} else if s.virtual().EnableGestures() {
 		when = "the scrollbar is interactive"
 	}
 	if isNil(controller) {
@@ -1187,7 +1257,7 @@ func (s *RawScrollbarState) UpdateScrollbarPainter() {
 	p.SetCrossAxisMargin(o.CrossAxisMargin)
 	p.SetMinLength(s.minThumbLength())
 	p.SetMinOverscrollLength(o.MinOverscrollLength.OrElse(s.minThumbLength()))
-	p.SetIgnorePointer(!s.EnableGestures())
+	p.SetIgnorePointer(!s.virtual().EnableGestures())
 }
 
 // DidUpdateWidget starts or reverses the fade when the visibility of the thumb
@@ -1211,7 +1281,7 @@ func (s *RawScrollbarState) DidUpdateWidget(oldWidget *RawScrollbar) {
 }
 
 func (s *RawScrollbarState) maybeStartFadeoutTimer() {
-	if !s.ShowScrollbar() {
+	if !s.virtual().ShowScrollbar() {
 		if s.fadeoutTimer != nil {
 			s.fadeoutTimer.Cancel()
 		}
@@ -1472,7 +1542,7 @@ func (s *RawScrollbarState) handleScrollMetricsNotification(notification *Scroll
 	if !s.Widget().o.NotificationPredicate(notification.AsScrollUpdate()) {
 		return false
 	}
-	if s.ShowScrollbar() && !s.fadeoutAnimationController.Status().IsForwardOrCompleted() {
+	if s.virtual().ShowScrollbar() && !s.fadeoutAnimationController.Status().IsForwardOrCompleted() {
 		s.fadeoutAnimationController.Forward()
 	}
 	metrics := notification.Metrics()
@@ -1529,7 +1599,7 @@ func (s *RawScrollbarState) globalToScrollbar(offset ui.Offset) ui.Offset {
 }
 
 func (s *RawScrollbarState) handleThumbDragStart(details gestures.DragStartDetails) {
-	s.HandleThumbPressStart(s.globalToScrollbar(details.GlobalPosition))
+	s.virtual().HandleThumbPressStart(s.globalToScrollbar(details.GlobalPosition))
 }
 
 func (s *RawScrollbarState) handleThumbDragUpdate(details gestures.DragUpdateDetails) {
@@ -1537,7 +1607,7 @@ func (s *RawScrollbarState) handleThumbDragUpdate(details gestures.DragUpdateDet
 }
 
 func (s *RawScrollbarState) handleThumbDragEnd(details gestures.DragEndDetails) {
-	s.HandleThumbPressEnd(s.globalToScrollbar(details.GlobalPosition), details.Velocity)
+	s.virtual().HandleThumbPressEnd(s.globalToScrollbar(details.GlobalPosition), details.Velocity)
 }
 
 func (s *RawScrollbarState) handleThumbDragCancel() {
@@ -1560,7 +1630,7 @@ func (s *RawScrollbarState) handleThumbDragCancel() {
 
 func (s *RawScrollbarState) canHandleScrollGestures() bool {
 	c := s.effectiveScrollController()
-	return s.EnableGestures() && !isNil(c) && len(c.Positions()) == 1 && c.Position().HasContentDimensions() &&
+	return s.virtual().EnableGestures() && !isNil(c) && len(c.Positions()) == 1 && c.Position().HasContentDimensions() &&
 		c.Position().MaxScrollExtent()-c.Position().MinScrollExtent() > foundation.PrecisionErrorTolerance
 }
 
@@ -1722,6 +1792,9 @@ func (s *RawScrollbarState) receivedPointerSignal(event gestures.PointerSignalEv
 //
 // Flutter: widgets/scrollbar.dart RawScrollbarState.dispose
 func (s *RawScrollbarState) Dispose() {
+	if s.sub != nil {
+		s.sub.BeforeDispose()
+	}
 	s.fadeoutAnimationController.Dispose()
 	s.cancelFadeoutTimer()
 	s.scrollbarPainter.Dispose()
@@ -1733,7 +1806,7 @@ func (s *RawScrollbarState) Dispose() {
 //
 // Flutter: widgets/scrollbar.dart RawScrollbarState.build
 func (s *RawScrollbarState) Build(bc BuildContext) Widget {
-	s.UpdateScrollbarPainter()
+	s.virtual().UpdateScrollbarPainter()
 	child := NewRepaintBoundary(
 		NewListener(
 			NewRawGestureDetector(
@@ -1743,16 +1816,16 @@ func (s *RawScrollbarState) Build(bc BuildContext) Widget {
 						OnExit: func(event *gestures.PointerExitEvent) {
 							switch event.Kind() {
 							case ui.PointerDeviceKindMouse, ui.PointerDeviceKindTrackpad:
-								if s.EnableGestures() {
-									s.HandleHoverExit(event)
+								if s.virtual().EnableGestures() {
+									s.virtual().HandleHoverExit(event)
 								}
 							}
 						},
 						OnHover: func(event *gestures.PointerHoverEvent) {
 							switch event.Kind() {
 							case ui.PointerDeviceKindMouse, ui.PointerDeviceKindTrackpad:
-								if s.EnableGestures() {
-									s.HandleHover(event)
+								if s.virtual().EnableGestures() {
+									s.virtual().HandleHover(event)
 								}
 							}
 						},

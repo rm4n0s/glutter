@@ -327,6 +327,45 @@ func (x CardThemeData) CopyWith(c CardThemeDataCopy) CardThemeData {
 	return r
 }
 
+// CarouselViewThemeDataCopy holds the replacements for CarouselViewThemeData.CopyWith: a field that is None keeps the value of the
+// copied one.
+//
+// Flutter: material/carousel_theme.dart CarouselViewThemeData.copyWith
+type CarouselViewThemeDataCopy struct {
+	Padding          foundation.Opt[painting.EdgeInsetsGeometry]
+	BackgroundColor  foundation.Opt[ui.Color]
+	Elevation        foundation.Opt[float64]
+	Shape            foundation.Opt[painting.ShapeBorder]
+	ItemClipBehavior foundation.Opt[ui.Clip]
+	OverlayColor     foundation.Opt[widgets.WidgetStateProperty[foundation.Opt[ui.Color]]]
+}
+
+// CopyWith returns a copy of the CarouselViewThemeData with the fields that the CarouselViewThemeDataCopy sets replaced.
+//
+// Flutter: material/carousel_theme.dart CarouselViewThemeData.copyWith
+func (x CarouselViewThemeData) CopyWith(c CarouselViewThemeDataCopy) CarouselViewThemeData {
+	r := x
+	if v, ok := c.Padding.Get(); ok {
+		r.Padding = v
+	}
+	if c.BackgroundColor.IsSome() {
+		r.BackgroundColor = c.BackgroundColor
+	}
+	if c.Elevation.IsSome() {
+		r.Elevation = c.Elevation
+	}
+	if v, ok := c.Shape.Get(); ok {
+		r.Shape = v
+	}
+	if v, ok := c.ItemClipBehavior.Get(); ok {
+		r.ItemClipBehavior = v
+	}
+	if v, ok := c.OverlayColor.Get(); ok {
+		r.OverlayColor = v
+	}
+	return r
+}
+
 // CheckboxThemeDataCopy holds the replacements for CheckboxThemeData.CopyWith: a field that is None keeps the value of the
 // copied one.
 //
@@ -489,6 +528,81 @@ func (x ChipThemeData) CopyWith(c ChipThemeDataCopy) ChipThemeData {
 	}
 	if c.DeleteIconBoxConstraints.IsSome() {
 		r.DeleteIconBoxConstraints = c.DeleteIconBoxConstraints
+	}
+	return r
+}
+
+// DataTableThemeDataCopy holds the replacements for DataTableThemeData.CopyWith: a field that is None keeps the value of the
+// copied one.
+//
+// Flutter: material/data_table_theme.dart DataTableThemeData.copyWith
+type DataTableThemeDataCopy struct {
+	Decoration               foundation.Opt[painting.Decoration]
+	DataRowColor             foundation.Opt[widgets.WidgetStateProperty[foundation.Opt[ui.Color]]]
+	DataRowMinHeight         foundation.Opt[float64]
+	DataRowMaxHeight         foundation.Opt[float64]
+	DataTextStyle            foundation.Opt[*painting.TextStyle]
+	HeadingRowColor          foundation.Opt[widgets.WidgetStateProperty[foundation.Opt[ui.Color]]]
+	HeadingRowHeight         foundation.Opt[float64]
+	HeadingTextStyle         foundation.Opt[*painting.TextStyle]
+	HorizontalMargin         foundation.Opt[float64]
+	ColumnSpacing            foundation.Opt[float64]
+	DividerThickness         foundation.Opt[float64]
+	CheckboxHorizontalMargin foundation.Opt[float64]
+	HeadingCellCursor        foundation.Opt[widgets.WidgetStateProperty[services.MouseCursor]]
+	DataRowCursor            foundation.Opt[widgets.WidgetStateProperty[services.MouseCursor]]
+	HeadingRowAlignment      foundation.Opt[rendering.MainAxisAlignment]
+}
+
+// CopyWith returns a copy of the DataTableThemeData with the fields that the DataTableThemeDataCopy sets replaced.
+//
+// Flutter: material/data_table_theme.dart DataTableThemeData.copyWith
+func (x DataTableThemeData) CopyWith(c DataTableThemeDataCopy) DataTableThemeData {
+	r := x
+	if v, ok := c.Decoration.Get(); ok {
+		r.Decoration = v
+	}
+	if v, ok := c.DataRowColor.Get(); ok {
+		r.DataRowColor = v
+	}
+	if c.DataRowMinHeight.IsSome() {
+		r.DataRowMinHeight = c.DataRowMinHeight
+	}
+	if c.DataRowMaxHeight.IsSome() {
+		r.DataRowMaxHeight = c.DataRowMaxHeight
+	}
+	if v, ok := c.DataTextStyle.Get(); ok {
+		r.DataTextStyle = v
+	}
+	if v, ok := c.HeadingRowColor.Get(); ok {
+		r.HeadingRowColor = v
+	}
+	if c.HeadingRowHeight.IsSome() {
+		r.HeadingRowHeight = c.HeadingRowHeight
+	}
+	if v, ok := c.HeadingTextStyle.Get(); ok {
+		r.HeadingTextStyle = v
+	}
+	if c.HorizontalMargin.IsSome() {
+		r.HorizontalMargin = c.HorizontalMargin
+	}
+	if c.ColumnSpacing.IsSome() {
+		r.ColumnSpacing = c.ColumnSpacing
+	}
+	if c.DividerThickness.IsSome() {
+		r.DividerThickness = c.DividerThickness
+	}
+	if c.CheckboxHorizontalMargin.IsSome() {
+		r.CheckboxHorizontalMargin = c.CheckboxHorizontalMargin
+	}
+	if v, ok := c.HeadingCellCursor.Get(); ok {
+		r.HeadingCellCursor = v
+	}
+	if v, ok := c.DataRowCursor.Get(); ok {
+		r.DataRowCursor = v
+	}
+	if v, ok := c.HeadingRowAlignment.Get(); ok {
+		r.HeadingRowAlignment = v
 	}
 	return r
 }
@@ -1637,6 +1751,85 @@ func (x PopupMenuThemeData) CopyWith(c PopupMenuThemeDataCopy) PopupMenuThemeDat
 	return r
 }
 
+// ProgressIndicatorThemeDataCopy holds the replacements for ProgressIndicatorThemeData.CopyWith: a field that is None keeps the value of the
+// copied one.
+//
+// Flutter: material/progress_indicator_theme.dart ProgressIndicatorThemeData.copyWith
+type ProgressIndicatorThemeDataCopy struct {
+	Color                  foundation.Opt[ui.Color]
+	LinearTrackColor       foundation.Opt[ui.Color]
+	LinearMinHeight        foundation.Opt[float64]
+	CircularTrackColor     foundation.Opt[ui.Color]
+	RefreshBackgroundColor foundation.Opt[ui.Color]
+	BorderRadius           foundation.Opt[painting.BorderRadiusGeometry]
+	StopIndicatorColor     foundation.Opt[ui.Color]
+	StopIndicatorRadius    foundation.Opt[float64]
+	StrokeWidth            foundation.Opt[float64]
+	StrokeAlign            foundation.Opt[float64]
+	StrokeCap              foundation.Opt[ui.StrokeCap]
+	Constraints            foundation.Opt[rendering.BoxConstraints]
+	TrackGap               foundation.Opt[float64]
+	CircularTrackPadding   foundation.Opt[painting.EdgeInsetsGeometry]
+	Year2023               foundation.Opt[bool]
+	Controller             foundation.Opt[*animation.AnimationController]
+}
+
+// CopyWith returns a copy of the ProgressIndicatorThemeData with the fields that the ProgressIndicatorThemeDataCopy sets replaced.
+//
+// Flutter: material/progress_indicator_theme.dart ProgressIndicatorThemeData.copyWith
+func (x ProgressIndicatorThemeData) CopyWith(c ProgressIndicatorThemeDataCopy) ProgressIndicatorThemeData {
+	r := x
+	if c.Color.IsSome() {
+		r.Color = c.Color
+	}
+	if c.LinearTrackColor.IsSome() {
+		r.LinearTrackColor = c.LinearTrackColor
+	}
+	if c.LinearMinHeight.IsSome() {
+		r.LinearMinHeight = c.LinearMinHeight
+	}
+	if c.CircularTrackColor.IsSome() {
+		r.CircularTrackColor = c.CircularTrackColor
+	}
+	if c.RefreshBackgroundColor.IsSome() {
+		r.RefreshBackgroundColor = c.RefreshBackgroundColor
+	}
+	if v, ok := c.BorderRadius.Get(); ok {
+		r.BorderRadius = v
+	}
+	if c.StopIndicatorColor.IsSome() {
+		r.StopIndicatorColor = c.StopIndicatorColor
+	}
+	if c.StopIndicatorRadius.IsSome() {
+		r.StopIndicatorRadius = c.StopIndicatorRadius
+	}
+	if c.StrokeWidth.IsSome() {
+		r.StrokeWidth = c.StrokeWidth
+	}
+	if c.StrokeAlign.IsSome() {
+		r.StrokeAlign = c.StrokeAlign
+	}
+	if c.StrokeCap.IsSome() {
+		r.StrokeCap = c.StrokeCap
+	}
+	if c.Constraints.IsSome() {
+		r.Constraints = c.Constraints
+	}
+	if c.TrackGap.IsSome() {
+		r.TrackGap = c.TrackGap
+	}
+	if v, ok := c.CircularTrackPadding.Get(); ok {
+		r.CircularTrackPadding = v
+	}
+	if c.Year2023.IsSome() {
+		r.Year2023 = c.Year2023
+	}
+	if v, ok := c.Controller.Get(); ok {
+		r.Controller = v
+	}
+	return r
+}
+
 // RadioThemeDataCopy holds the replacements for RadioThemeData.CopyWith: a field that is None keeps the value of the
 // copied one.
 //
@@ -1688,6 +1881,65 @@ func (x RadioThemeData) CopyWith(c RadioThemeDataCopy) RadioThemeData {
 	}
 	if v, ok := c.InnerRadius.Get(); ok {
 		r.InnerRadius = v
+	}
+	return r
+}
+
+// ScrollbarThemeDataCopy holds the replacements for ScrollbarThemeData.CopyWith: a field that is None keeps the value of the
+// copied one.
+//
+// Flutter: material/scrollbar_theme.dart ScrollbarThemeData.copyWith
+type ScrollbarThemeDataCopy struct {
+	ThumbVisibility  foundation.Opt[widgets.WidgetStateProperty[foundation.Opt[bool]]]
+	Thickness        foundation.Opt[widgets.WidgetStateProperty[foundation.Opt[float64]]]
+	TrackVisibility  foundation.Opt[widgets.WidgetStateProperty[foundation.Opt[bool]]]
+	Interactive      foundation.Opt[bool]
+	Radius           foundation.Opt[ui.Radius]
+	ThumbColor       foundation.Opt[widgets.WidgetStateProperty[foundation.Opt[ui.Color]]]
+	TrackColor       foundation.Opt[widgets.WidgetStateProperty[foundation.Opt[ui.Color]]]
+	TrackBorderColor foundation.Opt[widgets.WidgetStateProperty[foundation.Opt[ui.Color]]]
+	CrossAxisMargin  foundation.Opt[float64]
+	MainAxisMargin   foundation.Opt[float64]
+	MinThumbLength   foundation.Opt[float64]
+}
+
+// CopyWith returns a copy of the ScrollbarThemeData with the fields that the ScrollbarThemeDataCopy sets replaced.
+//
+// Flutter: material/scrollbar_theme.dart ScrollbarThemeData.copyWith
+func (x ScrollbarThemeData) CopyWith(c ScrollbarThemeDataCopy) ScrollbarThemeData {
+	r := x
+	if v, ok := c.ThumbVisibility.Get(); ok {
+		r.ThumbVisibility = v
+	}
+	if v, ok := c.Thickness.Get(); ok {
+		r.Thickness = v
+	}
+	if v, ok := c.TrackVisibility.Get(); ok {
+		r.TrackVisibility = v
+	}
+	if c.Interactive.IsSome() {
+		r.Interactive = c.Interactive
+	}
+	if c.Radius.IsSome() {
+		r.Radius = c.Radius
+	}
+	if v, ok := c.ThumbColor.Get(); ok {
+		r.ThumbColor = v
+	}
+	if v, ok := c.TrackColor.Get(); ok {
+		r.TrackColor = v
+	}
+	if v, ok := c.TrackBorderColor.Get(); ok {
+		r.TrackBorderColor = v
+	}
+	if c.CrossAxisMargin.IsSome() {
+		r.CrossAxisMargin = c.CrossAxisMargin
+	}
+	if c.MainAxisMargin.IsSome() {
+		r.MainAxisMargin = c.MainAxisMargin
+	}
+	if c.MinThumbLength.IsSome() {
+		r.MinThumbLength = c.MinThumbLength
 	}
 	return r
 }

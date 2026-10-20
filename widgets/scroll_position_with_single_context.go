@@ -157,12 +157,15 @@ func (p *ScrollPositionWithSingleContext) GoIdle() { p.BeginActivity(NewIdleScro
 // GoBallistic starts a ballistic activity with the simulation of the physics, or
 // an idle one if there is none.
 //
+// Deviation: the physics receive the outermost position (self), so that physics
+// of a custom position type can recognise it; Dart passes `this`, which is virtual.
+//
 // Flutter: widgets/scroll_position_with_single_context.dart ScrollPositionWithSingleContext.goBallistic
 func (p *ScrollPositionWithSingleContext) GoBallistic(velocity float64) {
 	if foundation.DebugMode && !p.HasPixels() {
 		panic(scrollNoPixelsError())
 	}
-	simulation := p.physics.CreateBallisticSimulation(p, velocity)
+	simulation := p.physics.CreateBallisticSimulation(p.self, velocity)
 	if !isNil(simulation) {
 		p.BeginActivity(NewBallisticScrollActivity(p, simulation, p.context.Vsync(), p.self.ShouldIgnorePointer(), p.post))
 	} else {

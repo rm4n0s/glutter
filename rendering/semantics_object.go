@@ -790,6 +790,18 @@ func (s *renderObjectSemantics) buildSemantics(usedIDs map[int]struct{}) {
 
 func (s *renderObjectSemantics) buildSemanticsSubtree(usedIDs map[int]struct{}) {
 	var children []*semantics.SemanticsNode
+	// Deviation: a child that the flush of the pipeline did not reach has no
+	// geometry yet (a new object under a boundary that was not marked); it gets
+	// it from this object before it is built, which is what ensureGeometry does
+	// for the children that are dirty.
+	if s.geometry != nil {
+		for _, child := range s.children {
+			if !child.parentDataDirty() && child.geometryDirty() {
+				s.updateChildGeometry(true)
+				break
+			}
+		}
+	}
 	for _, child := range s.children {
 		if child.parentDataDirty() {
 			continue

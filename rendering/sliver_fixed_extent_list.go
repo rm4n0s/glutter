@@ -14,6 +14,24 @@ type fixedExtentHooks interface {
 	ItemExtentBuilder() ItemExtentBuilder
 }
 
+// FixedExtentLayoutOverrides is implemented by a sliver that replaces the methods
+// that map scroll offsets to indices and back in RenderSliverFixedExtentBoxAdaptor
+// (the carousel does). Go has no virtual dispatch between the embedded base and
+// the outer type, so the base asks the outer type, under these names, before it
+// uses its own code.
+//
+// Flutter: rendering/sliver_fixed_extent_list.dart RenderSliverFixedExtentBoxAdaptor
+type FixedExtentLayoutOverrides interface {
+	// OverrideIndexToLayoutOffset replaces IndexToLayoutOffset.
+	OverrideIndexToLayoutOffset(index int) float64
+	// OverrideMinChildIndexForScrollOffset replaces GetMinChildIndexForScrollOffset.
+	OverrideMinChildIndexForScrollOffset(scrollOffset float64) int
+	// OverrideMaxChildIndexForScrollOffset replaces GetMaxChildIndexForScrollOffset.
+	OverrideMaxChildIndexForScrollOffset(scrollOffset float64) int
+	// OverrideComputeMaxScrollOffset replaces ComputeMaxScrollOffset.
+	OverrideComputeMaxScrollOffset(constraints SliverConstraints) float64
+}
+
 // RenderSliverFixedExtentBoxAdaptor is the base of the slivers that place box
 // children of a known extent along the main axis: the extent is the same for all
 // (ItemExtent) or comes from a builder (ItemExtentBuilder). The concrete type
@@ -51,6 +69,9 @@ func (a *RenderSliverFixedExtentBoxAdaptor) fixedItemExtent() float64 {
 //
 // Flutter: rendering/sliver_fixed_extent_list.dart RenderSliverFixedExtentBoxAdaptor.indexToLayoutOffset
 func (a *RenderSliverFixedExtentBoxAdaptor) IndexToLayoutOffset(index int) float64 {
+	if o, ok := a.self.(FixedExtentLayoutOverrides); ok {
+		return o.OverrideIndexToLayoutOffset(index)
+	}
 	builder := a.hooks().ItemExtentBuilder()
 	if builder == nil {
 		return a.fixedItemExtent() * float64(index)
@@ -74,6 +95,9 @@ func (a *RenderSliverFixedExtentBoxAdaptor) IndexToLayoutOffset(index int) float
 //
 // Flutter: rendering/sliver_fixed_extent_list.dart RenderSliverFixedExtentBoxAdaptor.getMinChildIndexForScrollOffset
 func (a *RenderSliverFixedExtentBoxAdaptor) GetMinChildIndexForScrollOffset(scrollOffset float64) int {
+	if o, ok := a.self.(FixedExtentLayoutOverrides); ok {
+		return o.OverrideMinChildIndexForScrollOffset(scrollOffset)
+	}
 	builder := a.hooks().ItemExtentBuilder()
 	if builder != nil {
 		return a.getChildIndexForScrollOffset(scrollOffset, builder)
@@ -95,6 +119,9 @@ func (a *RenderSliverFixedExtentBoxAdaptor) GetMinChildIndexForScrollOffset(scro
 //
 // Flutter: rendering/sliver_fixed_extent_list.dart RenderSliverFixedExtentBoxAdaptor.getMaxChildIndexForScrollOffset
 func (a *RenderSliverFixedExtentBoxAdaptor) GetMaxChildIndexForScrollOffset(scrollOffset float64) int {
+	if o, ok := a.self.(FixedExtentLayoutOverrides); ok {
+		return o.OverrideMaxChildIndexForScrollOffset(scrollOffset)
+	}
 	builder := a.hooks().ItemExtentBuilder()
 	if builder != nil {
 		return a.getChildIndexForScrollOffset(scrollOffset, builder)
@@ -122,7 +149,10 @@ func (a *RenderSliverFixedExtentBoxAdaptor) EstimateMaxScrollOffset(constraints 
 // were laid out.
 //
 // Flutter: rendering/sliver_fixed_extent_list.dart RenderSliverFixedExtentBoxAdaptor.computeMaxScrollOffset
-func (a *RenderSliverFixedExtentBoxAdaptor) ComputeMaxScrollOffset(SliverConstraints) float64 {
+func (a *RenderSliverFixedExtentBoxAdaptor) ComputeMaxScrollOffset(constraints SliverConstraints) float64 {
+	if o, ok := a.self.(FixedExtentLayoutOverrides); ok {
+		return o.OverrideComputeMaxScrollOffset(constraints)
+	}
 	builder := a.hooks().ItemExtentBuilder()
 	if builder == nil {
 		return float64(a.childManager.ChildCount()) * a.fixedItemExtent()

@@ -8803,6 +8803,11 @@ type RawScrollbarOpts = widgets.RawScrollbarOpts
 // Flutter: widgets.dart RawScrollbarState
 type RawScrollbarState = widgets.RawScrollbarState
 
+// RawScrollbarSubclass is widgets.RawScrollbarSubclass.
+//
+// Flutter: widgets.dart RawScrollbarSubclass
+type RawScrollbarSubclass = widgets.RawScrollbarSubclass
+
 // RawTooltip is widgets.RawTooltip.
 //
 // Flutter: widgets.dart RawTooltip

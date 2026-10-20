@@ -320,6 +320,14 @@ type ThemeDataOpts struct {
 	// PageTransitionsTheme is the transitions of the pages that Material makes;
 	// the default is the one of NewPageTransitionsTheme.
 	PageTransitionsTheme *PageTransitionsTheme
+	// CarouselViewTheme is the theme of the CarouselView widgets.
+	CarouselViewTheme CarouselViewThemeData
+	// DataTableTheme is the theme of the DataTable widgets.
+	DataTableTheme DataTableThemeData
+	// ProgressIndicatorTheme is the theme of the ProgressIndicator widgets.
+	ProgressIndicatorTheme ProgressIndicatorThemeData
+	// ScrollbarTheme is the theme of the Scrollbar widgets.
+	ScrollbarTheme ScrollbarThemeData
 	// ListTileTheme is the theme of the ListTile-related widgets.
 	ListTileTheme ListTileThemeData
 	// ExpansionTileTheme is the theme of the ExpansionTile-related widgets.
@@ -487,6 +495,14 @@ type ThemeData struct {
 	Typography *Typography
 	// PageTransitionsTheme is the transitions of the pages that Material makes.
 	PageTransitionsTheme *PageTransitionsTheme
+	// CarouselViewTheme is the theme of the CarouselView widgets.
+	CarouselViewTheme CarouselViewThemeData
+	// DataTableTheme is the theme of the DataTable widgets.
+	DataTableTheme DataTableThemeData
+	// ProgressIndicatorTheme is the theme of the ProgressIndicator widgets.
+	ProgressIndicatorTheme ProgressIndicatorThemeData
+	// ScrollbarTheme is the theme of the Scrollbar widgets.
+	ScrollbarTheme ScrollbarThemeData
 	// ListTileTheme is the theme of the ListTile-related widgets.
 	ListTileTheme ListTileThemeData
 	// ExpansionTileTheme is the theme of the ExpansionTile-related widgets.
@@ -806,6 +822,10 @@ func NewThemeData(opts ...ThemeDataOpts) *ThemeData {
 		Typography:       typography,
 
 		PageTransitionsTheme:      pageTransitionsTheme,
+		CarouselViewTheme:         o.CarouselViewTheme,
+		DataTableTheme:            o.DataTableTheme,
+		ProgressIndicatorTheme:    o.ProgressIndicatorTheme,
+		ScrollbarTheme:            o.ScrollbarTheme,
 		ListTileTheme:             o.ListTileTheme,
 		ExpansionTileTheme:        o.ExpansionTileTheme,
 		BadgeTheme:                o.BadgeTheme,
@@ -890,6 +910,10 @@ type ThemeDataCopy struct {
 	TextTheme                 foundation.Opt[*TextTheme]
 	Typography                foundation.Opt[*Typography]
 	PageTransitionsTheme      foundation.Opt[*PageTransitionsTheme]
+	CarouselViewTheme         foundation.Opt[CarouselViewThemeData]
+	DataTableTheme            foundation.Opt[DataTableThemeData]
+	ProgressIndicatorTheme    foundation.Opt[ProgressIndicatorThemeData]
+	ScrollbarTheme            foundation.Opt[ScrollbarThemeData]
 	ListTileTheme             foundation.Opt[ListTileThemeData]
 	ExpansionTileTheme        foundation.Opt[ExpansionTileThemeData]
 	BadgeTheme                foundation.Opt[BadgeThemeData]
@@ -976,6 +1000,10 @@ func (d *ThemeData) CopyWith(c ThemeDataCopy) *ThemeData {
 	out.TextTheme = c.TextTheme.OrElse(d.TextTheme)
 	out.Typography = c.Typography.OrElse(d.Typography)
 	out.PageTransitionsTheme = c.PageTransitionsTheme.OrElse(d.PageTransitionsTheme)
+	out.CarouselViewTheme = c.CarouselViewTheme.OrElse(d.CarouselViewTheme)
+	out.DataTableTheme = c.DataTableTheme.OrElse(d.DataTableTheme)
+	out.ProgressIndicatorTheme = c.ProgressIndicatorTheme.OrElse(d.ProgressIndicatorTheme)
+	out.ScrollbarTheme = c.ScrollbarTheme.OrElse(d.ScrollbarTheme)
 	out.ListTileTheme = c.ListTileTheme.OrElse(d.ListTileTheme)
 	out.ExpansionTileTheme = c.ExpansionTileTheme.OrElse(d.ExpansionTileTheme)
 	out.BadgeTheme = c.BadgeTheme.OrElse(d.BadgeTheme)
@@ -1218,6 +1246,10 @@ func ThemeDataLerp(a, b *ThemeData, t float64) *ThemeData {
 		PrimaryTextTheme:          TextThemeLerp(a.PrimaryTextTheme, b.PrimaryTextTheme, t),
 		TextTheme:                 TextThemeLerp(a.TextTheme, b.TextTheme, t),
 		Typography:                TypographyLerp(a.Typography, b.Typography, t),
+		CarouselViewTheme:         CarouselViewThemeDataLerp(a.CarouselViewTheme, b.CarouselViewTheme, t),
+		DataTableTheme:            DataTableThemeDataLerp(a.DataTableTheme, b.DataTableTheme, t),
+		ProgressIndicatorTheme:    ProgressIndicatorThemeDataLerp(a.ProgressIndicatorTheme, b.ProgressIndicatorTheme, t),
+		ScrollbarTheme:            ScrollbarThemeDataLerp(a.ScrollbarTheme, b.ScrollbarTheme, t),
 		ListTileTheme:             ListTileThemeDataLerp(a.ListTileTheme, b.ListTileTheme, t),
 		ExpansionTileTheme:        ExpansionTileThemeDataLerp(a.ExpansionTileTheme, b.ExpansionTileTheme, t),
 		BadgeTheme:                BadgeThemeDataLerp(a.BadgeTheme, b.BadgeTheme, t),
@@ -1289,7 +1321,7 @@ func (d *ThemeData) Equal(other *ThemeData) bool {
 	if d.ApplyElevationOverlayColor != other.ApplyElevationOverlayColor || d.MaterialTapTargetSize != other.MaterialTapTargetSize ||
 		d.Platform != other.Platform || d.UseMaterial3 != other.UseMaterial3 || !foundation.ValuesEqual(d.SplashFactory, other.SplashFactory) || d.VisualDensity != other.VisualDensity ||
 		!d.ColorScheme.Equal(other.ColorScheme) || !d.IconTheme.Equal(other.IconTheme) || !d.PrimaryIconTheme.Equal(other.PrimaryIconTheme) ||
-		!d.PrimaryTextTheme.Equal(other.PrimaryTextTheme) || !d.TextTheme.Equal(other.TextTheme) || !d.Typography.Equal(other.Typography) || !d.PageTransitionsTheme.Equal(other.PageTransitionsTheme) || !d.AppBarTheme.Equal(other.AppBarTheme) || !d.BannerTheme.Equal(other.BannerTheme) || !d.BottomAppBarTheme.Equal(other.BottomAppBarTheme) || !d.SnackBarTheme.Equal(other.SnackBarTheme) || !d.DrawerTheme.Equal(other.DrawerTheme) || !d.BottomSheetTheme.Equal(other.BottomSheetTheme) || !d.NavigationBarTheme.Equal(other.NavigationBarTheme) || !d.NavigationRailTheme.Equal(other.NavigationRailTheme) || !d.NavigationDrawerTheme.Equal(other.NavigationDrawerTheme) || !d.TabBarTheme.Equal(other.TabBarTheme) || !d.TextButtonTheme.Equal(other.TextButtonTheme) || !d.ElevatedButtonTheme.Equal(other.ElevatedButtonTheme) || !d.FilledButtonTheme.Equal(other.FilledButtonTheme) || !d.OutlinedButtonTheme.Equal(other.OutlinedButtonTheme) || !d.IconButtonTheme.Equal(other.IconButtonTheme) || !d.FloatingActionButtonTheme.Equal(other.FloatingActionButtonTheme) || !d.SegmentedButtonTheme.Equal(other.SegmentedButtonTheme) || !d.ActionIconTheme.Equal(other.ActionIconTheme) || !d.MenuTheme.Equal(other.MenuTheme) || !d.MenuBarTheme.Equal(other.MenuBarTheme) || !d.MenuButtonTheme.Equal(other.MenuButtonTheme) || !d.PopupMenuTheme.Equal(other.PopupMenuTheme) || !d.InputDecorationTheme.Equal(other.InputDecorationTheme) || !d.TextSelectionTheme.Equal(other.TextSelectionTheme) || !d.DropdownMenuTheme.Equal(other.DropdownMenuTheme) || !d.CheckboxTheme.Equal(other.CheckboxTheme) || !d.RadioTheme.Equal(other.RadioTheme) || !d.SwitchTheme.Equal(other.SwitchTheme) || !d.SliderTheme.Equal(other.SliderTheme) || !d.ChipTheme.Equal(other.ChipTheme) || !d.SearchBarTheme.Equal(other.SearchBarTheme) || !d.SearchViewTheme.Equal(other.SearchViewTheme) || !d.DialogTheme.Equal(other.DialogTheme) || !d.DatePickerTheme.Equal(other.DatePickerTheme) || !d.TimePickerTheme.Equal(other.TimePickerTheme) || !d.CardTheme.Equal(other.CardTheme) || !d.DividerTheme.Equal(other.DividerTheme) || !d.TooltipTheme.Equal(other.TooltipTheme) || !d.BadgeTheme.Equal(other.BadgeTheme) || !d.ExpansionTileTheme.Equal(other.ExpansionTileTheme) || !d.ListTileTheme.Equal(other.ListTileTheme) {
+		!d.PrimaryTextTheme.Equal(other.PrimaryTextTheme) || !d.TextTheme.Equal(other.TextTheme) || !d.Typography.Equal(other.Typography) || !d.PageTransitionsTheme.Equal(other.PageTransitionsTheme) || !d.AppBarTheme.Equal(other.AppBarTheme) || !d.BannerTheme.Equal(other.BannerTheme) || !d.BottomAppBarTheme.Equal(other.BottomAppBarTheme) || !d.SnackBarTheme.Equal(other.SnackBarTheme) || !d.DrawerTheme.Equal(other.DrawerTheme) || !d.BottomSheetTheme.Equal(other.BottomSheetTheme) || !d.NavigationBarTheme.Equal(other.NavigationBarTheme) || !d.NavigationRailTheme.Equal(other.NavigationRailTheme) || !d.NavigationDrawerTheme.Equal(other.NavigationDrawerTheme) || !d.TabBarTheme.Equal(other.TabBarTheme) || !d.TextButtonTheme.Equal(other.TextButtonTheme) || !d.ElevatedButtonTheme.Equal(other.ElevatedButtonTheme) || !d.FilledButtonTheme.Equal(other.FilledButtonTheme) || !d.OutlinedButtonTheme.Equal(other.OutlinedButtonTheme) || !d.IconButtonTheme.Equal(other.IconButtonTheme) || !d.FloatingActionButtonTheme.Equal(other.FloatingActionButtonTheme) || !d.SegmentedButtonTheme.Equal(other.SegmentedButtonTheme) || !d.ActionIconTheme.Equal(other.ActionIconTheme) || !d.MenuTheme.Equal(other.MenuTheme) || !d.MenuBarTheme.Equal(other.MenuBarTheme) || !d.MenuButtonTheme.Equal(other.MenuButtonTheme) || !d.PopupMenuTheme.Equal(other.PopupMenuTheme) || !d.InputDecorationTheme.Equal(other.InputDecorationTheme) || !d.TextSelectionTheme.Equal(other.TextSelectionTheme) || !d.DropdownMenuTheme.Equal(other.DropdownMenuTheme) || !d.CheckboxTheme.Equal(other.CheckboxTheme) || !d.RadioTheme.Equal(other.RadioTheme) || !d.SwitchTheme.Equal(other.SwitchTheme) || !d.SliderTheme.Equal(other.SliderTheme) || !d.ChipTheme.Equal(other.ChipTheme) || !d.SearchBarTheme.Equal(other.SearchBarTheme) || !d.SearchViewTheme.Equal(other.SearchViewTheme) || !d.DialogTheme.Equal(other.DialogTheme) || !d.DatePickerTheme.Equal(other.DatePickerTheme) || !d.TimePickerTheme.Equal(other.TimePickerTheme) || !d.CardTheme.Equal(other.CardTheme) || !d.DividerTheme.Equal(other.DividerTheme) || !d.TooltipTheme.Equal(other.TooltipTheme) || !d.BadgeTheme.Equal(other.BadgeTheme) || !d.ExpansionTileTheme.Equal(other.ExpansionTileTheme) || !d.ListTileTheme.Equal(other.ListTileTheme) || !d.ScrollbarTheme.Equal(other.ScrollbarTheme) || !d.ProgressIndicatorTheme.Equal(other.ProgressIndicatorTheme) || !d.DataTableTheme.Equal(other.DataTableTheme) || !d.CarouselViewTheme.Equal(other.CarouselViewTheme) {
 		return false
 	}
 	for _, f := range themeColorFields {
@@ -1351,6 +1383,10 @@ func (d *ThemeData) DebugFillProperties(properties *foundation.DiagnosticPropert
 	properties.Add(foundation.NewDiagnosticsProperty("textTheme", d.TextTheme, dbg(def.TextTheme)))
 	properties.Add(foundation.NewDiagnosticsProperty("typography", d.Typography, dbg(def.Typography)))
 	properties.Add(foundation.NewDiagnosticsProperty("pageTransitionsTheme", d.PageTransitionsTheme, dbg(def.PageTransitionsTheme)))
+	properties.Add(foundation.NewDiagnosticsProperty("carouselViewTheme", d.CarouselViewTheme, dbg(def.CarouselViewTheme)))
+	properties.Add(foundation.NewDiagnosticsProperty("dataTableTheme", d.DataTableTheme, dbg(def.DataTableTheme)))
+	properties.Add(foundation.NewDiagnosticsProperty("progressIndicatorTheme", d.ProgressIndicatorTheme, dbg(def.ProgressIndicatorTheme)))
+	properties.Add(foundation.NewDiagnosticsProperty("scrollbarTheme", d.ScrollbarTheme, dbg(def.ScrollbarTheme)))
 	properties.Add(foundation.NewDiagnosticsProperty("listTileTheme", d.ListTileTheme, dbg(def.ListTileTheme)))
 	properties.Add(foundation.NewDiagnosticsProperty("expansionTileTheme", d.ExpansionTileTheme, dbg(def.ExpansionTileTheme)))
 	properties.Add(foundation.NewDiagnosticsProperty("badgeTheme", d.BadgeTheme, dbg(def.BadgeTheme)))

@@ -638,7 +638,7 @@ func TestMaterialAppScrollBehavior(t *testing.T) {
 			t.Error("a horizontal scrollable should have no scrollbar")
 		}
 		vertical := widgets.NewScrollableDetailsVertical(widgets.ScrollableDetailsOpts{Controller: controller})
-		if _, ok := behavior.BuildScrollbar(bc, child, vertical).(*widgets.RawScrollbar); !ok {
+		if _, ok := behavior.BuildScrollbar(bc, child, vertical).(*Scrollbar); !ok {
 			t.Errorf("a vertical scrollable should have a scrollbar, got %T", behavior.BuildScrollbar(bc, child, vertical))
 		}
 	})

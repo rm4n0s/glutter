@@ -30,6 +30,7 @@ var galleryPages = []Page{
 	{Slug: "search", Name: "Search", Icon: m.Icons.Search(), Build: buildSearchPage},
 	{Slug: "dialogs", Name: "Dialogs & pickers", Icon: m.Icons.Event(), Build: buildDialogsPage},
 	{Slug: "lists", Name: "Lists & cards", Icon: m.Icons.ViewList(), Build: buildListsPage},
+	{Slug: "data", Name: "Data & progress", Icon: m.Icons.TableChart(), Build: buildDataPage},
 }
 
 // columnWidth is the width of a section, for two of them side by side in the page.

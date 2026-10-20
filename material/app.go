@@ -495,8 +495,14 @@ func (b *MaterialScrollBehavior) BuildScrollbar(bc widgets.BuildContext, child w
 	if painting.AxisDirectionToAxis(details.Direction) == painting.AxisHorizontal {
 		return child
 	}
-	// TODO(step 13.10): a Material Scrollbar, which takes its colors from the theme.
-	return b.ScrollBehaviorBase.BuildScrollbar(bc, child, details)
+	switch b.GetPlatform(bc) {
+	case foundation.TargetPlatformLinux, foundation.TargetPlatformMacOS, foundation.TargetPlatformWindows:
+		if foundation.DebugMode && details.Controller == nil {
+			panic(errors.New("MaterialScrollbarControllerMissing", "a ScrollController is required to build a scrollbar for a Scrollable; the details of the scrollable must have a controller"))
+		}
+		return NewScrollbar(child, ScrollbarOpts{Controller: details.Controller})
+	}
+	return child
 }
 
 // String is the name of the type.

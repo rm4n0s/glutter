@@ -155,6 +155,17 @@ func NewTooltip(child widgets.Widget, opts ...TooltipOpts) *Tooltip {
 // Flutter: material/tooltip.dart Tooltip.dismissAllToolTips
 func TooltipDismissAll(bc widgets.BuildContext) bool { return widgets.RawTooltipDismissAll(bc) }
 
+// TooltipMessage is the message of the tooltip, which gluttertest.ByTooltip finds
+// it by; a tooltip with a rich message has the text of that message.
+//
+// Flutter: material/tooltip.dart Tooltip.message
+func (w *Tooltip) TooltipMessage() string {
+	if w.o.RichMessage != nil {
+		return painting.InlineSpanToPlainText(w.o.RichMessage)
+	}
+	return w.o.Message
+}
+
 // CreateState creates the state.
 //
 // Flutter: material/tooltip.dart Tooltip.createState
