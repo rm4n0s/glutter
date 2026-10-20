@@ -311,6 +311,12 @@ func (p *Platform) DropAnswers() []ui.DropActions {
 	return append([]ui.DropActions(nil), p.dropAnswers...)
 }
 
+// FakePortalHandlePrefix is what the handle of a fake window starts with; the view
+// ID follows.
+//
+// Flutter: no counterpart
+const FakePortalHandlePrefix = "fake:"
+
 // FakeActivationToken is the token that RequestActivationToken gives.
 //
 // Flutter: no counterpart

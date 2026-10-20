@@ -86,6 +86,18 @@ type Window interface {
 	KeepScreenOn(on bool) error
 }
 
+// PortalHandleProvider is implemented by a Window that can say how the portals of
+// xdg-desktop-portal name it as the parent of a dialog (SPEC §8.9): "wayland:<handle>"
+// from zxdg_exporter_v2, or "x11:<window id in hex>".
+//
+// Flutter: no counterpart
+type PortalHandleProvider interface {
+	// PortalHandle calls done on the UI thread with the handle of the window, or with
+	// an empty string when the window has none (a compositor without
+	// zxdg_exporter_v2).
+	PortalHandle(done func(handle string))
+}
+
 // ActivationTokenProvider is implemented by a Platform that can ask the desktop
 // for an activation token: a proof of a user action that lets another app, one
 // that this app launches, take the focus (Wayland's xdg_activation_v1). The

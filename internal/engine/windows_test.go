@@ -1,7 +1,9 @@
 package engine
 
 import (
+	"context"
 	"log/slog"
+	"strconv"
 	"testing"
 	"time"
 
@@ -544,5 +546,37 @@ func TestKeepScreenOnForAWindowThatDoesNotExist(t *testing.T) {
 	e.h.SetWindowContentType(99, ui.ContentTypeGame) // nothing to do, nothing to fail
 	if err := e.h.SetWindowIcon(99, ui.WindowIcon{Name: "x"}); err != nil {
 		t.Errorf("SetWindowIcon: %v", err)
+	}
+}
+
+func TestPortalHandlesAndActivationTokens(t *testing.T) {
+	e := newWindowsEngine(t)
+	v, err := e.d.CreateWindow(ui.WindowSpec{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var handle, token string
+	e.d.PortalParentHandle(v.ViewID(), func(h string) { handle = h })
+	e.d.ActivationToken(v.ViewID(), func(tk string) { token = tk })
+	// The fake platform answers on its thread: run what it posted.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- e.p.Run(ctx, platform.NopHandler{}) }()
+	e.p.Post(cancel)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if want := fake.FakePortalHandlePrefix + strconv.Itoa(int(v.ViewID())); handle != want {
+		t.Errorf("handle = %q, want %q", handle, want)
+	}
+	if token != fake.FakeActivationToken {
+		t.Errorf("token = %q", token)
+	}
+	// A view that does not exist has no handle.
+	handle = "x"
+	e.h.PortalParentHandle(99, func(h string) { handle = h })
+	if handle != "" {
+		t.Errorf("handle of a missing view = %q", handle)
 	}
 }

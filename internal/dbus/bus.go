@@ -97,7 +97,7 @@ func (c *sessionBus) Call(ctx context.Context, dest string, path godbus.ObjectPa
 	call := c.conn.Object(dest, path).CallWithContext(ctx, method, 0, args...)
 	if call.Err != nil {
 		return nil, errors.NewErr("DBusCallFailed", call.Err).
-			SetMetadata("dest", dest).SetMetadata("path", string(path)).SetMetadata("method", method)
+			SetMetadata("dest", dest, "path", string(path), "method", method)
 	}
 	return call.Body, nil
 }
@@ -121,7 +121,7 @@ func (c *sessionBus) Subscribe(ctx context.Context, match SignalMatch) (<-chan *
 	if err := c.conn.AddMatchSignalContext(ctx, opts...); err != nil {
 		c.conn.RemoveSignal(raw)
 		return nil, errors.NewErr("DBusSubscribeFailed", err).
-			SetMetadata("interface", match.Interface).SetMetadata("member", match.Member)
+			SetMetadata("interface", match.Interface, "member", match.Member)
 	}
 	out := make(chan *godbus.Signal, 16)
 	go c.forward(ctx, match, opts, raw, out)

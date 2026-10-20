@@ -425,3 +425,27 @@ func TestIconContentTypeScreenAndActivation(t *testing.T) {
 		t.Errorf("log kinds = %v, want %v", kinds, want)
 	}
 }
+
+func TestPortalHandle(t *testing.T) {
+	p := New()
+	win, err := p.NewWindow(platform.DefaultWindowConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got string
+	win.(platform.PortalHandleProvider).PortalHandle(func(h string) { got = h })
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- p.Run(ctx, platform.NopHandler{}) }()
+	p.Post(cancel)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if got != FakePortalHandlePrefix+"0" {
+		t.Errorf("handle = %q", got)
+	}
+	if last := p.Log()[len(p.Log())-1]; last.Kind != EntryPortalHandle {
+		t.Errorf("last entry = %v", last.Kind)
+	}
+}

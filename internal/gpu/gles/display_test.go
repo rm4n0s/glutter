@@ -4,6 +4,7 @@ package gles_test
 
 import (
 	"context"
+	"runtime"
 	"testing"
 	"time"
 
@@ -93,7 +94,11 @@ func TestDisplayClearsTheWindowToPurple(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	runErr := make(chan error, 1)
-	go func() { runErr <- p.Run(ctx, &drawHandler{win: win, done: done}) }()
+	go func() {
+		runtime.LockOSThread() // an OpenGL context belongs to the thread that made it current
+		defer runtime.UnlockOSThread()
+		runErr <- p.Run(ctx, &drawHandler{win: win, done: done})
+	}()
 
 	var res result
 	select {

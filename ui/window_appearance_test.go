@@ -124,3 +124,30 @@ func TestWindowAppearanceWithAHostThatCannot(t *testing.T) {
 		t.Errorf("tag = %s, want IdleInhibitUnavailable", got)
 	}
 }
+
+type portalHost struct {
+	fakeHost
+}
+
+func (portalHost) PortalParentHandle(v ViewID, done func(string)) {
+	done("host:" + string(rune('0'+v)))
+}
+func (portalHost) ActivationToken(_ ViewID, done func(string)) { done("tok") }
+
+func TestPortalThroughTheDispatcher(t *testing.T) {
+	var handle, token string
+	d := NewPlatformDispatcher(&portalHost{})
+	d.PortalParentHandle(3, func(h string) { handle = h })
+	d.ActivationToken(3, func(tk string) { token = tk })
+	if handle != "host:3" || token != "tok" {
+		t.Errorf("handle %q, token %q", handle, token)
+	}
+	// A host without portals gives nothing, at once.
+	handle, token = "x", "y"
+	d = NewPlatformDispatcher(&fakeHost{})
+	d.PortalParentHandle(3, func(h string) { handle = h })
+	d.ActivationToken(3, func(tk string) { token = tk })
+	if handle != "" || token != "" {
+		t.Errorf("handle %q, token %q, want none", handle, token)
+	}
+}

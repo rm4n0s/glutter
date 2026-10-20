@@ -9,6 +9,7 @@ package renderhost
 
 import (
 	"context"
+	"strconv"
 	"sync"
 	"time"
 
@@ -69,6 +70,12 @@ type Host struct {
 	Icons        map[ui.ViewID]ui.WindowIcon
 	ContentTypes map[ui.ViewID]ui.ContentType
 	ScreenOn     map[ui.ViewID]bool
+	// ParentHandle is the handle of a view for the portals; the default is
+	// "test:" and the view ID. ActivationTokenValue is the activation token; the
+	// default is "test-token". Both are called on the thread that runs the posted
+	// functions.
+	ParentHandle         func(view ui.ViewID) string
+	ActivationTokenValue string
 	// KeepScreenOnErr is returned by KeepScreenOn, to test a platform that cannot
 	// keep the screen on.
 	KeepScreenOnErr error
@@ -286,6 +293,29 @@ func (h *Host) KeepScreenOn(view ui.ViewID, on bool) error {
 	}
 	h.ScreenOn[view] = on
 	return nil
+}
+
+// PortalParentHandle answers with the handle of the view, posted.
+func (h *Host) PortalParentHandle(view ui.ViewID, done func(handle string)) {
+	h.mu.Lock()
+	f := h.ParentHandle
+	h.mu.Unlock()
+	handle := "test:" + strconv.Itoa(int(view))
+	if f != nil {
+		handle = f(view)
+	}
+	h.Post(func() { done(handle) })
+}
+
+// ActivationToken answers with the token, posted.
+func (h *Host) ActivationToken(_ ui.ViewID, done func(token string)) {
+	h.mu.Lock()
+	token := h.ActivationTokenValue
+	h.mu.Unlock()
+	if token == "" {
+		token = "test-token"
+	}
+	h.Post(func() { done(token) })
 }
 
 // PerformWindowAction keeps the action.

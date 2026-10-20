@@ -9,6 +9,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -73,7 +74,11 @@ func onDisplay(t *testing.T, fn func(h gpu.SurfaceHandle, w, hgt int) error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	runErr := make(chan error, 1)
-	go func() { runErr <- p.Run(ctx, &frameHandler{win: win, fn: fn, done: done}) }()
+	go func() {
+		runtime.LockOSThread() // an OpenGL context belongs to the thread that made it current
+		defer runtime.UnlockOSThread()
+		runErr <- p.Run(ctx, &frameHandler{win: win, fn: fn, done: done})
+	}()
 	var res error
 	select {
 	case res = <-done:

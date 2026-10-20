@@ -378,3 +378,17 @@ func TestKeepScreenOnIsUnavailableOnX11(t *testing.T) {
 	}
 	w.SetContentType(ui.ContentTypeGame)
 }
+
+func TestPortalHandleIsTheWindowIDInHex(t *testing.T) {
+	var got string
+	w := window{xid: 0x1a00003}
+	w.PortalHandle(func(h string) { got = h })
+	if got != "x11:1a00003" {
+		t.Errorf("handle = %q", got)
+	}
+	w.closed = true
+	w.PortalHandle(func(h string) { got = h })
+	if got != "" {
+		t.Errorf("handle of a closed window = %q", got)
+	}
+}

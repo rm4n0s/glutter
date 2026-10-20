@@ -82,6 +82,10 @@ const (
 	//
 	// Flutter: no counterpart
 	EntryKeepScreenOn EntryKind = "KeepScreenOn"
+	// EntryPortalHandle records Window.PortalHandle; Value is nil.
+	//
+	// Flutter: no counterpart
+	EntryPortalHandle EntryKind = "PortalHandle"
 	// EntryActivationToken records Platform.RequestActivationToken; Value is the
 	// ui.ViewID.
 	//

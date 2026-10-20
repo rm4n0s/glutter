@@ -414,6 +414,11 @@ How the backends do it: the first `Platform.Settings()` call (the engine makes i
 
 Calls into these services happen on a background goroutine with a `context.Context`. Results and signals are delivered to the UI thread through `Post`.
 
+How the calls of package `desktop` work (step 15.1; the same for the file dialogs, the notifications and the tray):
+- A call that waits for the desktop (`OpenURI`, `OpenFiles`, ...) takes `ctx` and a `BuildContext` and **must not be made on the UI thread**: it fails with `DesktopCallOnUIThread` there. It posts one function to the UI thread, which reads the `View` above the context and asks the platform for what a portal needs: the *parent window handle* (`PlatformDispatcher.PortalParentHandle`: `wayland:<handle>` from `zxdg_exporter_v2.export_toplevel`, exported once per window and kept until it closes, or `x11:<window id in hex>`; empty when the compositor cannot export) and an *activation token* (`ActivationToken`, Wayland's `xdg_activation_v1`) for the app that is started. Everything else happens on the calling goroutine. A context without a `WidgetsBinding` fails with `DesktopWithoutBinding`; a context that ends while the UI thread has not answered with `DesktopCallCancelled`.
+- The state of the services (the connection to the session bus, made on the first call and kept) lives in the `WidgetsBinding` (`Extension`), not in a package variable.
+- `OpenURI` calls `org.freedesktop.portal.OpenURI.OpenURI(parent_window, uri, {handle_token, activation_token})` through `dbus.PortalRequest` and waits for the `Response`: success and the user's cancel are both `nil`. When the portal cannot do it (no bus, no portal, a failed call, a response that says it ended badly) it runs `xdg-open <uri>` with `XDG_ACTIVATION_TOKEN` in its environment, and when that fails too the error is `OpenURIUnavailable` (metadata `uri`, `portalTag`, `portal`). A URI without a scheme, or with a control character, fails with `OpenURIInvalid` before anything is called.
+
 Desktop API sketch (Version 2 style):
 
 ```go

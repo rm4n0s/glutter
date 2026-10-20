@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"os"
 	"os/exec"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -194,7 +195,14 @@ func startDisplayWith(t *testing.T, cfg platform.WindowConfig, before func(*Plat
 	e := &x11Env{t: t, p: p, win: win, h: &displayHandler{allowClose: true}, done: make(chan error, 1)}
 	ctx, cancel := context.WithTimeout(context.Background(), displayTimeout)
 	e.cancel = cancel
-	go func() { e.done <- p.Run(ctx, e.h) }()
+	go func() {
+		// An OpenGL context belongs to the OS thread that made it current, so the
+		// goroutine that runs the loop stays on one thread, as the main goroutine does
+		// in an app (SPEC §8.4).
+		runtime.LockOSThread()
+		defer runtime.UnlockOSThread()
+		e.done <- p.Run(ctx, e.h)
+	}()
 	t.Cleanup(func() {
 		cancel()
 		select {

@@ -4,6 +4,7 @@ import (
 	"github.com/rm4n0s/glutter/internal/platform"
 	"github.com/rm4n0s/glutter/internal/platform/linux/dl"
 	"github.com/rm4n0s/glutter/ui"
+	"strconv"
 )
 
 // iconicState is the value of WM_STATE for a window that is iconified (ICCCM 4.1.3.1).
@@ -209,4 +210,18 @@ func (w *window) sendRootMessage(typ uint64, data ...int64) {
 	copy(ev.data[:], data)
 	p.x.sendEvent(p.display, p.root, 0, substructureNotifyMask|substructureRedirMask, mem)
 	p.x.flush(p.display)
+}
+
+var _ platform.PortalHandleProvider = (*window)(nil)
+
+// PortalHandle gives done "x11:" and the window ID in hex, which a portal takes as
+// the parent of its dialog. It is called at once.
+//
+// Flutter: no counterpart
+func (w *window) PortalHandle(done func(handle string)) {
+	if w.closed {
+		done("")
+		return
+	}
+	done("x11:" + strconv.FormatUint(w.xid, 16))
 }

@@ -78,7 +78,7 @@ Use `github.com/rm4n0s/errors` for all errors. Never use `fmt.Errorf`, and never
   - Tag: short PascalCase name of the failure, e.g. `WaylandConnectFailed`
   - Trailing arguments are key/value metadata pairs, e.g. `"display", name`
 - New failure with a formatted message: `errors.NewErrf("Tag", "format %s", arg)`
-- Wrapping an error that is NOT already an `*errors.Error` (stdlib, C library error codes, third-party): `errors.NewErr("Tag", err)`. Add metadata by chaining `.SetMetadata("key", value)`
+- Wrapping an error that is NOT already an `*errors.Error` (stdlib, C library error codes, third-party): `errors.NewErr("Tag", err)`. Add metadata with one `.SetMetadata("key", value, "key2", value2)` call (a second call replaces the metadata of the first)
 - Every `New`, `NewErr` and `NewErrf` call captures the stack at that point
 
 **Propagating errors**

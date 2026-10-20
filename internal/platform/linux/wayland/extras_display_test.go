@@ -4,6 +4,7 @@ package wayland
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -44,6 +45,7 @@ func TestDisplayOptionalProtocolsOfTheCompositor(t *testing.T) {
 
 	var keepErr, iconErr error
 	tokens := make(chan string, 1)
+	handles := make(chan string, 1)
 	finished := make(chan struct{})
 	p.Post(func() {
 		w := p.windows[0]
@@ -51,6 +53,7 @@ func TestDisplayOptionalProtocolsOfTheCompositor(t *testing.T) {
 		w.SetContentType(ui.ContentTypeGame)
 		iconErr = w.SetIcon(ui.WindowIcon{Name: "text-editor", Images: []ui.WindowIconImage{{Size: 16, Scale: 1, RGBA: px}}})
 		p.RequestActivationToken(w.id, func(token string) { tokens <- token })
+		w.PortalHandle(func(handle string) { handles <- handle })
 		close(finished)
 	})
 	<-finished
@@ -68,6 +71,15 @@ func TestDisplayOptionalProtocolsOfTheCompositor(t *testing.T) {
 		t.Logf("activation token: %d bytes", len(token))
 	case <-time.After(10 * time.Second):
 		t.Fatal("the activation token request was never answered")
+	}
+	select {
+	case handle := <-handles:
+		if has("zxdg_exporter_v2") != strings.HasPrefix(handle, "wayland:") {
+			t.Errorf("the portal handle is %q with zxdg_exporter_v2 offered = %v", handle, has("zxdg_exporter_v2"))
+		}
+		t.Logf("portal handle: %q", handle)
+	case <-time.After(10 * time.Second):
+		t.Fatal("the portal handle was never answered")
 	}
 	if t.Failed() {
 		return

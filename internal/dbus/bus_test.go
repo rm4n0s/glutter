@@ -3,6 +3,7 @@ package dbus_test
 import (
 	"bufio"
 	"context"
+	"github.com/rm4n0s/errors"
 	"io"
 	"net"
 	"os"
@@ -242,6 +243,13 @@ func TestRealBusCallErrors(t *testing.T) {
 	bus := dbus.NewBus(dial(t, addr))
 	_, err := bus.Call(context.Background(), "org.example.Missing", "/", "org.example.Missing.Method")
 	assertRoute(t, err, "sessionBus.Call.DBusCallFailed")
+	// Every key of the metadata is there (SetMetadata takes all the pairs in one call).
+	appErr, _ := errors.FromError(err)
+	for key, want := range map[string]any{"dest": "org.example.Missing", "path": "/", "method": "org.example.Missing.Method"} {
+		if appErr.Metadata[key] != want {
+			t.Errorf("metadata[%s] = %v, want %v", key, appErr.Metadata[key], want)
+		}
+	}
 }
 
 func TestRealBusUniqueName(t *testing.T) {

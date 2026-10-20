@@ -443,7 +443,7 @@ func (s *localizationsState) load(locale ui.Locale) {
 		}
 		v, err := d.Load(context.Background(), locale)
 		if err != nil {
-			panic(errors.NewErr("LocalizationsLoadFailed", err).SetMetadata("delegate", t.String()).SetMetadata("locale", locale.String()))
+			panic(errors.NewErr("LocalizationsLoadFailed", err).SetMetadata("delegate", t.String(), "locale", locale.String()))
 		}
 		loaded[t] = v
 	}

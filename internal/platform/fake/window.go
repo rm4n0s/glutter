@@ -1,6 +1,8 @@
 package fake
 
 import (
+	"strconv"
+
 	"github.com/rm4n0s/glutter/internal/gpu"
 	"github.com/rm4n0s/glutter/internal/platform"
 	"github.com/rm4n0s/glutter/ui"
@@ -256,4 +258,15 @@ func (w *Window) Closed() bool {
 	w.p.mu.Lock()
 	defer w.p.mu.Unlock()
 	return w.closed
+}
+
+var _ platform.PortalHandleProvider = (*Window)(nil)
+
+// PortalHandle records the request and answers with "fake:" and the view ID, on
+// the platform's thread.
+//
+// Flutter: no counterpart
+func (w *Window) PortalHandle(done func(handle string)) {
+	w.set(EntryPortalHandle, nil, func() {})
+	w.p.Post(func() { done(FakePortalHandlePrefix + strconv.Itoa(int(w.id))) })
 }

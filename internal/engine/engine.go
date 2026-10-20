@@ -379,6 +379,32 @@ func (h *handler) SetWindowContentType(view ui.ViewID, contentType ui.ContentTyp
 	}
 }
 
+// PortalParentHandle asks the window of the view how the portals name it
+// (ui.PortalHost); done gets an empty handle when the window or the platform has
+// none.
+func (h *handler) PortalParentHandle(view ui.ViewID, done func(handle string)) {
+	w, ok := h.windows[view]
+	if !ok {
+		done("")
+		return
+	}
+	if p, ok := w.Window.(platform.PortalHandleProvider); ok {
+		p.PortalHandle(done)
+		return
+	}
+	done("")
+}
+
+// ActivationToken asks the platform for an activation token for the window of the
+// view (ui.PortalHost); done gets an empty token when the platform has none.
+func (h *handler) ActivationToken(view ui.ViewID, done func(token string)) {
+	if p, ok := h.conn.(platform.ActivationTokenProvider); ok {
+		p.RequestActivationToken(view, done)
+		return
+	}
+	done("")
+}
+
 // KeepScreenOn stops the screen from going idle while the window of the view is
 // visible (ui.IdleInhibitHost).
 func (h *handler) KeepScreenOn(view ui.ViewID, on bool) error {

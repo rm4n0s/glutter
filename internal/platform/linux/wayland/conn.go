@@ -110,6 +110,9 @@ type session struct {
 	idleInhibit *wl.ZwpIdleInhibitManagerV1
 	// contentType is nil without wp_content_type_manager_v1.
 	contentType *wl.WpContentTypeManagerV1
+	// exporter is nil without zxdg_exporter_v2: the portals then get no parent window
+	// handle for a dialog (SPEC §8.9).
+	exporter *wl.ZxdgExporterV2
 	// iconManager is nil without xdg_toplevel_icon_manager_v1; the window icon then
 	// comes only from the .desktop file.
 	iconManager *wl.XdgToplevelIconManagerV1
@@ -254,6 +257,9 @@ func (s *session) recordOptional() {
 	}
 	if g, ok := s.optionalPresent[wl.WpContentTypeManagerV1Interface.Name]; ok {
 		s.contentType = wl.BindWpContentTypeManagerV1(s.registry, g.Name, bindVersion(g, 1))
+	}
+	if g, ok := s.optionalPresent[wl.ZxdgExporterV2Interface.Name]; ok {
+		s.exporter = wl.BindZxdgExporterV2(s.registry, g.Name, bindVersion(g, 1))
 	}
 	if g, ok := s.optionalPresent[wl.XdgToplevelIconManagerV1Interface.Name]; ok {
 		s.iconManager = wl.BindXdgToplevelIconManagerV1(s.registry, g.Name, bindVersion(g, 1))

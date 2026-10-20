@@ -19,6 +19,7 @@ var (
 	contentTypeGlobal = fakecomp.Global{Name: 32, Interface: "wp_content_type_manager_v1", Version: 1}
 	iconGlobal        = fakecomp.Global{Name: 33, Interface: "xdg_toplevel_icon_manager_v1", Version: 1}
 	tabletGlobal      = fakecomp.Global{Name: 34, Interface: "zwp_tablet_manager_v2", Version: 2}
+	exporterGlobal    = fakecomp.Global{Name: 35, Interface: "zxdg_exporter_v2", Version: 1}
 )
 
 // with is a fake compositor that offers the extra globals.
@@ -479,5 +480,54 @@ func TestPointerPositionsAreInPhysicalPixels(t *testing.T) {
 	}
 	if len(touch) < 2 || touch[0].PhysicalX != 10 || touch[0].PhysicalY != 12 {
 		t.Errorf("touch at scale 2 = %+v", touch)
+	}
+}
+
+func TestPortalHandleIsExportedOnceAndKept(t *testing.T) {
+	e := startWindows(t, with(exporterGlobal), config640())
+	e.waitMapped()
+	handles := make(chan string, 4)
+	e.onLoop(func() {
+		w := e.p.windows[0]
+		// Two callers before the handle arrives get the same export.
+		w.PortalHandle(func(h string) { handles <- h })
+		w.PortalHandle(func(h string) { handles <- h })
+	})
+	for range 2 {
+		select {
+		case h := <-handles:
+			if h != "wayland:fake-handle-1" {
+				t.Errorf("handle = %q", h)
+			}
+		case <-time.After(testTimeout):
+			t.Fatal("the handle never arrived")
+		}
+	}
+	// A later caller gets the kept handle without another export.
+	e.onLoop(func() { e.p.windows[0].PortalHandle(func(h string) { handles <- h }) })
+	if h := <-handles; h != "wayland:fake-handle-1" {
+		t.Errorf("kept handle = %q", h)
+	}
+	if n := len(e.srv.RequestsWith("zxdg_exporter_v2.export_toplevel surface=true")); n != 1 {
+		t.Errorf("%d exports, want 1", n)
+	}
+	// The export goes away with the window.
+	e.onLoop(func() { e.p.windows[0].Close() })
+	waitUntil(t, func() bool { return len(e.srv.RequestsWith("zxdg_exported_v2.destroy")) == 1 }, "the export outlived its window")
+	if err := e.stop(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestPortalHandleWithoutTheExporter(t *testing.T) {
+	e := startWindows(t, fakecomp.Config{}, config640())
+	e.waitMapped()
+	got, called := "x", false
+	e.onLoop(func() { e.p.windows[0].PortalHandle(func(h string) { got, called = h, true }) })
+	if !called || got != "" {
+		t.Errorf("handle = %q (called %v), want an empty handle at once", got, called)
+	}
+	if err := e.stop(); err != nil {
+		t.Fatal(err)
 	}
 }

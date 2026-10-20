@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/rm4n0s/errors"
@@ -177,6 +178,11 @@ type WidgetsBinding struct {
 	debug        *DebugOptions
 	report       foundation.ErrorReporter
 	thread       *foundation.UIThread
+
+	// extensions are the per-binding services that other packages keep here
+	// (Extension), guarded by extMu.
+	extMu      sync.Mutex
+	extensions map[any]any
 
 	observers   []WidgetsBindingObserver
 	windowing   *WindowingOwner
@@ -452,6 +458,27 @@ func (b *WidgetsBinding) UIThread() *foundation.UIThread { return b.thread }
 //
 // Flutter: no counterpart
 func (b *WidgetsBinding) Post(fn func()) { b.d.Post(fn) }
+
+// Extension returns the value that the package of the key keeps in the binding,
+// made by create on the first call: the way a package outside widgets (desktop) has
+// state of its own for each app without a package-level variable. It is safe to call
+// from any goroutine; the key is any comparable value, usually a private struct type
+// of the calling package.
+//
+// Flutter: no counterpart
+func (b *WidgetsBinding) Extension(key any, create func() any) any {
+	b.extMu.Lock()
+	defer b.extMu.Unlock()
+	if v, ok := b.extensions[key]; ok {
+		return v
+	}
+	if b.extensions == nil {
+		b.extensions = map[any]any{}
+	}
+	v := create()
+	b.extensions[key] = v
+	return v
+}
 
 // RootElement is the root of the widget tree, or nil before AttachRootWidget.
 //

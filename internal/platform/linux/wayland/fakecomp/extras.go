@@ -32,8 +32,9 @@ const (
 
 // extras is the state of the protocols of step 14.7.
 type extras struct {
-	tokens int    // the activation tokens given so far
-	tablet uint32 // the zwp_tablet_v2 object, 0 until the first tool
+	tokens  int    // the activation tokens given so far
+	exports int    // the toplevels exported so far
+	tablet  uint32 // the zwp_tablet_v2 object, 0 until the first tool
 }
 
 // bindExtras sends what a compositor sends when a client binds a global of step
@@ -112,6 +113,19 @@ func (s *Server) handleExtras(iface string, op uint16, id uint32, r *reader) boo
 		size := s.win.bufferSize[buffer]
 		s.mu.Unlock()
 		s.record("xdg_toplevel_icon_v1.add_buffer %dx%d scale=%d", size[0], size[1], scale)
+	case "zxdg_exporter_v2.0":
+		s.record("zxdg_exporter_v2.destroy")
+	case "zxdg_exporter_v2.1": // export_toplevel(id, surface)
+		exported, surface := r.u32(), r.u32()
+		s.addObject(exported, "zxdg_exported_v2")
+		s.mu.Lock()
+		s.extras.exports++
+		handle := fmt.Sprintf("fake-handle-%d", s.extras.exports)
+		s.mu.Unlock()
+		s.record("zxdg_exporter_v2.export_toplevel surface=%v", surface == s.WindowSurface())
+		s.Send(exported, 0, handle) // handle(handle)
+	case "zxdg_exported_v2.0":
+		s.record("zxdg_exported_v2.destroy")
 	case "zwp_tablet_manager_v2.0": // get_tablet_seat(tablet_seat, seat)
 		seat := r.u32()
 		s.addObject(seat, "zwp_tablet_seat_v2")

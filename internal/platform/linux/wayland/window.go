@@ -146,9 +146,15 @@ type window struct {
 	// inhibitor is the idle inhibitor of KeepScreenOn, nil when the screen may go
 	// idle. contentType is the wp_content_type_v1 of the surface, made on the first
 	// hint. iconBuffers are the pictures of the icon the compositor was given.
-	inhibitor   *wl.ZwpIdleInhibitorV1
-	contentType *wl.WpContentTypeV1
-	iconBuffers []*shmBuffer
+	// exported is the zxdg_exported_v2 of the window, once a portal asked for its
+	// handle; exportHandle is the handle ("wayland:..."), exportWaiting the callers that
+	// wait for it.
+	exported      *wl.ZxdgExportedV2
+	exportHandle  string
+	exportWaiting []func(handle string)
+	inhibitor     *wl.ZwpIdleInhibitorV1
+	contentType   *wl.WpContentTypeV1
+	iconBuffers   []*shmBuffer
 
 	// cursor is the cursor over the window, set with SetCursor.
 	cursor platform.MouseCursor
@@ -856,6 +862,14 @@ func (w *window) destroy() {
 	if w.inhibitor != nil {
 		w.inhibitor.Destroy()
 		w.inhibitor = nil
+	}
+	if w.exported != nil {
+		w.exported.Destroy()
+		w.exported = nil
+		for _, f := range w.exportWaiting {
+			f("")
+		}
+		w.exportWaiting = nil
 	}
 	if w.contentType != nil {
 		w.contentType.Destroy()

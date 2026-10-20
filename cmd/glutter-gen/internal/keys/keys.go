@@ -124,8 +124,7 @@ func loadData(dir string, withSynonyms bool) (*data, error) {
 		raw, err := os.ReadFile(path)
 		if err != nil {
 			return nil, errors.NewErr("KeysDataMissing", err).
-				SetMetadata("file", path).
-				SetMetadata("hint", "run scripts/fetch-reference.sh")
+				SetMetadata("file", path, "hint", "run scripts/fetch-reference.sh")
 		}
 		if err := json.Unmarshal(raw, f.into); err != nil {
 			return nil, errors.NewErr("KeysDataInvalid", err).SetMetadata("file", path)

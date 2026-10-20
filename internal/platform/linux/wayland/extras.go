@@ -213,3 +213,38 @@ func premultiplyBGRA(dst, rgba []byte) {
 		dst[i], dst[i+1], dst[i+2], dst[i+3] = byte((b*a+127)/255), byte((g*a+127)/255), byte((r*a+127)/255), byte(a)
 	}
 }
+
+var _ platform.PortalHandleProvider = (*window)(nil)
+
+// PortalHandle exports the window with zxdg_exporter_v2 and gives done the handle,
+// "wayland:" and the compositor's string, which a portal takes as the parent of its
+// dialog. The export is made once and kept until the window is destroyed; done is
+// called on the UI thread, with an empty string when the compositor has no exporter
+// or the window is closed. A window that libdecor decorates is exported through its
+// surface like any other.
+//
+// Flutter: no counterpart
+func (w *window) PortalHandle(done func(handle string)) {
+	exporter := w.p.sess.exporter
+	if exporter == nil || w.closed {
+		done("")
+		return
+	}
+	if w.exportHandle != "" {
+		done(w.exportHandle)
+		return
+	}
+	w.exportWaiting = append(w.exportWaiting, done)
+	if w.exported != nil {
+		return // the handle is on its way
+	}
+	w.exported = exporter.ExportToplevel(w.surface)
+	w.exported.SetEvents(&wl.ZxdgExportedV2Events{OnHandle: func(handle string) {
+		w.exportHandle = "wayland:" + handle
+		waiting := w.exportWaiting
+		w.exportWaiting = nil
+		for _, f := range waiting {
+			f(w.exportHandle)
+		}
+	}})
+}
