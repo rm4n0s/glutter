@@ -27,6 +27,8 @@ type services struct {
 	bus dbus.Bus
 	// notify is the state of the notifications (notifications.go).
 	notify notifyState
+	// tray is the state of the system tray (tray.go).
+	tray trayState
 
 	// open connects to the session bus; run starts a program and waits for it;
 	// flatpak says whether the app runs inside a Flatpak sandbox.

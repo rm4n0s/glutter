@@ -59,6 +59,21 @@ type Bus interface {
 	// the channel. The subscription exists when Subscribe returns, so a signal
 	// sent after that is not missed.
 	Subscribe(ctx context.Context, match SignalMatch) (<-chan *godbus.Signal, error)
+	// Export serves the exported methods of receiver as the methods of iface on
+	// path, with the rules of godbus (a method may return a *godbus.Error as its
+	// last value, and take a godbus.Sender as its first argument). Exporting the
+	// same path and interface again replaces the receiver.
+	Export(receiver any, path godbus.ObjectPath, iface string) error
+	// Unexport stops serving iface on path.
+	Unexport(path godbus.ObjectPath, iface string)
+	// EmitSignal sends the signal name (the full name, such as
+	// "org.kde.StatusNotifierItem.NewIcon") from path.
+	EmitSignal(path godbus.ObjectPath, name string, values ...any) error
+	// RequestName takes the well-known name for this connection, without waiting
+	// in the queue for it. It fails with DBusNameTaken when another connection owns it.
+	RequestName(name string) error
+	// ReleaseName gives the well-known name up.
+	ReleaseName(name string) error
 	// Close closes the connection.
 	Close() error
 }
@@ -100,6 +115,46 @@ func (c *sessionBus) Call(ctx context.Context, dest string, path godbus.ObjectPa
 			SetMetadata("dest", dest, "path", string(path), "method", method)
 	}
 	return call.Body, nil
+}
+
+func (c *sessionBus) Export(receiver any, path godbus.ObjectPath, iface string) error {
+	if err := c.conn.Export(receiver, path, iface); err != nil {
+		return errors.NewErr("DBusExportFailed", err).
+			SetMetadata("path", string(path), "interface", iface)
+	}
+	return nil
+}
+
+func (c *sessionBus) Unexport(path godbus.ObjectPath, iface string) {
+	// Exporting nil removes the interface; the only error is for a bad path or name,
+	// which Export already refused.
+	_ = c.conn.Export(nil, path, iface)
+}
+
+func (c *sessionBus) EmitSignal(path godbus.ObjectPath, name string, values ...any) error {
+	if err := c.conn.Emit(path, name, values...); err != nil {
+		return errors.NewErr("DBusEmitFailed", err).
+			SetMetadata("path", string(path), "signal", name)
+	}
+	return nil
+}
+
+func (c *sessionBus) RequestName(name string) error {
+	reply, err := c.conn.RequestName(name, godbus.NameFlagDoNotQueue)
+	if err != nil {
+		return errors.NewErr("DBusRequestNameFailed", err).SetMetadata("name", name)
+	}
+	if reply != godbus.RequestNameReplyPrimaryOwner {
+		return errors.New("DBusNameTaken", "another connection owns the name", "name", name)
+	}
+	return nil
+}
+
+func (c *sessionBus) ReleaseName(name string) error {
+	if _, err := c.conn.ReleaseName(name); err != nil {
+		return errors.NewErr("DBusReleaseNameFailed", err).SetMetadata("name", name)
+	}
+	return nil
 }
 
 func (c *sessionBus) Subscribe(ctx context.Context, match SignalMatch) (<-chan *godbus.Signal, error) {
