@@ -21,7 +21,7 @@ func TestDispatch(t *testing.T) {
 		{name: "wayland reaches the real subcommand", args: []string{"wayland", "-nope"}, wantTag: "WaylandBadFlags", wantRoute: "dispatch->Run.WaylandBadFlags"},
 		{name: "keys reaches the real subcommand", args: []string{"keys", "-nope"}, wantTag: "KeysBadFlags", wantRoute: "dispatch->Run.KeysBadFlags"},
 		{name: "reexport", args: []string{"reexport"}, wantTag: "NotImplemented", wantRoute: "dispatch->Run.NotImplemented", wantCmd: "reexport"},
-		{name: "copywith", args: []string{"copywith", "x.go"}, wantTag: "NotImplemented", wantRoute: "dispatch->Run.NotImplemented", wantCmd: "copywith"},
+		{name: "copywith reaches the real subcommand", args: []string{"copywith", "-nope"}, wantTag: "CopyWithBadFlags", wantRoute: "dispatch->Run.CopyWithBadFlags"},
 		{name: "icons", args: []string{"icons"}, wantTag: "NotImplemented", wantRoute: "dispatch->Run.NotImplemented", wantCmd: "icons"},
 	}
 	for _, tt := range tests {

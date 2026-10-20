@@ -1,15 +1,343 @@
-// Package copywith implements the `glutter-gen copywith` subcommand, which generates CopyWith methods for option structs.
+// Package copywith implements the `glutter-gen copywith` subcommand, which generates the CopyWith methods of the
+// immutable value classes (ThemeData, ColorScheme, TextTheme...), as SPEC §12.3 describes.
 //
 // Flutter: no counterpart.
 package copywith
 
-import "github.com/rm4n0s/errors"
+import (
+	"bytes"
+	"flag"
+	"fmt"
+	"go/ast"
+	"go/format"
+	"go/parser"
+	"go/printer"
+	"go/token"
+	"io"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"unicode"
+	"unicode/utf8"
 
-// Run executes the `glutter-gen copywith` subcommand with the arguments that follow
-// its name.
+	"github.com/rm4n0s/errors"
+)
+
+const (
+	// annotation is the comment that marks a struct; `//glutter:copywith value`
+	// makes the methods take and return the struct by value.
+	annotation    = "glutter:copywith"
+	defaultOut    = "copywith_gen.go"
+	foundationPkg = "github.com/rm4n0s/glutter/foundation"
+)
+
+// Run executes `glutter-gen copywith [-dir dir] [-out file]` with the arguments that follow the subcommand name. It
+// reads the Go files of the package in dir (the working directory by default), and for every struct whose doc
+// comment holds the line `//glutter:copywith` it writes, to the output file (copywith_gen.go in dir by default), a
+// struct XCopy whose fields are the fields of X as foundation.Opt, and a CopyWith(XCopy) method that returns a copy
+// of X with the fields that are set replaced. A field that already is a foundation.Opt keeps its type in XCopy and is
+// replaced when it is set. A field with the struct tag `copywith:"-"` is left out. The comment line
+// `Flutter: <file> <Name>` of the struct's doc comment becomes the Flutter reference of the generated code, with
+// `.copyWith` added.
 //
 // Flutter: no counterpart.
 func Run(args []string) error {
-	// TODO(step 12.2): generate the CopyWith methods.
-	return errors.New("NotImplemented", "glutter-gen copywith is not implemented yet", "command", "copywith", "args", args)
+	flags := flag.NewFlagSet("copywith", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	dir := flags.String("dir", ".", "directory of the Go package to read")
+	out := flags.String("out", "", "file to write (default: "+defaultOut+" in the directory)")
+	if err := flags.Parse(args); err != nil {
+		return errors.NewErr("CopyWithBadFlags", err).SetMetadata("args", args)
+	}
+	if *out == "" {
+		*out = filepath.Join(*dir, defaultOut)
+	}
+	code, err := Generate(*dir, filepath.Base(*out))
+	if err != nil {
+		return err
+	}
+	if old, err := os.ReadFile(*out); err == nil && bytes.Equal(old, code) {
+		return nil
+	}
+	if err := os.WriteFile(*out, code, 0o644); err != nil {
+		return errors.NewErr("CopyWithWriteFailed", err).SetMetadata("file", *out)
+	}
+	return nil
+}
+
+// field is a field of an annotated struct.
+type field struct {
+	name     string // the name in the struct
+	exported string // the name in the XCopy struct
+	typ      string // the source of the type
+	isOpt    bool   // the type is foundation.Opt[T]
+}
+
+// target is an annotated struct.
+type target struct {
+	name    string
+	byValue bool
+	flutter string
+	fields  []field
+}
+
+// Generate reads the Go package in dir and returns the source of the generated file. The file with the name skip
+// (the output) is not read.
+//
+// Flutter: no counterpart.
+func Generate(dir, skip string) ([]byte, error) {
+	fset := token.NewFileSet()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, errors.NewErr("CopyWithReadDirFailed", err).SetMetadata("dir", dir)
+	}
+	var pkgName string
+	var targets []target
+	imports := map[string]string{} // the local name to the path, over the files that hold targets
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") || name == skip {
+			continue
+		}
+		file, err := parser.ParseFile(fset, filepath.Join(dir, name), nil, parser.ParseComments)
+		if err != nil {
+			return nil, errors.NewErr("CopyWithParseFailed", err).SetMetadata("file", name)
+		}
+		if pkgName == "" {
+			pkgName = file.Name.Name
+		} else if pkgName != file.Name.Name {
+			return nil, errors.New("CopyWithPackagesMixed", "the directory holds more than one package", "dir", dir, "packages", []string{pkgName, file.Name.Name})
+		}
+		found, err := targetsOf(fset, file)
+		if err != nil {
+			return nil, err
+		}
+		if len(found) == 0 {
+			continue
+		}
+		targets = append(targets, found...)
+		for local, path := range importsOf(file) {
+			if old, ok := imports[local]; ok && old != path {
+				return nil, errors.New("CopyWithImportClash", "two files import different packages under one name", "name", local, "paths", []string{old, path})
+			}
+			imports[local] = path
+		}
+	}
+	if len(targets) == 0 {
+		return nil, errors.New("CopyWithNoTypes", "no struct is marked with //"+annotation, "dir", dir)
+	}
+	sort.Slice(targets, func(i, j int) bool { return targets[i].name < targets[j].name })
+
+	used := map[string]bool{"foundation": true}
+	for _, t := range targets {
+		for _, f := range t.fields {
+			for _, q := range qualifiers(f.typ) {
+				used[q] = true
+			}
+		}
+	}
+	var b bytes.Buffer
+	fmt.Fprintf(&b, "// Code generated by glutter-gen copywith; DO NOT EDIT.\n\npackage %s\n\nimport (\n", pkgName)
+	var lines []string
+	for local := range used {
+		path := imports[local]
+		if local == "foundation" {
+			path = foundationPkg
+		}
+		if path == "" {
+			return nil, errors.New("CopyWithUnknownImport", "a field type uses a package that no file imports", "name", local)
+		}
+		if pkgName == "foundation" && local == "foundation" {
+			continue
+		}
+		lines = append(lines, fmt.Sprintf("\t%s %q\n", local, path))
+	}
+	sort.Strings(lines)
+	for _, l := range lines {
+		b.WriteString(l)
+	}
+	b.WriteString(")\n")
+	prefix := "foundation."
+	if pkgName == "foundation" {
+		prefix = ""
+	}
+	for _, t := range targets {
+		writeTarget(&b, t, prefix)
+	}
+	src, err := format.Source(b.Bytes())
+	if err != nil {
+		return nil, errors.NewErr("CopyWithFormatFailed", err).SetMetadata("source", b.String())
+	}
+	return src, nil
+}
+
+// importsOf is the local names of the imports of the file.
+func importsOf(file *ast.File) map[string]string {
+	out := map[string]string{}
+	for _, imp := range file.Imports {
+		path := strings.Trim(imp.Path.Value, `"`)
+		name := path[strings.LastIndex(path, "/")+1:]
+		if imp.Name != nil {
+			name = imp.Name.Name
+		}
+		out[name] = path
+	}
+	return out
+}
+
+// targetsOf finds the annotated structs of the file.
+func targetsOf(fset *token.FileSet, file *ast.File) ([]target, error) {
+	var out []target
+	for _, decl := range file.Decls {
+		gen, ok := decl.(*ast.GenDecl)
+		if !ok || gen.Tok != token.TYPE {
+			continue
+		}
+		for _, spec := range gen.Specs {
+			ts := spec.(*ast.TypeSpec)
+			doc := ts.Doc
+			if doc == nil {
+				doc = gen.Doc
+			}
+			byValue, marked := annotationOf(doc)
+			if !marked {
+				continue
+			}
+			st, ok := ts.Type.(*ast.StructType)
+			if !ok {
+				return nil, errors.New("CopyWithNotAStruct", "only a struct can be marked with //"+annotation, "type", ts.Name.Name)
+			}
+			if ts.TypeParams != nil {
+				return nil, errors.New("CopyWithGeneric", "a generic struct cannot be marked with //"+annotation, "type", ts.Name.Name)
+			}
+			t := target{name: ts.Name.Name, byValue: byValue, flutter: flutterOf(doc)}
+			seen := map[string]string{}
+			for _, f := range st.Fields.List {
+				if len(f.Names) == 0 || skipped(f.Tag) {
+					continue // embedded or left out
+				}
+				var buf bytes.Buffer
+				if err := printer.Fprint(&buf, fset, f.Type); err != nil {
+					return nil, errors.NewErr("CopyWithPrintFailed", err).SetMetadata("type", ts.Name.Name)
+				}
+				for _, n := range f.Names {
+					if n.Name == "_" {
+						continue
+					}
+					exp := exportedName(n.Name)
+					if other, clash := seen[exp]; clash {
+						return nil, errors.New("CopyWithNameClash", "two fields have the same exported name", "type", ts.Name.Name, "fields", []string{other, n.Name})
+					}
+					seen[exp] = n.Name
+					t.fields = append(t.fields, field{name: n.Name, exported: exp, typ: buf.String(), isOpt: isOpt(f.Type)})
+				}
+			}
+			if len(t.fields) == 0 {
+				return nil, errors.New("CopyWithNoFields", "the struct has no field to copy", "type", ts.Name.Name)
+			}
+			out = append(out, t)
+		}
+	}
+	return out, nil
+}
+
+// annotationOf finds the annotation in a doc comment: `//glutter:copywith` or
+// `//glutter:copywith value`.
+func annotationOf(doc *ast.CommentGroup) (byValue, marked bool) {
+	if doc == nil {
+		return false, false
+	}
+	for _, c := range doc.List {
+		text := strings.TrimSpace(strings.TrimPrefix(c.Text, "//"))
+		if text == annotation {
+			return false, true
+		}
+		if text == annotation+" value" {
+			return true, true
+		}
+	}
+	return false, false
+}
+
+// flutterOf is the Flutter reference of the doc comment, or "".
+func flutterOf(doc *ast.CommentGroup) string {
+	if doc == nil {
+		return ""
+	}
+	for _, c := range doc.List {
+		text := strings.TrimSpace(strings.TrimPrefix(c.Text, "//"))
+		if ref, ok := strings.CutPrefix(text, "Flutter:"); ok {
+			ref = strings.TrimSpace(ref)
+			return ref
+		}
+	}
+	return ""
+}
+
+func skipped(tag *ast.BasicLit) bool {
+	return tag != nil && strings.Contains(tag.Value, `copywith:"-"`)
+}
+
+func exportedName(name string) string {
+	r, size := utf8.DecodeRuneInString(name)
+	return string(unicode.ToUpper(r)) + name[size:]
+}
+
+// isOpt reports whether the type is foundation.Opt[T].
+func isOpt(e ast.Expr) bool {
+	idx, ok := e.(*ast.IndexExpr)
+	if !ok {
+		return false
+	}
+	sel, ok := idx.X.(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+	pkg, ok := sel.X.(*ast.Ident)
+	return ok && pkg.Name == "foundation" && sel.Sel.Name == "Opt"
+}
+
+// qualifiers are the package names that a type written as source uses.
+func qualifiers(typ string) []string {
+	expr, err := parser.ParseExpr(typ)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	ast.Inspect(expr, func(n ast.Node) bool {
+		if sel, ok := n.(*ast.SelectorExpr); ok {
+			if id, ok := sel.X.(*ast.Ident); ok {
+				out = append(out, id.Name)
+			}
+		}
+		return true
+	})
+	return out
+}
+
+func writeTarget(b *bytes.Buffer, t target, foundation string) {
+	ref := "Flutter: no counterpart"
+	if t.flutter != "" {
+		ref = "Flutter: " + t.flutter + ".copyWith"
+	}
+	copyName := t.name + "Copy"
+	fmt.Fprintf(b, "\n// %s holds the replacements for %s.CopyWith: a field that is None keeps the value of the\n// copied one.\n//\n// %s\ntype %s struct {\n", copyName, t.name, ref, copyName)
+	for _, f := range t.fields {
+		typ := foundation + "Opt[" + f.typ + "]"
+		if f.isOpt {
+			typ = f.typ
+		}
+		fmt.Fprintf(b, "\t%s %s\n", f.exported, typ)
+	}
+	b.WriteString("}\n\n")
+	recv, ret, start, end := "*"+t.name, "*"+t.name, "r := *x", "return &r"
+	if t.byValue {
+		recv, ret, start, end = t.name, t.name, "r := x", "return r"
+	}
+	fmt.Fprintf(b, "// CopyWith returns a copy of the %s with the fields that the %s sets replaced.\n//\n// %s\nfunc (x %s) CopyWith(c %s) %s {\n\t%s\n", t.name, copyName, ref, recv, copyName, ret, start)
+	for _, f := range t.fields {
+		fmt.Fprintf(b, "\tif v, ok := c.%s.Get(); ok {\n\t\tr.%s = v\n\t}\n", f.exported, f.name)
+	}
+	fmt.Fprintf(b, "\t%s\n}\n", end)
 }
