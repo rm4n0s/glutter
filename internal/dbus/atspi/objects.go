@@ -116,8 +116,23 @@ func (b *Bridge) interfacesOf(ref NodeRef) []string {
 	}
 	n := b.model.Node(ref)
 	out := []string{ifaceAccessible, ifaceComponent}
-	if n != nil && len(b.actionsOf(n)) > 0 {
+	if n == nil {
+		return out
+	}
+	if len(b.actionsOf(n)) > 0 {
 		out = append(out, ifaceAction)
+	}
+	if hasText(n) {
+		out = append(out, ifaceText)
+	}
+	if hasEditableText(n) {
+		out = append(out, ifaceEditableText)
+	}
+	if _, ok := valueOf(n); ok {
+		out = append(out, ifaceValue)
+	}
+	if hasSelection(b.model, n) {
+		out = append(out, ifaceSelection)
 	}
 	return out
 }
@@ -558,6 +573,40 @@ func (p propertiesObject) values(iface string) (map[string]godbus.Variant, *godb
 			return nil, err
 		}
 		return map[string]godbus.Variant{"NActions": v(int32(len(b.actionsOf(n))))}, nil
+	case ifaceText:
+		n, err := o.node()
+		if err != nil {
+			return nil, err
+		}
+		caret, _ := caretOf(n)
+		return map[string]godbus.Variant{
+			"CharacterCount": v(int32(len([]rune(textOf(n))))), "CaretOffset": v(int32(caret)),
+		}, nil
+	case ifaceValue:
+		n, err := o.node()
+		if err != nil {
+			return nil, err
+		}
+		nv, ok := valueOf(n)
+		if !ok {
+			return map[string]godbus.Variant{}, nil
+		}
+		return map[string]godbus.Variant{
+			"MinimumValue": v(nv.min), "MaximumValue": v(nv.max), "MinimumIncrement": v(nv.step),
+			"CurrentValue": v(nv.current), "Text": v(n.Value),
+		}, nil
+	case ifaceSelection:
+		n, err := o.node()
+		if err != nil {
+			return nil, err
+		}
+		count := int32(0)
+		for _, c := range b.model.Children(n) {
+			if b.model.Node(c).Flags.IsSelected == ui.TristateIsTrue {
+				count++
+			}
+		}
+		return map[string]godbus.Variant{"NSelectedChildren": v(count)}, nil
 	}
 	return map[string]godbus.Variant{}, nil
 }
@@ -580,8 +629,13 @@ func (p propertiesObject) GetAll(iface string) (map[string]godbus.Variant, *godb
 	return p.values(iface)
 }
 
-// Set is Properties.Set: only the Id of the application can be set, by the registry.
+// Set is Properties.Set: the Id of the application can be set, by the registry, and the
+// current value of a slider, a spin button or a progress bar, which asks the framework to
+// increase or decrease it.
 func (p propertiesObject) Set(iface, name string, value godbus.Variant) *godbus.Error {
+	if iface == ifaceValue && name == "CurrentValue" {
+		return p.setValue(value)
+	}
 	if iface == ifaceApplication && name == "Id" && p.o.ref.IsApp() {
 		if id, ok := value.Value().(int32); ok {
 			p.o.b.mu.Lock()
@@ -592,4 +646,36 @@ func (p propertiesObject) Set(iface, name string, value godbus.Variant) *godbus.
 		return invalidArgs("Id is an int32")
 	}
 	return &godbus.Error{Name: "org.freedesktop.DBus.Error.PropertyReadOnly", Body: []any{name + " of " + iface + " is read-only"}}
+}
+
+// setValue asks the framework to take the value nearer to the one asked for: it can only
+// increase and decrease, a step at a time.
+func (p propertiesObject) setValue(value godbus.Variant) *godbus.Error {
+	want, ok := value.Value().(float64)
+	if !ok {
+		return invalidArgs("CurrentValue is a double")
+	}
+	b := p.o.b
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	n, err := p.o.node()
+	if err != nil {
+		return err
+	}
+	nv, ok := valueOf(n)
+	if !ok {
+		return invalidArgs("the object has no value")
+	}
+	act := ui.SemanticsActionIncrease
+	if want < nv.current {
+		act = ui.SemanticsActionDecrease
+	}
+	if want == nv.current {
+		return nil
+	}
+	if n.Actions&act == 0 {
+		return invalidArgs("the value cannot be changed that way")
+	}
+	b.perform(ui.SemanticsActionEvent{ViewID: n.View, NodeID: n.ID, Type: act})
+	return nil
 }

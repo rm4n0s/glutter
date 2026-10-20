@@ -71,7 +71,7 @@ type Bridge struct {
 	model        *Model
 	host         Host
 	a11y         dbus.Bus
-	exported     map[NodeRef]bool
+	exported     map[NodeRef]map[string]bool
 	registryRoot objRef
 	appID        int32
 
@@ -101,7 +101,7 @@ func New(opts Options) *Bridge {
 	if opts.Logger == nil {
 		opts.Logger = slog.Default()
 	}
-	return &Bridge{opts: opts, model: NewModel(), exported: map[NodeRef]bool{}}
+	return &Bridge{opts: opts, model: NewModel(), exported: map[NodeRef]map[string]bool{}}
 }
 
 func (b *Bridge) busName() string {
@@ -340,39 +340,69 @@ func (b *Bridge) disconnect() {
 	}
 }
 
-// exportedInterfaces are the interfaces that each node is exported under; Action is
-// there for every node, with no actions for most (GetInterfaces tells the truth).
-var exportedInterfaces = []string{ifaceAccessible, ifaceComponent, ifaceAction}
+// wantedExports are the interfaces that the object of the node is served under, with the
+// receivers. Action is there for every node, with no actions for most (GetInterfaces
+// tells the truth); Value has no methods, only the properties that Properties serves.
+func (b *Bridge) wantedExports(ref NodeRef) map[string]any {
+	o := &object{b: b, ref: ref}
+	if ref.IsApp() {
+		return map[string]any{ifaceAccessible: o, ifaceApplication: o, ifaceProperties: propertiesObject{o}}
+	}
+	want := map[string]any{ifaceAccessible: o, ifaceComponent: o, ifaceAction: o, ifaceProperties: propertiesObject{o}}
+	n := b.model.Node(ref)
+	if n == nil {
+		return want
+	}
+	if hasText(n) {
+		want[ifaceText] = textObject{o}
+	}
+	if hasEditableText(n) {
+		want[ifaceEditableText] = editableObject{o}
+	}
+	if hasSelection(b.model, n) {
+		want[ifaceSelection] = selectionObject{o}
+	}
+	return want
+}
 
-// exportLocked puts the object of the node (or of the application) on the bus.
+// exportLocked puts the object of the node (or of the application) on the bus, under the
+// interfaces that it has now: a text field that becomes read-only loses EditableText.
 func (b *Bridge) exportLocked(ref NodeRef) error {
-	if b.a11y == nil || b.exported[ref] {
+	if b.a11y == nil {
 		return nil
 	}
-	o := &object{b: b, ref: ref}
-	path := nodePath(ref)
-	ifaces := exportedInterfaces
-	if ref.IsApp() {
-		ifaces = []string{ifaceAccessible, ifaceApplication}
+	have := b.exported[ref]
+	if have == nil {
+		have = map[string]bool{}
+		b.exported[ref] = have
 	}
-	for _, iface := range ifaces {
-		if err := b.a11y.Export(o, path, iface); err != nil {
+	path := nodePath(ref)
+	want := b.wantedExports(ref)
+	for iface, recv := range want {
+		if have[iface] {
+			// The receiver only holds the bridge and the ref, so the exported one is current.
+			continue
+		}
+		if err := b.a11y.Export(recv, path, iface); err != nil {
 			return err
 		}
+		have[iface] = true
 	}
-	if err := b.a11y.Export(propertiesObject{o}, path, ifaceProperties); err != nil {
-		return err
+	for iface := range have {
+		if _, ok := want[iface]; !ok {
+			b.a11y.Unexport(path, iface)
+			delete(have, iface)
+		}
 	}
-	b.exported[ref] = true
 	return nil
 }
 
 func (b *Bridge) unexportLocked(ref NodeRef) {
-	if b.a11y == nil || !b.exported[ref] {
+	if b.a11y == nil {
 		return
 	}
 	path := nodePath(ref)
-	for _, iface := range append(append([]string{}, exportedInterfaces...), ifaceApplication, ifaceProperties) {
+	for iface := range b.exported[ref] {
 		b.a11y.Unexport(path, iface)
 	}
 	delete(b.exported, ref)
@@ -421,7 +451,7 @@ func (b *Bridge) dispatchLocked(changes []Change) {
 	}
 	for _, c := range changes {
 		switch c.Kind {
-		case ChangeNodeAdded:
+		case ChangeNodeAdded, ChangeNodeUpdated:
 			if err := b.exportLocked(c.Ref); err != nil {
 				b.opts.Logger.Debug("exporting an accessible object failed", "error", err)
 			}
@@ -439,6 +469,18 @@ func (b *Bridge) dispatchLocked(changes []Change) {
 			b.emitObject(c.Ref, "StateChanged", c.State.Name(), on, 0, godbus.MakeVariant(int32(0)))
 		case ChangeProperty:
 			b.emitObject(c.Ref, "PropertyChange", c.Property, 0, 0, godbus.MakeVariant(c.Value))
+		case ChangeText:
+			b.emitObject(c.Ref, "TextChanged", c.Property, int32(c.Index), int32(c.Length), godbus.MakeVariant(c.Value))
+		case ChangeCaret:
+			b.emitObject(c.Ref, "TextCaretMoved", "", int32(c.Index), 0, godbus.MakeVariant(int32(0)))
+		case ChangeTextSelection:
+			b.emitObject(c.Ref, "TextSelectionChanged", "", 0, 0, godbus.MakeVariant(int32(0)))
+		case ChangeValue:
+			b.emitObject(c.Ref, "PropertyChange", "accessible-value", 0, 0, godbus.MakeVariant(c.Number))
+		case ChangeVisibleData:
+			b.emitObject(c.Ref, "VisibleDataChanged", "", 0, 0, godbus.MakeVariant(int32(0)))
+		case ChangeSelection:
+			b.emitObject(c.Ref, "SelectionChanged", "", 0, 0, godbus.MakeVariant(int32(0)))
 		case ChangeWindow:
 			member := "Deactivate"
 			if c.On {

@@ -8,6 +8,7 @@ import (
 	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/gluttertest"
 	"github.com/rm4n0s/glutter/internal/dbus/atspi"
+	m "github.com/rm4n0s/glutter/material"
 	"github.com/rm4n0s/glutter/ui"
 	"github.com/rm4n0s/glutter/widgets"
 )
@@ -98,5 +99,97 @@ func TestBridgeWithTheRealFramework(t *testing.T) {
 	ts.Pump()
 	if taps != 1 {
 		t.Errorf("the button was tapped %d times, want 1", taps)
+	}
+}
+
+// TestBridgeWithARealTextField puts a Material text field through the bridge: the text
+// and the caret that the screen reader reads are the field's, and what it writes arrives as
+// the new text of the field.
+func TestBridgeWithARealTextField(t *testing.T) {
+	ts := gluttertest.New(t)
+	ts.EnsureSemantics()
+	controller := widgets.NewTextEditingController("héllo")
+	ts.PumpWidget(m.NewMaterialApp(m.MaterialAppOpts{Home: m.NewScaffold(m.ScaffoldOpts{
+		Body: m.NewTextField(m.TextFieldOpts{Controller: controller, Decoration: &m.InputDecoration{LabelText: foundation.Some("Name")}}),
+	})}))
+	ts.Pump()
+
+	r := newRig(t, true)
+	r.start()
+	r.waitOn()
+	r.bridge.SetWindow(0, "App", true)
+	feed := func() {
+		for _, u := range ts.SemanticsUpdates() {
+			r.bridge.UpdateSemantics(0, u)
+		}
+	}
+	feed()
+
+	var field godbus.ObjectPath
+	var find func(p godbus.ObjectPath)
+	find = func(p godbus.ObjectPath) {
+		if r.call(p, accessible, "GetRole")[0] == uint32(atspi.RoleEntry) && field == "" {
+			field = p
+		}
+		for _, kid := range toRefs(r.call(p, accessible, "GetChildren")[0]) {
+			find(kid.Path)
+		}
+	}
+	find(path(0, 0))
+	if field == "" {
+		t.Fatal("the text field is not in the tree")
+	}
+	if !r.a11y.Exported(field, textIface) || !r.a11y.Exported(field, editableIface) {
+		t.Fatal("the field does not have the Text and EditableText interfaces")
+	}
+	if got := r.call(field, textIface, "GetText", int32(0), int32(-1))[0]; got != "héllo" {
+		t.Errorf("the screen reader reads %q", got)
+	}
+	if got := r.prop(field, textIface, "CharacterCount"); got != int32(5) {
+		t.Errorf("CharacterCount = %v", got)
+	}
+
+	// The screen reader moves the focus to the field first: the field has the actions to
+	// set its text and its selection only while it is focused.
+	if got := r.call(field, editableIface, "SetTextContents", "too early")[0]; got != false {
+		t.Fatal("the text of a field that is not focused was set")
+	}
+	sent := 0
+	deliver := func() {
+		for ; sent < len(r.host.performed()); sent++ {
+			ts.Dispatcher().DispatchSemanticsActionEvent(r.host.performed()[sent])
+		}
+		ts.Pump()
+		r.bridge.UpdateSemantics(0, ts.SemanticsUpdates()[len(ts.SemanticsUpdates())-1])
+	}
+	if got := r.call(field, component, "GrabFocus")[0]; got != true {
+		t.Fatal("the field cannot take the focus")
+	}
+	deliver()
+	if got := r.call(field, accessible, "GetState")[0].([]uint32); got[0]&(1<<atspi.StateFocused) == 0 {
+		t.Fatal("the field is not focused after GrabFocus")
+	}
+
+	// Now the screen reader writes: the framework sets the text of the field.
+	if got := r.call(field, editableIface, "SetTextContents", "wörld")[0]; got != true {
+		t.Fatal("SetTextContents was refused")
+	}
+	before := len(r.a11y.Signals())
+	deliver()
+	if controller.Text() != "wörld" {
+		t.Errorf("the field has %q", controller.Text())
+	}
+	// The change comes back as an event.
+	changed := false
+	for _, s := range r.a11y.Signals()[before:] {
+		if s.Name == objectEvent+"TextChanged" && s.Path == field {
+			changed = true
+		}
+	}
+	if !changed {
+		t.Error("no text-changed event after the text changed")
+	}
+	if got := r.call(field, textIface, "GetText", int32(0), int32(-1))[0]; got != "wörld" {
+		t.Errorf("the screen reader reads %q after the change", got)
 	}
 }

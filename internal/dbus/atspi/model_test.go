@@ -22,8 +22,19 @@ func nu(id int, children []int, edit func(n *ui.SemanticsNodeUpdate)) ui.Semanti
 
 func kinds(changes []Change) []ChangeKind {
 	var out []ChangeKind
-	for _, c := range changes {
+	for _, c := range withoutUpdated(changes) {
 		out = append(out, c.Kind)
+	}
+	return out
+}
+
+// withoutUpdated leaves out the ChangeNodeUpdated of the changes, which every updated node has.
+func withoutUpdated(changes []Change) []Change {
+	var out []Change
+	for _, c := range changes {
+		if c.Kind != ChangeNodeUpdated {
+			out = append(out, c)
+		}
 	}
 	return out
 }
@@ -78,23 +89,24 @@ func TestModelApply(t *testing.T) {
 func TestModelStatesAndNames(t *testing.T) {
 	m := NewModel()
 	m.Apply(0, &ui.SemanticsUpdate{Nodes: []ui.SemanticsNodeUpdate{nu(0, []int{1}, nil), nu(1, nil, func(n *ui.SemanticsNodeUpdate) { n.Label = "a" })}})
-	changes := m.Apply(0, &ui.SemanticsUpdate{Nodes: []ui.SemanticsNodeUpdate{nu(1, nil, func(n *ui.SemanticsNodeUpdate) {
+	changes := withoutUpdated(m.Apply(0, &ui.SemanticsUpdate{Nodes: []ui.SemanticsNodeUpdate{nu(1, nil, func(n *ui.SemanticsNodeUpdate) {
 		n.Label, n.Hint = "b", "h"
 		n.Flags.IsSelected = ui.TristateIsTrue
-	})}})
+	})}}))
 	want := []Change{
 		{Kind: ChangeState, Ref: NodeRef{0, 1}, State: StateSelectable, On: true},
 		{Kind: ChangeState, Ref: NodeRef{0, 1}, State: StateSelected, On: true},
 		{Kind: ChangeProperty, Ref: NodeRef{0, 1}, Property: "accessible-name", Value: "b"},
 		{Kind: ChangeProperty, Ref: NodeRef{0, 1}, Property: "accessible-description", Value: "h"},
+		{Kind: ChangeSelection, Ref: NodeRef{0, 0}}, // the parent now has children that can be selected
 	}
 	if !reflect.DeepEqual(changes, want) {
 		t.Errorf("changes:\n got %+v\nwant %+v", changes, want)
 	}
-	if changes := m.Apply(0, &ui.SemanticsUpdate{Nodes: []ui.SemanticsNodeUpdate{nu(1, nil, func(n *ui.SemanticsNodeUpdate) {
+	if changes := withoutUpdated(m.Apply(0, &ui.SemanticsUpdate{Nodes: []ui.SemanticsNodeUpdate{nu(1, nil, func(n *ui.SemanticsNodeUpdate) {
 		n.Label, n.Hint = "b", "h"
 		n.Flags.IsSelected = ui.TristateIsTrue
-	})}}); len(changes) != 0 {
+	})}})); len(changes) != 0 {
 		t.Errorf("the same update changed %+v", changes)
 	}
 }

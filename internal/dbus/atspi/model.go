@@ -68,6 +68,22 @@ const (
 	ChangeProperty
 	// ChangeWindow: the window of View became active (On) or inactive.
 	ChangeWindow
+	// ChangeNodeUpdated: the node that exists was updated; its interfaces may have changed.
+	ChangeNodeUpdated
+	// ChangeText: Value was inserted (Property "insert") into the text of Ref at the
+	// character Index, or deleted (Property "delete") from there; Length is the number
+	// of characters.
+	ChangeText
+	// ChangeCaret: the caret of the text of Ref is now at the character Index.
+	ChangeCaret
+	// ChangeTextSelection: the selected part of the text of Ref changed.
+	ChangeTextSelection
+	// ChangeValue: the numeric value of Ref is now Number.
+	ChangeValue
+	// ChangeVisibleData: the position or the size of Ref changed.
+	ChangeVisibleData
+	// ChangeSelection: the selected children of Ref changed.
+	ChangeSelection
 )
 
 // Change is one change that Apply or the window setters made.
@@ -81,6 +97,8 @@ type Change struct {
 	On       bool
 	Property string
 	Value    string
+	Length   int
+	Number   float64
 }
 
 // appRef names the application root in a Change.
@@ -107,6 +125,13 @@ func (m *Model) Apply(view ui.ViewID, update *ui.SemanticsUpdate) []Change {
 		states   StateSet
 		label    string
 		hint     string
+		text     string
+		caret    int
+		base     int
+		value    float64
+		hasValue bool
+		extents  Extents
+		selected ui.Tristate
 		existed  bool
 	}
 	old := map[int]before{}
@@ -115,7 +140,13 @@ func (m *Model) Apply(view ui.ViewID, update *ui.SemanticsUpdate) []Change {
 			continue
 		}
 		if prev := vt.nodes[nu.ID]; prev != nil {
-			old[nu.ID] = before{slices.Clone(prev.ChildrenInTraversalOrder), statesOf(prev, nu.ID == rootID, vt.active), prev.Label, prev.Hint, true}
+			b := before{children: slices.Clone(prev.ChildrenInTraversalOrder), states: statesOf(prev, nu.ID == rootID, vt.active),
+				label: prev.Label, hint: prev.Hint, text: textOf(prev), extents: m.Extents(prev), selected: prev.Flags.IsSelected, existed: true}
+			b.caret, b.base = caretOf(prev)
+			if v, ok := valueOf(prev); ok {
+				b.value, b.hasValue = v.current, true
+			}
+			old[nu.ID] = b
 		} else {
 			old[nu.ID] = before{}
 		}
@@ -162,6 +193,7 @@ func (m *Model) Apply(view ui.ViewID, update *ui.SemanticsUpdate) []Change {
 		ids = append(ids, id)
 	}
 	sort.Ints(ids)
+	selectionChanged := map[int]bool{}
 	if vt.nodes[rootID] != nil && !hadRoot {
 		changes = append(changes, Change{Kind: ChangeChildAdded, Parent: appRef, Child: NodeRef{view, rootID}, Index: m.frameIndex(view)})
 	}
@@ -191,6 +223,17 @@ func (m *Model) Apply(view ui.ViewID, update *ui.SemanticsUpdate) []Change {
 		if n.Hint != b.hint {
 			changes = append(changes, Change{Kind: ChangeProperty, Ref: n.Ref(), Property: "accessible-description", Value: n.Hint})
 		}
+		changes = append(changes, m.contentChanges(n, b.text, b.caret, b.base, b.value, b.hasValue)...)
+		if e := m.Extents(n); e != b.extents {
+			changes = append(changes, Change{Kind: ChangeVisibleData, Ref: n.Ref()})
+		}
+		if n.Flags.IsSelected != b.selected && n.Parent >= 0 {
+			if parent := vt.nodes[n.Parent]; parent != nil && hasSelection(m, parent) && !selectionChanged[n.Parent] {
+				selectionChanged[n.Parent] = true
+				changes = append(changes, Change{Kind: ChangeNodeUpdated, Ref: parent.Ref()}, Change{Kind: ChangeSelection, Ref: parent.Ref()})
+			}
+		}
+		changes = append(changes, Change{Kind: ChangeNodeUpdated, Ref: n.Ref()})
 	}
 	for _, id := range removed {
 		if old[id].existed || vt.nodes[id] != nil {
@@ -199,6 +242,52 @@ func (m *Model) Apply(view ui.ViewID, update *ui.SemanticsUpdate) []Change {
 		delete(vt.nodes, id)
 	}
 	return changes
+}
+
+// contentChanges are the changes to the text, the caret and the value of a node that was
+// updated.
+func (m *Model) contentChanges(n *Node, oldText string, oldCaret, oldBase int, oldValue float64, hadValue bool) []Change {
+	var out []Change
+	if hasText(n) {
+		now := textOf(n)
+		if now != oldText {
+			start, deleted, inserted := textDiff([]rune(oldText), []rune(now))
+			if len(deleted) > 0 {
+				out = append(out, Change{Kind: ChangeText, Ref: n.Ref(), Property: "delete", Index: start, Length: len(deleted), Value: string(deleted)})
+			}
+			if len(inserted) > 0 {
+				out = append(out, Change{Kind: ChangeText, Ref: n.Ref(), Property: "insert", Index: start, Length: len(inserted), Value: string(inserted)})
+			}
+		}
+		caret, base := caretOf(n)
+		if caret != oldCaret && caret >= 0 {
+			out = append(out, Change{Kind: ChangeCaret, Ref: n.Ref(), Index: caret})
+		}
+		if caret != oldCaret || base != oldBase {
+			if (caret != base) || (oldCaret != oldBase) {
+				out = append(out, Change{Kind: ChangeTextSelection, Ref: n.Ref()})
+			}
+		}
+	}
+	if v, ok := valueOf(n); ok && (!hadValue || v.current != oldValue) {
+		out = append(out, Change{Kind: ChangeValue, Ref: n.Ref(), Number: v.current})
+	}
+	return out
+}
+
+// textDiff finds the part of the text that changed: the characters that were deleted
+// from the old text and those that were inserted in their place, from the character
+// start. What the two texts have at the start and at the end is left out.
+func textDiff(old, now []rune) (start int, deleted, inserted []rune) {
+	for start < len(old) && start < len(now) && old[start] == now[start] {
+		start++
+	}
+	endOld, endNow := len(old), len(now)
+	for endOld > start && endNow > start && old[endOld-1] == now[endNow-1] {
+		endOld--
+		endNow--
+	}
+	return start, old[start:endOld], now[start:endNow]
 }
 
 // childChanges is the difference between the children that a node had and has.
