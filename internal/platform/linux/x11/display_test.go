@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"os"
 	"os/exec"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -51,6 +52,10 @@ type displayHandler struct {
 	allowClose bool
 
 	settings []platform.Settings
+	// drops and dragEnds are the drag and drop events; answer is what OnDrop returns.
+	drops    []ui.DropEvent
+	dragEnds []ui.DragResult
+	answer   func(ui.DropEvent) ui.DropActions
 
 	// draw, when set, is called for each frame on the UI thread.
 	draw func()
@@ -72,6 +77,35 @@ func (h *displayHandler) settingsSeen() []platform.Settings {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return append([]platform.Settings(nil), h.settings...)
+}
+
+func (h *displayHandler) OnDrop(e ui.DropEvent) ui.DropActions {
+	h.mu.Lock()
+	h.drops = append(h.drops, e)
+	answer := h.answer
+	h.mu.Unlock()
+	if answer == nil {
+		return ui.DropActionNone
+	}
+	return answer(e)
+}
+
+func (h *displayHandler) OnDragEnd(r ui.DragResult) {
+	h.mu.Lock()
+	h.dragEnds = append(h.dragEnds, r)
+	h.mu.Unlock()
+}
+
+func (h *displayHandler) dropEvents() []ui.DropEvent {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return append([]ui.DropEvent(nil), h.drops...)
+}
+
+func (h *displayHandler) dragResults() []ui.DragResult {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return append([]ui.DragResult(nil), h.dragEnds...)
 }
 
 func (h *displayHandler) OnFrame(ui.ViewID, time.Duration) {
@@ -728,5 +762,148 @@ func TestDisplaySettingsFromXSettingsFollowTheDaemon(t *testing.T) {
 	e.onLoop(func() { theme = e.p.cursors.themeName })
 	if theme != "Bibata" {
 		t.Errorf("the cursors use the theme %q", theme)
+	}
+}
+
+// TestDisplayDragBetweenTwoWindows drags from one window to another of the same app
+// over the real XDND protocol: the messages, the selection and the reply of the
+// target all go through the X server. The pointer is played by calling what the
+// XInput2 events of the pointer call.
+func TestDisplayDragBetweenTwoWindows(t *testing.T) {
+	e := startDisplay(t, windowConfig())
+	e.waitMapped()
+	var second platform.Window
+	e.onLoop(func() {
+		w, err := e.p.NewWindow(windowConfig())
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		second = w
+	})
+	if second == nil {
+		return
+	}
+	waitFor(t, func() bool {
+		m, _, _, _, _ := e.h.snapshot()
+		for _, x := range m {
+			if x.PhysicalSize.Width > 0 && len(m) >= 2 {
+				return true
+			}
+		}
+		return false
+	}, "the second window was never mapped")
+	e.h.mu.Lock()
+	e.h.answer = func(ev ui.DropEvent) ui.DropActions {
+		if ev.ViewID == second.ID() {
+			return ui.DropActionCopy
+		}
+		return ui.DropActionNone
+	}
+	e.h.mu.Unlock()
+
+	req := ui.DragRequest{ID: 21, Text: "héllo", URIs: []string{"file:///tmp/a%20b", "file:///tmp/c"}, Actions: ui.DropActionCopy | ui.DropActionMove}
+	var source *xdndSource
+	e.onLoop(func() {
+		e.p.input.buttonsDown = 1 << 1
+		if err := e.win.StartDrag(req); err != nil {
+			t.Error(err)
+			return
+		}
+		source = e.p.xdnd.source
+		source.onMotion(100, 100) // over the second window, which is above the first
+	})
+	if source == nil {
+		return
+	}
+	waitFor(t, func() bool {
+		var accepted bool
+		e.onLoop(func() { accepted = source.accepted })
+		return accepted
+	}, "the target never accepted the drag")
+	events := e.h.dropEvents()
+	if len(events) == 0 || events[0].Phase != ui.DropPhaseEnter || events[0].ViewID != second.ID() ||
+		events[0].Position != (ui.Offset{Dx: 100, Dy: 100}) || events[0].LocalID != 21 || events[0].Actions == ui.DropActionNone {
+		t.Fatalf("enter = %+v", events)
+	}
+	for _, typ := range events[0].Types {
+		if strings.HasPrefix(typ, localMarkerPrefix) {
+			t.Errorf("the marker is among the types: %v", events[0].Types)
+		}
+	}
+	if !slices.Contains(events[0].Types, "text/uri-list") || !slices.Contains(events[0].Types, "text/plain;charset=utf-8") {
+		t.Errorf("types = %v", events[0].Types)
+	}
+
+	e.onLoop(func() { source.onMotion(120, 130) })
+	e.onLoop(func() { source.onRelease() })
+	waitFor(t, func() bool { return len(e.h.dragResults()) == 1 }, "the drag never ended")
+	if got := e.h.dragResults()[0]; got.ID != 21 || got.Action != ui.DropActionCopy {
+		t.Errorf("result = %+v", got)
+	}
+	events = e.h.dropEvents()
+	drop := events[len(events)-1]
+	if drop.Phase != ui.DropPhaseDrop || drop.Text != "héllo" || !slices.Equal(drop.URIs, req.URIs) {
+		t.Errorf("drop = %+v", drop)
+	}
+	if e.p.xErrors != 0 {
+		t.Errorf("the X server reported %d errors", e.p.xErrors)
+	}
+}
+
+// TestDisplayDragNobodyTakes drops where no window takes it, and leaves one the app
+// does not accept.
+func TestDisplayDragNobodyTakes(t *testing.T) {
+	e := startDisplay(t, windowConfig())
+	e.waitMapped()
+	var source *xdndSource
+	e.onLoop(func() {
+		e.p.input.buttonsDown = 1 << 1
+		if err := e.win.StartDrag(ui.DragRequest{ID: 3, Text: "x"}); err != nil {
+			t.Error(err)
+			return
+		}
+		source = e.p.xdnd.source
+		// Over the window, which refuses (the handler has no answer), then outside it.
+		source.onMotion(50, 50)
+	})
+	if source == nil {
+		return
+	}
+	waitFor(t, func() bool { return len(e.h.dropEvents()) >= 1 }, "the window never heard of the drag")
+	var err error
+	e.onLoop(func() { err = e.win.StartDrag(ui.DragRequest{ID: 4, Text: "y"}) })
+	if appErr, ok := errors.FromError(err); !ok || appErr.Tag != "DragInProgress" {
+		t.Errorf("a second drag: %v", err)
+	}
+	e.onLoop(func() { source.onMotion(1270, 790); source.onRelease() })
+	waitFor(t, func() bool { return len(e.h.dragResults()) == 1 }, "the drag never ended")
+	if got := e.h.dragResults()[0]; got.ID != 3 || got.Action != ui.DropActionNone {
+		t.Errorf("result = %+v", got)
+	}
+	waitFor(t, func() bool {
+		ev := e.h.dropEvents()
+		return ev[len(ev)-1].Phase == ui.DropPhaseLeave
+	}, "the window never heard the drag leave")
+	e.onLoop(func() { e.p.input.buttonsDown = 0 })
+	e.onLoop(func() { err = e.win.StartDrag(ui.DragRequest{ID: 5, Text: "z"}) })
+	if appErr, ok := errors.FromError(err); !ok || appErr.Tag != "DragNoButton" {
+		t.Errorf("a drag without a button: %v", err)
+	}
+}
+
+func TestDisplayDragFromAClosedWindowFails(t *testing.T) {
+	e := startDisplay(t, windowConfig())
+	e.waitMapped()
+	var err error
+	e.onLoop(func() {
+		w := e.win.(*window)
+		e.p.input.buttonsDown = 1 << 1
+		w.Close()
+		err = e.p.xdnd.startDrag(w, ui.DragRequest{ID: 1, Text: "x"})
+	})
+	appErr, ok := errors.FromError(err)
+	if !ok || appErr.Tag != "DragSelectionFailed" || !appErr.HasRoute("xdnd.startDrag.DragSelectionFailed") {
+		t.Errorf("err = %v", err)
 	}
 }

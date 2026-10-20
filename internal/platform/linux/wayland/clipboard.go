@@ -123,6 +123,11 @@ type offer struct {
 	mimes   []string
 	receive func(mime string, fd int)
 	destroy func()
+	// obj is the wl_data_offer; nil for the primary selection's. A drag over a window
+	// uses it to accept and finish.
+	obj *wl.WlDataOffer
+	// sourceActions are the actions the source of a drag allows.
+	sourceActions ui.DropActions
 }
 
 func (o *offer) offers(mime string) bool { return slices.Contains(o.mimes, mime) }
@@ -172,6 +177,13 @@ func (s *selection) onSelection(o *offer) {
 		s.current.destroy()
 	}
 	s.current = next
+}
+
+// take removes the offer from the pending ones: a drag claimed it.
+func (s *selection) take(o *offer) {
+	if i := slices.Index(s.pending, o); i >= 0 {
+		s.pending = slices.Delete(s.pending, i, i+1)
+	}
 }
 
 // dropPending destroys the offers of a drag that went over the window.
@@ -306,6 +318,8 @@ type clipboard struct {
 	system *selection
 	// primary is nil when the compositor has no primary selection manager.
 	primary *selection
+	// dnd is the drag and drop of the same device.
+	dnd *dnd
 
 	// dataOffers and primaryOffers find the offer of a Wayland object that a
 	// selection event names.
@@ -326,6 +340,7 @@ func newClipboard(p *Platform) *clipboard {
 	c.mgr = wl.BindWlDataDeviceManager(p.sess.registry, g.Name, c.version)
 	c.device = c.mgr.GetDataDevice(p.sess.seat)
 	c.system = &selection{c: c}
+	c.dnd = newDnd(c)
 	c.system.newSource = func(mimes []string, send func(string, int), cancelled func()) (func(uint32), func()) {
 		src := c.mgr.CreateDataSource()
 		for _, mime := range mimes {
@@ -348,13 +363,19 @@ func newClipboard(p *Platform) *clipboard {
 	}
 	c.device.SetEvents(&wl.WlDataDeviceEvents{
 		OnDataOffer: func(obj *wl.WlDataOffer) {
-			o := &offer{receive: obj.Receive, destroy: func() { delete(c.dataOffers, obj); obj.Destroy() }}
-			obj.SetEvents(&wl.WlDataOfferEvents{OnOffer: func(mime string) { o.mimes = append(o.mimes, mime) }})
+			o := &offer{receive: obj.Receive, destroy: func() { delete(c.dataOffers, obj); obj.Destroy() }, obj: obj}
+			obj.SetEvents(&wl.WlDataOfferEvents{
+				OnOffer:         func(mime string) { o.mimes = append(o.mimes, mime) },
+				OnSourceActions: func(a wl.WlDataDeviceManagerDndAction) { o.sourceActions = dropActionsOf(a) },
+			})
 			c.dataOffers[obj] = o
 			c.system.onOffer(o)
 		},
 		OnSelection: func(obj *wl.WlDataOffer) { c.system.onSelection(c.dataOffers[obj]) },
-		OnLeave:     c.system.dropPending,
+		OnEnter:     c.dnd.onEnter,
+		OnMotion:    c.dnd.onMotion,
+		OnLeave:     c.dnd.onLeave,
+		OnDrop:      c.dnd.onDrop,
 	})
 	if pg, ok := p.sess.optionalPresent[wl.ZwpPrimarySelectionDeviceManagerV1Interface.Name]; ok {
 		c.initPrimary(pg)
@@ -401,6 +422,7 @@ func (c *clipboard) initPrimary(g Global) {
 
 // close destroys the objects.
 func (c *clipboard) close() {
+	c.dnd.close()
 	c.system.close()
 	if c.primary != nil {
 		c.primary.close()

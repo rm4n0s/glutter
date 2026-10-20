@@ -660,3 +660,58 @@ func TestDisplayChangesReachTheDispatcherAndTheViews(t *testing.T) {
 	}
 	finish(t, h, done)
 }
+
+func TestDropEventsReachTheDispatcherAndTheAnswerGoesBack(t *testing.T) {
+	h, r := newDispatcherHarness(t)
+	h.cfg.Start = func(d *ui.PlatformDispatcher) error {
+		d.OnDrop = func(e ui.DropEvent) ui.DropActions {
+			r.add("drop " + itoa(int(e.Phase)) + " " + e.Text)
+			if e.Phase == ui.DropPhaseDrop {
+				return ui.DropActionMove
+			}
+			return ui.DropActionCopy
+		}
+		d.OnDragEnd = func(res ui.DragResult) { r.add("end " + itoa(int(res.ID)) + " " + itoa(int(res.Action))) }
+		return r.start(d)
+	}
+	h.c.Inject(fake.DropEvent{Event: ui.DropEvent{Phase: ui.DropPhaseEnter}})
+	h.c.Inject(fake.DropEvent{Event: ui.DropEvent{Phase: ui.DropPhaseDrop, Text: "x"}})
+	h.c.Inject(fake.DragEndEvent{Result: ui.DragResult{ID: 5, Action: ui.DropActionCopy}})
+	done := h.run(t)
+	waitFor(t, func() bool { return len(r.snapshot()) >= 3 })
+	finish(t, h, done)
+	want := []string{"drop 0 ", "drop 3 x", "end 5 1"}
+	if got := r.snapshot(); !reflect.DeepEqual(got, want) {
+		t.Errorf("callbacks = %v, want %v", got, want)
+	}
+	if got := h.c.DropAnswers(); !reflect.DeepEqual(got, []ui.DropActions{ui.DropActionCopy, ui.DropActionMove}) {
+		t.Errorf("answers = %v", got)
+	}
+}
+
+func TestStartDragReachesTheWindow(t *testing.T) {
+	h, r := newDispatcherHarness(t)
+	done := h.run(t)
+	var err error
+	waitFor(t, func() bool {
+		ok := false
+		onUI(t, h, func() { ok = r.dispatcher() != nil })
+		return ok
+	})
+	onUI(t, h, func() { err = r.dispatcher().StartDrag(0, ui.DragRequest{ID: 3, Text: "hi"}) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	onUI(t, h, func() { err = r.dispatcher().StartDrag(9, ui.DragRequest{ID: 4}) })
+	assertRoute(t, err, "ViewNotFound", "ViewNotFound")
+	finish(t, h, done)
+	var drags []ui.DragRequest
+	for _, e := range h.c.Log() {
+		if e.Kind == fake.EntryStartDrag {
+			drags = append(drags, e.Value.(ui.DragRequest))
+		}
+	}
+	if len(drags) != 1 || drags[0].ID != 3 || drags[0].Text != "hi" {
+		t.Errorf("drags = %+v", drags)
+	}
+}

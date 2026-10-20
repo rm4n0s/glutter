@@ -76,6 +76,10 @@ type Platform struct {
 	xftDPI      float64
 	rrEventBase int32
 
+	// xdnd is the drag and drop; atomCache has the atoms interned by name.
+	xdnd      *xdnd
+	atomCache map[string]uint64
+
 	input   *inputState // nil when XInput2 is not available
 	cursors *cursors
 	clip    *clipboard // nil when its window could not be created
@@ -135,6 +139,7 @@ func New(name string) (*Platform, error) {
 	p.findXSettings()
 	p.refreshMonitors()
 	p.cursors = newCursors(p)
+	p.xdnd = &xdnd{p: p}
 	registerErrorHandler(p)
 	p.input = newInputState(p)
 	p.clip = newClipboard(p)
@@ -205,6 +210,7 @@ func (p *Platform) Close() error {
 	for _, w := range p.windows {
 		w.Close()
 	}
+	p.xdnd.close()
 	p.settings.Stop()
 	if p.text != nil {
 		p.text.close()

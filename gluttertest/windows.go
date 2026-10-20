@@ -163,3 +163,39 @@ func (t *Tester) SetViewFocus(view ui.ViewID, focused bool, direction ...ui.View
 	}
 	t.d.DispatchViewFocus(event)
 }
+
+// Drop plays a drag and drop operation of another application (or of the
+// platform) over a view, and returns the action the framework accepts: the way the
+// platform delivers the enter, move, leave and drop events. The position is in
+// logical pixels of the view; the event has it in physical pixels.
+//
+// Flutter: no counterpart
+func (t *Tester) Drop(view ui.ViewID, phase ui.DropPhase, at ui.Offset, event ui.DropEvent) ui.DropActions {
+	t.tb.Helper()
+	event.ViewID, event.Phase = view, phase
+	dpr := 1.0
+	if v := t.d.View(view); v != nil {
+		dpr = v.DevicePixelRatio()
+	}
+	event.Position = at.Mul(dpr)
+	return t.d.DispatchDrop(event)
+}
+
+// Drags are the drag and drop operations the app started, in order.
+//
+// Flutter: no counterpart
+func (t *Tester) Drags() []ui.DragRequest {
+	t.host.Lock()
+	defer t.host.Unlock()
+	return append([]ui.DragRequest(nil), t.host.Drags...)
+}
+
+// FailDrags makes the fake platform refuse to start drags with err, as a platform
+// that cannot.
+//
+// Flutter: no counterpart
+func (t *Tester) FailDrags(err error) {
+	t.host.Lock()
+	defer t.host.Unlock()
+	t.host.DragErr = err
+}

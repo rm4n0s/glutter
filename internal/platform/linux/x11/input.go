@@ -82,6 +82,8 @@ type inputState struct {
 	// pointerWindow is the window the pointer is in.
 	pointerWindow *window
 	lastX, lastY  float64
+	// buttonsDown has a bit for each pointer button that is down (by its number).
+	buttonsDown uint32
 	// scroll holds the axes that scroll, by device and valuator number; devices
 	// is the devices that have any, whose button 4 to 7 events are emulated.
 	scroll map[scrollKey]*scrollAxis
@@ -268,11 +270,25 @@ func (in *inputState) handle(evtype int, data uintptr) {
 		}
 	case xiButtonPress, xiButtonRelease:
 		ev := view[xiDeviceEvent](data)
+		if ev.detail >= 1 && ev.detail < 32 {
+			if evtype == xiButtonPress {
+				in.buttonsDown |= 1 << ev.detail
+			} else {
+				in.buttonsDown &^= 1 << ev.detail
+			}
+		}
+		if s := in.p.xdnd.activeDrag(); s != nil && evtype == xiButtonRelease {
+			s.onRelease()
+		}
 		if w := in.p.windows[ev.event]; w != nil {
 			in.onButton(w, ev, evtype == xiButtonPress)
 		}
 	case xiMotion:
 		ev := view[xiDeviceEvent](data)
+		if s := in.p.xdnd.activeDrag(); s != nil {
+			s.onMotion(int32(ev.rootX), int32(ev.rootY)) // the drag has the pointer
+			return
+		}
 		if w := in.p.windows[ev.event]; w != nil {
 			in.onMotion(w, ev)
 		}

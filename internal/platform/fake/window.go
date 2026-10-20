@@ -120,7 +120,7 @@ func (w *Window) RequestFrame() {
 // StartDrag records the drag and always succeeds.
 //
 // Flutter: no counterpart
-func (w *Window) StartDrag(data platform.DragData) error {
+func (w *Window) StartDrag(data ui.DragRequest) error {
 	w.set(EntryStartDrag, data, func() {})
 	return nil
 }

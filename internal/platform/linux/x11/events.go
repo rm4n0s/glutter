@@ -24,6 +24,9 @@ func (p *Platform) handleEvent() {
 			return
 		}
 		if w := p.windows[ev.window]; w != nil && ev.format == 32 {
+			if p.xdnd.onClientMessage(w, ev.messageType, ev.data) {
+				return
+			}
 			w.onClientMessage(uint64(ev.data[0]), ev)
 		}
 	case configureNotify:
@@ -43,10 +46,16 @@ func (p *Platform) handleEvent() {
 			w.onExpose()
 		}
 	case selectionRequest:
+		if p.xdnd.onSelectionRequest(*view[xSelectionRequestEvent](p.event)) {
+			return
+		}
 		if p.clip != nil {
 			p.clip.onSelectionRequest(*view[xSelectionRequestEvent](p.event))
 		}
 	case selectionNotify:
+		if p.xdnd.onSelectionNotify(*view[xSelectionEvent](p.event)) {
+			return
+		}
 		if p.clip != nil {
 			p.clip.onSelectionNotify(*view[xSelectionEvent](p.event))
 		}

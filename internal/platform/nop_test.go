@@ -17,6 +17,7 @@ func TestNopHandlerAgreesToClose(t *testing.T) {
 	h.OnMetrics(0, ViewMetrics{})
 	h.OnSettings(Settings{})
 	h.OnLifecycle(0)
-	h.OnDrop(0, DropEvent{})
+	h.OnDrop(ui.DropEvent{})
+	h.OnDragEnd(ui.DragResult{})
 	h.OnFrame(0, 0)
 }

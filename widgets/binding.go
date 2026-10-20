@@ -160,6 +160,8 @@ func (WidgetsBindingObserverBase) DidChangeAccessibilityFeatures() {}
 //
 // Flutter: widgets/binding.dart WidgetsBinding
 type WidgetsBinding struct {
+	// drops is the state of the drag and drop of the platform (drag_drop.go).
+	drops        *dropState
 	d            *ui.PlatformDispatcher
 	scheduler    *scheduler.SchedulerBinding
 	gesture      *gestures.GestureBinding
@@ -345,6 +347,7 @@ func NewWidgetsBinding(ctx context.Context, d *ui.PlatformDispatcher, opts ...Wi
 		b.notifyObservers("didChangeViewFocus", func(o WidgetsBindingObserver) { o.DidChangeViewFocus(event) })
 	}
 	b.windowing = newWindowingOwner(b)
+	b.installDrop()
 	d.OnWindowCloseRequested = b.windowing.handleCloseRequested
 	return b
 }

@@ -45,10 +45,15 @@ func (NopHandler) OnMetrics(ui.ViewID, ViewMetrics) {}
 // Flutter: no counterpart
 func (NopHandler) OnLifecycle(ui.AppLifecycleState) {}
 
-// OnDrop ignores the drop event.
+// OnDragEnd ignores the end of a drag.
 //
 // Flutter: no counterpart
-func (NopHandler) OnDrop(ui.ViewID, DropEvent) {}
+func (NopHandler) OnDragEnd(ui.DragResult) {}
+
+// OnDrop ignores the drop event and accepts nothing.
+//
+// Flutter: no counterpart
+func (NopHandler) OnDrop(ui.DropEvent) ui.DropActions { return ui.DropActionNone }
 
 // OnDisplaysChanged ignores the change.
 //

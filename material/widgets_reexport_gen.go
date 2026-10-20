@@ -940,6 +940,13 @@ type CheckedModeBanner = widgets.CheckedModeBanner
 // Flutter: widgets.dart ChildBackButtonDispatcher
 type ChildBackButtonDispatcher = widgets.ChildBackButtonDispatcher
 
+// ChildDragAnchorStrategy is widgets.ChildDragAnchorStrategy.
+//
+// Flutter: widgets.dart ChildDragAnchorStrategy
+func ChildDragAnchorStrategy(draggable widgets.Widget, bc widgets.BuildContext, position ui.Offset) ui.Offset {
+	return widgets.ChildDragAnchorStrategy(draggable, bc, position)
+}
+
 // ChildIndexGetter is widgets.ChildIndexGetter.
 //
 // Flutter: widgets.dart ChildIndexGetter
@@ -1873,6 +1880,11 @@ type DoNothingAndStopPropagationTextIntent = widgets.DoNothingAndStopPropagation
 // Flutter: widgets.dart DoNothingIntent
 type DoNothingIntent = widgets.DoNothingIntent
 
+// DragAnchorStrategy is widgets.DragAnchorStrategy.
+//
+// Flutter: widgets.dart DragAnchorStrategy
+type DragAnchorStrategy = widgets.DragAnchorStrategy
+
 // DragBoundary is widgets.DragBoundary.
 //
 // Flutter: widgets.dart DragBoundary
@@ -1902,10 +1914,85 @@ func DragBoundaryForRectOf(bc widgets.BuildContext, opts ...widgets.DragBoundary
 // Flutter: widgets.dart DragBoundaryForRectOfOpts
 type DragBoundaryForRectOfOpts = widgets.DragBoundaryForRectOfOpts
 
+// DragEndCallback is widgets.DragEndCallback.
+//
+// Flutter: widgets.dart DragEndCallback
+type DragEndCallback = widgets.DragEndCallback
+
+// DragExport is widgets.DragExport.
+//
+// Flutter: widgets.dart DragExport
+type DragExport = widgets.DragExport
+
 // DragScrollActivity is widgets.DragScrollActivity.
 //
 // Flutter: widgets.dart DragScrollActivity
 type DragScrollActivity = widgets.DragScrollActivity
+
+// DragTarget is widgets.DragTarget.
+//
+// Flutter: widgets.dart DragTarget
+type DragTarget[T any] = widgets.DragTarget[T]
+
+// DragTargetAcceptWithDetails is widgets.DragTargetAcceptWithDetails.
+//
+// Flutter: widgets.dart DragTargetAcceptWithDetails
+type DragTargetAcceptWithDetails[T any] = widgets.DragTargetAcceptWithDetails[T]
+
+// DragTargetBuilder is widgets.DragTargetBuilder.
+//
+// Flutter: widgets.dart DragTargetBuilder
+type DragTargetBuilder[T any] = widgets.DragTargetBuilder[T]
+
+// DragTargetDetails is widgets.DragTargetDetails.
+//
+// Flutter: widgets.dart DragTargetDetails
+type DragTargetDetails[T any] = widgets.DragTargetDetails[T]
+
+// DragTargetLeave is widgets.DragTargetLeave.
+//
+// Flutter: widgets.dart DragTargetLeave
+type DragTargetLeave[T any] = widgets.DragTargetLeave[T]
+
+// DragTargetMove is widgets.DragTargetMove.
+//
+// Flutter: widgets.dart DragTargetMove
+type DragTargetMove[T any] = widgets.DragTargetMove[T]
+
+// DragTargetOpts is widgets.DragTargetOpts.
+//
+// Flutter: widgets.dart DragTargetOpts
+type DragTargetOpts[T any] = widgets.DragTargetOpts[T]
+
+// DragTargetWillAcceptWithDetails is widgets.DragTargetWillAcceptWithDetails.
+//
+// Flutter: widgets.dart DragTargetWillAcceptWithDetails
+type DragTargetWillAcceptWithDetails[T any] = widgets.DragTargetWillAcceptWithDetails[T]
+
+// DragUpdateCallback is widgets.DragUpdateCallback.
+//
+// Flutter: widgets.dart DragUpdateCallback
+type DragUpdateCallback = widgets.DragUpdateCallback
+
+// Draggable is widgets.Draggable.
+//
+// Flutter: widgets.dart Draggable
+type Draggable[T any] = widgets.Draggable[T]
+
+// DraggableCanceledCallback is widgets.DraggableCanceledCallback.
+//
+// Flutter: widgets.dart DraggableCanceledCallback
+type DraggableCanceledCallback = widgets.DraggableCanceledCallback
+
+// DraggableDetails is widgets.DraggableDetails.
+//
+// Flutter: widgets.dart DraggableDetails
+type DraggableDetails = widgets.DraggableDetails
+
+// DraggableOpts is widgets.DraggableOpts.
+//
+// Flutter: widgets.dart DraggableOpts
+type DraggableOpts[T any] = widgets.DraggableOpts[T]
 
 // DrivenScrollActivity is widgets.DrivenScrollActivity.
 //
@@ -2155,6 +2242,11 @@ type ExtendSelectionVerticallyToAdjacentLineIntent = widgets.ExtendSelectionVert
 //
 // Flutter: widgets.dart ExtendSelectionVerticallyToAdjacentPageIntent
 type ExtendSelectionVerticallyToAdjacentPageIntent = widgets.ExtendSelectionVerticallyToAdjacentPageIntent
+
+// ExternalDragData is widgets.ExternalDragData.
+//
+// Flutter: widgets.dart ExternalDragData
+type ExternalDragData = widgets.ExternalDragData
 
 // ExtractWidgetsFromInlineSpan is widgets.ExtractWidgetsFromInlineSpan.
 //
@@ -3684,6 +3776,16 @@ const LockStateUnspecified = widgets.LockStateUnspecified
 // Flutter: widgets.dart LogicalKeySet
 type LogicalKeySet = widgets.LogicalKeySet
 
+// LongPressDraggable is widgets.LongPressDraggable.
+//
+// Flutter: widgets.dart LongPressDraggable
+type LongPressDraggable[T any] = widgets.LongPressDraggable[T]
+
+// LongPressDraggableOpts is widgets.LongPressDraggableOpts.
+//
+// Flutter: widgets.dart LongPressDraggableOpts
+type LongPressDraggableOpts[T any] = widgets.LongPressDraggableOpts[T]
+
 // LookupBoundary is widgets.LookupBoundary.
 //
 // Flutter: widgets.dart LookupBoundary
@@ -4179,6 +4281,16 @@ type MenuSerializableShortcut = widgets.MenuSerializableShortcut
 //
 // Flutter: widgets.dart MergeSemantics
 type MergeSemantics = widgets.MergeSemantics
+
+// MetaData is widgets.MetaData.
+//
+// Flutter: widgets.dart MetaData
+type MetaData = widgets.MetaData
+
+// MetaDataOpts is widgets.MetaDataOpts.
+//
+// Flutter: widgets.dart MetaDataOpts
+type MetaDataOpts = widgets.MetaDataOpts
 
 // ModalBarrier is widgets.ModalBarrier.
 //
@@ -5319,6 +5431,20 @@ func NewDragScrollActivity(delegate widgets.ScrollActivityDelegate, controller *
 	return widgets.NewDragScrollActivity(delegate, controller)
 }
 
+// NewDragTarget is widgets.NewDragTarget.
+//
+// Flutter: widgets.dart NewDragTarget
+func NewDragTarget[T any](builder widgets.DragTargetBuilder[T], opts ...widgets.DragTargetOpts[T]) *widgets.DragTarget[T] {
+	return widgets.NewDragTarget[T](builder, opts...)
+}
+
+// NewDraggable is widgets.NewDraggable.
+//
+// Flutter: widgets.dart NewDraggable
+func NewDraggable[T any](feedback widgets.Widget, child widgets.Widget, opts ...widgets.DraggableOpts[T]) *widgets.Draggable[T] {
+	return widgets.NewDraggable[T](feedback, child, opts...)
+}
+
 // NewDrivenScrollActivity is widgets.NewDrivenScrollActivity.
 //
 // Flutter: widgets.dart NewDrivenScrollActivity
@@ -6194,6 +6320,13 @@ func NewLogicalKeySetFromSet(keys services.KeySet[services.LogicalKeyboardKey]) 
 	return widgets.NewLogicalKeySetFromSet(keys)
 }
 
+// NewLongPressDraggable is widgets.NewLongPressDraggable.
+//
+// Flutter: widgets.dart NewLongPressDraggable
+func NewLongPressDraggable[T any](feedback widgets.Widget, child widgets.Widget, opts ...widgets.LongPressDraggableOpts[T]) *widgets.LongPressDraggable[T] {
+	return widgets.NewLongPressDraggable[T](feedback, child, opts...)
+}
+
 // NewLookupBoundary is widgets.NewLookupBoundary.
 //
 // Flutter: widgets.dart NewLookupBoundary
@@ -6290,6 +6423,13 @@ func NewMenuController() *widgets.MenuController {
 // Flutter: widgets.dart NewMergeSemantics
 func NewMergeSemantics(child widgets.Widget, opts ...widgets.WidgetOpts) *widgets.MergeSemantics {
 	return widgets.NewMergeSemantics(child, opts...)
+}
+
+// NewMetaData is widgets.NewMetaData.
+//
+// Flutter: widgets.dart NewMetaData
+func NewMetaData(child widgets.Widget, opts ...widgets.MetaDataOpts) *widgets.MetaData {
+	return widgets.NewMetaData(child, opts...)
 }
 
 // NewModalBarrier is widgets.NewModalBarrier.
@@ -8593,6 +8733,13 @@ type PlainScrollPhysics = widgets.PlainScrollPhysics
 //
 // Flutter: widgets.dart PlatformRouteInformationProvider
 type PlatformRouteInformationProvider = widgets.PlatformRouteInformationProvider
+
+// PointerDragAnchorStrategy is widgets.PointerDragAnchorStrategy.
+//
+// Flutter: widgets.dart PointerDragAnchorStrategy
+func PointerDragAnchorStrategy(draggable widgets.Widget, bc widgets.BuildContext, position ui.Offset) ui.Offset {
+	return widgets.PointerDragAnchorStrategy(draggable, bc, position)
+}
 
 // PopEntry is widgets.PopEntry.
 //

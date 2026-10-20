@@ -40,10 +40,12 @@ func (h *recordingHandler) OnMetrics(view ui.ViewID, m platform.ViewMetrics) {
 	h.add("OnMetrics %d %vx%v@%v", view, m.PhysicalSize.Width, m.PhysicalSize.Height, m.DevicePixelRatio)
 }
 func (h *recordingHandler) OnLifecycle(s ui.AppLifecycleState) { h.add("OnLifecycle %v", s) }
-func (h *recordingHandler) OnDrop(view ui.ViewID, _ platform.DropEvent) {
-	h.add("OnDrop %d", view)
+func (h *recordingHandler) OnDrop(e ui.DropEvent) ui.DropActions {
+	h.add("OnDrop %d", e.ViewID)
+	return ui.DropActionCopy
 }
-func (h *recordingHandler) OnDisplaysChanged() { h.add("OnDisplaysChanged") }
+func (h *recordingHandler) OnDragEnd(r ui.DragResult) { h.add("OnDragEnd %d", r.ID) }
+func (h *recordingHandler) OnDisplaysChanged()        { h.add("OnDisplaysChanged") }
 
 func (h *recordingHandler) OnSettings(s platform.Settings) {
 	h.add("OnSettings %v", s.PlatformBrightness)
@@ -203,7 +205,8 @@ func TestInjectDeliversEventsInOrder(t *testing.T) {
 		{"frame", FrameEvent{View: 1, FrameTime: 16 * time.Millisecond}, "OnFrame 1 16ms"},
 		{"metrics", MetricsEvent{View: 2, Metrics: platform.ViewMetrics{PhysicalSize: ui.Size{Width: 640, Height: 400}, DevicePixelRatio: 1.5}}, "OnMetrics 2 640x400@1.5"},
 		{"lifecycle", LifecycleEvent{State: ui.AppLifecycleStateResumed}, "OnLifecycle AppLifecycleStateResumed"},
-		{"drop", DropEvent{View: 3}, "OnDrop 3"},
+		{"drop", DropEvent{Event: ui.DropEvent{ViewID: 3}}, "OnDrop 3"},
+		{"drag end", DragEndEvent{Result: ui.DragResult{ID: 9}}, "OnDragEnd 9"},
 		{"settings", SettingsEvent{Settings: platform.Settings{PlatformBrightness: ui.BrightnessDark}}, "OnSettings BrightnessDark"},
 		{"displays", DisplaysEvent{Displays: []platform.Display{{ID: 1}}}, "OnDisplaysChanged"},
 		{"close request", CloseRequestEvent{View: 4}, "OnCloseRequest 4"},
@@ -335,7 +338,7 @@ func TestWindowRecordsCalls(t *testing.T) {
 	w.SetCursor(platform.MouseCursor(3))
 	w.SetTextInput(ui.TextInputState{Enabled: true})
 	w.RequestFrame()
-	if err := w.StartDrag(platform.DragData{}); err != nil {
+	if err := w.StartDrag(ui.DragRequest{}); err != nil {
 		t.Errorf("StartDrag: %v", err)
 	}
 	w.Close()

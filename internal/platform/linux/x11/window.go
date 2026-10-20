@@ -90,6 +90,7 @@ func (p *Platform) NewWindow(cfg platform.WindowConfig) (platform.Window, error)
 	p.hadWindow = true
 
 	w.setProperties()
+	p.setXdndAware(w)
 	if p.input != nil {
 		p.input.selectWindowEvents(w.xid)
 	}
@@ -517,13 +518,13 @@ func (w *window) SetTextInput(state ui.TextInputState) {
 	w.p.setTextInput(w, state)
 }
 
-// StartDrag is not implemented yet.
-//
-// TODO(step 14.6): XDND.
+// StartDrag starts a drag and drop operation from the window with the data of the
+// request, with XDND. The pointer button that started it must be down; the end is
+// reported through Handler.OnDragEnd.
 //
 // Flutter: no counterpart
-func (w *window) StartDrag(platform.DragData) error {
-	return errors.New("NotImplemented", "drag and drop from an X11 window is not implemented yet")
+func (w *window) StartDrag(request ui.DragRequest) error {
+	return w.p.xdnd.startDrag(w, request)
 }
 
 // PerformWindowAction does the actions that the window manager does for a title
@@ -603,6 +604,7 @@ func (w *window) Close() {
 	if w.p.input != nil {
 		w.p.input.windowClosed(w)
 	}
+	w.p.xdnd.windowClosed(w)
 	w.p.x.destroyWindow(w.p.display, w.xid)
 	w.freeColormap()
 	delete(w.p.windows, w.xid)

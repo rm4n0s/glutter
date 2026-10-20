@@ -4,6 +4,11 @@
 // window that opened it, and closes with it. It uses only package material,
 // imported as m.
 //
+// Every window is also a drop target: drag a file from a file manager, or some text,
+// onto "Drop here" to see its path; "Drag me" can be dragged out of the window, into
+// a text editor or into another window of the app. (Drags between applications need
+// a pointer button held down, so they cannot be tried on a headless compositor.)
+//
 // Run it with: go run ./examples/multiwindow
 //
 // Environment: GLUTTER_BACKEND=x11|wayland, GLUTTER_SCREENSHOT=<file.png>. In debug
@@ -20,12 +25,13 @@ import (
 
 	"github.com/rm4n0s/glutter/foundation"
 	m "github.com/rm4n0s/glutter/material"
+	"github.com/rm4n0s/glutter/ui"
 )
 
 func main() {
 	err := m.RunApp(m.NewWindowManager(NewMultiWindowApp()), m.RunAppOpts{
 		AppID:  "dev.glutter.multiwindow",
-		Window: m.WindowConfig{Title: "Main window", Size: m.Size{Width: 420, Height: 360}},
+		Window: m.WindowConfig{Title: "Main window", Size: m.Size{Width: 420, Height: 520}},
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -72,6 +78,9 @@ type windowPageState struct {
 	m.StateOf[*WindowPage]
 	count   int
 	windows int // the windows opened from this page, to number them
+
+	// dropped is what was dropped on the page last: the paths of files, or text.
+	dropped []string
 }
 
 func (s *windowPageState) InitState() {
@@ -119,7 +128,7 @@ func (s *windowPageState) openWindow() {
 	s.windows++
 	var entry *m.WindowEntry
 	title := "Window " + strconv.Itoa(s.windows)
-	controller, err := m.NewRegularWindowController(bc, m.Size{Width: 420, Height: 360}, m.RegularWindowControllerOpts{
+	controller, err := m.NewRegularWindowController(bc, m.Size{Width: 420, Height: 520}, m.RegularWindowControllerOpts{
 		Title:    title,
 		Delegate: closing{done: func() { registry.Unregister(entry) }},
 	})
@@ -165,9 +174,78 @@ func (s *windowPageState) Build(bc m.BuildContext) m.Widget {
 				m.NewFilledButtonTonal(s.openWindow, m.NewText("New window")),
 				m.NewSizedBox(nil, m.SizedBoxOpts{Height: m.Some(8.0)}),
 				m.NewOutlinedButton(s.openDialog, m.NewText("Open dialog")),
+				m.NewSizedBox(nil, m.SizedBoxOpts{Height: m.Some(20.0)}),
+				s.dragChip(bc),
+				m.NewSizedBox(nil, m.SizedBoxOpts{Height: m.Some(12.0)}),
+				s.dropZone(bc),
 			}, m.ColumnOpts{MainAxisAlignment: m.MainAxisAlignmentCenter}),
 		),
 	})
+}
+
+// chip is a small rounded label.
+func chip(text string, color ui.Color) m.Widget {
+	return m.NewMaterial(m.NewPadding(m.NewEdgeInsetsSymmetric(14, 8), m.NewText(text)),
+		m.MaterialOpts{Color: m.Some(color), BorderRadius: m.NewBorderRadiusCircular(16)})
+}
+
+// dragChip is "Drag me": it can be dragged inside the window, onto the drop zone of
+// any window of the app, and out of the window as text.
+func (s *windowPageState) dragChip(bc m.BuildContext) m.Widget {
+	scheme := m.ThemeOf(bc).ColorScheme
+	title := m.WindowScopeTitleOf(bc)
+	if title == "" {
+		title = "this window"
+	}
+	return m.NewDraggable[string](
+		chip("Dragging "+title, scheme.TertiaryContainer()),
+		chip("Drag me", scheme.SecondaryContainer()),
+		m.DraggableOpts[string]{
+			Data:   m.Some(title),
+			Export: func(text string) *m.DragExport { return &m.DragExport{Text: "Dragged from " + text} },
+		})
+}
+
+// dropZone shows what was dropped on it: the paths of the files that a file manager
+// dragged here, or text.
+func (s *windowPageState) dropZone(bc m.BuildContext) m.Widget {
+	scheme := m.ThemeOf(bc).ColorScheme
+	return m.NewDragTarget(func(bc m.BuildContext, candidates []m.Opt[any], _ []any) m.Widget {
+		color := scheme.SurfaceContainerHighest()
+		if len(candidates) > 0 {
+			color = scheme.PrimaryContainer() // a drag is over the zone and would be accepted
+		}
+		lines := s.dropped
+		if len(lines) == 0 {
+			lines = []string{"Drop here: a file or some text"}
+		}
+		children := make([]m.Widget, len(lines))
+		for i, line := range lines {
+			children[i] = m.NewText(line, m.TextOpts{MaxLines: m.Some(1), Overflow: m.TextOverflowEllipsis})
+		}
+		return m.NewContainer(m.NewColumn(children), m.ContainerOpts{
+			Width: m.Some(360.0), Padding: m.NewEdgeInsetsAll(12), Color: m.Some(color),
+		})
+	}, m.DragTargetOpts[any]{OnAcceptWithDetails: func(d m.DragTargetDetails[any]) {
+		s.SetState(func() { s.dropped = droppedLines(d.Data) })
+	}})
+}
+
+// droppedLines is what to show for the data of a drop.
+func droppedLines(data any) []string {
+	switch v := data.(type) {
+	case *m.ExternalDragData:
+		if files := v.Files(); len(files) > 0 {
+			return files
+		}
+		if v.Text != "" {
+			return []string{v.Text}
+		}
+		return []string{"(nothing readable was dropped)"}
+	case string:
+		return []string{"From this app: " + v}
+	}
+	return nil
 }
 
 // DialogPage is the content of a dialog: a message and a button that closes it.

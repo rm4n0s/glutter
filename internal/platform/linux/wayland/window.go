@@ -775,13 +775,13 @@ func (w *window) SetTextInput(state ui.TextInputState) {
 	}
 }
 
-// StartDrag is not implemented yet.
-//
-// TODO(step 14.6): wl_data_device.start_drag.
+// StartDrag starts a drag and drop operation from the window with the data of the
+// request, through wl_data_device.start_drag. The pointer button that started it
+// must be down; the end is reported through Handler.OnDragEnd.
 //
 // Flutter: no counterpart
-func (w *window) StartDrag(platform.DragData) error {
-	return errors.New("NotImplemented", "drag and drop from a Wayland window is not implemented yet")
+func (w *window) StartDrag(request ui.DragRequest) error {
+	return w.p.clip.startDrag(w, request)
 }
 
 // Close destroys the window. Destroy the renderer's surface for it first, since

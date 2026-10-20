@@ -60,6 +60,10 @@ type Host struct {
 	// CreateErr is returned by CreateWindow, to test a platform that cannot make
 	// windows.
 	CreateErr error
+	// Drags are the drag and drop operations the framework started, in order.
+	Drags []ui.DragRequest
+	// DragErr is returned by StartDrag, to test a platform that cannot drag.
+	DragErr error
 	// FocusEvents are the focus changes the framework asked the platform for, in
 	// order.
 	FocusEvents []ui.ViewFocusEvent
@@ -224,6 +228,17 @@ func (h *Host) GetClipboard(ctx context.Context, kind ui.ClipboardKind, format s
 		out.URIs = content.URIs
 	}
 	h.Post(func() { done(out, ctx.Err()) })
+}
+
+// StartDrag records the drag; it fails with DragErr when that is set.
+func (h *Host) StartDrag(_ ui.ViewID, request ui.DragRequest) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.DragErr != nil {
+		return h.DragErr
+	}
+	h.Drags = append(h.Drags, request)
+	return nil
 }
 
 // PerformWindowAction keeps the action.

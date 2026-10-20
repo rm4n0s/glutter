@@ -25,6 +25,8 @@ type Platform struct {
 	log      []Entry
 	displays []platform.Display
 	settings platform.Settings
+	// dropAnswers are the actions Handler.OnDrop returned, in order.
+	dropAnswers []ui.DropActions
 
 	clipboardText string
 	hasClipboard  bool
@@ -297,4 +299,14 @@ func (p *Platform) Log() []Entry {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return append([]Entry(nil), p.log...)
+}
+
+// DropAnswers are the actions that Handler.OnDrop returned for the DropEvents the
+// platform delivered, in order.
+//
+// Flutter: no counterpart
+func (p *Platform) DropAnswers() []ui.DropActions {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return append([]ui.DropActions(nil), p.dropAnswers...)
 }

@@ -31,6 +31,12 @@ type shmBuffer struct {
 // not nil, is called when the compositor is done with the buffer. It fails with
 // ShmBufferFailed (metadata "op", "size") when the memory cannot be created.
 func newShmBuffer(shm *wl.WlShm, width, height int32, color uint32, onRelease func(*shmBuffer)) (b *shmBuffer, err error) {
+	return newShmBufferFormat(shm, width, height, wl.WlShmFormatXrgb8888, func(data []byte) { fill(data, color) }, onRelease)
+}
+
+// newShmBufferFormat is newShmBuffer with the pixel format and a function that
+// writes the pixels (4 bytes each, little endian) into the memory of the buffer.
+func newShmBufferFormat(shm *wl.WlShm, width, height int32, format wl.WlShmFormat, paint func(data []byte), onRelease func(*shmBuffer)) (b *shmBuffer, err error) {
 	if width <= 0 || height <= 0 {
 		return nil, errors.New("ShmBufferFailed", "a buffer needs a positive size", "op", "size", "width", width, "height", height)
 	}
@@ -59,10 +65,10 @@ func newShmBuffer(shm *wl.WlShm, width, height int32, color uint32, onRelease fu
 	if err != nil {
 		return nil, errors.NewErr("ShmBufferFailed", err).SetMetadata("op", "mmap", "size", size)
 	}
-	fill(data, color)
+	paint(data)
 
 	pool := shm.CreatePool(fd, int32(size))
-	buffer := pool.CreateBuffer(0, width, height, stride, wl.WlShmFormatXrgb8888)
+	buffer := pool.CreateBuffer(0, width, height, stride, format)
 	pool.Destroy() // the buffer keeps the memory alive
 	b = &shmBuffer{buffer: buffer, data: data, width: width, height: height}
 	buffer.SetEvents(&wl.WlBufferEvents{OnRelease: func() {

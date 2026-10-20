@@ -65,7 +65,7 @@ type Window interface {
 	// present exactly one frame for each OnFrame, or no further frame follows.
 	RequestFrame()
 	// StartDrag starts a drag-and-drop operation from this window.
-	StartDrag(data DragData) error
+	StartDrag(request ui.DragRequest) error
 	// PerformWindowAction does what the title bar of the app asks: move, resize,
 	// the window menu, minimize, maximize, restore and close. Moves, resizes and
 	// the menu need the input event that is going on. An action that the platform
@@ -94,8 +94,12 @@ type Handler interface {
 	OnMetrics(view ui.ViewID, metrics ViewMetrics)
 	// OnLifecycle reports a change of the application lifecycle state.
 	OnLifecycle(state ui.AppLifecycleState)
-	// OnDrop delivers a drag-and-drop event over the view.
-	OnDrop(view ui.ViewID, event DropEvent)
+	// OnDrop delivers a drag-and-drop event over a view (event.ViewID) and returns
+	// the action the app accepts at that place, DropActionNone for none. The drop
+	// carries the data, which the platform has read by then.
+	OnDrop(event ui.DropEvent) ui.DropActions
+	// OnDragEnd reports how a drag that the app started with Window.StartDrag ended.
+	OnDragEnd(result ui.DragResult)
 	// OnDisplaysChanged reports that the displays changed: one was connected or
 	// disconnected, or one changed its size, scale or refresh rate. Platform.Displays
 	// has the new list.

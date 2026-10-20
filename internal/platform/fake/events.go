@@ -55,7 +55,7 @@ const (
 	//
 	// Flutter: no counterpart
 	EntryRequestFrame EntryKind = "RequestFrame"
-	// EntryStartDrag records Window.StartDrag; Value is the platform.DragData.
+	// EntryStartDrag records Window.StartDrag; Value is the ui.DragRequest.
 	//
 	// Flutter: no counterpart
 	EntryStartDrag EntryKind = "StartDrag"
@@ -187,18 +187,33 @@ type LifecycleEvent struct {
 func (e LifecycleEvent) view() ui.ViewID                          { return ui.ImplicitViewID }
 func (e LifecycleEvent) dispatch(_ *Platform, h platform.Handler) { h.OnLifecycle(e.State) }
 
-// DropEvent delivers a drag-and-drop event to Handler.OnDrop.
+// DropEvent delivers a drag-and-drop event to Handler.OnDrop. The answer of the
+// handler is kept in the platform: see Platform.DropAnswers.
 //
 // Flutter: no counterpart
 type DropEvent struct {
-	// View is the view the drop is over.
-	View ui.ViewID
-	// Event is the drop event.
-	Event platform.DropEvent
+	// Event is the event; its ViewID says which view it is over.
+	Event ui.DropEvent
 }
 
-func (e DropEvent) view() ui.ViewID                          { return e.View }
-func (e DropEvent) dispatch(_ *Platform, h platform.Handler) { h.OnDrop(e.View, e.Event) }
+func (e DropEvent) view() ui.ViewID { return e.Event.ViewID }
+func (e DropEvent) dispatch(p *Platform, h platform.Handler) {
+	action := h.OnDrop(e.Event)
+	p.mu.Lock()
+	p.dropAnswers = append(p.dropAnswers, action)
+	p.mu.Unlock()
+}
+
+// DragEndEvent delivers the end of a drag the app started to Handler.OnDragEnd.
+//
+// Flutter: no counterpart
+type DragEndEvent struct {
+	// Result is how the drag ended.
+	Result ui.DragResult
+}
+
+func (e DragEndEvent) view() ui.ViewID                          { return ui.ImplicitViewID }
+func (e DragEndEvent) dispatch(_ *Platform, h platform.Handler) { h.OnDragEnd(e.Result) }
 
 // SettingsEvent changes the settings that Platform.Settings reports and then
 // delivers them to Handler.OnSettings.

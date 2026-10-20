@@ -174,3 +174,41 @@ func TestARemovedViewRendersNothing(t *testing.T) {
 		t.Errorf("render after remove: %v, %d scenes", err, len(h.rendered))
 	}
 }
+
+func TestStartDragWithoutAHostThatCanFails(t *testing.T) {
+	d := NewPlatformDispatcher(nil)
+	appErr, ok := errors.FromError(d.StartDrag(0, DragRequest{ID: 1}))
+	if !ok || !appErr.HasRoute("PlatformDispatcher.StartDrag.DragUnsupported") {
+		t.Errorf("err = %v", appErr)
+	}
+}
+
+func TestDropEventsWithoutHandlersAreHarmless(t *testing.T) {
+	d := NewPlatformDispatcher(nil)
+	if got := d.DispatchDrop(DropEvent{Phase: DropPhaseDrop}); got != DropActionNone {
+		t.Errorf("DispatchDrop without a handler = %v", got)
+	}
+	d.DispatchDragEnd(DragResult{ID: 1}) // nothing to call, nothing to panic
+	d.OnDrop = func(e DropEvent) DropActions { return DropActionLink }
+	if got := d.DispatchDrop(DropEvent{}); got != DropActionLink {
+		t.Errorf("DispatchDrop = %v", got)
+	}
+}
+
+func TestDropActionsHas(t *testing.T) {
+	tests := []struct {
+		set, a DropActions
+		want   bool
+	}{
+		{DropActionCopy | DropActionMove, DropActionCopy, true},
+		{DropActionCopy, DropActionMove, false},
+		{DropActionNone, DropActionCopy, false},
+		{DropActionCopy, DropActionNone, false},
+		{DropActionCopy | DropActionLink, DropActionCopy | DropActionLink, true},
+	}
+	for _, tt := range tests {
+		if got := tt.set.Has(tt.a); got != tt.want {
+			t.Errorf("%v.Has(%v) = %v", tt.set, tt.a, got)
+		}
+	}
+}

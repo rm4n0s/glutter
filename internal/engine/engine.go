@@ -407,6 +407,23 @@ func (h *handler) forget(w *window) {
 	delete(h.windows, w.id)
 }
 
+// StartDrag starts a drag and drop operation from the window of the view
+// (ui.DropHost).
+func (h *handler) StartDrag(view ui.ViewID, request ui.DragRequest) error {
+	w, ok := h.windows[view]
+	if !ok {
+		return errors.New("ViewNotFound", "the view has no window", "view", int(view))
+	}
+	return w.StartDrag(request)
+}
+
+// OnDrop hands a drag and drop operation over a view to the framework and returns
+// the action it accepts.
+func (h *handler) OnDrop(event ui.DropEvent) ui.DropActions { return h.disp.DispatchDrop(event) }
+
+// OnDragEnd tells the framework how a drag that it started ended.
+func (h *handler) OnDragEnd(result ui.DragResult) { h.disp.DispatchDragEnd(result) }
+
 // SetWindowTitle sets the title of the window (ui.WindowControlHost).
 func (h *handler) SetWindowTitle(view ui.ViewID, title string) {
 	if w, ok := h.windows[view]; ok {

@@ -46,8 +46,13 @@ type Server struct {
 	data, primaryData        map[string][]byte
 	sources                  map[uint32]*clientSource
 	clientSel, clientPrimary *clientSource
-	stall                    bool
-	stalled                  []int // the pipes that a stalled owner holds
+	// dnd is the drag of another application over the window, dndSerial counts the
+	// serials of its enter events, and dragSource is the source of the client's own drag.
+	dnd        *dndOffer
+	dndSerial  uint32
+	dragSource *clientSource
+	stall      bool
+	stalled    []int // the pipes that a stalled owner holds
 
 	outputScale, bufferScale int32
 	output                   Output
@@ -372,7 +377,7 @@ func (s *Server) handle(id uint32, op uint16, r *reader) {
 	s.mu.Lock()
 	iface := s.objects[id]
 	s.mu.Unlock()
-	if s.handleSelection(id, iface, op, r) {
+	if s.handleSelection(id, iface, op, r) || s.handleDnd(id, iface, op, r) {
 		return
 	}
 	switch iface + "." + fmt.Sprint(op) {
@@ -475,6 +480,10 @@ func (s *Server) handle(id uint32, op uint16, r *reader) {
 	case "wl_data_offer.1": // receive(mime_type, fd)
 		mime, fd := r.str(), r.fd()
 		s.record("wl_data_offer.receive mime=%s fd=%v", mime, fd >= 0)
+		if d, ok, isDnd := s.dndData(id, mime); isDnd {
+			s.writeSelection(fd, d, ok)
+			break
+		}
 		s.mu.Lock()
 		text, data := s.selection, s.data
 		s.mu.Unlock()

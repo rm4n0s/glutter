@@ -424,20 +424,6 @@ func TestSeveralWindowsAndParents(t *testing.T) {
 	waitUntil(t, func() bool { return len(e.srv.RequestsWith("xdg_toplevel.destroy")) == 2 }, "both toplevels should have been destroyed exactly once")
 }
 
-func TestStartDragIsNotImplementedYet(t *testing.T) {
-	e := startWindows(t, fakecomp.Config{}, config640())
-	e.waitMapped()
-	var err error
-	e.onLoop(func() { err = e.p.windows[0].StartDrag(platform.DragData{}) })
-	appErr, ok := errors.FromError(err)
-	if !ok || appErr.Tag != "NotImplemented" || !appErr.HasRoute("window.StartDrag.NotImplemented") {
-		t.Errorf("StartDrag returned %v, want NotImplemented via window.StartDrag", err)
-	}
-	if err := e.stop(); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func TestBufferFailureEndsRun(t *testing.T) {
 	e := startWindows(t, fakecomp.Config{}, config640())
 	e.waitMapped()
@@ -455,8 +441,8 @@ func TestNewShmBufferRejectsBadSizes(t *testing.T) {
 	for _, size := range [][2]int32{{0, 10}, {10, 0}, {-1, 5}, {30000, 30000}} {
 		_, err := newShmBuffer(nil, size[0], size[1], 0, nil)
 		appErr, ok := errors.FromError(err)
-		if !ok || appErr.Tag != "ShmBufferFailed" || !appErr.HasRoute("newShmBuffer.ShmBufferFailed") {
-			t.Errorf("newShmBuffer(%v) returned %v, want ShmBufferFailed via newShmBuffer", size, err)
+		if !ok || appErr.Tag != "ShmBufferFailed" || !appErr.HasRoute("newShmBufferFormat.ShmBufferFailed") {
+			t.Errorf("newShmBuffer(%v) returned %v, want ShmBufferFailed via newShmBufferFormat", size, err)
 		}
 	}
 }

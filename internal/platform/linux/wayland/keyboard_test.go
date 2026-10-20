@@ -95,6 +95,46 @@ type keyHandler struct {
 	batches [][]ui.PointerData
 	texts   []ui.TextInputEvent
 	focus   []string
+	// drops and dragEnds are the drag and drop events; answer is what OnDrop returns
+	// for a drop event.
+	drops    []ui.DropEvent
+	dragEnds []ui.DragResult
+	answer   func(ui.DropEvent) ui.DropActions
+}
+
+func (h *keyHandler) OnDrop(e ui.DropEvent) ui.DropActions {
+	h.mu.Lock()
+	h.drops = append(h.drops, e)
+	answer := h.answer
+	h.mu.Unlock()
+	if answer == nil {
+		return ui.DropActionNone
+	}
+	return answer(e)
+}
+
+func (h *keyHandler) OnDragEnd(r ui.DragResult) {
+	h.mu.Lock()
+	h.dragEnds = append(h.dragEnds, r)
+	h.mu.Unlock()
+}
+
+func (h *keyHandler) setAnswer(f func(ui.DropEvent) ui.DropActions) {
+	h.mu.Lock()
+	h.answer = f
+	h.mu.Unlock()
+}
+
+func (h *keyHandler) dropEvents() []ui.DropEvent {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return append([]ui.DropEvent(nil), h.drops...)
+}
+
+func (h *keyHandler) dragResults() []ui.DragResult {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return append([]ui.DragResult(nil), h.dragEnds...)
 }
 
 func (h *keyHandler) OnViewFocus(view ui.ViewID, focused bool) {

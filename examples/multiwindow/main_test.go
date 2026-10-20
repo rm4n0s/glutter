@@ -6,6 +6,7 @@ import (
 	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/gluttertest"
 	m "github.com/rm4n0s/glutter/material"
+	"github.com/rm4n0s/glutter/ui"
 )
 
 // useLinux makes the framework behave as on the Linux desktop, which the example
@@ -24,7 +25,7 @@ func useLinux(t *testing.T) {
 func newTester(t *testing.T) *gluttertest.Tester {
 	t.Helper()
 	useLinux(t)
-	ts := gluttertest.New(t, gluttertest.Opts{Size: m.Size{Width: 420, Height: 360}})
+	ts := gluttertest.New(t, gluttertest.Opts{Size: m.Size{Width: 420, Height: 520}})
 	ts.PumpWidget(ts.Binding.WrapWithWindowScope(m.NewWindowManager(NewMultiWindowApp())))
 	return ts
 }
@@ -129,5 +130,52 @@ func TestDevOpen(t *testing.T) {
 				t.Errorf("devOpen(%q) = %v, want %v", tt.value, got, tt.want)
 			}
 		}
+	}
+}
+
+func TestADropOnTheZoneShowsThePaths(t *testing.T) {
+	ts := newTester(t)
+	zone := gluttertest.ByText("Drop here: a file or some text")
+	if n := ts.Count(zone); n != 1 {
+		t.Fatalf("the drop zone is shown %d times", n)
+	}
+	at := ts.Center(zone)
+	types := []string{"text/uri-list", "text/plain"}
+	// A file manager drags a file over the zone: it would be accepted.
+	if got := ts.Drop(0, ui.DropPhaseEnter, at, ui.DropEvent{Types: types, Actions: ui.DropActionCopy}); got != ui.DropActionCopy {
+		t.Errorf("the zone does not accept a file: %v", got)
+	}
+	ts.Pump()
+	// Dropped: the page shows the path.
+	ts.Drop(0, ui.DropPhaseDrop, at, ui.DropEvent{Types: types, Actions: ui.DropActionCopy, URIs: []string{"file:///home/me/My%20File.txt"}})
+	ts.Pump()
+	if n := ts.Count(gluttertest.ByText("/home/me/My File.txt")); n != 1 {
+		t.Errorf("the path is shown %d times, want 1", n)
+	}
+	// Text instead of a file.
+	at = ts.Center(gluttertest.ByText("/home/me/My File.txt"))
+	ts.Drop(0, ui.DropPhaseDrop, at, ui.DropEvent{Types: []string{"text/plain"}, Actions: ui.DropActionCopy, Text: "some words"})
+	ts.Pump()
+	if n := ts.Count(gluttertest.ByText("some words")); n != 1 {
+		t.Errorf("the text is shown %d times, want 1", n)
+	}
+}
+
+func TestTheChipIsDraggedOutOfTheWindowAsText(t *testing.T) {
+	ts := newTester(t)
+	g := ts.StartGesture(ts.Center(gluttertest.ByText("Drag me")))
+	ts.Pump()
+	drags := ts.Drags()
+	if len(drags) != 1 || drags[0].Text != "Dragged from this window" {
+		t.Fatalf("drags = %+v", drags)
+	}
+	g.Up()
+	ts.Pump()
+	// The platform drops it on the zone of the same window: the zone shows the chip's data.
+	at := ts.Center(gluttertest.ByText("Drop here: a file or some text"))
+	ts.Drop(0, ui.DropPhaseDrop, at, ui.DropEvent{Types: []string{"text/plain"}, Actions: ui.DropActionCopy, LocalID: drags[0].ID})
+	ts.Pump()
+	if n := ts.Count(gluttertest.ByText("From this app: this window")); n != 1 {
+		t.Errorf("the data of the chip is shown %d times, want 1", n)
 	}
 }

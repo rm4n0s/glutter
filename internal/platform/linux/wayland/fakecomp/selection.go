@@ -256,6 +256,12 @@ func (s *Server) ReadClientSelection(primary bool, mime string) ([]byte, error) 
 	if src == nil {
 		return nil, fmt.Errorf("the client owns no selection")
 	}
+	return s.readSource(src, mime)
+}
+
+// readSource sends the source a send event with a pipe and reads what the client
+// writes.
+func (s *Server) readSource(src *clientSource, mime string) ([]byte, error) {
 	r, w, err := os.Pipe()
 	if err != nil {
 		return nil, err

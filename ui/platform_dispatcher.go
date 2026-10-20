@@ -186,6 +186,16 @@ type PlatformDispatcher struct {
 	//
 	// Flutter: ui/platform_dispatcher.dart PlatformDispatcher.onViewFocusChange
 	OnViewFocusChange func(event ViewFocusEvent)
+	// OnDrop is called for a drag and drop operation over a view, and returns the
+	// action the framework accepts at that place (DropActionNone for none). A drop
+	// carries the data.
+	//
+	// Flutter: no counterpart
+	OnDrop func(event DropEvent) DropActions
+	// OnDragEnd is called when a drag that the app started with StartDrag is over.
+	//
+	// Flutter: no counterpart
+	OnDragEnd func(result DragResult)
 	// OnWindowCloseRequested is called when the user asks to close the window of a
 	// view. It returns true when the framework takes over, as the owner of a window
 	// controller does: it decides whether to destroy the window, and the engine does
