@@ -320,6 +320,12 @@ type ThemeDataOpts struct {
 	// PageTransitionsTheme is the transitions of the pages that Material makes;
 	// the default is the one of NewPageTransitionsTheme.
 	PageTransitionsTheme *PageTransitionsTheme
+	// TimePickerTheme is the theme of time pickers.
+	TimePickerTheme TimePickerThemeData
+	// DatePickerTheme is the theme of date pickers.
+	DatePickerTheme DatePickerThemeData
+	// DialogTheme is the theme of dialogs.
+	DialogTheme DialogThemeData
 	// SearchViewTheme is the default configuration of the search views.
 	SearchViewTheme SearchViewThemeData
 	// SearchBarTheme is the default configuration of the search bars.
@@ -469,6 +475,12 @@ type ThemeData struct {
 	Typography *Typography
 	// PageTransitionsTheme is the transitions of the pages that Material makes.
 	PageTransitionsTheme *PageTransitionsTheme
+	// TimePickerTheme is the theme of time pickers.
+	TimePickerTheme TimePickerThemeData
+	// DatePickerTheme is the theme of date pickers.
+	DatePickerTheme DatePickerThemeData
+	// DialogTheme is the theme of dialogs.
+	DialogTheme DialogThemeData
 	// SearchViewTheme is the default configuration of the search views.
 	SearchViewTheme SearchViewThemeData
 	// SearchBarTheme is the default configuration of the search bars.
@@ -770,6 +782,9 @@ func NewThemeData(opts ...ThemeDataOpts) *ThemeData {
 		Typography:       typography,
 
 		PageTransitionsTheme:      pageTransitionsTheme,
+		TimePickerTheme:           o.TimePickerTheme,
+		DatePickerTheme:           o.DatePickerTheme,
+		DialogTheme:               o.DialogTheme,
 		SearchViewTheme:           o.SearchViewTheme,
 		SearchBarTheme:            o.SearchBarTheme,
 		ChipTheme:                 o.ChipTheme,
@@ -845,6 +860,9 @@ type ThemeDataCopy struct {
 	TextTheme                 foundation.Opt[*TextTheme]
 	Typography                foundation.Opt[*Typography]
 	PageTransitionsTheme      foundation.Opt[*PageTransitionsTheme]
+	TimePickerTheme           foundation.Opt[TimePickerThemeData]
+	DatePickerTheme           foundation.Opt[DatePickerThemeData]
+	DialogTheme               foundation.Opt[DialogThemeData]
 	SearchViewTheme           foundation.Opt[SearchViewThemeData]
 	SearchBarTheme            foundation.Opt[SearchBarThemeData]
 	ChipTheme                 foundation.Opt[ChipThemeData]
@@ -922,6 +940,9 @@ func (d *ThemeData) CopyWith(c ThemeDataCopy) *ThemeData {
 	out.TextTheme = c.TextTheme.OrElse(d.TextTheme)
 	out.Typography = c.Typography.OrElse(d.Typography)
 	out.PageTransitionsTheme = c.PageTransitionsTheme.OrElse(d.PageTransitionsTheme)
+	out.TimePickerTheme = c.TimePickerTheme.OrElse(d.TimePickerTheme)
+	out.DatePickerTheme = c.DatePickerTheme.OrElse(d.DatePickerTheme)
+	out.DialogTheme = c.DialogTheme.OrElse(d.DialogTheme)
 	out.SearchViewTheme = c.SearchViewTheme.OrElse(d.SearchViewTheme)
 	out.SearchBarTheme = c.SearchBarTheme.OrElse(d.SearchBarTheme)
 	out.ChipTheme = c.ChipTheme.OrElse(d.ChipTheme)
@@ -1155,6 +1176,9 @@ func ThemeDataLerp(a, b *ThemeData, t float64) *ThemeData {
 		PrimaryTextTheme:          TextThemeLerp(a.PrimaryTextTheme, b.PrimaryTextTheme, t),
 		TextTheme:                 TextThemeLerp(a.TextTheme, b.TextTheme, t),
 		Typography:                TypographyLerp(a.Typography, b.Typography, t),
+		TimePickerTheme:           TimePickerThemeDataLerp(a.TimePickerTheme, b.TimePickerTheme, t),
+		DatePickerTheme:           DatePickerThemeDataLerp(a.DatePickerTheme, b.DatePickerTheme, t),
+		DialogTheme:               DialogThemeDataLerp(a.DialogTheme, b.DialogTheme, t),
 		SearchViewTheme:           SearchViewThemeDataLerp(a.SearchViewTheme, b.SearchViewTheme, t),
 		SearchBarTheme:            SearchBarThemeDataLerp(a.SearchBarTheme, b.SearchBarTheme, t),
 		ChipTheme:                 ChipThemeDataLerp(a.ChipTheme, b.ChipTheme, t),
@@ -1217,7 +1241,7 @@ func (d *ThemeData) Equal(other *ThemeData) bool {
 	if d.ApplyElevationOverlayColor != other.ApplyElevationOverlayColor || d.MaterialTapTargetSize != other.MaterialTapTargetSize ||
 		d.Platform != other.Platform || d.UseMaterial3 != other.UseMaterial3 || !foundation.ValuesEqual(d.SplashFactory, other.SplashFactory) || d.VisualDensity != other.VisualDensity ||
 		!d.ColorScheme.Equal(other.ColorScheme) || !d.IconTheme.Equal(other.IconTheme) || !d.PrimaryIconTheme.Equal(other.PrimaryIconTheme) ||
-		!d.PrimaryTextTheme.Equal(other.PrimaryTextTheme) || !d.TextTheme.Equal(other.TextTheme) || !d.Typography.Equal(other.Typography) || !d.PageTransitionsTheme.Equal(other.PageTransitionsTheme) || !d.AppBarTheme.Equal(other.AppBarTheme) || !d.BannerTheme.Equal(other.BannerTheme) || !d.BottomAppBarTheme.Equal(other.BottomAppBarTheme) || !d.SnackBarTheme.Equal(other.SnackBarTheme) || !d.DrawerTheme.Equal(other.DrawerTheme) || !d.BottomSheetTheme.Equal(other.BottomSheetTheme) || !d.NavigationBarTheme.Equal(other.NavigationBarTheme) || !d.NavigationRailTheme.Equal(other.NavigationRailTheme) || !d.NavigationDrawerTheme.Equal(other.NavigationDrawerTheme) || !d.TabBarTheme.Equal(other.TabBarTheme) || !d.TextButtonTheme.Equal(other.TextButtonTheme) || !d.ElevatedButtonTheme.Equal(other.ElevatedButtonTheme) || !d.FilledButtonTheme.Equal(other.FilledButtonTheme) || !d.OutlinedButtonTheme.Equal(other.OutlinedButtonTheme) || !d.IconButtonTheme.Equal(other.IconButtonTheme) || !d.FloatingActionButtonTheme.Equal(other.FloatingActionButtonTheme) || !d.SegmentedButtonTheme.Equal(other.SegmentedButtonTheme) || !d.ActionIconTheme.Equal(other.ActionIconTheme) || !d.MenuTheme.Equal(other.MenuTheme) || !d.MenuBarTheme.Equal(other.MenuBarTheme) || !d.MenuButtonTheme.Equal(other.MenuButtonTheme) || !d.PopupMenuTheme.Equal(other.PopupMenuTheme) || !d.InputDecorationTheme.Equal(other.InputDecorationTheme) || !d.TextSelectionTheme.Equal(other.TextSelectionTheme) || !d.DropdownMenuTheme.Equal(other.DropdownMenuTheme) || !d.CheckboxTheme.Equal(other.CheckboxTheme) || !d.RadioTheme.Equal(other.RadioTheme) || !d.SwitchTheme.Equal(other.SwitchTheme) || !d.SliderTheme.Equal(other.SliderTheme) || !d.ChipTheme.Equal(other.ChipTheme) || !d.SearchBarTheme.Equal(other.SearchBarTheme) || !d.SearchViewTheme.Equal(other.SearchViewTheme) {
+		!d.PrimaryTextTheme.Equal(other.PrimaryTextTheme) || !d.TextTheme.Equal(other.TextTheme) || !d.Typography.Equal(other.Typography) || !d.PageTransitionsTheme.Equal(other.PageTransitionsTheme) || !d.AppBarTheme.Equal(other.AppBarTheme) || !d.BannerTheme.Equal(other.BannerTheme) || !d.BottomAppBarTheme.Equal(other.BottomAppBarTheme) || !d.SnackBarTheme.Equal(other.SnackBarTheme) || !d.DrawerTheme.Equal(other.DrawerTheme) || !d.BottomSheetTheme.Equal(other.BottomSheetTheme) || !d.NavigationBarTheme.Equal(other.NavigationBarTheme) || !d.NavigationRailTheme.Equal(other.NavigationRailTheme) || !d.NavigationDrawerTheme.Equal(other.NavigationDrawerTheme) || !d.TabBarTheme.Equal(other.TabBarTheme) || !d.TextButtonTheme.Equal(other.TextButtonTheme) || !d.ElevatedButtonTheme.Equal(other.ElevatedButtonTheme) || !d.FilledButtonTheme.Equal(other.FilledButtonTheme) || !d.OutlinedButtonTheme.Equal(other.OutlinedButtonTheme) || !d.IconButtonTheme.Equal(other.IconButtonTheme) || !d.FloatingActionButtonTheme.Equal(other.FloatingActionButtonTheme) || !d.SegmentedButtonTheme.Equal(other.SegmentedButtonTheme) || !d.ActionIconTheme.Equal(other.ActionIconTheme) || !d.MenuTheme.Equal(other.MenuTheme) || !d.MenuBarTheme.Equal(other.MenuBarTheme) || !d.MenuButtonTheme.Equal(other.MenuButtonTheme) || !d.PopupMenuTheme.Equal(other.PopupMenuTheme) || !d.InputDecorationTheme.Equal(other.InputDecorationTheme) || !d.TextSelectionTheme.Equal(other.TextSelectionTheme) || !d.DropdownMenuTheme.Equal(other.DropdownMenuTheme) || !d.CheckboxTheme.Equal(other.CheckboxTheme) || !d.RadioTheme.Equal(other.RadioTheme) || !d.SwitchTheme.Equal(other.SwitchTheme) || !d.SliderTheme.Equal(other.SliderTheme) || !d.ChipTheme.Equal(other.ChipTheme) || !d.SearchBarTheme.Equal(other.SearchBarTheme) || !d.SearchViewTheme.Equal(other.SearchViewTheme) || !d.DialogTheme.Equal(other.DialogTheme) || !d.DatePickerTheme.Equal(other.DatePickerTheme) || !d.TimePickerTheme.Equal(other.TimePickerTheme) {
 		return false
 	}
 	for _, f := range themeColorFields {
@@ -1279,6 +1303,9 @@ func (d *ThemeData) DebugFillProperties(properties *foundation.DiagnosticPropert
 	properties.Add(foundation.NewDiagnosticsProperty("textTheme", d.TextTheme, dbg(def.TextTheme)))
 	properties.Add(foundation.NewDiagnosticsProperty("typography", d.Typography, dbg(def.Typography)))
 	properties.Add(foundation.NewDiagnosticsProperty("pageTransitionsTheme", d.PageTransitionsTheme, dbg(def.PageTransitionsTheme)))
+	properties.Add(foundation.NewDiagnosticsProperty("timePickerTheme", d.TimePickerTheme, dbg(def.TimePickerTheme)))
+	properties.Add(foundation.NewDiagnosticsProperty("datePickerTheme", d.DatePickerTheme, dbg(def.DatePickerTheme)))
+	properties.Add(foundation.NewDiagnosticsProperty("dialogTheme", d.DialogTheme, dbg(def.DialogTheme)))
 	properties.Add(foundation.NewDiagnosticsProperty("searchViewTheme", d.SearchViewTheme, dbg(def.SearchViewTheme)))
 	properties.Add(foundation.NewDiagnosticsProperty("searchBarTheme", d.SearchBarTheme, dbg(def.SearchBarTheme)))
 	properties.Add(foundation.NewDiagnosticsProperty("chipTheme", d.ChipTheme, dbg(def.ChipTheme)))

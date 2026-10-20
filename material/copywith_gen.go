@@ -402,6 +402,256 @@ func (x ChipThemeData) CopyWith(c ChipThemeDataCopy) ChipThemeData {
 	return r
 }
 
+// DatePickerThemeDataCopy holds the replacements for DatePickerThemeData.CopyWith: a field that is None keeps the value of the
+// copied one.
+//
+// Flutter: material/date_picker_theme.dart DatePickerThemeData.copyWith
+type DatePickerThemeDataCopy struct {
+	BackgroundColor                  foundation.Opt[ui.Color]
+	Elevation                        foundation.Opt[float64]
+	ShadowColor                      foundation.Opt[ui.Color]
+	SurfaceTintColor                 foundation.Opt[ui.Color]
+	Shape                            foundation.Opt[painting.ShapeBorder]
+	HeaderBackgroundColor            foundation.Opt[ui.Color]
+	HeaderForegroundColor            foundation.Opt[ui.Color]
+	HeaderHeadlineStyle              foundation.Opt[*painting.TextStyle]
+	HeaderHelpStyle                  foundation.Opt[*painting.TextStyle]
+	WeekdayStyle                     foundation.Opt[*painting.TextStyle]
+	DayStyle                         foundation.Opt[*painting.TextStyle]
+	DayForegroundColor               foundation.Opt[widgets.WidgetStateProperty[foundation.Opt[ui.Color]]]
+	DayBackgroundColor               foundation.Opt[widgets.WidgetStateProperty[foundation.Opt[ui.Color]]]
+	DayOverlayColor                  foundation.Opt[widgets.WidgetStateProperty[foundation.Opt[ui.Color]]]
+	DayShape                         foundation.Opt[widgets.WidgetStateProperty[painting.OutlinedBorder]]
+	TodayForegroundColor             foundation.Opt[widgets.WidgetStateProperty[foundation.Opt[ui.Color]]]
+	TodayBackgroundColor             foundation.Opt[widgets.WidgetStateProperty[foundation.Opt[ui.Color]]]
+	TodayBorder                      foundation.Opt[painting.BorderSide]
+	YearStyle                        foundation.Opt[*painting.TextStyle]
+	YearForegroundColor              foundation.Opt[widgets.WidgetStateProperty[foundation.Opt[ui.Color]]]
+	YearBackgroundColor              foundation.Opt[widgets.WidgetStateProperty[foundation.Opt[ui.Color]]]
+	YearOverlayColor                 foundation.Opt[widgets.WidgetStateProperty[foundation.Opt[ui.Color]]]
+	YearShape                        foundation.Opt[widgets.WidgetStateProperty[painting.OutlinedBorder]]
+	RangePickerBackgroundColor       foundation.Opt[ui.Color]
+	RangePickerElevation             foundation.Opt[float64]
+	RangePickerShadowColor           foundation.Opt[ui.Color]
+	RangePickerSurfaceTintColor      foundation.Opt[ui.Color]
+	RangePickerShape                 foundation.Opt[painting.ShapeBorder]
+	RangePickerHeaderBackgroundColor foundation.Opt[ui.Color]
+	RangePickerHeaderForegroundColor foundation.Opt[ui.Color]
+	RangePickerHeaderHeadlineStyle   foundation.Opt[*painting.TextStyle]
+	RangePickerHeaderHelpStyle       foundation.Opt[*painting.TextStyle]
+	RangeSelectionBackgroundColor    foundation.Opt[ui.Color]
+	RangeSelectionOverlayColor       foundation.Opt[widgets.WidgetStateProperty[foundation.Opt[ui.Color]]]
+	DividerColor                     foundation.Opt[ui.Color]
+	InputDecorationTheme             foundation.Opt[*InputDecorationThemeData]
+	CancelButtonStyle                foundation.Opt[*ButtonStyle]
+	ConfirmButtonStyle               foundation.Opt[*ButtonStyle]
+	Locale                           foundation.Opt[ui.Locale]
+	ToggleButtonTextStyle            foundation.Opt[*painting.TextStyle]
+	SubHeaderForegroundColor         foundation.Opt[ui.Color]
+}
+
+// CopyWith returns a copy of the DatePickerThemeData with the fields that the DatePickerThemeDataCopy sets replaced.
+//
+// Flutter: material/date_picker_theme.dart DatePickerThemeData.copyWith
+func (x DatePickerThemeData) CopyWith(c DatePickerThemeDataCopy) DatePickerThemeData {
+	r := x
+	if c.BackgroundColor.IsSome() {
+		r.BackgroundColor = c.BackgroundColor
+	}
+	if c.Elevation.IsSome() {
+		r.Elevation = c.Elevation
+	}
+	if c.ShadowColor.IsSome() {
+		r.ShadowColor = c.ShadowColor
+	}
+	if c.SurfaceTintColor.IsSome() {
+		r.SurfaceTintColor = c.SurfaceTintColor
+	}
+	if v, ok := c.Shape.Get(); ok {
+		r.Shape = v
+	}
+	if c.HeaderBackgroundColor.IsSome() {
+		r.HeaderBackgroundColor = c.HeaderBackgroundColor
+	}
+	if c.HeaderForegroundColor.IsSome() {
+		r.HeaderForegroundColor = c.HeaderForegroundColor
+	}
+	if v, ok := c.HeaderHeadlineStyle.Get(); ok {
+		r.HeaderHeadlineStyle = v
+	}
+	if v, ok := c.HeaderHelpStyle.Get(); ok {
+		r.HeaderHelpStyle = v
+	}
+	if v, ok := c.WeekdayStyle.Get(); ok {
+		r.WeekdayStyle = v
+	}
+	if v, ok := c.DayStyle.Get(); ok {
+		r.DayStyle = v
+	}
+	if v, ok := c.DayForegroundColor.Get(); ok {
+		r.DayForegroundColor = v
+	}
+	if v, ok := c.DayBackgroundColor.Get(); ok {
+		r.DayBackgroundColor = v
+	}
+	if v, ok := c.DayOverlayColor.Get(); ok {
+		r.DayOverlayColor = v
+	}
+	if v, ok := c.DayShape.Get(); ok {
+		r.DayShape = v
+	}
+	if v, ok := c.TodayForegroundColor.Get(); ok {
+		r.TodayForegroundColor = v
+	}
+	if v, ok := c.TodayBackgroundColor.Get(); ok {
+		r.TodayBackgroundColor = v
+	}
+	if c.TodayBorder.IsSome() {
+		r.TodayBorder = c.TodayBorder
+	}
+	if v, ok := c.YearStyle.Get(); ok {
+		r.YearStyle = v
+	}
+	if v, ok := c.YearForegroundColor.Get(); ok {
+		r.YearForegroundColor = v
+	}
+	if v, ok := c.YearBackgroundColor.Get(); ok {
+		r.YearBackgroundColor = v
+	}
+	if v, ok := c.YearOverlayColor.Get(); ok {
+		r.YearOverlayColor = v
+	}
+	if v, ok := c.YearShape.Get(); ok {
+		r.YearShape = v
+	}
+	if c.RangePickerBackgroundColor.IsSome() {
+		r.RangePickerBackgroundColor = c.RangePickerBackgroundColor
+	}
+	if c.RangePickerElevation.IsSome() {
+		r.RangePickerElevation = c.RangePickerElevation
+	}
+	if c.RangePickerShadowColor.IsSome() {
+		r.RangePickerShadowColor = c.RangePickerShadowColor
+	}
+	if c.RangePickerSurfaceTintColor.IsSome() {
+		r.RangePickerSurfaceTintColor = c.RangePickerSurfaceTintColor
+	}
+	if v, ok := c.RangePickerShape.Get(); ok {
+		r.RangePickerShape = v
+	}
+	if c.RangePickerHeaderBackgroundColor.IsSome() {
+		r.RangePickerHeaderBackgroundColor = c.RangePickerHeaderBackgroundColor
+	}
+	if c.RangePickerHeaderForegroundColor.IsSome() {
+		r.RangePickerHeaderForegroundColor = c.RangePickerHeaderForegroundColor
+	}
+	if v, ok := c.RangePickerHeaderHeadlineStyle.Get(); ok {
+		r.RangePickerHeaderHeadlineStyle = v
+	}
+	if v, ok := c.RangePickerHeaderHelpStyle.Get(); ok {
+		r.RangePickerHeaderHelpStyle = v
+	}
+	if c.RangeSelectionBackgroundColor.IsSome() {
+		r.RangeSelectionBackgroundColor = c.RangeSelectionBackgroundColor
+	}
+	if v, ok := c.RangeSelectionOverlayColor.Get(); ok {
+		r.RangeSelectionOverlayColor = v
+	}
+	if c.DividerColor.IsSome() {
+		r.DividerColor = c.DividerColor
+	}
+	if v, ok := c.InputDecorationTheme.Get(); ok {
+		r.InputDecorationTheme = v
+	}
+	if v, ok := c.CancelButtonStyle.Get(); ok {
+		r.CancelButtonStyle = v
+	}
+	if v, ok := c.ConfirmButtonStyle.Get(); ok {
+		r.ConfirmButtonStyle = v
+	}
+	if c.Locale.IsSome() {
+		r.Locale = c.Locale
+	}
+	if v, ok := c.ToggleButtonTextStyle.Get(); ok {
+		r.ToggleButtonTextStyle = v
+	}
+	if c.SubHeaderForegroundColor.IsSome() {
+		r.SubHeaderForegroundColor = c.SubHeaderForegroundColor
+	}
+	return r
+}
+
+// DialogThemeDataCopy holds the replacements for DialogThemeData.CopyWith: a field that is None keeps the value of the
+// copied one.
+//
+// Flutter: material/dialog_theme.dart DialogThemeData.copyWith
+type DialogThemeDataCopy struct {
+	BackgroundColor  foundation.Opt[ui.Color]
+	Elevation        foundation.Opt[float64]
+	ShadowColor      foundation.Opt[ui.Color]
+	SurfaceTintColor foundation.Opt[ui.Color]
+	Shape            foundation.Opt[painting.ShapeBorder]
+	Alignment        foundation.Opt[painting.AlignmentGeometry]
+	IconColor        foundation.Opt[ui.Color]
+	TitleTextStyle   foundation.Opt[*painting.TextStyle]
+	ContentTextStyle foundation.Opt[*painting.TextStyle]
+	ActionsPadding   foundation.Opt[painting.EdgeInsetsGeometry]
+	BarrierColor     foundation.Opt[ui.Color]
+	InsetPadding     foundation.Opt[*painting.EdgeInsets]
+	ClipBehavior     foundation.Opt[ui.Clip]
+	Constraints      foundation.Opt[rendering.BoxConstraints]
+}
+
+// CopyWith returns a copy of the DialogThemeData with the fields that the DialogThemeDataCopy sets replaced.
+//
+// Flutter: material/dialog_theme.dart DialogThemeData.copyWith
+func (x DialogThemeData) CopyWith(c DialogThemeDataCopy) DialogThemeData {
+	r := x
+	if c.BackgroundColor.IsSome() {
+		r.BackgroundColor = c.BackgroundColor
+	}
+	if c.Elevation.IsSome() {
+		r.Elevation = c.Elevation
+	}
+	if c.ShadowColor.IsSome() {
+		r.ShadowColor = c.ShadowColor
+	}
+	if c.SurfaceTintColor.IsSome() {
+		r.SurfaceTintColor = c.SurfaceTintColor
+	}
+	if v, ok := c.Shape.Get(); ok {
+		r.Shape = v
+	}
+	if v, ok := c.Alignment.Get(); ok {
+		r.Alignment = v
+	}
+	if c.IconColor.IsSome() {
+		r.IconColor = c.IconColor
+	}
+	if v, ok := c.TitleTextStyle.Get(); ok {
+		r.TitleTextStyle = v
+	}
+	if v, ok := c.ContentTextStyle.Get(); ok {
+		r.ContentTextStyle = v
+	}
+	if v, ok := c.ActionsPadding.Get(); ok {
+		r.ActionsPadding = v
+	}
+	if c.BarrierColor.IsSome() {
+		r.BarrierColor = c.BarrierColor
+	}
+	if v, ok := c.InsetPadding.Get(); ok {
+		r.InsetPadding = v
+	}
+	if v, ok := c.ClipBehavior.Get(); ok {
+		r.ClipBehavior = v
+	}
+	if c.Constraints.IsSome() {
+		r.Constraints = c.Constraints
+	}
+	return r
+}
+
 // DrawerThemeDataCopy holds the replacements for DrawerThemeData.CopyWith: a field that is None keeps the value of the
 // copied one.
 //
@@ -1694,6 +1944,137 @@ func (x TextSelectionThemeData) CopyWith(c TextSelectionThemeDataCopy) TextSelec
 	}
 	if c.SelectionHandleColor.IsSome() {
 		r.SelectionHandleColor = c.SelectionHandleColor
+	}
+	return r
+}
+
+// TimePickerThemeDataCopy holds the replacements for TimePickerThemeData.CopyWith: a field that is None keeps the value of the
+// copied one.
+//
+// Flutter: material/time_picker_theme.dart TimePickerThemeData.copyWith
+type TimePickerThemeDataCopy struct {
+	BackgroundColor                foundation.Opt[ui.Color]
+	CancelButtonStyle              foundation.Opt[*ButtonStyle]
+	ConfirmButtonStyle             foundation.Opt[*ButtonStyle]
+	DayPeriodBorderSide            foundation.Opt[painting.BorderSide]
+	DayPeriodColor                 foundation.Opt[ui.Color]
+	DayPeriodStateColor            foundation.Opt[widgets.WidgetStateProperty[foundation.Opt[ui.Color]]]
+	DayPeriodShape                 foundation.Opt[painting.OutlinedBorder]
+	DayPeriodTextColor             foundation.Opt[ui.Color]
+	DayPeriodTextStateColor        foundation.Opt[widgets.WidgetStateProperty[foundation.Opt[ui.Color]]]
+	DayPeriodTextStyle             foundation.Opt[*painting.TextStyle]
+	DialBackgroundColor            foundation.Opt[ui.Color]
+	DialHandColor                  foundation.Opt[ui.Color]
+	DialTextColor                  foundation.Opt[ui.Color]
+	DialTextStateColor             foundation.Opt[widgets.WidgetStateProperty[foundation.Opt[ui.Color]]]
+	DialTextStyle                  foundation.Opt[*painting.TextStyle]
+	Elevation                      foundation.Opt[float64]
+	EntryModeIconColor             foundation.Opt[ui.Color]
+	HelpTextStyle                  foundation.Opt[*painting.TextStyle]
+	HourMinuteColor                foundation.Opt[ui.Color]
+	HourMinuteStateColor           foundation.Opt[widgets.WidgetStateProperty[foundation.Opt[ui.Color]]]
+	HourMinuteShape                foundation.Opt[painting.ShapeBorder]
+	HourMinuteTextColor            foundation.Opt[ui.Color]
+	HourMinuteTextStateColor       foundation.Opt[widgets.WidgetStateProperty[foundation.Opt[ui.Color]]]
+	HourMinuteTextStyle            foundation.Opt[*painting.TextStyle]
+	InputDecorationTheme           foundation.Opt[*InputDecorationThemeData]
+	Padding                        foundation.Opt[painting.EdgeInsetsGeometry]
+	Shape                          foundation.Opt[painting.ShapeBorder]
+	TimeSelectorSeparatorColor     foundation.Opt[widgets.WidgetStateProperty[foundation.Opt[ui.Color]]]
+	TimeSelectorSeparatorTextStyle foundation.Opt[widgets.WidgetStateProperty[*painting.TextStyle]]
+}
+
+// CopyWith returns a copy of the TimePickerThemeData with the fields that the TimePickerThemeDataCopy sets replaced.
+//
+// Flutter: material/time_picker_theme.dart TimePickerThemeData.copyWith
+func (x TimePickerThemeData) CopyWith(c TimePickerThemeDataCopy) TimePickerThemeData {
+	r := x
+	if c.BackgroundColor.IsSome() {
+		r.BackgroundColor = c.BackgroundColor
+	}
+	if v, ok := c.CancelButtonStyle.Get(); ok {
+		r.CancelButtonStyle = v
+	}
+	if v, ok := c.ConfirmButtonStyle.Get(); ok {
+		r.ConfirmButtonStyle = v
+	}
+	if c.DayPeriodBorderSide.IsSome() {
+		r.DayPeriodBorderSide = c.DayPeriodBorderSide
+	}
+	if c.DayPeriodColor.IsSome() {
+		r.DayPeriodColor = c.DayPeriodColor
+	}
+	if v, ok := c.DayPeriodStateColor.Get(); ok {
+		r.DayPeriodStateColor = v
+	}
+	if v, ok := c.DayPeriodShape.Get(); ok {
+		r.DayPeriodShape = v
+	}
+	if c.DayPeriodTextColor.IsSome() {
+		r.DayPeriodTextColor = c.DayPeriodTextColor
+	}
+	if v, ok := c.DayPeriodTextStateColor.Get(); ok {
+		r.DayPeriodTextStateColor = v
+	}
+	if v, ok := c.DayPeriodTextStyle.Get(); ok {
+		r.DayPeriodTextStyle = v
+	}
+	if c.DialBackgroundColor.IsSome() {
+		r.DialBackgroundColor = c.DialBackgroundColor
+	}
+	if c.DialHandColor.IsSome() {
+		r.DialHandColor = c.DialHandColor
+	}
+	if c.DialTextColor.IsSome() {
+		r.DialTextColor = c.DialTextColor
+	}
+	if v, ok := c.DialTextStateColor.Get(); ok {
+		r.DialTextStateColor = v
+	}
+	if v, ok := c.DialTextStyle.Get(); ok {
+		r.DialTextStyle = v
+	}
+	if c.Elevation.IsSome() {
+		r.Elevation = c.Elevation
+	}
+	if c.EntryModeIconColor.IsSome() {
+		r.EntryModeIconColor = c.EntryModeIconColor
+	}
+	if v, ok := c.HelpTextStyle.Get(); ok {
+		r.HelpTextStyle = v
+	}
+	if c.HourMinuteColor.IsSome() {
+		r.HourMinuteColor = c.HourMinuteColor
+	}
+	if v, ok := c.HourMinuteStateColor.Get(); ok {
+		r.HourMinuteStateColor = v
+	}
+	if v, ok := c.HourMinuteShape.Get(); ok {
+		r.HourMinuteShape = v
+	}
+	if c.HourMinuteTextColor.IsSome() {
+		r.HourMinuteTextColor = c.HourMinuteTextColor
+	}
+	if v, ok := c.HourMinuteTextStateColor.Get(); ok {
+		r.HourMinuteTextStateColor = v
+	}
+	if v, ok := c.HourMinuteTextStyle.Get(); ok {
+		r.HourMinuteTextStyle = v
+	}
+	if v, ok := c.InputDecorationTheme.Get(); ok {
+		r.InputDecorationTheme = v
+	}
+	if v, ok := c.Padding.Get(); ok {
+		r.Padding = v
+	}
+	if v, ok := c.Shape.Get(); ok {
+		r.Shape = v
+	}
+	if v, ok := c.TimeSelectorSeparatorColor.Get(); ok {
+		r.TimeSelectorSeparatorColor = v
+	}
+	if v, ok := c.TimeSelectorSeparatorTextStyle.Get(); ok {
+		r.TimeSelectorSeparatorTextStyle = v
 	}
 	return r
 }

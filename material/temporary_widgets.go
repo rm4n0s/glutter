@@ -101,6 +101,38 @@ func tempDivider(bc widgets.BuildContext, o tempDividerOpts) widgets.Widget {
 		widgets.SizedBoxOpts{Height: foundation.Some(o.height)})
 }
 
+// tempVerticalDividerOpts are the parameters of tempVerticalDivider.
+type tempVerticalDividerOpts struct {
+	width     float64
+	thickness foundation.Opt[float64]
+	color     foundation.Opt[ui.Color]
+}
+
+// tempVerticalDivider stands in for VerticalDivider: a vertical line in the
+// middle of a box, with the Material 3 colors and thickness of the theme.
+//
+// TODO(step 13.9): VerticalDivider.
+func tempVerticalDivider(bc widgets.BuildContext, o tempVerticalDividerOpts) widgets.Widget {
+	theme := ThemeOf(bc)
+	thickness := o.thickness.OrElse(0.0)
+	color := theme.DividerColor
+	if theme.UseMaterial3 {
+		thickness = o.thickness.OrElse(1.0)
+		color = theme.ColorScheme.OutlineVariant()
+	}
+	if c, ok := o.color.Get(); ok {
+		color = c
+	}
+	return widgets.NewSizedBox(
+		widgets.NewCenter(widgets.NewContainer(nil, widgets.ContainerOpts{
+			Width: foundation.Some(thickness),
+			Decoration: painting.NewBoxDecoration(painting.BoxDecorationOpts{
+				Border: painting.Border{Left: painting.NewBorderSide(painting.BorderSideOpts{Color: foundation.Some(color), Width: foundation.Some(thickness)})},
+			}),
+		})),
+		widgets.SizedBoxOpts{Width: foundation.Some(o.width)})
+}
+
 // tempListTileOpts are the parameters of tempListTile.
 type tempListTileOpts struct {
 	enabled    bool
