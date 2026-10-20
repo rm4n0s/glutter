@@ -36,9 +36,11 @@ func TestIcons(t *testing.T) {
 func TestIconsRenderFromTheBundledFont(t *testing.T) {
 	ts := gluttertest.New(t, gluttertest.Opts{})
 	ts.PumpWidget(materialApp(nil, widgets.NewColoredBox(white, widgets.NewCenter(widgets.NewIcon(Icons.Add(), widgets.IconOpts{Size: foundation.Some(48.0), Color: foundation.Some(ui.NewColor(0xFF000000))})))))
-	// The glyph of "add" is a plus: its center and its arms are dark, the corners are not.
+	// The glyph of "add" is a plus: its center and its arms are dark, the area
+	// between the arms is not. (In the font of Google's repository, whose code
+	// points differ from Flutter's, 0xe047 is a filled square.)
 	dark := func(x, y int) bool { c := pixel(ts, x, y); return c.R < 128 }
-	if !dark(400, 300) || !dark(400, 288) || dark(380, 280) {
+	if !dark(400, 300) || !dark(400, 289) || !dark(400, 311) || !dark(389, 300) || !dark(411, 300) || dark(391, 291) {
 		t.Error("the add icon is not drawn as a plus")
 	}
 }

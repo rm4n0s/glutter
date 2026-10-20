@@ -13,7 +13,7 @@ import (
 	"github.com/rm4n0s/glutter/widgets"
 )
 
-var testIcon = widgets.NewIconData(0xE145, widgets.IconDataOpts{FontFamily: "MaterialIcons"})
+var testIcon = widgets.NewIconData(0xE047, widgets.IconDataOpts{FontFamily: "MaterialIcons"})
 
 func TestThemeDataTween(t *testing.T) {
 	light, dark := NewThemeData(), NewThemeDataDark()

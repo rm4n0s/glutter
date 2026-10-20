@@ -515,7 +515,7 @@ Tests tagged `glutter_display` compare `gles` against `soft` within a per-pixel 
 - **fontconfig** (`libfontconfig.so.1`, §8.1), when present, decides family matching and fallback order, as in Flutter's Linux engine. That means `sans-serif`, the user's UI font, emoji and CJK preferences, and per-language rules. go-text then parses and shapes the files fontconfig picks. Antialiasing and hinting follow GNOME's `font-antialiasing` and `font-hinting` settings from the settings portal.
 - **Bundled fonts** (in `material/fonts`, through `embed`):
   - Roboto. It's the first family in Flutter's Linux typography; the system fallbacks Ubuntu, Cantarell, DejaVu Sans and Liberation Sans follow it, as in Flutter
-  - Material Icons (Apache-2.0)
+  - Material Icons: the font of the Flutter SDK (`MaterialIcons-Regular.otf`, whose code points are those of Flutter's `Icons`), with the license text that ships with it (CC BY 4.0)
 - **Paragraph layout** (`internal/text`), in this order:
   1. Spans become runs, segmented by script, direction and font, with fallback.
   2. Runs are shaped.
@@ -739,7 +739,7 @@ Flutter's `assert` checks become checks that exist only in debug builds (`founda
 | The engine clears the frame to the scene's background (the embedder's clear color) | `ui.Scene` has no background; `gles.NewRenderer(RendererOpts{Background, HasBackground})` clears each frame to one color (default opaque white), and `Snapshot` is `GLNotImplemented` until step 3.6 | the scene is a layer tree only; the window background is the renderer's setting |
 | Flutter's Linux engine asks fontconfig through Skia's `SkFontMgr_fontconfig` | `internal/platform/linux/fontconfig` binds `libfontconfig.so.1` through purego (`FcFontSort` with the user's configuration substituted, trimmed, per family, OpenType weight converted as `FcWeightFromOpenType` does, slant and language) and `internal/text/fontconfig` adapts it to `text.Matcher`; `text.Collection` takes any `Matcher`, and without one scans the font directories with go-text's `fontscan` (index in `$XDG_CACHE_HOME/glutter/fonts`), ordering the family's own fonts by weight and slant, then fontscan's substitution for the family, then the language's font | the plan's `internal/text/fontconfig/` would call C from outside `internal/platform` (CLAUDE.md, SPEC §8.1); the binding lives in the platform tree and the text tree only adapts it |
 | Fonts are whatever the engine's font manager has | `Collection.Match` returns TrueType and OpenType files only (`.ttf .otf .ttc .otc`): fontconfig also lists Type 1 and bitmap fonts, which go-text cannot read. The high 16 bits of fontconfig's index (a named instance of a variable font) are ignored; the caller sets the variable axes, as Flutter does for the weight, with `Variation` | go-text has no Type 1 or PCF reader; instances are a subset of what axis values express |
-| Roboto is the static family of Material Design | the bundle has one variable file, Roboto 3's `Roboto[ital,wdth,wght].ttf` (v3.016, renamed `Roboto-Variable.ttf`), whose axes give every weight, width and the italic; Material Icons is `MaterialIcons-Regular.ttf` (`material/fonts/VERSIONS` has the pins and hashes) | one file instead of eighteen; text layout (step 4.2) sets the `wght` and `ital` axes from the style |
+| Roboto is the static family of Material Design | the bundle has one variable file, Roboto 3's `Roboto[ital,wdth,wght].ttf` (v3.016, renamed `Roboto-Variable.ttf`), whose axes give every weight, width and the italic; Material Icons is `MaterialIcons-Regular.otf`, taken from the font archive that the Flutter SDK downloads, because Flutter's `Icons` use code points that Google's `material-design-icons` repository does not (`Icons.add` is `0xe047` there, `0xe145` in the repository's font) (`material/fonts/VERSIONS` has the pins and hashes) | one file instead of eighteen; text layout (step 4.2) sets the `wght` and `ital` axes from the style |
 | Text offsets (`TextPosition.offset`, `TextRange`, `TextBox` queries) are UTF-16 code units, as in Dart strings | UTF-8 byte offsets into the Go string, everywhere in `ui`, `painting` and the text-editing code | Go strings are UTF-8, `len(s)` and `s[i:j]` are in bytes, and Wayland's `text-input-v3` also uses bytes; ported Flutter tests that index non-ASCII text are adjusted |
 | `ParagraphBuilder(style)` uses the engine's global font collection | `ui.NewParagraphBuilder(factory, style)`: the text engine (`ui.ParagraphFactory`, implemented by `internal/text/layout.Engine` over a `text.Collection`) is a parameter, reached by the framework through the `PlatformDispatcher` (step 5.2); `ui.LoadFontFromList` becomes a method of the engine's font collection | no global mutable state (CLAUDE.md); `ui.Paragraph` wraps a `ParagraphLayout` that the engine makes |
 | `TextStyle`, `ParagraphStyle`, `StrutStyle` take nullable named parameters | `NewTextStyle(TextStyleOpts)` and the like; a nullable number or color is a pointer (`ui.Ptr(14.0)`) because `ui` cannot use `foundation.Opt`; an unset enum or `FontWeight` is its zero value; a style pushed on a `ParagraphBuilder` inherits what it leaves unset (`ResolvedTextStyle` is the result); `Color` together with `Foreground` panics with `TextStyleColorAndForeground` | same inheritance as `ParagraphBuilder::pushStyle` |
@@ -1190,6 +1190,8 @@ Flutter's `assert` checks become checks that exist only in debug builds (`founda
 | `MaterialPageRoute`, `MaterialPage`, `MaterialRouteTransitionMixin` | `NewMaterialPageRoute(builder, MaterialPageRouteOpts{PageRouteOpts, MaintainState})` (`MaintainState` is an `Opt[bool]`, true by default), `NewMaterialPage(child, MaterialPageOpts{PageOpts, MaintainState, FullscreenDialog, DisallowSnapshotting})`; the mixin is `MaterialRouteBase` (embed it, call `InitMaterialRouteBase(&b, self, opts)`) over a `MaterialRoute` interface that has `BuildContent`. The route of a page reads the page from its settings, as Flutter's does. Dart's fallback duration of 300 microseconds in `transitionDuration` is dropped: the theme always has a builder (it falls back to the zoom transition) | the mixin becomes a base struct (§12.5) |
 | `PageTransitionsTheme`, `PageTransitionsBuilder` (`widgets/page_transitions_builder.dart`), `ZoomPageTransitionsBuilder`, `FadeForwardsPageTransitionsBuilder`, `FadeUpwardsPageTransitionsBuilder`, `OpenUpwardsPageTransitionsBuilder`, `DualTransitionBuilder` | `NewPageTransitionsTheme(PageTransitionsThemeOpts{Builders})`; the builders are comparable value structs (`NewZoomPageTransitionsBuilder(opts)`) that embed `widgets.PageTransitionsBuilderBase` (300 ms and no delegated transition; a builder with another duration overrides both `TransitionDuration` and `ReverseTransitionDuration`, as the base cannot see the type that embeds it). The default builders are the zoom transition for Linux and Windows; Android, iOS and macOS have none, so they use the zoom transition too (Flutter has `PredictiveBackPageTransitionsBuilder` and `CupertinoPageTransitionsBuilder`, which Glutter does not have). `ZoomPageTransitionsBuilder` has no `allowSnapshotting` and no `allowEnterRouteSnapshotting`: there is no `SnapshotWidget`, so the transitions are painted with the animated widgets of the paths without a snapshot (a `FadeTransition` and a `ScaleTransition` over a scrim of the surface color), which look the same. `ModalRoute.popGestureInProgress` is in the `ModalRoute` interface. `DualTransitionBuilder` is in `widgets` (`AnimatedTransitionBuilder` is its builder type) | no snapshots, no Cupertino library, no Android |
 | `MaterialPointArcTween`, `MaterialRectArcTween`, `MaterialRectCenterArcTween` | structs with exported `Begin` and `End` that notice a change when they are used (Dart's setters make them dirty), with `Lerp`; `Tween()` gives the `*animation.Tween[Opt[Rect]]` that `Hero.createRectTween` returns, and `MaterialRectArcTweenCreate` is the `CreateRectTween` of `MaterialApp`'s hero controller. `MaterialPointArcTween.EndAngle` returns the begin angle, as Flutter's getter does. `HeroController.CreateRectTween()` reads the function | Go cannot subclass `Tween` |
+| `Scaffold`, `AppBar`, `FloatingActionButton` (minimum, until steps 13.1 and 13.3) | `NewScaffold(ScaffoldOpts{AppBar, Body, FloatingActionButton, BackgroundColor, NoResizeToAvoidBottomInset, NoPrimary})`, `NewAppBar(AppBarOpts{...})` and `NewFloatingActionButton(onPressed, child, FloatingActionButtonOpts{...})`: Material 3 only, the regular button at the end of the bottom (`endFloat`), no theme, no state-dependent elevations, no tooltip widget (the text is the semantics tooltip), no back or drawer button, no scroll-under color. `AppBar` has no `_AppBarTitleBox` (the title is a child of the toolbar as it is) and `Scaffold` is a stateful widget without `ScaffoldState`. A Scaffold whose `AppBar` is not a `widgets.PreferredSizeWidget` panics in debug builds with `ScaffoldAppBarNotPreferredSize` | the counter example (step 12.5) needs them before the components of M13; each is marked `TODO(step 13.1)` or `TODO(step 13.3)` | 
+| `NavigationToolbar`, `PreferredSizeWidget` | `NewNavigationToolbar(NavigationToolbarOpts{Leading, Middle, Trailing, NoCenterMiddle, MiddleSpacing})` (`centerMiddle` defaults to true, so the option is its negation), `NavigationToolbarMiddleSpacing` is `kMiddleSpacing`; `PreferredSizeWidget` is an interface with `PreferredSize()`, and the `PreferredSize` widget is a TODO | Go options structs have no true defaults | 
 | `Banner`, `BannerPainter`, `BannerLocation`, `CheckedModeBanner` (`widgets/banner.dart`) | `NewBanner(message, location, child, BannerOpts)`, `NewBannerPainter(message, textDirection, location, layoutDirection, BannerPainterOpts{Color, TextStyle, Shadow, TextEngine})` (the text engine is passed as in `TextPainterOpts`; `Banner` takes it from the binding) and `NewCheckedModeBanner(child)`; `BannerLocation` has the zero value `BannerLocationUnspecified`; the missing `Directionality` is `DirectionalityMissing`. The `BannerPainter` does not repaint when the system fonts change (there is no `SystemFonts` listenable) | the options struct convention |
 | `glutter-gen copywith` and the `copyWith` of the immutable value classes | the generator is implemented and tested (`//glutter:copywith`), but `ThemeData`, `ColorScheme`, `TextTheme` and `TextStyle` keep a hand-written `CopyWith`: `ThemeData`'s takes a `Brightness`, `ColorScheme`'s materializes the resolved colors, `TextTheme`'s takes `*TextStyle` (nil keeps), and `TextStyle`'s is the options struct of its constructor. The component themes of M13, which are plain bags of optional fields, are what the generator is for | the four classes have a `copyWith` that is not a plain field-by-field replacement |
 
@@ -1208,6 +1210,8 @@ Apps import only `m "github.com/rm4n0s/glutter/material"`. The widgets layer its
 
 ### 12.12 Reference example
 
+This is `examples/counter/main.go` without its header comment and without the code of `GLUTTER_DEV_TAPS` (`InitState` and `devTaps`, which start the counter at that number in debug builds, for the proof screenshot). It differs from the first draft of this section in the names that Glutter's API actually has: `m.Colors.Blue.Primary`, `m.Icons.Add()` (§12.10) and the `TextTheme.HeadlineMedium` field. It also sets the window and turns the debug banner off, so the screenshot shows the page only.
+
 ```go
 package main
 
@@ -1219,7 +1223,11 @@ import (
 )
 
 func main() {
-	if err := m.RunApp(NewMyApp()); err != nil {
+	err := m.RunApp(NewMyApp(), m.RunAppOpts{
+		AppID:  "dev.glutter.counter",
+		Window: m.WindowConfig{Title: "Counter", Size: m.Size{Width: 480, Height: 640}},
+	})
+	if err != nil {
 		log.Fatal(err)
 	}
 }
@@ -1230,9 +1238,10 @@ func NewMyApp() *MyApp { return &MyApp{} }
 
 func (a *MyApp) Build(bc m.BuildContext) m.Widget {
 	return m.NewMaterialApp(m.MaterialAppOpts{
-		Title: "Counter",
-		Theme: m.NewThemeData(m.ThemeDataOpts{ColorSchemeSeed: m.Some(m.Colors.Blue)}),
-		Home:  NewCounterPage("Counter"),
+		Title:                      "Counter",
+		Theme:                      m.NewThemeData(m.ThemeDataOpts{ColorSchemeSeed: m.Some(m.Colors.Blue.Primary)}),
+		DebugShowCheckedModeBanner: m.Some(false),
+		Home:                       NewCounterPage("Counter"),
 	})
 }
 
@@ -1245,7 +1254,7 @@ func NewCounterPage(title string, opts ...m.WidgetOpts) *CounterPage {
 	return &CounterPage{StatefulWidget: m.NewStatefulWidgetBase(opts...), title: title}
 }
 
-func (p *CounterPage) Title() string     { return p.title }
+func (p *CounterPage) Title() string        { return p.title }
 func (p *CounterPage) CreateState() m.State { return &counterPageState{} }
 
 type counterPageState struct {
@@ -1261,7 +1270,7 @@ func (s *counterPageState) Build(bc m.BuildContext) m.Widget {
 		Body: m.NewCenter(
 			m.NewColumn([]m.Widget{
 				m.NewText("You have pushed the button this many times:"),
-				m.NewText(strconv.Itoa(s.count), m.TextOpts{Style: m.ThemeOf(bc).TextTheme().HeadlineMedium()}),
+				m.NewText(strconv.Itoa(s.count), m.TextOpts{Style: m.ThemeOf(bc).TextTheme.HeadlineMedium}),
 			}, m.ColumnOpts{MainAxisAlignment: m.MainAxisAlignmentCenter}),
 		),
 		FloatingActionButton: m.NewFloatingActionButton(s.increment, m.NewIcon(m.Icons.Add()),
@@ -1442,7 +1451,7 @@ Each milestone is broken into steps in `docs/IMPLEMENTATION.md` (written after t
 | godbus/dbus/v5 | BSD-2-Clause | Go dependency (D-Bus) |
 | ebitengine/purego | Apache-2.0 | Go dependency (calling C libraries without cgo); NOTICE entry |
 | rm4n0s/errors | (author's) | Go dependency |
-| Roboto, Material Icons | Apache-2.0 / OFL | embedded in `material/fonts` with their licenses |
+| Roboto, Material Icons | OFL / the license text shipped with Flutter's font (CC BY 4.0) | embedded in `material/fonts` with their licenses |
 | material-color-utilities (ported) | Apache-2.0 | NOTICE entry |
 | Wayland protocol XML | MIT | kept with the generated code |
 | Flutter key data (generated key tables) | BSD-3-Clause | NOTICE entry |

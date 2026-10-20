@@ -24,7 +24,7 @@ func TestBasicWidgetsGolden2(t *testing.T) {
 	swatch := func(w, h int, c color.RGBA) Widget {
 		return NewImageMemory(pngBytes(t, w, h, c), ImageMemoryOpts{ImageOpts: ImageOpts{Width: foundation.Some(float64(w)), Height: foundation.Some(float64(h)), Fit: painting.BoxFitFill}})
 	}
-	addIcon := NewIconData(0xE145, IconDataOpts{FontFamily: "MaterialIcons"})
+	addIcon := NewIconData(0xE047, IconDataOpts{FontFamily: "MaterialIcons"})
 	scene := NewDirectionality(ui.TextDirectionLTR, NewStack([]Widget{
 		NewPositionedFill(NewColoredBox(ui.NewColor(0xFFFFFBFE), nil)),
 		at(10, 10, NewText("Glutter text", TextOpts{Style: roboto(28, 0xFF6750A4, ui.FontWeightW700)})),

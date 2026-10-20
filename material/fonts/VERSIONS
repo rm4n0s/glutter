@@ -2,9 +2,10 @@
 roboto_repo=https://github.com/googlefonts/roboto-3-classic
 roboto_release=v3.016 (file android/Roboto[ital,wdth,wght].ttf, renamed Roboto-Variable.ttf)
 roboto_license_commit=5166f3d07889bf7d3732fb72e09623d7e52f862b
-icons_repo=https://github.com/google/material-design-icons
-icons_commit=49d4db35df873165d6bd6ba09b063c7dafbac2f4
+icons_flutter_repository=https://github.com/flutter/flutter
+icons_flutter_commit=abaf9c523780a608bd46686fd5e53740a07077f8
+icons_archive=https://storage.googleapis.com/flutter_infra_release/flutter/fonts/3012db47f3130e62f7cc0beabff968a33cbec8d8/fonts.zip (files MaterialIcons-Regular.otf and MaterialIcons_LICENSE.txt, renamed MaterialIcons-LICENSE.txt)
 07f56c49cba5aa0c36f0c8295ffe2e39578e8459a743a7a619ad094b483ba857  Roboto-Variable.ttf
 061402327a96aadb0bfb694a960ed289ecd38d383e396243831ab81feb109c41  Roboto-LICENSE.txt
-ef149f08bdd2ff09a4e2c8573476b7b0f3fbb15b623954ade59899e7175bedda  MaterialIcons-Regular.ttf
-58d1e17ffe5109a7ae296caafcadfdbe6a7d176f0bc4ab01e12a689b0499d8bd  MaterialIcons-LICENSE.txt
+d9865b671a09d683d13a863089d8825e0f61a37696ce5d7d448bc8023aa62453  MaterialIcons-Regular.otf
+be698262aecd042c0de6f886cc0af622f8def446462026992cc530275d8a9e74  MaterialIcons-LICENSE.txt

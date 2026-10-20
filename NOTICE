@@ -45,11 +45,14 @@ rm4n0s/errors
   Go dependency, used for all error handling.
   https://github.com/rm4n0s/errors
 
-Roboto (SIL Open Font License 1.1) and Material Icons (Apache-2.0)
+Roboto (SIL Open Font License 1.1) and Material Icons (the license text that
+ships with the font in the Flutter SDK: Creative Commons Attribution 4.0)
   Embedded in material/fonts together with their license files
   (Roboto-LICENSE.txt, MaterialIcons-LICENSE.txt). Roboto 3 is from
-  https://github.com/googlefonts/roboto-3-classic and Material Icons from
-  https://github.com/google/material-design-icons; the pins are in
+  https://github.com/googlefonts/roboto-3-classic. The Material Icons font is
+  the MaterialIcons-Regular.otf of the font archive that the Flutter SDK
+  downloads (https://github.com/flutter/flutter, bin/internal/material_fonts.version);
+  its code points are the ones of Flutter's Icons. The pins are in
   material/fonts/VERSIONS.
 
 Wayland protocol XML (MIT)

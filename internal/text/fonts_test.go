@@ -69,7 +69,7 @@ func TestBundledFonts(t *testing.T) {
 	}{
 		{"Roboto has Latin", fonts.RobotoFamily, []rune("Hello, Ägypten")},
 		{"Roboto has Cyrillic and Greek", "roboto", []rune("Привет αβγ")},
-		{"Material Icons has the icon code points", fonts.MaterialIconsFamily, []rune{0xe145, 0xe88a}},
+		{"Material Icons has the icon code points", fonts.MaterialIconsFamily, []rune{0xe047, 0xe318}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -187,7 +187,7 @@ func TestFaceCache(t *testing.T) {
 
 func TestFaceFromFile(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "icons.ttf")
+	path := filepath.Join(dir, "icons.otf")
 	if err := os.WriteFile(path, fonts.MaterialIcons(), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -196,7 +196,7 @@ func TestFaceFromFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Face: %v", err)
 	}
-	if _, ok := face.NominalGlyph(0xe145); !ok {
+	if _, ok := face.NominalGlyph(0xe047); !ok {
 		t.Error("the icon glyph is missing")
 	}
 	// The high 16 bits of fontconfig's index (a named instance) do not select a face.
@@ -212,7 +212,7 @@ func TestFailures(t *testing.T) {
 	if err := os.WriteFile(notFont, []byte("this is not a font"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	icons := filepath.Join(dir, "icons.ttf")
+	icons := filepath.Join(dir, "icons.otf")
 	if err := os.WriteFile(icons, fonts.MaterialIcons(), 0o600); err != nil {
 		t.Fatal(err)
 	}

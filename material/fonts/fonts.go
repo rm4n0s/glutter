@@ -1,7 +1,9 @@
 // Package fonts holds the fonts that Glutter bundles with the program: Roboto, the
 // first family of Flutter's Linux typography, and Material Icons. scripts/fetch-fonts.sh
 // downloads them (the pins and hashes are in VERSIONS), and the licenses sit next to
-// them: Roboto is under the SIL Open Font License, Material Icons under Apache-2.0.
+// them: Roboto is under the SIL Open Font License; the Material Icons font is the one
+// of the Flutter SDK, with the license text that ships with it (Creative Commons
+// Attribution 4.0).
 //
 // Flutter: packages/flutter/lib/src/material/typography.dart (the Roboto family) and
 // the MaterialIcons font of the Flutter SDK
@@ -24,7 +26,7 @@ const (
 //go:embed Roboto-Variable.ttf
 var roboto []byte
 
-//go:embed MaterialIcons-Regular.ttf
+//go:embed MaterialIcons-Regular.otf
 var materialIcons []byte
 
 //go:embed Roboto-LICENSE.txt

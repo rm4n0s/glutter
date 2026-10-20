@@ -10,7 +10,7 @@ import (
 	. "github.com/rm4n0s/glutter/widgets"
 )
 
-var testIcon = NewIconData(0xE145, IconDataOpts{FontFamily: "MaterialIcons"})
+var testIcon = NewIconData(0xE047, IconDataOpts{FontFamily: "MaterialIcons"})
 
 func TestIconDataValue(t *testing.T) {
 	tests := []struct {
@@ -18,7 +18,7 @@ func TestIconDataValue(t *testing.T) {
 		a, b      IconData
 		wantEqual bool
 	}{
-		{"same", testIcon, NewIconData(0xE145, IconDataOpts{FontFamily: "MaterialIcons"}), true},
+		{"same", testIcon, NewIconData(0xE047, IconDataOpts{FontFamily: "MaterialIcons"}), true},
 		{"code point", testIcon, NewIconData(0xE146, IconDataOpts{FontFamily: "MaterialIcons"}), false},
 		{"fallback", NewIconData(1, IconDataOpts{FontFamilyFallback: []string{"a", "b"}}), NewIconData(1, IconDataOpts{FontFamilyFallback: []string{"a", "b"}}), true},
 		{"other fallback", NewIconData(1, IconDataOpts{FontFamilyFallback: []string{"a"}}), NewIconData(1), false},
@@ -30,7 +30,7 @@ func TestIconDataValue(t *testing.T) {
 			}
 		})
 	}
-	if got := testIcon.String(); got != "IconData(U+0E145)" {
+	if got := testIcon.String(); got != "IconData(U+0E047)" {
 		t.Errorf("String = %q", got)
 	}
 	if got := NewIconData(1, IconDataOpts{FontFamilyFallback: []string{"a", "b"}}).FontFamilyFallback(); len(got) != 2 || got[1] != "b" {
@@ -120,7 +120,7 @@ func TestIconSizeAndStyle(t *testing.T) {
 				t.Errorf("size = %v, want %v", got, tt.wantSize)
 			}
 			span := richOf(ts).Text().(*painting.TextSpan)
-			if span.Text != foundation.Some(string(rune(0xE145))) {
+			if span.Text != foundation.Some(string(rune(0xE047))) {
 				t.Errorf("text = %v, want the glyph", span.Text)
 			}
 			if c := span.Style().Color; c != foundation.Some(tt.wantColor) {
@@ -187,7 +187,7 @@ func TestIconEmptyAndFinder(t *testing.T) {
 }
 
 func TestIconMirrorsInRightToLeft(t *testing.T) {
-	mirrored := NewIconData(0xE145, IconDataOpts{FontFamily: "MaterialIcons", MatchTextDirection: true})
+	mirrored := NewIconData(0xE047, IconDataOpts{FontFamily: "MaterialIcons", MatchTextDirection: true})
 	tests := []struct {
 		name string
 		dir  ui.TextDirection

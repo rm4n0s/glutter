@@ -3,8 +3,11 @@
 #
 # Usage: scripts/fetch-fonts.sh   (from anywhere; works relative to the repo root)
 #
-# Downloads from Google's official GitHub repositories, at the pins recorded in
-# material/fonts/VERSIONS, and checks every file against the SHA-256 recorded there.
+# Downloads Roboto from its official GitHub repository and the Material Icons font
+# from the fonts archive that the Flutter SDK downloads (the font of Flutter has its
+# own code points: Icons.add is 0xe047, not the 0xe145 of Google's repository), at
+# the pins recorded in material/fonts/VERSIONS, and checks every file against the
+# SHA-256 recorded there.
 # To move to a newer font, change the pins in this script, delete the font files and
 # VERSIONS, run it again, and review the new VERSIONS.
 set -euo pipefail
@@ -16,8 +19,10 @@ ROBOTO_REPO="googlefonts/roboto-3-classic"
 ROBOTO_TAG="v3.016"
 ROBOTO_COMMIT="5166f3d07889bf7d3732fb72e09623d7e52f862b"
 ROBOTO_ZIP_FILE="android/Roboto[ital,wdth,wght].ttf"
-ICONS_REPO="google/material-design-icons"
-ICONS_COMMIT="49d4db35df873165d6bd6ba09b063c7dafbac2f4"
+# The archive of Flutter's fonts is named in bin/internal/material_fonts.version of the
+# Flutter commit that reference/VERSION pins.
+ICONS_FLUTTER_COMMIT="abaf9c523780a608bd46686fd5e53740a07077f8"
+ICONS_ARCHIVE="flutter_infra_release/flutter/fonts/3012db47f3130e62f7cc0beabff968a33cbec8d8/fonts.zip"
 
 log() { printf '%s\n' "$*" >&2; }
 
@@ -35,9 +40,11 @@ unzip -q -o -j "$TMP/roboto.zip" "${ROBOTO_ZIP_FILE//[/\\[}" -d "$TMP"
 mv "$TMP/Roboto[ital,wdth,wght].ttf" "$OUT/Roboto-Variable.ttf"
 fetch "https://raw.githubusercontent.com/$ROBOTO_REPO/$ROBOTO_COMMIT/OFL.txt" "$OUT/Roboto-LICENSE.txt"
 
-log "Material Icons $ICONS_COMMIT"
-fetch "https://raw.githubusercontent.com/$ICONS_REPO/$ICONS_COMMIT/font/MaterialIcons-Regular.ttf" "$OUT/MaterialIcons-Regular.ttf"
-fetch "https://raw.githubusercontent.com/$ICONS_REPO/$ICONS_COMMIT/LICENSE" "$OUT/MaterialIcons-LICENSE.txt"
+log "Material Icons ($ICONS_ARCHIVE)"
+fetch "https://storage.googleapis.com/$ICONS_ARCHIVE" "$TMP/fonts.zip"
+unzip -q -o -j "$TMP/fonts.zip" MaterialIcons-Regular.otf MaterialIcons_LICENSE.txt -d "$TMP"
+mv "$TMP/MaterialIcons-Regular.otf" "$OUT/MaterialIcons-Regular.otf"
+mv "$TMP/MaterialIcons_LICENSE.txt" "$OUT/MaterialIcons-LICENSE.txt"
 
 VERSIONS="$OUT/VERSIONS"
 if [ -f "$VERSIONS" ]; then
@@ -50,9 +57,10 @@ else
     echo "roboto_repo=https://github.com/$ROBOTO_REPO"
     echo "roboto_release=$ROBOTO_TAG (file $ROBOTO_ZIP_FILE, renamed Roboto-Variable.ttf)"
     echo "roboto_license_commit=$ROBOTO_COMMIT"
-    echo "icons_repo=https://github.com/$ICONS_REPO"
-    echo "icons_commit=$ICONS_COMMIT"
-    (cd "$OUT" && sha256sum Roboto-Variable.ttf Roboto-LICENSE.txt MaterialIcons-Regular.ttf MaterialIcons-LICENSE.txt)
+    echo "icons_flutter_repository=https://github.com/flutter/flutter"
+    echo "icons_flutter_commit=$ICONS_FLUTTER_COMMIT"
+    echo "icons_archive=https://storage.googleapis.com/$ICONS_ARCHIVE (files MaterialIcons-Regular.otf and MaterialIcons_LICENSE.txt, renamed MaterialIcons-LICENSE.txt)"
+    (cd "$OUT" && sha256sum Roboto-Variable.ttf Roboto-LICENSE.txt MaterialIcons-Regular.otf MaterialIcons-LICENSE.txt)
   } >"$VERSIONS"
   log "wrote $VERSIONS"
 fi

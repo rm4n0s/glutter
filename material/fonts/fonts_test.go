@@ -54,7 +54,7 @@ func TestLicenses(t *testing.T) {
 		name, text, want string
 	}{
 		{"Roboto", RobotoLicense(), "SIL OPEN FONT LICENSE"},
-		{"Material Icons", MaterialIconsLicense(), "Apache License"},
+		{"Material Icons", MaterialIconsLicense(), "Creative Commons"},
 	}
 	for _, tt := range tests {
 		if !strings.Contains(tt.text, tt.want) {
