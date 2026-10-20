@@ -148,6 +148,8 @@ func TestFallbackSettings(t *testing.T) {
 			platform.Settings{PlatformBrightness: ui.BrightnessLight, TextScaleFactor: 1, CursorSize: 24}},
 		{"zero size", map[string]string{"XCURSOR_SIZE": "0"},
 			platform.Settings{PlatformBrightness: ui.BrightnessLight, TextScaleFactor: 1, CursorSize: 24}},
+		{"locale", map[string]string{"LANG": "de_DE.UTF-8"},
+			platform.Settings{PlatformBrightness: ui.BrightnessLight, TextScaleFactor: 1, CursorSize: 24, Locales: []ui.Locale{ui.NewLocale("de", "DE")}}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -292,5 +294,49 @@ func TestWatchSettingsFallsBackWhenThePortalIsMissing(t *testing.T) {
 	})
 	if n := d.count(); n != 0 {
 		t.Errorf("OnSettings was called %d times, want 0", n)
+	}
+}
+
+func TestLocalesFromEnv(t *testing.T) {
+	tests := []struct {
+		name string
+		env  map[string]string
+		want []ui.Locale
+	}{
+		{"none", nil, nil},
+		{"LANG", map[string]string{"LANG": "en_US.UTF-8"}, []ui.Locale{ui.NewLocale("en", "US")}},
+		{"LC_MESSAGES wins over LANG", map[string]string{"LC_MESSAGES": "fr_FR.UTF-8", "LANG": "en_US.UTF-8"}, []ui.Locale{ui.NewLocale("fr", "FR")}},
+		{"LC_ALL wins over both", map[string]string{"LC_ALL": "el_GR.UTF-8", "LC_MESSAGES": "fr_FR", "LANG": "en_US"}, []ui.Locale{ui.NewLocale("el", "GR")}},
+		{"empty ones are skipped", map[string]string{"LC_ALL": "", "LANG": "pt_BR"}, []ui.Locale{ui.NewLocale("pt", "BR")}},
+		{"modifier and codeset", map[string]string{"LANG": "de_DE.ISO-8859-15@euro"}, []ui.Locale{ui.NewLocale("de", "DE")}},
+		{"language only", map[string]string{"LANG": "sv"}, []ui.Locale{ui.NewLocale("sv")}},
+		{"C", map[string]string{"LANG": "C"}, nil},
+		{"POSIX", map[string]string{"LANG": "POSIX"}, nil},
+		{"C.UTF-8", map[string]string{"LANG": "C.UTF-8"}, nil},
+		{"the first one set decides, even for C", map[string]string{"LC_ALL": "C", "LANG": "de_DE"}, nil},
+		{"garbage", map[string]string{"LANG": "../x"}, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := dbus.LocalesFromEnv(env(tt.env)); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("LocalesFromEnv = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestWatchPortalSettingsSaysWhereTheSettingsCameFrom(t *testing.T) {
+	d := &delivery{}
+	b := portalWith(vars{"org.freedesktop.appearance": {"color-scheme": v(uint32(1))}})
+	s, fromPortal := dbus.WatchPortalSettings(context.Background(), b, env(nil), d.post, d.onSettings)
+	if !fromPortal || s.PlatformBrightness != ui.BrightnessDark {
+		t.Errorf("with the portal: %+v, %v", s, fromPortal)
+	}
+	if s, fromPortal = dbus.WatchPortalSettings(context.Background(), nil, env(nil), d.post, d.onSettings); fromPortal || s.TextScaleFactor != 1 {
+		t.Errorf("without a bus: %+v, %v", s, fromPortal)
+	}
+	missing := fakebus.New(":1.2")
+	if _, fromPortal = dbus.WatchPortalSettings(context.Background(), missing, env(nil), d.post, d.onSettings); fromPortal {
+		t.Error("a bus without the portal reported the portal")
 	}
 }

@@ -15,6 +15,14 @@ func (p *Platform) handleEvent() {
 		p.handleGenericEvent()
 	case clientMessage:
 		ev := view[xClientMessageEvent](p.event)
+		if ev.window == p.root && ev.messageType == p.atoms.manager && ev.format == 32 {
+			// A client took a manager selection; if it is the XSETTINGS one, there is a
+			// new daemon.
+			if uint64(ev.data[1]) == p.atoms.xsettingsSelection {
+				p.xsettingsChanged()
+			}
+			return
+		}
 		if w := p.windows[ev.window]; w != nil && ev.format == 32 {
 			w.onClientMessage(uint64(ev.data[0]), ev)
 		}
@@ -52,12 +60,19 @@ func (p *Platform) handleEvent() {
 				p.monitorsChanged()
 			}
 			return
+		} else if p.xs != nil && ev.window == p.xs.owner && ev.atom == p.atoms.xsettingsProperty {
+			p.xsettingsChanged()
+			return
 		}
 		if p.clip != nil {
 			p.clip.onPropertyNotify(*view[xPropertyEvent](p.event))
 		}
 	case destroyNotify:
 		ev := view[xDestroyWindowEvent](p.event)
+		if p.xs != nil && ev.window == p.xs.owner {
+			p.xs.owner = 0 // the daemon went away; a new one announces itself with MANAGER
+			return
+		}
 		if w := p.windows[ev.window]; w != nil {
 			w.onDestroyedByServer()
 		}

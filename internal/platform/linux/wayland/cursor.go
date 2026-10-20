@@ -216,8 +216,6 @@ func (c *cursors) loadTheme(scale int32) (uintptr, error) {
 // empty name and a size of 0 mean the environment and then the defaults. A change
 // loads the themes again, and the cursor over the window with the pointer is set
 // again.
-//
-// TODO(step 14.5): the platform calls it with the settings it reads and follows.
 func (c *cursors) configure(theme string, size int) {
 	if theme == c.themeName && int32(size) == c.baseSize {
 		return

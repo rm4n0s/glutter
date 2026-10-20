@@ -147,8 +147,6 @@ func (c *cursors) sizeFor(w *window) int32 {
 // configure sets the theme and the size from the system settings (SPEC §8.8); an
 // empty name and a size of 0 mean the environment. A change loads the cursors again
 // and sets them on the windows.
-//
-// TODO(step 14.5): the platform calls it with the settings it reads and follows.
 func (c *cursors) configure(theme string, size int) {
 	if theme == c.themeName && int32(size) == c.baseSize {
 		return

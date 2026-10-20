@@ -3,6 +3,7 @@ package dbus
 import (
 	"context"
 	"strconv"
+	"strings"
 
 	godbus "github.com/godbus/dbus/v5"
 	"github.com/rm4n0s/errors"
@@ -38,7 +39,8 @@ const (
 //
 // getenv looks up an environment variable; pass os.Getenv.
 //
-// TODO(step 14.5): XSETTINGS on X11 and the locale from LC_ALL/LC_MESSAGES/LANG.
+// The locale is always read from the environment (LC_ALL, LC_MESSAGES, LANG): the
+// portal has no locale. X11 adds XSETTINGS to the fallback in its own package.
 //
 // Flutter: no counterpart
 func FallbackSettings(getenv func(string) string) platform.Settings {
@@ -47,11 +49,51 @@ func FallbackSettings(getenv func(string) string) platform.Settings {
 		TextScaleFactor:    1,
 		CursorSize:         defaultCursorSize,
 		CursorTheme:        getenv("XCURSOR_THEME"),
+		Locales:            LocalesFromEnv(getenv),
 	}
 	if n, err := strconv.Atoi(getenv("XCURSOR_SIZE")); err == nil && n > 0 {
 		s.CursorSize = n
 	}
 	return s
+}
+
+// LocalesFromEnv returns the locale that the environment names: the first of
+// LC_ALL, LC_MESSAGES and LANG that is set and is not empty, "C" or "POSIX", as a
+// language and a country ("de_DE.UTF-8@euro" is de DE). It returns nil when none
+// names one, and the app then has the default locale.
+//
+// Flutter: no counterpart
+func LocalesFromEnv(getenv func(string) string) []ui.Locale {
+	for _, name := range []string{"LC_ALL", "LC_MESSAGES", "LANG"} {
+		v := getenv(name)
+		if v == "" {
+			continue
+		}
+		if l, ok := parsePOSIXLocale(v); ok {
+			return []ui.Locale{l}
+		}
+		return nil // the first variable that is set decides, even for C
+	}
+	return nil
+}
+
+// parsePOSIXLocale reads language[_TERRITORY][.codeset][@modifier].
+func parsePOSIXLocale(v string) (ui.Locale, bool) {
+	v, _, _ = strings.Cut(v, "@")
+	v, _, _ = strings.Cut(v, ".")
+	lang, country, _ := strings.Cut(v, "_")
+	if lang == "" || lang == "C" || lang == "POSIX" {
+		return ui.Locale{}, false
+	}
+	for _, r := range lang {
+		if r < 'a' || r > 'z' {
+			return ui.Locale{}, false
+		}
+	}
+	if country != "" {
+		return ui.NewLocale(lang, strings.ToUpper(country)), true
+	}
+	return ui.NewLocale(lang), true
 }
 
 // ReadSettings reads the keys of SPEC §8.8 from the Settings portal and applies
@@ -92,21 +134,31 @@ func ReadSettings(ctx context.Context, bus Bus, base platform.Settings) (platfor
 //
 // Flutter: no counterpart
 func WatchSettings(ctx context.Context, bus Bus, getenv func(string) string, post func(func()), onSettings func(platform.Settings)) platform.Settings {
+	s, _ := WatchPortalSettings(ctx, bus, getenv, post, onSettings)
+	return s
+}
+
+// WatchPortalSettings is WatchSettings that also says whether the settings came from
+// the portal. When they did not, the caller can look for other sources, such as
+// XSETTINGS on X11.
+//
+// Flutter: no counterpart
+func WatchPortalSettings(ctx context.Context, bus Bus, getenv func(string) string, post func(func()), onSettings func(platform.Settings)) (settings platform.Settings, fromPortal bool) {
 	base := FallbackSettings(getenv)
 	if bus == nil {
-		return base
+		return base, false
 	}
 	watchCtx, cancel := context.WithCancel(ctx)
 	// Subscribe before reading, so that a change in between is not lost.
 	sigs, err := bus.Subscribe(watchCtx, SignalMatch{Sender: PortalDest, Path: PortalPath, Interface: settingsInterface, Member: "SettingChanged"})
 	if err != nil {
 		cancel()
-		return base
+		return base, false
 	}
 	current, err := ReadSettings(watchCtx, bus, base)
 	if err != nil {
 		cancel()
-		return base
+		return base, false
 	}
 	initial := current
 	go func() {
@@ -120,7 +172,7 @@ func WatchSettings(ctx context.Context, bus Bus, getenv func(string) string, pos
 			post(func() { onSettings(changed) })
 		}
 	}()
-	return initial
+	return initial, true
 }
 
 func parseSettingChanged(sig *godbus.Signal) (namespace, key string, value any, ok bool) {

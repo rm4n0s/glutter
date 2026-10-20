@@ -76,6 +76,12 @@ func scaleFor(xftDPI float64, m monitor) float64 {
 // refreshMonitors reads the monitors and Xft.dpi again.
 func (p *Platform) refreshMonitors() {
 	p.xftDPI, _ = parseXftDPI(p.resourceManager())
+	if p.xftDPI == 0 && p.xs != nil {
+		// The desktop scales by a whole factor and says so over XSETTINGS.
+		if scale := xsettingsScale(p.xs.settings); scale > 0 {
+			p.xftDPI = baseDPI * scale
+		}
+	}
 	p.monitors = p.monitors[:0]
 	r, err := loadXrandrOnce()
 	if err != nil || p.rrEventBase == 0 {
@@ -112,26 +118,14 @@ func (p *Platform) refreshMonitors() {
 // settings daemon or xrdb put there. (XResourceManagerString returns the text of
 // when the connection opened, so it does not see a change.)
 func (p *Platform) resourceManager() string {
-	const maxWords = 64 * 1024 // 256 KB
-	mem := dl.Calloc(1, 8+4+8+8+8)
-	defer dl.Free(mem)
-	actualType, actualFormat, nitems, bytesAfter, prop := mem, mem+8, mem+16, mem+24, mem+32
-	status := p.x.getWindowProperty(p.display, p.root, p.atoms.resourceManager, 0, maxWords, 0, xaString,
-		actualType, actualFormat, nitems, bytesAfter, prop)
-	data := *view[uintptr](prop)
-	if data != 0 {
-		defer p.x.free(data)
-	}
-	if status != 0 || data == 0 || *view[int32](actualFormat) != 8 {
-		return ""
-	}
-	return string(dl.Bytes(data, int(*view[uint64](nitems))))
+	return string(p.readProperty(p.root, p.atoms.resourceManager, xaString, 64*1024))
 }
 
 // selectMonitorEvents asks for the events that change the monitors or the scale:
 // RandR's screen changes, and changes of RESOURCE_MANAGER on the root window.
 func (p *Platform) selectMonitorEvents() {
-	p.x.selectInput(p.display, p.root, propertyChangeMask)
+	// StructureNotify brings the MANAGER messages that tell of a new settings daemon.
+	p.x.selectInput(p.display, p.root, propertyChangeMask|structureNotifyMask)
 	r, err := loadXrandrOnce()
 	if err != nil {
 		return

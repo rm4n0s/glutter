@@ -3,6 +3,8 @@ package x11
 import (
 	"context"
 	"log/slog"
+	"os"
+	"strconv"
 	"sync"
 	"time"
 
@@ -26,12 +28,11 @@ type atoms struct {
 	netWMStateFullscreen, netWMStateModal                         uint64
 	netWMWindowType, netWMWindowTypeNormal, netWMWindowTypeDialog uint64
 	motifWMHints, netActiveWindow, resourceManager                uint64
+	manager, xsettingsSelection, xsettingsProperty                uint64
 }
 
 // Platform is the X11 backend of platform.Platform: Xlib and XInput2 through
 // purego, with EGL for drawing (SPEC §8.3). It belongs to the UI thread.
-//
-// TODO(step 14.5): Settings.
 //
 // Flutter: no counterpart
 type Platform struct {
@@ -64,6 +65,13 @@ type Platform struct {
 
 	// monitors are the monitors of the screen, xftDPI is Xft.dpi (0 when not set), and
 	// rrEventBase is the first event of RandR (0 when the server has none).
+	// settings follows the system settings (Settings); xs is the XSETTINGS daemon,
+	// used when there is no portal (xsettingsInUse). getenv reads the environment.
+	settings       *linux.SettingsWatcher
+	xs             *xsettingsState
+	xsettingsInUse bool
+	getenv         func(string) string
+
 	monitors    []monitor
 	xftDPI      float64
 	rrEventBase int32
@@ -121,7 +129,10 @@ func New(name string) (*Platform, error) {
 	p.src = &connSource{p: p}
 	p.atoms = p.internAtoms()
 	p.interval = p.refreshInterval()
+	p.getenv = os.Getenv
+	p.settings = &linux.SettingsWatcher{Post: p.Post, Apply: p.applySettings}
 	p.selectMonitorEvents()
+	p.findXSettings()
 	p.refreshMonitors()
 	p.cursors = newCursors(p)
 	registerErrorHandler(p)
@@ -146,7 +157,8 @@ func (p *Platform) internAtoms() atoms {
 		netWMStateModal: intern("_NET_WM_STATE_MODAL"), netWMWindowType: intern("_NET_WM_WINDOW_TYPE"),
 		netWMWindowTypeNormal: intern("_NET_WM_WINDOW_TYPE_NORMAL"), netWMWindowTypeDialog: intern("_NET_WM_WINDOW_TYPE_DIALOG"),
 		motifWMHints: intern("_MOTIF_WM_HINTS"), netActiveWindow: intern("_NET_ACTIVE_WINDOW"),
-		resourceManager: intern("RESOURCE_MANAGER"),
+		resourceManager: intern("RESOURCE_MANAGER"), manager: intern("MANAGER"),
+		xsettingsSelection: intern("_XSETTINGS_S" + strconv.Itoa(int(p.screen))), xsettingsProperty: intern("_XSETTINGS_SETTINGS"),
 	}
 }
 
@@ -193,6 +205,7 @@ func (p *Platform) Close() error {
 	for _, w := range p.windows {
 		w.Close()
 	}
+	p.settings.Stop()
 	if p.text != nil {
 		p.text.close()
 		p.text = nil
@@ -277,10 +290,29 @@ func (p *Platform) Clipboard() platform.Clipboard {
 	return p.clip
 }
 
-// Settings returns the zero Settings for now.
+// Settings returns the system settings: from the Settings portal, else from
+// XSETTINGS and the environment (SPEC §8.8). The first call connects to the portal
+// and starts following its changes, which arrive through Handler.OnSettings.
 //
 // Flutter: no counterpart
-func (p *Platform) Settings() platform.Settings { return platform.Settings{} }
+func (p *Platform) Settings() platform.Settings {
+	s, fromPortal := p.settings.Start()
+	if !fromPortal {
+		s = p.withXSettings(s)
+		p.settings.Replace(s)
+	}
+	p.cursors.configure(s.CursorTheme, s.CursorSize)
+	return s
+}
+
+// applySettings handles a change of the settings, on the UI thread: the cursors
+// follow the theme and size, and the handler hears of it.
+func (p *Platform) applySettings(s platform.Settings) {
+	p.cursors.configure(s.CursorTheme, s.CursorSize)
+	if p.handler != nil {
+		p.handler.OnSettings(s)
+	}
+}
 
 // Services returns nil: the X11 backend adds no desktop services itself.
 //

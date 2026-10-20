@@ -30,7 +30,7 @@ type Options struct {
 // Platform is the Wayland backend of platform.Platform. So far it has the
 // connection, the event loop, windows and the outputs.
 //
-// TODO(step 14.5): Settings.
+// The settings come from the Settings portal (SPEC §8.8).
 //
 // Flutter: no counterpart
 type Platform struct {
@@ -55,6 +55,8 @@ type Platform struct {
 	// dbusIME is the input method over D-Bus, used when text is nil.
 	dbusIME *dbusIME
 	cursors *cursors
+	// settings follows the system settings (Settings, applySettings).
+	settings *linux.SettingsWatcher
 	// inputSerial is the serial of the last input event of the seat, which
 	// set_selection needs.
 	inputSerial uint32
@@ -122,6 +124,7 @@ func newPlatform(conn *wl.Conn, opts Options) (*Platform, error) {
 		windows: map[ui.ViewID]*window{},
 	}
 	p.cursors = newCursors(p)
+	p.settings = &linux.SettingsWatcher{Post: p.Post, Apply: p.applySettings}
 	p.clip = newClipboard(p)
 	p.text = newTextInput(p)
 	if p.text == nil {
@@ -166,6 +169,7 @@ func (p *Platform) Close() error {
 	if p.clip != nil {
 		p.clip.close()
 	}
+	p.settings.Stop()
 	p.cursors.close()
 	p.sess.close()
 	return p.loop.Close()
@@ -248,10 +252,25 @@ func (p *Platform) Clipboard() platform.Clipboard {
 	return p.clip
 }
 
-// Settings returns the zero Settings for now.
+// Settings returns the system settings: from the Settings portal, else from the
+// environment (SPEC §8.8). The first call connects to the portal and starts
+// following its changes, which arrive through Handler.OnSettings.
 //
 // Flutter: no counterpart
-func (p *Platform) Settings() platform.Settings { return platform.Settings{} }
+func (p *Platform) Settings() platform.Settings {
+	s, _ := p.settings.Start()
+	p.cursors.configure(s.CursorTheme, s.CursorSize)
+	return s
+}
+
+// applySettings handles a change of the settings, on the UI thread: the cursors
+// follow the theme and size, and the handler hears of it.
+func (p *Platform) applySettings(s platform.Settings) {
+	p.cursors.configure(s.CursorTheme, s.CursorSize)
+	if p.handler != nil {
+		p.handler.OnSettings(s)
+	}
+}
 
 // Services returns nil: the Wayland backend adds no desktop services itself.
 //

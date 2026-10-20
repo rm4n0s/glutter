@@ -4,6 +4,7 @@ package x11
 
 import (
 	"context"
+	"encoding/binary"
 	"os"
 	"os/exec"
 	"strconv"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/foundation"
+	"github.com/rm4n0s/glutter/internal/dbus"
 	"github.com/rm4n0s/glutter/internal/gpu/gles"
 	"github.com/rm4n0s/glutter/internal/platform"
 	"github.com/rm4n0s/glutter/internal/platform/linux/dl"
@@ -48,6 +50,8 @@ type displayHandler struct {
 	closeCalls int
 	allowClose bool
 
+	settings []platform.Settings
+
 	// draw, when set, is called for each frame on the UI thread.
 	draw func()
 }
@@ -56,6 +60,18 @@ func (h *displayHandler) OnMetrics(_ ui.ViewID, m platform.ViewMetrics) {
 	h.mu.Lock()
 	h.metrics = append(h.metrics, m)
 	h.mu.Unlock()
+}
+
+func (h *displayHandler) OnSettings(s platform.Settings) {
+	h.mu.Lock()
+	h.settings = append(h.settings, s)
+	h.mu.Unlock()
+}
+
+func (h *displayHandler) settingsSeen() []platform.Settings {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return append([]platform.Settings(nil), h.settings...)
 }
 
 func (h *displayHandler) OnFrame(ui.ViewID, time.Duration) {
@@ -635,5 +651,82 @@ func TestDisplayCursorsHaveTheSizeOfTheScale(t *testing.T) {
 	}
 	if e.p.xErrors != 0 {
 		t.Errorf("the X server reported %d errors", e.p.xErrors)
+	}
+}
+
+// xsettingsDaemon is a settings daemon of the test: a window of its own connection
+// that owns _XSETTINGS_S0 and keeps the settings in its property.
+type xsettingsDaemon struct {
+	t      *testing.T
+	p      *Platform
+	window uint64
+}
+
+func startXSettingsDaemon(t *testing.T, data []byte) *xsettingsDaemon {
+	t.Helper()
+	p, err := New("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := &xsettingsDaemon{t: t, p: p}
+	t.Cleanup(func() {
+		if err := p.Close(); err != nil {
+			t.Errorf("Close: %v", err)
+		}
+	})
+	d.window = p.x.createWindow(p.display, p.root, 0, 0, 1, 1, 0, 0, inputOnly, 0, 0, 0)
+	if d.window == 0 {
+		t.Fatal("could not make the window of the daemon")
+	}
+	d.set(data)
+	p.x.setSelectionOwner(p.display, p.atoms.xsettingsSelection, d.window, currentTime)
+	p.x.sync(p.display, 0)
+	if p.x.getSelectionOwner(p.display, p.atoms.xsettingsSelection) != d.window {
+		t.Fatal("the daemon does not own the selection")
+	}
+	return d
+}
+
+// set writes the settings into the property.
+func (d *xsettingsDaemon) set(data []byte) {
+	mem := dl.Calloc(1, uintptr(len(data)+1))
+	defer dl.Free(mem)
+	copy(dl.Bytes(mem, len(data)), data)
+	d.p.x.changeProperty(d.p.display, d.window, d.p.atoms.xsettingsProperty, d.p.atoms.xsettingsProperty, 8, propModeReplace, mem, int32(len(data)))
+	d.p.x.sync(d.p.display, 0)
+}
+
+func TestDisplaySettingsFromXSettingsFollowTheDaemon(t *testing.T) {
+	dark := newXSettingsData(binary.LittleEndian).String("Net/ThemeName", "Adwaita-dark").
+		String("Gtk/CursorThemeName", "Bibata").Int("Gtk/CursorThemeSize", 36).Bytes()
+	daemon := startXSettingsDaemon(t, dark)
+	e := startDisplay(t, windowConfig())
+	e.waitMapped()
+	t.Setenv("LC_ALL", "el_GR.UTF-8") // startDisplay sets another
+
+	var s platform.Settings
+	e.onLoop(func() {
+		// No portal: the settings come from XSETTINGS and the environment.
+		e.p.settings.Open = func(context.Context) (dbus.Bus, error) { return nil, errors.New("NoBus", "the test has no bus") }
+		s = e.p.Settings()
+	})
+	if s.PlatformBrightness != ui.BrightnessDark || s.CursorTheme != "Bibata" || s.CursorSize != 36 {
+		t.Errorf("Settings() = %+v, want the dark theme and the cursor of the daemon", s)
+	}
+	if len(s.Locales) != 1 || s.Locales[0] != ui.NewLocale("el", "GR") {
+		t.Errorf("locales = %v", s.Locales)
+	}
+
+	// The user picks a light theme and animations off: the app hears of it.
+	daemon.set(newXSettingsData(binary.LittleEndian).String("Net/ThemeName", "Adwaita").
+		String("Gtk/CursorThemeName", "Bibata").Int("Gtk/CursorThemeSize", 36).Int("Gtk/EnableAnimations", 0).Bytes())
+	waitFor(t, func() bool { return len(e.h.settingsSeen()) == 1 }, "OnSettings was not called for the new XSETTINGS")
+	if got := e.h.settingsSeen()[0]; got.PlatformBrightness != ui.BrightnessLight || !got.DisableAnimations || got.CursorSize != 36 {
+		t.Errorf("after the change: %+v", got)
+	}
+	var theme string
+	e.onLoop(func() { theme = e.p.cursors.themeName })
+	if theme != "Bibata" {
+		t.Errorf("the cursors use the theme %q", theme)
 	}
 }

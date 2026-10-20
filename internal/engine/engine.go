@@ -195,7 +195,7 @@ func Run(ctx context.Context, cfg Config) (err error) {
 	}
 	h.disp = ui.NewPlatformDispatcher(h)
 	h.disp.SetDisplays(h.displays())
-	h.disp.UpdatePlatformConfiguration(platformConfiguration(conn.Settings()))
+	h.disp.UpdatePlatformConfiguration(PlatformConfiguration(conn.Settings()))
 	h.disp.AddView(win.ID(), ui.ViewConfiguration{})
 	if cfg.Start != nil {
 		if err := cfg.Start(h.disp); err != nil {
@@ -542,8 +542,12 @@ func (h *handler) displays() []ui.Display {
 	return out
 }
 
-// platformConfiguration turns the platform's settings into the dispatcher's.
-func platformConfiguration(s platform.Settings) ui.PlatformConfiguration {
+// PlatformConfiguration turns the platform's settings into the dispatcher's. The
+// engine does it for every OnSettings; tests of the layers above use it to stand in
+// for the engine.
+//
+// Flutter: no counterpart
+func PlatformConfiguration(s platform.Settings) ui.PlatformConfiguration {
 	c := ui.PlatformConfiguration{
 		Locales:            s.Locales,
 		TextScaleFactor:    s.TextScaleFactor,
@@ -561,7 +565,7 @@ func platformConfiguration(s platform.Settings) ui.PlatformConfiguration {
 }
 
 func (h *handler) OnSettings(s platform.Settings) {
-	h.disp.UpdatePlatformConfiguration(platformConfiguration(s))
+	h.disp.UpdatePlatformConfiguration(PlatformConfiguration(s))
 }
 
 func (h *handler) OnLifecycle(state ui.AppLifecycleState) { h.disp.SetAppLifecycleState(state) }

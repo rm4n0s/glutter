@@ -508,12 +508,12 @@ func TestPlatformConfigurationConversion(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := platformConfiguration(tt.in); !reflect.DeepEqual(got, tt.want) {
+			if got := PlatformConfiguration(tt.in); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("got %+v, want %+v", got, tt.want)
 			}
 		})
 	}
-	accent := platformConfiguration(platform.Settings{HasAccentColor: true, AccentColor: ui.NewColor(0xFF010203)})
+	accent := PlatformConfiguration(platform.Settings{HasAccentColor: true, AccentColor: ui.NewColor(0xFF010203)})
 	if accent.AccentColor == nil || *accent.AccentColor != ui.NewColor(0xFF010203) {
 		t.Errorf("accent = %v", accent.AccentColor)
 	}
