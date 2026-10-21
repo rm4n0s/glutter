@@ -305,7 +305,9 @@ func NewWidgetsBinding(ctx context.Context, d *ui.PlatformDispatcher, opts ...Wi
 			held := b.keyboard.IsLogicalKeyPressed(services.LogicalKeyboardKeyControlLeft) || b.keyboard.IsLogicalKeyPressed(services.LogicalKeyboardKeyControlRight) ||
 				b.keyboard.IsLogicalKeyPressed(services.LogicalKeyboardKeyAltLeft) || b.keyboard.IsLogicalKeyPressed(services.LogicalKeyboardKeyAltRight) ||
 				b.keyboard.IsLogicalKeyPressed(services.LogicalKeyboardKeyMetaLeft) || b.keyboard.IsLogicalKeyPressed(services.LogicalKeyboardKeyMetaRight)
-			b.textInput.HandleUnhandledKey(data, held)
+			// A key the text field took (typed or acted on) counts as handled, so that a
+			// platform whose own text field would type it too (the web) can keep it from doing so.
+			handled = b.textInput.HandleUnhandledKey(data, held)
 		}
 		return handled
 	}

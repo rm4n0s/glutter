@@ -164,12 +164,11 @@ func (w *window) SetBrowserContextMenuEnabled(enabled bool) {
 	}
 }
 
-// SetTextInput does nothing yet.
+// SetTextInput makes, changes, places and fills the hidden text field, or takes it away: the browser
+// types, composes and pastes into it (SPEC §23.5).
 //
-// Flutter: lib/web_ui/lib/src/engine/text_editing/text_editing.dart HybridTextEditing
-func (w *window) SetTextInput(ui.TextInputState) {
-	// TODO(step 21.3): the hidden text field.
-}
+// Flutter: lib/web_ui/lib/src/engine/text_editing/text_editing.dart HybridTextEditing.acceptCommand
+func (w *window) SetTextInput(state ui.TextInputState) { w.p.text.set(state) }
 
 // RequestFrame asks for one requestAnimationFrame; requests while one is waiting are
 // merged into it. Before Run starts, the request is kept and Run schedules it (SPEC §23.3).
@@ -207,6 +206,7 @@ func (w *window) Close() {
 		return
 	}
 	w.closed = true
+	w.p.text.disable()
 	w.canvas.Call("remove")
 }
 

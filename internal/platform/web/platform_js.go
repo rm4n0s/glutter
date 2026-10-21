@@ -36,8 +36,11 @@ type Platform struct {
 	// os and firefox are the operating system and the browser, found once at startup.
 	os      OperatingSystem
 	firefox bool
-	// in is the state of the input (input_js.go).
-	in inputState
+	// in is the state of the input (input_js.go), text the hidden text field (textinput_js.go) and clip
+	// the Clipboard API (clipboard_js.go).
+	in   inputState
+	text *textInput
+	clip *navigatorClipboard
 	// devEvents is the script of GLUTTER_DEV_EVENTS, in debug builds; devStarted says it was
 	// started.
 	devEvents  []DevEvent
@@ -130,6 +133,8 @@ func New(opts ...Options) (*Platform, error) {
 	p.shotOK = p.keep(js.FuncOf(p.onScreenshotResponse))
 	p.shotFail = p.keep(js.FuncOf(p.onScreenshotFailure))
 	p.makeInputFuncs()
+	p.makeTextInputFuncs()
+	p.clip = p.newNavigatorClipboard()
 	p.queries.dark = matchMedia("(prefers-color-scheme: dark)")
 	p.queries.motion = matchMedia("(prefers-reduced-motion: reduce)")
 	p.queries.contrast = matchMedia("(prefers-contrast: more)")
@@ -228,12 +233,11 @@ func (p *Platform) Displays() []platform.Display {
 	return []platform.Display{DisplayOf(number(screen.Get("width"), 0), number(screen.Get("height"), 0), p.dpr())}
 }
 
-// Clipboard returns the clipboard, which fails until step 21.3.
+// Clipboard returns the clipboard: navigator.clipboard for the text, answered through Post (SPEC §23.5).
 //
 // Flutter: lib/web_ui/lib/src/engine/clipboard.dart ClipboardMessageHandler
 func (p *Platform) Clipboard() platform.Clipboard {
-	// TODO(step 21.3): navigator.clipboard and the paste event.
-	return clipboard{post: p.Post}
+	return clipboard{post: p.Post, api: p.clip}
 }
 
 // Settings reads the preferences of the user from the browser now.
@@ -435,6 +439,9 @@ func (p *Platform) onLifecycleEvent(js.Value, []js.Value) any {
 			p.lifecycle = state
 			p.handler.OnLifecycle(state)
 			p.reportFocus(was, state, ts)
+		}
+		if state == ui.AppLifecycleStateResumed {
+			p.text.focus() // the window got the focus back: the keyboard belongs to the text field again
 		}
 	})
 	return nil

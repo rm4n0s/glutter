@@ -761,6 +761,20 @@ func (h *handler) OnKeySync(d ui.KeyData) bool {
 	return handled
 }
 
+// OnTextInputSync handles a text-input event at once, after the input that is waiting for its
+// frame (platform.SyncInputHandler): the framework's new state of the text field has been sent to
+// the window when it returns. A frame is asked for, as for any input.
+func (h *handler) OnTextInputSync(event ui.TextInputEvent) {
+	w := h.windowOf(h.focusView)
+	if h.cfg.ShmFill {
+		h.disp.DispatchTextInput(event)
+		return
+	}
+	h.input.flush()
+	h.disp.DispatchTextInput(event)
+	h.askFrame(w)
+}
+
 func (h *handler) OnPointer(batch []ui.PointerData) {
 	batch = append([]ui.PointerData(nil), batch...)
 	w := h.notePointer(batch)

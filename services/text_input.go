@@ -985,22 +985,23 @@ func (c *TextInputConnection) ConnectionClosedReceived() {
 // one). The keys pressed with Control, Alt or Meta, and the characters that
 // control the terminal (Escape, Backspace, Tab, ...), type nothing. Without a
 // client, nothing happens. The binding calls it for the key data it did not
-// handle.
+// handle. It reports whether it typed the key or did its action, which the web
+// uses to keep the browser from typing the character a second time.
 //
 // Deviation: Flutter's engine hands the key to the platform's input method, which
 // commits the text; here the input method has already had the key (SPEC §8.6),
 // so the text is typed from the character of the key (SPEC §12.10).
 //
 // Flutter: services/hardware_keyboard.dart (the embedder's text input plugin)
-func (t *TextInput) HandleUnhandledKey(data ui.KeyData, controlHeld bool) {
+func (t *TextInput) HandleUnhandledKey(data ui.KeyData, controlHeld bool) (typed bool) {
 	if t.currentConnection == nil {
-		return
+		return false
 	}
 	if data.Type != ui.KeyEventTypeDown && data.Type != ui.KeyEventTypeRepeat {
-		return
+		return false
 	}
 	if controlHeld {
-		return
+		return false
 	}
 	logical := LogicalKeyboardKey(data.Logical)
 	if logical == LogicalKeyboardKeyEnter || logical == LogicalKeyboardKeyNumpadEnter {
@@ -1012,16 +1013,17 @@ func (t *TextInput) HandleUnhandledKey(data ui.KeyData, controlHeld bool) {
 			action = TextInputActionDone
 		}
 		t.HandlePerformAction(t.currentConnection.id, action)
-		return
+		return true
 	}
 	text := data.Character
 	if text == "" {
-		return
+		return false
 	}
 	for _, r := range text {
 		if r < 0x20 || (r >= 0x7F && r < 0xA0) {
-			return
+			return false
 		}
 	}
 	t.HandleTextInput(ui.TextInputEvent{Commit: text, PreeditCursorBegin: -1, PreeditCursorEnd: -1})
+	return true
 }

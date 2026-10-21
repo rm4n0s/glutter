@@ -16,6 +16,10 @@ type SyncInputHandler interface {
 	// OnPointerSync handles the pointer data now. The OnRespond functions of the data
 	// have been called, for the data that is answered, when it returns.
 	OnPointerSync(data []ui.PointerData)
+	// OnTextInputSync handles the text-input event now. A platform whose text field holds the
+	// text (the web's) needs the framework's answer, the new state of the field, before the next
+	// event of the field is read, so that it does not take its own echo for a change.
+	OnTextInputSync(event ui.TextInputEvent)
 }
 
 // ContextMenuController is implemented by a Window that has a context menu of its own to show

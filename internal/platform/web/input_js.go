@@ -244,7 +244,11 @@ func (p *Platform) onPointerDown(_ js.Value, args []js.Value) any {
 	// still come to the canvas while the pointer is over it.
 	try(func() { p.win.canvas.Call("setPointerCapture", ev.Get("pointerId")) })
 	ev.Call("preventDefault")
-	try(func() { p.host.Call("focus", map[string]any{"preventScroll": true}) })
+	if p.text.on {
+		p.text.focus() // the keyboard stays with the text field
+	} else {
+		try(func() { p.host.Call("focus", map[string]any{"preventScroll": true}) })
+	}
 	p.postPointer(func(in *PointerInput, dpr float64) []ui.PointerData { return in.Down(e, dpr) })
 	return nil
 }
@@ -399,6 +403,9 @@ func stringOf(v js.Value) string {
 func (p *Platform) onKey(_ js.Value, args []js.Value) any {
 	ev := args[0]
 	e := readKeyEvent(ev)
+	if p.text.on && IsNativePasteKey(e, p.os) {
+		return nil // the browser pastes into the text field, and its paste event brings the text (SPEC §23.5)
+	}
 	prevent := false
 	if !p.callSync(func() {
 		if p.in.keys != nil {

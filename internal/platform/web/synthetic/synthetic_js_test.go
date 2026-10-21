@@ -19,3 +19,15 @@ func TestCanvasWithoutAPage(t *testing.T) {
 		t.Errorf("unexpected failure path: %s", appErr.Route())
 	}
 }
+
+// TestTextFieldWithoutAPage: under Node there is no page, so there is no text field.
+func TestTextFieldWithoutAPage(t *testing.T) {
+	_, err := TextField()
+	appErr, ok := errors.FromError(err)
+	if !ok {
+		t.Fatalf("expected *errors.Error, got %T (%v)", err, err)
+	}
+	if appErr.Tag != "SyntheticTextFieldNotFound" || !appErr.HasRoute("TextField.SyntheticTextFieldNotFound") {
+		t.Errorf("unexpected failure path: %s", appErr.Route())
+	}
+}

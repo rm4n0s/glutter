@@ -32,10 +32,39 @@ func errScreenOnUnsupported() error {
 	return errors.New("IdleInhibitUnavailable", "the web platform cannot keep the screen on yet")
 }
 
-// errClipboardUnavailable is the error of the clipboard until step 21.3 gives the web
-// one.
+// errClipboardUnavailable is the error of a clipboard call in a page that has no
+// navigator.clipboard: an insecure context (not https or localhost) or an old browser.
 func errClipboardUnavailable() error {
-	return errors.New("WebClipboardUnavailable", "the web clipboard is not implemented yet")
+	return errors.New("WebClipboardUnavailable", "the page has no navigator.clipboard: it needs a secure context (https or localhost)")
+}
+
+// errClipboardReadFailed is the error of navigator.clipboard.readText, which the browser refuses when the
+// user denies the permission or the page has no focus.
+func errClipboardReadFailed(detail string) error {
+	return errors.New("WebClipboardReadFailed", "navigator.clipboard.readText failed", "detail", detail)
+}
+
+// errClipboardWriteFailed is the error of navigator.clipboard.writeText, which the browser refuses
+// outside a user action or when the page has no focus.
+func errClipboardWriteFailed(detail string) error {
+	return errors.New("WebClipboardWriteFailed", "navigator.clipboard.writeText failed", "detail", detail)
+}
+
+// errClipboardFormatUnsupported is the error of writing a content with no text: only text goes to
+// the web clipboard.
+func errClipboardFormatUnsupported() error {
+	return errors.New("WebClipboardFormatUnsupported", "the web clipboard takes plain text only")
+}
+
+// errClipboardPrimaryUnavailable is the error of the primary selection, which the web does not have.
+func errClipboardPrimaryUnavailable() error {
+	return errors.New("ClipboardPrimaryUnavailable", "the web has no primary selection")
+}
+
+// errClipboardReadTimeout is the error of a read that took longer than its context allowed: the
+// browser may be waiting for the user to answer its permission prompt.
+func errClipboardReadTimeout(cause error) error {
+	return errors.NewErr("ClipboardReadTimeout", cause)
 }
 
 // errAlreadyRunning is the error of a second Run while the platform runs.

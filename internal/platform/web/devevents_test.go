@@ -20,6 +20,10 @@ func TestParseDevEvents(t *testing.T) {
 		{"tap", "tap: 10.5 , 20", []DevEvent{{Kind: "tap", X: 10.5, Y: 20}}},
 		{"move", "move:3,4", []DevEvent{{Kind: "move", X: 3, Y: 4}}},
 		{"key", "key:KeyK,k", []DevEvent{{Kind: "key", Code: "KeyK", Key: "k"}}},
+		{"input", "input:Hello, world", []DevEvent{{Kind: "input", Text: "Hello, world"}}},
+		{"input with a line break", `input:one\ntwo`, []DevEvent{{Kind: "input", Text: "one\ntwo"}}},
+		{"paste", "paste:copied text", []DevEvent{{Kind: "paste", Text: "copied text"}}},
+		{"compose", "compose:n,ni,你", []DevEvent{{Kind: "compose", Steps: []string{"n", "ni", "你"}}}},
 		{"several, with a trailing separator", "wait:1s;wheel:1,2,3,4;;key:Enter,Enter;", []DevEvent{
 			{Kind: "wait", Wait: time.Second}, {Kind: "wheel", X: 1, Y: 2, DX: 3, DY: 4}, {Kind: "key", Code: "Enter", Key: "Enter"},
 		}},
@@ -38,7 +42,7 @@ func TestParseDevEvents(t *testing.T) {
 }
 
 func TestParseDevEventsFailures(t *testing.T) {
-	for _, script := range []string{"wait", "wait:soon", "wait:-1s", "wheel:1,2,3", "wheel:1,2,3,x", "tap:1", "key:Enter", "key:,k", "jump:1,2"} {
+	for _, script := range []string{"wait", "wait:soon", "wait:-1s", "wheel:1,2,3", "wheel:1,2,3,x", "tap:1", "key:Enter", "key:,k", "jump:1,2", "input:", "paste:", "compose:", "compose:a,,b"} {
 		t.Run(script, func(t *testing.T) {
 			_, err := ParseDevEvents(script)
 			appErr, ok := errors.FromError(err)

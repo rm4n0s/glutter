@@ -145,8 +145,33 @@ func (p *platformTextInputControl) state() ui.TextInputState {
 		SelectionAnchor:     anchor,
 		SelectionCursor:     cursor,
 		CaretRect:           caret,
+		EnterKey:            enterKeyOf(p.config.InputAction),
 		CausedByInputMethod: p.fromInputMethod,
 	}
+}
+
+// enterKeyOf maps the action of the field to the label of the Enter key of a
+// virtual keyboard, as Flutter web maps TextInputAction to enterkeyhint.
+//
+// Flutter: lib/web_ui/lib/src/engine/text_editing/input_action.dart EngineInputAction.fromName
+func enterKeyOf(a TextInputAction) ui.TextInputEnterKey {
+	switch a {
+	case TextInputActionUnspecified, TextInputActionDone:
+		return ui.TextInputEnterKeyDone
+	case TextInputActionNext, TextInputActionContinueAction:
+		return ui.TextInputEnterKeyNext
+	case TextInputActionPrevious:
+		return ui.TextInputEnterKeyPrevious
+	case TextInputActionGo:
+		return ui.TextInputEnterKeyGo
+	case TextInputActionNewline:
+		return ui.TextInputEnterKeyEnter
+	case TextInputActionSearch:
+		return ui.TextInputEnterKeySearch
+	case TextInputActionSend:
+		return ui.TextInputEnterKeySend
+	}
+	return ui.TextInputEnterKeyUnspecified
 }
 
 // contentType maps the configuration to what the input method understands.
@@ -259,8 +284,9 @@ func (p *platformTextInputControl) handleEvent(e ui.TextInputEvent) {
 		v = v.Replaced(ui.TextRange{Start: start, End: end}, "")
 	}
 
-	// 3. Insert the commit string in place of the selection.
-	if e.Commit != "" || (!v.Selection.IsCollapsed() && e.Preedit != "") {
+	// 3. Insert the commit string in place of the selection (or remove the selection,
+	// when the event asks for it).
+	if e.Commit != "" || (!v.Selection.IsCollapsed() && (e.Preedit != "" || e.DeleteSelection)) {
 		start := v.Selection.Start()
 		v = v.Replaced(ui.TextRange{Start: start, End: v.Selection.End()}, e.Commit)
 		v.Selection = NewTextSelectionCollapsed(start + len(e.Commit))

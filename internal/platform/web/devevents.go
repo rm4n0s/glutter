@@ -1,6 +1,7 @@
 package web
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -19,7 +20,7 @@ const DevEventsEnv = "GLUTTER_DEV_EVENTS"
 //
 // Flutter: no counterpart
 type DevEvent struct {
-	// Kind is "wait", "wheel", "tap", "move" or "key".
+	// Kind is "wait", "wheel", "tap", "move", "key", "input", "compose" or "paste".
 	Kind string
 	// Wait is how long to wait before the next step, for "wait".
 	Wait time.Duration
@@ -28,6 +29,9 @@ type DevEvent struct {
 	X, Y, DX, DY float64
 	// Code and Key are KeyboardEvent.code and KeyboardEvent.key for a "key".
 	Code, Key string
+	// Text is the text of an "input" and a "paste", and Steps the successive texts of a "compose".
+	Text  string
+	Steps []string
 }
 
 // ParseDevEvents reads a dev events script: steps separated by ";", each "name:arguments".
@@ -37,6 +41,10 @@ type DevEvent struct {
 //	tap:x,y           a pointer down and up of the mouse's primary button at the position
 //	move:x,y          the mouse moves to the position
 //	key:code,key      a key down and up, such as key:KeyK,k or key:Enter,Enter
+//	input:text        text typed into the hidden text field, as the browser's beforeinput and input
+//	                  events do (\n is a line break); the text has no ";"
+//	compose:a,b,c     an input method composing a, then b, then c, which it commits
+//	paste:text        a paste event with the text, at the hidden text field
 //
 // A step that is not one of these, or has the wrong arguments, fails with WebDevEventsInvalid.
 //
@@ -78,8 +86,18 @@ func ParseDevEvents(script string) ([]DevEvent, error) {
 				return nil, errors.New("WebDevEventsInvalid", "key takes code,key", "step", step)
 			}
 			ev.Code, ev.Key = parts[0], parts[1]
+		case "input", "paste":
+			if args == "" {
+				return nil, errors.New("WebDevEventsInvalid", name+" takes the text", "step", step)
+			}
+			ev.Text = strings.ReplaceAll(args, `\n`, "\n")
+		case "compose":
+			if args == "" || slices.Contains(parts, "") {
+				return nil, errors.New("WebDevEventsInvalid", "compose takes the texts a,b,c", "step", step)
+			}
+			ev.Steps = parts
 		default:
-			return nil, errors.New("WebDevEventsInvalid", "the step is not wait, wheel, tap, move or key", "step", step)
+			return nil, errors.New("WebDevEventsInvalid", "the step is not wait, wheel, tap, move, key, input, compose or paste", "step", step)
 		}
 		events = append(events, ev)
 	}

@@ -231,6 +231,13 @@ func TestPlatformControlAppliesTheEventsOfTheInputMethod(t *testing.T) {
 		{"delete around the caret", caretAt("abcdef", 3), ui.TextInputEvent{DeleteBefore: 2, DeleteAfter: 1}, composing("aef", 1, ui.TextRangeEmpty)},
 		{"delete before the caret", caretAt("abcdef", 3), ui.TextInputEvent{DeleteBefore: 1}, composing("abdef", 2, ui.TextRangeEmpty)},
 		{"delete past the start and the end", caretAt("abc", 1), ui.TextInputEvent{DeleteBefore: 9, DeleteAfter: 9}, composing("", 0, ui.TextRangeEmpty)},
+		{"delete the selection when the event says so", val("abcdef", services.NewTextSelection(2, 4)), ui.TextInputEvent{DeleteSelection: true},
+			composing("abef", 2, ui.TextRangeEmpty)},
+		{"delete the selection of an inverted selection", val("abcdef", services.NewTextSelection(4, 2)), ui.TextInputEvent{DeleteSelection: true},
+			composing("abef", 2, ui.TextRangeEmpty)},
+		{"delete around the selection and then it", val("abcdef", services.NewTextSelection(2, 4)), ui.TextInputEvent{DeleteBefore: 1, DeleteAfter: 1, DeleteSelection: true},
+			composing("af", 1, ui.TextRangeEmpty)},
+		{"delete the selection does nothing to a caret", caretAt("abc", 1), ui.TextInputEvent{DeleteSelection: true}, composing("abc", 1, ui.TextRangeEmpty)},
 		{"delete leaves the selection", val("abcdef", services.NewTextSelection(2, 4)), ui.TextInputEvent{DeleteBefore: 1, DeleteAfter: 1},
 			services.NewTextEditingValue(services.TextEditingValueOpts{Text: "acdf", Selection: foundation.Some(services.NewTextSelection(1, 3))})},
 		{"delete a whole character of several bytes", caretAt("a你b", 4), ui.TextInputEvent{DeleteBefore: 1}, composing("ab", 1, ui.TextRangeEmpty)},
@@ -437,7 +444,10 @@ func TestHandleUnhandledKeyTypesOrActs(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			s := newSession(t, tc.cfg, caretAt("ab", 2))
-			s.ti.HandleUnhandledKey(tc.data, tc.controlHeld)
+			typed := s.ti.HandleUnhandledKey(tc.data, tc.controlHeld)
+			if want := tc.wantText != "" || len(tc.wantActions) > 0; typed != want {
+				t.Errorf("HandleUnhandledKey = %v, want %v: whether the text field took the key", typed, want)
+			}
 			if tc.wantText == "" {
 				if len(s.client.values) != 0 {
 					t.Errorf("the client got %v", s.client.values)
@@ -452,6 +462,38 @@ func TestHandleUnhandledKeyTypesOrActs(t *testing.T) {
 	}
 	t.Run("without a client nothing happens", func(t *testing.T) {
 		ti := services.NewTextInput(services.TextInputOpts{Backend: &fakeBackend{}})
-		ti.HandleUnhandledKey(key(services.LogicalKeyboardKeyKeyC, "c", ui.KeyEventTypeDown), false)
+		if ti.HandleUnhandledKey(key(services.LogicalKeyboardKeyKeyC, "c", ui.KeyEventTypeDown), false) {
+			t.Error("a key was taken with no client")
+		}
 	})
+}
+
+func TestPlatformControlEnterKeyOfTheAction(t *testing.T) {
+	tests := []struct {
+		action services.TextInputAction
+		want   ui.TextInputEnterKey
+	}{
+		{services.TextInputActionUnspecified, ui.TextInputEnterKeyDone},
+		{services.TextInputActionDone, ui.TextInputEnterKeyDone},
+		{services.TextInputActionNext, ui.TextInputEnterKeyNext},
+		{services.TextInputActionContinueAction, ui.TextInputEnterKeyNext},
+		{services.TextInputActionPrevious, ui.TextInputEnterKeyPrevious},
+		{services.TextInputActionGo, ui.TextInputEnterKeyGo},
+		{services.TextInputActionNewline, ui.TextInputEnterKeyEnter},
+		{services.TextInputActionSearch, ui.TextInputEnterKeySearch},
+		{services.TextInputActionSend, ui.TextInputEnterKeySend},
+		{services.TextInputActionNone, ui.TextInputEnterKeyUnspecified},
+		{services.TextInputActionPlatformDefault, ui.TextInputEnterKeyUnspecified},
+		{services.TextInputActionJoin, ui.TextInputEnterKeyUnspecified},
+		{services.TextInputActionRoute, ui.TextInputEnterKeyUnspecified},
+		{services.TextInputActionEmergencyCall, ui.TextInputEnterKeyUnspecified},
+	}
+	for _, tc := range tests {
+		t.Run(tc.action.String(), func(t *testing.T) {
+			s := newSession(t, services.NewTextInputConfiguration(services.TextInputConfigurationOpts{InputAction: tc.action}), caretAt("", 0))
+			if got := s.backend.last().EnterKey; got != tc.want {
+				t.Errorf("EnterKey = %v, want %v", got, tc.want)
+			}
+		})
+	}
 }

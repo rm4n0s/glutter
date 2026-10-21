@@ -52,6 +52,31 @@ func TestSyncInputIsHandledAtOnceAfterWhatWaits(t *testing.T) {
 	}
 }
 
+// TestSyncTextInputIsHandledAtOnceAfterWhatWaits: a text-input event that the platform needs the answer
+// to (the web's text field must know the framework's new state before it reads the next event) goes to the
+// dispatcher when it arrives, after the input that waits for its frame.
+func TestSyncTextInputIsHandledAtOnceAfterWhatWaits(t *testing.T) {
+	var order []string
+	d := ui.NewPlatformDispatcher(nil)
+	d.OnKeyData = func(k ui.KeyData) bool {
+		order = append(order, "key "+string(rune(k.Logical)))
+		return false
+	}
+	d.OnTextInput = func(e ui.TextInputEvent) { order = append(order, "text "+e.Commit) }
+	h := &handler{disp: d, cfg: &Config{}}
+
+	h.OnKey(ui.KeyData{Logical: 'a'}) // waits for its frame
+	h.OnTextInputSync(ui.TextInputEvent{Commit: "b"})
+	h.OnTextInput(ui.TextInputEvent{Commit: "c"}) // waits for its frame
+	if want := []string{"key a", "text b"}; !reflect.DeepEqual(order, want) {
+		t.Fatalf("order = %v, want %v: what waited goes first, and what waits afterwards still waits", order, want)
+	}
+	h.OnTextInputSync(ui.TextInputEvent{Commit: "d"})
+	if want := []string{"key a", "text b", "text c", "text d"}; !reflect.DeepEqual(order, want) {
+		t.Errorf("order = %v, want %v", order, want)
+	}
+}
+
 // TestBrowserContextMenuReachesTheWindowsThatHaveOne: the dispatcher's call goes to the windows that
 // implement platform.ContextMenuController, and says whether any did.
 func TestBrowserContextMenuReachesTheWindowsThatHaveOne(t *testing.T) {

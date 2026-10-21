@@ -36,6 +36,20 @@ func (p *Platform) startDevEvents() {
 				synthetic.DispatchPointer(canvas, synthetic.Pointer{Type: "pointerdown", X: e.X, Y: e.Y, Buttons: 1, Pressure: 0.5})
 				time.Sleep(50 * time.Millisecond)
 				synthetic.DispatchPointer(canvas, synthetic.Pointer{Type: "pointerup", X: e.X, Y: e.Y})
+			case "input", "compose", "paste":
+				field, err := synthetic.TextField()
+				if err != nil {
+					p.log.Error("glutter: GLUTTER_DEV_EVENTS cannot find the text field", "error", err)
+					continue
+				}
+				switch e.Kind {
+				case "input":
+					synthetic.TypeText(field, e.Text)
+				case "compose":
+					synthetic.Compose(field, e.Steps...)
+				case "paste":
+					synthetic.Paste(field, e.Text)
+				}
 			case "key":
 				synthetic.DispatchKey(canvas, synthetic.Key{Type: "keydown", Code: e.Code, Key: e.Key})
 				time.Sleep(20 * time.Millisecond)
