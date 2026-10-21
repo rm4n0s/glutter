@@ -344,6 +344,12 @@ type Buffer interface {
 type Texture interface {
 	// Desc is what the texture was made with, with MipLevels at least 1.
 	Desc() TextureDesc
+	// Level returns a texture that is the mip level i of this one: it has the size of that
+	// level and one level, and a pass can draw into it and a bind group can sample it, which
+	// is how the downsampling pass makes the mipmaps (SPEC §9.3). The texture it returns
+	// belongs to this one and goes away with it. Level(0) of a texture with one level is the
+	// texture itself.
+	Level(i int) Texture
 	// Destroy releases the texture. The GPU finishes the frames that use it first.
 	Destroy()
 }

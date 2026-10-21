@@ -52,25 +52,35 @@ func instances(t *testing.T, dev *fakedevice.Device) [][]float32 {
 	return nil
 }
 
-// scenePass returns the calls of the pass that draws the scene (the first one).
+// scenePass returns the calls of the pass that draws the scene in the last frame: the one before
+// the blit, after any passes that make mip levels.
 func scenePass(dev *fakedevice.Device) []fakedevice.Call {
-	var out []fakedevice.Call
+	all := dev.Calls()
+	begin := 0
+	for i, c := range all {
+		if c.Op == "Begin" {
+			begin = i
+		}
+	}
+	var passes [][]fakedevice.Call
 	in := false
-	passes := 0
-	for _, c := range dev.Calls() {
+	for _, c := range all[begin:] {
 		switch c.Op {
 		case "BeginPass":
-			passes++
-			in = passes == 1
+			passes = append(passes, nil)
+			in = true
 		case "EndPass":
 			in = false
 		default:
 			if in {
-				out = append(out, c)
+				passes[len(passes)-1] = append(passes[len(passes)-1], c)
 			}
 		}
 	}
-	return out
+	if len(passes) < 2 {
+		return nil
+	}
+	return passes[len(passes)-2]
 }
 
 func TestDrawsShapesAsInstances(t *testing.T) {
@@ -97,7 +107,9 @@ func TestDrawsShapesAsInstances(t *testing.T) {
 	if got[1][10] != gpu.ShapeKindRRect {
 		t.Errorf("rrect kind = %v", got[1][10])
 	}
-	want := []string{"SetPipeline", "SetBindGroup", "SetScissor", "SetVertexBuffer", "Draw"}
+	// The bind groups are made as the draw calls need them: the frame and draw uniforms, and the
+	// clip mask (the white texel here).
+	want := []string{"SetPipeline", "NewBindGroup", "SetBindGroup", "NewBindGroup", "SetBindGroup", "SetScissor", "SetVertexBuffer", "Draw"}
 	var ops []string
 	for _, c := range scenePass(dev) {
 		ops = append(ops, c.Op)
@@ -182,12 +194,12 @@ func TestInstanceDataIsUploadedOncePerFrameIntoTheSlot(t *testing.T) {
 	}
 	var offsets []string
 	for _, c := range dev.Calls() {
-		if c.Op == "SetBindGroup" && strings.Contains(c.Args, "offsets=[0]") {
+		if c.Op == "SetBindGroup" && c.Args == "group=0 offsets=[0 256]" {
 			offsets = append(offsets, c.Args)
 		}
 	}
 	if len(offsets) != 5 {
-		t.Errorf("the frame uniform is at offset 0 in %d of 5 frames", len(offsets))
+		t.Errorf("the frame uniform is at offset 0 and the draw uniform at 256 in %d of 5 frames", len(offsets))
 	}
 }
 
@@ -232,29 +244,28 @@ func TestUnsupportedFeatures(t *testing.T) {
 		{"a gradient", "shader", func(c *ui.Canvas) { c.DrawRect(ui.NewRectFromLTWH(0, 0, 10, 10), linear) }},
 		{"a blend that reads the destination", "blend mode BlendMode.multiply", func(c *ui.Canvas) { c.DrawRect(ui.NewRectFromLTWH(0, 0, 10, 10), multiply) }},
 		{"a mask filter", "mask filter", func(c *ui.Canvas) { c.DrawRect(ui.NewRectFromLTWH(0, 0, 10, 10), blur) }},
-		{"a path", "operation ui.OpDrawPath", func(c *ui.Canvas) {
-			p := ui.NewPath()
-			p.MoveTo(0, 0)
-			p.LineTo(10, 0)
-			p.LineTo(0, 10)
-			p.Close()
-			c.DrawPath(p, solid(0xFF000000))
+		{"an image filter", "image filter", func(c *ui.Canvas) {
+			p := solid(0xFF000000)
+			p.SetImageFilter(ui.NewImageFilterBlur(ui.ImageFilterBlurOpts{SigmaX: 2, SigmaY: 2}))
+			c.DrawRect(ui.NewRectFromLTWH(0, 0, 10, 10), p)
 		}},
-		{"a shape clip", "clip shape", func(c *ui.Canvas) {
-			c.ClipRRect(ui.NewRRectFromRectXY(ui.NewRectFromLTWH(0, 0, 20, 20), 4, 4))
-			c.DrawRect(ui.NewRectFromLTWH(0, 0, 10, 10), solid(0xFF000000))
+		{"a color filter", "color filter", func(c *ui.Canvas) {
+			p := solid(0xFF000000)
+			p.SetInvertColors(true)
+			c.DrawRect(ui.NewRectFromLTWH(0, 0, 10, 10), p)
+		}},
+		{"sprites with colors", "atlas colors", func(c *ui.Canvas) {
+			c.DrawAtlas(testImage(4), []ui.RSTransform{ui.NewRSTransformFromComponents(1, 0, 0, 0, 5, 5)}, []ui.Rect{ui.NewRectFromLTWH(0, 0, 4, 4)},
+				[]ui.Color{ui.NewColor(0x80FF0000)}, ui.BlendModeSrcIn, nil, nil)
+		}},
+		{"vertices blended with srcOver", "vertices blend mode BlendMode.srcOver", func(c *ui.Canvas) {
+			v := ui.NewVertices(ui.VertexModeTriangles, []ui.Offset{{}, {Dx: 10}, {Dy: 10}}, ui.VerticesOpts{Colors: []ui.Color{ui.NewColor(0xFFFF0000), ui.NewColor(0xFF00FF00), ui.NewColor(0xFF0000FF)}})
+			c.DrawVertices(v, ui.BlendModeSrcOver, solid(0xFF000000))
 		}},
 		{"a layer", "layer", func(c *ui.Canvas) {
 			c.SaveLayer(nil, solid(0x80000000))
 			c.DrawRect(ui.NewRectFromLTWH(0, 0, 10, 10), solid(0xFF000000))
 			c.Restore()
-		}},
-		{"a stroke with no analytic form", "bevel stroke join", func(c *ui.Canvas) {
-			p := solid(0xFF000000)
-			p.SetStyle(ui.PaintingStyleStroke)
-			p.SetStrokeWidth(4)
-			p.SetStrokeJoin(ui.StrokeJoinBevel)
-			c.DrawRect(ui.NewRectFromLTWH(0, 0, 10, 10), p)
 		}},
 	}
 	for _, tt := range tests {
@@ -322,4 +333,13 @@ func slicesContains(ops []string, op string) bool {
 func fmtSscan(s string, size *int) (int, error) {
 	var usage int
 	return fmt.Sscanf(s, "size=%d usage=%d", size, &usage)
+}
+
+// testImage is an n x n image of one opaque color.
+func testImage(n int) *ui.Image {
+	pix := make([]byte, 4*n*n)
+	for i := 0; i < len(pix); i += 4 {
+		copy(pix[i:], []byte{0x20, 0x40, 0x80, 0xFF})
+	}
+	return ui.NewImageFromRGBA(pix, n, n)
 }

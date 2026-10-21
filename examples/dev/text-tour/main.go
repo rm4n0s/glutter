@@ -12,6 +12,7 @@
 // Environment (read in debug builds only, as the examples promise):
 //
 //	GLUTTER_BACKEND=x11|wayland       the windowing system (else the session's)
+//	GLUTTER_RENDERER=gles|vulkan      the renderer (else the default; see SPEC §9.6)
 //	GLUTTER_SCREENSHOT=<file.png>     save the window content to the file and exit
 //	GLUTTER_SCREENSHOT_AFTER=<time>   wait that long (such as 500ms) before saving
 package main
@@ -61,6 +62,9 @@ func run() error {
 	return engine.Run(ctx, engine.Config{
 		Window: cfg,
 		Scene:  func(ui.Size, float64) *ui.Scene { return built },
+		// What a renderer cannot draw yet (the Vulkan renderer's gradients and blurs, until
+		// steps 20.5 and 20.6) is left out and listed in the log.
+		SkipUnsupported: true,
 		Hooks: engine.Hooks{
 			Window: func(_ platform.Window, stop func()) { quit = stop },
 			Key: func(d ui.KeyData) {

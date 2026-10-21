@@ -8,9 +8,13 @@ import (
 // minDynamicBuffer is the size a frame's instance and uniform buffers start with.
 const minDynamicBuffer = 64 << 10
 
-// frameUniformSize is the size of the shape shader's Frame uniform: the size of the target
-// and its origin, four floats.
-const frameUniformSize = 16
+// frameUniformSize is the size of the Frame uniform of the shaders: the size of the target and
+// its origin, four floats. A Draw uniform is the clip mask's rectangle, four floats, and for
+// the vertices pipeline also the paint, the clip and the blend, sixteen.
+const (
+	frameUniformSize = 16
+	maxDrawUniform   = 64
+)
 
 // frameSlot is the dynamic buffers of one frame in flight: the instance data of the frame's
 // shapes, and the ring of uniforms addressed with dynamic offsets (SPEC §9.3 "Frames").
@@ -61,24 +65,30 @@ func frameUniform(w, h, ox, oy int) []byte {
 	return floatBytes([]float32{float32(w), float32(h), float32(ox), float32(oy)})
 }
 
-// upload writes the frame's instances and uniforms into the slot's buffers.
-func (r *Renderer) upload(s *frameSlot, instances []float32) error {
-	if len(instances) > 0 {
-		data := floatBytes(instances)
-		if err := r.ensure(&s.instances, &s.instCap, len(data), BufferVertex); err != nil {
-			return err
+// upload writes the frame's primitive data into the slot's instance buffer, one pipeline's
+// data after the other, and the ring into its uniform buffer. It returns where the data of each
+// pipeline starts in the buffer, in bytes.
+func (r *Renderer) upload(s *frameSlot, data *[numPipes][]float32) (base [numPipes]int, err error) {
+	var all []byte
+	for p := range data {
+		base[p] = len(all)
+		all = append(all, floatBytes(data[p])...)
+	}
+	if len(all) > 0 {
+		if err := r.ensure(&s.instances, &s.instCap, len(all), BufferVertex); err != nil {
+			return base, err
 		}
-		r.dev.WriteBuffer(s.instances, 0, data)
+		r.dev.WriteBuffer(s.instances, 0, all)
 	}
 	if len(s.ring) > 0 {
-		// The last window of the ring must fit the buffer: the binding is frameUniformSize
-		// bytes at the dynamic offset.
-		if err := r.ensure(&s.uniforms, &s.uniCap, len(s.ring)+frameUniformSize, BufferUniform); err != nil {
-			return err
+		// The last window of the ring must fit the buffer: a binding is at most
+		// maxDrawUniform bytes at the dynamic offset.
+		if err := r.ensure(&s.uniforms, &s.uniCap, len(s.ring)+maxDrawUniform, BufferUniform); err != nil {
+			return base, err
 		}
 		r.dev.WriteBuffer(s.uniforms, 0, s.ring)
 	}
-	return nil
+	return base, nil
 }
 
 // destroy releases the slot's buffers.

@@ -55,6 +55,8 @@ type BufferWrite struct {
 	Offset int
 	// Data is a copy of the bytes written.
 	Data []byte
+	// Usage is what the buffer was made for.
+	Usage explicit.BufferUsage
 }
 
 var _ explicit.Device = (*Device)(nil)
@@ -115,7 +117,7 @@ func (d *Device) NewBuffer(size int, usage explicit.BufferUsage) (explicit.Buffe
 	if err := d.fail(); err != nil {
 		return nil, err
 	}
-	return &buffer{data: make([]byte, size)}, nil
+	return &buffer{data: make([]byte, size), usage: usage}, nil
 }
 
 // NewTexture implements explicit.Device.
@@ -172,17 +174,30 @@ func (d *Device) NewBindGroup(p explicit.Pipeline, group int, entries []explicit
 // WriteBuffer implements explicit.Device.
 func (d *Device) WriteBuffer(b explicit.Buffer, offset int, data []byte) {
 	d.record("WriteBuffer", "offset=%d bytes=%d", offset, len(data))
-	d.Writes = append(d.Writes, BufferWrite{Offset: offset, Data: slices.Clone(data)})
+	var usage explicit.BufferUsage
+	if fb, ok := b.(*buffer); ok {
+		usage = fb.usage
+	}
+	d.Writes = append(d.Writes, BufferWrite{Offset: offset, Data: slices.Clone(data), Usage: usage})
 	if fb, ok := b.(*buffer); ok && offset >= 0 && offset+len(data) <= len(fb.data) {
 		copy(fb.data[offset:], data)
 	}
 }
 
-// WriteTexture implements explicit.Device. It keeps the pixels of level 0.
+// WriteTexture implements explicit.Device. It keeps the pixels of every level.
 func (d *Device) WriteTexture(t explicit.Texture, level int, r image.Rectangle, data []byte, stride int) {
 	d.record("WriteTexture", "level=%d rect=%v bytes=%d stride=%d", level, r, len(data), stride)
 	ft, ok := t.(*texture)
-	if !ok || level != 0 || ft.pix == nil {
+	if !ok {
+		return
+	}
+	if level != 0 {
+		if level >= ft.desc.MipLevels {
+			return
+		}
+		ft = ft.Level(level).(*texture)
+	}
+	if ft.pix == nil {
 		return
 	}
 	r = r.Intersect(image.Rect(0, 0, ft.desc.Width, ft.desc.Height))
@@ -241,7 +256,10 @@ func (d *Device) CompleteReads() {
 	}
 }
 
-type buffer struct{ data []byte }
+type buffer struct {
+	data  []byte
+	usage explicit.BufferUsage
+}
 
 func (b *buffer) Size() int { return len(b.data) }
 func (b *buffer) Destroy()  {}
@@ -257,13 +275,40 @@ func Bytes(b explicit.Buffer) []byte {
 }
 
 type texture struct {
-	desc explicit.TextureDesc
-	bpp  int
-	pix  []byte // level 0
+	desc   explicit.TextureDesc
+	bpp    int
+	pix    []byte     // level 0
+	levels []*texture // the textures of Level, indexed by level
+	parent *texture
 }
 
 func (t *texture) Desc() explicit.TextureDesc { return t.desc }
 func (t *texture) Destroy()                   {}
+
+// Level implements explicit.Texture: a texture of its own, of the size of the level.
+func (t *texture) Level(i int) explicit.Texture {
+	if i < 0 || i >= t.desc.MipLevels {
+		panic(errors.New("FakeLevelInvalid", "the texture has no such mip level", "level", i, "levels", t.desc.MipLevels))
+	}
+	if t.desc.MipLevels == 1 || t.parent != nil {
+		return t
+	}
+	if t.levels == nil {
+		t.levels = make([]*texture, t.desc.MipLevels)
+	}
+	if t.levels[i] == nil {
+		desc := t.desc
+		desc.Width, desc.Height, desc.MipLevels = max(desc.Width>>i, 1), max(desc.Height>>i, 1), 1
+		lv := &texture{desc: desc, bpp: t.bpp, parent: t}
+		if i == 0 {
+			lv = t // level 0 is the texture's own pixels
+		} else if t.bpp > 0 {
+			lv.pix = make([]byte, desc.Width*desc.Height*t.bpp)
+		}
+		t.levels[i] = lv
+	}
+	return t.levels[i]
+}
 
 // fill sets every pixel to the color, as a clearing pass does.
 func (t *texture) fill(c ui.Color) {

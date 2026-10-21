@@ -19,61 +19,6 @@ type clipMask struct {
 	lastUsed   uint64
 }
 
-// clipKey hashes what a clip mask is made of: its area and its shapes, with the
-// transform each was clipped under.
-func clipKey(area image.Rectangle, shapes []gpu.ClipShape) uint64 {
-	h := newHasher()
-	h.i(area.Min.X)
-	h.i(area.Min.Y)
-	h.i(area.Max.X)
-	h.i(area.Max.Y)
-	for i := range shapes {
-		s := &shapes[i]
-		h.i(int(s.Kind))
-		h.b(s.AntiAlias)
-		h.b(s.Difference)
-		for _, v := range s.Transform.Storage() {
-			h.f64(float64(v))
-		}
-		switch s.Kind {
-		case gpu.ClipShapeRect:
-			h.f64(s.Rect.Left)
-			h.f64(s.Rect.Top)
-			h.f64(s.Rect.Right)
-			h.f64(s.Rect.Bottom)
-		case gpu.ClipShapeRRect:
-			rr := s.RRect
-			for _, v := range [...]float64{rr.Left, rr.Top, rr.Right, rr.Bottom, rr.TlRadiusX, rr.TlRadiusY, rr.TrRadiusX, rr.TrRadiusY, rr.BrRadiusX, rr.BrRadiusY, rr.BlRadiusX, rr.BlRadiusY} {
-				h.f64(v)
-			}
-		case gpu.ClipShapeRSuperellipse:
-			rr := s.RSuperellipse
-			for _, v := range [...]float64{rr.Left, rr.Top, rr.Right, rr.Bottom, rr.TlRadiusX, rr.TlRadiusY, rr.TrRadiusX, rr.TrRadiusY, rr.BrRadiusX, rr.BrRadiusY, rr.BlRadiusX, rr.BlRadiusY} {
-				h.f64(v)
-			}
-		case gpu.ClipShapePath:
-			h.u64(s.Path.Fingerprint())
-		}
-	}
-	return uint64(h)
-}
-
-// shapePath is the outline of a clip shape.
-func shapePath(s *gpu.ClipShape) *ui.Path {
-	p := ui.NewPath()
-	switch s.Kind {
-	case gpu.ClipShapeRect:
-		p.AddRect(s.Rect)
-	case gpu.ClipShapeRRect:
-		p.AddRRect(s.RRect)
-	case gpu.ClipShapeRSuperellipse:
-		p.AddRSuperellipse(s.RSuperellipse)
-	case gpu.ClipShapePath:
-		return s.Path
-	}
-	return p
-}
-
 // outerPixels returns the pixels that a rectangle of the surface touches, inside
 // the surface of w x h pixels.
 func outerPixels(r ui.Rect, w, h int) image.Rectangle {
@@ -97,39 +42,20 @@ func (r *resources) clipMask(c gpu.Clip, w, h int) (m *clipMask, empty bool, err
 	if area.Empty() {
 		return nil, true, nil
 	}
-	key := clipKey(area, c.Shapes)
+	key := gpu.ClipKey(area, c.Shapes)
 	if m, ok := r.clipMasks[key]; ok {
 		m.lastUsed = r.frame
 		return m, false, nil
 	}
 	r.clipMasksBuilt++
-	cov := make([]float32, area.Dx()*area.Dy())
-	for i := range cov {
-		cov[i] = 1
-	}
-	for i := range c.Shapes {
-		s := &c.Shapes[i]
-		mask := soft.ClipMask(shapePath(s), &s.Transform, s.AntiAlias, area)
-		if s.Difference {
-			// Cut the shape out: where it covers, the clip is left by the rest.
-			if mask != nil {
-				cut(cov, area, mask, true)
-			}
-			continue
-		}
+	bytes, empty := gpu.ClipCoverage(c, area, func(path *ui.Path, m *ui.Matrix4, aa bool, a image.Rectangle) (image.Rectangle, []float32) {
+		mask := soft.ClipMask(path, m, aa, a)
 		if mask == nil {
-			return nil, true, nil
+			return image.Rectangle{}, nil
 		}
-		cut(cov, area, mask, false)
-	}
-	bytes := make([]byte, len(cov))
-	any := false
-	for i, v := range cov {
-		b := byte(math.Min(math.Max(float64(v)*255+0.5, 0), 255))
-		bytes[i] = b
-		any = any || b != 0
-	}
-	if !any {
+		return mask.Rect, mask.Cov
+	})
+	if empty {
 		return nil, true, nil
 	}
 	tex, err := r.dev.AcquireTexture(area.Dx(), area.Dy(), TextureFormatR8)
@@ -145,21 +71,6 @@ func (r *resources) clipMask(c gpu.Clip, w, h int) (m *clipMask, empty bool, err
 	r.clipMasks[key] = m
 	r.clipBytes += len(bytes)
 	return m, false, nil
-}
-
-// cut multiplies the coverage of a clip, over the area, by a shape's mask, or by
-// what the mask leaves when subtract is set.
-func cut(cov []float32, area image.Rectangle, mask *soft.Mask, subtract bool) {
-	w := area.Dx()
-	for y := area.Min.Y; y < area.Max.Y; y++ {
-		for x := area.Min.X; x < area.Max.X; x++ {
-			v := mask.At(x, y)
-			if subtract {
-				v = 1 - v
-			}
-			cov[(y-area.Min.Y)*w+(x-area.Min.X)] *= v
-		}
-	}
 }
 
 func (r *resources) dropClipMask(key uint64, m *clipMask) {

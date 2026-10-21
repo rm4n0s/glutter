@@ -318,10 +318,9 @@ func (e *encoder) CopyTexture(src explicit.Texture, r image.Rectangle, dst expli
 	d := e.d
 	a := d.arena
 	defer a.rewind(a.mark())
-	layers := imageSubresourceLayers{aspectMask: imageAspectColor, layerCount: 1}
 	region := put(a, imageCopy{
-		srcSubresource: layers, srcOffset: offset3D{int32(r.Min.X), int32(r.Min.Y), 0},
-		dstSubresource: layers, dstOffset: offset3D{int32(at.X), int32(at.Y), 0},
+		srcSubresource: imageSubresourceLayers{aspectMask: imageAspectColor, mipLevel: uint32(s.base), layerCount: 1}, srcOffset: offset3D{int32(r.Min.X), int32(r.Min.Y), 0},
+		dstSubresource: imageSubresourceLayers{aspectMask: imageAspectColor, mipLevel: uint32(t.base), layerCount: 1}, dstOffset: offset3D{int32(at.X), int32(at.Y), 0},
 		extent: extent3D{uint32(r.Dx()), uint32(r.Dy()), 1},
 	})
 	d.f.cmdCopyImage(e.cb, s.image, layoutGeneral, t.image, layoutGeneral, 1, region)
@@ -346,7 +345,7 @@ func (e *encoder) ReadTexture(src explicit.Texture, r image.Rectangle, done func
 	a := d.arena
 	defer a.rewind(a.mark())
 	region := put(a, bufferImageCopy{
-		imageSubresource: imageSubresourceLayers{aspectMask: imageAspectColor, layerCount: 1},
+		imageSubresource: imageSubresourceLayers{aspectMask: imageAspectColor, mipLevel: uint32(s.base), layerCount: 1},
 		imageOffset:      offset3D{int32(r.Min.X), int32(r.Min.Y), 0},
 		imageExtent:      extent3D{uint32(r.Dx()), uint32(r.Dy()), 1},
 	})

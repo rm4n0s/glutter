@@ -73,8 +73,6 @@ func affineOf(m *ui.Matrix4) affine2D { return gpu.AffineOf(m) }
 
 func translation(x, y float64) affine2D { return gpu.Translation(x, y) }
 
-func scaling(x, y float64) affine2D { return gpu.Scaling(x, y) }
-
 // frameBuilder turns the commands of a draw list into instances. It does not
 // call GL.
 type frameBuilder struct {

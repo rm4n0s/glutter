@@ -25,7 +25,7 @@ func (r *Renderer) drawScene(scene *ui.Scene, w, h int, useCache bool) error {
 	}
 	r.res.beginFrame()
 	defer r.res.endFrame()
-	tiles0, clips0, images0 := r.res.tilesRasterized, r.res.clipMasksBuilt, r.res.imagesUploaded
+	tiles0, clips0, images0 := r.res.masks.Rasterized, r.res.clipMasksBuilt, r.res.imagesUploaded
 	fo := gpu.FlattenOpts{Bounds: ui.NewRectFromLTWH(0, 0, float64(w), float64(h))}
 	var cache *layerCache
 	if useCache && r.cache != nil {
@@ -50,7 +50,7 @@ func (r *Renderer) drawScene(scene *ui.Scene, w, h int, useCache bool) error {
 			b.stats.Batches++
 		}
 	}
-	b.stats.TilesRasterized = r.res.tilesRasterized - tiles0
+	b.stats.TilesRasterized = r.res.masks.Rasterized - tiles0
 	b.stats.ClipMasksBuilt = r.res.clipMasksBuilt - clips0
 	b.stats.ImagesUploaded = r.res.imagesUploaded - images0
 	r.last = b.stats

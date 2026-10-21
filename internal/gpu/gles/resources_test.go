@@ -51,10 +51,10 @@ func TestPathsAreDrawnFromTheAtlasAndCached(t *testing.T) {
 		}
 	}
 	b := frameWith(t, res, draw(0))
-	if b.frame.items(pipeMask) != 1 || b.frame.items(pipeShape) != 0 || res.tilesRasterized < 1 {
-		t.Fatalf("mask items %d, rasterized %d", b.frame.items(pipeMask), res.tilesRasterized)
+	if b.frame.items(pipeMask) != 1 || b.frame.items(pipeShape) != 0 || res.masks.Rasterized < 1 {
+		t.Fatalf("mask items %d, rasterized %d", b.frame.items(pipeMask), res.masks.Rasterized)
 	}
-	first := res.tilesRasterized
+	first := res.masks.Rasterized
 	in := b.frame.data[pipeMask]
 	// The tile's pixels are a whole-number rectangle, its coverage is in the atlas page,
 	// and the instance holds the premultiplied color and the clip.
@@ -74,8 +74,8 @@ func TestPathsAreDrawnFromTheAtlasAndCached(t *testing.T) {
 
 	// The same path at another whole-pixel offset, in a later frame: no new tile.
 	b = frameWith(t, res, draw(37))
-	if res.tilesRasterized != first || b.frame.items(pipeMask) != 1 {
-		t.Errorf("after a whole-pixel move: rasterized %d, want %d, items %d", res.tilesRasterized, first, b.frame.items(pipeMask))
+	if res.masks.Rasterized != first || b.frame.items(pipeMask) != 1 {
+		t.Errorf("after a whole-pixel move: rasterized %d, want %d, items %d", res.masks.Rasterized, first, b.frame.items(pipeMask))
 	}
 	if gl.calls["texSubImage2D"] != uploads {
 		t.Error("a cached tile was uploaded again")
@@ -86,26 +86,26 @@ func TestPathsAreDrawnFromTheAtlasAndCached(t *testing.T) {
 	}
 	// Another fractional position is another coverage.
 	frameWith(t, res, draw(0.5))
-	second := res.tilesRasterized
+	second := res.masks.Rasterized
 	if second <= first {
 		t.Errorf("after a half-pixel move: rasterized %d, want more than %d", second, first)
 	}
 	// A path with the same contents built again, with the same paint: cached.
 	frameWith(t, res, draw(0))
-	if res.tilesRasterized != second {
-		t.Errorf("a path built again was rasterized again: %d", res.tilesRasterized)
+	if res.masks.Rasterized != second {
+		t.Errorf("a path built again was rasterized again: %d", res.masks.Rasterized)
 	}
 	// Another stroke or color changes what is cached only when it changes the coverage.
 	frameWith(t, res, func(c *ui.Canvas) { c.Translate(0, 5); c.DrawPath(wave(), solidPaint(0xFFFF0000)) })
-	if res.tilesRasterized != second {
-		t.Errorf("another color was rasterized again: %d", res.tilesRasterized)
+	if res.masks.Rasterized != second {
+		t.Errorf("another color was rasterized again: %d", res.masks.Rasterized)
 	}
 	frameWith(t, res, func(c *ui.Canvas) {
 		c.Translate(0, 5)
 		c.DrawPath(wave(), linePaint(0xFF204080, 3, ui.StrokeCapButt, ui.StrokeJoinMiter))
 	})
-	if res.tilesRasterized <= second {
-		t.Errorf("a stroke should be rasterized: %d", res.tilesRasterized)
+	if res.masks.Rasterized <= second {
+		t.Errorf("a stroke should be rasterized: %d", res.masks.Rasterized)
 	}
 }
 
@@ -116,8 +116,8 @@ func TestLargePathsAreTiledAndOnlyVisibleTilesAreMade(t *testing.T) {
 	p := solidPaint(0xFF000000)
 	// The visible surface is 200 x 100: one tile of 256 covers it.
 	b := frameWith(t, res, func(c *ui.Canvas) { c.DrawPath(big, p) })
-	if b.frame.items(pipeMask) != 1 || res.tilesRasterized != 1 {
-		t.Errorf("tiles %d, rasterized %d", b.frame.items(pipeMask), res.tilesRasterized)
+	if b.frame.items(pipeMask) != 1 || res.masks.Rasterized != 1 {
+		t.Errorf("tiles %d, rasterized %d", b.frame.items(pipeMask), res.masks.Rasterized)
 	}
 	// Scrolled so that the visible part crosses tile boundaries.
 	b = frameWith(t, res, func(c *ui.Canvas) { c.Translate(-200, -50); c.DrawPath(big, p) })
@@ -138,10 +138,10 @@ func TestLargePathsAreTiledAndOnlyVisibleTilesAreMade(t *testing.T) {
 	// An empty tile is remembered: nothing covered, nothing drawn, nothing rasterized twice.
 	off := ui.NewPath()
 	off.AddRect(ui.NewRectFromLTWH(1000, 1000, 10, 10))
-	before := res.tilesRasterized
+	before := res.masks.Rasterized
 	b = frameWith(t, res, func(c *ui.Canvas) { c.DrawPath(off, p) })
-	if b.frame.items(pipeMask) != 0 || res.tilesRasterized != before {
-		t.Errorf("off the surface: %d tiles, rasterized %d more", b.frame.items(pipeMask), res.tilesRasterized-before)
+	if b.frame.items(pipeMask) != 0 || res.masks.Rasterized != before {
+		t.Errorf("off the surface: %d tiles, rasterized %d more", b.frame.items(pipeMask), res.masks.Rasterized-before)
 	}
 }
 
@@ -162,7 +162,7 @@ func TestAtlasPagesAreTexturesOfTheGPU(t *testing.T) {
 
 func TestAtlasFullIsAnError(t *testing.T) {
 	res, _, _ := newTestResources(t)
-	res.atlas = gpu.NewAtlas[maskKey](256, 1) // four slots of 128 or one of 256 in one page
+	res.masks.SetAtlas(gpu.NewAtlas[gpu.MaskKey](256, 1)) // four slots of 128 or one of 256 in one page
 	many := func(c *ui.Canvas) {
 		// Each of these needs the whole 256 pixel page.
 		for i := 0; i < 2; i++ {
@@ -410,7 +410,7 @@ func TestImageInstances(t *testing.T) {
 			if in[25] != tt.quality || in[24] != tt.level {
 				t.Errorf("quality %v level %v, want %v and %v", in[25], in[24], tt.quality, tt.level)
 			}
-			if got := int(in[10])&imageFlagBox != 0; got != tt.box {
+			if got := int(in[10])&gpu.ImageFlagBox != 0; got != tt.box {
 				t.Errorf("box flag = %v, want %v", got, tt.box)
 			}
 			if in[26] != -1 {
@@ -498,10 +498,10 @@ func TestNinePatchAndAtlasInstances(t *testing.T) {
 		t.Errorf("a squeezed nine-patch is %d instances, want 4", n)
 	}
 	// The pieces of one axis.
-	if got := ninePieces(10, 100, [4]float64{0, 8, 16, 24}); got != [4]float64{10, 18, 102, 110} {
+	if got := gpu.NinePieces(10, 100, [4]float64{0, 8, 16, 24}); got != [4]float64{10, 18, 102, 110} {
 		t.Errorf("ninePieces = %v", got)
 	}
-	if got := ninePieces(0, 8, [4]float64{0, 8, 16, 24}); got != [4]float64{0, 4, 4, 8} {
+	if got := gpu.NinePieces(0, 8, [4]float64{0, 8, 16, 24}); got != [4]float64{0, 4, 4, 8} {
 		t.Errorf("squeezed ninePieces = %v", got)
 	}
 	// Sprites, with and without colors.
@@ -642,63 +642,5 @@ func TestShapesFallBackToTheAtlas(t *testing.T) {
 	_, err := buildWith(t, res, false, func(c *ui.Canvas) { c.DrawRect(rect, unfit) })
 	if appErr, ok := errors.FromError(err); !ok || appErr.Tag != "GLNotImplemented" || appErr.Metadata["feature"] != "gradient with more than 32 colors" {
 		t.Errorf("error = %v", err)
-	}
-}
-
-func TestMaskKeysAreStableAndDistinct(t *testing.T) {
-	a, ok := shapeOf(ui.OpDrawPath{Path: wave(), Paint: *solidPaint(0xFF000000)})
-	b, _ := shapeOf(ui.OpDrawPath{Path: wave(), Paint: *solidPaint(0xFFFF0000)})
-	if !ok || a.geom != b.geom {
-		t.Error("the same path should have the same geometry hash")
-	}
-	rect := ui.NewRectFromLTWH(0, 0, 10, 10)
-	seen := map[uint64]string{}
-	for name, op := range map[string]ui.DisplayOp{
-		"path":   ui.OpDrawPath{Path: wave()},
-		"rect":   ui.OpDrawRect{Rect: rect},
-		"rrect":  ui.OpDrawRRect{RRect: ui.NewRRectFromRectXY(rect, 2, 2)},
-		"super":  ui.OpDrawRSuperellipse{RSuperellipse: ui.NewRSuperellipseFromRectXY(rect, 2, 2)},
-		"drrect": ui.OpDrawDRRect{Outer: ui.NewRRectFromRectXY(rect, 2, 2), Inner: ui.NewRRectFromRectXY(rect.Deflate(2), 1, 1)},
-		"oval":   ui.OpDrawOval{Rect: rect},
-		"circle": ui.OpDrawCircle{Radius: 5},
-		"arc":    ui.OpDrawArc{Rect: rect, SweepAngle: 1},
-		"arc2":   ui.OpDrawArc{Rect: rect, SweepAngle: 2},
-		"arc3":   ui.OpDrawArc{Rect: rect, SweepAngle: 2, UseCenter: true},
-		"line":   ui.OpDrawLine{P2: ui.Offset{Dx: 5, Dy: 5}},
-		"points": ui.OpDrawPoints{Points: []ui.Offset{{Dx: 1, Dy: 1}}},
-		"lines":  ui.OpDrawPoints{Mode: ui.PointModeLines, Points: []ui.Offset{{Dx: 1, Dy: 1}}},
-	} {
-		sh, ok := shapeOf(op)
-		if !ok {
-			t.Fatalf("%s: unknown", name)
-		}
-		if other, dup := seen[sh.geom]; dup {
-			t.Errorf("%s and %s have the same geometry hash", name, other)
-		}
-		seen[sh.geom] = name
-	}
-	if _, ok := shapeOf(ui.OpSave{}); ok {
-		t.Error("Save is not a shape")
-	}
-	// Strokes and anti-aliasing change the style, a color does not.
-	fill, stroke, aliased := solidPaint(0xFF000000), linePaint(0xFF000000, 3, ui.StrokeCapButt, ui.StrokeJoinMiter), solidPaint(0xFF000000)
-	aliased.SetIsAntiAlias(false)
-	if styleKey(fill, false) == styleKey(stroke, true) || styleKey(fill, false) == styleKey(aliased, false) {
-		t.Error("style keys of different coverage are equal")
-	}
-	if styleKey(fill, false) != styleKey(solidPaint(0xFF123456), false) {
-		t.Error("a color changed the style key")
-	}
-	wide := linePaint(0xFF000000, 5, ui.StrokeCapButt, ui.StrokeJoinMiter)
-	if styleKey(stroke, true) == styleKey(wide, true) {
-		t.Error("stroke widths share a style key")
-	}
-}
-
-func TestFloorDiv(t *testing.T) {
-	for _, tt := range []struct{ a, b, want int }{{7, 4, 1}, {8, 4, 2}, {0, 4, 0}, {-1, 4, -1}, {-4, 4, -1}, {-5, 4, -2}, {255, 256, 0}, {256, 256, 1}} {
-		if got := floorDiv(tt.a, tt.b); got != tt.want {
-			t.Errorf("floorDiv(%d, %d) = %d, want %d", tt.a, tt.b, got, tt.want)
-		}
 	}
 }

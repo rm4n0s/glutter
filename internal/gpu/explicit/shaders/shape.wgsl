@@ -8,8 +8,8 @@
 // passed on as a flat varying.
 //
 // The color is the paint's solid color, premultiplied; the blend unit scales it by the
-// coverage (gradients, blend modes that read the destination and the clip masks come in
-// steps 20.4 and 20.5).
+// coverage (gradients and blend modes that read the destination come in step 20.5). The
+// clip masks of shape clips multiply the coverage (clipmask.glsl).
 
 struct Frame {
 	// The size of the texture being drawn into, in pixels.
@@ -19,8 +19,19 @@ struct Frame {
 	origin: vec2<f32>,
 }
 
-// The uniform buffer is bound with a dynamic offset.
+// What a draw call sets: the clip mask's rectangle in the surface (x, y, width, height; a
+// width of 0 means no mask).
+struct Draw {
+	clipMask: vec4<f32>,
+}
+
+// The uniform buffers are bound with dynamic offsets.
 @group(0) @binding(0) var<uniform> frame: Frame;
+@group(0) @binding(1) var<uniform> draw: Draw;
+
+// The coverage of the clip shapes that are not rectangles: one 8-bit coverage per pixel of a
+// rectangle of the surface; a 1x1 texture when there is no mask.
+@group(1) @binding(0) var clipMask: texture_2d<f32>;
 
 struct Instance {
 	@location(0) quad: vec4<f32>,   // left, top, right, bottom in pixels
@@ -95,6 +106,18 @@ fn vs_main(@builtin(vertex_index) index: u32, instance: Instance) -> VertexOutpu
 	out.brad2 = instance.brad2;
 	out.param = instance.param;
 	return out;
+}
+
+// The coverage of the pixel whose center is dev (in pixels from the top left).
+fn clipMaskCoverage(dev: vec2<f32>) -> f32 {
+	if draw.clipMask.z <= 0.0 {
+		return 1.0;
+	}
+	let p = vec2<i32>(floor(dev)) - vec2<i32>(draw.clipMask.xy);
+	if p.x < 0 || p.y < 0 || p.x >= i32(draw.clipMask.z) || p.y >= i32(draw.clipMask.w) {
+		return 0.0;
+	}
+	return textureLoad(clipMask, p, 0).r;
 }
 
 // ---- signed distance fields (sdf.glsl)
@@ -209,7 +232,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 	let dev = floor(in.dev) + vec2<f32>(0.5);
 
 	// The clip rectangle: exact coverage, so anti-aliased clip edges are smooth.
-	let clipCoverage = span(dev.x, in.clip.x, in.clip.z) * span(dev.y, in.clip.y, in.clip.w);
+	let clipCoverage = span(dev.x, in.clip.x, in.clip.z) * span(dev.y, in.clip.y, in.clip.w) * clipMaskCoverage(dev);
 
 	let kind = i32(in.inv1.z + 0.5);
 	let flags = i32(in.inv1.w + 0.5);

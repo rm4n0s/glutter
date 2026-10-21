@@ -112,12 +112,44 @@ type texture struct {
 	alloc     allocation
 	external  bool // an image of a swapchain, which the swapchain owns
 	destroyed bool
+	// base is the mip level of the image that this texture starts at: 0, or the level of a
+	// texture made by Level, which shares the image with its parent and owns only its view.
+	base   int
+	parent *texture
+	levels []*texture // the textures made by Level, indexed by level; nil until asked for
 }
 
 var _ explicit.Texture = (*texture)(nil)
 
 // Desc implements explicit.Texture.
 func (t *texture) Desc() explicit.TextureDesc { return t.desc }
+
+// Level implements explicit.Texture: a texture over one level of the image, with a view of
+// its own that the parent releases.
+func (t *texture) Level(i int) explicit.Texture {
+	if i < 0 || i >= t.desc.MipLevels {
+		panic(errors.New("VulkanLevelInvalid", "the texture has no such mip level", "level", i, "levels", t.desc.MipLevels))
+	}
+	if t.desc.MipLevels == 1 || t.parent != nil {
+		return t
+	}
+	if t.levels == nil {
+		t.levels = make([]*texture, t.desc.MipLevels)
+	}
+	if lv := t.levels[i]; lv != nil {
+		return lv
+	}
+	d := t.d
+	view, err := d.newViewRange(t.image, vkFormat(t.desc.Format), uint32(i), 1)
+	if err != nil {
+		panic(err)
+	}
+	desc := t.desc
+	desc.Width, desc.Height, desc.MipLevels = max(desc.Width>>i, 1), max(desc.Height>>i, 1), 1
+	lv := &texture{d: d, desc: desc, image: t.image, view: view, external: true, base: i, parent: t}
+	t.levels[i] = lv
+	return lv
+}
 
 // targetView is the view that a pass draws into.
 func (t *texture) targetView() imageViewH {
@@ -129,7 +161,7 @@ func (t *texture) targetView() imageViewH {
 
 // Destroy implements explicit.Texture.
 func (t *texture) Destroy() {
-	if t.destroyed {
+	if t.destroyed || t.parent != nil {
 		return
 	}
 	t.destroyed = true
@@ -139,6 +171,11 @@ func (t *texture) Destroy() {
 
 func (t *texture) release() {
 	d := t.d
+	for _, lv := range t.levels {
+		if lv != nil {
+			d.f.destroyImageView(d.dev, lv.view, 0)
+		}
+	}
 	if t.rtView != 0 {
 		d.f.destroyImageView(d.dev, t.rtView, 0)
 	}
@@ -235,11 +272,16 @@ func (d *Device) NewTexture(desc explicit.TextureDesc) (explicit.Texture, error)
 
 // newView makes a view of the first levels of the image.
 func (d *Device) newView(img imageH, format, levels uint32) (imageViewH, error) {
+	return d.newViewRange(img, format, 0, levels)
+}
+
+// newViewRange makes a view of count levels of the image from level base.
+func (d *Device) newViewRange(img imageH, format, base, count uint32) (imageViewH, error) {
 	a := d.arena
 	defer a.rewind(a.mark())
 	info := put(a, imageViewCreateInfo{
 		sType: sTypeImageViewCreateInfo, image: img, viewType: imageViewType2D, format: format,
-		subresourceRange: imageSubresourceRange{aspectMask: imageAspectColor, levelCount: levels, layerCount: 1},
+		subresourceRange: imageSubresourceRange{aspectMask: imageAspectColor, baseMipLevel: base, levelCount: count, layerCount: 1},
 	})
 	out := a.out()
 	if err := check("vkCreateImageView", d.f.createImageView(d.dev, info, 0, out)); err != nil {
@@ -350,7 +392,7 @@ func (d *Device) WriteTexture(t explicit.Texture, level int, r image.Rectangle, 
 		defer a.rewind(a.mark())
 		region := put(a, bufferImageCopy{
 			bufferOffset:     off,
-			imageSubresource: imageSubresourceLayers{aspectMask: imageAspectColor, mipLevel: uint32(level), layerCount: 1},
+			imageSubresource: imageSubresourceLayers{aspectMask: imageAspectColor, mipLevel: uint32(vt.base + level), layerCount: 1},
 			imageOffset:      offset3D{int32(r.Min.X), int32(r.Min.Y), 0},
 			imageExtent:      extent3D{uint32(r.Dx()), uint32(r.Dy()), 1},
 		})

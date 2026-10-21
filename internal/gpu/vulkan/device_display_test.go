@@ -662,3 +662,99 @@ func TestMessengerIsUnregisteredAtClose(t *testing.T) {
 		t.Error("the instance stays registered after Close")
 	}
 }
+
+// TestLevelsAreDrawnIntoAndSampled makes the mip levels of a texture as the renderer does:
+// each level is drawn from the one above it, through the textures that Level returns, and the
+// levels are read back, each from its own texture. The validation layer is on.
+func TestLevelsAreDrawnIntoAndSampled(t *testing.T) {
+	d := openLavapipe(t)
+	tex, err := d.NewTexture(explicit.TextureDesc{Width: 8, Height: 4, Format: explicit.TextureFormatRGBA8Unorm, MipLevels: 4,
+		Usage: explicit.TextureSampled | explicit.TextureRenderTarget | explicit.TextureCopySource})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Level 0: the left half red, the right half blue.
+	pix := make([]byte, 8*4*4)
+	for y := 0; y < 4; y++ {
+		for x := 0; x < 8; x++ {
+			c := []byte{255, 0, 0, 255}
+			if x >= 4 {
+				c = []byte{0, 0, 255, 255}
+			}
+			copy(pix[4*(y*8+x):], c)
+		}
+	}
+	d.WriteTexture(tex, 0, image.Rect(0, 0, 8, 4), pix, 32)
+	sampler, err := d.NewSampler(explicit.SamplerDesc{MinFilter: explicit.FilterLinear, MagFilter: explicit.FilterLinear})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pipe, err := d.NewPipeline(explicit.PipelineDesc{Shader: explicit.ShaderBlit, VertexEntry: "vs_main", FragmentEntry: "fs_main", Target: explicit.TextureFormatRGBA8Unorm})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The levels have the size of the level, and one level.
+	for i, want := range []image.Point{{8, 4}, {4, 2}, {2, 1}, {1, 1}} {
+		desc := tex.Level(i).Desc()
+		if got := image.Pt(desc.Width, desc.Height); got != want || desc.MipLevels != 1 {
+			t.Errorf("level %d is %v with %d levels, want %v with 1", i, got, desc.MipLevels, want)
+		}
+	}
+	if tex.Level(1) != tex.Level(1) {
+		t.Error("Level made another texture for the same level")
+	}
+	enc, _ := d.Begin()
+	for level := 1; level < 4; level++ {
+		group, err := d.NewBindGroup(pipe, 0, []explicit.Binding{{Binding: 0, Texture: tex.Level(level - 1)}, {Binding: 1, Sampler: sampler}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		pass := enc.BeginPass(tex.Level(level), explicit.LoadClear, colorOf(0, 0, 0, 0))
+		pass.SetPipeline(pipe)
+		pass.SetBindGroup(0, group)
+		pass.Draw(3, 1, 0, 0)
+		pass.End()
+	}
+	var level1, level3 *image.RGBA
+	enc.ReadTexture(tex.Level(1), image.Rect(0, 0, 4, 2), func(img *image.RGBA, err error) {
+		if err != nil {
+			t.Error(err)
+		}
+		level1 = img
+	})
+	enc.ReadTexture(tex.Level(3), image.Rect(0, 0, 1, 1), func(img *image.RGBA, err error) {
+		if err != nil {
+			t.Error(err)
+		}
+		level3 = img
+	})
+	if err := enc.Submit(); err != nil {
+		t.Fatal(err)
+	}
+	if level1 == nil || level3 == nil {
+		t.Fatal("the levels were not read back")
+	}
+	red, blue := color.RGBA{255, 0, 0, 255}, color.RGBA{0, 0, 255, 255}
+	wantPixel(t, level1, 0, 0, red)
+	wantPixel(t, level1, 1, 1, red)
+	wantPixel(t, level1, 2, 0, blue)
+	wantPixel(t, level1, 3, 1, blue)
+	// The last level is the average of the two halves.
+	if got := level3.RGBAAt(0, 0); got.A != 255 || got.R < 120 || got.R > 135 || got.B < 120 || got.B > 135 || got.G != 0 {
+		t.Errorf("the last level is %v, want about half red and half blue", got)
+	}
+	if errs := d.ValidationErrors(); len(errs) > 0 {
+		t.Errorf("the validation layer reported %d errors:\n%v", len(errs), errs)
+	}
+	// A level that does not exist is a programmer error; a texture of one level is its own level.
+	flat := target(t, d, 4, 4, explicit.TextureFormatRGBA8Unorm)
+	if flat.Level(0) != flat {
+		t.Error("Level(0) of a texture with one level is not the texture")
+	}
+	for _, i := range []int{-1, 4} {
+		err := panicError(func() { tex.Level(i) })
+		if appErr, ok := errors.FromError(err); !ok || appErr.Tag != "VulkanLevelInvalid" || !appErr.HasRoute("texture.Level.VulkanLevelInvalid") {
+			t.Errorf("Level(%d): got %v, want VulkanLevelInvalid", i, err)
+		}
+	}
+}

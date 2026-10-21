@@ -1,25 +1,26 @@
 package gles
 
 import (
-	"math"
-
 	"github.com/rm4n0s/glutter/internal/gpu"
+	"github.com/rm4n0s/glutter/internal/gpu/soft"
+	"github.com/rm4n0s/glutter/ui"
+	"image"
 )
 
 // The sizes of the renderer's caches.
 const (
 	// atlasPageSize is the side of a page of the coverage atlas, and atlasMaxPages
 	// the number of pages it may grow to: 8-bit pages, so 32 MB at most.
-	atlasPageSize = 2048
-	atlasMaxPages = 8
+	atlasPageSize = gpu.AtlasPageSize
+	atlasMaxPages = gpu.AtlasMaxPages
 	// clipMaskBudget is the most memory, in bytes, that clip masks that are not
 	// used in the current frame may hold.
-	clipMaskBudget = 64 << 20
+	clipMaskBudget = gpu.ClipMaskBudget
 	// imageBudget is the same for image textures (RGBA, with mipmaps).
-	imageBudget = 256 << 20
+	imageBudget = gpu.ImageBudget
 	// idleFrames is how long a cached mask or image may go unused before it is
 	// dropped, whatever the budget.
-	idleFrames = 240
+	idleFrames = gpu.IdleFrames
 )
 
 // resources are the GPU objects the renderer keeps from frame to frame: the
@@ -30,27 +31,46 @@ type resources struct {
 	gl    glAPI
 	frame uint64
 
-	atlas *gpu.Atlas[maskKey]
-	pages []*Texture // the atlas pages, in order
+	masks *gpu.MaskCache // the coverage atlas and its tiling
+	pages []*Texture     // the atlas pages, in order
 
 	clipMasks map[uint64]*clipMask
 	clipBytes int
 
-	images     map[imageKey]*imageEntry
+	images     map[gpu.ImageKey]*imageEntry
 	imageBytes int
 
 	white *Texture // a 1x1 R8 texture of 255, for unit 1 when there is no clip mask
 
-	// Counters of work done, for FrameStats.
-	tilesRasterized, clipMasksBuilt, imagesUploaded int
+	// Counters of work done, for FrameStats (the tiles rasterized are masks.Rasterized).
+	clipMasksBuilt, imagesUploaded int
 }
 
 func newResources(dev *Device, gl glAPI) (*resources, error) {
 	r := &resources{
 		dev: dev, gl: gl,
-		atlas:     gpu.NewAtlas[maskKey](atlasPageSize, atlasMaxPages),
+		masks:     gpu.NewMaskCache(atlasPageSize, atlasMaxPages),
 		clipMasks: map[uint64]*clipMask{},
-		images:    map[imageKey]*imageEntry{},
+		images:    map[gpu.ImageKey]*imageEntry{},
+	}
+	r.masks.Rasterize = func(op ui.DisplayOp, m *ui.Matrix4, area image.Rectangle) (image.Rectangle, []float32) {
+		mask, _ := soft.OpMask(op, m, area)
+		if mask == nil {
+			return image.Rectangle{}, nil
+		}
+		return mask.Rect, mask.Cov
+	}
+	r.masks.NewPage = func() error {
+		page, err := dev.AcquireTexture(atlasPageSize, atlasPageSize, TextureFormatR8)
+		if err != nil {
+			return err
+		}
+		dev.SetTextureParams(page, glNearest, glNearest, glClampToEdge, glClampToEdge)
+		r.pages = append(r.pages, page)
+		return nil
+	}
+	r.masks.Upload = func(page, x, y, w, h int, data []byte) error {
+		return dev.UploadTexture(r.pages[page], x, y, w, h, data)
 	}
 	white, err := dev.AcquireTexture(1, 1, TextureFormatR8)
 	if err != nil {
@@ -67,7 +87,7 @@ func newResources(dev *Device, gl glAPI) (*resources, error) {
 // beginFrame starts a frame: what is used from now on survives until the next.
 func (r *resources) beginFrame() {
 	r.frame++
-	r.atlas.BeginFrame()
+	r.masks.BeginFrame()
 }
 
 // endFrame drops what is old, or over the budget and not used in this frame.
@@ -107,34 +127,9 @@ func (r *resources) release() {
 		r.dev.ReleaseTexture(p)
 	}
 	r.pages = nil
-	r.atlas.Clear()
+	r.masks.Clear()
 	if r.white != nil {
 		r.dev.ReleaseTexture(r.white)
 		r.white = nil
-	}
-}
-
-// hasher is a 64-bit FNV-1a hash that the cache keys are made with.
-type hasher uint64
-
-func newHasher() hasher { return 14695981039346656037 }
-
-func (h *hasher) u64(v uint64) {
-	x := uint64(*h)
-	for i := 0; i < 8; i++ {
-		x ^= v & 0xff
-		x *= 1099511628211
-		v >>= 8
-	}
-	*h = hasher(x)
-}
-
-func (h *hasher) f64(v float64) { h.u64(math.Float64bits(v)) }
-func (h *hasher) i(v int)       { h.u64(uint64(int64(v))) }
-func (h *hasher) b(v bool) {
-	if v {
-		h.u64(1)
-	} else {
-		h.u64(0)
 	}
 }

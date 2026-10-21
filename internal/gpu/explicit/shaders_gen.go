@@ -52,6 +52,329 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 	},
 }
 
+//go:embed shaders/image.spv
+var spirvImage []byte
+
+// ShaderImage is shaders/image.wgsl.
+//
+// Flutter: no counterpart
+var ShaderImage = &Shader{
+	Name: "image",
+	WGSL: `// Images: one instance is one rectangle of an image, drawn through an affine transform. The
+// fragment shader maps each pixel back to the image's texels and samples them with the paint's
+// filter quality: nearest, bilinear, bilinear on one mip level, or bicubic. Ported from the
+// GLES image shaders (image.vert.glsl, image.frag.glsl); the paint's color filters and the
+// tint of a sprite (blend modes that read the color) come with step 20.5.
+// Draw 6 vertices per instance.
+
+struct Frame {
+	// The size of the texture being drawn into, in pixels.
+	surface: vec2<f32>,
+	// The pixel of the surface that the texture's top left corner is.
+	origin: vec2<f32>,
+}
+
+// The clip mask's rectangle in the surface (x, y, width, height; a width of 0 means none).
+struct Draw {
+	clipMask: vec4<f32>,
+}
+
+@group(0) @binding(0) var<uniform> frame: Frame;
+@group(0) @binding(1) var<uniform> draw: Draw;
+@group(1) @binding(0) var clipMask: texture_2d<f32>;
+// The image: premultiplied RGBA with mipmaps, and a linear sampler that picks a level.
+@group(2) @binding(0) var image: texture_2d<f32>;
+@group(2) @binding(1) var imageSampler: sampler;
+
+struct Instance {
+	@location(0) quad: vec4<f32>,  // left, top, right, bottom in pixels
+	@location(1) inv0: vec4<f32>,  // pixels to texels: a, b, c, d
+	@location(2) inv1: vec4<f32>,  // e, f, flags, unused
+	@location(3) color: vec4<f32>, // premultiplied multiplier: the paint's alpha
+	@location(4) clip: vec4<f32>,  // left, top, right, bottom in pixels
+	@location(5) box: vec4<f32>,   // the rectangle drawn: texels, or pixels with the box flag
+	@location(6) img: vec4<f32>,   // level of detail, quality, blend index (-1 none), unused
+	@location(7) tint: vec4<f32>,  // premultiplied color blended with the image
+}
+
+struct VertexOutput {
+	@builtin(position) position: vec4<f32>,
+	@location(0) dev: vec2<f32>,
+	@location(1) @interpolate(flat) inv0: vec4<f32>,
+	@location(2) @interpolate(flat) inv1: vec4<f32>,
+	@location(3) @interpolate(flat) color: vec4<f32>,
+	@location(4) @interpolate(flat) clip: vec4<f32>,
+	@location(5) @interpolate(flat) box: vec4<f32>,
+	@location(6) @interpolate(flat) img: vec4<f32>,
+}
+
+const FLAG_BOX: i32 = 1;       // box is in pixels: exact coverage of an axis-aligned rectangle
+const FLAG_ANTIALIAS: i32 = 2;
+
+const QUALITY_NONE: i32 = 0;
+const QUALITY_HIGH: i32 = 3;
+
+fn toClip(dev: vec2<f32>) -> vec4<f32> {
+	let p = dev - frame.origin;
+	return vec4<f32>(p.x / frame.surface.x * 2.0 - 1.0, 1.0 - p.y / frame.surface.y * 2.0, 0.0, 1.0);
+}
+
+@vertex
+fn vs_main(@builtin(vertex_index) index: u32, instance: Instance) -> VertexOutput {
+	var corners = array<vec2<f32>, 6>(
+		vec2<f32>(0.0, 0.0), vec2<f32>(1.0, 0.0), vec2<f32>(0.0, 1.0),
+		vec2<f32>(1.0, 0.0), vec2<f32>(1.0, 1.0), vec2<f32>(0.0, 1.0),
+	);
+	let dev = mix(instance.quad.xy, instance.quad.zw, corners[index]);
+	var out: VertexOutput;
+	out.position = toClip(dev);
+	out.dev = dev;
+	out.inv0 = instance.inv0;
+	out.inv1 = instance.inv1;
+	out.color = instance.color;
+	out.clip = instance.clip;
+	out.box = instance.box;
+	out.img = instance.img;
+	return out;
+}
+
+// The part of the pixel centered at c that the interval [lo, hi] covers.
+fn span(c: f32, lo: f32, hi: f32) -> f32 {
+	return clamp(min(c + 0.5, hi) - max(c - 0.5, lo), 0.0, 1.0);
+}
+
+// The part of the pixel centered at dev that the rectangle r covers; without antialiasing, 1
+// when the center is inside.
+fn boxCoverage(dev: vec2<f32>, r: vec4<f32>, antialias: bool) -> f32 {
+	if antialias {
+		return span(dev.x, r.x, r.z) * span(dev.y, r.y, r.w);
+	}
+	if dev.x >= r.x && dev.x < r.z && dev.y >= r.y && dev.y < r.w {
+		return 1.0;
+	}
+	return 0.0;
+}
+
+fn clipMaskCoverage(dev: vec2<f32>) -> f32 {
+	if draw.clipMask.z <= 0.0 {
+		return 1.0;
+	}
+	let p = vec2<i32>(floor(dev)) - vec2<i32>(draw.clipMask.xy);
+	if p.x < 0 || p.y < 0 || p.x >= i32(draw.clipMask.z) || p.y >= i32(draw.clipMask.w) {
+		return 0.0;
+	}
+	return textureLoad(clipMask, p, 0).r;
+}
+
+// The Mitchell-Netravali cubic with B = C = 1/3.
+fn mitchell(x0: f32) -> f32 {
+	let b = 1.0 / 3.0;
+	let c = 1.0 / 3.0;
+	let x = abs(x0);
+	if x < 1.0 {
+		return ((12.0 - 9.0 * b - 6.0 * c) * x * x * x + (-18.0 + 12.0 * b + 6.0 * c) * x * x + (6.0 - 2.0 * b)) / 6.0;
+	}
+	if x < 2.0 {
+		return ((-b - 6.0 * c) * x * x * x + (6.0 * b + 30.0 * c) * x * x + (-12.0 * b - 48.0 * c) * x + (8.0 * b + 24.0 * c)) / 6.0;
+	}
+	return 0.0;
+}
+
+// A texel of a level, with the edge repeated outside.
+fn texel(p: vec2<i32>, size: vec2<i32>, level: i32) -> vec4<f32> {
+	return textureLoad(image, clamp(p, vec2<i32>(0), size - vec2<i32>(1)), level);
+}
+
+fn bicubic(uv: vec2<f32>, base: vec2<i32>, level: i32) -> vec4<f32> {
+	let size = vec2<i32>(textureDimensions(image, level));
+	let f = uv * vec2<f32>(size) / vec2<f32>(base) - vec2<f32>(0.5);
+	let f0 = floor(f);
+	let t = f - f0;
+	var sum = vec4<f32>(0.0);
+	for (var j = -1; j <= 2; j++) {
+		let wy = mitchell(f32(j) - t.y);
+		for (var i = -1; i <= 2; i++) {
+			let w = wy * mitchell(f32(i) - t.x);
+			sum += w * texel(vec2<i32>(f0) + vec2<i32>(i, j), size, level);
+		}
+	}
+	// The cubic can overshoot: keep a valid premultiplied color.
+	let a = clamp(sum.a, 0.0, 1.0);
+	return vec4<f32>(clamp(sum.rgb, vec3<f32>(0.0), vec3<f32>(a)), a);
+}
+
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+	let dev = floor(in.dev) + vec2<f32>(0.5);
+	let flags = i32(in.inv1.z + 0.5);
+	let aa = (flags & FLAG_ANTIALIAS) != 0;
+	let uv = vec2<f32>(
+		in.inv0.x * dev.x + in.inv0.z * dev.y + in.inv1.x,
+		in.inv0.y * dev.x + in.inv0.w * dev.y + in.inv1.y);
+
+	// The rectangle in texels: the distance outside it, in pixels by the screen derivatives.
+	// The derivatives come before anything that returns or discards.
+	let c = (in.box.xy + in.box.zw) * 0.5;
+	let q = abs(uv - c) - (in.box.zw - in.box.xy) * 0.5;
+	let d = max(q.x, q.y);
+	let g = length(vec2<f32>(dpdx(d), dpdy(d)));
+
+	var coverage: f32;
+	if (flags & FLAG_BOX) != 0 {
+		coverage = boxCoverage(dev, in.box, aa);
+	} else if aa {
+		var pixels = select(1.0, -1.0, d <= 0.0);
+		if g > 1e-9 {
+			pixels = d / g;
+		}
+		coverage = clamp(0.5 - pixels, 0.0, 1.0);
+	} else {
+		coverage = select(0.0, 1.0, d <= 0.0);
+	}
+	coverage = coverage * span(dev.x, in.clip.x, in.clip.z) * span(dev.y, in.clip.y, in.clip.w) * clipMaskCoverage(dev);
+
+	let base = vec2<i32>(textureDimensions(image, 0));
+	let quality = i32(in.img.y + 0.5);
+	var color: vec4<f32>;
+	if quality == QUALITY_NONE {
+		color = texel(vec2<i32>(floor(uv)), base, 0);
+	} else if quality == QUALITY_HIGH {
+		color = bicubic(uv, base, i32(in.img.x + 0.5));
+	} else {
+		color = textureSampleLevel(image, imageSampler, uv / vec2<f32>(base), in.img.x);
+	}
+	color = color * in.color;
+	if coverage <= 0.0 {
+		discard;
+	}
+	return color * coverage;
+}
+`,
+	SPIRV: spirvImage,
+	Entries: []EntryPoint{
+		{Name: "vs_main", Stage: ShaderStageVertex, Bindings: []ShaderBinding{
+			{Name: "frame", Group: 0, Binding: 0, Kind: BindingUniformBuffer},
+		}},
+		{Name: "fs_main", Stage: ShaderStageFragment, Bindings: []ShaderBinding{
+			{Name: "draw", Group: 0, Binding: 1, Kind: BindingUniformBuffer},
+			{Name: "clipMask", Group: 1, Binding: 0, Kind: BindingSampledTexture},
+			{Name: "image", Group: 2, Binding: 0, Kind: BindingSampledTexture},
+			{Name: "imageSampler", Group: 2, Binding: 1, Kind: BindingSampler},
+		}},
+	},
+}
+
+//go:embed shaders/mask.spv
+var spirvMask []byte
+
+// ShaderMask is shaders/mask.wgsl.
+//
+// Flutter: no counterpart
+var ShaderMask = &Shader{
+	Name: "mask",
+	WGSL: `// Coverage masks (SPEC §9.1 "General paths"): one instance is one tile of the coverage atlas,
+// drawn over the pixels it covers. Ported from the GLES mask shaders (mask.vert.glsl,
+// mask.frag.glsl). Draw 6 vertices per instance.
+
+struct Frame {
+	// The size of the texture being drawn into, in pixels.
+	surface: vec2<f32>,
+	// The pixel of the surface that the texture's top left corner is.
+	origin: vec2<f32>,
+}
+
+// The clip mask's rectangle in the surface (x, y, width, height; a width of 0 means none).
+struct Draw {
+	clipMask: vec4<f32>,
+}
+
+@group(0) @binding(0) var<uniform> frame: Frame;
+@group(0) @binding(1) var<uniform> draw: Draw;
+@group(1) @binding(0) var clipMask: texture_2d<f32>;
+// An atlas page: 8-bit coverage.
+@group(2) @binding(0) var atlas: texture_2d<f32>;
+
+struct Instance {
+	@location(0) quad: vec4<f32>,  // left, top, right, bottom in pixels
+	@location(1) tile: vec4<f32>,  // the tile's top left texel in the atlas page
+	@location(2) color: vec4<f32>, // premultiplied
+	@location(3) clip: vec4<f32>,  // left, top, right, bottom in pixels
+}
+
+struct VertexOutput {
+	@builtin(position) position: vec4<f32>,
+	@location(0) dev: vec2<f32>,
+	@location(1) @interpolate(flat) quad: vec4<f32>,
+	@location(2) @interpolate(flat) tile: vec4<f32>,
+	@location(3) @interpolate(flat) color: vec4<f32>,
+	@location(4) @interpolate(flat) clip: vec4<f32>,
+}
+
+fn toClip(dev: vec2<f32>) -> vec4<f32> {
+	let p = dev - frame.origin;
+	return vec4<f32>(p.x / frame.surface.x * 2.0 - 1.0, 1.0 - p.y / frame.surface.y * 2.0, 0.0, 1.0);
+}
+
+@vertex
+fn vs_main(@builtin(vertex_index) index: u32, instance: Instance) -> VertexOutput {
+	var corners = array<vec2<f32>, 6>(
+		vec2<f32>(0.0, 0.0), vec2<f32>(1.0, 0.0), vec2<f32>(0.0, 1.0),
+		vec2<f32>(1.0, 0.0), vec2<f32>(1.0, 1.0), vec2<f32>(0.0, 1.0),
+	);
+	let dev = mix(instance.quad.xy, instance.quad.zw, corners[index]);
+	var out: VertexOutput;
+	out.position = toClip(dev);
+	out.dev = dev;
+	out.quad = instance.quad;
+	out.tile = instance.tile;
+	out.color = instance.color;
+	out.clip = instance.clip;
+	return out;
+}
+
+// The part of the pixel centered at c that the interval [lo, hi] covers.
+fn span(c: f32, lo: f32, hi: f32) -> f32 {
+	return clamp(min(c + 0.5, hi) - max(c - 0.5, lo), 0.0, 1.0);
+}
+
+fn clipMaskCoverage(dev: vec2<f32>) -> f32 {
+	if draw.clipMask.z <= 0.0 {
+		return 1.0;
+	}
+	let p = vec2<i32>(floor(dev)) - vec2<i32>(draw.clipMask.xy);
+	if p.x < 0 || p.y < 0 || p.x >= i32(draw.clipMask.z) || p.y >= i32(draw.clipMask.w) {
+		return 0.0;
+	}
+	return textureLoad(clipMask, p, 0).r;
+}
+
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+	let dev = floor(in.dev) + vec2<f32>(0.5);
+	// The quad covers whole pixels, one texel each: the texel of this pixel is the tile's
+	// corner plus its distance from the quad's corner.
+	let texel = vec2<i32>(in.tile.xy) + vec2<i32>(floor(dev)) - vec2<i32>(in.quad.xy);
+	var coverage = textureLoad(atlas, texel, 0).r;
+	coverage = coverage * span(dev.x, in.clip.x, in.clip.z) * span(dev.y, in.clip.y, in.clip.w) * clipMaskCoverage(dev);
+	if coverage <= 0.0 {
+		discard;
+	}
+	return in.color * coverage;
+}
+`,
+	SPIRV: spirvMask,
+	Entries: []EntryPoint{
+		{Name: "vs_main", Stage: ShaderStageVertex, Bindings: []ShaderBinding{
+			{Name: "frame", Group: 0, Binding: 0, Kind: BindingUniformBuffer},
+		}},
+		{Name: "fs_main", Stage: ShaderStageFragment, Bindings: []ShaderBinding{
+			{Name: "draw", Group: 0, Binding: 1, Kind: BindingUniformBuffer},
+			{Name: "clipMask", Group: 1, Binding: 0, Kind: BindingSampledTexture},
+			{Name: "atlas", Group: 2, Binding: 0, Kind: BindingSampledTexture},
+		}},
+	},
+}
+
 //go:embed shaders/shape.spv
 var spirvShape []byte
 
@@ -70,8 +393,8 @@ var ShaderShape = &Shader{
 // passed on as a flat varying.
 //
 // The color is the paint's solid color, premultiplied; the blend unit scales it by the
-// coverage (gradients, blend modes that read the destination and the clip masks come in
-// steps 20.4 and 20.5).
+// coverage (gradients and blend modes that read the destination come in step 20.5). The
+// clip masks of shape clips multiply the coverage (clipmask.glsl).
 
 struct Frame {
 	// The size of the texture being drawn into, in pixels.
@@ -81,8 +404,19 @@ struct Frame {
 	origin: vec2<f32>,
 }
 
-// The uniform buffer is bound with a dynamic offset.
+// What a draw call sets: the clip mask's rectangle in the surface (x, y, width, height; a
+// width of 0 means no mask).
+struct Draw {
+	clipMask: vec4<f32>,
+}
+
+// The uniform buffers are bound with dynamic offsets.
 @group(0) @binding(0) var<uniform> frame: Frame;
+@group(0) @binding(1) var<uniform> draw: Draw;
+
+// The coverage of the clip shapes that are not rectangles: one 8-bit coverage per pixel of a
+// rectangle of the surface; a 1x1 texture when there is no mask.
+@group(1) @binding(0) var clipMask: texture_2d<f32>;
 
 struct Instance {
 	@location(0) quad: vec4<f32>,   // left, top, right, bottom in pixels
@@ -157,6 +491,18 @@ fn vs_main(@builtin(vertex_index) index: u32, instance: Instance) -> VertexOutpu
 	out.brad2 = instance.brad2;
 	out.param = instance.param;
 	return out;
+}
+
+// The coverage of the pixel whose center is dev (in pixels from the top left).
+fn clipMaskCoverage(dev: vec2<f32>) -> f32 {
+	if draw.clipMask.z <= 0.0 {
+		return 1.0;
+	}
+	let p = vec2<i32>(floor(dev)) - vec2<i32>(draw.clipMask.xy);
+	if p.x < 0 || p.y < 0 || p.x >= i32(draw.clipMask.z) || p.y >= i32(draw.clipMask.w) {
+		return 0.0;
+	}
+	return textureLoad(clipMask, p, 0).r;
 }
 
 // ---- signed distance fields (sdf.glsl)
@@ -271,7 +617,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 	let dev = floor(in.dev) + vec2<f32>(0.5);
 
 	// The clip rectangle: exact coverage, so anti-aliased clip edges are smooth.
-	let clipCoverage = span(dev.x, in.clip.x, in.clip.z) * span(dev.y, in.clip.y, in.clip.w);
+	let clipCoverage = span(dev.x, in.clip.x, in.clip.z) * span(dev.y, in.clip.y, in.clip.w) * clipMaskCoverage(dev);
 
 	let kind = i32(in.inv1.z + 0.5);
 	let flags = i32(in.inv1.w + 0.5);
@@ -339,7 +685,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 		{Name: "vs_main", Stage: ShaderStageVertex, Bindings: []ShaderBinding{
 			{Name: "frame", Group: 0, Binding: 0, Kind: BindingUniformBuffer},
 		}},
-		{Name: "fs_main", Stage: ShaderStageFragment, Bindings: []ShaderBinding{}},
+		{Name: "fs_main", Stage: ShaderStageFragment, Bindings: []ShaderBinding{
+			{Name: "draw", Group: 0, Binding: 1, Kind: BindingUniformBuffer},
+			{Name: "clipMask", Group: 1, Binding: 0, Kind: BindingSampledTexture},
+		}},
 	},
 }
 
@@ -411,5 +760,108 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 			{Name: "frame", Group: 0, Binding: 0, Kind: BindingUniformBuffer},
 		}},
 		{Name: "fs_main", Stage: ShaderStageFragment, Bindings: []ShaderBinding{}},
+	},
+}
+
+//go:embed shaders/vertices.spv
+var spirvVertices []byte
+
+// ShaderVertices is shaders/vertices.wgsl.
+//
+// Flutter: no counterpart
+var ShaderVertices = &Shader{
+	Name: "vertices",
+	WGSL: `// Triangles from vertices (Canvas.drawVertices): positions are already in pixels. Ported from
+// the GLES vertices shaders (vertices.vert.glsl, vertices.frag.glsl); the paint's shader,
+// color filters and the blend modes other than src and dst come with step 20.5.
+// Draw the vertices as they are: three for each triangle.
+
+struct Frame {
+	// The size of the texture being drawn into, in pixels.
+	surface: vec2<f32>,
+	// The pixel of the surface that the texture's top left corner is.
+	origin: vec2<f32>,
+}
+
+// What a draw call sets.
+struct Draw {
+	// The clip mask's rectangle in the surface (x, y, width, height; a width of 0 means none).
+	clipMask: vec4<f32>,
+	// The paint's color, premultiplied.
+	paint: vec4<f32>,
+	// The clip rectangle: left, top, right, bottom in pixels.
+	clip: vec4<f32>,
+	// The blend index of the paint (source) with the vertex colors (destination), whether the
+	// vertices have colors (0 or 1), and two unused.
+	mode: vec4<f32>,
+}
+
+@group(0) @binding(0) var<uniform> frame: Frame;
+@group(0) @binding(1) var<uniform> draw: Draw;
+@group(1) @binding(0) var clipMask: texture_2d<f32>;
+
+struct VertexInput {
+	@location(0) pos: vec2<f32>,
+	@location(1) color: vec4<f32>, // not premultiplied
+}
+
+struct VertexOutput {
+	@builtin(position) position: vec4<f32>,
+	@location(0) dev: vec2<f32>,
+	@location(1) color: vec4<f32>,
+}
+
+fn toClip(dev: vec2<f32>) -> vec4<f32> {
+	let p = dev - frame.origin;
+	return vec4<f32>(p.x / frame.surface.x * 2.0 - 1.0, 1.0 - p.y / frame.surface.y * 2.0, 0.0, 1.0);
+}
+
+@vertex
+fn vs_main(v: VertexInput) -> VertexOutput {
+	var out: VertexOutput;
+	out.position = toClip(v.pos);
+	out.dev = v.pos;
+	out.color = v.color;
+	return out;
+}
+
+// The part of the pixel centered at c that the interval [lo, hi] covers.
+fn span(c: f32, lo: f32, hi: f32) -> f32 {
+	return clamp(min(c + 0.5, hi) - max(c - 0.5, lo), 0.0, 1.0);
+}
+
+fn clipMaskCoverage(dev: vec2<f32>) -> f32 {
+	if draw.clipMask.z <= 0.0 {
+		return 1.0;
+	}
+	let p = vec2<i32>(floor(dev)) - vec2<i32>(draw.clipMask.xy);
+	if p.x < 0 || p.y < 0 || p.x >= i32(draw.clipMask.z) || p.y >= i32(draw.clipMask.w) {
+		return 0.0;
+	}
+	return textureLoad(clipMask, p, 0).r;
+}
+
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+	let dev = floor(in.dev) + vec2<f32>(0.5);
+	var color = draw.paint;
+	// With vertex colors the paint is blended with them. Only the modes src (the paint, 1) and
+	// dst (the vertex colors, 2) need no blend function; the others come with step 20.5.
+	if draw.mode.y != 0.0 && i32(draw.mode.x + 0.5) == 2 {
+		color = vec4<f32>(in.color.rgb * in.color.a, in.color.a);
+	}
+	let coverage = span(dev.x, draw.clip.x, draw.clip.z) * span(dev.y, draw.clip.y, draw.clip.w) * clipMaskCoverage(dev);
+	return color * coverage;
+}
+`,
+	SPIRV: spirvVertices,
+	Entries: []EntryPoint{
+		{Name: "vs_main", Stage: ShaderStageVertex, Bindings: []ShaderBinding{
+			{Name: "frame", Group: 0, Binding: 0, Kind: BindingUniformBuffer},
+		}},
+		{Name: "fs_main", Stage: ShaderStageFragment, Bindings: []ShaderBinding{
+			{Name: "draw", Group: 0, Binding: 1, Kind: BindingUniformBuffer},
+			{Name: "clipMask", Group: 1, Binding: 0, Kind: BindingSampledTexture},
+		}},
 	},
 }

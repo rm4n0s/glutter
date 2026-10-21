@@ -2,10 +2,9 @@ package gles
 
 import (
 	"image"
-	"math"
-	"unsafe"
 
 	"github.com/rm4n0s/errors"
+	"github.com/rm4n0s/glutter/internal/gpu"
 	"github.com/rm4n0s/glutter/ui"
 )
 
@@ -14,12 +13,6 @@ import (
 // maps the pixel back to the image's texels and samples them with the paint's
 // filter quality: nearest, bilinear, bilinear on one mip level for a downscale, or
 // bicubic. The coverage of the rectangle's edge comes from the geometry.
-
-// imageKey identifies an image's pixels: clones share them.
-type imageKey struct {
-	pix  *byte
-	w, h int
-}
 
 // imageEntry is an image's texture.
 type imageEntry struct {
@@ -35,7 +28,7 @@ type imageEntry struct {
 func (r *resources) imageTexture(img *ui.Image) (*imageEntry, error) {
 	pix := img.Pixels()
 	w, h := img.Width(), img.Height()
-	key := imageKey{pix: unsafe.SliceData(pix), w: w, h: h}
+	key := gpu.KeyOfImage(img)
 	if e, ok := r.images[key]; ok {
 		e.lastUsed = r.frame
 		return e, nil
@@ -50,10 +43,7 @@ func (r *resources) imageTexture(img *ui.Image) (*imageEntry, error) {
 		r.dev.ReleaseTexture(tex)
 		return nil, err
 	}
-	levels := 1
-	for n := max(w, h); n > 1; n /= 2 {
-		levels++
-	}
+	levels := gpu.MipLevels(w, h)
 	if levels > 1 {
 		r.dev.GenerateMipmaps(tex)
 	}
@@ -63,7 +53,7 @@ func (r *resources) imageTexture(img *ui.Image) (*imageEntry, error) {
 	return e, nil
 }
 
-func (r *resources) dropImage(key imageKey, e *imageEntry) {
+func (r *resources) dropImage(key gpu.ImageKey, e *imageEntry) {
 	r.dev.ReleaseTexture(e.tex)
 	r.imageBytes -= e.bytes
 	delete(r.images, key)
@@ -72,7 +62,7 @@ func (r *resources) dropImage(key imageKey, e *imageEntry) {
 // dropOldestImage drops the least recently used image that this frame does not
 // use; false when there is none.
 func (r *resources) dropOldestImage() bool {
-	var oldestKey imageKey
+	var oldestKey gpu.ImageKey
 	var oldest *imageEntry
 	for k, e := range r.images {
 		if e.lastUsed != r.frame && (oldest == nil || e.lastUsed < oldest.lastUsed) {
@@ -85,12 +75,6 @@ func (r *resources) dropOldestImage() bool {
 	r.dropImage(oldestKey, oldest)
 	return true
 }
-
-// The image instance: eight vec4 attributes, see shaders/image.vert.glsl.
-const (
-	imageFlagBox       = 1
-	imageFlagAntialias = 2
-)
 
 // imagePaint reads what the image pipeline takes from a paint: its alpha, color
 // filters and blend mode. The paint's shader and mask filter do not apply to
@@ -107,114 +91,35 @@ func checkImage(img *ui.Image) error {
 	return nil
 }
 
+// encoder returns the image encoder of the command for an image whose texture has the
+// entry, which adds each instance it makes to the frame under the key of info.
+func (s *shapeContext) imageEncoder(info paintInfo, entry *imageEntry, p *ui.Paint) *gpu.ImageEncoder {
+	return &gpu.ImageEncoder{
+		T: s.t, Outer: s.outer, Clip: s.clip,
+		Paint:   gpu.ShapePaint{Color: info.color, Antialias: info.aa},
+		Quality: p.FilterQuality(), Levels: entry.levels,
+		Emit: func(in *gpu.ImageInstance, covers image.Rectangle) {
+			if key, ok := s.key(pipeImage, info, entry.tex, covers); ok {
+				s.b.frame.add(key, in[:], 1)
+			}
+		},
+	}
+}
+
 // imageRect draws the part src of the image into dst, as Canvas.drawImageRect.
 func (s *shapeContext) imageRect(img *ui.Image, src, dst ui.Rect, p *ui.Paint) (bool, error) {
 	if err := checkImage(img); err != nil {
 		return false, err
 	}
-	bounds := ui.NewRectFromLTWH(0, 0, float64(img.Width()), float64(img.Height()))
-	if src.IsEmpty() || dst.IsEmpty() {
-		return true, nil
-	}
-	if clipped := src.Intersect(bounds); clipped != src {
-		// Only the part of src inside the image is drawn, in the matching part of dst.
-		if clipped.IsEmpty() {
-			return true, nil
-		}
-		fx, fy := dst.Width()/src.Width(), dst.Height()/src.Height()
-		dst = ui.NewRectFromLTRB(dst.Left+(clipped.Left-src.Left)*fx, dst.Top+(clipped.Top-src.Top)*fy,
-			dst.Left+(clipped.Right-src.Left)*fx, dst.Top+(clipped.Bottom-src.Top)*fy)
-		src = clipped
-	}
-	toLocal := translation(-src.Left, -src.Top).
-		Then(scaling(dst.Width()/src.Width(), dst.Height()/src.Height())).
-		Then(translation(dst.Left, dst.Top))
-	return s.blit(img, src, toLocal.Then(s.t), p, nil)
-}
-
-// tint is a color that a sprite is blended with: the blend index and the
-// premultiplied color, as the destination.
-type tint struct {
-	mode  int
-	color [4]float32
-}
-
-// blit draws the part src of the image, whose texels the transform maps to the
-// surface.
-func (s *shapeContext) blit(img *ui.Image, src ui.Rect, toDevice affine2D, p *ui.Paint, t *tint) (bool, error) {
 	info, status, err := s.imagePaint(p)
 	if status != paintDraw {
 		return status == paintNothing, err
-	}
-	inv, ok := toDevice.Invert()
-	if !ok {
-		return true, nil
 	}
 	entry, err := s.b.res.imageTexture(img)
 	if err != nil {
 		return false, err
 	}
-	// The pixels the rectangle can touch.
-	corners := [4]ui.Offset{
-		toDevice.Apply(src.Left, src.Top), toDevice.Apply(src.Right, src.Top),
-		toDevice.Apply(src.Right, src.Bottom), toDevice.Apply(src.Left, src.Bottom),
-	}
-	dev := ui.Rect{Left: math.Inf(1), Top: math.Inf(1), Right: math.Inf(-1), Bottom: math.Inf(-1)}
-	for _, c := range corners {
-		dev.Left, dev.Top = math.Min(dev.Left, c.Dx), math.Min(dev.Top, c.Dy)
-		dev.Right, dev.Bottom = math.Max(dev.Right, c.Dx), math.Max(dev.Bottom, c.Dy)
-	}
-	if !dev.IsFinite() {
-		return true, nil
-	}
-	o := s.outer
-	x0, y0 := math.Max(math.Floor(dev.Left)-1, float64(o.Min.X)), math.Max(math.Floor(dev.Top)-1, float64(o.Min.Y))
-	x1, y1 := math.Min(math.Ceil(dev.Right)+1, float64(o.Max.X)), math.Min(math.Ceil(dev.Bottom)+1, float64(o.Max.Y))
-	if x1 <= x0 || y1 <= y0 {
-		return true, nil
-	}
-	quality := p.FilterQuality()
-	level := 0
-	if quality == ui.FilterQualityMedium || quality == ui.FilterQualityHigh {
-		if scale := math.Sqrt(math.Abs(toDevice.Det())); scale > 0 && scale < 1 {
-			level = min(int(-math.Log2(scale)+0.5), entry.levels-1)
-		}
-	}
-	q := float32(1)
-	switch quality {
-	case ui.FilterQualityNone:
-		q = 0
-	case ui.FilterQualityMedium:
-		q = 2
-	case ui.FilterQualityHigh:
-		q = 3
-	}
-	flags := 0
-	if info.aa {
-		flags |= imageFlagAntialias
-	}
-	box := [4]float32{float32(src.Left), float32(src.Top), float32(src.Right), float32(src.Bottom)}
-	if toDevice.AxisAligned() {
-		flags |= imageFlagBox
-		box = [4]float32{float32(dev.Left), float32(dev.Top), float32(dev.Right), float32(dev.Bottom)}
-	}
-	var in [32]float32
-	in[0], in[1], in[2], in[3] = float32(x0), float32(y0), float32(x1), float32(y1)
-	in[4], in[5], in[6], in[7] = float32(inv.A), float32(inv.B), float32(inv.C), float32(inv.D)
-	in[8], in[9], in[10] = float32(inv.E), float32(inv.F), float32(flags)
-	copy(in[12:16], info.color[:])
-	copy(in[16:20], s.clip[:])
-	copy(in[20:24], box[:])
-	in[24], in[25], in[26] = float32(level), q, -1
-	if t != nil {
-		in[26] = float32(t.mode)
-		copy(in[28:32], t.color[:])
-	}
-	key, ok := s.key(pipeImage, info, entry.tex, image.Rect(int(x0), int(y0), int(x1), int(y1)))
-	if !ok {
-		return true, nil
-	}
-	s.b.frame.add(key, in[:], 1)
+	s.imageEncoder(info, entry, p).Rect(img.Width(), img.Height(), src, dst)
 	return true, nil
 }
 
@@ -224,39 +129,16 @@ func (s *shapeContext) imageNine(op ui.OpDrawImageNine) (bool, error) {
 	if err := checkImage(op.Image); err != nil {
 		return false, err
 	}
-	w, h := float64(op.Image.Width()), float64(op.Image.Height())
-	c := op.Center.Intersect(ui.NewRectFromLTWH(0, 0, w, h))
-	xs, ys := [4]float64{0, c.Left, c.Right, w}, [4]float64{0, c.Top, c.Bottom, h}
-	dxs, dys := ninePieces(op.Dst.Left, op.Dst.Width(), xs), ninePieces(op.Dst.Top, op.Dst.Height(), ys)
-	drawn := true
-	for j := 0; j < 3; j++ {
-		for i := 0; i < 3; i++ {
-			src := ui.NewRectFromLTRB(xs[i], ys[j], xs[i+1], ys[j+1])
-			dst := ui.NewRectFromLTRB(dxs[i], dys[j], dxs[i+1], dys[j+1])
-			if src.IsEmpty() || dst.IsEmpty() {
-				continue
-			}
-			ok, err := s.imageRect(op.Image, src, dst, &op.Paint)
-			if err != nil {
-				return false, err
-			}
-			drawn = drawn && ok
-		}
+	info, status, err := s.imagePaint(&op.Paint)
+	if status != paintDraw {
+		return status == paintNothing, err
 	}
-	return drawn, nil
-}
-
-// ninePieces returns the four edges of the three pieces along one axis of the
-// destination, starting at origin and size long. The outer pieces keep their size
-// in the image, and the middle one takes the rest; when they do not fit the outer
-// pieces shrink in proportion and the middle one vanishes.
-func ninePieces(origin, size float64, src [4]float64) [4]float64 {
-	first, last := src[1]-src[0], src[3]-src[2]
-	if fixed := first + last; fixed > size && fixed > 0 {
-		k := size / fixed
-		first, last = first*k, last*k
+	entry, err := s.b.res.imageTexture(op.Image)
+	if err != nil {
+		return false, err
 	}
-	return [4]float64{origin, origin + first, origin + size - last, origin + size}
+	s.imageEncoder(info, entry, &op.Paint).Nine(op.Image.Width(), op.Image.Height(), op.Center, op.Dst)
+	return true, nil
 }
 
 // imageAtlas draws the parts of an atlas image, each moved by its transform. With
@@ -273,26 +155,17 @@ func (s *shapeContext) imageAtlas(op ui.OpDrawAtlas) (bool, error) {
 			return false, s.b.unsupported("atlas blend mode " + op.BlendMode.String())
 		}
 	}
-	bounds := ui.NewRectFromLTWH(0, 0, float64(op.Atlas.Width()), float64(op.Atlas.Height()))
-	drawn := true
-	for i, src := range op.Rects {
-		src = src.Intersect(bounds)
-		if src.IsEmpty() {
-			continue
-		}
-		t := op.Transforms[i]
-		rs := affine2D{A: float64(t.Scos), B: float64(t.Ssin), C: -float64(t.Ssin), D: float64(t.Scos), E: float64(t.Tx), F: float64(t.Ty)}
-		toDevice := translation(-op.Rects[i].Left, -op.Rects[i].Top).Then(rs).Then(s.t)
-		var tn *tint
-		if len(op.Colors) > 0 {
-			c := op.Colors[i]
-			tn = &tint{mode: mode, color: [4]float32{c.R * c.A, c.G * c.A, c.B * c.A, c.A}}
-		}
-		ok, err := s.blit(op.Atlas, src, toDevice, &op.Paint, tn)
-		if err != nil {
-			return false, err
-		}
-		drawn = drawn && ok
+	info, status, err := s.imagePaint(&op.Paint)
+	if status != paintDraw {
+		return status == paintNothing, err
 	}
-	return drawn, nil
+	if len(op.Rects) == 0 {
+		return true, nil
+	}
+	entry, err := s.b.res.imageTexture(op.Atlas)
+	if err != nil {
+		return false, err
+	}
+	s.imageEncoder(info, entry, &op.Paint).Atlas(op.Atlas.Width(), op.Atlas.Height(), op, mode)
+	return true, nil
 }

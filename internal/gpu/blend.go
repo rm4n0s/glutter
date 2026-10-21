@@ -54,3 +54,18 @@ func FixedBlendOf(mode ui.BlendMode) (FixedBlend, bool) {
 	}
 	return FixedBlend{}, false
 }
+
+// BlendIndex is the index of a blend mode in the order of Flutter's BlendMode, which is
+// the index the blend shaders switch on; false for a mode outside it. The zero mode is
+// srcOver.
+//
+// Flutter: no counterpart
+func BlendIndex(m ui.BlendMode) (int, bool) {
+	if m == ui.BlendModeUnspecified {
+		return int(ui.BlendModeSrcOver - ui.BlendModeClear), true
+	}
+	if m < ui.BlendModeClear || m > ui.BlendModeLuminosity {
+		return 0, false
+	}
+	return int(m - ui.BlendModeClear), true
+}

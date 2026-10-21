@@ -4,9 +4,11 @@ package vulkan
 
 import (
 	"image"
+	"image/draw"
 	"image/png"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -152,31 +154,61 @@ func TestVulkanShapeScenesMatchSoftware(t *testing.T) {
 	}
 }
 
-// shapeCells are the cells of the shapes-clips scene that hold analytic shapes, with their
-// names; the others (arc, vertices, images) come with step 20.4.
-var shapeCells = map[int]string{0: "rect", 1: "rrect", 2: "superellipse", 3: "oval", 4: "circle stroke", 5: "drrect", 7: "lines and points"}
+// cellNames are the cells of the shapes-clips scene, by grid index.
+var cellNames = []string{
+	"rect", "rrect", "superellipse", "oval", "circle stroke", "drrect", "arc", "lines and points",
+	"vertices", "nine-patch", "image quality", "clipped image",
+}
 
-func TestVulkanShapeCellsOfShapesClipsMatchSoftware(t *testing.T) {
+// proofTolerances is how far Vulkan may be from the software renderer in each proof scene it
+// draws (the same as gles has for them); shapes-clips is compared by cell.
+var proofTolerances = map[string]gputest.Tolerance{
+	"shapes-basic": {Over8Permille: 20, Over32Permille: 5},
+	"text-tour":    {Over8Permille: 1},
+}
+
+func TestVulkanProofScenesMatchSoftware(t *testing.T) {
 	lavapipe(t)
-	sc, err := proof.Lookup("shapes-clips")
-	if err != nil {
-		t.Fatal(err)
-	}
-	job := &drawJob{name: sc.Name, scene: sc.Build(), width: sc.Width, height: sc.Height}
-	drawOnWindow(t, []*drawJob{job})
-	want, err := soft.Render(job.scene, sc.Width, sc.Height)
-	if err != nil {
-		t.Fatal(err)
-	}
-	dumpImage(t, "vk-shapes-clips-gpu", job.got)
-	dumpImage(t, "vk-shapes-clips-soft", want)
-	t.Logf("frame: %+v", job.stats)
-	for i := 0; i < 12; i++ {
-		name, ok := shapeCells[i]
-		if !ok {
-			continue
+	names := []string{"shapes-basic", "shapes-clips", "text-tour"}
+	var jobs []*drawJob
+	for _, name := range names {
+		sc, err := proof.Lookup(name)
+		if err != nil {
+			t.Fatal(err)
 		}
-		cell := image.Rect(i%4*160, i/4*160, i%4*160+160, i/4*160+160)
-		gputest.Tolerance{Over8Permille: 30, Over32Permille: 3}.Check(t, name, gputest.DiffRect(job.got, want, cell))
+		jobs = append(jobs, &drawJob{name: name, scene: sc.Build(), width: sc.Width, height: sc.Height})
+	}
+	drawOnWindow(t, jobs)
+	for _, j := range jobs {
+		t.Run(j.name, func(t *testing.T) {
+			want, err := soft.Render(j.scene, j.width, j.height)
+			if err != nil {
+				t.Fatal(err)
+			}
+			dumpImage(t, "vk-"+j.name+"-gpu", j.got)
+			dumpImage(t, "vk-"+j.name+"-soft", want)
+			t.Logf("frame: %+v", j.stats)
+			if j.name == "text-tour" {
+				// The color emoji are painted with gradients and the shadow is a blur: steps 20.5
+				// and 20.6. Everything else is compared, with those places taken from the
+				// software image.
+				if want := []string{"mask filter", "shader"}; !reflect.DeepEqual(j.stats.Unsupported, want) {
+					t.Errorf("unsupported %v, want %v", j.stats.Unsupported, want)
+				}
+				for _, r := range []image.Rectangle{image.Rect(325, 165, 640, 205), image.Rect(10, 285, 135, 330)} {
+					draw.Draw(j.got, r, want, r.Min, draw.Src)
+				}
+			} else if j.stats.Skipped != 0 {
+				t.Errorf("the GPU skipped %d commands: %v", j.stats.Skipped, j.stats.Unsupported)
+			}
+			if j.name == "shapes-clips" {
+				for i, name := range cellNames {
+					cell := image.Rect(i%4*160, i/4*160, i%4*160+160, i/4*160+160)
+					gputest.Tolerance{Over8Permille: 30, Over32Permille: 3}.Check(t, name, gputest.DiffRect(j.got, want, cell))
+				}
+				return
+			}
+			proofTolerances[j.name].Check(t, j.name, gputest.DiffRect(j.got, want, j.got.Bounds()))
+		})
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"math"
 	"sort"
 
+	"github.com/rm4n0s/glutter/internal/gpu"
 	"github.com/rm4n0s/glutter/ui"
 )
 
@@ -97,15 +98,7 @@ func tileIndex(m ui.TileMode) int32 {
 
 // blendIndex is the index of a blend mode in shaders/blend.glsl: its place in
 // the order of Flutter's BlendMode.
-func blendIndex(m ui.BlendMode) (int, bool) {
-	if m == ui.BlendModeUnspecified {
-		return int(ui.BlendModeSrcOver - ui.BlendModeClear), true
-	}
-	if m < ui.BlendModeClear || m > ui.BlendModeLuminosity {
-		return 0, false
-	}
-	return int(m - ui.BlendModeClear), true
-}
+func blendIndex(m ui.BlendMode) (int, bool) { return gpu.BlendIndex(m) }
 
 // ramp is the colors of a gradient with their positions, built as Skia does:
 // evenly spaced when there are no stops, a color at 0 and at 1 added when the

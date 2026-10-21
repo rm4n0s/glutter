@@ -301,3 +301,55 @@ func TestSwapchain(t *testing.T) {
 		t.Errorf("ops %v, want %v", got, want)
 	}
 }
+
+func TestLevelsAndBufferWrites(t *testing.T) {
+	d := New()
+	tex, err := d.NewTexture(explicit.TextureDesc{Width: 8, Height: 4, Format: explicit.TextureFormatRGBA8Unorm, MipLevels: 3, Usage: explicit.TextureSampled | explicit.TextureRenderTarget})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Each level is a texture of its size with one level, the same one each time; level 0 is
+	// the texture's own pixels.
+	for i, want := range []image.Point{{8, 4}, {4, 2}, {2, 1}} {
+		lv := tex.Level(i)
+		if got := image.Pt(lv.Desc().Width, lv.Desc().Height); got != want || (i > 0 && lv.Desc().MipLevels != 1) {
+			t.Errorf("level %d is %v with %d levels", i, got, lv.Desc().MipLevels)
+		}
+		if tex.Level(i) != lv {
+			t.Errorf("level %d is another texture each time", i)
+		}
+	}
+	if tex.Level(0) != tex {
+		t.Error("level 0 is not the texture")
+	}
+	// A level has pixels of its own, written with the level number.
+	d.WriteTexture(tex, 1, image.Rect(0, 0, 4, 2), []byte{1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 5, 6, 7, 8, 5, 6, 7, 8, 5, 6, 7, 8, 5, 6, 7, 8}, 16)
+	if got := tex.Level(1).(*texture).read(image.Rect(0, 0, 4, 2)).RGBAAt(1, 1); got != (color.RGBA{5, 6, 7, 8}) {
+		t.Errorf("level 1 pixel %v", got)
+	}
+	if got := tex.(*texture).read(image.Rect(0, 0, 8, 4)).RGBAAt(1, 1); got != (color.RGBA{}) {
+		t.Errorf("level 0 changed: %v", got)
+	}
+	for _, i := range []int{-1, 3} {
+		err := func() (err error) {
+			defer func() {
+				if r := recover(); r != nil {
+					err, _ = r.(error)
+				}
+			}()
+			tex.Level(i)
+			return nil
+		}()
+		if appErr, ok := errors.FromError(err); !ok || appErr.Tag != "FakeLevelInvalid" || !appErr.HasRoute("texture.Level.FakeLevelInvalid") {
+			t.Errorf("Level(%d): got %v, want FakeLevelInvalid", i, err)
+		}
+	}
+
+	// The writes of buffers are kept with the usage of the buffer.
+	b, _ := d.NewBuffer(16, explicit.BufferUniform)
+	d.WriteBuffer(b, 4, []byte{9, 8})
+	last := d.Writes[len(d.Writes)-1]
+	if last.Offset != 4 || !reflect.DeepEqual(last.Data, []byte{9, 8}) || last.Usage != explicit.BufferUniform {
+		t.Errorf("write %+v", last)
+	}
+}
