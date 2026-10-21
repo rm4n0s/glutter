@@ -60,6 +60,9 @@ func bundledCollection(t *testing.T, opts ...CollectionOpts) *Collection {
 }
 
 func TestBundledFonts(t *testing.T) {
+	if systemFontsSkip != "" {
+		t.Skip(systemFontsSkip) // Match scans the font directories before it answers
+	}
 	c := bundledCollection(t)
 	ctx := context.Background()
 	tests := []struct {
@@ -293,6 +296,9 @@ func TestFailures(t *testing.T) {
 }
 
 func TestScanMatcher(t *testing.T) {
+	if systemFontsSkip != "" {
+		t.Skip(systemFontsSkip)
+	}
 	c := NewCollection()
 	ctx := context.Background()
 	files, err := c.Match(ctx, "sans-serif", 400, false, "")
@@ -387,6 +393,9 @@ func TestFallback(t *testing.T) {
 		}
 	})
 	t.Run("fontscan finds a font that has the character", func(t *testing.T) {
+		if systemFontsSkip != "" {
+			t.Skip(systemFontsSkip)
+		}
 		c := NewCollection()
 		if _, err := c.Match(ctx, "sans-serif", 400, false, ""); err != nil {
 			t.Fatal(err)

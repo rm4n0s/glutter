@@ -1,4 +1,4 @@
-//go:build glutter_display
+//go:build linux && glutter_display
 
 package x11
 

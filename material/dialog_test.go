@@ -9,6 +9,7 @@ package material_test
 import (
 	"math"
 	"testing"
+	"time"
 
 	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/gluttertest"
@@ -137,7 +138,8 @@ func TestShowDialogResultAndBarrier(t *testing.T) {
 				if v != tt.want {
 					t.Errorf("popped with %v, want %v", v, tt.want)
 				}
-			default:
+			case <-time.After(time.Second):
+				// The channel is filled by a goroutine of its own (convertChan).
 				t.Error("the route did not complete")
 			}
 		})

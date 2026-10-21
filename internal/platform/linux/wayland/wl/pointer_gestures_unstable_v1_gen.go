@@ -23,6 +23,8 @@
 // ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 // THIS SOFTWARE.
 
+//go:build linux
+
 package wl
 
 // ZwpPointerGesturesV1: touchpad gestures

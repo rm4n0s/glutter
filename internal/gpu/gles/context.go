@@ -46,28 +46,6 @@ var configAttribs = []int32{
 	eglNone,
 }
 
-// Open loads EGL and GLES, creates an OpenGL ES 3.0 context on the display of h,
-// creates the first window surface for h, makes it current, and turns vsync
-// off (eglSwapInterval 0: frames are paced by the compositor's frame callbacks,
-// SPEC §8.11). It fails with
-//
-//   - EGLLoadFailed when libEGL or libGLESv2 cannot be loaded
-//   - EGLInitFailed when there is no EGL display or it will not initialize
-//   - EGLNoConfig when no config has RGBA8 and OpenGL ES 3 window surfaces
-//   - GLES3Unsupported when no ES 3.0 context can be created or the driver
-//     reports an older GL_VERSION
-//
-// Close releases everything.
-//
-// Flutter: no counterpart
-func Open(h gpu.SurfaceHandle) (*Context, *Surface, error) {
-	egl, err := loadEGL()
-	if err != nil {
-		return nil, nil, err
-	}
-	return openWith(egl, loadGL, h)
-}
-
 // openWith is Open with the EGL and GL implementations given, for tests.
 func openWith(egl eglAPI, loadGL func(eglAPI) (glAPI, error), h gpu.SurfaceHandle) (*Context, *Surface, error) {
 	var platform uint32
@@ -323,23 +301,6 @@ func (c *Context) Close() {
 	c.surface = nil
 	_ = c.egl.destroyContext(c.display, c.context)
 	_ = c.egl.terminate(c.display)
-}
-
-// X11Visual returns the ID of the X visual that windows must use to be drawn with
-// OpenGL ES through EGL on the Xlib display: the visual of the EGL config that
-// Open chooses. Create the X window with this visual (and a colormap made for
-// it), or eglCreateWindowSurface fails with BadMatch. It fails with
-//
-//   - EGLLoadFailed, EGLInitFailed and EGLNoConfig as Open does
-//   - EGLConfigQueryFailed when the config has no native visual
-//
-// Flutter: no counterpart
-func X11Visual(display uintptr) (uint32, error) {
-	egl, err := loadEGL()
-	if err != nil {
-		return 0, err
-	}
-	return x11VisualWith(egl, display)
 }
 
 // x11VisualWith is X11Visual with the EGL implementation given, for tests.

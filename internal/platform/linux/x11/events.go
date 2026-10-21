@@ -1,3 +1,5 @@
+//go:build linux
+
 package x11
 
 // handleEvent handles the event that XNextEvent put in p.event.

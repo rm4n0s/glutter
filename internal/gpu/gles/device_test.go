@@ -511,37 +511,6 @@ func TestGLErrorCheck(t *testing.T) {
 	}
 }
 
-func TestGLSymbolTable(t *testing.T) {
-	g := new(glLib)
-	seen := map[string]bool{}
-	for _, b := range g.glSymbols() {
-		if !strings.HasPrefix(b.symbol, "gl") {
-			t.Errorf("symbol %q does not look like a GL function", b.symbol)
-		}
-		if seen[b.symbol] {
-			t.Errorf("symbol %q is bound twice", b.symbol)
-		}
-		seen[b.symbol] = true
-		if b.fptr == nil {
-			t.Errorf("symbol %q has no target", b.symbol)
-		}
-	}
-	for _, must := range []string{"glGetString", "glGetStringi", "glDrawArraysInstanced", "glBlitFramebuffer", "glTexImage2D", "glVertexAttribDivisor"} {
-		if !seen[must] {
-			t.Errorf("the table lacks %s", must)
-		}
-	}
-}
-
-func TestLoadGLSymbolMissing(t *testing.T) {
-	egl := newFakeEGL() // knows no GL functions
-	_, err := loadGL(egl)
-	appErr := routeOf(t, err, "SymbolMissing")
-	if !appErr.HasRoute("loadGL.SymbolMissing") || appErr.Metadata["symbol"] == "" || appErr.Metadata["library"] != "eglGetProcAddress" {
-		t.Errorf("route %s, metadata %v", appErr.Route(), appErr.Metadata)
-	}
-}
-
 // TestConstantsMatchHeaders checks every constant of glconst.go against the value
 // in the system's GLES3 headers.
 func TestConstantsMatchHeaders(t *testing.T) {

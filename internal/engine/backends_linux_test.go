@@ -1,4 +1,6 @@
-package fontconfig
+//go:build linux
+
+package engine
 
 import (
 	"context"
@@ -12,7 +14,7 @@ import (
 
 func TestCollectionOverFontconfig(t *testing.T) {
 	ctx := context.Background()
-	m, err := Open(ctx)
+	m, err := openFontconfig(ctx)
 	if err != nil {
 		t.Skipf("fontconfig is not available: %v", err)
 	}
@@ -52,7 +54,7 @@ func TestCollectionOverFontconfig(t *testing.T) {
 
 func TestEngineLaysOutMixedScriptsOverFontconfig(t *testing.T) {
 	ctx := context.Background()
-	m, err := Open(ctx)
+	m, err := openFontconfig(ctx)
 	if err != nil {
 		t.Skipf("fontconfig is not available: %v", err)
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"image"
+	"runtime"
 	"strings"
 	"time"
 
@@ -422,6 +423,10 @@ func (t *Tester) PumpFrame(duration time.Duration) {
 	if duration > 0 {
 		t.Clock.Advance(duration)
 	}
+	// Lets the goroutines of the app (an image that decodes, a State.Go) run and post
+	// their results. Where the program has one thread (js/wasm) they run only when
+	// this goroutine yields; elsewhere they run alongside, and this costs nothing.
+	runtime.Gosched()
 	t.host.RunPosted()
 	sched := t.Binding.Scheduler()
 	if sched.HasScheduledFrame() {

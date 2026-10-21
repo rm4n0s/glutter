@@ -1,3 +1,5 @@
+//go:build linux
+
 package wayland
 
 // sysMemfdCreate is the number of the memfd_create system call; the syscall

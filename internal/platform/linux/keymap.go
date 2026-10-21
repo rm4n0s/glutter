@@ -1,3 +1,5 @@
+//go:build linux
+
 package linux
 
 // Key id planes (Flutter's key ID scheme, dev/tools/gen_keycodes/README.md).

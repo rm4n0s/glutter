@@ -1,3 +1,5 @@
+//go:build linux
+
 package wayland
 
 import "github.com/rm4n0s/glutter/internal/platform/linux/wayland/wl"

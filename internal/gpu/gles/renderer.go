@@ -75,14 +75,6 @@ func (s *glSurface) Destroy() {
 	s.surface.Destroy()
 }
 
-// NewRenderer returns a renderer that has no GL context yet: the first Attach
-// creates it. Passing more than one RendererOpts panics with MultipleOptions.
-//
-// Flutter: no counterpart
-func NewRenderer(opts ...RendererOpts) *Renderer {
-	return newRenderer(Open, opts...)
-}
-
 func newRenderer(open func(gpu.SurfaceHandle) (*Context, *Surface, error), opts ...RendererOpts) *Renderer {
 	if len(opts) > 1 {
 		panic(errors.New("MultipleOptions", "pass at most one options value", "type", "RendererOpts", "count", len(opts)))

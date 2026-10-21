@@ -103,7 +103,7 @@ func TestRendererErrors(t *testing.T) {
 		{"nil surface", func() error { return r.Render(nil, nil, ui.Size{Width: 5, Height: 5}, 1) }, "RendererSurfaceInvalid", "Renderer.render.RendererSurfaceInvalid"},
 		{"snapshot of no size", func() error { _, err := r.Snapshot(nil, ui.Size{Width: 5, Height: 0}); return err }, "RendererSizeInvalid", "Renderer.Snapshot.RendererSizeInvalid"},
 		{"snapshot before an attach", func() error {
-			_, err := NewRenderer().Snapshot(nil, ui.Size{Width: 5, Height: 5})
+			_, err := newRenderer(nil).Snapshot(nil, ui.Size{Width: 5, Height: 5})
 			return err
 		}, "RendererNotAttached", "Renderer.Snapshot.RendererNotAttached"},
 		{"snapshot after a close", func() error {
@@ -237,7 +237,7 @@ func TestNewRendererMultipleOptions(t *testing.T) {
 			t.Errorf("expected MultipleOptions, got %v", appErr)
 		}
 	}()
-	NewRenderer(RendererOpts{}, RendererOpts{})
+	newRenderer(nil, RendererOpts{}, RendererOpts{})
 }
 
 func TestRendererRenderCapture(t *testing.T) {

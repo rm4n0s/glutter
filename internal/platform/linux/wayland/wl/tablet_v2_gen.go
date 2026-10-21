@@ -24,6 +24,8 @@
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+//go:build linux
+
 package wl
 
 // ZwpTabletManagerV2: controller object for graphic tablet devices

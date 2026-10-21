@@ -1,3 +1,5 @@
+//go:build linux
+
 package wl
 
 // WrapBuffer returns a *WlBuffer for a wl_buffer that another library created on

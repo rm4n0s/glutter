@@ -15,8 +15,6 @@ import (
 	"github.com/rm4n0s/glutter/painting"
 	"github.com/rm4n0s/glutter/services"
 	"github.com/rm4n0s/glutter/ui"
-
-	textfontconfig "github.com/rm4n0s/glutter/internal/text/fontconfig"
 )
 
 // WindowState is the initial state of a window.
@@ -252,19 +250,13 @@ func (b *WidgetsBinding) IsIdle() bool {
 }
 
 // systemTextEngine makes the text engine of an app: the bundled fonts and the
-// fonts of the machine, found through fontconfig if it is there and by scanning
-// the font directories if not.
+// fonts of the machine, as the engine's backend for the operating system finds them
+// (fontconfig on Linux, with a scan of the font directories when it is not there).
 func systemTextEngine(ctx context.Context, logger *slog.Logger) *layout.Engine {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	opts := text.CollectionOpts{}
-	if m, err := textfontconfig.Open(ctx); err == nil {
-		opts.Matcher = m
-	} else {
-		logger.Info("fontconfig is not available; scanning the font directories", "error", err)
-	}
-	c := text.NewCollection(opts)
+	c := text.NewCollection(text.CollectionOpts{Matcher: engine.SystemFontMatcher(ctx, logger)})
 	if err := fonts.Register(c); err != nil {
 		logger.Error("the bundled fonts could not be registered", "error", err)
 	}

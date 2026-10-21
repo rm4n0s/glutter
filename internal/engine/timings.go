@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/rm4n0s/glutter/foundation"
-	"github.com/rm4n0s/glutter/internal/platform/linux"
 	"github.com/rm4n0s/glutter/ui"
 )
 
@@ -98,7 +97,7 @@ func (h *handler) noteFrame() {
 	if !h.firstLogged {
 		h.firstLogged = true
 		attrs := []any{"since_run", now.Sub(h.runStart).Round(time.Millisecond)}
-		if start, ok := linux.ProcessStart(); ok {
+		if start, ok := processStart(); ok {
 			attrs = append(attrs, "since_process_start", now.Sub(start).Round(10*time.Millisecond))
 		}
 		h.log.Info("first frame presented", append(attrs, goMemory()...)...)

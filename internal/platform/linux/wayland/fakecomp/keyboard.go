@@ -1,3 +1,5 @@
+//go:build linux
+
 package fakecomp
 
 // KeyboardEnter sends wl_keyboard.enter: the surface gets keyboard focus, and

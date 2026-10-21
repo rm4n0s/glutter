@@ -1,3 +1,5 @@
+//go:build linux
+
 package linux
 
 import "github.com/rm4n0s/glutter/internal/platform"

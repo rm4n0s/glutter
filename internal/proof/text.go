@@ -6,7 +6,6 @@ import (
 	"sync"
 
 	"github.com/rm4n0s/glutter/internal/text"
-	textfontconfig "github.com/rm4n0s/glutter/internal/text/fontconfig"
 	"github.com/rm4n0s/glutter/internal/text/layout"
 	"github.com/rm4n0s/glutter/material/fonts"
 	"github.com/rm4n0s/glutter/ui"
@@ -30,18 +29,14 @@ var (
 )
 
 // SystemTextEngine returns the text engine of the proof scenes: the bundled fonts and the fonts
-// of the machine, found through fontconfig if it is there and by scanning the font directories
-// if not. The engine is made once.
+// of the machine, found by scanning the font directories (the proof scenes are not an app, so
+// they leave fontconfig to the engine). The engine is made once.
 //
 // Flutter: no counterpart
 func SystemTextEngine() *layout.Engine {
 	systemEngineOnce.Do(func() {
 		ctx := context.Background()
-		opts := text.CollectionOpts{}
-		if m, err := textfontconfig.Open(ctx); err == nil {
-			opts.Matcher = m
-		}
-		c := text.NewCollection(opts)
+		c := text.NewCollection(text.CollectionOpts{})
 		if err := fonts.Register(c); err != nil {
 			panic(err)
 		}

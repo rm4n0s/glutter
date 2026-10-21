@@ -3,6 +3,8 @@
 // logical_key_data.g.json, layout_goals.json). Flutter is BSD-3-Clause
 // licensed; see third_party/flutter/LICENSE.
 
+//go:build linux
+
 package linux
 
 // xkbToPhysicalKey maps an XKB keycode (evdev scancode + 8) to the id of

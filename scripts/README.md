@@ -12,6 +12,7 @@ Available now:
 | `screenshot-headless.sh` | Run a command in headless sway, wait until it maps a window, and save a screenshot of the output with `grim` (needs `sway grim jq`): `scripts/screenshot-headless.sh out.png -- ./binary` |
 | `headless-x11.sh` | Run a command under a headless X server (`Xvfb`, on a free display number, no window manager) with `DISPLAY` set: `scripts/headless-x11.sh -- go test -tags glutter_display ./internal/platform/linux/x11/` (needs `xorg-x11-server-Xvfb`) |
 | `fetch-wayland-protocols.sh` | Download the Wayland protocol XML files into `internal/platform/linux/wayland/protocols/` and record the release tags in its `VERSIONS` file. `--latest` moves to the newest releases; then run `go generate ./internal/platform/linux/wayland/...` |
+| `test-wasm.sh` | Run the unit tests of every package that builds for the web under Node (`GOOS=js GOARCH=wasm go test`, with the minimal environment that Go's wasm loader needs): `scripts/test-wasm.sh` or `scripts/test-wasm.sh ./foundation/...` (needs `nodejs`) |
 
 To come, in the order of `docs/IMPLEMENTATION.md`:
 

@@ -19,11 +19,10 @@ import (
 	"github.com/rm4n0s/glutter/internal/gpu"
 	"github.com/rm4n0s/glutter/internal/platform"
 	"github.com/rm4n0s/glutter/internal/platform/fake"
-	"github.com/rm4n0s/glutter/internal/platform/linux"
 	"github.com/rm4n0s/glutter/ui"
 )
 
-// conn is the fake platform with a Close, so that it is a linux.Connection.
+// conn is the fake platform with a Close, so that it is a connection.
 type conn struct {
 	*fake.Platform
 	closeErr error
@@ -131,12 +130,9 @@ func newHarness(t *testing.T, env map[string]string) *harness {
 	t.Helper()
 	h := &harness{c: &conn{Platform: fake.New()}, r: &fakeRenderer{}}
 	h.cfg = Config{
-		Getenv: func(k string) string { return env[k] },
-		Logger: quiet(),
-		x11:    func() (linux.Connection, error) { return h.c, nil },
-		wayland: func() (linux.Connection, error) {
-			return nil, errors.New("WaylandConnectFailed", "no compositor")
-		},
+		Getenv:      func(k string) string { return env[k] },
+		Logger:      quiet(),
+		connect:     func() (connection, error) { return h.c, nil },
 		newRenderer: func(*Config, *slog.Logger) renderer { return h.r },
 	}
 	h.cfg.Hooks.Window = func(win platform.Window, stop func()) {
@@ -363,23 +359,9 @@ func assertRoute(t *testing.T, err error, tag, route string) {
 }
 
 func TestRunErrors(t *testing.T) {
-	t.Run("no display", func(t *testing.T) {
-		h := newHarness(t, nil)
-		assertRoute(t, Run(context.Background(), h.cfg), "NoDisplay", "Run->Select.NoDisplay")
-	})
 	t.Run("an unknown way to decorate", func(t *testing.T) {
 		h := newHarness(t, map[string]string{"DISPLAY": ":0", DecorationsEnv: "gnome"})
 		assertRoute(t, Run(context.Background(), h.cfg), "DecorationsUnknown", "Run.DecorationsUnknown")
-	})
-	t.Run("an unknown backend", func(t *testing.T) {
-		h := newHarness(t, map[string]string{"DISPLAY": ":0"})
-		h.cfg.Backend = "quartz"
-		assertRoute(t, Run(context.Background(), h.cfg), "BackendUnknown", "Run->Select.BackendUnknown")
-	})
-	t.Run("the backend's own error comes back unchanged", func(t *testing.T) {
-		h := newHarness(t, map[string]string{"WAYLAND_DISPLAY": "wayland-0"})
-		h.cfg.Backend = "wayland"
-		assertRoute(t, Run(context.Background(), h.cfg), "WaylandConnectFailed", "Run->Select->connect->")
 	})
 	t.Run("a bad screenshot delay", func(t *testing.T) {
 		h := newHarness(t, map[string]string{"DISPLAY": ":0", ScreenshotEnv: "x.png", ScreenshotAfterEnv: "soon"})
@@ -394,7 +376,7 @@ func TestRunErrors(t *testing.T) {
 		h := newHarness(t, map[string]string{"DISPLAY": ":0"})
 		want := errors.New("X11WindowFailed", "XCreateWindow failed")
 		fw := &failingWindow{conn: h.c, err: want}
-		h.cfg.x11 = func() (linux.Connection, error) { return fw, nil }
+		h.cfg.connect = func() (connection, error) { return fw, nil }
 		err := Run(context.Background(), h.cfg)
 		assertRoute(t, err, "X11WindowFailed", "X11WindowFailed")
 		if !h.c.closed {
@@ -421,7 +403,7 @@ func TestRunErrors(t *testing.T) {
 	})
 	t.Run("a failure to close does not hide the earlier failure", func(t *testing.T) {
 		h := newHarness(t, nil)
-		h.cfg.x11 = func() (linux.Connection, error) { return h.c, nil }
+		h.cfg.connect = func() (connection, error) { return h.c, nil }
 		h.c.closeErr = errors.New("LoopSyscallFailed", "close")
 		h.cfg.Getenv = func(k string) string {
 			if k == "DISPLAY" {
@@ -434,34 +416,6 @@ func TestRunErrors(t *testing.T) {
 		h.c.Inject(fake.FrameEvent{View: 0})
 		assertRoute(t, result(t, h.run(t)), "EGLInitFailed", "EGLInitFailed")
 	})
-}
-
-func TestShmFillRefusedByTheX11Connector(t *testing.T) {
-	cfg := Config{ShmFill: true}
-	_, err := cfg.x11Connector()()
-	assertRoute(t, err, "ShmFillUnsupported", "ShmFillUnsupported")
-}
-
-func TestRealConnectorsReportTheirFailures(t *testing.T) {
-	// No server is listening: the real connectors fail with their own tags, as a
-	// session with a broken DISPLAY or WAYLAND_DISPLAY would.
-	t.Setenv("DISPLAY", ":9999")
-	t.Setenv("WAYLAND_DISPLAY", "glutter-no-such-socket")
-	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
-	cfg := Config{Logger: quiet()}
-	_, err := cfg.x11Connector()()
-	assertRoute(t, err, "X11OpenDisplayFailed", "New.X11OpenDisplayFailed")
-	_, err = cfg.waylandConnector()()
-	if appErr, ok := errors.FromError(err); !ok || (appErr.Tag != "WaylandConnectFailed" && appErr.Tag != "LibraryLoadFailed") {
-		t.Errorf("Wayland error = %v, want WaylandConnectFailed (or LibraryLoadFailed without libwayland)", err)
-	}
-	// With both broken, Run says there is no display.
-	err = Run(context.Background(), Config{Logger: quiet()})
-	assertRoute(t, err, "NoDisplay", "Run->Select.NoDisplay")
-	appErr, _ := errors.FromError(err)
-	if tried, _ := appErr.Metadata["tried"].([]string); len(tried) != 2 {
-		t.Errorf("tried %v, want Wayland and X11", appErr.Metadata["tried"])
-	}
 }
 
 func TestRunDrawsTheSceneOfTheSceneHook(t *testing.T) {

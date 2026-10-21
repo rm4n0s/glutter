@@ -11,11 +11,7 @@ import (
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/internal/gpu"
-	"github.com/rm4n0s/glutter/internal/gpu/gles"
 	"github.com/rm4n0s/glutter/internal/platform"
-	"github.com/rm4n0s/glutter/internal/platform/linux"
-	"github.com/rm4n0s/glutter/internal/platform/linux/wayland"
-	"github.com/rm4n0s/glutter/internal/platform/linux/x11"
 	"github.com/rm4n0s/glutter/ui"
 )
 
@@ -84,12 +80,13 @@ type Config struct {
 	// nil.
 	Start func(d *ui.PlatformDispatcher) error
 
-	// The fields below are for the tests of this package: a Wayland and an X11
-	// that are not the real ones, and the renderer.
-	idlePoll    time.Duration // how often the capture asks whether the app is idle
-	idleMax     time.Duration // how long it waits for the app to become idle
-	wayland     func() (linux.Connection, error)
-	x11         func() (linux.Connection, error)
+	// The fields below are for the tests of this package: a platform that is not the
+	// real one (or a Wayland and an X11 that are not), and the renderer.
+	idlePoll    time.Duration              // how often the capture asks whether the app is idle
+	idleMax     time.Duration              // how long it waits for the app to become idle
+	connect     func() (connection, error) // replaces the choice of backends_<goos>.go
+	wayland     func() (connection, error) // Linux only: replaces the Wayland backend
+	x11         func() (connection, error) // Linux only: replaces the X11 backend
 	newRenderer func(cfg *Config, log *slog.Logger) renderer
 }
 
@@ -184,13 +181,12 @@ func Run(ctx context.Context, cfg Config) (err error) {
 			log.Info("startup", "stage", name, "since_run", time.Since(runStart).Round(time.Millisecond))
 		}
 	}
-	conn, _, err := linux.Select(linux.Selection{
-		Backend: cfg.Backend,
-		Getenv:  getenv,
-		Wayland: cfg.waylandConnector(),
-		X11:     cfg.x11Connector(),
-		Logger:  log,
-	})
+	var conn connection
+	if cfg.connect != nil {
+		conn, err = cfg.connect()
+	} else {
+		conn, err = connectDisplay(&cfg, getenv, log)
+	}
 	if err != nil {
 		return err
 	}
@@ -231,7 +227,7 @@ func Run(ctx context.Context, cfg Config) (err error) {
 	if cfg.newRenderer != nil {
 		h.newRenderer = cfg.newRenderer
 	} else {
-		h.newRenderer = newGLESRenderer
+		h.newRenderer = defaultRenderer
 	}
 	h.disp = ui.NewPlatformDispatcher(h)
 	h.disp.SetDisplays(h.displays())
@@ -271,37 +267,6 @@ func (c *Config) windowConfig() platform.WindowConfig {
 	return c.Window
 }
 
-// waylandConnector returns the function that connects the Wayland backend.
-func (c *Config) waylandConnector() func() (linux.Connection, error) {
-	if c.wayland != nil {
-		return c.wayland
-	}
-	return func() (linux.Connection, error) {
-		p, err := wayland.New("", wayland.Options{ShmFill: c.ShmFill})
-		if err != nil {
-			return nil, err
-		}
-		return p, nil
-	}
-}
-
-// x11Connector returns the function that connects the X11 backend.
-func (c *Config) x11Connector() func() (linux.Connection, error) {
-	if c.x11 != nil {
-		return c.x11
-	}
-	return func() (linux.Connection, error) {
-		if c.ShmFill {
-			return nil, errors.New("ShmFillUnsupported", "the shared-memory mode is for Wayland only")
-		}
-		p, err := x11.New("")
-		if err != nil {
-			return nil, err
-		}
-		return p, nil
-	}
-}
-
 // window is one native window of the engine and what the engine keeps for it.
 type window struct {
 	platform.Window
@@ -332,7 +297,7 @@ type handler struct {
 	platform.NopHandler
 	cfg    *Config
 	log    *slog.Logger
-	conn   linux.Connection
+	conn   connection
 	shot   *Screenshot
 	cancel context.CancelFunc
 
@@ -1090,96 +1055,5 @@ func (h *handler) release() {
 	if h.r != nil {
 		h.r.Close()
 		h.r = nil
-	}
-}
-
-// glesRenderer is the OpenGL ES renderer of the engine: it draws the scene of the
-// frame over developmentColor, into the surface of any window, with one GL context
-// for all of them.
-type glesRenderer struct {
-	log      *slog.Logger
-	skip     bool
-	cache    bool // the raster cache is on
-	damage   bool // frames tell the compositor what changed
-	renderer *gles.Renderer
-	surfaces map[gpu.SurfaceHandle]gpu.Surface
-	reported int // the number of skipped commands the log last said
-}
-
-func newGLESRenderer(cfg *Config, log *slog.Logger) renderer {
-	getenv := cfg.Getenv
-	if getenv == nil {
-		getenv = os.Getenv
-	}
-	return &glesRenderer{
-		log: log, skip: cfg.SkipUnsupported, surfaces: map[gpu.SurfaceHandle]gpu.Surface{},
-		cache:  !cfg.DisableRasterCache && getenv(RasterCacheEnv) != "0",
-		damage: !cfg.DisableDamage && getenv(DamageEnv) != "0",
-	}
-}
-
-// rasterCacheAfter is how many frames in a row a retained layer must be in the scene
-// to be drawn from a texture: three, as Flutter's raster cache does.
-const rasterCacheAfter = 3
-
-func (r *glesRenderer) Draw(h gpu.SurfaceHandle, width, height int, scene *ui.Scene, capture bool) (*image.RGBA, error) {
-	if r.renderer == nil {
-		opts := gles.RendererOpts{
-			Background: ui.NewColor(developmentColor), HasBackground: true, SkipUnsupported: r.skip,
-			Damage: r.damage,
-		}
-		if r.cache {
-			opts.RasterCacheAfter = rasterCacheAfter
-		}
-		r.renderer = gles.NewRenderer(opts)
-		r.log.Info("OpenGL ES renderer ready")
-	}
-	surface, ok := r.surfaces[h]
-	if !ok {
-		var err error
-		if surface, err = r.renderer.Attach(h); err != nil {
-			return nil, err
-		}
-		r.surfaces[h] = surface
-	}
-	size := ui.Size{Width: float64(width), Height: float64(height)}
-	var img *image.RGBA
-	var err error
-	if capture {
-		img, err = r.renderer.RenderCapture(surface, scene, size, 1)
-	} else {
-		err = r.renderer.Render(surface, scene, size, 1)
-	}
-	if err != nil {
-		return nil, err
-	}
-	if st := r.renderer.LastFrame(); st.Skipped > 0 && st.Skipped != r.reported {
-		r.reported = st.Skipped
-		r.log.Warn("the GPU renderer left out what it cannot draw yet", "skipped", st.Skipped, "drawn", st.Drawn, "features", st.Unsupported)
-	}
-	return img, nil
-}
-
-func (r *glesRenderer) Invalidate(h gpu.SurfaceHandle) {
-	if surface, ok := r.surfaces[h]; ok && r.renderer != nil {
-		r.renderer.Invalidate(surface)
-	}
-}
-
-func (r *glesRenderer) Release(h gpu.SurfaceHandle) {
-	if surface, ok := r.surfaces[h]; ok {
-		surface.Destroy()
-		delete(r.surfaces, h)
-	}
-}
-
-func (r *glesRenderer) Close() {
-	for h, surface := range r.surfaces {
-		surface.Destroy()
-		delete(r.surfaces, h)
-	}
-	if r.renderer != nil {
-		_ = r.renderer.Close()
-		r.renderer = nil
 	}
 }

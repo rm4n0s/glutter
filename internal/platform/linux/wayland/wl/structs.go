@@ -1,3 +1,5 @@
+//go:build linux
+
 package wl
 
 // Go mirrors of the C structs of wayland-util.h. They are only ever laid over

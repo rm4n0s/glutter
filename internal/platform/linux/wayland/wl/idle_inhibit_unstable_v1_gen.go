@@ -21,6 +21,8 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+//go:build linux
+
 package wl
 
 // ZwpIdleInhibitManagerV1: control behavior when display idles

@@ -21,6 +21,8 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+//go:build linux
+
 package wl
 
 // ZxdgExporterV2: interface for exporting surfaces

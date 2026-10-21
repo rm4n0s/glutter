@@ -1,3 +1,5 @@
+//go:build linux
+
 package gles
 
 import (
@@ -6,6 +8,7 @@ import (
 
 	"github.com/ebitengine/purego"
 	"github.com/rm4n0s/errors"
+	"github.com/rm4n0s/glutter/internal/gpu"
 	"github.com/rm4n0s/glutter/internal/platform/linux/dl"
 )
 
@@ -15,59 +18,6 @@ const (
 	eglLibraryEnv  = "GLUTTER_EGL_LIBRARY"
 	glesLibraryEnv = "GLUTTER_GLES_LIBRARY"
 )
-
-// EGL constants (EGL/egl.h, EGL/eglext.h).
-const (
-	eglNone              = 0x3038
-	eglRedSize           = 0x3024
-	eglGreenSize         = 0x3023
-	eglBlueSize          = 0x3022
-	eglAlphaSize         = 0x3021
-	eglSurfaceType       = 0x3033
-	eglWindowBit         = 0x0004
-	eglRenderableType    = 0x3040
-	eglOpenGLES3Bit      = 0x0040
-	eglOpenGLESAPI       = 0x30A0
-	eglContextClientVers = 0x3098
-	eglPlatformWayland   = 0x31D8 // EGL_PLATFORM_WAYLAND_KHR
-	eglPlatformX11       = 0x31D5 // EGL_PLATFORM_X11_KHR
-	eglNativeVisualID    = 0x302E // EGL_NATIVE_VISUAL_ID
-	eglSuccess           = 0x3000
-	eglExtensions        = 0x3055 // EGL_EXTENSIONS
-)
-
-// eglAPI is the part of EGL that the context uses, in Go terms. The real
-// implementation calls libEGL through purego; tests supply a fake.
-type eglAPI interface {
-	getPlatformDisplay(platform uint32, nativeDisplay uintptr) uintptr
-	initialize(display uintptr) (major, minor int32, ok bool)
-	// chooseConfig returns the best config for the attributes, or ok false when
-	// no config matches.
-	chooseConfig(display uintptr, attribs []int32) (config uintptr, ok bool)
-	bindAPI(api uint32) bool
-	createContext(display, config uintptr, attribs []int32) uintptr
-	// createWindowSurface makes a window surface for the native window: a
-	// wl_egl_window, or (x11 true) the ID of an X window.
-	createWindowSurface(display, config, nativeWindow uintptr, x11 bool) uintptr
-	// getConfigAttrib reads one attribute of a config.
-	getConfigAttrib(display, config uintptr, attribute int32) (value int32, ok bool)
-	makeCurrent(display, draw, read, context uintptr) bool
-	swapInterval(display uintptr, interval int32) bool
-	swapBuffers(display, surface uintptr) bool
-	// canSwapWithDamage says whether the display has EGL_KHR_swap_buffers_with_damage
-	// or the EXT extension of the same name, so that swapBuffersWithDamage works.
-	canSwapWithDamage(display uintptr) bool
-	// swapBuffersWithDamage presents the surface and tells the compositor which
-	// rectangles changed: x, y, width and height for each, from the bottom left of
-	// the surface (as EGL counts).
-	swapBuffersWithDamage(display, surface uintptr, rects []int32) bool
-	destroySurface(display, surface uintptr) bool
-	destroyContext(display, context uintptr) bool
-	terminate(display uintptr) bool
-	getError() int32
-	// getProcAddress returns the address of a GL function, or 0.
-	getProcAddress(name string) uintptr
-}
 
 // eglLib is the purego implementation of eglAPI.
 type eglLib struct {
@@ -302,3 +252,50 @@ func int32Array(values []int32) uintptr {
 
 // registerFunc binds a C function at a known address (from eglGetProcAddress).
 func registerFunc(fptr any, address uintptr) { purego.RegisterFunc(fptr, address) }
+
+// Open loads EGL and GLES, creates an OpenGL ES 3.0 context on the display of h,
+// creates the first window surface for h, makes it current, and turns vsync
+// off (eglSwapInterval 0: frames are paced by the compositor's frame callbacks,
+// SPEC §8.11). It fails with
+//
+//   - EGLLoadFailed when libEGL or libGLESv2 cannot be loaded
+//   - EGLInitFailed when there is no EGL display or it will not initialize
+//   - EGLNoConfig when no config has RGBA8 and OpenGL ES 3 window surfaces
+//   - GLES3Unsupported when no ES 3.0 context can be created or the driver
+//     reports an older GL_VERSION
+//
+// Close releases everything.
+//
+// Flutter: no counterpart
+func Open(h gpu.SurfaceHandle) (*Context, *Surface, error) {
+	egl, err := loadEGL()
+	if err != nil {
+		return nil, nil, err
+	}
+	return openWith(egl, loadGL, h)
+}
+
+// X11Visual returns the ID of the X visual that windows must use to be drawn with
+// OpenGL ES through EGL on the Xlib display: the visual of the EGL config that
+// Open chooses. Create the X window with this visual (and a colormap made for
+// it), or eglCreateWindowSurface fails with BadMatch. It fails with
+//
+//   - EGLLoadFailed, EGLInitFailed and EGLNoConfig as Open does
+//   - EGLConfigQueryFailed when the config has no native visual
+//
+// Flutter: no counterpart
+func X11Visual(display uintptr) (uint32, error) {
+	egl, err := loadEGL()
+	if err != nil {
+		return 0, err
+	}
+	return x11VisualWith(egl, display)
+}
+
+// NewRenderer returns a renderer that has no GL context yet: the first Attach
+// creates it. Passing more than one RendererOpts panics with MultipleOptions.
+//
+// Flutter: no counterpart
+func NewRenderer(opts ...RendererOpts) *Renderer {
+	return newRenderer(Open, opts...)
+}
