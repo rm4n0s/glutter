@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -91,5 +92,27 @@ func TestFormatsAndNames(t *testing.T) {
 	}
 	if BindingUniformBuffer.String() != "uniform" || BindingSampledTexture.String() != "texture" || BindingSampler.String() != "sampler" || BindingUnspecified.String() != "unspecified" {
 		t.Error("BindingKind.String")
+	}
+}
+
+// TestShadersListsEveryGeneratedShader: Shaders is the list that the WebGPU backend compiles at
+// startup, so a shader file without an entry would reach the browser late.
+func TestShadersListsEveryGeneratedShader(t *testing.T) {
+	files, err := filepath.Glob(filepath.Join("shaders", "*.wgsl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	listed := map[string]bool{}
+	for _, s := range Shaders() {
+		listed[s.Name] = true
+	}
+	if len(files) == 0 || len(listed) != len(files) || len(listed) != len(Shaders()) {
+		t.Fatalf("Shaders lists %d distinct shaders of %d, there are %d .wgsl files", len(listed), len(Shaders()), len(files))
+	}
+	for _, f := range files {
+		name := strings.TrimSuffix(filepath.Base(f), ".wgsl")
+		if !listed[name] {
+			t.Errorf("shaders/%s.wgsl is not in Shaders()", name)
+		}
 	}
 }

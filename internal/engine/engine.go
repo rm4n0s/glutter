@@ -11,6 +11,7 @@ import (
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/internal/gpu"
+	"github.com/rm4n0s/glutter/internal/gpu/explicit"
 	"github.com/rm4n0s/glutter/internal/platform"
 	"github.com/rm4n0s/glutter/ui"
 )
@@ -104,6 +105,14 @@ type Config struct {
 	// goroutine (a renderer that made its resources again after the GPU took them away).
 	renewSurface func(gpu.SurfaceHandle)
 	redraw       func(gpu.SurfaceHandle)
+	// post runs a function on the UI thread (the platform's Post), and captured receives a frame that
+	// the renderer read back after its Draw returned (a WebGPU read-back finishes in a later browser
+	// task, SPEC §9.5); Run sets both. webgpuOpen is the explicit device that the web's connectDisplay
+	// got before the platform installed its listeners (SPEC §23.3), or the error of why it has none.
+	post        func(func())
+	captured    func(*image.RGBA, error)
+	webgpuOpen  func(gpu.SurfaceHandle) (explicit.Device, error)
+	webgpuClose func()
 }
 
 // developmentColor is what the window is cleared to before the scene is drawn,
@@ -220,6 +229,7 @@ func Run(ctx context.Context, cfg Config) (err error) {
 		conn, err = connectDisplay(&cfg, getenv, log)
 	}
 	if err != nil {
+		cfg.closeWebGPU()
 		return err
 	}
 	defer func() {
@@ -255,6 +265,7 @@ func Run(ctx context.Context, cfg Config) (err error) {
 	h := &handler{cfg: &cfg, log: log, conn: conn, shot: shot, cancel: cancel, windows: map[ui.ViewID]*window{},
 		appID: wcfg.AppID, decorations: wcfg.Decorations, runStart: runStart, frameStats: getenv(FrameStatsEnv) == "1"}
 	cfg.renewSurface, cfg.redraw = h.renewSurface, h.redrawWindow
+	cfg.post, cfg.captured = conn.Post, h.onCapture
 	h.first = h.addWindow(win)
 	h.first.title = wcfg.Title
 	if cfg.newRenderer != nil {
@@ -1109,28 +1120,7 @@ func (h *handler) draw(w *window, scene *ui.Scene) error {
 	}
 	switch {
 	case img != nil:
-		if poster, ok := h.conn.(platform.ScreenshotPoster); ok {
-			// A platform that has no files (the web) takes the PNG itself; Run ends when it
-			// has arrived.
-			data, err := h.shot.Encode(img)
-			if err != nil {
-				h.fail(err)
-				return err
-			}
-			poster.PostScreenshot(data, func(err error) {
-				if err != nil {
-					h.fail(err)
-					return
-				}
-				h.cancel()
-			})
-			return nil
-		}
-		if err := h.shot.Save(img); err != nil {
-			h.fail(err)
-			return err
-		}
-		h.cancel() // done: Run returns, and the program exits with code 0
+		return h.finishScreenshot(img)
 	case h.shot != nil && !h.armed:
 		// The first frame is presented. Capture the one that follows the delay,
 		// or, with no delay, the first one after which the app is idle.
@@ -1152,6 +1142,46 @@ func (h *handler) draw(w *window, scene *ui.Scene) error {
 		})
 	}
 	return nil
+}
+
+// finishScreenshot saves the frame that was read back, or hands it to the platform that has no
+// files (the web), and ends Run when it is done.
+func (h *handler) finishScreenshot(img *image.RGBA) error {
+	if poster, ok := h.conn.(platform.ScreenshotPoster); ok {
+		// A platform that has no files (the web) takes the PNG itself; Run ends when it
+		// has arrived.
+		data, err := h.shot.Encode(img)
+		if err != nil {
+			h.fail(err)
+			return err
+		}
+		poster.PostScreenshot(data, func(err error) {
+			if err != nil {
+				h.fail(err)
+				return
+			}
+			h.cancel()
+		})
+		return nil
+	}
+	if err := h.shot.Save(img); err != nil {
+		h.fail(err)
+		return err
+	}
+	h.cancel() // done: Run returns, and the program exits with code 0
+	return nil
+}
+
+// onCapture receives the frame of a renderer whose read-back finished after Draw returned,
+// on the UI thread (the renderer posts it there), and finishes the self-capture with it.
+func (h *handler) onCapture(img *image.RGBA, err error) {
+	if err != nil {
+		h.fail(err)
+		return
+	}
+	if h.shot != nil && img != nil {
+		_ = h.finishScreenshot(img) // finishScreenshot reports its own failure through h.fail
+	}
 }
 
 // idleMax is how long the self-capture waits for the app to become idle.

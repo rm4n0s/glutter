@@ -93,9 +93,11 @@ var chromiumFlags = []flag{
 	{"--hide-scrollbars", "scroll bars would change the viewport that the frame is measured against"},
 	{"--mute-audio", "tests make no sound"},
 	{"--enable-unsafe-swiftshader", "headless Chromium has no GPU here, and its WebGL 2 then comes from SwiftShader, the software Vulkan that it allows for trusted content only with this flag (without it a future version answers null to getContext(\"webgl2\"), and today it logs that the fallback is deprecated); the WebGL tests of step 21.4 and the pages that use WebGL need it"},
+	{"--enable-unsafe-webgpu", "WebGPU is off in Chromium on Linux; this turns it on, so that navigator.gpu gives an adapter (without it requestAdapter answers null, \"No available adapters\"). It is not enough by itself: with only this flag the adapter is SwiftShader's, and the canvas's webgpu context cannot be presented in headless mode (the GPU process logs \"Could not find SharedImageBackingFactory\" for the WebgpuSwapChainTexture, and the device is destroyed at the first getCurrentTexture), so the two flags below come with it"},
+	{"--enable-features=Vulkan", "makes the GPU process use Vulkan, whose shared images can back the canvas's WebGPU swap chain; headless mode has no other factory that can (tried: --use-angle=swiftshader, --use-vulkan=swiftshader, --ignore-gpu-blocklist, --ozone-platform=x11 under headless: all fail as above)"},
+	{"--use-angle=vulkan", "ANGLE on Vulkan, the other half of the pair: with both flags the adapter is the machine's Vulkan GPU (RADV on the machine where step 21.5 was done) and a canvas is presented; with either alone it is not. WebGL 2 then also runs on Vulkan through ANGLE instead of SwiftShader, which --enable-unsafe-swiftshader above still allows as the fallback where the machine has no Vulkan GPU"},
 	// --no-sandbox is not here: Chromium starts without it where these tests were developed.
 	// Where it cannot (a container without user namespaces), set GLUTTER_WEBTEST_FLAGS=--no-sandbox.
-	// TODO(step 21.5): the flags that turn WebGPU on under Linux, with the reason for each.
 }
 
 // firefoxPrefs are the preferences written to the user.js of a Firefox profile.
@@ -119,6 +121,7 @@ var firefoxPrefs = []struct {
 	{"app.normandy.enabled", "false", "no experiments"},
 	{"browser.search.update", "false", "no search-engine updates"},
 	{"browser.tabs.warnOnClose", "false", "no dialog when the browser is closed"},
+	{"dom.webgpu.enabled", "true", "WebGPU is off in Firefox on Linux by default; with it on, navigator.gpu exists where the build has the implementation, and where no adapter comes the WebGPU tests skip Firefox with the reason (step 21.5)"},
 }
 
 // LaunchOptions are the optional parameters of Launch.

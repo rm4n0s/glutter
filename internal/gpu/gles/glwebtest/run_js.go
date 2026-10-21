@@ -253,10 +253,12 @@ func loss() lossResult {
 }
 
 // engineApp runs a small app through the engine, which chooses its renderer, and observes the
-// canvas it ends up with. With the query parameter poison the browser answers null to
-// getContext("webgl2").
+// canvas it ends up with. This program is about the gles renderer, so navigator.gpu is hidden: the
+// web's list is then webgl, soft (the WebGPU choices are tested by internal/gpu/webgpu). With the
+// query parameter poison the browser answers null to getContext("webgl2").
 func engineApp(mode string) error {
 	js.Global().Get("Function").New(`
+		Object.defineProperty(navigator, 'gpu', {value: undefined, configurable: true});
 		globalThis.__raf = 0;
 		var raf = window.requestAnimationFrame.bind(window);
 		window.requestAnimationFrame = function (cb) { globalThis.__raf++; return raf(cb); };

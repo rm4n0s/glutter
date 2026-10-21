@@ -1,11 +1,13 @@
 package explicit_test
 
 import (
+	"image"
 	"image/color"
 	"reflect"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/internal/gpu"
@@ -308,4 +310,101 @@ func recoverError(r any) error {
 		return e
 	}
 	return nil
+}
+
+// TestCaptureThatFinishesAfterDraw: on a device whose reads finish in a later task (WebGPU) Draw
+// returns no image and no error, and the image arrives in OnCapture when the device finishes it.
+func TestCaptureThatFinishesAfterDraw(t *testing.T) {
+	var got []*image.RGBA
+	var gotErr []error
+	r, dev, _ := newRenderer(t, explicit.RendererOpts{Background: ui.NewColor(0xFF6750A4), HasBackground: true,
+		OnCapture: func(img *image.RGBA, err error) { got, gotErr = append(got, img), append(gotErr, err) }})
+	dev.CompleteReadsOnSubmit = false
+	img, err := r.Draw(window, 8, 6, nil, true)
+	if img != nil || err != nil {
+		t.Fatalf("Draw = %v, %v; want no image and no error: the read is not done", img, err)
+	}
+	if len(got) != 0 {
+		t.Fatal("OnCapture was called before the device finished the read")
+	}
+	dev.CompleteReads()
+	if len(got) != 1 || gotErr[0] != nil || got[0] == nil || got[0].Rect.Dx() != 8 || got[0].Rect.Dy() != 6 {
+		t.Fatalf("OnCapture got %v, %v", got, gotErr)
+	}
+	if p := got[0].RGBAAt(2, 2); p != (color.RGBA{0x67, 0x50, 0xA4, 0xFF}) {
+		t.Errorf("pixel = %v, want #6750A4", p)
+	}
+	// A device that finishes inside Submit still returns the image from Draw, and OnCapture hears nothing.
+	dev.CompleteReadsOnSubmit = true
+	img, err = r.Draw(window, 8, 6, nil, true)
+	if err != nil || img == nil || len(got) != 1 {
+		t.Errorf("Draw with a synchronous read = %v, %v (OnCapture called %d times)", img, err, len(got))
+	}
+}
+
+// TestPendingDeviceDrawsNothing: an open function that has no device yet (GPUDevicePending) makes
+// Draw draw nothing and return no error; when the device is there the next frame opens it.
+func TestPendingDeviceDrawsNothing(t *testing.T) {
+	scene := sceneOf(func(c *ui.Canvas) { c.DrawRect(ui.NewRectFromLTWH(0, 0, 10, 10), solid(0xFF000000)) })
+	var devs []*fakedevice.Device
+	pending := true
+	r := explicit.NewRenderer(func(gpu.SurfaceHandle) (explicit.Device, error) {
+		if pending {
+			return nil, errors.New(explicit.GPUDevicePending, "the device is on its way")
+		}
+		d := fakedevice.New()
+		d.CompleteReadsOnSubmit = true
+		devs = append(devs, d)
+		return d, nil
+	})
+	for range 2 {
+		if img, err := r.Draw(window, 16, 16, scene, false); img != nil || err != nil {
+			t.Fatalf("Draw while the device is pending = %v, %v; want nothing", img, err)
+		}
+	}
+	if len(devs) != 0 {
+		t.Fatal("a device was opened while pending")
+	}
+	pending = false
+	if _, err := r.Draw(window, 16, 16, scene, true); err != nil || len(devs) != 1 {
+		t.Fatalf("Draw once the device is there: %v, %d devices", err, len(devs))
+	}
+}
+
+// TestDeviceLostWithTheNewDeviceOnItsWay: a lost device is replaced by a device that is not there
+// yet (WebGPU asks the browser without waiting): the frame draws nothing and fails with nothing,
+// and the next frame, once the device is there, draws on it, with everything made again.
+func TestDeviceLostWithTheNewDeviceOnItsWay(t *testing.T) {
+	scene := sceneOf(func(c *ui.Canvas) { c.DrawRect(ui.NewRectFromLTWH(0, 0, 10, 10), solid(0xFF000000)) })
+	now := time.Unix(1000, 0)
+	var devs []*fakedevice.Device
+	onItsWay := false
+	r := explicit.NewRenderer(func(gpu.SurfaceHandle) (explicit.Device, error) {
+		if onItsWay {
+			return nil, errors.New(explicit.GPUDevicePending, "the device is on its way")
+		}
+		d := fakedevice.New()
+		d.CompleteReadsOnSubmit = true
+		devs = append(devs, d)
+		return d, nil
+	}, explicit.RendererOpts{Now: func() time.Time { return now }})
+	if _, err := r.Draw(window, 32, 32, scene, true); err != nil {
+		t.Fatal(err)
+	}
+	devs[0].Err = errors.New("GPUDeviceLost", "the WebGPU device was lost")
+	onItsWay = true
+	if img, err := r.Draw(window, 32, 32, scene, true); img != nil || err != nil {
+		t.Fatalf("the frame after the loss = %v, %v; want nothing and no error", img, err)
+	}
+	if !devs[0].Closed() {
+		t.Error("the lost device was not closed")
+	}
+	onItsWay = false
+	img, err := r.Draw(window, 32, 32, scene, true)
+	if err != nil || img == nil || len(devs) != 2 {
+		t.Fatalf("the frame on the new device = %v, %v with %d devices", img, err, len(devs))
+	}
+	if n := len(calls(devs[1], "NewSwapchain")); n != 1 {
+		t.Errorf("the new device made %d swapchains, want the window's one", n)
+	}
 }

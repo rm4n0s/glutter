@@ -32,6 +32,13 @@ type RendererOpts struct {
 	Now func() time.Time
 	// Log is where a lost device is reported, at Info level; nothing is logged when nil.
 	Log *slog.Logger
+	// OnCapture receives a capture whose read-back finishes after Draw returned, on a device
+	// whose reads are asynchronous (WebGPU, SPEC §9.5): Draw then returns a nil image and a nil
+	// error for the frame that asked, and OnCapture is called later, on the thread that
+	// calls Draw, with the image or the error of the read. A device that finishes reads inside
+	// Submit (Vulkan) returns the image from Draw as before. Without OnCapture a capture that is
+	// late fails with RendererCaptureFailed.
+	OnCapture func(img *image.RGBA, err error)
 	// SkipUnsupported makes Draw leave out what the renderer cannot draw yet, and count
 	// it in LastFrame, instead of failing with GPUNotImplemented. The development
 	// examples use it to show what works.
@@ -142,6 +149,9 @@ func (r *Renderer) Draw(h gpu.SurfaceHandle, width, height int, scene *ui.Scene,
 		return nil, errors.New("RendererSizeInvalid", "the size to render must be positive", "width", width, "height", height)
 	}
 	img, err := r.draw(h, width, height, scene, capture)
+	if IsDevicePending(err) {
+		return nil, nil // the backend is getting a device and says when it has one
+	}
 	if err == nil || r.dev == nil || !isDeviceLost(err) {
 		return img, err
 	}
@@ -154,7 +164,11 @@ func (r *Renderer) Draw(h gpu.SurfaceHandle, width, height int, scene *ui.Scene,
 	r.lost, r.lostAt = true, now
 	r.logInfo("the GPU device was lost, making it again", "error", err)
 	r.releaseDevice()
-	return r.draw(h, width, height, scene, capture)
+	img, err = r.draw(h, width, height, scene, capture)
+	if IsDevicePending(err) {
+		return nil, nil
+	}
+	return img, err
 }
 
 // lostWindow is how long a second loss of the device after a first one ends the app.
@@ -288,8 +302,18 @@ func (r *Renderer) frame(w *window, fb *frameBuilder, width, height int, scene *
 	pass.End()
 
 	var shot *image.RGBA
+	var returned, sync bool
 	if capture {
-		enc.ReadTexture(w.frame, image.Rect(0, 0, width, height), func(i *image.RGBA, _ error) { shot = i })
+		enc.ReadTexture(w.frame, image.Rect(0, 0, width, height), func(i *image.RGBA, err error) {
+			if !returned {
+				shot, sync = i, true
+				return
+			}
+			// The device finished the read after Draw returned.
+			if r.opts.OnCapture != nil {
+				r.opts.OnCapture(i, err)
+			}
+		})
 	}
 	damage := r.damage(w, scene, width, height)
 	r.last.DamagedPixels, r.last.DamageRects = width*height, 0
@@ -299,10 +323,13 @@ func (r *Renderer) frame(w *window, fb *frameBuilder, width, height int, scene *
 			r.last.DamagedPixels += rc.Dx() * rc.Dy()
 		}
 	}
-	if err := enc.Submit(); err != nil {
+	err = enc.Submit()
+	returned = true
+	if err != nil {
 		return nil, err
 	}
-	if capture && shot == nil {
+	late := capture && !sync && r.opts.OnCapture != nil
+	if capture && shot == nil && !late {
 		return nil, errors.New("RendererCaptureFailed", "the device did not deliver the frame it was asked to read back")
 	}
 	if err := w.sc.Present(damage); err != nil {

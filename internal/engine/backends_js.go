@@ -10,25 +10,66 @@ import (
 
 	"github.com/rm4n0s/glutter/internal/gpu"
 	"github.com/rm4n0s/glutter/internal/gpu/canvas2d"
+	"github.com/rm4n0s/glutter/internal/gpu/explicit"
 	"github.com/rm4n0s/glutter/internal/gpu/gles"
+	"github.com/rm4n0s/glutter/internal/gpu/webgpu"
 	"github.com/rm4n0s/glutter/internal/platform/web"
 	"github.com/rm4n0s/glutter/internal/text"
 	"github.com/rm4n0s/glutter/ui"
 )
 
-// This file is what Run uses on the web (GOOS=js): the page's canvas for the platform, WebGL 2
-// through the gles renderer and then the software renderer into a 2D canvas for the renderer (the
-// WebGPU one comes with step 21.5), and only the bundled fonts (SPEC §9.6, §23).
+// This file is what Run uses on the web (GOOS=js): the page's canvas for the platform, WebGPU
+// through the explicit renderer, WebGL 2 through the gles renderer and then the software renderer
+// into a 2D canvas for the renderer, and only the bundled fonts (SPEC §9.6, §23).
 
 // connectDisplay makes the web platform: it finds the host element of the page. The error
 // of the platform comes back unchanged (BackendUnavailable outside a page,
 // HostElementNotFound, WebConfigInvalid).
-func connectDisplay(_ *Config, _ func(string) string, log *slog.Logger) (connection, error) {
+//
+// Before the platform exists, and so before it installs its event listeners, it also gets the
+// browser's WebGPU device when the renderer can be WebGPU (auto, or asked for by name): the one
+// place where the UI goroutine waits for promises (SPEC §23.3). Why there is no device is kept for
+// the renderer, which returns it from its first frame, so that auto then falls to WebGL 2 and a
+// renderer asked for by name ends Run with it.
+func connectDisplay(cfg *Config, getenv func(string) string, log *slog.Logger) (connection, error) {
+	want := cfg.Renderer
+	if want == "" {
+		want = getenv(RendererEnv)
+	}
+	if want == "" || want == rendererAuto || want == "webgpu" {
+		prov, err := webgpu.Acquire(context.Background(), webgpu.Options{
+			Logger:        log,
+			Post:          func(fn func()) { cfg.postToUI(fn) },
+			OnDeviceReady: func(h gpu.SurfaceHandle) { cfg.redrawWindow(h) },
+		})
+		if err != nil {
+			cfg.webgpuOpen = func(gpu.SurfaceHandle) (explicit.Device, error) { return nil, err }
+		} else {
+			cfg.webgpuOpen, cfg.webgpuClose = prov.Open, prov.Close
+		}
+	}
 	p, err := web.New(web.Options{Logger: log})
 	if err != nil {
 		return nil, err
 	}
 	return p, nil
+}
+
+// postToUI runs fn on the UI thread once Run has made the platform; before that there is no other
+// thread to run it on.
+func (c *Config) postToUI(fn func()) {
+	if c.post != nil {
+		c.post(fn)
+		return
+	}
+	fn()
+}
+
+// redrawWindow asks for a frame of the window, when Run has set the hook.
+func (c *Config) redrawWindow(h gpu.SurfaceHandle) {
+	if c.redraw != nil {
+		c.redraw(h)
+	}
 }
 
 // processStart says it does not know when the process started.
@@ -39,8 +80,9 @@ func processStart() (time.Time, bool) { return time.Time{}, false }
 // place before each try after the first, because a canvas keeps the first kind of context it was
 // asked for.
 func rendererCandidates() []rendererCandidate {
-	// TODO(step 21.5): webgpu, before webgl.
-	return []rendererCandidate{{Name: "webgl", New: newWebGLRenderer}, {Name: "soft", New: newCanvasRenderer}}
+	return []rendererCandidate{
+		{Name: "webgpu", New: newWebGPURenderer}, {Name: "webgl", New: newWebGLRenderer}, {Name: "soft", New: newCanvasRenderer},
+	}
 }
 
 // newWebGLRenderer makes the gles renderer over WebGL 2. It has no damage to report: the browser

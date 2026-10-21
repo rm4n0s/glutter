@@ -233,7 +233,9 @@ type chooseResult struct {
 	FramesAfter    int    `json:"framesAfter"`
 }
 
-// TestBrowserRendererChoice: the engine's web renderer list is webgl, then soft (SPEC §9.6). The
+// TestBrowserRendererChoice: the engine's web renderer list is webgpu, webgl, then soft (SPEC §9.6);
+// this program hides navigator.gpu, so it is webgl then soft (WebGPU's choices are tested in
+// internal/gpu/webgpu), and webgpu by name is WebGPUUnavailable. The
 // canvas of the app tells which one was chosen, because a canvas has the one kind of context it was
 // first asked for: auto and webgl choose WebGL 2, soft the 2D canvas, and when the browser has no
 // WebGL 2 (the test makes getContext answer null for it) auto falls back to soft on a new canvas,
@@ -250,7 +252,7 @@ func TestBrowserRendererChoice(t *testing.T) {
 		{"auto without WebGL 2", url.Values{"poison": {"1"}}, chooseResult{Canvases: 1, Context2D: true}},
 		{"webgl by name without WebGL 2", url.Values{"GLUTTER_RENDERER": {"webgl"}, "poison": {"1"}}, chooseResult{Error: "WebGL2Unavailable"}},
 		{"gles on the web", url.Values{"GLUTTER_RENDERER": {"gles"}}, chooseResult{Error: "RendererUnavailable"}},
-		{"webgpu before step 21.5", url.Values{"GLUTTER_RENDERER": {"webgpu"}}, chooseResult{Error: "RendererUnavailable"}},
+		{"webgpu by name without WebGPU", url.Values{"GLUTTER_RENDERER": {"webgpu"}}, chooseResult{Error: "WebGPUUnavailable"}},
 	}
 	webtest.EachBrowser(t, func(t *testing.T, b webtest.Browser) {
 		for _, tc := range tests {

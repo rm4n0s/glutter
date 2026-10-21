@@ -123,3 +123,11 @@ func (s *Shader) Entry(name string) (e EntryPoint, ok bool) {
 	}
 	return EntryPoint{}, false
 }
+
+// Shaders returns every generated shader, in the order of their names: the modules a backend that
+// checks them at startup (WebGPU) compiles.
+//
+// Flutter: no counterpart
+func Shaders() []*Shader {
+	return []*Shader{ShaderBlit, ShaderFilter, ShaderImage, ShaderLayer, ShaderMask, ShaderShape, ShaderSolid, ShaderVertices}
+}
