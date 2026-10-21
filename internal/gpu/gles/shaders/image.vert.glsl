@@ -21,10 +21,13 @@ flat out vec4 vBox;
 flat out vec4 vImg;
 flat out vec4 vTint;
 
+out vec2 vDev;
+
 void main() {
 	vec2 corner = vec2(float(gl_VertexID & 1), float(gl_VertexID >> 1));
 	vec2 dev = mix(aQuad.xy, aQuad.zw, corner);
 	gl_Position = toClip(dev);
+	vDev = dev;
 	vInv0 = aInv0;
 	vInv1 = aInv1;
 	vColor = aColor;

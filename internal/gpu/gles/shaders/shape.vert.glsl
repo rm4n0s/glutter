@@ -21,6 +21,7 @@ layout(location = 11) in vec4 aParam; // half stroke width, cap, exponent, pixel
 
 //#include "common.glsl"
 
+out vec2 vDev;
 flat out vec4 vInv0;
 flat out vec4 vInv1;
 flat out vec4 vColor;
@@ -37,6 +38,7 @@ void main() {
 	vec2 corner = vec2(float(gl_VertexID & 1), float(gl_VertexID >> 1));
 	vec2 dev = mix(aQuad.xy, aQuad.zw, corner);
 	gl_Position = toClip(dev);
+	vDev = dev;
 	vInv0 = aInv0;
 	vInv1 = aInv1;
 	vColor = aColor;

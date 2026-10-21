@@ -20,8 +20,8 @@ type stateMixin interface {
 // stateInitMixin is a stateMixin that also runs before the state's InitState.
 type stateInitMixin interface{ initStateMixin() }
 
-// stateDeactivateMixin is a stateMixin that also runs before the state's
-// Deactivate.
+// stateDeactivateMixin is a stateMixin that also runs after the state's
+// Deactivate (Dart's super.deactivate() at the end of the state's).
 type stateDeactivateMixin interface{ deactivateStateMixin() }
 
 // collectStateMixins finds the stateMixin structs embedded in the state, at any

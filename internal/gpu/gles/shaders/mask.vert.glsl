@@ -14,10 +14,13 @@ flat out vec4 vAtlas;
 flat out vec4 vColor;
 flat out vec4 vClip;
 
+out vec2 vDev;
+
 void main() {
 	vec2 corner = vec2(float(gl_VertexID & 1), float(gl_VertexID >> 1));
 	vec2 dev = mix(aQuad.xy, aQuad.zw, corner);
 	gl_Position = toClip(dev);
+	vDev = dev;
 	vQuad = aQuad;
 	vAtlas = aAtlas;
 	vColor = aColor;

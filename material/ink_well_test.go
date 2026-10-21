@@ -532,3 +532,37 @@ func TestInkResponseDebugDescription(t *testing.T) {
 		}
 	}
 }
+
+// TestInkWellRemovedWithTwoHighlightsReportsNoError removes an InkWell that has a hover and a
+// pressed highlight: disposing the first one must not ask the keep-alive for a new handle,
+// which would send a notification from a deactivated element.
+func TestInkWellRemovedWithTwoHighlightsReportsNoError(t *testing.T) {
+	tests := []struct {
+		name  string
+		press bool
+	}{
+		{"hover only", false},
+		{"hover and pressed", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ts := gluttertest.New(t, gluttertest.Opts{})
+			ts.PumpWidget(inkApp(nil, NewListView([]widgets.Widget{
+				square(NewInkWell(nil, InkWellOpts{OnTap: func() {}})),
+			})))
+			center := ts.Center(gluttertest.ByType[*InkWell]())
+			ts.Hover(center)
+			ts.Pump(100 * time.Millisecond)
+			if tt.press {
+				g := ts.StartGesture(center)
+				ts.Pump(100 * time.Millisecond)
+				defer g.Up()
+			}
+			ts.PumpWidget(inkApp(nil, NewListView(nil)))
+			ts.Pump(time.Second)
+			if errs := ts.TakeErrors(); len(errs) != 0 {
+				t.Errorf("the framework reported %d errors: %v", len(errs), errs[0])
+			}
+		})
+	}
+}

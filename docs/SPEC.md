@@ -515,6 +515,7 @@ Wayland is the primary backend, and these behaviors are requirements, not nice-t
 - **Context**: EGL 1.4+, an OpenGL ES 3.0 context (`EGL_OPENGL_ES3_BIT`), one context shared by all windows. The libraries are opened with `purego.Dlopen`, and GL function pointers are resolved through `eglGetProcAddress` and bound with `purego.RegisterFunc`.
 - **Pipeline**: the `ui.Scene` layer tree is flattened into draw lists. Commands are then batched by pipeline, texture and blend mode, and issued as instanced or batched draws.
 - **Color**: premultiplied alpha, with blending in non-linear sRGB to match Flutter's output.
+- **Pixel position**: a fragment shader gets the position of its pixel from a varying that the vertex shader sets to the device position of the quad (rounded to the pixel center in `devicePixel()`), never from `gl_FragCoord`. With Mesa's llvmpipe, `gl_FragCoord.y` was upside down in a draw into a layer's framebuffer made while the window's framebuffer was the parent, so every layer drawn in the window path came out wrong (cached layers empty, blurs off); `window_display_test.go` draws into the window's framebuffer for that reason.
 
 | Primitive | Technique |
 |---|---|

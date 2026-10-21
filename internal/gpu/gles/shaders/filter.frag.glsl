@@ -80,7 +80,7 @@ vec4 fetchOrClear(ivec2 p, ivec2 size) {
 void main() {
 	ivec2 outSize = ivec2(uOutSize + 0.5);
 	ivec2 srcSize = ivec2(uSrcSize + 0.5);
-	ivec2 q = ivec2(gl_FragCoord.x, uOutSize.y - gl_FragCoord.y); // column and row from the top
+	ivec2 q = ivec2(floor(vDev)); // column and row from the top
 	ivec2 axis = uAxis == 0 ? ivec2(1, 0) : ivec2(0, 1);
 	vec4 o = vec4(0.0);
 

@@ -41,9 +41,15 @@ uniform vec4 uDstRect;       // the copy's first column of pixels, and its botto
 
 const float PI = 3.14159265358979;
 
-// The pixel being drawn, in pixels from the top left of the surface, at its center.
+// The pixel being drawn, in pixels from the top left of the surface, at its center. It is the
+// position that the vertex shader interpolates, not gl_FragCoord: with Mesa (llvmpipe),
+// gl_FragCoord.y was the wrong way up in a draw into a layer's framebuffer when the window's
+// was the one under it, and a cached layer came out empty.
+in vec2 vDev;
 vec2 devicePixel() {
-	return vec2(gl_FragCoord.x, uSurface.y - gl_FragCoord.y) + uOrigin;
+	// The interpolation is off by a rounding error, which would decide a pixel whose center
+	// is on an edge; the center is where the position is the nearest half pixel.
+	return floor(vDev) + 0.5;
 }
 
 // ---- gradients

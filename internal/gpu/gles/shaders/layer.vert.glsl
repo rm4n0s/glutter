@@ -11,9 +11,13 @@ layout(location = 2) in vec4 aClip;   // left, top, right, bottom in pixels
 flat out vec4 vColor;
 flat out vec4 vClip;
 
+out vec2 vDev;
+
 void main() {
 	vec2 corner = vec2(float(gl_VertexID & 1), float(gl_VertexID >> 1));
-	gl_Position = toClip(mix(aQuad.xy, aQuad.zw, corner));
+	vec2 dev = mix(aQuad.xy, aQuad.zw, corner);
+	gl_Position = toClip(dev);
+	vDev = dev;
 	vColor = aColor;
 	vClip = aClip;
 }

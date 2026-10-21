@@ -304,17 +304,21 @@ func (e *StatefulElement) Activate() {
 	e.MarkNeedsBuild()
 }
 
-// Deactivate calls the Deactivate hook of the state.
+// Deactivate calls the Deactivate hook of the state, and then the ones of its mixins: in
+// Dart a state's deactivate ends with super.deactivate(), which is the mixin's. The order
+// matters to AutomaticKeepAliveClient: a state that disposes its own things (the highlights
+// of an InkResponse) calls UpdateKeepAlive while it still has its handle, so no notification
+// is sent from the deactivated element.
 //
 // Flutter: widgets/framework.dart StatefulElement.deactivate
 func (e *StatefulElement) Deactivate() {
+	if h, ok := e.state.(deactivateStater); ok {
+		h.Deactivate()
+	}
 	for _, m := range e.state.stateInternals().data().mixins {
 		if h, ok := m.(stateDeactivateMixin); ok {
 			h.deactivateStateMixin()
 		}
-	}
-	if h, ok := e.state.(deactivateStater); ok {
-		h.Deactivate()
 	}
 	e.ComponentElement.Deactivate()
 }

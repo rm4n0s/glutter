@@ -10,8 +10,11 @@ layout(location = 2) in vec2 aTex;   // texture coordinates, for a shader
 out vec4 vColor;
 out vec2 vTex;
 
+out vec2 vDev;
+
 void main() {
 	gl_Position = toClip(aPos);
+	vDev = aPos;
 	vColor = aColor;
 	vTex = aTex;
 }
