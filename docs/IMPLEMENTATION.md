@@ -37,6 +37,8 @@ This file breaks the milestones in `docs/SPEC.md` §18 into small steps. Each st
 
    Never weaken or delete a test, skip a check, or mark a step done just to get unblocked.
 
+**Processes you start.** Every compositor, browser, Wine instance or app you start for a test, a proof or a check is stopped when you are done with it: run it under `timeout -k`, in its own process group, and stop it from `t.Cleanup` or `defer` in Go code. Before you finish a step, check with `pgrep -a` that nothing you started is still running. The user works on this desktop and sees every stray window.
+
 ### Finishing a step
 
 8. **The standard checks must all pass.** Run them from the repo root:
@@ -47,8 +49,12 @@ This file breaks the milestones in `docs/SPEC.md` §18 into small steps. Each st
    go test -race ./...
    CGO_ENABLED=0 go build ./...
    CGO_ENABLED=0 go test ./...
+   GOOS=js GOARCH=wasm go build ./...    # from step 19.1 on
+   GOOS=js GOARCH=wasm go vet ./...      # from step 19.1 on
+   scripts/test-wasm.sh                  # from step 19.1 on
    ```
    If the step lists **Display tests**, run them too: `go test -race -tags glutter_display <packages>`. They run under a headless compositor (step 1.5) unless the step says otherwise.
+   If the step lists **Browser tests**, run them too: `go test -tags glutter_browser <packages>` (SPEC §17).
 9. **Proof images.** Only when the step has a **Proof** item:
    - Produce exactly the images it lists, in `docs/implemented-proof-images/`, named `<id>-<name>.png` (e.g. `6.6-rendering-tour.png`).
    - Use the method it names (A, B or C, see below).
@@ -82,6 +88,7 @@ This file breaks the milestones in `docs/SPEC.md` §18 into small steps. Each st
 | **B. App self-capture** | anything drawn inside an app window | Run the example with `GLUTTER_SCREENSHOT=docs/implemented-proof-images/<file>.png`, and optionally `GLUTTER_SCREENSHOT_AFTER=500ms` for mid-animation shots. The app saves its own window content and exits (from steps 1.6 and 7.4). If `WAYLAND_DISPLAY` is set, run it in the user's session; otherwise use `scripts/headless-wayland.sh -- <command>` (step 1.5) |
 | **C. Desktop capture** | things outside the app's surface: several windows, server-side decorations | `scripts/screenshot-headless.sh <file.png> -- <command...>` runs the command in a headless sway session and captures the whole output with `grim` (step 1.5) |
 | **C (user desktop)** | things only a real desktop shows: GNOME/libdecor title bar, tray icon in a panel, notification bubble, portal dialog | Ask the user to run the command given in the step and save a screenshot at the given path. Then view and verify the image yourself |
+| **D. Browser capture** (from step 21.1) | anything drawn by an app on the web | `go run ./cmd/glutter-web shot -browser chromium\|firefox [-renderer r] -o docs/implemented-proof-images/<file>.png <package>`: builds the app for js/wasm, opens it in a headless browser with a temporary profile, and saves the frame the app reads back and posts (SPEC §23.8). `GLUTTER_DEV_*` values are given as URL query parameters with `-query` |
 
 ### Examples
 
@@ -116,6 +123,9 @@ This file breaks the milestones in `docs/SPEC.md` §18 into small steps. Each st
 | M16 accessibility | 16.1–16.2 | |
 | M17 effects and performance | 17.1–17.4 | |
 | M18 1.0 | 18.1–18.3 | |
+| M19 Portability groundwork (1.1) | 19.1–19.3 | |
+| M20 Vulkan renderer | 20.1–20.7 | |
+| M21 Web | 21.1–21.8 | the examples on the web |
 
 ---
 
@@ -1258,3 +1268,248 @@ For every step in M13:
 - the API check (18.1)
 
 Then **ask the user** before tagging `v1.0.0` and pushing the tag.
+
+---
+
+## Tools for M19–M21
+
+Install a missing tool only by asking the user (rule 7), with the command from this table.
+
+| Tool | Needed from | Check | Install (Fedora) |
+|---|---|---|---|
+| Node.js | 19.1 (`scripts/test-wasm.sh`) | `node --version` | `sudo dnf install nodejs` |
+| naga | 19.3 (WGSL → SPIR-V) | `naga --version` | `cargo install naga-cli --locked` |
+| Mesa lavapipe | 20.1 | `ls /usr/share/vulkan/icd.d/lvp_icd.*.json` | `sudo dnf install mesa-vulkan-drivers` |
+| Vulkan validation layers | 20.1 | `ls /usr/share/vulkan/explicit_layer.d/` lists `VkLayer_khronos_validation.json` | `sudo dnf install vulkan-validation-layers` |
+| Vulkan headers | 20.1 (layout tests) | `ls /usr/include/vulkan/vulkan_core.h` | `sudo dnf install vulkan-headers` |
+| Chromium | 21.1 | `chromium-browser --version` or `chromium --version` | `sudo dnf install chromium` |
+| Firefox | 21.1 | `firefox --version` | `sudo dnf install firefox` |
+
+---
+
+## M19: Portability groundwork (1.1)
+
+### 19.1 Per-OS backends and the js/wasm build
+**Goal:** `GOOS=js GOARCH=wasm go build ./...`, `go vet` and the wasm unit tests pass, and nothing changes on Linux.
+**Read:** SPEC §6.2, §6.3 (rules 1, 2, 7 and 8), §17 "Web unit tests", §23.1, D18.
+**Files:** `internal/engine/backends_linux.go`, `backends_js.go`, `backends_other.go`; `foundation/web_js.go`, `foundation/web_other.go`; `scripts/test-wasm.sh`; build tags in `internal/platform/linux/...` (including `dl` and `wayland/fakecomp`) and in the purego files of `internal/gpu/gles`; `widgets/run_app.go`.
+**Tasks:**
+1. Put `//go:build linux` on every file of `internal/platform/linux/...` and on the files of `internal/gpu/gles` that use purego or EGL. Each package whose files are all tagged keeps an untagged `doc.go` (SPEC §6.3 rule 2).
+2. Move the choice of the platform, the renderer and the font matcher out of `internal/engine/engine.go` and `widgets/run_app.go` (which imports `internal/text/fontconfig` today) into `internal/engine/backends_<goos>.go`. Linux keeps today's behavior exactly. On js and on other OSes, `Run` fails with `BackendUnavailable` for now (step 21.1 adds the web). No public package imports an OS-specific package.
+3. `foundation.IsWeb`, true only under `js && wasm` (`// Flutter: foundation/constants.dart kIsWeb`).
+4. `scripts/test-wasm.sh`: runs `GOOS=js GOARCH=wasm go test` for every package that has no OS tag, with `$(go env GOROOT)/lib/wasm` on `PATH` and a minimal environment (`env -i` with `HOME`, `PATH`, `GOCACHE`, `GOMODCACHE`, `GOFLAGS`): Go's wasm loader fails when the environment is larger than its limit. The tests of `fontscan` (system fonts) skip on js, with the reason.
+5. The three wasm checks of rule 8 are standard from this step on (CLAUDE.md "Definition of done" lists them).
+**Tests:** the js and other-OS backends return `BackendUnavailable` (route test, run by `scripts/test-wasm.sh`); `foundation.IsWeb` is false in the normal test run.
+**Done when:** the default "Done when", and the display tests of steps 1.10 and 7.4 still pass.
+
+### 19.2 Choosing the renderer
+**Goal:** the engine chooses a renderer by `RunAppOpts.Renderer` or `GLUTTER_RENDERER`, with fallback, while GLES is still the only renderer on Linux.
+**Read:** SPEC §9.6, §6.3 (the `SurfaceHandle` sketch), §14.1.
+**Files:** `internal/engine/renderers.go`, `internal/engine/backends_linux.go`, `internal/gpu/surface.go`, `internal/platform/linux/wayland/window.go`, `internal/platform/linux/x11/window.go`, `widgets/run_app.go`, the `material` re-exports (regenerate with `go generate ./...`).
+**Tasks:**
+1. `RunAppOpts.Renderer string` and the environment variable `GLUTTER_RENDERER`, with the values of SPEC §9.6; `RendererUnknown` and `RendererUnavailable`. Until step 20.2, `vulkan` is `RendererUnavailable`.
+2. The engine keeps an ordered list of renderer candidates per OS and chooses at the first window, as SPEC §9.6 says: a candidate is kept once it has presented its first frame; otherwise its error is logged once at Info level and the next one is tried. A renderer asked for by name never falls back. The Linux list is `gles` for now; step 20.7 puts `vulkan` before it.
+3. `gpu.SurfaceHandle` gains `Surface uintptr`: the `wl_surface` on Wayland, the window again on X11. `Window` stays the `wl_egl_window`, which `gles` uses.
+4. The startup debug log and the `GLUTTER_FRAME_STATS` lines name the renderer and its device.
+**Tests:** a table test of the choice with fake candidates: asked for by name, `auto` with the first candidate failing (falls back, logs once), every candidate failing (the last error is returned), an unknown value, a known but unavailable value; route tests for `RendererUnknown` and `RendererUnavailable`.
+**Display tests:** `examples/dev/window` runs with `GLUTTER_RENDERER=gles` and with `auto`.
+
+### 19.3 WGSL shaders and the explicit device interface
+**Goal:** the shader toolchain of D20 and the `explicit.Device` interface exist, with a fake device for tests.
+**Read:** SPEC §9.3, D19, D20, §20 (the naga row).
+**Files:** `cmd/glutter-gen/internal/shaders/`, `internal/gpu/explicit/device.go`, `internal/gpu/explicit/shaders/*.wgsl`, `internal/gpu/explicit/shaders_gen.go` and `*.spv`, `internal/gpu/explicit/fakedevice/`.
+**Tasks:**
+1. `glutter-gen shaders` runs `naga` on each `shaders/*.wgsl`: it validates the shader, writes `<name>.spv`, and writes `shaders_gen.go` with the WGSL text, the SPIR-V (through `embed`) and the bindings of each entry point (group, binding, kind), read from the WGSL declarations. The generated header records naga's version. `go generate ./internal/gpu/explicit` runs it.
+2. A test that the generated files are up to date: it generates into a temporary directory and compares. Without `naga` on `PATH` it skips with a message; builds always use the checked-in files.
+3. `explicit.Device`, `Encoder`, `Pass` and `Swapchain` as sketched in SPEC §9.3, with the design limits as `Limits`. In debug builds a call that breaks a limit panics with `GPULimitExceeded` (SPEC §14.2).
+4. `fakedevice`: records every call (resources, passes, draws, copies) for unit tests, and checks the design limits.
+5. The first shaders, ported from the GLES `blit` and `solid` shaders: `blit.wgsl` (frame texture → swapchain image) and `solid.wgsl` (instanced solid rectangles).
+**Tests:** table tests of the generator's binding parser; the fake device rejects each broken limit (route tests for `GPULimitExceeded`).
+
+---
+
+## M20: Vulkan renderer
+
+### 20.1 Vulkan loader, instance and device
+**Goal:** Vulkan is loaded through purego and draws into an offscreen texture.
+**Read:** SPEC §9.4, §8.1 (all rules), D17.
+**Files:** `internal/gpu/vulkan/` (`lib.go`, `vk.go` with the function table, `structs.go`, `structs_layout_test.go`, `arena.go`, `instance.go`, `device.go`, `memory.go`).
+**Tasks:**
+1. Load `libvulkan.so.1` (`GLUTTER_VULKAN_LIBRARY` overrides it) and `vkGetInstanceProcAddr`; the function table with the functions SPEC §9.4 needs; `SymbolMissing` for a missing one. A test checks that no function in the table takes a struct by value.
+2. Go mirrors of the Vulkan structs used, each with a layout test against `/usr/include/vulkan/vulkan_core.h`; the C-memory arena for create infos and the arrays they point to.
+3. The instance (with `GLUTTER_VULKAN_VALIDATION=1`: the validation layer and the debug-utils messenger, the one callback, logging through the engine's logger), the choice of physical device of SPEC §9.4 (including `GLUTTER_VULKAN_DEVICE` and the CPU rule), the logical device and its queue, the memory allocator, the staging ring, fences, and command buffers for at most 2 frames in flight.
+4. `explicit.Device` for Vulkan, offscreen only: buffers, textures, samplers, pipelines from the SPIR-V of step 19.3, bind groups (descriptor sets from a pool per frame), passes with dynamic rendering, copies, and `ReadTexture` (it waits for the fence).
+5. Errors `VulkanLoadFailed`, `VulkanUnsupported`, `VulkanNoDevice` and `GPUOutOfMemory`, each with a route test.
+**Tests:** the layout tests; the arena; the device choice as a table test over fake lists of physical devices.
+**Display tests:** with lavapipe (`VK_DRIVER_FILES` pointing at `lvp_icd.*.json`) and validation on; they need Vulkan but no display: clear an offscreen texture, draw `solid` rectangles, read back and compare the pixels; no validation message.
+
+### 20.2 Vulkan windows: surfaces and swapchains
+**Goal:** a Glutter window presents through Vulkan, on Wayland and on X11.
+**Read:** SPEC §9.4 (swapchain, damage), §9.3 "Frames", §8.11 "Frame pacing" and "Resizing and scaling", §9.6.
+**Files:** `internal/gpu/vulkan/surface.go`, `swapchain.go`; `internal/gpu/explicit/renderer.go` (skeleton); `internal/engine/backends_linux.go`.
+**Tasks:**
+1. A `VkSurfaceKHR` from the `SurfaceHandle` (Wayland: `Display` and `Surface`; X11: the Xlib display and the window) and the swapchain of SPEC §9.4: format, the order of present modes, image count, recreation on `VK_ERROR_OUT_OF_DATE_KHR`, `VK_SUBOPTIMAL_KHR` and a new size. Errors `VulkanSurfaceFailed` and `VulkanSwapchainFailed`.
+2. The skeleton of `explicit.Renderer`, implementing the engine's renderer: the frame texture, the clear to the background, the blit, and presenting with damage rectangles through `VK_KHR_incremental_present` when the device has it.
+3. `GLUTTER_RENDERER=vulkan` works, with no fallback yet. `GLUTTER_SCREENSHOT` reads the frame texture back.
+4. On Wayland, the order of SPEC §8.11: `ack_configure`, then the swapchain at the new size, then the present. A suspended window presents nothing. Several windows share the device.
+**Display tests:** under headless sway with lavapipe and validation on: a window opens and presents its background; the resize test of step 3.7, run with the Vulkan renderer, never sees a buffer of the old size after `ack_configure`; on X11 (the server step 1.9's tests use), a window presents.
+
+### 20.3 Shapes and rect clips on Vulkan
+**Goal:** the explicit renderer draws every analytic shape.
+**Read:** SPEC §9.1 table rows "Rect, RRect…", "Clips" (the scissor part) and "State changes"; §9.3.
+**Port from:** `internal/gpu/gles/shapes.go` and `internal/gpu/gles/shaders/` (`shape.*.glsl`, `sdf.glsl`, `common.glsl`, `paint.glsl`). `gles` is the reference for these algorithms.
+**Files:** `internal/gpu/explicit/renderer.go`, `shapes.go`, `batch.go`; `shaders/shape.wgsl`; the code moved from `gles` into `internal/gpu`.
+**Tasks:**
+1. Move the code that does not depend on GL (instance encoding, paint parameters and uniform layouts, batching keys) from `gles` into `internal/gpu`, so that both renderers use it. The `gles` tests pass unchanged.
+2. From `gpu.Flatten`'s draw list to instanced draws batched by pipeline, texture and blend mode; the uniform ring with dynamic offsets aligned to 256 bytes; rect clips through the scissor.
+3. Every analytic shape in WGSL (rect, rrect, rsuperellipse, oval, circle, DRRect, lines, points), drawing what the GLES shaders draw.
+4. `examples/dev/canvas-tour` honors `GLUTTER_RENDERER`.
+**Display tests:** the shape cells of `shapes-clips`, drawn through Vulkan, match the `soft` goldens within the tolerance `gles` uses; no validation message.
+**Proof:** B, `20.3-vulkan-canvas-tour-shapes.png`: the shapes page of `examples/dev/canvas-tour` with `GLUTTER_RENDERER=vulkan`.
+
+### 20.4 Paths, clip masks, images and text on Vulkan
+**Goal:** general paths, antialiased clips, images and text through the explicit renderer.
+**Read:** SPEC §9.1 table rows "General paths", "Text", "Images" and "Clips"; §9.3 (design limits, mipmaps).
+**Port from:** `internal/gpu/gles/paths.go`, `clipmask.go`, `images.go`, and the text drawing of step 4.4.
+**Tasks:**
+1. The coverage atlas (`internal/gpu/atlas.go`, shared) in r8unorm textures, uploaded with rows aligned to 256 bytes.
+2. Clip masks, as `gles` makes them.
+3. Image textures with mipmaps made by the downsampling pass; bicubic sampling; nine-patch, atlas and vertices draws.
+4. Glyphs through the path atlas, as `gles` draws them.
+**Display tests:** the `shapes-basic`, `shapes-clips`, image and text scenes match the `soft` goldens.
+**Proof:** B, `20.4-vulkan-canvas-tour-paths.png` (the paths page of `examples/dev/canvas-tour`) and `20.4-vulkan-text-tour.png` (`examples/dev/text-tour`), both with `GLUTTER_RENDERER=vulkan`.
+
+### 20.5 Gradients, blend modes and layers on Vulkan
+**Goal:** paint effects through the explicit renderer.
+**Read:** SPEC §9.1 table rows "Gradients", "Blend modes" and "Layers"; §9.3 "Frames".
+**Port from:** `internal/gpu/gles/layers.go`, `filters.go`, `shaders/blend.glsl`, `layer.*.glsl`, `filter.*.glsl`.
+**Tasks:**
+1. Gradient shaders (linear, radial, two-point conical, sweep, every tile mode) and image shaders.
+2. The Porter-Duff modes through the pipeline's blend state; every other mode in a shader that reads a copy of the frame texture's region.
+3. `SaveLayer`, opacity, color filters and layer pushes, in pooled textures.
+**Display tests:** the `gradients` and `blend-modes` scenes match the `soft` goldens.
+**Proof:** B, `20.5-vulkan-canvas-tour-blend.png` (the blend-mode page, `GLUTTER_RENDERER=vulkan`).
+
+### 20.6 Effects, raster cache, snapshots and full parity on Vulkan
+**Goal:** Vulkan draws everything `gles` draws.
+**Read:** SPEC §9.1 table rows "BoxShadow / drawShadow", "Blur", "Layers", "Raster cache" and "Damage"; §9.3; §12.10 (the raster-cache and damage rows).
+**Port from:** `internal/gpu/gles/effects.go`, `rastercache.go`, `renderer.go` (`Snapshot`).
+**Tasks:**
+1. The analytic shadow, the separable blur with downsampling, backdrop filters, shader masks and image filters.
+2. The raster cache, with the rule of step 17.2.
+3. `Snapshot` and `RasterizeScene` (`ui.Rasterizer`) through Vulkan.
+4. Damage tracking (`gpu.DamageTracker`) into `VK_KHR_incremental_present`.
+5. The parity test of step 3.6 over every golden scene, for Vulkan.
+**Display tests:** the full parity test; the raster-cache and damage tests of `gles`, run for Vulkan.
+**Proof:** B, `20.6-vulkan-gallery.png`: `examples/gallery` with `GLUTTER_RENDERER=vulkan`.
+
+### 20.7 Vulkan by default, with GLES as the fallback
+**Goal:** D17 holds: an app uses Vulkan where it works and GLES elsewhere, without being told.
+**Read:** SPEC §9.6, §9.4 (device choice, device lost), §15, §17 (the Wayland matrix).
+**Tasks:**
+1. The Linux candidates for `auto` become `vulkan`, then `gles`. A Vulkan whose only device is a CPU gives GLES. Each fallback is logged once at Info level with its tagged error.
+2. Device loss as SPEC §9.4 says (`VulkanDeviceLost`), tested with a fake device that reports a loss.
+3. Run the benchmarks of step 17.4 and `scripts/perf.sh` with both renderers and record them in `docs/PERFORMANCE.md`. Vulkan meets SPEC §15 and is not more than 10% slower than GLES on any metric; otherwise list the exceptions for the user.
+4. `README.md`: the runtime requirements and `GLUTTER_RENDERER`.
+**Tests:** the choice with fake candidates: no Vulkan gives GLES; a CPU device gives GLES; `vulkan` asked for by name without Vulkan returns `VulkanLoadFailed` from `RunApp`; route tests.
+**Display tests:** under headless sway: with `VK_DRIVER_FILES` pointing at a file that does not exist, an app falls back to GLES and runs; with lavapipe and `auto` it uses GLES (the CPU rule); with lavapipe and `GLUTTER_RENDERER=vulkan` it uses Vulkan.
+**Manual checks:** ask the user to run `go run ./examples/gallery` on their desktop with no environment variables set, and to confirm that the log names `vulkan` and their GPU, and that resizing, moving between monitors and scrolling work; then once with `GLUTTER_RENDERER=gles`, to compare. Record the answers in `IMPLEMENTED.md`.
+**Done when:** the default "Done when", the performance targets are met or the user approved the exceptions, and the manual checks are recorded.
+
+---
+
+## M21: Web
+
+### 21.1 Web platform skeleton and glutter-web
+**Goal:** `examples/counter` opens in a browser, drawn by `soft` into a 2D canvas.
+**Read:** SPEC §23.1, §23.2, §23.3, §23.6 (settings), §23.8, §9.6 (the web candidates), §13, §17 "Browser tests".
+**Port from:** `engine/src/flutter/lib/web_ui/lib/src/engine/view_embedder/`, `engine/src/flutter/lib/web_ui/lib/src/engine/browser_detection.dart`, `packages/flutter/lib/src/foundation/_platform_web.dart`.
+**Files:** `scripts/fetch-reference.sh`, `internal/platform/web/`, `internal/gpu/canvas2d/`, `internal/engine/backends_js.go`, `cmd/glutter-web/`, `internal/webtest/`.
+**Tasks:**
+1. Add `engine/src/flutter/lib/web_ui` to the sparse paths of `scripts/fetch-reference.sh`, at the pinned commit, and run it.
+2. The web `Platform`: `Run` and `Post` as SPEC §23.3 says; one window (a canvas in the host element, or the full page); size and device pixel ratio; frames through `requestAnimationFrame`; lifecycle (focus, `visibilitychange`); settings (SPEC §23.6); `Displays`; `TargetPlatform` from the browser; `HostElementNotFound`, `WindowUnsupported`.
+3. `canvas2d`: draws with `soft` and puts the image into the canvas with `putImageData`, one `js.CopyBytesToJS` per frame (the web's last fallback, SPEC §9.6).
+4. `backends_js.go`: the web platform, the renderer list (`soft` only for now) and the bundled fonts only.
+5. `cmd/glutter-web` with `build`, `serve` and `shot` (SPEC §23.1, §23.8); the engine's capture on idle (step 7.4) posts the PNG on the web.
+6. `internal/webtest`: the harness of SPEC §17 (an `httptest` server, the launcher for Chromium and Firefox with temporary profiles, killed by process group, and the endpoint the page posts its results to).
+**Tests:** the parts of the platform that are plain Go (size math, device pixel ratio, config parsing, query parameters → environment), under `scripts/test-wasm.sh`; `glutter-web` (the `index.html` it makes, gzip serving).
+**Browser tests:** in Firefox and Chromium, the first frame of `examples/counter` matches its `soft` golden; resizing the browser window gives a frame of the new size.
+**Proof:** D, `21.1-web-counter-soft.png`: `examples/counter` in headless Firefox, drawn by `soft`.
+
+### 21.2 Web input
+**Goal:** mouse, touch, wheel and keyboard input on the web, as Flutter web delivers it.
+**Read:** SPEC §23.4, §23.3.
+**Port from:** `lib/web_ui/lib/src/engine/pointer_binding.dart`, `pointer_converter.dart`, `keyboard_binding.dart`, `key_map.g.dart`, `mouse/cursor.dart` (or the files that hold this code at the pinned commit); `packages/flutter/lib/src/services/browser_context_menu.dart`; the web names in `dev/tools/gen_keycodes/data`.
+**Tests:** `lib/web_ui/test/engine/pointer_binding_test.dart` and `keyboard_binding_test.dart` (the relevant cases), as table tests of the conversion functions. These take plain Go values, not JavaScript objects, so they run under `scripts/test-wasm.sh`.
+**Files:** `internal/platform/web/pointer.go`, `keyboard.go`, `keymap_gen.go`, `cursor.go`; `cmd/glutter-gen/internal/keys` (the web tables); `services` (`BrowserContextMenu`).
+**Tasks:**
+1. Pointer, wheel and touch input as SPEC §23.4 says.
+2. The keyboard, with the generated tables and the synthesized modifier events; `preventDefault` from the framework's answer (SPEC §23.3).
+3. Cursors, focus handling, and `BrowserContextMenu`.
+**Browser tests:** the test program dispatches synthetic DOM events: three taps on the counter's button show 3; a key that a `Shortcuts` widget handles has `defaultPrevented`; wheel events scroll a `ListView`.
+**Proof:** D, `21.2-web-scrolling.png`: `examples/scrolling` after a scripted wheel scroll.
+
+### 21.3 Web text input, IME and clipboard
+**Goal:** text editing on the web, with IMEs, virtual keyboards and the clipboard.
+**Read:** SPEC §23.5, §23.3.
+**Port from:** `lib/web_ui/lib/src/engine/text_editing/` (`text_editing.dart`, `composition_aware_mixin.dart`, `input_type.dart`, `input_action.dart`), `lib/web_ui/lib/src/engine/clipboard.dart`.
+**Tests:** `lib/web_ui/test/engine/text_editing_test.dart` and `composition_test.dart` (the relevant cases).
+**Tasks:**
+1. The hidden text field, kept in sync with the editing state; composition; its placement at the caret; `inputmode` and `enterkeyhint`.
+2. The clipboard as SPEC §23.5 says.
+**Browser tests:** synthetic `beforeinput`/`input` events type into a `TextField`; a `compositionstart`/`compositionupdate`/`compositionend` sequence commits its text; paste through the `paste` event; keys sent while a clipboard read is pending do not deadlock (SPEC §23.3).
+**Proof:** D, `21.3-web-editor.png`: `examples/editor` with text typed by the test script.
+**Manual checks:** ask the user to run `go run ./cmd/glutter-web serve ./examples/editor` and to try an IME (for example IBus or Fcitx5 with a Chinese or Japanese input method) in Chrome and in Firefox. Record the answers.
+
+### 21.4 WebGL 2 through gles
+**Goal:** `gles` draws on the web through WebGL 2, with the same shaders.
+**Read:** SPEC §9.1, §9.6, §6.3 rule 8, §22 (the risk about calls into JavaScript).
+**Files:** `internal/gpu/gles/gl_purego.go` (Linux), `gl_js.go` and `context_js.go` (js).
+**Tasks:**
+1. Split the GL function table into a purego binding (Linux) and a WebGL 2 binding through `syscall/js`: a `js.Value` per GL object, and reused typed arrays for uploads.
+2. The context from the canvas: `getContext("webgl2", {alpha, premultipliedAlpha, antialias: false, preserveDrawingBuffer: false, ...})`, matching SPEC §9.1. Handle what WebGL 2 lacks (BGRA, some `readPixels` formats, swap with damage). `webglcontextlost` and `webglcontextrestored` drop and recreate every resource, and the next frame is drawn whole. `WebGL2Unavailable` when there is no context.
+3. The web renderer list becomes `webgl`, then `soft`.
+**Tests:** both bindings have the same set of functions.
+**Browser tests:** the parity test over every golden scene, in Chromium and in Firefox with WebGL 2, within the `gles` tolerance.
+**Proof:** D, `21.4-web-gallery-webgl.png`: `examples/gallery` in Firefox with `GLUTTER_RENDERER=webgl`.
+
+### 21.5 WebGPU
+**Goal:** the explicit renderer draws on the web through WebGPU.
+**Read:** SPEC §9.3, §9.5, §23.3.
+**Files:** `internal/gpu/webgpu/`.
+**Tasks:**
+1. `explicit.Device` over `navigator.gpu`, as SPEC §9.5 says: adapter and device awaited at startup, before the listeners; the canvas context as the swapchain; `writeBuffer` and `writeTexture`; `ReadTexture` that finishes later; `Snapshot` through `soft`.
+2. Errors `WebGPUUnavailable`, `WebGPUDeviceFailed` and `ShaderModuleInvalid`, with route tests.
+3. The web renderer list becomes `webgpu`, `webgl`, `soft`.
+**Browser tests:** the parity test over every golden scene, in Chromium with WebGPU (the flags it needs are kept in `internal/webtest`), and in Firefox when its WebGPU is on.
+**Proof:** D, `21.5-web-gallery-webgpu.png`: `examples/gallery` in Chromium with WebGPU.
+
+### 21.6 Web fallback, GPU loss and services
+**Goal:** the web chooses its renderer as SPEC §9.6 says, survives a lost GPU, and has the services of SPEC §23.7.
+**Read:** SPEC §9.6, §9.5 (device lost), §23.7.
+**Tasks:**
+1. `auto` tries `webgpu`, `webgl`, then `soft` at the first frame, with a new canvas element before each try.
+2. A lost WebGPU device or WebGL context is recovered as SPEC §9.5 and step 21.4 say; WebGPU's last resort switches the page to WebGL 2.
+3. `desktop.OpenURI` and `desktop.ShowNotification` on the web (SPEC §23.7). The other services return their `Unavailable` tags.
+**Tests:** the choice with fake candidates on js (under `scripts/test-wasm.sh`); route tests.
+**Browser tests:** Chromium with WebGPU turned off uses WebGL 2; with WebGL turned off too, `soft`; `GLUTTER_RENDERER=webgpu` without WebGPU fails with `WebGPUUnavailable`, which the loader shows; a refused notification permission gives `NotificationsUnavailable`.
+
+### 21.7 Web examples, size and performance
+**Goal:** the examples run on the web, within the web targets of SPEC §15.
+**Read:** SPEC §15 (the web table), §19, §23.1, §22.
+**Tasks:**
+1. `examples/examples_test.go` builds every example except `multiwindow` and `tray` for js/wasm.
+2. `scripts/perf-web.sh` measures the sizes, the time to first frame, idle CPU and frame times in Chromium (WebGPU) and Firefox (WebGL 2), with release builds.
+3. Profile and fix until the targets are met. If calls into JavaScript dominate, use the remedy SPEC §22 names.
+4. `docs/PERFORMANCE.md`: the web table. `README.md`: a "Web" section (building, serving, browsers, what the web lacks). `docs/GUIDE.md`: a note for Flutter web developers (renderers, fonts, `IsWeb`).
+**Manual checks:** ask the user to open `go run ./cmd/glutter-web serve ./examples/gallery` in their Chrome and Firefox and try scrolling, the theme switch and a text field. Record the answers.
+**Done when:** the default "Done when", the web targets are met or the user approved the exceptions, and the manual checks are recorded.
+
+### 21.8 Release checklist for 1.1
+**Tasks:** confirm and record in `IMPLEMENTED.md`:
+- the standard checks, the display tests and the browser tests
+- the manual checks of 20.7, 21.3 and 21.7
+- the performance targets (20.7, 21.7)
+- the API check (`go run ./cmd/glutter-gen apicheck -allow cmd/glutter-gen/apicheck.allow`)
+
+Then **ask the user** before tagging `v1.1.0` and pushing the tag.

@@ -8,7 +8,7 @@
 | Module | `github.com/rm4n0s/glutter` |
 | License | BSD-3-Clause |
 
-Glutter is a GUI toolkit for Go that reproduces Flutter's framework API on its own Go engine. An app is a normal Go program built with `CGO_ENABLED=0 go build`: no Dart, no Skia, no C compiler, no development packages. Version 1.0 is a complete desktop toolkit for Linux (Wayland and X11), including a system tray. Everything specific to an OS or GPU sits behind two internal interfaces, so Windows, macOS, web and mobile can be added later without changing the framework.
+Glutter is a GUI toolkit for Go that reproduces Flutter's framework API on its own Go engine. An app is a normal Go program built with `CGO_ENABLED=0 go build`: no Dart, no Skia, no C compiler, no development packages. Version 1.0 is a complete desktop toolkit for Linux (Wayland and X11), including a system tray. Version 1.1 adds a Vulkan renderer on Linux, used when the machine has Vulkan, with OpenGL ES as the fallback, and the web: WebAssembly drawn with WebGPU, or with WebGL 2 where the browser has no WebGPU (§23). Everything specific to an OS or GPU sits behind two internal interfaces, so Windows, macOS and mobile can be added later without changing the framework.
 
 ---
 
@@ -28,7 +28,8 @@ Glutter is a GUI toolkit for Go that reproduces Flutter's framework API on its o
 
 - Hot reload, or a hot restart that keeps state. Go can't do this; we offer only a fast rebuild-and-run.
 - Cupertino widgets. Planned after 1.0.
-- Windows, macOS, web, Android and iOS backends. The design supports them (§6.4), but they aren't implemented.
+- Windows, macOS, Android and iOS backends. The design supports them (§6.4), but they aren't implemented. The web comes in 1.1 (§23).
+- TinyGo. Apps are built with the standard Go toolchain only, for the web too (D18).
 - Dart interop, Flutter plugins, and platform channels as a message codec. Go APIs are exposed directly instead.
 - Custom fragment shaders (`FragmentProgram`), 3D, video playback, WebView, SVG, printing.
 - DevTools and the widget inspector UI. Debug paint flags and tree dumps are in scope (§14.3).
@@ -51,6 +52,14 @@ Glutter is a GUI toolkit for Go that reproduces Flutter's framework API on its o
 | Desktop services | System tray with a menu, notifications, file open/save dialogs, opening URIs, dark/light mode and accent color from system settings |
 | Accessibility | The semantics tree exposed to screen readers through AT-SPI2 (Orca) |
 
+**Scope of 1.1** (milestones M19–M21, after 1.0):
+
+| Area | In scope |
+|---|---|
+| Vulkan | A Vulkan renderer on Linux (§9.3, §9.4), used by default where Vulkan works, with GLES as the fallback (§9.6) |
+| Web | `GOOS=js GOARCH=wasm` with the standard Go toolchain: a web platform backend (§23), the WebGPU renderer (§9.5), WebGL 2 through `gles` (§9.1), a 2D-canvas fallback, and `cmd/glutter-web` to build, serve and screenshot an app |
+| Not on the web in 1.1 | accessibility (an ARIA tree), several views on one page, system fonts and downloaded fallback fonts, drag and drop, file dialogs, the tray |
+
 ## 4. Decisions log
 
 | # | Decision | Notes |
@@ -71,6 +80,10 @@ Glutter is a GUI toolkit for Go that reproduces Flutter's framework API on its o
 | D14 | D-Bus through `github.com/godbus/dbus/v5` (pure Go, BSD-2; Gio and Fyne use it too) | Calls are converted to Go types automatically, and Go objects can be served directly, which the tray, its menu and AT-SPI2 need. `internal/dbus` needs no cgo |
 | D15 | Bugs panic, and **the library recovers** per element/render object/callback, reports through `ErrorReporter` and shows `ErrorWidgetBuilder`'s widget | §14.2. Rejected: returning errors from `Build`, and crashing like Gio and Ebiten |
 | D16 | **Wayland must work flawlessly** (§8.11). Two more C libraries, loaded through purego and optional: **libdecor** (native title bars on GNOME) and **libfontconfig** (font matching like Flutter's Linux engine) | Without them, Glutter falls back to its own title bar and to `fontscan` |
+| D17 | **Vulkan on Linux, by default where it works; GLES is the fallback** | `libvulkan.so.1` is loaded through purego like EGL (D2, D3). The renderer is chosen once per process, at the first window (§9.6). GLES stays complete and tested: it is the fallback on Linux and the WebGL 2 renderer on the web |
+| D18 | **The web through the standard Go toolchain** (`GOOS=js GOARCH=wasm`): **WebGPU when the browser has it, WebGL 2 otherwise** | TinyGo is not supported. Tried on 2026-10-21 with TinyGo 0.43 and Go 1.27: it cannot compile `hash/maphash`, its `int` is 32 bits on wasm, its compiler crashed on `examples/counter`, and `internal/goid` reads `runtime.Stack`, which TinyGo does not fill. §23 |
+| D19 | **One renderer for the explicit GPU APIs** (`internal/gpu/explicit`), written against a small device interface that `vulkan` and `webgpu` implement | WebGPU's default limits are the design limits (§9.3), so what the renderer does on Vulkan it can do on WebGPU. Rejected: two separate renderers (twice the code), and wgpu-native or Dawn through purego (not a system library, so every app would have to ship it) |
+| D20 | **The shaders of the explicit renderer are WGSL.** `cmd/glutter-gen shaders` compiles them to SPIR-V with `naga`, and the output is checked in | Building an app still needs only Go (G3); `naga` is needed only to change a shader. WebGPU takes WGSL as it is, and naga's WGSL → SPIR-V path is the one wgpu uses for every Vulkan app. The GLES shaders stay GLSL ES 3.00 (§9.1); the parity tests keep the two sets drawing the same |
 
 ## 5. Size estimate
 
@@ -105,14 +118,16 @@ These are production lines of Go, excluding tests (expect about as many test lin
                       PlatformDispatcher, View, pointer/key data, semantics updates
  ─────────────────────────── internal ─────────────────────────────────
  internal/engine      implements the ui contracts using the three below
- internal/platform    Platform interface ── linux/wayland, linux/x11, fake
- internal/gpu         Renderer interface ── gles, soft
+ internal/platform    Platform interface ── linux/wayland, linux/x11, web, fake
+ internal/gpu         Renderer interface ── vulkan, gles, soft (Linux); webgpu, gles on WebGL 2, canvas2d (web)
+                      explicit: the renderer that vulkan and webgpu share
  internal/text        paragraph layout on go-text
  internal/dbus        D-Bus connection and services (tray, notify, portals, AT-SPI2)
  ───────────────────────────────────────────────────────────────────────
  system, all loaded with dlopen through purego (no cgo):
    libwayland-client/-egl/-cursor, libxkbcommon(-x11), libX11 (+X11-xcb, Xi, Xrandr, Xcursor),
-   libEGL, libGLESv2, libdecor, libfontconfig;  session D-Bus through godbus (pure Go)
+   libEGL, libGLESv2, libvulkan, libdecor, libfontconfig;  session D-Bus through godbus (pure Go)
+ browser, through syscall/js: the DOM, WebGPU, WebGL 2, the 2D canvas
 ```
 
 `ui` plays the role of Flutter's `dart:ui`, and `internal/engine` plays the role of Flutter's C++ engine. The framework packages talk only to `ui`.
@@ -141,13 +156,19 @@ glutter/
       linux/             event loop, settings, selection of Wayland or X11
         wayland/         purego; Go protocol bindings generated from protocols/*.xml
         x11/             purego
+      web/               syscall/js: canvas, DOM events, the IME text field, clipboard (§23)
       fake/              scripted platform for tests
     gpu/                 Renderer interface, Scene flattening, glyph and path atlases
-      gles/              purego (EGL + GLES 3.0)
+      explicit/          renderer for the explicit GPU APIs: Device interface, WGSL shaders, generated SPIR-V (§9.3)
+      vulkan/            purego (libvulkan): explicit.Device (§9.4)
+      webgpu/            syscall/js: explicit.Device (§9.5)
+      gles/              purego (EGL + GLES 3.0); syscall/js (WebGL 2)
+      canvas2d/          syscall/js: soft's image put into a 2D canvas, the web's last fallback (§9.6)
       soft/              pure-Go rasterizer (goldens, headless)
     text/                paragraph layout, font collection, glyph outlines
     dbus/                pure Go (godbus): tray, notifications, portals, settings, AT-SPI2
   cmd/glutter-gen/       generators: Wayland protocols, key tables, re-exports, CopyWith, icons; and apicheck, the API conventions check
+  cmd/glutter-web/       builds, serves and screenshots an app for the web (§23.1)
   examples/              counter, gallery, tray, multiwindow, editor
   third_party/flutter/   Flutter's LICENSE (we port from BSD-3 code)
   scripts/               fetch-reference.sh (pinned Flutter sources into reference/)
@@ -199,11 +220,13 @@ type Renderer interface {
 Rules:
 1. Public packages never import `internal/platform/<os>`, `internal/gpu/gles` or `internal/dbus`. Only `internal/engine` chooses backends.
 2. No `runtime.GOOS` and no OS build tags outside the backend packages. Framework behavior that differs by platform (scroll physics, shortcuts such as Ctrl vs Cmd, menu conventions, typography) is driven by `foundation.TargetPlatform`. That value comes from the platform, and tests can override it, as with Flutter's `debugDefaultTargetPlatformOverride`.
+   Two exceptions, both files that only choose and hold no logic: `internal/engine` picks its backends in `backends_<goos>.go`, and `foundation.IsWeb` (Flutter's `kIsWeb`) is a constant set in `foundation/web_js.go` and `foundation/web_other.go`. Every package whose files all carry an OS tag keeps an untagged `doc.go`, so `./...` matches it on every OS.
 3. Desktop services (`Services`: tray, notifications, file chooser, open URI, accessibility bridge) are optional capabilities. A missing one returns a tagged error such as `TrayUnavailable`. It never panics.
-4. Shaders are GLSL ES 3.00 only. Any GLES call outside `internal/gpu/gles` is a bug.
-5. Backend selection on Linux: `GLUTTER_BACKEND=wayland|x11` if set. Otherwise Wayland when `WAYLAND_DISPLAY` connects, then X11 through `DISPLAY`, then the error `NoDisplay`.
+4. Shaders are GLSL ES 3.00 in `gles` and WGSL in `explicit` (D20). A GLES call outside `internal/gpu/gles`, a Vulkan call outside `internal/gpu/vulkan` or a WebGPU call outside `internal/gpu/webgpu` is a bug.
+5. Backend selection on Linux: `GLUTTER_BACKEND=wayland|x11` if set. Otherwise Wayland when `WAYLAND_DISPLAY` connects, then X11 through `DISPLAY`, then the error `NoDisplay`. The renderer is chosen as §9.6 says.
 6. Nothing is linked at build time, so one binary contains both backends. A missing library only disables the backend that needs it.
-7. There is no `import "C"` anywhere. `CGO_ENABLED=0 go build ./...` must always succeed.
+7. There is no `import "C"` anywhere. `CGO_ENABLED=0 go build ./...` must always succeed, and from step 19.1 on so must `GOOS=js GOARCH=wasm go build ./...`.
+8. `syscall/js` is imported only in `internal/platform/web`, `internal/gpu/webgpu`, `internal/gpu/canvas2d` and the WebGL 2 files of `internal/gpu/gles`.
 
 ### 6.4 What a future port has to implement
 
@@ -211,7 +234,7 @@ Rules:
 |---|---|---|---|
 | Windows | Win32 through `syscall` (no cgo): windows, IME (IMM32/TSF), OLE drag and drop, clipboard | `gles` on bundled ANGLE (`libEGL.dll`, `libGLESv2.dll`), the same approach as Flutter's Windows engine | Shell_NotifyIcon tray, toast notifications, IFileDialog, UI Automation |
 | macOS | Cocoa through purego's `objc` package (no cgo) | `gles` on ANGLE/Metal; a native Metal backend later | NSStatusItem, UNUserNotificationCenter, NSOpenPanel, NSAccessibility |
-| Web | `syscall/js` (canvas element, DOM events, hidden textarea for IME) | `gles` on WebGL2 (the same API and shaders) | Notifications API, `<input type=file>`, ARIA tree |
+| Web (done in 1.1, §23) | `internal/platform/web` through `syscall/js`: canvas element, DOM events, hidden text field for IME | `webgpu` (§9.5), else `gles` on WebGL 2 (the same API and shaders), else `canvas2d` | OpenURI and the Notifications API (§23.7); later: the ARIA tree, file dialogs |
 | Android / iOS | NDK `ANativeActivity` / UIKit through cgo (the only targets where cgo is unavoidable: purego requires cgo on Android, and iOS apps must link statically) | `gles` (Android); ANGLE/Metal (iOS) | platform equivalents |
 
 None of these ports needs changes above `internal/`.
@@ -267,12 +290,13 @@ Everything is loaded with `purego.Dlopen` at startup (D2, D3). The versioned nam
 | libXi, libXrandr, libXcursor | `libXi.so.6`, `libXrandr.so.2`, `libXcursor.so.1` | X11 input, monitors, cursors | that X11 feature is disabled |
 | libEGL | `libEGL.so.1`, `libEGL.so` | rendering | `EGLLoadFailed` |
 | libGLESv2 | `libGLESv2.so.2`, `libGLESv2.so` | rendering | `EGLLoadFailed` |
+| libvulkan | `libvulkan.so.1` | the Vulkan renderer (§9.4) | GLES (§9.6) |
 | libdecor | `libdecor-0.so.0` (loads its own GTK or cairo plugin) | native title bars on Wayland compositors without server-side decorations (GNOME), §8.2 | Glutter draws the title bar itself |
 | libfontconfig | `libfontconfig.so.1` | font matching and fallback that follow the user's fontconfig settings, as Flutter's Linux engine does, §10 | go-text's `fontscan` |
 
 **How the libraries are found.**
 - `dlopen` gets a bare name with no path, so the dynamic linker (`ld.so`) searches exactly as it does for linked libraries: `LD_LIBRARY_PATH`, then `/etc/ld.so.cache` (built by `ldconfig` from `/etc/ld.so.conf.d/`), then `/lib` and `/usr/lib`. That covers every distro's library directory (`/usr/lib64`, `/usr/lib/x86_64-linux-gnu`, `/usr/lib`).
-- `GLUTTER_EGL_LIBRARY` and `GLUTTER_GLES_LIBRARY` (absolute paths) override the lookup for unusual setups, e.g. NixOS without `LD_LIBRARY_PATH`.
+- `GLUTTER_EGL_LIBRARY`, `GLUTTER_GLES_LIBRARY` and `GLUTTER_VULKAN_LIBRARY` (absolute paths) override the lookup for unusual setups, e.g. NixOS without `LD_LIBRARY_PATH`.
 - On failure, the error carries the names tried and `dlerror()` as metadata.
 
 **Rules for calling C through purego.**
@@ -470,6 +494,7 @@ Wayland is the primary backend, and these behaviors are requirements, not nice-t
 - `eglSwapInterval(0)`. Frames are paced only by `wl_surface.frame` callbacks, so `eglSwapBuffers` never blocks, even when the window is hidden or occluded.
 - When the toplevel is `suspended`, or no frame callback arrives, nothing is rendered. Tickers are resumed with the next frame's timestamp, so animations jump to the right point instead of replaying.
 - At most one frame is in flight per window. Input arriving between frames is batched into the next one.
+- With Vulkan (§9.4) the same holds: the present mode never blocks (MAILBOX, else IMMEDIATE, and FIFO only when the driver has neither), and frames are still paced by `wl_surface.frame`. Presenting is the commit, so on `configure` the backend sends `ack_configure`, the renderer recreates the swapchain at the new size, and only then presents.
 
 **Resizing and scaling**
 - On `configure`: lay out and render at the new size and commit it in the same iteration, without waiting for a frame callback. Interactive resizing tracks the pointer. With EGL the buffer swap is the commit, so the backend resizes the `wl_egl_window`, sends `ack_configure`, and then renders and swaps; the first commit after the ack therefore already has the new size.
@@ -512,6 +537,8 @@ Wayland is the primary backend, and these behaviors are requirements, not nice-t
 
 ### 9.1 GLES backend (`internal/gpu/gles`)
 
+Since 1.1 it is the fallback renderer on Linux when Vulkan does not work (§9.6), and on the web it runs on WebGL 2: the same shaders, with the GL functions bound through `syscall/js` instead of purego (step 21.4). Its technique table below is also the contract of the explicit renderer (§9.3).
+
 - **Context**: EGL 1.4+, an OpenGL ES 3.0 context (`EGL_OPENGL_ES3_BIT`), one context shared by all windows. The libraries are opened with `purego.Dlopen`, and GL function pointers are resolved through `eglGetProcAddress` and bound with `purego.RegisterFunc`.
 - **Pipeline**: the `ui.Scene` layer tree is flattened into draw lists. Commands are then batched by pipeline, texture and blend mode, and issued as instanced or batched draws.
 - **Color**: premultiplied alpha, with blending in non-linear sRGB to match Flutter's output.
@@ -543,6 +570,111 @@ A pure-Go scanline rasterizer computing exact area coverage. It renders the same
 3. the shared path and glyph rasterizer used by `gles` for its atlases
 
 Tests tagged `glutter_display` compare `gles` against `soft` within a per-pixel tolerance.
+
+### 9.3 Explicit-API renderer (`internal/gpu/explicit`)
+
+One renderer for Vulkan and WebGPU (D19). It draws a `ui.Scene` from the draw lists of `gpu.Flatten`, like `gles`, on top of `explicit.Device`, and implements the engine's renderer and `ui.Rasterizer`. Every technique in the §9.1 table holds for it too (analytic antialiasing, coverage atlas, clip masks, layers, blend modes, blur, raster cache, damage); the differences are listed here. The code that does not depend on GL (instance encoding, paint parameters, uniform layouts, batching keys, the atlas, the raster-cache rule, damage tracking) moves from `gles` into `internal/gpu`, so both renderers share it.
+
+The device interface, a sketch; the details are decided in step 19.3:
+
+```go
+// internal/gpu/explicit
+type Device interface {
+	Limits() Limits
+	NewBuffer(size int, usage BufferUsage) (Buffer, error)
+	NewTexture(desc TextureDesc) (Texture, error)     // 2D: rgba8unorm, bgra8unorm or r8unorm, with mip levels
+	NewSampler(desc SamplerDesc) (Sampler, error)
+	NewPipeline(desc PipelineDesc) (Pipeline, error)  // a generated shader, vertex layout, blend state, target format
+	NewBindGroup(p Pipeline, group int, entries []Binding) (BindGroup, error)
+	WriteBuffer(b Buffer, offset int, data []byte)
+	WriteTexture(t Texture, level int, r image.Rectangle, data []byte, stride int)
+	NewSwapchain(h gpu.SurfaceHandle) (Swapchain, error)
+	Begin() (Encoder, error)                          // one per frame
+	Close() error
+}
+
+type Encoder interface {
+	BeginPass(target Texture, load LoadOp, clear ui.Color) Pass
+	CopyTexture(src Texture, r image.Rectangle, dst Texture, at image.Point)
+	ReadTexture(src Texture, r image.Rectangle, done func(*image.RGBA, error)) // done runs once the GPU finished
+	Submit() error
+}
+
+type Pass interface {
+	SetPipeline(Pipeline)
+	SetBindGroup(group int, g BindGroup, dynamicOffsets ...uint32)
+	SetVertexBuffer(slot int, b Buffer, offset int)
+	SetIndexBuffer(b Buffer, offset int)
+	SetScissor(r image.Rectangle)
+	Draw(vertices, instances, firstVertex, firstInstance int)
+	DrawIndexed(indices, instances, firstIndex, baseVertex, firstInstance int)
+	End()
+}
+
+type Swapchain interface {
+	Configure(width, height int) error     // the size in device pixels
+	Acquire() (Texture, error)             // out of date: Configure again and retry once
+	Present(damage []image.Rectangle) error
+	Destroy()
+}
+```
+
+**Design limits.** These are WebGPU's default limits, so neither backend requests more:
+- at most 4 bind groups; at most 16 sampled textures, 16 samplers and 12 uniform buffers per shader stage; dynamic uniform offsets aligned to 256 bytes; a uniform binding of at most 64 KiB
+- textures of at most 8192 pixels per side; at most 8 vertex buffers and 16 vertex attributes
+- copies between buffers and textures use a row pitch that is a multiple of 256 bytes
+- no push constants, no geometry or tessellation shaders, no compute (in 1.1), no multisampling, no stencil (clips use coverage masks, §9.1), no sRGB formats (blending in non-linear sRGB, as §9.1)
+- a texture read back is delivered later (`ReadTexture`'s `done`), never inside the frame that asked for it
+
+**Frames.**
+- Each frame draws into an offscreen *frame texture* (rgba8unorm, the window's size) and ends with one blit into the swapchain image, whatever its format. The frame texture is what advanced blend modes and backdrop filters copy from, and what screenshots read, so neither depends on the swapchain's format or usage flags.
+- Uniforms go into a ring buffer per frame and are addressed with dynamic offsets; instance data goes into vertex buffers (instanced quads, as in `gles`).
+- At most 2 frames are in flight on the GPU. The resources a frame uses are kept until the GPU finished it (a fence on Vulkan, `onSubmittedWorkDone` on WebGPU).
+- Mipmaps are made by a downsampling render pass, because neither API has `glGenerateMipmap`.
+- `Snapshot` (`Picture.ToImage`) draws offscreen and reads back. Vulkan waits for the fence. WebGPU cannot wait (§23.3), so the `webgpu` renderer's `Snapshot` draws with `soft` (§12.10).
+
+**Errors**: `ShaderModuleInvalid` (an internal bug, with the message of naga or of the driver), `GPUOutOfMemory`, `GPUDeviceLost`. A broken design limit is a programmer error: it panics with `GPULimitExceeded` in debug builds (§14.2).
+
+**Tests**: `explicit/fakedevice` records every call and checks the design limits, for unit tests without a GPU. Each backend runs the parity test over every golden scene against `soft`, with the tolerance `gles` uses.
+
+### 9.4 Vulkan backend (`internal/gpu/vulkan`)
+
+- **Loading**: `purego.Dlopen("libvulkan.so.1")` (`GLUTTER_VULKAN_LIBRARY` overrides it), then `vkGetInstanceProcAddr`, and the device's functions through `vkGetDeviceProcAddr`. The functions are listed in one table, as in `gl.go`; a missing one is `SymbolMissing`.
+- **Version**: Vulkan 1.3, or 1.1 or later with `VK_KHR_dynamic_rendering` and `VK_KHR_synchronization2`. There are no render pass objects. Without these, `VulkanUnsupported`.
+- **Instance extensions**: `VK_KHR_surface` and `VK_KHR_wayland_surface` (the `wl_display` and `wl_surface`) or `VK_KHR_xlib_surface` (the Xlib `Display*` and the window). `VK_EXT_debug_utils` only with validation.
+- **Device**: the first physical device in the loader's order that has a queue family with graphics and present support for the window's surface, and the version or extensions above. Mesa's device-select layer puts the GPU of the display first and honors `DRI_PRIME`. `GLUTTER_VULKAN_DEVICE=<index>` or `=<part of the device name>` picks another. A device of type CPU (lavapipe) is used only when Vulkan is asked for (`GLUTTER_RENDERER=vulkan`); `auto` uses GLES instead (§9.6).
+- One `VkInstance`, one `VkDevice` and one queue serve every window; each window has a swapchain.
+- **Swapchain**: `B8G8R8A8_UNORM` or `R8G8B8A8_UNORM`, never an SRGB format; composite alpha opaque; present mode MAILBOX, else IMMEDIATE, else FIFO (§8.11); usage color attachment and transfer destination; the driver's minimum image count plus one. `VK_ERROR_OUT_OF_DATE_KHR` and `VK_SUBOPTIMAL_KHR` recreate it, at the size of the next frame.
+- **Damage**: the damage rectangles (§9.1 "Damage") go to `VK_KHR_incremental_present` when the device has it; otherwise frames are presented whole. `GLUTTER_DAMAGE=0` and `Config.DisableDamage` work as with GLES.
+- **Memory**: blocks of 64 MiB per memory type, sub-allocated with a free list. Uniform, instance and upload buffers are host-visible, coherent and mapped for good; textures are device-local and filled through a staging ring.
+- **purego rules** (§8.1): structs that point to other data (create infos, `pNext` chains and the arrays they point to) are built in a C-memory arena (libc `malloc`) that is reset after each frame, never in Go memory. Every Go mirror of a Vulkan struct has a layout test against `/usr/include/vulkan/vulkan_core.h`. Non-dispatchable handles are `uint64`, so only 64-bit targets are supported. A test checks that no function in the table takes a struct by value. The only callback is the debug-utils messenger, created once and only with validation.
+- **Validation**: `GLUTTER_VULKAN_VALIDATION=1` turns on `VK_LAYER_KHRONOS_validation` and logs its messages. The display tests turn it on and fail on any validation error.
+- **Device lost**: every resource is recreated once and the frame is drawn again. A second loss within 10 seconds ends `RunApp` with `VulkanDeviceLost`.
+- `GLUTTER_SCREENSHOT` and `Snapshot` read the frame texture back.
+
+**Errors**: `VulkanLoadFailed`, `VulkanUnsupported`, `VulkanNoDevice`, `VulkanSurfaceFailed`, `VulkanSwapchainFailed`, `VulkanDeviceLost`, `GPUOutOfMemory`. With `auto`, the ones that happen before the first frame is presented make the engine use GLES (§9.6).
+
+### 9.5 WebGPU backend (`internal/gpu/webgpu`)
+
+- `navigator.gpu` through `syscall/js`. `requestAdapter()` and `requestDevice()` with the default limits (they are the design limits of §9.3, so no limit or feature is requested). Both are awaited at startup, before the platform installs its event listeners (§23.3).
+- The swapchain is the canvas's `webgpu` context: `configure({device, format: navigator.gpu.getPreferredCanvasFormat(), alphaMode: "opaque"})`. `Acquire` is `getCurrentTexture()`; presenting happens when the browser task ends; `Configure` sets the canvas's width and height.
+- Shaders are the WGSL sources as they are (`createShaderModule`). Errors in `getCompilationInfo()` are `ShaderModuleInvalid`.
+- Data reaches the GPU in few, large calls: a frame's instance and uniform data are written with one `queue.writeBuffer` each, through one reused `Uint8Array` (`js.CopyBytesToJS`).
+- `ReadTexture` is `copyTextureToBuffer` and `mapAsync`; its `done` runs in a later task. It serves screenshots only; `Snapshot` uses `soft` (§9.3).
+- **Device lost** (`device.lost`): a new device is requested and every resource recreated. If that fails, the page falls back to WebGL 2 (§9.6).
+
+**Errors**: `WebGPUUnavailable` (no `navigator.gpu`, or no adapter), `WebGPUDeviceFailed`, `GPUDeviceLost`, `ShaderModuleInvalid`.
+
+### 9.6 Choosing the renderer
+
+- `RunAppOpts.Renderer` (empty means `"auto"`) overrides the environment variable `GLUTTER_RENDERER`. On Linux the values are `auto`, `vulkan` and `gles`; on the web `auto`, `webgpu`, `webgl` and `soft`. Another value is `RendererUnknown`; a known renderer that this build or OS does not have is `RendererUnavailable`.
+- **`auto` on Linux**: Vulkan, when the library loads, the instance has the surface extension of the backend, a device that is not a CPU presents to the first window, and the first frame is presented without an error. Otherwise GLES.
+- **`auto` on the web**: WebGPU, when `navigator.gpu` gives an adapter and a device and the canvas configures. Otherwise WebGL 2 (`gles`) when `getContext("webgl2")` works. Otherwise `soft` drawing into a 2D canvas (`canvas2d`, with `putImageData`), so the app still shows. A canvas keeps the first kind of context it was asked for, so the platform puts a new canvas element in place before each try.
+- Each failed try is logged once at Info level with its tagged error, and the app is not told. A renderer that was asked for by name never falls back: its error is what `RunApp` returns.
+- The choice is made once, at the first window, for the whole process, and every window uses that renderer. A GPU lost later is handled inside the renderer (§9.4, §9.5), except WebGPU's last resort, which switches the page to WebGL 2.
+- The startup log and `GLUTTER_FRAME_STATS` name the renderer and the device (e.g. `vulkan: AMD Radeon 8060S Graphics (RADV STRIX_HALO)`).
+
+Flutter: no counterpart. Flutter's Linux embedder draws with GL only, and Flutter web chooses between CanvasKit and Skwasm.
 
 ---
 
@@ -1355,6 +1487,11 @@ Flutter's `assert` checks become checks that exist only in debug builds (`founda
 | `kElevationToShadow` and `kMaterialEdges` are `const` maps | `ElevationToShadow` and `MaterialEdges` are package variables that hold maps (the only exported variables that are not struct values, the rest of the table values like `Colors` being structs); they are read-only by contract | Go has no constant maps; `apicheck.allow` lists them |
 | Enums whose zero value is not `Unspecified` (`ScriptCategory`, `DatePickerMode`, `StretchMode`, `Decorations`, `ScrollPositionAlignmentPolicy`, `DiagonalDragBehavior`, `SemanticsRole` and the other `ui` semantics enums, `WindowKind`, `ColorSpace`, `Assertiveness`, and the enums that are results, events or states such as `StateLifecycle`, `RoutePopDisposition`, `RefreshIndicatorStatus`, `PathVerb`, `DropPhase`, `DayPeriod`) | the zero value is Flutter's default for the enum, so `Unspecified` would mean the same thing, or no options struct takes the enum (it is a result, an event or a state) | §12.3 wants `Unspecified` so that an options struct can tell "not given" from the first value; neither case arises. `apicheck.allow` lists them, with the reason |
 | `EditableText.debugDeterministicCursor` is a static variable | `widgets.DebugOptions.DeterministicCursor`, read through the binding in debug builds | no global mutable state (§12.9) |
+| `kIsWeb` | `foundation.IsWeb`, a constant set by build tags | named like `DebugMode`; the framework reads it where Flutter reads `kIsWeb` |
+| Flutter web draws with CanvasKit or Skwasm (Skia on WebGL 2) | WebGPU through `explicit`, else WebGL 2 through `gles`, else `soft` into a 2D canvas (§9.6) | Glutter's renderers are its own; there is no Skia |
+| Flutter web downloads Noto fallback fonts from Google's font CDN | the web has the bundled fonts and the fonts the app loads; a character that none of them has draws as a missing-glyph box (§23.6) | no network access the app did not ask for; a page cannot read the system's fonts |
+| Flutter web can render several views into host elements (multi-view) | one view per page, filling the page or one host element (§23.2); a second `NewWindow` fails with `WindowUnsupported` | the 1.1 scope |
+| `Picture.toImage` is drawn by the GPU on every renderer | on WebGPU, `Snapshot` draws with `soft` (§9.3) | a WebGPU readback finishes in a later browser task, and `ToImage` returns at once |
 
 ### 12.11 One import for apps
 
@@ -1478,6 +1615,7 @@ func (s *counterPageState) Build(bc m.BuildContext) m.Widget {
   - `Hidden`: minimized or all windows hidden
   - `Detached`: shutting down
   - `Paused` is not used on desktop, as in Flutter's desktop embedders.
+- On the web the UI thread is the main goroutine too; §23.3 says how the browser's callbacks reach it, and the one rule that keeps them from deadlocking.
 
 ## 14. Errors and diagnostics
 
@@ -1488,6 +1626,8 @@ These are returned from `RunApp`, image/font loading and `desktop` calls, always
 - `EGLLoadFailed`, `EGLInitFailed`, `EGLNoConfig`, `GLES3Unsupported`, `ShaderCompileFailed`
 - `AssetNotFound`, `ImageDecodeFailed`, `FontLoadFailed`
 - `DBusConnectFailed`, `TrayUnavailable`, `NotificationsUnavailable`, `FileChooserUnavailable`, `OpenURIUnavailable`
+- `RendererUnknown`, `RendererUnavailable`, `VulkanLoadFailed`, `VulkanUnsupported`, `VulkanNoDevice`, `VulkanSurfaceFailed`, `VulkanSwapchainFailed`, `VulkanDeviceLost`, `GPUOutOfMemory`, `GPUDeviceLost`, `ShaderModuleInvalid` (1.1, §9.3–9.6)
+- `WebGPUUnavailable`, `WebGPUDeviceFailed`, `WebGL2Unavailable`, `HostElementNotFound`, `WindowUnsupported` (1.1, §23)
 - `MultipleOptions`, `WrongThread`
 
 Every tag has a route test.
@@ -1539,9 +1679,24 @@ These are measured on a 2020 laptop with an Intel Iris Xe or similar GPU and Mes
 
 Benchmarks (`go test -bench`) in `rendering`, `widgets`, `examples/gallery` and `internal/gpu/soft`, and `scripts/perf.sh`, track these numbers; the targets are for release builds (`-tags glutter_release`). `docs/PERFORMANCE.md` has the machine, the numbers and the exceptions. Regressions above 10% need a justification.
 
+**Vulkan** (1.1) meets the same targets on the same machine, and no benchmark is more than 10% slower with Vulkan than with GLES.
+
+**Web** (1.1), measured in Chromium (WebGPU) and Firefox (WebGL 2) on the same machine, release builds made by `glutter-web build -release`:
+
+| Metric | Target |
+|---|---|
+| Idle CPU | ~0%: no `requestAnimationFrame` asked for while nothing is scheduled |
+| Frame rate (gallery screen, one animation) | the display's refresh rate with no dropped frames |
+| UI thread CPU per frame, animation-only frame | < 4 ms |
+| UI thread CPU per frame, full rebuild of the gallery screen | < 16 ms |
+| Size of `app.wasm.gz`, counter / gallery | < 4 MB / < 5 MB (on 2026-10-21, without the web platform and renderers: 2.3 MB / 2.4 MB) |
+| Start to first frame, `app.wasm` in the browser's cache | < 1 s |
+
 ## 16. Build and runtime requirements
 
 **Building an app**: Go 1.27+ and nothing else. `CGO_ENABLED=0 go build` produces a binary that loads the system libraries at runtime. It's dynamically linked against glibc's loader, which is how purego reaches `dlopen`. Cross-compiling for linux/amd64 and linux/arm64 from any OS works.
+
+**Building for the web** (1.1): `GOOS=js GOARCH=wasm go build`, or `go run ./cmd/glutter-web build` for a directory a static web server can serve (§23.1). Only the standard Go toolchain is supported (D18).
 
 **Contributing**: Go 1.27+ plus a C compiler, **only** because `go test -race` requires cgo. When cgo is enabled, purego uses it transparently, so the same code is tested both ways (§17). No `-devel` packages, `wayland-scanner` or `wayland-protocols` are needed.
 
@@ -1556,6 +1711,11 @@ Benchmarks (`go test -bench`) in `rendering`, `widgets`, `examples/gallery` and 
   - a StatusNotifierItem host, for the tray (KDE, XFCE, Cinnamon, and GNOME with the AppIndicator extension)
   - a notification daemon
   - at-spi2-core, for accessibility
+  - a Vulkan driver (§9.4); without one, GLES is used (§9.6)
+
+**Runtime on the web** (1.1): a browser with WebAssembly and WebGL 2, which every current browser has. WebGPU is used where the browser has it (Chromium-based browsers, Safari, and Firefox where it ships WebGPU).
+
+**Contributing to 1.1** also needs: Node.js (the wasm unit tests, §17), Chromium and Firefox (the browser tests), Mesa's lavapipe and `vulkan-validation-layers` (the Vulkan display tests), and `naga` (`cargo install naga-cli --locked`), only to change a WGSL shader (D20).
 
 ## 17. Testing strategy
 
@@ -1586,6 +1746,9 @@ Benchmarks (`go test -bench`) in `rendering`, `widgets`, `examples/gallery` and 
   - both must pass
 - **C struct layout tests** for every Go mirror of a C struct (§8.1 rule 3).
 - **Fuzz tests** cover the X11/Wayland event decoders, the XKB compose handling, the paragraph layout, and the image and font loaders.
+- **Vulkan** display tests (`glutter_display`) run under headless sway, and under Xvfb for X11, with Mesa's lavapipe (`VK_DRIVER_FILES` pointing at `lvp_icd.*.json`) and with validation on (§9.4); a validation error fails the test. Every golden scene is compared against `soft`, as for `gles`.
+- **Web unit tests**: `scripts/test-wasm.sh` runs the tests of every package that has no OS tag with `GOOS=js GOARCH=wasm go test` under Node (Go's `go_js_wasm_exec`). It runs them with a minimal environment, because Go's wasm loader limits the size of the environment.
+- **Browser tests** (`-tags glutter_browser`): `internal/webtest` builds a wasm test program, serves it with `net/http/httptest`, and starts a headless browser with a temporary profile: Chromium for WebGPU and WebGL 2, Firefox for WebGL 2 (and WebGPU where it has it). The page posts its results and its read-back PNGs to the server, and the test compares them with the `soft` goldens. No WebDriver or DevTools library is used. Every browser process is killed when its test ends.
 
 ## 18. Milestones
 
@@ -1612,10 +1775,15 @@ Each milestone is broken into steps in `docs/IMPLEMENTATION.md` (written after t
 | M16 | accessibility: semantics → AT-SPI2 | gallery usable with Orca |
 | M17 | effects and performance: backdrop filter, advanced blend modes, raster cache, performance overlay, benchmarks meeting §15 | targets met |
 | M18 | 1.0: documentation, examples, API review against §12 | release |
+| M19 | Portability groundwork (1.1): per-OS backend files, the js/wasm build, renderer selection, WGSL toolchain, the explicit device interface | `GOOS=js GOARCH=wasm go build ./...` passes; the WGSL shaders compile to SPIR-V |
+| M20 | Vulkan renderer, at parity with `soft`, default on Linux with GLES as the fallback | `vulkan` matches the `soft` goldens; `auto` uses Vulkan on Mesa and NVIDIA and GLES without Vulkan |
+| M21 | Web: platform, input, text input, WebGL 2, WebGPU, fallback, `glutter-web`, examples | the examples run in Chromium (WebGPU) and Firefox (WebGL 2) and match the goldens; release 1.1 |
 
 ## 19. Examples (`examples/`)
 
 `counter`, `layout` (Row/Column/Stack/Wrap), `animations`, `scrolling` (lists, grids, slivers), `navigation`, `editor` (text editing, clipboard, IME), `gallery` (all Material components, light/dark), `multiwindow`, `tray` (tray + notifications + file dialog), `custompaint`, `todo` (a DataTable of tasks with Edit and Delete buttons in each row).
+
+On the web (1.1) every example except `multiwindow` and `tray` builds and runs (§23).
 
 ## 20. Licensing and third-party code
 
@@ -1633,8 +1801,11 @@ Each milestone is broken into steps in `docs/IMPLEMENTATION.md` (written after t
 | material-color-utilities (ported) | Apache-2.0 | NOTICE entry |
 | Wayland protocol XML | MIT | kept with the generated code |
 | Flutter key data (generated key tables) | BSD-3-Clause | NOTICE entry |
+| Go's `wasm_exec.js` | BSD-3-Clause | copied from `$(go env GOROOT)/lib/wasm` into every web build by `glutter-web` (1.1); NOTICE entry |
+| naga | MIT OR Apache-2.0 | a tool, run only to change a shader; nothing of it ships, and the SPIR-V it makes from our WGSL is ours (D20) |
 
 **Reference sources.** `reference/flutter` holds a sparse checkout of `packages/flutter/lib` and `packages/flutter/test`, pinned to the latest stable Flutter tag when M0 starts (the tag is recorded in `reference/VERSION`). It is git-ignored and fetched by `scripts/fetch-reference.sh`.
+For 1.1 the checkout also holds Flutter's web engine, `engine/src/flutter/lib/web_ui`, at the same commit: its input, keyboard and text-editing code is ported for §23 (Flutter's BSD-3-Clause license covers it).
 
 ## 21. Open decisions
 
@@ -1650,3 +1821,82 @@ None at the moment. New ones are added here with a recommendation and moved to �
 | C variadic APIs can't be called (XIM, some Xlib calls) | non-variadic variants; IME over D-Bus on X11 |
 | purego callbacks can't take structs by value | none of the libraries used need that (checked per library in M1) |
 | libdecor's GTK plugin loads GTK 3 into the process (more memory, slower first window) | load it only on compositors without server-side decorations; `DecorationsApp` skips it; measure against §15 in M14 |
+| Vulkan drivers differ more than GLES drivers (window-system integration, present modes, synchronization) | validation on in the display tests; `auto` falls back to GLES on any failure before the first frame (§9.6); `GLUTTER_RENDERER=gles` is the user's way out |
+| Each call from Go into JavaScript costs about a microsecond | a frame's data goes to the GPU in few large writes (§9.5); `gles` already skips repeated GL state. Measured in step 21.7; if it is still too slow, a frame's GL calls are encoded into one buffer that a small JavaScript function runs |
+| Some browsers have no WebGPU (Firefox on Linux, older Safari) | the WebGL 2 fallback, tested in Firefox |
+| A browser callback that waits for the UI goroutine deadlocks if the UI goroutine waits for a promise | the rule in §23.3; a browser test sends keys while a clipboard read is pending |
+| Go's wasm binaries are large | `-ldflags=-s -w`, gzip made by `glutter-web`, and the size targets in §15 |
+
+## 23. Web (`GOOS=js GOARCH=wasm`, 1.1)
+
+### 23.1 Build and packaging
+
+- Apps build with the standard Go toolchain: `GOOS=js GOARCH=wasm go build -o app.wasm`. TinyGo is not supported (D18).
+- `go run ./cmd/glutter-web build [-o dir] [-release] <package>` makes a directory that any static web server can serve:
+  - `index.html`: the loader, and `globalThis.glutterConfig` (§23.2)
+  - `wasm_exec.js`, copied from `$(go env GOROOT)/lib/wasm` (it must match the Go that built the app)
+  - `app.wasm` and `app.wasm.gz`
+
+  `-release` builds with `-tags glutter_release -ldflags=-s -w`.
+- `glutter-web serve [-addr :8080] <package>` builds and serves the app, with the type `application/wasm`, and sends the gzip file to a browser that accepts it.
+- `glutter-web shot -browser chromium|firefox [-renderer r] -o file.png <package>` saves a screenshot of the app (proof method D, §23.8).
+- The loader fetches `app.wasm` with `WebAssembly.instantiateStreaming`. It copies the query parameters of the page's URL whose names start with `GLUTTER_` into the Go program's environment, so `?GLUTTER_RENDERER=webgl` works as the environment variable does on Linux. Without WebAssembly it shows a message instead.
+
+### 23.2 Page and view
+
+Port from `lib/web_ui/lib/src/engine/view_embedder/` (dimensions, full-page and custom-element embedding).
+
+- One view per page. `globalThis.glutterConfig.hostElement` (a CSS selector, set in `index.html`) names the element the view fills; without it the view fills the page. A selector that matches nothing is `HostElementNotFound`.
+- The platform puts a `<canvas>` and the hidden text field (§23.5) into the host. For the full page, the body has no margin and no scroll bars, and the canvas fills the viewport. The canvas has `touch-action: none`.
+- The physical size comes from a `ResizeObserver` with `devicePixelContentBoxSize` (exact device pixels), else from `round(CSS size × devicePixelRatio)`. A change of `devicePixelRatio` (zoom, another monitor) is seen through `matchMedia("(resolution: <n>dppx)")`. The canvas's `width` and `height` are set to the physical size before a frame of that size is drawn.
+- `WindowConfig.Title` sets `document.title`. Size, size constraints and window states are ignored, except fullscreen (`requestFullscreen` on the host, which the browser allows only during a user action). A second `NewWindow` is `WindowUnsupported`.
+- `Displays()` is one display from `screen`, with a refresh rate of 60.
+- `TargetPlatform` is the browser's OS, found as Flutter web does (port `lib/web_ui/lib/src/engine/browser_detection.dart` and `packages/flutter/lib/src/foundation/_platform_web.dart`). `foundation.IsWeb` is true.
+
+### 23.3 Event loop and threading
+
+- The UI thread is the main goroutine. `RunApp` calls `Platform.Run`, which waits on the platform's queue; `Post` adds to the queue and wakes it. `RunApp` does not return on the web, unless starting fails; `SystemNavigatorPop` and `RequestAppExit` do nothing, because a page cannot close itself.
+- The browser's callbacks (`js.FuncOf`) are made once, at startup, and kept for the life of the app, as §8.1 rule 2 does for C. A callback copies what it needs out of the event into Go values (a JavaScript event is only valid during its callback) and queues it. Go's wasm runtime runs every goroutine that is ready before a callback returns to the browser, so the UI goroutine handles the event in the same browser task.
+- Frames: `RequestFrame` asks for one `requestAnimationFrame`, and its timestamp is the frame's time. Nothing is asked for while no frame is scheduled. A hidden page gets no animation frames; the app is then `Hidden`.
+- The callbacks that need an answer wait for the UI goroutine. `keydown` and `keyup` call `preventDefault` when the framework handled the key, as Flutter web does; `wheel` calls it when a scrollable took the scroll. That is safe only because of this rule: **once `Run` has installed the event listeners, the UI goroutine never waits for a promise.** A promise (a clipboard read, `mapAsync`, a new WebGPU device after a loss) continues in a `then` callback that posts to the UI goroutine. What startup awaits (`requestAdapter`, `requestDevice`) it awaits before the listeners are installed.
+- Wasm runs one goroutine at a time. `SetState` and `Post` from other goroutines work as on Linux, and Go's timers become `setTimeout` calls.
+
+### 23.4 Input
+
+Port from `lib/web_ui/lib/src/engine/pointer_binding.dart` (and `pointer_converter.dart`), `keyboard_binding.dart` and `mouse/cursor.dart`, or the files that hold that code at the pinned commit.
+
+- Pointer events (`pointerdown`, `pointermove`, `pointerup`, `pointercancel`, with `setPointerCapture` on down) become `PointerData` of kind mouse, touch or stylus, with buttons, pressure and tilt. Several touches are told apart by `pointerId`.
+- `wheel` becomes scroll deltas, converted from lines and pages to pixels as Flutter web converts them. The listener is not passive, so `preventDefault` can keep the page from scrolling (§23.3).
+- `keydown` and `keyup` on the focused element become `KeyData`: the physical key from `event.code`, the logical key from `event.key`, through tables that `glutter-gen keys` generates from Flutter's key data (the web names). Modifier and lock keys get the synthesized events Flutter web sends.
+- `MouseCursor` becomes CSS `cursor` names, mapped as Flutter web maps them.
+- Focus: the host is focusable (`tabindex`). `focus`/`blur` make the app `Resumed`/`Inactive`, and `visibilitychange` makes it `Hidden`.
+- The browser's context menu: port `services.BrowserContextMenu` (enabled by default, as in Flutter; an app can disable it).
+- Drag and drop is not in 1.1: files dropped on the page are ignored.
+
+### 23.5 Text input, IME and clipboard
+
+Port from `lib/web_ui/lib/src/engine/text_editing/` (`text_editing.dart`, `composition_aware_mixin.dart`, `input_type.dart`, `input_action.dart`) and `clipboard.dart`.
+
+- A transparent text field (`<textarea>` for multiline fields, `<input>` for single-line ones) is placed at the caret rectangle that `SetTextInput` gives, with the field's font size, so the IME's candidate window opens at the caret. It holds the editing state (text, selection, composing range), and its `beforeinput`, `input`, `compositionstart`, `compositionupdate`, `compositionend` and `selectionchange` events become `TextInputEvent`s. It has the focus while a text field is focused and gives it back to the host on blur.
+- Being a real text field, it also brings up the virtual keyboard on phones and tablets, set up through `inputmode` and `enterkeyhint` from `TextInputType` and `TextInputAction`.
+- Clipboard: copy and cut through `navigator.clipboard.writeText` (asynchronous; the result is posted to the UI goroutine). Paste through the `paste` event of the text field when the user presses the paste shortcut (no permission needed), and `navigator.clipboard.readText` when the app pastes by itself (the browser may ask the user). Only text is supported on the web; other kinds fail as the platform's `Clipboard` documents. There is no primary selection.
+
+### 23.6 Fonts, assets, images and settings
+
+- There are no system fonts. The text engine gets the bundled fonts (`material/fonts`) and the fonts the app loads (`ui.LoadFontFromList`, `FontLoader`). `fontscan` and fontconfig are not used. A character with no font draws as a missing-glyph box (§12.10).
+- Assets come from `RunAppOpts.Assets` (usually an `embed.FS`), as on Linux. Network images go through `net/http`, which uses `fetch` on js/wasm, so the browser's CORS rules apply.
+- Settings: `prefers-color-scheme` gives the brightness, `prefers-reduced-motion` turns animations off, `prefers-contrast: more` gives high contrast, `navigator.languages` gives the locales, and the text scale is 1. Changes arrive through `matchMedia` listeners and `languagechange`.
+
+### 23.7 Services
+
+- `desktop.OpenURI` opens the URI with `window.open(uri, "_blank", "noopener")`, after the same validation as on Linux.
+- `desktop.ShowNotification` uses the Notifications API. It asks for permission once; if it is refused, `NotificationsUnavailable`.
+- The tray and the file dialogs return `TrayUnavailable` and `FileChooserUnavailable`. D-Bus is never tried on the web.
+- Accessibility (an ARIA tree from the semantics tree) is not in 1.1. `Services().Accessibility()` is nil.
+
+### 23.8 Testing and proof
+
+- Unit tests run under Node (`scripts/test-wasm.sh`), and browser tests under the `glutter_browser` tag (§17).
+- Browsers run headless with a temporary profile: Chromium with `--headless=new` and the flags that turn WebGPU on under Linux (kept in `internal/webtest`, with the reason for each), and Firefox with `--headless`.
+- **Proof method D**: `glutter-web shot` builds the app, serves it, and opens it with `GLUTTER_SCREENSHOT=1` in the URL. After the first idle frame (as in step 7.4) the engine reads its frame back and posts a PNG to `/__glutter/screenshot`. The tool saves the PNG and kills the browser.
+- `examples/examples_test.go` also builds every web example for js/wasm.
