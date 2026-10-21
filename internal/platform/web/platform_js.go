@@ -336,6 +336,11 @@ func (p *Platform) removeListeners() {
 // know that box (SPEC §23.2).
 func (p *Platform) observe(canvas js.Value) {
 	p.observer = global().Get("ResizeObserver").New(p.resizeFn)
+	p.observeElement(canvas)
+}
+
+// observeElement adds an element to the ResizeObserver.
+func (p *Platform) observeElement(canvas js.Value) {
 	opts := map[string]any{"box": "device-pixel-content-box"}
 	if !try(func() { p.observer.Call("observe", canvas, opts) }) {
 		p.observer.Call("observe", canvas)

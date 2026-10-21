@@ -4,7 +4,6 @@ package engine
 
 import (
 	"context"
-	"image"
 	"log/slog"
 	"os"
 	"time"
@@ -163,108 +162,7 @@ func (m *fontconfigMatcher) Match(ctx context.Context, family string, weight int
 // Close releases the configuration. The matcher must not be used after.
 func (m *fontconfigMatcher) Close() { m.cfg.Close() }
 
-// glesRenderer is the OpenGL ES renderer of the engine: it draws the scene of the
-// frame over developmentColor, into the surface of any window, with one GL context
-// for all of them.
-type glesRenderer struct {
-	log      *slog.Logger
-	skip     bool
-	cache    bool // the raster cache is on
-	damage   bool // frames tell the compositor what changed
-	renderer *gles.Renderer
-	surfaces map[gpu.SurfaceHandle]gpu.Surface
-	reported int // the number of skipped commands the log last said
-	// announced is whether the log said that the renderer is ready.
-	announced bool
-}
-
-// Describe names the renderer and its GPU: "gles: llvmpipe (LLVM 19.1.7, 256 bits)".
-func (r *glesRenderer) Describe() string {
-	if r.renderer != nil {
-		if name := r.renderer.DeviceName(); name != "" {
-			return "gles: " + name
-		}
-	}
-	return "gles"
-}
-
+// newGLESRenderer makes the OpenGL ES renderer of Linux, over EGL.
 func newGLESRenderer(cfg *Config, log *slog.Logger) renderer {
-	getenv := cfg.Getenv
-	if getenv == nil {
-		getenv = os.Getenv
-	}
-	return &glesRenderer{
-		log: log, skip: cfg.SkipUnsupported, surfaces: map[gpu.SurfaceHandle]gpu.Surface{},
-		cache:  !cfg.DisableRasterCache && getenv(RasterCacheEnv) != "0",
-		damage: !cfg.DisableDamage && getenv(DamageEnv) != "0",
-	}
-}
-
-// rasterCacheAfter is how many frames in a row a retained layer must be in the scene
-// to be drawn from a texture: three, as Flutter's raster cache does.
-const rasterCacheAfter = 3
-
-func (r *glesRenderer) Draw(h gpu.SurfaceHandle, width, height int, scene *ui.Scene, capture bool) (*image.RGBA, error) {
-	if r.renderer == nil {
-		opts := gles.RendererOpts{
-			Background: ui.NewColor(developmentColor), HasBackground: true, SkipUnsupported: r.skip,
-			Damage: r.damage,
-		}
-		if r.cache {
-			opts.RasterCacheAfter = rasterCacheAfter
-		}
-		r.renderer = gles.NewRenderer(opts)
-	}
-	surface, ok := r.surfaces[h]
-	if !ok {
-		var err error
-		if surface, err = r.renderer.Attach(h); err != nil {
-			return nil, err
-		}
-		r.surfaces[h] = surface
-		if !r.announced {
-			r.announced = true
-			r.log.Info("OpenGL ES renderer ready", "device", r.renderer.DeviceName())
-		}
-	}
-	size := ui.Size{Width: float64(width), Height: float64(height)}
-	var img *image.RGBA
-	var err error
-	if capture {
-		img, err = r.renderer.RenderCapture(surface, scene, size, 1)
-	} else {
-		err = r.renderer.Render(surface, scene, size, 1)
-	}
-	if err != nil {
-		return nil, err
-	}
-	if st := r.renderer.LastFrame(); st.Skipped > 0 && st.Skipped != r.reported {
-		r.reported = st.Skipped
-		r.log.Warn("the GPU renderer left out what it cannot draw yet", "skipped", st.Skipped, "drawn", st.Drawn, "features", st.Unsupported)
-	}
-	return img, nil
-}
-
-func (r *glesRenderer) Invalidate(h gpu.SurfaceHandle) {
-	if surface, ok := r.surfaces[h]; ok && r.renderer != nil {
-		r.renderer.Invalidate(surface)
-	}
-}
-
-func (r *glesRenderer) Release(h gpu.SurfaceHandle) {
-	if surface, ok := r.surfaces[h]; ok {
-		surface.Destroy()
-		delete(r.surfaces, h)
-	}
-}
-
-func (r *glesRenderer) Close() {
-	for h, surface := range r.surfaces {
-		surface.Destroy()
-		delete(r.surfaces, h)
-	}
-	if r.renderer != nil {
-		_ = r.renderer.Close()
-		r.renderer = nil
-	}
+	return newGLRenderer("gles", gles.NewRenderer, true, cfg, log)
 }

@@ -5,6 +5,7 @@ package webtest
 import (
 	"os"
 	"os/exec"
+	"time"
 )
 
 // setProcessGroup does nothing: only Linux has a browser launcher (the harness of SPEC §17
@@ -17,3 +18,11 @@ func killGroup(pid int) {
 		_ = p.Kill() // it may be gone already
 	}
 }
+
+// privateDisplay does not exist here: only Linux needs one.
+type privateDisplay struct{ name string }
+
+// startPrivateDisplay starts nothing.
+func startPrivateDisplay(time.Duration) (*privateDisplay, error) { return nil, nil }
+
+func (*privateDisplay) stop() {}

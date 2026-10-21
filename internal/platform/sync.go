@@ -31,3 +31,14 @@ type ContextMenuController interface {
 	// user asks for it (a right click); it is enabled until the app disables it.
 	SetBrowserContextMenuEnabled(enabled bool)
 }
+
+// SurfaceRenewer is implemented by a Window whose native surface can be replaced by a new one: the
+// web's canvas keeps the first kind of context it was asked for, so a renderer that follows a
+// failed one needs a canvas that has had none (SPEC §9.6). The window keeps its size, its input
+// and its place; the new surface is blank until the next frame.
+//
+// Flutter: no counterpart
+type SurfaceRenewer interface {
+	// RenewSurface replaces the native surface.
+	RenewSurface()
+}

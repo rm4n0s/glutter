@@ -33,6 +33,11 @@ type RendererOpts struct {
 	// and count it in LastFrame, instead of failing with GLNotImplemented. The
 	// development examples use it to show what works.
 	SkipUnsupported bool
+	// OnContextRestored is called when the browser gives a lost WebGL context back (the web
+	// only; an EGL context is never lost), from a goroutine of the browser's event: it must
+	// hand over to the UI thread and ask for a frame, which draws whole after the renderer made
+	// its resources again.
+	OnContextRestored func()
 }
 
 // Renderer is the GPU renderer: a gpu.Renderer that draws with OpenGL ES 3.0.
@@ -49,6 +54,7 @@ type Renderer struct {
 	last       FrameStats
 	res        *resources // the caches of paths, clip masks and images; made at the first frame
 	cache      *layerCache
+	cacheAfter int  // RendererOpts.RasterCacheAfter
 	damage     bool // RendererOpts.Damage
 	closed     bool
 	// beforePresent, when set, runs after a frame is drawn and before it is
@@ -85,11 +91,14 @@ func newRenderer(open func(gpu.SurfaceHandle) (*Context, *Surface, error), opts 
 	}
 	a := float32(bg.A)
 	var cache *layerCache
+	after := 0
 	if len(opts) == 1 && opts[0].RasterCacheAfter > 0 {
-		cache = newLayerCache(opts[0].RasterCacheAfter)
+		after = opts[0].RasterCacheAfter
+		cache = newLayerCache(after)
 	}
 	return &Renderer{
 		cache:      cache,
+		cacheAfter: after,
 		damage:     len(opts) == 1 && opts[0].Damage,
 		open:       open,
 		surfaces:   map[*glSurface]struct{}{},
@@ -168,9 +177,22 @@ func (r *Renderer) render(s gpu.Surface, scene *ui.Scene, size ui.Size, capture 
 	if w <= 0 || h <= 0 {
 		return nil, errors.New("RendererSizeInvalid", "the size to render must be positive", "width", size.Width, "height", size.Height)
 	}
+	if r.ctx.Lost() {
+		// The browser took the context: there is nothing to draw with and nothing to show.
+		// The frame after its restoration is drawn whole.
+		gs.tracker.Invalidate()
+		if capture {
+			return nil, errContextLost()
+		}
+		return nil, nil
+	}
+	if err := r.recover(); err != nil {
+		return nil, err
+	}
 	if err := r.ctx.MakeCurrent(gs.surface); err != nil {
 		return nil, err
 	}
+	r.ctx.ResizeSurface(gs.surface, w, h)
 	d := r.ctx.dev
 	d.BindFramebuffer(nil)
 	d.SetScissor(false, 0, 0, 0, 0)
@@ -218,6 +240,25 @@ func (r *Renderer) render(s gpu.Surface, scene *ui.Scene, size ui.Size, capture 
 	return img, r.swapOrForget(gs, r.ctx.SwapBuffersWithDamage(gs.surface, h, rects))
 }
 
+// recover makes the renderer's resources again after the browser restored a lost context
+// (see Context.rebuild): the caches of paths, clip masks and images, and the raster cache, were
+// made with objects that are gone, so they are dropped without being released, and every
+// surface reports its next frame as changed whole. It does nothing when no context was lost.
+func (r *Renderer) recover() error {
+	rebuilt, err := r.ctx.rebuild()
+	if err != nil || !rebuilt {
+		return err
+	}
+	r.res = nil
+	if r.cacheAfter > 0 {
+		r.cache = newLayerCache(r.cacheAfter)
+	}
+	for s := range r.surfaces {
+		s.tracker.Invalidate()
+	}
+	return nil
+}
+
 // swapOrForget returns the error of a swap, after forgetting the surface's last frame
 // if it failed: what the compositor shows is then not that frame.
 func (r *Renderer) swapOrForget(gs *glSurface, err error) error {
@@ -262,6 +303,12 @@ func (r *Renderer) Snapshot(scene *ui.Scene, size ui.Size) (*image.RGBA, error) 
 	w, h := int(size.Width), int(size.Height)
 	if w <= 0 || h <= 0 {
 		return nil, errors.New("RendererSizeInvalid", "the size to render must be positive", "width", size.Width, "height", size.Height)
+	}
+	if r.ctx.Lost() {
+		return nil, errContextLost()
+	}
+	if err := r.recover(); err != nil {
+		return nil, err
 	}
 	var err error
 	for s := range r.surfaces {

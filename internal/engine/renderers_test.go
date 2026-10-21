@@ -299,3 +299,53 @@ func TestRunWithEveryRendererFailing(t *testing.T) {
 		t.Errorf("%d renderers were tried, want 3", len(*made))
 	}
 }
+
+// TestChooserRenewsTheSurfaceBeforeEachTryAfterTheFirst: a native surface that a failed renderer
+// asked for a kind of context can give no other kind (the web's canvas, SPEC §9.6), so the
+// engine's hook replaces it before every try but the first, with the handle of the window.
+func TestChooserRenewsTheSurfaceBeforeEachTryAfterTheFirst(t *testing.T) {
+	handle := gpu.SurfaceHandle{Kind: gpu.SurfaceKindFake, Window: 7}
+	tests := []struct {
+		name      string
+		failing   []string
+		wantRenew int
+		wantUsed  string
+	}{
+		{"the first works", nil, 0, "a"},
+		{"the second works", []string{"a"}, 1, "b"},
+		{"the third works", []string{"a", "b"}, 2, "c"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cands, made := fakeCandidates(tt.failing...)
+			var renewed []gpu.SurfaceHandle
+			cfg := &Config{renewSurface: func(h gpu.SurfaceHandle) { renewed = append(renewed, h) }}
+			log, _ := recordingLog()
+			c, err := newChooser(cfg, log, "auto", cands)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := c.Draw(handle, 10, 10, nil, false); err != nil {
+				t.Fatal(err)
+			}
+			if len(renewed) != tt.wantRenew {
+				t.Errorf("the surface was renewed %d times, want %d", len(renewed), tt.wantRenew)
+			}
+			for _, h := range renewed {
+				if h != handle {
+					t.Errorf("renewed %v, want %v", h, handle)
+				}
+			}
+			if used := (*made)[len(*made)-1].name[:1]; used != tt.wantUsed {
+				t.Errorf("the renderer used is %q, want %q", used, tt.wantUsed)
+			}
+		})
+	}
+	// With no hook, as on Linux, nothing is called.
+	cands, _ := fakeCandidates("a")
+	log, _ := recordingLog()
+	c, _ := newChooser(&Config{}, log, "auto", cands)
+	if _, err := c.Draw(handle, 10, 10, nil, false); err != nil {
+		t.Fatal(err)
+	}
+}

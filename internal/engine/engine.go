@@ -97,6 +97,13 @@ type Config struct {
 	x11           func() (connection, error)                   // Linux only: replaces the X11 backend
 	newRenderer   func(cfg *Config, log *slog.Logger) renderer // replaces the choice of the renderer
 	candidates    func() []rendererCandidate                   // replaces the list of backends_<goos>.go
+	// renewSurface and redraw are set by Run, for the renderers: renewSurface replaces the
+	// native surface of the window that the handle names by a new one (the web's canvas keeps
+	// the first kind of context it was asked for, so a renderer that follows a failed one
+	// needs a fresh canvas, SPEC §9.6), and redraw asks for a frame of that window, from any
+	// goroutine (a renderer that made its resources again after the GPU took them away).
+	renewSurface func(gpu.SurfaceHandle)
+	redraw       func(gpu.SurfaceHandle)
 }
 
 // developmentColor is what the window is cleared to before the scene is drawn,
@@ -247,6 +254,7 @@ func Run(ctx context.Context, cfg Config) (err error) {
 
 	h := &handler{cfg: &cfg, log: log, conn: conn, shot: shot, cancel: cancel, windows: map[ui.ViewID]*window{},
 		appID: wcfg.AppID, decorations: wcfg.Decorations, runStart: runStart, frameStats: getenv(FrameStatsEnv) == "1"}
+	cfg.renewSurface, cfg.redraw = h.renewSurface, h.redrawWindow
 	h.first = h.addWindow(win)
 	h.first.title = wcfg.Title
 	if cfg.newRenderer != nil {
@@ -588,6 +596,37 @@ func (h *handler) RequestViewFocus(view ui.ViewID, state ui.ViewFocusState, _ ui
 	if w, ok := h.windows[view]; ok && state == ui.ViewFocusStateFocused && h.focusView != view {
 		w.PerformWindowAction(ui.WindowAction{Kind: ui.WindowActionActivate})
 	}
+}
+
+// windowOfSurface finds the window that a surface handle names.
+func (h *handler) windowOfSurface(sh gpu.SurfaceHandle) *window {
+	for _, w := range h.windows {
+		if w.NativeSurface() == sh {
+			return w
+		}
+	}
+	return nil
+}
+
+// renewSurface gives the window of the handle a new native surface, when its platform can
+// (platform.SurfaceRenewer). It runs on the UI thread, inside a frame.
+func (h *handler) renewSurface(sh gpu.SurfaceHandle) {
+	if w := h.windowOfSurface(sh); w != nil {
+		if r, ok := w.Window.(platform.SurfaceRenewer); ok {
+			r.RenewSurface()
+		}
+	}
+}
+
+// redrawWindow asks for a frame of the window of the handle. It may be called from any
+// goroutine: the request is posted to the UI thread. The frame draws the scene of the last
+// one again when the framework has no new one.
+func (h *handler) redrawWindow(sh gpu.SurfaceHandle) {
+	h.conn.Post(func() {
+		if w := h.windowOfSurface(sh); w != nil {
+			w.RequestFrame()
+		}
+	})
 }
 
 // OnContentLost has the next frame of the window presented whole (platform.Handler).

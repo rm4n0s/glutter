@@ -92,6 +92,7 @@ var chromiumFlags = []flag{
 	{"--disable-default-apps", "no first-run apps"},
 	{"--hide-scrollbars", "scroll bars would change the viewport that the frame is measured against"},
 	{"--mute-audio", "tests make no sound"},
+	{"--enable-unsafe-swiftshader", "headless Chromium has no GPU here, and its WebGL 2 then comes from SwiftShader, the software Vulkan that it allows for trusted content only with this flag (without it a future version answers null to getContext(\"webgl2\"), and today it logs that the fallback is deprecated); the WebGL tests of step 21.4 and the pages that use WebGL need it"},
 	// --no-sandbox is not here: Chromium starts without it where these tests were developed.
 	// Where it cannot (a container without user namespaces), set GLUTTER_WEBTEST_FLAGS=--no-sandbox.
 	// TODO(step 21.5): the flags that turn WebGPU on under Linux, with the reason for each.
@@ -147,6 +148,8 @@ type LaunchOptions struct {
 type Process struct {
 	cmd     *exec.Cmd
 	profile string
+	// display is the X server that Firefox draws on, nil for the other browser.
+	display *privateDisplay
 	done    chan struct{}
 	once    sync.Once
 	// Err is how the browser ended, valid once Done is closed.
@@ -154,7 +157,8 @@ type Process struct {
 }
 
 // Launch starts the browser, headless, with a temporary profile and a home directory of its
-// own (so that it touches nothing of the user's), at the URL. It runs under `timeout -k` in a
+// own (so that it touches nothing of the user's), at the URL. Firefox also gets a private Xvfb
+// display, which Stop ends (see the environment below). It runs under `timeout -k` in a
 // process group of its own; Stop kills the group and removes the profile. It fails with
 // BrowserNotFound when the program is not there and BrowserLaunchFailed when it does not
 // start.
@@ -215,20 +219,38 @@ func Launch(b Browser, url string, o LaunchOptions) (*Process, error) {
 	args = append(args, url)
 	secs := strconv.Itoa(max(1, int(lifetime.Seconds())))
 	cmd := exec.Command("timeout", append([]string{"-k", "5s", secs + "s", path}, args...)...)
-	// Nothing of the user's desktop or home is reachable: no display to open a window on,
-	// and the home, config and cache directories are in the profile.
+	// Nothing of the user's desktop or home is reachable: the user's display is not passed (the
+	// home, config and cache directories are in the profile too). Firefox gets an X server of
+	// its own instead: on Linux it has no native GL to give a page without a display, so
+	// getContext("webgl2") answers null (FEATURE_FAILURE_WEBGL_EXHAUSTED_DRIVERS), and with
+	// one its headless mode draws WebGL with Mesa's software rasterizer. Its window is never
+	// shown: the server is a virtual framebuffer.
 	cmd.Env = []string{
 		"PATH=" + os.Getenv("PATH"), "HOME=" + home, "TMPDIR=" + profile,
 		"XDG_CONFIG_HOME=" + filepath.Join(home, ".config"), "XDG_CACHE_HOME=" + filepath.Join(home, ".cache"),
 		"XDG_DATA_HOME=" + filepath.Join(home, ".local", "share"), "MOZ_HEADLESS=1", "LANG=C.UTF-8",
 	}
+	var display *privateDisplay
+	if b == Firefox {
+		var derr error
+		if display, derr = startPrivateDisplay(lifetime); derr != nil {
+			_ = os.RemoveAll(profile) // the failure of the display is the one to report
+			return nil, derr
+		}
+		if display != nil {
+			cmd.Env = append(cmd.Env, "DISPLAY="+display.name)
+		}
+	}
 	cmd.Stdout, cmd.Stderr = o.Output, o.Output
 	setProcessGroup(cmd)
 	if err := cmd.Start(); err != nil {
+		if display != nil {
+			display.stop()
+		}
 		_ = os.RemoveAll(profile) // the failure to start is the one to report
 		return nil, errors.NewErr("BrowserLaunchFailed", err).SetMetadata("browser", string(b), "path", path)
 	}
-	p := &Process{cmd: cmd, profile: profile, done: make(chan struct{})}
+	p := &Process{cmd: cmd, profile: profile, display: display, done: make(chan struct{})}
 	go func() {
 		p.Err = cmd.Wait()
 		close(p.done)
@@ -262,6 +284,9 @@ func (p *Process) Stop() {
 	p.once.Do(func() {
 		killGroup(p.cmd.Process.Pid)
 		<-p.done
+		if p.display != nil {
+			p.display.stop()
+		}
 		_ = os.RemoveAll(p.profile) // a temporary directory: a leftover is harmless
 	})
 }

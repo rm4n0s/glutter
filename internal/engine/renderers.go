@@ -98,8 +98,13 @@ func (c *chooser) Draw(h gpu.SurfaceHandle, width, height int, scene *ui.Scene, 
 		return nil, errors.New("RendererUnavailable", "this OS or build has no renderer")
 	}
 	var last error
-	for len(c.cand) > 0 {
+	for tried := 0; len(c.cand) > 0; tried++ {
 		cand := c.cand[0]
+		if tried > 0 && c.cfg.renewSurface != nil {
+			// What the renderer before this one did to the native surface (the web's canvas
+			// keeps the first kind of context it was asked for) must not reach this one.
+			c.cfg.renewSurface(h)
+		}
 		r := cand.New(c.cfg, c.log)
 		img, err := r.Draw(h, width, height, scene, capture)
 		if err == nil {

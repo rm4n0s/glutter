@@ -149,11 +149,12 @@ func TestBrowserHostElement(t *testing.T) {
 }
 
 // TestBrowserRendererNames: GLUTTER_RENDERER reaches the program through the query string, and the
-// web has only soft for now (SPEC §9.6): the other names are RendererUnavailable, and a name
-// that is no renderer is RendererUnknown.
+// web has webgl and soft (webgpu comes later, SPEC §9.6): auto, webgl and soft draw a frame, the
+// names of the other renderers are RendererUnavailable, and a name that is no renderer is
+// RendererUnknown.
 func TestBrowserRendererNames(t *testing.T) {
 	webtest.EachBrowser(t, func(t *testing.T, b webtest.Browser) {
-		for _, name := range []string{"soft", "auto"} {
+		for _, name := range []string{"soft", "webgl", "auto"} {
 			t.Run(name, func(t *testing.T) {
 				w, h, err := shot(t, b, "index.html", url.Values{"GLUTTER_RENDERER": {name}})
 				if err != nil || w != 480 || h != 640 {
@@ -162,7 +163,7 @@ func TestBrowserRendererNames(t *testing.T) {
 			})
 		}
 		for _, tc := range []struct{ name, want string }{
-			{"webgl", "this OS or build does not have that renderer"},
+			{"gles", "this OS or build does not have that renderer"},
 			{"webgpu", "this OS or build does not have that renderer"},
 			{"vulkan", "this OS or build does not have that renderer"},
 			{"bogus", "the renderer is not auto, vulkan, gles, webgpu, webgl or soft"},

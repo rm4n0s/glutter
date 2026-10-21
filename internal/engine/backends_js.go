@@ -10,14 +10,15 @@ import (
 
 	"github.com/rm4n0s/glutter/internal/gpu"
 	"github.com/rm4n0s/glutter/internal/gpu/canvas2d"
+	"github.com/rm4n0s/glutter/internal/gpu/gles"
 	"github.com/rm4n0s/glutter/internal/platform/web"
 	"github.com/rm4n0s/glutter/internal/text"
 	"github.com/rm4n0s/glutter/ui"
 )
 
-// This file is what Run uses on the web (GOOS=js): the page's canvas for the platform, the
-// software renderer into a 2D canvas for the renderer (the other web renderers come with
-// steps 21.4 and 21.5), and only the bundled fonts (SPEC §9.6, §23).
+// This file is what Run uses on the web (GOOS=js): the page's canvas for the platform, WebGL 2
+// through the gles renderer and then the software renderer into a 2D canvas for the renderer (the
+// WebGPU one comes with step 21.5), and only the bundled fonts (SPEC §9.6, §23).
 
 // connectDisplay makes the web platform: it finds the host element of the page. The error
 // of the platform comes back unchanged (BackendUnavailable outside a page,
@@ -33,11 +34,19 @@ func connectDisplay(_ *Config, _ func(string) string, log *slog.Logger) (connect
 // processStart says it does not know when the process started.
 func processStart() (time.Time, bool) { return time.Time{}, false }
 
-// rendererCandidates is the web's list in the order auto tries them (SPEC §9.6). For
-// now it is soft, drawing into a 2D canvas.
+// rendererCandidates is the web's list in the order auto tries them (SPEC §9.6): webgl, the gles
+// renderer on WebGL 2, then soft, drawing into a 2D canvas. The chooser puts a new canvas in
+// place before each try after the first, because a canvas keeps the first kind of context it was
+// asked for.
 func rendererCandidates() []rendererCandidate {
-	// TODO(step 21.5, 21.4): webgpu, then webgl, before soft.
-	return []rendererCandidate{{Name: "soft", New: newCanvasRenderer}}
+	// TODO(step 21.5): webgpu, before webgl.
+	return []rendererCandidate{{Name: "webgl", New: newWebGLRenderer}, {Name: "soft", New: newCanvasRenderer}}
+}
+
+// newWebGLRenderer makes the gles renderer over WebGL 2. It has no damage to report: the browser
+// presents the whole canvas.
+func newWebGLRenderer(cfg *Config, log *slog.Logger) renderer {
+	return newGLRenderer("webgl", gles.NewRenderer, false, cfg, log)
 }
 
 // canvasRenderer is the engine's renderer for the web's last resort: soft draws the frame

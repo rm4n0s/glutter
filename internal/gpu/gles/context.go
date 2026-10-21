@@ -26,6 +26,8 @@ type Context struct {
 	closed  bool
 	// damage says whether the display can swap buffers with a damage region.
 	damage bool
+	// load binds the GL functions again when a lost context is rebuilt.
+	load func(eglAPI) (glAPI, error)
 }
 
 // Surface is an EGL window surface of a Context.
@@ -54,6 +56,8 @@ func openWith(egl eglAPI, loadGL func(eglAPI) (glAPI, error), h gpu.SurfaceHandl
 		platform = eglPlatformWayland
 	case gpu.SurfaceKindX11:
 		platform = eglPlatformX11
+	case gpu.SurfaceKindWeb:
+		platform = eglPlatformWeb
 	default:
 		return nil, nil, errors.New("EGLInitFailed", "no EGL platform for this kind of surface", "kind", string(h.Kind))
 	}
@@ -85,7 +89,7 @@ func openWith(egl eglAPI, loadGL func(eglAPI) (glAPI, error), h gpu.SurfaceHandl
 		return nil, nil, eglError(egl, "GLES3Unsupported", "could not create an OpenGL ES 3.0 context", "step", "eglCreateContext")
 	}
 
-	c := &Context{egl: egl, display: display, config: config, context: context, surface: map[*Surface]struct{}{}}
+	c := &Context{egl: egl, display: display, config: config, context: context, surface: map[*Surface]struct{}{}, load: loadGL}
 	s, err := c.NewSurface(h)
 	if err != nil {
 		c.Close()
@@ -119,11 +123,20 @@ func openWith(egl eglAPI, loadGL func(eglAPI) (glAPI, error), h gpu.SurfaceHandl
 	return c, s, nil
 }
 
-// esVersion matches the GL_VERSION of an OpenGL ES context.
-var esVersion = regexp.MustCompile(`^OpenGL ES (\d+)\.(\d+)`)
+// esVersion matches the GL_VERSION of an OpenGL ES context, and webglVersion that of a WebGL
+// one ("WebGL 2.0 (OpenGL ES 3.0 Chromium)").
+var (
+	esVersion    = regexp.MustCompile(`^OpenGL ES (\d+)\.(\d+)`)
+	webglVersion = regexp.MustCompile(`^WebGL (\d+)\.(\d+)`)
+)
 
-// isES3 reports whether a GL_VERSION string names OpenGL ES 3.0 or newer.
+// isES3 reports whether a GL_VERSION string names OpenGL ES 3.0 or newer, or WebGL 2.0 or
+// newer, which is OpenGL ES 3.0 as far as the renderer is concerned.
 func isES3(version string) bool {
+	if m := webglVersion.FindStringSubmatch(version); m != nil {
+		major, err := strconv.Atoi(m[1])
+		return err == nil && major >= 2
+	}
 	m := esVersion.FindStringSubmatch(version)
 	if m == nil {
 		return false
@@ -162,6 +175,58 @@ func (c *Context) NewSurface(h gpu.SurfaceHandle) (*Surface, error) {
 	s := &Surface{ctx: c, handle: handle}
 	c.surface[s] = struct{}{}
 	return s, nil
+}
+
+// Lost says that the browser took the context away (WebGL's webglcontextlost): nothing can be
+// drawn until it is restored. It is always false for an EGL context.
+//
+// Flutter: no counterpart
+func (c *Context) Lost() bool {
+	l, ok := c.egl.(lossy)
+	return ok && l.contextLost()
+}
+
+// rebuild makes the device again when the context was lost and has been restored, because
+// every GL object made before is gone: the old device is dropped without deleting anything.
+// It reports whether it did, so that the caller drops what it made with the old device. It
+// fails with the errors of the GL binding and of the device.
+func (c *Context) rebuild() (bool, error) {
+	l, ok := c.egl.(lossy)
+	if !ok || !l.needsRebuild() {
+		return false, nil
+	}
+	if r, ok := c.gl.(interface{ release() }); ok {
+		r.release()
+	}
+	gl, err := c.load(c.egl)
+	if err != nil {
+		return false, err
+	}
+	dev, err := newDevice(gl)
+	if err != nil {
+		return false, err
+	}
+	c.gl, c.dev = gl, dev
+	l.rebuilt()
+	return true, nil
+}
+
+// surfaceSizer is implemented by an eglAPI whose surface does not follow its window by itself:
+// the web's canvas has a size of its own that the renderer must set.
+type surfaceSizer interface {
+	setSurfaceSize(surface uintptr, width, height int)
+}
+
+// ResizeSurface makes the surface width x height pixels when it is not that size already, for
+// a surface that is not resized by its window (the web's canvas, whose pixels are cleared when
+// its size is set, so call it before drawing the frame). EGL surfaces follow their native
+// window, so it does nothing for them.
+//
+// Flutter: no counterpart
+func (c *Context) ResizeSurface(s *Surface, width, height int) {
+	if sz, ok := c.egl.(surfaceSizer); ok {
+		sz.setSurfaceSize(s.handle, width, height)
+	}
 }
 
 // MakeCurrent makes the context current for drawing into s. It fails with

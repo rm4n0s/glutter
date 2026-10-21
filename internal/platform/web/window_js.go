@@ -29,6 +29,7 @@ type window struct {
 var (
 	_ platform.Window                = (*window)(nil)
 	_ platform.ContextMenuController = (*window)(nil)
+	_ platform.SurfaceRenewer        = (*window)(nil)
 )
 
 // newWindow puts a canvas into the host element and measures it. For the full page the
@@ -36,16 +37,6 @@ var (
 // has touch-action none so that the browser does not take touches for itself (SPEC §23.2).
 func newWindow(p *Platform, id ui.ViewID, cfg platform.WindowConfig) *window {
 	doc := global().Get("document")
-	canvas := doc.Call("createElement", "canvas")
-	canvas.Call("setAttribute", ViewAttribute, strconv.Itoa(int(id)))
-	setStyle(canvas, "display", "block")
-	setStyle(canvas, "width", "100%")
-	setStyle(canvas, "height", "100%")
-	setStyle(canvas, "touch-action", "none")
-	setStyle(canvas, "outline", "none")
-	setStyle(canvas, "user-select", "none")
-	setStyle(canvas, "-webkit-user-select", "none")
-	setStyle(canvas, "-webkit-tap-highlight-color", "transparent")
 	if p.fullPage {
 		html := doc.Get("documentElement")
 		setStyle(html, "height", "100%")
@@ -55,11 +46,8 @@ func newWindow(p *Platform, id ui.ViewID, cfg platform.WindowConfig) *window {
 		setStyle(p.host, "position", "fixed")
 		setStyle(p.host, "overflow", "hidden")
 		setStyle(p.host, "touch-action", "none")
-		setStyle(canvas, "position", "absolute")
-		for _, name := range []string{"top", "right", "bottom", "left"} {
-			setStyle(canvas, name, "0")
-		}
 	}
+	canvas := p.makeCanvas(id)
 	p.host.Call("appendChild", canvas)
 	w := &window{p: p, id: id, canvas: canvas}
 	rect := canvas.Call("getBoundingClientRect")
@@ -74,6 +62,73 @@ func newWindow(p *Platform, id ui.ViewID, cfg platform.WindowConfig) *window {
 		w.SetState(cfg.State)
 	}
 	return w
+}
+
+// makeCanvas makes the canvas element of a view, not yet in the page: the styles of
+// SPEC §23.2 (it fills the host, or the viewport for the full page, and has touch-action none).
+func (p *Platform) makeCanvas(id ui.ViewID) js.Value {
+	canvas := global().Get("document").Call("createElement", "canvas")
+	canvas.Call("setAttribute", ViewAttribute, strconv.Itoa(int(id)))
+	setStyle(canvas, "display", "block")
+	setStyle(canvas, "width", "100%")
+	setStyle(canvas, "height", "100%")
+	setStyle(canvas, "touch-action", "none")
+	setStyle(canvas, "outline", "none")
+	setStyle(canvas, "user-select", "none")
+	setStyle(canvas, "-webkit-user-select", "none")
+	setStyle(canvas, "-webkit-tap-highlight-color", "transparent")
+	if p.fullPage {
+		setStyle(canvas, "position", "absolute")
+		for _, name := range []string{"top", "right", "bottom", "left"} {
+			setStyle(canvas, name, "0")
+		}
+	}
+	return canvas
+}
+
+// RenewSurface puts a new canvas in the place of the window's, with the same size, cursor and
+// listeners, and takes the old one out of the page. A canvas keeps the first kind of context it
+// was asked for, so the engine calls it before it tries a renderer after another one failed on
+// the canvas (SPEC §9.6). The next frame is drawn into the new canvas, which is blank until then.
+//
+// Flutter: no counterpart
+func (w *window) RenewSurface() {
+	if w.closed {
+		return
+	}
+	p := w.p
+	old := w.canvas
+	canvas := p.makeCanvas(w.id)
+	canvas.Set("width", old.Get("width"))
+	canvas.Set("height", old.Get("height"))
+	if cursor := old.Get("style").Call("getPropertyValue", "cursor").String(); cursor != "" {
+		setStyle(canvas, "cursor", cursor)
+	}
+	// The listeners that were on the old canvas move to the new one, and the observer
+	// measures it.
+	for i := range p.in.active {
+		l := &p.in.active[i]
+		if !l.target.Equal(old) {
+			continue
+		}
+		l.target.Call("removeEventListener", l.event, l.fn)
+		l.target = canvas
+		if l.options != nil {
+			canvas.Call("addEventListener", l.event, l.fn, l.options)
+		} else {
+			canvas.Call("addEventListener", l.event, l.fn)
+		}
+	}
+	if p.in.menuOff {
+		old.Call("removeEventListener", "contextmenu", p.in.preventFn)
+		canvas.Call("addEventListener", "contextmenu", p.in.preventFn)
+	}
+	if isObject(p.observer) {
+		p.observer.Call("unobserve", old)
+		p.observeElement(canvas)
+	}
+	old.Call("replaceWith", canvas)
+	w.canvas = canvas
 }
 
 // ID returns the ID of the implicit view.

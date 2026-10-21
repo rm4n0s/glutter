@@ -4,6 +4,7 @@ package engine
 
 import (
 	"context"
+	"reflect"
 	"testing"
 
 	"github.com/rm4n0s/errors"
@@ -24,19 +25,28 @@ func TestRunOutsideAPageOnJS(t *testing.T) {
 
 func TestWebRendererCandidates(t *testing.T) {
 	cands := rendererCandidates()
-	if len(cands) != 1 || cands[0].Name != "soft" {
-		t.Errorf("the web renderers are %v, want only soft for now", cands)
+	var names []string
+	for _, c := range cands {
+		names = append(names, c.Name)
+	}
+	if !reflect.DeepEqual(names, []string{"webgl", "soft"}) {
+		t.Errorf("the web renderers are %v, want webgl then soft (webgpu comes with step 21.5)", names)
 	}
 	// Names of renderers that exist on other OSes or come later are RendererUnavailable here.
-	for _, name := range []string{"vulkan", "gles", "webgpu", "webgl"} {
+	for _, name := range []string{"vulkan", "gles", "webgpu"} {
 		_, err := newChooser(&Config{}, quiet(), name, cands)
 		appErr, ok := errors.FromError(err)
 		if !ok || appErr.Tag != "RendererUnavailable" {
 			t.Errorf("renderer %q: got %v, want RendererUnavailable", name, err)
 		}
 	}
-	if _, err := newChooser(&Config{}, quiet(), "soft", cands); err != nil {
-		t.Errorf("renderer soft: %v", err)
+	for _, name := range []string{"webgl", "soft", "auto", ""} {
+		if _, err := newChooser(&Config{}, quiet(), name, cands); err != nil {
+			t.Errorf("renderer %q: %v", name, err)
+		}
+	}
+	if _, err := newChooser(&Config{}, quiet(), "bogus", cands); err == nil {
+		t.Error("an unknown renderer was accepted")
 	}
 }
 
