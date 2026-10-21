@@ -281,6 +281,10 @@ func TestDisplayWindowMapsWithTheRequestedSizeAndProperties(t *testing.T) {
 		t.Errorf("the X server reported %d errors", e.p.xErrors)
 	}
 
+	if h := e.win.NativeSurface(); h.Surface == 0 || h.Surface != h.Window {
+		t.Errorf("NativeSurface() = %+v, want the window ID as the surface too", h)
+	}
+
 	xprop, err := exec.LookPath("xprop")
 	if err != nil {
 		t.Skip("xprop is not installed (sudo dnf install xorg-x11-utils): the window properties are not checked")

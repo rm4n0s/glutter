@@ -216,8 +216,8 @@ func TestEGLWindowHandshakeOrder(t *testing.T) {
 
 	var handle gpu.SurfaceHandle
 	e.onLoop(func() { handle = e.win.NativeSurface() })
-	if handle.Kind != gpu.SurfaceKindWayland || handle.Window == 0 || handle.Display != e.p.sess.conn.DisplayPtr() {
-		t.Errorf("NativeSurface() = %+v, want a Wayland handle with the connection's display and a window", handle)
+	if handle.Kind != gpu.SurfaceKindWayland || handle.Window == 0 || handle.Surface == 0 || handle.Display != e.p.sess.conn.DisplayPtr() {
+		t.Errorf("NativeSurface() = %+v, want a Wayland handle with the connection's display, a window and a surface", handle)
 	}
 }
 

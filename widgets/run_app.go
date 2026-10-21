@@ -115,6 +115,12 @@ type RunAppOpts struct {
 	// Backend, when not empty, is "wayland" or "x11" and overrides
 	// GLUTTER_BACKEND.
 	Backend string
+	// Renderer, when not empty, is "auto" or the name of the renderer ("vulkan" or
+	// "gles" on Linux), and overrides GLUTTER_RENDERER. Empty means "auto". A
+	// renderer that is asked for by name never falls back; a name that is not a
+	// renderer is RendererUnknown, and one that this OS or build lacks is
+	// RendererUnavailable (SPEC §9.6).
+	Renderer string
 	// ErrorReporter receives the errors the framework recovers from or reports
 	// (SPEC §14.2). The default logs each one, as JSON, through Logger.
 	ErrorReporter foundation.ErrorReporter
@@ -155,9 +161,10 @@ func run(app Widget, wrap bool, o RunAppOpts) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	cfg := engine.Config{
-		Backend: o.Backend,
-		Window:  o.platformWindow(),
-		Logger:  o.Logger,
+		Backend:  o.Backend,
+		Renderer: o.Renderer,
+		Window:   o.platformWindow(),
+		Logger:   o.Logger,
 		Start: func(d *ui.PlatformDispatcher) error {
 			d.SetTextEngine(systemTextEngine(ctx, o.Logger))
 			_, err := startApp(ctx, d, app, wrap, o)

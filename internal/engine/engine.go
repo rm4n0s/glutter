@@ -45,6 +45,11 @@ type Config struct {
 	// Backend, when not empty, is "wayland" or "x11" and overrides the
 	// GLUTTER_BACKEND environment variable.
 	Backend string
+	// Renderer, when not empty, is "auto", or the name of the renderer to use
+	// ("vulkan" or "gles" on Linux), and overrides the GLUTTER_RENDERER environment
+	// variable. Empty means "auto": the first candidate of the OS that presents its
+	// first frame. A renderer asked for by name never falls back (SPEC §9.6).
+	Renderer string
 	// Window is the first window. The zero value gets platform.DefaultWindowConfig
 	// with the title "Glutter".
 	Window platform.WindowConfig
@@ -82,12 +87,13 @@ type Config struct {
 
 	// The fields below are for the tests of this package: a platform that is not the
 	// real one (or a Wayland and an X11 that are not), and the renderer.
-	idlePoll    time.Duration              // how often the capture asks whether the app is idle
-	idleMax     time.Duration              // how long it waits for the app to become idle
-	connect     func() (connection, error) // replaces the choice of backends_<goos>.go
-	wayland     func() (connection, error) // Linux only: replaces the Wayland backend
-	x11         func() (connection, error) // Linux only: replaces the X11 backend
-	newRenderer func(cfg *Config, log *slog.Logger) renderer
+	idlePoll    time.Duration                                // how often the capture asks whether the app is idle
+	idleMax     time.Duration                                // how long it waits for the app to become idle
+	connect     func() (connection, error)                   // replaces the choice of backends_<goos>.go
+	wayland     func() (connection, error)                   // Linux only: replaces the Wayland backend
+	x11         func() (connection, error)                   // Linux only: replaces the X11 backend
+	newRenderer func(cfg *Config, log *slog.Logger) renderer // replaces the choice of the renderer
+	candidates  func() []rendererCandidate                   // replaces the list of backends_<goos>.go
 }
 
 // developmentColor is what the window is cleared to before the scene is drawn,
@@ -176,6 +182,21 @@ func Run(ctx context.Context, cfg Config) (err error) {
 			"GLUTTER_SCREENSHOT reads the frame back through OpenGL, so it does not work with the shared-memory mode")
 	}
 
+	want := cfg.Renderer
+	if want == "" {
+		want = getenv(RendererEnv)
+	}
+	var choice *chooser
+	if cfg.newRenderer == nil {
+		cands := rendererCandidates()
+		if cfg.candidates != nil {
+			cands = cfg.candidates()
+		}
+		if choice, err = newChooser(&cfg, log, want, cands); err != nil {
+			return err
+		}
+	}
+
 	stage := func(name string) {
 		if getenv(FrameStatsEnv) == "1" {
 			log.Info("startup", "stage", name, "since_run", time.Since(runStart).Round(time.Millisecond))
@@ -227,7 +248,7 @@ func Run(ctx context.Context, cfg Config) (err error) {
 	if cfg.newRenderer != nil {
 		h.newRenderer = cfg.newRenderer
 	} else {
-		h.newRenderer = defaultRenderer
+		h.newRenderer = func(*Config, *slog.Logger) renderer { return choice }
 	}
 	h.disp = ui.NewPlatformDispatcher(h)
 	h.disp.SetDisplays(h.displays())

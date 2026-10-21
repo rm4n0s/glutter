@@ -671,6 +671,7 @@ type Swapchain interface {
 - **`auto` on Linux**: Vulkan, when the library loads, the instance has the surface extension of the backend, a device that is not a CPU presents to the first window, and the first frame is presented without an error. Otherwise GLES.
 - **`auto` on the web**: WebGPU, when `navigator.gpu` gives an adapter and a device and the canvas configures. Otherwise WebGL 2 (`gles`) when `getContext("webgl2")` works. Otherwise `soft` drawing into a 2D canvas (`canvas2d`, with `putImageData`), so the app still shows. A canvas keeps the first kind of context it was asked for, so the platform puts a new canvas element in place before each try.
 - Each failed try is logged once at Info level with its tagged error, and the app is not told. A renderer that was asked for by name never falls back: its error is what `RunApp` returns.
+- `RendererUnknown` and `RendererUnavailable` are returned before the display is touched: the names are checked against the list of the OS when the engine starts. The renderer itself is chosen at the first frame (`internal/engine/renderers.go`): each candidate is made and draws the first frame of the first window; the one that presents it is kept, and `gpu.SurfaceHandle` carries what each candidate needs (`Display`, `Window` for EGL, `Surface` for Vulkan).
 - The choice is made once, at the first window, for the whole process, and every window uses that renderer. A GPU lost later is handled inside the renderer (§9.4, §9.5), except WebGPU's last resort, which switches the page to WebGL 2.
 - The startup log and `GLUTTER_FRAME_STATS` name the renderer and the device (e.g. `vulkan: AMD Radeon 8060S Graphics (RADV STRIX_HALO)`).
 
@@ -1600,7 +1601,7 @@ func (s *counterPageState) Build(bc m.BuildContext) m.Widget {
 - `RunAppOpts` include:
   - `Assets fs.FS` for the `AssetBundle`
   - `AppID`, `Window` (the first window's config)
-  - `Backend` (overrides `GLUTTER_BACKEND`)
+  - `Backend` (overrides `GLUTTER_BACKEND`) and `Renderer` (overrides `GLUTTER_RENDERER`, §9.6)
   - `ErrorReporter` and `ErrorWidgetBuilder` (§14.2)
   - `Logger *slog.Logger`
   - `Debug *DebugOptions` (§14.3)

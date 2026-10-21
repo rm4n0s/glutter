@@ -30,7 +30,7 @@ const (
 )
 
 // SurfaceHandle identifies a native drawing surface. A platform backend creates
-// it and only a GPU backend looks inside. Display and Window hold native
+// it and only a GPU backend looks inside. Display, Window and Surface hold native
 // addresses or IDs whose meaning depends on Kind; they are opaque to everyone
 // else.
 //
@@ -40,6 +40,9 @@ type SurfaceHandle struct {
 	Kind SurfaceKind
 	// Display is the native connection to the windowing system.
 	Display uintptr
-	// Window is the native window.
+	// Window is the native window that EGL draws into: the wl_egl_window on Wayland.
 	Window uintptr
+	// Surface is the native surface that the explicit APIs (Vulkan) make their own
+	// surface from: the wl_surface on Wayland, the window ID again on X11.
+	Surface uintptr
 }

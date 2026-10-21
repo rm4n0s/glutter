@@ -42,8 +42,11 @@ func connectDisplay(cfg *Config, getenv func(string) string, log *slog.Logger) (
 // processStart is when the process started, if the system says.
 func processStart() (time.Time, bool) { return linux.ProcessStart() }
 
-// defaultRenderer is the renderer of the engine on Linux.
-func defaultRenderer(cfg *Config, log *slog.Logger) renderer { return newGLESRenderer(cfg, log) }
+// rendererCandidates are the renderers of Linux in the order auto tries them: only
+// gles for now (step 20.7 puts vulkan before it).
+func rendererCandidates() []rendererCandidate {
+	return []rendererCandidate{{Name: "gles", New: newGLESRenderer}}
+}
 
 // waylandConnector returns the function that connects the Wayland backend.
 func (c *Config) waylandConnector() func() (linux.Connection, error) {
@@ -148,6 +151,18 @@ type glesRenderer struct {
 	renderer *gles.Renderer
 	surfaces map[gpu.SurfaceHandle]gpu.Surface
 	reported int // the number of skipped commands the log last said
+	// announced is whether the log said that the renderer is ready.
+	announced bool
+}
+
+// Describe names the renderer and its GPU: "gles: llvmpipe (LLVM 19.1.7, 256 bits)".
+func (r *glesRenderer) Describe() string {
+	if r.renderer != nil {
+		if name := r.renderer.DeviceName(); name != "" {
+			return "gles: " + name
+		}
+	}
+	return "gles"
 }
 
 func newGLESRenderer(cfg *Config, log *slog.Logger) renderer {
@@ -176,7 +191,6 @@ func (r *glesRenderer) Draw(h gpu.SurfaceHandle, width, height int, scene *ui.Sc
 			opts.RasterCacheAfter = rasterCacheAfter
 		}
 		r.renderer = gles.NewRenderer(opts)
-		r.log.Info("OpenGL ES renderer ready")
 	}
 	surface, ok := r.surfaces[h]
 	if !ok {
@@ -185,6 +199,10 @@ func (r *glesRenderer) Draw(h gpu.SurfaceHandle, width, height int, scene *ui.Sc
 			return nil, err
 		}
 		r.surfaces[h] = surface
+		if !r.announced {
+			r.announced = true
+			r.log.Info("OpenGL ES renderer ready", "device", r.renderer.DeviceName())
+		}
 	}
 	size := ui.Size{Width: float64(width), Height: float64(height)}
 	var img *image.RGBA

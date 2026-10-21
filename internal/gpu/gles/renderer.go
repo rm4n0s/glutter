@@ -98,6 +98,17 @@ func newRenderer(open func(gpu.SurfaceHandle) (*Context, *Surface, error), opts 
 	}
 }
 
+// DeviceName returns GL_RENDERER, the name of the GPU (or of the software
+// rasterizer) that draws, or "" before the first Attach has opened the context.
+//
+// Flutter: no counterpart
+func (r *Renderer) DeviceName() string {
+	if r.ctx == nil || r.ctx.dev == nil {
+		return ""
+	}
+	return r.ctx.dev.Caps().Renderer
+}
+
 // Attach starts drawing into the native window of h. The first call opens the
 // GL context (see Open for its failures) and so creates the device; later calls
 // add a surface to the same context. It fails with RendererClosed after Close.

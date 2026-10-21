@@ -391,12 +391,12 @@ func (w *window) cancelFrame() {
 // Flutter: no counterpart
 func (w *window) ID() ui.ViewID { return w.id }
 
-// NativeSurface returns the handle that EGL draws into: the Xlib display and the
-// window ID.
+// NativeSurface returns the handle that EGL and Vulkan draw into: the Xlib display
+// and the window ID (as Window and as Surface).
 //
 // Flutter: no counterpart
 func (w *window) NativeSurface() gpu.SurfaceHandle {
-	return gpu.SurfaceHandle{Kind: gpu.SurfaceKindX11, Display: w.p.display, Window: uintptr(w.xid)}
+	return gpu.SurfaceHandle{Kind: gpu.SurfaceKindX11, Display: w.p.display, Window: uintptr(w.xid), Surface: uintptr(w.xid)}
 }
 
 // RequestFrame asks for Handler.OnFrame to be called for this window. X11 has no

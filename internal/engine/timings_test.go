@@ -55,3 +55,20 @@ func TestFrameStatsAreOffByDefault(t *testing.T) {
 		t.Errorf("statistics without the variable:\n%s", buf.String())
 	}
 }
+
+func TestFrameLogsNameTheRendererAndItsDevice(t *testing.T) {
+	var buf bytes.Buffer
+	e := newWindowsEngine(t)
+	e.h.log = slog.New(slog.NewTextHandler(&buf, nil))
+	e.h.frameStats = true
+	e.h.r = &namedRenderer{fakeRenderer: e.r, name: "gles: llvmpipe (LLVM 19.1.7, 256 bits)"}
+	e.size(0, 400, 300)
+	e.renderAll(map[ui.ViewID]*ui.Scene{0: {}})
+	e.h.OnFrame(0, time.Millisecond)
+	e.h.stats.since = time.Now().Add(-1100 * time.Millisecond)
+	e.h.OnFrame(0, 2*time.Millisecond)
+	out := buf.String()
+	if n := strings.Count(out, `renderer="gles: llvmpipe (LLVM 19.1.7, 256 bits)"`); n != 2 {
+		t.Errorf("the renderer is named %d times, want in the first frame and in the statistics:\n%s", n, out)
+	}
+}

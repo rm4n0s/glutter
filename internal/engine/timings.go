@@ -97,6 +97,9 @@ func (h *handler) noteFrame() {
 	if !h.firstLogged {
 		h.firstLogged = true
 		attrs := []any{"since_run", now.Sub(h.runStart).Round(time.Millisecond)}
+		if name := h.rendererName(); name != "" {
+			attrs = append(attrs, "renderer", name)
+		}
 		if start, ok := processStart(); ok {
 			attrs = append(attrs, "since_process_start", now.Sub(start).Round(10*time.Millisecond))
 		}
@@ -127,9 +130,21 @@ func (h *handler) noteFrame() {
 			"build_max", s.worstBuild.Round(10 * time.Microsecond), "raster_avg", (s.raster / time.Duration(s.frames)).Round(10 * time.Microsecond),
 			"raster_max", s.worstRas.Round(10 * time.Microsecond), "over_16ms", s.slow,
 		}
+		if name := h.rendererName(); name != "" {
+			attrs = append([]any{"renderer", name}, attrs...)
+		}
 		h.log.Info("frames", append(attrs, goMemory()...)...)
 		*s = frameStats{since: now}
 	}
+}
+
+// rendererName is the renderer and its device, as the renderer says them ("gles: llvmpipe
+// (LLVM 19.1.7, 256 bits)"), or "" when the renderer does not.
+func (h *handler) rendererName() string {
+	if d, ok := h.r.(describer); ok {
+		return d.Describe()
+	}
+	return ""
 }
 
 // goMemory is the memory of the Go runtime in megabytes, as log attributes: the heap in

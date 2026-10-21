@@ -140,6 +140,7 @@ URLs), xdg-desktop-portal and a backend, a StatusNotifierItem host for the tray,
 at-spi2-core for accessibility (screen readers such as Orca). SPEC §16 has the list.
 
 `GLUTTER_BACKEND=x11|wayland` chooses the backend; the default is Wayland when it is there.
+`GLUTTER_RENDERER=auto|gles` chooses the renderer (`RunAppOpts.Renderer` does the same); the default is `auto`, which for now is `gles`.
 
 ## Examples
 

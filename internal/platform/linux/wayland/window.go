@@ -626,8 +626,8 @@ func (w *window) States() WindowStates { return w.states }
 // Flutter: no counterpart
 func (w *window) ID() ui.ViewID { return w.id }
 
-// NativeSurface returns the handle for the renderer: the wl_display and the
-// wl_egl_window. In shared-memory mode there is nothing to render into, and the
+// NativeSurface returns the handle for the renderer: the wl_display, the
+// wl_egl_window (for EGL) and the wl_surface (for Vulkan). In shared-memory mode there is nothing to render into, and the
 // handle is empty.
 //
 // Flutter: no counterpart
@@ -639,6 +639,7 @@ func (w *window) NativeSurface() gpu.SurfaceHandle {
 		Kind:    gpu.SurfaceKindWayland,
 		Display: w.p.sess.conn.DisplayPtr(),
 		Window:  w.eglWindow,
+		Surface: w.surface.Ptr(),
 	}
 }
 

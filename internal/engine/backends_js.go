@@ -21,8 +21,8 @@ func connectDisplay(*Config, func(string) string, *slog.Logger) (connection, err
 // processStart says it does not know when the process started.
 func processStart() (time.Time, bool) { return time.Time{}, false }
 
-// defaultRenderer is nil: Run fails before it needs a renderer.
-func defaultRenderer(*Config, *slog.Logger) renderer { return nil }
+// rendererCandidates is empty: Run fails before it needs a renderer.
+func rendererCandidates() []rendererCandidate { return nil }
 
 // SystemFontMatcher returns nil: the text.Collection scans the font directories.
 //
