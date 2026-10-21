@@ -134,6 +134,27 @@ func TestEditableTextReportsTheFailuresOfTheClipboard(t *testing.T) {
 	})
 }
 
+// The notifier of the web never asks the clipboard, which would make the browser show a permission
+// dialog before the paste button is shown: the status is pasteable, the failing clipboard of this
+// test is not called, and nothing is reported.
+func TestWebClipboardStatusNeverAsksTheClipboard(t *testing.T) {
+	bt := newBindingTree(t)
+	bt.errs = nil
+	n := NewWebClipboardStatusNotifier(bt.b)
+	defer n.Dispose()
+	if n.Value() != ClipboardStatusPasteable {
+		t.Fatalf("status = %v, want pasteable", n.Value())
+	}
+	n.Update()
+	handle := n.AddListener(func() {})
+	defer n.RemoveListener(handle)
+	n.DidChangeAppLifecycleState(ui.AppLifecycleStateResumed)
+	bt.frame()
+	if len(bt.errs) != 0 || n.Value() != ClipboardStatusPasteable {
+		t.Errorf("errors %v, status %v: the web notifier asked the clipboard", bt.errs, n.Value())
+	}
+}
+
 func TestEditableTextActionsFailures(t *testing.T) {
 	bt := newBindingTree(t)
 	controller, focus, app := internalEditable("hello")

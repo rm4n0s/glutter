@@ -507,7 +507,11 @@ func (s *EditableTextState) textEditingValueForTextLayoutMetrics() services.Text
 func (s *EditableTextState) InitState() {
 	w := s.Widget()
 	b := s.binding()
-	s.clipboardStatus = NewClipboardStatusNotifier(b)
+	if foundation.IsWeb {
+		s.clipboardStatus = NewWebClipboardStatusNotifier(b)
+	} else {
+		s.clipboardStatus = NewClipboardStatusNotifier(b)
+	}
 	s.clipboardHandle = s.clipboardStatus.AddListener(s.onChangedClipboardStatus)
 	s.controllerHandle = w.controller.AddListener(s.didChangeTextEditingValue)
 	s.focusHandle = w.focusNode.AddListener(s.handleFocusChanged)

@@ -48,6 +48,8 @@ type ClipboardStatusNotifier struct {
 	WidgetsBindingObserverBase
 	binding  *WidgetsBinding
 	disposed bool
+	// fixed says that the status is not asked of the clipboard: the notifier of the web.
+	fixed bool
 }
 
 // NewClipboardStatusNotifier creates a notifier whose status is unknown until
@@ -58,12 +60,21 @@ func NewClipboardStatusNotifier(binding *WidgetsBinding) *ClipboardStatusNotifie
 	return &ClipboardStatusNotifier{ValueNotifier: *foundation.NewValueNotifier(ClipboardStatusUnknown), binding: binding}
 }
 
+// NewWebClipboardStatusNotifier creates the notifier that EditableText uses on the web: the status
+// is always pasteable and the clipboard is never asked. Browsers show a permission dialog when the
+// clipboard is read, which Update would cause before the paste button is even shown.
+//
+// Flutter: widgets/editable_text.dart _WebClipboardStatusNotifier
+func NewWebClipboardStatusNotifier(binding *WidgetsBinding) *ClipboardStatusNotifier {
+	return &ClipboardStatusNotifier{ValueNotifier: *foundation.NewValueNotifier(ClipboardStatusPasteable), binding: binding, fixed: true}
+}
+
 // Update asks the clipboard whether it has text, and sets the status when the
 // answer arrives.
 //
 // Flutter: widgets/text_selection.dart ClipboardStatusNotifier.update
 func (n *ClipboardStatusNotifier) Update() {
-	if n.disposed {
+	if n.disposed || n.fixed {
 		return
 	}
 	n.binding.Clipboard().HasStrings(context.Background(), func(has bool, err error) {
