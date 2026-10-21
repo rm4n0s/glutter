@@ -657,6 +657,13 @@ type Swapchain interface {
 - **Device lost**: every resource is recreated once and the frame is drawn again. A second loss within 10 seconds ends `RunApp` with `VulkanDeviceLost`.
 - `GLUTTER_SCREENSHOT` and `Snapshot` read the frame texture back.
 
+**Decided in step 20.1** (`internal/gpu/vulkan`): offscreen only for now; the window part (surfaces, swapchains) is step 20.2.
+- `vulkan.Open(Options)` loads the library, makes the instance, chooses the physical device (`choose.go`, a pure function over `physicalInfo`: the version or extensions, the `dynamicRendering` and `synchronization2` features, textures of 8192 pixels, a queue family with graphics and, later, present support; a CPU device only with `Options.AllowCPU`; `GLUTTER_VULKAN_DEVICE` as an index or part of a name) and makes the device with one queue. It returns an `explicit.Device`.
+- Every texture lives in the `GENERAL` layout (drawn into, sampled, copied from and to), so no pass or bind group has to track layouts; after each pass, copy and upload one global memory barrier makes the writes visible. The backend uses synchronization 2 for barriers and `vkQueueSubmit` for submits.
+- Two frame slots, each with a command pool and buffer, a fence and descriptor pools. `Begin` waits for the slot's fence; bind groups are descriptor sets of the pool of the frame being recorded (or of the next frame, before `Begin`), valid until the slot is reused; a destroyed resource is released when the fence of that frame is done. `ReadTexture` copies into a host buffer, and its `done` runs at the end of `Submit` after the fence (so a read waits for the GPU).
+- Staging: one 16 MiB host buffer, half for each slot, reset when the slot is reused; a larger upload gets a buffer of its own that the frame releases. Memory blocks are separate for buffers and for images of a memory type, so the buffer-image granularity never matters.
+- `GPUOutOfMemory`, `VulkanDeviceLost` and `VulkanCallFailed` (any other `VkResult`) come from one function, `vkError`. The programmer errors are `VulkanFrameOpen`, `VulkanFrameNotOpen`, `VulkanPassNotEnded`, `VulkanForeignResource`, `VulkanWriteOutOfRange` and the invalid-description tags `VulkanTextureInvalid`, `VulkanPipelineInvalid` and `VulkanBindGroupInvalid`.
+
 **Errors**: `VulkanLoadFailed`, `VulkanUnsupported`, `VulkanNoDevice`, `VulkanSurfaceFailed`, `VulkanSwapchainFailed`, `VulkanDeviceLost`, `GPUOutOfMemory`. With `auto`, the ones that happen before the first frame is presented make the engine use GLES (§9.6).
 
 ### 9.5 WebGPU backend (`internal/gpu/webgpu`)

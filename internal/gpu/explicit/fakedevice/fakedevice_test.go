@@ -217,7 +217,7 @@ func TestReadTextureIsDeliveredAfterTheFrame(t *testing.T) {
 	d := New()
 	tex, _ := d.NewTexture(explicit.TextureDesc{Width: 4, Height: 3, Format: explicit.TextureFormatBGRA8Unorm, Usage: explicit.TextureRenderTarget | explicit.TextureCopySource})
 	enc, _ := d.Begin()
-	enc.BeginPass(tex, explicit.LoadClear, ui.Color{R: 10, G: 20, B: 30, A: 255}).End()
+	enc.BeginPass(tex, explicit.LoadClear, ui.NewColorFromRGBO(10, 20, 30, 1)).End()
 	var got *image.RGBA
 	calls := 0
 	enc.ReadTexture(tex, image.Rect(1, 1, 3, 2), func(img *image.RGBA, err error) {

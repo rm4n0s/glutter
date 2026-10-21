@@ -244,16 +244,28 @@ func (t *texture) fill(c ui.Color) {
 	if t.pix == nil {
 		return
 	}
-	px := []byte{byte(c.R), byte(c.G), byte(c.B), byte(c.A)}
+	r, g, b, a := unorm8(c.R), unorm8(c.G), unorm8(c.B), unorm8(c.A)
+	px := []byte{r, g, b, a}
 	switch {
 	case t.bpp == 1:
 		px = px[3:] // R8 holds the alpha, as coverage
 	case t.desc.Format == explicit.TextureFormatBGRA8Unorm:
-		px = []byte{byte(c.B), byte(c.G), byte(c.R), byte(c.A)}
+		px = []byte{b, g, r, a}
 	}
 	for i := 0; i+t.bpp <= len(t.pix); i += t.bpp {
 		copy(t.pix[i:], px)
 	}
+}
+
+// unorm8 converts a channel from 0 to 1 to a byte, rounding as the GPU does.
+func unorm8(v float32) byte {
+	switch {
+	case v <= 0:
+		return 0
+	case v >= 1:
+		return 255
+	}
+	return byte(v*255 + 0.5)
 }
 
 // read returns the rectangle as RGBA; an R8 texture reads as gray.

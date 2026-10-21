@@ -30,6 +30,9 @@ linters:
       - path: internal/platform/linux/x11/structs\.go
         linters:
           - unused
+      - path: internal/gpu/vulkan/structs\.go
+        linters:
+          - unused
 
 formatters:
   enable:
