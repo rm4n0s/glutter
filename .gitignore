@@ -44,3 +44,7 @@ go.work.sum
 
 # Temporary packages of the documentation test (docs/docs_test.go)
 /docs/_guidecheck/
+
+# Binaries that `go build` leaves at the root
+/multiwindow
+/glutter-web
