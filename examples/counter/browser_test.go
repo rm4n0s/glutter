@@ -5,11 +5,13 @@ package main
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"image"
 	"image/png"
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -62,11 +64,17 @@ func TestMain(tm *testing.M) {
 // it posts.
 func shot(t *testing.T, b webtest.Browser, o webtest.ShotOptions) *image.RGBA {
 	t.Helper()
-	o.Dir, o.Browser = site(t), b
 	if o.Query == nil {
 		o.Query = url.Values{}
 	}
 	o.Query.Set("GLUTTER_DEV_TAPS", "3")
+	return shotAsIs(t, b, o)
+}
+
+// shotAsIs opens the counter in the browser with the options as they are and returns the frame it posts.
+func shotAsIs(t *testing.T, b webtest.Browser, o webtest.ShotOptions) *image.RGBA {
+	t.Helper()
+	o.Dir, o.Browser = site(t), b
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	data, err := webtest.Shot(ctx, o)
@@ -158,5 +166,30 @@ func TestBrowserDevicePixelRatio(t *testing.T) {
 			t.Fatalf("the frame is %v, want 960x1280", got.Bounds().Size())
 		}
 		compare(t, "counter-dpr2-"+string(b), want, got)
+	})
+}
+
+// TestBrowserThreeTapsOnTheButtonShowThree: three taps on the floating action button, made by the
+// debug-only script of synthetic pointer events (GLUTTER_DEV_EVENTS, replayed after the first frame),
+// go through the web platform, the engine and the framework: the counter shows 3, as in the golden of
+// the counter after three taps made in the widget tester.
+func TestBrowserThreeTapsOnTheButtonShowThree(t *testing.T) {
+	want, err := goldens.ReadPNG(filepath.Join("testdata", "goldens", "counter.png"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	useLinux(t)
+	ts := gluttertest.New(t, gluttertest.Opts{Size: m.Size{Width: 480, Height: 640}})
+	ts.PumpWidget(NewMyApp())
+	center := ts.Center(gluttertest.ByType[*m.FloatingActionButton]())
+	tap := fmt.Sprintf("tap:%g,%g;wait:300ms;", center.Dx, center.Dy)
+	// The mouse leaves the button at the end, so that it does not show its hover highlight.
+	script := "wait:300ms;" + strings.Repeat(tap, 3) + "move:5,5"
+	webtest.EachBrowser(t, func(t *testing.T, b webtest.Browser) {
+		got := shotAsIs(t, b, webtest.ShotOptions{
+			Width: 480, Height: 640,
+			Query: url.Values{"GLUTTER_DEV_EVENTS": {script}, "GLUTTER_SCREENSHOT_AFTER": {"3s"}},
+		})
+		compare(t, "counter-taps-"+string(b), want, got)
 	})
 }

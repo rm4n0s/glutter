@@ -26,7 +26,10 @@ type window struct {
 	closed                  bool
 }
 
-var _ platform.Window = (*window)(nil)
+var (
+	_ platform.Window                = (*window)(nil)
+	_ platform.ContextMenuController = (*window)(nil)
+)
 
 // newWindow puts a canvas into the host element and measures it. For the full page the
 // body loses its margin and scroll bars and the canvas covers the viewport; the canvas
@@ -40,6 +43,9 @@ func newWindow(p *Platform, id ui.ViewID, cfg platform.WindowConfig) *window {
 	setStyle(canvas, "height", "100%")
 	setStyle(canvas, "touch-action", "none")
 	setStyle(canvas, "outline", "none")
+	setStyle(canvas, "user-select", "none")
+	setStyle(canvas, "-webkit-user-select", "none")
+	setStyle(canvas, "-webkit-tap-highlight-color", "transparent")
 	if p.fullPage {
 		html := doc.Get("documentElement")
 		setStyle(html, "height", "100%")
@@ -125,11 +131,37 @@ func (w *window) SetState(state platform.WindowState) {
 	}
 }
 
-// SetCursor does nothing yet.
+// SetCursor sets the CSS cursor of the canvas to the cursor, mapped as Flutter web maps it; the
+// arrow removes the property, so that the page's style decides.
+//
+// Deviation: Flutter sets the cursor of the page's body, because the framework does not say
+// which view; the canvas is the view here, so a host element in a bigger page keeps the
+// cursor of the rest of the page (SPEC §12.10).
 //
 // Flutter: lib/web_ui/lib/src/engine/mouse/cursor.dart MouseCursor.activateSystemCursor
-func (w *window) SetCursor(platform.MouseCursor) {
-	// TODO(step 21.2): the CSS cursor names.
+func (w *window) SetCursor(c platform.MouseCursor) {
+	if css := CursorCSS(c); css == defaultCursor {
+		w.canvas.Get("style").Call("removeProperty", "cursor")
+	} else {
+		setStyle(w.canvas, "cursor", css)
+	}
+}
+
+// SetBrowserContextMenuEnabled shows or hides the browser's context menu over the canvas: while
+// it is hidden, a listener prevents the default action of the contextmenu event.
+//
+// Flutter: lib/web_ui/lib/src/engine/mouse/context_menu.dart ContextMenu
+func (w *window) SetBrowserContextMenuEnabled(enabled bool) {
+	in := &w.p.in
+	if enabled == !in.menuOff {
+		return
+	}
+	in.menuOff = !enabled
+	if enabled {
+		w.canvas.Call("removeEventListener", "contextmenu", in.preventFn)
+	} else {
+		w.canvas.Call("addEventListener", "contextmenu", in.preventFn)
+	}
 }
 
 // SetTextInput does nothing yet.

@@ -171,6 +171,7 @@ type WidgetsBinding struct {
 	keyboard     *services.HardwareKeyboard
 	navigator    *services.SystemNavigator
 	sound        *services.SystemSound
+	browserMenu  *services.BrowserContextMenu
 	clipboard    *services.Clipboard
 	textInput    *services.TextInput
 	focusManager *FocusManager
@@ -310,6 +311,7 @@ func NewWidgetsBinding(ctx context.Context, d *ui.PlatformDispatcher, opts ...Wi
 	}
 	b.navigator = &services.SystemNavigator{OnPop: func(foundation.Opt[bool]) { d.RequestAppExit() }}
 	b.sound = &services.SystemSound{}
+	b.browserMenu = services.NewBrowserContextMenu(d)
 	b.clipboard = services.NewClipboard(d)
 	b.textInput = services.NewTextInput(services.TextInputOpts{Backend: d, Post: d.Post})
 	d.OnTextInput = b.textInput.HandleTextInput
@@ -502,6 +504,12 @@ func (b *WidgetsBinding) SystemNavigator() *services.SystemNavigator { return b.
 //
 // Flutter: services/system_sound.dart SystemSound
 func (b *WidgetsBinding) SystemSound() *services.SystemSound { return b.sound }
+
+// BrowserContextMenu controls the browser's context menu on the web; it does nothing
+// elsewhere. See services.BrowserContextMenu.
+//
+// Flutter: services/browser_context_menu.dart BrowserContextMenu
+func (b *WidgetsBinding) BrowserContextMenu() *services.BrowserContextMenu { return b.browserMenu }
 
 // Clipboard is the system clipboard; see services.Clipboard.
 //

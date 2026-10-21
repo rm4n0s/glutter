@@ -735,26 +735,80 @@ func (h *handler) OnSettings(s platform.Settings) {
 func (h *handler) OnLifecycle(state ui.AppLifecycleState) { h.disp.SetAppLifecycleState(state) }
 
 func (h *handler) OnKey(d ui.KeyData) {
-	h.queueInput(h.windowOf(h.focusView), func() {
-		if f := h.cfg.Hooks.Key; f != nil {
-			f(d)
-		}
-		h.disp.DispatchKeyData(d)
-	})
+	h.queueInput(h.windowOf(h.focusView), func() { h.dispatchKey(d) })
+}
+
+// dispatchKey gives a key event to the hook and the dispatcher and returns whether the
+// framework handled it.
+func (h *handler) dispatchKey(d ui.KeyData) bool {
+	if f := h.cfg.Hooks.Key; f != nil {
+		f(d)
+	}
+	return h.disp.DispatchKeyData(d)
+}
+
+// OnKeySync handles a key event at once, after the input that is waiting for its frame, and
+// returns whether the framework handled it (platform.SyncInputHandler). A frame is asked for,
+// as for any input, because the key can have changed the app.
+func (h *handler) OnKeySync(d ui.KeyData) bool {
+	w := h.windowOf(h.focusView)
+	if h.cfg.ShmFill {
+		return h.dispatchKey(d)
+	}
+	h.input.flush()
+	handled := h.dispatchKey(d)
+	h.askFrame(w)
+	return handled
 }
 
 func (h *handler) OnPointer(batch []ui.PointerData) {
 	batch = append([]ui.PointerData(nil), batch...)
+	w := h.notePointer(batch)
+	h.queueInput(w, func() { h.dispatchPointer(batch) })
+}
+
+// OnPointerSync handles pointer data at once, after the input that is waiting for its frame
+// (platform.SyncInputHandler): the answers of the framework, such as the scroll that a wheel
+// event was taken by, are there when it returns.
+func (h *handler) OnPointerSync(batch []ui.PointerData) {
+	batch = append([]ui.PointerData(nil), batch...)
+	w := h.notePointer(batch)
+	if h.cfg.ShmFill {
+		h.dispatchPointer(batch)
+		return
+	}
+	h.input.flush()
+	h.dispatchPointer(batch)
+	h.askFrame(w)
+}
+
+// notePointer remembers the view and the mouse state of a batch and returns the window it is for.
+func (h *handler) notePointer(batch []ui.PointerData) *window {
 	if len(batch) > 0 {
 		h.pointerView = batch[len(batch)-1].ViewID
 	}
 	h.noteMouse(batch)
-	h.queueInput(h.windowOf(h.pointerView), func() {
-		if f := h.cfg.Hooks.Pointer; f != nil {
-			f(batch)
+	return h.windowOf(h.pointerView)
+}
+
+func (h *handler) dispatchPointer(batch []ui.PointerData) {
+	if f := h.cfg.Hooks.Pointer; f != nil {
+		f(batch)
+	}
+	h.disp.DispatchPointerDataPacket(ui.PointerDataPacket{Data: batch})
+}
+
+// SetBrowserContextMenuEnabled shows or hides the browser's context menu in the windows that
+// have one (ui.ContextMenuHost).
+func (h *handler) SetBrowserContextMenuEnabled(enabled bool) bool {
+	applied := false
+	for _, w := range h.windows {
+		if c, ok := w.Window.(platform.ContextMenuController); ok {
+			c.SetBrowserContextMenuEnabled(enabled)
+			applied = true
 		}
-		h.disp.DispatchPointerDataPacket(ui.PointerDataPacket{Data: batch})
-	})
+	}
+	return applied
 }
 
 // noteMouse follows the mouse pointer through the events of a batch.

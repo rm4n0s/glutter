@@ -359,13 +359,19 @@ func TestInkWellStatesController(t *testing.T) {
 }
 
 func TestInkWellMouseCursor(t *testing.T) {
+	// The adaptive default is the pointing hand on the web (this test also runs under Node) and the
+	// arrow elsewhere.
+	adaptive := "basic"
+	if foundation.IsWeb {
+		adaptive = "click"
+	}
 	tests := []struct {
 		name    string
 		enabled bool
 		cursor  services.MouseCursor
 		want    string
 	}{
-		{"enabled, adaptive default", true, nil, "basic"},
+		{"enabled, adaptive default", true, nil, adaptive},
 		{"enabled, clickable", true, widgets.WidgetStateMouseCursorClickable, "click"},
 		{"disabled, clickable", false, widgets.WidgetStateMouseCursorClickable, "basic"},
 		{"enabled, explicit", true, services.SystemMouseCursors.Text, "text"},

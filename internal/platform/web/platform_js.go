@@ -5,6 +5,7 @@ package web
 import (
 	"context"
 	"log/slog"
+	"os"
 	"strconv"
 	"syscall/js"
 
@@ -32,6 +33,15 @@ type Platform struct {
 	cfg      Config
 	host     js.Value
 	fullPage bool
+	// os and firefox are the operating system and the browser, found once at startup.
+	os      OperatingSystem
+	firefox bool
+	// in is the state of the input (input_js.go).
+	in inputState
+	// devEvents is the script of GLUTTER_DEV_EVENTS, in debug builds; devStarted says it was
+	// started.
+	devEvents  []DevEvent
+	devStarted bool
 
 	// Everything below belongs to the UI goroutine.
 	handler platform.Handler
@@ -96,9 +106,20 @@ func New(opts ...Options) (*Platform, error) {
 			return nil, errHostElementNotFound(cfg.HostElement)
 		}
 	}
+	if foundation.DebugMode {
+		if script := os.Getenv(DevEventsEnv); script != "" {
+			events, err := ParseDevEvents(script)
+			if err != nil {
+				return nil, err
+			}
+			p.devEvents = events
+		}
+	}
 	nav := global().Get("navigator")
-	os := DetectOS(nav.Get("platform").String(), nav.Get("userAgent").String(), int(number(nav.Get("maxTouchPoints"), 0)))
-	foundation.SetBrowserTargetPlatform(os.TargetPlatform())
+	ua := nav.Get("userAgent").String()
+	p.os = DetectOS(nav.Get("platform").String(), ua, int(number(nav.Get("maxTouchPoints"), 0)))
+	p.firefox = IsFirefox(ua)
+	foundation.SetBrowserTargetPlatform(p.os.TargetPlatform())
 
 	p.rafFunc = p.keep(js.FuncOf(p.onAnimationFrame))
 	p.resizeFn = p.keep(js.FuncOf(p.onResize))
@@ -108,6 +129,7 @@ func New(opts ...Options) (*Platform, error) {
 	p.noopFn = p.keep(js.FuncOf(func(js.Value, []js.Value) any { return nil }))
 	p.shotOK = p.keep(js.FuncOf(p.onScreenshotResponse))
 	p.shotFail = p.keep(js.FuncOf(p.onScreenshotFailure))
+	p.makeInputFuncs()
 	p.queries.dark = matchMedia("(prefers-color-scheme: dark)")
 	p.queries.motion = matchMedia("(prefers-reduced-motion: reduce)")
 	p.queries.contrast = matchMedia("(prefers-contrast: more)")
@@ -166,6 +188,9 @@ func (p *Platform) Run(ctx context.Context, h platform.Handler) error {
 	h.OnLifecycle(p.lifecycle)
 	if w := p.win; w != nil {
 		h.OnMetrics(w.id, w.geo.ViewMetrics())
+		if p.lifecycle == ui.AppLifecycleStateResumed {
+			h.OnViewFocus(w.id, true)
+		}
 		if w.frameWanted {
 			w.scheduleFrame()
 		}
@@ -276,6 +301,7 @@ func (p *Platform) installListeners() {
 	p.watchDPR()
 	if p.win != nil {
 		p.observe(p.win.canvas)
+		p.installInput()
 	}
 }
 
@@ -298,6 +324,7 @@ func (p *Platform) removeListeners() {
 		p.observer.Call("disconnect")
 		p.observer = js.Undefined()
 	}
+	p.removeInput()
 }
 
 // observe starts the ResizeObserver on the canvas. It asks for the exact device pixels
@@ -337,6 +364,7 @@ func (p *Platform) runFrame(ms float64) {
 	}
 	w.rafPending, w.frameWanted = false, false
 	p.handler.OnFrame(w.id, FrameTime(ms))
+	p.startDevEvents()
 }
 
 // onResize is the ResizeObserver callback: it copies the sizes of the last entry into Go
@@ -400,13 +428,35 @@ func (p *Platform) setGeometry(g Geometry) {
 // onLifecycleEvent is the callback of visibilitychange, focus and blur.
 func (p *Platform) onLifecycleEvent(js.Value, []js.Value) any {
 	state := p.currentLifecycle()
+	ts := number(global().Get("performance").Call("now"), 0)
 	p.q.post(func() {
 		if state != p.lifecycle && p.handler != nil {
+			was := p.lifecycle
 			p.lifecycle = state
 			p.handler.OnLifecycle(state)
+			p.reportFocus(was, state, ts)
 		}
 	})
 	return nil
+}
+
+// reportFocus tells the engine that the view got or lost the keyboard focus when the page did,
+// and releases the keys that are down when it lost it: their keyups go elsewhere.
+func (p *Platform) reportFocus(was, now ui.AppLifecycleState, ts float64) {
+	w := p.win
+	if w == nil {
+		return
+	}
+	hadFocus, hasFocus := was == ui.AppLifecycleStateResumed, now == ui.AppLifecycleStateResumed
+	switch {
+	case hasFocus && !hadFocus:
+		p.handler.OnViewFocus(w.id, true)
+	case hadFocus && !hasFocus:
+		if p.in.keys != nil {
+			p.in.keys.ReleaseAll(ts)
+		}
+		p.handler.OnViewFocus(w.id, false)
+	}
 }
 
 // onSettingsEvent is the callback of the preference media queries and languagechange.

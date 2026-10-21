@@ -551,14 +551,17 @@ var WidgetStateMouseCursorClickable = WidgetStateMouseCursorResolveWith(func(sta
 	return services.SystemMouseCursors.Click
 }, "WidgetStateMouseCursor(clickable)")
 
-// WidgetStateMouseCursorAdaptiveClickable is the basic cursor on desktop, as
-// Flutter's native platforms use it, and the click cursor on the web, which Glutter
-// does not target; it is the basic cursor when the widget is disabled too. It is
+// WidgetStateMouseCursorAdaptiveClickable is the basic cursor on every platform but the web,
+// as Flutter's native platforms use it, and the click cursor on the web (the pointing hand
+// that buttons have there); it is the basic cursor when the widget is disabled too. It is
 // read-only.
 //
 // Flutter: widgets/widget_state.dart WidgetStateMouseCursor.adaptiveClickable
-var WidgetStateMouseCursorAdaptiveClickable = WidgetStateMouseCursorResolveWith(func(WidgetStates) services.MouseCursor {
-	return services.SystemMouseCursors.Basic
+var WidgetStateMouseCursorAdaptiveClickable = WidgetStateMouseCursorResolveWith(func(states WidgetStates) services.MouseCursor {
+	if states.Has(WidgetStateDisabled) || !foundation.IsWeb {
+		return services.SystemMouseCursors.Basic
+	}
+	return services.SystemMouseCursors.Click
 }, "WidgetStateMouseCursor(adaptiveClickable)")
 
 // WidgetStateMouseCursorTextable is the text cursor, or the basic one when the

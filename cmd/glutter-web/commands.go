@@ -143,6 +143,8 @@ func runShot(ctx context.Context, args []string, stdout, stderr io.Writer) error
 	width := fs.Int("width", 480, "the width of the browser window in CSS pixels")
 	height := fs.Int("height", 640, "the height of the browser window in CSS pixels")
 	timeout := fs.Duration("timeout", time.Minute, "how long to wait for the screenshot")
+	events := fs.String("events", "", "a script of synthetic input events that a debug build replays after its first frame (GLUTTER_DEV_EVENTS), such as \"wait:500ms;wheel:240,320,0,300\"")
+	after := fs.Duration("after", 0, "how long after the first idle frame to take the screenshot (GLUTTER_SCREENSHOT_AFTER), so that the events have had their effect")
 	var query queryFlag
 	fs.Var(&query, "query", "a query string added to the URL, such as GLUTTER_DEV_TAPS=3 (may be repeated)")
 	var bf buildFlags
@@ -172,6 +174,12 @@ func runShot(ctx context.Context, args []string, stdout, stderr io.Writer) error
 	}
 	if *renderer != "" {
 		q.Set("GLUTTER_RENDERER", *renderer)
+	}
+	if *events != "" {
+		q.Set("GLUTTER_DEV_EVENTS", *events)
+	}
+	if *after > 0 {
+		q.Set("GLUTTER_SCREENSHOT_AFTER", after.String())
 	}
 	png, err := webtest.Shot(ctx, webtest.ShotOptions{Dir: dir, Browser: browser, Query: q, Width: *width, Height: *height, Timeout: *timeout})
 	if err != nil {

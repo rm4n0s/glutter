@@ -59,6 +59,16 @@ type CursorHost interface {
 	ActivateSystemCursor(device int, kind string)
 }
 
+// ContextMenuHost is what the engine implements to show or hide the browser's context menu.
+// The dispatcher uses it when the host has it; a host without it has no such menu.
+//
+// Flutter: no counterpart (the engine's side of the flutter/contextmenu channel)
+type ContextMenuHost interface {
+	// SetBrowserContextMenuEnabled shows (true) or hides the browser's context menu. It reports
+	// whether a window has a menu to change.
+	SetBrowserContextMenuEnabled(enabled bool) bool
+}
+
 // ClipboardHost is what the engine implements to give access to the system
 // clipboard. The dispatcher uses it when the host has it; a host without it
 // fails the clipboard calls with ClipboardUnavailable. The functions that the
@@ -363,6 +373,21 @@ func (d *PlatformDispatcher) ActivateSystemCursor(device int, kind string) {
 	if h, ok := d.host.(CursorHost); ok {
 		h.ActivateSystemCursor(device, kind)
 	}
+}
+
+// SetBrowserContextMenuEnabled asks the engine to show or to hide the browser's context
+// menu, and reports whether it did: a host that is not a browser has no such menu and
+// nothing happens.
+//
+// Deviation: Flutter sends it as the enableContextMenu and disableContextMenu calls of the
+// flutter/contextmenu platform channel (SPEC §12.10).
+//
+// Flutter: services/browser_context_menu.dart BrowserContextMenu.enableContextMenu
+func (d *PlatformDispatcher) SetBrowserContextMenuEnabled(enabled bool) bool {
+	if h, ok := d.host.(ContextMenuHost); ok {
+		return h.SetBrowserContextMenuEnabled(enabled)
+	}
+	return false
 }
 
 func (d *PlatformDispatcher) performWindowAction(view ViewID, action WindowAction) {

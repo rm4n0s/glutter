@@ -9,3 +9,5 @@
 //
 // Flutter: engine/src/flutter/lib/web_ui/lib/src/engine/view_embedder.
 package web
+
+//go:generate go run ../../../cmd/glutter-gen keys -reference ../../../reference/flutter -out "" -web-out keymap_gen.go

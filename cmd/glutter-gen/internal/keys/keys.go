@@ -21,17 +21,20 @@ const (
 	defaultReference = "reference/flutter"
 	defaultOut       = "internal/platform/linux/keymap_gen.go"
 	defaultSvcOut    = "services/keyboard_key_gen.go"
+	webLocationFile  = "web_logical_location_mapping.json"
 	dataDir          = "dev/tools/gen_keycodes/data"
 )
 
-// Run executes `glutter-gen keys [-reference dir] [-out file] [-services-out file]`
-// with the arguments that follow the subcommand name. It reads Flutter's key data
-// (physical_key_data.g.json, logical_key_data.g.json, layout_goals.json and
-// synonyms.json under dev/tools/gen_keycodes/data of the Flutter checkout in the
-// reference directory) and writes the Go tables of the platform layer to the
-// output file, and the key constants of package services to the services file.
+// Run executes `glutter-gen keys [-reference dir] [-out file] [-services-out file]
+// [-web-out file]` with the arguments that follow the subcommand name. It reads
+// Flutter's key data (physical_key_data.g.json, logical_key_data.g.json,
+// layout_goals.json, synonyms.json and web_logical_location_mapping.json under
+// dev/tools/gen_keycodes/data of the Flutter checkout in the reference directory)
+// and writes the Go tables of the platform layer to the output file, the key
+// constants of package services to the services file, and the tables of the web
+// platform (the names of KeyboardEvent.code and KeyboardEvent.key) to the web file.
 // An empty file name skips that file; the services file is written by default
-// only when the platform file is.
+// only when the platform file is, and the web file only when it is named.
 //
 // Flutter: dev/tools/gen_keycodes
 func Run(args []string) error {
@@ -40,13 +43,14 @@ func Run(args []string) error {
 	reference := flags.String("reference", defaultReference, "directory with the Flutter sources (see scripts/fetch-reference.sh)")
 	out := flags.String("out", defaultOut, "file to write the platform tables to (empty: none)")
 	svcOut := flags.String("services-out", "", "file to write the key constants of package services to (empty: none, or "+defaultSvcOut+" with the default -out)")
+	webOut := flags.String("web-out", "", "file to write the tables of the web platform to (empty: none)")
 	if err := flags.Parse(args); err != nil {
 		return errors.NewErr("KeysBadFlags", err).SetMetadata("args", args)
 	}
 	if *svcOut == "" && *out == defaultOut {
 		*svcOut = defaultSvcOut
 	}
-	src, err := loadData(filepath.Join(*reference, dataDir), *svcOut != "")
+	src, err := loadData(filepath.Join(*reference, dataDir), *svcOut != "", *webOut != "")
 	if err != nil {
 		return err
 	}
@@ -56,6 +60,15 @@ func Run(args []string) error {
 			return err
 		}
 		if err := writeIfChanged(*out, code); err != nil {
+			return err
+		}
+	}
+	if *webOut != "" {
+		code, err := generateWeb(src)
+		if err != nil {
+			return err
+		}
+		if err := writeIfChanged(*webOut, code); err != nil {
 			return err
 		}
 	}
@@ -85,12 +98,15 @@ func writeIfChanged(path string, code []byte) error {
 type physicalKey struct {
 	Names     map[string]string          `json:"names"`
 	ScanCodes map[string]json.RawMessage `json:"scanCodes"`
+	// OtherWebCodes are the older KeyboardEvent.code values of the key.
+	OtherWebCodes []string `json:"otherWebCodes"`
 }
 
 // logicalKey is an entry of logical_key_data.g.json.
 type logicalKey struct {
 	Name   string              `json:"name"`
 	Value  uint64              `json:"value"`
+	Names  map[string][]string `json:"names"`
 	Values map[string][]uint64 `json:"values"`
 }
 
@@ -101,9 +117,12 @@ type data struct {
 	goals    map[string]bool
 	// synonyms maps a pseudo-key (Shift) to the keys it stands for.
 	synonyms map[string][]string
+	// webLocations maps a KeyboardEvent.key to the names of the logical keys at the
+	// locations standard, left, right and numpad (nil for none).
+	webLocations map[string][]*string
 }
 
-func loadData(dir string, withSynonyms bool) (*data, error) {
+func loadData(dir string, withSynonyms, withWeb bool) (*data, error) {
 	d := &data{}
 	files := []struct {
 		name string
@@ -118,6 +137,12 @@ func loadData(dir string, withSynonyms bool) (*data, error) {
 			name string
 			into any
 		}{"synonyms.json", &d.synonyms})
+	}
+	if withWeb {
+		files = append(files, struct {
+			name string
+			into any
+		}{webLocationFile, &d.webLocations})
 	}
 	for _, f := range files {
 		path := filepath.Join(dir, f.name)

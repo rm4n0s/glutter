@@ -193,7 +193,9 @@ func TestWidgetStateColorsAndCursors(t *testing.T) {
 	}{
 		{WidgetStateMouseCursorClickable, 0, services.SystemMouseCursors.Click},
 		{WidgetStateMouseCursorClickable, NewWidgetStates(WidgetStateDisabled), services.SystemMouseCursors.Basic},
-		{WidgetStateMouseCursorAdaptiveClickable, 0, services.SystemMouseCursors.Basic},
+		// The pointing hand on the web (this test also runs under Node), the arrow elsewhere and when disabled.
+		{WidgetStateMouseCursorAdaptiveClickable, 0, adaptiveClickableEnabled()},
+		{WidgetStateMouseCursorAdaptiveClickable, NewWidgetStates(WidgetStateDisabled), services.SystemMouseCursors.Basic},
 		{WidgetStateMouseCursorTextable, 0, services.SystemMouseCursors.Text},
 		{WidgetStateMouseCursorTextable, NewWidgetStates(WidgetStateDisabled), services.SystemMouseCursors.Basic},
 	} {
@@ -208,6 +210,15 @@ func TestWidgetStateColorsAndCursors(t *testing.T) {
 	if WidgetStateMouseCursorClickable.DebugDescription() != "WidgetStateMouseCursor(clickable)" {
 		t.Error("description")
 	}
+}
+
+// adaptiveClickableEnabled is the cursor of an enabled adaptive clickable widget: the pointing hand
+// on the web and the arrow on the other platforms.
+func adaptiveClickableEnabled() services.MouseCursor {
+	if foundation.IsWeb {
+		return services.SystemMouseCursors.Click
+	}
+	return services.SystemMouseCursors.Basic
 }
 
 func TestWidgetStateBorderSideLerp(t *testing.T) {

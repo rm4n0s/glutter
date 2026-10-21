@@ -82,3 +82,9 @@ func (o OperatingSystem) TargetPlatform() foundation.TargetPlatform {
 	}
 	return foundation.TargetPlatformAndroid
 }
+
+// IsFirefox says whether the user agent is Firefox's, whose wheel events are told from a
+// trackpad's differently.
+//
+// Flutter: lib/web_ui/lib/ui_web/src/ui_web/browser_detection.dart BrowserDetection.browserEngine
+func IsFirefox(userAgent string) bool { return strings.Contains(userAgent, "Firefox") }

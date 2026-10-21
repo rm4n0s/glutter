@@ -81,6 +81,7 @@ func TestMain(m *testing.M) {
 	if siteDir != "" {
 		_ = os.RemoveAll(siteDir) // a temporary directory: a leftover is harmless
 	}
+	cleanupInputSite()
 	os.Exit(code)
 }
 

@@ -68,3 +68,26 @@ func TestQueueDoesNotRunAfterCancel(t *testing.T) {
 		t.Error("a function ran after the context ended")
 	}
 }
+
+// TestQueueBusy: busy is true while run is in the middle of a function, so that a callback that
+// the function causes does not wait for the queue.
+func TestQueueBusy(t *testing.T) {
+	q := newQueue()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if q.busy() {
+		t.Fatal("a queue that does not run is busy")
+	}
+	seen := make(chan bool, 1)
+	q.post(func() {
+		seen <- q.busy()
+		cancel()
+	})
+	q.run(ctx)
+	if !<-seen {
+		t.Error("busy is false inside a function of the queue")
+	}
+	if q.busy() {
+		t.Error("busy is true after the function")
+	}
+}

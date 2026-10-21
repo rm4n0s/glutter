@@ -33,7 +33,7 @@ func main() {
 const usage = `usage:
   glutter-web build [-o dir] [-release] [-host selector] <package>
   glutter-web serve [-addr :8080] [-release] [-host selector] <package>
-  glutter-web shot  -browser chromium|firefox [-renderer r] [-query k=v&k=v] [-width n] [-height n] -o file.png <package>`
+  glutter-web shot  -browser chromium|firefox [-renderer r] [-query k=v&k=v] [-events script] [-after d] [-width n] [-height n] -o file.png <package>`
 
 // run does what the command line asks. stdout gets what the commands print; flag errors go to
 // stderr.

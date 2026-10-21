@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 )
 
 // queue is the queue of the UI goroutine: the browser's callbacks and Platform.Post
@@ -16,6 +17,8 @@ type queue struct {
 	mu    sync.Mutex
 	items []func()
 	wake  chan struct{} // capacity 1: a pending wakeup for run
+	// active is whether run is in the middle of a function.
+	active atomic.Bool
 }
 
 func newQueue() *queue { return &queue{wake: make(chan struct{}, 1)} }
@@ -53,7 +56,9 @@ func (q *queue) run(ctx context.Context) {
 			return
 		}
 		if fn, ok := q.pop(); ok {
+			q.active.Store(true)
 			fn()
+			q.active.Store(false)
 			continue
 		}
 		select {
@@ -63,3 +68,9 @@ func (q *queue) run(ctx context.Context) {
 		}
 	}
 }
+
+// busy reports whether run is in the middle of a function. A browser callback that finds it so
+// was called from inside that function (the function dispatched an event, and the browser
+// runs the listener at once, on the goroutine that dispatched it), and must not wait for the
+// queue, which only that function can serve.
+func (q *queue) busy() bool { return q.active.Load() }
