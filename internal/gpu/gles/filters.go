@@ -1,6 +1,7 @@
 package gles
 
 import (
+	"github.com/rm4n0s/glutter/internal/gpu"
 	"math"
 
 	"github.com/rm4n0s/glutter/ui"
@@ -84,7 +85,7 @@ func blurPasses(sx, sy float64, tile ui.TileMode, w, h int) []filterPass {
 		fy *= 2
 	}
 	lw, lh := (w+fx-1)/fx, (h+fy-1)/fy
-	t := tileIndex(tile)
+	t := gpu.TileIndex(tile)
 	var out []filterPass
 	if fx > 1 || fy > 1 {
 		out = append(out, filterPass{kind: passDown, outW: lw, outH: lh, tile: t, factor: [2]int32{int32(fx), int32(fy)}})

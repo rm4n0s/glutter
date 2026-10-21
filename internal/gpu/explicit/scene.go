@@ -39,8 +39,9 @@ var pipeSpecs = [numPipes]pipeSpec{
 	pipeMask:  {shader: ShaderMask, stride: 64, perInstance: true, attrs: vec4Attrs(4), vertices: 6, drawSize: 16},
 	pipeImage: {shader: ShaderImage, stride: 4 * gpu.ImageFloats, perInstance: true, attrs: vec4Attrs(8), vertices: 6, drawSize: 16},
 	pipeVertices: {shader: ShaderVertices, stride: 4 * gpu.VertexFloats, attrs: []VertexAttribute{
-		{Location: 0, Format: VertexFloat32x2, Offset: 0}, {Location: 1, Format: VertexFloat32x4, Offset: 8},
+		{Location: 0, Format: VertexFloat32x2, Offset: 0}, {Location: 1, Format: VertexFloat32x4, Offset: 8}, {Location: 2, Format: VertexFloat32x2, Offset: 24},
 	}, drawSize: 64},
+	pipeLayer: {shader: ShaderLayer, stride: 48, perInstance: true, attrs: vec4Attrs(3), vertices: 6, drawSize: 32},
 }
 
 // pipeline returns the pipeline of the primitive with the blend, made once.
@@ -62,11 +63,25 @@ func (r *Renderer) pipeline(k pipeKind, b gpu.FixedBlend) (Pipeline, error) {
 	return p, nil
 }
 
-// groupKey names a bind group of the frame: the group of a pipeline kind that holds a texture.
+// declares says whether a binding of a group is read by a stage of the pipeline's shader, which
+// decides what its bind group may hold.
+func declares(p Pipeline, group, binding int) bool {
+	for _, e := range p.Desc().Shader.Entries {
+		for _, b := range e.Bindings {
+			if b.Group == group && b.Binding == binding {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// groupKey names a bind group of the frame: the group of a pipeline kind that holds textures.
 type groupKey struct {
 	kind  pipeKind
 	group int
-	tex   Texture
+	a, b  Texture
+	flag  bool
 }
 
 // frameGroups are the bind groups made for one frame, which the device keeps until the frame is
@@ -78,15 +93,20 @@ type frameGroups struct {
 	uniforms [numPipes]BindGroup // group 0 of each kind
 }
 
-// uniformGroup returns group 0 of the kind: the frame and draw uniforms, with dynamic offsets.
+// uniformGroup returns group 0 of the kind: the frame, draw and paint uniforms, with dynamic
+// offsets.
 func (g *frameGroups) uniformGroup(k pipeKind, p Pipeline) (BindGroup, error) {
 	if bg := g.uniforms[k]; bg != nil {
 		return bg, nil
 	}
-	bg, err := g.r.dev.NewBindGroup(p, 0, []Binding{
+	entries := []Binding{
 		{Binding: 0, Buffer: g.slot.uniforms, Size: frameUniformSize},
 		{Binding: 1, Buffer: g.slot.uniforms, Size: pipeSpecs[k].drawSize},
-	})
+	}
+	if declares(p, 0, 2) {
+		entries = append(entries, Binding{Binding: 2, Buffer: g.slot.uniforms, Size: paintUniformSize})
+	}
+	bg, err := g.r.dev.NewBindGroup(p, 0, entries)
 	if err != nil {
 		return nil, err
 	}
@@ -94,9 +114,10 @@ func (g *frameGroups) uniformGroup(k pipeKind, p Pipeline) (BindGroup, error) {
 	return bg, nil
 }
 
-// textureGroup returns the group of the kind that holds the texture, and for images its sampler.
+// textureGroup returns the group of the kind that holds the textures: a texture at binding 0 and,
+// when sampler is not nil, the sampler at binding 1.
 func (g *frameGroups) textureGroup(k pipeKind, group int, p Pipeline, tex Texture, sampler Sampler) (BindGroup, error) {
-	key := groupKey{k, group, tex}
+	key := groupKey{kind: k, group: group, a: tex, flag: sampler != nil}
 	if bg, ok := g.byKey[key]; ok {
 		return bg, nil
 	}
@@ -112,6 +133,28 @@ func (g *frameGroups) textureGroup(k pipeKind, group int, p Pipeline, tex Textur
 	return bg, nil
 }
 
+// paintGroup returns group 3: the image of an image shader and the copy of the destination, the
+// bindings that the pipeline reads (a stand-in texture where the call has none).
+func (g *frameGroups) paintGroup(k pipeKind, p Pipeline, image, dst Texture) (BindGroup, error) {
+	key := groupKey{kind: k, group: 3, a: image, b: dst}
+	if bg, ok := g.byKey[key]; ok {
+		return bg, nil
+	}
+	var entries []Binding
+	if declares(p, 3, 0) {
+		entries = append(entries, Binding{Binding: 0, Texture: image})
+	}
+	if declares(p, 3, 1) {
+		entries = append(entries, Binding{Binding: 1, Texture: dst})
+	}
+	bg, err := g.r.dev.NewBindGroup(p, 3, entries)
+	if err != nil {
+		return nil, err
+	}
+	g.byKey[key] = bg
+	return bg, nil
+}
+
 // drawUniform encodes the Draw uniform of a call.
 func drawUniform(c *drawCall) []byte {
 	var f []float32
@@ -120,30 +163,87 @@ func drawUniform(c *drawCall) []byte {
 	} else {
 		f = append(f, 0, 0, 0, 0)
 	}
-	if c.pipe == pipeVertices {
-		colors := float32(0)
+	switch c.pipe {
+	case pipeVertices:
+		colors, atTexture := float32(0), float32(0)
 		if c.vert.colors {
 			colors = 1
 		}
+		if c.vert.atTexture {
+			atTexture = 1
+		}
 		f = append(f, c.vert.paint[:]...)
 		f = append(f, c.vert.clip[:]...)
-		f = append(f, float32(c.vert.mode), colors, 0, 0)
+		f = append(f, float32(c.vert.mode), colors, atTexture, 0)
+	case pipeLayer:
+		f = append(f, float32(c.rect.Min.X), float32(c.rect.Min.Y), float32(c.rect.Dx()), float32(c.rect.Dy()))
 	}
 	return floatBytes(f)
 }
 
-// drawScene makes the mip levels that are due, clears the frame texture to the background and
-// draws the frame's primitives into it, in one pass.
-func (r *Renderer) drawScene(enc Encoder, slot *frameSlot, target Texture, fb *frameBuilder, width, height int, bg ui.Color) error {
+// paintUniform encodes the Paint uniform of a spec, with the pixel of the surface that the copy of
+// the destination starts at (paint.wgsl.inc).
+func paintUniform(sp *gpu.PaintSpec, dst image.Point) []byte {
+	f := make([]float32, 0, paintUniformSize/4)
+	f = append(f, float32(sp.Shader), float32(sp.Tile[0]), float32(sp.Tile[1]), float32(sp.RampN))
+	f = append(f, sp.XF[0], sp.XF[1], sp.XF[2], sp.XF[3], sp.XF[4], sp.XF[5], 0, 0)
+	f = append(f, sp.P0[:]...)
+	f = append(f, sp.P1[:]...)
+	f = append(f, sp.ImgInfo[:]...)
+	f = append(f, sp.ConstCol[:]...)
+	dither, invert := float32(0), float32(0)
+	if sp.Dither {
+		dither = 1
+	}
+	if sp.Invert {
+		invert = 1
+	}
+	f = append(f, dither, float32(sp.Filter), float32(sp.FilterBlend), invert)
+	f = append(f, float32(sp.ReadBlend-1), float32(dst.X), float32(dst.Y), 0)
+	f = append(f, sp.FilterCol[:]...)
+	f = append(f, sp.FilterMat[:]...)
+	for i := 0; i < gpu.MaxStops; i++ {
+		f = append(f, sp.RampCol[i][:]...)
+	}
+	f = append(f, sp.RampPos[:]...)
+	return floatBytes(f)
+}
+
+// target is a texture that is being drawn into: the frame's, or a layer's, which may be bigger
+// than the rectangle of the surface that it holds, from the top left.
+type target struct {
+	tex  Texture
+	rect image.Rectangle // the pixels of the surface that the texture's top left corner starts
+	size image.Point     // the size of the texture
+}
+
+// plan is what a call needs from the uniform ring: the offsets of its entries.
+type plan struct {
+	frame, draw, paint uint32
+}
+
+// granule rounds up the size of the textures of layers and of the copy of the destination, so that
+// the pool does not fill with sizes.
+const granule = 64
+
+func roundUp(v, limit int) int { return min((v+granule-1)/granule*granule, limit) }
+
+// drawScene makes the mip levels that are due, clears the frame texture to the background and draws
+// the frame's primitives into it, switching to the texture of a layer where a layer begins and back
+// to its parent where it is composited.
+func (r *Renderer) drawScene(enc Encoder, slot *frameSlot, frameTex Texture, fb *frameBuilder, width, height int, bg ui.Color) error {
 	if err := r.generateMips(enc); err != nil {
 		return err
 	}
 	if len(fb.calls) == 0 {
-		enc.BeginPass(target, LoadClear, bg).End()
+		enc.BeginPass(frameTex, LoadClear, bg).End()
 		return nil
 	}
 	pipes := make([]Pipeline, len(fb.calls))
 	for i, c := range fb.calls {
+		if c.op == opBeginLayer || (c.op == opComposite && c.count == 0) {
+			continue
+		}
 		p, err := r.pipeline(c.pipe, c.blend)
 		if err != nil {
 			return err
@@ -161,76 +261,196 @@ func (r *Renderer) drawScene(enc Encoder, slot *frameSlot, target Texture, fb *f
 	if err != nil {
 		return err
 	}
+	clear, err := r.res.clearTexture()
+	if err != nil {
+		return err
+	}
+
+	// The ring: the frame uniform of each target, and the draw and paint uniforms of each call.
+	limit := r.dev.Limits().MaxTextureSize
 	align := r.dev.Limits().UniformOffsetAlignment
 	slot.ring = slot.ring[:0]
-	frameOff := slot.push(align, frameUniform(width, height, 0, 0))
-	drawOffs := make([]uint32, len(fb.calls))
+	push := func(b []byte) uint32 { return slot.push(align, b) }
+	root := target{tex: frameTex, rect: image.Rect(0, 0, width, height), size: image.Pt(width, height)}
+	frameOff := push(frameUniform(width, height, 0, 0))
+	var stackOff []uint32
+	plans := make([]plan, len(fb.calls))
+	specOff := map[*gpu.PaintSpec]uint32{}
+	dstW, dstH := 0, 0
 	for i := range fb.calls {
-		drawOffs[i] = slot.push(align, drawUniform(&fb.calls[i]))
+		c := &fb.calls[i]
+		switch c.op {
+		case opBeginLayer:
+			stackOff = append(stackOff, frameOff)
+			frameOff = push(frameUniform(roundUp(c.rect.Dx(), limit), roundUp(c.rect.Dy(), limit), c.rect.Min.X, c.rect.Min.Y))
+		case opComposite:
+			frameOff = stackOff[len(stackOff)-1]
+			stackOff = stackOff[:len(stackOff)-1]
+		}
+		plans[i].frame = frameOff
+		if c.op == opBeginLayer || c.count == 0 {
+			continue
+		}
+		plans[i].draw = push(drawUniform(c))
+		if c.spec.ReadBlend == 0 {
+			off, ok := specOff[c.spec]
+			if !ok {
+				off = push(paintUniform(c.spec, image.Point{}))
+				specOff[c.spec] = off
+			}
+			plans[i].paint = off
+		} else {
+			plans[i].paint = push(paintUniform(c.spec, c.scissor.Min))
+			dstW, dstH = max(dstW, c.scissor.Dx()), max(dstH, c.scissor.Dy())
+		}
 	}
 	base, err := r.upload(slot, &fb.data)
 	if err != nil {
 		return err
 	}
+	var dstTex Texture
+	if dstW > 0 {
+		if dstTex, err = r.dstTexture(roundUp(dstW, limit), roundUp(dstH, limit)); err != nil {
+			return err
+		}
+	}
+
 	groups := &frameGroups{r: r, slot: slot, byKey: map[groupKey]BindGroup{}}
-	pass := enc.BeginPass(target, LoadClear, bg)
+	cur := root
+	var stack []target
+	var pass Pass
 	var current Pipeline
-	var group1, group2 BindGroup
+	var group1, group2, group3 BindGroup
+	begin := func(load LoadOp, clear ui.Color) {
+		pass = enc.BeginPass(cur.tex, load, clear)
+		current, group1, group2, group3 = nil, nil, nil, nil
+	}
+	end := func() {
+		if pass != nil {
+			pass.End()
+			pass = nil
+		}
+	}
+	fail := func(err error) error {
+		end()
+		for _, t := range stack {
+			r.releaseLayer(t.tex)
+		}
+		if cur.tex != frameTex {
+			r.releaseLayer(cur.tex)
+		}
+		return err
+	}
+	begin(LoadClear, bg)
 	for i := range fb.calls {
 		c := &fb.calls[i]
 		sp := &pipeSpecs[c.pipe]
+		var layer Texture // the texture a composite draws, released after it
+		switch c.op {
+		case opBeginLayer:
+			end()
+			w, h := roundUp(c.rect.Dx(), limit), roundUp(c.rect.Dy(), limit)
+			tex, err := r.layerTexture(w, h)
+			if err != nil {
+				return fail(err)
+			}
+			stack = append(stack, cur)
+			cur = target{tex: tex, rect: c.rect, size: image.Pt(w, h)}
+			begin(LoadClear, ui.Color{})
+			continue
+		case opComposite:
+			end()
+			layer = cur.tex
+			cur = stack[len(stack)-1]
+			stack = stack[:len(stack)-1]
+			if c.count == 0 {
+				r.releaseLayer(layer)
+				continue
+			}
+		}
+		if c.spec.ReadBlend != 0 {
+			// The pixels under the draw are copied to a texture the shader reads: a copy is made
+			// outside a pass.
+			end()
+			enc.CopyTexture(cur.tex, c.scissor.Sub(cur.rect.Min), dstTex, image.Point{})
+		}
+		if pass == nil {
+			begin(LoadLoad, ui.Color{})
+		}
 		if pipes[i] != current {
 			current = pipes[i]
-			group1, group2 = nil, nil
+			group1, group2, group3 = nil, nil, nil
 			pass.SetPipeline(current)
 		}
 		g0, err := groups.uniformGroup(c.pipe, current)
 		if err != nil {
-			pass.End()
-			return err
+			return fail(err)
 		}
-		pass.SetBindGroup(0, g0, frameOff, drawOffs[i])
+		pass.SetBindGroup(0, g0, plans[i].frame, plans[i].draw, plans[i].paint)
 		mask := white
 		if c.clip != nil {
 			mask = c.clip.tex
 		}
 		g1, err := groups.textureGroup(c.pipe, 1, current, mask, nil)
 		if err != nil {
-			pass.End()
-			return err
+			return fail(err)
 		}
 		if g1 != group1 {
 			group1 = g1
 			pass.SetBindGroup(1, g1)
 		}
-		switch c.pipe {
-		case pipeMask, pipeImage:
-			tex, sampler := Texture(nil), Sampler(nil)
-			if c.pipe == pipeMask {
-				tex = r.res.pages[c.page]
-			} else {
-				tex, sampler = c.img.tex, r.imageSampler
-			}
+		if tex, sampler := primaryTexture(r, c, layer); tex != nil {
 			g2, err := groups.textureGroup(c.pipe, 2, current, tex, sampler)
 			if err != nil {
-				pass.End()
-				return err
+				return fail(err)
 			}
 			if g2 != group2 {
 				group2 = g2
 				pass.SetBindGroup(2, g2)
 			}
 		}
-		pass.SetScissor(c.scissor)
+		paintImage, dst := clear, clear
+		if t, ok := c.spec.Image.(Texture); ok {
+			paintImage = t
+		}
+		if c.spec.ReadBlend != 0 {
+			dst = dstTex
+		}
+		g3, err := groups.paintGroup(c.pipe, current, paintImage, dst)
+		if err != nil {
+			return fail(err)
+		}
+		if g3 != group3 {
+			group3 = g3
+			pass.SetBindGroup(3, g3)
+		}
+		pass.SetScissor(c.scissor.Sub(cur.rect.Min))
 		pass.SetVertexBuffer(0, slot.instances, base[c.pipe]+c.first*sp.stride)
 		if sp.vertices > 0 {
 			pass.Draw(sp.vertices, c.count, 0, 0)
 		} else {
 			pass.Draw(c.count, 1, 0, 0)
 		}
+		if layer != nil {
+			r.releaseLayer(layer)
+		}
 	}
-	pass.End()
+	end()
 	return nil
+}
+
+// primaryTexture is the texture at group 2 of a draw call and its sampler: an atlas page for a
+// coverage tile, an image, or the layer that a composite draws; none for the other pipelines.
+func primaryTexture(r *Renderer, c *drawCall, layer Texture) (Texture, Sampler) {
+	switch c.pipe {
+	case pipeMask:
+		return r.res.pages[c.page], nil
+	case pipeImage:
+		return c.img.tex, r.imageSampler
+	case pipeLayer:
+		return layer, nil
+	}
+	return nil, nil
 }
 
 // generateMips makes the levels below the first of the images that were uploaded since the last

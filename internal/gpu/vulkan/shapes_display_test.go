@@ -189,13 +189,12 @@ func TestVulkanProofScenesMatchSoftware(t *testing.T) {
 			dumpImage(t, "vk-"+j.name+"-soft", want)
 			t.Logf("frame: %+v", j.stats)
 			if j.name == "text-tour" {
-				// The color emoji are painted with gradients and the shadow is a blur: steps 20.5
-				// and 20.6. Everything else is compared, with those places taken from the
-				// software image.
-				if want := []string{"mask filter", "shader"}; !reflect.DeepEqual(j.stats.Unsupported, want) {
+				// The shadow is a blur (step 20.6); everything else is compared, with its place
+				// taken from the software image.
+				if want := []string{"mask filter"}; !reflect.DeepEqual(j.stats.Unsupported, want) {
 					t.Errorf("unsupported %v, want %v", j.stats.Unsupported, want)
 				}
-				for _, r := range []image.Rectangle{image.Rect(325, 165, 640, 205), image.Rect(10, 285, 135, 330)} {
+				for _, r := range []image.Rectangle{image.Rect(10, 285, 135, 330)} {
 					draw.Draw(j.got, r, want, r.Min, draw.Src)
 				}
 			} else if j.stats.Skipped != 0 {

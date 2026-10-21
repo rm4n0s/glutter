@@ -331,3 +331,53 @@ func TestCheckedInFilesAreUpToDate(t *testing.T) {
 		}
 	}
 }
+
+func TestIncludesAreExpanded(t *testing.T) {
+	src := writeShaders(t, map[string]string{
+		"main.wgsl":       "//#include \"common.wgsl.inc\"\n" + tinyShader,
+		"common.wgsl.inc": "// shared\nstruct U { x: f32 }\n//#include \"deeper.wgsl.inc\"\n",
+		"deeper.wgsl.inc": "const K: f32 = 2.0;\n",
+	})
+	out := t.TempDir()
+	naga := &fakeNaga{version: "1.0.0"}
+	if err := Generate(src, out, naga); err != nil {
+		t.Fatal(err)
+	}
+	// naga compiled the expanded text, once, for the shader and not for the includes.
+	spv, err := os.ReadFile(filepath.Join(out, shadersDir, "main.spv"))
+	if err != nil || !bytes.Contains(spv, []byte("struct U { x: f32 }\nconst K: f32 = 2.0;\n@group")) || bytes.Contains(spv, []byte("#include")) {
+		t.Errorf("the compiled text: %v\n%s", err, spv)
+	}
+	if !reflect.DeepEqual(naga.calls, []string{"main.wgsl"}) {
+		t.Errorf("naga ran on %v", naga.calls)
+	}
+	code, _ := os.ReadFile(filepath.Join(out, generated))
+	if !strings.Contains(string(code), "const K: f32 = 2.0;") || strings.Contains(string(code), "#include") {
+		t.Errorf("the generated file does not hold the expanded text:\n%s", code)
+	}
+	// The bindings of an included file count for the entry points that use them.
+	if !strings.Contains(string(code), `{Name: "u", Group: 0, Binding: 0, Kind: BindingUniformBuffer}`) {
+		t.Error("the binding is missing")
+	}
+}
+
+func TestIncludeErrors(t *testing.T) {
+	tests := []struct {
+		name  string
+		files map[string]string
+		tag   string
+	}{
+		{"a file that is not there", map[string]string{"a.wgsl": "//#include \"missing.inc\"\n" + tinyShader}, "ShadersIncludeMissing"},
+		{"a file that includes itself", map[string]string{"a.wgsl": "//#include \"b.inc\"\n" + tinyShader, "b.inc": "//#include \"b.inc\"\n"}, "ShadersIncludeCycle"},
+		{"two files that include each other", map[string]string{"a.wgsl": "//#include \"b.inc\"\n" + tinyShader, "b.inc": "//#include \"c.inc\"\n", "c.inc": "//#include \"b.inc\"\n"}, "ShadersIncludeCycle"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := Generate(writeShaders(t, tt.files), t.TempDir(), &fakeNaga{version: "1"})
+			appErr, ok := errors.FromError(err)
+			if !ok || appErr.Tag != tt.tag || !appErr.HasRoute("expand."+tt.tag) {
+				t.Errorf("got %v, want %s through expand", err, tt.tag)
+			}
+		})
+	}
+}

@@ -7,9 +7,11 @@
 // is twelve vec4 attributes (gpu.ShapeInstance), the same for the corners, so each is
 // passed on as a flat varying.
 //
-// The color is the paint's solid color, premultiplied; the blend unit scales it by the
-// coverage (gradients and blend modes that read the destination come in step 20.5). The
-// clip masks of shape clips multiply the coverage (clipmask.glsl).
+// The color is the paint's: a solid color, a gradient or an image shader, with its color filter
+// (paint.wgsl.inc); the blend unit scales it by the coverage, or the shader blends it with a
+// copy of the destination. The clip masks of shape clips multiply the coverage (clipmask.glsl).
+
+//#include "paint.wgsl.inc"
 
 struct Frame {
 	// The size of the texture being drawn into, in pixels.
@@ -292,5 +294,5 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 	if total <= 0.0 {
 		discard;
 	}
-	return in.color * total;
+	return finish(paintSource(in.color, dev), total, dev);
 }

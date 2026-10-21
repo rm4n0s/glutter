@@ -13,7 +13,10 @@ const minDynamicBuffer = 64 << 10
 // the vertices pipeline also the paint, the clip and the blend, sixteen.
 const (
 	frameUniformSize = 16
-	maxDrawUniform   = 64
+	// paintUniformSize is the size of the Paint uniform of the shaders (paint.wgsl.inc), 55
+	// float4s, and maxUniformWindow the most that a binding reads past the start of its entry.
+	paintUniformSize = 55 * 16
+	maxUniformWindow = 1024
 )
 
 // frameSlot is the dynamic buffers of one frame in flight: the instance data of the frame's
@@ -82,8 +85,8 @@ func (r *Renderer) upload(s *frameSlot, data *[numPipes][]float32) (base [numPip
 	}
 	if len(s.ring) > 0 {
 		// The last window of the ring must fit the buffer: a binding is at most
-		// maxDrawUniform bytes at the dynamic offset.
-		if err := r.ensure(&s.uniforms, &s.uniCap, len(s.ring)+maxDrawUniform, BufferUniform); err != nil {
+		// maxUniformWindow bytes at the dynamic offset.
+		if err := r.ensure(&s.uniforms, &s.uniCap, len(s.ring)+maxUniformWindow, BufferUniform); err != nil {
 			return base, err
 		}
 		r.dev.WriteBuffer(s.uniforms, 0, s.ring)

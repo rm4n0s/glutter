@@ -232,7 +232,7 @@ func (dr *drawer) call(c *drawCall) error {
 	}
 	// Making the copy's texture binds it to unit 0, so it comes before the
 	// textures of the draw are bound.
-	if c.spec != nil && c.spec.readBlend != 0 {
+	if c.spec != nil && c.spec.ReadBlend != 0 {
 		if err := dr.copyDestination(prog, c); err != nil {
 			return err
 		}
@@ -267,8 +267,8 @@ func (dr *drawer) call(c *drawCall) error {
 		dr.lastSpec[c.pipe] = c.spec
 		applySpec(prog, c.spec)
 	}
-	if c.spec != nil && c.spec.image != nil {
-		d.BindTexture(2, c.spec.image)
+	if c.spec != nil && c.spec.Image != nil {
+		d.BindTexture(2, c.spec.Image.(*Texture))
 	}
 	// The scissor box counts from the bottom left of the target.
 	sx, sy, sw, sh := c.scissor[0], c.scissor[1], c.scissor[2], c.scissor[3]
@@ -363,32 +363,32 @@ func (dr *drawer) copyDestination(prog *Program, c *drawCall) error {
 
 // applySpec sets the uniforms of a paint.
 func applySpec(prog *Program, sp *paintSpec) {
-	prog.SetInt("uShader", sp.shader)
-	prog.SetVec4("uShaderXf0", sp.xf[0], sp.xf[1], sp.xf[2], sp.xf[3])
-	prog.SetVec2("uShaderXf1", sp.xf[4], sp.xf[5])
-	prog.SetVec4("uShaderP0", sp.p0[0], sp.p0[1], sp.p0[2], sp.p0[3])
-	prog.SetVec4("uShaderP1", sp.p1[0], sp.p1[1], sp.p1[2], sp.p1[3])
-	prog.SetInt("uTileX", sp.tile[0])
-	prog.SetInt("uTileY", sp.tile[1])
-	prog.SetInt("uRampCount", sp.rampN)
-	if sp.rampN > 0 {
-		n := int(sp.rampN)
+	prog.SetInt("uShader", sp.Shader)
+	prog.SetVec4("uShaderXf0", sp.XF[0], sp.XF[1], sp.XF[2], sp.XF[3])
+	prog.SetVec2("uShaderXf1", sp.XF[4], sp.XF[5])
+	prog.SetVec4("uShaderP0", sp.P0[0], sp.P0[1], sp.P0[2], sp.P0[3])
+	prog.SetVec4("uShaderP1", sp.P1[0], sp.P1[1], sp.P1[2], sp.P1[3])
+	prog.SetInt("uTileX", sp.Tile[0])
+	prog.SetInt("uTileY", sp.Tile[1])
+	prog.SetInt("uRampCount", sp.RampN)
+	if sp.RampN > 0 {
+		n := int(sp.RampN)
 		colors := make([]float32, 0, n*4)
 		for i := 0; i < n; i++ {
-			colors = append(colors, sp.rampCol[i][:]...)
+			colors = append(colors, sp.RampCol[i][:]...)
 		}
 		prog.SetVec4s("uRampColor", colors)
-		prog.SetFloats("uRampPos", sp.rampPos[:n])
+		prog.SetFloats("uRampPos", sp.RampPos[:n])
 	}
-	prog.SetVec4("uPaintImageInfo", sp.imgInfo[0], sp.imgInfo[1], sp.imgInfo[2], sp.imgInfo[3])
-	prog.SetVec4("uConstColor", sp.constCol[0], sp.constCol[1], sp.constCol[2], sp.constCol[3])
-	prog.SetInt("uDither", b2i(sp.dither))
-	prog.SetInt("uFilter", sp.filter)
-	prog.SetVec4("uFilterColor", sp.filterCol[0], sp.filterCol[1], sp.filterCol[2], sp.filterCol[3])
-	prog.SetInt("uFilterMode", sp.filterMode)
-	if sp.filter == filterMatrix {
-		prog.SetVec4s("uFilterMatrix", sp.filterMat[:])
+	prog.SetVec4("uPaintImageInfo", sp.ImgInfo[0], sp.ImgInfo[1], sp.ImgInfo[2], sp.ImgInfo[3])
+	prog.SetVec4("uConstColor", sp.ConstCol[0], sp.ConstCol[1], sp.ConstCol[2], sp.ConstCol[3])
+	prog.SetInt("uDither", b2i(sp.Dither))
+	prog.SetInt("uFilter", sp.Filter)
+	prog.SetVec4("uFilterColor", sp.FilterCol[0], sp.FilterCol[1], sp.FilterCol[2], sp.FilterCol[3])
+	prog.SetInt("uFilterMode", sp.FilterBlend)
+	if sp.Filter == gpu.FilterMatrix {
+		prog.SetVec4s("uFilterMatrix", sp.FilterMat[:])
 	}
-	prog.SetInt("uInvert", b2i(sp.invert))
-	prog.SetInt("uBlend", sp.readBlend-1)
+	prog.SetInt("uInvert", b2i(sp.Invert))
+	prog.SetInt("uBlend", sp.ReadBlend-1)
 }

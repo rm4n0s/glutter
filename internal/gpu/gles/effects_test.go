@@ -78,7 +78,7 @@ func TestBlurPasses(t *testing.T) {
 					if math.Abs(sum-1) > 1e-5 || p.radius != int32(math.Ceil(3*float64(p.sigma))) || p.sigma > maxLowSigma {
 						t.Errorf("kernel of pass %d: sigma %v radius %d sums to %v", i, p.sigma, p.radius, sum)
 					}
-					if p.tile != tileIndex(tt.tile) {
+					if p.tile != gpu.TileIndex(tt.tile) {
 						t.Errorf("tile = %d", p.tile)
 					}
 				}
@@ -129,7 +129,7 @@ func TestFilterPassesOfEveryFilter(t *testing.T) {
 	// The radii are in pixels: the transform's scale applies, and a blur without a
 	// tile mode gets the mode it is given.
 	got, _ := filterPasses(blurFilter(2, 2, ui.TileModeUnspecified), ctm, ui.TileModeMirror, 40, 30)
-	if got[0].sigma != 4 || got[0].tile != tileIndex(ui.TileModeMirror) {
+	if got[0].sigma != 4 || got[0].tile != gpu.TileIndex(ui.TileModeMirror) {
 		t.Errorf("blur pass = sigma %v tile %d", got[0].sigma, got[0].tile)
 	}
 	if got, _ := filterPasses(ui.NewImageFilterDilate(ui.ImageFilterMorphologyOpts{RadiusX: 1.4, RadiusY: 0}), ctm, ui.TileModeDecal, 40, 30); got[0].radius != 3 {
@@ -313,10 +313,10 @@ func TestPaintImageFilterDrawsIntoAFilteredLayer(t *testing.T) {
 	}
 	// The shape is drawn alone, opaque in the layer's blend, and the layer is
 	// filtered, then blended where something was drawn.
-	if draw.spec.readBlend != 0 || draw.blend != blendFuncs[ui.BlendModeSrcOver] {
+	if draw.spec.ReadBlend != 0 || draw.blend != blendFuncs[ui.BlendModeSrcOver] {
 		t.Errorf("inner draw blend %+v spec %+v", draw.blend, draw.spec)
 	}
-	if comp.eff == nil || !comp.eff.drawnOnly || comp.eff.mask != -1 || len(comp.eff.passes) != 2 || comp.spec.readBlend == 0 {
+	if comp.eff == nil || !comp.eff.drawnOnly || comp.eff.mask != -1 || len(comp.eff.passes) != 2 || comp.spec.ReadBlend == 0 {
 		t.Errorf("composite = %+v spec %+v", comp.eff, comp.spec)
 	}
 	if b.stats.Drawn != 1 || b.stats.Commands != 1 {
@@ -343,7 +343,7 @@ func TestSaveLayerImageFilter(t *testing.T) {
 		t.Fatalf("effect = %+v", comp.eff)
 	}
 	// A blur with no tile mode clamps for a save layer.
-	if comp.eff.passes[0].tile != tileIndex(ui.TileModeClamp) {
+	if comp.eff.passes[0].tile != gpu.TileIndex(ui.TileModeClamp) {
 		t.Errorf("tile = %d", comp.eff.passes[0].tile)
 	}
 }
@@ -379,18 +379,18 @@ func TestSceneImageFilterAndBackdropLayers(t *testing.T) {
 	// A blur with no tile mode is transparent beyond the edges for an image filter
 	// layer, and mirrors for a backdrop, whose layer starts as the filtered backdrop.
 	imageComp := b.frame.calls[2]
-	if imageComp.eff == nil || imageComp.eff.passes[0].tile != tileIndex(ui.TileModeDecal) {
+	if imageComp.eff == nil || imageComp.eff.passes[0].tile != gpu.TileIndex(ui.TileModeDecal) {
 		t.Errorf("image filter effect = %+v", imageComp.eff)
 	}
 	begin, comp := b.frame.calls[3], b.frame.calls[5]
-	if begin.eff == nil || !begin.eff.backdrop || len(begin.eff.passes) != 2 || begin.eff.passes[0].tile != tileIndex(ui.TileModeMirror) {
+	if begin.eff == nil || !begin.eff.backdrop || len(begin.eff.passes) != 2 || begin.eff.passes[0].tile != gpu.TileIndex(ui.TileModeMirror) {
 		t.Fatalf("backdrop begin = %+v", begin.eff)
 	}
 	if begin.rect != image.Rect(30, 30, 90, 70) || begin.eff.passes[0].outW != 60 {
 		t.Errorf("backdrop layer = %v, passes %+v", begin.rect, begin.eff.passes)
 	}
 	// The layer is composited with the backdrop's blend mode and no filter.
-	if comp.eff != nil || comp.spec.readBlend == 0 {
+	if comp.eff != nil || comp.spec.ReadBlend == 0 {
 		t.Errorf("backdrop composite = %+v spec %+v", comp.eff, comp.spec)
 	}
 }
@@ -420,12 +420,12 @@ func TestShaderMaskPaintsTheShaderIntoTheLayer(t *testing.T) {
 	}
 	mask := b.frame.calls[2]
 	// DstIn is blended in the shader, which reads the layer's pixels.
-	if mask.spec.shader != shaderLinear || mask.blend != replaceBlend || mask.spec.readBlend != int32(ui.BlendModeDstIn-ui.BlendModeClear)+1 {
-		t.Errorf("mask draw: shader %d blend %+v read %d", mask.spec.shader, mask.blend, mask.spec.readBlend)
+	if mask.spec.Shader != gpu.ShaderLinear || mask.blend != replaceBlend || mask.spec.ReadBlend != int32(ui.BlendModeDstIn-ui.BlendModeClear)+1 {
+		t.Errorf("mask draw: shader %d blend %+v read %d", mask.spec.Shader, mask.blend, mask.spec.ReadBlend)
 	}
 	// The gradient starts at the mask rectangle's corner: the shader's space is the
 	// layer's translated by it, so the pixel that is the corner maps to the origin.
-	if got := mask.spec.xf; got[4] != -15 || got[5] != -15 {
+	if got := mask.spec.XF; got[4] != -15 || got[5] != -15 {
 		t.Errorf("shader transform = %v, want a translation by -15, -15", got)
 	}
 }

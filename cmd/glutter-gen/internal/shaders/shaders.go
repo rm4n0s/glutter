@@ -114,24 +114,35 @@ func Generate(srcDir, outDir string, naga Compiler) error {
 	if err := os.MkdirAll(filepath.Join(outDir, shadersDir), 0o755); err != nil {
 		return errors.NewErr("ShadersWriteFailed", err).SetMetadata("dir", outDir)
 	}
+	// naga compiles the text with the includes expanded, which is also the text of the
+	// generated file; it is written to a temporary directory under the file's name.
+	tmp, err := os.MkdirTemp("", "glutter-shaders-")
+	if err != nil {
+		return errors.NewErr("ShadersWriteFailed", err).SetMetadata("dir", os.TempDir())
+	}
+	defer func() { _ = os.RemoveAll(tmp) }()
 	var names []string
 	mods := map[string]Module{}
 	srcs := map[string]string{}
 	for _, file := range files {
 		name := strings.TrimSuffix(filepath.Base(file), ".wgsl")
-		src, err := os.ReadFile(file)
+		src, err := expand(file, nil)
 		if err != nil {
-			return errors.NewErr("ShadersReadFailed", err).SetMetadata("file", file)
+			return err
 		}
-		mod, err := Parse(string(src))
+		mod, err := Parse(src)
 		if err != nil {
 			return wrapParse(err, file)
 		}
-		if err := naga.Compile(file, filepath.Join(outDir, shadersDir, name+".spv")); err != nil {
+		expanded := filepath.Join(tmp, filepath.Base(file))
+		if err := os.WriteFile(expanded, []byte(src), 0o644); err != nil {
+			return errors.NewErr("ShadersWriteFailed", err).SetMetadata("file", expanded)
+		}
+		if err := naga.Compile(expanded, filepath.Join(outDir, shadersDir, name+".spv")); err != nil {
 			return err
 		}
 		names = append(names, name)
-		mods[name], srcs[name] = mod, string(src)
+		mods[name], srcs[name] = mod, src
 	}
 	code, err := render(version, names, mods, srcs)
 	if err != nil {
@@ -142,6 +153,42 @@ func Generate(srcDir, outDir string, naga Compiler) error {
 		return errors.NewErr("ShadersWriteFailed", err).SetMetadata("file", path)
 	}
 	return nil
+}
+
+// includeLine is a line that includes another file, relative to the including file's directory.
+var includeLine = regexp.MustCompile(`(?m)^[ \t]*//#include[ \t]+"([^"]+)"[ \t]*$`)
+
+// expand reads a WGSL file and replaces each `//#include "file"` line with the text of the file,
+// which may include others (what several shaders share: the paint, the blend modes). stack is
+// the files being expanded, to find a cycle. It fails with ShadersIncludeMissing for a file that
+// cannot be read and ShadersIncludeCycle for one that includes itself.
+func expand(file string, stack []string) (string, error) {
+	for _, f := range stack {
+		if f == file {
+			return "", errors.New("ShadersIncludeCycle", "a shader includes itself", "file", file, "stack", stack)
+		}
+	}
+	data, err := os.ReadFile(file)
+	if err != nil {
+		if len(stack) > 0 {
+			return "", errors.NewErr("ShadersIncludeMissing", err).SetMetadata("file", file, "includedBy", stack[len(stack)-1])
+		}
+		return "", errors.NewErr("ShadersReadFailed", err).SetMetadata("file", file)
+	}
+	var failure error
+	text := includeLine.ReplaceAllStringFunc(string(data), func(line string) string {
+		if failure != nil {
+			return line
+		}
+		name := includeLine.FindStringSubmatch(line)[1]
+		inc, err := expand(filepath.Join(filepath.Dir(file), name), append(append([]string(nil), stack...), file))
+		if err != nil {
+			failure = err
+			return line
+		}
+		return strings.TrimRight(inc, "\n")
+	})
+	return text, failure
 }
 
 // wrapParse adds the file to the metadata of an error of Parse, keeping its tag.

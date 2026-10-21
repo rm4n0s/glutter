@@ -215,7 +215,7 @@ func (b *frameBuilder) setBlend(info *paintInfo, sp *paintSpec, mode ui.BlendMod
 		return false
 	}
 	info.blend = replaceBlend
-	sp.readBlend = int32(idx + 1)
+	sp.ReadBlend = int32(idx + 1)
 	return true
 }
 
@@ -277,7 +277,7 @@ func (b *frameBuilder) composite(rec *layerRec, cached *layerEntry) error {
 	copy(in[4:8], rec.info.color[:])
 	cb := c.Clip.Bounds
 	in[8], in[9], in[10], in[11] = float32(cb.Left), float32(cb.Top), float32(cb.Right), float32(cb.Bottom)
-	if rec.info.spec.readBlend != 0 {
+	if rec.info.spec.ReadBlend != 0 {
 		b.seq++
 		key.seq = b.seq
 	}

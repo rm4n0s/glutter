@@ -611,7 +611,7 @@ func TestVerticesInstances(t *testing.T) {
 	if b.frame.calls[0].mode != 20 || !b.frame.calls[0].hasColors || b.frame.calls[0].atTexture {
 		t.Errorf("first call = %+v", b.frame.calls[0].callKey)
 	}
-	if call := b.frame.calls[1]; !call.atTexture || call.spec.shader != shaderLinear || call.spec.xf != [6]float32{1, 0, 0, 1, 0, 0} {
+	if call := b.frame.calls[1]; !call.atTexture || call.spec.Shader != gpu.ShaderLinear || call.spec.XF != [6]float32{1, 0, 0, 1, 0, 0} {
 		t.Errorf("second call = %+v, spec %+v", call.callKey, call.spec)
 	}
 }

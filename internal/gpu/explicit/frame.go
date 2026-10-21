@@ -46,12 +46,13 @@ const (
 	pipeMask                     // coverage atlas tiles: instanced quads (shaders/mask.wgsl)
 	pipeImage                    // image rectangles: instanced quads (shaders/image.wgsl)
 	pipeVertices                 // triangles from vertices (shaders/vertices.wgsl)
+	pipeLayer                    // a layer composited into its parent (shaders/layer.wgsl)
 	numPipes
 )
 
 // itemFloats is the size of an item of each pipeline in floats: an instance, or for the
 // vertices pipeline one vertex.
-var itemFloats = [numPipes]int{pipeShape: gpu.ShapeFloats, pipeMask: 16, pipeImage: gpu.ImageFloats, pipeVertices: gpu.VertexFloats}
+var itemFloats = [numPipes]int{pipeShape: gpu.ShapeFloats, pipeMask: 16, pipeImage: gpu.ImageFloats, pipeVertices: gpu.VertexFloats, pipeLayer: 12}
 
 // vertexParams are the uniforms of a draw of the vertices pipeline.
 type vertexParams struct {
@@ -59,26 +60,49 @@ type vertexParams struct {
 	clip   [4]float32 // left, top, right, bottom in pixels
 	mode   int32      // blend index of the paint with the vertex colors
 	colors bool
+	// atTexture says that the shader is evaluated at the texture coordinates.
+	atTexture bool
 }
+
+// callOp is what a draw call does.
+type callOp int
+
+const (
+	opDraw       callOp = iota // draws items of its pipeline
+	opBeginLayer               // starts drawing into a new layer, see drawCall.rect
+	opComposite                // ends the innermost layer and draws it into its parent, as one item of pipeLayer
+)
 
 // callKey is what two draws must share to be one draw call.
 type callKey struct {
+	op      callOp
 	pipe    pipeKind
 	blend   gpu.FixedBlend
-	scissor image.Rectangle // from the top left of the target
+	scissor image.Rectangle // in pixels of the surface
 	// clip is the coverage mask of the clip's shapes, or nil.
 	clip *clipMask
 	// page is the atlas page of a coverage tile, and img the image of an image rectangle.
 	page int
 	img  *imageEntry
 	vert vertexParams
+	// spec is the paint's shader, color filter and blend; never nil for a draw.
+	spec *gpu.PaintSpec
+	// seq is not 0 for a call that must not be merged with any other: one that reads the pixels
+	// under it.
+	seq int
 }
 
 // drawCall is a run of items drawn with one state.
 type drawCall struct {
 	callKey
 	first, count int // the items, in the pipeline's data
+	// rect is the pixels of the surface that a layer covers, for opBeginLayer and opComposite.
+	rect image.Rectangle
 }
+
+// replaceBlend writes the shader's output as it is: the blend of a paint whose shader blends
+// with the destination.
+var replaceBlend = gpu.FixedBlend{Src: gpu.BlendFactorOne, Dst: gpu.BlendFactorZero}
 
 // frameBuilder turns the commands of a draw list into instances. It calls the device only to
 // make and fill the textures that the commands need.
@@ -94,6 +118,36 @@ type frameBuilder struct {
 	skipping int
 	// reasons are the unsupported features seen, to count each once.
 	reasons map[string]bool
+	// specs interns the paint specs of the frame.
+	specs map[gpu.PaintSpec]*gpu.PaintSpec
+	// seq numbers the draw calls that read the pixels under them, which are never merged.
+	seq int
+	// layers are the groups being drawn, innermost last; culled is the depth of a group with
+	// nothing to draw, whose commands are dropped.
+	layers []*layerRec
+	culled int
+}
+
+// intern returns the one PaintSpec that equals sp.
+func (b *frameBuilder) intern(sp gpu.PaintSpec) *gpu.PaintSpec {
+	if p, ok := b.specs[sp]; ok {
+		return p
+	}
+	if b.specs == nil {
+		b.specs = map[gpu.PaintSpec]*gpu.PaintSpec{}
+	}
+	p := &sp
+	b.specs[sp] = p
+	return p
+}
+
+// target is the rectangle of the surface that is being drawn into: the whole surface, or the
+// innermost layer.
+func (b *frameBuilder) target() image.Rectangle {
+	if n := len(b.layers); n > 0 {
+		return b.layers[n-1].rect
+	}
+	return image.Rect(0, 0, b.w, b.h)
 }
 
 // items returns the number of items of the pipeline.
@@ -124,17 +178,29 @@ func (b *frameBuilder) command(c gpu.Command) error {
 			b.skipping++
 			return nil
 		}
-		b.skipping = 1
-		return b.unsupported("layer")
+		if b.culled > 0 {
+			b.culled++
+			return nil
+		}
+		return b.beginLayer(c)
 	case gpu.CommandEndLayer:
-		if b.skipping > 0 {
+		switch {
+		case b.skipping > 0:
 			b.skipping--
+		case b.culled > 0:
+			b.culled--
+		default:
+			return b.endLayer()
 		}
 		return nil
 	}
 	b.stats.Commands++
-	if b.skipping > 0 {
+	switch {
+	case b.skipping > 0:
 		b.stats.Skipped++
+		return nil
+	case b.culled > 0:
+		b.stats.Drawn++
 		return nil
 	}
 	drawn, err := b.draw(c)
@@ -159,7 +225,8 @@ func (b *frameBuilder) draw(c gpu.Command) (bool, error) {
 	if m[3] != 0 || m[7] != 0 || m[15] != 1 {
 		return false, b.unsupported("perspective transform")
 	}
-	outer := gpu.PixelRect(c.Clip.Bounds).Intersect(image.Rect(0, 0, b.w, b.h))
+	// A layer that blurs a shape reaches past the surface, and what is drawn into it does too.
+	outer := gpu.PixelRect(c.Clip.Bounds).Intersect(b.target())
 	if outer.Empty() {
 		return true, nil
 	}
@@ -253,8 +320,9 @@ type shapeContext struct {
 // paintInfo is what a paint gives the pipelines.
 type paintInfo struct {
 	blend gpu.FixedBlend
-	color [4]float32 // premultiplied; for an image, its alpha in all four components
+	color [4]float32 // premultiplied; for an image or a shader, its alpha in all four components
 	aa    bool
+	spec  *gpu.PaintSpec
 }
 
 // paintStatus says what to do with a paint.
@@ -266,38 +334,116 @@ const (
 	paintUnsupported                    // the command is skipped, or failed with the error
 )
 
-// paint reads the parts of a paint that the pipelines draw: a solid color and a blend mode of
-// the blend unit. With useShader false the paint's shader does not apply (images). For
-// paintUnsupported, unsupported has been called, and err is its result.
+// paint reads the parts of a paint that the pipelines draw.
 func (s *shapeContext) paint(p *ui.Paint, useShader bool) (info paintInfo, status paintStatus, err error) {
+	return s.paintWith(p, useShader, s.t)
+}
+
+// paintWith reads a paint. With useShader false the paint's shader does not apply (images);
+// toDevice is the transform the shader is set under. For paintUnsupported, unsupported has been
+// called, and err is its result.
+func (s *shapeContext) paintWith(p *ui.Paint, useShader bool, toDevice gpu.Affine2D) (info paintInfo, status paintStatus, err error) {
 	mode := p.BlendMode()
 	if mode == ui.BlendModeDst {
 		return info, paintNothing, nil
 	}
-	blend, ok := gpu.FixedBlendOf(mode)
-	switch {
-	case !ok:
+	var sp gpu.PaintSpec
+	sp.SetColorFilter(p.ColorFilter(), p.InvertColors())
+	info.aa = p.IsAntiAlias()
+	if !s.b.setBlend(&info, &sp, mode) {
 		return info, paintUnsupported, s.b.unsupported("blend mode " + mode.String())
-	case useShader && p.Shader() != nil:
-		return info, paintUnsupported, s.b.unsupported("shader")
-	case p.ColorFilter() != nil || p.InvertColors():
-		return info, paintUnsupported, s.b.unsupported("color filter")
 	}
-	info.blend, info.aa = blend, p.IsAntiAlias()
 	col := p.Color()
-	if !useShader {
+	if sh := p.Shader(); useShader && sh != nil {
+		if status, err := s.shaderSpec(&sp, sh, toDevice); status != paintDraw {
+			return info, status, err
+		}
+		a := float32(col.Alpha()) / 255
+		info.color = [4]float32{a, a, a, a}
+	} else if !useShader {
 		a := float32(col.Alpha()) / 255
 		info.color = [4]float32{a, a, a, a}
 	} else {
 		a := col.A
 		info.color = [4]float32{col.R * a, col.G * a, col.B * a, a}
 	}
+	info.spec = s.b.intern(sp)
 	return info, paintDraw, nil
 }
 
-// key makes the call key of a primitive of the pipeline that covers the pixels of bounds.
-func (s *shapeContext) key(pipe pipeKind, info paintInfo) callKey {
-	return callKey{pipe: pipe, blend: info.blend, scissor: s.outer, clip: s.mask}
+// setBlend sets how a blend mode is drawn into the paint info and spec: through the blend unit
+// if it can, else through the shader that reads the pixels under the draw. False says that the
+// mode is not known.
+func (b *frameBuilder) setBlend(info *paintInfo, sp *gpu.PaintSpec, mode ui.BlendMode) bool {
+	if blend, ok := gpu.FixedBlendOf(mode); ok {
+		info.blend = blend
+		return true
+	}
+	idx, ok := gpu.BlendIndex(mode)
+	if !ok {
+		return false
+	}
+	info.blend = replaceBlend
+	sp.ReadBlend = int32(idx + 1)
+	return true
+}
+
+// shaderSpec fills the shader part of a spec for the shader sh under the transform that takes the
+// shader's local space to the surface.
+func (s *shapeContext) shaderSpec(sp *gpu.PaintSpec, sh ui.Shader, toDevice gpu.Affine2D) (paintStatus, error) {
+	switch v := sh.(type) {
+	case *ui.Gradient:
+		r, what := sp.SetGradient(v, toDevice)
+		return s.status(r, what)
+	case *ui.ImageShader:
+		img := v.Image()
+		if img == nil || img.IsDisposed() {
+			return paintUnsupported, errors.New("GPUImageDisposed", "the image was disposed, or is nil, and cannot be drawn")
+		}
+		r, err := sp.SetImageShader(v, toDevice, func(img *ui.Image) (any, int, error) {
+			entry, err := s.b.res.imageTexture(img)
+			if err != nil {
+				return nil, 0, err
+			}
+			return entry.tex, entry.levels, nil
+		})
+		if err != nil {
+			if appErr, isErr := errors.FromError(err); isErr && appErr.Tag == "GPUImageTooLarge" && s.b.skip {
+				return paintUnsupported, s.b.unsupported("image larger than the textures of the device")
+			}
+			return paintUnsupported, err
+		}
+		return s.status(r, "")
+	}
+	return paintUnsupported, s.b.unsupported("paint shader")
+}
+
+// status turns the result of a spec into what the builder does with the paint.
+func (s *shapeContext) status(r gpu.PaintResult, what string) (paintStatus, error) {
+	switch r {
+	case gpu.PaintNothing:
+		return paintNothing, nil
+	case gpu.PaintUnsupported:
+		return paintUnsupported, s.b.unsupported(what)
+	}
+	return paintDraw, nil
+}
+
+// key makes the call key of a primitive of the pipeline. A draw that reads the pixels under it is
+// its own call, and its scissor box is just the pixels it covers, so that only they are copied;
+// false says that there is nothing to draw.
+func (s *shapeContext) key(pipe pipeKind, info paintInfo, covers image.Rectangle) (callKey, bool) {
+	k := callKey{pipe: pipe, blend: info.blend, scissor: s.outer, clip: s.mask, spec: info.spec}
+	if info.spec.ReadBlend != 0 {
+		r := covers.Intersect(s.outer)
+		if r.Empty() {
+			return k, false
+		}
+		k.scissor = r
+		s.b.seq++
+		k.seq = s.b.seq
+	}
+	return k, true
 }
 
 // shape draws what draw makes with the paint's color and blend. A shape with no analytic
@@ -311,8 +457,11 @@ func (s *shapeContext) shape(p *ui.Paint, draw func(e *gpu.ShapeEncoder) (needsM
 		Transform: &s.c.Transform, T: s.t, Outer: s.outer, Clip: s.clip, ClipBounds: s.c.Clip.Bounds,
 		Paint: gpu.ShapePaint{Color: info.color, Antialias: info.aa},
 	}
-	key := s.key(pipeShape, info)
-	enc.Emit = func(in *gpu.ShapeInstance, _ image.Rectangle) { s.b.add(key, in[:]) }
+	enc.Emit = func(in *gpu.ShapeInstance, covers image.Rectangle) {
+		if key, ok := s.key(pipeShape, info, covers); ok {
+			s.b.add(key, in[:])
+		}
+	}
 	if what := draw(enc); what != "" {
 		if op := gpu.PaintOf(s.c.Op); op != nil {
 			if _, isShape := gpu.ShapeOf(s.c.Op); isShape {
@@ -331,7 +480,7 @@ func (b *frameBuilder) add(key callKey, floats []float32) { b.addItems(key, floa
 // addItems appends count items, whose floats are given.
 func (b *frameBuilder) addItems(key callKey, floats []float32, count int) {
 	first := b.items(key.pipe)
-	if n := len(b.calls); n > 0 && b.calls[n-1].callKey == key {
+	if n := len(b.calls); n > 0 && key.seq == 0 && key.op == opDraw && b.calls[n-1].callKey == key {
 		b.calls[n-1].count += count
 	} else {
 		b.calls = append(b.calls, drawCall{callKey: key, first: first, count: count})

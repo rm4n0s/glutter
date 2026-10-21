@@ -428,7 +428,7 @@ func (s *shapeContext) paintWith(p *ui.Paint, useShader bool, toDevice affine2D)
 // draw.
 func (s *shapeContext) key(pipe pipeline, info paintInfo, tex *Texture, bounds image.Rectangle) (callKey, bool) {
 	k := callKey{pipe: pipe, blend: info.blend, scissor: s.scissor, tex: tex, clip: s.mask, spec: info.spec}
-	if info.spec.readBlend != 0 {
+	if info.spec.ReadBlend != 0 {
 		r := bounds.Intersect(s.outer)
 		if r.Empty() {
 			return k, false

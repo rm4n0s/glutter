@@ -38,7 +38,10 @@ func (s *shapeContext) pathMask(op ui.DisplayOp, p *ui.Paint) (bool, error) {
 		in[4], in[5] = float32(t.AX), float32(t.AY)
 		copy(in[8:12], info.color[:])
 		copy(in[12:16], s.clip[:])
-		key := s.key(pipeMask, info)
+		key, ok := s.key(pipeMask, info, image.Rect(t.X0, t.Y0, t.X1, t.Y1))
+		if !ok {
+			continue
+		}
 		key.page = t.Page
 		s.b.add(key, in[:])
 	}
@@ -57,13 +60,16 @@ func typeName(op ui.DisplayOp) string { return fmt.Sprintf("%T", op) }
 // imageEncoder returns the image encoder of the command for an image whose texture has the
 // entry, which adds each instance it makes to the frame.
 func (s *shapeContext) imageEncoder(info paintInfo, entry *imageEntry, p *ui.Paint) *gpu.ImageEncoder {
-	key := s.key(pipeImage, info)
-	key.img = entry
 	return &gpu.ImageEncoder{
 		T: s.t, Outer: s.outer, Clip: s.clip,
 		Paint:   gpu.ShapePaint{Color: info.color, Antialias: info.aa},
 		Quality: p.FilterQuality(), Levels: entry.levels,
-		Emit: func(in *gpu.ImageInstance, _ image.Rectangle) { s.b.add(key, in[:]) },
+		Emit: func(in *gpu.ImageInstance, covers image.Rectangle) {
+			if key, ok := s.key(pipeImage, info, covers); ok {
+				key.img = entry
+				s.b.add(key, in[:])
+			}
+		},
 	}
 }
 
@@ -74,7 +80,7 @@ func (s *shapeContext) image(img *ui.Image, p *ui.Paint) (info paintInfo, entry 
 		return info, nil, true, false, errors.New("GPUImageDisposed", "the image was disposed, or is nil, and cannot be drawn")
 	}
 	// The paint's shader does not apply to images, as in Skia.
-	info, status, err := s.paint(p, false)
+	info, status, err := s.paintWith(p, false, s.t)
 	if status != paintDraw {
 		return info, nil, true, status == paintNothing, err
 	}
@@ -109,27 +115,38 @@ func (s *shapeContext) imageNine(op ui.OpDrawImageNine) (bool, error) {
 	return true, nil
 }
 
-// imageAtlas draws the parts of an atlas image, each moved by its transform. Sprites with
-// colors are blended with them by a blend mode that reads the color: step 20.5.
+// imageAtlas draws the parts of an atlas image, each moved by its transform. With colors, each
+// sprite is the source and its color the destination of the blend mode, so that srcIn with a
+// transparent white scales the sprite's alpha.
 func (s *shapeContext) imageAtlas(op ui.OpDrawAtlas) (bool, error) {
+	mode := 0
 	if len(op.Colors) > 0 {
-		return false, s.b.unsupported("atlas colors")
+		var ok bool
+		if mode, ok = gpu.BlendIndex(op.BlendMode); !ok {
+			return false, s.b.unsupported("atlas blend mode " + op.BlendMode.String())
+		}
 	}
 	info, entry, done, ok, err := s.image(op.Atlas, &op.Paint)
 	if done {
 		return ok, err
 	}
-	s.imageEncoder(info, entry, &op.Paint).Atlas(op.Atlas.Width(), op.Atlas.Height(), op, 0)
+	s.imageEncoder(info, entry, &op.Paint).Atlas(op.Atlas.Width(), op.Atlas.Height(), op, mode)
 	return true, nil
 }
 
 // vertices draws the triangles of Canvas.drawVertices as they are, in device pixels, without
-// anti-aliasing: a pixel is covered when its center is inside. The paint is blended with the
-// vertex colors by the call's blend mode, which is src or dst until step 20.5; a paint with a
-// shader is step 20.5 too.
+// anti-aliasing: a pixel is covered when its center is inside. The color of a pixel is the paint's,
+// blended with the interpolated vertex colors by the call's blend mode, the paint being the source
+// and the vertices the destination. A paint with a shader gives the shader's color at the pixel, or
+// at the interpolated texture coordinates when the vertices have some.
 func (s *shapeContext) vertices(op ui.OpDrawVertices) (bool, error) {
 	v := op.Vertices
-	info, status, err := s.paint(&op.Paint, true)
+	atTexture := len(v.TextureCoordinates()) > 0 && op.Paint.Shader() != nil
+	toDevice := s.t
+	if atTexture {
+		toDevice = gpu.Affine2D{A: 1, D: 1}
+	}
+	info, status, err := s.paintWith(&op.Paint, true, toDevice)
 	if status != paintDraw {
 		return status == paintNothing, err
 	}
@@ -137,16 +154,19 @@ func (s *shapeContext) vertices(op ui.OpDrawVertices) (bool, error) {
 	mode := 0
 	if len(colors) > 0 {
 		var ok bool
-		if mode, ok = gpu.BlendIndex(op.BlendMode); !ok || (op.BlendMode != ui.BlendModeSrc && op.BlendMode != ui.BlendModeDst) {
+		if mode, ok = gpu.BlendIndex(op.BlendMode); !ok {
 			return false, s.b.unsupported("vertices blend mode " + op.BlendMode.String())
 		}
 	}
-	floats, _, ok := gpu.VertexTriangles(v, &s.c.Transform)
+	floats, bounds, ok := gpu.VertexTriangles(v, &s.c.Transform)
 	if !ok {
 		return true, nil
 	}
-	key := s.key(pipeVertices, info)
-	key.vert = vertexParams{paint: info.color, clip: s.clip, mode: int32(mode), colors: len(colors) > 0}
+	key, ok := s.key(pipeVertices, info, bounds)
+	if !ok {
+		return true, nil
+	}
+	key.vert = vertexParams{paint: info.color, clip: s.clip, mode: int32(mode), colors: len(colors) > 0, atTexture: atTexture}
 	s.b.addItems(key, floats, len(floats)/gpu.VertexFloats)
 	return true, nil
 }

@@ -29,14 +29,14 @@ func TestPaintSpecsAreSharedAndMerged(t *testing.T) {
 		t.Fatalf("calls = %d, first has %d instances", len(b.frame.calls), b.frame.calls[0].count)
 	}
 	sp := b.frame.calls[0].spec
-	if sp.shader != shaderLinear || sp.rampN != 2 || sp.p0 != [4]float32{0, 0, 100, 0} || sp.p1[0] != 0.0001 || !sp.dither {
+	if sp.Shader != gpu.ShaderLinear || sp.RampN != 2 || sp.P0 != [4]float32{0, 0, 100, 0} || sp.P1[0] != 0.0001 || !sp.Dither {
 		t.Errorf("linear spec = %+v", sp)
 	}
 	// A shader paint's color is its alpha in every component, for the shader to scale.
 	if got := b.frame.data[pipeShape][12:16]; got[0] != 1 || got[3] != 1 {
 		t.Errorf("instance color = %v", got)
 	}
-	if b.frame.calls[1].spec.shader != shaderRadial {
+	if b.frame.calls[1].spec.Shader != gpu.ShaderRadial {
 		t.Errorf("radial spec = %+v", b.frame.calls[1].spec)
 	}
 }
@@ -49,38 +49,38 @@ func TestGradientSpecs(t *testing.T) {
 		check  func(t *testing.T, sp *paintSpec)
 	}{
 		{"sweep", ui.NewGradientSweep(ui.Offset{Dx: 3, Dy: 4}, cols, ui.GradientSweepOpts{StartAngle: 1, EndAngle: 3, TileMode: ui.TileModeMirror}), func(t *testing.T, sp *paintSpec) {
-			if sp.shader != shaderSweep || sp.p0 != [4]float32{3, 4, 1, 2} || sp.tile[0] != 2 {
+			if sp.Shader != gpu.ShaderSweep || sp.P0 != [4]float32{3, 4, 1, 2} || sp.Tile[0] != 2 {
 				t.Errorf("spec = %+v", sp)
 			}
 		}},
 		{"conical", ui.NewGradientRadial(ui.Offset{Dx: 50, Dy: 50}, 20, cols, ui.GradientRadialOpts{Focal: &ui.Offset{Dx: 40, Dy: 45}, FocalRadius: 3, TileMode: ui.TileModeRepeated}), func(t *testing.T, sp *paintSpec) {
-			if sp.shader != shaderConical || sp.p0 != [4]float32{40, 45, 3, 0} || sp.p1 != [4]float32{50, 50, 20, 0} || sp.tile[0] != 1 {
+			if sp.Shader != gpu.ShaderConical || sp.P0 != [4]float32{40, 45, 3, 0} || sp.P1 != [4]float32{50, 50, 20, 0} || sp.Tile[0] != 1 {
 				t.Errorf("spec = %+v", sp)
 			}
 		}},
 		{"stops that do not reach the ends", ui.NewGradientLinear(ui.Offset{}, ui.Offset{Dx: 10}, append(cols, ui.NewColor(0xFF00FF00)), ui.GradientLinearOpts{ColorStops: []float64{0.2, 0.5, 0.6}}), func(t *testing.T, sp *paintSpec) {
 			want := []float32{0, 0.2, 0.5, 0.6, 1}
-			if int(sp.rampN) != len(want) {
-				t.Fatalf("ramp has %d stops", sp.rampN)
+			if int(sp.RampN) != len(want) {
+				t.Fatalf("ramp has %d stops", sp.RampN)
 			}
 			for i, p := range want {
-				if sp.rampPos[i] != p {
-					t.Errorf("stop %d at %v, want %v", i, sp.rampPos[i], p)
+				if sp.RampPos[i] != p {
+					t.Errorf("stop %d at %v, want %v", i, sp.RampPos[i], p)
 				}
 			}
 		}},
 		{"degenerate line is the last color", ui.NewGradientLinear(ui.Offset{Dx: 5}, ui.Offset{Dx: 5}, cols), func(t *testing.T, sp *paintSpec) {
-			if sp.shader != shaderConst || sp.constCol != [4]float32{0, 0, 1, 1} || sp.rampN != 0 {
+			if sp.Shader != gpu.ShaderConst || sp.ConstCol != [4]float32{0, 0, 1, 1} || sp.RampN != 0 {
 				t.Errorf("spec = %+v", sp)
 			}
 		}},
 		{"degenerate decal line is nothing", ui.NewGradientLinear(ui.Offset{Dx: 5}, ui.Offset{Dx: 5}, cols, ui.GradientLinearOpts{TileMode: ui.TileModeDecal}), func(t *testing.T, sp *paintSpec) {
-			if sp.shader != shaderConst || sp.constCol != [4]float32{} {
+			if sp.Shader != gpu.ShaderConst || sp.ConstCol != [4]float32{} {
 				t.Errorf("spec = %+v", sp)
 			}
 		}},
 		{"a matrix that cannot be undone", ui.NewGradientLinear(ui.Offset{}, ui.Offset{Dx: 5}, cols, ui.GradientLinearOpts{Matrix4: ui.NewMatrix4Diagonal3Values(0, 1, 1)}), func(t *testing.T, sp *paintSpec) {
-			if sp.shader != shaderConst || sp.constCol != [4]float32{} {
+			if sp.Shader != gpu.ShaderConst || sp.ConstCol != [4]float32{} {
 				t.Errorf("spec = %+v", sp)
 			}
 		}},
@@ -103,7 +103,7 @@ func TestGradientSpecs(t *testing.T) {
 		c.Translate(10, 20)
 		c.DrawRect(ui.NewRectFromLTWH(0, 0, 50, 50), p)
 	})
-	if xf := b.frame.calls[0].spec.xf; xf != [6]float32{0.5, 0, 0, 0.5, -5, -10} {
+	if xf := b.frame.calls[0].spec.XF; xf != [6]float32{0.5, 0, 0, 0.5, -5, -10} {
 		t.Errorf("xf = %v", xf)
 	}
 }
@@ -121,28 +121,28 @@ func TestColorFilterSpecs(t *testing.T) {
 	}{
 		{"mode", ui.NewColorFilterMode(ui.NewColor(0x80FF0000), ui.BlendModeMultiply), false, func(t *testing.T, sp *paintSpec) {
 			a := float32(0x80) / 255
-			if sp.filter != filterMode || sp.filterMode != 24 || sp.filterCol != [4]float32{a, 0, 0, a} {
+			if sp.Filter != gpu.FilterMode || sp.FilterBlend != 24 || sp.FilterCol != [4]float32{a, 0, 0, a} {
 				t.Errorf("spec = %+v", sp)
 			}
 		}},
 		{"matrix by columns", ui.NewColorFilterMatrix(m), false, func(t *testing.T, sp *paintSpec) {
 			// Column 1 holds the weights of green in the four outputs: m[1], m[6], m[11], m[16].
-			if sp.filter != filterMatrix || sp.filterMat[4] != 1 || sp.filterMat[5] != 6 || sp.filterMat[6] != 11 || sp.filterMat[7] != 16 || sp.filterMat[16] != 4 {
-				t.Errorf("matrix = %v", sp.filterMat)
+			if sp.Filter != gpu.FilterMatrix || sp.FilterMat[4] != 1 || sp.FilterMat[5] != 6 || sp.FilterMat[6] != 11 || sp.FilterMat[7] != 16 || sp.FilterMat[16] != 4 {
+				t.Errorf("matrix = %v", sp.FilterMat)
 			}
 		}},
 		{"gamma to sRGB", ui.NewColorFilterLinearToSrgbGamma(), false, func(t *testing.T, sp *paintSpec) {
-			if sp.filter != filterToSrgb {
-				t.Errorf("filter = %d", sp.filter)
+			if sp.Filter != gpu.FilterToSrgb {
+				t.Errorf("filter = %d", sp.Filter)
 			}
 		}},
 		{"gamma from sRGB", ui.NewColorFilterSrgbToLinearGamma(), false, func(t *testing.T, sp *paintSpec) {
-			if sp.filter != filterFromSrgb {
-				t.Errorf("filter = %d", sp.filter)
+			if sp.Filter != gpu.FilterFromSrgb {
+				t.Errorf("filter = %d", sp.Filter)
 			}
 		}},
 		{"inverted colors", nil, true, func(t *testing.T, sp *paintSpec) {
-			if !sp.invert || sp.filter != filterNone {
+			if !sp.Invert || sp.Filter != gpu.FilterNone {
 				t.Errorf("spec = %+v", sp)
 			}
 		}},
@@ -154,7 +154,7 @@ func TestColorFilterSpecs(t *testing.T) {
 			p.SetInvertColors(tt.invert)
 			b := mustBuild(t, func(c *ui.Canvas) { c.DrawRect(ui.NewRectFromLTWH(0, 0, 50, 50), p) })
 			tt.check(t, b.frame.calls[0].spec)
-			if b.frame.calls[0].spec.readBlend != 0 {
+			if b.frame.calls[0].spec.ReadBlend != 0 {
 				t.Error("a color filter needs no copy of the destination")
 			}
 		})
@@ -169,7 +169,7 @@ func TestImageShaderSpec(t *testing.T) {
 	b := frameWith(t, res, func(c *ui.Canvas) { c.DrawRect(ui.NewRectFromLTWH(0, 0, 50, 50), p) })
 	sp := b.frame.calls[0].spec
 	// Four image pixels per surface pixel: the level two mip, with bicubic filtering.
-	if sp.shader != shaderImage || sp.tile != [2]int32{1, 2} || sp.image == nil || sp.imgInfo != [4]float32{3, 2, 0, 0} || sp.xf != [6]float32{4, 0, 0, 4, 0, 0} {
+	if sp.Shader != gpu.ShaderImage || sp.Tile != [2]int32{1, 2} || sp.Image == nil || sp.ImgInfo != [4]float32{3, 2, 0, 0} || sp.XF != [6]float32{4, 0, 0, 4, 0, 0} {
 		t.Errorf("spec = %+v", sp)
 	}
 	// Without the caches an image shader is unsupported.
@@ -200,7 +200,7 @@ func TestBlendsThatReadTheDestination(t *testing.T) {
 	}
 	for _, i := range []int{1, 2} {
 		c := b.frame.calls[i]
-		if c.spec.readBlend != int32(ui.BlendModeMultiply-ui.BlendModeClear)+1 || c.blend != replaceBlend || c.seq == 0 {
+		if c.spec.ReadBlend != int32(ui.BlendModeMultiply-ui.BlendModeClear)+1 || c.blend != replaceBlend || c.seq == 0 {
 			t.Errorf("call %d = %+v spec %+v", i, c.callKey, c.spec)
 		}
 		x := 70 + (i-1)*5
@@ -208,7 +208,7 @@ func TestBlendsThatReadTheDestination(t *testing.T) {
 			t.Errorf("call %d scissor = %v", i, c.scissor)
 		}
 	}
-	if b.frame.calls[3].blend != blendFuncs[ui.BlendModePlus] || b.frame.calls[3].spec.readBlend != 0 {
+	if b.frame.calls[3].blend != blendFuncs[ui.BlendModePlus] || b.frame.calls[3].spec.ReadBlend != 0 {
 		t.Errorf("plus = %+v", b.frame.calls[3].callKey)
 	}
 	// A draw that leaves no pixel in the clip has no call.
@@ -279,10 +279,10 @@ func TestLayerParameters(t *testing.T) {
 	if len(composites) != 2 {
 		t.Fatalf("%d composites", len(composites))
 	}
-	if sp := composites[0].spec; sp.filter != filterToSrgb || !sp.invert || sp.readBlend != 0 {
+	if sp := composites[0].spec; sp.Filter != gpu.FilterToSrgb || !sp.Invert || sp.ReadBlend != 0 {
 		t.Errorf("filtered layer spec = %+v", sp)
 	}
-	if c := composites[1]; c.spec.readBlend != int32(ui.BlendModeHardLight-ui.BlendModeClear)+1 || c.blend != replaceBlend || c.seq == 0 {
+	if c := composites[1]; c.spec.ReadBlend != int32(ui.BlendModeHardLight-ui.BlendModeClear)+1 || c.blend != replaceBlend || c.seq == 0 {
 		t.Errorf("blended layer = %+v", c.callKey)
 	}
 }
@@ -416,7 +416,7 @@ func TestSceneLayersOfOpacityFiltersAndClips(t *testing.T) {
 	if a := b.frame.data[pipeLayer][4]; math.Abs(float64(a)-0.2) > 0.001 {
 		t.Errorf("opacity layer alpha = %v, want 0.2", a)
 	}
-	if sp := composites[1].spec; sp.filter != filterMode || sp.filterMode != int32(ui.BlendModeScreen-ui.BlendModeClear) {
+	if sp := composites[1].spec; sp.Filter != gpu.FilterMode || sp.FilterBlend != int32(ui.BlendModeScreen-ui.BlendModeClear) {
 		t.Errorf("color filter layer spec = %+v", sp)
 	}
 	// The clip layer is composited through the mask of its shape, and what is drawn

@@ -107,9 +107,9 @@ func TestDrawsShapesAsInstances(t *testing.T) {
 	if got[1][10] != gpu.ShapeKindRRect {
 		t.Errorf("rrect kind = %v", got[1][10])
 	}
-	// The bind groups are made as the draw calls need them: the frame and draw uniforms, and the
-	// clip mask (the white texel here).
-	want := []string{"SetPipeline", "NewBindGroup", "SetBindGroup", "NewBindGroup", "SetBindGroup", "SetScissor", "SetVertexBuffer", "Draw"}
+	// The bind groups are made as the draw calls need them: the uniforms, the clip mask (the white
+	// texel here) and the textures of the paint (stand-ins here).
+	want := []string{"SetPipeline", "NewBindGroup", "SetBindGroup", "NewBindGroup", "SetBindGroup", "NewBindGroup", "SetBindGroup", "SetScissor", "SetVertexBuffer", "Draw"}
 	var ops []string
 	for _, c := range scenePass(dev) {
 		ops = append(ops, c.Op)
@@ -194,12 +194,12 @@ func TestInstanceDataIsUploadedOncePerFrameIntoTheSlot(t *testing.T) {
 	}
 	var offsets []string
 	for _, c := range dev.Calls() {
-		if c.Op == "SetBindGroup" && c.Args == "group=0 offsets=[0 256]" {
+		if c.Op == "SetBindGroup" && c.Args == "group=0 offsets=[0 256 512]" {
 			offsets = append(offsets, c.Args)
 		}
 	}
 	if len(offsets) != 5 {
-		t.Errorf("the frame uniform is at offset 0 and the draw uniform at 256 in %d of 5 frames", len(offsets))
+		t.Errorf("the frame, draw and paint uniforms are at 0, 256 and 512 in %d of 5 frames", len(offsets))
 	}
 }
 
@@ -241,29 +241,16 @@ func TestUnsupportedFeatures(t *testing.T) {
 		feature string
 		draw    func(c *ui.Canvas)
 	}{
-		{"a gradient", "shader", func(c *ui.Canvas) { c.DrawRect(ui.NewRectFromLTWH(0, 0, 10, 10), linear) }},
-		{"a blend that reads the destination", "blend mode BlendMode.multiply", func(c *ui.Canvas) { c.DrawRect(ui.NewRectFromLTWH(0, 0, 10, 10), multiply) }},
 		{"a mask filter", "mask filter", func(c *ui.Canvas) { c.DrawRect(ui.NewRectFromLTWH(0, 0, 10, 10), blur) }},
 		{"an image filter", "image filter", func(c *ui.Canvas) {
 			p := solid(0xFF000000)
 			p.SetImageFilter(ui.NewImageFilterBlur(ui.ImageFilterBlurOpts{SigmaX: 2, SigmaY: 2}))
 			c.DrawRect(ui.NewRectFromLTWH(0, 0, 10, 10), p)
 		}},
-		{"a color filter", "color filter", func(c *ui.Canvas) {
-			p := solid(0xFF000000)
-			p.SetInvertColors(true)
-			c.DrawRect(ui.NewRectFromLTWH(0, 0, 10, 10), p)
-		}},
-		{"sprites with colors", "atlas colors", func(c *ui.Canvas) {
-			c.DrawAtlas(testImage(4), []ui.RSTransform{ui.NewRSTransformFromComponents(1, 0, 0, 0, 5, 5)}, []ui.Rect{ui.NewRectFromLTWH(0, 0, 4, 4)},
-				[]ui.Color{ui.NewColor(0x80FF0000)}, ui.BlendModeSrcIn, nil, nil)
-		}},
-		{"vertices blended with srcOver", "vertices blend mode BlendMode.srcOver", func(c *ui.Canvas) {
-			v := ui.NewVertices(ui.VertexModeTriangles, []ui.Offset{{}, {Dx: 10}, {Dy: 10}}, ui.VerticesOpts{Colors: []ui.Color{ui.NewColor(0xFFFF0000), ui.NewColor(0xFF00FF00), ui.NewColor(0xFF0000FF)}})
-			c.DrawVertices(v, ui.BlendModeSrcOver, solid(0xFF000000))
-		}},
-		{"a layer", "layer", func(c *ui.Canvas) {
-			c.SaveLayer(nil, solid(0x80000000))
+		{"an image filter on a layer", "image filter", func(c *ui.Canvas) {
+			p := solid(0x80000000)
+			p.SetImageFilter(ui.NewImageFilterBlur(ui.ImageFilterBlurOpts{SigmaX: 2, SigmaY: 2}))
+			c.SaveLayer(nil, p)
 			c.DrawRect(ui.NewRectFromLTWH(0, 0, 10, 10), solid(0xFF000000))
 			c.Restore()
 		}},

@@ -53,6 +53,10 @@ type Renderer struct {
 	mipSampler, imageSampler Sampler
 	// res holds the textures that outlive a frame; made at the first frame.
 	res *resources
+	// layerPool are the free textures of layers, and dst the texture that holds a copy of the
+	// pixels under a draw that blends in the shader.
+	layerPool []*pooledTexture
+	dst       Texture
 	// slots are the buffers of the frames in flight: the frame with number n uses slot
 	// n % FramesInFlight, which the device has finished with when Begin returns.
 	slots   [FramesInFlight]frameSlot
@@ -152,6 +156,7 @@ func (r *Renderer) Draw(h gpu.SurfaceHandle, width, height int, scene *ui.Scene,
 	defer func() {
 		if r.res != nil {
 			r.res.endFrame()
+			r.sweepLayers()
 		}
 	}()
 	fb, err := r.build(scene, width, height)
@@ -351,6 +356,7 @@ func (r *Renderer) Close() {
 	for _, p := range r.blit {
 		p.Destroy()
 	}
+	r.destroyPools()
 	if r.res != nil {
 		r.res.release()
 	}

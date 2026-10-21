@@ -1,9 +1,10 @@
 // Images: one instance is one rectangle of an image, drawn through an affine transform. The
 // fragment shader maps each pixel back to the image's texels and samples them with the paint's
 // filter quality: nearest, bilinear, bilinear on one mip level, or bicubic. Ported from the
-// GLES image shaders (image.vert.glsl, image.frag.glsl); the paint's color filters and the
-// tint of a sprite (blend modes that read the color) come with step 20.5.
+// GLES image shaders (image.vert.glsl, image.frag.glsl).
 // Draw 6 vertices per instance.
+
+//#include "paint.wgsl.inc"
 
 struct Frame {
 	// The size of the texture being drawn into, in pixels.
@@ -44,6 +45,7 @@ struct VertexOutput {
 	@location(4) @interpolate(flat) clip: vec4<f32>,
 	@location(5) @interpolate(flat) box: vec4<f32>,
 	@location(6) @interpolate(flat) img: vec4<f32>,
+	@location(7) @interpolate(flat) tint: vec4<f32>,
 }
 
 const FLAG_BOX: i32 = 1;       // box is in pixels: exact coverage of an axis-aligned rectangle
@@ -73,6 +75,7 @@ fn vs_main(@builtin(vertex_index) index: u32, instance: Instance) -> VertexOutpu
 	out.clip = instance.clip;
 	out.box = instance.box;
 	out.img = instance.img;
+	out.tint = instance.tint;
 	return out;
 }
 
@@ -182,8 +185,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 		color = textureSampleLevel(image, imageSampler, uv / vec2<f32>(base), in.img.x);
 	}
 	color = color * in.color;
+	if in.img.z >= 0.0 {
+		color = blendPair(i32(in.img.z + 0.5), color, in.tint);
+	}
+	color = applyFilters(color);
 	if coverage <= 0.0 {
 		discard;
 	}
-	return color * coverage;
+	return finish(color, coverage, dev);
 }

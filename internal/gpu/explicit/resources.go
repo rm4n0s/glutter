@@ -31,6 +31,7 @@ type resources struct {
 	mips []*imageEntry
 
 	white Texture // a 1x1 R8 texture of 255, for draws without a clip mask
+	clear Texture // a 1x1 RGBA texture of transparent black, for the image and destination bindings a draw does not use
 
 	// Counters of work done, for FrameStats (the tiles rasterized are masks.Rasterized).
 	clipMasksBuilt, imagesUploaded int
@@ -142,6 +143,24 @@ func (r *resources) release() {
 		r.white.Destroy()
 		r.white = nil
 	}
+	if r.clear != nil {
+		r.clear.Destroy()
+		r.clear = nil
+	}
+}
+
+// clearTexture returns the 1x1 transparent texture that stands for a texture a draw does not use,
+// made the first time it is asked for.
+func (r *resources) clearTexture() (Texture, error) {
+	if r.clear == nil {
+		t, err := r.dev.NewTexture(TextureDesc{Width: 1, Height: 1, Format: TextureFormatRGBA8Unorm, MipLevels: 1, Usage: TextureSampled})
+		if err != nil {
+			return nil, err
+		}
+		r.dev.WriteTexture(t, 0, image.Rect(0, 0, 1, 1), []byte{0, 0, 0, 0}, 4)
+		r.clear = t
+	}
+	return r.clear, nil
 }
 
 // clipMask returns the mask of the shapes of the clip over the clip's bounds inside a surface

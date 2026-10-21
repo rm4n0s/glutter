@@ -2,6 +2,8 @@
 // drawn over the pixels it covers. Ported from the GLES mask shaders (mask.vert.glsl,
 // mask.frag.glsl). Draw 6 vertices per instance.
 
+//#include "paint.wgsl.inc"
+
 struct Frame {
 	// The size of the texture being drawn into, in pixels.
 	surface: vec2<f32>,
@@ -85,5 +87,5 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 	if coverage <= 0.0 {
 		discard;
 	}
-	return in.color * coverage;
+	return finish(paintSource(in.color, dev), coverage, dev);
 }
