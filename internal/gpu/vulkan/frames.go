@@ -213,6 +213,8 @@ type encoder struct {
 	cb    commandBufferH
 	pass  *pass
 	reads []*pendingRead
+	// acquired are the swapchain images this frame draws into.
+	acquired []acquiredImage
 }
 
 var _ explicit.Encoder = (*encoder)(nil)
@@ -362,13 +364,29 @@ func (e *encoder) Submit() error {
 	}
 	s := &d.slots[e.slot]
 	d.open = nil
+	// The images of the swapchains end in the layout that presenting needs.
+	for _, ai := range e.acquired {
+		d.imageBarrier(e.cb, ai.sc.images[ai.idx].image, layoutGeneral, layoutPresentSrc)
+	}
 	if err := check("vkEndCommandBuffer", d.f.endCommandBuffer(e.cb)); err != nil {
 		return err
 	}
 	a := d.arena
 	defer a.rewind(a.mark())
 	cbs := putSlice(a, []commandBufferH{e.cb})
-	submit := put(a, submitInfo{sType: sTypeSubmitInfo, commandBufferCount: 1, pCommandBuffers: cbs})
+	info := submitInfo{sType: sTypeSubmitInfo, commandBufferCount: 1, pCommandBuffers: cbs}
+	if n := len(e.acquired); n > 0 {
+		// Wait for each image to be acquired, and signal that each is drawn.
+		waits := make([]semaphoreH, n)
+		stages := make([]uint32, n)
+		signals := make([]semaphoreH, n)
+		for i, ai := range e.acquired {
+			waits[i], stages[i], signals[i] = ai.wait, stageAllCommands, ai.sc.renderSems[ai.idx]
+		}
+		info.waitSemaphoreCount, info.pWaitSemaphores, info.pWaitDstStageMask = uint32(n), putSlice(a, waits), putSlice(a, stages)
+		info.signalSemaphoreCount, info.pSignalSemaphores = uint32(n), putSlice(a, signals)
+	}
+	submit := put(a, info)
 	if err := check("vkQueueSubmit", d.f.queueSubmit(d.queue, 1, submit, s.fence)); err != nil {
 		return err
 	}

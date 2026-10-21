@@ -30,7 +30,7 @@ func runC(t *testing.T, body string) string {
 	}
 	dir := t.TempDir()
 	src := filepath.Join(dir, "check.c")
-	program := "#include <stdio.h>\n#include <stddef.h>\n#include <vulkan/vulkan_core.h>\nint main(void) {\n" + body + "return 0;\n}\n"
+	program := "#define VK_USE_PLATFORM_WAYLAND_KHR\n#define VK_USE_PLATFORM_XLIB_KHR\n#include <stdio.h>\n#include <stddef.h>\n#include <vulkan/vulkan.h>\nint main(void) {\n" + body + "return 0;\n}\n"
 	if err := os.WriteFile(src, []byte(program), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -122,6 +122,16 @@ func TestStructLayouts(t *testing.T) {
 		{"VkImageCopy", imageCopy{}},
 		{"VkDebugUtilsMessengerCreateInfoEXT", debugUtilsMessengerCreateInfo{}},
 		{"VkDebugUtilsMessengerCallbackDataEXT", debugUtilsMessengerCallbackData{}},
+		{"VkWaylandSurfaceCreateInfoKHR", waylandSurfaceCreateInfo{}},
+		{"VkXlibSurfaceCreateInfoKHR", xlibSurfaceCreateInfo{}},
+		{"VkSurfaceCapabilitiesKHR", surfaceCapabilities{}},
+		{"VkSurfaceFormatKHR", surfaceFormat{}},
+		{"VkSwapchainCreateInfoKHR", swapchainCreateInfo{}},
+		{"VkSemaphoreCreateInfo", semaphoreCreateInfo{}},
+		{"VkPresentInfoKHR", presentInfo{}},
+		{"VkRectLayerKHR", rectLayer{}},
+		{"VkPresentRegionKHR", presentRegion{}},
+		{"VkPresentRegionsKHR", presentRegions{}},
 	}
 	var body strings.Builder
 	for _, tt := range tests {

@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/internal/gpu"
 	"github.com/rm4n0s/glutter/internal/gpu/explicit"
 	"github.com/rm4n0s/glutter/internal/platform/linux/dl"
@@ -28,9 +27,10 @@ type Options struct {
 	AllowCPU bool
 	// Validation turns on the validation layer, as GLUTTER_VULKAN_VALIDATION=1 does.
 	Validation bool
-	// InstanceExtensions are the instance extensions to enable, such as the surface
-	// extensions of the window system (step 20.2).
-	InstanceExtensions []string
+	// Surface, when its Kind is set, is the first window: the device is chosen among those
+	// that can present to it, and has the swapchain extension. Without it the device draws
+	// offscreen only.
+	Surface gpu.SurfaceHandle
 }
 
 // Device is a Vulkan device and its queue: an explicit.Device. It is used on the UI
@@ -59,6 +59,10 @@ type Device struct {
 	staging stagingRing
 	modules map[*explicit.Shader]shaderModuleH
 	live    map[any]func() // what to destroy at Close: every resource that is not destroyed yet
+
+	surfaces    map[gpu.SurfaceHandle]*surface // the surfaces of the windows that have a swapchain
+	incremental bool                           // VK_KHR_incremental_present is enabled
+	windows     bool                           // the device was made for windows: VK_KHR_swapchain is enabled
 }
 
 var _ explicit.Device = (*Device)(nil)
@@ -112,14 +116,20 @@ func Open(o Options) (*Device, error) {
 	if err != nil {
 		return nil, err
 	}
+	var extensions []string
+	if o.Surface.Kind != gpu.SurfaceKindUnspecified {
+		if extensions, err = surfaceExtensions(o.Surface.Kind); err != nil {
+			return nil, err
+		}
+	}
 	inst, err := newInstance(f, instanceOptions{
 		Validation: o.Validation || getenv(validationEnvVar) == "1",
-		Extensions: o.InstanceExtensions, Logger: log,
+		Extensions: extensions, Logger: log,
 	})
 	if err != nil {
 		return nil, err
 	}
-	d, err := openDevice(inst, chooseOpts{Selector: getenv(deviceEnvVar), AllowCPU: o.AllowCPU}, log)
+	d, err := openDevice(inst, chooseOpts{Selector: getenv(deviceEnvVar), AllowCPU: o.AllowCPU}, o.Surface, log)
 	if err != nil {
 		inst.destroy()
 		return nil, err
@@ -127,13 +137,34 @@ func Open(o Options) (*Device, error) {
 	return d, nil
 }
 
-// openDevice chooses a physical device and makes the logical one.
-func openDevice(inst *instance, opts chooseOpts, log *slog.Logger) (*Device, error) {
+// openDevice chooses a physical device and makes the logical one. With a surface, the
+// device must be able to present to it.
+func openDevice(inst *instance, opts chooseOpts, h gpu.SurfaceHandle, log *slog.Logger) (*Device, error) {
 	a := &arena{}
 	defer a.free()
 	handles, infos, err := inst.physicalDevices(a)
 	if err != nil {
 		return nil, err
+	}
+	var first *surface
+	if h.Kind != gpu.SurfaceKindUnspecified {
+		surf, err := inst.createSurface(h)
+		if err != nil {
+			return nil, err
+		}
+		first = &surface{handle: surf, key: h}
+		defer func() {
+			// The device keeps the surface when it was made; else it goes.
+			if first != nil && first.handle != 0 {
+				inst.f.destroySurface(inst.handle, first.handle, 0)
+			}
+		}()
+		opts.RequireSwapchain = true
+		opts.CanPresent = func(device, family int) bool {
+			out := a.out()
+			r := inst.f.getPhysicalDeviceSurfaceSupport(handles[device], uint32(family), first.handle, out)
+			return r == resultSuccess && u32(out) != 0
+		}
 	}
 	index, family, err := chooseDevice(infos, opts)
 	if err != nil {
@@ -143,8 +174,12 @@ func openDevice(inst *instance, opts chooseOpts, log *slog.Logger) (*Device, err
 	f := inst.f
 	d := &Device{inst: inst, f: f, log: log, phys: handles[index], family: uint32(family), info: info,
 		limits: explicit.DefaultLimits(), arena: &arena{}, last: -1,
-		modules: map[*explicit.Shader]shaderModuleH{}, live: map[any]func(){}}
-	if err := d.createDevice(a); err != nil {
+		modules: map[*explicit.Shader]shaderModuleH{}, live: map[any]func(){}, surfaces: map[gpu.SurfaceHandle]*surface{}}
+	if first != nil {
+		d.surfaces[h] = first
+		first = nil // the device owns it now
+	}
+	if err := d.createDevice(a, h.Kind != gpu.SurfaceKindUnspecified); err != nil {
 		return nil, err
 	}
 	out := a.out()
@@ -250,7 +285,7 @@ func (i *instance) describe(a *arena, index int, h physicalDeviceH) (physicalInf
 // createDevice makes the VkDevice with one queue, dynamic rendering and
 // synchronization 2. Below Vulkan 1.3 the two come as extensions, with what
 // VK_KHR_dynamic_rendering depends on.
-func (d *Device) createDevice(a *arena) error {
+func (d *Device) createDevice(a *arena, windows bool) error {
 	var extensions []string
 	if d.info.APIVersion < apiVersion13 {
 		extensions = append(extensions, extDynamicRendering, extSynchronization2)
@@ -260,6 +295,14 @@ func (d *Device) createDevice(a *arena) error {
 					extensions = append(extensions, dep)
 				}
 			}
+		}
+	}
+	if windows {
+		d.windows = true
+		extensions = append(extensions, extSwapchain)
+		if d.info.Extensions[extIncrementalPresent] {
+			extensions = append(extensions, extIncrementalPresent)
+			d.incremental = true
 		}
 	}
 	s2 := put(a, physicalDeviceSynchronization2Features{sType: sTypePhysicalDeviceSynchronization2, synchronization2: 1})
@@ -303,12 +346,6 @@ func (d *Device) ValidationErrors() []string { return d.inst.validationErrors() 
 // Limits implements explicit.Device.
 func (d *Device) Limits() explicit.Limits { return d.limits }
 
-// NewSwapchain implements explicit.Device. Windows come in step 20.2.
-func (d *Device) NewSwapchain(gpu.SurfaceHandle) (explicit.Swapchain, error) {
-	// TODO(step 20.2): swapchains from VK_KHR_wayland_surface and VK_KHR_xlib_surface.
-	return nil, errors.New("VulkanSurfaceFailed", "this device draws offscreen only until step 20.2")
-}
-
 // Close waits for the GPU, destroys everything that was made with the device and the
 // instance. It can be called twice.
 //
@@ -327,6 +364,9 @@ func (d *Device) Close() error {
 			destroy()
 		}
 		d.live = nil
+		for _, s := range d.surfaces {
+			d.destroySurface(s)
+		}
 		d.destroyFrames()
 		for _, m := range d.modules {
 			d.f.destroyShaderModule(d.dev, m, 0)

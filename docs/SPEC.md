@@ -664,6 +664,14 @@ type Swapchain interface {
 - Staging: one 16 MiB host buffer, half for each slot, reset when the slot is reused; a larger upload gets a buffer of its own that the frame releases. Memory blocks are separate for buffers and for images of a memory type, so the buffer-image granularity never matters.
 - `GPUOutOfMemory`, `VulkanDeviceLost` and `VulkanCallFailed` (any other `VkResult`) come from one function, `vkError`. The programmer errors are `VulkanFrameOpen`, `VulkanFrameNotOpen`, `VulkanPassNotEnded`, `VulkanForeignResource`, `VulkanWriteOutOfRange` and the invalid-description tags `VulkanTextureInvalid`, `VulkanPipelineInvalid` and `VulkanBindGroupInvalid`.
 
+**Decided in step 20.2** (windows):
+- A `VkSurfaceKHR` is made from the `SurfaceHandle` (`VK_KHR_wayland_surface` or `VK_KHR_xlib_surface`, with `VK_KHR_surface`); the instance enables the extensions of the surface kind that `Options.Surface` names, and the device choice then requires `VK_KHR_swapchain` and a queue family that can present to that surface. `VulkanSurfaceFailed` covers a missing extension, a lost surface and a window that is in use; `VulkanSwapchainFailed` covers the swapchain.
+- The swapchain format is `BGRA8` or `RGBA8` unorm in the sRGB-nonlinear color space (never an `_SRGB` format: colors are blended as the other renderers do). Present mode: `MAILBOX`, then `IMMEDIATE`, then `FIFO` (always there). Image count is `minImageCount + 1`, capped by the maximum.
+- `Swapchain.Acquire` needs the frame's encoder to be open; the swapchain image is blitted from the frame texture, moved to `PRESENT_SRC`, and presented after the frame's submit. `VK_ERROR_OUT_OF_DATE_KHR` at acquire returns `explicit.SwapchainOutOfDate`, and `explicit.Renderer` configures the swapchain again at the current size and retries once; `VK_SUBOPTIMAL_KHR` (at acquire or present) and an out-of-date present only mark the swapchain, which the next frame makes again.
+- Recreating or destroying a swapchain waits for the device to be idle (`vkDeviceWaitIdle`) first, which keeps the semaphores of the old images safe to destroy; a resize is not a hot path.
+- Present damage (`VK_KHR_incremental_present`) is given from the top left of the frame, as the platform wants it; a device without the extension presents the whole image.
+- Until step 20.7 (fallback and defaults) `vulkan` comes after `gles` in the engine's candidate list, so it is used only when `GLUTTER_RENDERER=vulkan` names it; a named renderer may use a CPU device (`Options.AllowCPU`).
+
 **Errors**: `VulkanLoadFailed`, `VulkanUnsupported`, `VulkanNoDevice`, `VulkanSurfaceFailed`, `VulkanSwapchainFailed`, `VulkanDeviceLost`, `GPUOutOfMemory`. With `auto`, the ones that happen before the first frame is presented make the engine use GLES (§9.6).
 
 ### 9.5 WebGPU backend (`internal/gpu/webgpu`)

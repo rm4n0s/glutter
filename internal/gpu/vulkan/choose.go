@@ -57,6 +57,9 @@ type chooseOpts struct {
 	// AllowCPU lets a device of type CPU (lavapipe) be chosen: only when Vulkan is
 	// asked for by name (SPEC §9.4).
 	AllowCPU bool
+	// RequireSwapchain makes a device that lacks VK_KHR_swapchain unsupported: the
+	// device is for windows.
+	RequireSwapchain bool
 	// CanPresent, when not nil, says whether the queue family of the device can
 	// present to the window's surface; the family must also have graphics.
 	CanPresent func(device, family int) bool
@@ -65,7 +68,7 @@ type chooseOpts struct {
 // supports says why the device cannot be used, or "" when it can: Vulkan 1.3, or
 // 1.1 or later with dynamic rendering and synchronization 2 (extensions and
 // features), and textures of 8192 pixels.
-func (p physicalInfo) supports() string {
+func (p physicalInfo) supports(requireSwapchain bool) string {
 	switch {
 	case p.APIVersion < apiVersion11:
 		return "it has no Vulkan 1.1"
@@ -75,6 +78,8 @@ func (p physicalInfo) supports() string {
 		return "it does not support the dynamicRendering feature"
 	case !p.Synchronization2:
 		return "it does not support the synchronization2 feature"
+	case requireSwapchain && !p.Extensions[extSwapchain]:
+		return "it lacks VK_KHR_swapchain"
 	case p.MaxImageDimension2D < minImageDimension2D:
 		return fmt.Sprintf("its largest texture is %d pixels, and the design limit is %d", p.MaxImageDimension2D, minImageDimension2D)
 	}
@@ -121,7 +126,7 @@ func chooseDevice(list []physicalInfo, o chooseOpts) (device, family int, err er
 			rejected = append(rejected, fmt.Sprintf("%d %s: not the device that %s names", p.Index, p.Name, deviceEnvVar))
 			continue
 		}
-		if why := p.supports(); why != "" {
+		if why := p.supports(o.RequireSwapchain); why != "" {
 			unsupported = true
 			rejected = append(rejected, fmt.Sprintf("%d %s: %s", p.Index, p.Name, why))
 			continue
@@ -151,7 +156,7 @@ func allRejectedAsUnsupported(list []physicalInfo, o chooseOpts) bool {
 	for _, p := range list {
 		if p.matches(o.Selector) {
 			named++
-			if p.supports() == "" {
+			if p.supports(o.RequireSwapchain) == "" {
 				return false
 			}
 		}

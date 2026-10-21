@@ -11,7 +11,9 @@ import (
 
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/internal/gpu"
+	"github.com/rm4n0s/glutter/internal/gpu/explicit"
 	"github.com/rm4n0s/glutter/internal/gpu/gles"
+	"github.com/rm4n0s/glutter/internal/gpu/vulkan"
 	"github.com/rm4n0s/glutter/internal/platform/linux"
 	"github.com/rm4n0s/glutter/internal/platform/linux/fontconfig"
 	"github.com/rm4n0s/glutter/internal/platform/linux/wayland"
@@ -42,10 +44,27 @@ func connectDisplay(cfg *Config, getenv func(string) string, log *slog.Logger) (
 // processStart is when the process started, if the system says.
 func processStart() (time.Time, bool) { return linux.ProcessStart() }
 
-// rendererCandidates are the renderers of Linux in the order auto tries them: only
-// gles for now (step 20.7 puts vulkan before it).
+// rendererCandidates are the renderers of Linux in the order auto tries them: gles, then
+// vulkan, which only a request by name reaches until step 20.7 puts it first.
 func rendererCandidates() []rendererCandidate {
-	return []rendererCandidate{{Name: "gles", New: newGLESRenderer}}
+	return []rendererCandidate{{Name: "gles", New: newGLESRenderer}, {Name: "vulkan", New: newVulkanRenderer}}
+}
+
+// newVulkanRenderer makes the explicit renderer over a Vulkan device, which it opens at the
+// first frame with the handle of the first window. A device of type CPU (lavapipe) is
+// used only when Vulkan was asked for by name (SPEC §9.4).
+func newVulkanRenderer(cfg *Config, log *slog.Logger) renderer {
+	getenv := cfg.Getenv
+	if getenv == nil {
+		getenv = os.Getenv
+	}
+	opts := explicit.RendererOpts{
+		Background: ui.NewColor(developmentColor), HasBackground: true,
+		Damage: !cfg.DisableDamage && getenv(DamageEnv) != "0",
+	}
+	return explicit.NewRenderer(func(h gpu.SurfaceHandle) (explicit.Device, error) {
+		return vulkan.Open(vulkan.Options{Logger: log, Getenv: getenv, AllowCPU: cfg.rendererNamed, Surface: h})
+	}, opts)
 }
 
 // waylandConnector returns the function that connects the Wayland backend.

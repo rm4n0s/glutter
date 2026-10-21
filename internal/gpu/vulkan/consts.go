@@ -192,3 +192,38 @@ const (
 	uuidSize       = 16                 // VK_UUID_SIZE
 	wholeSize      = 0xFFFFFFFFFFFFFFFF // VK_WHOLE_SIZE
 )
+
+// Window system integration (VK_KHR_surface, VK_KHR_swapchain and the surface
+// extensions of Wayland and Xlib).
+const (
+	resultSuboptimal          = 1000001003  // VK_SUBOPTIMAL_KHR
+	resultErrorSurfaceLost    = -1000000000 // VK_ERROR_SURFACE_LOST_KHR
+	resultErrorWindowInUse    = -1000000001 // VK_ERROR_NATIVE_WINDOW_IN_USE_KHR
+	resultErrorOutOfDate      = -1000001004 // VK_ERROR_OUT_OF_DATE_KHR
+	sTypeSemaphoreCreateInfo  = 9           // VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO
+	sTypeSwapchainCreateInfo  = 1000001000  // VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR
+	sTypePresentInfo          = 1000001001  // VK_STRUCTURE_TYPE_PRESENT_INFO_KHR
+	sTypeXlibSurfaceCreate    = 1000004000  // VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR
+	sTypeWaylandSurfaceCreate = 1000006000  // VK_STRUCTURE_TYPE_WAYLAND_SURFACE_CREATE_INFO_KHR
+	sTypePresentRegions       = 1000084000  // VK_STRUCTURE_TYPE_PRESENT_REGIONS_KHR
+
+	presentModeImmediate = 0 // VK_PRESENT_MODE_IMMEDIATE_KHR
+	presentModeMailbox   = 1 // VK_PRESENT_MODE_MAILBOX_KHR
+	presentModeFIFO      = 2 // VK_PRESENT_MODE_FIFO_KHR
+
+	colorSpaceSRGBNonlinear  = 0          // VK_COLOR_SPACE_SRGB_NONLINEAR_KHR
+	compositeAlphaOpaque     = 0x00000001 // VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR
+	surfaceTransformIdentity = 0x00000001 // VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR
+	layoutPresentSrc         = 1000001002 // VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
+	stageAllCommands         = 0x00010000 // VK_PIPELINE_STAGE_ALL_COMMANDS_BIT
+	currentExtentUndefined   = 0xFFFFFFFF // the "window decides" value of VkSurfaceCapabilitiesKHR::currentExtent
+)
+
+// Names of the extensions that windows need.
+const (
+	extSurface            = "VK_KHR_surface"
+	extWaylandSurface     = "VK_KHR_wayland_surface"
+	extXlibSurface        = "VK_KHR_xlib_surface"
+	extSwapchain          = "VK_KHR_swapchain"
+	extIncrementalPresent = "VK_KHR_incremental_present"
+)

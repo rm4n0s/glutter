@@ -34,6 +34,13 @@ type vkFuncs struct {
 	getDeviceProcAddr                 func(device uintptr, name uintptr) uintptr
 	createDebugUtilsMessenger         func(instance, pInfo, pAllocator, pMessenger uintptr) int32
 	destroyDebugUtilsMessenger        func(instance uintptr, messenger uint64, pAllocator uintptr)
+	destroySurface                    func(instance uintptr, surface uint64, pAllocator uintptr)
+	createWaylandSurface              func(instance, pInfo, pAllocator, pSurface uintptr) int32
+	createXlibSurface                 func(instance, pInfo, pAllocator, pSurface uintptr) int32
+	getPhysicalDeviceSurfaceSupport   func(phys uintptr, family uint32, surface uint64, pSupported uintptr) int32
+	getPhysicalDeviceSurfaceCaps      func(phys uintptr, surface uint64, pCaps uintptr) int32
+	getPhysicalDeviceSurfaceFormats   func(phys uintptr, surface uint64, pCount, pFormats uintptr) int32
+	getPhysicalDeviceSurfaceModes     func(phys uintptr, surface uint64, pCount, pModes uintptr) int32
 
 	// Device functions.
 	destroyDevice               func(device, pAllocator uintptr)
@@ -93,6 +100,13 @@ type vkFuncs struct {
 	destroyFence                func(device uintptr, fence uint64, pAllocator uintptr)
 	resetFences                 func(device uintptr, count uint32, pFences uintptr) int32
 	waitForFences               func(device uintptr, count uint32, pFences uintptr, waitAll uint32, timeout uint64) int32
+	createSemaphore             func(device, pInfo, pAllocator, pSemaphore uintptr) int32
+	destroySemaphore            func(device uintptr, semaphore uint64, pAllocator uintptr)
+	createSwapchain             func(device, pInfo, pAllocator, pSwapchain uintptr) int32
+	destroySwapchain            func(device uintptr, swapchain uint64, pAllocator uintptr)
+	getSwapchainImages          func(device uintptr, swapchain uint64, pCount, pImages uintptr) int32
+	acquireNextImage            func(device uintptr, swapchain, timeout, semaphore, fence uint64, pIndex uintptr) int32
+	queuePresent                func(queue, pInfo uintptr) int32
 }
 
 // level is the object that a function is looked up through.
@@ -137,6 +151,14 @@ func (f *vkFuncs) symbols() []symbol {
 		i(&f.getDeviceProcAddr, "vkGetDeviceProcAddr"),
 		{levelInstance, []string{"vkCreateDebugUtilsMessengerEXT"}, &f.createDebugUtilsMessenger, true},
 		{levelInstance, []string{"vkDestroyDebugUtilsMessengerEXT"}, &f.destroyDebugUtilsMessenger, true},
+		// The window system functions exist only when the instance has the extensions.
+		{levelInstance, []string{"vkDestroySurfaceKHR"}, &f.destroySurface, true},
+		{levelInstance, []string{"vkCreateWaylandSurfaceKHR"}, &f.createWaylandSurface, true},
+		{levelInstance, []string{"vkCreateXlibSurfaceKHR"}, &f.createXlibSurface, true},
+		{levelInstance, []string{"vkGetPhysicalDeviceSurfaceSupportKHR"}, &f.getPhysicalDeviceSurfaceSupport, true},
+		{levelInstance, []string{"vkGetPhysicalDeviceSurfaceCapabilitiesKHR"}, &f.getPhysicalDeviceSurfaceCaps, true},
+		{levelInstance, []string{"vkGetPhysicalDeviceSurfaceFormatsKHR"}, &f.getPhysicalDeviceSurfaceFormats, true},
+		{levelInstance, []string{"vkGetPhysicalDeviceSurfacePresentModesKHR"}, &f.getPhysicalDeviceSurfaceModes, true},
 
 		d(&f.destroyDevice, "vkDestroyDevice"),
 		d(&f.getDeviceQueue, "vkGetDeviceQueue"),
@@ -195,6 +217,13 @@ func (f *vkFuncs) symbols() []symbol {
 		d(&f.destroyFence, "vkDestroyFence"),
 		d(&f.resetFences, "vkResetFences"),
 		d(&f.waitForFences, "vkWaitForFences"),
+		d(&f.createSemaphore, "vkCreateSemaphore"),
+		d(&f.destroySemaphore, "vkDestroySemaphore"),
+		{levelDevice, []string{"vkCreateSwapchainKHR"}, &f.createSwapchain, true},
+		{levelDevice, []string{"vkDestroySwapchainKHR"}, &f.destroySwapchain, true},
+		{levelDevice, []string{"vkGetSwapchainImagesKHR"}, &f.getSwapchainImages, true},
+		{levelDevice, []string{"vkAcquireNextImageKHR"}, &f.acquireNextImage, true},
+		{levelDevice, []string{"vkQueuePresentKHR"}, &f.queuePresent, true},
 	}
 }
 

@@ -110,6 +110,7 @@ type texture struct {
 	view      imageViewH // every mip level, for sampling; 0 for a texture that is only copied
 	rtView    imageViewH // level 0 only, when the view above has more levels and this is a render target
 	alloc     allocation
+	external  bool // an image of a swapchain, which the swapchain owns
 	destroyed bool
 }
 
@@ -143,6 +144,9 @@ func (t *texture) release() {
 	}
 	if t.view != 0 {
 		d.f.destroyImageView(d.dev, t.view, 0)
+	}
+	if t.external {
+		return
 	}
 	d.f.destroyImage(d.dev, t.image, 0)
 	d.alloc.release(t.alloc)

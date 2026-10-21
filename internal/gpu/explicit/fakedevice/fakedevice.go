@@ -35,6 +35,14 @@ type Device struct {
 	closed bool
 	// Err, when set, is what the next call that can fail returns, once.
 	Err error
+	// AcquireErrs are the errors that the next calls of Swapchain.Acquire return, one
+	// each, before it succeeds again.
+	AcquireErrs []error
+	// CompleteReadsOnSubmit makes Submit run the done functions of the reads of the frame,
+	// as a device that waits for the GPU does.
+	CompleteReadsOnSubmit bool
+	// Name is what Description says.
+	Name string
 }
 
 var _ explicit.Device = (*Device)(nil)
@@ -59,6 +67,11 @@ func (d *Device) Ops() []string {
 	}
 	return ops
 }
+
+// Description names the device, for the renderer's log.
+//
+// Flutter: no counterpart
+func (d *Device) Description() string { return "fake: " + d.Name }
 
 // Closed is whether Close was called.
 //
@@ -321,6 +334,11 @@ func (s *swapchain) Configure(width, height int) error {
 
 func (s *swapchain) Acquire() (explicit.Texture, error) {
 	s.d.record("Acquire", "")
+	if len(s.d.AcquireErrs) > 0 {
+		err := s.d.AcquireErrs[0]
+		s.d.AcquireErrs = s.d.AcquireErrs[1:]
+		return nil, err
+	}
 	if err := s.d.fail(); err != nil {
 		return nil, err
 	}
@@ -395,7 +413,11 @@ func (e *encoder) ReadTexture(src explicit.Texture, r image.Rectangle, done func
 func (e *encoder) Submit() error {
 	e.d.record("Submit", "")
 	e.submitted = true
-	return e.d.fail()
+	err := e.d.fail()
+	if e.d.CompleteReadsOnSubmit {
+		e.d.CompleteReads()
+	}
+	return err
 }
 
 type pass struct {

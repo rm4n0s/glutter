@@ -30,6 +30,9 @@ type (
 	commandPoolH         = uint64
 	fenceH               = uint64
 	debugMessengerH      = uint64
+	surfaceH             = uint64
+	swapchainH           = uint64
+	semaphoreH           = uint64
 )
 
 type applicationInfo struct {
@@ -677,4 +680,103 @@ type debugUtilsMessengerCallbackData struct {
 	objectCount      uint32
 	_                uint32
 	pObjects         uintptr
+}
+
+type waylandSurfaceCreateInfo struct {
+	sType   uint32
+	pNext   uintptr
+	flags   uint32
+	_       uint32
+	display uintptr
+	surface uintptr
+}
+
+type xlibSurfaceCreateInfo struct {
+	sType  uint32
+	pNext  uintptr
+	flags  uint32
+	_      uint32
+	dpy    uintptr
+	window uintptr
+}
+
+type surfaceCapabilities struct {
+	minImageCount           uint32
+	maxImageCount           uint32
+	currentExtent           extent2D
+	minImageExtent          extent2D
+	maxImageExtent          extent2D
+	maxImageArrayLayers     uint32
+	supportedTransforms     uint32
+	currentTransform        uint32
+	supportedCompositeAlpha uint32
+	supportedUsageFlags     uint32
+}
+
+type surfaceFormat struct {
+	format     uint32
+	colorSpace uint32
+}
+
+type swapchainCreateInfo struct {
+	sType                 uint32
+	pNext                 uintptr
+	flags                 uint32
+	_                     uint32
+	surface               uint64
+	minImageCount         uint32
+	imageFormat           uint32
+	imageColorSpace       uint32
+	imageExtent           extent2D
+	imageArrayLayers      uint32
+	imageUsage            uint32
+	imageSharingMode      uint32
+	queueFamilyIndexCount uint32
+	_                     uint32
+	pQueueFamilyIndices   uintptr
+	preTransform          uint32
+	compositeAlpha        uint32
+	presentMode           uint32
+	clipped               uint32
+	oldSwapchain          uint64
+}
+
+type semaphoreCreateInfo struct {
+	sType uint32
+	pNext uintptr
+	flags uint32
+	_     uint32
+}
+
+type presentInfo struct {
+	sType              uint32
+	pNext              uintptr
+	waitSemaphoreCount uint32
+	_                  uint32
+	pWaitSemaphores    uintptr
+	swapchainCount     uint32
+	_                  uint32
+	pSwapchains        uintptr
+	pImageIndices      uintptr
+	pResults           uintptr
+}
+
+type rectLayer struct {
+	offset offset2D
+	extent extent2D
+	layer  uint32
+}
+
+type presentRegion struct {
+	rectangleCount uint32
+	_              uint32
+	pRectangles    uintptr
+}
+
+type presentRegions struct {
+	sType          uint32
+	pNext          uintptr
+	swapchainCount uint32
+	_              uint32
+	pRegions       uintptr
 }

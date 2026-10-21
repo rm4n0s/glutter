@@ -87,13 +87,16 @@ type Config struct {
 
 	// The fields below are for the tests of this package: a platform that is not the
 	// real one (or a Wayland and an X11 that are not), and the renderer.
-	idlePoll    time.Duration                                // how often the capture asks whether the app is idle
-	idleMax     time.Duration                                // how long it waits for the app to become idle
-	connect     func() (connection, error)                   // replaces the choice of backends_<goos>.go
-	wayland     func() (connection, error)                   // Linux only: replaces the Wayland backend
-	x11         func() (connection, error)                   // Linux only: replaces the X11 backend
-	newRenderer func(cfg *Config, log *slog.Logger) renderer // replaces the choice of the renderer
-	candidates  func() []rendererCandidate                   // replaces the list of backends_<goos>.go
+	idlePoll time.Duration // how often the capture asks whether the app is idle
+	idleMax  time.Duration // how long it waits for the app to become idle
+	// rendererNamed is set by Run when the renderer was asked for by name: a CPU Vulkan
+	// device (lavapipe) is then allowed (SPEC §9.4).
+	rendererNamed bool
+	connect       func() (connection, error)                   // replaces the choice of backends_<goos>.go
+	wayland       func() (connection, error)                   // Linux only: replaces the Wayland backend
+	x11           func() (connection, error)                   // Linux only: replaces the X11 backend
+	newRenderer   func(cfg *Config, log *slog.Logger) renderer // replaces the choice of the renderer
+	candidates    func() []rendererCandidate                   // replaces the list of backends_<goos>.go
 }
 
 // developmentColor is what the window is cleared to before the scene is drawn,
@@ -195,6 +198,7 @@ func Run(ctx context.Context, cfg Config) (err error) {
 		if choice, err = newChooser(&cfg, log, want, cands); err != nil {
 			return err
 		}
+		cfg.rendererNamed = choice.named
 	}
 
 	stage := func(name string) {
