@@ -11,6 +11,7 @@ import (
 	"github.com/rm4n0s/glutter/cmd/glutter-gen/internal/icons"
 	"github.com/rm4n0s/glutter/cmd/glutter-gen/internal/keys"
 	"github.com/rm4n0s/glutter/cmd/glutter-gen/internal/reexport"
+	"github.com/rm4n0s/glutter/cmd/glutter-gen/internal/shaders"
 	"github.com/rm4n0s/glutter/cmd/glutter-gen/internal/wayland"
 )
 
@@ -22,6 +23,7 @@ var commands = map[string]func(args []string) error{
 	"reexport": reexport.Run,
 	"copywith": copywith.Run,
 	"icons":    icons.Run,
+	"shaders":  shaders.Run,
 }
 
 // commandNames returns the subcommand names in alphabetical order.

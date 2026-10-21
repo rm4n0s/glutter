@@ -21,6 +21,7 @@ func TestDispatch(t *testing.T) {
 		{name: "wayland reaches the real subcommand", args: []string{"wayland", "-nope"}, wantTag: "WaylandBadFlags", wantRoute: "dispatch->Run.WaylandBadFlags"},
 		{name: "keys reaches the real subcommand", args: []string{"keys", "-nope"}, wantTag: "KeysBadFlags", wantRoute: "dispatch->Run.KeysBadFlags"},
 		{name: "reexport reaches the real subcommand", args: []string{"reexport", "-nope"}, wantTag: "ReexportBadFlags", wantRoute: "dispatch->Run.ReexportBadFlags"},
+		{name: "shaders reaches the real subcommand", args: []string{"shaders", "-nope"}, wantTag: "ShadersBadFlags", wantRoute: "dispatch->Run.ShadersBadFlags"},
 		{name: "copywith reaches the real subcommand", args: []string{"copywith", "-nope"}, wantTag: "CopyWithBadFlags", wantRoute: "dispatch->Run.CopyWithBadFlags"},
 		{name: "apicheck reaches the real subcommand", args: []string{"apicheck", "-nope"}, wantTag: "ApiCheckBadFlags", wantRoute: "dispatch->Run->run.ApiCheckBadFlags"},
 		{name: "icons reaches the real subcommand", args: []string{"icons", "-nope"}, wantTag: "IconsBadFlags", wantRoute: "dispatch->Run.IconsBadFlags"},
@@ -50,7 +51,7 @@ func TestDispatch(t *testing.T) {
 
 func TestCommandNames(t *testing.T) {
 	got := strings.Join(commandNames(), ",")
-	want := "apicheck,copywith,icons,keys,reexport,wayland"
+	want := "apicheck,copywith,icons,keys,reexport,shaders,wayland"
 	if got != want {
 		t.Errorf("commandNames() = %q, want %q", got, want)
 	}

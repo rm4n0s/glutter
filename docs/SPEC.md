@@ -619,6 +619,11 @@ type Swapchain interface {
 }
 ```
 
+**Decided in step 19.3** (`internal/gpu/explicit/device.go`, `limits.go`, `shader.go`): the sketch above holds, with these details.
+- Every uniform buffer binding takes a dynamic offset (the ring buffer of a frame), one offset per uniform binding of the group in binding order. `BufferUsage`, `TextureUsage` (`TextureSampled`, `TextureRenderTarget`, `TextureCopySource`), `TextureFormat`, `BlendState` (source and destination factors, off by default) and `VertexBufferLayout` describe what the backends need; every enum's zero value is `Unspecified` or the documented default.
+- A broken limit is checked by `Limits.CheckTexture`, `CheckPipeline`, `CheckBindGroup`, `CheckSetBindGroup` and `CheckSetVertexBuffer`, which each backend and `fakedevice` call: in debug builds they panic with `GPULimitExceeded` (metadata `limit`, `value`, and `max` or `alignment`). `Limits.AlignedRowPitch` rounds a row up to `CopyRowPitchAlignment`.
+- `glutter-gen shaders` writes, for each `shaders/<name>.wgsl`, `shaders/<name>.spv` (one module with every entry point) and `shaders_gen.go`: `ShaderBlit`, `ShaderSolid`, ... of type `Shader` (name, WGSL, SPIR-V through `embed`, and the bindings of each entry point). An entry point reads a binding when its name is in its body or in a function it calls. Only `var<uniform>`, `texture_2d<f32>` and `sampler` bindings are accepted. The header of `shaders_gen.go` records naga's version, and a test compares a fresh generation with the checked-in files when that version is installed.
+
 **Design limits.** These are WebGPU's default limits, so neither backend requests more:
 - at most 4 bind groups; at most 16 sampled textures, 16 samplers and 12 uniform buffers per shader stage; dynamic uniform offsets aligned to 256 bytes; a uniform binding of at most 64 KiB
 - textures of at most 8192 pixels per side; at most 8 vertex buffers and 16 vertex attributes
