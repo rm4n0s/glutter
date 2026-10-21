@@ -149,9 +149,8 @@ func openDevice(inst *instance, opts chooseOpts, h gpu.SurfaceHandle, log *slog.
 	var first *surface
 	if h.Kind != gpu.SurfaceKindUnspecified {
 		// A device that cannot be used whatever the window is (a CPU device, or one without the
-		// extensions) is refused before the window is touched: Mesa's Wayland code leaves state
-		// behind in the process when a surface is made and destroyed, and the GLES renderer that
-		// the engine then tries on the same window crashed in eglMakeCurrent about one run in eight.
+		// extensions) is refused before the window is touched: a fallback to another renderer then
+		// finds the window as it was.
 		pre := opts
 		pre.RequireSwapchain = true
 		if _, _, err := chooseDevice(infos, pre); err != nil {

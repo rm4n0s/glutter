@@ -4,7 +4,9 @@ package engine
 
 import (
 	"context"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -17,22 +19,19 @@ import (
 // check which renderer it chooses (SPEC §9.6, step 20.7): Vulkan where it works, GLES where it
 // does not, and never a CPU Vulkan device unless Vulkan was asked for by name.
 
-// chosenRenderer runs an app that draws one frame, saves it and exits, and returns what the log
-// says about the renderer.
-func chosenRenderer(t *testing.T, env map[string]string) string {
-	t.Helper()
-	if os.Getenv("WAYLAND_DISPLAY") == "" {
-		t.Skip("there is no Wayland compositor (run under scripts/headless-wayland.sh)")
-	}
-	files, _ := filepath.Glob("/usr/share/vulkan/icd.d/lvp_icd.*.json")
-	if len(files) == 0 {
-		t.Skip("Mesa's lavapipe is not installed")
-	}
-	for k, v := range env {
-		if v == "lavapipe" {
-			v = files[0]
-		}
-		t.Setenv(k, v)
+// Each case runs in a process of its own: Mesa's EGL on Wayland does not survive a second display
+// connection of the same process reliably (its wl_shm and callback ids collided in about one run
+// in three when the cases ran under the load of the other display tests), and an app has one
+// connection anyway.
+
+// choiceChildEnv makes the test binary run only the child, which is the app of a case.
+const choiceChildEnv = "GLUTTER_CHOICE_CHILD"
+
+// TestDisplayChoiceChild is the app of a case, started by chosenRenderer; it prints what the log
+// says about the renderer. It does nothing in a normal run.
+func TestDisplayChoiceChild(t *testing.T) {
+	if os.Getenv(choiceChildEnv) == "" {
+		t.Skip("run by chosenRenderer")
 	}
 	t.Setenv("GLUTTER_SCREENSHOT", filepath.Join(t.TempDir(), "shot.png"))
 	t.Setenv("GLUTTER_BACKEND", "wayland")
@@ -57,10 +56,45 @@ func chosenRenderer(t *testing.T, env map[string]string) string {
 	}
 	for _, line := range strings.Split(buf.String(), "\n") {
 		if strings.Contains(line, "renderer chosen") {
-			return line
+			fmt.Println("CHOSEN: " + line)
+			return
 		}
 	}
 	t.Fatalf("the log has no \"renderer chosen\" line:\n%s", buf.String())
+}
+
+// chosenRenderer runs an app that draws one frame, saves it and exits, in a process of its own
+// with the environment, and returns what its log says about the renderer.
+func chosenRenderer(t *testing.T, env map[string]string) string {
+	t.Helper()
+	if os.Getenv("WAYLAND_DISPLAY") == "" {
+		t.Skip("there is no Wayland compositor (run under scripts/headless-wayland.sh)")
+	}
+	files, _ := filepath.Glob("/usr/share/vulkan/icd.d/lvp_icd.*.json")
+	if len(files) == 0 {
+		t.Skip("Mesa's lavapipe is not installed")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run", "^TestDisplayChoiceChild$", "-test.count=1")
+	cmd.WaitDelay = 5 * time.Second
+	cmd.Env = append(os.Environ(), choiceChildEnv+"=1")
+	for k, v := range env {
+		if v == "lavapipe" {
+			v = files[0]
+		}
+		cmd.Env = append(cmd.Env, k+"="+v)
+	}
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("the app failed: %v\n%s", err, out)
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		if rest, ok := strings.CutPrefix(line, "CHOSEN: "); ok {
+			return rest
+		}
+	}
+	t.Fatalf("the app did not say which renderer it chose:\n%s", out)
 	return ""
 }
 
