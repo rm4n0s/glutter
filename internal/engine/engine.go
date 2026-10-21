@@ -344,6 +344,13 @@ type handler struct {
 	// pointerView is the view the pointer was last over, and focusView the view that
 	// has the keyboard focus; the cursor and the input method follow them.
 	pointerView, focusView ui.ViewID
+	// mouse is the state of the mouse pointer as the engine last saw it: whether it is in a view
+	// (an added event without a removed one after it), which view, and its last event.
+	mouse struct {
+		inside bool
+		view   ui.ViewID
+		last   ui.PointerData
+	}
 	// input is what arrived since the last frame, which the next one handles first.
 	input inputQueue
 	// acc is the bridge to the assistive technologies of the platform, or nil.
@@ -525,6 +532,7 @@ func (h *handler) DestroyWindow(view ui.ViewID) {
 // forget destroys the surface of the window and drops it. The window must still
 // exist.
 func (h *handler) forget(w *window) {
+	h.releaseMouse(w.id)
 	if h.r != nil {
 		h.r.Release(w.NativeSurface())
 	}
@@ -740,12 +748,55 @@ func (h *handler) OnPointer(batch []ui.PointerData) {
 	if len(batch) > 0 {
 		h.pointerView = batch[len(batch)-1].ViewID
 	}
+	h.noteMouse(batch)
 	h.queueInput(h.windowOf(h.pointerView), func() {
 		if f := h.cfg.Hooks.Pointer; f != nil {
 			f(batch)
 		}
 		h.disp.DispatchPointerDataPacket(ui.PointerDataPacket{Data: batch})
 	})
+}
+
+// noteMouse follows the mouse pointer through the events of a batch.
+func (h *handler) noteMouse(batch []ui.PointerData) {
+	for _, d := range batch {
+		if d.Kind != ui.PointerDeviceKindMouse || d.SignalKind != ui.PointerSignalKindUnspecified {
+			continue
+		}
+		switch d.Change {
+		case ui.PointerChangeAdd:
+			h.mouse.inside, h.mouse.view = true, d.ViewID
+		case ui.PointerChangeRemove:
+			h.mouse.inside = false
+		}
+		h.mouse.last = d
+	}
+}
+
+// releaseMouse makes the mouse pointer leave the view that is going to be removed, if it is in
+// it. The platform does the same when it destroys the window, but by then the view is gone, the
+// framework drops the event, and the mouse tracker never hears that the pointer was removed: the
+// pointer's next added event, in another window, breaks the order the tracker checks.
+func (h *handler) releaseMouse(view ui.ViewID) {
+	if !h.mouse.inside || h.mouse.view != view {
+		return
+	}
+	h.input.flush() // what arrived before goes first
+	if !h.mouse.inside {
+		return
+	}
+	var out []ui.PointerData
+	last := h.mouse.last
+	if last.Buttons != 0 {
+		up := last
+		up.Change, up.Synthesized, up.Buttons = ui.PointerChangeUp, true, 0
+		out = append(out, up)
+	}
+	rm := last
+	rm.Change, rm.Synthesized, rm.Buttons = ui.PointerChangeRemove, false, 0
+	out = append(out, rm)
+	h.mouse.inside = false
+	h.disp.DispatchPointerDataPacket(ui.PointerDataPacket{Data: out})
 }
 
 // queueInput has the next frame of the window handle an input event. A window that

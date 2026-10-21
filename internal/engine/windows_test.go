@@ -580,3 +580,67 @@ func TestPortalHandlesAndActivationTokens(t *testing.T) {
 		t.Errorf("handle of a missing view = %q", handle)
 	}
 }
+
+// A window that closes with the mouse pointer inside makes the pointer leave it while its view
+// still exists: the platform's own removed event comes after the view is gone, and the framework
+// drops events for views that do not exist, so the mouse tracker would never hear of it.
+func TestClosingAWindowUnderThePointerRemovesThePointerFirst(t *testing.T) {
+	type got struct {
+		view   ui.ViewID
+		change ui.PointerChange
+		synth  bool
+	}
+	tests := []struct {
+		name    string
+		buttons int
+		inView  bool // whether the pointer is in the window that closes
+		want    []got
+	}{
+		{"a hovering pointer", 0, true, []got{{1, ui.PointerChangeRemove, false}}},
+		{"a pressed pointer is released first", 1, true, []got{{1, ui.PointerChangeUp, true}, {1, ui.PointerChangeRemove, false}}},
+		{"a pointer in another window is left alone", 0, false, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := newWindowsEngine(t)
+			v, err := e.d.CreateWindow(ui.WindowSpec{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			id := v.ViewID()
+			e.size(id, 500, 350)
+			e.size(ui.ImplicitViewID, 400, 300)
+			e.renderAll(map[ui.ViewID]*ui.Scene{id: {}, ui.ImplicitViewID: {}})
+			var delivered []got
+			e.d.OnPointerDataPacket = func(p ui.PointerDataPacket) {
+				for _, d := range p.Data {
+					delivered = append(delivered, got{d.ViewID, d.Change, d.Synthesized})
+				}
+			}
+			under := id
+			if !tt.inView {
+				under = ui.ImplicitViewID
+			}
+			e.h.OnPointer([]ui.PointerData{
+				{ViewID: under, Change: ui.PointerChangeAdd, Kind: ui.PointerDeviceKindMouse, PhysicalX: 5, PhysicalY: 6},
+				{ViewID: under, Change: ui.PointerChangeHover, Kind: ui.PointerDeviceKindMouse, PhysicalX: 7, PhysicalY: 8, Buttons: tt.buttons},
+			})
+			delivered = nil // the batch is handled by the next frame
+			e.h.OnFrame(id, time.Millisecond)
+			delivered = nil
+			e.d.DestroyWindow(id)
+			if len(delivered) != len(tt.want) {
+				t.Fatalf("delivered %v, want %v", delivered, tt.want)
+			}
+			for i := range tt.want {
+				if delivered[i] != tt.want[i] {
+					t.Errorf("event %d = %+v, want %+v", i, delivered[i], tt.want[i])
+				}
+			}
+			// The removal is not repeated when the platform reports it too.
+			if tt.inView && e.h.mouse.inside {
+				t.Error("the engine still has the pointer in the closed window")
+			}
+		})
+	}
+}
