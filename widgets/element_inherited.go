@@ -24,7 +24,9 @@ func (b *ElementBase) DependOnInheritedElement(ancestor InheritedElementSelf, as
 	if b.dependencies == nil {
 		b.dependencies = map[Element]struct{}{}
 	}
-	b.dependencies[ancestor] = struct{}{}
+	if _, ok := b.dependencies[ancestor]; !ok {
+		b.dependencies[ancestor] = struct{}{}
+	}
 	ancestor.UpdateDependencies(b.self, aspect)
 	return ancestor.AsElement().widget
 }

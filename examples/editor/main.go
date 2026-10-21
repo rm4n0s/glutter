@@ -2,13 +2,16 @@
 // left panel is a multi-line EditableText with undo and redo (Ctrl+Z, Shift+Ctrl+Z
 // and Ctrl+Y). Ctrl+S, a Shortcuts binding that maps to a SaveIntent, writes the
 // text to $XDG_DATA_HOME/glutter-editor/notes.txt (or ~/.local/share/...) in a
-// goroutine with a context.Context; a failure shows in the status bar. The right
+// goroutine with a context.Context; a failure shows in the status bar. A web page
+// has no data directory, so on the web (foundation.IsWeb) the notes are kept in
+// memory for as long as the page is open, and the status bar says so. The right
 // panel is a read-only SelectableRegion with the saved file, which you can select
 // and copy. The status bar shows the line and column of the caret, the number of
 // lines, words and characters, and whether the text has unsaved changes. It uses
 // only the public packages.
 //
 // Run it with: go run ./examples/editor
+// On the web: go run ./cmd/glutter-web serve ./examples/editor
 //
 // Environment: GLUTTER_BACKEND=x11|wayland, GLUTTER_SCREENSHOT=<file.png>,
 // GLUTTER_SCREENSHOT_AFTER=<duration>. In debug builds:
@@ -25,6 +28,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"unicode/utf8"
 
 	"github.com/rm4n0s/errors"
@@ -57,6 +61,8 @@ const (
 	dirName = "glutter-editor"
 	// fileName is the file that Ctrl+S writes.
 	fileName = "notes.txt"
+	// memoryStatus tells that the notes live in memory (the web has no data directory).
+	memoryStatus = "in memory (this page has no data directory)"
 )
 
 func textStyle(size float64, color ui.Color, weight ui.FontWeight) *painting.TextStyle {
@@ -87,6 +93,36 @@ func dataDir(getenv func(string) string) (string, error) {
 		return filepath.Join(home, ".local", "share", dirName), nil
 	}
 	return "", errors.New("EditorNoDataDir", "neither XDG_DATA_HOME nor HOME is set")
+}
+
+// memoryNotes are the notes of an app that has no directory to keep them in, such as a web
+// page: they last until the page is closed. The saved text is read and written by the
+// goroutines of the state, so a mutex guards it.
+type memoryNotes struct {
+	mu    sync.Mutex
+	text  string
+	found bool
+}
+
+// load returns the saved text; found is false when nothing was saved yet.
+func (m *memoryNotes) load(ctx context.Context) (text string, found bool, err error) {
+	if err := ctx.Err(); err != nil {
+		return "", false, errors.NewErr("EditorLoadCanceled", err)
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.text, m.found, nil
+}
+
+// save keeps the text.
+func (m *memoryNotes) save(ctx context.Context, text string) error {
+	if err := ctx.Err(); err != nil {
+		return errors.NewErr("EditorSaveCanceled", err)
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.text, m.found = text, true
+	return nil
 }
 
 // loadNotes reads the saved file; found is false when there is none yet.
@@ -182,6 +218,9 @@ type options struct {
 	// dir is the directory of the notes; empty means the data directory of the
 	// user.
 	dir string
+	// memory, when it is set, keeps the notes in memory instead of a directory: a
+	// web page has no data directory (main sets it when foundation.IsWeb).
+	memory *memoryNotes
 	// text replaces the text of the editor after the saved file is loaded.
 	text foundation.Opt[string]
 	// selectStart and selEnd select a range of the text when selectRange is set.
@@ -276,7 +315,7 @@ func (s *editorState) InitState() {
 	s.fieldKey = widgets.NewGlobalKey[*widgets.EditableTextState]()
 	s.gestures = widgets.NewTextSelectionGestureDetectorBuilder(s)
 	s.dir = s.Widget().o.dir
-	if s.dir == "" {
+	if s.dir == "" && s.Widget().o.memory == nil {
 		s.dir, s.dirErr = dataDir(os.Getenv)
 	}
 	if s.dirErr != nil {
@@ -285,16 +324,31 @@ func (s *editorState) InitState() {
 	}
 	dir, o := s.dir, s.Widget().o
 	s.Go(func(ctx context.Context) {
-		text, found, err := loadNotes(ctx, dir)
+		var (
+			text  string
+			found bool
+			err   error
+		)
+		if o.memory != nil {
+			text, found, err = o.memory.load(ctx)
+		} else {
+			text, found, err = loadNotes(ctx, dir)
+		}
 		s.SetState(func() {
 			s.loaded = true
 			if err != nil {
-				s.fail("Cannot load notes.txt", err)
+				s.fail("Cannot load "+fileName, err)
 				return
+			}
+			if o.memory != nil && s.status == "" {
+				s.status = "Notes are kept " + memoryStatus
 			}
 			if found {
 				s.saved = text
 				s.status = "Loaded " + fileName
+				if o.memory != nil {
+					s.status = "Loaded the notes " + memoryStatus
+				}
 				s.controller.SetValue(services.NewTextEditingValue(services.TextEditingValueOpts{
 					Text: text, Selection: foundation.Some(services.NewTextSelectionCollapsed(len(text))),
 				}))
@@ -348,10 +402,15 @@ func (s *editorState) save() {
 	if s.saving || s.dirErr != nil {
 		return
 	}
-	text, dir := s.controller.Text(), s.dir
+	text, dir, memory := s.controller.Text(), s.dir, s.Widget().o.memory
 	s.SetState(func() { s.saving, s.status, s.failed = true, "Saving...", false })
 	s.Go(func(ctx context.Context) {
-		err := saveNotes(ctx, dir, text)
+		var err error
+		if memory != nil {
+			err = memory.save(ctx, text)
+		} else {
+			err = saveNotes(ctx, dir, text)
+		}
 		s.SetState(func() {
 			s.saving = false
 			if err != nil {
@@ -359,6 +418,10 @@ func (s *editorState) save() {
 				return
 			}
 			s.saved = text
+			if memory != nil {
+				s.status = "Saved " + memoryStatus
+				return
+			}
 			s.status = "Saved " + filepath.Join(dir, fileName)
 		})
 	})
@@ -469,6 +532,9 @@ func (s *editorState) statusBar() widgets.Widget {
 func main() {
 	o, err := optionsFromEnv(os.Getenv)
 	if err == nil {
+		if foundation.IsWeb && o.dir == "" {
+			o.memory = &memoryNotes{}
+		}
 		err = widgets.RunApp(newApp(o), widgets.RunAppOpts{
 			AppID:  "dev.glutter.editor",
 			Window: widgets.WindowConfig{Title: "Glutter – editor", Size: ui.Size{Width: 820, Height: 460}},

@@ -422,3 +422,41 @@ func TestEditorGolden(t *testing.T) {
 	ts.MatchesGolden("editor")
 	noErrors(t, ts)
 }
+
+// TestNotesInMemoryWhereThereIsNoDataDirectory covers the web, where a page has no directory:
+// the notes are kept in memory, the status bar says so (and not that a directory is missing),
+// Ctrl+S saves them, and a new editor on the same store loads them.
+func TestNotesInMemoryWhereThereIsNoDataDirectory(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", "")
+	t.Setenv("HOME", "")
+	memory := &memoryNotes{}
+	ts := newTester(t, options{memory: memory})
+	state := editorOf(ts)
+	if state.failed || state.dirErr != nil || !strings.Contains(state.status, "kept in memory") {
+		t.Errorf("status = %q (failed %v, dirErr %v)", state.status, state.failed, state.dirErr)
+	}
+	type_(ts, "web notes")
+	pressWithControl(ts, services.LogicalKeyboardKeyKeyS, false)
+	settle(t, ts, func() bool { return !state.saving })
+	if state.failed || !strings.HasPrefix(state.status, "Saved in memory") {
+		t.Errorf("status = %q (failed %v)", state.status, state.failed)
+	}
+	if ts.Count(gluttertest.ByText("web notes")) == 0 {
+		t.Error("the panel does not show the saved text")
+	}
+	noErrors(t, ts)
+
+	ts2 := newTester(t, options{memory: memory})
+	if got := editorOf(ts2).controller.Text(); got != "web notes" {
+		t.Errorf("a new editor loaded %q, want the saved notes", got)
+	}
+}
+
+func TestMemoryNotesCanceled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	m := &memoryNotes{}
+	_, _, err := m.load(ctx)
+	requireRoute(t, err, "load.EditorLoadCanceled")
+	requireRoute(t, m.save(ctx, "x"), "save.EditorSaveCanceled")
+}

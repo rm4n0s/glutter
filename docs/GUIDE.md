@@ -540,6 +540,53 @@ get the `Listenable` (the `repaint` argument) and the defaults for `HitTest`. `P
 its cascade `..color =` is `ui.NewPaint()` and a setter, `paint.SetColor(...)`. `canvas` is a `*ui.Canvas`
 with Flutter's methods (`DrawCircle`, `DrawPath`, `Save`, `Translate`, ...).
 
+## For Flutter web developers
+
+If you know Flutter on the web, this is what is the same and what is not.
+
+- **Build and run.** There is no `flutter build web`: `go run ./cmd/glutter-web serve ./your/app`
+  builds and serves it, and `glutter-web build -release -o dist ./your/app` makes the directory to
+  deploy (`index.html`, `wasm_exec.js`, `app.wasm`, `app.wasm.gz`). It is one WebAssembly module and one
+  canvas; there is no HTML renderer and no DOM widgets, only the hidden text field that the
+  browser needs for typing, the clipboard and input methods.
+- **Renderers.** Flutter web has CanvasKit and Skwasm. Glutter has WebGPU, then WebGL 2, then a
+  software renderer on a 2D canvas, chosen at the first frame (`?GLUTTER_RENDERER=webgl` in the
+  address chooses by hand). The first two are the same engine as on Linux, so a frame looks the same
+  there and here.
+- **Fonts.** There are no system fonts on the web. Text is drawn with the bundled Roboto and
+  Material Icons and the fonts the app loads (`ui.LoadFontFromList`, `FontLoader`); a character that
+  none has is a missing-glyph box, as in Flutter web without a fallback font.
+- **`kIsWeb`** is `foundation.IsWeb`, a constant. `defaultTargetPlatform` is the browser's OS, found
+  as Flutter web finds it. Use `IsWeb` for what the page does not have, in your own code too:
+
+```go
+package main
+
+import "github.com/rm4n0s/glutter/foundation"
+
+// notesPlace says where an app keeps its notes: a page has no data directory.
+func notesPlace() string {
+	if foundation.IsWeb {
+		return "in memory"
+	}
+	return "in the data directory"
+}
+
+func main() { println(notesPlace()) }
+```
+
+  `examples/editor` does this: on the web its notes live in memory until the page is closed, and the
+  status bar says so.
+- **Not on the web:** a second window, the tray, file dialogs, drag and drop out of the app,
+  accessibility, system fonts, closing the page (`SystemNavigator.pop` does nothing). Services that
+  are missing return their `...Unavailable` error; `desktop.OpenURI` and notifications work.
+- **Files and images.** `os` has no real files in a page. Assets come from `embed.FS` as on Linux;
+  `http` goes through `fetch`, so the browser's CORS rules apply.
+- **Size and speed.** The page loads one large module (the counter is 8.8 MB gzipped in a release
+  build) and runs on one thread, so a click that builds a whole new screen takes tens of
+  milliseconds. Build with `-release` for anything you measure, and read
+  [PERFORMANCE.md](PERFORMANCE.md).
+
 ## What is not the same
 
 - **No `const` widgets.** Go has no const constructors. Build a widget once and reuse it

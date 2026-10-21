@@ -159,7 +159,7 @@ func (r *RenderCustomPaint) SetForegroundPainter(value CustomPainter) {
 
 func (r *RenderCustomPaint) didUpdatePainter(newPainter, oldPainter CustomPainter, handle *foundation.ListenerHandle) {
 	if newPainter == nil || oldPainter == nil ||
-		foundation.RuntimeTypeName(newPainter) != foundation.RuntimeTypeName(oldPainter) ||
+		!foundation.SameRuntimeType(newPainter, oldPainter) ||
 		newPainter.ShouldRepaint(oldPainter) {
 		r.MarkNeedsPaint()
 	}
@@ -176,7 +176,7 @@ func (r *RenderCustomPaint) didUpdatePainter(newPainter, oldPainter CustomPainte
 		if r.Attached() {
 			r.MarkNeedsSemanticsUpdate()
 		}
-	} else if oldPainter == nil || foundation.RuntimeTypeName(newPainter) != foundation.RuntimeTypeName(oldPainter) ||
+	} else if oldPainter == nil || !foundation.SameRuntimeType(newPainter, oldPainter) ||
 		shouldRebuildPainterSemantics(newPainter, oldPainter) {
 		r.MarkNeedsSemanticsUpdate()
 	}

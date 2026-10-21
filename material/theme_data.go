@@ -428,6 +428,8 @@ type ThemeData struct {
 	// localized memoizes ThemeOf's localized copies, one per script category. It
 	// is not copied by CopyWith.
 	localized [3]*ThemeData
+	// iconCopies memoizes copyWithIconTheme. It is not copied by CopyWith.
+	iconCopies *iconCopyCache
 
 	// GENERAL CONFIGURATION
 
@@ -877,6 +879,37 @@ func NewThemeData(opts ...ThemeDataOpts) *ThemeData {
 	}
 }
 
+// iconCopyCache holds the last sixteen copies that copyWithIconTheme made of a theme.
+type iconCopyCache struct {
+	entries [16]struct {
+		icon  widgets.IconThemeData
+		theme *ThemeData
+	}
+	next int
+}
+
+// copyWithIconTheme is CopyWith(ThemeDataCopy{IconTheme: Some(icon)}) that gives the same theme again
+// for an equal icon theme: the last sixteen are kept in the theme it was made from (a screen has a handful of kinds of button, each with its own icon theme). Every button wraps its
+// ink in an AnimatedTheme of such a copy, and a new copy in each build is a new theme to compare field by
+// field with the last one (SPEC §12.10); the same copy is one comparison of pointers.
+//
+// Deviation: Flutter makes a new ThemeData in every build (material/button_style_button.dart).
+func (d *ThemeData) copyWithIconTheme(icon widgets.IconThemeData) *ThemeData {
+	if d.iconCopies == nil {
+		d.iconCopies = &iconCopyCache{}
+	}
+	c := d.iconCopies
+	for i := range c.entries {
+		if e := &c.entries[i]; e.theme != nil && e.icon.Equal(icon) {
+			return e.theme
+		}
+	}
+	t := d.CopyWith(ThemeDataCopy{IconTheme: foundation.Some(icon)})
+	c.entries[c.next].icon, c.entries[c.next].theme = icon, t
+	c.next = (c.next + 1) % len(c.entries)
+	return t
+}
+
 // ThemeDataCopy holds the replacements for ThemeData.CopyWith: a field that is None keeps the value of the
 // copied theme.
 //
@@ -971,6 +1004,7 @@ type ThemeDataCopy struct {
 func (d *ThemeData) CopyWith(c ThemeDataCopy) *ThemeData {
 	out := *d
 	out.localized = [3]*ThemeData{}
+	out.iconCopies = nil
 	out.ApplyElevationOverlayColor = c.ApplyElevationOverlayColor.OrElse(d.ApplyElevationOverlayColor)
 	out.Extensions = c.Extensions.OrElse(d.Extensions)
 	out.MaterialTapTargetSize = c.MaterialTapTargetSize.OrElse(d.MaterialTapTargetSize)

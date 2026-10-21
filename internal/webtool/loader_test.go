@@ -73,6 +73,22 @@ process.stdout.write(JSON.stringify(["", "?a=1", "?glutter_report=%2Fr", "?a=1&g
 	}
 }
 
+func TestLoaderLogEvery(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("Node.js is not installed (sudo dnf install nodejs)")
+	}
+	script := `eval(process.argv[1] + "\n;globalThis.f = glutterLogEvery;");
+process.stdout.write(JSON.stringify(["", "?a=1", "?glutter_log_every=1000", "?a=1&glutter_log_every=250&b=2", "?glutter_log_every=x", "?xglutter_log_every=5", "?glutter_log_every=-5", "?glutter_log_every="].map(globalThis.f)));`
+	out, err := exec.Command(node, "-e", script, LoaderJS()).Output()
+	if err != nil {
+		t.Fatalf("node failed: %v", err)
+	}
+	if want := `[0,0,1000,250,0,0,0,0]`; string(out) != want {
+		t.Errorf("glutterLogEvery gives %s, want %s", out, want)
+	}
+}
+
 // runLoaderFunctions evaluates the loader under Node with a document that is just enough for
 // glutterShow, runs the script and returns what it prints as JSON.
 func runLoaderFunctions(t *testing.T, script string) []byte {

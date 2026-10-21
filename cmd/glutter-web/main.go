@@ -33,7 +33,9 @@ func main() {
 const usage = `usage:
   glutter-web build [-o dir] [-release] [-host selector] <package>
   glutter-web serve [-addr :8080] [-release] [-host selector] <package>
-  glutter-web shot  -browser chromium|firefox [-renderer r] [-query k=v&k=v] [-events script] [-after d] [-width n] [-height n] -o file.png <package>`
+  glutter-web shot  -browser chromium|firefox [-renderer r] [-query k=v&k=v] [-events script] [-after d] [-width n] [-height n] -o file.png <package>
+  glutter-web perf  -browser chromium|firefox [-renderer r] [-release] [-query k=v&k=v] [-loads n] [-settle d] [-measure d] <package>
+  glutter-web perf  -browser chromium|firefox -blank`
 
 // run does what the command line asks. stdout gets what the commands print; flag errors go to
 // stderr.
@@ -48,6 +50,8 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		return runServe(ctx, args[1:], stdout, stderr)
 	case "shot":
 		return runShot(ctx, args[1:], stdout, stderr)
+	case "perf":
+		return runPerf(ctx, args[1:], stdout, stderr)
 	case "help", "-h", "-help", "--help":
 		_, err := fmt.Fprintln(stdout, usage)
 		if err != nil {

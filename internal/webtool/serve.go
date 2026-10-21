@@ -30,7 +30,17 @@ var contentTypes = map[string]string{
 // build is the one that loads.
 //
 // Flutter: no counterpart
-func Handler(dir string) http.Handler {
+func Handler(dir string) http.Handler { return handler(dir, "no-store") }
+
+// CachingHandler is Handler for a build whose files the browser may keep for a while, as a
+// site that is deployed would let it: the measurement of the start with app.wasm in the
+// browser's cache (SPEC §15) needs it. A new build is not seen until the time is up.
+//
+// Flutter: no counterpart
+func CachingHandler(dir string) http.Handler { return handler(dir, "max-age=600") }
+
+// handler serves dir with the given Cache-Control.
+func handler(dir, cacheControl string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -63,7 +73,7 @@ func Handler(dir string) http.Handler {
 			typ = "application/octet-stream"
 		}
 		w.Header().Set("Content-Type", typ)
-		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Cache-Control", cacheControl)
 		w.Header().Add("Vary", "Accept-Encoding")
 		if encoding != "" {
 			w.Header().Set("Content-Encoding", encoding)

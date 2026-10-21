@@ -297,7 +297,7 @@ func (c *Canvas) ClipRect(rect Rect, opts ...ClipRectOpts) {
 		op = ClipOpIntersect
 	}
 	if rect.IsEmpty() {
-		rect = Rect{math.Min(rect.Left, rect.Right), math.Min(rect.Top, rect.Bottom), math.Max(rect.Left, rect.Right), math.Max(rect.Top, rect.Bottom)}
+		rect = Rect{min(rect.Left, rect.Right), min(rect.Top, rect.Bottom), max(rect.Left, rect.Right), max(rect.Top, rect.Bottom)}
 	}
 	c.record(OpClipRect{Rect: rect, Op: op, AntiAlias: antiAlias(o.DoAntiAlias)})
 	if op == ClipOpIntersect {
@@ -364,7 +364,7 @@ func (c *Canvas) GetDestinationClipBounds() Rect { return c.state.clip }
 // sortedRect swaps the edges of an empty rectangle that has them backwards.
 func sortedRect(r Rect) Rect {
 	if r.IsEmpty() {
-		return Rect{math.Min(r.Left, r.Right), math.Min(r.Top, r.Bottom), math.Max(r.Left, r.Right), math.Max(r.Top, r.Bottom)}
+		return Rect{min(r.Left, r.Right), min(r.Top, r.Bottom), max(r.Left, r.Right), max(r.Top, r.Bottom)}
 	}
 	return r
 }

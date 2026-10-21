@@ -44,7 +44,7 @@ func (p *paragraph) tightExtent(l *line) (top, bottom float64) {
 		if pr.run.ph != nil {
 			continue
 		}
-		asc, desc = math.Max(asc, pr.run.ascent), math.Max(desc, pr.run.descent)
+		asc, desc = max(asc, pr.run.ascent), max(desc, pr.run.descent)
 	}
 	if asc == 0 && desc == 0 {
 		asc, desc = l.ascentU, l.height-l.ascentU
@@ -78,7 +78,7 @@ func (p *paragraph) boxVertical(li int, pr *placedRun, hs ui.BoxHeightStyle) (to
 		if hs == ui.BoxHeightStyleUnspecified || hs == ui.BoxHeightStyleTight {
 			return top, bottom
 		}
-		defer func() { top, bottom = math.Min(top, tightTop), math.Max(bottom, tightBottom) }()
+		defer func() { top, bottom = min(top, tightTop), max(bottom, tightBottom) }()
 	} else {
 		top, bottom = l.baseline-pr.run.ascent, l.baseline+pr.run.descent
 	}
@@ -96,11 +96,11 @@ func (p *paragraph) boxVertical(li int, pr *placedRun, hs ui.BoxHeightStyle) (to
 		above, below := 0.0, 0.0
 		if li > 0 {
 			_, prevBottom := p.tightExtent(p.lines[li-1])
-			above = math.Max(tightTop-prevBottom, 0)
+			above = max(tightTop-prevBottom, 0)
 		}
 		if li < len(p.lines)-1 {
 			nextTop, _ := p.tightExtent(p.lines[li+1])
-			below = math.Max(nextTop-tightBottom, 0)
+			below = max(nextTop-tightBottom, 0)
 		}
 		switch hs {
 		case ui.BoxHeightStyleIncludeLineSpacingMiddle:
@@ -224,8 +224,8 @@ func (p *paragraph) GetBoxesForRange(start, end int, hs ui.BoxHeightStyle, ws ui
 	if ws == ui.BoxWidthStyleMax {
 		minLeft, maxRight := math.Inf(1), math.Inf(-1)
 		for _, l := range p.lines {
-			minLeft = math.Min(minLeft, l.left)
-			maxRight = math.Max(maxRight, l.left+l.width)
+			minLeft = min(minLeft, l.left)
+			maxRight = max(maxRight, l.left+l.width)
 		}
 		paraDir := p.style.Direction()
 		for i := range perLine {

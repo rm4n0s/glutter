@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -86,4 +87,75 @@ func startPrivateDisplay(lifetime time.Duration) (*privateDisplay, error) {
 func (d *privateDisplay) stop() {
 	killGroup(d.cmd.Process.Pid)
 	<-d.done
+}
+
+// clockTicks is the unit of the CPU times in /proc/<pid>/stat (USER_HZ, which is 100 on every
+// Linux architecture).
+const clockTicks = 100
+
+// CPUTime is the CPU time, user and system, that the browser's processes have used so far: every
+// live process of its group and, for Firefox, of the group of its X server. A process that has
+// ended is not counted, so a browser that starts and ends many short processes is read low. It
+// fails with BrowserCPUUnavailable when /proc cannot be read.
+//
+// Flutter: no counterpart
+func (p *Process) CPUTime() (time.Duration, error) {
+	groups := []int{p.cmd.Process.Pid}
+	if p.display != nil {
+		groups = append(groups, p.display.cmd.Process.Pid)
+	}
+	return groupCPUTime("/proc", groups)
+}
+
+// groupCPUTime adds the user and system time of the processes in /proc (a directory laid out as
+// the kernel's) whose process group is one of groups.
+func groupCPUTime(proc string, groups []int) (time.Duration, error) {
+	entries, err := os.ReadDir(proc)
+	if err != nil {
+		return 0, errors.NewErr("BrowserCPUUnavailable", err).SetMetadata("dir", proc)
+	}
+	ticks := 0
+	for _, e := range entries {
+		if _, err := strconv.Atoi(e.Name()); err != nil {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(proc, e.Name(), "stat"))
+		if err != nil {
+			continue // the process ended between the listing and the read
+		}
+		pgrp, cpu, ok := parseStat(string(data))
+		if !ok {
+			continue
+		}
+		for _, g := range groups {
+			if pgrp == g {
+				ticks += cpu
+			}
+		}
+	}
+	return time.Duration(ticks) * time.Second / clockTicks, nil
+}
+
+// parseStat reads the process group and the user plus system time in ticks from the text of
+// /proc/<pid>/stat. The name of the command, in parentheses, may hold blanks and parentheses, so
+// the fields are counted from the last closing parenthesis.
+func parseStat(stat string) (pgrp, ticks int, ok bool) {
+	end := strings.LastIndex(stat, ")")
+	if end < 0 {
+		return 0, 0, false
+	}
+	// After the name: state ppid pgrp session tty_nr tpgid flags minflt cminflt majflt cmajflt utime stime.
+	fields := strings.Fields(stat[end+1:])
+	if len(fields) < 13 {
+		return 0, 0, false
+	}
+	vals := make([]int, 0, 3)
+	for _, i := range []int{2, 11, 12} {
+		v, err := strconv.Atoi(fields[i])
+		if err != nil {
+			return 0, 0, false
+		}
+		vals = append(vals, v)
+	}
+	return vals[0], vals[1] + vals[2], true
 }

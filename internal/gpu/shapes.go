@@ -183,8 +183,8 @@ func (e *ShapeEncoder) PlacePadded(in *ShapeInstance, local ui.Rect, kind, flags
 	}
 	// One pixel more on each side for the anti-aliased edge, but not beyond the clip.
 	o := e.Outer
-	x0, y0 := math.Max(math.Floor(dev.Left)-pad, float64(o.Min.X)), math.Max(math.Floor(dev.Top)-pad, float64(o.Min.Y))
-	x1, y1 := math.Min(math.Ceil(dev.Right)+pad, float64(o.Max.X)), math.Min(math.Ceil(dev.Bottom)+pad, float64(o.Max.Y))
+	x0, y0 := max(math.Floor(dev.Left)-pad, float64(o.Min.X)), max(math.Floor(dev.Top)-pad, float64(o.Min.Y))
+	x1, y1 := min(math.Ceil(dev.Right)+pad, float64(o.Max.X)), min(math.Ceil(dev.Bottom)+pad, float64(o.Max.Y))
 	if x1 <= x0 || y1 <= y0 {
 		return
 	}
@@ -238,8 +238,8 @@ func (p RRectParts) Rect() ui.Rect {
 //
 // Flutter: no counterpart
 func PartsOf(r ui.Rect, radii [4]ui.Radius) (RRectParts, bool) {
-	left, right := math.Min(r.Left, r.Right), math.Max(r.Left, r.Right)
-	top, bottom := math.Min(r.Top, r.Bottom), math.Max(r.Top, r.Bottom)
+	left, right := min(r.Left, r.Right), max(r.Left, r.Right)
+	top, bottom := min(r.Top, r.Bottom), max(r.Top, r.Bottom)
 	w, h := right-left, bottom-top
 	if !(w >= 0 && h >= 0) || math.IsInf(w, 0) || math.IsInf(h, 0) {
 		return RRectParts{}, false
@@ -252,7 +252,7 @@ func PartsOf(r ui.Rect, radii [4]ui.Radius) (RRectParts, bool) {
 	scale := 1.0
 	fit := func(a, b, limit float64) {
 		if sum := a + b; sum > limit && sum > 0 {
-			scale = math.Min(scale, limit/sum)
+			scale = min(scale, limit/sum)
 		}
 	}
 	fit(radii[3].Y, radii[0].Y, h) // left side
@@ -298,7 +298,7 @@ func PixelRect(r ui.Rect) image.Rectangle {
 	if !r.IsFinite() {
 		return image.Rectangle{}
 	}
-	clamp := func(v float64) int { return int(math.Max(-1e9, math.Min(1e9, v))) }
+	clamp := func(v float64) int { return int(max(-1e9, min(1e9, v))) }
 	return image.Rect(clamp(math.Floor(r.Left)), clamp(math.Floor(r.Top)), clamp(math.Ceil(r.Right)), clamp(math.Ceil(r.Bottom)))
 }
 
@@ -448,7 +448,7 @@ func (e *ShapeEncoder) Superellipse(rs ui.RSuperellipse, p *ui.Paint) (needsMask
 	}
 	// The corner boxes: the radius times the extent, as far as it fits.
 	for i, c := range parts.R {
-		parts.R[i] = ui.Radius{X: math.Min(c.X*SuperellipseExtent, parts.HX), Y: math.Min(c.Y*SuperellipseExtent, parts.HY)}
+		parts.R[i] = ui.Radius{X: min(c.X*SuperellipseExtent, parts.HX), Y: min(c.Y*SuperellipseExtent, parts.HY)}
 	}
 	var in ShapeInstance
 	parts.Write(&in, 20)
@@ -488,8 +488,8 @@ func (e *ShapeEncoder) Segments(pts []ui.Offset, p *ui.Paint, line bool, mode ui
 		in[44], in[45] = float32(hw), cap
 		reach := hw * math.Sqrt2
 		local := ui.Rect{
-			Left: math.Min(a.Dx, b.Dx) - reach, Top: math.Min(a.Dy, b.Dy) - reach,
-			Right: math.Max(a.Dx, b.Dx) + reach, Bottom: math.Max(a.Dy, b.Dy) + reach,
+			Left: min(a.Dx, b.Dx) - reach, Top: min(a.Dy, b.Dy) - reach,
+			Right: max(a.Dx, b.Dx) + reach, Bottom: max(a.Dy, b.Dy) + reach,
 		}
 		e.Place(&in, local, ShapeKindSegment, 0, alpha)
 	}

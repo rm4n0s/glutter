@@ -5,7 +5,9 @@ package engine
 import (
 	"context"
 	"log/slog"
+	"math"
 	"reflect"
+	"runtime/debug"
 	"strings"
 	"testing"
 
@@ -203,5 +205,38 @@ func TestWebGPULastResortSwitchesToWebGL(t *testing.T) {
 	(*made)[0].err = errors.New("GPUDeviceLost", "the device is gone")
 	if _, err := c.Draw(handle, 10, 10, nil, false); err == nil || len(*made) != 1 {
 		t.Errorf("webgpu by name switched (%d renderers) or hid the error: %v", len(*made), err)
+	}
+}
+
+// TestTuneGC: the web collects when the heap has grown five times (a screen's build allocates megabytes on
+// the one thread that the page has), within a soft memory limit, unless the environment says otherwise.
+func TestTuneGC(t *testing.T) {
+	oldPercent := debug.SetGCPercent(100)
+	oldLimit := debug.SetMemoryLimit(math.MaxInt64)
+	t.Cleanup(func() {
+		debug.SetGCPercent(oldPercent)
+		debug.SetMemoryLimit(oldLimit)
+	})
+	t.Setenv("GOGC", "")
+	t.Setenv("GOMEMLIMIT", "")
+	tuneGC()
+	if got := debug.SetGCPercent(100); got != webGCPercent {
+		t.Errorf("GC percent = %d, want %d", got, webGCPercent)
+	}
+	if got := debug.SetMemoryLimit(-1); got != webMemoryLimit {
+		t.Errorf("memory limit = %d, want %d", got, int64(webMemoryLimit))
+	}
+
+	// A value that the program was started with is kept.
+	debug.SetGCPercent(150)
+	debug.SetMemoryLimit(math.MaxInt64)
+	t.Setenv("GOGC", "150")
+	t.Setenv("GOMEMLIMIT", "1GiB")
+	tuneGC()
+	if got := debug.SetGCPercent(100); got != 150 {
+		t.Errorf("GC percent = %d, want the 150 that GOGC gave", got)
+	}
+	if got := debug.SetMemoryLimit(-1); got != math.MaxInt64 {
+		t.Errorf("memory limit = %d, want it left alone", got)
 	}
 }

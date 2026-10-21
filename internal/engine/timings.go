@@ -123,6 +123,9 @@ func (h *handler) noteFrame() {
 	s.worstBuild, s.worstRas = max(s.worstBuild, build), max(s.worstRas, raster)
 	if build+raster > frameBudget {
 		s.slow++
+		// A frame over the budget is logged on its own, so that what made it slow can be told from
+		// the second's average (a page that was built for the first time, a glyph atlas, a pipeline).
+		h.log.Info("slow frame", "build", build.Round(10*time.Microsecond), "raster", raster.Round(10*time.Microsecond))
 	}
 	if now.Sub(s.since) >= time.Second {
 		attrs := []any{

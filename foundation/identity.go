@@ -83,6 +83,27 @@ func RuntimeTypeName(object any) string {
 	return genericBraces.Replace(name)
 }
 
+// SameRuntimeType reports whether the two objects have the same runtimeType: the same type once pointers are
+// looked through, as RuntimeTypeName does (so a T and a *T are one type), and nil is the type of nil only. It is
+// the comparison `a.runtimeType == b.runtimeType` of Flutter's framework, which RuntimeTypeName(a) ==
+// RuntimeTypeName(b) also answers but at the price of building two names (regular expressions over the type's
+// string), a price that a widget update pays for each CustomPaint and each clipper.
+//
+// Flutter: foundation/object.dart Object.runtimeType
+func SameRuntimeType(a, b any) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	ta, tb := reflect.TypeOf(a), reflect.TypeOf(b)
+	for ta.Kind() == reflect.Pointer {
+		ta = ta.Elem()
+	}
+	for tb.Kind() == reflect.Pointer {
+		tb = tb.Elem()
+	}
+	return ta == tb
+}
+
 // describeValue returns what Dart's toString gives the value: "null" for nil,
 // the String method when there is one, Dart's double format for floats and
 // bracketed lists and braced maps.

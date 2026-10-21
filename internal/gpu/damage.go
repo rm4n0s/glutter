@@ -361,9 +361,9 @@ func (w *damageWalk) add(bounds ui.Rect, sig uint64) {
 	if !bounds.IsFinite() || bounds.IsEmpty() || bounds.Right <= 0 || bounds.Bottom <= 0 || bounds.Left >= float64(w.w) || bounds.Top >= float64(w.h) {
 		return
 	}
-	x0, y0 := int(math.Floor(math.Max(bounds.Left, 0)))/damageTile, int(math.Floor(math.Max(bounds.Top, 0)))/damageTile
-	x1 := min(int(math.Ceil(math.Min(bounds.Right, float64(w.w))))-1, w.w-1) / damageTile
-	y1 := min(int(math.Ceil(math.Min(bounds.Bottom, float64(w.h))))-1, w.h-1) / damageTile
+	x0, y0 := int(math.Floor(max(bounds.Left, 0)))/damageTile, int(math.Floor(max(bounds.Top, 0)))/damageTile
+	x1 := min(int(math.Ceil(min(bounds.Right, float64(w.w))))-1, w.w-1) / damageTile
+	y1 := min(int(math.Ceil(min(bounds.Bottom, float64(w.h))))-1, w.h-1) / damageTile
 	for y := y0; y <= y1; y++ {
 		for x := x0; x <= x1; x++ {
 			i := y*w.cols + x

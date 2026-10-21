@@ -54,6 +54,10 @@ func TestRunUsageErrors(t *testing.T) {
 		{"shot without a package", []string{"shot", "-browser", "firefox", "-o", "x.png"}, "parse"},
 		{"shot without a browser", []string{"shot", "-o", "x.png", "./p"}, "runShot"},
 		{"shot without an output", []string{"shot", "-browser", "firefox", "./p"}, "runShot"},
+		{"perf without a browser", []string{"perf", "./p"}, "runPerf"},
+		{"perf without a package", []string{"perf", "-browser", "firefox"}, "runPerf"},
+		{"perf blank with a package", []string{"perf", "-browser", "firefox", "-blank", "./p"}, "runPerf"},
+		{"perf with a bad click", []string{"perf", "-browser", "firefox", "-blank", "-clicks", "12"}, "parseClicks"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -254,4 +258,39 @@ func mustGo(t *testing.T) string {
 func fileExists(p string) bool {
 	info, err := os.Stat(p)
 	return err == nil && !info.IsDir()
+}
+
+func TestParseClicks(t *testing.T) {
+	tests := []struct {
+		in   string
+		want [][2]float64
+		bad  bool
+	}{
+		{"", nil, false},
+		{"100,218", [][2]float64{{100, 218}}, false},
+		{" 100 , 218 ; 5.5,6 ;", [][2]float64{{100, 218}, {5.5, 6}}, false},
+		{"100", nil, true},
+		{"a,b", nil, true},
+		{"1,2;3", nil, true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.in, func(t *testing.T) {
+			got, err := parseClicks(tc.in)
+			if tc.bad {
+				appErr, ok := errors.FromError(err)
+				if !ok || appErr.Tag != "WebUsage" || !appErr.HasRoute("parseClicks.WebUsage") {
+					t.Fatalf("parseClicks(%q) = %v, want WebUsage via parseClicks", tc.in, err)
+				}
+				return
+			}
+			if err != nil || len(got) != len(tc.want) {
+				t.Fatalf("parseClicks(%q) = %v, %v; want %v", tc.in, got, err, tc.want)
+			}
+			for i := range got {
+				if got[i] != tc.want[i] {
+					t.Errorf("click %d = %v, want %v", i, got[i], tc.want[i])
+				}
+			}
+		})
+	}
 }

@@ -349,6 +349,11 @@ func (e *InheritedElement) SetDependencies(dependent Element, value any) {
 //
 // Flutter: widgets/framework.dart InheritedElement.updateDependencies
 func (e *InheritedElement) UpdateDependencies(dependent Element, _ any) {
+	// An element asks again in every build: keep the entry that is there (SetDependencies would
+	// write the same nil, at the price of a map write).
+	if v, ok := e.dependents.get(dependent); ok && v == nil {
+		return
+	}
 	e.iself.SetDependencies(dependent, nil)
 }
 

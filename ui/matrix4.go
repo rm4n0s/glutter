@@ -445,7 +445,7 @@ func (m *Matrix4) GetMaxScaleOnAxis() float64 {
 		x, y, z := float64(s[i]), float64(s[i+1]), float64(s[i+2])
 		return x*x + y*y + z*z
 	}
-	return math.Sqrt(math.Max(sq(0), math.Max(sq(4), sq(8))))
+	return math.Sqrt(max(sq(0), max(sq(4), sq(8))))
 }
 
 // Transform3 transforms the vector as the point (x, y, z, 1), ignoring the

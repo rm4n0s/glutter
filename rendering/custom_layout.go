@@ -241,7 +241,7 @@ func (r *RenderCustomMultiChildLayoutBox) SetDelegate(newDelegate MultiChildLayo
 		return
 	}
 	old := r.delegate
-	if foundation.RuntimeTypeName(newDelegate) != foundation.RuntimeTypeName(old) || newDelegate.ShouldRelayout(old) {
+	if !foundation.SameRuntimeType(newDelegate, old) || newDelegate.ShouldRelayout(old) {
 		r.MarkNeedsLayout()
 	}
 	r.delegate = newDelegate

@@ -98,13 +98,13 @@ func (r *renderer) drawShadow(op ui.OpDrawShadow, st *state) error {
 		return nil
 	}
 	// The shape's coverage in an area wide enough for the widest blur.
-	ambientSigma := blurRadiusToSigma(math.Min(z*shadowAmbientFactor, shadowMaxAmbient))
+	ambientSigma := blurRadiusToSigma(min(z*shadowAmbientFactor, shadowMaxAmbient))
 	lightZ, lightR := shadowLightHeight*scale, shadowLightRadius*scale
 	if z >= lightZ {
 		return nil
 	}
 	spotSigma := blurRadiusToSigma(lightR * z / (lightZ - z))
-	reach := math.Max(ambientSigma, spotSigma)
+	reach := max(ambientSigma, spotSigma)
 	bounds := op.Path.GetBounds()
 	devBounds := deviceBounds(st.m, bounds)
 	if devBounds.Empty() {
@@ -159,8 +159,8 @@ func (r *renderer) drawShadow(op ui.OpDrawShadow, st *state) error {
 // translation, with bilinear filtering.
 func transformMask(m *Mask, t affine) *Mask {
 	corners := []ui.Offset{t.apply(float64(m.Rect.Min.X), float64(m.Rect.Min.Y)), t.apply(float64(m.Rect.Max.X), float64(m.Rect.Max.Y))}
-	out := image.Rect(int(math.Floor(math.Min(corners[0].Dx, corners[1].Dx))), int(math.Floor(math.Min(corners[0].Dy, corners[1].Dy))),
-		int(math.Ceil(math.Max(corners[0].Dx, corners[1].Dx))), int(math.Ceil(math.Max(corners[0].Dy, corners[1].Dy))))
+	out := image.Rect(int(math.Floor(min(corners[0].Dx, corners[1].Dx))), int(math.Floor(min(corners[0].Dy, corners[1].Dy))),
+		int(math.Ceil(max(corners[0].Dx, corners[1].Dx))), int(math.Ceil(max(corners[0].Dy, corners[1].Dy))))
 	inv, ok := t.invert()
 	if !ok || out.Empty() {
 		return nil

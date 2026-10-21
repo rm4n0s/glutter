@@ -115,7 +115,7 @@ func ShapeOf(op ui.DisplayOp) (OpShape, bool) {
 	case ui.OpDrawLine:
 		h.I(9)
 		rr(v.P1.Dx, v.P1.Dy, v.P2.Dx, v.P2.Dy)
-		b := ui.Rect{Left: math.Min(v.P1.Dx, v.P2.Dx), Top: math.Min(v.P1.Dy, v.P2.Dy), Right: math.Max(v.P1.Dx, v.P2.Dx), Bottom: math.Max(v.P1.Dy, v.P2.Dy)}
+		b := ui.Rect{Left: min(v.P1.Dx, v.P2.Dx), Top: min(v.P1.Dy, v.P2.Dy), Right: max(v.P1.Dx, v.P2.Dx), Bottom: max(v.P1.Dy, v.P2.Dy)}
 		return OpShape{h.Sum(), b, &v.Paint, true}, true
 	case ui.OpDrawPoints:
 		h.I(10)
@@ -124,8 +124,8 @@ func ShapeOf(op ui.DisplayOp) (OpShape, bool) {
 		for _, p := range v.Points {
 			h.F64(p.Dx)
 			h.F64(p.Dy)
-			b.Left, b.Top = math.Min(b.Left, p.Dx), math.Min(b.Top, p.Dy)
-			b.Right, b.Bottom = math.Max(b.Right, p.Dx), math.Max(b.Bottom, p.Dy)
+			b.Left, b.Top = min(b.Left, p.Dx), min(b.Top, p.Dy)
+			b.Right, b.Bottom = max(b.Right, p.Dx), max(b.Bottom, p.Dy)
 		}
 		return OpShape{h.Sum(), b, &v.Paint, true}, true
 	}
@@ -160,7 +160,7 @@ func MaskMargin(sh OpShape, scale float64) float64 {
 		if sh.Paint.StrokeWidth() <= 0 {
 			hw = 0.5 / scale
 		}
-		margin += hw * math.Max(sh.Paint.StrokeMiterLimit(), 1.5)
+		margin += hw * max(sh.Paint.StrokeMiterLimit(), 1.5)
 	}
 	return margin
 }
@@ -303,7 +303,7 @@ func (c *MaskCache) rasterizeTile(op ui.DisplayOp, m *ui.Matrix4, key MaskKey, a
 func CoverageBytes(cov []float32) []byte {
 	b := make([]byte, len(cov))
 	for i, c := range cov {
-		b[i] = byte(math.Min(math.Max(float64(c)*255+0.5, 0), 255))
+		b[i] = byte(min(max(float64(c)*255+0.5, 0), 255))
 	}
 	return b
 }

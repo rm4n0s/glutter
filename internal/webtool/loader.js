@@ -65,6 +65,14 @@ function glutterReportURL(search) {
   return m ? decodeURIComponent(m[1]) : "";
 }
 
+// glutterLogEvery is the interval in milliseconds at which to post the program's new output while
+// it runs, from the parameter glutter_log_every (with glutter_report), or 0 for never. The
+// measurements of scripts/perf-web.sh read the engine's frame statistics this way.
+function glutterLogEvery(search) {
+  const m = /(?:^|[?&])glutter_log_every=([0-9]+)(?:&|$)/.exec(search);
+  return m ? parseInt(m[1], 10) : 0;
+}
+
 async function glutterBoot() {
   if (typeof WebAssembly !== "object" || typeof WebAssembly.instantiate !== "function") {
     glutterShow("This browser does not support WebAssembly, which this app needs.");
@@ -73,6 +81,11 @@ async function glutterBoot() {
   const report = glutterReportURL(location.search);
   const go = new Go();
   go.env = Object.assign({}, go.env, glutterEnvFromQuery(location.search));
+  const logEvery = report ? glutterLogEvery(location.search) : 0;
+  // pending is the output not yet posted, for glutter_log_every; timings are when, in milliseconds
+  // since the page began to load, the program was instantiated and drew its first frame.
+  let pending = "";
+  const timings = { instantiated: 0, firstFrame: 0 };
   let log = "";
   if (globalThis.fs && globalThis.fs.writeSync) {
     // Keep what the program writes to standard output and error (the last 64 KiB), to show why it
@@ -80,8 +93,16 @@ async function glutterBoot() {
     const write = globalThis.fs.writeSync.bind(globalThis.fs);
     const decoder = new TextDecoder("utf-8");
     globalThis.fs.writeSync = (fd, buf) => {
-      log += decoder.decode(buf, { stream: true });
+      const text = decoder.decode(buf, { stream: true });
+      log += text;
       if (log.length > 65536) log = log.slice(-65536);
+      if (logEvery > 0) {
+        pending += text;
+        if (!timings.firstFrame && text.indexOf("first frame presented") >= 0) {
+          timings.firstFrame = performance.now();
+          globalThis.glutterTimings = timings;
+        }
+      }
       return write(fd, buf);
     };
   }
@@ -95,6 +116,18 @@ async function glutterBoot() {
       keepalive: true,
     }).catch(() => {});
   };
+  if (logEvery > 0) {
+    setInterval(() => {
+      if (pending === "") return;
+      const text = pending;
+      pending = "";
+      fetch(report, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind: "log", log: text, data: timings }),
+      }).catch(() => {});
+    }, logEvery);
+  }
   const exit = go.exit;
   go.exit = (code) => {
     if (code !== 0) glutterShow(glutterFailureText(code, log));
@@ -109,6 +142,7 @@ async function glutterBoot() {
       const response = await fetch("app.wasm");
       result = await WebAssembly.instantiate(await response.arrayBuffer(), go.importObject);
     }
+    timings.instantiated = performance.now();
     await go.run(result.instance);
   } catch (e) {
     glutterShow("The app could not start: " + e);

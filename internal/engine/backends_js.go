@@ -6,6 +6,8 @@ import (
 	"context"
 	"image"
 	"log/slog"
+	"os"
+	"runtime/debug"
 	"time"
 
 	"github.com/rm4n0s/glutter/internal/gpu"
@@ -32,6 +34,7 @@ import (
 // the renderer, which returns it from its first frame, so that auto then falls to WebGL 2 and a
 // renderer asked for by name ends Run with it.
 func connectDisplay(cfg *Config, getenv func(string) string, log *slog.Logger) (connection, error) {
+	tuneGC()
 	want := cfg.Renderer
 	if want == "" {
 		want = getenv(RendererEnv)
@@ -164,3 +167,24 @@ func (bundledOnly) Match(context.Context, string, int, bool, string) ([]text.Fon
 //
 // Flutter: no counterpart
 func SystemFontMatcher(context.Context, *slog.Logger) text.Matcher { return bundledOnly{} }
+
+// Web GC settings (SPEC §23.1, "Decided in step 21.7"). A WebAssembly program has one thread, so the garbage
+// collector's work is taken from the frames; a build of a screen allocates megabytes (a page of the gallery: 5.7 MB
+// in 57,000 objects), and with the default of collecting when the heap has doubled, a click on the gallery's
+// navigation spent a quarter of its time in the collector. The collector runs when the heap has grown to five times
+// what was live after the last one, unless the program set GOGC itself, and a soft limit keeps that from using
+// more memory than a page should.
+const (
+	webGCPercent   = 400
+	webMemoryLimit = 768 << 20
+)
+
+// tuneGC sets the web's GC percent and memory limit, except where the page's query gave GOGC or GOMEMLIMIT.
+func tuneGC() {
+	if os.Getenv("GOGC") == "" {
+		debug.SetGCPercent(webGCPercent)
+	}
+	if os.Getenv("GOMEMLIMIT") == "" {
+		debug.SetMemoryLimit(webMemoryLimit)
+	}
+}

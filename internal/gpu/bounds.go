@@ -33,7 +33,7 @@ func ShapeBounds(op ui.DisplayOp) (ui.Rect, bool) {
 	case ui.OpDrawPath:
 		r, p = v.Path.GetBounds(), &v.Paint
 	case ui.OpDrawLine:
-		r = ui.Rect{Left: math.Min(v.P1.Dx, v.P2.Dx), Top: math.Min(v.P1.Dy, v.P2.Dy), Right: math.Max(v.P1.Dx, v.P2.Dx), Bottom: math.Max(v.P1.Dy, v.P2.Dy)}
+		r = ui.Rect{Left: min(v.P1.Dx, v.P2.Dx), Top: min(v.P1.Dy, v.P2.Dy), Right: max(v.P1.Dx, v.P2.Dx), Bottom: max(v.P1.Dy, v.P2.Dy)}
 		p = &v.Paint
 	case ui.OpDrawPoints:
 		if len(v.Points) == 0 {
@@ -46,7 +46,7 @@ func ShapeBounds(op ui.DisplayOp) (ui.Rect, bool) {
 	}
 	if p.Style() == ui.PaintingStyleStroke || isLineOrPoints(op) {
 		// A stroke reaches half its width, or a miter's length, past the geometry.
-		grow := math.Max(p.StrokeWidth(), 0) / 2 * math.Max(math.Sqrt2, p.StrokeMiterLimit())
+		grow := max(p.StrokeWidth(), 0) / 2 * max(math.Sqrt2, p.StrokeMiterLimit())
 		r = ui.Rect{Left: r.Left - grow, Top: r.Top - grow, Right: r.Right + grow, Bottom: r.Bottom + grow}
 	}
 	return r, r.IsFinite()
@@ -67,7 +67,7 @@ func isLineOrPoints(op ui.DisplayOp) bool {
 func pointsBounds(points []ui.Offset) ui.Rect {
 	r := ui.Rect{Left: math.Inf(1), Top: math.Inf(1), Right: math.Inf(-1), Bottom: math.Inf(-1)}
 	for _, pt := range points {
-		r = ui.Rect{Left: math.Min(r.Left, pt.Dx), Top: math.Min(r.Top, pt.Dy), Right: math.Max(r.Right, pt.Dx), Bottom: math.Max(r.Bottom, pt.Dy)}
+		r = ui.Rect{Left: min(r.Left, pt.Dx), Top: min(r.Top, pt.Dy), Right: max(r.Right, pt.Dx), Bottom: max(r.Bottom, pt.Dy)}
 	}
 	return r
 }
@@ -143,7 +143,7 @@ func ShadowBounds(op ui.OpDrawShadow) (ui.Rect, bool) {
 		return b, b.IsFinite()
 	}
 	z := op.Elevation
-	ambient := blurSigma(math.Min(z*0.5, 300))
+	ambient := blurSigma(min(z*0.5, 300))
 	spot := blurSigma(shadowLightRadius * z / (shadowLightHeight - z))
 	scale := shadowLightHeight / (shadowLightHeight - z)
 	dy := z * (shadowLightHeight + b.Height()/2) / (shadowLightHeight - z)

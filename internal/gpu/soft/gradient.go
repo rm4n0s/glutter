@@ -31,7 +31,7 @@ func tileT(t float64, mode ui.TileMode) (float64, bool) {
 	case ui.TileModeDecal:
 		return t, t >= 0 && t <= 1
 	}
-	return math.Min(math.Max(t, 0), 1), true
+	return min(max(t, 0), 1), true
 }
 
 // colorRamp is the colors of a gradient with their positions.
@@ -47,17 +47,17 @@ func newColorRamp(colors []ui.Color, stops []float64) colorRamp {
 	var ramp colorRamp
 	n := len(colors)
 	for i, c := range colors {
-		p := float64(i) / math.Max(float64(n-1), 1)
+		p := float64(i) / max(float64(n-1), 1)
 		if len(stops) == n {
 			p = stops[i]
 		}
 		if len(ramp.pos) > 0 {
-			p = math.Max(p, ramp.pos[len(ramp.pos)-1])
+			p = max(p, ramp.pos[len(ramp.pos)-1])
 		} else if p > 0 {
 			ramp.pos = append(ramp.pos, 0)
 			ramp.colors = append(ramp.colors, rgba{c.R, c.G, c.B, c.A})
 		}
-		p = math.Min(math.Max(p, 0), 1)
+		p = min(max(p, 0), 1)
 		ramp.pos = append(ramp.pos, p)
 		ramp.colors = append(ramp.colors, rgba{c.R, c.G, c.B, c.A})
 	}

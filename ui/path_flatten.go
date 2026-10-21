@@ -104,7 +104,7 @@ func flattenQuad(dst []Offset, p0, p1, p2 Offset, tol float64) []Offset {
 func flattenCubic(dst []Offset, p0, p1, p2, p3 Offset, tol float64) []Offset {
 	d1 := p0.Sub(p1.Mul(2)).Add(p2)
 	d2 := p1.Sub(p2.Mul(2)).Add(p3)
-	m := math.Max(math.Hypot(d1.Dx, d1.Dy), math.Hypot(d2.Dx, d2.Dy))
+	m := max(math.Hypot(d1.Dx, d1.Dy), math.Hypot(d2.Dx, d2.Dy))
 	n := splitCount(3 * m / (4 * tol))
 	for i := 1; i < n; i++ {
 		dst = append(dst, cubicAt(p0, p1, p2, p3, float64(i)/float64(n)))

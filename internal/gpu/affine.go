@@ -86,5 +86,5 @@ func (t Affine2D) Invert() (Affine2D, bool) {
 func (t Affine2D) Similarity() bool {
 	const eps = 1e-4
 	n1, n2 := math.Hypot(t.A, t.B), math.Hypot(t.C, t.D)
-	return math.Abs(n1-n2) <= eps*math.Max(n1, n2) && math.Abs(t.A*t.C+t.B*t.D) <= eps*n1*n2
+	return math.Abs(n1-n2) <= eps*max(n1, n2) && math.Abs(t.A*t.C+t.B*t.D) <= eps*n1*n2
 }

@@ -102,7 +102,7 @@ func (p *paragraph) graphemesOf(l *line) []graphemeBox {
 			if b.run < 0 {
 				continue
 			}
-			g.x0, g.x1 = math.Min(g.x0, b.x0), math.Max(g.x1, b.x1)
+			g.x0, g.x1 = min(g.x0, b.x0), max(g.x1, b.x1)
 			g.rtl = b.rtl
 		}
 		if math.IsInf(g.x0, 1) {

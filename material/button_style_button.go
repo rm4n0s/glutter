@@ -540,7 +540,7 @@ func (s *buttonStyleState) Build(bc widgets.BuildContext) widgets.Widget {
 	if shape != nil {
 		inkShape = shape
 	}
-	result = NewAnimatedTheme(theme.CopyWith(ThemeDataCopy{IconTheme: foundation.Some(merged)}),
+	result = NewAnimatedTheme(theme.copyWithIconTheme(merged),
 		NewInkWell(result, InkWellOpts{
 			OnTap:            w.onPressed,
 			OnLongPress:      w.o.OnLongPress,

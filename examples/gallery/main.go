@@ -9,7 +9,10 @@
 //
 // Environment: GLUTTER_BACKEND=x11|wayland, GLUTTER_SCREENSHOT=<file.png>,
 // GLUTTER_SCREENSHOT_AFTER=<duration>, GLUTTER_GALLERY_PAGE=<slug> opens the page with that
-// slug (in every build; scripts/perf.sh uses it), and GLUTTER_GALLERY_ANIMATE=1 starts its progress indicators animating. In debug builds: GLUTTER_DEV_PAGE=<slug>
+// slug (in every build; scripts/perf.sh uses it), GLUTTER_GALLERY_ANIMATE=1 starts its progress indicators animating, and
+// GLUTTER_GALLERY_REBUILD=1 builds the whole app again in every frame (scripts/perf-web.sh measures the
+// frames of a full rebuild with it). On the web they are query parameters (?GLUTTER_GALLERY_PAGE=data).
+// Serve it with: go run ./cmd/glutter-web serve ./examples/gallery. In debug builds: GLUTTER_DEV_PAGE=<slug>
 // does the same, GLUTTER_DEV_THEME=dark starts in dark mode, and
 // GLUTTER_DEV_SNACKBAR=1 shows a snack bar when the first page opens, and
 // GLUTTER_DEV_OPEN_MENU=file/recent opens those menus of the Menus page, and
@@ -22,6 +25,7 @@ package main
 import (
 	"log"
 	"os"
+	"time"
 
 	"github.com/rm4n0s/glutter/foundation"
 	m "github.com/rm4n0s/glutter/material"
@@ -104,19 +108,54 @@ type galleryAppState struct {
 	page int
 	seed int
 	mode m.ThemeMode
+	// light and dark are the themes of the seed in lightFor: they are made again only when the
+	// seed changes, not in every build. A theme is a big value to make (a color scheme is solved from
+	// the seed) and to compare (a new ThemeData is compared field by field with the old one, an old one
+	// that is the same pointer is not), and the gallery rebuilds the whole app when the mode changes.
+	light, dark *m.ThemeData
+	lightFor    int
+}
+
+// themes are the light and the dark theme of the seed color.
+func (s *galleryAppState) themes() (light, dark *m.ThemeData) {
+	if s.light == nil || s.lightFor != s.seed {
+		seed := seedOptions[s.seed].color
+		s.light = m.NewThemeData(m.ThemeDataOpts{ColorSchemeSeed: m.Some(seed)})
+		s.dark = m.NewThemeData(m.ThemeDataOpts{ColorSchemeSeed: m.Some(seed), Brightness: m.BrightnessDark})
+		s.lightFor = s.seed
+	}
+	return s.light, s.dark
 }
 
 func (s *galleryAppState) InitState() {
 	s.page = devPage(os.Getenv, galleryPages)
 	s.mode = devThemeMode(os.Getenv)
+	if os.Getenv("GLUTTER_GALLERY_REBUILD") == "1" {
+		s.rebuildEveryFrame()
+	}
+}
+
+// rebuildEveryFrame makes the app build again after every frame, so that each frame is a full
+// rebuild of the page, as when the theme changes (GLUTTER_GALLERY_REBUILD, for the measurements of
+// SPEC §15). It runs from the post-frame callbacks, which also ask for the next frame.
+func (s *galleryAppState) rebuildEveryFrame() {
+	var again func(time.Duration)
+	again = func(time.Duration) {
+		if !s.Mounted() {
+			return
+		}
+		s.SetState(func() {})
+		m.WidgetsBindingOf(s.Context()).RunPostFrame(again)
+	}
+	m.WidgetsBindingOf(s.Context()).RunPostFrame(again)
 }
 
 func (s *galleryAppState) Build(bc m.BuildContext) m.Widget {
-	seed := seedOptions[s.seed].color
+	light, dark := s.themes()
 	return m.NewMaterialApp(m.MaterialAppOpts{
 		Title:                      appTitle,
-		Theme:                      m.NewThemeData(m.ThemeDataOpts{ColorSchemeSeed: m.Some(seed)}),
-		DarkTheme:                  m.NewThemeData(m.ThemeDataOpts{ColorSchemeSeed: m.Some(seed), Brightness: m.BrightnessDark}),
+		Theme:                      light,
+		DarkTheme:                  dark,
 		ThemeMode:                  s.mode,
 		DebugShowCheckedModeBanner: m.Some(false),
 		ShowPerformanceOverlay:     devPerformanceOverlay(os.Getenv),

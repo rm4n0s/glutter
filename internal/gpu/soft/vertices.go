@@ -107,12 +107,12 @@ func (r *renderer) triangle(a, b, c vertex, st *state, mode ui.BlendMode, shade 
 		b, c = c, b
 		area = -area
 	}
-	minX := math.Min(a.p.Dx, math.Min(b.p.Dx, c.p.Dx))
-	maxX := math.Max(a.p.Dx, math.Max(b.p.Dx, c.p.Dx))
-	minY := math.Min(a.p.Dy, math.Min(b.p.Dy, c.p.Dy))
-	maxY := math.Max(a.p.Dy, math.Max(b.p.Dy, c.p.Dy))
-	box := image.Rect(int(math.Floor(math.Max(minX, -maxCoord))), int(math.Floor(math.Max(minY, -maxCoord))),
-		int(math.Ceil(math.Min(maxX, maxCoord))), int(math.Ceil(math.Min(maxY, maxCoord)))).Intersect(st.clip.limit(r.img.Rect))
+	minX := min(a.p.Dx, min(b.p.Dx, c.p.Dx))
+	maxX := max(a.p.Dx, max(b.p.Dx, c.p.Dx))
+	minY := min(a.p.Dy, min(b.p.Dy, c.p.Dy))
+	maxY := max(a.p.Dy, max(b.p.Dy, c.p.Dy))
+	box := image.Rect(int(math.Floor(max(minX, -maxCoord))), int(math.Floor(max(minY, -maxCoord))),
+		int(math.Ceil(min(maxX, maxCoord))), int(math.Ceil(min(maxY, maxCoord)))).Intersect(st.clip.limit(r.img.Rect))
 	if box.Empty() {
 		return
 	}

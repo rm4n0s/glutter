@@ -167,7 +167,7 @@ func (c *renderCustomClip[T]) SetClipper(newClipper CustomClipper[T]) {
 	oldClipper := c.clipper
 	c.clipper = newClipper
 	if newClipper == nil || oldClipper == nil ||
-		foundation.RuntimeTypeName(newClipper) != foundation.RuntimeTypeName(oldClipper) ||
+		!foundation.SameRuntimeType(newClipper, oldClipper) ||
 		newClipper.ShouldReclip(oldClipper) {
 		c.markNeedsClip()
 	}

@@ -202,7 +202,7 @@ func (r *RenderFlow) SetDelegate(newDelegate FlowDelegate) {
 	}
 	old := r.delegate
 	r.delegate = newDelegate
-	if foundation.RuntimeTypeName(newDelegate) != foundation.RuntimeTypeName(old) || newDelegate.ShouldRelayout(old) {
+	if !foundation.SameRuntimeType(newDelegate, old) || newDelegate.ShouldRelayout(old) {
 		r.MarkNeedsLayout()
 	} else if newDelegate.ShouldRepaint(old) {
 		r.MarkNeedsPaint()

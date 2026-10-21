@@ -135,11 +135,11 @@ func (l *mipLevel) bicubic(fu, fv float64, t tiling) rgba {
 		}
 	}
 	// The cubic can overshoot; keep a valid premultiplied color.
-	a := math.Min(math.Max(out[3], 0), 1)
+	a := min(max(out[3], 0), 1)
 	var res rgba
 	res[3] = float32(a)
 	for k := 0; k < 3; k++ {
-		res[k] = float32(math.Min(math.Max(out[k], 0), a))
+		res[k] = float32(min(max(out[k], 0), a))
 	}
 	return res
 }

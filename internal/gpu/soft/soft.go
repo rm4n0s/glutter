@@ -141,7 +141,7 @@ func deviceBounds(m *ui.Matrix4, r ui.Rect) image.Rectangle {
 	if math.IsNaN(b.Left+b.Top+b.Right+b.Bottom) || math.IsInf(b.Left+b.Top+b.Right+b.Bottom, 0) {
 		return image.Rectangle{}
 	}
-	clamp := func(v float64) int { return int(math.Max(-maxCoord, math.Min(maxCoord, v))) }
+	clamp := func(v float64) int { return int(max(-maxCoord, min(maxCoord, v))) }
 	return image.Rect(clamp(math.Floor(b.Left)), clamp(math.Floor(b.Top)), clamp(math.Ceil(b.Right)), clamp(math.Ceil(b.Bottom)))
 }
 
@@ -418,7 +418,7 @@ func (r *renderer) drawPath(path *ui.Path, p *ui.Paint, st *state, forceStroke b
 // its stroke when the paint strokes or forceStroke is set.
 func pathPolys(path *ui.Path, p *ui.Paint, m *ui.Matrix4, forceStroke bool) ([][]ui.Offset, FillRule) {
 	if forceStroke || p.Style() == ui.PaintingStyleStroke {
-		return strokePolys(path.Flatten(nil, flattenTolerance/math.Max(affineScale(m), 1e-6)), p, m), FillNonZero
+		return strokePolys(path.Flatten(nil, flattenTolerance/max(affineScale(m), 1e-6)), p, m), FillNonZero
 	}
 	return flatPolys(path, m), fillRuleOf(path)
 }

@@ -30,7 +30,7 @@ func pixelRect(r ui.Rect) image.Rectangle {
 	if !r.IsFinite() {
 		return image.Rectangle{}
 	}
-	clamp := func(v float64) int { return int(math.Max(-1e9, math.Min(1e9, v))) }
+	clamp := func(v float64) int { return int(max(-1e9, min(1e9, v))) }
 	return image.Rect(clamp(math.Floor(r.Left)), clamp(math.Floor(r.Top)), clamp(math.Ceil(r.Right)), clamp(math.Ceil(r.Bottom)))
 }
 

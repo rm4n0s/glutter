@@ -60,7 +60,17 @@ type Server struct {
 // it when done.
 //
 // Flutter: no counterpart
-func NewServer(dir string) *Server {
+func NewServer(dir string) *Server { return newServer(webtool.Handler(dir)) }
+
+// NewCachingServer is NewServer for a server that lets the browser keep the files of the build
+// for a while, as a deployed site does (webtool.CachingHandler): the measurement of the start
+// with app.wasm in the browser's cache needs it.
+//
+// Flutter: no counterpart
+func NewCachingServer(dir string) *Server { return newServer(webtool.CachingHandler(dir)) }
+
+// newServer starts a server whose files come from the handler.
+func newServer(files http.Handler) *Server {
 	s := &Server{
 		mux:     http.NewServeMux(),
 		shots:   make(chan []byte, 16),
@@ -79,7 +89,7 @@ func NewServer(dir string) *Server {
 			_, _ = w.Write(page) // the browser went away: nothing to report
 			return
 		}
-		webtool.Handler(dir).ServeHTTP(w, r)
+		files.ServeHTTP(w, r)
 	}))
 	s.Server = httptest.NewServer(s.mux)
 	return s

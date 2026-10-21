@@ -298,7 +298,7 @@ func (p *Path) arcToPoint(rx, ry, angle float64, largeArc, cw bool, x, y float64
 	unit0, unit1 := toUnit(start), toUnit(end)
 	delta := unit1.Sub(unit0)
 	d := delta.Dx*delta.Dx + delta.Dy*delta.Dy
-	scaleFactor := math.Sqrt(math.Max(1/d-0.25, 0))
+	scaleFactor := math.Sqrt(max(1/d-0.25, 0))
 	// The center is on the perpendicular bisector; which side depends on the
 	// arc size and the direction.
 	if largeArc != !cw { // SVG: the sign is + when the large-arc and sweep flags differ
@@ -408,7 +408,7 @@ const (
 )
 
 func newSkRRect(rr rrectLike) skRRect {
-	r := Rect{math.Min(rr.Left, rr.Right), math.Min(rr.Top, rr.Bottom), math.Max(rr.Left, rr.Right), math.Max(rr.Top, rr.Bottom)}
+	r := Rect{min(rr.Left, rr.Right), min(rr.Top, rr.Bottom), max(rr.Left, rr.Right), max(rr.Top, rr.Bottom)}
 	out := skRRect{rect: r}
 	if r.IsEmpty() || !r.IsFinite() {
 		out.kind = rrectEmpty
@@ -543,7 +543,7 @@ func (p *Path) AddRSuperellipse(rs RSuperellipse) {
 	b := rr.rect
 	// The box each corner occupies: its radius times the extent, as far as it fits.
 	box := func(r Radius) (float64, float64) {
-		return math.Min(r.X*superellipseExtent, b.Width()/2), math.Min(r.Y*superellipseExtent, b.Height()/2)
+		return min(r.X*superellipseExtent, b.Width()/2), min(r.Y*superellipseExtent, b.Height()/2)
 	}
 	tlx, tly := box(rr.radii[0])
 	trx, try := box(rr.radii[1])

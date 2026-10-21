@@ -147,3 +147,36 @@ func TestHandlerOverHTTP(t *testing.T) {
 		t.Errorf("got %d bytes of %q, want the wasm file", len(body), res.Header.Get("Content-Type"))
 	}
 }
+
+// TestCachingHandlerLetsTheBrowserKeepTheFiles: the handler for the measurement of the start with
+// app.wasm cached sends a max-age, and is the same handler otherwise.
+func TestCachingHandlerLetsTheBrowserKeepTheFiles(t *testing.T) {
+	dir, wasm := buildDir(t)
+	tests := []struct {
+		name         string
+		h            http.Handler
+		cacheControl string
+	}{
+		{"Handler never lets it", Handler(dir), "no-store"},
+		{"CachingHandler does", CachingHandler(dir), "max-age=600"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, path := range []string{"/", "/app.wasm", "/wasm_exec.js"} {
+				req := httptest.NewRequest("GET", path, nil)
+				req.Header.Set("Accept-Encoding", "gzip")
+				rec := httptest.NewRecorder()
+				tc.h.ServeHTTP(rec, req)
+				if rec.Code != 200 || rec.Header().Get("Cache-Control") != tc.cacheControl {
+					t.Errorf("%s: status %d, Cache-Control %q, want 200 and %q", path, rec.Code, rec.Header().Get("Cache-Control"), tc.cacheControl)
+				}
+			}
+			req := httptest.NewRequest("GET", "/app.wasm", nil)
+			rec := httptest.NewRecorder()
+			tc.h.ServeHTTP(rec, req)
+			if got, _ := io.ReadAll(rec.Body); !bytes.Equal(got, wasm) {
+				t.Error("the file is not the one in the build")
+			}
+		})
+	}
+}

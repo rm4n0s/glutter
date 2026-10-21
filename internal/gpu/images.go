@@ -152,15 +152,15 @@ func (e *ImageEncoder) Blit(src ui.Rect, toDevice Affine2D, t *Tint) {
 	}
 	dev := ui.Rect{Left: math.Inf(1), Top: math.Inf(1), Right: math.Inf(-1), Bottom: math.Inf(-1)}
 	for _, c := range corners {
-		dev.Left, dev.Top = math.Min(dev.Left, c.Dx), math.Min(dev.Top, c.Dy)
-		dev.Right, dev.Bottom = math.Max(dev.Right, c.Dx), math.Max(dev.Bottom, c.Dy)
+		dev.Left, dev.Top = min(dev.Left, c.Dx), min(dev.Top, c.Dy)
+		dev.Right, dev.Bottom = max(dev.Right, c.Dx), max(dev.Bottom, c.Dy)
 	}
 	if !dev.IsFinite() {
 		return
 	}
 	o := e.Outer
-	x0, y0 := math.Max(math.Floor(dev.Left)-1, float64(o.Min.X)), math.Max(math.Floor(dev.Top)-1, float64(o.Min.Y))
-	x1, y1 := math.Min(math.Ceil(dev.Right)+1, float64(o.Max.X)), math.Min(math.Ceil(dev.Bottom)+1, float64(o.Max.Y))
+	x0, y0 := max(math.Floor(dev.Left)-1, float64(o.Min.X)), max(math.Floor(dev.Top)-1, float64(o.Min.Y))
+	x1, y1 := min(math.Ceil(dev.Right)+1, float64(o.Max.X)), min(math.Ceil(dev.Bottom)+1, float64(o.Max.Y))
 	if x1 <= x0 || y1 <= y0 {
 		return
 	}

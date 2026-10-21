@@ -167,12 +167,12 @@ func (c *combiner) run(path1, path2 *Path) *Path {
 	if !ok {
 		return out
 	}
-	extent := math.Max(bounds.Right-bounds.Left, bounds.Bottom-bounds.Top)
-	maxAbs := math.Max(math.Max(math.Abs(bounds.Left), math.Abs(bounds.Right)), math.Max(math.Abs(bounds.Top), math.Abs(bounds.Bottom)))
+	extent := max(bounds.Right-bounds.Left, bounds.Bottom-bounds.Top)
+	maxAbs := max(max(math.Abs(bounds.Left), math.Abs(bounds.Right)), max(math.Abs(bounds.Top), math.Abs(bounds.Bottom)))
 	if !(extent > 0) {
 		return out
 	}
-	c.grid = math.Max(extent*1e-9, maxAbs*1e-13)
+	c.grid = max(extent*1e-9, maxAbs*1e-13)
 	c.tol = extent * 1e-4
 	for attempt := 0; ; attempt++ {
 		c.curves, c.segs = c.curves[:0], c.segs[:0]
@@ -208,8 +208,8 @@ func combineBounds(paths ...*Path) (Rect, bool) {
 				first = false
 				continue
 			}
-			r.Left, r.Right = math.Min(r.Left, pt.Dx), math.Max(r.Right, pt.Dx)
-			r.Top, r.Bottom = math.Min(r.Top, pt.Dy), math.Max(r.Bottom, pt.Dy)
+			r.Left, r.Right = min(r.Left, pt.Dx), max(r.Right, pt.Dx)
+			r.Top, r.Bottom = min(r.Top, pt.Dy), max(r.Bottom, pt.Dy)
 		}
 	}
 	return r, !first
@@ -269,7 +269,7 @@ func (c *combiner) addCurve(src int, cv combineCurve) {
 	case PathVerbCubic:
 		d1 := cv.pts[0].Sub(cv.pts[1].Mul(2)).Add(cv.pts[2])
 		d2 := cv.pts[1].Sub(cv.pts[2].Mul(2)).Add(cv.pts[3])
-		n = splitCount(3 * math.Max(math.Hypot(d1.Dx, d1.Dy), math.Hypot(d2.Dx, d2.Dy)) / (4 * c.tol))
+		n = splitCount(3 * max(math.Hypot(d1.Dx, d1.Dy), math.Hypot(d2.Dx, d2.Dy)) / (4 * c.tol))
 	}
 	idx := len(c.curves)
 	c.curves = append(c.curves, cv)
@@ -314,13 +314,13 @@ func (c *combiner) buildGraph() {
 	for i := range order {
 		order[i] = i
 	}
-	minX := func(i int) float64 { return math.Min(c.segs[i].a.Dx, c.segs[i].b.Dx) }
-	maxX := func(i int) float64 { return math.Max(c.segs[i].a.Dx, c.segs[i].b.Dx) }
+	minX := func(i int) float64 { return min(c.segs[i].a.Dx, c.segs[i].b.Dx) }
+	maxX := func(i int) float64 { return max(c.segs[i].a.Dx, c.segs[i].b.Dx) }
 	sort.Slice(order, func(x, y int) bool { return minX(order[x]) < minX(order[y]) })
 	slack := 4 * c.grid
 	for oi, i := range order {
 		si := &c.segs[i]
-		ylo, yhi := math.Min(si.a.Dy, si.b.Dy)-slack, math.Max(si.a.Dy, si.b.Dy)+slack
+		ylo, yhi := min(si.a.Dy, si.b.Dy)-slack, max(si.a.Dy, si.b.Dy)+slack
 		xhi := maxX(i) + slack
 		for oj := oi + 1; oj < n; oj++ {
 			j := order[oj]
@@ -328,7 +328,7 @@ func (c *combiner) buildGraph() {
 				break
 			}
 			sj := &c.segs[j]
-			if math.Max(sj.a.Dy, sj.b.Dy) < ylo || math.Min(sj.a.Dy, sj.b.Dy) > yhi {
+			if max(sj.a.Dy, sj.b.Dy) < ylo || min(sj.a.Dy, sj.b.Dy) > yhi {
 				continue
 			}
 			c.intersect(i, j, splits)
@@ -421,8 +421,8 @@ func (c *combiner) intersect(i, j int, splits [][]splitPoint) {
 	default:
 		pt = c.snap(p.Add(e1.Mul(t)))
 	}
-	c.cut(i, math.Min(math.Max(t, 0), 1), pt, splits)
-	c.cut(j, math.Min(math.Max(u, 0), 1), pt, splits)
+	c.cut(i, min(max(t, 0), 1), pt, splits)
+	c.cut(j, min(max(u, 0), 1), pt, splits)
 }
 
 // addOnto cuts the line i at the point, when the point is on it (an end point of a line that
@@ -495,7 +495,7 @@ func (c *combiner) classify() {
 	// The edges by the rows they cover, so that a ray looks at the edges of its own row only.
 	minY, maxY := math.Inf(1), math.Inf(-1)
 	for _, v := range c.verts {
-		minY, maxY = math.Min(minY, v.Dy), math.Max(maxY, v.Dy)
+		minY, maxY = min(minY, v.Dy), max(maxY, v.Dy)
 	}
 	rows := int(math.Ceil(math.Sqrt(float64(n))))
 	if rows < 1 {
@@ -525,7 +525,7 @@ func (c *combiner) classify() {
 		dir := v.Sub(u)
 		l := math.Hypot(dir.Dx, dir.Dy)
 		mid := u.Add(dir.Mul(0.5))
-		delta := math.Min(2*c.grid, l/4)
+		delta := min(2*c.grid, l/4)
 		left := Offset{-dir.Dy / l, dir.Dx / l}
 		pt := mid.Add(left.Mul(delta))
 		var w [2]int
@@ -681,7 +681,7 @@ func (c *combiner) emitRun(out *Path, run []directedEdge) {
 	if reversed {
 		lo, hi = t1, t0
 	}
-	lo, hi = math.Max(lo, 0), math.Min(hi, 1)
+	lo, hi = max(lo, 0), min(hi, 1)
 	switch cv.kind {
 	case PathVerbQuad:
 		p := subQuad([3]Offset{cv.pts[0], cv.pts[1], cv.pts[2]}, lo, hi)

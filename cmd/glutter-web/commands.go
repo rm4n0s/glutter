@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -192,6 +193,86 @@ func runShot(ctx context.Context, args []string, stdout, stderr io.Writer) error
 		return errors.NewErr("WebWriteFailed", err).SetMetadata("path", *out)
 	}
 	return say(stdout, "saved %s (%d bytes)\n", *out, len(png))
+}
+
+// runPerf is `glutter-web perf`: scripts/perf-web.sh runs it (SPEC §15, §23.8).
+func runPerf(ctx context.Context, args []string, stdout, stderr io.Writer) error {
+	fs := flag.NewFlagSet("perf", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	browserName := fs.String("browser", "", "chromium or firefox")
+	renderer := fs.String("renderer", "", "the renderer: GLUTTER_RENDERER (auto, webgpu, webgl or soft)")
+	width := fs.Int("width", 1536, "the width of the app's viewport in CSS pixels")
+	height := fs.Int("height", 864, "the height of the app's viewport in CSS pixels")
+	scale := fs.Float64("scale", 1.25, "the device pixel ratio")
+	loads := fs.Int("loads", 4, "how many times the page is loaded to time the start (the first with an empty cache)")
+	settle := fs.Duration("settle", 3*time.Second, "how long the app runs after the last load before the measurement")
+	measure := fs.Duration("measure", 10*time.Second, "how long the frames, the CPU time and requestAnimationFrame are measured")
+	clicks := fs.String("clicks", "", "measure the response to clicks instead of the steady state: positions x,y separated by \";\" in CSS pixels, such as \"100,218;100,306\"")
+	clickGap := fs.Duration("click-gap", 1500*time.Millisecond, "the time between two clicks")
+	blank := fs.Bool("blank", false, "measure a page with no app, for the CPU time that the browser takes by itself (no package)")
+	var query queryFlag
+	fs.Var(&query, "query", "a query string added to the URL, such as GLUTTER_GALLERY_PAGE=data (may be repeated)")
+	var bf buildFlags
+	bf.add(fs)
+	if err := fs.Parse(args); err != nil {
+		return errors.NewErr("WebUsage", err)
+	}
+	if *browserName == "" || (!*blank && fs.NArg() != 1) || (*blank && fs.NArg() != 0) {
+		return errors.New("WebUsage", "-browser and one package (none with -blank) are needed\n"+usage)
+	}
+	browser, err := webtest.ParseBrowser(*browserName)
+	if err != nil {
+		return err
+	}
+	dir := ""
+	if !*blank {
+		if dir, err = os.MkdirTemp("", "glutter-web-"); err != nil {
+			return errors.NewErr("WebServeFailed", err)
+		}
+		defer func() { _ = os.RemoveAll(dir) }() // a temporary directory: a leftover is harmless
+		if _, err := webtool.Build(ctx, webtool.BuildOptions{Package: fs.Arg(0), OutDir: dir, Release: bf.release, HostElement: bf.host}); err != nil {
+			return err
+		}
+	}
+	q := url.Values(query)
+	if q == nil {
+		q = url.Values{}
+	}
+	if *renderer != "" {
+		q.Set("GLUTTER_RENDERER", *renderer)
+	}
+	points, err := parseClicks(*clicks)
+	if err != nil {
+		return err
+	}
+	res, err := webtest.Perf(ctx, webtest.PerfOptions{
+		Clicks: points, ClickGap: *clickGap,
+		Dir: dir, Browser: browser, Query: q, Width: *width, Height: *height, ScaleFactor: *scale,
+		Loads: *loads, Settle: *settle, Measure: *measure, Blank: *blank,
+	})
+	if err != nil {
+		return err
+	}
+	return say(stdout, "%s", res.Summary())
+}
+
+// parseClicks reads "x,y;x,y".
+func parseClicks(s string) ([][2]float64, error) {
+	var out [][2]float64
+	for _, part := range strings.Split(s, ";") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		xs, ys, ok := strings.Cut(part, ",")
+		x, errX := strconv.ParseFloat(strings.TrimSpace(xs), 64)
+		y, errY := strconv.ParseFloat(strings.TrimSpace(ys), 64)
+		if !ok || errX != nil || errY != nil {
+			return nil, errors.New("WebUsage", "a click is x,y in CSS pixels", "value", part)
+		}
+		out = append(out, [2]float64{x, y})
+	}
+	return out, nil
 }
 
 // say prints to w.

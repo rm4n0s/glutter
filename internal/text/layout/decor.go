@@ -92,7 +92,7 @@ func (p *paragraph) Decorations() []DecorationSegment {
 			}
 			for r := pr.start; r < min(pr.end, l.visEnd) && !pr.ellipsis; r++ {
 				if b := geo[r-l.start]; b.run == ri {
-					x0, x1 = math.Min(x0, b.x0), math.Max(x1, b.x1)
+					x0, x1 = min(x0, b.x0), max(x1, b.x1)
 				}
 			}
 			if x1 <= x0 {
@@ -131,7 +131,7 @@ func appendSegment(out []DecorationSegment, first int, s DecorationSegment) []De
 		o := &out[i]
 		if o.Kind == s.Kind && o.Style == s.Style && o.Color == s.Color && o.Y == s.Y && o.Thickness == s.Thickness &&
 			o.FontSize == s.FontSize && (math.Abs(o.X1-s.X0) < 1e-3 || math.Abs(s.X1-o.X0) < 1e-3) {
-			o.X0, o.X1 = math.Min(o.X0, s.X0), math.Max(o.X1, s.X1)
+			o.X0, o.X1 = min(o.X0, s.X0), max(o.X1, s.X1)
 			return out
 		}
 	}

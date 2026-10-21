@@ -55,8 +55,8 @@ func Stroke(contours []ui.FlatContour, st StrokeStyle) [][]ui.Offset {
 		scale = 1
 	}
 	r := s.hw * scale
-	s.step = 2 * math.Acos(math.Max(-1, 1-arcTolerance/math.Max(r, arcTolerance)))
-	s.step = math.Max(s.step, math.Pi/256)
+	s.step = 2 * math.Acos(max(-1, 1-arcTolerance/max(r, arcTolerance)))
+	s.step = max(s.step, math.Pi/256)
 	for _, c := range contours {
 		s.contour(c)
 	}

@@ -154,6 +154,41 @@ the name>` picks another Vulkan device, `GLUTTER_VULKAN_VALIDATION=1` turns on t
 and `GLUTTER_DAMAGE=0` and `GLUTTER_RASTER_CACHE=0` turn off the damage rectangles and the raster
 cache of both renderers.
 
+## Web
+
+Glutter runs in the browser too: `GOOS=js GOARCH=wasm` with the standard Go toolchain (no TinyGo).
+Every example except `multiwindow` and `tray` builds and runs there (a page has no second window
+and no tray).
+
+```sh
+go run ./cmd/glutter-web serve ./examples/gallery          # builds, serves at http://localhost:8080/
+go run ./cmd/glutter-web build -release -o dist ./examples/counter   # a directory for any static server
+go run ./cmd/glutter-web shot -browser firefox -o gallery.png ./examples/gallery
+```
+
+`build` writes `index.html` (the loader), `wasm_exec.js`, `app.wasm` and `app.wasm.gz`; `-release`
+builds with `-tags glutter_release -ldflags=-s -w`. Serve the `.gz` with `Content-Encoding: gzip`
+and `app.wasm` as `application/wasm`, which `glutter-web serve` does. The page needs no
+configuration; `globalThis.glutterConfig.hostElement` (a CSS selector, set in `index.html`) puts the
+view in an element instead of the whole page.
+
+**Browsers.** Tried: Chromium 155 (WebGPU, WebGL 2) and Firefox 158 (WebGL 2; its WebGPU is off by
+default on Linux), both on Fedora 44. Safari and other engines were not tried.
+
+**Renderers.** The page tries WebGPU, then WebGL 2, then a software renderer on a 2D canvas, once, at the
+first frame. `?GLUTTER_RENDERER=webgpu|webgl|soft` in the page's address (or `RunAppOpts.Renderer`)
+chooses one; a name never falls back, and a browser that cannot give it shows the error in the page. Any
+query parameter that starts with `GLUTTER_` is the program's environment variable of that name.
+
+**What the web lacks** (SPEC §3, §23): accessibility (no ARIA tree in 1.1), a second window or view on a
+page, system fonts (the text uses the bundled Roboto and Material Icons and the fonts an app loads),
+drag and drop out of the app, file dialogs, the tray, `KeepScreenOn`, and closing the page from the
+app. Opening a link and notifications (without buttons) work. An app asks `foundation.IsWeb` where it
+must differ; [docs/GUIDE.md](docs/GUIDE.md) has a note for Flutter web developers.
+
+A release build of the counter is 38 MB of WebAssembly and 8.8 MB gzipped, the gallery 58 MB and
+11.9 MB; [docs/PERFORMANCE.md](docs/PERFORMANCE.md) has the web numbers and the targets that are not met.
+
 ## Examples
 
 Each one uses only the public packages and has tests that run on a fake platform.

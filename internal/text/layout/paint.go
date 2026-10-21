@@ -122,7 +122,7 @@ func (p *paragraph) paintBackgrounds(l *line, emit func(ui.ParagraphDraw)) {
 		x0, x1 := math.Inf(1), math.Inf(-1)
 		for r := pr.start; r < pr.end && !pr.ellipsis; r++ {
 			if b := geo[r-l.start]; b.run == ri {
-				x0, x1 = math.Min(x0, b.x0), math.Max(x1, b.x1)
+				x0, x1 = min(x0, b.x0), max(x1, b.x1)
 			}
 		}
 		if pr.ellipsis {
@@ -196,13 +196,13 @@ func (p *paragraph) paintGlyphs(l *line, emit func(ui.ParagraphDraw)) {
 func paintDecoration(d DecorationSegment, emit func(ui.ParagraphDraw)) {
 	paint := ui.NewPaint()
 	paint.SetColor(d.Color)
-	th := math.Max(d.Thickness, 0.5)
+	th := max(d.Thickness, 0.5)
 	rect := func(x0, x1, y float64) {
 		emit(ui.ParagraphDraw{Op: ui.OpDrawRect{Rect: ui.Rect{Left: x0, Top: y - th/2, Right: x1, Bottom: y + th/2}, Paint: *paint}})
 	}
 	dashes := func(on, off float64) {
 		for x := d.X0; x < d.X1; x += on + off {
-			rect(x, math.Min(x+on, d.X1), d.Y)
+			rect(x, min(x+on, d.X1), d.Y)
 		}
 	}
 	switch d.Style {

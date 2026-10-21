@@ -127,9 +127,12 @@ func (e *InheritedModelElement) UpdateDependencies(dependent Element, aspect any
 		e.SetDependencies(dependent, &AspectSet{})
 		return
 	}
-	if deps == nil {
-		deps = &AspectSet{}
+	if deps != nil {
+		// The set is the one the map holds: adding to it is the update.
+		deps.set.add(aspect)
+		return
 	}
+	deps = &AspectSet{}
 	deps.set.add(aspect)
 	e.SetDependencies(dependent, deps)
 }

@@ -74,7 +74,7 @@ func deviceBounds(m *ui.Matrix4, r ui.Rect) image.Rectangle {
 	if !b.IsFinite() {
 		return image.Rectangle{}
 	}
-	clamp := func(v float64) int { return int(math.Max(-1e9, math.Min(1e9, v))) }
+	clamp := func(v float64) int { return int(max(-1e9, min(1e9, v))) }
 	return image.Rect(clamp(math.Floor(b.Left)), clamp(math.Floor(b.Top)), clamp(math.Ceil(b.Right)), clamp(math.Ceil(b.Bottom)))
 }
 

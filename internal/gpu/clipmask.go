@@ -112,15 +112,25 @@ func cut(cov []float32, area, rect image.Rectangle, mask []float32, subtract boo
 	w := area.Dx()
 	mw := rect.Dx()
 	for y := area.Min.Y; y < area.Max.Y; y++ {
-		for x := area.Min.X; x < area.Max.X; x++ {
+		row := cov[(y-area.Min.Y)*w : (y-area.Min.Y+1)*w]
+		if y < rect.Min.Y || y >= rect.Max.Y {
+			// Above or below the mask: it covers nothing here, so a cut keeps the row and a cut-out
+			// (subtract) has nothing to take out of it.
+			if !subtract {
+				clear(row)
+			}
+			continue
+		}
+		mrow := mask[(y-rect.Min.Y)*mw : (y-rect.Min.Y+1)*mw]
+		for x := range row {
 			var v float32
-			if image.Pt(x, y).In(rect) {
-				v = mask[(y-rect.Min.Y)*mw+(x-rect.Min.X)]
+			if mx := area.Min.X + x; mx >= rect.Min.X && mx < rect.Max.X {
+				v = mrow[mx-rect.Min.X]
 			}
 			if subtract {
 				v = 1 - v
 			}
-			cov[(y-area.Min.Y)*w+(x-area.Min.X)] *= v
+			row[x] *= v
 		}
 	}
 }

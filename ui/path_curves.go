@@ -233,10 +233,10 @@ func (a *boundsAcc) add(p Offset) {
 		a.l, a.r, a.t, a.b, a.any = p.Dx, p.Dx, p.Dy, p.Dy, true
 		return
 	}
-	a.l = math.Min(a.l, p.Dx)
-	a.r = math.Max(a.r, p.Dx)
-	a.t = math.Min(a.t, p.Dy)
-	a.b = math.Max(a.b, p.Dy)
+	a.l = min(a.l, p.Dx)
+	a.r = max(a.r, p.Dx)
+	a.t = min(a.t, p.Dy)
+	a.b = max(a.b, p.Dy)
 }
 
 func (a *boundsAcc) rect() Rect {

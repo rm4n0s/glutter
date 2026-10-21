@@ -102,8 +102,8 @@ func contourBounds(contours [][]ui.Offset) (image.Rectangle, bool) {
 		}
 		for _, p := range c {
 			p = clampPoint(p)
-			minX, maxX = math.Min(minX, p.Dx), math.Max(maxX, p.Dx)
-			minY, maxY = math.Min(minY, p.Dy), math.Max(maxY, p.Dy)
+			minX, maxX = min(minX, p.Dx), max(maxX, p.Dx)
+			minY, maxY = min(minY, p.Dy), max(maxY, p.Dy)
 			any = true
 		}
 	}
@@ -123,7 +123,7 @@ func finite(c []ui.Offset) bool {
 }
 
 func clampPoint(p ui.Offset) ui.Offset {
-	return ui.Offset{Dx: math.Max(-maxCoord, math.Min(maxCoord, p.Dx)), Dy: math.Max(-maxCoord, math.Min(maxCoord, p.Dy))}
+	return ui.Offset{Dx: max(-maxCoord, min(maxCoord, p.Dx)), Dy: max(-maxCoord, min(maxCoord, p.Dy))}
 }
 
 // accum is the accumulation buffer: for every pixel, the change of the signed
@@ -160,10 +160,10 @@ func (ac *accum) line(x0, y0, x1, y1 float64) {
 		x -= ys * dxdy
 		ys = 0
 	}
-	yEnd := math.Min(y1, h)
+	yEnd := min(y1, h)
 	for y := int(ys); float64(y) < yEnd; y++ {
-		top := math.Max(float64(y), ys)
-		bot := math.Min(float64(y+1), yEnd)
+		top := max(float64(y), ys)
+		bot := min(float64(y+1), yEnd)
 		dy := bot - top
 		xn := x + dxdy*dy
 		ac.row(y, x, xn, dy*dir)
@@ -212,7 +212,7 @@ func (ac *accum) row(y int, xa, xb, d float64) {
 			ac.a[y*ac.stride] += dp
 		case mid >= w:
 		default:
-			ac.inside(y, math.Max(0, math.Min(w, pa)), math.Max(0, math.Min(w, pb)), dp)
+			ac.inside(y, max(0, min(w, pa)), max(0, min(w, pb)), dp)
 		}
 	}
 }
@@ -287,5 +287,5 @@ func fold(acc float64, rule FillRule) float64 {
 		}
 		return v
 	}
-	return math.Min(v, 1)
+	return min(v, 1)
 }

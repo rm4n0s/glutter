@@ -167,18 +167,18 @@ func newRamp(colors []ui.Color, stops []float64) ramp {
 	var r ramp
 	n := len(colors)
 	for i, c := range colors {
-		p := float64(i) / math.Max(float64(n-1), 1)
+		p := float64(i) / max(float64(n-1), 1)
 		if len(stops) == n {
 			p = stops[i]
 		}
 		col := [4]float32{c.R, c.G, c.B, c.A}
 		if len(r.pos) > 0 {
-			p = math.Max(p, r.pos[len(r.pos)-1])
+			p = max(p, r.pos[len(r.pos)-1])
 		} else if p > 0 {
 			r.pos = append(r.pos, 0)
 			r.colors = append(r.colors, col)
 		}
-		p = math.Min(math.Max(p, 0), 1)
+		p = min(max(p, 0), 1)
 		r.pos = append(r.pos, p)
 		r.colors = append(r.colors, col)
 	}

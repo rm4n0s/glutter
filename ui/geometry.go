@@ -326,12 +326,12 @@ func (s Size) Mod(operand float64) Size {
 // ShortestSide is the lesser of the magnitudes of the width and the height.
 //
 // Flutter: ui/geometry.dart Size.shortestSide
-func (s Size) ShortestSide() float64 { return math.Min(math.Abs(s.Width), math.Abs(s.Height)) }
+func (s Size) ShortestSide() float64 { return min(math.Abs(s.Width), math.Abs(s.Height)) }
 
 // LongestSide is the greater of the magnitudes of the width and the height.
 //
 // Flutter: ui/geometry.dart Size.longestSide
-func (s Size) LongestSide() float64 { return math.Max(math.Abs(s.Width), math.Abs(s.Height)) }
+func (s Size) LongestSide() float64 { return max(math.Abs(s.Width), math.Abs(s.Height)) }
 
 // TopLeft is the offset to the intersection of the top and left edges of the
 // rectangle of this size whose top left corner is origin.
@@ -509,7 +509,7 @@ func NewRectFromCenter(center Offset, width, height float64) Rect {
 //
 // Flutter: ui/geometry.dart Rect.fromPoints
 func NewRectFromPoints(a, b Offset) Rect {
-	return Rect{math.Min(a.Dx, b.Dx), math.Min(a.Dy, b.Dy), math.Max(a.Dx, b.Dx), math.Max(a.Dy, b.Dy)}
+	return Rect{min(a.Dx, b.Dx), min(a.Dy, b.Dy), max(a.Dx, b.Dx), max(a.Dy, b.Dy)}
 }
 
 // Width is the distance between the left and right edges of the rectangle.
@@ -589,10 +589,10 @@ func (r Rect) Deflate(delta float64) Rect { return r.Inflate(-delta) }
 // Flutter: ui/geometry.dart Rect.intersect
 func (r Rect) Intersect(other Rect) Rect {
 	return Rect{
-		math.Max(r.Left, other.Left),
-		math.Max(r.Top, other.Top),
-		math.Min(r.Right, other.Right),
-		math.Min(r.Bottom, other.Bottom),
+		max(r.Left, other.Left),
+		max(r.Top, other.Top),
+		min(r.Right, other.Right),
+		min(r.Bottom, other.Bottom),
 	}
 }
 
@@ -602,10 +602,10 @@ func (r Rect) Intersect(other Rect) Rect {
 // Flutter: ui/geometry.dart Rect.expandToInclude
 func (r Rect) ExpandToInclude(other Rect) Rect {
 	return Rect{
-		math.Min(r.Left, other.Left),
-		math.Min(r.Top, other.Top),
-		math.Max(r.Right, other.Right),
-		math.Max(r.Bottom, other.Bottom),
+		min(r.Left, other.Left),
+		min(r.Top, other.Top),
+		max(r.Right, other.Right),
+		max(r.Bottom, other.Bottom),
 	}
 }
 
@@ -625,12 +625,12 @@ func (r Rect) Overlaps(other Rect) bool {
 // ShortestSide is the lesser of the magnitudes of the width and the height.
 //
 // Flutter: ui/geometry.dart Rect.shortestSide
-func (r Rect) ShortestSide() float64 { return math.Min(math.Abs(r.Width()), math.Abs(r.Height())) }
+func (r Rect) ShortestSide() float64 { return min(math.Abs(r.Width()), math.Abs(r.Height())) }
 
 // LongestSide is the greater of the magnitudes of the width and the height.
 //
 // Flutter: ui/geometry.dart Rect.longestSide
-func (r Rect) LongestSide() float64 { return math.Max(math.Abs(r.Width()), math.Abs(r.Height())) }
+func (r Rect) LongestSide() float64 { return max(math.Abs(r.Width()), math.Abs(r.Height())) }
 
 // TopLeft is the offset to the intersection of the top and left edges.
 //

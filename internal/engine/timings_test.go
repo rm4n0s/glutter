@@ -72,3 +72,39 @@ func TestFrameLogsNameTheRendererAndItsDevice(t *testing.T) {
 		t.Errorf("the renderer is named %d times, want in the first frame and in the statistics:\n%s", n, out)
 	}
 }
+
+// TestSlowFramesAreLoggedOnTheirOwn: with the statistics on, a frame over a 60th of a second is
+// logged by itself with its build and raster times, so that what made it slow (a page built for the
+// first time, a glyph atlas, a pipeline) can be told from the average of its second (step 21.7).
+func TestSlowFramesAreLoggedOnTheirOwn(t *testing.T) {
+	tests := []struct {
+		name          string
+		build, raster time.Duration
+		want          bool
+	}{
+		{"a fast frame", 2 * time.Millisecond, 3 * time.Millisecond, false},
+		{"a slow build", 40 * time.Millisecond, 3 * time.Millisecond, true},
+		{"a slow raster", 2 * time.Millisecond, 30 * time.Millisecond, true},
+		{"both a little slow", 10 * time.Millisecond, 10 * time.Millisecond, true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			e := newWindowsEngine(t)
+			e.h.log = slog.New(slog.NewTextHandler(&buf, nil))
+			e.h.frameStats = true
+			e.h.firstLogged = true
+			e.h.clock.buildStart = 0
+			e.h.clock.rasterStart = tc.build
+			e.h.clock.rasterFinish = tc.build + tc.raster
+			e.h.noteFrame()
+			out := buf.String()
+			if got := strings.Contains(out, `msg="slow frame"`); got != tc.want {
+				t.Fatalf("slow frame logged = %v, want %v:\n%s", got, tc.want, out)
+			}
+			if tc.want && (!strings.Contains(out, "build="+tc.build.String()) || !strings.Contains(out, "raster="+tc.raster.String())) {
+				t.Errorf("the line does not carry the times %v and %v:\n%s", tc.build, tc.raster, out)
+			}
+		})
+	}
+}

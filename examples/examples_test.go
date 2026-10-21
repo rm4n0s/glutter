@@ -82,3 +82,71 @@ func TestREADMEImagesExist(t *testing.T) {
 		}
 	}
 }
+
+// notWebExamples are the examples that do not run on the web (SPEC §19, §23): a page has no second window and
+// no tray.
+var notWebExamples = map[string]bool{"multiwindow": true, "tray": true}
+
+// webExamples are the directories of examples/ that hold a main package, except those that are not for the web.
+// They are found by reading the directory, so that a new example is built too.
+func webExamples(t *testing.T) []string {
+	t.Helper()
+	entries, err := os.ReadDir(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []string
+	for _, e := range entries {
+		if !e.IsDir() || e.Name() == "dev" || notWebExamples[e.Name()] {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(e.Name(), "main.go")); err != nil {
+			continue
+		}
+		out = append(out, e.Name())
+	}
+	return out
+}
+
+// TestEveryWebExampleBuilds checks what step 21.7 asks: every example except multiwindow and tray builds for
+// js/wasm with the standard Go toolchain (SPEC §19, §23.8). The builds are cut short by -short, because the
+// first one after a change builds the framework for the web.
+func TestEveryWebExampleBuilds(t *testing.T) {
+	if testing.Short() {
+		t.Skip("builds every example for js/wasm; skipped by -short")
+	}
+	names := webExamples(t)
+	if len(names) < 9 {
+		t.Fatalf("found %d examples for the web, want at least 9: %v", len(names), names)
+	}
+	for _, name := range names {
+		t.Run(name, func(t *testing.T) {
+			// One after the other: the first build compiles the framework for js/wasm and the
+			// others find it in the build cache.
+			buildForWeb(t, name)
+		})
+	}
+}
+
+// TestSpecListsTheExamplesThatAreNotForTheWeb keeps notWebExamples and SPEC §19 together: both examples that the
+// spec leaves out of the web exist, and the web examples are all the other ones.
+func TestSpecListsTheExamplesThatAreNotForTheWeb(t *testing.T) {
+	spec := readFile(t, "..", "docs", "SPEC.md")
+	if !strings.Contains(spec, "On the web (1.1) every example except `multiwindow` and `tray` builds and runs") {
+		t.Error("SPEC §19 no longer says which examples are not for the web")
+	}
+	listed := map[string]bool{}
+	for _, n := range specExamples(t) {
+		listed[n] = true
+	}
+	for name := range notWebExamples {
+		if !listed[name] {
+			t.Errorf("%s is not an example of SPEC §19", name)
+		}
+	}
+	for _, name := range webExamples(t) {
+		if !listed[name] {
+			t.Errorf("%s builds for the web but SPEC §19 does not list it", name)
+		}
+	}
+}

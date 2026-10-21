@@ -2,7 +2,6 @@ package gpu
 
 import (
 	"image"
-	"math"
 
 	"github.com/rm4n0s/glutter/ui"
 )
@@ -144,7 +143,7 @@ func PlanShadow(elevation float64, m *ui.Matrix4, scale float64, devBounds image
 		return ShadowPlan{}, false
 	}
 	p := ShadowPlan{
-		AmbientSigma: BlurRadiusToSigma(math.Min(z*ShadowAmbientFactor, ShadowMaxAmbient)),
+		AmbientSigma: BlurRadiusToSigma(min(z*ShadowAmbientFactor, ShadowMaxAmbient)),
 		SpotSigma:    BlurRadiusToSigma(ShadowLightRadius * scale * z / (lightZ - z)),
 	}
 	spotScale := lightZ / (lightZ - z)

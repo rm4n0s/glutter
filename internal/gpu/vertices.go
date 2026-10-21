@@ -51,8 +51,8 @@ func VertexTriangles(v *ui.Vertices, m *ui.Matrix4) (floats []float32, bounds im
 	for _, t := range tris {
 		for _, i := range t {
 			p := m.TransformPoint(pos[i])
-			lo.Dx, lo.Dy = math.Min(lo.Dx, p.Dx), math.Min(lo.Dy, p.Dy)
-			hi.Dx, hi.Dy = math.Max(hi.Dx, p.Dx), math.Max(hi.Dy, p.Dy)
+			lo.Dx, lo.Dy = min(lo.Dx, p.Dx), min(lo.Dy, p.Dy)
+			hi.Dx, hi.Dy = max(hi.Dx, p.Dx), max(hi.Dy, p.Dy)
 			var c ui.Color
 			if len(colors) > 0 {
 				c = colors[i]
@@ -67,6 +67,6 @@ func VertexTriangles(v *ui.Vertices, m *ui.Matrix4) (floats []float32, bounds im
 	if !(lo.Dx <= hi.Dx && lo.Dy <= hi.Dy) {
 		return nil, image.Rectangle{}, false
 	}
-	clamp := func(v float64) int { return int(math.Max(-1e9, math.Min(1e9, v))) }
+	clamp := func(v float64) int { return int(max(-1e9, min(1e9, v))) }
 	return floats, image.Rect(clamp(math.Floor(lo.Dx)), clamp(math.Floor(lo.Dy)), clamp(math.Ceil(hi.Dx)), clamp(math.Ceil(hi.Dy))), true
 }
