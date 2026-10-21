@@ -146,7 +146,7 @@ func TestBrowserResizeGivesAFrameOfTheNewSize(t *testing.T) {
 	webtest.EachBrowser(t, func(t *testing.T, b webtest.Browser) {
 		got := shot(t, b, webtest.ShotOptions{
 			Width: 480, Height: 640,
-			Query:   url.Values{"GLUTTER_SCREENSHOT_AFTER": {"3s"}},
+			Query:   url.Values{"GLUTTER_SCREENSHOT_AFTER": {"6s"}},
 			Resizes: []webtest.Resize{{After: time.Second, Width: 360, Height: 500}},
 		})
 		if got.Bounds().Dx() != 360 || got.Bounds().Dy() != 500 {
@@ -188,7 +188,7 @@ func TestBrowserThreeTapsOnTheButtonShowThree(t *testing.T) {
 	webtest.EachBrowser(t, func(t *testing.T, b webtest.Browser) {
 		got := shotAsIs(t, b, webtest.ShotOptions{
 			Width: 480, Height: 640,
-			Query: url.Values{"GLUTTER_DEV_EVENTS": {script}, "GLUTTER_SCREENSHOT_AFTER": {"3s"}},
+			Query: url.Values{"GLUTTER_DEV_EVENTS": {script}, "GLUTTER_SCREENSHOT_AFTER": {"6s"}},
 		})
 		compare(t, "counter-taps-"+string(b), want, got)
 	})
