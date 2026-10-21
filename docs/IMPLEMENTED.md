@@ -2233,3 +2233,30 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - **`examples/editor` on the web** keeps the notes in memory (no `localStorage`: there is no public API for it, and examples use the public API only); the notes last until the page is closed.
   - **Measurement limits.** The CPU time of the browser counts live processes only; the frame latency ends when the Go frame ends, not when the GPU has drawn it; a headless browser's frame cadence is not a monitor's; Firefox's numbers include a software rasterizer; the sizes of the first run of a new Go version will change.
   - **Not done:** the targets above; a real-display run; Safari; the follow-ups of the clicks.
+
+## 21.8 Release checklist for 1.1
+
+- **Date:** 2026-10-22
+- **Branch:** feat/step-21.8-release-1.1
+- **Summary:** The checklist for 1.1 was run on the tree of `main` after step 21.7 (commit `c4dd0ff`) and is recorded here. The code checks all pass. **1.1 is not ready to tag as the plan states it:** three web performance targets are not met, the Linux GPU comparison was never recorded, and some manual checks are still the owner's. The tag `v1.1.0` was **not** created and nothing was pushed but this entry; the decision is the owner's (see "To decide").
+- **Main files:** `docs/IMPLEMENTED.md` only.
+- **Tests:** none added.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ (0 issues; with `GOOS=js` the two old `unused` fields `wayland`/`x11` of `engine.Config` are still reported, and with `--build-tags glutter_display` six issues in display test files that earlier steps left) · go test -race ✅ (capped compiler) · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · `GOOS=js GOARCH=wasm` build, vet ✅ · `scripts/test-wasm.sh` ✅ · `GOOS=windows`/`darwin` vet of the engine ✅ · `go generate ./...` changes no file ✅ · **API check** ✅ (`go run ./cmd/glutter-gen apicheck -allow cmd/glutter-gen/apicheck.allow`: 0 violations, 45 accepted by the allow file) · **display tests** ✅ (Wayland: `scripts/headless-wayland.sh -- go test -count=1 -tags glutter_display ./internal/gpu/... ./internal/engine/...`; X11: `scripts/headless-x11.sh -- go test -count=1 -tags glutter_display ./internal/gpu/gles ./internal/engine ./internal/platform/linux/x11/`) · **browser tests** ✅ (`go test -count=1 -tags glutter_browser ./examples/... ./internal/platform/web/... ./internal/webtest ./internal/webtool/... ./internal/gpu/... ./internal/engine/... ./cmd/glutter-web/...`, Chromium and Firefox, two runs in a row, nothing skipped) · `glutter_release` and `glutter_profile` vet ✅. Display and browser tests must not run under a `ulimit -v` cap (it breaks Mesa and Chromium). `pgrep` shows no browser, Xvfb or compositor left.
+- **Proof:** none (the step has no Proof item).
+- **Manual checks:**
+  | Step | Check | State |
+  |---|---|---|
+  | 20.7 | gallery and multiwindow on the owner's desktop with Vulkan by default | **done** by the owner: everything works (the pointer bug it found was fixed) |
+  | 21.3 | `examples/editor` in a browser | **done** by the owner: it works on the web (the clipboard error and the slow typing they found earlier were fixed or explained) |
+  | 21.3 | an IME (IBus or Fcitx5, Chinese or Japanese) in Chrome and in Firefox | **PENDING**, the owner's |
+  | 21.7 | `examples/gallery` in Chrome and Firefox: scrolling, the theme switch, a text field | **partly done**: the owner reports that it works in both browsers; clicking the navigation entries feels slow in both. Scrolling, the theme switch and a text field were not reported one by one: **PENDING** |
+- **Performance targets:**
+  - **20.7 (Linux):** Vulkan not more than 10% slower than GLES on any metric, measured on a GPU: **not recorded.** Only the software devices were compared (Vulkan's raster time 49% higher on average); the owner approved publishing 20.7 without the GPU comparison. It stays in "Pending" in `docs/PERFORMANCE.md`.
+  - **21.7 (web), met:** idle CPU with nothing asked for; UI thread per frame during an animation (3.2 ms against 4 ms) and for a full rebuild of a gallery page (11.1 ms Chromium, 13.0 ms Firefox, against 16 ms); start to first frame with `app.wasm` cached (0.3 to 0.6 s against 1 s).
+  - **21.7 (web), NOT met:** `app.wasm.gz` of the counter 8.8 MB against 4 MB; of the gallery 11.9 MB against 5 MB; no dropped frames (about 1% of the animation frames late in a headless browser). Gallery navigation is still slow on a first visit (about 110 to 120 ms from click to frame, 66 to 79 ms on a second visit), which the owner confirms by feel.
+- **To decide (the owner):**
+  1. **Size targets of SPEC §15 for the web.** Either relax them to about 10 MB (counter) and 12 MB (gallery) gzipped, or 7 and 9 with brotli, or keep them and plan a size work item (fonts fetched on demand, subset fonts, fewer generated methods) before tagging. The numbers in SPEC §15 were not a measurement of these programs.
+  2. **Navigation speed on the web.** Not fixed, in order of gain: the goroutine check in `SetState` (`runtime.Stack`, about 5%, needs a change to SPEC §13), text layout cached across page switches, rounded clips drawn on the CPU (a GPU clip changes SPEC §9), the gallery's pages that build everything below the fold, semantics config allocated at attach.
+  3. **Late frames:** measure on a real display before deciding whether it is a miss.
+  4. **Tag `v1.1.0`:** whether to tag now with these exceptions recorded, or after items 1 and 2. **No tag was created.**
+- **Deviations and follow-ups:** none in this step. The follow-ups are the items above, the GPU comparison of 20.7 (`docs/PERFORMANCE.md` "Pending"), Safari, and the two lint leftovers named under Checks.
