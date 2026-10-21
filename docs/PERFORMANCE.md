@@ -67,6 +67,30 @@ the renderer.
 The raster time of the gallery on this machine is 9.2 ms on average and 12.1 ms at worst,
 on llvmpipe; it is not a SPEC target.
 
+## Vulkan and GLES (step 20.7)
+
+`scripts/perf.sh -n 5 -s 10` with `GLUTTER_RENDERER=gles` and with `GLUTTER_RENDERER=vulkan` (Mesa's
+**lavapipe**, with `VK_DRIVER_FILES` pointing at it), on the same machine and the same headless
+Sway, 2026-10-21. Both are software rasterizers on the CPU, so the raster time compares two
+drivers' JITs, not a GPU through its two APIs; the rest of the numbers are the engine's.
+
+| Metric | GLES (llvmpipe) | Vulkan (lavapipe) |
+|---|---|---|
+| Idle CPU, counter | 0.00% | 0.00% |
+| Cold start to first frame, counter (median of 5) | 280 ms | 330 ms |
+| Resident memory, counter | 281 MB | 253 MB |
+| Gallery frames per second / over 16.7 ms | 60.3 / 1 | 61.0 / 100 |
+| Gallery build time per frame, average / worst | 0.61 / 1.09 ms | 0.43 / 0.80 ms |
+| Gallery raster time per frame, average / worst | 10.2 / 299.6 ms | 15.2 / 21.1 ms |
+
+**Not decided by these numbers.** Step 20.7 asks that Vulkan is not more than 10% slower than
+GLES on any metric. Here Vulkan's raster time is 49% higher on average and its cold start 18%
+higher, but its worst frame is far better and its memory lower, and with a software device all
+of it is the CPU's work inside lavapipe against llvmpipe. A GPU can present only to a window it
+can import buffers from, which the headless compositor does not give (the real GPU of this
+machine fails at the swapchain there), so the comparison that counts has to be run on the
+user's desktop (the commands are in the manual checks of step 20.7).
+
 ## What was changed for the numbers
 
 Before this step the full rebuild of the gallery was 14.6 ms. The profile was dominated by
@@ -104,5 +128,6 @@ available during this work, so they are **pending approval**.
 
 ## Pending
 
+- Run `GLUTTER_RENDERER=gles scripts/perf.sh` and `GLUTTER_RENDERER=vulkan scripts/perf.sh` (a headless compositor cannot present GPU buffers: use the benchmarks of the gallery with `GLUTTER_FRAME_STATS=1` on the desktop) on a machine with a GPU, and record the comparison of step 20.7.
 - Measure again on the reference hardware (Iris Xe, 1920×1080 at 1.25): the cold start,
   the memory and the raster time.

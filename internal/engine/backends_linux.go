@@ -44,10 +44,11 @@ func connectDisplay(cfg *Config, getenv func(string) string, log *slog.Logger) (
 // processStart is when the process started, if the system says.
 func processStart() (time.Time, bool) { return linux.ProcessStart() }
 
-// rendererCandidates are the renderers of Linux in the order auto tries them: gles, then
-// vulkan, which only a request by name reaches until step 20.7 puts it first.
+// rendererCandidates are the renderers of Linux in the order auto tries them: vulkan, then gles
+// (SPEC §9.6). A Vulkan whose only device is a CPU (lavapipe) does not count: it is used only
+// when asked for by name, so auto then uses GLES.
 func rendererCandidates() []rendererCandidate {
-	return []rendererCandidate{{Name: "gles", New: newGLESRenderer}, {Name: "vulkan", New: newVulkanRenderer}}
+	return []rendererCandidate{{Name: "vulkan", New: newVulkanRenderer}, {Name: "gles", New: newGLESRenderer}}
 }
 
 // newVulkanRenderer makes the explicit renderer over a Vulkan device, which it opens at the
@@ -59,7 +60,7 @@ func newVulkanRenderer(cfg *Config, log *slog.Logger) renderer {
 		getenv = os.Getenv
 	}
 	opts := explicit.RendererOpts{
-		Background: ui.NewColor(developmentColor), HasBackground: true,
+		Background: ui.NewColor(developmentColor), HasBackground: true, Log: log,
 		Damage: !cfg.DisableDamage && getenv(DamageEnv) != "0", SkipUnsupported: cfg.SkipUnsupported,
 	}
 	if !cfg.DisableRasterCache && getenv(RasterCacheEnv) != "0" {

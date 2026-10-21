@@ -654,6 +654,11 @@ type Swapchain interface {
 - Damage (`gpu.DamageTracker`) was wired in step 20.2 (`Swapchain.Present(damage)` into `VK_KHR_incremental_present`); `FrameStats` now says what a frame reported (`DamagedPixels`, `DamageRects`), as `gles` does.
 - Everything `gles` draws is drawn: `GPUNotImplemented` remains only for a perspective transform, a gradient with more than 32 stops, an unknown blend mode, an unknown image filter or layer type and an unknown operation.
 
+**Decided in step 20.7** (Vulkan by default, device loss):
+- The candidates of `auto` on Linux are `vulkan`, then `gles`. A Vulkan whose only device is a CPU gives `VulkanNoDevice` unless Vulkan was asked for by name (`Config.rendererNamed`), and the chooser then uses GLES; every failure before the first presented frame logs `renderer not usable, trying the next` once, with `renderer` and the error's `tag`. After the first frame the choice is for the whole process.
+- Device loss is handled by `explicit.Renderer.Draw`, so Vulkan and WebGPU share it: an error tagged `VulkanDeviceLost` or `GPUDeviceLost` from a frame destroys everything that belongs to the device (windows' swapchains and frame textures, pipelines, samplers, pools, the raster cache, the image and coverage caches, the device) and draws the frame again, which opens a new device for the same windows. A second loss less than 10 seconds after the first returns the error unchanged, which ends `RunApp`. `RendererOpts.Now` is the clock the rule reads, so tests move it, and `RendererOpts.Log` receives the Info line that says that the device was lost.
+- The comparison of the two renderers on a GPU (the performance table of `docs/PERFORMANCE.md`) needs a window that a GPU can present to, which the headless compositor does not give: it is measured on the user's desktop (step 20.7's manual checks).
+
 **Design limits.** These are WebGPU's default limits, so neither backend requests more:
 - at most 4 bind groups; at most 16 sampled textures, 16 samplers and 12 uniform buffers per shader stage; dynamic uniform offsets aligned to 256 bytes; a uniform binding of at most 64 KiB
 - textures of at most 8192 pixels per side; at most 8 vertex buffers and 16 vertex attributes

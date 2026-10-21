@@ -2,7 +2,7 @@
 
 Glutter is a GUI toolkit for Go that has **Flutter's framework API**: widgets, rendering,
 gestures, animation and Material 3. It runs on its own engine: a Wayland and X11 platform
-layer and an OpenGL ES 3.0 renderer, with the system libraries called through
+layer and a Vulkan renderer with an OpenGL ES 3.0 fallback, with the system libraries called through
 [purego](https://github.com/ebitengine/purego), and text layout on
 [go-text](https://github.com/go-text/typesetting). **There is no cgo**: `CGO_ENABLED=0 go build`
 makes the app, and Go is all you need to build it.
@@ -131,7 +131,10 @@ an enum, `XUnspecified`, means the widget's default. The rules are in
 **Required** at run time:
 
 - a Wayland compositor with `xdg_wm_base`, or an X server
-- an EGL driver with OpenGL ES 3.0 (Mesa 20 or newer, NVIDIA through glvnd, or llvmpipe)
+- a GPU driver: **either** Vulkan 1.3 (or 1.1 with dynamic rendering and synchronization 2;
+  `libvulkan.so.1` and a driver such as Mesa's RADV, ANV or NVK, or NVIDIA's), **or** an EGL driver
+  with OpenGL ES 3.0 (Mesa 20 or newer, NVIDIA through glvnd, or llvmpipe). Glutter uses Vulkan
+  where it works and falls back to OpenGL ES where it does not, without being told
 - the libraries that every Linux desktop has (Wayland, xkbcommon, libdecor where the
   compositor draws no title bars, EGL); a missing one is reported as a tagged error
 
@@ -140,7 +143,16 @@ URLs), xdg-desktop-portal and a backend, a StatusNotifierItem host for the tray,
 at-spi2-core for accessibility (screen readers such as Orca). SPEC §16 has the list.
 
 `GLUTTER_BACKEND=x11|wayland` chooses the backend; the default is Wayland when it is there.
-`GLUTTER_RENDERER=auto|gles` chooses the renderer (`RunAppOpts.Renderer` does the same); the default is `auto`, which for now is `gles`.
+`GLUTTER_RENDERER=auto|vulkan|gles` chooses the renderer (`RunAppOpts.Renderer` does the same).
+The default is `auto`: Vulkan first, then OpenGL ES when there is no Vulkan loader, no driver
+that can present to the window, or only a software device (llvmpipe, lavapipe); each fallback is
+logged once at Info level with its error. A name never falls back, and is the only way to use a
+software Vulkan device. The log line `renderer chosen` names the renderer and the GPU. If the
+GPU is lost, Glutter makes its resources again once and draws the frame again; a second loss
+within ten seconds ends the app with `VulkanDeviceLost`. `GLUTTER_VULKAN_DEVICE=<index or part of
+the name>` picks another Vulkan device, `GLUTTER_VULKAN_VALIDATION=1` turns on the validation layer,
+and `GLUTTER_DAMAGE=0` and `GLUTTER_RASTER_CACHE=0` turn off the damage rectangles and the raster
+cache of both renderers.
 
 ## Examples
 

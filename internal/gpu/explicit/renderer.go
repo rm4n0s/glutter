@@ -2,6 +2,8 @@ package explicit
 
 import (
 	"image"
+	"log/slog"
+	"time"
 
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/internal/gpu"
@@ -25,6 +27,11 @@ type RendererOpts struct {
 	// contents (SPEC §9.1 "Raster cache"). Zero, the default, keeps nothing. The engine sets 3:
 	// the layer of a RepaintBoundary that the framework did not repaint for three frames.
 	RasterCacheAfter int
+	// Now is the clock of the device-loss rule (a second loss within 10 seconds of the first
+	// ends the app); time.Now when nil. Tests set it.
+	Now func() time.Time
+	// Log is where a lost device is reported, at Info level; nothing is logged when nil.
+	Log *slog.Logger
 	// SkipUnsupported makes Draw leave out what the renderer cannot draw yet, and count
 	// it in LastFrame, instead of failing with GPUNotImplemented. The development
 	// examples use it to show what works.
@@ -70,6 +77,9 @@ type Renderer struct {
 	slots   [FramesInFlight]frameSlot
 	frameNo int
 	last    FrameStats
+	// lost is whether the device was lost before, and lostAt when.
+	lost   bool
+	lostAt time.Time
 }
 
 // window is what the renderer keeps for one window.
@@ -131,6 +141,40 @@ func (r *Renderer) Draw(h gpu.SurfaceHandle, width, height int, scene *ui.Scene,
 	if width <= 0 || height <= 0 {
 		return nil, errors.New("RendererSizeInvalid", "the size to render must be positive", "width", width, "height", height)
 	}
+	img, err := r.draw(h, width, height, scene, capture)
+	if err == nil || r.dev == nil || !isDeviceLost(err) {
+		return img, err
+	}
+	// The device was lost (SPEC §9.4): every resource is made again, on a new device, and the frame
+	// is drawn again. A second loss within lostWindow ends the app.
+	now := r.now()
+	if r.lost && now.Sub(r.lostAt) < lostWindow {
+		return nil, err
+	}
+	r.lost, r.lostAt = true, now
+	r.logInfo("the GPU device was lost, making it again", "error", err)
+	r.releaseDevice()
+	return r.draw(h, width, height, scene, capture)
+}
+
+// lostWindow is how long a second loss of the device after a first one ends the app.
+const lostWindow = 10 * time.Second
+
+// isDeviceLost says whether the error is the loss of the device, from Vulkan or WebGPU.
+func isDeviceLost(err error) bool {
+	appErr, ok := errors.FromError(err)
+	return ok && (appErr.Tag == "VulkanDeviceLost" || appErr.Tag == "GPUDeviceLost")
+}
+
+// now is the clock of the device-loss rule.
+func (r *Renderer) now() time.Time {
+	if r.opts.Now != nil {
+		return r.opts.Now()
+	}
+	return time.Now()
+}
+
+func (r *Renderer) draw(h gpu.SurfaceHandle, width, height int, scene *ui.Scene, capture bool) (*image.RGBA, error) {
 	if r.dev == nil {
 		dev, err := r.open(h)
 		if err != nil {
@@ -377,38 +421,61 @@ func (r *Renderer) Close() {
 		return
 	}
 	r.closed = true
+	r.releaseDevice()
+}
+
+// releaseDevice destroys everything that belongs to the device, the device included, and leaves
+// the renderer as it was before the first frame: the next frame opens a device again. Errors of
+// the destruction are the lost device's business and are ignored.
+func (r *Renderer) releaseDevice() {
 	for h := range r.windows {
 		r.Release(h)
 	}
-	for _, p := range r.blit {
+	for f, p := range r.blit {
 		p.Destroy()
+		delete(r.blit, f)
 	}
 	r.destroyPools()
 	if r.cache != nil {
 		r.cache.Release(func(t Texture) { t.Destroy() })
+		r.cache = gpu.NewLayerCache[Texture](r.opts.RasterCacheAfter)
 	}
 	if r.filter != nil {
 		r.filter.Destroy()
+		r.filter = nil
 	}
 	if r.res != nil {
 		r.res.release()
+		r.res = nil
 	}
-	for _, p := range r.pipes {
+	for k, p := range r.pipes {
 		p.Destroy()
+		delete(r.pipes, k)
 	}
 	if r.mipSampler != nil {
 		r.mipSampler.Destroy()
+		r.mipSampler = nil
 	}
 	if r.imageSampler != nil {
 		r.imageSampler.Destroy()
+		r.imageSampler = nil
 	}
 	for i := range r.slots {
 		r.slots[i].destroy()
 	}
 	if r.sampler != nil {
 		r.sampler.Destroy()
+		r.sampler = nil
 	}
 	if r.dev != nil {
 		_ = r.dev.Close()
+		r.dev = nil
+	}
+}
+
+// logInfo logs at Info level when the renderer has a logger.
+func (r *Renderer) logInfo(msg string, args ...any) {
+	if r.opts.Log != nil {
+		r.opts.Log.Info(msg, args...)
 	}
 }
