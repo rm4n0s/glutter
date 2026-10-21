@@ -1,7 +1,6 @@
 package gles
 
 import (
-	"math"
 	"testing"
 
 	"github.com/rm4n0s/errors"
@@ -446,85 +445,5 @@ func TestBuildSkipsWholeLayers(t *testing.T) {
 	}
 	if b.stats.Drawn != 2 || b.stats.Skipped != 3 || b.stats.Commands != 5 || b.frame.items(pipeShape) != 2 {
 		t.Errorf("stats %+v, %d instances", b.stats, b.frame.items(pipeShape))
-	}
-}
-
-func TestPartsOf(t *testing.T) {
-	tests := []struct {
-		name  string
-		rect  ui.Rect
-		radii [4]ui.Radius
-		want  rrectParts
-		ok    bool
-	}{
-		{"plain", ui.NewRectFromLTWH(10, 20, 40, 60), [4]ui.Radius{}, rrectParts{cx: 30, cy: 50, hx: 20, hy: 30}, true},
-		{"edges swapped", ui.Rect{Left: 50, Top: 80, Right: 10, Bottom: 20}, [4]ui.Radius{}, rrectParts{cx: 30, cy: 50, hx: 20, hy: 30}, true},
-		{"a radius with a zero side is square", ui.NewRectFromLTWH(0, 0, 40, 40), [4]ui.Radius{{X: 5, Y: 0}, {X: 0, Y: 5}, {X: -1, Y: 5}, {X: 5, Y: 5}},
-			rrectParts{cx: 20, cy: 20, hx: 20, hy: 20, r: [4]ui.Radius{{}, {}, {}, {X: 5, Y: 5}}}, true},
-		{"radii scaled to fit", ui.NewRectFromLTWH(0, 0, 40, 100), [4]ui.Radius{{X: 40, Y: 40}, {X: 40, Y: 40}, {X: 40, Y: 40}, {X: 40, Y: 40}},
-			rrectParts{cx: 20, cy: 50, hx: 20, hy: 50, r: [4]ui.Radius{{X: 20, Y: 20}, {X: 20, Y: 20}, {X: 20, Y: 20}, {X: 20, Y: 20}}}, true},
-		{"scaled by the tightest side", ui.NewRectFromLTWH(0, 0, 100, 30), [4]ui.Radius{{X: 60, Y: 30}, {X: 60, Y: 10}, {X: 10, Y: 10}, {X: 10, Y: 10}},
-			rrectParts{cx: 50, cy: 15, hx: 50, hy: 15, r: [4]ui.Radius{{X: 45, Y: 22.5}, {X: 45, Y: 7.5}, {X: 7.5, Y: 7.5}, {X: 7.5, Y: 7.5}}}, true},
-		{"infinite", ui.Rect{Left: 0, Top: 0, Right: math.Inf(1), Bottom: 1}, [4]ui.Radius{}, rrectParts{}, false},
-		{"NaN", ui.Rect{Left: math.NaN(), Top: 0, Right: 1, Bottom: 1}, [4]ui.Radius{}, rrectParts{}, false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, ok := partsOf(tt.rect, tt.radii)
-			if ok != tt.ok {
-				t.Fatalf("ok = %v", ok)
-			}
-			if !ok {
-				return
-			}
-			near := func(a, b float64) bool { return math.Abs(a-b) < 1e-9 }
-			if !near(got.cx, tt.want.cx) || !near(got.cy, tt.want.cy) || !near(got.hx, tt.want.hx) || !near(got.hy, tt.want.hy) {
-				t.Errorf("parts = %+v, want %+v", got, tt.want)
-			}
-			for i := range got.r {
-				if !near(got.r[i].X, tt.want.r[i].X) || !near(got.r[i].Y, tt.want.r[i].Y) {
-					t.Errorf("radii = %v, want %v", got.r, tt.want.r)
-					break
-				}
-			}
-		})
-	}
-}
-
-func TestAffine(t *testing.T) {
-	tests := []struct {
-		name       string
-		m          affine2D
-		invertible bool
-		similarity bool
-	}{
-		{"identity", affine2D{a: 1, d: 1}, true, true},
-		{"uniform scale", affine2D{a: 2, d: 2, e: 5}, true, true},
-		{"rotation", affine2D{a: math.Cos(0.5), b: math.Sin(0.5), c: -math.Sin(0.5), d: math.Cos(0.5)}, true, true},
-		{"flip", affine2D{a: -1, d: 1}, true, true},
-		{"stretch", affine2D{a: 2, d: 1}, true, false},
-		{"skew", affine2D{a: 1, c: 0.5, d: 1}, true, false},
-		{"singular", affine2D{a: 1}, false, false},
-		{"NaN", affine2D{a: math.NaN(), d: 1}, false, false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			inv, ok := tt.m.invert()
-			if ok != tt.invertible {
-				t.Fatalf("invertible = %v", ok)
-			}
-			if ok {
-				// The inverse undoes the transform.
-				x, y := 3.0, -7.0
-				u, v := tt.m.a*x+tt.m.c*y+tt.m.e, tt.m.b*x+tt.m.d*y+tt.m.f
-				bx, by := inv.a*u+inv.c*v+inv.e, inv.b*u+inv.d*v+inv.f
-				if math.Abs(bx-x) > 1e-9 || math.Abs(by-y) > 1e-9 {
-					t.Errorf("inverse maps back to %v, %v", bx, by)
-				}
-				if got := tt.m.similarity(); got != tt.similarity {
-					t.Errorf("similarity = %v", got)
-				}
-			}
-		})
 	}
 }

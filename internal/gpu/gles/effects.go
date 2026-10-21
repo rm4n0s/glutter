@@ -189,28 +189,28 @@ func (s *shapeContext) blurredRRect(r ui.Rect, radii [4]ui.Radius, p *ui.Paint, 
 	if status != paintDraw {
 		return status == paintNothing, err
 	}
-	parts, valid := partsOf(r, radii)
-	if !valid || parts.hx <= 0 || parts.hy <= 0 {
+	parts, valid := gpu.PartsOf(r, radii)
+	if !valid || parts.HX <= 0 || parts.HY <= 0 {
 		return true, nil
 	}
 	t := s.t
-	sx, sy := math.Abs(t.a), math.Abs(t.d)
+	sx, sy := math.Abs(t.A), math.Abs(t.D)
 	// The corners in pixels, in order from the top left; a flip swaps them.
-	dev := rrectParts{cx: t.a*parts.cx + t.e, cy: t.d*parts.cy + t.f, hx: parts.hx * sx, hy: parts.hy * sy}
-	for i, c := range parts.r {
+	dev := rrectParts{CX: t.A*parts.CX + t.E, CY: t.D*parts.CY + t.F, HX: parts.HX * sx, HY: parts.HY * sy}
+	for i, c := range parts.R {
 		j := i
-		if t.a < 0 {
+		if t.A < 0 {
 			j = [4]int{1, 0, 3, 2}[j]
 		}
-		if t.d < 0 {
+		if t.D < 0 {
 			j = [4]int{3, 2, 1, 0}[j]
 		}
-		dev.r[j] = ui.Radius{X: c.X * sx, Y: c.Y * sy}
+		dev.R[j] = ui.Radius{X: c.X * sx, Y: c.Y * sy}
 	}
 	var in instance
-	dev.write(&in, 20)
+	dev.Write(&in, 20)
 	in[44], in[45] = float32(sigma), float32(style)
-	local := ui.Rect{Left: parts.cx - parts.hx, Top: parts.cy - parts.hy, Right: parts.cx + parts.hx, Bottom: parts.cy + parts.hy}
+	local := parts.Rect()
 	return s.placePadded(&in, local, kindShadow, 0, info, 1, math.Ceil(3*sigma)+1)
 }
 

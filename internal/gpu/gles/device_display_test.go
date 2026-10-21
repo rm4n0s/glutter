@@ -16,6 +16,7 @@ import (
 
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/internal/gpu"
+	"github.com/rm4n0s/glutter/internal/gpu/gputest"
 	"github.com/rm4n0s/glutter/internal/gpu/soft"
 	"github.com/rm4n0s/glutter/internal/platform"
 	"github.com/rm4n0s/glutter/internal/platform/linux/wayland"
@@ -463,128 +464,10 @@ func canvasScene(w, h int, fn func(c *ui.Canvas)) *ui.Scene {
 }
 
 func TestDisplayShapeScenesMatchSoftware(t *testing.T) {
-	r10 := ui.NewRectFromLTWH(10, 10, 60, 40)
-	tests := []struct {
-		name string
-		tol  tolerance
-		draw func(c *ui.Canvas)
-	}{
-		{"rotated rect and rrect", tolerance{25, 3, 0}, func(c *ui.Canvas) {
-			c.Save()
-			c.Translate(60, 60)
-			c.Rotate(0.5)
-			c.DrawRect(ui.NewRectFromLTWH(-40, -25, 80, 50), fillP(0xFF2060C0))
-			c.DrawRRect(ui.NewRRectFromRectXY(ui.NewRectFromLTWH(-30, -15, 60, 30), 10, 6), fillP(0xCCF0A000))
-			c.Restore()
-		}},
-		{"non-uniform scale and skew", tolerance{30, 4, 0}, func(c *ui.Canvas) {
-			c.Save()
-			c.Translate(20, 20)
-			c.Scale(1.6, 0.7)
-			c.DrawCircle(ui.Offset{Dx: 30, Dy: 30}, 25, strokeP(0xFF802080, 6, ui.StrokeCapButt, ui.StrokeJoinMiter))
-			c.DrawOval(ui.NewRectFromLTWH(10, 70, 60, 30), fillP(0xFF20A060))
-			c.Restore()
-			c.Save()
-			c.Translate(20, 90)
-			c.Skew(0.4, 0)
-			c.DrawRRect(ui.NewRRectFromRectXY(ui.NewRectFromLTWH(0, 0, 70, 30), 8, 8), fillP(0xFFC04020))
-			c.Restore()
-		}},
-		{"mirrored", tolerance{20, 2, 0}, func(c *ui.Canvas) {
-			c.Translate(120, 0)
-			c.Scale(-1, 1)
-			c.DrawRRect(ui.NewRRectFromRectAndCorners(ui.NewRectFromLTWH(10, 10, 70, 50), ui.Corners{TopLeft: ui.Radius{X: 20, Y: 20}, BottomRight: ui.Radius{X: 12, Y: 6}}), fillP(0xFF3050A0))
-		}},
-		{"fractional anti-aliased clip", tolerance{20, 2, 0}, func(c *ui.Canvas) {
-			c.ClipRect(ui.NewRectFromLTWH(10.3, 10.6, 60.4, 50.5))
-			c.DrawRect(ui.NewRectFromLTWH(0, 0, 128, 128), fillP(0xFF204080))
-			c.DrawCircle(ui.Offset{Dx: 70, Dy: 60}, 30, fillP(0xCCFF8000))
-		}},
-		{"hard clip and nested clips", tolerance{20, 2, 0}, func(c *ui.Canvas) {
-			c.Save()
-			c.ClipRect(ui.NewRectFromLTWH(10.3, 10.6, 60.4, 50.5), ui.ClipRectOpts{DoAntiAlias: ui.Ptr(false)})
-			c.DrawRect(ui.NewRectFromLTWH(0, 0, 128, 128), fillP(0xFF204080))
-			c.Restore()
-			c.Translate(5, 70)
-			c.ClipRect(ui.NewRectFromLTWH(0, 0, 80, 40))
-			c.ClipRect(ui.NewRectFromLTWH(20.5, 10.5, 80, 40))
-			c.DrawRRect(ui.NewRRectFromRectXY(ui.NewRectFromLTWH(0, 0, 120, 60), 20, 20), fillP(0xFFA02060))
-		}},
-		{"translucent overlaps and blend modes", tolerance{10, 1, 0}, func(c *ui.Canvas) {
-			c.DrawRect(ui.NewRectFromLTWH(10, 10, 50, 50), fillP(0x802060C0))
-			c.DrawRect(ui.NewRectFromLTWH(35, 35, 50, 50), fillP(0x80C06020))
-			dst := fillP(0xFF30A030)
-			dst.SetBlendMode(ui.BlendModeDstOver)
-			c.DrawRect(ui.NewRectFromLTWH(0, 80, 128, 20), dst)
-			plus := fillP(0x80402010)
-			plus.SetBlendMode(ui.BlendModePlus)
-			c.DrawCircle(ui.Offset{Dx: 95, Dy: 35}, 25, plus)
-		}},
-		// At the corners of strokes of a pixel or less the distance field misses the
-		// union of two strips, and the software renderer counts both: a few pixels are
-		// far from each other, neither being exact.
-		{"strokes of every width", tolerance{25, 4, 20}, func(c *ui.Canvas) {
-			for i, w := range []float64{0, 0.4, 1, 2.5, 6} {
-				x := 8 + float64(i)*24
-				c.DrawRect(ui.NewRectFromLTWH(x, 8, 18, 30), strokeP(0xFF000000, w, ui.StrokeCapButt, ui.StrokeJoinMiter))
-				c.DrawRRect(ui.NewRRectFromRectXY(ui.NewRectFromLTWH(x, 46, 18, 30), 6, 6), strokeP(0xFF1030A0, w, ui.StrokeCapButt, ui.StrokeJoinMiter))
-				c.DrawRect(ui.NewRectFromLTWH(x, 84, 18, 30), strokeP(0xFFA03010, w, ui.StrokeCapButt, ui.StrokeJoinRound))
-			}
-		}},
-		{"stroke with a radius smaller than the width", tolerance{25, 3, 0}, func(c *ui.Canvas) {
-			c.DrawRRect(ui.NewRRectFromRectXY(ui.NewRectFromLTWH(15, 15, 90, 40), 3, 3), strokeP(0xFF108040, 12, ui.StrokeCapButt, ui.StrokeJoinMiter))
-			c.DrawOval(ui.NewRectFromLTWH(15, 70, 90, 40), strokeP(0xFF8010A0, 5, ui.StrokeCapButt, ui.StrokeJoinMiter))
-		}},
-		{"radii that do not fit", tolerance{20, 2, 0}, func(c *ui.Canvas) {
-			c.DrawRRect(ui.NewRRectFromRectXY(ui.NewRectFromLTWH(10, 10, 100, 30), 60, 40), fillP(0xFF206080))
-			c.DrawRRect(ui.NewRRectFromRectXY(ui.NewRectFromLTWH(10, 50, 30, 70), 40, 40), fillP(0xFF806020))
-		}},
-		{"lines, caps and points", tolerance{30, 3, 0}, func(c *ui.Canvas) {
-			caps := []ui.StrokeCap{ui.StrokeCapButt, ui.StrokeCapRound, ui.StrokeCapSquare}
-			for i, cp := range caps {
-				y := 20 + float64(i)*30
-				c.DrawLine(ui.Offset{Dx: 15, Dy: y}, ui.Offset{Dx: 70, Dy: y + 12}, strokeP(0xFF2040A0, 12, cp, ui.StrokeJoinMiter))
-				c.DrawLine(ui.Offset{Dx: 90, Dy: y}, ui.Offset{Dx: 90, Dy: y}, strokeP(0xFFA04020, 14, cp, ui.StrokeJoinMiter))
-			}
-			c.DrawPoints(ui.PointModePoints, []ui.Offset{{Dx: 20, Dy: 110}, {Dx: 40, Dy: 112}}, strokeP(0xFF008060, 9, ui.StrokeCapRound, ui.StrokeJoinMiter))
-			c.DrawPoints(ui.PointModePoints, []ui.Offset{{Dx: 60, Dy: 110}}, strokeP(0xFF008060, 9, ui.StrokeCapButt, ui.StrokeJoinMiter))
-			c.DrawPoints(ui.PointModeLines, []ui.Offset{{Dx: 80, Dy: 105}, {Dx: 110, Dy: 118}, {Dx: 80, Dy: 118}, {Dx: 110, Dy: 105}}, strokeP(0xFF606060, 2, ui.StrokeCapRound, ui.StrokeJoinMiter))
-		}},
-		{"colors, paint and tiny shapes", tolerance{20, 2, 0}, func(c *ui.Canvas) {
-			c.Save()
-			c.ClipRect(r10)
-			c.DrawColor(ui.NewColor(0x80FF0000), ui.BlendModeSrcOver)
-			c.Restore()
-			c.Save()
-			c.ClipRect(ui.NewRectFromLTWH(80, 10, 30.5, 40.5))
-			c.DrawPaint(fillP(0x9900A000))
-			c.Restore()
-			c.DrawCircle(ui.Offset{Dx: 30, Dy: 90}, 0.5, fillP(0xFF000000))
-			c.DrawCircle(ui.Offset{Dx: 50, Dy: 90}, 1.5, fillP(0xFF000000))
-			c.DrawRect(ui.NewRectFromLTWH(70.25, 80.25, 0.5, 0.5), fillP(0xFF000000))
-		}},
-		// Without anti-aliasing a pixel is all or nothing; where the exact coverage is
-		// close to half the two renderers may choose differently.
-		{"no anti-aliasing", tolerance{20, 20, 8}, func(c *ui.Canvas) {
-			p := fillP(0xFF2040C0)
-			p.SetIsAntiAlias(false)
-			c.DrawCircle(ui.Offset{Dx: 40, Dy: 40}, 30, p)
-			c.DrawRRect(ui.NewRRectFromRectXY(ui.NewRectFromLTWH(60.4, 60.4, 50, 50), 12, 12), p)
-			q := strokeP(0xFFC04020, 5, ui.StrokeCapRound, ui.StrokeJoinMiter)
-			q.SetIsAntiAlias(false)
-			c.DrawLine(ui.Offset{Dx: 10, Dy: 110}, ui.Offset{Dx: 50, Dy: 80}, q)
-		}},
-		{"superellipse corners", tolerance{30, 3, 0}, func(c *ui.Canvas) {
-			c.DrawRSuperellipse(ui.NewRSuperellipseFromRectXY(ui.NewRectFromLTWH(10, 10, 100, 100), 30, 30), fillP(0xFF006A6A))
-			c.Translate(64, 64)
-			c.Rotate(0.3)
-			c.DrawRSuperellipse(ui.NewRSuperellipseFromRectAndCorners(ui.NewRectFromLTWH(-30, -20, 60, 40), ui.Corners{TopLeft: ui.Radius{X: 16, Y: 16}, BottomRight: ui.Radius{X: 8, Y: 12}}), fillP(0xAAFFC000))
-		}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			scene := canvasScene(128, 128, tt.draw)
-			want, err := soft.Render(scene, 128, 128)
+	for _, tt := range gputest.ShapeScenes() {
+		t.Run(tt.Name, func(t *testing.T) {
+			scene := canvasScene(gputest.ShapeSize, gputest.ShapeSize, tt.Draw)
+			want, err := soft.Render(scene, gputest.ShapeSize, gputest.ShapeSize)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -594,14 +477,14 @@ func TestDisplayShapeScenesMatchSoftware(t *testing.T) {
 				if _, err := r.Attach(h); err != nil {
 					return err
 				}
-				got, err := renderGPU(r, scene, 128, 128)
+				got, err := renderGPU(r, scene, gputest.ShapeSize, gputest.ShapeSize)
 				if err != nil {
 					return err
 				}
-				slug := strings.ReplaceAll(tt.name, " ", "-")
+				slug := strings.ReplaceAll(tt.Name, " ", "-")
 				dumpImage(t, slug+"-gpu", got)
 				dumpImage(t, slug+"-soft", want)
-				tt.tol.check(t, tt.name, diffRect(got, want, got.Bounds()))
+				tolerance{tt.Over8Permille, tt.Over32Permille, tt.Over96}.check(t, tt.Name, diffRect(got, want, got.Bounds()))
 				return nil
 			})
 		})

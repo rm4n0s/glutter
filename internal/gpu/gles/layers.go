@@ -138,7 +138,7 @@ func (b *frameBuilder) beginLayer(c gpu.Command) error {
 		case *ui.ImageFilterLayer:
 			rec.info.color = [4]float32{1, 1, 1, 1}
 			if v.Filter != nil {
-				rec.filter, rec.ctm, rec.tile = v.Filter, translation(v.Offset.Dx, v.Offset.Dy).then(ctx.t), ui.TileModeDecal
+				rec.filter, rec.ctm, rec.tile = v.Filter, translation(v.Offset.Dx, v.Offset.Dy).Then(ctx.t), ui.TileModeDecal
 			}
 		case *ui.BackdropFilterLayer:
 			rec.info.color = [4]float32{1, 1, 1, 1}

@@ -12,7 +12,7 @@ import (
 )
 
 // framesInFlight is how many frames the GPU can work on at once (SPEC §9.3).
-const framesInFlight = 2
+const framesInFlight = explicit.FramesInFlight
 
 // stagingPerSlot is the size of the part of the staging ring that one frame uses.
 const stagingPerSlot = 8 << 20

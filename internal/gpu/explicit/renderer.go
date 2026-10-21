@@ -20,13 +20,19 @@ type RendererOpts struct {
 	// Damage tells the compositor which part of a window changed in each frame, when
 	// the device can (SPEC §9.1 "Damage", §9.4).
 	Damage bool
+	// SkipUnsupported makes Draw leave out what the renderer cannot draw yet, and count
+	// it in LastFrame, instead of failing with GPUNotImplemented. The development
+	// examples use it to show what works.
+	SkipUnsupported bool
 }
 
 // Renderer is the renderer for the explicit APIs (SPEC §9.3): the engine's renderer on
 // Vulkan and WebGPU. Each window has a swapchain and an offscreen frame texture; a frame
 // is drawn into the frame texture, then blitted into the swapchain image and presented.
-// This is its skeleton (step 20.2): a frame is the background; the drawing of scenes
-// arrives with steps 20.3 to 20.6.
+// It draws the analytic shapes (rectangles, rounded rectangles, ovals, circles, lines,
+// points and the like) of a scene, cut to rectangle clips, in solid colors with the blend
+// modes of the blend unit (step 20.3); the rest of SPEC §9.1 arrives with steps 20.4 to
+// 20.6.
 //
 // The device is opened at the first frame, with the handle of the first window, because
 // the choice of a Vulkan device depends on the window.
@@ -40,6 +46,13 @@ type Renderer struct {
 	blit    map[TextureFormat]Pipeline
 	windows map[gpu.SurfaceHandle]*window
 	closed  bool
+	// shape holds the shape pipelines, one for each fixed blend.
+	shape map[gpu.FixedBlend]Pipeline
+	// slots are the buffers of the frames in flight: the frame with number n uses slot
+	// n % FramesInFlight, which the device has finished with when Begin returns.
+	slots   [FramesInFlight]frameSlot
+	frameNo int
+	last    FrameStats
 }
 
 // window is what the renderer keeps for one window.
@@ -58,7 +71,7 @@ func NewRenderer(open func(gpu.SurfaceHandle) (Device, error), opts ...RendererO
 	if len(opts) > 1 {
 		panic(errors.New("MultipleOptions", "pass at most one options value", "type", "RendererOpts", "count", len(opts)))
 	}
-	r := &Renderer{open: open, blit: map[TextureFormat]Pipeline{}, windows: map[gpu.SurfaceHandle]*window{}}
+	r := &Renderer{open: open, blit: map[TextureFormat]Pipeline{}, shape: map[gpu.FixedBlend]Pipeline{}, windows: map[gpu.SurfaceHandle]*window{}}
 	if len(opts) == 1 {
 		r.opts = opts[0]
 	}
@@ -131,7 +144,12 @@ func (r *Renderer) Draw(h gpu.SurfaceHandle, width, height int, scene *ui.Scene,
 		w.fw, w.fh = width, height
 		w.tracker.Invalidate()
 	}
-	img, err := r.frame(w, width, height, scene, capture)
+	fb, err := r.build(scene, width, height)
+	if err != nil {
+		w.tracker.Invalidate()
+		return nil, err
+	}
+	img, err := r.frame(w, fb, width, height, scene, capture)
 	if err != nil {
 		w.tracker.Invalidate()
 		return nil, err
@@ -154,11 +172,13 @@ func (r *Renderer) window(h gpu.SurfaceHandle) (*window, error) {
 }
 
 // frame records, submits and presents one frame.
-func (r *Renderer) frame(w *window, width, height int, scene *ui.Scene, capture bool) (*image.RGBA, error) {
+func (r *Renderer) frame(w *window, fb *frameBuilder, width, height int, scene *ui.Scene, capture bool) (*image.RGBA, error) {
 	enc, err := r.dev.Begin()
 	if err != nil {
 		return nil, err
 	}
+	slot := &r.slots[r.frameNo%FramesInFlight]
+	r.frameNo++
 	img, err := w.sc.Acquire()
 	if IsSwapchainOutOfDate(err) {
 		if err = w.sc.Configure(width, height); err == nil {
@@ -176,8 +196,11 @@ func (r *Renderer) frame(w *window, width, height int, scene *ui.Scene, capture 
 	}
 	bg := r.background()
 
-	// The frame texture: the background, and later the scene (steps 20.3 to 20.6).
-	enc.BeginPass(w.frame, LoadClear, bg).End()
+	// The frame texture: the background, then the scene.
+	if err := r.drawScene(enc, slot, w.frame, fb, width, height, bg); err != nil {
+		_ = enc.Submit()
+		return nil, err
+	}
 
 	// The blit into the swapchain image, whatever its format.
 	group, err := r.dev.NewBindGroup(blit, 0, []Binding{{Binding: 0, Texture: w.frame}, {Binding: 1, Sampler: r.sampler}})
@@ -222,6 +245,95 @@ func (r *Renderer) damage(w *window, scene *ui.Scene, width, height int) []image
 		return []image.Rectangle{image.Rect(0, 0, 1, 1)}
 	}
 	return d.Rects
+}
+
+// build flattens the scene and makes its instances. It fails with GPUNotImplemented for a
+// feature the renderer cannot draw, unless SkipUnsupported is set, and records what the
+// frame is in LastFrame.
+func (r *Renderer) build(scene *ui.Scene, width, height int) (*frameBuilder, error) {
+	fb := &frameBuilder{w: width, h: height, skip: r.opts.SkipUnsupported}
+	r.last = FrameStats{}
+	if scene != nil {
+		list, err := gpu.Flatten(scene, gpu.FlattenOpts{Bounds: ui.NewRectFromLTWH(0, 0, float64(width), float64(height))})
+		if err != nil {
+			return nil, err
+		}
+		for _, c := range list.Commands {
+			if err := fb.command(c); err != nil {
+				return nil, err
+			}
+		}
+	}
+	fb.stats.Instances, fb.stats.Batches = fb.instances(), len(fb.calls)
+	r.last = fb.stats
+	return fb, nil
+}
+
+// LastFrame says what the last call of Draw drew and left out.
+//
+// Flutter: no counterpart
+func (r *Renderer) LastFrame() FrameStats { return r.last }
+
+// shapePipeline returns the pipeline that draws shapes with the blend, made once.
+func (r *Renderer) shapePipeline(b gpu.FixedBlend) (Pipeline, error) {
+	if p, ok := r.shape[b]; ok {
+		return p, nil
+	}
+	attrs := make([]VertexAttribute, gpu.ShapeVec4s)
+	for i := range attrs {
+		attrs[i] = VertexAttribute{Location: i, Format: VertexFloat32x4, Offset: 16 * i}
+	}
+	p, err := r.dev.NewPipeline(PipelineDesc{
+		Shader: ShaderShape, VertexEntry: "vs_main", FragmentEntry: "fs_main",
+		VertexBuffers: []VertexBufferLayout{{Stride: gpu.ShapeStride, PerInstance: true, Attributes: attrs}},
+		Blend:         blendState(b), Target: TextureFormatRGBA8Unorm,
+	})
+	if err != nil {
+		return nil, err
+	}
+	r.shape[b] = p
+	return p, nil
+}
+
+// drawScene clears the frame texture to the background and draws the frame's shapes into
+// it, in one pass.
+func (r *Renderer) drawScene(enc Encoder, slot *frameSlot, target Texture, fb *frameBuilder, width, height int, bg ui.Color) error {
+	if len(fb.calls) == 0 {
+		enc.BeginPass(target, LoadClear, bg).End()
+		return nil
+	}
+	pipes := make([]Pipeline, len(fb.calls))
+	for i, c := range fb.calls {
+		p, err := r.shapePipeline(c.blend)
+		if err != nil {
+			return err
+		}
+		pipes[i] = p
+	}
+	slot.ring = slot.ring[:0]
+	frameOff := slot.push(r.dev.Limits().UniformOffsetAlignment, frameUniform(width, height, 0, 0))
+	if err := r.upload(slot, fb.data); err != nil {
+		return err
+	}
+	// Every shape pipeline has the same layout, so one bind group serves them all.
+	group, err := r.dev.NewBindGroup(pipes[0], 0, []Binding{{Binding: 0, Buffer: slot.uniforms, Size: frameUniformSize}})
+	if err != nil {
+		return err
+	}
+	pass := enc.BeginPass(target, LoadClear, bg)
+	var current Pipeline
+	for i, c := range fb.calls {
+		if pipes[i] != current {
+			current = pipes[i]
+			pass.SetPipeline(current)
+			pass.SetBindGroup(0, group, frameOff)
+		}
+		pass.SetScissor(c.scissor)
+		pass.SetVertexBuffer(0, slot.instances, c.first*gpu.ShapeStride)
+		pass.Draw(6, c.count, 0, 0)
+	}
+	pass.End()
+	return nil
 }
 
 // blitPipeline returns the pipeline that copies the frame texture into an image of the
@@ -277,6 +389,12 @@ func (r *Renderer) Close() {
 	}
 	for _, p := range r.blit {
 		p.Destroy()
+	}
+	for _, p := range r.shape {
+		p.Destroy()
+	}
+	for i := range r.slots {
+		r.slots[i].destroy()
 	}
 	if r.sampler != nil {
 		r.sampler.Destroy()

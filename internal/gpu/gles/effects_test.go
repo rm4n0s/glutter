@@ -92,7 +92,7 @@ func TestBlurPasses(t *testing.T) {
 }
 
 func TestFilterPassesOfEveryFilter(t *testing.T) {
-	ctm := affine2D{a: 2, d: 2}
+	ctm := affine2D{A: 2, D: 2}
 	rot := ui.NewMatrix4Identity()
 	rot.RotateZ(0.5)
 	singular := ui.NewMatrix4Diagonal3Values(0, 1, 1)

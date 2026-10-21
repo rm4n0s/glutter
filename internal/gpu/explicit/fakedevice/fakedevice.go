@@ -43,6 +43,18 @@ type Device struct {
 	CompleteReadsOnSubmit bool
 	// Name is what Description says.
 	Name string
+	// Writes are the calls of WriteBuffer, with a copy of their data.
+	Writes []BufferWrite
+}
+
+// BufferWrite is one call of WriteBuffer.
+//
+// Flutter: no counterpart
+type BufferWrite struct {
+	// Offset is where the data went in the buffer.
+	Offset int
+	// Data is a copy of the bytes written.
+	Data []byte
 }
 
 var _ explicit.Device = (*Device)(nil)
@@ -160,6 +172,7 @@ func (d *Device) NewBindGroup(p explicit.Pipeline, group int, entries []explicit
 // WriteBuffer implements explicit.Device.
 func (d *Device) WriteBuffer(b explicit.Buffer, offset int, data []byte) {
 	d.record("WriteBuffer", "offset=%d bytes=%d", offset, len(data))
+	d.Writes = append(d.Writes, BufferWrite{Offset: offset, Data: slices.Clone(data)})
 	if fb, ok := b.(*buffer); ok && offset >= 0 && offset+len(data) <= len(fb.data) {
 		copy(fb.data[offset:], data)
 	}

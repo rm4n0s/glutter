@@ -72,8 +72,12 @@ func (d *recDevice) lastAcquired() image.Point {
 
 // newWindowRenderer makes the explicit renderer over a Vulkan device on lavapipe, with
 // validation; the device is opened at the first frame, from the first window.
-func newWindowRenderer(t *testing.T) (*explicit.Renderer, *recDevice) {
+func newWindowRenderer(t *testing.T, extra ...func(*explicit.RendererOpts)) (*explicit.Renderer, *recDevice) {
 	t.Helper()
+	opts := explicit.RendererOpts{Background: ui.NewColor(0xFF6750A4), HasBackground: true}
+	for _, f := range extra {
+		f(&opts)
+	}
 	lavapipe(t)
 	dev := &recDevice{}
 	r := explicit.NewRenderer(func(h gpu.SurfaceHandle) (explicit.Device, error) {
@@ -84,7 +88,7 @@ func newWindowRenderer(t *testing.T) (*explicit.Renderer, *recDevice) {
 		dev.Device = d
 		dev.opened++
 		return dev, nil
-	}, explicit.RendererOpts{Background: ui.NewColor(0xFF6750A4), HasBackground: true})
+	}, opts)
 	t.Cleanup(func() {
 		r.Close()
 	})

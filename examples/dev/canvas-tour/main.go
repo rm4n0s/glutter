@@ -18,6 +18,7 @@
 //	GLUTTER_DEV_PAGE=<n or name>      the first page: 1 to 9, or a scene name
 //	                                  such as shapes-clips (default 1)
 //	GLUTTER_BACKEND=x11|wayland       the windowing system (else the session's)
+//	GLUTTER_RENDERER=gles|vulkan      the renderer (else the default; see SPEC §9.6)
 //	GLUTTER_SCREENSHOT=<file.png>     save the window content to the file and exit
 //	GLUTTER_SCREENSHOT_AFTER=<time>   wait that long (such as 500ms) before saving
 package main

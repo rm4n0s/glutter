@@ -182,7 +182,7 @@ func (s *shapeContext) shaderSpec(sp *paintSpec, sh ui.Shader, toDevice affine2D
 }
 
 func setXf(sp *paintSpec, inv affine2D) {
-	sp.xf = [6]float32{float32(inv.a), float32(inv.b), float32(inv.c), float32(inv.d), float32(inv.e), float32(inv.f)}
+	sp.xf = [6]float32{float32(inv.A), float32(inv.B), float32(inv.C), float32(inv.D), float32(inv.E), float32(inv.F)}
 }
 
 func (s *shapeContext) gradientSpec(sp *paintSpec, g *ui.Gradient, toDevice affine2D) (paintStatus, error) {
@@ -198,9 +198,9 @@ func (s *shapeContext) gradientSpec(sp *paintSpec, g *ui.Gradient, toDevice affi
 	}
 	sp.dither = true
 	if m, ok := g.Matrix4(); ok {
-		toDevice = affineOf(m).then(toDevice)
+		toDevice = affineOf(m).Then(toDevice)
 	}
-	inv, ok := toDevice.invert()
+	inv, ok := toDevice.Invert()
 	if !ok {
 		sp.shader = shaderConst
 		return paintDraw, nil
@@ -258,7 +258,7 @@ func (s *shapeContext) imageShaderSpec(sp *paintSpec, is *ui.ImageShader, toDevi
 	if s.b.res == nil {
 		return paintUnsupported, s.b.unsupported("image shader")
 	}
-	inv, ok := affineOf(is.Matrix4()).then(toDevice).invert()
+	inv, ok := affineOf(is.Matrix4()).Then(toDevice).Invert()
 	if !ok {
 		sp.shader = shaderConst
 		return paintDraw, nil
@@ -274,7 +274,7 @@ func (s *shapeContext) imageShaderSpec(sp *paintSpec, is *ui.ImageShader, toDevi
 	level := 0
 	if quality == ui.FilterQualityMedium || quality == ui.FilterQualityHigh {
 		// How many image pixels one surface pixel spans: the inverse transform's scale.
-		if scale := math.Sqrt(math.Abs(inv.det())); scale > 1 {
+		if scale := math.Sqrt(math.Abs(inv.Det())); scale > 1 {
 			level = min(int(math.Log2(scale)+0.5), entry.levels-1)
 		}
 	}

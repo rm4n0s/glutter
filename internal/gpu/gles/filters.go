@@ -109,7 +109,7 @@ func blurPasses(sx, sy float64, tile ui.TileMode, w, h int) []filterPass {
 // transform that the filter's radii and matrix are in; tile is the mode a blur gets
 // when it has none. false says that the filter is not one the renderer knows.
 func filterPasses(f ui.ImageFilter, ctm affine2D, tile ui.TileMode, w, h int) ([]filterPass, bool) {
-	sx, sy := math.Hypot(ctm.a, ctm.b), math.Hypot(ctm.c, ctm.d)
+	sx, sy := math.Hypot(ctm.A, ctm.B), math.Hypot(ctm.C, ctm.D)
 	switch v := f.(type) {
 	case *ui.BlurImageFilter:
 		t := v.TileMode()
@@ -156,15 +156,15 @@ func morphPasses(rx, ry float64, dilate bool, w, h int) []filterPass {
 // of the canvas: on the surface the transform is ctm * M * ctm^-1.
 func matrixPass(f *ui.MatrixImageFilter, ctm affine2D, w, h int) filterPass {
 	p := filterPass{kind: passMatrix, outW: w, outH: h, quality: 2}
-	inv, ok := ctm.invert()
+	inv, ok := ctm.Invert()
 	if !ok {
 		return p
 	}
-	back, ok := inv.then(affineOf(f.Matrix())).then(ctm).invert()
+	back, ok := inv.Then(affineOf(f.Matrix())).Then(ctm).Invert()
 	if !ok {
 		return p
 	}
-	p.inv = [6]float32{float32(back.a), float32(back.b), float32(back.c), float32(back.d), float32(back.e), float32(back.f)}
+	p.inv = [6]float32{float32(back.A), float32(back.B), float32(back.C), float32(back.D), float32(back.E), float32(back.F)}
 	p.quality = 0
 	if f.FilterQuality() == ui.FilterQualityNone {
 		p.quality = 1

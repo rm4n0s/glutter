@@ -20,7 +20,7 @@ func (s *shapeContext) vertices(op ui.OpDrawVertices) (bool, error) {
 	atTexture := len(v.TextureCoordinates()) > 0 && op.Paint.Shader() != nil
 	toDevice := s.t
 	if atTexture {
-		toDevice = affine2D{a: 1, d: 1}
+		toDevice = affine2D{A: 1, D: 1}
 	}
 	info, status, err := s.paintWith(&op.Paint, true, toDevice)
 	if status != paintDraw {

@@ -60,7 +60,7 @@ func newVulkanRenderer(cfg *Config, log *slog.Logger) renderer {
 	}
 	opts := explicit.RendererOpts{
 		Background: ui.NewColor(developmentColor), HasBackground: true,
-		Damage: !cfg.DisableDamage && getenv(DamageEnv) != "0",
+		Damage: !cfg.DisableDamage && getenv(DamageEnv) != "0", SkipUnsupported: cfg.SkipUnsupported,
 	}
 	return explicit.NewRenderer(func(h gpu.SurfaceHandle) (explicit.Device, error) {
 		return vulkan.Open(vulkan.Options{Logger: log, Getenv: getenv, AllowCPU: cfg.rendererNamed, Surface: h})

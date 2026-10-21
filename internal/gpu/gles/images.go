@@ -127,9 +127,9 @@ func (s *shapeContext) imageRect(img *ui.Image, src, dst ui.Rect, p *ui.Paint) (
 		src = clipped
 	}
 	toLocal := translation(-src.Left, -src.Top).
-		then(scaling(dst.Width()/src.Width(), dst.Height()/src.Height())).
-		then(translation(dst.Left, dst.Top))
-	return s.blit(img, src, toLocal.then(s.t), p, nil)
+		Then(scaling(dst.Width()/src.Width(), dst.Height()/src.Height())).
+		Then(translation(dst.Left, dst.Top))
+	return s.blit(img, src, toLocal.Then(s.t), p, nil)
 }
 
 // tint is a color that a sprite is blended with: the blend index and the
@@ -146,7 +146,7 @@ func (s *shapeContext) blit(img *ui.Image, src ui.Rect, toDevice affine2D, p *ui
 	if status != paintDraw {
 		return status == paintNothing, err
 	}
-	inv, ok := toDevice.invert()
+	inv, ok := toDevice.Invert()
 	if !ok {
 		return true, nil
 	}
@@ -156,8 +156,8 @@ func (s *shapeContext) blit(img *ui.Image, src ui.Rect, toDevice affine2D, p *ui
 	}
 	// The pixels the rectangle can touch.
 	corners := [4]ui.Offset{
-		toDevice.apply(src.Left, src.Top), toDevice.apply(src.Right, src.Top),
-		toDevice.apply(src.Right, src.Bottom), toDevice.apply(src.Left, src.Bottom),
+		toDevice.Apply(src.Left, src.Top), toDevice.Apply(src.Right, src.Top),
+		toDevice.Apply(src.Right, src.Bottom), toDevice.Apply(src.Left, src.Bottom),
 	}
 	dev := ui.Rect{Left: math.Inf(1), Top: math.Inf(1), Right: math.Inf(-1), Bottom: math.Inf(-1)}
 	for _, c := range corners {
@@ -176,7 +176,7 @@ func (s *shapeContext) blit(img *ui.Image, src ui.Rect, toDevice affine2D, p *ui
 	quality := p.FilterQuality()
 	level := 0
 	if quality == ui.FilterQualityMedium || quality == ui.FilterQualityHigh {
-		if scale := math.Sqrt(math.Abs(toDevice.det())); scale > 0 && scale < 1 {
+		if scale := math.Sqrt(math.Abs(toDevice.Det())); scale > 0 && scale < 1 {
 			level = min(int(-math.Log2(scale)+0.5), entry.levels-1)
 		}
 	}
@@ -194,14 +194,14 @@ func (s *shapeContext) blit(img *ui.Image, src ui.Rect, toDevice affine2D, p *ui
 		flags |= imageFlagAntialias
 	}
 	box := [4]float32{float32(src.Left), float32(src.Top), float32(src.Right), float32(src.Bottom)}
-	if toDevice.axisAligned() {
+	if toDevice.AxisAligned() {
 		flags |= imageFlagBox
 		box = [4]float32{float32(dev.Left), float32(dev.Top), float32(dev.Right), float32(dev.Bottom)}
 	}
 	var in [32]float32
 	in[0], in[1], in[2], in[3] = float32(x0), float32(y0), float32(x1), float32(y1)
-	in[4], in[5], in[6], in[7] = float32(inv.a), float32(inv.b), float32(inv.c), float32(inv.d)
-	in[8], in[9], in[10] = float32(inv.e), float32(inv.f), float32(flags)
+	in[4], in[5], in[6], in[7] = float32(inv.A), float32(inv.B), float32(inv.C), float32(inv.D)
+	in[8], in[9], in[10] = float32(inv.E), float32(inv.F), float32(flags)
 	copy(in[12:16], info.color[:])
 	copy(in[16:20], s.clip[:])
 	copy(in[20:24], box[:])
@@ -281,8 +281,8 @@ func (s *shapeContext) imageAtlas(op ui.OpDrawAtlas) (bool, error) {
 			continue
 		}
 		t := op.Transforms[i]
-		rs := affine2D{a: float64(t.Scos), b: float64(t.Ssin), c: -float64(t.Ssin), d: float64(t.Scos), e: float64(t.Tx), f: float64(t.Ty)}
-		toDevice := translation(-op.Rects[i].Left, -op.Rects[i].Top).then(rs).then(s.t)
+		rs := affine2D{A: float64(t.Scos), B: float64(t.Ssin), C: -float64(t.Ssin), D: float64(t.Scos), E: float64(t.Tx), F: float64(t.Ty)}
+		toDevice := translation(-op.Rects[i].Left, -op.Rects[i].Top).Then(rs).Then(s.t)
 		var tn *tint
 		if len(op.Colors) > 0 {
 			c := op.Colors[i]

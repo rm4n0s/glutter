@@ -5,6 +5,13 @@ import (
 	"github.com/rm4n0s/glutter/foundation"
 )
 
+// FramesInFlight is how many frames the GPU works on at once (SPEC §9.3). A device's frame
+// slots alternate with every Submit, so the renderer keeps one set of dynamic buffers for
+// each, and the frame numbered n uses set n % FramesInFlight.
+//
+// Flutter: no counterpart
+const FramesInFlight = 2
+
 // Limits are what a Device guarantees and what the renderer may use. They are
 // WebGPU's default limits, so neither Vulkan nor WebGPU requests more (SPEC §9.3).
 //
