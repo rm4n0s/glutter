@@ -1888,3 +1888,15 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 
 - **Manual checks and proofs still pending from the user** (none blocks the release by itself, but they are the part that this machine cannot do): 14.1 (GNOME title bar screenshot), 14.5 (dark mode toggle in GNOME), 14.6 (drag and drop from GNOME Files or Dolphin), 14.7 (the Wayland checklist), 14.8 (a real X11 session), 15.1 (`OpenURI` on a desktop), 15.2 (file dialogs on GNOME and KDE), 15.3 (notifications), 15.4 and 15.5 (the tray, with the screenshots `15.5-tray-menu.png` and `15.5-notification.png`), 16.1 and 16.2 (Orca), 17.4 (`scripts/perf.sh` on the reference laptop).
 - **Tag:** `v1.0.0` is **not** made. The module has not been tagged or published; the guide says to ask the user before tagging and pushing the tag, so the question is put to the user in the report of this step. The tag would be made on `main` at the commit of this entry with `git tag -a v1.0.0` and pushed with `git push origin v1.0.0`.
+
+## Example: `examples/todo`
+
+- **Date:** 2026-10-21
+- **Branch:** feat/example-todo (not a step of `docs/IMPLEMENTATION.md`: a request after the last step)
+- **Summary:** `examples/todo` is a to-do list in a `DataTable`. A text field and an Add button at the top add a task (Enter in the field also adds it; a blank text does not). Each row has a checkbox ("Done", which crosses out the title and lowers the count in the app bar), the title, and an Edit and a Delete `IconButton` (tooltips "Edit" and "Delete"). Edit opens an `AlertDialog` with a field that starts with the title; Save renames the task, Cancel or a blank title leaves it; the result comes from the channel of `ShowDialog`, which a goroutine of `State.Go` waits on. Rows have a `ValueKey` of the task ID. SPEC §19 and the README list it.
+- **Main files:** `examples/todo/main.go`, `todo_test.go`, `testdata/goldens/todo.png`; `docs/implemented-proof-images/example-todo.png`.
+- **Tests:** each row has an Edit and a Delete button and a checkbox; add with the button, a blank task, delete the first and the last row (tasks, buttons and the app bar title); the checkbox changes the count; Edit with Save, Cancel and a blank title (the dialog closes and the title is the expected one); the dialog starts with the title; a golden with one task done. The tests are debug-only (the platform override) and skip in release and profile builds.
+- **Checks:** see the commit; gofmt, go vet, golangci-lint, `go test -race ./...`, the cgo-free build and tests, `go generate`, and the release and profile tests were run. The golden was looked at.
+- **Proof:** C (headless sway), `docs/implemented-proof-images/example-todo.png`.
+- **Manual checks:** none.
+- **Deviations and follow-ups:** the tasks are not saved to disk. The table does not scroll horizontally on a window narrower than its columns.

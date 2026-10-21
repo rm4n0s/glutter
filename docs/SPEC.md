@@ -1614,7 +1614,7 @@ Each milestone is broken into steps in `docs/IMPLEMENTATION.md` (written after t
 
 ## 19. Examples (`examples/`)
 
-`counter`, `layout` (Row/Column/Stack/Wrap), `animations`, `scrolling` (lists, grids, slivers), `navigation`, `editor` (text editing, clipboard, IME), `gallery` (all Material components, light/dark), `multiwindow`, `tray` (tray + notifications + file dialog), `custompaint`.
+`counter`, `layout` (Row/Column/Stack/Wrap), `animations`, `scrolling` (lists, grids, slivers), `navigation`, `editor` (text editing, clipboard, IME), `gallery` (all Material components, light/dark), `multiwindow`, `tray` (tray + notifications + file dialog), `custompaint`, `todo` (a DataTable of tasks with Edit and Delete buttons in each row).
 
 ## 20. Licensing and third-party code
 
