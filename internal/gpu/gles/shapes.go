@@ -211,14 +211,14 @@ func (b *frameBuilder) draw(c gpu.Command) (bool, error) {
 			return false, b.unsupported("operation " + typeName(c.Op))
 		}
 	}
-	if p, with := paintAccess(c.Op); p != nil && p.ImageFilter() != nil {
+	if p, with := gpu.PaintAccess(c.Op); p != nil && p.ImageFilter() != nil {
 		return b.filteredDraw(c, p, with)
 	}
 	ctx := &shapeContext{b: b, c: c, t: affineOf(&c.Transform)}
 	if done, ok, err := ctx.setupClip(); done {
 		return ok, err
 	}
-	if p, with := paintAccess(c.Op); p != nil && p.MaskFilter() != nil {
+	if p, with := gpu.PaintAccess(c.Op); p != nil && p.MaskFilter() != nil {
 		if handled, ok, err := ctx.maskFiltered(p, with); handled {
 			return ok, err
 		}

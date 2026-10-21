@@ -328,7 +328,7 @@ func (r *Renderer) Close() error {
 	r.surfaces = nil
 	if r.ctx != nil {
 		if r.cache != nil {
-			r.cache.release(r.ctx.dev)
+			r.cache.Release(r.ctx.dev.ReleaseFramebuffer)
 		}
 		if r.res != nil {
 			// The context must be current to delete what the caches hold; the last

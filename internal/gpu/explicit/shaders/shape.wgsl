@@ -12,6 +12,7 @@
 // copy of the destination. The clip masks of shape clips multiply the coverage (clipmask.glsl).
 
 //#include "paint.wgsl.inc"
+//#include "shadow.wgsl.inc"
 
 struct Frame {
 	// The size of the texture being drawn into, in pixels.
@@ -73,6 +74,7 @@ const KIND_SEGMENT: i32 = 2; // a line segment with caps, or a dot
 const KIND_FILL: i32 = 3;    // every pixel
 const KIND_BOX: i32 = 4;     // an axis-aligned rectangle in pixels, minus shape B, by exact area
 const KIND_OUTLINE: i32 = 5; // every point within a half width of a rounded rectangle's outline
+const KIND_SHADOW: i32 = 6;  // a rounded rectangle in pixels blurred by a Gaussian, see shadow.wgsl.inc
 
 // The flags (gpu.ShapeFlag*).
 const FLAG_HAS_B: i32 = 1;
@@ -253,6 +255,17 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 		if hasB {
 			boxCov -= boxCoverage(dev, in.b, antialias);
 		}
+	} else if kind == KIND_SHADOW {
+		// Shape A is in pixels: center, half extents and radii. param holds the deviation of
+		// the blur in pixels and the blur style.
+		let c = dev - in.a.xy;
+		let blurred = blurredRRect(c, in.a.zw, in.arad1, in.arad2, in.param.x);
+		let style = i32(in.param.y + 0.5);
+		var own = 0.0;
+		if style != 0 {
+			own = clamp(0.5 - rrectDistance(c, in.a.zw, in.arad1, in.arad2), 0.0, 1.0);
+		}
+		boxCov = blurStyle(style, blurred, own);
 	} else if kind == KIND_RRECT {
 		d = rrectDistance(p - in.a.xy, in.a.zw, in.arad1, in.arad2);
 		if hasB {
@@ -271,7 +284,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 	let g = length(vec2<f32>(dpdx(d), dpdy(d)));
 
 	var coverage: f32;
-	if kind == KIND_BOX {
+	if kind == KIND_BOX || kind == KIND_SHADOW {
 		coverage = boxCov;
 	} else if !antialias {
 		coverage = select(0.0, 1.0, d <= 0.0);
@@ -291,7 +304,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 		coverage = clamp(0.5 - pixels, 0.0, 1.0);
 	}
 	let total = coverage * clipCoverage;
-	if total <= 0.0 {
+	if total <= 0.0 || (kind == KIND_SHADOW && total < 1.0 / 1024.0) {
 		discard;
 	}
 	return finish(paintSource(in.color, dev), total, dev);

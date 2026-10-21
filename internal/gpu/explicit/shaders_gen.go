@@ -52,6 +52,758 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 	},
 }
 
+//go:embed shaders/filter.spv
+var spirvFilter []byte
+
+// ShaderFilter is shaders/filter.wgsl.
+//
+// Flutter: no counterpart
+var ShaderFilter = &Shader{
+	Name: "filter",
+	WGSL: `// One pass of an image filter over a layer: a copy, one axis of a Gaussian blur, one axis of a
+// dilation or erosion, a transform of the pixels, a color filter, or the two resamplings that let
+// a large blur work on a smaller picture (gpu.FilterPass). Ported from
+// gles/shaders/filter.frag.glsl. All of them read the source with textureLoad and write
+// premultiplied pixels, rows counted from the top as in the surface. Draw 3 vertices: one triangle
+// covers the whole target.
+
+// The source color of a paint: a solid color, a gradient or an image shader, then the paint's
+// color filter and inverted colors, and the blend with what is already drawn. Ported from
+// gles/shaders/paint.glsl. Fragment shaders include this file, after blend.wgsl.inc.
+//
+// The 29 blend modes of Flutter's BlendMode, on premultiplied colors, as the software renderer
+// computes them (internal/gpu/soft/blend.go). mode is the index of the mode in BlendMode's
+// order: 0 clear, 1 src, 2 dst, 3 srcOver, 4 dstOver, 5 srcIn, 6 dstIn, 7 srcOut, 8 dstOut,
+// 9 srcATop, 10 dstATop, 11 xor, 12 plus, 13 modulate, 14 screen, 15 overlay, 16 darken,
+// 17 lighten, 18 colorDodge, 19 colorBurn, 20 hardLight, 21 softLight, 22 difference,
+// 23 exclusion, 24 multiply, 25 hue, 26 saturation, 27 color, 28 luminosity. Ported from
+// gles/shaders/blend.glsl. Shaders include this file with an include line.
+
+fn hardLightChannel(s: f32, d: f32, sa: f32, da: f32) -> f32 {
+	if 2.0 * s <= sa {
+		return s * (1.0 - da) + d * (1.0 - sa) + 2.0 * s * d;
+	}
+	return s * (1.0 - da) + d * (1.0 - sa) + sa * da - 2.0 * (da - d) * (sa - s);
+}
+
+fn softLightChannel(s: f32, d: f32, sa: f32, da: f32) -> f32 {
+	var m = 0.0;
+	if da > 0.0 {
+		m = d / da;
+	}
+	let s2 = 2.0 * s;
+	let m4 = 4.0 * m;
+	let darkSrc = d * (sa + (s2 - sa) * (1.0 - m));
+	let darkDst = (m4 * m4 + m4) * (m - 1.0) + 7.0 * m;
+	let liteDst = sqrt(m) - m;
+	var tail = liteDst;
+	if 4.0 * d <= da {
+		tail = darkDst;
+	}
+	let liteSrc = d * sa + da * (s2 - sa) * tail;
+	var body = liteSrc;
+	if s2 <= sa {
+		body = darkSrc;
+	}
+	return s * (1.0 - da) + d * (1.0 - sa) + body;
+}
+
+fn blendChannel(mode: i32, s: f32, d: f32, sa: f32, da: f32) -> f32 {
+	switch mode {
+	case 15: {
+		return hardLightChannel(d, s, da, sa); // overlay
+	}
+	case 16: {
+		return s + d - max(s * da, d * sa); // darken
+	}
+	case 17: {
+		return s + d - min(s * da, d * sa); // lighten
+	}
+	case 18: { // colorDodge
+		if d == 0.0 {
+			return s * (1.0 - da);
+		}
+		if s == sa {
+			return s + d * (1.0 - sa);
+		}
+		return sa * min(da, d * sa / (sa - s)) + s * (1.0 - da) + d * (1.0 - sa);
+	}
+	case 19: { // colorBurn
+		if d == da {
+			return d + s * (1.0 - da);
+		}
+		if s == 0.0 {
+			return d * (1.0 - sa);
+		}
+		return sa * (da - min(da, (da - d) * sa / s)) + s * (1.0 - da) + d * (1.0 - sa);
+	}
+	case 20: {
+		return hardLightChannel(s, d, sa, da); // hardLight
+	}
+	case 21: {
+		return softLightChannel(s, d, sa, da); // softLight
+	}
+	case 22: {
+		return s + d - 2.0 * min(s * da, d * sa); // difference
+	}
+	case 23: {
+		return s + d - 2.0 * s * d; // exclusion
+	}
+	case 24: {
+		return s * (1.0 - da) + d * (1.0 - sa) + s * d; // multiply
+	}
+	default: {
+		return s + d * (1.0 - sa);
+	}
+	}
+}
+
+fn lum(c: vec3<f32>) -> f32 {
+	return 0.30 * c.r + 0.59 * c.g + 0.11 * c.b;
+}
+
+fn sat(c: vec3<f32>) -> f32 {
+	return max(c.r, max(c.g, c.b)) - min(c.r, min(c.g, c.b));
+}
+
+fn setSat(c: vec3<f32>, s: f32) -> vec3<f32> {
+	let mn = min(c.r, min(c.g, c.b));
+	let mx = max(c.r, max(c.g, c.b));
+	let range = mx - mn;
+	if range == 0.0 {
+		return vec3<f32>(0.0);
+	}
+	return (c - vec3<f32>(mn)) * s / range;
+}
+
+fn setLum(c: vec3<f32>, l: f32) -> vec3<f32> {
+	return c + vec3<f32>(l - lum(c));
+}
+
+fn clipColor(c0: vec3<f32>, a: f32) -> vec3<f32> {
+	var c = c0;
+	let mn = min(c.r, min(c.g, c.b));
+	let mx = max(c.r, max(c.g, c.b));
+	let l = lum(c);
+	if mn < 0.0 {
+		c = vec3<f32>(l) + (c - vec3<f32>(l)) * l / (l - mn);
+	}
+	if mx > a {
+		c = vec3<f32>(l) + (c - vec3<f32>(l)) * (a - l) / (mx - l);
+	}
+	return max(c, vec3<f32>(0.0));
+}
+
+fn blendNonSeparable(mode: i32, s: vec4<f32>, d: vec4<f32>) -> vec4<f32> {
+	let sa = s.a;
+	let da = d.a;
+	var c: vec3<f32>;
+	if mode == 25 { // hue
+		c = s.rgb * sa;
+		c = setSat(c, sat(d.rgb) * sa);
+		c = setLum(c, lum(d.rgb) * sa);
+	} else if mode == 26 { // saturation
+		c = d.rgb * sa;
+		c = setSat(c, sat(s.rgb) * da);
+		c = setLum(c, lum(d.rgb) * sa);
+	} else if mode == 27 { // color
+		c = s.rgb * da;
+		c = setLum(c, lum(d.rgb) * sa);
+	} else { // luminosity
+		c = d.rgb * sa;
+		c = setLum(c, lum(s.rgb) * da);
+	}
+	c = clipColor(c, sa * da);
+	return vec4<f32>(s.rgb * (1.0 - da) + d.rgb * (1.0 - sa) + c, sa + da - sa * da);
+}
+
+// blendPair blends the source s over the destination d with the mode.
+fn blendPair(mode: i32, s: vec4<f32>, d: vec4<f32>) -> vec4<f32> {
+	let sa = s.a;
+	let da = d.a;
+	switch mode {
+	case 0: {
+		return vec4<f32>(0.0);
+	}
+	case 1: {
+		return s;
+	}
+	case 2: {
+		return d;
+	}
+	case 3: {
+		return s + d * (1.0 - sa);
+	}
+	case 4: {
+		return d + s * (1.0 - da);
+	}
+	case 5: {
+		return s * da;
+	}
+	case 6: {
+		return d * sa;
+	}
+	case 7: {
+		return s * (1.0 - da);
+	}
+	case 8: {
+		return d * (1.0 - sa);
+	}
+	case 9: {
+		return s * da + d * (1.0 - sa);
+	}
+	case 10: {
+		return d * sa + s * (1.0 - da);
+	}
+	case 11: {
+		return s * (1.0 - da) + d * (1.0 - sa);
+	}
+	case 12: {
+		return min(s + d, vec4<f32>(1.0));
+	}
+	case 13: {
+		return s * d;
+	}
+	case 14: {
+		return s + d - s * d;
+	}
+	case 25, 26, 27, 28: {
+		return blendNonSeparable(mode, s, d);
+	}
+	default: {
+		// The separable modes defined per channel, whose alpha is that of source-over.
+		return vec4<f32>(
+			blendChannel(mode, s.r, d.r, sa, da),
+			blendChannel(mode, s.g, d.g, sa, da),
+			blendChannel(mode, s.b, d.b, sa, da),
+			sa + da - sa * da);
+	}
+	}
+}
+
+const SHADER_NONE: i32 = 0;
+const SHADER_LINEAR: i32 = 1;
+const SHADER_RADIAL: i32 = 2;
+const SHADER_CONICAL: i32 = 3;
+const SHADER_SWEEP: i32 = 4;
+const SHADER_IMAGE: i32 = 5;
+const SHADER_CONST: i32 = 6;
+
+const MAX_STOPS: i32 = 32;
+const PI: f32 = 3.14159265358979;
+
+// What a draw call's paint sets, the layout of gpu.PaintSpec as float4s (see paintUniform).
+struct Paint {
+	// The shader kind, the tile modes in x and y (0 clamp, 1 repeated, 2 mirror, 3 decal) and
+	// the number of color stops.
+	shader: vec4<f32>,
+	// The matrix from pixels to the shader's space: a, b, c, d, then e, f.
+	xf0: vec4<f32>,
+	xf1: vec4<f32>,
+	// linear: from x, y, dx, dy; radial: center x, y, radius; conical: focal x, y, focal radius;
+	// sweep: center x, y, start, span.
+	p0: vec4<f32>,
+	// linear: 1 / (dx*dx + dy*dy); conical: end center x, y, end radius.
+	p1: vec4<f32>,
+	// The image shader's quality (0 none, 1 low, 2 medium, 3 high) and level.
+	imageInfo: vec4<f32>,
+	// A degenerate gradient: premultiplied color.
+	constColor: vec4<f32>,
+	// Dither (0 or 1), the color filter (0 none, 1 mode, 2 matrix, 3 linear to sRGB, 4 sRGB to
+	// linear), the blend index of a mode filter, and inverted colors (0 or 1).
+	flags: vec4<f32>,
+	// The blend index of a blend that reads the destination (-1: the blend unit does it), and the
+	// pixel of the surface that the copy of the destination starts at.
+	blend: vec4<f32>,
+	// A mode filter's premultiplied color.
+	filterColor: vec4<f32>,
+	// A matrix filter: the columns of the 4x5 matrix in 0 to 255 units.
+	filterMatrix: array<vec4<f32>, 5>,
+	// The gradient's colors (not premultiplied) and positions, four to a float4.
+	rampColor: array<vec4<f32>, 32>,
+	rampPos: array<vec4<f32>, 8>,
+}
+
+@group(0) @binding(2) var<uniform> paint: Paint;
+// The image of an image shader, and a copy of the pixels being drawn over.
+@group(3) @binding(0) var paintImage: texture_2d<f32>;
+@group(3) @binding(1) var dst: texture_2d<f32>;
+
+// ---- gradients
+
+// Applies the tile mode to a position along a gradient; the second component is 0 where the
+// shader draws nothing.
+fn tileT(t: f32, mode: i32) -> vec2<f32> {
+	if mode == 1 {
+		return vec2<f32>(t - floor(t), 1.0);
+	}
+	if mode == 2 {
+		let u = t - 2.0 * floor(t / 2.0);
+		if u > 1.0 {
+			return vec2<f32>(2.0 - u, 1.0);
+		}
+		return vec2<f32>(u, 1.0);
+	}
+	if mode == 3 {
+		if t >= 0.0 && t <= 1.0 {
+			return vec2<f32>(t, 1.0);
+		}
+		return vec2<f32>(t, 0.0);
+	}
+	return vec2<f32>(clamp(t, 0.0, 1.0), 1.0);
+}
+
+fn rampPosAt(i: i32) -> f32 {
+	return paint.rampPos[i >> 2u][i & 3];
+}
+
+// The premultiplied color at t, interpolated without premultiplied alpha.
+fn rampAt(t: f32) -> vec4<f32> {
+	let n = i32(paint.shader.w + 0.5);
+	var i = 0;
+	while i < n && rampPosAt(i) < t {
+		i++;
+	}
+	var c: vec4<f32>;
+	if i == 0 {
+		c = paint.rampColor[0];
+	} else if i >= n {
+		c = paint.rampColor[n - 1];
+	} else {
+		let p0 = rampPosAt(i - 1);
+		let p1 = rampPosAt(i);
+		if p1 <= p0 {
+			c = paint.rampColor[i];
+		} else {
+			c = mix(paint.rampColor[i - 1], paint.rampColor[i], (t - p0) / (p1 - p0));
+		}
+	}
+	c = clamp(c, vec4<f32>(0.0), vec4<f32>(1.0));
+	return vec4<f32>(c.rgb * c.a, c.a);
+}
+
+fn gradientAt(t0: f32) -> vec4<f32> {
+	if t0 != t0 {
+		return vec4<f32>(0.0);
+	}
+	let tt = tileT(t0, i32(paint.shader.y + 0.5));
+	if tt.y == 0.0 {
+		return vec4<f32>(0.0);
+	}
+	return rampAt(tt.x);
+}
+
+// The two-point conical gradient from the focal circle to the end circle: the color at a point
+// is that of the largest t whose circle, which moves and grows from one to the other, goes
+// through the point.
+fn conicalAt(q: vec2<f32>) -> vec4<f32> {
+	let c0 = paint.p0.xy;
+	let r0 = paint.p0.z;
+	let cd = paint.p1.xy - c0;
+	let dr = paint.p1.z - r0;
+	let a = dot(cd, cd) - dr * dr;
+	let p = q - c0;
+	let b = dot(p, cd) + r0 * dr;
+	let c = dot(p, p) - r0 * r0;
+	var t: f32;
+	if abs(a) < 1e-12 {
+		if b == 0.0 {
+			return vec4<f32>(0.0);
+		}
+		t = c / (2.0 * b);
+		if r0 + t * dr < 0.0 {
+			return vec4<f32>(0.0);
+		}
+	} else {
+		let disc = b * b - a * c;
+		if disc < 0.0 {
+			return vec4<f32>(0.0);
+		}
+		let sq = sqrt(disc);
+		var t1 = (b + sq) / a;
+		var t2 = (b - sq) / a;
+		if t1 < t2 {
+			let tmp = t1;
+			t1 = t2;
+			t2 = tmp;
+		}
+		if r0 + t1 * dr >= 0.0 {
+			t = t1;
+		} else if r0 + t2 * dr >= 0.0 {
+			t = t2;
+		} else {
+			return vec4<f32>(0.0);
+		}
+	}
+	return gradientAt(t);
+}
+
+// ---- image shaders
+
+// A texel of the shader's image at a level, with the tile modes applied to the pixel's index;
+// transparent where decal draws nothing.
+fn shaderTexel(p: vec2<i32>, size: vec2<i32>, level: i32) -> vec4<f32> {
+	var x = p.x;
+	var y = p.y;
+	let tileX = i32(paint.shader.y + 0.5);
+	let tileY = i32(paint.shader.z + 0.5);
+	if tileX == 1 {
+		x = ((x % size.x) + size.x) % size.x;
+	} else if tileX == 2 {
+		let m = ((x % (2 * size.x)) + 2 * size.x) % (2 * size.x);
+		if m >= size.x {
+			x = 2 * size.x - 1 - m;
+		} else {
+			x = m;
+		}
+	} else if tileX == 3 {
+		if x < 0 || x >= size.x {
+			return vec4<f32>(0.0);
+		}
+	} else {
+		x = clamp(x, 0, size.x - 1);
+	}
+	if tileY == 1 {
+		y = ((y % size.y) + size.y) % size.y;
+	} else if tileY == 2 {
+		let m = ((y % (2 * size.y)) + 2 * size.y) % (2 * size.y);
+		if m >= size.y {
+			y = 2 * size.y - 1 - m;
+		} else {
+			y = m;
+		}
+	} else if tileY == 3 {
+		if y < 0 || y >= size.y {
+			return vec4<f32>(0.0);
+		}
+	} else {
+		y = clamp(y, 0, size.y - 1);
+	}
+	return textureLoad(paintImage, vec2<i32>(x, y), level);
+}
+
+fn mitchellWeight(x0: f32) -> f32 {
+	let b = 1.0 / 3.0;
+	let c = 1.0 / 3.0;
+	let x = abs(x0);
+	if x < 1.0 {
+		return ((12.0 - 9.0 * b - 6.0 * c) * x * x * x + (-18.0 + 12.0 * b + 6.0 * c) * x * x + (6.0 - 2.0 * b)) / 6.0;
+	}
+	if x < 2.0 {
+		return ((-b - 6.0 * c) * x * x * x + (6.0 * b + 30.0 * c) * x * x + (-12.0 * b - 48.0 * c) * x + (8.0 * b + 24.0 * c)) / 6.0;
+	}
+	return 0.0;
+}
+
+// The shader's image at the point q of its pixels, with the filter quality.
+fn imageShaderAt(q: vec2<f32>) -> vec4<f32> {
+	let base = vec2<i32>(textureDimensions(paintImage, 0));
+	let quality = i32(paint.imageInfo.x + 0.5);
+	let level = i32(paint.imageInfo.y + 0.5);
+	let size = vec2<i32>(textureDimensions(paintImage, level));
+	let uv = q * vec2<f32>(size) / vec2<f32>(base);
+	if quality == 0 {
+		return shaderTexel(vec2<i32>(floor(uv)), size, level);
+	}
+	let f = uv - vec2<f32>(0.5);
+	let f0 = floor(f);
+	let t = f - f0;
+	let i0 = vec2<i32>(f0);
+	if quality == 3 {
+		var sum = vec4<f32>(0.0);
+		for (var j = -1; j <= 2; j++) {
+			let wy = mitchellWeight(f32(j) - t.y);
+			for (var i = -1; i <= 2; i++) {
+				sum += wy * mitchellWeight(f32(i) - t.x) * shaderTexel(i0 + vec2<i32>(i, j), size, level);
+			}
+		}
+		let a = clamp(sum.a, 0.0, 1.0);
+		return vec4<f32>(clamp(sum.rgb, vec3<f32>(0.0), vec3<f32>(a)), a);
+	}
+	let c00 = shaderTexel(i0, size, level);
+	let c10 = shaderTexel(i0 + vec2<i32>(1, 0), size, level);
+	let c01 = shaderTexel(i0 + vec2<i32>(0, 1), size, level);
+	let c11 = shaderTexel(i0 + vec2<i32>(1, 1), size, level);
+	return mix(mix(c00, c10, t.x), mix(c01, c11, t.x), t.y);
+}
+
+// The premultiplied color of the shader at the pixel at p (or, for vertices, at the texture
+// coordinates p).
+fn shaderColor(p: vec2<f32>) -> vec4<f32> {
+	let q = vec2<f32>(
+		paint.xf0.x * p.x + paint.xf0.z * p.y + paint.xf1.x,
+		paint.xf0.y * p.x + paint.xf0.w * p.y + paint.xf1.y);
+	let kind = i32(paint.shader.x + 0.5);
+	if kind == SHADER_LINEAR {
+		return gradientAt(dot(q - paint.p0.xy, paint.p0.zw) * paint.p1.x);
+	}
+	if kind == SHADER_RADIAL {
+		return gradientAt(length(q - paint.p0.xy) / paint.p0.z);
+	}
+	if kind == SHADER_CONICAL {
+		return conicalAt(q);
+	}
+	if kind == SHADER_SWEEP {
+		let d = q - paint.p0.xy;
+		var a = atan2(d.y, d.x) - paint.p0.z;
+		a = a - 2.0 * PI * floor(a / (2.0 * PI));
+		return gradientAt(a / paint.p0.w);
+	}
+	if kind == SHADER_IMAGE {
+		return imageShaderAt(q);
+	}
+	return paint.constColor;
+}
+
+// ---- color filters
+
+fn unpremul(c: vec4<f32>) -> vec4<f32> {
+	if c.a <= 0.0 {
+		return vec4<f32>(0.0);
+	}
+	return vec4<f32>(clamp(c.rgb / c.a, vec3<f32>(0.0), vec3<f32>(1.0)), c.a);
+}
+
+fn premul(c: vec4<f32>) -> vec4<f32> {
+	return vec4<f32>(c.rgb * c.a, c.a);
+}
+
+fn linearToSrgb(v: vec3<f32>) -> vec3<f32> {
+	return select(1.055 * pow(v, vec3<f32>(1.0 / 2.4)) - vec3<f32>(0.055), 12.92 * v, v <= vec3<f32>(0.0031308));
+}
+
+fn srgbToLinear(v: vec3<f32>) -> vec3<f32> {
+	return select(pow((v + vec3<f32>(0.055)) / 1.055, vec3<f32>(2.4)), v / 12.92, v <= vec3<f32>(0.04045));
+}
+
+// The paint's color filter, then its inverted colors.
+fn applyFilters(px0: vec4<f32>) -> vec4<f32> {
+	var px = px0;
+	let kind = i32(paint.flags.y + 0.5);
+	if kind == 1 {
+		px = blendPair(i32(paint.flags.z + 0.5), paint.filterColor, px);
+	} else if kind == 2 {
+		let c = unpremul(px) * 255.0;
+		let o = paint.filterMatrix[0] * c.r + paint.filterMatrix[1] * c.g + paint.filterMatrix[2] * c.b + paint.filterMatrix[3] * c.a + paint.filterMatrix[4];
+		px = premul(clamp(o / 255.0, vec4<f32>(0.0), vec4<f32>(1.0)));
+	} else if kind == 3 {
+		let c = unpremul(px);
+		px = premul(vec4<f32>(linearToSrgb(c.rgb), c.a));
+	} else if kind == 4 {
+		let c = unpremul(px);
+		px = premul(vec4<f32>(srgbToLinear(c.rgb), c.a));
+	}
+	if paint.flags.w != 0.0 {
+		let c = unpremul(px);
+		px = premul(vec4<f32>(vec3<f32>(1.0) - c.rgb, c.a));
+	}
+	return px;
+}
+
+// The source color of a paint at the pixel dev: base is the paint's color, premultiplied, or for
+// a shader its alpha in all four components; p is the point the shader is evaluated at.
+fn paintSource(base: vec4<f32>, p: vec2<f32>) -> vec4<f32> {
+	var c = base;
+	if i32(paint.shader.x + 0.5) != SHADER_NONE {
+		c = shaderColor(p) * base;
+	}
+	return applyFilters(c);
+}
+
+// ---- output
+
+var<private> bayer: array<f32, 64> = array<f32, 64>(
+	0.0, 32.0, 8.0, 40.0, 2.0, 34.0, 10.0, 42.0,
+	48.0, 16.0, 56.0, 24.0, 50.0, 18.0, 58.0, 26.0,
+	12.0, 44.0, 4.0, 36.0, 14.0, 46.0, 6.0, 38.0,
+	60.0, 28.0, 52.0, 20.0, 62.0, 30.0, 54.0, 22.0,
+	3.0, 35.0, 11.0, 43.0, 1.0, 33.0, 9.0, 41.0,
+	51.0, 19.0, 59.0, 27.0, 49.0, 17.0, 57.0, 25.0,
+	15.0, 47.0, 7.0, 39.0, 13.0, 45.0, 5.0, 37.0,
+	63.0, 31.0, 55.0, 23.0, 61.0, 29.0, 53.0, 21.0);
+
+// The ordered dither of gradients: up to half a level of 8 bits either way.
+fn ditherAt(dev: vec2<f32>) -> f32 {
+	let p = vec2<i32>(floor(dev)) & vec2<i32>(7);
+	return ((bayer[p.y * 8 + p.x] + 0.5) / 64.0 - 0.5) / 255.0;
+}
+
+// The pixel of the copy of what is being drawn over at the pixel dev.
+fn destinationAt(dev: vec2<f32>) -> vec4<f32> {
+	return textureLoad(dst, vec2<i32>(floor(dev)) - vec2<i32>(paint.blend.yz), 0);
+}
+
+// The color to write for the source src that covers the pixel by cov: with a fixed-function
+// blend, the source scaled by the coverage; with any other mode, the destination mixed toward
+// the blended color by the coverage.
+fn finish(src: vec4<f32>, cov: f32, dev: vec2<f32>) -> vec4<f32> {
+	var o: vec4<f32>;
+	if paint.blend.x < 0.0 {
+		o = src * cov;
+	} else {
+		let d = destinationAt(dev);
+		o = d + (blendPair(i32(paint.blend.x + 0.5), src, d) - d) * cov;
+	}
+	if paint.flags.x != 0.0 && src.a > 0.0 {
+		o = o + vec4<f32>(ditherAt(dev));
+	}
+	return o;
+}
+
+const PASS_COPY: i32 = 0;
+const PASS_BLUR: i32 = 1;
+const PASS_MORPH: i32 = 2;
+const PASS_MATRIX: i32 = 3;
+const PASS_COLOR: i32 = 4;
+const PASS_DOWN: i32 = 5;
+const PASS_UP: i32 = 6;
+
+// What a pass sets.
+struct Pass {
+	// The pass kind, the axis (0 along x, 1 along y), the tile mode beyond the edges (0 clamp,
+	// 1 repeated, 2 mirror, 3 decal), and 1 for a dilation or 0 for an erosion.
+	kind: vec4<f32>,
+	// The size of the source in pixels, and of the target.
+	sizes: vec4<f32>,
+	// The Gaussian's deviation, the taps on each side of the center, and 1 over the sum of the
+	// weights.
+	blur: vec4<f32>,
+	// Resampling: the source pixels per output pixel in x and y; and the quality of a matrix pass
+	// (0 bilinear, 1 nearest, 2 draws nothing).
+	factor: vec4<f32>,
+	// A matrix pass: from output to source pixels of the surface, a, b, c, d, then e, f and the
+	// surface pixel of the layer's top left corner.
+	mat0: vec4<f32>,
+	mat1: vec4<f32>,
+}
+
+@group(0) @binding(1) var<uniform> params: Pass;
+@group(1) @binding(0) var src: texture_2d<f32>;
+
+struct VertexOutput {
+	@builtin(position) position: vec4<f32>,
+}
+
+@vertex
+fn vs_main(@builtin(vertex_index) index: u32) -> VertexOutput {
+	let p = vec2<f32>(f32((index << 1u) & 2u), f32(index & 2u));
+	var out: VertexOutput;
+	out.position = vec4<f32>(p * 2.0 - 1.0, 0.0, 1.0);
+	return out;
+}
+
+// i modulo m in 0..m-1, also for a negative i.
+fn floorMod(i: i32, m: i32) -> i32 {
+	return i - m * i32(floor(f32(i) / f32(m)));
+}
+
+// The index in 0..n-1 that i stands for under the tile mode; the second component is 0 for
+// transparent.
+fn wrapIndex(i: i32, n: i32, mode: i32) -> vec2<i32> {
+	if mode == 1 {
+		return vec2<i32>(floorMod(i, n), 1);
+	}
+	if mode == 2 {
+		let m = floorMod(i, 2 * n);
+		return vec2<i32>(select(m, 2 * n - 1 - m, m >= n), 1);
+	}
+	if mode == 3 {
+		return vec2<i32>(i, select(0, 1, i >= 0 && i < n));
+	}
+	return vec2<i32>(clamp(i, 0, n - 1), 1);
+}
+
+// The pixel at column x and row y from the top of a texture of the given size.
+fn fetchTop(p: vec2<i32>, size: vec2<i32>, mode: i32) -> vec4<f32> {
+	let x = wrapIndex(p.x, size.x, mode);
+	let y = wrapIndex(p.y, size.y, mode);
+	if x.y == 0 || y.y == 0 {
+		return vec4<f32>(0.0);
+	}
+	return textureLoad(src, vec2<i32>(x.x, y.x), 0);
+}
+
+// The same without tiling: transparent outside.
+fn fetchOrClear(p: vec2<i32>, size: vec2<i32>) -> vec4<f32> {
+	return fetchTop(p, size, 3);
+}
+
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+	let srcSize = vec2<i32>(params.sizes.xy + vec2<f32>(0.5));
+	let q = vec2<i32>(floor(in.position.xy));
+	let kind = i32(params.kind.x + 0.5);
+	let axis = select(vec2<i32>(0, 1), vec2<i32>(1, 0), params.kind.y < 0.5);
+	let tile = i32(params.kind.z + 0.5);
+	let radius = i32(params.blur.y + 0.5);
+	var o = vec4<f32>(0.0);
+
+	if kind == PASS_COPY {
+		o = fetchOrClear(q, srcSize);
+	} else if kind == PASS_BLUR {
+		let k = -0.5 / (params.blur.x * params.blur.x);
+		for (var i = -radius; i <= radius; i++) {
+			o += fetchTop(q + axis * i, srcSize, tile) * exp(f32(i * i) * k);
+		}
+		o *= params.blur.z;
+	} else if kind == PASS_MORPH {
+		let dilate = params.kind.w > 0.5;
+		o = select(vec4<f32>(1.0), vec4<f32>(0.0), dilate);
+		for (var i = -radius; i <= radius; i++) {
+			let c = fetchOrClear(q + axis * i, srcSize);
+			o = select(min(o, c), max(o, c), dilate);
+		}
+	} else if kind == PASS_MATRIX {
+		if params.factor.z < 1.5 {
+			let origin = params.mat1.zw;
+			let dev = origin + vec2<f32>(q) + vec2<f32>(0.5);
+			let s = vec2<f32>(
+				params.mat0.x * dev.x + params.mat0.z * dev.y + params.mat1.x,
+				params.mat0.y * dev.x + params.mat0.w * dev.y + params.mat1.y) - origin;
+			if params.factor.z > 0.5 {
+				o = fetchOrClear(vec2<i32>(floor(s)), srcSize);
+			} else {
+				let f = s - vec2<f32>(0.5);
+				let i0 = vec2<i32>(floor(f));
+				let t = f - vec2<f32>(i0);
+				let top = mix(fetchOrClear(i0, srcSize), fetchOrClear(i0 + vec2<i32>(1, 0), srcSize), t.x);
+				let bot = mix(fetchOrClear(i0 + vec2<i32>(0, 1), srcSize), fetchOrClear(i0 + vec2<i32>(1, 1), srcSize), t.x);
+				o = mix(top, bot, t.y);
+			}
+		}
+	} else if kind == PASS_COLOR {
+		o = clamp(applyFilters(fetchOrClear(q, srcSize)), vec4<f32>(0.0), vec4<f32>(1.0));
+	} else if kind == PASS_DOWN {
+		let f = vec2<i32>(params.factor.xy + vec2<f32>(0.5));
+		for (var j = 0; j < f.y; j++) {
+			for (var i = 0; i < f.x; i++) {
+				o += fetchTop(q * f + vec2<i32>(i, j), srcSize, tile);
+			}
+		}
+		o /= f32(f.x * f.y);
+	} else {
+		// Bilinear, from a picture with texels factor times as large.
+		let f = (vec2<f32>(q) + vec2<f32>(0.5)) / params.factor.xy - vec2<f32>(0.5);
+		let i0 = vec2<i32>(floor(f));
+		let t = f - vec2<f32>(i0);
+		let top = mix(fetchTop(i0, srcSize, 0), fetchTop(i0 + vec2<i32>(1, 0), srcSize, 0), t.x);
+		let bot = mix(fetchTop(i0 + vec2<i32>(0, 1), srcSize, 0), fetchTop(i0 + vec2<i32>(1, 1), srcSize, 0), t.x);
+		o = mix(top, bot, t.y);
+	}
+	return o;
+}
+`,
+	SPIRV: spirvFilter,
+	Entries: []EntryPoint{
+		{Name: "vs_main", Stage: ShaderStageVertex, Bindings: []ShaderBinding{}},
+		{Name: "fs_main", Stage: ShaderStageFragment, Bindings: []ShaderBinding{
+			{Name: "params", Group: 0, Binding: 1, Kind: BindingUniformBuffer},
+			{Name: "paint", Group: 0, Binding: 2, Kind: BindingUniformBuffer},
+			{Name: "src", Group: 1, Binding: 0, Kind: BindingSampledTexture},
+		}},
+	},
+}
+
 //go:embed shaders/image.spv
 var spirvImage []byte
 
@@ -863,9 +1615,8 @@ var spirvLayer []byte
 var ShaderLayer = &Shader{
 	Name: "layer",
 	WGSL: `// A layer composited into its parent: one instance is the rectangle of the layer's pixels that
-// the clip leaves. Ported from the GLES layer shaders (layer.vert.glsl, layer.frag.glsl); the
-// blurred masks of shadows and the filters of a layer come with step 20.6. Draw 6 vertices per
-// instance.
+// the clip leaves. Ported from the GLES layer shaders (layer.vert.glsl, layer.frag.glsl). Draw 6
+// vertices per instance.
 
 // The source color of a paint: a solid color, a gradient or an image shader, then the paint's
 // color filter and inverted colors, and the blend with what is already drawn. Ported from
@@ -1449,6 +2200,91 @@ fn finish(src: vec4<f32>, cov: f32, dev: vec2<f32>) -> vec4<f32> {
 	}
 	return o;
 }
+// The coverage of a rounded rectangle blurred by a Gaussian, in closed form (SPEC §9.1). Ported
+// from gles/shaders/shadow.glsl. Shaders include this file with an include line.
+//
+// Across a row of the rectangle, the blur of an interval of columns is a difference of two
+// normal distribution functions. Down the rows the Gaussian is integrated: exactly where the
+// rows do not change (the straight part of the sides), and by a sum of samples over the rows of
+// the rounded corners.
+
+// The error function (Abramowitz and Stegun 7.1.26, error below 1.5e-7).
+fn erfApprox(x0: f32) -> f32 {
+	let s = select(1.0, -1.0, x0 < 0.0);
+	let x = abs(x0);
+	let t = 1.0 / (1.0 + 0.3275911 * x);
+	let y = 1.0 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * exp(-x * x);
+	return s * y;
+}
+
+// The normal distribution function.
+fn normalCdf(x: f32) -> f32 {
+	return 0.5 + 0.5 * erfApprox(x * 0.7071067811865476);
+}
+
+// How far a corner of radii rad pulls the side in at the row y, with y measured from the center
+// of the rectangle: top is true for the corners at the top.
+fn cornerInset(rad: vec2<f32>, y: f32, hy: f32, top: bool) -> f32 {
+	if rad.y <= 0.0 || rad.x <= 0.0 {
+		return 0.0;
+	}
+	let cy = select(hy - rad.y, -hy + rad.y, top);
+	let t = select((y - cy) / rad.y, (cy - y) / rad.y, top);
+	if t <= 0.0 {
+		return 0.0;
+	}
+	return rad.x * (1.0 - sqrt(max(1.0 - t * t, 0.0)));
+}
+
+// The weight of the rows of a corner zone, [y0, y1] from the center, as seen from the pixel at p:
+// the sum over the rows of the Gaussian times the columns' share.
+fn zoneMass(y0: f32, y1: f32, p: vec2<f32>, h: vec2<f32>, r1: vec4<f32>, r2: vec4<f32>, sigma: f32, top: bool) -> f32 {
+	let a = max(y0, p.y - 4.0 * sigma);
+	let b = min(y1, p.y + 4.0 * sigma);
+	if b <= a {
+		return 0.0;
+	}
+	let dv = (b - a) / 16.0;
+	var sum = 0.0;
+	for (var i = 0; i < 16; i++) {
+		let y = a + (f32(i) + 0.5) * dv;
+		let l = -h.x + cornerInset(select(r2.zw, r1.xy, top), y, h.y, top);
+		let r = h.x - cornerInset(select(r2.xy, r1.zw, top), y, h.y, top);
+		let w = exp(-0.5 * (y - p.y) * (y - p.y) / (sigma * sigma));
+		sum += w * max(normalCdf((r - p.x) / sigma) - normalCdf((l - p.x) / sigma), 0.0);
+	}
+	return sum * dv / (sigma * 2.5066282746310002);
+}
+
+// The blurred coverage at the pixel whose position from the rectangle's center is p.
+fn blurredRRect(p: vec2<f32>, h: vec2<f32>, r1: vec4<f32>, r2: vec4<f32>, sigma: f32) -> f32 {
+	let topH = max(r1.y, r1.w);
+	let botH = max(r2.y, r2.w);
+	var mass = zoneMass(-h.y, -h.y + topH, p, h, r1, r2, sigma, true);
+	mass += zoneMass(h.y - botH, h.y, p, h, r1, r2, sigma, false);
+	let m0 = -h.y + topH;
+	let m1 = h.y - botH;
+	if m1 > m0 {
+		let rows = normalCdf((m1 - p.y) / sigma) - normalCdf((m0 - p.y) / sigma);
+		let cols = normalCdf((h.x - p.x) / sigma) - normalCdf((-h.x - p.x) / sigma);
+		mass += rows * cols;
+	}
+	return clamp(mass, 0.0, 1.0);
+}
+
+// The coverage of a blur style, from the blurred coverage b and the shape's own o.
+fn blurStyle(style: i32, b: f32, o: f32) -> f32 {
+	if style == 1 {
+		return o + b * (1.0 - o); // solid
+	}
+	if style == 2 {
+		return b * (1.0 - o); // outer
+	}
+	if style == 3 {
+		return b * o; // inner
+	}
+	return b; // normal
+}
 
 struct Frame {
 	// The size of the texture being drawn into, in pixels.
@@ -1458,10 +2294,14 @@ struct Frame {
 }
 
 // What a draw call sets: the clip mask's rectangle in the surface (x, y, width, height; a width
-// of 0 means none), and the layer's pixels in the surface (x, y, width, height).
+// of 0 means none), the layer's pixels in the surface (x, y, width, height), and how the pixels
+// are read: the mask style (-1: the layer's pixels are composited; else the layer's alpha is the
+// coverage of a blurred shape, a blur style, that the paint's color fills) and drawnOnly (1:
+// pixels with no alpha are left as they are).
 struct Draw {
 	clipMask: vec4<f32>,
 	layerRect: vec4<f32>,
+	read: vec4<f32>,
 }
 
 @group(0) @binding(0) var<uniform> frame: Frame;
@@ -1469,6 +2309,8 @@ struct Draw {
 @group(1) @binding(0) var clipMask: texture_2d<f32>;
 // The layer's pixels, premultiplied.
 @group(2) @binding(0) var layer: texture_2d<f32>;
+// The layer before it was blurred, for a mask style other than normal.
+@group(2) @binding(1) var layerOwn: texture_2d<f32>;
 
 struct Instance {
 	@location(0) quad: vec4<f32>,  // left, top, right, bottom in pixels
@@ -1528,6 +2370,21 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 	}
 	let p = vec2<i32>(floor(dev - draw.layerRect.xy));
 	let texel = textureLoad(layer, p, 0);
+	if draw.read.y != 0.0 && texel.a <= 0.0 {
+		discard;
+	}
+	let style = i32(draw.read.x);
+	if style >= 0 {
+		var own = 0.0;
+		if style != 0 {
+			own = textureLoad(layerOwn, p, 0).a;
+		}
+		let cov = blurStyle(style, texel.a, own) * coverage;
+		if cov < 1.0 / 1024.0 {
+			discard;
+		}
+		return finish(paintSource(in.color, dev), cov, dev);
+	}
 	let color = applyFilters(texel * in.color);
 	return finish(color, coverage, dev);
 }
@@ -1542,6 +2399,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 			{Name: "paint", Group: 0, Binding: 2, Kind: BindingUniformBuffer},
 			{Name: "clipMask", Group: 1, Binding: 0, Kind: BindingSampledTexture},
 			{Name: "layer", Group: 2, Binding: 0, Kind: BindingSampledTexture},
+			{Name: "layerOwn", Group: 2, Binding: 1, Kind: BindingSampledTexture},
+			{Name: "paintImage", Group: 3, Binding: 0, Kind: BindingSampledTexture},
 			{Name: "dst", Group: 3, Binding: 1, Kind: BindingSampledTexture},
 		}},
 	},
@@ -2847,6 +3706,91 @@ fn finish(src: vec4<f32>, cov: f32, dev: vec2<f32>) -> vec4<f32> {
 	}
 	return o;
 }
+// The coverage of a rounded rectangle blurred by a Gaussian, in closed form (SPEC §9.1). Ported
+// from gles/shaders/shadow.glsl. Shaders include this file with an include line.
+//
+// Across a row of the rectangle, the blur of an interval of columns is a difference of two
+// normal distribution functions. Down the rows the Gaussian is integrated: exactly where the
+// rows do not change (the straight part of the sides), and by a sum of samples over the rows of
+// the rounded corners.
+
+// The error function (Abramowitz and Stegun 7.1.26, error below 1.5e-7).
+fn erfApprox(x0: f32) -> f32 {
+	let s = select(1.0, -1.0, x0 < 0.0);
+	let x = abs(x0);
+	let t = 1.0 / (1.0 + 0.3275911 * x);
+	let y = 1.0 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * exp(-x * x);
+	return s * y;
+}
+
+// The normal distribution function.
+fn normalCdf(x: f32) -> f32 {
+	return 0.5 + 0.5 * erfApprox(x * 0.7071067811865476);
+}
+
+// How far a corner of radii rad pulls the side in at the row y, with y measured from the center
+// of the rectangle: top is true for the corners at the top.
+fn cornerInset(rad: vec2<f32>, y: f32, hy: f32, top: bool) -> f32 {
+	if rad.y <= 0.0 || rad.x <= 0.0 {
+		return 0.0;
+	}
+	let cy = select(hy - rad.y, -hy + rad.y, top);
+	let t = select((y - cy) / rad.y, (cy - y) / rad.y, top);
+	if t <= 0.0 {
+		return 0.0;
+	}
+	return rad.x * (1.0 - sqrt(max(1.0 - t * t, 0.0)));
+}
+
+// The weight of the rows of a corner zone, [y0, y1] from the center, as seen from the pixel at p:
+// the sum over the rows of the Gaussian times the columns' share.
+fn zoneMass(y0: f32, y1: f32, p: vec2<f32>, h: vec2<f32>, r1: vec4<f32>, r2: vec4<f32>, sigma: f32, top: bool) -> f32 {
+	let a = max(y0, p.y - 4.0 * sigma);
+	let b = min(y1, p.y + 4.0 * sigma);
+	if b <= a {
+		return 0.0;
+	}
+	let dv = (b - a) / 16.0;
+	var sum = 0.0;
+	for (var i = 0; i < 16; i++) {
+		let y = a + (f32(i) + 0.5) * dv;
+		let l = -h.x + cornerInset(select(r2.zw, r1.xy, top), y, h.y, top);
+		let r = h.x - cornerInset(select(r2.xy, r1.zw, top), y, h.y, top);
+		let w = exp(-0.5 * (y - p.y) * (y - p.y) / (sigma * sigma));
+		sum += w * max(normalCdf((r - p.x) / sigma) - normalCdf((l - p.x) / sigma), 0.0);
+	}
+	return sum * dv / (sigma * 2.5066282746310002);
+}
+
+// The blurred coverage at the pixel whose position from the rectangle's center is p.
+fn blurredRRect(p: vec2<f32>, h: vec2<f32>, r1: vec4<f32>, r2: vec4<f32>, sigma: f32) -> f32 {
+	let topH = max(r1.y, r1.w);
+	let botH = max(r2.y, r2.w);
+	var mass = zoneMass(-h.y, -h.y + topH, p, h, r1, r2, sigma, true);
+	mass += zoneMass(h.y - botH, h.y, p, h, r1, r2, sigma, false);
+	let m0 = -h.y + topH;
+	let m1 = h.y - botH;
+	if m1 > m0 {
+		let rows = normalCdf((m1 - p.y) / sigma) - normalCdf((m0 - p.y) / sigma);
+		let cols = normalCdf((h.x - p.x) / sigma) - normalCdf((-h.x - p.x) / sigma);
+		mass += rows * cols;
+	}
+	return clamp(mass, 0.0, 1.0);
+}
+
+// The coverage of a blur style, from the blurred coverage b and the shape's own o.
+fn blurStyle(style: i32, b: f32, o: f32) -> f32 {
+	if style == 1 {
+		return o + b * (1.0 - o); // solid
+	}
+	if style == 2 {
+		return b * (1.0 - o); // outer
+	}
+	if style == 3 {
+		return b * o; // inner
+	}
+	return b; // normal
+}
 
 struct Frame {
 	// The size of the texture being drawn into, in pixels.
@@ -2908,6 +3852,7 @@ const KIND_SEGMENT: i32 = 2; // a line segment with caps, or a dot
 const KIND_FILL: i32 = 3;    // every pixel
 const KIND_BOX: i32 = 4;     // an axis-aligned rectangle in pixels, minus shape B, by exact area
 const KIND_OUTLINE: i32 = 5; // every point within a half width of a rounded rectangle's outline
+const KIND_SHADOW: i32 = 6;  // a rounded rectangle in pixels blurred by a Gaussian, see shadow.wgsl.inc
 
 // The flags (gpu.ShapeFlag*).
 const FLAG_HAS_B: i32 = 1;
@@ -3088,6 +4033,17 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 		if hasB {
 			boxCov -= boxCoverage(dev, in.b, antialias);
 		}
+	} else if kind == KIND_SHADOW {
+		// Shape A is in pixels: center, half extents and radii. param holds the deviation of
+		// the blur in pixels and the blur style.
+		let c = dev - in.a.xy;
+		let blurred = blurredRRect(c, in.a.zw, in.arad1, in.arad2, in.param.x);
+		let style = i32(in.param.y + 0.5);
+		var own = 0.0;
+		if style != 0 {
+			own = clamp(0.5 - rrectDistance(c, in.a.zw, in.arad1, in.arad2), 0.0, 1.0);
+		}
+		boxCov = blurStyle(style, blurred, own);
 	} else if kind == KIND_RRECT {
 		d = rrectDistance(p - in.a.xy, in.a.zw, in.arad1, in.arad2);
 		if hasB {
@@ -3106,7 +4062,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 	let g = length(vec2<f32>(dpdx(d), dpdy(d)));
 
 	var coverage: f32;
-	if kind == KIND_BOX {
+	if kind == KIND_BOX || kind == KIND_SHADOW {
 		coverage = boxCov;
 	} else if !antialias {
 		coverage = select(0.0, 1.0, d <= 0.0);
@@ -3126,7 +4082,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 		coverage = clamp(0.5 - pixels, 0.0, 1.0);
 	}
 	let total = coverage * clipCoverage;
-	if total <= 0.0 {
+	if total <= 0.0 || (kind == KIND_SHADOW && total < 1.0 / 1024.0) {
 		discard;
 	}
 	return finish(paintSource(in.color, dev), total, dev);

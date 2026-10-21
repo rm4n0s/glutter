@@ -128,7 +128,7 @@ type layerKeep struct {
 func (f *frame) drawCached(key callKey, floats []float32) {
 	key.pipe, key.op = pipeLayer, opDrawCached
 	first := f.items(pipeLayer)
-	f.calls = append(f.calls, drawCall{callKey: key, first: first, count: 1, rect: key.cache.rect})
+	f.calls = append(f.calls, drawCall{callKey: key, first: first, count: 1, rect: key.cache.Rect})
 	f.data[pipeLayer] = append(f.data[pipeLayer], floats...)
 }
 

@@ -20,6 +20,11 @@ type RendererOpts struct {
 	// Damage tells the compositor which part of a window changed in each frame, when
 	// the device can (SPEC §9.1 "Damage", §9.4).
 	Damage bool
+	// RasterCacheAfter turns on the raster cache: a layer that a scene retains (it is in this
+	// many consecutive scenes) is drawn into a texture that later frames draw instead of its
+	// contents (SPEC §9.1 "Raster cache"). Zero, the default, keeps nothing. The engine sets 3:
+	// the layer of a RepaintBoundary that the framework did not repaint for three frames.
+	RasterCacheAfter int
 	// SkipUnsupported makes Draw leave out what the renderer cannot draw yet, and count
 	// it in LastFrame, instead of failing with GPUNotImplemented. The development
 	// examples use it to show what works.
@@ -29,10 +34,9 @@ type RendererOpts struct {
 // Renderer is the renderer for the explicit APIs (SPEC §9.3): the engine's renderer on
 // Vulkan and WebGPU. Each window has a swapchain and an offscreen frame texture; a frame
 // is drawn into the frame texture, then blitted into the swapchain image and presented.
-// It draws the analytic shapes (rectangles, rounded rectangles, ovals, circles, lines,
-// points and the like) of a scene, cut to rectangle clips, in solid colors with the blend
-// modes of the blend unit (step 20.3); the rest of SPEC §9.1 arrives with steps 20.4 to
-// 20.6.
+// It draws everything the GLES renderer draws (SPEC §9.1): shapes, paths, clips, images, text,
+// gradients, color filters, blend modes, layers, blurs, shadows and image filters, with the raster
+// cache and damage tracking, and snapshots without a window (step 20.6).
 //
 // The device is opened at the first frame, with the handle of the first window, because
 // the choice of a Vulkan device depends on the window.
@@ -57,6 +61,10 @@ type Renderer struct {
 	// pixels under a draw that blends in the shader.
 	layerPool []*pooledTexture
 	dst       Texture
+	// filter is the pipeline of the image filter passes, made when first needed, and cache the
+	// raster cache, nil when RendererOpts.RasterCacheAfter is 0.
+	filter Pipeline
+	cache  *gpu.LayerCache[Texture]
 	// slots are the buffers of the frames in flight: the frame with number n uses slot
 	// n % FramesInFlight, which the device has finished with when Begin returns.
 	slots   [FramesInFlight]frameSlot
@@ -83,6 +91,9 @@ func NewRenderer(open func(gpu.SurfaceHandle) (Device, error), opts ...RendererO
 	r := &Renderer{open: open, blit: map[TextureFormat]Pipeline{}, pipes: map[pipeKey]Pipeline{}, windows: map[gpu.SurfaceHandle]*window{}}
 	if len(opts) == 1 {
 		r.opts = opts[0]
+		if r.opts.RasterCacheAfter > 0 {
+			r.cache = gpu.NewLayerCache[Texture](r.opts.RasterCacheAfter)
+		}
 	}
 	return r
 }
@@ -159,7 +170,7 @@ func (r *Renderer) Draw(h gpu.SurfaceHandle, width, height int, scene *ui.Scene,
 			r.sweepLayers()
 		}
 	}()
-	fb, err := r.build(scene, width, height)
+	fb, err := r.build(scene, width, height, true)
 	if err != nil {
 		w.tracker.Invalidate()
 		return nil, err
@@ -168,6 +179,9 @@ func (r *Renderer) Draw(h gpu.SurfaceHandle, width, height int, scene *ui.Scene,
 	if err != nil {
 		w.tracker.Invalidate()
 		return nil, err
+	}
+	if r.cache != nil {
+		r.cache.EndFrame(r.releaseLayer)
 	}
 	return img, nil
 }
@@ -234,6 +248,13 @@ func (r *Renderer) frame(w *window, fb *frameBuilder, width, height int, scene *
 		enc.ReadTexture(w.frame, image.Rect(0, 0, width, height), func(i *image.RGBA, _ error) { shot = i })
 	}
 	damage := r.damage(w, scene, width, height)
+	r.last.DamagedPixels, r.last.DamageRects = width*height, 0
+	if r.opts.Damage && damage != nil {
+		r.last.DamagedPixels, r.last.DamageRects = 0, len(damage)
+		for _, rc := range damage {
+			r.last.DamagedPixels += rc.Dx() * rc.Dy()
+		}
+	}
 	if err := enc.Submit(); err != nil {
 		return nil, err
 	}
@@ -265,7 +286,7 @@ func (r *Renderer) damage(w *window, scene *ui.Scene, width, height int) []image
 // build flattens the scene and makes its instances, and the textures they need. It fails with
 // GPUNotImplemented for a feature the renderer cannot draw, unless SkipUnsupported is set, and
 // records what the frame is in LastFrame.
-func (r *Renderer) build(scene *ui.Scene, width, height int) (*frameBuilder, error) {
+func (r *Renderer) build(scene *ui.Scene, width, height int, useCache bool) (*frameBuilder, error) {
 	r.last = FrameStats{}
 	if r.res == nil {
 		res, err := newResources(r.dev)
@@ -278,7 +299,13 @@ func (r *Renderer) build(scene *ui.Scene, width, height int) (*frameBuilder, err
 	tiles0, clips0, images0 := r.res.masks.Rasterized, r.res.clipMasksBuilt, r.res.imagesUploaded
 	fb := &frameBuilder{w: width, h: height, skip: r.opts.SkipUnsupported, res: r.res}
 	if scene != nil {
-		list, err := gpu.Flatten(scene, gpu.FlattenOpts{Bounds: ui.NewRectFromLTWH(0, 0, float64(width), float64(height))})
+		fo := gpu.FlattenOpts{Bounds: ui.NewRectFromLTWH(0, 0, float64(width), float64(height))}
+		if useCache && r.cache != nil {
+			fb.cache = r.cache
+			r.cache.BeginFrame(scene.Root())
+			fo.Boundary = r.cache.Boundary
+		}
+		list, err := gpu.Flatten(scene, fo)
 		if err != nil {
 			return nil, err
 		}
@@ -357,6 +384,12 @@ func (r *Renderer) Close() {
 		p.Destroy()
 	}
 	r.destroyPools()
+	if r.cache != nil {
+		r.cache.Release(func(t Texture) { t.Destroy() })
+	}
+	if r.filter != nil {
+		r.filter.Destroy()
+	}
 	if r.res != nil {
 		r.res.release()
 	}

@@ -34,6 +34,14 @@ type FrameStats struct {
 	// earlier frame's cache could have saved: coverage tiles rasterized, clip masks made and
 	// images uploaded.
 	TilesRasterized, ClipMasksBuilt, ImagesUploaded int
+	// CachedLayersMade is the number of layers drawn into a texture that the raster cache keeps,
+	// and CachedLayersDrawn the number drawn from such a texture instead of from their contents
+	// (SPEC §9.1 "Raster cache").
+	CachedLayersMade, CachedLayersDrawn int
+	// DamagedPixels is the number of pixels the frame told the compositor to update, and
+	// DamageRects the number of rectangles they were in: the whole window and 0 when the frame
+	// was presented whole (SPEC §9.1 "Damage").
+	DamagedPixels, DamageRects int
 	// Unsupported lists the features that caused skipped commands, once each.
 	Unsupported []string
 }
@@ -71,6 +79,7 @@ const (
 	opDraw       callOp = iota // draws items of its pipeline
 	opBeginLayer               // starts drawing into a new layer, see drawCall.rect
 	opComposite                // ends the innermost layer and draws it into its parent, as one item of pipeLayer
+	opDrawCached               // draws the texture of a layer of the raster cache, as one item of pipeLayer
 )
 
 // callKey is what two draws must share to be one draw call.
@@ -90,6 +99,12 @@ type callKey struct {
 	// seq is not 0 for a call that must not be merged with any other: one that reads the pixels
 	// under it.
 	seq int
+	// eff is what a layer does besides compositing, for opBeginLayer and opComposite; cache is the
+	// layer that opDrawCached draws, and keep says that the layer an opComposite draws is kept in
+	// the raster cache.
+	eff   *effect
+	cache *layerEntry
+	keep  *layerKeep
 }
 
 // drawCall is a run of items drawn with one state.
@@ -110,6 +125,8 @@ type frameBuilder struct {
 	w, h int
 	skip bool // unsupported commands are skipped and counted instead of failing
 	res  *resources
+	// cache is the raster cache while the frame is of a window, else nil.
+	cache *gpu.LayerCache[Texture]
 
 	data  [numPipes][]float32
 	calls []drawCall
@@ -231,13 +248,8 @@ func (b *frameBuilder) draw(c gpu.Command) (bool, error) {
 		return true, nil
 	}
 	p := gpu.PaintOf(c.Op)
-	if p != nil {
-		switch {
-		case p.ImageFilter() != nil:
-			return false, b.unsupported("image filter")
-		case p.MaskFilter() != nil:
-			return false, b.unsupported("mask filter")
-		}
+	if q, with := gpu.PaintAccess(c.Op); q != nil && q.ImageFilter() != nil {
+		return b.filteredDraw(c, q, with)
 	}
 	sc := &shapeContext{b: b, c: c, t: gpu.AffineOf(&c.Transform), outer: outer}
 	cb := c.Clip.Bounds
@@ -253,11 +265,19 @@ func (b *frameBuilder) draw(c gpu.Command) (bool, error) {
 		sc.mask = mask
 	}
 
+	if q, with := gpu.PaintAccess(c.Op); q != nil && q.MaskFilter() != nil {
+		if handled, ok, err := sc.maskFiltered(q, with); handled {
+			return ok, err
+		}
+	}
+
 	var (
 		ok  bool
 		err error
 	)
 	switch v := c.Op.(type) {
+	case ui.OpDrawShadow:
+		ok, err = sc.shadow(v)
 	case ui.OpDrawRect:
 		ok, err = sc.shape(&v.Paint, func(e *gpu.ShapeEncoder) string { return e.RRect(v.Rect, [4]ui.Radius{}, &v.Paint) })
 	case ui.OpDrawRRect:

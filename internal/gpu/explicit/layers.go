@@ -11,8 +11,9 @@ import (
 // Layers (SPEC §9.1): a SaveLayer, an opacity or color filter layer, and a clip layer that smooths
 // its edge as a whole, are drawn into an offscreen texture that covers the rectangle of the surface
 // they can touch, and composited into the layer under them with their alpha, color filter and blend
-// mode. The textures are pooled. Ported from gles/layers.go; the layers that are filtered when
-// composited (image filters, backdrop filters, shader masks and blurred masks) come with step 20.6.
+// mode. The textures are pooled. A layer can also be filtered when it is composited (image filters,
+// effects.go), start as a blurred copy of what is under it (a backdrop filter), or get a shader
+// painted over it (a shader mask). Ported from gles/layers.go.
 
 // layerRec is a layer that is being drawn.
 type layerRec struct {
@@ -22,6 +23,42 @@ type layerRec struct {
 	cmd gpu.Command
 	// info is the paint the layer is composited with.
 	info paintInfo
+	// filter filters the layer's pixels when it is composited, under the transform ctm; tile is
+	// the mode a blur without one gets.
+	filter ui.ImageFilter
+	ctm    gpu.Affine2D
+	tile   ui.TileMode
+	// blur makes the layer's alpha the coverage of a blurred shape.
+	blur *maskBlur
+	// drawnOnly, backdrop and shaderMask are the effect fields of the same name.
+	drawnOnly  bool
+	backdrop   []gpu.FilterPass
+	isBackdrop bool
+	shaderMask *ui.ShaderMaskLayer
+	// boundary is the layer of a group that the raster cache may keep (a layer that
+	// gpu.FlattenOpts.Boundary made a group), and cacheKey its key at the top level.
+	boundary ui.Layer
+	cacheKey gpu.LayerKey
+	keyed    bool
+}
+
+// layerKeep says that a layer's pixels are kept in the raster cache for the layer under the key.
+type layerKeep struct {
+	layer ui.Layer
+	key   gpu.LayerKey
+}
+
+// layerEntry is a layer of the raster cache.
+type layerEntry = gpu.LayerEntry[Texture]
+
+// pushLayer starts drawing a layer.
+func (b *frameBuilder) pushLayer(rec *layerRec) {
+	b.layers = append(b.layers, rec)
+	var eff *effect
+	if rec.isBackdrop {
+		eff = &effect{backdrop: true, passes: rec.backdrop, mask: -1}
+	}
+	b.calls = append(b.calls, drawCall{callKey: callKey{op: opBeginLayer, eff: eff}, rect: rec.rect})
 }
 
 // beginLayer starts a group. A group that cannot be drawn is skipped (skipping is set, and
@@ -46,9 +83,8 @@ func (b *frameBuilder) beginLayer(c gpu.Command) error {
 		if v.HasBounds {
 			rect = rect.Intersect(deviceBounds(&c.Transform, v.Bounds))
 		}
-		if v.Paint.ImageFilter() != nil {
-			b.skipping = 1
-			return b.unsupported("image filter")
+		if f := v.Paint.ImageFilter(); f != nil {
+			rec.filter, rec.ctm, rec.tile = f, ctx.t, ui.TileModeClamp
 		}
 	default:
 		switch v := c.Layer.(type) {
@@ -59,16 +95,29 @@ func (b *frameBuilder) beginLayer(c gpu.Command) error {
 			sp.SetColorFilter(v.Filter, false)
 			rec.info.color = [4]float32{1, 1, 1, 1}
 		case *ui.ImageFilterLayer:
-			b.skipping = 1
-			return b.unsupported("image filter")
-		case *ui.BackdropFilterLayer:
-			b.skipping = 1
-			return b.unsupported("backdrop filter")
-		case *ui.ShaderMaskLayer:
-			b.skipping = 1
-			return b.unsupported("shader mask")
-		case *ui.ClipRectLayer, *ui.ClipRRectLayer, *ui.ClipRSuperellipseLayer, *ui.ClipPathLayer, *ui.TransformLayer, *ui.ContainerLayer:
 			rec.info.color = [4]float32{1, 1, 1, 1}
+			if v.Filter != nil {
+				rec.filter, rec.ctm, rec.tile = v.Filter, gpu.Translation(v.Offset.Dx, v.Offset.Dy).Then(ctx.t), ui.TileModeDecal
+			}
+		case *ui.BackdropFilterLayer:
+			rec.info.color = [4]float32{1, 1, 1, 1}
+			if !b.setBlend(&rec.info, &sp, v.BlendMode) {
+				b.skipping = 1
+				return b.unsupported("blend mode " + v.BlendMode.String())
+			}
+			rec.isBackdrop = true
+			if v.Filter != nil {
+				rec.filter, rec.ctm, rec.tile = v.Filter, ctx.t, ui.TileModeMirror
+			}
+		case *ui.ShaderMaskLayer:
+			rec.info.color = [4]float32{1, 1, 1, 1}
+			rec.shaderMask = v
+		case *ui.ClipRectLayer, *ui.ClipRRectLayer, *ui.ClipRSuperellipseLayer, *ui.ClipPathLayer:
+			rec.info.color = [4]float32{1, 1, 1, 1}
+		case *ui.TransformLayer, *ui.ContainerLayer:
+			// A group that the raster cache asked for.
+			rec.info.color = [4]float32{1, 1, 1, 1}
+			rec.boundary = c.Layer
 		default:
 			b.skipping = 1
 			return b.unsupported("layer " + fmt.Sprintf("%T", c.Layer))
@@ -79,13 +128,36 @@ func (b *frameBuilder) beginLayer(c gpu.Command) error {
 		rec.info.aa = true
 		rec.info.spec = b.intern(sp)
 	}
+	if rec.filter != nil {
+		if _, ok := gpu.FilterPasses(rec.filter, rec.ctm, rec.tile, 1, 1); !ok {
+			b.skipping = 1
+			return b.unsupported(fmt.Sprintf("image filter %T", rec.filter))
+		}
+	}
 	if rect.Empty() {
 		b.culled = 1
 		return nil
 	}
 	rec.rect = rect
-	b.layers = append(b.layers, rec)
-	b.calls = append(b.calls, drawCall{callKey: callKey{op: opBeginLayer}, rect: rect})
+	if rec.boundary != nil && b.cache != nil && len(b.layers) == 0 {
+		k := gpu.LayerKeyOf(&c.Transform, rect)
+		if e := b.cache.Lookup(rec.boundary, k); e != nil {
+			// The layer's pixels are there: draw them, and drop what is inside.
+			b.stats.CachedLayersDrawn++
+			b.culled = 1
+			return b.composite(rec, e)
+		}
+		rec.cacheKey, rec.keyed = k, true
+	}
+	if rec.isBackdrop {
+		// The backdrop is the copy of the pixels under the layer, filtered.
+		rec.backdrop, _ = gpu.FilterPasses(rec.filter, rec.ctm, rec.tile, rect.Dx(), rect.Dy())
+		if len(rec.backdrop) == 0 {
+			rec.backdrop = []gpu.FilterPass{{Kind: gpu.PassCopy, OutW: rect.Dx(), OutH: rect.Dy()}}
+		}
+		rec.filter = nil
+	}
+	b.pushLayer(rec)
 	return nil
 }
 
@@ -98,12 +170,18 @@ func deviceBounds(m *ui.Matrix4, r ui.Rect) image.Rectangle {
 // endLayer ends the innermost layer, and composites it into the one under it.
 func (b *frameBuilder) endLayer() error {
 	rec := b.layers[len(b.layers)-1]
+	if rec.shaderMask != nil {
+		if err := b.shaderMaskFill(rec); err != nil {
+			return err
+		}
+	}
 	b.layers = b.layers[:len(b.layers)-1]
-	return b.composite(rec)
+	return b.composite(rec, nil)
 }
 
-// composite draws the layer into the one under it.
-func (b *frameBuilder) composite(rec *layerRec) error {
+// composite draws the layer into the one under it: from the texture it was drawn into, or from
+// the pixels of the raster cache's entry.
+func (b *frameBuilder) composite(rec *layerRec, cached *layerEntry) error {
 	c := rec.cmd
 	var in [12]float32
 	region := rec.rect
@@ -121,9 +199,17 @@ func (b *frameBuilder) composite(rec *layerRec) error {
 	region = region.Intersect(gpu.PixelRect(c.Clip.Bounds)).Intersect(image.Rect(0, 0, b.w, b.h)).Intersect(b.target())
 	key := callKey{op: opComposite, pipe: pipeLayer, blend: rec.info.blend, scissor: region, clip: mask, spec: rec.info.spec}
 	if region.Empty() {
+		if cached != nil {
+			return nil
+		}
 		// Nothing of the layer shows: it is only taken off the stack.
 		b.calls = append(b.calls, drawCall{callKey: key, count: 0, rect: rec.rect})
 		return nil
+	}
+	key.eff = b.layerEffect(rec)
+	if rec.keyed && cached == nil && len(b.layers) == 0 {
+		key.keep = &layerKeep{layer: rec.boundary, key: rec.cacheKey}
+		b.stats.CachedLayersMade++
 	}
 	in[0], in[1], in[2], in[3] = float32(region.Min.X), float32(region.Min.Y), float32(region.Max.X), float32(region.Max.Y)
 	copy(in[4:8], rec.info.color[:])
@@ -133,8 +219,33 @@ func (b *frameBuilder) composite(rec *layerRec) error {
 		b.seq++
 		key.seq = b.seq
 	}
+	if cached != nil {
+		key.op, key.cache = opDrawCached, cached
+		rect := cached.Rect
+		first := b.items(pipeLayer)
+		b.calls = append(b.calls, drawCall{callKey: key, first: first, count: 1, rect: rect})
+		b.data[pipeLayer] = append(b.data[pipeLayer], in[:]...)
+		return nil
+	}
 	first := b.items(pipeLayer)
 	b.calls = append(b.calls, drawCall{callKey: key, first: first, count: 1, rect: rec.rect})
 	b.data[pipeLayer] = append(b.data[pipeLayer], in[:]...)
 	return nil
+}
+
+// layerEffect is what the composite of a layer does besides drawing its pixels.
+func (b *frameBuilder) layerEffect(rec *layerRec) *effect {
+	w, h := rec.rect.Dx(), rec.rect.Dy()
+	eff := &effect{mask: -1, drawnOnly: rec.drawnOnly}
+	switch {
+	case rec.blur != nil:
+		eff.passes = gpu.BlurPasses(rec.blur.sigma, rec.blur.sigma, ui.TileModeDecal, w, h)
+		eff.mask = rec.blur.style
+	case rec.filter != nil:
+		eff.passes, _ = gpu.FilterPasses(rec.filter, rec.ctm, rec.tile, w, h)
+	}
+	if len(eff.passes) == 0 && eff.mask < 0 && !eff.drawnOnly {
+		return nil
+	}
+	return eff
 }

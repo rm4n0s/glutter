@@ -182,7 +182,7 @@ func (b *frameBuilder) beginLayer(c gpu.Command) error {
 	rec.rect = rect
 	if rec.boundary != nil && b.cache != nil && len(b.layers) == 0 {
 		k := keyOf(&c.Transform, rect)
-		if e := b.cache.lookup(rec.boundary, k); e != nil {
+		if e := b.cache.Lookup(rec.boundary, k); e != nil {
 			// The layer's pixels are there: draw them, and drop what is inside.
 			b.stats.CachedLayersDrawn++
 			b.culled = 1

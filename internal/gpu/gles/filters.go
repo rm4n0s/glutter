@@ -2,175 +2,28 @@ package gles
 
 import (
 	"github.com/rm4n0s/glutter/internal/gpu"
-	"math"
-
 	"github.com/rm4n0s/glutter/ui"
 )
 
 // Image filters (SPEC §9.1) run as passes over a layer's pixels: each pass draws a
 // rectangle over a pooled framebuffer and reads the framebuffer or texture before it
-// (shaders/filter.*). A blur is two passes, one along each axis; when its deviation
-// is large the picture is first averaged down to a smaller one and the blur is made
-// there, then the result is scaled up again, so that the kernel stays short.
+// (shaders/filter.*). The passes are planned in gpu/filters.go, which the explicit
+// renderer shares.
 
-// minSigma is the deviation below which a blur does nothing, as in the software
-// renderer.
-const minSigma = 0.01
-
-// maxLowSigma is the largest deviation a blur pass works with: a blur with more is
-// done on a picture scaled down by a power of two until it is not.
-const maxLowSigma = 8.0
-
-// maxKernelRadius bounds the taps of a blur pass on each side of the center.
-const maxKernelRadius = 64
-
-// passKind is what a filter pass does.
-type passKind int
+type filterPass = gpu.FilterPass
 
 const (
-	passCopy   passKind = iota // the pixels as they are
-	passBlur                   // one axis of a Gaussian blur
-	passMorph                  // one axis of a dilation or erosion
-	passMatrix                 // the pixels moved by a transform
-	passColor                  // a color filter
-	passDown                   // the average of blocks of pixels
-	passUp                     // bilinear scaling up
+	minSigma        = gpu.MinSigma
+	maxLowSigma     = gpu.MaxLowSigma
+	maxKernelRadius = gpu.MaxKernelRadius
 )
 
-// filterPass is one pass over the pixels.
-type filterPass struct {
-	kind passKind
-	// outW and outH are the size of the pass's output.
-	outW, outH int
-	// axis is 0 for x and 1 for y, for blur and morphology.
-	axis int32
-	// sigma, radius and norm describe the Gaussian kernel: its deviation, the taps
-	// on each side of the center, and 1 over the sum of the weights.
-	sigma, norm float32
-	radius      int32
-	// tile is what lies beyond the edges of the source for blur and resampling.
-	tile int32
-	// dilate says that morphology takes the largest value, else the smallest.
-	dilate bool
-	// factor is how many source pixels one output pixel spans, for passDown and passUp.
-	factor [2]int32
-	// inv maps a pixel of the surface to where the output pixel is read from, for
-	// passMatrix, and quality is 0 for bilinear, 1 for nearest, 2 for nothing.
-	inv     [6]float32
-	quality int32
-	// spec holds the color filter of passColor.
-	spec *paintSpec
-}
-
-// kernel fills the Gaussian kernel of a deviation.
-func (p *filterPass) kernel(sigma float64) {
-	r := min(int(math.Ceil(3*sigma)), maxKernelRadius)
-	var sum float64
-	for i := -r; i <= r; i++ {
-		sum += math.Exp(-float64(i*i) / (2 * sigma * sigma))
-	}
-	p.sigma, p.radius, p.norm = float32(sigma), int32(r), float32(1/sum)
-}
-
-// blurPasses makes the passes of a blur of a w x h picture with the deviations in
-// pixels along x and y.
-func blurPasses(sx, sy float64, tile ui.TileMode, w, h int) []filterPass {
-	blurs := func(s float64) bool { return s > minSigma && !math.IsInf(s, 0) }
-	bx, by := blurs(sx), blurs(sy)
-	fx, fy := 1, 1
-	for bx && sx/float64(fx) > maxLowSigma && fx < 1<<12 {
-		fx *= 2
-	}
-	for by && sy/float64(fy) > maxLowSigma && fy < 1<<12 {
-		fy *= 2
-	}
-	lw, lh := (w+fx-1)/fx, (h+fy-1)/fy
-	t := gpu.TileIndex(tile)
-	var out []filterPass
-	if fx > 1 || fy > 1 {
-		out = append(out, filterPass{kind: passDown, outW: lw, outH: lh, tile: t, factor: [2]int32{int32(fx), int32(fy)}})
-	}
-	if bx {
-		p := filterPass{kind: passBlur, outW: lw, outH: lh, tile: t}
-		p.kernel(sx / float64(fx))
-		out = append(out, p)
-	}
-	if by {
-		p := filterPass{kind: passBlur, outW: lw, outH: lh, tile: t, axis: 1}
-		p.kernel(sy / float64(fy))
-		out = append(out, p)
-	}
-	if fx > 1 || fy > 1 {
-		out = append(out, filterPass{kind: passUp, outW: w, outH: h, factor: [2]int32{int32(fx), int32(fy)}})
-	}
-	return out
-}
-
-// filterPasses turns an image filter into the passes over a w x h picture, under the
-// transform that the filter's radii and matrix are in; tile is the mode a blur gets
-// when it has none. false says that the filter is not one the renderer knows.
 func filterPasses(f ui.ImageFilter, ctm affine2D, tile ui.TileMode, w, h int) ([]filterPass, bool) {
-	sx, sy := math.Hypot(ctm.A, ctm.B), math.Hypot(ctm.C, ctm.D)
-	switch v := f.(type) {
-	case *ui.BlurImageFilter:
-		t := v.TileMode()
-		if t == ui.TileModeUnspecified {
-			t = tile
-		}
-		return blurPasses(v.SigmaX()*sx, v.SigmaY()*sy, t, w, h), true
-	case *ui.DilateImageFilter:
-		return morphPasses(v.RadiusX()*sx, v.RadiusY()*sy, true, w, h), true
-	case *ui.ErodeImageFilter:
-		return morphPasses(v.RadiusX()*sx, v.RadiusY()*sy, false, w, h), true
-	case *ui.MatrixImageFilter:
-		return []filterPass{matrixPass(v, ctm, w, h)}, true
-	case *ui.ComposeImageFilter:
-		inner, ok := filterPasses(v.Inner(), ctm, ui.TileModeClamp, w, h)
-		if !ok {
-			return nil, false
-		}
-		outer, ok := filterPasses(v.Outer(), ctm, ui.TileModeClamp, w, h)
-		return append(inner, outer...), ok
-	case *ui.ColorFilter:
-		var sp paintSpec
-		filterSpec(&sp, v, false)
-		return []filterPass{{kind: passColor, outW: w, outH: h, spec: &sp}}, true
-	}
-	return nil, false
+	return gpu.FilterPasses(f, ctm, tile, w, h)
 }
 
-// morphPasses makes the passes of a dilation or erosion by radii in pixels, rounded
-// to whole pixels.
-func morphPasses(rx, ry float64, dilate bool, w, h int) []filterPass {
-	irx, iry := int(math.Round(rx)), int(math.Round(ry))
-	var out []filterPass
-	if irx > 0 {
-		out = append(out, filterPass{kind: passMorph, outW: w, outH: h, radius: int32(min(irx, maxKernelRadius)), dilate: dilate})
-	}
-	if iry > 0 {
-		out = append(out, filterPass{kind: passMorph, outW: w, outH: h, radius: int32(min(iry, maxKernelRadius)), dilate: dilate, axis: 1})
-	}
-	return out
-}
-
-// matrixPass moves the pixels by the filter's matrix, which acts in the local space
-// of the canvas: on the surface the transform is ctm * M * ctm^-1.
-func matrixPass(f *ui.MatrixImageFilter, ctm affine2D, w, h int) filterPass {
-	p := filterPass{kind: passMatrix, outW: w, outH: h, quality: 2}
-	inv, ok := ctm.Invert()
-	if !ok {
-		return p
-	}
-	back, ok := inv.Then(affineOf(f.Matrix())).Then(ctm).Invert()
-	if !ok {
-		return p
-	}
-	p.inv = [6]float32{float32(back.A), float32(back.B), float32(back.C), float32(back.D), float32(back.E), float32(back.F)}
-	p.quality = 0
-	if f.FilterQuality() == ui.FilterQualityNone {
-		p.quality = 1
-	}
-	return p
+func blurPasses(sx, sy float64, tile ui.TileMode, w, h int) []filterPass {
+	return gpu.BlurPasses(sx, sy, tile, w, h)
 }
 
 // runPasses runs the passes over the w x h pixels of src, whose top left corner is
@@ -191,7 +44,7 @@ func (dr *drawer) runPasses(src *Texture, w, h int, origin [2]int, passes []filt
 	d.BlendFunc(glOne, glZero, glOne, glZero)
 	prog.SetInt("uSrc", 0)
 	if len(passes) == 0 {
-		passes = []filterPass{{kind: passCopy, outW: w, outH: h}}
+		passes = []filterPass{{Kind: gpu.PassCopy, OutW: w, OutH: h}}
 	}
 	cur, curW, curH := src, w, h
 	var owned, result *Framebuffer
@@ -200,37 +53,37 @@ func (dr *drawer) runPasses(src *Texture, w, h int, origin [2]int, passes []filt
 		var out *Framebuffer
 		if i == len(passes)-1 && dst != nil {
 			out = dst
-		} else if out, err = d.AcquireFramebuffer(ps.outW, ps.outH, false); err != nil {
+		} else if out, err = d.AcquireFramebuffer(ps.OutW, ps.OutH, false); err != nil {
 			if owned != nil {
 				d.ReleaseFramebuffer(owned)
 			}
 			return nil, err
 		}
 		d.BindFramebuffer(out)
-		d.Viewport(0, 0, ps.outW, ps.outH)
+		d.Viewport(0, 0, ps.OutW, ps.OutH)
 		d.BindTexture(0, cur)
-		prog.SetInt("uPass", int32(ps.kind))
+		prog.SetInt("uPass", int32(ps.Kind))
 		prog.SetVec2("uSrcSize", float32(curW), float32(curH))
-		prog.SetVec2("uOutSize", float32(ps.outW), float32(ps.outH))
-		prog.SetInt("uAxis", ps.axis)
-		prog.SetInt("uTile", ps.tile)
-		switch ps.kind {
-		case passBlur:
-			prog.SetFloat("uSigma", ps.sigma)
-			prog.SetInt("uRadius", ps.radius)
-			prog.SetFloat("uNorm", ps.norm)
-		case passMorph:
-			prog.SetInt("uRadius", ps.radius)
-			prog.SetInt("uDilate", b2i(ps.dilate))
-		case passDown, passUp:
-			prog.SetVec2("uFactor", float32(ps.factor[0]), float32(ps.factor[1]))
-		case passMatrix:
-			prog.SetVec4("uMat0", ps.inv[0], ps.inv[1], ps.inv[2], ps.inv[3])
-			prog.SetVec2("uMat1", ps.inv[4], ps.inv[5])
+		prog.SetVec2("uOutSize", float32(ps.OutW), float32(ps.OutH))
+		prog.SetInt("uAxis", ps.Axis)
+		prog.SetInt("uTile", ps.Tile)
+		switch ps.Kind {
+		case gpu.PassBlur:
+			prog.SetFloat("uSigma", ps.Sigma)
+			prog.SetInt("uRadius", ps.Radius)
+			prog.SetFloat("uNorm", ps.Norm)
+		case gpu.PassMorph:
+			prog.SetInt("uRadius", ps.Radius)
+			prog.SetInt("uDilate", b2i(ps.Dilate))
+		case gpu.PassDown, gpu.PassUp:
+			prog.SetVec2("uFactor", float32(ps.Factor[0]), float32(ps.Factor[1]))
+		case gpu.PassMatrix:
+			prog.SetVec4("uMat0", ps.Inv[0], ps.Inv[1], ps.Inv[2], ps.Inv[3])
+			prog.SetVec2("uMat1", ps.Inv[4], ps.Inv[5])
 			prog.SetVec2("uRectOrigin", float32(origin[0]), float32(origin[1]))
-			prog.SetInt("uQuality", ps.quality)
-		case passColor:
-			applySpec(prog, ps.spec)
+			prog.SetInt("uQuality", ps.Quality)
+		case gpu.PassColor:
+			applySpec(prog, ps.Spec)
 		}
 		gl.drawArrays(glTriangleStrip, 0, 4)
 		if owned != nil {
@@ -240,7 +93,7 @@ func (dr *drawer) runPasses(src *Texture, w, h int, origin [2]int, passes []filt
 		if out != dst {
 			owned = out
 		}
-		cur, curW, curH = out.Texture(), ps.outW, ps.outH
+		cur, curW, curH = out.Texture(), ps.OutW, ps.OutH
 		result = out
 	}
 	return result, nil

@@ -30,8 +30,8 @@ func (r *Renderer) drawScene(scene *ui.Scene, w, h int, useCache bool) error {
 	var cache *layerCache
 	if useCache && r.cache != nil {
 		cache = r.cache
-		cache.beginFrame(scene.Root())
-		fo.Boundary = cache.boundary
+		cache.BeginFrame(scene.Root())
+		fo.Boundary = cache.Boundary
 	}
 	list, err := gpu.Flatten(scene, fo)
 	if err != nil {
@@ -58,7 +58,7 @@ func (r *Renderer) drawScene(scene *ui.Scene, w, h int, useCache bool) error {
 		return err
 	}
 	if cache != nil {
-		cache.endFrame(r.ctx.dev)
+		cache.EndFrame(r.ctx.dev.ReleaseFramebuffer)
 	}
 	return nil
 }
@@ -179,10 +179,10 @@ func (dr *drawer) call(c *drawCall) error {
 	case opBeginLayer:
 		return dr.beginLayer(c)
 	case opDrawCached:
-		layer = renderTarget{fb: c.cache.fb, rect: c.cache.rect}
+		layer = renderTarget{fb: c.cache.Tex, rect: c.cache.Rect}
 	case opComposite:
 		layer = dr.cur
-		if c.count == 0 || c.keep == nil || !dr.r.cache.put(d, c.keep.layer, c.keep.key, layer.fb) {
+		if c.count == 0 || c.keep == nil || !dr.r.cache.Put(c.keep.layer, c.keep.key, layer.fb, d.ReleaseFramebuffer) {
 			defer d.ReleaseFramebuffer(layer.fb)
 		}
 		if c.count != 0 && c.eff != nil && len(c.eff.passes) > 0 {

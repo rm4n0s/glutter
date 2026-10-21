@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/rm4n0s/glutter/internal/gpu"
+	"github.com/rm4n0s/glutter/internal/gpu/gputest"
 	"github.com/rm4n0s/glutter/internal/gpu/soft"
 	"github.com/rm4n0s/glutter/internal/proof"
 	"github.com/rm4n0s/glutter/ui"
@@ -16,22 +17,10 @@ import (
 // scene (the scenes are the goldens of the proof tool, SPEC §9.2). A scene that is
 // registered without an entry here fails the parity test, so a step that adds one
 // states its tolerance.
-var proofTolerances = map[string]tolerance{
-	"shapes-basic": {over8Permille: 20, over32Permille: 5},
-	"shapes-clips": {over8Permille: 30, over32Permille: 3},
-	"gradients":    {over8Permille: 10, over32Permille: 3},
-	"blend-modes":  {over8Permille: 15, over32Permille: 5},
-	"effects":      {over8Permille: 1},
-	"text-tour":    {over8Permille: 1},
-	// decorations: 1.0 permille over 8 levels (the edges of the rounded corners and
-	// the shadow), one pixel over 32; rendering-tour: 0.1 permille over 8 levels.
-	"decorations":    {over8Permille: 3, over32Permille: 1},
-	"rendering-tour": {over8Permille: 1},
-}
-
 func TestDisplayEveryProofSceneMatchesSoftware(t *testing.T) {
 	for _, name := range proof.Names() {
-		tol, ok := proofTolerances[name]
+		gt, ok := gputest.ProofTolerances[name]
+		tol := tolerance{over8Permille: gt.Over8Permille, over32Permille: gt.Over32Permille, over96: gt.Over96}
 		if !ok {
 			t.Errorf("the proof scene %q has no tolerance in proofTolerances", name)
 			continue
@@ -120,44 +109,6 @@ func TestDisplayToImageThroughTheGPU(t *testing.T) {
 	})
 }
 
-// retainedFrames makes the scenes of a retained layer: the layer is built in the first
-// and added again in the others, as a RepaintBoundary that does not change.
-func retainedFrames(n int, clip func(b *ui.SceneBuilder)) []*ui.Scene {
-	pic := func(fn func(c *ui.Canvas)) *ui.Picture { return pictureOf(fn) }
-	inside := pic(func(c *ui.Canvas) {
-		stripesAndDisc(c)
-		c.DrawRRect(ui.NewRRectFromRectXY(ui.NewRectFromLTWH(20, 20, 60, 40), 8, 8), fillP(0x80FFFFFF))
-	})
-	under := pic(func(c *ui.Canvas) { c.DrawColor(ui.NewColor(0xFFEEEEEE), ui.BlendModeSrcOver) })
-	var scenes []*ui.Scene
-	var kept *ui.OffsetEngineLayer
-	for i := 0; i < n; i++ {
-		b := ui.NewSceneBuilder()
-		b.AddPicture(ui.Offset{}, under)
-		if clip != nil {
-			clip(b)
-		}
-		b.PushOffset(6.5, 9)
-		if kept == nil {
-			kept = b.PushOffset(0, 0)
-			b.AddPicture(ui.Offset{}, inside)
-			b.Pop()
-		} else {
-			b.AddRetained(kept)
-		}
-		b.Pop()
-		if clip != nil {
-			b.Pop()
-		}
-		// Something that changes in every frame, over the retained layer.
-		b.AddPicture(ui.Offset{}, pic(func(c *ui.Canvas) {
-			c.DrawCircle(ui.Offset{Dx: 10 + float64(i)*12, Dy: 110}, 6, fillP(0xFFE53935))
-		}))
-		scenes = append(scenes, b.Build())
-	}
-	return scenes
-}
-
 func TestDisplayRasterCacheDrawsWhatTheLayerDrew(t *testing.T) {
 	tests := []struct {
 		name string
@@ -174,7 +125,7 @@ func TestDisplayRasterCacheDrawsWhatTheLayerDrew(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			scenes := retainedFrames(5, tt.clip)
+			scenes := gputest.RetainedFrames(5, tt.clip)
 			// What the frames look like without the cache.
 			var want []*image.RGBA
 			onDisplay(t, func(h gpu.SurfaceHandle, _, _ int) error {

@@ -16,58 +16,6 @@ import (
 // into a layer that is filtered. Canvas.drawShadow draws the two blurred shadows of
 // a path into a layer from which an opaque occluder is cut out.
 
-// paintAccess returns the paint of a drawing operation and the function that makes
-// the same operation with another paint; nil for the operations without one.
-func paintAccess(op ui.DisplayOp) (*ui.Paint, func(*ui.Paint) ui.DisplayOp) {
-	switch v := op.(type) {
-	case ui.OpDrawPath:
-		return &v.Paint, func(p *ui.Paint) ui.DisplayOp { v.Paint = *p; return v }
-	case ui.OpDrawRect:
-		return &v.Paint, func(p *ui.Paint) ui.DisplayOp { v.Paint = *p; return v }
-	case ui.OpDrawRRect:
-		return &v.Paint, func(p *ui.Paint) ui.DisplayOp { v.Paint = *p; return v }
-	case ui.OpDrawRSuperellipse:
-		return &v.Paint, func(p *ui.Paint) ui.DisplayOp { v.Paint = *p; return v }
-	case ui.OpDrawDRRect:
-		return &v.Paint, func(p *ui.Paint) ui.DisplayOp { v.Paint = *p; return v }
-	case ui.OpDrawOval:
-		return &v.Paint, func(p *ui.Paint) ui.DisplayOp { v.Paint = *p; return v }
-	case ui.OpDrawCircle:
-		return &v.Paint, func(p *ui.Paint) ui.DisplayOp { v.Paint = *p; return v }
-	case ui.OpDrawArc:
-		return &v.Paint, func(p *ui.Paint) ui.DisplayOp { v.Paint = *p; return v }
-	case ui.OpDrawLine:
-		return &v.Paint, func(p *ui.Paint) ui.DisplayOp { v.Paint = *p; return v }
-	case ui.OpDrawPoints:
-		return &v.Paint, func(p *ui.Paint) ui.DisplayOp { v.Paint = *p; return v }
-	case ui.OpDrawImage:
-		return &v.Paint, func(p *ui.Paint) ui.DisplayOp { v.Paint = *p; return v }
-	case ui.OpDrawImageRect:
-		return &v.Paint, func(p *ui.Paint) ui.DisplayOp { v.Paint = *p; return v }
-	case ui.OpDrawImageNine:
-		return &v.Paint, func(p *ui.Paint) ui.DisplayOp { v.Paint = *p; return v }
-	case ui.OpDrawAtlas:
-		return &v.Paint, func(p *ui.Paint) ui.DisplayOp { v.Paint = *p; return v }
-	case ui.OpDrawVertices:
-		return &v.Paint, func(p *ui.Paint) ui.DisplayOp { v.Paint = *p; return v }
-	}
-	return nil, nil
-}
-
-// whiteFill is the paint that draws only the coverage of a shape: opaque white,
-// source-over, with the geometry of p (style, stroke, anti-aliasing).
-func whiteFill(p *ui.Paint) *ui.Paint {
-	q := *p
-	q.SetMaskFilter(nil)
-	q.SetImageFilter(nil)
-	q.SetShader(nil)
-	q.SetColorFilter(nil)
-	q.SetInvertColors(false)
-	q.SetColor(ui.NewColor(0xFFFFFFFF))
-	q.SetBlendMode(ui.BlendModeSrcOver)
-	return &q
-}
-
 // filteredDraw draws an operation whose paint has an image filter: into a layer
 // without the filter and the blend mode, which is then filtered and composited with
 // the blend mode where it has drawn something, as Skia does.
@@ -110,19 +58,6 @@ func (b *frameBuilder) filteredDraw(c gpu.Command, p *ui.Paint, with func(*ui.Pa
 // coordinates, strokes included.
 func opBounds(op ui.DisplayOp) (ui.Rect, bool) { return gpu.ShapeBounds(op) }
 
-// styleCode is the number of a blur style in the shaders.
-func styleCode(s ui.BlurStyle) int32 {
-	switch s {
-	case ui.BlurStyleSolid:
-		return 1
-	case ui.BlurStyleOuter:
-		return 2
-	case ui.BlurStyleInner:
-		return 3
-	}
-	return 0
-}
-
 // maskFiltered draws an operation whose paint has a mask filter. handled is false
 // for an operation the mask filter does not apply to (images and the like), which is
 // then drawn without it.
@@ -154,7 +89,7 @@ func (s *shapeContext) maskFiltered(p *ui.Paint, with func(*ui.Paint) ui.Display
 			analytic = false
 		}
 		if analytic {
-			ok, err := s.blurredRRect(r, radii, p, sigma, styleCode(mf.Style()))
+			ok, err := s.blurredRRect(r, radii, p, sigma, gpu.StyleCode(mf.Style()))
 			return true, ok, err
 		}
 	}
@@ -168,9 +103,9 @@ func (s *shapeContext) maskFiltered(p *ui.Paint, with func(*ui.Paint) ui.Display
 	if status != paintDraw {
 		return true, status == paintNothing, err
 	}
-	rec := &layerRec{cmd: s.c, rect: rect, info: info, blur: &maskBlur{sigma: sigma, style: styleCode(mf.Style())}}
+	rec := &layerRec{cmd: s.c, rect: rect, info: info, blur: &maskBlur{sigma: sigma, style: gpu.StyleCode(mf.Style())}}
 	ic := s.c
-	ic.Op = with(whiteFill(p))
+	ic.Op = with(gpu.WhiteFill(p))
 	ic.Clip = gpu.Clip{Bounds: rectOf(rect)}
 	s.b.pushLayer(rec)
 	ok, err = s.b.draw(ic)
@@ -214,25 +149,6 @@ func (s *shapeContext) blurredRRect(r ui.Rect, radii [4]ui.Radius, p *ui.Paint, 
 	return s.placePadded(&in, local, kindShadow, 0, info, 1, math.Ceil(3*sigma)+1)
 }
 
-// blurRadiusToSigma is Skia's conversion of a blur radius to a deviation.
-func blurRadiusToSigma(radius float64) float64 {
-	if radius > 0 {
-		return 0.57735*radius + 0.5
-	}
-	return 0
-}
-
-// Skia's constants for the shadows of Flutter's physical shapes, as in the software
-// renderer.
-const (
-	shadowAmbientAlpha  = 0.039
-	shadowSpotAlpha     = 0.25
-	shadowLightHeight   = 600.0
-	shadowLightRadius   = 800.0
-	shadowAmbientFactor = 0.5
-	shadowMaxAmbient    = 300.0
-)
-
 // shadow draws Canvas.drawShadow: an ambient shadow, the path blurred in place, and a
 // spot shadow, the path moved away from a light above it and blurred. The two are
 // drawn into a layer, and unless the occluder is transparent the path itself is cut
@@ -243,25 +159,11 @@ const (
 // same pixels.
 func (s *shapeContext) shadow(v ui.OpDrawShadow) (bool, error) {
 	m := &s.c.Transform
-	scale := s.scale()
-	z := v.Elevation * scale
-	lightZ := shadowLightHeight * scale
-	if !(z > 0) || z >= lightZ {
+	plan, ok := gpu.PlanShadow(v.Elevation, m, s.scale(), deviceBounds(m, v.Path.GetBounds()))
+	if !ok {
 		return true, nil
 	}
-	devBounds := deviceBounds(m, v.Path.GetBounds())
-	if devBounds.Empty() {
-		return true, nil
-	}
-	ambientSigma := blurRadiusToSigma(math.Min(z*shadowAmbientFactor, shadowMaxAmbient))
-	spotSigma := blurRadiusToSigma(shadowLightRadius * scale * z / (lightZ - z))
-	// The spot shadow moves down and grows, away from a light above the shape.
-	spotScale := lightZ / (lightZ - z)
-	dy := z * (shadowLightHeight*scale + float64(devBounds.Dy())/2) / (lightZ - z)
-	cx, cy := float64(devBounds.Min.X+devBounds.Max.X)/2, float64(devBounds.Min.Y+devBounds.Max.Y)/2
-	spot := ui.NewMatrix4TranslationValues(float32(cx*(1-spotScale)), float32(cy*(1-spotScale)+dy), 0)
-	spot.Scale(float32(spotScale), float32(spotScale), 1)
-	spotM := spot.Multiply(m)
+	ambientSigma, spotSigma, spotM := plan.AmbientSigma, plan.SpotSigma, plan.Spot
 
 	vis := s.outer
 	group := &layerRec{cmd: s.c, rect: vis, info: paintInfo{color: [4]float32{1, 1, 1, 1}, blend: blendFuncs[ui.BlendModeSrcOver], aa: true, spec: s.b.intern(paintSpec{})}}
@@ -282,16 +184,16 @@ func (s *shapeContext) shadow(v ui.OpDrawShadow) (bool, error) {
 		}
 		rec := &layerRec{cmd: gpu.Command{Kind: gpu.CommandBeginLayer, Transform: *mat, Clip: whole}, rect: rect, info: info, blur: &maskBlur{sigma: sigma}}
 		s.b.pushLayer(rec)
-		_, err := s.b.draw(gpu.Command{Kind: gpu.CommandDraw, Op: ui.OpDrawPath{Path: v.Path, Paint: *whiteFill(ui.NewPaint())}, Transform: *mat, Clip: gpu.Clip{Bounds: rectOf(rect)}})
+		_, err := s.b.draw(gpu.Command{Kind: gpu.CommandDraw, Op: ui.OpDrawPath{Path: v.Path, Paint: *gpu.WhiteFill(ui.NewPaint())}, Transform: *mat, Clip: gpu.Clip{Bounds: rectOf(rect)}})
 		if err != nil {
 			return err
 		}
 		return s.b.endLayer()
 	}
-	if err := paintShadow(m, ambientSigma, shadowAmbientAlpha); err != nil {
+	if err := paintShadow(m, ambientSigma, gpu.ShadowAmbientAlpha); err != nil {
 		return false, err
 	}
-	if err := paintShadow(spotM, spotSigma, shadowSpotAlpha); err != nil {
+	if err := paintShadow(spotM, spotSigma, gpu.ShadowSpotAlpha); err != nil {
 		return false, err
 	}
 	if !v.TransparentOccluder {

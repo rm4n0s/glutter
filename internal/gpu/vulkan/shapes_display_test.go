@@ -4,11 +4,9 @@ package vulkan
 
 import (
 	"image"
-	"image/draw"
 	"image/png"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -35,9 +33,14 @@ type drawJob struct {
 	scene         *ui.Scene
 	width, height int
 
-	got   *image.RGBA
-	stats explicit.FrameStats
-	err   error
+	// snapshot also draws the scene with Snapshot, after the frame.
+	snapshot bool
+
+	got     *image.RGBA
+	snap    *image.RGBA
+	stats   explicit.FrameStats
+	err     error
+	snapErr error
 }
 
 // jobHandler draws its jobs at the first frame of the window, in order.
@@ -46,6 +49,8 @@ type jobHandler struct {
 	r    *explicit.Renderer
 	win  platform.Window
 	jobs []*drawJob
+	// after runs on the platform's goroutine once the jobs are drawn, when it is not nil.
+	after func(r *explicit.Renderer)
 
 	mu   sync.Mutex
 	done bool
@@ -61,6 +66,12 @@ func (h *jobHandler) OnFrame(ui.ViewID, time.Duration) {
 	for _, j := range h.jobs {
 		j.got, j.err = h.r.Draw(h.win.NativeSurface(), j.width, j.height, j.scene, true)
 		j.stats = h.r.LastFrame()
+		if j.snapshot && j.err == nil {
+			j.snap, j.snapErr = h.r.Snapshot(j.scene, ui.Size{Width: float64(j.width), Height: float64(j.height)})
+		}
+	}
+	if h.after != nil {
+		h.after(h.r)
 	}
 }
 
@@ -72,7 +83,14 @@ func (h *jobHandler) finished() bool {
 
 // drawOnWindow draws the jobs through a renderer with SkipUnsupported, in a Wayland window,
 // and checks that the validation layer said nothing.
-func drawOnWindow(t *testing.T, jobs []*drawJob) {
+func drawOnWindow(t *testing.T, jobs []*drawJob, extra ...func(*explicit.RendererOpts)) {
+	t.Helper()
+	drawOnWindowThen(t, jobs, nil, extra...)
+}
+
+// drawOnWindowThen is drawOnWindow that also runs after with the renderer, on the platform's
+// goroutine, once the jobs are drawn.
+func drawOnWindowThen(t *testing.T, jobs []*drawJob, after func(r *explicit.Renderer), extra ...func(*explicit.RendererOpts)) {
 	t.Helper()
 	if os.Getenv("WAYLAND_DISPLAY") == "" {
 		t.Skip("there is no Wayland compositor (run under scripts/headless-wayland.sh)")
@@ -86,10 +104,10 @@ func drawOnWindow(t *testing.T, jobs []*drawJob) {
 			t.Errorf("Close: %v", err)
 		}
 	})
-	r, dev := newWindowRenderer(t, func(o *explicit.RendererOpts) {
+	r, dev := newWindowRenderer(t, append([]func(*explicit.RendererOpts){func(o *explicit.RendererOpts) {
 		o.Background = ui.NewColor(0xFFFFFFFF)
 		o.SkipUnsupported = true
-	})
+	}}, extra...)...)
 	cfg := platform.DefaultWindowConfig()
 	cfg.Title = "vulkan shapes test"
 	cfg.Size = ui.Size{Width: 128, Height: 128}
@@ -97,13 +115,16 @@ func drawOnWindow(t *testing.T, jobs []*drawJob) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := &jobHandler{r: r, win: win, jobs: jobs}
+	h := &jobHandler{r: r, win: win, jobs: jobs, after: after}
 	stop := runPlatform(t, p, h)
 	waitUntil(t, h.finished, "the scenes were not drawn")
 	stop()
 	for _, j := range jobs {
 		if j.err != nil {
 			t.Fatalf("%s: %v", j.name, j.err)
+		}
+		if j.snapErr != nil {
+			t.Fatalf("%s: snapshot: %v", j.name, j.snapErr)
 		}
 	}
 	checkValidation(t, r, dev)
@@ -188,16 +209,7 @@ func TestVulkanProofScenesMatchSoftware(t *testing.T) {
 			dumpImage(t, "vk-"+j.name+"-gpu", j.got)
 			dumpImage(t, "vk-"+j.name+"-soft", want)
 			t.Logf("frame: %+v", j.stats)
-			if j.name == "text-tour" {
-				// The shadow is a blur (step 20.6); everything else is compared, with its place
-				// taken from the software image.
-				if want := []string{"mask filter"}; !reflect.DeepEqual(j.stats.Unsupported, want) {
-					t.Errorf("unsupported %v, want %v", j.stats.Unsupported, want)
-				}
-				for _, r := range []image.Rectangle{image.Rect(10, 285, 135, 330)} {
-					draw.Draw(j.got, r, want, r.Min, draw.Src)
-				}
-			} else if j.stats.Skipped != 0 {
+			if j.stats.Skipped != 0 {
 				t.Errorf("the GPU skipped %d commands: %v", j.stats.Skipped, j.stats.Unsupported)
 			}
 			if j.name == "shapes-clips" {

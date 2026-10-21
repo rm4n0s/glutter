@@ -234,25 +234,27 @@ func TestUnsupportedFeatures(t *testing.T) {
 	linear.SetShader(ui.NewGradientLinear(ui.Offset{}, ui.Offset{Dx: 10}, []ui.Color{ui.NewColor(0xFF000000), ui.NewColor(0xFFFFFFFF)}))
 	multiply := solid(0xFF000000)
 	multiply.SetBlendMode(ui.BlendModeMultiply)
-	blur := solid(0xFF000000)
-	blur.SetMaskFilter(ui.NewMaskFilterBlur(ui.BlurStyleNormal, 3))
 	tests := []struct {
 		name    string
 		feature string
 		draw    func(c *ui.Canvas)
 	}{
-		{"a mask filter", "mask filter", func(c *ui.Canvas) { c.DrawRect(ui.NewRectFromLTWH(0, 0, 10, 10), blur) }},
-		{"an image filter", "image filter", func(c *ui.Canvas) {
-			p := solid(0xFF000000)
-			p.SetImageFilter(ui.NewImageFilterBlur(ui.ImageFilterBlurOpts{SigmaX: 2, SigmaY: 2}))
-			c.DrawRect(ui.NewRectFromLTWH(0, 0, 10, 10), p)
-		}},
-		{"an image filter on a layer", "image filter", func(c *ui.Canvas) {
-			p := solid(0x80000000)
-			p.SetImageFilter(ui.NewImageFilterBlur(ui.ImageFilterBlurOpts{SigmaX: 2, SigmaY: 2}))
-			c.SaveLayer(nil, p)
+		{"a perspective transform", "perspective transform", func(c *ui.Canvas) {
+			m := ui.NewMatrix4Identity()
+			m.SetEntry(3, 0, 0.001)
+			c.Transform(m)
 			c.DrawRect(ui.NewRectFromLTWH(0, 0, 10, 10), solid(0xFF000000))
-			c.Restore()
+		}},
+		{"a gradient with more than 32 colors", "gradient with more than 32 colors", func(c *ui.Canvas) {
+			colors := make([]ui.Color, 40)
+			stops := make([]float64, 40)
+			for i := range colors {
+				colors[i] = ui.NewColor(0xFF000000 | uint32(i))
+				stops[i] = float64(i) / 39
+			}
+			p := ui.NewPaint()
+			p.SetShader(ui.NewGradientLinear(ui.Offset{}, ui.Offset{Dx: 10}, colors, ui.GradientLinearOpts{ColorStops: stops}))
+			c.DrawRect(ui.NewRectFromLTWH(0, 0, 10, 10), p)
 		}},
 	}
 	for _, tt := range tests {

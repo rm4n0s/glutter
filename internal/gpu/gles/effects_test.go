@@ -41,109 +41,6 @@ func equalStrings(a, b []string) bool {
 	return true
 }
 
-func TestBlurPasses(t *testing.T) {
-	tests := []struct {
-		name   string
-		sx, sy float64
-		tile   ui.TileMode
-		want   []passKind
-		// sizes are the output sizes of the passes.
-		sizes [][2]int
-	}{
-		{"none", 0, 0.001, ui.TileModeDecal, nil, nil},
-		{"small", 2, 3, ui.TileModeClamp, []passKind{passBlur, passBlur}, [][2]int{{100, 60}, {100, 60}}},
-		{"x only", 3, 0, ui.TileModeClamp, []passKind{passBlur}, [][2]int{{100, 60}}},
-		{"y only", 0, 3, ui.TileModeClamp, []passKind{passBlur}, [][2]int{{100, 60}}},
-		{"large x is made on a narrower picture", 20, 2, ui.TileModeMirror,
-			[]passKind{passDown, passBlur, passBlur, passUp}, [][2]int{{25, 60}, {25, 60}, {25, 60}, {100, 60}}},
-		{"large both", 40, 40, ui.TileModeDecal,
-			[]passKind{passDown, passBlur, passBlur, passUp}, [][2]int{{13, 8}, {13, 8}, {13, 8}, {100, 60}}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := blurPasses(tt.sx, tt.sy, tt.tile, 100, 60)
-			if len(got) != len(tt.want) {
-				t.Fatalf("passes = %d, want %d", len(got), len(tt.want))
-			}
-			for i, p := range got {
-				if p.kind != tt.want[i] || [2]int{p.outW, p.outH} != tt.sizes[i] {
-					t.Errorf("pass %d = kind %d size %dx%d, want kind %d size %v", i, p.kind, p.outW, p.outH, tt.want[i], tt.sizes[i])
-				}
-				if p.kind == passBlur {
-					// The kernel is 3 sigma wide on each side and sums to 1.
-					var sum float64
-					for i := -int(p.radius); i <= int(p.radius); i++ {
-						sum += math.Exp(-float64(i*i)/(2*float64(p.sigma)*float64(p.sigma))) * float64(p.norm)
-					}
-					if math.Abs(sum-1) > 1e-5 || p.radius != int32(math.Ceil(3*float64(p.sigma))) || p.sigma > maxLowSigma {
-						t.Errorf("kernel of pass %d: sigma %v radius %d sums to %v", i, p.sigma, p.radius, sum)
-					}
-					if p.tile != gpu.TileIndex(tt.tile) {
-						t.Errorf("tile = %d", p.tile)
-					}
-				}
-			}
-		})
-	}
-	// The second axis of a blur goes along y.
-	if p := blurPasses(2, 2, ui.TileModeClamp, 10, 10); p[0].axis != 0 || p[1].axis != 1 {
-		t.Errorf("axes = %d, %d", p[0].axis, p[1].axis)
-	}
-}
-
-func TestFilterPassesOfEveryFilter(t *testing.T) {
-	ctm := affine2D{A: 2, D: 2}
-	rot := ui.NewMatrix4Identity()
-	rot.RotateZ(0.5)
-	singular := ui.NewMatrix4Diagonal3Values(0, 1, 1)
-	tests := []struct {
-		name   string
-		filter ui.ImageFilter
-		want   []passKind
-	}{
-		{"blur", blurFilter(2, 3, ui.TileModeClamp), []passKind{passBlur, passBlur}},
-		{"dilate", ui.NewImageFilterDilate(ui.ImageFilterMorphologyOpts{RadiusX: 3, RadiusY: 0}), []passKind{passMorph}},
-		{"erode", ui.NewImageFilterErode(ui.ImageFilterMorphologyOpts{RadiusX: 1, RadiusY: 2}), []passKind{passMorph, passMorph}},
-		{"matrix", ui.NewImageFilterMatrix(rot), []passKind{passMatrix}},
-		{"compose", ui.NewImageFilterCompose(blurFilter(1, 1, ui.TileModeClamp), ui.NewImageFilterDilate(ui.ImageFilterMorphologyOpts{RadiusX: 1, RadiusY: 1})),
-			[]passKind{passMorph, passMorph, passBlur, passBlur}},
-		{"color", ui.NewColorFilterSaturation(0.5), []passKind{passColor}},
-		{"singular matrix", ui.NewImageFilterMatrix(singular), []passKind{passMatrix}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, ok := filterPasses(tt.filter, ctm, ui.TileModeDecal, 40, 30)
-			if !ok || len(got) != len(tt.want) {
-				t.Fatalf("passes = %d (ok %v), want %d", len(got), ok, len(tt.want))
-			}
-			for i, p := range got {
-				if p.kind != tt.want[i] {
-					t.Errorf("pass %d kind = %d, want %d", i, p.kind, tt.want[i])
-				}
-			}
-		})
-	}
-	if _, ok := filterPasses(nil, ctm, ui.TileModeDecal, 40, 30); ok {
-		t.Error("a nil filter was accepted")
-	}
-	// The radii are in pixels: the transform's scale applies, and a blur without a
-	// tile mode gets the mode it is given.
-	got, _ := filterPasses(blurFilter(2, 2, ui.TileModeUnspecified), ctm, ui.TileModeMirror, 40, 30)
-	if got[0].sigma != 4 || got[0].tile != gpu.TileIndex(ui.TileModeMirror) {
-		t.Errorf("blur pass = sigma %v tile %d", got[0].sigma, got[0].tile)
-	}
-	if got, _ := filterPasses(ui.NewImageFilterDilate(ui.ImageFilterMorphologyOpts{RadiusX: 1.4, RadiusY: 0}), ctm, ui.TileModeDecal, 40, 30); got[0].radius != 3 {
-		t.Errorf("dilate radius = %d, want 1.4 * 2 rounded", got[0].radius)
-	}
-	// A matrix filter that cannot be inverted draws nothing; a nearest one is nearest.
-	if got, _ := filterPasses(ui.NewImageFilterMatrix(singular), ctm, ui.TileModeDecal, 4, 4); got[0].quality != 2 {
-		t.Errorf("singular quality = %d", got[0].quality)
-	}
-	if got, _ := filterPasses(ui.NewImageFilterMatrix(rot, ui.ImageFilterMatrixOpts{FilterQuality: ui.FilterQualityNone}), ctm, ui.TileModeDecal, 4, 4); got[0].quality != 1 {
-		t.Errorf("nearest quality = %d", got[0].quality)
-	}
-}
-
 func TestMaskFilterOnARectIsOneShadowInstance(t *testing.T) {
 	p := solidPaint(0xFF204080)
 	p.SetMaskFilter(ui.NewMaskFilterBlur(ui.BlurStyleOuter, 4))
@@ -244,10 +141,10 @@ func TestMaskFilterOnOtherShapesUsesABlurredLayer(t *testing.T) {
 				t.Fatalf("calls = %v", got)
 			}
 			begin, comp := b.frame.calls[0], b.frame.calls[2]
-			if comp.eff == nil || comp.eff.mask != tt.style || len(comp.eff.passes) != 2 || comp.eff.passes[0].kind != passBlur {
+			if comp.eff == nil || comp.eff.mask != tt.style || len(comp.eff.passes) != 2 || comp.eff.passes[0].Kind != gpu.PassBlur {
 				t.Fatalf("effect = %+v", comp.eff)
 			}
-			if got := float64(comp.eff.passes[0].sigma); math.Abs(got-tt.sigma) > 1e-5 {
+			if got := float64(comp.eff.passes[0].Sigma); math.Abs(got-tt.sigma) > 1e-5 {
 				t.Errorf("sigma = %v, want %v", got, tt.sigma)
 			}
 			// The layer is the shape plus 3 sigma on each side, and the composite goes
@@ -339,12 +236,12 @@ func TestSaveLayerImageFilter(t *testing.T) {
 		c.Restore()
 	})
 	comp := b.frame.calls[len(b.frame.calls)-1]
-	if comp.eff == nil || len(comp.eff.passes) != 2 || comp.eff.passes[0].sigma != 6 || comp.eff.passes[1].sigma != 3 {
+	if comp.eff == nil || len(comp.eff.passes) != 2 || comp.eff.passes[0].Sigma != 6 || comp.eff.passes[1].Sigma != 3 {
 		t.Fatalf("effect = %+v", comp.eff)
 	}
 	// A blur with no tile mode clamps for a save layer.
-	if comp.eff.passes[0].tile != gpu.TileIndex(ui.TileModeClamp) {
-		t.Errorf("tile = %d", comp.eff.passes[0].tile)
+	if comp.eff.passes[0].Tile != gpu.TileIndex(ui.TileModeClamp) {
+		t.Errorf("tile = %d", comp.eff.passes[0].Tile)
 	}
 }
 
@@ -379,14 +276,14 @@ func TestSceneImageFilterAndBackdropLayers(t *testing.T) {
 	// A blur with no tile mode is transparent beyond the edges for an image filter
 	// layer, and mirrors for a backdrop, whose layer starts as the filtered backdrop.
 	imageComp := b.frame.calls[2]
-	if imageComp.eff == nil || imageComp.eff.passes[0].tile != gpu.TileIndex(ui.TileModeDecal) {
+	if imageComp.eff == nil || imageComp.eff.passes[0].Tile != gpu.TileIndex(ui.TileModeDecal) {
 		t.Errorf("image filter effect = %+v", imageComp.eff)
 	}
 	begin, comp := b.frame.calls[3], b.frame.calls[5]
-	if begin.eff == nil || !begin.eff.backdrop || len(begin.eff.passes) != 2 || begin.eff.passes[0].tile != gpu.TileIndex(ui.TileModeMirror) {
+	if begin.eff == nil || !begin.eff.backdrop || len(begin.eff.passes) != 2 || begin.eff.passes[0].Tile != gpu.TileIndex(ui.TileModeMirror) {
 		t.Fatalf("backdrop begin = %+v", begin.eff)
 	}
-	if begin.rect != image.Rect(30, 30, 90, 70) || begin.eff.passes[0].outW != 60 {
+	if begin.rect != image.Rect(30, 30, 90, 70) || begin.eff.passes[0].OutW != 60 {
 		t.Errorf("backdrop layer = %v, passes %+v", begin.rect, begin.eff.passes)
 	}
 	// The layer is composited with the backdrop's blend mode and no filter.
@@ -461,11 +358,11 @@ func TestShadowIsMadeOfBlurredLayers(t *testing.T) {
 			}
 			// The ambient shadow is blurred less than the spot shadow, which is lighter.
 			amb, spot := b.frame.calls[3], b.frame.calls[6]
-			if amb.eff.passes[0].sigma >= spot.eff.passes[0].sigma {
-				t.Errorf("ambient sigma %v, spot sigma %v", amb.eff.passes[0].sigma, spot.eff.passes[0].sigma)
+			if amb.eff.passes[0].Sigma >= spot.eff.passes[0].Sigma {
+				t.Errorf("ambient sigma %v, spot sigma %v", amb.eff.passes[0].Sigma, spot.eff.passes[0].Sigma)
 			}
 			ambAlpha, spotAlpha := b.frame.data[pipeLayer][4+3], b.frame.data[pipeLayer][12+4+3]
-			if math.Abs(float64(ambAlpha)-shadowAmbientAlpha) > 0.003 || math.Abs(float64(spotAlpha)-shadowSpotAlpha) > 0.003 {
+			if math.Abs(float64(ambAlpha)-gpu.ShadowAmbientAlpha) > 0.003 || math.Abs(float64(spotAlpha)-gpu.ShadowSpotAlpha) > 0.003 {
 				t.Errorf("alphas %v, %v", ambAlpha, spotAlpha)
 			}
 			// The cut-out removes what the shape covers from the layer.

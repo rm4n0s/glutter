@@ -1,9 +1,9 @@
 // A layer composited into its parent: one instance is the rectangle of the layer's pixels that
-// the clip leaves. Ported from the GLES layer shaders (layer.vert.glsl, layer.frag.glsl); the
-// blurred masks of shadows and the filters of a layer come with step 20.6. Draw 6 vertices per
-// instance.
+// the clip leaves. Ported from the GLES layer shaders (layer.vert.glsl, layer.frag.glsl). Draw 6
+// vertices per instance.
 
 //#include "paint.wgsl.inc"
+//#include "shadow.wgsl.inc"
 
 struct Frame {
 	// The size of the texture being drawn into, in pixels.
@@ -13,10 +13,14 @@ struct Frame {
 }
 
 // What a draw call sets: the clip mask's rectangle in the surface (x, y, width, height; a width
-// of 0 means none), and the layer's pixels in the surface (x, y, width, height).
+// of 0 means none), the layer's pixels in the surface (x, y, width, height), and how the pixels
+// are read: the mask style (-1: the layer's pixels are composited; else the layer's alpha is the
+// coverage of a blurred shape, a blur style, that the paint's color fills) and drawnOnly (1:
+// pixels with no alpha are left as they are).
 struct Draw {
 	clipMask: vec4<f32>,
 	layerRect: vec4<f32>,
+	read: vec4<f32>,
 }
 
 @group(0) @binding(0) var<uniform> frame: Frame;
@@ -24,6 +28,8 @@ struct Draw {
 @group(1) @binding(0) var clipMask: texture_2d<f32>;
 // The layer's pixels, premultiplied.
 @group(2) @binding(0) var layer: texture_2d<f32>;
+// The layer before it was blurred, for a mask style other than normal.
+@group(2) @binding(1) var layerOwn: texture_2d<f32>;
 
 struct Instance {
 	@location(0) quad: vec4<f32>,  // left, top, right, bottom in pixels
@@ -83,6 +89,21 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 	}
 	let p = vec2<i32>(floor(dev - draw.layerRect.xy));
 	let texel = textureLoad(layer, p, 0);
+	if draw.read.y != 0.0 && texel.a <= 0.0 {
+		discard;
+	}
+	let style = i32(draw.read.x);
+	if style >= 0 {
+		var own = 0.0;
+		if style != 0 {
+			own = textureLoad(layerOwn, p, 0).a;
+		}
+		let cov = blurStyle(style, texel.a, own) * coverage;
+		if cov < 1.0 / 1024.0 {
+			discard;
+		}
+		return finish(paintSource(in.color, dev), cov, dev);
+	}
 	let color = applyFilters(texel * in.color);
 	return finish(color, coverage, dev);
 }
