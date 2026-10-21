@@ -8174,6 +8174,13 @@ func NewVoidCallbackAction() *widgets.VoidCallbackAction {
 	return widgets.NewVoidCallbackAction()
 }
 
+// NewWebClipboardStatusNotifier is widgets.NewWebClipboardStatusNotifier.
+//
+// Flutter: widgets.dart NewWebClipboardStatusNotifier
+func NewWebClipboardStatusNotifier(binding *widgets.WidgetsBinding) *widgets.ClipboardStatusNotifier {
+	return widgets.NewWebClipboardStatusNotifier(binding)
+}
+
 // NewWidgetBase is widgets.NewWidgetBase.
 //
 // Flutter: widgets.dart NewWidgetBase
