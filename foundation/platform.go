@@ -66,12 +66,6 @@ func (p TargetPlatform) String() string {
 	return p.Name()
 }
 
-// hostPlatform is the platform the framework runs on. Linux is the only
-// platform with a backend (SPEC §3); the engine supplies the value once
-// another operating system is supported, so that foundation stays free of
-// build tags.
-const hostPlatform = TargetPlatformLinux
-
 // debugPlatformOverride holds the override as a TargetPlatform; 0 is none.
 var debugPlatformOverride atomic.Int32
 
@@ -85,7 +79,7 @@ func DefaultTargetPlatform() TargetPlatform {
 			return p
 		}
 	}
-	return hostPlatform
+	return hostTargetPlatform()
 }
 
 // DebugDefaultTargetPlatformOverride returns the platform that replaces

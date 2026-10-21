@@ -3,8 +3,9 @@
 # "Web unit tests"): GOOS=js GOARCH=wasm go test, through Go's go_js_wasm_exec.
 #
 # Usage: scripts/test-wasm.sh [go test flags and packages]   (default: every package
-#        that builds for js, except the tools of cmd/ and docs/, whose tests run the
-#        go command and cannot run under Node)
+#        that builds for js, except the tools of cmd/ and docs/ and the host-side web
+#        tools internal/webtool and internal/webtest, whose tests run the go command,
+#        browsers and an HTTP server and cannot run under Node)
 #
 # A package whose files all carry an OS tag has nothing for js, so `go test` skips it;
 # the tests of a package that need Linux are in files with the linux tag.
@@ -28,7 +29,7 @@ gobin="$(command -v go)"
 
 args=("$@")
 if [[ ${#args[@]} -eq 0 ]]; then
-  mapfile -t args < <(GOOS=js GOARCH=wasm go list ./... | grep -v -e '/cmd/' -e '/docs$')
+  mapfile -t args < <(GOOS=js GOARCH=wasm go list ./... | grep -v -e '/cmd/' -e '/docs$' -e '/internal/webtool$' -e '/internal/webtest$')
 fi
 
 exec env -i \

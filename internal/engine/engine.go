@@ -883,8 +883,14 @@ func (h *handler) ScheduleFrame() {
 	}
 }
 
-// RequestAppExit ends Run (ui.PlatformHost).
-func (h *handler) RequestAppExit() { h.cancel() }
+// RequestAppExit ends Run (ui.PlatformHost), unless the platform says the app cannot end itself
+// (a web page cannot close itself, SPEC §23.3).
+func (h *handler) RequestAppExit() {
+	if c, ok := h.conn.(platform.ExitController); ok && !c.CanExit() {
+		return
+	}
+	h.cancel()
+}
 
 // ActivateSystemCursor shows the cursor of the kind over the window the pointer is
 // in (ui.CursorHost).
@@ -996,6 +1002,23 @@ func (h *handler) draw(w *window, scene *ui.Scene) error {
 	}
 	switch {
 	case img != nil:
+		if poster, ok := h.conn.(platform.ScreenshotPoster); ok {
+			// A platform that has no files (the web) takes the PNG itself; Run ends when it
+			// has arrived.
+			data, err := h.shot.Encode(img)
+			if err != nil {
+				h.fail(err)
+				return err
+			}
+			poster.PostScreenshot(data, func(err error) {
+				if err != nil {
+					h.fail(err)
+					return
+				}
+				h.cancel()
+			})
+			return nil
+		}
 		if err := h.shot.Save(img); err != nil {
 			h.fail(err)
 			return err

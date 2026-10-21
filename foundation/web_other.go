@@ -6,3 +6,7 @@ package foundation
 //
 // Flutter: foundation/constants.dart kIsWeb
 const IsWeb = false
+
+// hostTargetPlatform is the platform the framework runs on. Linux is the only
+// platform with a desktop backend (SPEC §3); the web asks the browser (web_js.go).
+func hostTargetPlatform() TargetPlatform { return TargetPlatformLinux }

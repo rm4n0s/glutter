@@ -24,6 +24,7 @@ FLUTTER_PATHS=(
   packages/flutter/lib
   packages/flutter/test
   engine/src/flutter/lib/ui
+  engine/src/flutter/lib/web_ui
   dev/tools/gen_keycodes/data
 )
 

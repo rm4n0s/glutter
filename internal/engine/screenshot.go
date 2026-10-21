@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"bytes"
 	"image"
 	"image/png"
 	"log/slog"
@@ -62,6 +63,19 @@ func (s *Screenshot) Path() string { return s.path }
 //
 // Flutter: no counterpart
 func (s *Screenshot) After() time.Duration { return s.after }
+
+// Encode returns img as a PNG. It fails with ScreenshotWriteFailed. A platform that
+// cannot write files hands the bytes to the host instead of calling Save
+// (platform.ScreenshotPoster).
+//
+// Flutter: no counterpart
+func (s *Screenshot) Encode(img *image.RGBA) ([]byte, error) {
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		return nil, errors.NewErr("ScreenshotWriteFailed", err).SetMetadata("path", s.path)
+	}
+	return buf.Bytes(), nil
+}
 
 // Save writes img to the file as a PNG, creating the directory if needed, and
 // logs the path. It fails with ScreenshotWriteFailed.

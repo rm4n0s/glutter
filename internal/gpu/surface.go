@@ -22,6 +22,11 @@ const (
 	//
 	// Flutter: no counterpart
 	SurfaceKindX11 SurfaceKind = "x11"
+	// SurfaceKindWeb is the canvas of a web page. Window is the ID of the view, which
+	// names the canvas (the attribute data-glutter-view); Display and Surface are zero.
+	//
+	// Flutter: no counterpart
+	SurfaceKindWeb SurfaceKind = "web"
 	// SurfaceKindFake is the surface of the scripted test platform. No GPU
 	// backend renders into it.
 	//

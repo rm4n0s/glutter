@@ -36,6 +36,12 @@ golang.org/x/image (BSD-3-Clause)
   https://pkg.go.dev/golang.org/x/image
   Copyright 2009 The Go Authors
 
+wasm_exec.js of Go (BSD-3-Clause)
+  Copied from $(go env GOROOT)/lib/wasm into every web build by glutter-web
+  (cmd/glutter-web), so that it matches the Go that built the app.
+  https://go.dev/
+  Copyright 2018 The Go Authors. All rights reserved.
+
 godbus/dbus/v5 (BSD-2-Clause)
   Go dependency, used for D-Bus.
   https://github.com/godbus/dbus
