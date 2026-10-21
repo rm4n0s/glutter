@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/internal/gpu/gputest"
 	"github.com/rm4n0s/glutter/internal/proof"
 	"github.com/rm4n0s/glutter/internal/webtest"
@@ -312,6 +313,105 @@ func TestBrowserRendererChoice(t *testing.T) {
 					t.Errorf("got %+v, want %+v", got, tc.want)
 				}
 			})
+		}
+	})
+}
+
+type switchResult struct {
+	StartedOnWebGPU bool   `json:"startedOnWebGPU"`
+	Canvases        int    `json:"canvases"`
+	WebGPU          bool   `json:"webgpu"`
+	WebGL2          bool   `json:"webgl2"`
+	Context2D       bool   `json:"context2d"`
+	Devices         int    `json:"devices"`
+	Log             string `json:"log"`
+}
+
+// TestBrowserLastResortSwitchesToWebGL: WebGPU's last resort (SPEC §9.5, §9.6) in the real engine. The
+// app starts on WebGPU; then its device is taken away twice within ten seconds (GPUDevice.destroy(), as in
+// TestBrowserDeviceLost), or once with the browser giving no new device. The chooser closes the WebGPU
+// renderer, puts a new canvas in place and draws the frame with WebGL 2: the page ends with one canvas
+// whose context is WebGL 2, and the log says so.
+func TestBrowserLastResortSwitchesToWebGL(t *testing.T) {
+	tests := []struct {
+		name  string
+		query url.Values
+	}{
+		{"a second loss within ten seconds", url.Values{"mode": {"switch"}}},
+		{"a new device that the browser will not give", url.Values{"mode": {"switch"}, "refuse": {"1"}}},
+	}
+	eachBrowserWithWebGPU(t, func(t *testing.T, b webtest.Browser) {
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				var res switchResult
+				if err := json.Unmarshal(await(t, b, tc.query, 2*time.Minute), &res); err != nil {
+					t.Fatal(err)
+				}
+				t.Logf("%+v", res)
+				if !res.StartedOnWebGPU {
+					t.Fatal("the app did not start on WebGPU")
+				}
+				if res.Canvases != 1 || !res.WebGL2 || res.WebGPU || res.Context2D {
+					t.Errorf("the page ends with %d canvases, webgpu %v, webgl2 %v, 2d %v; want one canvas with WebGL 2",
+						res.Canvases, res.WebGPU, res.WebGL2, res.Context2D)
+				}
+				for _, want := range []string{"renderer given up, switching to the next", "renderer=webgpu"} {
+					if !strings.Contains(res.Log, want) {
+						t.Errorf("the log does not say %q:\n%s", want, res.Log)
+					}
+				}
+				if strings.Count(res.Log, "renderer chosen") != 2 {
+					t.Errorf("the log should have two choices (WebGPU, then WebGL 2):\n%s", res.Log)
+				}
+			})
+		}
+	})
+}
+
+// TestBrowserLastResortNeverSwitchesAName: WebGPU asked for by name (GLUTTER_RENDERER=webgpu) is never
+// replaced (SPEC §9.6): the second loss within ten seconds ends RunApp with GPUDeviceLost, as Vulkan's
+// does, and the loader shows that in the page.
+func TestBrowserLastResortNeverSwitchesAName(t *testing.T) {
+	eachBrowserWithWebGPU(t, func(t *testing.T, b webtest.Browser) {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+		defer cancel()
+		_, err := webtest.Await(ctx, webtest.ShotOptions{
+			Dir: gpuwebSite(t), Browser: b, Width: 480, Height: 640, Timeout: 2 * time.Minute,
+			Query: url.Values{"mode": {"switch"}, "GLUTTER_RENDERER": {"webgpu"}},
+		}, "gpuweb")
+		appErr, ok := errors.FromError(err)
+		if !ok || appErr.Tag != "WebAppFailed" {
+			t.Fatalf("got %v, want WebAppFailed: the app should end with the loss", err)
+		}
+		for _, field := range []string{"log", "shown"} {
+			if text, _ := appErr.Metadata[field].(string); !strings.Contains(text, "GPUDeviceLost") {
+				t.Errorf("%s of the failure is %q, want it to name GPUDeviceLost", field, text)
+			}
+		}
+	})
+}
+
+// TestBrowserLoaderShowsAStartFailure: GLUTTER_RENDERER=webgpu on a browser without WebGPU (the test hides
+// navigator.gpu) ends RunApp with WebGPUUnavailable (SPEC §9.6), and the loader puts the error into the
+// page for the user, not only into the console (SPEC §23.1). The loader reports the text of the element it
+// made.
+func TestBrowserLoaderShowsAStartFailure(t *testing.T) {
+	webtest.EachBrowser(t, func(t *testing.T, b webtest.Browser) {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+		defer cancel()
+		_, err := webtest.Await(ctx, webtest.ShotOptions{
+			Dir: gpuwebSite(t), Browser: b, Width: 480, Height: 640, Timeout: 2 * time.Minute,
+			Query: url.Values{"mode": {"failstart"}, "GLUTTER_RENDERER": {"webgpu"}},
+		}, "gpuweb")
+		appErr, ok := errors.FromError(err)
+		if !ok || appErr.Tag != "WebAppFailed" {
+			t.Fatalf("got %v, want WebAppFailed", err)
+		}
+		shown, _ := appErr.Metadata["shown"].(string)
+		for _, want := range []string{"The app stopped with an error", "exit code 1", "WebGPUUnavailable"} {
+			if !strings.Contains(shown, want) {
+				t.Errorf("the page shows %q, want it to say %q", shown, want)
+			}
 		}
 	})
 }

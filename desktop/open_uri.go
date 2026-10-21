@@ -19,6 +19,11 @@ const openURIMethod = "org.freedesktop.portal.OpenURI.OpenURI"
 // xdg-open when there is no portal. Without either it fails with OpenURIUnavailable.
 // If the user cancels the portal's app chooser, OpenURI returns nil.
 //
+// On the web it is window.open(uri, "_blank", "noopener"): the browser lets a page open a window only
+// soon after a click or a key press, so call it from the handler of one (on a goroutine, as always); a
+// javascript: or vbscript: URI fails with OpenURISchemeBlocked, and the browser's pop-up blocker is not
+// reported.
+//
 // It waits for the desktop, so it must be called from a goroutine and not on the UI
 // thread (it fails with DesktopCallOnUIThread there); ctx ends the wait. A URI without
 // a scheme fails with OpenURIInvalid.
@@ -31,6 +36,9 @@ func OpenURI(ctx context.Context, bc widgets.BuildContext, uri string) error {
 	c, err := begin(ctx, bc)
 	if err != nil {
 		return err
+	}
+	if c.s.web != nil {
+		return c.s.web.OpenURI(ctx, uri)
 	}
 	return c.openURI(ctx, uri)
 }

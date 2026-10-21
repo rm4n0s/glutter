@@ -166,6 +166,13 @@ type notifyState struct {
 // It must be called from a goroutine and not on the UI thread (it fails with
 // DesktopCallOnUIThread there); ctx ends the wait for the service.
 //
+// On the web it uses the Notifications API: the first call asks the user for the permission (the browser
+// shows its prompt, and the call waits for the answer), and a permission that is refused is
+// NotificationsUnavailable. A notification there has a title, a plain-text body, an icon that is a URL
+// and a click: the action with the ID "default" is the click, and no other action is shown (buttons need
+// a service worker). ReplacesID replaces a notification of the page, Timeout is kept by the page, and
+// Category and AppName are not used.
+//
 // Flutter: no counterpart (Flutter apps use the flutter_local_notifications plugin)
 func ShowNotification(ctx context.Context, bc widgets.BuildContext, summary string, opts ...NotificationOpts) (NotificationID, error) {
 	o := firstOpts(opts)
@@ -180,6 +187,9 @@ func ShowNotification(ctx context.Context, bc widgets.BuildContext, summary stri
 	c, err := begin(ctx, bc)
 	if err != nil {
 		return 0, err
+	}
+	if c.s.web != nil {
+		return c.showOnWeb(ctx, summary, o)
 	}
 	if c.s.flatpak() {
 		return c.showWithPortal(ctx, summary, o)
@@ -196,6 +206,9 @@ func CloseNotification(ctx context.Context, bc widgets.BuildContext, id Notifica
 	c, err := begin(ctx, bc)
 	if err != nil {
 		return err
+	}
+	if c.s.web != nil {
+		return c.s.web.CloseNotification(ctx, uint32(id))
 	}
 	bus, err := c.s.connect(ctx)
 	if err != nil {
@@ -531,5 +544,14 @@ func (s *services) callOnUIThread(id uint32, fn func(notifyHandlers), closing bo
 	s.binding.Post(func() {
 		foundation.Guard(s.binding.ErrorReporter(), foundation.CallbackPanicked, "while handling a notification",
 			func() []any { return []any{"notification", id} }, func() { fn(h) })
+	})
+}
+
+// postHandler runs a callback of a notification on the UI thread, from any goroutine; a callback that
+// panics is reported. The web's notifications call back through it, with the callbacks in the closure.
+func (s *services) postHandler(what string, fn func()) {
+	s.binding.Post(func() {
+		foundation.Guard(s.binding.ErrorReporter(), foundation.CallbackPanicked, "while handling a notification",
+			func() []any { return []any{"event", what} }, fn)
 	})
 }

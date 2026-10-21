@@ -76,3 +76,39 @@ func errAlreadyRunning() error {
 func errScreenshotPostFailed(detail string) error {
 	return errors.New("ScreenshotWriteFailed", "the screenshot could not be posted to the server", "detail", detail)
 }
+
+// errOpenURISchemeBlocked is the error of a URI whose scheme runs script in the page that opens it.
+func errOpenURISchemeBlocked(uri, scheme string) error {
+	return errors.New("OpenURISchemeBlocked", "the web does not open a URI that runs script", "uri", uri, "scheme", scheme)
+}
+
+// errOpenURIUnavailable is the error of a window.open that cannot be made: it threw (a sandboxed frame
+// that may not open windows), or there is no page. The tag is the one of Linux's OpenURI when nothing can
+// open the URI.
+func errOpenURIUnavailable(uri, reason string) error {
+	return errors.New("OpenURIUnavailable", "the browser cannot open the URI", "uri", uri, "reason", reason)
+}
+
+// errNotificationsUnavailable is the error of a page that cannot show notifications: the Notifications API
+// is missing (an insecure context, an old browser) or asking for the permission failed.
+func errNotificationsUnavailable(reason string) error {
+	return errors.New("NotificationsUnavailable", "the page cannot show notifications", "reason", reason)
+}
+
+// errNotificationsRefused is the error of a permission that the user did not give: denied, or the prompt
+// was dismissed (the permission is still "default").
+func errNotificationsRefused(permission string) error {
+	return errors.New("NotificationsUnavailable", "the user did not allow the page to show notifications", "permission", permission)
+}
+
+// errPermissionAborted is the error of a wait for the permission prompt that the context ended: the user
+// has not answered.
+func errPermissionAborted(cause error) error {
+	return errors.NewErr("NotificationPermissionAborted", cause)
+}
+
+// errNotificationFailed is the error of a browser that refuses to construct the Notification (Chrome on
+// Android allows notifications from a service worker only).
+func errNotificationFailed(detail string) error {
+	return errors.New("WebNotificationFailed", "the browser could not make the notification", "detail", detail)
+}

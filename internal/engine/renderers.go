@@ -33,6 +33,12 @@ type rendererCandidate struct {
 	// New makes the renderer. It must not touch the GPU: the first Draw does, and its
 	// error says whether the renderer works.
 	New func(cfg *Config, log *slog.Logger) renderer
+	// SwitchOn, when set, says whether an error from Draw of this renderer, once it was
+	// chosen, is its last resort: the engine then closes it and goes on to the next candidate
+	// of the list, as if this one had failed its first frame (SPEC §9.6). WebGPU has it for a
+	// device that was lost twice in ten seconds or cannot be had again; Vulkan does not. A
+	// renderer asked for by name never switches.
+	SwitchOn func(err error) bool
 }
 
 // describer is a renderer that can name itself and its device, for the log: "gles:
@@ -52,6 +58,13 @@ type chooser struct {
 	named bool
 	cur   renderer
 	name  string
+	// chosen is the candidate that cur came from, and after the candidates that follow it,
+	// which a switch (rendererCandidate.SwitchOn) goes on with.
+	chosen rendererCandidate
+	after  []rendererCandidate
+	// renew is whether the next try must start with a new native surface: the renderer that
+	// is given up has already used the current one.
+	renew bool
 }
 
 // newChooser checks what the renderer is asked for (want is "" or "auto" for the
@@ -90,17 +103,38 @@ func newChooser(cfg *Config, log *slog.Logger, want string, cands []rendererCand
 // logged once at Info level, the renderer is closed, and the next candidate is tried
 // with the same frame. A renderer asked for by name returns its error; with auto the
 // error of the last candidate is returned when every one failed.
+//
+// A renderer that was chosen can still give up for good: when its candidate has a SwitchOn
+// that accepts the error of a frame (WebGPU after a second lost device or a device that
+// cannot be had again), the renderer is closed and the candidates after it are tried with
+// the same frame, on a new native surface (SPEC §9.5, §9.6).
 func (c *chooser) Draw(h gpu.SurfaceHandle, width, height int, scene *ui.Scene, capture bool) (*image.RGBA, error) {
-	if c.cur != nil {
-		return c.cur.Draw(h, width, height, scene, capture)
+	if c.cur == nil {
+		if len(c.cand) == 0 {
+			return nil, errors.New("RendererUnavailable", "this OS or build has no renderer")
+		}
+		return c.try(h, width, height, scene, capture)
 	}
-	if len(c.cand) == 0 {
-		return nil, errors.New("RendererUnavailable", "this OS or build has no renderer")
+	img, err := c.cur.Draw(h, width, height, scene, capture)
+	if err == nil || c.named || c.chosen.SwitchOn == nil || !c.chosen.SwitchOn(err) || len(c.after) == 0 {
+		return img, err
 	}
+	attrs := []any{"renderer", c.chosen.Name, "error", err}
+	if appErr, ok := errors.FromError(err); ok {
+		attrs = append(attrs, "tag", appErr.Tag)
+	}
+	c.log.Info("renderer given up, switching to the next", attrs...)
+	c.cur.Close()
+	c.cur, c.cand, c.after, c.renew = nil, c.after, nil, true
+	return c.try(h, width, height, scene, capture)
+}
+
+// try draws the frame with the first candidate that can.
+func (c *chooser) try(h gpu.SurfaceHandle, width, height int, scene *ui.Scene, capture bool) (*image.RGBA, error) {
 	var last error
 	for tried := 0; len(c.cand) > 0; tried++ {
 		cand := c.cand[0]
-		if tried > 0 && c.cfg.renewSurface != nil {
+		if (tried > 0 || c.renew) && c.cfg.renewSurface != nil {
 			// What the renderer before this one did to the native surface (the web's canvas
 			// keeps the first kind of context it was asked for) must not reach this one.
 			c.cfg.renewSurface(h)
@@ -108,7 +142,7 @@ func (c *chooser) Draw(h gpu.SurfaceHandle, width, height int, scene *ui.Scene, 
 		r := cand.New(c.cfg, c.log)
 		img, err := r.Draw(h, width, height, scene, capture)
 		if err == nil {
-			c.cur, c.name, c.cand = r, cand.Name, nil
+			c.cur, c.name, c.chosen, c.after, c.cand, c.renew = r, cand.Name, cand, c.cand[1:], nil, false
 			c.log.Info("renderer chosen", "renderer", c.Describe())
 			return img, nil
 		}

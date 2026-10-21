@@ -81,7 +81,7 @@ func processStart() (time.Time, bool) { return time.Time{}, false }
 // asked for.
 func rendererCandidates() []rendererCandidate {
 	return []rendererCandidate{
-		{Name: "webgpu", New: newWebGPURenderer}, {Name: "webgl", New: newWebGLRenderer}, {Name: "soft", New: newCanvasRenderer},
+		{Name: "webgpu", New: newWebGPURenderer, SwitchOn: webgpuLastResort}, {Name: "webgl", New: newWebGLRenderer}, {Name: "soft", New: newCanvasRenderer},
 	}
 }
 

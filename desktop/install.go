@@ -13,6 +13,6 @@ import (
 func InstallBus(b *widgets.WidgetsBinding, bus dbus.Bus) {
 	s := servicesOf(b)
 	s.mu.Lock()
-	s.bus = bus
+	s.bus, s.web = bus, nil
 	s.mu.Unlock()
 }

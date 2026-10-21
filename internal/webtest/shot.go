@@ -113,7 +113,7 @@ func awaitScreenshot(ctx context.Context, srv *Server, browserDone <-chan struct
 			}
 			if res.ExitCode != 0 || res.Message != "" {
 				return nil, errors.New("WebAppFailed", "the app ended with an error",
-					"exit code", strconv.Itoa(res.ExitCode), "message", res.Message, "log", strings.TrimSpace(res.Log))
+					"exit code", strconv.Itoa(res.ExitCode), "message", res.Message, "shown", res.Shown, "log", strings.TrimSpace(res.Log))
 			}
 			return nil, errors.New("WebAppFailed", "the app ended without taking a screenshot", "log", strings.TrimSpace(res.Log))
 		case <-browserDone:

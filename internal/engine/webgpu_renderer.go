@@ -65,3 +65,13 @@ func (c *Config) closeWebGPU() {
 		c.webgpuClose()
 	}
 }
+
+// webgpuLastResort says whether the error of a frame of the WebGPU renderer is its last resort
+// (SPEC §9.5): a second lost device within ten seconds (GPUDeviceLost, from the explicit renderer's
+// rule) or a new device that the browser would not give (WebGPUDeviceFailed). The chooser then
+// switches the page to the next renderer of the list, WebGL 2, on a new canvas. Any other error of a
+// frame is the app's to see, as it is for every renderer.
+func webgpuLastResort(err error) bool {
+	appErr, ok := errors.FromError(err)
+	return ok && (appErr.Tag == webgpu.TagDeviceLost || appErr.Tag == webgpu.TagDeviceFailed)
+}

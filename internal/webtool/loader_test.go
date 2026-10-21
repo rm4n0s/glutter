@@ -72,3 +72,83 @@ process.stdout.write(JSON.stringify(["", "?a=1", "?glutter_report=%2Fr", "?a=1&g
 		t.Errorf("glutterReportURL gives %s, want %s", out, want)
 	}
 }
+
+// runLoaderFunctions evaluates the loader under Node with a document that is just enough for
+// glutterShow, runs the script and returns what it prints as JSON.
+func runLoaderFunctions(t *testing.T, script string) []byte {
+	t.Helper()
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("Node.js is not installed (sudo dnf install nodejs)")
+	}
+	prelude := `const elements = [];
+globalThis.document = {
+  body: { appendChild(e) { elements.push(e); e.parent = this; } },
+  documentElement: { appendChild(e) { elements.push(e); } },
+  createElement(tag) { return { tag, style: {}, attrs: {}, setAttribute(k, v) { this.attrs[k] = v; } }; },
+  getElementById(id) { return elements.find((e) => e.id === id) || null; },
+};
+eval(process.argv[1]);
+`
+	out, err := exec.Command(node, "-e", prelude+script, LoaderJS()).Output()
+	if err != nil {
+		t.Fatalf("node failed: %v", err)
+	}
+	return out
+}
+
+// TestLoaderShowsTheFailureInThePage: a program that stops with an error (a renderer asked for by
+// name that the browser lacks, for example) is told to the user in the page, over whatever the
+// program drew, with the last lines of what it wrote; one message is kept and replaced (SPEC §23.1).
+func TestLoaderShowsTheFailureInThePage(t *testing.T) {
+	log := "2026/10/21 12:00:00 INFO startup stage=a\n2026/10/21 12:00:01 INFO renderer not usable\n\n" +
+		"2026/10/21 12:00:02 WebGPUUnavailable: this browser has no usable WebGPU reason=\"no navigator.gpu\"\n"
+	input, err := json.Marshal(map[string]string{"log": log, "long": strings.Repeat("x", 5000), "many": strings.Repeat("line\n", 20) + "last\n"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := runLoaderFunctions(t, `const input = `+string(input)+`;
+glutterShow(glutterFailureText(1, input.log));
+const first = document.getElementById("glutter-message");
+glutterShow("again");
+process.stdout.write(JSON.stringify({
+  text: glutterFailureText(1, input.log),
+  empty: glutterFailureText(2, ""),
+  long: glutterFailureText(3, input.long).length,
+  many: glutterFailureText(4, input.many).split("\n").length,
+  count: elements.length,
+  sameElement: first === document.getElementById("glutter-message"),
+  finalText: document.getElementById("glutter-message").textContent,
+  role: first.attrs.role,
+  fixed: first.style.cssText.includes("position:fixed"),
+}));`)
+	var got struct {
+		Text, Empty, FinalText, Role string
+		Long, Many, Count            int
+		SameElement, Fixed           bool
+	}
+	if err := json.Unmarshal(out, &got); err != nil {
+		t.Fatalf("node printed %q: %v", out, err)
+	}
+	if !strings.Contains(got.Text, "exit code 1") || !strings.Contains(got.Text, "WebGPUUnavailable: this browser has no usable WebGPU") {
+		t.Errorf("the message is %q: it should have the exit code and the error of the log", got.Text)
+	}
+	if got.Empty != "The app stopped with an error (exit code 2)." {
+		t.Errorf("without a log the message is %q", got.Empty)
+	}
+	if got.Long > 400 {
+		t.Errorf("a long line gave a message of %d characters, want it cut", got.Long)
+	}
+	if want := 2 + 4; got.Many != want { // the first line, a blank one, and the last four lines
+		t.Errorf("the message has %d lines, want %d: only the last four lines of the log", got.Many, want)
+	}
+	if strings.Contains(got.Text, "INFO") {
+		t.Errorf("the message has Info lines, which only hide the error: %q", got.Text)
+	}
+	if got.Count != 1 || !got.SameElement || got.FinalText != "again" {
+		t.Errorf("%d elements, same element %v, text %q: the message should be one element, replaced", got.Count, got.SameElement, got.FinalText)
+	}
+	if got.Role != "alert" || !got.Fixed {
+		t.Errorf("role %q, fixed %v: the message should be an alert over the page", got.Role, got.Fixed)
+	}
+}

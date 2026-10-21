@@ -26,6 +26,12 @@ func TestErrorRoutes(t *testing.T) {
 		{"clipboard primary", errClipboardPrimaryUnavailable(), "ClipboardPrimaryUnavailable", "errClipboardPrimaryUnavailable"},
 		{"clipboard timeout", errClipboardReadTimeout(context.DeadlineExceeded), "ClipboardReadTimeout", "errClipboardReadTimeout"},
 		{"screenshot", errScreenshotPostFailed("status 500"), "ScreenshotWriteFailed", "errScreenshotPostFailed"},
+		{"script URI", errOpenURISchemeBlocked("javascript:x", "javascript"), "OpenURISchemeBlocked", "errOpenURISchemeBlocked"},
+		{"open URI", errOpenURIUnavailable("https://example.org", "window.open threw"), "OpenURIUnavailable", "errOpenURIUnavailable"},
+		{"notifications", errNotificationsUnavailable("no API"), "NotificationsUnavailable", "errNotificationsUnavailable"},
+		{"notifications refused", errNotificationsRefused("denied"), "NotificationsUnavailable", "errNotificationsRefused"},
+		{"permission aborted", errPermissionAborted(context.Canceled), "NotificationPermissionAborted", "errPermissionAborted"},
+		{"notification constructor", errNotificationFailed("Illegal constructor"), "WebNotificationFailed", "errNotificationFailed"},
 		{"run twice", errAlreadyRunning(), "PlatformAlreadyRunning", "errAlreadyRunning"},
 	}
 	for _, tc := range tests {

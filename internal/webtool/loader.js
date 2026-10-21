@@ -27,13 +27,35 @@ function glutterEnvFromQuery(search) {
   return env;
 }
 
-// glutterShow puts a message into the page, for a browser that cannot run the app.
+// glutterShow puts a message into the page: for a browser that cannot run the app, and for a
+// program that stopped with an error (a start-up failure such as WebGPUUnavailable for a renderer
+// that was asked for by name), which the user would otherwise find only in the console. It
+// replaces an earlier message, and sits over the page so that a canvas that was already made
+// does not hide it.
 function glutterShow(text) {
-  const p = document.createElement("p");
-  p.id = "glutter-message";
-  p.style.cssText = "font:16px system-ui,sans-serif;margin:2em;color:#333";
+  let p = document.getElementById("glutter-message");
+  if (!p) {
+    p = document.createElement("pre");
+    p.id = "glutter-message";
+    p.setAttribute("role", "alert");
+    p.style.cssText = "position:fixed;left:0;right:0;top:0;z-index:2147483647;margin:0;padding:1em 2em;" +
+      "font:14px/1.4 system-ui,sans-serif;white-space:pre-wrap;word-break:break-word;color:#5c0011;" +
+      "background:#fff1f0;border-bottom:2px solid #b3261e;max-height:50vh;overflow:auto";
+    (document.body || document.documentElement).appendChild(p);
+  }
   p.textContent = text;
-  document.body.appendChild(p);
+}
+
+// glutterFailureText is the message for a program that ended with a non-zero exit code: the last
+// lines of what it wrote to standard error that are not Info, Debug or Warn log lines (a failed
+// RunApp is logged as an error line that names the tag, then as the last line), or the last lines
+// when there are none. A line is cut at 300 characters: an error line can carry a stack.
+function glutterFailureText(code, log) {
+  const lines = String(log || "").split("\n").map((l) => l.trim()).filter((l) => l !== "");
+  const important = lines.filter((l) => !/ (INFO|DEBUG|WARN) /.test(l));
+  const tail = (important.length ? important : lines).slice(-4)
+    .map((l) => (l.length > 300 ? l.slice(0, 300) + "..." : l)).join("\n");
+  return "The app stopped with an error (exit code " + code + ")." + (tail ? "\n\n" + tail : "");
 }
 
 // glutterReportURL is where to post how the program ended, when the page was opened with
@@ -52,26 +74,30 @@ async function glutterBoot() {
   const go = new Go();
   go.env = Object.assign({}, go.env, glutterEnvFromQuery(location.search));
   let log = "";
-  if (report && globalThis.fs && globalThis.fs.writeSync) {
-    // Keep what the program writes to standard output and error, to report it when it ends.
+  if (globalThis.fs && globalThis.fs.writeSync) {
+    // Keep what the program writes to standard output and error (the last 64 KiB), to show why it
+    // failed and, when the page was opened with glutter_report, to report it.
     const write = globalThis.fs.writeSync.bind(globalThis.fs);
     const decoder = new TextDecoder("utf-8");
     globalThis.fs.writeSync = (fd, buf) => {
-      if (log.length < 65536) log += decoder.decode(buf);
+      log += decoder.decode(buf, { stream: true });
+      if (log.length > 65536) log = log.slice(-65536);
       return write(fd, buf);
     };
   }
   const finish = (code, message) => {
     if (!report) return;
+    const shown = document.getElementById("glutter-message");
     fetch(report, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ kind: "exit", exitCode: code, message: message || "", log }),
+      body: JSON.stringify({ kind: "exit", exitCode: code, message: message || "", log, shown: shown ? shown.textContent : "" }),
       keepalive: true,
     }).catch(() => {});
   };
   const exit = go.exit;
   go.exit = (code) => {
+    if (code !== 0) glutterShow(glutterFailureText(code, log));
     finish(code, "");
     exit(code);
   };

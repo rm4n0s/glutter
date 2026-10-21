@@ -83,6 +83,7 @@ func TestMain(m *testing.M) {
 	}
 	cleanupInputSite()
 	cleanupTextSite()
+	cleanupDesktopSite()
 	os.Exit(code)
 }
 

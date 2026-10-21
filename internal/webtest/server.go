@@ -34,6 +34,9 @@ type Result struct {
 	Message string `json:"message"`
 	// Log is what the Go program wrote to its standard output and error.
 	Log string `json:"log"`
+	// Shown is the text of the message that the loader put into the page when the program ended
+	// with an error (the element #glutter-message), or empty.
+	Shown string `json:"shown"`
 	// Data is the rest of what a test program sent, as it sent it.
 	Data json.RawMessage `json:"data,omitempty"`
 }

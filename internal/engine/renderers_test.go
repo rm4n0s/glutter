@@ -349,3 +349,114 @@ func TestChooserRenewsTheSurfaceBeforeEachTryAfterTheFirst(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// lostForGood is the tag of the error that the fake candidates with a last resort give up on.
+const lostForGood = "LostForGood"
+
+// withLastResort gives the first fake candidate a SwitchOn that accepts lostForGood, as the
+// web's webgpu candidate has (webgpuLastResort).
+func withLastResort(cands []rendererCandidate) []rendererCandidate {
+	cands[0].SwitchOn = func(err error) bool {
+		appErr, ok := errors.FromError(err)
+		return ok && appErr.Tag == lostForGood
+	}
+	return cands
+}
+
+// TestChooserSwitchesWhenTheChosenRendererGivesUp: a renderer whose candidate has a last resort
+// (WebGPU after its device is lost twice, SPEC §9.5) is closed when a frame fails with the error
+// that the last resort accepts, and the frame is drawn again by the next candidate that works, on
+// a new native surface. Any other error, a renderer asked for by name, and a candidate with no
+// last resort never switch.
+func TestChooserSwitchesWhenTheChosenRendererGivesUp(t *testing.T) {
+	handle := gpu.SurfaceHandle{Kind: gpu.SurfaceKindFake, Window: 3}
+	lost := errors.New(lostForGood, "the device is gone for good")
+	tests := []struct {
+		name         string
+		want         string
+		failing      []string
+		noLastResort bool
+		err          error // the error the first renderer gives at its second frame
+		wantTag      string
+		wantUsed     string // the letter of the renderer that drew the second frame
+		wantMade     string
+		wantRenew    int
+	}{
+		{name: "the last resort goes to the next", want: "auto", err: lost, wantUsed: "b", wantMade: "ab", wantRenew: 1},
+		{name: "the next one fails too, so the third draws", want: "auto", failing: []string{"b"}, err: lost, wantUsed: "c", wantMade: "abc", wantRenew: 2},
+		{name: "every later candidate fails", want: "auto", failing: []string{"b", "c"}, err: lost, wantTag: "CFailed", wantMade: "abc", wantRenew: 2},
+		{name: "another error is returned", want: "auto", err: errors.New("Other", "an error of the frame"), wantTag: "Other", wantUsed: "a", wantMade: "a"},
+		{name: "a name never switches", want: "vulkan", err: lost, wantTag: lostForGood, wantUsed: "a", wantMade: "a"},
+		{name: "a candidate with no last resort", want: "auto", noLastResort: true, err: lost, wantTag: lostForGood, wantUsed: "a", wantMade: "a"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cands, made := fakeCandidates(tt.failing...)
+			if !tt.noLastResort {
+				cands = withLastResort(cands)
+			}
+			renewed := 0
+			cfg := &Config{renewSurface: func(h gpu.SurfaceHandle) {
+				if h != handle {
+					t.Errorf("renewed %v, want %v", h, handle)
+				}
+				renewed++
+			}}
+			log, logs := recordingLog()
+			c, err := newChooser(cfg, log, tt.want, cands)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := c.Draw(handle, 10, 10, nil, false); err != nil {
+				t.Fatalf("the first frame: %v", err)
+			}
+			if renewed != 0 {
+				t.Fatalf("the first frame renewed the surface %d times", renewed)
+			}
+			first := (*made)[0]
+			first.mu.Lock()
+			first.err = tt.err
+			first.mu.Unlock()
+			_, err = c.Draw(handle, 12, 14, nil, true)
+			if tt.wantTag == "" {
+				if err != nil {
+					t.Fatalf("the second frame: %v", err)
+				}
+			} else if appErr, ok := errors.FromError(err); !ok || appErr.Tag != tt.wantTag {
+				t.Fatalf("the second frame gave %v, want tag %s", err, tt.wantTag)
+			}
+			var letters string
+			for _, r := range *made {
+				letters += r.name[:1]
+			}
+			if letters != tt.wantMade {
+				t.Errorf("renderers made: %q, want %q", letters, tt.wantMade)
+			}
+			if renewed != tt.wantRenew {
+				t.Errorf("the surface was renewed %d times, want %d", renewed, tt.wantRenew)
+			}
+			_, firstClosed := first.snapshot()
+			switched := tt.wantRenew > 0
+			if switched != (firstClosed == 1) {
+				t.Errorf("the renderer given up was closed %d times (switched: %v)", firstClosed, switched)
+			}
+			if switched != strings.Contains(logs.String(), "renderer given up, switching to the next") {
+				t.Errorf("the log does not match the switch (%v): %s", switched, logs.String())
+			}
+			if tt.wantUsed != "" {
+				if got := c.Describe()[:1]; got != tt.wantUsed {
+					t.Errorf("the renderer in use is %q, want %q", got, tt.wantUsed)
+				}
+			}
+			if switched && tt.wantTag == "" {
+				// The frame went to the new renderer whole: same size, and the capture flag.
+				next := (*made)[len(*made)-1]
+				next.mu.Lock()
+				defer next.mu.Unlock()
+				if len(next.calls) != 1 || next.calls[0].width != 12 || next.calls[0].height != 14 || !next.calls[0].capture {
+					t.Errorf("the new renderer drew %+v, want the 12x14 capture frame", next.calls)
+				}
+			}
+		})
+	}
+}

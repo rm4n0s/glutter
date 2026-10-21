@@ -61,7 +61,7 @@ func Await(ctx context.Context, o ShotOptions, kind string) (Result, error) {
 			}
 			if res.Kind == "exit" {
 				return Result{}, errors.New("WebAppFailed", "the app ended before it reported "+strconv.Quote(kind),
-					"exit code", strconv.Itoa(res.ExitCode), "message", res.Message, "log", strings.TrimSpace(res.Log))
+					"exit code", strconv.Itoa(res.ExitCode), "message", res.Message, "shown", res.Shown, "log", strings.TrimSpace(res.Log))
 			}
 		case <-proc.Done():
 			md := []any{}

@@ -35,6 +35,10 @@ type services struct {
 	open    func(ctx context.Context) (dbus.Bus, error)
 	run     func(ctx context.Context, env []string, name string, args ...string) error
 	flatpak func() bool
+
+	// web, set on the web only, does what the desktop does there: it opens URIs with window.open
+	// and shows notifications with the Notifications API. With it, the session bus is never tried.
+	web webDesktop
 }
 
 type servicesKey struct{}
@@ -42,7 +46,7 @@ type servicesKey struct{}
 // servicesOf returns the services of the binding.
 func servicesOf(b *widgets.WidgetsBinding) *services {
 	return b.Extension(servicesKey{}, func() any {
-		return &services{binding: b, open: dbus.Connect, run: runProgram, flatpak: inFlatpak}
+		return &services{binding: b, open: dbus.Connect, run: runProgram, flatpak: inFlatpak, web: newWebDesktop()}
 	}).(*services)
 }
 
@@ -68,6 +72,9 @@ func (s *services) connect(ctx context.Context) (dbus.Bus, error) {
 	defer s.mu.Unlock()
 	if s.bus != nil {
 		return s.bus, nil
+	}
+	if s.web != nil {
+		return nil, errors.New("DBusUnavailableOnWeb", "a web page has no session bus: D-Bus is never tried on the web")
 	}
 	// The connection outlives the call that opened it, and godbus closes a connection
 	// when the context it was made with ends: the connection gets a context that never
