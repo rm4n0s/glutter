@@ -4,6 +4,7 @@ package fontconfig
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"unsafe"
 
@@ -44,7 +45,14 @@ type Config struct {
 	// scratch is C memory for what the library writes through a pointer: a char
 	// pointer or an int.
 	scratch uintptr
+	// defaults are the family names that the configuration puts after a family that
+	// it knows nothing about (the default sans-serif and what it stands for); nil until
+	// the first call of Aliases.
+	defaults []string
 }
+
+// probeFamily is a family name that no font and no configuration rule mentions.
+const probeFamily = "glutter-probe-family-with-no-font"
 
 // Open loads libfontconfig and the user's fontconfig configuration, which reads
 // the configuration files and scans the font directories. It fails with
@@ -163,6 +171,74 @@ func (c *Config) Match(ctx context.Context, family string, weight int, italic bo
 	}
 	defer c.lib.fontSetDestroy(set)
 	return c.files(set), nil
+}
+
+// Aliases returns the other family names that the user's configuration says the family
+// stands for, in order: after FcConfigSubstitute the pattern lists the family and then, for
+// Arial, Liberation Sans and its metric-compatible names, or for a family with a rule of the
+// user, the names the rules add. The names that the configuration adds to every family (the
+// default sans-serif and the fonts it stands for) are left out, so a family that nothing mentions
+// has none. It fails like Match.
+//
+// Flutter: no counterpart (SkFontMgr_fontconfig::onMatchFamilyStyle accepts the strongly bound families)
+func (c *Config) Aliases(ctx context.Context, family string) ([]string, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, errors.NewErr("FontconfigCanceled", err)
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.config == 0 {
+		return nil, errors.New("FontconfigClosed", "the fontconfig configuration is closed")
+	}
+	if c.defaults == nil {
+		d, err := c.substitutedFamilies(probeFamily)
+		if err != nil {
+			return nil, err
+		}
+		c.defaults = append([]string{}, d...)
+	}
+	names, err := c.substitutedFamilies(family)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, n := range names {
+		if strings.EqualFold(n, family) || containsFold(c.defaults, n) || containsFold(out, n) {
+			continue
+		}
+		out = append(out, n)
+	}
+	return out, nil
+}
+
+func containsFold(list []string, s string) bool {
+	for _, e := range list {
+		if strings.EqualFold(e, s) {
+			return true
+		}
+	}
+	return false
+}
+
+// substitutedFamilies is the list of the family names of a pattern for the family after the
+// configuration's substitution (without the default substitution). The caller holds c.mu.
+func (c *Config) substitutedFamilies(family string) ([]string, error) {
+	pat := c.lib.patternCreate()
+	if pat == 0 {
+		return nil, errors.New("FontconfigPatternFailed", "fontconfig could not create a pattern")
+	}
+	defer c.lib.patternDestroy(pat)
+	if err := c.addString(pat, objFamily, family); err != nil {
+		return nil, err
+	}
+	c.lib.configSubstitute(c.config, pat, fcMatchPattern)
+	var names []string
+	obj := dl.CString(objFamily)
+	defer dl.Free(obj)
+	for n := int32(0); c.lib.patternGetString(pat, obj, n, c.scratch) == fcResultMatch; n++ {
+		names = append(names, dl.GoString(*(*uintptr)(dl.Pointer(c.scratch))))
+	}
+	return names, nil
 }
 
 func (c *Config) addString(pat uintptr, object, value string) error {

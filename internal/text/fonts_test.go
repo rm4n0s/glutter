@@ -105,8 +105,9 @@ func TestMatchOrder(t *testing.T) {
 		want    []FontFile
 	}{
 		{"system fonts only", "sans-serif", true, sys},
-		{"the bundled font comes first", "Roboto", true, append([]FontFile{{Path: BundledPrefix + "Roboto", Family: "Roboto"}}, sys...)},
-		{"family names ignore case and blanks", "ROBOTO", true, append([]FontFile{{Path: BundledPrefix + "ROBOTO", Family: "ROBOTO"}}, sys...)},
+		{"the bundled font comes first, and the system fonts of other families are not its", "Roboto", true, []FontFile{{Path: BundledPrefix + "Roboto", Family: "Roboto"}}},
+		{"family names ignore case and blanks", "ROBOTO", true, []FontFile{{Path: BundledPrefix + "ROBOTO", Family: "ROBOTO"}}},
+		{"the system fonts of the family itself follow the bundled one", "A", true, []FontFile{{Path: "/fonts/a.ttf", Family: "A"}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

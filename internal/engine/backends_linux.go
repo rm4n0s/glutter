@@ -159,6 +159,11 @@ func (m *fontconfigMatcher) Match(ctx context.Context, family string, weight int
 	return out, nil
 }
 
+// Aliases implements text.Aliaser.
+func (m *fontconfigMatcher) Aliases(ctx context.Context, family string) ([]string, error) {
+	return m.cfg.Aliases(ctx, family)
+}
+
 // Close releases the configuration. The matcher must not be used after.
 func (m *fontconfigMatcher) Close() { m.cfg.Close() }
 

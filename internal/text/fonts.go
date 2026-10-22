@@ -80,6 +80,33 @@ type Matcher interface {
 	Match(ctx context.Context, family string, weight int, italic bool, lang string) ([]FontFile, error)
 }
 
+// Aliaser is a Matcher that also knows which other family names a family stands
+// for, such as Liberation Sans for Arial. A Collection uses it when the Matcher
+// implements it: a family that is not generic gets the system fonts of its own family
+// and of these names, and no other (Collection.Match).
+//
+// Flutter: no counterpart
+type Aliaser interface {
+	// Aliases returns the other names of the family, most preferred first; none for a
+	// family that the configuration says nothing about.
+	Aliases(ctx context.Context, family string) ([]string, error)
+}
+
+// genericFamilies are the family names that stand for a class of fonts instead of one family,
+// as fontconfig and CSS use them. The Matcher gives the whole list of fonts for each.
+var genericFamilies = map[string]bool{
+	"sans-serif": true, "serif": true, "monospace": true, "cursive": true, "fantasy": true,
+	"emoji": true, "math": true,
+}
+
+// IsGenericFamily says whether the family name is a generic one (sans-serif, serif,
+// monospace, cursive, fantasy, emoji or math), which stands for the system's fonts of that kind.
+//
+// Flutter: no counterpart
+func IsGenericFamily(family string) bool {
+	return genericFamilies[strings.ToLower(strings.TrimSpace(family))]
+}
+
 // Fallbacker is a Matcher that can also find a font for one character that the fonts of
 // Match do not have. A Collection uses it when the Matcher implements it.
 //
@@ -121,6 +148,7 @@ type Collection struct {
 	loaded     map[string][]*loadedFont
 	loadedByID map[string]*loadedFont // FontFile.Path → font
 	generation uint64                 // grows with every change of the loaded or bundled fonts
+	aliasCache map[string][]string    // normalized family → the Aliaser's answer
 	fonts      map[fontKey]*font.Font
 	faces      map[faceKey]*font.Face
 	scan       *scanMatcher // created on first use when opts.Matcher is nil
@@ -148,6 +176,7 @@ func NewCollection(opts ...CollectionOpts) *Collection {
 		bundled:    map[string][]byte{},
 		loaded:     map[string][]*loadedFont{},
 		loadedByID: map[string]*loadedFont{},
+		aliasCache: map[string][]string{},
 		fonts:      map[fontKey]*font.Font{},
 		faces:      map[faceKey]*font.Face{},
 	}
@@ -297,9 +326,15 @@ func describeFont(data []byte) (font.Description, []tables.VariationAxisRecord, 
 	return ft.Describe(), axes, nil
 }
 
-// Match returns the fonts for the family, best first: the bundled font of that
+// Match returns the fonts for the family, best first: the fonts the app loaded under
+// that family (the closest to the weight and slant first), the bundled font of that
 // family if there is one, then the system fonts in the order of the Matcher or of
-// the font scan (only TrueType and OpenType files, which go-text reads). weight is an OpenType weight (400 regular, 700 bold), lang a BCP 47
+// the font scan (only TrueType and OpenType files, which go-text reads). For a generic
+// family (IsGenericFamily) that is the Matcher's whole list, which goes on with the
+// fonts that follow in the user's configuration. For any other family it is only the
+// system fonts that belong to it: those of the family itself, and those of the names that
+// the Matcher says it stands for (Aliaser); a family that no installed font has gives none, so the
+// caller can go on to the next family instead of getting the system's default font. weight is an OpenType weight (400 regular, 700 bold), lang a BCP 47
 // tag or "". It fails with FontMatchCanceled when ctx is done, with FontScanFailed
 // when the fonts cannot be scanned; the Matcher's own error is returned unchanged.
 //
@@ -329,12 +364,45 @@ func (c *Collection) Match(ctx context.Context, family string, weight int, itali
 	if err != nil {
 		return nil, err
 	}
+	belongs := func(FontFile) bool { return true }
+	if !IsGenericFamily(family) {
+		names := map[string]bool{normalizeFamily(family): true}
+		if al, ok := matcher.(Aliaser); ok {
+			aliases, err := c.aliases(ctx, al, family)
+			if err != nil {
+				return nil, err
+			}
+			for _, a := range aliases {
+				names[normalizeFamily(a)] = true
+			}
+		}
+		belongs = func(f FontFile) bool { return names[normalizeFamily(f.Family)] }
+	}
 	for _, f := range files {
-		if supportedFont(f.Path) {
+		if supportedFont(f.Path) && belongs(f) {
 			out = append(out, f)
 		}
 	}
 	return out, nil
+}
+
+// aliases asks the Matcher for the other names of a family once.
+func (c *Collection) aliases(ctx context.Context, al Aliaser, family string) ([]string, error) {
+	key := normalizeFamily(family)
+	c.mu.Lock()
+	cached, ok := c.aliasCache[key]
+	c.mu.Unlock()
+	if ok {
+		return cached, nil
+	}
+	names, err := al.Aliases(ctx, family)
+	if err != nil {
+		return nil, err
+	}
+	c.mu.Lock()
+	c.aliasCache[key] = names
+	c.mu.Unlock()
+	return names, nil
 }
 
 // supportedFont says whether go-text can read the file, judging by its extension:

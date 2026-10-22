@@ -152,6 +152,34 @@ func (s *scanMatcher) Fallback(ctx context.Context, family string, weight int, i
 	return FontFile{Path: loc.File, Index: int(loc.Index), Family: fam}, true, nil
 }
 
+// probeFamily is a family name that no installed font has.
+const probeFamily = "glutter-probe-family-with-no-font"
+
+// Aliases implements Aliaser: the family of the font that fontscan substitutes for the
+// family, when it is not the font that it gives for a name nothing mentions (its default).
+func (s *scanMatcher) Aliases(ctx context.Context, family string) ([]string, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, errors.NewErr("FontMatchCanceled", err).SetMetadata("family", family)
+	}
+	regular := font.Aspect{Style: font.StyleNormal, Weight: 400, Stretch: font.StretchNormal}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	resolve := func(name string) string {
+		s.fm.SetQuery(fontscan.Query{Families: []string{name}, Aspect: regular})
+		face := s.fm.ResolveFace('a')
+		if face == nil {
+			return ""
+		}
+		fam, _ := s.fm.FontMetadata(face.Font)
+		return fam
+	}
+	got := resolve(family)
+	if got == "" || normalizeFamily(got) == normalizeFamily(family) || normalizeFamily(got) == normalizeFamily(resolve(probeFamily)) {
+		return nil, nil
+	}
+	return []string{got}, nil
+}
+
 // aspectDistance says how far a font is from the wanted style: a different slant
 // counts more than any difference in weight.
 func aspectDistance(have, want font.Aspect) float32 {

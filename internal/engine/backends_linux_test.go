@@ -81,3 +81,30 @@ func TestEngineLaysOutMixedScriptsOverFontconfig(t *testing.T) {
 		t.Errorf("max %v < min %v", p.MaxIntrinsicWidth(), p.MinIntrinsicWidth())
 	}
 }
+
+// TestMissingFamilyFallsBackToMonospaceOverFontconfig is the case that fontconfig's own order got
+// wrong: for a family that is not installed it lists the default sans font first, so a
+// FontFamilyFallback of monospace never came first.
+func TestMissingFamilyFallsBackToMonospaceOverFontconfig(t *testing.T) {
+	ctx := context.Background()
+	m, err := openFontconfig(ctx)
+	if err != nil {
+		t.Skipf("fontconfig is not available: %v", err)
+	}
+	defer m.Close()
+	e := layout.NewEngine(ctx, text.NewCollection(text.CollectionOpts{Matcher: m}))
+	lineWidth := func(s string, fallback ...string) float64 {
+		b := ui.NewParagraphBuilder(e, nil)
+		b.PushStyle(ui.NewTextStyle(ui.TextStyleOpts{FontFamily: "Glutter No Such Family", FontFamilyFallback: fallback, FontSize: ui.Ptr(20.0)}))
+		b.AddText(s)
+		p := b.Build()
+		p.Layout(ui.NewParagraphConstraints(10000))
+		return p.LongestLine()
+	}
+	if i, w := lineWidth("iiiiiiii", "monospace"), lineWidth("WWWWWWWW", "monospace"); i != w {
+		t.Errorf("with the monospace fallback the text is not monospace: iiiiiiii is %v wide, WWWWWWWW is %v", i, w)
+	}
+	if i, w := lineWidth("iiiiiiii"), lineWidth("WWWWWWWW"); i == w {
+		t.Skipf("the system's default font is monospace (%v wide for both)", i)
+	}
+}
