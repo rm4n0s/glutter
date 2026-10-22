@@ -126,6 +126,7 @@ This file breaks the milestones in `docs/SPEC.md` §18 into small steps. Each st
 | M19 Portability groundwork (1.1) | 19.1–19.3 | |
 | M20 Vulkan renderer | 20.1–20.7 | |
 | M21 Web | 21.1–21.8 | the examples on the web |
+| M22 Fonts and trees for code editors (1.2) | 22.1–22.8 | |
 
 ---
 
@@ -1513,3 +1514,90 @@ Install a missing tool only by asking the user (rule 7), with the command from t
 - the API check (`go run ./cmd/glutter-gen apicheck -allow cmd/glutter-gen/apicheck.allow`)
 
 Then **ask the user** before tagging `v1.1.0` and pushing the tag.
+
+---
+
+## M22: Fonts and trees for code editors (1.2)
+
+These steps come from a request by the Emetos code editor, which is built on Glutter. Steps 22.1 to 22.3 are what it needs first; 22.4 releases them. Steps 22.5 to 22.8 follow, each on its own branch. The tests that need a monospace font use Go Mono from `golang.org/x/image/font/gofont/gomono` (already a dependency), so that they give the same result on every machine.
+
+### 22.1 Fonts loaded at run time
+**Goal:** an app loads TrueType and OpenType fonts under a family name while it runs, and the family is usable in `TextStyle`.
+**Read:** SPEC §7, §10 ("Loaded fonts"), §12.10 (the rows on `LoadFontFromList`, `FontLoader`, `RunAppOpts.Fonts` and `RelayoutWhenSystemFontsChangeMixin`), §13, §14.1.
+**Port from:** `packages/flutter/lib/src/services/font_loader.dart`, `packages/flutter/lib/src/painting/binding.dart` (`handleSystemMessage`, `systemFonts`), `packages/flutter/lib/src/rendering/object.dart` (`RelayoutWhenSystemFontsChangeMixin`). `dart:ui`'s `loadFontFromList` is not in `reference/`; SPEC §12.10 says what it does here.
+**Files:** `internal/text/fonts.go`, `internal/text/layout/engine.go`, `ui/platform_dispatcher.go`, `services/font_loader.go`, `painting/binding.go`, `widgets/binding.go`, `widgets/run_app.go`, `docs/GUIDE.md`.
+**Tasks:**
+1. `text.Collection.AddFont(family string, data []byte) error`: a family can hold several fonts. Read each font's weight and slant (OS/2, and the `wght` and `ital` axes of a variable font). `Match` puts the loaded fonts of a family first, the closest to the requested weight and slant first, then the bundled font, then the system fonts. The same bytes under the same family are loaded once. `Collection.Generation()` grows with every change of the loaded fonts. An empty family takes the family name of the font (`FontFamilyMissing` when it has none); data that is not a font is `FontDataInvalid`.
+2. `layout.Engine.LoadFontFromList(list []byte, family string) error`; the engine drops what it resolved for a style (`byStyle`, the faces per character) when the generation changes, so a family that was missing a moment ago now resolves to the loaded font.
+3. `ui.PlatformDispatcher.LoadFontFromList(list, family) error` (`FontLoadUnsupported` when the text engine cannot load fonts) and `OnFontsChanged`, called after a font was added.
+4. The widgets binding sets `OnFontsChanged` to `PaintingBinding.HandleSystemFontsChange`, and listens to `SystemFonts()`: it calls `SystemFontsDidChange` on every render object that has the method, in every view's render tree, and schedules a frame.
+5. `services.FontLoader` as SPEC §12.10 says (`NewFontLoader`, `AddFont`, `AddFontBytes`, `AddFontAsset`, `Load`), with `FontLoaderReused`, `FontLoadCanceled`.
+6. `widgets.RunAppOpts.Fonts []FontSource{Family, Data, Asset}`, loaded in `RunApp` before the first frame with the `AssetBundle` of `Assets`; `FontSourceInvalid` for a source with both or neither, `AssetNotFound` for a missing asset (the loader's own tag). The failure is returned by `RunApp`. `systemTextEngine` moves its work to a function that takes the sources and that `gluttertest` does not need.
+7. `docs/GUIDE.md`: a section "Fonts" (a code editor's monospace font: loading, `FontFamily`, `FontFamilyFallback`, weights and italics).
+**Tests:** table tests for `AddFont` (one font, a family of regular + bold + italic and which one `Match` puts first for each request, a variable font, the same bytes twice, a family from the font, invalid data); the generation; a paragraph that uses a family before and after it is loaded (widths of Go Mono: every glyph the same advance); `FontLoader` (order, reuse, a failing source, cancel); `RunApp` with `Fonts` on the fake platform (bytes and asset; the error of a bad source); a `RenderParagraph` laid out again after `LoadFontFromList` through the binding; route tests for every new tag.
+**Display tests:** none. **Browser tests:** a font loaded from bytes is used on the web (the Go Mono widths), run with `GOOS=js` under `scripts/test-wasm.sh` for the pure parts.
+
+### 22.2 Fonts in `gluttertest`
+**Goal:** a widget test can show text in a font that is not Roboto, the same on every machine.
+**Read:** SPEC §17, §12.10 (the `gluttertest` row).
+**Files:** `gluttertest/tester.go`, `internal/renderingtest/renderingtest.go`, `gluttertest/doc.go`.
+**Tasks:**
+1. `gluttertest.Font{Family string; Data []byte}` and `Opts.Fonts []Font`. `New` builds a text engine with Roboto, Material Icons and these fonts (no system fonts) with `renderingtest.NewTextEngine(fonts ...)`; the engine of a test without `Fonts` stays the shared one. A font that fails to load fails the test with its tag; `Fonts` together with `TextEngine` fails the test (`tb.Fatalf`).
+2. A golden test with monospace text: a `Text` in Go Mono at several sizes and weights (Go Mono has regular, bold, italic and bold italic: `gomono`, `gomonobold`, `gomonoitalic`, `gomonobolditalic`).
+**Tests:** the engine of `Fonts` has the family (widths); the shared engine is untouched by another test's fonts; `Fonts` with `TextEngine`; a bad font. Golden: `gluttertest/testdata/goldens/monospace_text.png`, looked at.
+**Proof:** none.
+
+### 22.3 Fallback to the listed families first
+**Goal:** `FontFamily`, then each `FontFamilyFallback` entry in order, then the system default.
+**Read:** SPEC §10 ("Font fallback order"), §12.10 (the fallback row).
+**Files:** `internal/text/fonts.go`, `internal/text/scan.go`, `internal/text/layout/engine.go`, `internal/platform/linux/fontconfig/fontconfig.go`, `internal/engine/backends_linux.go`.
+**Tasks:**
+1. `text.Aliaser` (optional on a `Matcher`): the family names that a name stands for. fontconfig: the `FC_FAMILY` values of the pattern after `FcConfigSubstitute` that a name that matches nothing (a probe name) does not get as well. fontscan: the family of the font it substitutes, when it differs from the one it gives for the probe name.
+2. `Collection.Match` gives, for a family that is not generic, the loaded and bundled fonts, and the system fonts that belong to the family (or to one of its aliases); for a generic family (`sans-serif`, `serif`, `monospace`, `cursive`, `fantasy`, `emoji`, `math`) the whole list as before.
+3. The engine's candidates are the families of the style, in order, then `sans-serif`; the rule of the last-resort `Fallback` by character stays.
+**Tests:** a fake matcher that, like fontconfig, answers a missing family with the default sans font first: `FontFamily: "Missing", FontFamilyFallback: ["monospace"]` draws a Latin glyph with the monospace face; `FontFamily: "Go Mono"` (loaded) with a fallback `Roboto`: a glyph Go Mono lacks comes from Roboto; a system font that is an alias (`Arial` → `Liberation Sans`) is used; a missing family with no fallback uses the default; order of the candidates; the fontconfig and fontscan `Aliases` (skipped with the reason when the library or fonts are not there). A paragraph in the soft renderer: the same widths as Go Mono's advance.
+**Display tests:** none.
+
+### 22.4 Release 1.2
+**Tasks:**
+1. Run every check of the "Finishing a step" list and the API check; record them in `IMPLEMENTED.md`.
+2. `README.md` and `docs/GUIDE.md` mention loading fonts; the SPEC version line says 1.2.
+3. Tag `v1.2.0` on `main` and push the tag. The owner asked for this release in the request that added M22, so no further question is asked.
+
+### 22.5 Font queries and the desktop's font settings
+**Goal:** an app can ask which face a family resolves to, which families exist, and which fonts the desktop uses.
+**Read:** SPEC §10 ("Font queries"), §8.8.
+**Files:** `ui/platform_dispatcher.go`, `internal/text/`, `internal/text/layout/engine.go`, `internal/platform/linux/` (portal settings), `internal/platform/fake`, `internal/engine`, `ui/platform_configuration.go`.
+**Tasks:**
+1. `ui.ResolvedFont{Family, Path string; Index int; Source FontSource}` (`FontSourceLoaded`, `FontSourceBundled`, `FontSourceSystem`; the zero value `FontSourceUnspecified`) and `PlatformDispatcher.ResolveFont(family string, weight FontWeight, style FontStyle) (ResolvedFont, bool)`: the first face of the family's candidates (what a `TextStyle` with only that family draws a Latin letter with); false when the family has no face. `Collection.Families(ctx) ([]string, error)`, `PlatformDispatcher.InstalledFontFamilies() []string`: sorted, without duplicates, from fontconfig's `FcFontList` (or the footprints of fontscan), the bundled and the loaded fonts.
+2. `PlatformConfiguration.UIFontFamily/UIFontSize/MonospaceFontFamily/MonospaceFontSize`, read from the settings portal's `org.gnome.desktop.interface` `font-name` and `monospace-font-name`, followed live; a Pango description (`Family [style] size`) parsed by a function with its own table test (styles, no size, quoted names).
+3. The fake platform sets them for tests (`gluttertest` `SetPlatformConfiguration`-like helper that exists for the other settings).
+**Tests:** the parser (table); `ResolveFont` for a loaded, a bundled and a missing family; `InstalledFontFamilies` with a fake matcher; the settings on the fake portal; fontconfig's list (skipped with the reason when the library is missing).
+
+### 22.6 Text benchmarks and an LRU glyph cache
+**Goal:** the cost of code-like paragraphs is measured, and the glyph path cache drops the oldest entries instead of everything.
+**Read:** SPEC §10 ("Glyph outline cache"), §15, `docs/PERFORMANCE.md`.
+**Files:** `internal/text/layout/paint.go`, `internal/text/layout/bench_test.go`, `painting/` or `gluttertest` benchmarks, `docs/PERFORMANCE.md`.
+**Tasks:**
+1. Benchmarks for building (`ParagraphBuilder`), laying out and painting (`Canvas.DrawParagraph` into a recorder, and through `soft`) a paragraph of 100 columns of monospace text with 5, 10 and 20 styled spans, with Go Mono; plus a 50-line page. Record `ns/op` and allocations in `docs/PERFORMANCE.md`.
+2. The cache of glyph outlines (`maxCachedGlyphs = 1<<14`) evicts the least recently used entry (a list and a map), not everything; the same for the color glyph pictures if they are cleared the same way. A cache hit moves the entry to the front.
+3. Profile the benchmarks once; fix what is the biggest avoidable cost if it is small and local, otherwise write it under "Pending" in `docs/PERFORMANCE.md`.
+**Tests:** the cache (size bound, the oldest goes first, a hit protects an entry, the same outline after eviction), table-driven.
+
+### 22.7 `TreeSliver`
+**Goal:** Flutter's tree view.
+**Read:** SPEC §11.3.
+**Port from:** `packages/flutter/lib/src/widgets/sliver_tree.dart`, `packages/flutter/lib/src/rendering/sliver_tree.dart` if present, `packages/flutter/test/widgets/sliver_tree_test.dart`.
+**Files:** `widgets/sliver_tree.go`, `rendering/sliver_tree.go` (if Flutter has the render object in `rendering`), `widgets/sliver_tree_test.go`, the generated `material` re-exports, `examples/scrolling` (a tree section).
+**Tasks:** port `TreeSliver`, `TreeSliverNode`, `TreeSliverController`, `TreeSliverIndentationType`, `TreeSliverNodeCallback`, `TreeSliverNodeBuilder`, `RenderTreeSliver` and its parent data, with the toggle animation. Update SPEC §12.10 (the "not ported" row becomes the list of deviations).
+**Tests:** every case of `sliver_tree_test.dart`, as table tests.
+**Proof:** B, `22.7-tree-sliver.png`: `examples/scrolling` with a tree that has some nodes expanded.
+
+### 22.8 `ReorderableListView`
+**Goal:** Material's reorderable list.
+**Read:** SPEC §11.3.
+**Port from:** `packages/flutter/lib/src/material/reorderable_list.dart`, `packages/flutter/test/material/reorderable_list_test.dart`.
+**Files:** `material/reorderable_list.go`, `material/reorderable_list_test.go`, the generated re-exports.
+**Tasks:** port `ReorderableListView` (default and `builder`), its default drag handles for the platform (`ReorderableDragStartListener` on desktop), the proxy decorator and `buildDefaultDragHandles`, on `widgets.ReorderableList`. Update SPEC §11.2 and §12.10.
+**Tests:** every case of `reorderable_list_test.dart` that does not need what Glutter lacks, as table tests; say which ones were skipped and why.
+**Proof:** B, `22.8-reorderable-list-view.png`: `examples/scrolling` with a `ReorderableListView` mid-drag.
