@@ -115,6 +115,11 @@ reaches the user's monospace font. `services.FontLoader` and
 `gluttertest.Opts.Fonts` gives a widget test its fonts. [docs/GUIDE.md](docs/GUIDE.md) has the
 details.
 
+A code view also wants tab stops: `TextPainterOpts.TabSize` puts the stops that many spaces apart,
+measured from the start of each line, as CSS's `tab-size` does (Flutter has none, so the default is
+off). The text engine keeps the shaped runs of the lines it builds, so a line whose spans did not
+change is built again several times faster than it was the first time.
+
 ```go
 var editorStyle = m.NewTextStyle(m.TextStyleOpts{
 	FontFamily:         "JetBrains Mono",

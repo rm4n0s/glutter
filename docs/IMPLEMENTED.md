@@ -2384,3 +2384,15 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Proof:** none for this step
 - **Manual checks:** none
 - **Deviations and follow-ups:** the numbers are in `docs/PERFORMANCE.md`: an unchanged line's build is 8.4×, 7.9× and 6.1× faster for 5, 10 and 20 spans (4.9, 6.2 and 9.6 µs, from 40.8, 48.5 and 58.4), one changed span shapes one run (14 to 18 µs), and a page of 50 lines where one changed costs 364 µs. **That last goal, "about one line's build", is not met**: each of the 49 lines that did not change still costs about 7 µs (the builder and the engine), so the page is 14 lines of a cold build; only a caller that keeps the paragraphs of lines that did not change can reach it. The context test needs a system Arabic font, so it does not run everywhere. `ParagraphBuilder` cannot be used after `Build` (Flutter says the same), and `ui.TextRun.Style` is a pointer now.
+
+## 22.11 Release 1.4
+
+- **Date:** 2026-10-22
+- **Branch:** feat/step-22.11-release-1.4
+- **Summary:** the release of tab stops in paragraph layout (22.9) and the cache of shaped runs (22.10), the two requests of the Emetos code editor that followed 1.3. `README.md` mentions both, `docs/GUIDE.md` (step 22.9) explains `TabSize`, and the version line of SPEC §1 says what 1.3 and 1.4 added (1.3 had been tagged without that line). Tag `v1.4.0` is on `main` and pushed. The owner asked for the release in the request ("Release a new Glutter version tag when both are done"), so nothing was asked first.
+- **Main files:** `README.md`, `docs/SPEC.md`, `docs/IMPLEMENTED.md`.
+- **Tests:** none new; the checks of steps 22.9 and 22.10 were run on this tree (nothing but documents changed since).
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · GOOS=js build and vet ✅ · scripts/test-wasm.sh ✅ · apicheck ✅ · display tests none
+- **Proof:** none for this step
+- **Manual checks:** none
+- **Deviations and follow-ups:** see the entries of 22.9 and 22.10: the page where one line changed still costs 14 lines of a cold build (PERFORMANCE.md), `Text`, `RichText`, `RenderParagraph` and `EditableText` have no tab size yet, and the benchmarks were not run under `GOOS=js`.
