@@ -105,6 +105,27 @@ func (s *counterPageState) Build(bc m.BuildContext) m.Widget {
 Run it with `go run .`. The code reads like the Dart one: `SetState`, `Scaffold`, `AppBar`,
 `FloatingActionButton`, `ThemeOf(bc).TextTheme.HeadlineMedium`.
 
+## Fonts
+
+An app loads its own fonts, for example a monospace font for a code view, from bytes or from
+its assets, and names them in `TextStyle.FontFamily` and `FontFamilyFallback`. The families of a
+style are tried in order, and the system's default font comes last, so `monospace` as a fallback
+reaches the user's monospace font. `services.FontLoader` and
+`PlatformDispatcher.LoadFontFromList` load a font while the app runs, and
+`gluttertest.Opts.Fonts` gives a widget test its fonts. [docs/GUIDE.md](docs/GUIDE.md) has the
+details.
+
+```go
+var editorStyle = m.NewTextStyle(m.TextStyleOpts{
+	FontFamily:         "JetBrains Mono",
+	FontFamilyFallback: []string{"monospace"},
+})
+
+func options(mono []byte) m.RunAppOpts {
+	return m.RunAppOpts{Fonts: []m.FontSource{{Family: "JetBrains Mono", Data: mono}}}
+}
+```
+
 ## From Flutter to Glutter
 
 | Flutter | Glutter |
@@ -124,7 +145,7 @@ The required parameters are positional (`child` and `children` last), the option
 fields of a trailing `XOpts` struct, a nullable parameter is `m.Some(v)`, and the zero value of
 an enum, `XUnspecified`, means the widget's default. The rules are in
 [SPEC §12](docs/SPEC.md#12-api-conventions-flutter--go), every difference from Flutter is in
-§12.10, and [docs/GUIDE.md](docs/GUIDE.md) shows ten things side by side in Dart and Go.
+§12.10, and [docs/GUIDE.md](docs/GUIDE.md) shows eleven things side by side in Dart and Go.
 
 ## What runs where
 

@@ -2296,3 +2296,15 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Proof:** none
 - **Manual checks:** none
 - **Deviations and follow-ups:** SPEC §12.10's fallback row says what Flutter does not: Skia's fontconfig manager accepts a match when the font's family is the request or a strongly bound substitute; here `Aliaser` finds the substitutes as the names that fontconfig adds for a family and does not add for a family it knows nothing about (the probe), because fontconfig's public API does not tell the binding. A font's first family name is the one compared. Where the default font is itself the alias of a family (Liberation Sans on a system whose default sans is Liberation Sans), the alias is not seen, which changes nothing: the default comes next anyway.
+
+## 22.4 Release 1.2
+
+- **Date:** 2026-10-22
+- **Branch:** feat/step-22.4-release-1.2
+- **Summary:** Steps 22.1 to 22.3 are released as `v1.2.0`: fonts loaded at run time (`PlatformDispatcher.LoadFontFromList`, `services.FontLoader`, `RunAppOpts.Fonts` with bytes or assets), fonts in `gluttertest` (`Opts.Fonts`), and the fallback order `FontFamily`, `FontFamilyFallback`, then the system default. The README has a "Fonts" section, the guide a section 11, SPEC §1 and §3 name the scope of 1.2. The tag was requested by the owner in the request that added M22 (Emetos, a code editor built on Glutter), so it was created and pushed without a further question.
+- **Main files:** `README.md`, `docs/SPEC.md`, `docs/GUIDE.md`, `docs/IMPLEMENTED.md`.
+- **Tests:** none added. The whole tree of `main` after step 22.3 was checked, and the docs test again after the documentation changed.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ (capped compiler) · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · GOOS=js build and vet ✅ · scripts/test-wasm.sh ✅ · apicheck ✅ (0 violations, 45 accepted) · display tests ✅ (`-tags glutter_display ./internal/engine ./examples/...`, headless compositor, nothing left running) · browser tests ✅ (`-tags glutter_browser ./examples/counter ./internal/webtest`, Chromium)
+- **Proof:** none
+- **Manual checks:** none for M22.
+- **Deviations and follow-ups:** the performance numbers of 1.1 (docs/PERFORMANCE.md) are unchanged; the open items of 21.8 (the IME check, the size targets of the web) are not part of this release. Steps 22.5 to 22.8 (font queries and the desktop's font settings, text benchmarks and the LRU glyph cache, `TreeSliver`, `ReorderableListView`) come after the tag, and go into a later version.

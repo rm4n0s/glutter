@@ -8,7 +8,7 @@
 | Module | `github.com/rm4n0s/glutter` |
 | License | BSD-3-Clause |
 
-Glutter is a GUI toolkit for Go that reproduces Flutter's framework API on its own Go engine. An app is a normal Go program built with `CGO_ENABLED=0 go build`: no Dart, no Skia, no C compiler, no development packages. Version 1.0 is a complete desktop toolkit for Linux (Wayland and X11), including a system tray. Version 1.1 adds a Vulkan renderer on Linux, used when the machine has Vulkan, with OpenGL ES as the fallback, and the web: WebAssembly drawn with WebGPU, or with WebGL 2 where the browser has no WebGPU (§23). Everything specific to an OS or GPU sits behind two internal interfaces, so Windows, macOS and mobile can be added later without changing the framework.
+Glutter is a GUI toolkit for Go that reproduces Flutter's framework API on its own Go engine. An app is a normal Go program built with `CGO_ENABLED=0 go build`: no Dart, no Skia, no C compiler, no development packages. Version 1.0 is a complete desktop toolkit for Linux (Wayland and X11), including a system tray. Version 1.1 adds a Vulkan renderer on Linux, used when the machine has Vulkan, with OpenGL ES as the fallback, and the web: WebAssembly drawn with WebGPU, or with WebGL 2 where the browser has no WebGPU (§23). Version 1.2 adds what a code editor built on Glutter needs: fonts loaded at run time, fonts in `gluttertest`, and a fallback order that tries the listed font families before the system default (§10). Everything specific to an OS or GPU sits behind two internal interfaces, so Windows, macOS and mobile can be added later without changing the framework.
 
 ---
 
@@ -59,6 +59,8 @@ Glutter is a GUI toolkit for Go that reproduces Flutter's framework API on its o
 | Vulkan | A Vulkan renderer on Linux (§9.3, §9.4), used by default where Vulkan works, with GLES as the fallback (§9.6) |
 | Web | `GOOS=js GOARCH=wasm` with the standard Go toolchain: a web platform backend (§23), the WebGPU renderer (§9.5), WebGL 2 through `gles` (§9.1), a 2D-canvas fallback, and `cmd/glutter-web` to build, serve and screenshot an app |
 | Not on the web in 1.1 | accessibility (an ARIA tree), several views on one page, system fonts and downloaded fallback fonts, drag and drop, file dialogs, the tray |
+
+**Scope of 1.2** (milestone M22, after 1.1; §10, §11.3): fonts loaded at run time (`LoadFontFromList`, `FontLoader`, `RunAppOpts.Fonts`), `gluttertest.Opts.Fonts`, the listed families before the system default; then font queries and the desktop's font settings, text benchmarks and an LRU glyph cache, `TreeSliver`, `ReorderableListView`.
 
 ## 4. Decisions log
 
