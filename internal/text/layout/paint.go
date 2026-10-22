@@ -23,7 +23,8 @@ type colorKey struct {
 	fg   ui.Color
 }
 
-// maxCachedGlyphs bounds each of the glyph caches; when one is full it is emptied.
+// maxCachedGlyphs bounds each of the glyph caches; when one is full, the entry that was
+// used least recently is dropped.
 const maxCachedGlyphs = 1 << 14
 
 // glyphPath returns the outline of a glyph as a path with its origin at the pen position and
@@ -31,17 +32,14 @@ const maxCachedGlyphs = 1 << 14
 // returned for the same glyph and size, so that the renderers recognize it.
 func (e *Engine) glyphPath(face *font.Face, gid font.GID, size float64) *ui.Path {
 	key := glyphKey{face, gid, size}
-	if p, ok := e.paths[key]; ok {
+	if p, ok := e.paths.get(key); ok {
 		return p
-	}
-	if len(e.paths) >= maxCachedGlyphs {
-		clear(e.paths)
 	}
 	var path *ui.Path
 	if out, ok := face.GlyphDataOutline(tables.GlyphID(gid)); ok && len(out.Segments) > 0 {
 		path = outlinePath(out.Segments, size/float64(face.Upem()), -size/float64(face.Upem()))
 	}
-	e.paths[key] = path
+	e.paths.put(key, path)
 	return path
 }
 

@@ -244,8 +244,37 @@ func TestPaintGlyphCachesAreBounded(t *testing.T) {
 	for i := 0; i < maxCachedGlyphs+10; i++ {
 		e.glyphPath(face, gid, 10+float64(i)/100)
 	}
-	if len(e.paths) > maxCachedGlyphs {
-		t.Errorf("%d cached paths", len(e.paths))
+	// The cache is full, not emptied: it keeps the most recent glyphs and drops the oldest.
+	if n := e.paths.len(); n != maxCachedGlyphs {
+		t.Errorf("%d cached paths, want %d", n, maxCachedGlyphs)
+	}
+	if _, ok := e.paths.get(glyphKey{face, gid, 10}); ok {
+		t.Error("the oldest outline is still cached")
+	}
+	if _, ok := e.paths.get(glyphKey{face, gid, 10 + float64(maxCachedGlyphs+9)/100}); !ok {
+		t.Error("the newest outline is not cached")
+	}
+}
+
+func TestGlyphPathKeepsTheOutlinesInUse(t *testing.T) {
+	e := bundledEngine(t)
+	e.paths = newLRU[glyphKey, *ui.Path](3)
+	p := styled(e, "H", 20, ui.TextStyleOpts{}, nil)
+	face, gid := p.runs[0].face, p.runs[0].glyphs[0].id
+	first := e.glyphPath(face, gid, 10)
+	e.glyphPath(face, gid, 11)
+	e.glyphPath(face, gid, 12)
+	if e.glyphPath(face, gid, 10) != first { // a hit: 10 is the most recent again
+		t.Fatal("the same glyph and size gave another path")
+	}
+	e.glyphPath(face, gid, 13) // full: 11, the least recently used, goes
+	for size, want := range map[float64]bool{10: true, 11: false, 12: true, 13: true} {
+		if _, ok := e.paths.get(glyphKey{face, gid, size}); ok != want {
+			t.Errorf("size %v cached = %v, want %v", size, ok, want)
+		}
+	}
+	if again := e.glyphPath(face, gid, 11); again == nil || len(again.Segments()) == 0 {
+		t.Error("an outline that was dropped is made again")
 	}
 }
 

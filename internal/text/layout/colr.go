@@ -24,11 +24,8 @@ func (e *Engine) colorGlyph(face *font.Face, gid font.GID, fg ui.Color) *ui.Pict
 		return nil
 	}
 	key := colorKey{face, gid, fg}
-	if pic, ok := e.pictures[key]; ok {
+	if pic, ok := e.pictures.get(key); ok {
 		return pic
-	}
-	if len(e.pictures) >= maxCachedGlyphs {
-		clear(e.pictures)
 	}
 	var pic *ui.Picture
 	if paint, ok := face.COLR.Search(tables.GlyphID(gid)); ok {
@@ -39,7 +36,7 @@ func (e *Engine) colorGlyph(face *font.Face, gid font.GID, fg ui.Color) *ui.Pict
 		cp.paint(paint, 0)
 		pic = rec.EndRecording()
 	}
-	e.pictures[key] = pic
+	e.pictures.put(key, pic)
 	return pic
 }
 

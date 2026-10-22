@@ -54,6 +54,7 @@ start) once a second; `perf.sh` reads those lines. The performance overlay
 | `examples/gallery` `BenchmarkGalleryFullRebuildFrame` | every element of the gallery page (4889 elements) built again |
 | `examples/gallery` `BenchmarkGalleryPageSwitch` | a click on an entry of the navigation rail and the frame that builds the new page (every page built from nothing) |
 | `internal/gpu/soft` `BenchmarkRenderScene/<scene>` | the software renderer on the proof scenes (not a GPU number) |
+| `internal/text/layout` `BenchmarkCodeLine*`, `BenchmarkCodePage*` | building, laying out and painting lines of 100 columns of monospace text in 5, 10 and 20 spans, and a page of 50 lines (step 22.6) |
 
 The benchmarks drop the scenes (`DiscardScenes`), so they measure the framework and not
 the renderer.
@@ -236,6 +237,44 @@ at the default.
   build=... raster=...`), so that the frame behind a click can be told from its second's average.
 - `glutter-web perf` is described in SPEC §23.8; it needs `chromium`, `firefox` and `Xvfb`.
 
+## Text: code-like paragraphs (step 22.6)
+
+A code view draws many short lines of monospace text, each in many styled spans. The
+benchmarks of `internal/text/layout` (`bench_test.go`) measure a line of 100 columns of Go Mono
+(regular, bold and italic, as a highlighter makes them) in 5, 10 and 20 spans, and a page of
+50 such lines:
+
+```
+go test -tags glutter_release ./internal/text/layout -run xxx -bench Code -benchmem
+```
+
+| Benchmark | What it measures | 5 spans | 10 spans | 20 spans |
+|---|---|---|---|---|
+| `CodeLineBuild` | `ParagraphBuilder` to `Build`: segmentation, font lookup and shaping | 68 µs, 315 allocs | 79 µs, 383 allocs | 87 µs, 507 allocs |
+| `CodeLineLayout` | `Layout` of the built line at another width (line breaking, positions) | 8.4 µs, 36 allocs | 6.8 µs, 57 allocs | 13 µs, 88 allocs |
+| `CodeLinePaint` | `Canvas.DrawParagraph` into a recorder (a display op) | 0.14 µs, 6 allocs | 0.16 µs | 0.15 µs |
+| `CodeLine` | build, layout and paint of a line that changed | 65 µs, 357 allocs | 74 µs, 446 allocs | 96 µs, 601 allocs |
+| `CodePage` | 50 lines of 10 spans, built, laid out and painted | 3.2 ms, 22 377 allocs, 5.9 MB | | |
+| `CodePageRaster` | the software renderer drawing that page at 900×1000 | 38 ms, 80 421 allocs, 20 MB | | |
+
+(AMD Ryzen AI Max+ 395, 2026-10-22, the machine above; the times vary by about 15% from run
+to run on this machine, the allocations do not.)
+
+- **Where the time is.** Almost all of it is in the build, which shapes: a CPU profile of
+  `CodePage` has `shapeRuns` at 45% (HarfBuzz `Shape` 18%, `splitPiece` 34%), `measure` at 14%
+  and the garbage collector at about 15%. A relayout (`CodeLineLayout`) is a tenth of a build,
+  and painting only records a display op: the glyph outlines are made when a renderer draws the
+  op (`CodePageRaster`, the software renderer, which is CPU work that a GPU renderer does
+  differently). A page of 50 lines is 3.2 ms to build: an editor that builds the lines that
+  changed, and keeps the paragraphs of the others, spends 60 to 100 µs per edited line.
+- **What was changed.** `Engine.fontsFor` is called for every span of every paragraph and built
+  its cache key with `fmt.Fprintf` and a new slice of variations each time: 10% of the profile. It
+  now builds the key in a buffer the engine keeps and looks the style up without allocating.
+  A line of 20 spans allocated 755 times and now 507; a page 28 593 times and now 22 377.
+- **The glyph outline cache** (`maxCachedGlyphs`, 16 384 outlines, and the same for color glyph
+  pictures) drops the least recently used entry when it is full. Before, it was emptied, so
+  a page of text that crossed the limit drew every outline again at once.
+
 ## What was changed for the numbers
 
 Before this step the full rebuild of the gallery was 14.6 ms. The profile was dominated by
@@ -273,6 +312,7 @@ available during this work, so they are **pending approval**.
 
 ## Pending
 
+- Text: the build is the cost of a code line (shaping and segmentation, 65 to 96 µs). A cache of the shaped runs of a span, keyed by text, font and size, would make a line whose spans did not change nearly free to build again; it is not done. The same for the web: the benchmarks of step 22.6 were not run under `GOOS=js`.
 - The web table: measure the targets again with a real display, and Firefox on a GPU (the Firefox numbers here are Mesa's software rasterizer). The two targets that are not met (sizes, late frames) need the user's decision (see "Targets not met" under Web).
 
 - Run `GLUTTER_RENDERER=gles scripts/perf.sh` and `GLUTTER_RENDERER=vulkan scripts/perf.sh` (a headless compositor cannot present GPU buffers: use the benchmarks of the gallery with `GLUTTER_FRAME_STATS=1` on the desktop) on a machine with a GPU, and record the comparison of step 20.7.

@@ -2,8 +2,7 @@ package layout
 
 import (
 	"context"
-	"fmt"
-	"strings"
+	"strconv"
 
 	"github.com/go-text/typesetting/font"
 	"github.com/go-text/typesetting/shaping"
@@ -40,12 +39,13 @@ type Engine struct {
 	opts  EngineOpts
 
 	byStyle map[string]*styleFonts
+	keyBuf  []byte // the key of the style that fontsFor looks up
 	// generation is the generation of the font collection that byStyle was made for.
 	generation uint64
 
 	// paths and pictures cache the outlines and the color glyphs that paragraphs draw.
-	paths    map[glyphKey]*ui.Path
-	pictures map[colorKey]*ui.Picture
+	paths    *lruCache[glyphKey, *ui.Path]
+	pictures *lruCache[colorKey, *ui.Picture]
 }
 
 var (
@@ -122,7 +122,7 @@ func (e *Engine) LoadFontFromList(list []byte, family string) error {
 // Flutter: no counterpart
 func NewEngine(ctx context.Context, fonts *text.Collection, opts ...EngineOpts) *Engine {
 	return &Engine{ctx: ctx, fonts: fonts, opts: oneOpts(opts), byStyle: map[string]*styleFonts{},
-		paths: map[glyphKey]*ui.Path{}, pictures: map[colorKey]*ui.Picture{}}
+		paths: newLRU[glyphKey, *ui.Path](maxCachedGlyphs), pictures: newLRU[colorKey, *ui.Picture](maxCachedGlyphs)}
 }
 
 func (e *Engine) fontError(err error) {
@@ -155,33 +155,51 @@ type styleFonts struct {
 	first      *font.Face // the first face that loads: the one for a rune no face has
 }
 
-// fontsFor returns the font finder for a style.
+// fontsFor returns the font finder for a style. It is called for every span of every paragraph,
+// so the lookup builds its key in a buffer that the Engine keeps, and allocates only for a style it has not seen.
 func (e *Engine) fontsFor(families []string, weight ui.FontWeight, italic bool, locale ui.Locale, vars []ui.FontVariation) *styleFonts {
 	w := int(weight)
 	if w == 0 {
 		w = int(ui.FontWeightW400)
-	}
-	lang := locale.LanguageTag()
-	var key strings.Builder
-	fmt.Fprintf(&key, "%q|%d|%v|%s", families, w, italic, lang)
-	tvars := []text.Variation{{Tag: "wght", Value: float32(w)}}
-	if italic {
-		tvars = append(tvars, text.Variation{Tag: "ital", Value: 1})
-	}
-	for _, v := range vars {
-		tvars = append(tvars, text.Variation{Tag: v.Axis, Value: float32(v.Value)})
-		fmt.Fprintf(&key, "|%s=%v", v.Axis, v.Value)
 	}
 	if g := e.fonts.Generation(); g != e.generation {
 		// Fonts were added: what was resolved for the styles may be different now.
 		e.generation = g
 		clear(e.byStyle)
 	}
-	if f := e.byStyle[key.String()]; f != nil {
+	lang := locale.LanguageTag()
+	key := e.keyBuf[:0]
+	for _, f := range families {
+		key = strconv.AppendQuote(key, f)
+		key = append(key, ',')
+	}
+	key = append(key, '|')
+	key = strconv.AppendInt(key, int64(w), 10)
+	if italic {
+		key = append(key, "|i|"...)
+	} else {
+		key = append(key, "|u|"...)
+	}
+	key = append(key, lang...)
+	for _, v := range vars {
+		key = append(key, '|')
+		key = append(key, v.Axis...)
+		key = append(key, '=')
+		key = strconv.AppendFloat(key, float64(v.Value), 'g', -1, 64)
+	}
+	e.keyBuf = key
+	if f := e.byStyle[string(key)]; f != nil { // the conversion in an index expression does not allocate
 		return f
 	}
+	tvars := []text.Variation{{Tag: "wght", Value: float32(w)}}
+	if italic {
+		tvars = append(tvars, text.Variation{Tag: "ital", Value: 1})
+	}
+	for _, v := range vars {
+		tvars = append(tvars, text.Variation{Tag: v.Axis, Value: float32(v.Value)})
+	}
 	f := &styleFonts{e: e, families: families, weight: w, italic: italic, lang: lang, variations: tvars, faces: map[rune]*font.Face{}}
-	e.byStyle[key.String()] = f
+	e.byStyle[string(key)] = f
 	return f
 }
 

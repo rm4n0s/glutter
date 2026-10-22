@@ -2320,3 +2320,15 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Proof:** none
 - **Manual checks:** none. `font-name` and `monospace-font-name` were not read from a real GNOME session in this step; the portal's replies are the fake bus's, in the format that `gsettings get org.gnome.desktop.interface monospace-font-name` prints (`'Adwaita Mono 11'`).
 - **Deviations and follow-ups:** the plan's third task said the fake platform "sets" the fonts: it does through `platform.Settings`, which the fake already reports, so no new helper was needed. XSETTINGS on X11 (`Gtk/FontName`) is not read; without the portal both fields stay empty. A Pango description with a size in pixels is converted at 96 dpi. The weight of a face in `ResolvedFont` is what the font's OS/2 table says: Go Mono Bold says 600.
+
+## 22.6 Text benchmarks and an LRU glyph cache
+
+- **Date:** 2026-10-22
+- **Branch:** feat/step-22.6-text-benchmarks-lru-cache
+- **Summary:** Benchmarks measure building, laying out and painting a line of 100 columns of monospace text in 5, 10 and 20 styled spans, a page of 50 lines, and the software renderer drawing that page; the numbers are in `docs/PERFORMANCE.md`. The caches of glyph outlines and of color glyph pictures (16,384 entries each) now drop the least recently used entry when full, where they were emptied. The profile found one local cost, the cache key that `Engine.fontsFor` built with `fmt.Fprintf` for every span: it is now built in a buffer and looked up without allocating (a line of 20 spans: 755 allocations before, 507 after; a page of 50 lines: 28,593 before, 22,377 after).
+- **Main files:** `internal/text/layout/lru.go`, `lru_test.go`, `bench_test.go`, `engine.go` (`fontsFor`), `paint.go`, `colr.go`, `paint_test.go`, `docs/PERFORMANCE.md`.
+- **Tests:** the cache (7 table cases: filling, dropping the oldest without emptying, a hit protects an entry, a put of an existing key, sizes 1 and 0, a miss; the links in both directions; a nil value is a hit); the glyph path cache keeps the outlines in use and drops the least recently used (and makes a dropped outline again); the bound test now checks that a full cache holds exactly its size with the newest entry in and the oldest out; a test that the benchmark input is what it claims (100 columns of Go Mono, one line, n spans).
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · GOOS=js build and vet ✅ · scripts/test-wasm.sh ✅ · apicheck ✅ · display tests none
+- **Proof:** none
+- **Manual checks:** none
+- **Deviations and follow-ups:** the time of a build is the cost of a code line (65 to 96 µs, shaping and segmentation); a cache of shaped runs is written under "Pending" in `docs/PERFORMANCE.md` and not done. The benchmarks were not run under `GOOS=js`. The machine's times vary by about 15% between runs, so the allocation counts are the evidence of the `fontsFor` change.
