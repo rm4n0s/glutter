@@ -603,6 +603,15 @@ nothing, so `FontFamilyFallback: []string{"monospace"}` reaches the user's monos
 (`monospace`, `sans-serif` and `serif` stand for the system's own). In a widget test, give the
 fonts to `gluttertest.Opts.Fonts`.
 
+Flutter gives a tab no stops: it is a white space. A code editor wants it to advance to the next
+tab stop, so `TextPainterOpts.TabSize` (and `ui.ParagraphStyleOpts.TabSize` under it) is the
+distance between stops as a count of the width of a space in the text's font, as CSS's `tab-size`
+is: `TabSize: 4` puts the stops 4 spaces apart, measured from the start of each line (the left edge,
+or the right edge of a right-to-left paragraph), and a line that wraps starts its stops again. The
+default, 0, is Flutter's behavior. A tab at the end of a line hangs like other white space, the
+boxes, positions and carets after a tab are at the stop, and nothing is drawn for the tab itself.
+`Text` and `RichText` do not have the option yet; use a `TextPainter`.
+
 ## For Flutter web developers
 
 If you know Flutter on the web, this is what is the same and what is not.

@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/rm4n0s/errors"
@@ -370,6 +371,12 @@ type ParagraphStyleOpts struct {
 	Ellipsis string
 	// Locale is the locale used to select region-specific glyphs.
 	Locale *Locale
+	// TabSize is the distance between two tab stops, as a count of the advance of a space in the
+	// font of the paragraph style (CSS's tab-size). A tab advances to the next multiple of it,
+	// measured from the start of its line. 0, the default, gives tabs no stops, as in Flutter.
+	//
+	// Flutter: no counterpart
+	TabSize float64
 }
 
 // ParagraphStyle describes the whole paragraph: alignment, direction, maximum lines, ellipsis, strut, and the defaults of the text style.
@@ -379,13 +386,16 @@ type ParagraphStyle struct {
 	o ParagraphStyleOpts
 }
 
-// NewParagraphStyle creates a paragraph style. A negative MaxLines panics with the tag MaxLinesNegative.
+// NewParagraphStyle creates a paragraph style. A negative MaxLines panics with the tag MaxLinesNegative, and a TabSize that is negative, NaN or infinite with the tag TabSizeInvalid.
 //
 // Flutter: ui/text.dart ParagraphStyle
 func NewParagraphStyle(opts ...ParagraphStyleOpts) *ParagraphStyle {
 	o := oneOpts(opts)
 	if o.MaxLines != nil && *o.MaxLines < 0 {
 		panic(errors.New("MaxLinesNegative", "the maximum number of lines must not be negative", "maxLines", *o.MaxLines))
+	}
+	if o.TabSize < 0 || math.IsNaN(o.TabSize) || math.IsInf(o.TabSize, 0) {
+		panic(errors.New("TabSizeInvalid", "the tab size must be zero or a positive number", "tabSize", o.TabSize))
 	}
 	return &ParagraphStyle{o}
 }
@@ -423,6 +433,16 @@ func (s *ParagraphStyle) MaxLines() (int, bool) {
 		return 0, false
 	}
 	return *s.o.MaxLines, true
+}
+
+// TabSize is the distance between tab stops in spaces of the paragraph's font; 0 for no tab stops.
+//
+// Flutter: no counterpart
+func (s *ParagraphStyle) TabSize() float64 {
+	if s == nil {
+		return 0
+	}
+	return s.o.TabSize
 }
 
 // Ellipsis is the ellipsis string, "" for none.

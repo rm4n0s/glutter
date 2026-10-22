@@ -151,7 +151,7 @@ func (p *paragraph) paintShadows(l *line, emit func(ui.ParagraphDraw)) {
 			}
 			for _, g := range pr.glyphs {
 				path := p.eng.glyphPath(pr.run.face, g.id, pr.run.size)
-				if path == nil {
+				if path == nil || p.drawsNothing(pr, &g) {
 					continue
 				}
 				emit(ui.ParagraphDraw{
@@ -176,6 +176,9 @@ func (p *paragraph) paintGlyphs(l *line, emit func(ui.ParagraphDraw)) {
 		}
 		paint := foreground(st)
 		for _, g := range pr.glyphs {
+			if p.drawsNothing(pr, &g) {
+				continue
+			}
 			origin := ui.Offset{Dx: l.left + pr.x + g.x, Dy: l.baseline + g.y}
 			if pic := p.eng.colorGlyph(face, g.id, st.Color); pic != nil {
 				s := pr.run.size / float64(face.Upem())

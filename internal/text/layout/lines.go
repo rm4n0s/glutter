@@ -130,8 +130,8 @@ func (p *paragraph) breakLines(width float64, keepWords bool) (_ []lineRange, ov
 	for _, s := range p.segments {
 		start := s.start
 		for {
-			full := p.sum(start, s.end)
-			vis := p.sum(start, s.visEnd)
+			full := p.span(start, s.end, used)
+			vis := p.span(start, s.visEnd, used)
 			if used+vis <= width+eps {
 				used += full
 				break
@@ -154,7 +154,7 @@ func (p *paragraph) breakLines(width float64, keepWords bool) (_ []lineRange, ov
 				if !p.boundary[k] {
 					continue
 				}
-				w = p.sum(start, k)
+				w = p.span(start, k, used)
 				if w > width+eps && cut > start {
 					break
 				}
@@ -195,26 +195,32 @@ func (p *paragraph) nextBoundary(i int) int {
 // buildLine puts the runs of a line range in visual order and places their glyphs.
 func (p *paragraph) buildLine(lr lineRange) *line {
 	l := &line{start: lr.start, end: lr.end, visEnd: lr.visEnd, hardBreak: lr.hard}
+	tabs := p.lineTabs(lr.start, lr.end)
 	for _, r := range p.runs {
 		lo, hi := max(lr.start, r.start), min(lr.end, r.end)
 		if lo >= hi {
 			continue
 		}
-		l.runs = append(l.runs, p.cut(r, lo, hi))
+		l.runs = append(l.runs, p.cut(r, lo, hi, lr.start, tabs))
 	}
-	l.width = p.sum(lr.start, lr.visEnd)
-	l.widthWithSpaces = p.sum(lr.start, lr.end)
+	l.width = p.span(lr.start, lr.visEnd, 0)
+	l.widthWithSpaces = p.span(lr.start, lr.end, 0)
 	return l
 }
 
-// cut makes the part of a run that holds the runes [lo, hi).
-func (p *paragraph) cut(r *run, lo, hi int) placedRun {
+// cut makes the part of a run that holds the runes [lo, hi). tabs, when it is not nil, has the advance
+// of the tabs of the line that starts at the rune lineStart (see lineTabs); a tab glyph takes it.
+func (p *paragraph) cut(r *run, lo, hi, lineStart int, tabs []float64) placedRun {
 	pr := placedRun{run: r, start: lo, end: hi}
 	for _, g := range r.glyphs {
 		if g.cluster < lo || g.cluster >= hi {
 			continue
 		}
-		pr.glyphs = append(pr.glyphs, placedGlyph{id: g.id, cluster: g.cluster, advance: g.advance, xOffset: g.xOffset, y: -g.yOffset})
+		advance := g.advance
+		if tabs != nil && r.ph == nil && p.runes[g.cluster] == '\t' {
+			advance = tabs[g.cluster-lineStart]
+		}
+		pr.glyphs = append(pr.glyphs, placedGlyph{id: g.id, cluster: g.cluster, advance: advance, xOffset: g.xOffset, y: -g.yOffset})
 	}
 	pr.width = 0
 	for _, g := range pr.glyphs {
@@ -238,11 +244,11 @@ func (p *paragraph) ellipsize(l *line, width float64) {
 	// The text that stays is the longest start of the line that fits with the ellipsis
 	// (all of it when it does).
 	cut := l.visEnd
-	for cut > l.start && (!p.boundary[cut] || p.sum(l.start, cut)+ew > width+1e-6) {
+	for cut > l.start && (!p.boundary[cut] || p.span(l.start, cut, 0)+ew > width+1e-6) {
 		cut--
 	}
 	*l = *p.buildLine(lineRange{start: l.start, end: cut, visEnd: cut, hard: false})
-	pr := p.cut(er, 0, len(ellipsis))
+	pr := p.cut(er, 0, len(ellipsis), 0, nil)
 	pr.ellipsis = true
 	for i := range pr.glyphs {
 		pr.glyphs[i].cluster = cut
@@ -452,7 +458,7 @@ func (p *paragraph) align() {
 		}
 		// The white space at the end hangs: after the text, or before it in a right-to-left
 		// paragraph.
-		trailing := l.widthWithSpaces - p.sum(l.start, l.visEnd)
+		trailing := l.widthWithSpaces - p.span(l.start, l.visEnd, 0)
 		if l.justify != 0 {
 			trailing = 0
 		}

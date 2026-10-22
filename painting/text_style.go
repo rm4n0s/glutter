@@ -743,6 +743,11 @@ type GetParagraphStyleOpts struct {
 	Height foundation.Opt[float64]
 	// StrutStyle is the strut of the paragraph.
 	StrutStyle *StrutStyle
+	// TabSize is the distance between tab stops as a count of the advance of a space; 0 gives
+	// tabs no stops.
+	//
+	// Flutter: no counterpart
+	TabSize float64
 }
 
 // GetParagraphStyle returns the engine paragraph style for this style. In debug
@@ -775,6 +780,7 @@ func (s *TextStyle) GetParagraphStyle(opts ...GetParagraphStyleOpts) *ui.Paragra
 		TextHeightBehavior: behavior,
 		Ellipsis:           p.Ellipsis,
 		Locale:             optPtr(p.Locale),
+		TabSize:            p.TabSize,
 	}
 	if v, ok := p.MaxLines.Get(); ok {
 		o.MaxLines = &v

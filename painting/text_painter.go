@@ -427,6 +427,12 @@ type TextPainterOpts struct {
 	// TextHeightBehavior says how the line height applies to the first and last
 	// lines.
 	TextHeightBehavior *ui.TextHeightBehavior
+	// TabSize is the distance between tab stops, as a count of the advance of a
+	// space in the font of the text's style; a tab advances to the next multiple,
+	// measured from the start of its line. 0, the default, gives tabs no stops.
+	//
+	// Flutter: no counterpart
+	TabSize float64
 }
 
 // TextPainter is an object that paints a TextSpan into a Canvas.
@@ -445,6 +451,7 @@ type TextPainter struct {
 	strutStyle         *StrutStyle
 	textWidthBasis     TextWidthBasis
 	textHeightBehavior *ui.TextHeightBehavior
+	tabSize            float64
 
 	placeholderDimensions []PlaceholderDimensions
 	debugNeedsRelayout    bool
@@ -490,7 +497,7 @@ func NewTextPainter(opts ...TextPainterOpts) *TextPainter {
 	return &TextPainter{
 		engine: o.TextEngine, text: o.Text, textAlign: o.TextAlign, textDirection: o.TextDirection, textScaler: o.TextScaler,
 		maxLines: o.MaxLines, ellipsis: o.Ellipsis, locale: o.Locale, strutStyle: o.StrutStyle,
-		textWidthBasis: o.TextWidthBasis, textHeightBehavior: o.TextHeightBehavior,
+		textWidthBasis: o.TextWidthBasis, textHeightBehavior: o.TextHeightBehavior, tabSize: o.TabSize,
 		debugNeedsRelayout: true, rebuildForPaint: true,
 	}
 }
@@ -518,6 +525,10 @@ type TextPainterComputeWidthOpts struct {
 	TextWidthBasis TextWidthBasis
 	// TextHeightBehavior says how the line height applies.
 	TextHeightBehavior *ui.TextHeightBehavior
+	// TabSize is the distance between tab stops in spaces; 0 gives tabs no stops.
+	//
+	// Flutter: no counterpart
+	TabSize float64
 	// MinWidth is the minimum width of the layout.
 	MinWidth float64
 	// MaxWidth is the maximum width of the layout; the default is infinity.
@@ -528,7 +539,7 @@ func computeWith(text InlineSpan, textDirection ui.TextDirection, o TextPainterC
 	p := NewTextPainter(TextPainterOpts{
 		TextEngine: o.TextEngine, Text: text, TextAlign: o.TextAlign, TextDirection: textDirection, TextScaler: o.TextScaler,
 		MaxLines: o.MaxLines, Ellipsis: o.Ellipsis, Locale: o.Locale, StrutStyle: o.StrutStyle,
-		TextWidthBasis: o.TextWidthBasis, TextHeightBehavior: o.TextHeightBehavior,
+		TextWidthBasis: o.TextWidthBasis, TextHeightBehavior: o.TextHeightBehavior, TabSize: o.TabSize,
 	})
 	p.Layout(o.MinWidth, o.MaxWidth.OrElse(math.Inf(1)))
 	defer p.Dispose()
@@ -793,6 +804,24 @@ func (p *TextPainter) SetTextHeightBehavior(value *ui.TextHeightBehavior) {
 	p.MarkNeedsLayout()
 }
 
+// TabSize is the distance between tab stops, as a count of the advance of a
+// space; 0 means tabs have no stops.
+//
+// Flutter: no counterpart
+func (p *TextPainter) TabSize() float64 { return p.tabSize }
+
+// SetTabSize sets the distance between tab stops, invalidating the layout when
+// it changes.
+//
+// Flutter: no counterpart
+func (p *TextPainter) SetTabSize(value float64) {
+	if p.tabSize == value {
+		return
+	}
+	p.tabSize = value
+	p.MarkNeedsLayout()
+}
+
 // InlinePlaceholderBoxes returns the boxes of the placeholders, shifted by the
 // paint offset; nil before layout.
 //
@@ -862,6 +891,7 @@ func (p *TextPainter) createParagraphStyle(alignOverride ui.TextAlign) *ui.Parag
 	return base.GetParagraphStyle(GetParagraphStyleOpts{
 		TextAlign: align, TextDirection: p.textDirection, TextScaler: p.textScaler, MaxLines: p.maxLines,
 		TextHeightBehavior: p.textHeightBehavior, Ellipsis: p.ellipsis, Locale: p.locale, StrutStyle: p.strutStyle,
+		TabSize: p.tabSize,
 	})
 }
 

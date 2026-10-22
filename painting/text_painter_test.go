@@ -6,6 +6,7 @@ import (
 
 	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/ui"
+	"golang.org/x/image/font/gofont/gomono"
 )
 
 // newPainter makes a painter in Roboto 20 with the text.
@@ -471,5 +472,79 @@ func TestPlaceholderDimensions(t *testing.T) {
 	}
 	if e := PlaceholderDimensionsEmpty(); e.Size != (ui.Size{}) || e.Alignment != ui.PlaceholderAlignmentBottom {
 		t.Errorf("empty = %+v", e)
+	}
+}
+
+// goMonoPainter is a painter in Go Mono 10 (every glyph advances the same) with the text.
+func goMonoPainter(t *testing.T, text string, tabSize float64, opts ...func(*TextPainterOpts)) *TextPainter {
+	t.Helper()
+	e := bundledEngine(t)
+	if err := e.LoadFontFromList(gomono.TTF, "Go Mono"); err != nil {
+		t.Fatal(err)
+	}
+	style := NewTextStyle(TextStyleOpts{FontFamily: "Go Mono", FontSize: foundation.Some(10.0)})
+	o := TextPainterOpts{TextEngine: e, Text: tsStyle(text, style), TextDirection: ui.TextDirectionLTR, TabSize: tabSize}
+	for _, f := range opts {
+		f(&o)
+	}
+	return NewTextPainter(o)
+}
+
+func TestTextPainterTabSize(t *testing.T) {
+	// The advance of every glyph of Go Mono.
+	one := goMonoPainter(t, "a", 0)
+	one.Layout(0, math.Inf(1))
+	u := one.Width()
+	caret := ui.NewRectFromLTWH(0, 0, 1, 10)
+
+	p := goMonoPainter(t, "ab\tcd\t", 4)
+	p.Layout(0, math.Inf(1))
+	tests := []struct {
+		name   string
+		offset int
+		wantX  float64
+	}{
+		{"before the first tab", 2, 2 * u},
+		{"after the first tab: at the stop", 3, 4 * u},
+		{"after cd", 5, 6 * u},
+		{"after the last tab: at the stop", 6, 8 * u},
+	}
+	for _, tt := range tests {
+		if got := p.GetOffsetForCaret(ui.NewTextPosition(tt.offset), caret); !approx(got.Dx, tt.wantX, 1e-3) {
+			t.Errorf("%s: the caret at %d is at x=%v, want %v", tt.name, tt.offset, got.Dx, tt.wantX)
+		}
+	}
+	if got := p.GetPositionForOffset(ui.Offset{Dx: 3.6 * u, Dy: 5}); got.Offset != 3 {
+		t.Errorf("a point in the second half of the tab is at %d, want 3", got.Offset)
+	}
+	if boxes := p.GetBoxesForSelection(ui.NewTextRange(2, 3)); len(boxes) != 1 || !approx(boxes[0].Right-boxes[0].Left, 2*u, 1e-3) {
+		t.Errorf("the box of the first tab = %v, want %v wide", boxes, 2*u)
+	}
+	// The option reaches the paragraph: with no tab size the tab is as wide as its glyph.
+	off := goMonoPainter(t, "ab\tcd\t", 0)
+	off.Layout(0, math.Inf(1))
+	if got := off.GetOffsetForCaret(ui.NewTextPosition(3), caret); approx(got.Dx, 4*u, 1e-3) {
+		t.Errorf("without a tab size the caret after the tab is on a stop: %v", got)
+	}
+
+	// SetTabSize invalidates the layout, and only when the value changes.
+	p.SetTabSize(4)
+	if p.layoutCache == nil {
+		t.Error("the same tab size marked the layout stale")
+	}
+	p.SetTabSize(8)
+	if p.layoutCache != nil || p.TabSize() != 8 {
+		t.Errorf("a new tab size left the layout (%v) or the size %v", p.layoutCache, p.TabSize())
+	}
+	p.Layout(0, math.Inf(1))
+	if got := p.GetOffsetForCaret(ui.NewTextPosition(3), caret); !approx(got.Dx, 8*u, 1e-3) {
+		t.Errorf("after SetTabSize(8) the caret after the first tab is at %v, want %v", got.Dx, 8*u)
+	}
+
+	// The width helpers pass it on.
+	w := TextPainterComputeMaxIntrinsicWidth(tsStyle("ab\tc", NewTextStyle(TextStyleOpts{FontFamily: "Go Mono", FontSize: foundation.Some(10.0)})), ui.TextDirectionLTR,
+		TextPainterComputeWidthOpts{TextEngine: p.engine, TabSize: 4})
+	if !approx(w, 5*u, 1e-3) {
+		t.Errorf("max intrinsic width = %v, want %v", w, 5*u)
 	}
 }

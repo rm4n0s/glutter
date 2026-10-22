@@ -68,6 +68,9 @@ type paragraph struct {
 
 	minIntrinsic, maxIntrinsic float64
 
+	// tabW is the width between tab stops, or 0 when tabs have no stops (tabs.go).
+	tabW float64
+
 	// Results of the last layout.
 	width         float64 // the width the paragraph was laid out with
 	longestLine   float64
@@ -103,6 +106,7 @@ func (e *Engine) BuildParagraph(c *ui.ParagraphContent) ui.ParagraphLayout {
 	}
 	p.assignStyles(c)
 	p.shapeRuns()
+	p.setupTabs()
 	p.measure()
 	p.Layout(ui.NewParagraphConstraints(math.Inf(1)))
 	return p
@@ -190,8 +194,8 @@ func (p *paragraph) measure() {
 	p.minIntrinsic, p.maxIntrinsic = 0, 0
 	lineWidth := 0.0
 	for _, s := range p.segments {
-		p.minIntrinsic = max(p.minIntrinsic, p.sum(s.start, s.visEnd))
-		lineWidth += p.sum(s.start, s.end)
+		p.minIntrinsic = max(p.minIntrinsic, p.span(s.start, s.visEnd, 0))
+		lineWidth += p.span(s.start, s.end, lineWidth)
 		if s.mandatory {
 			p.maxIntrinsic = max(p.maxIntrinsic, lineWidth)
 			lineWidth = 0

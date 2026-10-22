@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"math"
 	"testing"
 
 	"github.com/rm4n0s/errors"
@@ -258,6 +259,9 @@ func TestTextPanics(t *testing.T) {
 		{"shadow blur", func() { NewShadow(ShadowOpts{BlurRadius: -1}) }, "ShadowBlurRadiusNegative", "NewShadow.ShadowBlurRadiusNegative"},
 		{"color and foreground", func() { NewTextStyle(TextStyleOpts{Color: &red, Foreground: NewPaint()}) }, "TextStyleColorAndForeground", "NewTextStyle.TextStyleColorAndForeground"},
 		{"max lines", func() { NewParagraphStyle(ParagraphStyleOpts{MaxLines: Ptr(-1)}) }, "MaxLinesNegative", "NewParagraphStyle.MaxLinesNegative"},
+		{"tab size negative", func() { NewParagraphStyle(ParagraphStyleOpts{TabSize: -1}) }, "TabSizeInvalid", "NewParagraphStyle.TabSizeInvalid"},
+		{"tab size NaN", func() { NewParagraphStyle(ParagraphStyleOpts{TabSize: math.NaN()}) }, "TabSizeInvalid", "NewParagraphStyle.TabSizeInvalid"},
+		{"tab size infinite", func() { NewParagraphStyle(ParagraphStyleOpts{TabSize: math.Inf(1)}) }, "TabSizeInvalid", "NewParagraphStyle.TabSizeInvalid"},
 		{"pop with nothing pushed", func() { NewParagraphBuilder(new(recordingFactory), nil).Pop() }, "ParagraphBuilderPopEmpty", "ParagraphBuilder.Pop.ParagraphBuilderPopEmpty"},
 		{"pop once too many", func() {
 			b := NewParagraphBuilder(new(recordingFactory), nil)

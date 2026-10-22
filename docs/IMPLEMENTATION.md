@@ -126,7 +126,7 @@ This file breaks the milestones in `docs/SPEC.md` §18 into small steps. Each st
 | M19 Portability groundwork (1.1) | 19.1–19.3 | |
 | M20 Vulkan renderer | 20.1–20.7 | |
 | M21 Web | 21.1–21.8 | the examples on the web |
-| M22 Fonts and trees for code editors (1.2) | 22.1–22.8 | |
+| M22 Fonts and trees for code editors (1.2, 1.4) | 22.1–22.11 | |
 
 ---
 
@@ -1601,3 +1601,31 @@ These steps come from a request by the Emetos code editor, which is built on Glu
 **Tasks:** port `ReorderableListView` (default and `builder`), its default drag handles for the platform (`ReorderableDragStartListener` on desktop), the proxy decorator and `buildDefaultDragHandles`, on `widgets.ReorderableList`. Update SPEC §11.2 and §12.10.
 **Tests:** every case of `reorderable_list_test.dart` that does not need what Glutter lacks, as table tests; say which ones were skipped and why.
 **Proof:** B, `22.8-reorderable-list-view.png`: `examples/scrolling` with a `ReorderableListView` mid-drag.
+
+### 22.9 Tab stops in paragraph layout
+**Goal:** a code editor's paragraph puts each `\t` on the next tab stop, and every query sees the tab's whole advance.
+**Read:** SPEC §10 ("Tab stops", "Paragraph layout"), §12.10 (the tab stops row), §14.1 (the tags).
+**Files:** `ui/text_style.go` (`ParagraphStyleOpts.TabSize`, `ParagraphStyle.TabSize`), `painting/text_painter.go`, `painting/text_style.go` (`GetParagraphStyleOpts`), `internal/text/layout/` (`paragraph.go`, `lines.go`, `paint.go`, a new `tabs.go`), tests in `internal/text/layout/tabs_test.go`, `painting/text_painter_test.go`, `ui/`; `docs/GUIDE.md`.
+**Tasks:**
+1. `ui.ParagraphStyleOpts.TabSize float64`: the distance between tab stops as a count of the advance of U+0020 in the paragraph's own font (SPEC §10). 0 means no tab stops. `NewParagraphStyle` panics with the tag `TabSizeInvalid` for a negative, `NaN` or infinite value. `(*ParagraphStyle).TabSize() float64`.
+2. `painting.TextPainterOpts.TabSize`, `TextPainter.TabSize()` and `SetTabSize` (which marks the layout stale when the value changes), `TextPainterComputeWidthOpts.TabSize` and `GetParagraphStyleOpts.TabSize`, passed to `ui.ParagraphStyleOpts`.
+3. The text engine: the tab width is `TabSize` times the advance of a space shaped with the paragraph's base style (zero, so that nothing changes, when the paragraph has no tab or no font). The advance of the runes is measured from the start of the line: line breaking (`breakLines`), the intrinsic widths, the width of a line, `ellipsize` and the hanging space at the end all use a function that gives the width of a rune range that starts at a given distance from the line start. A tab at the end of a line hangs. When a line is built, its tab glyphs get the advance of their stop (plus the letter and word spacing of their style), so that boxes, positions, glyph info, carets, justification and `LongestLine` follow from the glyphs. A tab draws nothing.
+4. `docs/GUIDE.md` says how to turn it on.
+**Tests:** tables, with Go Mono (the same on every machine): tabs at columns 0 to 9 of a line (a tab on a stop advances a whole width); a tab size of 1, 2, 4, 8 and 2.5; mixed with CJK (wide glyphs) and emoji; inside styled spans (bold, a bigger size, letter and word spacing); a right-to-left paragraph and a right-to-left run inside a left-to-right paragraph; under wrapping (a tab at the end of a line hangs, the next line starts its stops again, a word wider than the line); with `maxLines` and an ellipsis; justified; and, for each of these cases, `GetBoxesForRange`, `GetPositionForOffset`, `GetGlyphInfoAt`, `GetClosestGlyphInfoAt`, the line metrics, the intrinsic widths and the caret (`TextPainter.GetOffsetForCaret` after a tab is at the stop). `TabSize` 0 gives the layout of today for text with tabs (byte for byte, compared with a paragraph made without the option); the painter passes the option; `TabSizeInvalid` has a route test. A fuzz test builds random text with tabs and checks that every query is consistent (boxes tile each line, caret positions are monotonic).
+
+### 22.10 A cache of shaped runs
+**Goal:** building a paragraph again, when its spans mostly did not change, shapes only what changed.
+**Read:** SPEC §10 ("Shaped run cache"), §12.10 (the cache row), §13, `docs/PERFORMANCE.md` (step 22.6 and "Pending").
+**Files:** `internal/text/layout/` (`shape.go`, `engine.go`, a new `shapecache.go`, `lru.go`), `internal/text/layout/bench_test.go`, `docs/PERFORMANCE.md`.
+**Tasks:**
+1. Profile `CodeLineBuild` first and write the numbers in `docs/PERFORMANCE.md`: the cost of the shaping, and of what is around it (bidi, script segmentation, `SplitByFace`, `measure`).
+2. The cache: the engine keeps the shaped glyphs of an itemized run (`shapeRun`), keyed as SPEC §10 says (text, face, features, direction, script, language, and the context HarfBuzz reads). A hit copies the glyphs with their clusters moved to the place of the run and scaled to the size; letter and word spacing are applied after it, as now. Bounded by a number of entries (4,096) and by bytes (8 MiB) with a least recently used order (the generic `lruCache` of step 22.6 gets a weight), UI thread only, emptied when the fonts change (`LoadFontFromList` and the `SystemFontsDidChange` path, through the font generation the engine already checks).
+3. Make the rest of the build cheap enough that an unchanged line is at least 5 times faster than the 65 to 96 µs of step 22.6 (itemization that is the same as before for text that is all ASCII in a left-to-right paragraph, fewer allocations); every shortcut is checked against the general path by a test.
+4. Benchmarks, in `bench_test.go` and `docs/PERFORMANCE.md`, with times and allocations: `CodeLineBuild` of an unchanged line (the same spans again), a line with one span changed (only the runs of that span shape: the test counts the calls of the shaper), and a page of 50 lines with one line changed (about the cost of one line). Keep the numbers of step 22.6 beside them.
+**Tests:** the cache returns what fresh shaping returns, fuzzed text (Latin, Arabic and Hebrew, CJK, emoji, combining marks, tabs, newlines) and styles (sizes, weights, features, letter spacing), compared glyph by glyph with an engine whose cache is off; two runs with different contexts do not share an entry (Arabic joining at a run's edge; a combining mark at the start of a run); eviction respects the entry bound and the byte bound, and the oldest goes first; a hit protects an entry; `LoadFontFromList` and a system fonts change empty the cache; the sizes differ and the entry is shared; a run with a missing face is not cached.
+
+### 22.11 Release 1.4
+**Tasks:**
+1. Run every check of the "Finishing a step" list and the API check; record them in `IMPLEMENTED.md`.
+2. `docs/GUIDE.md` and `README.md` mention tab stops; the SPEC version line says 1.4.
+3. Tag `v1.4.0` on `main` and push the tag. The owner asked for this release in the request that added steps 22.9 and 22.10 ("Release a new Glutter version tag when both are done"), so no further question is asked.
