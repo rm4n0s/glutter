@@ -73,6 +73,7 @@ func decorationMetrics(face *font.Face, size, ascent float64) (under, strike, ov
 //
 // Flutter: engine/src/flutter/third_party/skia/modules/skparagraph/src/TextLine.cpp TextLine::paintDecorations
 func (p *paragraph) Decorations() []DecorationSegment {
+	p.ensureLaidOut()
 	var out []DecorationSegment
 	for li, l := range p.lines {
 		geo := p.geometry(l)
@@ -82,7 +83,7 @@ func (p *paragraph) Decorations() []DecorationSegment {
 			if pr.run.ph != nil {
 				continue
 			}
-			st := &p.styles[pr.run.style]
+			st := p.styles[pr.run.style]
 			if st.Decoration == ui.TextDecorationNone {
 				continue
 			}

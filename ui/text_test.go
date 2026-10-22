@@ -75,7 +75,7 @@ func TestTextStyleResolve(t *testing.T) {
 	first := NewTextStyle(TextStyleOpts{Color: &red, FontSize: Ptr(20.0), FontFamily: "Roboto", FontFamilyFallback: []string{"Noto"}, Height: Ptr(1.5)}).Resolve(base)
 	// A style that sets nothing changes nothing; one that sets a field replaces only it.
 	same := NewTextStyle().Resolve(first)
-	if !sameStyle(same, first) {
+	if !sameStyle(&same, &first) {
 		t.Errorf("an empty style changed the style: %+v", same)
 	}
 	second := NewTextStyle(TextStyleOpts{FontWeight: FontWeightBold, Color: &blue}).Resolve(first)

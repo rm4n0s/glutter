@@ -94,6 +94,7 @@ func foreground(st *ui.ResolvedTextStyle) *ui.Paint {
 //
 // Flutter: engine/src/flutter/third_party/skia/modules/skparagraph/src/TextLine.cpp TextLine::paint
 func (p *paragraph) PaintParagraph(emit func(ui.ParagraphDraw)) {
+	p.ensureLaidOut()
 	byLine := map[int][]DecorationSegment{}
 	for _, d := range p.Decorations() {
 		byLine[d.Line] = append(byLine[d.Line], d)
@@ -113,7 +114,7 @@ func (p *paragraph) paintBackgrounds(l *line, emit func(ui.ParagraphDraw)) {
 	geo := p.geometry(l)
 	for ri := range l.runs {
 		pr := &l.runs[ri]
-		st := &p.styles[pr.run.style]
+		st := p.styles[pr.run.style]
 		if st.Background == nil || pr.run.ph != nil {
 			continue
 		}
@@ -139,7 +140,7 @@ func (p *paragraph) paintBackgrounds(l *line, emit func(ui.ParagraphDraw)) {
 func (p *paragraph) paintShadows(l *line, emit func(ui.ParagraphDraw)) {
 	for ri := range l.runs {
 		pr := &l.runs[ri]
-		st := &p.styles[pr.run.style]
+		st := p.styles[pr.run.style]
 		if pr.run.ph != nil || pr.run.face == nil {
 			continue
 		}
@@ -169,7 +170,7 @@ func (p *paragraph) paintShadows(l *line, emit func(ui.ParagraphDraw)) {
 func (p *paragraph) paintGlyphs(l *line, emit func(ui.ParagraphDraw)) {
 	for ri := range l.runs {
 		pr := &l.runs[ri]
-		st := &p.styles[pr.run.style]
+		st := p.styles[pr.run.style]
 		face := pr.run.face
 		if pr.run.ph != nil || face == nil {
 			continue

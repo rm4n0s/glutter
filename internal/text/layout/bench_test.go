@@ -92,6 +92,99 @@ func BenchmarkCodeLineBuild(b *testing.B) {
 	}
 }
 
+// BenchmarkCodeLineBuildCold builds a line whose spans the engine has not seen: it forgets its shaped
+// runs and texts before each build. It is what a build cost before the caches of step 22.10.
+func BenchmarkCodeLineBuildCold(b *testing.B) {
+	for _, n := range spanCounts {
+		b.Run(fmt.Sprintf("spans=%d", n), func(b *testing.B) {
+			e := codeEngine(b)
+			spans := codeSpans(0, n)
+			buildCode(e, spans) // the first build loads the fonts
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				e.forgetText()
+				buildCode(e, spans)
+			}
+		})
+	}
+}
+
+// changeSpan makes the span k of the spans another text of the same length, a different one for each i
+// (i in base 26 in its last letters, so that no text comes back before the cache has forgotten it).
+func changeSpan(spans []string, k, i int) []string {
+	out := append([]string(nil), spans...)
+	text := []byte(strings.Repeat("x", len(out[k])))
+	for j := len(text) - 1; j >= 0 && i > 0; j-- {
+		text[j] = byte('a' + i%26)
+		i /= 26
+	}
+	out[k] = string(text)
+	return out
+}
+
+// BenchmarkCodeLineBuildOneSpanChanged builds a line again with one of its spans changed, as an editor
+// does after a keystroke: only the runs of that span are shaped.
+func BenchmarkCodeLineBuildOneSpanChanged(b *testing.B) {
+	for _, n := range spanCounts {
+		b.Run(fmt.Sprintf("spans=%d", n), func(b *testing.B) {
+			e := codeEngine(b)
+			spans := codeSpans(0, n)
+			buildCode(e, spans)
+			b.ReportAllocs()
+			b.ResetTimer()
+			shaped := e.shapes.shaped
+			for i := 0; i < b.N; i++ {
+				buildCode(e, changeSpan(spans, n/2, i))
+			}
+			b.ReportMetric(float64(e.shapes.shaped-shaped)/float64(b.N), "shaped/op")
+		})
+	}
+}
+
+// BenchmarkCodePageBuildOneLineChanged builds the 50 lines of a page (10 spans each) again, one of
+// them with a span changed: what an editor does to show a frame after a keystroke when it builds every line.
+func BenchmarkCodePageBuildOneLineChanged(b *testing.B) {
+	e := codeEngine(b)
+	lines := make([][]string, pageLines)
+	for i := range lines {
+		lines[i] = codeSpans(i*7, 10)
+	}
+	for _, spans := range lines {
+		buildCode(e, spans)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	shaped := e.shapes.shaped
+	for i := 0; i < b.N; i++ {
+		for k, spans := range lines {
+			if k == 20 {
+				spans = changeSpan(spans, 4, i)
+			}
+			buildCode(e, spans)
+		}
+	}
+	b.ReportMetric(float64(e.shapes.shaped-shaped)/float64(b.N), "shaped/op")
+}
+
+// BenchmarkCodePageBuildCold builds the 50 lines of a page that the engine has not seen.
+func BenchmarkCodePageBuildCold(b *testing.B) {
+	e := codeEngine(b)
+	lines := make([][]string, pageLines)
+	for i := range lines {
+		lines[i] = codeSpans(i*7, 10)
+	}
+	buildCode(e, lines[0])
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		e.forgetText()
+		for _, spans := range lines {
+			buildCode(e, spans)
+		}
+	}
+}
+
 func BenchmarkCodeLineLayout(b *testing.B) {
 	for _, n := range spanCounts {
 		b.Run(fmt.Sprintf("spans=%d", n), func(b *testing.B) {

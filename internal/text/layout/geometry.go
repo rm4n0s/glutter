@@ -151,6 +151,7 @@ func (p *paragraph) visibleEnd() int {
 
 // GetPositionForOffset implements ui.ParagraphLayout.
 func (p *paragraph) GetPositionForOffset(o ui.Offset) ui.TextPosition {
+	p.ensureLaidOut()
 	if len(p.lines) == 0 || len(p.runes) == 0 {
 		return ui.NewTextPosition(0)
 	}
@@ -231,6 +232,7 @@ func (p *paragraph) glyphInfoFor(li int, g graphemeBox) ui.GlyphInfo {
 
 // GetClosestGlyphInfoForOffset implements ui.ParagraphLayout.
 func (p *paragraph) GetClosestGlyphInfoForOffset(o ui.Offset) (ui.GlyphInfo, bool) {
+	p.ensureLaidOut()
 	if len(p.lines) == 0 || len(p.runes) == 0 {
 		return ui.GlyphInfo{}, false
 	}
@@ -256,6 +258,7 @@ func (p *paragraph) GetClosestGlyphInfoForOffset(o ui.Offset) (ui.GlyphInfo, boo
 
 // GetGlyphInfoAt implements ui.ParagraphLayout.
 func (p *paragraph) GetGlyphInfoAt(off int) (ui.GlyphInfo, bool) {
+	p.ensureLaidOut()
 	li, ok := p.GetLineNumberAt(off)
 	if !ok {
 		return ui.GlyphInfo{}, false
@@ -278,6 +281,7 @@ func (p *paragraph) GetGlyphInfoAt(off int) (ui.GlyphInfo, bool) {
 
 // GetLineNumberAt implements ui.ParagraphLayout.
 func (p *paragraph) GetLineNumberAt(off int) (int, bool) {
+	p.ensureLaidOut()
 	if off < 0 || off >= len(p.content.Text) || len(p.lines) == 0 {
 		return 0, false
 	}
@@ -294,10 +298,14 @@ func (p *paragraph) GetLineNumberAt(off int) (int, bool) {
 }
 
 // NumberOfLines implements ui.ParagraphLayout.
-func (p *paragraph) NumberOfLines() int { return len(p.lines) }
+func (p *paragraph) NumberOfLines() int {
+	p.ensureLaidOut()
+	return len(p.lines)
+}
 
 // GetLineMetricsAt implements ui.ParagraphLayout.
 func (p *paragraph) GetLineMetricsAt(n int) (ui.LineMetrics, bool) {
+	p.ensureLaidOut()
 	if n < 0 || n >= len(p.lines) {
 		return ui.LineMetrics{}, false
 	}
@@ -306,6 +314,7 @@ func (p *paragraph) GetLineMetricsAt(n int) (ui.LineMetrics, bool) {
 
 // GetLineBoundary implements ui.ParagraphLayout.
 func (p *paragraph) GetLineBoundary(pos ui.TextPosition) ui.TextRange {
+	p.ensureLaidOut()
 	if len(p.lines) == 0 {
 		return ui.TextRange{}
 	}
@@ -333,6 +342,7 @@ func (p *paragraph) GetLineBoundary(pos ui.TextPosition) ui.TextRange {
 
 // GetWordBoundary implements ui.ParagraphLayout.
 func (p *paragraph) GetWordBoundary(pos ui.TextPosition) ui.TextRange {
+	p.ensureLaidOut()
 	n := len(p.runes)
 	if n == 0 {
 		return ui.TextRange{}

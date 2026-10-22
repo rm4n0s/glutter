@@ -16,25 +16,10 @@ type wordSeg struct {
 }
 
 // wordBreaks segments the text into words, on the first call.
-func (p *paragraph) wordBreaks() []wordSeg {
-	if p.words != nil {
-		return p.words
-	}
-	p.words = []wordSeg{}
-	it := p.seg.WordIterator()
-	for it.Next() {
-		w := it.Word()
-		seg := wordSeg{start: w.Offset, end: w.Offset + len(w.Text)}
-		for _, r := range w.Text {
-			if unicode.IsLetter(r) || unicode.IsDigit(r) || unicode.IsMark(r) {
-				seg.isWord = true
-				break
-			}
-		}
-		p.words = append(p.words, seg)
-	}
-	return p.words
-}
+func (p *paragraph) wordBreaks() []wordSeg { return p.an.wordBreaks(p.runes) }
+
+// isWordRune says whether a rune makes the segment it is in a word.
+func isWordRune(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) || unicode.IsMark(r) }
 
 // tightExtent is the vertical extent of the glyphs of a line: the font's ascent and descent
 // of its runs, without the line height.
@@ -158,6 +143,7 @@ func dirOf(rtl bool) ui.TextDirection {
 
 // GetBoxesForRange implements ui.ParagraphLayout.
 func (p *paragraph) GetBoxesForRange(start, end int, hs ui.BoxHeightStyle, ws ui.BoxWidthStyle) []ui.TextBox {
+	p.ensureLaidOut()
 	if start < 0 || start >= end || len(p.lines) == 0 {
 		return nil
 	}
@@ -260,6 +246,7 @@ func (p *paragraph) GetBoxesForRange(start, end int, hs ui.BoxHeightStyle, ws ui
 // GetBoxesForPlaceholders implements ui.ParagraphLayout. A placeholder that is not on a
 // visible line (it was cut by the maximum number of lines) has no box.
 func (p *paragraph) GetBoxesForPlaceholders() []ui.TextBox {
+	p.ensureLaidOut()
 	var out []ui.TextBox
 	for _, ph := range p.placeholders {
 		if ph == nil {

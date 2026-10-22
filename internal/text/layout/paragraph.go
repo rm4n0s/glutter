@@ -1,13 +1,9 @@
 package layout
 
 import (
-	"math"
 	"sort"
-	"unicode/utf8"
 
 	ot "github.com/go-text/typesetting/font/opentype"
-	"github.com/go-text/typesetting/segmenter"
-	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/internal/opts"
 	"github.com/rm4n0s/glutter/ui"
 )
@@ -48,11 +44,13 @@ type paragraph struct {
 	shapeRunes []rune
 	// byteOffset[i] is the byte offset of rune i; it has len(runes)+1 entries.
 	byteOffset []int
-	styles     []ui.ResolvedTextStyle
+	styles     []*ui.ResolvedTextStyle
 	// styleAt is the index of the style of each rune.
 	styleAt []int
 
-	// levels are the bidi embedding levels of the runes.
+	// an is what is known of the text before shaping it (analysis.go); levels, segments and
+	// graphemes are its parts.
+	an     *analysis
 	levels []uint8
 	runs   []*run
 	// adv is the advance of each rune and boundary says whether a cluster starts at the
@@ -60,9 +58,6 @@ type paragraph struct {
 	adv      []float64
 	boundary []bool
 	segments []segment
-	seg      segmenter.Segmenter
-	// words are the UAX #29 word segments, computed on demand.
-	words []wordSeg
 	// graphemes are the rune indices where grapheme clusters start, and n at the end.
 	graphemes []int
 
@@ -82,9 +77,9 @@ type paragraph struct {
 
 var _ ui.ParagraphLayout = (*paragraph)(nil)
 
-// BuildParagraph shapes the content (ui.ParagraphFactory). The result is laid out
-// at once with an infinite width, so that the intrinsic widths are known; Layout
-// lays it out for a width.
+// BuildParagraph shapes the content (ui.ParagraphFactory). The intrinsic widths are known at once;
+// everything else needs a layout, which Layout makes for a width. A paragraph that is asked
+// before it is laid out is laid out with an infinite width first.
 func (e *Engine) BuildParagraph(c *ui.ParagraphContent) ui.ParagraphLayout {
 	p := &paragraph{eng: e, style: c.Style, base: c.Style.BaseTextStyle(), strut: c.Style.Strut(), content: c,
 		placeholders: make([]*placeholder, len(c.Placeholders)), phAt: map[int]int{}}
@@ -108,7 +103,6 @@ func (e *Engine) BuildParagraph(c *ui.ParagraphContent) ui.ParagraphLayout {
 	p.shapeRuns()
 	p.setupTabs()
 	p.measure()
-	p.Layout(ui.NewParagraphConstraints(math.Inf(1)))
 	return p
 }
 
@@ -116,7 +110,7 @@ func (e *Engine) BuildParagraph(c *ui.ParagraphContent) ui.ParagraphLayout {
 func (p *paragraph) assignStyles(c *ui.ParagraphContent) {
 	p.styleAt = make([]int, len(p.runes))
 	if len(c.Runs) == 0 {
-		p.styles = []ui.ResolvedTextStyle{p.base}
+		p.styles = []*ui.ResolvedTextStyle{&p.base}
 		return
 	}
 	ri := 0
@@ -126,7 +120,7 @@ func (p *paragraph) assignStyles(c *ui.ParagraphContent) {
 		}
 		p.styleAt[i] = ri
 	}
-	p.styles = make([]ui.ResolvedTextStyle, len(c.Runs))
+	p.styles = make([]*ui.ResolvedTextStyle, len(c.Runs))
 	for i, r := range c.Runs {
 		p.styles[i] = r.Style
 	}
@@ -159,34 +153,6 @@ func (p *paragraph) measure() {
 		}
 		// A run starts and ends at a cluster boundary.
 		p.boundary[r.start] = true
-	}
-
-	p.seg.Init(p.runes)
-	it := p.seg.LineIterator()
-	for it.Next() {
-		l := it.Line()
-		s := segment{start: l.Offset, end: l.Offset + len(l.Text)}
-		// UAX #14 also ends the text with a mandatory break (LB3); only a line break
-		// character ends a line.
-		s.mandatory = l.IsMandatoryBreak && s.end > s.start && isLineBreakRune(p.runes[s.end-1])
-		s.visEnd = s.end
-		for s.visEnd > s.start && isHangingSpace(p.runes[s.visEnd-1]) {
-			s.visEnd--
-		}
-		p.segments = append(p.segments, s)
-	}
-
-	// The clusters come from foundation, which fixes the emoji sequences that the
-	// segmenter splits.
-	p.graphemes = p.graphemes[:0]
-	runeAt := 0
-	byteAt := 0
-	for _, b := range foundation.GraphemeBoundaries(string(p.runes)) {
-		for byteAt < b {
-			byteAt += utf8.RuneLen(p.runes[runeAt])
-			runeAt++
-		}
-		p.graphemes = append(p.graphemes, runeAt)
 	}
 
 	// The intrinsic widths: the widest unbreakable word, and the widest line when only
@@ -226,13 +192,22 @@ func (p *paragraph) runeAtByte(off int) (int, bool) {
 func (p *paragraph) byteOf(i int) int { return p.byteOffset[i] }
 
 // Width implements ui.ParagraphLayout.
-func (p *paragraph) Width() float64 { return p.width }
+func (p *paragraph) Width() float64 {
+	p.ensureLaidOut()
+	return p.width
+}
 
 // Height implements ui.ParagraphLayout.
-func (p *paragraph) Height() float64 { return p.height }
+func (p *paragraph) Height() float64 {
+	p.ensureLaidOut()
+	return p.height
+}
 
 // LongestLine implements ui.ParagraphLayout.
-func (p *paragraph) LongestLine() float64 { return p.longestLine }
+func (p *paragraph) LongestLine() float64 {
+	p.ensureLaidOut()
+	return p.longestLine
+}
 
 // MinIntrinsicWidth implements ui.ParagraphLayout.
 func (p *paragraph) MinIntrinsicWidth() float64 { return p.minIntrinsic }
@@ -242,6 +217,7 @@ func (p *paragraph) MaxIntrinsicWidth() float64 { return p.maxIntrinsic }
 
 // AlphabeticBaseline implements ui.ParagraphLayout: the baseline of the first line.
 func (p *paragraph) AlphabeticBaseline() float64 {
+	p.ensureLaidOut()
 	if len(p.lines) == 0 {
 		return 0
 	}
@@ -250,6 +226,7 @@ func (p *paragraph) AlphabeticBaseline() float64 {
 
 // IdeographicBaseline implements ui.ParagraphLayout: the bottom of the first line.
 func (p *paragraph) IdeographicBaseline() float64 {
+	p.ensureLaidOut()
 	if len(p.lines) == 0 {
 		return 0
 	}
@@ -257,10 +234,14 @@ func (p *paragraph) IdeographicBaseline() float64 {
 }
 
 // DidExceedMaxLines implements ui.ParagraphLayout.
-func (p *paragraph) DidExceedMaxLines() bool { return p.exceededLines }
+func (p *paragraph) DidExceedMaxLines() bool {
+	p.ensureLaidOut()
+	return p.exceededLines
+}
 
 // ComputeLineMetrics implements ui.ParagraphLayout.
 func (p *paragraph) ComputeLineMetrics() []ui.LineMetrics {
+	p.ensureLaidOut()
 	out := make([]ui.LineMetrics, len(p.lines))
 	for i, l := range p.lines {
 		out[i] = ui.LineMetrics{

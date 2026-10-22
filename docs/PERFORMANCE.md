@@ -54,7 +54,7 @@ start) once a second; `perf.sh` reads those lines. The performance overlay
 | `examples/gallery` `BenchmarkGalleryFullRebuildFrame` | every element of the gallery page (4889 elements) built again |
 | `examples/gallery` `BenchmarkGalleryPageSwitch` | a click on an entry of the navigation rail and the frame that builds the new page (every page built from nothing) |
 | `internal/gpu/soft` `BenchmarkRenderScene/<scene>` | the software renderer on the proof scenes (not a GPU number) |
-| `internal/text/layout` `BenchmarkCodeLine*`, `BenchmarkCodePage*` | building, laying out and painting lines of 100 columns of monospace text in 5, 10 and 20 spans, and a page of 50 lines (step 22.6) |
+| `internal/text/layout` `BenchmarkCodeLine*`, `BenchmarkCodePage*` | building, laying out and painting lines of 100 columns of monospace text in 5, 10 and 20 spans, and a page of 50 lines (step 22.6); the same line again, with one span changed, and cold, and a page with one line changed (step 22.10) |
 
 The benchmarks drop the scenes (`DiscardScenes`), so they measure the framework and not
 the renderer.
@@ -275,6 +275,75 @@ to run on this machine, the allocations do not.)
   pictures) drops the least recently used entry when it is full. Before, it was emptied, so
   a page of text that crossed the limit drew every outline again at once.
 
+## Text: the cache of shaped runs (step 22.10)
+
+An editor builds again lines whose spans mostly did not change, so the engine keeps what it
+works out of a text between builds (SPEC §10, "Shaped run cache"). The same benchmarks of
+`internal/text/layout` (`bench_test.go`) measure it, with the lines of step 22.6 (100 columns of
+Go Mono in 5, 10 and 20 spans); `forgetText` empties the caches for the cold ones:
+
+```
+go test -tags glutter_release ./internal/text/layout -run xxx -bench Code -benchmem
+```
+
+**The profile that decided the work** (`CodeLineBuild` and `CodePage` before the step; the
+build of a paragraph was 15.2 s of the 22.6 s sampled):
+
+| What | Share of the build |
+|---|---|
+| HarfBuzz `Shape` | 27% |
+| `shaping.Segmenter.Split` (go-text's own bidi again, 15%, then the scripts) | 20% |
+| the UAX #14 line breaks (`measure`) | 14% |
+| the grapheme clusters (`measure`) | 14% |
+| `SplitByFace`, `fontsFor` (twice per span), the metrics of the face | 12% |
+| the first layout, at infinite width, that `BuildParagraph` made and `TextPainter` threw away | 10% |
+| the garbage collector | about 15% of all the time |
+
+A cache of the shaped runs alone would have taken the 27%; an unchanged line needs the
+rest to go too, so the step keeps the analysis of each text (levels, scripts, breaks, clusters)
+in a cache of its own, takes shortcuts for ASCII and left-to-right text, and stops laying out at
+build time. The builder kept a copy of the 312-byte `ResolvedTextStyle` of every run three times
+(`AddText` growing its slice, `Build`, the paragraph): there is one for each pushed style now.
+
+| Benchmark (same machine and day, medians of 3) | Before (step 22.6 code) | After: the line built again | Faster |
+|---|---|---|---|
+| `CodeLineBuild` 5 spans | 40.8 µs, 315 allocs, 81 KB | 4.9 µs, 61 allocs, 15 KB | 8.4× |
+| `CodeLineBuild` 10 spans | 48.5 µs, 383 allocs, 93 KB | 6.2 µs, 88 allocs, 19 KB | 7.9× |
+| `CodeLineBuild` 20 spans | 58.4 µs, 507 allocs, 119 KB | 9.6 µs, 141 allocs, 27 KB | 6.1× |
+| `CodeLine` (build, layout, paint), 5 / 10 / 20 spans | 45.0 / 51.8 / 62.7 µs | 9.3 / 10.8 / 14.9 µs | 4.8 / 4.8 / 4.2× |
+| `CodePage` (50 lines of 10 spans, built, laid out and painted) | 2.81 ms, 22 377 allocs, 5.9 MB | 0.56 ms, 7 609 allocs, 2.1 MB | 5.0× |
+| `CodeLineLayout`, `CodeLinePaint` | 3.5 to 4.3 µs, 87 ns | the same | |
+
+(The laying out of a line, 3.5 to 4.6 µs, is the whole `Layout` of a built paragraph; `BuildParagraph`
+no longer does it, so `CodeLine` is the build plus that.) The step asks for at least 5×
+on an unchanged line's build: that is met for 5, 10 and 20 spans (the 20-span line is the
+closest, at 6.1×; 9.1× against the 87 µs that step 22.6 wrote down).
+
+| Benchmark | 5 spans | 10 spans | 20 spans |
+|---|---|---|---|
+| `CodeLineBuildCold` (the caches emptied: a line the engine has not seen) | 22.1 µs, 116 allocs | 26.6 µs, 183 allocs | 33.9 µs, 316 allocs |
+| `CodeLineBuild` (the same spans again) | 4.9 µs, 61 allocs | 6.2 µs, 88 allocs | 9.6 µs, 141 allocs |
+| `CodeLineBuildOneSpanChanged` (one span of the line has another text) | 13.7 µs, 83 allocs | 14.5 µs, 110 allocs | 17.6 µs, 163 allocs |
+
+- **One span changed.** Exactly one run is shaped (`shaped/op` is 1.00: the test
+  `TestUnchangedLineShapesNothing` counts the runs that reach the shaper). The rest of the cost is
+  the analysis of the text, which is new because the text of the line is: go-text's UAX #14
+  segmenter still runs for the whole line (the shortcuts for the clusters and for the script split
+  are in the cold numbers too).
+- **A page of 50 lines (10 spans) where one line changed**, all 50 built through the engine:
+  `CodePageBuildOneLineChanged`, 364 µs, 4 424 allocs, 0.99 runs shaped. A page of lines the engine has
+  not seen (`CodePageBuildCold`) is 1.24 ms and 8 389 allocs. The step asks for "about the cost of one
+  line's build"; that is **not met**: the page costs 14 times the 26.6 µs of one line that is built from
+  nothing, because each of the 49 lines that did not change still costs the builder and the engine
+  about 7 µs (6.2 µs for the 10-span line; in a profile of the 20-span line a quarter of that is the
+  `ui.ParagraphBuilder` and the styles that the caller makes, before the engine is called). An editor that wants a page to cost one
+  line keeps the `Paragraph` of the lines that did not change; the caches make building the ones it
+  rebuilds anyway 4 to 8 times cheaper.
+
+- **What does not change.** The first build of a text, as in `CodeLineBuildCold`, is still the cost of
+  shaping it (22 to 34 µs, from 41 to 58 before). The raster time (`CodePageRaster`, 36 ms) is not
+  touched.
+
 ## What was changed for the numbers
 
 Before this step the full rebuild of the gallery was 14.6 ms. The profile was dominated by
@@ -312,7 +381,7 @@ available during this work, so they are **pending approval**.
 
 ## Pending
 
-- Text: the build is the cost of a code line (shaping and segmentation, 65 to 96 µs). A cache of the shaped runs of a span, keyed by text, font and size, would make a line whose spans did not change nearly free to build again; it is not done. The same for the web: the benchmarks of step 22.6 were not run under `GOOS=js`.
+- Text: the benchmarks of steps 22.6 and 22.10 were not run under `GOOS=js`. A page where one line changed still costs 14 lines (see "Text: the cache of shaped runs"): the next step would be to skip the builder and the analysis for a line whose content is the same as the last frame's, which only the caller knows.
 - The web table: measure the targets again with a real display, and Firefox on a GPU (the Firefox numbers here are Mesa's software rasterizer). The two targets that are not met (sizes, late frames) need the user's decision (see "Targets not met" under Web).
 
 - Run `GLUTTER_RENDERER=gles scripts/perf.sh` and `GLUTTER_RENDERER=vulkan scripts/perf.sh` (a headless compositor cannot present GPU buffers: use the benchmarks of the gallery with `GLUTTER_FRAME_STATS=1` on the desktop) on a machine with a GPU, and record the comparison of step 20.7.

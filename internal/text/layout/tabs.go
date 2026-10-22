@@ -66,7 +66,7 @@ func (p *paragraph) tabAdvance(x float64) float64 {
 
 // tabSpacing is the letter spacing, and the word spacing, that the tab's style adds after it.
 func (p *paragraph) tabSpacing(i int) float64 {
-	st := &p.styles[p.styleAt[i]]
+	st := p.styles[p.styleAt[i]]
 	return st.LetterSpacing + st.WordSpacing
 }
 

@@ -260,7 +260,7 @@ func (p *paragraph) ellipsize(l *line, width float64) {
 
 // shapeEllipsis shapes the ellipsis text in a style.
 func (p *paragraph) shapeEllipsis(text []rune, si int) *run {
-	st := &p.styles[si]
+	st := p.styles[si]
 	dir := di.DirectionLTR
 	if p.style.Direction() == ui.TextDirectionRTL {
 		dir = di.DirectionRTL
@@ -268,7 +268,7 @@ func (p *paragraph) shapeEllipsis(text []rune, si int) *run {
 	fm := p.eng.fontsFor(st.FontFamilies, st.FontWeight, st.FontStyle == ui.FontStyleItalic, st.Locale, st.FontVariations)
 	in := shaping.Input{Text: text, RunStart: 0, RunEnd: len(text), Direction: dir, Face: fm.ResolveFace(text[0]),
 		Script: language.LookupScript(text[0]), Language: language.NewLanguage(st.Locale.LanguageTag())}
-	r := p.shapeRun(in, si)
+	r := p.shapeRun(in, si, fm)
 	r.rtl = dir == di.DirectionRTL
 	// The ellipsis is at the paragraph's level, after the text.
 	r.level = 0
@@ -381,9 +381,9 @@ func (p *paragraph) emptyLineMetrics(l *line) (ascent, descent, ascentU, descent
 	if len(p.runes) > 0 {
 		si = p.styleAt[min(max(l.start-1, 0), len(p.runes)-1)]
 	}
-	st := &p.styles[si]
+	st := p.styles[si]
 	fm := p.eng.fontsFor(st.FontFamilies, st.FontWeight, st.FontStyle == ui.FontStyleItalic, st.Locale, st.FontVariations)
-	a, d, gap := fontMetrics(fm.ResolveFace(' '), st.FontSize)
+	a, d, gap := p.eng.fontMetrics(fm.ResolveFace(' '), st.FontSize)
 	even := st.LeadingDistribution == ui.TextLeadingDistributionEven
 	ascent, descent = correctedMetrics(a, d, gap, st.FontSize, st.Height, st.HasHeight, even)
 	return ascent, descent, a + gap/2, d + gap/2
@@ -406,7 +406,7 @@ func (p *paragraph) strutMetrics() strutMetricsT {
 		families = p.base.FontFamilies
 	}
 	fm := p.eng.fontsFor(families, s.FontWeight, s.FontStyle == ui.FontStyleItalic, p.baseLocale, nil)
-	a, d, gap := fontMetrics(fm.ResolveFace(' '), s.FontSize)
+	a, d, gap := p.eng.fontMetrics(fm.ResolveFace(' '), s.FontSize)
 	if s.Leading >= 0 {
 		gap = s.Leading * s.FontSize
 	}
@@ -511,4 +511,12 @@ func (p *paragraph) placeRun(pr *placedRun, justify float64, visEnd int) float64
 	}
 	pr.width = pen
 	return pen
+}
+
+// ensureLaidOut lays the paragraph out with an infinite width when nothing has laid it out yet,
+// so that a paragraph that is asked before it is laid out answers as one that has been.
+func (p *paragraph) ensureLaidOut() {
+	if !p.laidOut {
+		p.Layout(ui.NewParagraphConstraints(math.Inf(1)))
+	}
 }

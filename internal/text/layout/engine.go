@@ -2,6 +2,7 @@ package layout
 
 import (
 	"context"
+	"slices"
 	"strconv"
 
 	"github.com/go-text/typesetting/font"
@@ -40,8 +41,26 @@ type Engine struct {
 
 	byStyle map[string]*styleFonts
 	keyBuf  []byte // the key of the style that fontsFor looks up
+	// recent are the styles that fontsFor found last, so that the spans of a line that repeat a few styles
+	// find them without building a key.
+	recent     [recentStyles]recentStyle
+	recentNext int
 	// generation is the generation of the font collection that byStyle was made for.
 	generation uint64
+
+	// shapes caches the glyphs of the runs that paragraphs shape (shapecache.go).
+	shapes *shapeCache
+	// analyses caches what is found out about a text before it is shaped (analysis.go).
+	analyses    *lruCache[string, *analysis]
+	analysisBuf []byte
+	// noAnalysisCache turns that cache off: the tests compare with it.
+	noAnalysisCache bool
+	// noFastAnalysis turns off the shortcuts for text of one direction: the tests compare them with the general path.
+	noFastAnalysis bool
+	// faceSplits is the buffer that splitByFace returns.
+	faceSplits []shaping.Input
+	// segmenter splits the levels of an analysis by script; it keeps its buffers.
+	segmenter shaping.Segmenter
 
 	// paths and pictures cache the outlines and the color glyphs that paragraphs draw.
 	paths    *lruCache[glyphKey, *ui.Path]
@@ -121,7 +140,7 @@ func (e *Engine) LoadFontFromList(list []byte, family string) error {
 //
 // Flutter: no counterpart
 func NewEngine(ctx context.Context, fonts *text.Collection, opts ...EngineOpts) *Engine {
-	return &Engine{ctx: ctx, fonts: fonts, opts: oneOpts(opts), byStyle: map[string]*styleFonts{},
+	return &Engine{ctx: ctx, fonts: fonts, opts: oneOpts(opts), byStyle: map[string]*styleFonts{}, shapes: newShapeCache(), analyses: newWeightedLRU(maxAnalyses, maxAnalysisBytes, weighAnalysis),
 		paths: newLRU[glyphKey, *ui.Path](maxCachedGlyphs), pictures: newLRU[colorKey, *ui.Picture](maxCachedGlyphs)}
 }
 
@@ -152,7 +171,47 @@ type styleFonts struct {
 	emoji      map[rune]*font.Face
 	emojiFiles []text.FontFile
 	faces      map[rune]*font.Face
-	first      *font.Face // the first face that loads: the one for a rune no face has
+	// ascii and asciiSet are faces for the runes below 128, without a map: most text is made of them.
+	ascii    [128]*font.Face
+	asciiSet [128]bool
+	first    *font.Face // the first face that loads: the one for a rune no face has
+}
+
+// forgetText empties what the engine keeps of the text it has shaped: the shaped runs and the
+// analyses of texts. The fonts it has resolved stay. The tests and the benchmarks use it to
+// measure a build that finds nothing in the caches.
+func (e *Engine) forgetText() {
+	e.shapes.clear()
+	e.analyses.clear()
+}
+
+// syncFonts forgets what the engine resolved or shaped when fonts were added to its collection: a
+// style may find other faces now, and the runs that were shaped may have another face.
+func (e *Engine) syncFonts() {
+	if g := e.fonts.Generation(); g != e.generation {
+		e.generation = g
+		clear(e.byStyle)
+		e.recent = [recentStyles]recentStyle{}
+		e.shapes.clear()
+	}
+}
+
+// recentStyles is how many styles fontsFor remembers by their values.
+const recentStyles = 8
+
+// recentStyle is the arguments of a call of fontsFor and what it found.
+type recentStyle struct {
+	families   []string
+	weight     ui.FontWeight
+	italic     bool
+	lang       string
+	variations []ui.FontVariation
+	found      *styleFonts
+}
+
+func (r *recentStyle) matches(families []string, weight ui.FontWeight, italic bool, lang string, vars []ui.FontVariation) bool {
+	return r.found != nil && r.weight == weight && r.italic == italic && r.lang == lang &&
+		slices.Equal(r.families, families) && slices.Equal(r.variations, vars)
 }
 
 // fontsFor returns the font finder for a style. It is called for every span of every paragraph,
@@ -162,12 +221,21 @@ func (e *Engine) fontsFor(families []string, weight ui.FontWeight, italic bool, 
 	if w == 0 {
 		w = int(ui.FontWeightW400)
 	}
-	if g := e.fonts.Generation(); g != e.generation {
-		// Fonts were added: what was resolved for the styles may be different now.
-		e.generation = g
-		clear(e.byStyle)
-	}
+	e.syncFonts()
 	lang := locale.LanguageTag()
+	for i := range e.recent {
+		if r := &e.recent[i]; r.matches(families, weight, italic, lang, vars) {
+			return r.found
+		}
+	}
+	f := e.lookupFonts(families, w, italic, lang, vars)
+	e.recent[e.recentNext] = recentStyle{families: slices.Clone(families), weight: weight, italic: italic, lang: lang, variations: slices.Clone(vars), found: f}
+	e.recentNext = (e.recentNext + 1) % recentStyles
+	return f
+}
+
+// lookupFonts finds the font finder of a style in the engine's map, making it when it is new.
+func (e *Engine) lookupFonts(families []string, w int, italic bool, lang string, vars []ui.FontVariation) *styleFonts {
 	key := e.keyBuf[:0]
 	for _, f := range families {
 		key = strconv.AppendQuote(key, f)
@@ -270,6 +338,9 @@ func (f *styleFonts) face(file text.FontFile) *font.Face {
 // has, the first face that loads (which draws its missing-glyph box), or nil when
 // there is no font at all.
 func (f *styleFonts) ResolveFace(r rune) *font.Face {
+	if uint32(r) < 128 && f.asciiSet[r] {
+		return f.ascii[r]
+	}
 	if face, ok := f.faces[r]; ok {
 		return face
 	}
@@ -314,5 +385,8 @@ func (f *styleFonts) ResolveFace(r rune) *font.Face {
 		found = f.first
 	}
 	f.faces[r] = found
+	if uint32(r) < 128 {
+		f.ascii[r], f.asciiSet[r] = found, true
+	}
 	return found
 }

@@ -1,6 +1,9 @@
 package layout
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+)
 
 func TestLRUCache(t *testing.T) {
 	type step struct {
@@ -81,5 +84,64 @@ func TestLRUCacheHoldsNilValues(t *testing.T) {
 	c.put(1, nil)
 	if v, ok := c.get(1); !ok || v != nil {
 		t.Errorf("get = %v, %v; want a hit with nil", v, ok)
+	}
+}
+
+func TestWeightedLRU(t *testing.T) {
+	weigh := func(_ string, v []byte) int { return len(v) }
+	bytes := func(n int) []byte { return make([]byte, n) }
+	tests := []struct {
+		name      string
+		size, max int
+		puts      []struct {
+			key string
+			n   int
+		}
+		wantKeys   []string // from the most to the least recently used
+		wantWeight int
+	}{
+		{"the weight drops the oldest", 10, 10, []struct {
+			key string
+			n   int
+		}{{"a", 4}, {"b", 4}, {"c", 4}}, []string{"c", "b"}, 8},
+		{"one big entry drops several", 10, 10, []struct {
+			key string
+			n   int
+		}{{"a", 3}, {"b", 3}, {"c", 3}, {"d", 8}}, []string{"d"}, 8},
+		{"an entry over the whole weight is not kept", 10, 10, []struct {
+			key string
+			n   int
+		}{{"a", 3}, {"b", 11}}, []string{"a"}, 3},
+		{"an entry that grows is checked again, and an oversize replacement removes it", 10, 10, []struct {
+			key string
+			n   int
+		}{{"a", 3}, {"b", 3}, {"a", 6}, {"b", 20}}, []string{"a"}, 6},
+		{"the size still bounds the entries", 2, 100, []struct {
+			key string
+			n   int
+		}{{"a", 1}, {"b", 1}, {"c", 1}}, []string{"c", "b"}, 2},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := newWeightedLRU(tt.size, tt.max, weigh)
+			for _, p := range tt.puts {
+				c.put(p.key, bytes(p.n))
+			}
+			var keys []string
+			for n := c.head; n != nil; n = n.next {
+				keys = append(keys, n.key)
+			}
+			if fmt.Sprint(keys) != fmt.Sprint(tt.wantKeys) || c.weight != tt.wantWeight || c.len() != len(tt.wantKeys) {
+				t.Errorf("keys %v, weight %d, len %d; want %v, %d", keys, c.weight, c.len(), tt.wantKeys, tt.wantWeight)
+			}
+			c.clear()
+			if c.len() != 0 || c.weight != 0 || c.head != nil || c.tail != nil {
+				t.Errorf("clear left %d entries, weight %d", c.len(), c.weight)
+			}
+			c.put("z", bytes(1))
+			if _, ok := lruGetBytes(c, []byte("z")); !ok {
+				t.Error("a cache that was cleared does not take entries")
+			}
+		})
 	}
 }

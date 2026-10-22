@@ -548,8 +548,9 @@ func (s *ParagraphStyle) Strut() ResolvedStrut {
 type TextRun struct {
 	// Start and End are the UTF-8 byte offsets of the text, End exclusive.
 	Start, End int
-	// Style is the style of the text.
-	Style ResolvedTextStyle
+	// Style is the style of the text. Runs that came from one PushStyle share it, and so does a
+	// paragraph with the runs of its content: nothing changes what it points to.
+	Style *ResolvedTextStyle
 }
 
 // PlaceholderSpec is a box in the text that the paragraph leaves room for: an inline widget.
@@ -670,7 +671,7 @@ type FontQueryEngine interface {
 type ParagraphBuilder struct {
 	factory ParagraphFactory
 	style   *ParagraphStyle
-	stack   []ResolvedTextStyle
+	stack   []*ResolvedTextStyle
 	text    strings.Builder
 	runs    []TextRun
 
@@ -681,14 +682,16 @@ type ParagraphBuilder struct {
 //
 // Flutter: ui/text.dart ParagraphBuilder
 func NewParagraphBuilder(factory ParagraphFactory, style *ParagraphStyle) *ParagraphBuilder {
-	return &ParagraphBuilder{factory: factory, style: style, stack: []ResolvedTextStyle{style.BaseTextStyle()}}
+	base := style.BaseTextStyle()
+	return &ParagraphBuilder{factory: factory, style: style, stack: []*ResolvedTextStyle{&base}}
 }
 
 // PushStyle applies the text style to text added after, until the matching Pop. Fields the style did not set inherit from the style below.
 //
 // Flutter: ui/text.dart ParagraphBuilder.pushStyle
 func (b *ParagraphBuilder) PushStyle(style *TextStyle) {
-	b.stack = append(b.stack, style.Resolve(b.stack[len(b.stack)-1]))
+	resolved := style.Resolve(*b.stack[len(b.stack)-1])
+	b.stack = append(b.stack, &resolved)
 }
 
 // Pop ends the effect of the most recent PushStyle. Popping with no style pushed panics with the tag ParagraphBuilderPopEmpty.
@@ -711,7 +714,7 @@ func (b *ParagraphBuilder) AddText(text string) {
 	start := b.text.Len()
 	b.text.WriteString(text)
 	style := b.stack[len(b.stack)-1]
-	if n := len(b.runs); n > 0 && sameStyle(b.runs[n-1].Style, style) {
+	if n := len(b.runs); n > 0 && (b.runs[n-1].Style == style || sameStyle(b.runs[n-1].Style, style)) {
 		b.runs[n-1].End = b.text.Len()
 		return
 	}
@@ -775,15 +778,17 @@ func (b *ParagraphBuilder) AddPlaceholder(width, height float64, alignment Place
 }
 
 // Build ends the builder and returns the paragraph. It must be laid out with Layout before it is used.
+// The builder is not to be used after it: the paragraph keeps its runs and placeholders.
 //
 // Flutter: ui/text.dart ParagraphBuilder.build
 func (b *ParagraphBuilder) Build() *Paragraph {
-	content := &ParagraphContent{Style: b.style, Text: b.text.String(), Runs: append([]TextRun(nil), b.runs...), Placeholders: append([]PlaceholderSpec(nil), b.placeholders...)}
+	content := &ParagraphContent{Style: b.style, Text: b.text.String(), Runs: b.runs, Placeholders: b.placeholders}
+	b.runs, b.placeholders = nil, nil
 	return NewParagraph(b.factory.BuildParagraph(content))
 }
 
 // sameStyle says whether two resolved styles are equal, so adjacent text of one style is one run.
-func sameStyle(a, b ResolvedTextStyle) bool {
+func sameStyle(a, b *ResolvedTextStyle) bool {
 	if a.Color != b.Color || a.Decoration != b.Decoration || a.DecorationColor != b.DecorationColor ||
 		a.HasDecorationColor != b.HasDecorationColor || a.DecorationStyle != b.DecorationStyle ||
 		a.DecorationThickness != b.DecorationThickness || a.FontWeight != b.FontWeight || a.FontStyle != b.FontStyle ||
