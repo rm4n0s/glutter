@@ -14,6 +14,10 @@
 //		}
 //	}
 //
+// The text of a test is laid out with the fonts bundled with Glutter (Roboto and
+// Material Icons) and no system fonts, so that it is the same on every machine.
+// Opts.Fonts adds more, for example a monospace font for the golden of a code view.
+//
 // An error that the framework reports (a panic in Build, layout or a callback,
 // SPEC §14.2) does not stop the test where it happens; it is kept, and the test
 // fails at its end unless it took the error with TakeError.

@@ -2272,3 +2272,15 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Proof:** none
 - **Manual checks:** none
 - **Deviations and follow-ups:** SPEC §12.10 has the rows: `LoadFontFromList` is a method of the dispatcher and returns an error, not a `Future`; `FontLoader` takes the dispatcher in `Load` and panics when reused; `RunAppOpts.Fonts` replaces the pubspec; the binding walks the render trees on a font change. A TrueType collection is read at index 0. Fallback by family name is step 22.3; `gluttertest` fonts are step 22.2.
+
+## 22.2 Fonts in `gluttertest`
+
+- **Date:** 2026-10-22
+- **Branch:** feat/step-22.2-gluttertest-fonts
+- **Summary:** `gluttertest.Opts.Fonts []gluttertest.Font{Family, Data}` gives a test its own text engine with Roboto, Material Icons and the given fonts, and no system fonts, so a golden test can show monospace text (or any text) the same on every machine. The shared engine of the other tests is not touched. A font that fails to load fails the test with its tag (`FontDataInvalid`...), and `Fonts` together with `TextEngine` fails it with `TesterFontsWithTextEngine`.
+- **Main files:** `gluttertest/tester.go`, `gluttertest/doc.go`, `gluttertest/fonts_test.go`, `gluttertest/testdata/goldens/monospace_text.png`, `internal/renderingtest` (`NewTextEngine`, from 22.1), SPEC §12.10 and §17 (written in the plan).
+- **Tests:** `Opts.Fonts` with no font, one font, the family inside the font and four styles of one family (widths of Go Mono against Roboto's); a tester without `Fonts` after one with them (the shared engine is unchanged); the two failures with route checks; a golden of Go Mono in regular, bold, italic and bold italic at three sizes. No Flutter tests ported (`flutter_test` has no equivalent of this option).
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · GOOS=js build and vet ✅ · scripts/test-wasm.sh ✅ · display tests none
+- **Proof:** none. The golden `gluttertest/testdata/goldens/monospace_text.png` was looked at: four lines of code in Go Mono (regular, bold, italic, bold italic), then `iiiiiiiiii WWWWWWWWWW` with both words on the same pitch, then digits and brackets at 28 px.
+- **Manual checks:** none
+- **Deviations and follow-ups:** none beyond SPEC §12.10's row for this option.

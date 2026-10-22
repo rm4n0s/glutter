@@ -35,6 +35,17 @@ type TB interface {
 	Cleanup(func())
 }
 
+// Font is a font file for Opts.Fonts.
+//
+// Flutter: services/font_loader.dart FontLoader
+type Font struct {
+	// Family is the family name that TextStyle.FontFamily uses. When empty, the
+	// family name inside the font is used.
+	Family string
+	// Data is the content of a TrueType or OpenType file.
+	Data []byte
+}
+
 // Opts are the optional parameters of New.
 //
 // Flutter: flutter_test/lib/src/binding.dart TestWidgetsFlutterBinding
@@ -48,6 +59,15 @@ type Opts struct {
 	// TextEngine lays out the text. The default has only the fonts bundled with
 	// Glutter, so that the text is the same on every machine.
 	TextEngine ui.ParagraphFactory
+	// Fonts are added to the text engine of the test, besides the bundled Roboto
+	// and Material Icons: a golden test can then show monospace text, or any text,
+	// the same on every machine. Like the fonts of RunAppOpts.Fonts, several fonts
+	// of one family make a family of weights and slants. The engine has no system
+	// fonts. A font that fails to load fails the test, and Fonts together with
+	// TextEngine fails it too.
+	//
+	// Flutter: flutter_test/lib/src/binding.dart (FontLoader in a test)
+	Fonts []Font
 	// Debug are the debug flags; the default is a fresh set, all off.
 	Debug *widgets.DebugOptions
 	// DiscardScenes drops the scenes that the view renders instead of keeping them
@@ -106,6 +126,20 @@ func New(tb TB, opts ...Opts) *Tester {
 	}
 	if o.DevicePixelRatio == 0 {
 		o.DevicePixelRatio = 1
+	}
+	if len(o.Fonts) > 0 {
+		if o.TextEngine != nil {
+			tb.Fatal(errors.New("TesterFontsWithTextEngine", "Opts.Fonts and Opts.TextEngine are both set: load the fonts into your own engine"))
+		}
+		extra := make([]renderingtest.Font, len(o.Fonts))
+		for i, f := range o.Fonts {
+			extra[i] = renderingtest.Font{Family: f.Family, Data: f.Data}
+		}
+		engine, err := renderingtest.NewTextEngine(extra...)
+		if err != nil {
+			tb.Fatal(err)
+		}
+		o.TextEngine = engine
 	}
 	if o.TextEngine == nil {
 		o.TextEngine = renderingtest.BundledTextEngine()
