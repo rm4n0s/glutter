@@ -3,6 +3,7 @@ package layout
 import (
 	"context"
 	"fmt"
+	"github.com/rm4n0s/errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -130,3 +131,6 @@ func (brokenMatcher) Match(context.Context, string, int, bool, string) ([]text.F
 func newBrokenCollection() *text.Collection {
 	return text.NewCollection(text.CollectionOpts{Matcher: brokenMatcher{}})
 }
+
+// errorsFrom is errors.FromError.
+func errorsFrom(err error) (*errors.Error, bool) { return errors.FromError(err) }

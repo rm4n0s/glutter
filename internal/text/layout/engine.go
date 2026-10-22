@@ -40,13 +40,25 @@ type Engine struct {
 	opts  EngineOpts
 
 	byStyle map[string]*styleFonts
+	// generation is the generation of the font collection that byStyle was made for.
+	generation uint64
 
 	// paths and pictures cache the outlines and the color glyphs that paragraphs draw.
 	paths    map[glyphKey]*ui.Path
 	pictures map[colorKey]*ui.Picture
 }
 
-var _ ui.ParagraphFactory = (*Engine)(nil)
+var _ ui.FontLoadingEngine = (*Engine)(nil)
+
+// LoadFontFromList adds a font to the engine's collection under a family name (the family inside the font
+// when family is empty), so that styles can name it. What the engine resolved before is
+// forgotten, so a family that was missing now finds the font. It fails like text.Collection.AddFont. It
+// is for the UI thread.
+//
+// Flutter: dart:ui loadFontFromList
+func (e *Engine) LoadFontFromList(list []byte, family string) error {
+	return e.fonts.AddFont(family, list)
+}
 
 // NewEngine makes a text engine over a font collection. ctx bounds the loading of
 // font files, which happens while a paragraph is built. More than one options value
@@ -104,6 +116,11 @@ func (e *Engine) fontsFor(families []string, weight ui.FontWeight, italic bool, 
 	for _, v := range vars {
 		tvars = append(tvars, text.Variation{Tag: v.Axis, Value: float32(v.Value)})
 		fmt.Fprintf(&key, "|%s=%v", v.Axis, v.Value)
+	}
+	if g := e.fonts.Generation(); g != e.generation {
+		// Fonts were added: what was resolved for the styles may be different now.
+		e.generation = g
+		clear(e.byStyle)
 	}
 	if f := e.byStyle[key.String()]; f != nil {
 		return f

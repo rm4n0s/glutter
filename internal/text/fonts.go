@@ -3,15 +3,19 @@ package text
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 
 	"github.com/go-text/typesetting/font"
 	ot "github.com/go-text/typesetting/font/opentype"
+	"github.com/go-text/typesetting/font/opentype/tables"
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/internal/opts"
 )
@@ -22,13 +26,19 @@ import (
 // Flutter: no counterpart
 const BundledPrefix = "bundled:"
 
+// LoadedPrefix starts the Path of a FontFile that is a font the app loaded at run
+// time (AddFont), followed by the number of the font in the collection.
+//
+// Flutter: no counterpart
+const LoadedPrefix = "loaded:"
+
 // FontFile is one font of a fallback list: a file on disk (or a bundled font) and
 // the face in it. Its fields are those of the fontconfig package's File.
 //
 // Flutter: no counterpart
 type FontFile struct {
-	// Path is the font file, or BundledPrefix followed by the family of a bundled
-	// font.
+	// Path is the font file, BundledPrefix followed by the family of a bundled
+	// font, or LoadedPrefix followed by the number of a loaded font.
 	Path string
 	// Index is the face in a font collection (the low 16 bits). The high 16 bits
 	// that fontconfig sets for a named instance of a variable font are ignored:
@@ -42,6 +52,11 @@ type FontFile struct {
 //
 // Flutter: no counterpart
 func (f FontFile) IsBundled() bool { return strings.HasPrefix(f.Path, BundledPrefix) }
+
+// IsLoaded reports whether the font is one that the app loaded with AddFont.
+//
+// Flutter: no counterpart
+func (f FontFile) IsLoaded() bool { return strings.HasPrefix(f.Path, LoadedPrefix) }
 
 // Variation is the value of one variable-font axis.
 //
@@ -102,9 +117,13 @@ type Collection struct {
 
 	mu      sync.Mutex
 	bundled map[string][]byte // normalized family → font data
-	fonts   map[fontKey]*font.Font
-	faces   map[faceKey]*font.Face
-	scan    *scanMatcher // created on first use when opts.Matcher is nil
+	// loaded are the fonts of AddFont, by normalized family, in the order they were added.
+	loaded     map[string][]*loadedFont
+	loadedByID map[string]*loadedFont // FontFile.Path → font
+	generation uint64                 // grows with every change of the loaded or bundled fonts
+	fonts      map[fontKey]*font.Font
+	faces      map[faceKey]*font.Face
+	scan       *scanMatcher // created on first use when opts.Matcher is nil
 }
 
 // fontKey identifies a parsed font: the file and the face in it.
@@ -125,10 +144,12 @@ type faceKey struct {
 // Flutter: engine/src/flutter/third_party/txt/src/txt/font_collection.cc FontCollection::FontCollection
 func NewCollection(opts ...CollectionOpts) *Collection {
 	return &Collection{
-		opts:    oneOpts(opts),
-		bundled: map[string][]byte{},
-		fonts:   map[fontKey]*font.Font{},
-		faces:   map[faceKey]*font.Face{},
+		opts:       oneOpts(opts),
+		bundled:    map[string][]byte{},
+		loaded:     map[string][]*loadedFont{},
+		loadedByID: map[string]*loadedFont{},
+		fonts:      map[fontKey]*font.Font{},
+		faces:      map[faceKey]*font.Face{},
 	}
 }
 
@@ -148,7 +169,132 @@ func (c *Collection) AddBundled(family string, data []byte) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.bundled[normalizeFamily(family)] = data
+	c.generation++
 	return nil
+}
+
+// loadedFont is a font added with AddFont and what Match needs to rank it.
+type loadedFont struct {
+	path   string // LoadedPrefix + the number
+	family string // as the app gave it
+	data   []byte
+	sum    [sha256.Size]byte
+	// weight is the OpenType weight of the font (OS/2), italic whether it is slanted.
+	weight int
+	italic bool
+	// wghtMin and wghtMax are the range of the font's wght axis; both are 0 when it has none.
+	wghtMin, wghtMax int
+	// italAxis is whether the font has an ital axis.
+	italAxis bool
+}
+
+// distance says how far the font is from the wanted style, smaller is closer: a
+// different slant counts more than any difference in weight, and a font that is lighter
+// or heavier than wanted, on the side that the CSS font matching tries last, comes after
+// one that is as far on the other side. A variable font is at distance 0 for every weight of its wght axis.
+func (f *loadedFont) distance(weight int, italic bool) int {
+	d := 0
+	if !f.italAxis && f.italic != italic {
+		d += 100000
+	}
+	lo, hi := f.weight, f.weight
+	if f.wghtMax > 0 {
+		lo, hi = f.wghtMin, f.wghtMax
+	}
+	switch {
+	case weight < lo:
+		d += 2 * (lo - weight)
+		if weight <= 500 { // wanted a light weight: a heavier font is the worse side
+			d++
+		}
+	case weight > hi:
+		d += 2 * (weight - hi)
+		if weight > 500 {
+			d++
+		}
+	}
+	return d
+}
+
+// AddFont registers a font that the app loads at run time under a family name. A family can
+// hold several fonts (regular, bold, italic...): Match puts the closest to the requested
+// weight and slant first, then the others of the family. The weight and the slant come from the
+// font (its OS/2 table; a variable font counts as every weight of its wght axis). When family is empty, the
+// family name of the font is used. data is a TrueType or OpenType file (a collection is read at index 0); the
+// Collection keeps a copy. The same bytes under the same family are added once. The font wins over a bundled font of the same
+// family. It fails with FontDataInvalid when data is not a font, and with FontFamilyMissing when family
+// is empty and the font names none.
+//
+// Flutter: dart:ui loadFontFromList
+func (c *Collection) AddFont(family string, data []byte) error {
+	desc, axes, err := describeFont(data)
+	if err != nil {
+		return errors.NewErr("FontDataInvalid", err).SetMetadata("family", family, "bytes", len(data))
+	}
+	if family == "" {
+		family = desc.Family
+	}
+	if strings.TrimSpace(family) == "" {
+		return errors.New("FontFamilyMissing", "the font has no family name and the call gave none", "bytes", len(data))
+	}
+	lf := &loadedFont{family: family, sum: sha256.Sum256(data), weight: int(desc.Aspect.Weight), italic: desc.Aspect.Style == font.StyleItalic}
+	if lf.weight == 0 {
+		lf.weight = 400
+	}
+	for _, a := range axes {
+		switch a.Tag.String() {
+		case "wght":
+			lf.wghtMin, lf.wghtMax = int(a.Minimum), int(a.Maximum)
+		case "ital":
+			lf.italAxis = true
+		}
+	}
+	key := normalizeFamily(family)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, other := range c.loaded[key] {
+		if other.sum == lf.sum {
+			return nil
+		}
+	}
+	lf.data = bytes.Clone(data)
+	lf.path = LoadedPrefix + strconv.Itoa(len(c.loadedByID)+1)
+	c.loaded[key] = append(c.loaded[key], lf)
+	c.loadedByID[lf.path] = lf
+	c.generation++
+	return nil
+}
+
+// Generation is a number that grows whenever the loaded or the bundled fonts change. A
+// cache of what Match and Face returned is valid while it stays the same.
+//
+// Flutter: no counterpart
+func (c *Collection) Generation() uint64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.generation
+}
+
+// describeFont parses the font at index 0 of data: its family and aspect, and the axes of its fvar table.
+func describeFont(data []byte) (font.Description, []tables.VariationAxisRecord, error) {
+	loaders, err := ot.NewLoaders(bytes.NewReader(data))
+	if err != nil {
+		return font.Description{}, nil, err
+	}
+	if len(loaders) == 0 {
+		return font.Description{}, nil, io.ErrUnexpectedEOF // a file with no font in it
+	}
+	ft, err := font.NewFont(loaders[0])
+	if err != nil {
+		return font.Description{}, nil, err
+	}
+	var axes []tables.VariationAxisRecord
+	if raw, err := loaders[0].RawTable(ot.MustNewTag("fvar")); err == nil {
+		if fvar, _, err := tables.ParseFvar(raw); err == nil {
+			axes = fvar.Axis
+		}
+	}
+	return ft.Describe(), axes, nil
 }
 
 // Match returns the fonts for the family, best first: the bundled font of that
@@ -164,8 +310,14 @@ func (c *Collection) Match(ctx context.Context, family string, weight int, itali
 	}
 	var out []FontFile
 	c.mu.Lock()
-	_, bundled := c.bundled[normalizeFamily(family)]
+	key := normalizeFamily(family)
+	_, bundled := c.bundled[key]
+	loaded := slices.Clone(c.loaded[key])
 	c.mu.Unlock()
+	slices.SortStableFunc(loaded, func(a, b *loadedFont) int { return a.distance(weight, italic) - b.distance(weight, italic) })
+	for _, lf := range loaded {
+		out = append(out, FontFile{Path: lf.path, Family: lf.family})
+	}
 	if bundled {
 		out = append(out, FontFile{Path: BundledPrefix + family, Family: family})
 	}
@@ -279,8 +431,15 @@ func (c *Collection) Face(ctx context.Context, f FontFile, variations ...Variati
 	return face, nil
 }
 
-// load parses the font of a bundled family or of a file.
+// load parses the font of a loaded font, of a bundled family or of a file.
 func (c *Collection) load(k fontKey) (*font.Font, error) {
+	if lf, ok := c.loadedByID[k.path]; ok {
+		ft, err := parseFont(bytes.NewReader(lf.data), k.index)
+		if err != nil {
+			return nil, errors.NewErr("FontLoadFailed", err).SetMetadata("path", k.path, "index", k.index)
+		}
+		return ft, nil
+	}
 	if family, ok := strings.CutPrefix(k.path, BundledPrefix); ok {
 		data, found := c.bundled[normalizeFamily(family)]
 		if !found {

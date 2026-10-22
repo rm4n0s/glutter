@@ -572,6 +572,18 @@ type ParagraphFactory interface {
 	BuildParagraph(content *ParagraphContent) ParagraphLayout
 }
 
+// FontLoadingEngine is a ParagraphFactory that can take fonts at run time.
+// internal/text/layout's Engine implements it; PlatformDispatcher.LoadFontFromList
+// uses it.
+//
+// Flutter: no counterpart
+type FontLoadingEngine interface {
+	ParagraphFactory
+	// LoadFontFromList adds the font in list (a TrueType or OpenType file) to the
+	// family, or to the family named in the font when family is empty.
+	LoadFontFromList(list []byte, family string) error
+}
+
 // ParagraphBuilder is used to construct a Paragraph.
 //
 // Flutter: ui/text.dart ParagraphBuilder

@@ -34,6 +34,8 @@ type bindingTreeOpts struct {
 	// collectPanics collects recovered panics in errs instead of panicking again.
 	collectPanics bool
 	debug         *DebugOptions
+	// textEngine replaces the shared bundled engine, for a test that loads fonts.
+	textEngine ui.ParagraphFactory
 }
 
 func newBindingTree(t *testing.T, opts ...bindingTreeOpts) *bindingTree {
@@ -47,7 +49,10 @@ func newBindingTree(t *testing.T, opts ...bindingTreeOpts) *bindingTree {
 	}
 	bt := &bindingTree{t: t, host: &renderhost.Host{}}
 	bt.d = ui.NewPlatformDispatcher(bt.host)
-	bt.d.SetTextEngine(renderingtest.BundledTextEngine())
+	if o.textEngine == nil {
+		o.textEngine = renderingtest.BundledTextEngine()
+	}
+	bt.d.SetTextEngine(o.textEngine)
 	bt.cfg = ui.ViewConfiguration{PhysicalSize: o.size, DevicePixelRatio: o.ratio}
 	bt.view = bt.d.AddView(ui.ImplicitViewID, bt.cfg)
 	ctx, cancel := context.WithCancel(context.Background())

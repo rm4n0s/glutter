@@ -351,6 +351,8 @@ func NewWidgetsBinding(ctx context.Context, d *ui.PlatformDispatcher, opts ...Wi
 		b.notifyObservers("didChangePlatformBrightness", WidgetsBindingObserver.DidChangePlatformBrightness)
 	}
 	d.OnLocaleChanged = b.handleLocaleChanged
+	d.OnFontsChanged = b.painting.HandleSystemFontsChange
+	b.painting.SystemFonts().AddListener(b.renderer.HandleSystemFontsChange)
 	d.OnAppLifecycleStateChanged = b.handleAppLifecycleStateChanged
 	d.OnExitRequested = func(ui.ViewID) ui.AppExitResponse { return b.HandleRequestAppExit() }
 	d.OnViewFocusChange = func(event ui.ViewFocusEvent) {

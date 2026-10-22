@@ -340,6 +340,28 @@ func (b *RendererBinding) Reassemble() {
 	b.scheduler.ScheduleFrame()
 }
 
+// HandleSystemFontsChange tells every render object of every view that has a
+// SystemFontsDidChange method that the fonts changed, so that it lays its text out
+// again, and schedules a frame.
+//
+// Deviation: Flutter's RelayoutWhenSystemFontsChangeMixin listens to the global
+// PaintingBinding.systemFonts when it attaches; here the binding walks the trees.
+//
+// Flutter: rendering/object.dart RelayoutWhenSystemFontsChangeMixin
+func (b *RendererBinding) HandleSystemFontsChange() {
+	var visitor RenderObjectVisitor
+	visitor = func(child RenderObject) {
+		if o, ok := child.(interface{ SystemFontsDidChange() }); ok {
+			o.SystemFontsDidChange()
+		}
+		child.VisitChildren(visitor)
+	}
+	for _, v := range b.views {
+		v.VisitChildren(visitor)
+	}
+	b.scheduler.ScheduleFrame()
+}
+
 // ForceRepaint marks every render object of every view as needing paint, and
 // returns the channel that is closed at the end of the next frame.
 //

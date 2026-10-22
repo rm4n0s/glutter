@@ -143,6 +143,11 @@ type PlatformDispatcher struct {
 	//
 	// Flutter: ui/platform_dispatcher.dart PlatformDispatcher.onAccessibilityFeaturesChanged
 	OnAccessibilityFeaturesChanged func()
+	// OnFontsChanged is called after fonts were added to the text engine
+	// (LoadFontFromList), so that the framework lays the text out again.
+	//
+	// Flutter: services/system_channels.dart SystemChannels.system (the fontsChange message)
+	OnFontsChanged func()
 	// OnSemanticsEnabledChanged is called when an assistive technology starts or
 	// stops asking for semantics.
 	//
@@ -693,6 +698,30 @@ func (d *PlatformDispatcher) DispatchTextInput(event TextInputEvent) {
 //
 // Flutter: no counterpart (Dart reaches the engine's font collection globally)
 func (d *PlatformDispatcher) SetTextEngine(engine ParagraphFactory) { d.textEngine = engine }
+
+// LoadFontFromList loads a font while the app runs, and makes it usable in
+// TextStyle.FontFamily and TextStyle.FontFamilyFallback under the family name;
+// list is a TrueType or OpenType file. A family can have several fonts (regular,
+// bold, italic...); the weight and slant of each come from the font. An empty
+// family takes the name inside the font. The text laid out before is laid out
+// again (OnFontsChanged). It must be called on the UI thread, and fails with
+// FontLoadUnsupported when the text engine cannot load fonts, FontDataInvalid
+// when list is not a font, and FontFamilyMissing when there is no family name.
+//
+// Flutter: ui/text.dart loadFontFromList
+func (d *PlatformDispatcher) LoadFontFromList(list []byte, fontFamily string) error {
+	loader, ok := d.textEngine.(FontLoadingEngine)
+	if !ok {
+		return errors.New("FontLoadUnsupported", "the text engine cannot load fonts", "family", fontFamily)
+	}
+	if err := loader.LoadFontFromList(list, fontFamily); err != nil {
+		return err
+	}
+	if d.OnFontsChanged != nil {
+		d.OnFontsChanged()
+	}
+	return nil
+}
 
 // TextEngine is the text engine that lays out paragraphs; it is nil until the
 // engine sets one. The framework gives it to ParagraphBuilder.

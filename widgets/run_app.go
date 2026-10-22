@@ -100,6 +100,22 @@ const (
 	DecorationsApp
 )
 
+// FontSource is a font file that RunApp loads before the first frame, under a
+// family name (RunAppOpts.Fonts). Give either Data or Asset.
+//
+// Flutter: pubspec.yaml flutter: fonts: (family and asset)
+type FontSource struct {
+	// Family is the family name that TextStyle.FontFamily and FontFamilyFallback
+	// use. When empty, the family name inside the font is used. Several sources
+	// with the same family make a family of regular, bold and italic fonts: each
+	// font tells its own weight and slant.
+	Family string
+	// Data is the content of a TrueType or OpenType file.
+	Data []byte
+	// Asset is the key of the file in RunAppOpts.Assets.
+	Asset string
+}
+
 // RunAppOpts are the optional parameters of RunApp and RunWidget (SPEC §13).
 //
 // Flutter: widgets/binding.dart runApp
@@ -112,6 +128,11 @@ type RunAppOpts struct {
 	AppID string
 	// Window is the config of the first window.
 	Window WindowConfig
+	// Fonts are loaded, in order, before the first frame, from bytes or from
+	// Assets. A font that fails to load makes RunApp return the error
+	// (FontSourceInvalid, AssetNotFound, FontDataInvalid...). More fonts can be
+	// loaded later with PlatformDispatcher.LoadFontFromList or services.FontLoader.
+	Fonts []FontSource
 	// Backend, when not empty, is "wayland" or "x11" and overrides
 	// GLUTTER_BACKEND.
 	Backend string
@@ -167,6 +188,9 @@ func run(app Widget, wrap bool, o RunAppOpts) error {
 		Logger:   o.Logger,
 		Start: func(d *ui.PlatformDispatcher) error {
 			d.SetTextEngine(systemTextEngine(ctx, o.Logger))
+			if err := loadFontSources(ctx, d, o.Fonts, o.Assets); err != nil {
+				return err
+			}
 			_, err := startApp(ctx, d, app, wrap, o)
 			return err
 		},
@@ -270,4 +294,32 @@ func systemTextEngine(ctx context.Context, logger *slog.Logger) *layout.Engine {
 	return layout.NewEngine(ctx, c, layout.EngineOpts{OnFontError: func(err error) {
 		logger.Warn("a font could not be loaded", "error", err)
 	}})
+}
+
+// loadFontSources loads the fonts of RunAppOpts.Fonts into the text engine of the
+// dispatcher, in order, and stops at the first failure.
+func loadFontSources(ctx context.Context, d *ui.PlatformDispatcher, sources []FontSource, assets fs.FS) error {
+	var bundle services.AssetBundle
+	if assets != nil {
+		bundle = services.NewFSAssetBundle(assets)
+	}
+	for i, src := range sources {
+		loader := services.NewFontLoader(src.Family)
+		switch {
+		case src.Data != nil && src.Asset != "":
+			return errors.New("FontSourceInvalid", "a font source has both Data and Asset", "family", src.Family, "index", i)
+		case src.Data != nil:
+			loader.AddFontBytes(src.Data)
+		case src.Asset != "" && bundle == nil:
+			return errors.New("FontSourceInvalid", "a font source names an Asset but RunAppOpts.Assets is not set", "family", src.Family, "asset", src.Asset, "index", i)
+		case src.Asset != "":
+			loader.AddFontAsset(bundle, src.Asset)
+		default:
+			return errors.New("FontSourceInvalid", "a font source has neither Data nor Asset", "family", src.Family, "index", i)
+		}
+		if err := loader.Load(ctx, d); err != nil {
+			return err
+		}
+	}
+	return nil
 }

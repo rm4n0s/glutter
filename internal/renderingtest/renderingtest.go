@@ -100,6 +100,30 @@ var bundledEngine = sync.OnceValue(func() *layout.Engine {
 	return layout.NewEngine(context.Background(), c)
 })
 
+// Font is a font for NewTextEngine: the bytes of a TrueType or OpenType file under a
+// family name (the name inside the font when Family is empty).
+type Font struct {
+	Family string
+	Data   []byte
+}
+
+// NewTextEngine makes a text engine of its own, with the bundled fonts and the given
+// ones and no system font, for a test that must not change the shared engine of
+// BundledTextEngine. It fails with the tags of text.Collection.AddFont.
+func NewTextEngine(extra ...Font) (*layout.Engine, error) {
+	c := text.NewCollection(text.CollectionOpts{Matcher: noSystemFonts{}})
+	if err := fonts.Register(c); err != nil {
+		return nil, err
+	}
+	e := layout.NewEngine(context.Background(), c)
+	for _, f := range extra {
+		if err := e.LoadFontFromList(f.Data, f.Family); err != nil {
+			return nil, err
+		}
+	}
+	return e, nil
+}
+
 // noSystemFonts is a font matcher that finds nothing.
 type noSystemFonts struct{}
 

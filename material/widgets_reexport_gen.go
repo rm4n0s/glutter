@@ -2665,6 +2665,11 @@ type FocusableActionDetector = widgets.FocusableActionDetector
 // Flutter: widgets.dart FocusableActionDetectorOpts
 type FocusableActionDetectorOpts = widgets.FocusableActionDetectorOpts
 
+// FontSource is widgets.FontSource.
+//
+// Flutter: widgets.dart FontSource
+type FontSource = widgets.FontSource
+
 // Form is widgets.Form.
 //
 // Flutter: widgets.dart Form

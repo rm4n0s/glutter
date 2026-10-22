@@ -2,7 +2,7 @@
 
 Glutter has Flutter's framework API on its own engine, so what you know carries over: the
 widget tree, `BuildContext`, `setState`, `Theme.of`, `Navigator`, animation controllers,
-`CustomPaint`. This page shows ten things side by side, in Dart and in Go. The rules behind
+`CustomPaint`. This page shows eleven things side by side, in Dart and in Go. The rules behind
 them are in [SPEC §12](SPEC.md#12-api-conventions-flutter--go); this is the short version.
 
 **The rules in one paragraph.** A widget is made by `NewX(required..., opts ...XOpts)`. The
@@ -539,6 +539,69 @@ func disc() m.Widget {
 get the `Listenable` (the `repaint` argument) and the defaults for `HitTest`. `Paint()` with
 its cascade `..color =` is `ui.NewPaint()` and a setter, `paint.SetColor(...)`. `canvas` is a `*ui.Canvas`
 with Flutter's methods (`DrawCircle`, `DrawPath`, `Save`, `Translate`, ...).
+
+## 11. Fonts
+
+Flutter declares fonts in `pubspec.yaml` and uses them by family name; `FontLoader` loads one
+at run time. Glutter has no manifest: you give the bytes of a TrueType or OpenType file under a
+family name, in `RunAppOpts.Fonts` (before the first frame) or later with `FontLoader`. A
+code editor's monospace font is the usual case:
+
+```go
+package main
+
+import (
+	"context"
+	"os"
+
+	m "github.com/rm4n0s/glutter/material"
+	"github.com/rm4n0s/glutter/services"
+)
+
+func editorText(code string) m.Widget {
+	return m.NewText(code, m.TextOpts{Style: m.NewTextStyle(m.TextStyleOpts{
+		FontFamily:         "JetBrains Mono",
+		FontFamilyFallback: []string{"monospace"},
+		FontSize:           m.Some(13.0),
+	})})
+}
+
+func main() {
+	err := m.RunApp(editorText("fmt.Println()"), m.RunAppOpts{
+		Assets: os.DirFS("assets"), // or an embed.FS
+		Fonts: []m.FontSource{
+			{Family: "JetBrains Mono", Asset: "fonts/JetBrainsMono-Regular.ttf"},
+			{Family: "JetBrains Mono", Asset: "fonts/JetBrainsMono-Bold.ttf"},
+			{Family: "JetBrains Mono", Asset: "fonts/JetBrainsMono-Italic.ttf"},
+		},
+	})
+	if err != nil {
+		os.Exit(1)
+	}
+}
+
+// loadFromDisk adds a font while the app runs, on the UI thread: the text that is on the
+// screen is laid out again.
+func loadFromDisk(bc m.BuildContext, path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	loader := services.NewFontLoader("My Mono")
+	loader.AddFontBytes(data)
+	return loader.Load(context.Background(), m.WidgetsBindingOf(bc).PlatformDispatcher())
+}
+```
+
+Fonts of one family make a family: each file tells its own weight and slant (the OS/2 table; a
+variable font counts for every weight of its `wght` axis), so the three files above serve
+`FontWeight.w400`, `w700` and `FontStyle.italic`, and the closest one is used for a weight in
+between. The loaded family is also a fallback: it works in `FontFamilyFallback` the same way.
+The fonts of a style are tried in the order `FontFamily`, then each `FontFamilyFallback`
+entry, then the system's default font; a name that no installed or loaded font has gives
+nothing, so `FontFamilyFallback: []string{"monospace"}` reaches the user's monospace font
+(`monospace`, `sans-serif` and `serif` stand for the system's own). In a widget test, give the
+fonts to `gluttertest.Opts.Fonts`.
 
 ## For Flutter web developers
 
