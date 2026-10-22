@@ -42,6 +42,7 @@ func TestScrollingGoldens(t *testing.T) {
 		{"custom-scrolled", options{tab: tabCustom, scroll: 600}},
 		{"pages", options{tab: tabPages}},
 		{"reorder", options{tab: tabReorder}},
+		{"tree", options{tab: tabTree}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -63,6 +64,7 @@ func TestTabsSwitchTheView(t *testing.T) {
 		{tabCustom, gluttertest.ByType[*widgets.CustomScrollView]},
 		{tabPages, gluttertest.ByType[*widgets.PageView]},
 		{tabReorder, gluttertest.ByType[*widgets.ReorderableList]},
+		{tabTree, gluttertest.ByType[*widgets.TreeSliver[string]]},
 	}
 	ts, state := newTester(t, options{tab: tabReorder})
 	for _, tt := range tests {
@@ -81,7 +83,7 @@ func TestTabsSwitchTheView(t *testing.T) {
 // TestEveryViewHasAScrollbar checks that each tab with a scroll view builds a
 // RawScrollbar whose thumb is visible.
 func TestEveryViewHasAScrollbar(t *testing.T) {
-	for _, tab := range []int{tabList, tabGrid, tabCustom, tabReorder} {
+	for _, tab := range []int{tabList, tabGrid, tabCustom, tabReorder, tabTree} {
 		ts, _ := newTester(t, options{tab: tab})
 		if got := ts.Count(gluttertest.ByType[*widgets.RawScrollbar]()); got != 1 {
 			t.Errorf("tab %q: %d scrollbars, want 1", tabNames[tab], got)
@@ -169,6 +171,41 @@ func TestReorderMovesAnItem(t *testing.T) {
 	noErrors(t, ts)
 }
 
+// TestTreeTabTogglesAFolder taps the rows of the file tree: a folder opens and closes, a file does nothing.
+func TestTreeTabTogglesAFolder(t *testing.T) {
+	ts, state := newTester(t, options{tab: tabTree})
+	count := func(name string) int { return ts.Count(gluttertest.ByText(name)) }
+	if count("glutter") != 1 || count("docs") != 1 || count("sliver_tree.go") != 1 || count("SPEC.md") != 0 || count("cmd") != 1 || count("glutter-gen") != 0 {
+		t.Fatalf("the tree at the start: glutter %d, docs %d, sliver_tree.go %d, SPEC.md %d", count("glutter"), count("docs"), count("sliver_tree.go"), count("SPEC.md"))
+	}
+	ts.Tap(gluttertest.ByText("docs"))
+	ts.PumpAndSettle()
+	if count("SPEC.md") != 1 || count("GUIDE.md") != 1 {
+		t.Error("docs did not open")
+	}
+	ts.Tap(gluttertest.ByText("widgets"))
+	ts.PumpAndSettle()
+	if count("sliver_tree.go") != 0 || count("scroll_view.go") != 0 {
+		t.Error("widgets did not close")
+	}
+	ts.Tap(gluttertest.ByText("go.mod")) // a file
+	ts.PumpAndSettle()
+	if count("go.mod") != 1 || count("SPEC.md") != 1 {
+		t.Error("a tap on a file changed the tree")
+	}
+	state.treeController.CollapseAll()
+	ts.PumpAndSettle()
+	if count("docs") != 0 || count("glutter") != 1 || count("examples") != 1 {
+		t.Errorf("after CollapseAll: glutter %d, docs %d, examples %d", count("glutter"), count("docs"), count("examples"))
+	}
+	state.treeController.ExpandAll()
+	ts.PumpAndSettle()
+	if count("glutter-gen") != 1 || count("run.go") != 1 {
+		t.Error("ExpandAll did not open the folders")
+	}
+	noErrors(t, ts)
+}
+
 func TestOptionsFromEnv(t *testing.T) {
 	env := func(m map[string]string) func(string) string { return func(k string) string { return m[k] } }
 	tests := []struct {
@@ -180,7 +217,7 @@ func TestOptionsFromEnv(t *testing.T) {
 		{"empty", nil, options{}, ""},
 		{"tab and scroll", map[string]string{"GLUTTER_DEV_TAB": "2", "GLUTTER_DEV_SCROLL": "600"}, options{tab: 2, scroll: 600}, ""},
 		{"tab not a number", map[string]string{"GLUTTER_DEV_TAB": "x"}, options{}, "ScrollingTabInvalid"},
-		{"tab out of range", map[string]string{"GLUTTER_DEV_TAB": "5"}, options{}, "ScrollingTabInvalid"},
+		{"tab out of range", map[string]string{"GLUTTER_DEV_TAB": "6"}, options{}, "ScrollingTabInvalid"},
 		{"scroll negative", map[string]string{"GLUTTER_DEV_SCROLL": "-1"}, options{}, "ScrollingOffsetInvalid"},
 		{"scroll not a number", map[string]string{"GLUTTER_DEV_SCROLL": "far"}, options{}, "ScrollingOffsetInvalid"},
 	}

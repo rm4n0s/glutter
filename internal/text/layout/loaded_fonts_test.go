@@ -91,3 +91,19 @@ func TestLoadFontFromListErrors(t *testing.T) {
 		t.Errorf("unexpected failure path: %s", appErr.Route())
 	}
 }
+
+// TestLoadedSansSerifIsTheDefaultFont: a font loaded under the generic name sans-serif is the font of a
+// style that names no family, which an engine without system fonts otherwise has none for.
+func TestLoadedSansSerifIsTheDefaultFont(t *testing.T) {
+	e := bundledEngine(t)
+	style := ui.NewTextStyle(ui.TextStyleOpts{FontSize: ui.Ptr(20.0)})
+	if got := widthIn(e, "iiii", style); got != 0 {
+		t.Fatalf("width before = %v: the bundled-only engine has a default font", got)
+	}
+	if err := e.LoadFontFromList(gomono.TTF, "sans-serif"); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := widthIn(e, "iiiW", style), 4*monoAdvance*20; math.Abs(got-want) > 0.01 {
+		t.Errorf("width after = %v, want %v", got, want)
+	}
+}

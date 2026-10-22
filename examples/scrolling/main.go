@@ -1,13 +1,14 @@
-// Command scrolling shows the scroll views of Glutter in five tabs: a ListView
+// Command scrolling shows the scroll views of Glutter in six tabs: a ListView
 // with 10,000 rows, a GridView of colored tiles, a CustomScrollView with a pinned
-// header, a list and a grid, a PageView of three pages, and a ReorderableList.
+// header, a list and a grid, a PageView of three pages, a ReorderableList, and a
+// TreeSliver (a file tree whose folders expand and collapse).
 // The tabs are plain GestureDetectors, because Material is not available yet.
 // Every view has a scrollbar. It uses only the public packages.
 //
 // Run it with: go run ./examples/scrolling
 //
 // Environment: GLUTTER_BACKEND=x11|wayland, GLUTTER_SCREENSHOT=<file.png>,
-// GLUTTER_SCREENSHOT_AFTER=<duration>. In debug builds: GLUTTER_DEV_TAB=<0 to 4>
+// GLUTTER_SCREENSHOT_AFTER=<duration>. In debug builds: GLUTTER_DEV_TAB=<0 to 5>
 // opens that tab, and GLUTTER_DEV_SCROLL=<pixels> scrolls the view of the
 // CustomScrollView tab by that much.
 package main
@@ -18,6 +19,7 @@ import (
 	"strconv"
 
 	"github.com/rm4n0s/errors"
+	"github.com/rm4n0s/glutter/animation"
 	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/material/fonts"
 	"github.com/rm4n0s/glutter/painting"
@@ -39,9 +41,9 @@ var (
 )
 
 // tabNames are the labels of the tabs, in order.
-var tabNames = [numTabs]string{"ListView", "GridView", "CustomScrollView", "PageView", "ReorderableList"}
+var tabNames = [numTabs]string{"ListView", "GridView", "CustomScrollView", "PageView", "ReorderableList", "TreeSliver"}
 
-const numTabs = 5
+const numTabs = 6
 
 const (
 	tabList = iota
@@ -49,6 +51,7 @@ const (
 	tabCustom
 	tabPages
 	tabReorder
+	tabTree
 )
 
 const (
@@ -114,7 +117,7 @@ func optionsFromEnv(getenv func(string) string) (options, error) {
 	if v := getenv("GLUTTER_DEV_TAB"); v != "" {
 		n, err := strconv.Atoi(v)
 		if err != nil || n < 0 || n >= len(tabNames) {
-			return o, errors.New("ScrollingTabInvalid", "GLUTTER_DEV_TAB must be a number from 0 to 4", "value", v)
+			return o, errors.New("ScrollingTabInvalid", "GLUTTER_DEV_TAB must be a number from 0 to 5", "value", v)
 		}
 		o.tab = n
 	}
@@ -150,6 +153,9 @@ type scrollingState struct {
 	pages       *widgets.PageController
 	// order is the order of the items of the reorderable list.
 	order []int
+	// tree is the file tree of the TreeSliver tab, and treeController expands and collapses it.
+	tree           []*widgets.TreeSliverNode[string]
+	treeController *widgets.TreeSliverController[string]
 }
 
 func (s *scrollingState) InitState() {
@@ -166,6 +172,8 @@ func (s *scrollingState) InitState() {
 	for i := range s.order {
 		s.order[i] = i
 	}
+	s.tree = fileTree()
+	s.treeController = widgets.NewTreeSliverController[string]()
 }
 
 func (s *scrollingState) Dispose() {
@@ -322,6 +330,63 @@ func (s *scrollingState) reorderTab() widgets.Widget {
 		[]widgets.LocalizationsDelegate{widgets.DefaultWidgetsLocalizationsDelegate}, widgets.NewOverlayWrap(list))
 }
 
+// fileTree is the tree of the TreeSliver tab: the folders of a Go project, the first two open.
+func fileTree() []*widgets.TreeSliverNode[string] {
+	node := func(name string, expanded bool, children ...*widgets.TreeSliverNode[string]) *widgets.TreeSliverNode[string] {
+		return widgets.NewTreeSliverNode(name, widgets.TreeSliverNodeOpts[string]{Children: children, Expanded: expanded})
+	}
+	file := func(name string) *widgets.TreeSliverNode[string] { return node(name, false) }
+	return []*widgets.TreeSliverNode[string]{
+		node("glutter", true,
+			node("cmd", false, node("glutter-gen", false, file("main.go"), file("run.go")), node("glutter-web", false, file("main.go"))),
+			node("docs", false, file("SPEC.md"), file("IMPLEMENTATION.md"), file("GUIDE.md")),
+			node("widgets", true, file("scroll_view.go"), file("sliver_tree.go"), file("sliver_tree_test.go"), file("text.go")),
+			file("go.mod"), file("README.md")),
+		node("examples", false, node("counter", false, file("main.go")), node("scrolling", false, file("main.go"))),
+	}
+}
+
+// treeRow is the row of a node: an arrow that turns when a folder opens (the width of the arrow for a file, so that the
+// names line up), the icon of a folder or a file, and the name. A tap anywhere on the row toggles the node.
+func (s *scrollingState) treeRow(_ widgets.BuildContext, node *widgets.TreeSliverNode[string], style animation.AnimationStyle) widgets.Widget {
+	isFolder := len(node.Children()) > 0
+	arrow := box(24, 24, nil)
+	icon := widgets.NewIconData(0xe342, widgets.IconDataOpts{FontFamily: fonts.MaterialIconsFamily}) // insert_drive_file
+	if isFolder {
+		turns := 0.0
+		if node.IsExpanded() {
+			turns = 0.25
+		}
+		arrow = box(24, 24, widgets.NewAnimatedRotation(turns, style.Duration.OrElse(widgets.TreeSliverDefaultAnimationDuration),
+			widgets.NewIcon(widgets.NewIconData(0xe15f, widgets.IconDataOpts{FontFamily: fonts.MaterialIconsFamily}), widgets.IconOpts{Size: foundation.Some(20.0), Color: foundation.Some(outline)}),
+			widgets.AnimatedRotationOpts{Curve: style.Curve}))
+		icon = widgets.NewIconData(0xe2a3, widgets.IconDataOpts{FontFamily: fonts.MaterialIconsFamily}) // folder
+	}
+	color := outline
+	if isFolder {
+		color = primary
+	}
+	return widgets.TreeSliverWrapChildToToggleNode(node, widgets.NewDecoratedBox(
+		painting.NewBoxDecoration(painting.BoxDecorationOpts{Color: foundation.Some(surface)}),
+		widgets.NewPadding(painting.NewEdgeInsetsSymmetric(0, 8), widgets.NewRow([]widgets.Widget{
+			arrow,
+			widgets.NewIcon(icon, widgets.IconOpts{Size: foundation.Some(20.0), Color: foundation.Some(color)}),
+			box(8, 0, nil),
+			label(node.Content(), 15, onSurface, ui.FontWeightW400),
+		}))))
+}
+
+// treeTab is the TreeSliver: the rows are 32 pixels high and each level is indented by 20.
+func (s *scrollingState) treeTab() widgets.Widget {
+	return widgets.NewCustomScrollView([]widgets.Widget{
+		widgets.NewTreeSliver(s.tree, widgets.TreeSliverOpts[string]{
+			Controller: s.treeController, TreeNodeBuilder: s.treeRow,
+			TreeRowExtentBuilder: func(*widgets.TreeSliverNode[string], rendering.SliverLayoutDimensions) float64 { return 32 },
+			Indentation:          foundation.Some(rendering.TreeSliverIndentationTypeCustom(20)),
+		}),
+	}, widgets.CustomScrollViewOpts{Controller: s.controllers[tabTree]})
+}
+
 func (s *scrollingState) body() widgets.Widget {
 	switch s.tab {
 	case tabList:
@@ -332,6 +397,8 @@ func (s *scrollingState) body() widgets.Widget {
 		return s.customTab()
 	case tabPages:
 		return s.pagesTab()
+	case tabTree:
+		return s.treeTab()
 	default:
 		return s.reorderTab()
 	}

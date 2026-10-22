@@ -8046,6 +8046,27 @@ func NewTransformationController(value *ui.Matrix4) *widgets.TransformationContr
 	return widgets.NewTransformationController(value)
 }
 
+// NewTreeSliver is widgets.NewTreeSliver.
+//
+// Flutter: widgets.dart NewTreeSliver
+func NewTreeSliver[T any](tree []*widgets.TreeSliverNode[T], opts ...widgets.TreeSliverOpts[T]) *widgets.TreeSliver[T] {
+	return widgets.NewTreeSliver[T](tree, opts...)
+}
+
+// NewTreeSliverController is widgets.NewTreeSliverController.
+//
+// Flutter: widgets.dart NewTreeSliverController
+func NewTreeSliverController[T any]() *widgets.TreeSliverController[T] {
+	return widgets.NewTreeSliverController[T]()
+}
+
+// NewTreeSliverNode is widgets.NewTreeSliverNode.
+//
+// Flutter: widgets.dart NewTreeSliverNode
+func NewTreeSliverNode[T any](content T, opts ...widgets.TreeSliverNodeOpts[T]) *widgets.TreeSliverNode[T] {
+	return widgets.NewTreeSliverNode[T](content, opts...)
+}
+
 // NewTweenAnimationBuilder is widgets.NewTweenAnimationBuilder.
 //
 // Flutter: widgets.dart NewTweenAnimationBuilder
@@ -11381,6 +11402,96 @@ type TraversalRequestFocusCallback = widgets.TraversalRequestFocusCallback
 //
 // Flutter: widgets.dart TraversalRequestFocusOpts
 type TraversalRequestFocusOpts = widgets.TraversalRequestFocusOpts
+
+// TreeSliver is widgets.TreeSliver.
+//
+// Flutter: widgets.dart TreeSliver
+type TreeSliver[T any] = widgets.TreeSliver[T]
+
+// TreeSliverController is widgets.TreeSliverController.
+//
+// Flutter: widgets.dart TreeSliverController
+type TreeSliverController[T any] = widgets.TreeSliverController[T]
+
+// TreeSliverControllerMaybeOf is widgets.TreeSliverControllerMaybeOf.
+//
+// Flutter: widgets.dart TreeSliverControllerMaybeOf
+func TreeSliverControllerMaybeOf[T any](bc widgets.BuildContext) (*widgets.TreeSliverController[T], bool) {
+	return widgets.TreeSliverControllerMaybeOf[T](bc)
+}
+
+// TreeSliverControllerOf is widgets.TreeSliverControllerOf.
+//
+// Flutter: widgets.dart TreeSliverControllerOf
+func TreeSliverControllerOf[T any](bc widgets.BuildContext) *widgets.TreeSliverController[T] {
+	return widgets.TreeSliverControllerOf[T](bc)
+}
+
+// TreeSliverDefaultAnimationCurve is widgets.TreeSliverDefaultAnimationCurve.
+//
+// Flutter: widgets.dart TreeSliverDefaultAnimationCurve
+var TreeSliverDefaultAnimationCurve = widgets.TreeSliverDefaultAnimationCurve
+
+// TreeSliverDefaultAnimationDuration is widgets.TreeSliverDefaultAnimationDuration.
+//
+// Flutter: widgets.dart TreeSliverDefaultAnimationDuration
+const TreeSliverDefaultAnimationDuration = widgets.TreeSliverDefaultAnimationDuration
+
+// TreeSliverDefaultToggleAnimationStyle is widgets.TreeSliverDefaultToggleAnimationStyle.
+//
+// Flutter: widgets.dart TreeSliverDefaultToggleAnimationStyle
+var TreeSliverDefaultToggleAnimationStyle = widgets.TreeSliverDefaultToggleAnimationStyle
+
+// TreeSliverDefaultTreeNodeBuilder is widgets.TreeSliverDefaultTreeNodeBuilder.
+//
+// Flutter: widgets.dart TreeSliverDefaultTreeNodeBuilder
+func TreeSliverDefaultTreeNodeBuilder[T any](bc widgets.BuildContext, node *widgets.TreeSliverNode[T], toggleAnimationStyle animation.AnimationStyle) widgets.Widget {
+	return widgets.TreeSliverDefaultTreeNodeBuilder[T](bc, node, toggleAnimationStyle)
+}
+
+// TreeSliverDefaultTreeRowExtentBuilder is widgets.TreeSliverDefaultTreeRowExtentBuilder.
+//
+// Flutter: widgets.dart TreeSliverDefaultTreeRowExtentBuilder
+func TreeSliverDefaultTreeRowExtentBuilder[T any](a0 *widgets.TreeSliverNode[T], a1 rendering.SliverLayoutDimensions) float64 {
+	return widgets.TreeSliverDefaultTreeRowExtentBuilder[T](a0, a1)
+}
+
+// TreeSliverNode is widgets.TreeSliverNode.
+//
+// Flutter: widgets.dart TreeSliverNode
+type TreeSliverNode[T any] = widgets.TreeSliverNode[T]
+
+// TreeSliverNodeBuilder is widgets.TreeSliverNodeBuilder.
+//
+// Flutter: widgets.dart TreeSliverNodeBuilder
+type TreeSliverNodeBuilder[T any] = widgets.TreeSliverNodeBuilder[T]
+
+// TreeSliverNodeCallback is widgets.TreeSliverNodeCallback.
+//
+// Flutter: widgets.dart TreeSliverNodeCallback
+type TreeSliverNodeCallback[T any] = widgets.TreeSliverNodeCallback[T]
+
+// TreeSliverNodeOpts is widgets.TreeSliverNodeOpts.
+//
+// Flutter: widgets.dart TreeSliverNodeOpts
+type TreeSliverNodeOpts[T any] = widgets.TreeSliverNodeOpts[T]
+
+// TreeSliverOpts is widgets.TreeSliverOpts.
+//
+// Flutter: widgets.dart TreeSliverOpts
+type TreeSliverOpts[T any] = widgets.TreeSliverOpts[T]
+
+// TreeSliverRowExtentBuilder is widgets.TreeSliverRowExtentBuilder.
+//
+// Flutter: widgets.dart TreeSliverRowExtentBuilder
+type TreeSliverRowExtentBuilder[T any] = widgets.TreeSliverRowExtentBuilder[T]
+
+// TreeSliverWrapChildToToggleNode is widgets.TreeSliverWrapChildToToggleNode.
+//
+// Flutter: widgets.dart TreeSliverWrapChildToToggleNode
+func TreeSliverWrapChildToToggleNode[T any](node *widgets.TreeSliverNode[T], child widgets.Widget) widgets.Widget {
+	return widgets.TreeSliverWrapChildToToggleNode[T](node, child)
+}
 
 // TweenAnimationBuilder is widgets.TweenAnimationBuilder.
 //
