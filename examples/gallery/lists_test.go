@@ -74,3 +74,26 @@ func TestListsTooltipShowsOnHover(t *testing.T) {
 		t.Error("the tooltip is not shown after the delay")
 	}
 }
+
+// TestListsReorderableListView drags the handle of the first item two rows down
+// and checks that the item is below the next two.
+func TestListsReorderableListView(t *testing.T) {
+	ts := openListsPage(t)
+	scrollPageDown(ts)
+	scrollPageDown(ts)
+	y := func(title string) float64 { return ts.TopLeft(gluttertest.ByText(title)).Dy }
+	if y("Item 1") >= y("Item 2") {
+		t.Fatalf("Item 1 is at %v and Item 2 at %v at the start", y("Item 1"), y("Item 2"))
+	}
+	drag := ts.StartGesture(ts.Center(gluttertest.First(gluttertest.ByIcon(m.Icons.DragHandle()))))
+	drag.MoveBy(m.Offset{Dy: 20})
+	for range 10 {
+		drag.MoveBy(m.Offset{Dy: 12})
+		ts.Pump(50 * time.Millisecond)
+	}
+	drag.Up()
+	ts.PumpAndSettle()
+	if !(y("Item 2") < y("Item 3") && y("Item 3") < y("Item 1") && y("Item 1") < y("Item 4")) {
+		t.Errorf("after the drag: item 1 at %v, item 2 at %v, item 3 at %v, item 4 at %v", y("Item 1"), y("Item 2"), y("Item 3"), y("Item 4"))
+	}
+}

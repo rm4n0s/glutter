@@ -1,14 +1,16 @@
-// Command scrolling shows the scroll views of Glutter in six tabs: a ListView
+// Command scrolling shows the scroll views of Glutter in seven tabs: a ListView
 // with 10,000 rows, a GridView of colored tiles, a CustomScrollView with a pinned
-// header, a list and a grid, a PageView of three pages, a ReorderableList, and a
-// TreeSliver (a file tree whose folders expand and collapse).
-// The tabs are plain GestureDetectors, because Material is not available yet.
+// header, a list and a grid, a PageView of three pages, a ReorderableList, a
+// TreeSliver (a file tree whose folders expand and collapse) and a Material
+// ReorderableListView (with its drag handles).
+// The tabs are plain GestureDetectors, and the views are drawn with widgets only,
+// except for the last one.
 // Every view has a scrollbar. It uses only the public packages.
 //
 // Run it with: go run ./examples/scrolling
 //
 // Environment: GLUTTER_BACKEND=x11|wayland, GLUTTER_SCREENSHOT=<file.png>,
-// GLUTTER_SCREENSHOT_AFTER=<duration>. In debug builds: GLUTTER_DEV_TAB=<0 to 5>
+// GLUTTER_SCREENSHOT_AFTER=<duration>. In debug builds: GLUTTER_DEV_TAB=<0 to 6>
 // opens that tab, and GLUTTER_DEV_SCROLL=<pixels> scrolls the view of the
 // CustomScrollView tab by that much.
 package main
@@ -21,6 +23,7 @@ import (
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/animation"
 	"github.com/rm4n0s/glutter/foundation"
+	"github.com/rm4n0s/glutter/material"
 	"github.com/rm4n0s/glutter/material/fonts"
 	"github.com/rm4n0s/glutter/painting"
 	"github.com/rm4n0s/glutter/rendering"
@@ -41,9 +44,9 @@ var (
 )
 
 // tabNames are the labels of the tabs, in order.
-var tabNames = [numTabs]string{"ListView", "GridView", "CustomScrollView", "PageView", "ReorderableList", "TreeSliver"}
+var tabNames = [numTabs]string{"ListView", "GridView", "Custom", "PageView", "ReorderList", "TreeSliver", "ReorderView"}
 
-const numTabs = 6
+const numTabs = 7
 
 const (
 	tabList = iota
@@ -52,6 +55,7 @@ const (
 	tabPages
 	tabReorder
 	tabTree
+	tabMaterial
 )
 
 const (
@@ -117,7 +121,7 @@ func optionsFromEnv(getenv func(string) string) (options, error) {
 	if v := getenv("GLUTTER_DEV_TAB"); v != "" {
 		n, err := strconv.Atoi(v)
 		if err != nil || n < 0 || n >= len(tabNames) {
-			return o, errors.New("ScrollingTabInvalid", "GLUTTER_DEV_TAB must be a number from 0 to 5", "value", v)
+			return o, errors.New("ScrollingTabInvalid", "GLUTTER_DEV_TAB must be a number from 0 to 6", "value", v)
 		}
 		o.tab = n
 	}
@@ -153,6 +157,8 @@ type scrollingState struct {
 	pages       *widgets.PageController
 	// order is the order of the items of the reorderable list.
 	order []int
+	// materialOrder is the order of the items of the Material reorderable list.
+	materialOrder []int
 	// tree is the file tree of the TreeSliver tab, and treeController expands and collapses it.
 	tree           []*widgets.TreeSliverNode[string]
 	treeController *widgets.TreeSliverController[string]
@@ -171,6 +177,10 @@ func (s *scrollingState) InitState() {
 	s.order = make([]int, reorderLen)
 	for i := range s.order {
 		s.order[i] = i
+	}
+	s.materialOrder = make([]int, reorderLen)
+	for i := range s.materialOrder {
+		s.materialOrder[i] = i
 	}
 	s.tree = fileTree()
 	s.treeController = widgets.NewTreeSliverController[string]()
@@ -195,6 +205,15 @@ func (s *scrollingState) reorder(oldIndex, newIndex int) {
 		item := s.order[oldIndex]
 		s.order = append(s.order[:oldIndex], s.order[oldIndex+1:]...)
 		s.order = append(s.order[:newIndex], append([]int{item}, s.order[newIndex:]...)...)
+	})
+}
+
+// reorderMaterial moves an item of the Material reorderable list.
+func (s *scrollingState) reorderMaterial(oldIndex, newIndex int) {
+	s.SetState(func() {
+		item := s.materialOrder[oldIndex]
+		s.materialOrder = append(s.materialOrder[:oldIndex], s.materialOrder[oldIndex+1:]...)
+		s.materialOrder = append(s.materialOrder[:newIndex], append([]int{item}, s.materialOrder[newIndex:]...)...)
 	})
 }
 
@@ -330,6 +349,26 @@ func (s *scrollingState) reorderTab() widgets.Widget {
 		[]widgets.LocalizationsDelegate{widgets.DefaultWidgetsLocalizationsDelegate}, widgets.NewOverlayWrap(list))
 }
 
+// materialTab is the Material ReorderableListView: every item has a drag handle
+// at its end, and the dragged item is raised on a Material. The tab gives the list
+// the theme, the localizations and the Material that a MaterialApp would.
+func (s *scrollingState) materialTab() widgets.Widget {
+	list := material.NewReorderableListViewBuilder(func(_ widgets.BuildContext, i int) widgets.Widget {
+		n := s.materialOrder[i]
+		return material.NewListTile(material.ListTileOpts{
+			Key:     foundation.NewValueKey(n),
+			Leading: material.NewCircleAvatar(material.CircleAvatarOpts{BackgroundColor: foundation.Some(tileColor(n)), Child: label(strconv.Itoa(n+1), 14, onSurface, ui.FontWeightW500)}),
+			Title:   label(fmt.Sprintf("Item %d", n+1), 16, onSurface, ui.FontWeightW500),
+		})
+	}, reorderLen, material.ReorderableListViewOpts{
+		OnReorderItem: s.reorderMaterial, ScrollController: s.controllers[tabMaterial],
+		Header: widgets.NewPadding(painting.NewEdgeInsetsSymmetric(16, 12), label("Drag the handles to reorder", 14, secondary, ui.FontWeightW500)),
+	})
+	return material.NewTheme(material.NewThemeData(), widgets.NewLocalizations(ui.NewLocale("en", "US"),
+		[]widgets.LocalizationsDelegate{widgets.DefaultWidgetsLocalizationsDelegate, material.DefaultMaterialLocalizationsDelegate},
+		widgets.NewOverlayWrap(material.NewMaterial(list, material.MaterialOpts{Color: foundation.Some(surface)}))))
+}
+
 // fileTree is the tree of the TreeSliver tab: the folders of a Go project, the first two open.
 func fileTree() []*widgets.TreeSliverNode[string] {
 	node := func(name string, expanded bool, children ...*widgets.TreeSliverNode[string]) *widgets.TreeSliverNode[string] {
@@ -399,6 +438,8 @@ func (s *scrollingState) body() widgets.Widget {
 		return s.pagesTab()
 	case tabTree:
 		return s.treeTab()
+	case tabMaterial:
+		return s.materialTab()
 	default:
 		return s.reorderTab()
 	}

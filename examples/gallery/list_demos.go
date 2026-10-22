@@ -17,6 +17,7 @@ func buildListsPage(bc m.BuildContext) m.Widget {
 		top(section(bc, "Badge and Tooltip", NewBadgeTooltipDemos()), section(bc, "Divider and VerticalDivider", NewDividerDemos())),
 		top(section(bc, "CheckboxListTile, SwitchListTile and RadioListTile", NewSelectionTileDemos()), section(bc, "ExpansionTile", NewExpansionTileDemos())),
 		top(section(bc, "ExpansionPanelList", NewExpansionPanelDemos()), section(bc, "MergeableMaterial", NewMergeableDemo())),
+		top(section(bc, "ReorderableListView", NewReorderableDemos())),
 		m.NewSizedBox(nil, m.SizedBoxOpts{Height: m.Some(24.0)}),
 	})
 }
@@ -81,6 +82,58 @@ func (s *listTileDemosState) Build(bc m.BuildContext) m.Widget {
 		framed(bc, m.NewSizedBox(m.NewColumn(m.ListTileDivideTiles(bc, tiles, m.None[m.Color]()), m.ColumnOpts{}), m.SizedBoxOpts{Width: m.Some(360.0)})),
 		m.NewPadding(m.NewEdgeInsetsFromLTRB(0, 8, 0, 0), m.NewText("Taps on the first tile: "+itoa(s.taps))),
 	}, m.ColumnOpts{CrossAxisAlignment: m.CrossAxisAlignmentStart})
+}
+
+// ReorderableDemos has a ReorderableListView with a header, whose items the user
+// drags by their handles.
+type ReorderableDemos struct{ m.StatefulWidget }
+
+// NewReorderableDemos creates the demo.
+func NewReorderableDemos() *ReorderableDemos { return &ReorderableDemos{} }
+
+// CreateState creates the state.
+func (w *ReorderableDemos) CreateState() m.State {
+	return &reorderableDemosState{order: []int{0, 1, 2, 3, 4, 5}, cards: []int{0, 1, 2, 3}}
+}
+
+type reorderableDemosState struct {
+	m.StateOf[*ReorderableDemos]
+	order, cards []int
+}
+
+func (s *reorderableDemosState) Build(bc m.BuildContext) m.Widget {
+	list := m.NewReorderableListViewBuilder(func(_ m.BuildContext, i int) m.Widget {
+		n := s.order[i]
+		return m.NewListTile(m.ListTileOpts{Key: m.NewValueKey(n), Leading: m.NewCircleAvatar(m.CircleAvatarOpts{Child: m.NewText(itoa(n + 1))}),
+			Title: m.NewText("Item " + itoa(n+1)), Subtitle: m.NewText("Drag the handle at the end")})
+	}, len(s.order), m.ReorderableListViewOpts{
+		Primary:       m.Some(false),
+		OnReorderItem: func(oldIndex, newIndex int) { s.SetState(func() { moveItem(s.order, oldIndex, newIndex) }) },
+		Header:        m.NewPadding(m.NewEdgeInsetsSymmetric(16, 8), m.NewText("Reorder the items")),
+	})
+	// The cards are made of children and scroll sideways: the handle is at the bottom.
+	cards := make([]m.Widget, len(s.cards))
+	for i, n := range s.cards {
+		cards[i] = m.NewSizedBox(m.NewCard(m.NewCenter(m.NewText("Card "+itoa(n+1)))), m.SizedBoxOpts{Key: m.NewValueKey(n), Width: m.Some(96.0)})
+	}
+	row := m.NewReorderableListView(cards, m.ReorderableListViewOpts{
+		ScrollDirection: m.AxisHorizontal, Primary: m.Some(false),
+		OnReorderItem: func(oldIndex, newIndex int) { s.SetState(func() { moveItem(s.cards, oldIndex, newIndex) }) },
+	})
+	return m.NewColumn([]m.Widget{
+		framed(bc, m.NewSizedBox(list, m.SizedBoxOpts{Width: m.Some(360.0), Height: m.Some(320.0)})),
+		m.NewSizedBox(nil, m.SizedBoxOpts{Height: m.Some(8.0)}),
+		framed(bc, m.NewSizedBox(row, m.SizedBoxOpts{Width: m.Some(360.0), Height: m.Some(96.0)})),
+	}, m.ColumnOpts{CrossAxisAlignment: m.CrossAxisAlignmentStart})
+}
+
+// moveItem moves the item at oldIndex so that it is at newIndex, as the
+// ReorderableListView asks.
+func moveItem(items []int, oldIndex, newIndex int) {
+	item := items[oldIndex]
+	copy(items[oldIndex:], items[oldIndex+1:])
+	copy(items[newIndex+1:], items[newIndex:len(items)-1])
+	items[newIndex] = item
 }
 
 // SelectionTileDemos has a checkbox, a switch and two radio list tiles.

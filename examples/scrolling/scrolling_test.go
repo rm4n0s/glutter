@@ -8,6 +8,7 @@ import (
 	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/gestures"
 	"github.com/rm4n0s/glutter/gluttertest"
+	"github.com/rm4n0s/glutter/material"
 	"github.com/rm4n0s/glutter/ui"
 	"github.com/rm4n0s/glutter/widgets"
 )
@@ -43,6 +44,7 @@ func TestScrollingGoldens(t *testing.T) {
 		{"pages", options{tab: tabPages}},
 		{"reorder", options{tab: tabReorder}},
 		{"tree", options{tab: tabTree}},
+		{"material-reorder", options{tab: tabMaterial}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -65,6 +67,7 @@ func TestTabsSwitchTheView(t *testing.T) {
 		{tabPages, gluttertest.ByType[*widgets.PageView]},
 		{tabReorder, gluttertest.ByType[*widgets.ReorderableList]},
 		{tabTree, gluttertest.ByType[*widgets.TreeSliver[string]]},
+		{tabMaterial, gluttertest.ByType[*material.ReorderableListView]},
 	}
 	ts, state := newTester(t, options{tab: tabReorder})
 	for _, tt := range tests {
@@ -83,7 +86,7 @@ func TestTabsSwitchTheView(t *testing.T) {
 // TestEveryViewHasAScrollbar checks that each tab with a scroll view builds a
 // RawScrollbar whose thumb is visible.
 func TestEveryViewHasAScrollbar(t *testing.T) {
-	for _, tab := range []int{tabList, tabGrid, tabCustom, tabReorder, tabTree} {
+	for _, tab := range []int{tabList, tabGrid, tabCustom, tabReorder, tabTree, tabMaterial} {
 		ts, _ := newTester(t, options{tab: tab})
 		if got := ts.Count(gluttertest.ByType[*widgets.RawScrollbar]()); got != 1 {
 			t.Errorf("tab %q: %d scrollbars, want 1", tabNames[tab], got)
@@ -171,6 +174,48 @@ func TestReorderMovesAnItem(t *testing.T) {
 	noErrors(t, ts)
 }
 
+// TestMaterialReorderMovesAnItem drags the handle of the first item two rows down
+// and checks the order the list reports.
+func TestMaterialReorderMovesAnItem(t *testing.T) {
+	ts, state := newTester(t, options{tab: tabMaterial})
+	handle := gluttertest.First(gluttertest.ByIcon(material.Icons.DragHandle()))
+	drag := ts.StartGesture(ts.Center(handle))
+	drag.MoveBy(ui.Offset{Dy: 20})
+	for range 8 { // a hand moves a little at a time
+		drag.MoveBy(ui.Offset{Dy: 12})
+		ts.Pump(50 * time.Millisecond)
+	}
+	ts.PumpAndSettle()
+	drag.Up()
+	ts.PumpAndSettle()
+	want := []int{1, 2, 0, 3}
+	for i, w := range want {
+		if state.materialOrder[i] != w {
+			t.Fatalf("order = %v, want it to start with %v", state.materialOrder, want)
+		}
+	}
+	noErrors(t, ts)
+}
+
+// TestMaterialReorderGoldenWhileDragging draws the list while the second item is
+// held between the third and the fourth: the item is raised on a Material and the
+// others have made room.
+func TestMaterialReorderGoldenWhileDragging(t *testing.T) {
+	ts, _ := newTester(t, options{tab: tabMaterial})
+	handle := gluttertest.At(gluttertest.ByIcon(material.Icons.DragHandle()), 1)
+	drag := ts.StartGesture(ts.Center(handle))
+	drag.MoveBy(ui.Offset{Dy: 20})
+	for range 6 {
+		drag.MoveBy(ui.Offset{Dy: 12})
+		ts.Pump(50 * time.Millisecond)
+	}
+	ts.Pump(time.Second)
+	ts.MatchesGolden("scrolling-material-reorder-dragging")
+	drag.Up()
+	ts.PumpAndSettle()
+	noErrors(t, ts)
+}
+
 // TestTreeTabTogglesAFolder taps the rows of the file tree: a folder opens and closes, a file does nothing.
 func TestTreeTabTogglesAFolder(t *testing.T) {
 	ts, state := newTester(t, options{tab: tabTree})
@@ -217,7 +262,7 @@ func TestOptionsFromEnv(t *testing.T) {
 		{"empty", nil, options{}, ""},
 		{"tab and scroll", map[string]string{"GLUTTER_DEV_TAB": "2", "GLUTTER_DEV_SCROLL": "600"}, options{tab: 2, scroll: 600}, ""},
 		{"tab not a number", map[string]string{"GLUTTER_DEV_TAB": "x"}, options{}, "ScrollingTabInvalid"},
-		{"tab out of range", map[string]string{"GLUTTER_DEV_TAB": "6"}, options{}, "ScrollingTabInvalid"},
+		{"tab out of range", map[string]string{"GLUTTER_DEV_TAB": "7"}, options{}, "ScrollingTabInvalid"},
 		{"scroll negative", map[string]string{"GLUTTER_DEV_SCROLL": "-1"}, options{}, "ScrollingOffsetInvalid"},
 		{"scroll not a number", map[string]string{"GLUTTER_DEV_SCROLL": "far"}, options{}, "ScrollingOffsetInvalid"},
 	}
