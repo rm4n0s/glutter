@@ -584,6 +584,66 @@ type FontLoadingEngine interface {
 	LoadFontFromList(list []byte, family string) error
 }
 
+// FontOrigin says where a font comes from. The zero value is FontOriginUnspecified.
+//
+// Flutter: no counterpart
+type FontOrigin int
+
+// The values of FontOrigin.
+const (
+	// FontOriginUnspecified is the zero value: no font.
+	//
+	// Flutter: no counterpart
+	FontOriginUnspecified FontOrigin = iota
+	// FontOriginLoaded is a font that the app loaded (LoadFontFromList, FontLoader,
+	// RunAppOpts.Fonts, gluttertest.Opts.Fonts).
+	//
+	// Flutter: no counterpart
+	FontOriginLoaded
+	// FontOriginBundled is a font that Glutter bundles (Roboto, Material Icons).
+	//
+	// Flutter: no counterpart
+	FontOriginBundled
+	// FontOriginSystem is a font file of the system.
+	//
+	// Flutter: no counterpart
+	FontOriginSystem
+)
+
+// ResolvedFont is the face that a font family resolves to (PlatformDispatcher.ResolveFont).
+//
+// Flutter: no counterpart
+type ResolvedFont struct {
+	// Family is the family name of the face, which can differ from the name asked for
+	// (a generic name such as monospace, or an alias such as Arial).
+	Family string
+	// Path is the font file, and Index the face in it (a font collection has several).
+	// Both are empty for a loaded or bundled font, which has no file.
+	Path  string
+	Index int
+	// Origin says whether the font was loaded by the app, is bundled, or is a system font.
+	Origin FontOrigin
+	// Weight is the OpenType weight of the face (400 regular, 700 bold) and Italic whether it is
+	// italic, as the font says; the weight of a variable font is that of its default instance.
+	Weight int
+	Italic bool
+}
+
+// FontQueryEngine is a ParagraphFactory that can say which fonts it has.
+// internal/text/layout's Engine implements it; PlatformDispatcher.ResolveFont and
+// InstalledFontFamilies use it.
+//
+// Flutter: no counterpart
+type FontQueryEngine interface {
+	ParagraphFactory
+	// ResolveFont says which face the family resolves to for a weight and a slant,
+	// the one that draws a letter of a TextStyle that names only that family; false when
+	// the family has no font.
+	ResolveFont(family string, weight FontWeight, style FontStyle) (ResolvedFont, bool)
+	// InstalledFontFamilies lists the families of the system's, bundled and loaded fonts.
+	InstalledFontFamilies() []string
+}
+
 // ParagraphBuilder is used to construct a Paragraph.
 //
 // Flutter: ui/text.dart ParagraphBuilder

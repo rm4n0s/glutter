@@ -216,6 +216,10 @@ func TestPlatformConfiguration(t *testing.T) {
 		{"light is the default", PlatformConfiguration{PlatformBrightness: BrightnessLight}, nil},
 		{"accessibility", PlatformConfiguration{AccessibilityFeatures: AccessibilityFeatures{BoldText: true}}, []string{"accessibility", "config"}},
 		{"accent color", PlatformConfiguration{AccentColor: &red}, []string{"config"}},
+		{"interface font", PlatformConfiguration{UIFontFamily: "Cantarell", UIFontSize: 11}, []string{"config"}},
+		{"interface font size", PlatformConfiguration{UIFontSize: 11}, []string{"config"}},
+		{"monospace font", PlatformConfiguration{MonospaceFontFamily: "Adwaita Mono", MonospaceFontSize: 11}, []string{"config"}},
+		{"monospace font size", PlatformConfiguration{MonospaceFontSize: 12}, []string{"config"}},
 		{"all", PlatformConfiguration{Locales: []Locale{en}, TextScaleFactor: 2, PlatformBrightness: BrightnessDark,
 			AccessibilityFeatures: AccessibilityFeatures{HighContrast: true}}, []string{"locale", "scale", "brightness", "accessibility", "config"}},
 	}

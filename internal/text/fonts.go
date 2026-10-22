@@ -92,6 +92,15 @@ type Aliaser interface {
 	Aliases(ctx context.Context, family string) ([]string, error)
 }
 
+// Lister is a Matcher that can also list the families of the system's fonts. A Collection
+// uses it for Families when the Matcher implements it.
+//
+// Flutter: no counterpart
+type Lister interface {
+	// Families returns the family names of the installed fonts, in any order.
+	Families(ctx context.Context) ([]string, error)
+}
+
 // genericFamilies are the family names that stand for a class of fonts instead of one family,
 // as fontconfig and CSS use them. The Matcher gives the whole list of fonts for each.
 var genericFamilies = map[string]bool{
@@ -144,6 +153,8 @@ type Collection struct {
 
 	mu      sync.Mutex
 	bundled map[string][]byte // normalized family → font data
+	// bundledNames are the names of bundled fonts as they were given, by normalized family.
+	bundledNames map[string]string
 	// loaded are the fonts of AddFont, by normalized family, in the order they were added.
 	loaded     map[string][]*loadedFont
 	loadedByID map[string]*loadedFont // FontFile.Path → font
@@ -172,13 +183,14 @@ type faceKey struct {
 // Flutter: engine/src/flutter/third_party/txt/src/txt/font_collection.cc FontCollection::FontCollection
 func NewCollection(opts ...CollectionOpts) *Collection {
 	return &Collection{
-		opts:       oneOpts(opts),
-		bundled:    map[string][]byte{},
-		loaded:     map[string][]*loadedFont{},
-		loadedByID: map[string]*loadedFont{},
-		aliasCache: map[string][]string{},
-		fonts:      map[fontKey]*font.Font{},
-		faces:      map[faceKey]*font.Face{},
+		opts:         oneOpts(opts),
+		bundled:      map[string][]byte{},
+		bundledNames: map[string]string{},
+		loaded:       map[string][]*loadedFont{},
+		loadedByID:   map[string]*loadedFont{},
+		aliasCache:   map[string][]string{},
+		fonts:        map[fontKey]*font.Font{},
+		faces:        map[faceKey]*font.Face{},
 	}
 }
 
@@ -198,6 +210,7 @@ func (c *Collection) AddBundled(family string, data []byte) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.bundled[normalizeFamily(family)] = data
+	c.bundledNames[normalizeFamily(family)] = family
 	c.generation++
 	return nil
 }
@@ -384,6 +397,65 @@ func (c *Collection) Match(ctx context.Context, family string, weight int, itali
 		}
 	}
 	return out, nil
+}
+
+// Families lists the families of the loaded fonts, of the bundled fonts and of the system's fonts
+// (when the Matcher is a Lister, or the font scan), sorted without regard to case and without
+// duplicates. It fails with FontMatchCanceled when ctx is done (and returns nothing) and with FontScanFailed when the
+// fonts cannot be scanned; the Matcher's own error is returned unchanged, and with it the loaded and bundled families.
+//
+// Flutter: no counterpart
+func (c *Collection) Families(ctx context.Context) ([]string, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, errors.NewErr("FontMatchCanceled", err)
+	}
+	seen := map[string]bool{}
+	var out []string
+	add := func(family string) {
+		if key := normalizeFamily(family); key != "" && !seen[key] {
+			seen[key] = true
+			out = append(out, family)
+		}
+	}
+	c.mu.Lock()
+	keys := make([]string, 0, len(c.loaded))
+	for key := range c.loaded {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys) // the same name whatever the order of the map
+	for _, key := range keys {
+		add(c.loaded[key][0].family)
+	}
+	c.mu.Unlock()
+	for _, family := range c.bundledFamilies() {
+		add(family)
+	}
+	// When the system's fonts cannot be listed, the loaded and the bundled families are still returned, with the error.
+	var listErr error
+	if matcher, err := c.matcher(); err != nil {
+		listErr = err
+	} else if l, ok := matcher.(Lister); ok {
+		if system, err := l.Families(ctx); err != nil {
+			listErr = err
+		} else {
+			for _, family := range system {
+				add(family)
+			}
+		}
+	}
+	slices.SortFunc(out, func(a, b string) int { return strings.Compare(strings.ToLower(a), strings.ToLower(b)) })
+	return out, listErr
+}
+
+// bundledFamilies are the names the bundled fonts were registered under.
+func (c *Collection) bundledFamilies() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	out := make([]string, 0, len(c.bundledNames))
+	for _, name := range c.bundledNames {
+		out = append(out, name)
+	}
+	return out
 }
 
 // aliases asks the Matcher for the other names of a family once.

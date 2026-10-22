@@ -164,6 +164,11 @@ func (m *fontconfigMatcher) Aliases(ctx context.Context, family string) ([]strin
 	return m.cfg.Aliases(ctx, family)
 }
 
+// Families implements text.Lister.
+func (m *fontconfigMatcher) Families(ctx context.Context) ([]string, error) {
+	return m.cfg.Families(ctx)
+}
+
 // Close releases the configuration. The matcher must not be used after.
 func (m *fontconfigMatcher) Close() { m.cfg.Close() }
 

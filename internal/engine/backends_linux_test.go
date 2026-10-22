@@ -4,6 +4,9 @@ package engine
 
 import (
 	"context"
+	"os"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/rm4n0s/glutter/internal/text"
@@ -106,5 +109,41 @@ func TestMissingFamilyFallsBackToMonospaceOverFontconfig(t *testing.T) {
 	}
 	if i, w := lineWidth("iiiiiiii"), lineWidth("WWWWWWWW"); i == w {
 		t.Skipf("the system's default font is monospace (%v wide for both)", i)
+	}
+}
+
+func TestFontQueriesOverFontconfig(t *testing.T) {
+	ctx := context.Background()
+	m, err := openFontconfig(ctx)
+	if err != nil {
+		t.Skipf("fontconfig is not available: %v", err)
+	}
+	defer m.Close()
+	c := text.NewCollection(text.CollectionOpts{Matcher: m})
+	if err := fonts.Register(c); err != nil {
+		t.Fatal(err)
+	}
+	e := layout.NewEngine(ctx, c)
+	mono, ok := e.ResolveFont("monospace", ui.FontWeightW400, ui.FontStyleNormal)
+	if !ok || mono.Origin != ui.FontOriginSystem || mono.Path == "" || mono.Family == "" {
+		t.Fatalf("ResolveFont(monospace) = %+v, %v; want a system font", mono, ok)
+	}
+	if _, err := os.Stat(mono.Path); err != nil {
+		t.Errorf("the file of the monospace font: %v", err)
+	}
+	if got, ok := e.ResolveFont("Glutter No Such Family", ui.FontWeightW400, ui.FontStyleNormal); ok {
+		t.Errorf("a family that is not installed resolved to %+v", got)
+	}
+	if got, ok := e.ResolveFont(fonts.RobotoFamily, ui.FontWeightW400, ui.FontStyleNormal); !ok || got.Origin != ui.FontOriginBundled {
+		t.Errorf("ResolveFont(Roboto) = %+v, %v; want the bundled font", got, ok)
+	}
+	families := e.InstalledFontFamilies()
+	for _, want := range []string{fonts.RobotoFamily, fonts.MaterialIconsFamily, mono.Family} {
+		if !slices.ContainsFunc(families, func(f string) bool { return strings.EqualFold(f, want) }) {
+			t.Errorf("InstalledFontFamilies lacks %q", want)
+		}
+	}
+	if !slices.IsSortedFunc(families, func(a, b string) int { return strings.Compare(strings.ToLower(a), strings.ToLower(b)) }) {
+		t.Error("the families are not sorted")
 	}
 }

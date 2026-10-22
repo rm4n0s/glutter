@@ -4,6 +4,7 @@ package fontconfig
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"sync"
 	"unsafe"
@@ -208,6 +209,59 @@ func (c *Config) Aliases(ctx context.Context, family string) ([]string, error) {
 		}
 		out = append(out, n)
 	}
+	return out, nil
+}
+
+// Families lists the family names of the installed fonts, sorted without regard to case and
+// without duplicates (FcFontList with the family as the only object). It fails with
+// FontconfigListFailed when fontconfig cannot list the fonts, with FontconfigPatternFailed when it
+// cannot build the query, with FontconfigClosed after Close, and with FontconfigCanceled when ctx is done.
+//
+// Flutter: no counterpart
+func (c *Config) Families(ctx context.Context) ([]string, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, errors.NewErr("FontconfigCanceled", err)
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.config == 0 {
+		return nil, errors.New("FontconfigClosed", "the fontconfig configuration is closed")
+	}
+	pat := c.lib.patternCreate()
+	if pat == 0 {
+		return nil, errors.New("FontconfigPatternFailed", "fontconfig could not create a pattern")
+	}
+	defer c.lib.patternDestroy(pat)
+	objects := c.lib.objectSetCreate()
+	if objects == 0 {
+		return nil, errors.New("FontconfigPatternFailed", "fontconfig could not create an object set")
+	}
+	defer c.lib.objectSetDestroy(objects)
+	name := dl.CString(objFamily)
+	defer dl.Free(name)
+	if c.lib.objectSetAdd(objects, name) == 0 {
+		return nil, errors.New("FontconfigPatternFailed", "fontconfig could not add to the object set", "object", objFamily)
+	}
+	set := c.lib.fontList(c.config, pat, objects)
+	if set == 0 {
+		return nil, errors.New("FontconfigListFailed", "fontconfig could not list the fonts")
+	}
+	defer c.lib.fontSetDestroy(set)
+	fs := (*fcFontSet)(dl.Pointer(set))
+	if fs.nfont <= 0 || fs.fonts == 0 {
+		return nil, nil
+	}
+	seen := map[string]bool{}
+	var out []string
+	for _, p := range unsafe.Slice((*uintptr)(dl.Pointer(fs.fonts)), int(fs.nfont)) {
+		family, ok := c.getString(p, objFamily)
+		if !ok || family == "" || seen[strings.ToLower(family)] {
+			continue
+		}
+		seen[strings.ToLower(family)] = true
+		out = append(out, family)
+	}
+	slices.SortFunc(out, func(a, b string) int { return strings.Compare(strings.ToLower(a), strings.ToLower(b)) })
 	return out, nil
 }
 

@@ -78,6 +78,15 @@ func TestReadSettings(t *testing.T) {
 				s.FontAntialiasing = platform.FontAntialiasingRGBA
 				s.FontHinting = platform.FontHintingSlight
 			}},
+		{"desktop fonts", vars{"org.gnome.desktop.interface": {"font-name": v("Cantarell 11"), "monospace-font-name": v("Source Code Pro Semi-Bold 10")}},
+			func(s *platform.Settings) {
+				s.UIFontFamily, s.UIFontSize = "Cantarell", 11
+				s.MonospaceFontFamily, s.MonospaceFontSize = "Source Code Pro", 10
+			}},
+		{"a font with no size", vars{"org.gnome.desktop.interface": {"monospace-font-name": v("Adwaita Mono")}},
+			func(s *platform.Settings) { s.MonospaceFontFamily = "Adwaita Mono" }},
+		{"an empty font name has no family", vars{"org.gnome.desktop.interface": {"font-name": v("")}}, func(*platform.Settings) {}},
+		{"a font name of the wrong type is ignored", vars{"org.gnome.desktop.interface": {"font-name": v(uint32(11))}}, func(*platform.Settings) {}},
 		{"nested variants are unwrapped", vars{"org.gnome.desktop.interface": {"text-scaling-factor": v(v(1.5))}},
 			func(s *platform.Settings) { s.TextScaleFactor = 1.5 }},
 		{"wrong types and unknown keys are ignored", vars{
@@ -229,6 +238,32 @@ func TestWatchSettingsFollowsChanges(t *testing.T) {
 	got = d.wait(t)
 	if got.TextScaleFactor != 1.5 || !got.DisableAnimations || got.PlatformBrightness != ui.BrightnessDark {
 		t.Errorf("settings = %+v, want scale 1.5, animations off and dark kept", got)
+	}
+}
+
+func TestWatchSettingsFollowsTheDesktopFonts(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	b := portalWith(vars{"org.gnome.desktop.interface": {"monospace-font-name": v("Adwaita Mono 11")}})
+	d := newDelivery()
+	initial := dbus.WatchSettings(ctx, b, env(nil), d.post, d.onSettings)
+	if initial.MonospaceFontFamily != "Adwaita Mono" || initial.MonospaceFontSize != 11 {
+		t.Fatalf("initial monospace font = %q %v", initial.MonospaceFontFamily, initial.MonospaceFontSize)
+	}
+	b.Emit(changed("org.gnome.desktop.interface", "monospace-font-name", "JetBrains Mono 13"))
+	got := d.wait(t)
+	if got.MonospaceFontFamily != "JetBrains Mono" || got.MonospaceFontSize != 13 {
+		t.Errorf("monospace font after the change = %q %v", got.MonospaceFontFamily, got.MonospaceFontSize)
+	}
+	// The same family at another size is a change; the same value again is not.
+	b.Emit(changed("org.gnome.desktop.interface", "monospace-font-name", "JetBrains Mono 13"))
+	b.Emit(changed("org.gnome.desktop.interface", "font-name", "Cantarell 12"))
+	got = d.wait(t)
+	if got.UIFontFamily != "Cantarell" || got.UIFontSize != 12 || got.MonospaceFontFamily != "JetBrains Mono" {
+		t.Errorf("settings = %+v", got)
+	}
+	if n := d.count(); n != 2 {
+		t.Errorf("OnSettings was called %d times, want 2", n)
 	}
 }
 

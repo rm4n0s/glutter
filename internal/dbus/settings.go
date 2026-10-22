@@ -27,6 +27,8 @@ const (
 	keyCursorTheme      = "cursor-theme"
 	keyFontAntialiasing = "font-antialiasing"
 	keyFontHinting      = "font-hinting"
+	keyFontName         = "font-name"
+	keyMonospaceFont    = "monospace-font-name"
 
 	// defaultCursorSize is the size of the XCursor theme when XCURSOR_SIZE is
 	// not set.
@@ -260,6 +262,19 @@ func applySetting(s *platform.Settings, namespace, key string, value any) bool {
 				return false
 			}
 			return set(&s.FontHinting, fontHinting(name))
+		case keyFontName, keyMonospaceFont:
+			desc, ok := v.(string)
+			if !ok {
+				return false
+			}
+			// A description with no family (an empty string) clears the setting.
+			family, size, _ := platform.ParseFontDescription(desc)
+			if key == keyFontName {
+				familyChanged := set(&s.UIFontFamily, family)
+				return set(&s.UIFontSize, size) || familyChanged
+			}
+			familyChanged := set(&s.MonospaceFontFamily, family)
+			return set(&s.MonospaceFontSize, size) || familyChanged
 		}
 	}
 	return false

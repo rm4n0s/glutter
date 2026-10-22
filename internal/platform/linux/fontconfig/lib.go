@@ -43,6 +43,10 @@ type library struct {
 	patternGetString       func(pat, object uintptr, n int32, out uintptr) int32
 	patternGetInteger      func(pat, object uintptr, n int32, out uintptr) int32
 	fontSetDestroy         func(set uintptr)
+	objectSetCreate        func() uintptr
+	objectSetAdd           func(set, object uintptr) int32
+	objectSetDestroy       func(set uintptr)
+	fontList               func(config, pat, objectSet uintptr) uintptr
 }
 
 // loadLibrary opens libfontconfig.so.1 and binds the functions. It fails with
@@ -75,6 +79,10 @@ func loadLibrary() (*library, error) {
 		{&l.patternGetString, "FcPatternGetString"},
 		{&l.patternGetInteger, "FcPatternGetInteger"},
 		{&l.fontSetDestroy, "FcFontSetDestroy"},
+		{&l.objectSetCreate, "FcObjectSetCreate"},
+		{&l.objectSetAdd, "FcObjectSetAdd"},
+		{&l.objectSetDestroy, "FcObjectSetDestroy"},
+		{&l.fontList, "FcFontList"},
 	} {
 		if err := lib.Bind(b.fptr, b.symbol); err != nil {
 			return nil, err

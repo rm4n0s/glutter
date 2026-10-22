@@ -102,6 +102,21 @@ type PlatformConfiguration struct {
 	AccessibilityFeatures AccessibilityFeatures
 	// AccentColor is the system accent color, or nil if there is none.
 	AccentColor *Color
+	// UIFontFamily and UIFontSize are the family and the size, in points, of
+	// the desktop's interface font (GNOME's font-name); empty and 0 when the
+	// platform does not say.
+	//
+	// Flutter: no counterpart
+	UIFontFamily string
+	UIFontSize   float64
+	// MonospaceFontFamily and MonospaceFontSize are the family and the size, in
+	// points, of the desktop's monospace font (GNOME's monospace-font-name); empty
+	// and 0 when the platform does not say. A code editor uses them as its default
+	// font.
+	//
+	// Flutter: no counterpart
+	MonospaceFontFamily string
+	MonospaceFontSize   float64
 }
 
 // PlatformDispatcher is the central point where the framework meets the
@@ -603,6 +618,10 @@ func (d *PlatformDispatcher) UpdatePlatformConfiguration(cfg PlatformConfigurati
 		(old.AccentColor != nil && *old.AccentColor != *d.config.AccentColor) {
 		changed = true
 	}
+	if old.UIFontFamily != d.config.UIFontFamily || old.UIFontSize != d.config.UIFontSize ||
+		old.MonospaceFontFamily != d.config.MonospaceFontFamily || old.MonospaceFontSize != d.config.MonospaceFontSize {
+		changed = true
+	}
 	if changed && d.OnPlatformConfigurationChanged != nil {
 		d.OnPlatformConfigurationChanged()
 	}
@@ -721,6 +740,50 @@ func (d *PlatformDispatcher) LoadFontFromList(list []byte, fontFamily string) er
 		d.OnFontsChanged()
 	}
 	return nil
+}
+
+// ResolveFont says which face a font family resolves to for a weight and a slant: the
+// one that draws a letter of a TextStyle that names only that family. A generic family
+// (monospace) gives the system's font for it, and a name that the user's configuration
+// stands for another (Arial) the font of that. It is false when the family has no font, or when
+// the text engine cannot say. A zero weight is FontWeightW400.
+//
+// Flutter: no counterpart
+func (d *PlatformDispatcher) ResolveFont(family string, weight FontWeight, style FontStyle) (ResolvedFont, bool) {
+	q, ok := d.textEngine.(FontQueryEngine)
+	if !ok {
+		return ResolvedFont{}, false
+	}
+	return q.ResolveFont(family, weight, style)
+}
+
+// InstalledFontFamilies lists the font families that a TextStyle can name: the system's,
+// the bundled and the loaded ones, sorted without regard to case. It is nil when the text engine
+// cannot say. The first call on a machine that has no fontconfig scans the font directories.
+//
+// Flutter: no counterpart
+func (d *PlatformDispatcher) InstalledFontFamilies() []string {
+	q, ok := d.textEngine.(FontQueryEngine)
+	if !ok {
+		return nil
+	}
+	return q.InstalledFontFamilies()
+}
+
+// UIFont is the family and the size, in points, of the desktop's interface font; empty and
+// 0 when the platform does not say.
+//
+// Flutter: no counterpart
+func (d *PlatformDispatcher) UIFont() (family string, size float64) {
+	return d.config.UIFontFamily, d.config.UIFontSize
+}
+
+// MonospaceFont is the family and the size, in points, of the desktop's monospace font; empty and
+// 0 when the platform does not say.
+//
+// Flutter: no counterpart
+func (d *PlatformDispatcher) MonospaceFont() (family string, size float64) {
+	return d.config.MonospaceFontFamily, d.config.MonospaceFontSize
 }
 
 // TextEngine is the text engine that lays out paragraphs; it is nil until the

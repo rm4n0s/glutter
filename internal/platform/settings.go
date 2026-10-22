@@ -32,6 +32,16 @@ type Settings struct {
 	// FontHinting is how strongly the system wants glyph outlines fitted to
 	// the pixel grid.
 	FontHinting FontHinting
+	// UIFontFamily and UIFontSize are the family and the size, in points, of the
+	// desktop's interface font (GNOME's font-name); empty and 0 when the platform
+	// does not say.
+	UIFontFamily string
+	UIFontSize   float64
+	// MonospaceFontFamily and MonospaceFontSize are the family and the size, in
+	// points, of the desktop's monospace font (GNOME's monospace-font-name); empty and
+	// 0 when the platform does not say.
+	MonospaceFontFamily string
+	MonospaceFontSize   float64
 }
 
 // FontAntialiasing is how the system wants text smoothed. The zero value,

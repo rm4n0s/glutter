@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"strconv"
 	"sync"
@@ -349,6 +350,25 @@ func TestSettingsAndLifecycleReachTheDispatcher(t *testing.T) {
 	}
 }
 
+func TestDesktopFontsReachTheDispatcher(t *testing.T) {
+	h, r := newDispatcherHarness(t)
+	h.cfg.Start = func(d *ui.PlatformDispatcher) error {
+		d.OnPlatformConfigurationChanged = func() {
+			f, s := d.MonospaceFont()
+			u, us := d.UIFont()
+			r.add(fmt.Sprintf("config mono %s %v ui %s %v", f, s, u, us))
+		}
+		return r.start(d)
+	}
+	h.c.Inject(fake.SettingsEvent{Settings: platform.Settings{MonospaceFontFamily: "Adwaita Mono", MonospaceFontSize: 11, UIFontFamily: "Cantarell", UIFontSize: 11}})
+	done := h.run(t)
+	waitFor(t, func() bool { return len(r.snapshot()) >= 1 })
+	finish(t, h, done)
+	if got, want := r.snapshot(), []string{"config mono Adwaita Mono 11 ui Cantarell 11"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("callbacks = %v, want %v", got, want)
+	}
+}
+
 func TestPortalSettingsReachTheDispatcher(t *testing.T) {
 	h, r := newDispatcherHarness(t)
 	h.cfg.Start = func(d *ui.PlatformDispatcher) error {
@@ -504,6 +524,8 @@ func TestPlatformConfigurationConversion(t *testing.T) {
 		{"empty", platform.Settings{}, ui.PlatformConfiguration{}},
 		{"accessibility", platform.Settings{DisableAnimations: true, HighContrast: true},
 			ui.PlatformConfiguration{AccessibilityFeatures: ui.AccessibilityFeatures{DisableAnimations: true, ReduceMotion: true, HighContrast: true}}},
+		{"desktop fonts", platform.Settings{UIFontFamily: "Cantarell", UIFontSize: 11, MonospaceFontFamily: "Adwaita Mono", MonospaceFontSize: 12},
+			ui.PlatformConfiguration{UIFontFamily: "Cantarell", UIFontSize: 11, MonospaceFontFamily: "Adwaita Mono", MonospaceFontSize: 12}},
 		{"accent without flag is ignored", platform.Settings{AccentColor: ui.NewColor(0xFF000000)}, ui.PlatformConfiguration{}},
 	}
 	for _, tt := range tests {

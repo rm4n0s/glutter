@@ -771,6 +771,10 @@ func PlatformConfiguration(s platform.Settings) ui.PlatformConfiguration {
 			ReduceMotion:      s.DisableAnimations,
 			HighContrast:      s.HighContrast,
 		},
+		UIFontFamily:        s.UIFontFamily,
+		UIFontSize:          s.UIFontSize,
+		MonospaceFontFamily: s.MonospaceFontFamily,
+		MonospaceFontSize:   s.MonospaceFontSize,
 	}
 	if s.HasAccentColor {
 		c.AccentColor = ui.Ptr(s.AccentColor)

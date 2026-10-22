@@ -2,10 +2,12 @@ package text
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/rm4n0s/errors"
 	"golang.org/x/image/font/gofont/gomono"
+	"golang.org/x/image/font/gofont/gomonobold"
 )
 
 func TestIsGenericFamily(t *testing.T) {
@@ -152,6 +154,113 @@ func TestScanMatcherAliases(t *testing.T) {
 	cancel()
 	_, err = s.Aliases(ctx, "Arial")
 	if appErr := routeOf(t, err); !appErr.HasRoute("scanMatcher.Aliases.FontMatchCanceled") {
+		t.Errorf("unexpected failure path: %s", appErr.Route())
+	}
+}
+
+// listingMatcher is a fakeMatcher that also lists families.
+type listingMatcher struct {
+	fakeMatcher
+	families []string
+	err      error
+}
+
+func (m *listingMatcher) Families(context.Context) ([]string, error) { return m.families, m.err }
+
+func TestCollectionFamilies(t *testing.T) {
+	tests := []struct {
+		name  string
+		match Matcher
+		build func(c *Collection)
+		want  []string
+	}{
+		{"nothing", &fakeMatcher{}, func(*Collection) {}, nil},
+		{"loaded fonts, in the name they were first given", &fakeMatcher{}, func(c *Collection) {
+			_ = c.AddFont("Zed Mono", gomono.TTF)
+			_ = c.AddFont("zed mono", gomonobold.TTF)
+			_ = c.AddFont("Alpha", gomono.TTF)
+		}, []string{"Alpha", "Zed Mono"}},
+		{"bundled and loaded", &fakeMatcher{}, func(c *Collection) {
+			_ = c.AddBundled("Roboto", gomono.TTF)
+			_ = c.AddFont("roboto", gomonobold.TTF)
+		}, []string{"roboto"}}, // the loaded font wins, in its name
+		{"system families are merged without duplicates", &listingMatcher{families: []string{"Noto Sans", "fira code", "Fira Code", "Arimo"}},
+			func(c *Collection) { _ = c.AddFont("Fira Code", gomono.TTF) }, []string{"Arimo", "Fira Code", "Noto Sans"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := NewCollection(CollectionOpts{Matcher: tt.match})
+			tt.build(c)
+			got, err := c.Families(context.Background())
+			if err != nil {
+				t.Fatalf("Families: %v", err)
+			}
+			if len(got) != len(tt.want) {
+				t.Fatalf("Families = %v, want %v", got, tt.want)
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Errorf("family %d = %q, want %q", i, got[i], tt.want[i])
+				}
+			}
+		})
+	}
+}
+
+func TestCollectionFamiliesFailures(t *testing.T) {
+	t.Run("the listing fails: the others are returned with the error", func(t *testing.T) {
+		m := &listingMatcher{err: errors.New("ListBroken", "no")}
+		c := NewCollection(CollectionOpts{Matcher: m})
+		_ = c.AddFont("Mine", gomono.TTF)
+		got, err := c.Families(context.Background())
+		if appErr := routeOf(t, err); appErr.Tag != "ListBroken" {
+			t.Errorf("err = %v, want the matcher's own error", err)
+		}
+		if len(got) != 1 || got[0] != "Mine" {
+			t.Errorf("Families = %v, want [Mine]", got)
+		}
+	})
+	t.Run("canceled", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		_, err := noSystem(t).Families(ctx)
+		if appErr := routeOf(t, err); !appErr.HasRoute("Collection.Families.FontMatchCanceled") {
+			t.Errorf("unexpected failure path: %s", appErr.Route())
+		}
+	})
+}
+
+func TestScanMatcherFamilies(t *testing.T) {
+	if systemFontsSkip != "" {
+		t.Skip(systemFontsSkip)
+	}
+	s, err := newScanMatcher("", nil)
+	if err != nil {
+		t.Skipf("the font scan is not available: %v", err)
+	}
+	got, err := s.Families(context.Background())
+	if err != nil {
+		t.Fatalf("Families: %v", err)
+	}
+	if len(got) == 0 {
+		t.Skip("the system has no fonts that the scan finds")
+	}
+	for _, f := range got {
+		if f == "" {
+			t.Error("an empty family name")
+		}
+		if f != strings.TrimSpace(f) {
+			t.Errorf("family %q has blanks around it", f)
+		}
+	}
+	again, _ := s.Families(context.Background())
+	if len(again) != len(got) {
+		t.Error("the second call gives another list")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err = s.Families(ctx)
+	if appErr := routeOf(t, err); !appErr.HasRoute("scanMatcher.Families.FontMatchCanceled") {
 		t.Errorf("unexpected failure path: %s", appErr.Route())
 	}
 }

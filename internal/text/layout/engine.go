@@ -48,7 +48,62 @@ type Engine struct {
 	pictures map[colorKey]*ui.Picture
 }
 
-var _ ui.FontLoadingEngine = (*Engine)(nil)
+var (
+	_ ui.FontLoadingEngine = (*Engine)(nil)
+	_ ui.FontQueryEngine   = (*Engine)(nil)
+)
+
+// ResolveFont says which face the family resolves to: the first font of the family that
+// loads, in the order of text.Collection.Match (the loaded fonts, the closest to the weight and slant
+// first, then the bundled one, then the system's). It is false when the family has none, so a
+// family that nothing has does not resolve to the system's default font.
+//
+// Flutter: no counterpart
+func (e *Engine) ResolveFont(family string, weight ui.FontWeight, style ui.FontStyle) (ui.ResolvedFont, bool) {
+	w := int(weight)
+	if w == 0 {
+		w = int(ui.FontWeightW400)
+	}
+	files, err := e.fonts.Match(e.ctx, family, w, style == ui.FontStyleItalic, "")
+	if err != nil {
+		e.fontError(err)
+		return ui.ResolvedFont{}, false
+	}
+	for _, file := range files {
+		face, err := e.fonts.Face(e.ctx, file)
+		if err != nil {
+			e.fontError(err)
+			continue
+		}
+		desc := face.Describe()
+		out := ui.ResolvedFont{Family: file.Family, Weight: int(desc.Aspect.Weight), Italic: desc.Aspect.Style == font.StyleItalic}
+		if out.Family == "" {
+			out.Family = desc.Family
+		}
+		switch {
+		case file.IsLoaded():
+			out.Origin = ui.FontOriginLoaded
+		case file.IsBundled():
+			out.Origin = ui.FontOriginBundled
+		default:
+			out.Origin, out.Path, out.Index = ui.FontOriginSystem, file.Path, file.Index&0xffff
+		}
+		return out, true
+	}
+	return ui.ResolvedFont{}, false
+}
+
+// InstalledFontFamilies lists the families of the system's, bundled and loaded fonts, sorted
+// without regard to case. When the system's fonts cannot be listed, the others are.
+//
+// Flutter: no counterpart
+func (e *Engine) InstalledFontFamilies() []string {
+	families, err := e.fonts.Families(e.ctx)
+	if err != nil {
+		e.fontError(err)
+	}
+	return families
+}
 
 // LoadFontFromList adds a font to the engine's collection under a family name (the family inside the font
 // when family is empty), so that styles can name it. What the engine resolved before is

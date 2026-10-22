@@ -5,6 +5,7 @@ package fontconfig
 import (
 	"context"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/rm4n0s/glutter/internal/platform/linux/dl"
@@ -125,4 +126,79 @@ func TestAliasesWithTheRealLibrary(t *testing.T) {
 	if len(got) != 0 {
 		t.Errorf("a family that nothing mentions has aliases: %v", got)
 	}
+}
+
+func TestFamilies(t *testing.T) {
+	c := openOrSkip(t)
+	got, err := c.Families(context.Background())
+	if err != nil {
+		t.Fatalf("Families: %v", err)
+	}
+	if len(got) == 0 {
+		t.Fatal("the system has no font family")
+	}
+	for i, f := range got {
+		if f == "" {
+			t.Errorf("family %d is empty", i)
+		}
+		if i > 0 && strings.ToLower(got[i-1]) >= strings.ToLower(f) {
+			t.Errorf("families %q and %q are not sorted without duplicates", got[i-1], f)
+		}
+	}
+}
+
+func TestFamiliesFailures(t *testing.T) {
+	tests := []struct {
+		name  string
+		tweak func(*library)
+		route string
+	}{
+		{"no pattern", func(l *library) { l.patternCreate = func() uintptr { return 0 } }, "Config.Families.FontconfigPatternFailed"},
+		{"no object set", func(l *library) { l.objectSetCreate = func() uintptr { return 0 } }, "Config.Families.FontconfigPatternFailed"},
+		{"the family is not added", func(l *library) { l.objectSetAdd = func(_, _ uintptr) int32 { return 0 } }, "Config.Families.FontconfigPatternFailed"},
+		{"no list", func(l *library) { l.fontList = func(_, _, _ uintptr) uintptr { return 0 } }, "Config.Families.FontconfigListFailed"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			lib := fakeLibrary()
+			lib.objectSetCreate = func() uintptr { return 3 }
+			lib.objectSetAdd = func(_, _ uintptr) int32 { return 1 }
+			lib.objectSetDestroy = func(uintptr) {}
+			lib.fontList = func(_, _, _ uintptr) uintptr { return 0 }
+			tt.tweak(lib)
+			c, err := newConfig(lib)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer c.Close()
+			_, err = c.Families(context.Background())
+			if appErr := routeOf(t, err); !appErr.HasRoute(tt.route) {
+				t.Errorf("unexpected failure path: %s, want %s", appErr.Route(), tt.route)
+			}
+		})
+	}
+	t.Run("canceled", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		c, err := newConfig(fakeLibrary())
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer c.Close()
+		_, err = c.Families(ctx)
+		if appErr := routeOf(t, err); !appErr.HasRoute("Config.Families.FontconfigCanceled") {
+			t.Errorf("unexpected failure path: %s", appErr.Route())
+		}
+	})
+	t.Run("closed", func(t *testing.T) {
+		c, err := newConfig(fakeLibrary())
+		if err != nil {
+			t.Fatal(err)
+		}
+		c.Close()
+		_, err = c.Families(context.Background())
+		if appErr := routeOf(t, err); !appErr.HasRoute("Config.Families.FontconfigClosed") {
+			t.Errorf("unexpected failure path: %s", appErr.Route())
+		}
+	})
 }

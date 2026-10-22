@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/go-text/typesetting/font"
+	ot "github.com/go-text/typesetting/font/opentype"
 	"github.com/go-text/typesetting/fontscan"
 	"github.com/go-text/typesetting/language"
 	"github.com/rm4n0s/errors"
@@ -26,6 +27,8 @@ type scanMatcher struct {
 
 	mu sync.Mutex // fontscan's FontMap is not safe for concurrent use
 	fm *fontscan.FontMap
+	// families is the answer of Families, made on the first call.
+	families []string
 }
 
 // defaultCacheDir is $XDG_CACHE_HOME/glutter/fonts, with ~/.cache for the
@@ -150,6 +153,53 @@ func (s *scanMatcher) Fallback(ctx context.Context, family string, weight int, i
 	fam, _ := s.fm.FontMetadata(face.Font)
 	loc := s.fm.FontLocation(face.Font)
 	return FontFile{Path: loc.File, Index: int(loc.Index), Family: fam}, true, nil
+}
+
+// Families implements Lister: the family names of the fonts that the scan found. fontscan
+// keeps the family only in a normalized form, so the name each family has in its font is read
+// from the first file of the family (only the name table is read).
+func (s *scanMatcher) Families(ctx context.Context) ([]string, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, errors.NewErr("FontMatchCanceled", err)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.families != nil {
+		return s.families, nil
+	}
+	first := map[string]fontscan.Location{}
+	for _, fp := range s.footprints {
+		if _, ok := first[fp.Family]; !ok {
+			first[fp.Family] = fp.Location
+		}
+	}
+	out := make([]string, 0, len(first))
+	var buf []byte
+	for norm, loc := range first {
+		name := displayName(loc, &buf)
+		if name == "" {
+			name = norm
+		}
+		out = append(out, name)
+	}
+	s.families = out
+	return out, nil
+}
+
+// displayName reads the family name of the font at loc, or "" when the file cannot be read.
+func displayName(loc fontscan.Location, buf *[]byte) string {
+	file, err := os.Open(loc.File)
+	if err != nil {
+		return ""
+	}
+	defer func() { _ = file.Close() }() // read only
+	loaders, err := ot.NewLoaders(file)
+	if err != nil || int(loc.Index&0xffff) >= len(loaders) {
+		return ""
+	}
+	var desc font.Description
+	desc, *buf = font.Describe(loaders[loc.Index&0xffff], *buf)
+	return desc.Family
 }
 
 // probeFamily is a family name that no installed font has.

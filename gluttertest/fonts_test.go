@@ -138,3 +138,36 @@ func TestMonospaceGolden(t *testing.T) {
 		}, widgets.ColumnOpts{CrossAxisAlignment: rendering.CrossAxisAlignmentStart})))))
 	ts.MatchesGolden("monospace_text")
 }
+
+func TestSetPlatformConfigurationDesktopFonts(t *testing.T) {
+	ts := New(t)
+	d := ts.Binding.PlatformDispatcher()
+	if f, _ := d.MonospaceFont(); f != "" {
+		t.Fatalf("MonospaceFont = %q before the test says", f)
+	}
+	ts.SetPlatformConfiguration(func(c *ui.PlatformConfiguration) {
+		c.MonospaceFontFamily, c.MonospaceFontSize = "Go Mono", 12
+		c.UIFontFamily, c.UIFontSize = "Roboto", 11
+	})
+	if f, s := d.MonospaceFont(); f != "Go Mono" || s != 12 {
+		t.Errorf("MonospaceFont = %q, %v", f, s)
+	}
+	if f, s := d.UIFont(); f != "Roboto" || s != 11 {
+		t.Errorf("UIFont = %q, %v", f, s)
+	}
+}
+
+func TestTestEngineAnswersFontQueries(t *testing.T) {
+	ts := New(t, Opts{Fonts: []Font{{Family: "Go Mono", Data: gomono.TTF}}})
+	d := ts.Binding.PlatformDispatcher()
+	got, ok := d.ResolveFont("Go Mono", ui.FontWeightW400, ui.FontStyleNormal)
+	if !ok || got.Origin != ui.FontOriginLoaded || got.Family != "Go Mono" {
+		t.Errorf("ResolveFont(Go Mono) = %+v, %v", got, ok)
+	}
+	if got, ok := d.ResolveFont("Roboto", ui.FontWeightW400, ui.FontStyleNormal); !ok || got.Origin != ui.FontOriginBundled {
+		t.Errorf("ResolveFont(Roboto) = %+v, %v", got, ok)
+	}
+	if got := d.InstalledFontFamilies(); len(got) != 3 || got[0] != "Go Mono" {
+		t.Errorf("InstalledFontFamilies = %v, want the loaded and the bundled families", got)
+	}
+}
