@@ -40,6 +40,9 @@ func connectDisplay(cfg *Config, getenv func(string) string, log *slog.Logger) (
 	return conn, nil
 }
 
+// screenshotPath is the file of the self-capture: the value of GLUTTER_SCREENSHOT.
+func screenshotPath(value string, _ func(string) string) string { return value }
+
 // processStart is when the process started, if the system says.
 func processStart() (time.Time, bool) { return linux.ProcessStart() }
 

@@ -1,6 +1,9 @@
 package platform
 
-import "github.com/rm4n0s/glutter/ui"
+import (
+	"github.com/rm4n0s/glutter/internal/gpu"
+	"github.com/rm4n0s/glutter/ui"
+)
 
 // SyncInputHandler is implemented by a Handler that can handle input at once and say what the
 // framework made of it, for a platform whose events need the answer before the event handler
@@ -41,4 +44,17 @@ type ContextMenuController interface {
 type SurfaceRenewer interface {
 	// RenewSurface replaces the native surface.
 	RenewSurface()
+}
+
+// SurfaceHandler is implemented by a Handler that is told when the native surface of a view goes
+// away while the view stays: an Android activity gets a new Surface when the user comes back to
+// the app (SPEC §24.4). The renderer lets go of what it made for the old surface; the next frame
+// attaches the new one, which the platform asks for once there is one.
+//
+// Flutter: shell/platform/android/android_surface.h AndroidSurface (the surface is made again)
+type SurfaceHandler interface {
+	// OnSurfaceLost says that the native surface lost is no longer valid. It is called on the UI
+	// thread, before the platform lets go of the native window, and the renderer must not use the
+	// handle after it returns.
+	OnSurfaceLost(view ui.ViewID, lost gpu.SurfaceHandle)
 }

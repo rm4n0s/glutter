@@ -18,6 +18,9 @@ func connectDisplay(*Config, func(string) string, *slog.Logger) (connection, err
 	return nil, errors.New(tagBackendUnavailable, "this build has no platform backend for this operating system")
 }
 
+// screenshotPath is the file of the self-capture: the value of GLUTTER_SCREENSHOT.
+func screenshotPath(value string, _ func(string) string) string { return value }
+
 // processStart says it does not know when the process started.
 func processStart() (time.Time, bool) { return time.Time{}, false }
 

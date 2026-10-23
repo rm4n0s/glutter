@@ -1,11 +1,18 @@
 #include "jni_android.h"
 
+#include <android/native_window_jni.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <unistd.h>
 
 // Implemented in Go (main_android.go).
 extern void goSetenv(char *key, char *value);
 extern void goStart(void);
+extern void goSurfaceCreated(uintptr_t window);
+extern void goSurfaceChanged(int width, int height, float density, float refresh, int displayWidth, int displayHeight);
+extern void goSurfaceDestroyed(void);
+extern void goLifecycle(int state);
+extern void goFocus(int focused);
 
 static JavaVM *g_vm;
 static jclass g_activity_class;       // global reference to GlutterActivity
@@ -42,6 +49,23 @@ JNIEXPORT void JNICALL Java_io_github_rm4n0s_glutter_Native_setenv(JNIEnv *env, 
 JNIEXPORT void JNICALL Java_io_github_rm4n0s_glutter_Native_start(JNIEnv *env, jclass cls, jobject activity) {
   goStart();
 }
+
+JNIEXPORT void JNICALL Java_io_github_rm4n0s_glutter_Native_surfaceCreated(JNIEnv *env, jclass cls, jobject surface) {
+  // ANativeWindow_fromSurface acquires a reference, which the UI thread releases (SPEC §24.4).
+  ANativeWindow *window = ANativeWindow_fromSurface(env, surface);
+  if (window != NULL) goSurfaceCreated((uintptr_t)window);
+}
+
+JNIEXPORT void JNICALL Java_io_github_rm4n0s_glutter_Native_surfaceChanged(JNIEnv *env, jclass cls, jint width, jint height,
+                                                                         jfloat density, jfloat refresh, jint displayWidth, jint displayHeight) {
+  goSurfaceChanged(width, height, density, refresh, displayWidth, displayHeight);
+}
+
+JNIEXPORT void JNICALL Java_io_github_rm4n0s_glutter_Native_surfaceDestroyed(JNIEnv *env, jclass cls) { goSurfaceDestroyed(); }
+
+JNIEXPORT void JNICALL Java_io_github_rm4n0s_glutter_Native_lifecycle(JNIEnv *env, jclass cls, jint state) { goLifecycle(state); }
+
+JNIEXPORT void JNICALL Java_io_github_rm4n0s_glutter_Native_focus(JNIEnv *env, jclass cls, jboolean focused) { goFocus(focused ? 1 : 0); }
 
 int glutter_main_ended(int code) {
   JNIEnv *env;

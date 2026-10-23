@@ -43,13 +43,40 @@ public class GlutterActivity extends Activity {
     super.onCreate(savedInstanceState);
     current = this;
     if (started) {
-      // A new activity in a living process: the program runs already (SPEC §24.2).
+      // A new activity in a living process: the program runs already, and the view gets the
+      // new surface (SPEC §24.2).
+      setContentView(new GlutterView(this));
       return;
     }
     started = true;
     System.loadLibrary("app");
     setEnvironment();
+    setContentView(new GlutterView(this));
     Native.start(this);
+  }
+
+  @Override
+  protected void onResume() {
+    super.onResume();
+    Native.lifecycle(1);
+  }
+
+  @Override
+  protected void onPause() {
+    Native.lifecycle(2);
+    super.onPause();
+  }
+
+  @Override
+  protected void onStop() {
+    Native.lifecycle(3);
+    super.onStop();
+  }
+
+  @Override
+  public void onWindowFocusChanged(boolean hasFocus) {
+    super.onWindowFocusChanged(hasFocus);
+    Native.focus(hasFocus);
   }
 
   /** Copies the app's directories and the {@code GLUTTER_} extras into the Go program's environment. */

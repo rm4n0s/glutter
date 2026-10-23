@@ -23,6 +23,17 @@ const (
 	ScreenshotAfterEnv = "GLUTTER_SCREENSHOT_AFTER"
 )
 
+// androidScreenshotPath is the file of the self-capture on Android: the value "1" (what
+// glutter-android shot sets, SPEC §24.13) means glutter-screenshot.png in the app's files
+// directory, HOME, which the embedding sets; any other value is a path as on Linux. It is plain
+// Go so that it is tested everywhere.
+func androidScreenshotPath(value string, getenv func(string) string) string {
+	if value != "1" {
+		return value
+	}
+	return filepath.Join(getenv("HOME"), "glutter-screenshot.png")
+}
+
 // Screenshot is a pending capture of the window content to a PNG file.
 //
 // Flutter: no counterpart
@@ -41,7 +52,7 @@ func ScreenshotFromEnv(getenv func(string) string) (*Screenshot, error) {
 	if path == "" {
 		return nil, nil
 	}
-	s := &Screenshot{path: path}
+	s := &Screenshot{path: screenshotPath(path, getenv)}
 	if v := getenv(ScreenshotAfterEnv); v != "" {
 		d, err := time.ParseDuration(v)
 		if err != nil || d < 0 {

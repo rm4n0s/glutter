@@ -17,14 +17,17 @@ type libcFuncs struct {
 	strlen func(ptr uintptr) uintptr
 }
 
-// libcName is the glibc name of the C library.
+// libcName is the glibc name of the C library; Android's Bionic calls it libc.so (SPEC §24).
 const libcName = "libc.so.6"
+
+// libcNames are the names loadLibc tries, in order.
+var libcNames = []string{libcName, "libc.so"}
 
 // loadLibc is called at most once, on first use, so importing the package does
 // no work. The table never changes after it is built. A system without libc is
 // not a system Glutter can run on, so a failure panics with the tagged error.
 var loadLibc = sync.OnceValue(func() *libcFuncs {
-	lib, err := Open(libcName)
+	lib, err := Open(libcNames...)
 	if err != nil {
 		panic(err)
 	}

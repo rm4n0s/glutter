@@ -144,7 +144,7 @@ func Start(ctx context.Context, o Options) (*Emulator, error) {
 	}
 	secs := strconv.Itoa(int(o.Lifetime.Seconds()))
 	args := []string{"-k", "10s", secs + "s", emulator, "-avd", avd.Name, "-no-window", "-no-audio", "-no-boot-anim",
-		"-no-snapshot", "-no-metrics", "-gpu", o.GPU, "-port", strconv.Itoa(console)}
+		"-no-snapshot", "-wipe-data", "-no-metrics", "-gpu", o.GPU, "-port", strconv.Itoa(console)}
 	args = append(args, o.Args...)
 	e.cmd = exec.Command("timeout", args...)
 	e.cmd.Env = e.env
@@ -219,7 +219,9 @@ func (e *Emulator) Stop() {
 		killGroup(e.cmd.Process.Pid) // netsimd and crashpad_handler can outlive the emulator
 	}
 	server := androidtool.ADB{Path: e.SDK.Adb(), Env: e.env, Run: androidtool.ExecRunner{}}
-	_, _ = server.Output(ctx, "kill-server")
+	killCtx, killCancel := context.WithTimeout(context.Background(), 20*time.Second) // ctx may have run out while waiting
+	defer killCancel()
+	_, _ = server.Output(killCtx, "kill-server")
 	waitForNoLeftovers(e.Root, 10*time.Second)
 }
 

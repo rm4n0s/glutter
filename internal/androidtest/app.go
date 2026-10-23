@@ -2,6 +2,7 @@ package androidtest
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -150,3 +151,36 @@ func (e *Emulator) RunAs(ctx context.Context, appID string, command ...string) (
 // TagAndroidTestTimeout is the tag of the error for something a device test waited for that did
 // not happen in time.
 const TagAndroidTestTimeout = "AndroidTestTimeout"
+
+// ScreenshotFile is where the self-capture of an app writes, below the app's directory.
+const ScreenshotFile = "files/glutter-screenshot.png"
+
+// Screenshot starts the app with GLUTTER_SCREENSHOT=1 (and the given extras), waits for it to save
+// the frame of its first idle moment and end, and returns the PNG (proof method E, SPEC §24.13).
+// A test that gets no file reads the app's log with Log.
+func (e *Emulator) Screenshot(ctx context.Context, appID string, extras map[string]string, timeout time.Duration) ([]byte, error) {
+	if err := e.ADB.RemoveAppFile(ctx, appID, ScreenshotFile); err != nil {
+		return nil, err
+	}
+	all := map[string]string{"GLUTTER_SCREENSHOT": "1"}
+	for k, v := range extras {
+		all[k] = v
+	}
+	if err := e.Launch(ctx, appID, all); err != nil {
+		return nil, err
+	}
+	if err := e.WaitExit(ctx, appID, timeout); err != nil {
+		return nil, err
+	}
+	return e.ADB.PullAppFile(ctx, appID, ScreenshotFile)
+}
+
+// Describe is the text of an error for a failed test: its tag, route and metadata (the command
+// and its output), which err.Error() leaves out.
+func Describe(err error) string {
+	appErr, ok := errors.FromError(err)
+	if !ok {
+		return err.Error()
+	}
+	return fmt.Sprintf("%s: %s\nroute: %s\nmetadata: %v", appErr.Tag, appErr.Message, appErr.Route(), appErr.Metadata)
+}

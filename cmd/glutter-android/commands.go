@@ -212,13 +212,9 @@ func runRun(ctx context.Context, args []string, stdout, stderr io.Writer) error 
 	if err != nil {
 		return err
 	}
-	extras := map[string]string{}
-	for _, kv := range envs {
-		k, v, ok := strings.Cut(kv, "=")
-		if !ok || !strings.HasPrefix(k, "GLUTTER_") {
-			return errors.New(tagAndroidUsage, "-env takes GLUTTER_NAME=value, got "+kv)
-		}
-		extras[k] = v
+	extras, err := parseEnvs(envs)
+	if err != nil {
+		return err
 	}
 	sdk, adb, err := df.connect(ctx)
 	if err != nil {

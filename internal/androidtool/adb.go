@@ -264,3 +264,42 @@ const (
 	// TagAndroidLogcatFailed is the tag of the error when logcat cannot be read.
 	TagAndroidLogcatFailed = "AndroidLogcatFailed"
 )
+
+// PullAppFile reads a file of the app's private directory (`run-as`, which a debuggable app
+// allows), such as "files/glutter-screenshot.png". It fails with AndroidPullFailed when the file
+// is not there, and with the error of adb when adb fails.
+func (a ADB) PullAppFile(ctx context.Context, appID, path string) ([]byte, error) {
+	out, err := a.Output(ctx, "exec-out", "run-as", appID, "cat", path)
+	if err != nil {
+		return nil, err
+	}
+	if strings.HasPrefix(out, "cat: ") && len(out) < 300 {
+		// exec-out does not pass on the exit status of the command.
+		return nil, errors.New(TagAndroidPullFailed, "the app has no such file", "appID", appID, "path", path, "output", strings.TrimSpace(out))
+	}
+	return []byte(out), nil
+}
+
+// RemoveAppFile removes a file of the app's private directory. It is best effort: run-as fails
+// when the app has not run yet, and then there is no file to remove.
+func (a ADB) RemoveAppFile(ctx context.Context, appID, path string) error {
+	_, _ = a.Output(ctx, "exec-out", "run-as", appID, "rm", "-f", path)
+	return nil
+}
+
+// Screencap takes a PNG of the device's whole screen (`adb exec-out screencap -p`): the status
+// bar, the keyboard and the notifications are in it. It fails with AndroidPullFailed when the
+// output is not a PNG.
+func (a ADB) Screencap(ctx context.Context) ([]byte, error) {
+	out, err := a.Output(ctx, "exec-out", "screencap", "-p")
+	if err != nil {
+		return nil, err
+	}
+	if !strings.HasPrefix(out, "\x89PNG\r\n\x1a\n") {
+		return nil, errors.New(TagAndroidPullFailed, "screencap did not print a PNG", "bytes", len(out))
+	}
+	return []byte(out), nil
+}
+
+// TagAndroidPullFailed is the tag of the error when a file cannot be read from the device.
+const TagAndroidPullFailed = "AndroidPullFailed"

@@ -25,8 +25,8 @@ func TestRunUsageErrors(t *testing.T) {
 		{name: "build with a bad flag", args: []string{"build", "-nope", "a"}, route: "run->runBuild->parse." + tagAndroidUsage},
 		{name: "install without a package", args: []string{"install"}, route: "run->runInstall->parse." + tagAndroidUsage},
 		{name: "run without a package", args: []string{"run"}, route: "run->runRun->parse." + tagAndroidUsage},
-		{name: "run with an env that is not GLUTTER_", args: []string{"run", "-env", "HOME=/x", "./examples/counter"}, route: "run->runRun." + tagAndroidUsage, in: "GLUTTER_NAME=value"},
-		{name: "run with an env with no value", args: []string{"run", "-env", "GLUTTER_X", "./examples/counter"}, route: "run->runRun." + tagAndroidUsage},
+		{name: "run with an env that is not GLUTTER_", args: []string{"run", "-env", "HOME=/x", "./examples/counter"}, route: "run->runRun->parseEnvs." + tagAndroidUsage, in: "GLUTTER_NAME=value"},
+		{name: "run with an env with no value", args: []string{"run", "-env", "GLUTTER_X", "./examples/counter"}, route: "run->runRun->parseEnvs." + tagAndroidUsage},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -75,5 +75,34 @@ func TestBuildFlagsOptions(t *testing.T) {
 func TestSize(t *testing.T) {
 	if got := size(3 << 19); got != "1.5 MB" {
 		t.Errorf("size = %s", got)
+	}
+}
+
+func TestShotUsageErrors(t *testing.T) {
+	tests := []struct {
+		name  string
+		args  []string
+		route string
+		in    string
+	}{
+		{name: "no output file", args: []string{"shot", "./examples/counter"}, route: "run->runShot." + tagAndroidUsage, in: "-o"},
+		{name: "no package", args: []string{"shot", "-o", "x.png"}, route: "run->runShot->parse." + tagAndroidUsage},
+		{name: "an env that is not GLUTTER_", args: []string{"shot", "-o", "x.png", "-env", "PATH=/x", "./examples/counter"}, route: "run->runShot->parseEnvs." + tagAndroidUsage, in: "GLUTTER_NAME=value"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := run(context.Background(), tt.args, io.Discard, io.Discard)
+			appErr, ok := errors.FromError(err)
+			if !ok || !appErr.HasRoute(tt.route) || !strings.Contains(appErr.Message, tt.in) {
+				t.Errorf("got %v, want route %s with %q", err, tt.route, tt.in)
+			}
+		})
+	}
+}
+
+func TestParseEnvs(t *testing.T) {
+	got, err := parseEnvs([]string{"GLUTTER_A=1", "GLUTTER_B=x=y", "GLUTTER_C="})
+	if err != nil || got["GLUTTER_A"] != "1" || got["GLUTTER_B"] != "x=y" || got["GLUTTER_C"] != "" || len(got) != 3 {
+		t.Errorf("parseEnvs = %v, %v", got, err)
 	}
 }

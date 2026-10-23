@@ -27,6 +27,11 @@ const (
 	//
 	// Flutter: no counterpart
 	SurfaceKindWeb SurfaceKind = "web"
+	// SurfaceKindAndroid is the surface of the view of an Android activity. Window is the
+	// ANativeWindow* of the view's Surface; Display and Surface are zero.
+	//
+	// Flutter: no counterpart
+	SurfaceKindAndroid SurfaceKind = "android"
 	// SurfaceKindFake is the surface of the scripted test platform. No GPU
 	// backend renders into it.
 	//

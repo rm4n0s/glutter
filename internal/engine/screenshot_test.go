@@ -123,3 +123,21 @@ func TestSaveFailures(t *testing.T) {
 		})
 	}
 }
+
+func TestAndroidScreenshotPath(t *testing.T) {
+	tests := []struct {
+		name, value, home, want string
+	}{
+		{"1 is a file in the files directory", "1", "/data/user/0/org.x/files", "/data/user/0/org.x/files/glutter-screenshot.png"},
+		{"a path stays", "/sdcard/x.png", "/data/user/0/org.x/files", "/sdcard/x.png"},
+		{"a relative path stays", "out.png", "/h", "out.png"},
+		{"1 with no HOME", "1", "", "glutter-screenshot.png"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := androidScreenshotPath(tt.value, env(map[string]string{"HOME": tt.home})); got != tt.want {
+				t.Errorf("androidScreenshotPath(%q) = %q, want %q", tt.value, got, tt.want)
+			}
+		})
+	}
+}

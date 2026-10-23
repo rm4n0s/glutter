@@ -126,3 +126,50 @@ func TestShellQuote(t *testing.T) {
 		}
 	}
 }
+
+// failingRunner fails every command.
+type failingRunner struct{}
+
+func (failingRunner) Run(_ context.Context, c Command) (string, error) {
+	return "", errors.New(TagAndroidCommandFailed, "failed", "command", c.String())
+}
+
+func TestPullAndScreencap(t *testing.T) {
+	ctx := context.Background()
+	const pngHeader = "\x89PNG\r\n\x1a\nrest"
+	a := ADB{Serial: "emu", Run: &scriptRunner{out: map[string]string{"cat files/a.png": pngHeader, "screencap": pngHeader}}}
+	b, err := a.PullAppFile(ctx, "org.x.y", "files/a.png")
+	if err != nil || string(b) != pngHeader {
+		t.Errorf("PullAppFile = %q, %v", b, err)
+	}
+	if b, err = a.Screencap(ctx); err != nil || string(b) != pngHeader {
+		t.Errorf("Screencap = %q, %v", b, err)
+	}
+	if err := a.RemoveAppFile(ctx, "org.x.y", "files/a.png"); err != nil {
+		t.Errorf("RemoveAppFile: %v", err)
+	}
+
+	// exec-out passes the output of a failing cat on as if it were the file.
+	missing := ADB{Run: &scriptRunner{out: map[string]string{"cat": "cat: files/a.png: No such file or directory\n"}}}
+	if _, err := missing.PullAppFile(ctx, "org.x.y", "files/a.png"); !hasRoute(err, "ADB.PullAppFile."+TagAndroidPullFailed) {
+		t.Errorf("a missing file: %v", err)
+	}
+	if _, err := (ADB{Run: failingRunner{}}).PullAppFile(ctx, "org.x.y", "files/a.png"); !hasRoute(err, "ADB.PullAppFile->ADB.Output->failingRunner.Run."+TagAndroidCommandFailed) {
+		t.Errorf("a failing adb: %v", err)
+	}
+	if err := (ADB{Run: failingRunner{}}).RemoveAppFile(ctx, "org.x.y", "files/a.png"); err != nil {
+		t.Errorf("RemoveAppFile must not fail for a missing directory: %v", err)
+	}
+	notPNG := ADB{Run: &scriptRunner{out: map[string]string{"screencap": "error: no display\n"}}}
+	if _, err := notPNG.Screencap(ctx); !hasRoute(err, "ADB.Screencap."+TagAndroidPullFailed) {
+		t.Errorf("a screencap that is not a PNG: %v", err)
+	}
+	if _, err := (ADB{Run: failingRunner{}}).Screencap(ctx); !hasRoute(err, "ADB.Output->failingRunner.Run."+TagAndroidCommandFailed) {
+		t.Errorf("a failing screencap: %v", err)
+	}
+}
+
+func hasRoute(err error, route string) bool {
+	appErr, ok := errors.FromError(err)
+	return ok && appErr.HasRoute(route)
+}

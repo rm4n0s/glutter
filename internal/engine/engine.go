@@ -700,6 +700,14 @@ func (h *handler) OnContentLost(view ui.ViewID) {
 	}
 }
 
+// OnSurfaceLost lets the renderer go of the surface that the platform took away, before the
+// platform releases the native window (platform.SurfaceHandler).
+func (h *handler) OnSurfaceLost(_ ui.ViewID, lost gpu.SurfaceHandle) {
+	if h.r != nil {
+		h.r.Release(lost)
+	}
+}
+
 // OnViewFocus tells the dispatcher that a view got or lost the keyboard focus,
 // with the input that came before it.
 func (h *handler) OnViewFocus(view ui.ViewID, focused bool) {
