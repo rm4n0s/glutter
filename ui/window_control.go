@@ -69,6 +69,9 @@ type WindowControlHost interface {
 	// SetWindowConstraints sets the smallest and the largest content size in
 	// logical pixels; zero means no limit.
 	SetWindowConstraints(view ViewID, min, max Size)
+	// SetWindowHidden takes the window of the view off the screen (true), or puts
+	// it back (false). A hidden window still exists.
+	SetWindowHidden(view ViewID, hidden bool)
 }
 
 // CreateWindow asks the engine for a new window and returns its view. The view's
@@ -129,6 +132,17 @@ func (d *PlatformDispatcher) SetWindowSize(id ViewID, size Size) {
 func (d *PlatformDispatcher) SetWindowConstraints(id ViewID, min, max Size) {
 	if h, ok := d.host.(WindowControlHost); ok {
 		h.SetWindowConstraints(id, min, max)
+	}
+}
+
+// SetWindowHidden takes the window of the view off the screen, or, with false,
+// puts it back with the state it had. A hidden window still exists: the view
+// stays, and the app keeps running.
+//
+// Flutter: no counterpart
+func (d *PlatformDispatcher) SetWindowHidden(id ViewID, hidden bool) {
+	if h, ok := d.host.(WindowControlHost); ok {
+		h.SetWindowHidden(id, hidden)
 	}
 }
 

@@ -461,10 +461,17 @@ func (f *Frame) SetAppID(id string) {
 	f.a().setAppID(f.ptr, s)
 }
 
-// SetParent makes the frame a child of another one.
+// SetParent makes the frame a child of another one; nil makes it a window
+// without a parent.
 //
 // Flutter: no counterpart
-func (f *Frame) SetParent(parent *Frame) { f.a().setPar(f.ptr, parent.ptr) }
+func (f *Frame) SetParent(parent *Frame) {
+	var ptr uintptr
+	if parent != nil {
+		ptr = parent.ptr
+	}
+	f.a().setPar(f.ptr, ptr)
+}
 
 // SetMinContentSize sets the smallest size of the content; zero is no limit.
 //

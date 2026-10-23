@@ -28,6 +28,7 @@ type Window struct {
 	icon      ui.WindowIcon
 	content   ui.ContentType
 	screenOn  bool
+	hidden    bool
 	closed    bool
 }
 
@@ -99,6 +100,24 @@ func (w *Window) SizeConstraints() SizeConstraints {
 // Flutter: no counterpart
 func (w *Window) SetState(state platform.WindowState) {
 	w.set(EntrySetState, state, func() { w.state = state })
+}
+
+// SetHidden records whether the window is hidden; the fake platform can hide
+// windows.
+//
+// Flutter: no counterpart
+func (w *Window) SetHidden(hidden bool) bool {
+	w.set(EntrySetHidden, hidden, func() { w.hidden = hidden })
+	return true
+}
+
+// Hidden returns whether the last SetHidden was with true.
+//
+// Flutter: no counterpart
+func (w *Window) Hidden() bool {
+	w.p.mu.Lock()
+	defer w.p.mu.Unlock()
+	return w.hidden
 }
 
 // SetCursor records the new cursor.

@@ -101,6 +101,7 @@ type xlib struct {
 	setClassHint         func(display uintptr, window uint64, hint uintptr) int32
 	setTransientForHint  func(display uintptr, window, parent uint64) int32
 	iconifyWindow        func(display uintptr, window uint64, screen int32) int32
+	withdrawWindow       func(display uintptr, window uint64, screen int32) int32
 	getVisualInfo        func(display uintptr, mask int64, template uintptr, count uintptr) uintptr
 	free                 func(ptr uintptr) int32
 	createColormap       func(display uintptr, window uint64, visual uintptr, alloc int32) uint64
@@ -164,6 +165,7 @@ func loadXlib() (*xlib, error) {
 		{&l.setClassHint, "XSetClassHint"},
 		{&l.setTransientForHint, "XSetTransientForHint"},
 		{&l.iconifyWindow, "XIconifyWindow"},
+		{&l.withdrawWindow, "XWithdrawWindow"},
 		{&l.getVisualInfo, "XGetVisualInfo"},
 		{&l.free, "XFree"},
 		{&l.createColormap, "XCreateColormap"},

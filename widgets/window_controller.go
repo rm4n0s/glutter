@@ -42,9 +42,9 @@ type BaseWindowController interface {
 
 // windowSnapshot is what a WindowScope tells its dependents about a window.
 type windowSnapshot struct {
-	size                                        ui.Size
-	title                                       string
-	activated, maximized, minimized, fullscreen bool
+	size                                                ui.Size
+	title                                               string
+	activated, maximized, minimized, fullscreen, hidden bool
 }
 
 // windowControllerBase is what the controllers of all the kinds of windows have
@@ -60,8 +60,10 @@ type windowControllerBase struct {
 	// reportedMinimized is whether the platform has ever said the window is minimized,
 	// so that it is trusted when it says the window is not.
 	reportedMinimized bool
-	destroyed         bool
-	implicit          bool
+	// hidden is whether the app took the window off the screen (SetHidden).
+	hidden    bool
+	destroyed bool
+	implicit  bool
 	// dialog is true for a dialog, which is never maximized or fullscreen.
 	dialog bool
 	// appDecorations is whether the app draws the title bar itself.
@@ -163,12 +165,16 @@ func (c *windowControllerBase) SetContentType(contentType ui.ContentType) {
 
 // Activate asks for the window to be shown at its size and position, out of the
 // minimized state, and to get the focus. The platform decides whether it gets the
-// focus and the top of the stack of windows.
+// focus and the top of the stack of windows. A hidden window is shown first.
 //
 // Flutter: widgets/_window.dart RegularWindowController.activate
 func (c *windowControllerBase) Activate() {
 	if c.destroyed {
 		return
+	}
+	if c.hidden {
+		c.hidden = false
+		c.owner.b.d.SetWindowHidden(c.view.ViewID(), false)
 	}
 	c.minimized = false
 	c.view.PerformWindowAction(ui.WindowAction{Kind: ui.WindowActionActivate})
@@ -197,6 +203,7 @@ func (c *windowControllerBase) snapshot() windowSnapshot {
 	return windowSnapshot{
 		size: c.ContentSize(), title: c.title,
 		activated: info.Activated, maximized: info.Maximized && !c.dialog, minimized: c.minimized, fullscreen: info.Fullscreen && !c.dialog,
+		hidden: c.hidden,
 	}
 }
 
@@ -350,6 +357,35 @@ func (c *RegularWindowController) SetFullscreen(fullscreen bool) {
 		kind = ui.WindowActionFullscreen
 	}
 	c.view.PerformWindowAction(ui.WindowAction{Kind: kind})
+}
+
+// IsHidden is whether the app took the window off the screen with SetHidden. It is
+// what the app asked for: the platform does not hide a window by itself.
+//
+// Flutter: no counterpart
+func (c *RegularWindowController) IsHidden() bool { return c.hidden }
+
+// SetHidden takes the window off the screen (true): it has no surface on the
+// screen, no entry in the task bar, and gets no input and no focus. With false the
+// window comes back with the size, title, icon and state it had, and asks for the
+// focus. The widgets of the window and their state stay as they are: only the
+// platform window is hidden. A hidden window still counts as open, so RunApp goes on
+// while it exists; when every window of the app is hidden the app lifecycle state
+// is AppLifecycleStateHidden, and frames and tickers stop until a window is shown.
+// Activate shows a hidden window too. A platform that cannot hide a window (the
+// web) ignores it.
+//
+// Deviation: Flutter's window controllers cannot hide a window; this is what a
+// desktop app that lives in the system tray needs (SPEC §8.7, §12.10).
+//
+// Flutter: no counterpart
+func (c *RegularWindowController) SetHidden(hidden bool) {
+	if c.destroyed || c.hidden == hidden {
+		return
+	}
+	c.hidden = hidden
+	c.owner.b.d.SetWindowHidden(c.view.ViewID(), hidden)
+	c.refresh()
 }
 
 // Destroy destroys the window and tells the delegate. It does nothing when the

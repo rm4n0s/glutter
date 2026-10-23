@@ -75,7 +75,11 @@ func (p *Platform) RequestActivationToken(view ui.ViewID, done func(token string
 // token for it: xdg-shell has no request for it. The compositor decides; it may
 // only mark the window as wanting attention.
 func (w *window) activate() {
-	if w.p.sess.activation == nil {
+	if w.p.sess.activation == nil || w.hidden {
+		return
+	}
+	if w.remapping {
+		w.activateOnMap = true // a surface that is not on the screen cannot take the focus
 		return
 	}
 	w.p.RequestActivationToken(w.id, func(token string) {
@@ -164,6 +168,7 @@ func (w *window) SetIcon(icon ui.WindowIcon) error {
 	if err := icon.Validate(); err != nil {
 		return err
 	}
+	w.icon = icon // a toplevel made later, when the window is shown again, gets it
 	mgr := w.p.sess.iconManager
 	top := w.xdgToplevel()
 	if mgr == nil || top == nil || w.closed {
@@ -228,7 +233,7 @@ var _ platform.PortalHandleProvider = (*window)(nil)
 // Flutter: no counterpart
 func (w *window) PortalHandle(done func(handle string)) {
 	exporter := w.p.sess.exporter
-	if exporter == nil || w.closed {
+	if exporter == nil || w.closed || w.hidden {
 		done("")
 		return
 	}

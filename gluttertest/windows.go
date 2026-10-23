@@ -21,6 +21,8 @@ type TestWindow struct {
 	Min, Max ui.Size
 	// Destroyed is whether the app destroyed the window.
 	Destroyed bool
+	// Hidden is whether the app hid the window.
+	Hidden bool
 }
 
 // Windows are the windows that the app asked the platform for with the window
@@ -33,7 +35,7 @@ func (t *Tester) Windows() []TestWindow {
 	defer t.host.Unlock()
 	out := make([]TestWindow, len(t.host.Windows))
 	for i, w := range t.host.Windows {
-		out[i] = TestWindow{View: w.View, Spec: w.Spec, Title: w.Title, Size: w.Size, Min: w.Min, Max: w.Max, Destroyed: w.Destroyed}
+		out[i] = TestWindow{View: w.View, Spec: w.Spec, Title: w.Title, Size: w.Size, Min: w.Min, Max: w.Max, Destroyed: w.Destroyed, Hidden: w.Hidden}
 	}
 	return out
 }
@@ -52,6 +54,16 @@ func (t *Tester) ViewActions(view ui.ViewID) []ui.WindowAction {
 		}
 	}
 	return out
+}
+
+// WindowHidden is whether the app hid the window of the view
+// (RegularWindowController.SetHidden): the implicit view's too.
+//
+// Flutter: no counterpart
+func (t *Tester) WindowHidden(view ui.ViewID) bool {
+	t.host.Lock()
+	defer t.host.Unlock()
+	return t.host.HiddenViews[view]
 }
 
 // ViewScenes are the scenes that the view rendered so far.

@@ -74,15 +74,14 @@ func (s *libdecorSource) AfterWait(_ linux.Events) error { return s.ctx.Dispatch
 
 // decorateWithLibdecor makes the frame of the window: libdecor makes the xdg_surface
 // and the xdg_toplevel, draws the title bar, and says when to configure.
-func (w *window) decorateWithLibdecor(cfg platform.WindowConfig) error {
-	ctx := w.p.libdecor
+func (w *window) decorateWithLibdecor(states []platform.WindowState) error {
+	ctx, cfg := w.p.libdecor, w.cfg
 	frame, err := ctx.Decorate(w.surface.Ptr(), libdecorHandler{w})
 	if err != nil {
 		return err
 	}
 	w.frame = frame
-	w.frame.SetTitle(cfg.Title)
-	w.title = cfg.Title
+	w.frame.SetTitle(w.title)
 	if cfg.AppID != "" {
 		w.frame.SetAppID(cfg.AppID)
 	}
@@ -99,8 +98,10 @@ func (w *window) decorateWithLibdecor(cfg platform.WindowConfig) error {
 	if top := w.frame.Toplevel(); top != 0 {
 		w.makeModal(w.p.sess.conn.WrapXdgToplevel(top))
 	}
-	w.requestState(cfg.State)
-	if err := w.SetIcon(cfg.Icon); err != nil {
+	for _, state := range states {
+		w.requestState(state)
+	}
+	if err := w.SetIcon(w.icon); err != nil {
 		return err
 	}
 	w.frame.Map() // the first configure follows
@@ -218,8 +219,8 @@ func (w *window) info() ui.WindowInfo {
 //
 // Flutter: no counterpart
 func (w *window) PerformWindowAction(action ui.WindowAction) {
-	if w.closed {
-		return
+	if w.closed || (w.hidden && action.Kind != ui.WindowActionClose) {
+		return // a hidden window has no toplevel; the app shows it first
 	}
 	seat, serial := w.p.sess.seat, w.p.pointerSerial
 	switch action.Kind {

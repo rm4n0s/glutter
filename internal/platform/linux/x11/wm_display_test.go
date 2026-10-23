@@ -69,11 +69,15 @@ type testWM struct {
 	normal map[uint64][2]uint32 // the size of a window that is neither maximized nor fullscreen
 	// allowed are the _NET_WM_ACTION_ names the windows get; nil means all of them.
 	allowed []string
+	// withdrawnSet are the windows that their client withdrew: their next map reads
+	// the _NET_WM_STATE the client set, as a new window's.
+	withdrawnSet map[uint64]bool
 
 	mu          sync.Mutex
 	moveResizes [][5]int64
 	menus       [][5]int64
 	activations int
+	withdrawals int
 }
 
 func startTestWM(t *testing.T, p *Platform) *testWM {
@@ -89,7 +93,7 @@ func startTestWM(t *testing.T, p *Platform) *testWM {
 	wm := &testWM{
 		t: t, x: p.x, display: d, root: p.x.defaultRootWindow(d),
 		cmds: make(chan func()), stop: make(chan struct{}), done: make(chan struct{}),
-		states: map[uint64][]uint64{}, normal: map[uint64][2]uint32{},
+		states: map[uint64][]uint64{}, normal: map[uint64][2]uint32{}, withdrawnSet: map[uint64]bool{},
 	}
 	for _, b := range []struct {
 		fptr   any
@@ -160,6 +164,15 @@ func (wm *testWM) handle(ev uintptr) {
 	switch view[xAnyEvent](ev).typ {
 	case mapRequest:
 		r := view[xMapRequestEvent](ev)
+		if wm.withdrawnSet[r.window] {
+			// A withdrawn window comes back as a new one: its state is what the client
+			// set before it asked for the map (EWMH).
+			delete(wm.withdrawnSet, r.window)
+			wm.states[r.window] = wm.readLongs(r.window, wm.atom("_NET_WM_STATE"))
+			if wm.bigState(r.window) {
+				wm.x.resizeWindow(wm.display, r.window, wmMaximizedW, wmMaximizedH)
+			}
+		}
 		wm.setLongs(r.window, wm.atom("WM_STATE"), wm.atom("WM_STATE"), 1, 0)
 		wm.states[r.window] = removeAtom(wm.states[r.window], wm.atom("_NET_WM_STATE_HIDDEN"))
 		wm.publishState(r.window)
@@ -175,7 +188,40 @@ func (wm *testWM) handle(ev uintptr) {
 		}
 	case clientMessage:
 		wm.onMessage(view[xClientMessageEvent](ev))
+	case unmapNotify:
+		// The synthetic UnmapNotify to the root is how a client withdraws a window
+		// (ICCCM 4.1.4): the manager forgets its state.
+		if u := view[xMapEvent](ev); u.sendEvent != 0 && u.event == wm.root {
+			wm.withdrawnSet[u.window] = true
+			delete(wm.states, u.window)
+			wm.x.deleteProperty(wm.display, u.window, wm.atom("WM_STATE"))
+			wm.x.deleteProperty(wm.display, u.window, wm.atom("_NET_WM_STATE"))
+			wm.mu.Lock()
+			wm.withdrawals++
+			wm.mu.Unlock()
+		}
 	}
+}
+
+// readLongs reads a property of format 32 of a window on the connection of the
+// manager.
+func (wm *testWM) readLongs(window, property uint64) []uint64 {
+	mem := dl.Calloc(1, 8+4+8+8+8)
+	defer dl.Free(mem)
+	actualType, actualFormat, nitems, bytesAfter, prop := mem, mem+8, mem+16, mem+24, mem+32
+	status := wm.x.getWindowProperty(wm.display, window, property, 0, 64, 0, anyPropertyType, actualType, actualFormat, nitems, bytesAfter, prop)
+	data := *view[uintptr](prop)
+	if data != 0 {
+		defer wm.x.free(data)
+	}
+	if status != 0 || data == 0 || *view[int32](actualFormat) != 32 {
+		return nil
+	}
+	out := make([]uint64, *view[uint64](nitems))
+	for i := range out {
+		out[i] = *view[uint64](data + uintptr(i)*8)
+	}
+	return out
 }
 
 // bigState is whether the window is maximized or fullscreen.
@@ -604,5 +650,65 @@ func TestDisplayTheServerTakesTouchAndTheWindowSelectsIt(t *testing.T) {
 	}
 	if errs != 0 {
 		t.Errorf("selecting touch events made %d X errors", errs)
+	}
+}
+
+func TestDisplayHidingWithdrawsTheWindowAndShowingMapsItAgain(t *testing.T) {
+	e, wm := startWithWM(t, windowConfig())
+	w := e.win.(*window)
+	e.onLoop(func() { e.win.SetState(platform.WindowStateMaximized) })
+	waitFor(t, func() bool { return e.h.lastInfo().Maximized }, "the window was not maximized")
+
+	e.onLoop(func() {
+		if !e.win.SetHidden(true) {
+			t.Error("SetHidden says X11 cannot hide windows")
+		}
+	})
+	waitFor(t, func() bool { wm.mu.Lock(); defer wm.mu.Unlock(); return wm.withdrawals == 1 }, "the window manager was not told of the withdrawal")
+	_, framesBefore, _, _, _ := e.h.snapshot()
+	e.onLoop(func() {
+		e.win.RequestFrame()                          // waits for the map
+		e.win.SetState(platform.WindowStateMinimized) // would map it iconic
+		e.win.PerformWindowAction(ui.WindowAction{Kind: ui.WindowActionActivate})
+	})
+	time.Sleep(100 * time.Millisecond)
+	var mapped bool
+	var minimized bool
+	e.onLoop(func() { mapped, minimized = w.mapped, w.info().Minimized })
+	if _, frames, _, _, _ := e.h.snapshot(); frames != framesBefore {
+		t.Errorf("%d frames while hidden", frames-framesBefore)
+	}
+	if mapped || minimized {
+		t.Errorf("mapped %v, minimized %v: a withdrawn window is neither", mapped, minimized)
+	}
+	select {
+	case err := <-e.done:
+		t.Fatalf("Run returned (%v) while a hidden window exists", err)
+	default:
+	}
+
+	e.onLoop(func() { e.win.SetHidden(false) })
+	waitFor(t, func() bool { _, frames, _, _, _ := e.h.snapshot(); return frames > framesBefore }, "the shown window was not drawn")
+	waitFor(t, func() bool { return e.h.lastInfo().Maximized && !e.h.lastInfo().Minimized }, "the window did not come back maximized")
+	waitFor(t, func() bool { return e.h.lastSize() == ui.Size{Width: wmMaximizedW, Height: wmMaximizedH} }, "the window did not come back at its size")
+	wm.mu.Lock()
+	activations := wm.activations
+	wm.mu.Unlock()
+	if activations != 1 {
+		t.Errorf("%d activation requests, want the one of the show", activations)
+	}
+	if e.p.xErrors != 0 {
+		t.Errorf("the X server reported %d errors", e.p.xErrors)
+	}
+
+	e.onLoop(func() { e.win.Close() })
+	select {
+	case err := <-e.done:
+		if err != nil {
+			t.Fatalf("Run returned %v after the last window closed", err)
+		}
+		e.done <- nil // for the cleanup
+	case <-time.After(displayTimeout):
+		t.Fatal("Run did not return after the hidden window closed")
 	}
 }

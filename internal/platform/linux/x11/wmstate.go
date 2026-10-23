@@ -53,9 +53,11 @@ func (w *window) refreshState() {
 	w.state.maximized = containsAtom(state, at.netWMStateMaxVert) && containsAtom(state, at.netWMStateMaxHorz)
 	w.state.fullscreen = containsAtom(state, at.netWMStateFullscreen)
 	// A window is minimized when the window manager iconified it: WM_STATE says so
-	// (ICCCM), and _NET_WM_STATE_HIDDEN does for managers that do not set it.
+	// (ICCCM), and _NET_WM_STATE_HIDDEN does for managers that do not set it. A
+	// window that the app withdrew is hidden, not minimized, whatever a manager
+	// leaves in the properties.
 	wmState := p.readLongs(w.xid, at.wmState, at.wmState, 2)
-	w.state.minimized = (len(wmState) > 0 && wmState[0] == iconicState) || containsAtom(state, at.netWMStateHidden)
+	w.state.minimized = !w.hidden && ((len(wmState) > 0 && wmState[0] == iconicState) || containsAtom(state, at.netWMStateHidden))
 	actions := p.readLongs(w.xid, at.netWMAllowedActions, xaAtom, 64)
 	w.state.hasAllowed = actions != nil
 	if w.state.hasAllowed {

@@ -147,6 +147,7 @@ func New(tb TB, opts ...Opts) *Tester {
 	t := &Tester{tb: tb, host: &renderhost.Host{DiscardScenes: o.DiscardScenes}, Clock: fakeclock.New(time.Time{})}
 	t.start = t.Clock.Now()
 	t.d = ui.NewPlatformDispatcher(t.host)
+	t.host.OnHiddenChanged = t.hiddenChanged
 	t.d.SetTextEngine(o.TextEngine)
 	t.cfg = ui.ViewConfiguration{
 		PhysicalSize:     ui.Size{Width: o.Size.Width * o.DevicePixelRatio, Height: o.Size.Height * o.DevicePixelRatio},
@@ -165,6 +166,26 @@ func New(tb TB, opts ...Opts) *Tester {
 	})
 	tb.Cleanup(t.checkNoErrorsLeft)
 	return t
+}
+
+// hiddenChanged gives the app the lifecycle state that its windows give, as the
+// engine does on the desktop (SPEC §13): Hidden when every window is hidden, and
+// Resumed again when one of them is shown.
+func (t *Tester) hiddenChanged() {
+	t.host.Lock()
+	all := true
+	for _, v := range t.d.Views() {
+		if !t.host.HiddenViews[v.ViewID()] {
+			all = false
+		}
+	}
+	t.host.Unlock()
+	switch {
+	case all:
+		t.d.SetAppLifecycleState(ui.AppLifecycleStateHidden)
+	case t.d.AppLifecycleState() == ui.AppLifecycleStateHidden:
+		t.d.SetAppLifecycleState(ui.AppLifecycleStateResumed)
+	}
 }
 
 // adopt makes the goroutine of the caller the UI thread of the app: the test is

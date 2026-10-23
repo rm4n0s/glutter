@@ -82,15 +82,37 @@ func drawsAllSizes(t *testing.T) bool {
 }
 
 func TestClosingTheWindowHidesItAndKeepsTheApp(t *testing.T) {
-	ts, _ := newApp(t)
-	if ts.Dispatcher().RequestClose(ts.View.ViewID()) {
+	ts, fd := newApp(t)
+	view := ts.View.ViewID()
+	ts.EnterText(gluttertest.ByType[*m.TextField](), "buy milk")
+	if ts.Dispatcher().RequestClose(view) {
 		t.Error("the window was allowed to close")
 	}
-	if got := lastAction(ts); got != ui.WindowActionMinimize {
-		t.Errorf("last window action = %v, want minimize", got)
+	if !ts.WindowHidden(view) {
+		t.Error("the window is not hidden")
+	}
+	for _, kind := range actionKinds(ts) {
+		if kind == ui.WindowActionMinimize {
+			t.Error("the window was minimized instead of hidden")
+		}
 	}
 	if n := ts.ExitRequests(); n != 0 {
 		t.Errorf("%d exit requests", n)
+	}
+	// The window comes back with what it had.
+	showFromTheTray(t, ts, fd)
+	if got := ts.Widget(gluttertest.ByType[*m.TextField]()).(*m.TextField).Controller().Text(); got != "buy milk" {
+		t.Errorf("note = %q after the window came back", got)
+	}
+}
+
+// showFromTheTray brings the window back with a click on the tray icon.
+func showFromTheTray(t *testing.T, ts *gluttertest.Tester, fd *gluttertest.FakeDesktop) {
+	t.Helper()
+	fd.ActivateTray()
+	ts.Pump()
+	if ts.WindowHidden(ts.View.ViewID()) {
+		t.Error("the window is still hidden")
 	}
 }
 
@@ -106,6 +128,9 @@ func TestShowWindowFromTheMenuAndTheIcon(t *testing.T) {
 			ts, fd := newApp(t)
 			ts.Dispatcher().RequestClose(ts.View.ViewID())
 			tt.bring(fd)
+			if ts.WindowHidden(ts.View.ViewID()) {
+				t.Error("the window is still hidden")
+			}
 			if got := lastAction(ts); got != ui.WindowActionActivate {
 				t.Errorf("last window action = %v, want activate", got)
 			}
@@ -136,6 +161,8 @@ func TestNewNotificationHasAnOpenActionThatBringsTheWindowBack(t *testing.T) {
 
 			ts.Dispatcher().RequestClose(ts.View.ViewID())
 			fd.InvokeNotificationAction(n.ID, action)
+			// The action reaches the app through a goroutine of package desktop.
+			fd.WaitFor("the window to come back", func() bool { return !ts.WindowHidden(ts.View.ViewID()) })
 			if got := lastAction(ts); got != ui.WindowActionActivate {
 				t.Errorf("last window action = %v, want activate", got)
 			}
@@ -173,12 +200,25 @@ func TestOpenFileCancelled(t *testing.T) {
 }
 
 func TestQuitEndsTheApp(t *testing.T) {
-	ts, fd := newApp(t)
-	fd.ClickTrayMenuItem("Quit")
-	if n := ts.ExitRequests(); n != 1 {
-		t.Errorf("%d exit requests, want 1", n)
-	}
-	if !ts.Dispatcher().RequestClose(ts.View.ViewID()) {
-		t.Error("the window can not close after Quit")
+	for _, tt := range []struct {
+		name   string
+		hidden bool
+	}{
+		{"with the window on the screen", false},
+		{"with the window hidden in the tray", true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			ts, fd := newApp(t)
+			if tt.hidden {
+				ts.Dispatcher().RequestClose(ts.View.ViewID())
+			}
+			fd.ClickTrayMenuItem("Quit")
+			if n := ts.ExitRequests(); n != 1 {
+				t.Errorf("%d exit requests, want 1", n)
+			}
+			if !ts.Dispatcher().RequestClose(ts.View.ViewID()) {
+				t.Error("the window can not close after Quit")
+			}
+		})
 	}
 }

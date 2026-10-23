@@ -333,6 +333,9 @@ type window struct {
 	// focused is whether the platform said it has the keyboard focus.
 	title   string
 	focused bool
+	// hidden is whether the framework took the window off the screen
+	// (SetWindowHidden): it asks the platform for no frame until it is shown.
+	hidden bool
 }
 
 // handler is the platform.Handler of the engine: it draws the windows, captures
@@ -385,6 +388,10 @@ type handler struct {
 	drewOnce    bool
 	frameStats  bool
 	stats       frameStats
+
+	// platformLifecycle is whether the platform reported a lifecycle state itself
+	// (the web does); otherwise the engine derives it from the windows (SPEC §13).
+	platformLifecycle bool
 
 	armed      bool // the capture is scheduled
 	captureDue bool // the next frame is read back
@@ -556,6 +563,52 @@ func (h *handler) forget(w *window) {
 		h.r.Release(w.NativeSurface())
 	}
 	delete(h.windows, w.id)
+	h.updateLifecycle()
+}
+
+// SetWindowHidden takes the window of the view off the screen, or puts it back
+// (ui.WindowControlHost). A window that is shown again presents its next frame
+// whole, and gets the frame that was asked for while it was hidden. On a platform
+// that cannot hide windows nothing changes.
+func (h *handler) SetWindowHidden(view ui.ViewID, hidden bool) {
+	w, ok := h.windows[view]
+	if !ok || w.hidden == hidden {
+		return
+	}
+	if !w.SetHidden(hidden) {
+		return
+	}
+	w.hidden = hidden
+	if !hidden {
+		if h.r != nil {
+			h.r.Invalidate(w.NativeSurface())
+		}
+		if w.wanted {
+			w.RequestFrame()
+		}
+	}
+	h.updateLifecycle()
+}
+
+// updateLifecycle tells the dispatcher the lifecycle state that the windows give, on
+// a platform that does not report one itself (SPEC §13): Hidden when every window is
+// hidden, Resumed when one of them has the keyboard focus, and Inactive otherwise.
+func (h *handler) updateLifecycle() {
+	if h.platformLifecycle || len(h.windows) == 0 {
+		return
+	}
+	state := ui.AppLifecycleStateHidden
+	for _, w := range h.windows {
+		if w.hidden {
+			continue
+		}
+		if w.focused {
+			state = ui.AppLifecycleStateResumed
+			break
+		}
+		state = ui.AppLifecycleStateInactive
+	}
+	h.disp.SetAppLifecycleState(state)
 }
 
 // StartDrag starts a drag and drop operation from the window of the view
@@ -604,7 +657,7 @@ func (h *handler) SetWindowConstraints(view ui.ViewID, min, max ui.Size) {
 // RequestViewFocus asks the platform to give the focus to the window of the view
 // (ui.ViewFocusHost). Taking the focus away is up to the user.
 func (h *handler) RequestViewFocus(view ui.ViewID, state ui.ViewFocusState, _ ui.ViewFocusDirection) {
-	if w, ok := h.windows[view]; ok && state == ui.ViewFocusStateFocused && h.focusView != view {
+	if w, ok := h.windows[view]; ok && state == ui.ViewFocusStateFocused && h.focusView != view && !w.hidden {
 		w.PerformWindowAction(ui.WindowAction{Kind: ui.WindowActionActivate})
 	}
 }
@@ -665,6 +718,10 @@ func (h *handler) OnViewFocus(view ui.ViewID, focused bool) {
 	}
 	h.queueInput(w, func() {
 		h.disp.DispatchViewFocus(ui.ViewFocusEvent{ViewID: view, State: state, Direction: ui.ViewFocusDirectionUndefined})
+		// After the focus event: the framework moves its focus into the window first,
+		// so the focus manager does not restore the focus it suspended in another one
+		// when the app resumes.
+		h.updateLifecycle()
 	})
 }
 
@@ -786,7 +843,10 @@ func (h *handler) OnSettings(s platform.Settings) {
 	h.disp.UpdatePlatformConfiguration(PlatformConfiguration(s))
 }
 
-func (h *handler) OnLifecycle(state ui.AppLifecycleState) { h.disp.SetAppLifecycleState(state) }
+func (h *handler) OnLifecycle(state ui.AppLifecycleState) {
+	h.platformLifecycle = true
+	h.disp.SetAppLifecycleState(state)
+}
 
 func (h *handler) OnKey(d ui.KeyData) {
 	h.queueInput(h.windowOf(h.focusView), func() { h.dispatchKey(d) })
@@ -939,6 +999,9 @@ func (h *handler) askFrame(w *window) {
 		return
 	}
 	w.wanted = true
+	if w.hidden {
+		return // asked for when the window is shown
+	}
 	w.RequestFrame()
 }
 

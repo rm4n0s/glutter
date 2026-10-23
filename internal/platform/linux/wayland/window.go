@@ -109,6 +109,19 @@ type window struct {
 	mapped         bool // a buffer was committed after the first configure
 	closed         bool
 
+	// hidden is whether the app took the window off the screen (SetHidden): the
+	// surface has no buffer and no role object. remapping is the time between showing
+	// it again (a new role and the initial commit) and the configure that answers,
+	// when no buffer may be attached. restore is the state the window had when it was
+	// hidden, asked for again when it is shown; activateOnMap asks for the focus once
+	// it is on the screen again.
+	hidden        bool
+	remapping     bool
+	activateOnMap bool
+	restore       WindowStates
+	// icon is the icon of the window, set again on a new toplevel.
+	icon ui.WindowIcon
+
 	buffer *shmBuffer   // on display
 	old    []*shmBuffer // replaced, waiting for the compositor to release them
 
@@ -219,56 +232,194 @@ func (p *Platform) NewWindow(cfg platform.WindowConfig) (platform.Window, error)
 	w.caps = ui.AllWindowCapabilities
 	w.SetContentType(cfg.ContentType)
 	w.title = cfg.Title
+	w.icon = cfg.Icon
+	w.restore = WindowStates{Maximized: cfg.State == platform.WindowStateMaximized, Fullscreen: cfg.State == platform.WindowStateFullscreen}
 	w.deco = p.chooseDecoration(cfg)
 	slog.Default().Debug("window decorations", "mode", w.deco.Name())
-	if w.deco == ui.DecorationLibdecor {
-		if err := w.decorateWithLibdecor(cfg); err != nil {
-			w.destroy()
-			return nil, err
-		}
-	} else {
-		w.xdgSurface = s.wmBase.GetXdgSurface(w.surface)
-		w.toplevel = w.xdgSurface.GetToplevel()
-		w.xdgSurface.SetEvents(&wl.XdgSurfaceEvents{OnConfigure: w.onSurfaceConfigure})
-		w.toplevel.SetEvents(&wl.XdgToplevelEvents{
-			OnConfigure:      w.onToplevelConfigure,
-			OnClose:          w.onClose,
-			OnWmCapabilities: w.onWmCapabilities,
-		})
-
-		w.toplevel.SetTitle(cfg.Title)
-		if cfg.AppID != "" {
-			w.toplevel.SetAppId(cfg.AppID)
-		}
-		w.toplevel.SetMinSize(int32(cfg.MinSize.Width), int32(cfg.MinSize.Height))
-		w.toplevel.SetMaxSize(int32(cfg.MaxSize.Width), int32(cfg.MaxSize.Height))
-		if cfg.HasParent {
-			if parent, ok := p.windows[cfg.Parent]; ok && parent.toplevel != nil {
-				w.toplevel.SetParent(parent.toplevel)
-			}
-		}
-		if !cfg.IsResizable() && cfg.Size.Width > 0 && cfg.Size.Height > 0 {
-			// xdg-shell has no flag for it: a window whose smallest and largest sizes
-			// are the same is not resizable.
-			w.toplevel.SetMinSize(w.width, w.height)
-			w.toplevel.SetMaxSize(w.width, w.height)
-		}
-		w.makeModal(w.toplevel)
-		w.requestState(cfg.State)
-		w.requestDecorations()
-		if err := w.SetIcon(cfg.Icon); err != nil {
-			w.destroy()
-			return nil, err
-		}
-
-		// The initial commit, without a buffer, asks the compositor for the first
-		// configure.
-		w.surface.Commit()
+	if err := w.makeRole(cfg.State); err != nil {
+		w.destroy()
+		return nil, err
 	}
 
 	p.windows[w.id] = w
 	p.hadWindow = true
 	return w, nil
+}
+
+// makeRole gives the surface its xdg_toplevel, the one libdecor makes or one of its
+// own with its decoration, and tells the compositor what it must know before the
+// first commit: the title, the app id, the size limits, the parent, the modal flag,
+// the states, the decorations and the icon. The initial commit (libdecor's map)
+// then asks for the first configure. A window that is shown again gets a new role
+// this way, on the same surface.
+func (w *window) makeRole(states ...platform.WindowState) error {
+	if w.deco == ui.DecorationLibdecor {
+		return w.decorateWithLibdecor(states)
+	}
+	p, cfg := w.p, w.cfg
+	w.xdgSurface = p.sess.wmBase.GetXdgSurface(w.surface)
+	w.toplevel = w.xdgSurface.GetToplevel()
+	w.xdgSurface.SetEvents(&wl.XdgSurfaceEvents{OnConfigure: w.onSurfaceConfigure})
+	w.toplevel.SetEvents(&wl.XdgToplevelEvents{
+		OnConfigure:      w.onToplevelConfigure,
+		OnClose:          w.onClose,
+		OnWmCapabilities: w.onWmCapabilities,
+	})
+
+	w.toplevel.SetTitle(w.title)
+	if cfg.AppID != "" {
+		w.toplevel.SetAppId(cfg.AppID)
+	}
+	w.toplevel.SetMinSize(int32(cfg.MinSize.Width), int32(cfg.MinSize.Height))
+	w.toplevel.SetMaxSize(int32(cfg.MaxSize.Width), int32(cfg.MaxSize.Height))
+	if cfg.HasParent {
+		if parent, ok := p.windows[cfg.Parent]; ok && parent.toplevel != nil {
+			w.toplevel.SetParent(parent.toplevel)
+		}
+	}
+	if !cfg.IsResizable() && cfg.Size.Width > 0 && cfg.Size.Height > 0 {
+		// xdg-shell has no flag for it: a window whose smallest and largest sizes
+		// are the same is not resizable.
+		w.toplevel.SetMinSize(w.width, w.height)
+		w.toplevel.SetMaxSize(w.width, w.height)
+	}
+	w.makeModal(w.toplevel)
+	for _, state := range states {
+		w.requestState(state)
+	}
+	w.requestDecorations()
+	if err := w.SetIcon(w.icon); err != nil {
+		return err
+	}
+
+	// The initial commit, without a buffer, asks the compositor for the first
+	// configure.
+	w.surface.Commit()
+	return nil
+}
+
+// dropRole destroys the role objects of the surface, those that hang on the toplevel
+// first: the decoration, the dialog and the export (whose handle names the
+// toplevel), then the toplevel and the xdg_surface, or the libdecor frame that made
+// them. The surface and what hangs on it (the viewport, the fractional scale, the
+// content type, the idle inhibitor) stay.
+func (w *window) dropRole() {
+	if w.exported != nil {
+		w.exported.Destroy()
+		w.exported = nil
+		w.exportHandle = ""
+		for _, f := range w.exportWaiting {
+			f("")
+		}
+		w.exportWaiting = nil
+	}
+	if w.decoration != nil {
+		w.decoration.Destroy()
+		w.decoration = nil
+	}
+	if w.dialog != nil {
+		w.dialog.Destroy()
+		w.dialog = nil
+	}
+	if w.frame != nil {
+		w.frame.Free() // destroys the xdg_toplevel and the xdg_surface it made
+		w.frame = nil
+	}
+	if w.toplevel != nil {
+		w.toplevel.Destroy()
+		w.toplevel = nil
+	}
+	if w.xdgSurface != nil {
+		w.xdgSurface.Destroy()
+		w.xdgSurface = nil
+	}
+	w.conf = decor.Configuration{}
+}
+
+// SetHidden takes the window off the screen, or puts it back. xdg-shell has no
+// request to hide a toplevel, so the window unmaps itself: a null buffer is attached
+// and committed, and the role objects are destroyed (dropRole), so the compositor
+// forgets the window and its task-bar entry. A frame callback in flight may then
+// never come, so it is forgotten, as for a suspended window. To show the window it
+// gets a new role on the same surface (makeRole), with the maximized and
+// fullscreen states it had, and nothing is drawn until the configure that answers
+// the initial commit: that configure draws the window, which then asks for the
+// focus (xdg_activation_v1). The windows whose parent it is lose their parent
+// while it is hidden, and get it back.
+//
+// Flutter: no counterpart
+func (w *window) SetHidden(hidden bool) bool {
+	if w.closed || w.hidden == hidden {
+		return true
+	}
+	if hidden {
+		w.hide()
+		return true
+	}
+	w.hidden, w.remapping, w.activateOnMap = false, true, true
+	var states []platform.WindowState
+	if w.restore.Maximized {
+		states = append(states, platform.WindowStateMaximized)
+	}
+	if w.restore.Fullscreen {
+		states = append(states, platform.WindowStateFullscreen)
+	}
+	if err := w.makeRole(states...); err != nil {
+		w.p.fail(err)
+		return true
+	}
+	w.reparentChildren(w)
+	return true
+}
+
+// hide unmaps the window and destroys its role (SetHidden).
+func (w *window) hide() {
+	if w.configures > 0 && !w.remapping {
+		w.restore = w.states // what the compositor said; before a configure, what was asked for
+	}
+	w.hidden, w.remapping, w.activateOnMap = true, false, false
+	if w.frameInFlight {
+		// The callback of the last frame may never come for a surface that is not on
+		// the screen; the frame it would have allowed is drawn when the window is
+		// shown.
+		w.frameInFlight = false
+		w.frameGen++
+		w.frameRequested = true
+	}
+	w.reparentChildren(nil)
+	w.surface.Attach(nil, 0, 0)
+	w.surface.Commit()
+	w.dropRole()
+	if w.buffer != nil {
+		w.old = append(w.old, w.buffer) // freed when the compositor releases it
+		w.buffer = nil
+	}
+	w.mapped = false
+	w.states = WindowStates{}
+}
+
+// reparentChildren gives the windows whose parent this one is a new parent: the
+// window itself when it is shown again, none (nil) while it is hidden.
+func (w *window) reparentChildren(parent *window) {
+	for _, c := range w.p.windows {
+		if c == w || c.closed || c.hidden || !c.cfg.HasParent || c.cfg.Parent != w.id {
+			continue
+		}
+		switch {
+		case c.toplevel != nil:
+			var top *wl.XdgToplevel
+			if parent != nil {
+				top = parent.toplevel
+			}
+			c.toplevel.SetParent(top)
+		case c.frame != nil:
+			var frame *decor.Frame
+			if parent != nil {
+				frame = parent.frame
+			}
+			c.frame.SetParent(frame)
+		}
+	}
 }
 
 // makeModal tells the compositor that the window is a modal dialog of its parent
@@ -320,8 +471,20 @@ func (w *window) requestDecorations() {
 	w.decoration.SetMode(mode)
 }
 
-// requestState asks the compositor for a window state.
+// requestState asks the compositor for a window state. A hidden window keeps the
+// maximized and fullscreen states for when it is shown.
 func (w *window) requestState(state platform.WindowState) {
+	if w.hidden {
+		switch state {
+		case platform.WindowStateMaximized:
+			w.restore.Maximized = true
+		case platform.WindowStateFullscreen:
+			w.restore.Fullscreen = true
+		case platform.WindowStateNormal:
+			w.restore.Maximized, w.restore.Fullscreen = false, false
+		}
+		return
+	}
 	if w.frame != nil {
 		switch state {
 		case platform.WindowStateMaximized:
@@ -359,9 +522,13 @@ func (w *window) onToplevelConfigure(width, height int32, states []uint32) {
 // onSurfaceConfigure applies the stored configuration: it draws at the new
 // size, acknowledges the configure, and commits the buffer.
 func (w *window) onSurfaceConfigure(serial uint32) {
-	if w.closed {
+	if w.closed || w.hidden {
 		return
 	}
+	// The first configure after the window was shown again maps it: it is drawn at
+	// once, at the scale it has now, and the app hears of it.
+	remap := w.remapping
+	w.remapping = false
 	resized := w.pendingWidth > 0 && w.pendingHeight > 0 &&
 		(w.pendingWidth != w.width || w.pendingHeight != w.height)
 	if resized {
@@ -384,7 +551,7 @@ func (w *window) onSurfaceConfigure(serial uint32) {
 		// So resize the native window, acknowledge, and render the new size at
 		// once, without waiting for a frame callback: the first commit after the
 		// ack already has the new size (SPEC §8.11, "Resizing and scaling").
-		if resized || w.configures == 0 {
+		if resized || w.configures == 0 || remap {
 			w.resizeBuffer()
 		}
 		w.ackConfigure(serial)
@@ -393,10 +560,11 @@ func (w *window) onSurfaceConfigure(serial uint32) {
 		if first {
 			w.p.useStartupToken(w)
 		}
-		if resized || first || infoChanged {
+		if resized || first || infoChanged || remap {
 			w.reportMetrics()
 		}
 		w.renderNow()
+		w.mappedAgain()
 		return
 	}
 
@@ -415,8 +583,18 @@ func (w *window) onSurfaceConfigure(serial uint32) {
 		w.p.useStartupToken(w)
 	}
 	w.commit(buf)
-	if resized || w.configures == 1 || infoChanged {
+	if resized || w.configures == 1 || infoChanged || remap {
 		w.reportMetrics()
+	}
+	w.mappedAgain()
+}
+
+// mappedAgain asks for the focus for a window that was shown again, once its first
+// frame is on the surface.
+func (w *window) mappedAgain() {
+	if w.activateOnMap {
+		w.activateOnMap = false
+		w.activate()
 	}
 }
 
@@ -503,8 +681,8 @@ func (w *window) onLeave(output *wl.WlOutput) {
 // the scale may have changed, and the display the window is on, with the same scale
 // or not, is told to the app.
 func (w *window) displayChanged() {
-	if w.closed {
-		return
+	if w.closed || w.hidden {
+		return // a hidden window is not on an output; showing it reports the display
 	}
 	w.scaleChanged()
 	if w.configures == 0 {
@@ -581,8 +759,8 @@ func (w *window) resizeBuffer() {
 // the buffer scale, as when a compositor sends its first fractional scale) is told to
 // the surface and waits for the next frame.
 func (w *window) scaleChanged() {
-	if w.closed || w.configures == 0 {
-		return
+	if w.closed || w.configures == 0 || w.hidden || w.remapping {
+		return // the configure that maps the window sizes the buffer for the scale
 	}
 	scale, fractional := w.effectiveScale()
 	if scale == w.scale {
@@ -651,9 +829,10 @@ func (w *window) renderNow() {
 	if h == nil || w.closed {
 		return
 	}
-	if w.states.Suspended {
-		// The compositor hides the window: nothing is drawn until it is shown, and
-		// then the frame is drawn at once (SPEC §8.11, "Frame pacing").
+	if w.states.Suspended || w.hidden || w.remapping {
+		// The compositor or the app hides the window: nothing is drawn until it is
+		// shown, and then the frame is drawn at once (SPEC §8.11, "Frame pacing").
+		// No buffer may be attached before the configure of a new role either.
 		w.frameRequested = true
 		return
 	}
@@ -703,7 +882,7 @@ func (w *window) RequestFrame() {
 		return
 	}
 	w.frameRequested = true
-	if w.frameInFlight || w.states.Suspended {
+	if w.frameInFlight || w.states.Suspended || w.hidden || w.remapping {
 		return
 	}
 	w.p.loop.Post(func() {
@@ -727,6 +906,9 @@ func (w *window) SetTitle(title string) {
 		w.frame.SetTitle(title)
 		return
 	}
+	if w.toplevel == nil {
+		return // hidden: the title goes to the next toplevel
+	}
 	w.toplevel.SetTitle(title)
 	if w.deco == ui.DecorationApp {
 		w.reportMetrics() // the title bar of the app shows it
@@ -745,8 +927,8 @@ func (w *window) SetSize(size ui.Size) {
 	}
 	w.width, w.height = width, height
 	if w.egl != nil {
-		if w.configures == 0 {
-			return // the first configure draws at this size
+		if w.configures == 0 || w.hidden || w.remapping {
+			return // the first configure (after a show) draws at this size
 		}
 		if w.frame != nil {
 			w.frame.Commit(int(w.width), int(w.height), decor.Configuration{})
@@ -866,14 +1048,6 @@ func (w *window) destroy() {
 		w.inhibitor.Destroy()
 		w.inhibitor = nil
 	}
-	if w.exported != nil {
-		w.exported.Destroy()
-		w.exported = nil
-		for _, f := range w.exportWaiting {
-			f("")
-		}
-		w.exportWaiting = nil
-	}
 	if w.contentType != nil {
 		w.contentType.Destroy()
 		w.contentType = nil
@@ -884,23 +1058,7 @@ func (w *window) destroy() {
 	if w.viewport != nil {
 		w.viewport.Destroy()
 	}
-	if w.decoration != nil {
-		w.decoration.Destroy()
-	}
-	if w.dialog != nil {
-		w.dialog.Destroy()
-		w.dialog = nil
-	}
-	if w.frame != nil {
-		w.frame.Free() // destroys the xdg_toplevel and the xdg_surface it made
-		w.frame = nil
-	}
-	if w.toplevel != nil {
-		w.toplevel.Destroy()
-	}
-	if w.xdgSurface != nil {
-		w.xdgSurface.Destroy()
-	}
+	w.dropRole()
 	w.surface.Destroy()
 	for _, b := range append(w.old, w.buffer) {
 		if b != nil {

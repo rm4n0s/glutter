@@ -53,6 +53,14 @@ type Window interface {
 	// SetState asks for the window to be maximized, minimized, fullscreen or
 	// back to normal.
 	SetState(state WindowState)
+	// SetHidden takes the window off the screen (true): no surface, no task-bar
+	// entry, no input and no focus; or puts it back (false) with the size, title,
+	// icon and state it had, and asks for the focus. A hidden window still exists:
+	// Run does not return because of it. While it is hidden it asks for no frame;
+	// a frame requested meanwhile is drawn once it is shown. It reports whether the
+	// platform can hide windows: one that cannot (the web) ignores the request and
+	// returns false.
+	SetHidden(hidden bool) bool
 	// SetCursor sets the mouse cursor shown over the window.
 	SetCursor(cursor MouseCursor)
 	// SetTextInput tells the IME about the focused text field. A zero

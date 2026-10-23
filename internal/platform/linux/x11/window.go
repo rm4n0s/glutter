@@ -35,6 +35,10 @@ type window struct {
 
 	mapped bool
 	closed bool
+	// hidden is whether the app withdrew the window (SetHidden); restore is the
+	// state it had then, which it gets back when it is mapped again.
+	hidden  bool
+	restore windowState
 
 	// cursor is the cursor over the window, set with SetCursor.
 	cursor platform.MouseCursor
@@ -72,6 +76,7 @@ func (p *Platform) NewWindow(cfg platform.WindowConfig) (platform.Window, error)
 		return nil, err
 	}
 	w := &window{p: p, id: p.nextView, cfg: cfg}
+	w.restore = windowState{maximized: cfg.State == platform.WindowStateMaximized, fullscreen: cfg.State == platform.WindowStateFullscreen}
 	p.nextView++
 	// The window is made on the monitor at the origin, or the primary one.
 	w.scale, w.display, w.hasDisplay = p.scaleAt(0, 0)
@@ -190,18 +195,28 @@ func (w *window) setProperties() {
 			p.x.setTransientForHint(p.display, w.xid, parent.xid)
 		}
 	}
+	w.setInitialState(cfg.State == platform.WindowStateMaximized, cfg.State == platform.WindowStateFullscreen)
+}
+
+// setInitialState sets _NET_WM_STATE before the window is mapped: maximized,
+// fullscreen, and modal for a modal dialog. The window manager reads it when it
+// maps the window (EWMH), and removes it when the window is withdrawn.
+func (w *window) setInitialState(maximized, fullscreen bool) {
+	p, at := w.p, &w.p.atoms
 	var state []uint64
-	switch cfg.State {
-	case platform.WindowStateMaximized:
+	if maximized {
 		state = append(state, at.netWMStateMaxVert, at.netWMStateMaxHorz)
-	case platform.WindowStateFullscreen:
+	}
+	if fullscreen {
 		state = append(state, at.netWMStateFullscreen)
 	}
-	if cfg.Modal && cfg.Kind == platform.WindowKindDialog {
+	if w.cfg.Modal && w.cfg.Kind == platform.WindowKindDialog {
 		state = append(state, at.netWMStateModal)
 	}
 	if len(state) > 0 {
 		p.setLongs(w.xid, at.netWMState, xaAtom, state)
+	} else {
+		p.x.deleteProperty(p.display, w.xid, at.netWMState)
 	}
 }
 
@@ -468,11 +483,12 @@ func (w *window) SetSize(size ui.Size) {
 }
 
 // SetState asks the window manager to maximize, minimize or fullscreen the
-// window, or to restore it (_NET_WM_STATE, ICCCM iconify).
+// window, or to restore it (_NET_WM_STATE, ICCCM iconify). A hidden window ignores
+// it: iconifying or restoring it would map it again.
 //
 // Flutter: no counterpart
 func (w *window) SetState(state platform.WindowState) {
-	if w.closed {
+	if w.closed || w.hidden {
 		return
 	}
 	p, at := w.p, &w.p.atoms
@@ -489,6 +505,40 @@ func (w *window) SetState(state platform.WindowState) {
 		p.x.mapWindow(p.display, w.xid) // brings back a window that was iconified
 	}
 	p.x.flush(p.display)
+}
+
+// SetHidden withdraws the window (true), as ICCCM 4.1.4 says: XWithdrawWindow
+// unmaps it and tells the window manager with a synthetic UnmapNotify to the root,
+// so the window leaves the screen and the task bar. The frame timer stops, and a
+// frame asked for meanwhile waits for the map. With false the window gets back the
+// _NET_WM_STATE it had (maximized, fullscreen), is mapped again, and asks for the
+// focus (_NET_ACTIVE_WINDOW); the map draws its first frame.
+//
+// Flutter: no counterpart
+func (w *window) SetHidden(hidden bool) bool {
+	if w.closed || w.hidden == hidden {
+		return true
+	}
+	p := w.p
+	w.hidden = hidden
+	if hidden {
+		if w.mapped {
+			w.restore = w.state // what the window manager said; before the map, what was asked for
+		}
+		if w.frameTimer != nil {
+			w.frameWanted = true
+		}
+		w.cancelFrame()
+		w.mapped = false
+		w.state.minimized, w.state.activated = false, false
+		p.x.withdrawWindow(p.display, w.xid, p.screen)
+	} else {
+		w.setInitialState(w.restore.maximized, w.restore.fullscreen)
+		p.x.mapWindow(p.display, w.xid)
+		w.sendActivate()
+	}
+	p.x.flush(p.display)
+	return true
 }
 
 // sendState sends the window manager a _NET_WM_STATE request to add or remove
@@ -553,11 +603,12 @@ func (w *window) KeepScreenOn(bool) error {
 // (_NET_WM_STATE, ICCCM iconify, _NET_ACTIVE_WINDOW), and the move, the resize from
 // an edge and the window menu are too (_NET_WM_MOVERESIZE and _GTK_SHOW_WINDOW_MENU,
 // for a window whose title bar the app draws). They need the pointer button that is
-// down; without one they do nothing.
+// down; without one they do nothing. A hidden window does only the close: the
+// others would map it again, or need it on the screen.
 //
 // Flutter: no counterpart
 func (w *window) PerformWindowAction(action ui.WindowAction) {
-	if w.closed {
+	if w.closed || (w.hidden && action.Kind != ui.WindowActionClose) {
 		return
 	}
 	p, at := w.p, &w.p.atoms

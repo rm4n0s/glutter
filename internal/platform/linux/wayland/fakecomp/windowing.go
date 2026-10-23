@@ -28,7 +28,7 @@ type windowing struct {
 	surfaceTop map[uint32]uint32 // wl_surface id -> xdg_toplevel id
 	configured map[uint32]bool   // xdg_toplevel id -> initial configure sent
 	lastTop    uint32            // the newest xdg_toplevel
-	pending    map[uint32]uint32 // wl_surface id -> buffer attached since the last commit
+	pending    map[uint32]uint32 // wl_surface id -> buffer attached since the last commit (nullBuffer for a null one)
 	current    map[uint32]uint32 // wl_surface id -> buffer on display
 	bufferSize map[uint32][2]int32
 	serial     uint32
@@ -54,6 +54,10 @@ func (w *windowing) init() {
 	w.frames = map[uint32][]uint32{}
 	w.serial = 100
 }
+
+// nullBuffer stands in the pending map for a null buffer attached to a surface,
+// which unmaps it at the next commit.
+const nullBuffer = ^uint32(0)
 
 // nextSerial returns a new configure serial. s.mu must be held.
 func (w *windowing) nextSerial() uint32 {
@@ -122,7 +126,11 @@ func (s *Server) handleWindowing(iface string, op uint16, id uint32, r *reader) 
 	case "wl_surface.1": // attach(buffer, x, y)
 		buffer, x, y := r.u32(), r.i32(), r.i32()
 		s.mu.Lock()
-		s.win.pending[id] = buffer
+		if buffer == 0 {
+			s.win.pending[id] = nullBuffer
+		} else {
+			s.win.pending[id] = buffer
+		}
 		s.mu.Unlock()
 		s.record("wl_surface.attach buffer=%d x=%d y=%d", buffer, x, y)
 	case "wl_surface.2": // damage
@@ -194,6 +202,12 @@ func (s *Server) handleWindowing(iface string, op uint16, id uint32, r *reader) 
 	case "xdg_surface.4":
 		s.record("xdg_surface.ack_configure serial=%d", r.u32())
 	case "xdg_toplevel.0":
+		s.mu.Lock()
+		surface := s.win.xdgSurface[s.win.toplevel[id]]
+		if s.win.surfaceTop[surface] == id {
+			delete(s.win.surfaceTop, surface) // the surface may get a new toplevel
+		}
+		s.mu.Unlock()
 		s.record("xdg_toplevel.destroy")
 	case "xdg_toplevel.1": // set_parent(parent)
 		parent := r.u32()
@@ -282,9 +296,13 @@ func (s *Server) commit(surface uint32) {
 	s.mu.Lock()
 	buffer := s.win.pending[surface]
 	s.win.pending[surface] = 0
+	unmap := buffer == nullBuffer
+	if unmap {
+		buffer = 0
+	}
 	size := s.win.bufferSize[buffer]
 	old := s.win.current[surface]
-	if buffer != 0 {
+	if buffer != 0 || unmap {
 		s.win.current[surface] = buffer
 	}
 	callbacks := s.win.frames[surface]
@@ -303,12 +321,15 @@ func (s *Server) commit(surface uint32) {
 	}
 	s.mu.Unlock()
 
-	if buffer != 0 {
+	switch {
+	case buffer != 0:
 		s.record("wl_surface.commit buffer=%d %dx%d", buffer, size[0], size[1])
-	} else {
+	case unmap:
+		s.record("wl_surface.commit buffer=null")
+	default:
 		s.record("wl_surface.commit")
 	}
-	if old != 0 && buffer != 0 && old != buffer {
+	if old != 0 && (buffer != 0 || unmap) && old != buffer {
 		s.Send(old, 0) // wl_buffer.release
 	}
 	s.finishFrames(callbacks)

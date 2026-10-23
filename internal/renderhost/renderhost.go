@@ -75,6 +75,12 @@ type Host struct {
 	Icons        map[ui.ViewID]ui.WindowIcon
 	ContentTypes map[ui.ViewID]ui.ContentType
 	ScreenOn     map[ui.ViewID]bool
+	// HiddenViews says which views the framework hid, the implicit one included;
+	// a view that was shown again is false.
+	HiddenViews map[ui.ViewID]bool
+	// OnHiddenChanged, when set, is called after the framework hid or showed a
+	// window, without the lock: the tester gives the app its lifecycle from it.
+	OnHiddenChanged func()
 	// ParentHandle is the handle of a view for the portals; the default is
 	// "test:" and the view ID. ActivationTokenValue is the activation token; the
 	// default is "test-token". Both are called on the thread that runs the posted
@@ -108,6 +114,8 @@ type FakeWindow struct {
 	Min, Max ui.Size
 	// Destroyed is whether the framework destroyed the window.
 	Destroyed bool
+	// Hidden is whether the framework hid the window.
+	Hidden bool
 }
 
 // CreateWindow records the window and gives it the next view ID, after the
@@ -173,6 +181,24 @@ func (h *Host) SetWindowConstraints(view ui.ViewID, min, max ui.Size) {
 	defer h.mu.Unlock()
 	if w := h.window(view); w != nil {
 		w.Min, w.Max = min, max
+	}
+}
+
+// SetWindowHidden keeps whether the window of the view is hidden, for the windows
+// the framework made and for the implicit one.
+func (h *Host) SetWindowHidden(view ui.ViewID, hidden bool) {
+	h.mu.Lock()
+	if h.HiddenViews == nil {
+		h.HiddenViews = map[ui.ViewID]bool{}
+	}
+	h.HiddenViews[view] = hidden
+	if w := h.window(view); w != nil {
+		w.Hidden = hidden
+	}
+	changed := h.OnHiddenChanged
+	h.mu.Unlock()
+	if changed != nil {
+		changed()
 	}
 }
 

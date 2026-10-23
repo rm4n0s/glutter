@@ -15,6 +15,7 @@ type windowHost struct {
 	titles  map[ViewID]string
 	sizes   map[ViewID]Size
 	limits  map[ViewID][2]Size
+	hidden  map[ViewID]bool
 	focus   []ViewFocusEvent
 	failure error
 }
@@ -46,6 +47,12 @@ func (h *windowHost) SetWindowConstraints(v ViewID, min, max Size) {
 	}
 	h.limits[v] = [2]Size{min, max}
 }
+func (h *windowHost) SetWindowHidden(v ViewID, hidden bool) {
+	if h.hidden == nil {
+		h.hidden = map[ViewID]bool{}
+	}
+	h.hidden[v] = hidden
+}
 func (h *windowHost) RequestViewFocus(v ViewID, s ViewFocusState, d ViewFocusDirection) {
 	h.focus = append(h.focus, ViewFocusEvent{ViewID: v, State: s, Direction: d})
 }
@@ -71,6 +78,7 @@ func TestCreateWindowWithoutAHostThatMakesWindows(t *testing.T) {
 			}
 			// The calls that need a window do nothing.
 			d.SetWindowTitle(1, "x")
+			d.SetWindowHidden(1, true)
 			d.DestroyWindow(1)
 			d.RequestViewFocusChange(1, ViewFocusStateFocused, ViewFocusDirectionForward)
 		})
@@ -96,6 +104,14 @@ func TestCreateAndDestroyWindow(t *testing.T) {
 	d.SetWindowConstraints(1, Size{Width: 100, Height: 50}, Size{Width: 900, Height: 700})
 	if h.titles[1] != "Renamed" || h.sizes[1] != (Size{Width: 500, Height: 350}) || h.limits[1] != [2]Size{{100, 50}, {900, 700}} {
 		t.Errorf("title %q size %v limits %v", h.titles[1], h.sizes[1], h.limits[1])
+	}
+	d.SetWindowHidden(1, true)
+	if !h.hidden[1] || d.View(1) != v {
+		t.Errorf("hidden %v, view %v: a hidden window keeps its view", h.hidden[1], d.View(1))
+	}
+	d.SetWindowHidden(1, false)
+	if h.hidden[1] {
+		t.Error("the window was not shown again")
 	}
 
 	d.DestroyWindow(1)

@@ -253,6 +253,13 @@ func (w *window) StartDrag(ui.DragRequest) error { return errDragUnsupported() }
 // Flutter: no counterpart
 func (w *window) PerformWindowAction(ui.WindowAction) {}
 
+// SetHidden ignores the request and returns false: the canvas is the only view of
+// the page, and a page cannot take itself off the screen (SPEC §23.2). Whether the
+// page is shown is the browser's, and the lifecycle follows it.
+//
+// Flutter: no counterpart
+func (w *window) SetHidden(bool) bool { return false }
+
 // Close takes the canvas out of the page.
 //
 // Flutter: lib/web_ui/lib/src/engine/view_embedder/flutter_view_manager.dart FlutterViewManager.unregisterView

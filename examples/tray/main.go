@@ -1,8 +1,8 @@
 // Command tray is a small note-taking window that lives in the system tray. The
 // window has a field for a note and a status line; the tray icon has a menu with
 // "Show window", "New notification", "Open file…", a separator and "Quit". Closing
-// the window does not end the app: the window is minimized and the app stays in the
-// tray (a click on the icon shows it again). "New notification" shows a desktop
+// the window does not end the app: the window is hidden, off the screen and the task
+// bar, and the app stays in the tray (a click on the icon shows it again). "New notification" shows a desktop
 // notification with an "Open" action that brings the window back, and "Open file…"
 // opens the file dialog of the desktop (desktop.OpenFiles) and shows the chosen path.
 //
@@ -107,17 +107,19 @@ func (s *trayPageState) window() *m.RegularWindowController {
 	return c
 }
 
-// hideWindow minimizes the window: there is no hidden window in the platform layer
-// yet, so the window goes to the task bar instead of away from it.
+// hideWindow takes the window off the screen and the task bar. The app goes on: a
+// hidden window still counts as open, and its widgets keep their state (the note).
 func (s *trayPageState) hideWindow() {
 	if c := s.window(); c != nil {
-		c.SetMinimized(true)
+		c.SetHidden(true)
 	}
 }
 
+// showWindow brings the window back, hidden or minimized, and asks for the focus.
 func (s *trayPageState) showWindow() {
 	if c := s.window(); c != nil {
-		c.SetMinimized(false)
+		c.SetHidden(false)
+		c.Activate()
 	}
 }
 

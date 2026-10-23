@@ -204,7 +204,7 @@ func TestSurfaceRequestsAndEvents(t *testing.T) {
 	want := []string{
 		"wl_surface.attach buffer=0 x=10 y=20", // a nil buffer is NULL on the wire
 		"wl_surface.frame",
-		"wl_surface.commit",
+		"wl_surface.commit buffer=null", // the null buffer unmaps the surface
 	}
 	got := s.srv.Requests()
 	if len(got) < 3 || !reflect.DeepEqual(got[len(got)-3:], want) {

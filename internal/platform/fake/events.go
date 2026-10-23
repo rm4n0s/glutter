@@ -41,6 +41,10 @@ const (
 	//
 	// Flutter: no counterpart
 	EntrySetState EntryKind = "SetState"
+	// EntrySetHidden records Window.SetHidden; Value is the bool.
+	//
+	// Flutter: no counterpart
+	EntrySetHidden EntryKind = "SetHidden"
 	// EntrySetCursor records Window.SetCursor; Value is the
 	// platform.MouseCursor.
 	//

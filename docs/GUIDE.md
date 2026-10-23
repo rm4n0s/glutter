@@ -649,9 +649,10 @@ func main() { println(notesPlace()) }
 
   `examples/editor` does this: on the web its notes live in memory until the page is closed, and the
   status bar says so.
-- **Not on the web:** a second window, the tray, file dialogs, drag and drop out of the app,
-  accessibility, system fonts, closing the page (`SystemNavigator.pop` does nothing). Services that
-  are missing return their `...Unavailable` error; `desktop.OpenURI` and notifications work.
+- **Not on the web:** a second window, hiding the window, the tray, file dialogs, drag and drop
+  out of the app, accessibility, system fonts, closing the page (`SystemNavigator.pop` does
+  nothing). Services that are missing return their `...Unavailable` error; `desktop.OpenURI` and
+  notifications work.
 - **Files and images.** `os` has no real files in a page. Assets come from `embed.FS` as on Linux;
   `http` goes through `fetch`, so the browser's CORS rules apply.
 - **Size and speed.** The page loads one large module (the counter is 8.8 MB gzipped in a release
@@ -673,5 +674,11 @@ func main() { println(notesPlace()) }
 - **Hot reload** is not possible in Go; `go run` is fast and the examples take no state.
 - **Platform code.** `dart:io`, plugins and platform channels are the packages of the
   standard library, and `desktop` (file dialogs, notifications, the tray, opening a URL).
+- **Closing to the tray.** Where a Flutter app reaches for the `window_manager` plugin to hide
+  its window, a Glutter app calls `SetHidden(true)` on the window's controller
+  (`WindowingOwner().ImplicitWindowController()` for the first window), usually from
+  `AppLifecycleListener.OnExitRequested`, which then returns `AppExitResponseCancel`. The window
+  leaves the screen and the task bar, the app keeps running, and `SetHidden(false)` or
+  `Activate()` brings it back as it was; `examples/tray` does this.
 - **Where the list of every difference is.** SPEC §12.10, one row per deviation, kept up to
   date.
