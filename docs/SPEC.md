@@ -8,7 +8,7 @@
 | Module | `github.com/rm4n0s/glutter` |
 | License | BSD-3-Clause |
 
-Glutter is a GUI toolkit for Go that reproduces Flutter's framework API on its own Go engine. An app is a normal Go program built with `CGO_ENABLED=0 go build`: no Dart, no Skia, no C compiler, no development packages. Version 1.0 is a complete desktop toolkit for Linux (Wayland and X11), including a system tray. Version 1.1 adds a Vulkan renderer on Linux, used when the machine has Vulkan, with OpenGL ES as the fallback, and the web: WebAssembly drawn with WebGPU, or with WebGL 2 where the browser has no WebGPU (§23). Version 1.2 adds what a code editor built on Glutter needs: fonts loaded at run time, fonts in `gluttertest`, and a fallback order that tries the listed font families before the system default (§10). Version 1.3 adds font queries and the desktop's font settings, a glyph cache that drops the oldest entry, `TreeSliver` and `ReorderableListView`. Version 1.4 adds tab stops in paragraph layout and a cache of shaped runs (§10). Version 1.5 lets an app hide a window and show it again, so that an app with a tray icon closes its window to the tray (§8.7), and gives the desktop app lifecycle from the windows (§13). Everything specific to an OS or GPU sits behind two internal interfaces, so Windows, macOS and mobile can be added later without changing the framework.
+Glutter is a GUI toolkit for Go that reproduces Flutter's framework API on its own Go engine. An app is a normal Go program built with `CGO_ENABLED=0 go build`: no Dart, no Skia, no C compiler, no development packages (Android, which needs the NDK's C compiler, is the one exception, §24). Version 1.0 is a complete desktop toolkit for Linux (Wayland and X11), including a system tray. Version 1.1 adds a Vulkan renderer on Linux, used when the machine has Vulkan, with OpenGL ES as the fallback, and the web: WebAssembly drawn with WebGPU, or with WebGL 2 where the browser has no WebGPU (§23). Version 1.2 adds what a code editor built on Glutter needs: fonts loaded at run time, fonts in `gluttertest`, and a fallback order that tries the listed font families before the system default (§10). Version 1.3 adds font queries and the desktop's font settings, a glyph cache that drops the oldest entry, `TreeSliver` and `ReorderableListView`. Version 1.4 adds tab stops in paragraph layout and a cache of shaped runs (§10). Version 1.5 lets an app hide a window and show it again, so that an app with a tray icon closes its window to the tray (§8.7), and gives the desktop app lifecycle from the windows (§13). Version 1.6 adds Android: an APK built by `glutter-android` from the same app code, with a small Java embedding like Flutter's, Vulkan with OpenGL ES as the fallback, touch, the soft keyboard and IMEs, TalkBack, predictive back, and the Android behaviors of the framework (overscroll stretch, the Material text selection toolbar, the magnifier, spell check) (§24). Everything specific to an OS or GPU sits behind two internal interfaces, so Windows, macOS and mobile can be added later without changing the framework.
 
 ---
 
@@ -28,7 +28,7 @@ Glutter is a GUI toolkit for Go that reproduces Flutter's framework API on its o
 
 - Hot reload, or a hot restart that keeps state. Go can't do this; we offer only a fast rebuild-and-run.
 - Cupertino widgets. Planned after 1.0.
-- Windows, macOS, Android and iOS backends. The design supports them (§6.4), but they aren't implemented. The web comes in 1.1 (§23).
+- Windows, macOS, Android and iOS backends. The design supports them (§6.4), but they aren't implemented. The web comes in 1.1 (§23), Android in 1.6 (§24).
 - TinyGo. Apps are built with the standard Go toolchain only, for the web too (D18).
 - Dart interop, Flutter plugins, and platform channels as a message codec. Go APIs are exposed directly instead.
 - Custom fragment shaders (`FragmentProgram`), 3D, video playback, WebView, SVG, printing.
@@ -71,7 +71,7 @@ Glutter is a GUI toolkit for Go that reproduces Flutter's framework API on its o
 | # | Decision | Notes |
 |---|---|---|
 | D1 | Flutter's API is translated with **positional required arguments plus a trailing options struct** ("Version 2") | §12. Rejected: struct literals (no compile-time required check), constructors returning `(Widget, error)`, and constructors returning error widgets |
-| D2 | **No cgo.** The system's C libraries are called through `github.com/ebitengine/purego` (Apache-2.0, from the Ebiten team): `dlopen`, C calls and C→Go callbacks without a C compiler. They are libwayland-client/-egl/-cursor, libxkbcommon(-x11), libX11 (+X11-xcb, Xi, Xrandr, Xcursor), libEGL and libGLESv2 | Supersedes the earlier "cgo allowed". Same libraries as Gio uses, called without cgo, as Ebiten does. §8.1, §16 |
+| D2 | **No cgo.** The system's C libraries are called through `github.com/ebitengine/purego` (Apache-2.0, from the Ebiten team): `dlopen`, C calls and C→Go callbacks without a C compiler. They are libwayland-client/-egl/-cursor, libxkbcommon(-x11), libX11 (+X11-xcb, Xi, Xrandr, Xcursor), libEGL and libGLESv2 | Supersedes the earlier "cgo allowed". Same libraries as Gio uses, called without cgo, as Ebiten does. §8.1, §16. Android is the one exception (D21) |
 | D3 | **Every system library is loaded at runtime** with `dlopen`, nothing is linked at build time | A missing library becomes a tagged error (`LibraryLoadFailed`, `EGLLoadFailed`) instead of a loader failure before `main`, and a missing Wayland library falls back to X11. Lookup rules are in §8.1 |
 | D4 | `github.com/go-text/typesetting` is an allowed dependency (fonts, shaping, bidi, segmentation, system font discovery) | §10 |
 | D5 | Scope is **Widgets + Material 3**. Cupertino comes later | §11 |
@@ -90,6 +90,10 @@ Glutter is a GUI toolkit for Go that reproduces Flutter's framework API on its o
 | D18 | **The web through the standard Go toolchain** (`GOOS=js GOARCH=wasm`): **WebGPU when the browser has it, WebGL 2 otherwise** | TinyGo is not supported. Tried on 2026-10-21 with TinyGo 0.43 and Go 1.27: it cannot compile `hash/maphash`, its `int` is 32 bits on wasm, its compiler crashed on `examples/counter`, and `internal/goid` reads `runtime.Stack`, which TinyGo does not fill. §23 |
 | D19 | **One renderer for the explicit GPU APIs** (`internal/gpu/explicit`), written against a small device interface that `vulkan` and `webgpu` implement | WebGPU's default limits are the design limits (§9.3), so what the renderer does on Vulkan it can do on WebGPU. Rejected: two separate renderers (twice the code), and wgpu-native or Dawn through purego (not a system library, so every app would have to ship it) |
 | D20 | **The shaders of the explicit renderer are WGSL.** `cmd/glutter-gen shaders` compiles them to SPIR-V with `naga`, and the output is checked in | Building an app still needs only Go (G3); `naga` is needed only to change a shader. WebGPU takes WGSL as it is, and naga's WGSL → SPIR-V path is the one wgpu uses for every Vulkan app. The GLES shaders stay GLSL ES 3.00 (§9.1); the parity tests keep the two sets drawing the same |
+| D21 | **Android (1.6) uses cgo, in one package only**: `internal/platform/android`, in `*_android.go` files: the JNI entry points and the calls into the NDK. Everything else stays cgo-free, and `CGO_ENABLED=0 go build ./...` keeps passing for Linux and the web | Decided on 2026-10-23. An Android app is a shared library loaded by Android, which Go builds only with cgo (`-buildmode=c-shared`), and purego itself needs cgo on Android. The `gles` and `vulkan` renderers keep loading their libraries through purego. §24.2 |
+| D22 | **A small Java embedding**, ported from Flutter's (`FlutterActivity`, `FlutterView`, `InputConnectionAdaptor`, `AccessibilityBridge`), talking to Go through JNI. Its `classes.dex` is generated by `glutter-gen android-dex` and checked in. No Gradle, AndroidX or Kotlin | Decided on 2026-10-23. A `NativeActivity` alone has no input connection (so no IME composition) and no accessibility provider; Java classes are the only way to have them. Like the SPIR-V of D20, the checked-in dex keeps a JDK out of building an app. §24.2 |
+| D23 | **Vulkan on Android where the device's Vulkan is good, OpenGL ES as the fallback**, as Flutter's Impeller does | Decided on 2026-10-23. The explicit renderer and its WGSL shaders are shared with Linux and the web (D19). Older Android drivers are known to be poor, hence Android 10 and Vulkan 1.1 as the minimum, and Impeller's deny list. §24.4 |
+| D24 | **Android 8.0 (API 26) is the minimum**; the target is API 37 | Chosen when M25 was planned (2026-10-23), not yet confirmed by the owner. It covers almost every device in use; newer APIs (insets types, back callbacks, the keyboard's animation) are used where the device has them. Raising it is the owner's decision. §24.1 |
 
 ## 5. Size estimate
 
@@ -124,8 +128,9 @@ These are production lines of Go, excluding tests (expect about as many test lin
                       PlatformDispatcher, View, pointer/key data, semantics updates
  ─────────────────────────── internal ─────────────────────────────────
  internal/engine      implements the ui contracts using the three below
- internal/platform    Platform interface ── linux/wayland, linux/x11, web, fake
- internal/gpu         Renderer interface ── vulkan, gles, soft (Linux); webgpu, gles on WebGL 2, canvas2d (web)
+ internal/platform    Platform interface ── linux/wayland, linux/x11, web, android, fake
+ internal/gpu         Renderer interface ── vulkan, gles, soft (Linux); webgpu, gles on WebGL 2, canvas2d (web);
+                      vulkan, gles, soft into the ANativeWindow (Android)
                       explicit: the renderer that vulkan and webgpu share
  internal/text        paragraph layout on go-text
  internal/dbus        D-Bus connection and services (tray, notify, portals, AT-SPI2)
@@ -134,6 +139,8 @@ These are production lines of Go, excluding tests (expect about as many test lin
    libwayland-client/-egl/-cursor, libxkbcommon(-x11), libX11 (+X11-xcb, Xi, Xrandr, Xcursor),
    libEGL, libGLESv2, libvulkan, libdecor, libfontconfig;  session D-Bus through godbus (pure Go)
  browser, through syscall/js: the DOM, WebGPU, WebGL 2, the 2D canvas
+ Android (1.6): the Java embedding through JNI, and libandroid, liblog through cgo (D21);
+   libEGL, libGLESv3, libvulkan through purego
 ```
 
 `ui` plays the role of Flutter's `dart:ui`, and `internal/engine` plays the role of Flutter's C++ engine. The framework packages talk only to `ui`.
@@ -163,6 +170,7 @@ glutter/
         wayland/         purego; Go protocol bindings generated from protocols/*.xml
         x11/             purego
       web/               syscall/js: canvas, DOM events, the IME text field, clipboard (§23)
+      android/           cgo and JNI: the view's surface, the looper, input, the input connection, insets (§24)
       fake/              scripted platform for tests
     gpu/                 Renderer interface, Scene flattening, glyph and path atlases
       explicit/          renderer for the explicit GPU APIs: Device interface, WGSL shaders, generated SPIR-V (§9.3)
@@ -170,11 +178,15 @@ glutter/
       webgpu/            syscall/js: explicit.Device (§9.5)
       gles/              purego (EGL + GLES 3.0); syscall/js (WebGL 2)
       canvas2d/          syscall/js: soft's image put into a 2D canvas, the web's last fallback (§9.6)
+      nativewindow/      purego (libandroid): soft's image put into the ANativeWindow, Android's last fallback (§24.4)
       soft/              pure-Go rasterizer (goldens, headless)
     text/                paragraph layout, font collection, glyph outlines
     dbus/                pure Go (godbus): tray, notifications, portals, settings, AT-SPI2
   cmd/glutter-gen/       generators: Wayland protocols, key tables, re-exports, CopyWith, icons; and apicheck, the API conventions check
   cmd/glutter-web/       builds, serves and screenshots an app for the web (§23.1)
+  cmd/glutter-android/   builds, installs, runs and screenshots an app on Android (§24.1)
+  internal/androidtool/  APK packaging, the SDK and NDK finder, the Java embedding and its checked-in classes.dex (§24.2)
+  internal/androidtest/  the emulator harness of the device tests (§24.13)
   examples/              counter, gallery, tray, multiwindow, editor
   third_party/flutter/   Flutter's LICENSE (we port from BSD-3 code)
   scripts/               fetch-reference.sh (pinned Flutter sources into reference/)
@@ -226,13 +238,14 @@ type Renderer interface {
 Rules:
 1. Public packages never import `internal/platform/<os>`, `internal/gpu/gles` or `internal/dbus`. Only `internal/engine` chooses backends.
 2. No `runtime.GOOS` and no OS build tags outside the backend packages. Framework behavior that differs by platform (scroll physics, shortcuts such as Ctrl vs Cmd, menu conventions, typography) is driven by `foundation.TargetPlatform`. That value comes from the platform, and tests can override it, as with Flutter's `debugDefaultTargetPlatformOverride`.
-   Two exceptions, both files that only choose and hold no logic: `internal/engine` picks its backends in `backends_<goos>.go`, and `foundation.IsWeb` (Flutter's `kIsWeb`) is a constant set in `foundation/web_js.go` and `foundation/web_other.go`, which also give `DefaultTargetPlatform` its host value (Linux on desktop; on the web the value the browser reported through `foundation.SetBrowserTargetPlatform`, step 21.1). Every package whose files all carry an OS tag keeps an untagged `doc.go`, so `./...` matches it on every OS.
+   Two exceptions, both files that only choose and hold no logic: `internal/engine` picks its backends in `backends_<goos>.go`, and `foundation.IsWeb` (Flutter's `kIsWeb`) is a constant set in `foundation/web_js.go` and `foundation/web_other.go`, which also give `DefaultTargetPlatform` its host value (Linux on desktop; on the web the value the browser reported through `foundation.SetBrowserTargetPlatform`, step 21.1). On Android, `foundation/host_android.go` gives `DefaultTargetPlatform` the value `TargetPlatformAndroid` (§24.12). Every package whose files all carry an OS tag keeps an untagged `doc.go`, so `./...` matches it on every OS. `GOOS=android` satisfies `linux`, so a file meant only for the Linux desktop says `linux && !android` (§24).
 3. Desktop services (`Services`: tray, notifications, file chooser, open URI, accessibility bridge) are optional capabilities. A missing one returns a tagged error such as `TrayUnavailable`. It never panics.
 4. Shaders are GLSL ES 3.00 in `gles` and WGSL in `explicit` (D20). A GLES call outside `internal/gpu/gles`, a Vulkan call outside `internal/gpu/vulkan` or a WebGPU call outside `internal/gpu/webgpu` is a bug.
 5. Backend selection on Linux: `GLUTTER_BACKEND=wayland|x11` if set. Otherwise Wayland when `WAYLAND_DISPLAY` connects, then X11 through `DISPLAY`, then the error `NoDisplay`. The renderer is chosen as §9.6 says.
 6. Nothing is linked at build time, so one binary contains both backends. A missing library only disables the backend that needs it.
-7. There is no `import "C"` anywhere. `CGO_ENABLED=0 go build ./...` must always succeed, and from step 19.1 on so must `GOOS=js GOARCH=wasm go build ./...`.
+7. There is no `import "C"` anywhere, except in the `*_android.go` files of `internal/platform/android` (D21). `CGO_ENABLED=0 go build ./...` must always succeed for Linux, from step 19.1 on so must `GOOS=js GOARCH=wasm go build ./...`, and from step 25.1 on `scripts/check-android.sh` (the module built and vetted for `android/arm64` and `android/amd64` with the NDK).
 8. `syscall/js` is imported only in `internal/platform/web`, `internal/gpu/webgpu`, `internal/gpu/canvas2d` and the WebGL 2 files of `internal/gpu/gles`.
+9. JNI, C types and NDK calls stay inside `internal/platform/android` (§24.2). The GPU backends get the Android window only as the `uintptr` of a `gpu.SurfaceHandle` of kind `SurfaceKindAndroid`, and the `ANativeWindow` calls of `internal/gpu/nativewindow` are loaded through purego from `libandroid.so`.
 
 ### 6.4 What a future port has to implement
 
@@ -241,7 +254,8 @@ Rules:
 | Windows | Win32 through `syscall` (no cgo): windows, IME (IMM32/TSF), OLE drag and drop, clipboard | `gles` on bundled ANGLE (`libEGL.dll`, `libGLESv2.dll`), the same approach as Flutter's Windows engine | Shell_NotifyIcon tray, toast notifications, IFileDialog, UI Automation |
 | macOS | Cocoa through purego's `objc` package (no cgo) | `gles` on ANGLE/Metal; a native Metal backend later | NSStatusItem, UNUserNotificationCenter, NSOpenPanel, NSAccessibility |
 | Web (done in 1.1, §23) | `internal/platform/web` through `syscall/js`: canvas element, DOM events, hidden text field for IME | `webgpu` (§9.5), else `gles` on WebGL 2 (the same API and shaders), else `canvas2d` | OpenURI and the Notifications API (§23.7); later: the ARIA tree, file dialogs |
-| Android / iOS | NDK `ANativeActivity` / UIKit through cgo (the only targets where cgo is unavoidable: purego requires cgo on Android, and iOS apps must link statically) | `gles` (Android); ANGLE/Metal (iOS) | platform equivalents |
+| Android (1.6, §24) | the Java embedding and JNI through cgo (D21, D22): one of the two targets where cgo is unavoidable, since purego requires cgo on Android | `vulkan`, else `gles`, else `soft` into the `ANativeWindow` (D23) | open URI and notifications through intents; TalkBack through an `AccessibilityNodeProvider` |
+| iOS | UIKit through cgo (iOS apps must link statically) | ANGLE/Metal | platform equivalents |
 
 None of these ports needs changes above `internal/`.
 
@@ -763,9 +777,10 @@ type Swapchain interface {
 
 ### 9.6 Choosing the renderer
 
-- `RunAppOpts.Renderer` (empty means `"auto"`) overrides the environment variable `GLUTTER_RENDERER`. On Linux the values are `auto`, `vulkan` and `gles`; on the web `auto`, `webgpu`, `webgl` and `soft`. Another value is `RendererUnknown`; a known renderer that this build or OS does not have is `RendererUnavailable`.
+- `RunAppOpts.Renderer` (empty means `"auto"`) overrides the environment variable `GLUTTER_RENDERER`. On Linux the values are `auto`, `vulkan` and `gles`; on the web `auto`, `webgpu`, `webgl` and `soft`; on Android `auto`, `vulkan`, `gles` and `soft`. Another value is `RendererUnknown`; a known renderer that this build or OS does not have is `RendererUnavailable`.
 - **`auto` on Linux**: Vulkan, when the library loads, the instance has the surface extension of the backend, a device that is not a CPU presents to the first window, and the first frame is presented without an error. Otherwise GLES.
 - **`auto` on the web**: WebGPU, when `navigator.gpu` gives an adapter and a device and the canvas configures. Otherwise WebGL 2 (`gles`) when `getContext("webgl2")` works. Otherwise `soft` drawing into a 2D canvas (`canvas2d`, with `putImageData`), so the app still shows. A canvas keeps the first kind of context it was asked for, so the platform puts a new canvas element in place before each try.
+- **`auto` on Android** (1.6): Vulkan on Android 10 or later with Vulkan 1.1 and a driver that is not on Impeller's deny list, when the first frame is presented. Otherwise GLES. Otherwise `soft` into the `ANativeWindow` (§24.4).
 - Each failed try is logged once at Info level with its tagged error, and the app is not told. A renderer that was asked for by name never falls back: its error is what `RunApp` returns.
 - `RendererUnknown` and `RendererUnavailable` are returned before the display is touched: the names are checked against the list of the OS when the engine starts. The renderer itself is chosen at the first frame (`internal/engine/renderers.go`): each candidate is made and draws the first frame of the first window; the one that presents it is kept, and `gpu.SurfaceHandle` carries what each candidate needs (`Display`, `Window` for EGL, `Surface` for Vulkan).
 - The choice is made once, at the first window, for the whole process, and every window uses that renderer. A GPU lost later is handled inside the renderer (§9.4, §9.5), except WebGPU's last resort, which switches the page to the next renderer of the list, WebGL 2 (`auto` only; a renderer asked for by name never switches, §9.5 "Decided in step 21.6").
@@ -1759,6 +1774,7 @@ func (s *counterPageState) Build(bc m.BuildContext) m.Widget {
   - `Paused` is not used on desktop, as in Flutter's desktop embedders.
 - On the desktop the backends do not report a lifecycle; the engine gives it from the windows, once a window has had the focus or was hidden: `Hidden` when every window is hidden (`SetHidden`, §8.7), `Resumed` when one of them has the keyboard focus, `Inactive` otherwise. A change of focus changes it after the framework got the view focus events of that change (in the next frame, with the other input), so the focus moving from one window of the app to another is not an `Inactive` in between, and the focus manager does not give back the focus it suspended in the old window. Closing a window counts too: the hidden windows that are left make the app `Hidden`. Hidden stops the frames and the tickers (`SchedulerBinding` disables frames), and showing a window starts them again. A minimized window still counts as visible: Wayland does not say that a window is minimized, and X11's `WindowInfo.Minimized` is not used for the lifecycle yet. A platform that reports a lifecycle itself (the web) is followed instead.
 - On the web the UI thread is the main goroutine too; §23.3 says how the browser's callbacks reach it, and the one rule that keeps them from deadlocking.
+- On Android (1.6) the UI thread is the OS thread that runs `main`, and Android's main thread is a second thread that only the embedding uses; §24.3 says how they talk and the rule that keeps them from deadlocking. Android reports the lifecycle itself, with `Paused` (§24.8).
 
 ## 14. Errors and diagnostics
 
@@ -1871,11 +1887,15 @@ Benchmarks (`go test -bench`) in `rendering`, `widgets`, `examples/gallery` and 
 | Size of `app.wasm.gz`, counter / gallery | < 4 MB / < 5 MB (on 2026-10-21, without the web platform and renderers: 2.3 MB / 2.4 MB) |
 | Start to first frame, `app.wasm` in the browser's cache | < 1 s |
 
+**Android** (1.6): the targets (idle CPU, frame rate and frame times of the gallery, cold start to first frame, APK size per ABI) are measured on the emulator and on the owner's phone in step 26.5 and written here with the owner's approval.
+
 ## 16. Build and runtime requirements
 
 **Building an app**: Go 1.27+ and nothing else. `CGO_ENABLED=0 go build` produces a binary that loads the system libraries at runtime. It's dynamically linked against glibc's loader, which is how purego reaches `dlopen`. Cross-compiling for linux/amd64 and linux/arm64 from any OS works.
 
 **Building for the web** (1.1): `GOOS=js GOARCH=wasm go build`, or `go run ./cmd/glutter-web build` for a directory a static web server can serve (§23.1). Only the standard Go toolchain is supported (D18).
+
+**Building for Android** (1.6): Go 1.27+, the Android NDK, the SDK's build-tools and one platform, and a Java runtime for `apksigner`; `go run ./cmd/glutter-android build` makes the APK (§24.1). No JDK is needed unless the Java embedding is changed (D22).
 
 **Contributing**: Go 1.27+ plus a C compiler, **only** because `go test -race` requires cgo. When cgo is enabled, purego uses it transparently, so the same code is tested both ways (§17). No `-devel` packages, `wayland-scanner` or `wayland-protocols` are needed.
 
@@ -1892,9 +1912,13 @@ Benchmarks (`go test -bench`) in `rendering`, `widgets`, `examples/gallery` and 
   - at-spi2-core, for accessibility
   - a Vulkan driver (§9.4); without one, GLES is used (§9.6)
 
+**Runtime on Android** (1.6): Android 8.0 (API 26) or later, on arm64 or x86_64, with OpenGL ES 3.0; Vulkan 1.1 is used where it is good (§24.4).
+
 **Runtime on the web** (1.1): a browser with WebAssembly and WebGL 2, which every current browser has. WebGPU is used where the browser has it (Chromium-based browsers, Safari, and Firefox where it ships WebGPU).
 
 **Contributing to 1.1** also needs: Node.js (the wasm unit tests, §17), Chromium and Firefox (the browser tests), Mesa's lavapipe and `vulkan-validation-layers` (the Vulkan display tests), and `naga` (`cargo install naga-cli --locked`), only to change a WGSL shader (D20).
+
+**Contributing to 1.6** also needs: the Android SDK command-line tools with `platform-tools`, a platform, `build-tools`, the NDK, the emulator and the two system images of §24.13; a JDK 17 or later, only to change the Java embedding; and, for the Vulkan device tests, the Khronos validation layer for Android. `docs/IMPLEMENTATION.md` ("Tools for M25–M26") has the versions and the commands.
 
 ## 17. Testing strategy
 
@@ -1929,6 +1953,7 @@ Benchmarks (`go test -bench`) in `rendering`, `widgets`, `examples/gallery` and 
 - **Vulkan** display tests (`glutter_display`) run under headless sway, and under Xvfb for X11, with Mesa's lavapipe (`VK_DRIVER_FILES` pointing at `lvp_icd.*.json`) and with validation on (§9.4); a validation error fails the test. Every golden scene is compared against `soft`, as for `gles`.
 - **Web unit tests**: `scripts/test-wasm.sh` runs the tests of every package that has no OS tag with `GOOS=js GOARCH=wasm go test` under Node (Go's `go_js_wasm_exec`). It runs them with a minimal environment, because Go's wasm loader limits the size of the environment.
 - **Browser tests** (`-tags glutter_browser`): `internal/webtest` builds a wasm test program, serves it with `net/http/httptest`, and starts a headless browser with a temporary profile: Chromium for WebGPU and WebGL 2, Firefox for WebGL 2 and, where its build has it, WebGPU (§9.5). The page posts its results and its read-back PNGs to the server, and the test compares them with the `soft` goldens. No WebDriver or DevTools library is used. Every browser process is killed when its test ends.
+- **Android** (1.6): `scripts/check-android.sh` (a standard check: build and vet for `android/arm64` and `android/amd64`), and **device tests** (`-tags glutter_android`) on the emulator through `internal/androidtest`, with Vulkan validation on; manual checks on a real phone where the emulator cannot tell (§24.13).
 
 ## 18. Milestones
 
@@ -1961,12 +1986,14 @@ Each milestone is broken into steps in `docs/IMPLEMENTATION.md` (written after t
 | M22 | Fonts and trees for code editors (1.2): fonts loaded at run time, fonts in `gluttertest`, the family fallback order, then font queries and the desktop's font settings, text benchmarks and an LRU glyph cache, `TreeSliver`, `ReorderableListView`, tab stops in paragraph layout and a cache of shaped runs (1.4) | a monospace font loaded by the app is used in `TextStyle`, in fallback and in goldens; release 1.2 after steps 22.1–22.3; a tab in a code line lands on its stop in every query; a line of code built again is at least 5 times cheaper; release 1.4 after step 22.10 |
 | M23 | Windows for tray apps: hiding a window and showing it again (`RegularWindowController.SetHidden`, §8.2, §8.3, §8.7), and the desktop lifecycle given by the windows (§13) | ✕ in the tray example takes the window off the screen and the task bar on X11 and Wayland while the app and its tray icon keep running, a click on the icon brings it back as it was, and `RunApp` ends only when the window closes or the app exits; release 1.5 |
 | M24 | Errors to the fullest: `rm4n0s/errors` v0.2.0 used the way its `AI_GUIDE.md` says (§14.4): tags are constants, an error is tagged once where it first appears, constructors are called in the function that fails, errors are logged with `slog` as `"err"`; `glutter-gen errcheck` keeps it | `go run ./cmd/glutter-gen errcheck -allow cmd/glutter-gen/errcheck.allow` reports nothing, and the default error reporter's log entry replays through `errors.FromJson` |
+| M25 | Android platform (1.6): the build tags and checks, `glutter-android` and the Java embedding, the platform (looper, surface, frames, lifecycle), `soft`, GLES and Vulkan on Android, input, insets and system UI, text input and the IME, back and lifecycle, fonts, TalkBack, services (§24) | `examples/counter` and `examples/gallery` run on the emulator with Vulkan, GLES and `soft` and match the goldens; typing with the soft keyboard, predictive back and TalkBack work on the owner's phone |
+| M26 | Android behaviors of the framework, and 1.6: overscroll indicators, the Material text selection toolbar and magnifier, predictive back transitions, spell check, the examples on Android with their performance (§24.12) | the ported Flutter tests pass; every example but `multiwindow` and `tray` runs on Android; release 1.6 |
 
 ## 19. Examples (`examples/`)
 
 `counter`, `layout` (Row/Column/Stack/Wrap), `animations`, `scrolling` (lists, grids, slivers), `navigation`, `editor` (text editing, clipboard, IME), `gallery` (all Material components, light/dark), `multiwindow`, `tray` (tray + notifications + file dialog), `custompaint`, `todo` (a DataTable of tasks with Edit and Delete buttons in each row).
 
-On the web (1.1) every example except `multiwindow` and `tray` builds and runs (§23).
+On the web (1.1) every example except `multiwindow` and `tray` builds and runs (§23), and on Android (1.6) too (§24).
 
 ## 20. Licensing and third-party code
 
@@ -1984,6 +2011,9 @@ On the web (1.1) every example except `multiwindow` and `tray` builds and runs (
 | material-color-utilities (ported) | Apache-2.0 | NOTICE entry |
 | Wayland protocol XML | MIT | kept with the generated code |
 | Flutter key data (generated key tables) | BSD-3-Clause | NOTICE entry |
+| Flutter's Android embedding (Java classes ported into `internal/androidtool/java`) and Impeller's Vulkan driver deny list (1.6) | BSD-3-Clause | the same `third_party/flutter/LICENSE` and NOTICE entry as the framework; each Java class names the Flutter class it ports |
+| Skia's Android font configuration parser (ported for the font matcher, 1.6) | BSD-3-Clause | NOTICE entry |
+| Khronos Vulkan-ValidationLayers (Android release) | Apache-2.0 | a tool: packed only into the device tests' APKs, never into an app (§24.13) |
 | Go's `wasm_exec.js` | BSD-3-Clause | copied from `$(go env GOROOT)/lib/wasm` into every web build by `glutter-web` (1.1); NOTICE entry |
 | naga | MIT OR Apache-2.0 | a tool, run only to change a shader; nothing of it ships, and the SPIR-V it makes from our WGSL is ours (D20) |
 
@@ -1992,7 +2022,11 @@ For 1.1 the checkout also holds Flutter's web engine, `engine/src/flutter/lib/we
 
 ## 21. Open decisions
 
-None at the moment. New ones are added here with a recommendation and moved to §4 once decided.
+New ones are added here with a recommendation and moved to §4 once decided.
+
+| Decision | Recommendation |
+|---|---|
+| File dialogs on Android: the Storage Access Framework gives `content:` URIs, which the path-based `desktop.OpenFiles` and `SaveFile` cannot carry (§24.11) | An API that reads and writes through the URI (`desktop.OpenDocuments` returning readers, `SaveDocument` taking a writer), usable on Linux through the portal too. Decide before a step adds it; 1.6 returns `FileChooserUnavailable` |
 
 ## 22. Risks
 
@@ -2008,6 +2042,10 @@ None at the moment. New ones are added here with a recommendation and moved to �
 | Each call from Go into JavaScript costs about a microsecond | a frame's data goes to the GPU in few large writes (§9.5); `gles` already skips repeated GL state. Measured in step 21.7; if it is still too slow, a frame's GL calls are encoded into one buffer that a small JavaScript function runs |
 | Some browsers have no WebGPU (Firefox on Linux, older Safari) | the WebGL 2 fallback, tested in Firefox |
 | A browser callback that waits for the UI goroutine deadlocks if the UI goroutine waits for a promise | the rule in §23.3; a browser test sends keys while a clipboard read is pending |
+| cgo on Android brings C into the module (D21) | cgo only in the `*_android.go` files of one package, a standard check that builds and vets it, and the Linux and web checks still run with `CGO_ENABLED=0` |
+| The emulator translates the GPU and runs x86_64 code, so it hides the bugs of phone drivers (Adreno, Mali) and of arm64 | manual checks on a real phone in every step that renders or takes input; Impeller's driver deny list; `auto` falls back to GLES on any Vulkan failure before the first frame; `GLUTTER_RENDERER=gles` as an intent extra |
+| A deadlock between Android's main thread and the UI thread | the rule of §24.3: the UI thread never waits for the main thread, and the main thread waits only in `surfaceDestroyed`, with a time limit |
+| Older Android versions have a CBDT emoji font, which Glutter does not draw yet | drawn from step 25.10 on (§24.9) |
 | Go's wasm binaries are large | `-ldflags=-s -w`, gzip made by `glutter-web`, and the size targets in §15 |
 
 ## 23. Web (`GOOS=js GOARCH=wasm`, 1.1)
@@ -2137,3 +2175,114 @@ Port from `lib/web_ui/lib/src/engine/text_editing/` (`text_editing.dart`, `compo
 - **Web fonts.** `engine.SystemFontMatcher` on js returns a matcher that finds nothing, so the collection holds the bundled fonts and the fonts the app loads and never scans a directory.
 - **The browser harness.** Chromium and Firefox have a minimum window width and show toolbars even when headless (Firefox: `--window-size` is ignored, `--width` gives a viewport 74 px shorter than the window), so an exact viewport cannot come from the window. `Shot` serves a wrapper page (`/__glutter/frame.html`) that shows the app in an `<iframe>` of exactly the size asked for; the app sees that as its window, and a resize is the wrapper changing the iframe's size once the app's canvas exists. Chromium's flags are kept in `internal/webtest/browser.go` as a table with the reason for each; `--no-sandbox` is not set because Chromium starts without it here (`GLUTTER_WEBTEST_FLAGS=--no-sandbox` adds it where the sandbox cannot start); the flags for WebGPU are in §9.5 (step 21.5). Firefox gets a `user.js` with the preferences that quiet it, each with its reason. Browsers run under `timeout -k 5s <lifetime>` in a process group of their own, with no `DISPLAY` or `WAYLAND_DISPLAY` and with `HOME`, `XDG_*` and `TMPDIR` inside the temporary profile, so nothing of the user's is reached; `Process.Stop` kills the group and removes the profile. The group code is `procgroup_linux.go` (an OS tag in `internal/webtest`, which §6.3 and CLAUDE.md list for this reason; other OSes get a launcher that kills the process only).
 - **Tests of the framework on Linux and wasm do not need a browser;** the browser tests (`glutter_browser`) are in `examples/counter` (first frame equals the golden, resize, device pixel ratio 2), `internal/platform/web` (host element, bad config, renderer names) and `internal/webtest` (the real browsers start, post, and leave nothing running).
+
+## 24. Android (`GOOS=android`, 1.6)
+
+Android is the first target where cgo is unavoidable (D21): an Android app is a shared library that Android loads into its own process, and Go builds one only with cgo (`-buildmode=c-shared`); purego, too, needs cgo on Android. The cgo stays in one package, `internal/platform/android`, and only in files that build for Android. Linux and the web stay cgo-free. Like Flutter's Android embedding (`FlutterActivity`, `FlutterView`), a few Java classes own the activity and the view and hand everything to Go through JNI (D22). The renderer is Vulkan where the device's Vulkan is good, with GLES as the fallback, as Flutter's Impeller does on Android (D23).
+
+**Build tags.** `GOOS=android` satisfies the `linux` build constraint, so every file tagged `linux` (and every `_linux.go` file) builds for Android too. The desktop backends that Android does not have carry `linux && !android`: `internal/platform/linux/...` and `internal/engine/backends_linux.go`. The pure-Go packages (`internal/dbus`, `desktop`) keep no OS tag, as on the web: on Android nothing connects to D-Bus (§24.11). The parts that both share keep `linux`: the purego loaders and the `gles` and `vulkan` renderers, which load `libEGL.so`, `libGLESv3.so` and `libvulkan.so` on Android as they load the Mesa libraries on Linux. Files that only Android builds are named `*_android.go`.
+
+### 24.1 Build and packaging
+
+- An app is built with `go run ./cmd/glutter-android build [-o app.apk] [-abi arm64,amd64] [-release] [-app-id org.example.app] [-label Name] [-icon icon.png] [-permission NAME]... <package>`. It finds the tools through `ANDROID_HOME` (the SDK: `build-tools/<newest>` for `aapt2`, `zipalign` and `apksigner`, `platforms/<newest>` for `android.jar`) and `ANDROID_NDK_HOME`, else the newest `ndk/<version>` under the SDK. A missing piece is a tagged error that names the `sdkmanager` package to install (`AndroidSDKNotFound`, `AndroidNDKNotFound`, `AndroidBuildToolsNotFound`, `AndroidPlatformNotFound`).
+- For each ABI (`arm64` is `arm64-v8a`, `amd64` is `x86_64`; the default is both) it runs `GOOS=android GOARCH=<arch> CGO_ENABLED=1 CC=<ndk>/toolchains/llvm/prebuilt/linux-x86_64/bin/<triple><min-sdk>-clang go build -buildmode=c-shared -o lib/<abi>/libapp.so <package>`. `-release` adds `-tags glutter_release -ldflags=-s -w`. The `.so` files are stored uncompressed and aligned to 16 KB (`zipalign -P 16`), so that the APK installs on devices with 16 KB memory pages, which Google Play requires; the ELF segments Go 1.27 and NDK 30 make are already 16 KB-aligned (checked on 2026-10-23).
+- The APK holds a manifest that the tool generates (one activity, `io.github.rm4n0s.glutter.GlutterActivity`, with the `configChanges` Flutter declares, so that turning the device or changing the theme does not recreate the activity; `minSdkVersion` 26, `targetSdkVersion` 37; the permissions asked for; `android:hasCode`), the embedding's `classes.dex`, the icon (Glutter's by default), and the libraries. It is linked with `aapt2 link` against `android.jar` and signed with `apksigner` (APK Signature Scheme v2 and v3). Debug builds are signed with a key the tool makes once with Go's `crypto` packages (`$XDG_CONFIG_HOME/glutter/android-debug/`); `-release` needs `-key` and `-cert` (PKCS#8 and X.509, as `apksigner` takes them). No Gradle, Android Studio, AndroidX or Kotlin is used.
+- `glutter-android install [-device serial]`, `run` (install, start, and stream the app's log lines from `logcat` until it exits or Ctrl+C) and `shot` (proof method E, §24.13) work on a connected device or a running emulator through `adb`. `run` and `shot` take `-env GLUTTER_X=v` (repeatable): they are given to the activity as intent extras, and the embedding copies the extras whose names start with `GLUTTER_` into the environment before `main` runs, as the web's loader copies the query parameters (§23.1).
+- An Android App Bundle (`.aab`) for Google Play is not in 1.6.
+
+### 24.2 The embedding and the native boundary
+
+- **Java.** The classes live in `internal/androidtool/java/io/github/rm4n0s/glutter/` and port the parts of Flutter's embedding (`engine/src/flutter/shell/platform/android/io/flutter/`) that Glutter needs: `GlutterActivity` (the activity and its lifecycle, configuration changes, back callbacks, results of the system dialogs), `GlutterView` (a `SurfaceView`: the surface's life, touch, mouse and key events, window insets, `onCreateInputConnection`, `getAccessibilityNodeProvider`), `GlutterInputConnection` (from `InputConnectionAdaptor` and `ListenableEditingState`), `GlutterAccessibility` (from `AccessibilityBridge`) and `Native` (the `native` methods and the calls from Go). They use only the platform's APIs of the minimum API level and check the level before newer calls. Each class says in a comment which Flutter class it ports, as the Go code's `// Flutter:` lines do.
+- **The checked-in dex.** `go run ./cmd/glutter-gen android-dex` compiles the Java with `javac --release 11 -classpath android.jar` and `d8 --min-api 26` into `internal/androidtool/classes.dex`, which is checked in and embedded into `glutter-android`. So building an app needs no JDK, only the Java runtime that `apksigner` runs on; `javac` is needed only to change the Java (as `naga` is for the shaders, D20). A test checks that the dex is up to date and skips without `javac`.
+- **cgo.** `internal/platform/android` is the only package with `import "C"`, and only in `*_android.go` files: the exported entry points (`JNI_OnLoad` and the `native` methods of `Native`), and small C functions for the `JNIEnv` calls and the NDK APIs (`ANativeWindow`, `ALooper`, `AChoreographer`, `liblog`). No C type, C pointer or JNI reference leaves the package; the GPU backends get the `ANativeWindow*` as the `uintptr` of a `gpu.SurfaceHandle` of the new kind `SurfaceKindAndroid`. Global JNI references are made once and dropped when the activity is destroyed.
+- **`main`.** A shared library does not run `main.main` by itself. `GlutterActivity.onCreate` loads `libapp.so`, whose `JNI_OnLoad` keeps the `JavaVM`; then it calls `Native.start`, which runs `main.main` (linked as gomobile and Gio do) on a new goroutine locked to its own OS thread. That thread is the UI thread (§24.3). `main` runs once per process: when it returns, or calls `os.Exit`, the activity finishes and the process exits with that code. If Android destroys the activity while the process lives on and a new activity starts (the user came back), the new activity attaches to the running app: the view gets the new surface.
+- **One view.** The activity shows one view that fills its window. A second `NewWindow`, a dialog window or a window with a parent is `WindowUnsupported`, as on the web. `SetTitle` sets the task description's label; `SetSize`, `SetSizeConstraints` and the window states are ignored, except fullscreen (immersive mode, §24.7); `SetHidden` returns false; `SetIcon` and `SetContentType` do nothing.
+
+### 24.3 Threads, event loop and frames
+
+- **Two threads, as in Flutter's Android embedding.** Android calls the activity, the view, the input connection and the accessibility provider on its main thread (Flutter's platform thread). Glutter's UI thread is the OS thread that runs `main`: it owns the framework, the renderer and the GL or Vulkan objects (§13).
+- **The UI thread's loop** is an `ALooper` prepared on that thread: `Post` writes to an `eventfd` the looper watches; frames come from `AChoreographer` frame callbacks on that looper (the 64-bit callback where the API level has it); `RequestFrame` asks for one callback, and nothing is asked for while no frame is scheduled. The frame time is the callback's vsync time.
+- **Events.** The Java side copies each event into plain values (a `MotionEvent` is recycled after its callback) and calls a `native` method, which queues it for the UI thread and returns. Nothing the main thread needs right away waits for the UI thread: unhandled keys are dispatched again later (§24.5), the input connection answers from its own copy of the editing state (§24.6), and the accessibility provider from its own copy of the semantics tree (§24.10).
+- **The one wait.** `surfaceDestroyed` must not return while the renderer still draws into the surface, so it waits for the UI thread to release the surface (at most 2 seconds, then it logs and returns). **The UI thread never waits for the main thread.** What Go asks of Java (show the keyboard, a new editing state, a semantics update, haptics, the system UI) is posted to the main thread's `Handler`, and answers (a clipboard read, a permission) come back as events. The UI thread is attached to the `JavaVM` once, when it starts.
+- Other goroutines use `SetState` and `Post` as on Linux.
+
+### 24.4 Rendering
+
+- **`SurfaceKindAndroid`**: `Window` is the `ANativeWindow*` of the view's surface, held (`ANativeWindow_acquire`) from `surfaceCreated` until the renderer has let it go. `surfaceChanged` gives the new size (`OnMetrics`); a destroyed surface stops the frames until the next one exists.
+- **GLES**: EGL on the `ANativeWindow` (`eglCreateWindowSurface`), OpenGL ES 3.0 and the same shaders (D7). The EGL context lives as long as the renderer; only the EGL surface is made again with each Android surface.
+- **Vulkan**: `VK_KHR_android_surface`. The swapchain's `preTransform` is the surface's `currentTransform`, and the frame is drawn rotated to match, so that the display does not rotate it again (Android's guidance for Vulkan). The render passes of the explicit renderer are checked for tile-based GPUs (Adreno, Mali, PowerVR): an attachment is cleared, or not loaded when the pass covers all of it, instead of being loaded from memory, and what nothing reads later is not stored.
+- **`soft`**: `internal/gpu/nativewindow`, the software renderer drawing into the window's CPU buffers (`ANativeWindow_setBuffersGeometry`, `lock`, `unlockAndPost`, loaded through purego from `libandroid.so`), the last fallback, as `canvas2d` is on the web. It also makes the first frames before the GPU renderers exist (step 25.3).
+- **`auto` on Android** (§9.6): Vulkan when the device runs Android 10 (API 29) or later, has Vulkan 1.1, is not on the deny list of drivers that Flutter's Impeller keeps (ported from `impeller/renderer/backend/vulkan/driver_info_vk.cc`), and presents the first frame. Otherwise GLES. Otherwise `soft`.
+- A lost surface is not a lost device: the renderer keeps its device, context, textures and atlases while the app is in the background. When Android asks for memory (`onTrimMemory`), the renderer drops its caches (the raster cache, the unused atlas pages), as Flutter does.
+
+### 24.5 Input
+
+Port from `AndroidTouchProcessor.java`, `KeyboardManager.java`, `KeyEmbedderResponder.java` and `KeyboardMap.java` of Flutter's embedding, or the files that hold that code at the pinned commit.
+
+- **Pointers.** `MotionEvent`s become `PointerData` with Flutter's conversion: the kind from the tool type (touch, stylus, inverted stylus, mouse), every pointer of the event and its historical samples, pressure, size, orientation and tilt, hover and the mouse buttons (`onGenericMotionEvent`), scroll from `ACTION_SCROLL` with the device's scroll factor, and the trackpad gestures Android reports. The conversion is plain Go over plain values (as on the web, §23.4), tested in the normal run.
+- **Keys.** `KeyEvent`s become `KeyData` through tables that `glutter-gen keys` generates from Flutter's key data (the Android scan codes and key codes), with Flutter's synthesized modifier and lock events. As in Flutter, the view takes every key event at once; when the framework did not handle one, the embedding dispatches it again to the rest of the view hierarchy and the system (so Back, volume and the soft keyboard's keys still work).
+- **Mouse cursors** use `PointerIcon` with Flutter's mapping (API 24 and later).
+- The system gesture areas come from the insets (§24.7). Drag and drop with other apps is not in 1.6 (`StartDrag` fails with `DragUnsupported`).
+
+### 24.6 Text input, IME and clipboard
+
+Port from `TextInputPlugin.java`, `InputConnectionAdaptor.java`, `ListenableEditingState.java` and `ImeSyncDeferringInsetsCallback.java`.
+
+- **The input connection.** While a text field has the focus, the view's `onCreateInputConnection` gives the IME a `GlutterInputConnection`. It keeps a copy of the editing state (text, selection, composing range) that the framework sends with `SetTextInput`, answers the IME from it on the main thread, applies the IME's edits to it and sends each change to the UI thread as `TextInputEvent`s. The contract with the framework stays the one of Linux and the web (§23.5 "Decided in step 21.3"); what Android needs beyond it is added to `ui.TextInputState` and `ui.TextInputEvent` without changing the old fields.
+- **The soft keyboard** is shown and hidden with `InputMethodManager` when text input is enabled and disabled. `EditorInfo` comes from the configuration: `inputType` from `TextInputType`, obscured text, autocorrect, suggestions and capitalization; `imeOptions` from `TextInputAction`, and the action comes back as the field's action. The keyboard's height is the bottom `ViewInsets` (§24.7), and its animation is followed frame by frame where Android reports it (API 30 and later), so a `Scaffold` moves with the keyboard.
+- **The clipboard** is `ClipboardManager`, text only, as on the web: reading is asked of the main thread and answered as an event (`ClipboardReadTimeout` when the context ends first). There is no primary selection (`ClipboardPrimaryUnavailable`).
+- **Spell check** is `TextServicesManager`'s spell checker service, behind the framework's `SpellCheckService`, as Flutter's `SpellCheckPlugin` does (step 26.4).
+- Autofill, `TextInputType.none` with a hardware keyboard, and content inserted by the keyboard (stickers, GIFs) are not in 1.6.
+
+### 24.7 View, insets, system UI and settings
+
+- **Edge to edge.** The view draws behind the status bar, the navigation bar and the display cutout, as Android 15 requires of apps that target it. `ViewPadding` is the union of the system bars' and the cutout's insets, `ViewInsets` is the keyboard's, `SystemGestureInsets` the system gestures' (all in physical pixels, from `WindowInsets`, through the older calls below API 30). So `SafeArea` and `MediaQuery` work as in Flutter.
+- **Metrics.** The physical size is the surface's; the device pixel ratio is `DisplayMetrics.density`. `Displays()` comes from `DisplayManager`, with the refresh rate, and changes call `OnDisplaysChanged`.
+- **System UI** (port the framework side of `services/system_chrome.dart`, and `PlatformPlugin.java` for the platform side): `SystemChrome.SetPreferredOrientations` (the activity's requested orientation), `SetEnabledSystemUIMode` (leanBack, immersive, immersiveSticky, edgeToEdge, through `WindowInsetsController`), `SetSystemUIOverlayStyle` and `SetSystemUIChangeCallback`; the overlay style that the app bar's `AnnotatedRegion` gives is sent after each frame, as Flutter's `RenderView` does. Fullscreen (`SetState`) is immersive mode. `KeepScreenOn` sets `FLAG_KEEP_SCREEN_ON`.
+- **Feedback.** `services.HapticFeedback` (port `services/haptic_feedback.dart`) uses `View.performHapticFeedback` with Flutter's constants; `SystemSound` uses `View.playSoundEffect`. On Linux and the web both do nothing, as in Flutter.
+- **Settings**: brightness from the night mode of the configuration; the text scale from `Configuration.fontScale`, non-linear on Android 14 and later as Flutter's `TextScaler` makes it; the locales; the 24-hour clock; animations off when the animator duration scale is 0; bold text (`fontWeightAdjustment`, API 31); high contrast text. Changes arrive through `onConfigurationChanged` and the settings observers, and call `OnSettings`.
+
+### 24.8 Lifecycle, back navigation and exit
+
+- **Lifecycle**, ported from Flutter's `LifecycleChannel` and `FlutterActivityAndFragmentDelegate`: `Resumed` while the activity is resumed and its window has the focus, `Inactive` while it is resumed without the focus or paused, `Hidden` and then `Paused` when it is stopped, `Detached` when it is destroyed. The platform reports the lifecycle itself, so the engine follows it instead of deriving it from the windows (§13). While the app is `Paused` or has no surface, no frame is drawn.
+- **Back.** On API 33 and later the activity registers an `OnBackInvokedCallback` while the framework wants the back gesture (`SystemNavigator.SetFrameworkHandlesBack`, which `PopScope` and the `Navigator` call), and on API 34 and later an `OnBackAnimationCallback`, whose start, progress, commit and cancel become the framework's predictive back events (`HandleStartBackGesture`, `HandleUpdateBackGestureProgress`, `HandleCommitBackGesture`, `HandleCancelBackGesture`). Below API 33 `onBackPressed` is a pop. A back that the framework does not handle finishes the activity, as Android's default does.
+- **`SystemNavigatorPop`** finishes the activity, and `RunApp` returns. `RequestAppExit` asks the framework, then finishes the activity.
+- **Memory.** `onTrimMemory` at the levels Flutter uses calls the framework's memory pressure handlers (`WidgetsBindingObserver.DidHaveMemoryPressure`) and the renderer's (§24.4).
+
+### 24.9 Fonts, assets, files and logging
+
+- **Fonts.** The system fonts are in `/system/fonts` and are described by `/system/etc/fonts.xml` (and the `fonts_customization.xml` of `/product/etc`, where it exists). The Android font matcher reads them as Skia's Android font manager does: the families and their aliases (`sans-serif` is Roboto), and the fallback chain with its languages, so that CJK text uses the font of the locale. go-text's `fontscan` is given its cache directory in the app's cache directory. The bundled Roboto and Material Icons stay the first fonts, as on Linux. The emoji font of Android 13 and later is COLRv1, which Glutter draws (§9); older versions have a CBDT emoji font, whose bitmaps are drawn from step 25.10 on.
+- **Assets** come from `RunAppOpts.Assets` (usually an `embed.FS`, which is inside `libapp.so`), as on Linux. Network images need `-permission android.permission.INTERNET`.
+- **Directories.** Before `main` runs, the embedding sets `HOME`, `TMPDIR`, `XDG_CONFIG_HOME`, `XDG_DATA_HOME` and `XDG_CACHE_HOME` to the app's private files and cache directories, so that `os.UserConfigDir`, `os.UserCacheDir` and `os.TempDir` work and the examples keep their data where the app may write.
+- **Logging.** An Android process has no terminal, so standard output and standard error are sent to `logcat` line by line, with the app ID as the tag and Info, Warn and Error priorities from the `slog` level of the line. `glutter-android run` shows them.
+
+### 24.10 Accessibility
+
+Port from `AccessibilityBridge.java` (and the parts of `semantics` that its messages carry).
+
+- `Services().Accessibility()` is the Android bridge. TalkBack and the other accessibility services turn it on (`AccessibilityManager`'s state and the touch exploration state, as Flutter reads them), and the framework then makes the semantics tree.
+- The UI thread sends each `ui.SemanticsUpdate` to the main thread; `GlutterAccessibility` keeps its own copy of the tree, answers `createAccessibilityNodeInfo` and `findFocus` from it, and sends actions (tap, long press, scroll, increase, decrease, copy, cut, paste, set selection, set text, dismiss, focus) to the UI thread as `SemanticsActionEvent`s. The events Flutter sends (window content changed, accessibility focus, live regions, announcements, scrolled) are sent too.
+
+### 24.11 Services
+
+- `desktop.OpenURI` starts an `ACTION_VIEW` intent for the URI, after the same validation as on Linux; no app for the URI is `OpenURIUnavailable`.
+- `desktop.ShowNotification` posts through `NotificationManager`, on one channel per urgency. On Android 13 and later it asks for `POST_NOTIFICATIONS` once per decision, as the web asks for its permission (§23.7); a refusal is `NotificationsUnavailable`. Actions are buttons, a click is the action `"default"`, and the closes are reported as Android reports them.
+- The tray is `TrayUnavailable`. The file dialogs are `FileChooserUnavailable` in 1.6: the Storage Access Framework gives `content:` URIs, not paths, so it needs its own API (a later decision, §21). D-Bus is never tried on Android.
+
+### 24.12 Framework behavior on Android
+
+`foundation.DefaultTargetPlatform` is `TargetPlatformAndroid` on Android (`foundation/host_android.go`), so the framework already takes Flutter's Android branches: clamping scroll physics, the Android typography, the tap target sizes, and so on. The Android parts that earlier steps left out are ported in M26:
+- `StretchingOverscrollIndicator` and `GlowingOverscrollIndicator`, and `MaterialScrollBehavior` building them (§12.10 has the rows that say they are not ported)
+- the Material `TextSelectionToolbar` with its overflow menu, `TextSelectionToolbarTextButton`, the Android branch of `AdaptiveTextSelectionToolbar`, and `TextMagnifier`
+- `PredictiveBackPageTransitionsBuilder` and the Android default of `PageTransitionsTheme` at the pinned commit
+- spell check: `SpellCheckConfiguration`, `SpellCheckSuggestionsToolbar` and the Android service (§24.6)
+InkSparkle stays a deviation (it needs a custom fragment shader, a non-goal, §2), and so does Cupertino.
+
+### 24.13 Testing and proof
+
+- **Standard checks** (from step 25.1 on): `scripts/check-android.sh` builds and vets the module for `android/arm64` and `android/amd64` with the NDK's clang. It needs only the NDK, no device. The plain-Go parts of the platform (event conversion, key tables, insets math, the manifest, the font matcher's parser) are in files without an OS tag and are tested in the normal run.
+- **Device tests** (`-tags glutter_android`) run on the emulator: `internal/androidtest` creates the virtual devices `glutter-37` (`system-images;android-37.0;google_apis;x86_64`, the default), `glutter-37-16k` (`system-images;android-37.2;google_apis_ps16k;x86_64`, 16 KB pages) and `glutter-26` (`system-images;android-26;google_apis;x86_64`, the minimum API level, from step 25.7 on) in `.android-test/` at the module root (git-ignored, so the quick-boot snapshot survives between runs), starts the emulator headless (`-no-window -no-audio -no-boot-anim`, `-gpu host` or `swiftshader_indirect`) under `timeout -k` in its own process group with its own `adb` server port and `HOME`, installs a test APK, starts it, reads the results the app writes (through `adb exec-out run-as`) and its `logcat` lines, and stops the emulator and the `adb` server. Nothing of the user's `~/.android` is read or written.
+- **Proof method E**: `glutter-android shot [-avd glutter-37] [-renderer r] [-env K=V]... [-screen] -o file.png <package>` builds and installs the app, starts it with `GLUTTER_SCREENSHOT=1`, and pulls the PNG the app saves after its first idle frame (step 7.4) from its files directory. `-screen` saves the device's whole screen with `adb exec-out screencap -p` instead, for what lies outside the app's surface: the status bar, the keyboard, a notification.
+- **Debug-only scripted events.** In debug builds `GLUTTER_DEV_EVENTS` (an intent extra) is a script in the form of the web's (§23.4 "Decided in step 21.2"), replayed after the first frame by the Java side on the main thread, through the same paths as the user's input: `tap:x,y`, `swipe:x1,y1,x2,y2,ms`, `key:KEYCODE_X`, `text:...` and `compose:a,b,c` through the input connection, `back:start,progress...,commit|cancel` through the back callbacks, `a11y:action,label` through the accessibility provider, `wait:ms`. The device tests and the proofs use it where `adb shell input` cannot reach (the input connection, the back gesture, accessibility actions). A bad script is `AndroidDevEventsInvalid`.
+- **Vulkan validation** on Android: the Khronos validation layer for Android (`libVkLayer_khronos_validation.so`, from the Android release of Vulkan-ValidationLayers) is packed into the test APKs by `glutter-android build -vulkan-validation <dir>`, and a validation error fails the device test.
+- **Real phones.** The emulator runs x86_64 code and translates GLES and Vulkan to the host's GPU, so it cannot show arm64 code or a phone's GPU driver. The steps that touch input, rendering or text input end with manual checks on the owner's phone (`glutter-android run`), recorded in `IMPLEMENTED.md`.

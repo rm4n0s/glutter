@@ -64,9 +64,11 @@ This file breaks the milestones in `docs/SPEC.md` §18 into small steps. Each st
    GOOS=js GOARCH=wasm go build ./...    # from step 19.1 on
    GOOS=js GOARCH=wasm go vet ./...      # from step 19.1 on
    scripts/test-wasm.sh                  # from step 19.1 on
+   scripts/check-android.sh              # from step 25.1 on: build and vet for android/arm64 and android/amd64
    ```
    If the step lists **Display tests**, run them too: `go test -race -tags glutter_display <packages>`. They run under a headless compositor (step 1.5) unless the step says otherwise.
    If the step lists **Browser tests**, run them too: `go test -tags glutter_browser <packages>` (SPEC §17).
+   If the step lists **Device tests**, run them too: `go test -tags glutter_android <packages>` (SPEC §24.13). They start the emulator themselves and stop it; run them one package at a time (`-p 1`), since one emulator needs 2–4 GB of memory.
 9. **Proof images.** Only when the step has a **Proof** item:
    - Produce exactly the images it lists, in `docs/implemented-proof-images/`, named `<id>-<name>.png` (e.g. `6.6-rendering-tour.png`).
    - Use the method it names (A, B or C, see below).
@@ -101,6 +103,7 @@ This file breaks the milestones in `docs/SPEC.md` §18 into small steps. Each st
 | **C. Desktop capture** | things outside the app's surface: several windows, server-side decorations | `scripts/screenshot-headless.sh <file.png> -- <command...>` runs the command in a headless sway session and captures the whole output with `grim` (step 1.5) |
 | **C (user desktop)** | things only a real desktop shows: GNOME/libdecor title bar, tray icon in a panel, notification bubble, portal dialog | Ask the user to run the command given in the step and save a screenshot at the given path. Then view and verify the image yourself |
 | **D. Browser capture** (from step 21.1) | anything drawn by an app on the web | `go run ./cmd/glutter-web shot -browser chromium\|firefox [-renderer r] -o docs/implemented-proof-images/<file>.png <package>`: builds the app for js/wasm, opens it in a headless browser with a temporary profile, and saves the frame the app reads back and posts (SPEC §23.8). `GLUTTER_DEV_*` values are given as URL query parameters with `-query` |
+| **E. Android capture** (from step 25.3) | anything drawn by an app on Android | `go run ./cmd/glutter-android shot [-avd glutter-37] [-renderer r] [-env GLUTTER_X=v]... -o docs/implemented-proof-images/<file>.png <package>`: builds the APK, starts the emulator if no device is given, runs the app with `GLUTTER_SCREENSHOT=1` and pulls the frame the app saved (SPEC §24.13). `-screen` captures the device's whole screen instead (status bar, keyboard, notifications). The emulator is stopped afterwards |
 
 ### Examples
 
@@ -141,6 +144,8 @@ This file breaks the milestones in `docs/SPEC.md` §18 into small steps. Each st
 | M22 Fonts and trees for code editors (1.2, 1.4) | 22.1–22.11 | |
 | M23 Windows for tray apps | 23.1 | `tray` |
 | M24 Errors to the fullest (`rm4n0s/errors` v0.2.0) | 24.1 | |
+| M25 Android platform (1.6) | 25.1–25.12 | `dev/android-hello`, `dev/android-services`; the examples on the emulator |
+| M26 Android behaviors of the framework, and 1.6 | 26.1–26.6 | every example but `multiwindow` and `tray` on Android |
 
 ---
 
@@ -1681,3 +1686,276 @@ The owner asked that `github.com/rm4n0s/errors` v0.2.0 is used to the fullest, t
 7. Update CLAUDE.md, SPEC §14.2, §14.4 and §18 (M24), and `docs/GUIDE.md` where it shows error handling.
 **Tests:** the checker (a fixture module per rule, a clean fixture, the allow file, the flags, every tag of the checker has a route test); the default reporter's log entry replays; every route assertion that went through a removed helper or a removed wrap is updated; every tag still has a route test.
 **Proof:** none. **Done when:** `go run ./cmd/glutter-gen errcheck -allow cmd/glutter-gen/errcheck.allow` reports nothing and the standard checks pass.
+
+## Tools for M25–M26
+
+Install a missing tool only by asking the user (rule 7), with the command from this table. `ANDROID_HOME` is the SDK (`$HOME/Android/Sdk` on the owner's machine, with `cmdline-tools/latest/bin`, `platform-tools` and `emulator` on `PATH`). The owner allowed reading and running what is inside `ANDROID_HOME`; everything a test writes goes into `.android-test/` at the module root. On 2026-10-23 every row but the last three was installed and checked.
+
+| Tool | Needed from | Check | Install (Fedora) |
+|---|---|---|---|
+| NDK 30.0.16248370 | 25.1 | `ls $ANDROID_HOME/ndk/` | `sdkmanager "ndk;30.0.16248370"` |
+| SDK command-line tools | 25.2 | `sdkmanager --version` | "Command line tools only" from developer.android.com, unzipped to `$ANDROID_HOME/cmdline-tools/latest` |
+| platform-tools, build-tools 37.0.0, platform 37.2 | 25.2 | `ls $ANDROID_HOME/build-tools/37.0.0/aapt2 $ANDROID_HOME/platforms/android-37.2/android.jar` | `sdkmanager "platform-tools" "build-tools;37.0.0" "platforms;android-37.2"` |
+| JDK 17+ (`javac`) | 25.2 (only to change the Java) | `javac -version` | `sudo dnf install java-25-openjdk-devel` |
+| Emulator and the API 37 images | 25.2 | `emulator -accel-check` says KVM is usable; `ls $ANDROID_HOME/system-images/android-37.0 $ANDROID_HOME/system-images/android-37.2` | `sdkmanager "emulator" "system-images;android-37.0;google_apis;x86_64" "system-images;android-37.2;google_apis_ps16k;x86_64"` |
+| `adb` | 25.2 | `adb version` | `sudo dnf install android-tools` (or the SDK's `platform-tools`) |
+| API 26 image (the minimum API level) | 25.7 | `ls $ANDROID_HOME/system-images/android-26` | `sdkmanager "system-images;android-26;google_apis;x86_64"` |
+| Vulkan validation layer for Android | 25.5 | `ls .android-test/vvl/x86_64/libVkLayer_khronos_validation.so` | the `android-binaries-*.zip` of the newest release at github.com/KhronosGroup/Vulkan-ValidationLayers/releases, unzipped into `.android-test/vvl/` |
+| The owner's phone with USB debugging | 25.4 (manual checks) | `adb devices` lists it | Settings → About phone → tap "Build number" 7 times; Developer options → USB debugging |
+
+---
+
+## M25: Android platform (1.6)
+
+The owner asked for Android support "like Flutter" on 2026-10-23 and chose: cgo only on Android (D21), a small Java embedding (D22), Vulkan with GLES as the fallback (D23), and the platform plus the Android behaviors of the framework (M26). SPEC §24 is the design; each step adds a "Decided in step" paragraph to the section it settles, as the web's steps did in §23.
+
+### 25.1 Build tags and the Android check
+**Goal:** the module builds and vets for `android/arm64` and `android/amd64`, an Android build has none of the desktop backends, and nothing changes on Linux or the web.
+**Read:** SPEC §24 (the introduction, "Build tags"), §6.3 (rules 2, 7 and 9), §24.13 (the first bullet), D21.
+**Files:** the build tags of `internal/platform/linux/...` and `internal/engine/backends_linux.go`; `internal/engine/backends_android.go`; `foundation/host_android.go`, `foundation/web_other.go`; `scripts/check-android.sh`; `scripts/fetch-reference.sh`; `cmd/glutter-gen/internal/errcheck` (and `apicheck` if it reads the module per OS).
+**Tasks:**
+1. `linux && !android` on every file that only the Linux desktop has: `internal/platform/linux/...` (Wayland, X11, xkb, the IME, fontconfig; `dl` keeps `linux` if `gles` and `vulkan` use it) and `internal/engine/backends_linux.go` with its tests. Each package whose files are then all tagged keeps its untagged `doc.go`. The purego files of `gles` and `vulkan` keep `linux`. The pure-Go packages (`internal/dbus`, `desktop`) get no OS tag (SPEC §6.3 rule 2); if an Android build reaches `internal/platform/linux` through another import, the import is cut where it starts.
+2. `internal/engine/backends_android.go`: `Run` fails with `BackendUnavailable` for now (step 25.3 adds the platform), no renderer candidates, no system font matcher (step 25.10).
+3. `foundation/host_android.go`: the host platform is `TargetPlatformAndroid`; `web_other.go` becomes `!(js && wasm) && !android`.
+4. `scripts/check-android.sh`: finds the NDK (`ANDROID_NDK_HOME`, else the newest `$ANDROID_HOME/ndk/*`) and runs `go build ./...` and `go vet ./...` for `android/arm64` and `android/amd64` with `CGO_ENABLED=1` and the NDK's clang for API 26 (`aarch64-linux-android26-clang`, `x86_64-linux-android26-clang`). Without an NDK it fails and prints the install command. It is a standard check from this step on (rule 8, CLAUDE.md).
+5. `glutter-gen errcheck`: an `android/arm64` pass with `CGO_ENABLED=1` and the NDK's clang, so that the `*_android.go` files are checked; without an NDK it fails with `ErrCheckAndroidNDKNotFound` and the install command. The same for `apicheck` if it reads the module per OS.
+6. `scripts/fetch-reference.sh`: add `engine/src/flutter/shell/platform/android` (the Java embedding and its tests) and `engine/src/flutter/impeller/renderer/backend/vulkan` (the driver deny list and the swapchain), at the pinned commit, and run it.
+**Tests:** `go list -deps` of `examples/counter` for `GOOS=android` has no package of `internal/platform/linux` (it needs no NDK); the Linux and js lists are unchanged; the route test of `ErrCheckAndroidNDKNotFound`.
+**Done when:** the default "Done when", `scripts/check-android.sh` passes, and the display tests of steps 1.10 and 7.4 still pass.
+
+### 25.2 The Java embedding and `glutter-android`
+**Goal:** `go run ./cmd/glutter-android run ./examples/dev/android-hello` builds an APK, installs it on the emulator and shows the program's log lines; `main` runs on its own thread and the activity finishes when it returns.
+**Read:** SPEC §24.1, §24.2, §24.3 ("Two threads", "`main`"), §24.9 ("Directories", "Logging"), §24.13 ("Device tests"), D22, D24, CLAUDE.md ("Don't": processes).
+**Port from:** `shell/platform/android/io/flutter/embedding/android/FlutterActivity.java` (`onCreate`, the launch flow) and `FlutterActivityAndFragmentDelegate.java` (the order of the setup), only the parts this step needs.
+**Files:** `internal/androidtool/` (`sdk.go`, `manifest.go`, `apk.go`, `sign.go`, `java/io/github/rm4n0s/glutter/{GlutterActivity,Native}.java`, `classes.dex`), `cmd/glutter-android/`, `cmd/glutter-gen/` (`android-dex`), `internal/platform/android/` (`doc.go`, `jni_android.go`, `main_android.go`, `log_android.go`, `env_android.go`, and the plain-Go files), `internal/androidtest/`, `examples/dev/android-hello/`, `.gitignore` (`.android-test/`).
+**Tasks:**
+1. The Java classes `GlutterActivity` and `Native` (SPEC §24.2): `onCreate` copies the `GLUTTER_` extras and the app's directories into the environment (`Native.setenv`), loads `libapp.so` and calls `Native.start`; the activity finishes when Go reports that `main` ended. The other classes come in the steps that need them.
+2. `glutter-gen android-dex` (SPEC §24.2) and a test that the checked-in `classes.dex` is up to date (skips without `javac`).
+3. `internal/androidtool`: the SDK and NDK finder with its tags (SPEC §24.1), the generated manifest (with Flutter's `configChanges`: `orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode`), the `go build -buildmode=c-shared` per ABI, `aapt2 link`, the dex and the libraries, `zipalign -P 16`, the debug key made with Go's `crypto`, `apksigner`.
+4. `internal/platform/android`: `JNI_OnLoad`, `Native.start` running `main.main` on a goroutine locked to a new OS thread, the end of `main` (finish, exit code), standard output and error to `logcat` (SPEC §24.9), the directories and the extras.
+5. `cmd/glutter-android` with `build`, `install` and `run` (SPEC §24.1); `-device` picks the device, else the only one connected, else an error that lists them.
+6. `internal/androidtest`: the harness of SPEC §24.13: it creates `glutter-37` and `glutter-37-16k` in `.android-test/`, starts the emulator headless in its own process group under `timeout -k` with its own `adb` server port and `HOME`, waits for `sys.boot_completed`, installs, starts with extras, waits for the app to end, reads its `logcat` lines, and stops the emulator and the `adb` server. A test that nothing it started is still running.
+7. `examples/dev/android-hello`: logs a line, the `GLUTTER_` variables it got and its directories, and exits with the code `GLUTTER_DEV_EXIT` names (debug builds only).
+**Tests:** table tests of the finder (temporary SDK trees: none, no build-tools, no platform, several versions), the manifest (golden text), the command lines the builder runs (a fake runner), the zip layout (the libraries stored and 16 KB-aligned, the dex, the manifest), the key (made once, reused); route tests of every tag.
+**Device tests:** on `glutter-37` and on `glutter-37-16k`: `android-hello` logs its line, sees an extra, has `HOME` in its files directory, exits with code 3 and its activity is gone; `llvm-readelf` shows 16 KB-aligned segments in both libraries.
+**Proof:** none (nothing is drawn yet).
+
+### 25.3 The Android platform: looper, surface, frames and `soft`
+**Goal:** `examples/counter` shows its first frame on the emulator, drawn by `soft` into the window.
+**Read:** SPEC §24.2 ("One view"), §24.3, §24.4 (`SurfaceKindAndroid`, `soft`), §24.13 (proof method E), §13, §9.6.
+**Port from:** `FlutterView.java` and `FlutterSurfaceView.java` (the surface's life), `shell/platform/android/vsync_waiter_android.cc` (frames from `AChoreographer`).
+**Files:** `internal/platform/android/` (`platform_android.go`, `loop_android.go`, `window_android.go`, `surface_android.go`, and plain-Go `metrics.go`, `frames.go`, `surfacestate.go`), `java/.../GlutterView.java`, `internal/gpu/surface.go` (`SurfaceKindAndroid`), `internal/gpu/nativewindow/`, `internal/engine/backends_android.go`, `internal/engine/screenshot.go`, `cmd/glutter-android` (`shot`).
+**Tasks:**
+1. The UI thread's `ALooper`, the `eventfd` behind `Post`, and the frames from `AChoreographer` (SPEC §24.3).
+2. `GlutterView` (a `SurfaceView`) and the surface handshake: `surfaceCreated`, `surfaceChanged`, and `surfaceDestroyed` waiting for the renderer to let go (SPEC §24.3 "The one wait").
+3. The platform: `Run`, `Post`, one window (`WindowUnsupported` for a second), `RequestFrame`, the size and the device pixel ratio, `Displays` (density and refresh rate), a first lifecycle (`Resumed` while the activity is resumed, `Hidden` while it is stopped; step 25.9 completes it), settings with their defaults (step 25.7), a clipboard that fails with `ClipboardUnavailable` (step 25.8), no services.
+4. `internal/gpu/nativewindow` (SPEC §24.4 `soft`); the Android renderer list is `soft` for now, and `vulkan` and `gles` are `RendererUnavailable` until steps 25.4 and 25.5.
+5. Self-capture on Android: the PNG goes to the app's files directory; `glutter-android shot` (proof method E, both modes).
+**Tests:** the plain-Go parts: metrics, merging frame requests, the surface state machine (created, changed, destroyed while a frame is drawn, destroyed with no renderer) with fakes; route tests.
+**Device tests:** the first frame of `examples/counter` equals its `soft` golden; turning the emulator (`adb emu rotate`) gives a frame of the new size; Home and back to the app draws again; the surface destroyed during a frame neither crashes nor blocks longer than the limit.
+**Proof:** E, `25.3-android-counter-soft.png`.
+
+### 25.4 GLES on Android
+**Goal:** `gles` draws on Android through EGL, with the same shaders, at parity with `soft`.
+**Read:** SPEC §24.4 (GLES, "A lost surface"), §9.1, §9.6.
+**Files:** `internal/gpu/gles/egl.go` (`SurfaceKindAndroid`, the Android library names), `internal/engine/backends_android.go`, a parity test program for the device tests.
+**Tasks:**
+1. EGL on the `ANativeWindow`: `libEGL.so` and `libGLESv3.so`, the config, `eglCreateWindowSurface`; the context outlives the surfaces (SPEC §24.4). `EGLLoadFailed` and the other EGL tags as on Linux.
+2. The Android renderer list becomes `gles`, `soft`.
+3. A parity program that draws every golden scene with the chosen renderer and writes the images for the device test.
+**Tests:** the choice of the EGL config (plain Go, as on Linux); the surface kinds.
+**Device tests:** parity over every golden scene with `gles` on `glutter-37`, within the `gles` tolerance; Home and back keeps the textures (no new uploads of the atlases); `GLUTTER_RENDERER=gles` given as an extra is used.
+**Proof:** E, `25.4-android-gallery-gles.png`: `examples/gallery` with `-renderer gles`.
+**Manual checks:** ask the user to run `go run ./cmd/glutter-android run -env GLUTTER_RENDERER=gles ./examples/gallery` on their phone and to scroll and switch the theme. Record the answers and the renderer line of the log.
+
+### 25.5 Vulkan on Android, and choosing the renderer
+**Goal:** the explicit renderer draws on Android through Vulkan, `auto` chooses as SPEC §24.4 says, and the validation layer finds nothing.
+**Read:** SPEC §24.4, §9.3, §9.4, §9.6, D23, §24.13 ("Vulkan validation").
+**Port from:** `impeller/renderer/backend/vulkan/driver_info_vk.cc` (the deny list), the pre-rotation of `impeller/renderer/backend/vulkan/swapchain/` (or the files that hold it at the pinned commit).
+**Files:** `internal/gpu/vulkan/surface.go`, `swapchain.go`, `instance.go`; `internal/gpu/explicit` (load and store operations); `internal/engine/backends_android.go`; `internal/androidtool` (`-vulkan-validation`).
+**Tasks:**
+1. `VK_KHR_android_surface` and `libvulkan.so`; the swapchain's `preTransform` from `currentTransform`, with the frame drawn rotated (SPEC §24.4).
+2. The render passes of `explicit` checked for tile-based GPUs (SPEC §24.4), on every platform: the goldens and the Linux parity must not change.
+3. `auto` on Android: API 29, Vulkan 1.1, the deny list (ported as a table, tested), the first frame presented; the list becomes `vulkan`, `gles`, `soft`.
+4. `glutter-android build -vulkan-validation <dir>` packs the layer for the device tests (SPEC §24.13).
+**Tests:** the deny list (table: driver, version, API level → allowed); the choice with fake candidates on Android; the pre-rotation transform for the four rotations; route tests.
+**Device tests:** parity over every golden scene with `vulkan` and validation on, in portrait and landscape; `auto` on the emulator logs its choice and why; `GLUTTER_RENDERER=vulkan` on an emulator started without Vulkan (`-feature -Vulkan`) fails with its tag and `auto` uses `gles`.
+**Proof:** E, `25.5-android-gallery-vulkan.png`, and with `-screen` in landscape, `25.5-android-gallery-landscape.png`.
+**Manual checks:** ask the user to run `go run ./cmd/glutter-android run ./examples/gallery` on their phone, read the renderer and device from the log, turn the phone, and scroll. Record the answers.
+
+### 25.6 Touch, mouse, stylus and keys
+**Goal:** input on Android as Flutter's embedding delivers it.
+**Read:** SPEC §24.5, §24.3 ("Events"), §24.13 ("Debug-only scripted events").
+**Port from:** `AndroidTouchProcessor.java`, `KeyboardManager.java`, `KeyEmbedderResponder.java`, `KeyboardMap.java` (generated in Flutter from `android_keyboard_map_java.tmpl`), `MouseCursorPlugin.java`; the Android names in `dev/tools/gen_keycodes/data`.
+**Tests:** `AndroidTouchProcessorTest.java`, `KeyboardManagerTest.java` and `KeyEmbedderResponderTest.java` (the relevant cases), as table tests of the plain-Go conversions.
+**Files:** `internal/platform/android/` (`pointer.go`, `keyboard.go`, `keymap_gen.go`, `cursor.go`, and the `_android.go` glue), `java/.../GlutterView.java`, `cmd/glutter-gen/internal/keys` (the Android tables).
+**Tasks:**
+1. Pointers, hover, scroll and the mouse buttons (SPEC §24.5), with the historical samples; the Java side copies the values out of the `MotionEvent`.
+2. Keys with the generated tables, the synthesized modifier and lock events, and the dispatch again of what the framework did not handle (SPEC §24.5).
+3. Mouse cursors through `PointerIcon`.
+4. `GLUTTER_DEV_EVENTS` for Android (SPEC §24.13) with `tap`, `swipe`, `key` and `wait`; the later steps add theirs.
+**Device tests:** three `adb shell input tap` on the counter's button show 3; a swipe scrolls `examples/scrolling`; a key that a `Shortcuts` widget handles is taken, and Back, which no widget handles, reaches the activity.
+**Proof:** E, `25.6-android-scrolling.png`: `examples/scrolling` after a scripted swipe.
+**Manual checks:** ask the user to try on their phone: a fling in `examples/scrolling`, a two-finger gesture in the gallery, and, if they have one, a mouse or a stylus. Record the answers.
+
+### 25.7 Insets, system UI, feedback and settings
+**Goal:** the app draws edge to edge with the right insets, controls the system bars and the orientation, gives haptic feedback, and follows the system settings.
+**Read:** SPEC §24.7, §24.13 (`glutter-26`).
+**Port from:** `PlatformPlugin.java` (system chrome, haptics, sounds), `SettingsChannel.java` and its callers, the viewport metrics of `FlutterView.java` (`onApplyWindowInsets`); the framework side: `services/system_chrome.dart`, `services/haptic_feedback.dart`, and the system UI style of `rendering/view.dart` (`_updateSystemChrome`) where it is not ported yet.
+**Tests:** `services/system_chrome_test.dart`, `services/haptic_feedback_test.dart`, and the system chrome cases of `rendering/view_test.dart` and `material/app_bar_test.dart` (the relevant cases).
+**Files:** `services/system_chrome.go`, `services/haptic_feedback.go`, `widgets/binding.go` (the hooks), `rendering/view.go`, `ui` (the host interfaces), `internal/engine`, `internal/platform/android/` (`insets.go`, `settings.go`, `systemui.go` and their glue), `java/...`.
+**Tasks:**
+1. Edge to edge, and `ViewPadding`, `ViewInsets` (the keyboard, completed in step 25.8) and `SystemGestureInsets` from the insets, with the calls below API 30.
+2. The framework's `SystemChrome` (SPEC §24.7), reached through a host interface of `ui.PlatformDispatcher` as the other platform services are; the overlay style of the `AnnotatedRegion` sent after each frame. On Linux and the web the calls do nothing.
+3. `HapticFeedback` and `SystemSound` on Android; nothing elsewhere.
+4. The settings (SPEC §24.7) and their changes; `Displays` from `DisplayManager`; `KeepScreenOn`; fullscreen as immersive mode; the requested orientation.
+5. The harness creates `glutter-26`; the device tests of this step run on it too.
+**Device tests:** on `glutter-37` and `glutter-26`: the app bar of the gallery sits below the status bar (`MediaQuery.padding.top` equals the status bar height `dumpsys window` reports); `cmd uimode night yes` makes the theme dark; `settings put system font_scale 1.5` scales the text; `settings put global animator_duration_scale 0` turns animations off; `SetPreferredOrientations` landscape turns the activity; immersive mode hides the bars.
+**Proof:** E with `-screen`, `25.7-android-gallery-dark-insets.png`: the dark gallery under the status bar, with light status bar icons.
+**Manual checks:** on the user's phone (with a display cutout and gesture navigation, if it has them): the app bar below the cutout, nothing under the gesture bar, a haptic tick from a long press. Record the answers.
+
+### 25.8 Text input, the soft keyboard and the clipboard
+**Goal:** text fields work with the soft keyboard and IMEs as in a Flutter app, the `Scaffold` moves with the keyboard, and copy and paste work with other apps.
+**Read:** SPEC §24.6, §23.5 ("Decided in step 21.3", the contract), §24.3.
+**Port from:** `TextInputPlugin.java`, `InputConnectionAdaptor.java`, `ListenableEditingState.java`, `ImeSyncDeferringInsetsCallback.java`, the clipboard of `PlatformPlugin.java`.
+**Tests:** `InputConnectionAdaptorTest.java`, `ListenableEditingStateTest.java` and `TextInputPluginTest.java` (the relevant cases, as Go tables of the plain-Go model and as device tests where they need the Java class).
+**Files:** `java/.../GlutterInputConnection.java`, `GlutterView.java`; `internal/platform/android/` (`textinput.go`, `clipboard.go` and their glue); `ui` (additions to the contract), `services/text_input.go` if the contract grows.
+**Tasks:**
+1. The input connection and its copy of the editing state (SPEC §24.6); what the contract needs beyond Linux and the web, added without changing the old fields.
+2. The soft keyboard, `EditorInfo` from the configuration, the editor action.
+3. The keyboard's insets and their animation (API 30 and later).
+4. The clipboard (SPEC §24.6).
+5. `GLUTTER_DEV_EVENTS`: `text:` and `compose:` through the input connection.
+**Device tests:** scripted `text:` types into a `TextField` of `examples/editor`; `compose:` commits its text; the action of the keyboard submits a single-line field; a password field asks for a password keyboard (`dumpsys input_method` shows the `inputType`); copy in the app and `cmd clipboard` (or a second app) read the text, and paste brings it back; the bottom `ViewInsets` equals the keyboard's height.
+**Proof:** E with `-screen`, `25.8-android-editor-keyboard.png`: `examples/editor` with typed text and the soft keyboard up, the editor above it.
+**Manual checks:** ask the user to try on their phone with Gboard (or their keyboard): typing with autocorrect, swipe typing, a Japanese or Chinese input method, an emoji from the keyboard, a password field, a multiline field, and copy and paste with another app. Record the answers.
+
+### 25.9 Lifecycle, back navigation and exit
+**Goal:** the app's lifecycle, the back button and gesture (with predictive back) and exiting work as in a Flutter app.
+**Read:** SPEC §24.8, §24.2 ("`main`"), §13.
+**Port from:** `LifecycleChannel.java`, the lifecycle and back parts of `FlutterActivityAndFragmentDelegate.java` and `FlutterActivity.java` (`OnBackInvokedCallback`, `OnBackAnimationCallback`), `BackGestureChannel.java`; on the framework side, `services/predictive_back_event.dart` and the back gesture of `widgets/binding.dart` where they are not ported yet.
+**Tests:** `LifecycleChannelTest.java` and the back cases of `FlutterActivityTest.java` (as tables of the plain-Go state machine), and the predictive back cases of `widgets/binding_test.dart` and `widgets/pop_scope_test.dart` that §12.10 left out (`setFrameworkHandlesBack`).
+**Files:** `java/.../GlutterActivity.java`, `internal/platform/android/` (`lifecycle.go`, `back.go` and their glue), `internal/engine` (following the platform's lifecycle, `Paused`), `services/system_navigator.go`, `widgets/binding.go`.
+**Tasks:**
+1. The lifecycle of SPEC §24.8; the engine follows it, with `Paused`; no frames while paused or without a surface.
+2. The back callbacks, `SetFrameworkHandlesBack`, and the predictive back events into the framework's back gesture handlers.
+3. `SystemNavigatorPop`, `RequestAppExit`, the end of `main`, and a new activity in a living process (SPEC §24.2).
+4. `onTrimMemory` (SPEC §24.8, §24.4).
+5. `GLUTTER_DEV_EVENTS`: `back:`.
+**Device tests:** Home makes the app `Hidden` then `Paused`, and coming back `Resumed`; Back pops a route of `examples/navigation`, and Back on the first route finishes the activity and the process exits; a `PopScope` that cannot pop keeps the activity; a scripted predictive back gesture gives the framework start, progress and commit (on `glutter-37`) and a plain pop (on `glutter-26`); `am kill` of a backgrounded app and a new start runs `main` again.
+**Proof:** none (the transitions come in step 26.3).
+**Manual checks:** ask the user to try on their phone: the back gesture in `examples/navigation` (with the system's predictive back animation on the first route), Home and back, and the recent-apps screen. Record the answers.
+
+### 25.10 Fonts on Android
+**Goal:** text uses the system's fonts and fallback as an Android app does, including CJK by locale and emoji on every supported version.
+**Read:** SPEC §24.9 ("Fonts"), §10, the color glyph rows of §9 and §12.10.
+**Port from:** Skia's `src/ports/SkFontMgr_android_parser.cpp` and `SkFontMgr_android.cpp`: add a sparse clone of `https://skia.googlesource.com/skia` at the revision Flutter's `DEPS` pins at the pinned commit to `scripts/fetch-reference.sh` (`reference/skia`), and record it in `reference/VERSION`.
+**Files:** `internal/text/androidfonts/` (the parser and the matcher, plain Go), `internal/engine/backends_android.go` (`SystemFontMatcher`, the cache directory of `fontscan`), the glyph drawing of `internal/gpu` and `internal/text` (CBDT bitmaps), `scripts/fetch-reference.sh`.
+**Tasks:**
+1. The parser of `fonts.xml` (the formats of API 26 to 37) and of `fonts_customization.xml`: families, names, aliases, languages, variants, weights and styles.
+2. The matcher (`text.Matcher`): a family by name or alias, and the fallback chain by language, as Skia's Android manager chooses.
+3. `fontscan` with its cache directory in the app's cache directory.
+4. CBDT color glyphs (go-text's bitmap glyph data), drawn scaled as Skia draws them, so the emoji font of Android 8 to 12 shows (SPEC §24.9). On Linux this also draws CBDT fonts that fontconfig picks.
+**Tests:** table tests of the parser over fixture files written for the tests (the elements of each format version), and of the matcher's choices (`sans-serif`, `serif`, `monospace`, `zh-Hans`, `ja`, `ko`, an emoji, an unknown family); a golden of CBDT glyphs from a small test font (a subset of Noto Color Emoji, with its OFL license next to it; ask the user if a tool is needed to make the subset).
+**Device tests:** on `glutter-37` and `glutter-26`: a text page with Latin, Greek, Arabic, Hebrew, Chinese, Japanese and emoji draws every character with a system font (no missing-glyph box) in both locales `en-US` and `ja-JP`.
+**Proof:** E, `25.10-android-text.png` (on `glutter-37`), and `25.10-android-text-api26.png` (on `glutter-26`, CBDT emoji).
+
+### 25.11 TalkBack
+**Goal:** apps are usable with TalkBack.
+**Read:** SPEC §24.10, §8.10 (the bridge on Linux), §7 (the semantics updates of `ui`).
+**Port from:** `AccessibilityBridge.java` (and what it reads of the semantics updates).
+**Tests:** `AccessibilityBridgeTest.java` (the relevant cases, as tables of the plain-Go parts and as device tests).
+**Files:** `java/.../GlutterAccessibility.java`, `GlutterView.java`; `internal/platform/android/` (`accessibility.go` and its glue); `internal/engine` (the Android bridge as `Services().Accessibility()`).
+**Tasks:**
+1. The bridge (SPEC §24.10): the screen reader's state, the copy of the tree on the main thread, the node infos, the actions, the events.
+2. `GLUTTER_DEV_EVENTS`: `a11y:` (an action on the node with a label).
+**Device tests:** with the bridge forced on (a debug extra; the `google_apis` images have no TalkBack), `uiautomator dump` lists the gallery's buttons, texts and text fields with their labels and bounds; a scripted `a11y:click` on the counter's button increments it; a scroll action scrolls a list; a live region's change is announced (`logcat` of the event).
+**Proof:** none.
+**Manual checks:** ask the user to turn on TalkBack on their phone and try the gallery: explore by touch, swipe to the next element, double-tap a button, scroll a list, type in a text field. Record the answers.
+
+### 25.12 Services on Android
+**Goal:** opening URIs and notifications work on Android; the other services say they are unavailable.
+**Read:** SPEC §24.11, §23.7 ("Decided in step 21.6", how the web plugs into `desktop`), §8.9.
+**Files:** `internal/platform/android/` (`desktop.go` plain Go, and its glue), `java/...` (intents, the notification channel, the permission request, the pending intents of the actions), `desktop/` (the Android services, as the web's are plugged in), `examples/dev/android-services/`.
+**Tasks:**
+1. `desktop.OpenURI` through `ACTION_VIEW` (SPEC §24.11).
+2. `desktop.ShowNotification` and `CloseNotification`: the channels, the permission, the actions, the closes.
+3. `TrayUnavailable` and `FileChooserUnavailable`; D-Bus is never tried.
+4. `examples/dev/android-services`: buttons that open a URI and show a notification with an action.
+**Tests:** the plain-Go parts over fakes (validation, the notification's fields, the permission states, replace by ID); route tests of every tag.
+**Device tests:** `OpenURI` of an `https:` URI starts an activity for it (`dumpsys activity` shows the intent); a notification appears in `dumpsys notification` with its title, body and action; with the permission revoked (`pm revoke`) and denied, `NotificationsUnavailable`.
+**Proof:** E with `-screen`, `25.12-android-notification.png`: the notification shade with the example's notification and its action button.
+**Manual checks:** ask the user to try `examples/dev/android-services` on their phone: the link opens the browser, the permission prompt appears once, the action button calls the app. Record the answers.
+
+---
+
+## M26: Android behaviors of the framework, and 1.6
+
+These steps port what earlier steps left out because only Android (or a touch screen) uses it (SPEC §24.12). They are framework steps: their tests run with `gluttertest` and `TargetPlatformAndroid`, and their proofs come from the emulator.
+
+### 26.1 Overscroll indicators
+**Goal:** scrolling past the end stretches the content on Android, as Material 3 does in Flutter.
+**Read:** SPEC §24.12, §12.10 (the rows of the overscroll indicators).
+**Port from:** `widgets/overscroll_indicator.dart`, the `buildOverscrollIndicator` of `widgets/scroll_configuration.dart` and of `material/app.dart` (`MaterialScrollBehavior`).
+**Tests:** `widgets/overscroll_indicator_test.dart`, `widgets/overscroll_stretch_indicator_test.dart`, and the overscroll cases of `widgets/scroll_behavior_test.dart` and `material/app_test.dart` (including the case that was skipped).
+**Files:** `widgets/overscroll_indicator.go`, `widgets/scroll_configuration.go`, `material/scroll_behavior.go` (or where `MaterialScrollBehavior` lives), the `material` re-exports.
+**Tasks:**
+1. `GlowingOverscrollIndicator`, `StretchingOverscrollIndicator` and `OverscrollIndicatorNotification`, as at the pinned commit. If the stretch needs a shader image filter that `ui` lacks, port the form without it and record the deviation.
+2. The scroll behaviors build them on Android and Fuchsia, as Flutter does; the §12.10 rows that said they are not ported are updated.
+**Proof:** E, `26.1-android-stretch.png`: `examples/scrolling` held past its top with a scripted swipe (`GLUTTER_SCREENSHOT_AFTER`).
+
+### 26.2 The Material text selection toolbar and the magnifier
+**Goal:** selecting text on Android shows Material's toolbar, handles and magnifier.
+**Read:** SPEC §24.12, §12.10 (the `TextSelectionThemeData` row and its deviation).
+**Port from:** `material/text_selection_toolbar.dart`, `material/text_selection_toolbar_text_button.dart`, the Android branch of `material/adaptive_text_selection_toolbar.dart`, `material/magnifier.dart`, `widgets/magnifier.dart`, and the magnifier parts of `widgets/text_selection.dart` and `widgets/editable_text.dart`.
+**Tests:** `material/text_selection_toolbar_test.dart`, `material/text_selection_toolbar_text_button_test.dart`, the Android cases of `material/adaptive_text_selection_toolbar_test.dart` and `material/text_field_test.dart` (toolbar and handles), `material/magnifier_test.dart`, `widgets/magnifier_test.dart`.
+**Files:** `material/text_selection_toolbar.go`, `material/text_selection_toolbar_text_button.go`, `material/adaptive_text_selection_toolbar.go`, `material/magnifier.go`, `widgets/magnifier.go`, `widgets/text_selection.go`, the re-exports.
+**Tasks:**
+1. The toolbar with its overflow menu and its buttons; the adaptive toolbar's Android branch; the §12.10 deviation ("the toolbar of every platform is the desktop one") is narrowed to iOS and macOS.
+2. `RawMagnifier`, `MagnifierDecoration`, `TextMagnifier` and their use while a handle is dragged.
+**Proof:** E with `-screen`, `26.2-android-selection-toolbar.png` (a long-pressed word in `examples/editor`, with its handles and toolbar) and `26.2-android-magnifier.png` (a handle being dragged).
+
+### 26.3 Predictive back transitions
+**Goal:** a route follows the back gesture on Android as in Flutter.
+**Read:** SPEC §24.8 ("Back"), §24.12, §12.10 (the `PageTransitionsTheme` row).
+**Port from:** `material/predictive_back_page_transitions_builder.dart`, the Android defaults of `material/page_transitions_theme.dart` at the pinned commit.
+**Tests:** `material/predictive_back_page_transitions_builder_test.dart`, the Android cases of `material/page_transitions_theme_test.dart`.
+**Files:** `material/predictive_back_page_transitions_builder.go`, `material/page_transitions_theme.go`, `gluttertest` (a back gesture: start, progress, commit, cancel), the re-exports.
+**Tasks:**
+1. `PredictiveBackPageTransitionsBuilder` and the Android default of `PageTransitionsTheme`; the §12.10 row is updated.
+2. `gluttertest` drives a back gesture through the same framework entry points the platform calls (step 25.9).
+**Proof:** E, `26.3-android-predictive-back.png`: `examples/navigation` halfway through a scripted back gesture.
+**Manual checks:** ask the user to try the back gesture in `examples/navigation` on their phone and compare with a Flutter or system app. Record the answers.
+
+### 26.4 Spell check
+**Goal:** misspelled words in text fields are marked on Android and the suggestions toolbar replaces them, as in Flutter.
+**Read:** SPEC §24.6 ("Spell check"), §24.12.
+**Port from:** `services/spell_check.dart`, `widgets/spell_check.dart`, `material/spell_check_suggestions_toolbar.dart`, `material/spell_check_suggestions_toolbar_layout_delegate.dart`, the spell check parts of `widgets/editable_text.dart`; `SpellCheckPlugin.java` for the platform side.
+**Tests:** `services/spell_check_test.dart`, `widgets/spell_check_test.dart`, `material/spell_check_suggestions_toolbar_test.dart`, the spell check cases of `widgets/editable_text_test.dart`.
+**Files:** `services/spell_check.go`, `widgets/spell_check.go`, `material/spell_check_suggestions_toolbar.go`, `widgets/editable_text.go`, `internal/platform/android/` (`spellcheck.go` and its glue), `java/...`.
+**Tasks:**
+1. The framework's spell check (`SpellCheckConfiguration`, `SpellCheckService`, the suggestion spans, the toolbar).
+2. The Android service through `TextServicesManager` (SPEC §24.6). Linux and the web have none, so spell check stays off there, as in Flutter.
+**Device tests:** a misspelled word typed with `text:` is underlined (the framework's spell check results, read in the test program).
+**Proof:** E with `-screen`, `26.4-android-spell-check.png`: a misspelled word underlined, with the suggestions toolbar open.
+
+### 26.5 The examples on Android, size and performance
+**Goal:** every example except `multiwindow` and `tray` runs on Android, and the Android targets of SPEC §15 are set and met.
+**Read:** SPEC §15, §19, §24.1, §24.13.
+**Files:** `examples/examples_test.go`, the examples where Android needs a change, `cmd/glutter-android` (`perf`), `scripts/perf-android.sh`, `docs/PERFORMANCE.md`, `README.md`, `docs/GUIDE.md`.
+**Tasks:**
+1. `examples/examples_test.go` builds every example except `multiwindow` and `tray` for `android/arm64` (skipped without an NDK, and under `-short`); a device test draws the first frame of each.
+2. `glutter-android perf` and `scripts/perf-android.sh`: cold start to the first frame (`am start -W` and the engine's own timing), idle CPU, frame times with `GLUTTER_FRAME_STATS=1`, memory, and the APK size per ABI, with release builds, on the emulator and on the owner's phone.
+3. Propose the Android targets for §15 from the measurements and Flutter's numbers on the same phone if the owner can give them; profile and fix until they are met, or the owner approves the exceptions.
+4. `docs/PERFORMANCE.md`: the Android table. `README.md`: an "Android" section (what to install, building, running, what Android lacks). `docs/GUIDE.md`: notes for Flutter Android developers (the APK tool, intent extras, files and logs, no plugins).
+**Manual checks:** ask the user to run `examples/gallery` (release build) on their phone and judge scrolling, the theme switch and a page change. Record the answers.
+**Done when:** the default "Done when", the Android targets are in §15 and met or approved, and the manual checks are recorded.
+
+### 26.6 Release 1.6
+**Tasks:** confirm and record in `IMPLEMENTED.md`:
+- the standard checks, the display tests, the browser tests and the device tests
+- the manual checks of 25.4–25.12 and 26.3–26.5
+- the performance targets (26.5)
+- the API check and the error rules check
+
+Then update the SPEC's version paragraph and the README, and **ask the user** before tagging `v1.6.0` and pushing the tag.
