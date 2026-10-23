@@ -27,6 +27,10 @@ type Options struct {
 	AllowCPU bool
 	// Validation turns on the validation layer, as GLUTTER_VULKAN_VALIDATION=1 does.
 	Validation bool
+	// DenyKnownBad refuses a device whose driver is on the list that Flutter's Impeller keeps
+	// (DriverInfo.IsKnownBadDriver): the engine sets it for `auto` on Android, so that GLES is used
+	// instead (SPEC §24.4). Vulkan asked for by name leaves it off.
+	DenyKnownBad bool
 	// Surface, when its Kind is set, is the first window: the device is chosen among those
 	// that can present to it, and has the swapchain extension. Without it the device draws
 	// offscreen only.
@@ -129,7 +133,7 @@ func Open(o Options) (*Device, error) {
 	if err != nil {
 		return nil, err
 	}
-	d, err := openDevice(inst, chooseOpts{Selector: getenv(deviceEnvVar), AllowCPU: o.AllowCPU}, o.Surface, log)
+	d, err := openDevice(inst, chooseOpts{Selector: getenv(deviceEnvVar), AllowCPU: o.AllowCPU, DenyKnownBad: o.DenyKnownBad}, o.Surface, log)
 	if err != nil {
 		inst.destroy()
 		return nil, err
@@ -179,6 +183,11 @@ func openDevice(inst *instance, opts chooseOpts, h gpu.SurfaceHandle, log *slog.
 		return nil, err
 	}
 	info := infos[index]
+	if opts.DenyKnownBad {
+		if err := checkDriver(info); err != nil {
+			return nil, err
+		}
+	}
 	f := inst.f
 	d := &Device{inst: inst, f: f, log: log, phys: handles[index], family: uint32(family), info: info,
 		limits: explicit.DefaultLimits(), arena: &arena{}, last: -1,
@@ -239,6 +248,7 @@ func (i *instance) describe(a *arena, index int, h physicalDeviceH) (physicalInf
 	props := *(*physicalDeviceProperties)(dl.Pointer(pp))
 	info := physicalInfo{
 		Index: index, Name: cName(props.deviceName[:]), Type: props.deviceType,
+		VendorID: props.vendorID, DeviceID: props.deviceID, DriverVersion: props.driverVersion,
 		APIVersion:          min(props.apiVersion, i.version),
 		MaxImageDimension2D: props.limits.maxImageDimension2D,
 		Extensions:          map[string]bool{},

@@ -51,3 +51,18 @@ func TestSplitLines(t *testing.T) {
 		}
 	}
 }
+
+// The end marker that flushLogs writes is a line of its own, cut like any other, and not a line a
+// program writes by chance (it starts with a NUL byte).
+func TestLogEndMarkerIsALineOfItsOwn(t *testing.T) {
+	lines, rest := splitLines("last words\n" + logEndMarker + "\n")
+	if len(lines) != 2 || lines[0] != "last words" || lines[1] != logEndMarker || rest != "" {
+		t.Errorf("splitLines = %q, %q", lines, rest)
+	}
+	if linePriority(logEndMarker) != linePriority("") {
+		t.Errorf("the marker has a priority of its own")
+	}
+	if logEndMarker[0] != 0 {
+		t.Errorf("the marker does not start with NUL: %q", logEndMarker)
+	}
+}

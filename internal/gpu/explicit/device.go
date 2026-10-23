@@ -326,6 +326,12 @@ const (
 	//
 	// Flutter: no counterpart
 	LoadLoad
+	// LoadDontCare leaves the target's contents undefined, for a pass that draws every pixel of
+	// it: a tile-based GPU (Adreno, Mali, PowerVR) then neither clears the tile nor reads it
+	// from memory (SPEC §24.4). A backend without the operation clears.
+	//
+	// Flutter: no counterpart
+	LoadDontCare
 )
 
 // Buffer is a GPU buffer.
@@ -454,12 +460,37 @@ type Pass interface {
 	End()
 }
 
+// Rotation is a rotation by quarter turns, clockwise: a surface's pre-transform (SPEC §24.4).
+//
+// Flutter: no counterpart
+type Rotation int
+
+// The rotations of a pre-transform.
+const (
+	Rotation0 Rotation = iota
+	Rotation90
+	Rotation180
+	Rotation270
+)
+
 // Swapchain is the images of a window.
 //
 // Flutter: no counterpart
 type Swapchain interface {
-	// Configure sets the size of the images, in device pixels.
+	// Configure sets the size of the images, in device pixels of the window as it is seen: when
+	// the swapchain has a pre-transform of a quarter turn, its images have the size turned.
 	Configure(width, height int) error
+	// PreRotation is the rotation that the window system expects of the images (Android's
+	// currentTransform): the frame is drawn into the image rotated clockwise by it, and the
+	// presentation engine then does not rotate it again. It is valid after Configure, and
+	// Rotation0 on every window system but Android's.
+	PreRotation() Rotation
+	// Stale says that the window system turned the surface (Android's currentTransform changed,
+	// which it reports once the surface is on screen, or when the device is turned without a
+	// change of size): the image that was just presented was drawn for the old pre-transform, and the
+	// renderer draws it again, whole and without building the scene again, into a swapchain that
+	// Configure makes. It is cleared by Configure.
+	Stale() bool
 	// Acquire returns the image to draw into next. When it is out of date, Configure
 	// again and retry once.
 	Acquire() (Texture, error)

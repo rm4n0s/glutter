@@ -308,3 +308,82 @@ func TestDefaultIconIsAPNG(t *testing.T) {
 		t.Errorf("not a PNG: % x", b[:8])
 	}
 }
+
+// -vulkan-validation packs the layer of each ABI next to libapp.so, stored, where the Vulkan loader
+// finds the layer of a debuggable app (SPEC §24.13).
+func TestBuildPacksTheValidationLayer(t *testing.T) {
+	dir := t.TempDir()
+	layers := filepath.Join(dir, "vvl")
+	for _, abi := range []string{"arm64-v8a", "x86_64"} {
+		if err := os.MkdirAll(filepath.Join(layers, abi), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(layers, abi, ValidationLayerFile), []byte("LAYER "+abi), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	out := filepath.Join(dir, "app.apk")
+	_, err := Build(context.Background(), testSDK(), &fakeRunner{}, BuildOptions{Package: "./x", Out: out, ConfigDir: filepath.Join(dir, "k"), Dex: []byte("d"), ValidationLayerDir: layers})
+	if err != nil {
+		t.Fatal(err)
+	}
+	zr, err := zip.OpenReader(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = zr.Close() }()
+	found := map[string]*zip.File{}
+	for _, f := range zr.File {
+		found[f.Name] = f
+	}
+	for _, abi := range []string{"arm64-v8a", "x86_64"} {
+		f, ok := found["lib/"+abi+"/"+ValidationLayerFile]
+		if !ok {
+			t.Errorf("the APK has no validation layer for %s", abi)
+			continue
+		}
+		if f.Method != zip.Store {
+			t.Errorf("the layer of %s is compressed", abi)
+		}
+		rc, err := f.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		b := make([]byte, 64)
+		n, _ := rc.Read(b)
+		_ = rc.Close()
+		if string(b[:n]) != "LAYER "+abi {
+			t.Errorf("the layer of %s holds %q", abi, b[:n])
+		}
+	}
+	// Without the option the APK has none.
+	out2 := filepath.Join(dir, "plain.apk")
+	if _, err := Build(context.Background(), testSDK(), &fakeRunner{}, BuildOptions{Package: "./x", Out: out2, ConfigDir: filepath.Join(dir, "k"), Dex: []byte("d")}); err != nil {
+		t.Fatal(err)
+	}
+	zr2, err := zip.OpenReader(out2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = zr2.Close() }()
+	for _, f := range zr2.File {
+		if strings.Contains(f.Name, "VkLayer") {
+			t.Errorf("a plain build has %s", f.Name)
+		}
+	}
+}
+
+func TestBuildFailsWhenTheValidationLayerIsMissing(t *testing.T) {
+	dir := t.TempDir()
+	_, err := Build(context.Background(), testSDK(), &fakeRunner{}, BuildOptions{Package: "./x", Out: filepath.Join(dir, "a.apk"), ConfigDir: filepath.Join(dir, "k"), Dex: []byte("d"), ValidationLayerDir: filepath.Join(dir, "none")})
+	appErr, ok := errors.FromError(err)
+	if !ok {
+		t.Fatalf("expected *errors.Error, got %T (%v)", err, err)
+	}
+	if !appErr.HasRoute("Build." + TagAndroidBuildInvalid) {
+		t.Errorf("route %s", appErr.Route())
+	}
+	if !strings.HasSuffix(appErr.Metadata["path"].(string), ValidationLayerFile) {
+		t.Errorf("metadata: %v", appErr.Metadata)
+	}
+}

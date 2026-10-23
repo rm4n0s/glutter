@@ -164,3 +164,59 @@ func TestChooseDeviceNeedsTheSwapchainForWindows(t *testing.T) {
 		t.Errorf("offscreen: %v", err)
 	}
 }
+
+// The pre-transform of the swapchain (SPEC §24.4): the surface's current transform when it is a
+// rotation the surface supports, else the identity, else what the surface says.
+func TestChooseTransform(t *testing.T) {
+	const all = surfaceTransformIdentity | surfaceTransformRotate90 | surfaceTransformRotate180 | surfaceTransformRotate270
+	tests := []struct {
+		name      string
+		supported uint32
+		current   uint32
+		wantFlag  uint32
+		wantRot   explicit.Rotation
+	}{
+		{"identity, as on Wayland and X11", surfaceTransformIdentity, surfaceTransformIdentity, surfaceTransformIdentity, explicit.Rotation0},
+		{"a phone held upright", all, surfaceTransformIdentity, surfaceTransformIdentity, explicit.Rotation0},
+		{"a phone turned one way", all, surfaceTransformRotate90, surfaceTransformRotate90, explicit.Rotation90},
+		{"a phone upside down", all, surfaceTransformRotate180, surfaceTransformRotate180, explicit.Rotation180},
+		{"a phone turned the other way", all, surfaceTransformRotate270, surfaceTransformRotate270, explicit.Rotation270},
+		{"a rotation the surface does not support is not used", surfaceTransformIdentity, surfaceTransformRotate90, surfaceTransformIdentity, explicit.Rotation0},
+		{"a mirror is not a rotation: identity when supported", surfaceTransformIdentity | 0x10, 0x10, surfaceTransformIdentity, explicit.Rotation0},
+		{"no identity and no rotation: the current transform", 0x10, 0x10, 0x10, explicit.Rotation0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			flag, rot := chooseTransform(tt.supported, tt.current)
+			if flag != tt.wantFlag || rot != tt.wantRot {
+				t.Errorf("chooseTransform(%#x, %#x) = %#x, %v; want %#x, %v", tt.supported, tt.current, flag, rot, tt.wantFlag, tt.wantRot)
+			}
+		})
+	}
+}
+
+// VkAndroidSurfaceCreateInfoKHR is { VkStructureType sType; const void* pNext; flags; struct
+// ANativeWindow* window; } on a 64-bit target (vulkan_android.h needs the NDK's headers, so the
+// layout is checked here by hand).
+func TestAndroidSurfaceCreateInfoLayout(t *testing.T) {
+	var s androidSurfaceCreateInfo
+	typ := reflect.TypeOf(s)
+	if typ.Size() != 32 {
+		t.Errorf("size = %d, want 32", typ.Size())
+	}
+	for name, want := range map[string]uintptr{"sType": 0, "pNext": 8, "flags": 16, "window": 24} {
+		if f, ok := typ.FieldByName(name); !ok || f.Offset != want {
+			t.Errorf("%s offset = %d, want %d", name, f.Offset, want)
+		}
+	}
+}
+
+func TestSurfaceExtensionsOfAndroid(t *testing.T) {
+	got, err := surfaceExtensions(gpu.SurfaceKindAndroid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"VK_KHR_surface", "VK_KHR_android_surface"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("surfaceExtensions = %v, want %v", got, want)
+	}
+}

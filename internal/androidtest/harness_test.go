@@ -190,3 +190,29 @@ func TestPorts(t *testing.T) {
 		t.Errorf("console port %d", c)
 	}
 }
+
+func TestValidationLayerDir(t *testing.T) {
+	root := t.TempDir()
+	_, err := validationLayerDir(root)
+	appErr, ok := errors.FromError(err)
+	if !ok {
+		t.Fatalf("expected *errors.Error, got %T (%v)", err, err)
+	}
+	if !appErr.HasRoute("validationLayerDir." + TagAndroidTestValidationLayerMissing) {
+		t.Errorf("unexpected failure path: %s", appErr.Route())
+	}
+	if s, _ := appErr.Metadata["install"].(string); !strings.Contains(s, "Vulkan-ValidationLayers") || !strings.Contains(s, filepath.Join(".android-test", "vvl")) {
+		t.Errorf("the error does not say how to get the layer: %v", appErr.Metadata)
+	}
+	layer := filepath.Join(root, ".android-test", "vvl", "x86_64")
+	if err := os.MkdirAll(layer, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(layer, androidtool.ValidationLayerFile), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dir, err := validationLayerDir(root)
+	if err != nil || dir != filepath.Join(root, ".android-test", "vvl") {
+		t.Errorf("validationLayerDir = %q, %v", dir, err)
+	}
+}

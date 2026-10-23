@@ -33,7 +33,13 @@ func decodePNG(t *testing.T, b []byte) *image.RGBA {
 // installApp builds a package of the module for the emulator and installs it.
 func installApp(ctx context.Context, t *testing.T, e *Emulator, pkg string) string {
 	t.Helper()
-	apk, appID, err := e.BuildAPK(ctx, pkg, t.TempDir(), androidtool.BuildOptions{})
+	return installAppWith(ctx, t, e, pkg, androidtool.BuildOptions{})
+}
+
+// installAppWith is installApp with build options (the validation layer, for one).
+func installAppWith(ctx context.Context, t *testing.T, e *Emulator, pkg string, opts androidtool.BuildOptions) string {
+	t.Helper()
+	apk, appID, err := e.BuildAPK(ctx, pkg, t.TempDir(), opts)
 	if err != nil {
 		t.Fatal(Describe(err))
 	}

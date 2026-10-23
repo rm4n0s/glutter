@@ -115,6 +115,12 @@ func (s *swapchain) Acquire() (explicit.Texture, error) {
 	return &texture{d: s.d, desc: desc, tex: v, view: v.Call("createView"), external: true}, nil
 }
 
+// Stale implements explicit.Swapchain: a canvas is never turned under the page.
+func (s *swapchain) Stale() bool { return false }
+
+// PreRotation implements explicit.Swapchain: a canvas is never rotated.
+func (s *swapchain) PreRotation() explicit.Rotation { return explicit.Rotation0 }
+
 // Present implements explicit.Swapchain: the browser presents the canvas when the task ends, and
 // has no damage to be told.
 func (s *swapchain) Present([]image.Rectangle) error { return s.d.usable() }

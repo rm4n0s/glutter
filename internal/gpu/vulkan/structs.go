@@ -691,6 +691,16 @@ type waylandSurfaceCreateInfo struct {
 	surface uintptr
 }
 
+// androidSurfaceCreateInfo is VkAndroidSurfaceCreateInfoKHR (vulkan_android.h, which needs the
+// NDK's headers, so its layout test is written by hand).
+type androidSurfaceCreateInfo struct {
+	sType  uint32
+	pNext  uintptr
+	flags  uint32
+	_      uint32
+	window uintptr
+}
+
 type xlibSurfaceCreateInfo struct {
 	sType  uint32
 	pNext  uintptr

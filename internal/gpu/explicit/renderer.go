@@ -295,10 +295,13 @@ func (r *Renderer) frame(w *window, fb *frameBuilder, width, height int, scene *
 		_ = enc.Submit()
 		return nil, err
 	}
-	pass := enc.BeginPass(img, LoadClear, bg)
+	// The blit covers the whole image, so the pass does not load it. The instance index tells the
+	// shader the pre-rotation of the swapchain (blit.wgsl).
+	rotation := w.sc.PreRotation()
+	pass := enc.BeginPass(img, LoadDontCare, bg)
 	pass.SetPipeline(blit)
 	pass.SetBindGroup(0, group)
-	pass.Draw(3, 1, 0, 0)
+	pass.Draw(3, 1, 0, int(rotation))
 	pass.End()
 
 	var shot *image.RGBA
@@ -332,10 +335,53 @@ func (r *Renderer) frame(w *window, fb *frameBuilder, width, height int, scene *
 	if capture && shot == nil && !late {
 		return nil, errors.New(tagRendererCaptureFailed, "the device did not deliver the frame it was asked to read back")
 	}
-	if err := w.sc.Present(damage); err != nil {
+	if err := w.sc.Present(RotateRects(damage, width, height, rotation)); err != nil {
 		return nil, err
 	}
+	if w.sc.Stale() {
+		if err := r.blitAgain(w, width, height, bg); err != nil {
+			return nil, err
+		}
+	}
 	return shot, nil
+}
+
+// blitAgain puts the frame texture into a new swapchain, once, after the surface turned: the
+// frame just presented was rotated for the old pre-transform, and an app that draws nothing more
+// would keep it (the system rotates it, correctly, but at a cost).
+func (r *Renderer) blitAgain(w *window, width, height int, bg ui.Color) error {
+	if err := w.sc.Configure(width, height); err != nil {
+		return err
+	}
+	enc, err := r.dev.Begin()
+	if err != nil {
+		return err
+	}
+	img, err := w.sc.Acquire()
+	if err != nil {
+		_ = enc.Submit() // an empty frame: the encoder must be closed
+		return err
+	}
+	blit, err := r.blitPipeline(img.Desc().Format)
+	if err != nil {
+		_ = enc.Submit()
+		return err
+	}
+	group, err := r.dev.NewBindGroup(blit, 0, []Binding{{Binding: 0, Texture: w.frame}, {Binding: 1, Sampler: r.sampler}})
+	if err != nil {
+		_ = enc.Submit()
+		return err
+	}
+	rotation := w.sc.PreRotation()
+	pass := enc.BeginPass(img, LoadDontCare, bg)
+	pass.SetPipeline(blit)
+	pass.SetBindGroup(0, group)
+	pass.Draw(3, 1, 0, int(rotation))
+	pass.End()
+	if err := enc.Submit(); err != nil {
+		return err
+	}
+	return w.sc.Present(nil)
 }
 
 // damage returns the rectangles to tell the compositor about, from the top left; nil
@@ -514,3 +560,28 @@ const (
 	tagRendererClosed        = "RendererClosed"
 	tagRendererSizeInvalid   = "RendererSizeInvalid"
 )
+
+// RotateRects turns rectangles of a width x height window, from its top left, into the rectangles
+// of the image that is drawn with the pre-rotation: the image has the frame rotated clockwise by it
+// (SPEC §24.4). nil stays nil (the whole window).
+//
+// Flutter: no counterpart
+func RotateRects(rects []image.Rectangle, width, height int, rotation Rotation) []image.Rectangle {
+	if rotation == Rotation0 || rects == nil {
+		return rects
+	}
+	out := make([]image.Rectangle, len(rects))
+	for i, r := range rects {
+		switch rotation {
+		case Rotation90:
+			out[i] = image.Rect(height-r.Max.Y, r.Min.X, height-r.Min.Y, r.Max.X)
+		case Rotation180:
+			out[i] = image.Rect(width-r.Max.X, height-r.Max.Y, width-r.Min.X, height-r.Min.Y)
+		case Rotation270:
+			out[i] = image.Rect(r.Min.Y, width-r.Max.X, r.Max.Y, width-r.Min.X)
+		default:
+			out[i] = r
+		}
+	}
+	return out
+}

@@ -15,6 +15,8 @@ func surfaceExtensions(kind gpu.SurfaceKind) ([]string, error) {
 		return []string{extSurface, extWaylandSurface}, nil
 	case gpu.SurfaceKindX11:
 		return []string{extSurface, extXlibSurface}, nil
+	case gpu.SurfaceKindAndroid:
+		return []string{extSurface, extAndroidSurface}, nil
 	}
 	return nil, errors.New(tagVulkanSurfaceFailed, "there is no Vulkan surface for this kind of window", "kind", string(kind))
 }
@@ -27,7 +29,8 @@ type surface struct {
 }
 
 // createSurface makes the VkSurfaceKHR of the native window of h: on Wayland from the
-// wl_display and the wl_surface, on X11 from the Xlib display and the window ID. It
+// wl_display and the wl_surface, on X11 from the Xlib display and the window ID, on Android from
+// the ANativeWindow. It
 // fails with VulkanSurfaceFailed when the kind has no surface, the instance lacks the
 // extension, or the driver cannot make the surface (a window that already has a
 // renderer, for one).
@@ -51,6 +54,13 @@ func (i *instance) createSurface(h gpu.SurfaceHandle) (surfaceH, error) {
 		}
 		info := put(a, xlibSurfaceCreateInfo{sType: sTypeXlibSurfaceCreate, dpy: h.Display, window: h.Surface})
 		result = i.f.createXlibSurface(i.handle, info, 0, out)
+	case gpu.SurfaceKindAndroid:
+		if i.f.createAndroidSurface == nil || h.Window == 0 {
+			return 0, errors.New(tagVulkanSurfaceFailed, "there is no ANativeWindow to draw into, or the instance lacks VK_KHR_android_surface",
+				"window", h.Window != 0)
+		}
+		info := put(a, androidSurfaceCreateInfo{sType: sTypeAndroidSurfaceCreate, window: h.Window})
+		result = i.f.createAndroidSurface(i.handle, info, 0, out)
 	default:
 		return 0, errors.New(tagVulkanSurfaceFailed, "there is no Vulkan surface for this kind of window", "kind", string(h.Kind))
 	}

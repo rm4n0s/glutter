@@ -62,12 +62,12 @@ func TestBuildFlagsOptions(t *testing.T) {
 	fs.SetOutput(io.Discard)
 	var bf buildFlags
 	bf.add(fs, true)
-	if err := fs.Parse([]string{"-o", "x.apk", "-abi", "arm64, amd64", "-release", "-app-id", "a.b", "-label", "L", "-permission", "p.one", "-permission", "p.two", "-key", "k", "-cert", "c"}); err != nil {
+	if err := fs.Parse([]string{"-o", "x.apk", "-abi", "arm64, amd64", "-release", "-app-id", "a.b", "-label", "L", "-permission", "p.one", "-permission", "p.two", "-key", "k", "-cert", "c", "-vulkan-validation", "/vvl"}); err != nil {
 		t.Fatal(err)
 	}
 	o := bf.options("./pkg")
 	if o.Package != "./pkg" || o.Out != "x.apk" || strings.Join(o.ABIs, "|") != "arm64|amd64" || !o.Release || o.AppID != "a.b" ||
-		o.Label != "L" || strings.Join(o.Permissions, "|") != "p.one|p.two" || o.Key != "k" || o.Cert != "c" {
+		o.Label != "L" || strings.Join(o.Permissions, "|") != "p.one|p.two" || o.Key != "k" || o.Cert != "c" || o.ValidationLayerDir != "/vvl" {
 		t.Errorf("options %+v", o)
 	}
 }
@@ -87,6 +87,7 @@ func TestShotUsageErrors(t *testing.T) {
 	}{
 		{name: "no output file", args: []string{"shot", "./examples/counter"}, route: "run->runShot." + tagAndroidUsage, in: "-o"},
 		{name: "no package", args: []string{"shot", "-o", "x.png"}, route: "run->runShot->parse." + tagAndroidUsage},
+		{name: "a rotation that is not 0 to 3", args: []string{"shot", "-o", "x.png", "-rotation", "4", "./examples/counter"}, route: "run->runShot." + tagAndroidUsage, in: "-rotation"},
 		{name: "an env that is not GLUTTER_", args: []string{"shot", "-o", "x.png", "-env", "PATH=/x", "./examples/counter"}, route: "run->runShot->parseEnvs." + tagAndroidUsage, in: "GLUTTER_NAME=value"},
 	}
 	for _, tt := range tests {

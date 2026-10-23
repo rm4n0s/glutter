@@ -34,6 +34,10 @@ func linePriority(line string) int {
 	return logInfo
 }
 
+// logEndMarker is the line that flushLogs writes to standard error: the reader of the pipe does not
+// log it, it says that everything written before it has been sent to logcat (the pipe keeps order).
+const logEndMarker = "\x00glutter-log-end"
+
 // splitLines cuts the text read from the pipe into lines: buf holds what was read so far, and
 // the lines that are complete are returned with the rest.
 func splitLines(buf string) (lines []string, rest string) {

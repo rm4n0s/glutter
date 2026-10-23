@@ -175,6 +175,7 @@ const (
 	fenceSignaled        = 0x00000001 // VK_FENCE_CREATE_SIGNALED_BIT
 	loadOpLoad           = 0          // VK_ATTACHMENT_LOAD_OP_LOAD
 	loadOpClear          = 1          // VK_ATTACHMENT_LOAD_OP_CLEAR
+	loadOpDontCare       = 2          // VK_ATTACHMENT_LOAD_OP_DONT_CARE
 	storeOpStore         = 0          // VK_ATTACHMENT_STORE_OP_STORE
 	stage2AllCommands    = 0x00010000 // VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT
 	stage2Host           = 0x00004000 // VK_PIPELINE_STAGE_2_HOST_BIT
@@ -205,18 +206,22 @@ const (
 	sTypePresentInfo          = 1000001001  // VK_STRUCTURE_TYPE_PRESENT_INFO_KHR
 	sTypeXlibSurfaceCreate    = 1000004000  // VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR
 	sTypeWaylandSurfaceCreate = 1000006000  // VK_STRUCTURE_TYPE_WAYLAND_SURFACE_CREATE_INFO_KHR
+	sTypeAndroidSurfaceCreate = 1000008000  // VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR
 	sTypePresentRegions       = 1000084000  // VK_STRUCTURE_TYPE_PRESENT_REGIONS_KHR
 
 	presentModeImmediate = 0 // VK_PRESENT_MODE_IMMEDIATE_KHR
 	presentModeMailbox   = 1 // VK_PRESENT_MODE_MAILBOX_KHR
 	presentModeFIFO      = 2 // VK_PRESENT_MODE_FIFO_KHR
 
-	colorSpaceSRGBNonlinear  = 0          // VK_COLOR_SPACE_SRGB_NONLINEAR_KHR
-	compositeAlphaOpaque     = 0x00000001 // VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR
-	surfaceTransformIdentity = 0x00000001 // VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR
-	layoutPresentSrc         = 1000001002 // VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
-	stageAllCommands         = 0x00010000 // VK_PIPELINE_STAGE_ALL_COMMANDS_BIT
-	currentExtentUndefined   = 0xFFFFFFFF // the "window decides" value of VkSurfaceCapabilitiesKHR::currentExtent
+	colorSpaceSRGBNonlinear   = 0          // VK_COLOR_SPACE_SRGB_NONLINEAR_KHR
+	compositeAlphaOpaque      = 0x00000001 // VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR
+	surfaceTransformIdentity  = 0x00000001 // VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR
+	surfaceTransformRotate90  = 0x00000002 // VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR
+	surfaceTransformRotate180 = 0x00000004 // VK_SURFACE_TRANSFORM_ROTATE_180_BIT_KHR
+	surfaceTransformRotate270 = 0x00000008 // VK_SURFACE_TRANSFORM_ROTATE_270_BIT_KHR
+	layoutPresentSrc          = 1000001002 // VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
+	stageAllCommands          = 0x00010000 // VK_PIPELINE_STAGE_ALL_COMMANDS_BIT
+	currentExtentUndefined    = 0xFFFFFFFF // the "window decides" value of VkSurfaceCapabilitiesKHR::currentExtent
 )
 
 // Names of the extensions that windows need.
@@ -224,6 +229,7 @@ const (
 	extSurface            = "VK_KHR_surface"
 	extWaylandSurface     = "VK_KHR_wayland_surface"
 	extXlibSurface        = "VK_KHR_xlib_surface"
+	extAndroidSurface     = "VK_KHR_android_surface"
 	extSwapchain          = "VK_KHR_swapchain"
 	extIncrementalPresent = "VK_KHR_incremental_present"
 )

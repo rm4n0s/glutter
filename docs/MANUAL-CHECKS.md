@@ -22,3 +22,22 @@ Check, and record the answers:
 4. Record the renderer line of the log (`renderer chosen renderer="gles: ..."`): which GPU does it name?
 
 Answers: _(not yet recorded)_
+
+## 25.5 Vulkan on Android, and choosing the renderer
+
+**Status:** pending
+
+Run:
+
+```
+go run ./cmd/glutter-android run ./examples/gallery
+```
+
+Check, and record the answers:
+
+1. Read the renderer and the device from the log (`renderer chosen renderer="vulkan: ..."` and the `Vulkan device` line before it, with its `api=`). Which GPU and which Vulkan version does it name? If it says `gles` instead, copy the `renderer not usable` line above it: that is the reason (Android below 10, a driver on the deny list, or a Vulkan error).
+2. Turn the phone to landscape and back (turn the automatic rotation on first): is the gallery upright and sharp each time, and does the log say a `Vulkan swapchain` line with `pre_rotation=` 1 or 3 in landscape and 0 in portrait?
+3. Scroll the gallery's navigation list and the page: is the scrolling smooth, with no flicker or tearing?
+4. Try `go run ./cmd/glutter-android run -env GLUTTER_RENDERER=gles ./examples/gallery`: does it still draw the same?
+
+Answers: _(not yet recorded)_

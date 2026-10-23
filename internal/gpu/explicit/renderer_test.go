@@ -1,6 +1,7 @@
 package explicit_test
 
 import (
+	"fmt"
 	"image"
 	"image/color"
 	"reflect"
@@ -416,3 +417,165 @@ const (
 	tagVulkanSurfaceFailed   = "VulkanSurfaceFailed"
 	tagVulkanSwapchainFailed = "VulkanSwapchainFailed"
 )
+
+// The pass that blits into the swapchain image covers all of it, so it does not load it: a tile-based
+// GPU then reads nothing from memory (SPEC §24.4). The frame texture is cleared to the background.
+func TestBlitPassDoesNotLoadTheSwapchainImage(t *testing.T) {
+	r, dev, _ := newRenderer(t)
+	if _, err := r.Draw(window, 40, 30, nil, false); err != nil {
+		t.Fatal(err)
+	}
+	var passes []string
+	for _, c := range dev.Calls() {
+		if c.Op == "BeginPass" {
+			passes = append(passes, c.Args)
+		}
+	}
+	if len(passes) != 2 {
+		t.Fatalf("passes = %v", passes)
+	}
+	if want := fmt.Sprintf("load=%d", explicit.LoadClear); !strings.Contains(passes[0], want) {
+		t.Errorf("the frame pass is %q, want %s", passes[0], want)
+	}
+	if want := fmt.Sprintf("load=%d", explicit.LoadDontCare); !strings.Contains(passes[1], want) {
+		t.Errorf("the blit pass is %q, want %s", passes[1], want)
+	}
+}
+
+// A swapchain with a pre-transform of quarter turns gets the frame drawn rotated: the blit says the
+// rotation in its instance index, the swapchain's images have their size turned, and the damage is
+// told in the rotated image's coordinates.
+func TestPreRotationIsAppliedToTheBlitAndTheDamage(t *testing.T) {
+	tests := []struct {
+		rotation   explicit.Rotation
+		configured string // the image size that the fake swapchain was configured with: the window's, turned
+		damage     string // an unchanged frame is the pixel at the window's top left
+	}{
+		{explicit.Rotation0, "40x30", "damage=[(0,0)-(1,1)]"},
+		{explicit.Rotation90, "40x30", "damage=[(29,0)-(30,1)]"},
+		{explicit.Rotation180, "40x30", "damage=[(39,29)-(40,30)]"},
+		{explicit.Rotation270, "40x30", "damage=[(0,39)-(1,40)]"},
+	}
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("%d turns", tt.rotation), func(t *testing.T) {
+			r, dev, _ := newRenderer(t, explicit.RendererOpts{Damage: true})
+			dev.Rotation = tt.rotation
+			for range 2 {
+				if _, err := r.Draw(window, 40, 30, ui.NewSceneBuilder().Build(), false); err != nil {
+					t.Fatal(err)
+				}
+			}
+			calls := dev.Calls()
+			var draw, present, configure string
+			for _, c := range calls {
+				switch c.Op {
+				case "Draw":
+					draw = c.Args
+				case "Present":
+					present = c.Args
+				case "Configure":
+					configure = c.Args
+				}
+			}
+			if want := fmt.Sprintf("firstInstance=%d", tt.rotation); !strings.HasSuffix(draw, want) {
+				t.Errorf("the blit is %q, want it to end with %s", draw, want)
+			}
+			if present != tt.damage {
+				t.Errorf("Present(%s), want %s", present, tt.damage)
+			}
+			if configure != tt.configured {
+				t.Errorf("Configure(%s), want %s", configure, tt.configured)
+			}
+		})
+	}
+}
+
+func TestRotateRects(t *testing.T) {
+	const w, h = 40, 30
+	r := image.Rect(2, 3, 12, 8) // 10 wide, 5 high, near the top left
+	tests := []struct {
+		name     string
+		rects    []image.Rectangle
+		rotation explicit.Rotation
+		want     []image.Rectangle
+	}{
+		{"none", []image.Rectangle{r}, explicit.Rotation0, []image.Rectangle{r}},
+		{"one turn", []image.Rectangle{r}, explicit.Rotation90, []image.Rectangle{image.Rect(h-8, 2, h-3, 12)}},
+		{"two turns", []image.Rectangle{r}, explicit.Rotation180, []image.Rectangle{image.Rect(w-12, h-8, w-2, h-3)}},
+		{"three turns", []image.Rectangle{r}, explicit.Rotation270, []image.Rectangle{image.Rect(3, w-12, 8, w-2)}},
+		{"the whole window stays the whole window", nil, explicit.Rotation90, nil},
+		{"two rectangles", []image.Rectangle{r, image.Rect(0, 0, 1, 1)}, explicit.Rotation90, []image.Rectangle{image.Rect(h-8, 2, h-3, 12), image.Rect(h-1, 0, h, 1)}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := explicit.RotateRects(tt.rects, w, h, tt.rotation); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("RotateRects = %v, want %v", got, tt.want)
+			}
+		})
+	}
+	// Four quarter turns bring a rectangle back where it was.
+	got := []image.Rectangle{r}
+	width, height := w, h
+	for i := 0; i < 4; i++ {
+		got = explicit.RotateRects(got, width, height, explicit.Rotation90)
+		width, height = height, width
+	}
+	if !reflect.DeepEqual(got, []image.Rectangle{r}) {
+		t.Errorf("four turns gave %v, want %v", got, r)
+	}
+}
+
+// When the surface turns after the first present (Android reports the transform of a surface once it
+// is on screen), the frame texture is blitted again into a new swapchain, rotated for the new
+// transform, without building the scene again; a static app is then right without another frame.
+func TestStaleSwapchainBlitsTheFrameAgain(t *testing.T) {
+	r, dev, _ := newRenderer(t)
+	dev.StaleOnce, dev.RotationAfter = true, explicit.Rotation90
+	if _, err := r.Draw(window, 40, 30, nil, false); err != nil {
+		t.Fatal(err)
+	}
+	var draws, configures, presents []string
+	for _, c := range dev.Calls() {
+		switch c.Op {
+		case "Draw":
+			draws = append(draws, c.Args)
+		case "Configure":
+			configures = append(configures, c.Args)
+		case "Present":
+			presents = append(presents, c.Args)
+		}
+	}
+	if len(draws) != 2 || !strings.HasSuffix(draws[0], "firstInstance=0") || !strings.HasSuffix(draws[1], "firstInstance=1") {
+		t.Errorf("the blits are %v, want one unrotated and one rotated by a turn", draws)
+	}
+	if len(configures) != 2 || len(presents) != 2 {
+		t.Errorf("configures %v, presents %v: want two of each", configures, presents)
+	}
+	if presents[1] != "damage=[]" {
+		t.Errorf("the second present is %s, want the whole window", presents[1])
+	}
+	// The scene was built once: one pass cleared the frame texture, two blit into the swapchain.
+	passes := 0
+	for _, c := range dev.Calls() {
+		if c.Op == "BeginPass" {
+			passes++
+		}
+	}
+	if passes != 3 {
+		t.Errorf("%d passes, want 3 (the frame texture and two blits)", passes)
+	}
+	// Nothing is stale any more: the next frame does not blit twice.
+	before := len(dev.Calls())
+	if _, err := r.Draw(window, 40, 30, nil, false); err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for _, c := range dev.Calls()[before:] {
+		if c.Op == "Draw" {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Errorf("the next frame has %d blits, want 1", n)
+	}
+}

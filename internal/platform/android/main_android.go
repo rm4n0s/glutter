@@ -49,6 +49,7 @@ func goStart() {
 func runMain() {
 	runtime.LockOSThread()
 	callmain()
+	flushLogs()
 	// main returned: the activity finishes and the process exits with the code 0. (os.Exit
 	// ends the process at once and does not come back here.)
 	C.glutter_main_ended(0)

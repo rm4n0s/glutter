@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -36,6 +37,7 @@ func runShot(ctx context.Context, args []string, stdout, stderr io.Writer) error
 	screen := fs.Bool("screen", false, "capture the device's whole screen (status bar, keyboard, notifications) instead of the app's frame")
 	settle := fs.Duration("settle", 1500*time.Millisecond, "with -screen, how long to wait after the first frame")
 	timeout := fs.Duration("timeout", 2*time.Minute, "how long to wait for the app")
+	rotation := fs.Int("rotation", 0, "turn the device before the app starts: 0 portrait, 1 and 3 landscape, 2 upside down; it is turned back after")
 	out := fs.String("o", "", "the PNG to write")
 	pkg, err := parse(fs, args)
 	if err != nil {
@@ -43,6 +45,9 @@ func runShot(ctx context.Context, args []string, stdout, stderr io.Writer) error
 	}
 	if *out == "" {
 		return errors.New(tagAndroidUsage, "shot needs -o file.png")
+	}
+	if *rotation < 0 || *rotation > 3 {
+		return errors.New(tagAndroidUsage, "-rotation is 0, 1, 2 or 3")
 	}
 	extras, err := parseEnvs(envs)
 	if err != nil {
@@ -74,6 +79,13 @@ func runShot(ctx context.Context, args []string, stdout, stderr io.Writer) error
 	defer cleanup()
 	if err := adb.Install(ctx, apk); err != nil {
 		return err
+	}
+	if *rotation != 0 {
+		if err := turnDevice(ctx, adb, *rotation); err != nil {
+			return err
+		}
+		// Back to portrait, even when the shot failed (a fresh context: ctx may be done).
+		defer func() { _ = turnDevice(context.Background(), adb, 0) }() // best effort: the emulator is stopped next
 	}
 	if !*screen {
 		extras["GLUTTER_SCREENSHOT"] = "1"
@@ -110,6 +122,19 @@ func runShot(ctx context.Context, args []string, stdout, stderr io.Writer) error
 		return errors.NewErr(tagAndroidUsage, err).SetMetadata("path", *out)
 	}
 	return say(stdout, "saved %s (%d bytes)\n", *out, len(png))
+}
+
+// turnDevice sets the rotation of the device (0 portrait, 1 and 3 landscape, 2 upside down) and
+// switches the automatic rotation off, as `settings put system user_rotation` does.
+func turnDevice(ctx context.Context, adb androidtool.ADB, rotation int) error {
+	if _, err := adb.Output(ctx, "shell", "settings", "put", "system", "accelerometer_rotation", "0"); err != nil {
+		return err
+	}
+	if _, err := adb.Output(ctx, "shell", "settings", "put", "system", "user_rotation", strconv.Itoa(rotation)); err != nil {
+		return err
+	}
+	time.Sleep(time.Second) // the window system turns the display
+	return nil
 }
 
 // parseEnvs turns the values of -env into the extras of the activity.

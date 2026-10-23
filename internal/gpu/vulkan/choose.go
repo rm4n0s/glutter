@@ -37,6 +37,8 @@ type physicalInfo struct {
 	Name string
 	// Type is VkPhysicalDeviceType.
 	Type uint32
+	// VendorID, DeviceID and DriverVersion are the fields of those names.
+	VendorID, DeviceID, DriverVersion uint32
 	// APIVersion is the version the device supports.
 	APIVersion uint32
 	// Extensions are the device extensions.
@@ -57,6 +59,9 @@ type chooseOpts struct {
 	// AllowCPU lets a device of type CPU (lavapipe) be chosen: only when Vulkan is
 	// asked for by name (SPEC §9.4).
 	AllowCPU bool
+	// DenyKnownBad makes a device with a driver on the deny list (DriverInfo.IsKnownBadDriver)
+	// unusable: openDevice checks it after the choice, and fails with VulkanDriverDenied.
+	DenyKnownBad bool
 	// RequireSwapchain makes a device that lacks VK_KHR_swapchain unsupported: the
 	// device is for windows.
 	RequireSwapchain bool
@@ -164,8 +169,19 @@ func allRejectedAsUnsupported(list []physicalInfo, o chooseOpts) bool {
 	return named > 0
 }
 
+// checkDriver fails with VulkanDriverDenied when the chosen device's driver is on the deny list.
+func checkDriver(info physicalInfo) error {
+	driver := DriverInfo{Name: info.Name, VendorID: info.VendorID, DeviceID: info.DeviceID, DriverVersion: info.DriverVersion, APIVersion: info.APIVersion}
+	if bad, why := driver.IsKnownBadDriver(); bad {
+		return errors.New(tagVulkanDriverDenied, "Vulkan is not used with this driver: "+why,
+			"device", info.Name, "vendor_id", int(info.VendorID), "device_id", int(info.DeviceID), "driver_version", int(info.DriverVersion))
+	}
+	return nil
+}
+
 // The tags of the errors that this file makes (rm4n0s/errors, R5).
 const (
-	tagVulkanNoDevice    = "VulkanNoDevice"
-	tagVulkanUnsupported = "VulkanUnsupported"
+	tagVulkanNoDevice     = "VulkanNoDevice"
+	tagVulkanUnsupported  = "VulkanUnsupported"
+	tagVulkanDriverDenied = "VulkanDriverDenied"
 )

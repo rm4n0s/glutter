@@ -38,6 +38,13 @@ type Device struct {
 	// AcquireErrs are the errors that the next calls of Swapchain.Acquire return, one
 	// each, before it succeeds again.
 	AcquireErrs []error
+	// Rotation is the pre-rotation that the swapchains report after Configure, as Android's
+	// currentTransform does: with a quarter turn their images have the width and height swapped.
+	Rotation explicit.Rotation
+	// StaleOnce makes the next Present leave its swapchain stale, as Android's surface turning
+	// does: Stale is true until Configure, which then reports RotationAfter.
+	StaleOnce     bool
+	RotationAfter explicit.Rotation
 	// CompleteReadsOnSubmit makes Submit run the done functions of the reads of the frame,
 	// as a device that waits for the GPU does.
 	CompleteReadsOnSubmit bool
@@ -376,9 +383,10 @@ type bindGroup struct{}
 func (*bindGroup) Destroy() {}
 
 type swapchain struct {
-	d    *Device
-	w, h int
-	tex  *texture
+	d     *Device
+	w, h  int
+	tex   *texture
+	stale bool
 }
 
 func (s *swapchain) Configure(width, height int) error {
@@ -387,8 +395,19 @@ func (s *swapchain) Configure(width, height int) error {
 		return err
 	}
 	s.w, s.h, s.tex = width, height, nil
+	if s.stale {
+		s.stale = false
+		s.d.Rotation = s.d.RotationAfter
+	}
+	if s.d.Rotation == explicit.Rotation90 || s.d.Rotation == explicit.Rotation270 {
+		s.w, s.h = height, width
+	}
 	return nil
 }
+
+func (s *swapchain) PreRotation() explicit.Rotation { return s.d.Rotation }
+
+func (s *swapchain) Stale() bool { return s.stale }
 
 func (s *swapchain) Acquire() (explicit.Texture, error) {
 	s.d.record("Acquire", "")
@@ -410,6 +429,9 @@ func (s *swapchain) Acquire() (explicit.Texture, error) {
 
 func (s *swapchain) Present(damage []image.Rectangle) error {
 	s.d.record("Present", "damage=%v", damage)
+	if s.d.StaleOnce {
+		s.d.StaleOnce, s.stale = false, true
+	}
 	return s.d.fail()
 }
 
@@ -426,7 +448,7 @@ func (e *encoder) BeginPass(target explicit.Texture, load explicit.LoadOp, clear
 	if e.pass != nil && !e.pass.ended {
 		panic(errors.New(tagFakePassNotEnded, "BeginPass was called before the previous pass ended"))
 	}
-	if t, ok := target.(*texture); ok && load == explicit.LoadClear {
+	if t, ok := target.(*texture); ok && (load == explicit.LoadClear || load == explicit.LoadDontCare) {
 		t.fill(clear)
 	}
 	e.pass = &pass{d: e.d}

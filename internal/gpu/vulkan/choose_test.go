@@ -95,3 +95,20 @@ func TestChooseDeviceErrorsListWhatWasRejected(t *testing.T) {
 		t.Errorf("rejected = %v, want one line that says why", appErr.Metadata["rejected"])
 	}
 }
+
+func TestCheckDriver(t *testing.T) {
+	if err := checkDriver(physicalInfo{Name: "Adreno (TM) 660", VendorID: 0x168C}); err != nil {
+		t.Errorf("a driver that is not denied failed: %v", err)
+	}
+	err := checkDriver(physicalInfo{Name: "Adreno (TM) 630", VendorID: 0x168C, DeviceID: 7, DriverVersion: 9})
+	appErr, ok := errors.FromError(err)
+	if !ok {
+		t.Fatalf("expected *errors.Error, got %T", err)
+	}
+	if !appErr.HasRoute("checkDriver.VulkanDriverDenied") {
+		t.Errorf("unexpected failure path: %s", appErr.Route())
+	}
+	if appErr.Metadata["device"] != "Adreno (TM) 630" || appErr.Metadata["driver_version"] != 9 {
+		t.Errorf("metadata: %v", appErr.Metadata)
+	}
+}

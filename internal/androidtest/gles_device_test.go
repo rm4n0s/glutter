@@ -19,9 +19,9 @@ import (
 
 // runParity runs the parity app with the renderer on the emulator and returns the images it drew
 // of every proof scene, by scene name, with the notes it wrote.
-func runParity(ctx context.Context, t *testing.T, e *Emulator, renderer string, extras map[string]string) map[string][]byte {
+func runParity(ctx context.Context, t *testing.T, e *Emulator, renderer string, extras map[string]string, opts androidtool.BuildOptions) map[string][]byte {
 	t.Helper()
-	appID := installApp(ctx, t, e, "./examples/dev/android-parity")
+	appID := installAppWith(ctx, t, e, "./examples/dev/android-parity", opts)
 	all := map[string]string{"GLUTTER_RENDERER": renderer}
 	for k, v := range extras {
 		all[k] = v
@@ -102,11 +102,10 @@ func TestGLESParityWithSoft(t *testing.T) {
 	e := Shared(t, "glutter-37")
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
 	defer cancel()
-	checkParity(t, runParity(ctx, t, e, "gles", nil))
+	checkParity(t, runParity(ctx, t, e, "gles", nil, androidtool.BuildOptions{}))
 }
 
-// TestGLESIsUsedAndKeepsItsTexturesOnHomeAndBack checks the choice (auto and GLUTTER_RENDERER given
-// as an extra), and that Home and back gives the existing context a new surface, whose first frame
+// TestGLESIsUsedAndKeepsItsTexturesOnHomeAndBack checks that GLUTTER_RENDERER given as an extra is used, and that Home and back gives the existing context a new surface, whose first frame
 // makes nothing again (no new tiles rasterized, no new uploads).
 func TestGLESIsUsedAndKeepsItsTexturesOnHomeAndBack(t *testing.T) {
 	e := Shared(t, "glutter-37")
@@ -115,21 +114,16 @@ func TestGLESIsUsedAndKeepsItsTexturesOnHomeAndBack(t *testing.T) {
 	appID := installApp(ctx, t, e, "./examples/counter")
 	t.Cleanup(func() { _, _ = e.ADB.Output(context.Background(), "shell", "am", "force-stop", appID) })
 
-	for _, tt := range []struct {
-		name   string
-		extras map[string]string
-	}{{"auto", nil}, {"GLUTTER_RENDERER=gles", map[string]string{"GLUTTER_RENDERER": "gles"}}} {
-		_, _ = e.ADB.Output(ctx, "shell", "am", "force-stop", appID)
-		if err := e.Launch(ctx, appID, tt.extras); err != nil {
-			t.Fatal(Describe(err))
-		}
-		log, err := e.WaitLog(ctx, appID, "renderer chosen", time.Minute)
-		if err != nil {
-			t.Fatalf("%s: %s", tt.name, Describe(err))
-		}
-		if !strings.Contains(log, `renderer="gles: `) {
-			t.Errorf("%s: the renderer is not gles:\n%s", tt.name, log)
-		}
+	// gles asked for as an extra is used (auto chooses Vulkan on the emulator since step 25.5).
+	if err := e.Launch(ctx, appID, map[string]string{"GLUTTER_RENDERER": "gles"}); err != nil {
+		t.Fatal(Describe(err))
+	}
+	log, err := e.WaitLog(ctx, appID, "renderer chosen", time.Minute)
+	if err != nil {
+		t.Fatal(Describe(err))
+	}
+	if !strings.Contains(log, `renderer="gles: `) {
+		t.Errorf("the renderer is not gles:\n%s", log)
 	}
 
 	// Home, and when Android has taken the surface away (it does so some time after the activity
@@ -146,7 +140,7 @@ func TestGLESIsUsedAndKeepsItsTexturesOnHomeAndBack(t *testing.T) {
 	if again, _ := e.ADB.Pid(ctx, appID); again != pid {
 		t.Fatalf("the process changed: %d, then %d", pid, again)
 	}
-	log, err := e.WaitLog(ctx, appID, "first frame on the new surface", 30*time.Second)
+	log, err = e.WaitLog(ctx, appID, "first frame on the new surface", 30*time.Second)
 	if err != nil {
 		full, _ := e.FullLog(ctx)
 		t.Fatalf("%s\n%s", Describe(err), full[max(0, len(full)-6000):])

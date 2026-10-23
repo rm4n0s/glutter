@@ -202,3 +202,33 @@ func (e *Emulator) PullAppDir(ctx context.Context, appID, dir string) (map[strin
 	}
 	return files, nil
 }
+
+// ValidationLayerDir is the directory with the Khronos validation layer of Android, where the
+// device tests of Vulkan expect it: <module root>/.android-test/vvl, with
+// x86_64/libVkLayer_khronos_validation.so in it (the android-binaries zip of a
+// Vulkan-ValidationLayers release, unzipped there; SPEC §24.13). It fails with
+// AndroidTestValidationLayerMissing, with that instruction, when the library is not there.
+//
+// Flutter: no counterpart
+func ValidationLayerDir() (string, error) {
+	root, err := ModuleRoot()
+	if err != nil {
+		return "", err
+	}
+	return validationLayerDir(root)
+}
+
+func validationLayerDir(root string) (string, error) {
+	dir := filepath.Join(root, ".android-test", "vvl")
+	layer := filepath.Join(dir, "x86_64", androidtool.ValidationLayerFile)
+	if _, err := os.Stat(layer); err != nil {
+		return "", errors.NewErr(TagAndroidTestValidationLayerMissing, err).SetMetadata("path", layer,
+			"install", "unzip the android-binaries-*.zip of the newest release at github.com/KhronosGroup/Vulkan-ValidationLayers/releases into "+dir)
+	}
+	return dir, nil
+}
+
+// TagAndroidTestValidationLayerMissing is the tag of the error for a device test of Vulkan that
+// needs the validation layer for Android and does not find it; the metadata "install" says how to
+// get it.
+const TagAndroidTestValidationLayerMissing = "AndroidTestValidationLayerMissing"

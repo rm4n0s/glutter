@@ -6,19 +6,22 @@ import (
 	"context"
 	"image"
 	"log/slog"
+	"os"
 	"time"
 
 	"github.com/rm4n0s/glutter/internal/gpu"
+	"github.com/rm4n0s/glutter/internal/gpu/explicit"
 	"github.com/rm4n0s/glutter/internal/gpu/gles"
 	"github.com/rm4n0s/glutter/internal/gpu/nativewindow"
+	"github.com/rm4n0s/glutter/internal/gpu/vulkan"
 	"github.com/rm4n0s/glutter/internal/platform/android"
 	"github.com/rm4n0s/glutter/internal/text"
 	"github.com/rm4n0s/glutter/ui"
 )
 
-// This file is what Run uses on Android (GOOS=android): the platform of the activity's view, OpenGL ES
-// and then the software renderer into the window (step 25.5 adds Vulkan), and no
-// system font matcher until step 25.10 (SPEC §6.3, §24).
+// This file is what Run uses on Android (GOOS=android): the platform of the activity's view, Vulkan,
+// OpenGL ES and then the software renderer into the window, and no system font matcher until step
+// 25.10 (SPEC §6.3, §24).
 
 // connectDisplay makes the platform of the process. It must run on the UI thread, which is where
 // the looper is prepared (SPEC §24.3). It fails with LooperUnavailable.
@@ -39,10 +42,39 @@ func screenshotPath(value string, getenv func(string) string) string {
 	return androidScreenshotPath(value, getenv)
 }
 
-// rendererCandidates is the list of Android in the order auto tries them (SPEC §24.4): gles, then
-// soft, drawing into the window's CPU buffers. Step 25.5 puts vulkan before gles.
+// rendererCandidates is the list of Android in the order auto tries them (SPEC §24.4): vulkan, then
+// gles, then soft, drawing into the window's CPU buffers.
 func rendererCandidates() []rendererCandidate {
-	return []rendererCandidate{{Name: "gles", New: newGLESRenderer}, {Name: "soft", New: newNativeWindowRenderer}}
+	return []rendererCandidate{
+		{Name: "vulkan", New: newVulkanRenderer}, {Name: "gles", New: newGLESRenderer}, {Name: "soft", New: newNativeWindowRenderer},
+	}
+}
+
+// newVulkanRenderer makes the explicit renderer over Vulkan on the ANativeWindow. `auto` chooses it
+// only on Android 10 or later and on a driver that is not on the deny list; Vulkan asked for by name
+// is tried whatever the device (SPEC §24.4). The frame is drawn whole into its own texture and blitted
+// into the swapchain image (rotated by the surface's pre-transform), so the damage only tells the
+// compositor what changed.
+func newVulkanRenderer(cfg *Config, log *slog.Logger) renderer {
+	getenv := cfg.Getenv
+	if getenv == nil {
+		getenv = os.Getenv
+	}
+	opts := explicit.RendererOpts{
+		Background: ui.NewColor(developmentColor), HasBackground: true, Log: log,
+		Damage: !cfg.DisableDamage && getenv(DamageEnv) != "0", SkipUnsupported: cfg.SkipUnsupported,
+	}
+	if !cfg.DisableRasterCache && getenv(RasterCacheEnv) != "0" {
+		opts.RasterCacheAfter = rasterCacheAfter
+	}
+	return explicit.NewRenderer(func(h gpu.SurfaceHandle) (explicit.Device, error) {
+		if err := checkAndroidVulkanSDK(android.SDKInt(), cfg.rendererNamed); err != nil {
+			return nil, err
+		}
+		return vulkan.Open(vulkan.Options{
+			Logger: log, Getenv: getenv, AllowCPU: cfg.rendererNamed, DenyKnownBad: !cfg.rendererNamed, Surface: h,
+		})
+	}, opts)
 }
 
 // newGLESRenderer makes the OpenGL ES renderer of Android, over EGL on the ANativeWindow. It

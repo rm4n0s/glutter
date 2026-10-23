@@ -280,8 +280,11 @@ func (e *encoder) BeginPass(target explicit.Texture, load explicit.LoadOp, clear
 	a := d.arena
 	defer a.rewind(a.mark())
 	op := uint32(loadOpClear)
-	if load == explicit.LoadLoad {
+	switch load {
+	case explicit.LoadLoad:
 		op = loadOpLoad
+	case explicit.LoadDontCare:
+		op = loadOpDontCare
 	}
 	attach := put(a, renderingAttachmentInfo{
 		sType: sTypeRenderingAttachmentInfo, imageView: t.targetView(), imageLayout: layoutGeneral,

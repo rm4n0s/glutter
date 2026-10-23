@@ -3,6 +3,7 @@
 package vulkan
 
 import (
+	"fmt"
 	"image"
 
 	"github.com/rm4n0s/errors"
@@ -24,8 +25,14 @@ type swapchain struct {
 	surf   *surface
 	handle swapchainH
 	format explicit.TextureFormat
-	width  int
+	width  int // the size of the images
 	height int
+	// reqWidth and reqHeight are the size Configure was last asked for, the window as it is seen: the
+	// images have it turned when the pre-transform is a quarter turn.
+	reqWidth, reqHeight int
+	rotation            explicit.Rotation // the pre-transform of the swapchain
+	transform           uint32            // the same, as the flag the swapchain was made with
+	stale               bool              // the surface turned: see Stale
 
 	images     []*texture   // the images of the swapchain, which it owns
 	renderSems []semaphoreH // signaled when the frame that drew into the image is done, one per image
@@ -70,7 +77,7 @@ func (d *Device) NewSwapchain(h gpu.SurfaceHandle) (explicit.Swapchain, error) {
 // pixels; a surface that decides its own size (X11) has the last word, and the images
 // then have that size. It fails with VulkanSwapchainFailed.
 func (sc *swapchain) Configure(width, height int) error {
-	if sc.handle != 0 && !sc.recreate && width == sc.width && height == sc.height {
+	if sc.handle != 0 && !sc.recreate && width == sc.reqWidth && height == sc.reqHeight {
 		return nil
 	}
 	d := sc.d
@@ -95,10 +102,19 @@ func (sc *swapchain) Configure(width, height int) error {
 	if !ok {
 		return errors.New(tagVulkanSwapchainFailed, "the surface has no B8G8R8A8_UNORM or R8G8B8A8_UNORM format", "formats", len(formats))
 	}
+	transform, rotation := chooseTransform(caps.supportedTransforms, caps.currentTransform)
+	// The surface's current extent, or the window's size when the surface leaves it to us, is the
+	// window as it is seen. With a pre-transform of a quarter turn the images are turned: Android's
+	// currentExtent is the window's, not the buffer's, and the loader sets the buffers to the size
+	// asked for.
 	extent := extent2D{uint32(width), uint32(height)}
 	if caps.currentExtent.width != currentExtentUndefined {
 		extent = caps.currentExtent
-	} else {
+	}
+	if rotation == explicit.Rotation90 || rotation == explicit.Rotation270 {
+		extent = extent2D{extent.height, extent.width}
+	}
+	if caps.currentExtent.width == currentExtentUndefined {
 		extent.width = min(max(extent.width, caps.minImageExtent.width), caps.maxImageExtent.width)
 		extent.height = min(max(extent.height, caps.minImageExtent.height), caps.maxImageExtent.height)
 	}
@@ -117,10 +133,6 @@ func (sc *swapchain) Configure(width, height int) error {
 	if caps.supportedCompositeAlpha&alpha == 0 {
 		alpha = caps.supportedCompositeAlpha & -caps.supportedCompositeAlpha // the lowest bit that is set
 	}
-	transform := uint32(surfaceTransformIdentity)
-	if caps.supportedTransforms&transform == 0 {
-		transform = caps.currentTransform
-	}
 	info := put(a, swapchainCreateInfo{
 		sType: sTypeSwapchainCreateInfo, surface: sc.surf.handle, minImageCount: count,
 		imageFormat: vkFormat, imageColorSpace: colorSpaceSRGBNonlinear, imageExtent: extent, imageArrayLayers: 1,
@@ -134,6 +146,9 @@ func (sc *swapchain) Configure(width, height int) error {
 	old := sc.takeObjects()
 	sc.handle = u64(out)
 	sc.format, sc.width, sc.height = texFormat, int(extent.width), int(extent.height)
+	sc.reqWidth, sc.reqHeight, sc.rotation, sc.transform, sc.stale = width, height, rotation, transform, false
+	d.log.Info("Vulkan swapchain", "window", fmt.Sprintf("%dx%d", width, height), "images", fmt.Sprintf("%dx%d", extent.width, extent.height),
+		"pre_rotation", int(rotation), "present_mode", presentModeNames[choosePresentMode(modes)])
 	sc.recreate, sc.acquired = false, false
 	// A present that is still waiting for a semaphore is not a frame whose fence we can
 	// wait for, so the old swapchain goes when the device is idle: a resize is rare.
@@ -141,6 +156,55 @@ func (sc *swapchain) Configure(width, height int) error {
 	old()
 	return sc.makeImages(a, vkFormat)
 }
+
+// chooseTransform picks the pre-transform of the swapchain (SPEC §24.4): the surface's current
+// transform when it is a rotation, so that the presentation engine does not rotate the frame again
+// (Android's guidance for Vulkan; the frame is drawn rotated to match, explicit.Renderer does it),
+// else the identity when the surface allows it, else whatever the surface says. A window system with
+// no rotation (Wayland, X11) always has the identity.
+func chooseTransform(supported, current uint32) (flag uint32, rotation explicit.Rotation) {
+	rotations := []struct {
+		flag     uint32
+		rotation explicit.Rotation
+	}{
+		{surfaceTransformIdentity, explicit.Rotation0}, {surfaceTransformRotate90, explicit.Rotation90},
+		{surfaceTransformRotate180, explicit.Rotation180}, {surfaceTransformRotate270, explicit.Rotation270},
+	}
+	for _, r := range rotations {
+		if current == r.flag && supported&r.flag != 0 {
+			return r.flag, r.rotation
+		}
+	}
+	if supported&surfaceTransformIdentity != 0 {
+		return surfaceTransformIdentity, explicit.Rotation0
+	}
+	return current, explicit.Rotation0
+}
+
+// Stale implements explicit.Swapchain: the surface's transform is no longer the one the swapchain
+// was made with.
+func (sc *swapchain) Stale() bool { return sc.stale }
+
+// checkTransform asks the surface for its current transform after a present or an acquire that
+// said the swapchain is suboptimal, and marks the swapchain stale when the transform it would
+// choose now is another one (Android reports the transform of a surface only once it is on screen,
+// and when the device is turned).
+func (sc *swapchain) checkTransform() {
+	d := sc.d
+	a := d.arena
+	defer a.rewind(a.mark())
+	capsPtr := a.alloc(unsafeSizeof[surfaceCapabilities](), 8)
+	if d.f.getPhysicalDeviceSurfaceCaps(d.phys, sc.surf.handle, capsPtr) != resultSuccess {
+		return
+	}
+	caps := *(*surfaceCapabilities)(dl.Pointer(capsPtr))
+	if flag, _ := chooseTransform(caps.supportedTransforms, caps.currentTransform); flag != sc.transform {
+		sc.stale = true
+	}
+}
+
+// PreRotation implements explicit.Swapchain.
+func (sc *swapchain) PreRotation() explicit.Rotation { return sc.rotation }
 
 // formats lists the formats of the surface.
 func (sc *swapchain) formats(a *arena) ([]surfaceFormat, error) {
@@ -315,6 +379,7 @@ func (sc *swapchain) Acquire() (explicit.Texture, error) {
 	case resultSuccess:
 	case resultSuboptimal:
 		sc.recreate = true // the image is usable; the next frame makes a new swapchain
+		sc.checkTransform()
 	case resultErrorOutOfDate:
 		sc.recreate = true
 		return nil, errors.New(explicit.SwapchainOutOfDate, "the swapchain no longer matches the surface: configure it again",
@@ -368,6 +433,7 @@ func (sc *swapchain) Present(damage []image.Rectangle) error {
 		return nil
 	case resultSuboptimal, resultErrorOutOfDate:
 		sc.recreate = true
+		sc.checkTransform()
 		return nil
 	default:
 		return swapchainError("vkQueuePresentKHR", r)
@@ -421,3 +487,6 @@ func (d *Device) imageBarrier(cb commandBufferH, img imageH, from, to uint32) {
 const (
 	tagVulkanSwapchainFailed = "VulkanSwapchainFailed"
 )
+
+// presentModeNames are the names of the present modes that choosePresentMode returns, for the log.
+var presentModeNames = map[uint32]string{presentModeImmediate: "immediate", presentModeMailbox: "mailbox", presentModeFIFO: "fifo"}

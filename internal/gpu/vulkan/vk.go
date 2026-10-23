@@ -37,6 +37,7 @@ type vkFuncs struct {
 	destroySurface                    func(instance uintptr, surface uint64, pAllocator uintptr)
 	createWaylandSurface              func(instance, pInfo, pAllocator, pSurface uintptr) int32
 	createXlibSurface                 func(instance, pInfo, pAllocator, pSurface uintptr) int32
+	createAndroidSurface              func(instance, pInfo, pAllocator, pSurface uintptr) int32
 	getPhysicalDeviceSurfaceSupport   func(phys uintptr, family uint32, surface uint64, pSupported uintptr) int32
 	getPhysicalDeviceSurfaceCaps      func(phys uintptr, surface uint64, pCaps uintptr) int32
 	getPhysicalDeviceSurfaceFormats   func(phys uintptr, surface uint64, pCount, pFormats uintptr) int32
@@ -155,6 +156,7 @@ func (f *vkFuncs) symbols() []symbol {
 		{levelInstance, []string{"vkDestroySurfaceKHR"}, &f.destroySurface, true},
 		{levelInstance, []string{"vkCreateWaylandSurfaceKHR"}, &f.createWaylandSurface, true},
 		{levelInstance, []string{"vkCreateXlibSurfaceKHR"}, &f.createXlibSurface, true},
+		{levelInstance, []string{"vkCreateAndroidSurfaceKHR"}, &f.createAndroidSurface, true},
 		{levelInstance, []string{"vkGetPhysicalDeviceSurfaceSupportKHR"}, &f.getPhysicalDeviceSurfaceSupport, true},
 		{levelInstance, []string{"vkGetPhysicalDeviceSurfaceCapabilitiesKHR"}, &f.getPhysicalDeviceSurfaceCaps, true},
 		{levelInstance, []string{"vkGetPhysicalDeviceSurfaceFormatsKHR"}, &f.getPhysicalDeviceSurfaceFormats, true},

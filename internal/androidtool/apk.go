@@ -41,7 +41,17 @@ type BuildOptions struct {
 	Env []string
 	// Dex is the embedding's classes.dex; the checked-in Dex when nil.
 	Dex []byte
+	// ValidationLayerDir, when set, is a directory with the Khronos validation layer of Android,
+	// <dir>/<abi>/libVkLayer_khronos_validation.so for each ABI built (the android-binaries zip of a
+	// Vulkan-ValidationLayers release): it is packed into the APK next to libapp.so, where the
+	// Vulkan loader finds the layer of a debuggable app (SPEC §24.13).
+	ValidationLayerDir string
 }
+
+// ValidationLayerFile is the name of the Khronos validation layer's library.
+//
+// Flutter: no counterpart
+const ValidationLayerFile = "libVkLayer_khronos_validation.so"
 
 // BuildResult says what Build wrote.
 //
@@ -119,7 +129,7 @@ func Build(ctx context.Context, sdk *SDK, run Runner, o BuildOptions) (*BuildRes
 	defer func() { _ = os.RemoveAll(work) }() // best effort: a temporary directory
 
 	// 1. libapp.so for each ABI.
-	libs := map[string]string{}
+	libs, layers := map[string]string{}, map[string]string{}
 	res := &BuildResult{AppID: o.AppID, LibSizes: map[string]int64{}}
 	for _, abi := range abis {
 		so := filepath.Join(work, "lib", abi.Name, "libapp.so")
@@ -168,8 +178,18 @@ func Build(ctx context.Context, sdk *SDK, run Runner, o BuildOptions) (*BuildRes
 	}
 
 	// 3. The APK: aapt2's output, classes.dex and the libraries.
+	if o.ValidationLayerDir != "" {
+		for _, abi := range abis {
+			layer := filepath.Join(o.ValidationLayerDir, abi.Name, ValidationLayerFile)
+			if _, err := os.Stat(layer); err != nil {
+				return nil, errors.NewErr(TagAndroidBuildInvalid, err).SetMetadata("path", layer, "abi", abi.Name,
+					"hint", "unzip the android-binaries zip of a Vulkan-ValidationLayers release so that this file exists")
+			}
+			layers[abi.Name] = layer
+		}
+	}
 	packed := filepath.Join(work, "packed.apk")
-	if err := packAPK(base, packed, dex, abis, libs); err != nil {
+	if err := packAPK(base, packed, dex, abis, libs, layers); err != nil {
 		return nil, err
 	}
 
@@ -217,7 +237,7 @@ func selectABIs(names []string) ([]ABI, error) {
 
 // packAPK writes the APK: every entry of aapt2's output as it is, classes.dex, and each
 // library stored without compression (the system maps it from the APK, SPEC §24.1).
-func packAPK(base, out string, dex []byte, abis []ABI, libs map[string]string) (err error) {
+func packAPK(base, out string, dex []byte, abis []ABI, libs, layers map[string]string) (err error) {
 	r, err := zip.OpenReader(base)
 	if err != nil {
 		return errors.NewErr(TagAndroidWriteFailed, err).SetMetadata("path", base)
@@ -246,19 +266,25 @@ func packAPK(base, out string, dex []byte, abis []ABI, libs map[string]string) (
 		return errors.NewErr(TagAndroidWriteFailed, err).SetMetadata("path", out)
 	}
 	for _, abi := range abis {
-		src, err := os.Open(libs[abi.Name])
-		if err != nil {
-			return errors.NewErr(TagAndroidWriteFailed, err).SetMetadata("path", libs[abi.Name])
+		entries := []struct{ name, path string }{{"libapp.so", libs[abi.Name]}}
+		if layers[abi.Name] != "" {
+			entries = append(entries, struct{ name, path string }{ValidationLayerFile, layers[abi.Name]})
 		}
-		lw, err := w.CreateHeader(&zip.FileHeader{Name: "lib/" + abi.Name + "/libapp.so", Method: zip.Store})
-		if err != nil {
+		for _, e := range entries {
+			src, err := os.Open(e.path)
+			if err != nil {
+				return errors.NewErr(TagAndroidWriteFailed, err).SetMetadata("path", e.path)
+			}
+			lw, err := w.CreateHeader(&zip.FileHeader{Name: "lib/" + abi.Name + "/" + e.name, Method: zip.Store})
+			if err != nil {
+				_ = src.Close() // read only
+				return errors.NewErr(TagAndroidWriteFailed, err).SetMetadata("path", out)
+			}
+			_, err = io.Copy(lw, src)
 			_ = src.Close() // read only
-			return errors.NewErr(TagAndroidWriteFailed, err).SetMetadata("path", out)
-		}
-		_, err = io.Copy(lw, src)
-		_ = src.Close() // read only
-		if err != nil {
-			return errors.NewErr(TagAndroidWriteFailed, err).SetMetadata("path", libs[abi.Name])
+			if err != nil {
+				return errors.NewErr(TagAndroidWriteFailed, err).SetMetadata("path", e.path)
+			}
 		}
 	}
 	if err := w.Close(); err != nil {

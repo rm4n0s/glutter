@@ -23,6 +23,7 @@ func (l *listFlag) Set(v string) error { *l = append(*l, v); return nil }
 // buildFlags are the flags of the commands that build an APK.
 type buildFlags struct {
 	out, abi, appID, label, icon, key, cert string
+	validation                              string
 	release                                 bool
 	permissions                             listFlag
 }
@@ -38,6 +39,7 @@ func (b *buildFlags) add(fs *flag.FlagSet, withOut bool) {
 	fs.StringVar(&b.icon, "icon", "", "a PNG for the launcher icon (default: Glutter's)")
 	fs.StringVar(&b.key, "key", "", "the PKCS#8 private key that signs a release build")
 	fs.StringVar(&b.cert, "cert", "", "the X.509 certificate of the key")
+	fs.StringVar(&b.validation, "vulkan-validation", "", "a directory with <abi>/libVkLayer_khronos_validation.so to pack, for the device tests (SPEC §24.13)")
 	fs.Var(&b.permissions, "permission", "an Android permission the app asks for, such as android.permission.INTERNET (repeatable)")
 }
 
@@ -49,7 +51,7 @@ func (b *buildFlags) options(pkg string) androidtool.BuildOptions {
 		}
 	}
 	return androidtool.BuildOptions{Package: pkg, Out: b.out, ABIs: abis, Release: b.release, AppID: b.appID, Label: b.label,
-		Icon: b.icon, Key: b.key, Cert: b.cert, Permissions: b.permissions}
+		Icon: b.icon, Key: b.key, Cert: b.cert, Permissions: b.permissions, ValidationLayerDir: b.validation}
 }
 
 // parse parses the flags and returns the one package that is left.
