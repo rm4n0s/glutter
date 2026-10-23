@@ -23,6 +23,10 @@ type Context struct {
 	context uintptr
 	version string
 	surface map[*Surface]struct{}
+	// current is the surface the context draws into, nil when none: a surface that is destroyed
+	// while it is current first leaves the context current with no surface, so that the context,
+	// its textures and its atlases outlive the surface (SPEC §24.4).
+	current *Surface
 	closed  bool
 	// damage says whether the display can swap buffers with a damage region.
 	damage bool
@@ -58,6 +62,8 @@ func openWith(egl eglAPI, loadGL func(eglAPI) (glAPI, error), h gpu.SurfaceHandl
 		platform = eglPlatformX11
 	case gpu.SurfaceKindWeb:
 		platform = eglPlatformWeb
+	case gpu.SurfaceKindAndroid:
+		platform = eglPlatformAndroid
 	default:
 		return nil, nil, errors.New(tagEGLInitFailed, "no EGL platform for this kind of surface", "kind", string(h.Kind))
 	}
@@ -167,6 +173,9 @@ func (c *Context) Version() string { return c.version }
 //
 // Flutter: no counterpart
 func (c *Context) NewSurface(h gpu.SurfaceHandle) (*Surface, error) {
+	if p, ok := c.egl.(windowPreparer); ok && h.Kind == gpu.SurfaceKindAndroid {
+		p.prepareWindow(c.display, c.config, h.Window)
+	}
 	handle := c.egl.createWindowSurface(c.display, c.config, h.Window, h.Kind == gpu.SurfaceKindX11)
 	if handle == 0 {
 		return nil, errors.New(tagEGLSurfaceFailed, "could not create an EGL window surface", "egl_error", eglErrorCode(c.egl))
@@ -174,6 +183,12 @@ func (c *Context) NewSurface(h gpu.SurfaceHandle) (*Surface, error) {
 	s := &Surface{ctx: c, handle: handle}
 	c.surface[s] = struct{}{}
 	return s, nil
+}
+
+// windowPreparer is implemented by an eglAPI that must set up a native window before a surface is
+// made for it: Android's ANativeWindow takes the pixel format of the EGL config (SPEC §24.4).
+type windowPreparer interface {
+	prepareWindow(display, config, window uintptr)
 }
 
 // Lost says that the browser took the context away (WebGL's webglcontextlost): nothing can be
@@ -236,6 +251,7 @@ func (c *Context) MakeCurrent(s *Surface) error {
 	if !c.egl.makeCurrent(c.display, s.handle, s.handle, c.context) {
 		return errors.New(tagEGLMakeCurrentFailed, "eglMakeCurrent failed", "egl_error", eglErrorCode(c.egl))
 	}
+	c.current = s
 	return nil
 }
 
@@ -248,6 +264,7 @@ func (c *Context) MakeCurrentSurfaceless() error {
 	if !c.egl.makeCurrent(c.display, 0, 0, c.context) {
 		return errors.New(tagEGLMakeCurrentSurfacelessFailed, "eglMakeCurrent without a surface failed", "egl_error", eglErrorCode(c.egl))
 	}
+	c.current = nil
 	return nil
 }
 
@@ -338,6 +355,12 @@ func (s *Surface) Destroy() {
 	}
 	s.destroyed = true
 	delete(s.ctx.surface, s)
+	if s.ctx.current == s {
+		// Leave the context current with no surface, so that it survives the surface. If EGL
+		// refuses, the next MakeCurrent sets it right.
+		_ = s.ctx.egl.makeCurrent(s.ctx.display, 0, 0, s.ctx.context)
+		s.ctx.current = nil
+	}
 	// Nothing can be done if EGL refuses: the surface is gone with the display.
 	_ = s.ctx.egl.destroySurface(s.ctx.display, s.handle)
 }

@@ -184,3 +184,21 @@ func Describe(err error) string {
 	}
 	return fmt.Sprintf("%s: %s\nroute: %s\nmetadata: %v", appErr.Tag, appErr.Message, appErr.Route(), appErr.Metadata)
 }
+
+// PullAppDir reads every file of a directory of the app's private directory (`run-as ls`, then
+// `run-as cat` of each), keyed by name. The directory has no subdirectories.
+func (e *Emulator) PullAppDir(ctx context.Context, appID, dir string) (map[string][]byte, error) {
+	out, err := e.ADB.Output(ctx, "exec-out", "run-as", appID, "ls", dir)
+	if err != nil {
+		return nil, err
+	}
+	files := map[string][]byte{}
+	for _, name := range strings.Fields(out) {
+		b, err := e.ADB.PullAppFile(ctx, appID, dir+"/"+name)
+		if err != nil {
+			return nil, err
+		}
+		files[name] = b
+	}
+	return files, nil
+}

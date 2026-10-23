@@ -15,6 +15,7 @@ const (
 	eglContextClientVers = 0x3098
 	eglPlatformWayland   = 0x31D8 // EGL_PLATFORM_WAYLAND_KHR
 	eglPlatformX11       = 0x31D5 // EGL_PLATFORM_X11_KHR
+	eglPlatformAndroid   = 0x3141 // EGL_PLATFORM_ANDROID_KHR
 	eglNativeVisualID    = 0x302E // EGL_NATIVE_VISUAL_ID
 	eglSuccess           = 0x3000
 	eglExtensions        = 0x3055 // EGL_EXTENSIONS

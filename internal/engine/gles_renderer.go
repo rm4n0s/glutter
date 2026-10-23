@@ -29,6 +29,9 @@ type glesRenderer struct {
 	reported int // the number of skipped commands the log last said
 	// announced is whether the log said that the renderer is ready.
 	announced bool
+	// reattached is whether the first frame on a surface made for the existing context is still to
+	// come: its log line says what the frame had to make again (SPEC §24.4).
+	reattached bool
 }
 
 // Describe names the renderer and its GPU: "gles: llvmpipe (LLVM 19.1.7, 256 bits)", or
@@ -82,6 +85,12 @@ func (r *glesRenderer) Draw(h gpu.SurfaceHandle, width, height int, scene *ui.Sc
 			return nil, err
 		}
 		r.surfaces[h] = surface
+		if r.announced {
+			// A new surface for the context that already draws: what the app drew before is still in
+			// the context's textures and atlases.
+			r.reattached = true
+			r.log.Info("OpenGL ES surface attached to the existing context", "device", r.renderer.DeviceName())
+		}
 		if !r.announced {
 			r.announced = true
 			label := "OpenGL ES"
@@ -102,6 +111,10 @@ func (r *glesRenderer) Draw(h gpu.SurfaceHandle, width, height int, scene *ui.Sc
 	if err != nil {
 		return nil, err
 	}
+	if st := r.renderer.LastFrame(); r.reattached {
+		r.reattached = false
+		r.log.Info("OpenGL ES first frame on the new surface", "tiles_rasterized", st.TilesRasterized, "images_uploaded", st.ImagesUploaded, "clip_masks_built", st.ClipMasksBuilt)
+	}
 	if st := r.renderer.LastFrame(); st.Skipped > 0 && st.Skipped != r.reported {
 		r.reported = st.Skipped
 		r.log.Warn("the GPU renderer left out what it cannot draw yet", "skipped", st.Skipped, "drawn", st.Drawn, "features", st.Unsupported)
@@ -119,6 +132,7 @@ func (r *glesRenderer) Release(h gpu.SurfaceHandle) {
 	if surface, ok := r.surfaces[h]; ok {
 		surface.Destroy()
 		delete(r.surfaces, h)
+		r.log.Info("OpenGL ES surface released; the context stays")
 	}
 }
 

@@ -2478,3 +2478,21 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - The activity has no insets yet (step 25.7), so the app bar sits under the status bar on a real screen; the self-capture does not show the status bar.
   - Settings are the defaults (light, scale 1, en-US) until step 25.7, the clipboard fails with `ClipboardUnavailable` until step 25.8, and the lifecycle is resumed, paused and stopped until step 25.9.
   - `processStart` and `SystemFontMatcher` are still the "unknown" versions on Android (the font matcher comes in step 25.10). The app finds only the bundled fonts, which is also what the golden uses.
+
+## 25.4 GLES on Android
+
+- **Date:** 2026-10-24
+- **Branch:** feat/step-25.4-gles-on-android
+- **Summary:** `gles` draws on Android through EGL on the `ANativeWindow` (`libEGL.so`, `libGLESv3.so`, the pixel format of the config set on the window, the legacy window surface call), the context outlives its surfaces, and the engine's Android list is `gles`, `soft`. After Home and back, the existing context gets a new surface and its first frame makes no new tiles and uploads no images. `examples/dev/android-parity` draws every proof scene with `gles` and `soft` on the device for the device test to compare.
+- **Main files:** `internal/gpu/gles/` (`egl.go`, `eglapi.go`, `egl_android.go`, `context.go`), `internal/engine/` (`backends_android.go`, `gles_renderer.go`), `internal/androidtest/` (`gles_device_test.go`, `app.go` `PullAppDir`), `examples/dev/android-parity/`, `docs/SPEC.md` (§24.4 "Decided in step 25.4"), `docs/MANUAL-CHECKS.md`.
+- **Tests:** no Flutter test cases (EGL is not Flutter framework code). Plain Go: the EGL platform and window preparation on Android (`context_android_test.go`), the config choice and surface kinds as on Linux, the surface leaving the context current with no surface, route tests for the EGL tags.
+- **Device tests (`-tags glutter_android`):** on `glutter-37`: every proof scene drawn by `gles` on the emulator is within `gputest.ProofTolerances` of the scene drawn by `soft` on the same device, with `skipped 0` (one scene, `gradients`, has 200 pixels allowed over 96 levels, see below); `GLUTTER_RENDERER=gles` and `auto` both give `renderer chosen renderer="gles: ..."` (the emulator's ANGLE over SwiftShader); Home and back in the same process logs "surface released; the context stays", then "attached to the existing context" and a first frame with `tiles_rasterized=0 images_uploaded=0`, there is one "renderer ready" in the log, and the middle of the screen equals the counter golden within the GPU tolerance. All earlier device tests still pass.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck ✅ · apicheck ✅ · GOOS=js build, vet and `scripts/test-wasm.sh` ✅ · `scripts/check-android.sh` ✅ · device tests ✅ · display tests ✅ (`gles` and `engine` under headless sway)
+- **Proof:**
+  ![25.4 android gallery gles](implemented-proof-images/25.4-android-gallery-gles.png)
+  The gallery on the 1080x2400 emulator, drawn by `gles` (Material 3 icons, text, the shadowed pills, the seed-color circles). The two-pane desktop layout is squeezed into the phone's width (the overflow stripes in the mode selector): the gallery is not adapted to phones yet, which is not part of this step.
+- **Manual checks:** pending (`docs/MANUAL-CHECKS.md`, 25.4)
+- **Deviations and follow-ups:**
+  - The device test compares `gles` with `soft` **both drawn on the device**: the host's system fonts are not the device's, and against the host's `soft` image `text-tour` differs in 18,000 pixels (with the device's `soft` image: none).
+  - `gradients` allows 200 pixels over 96 levels on the device (80 seen): the repeat seams run through pixel centers, where each GPU decides which end of the ramp the pixel gets; llvmpipe has none.
+  - The app after Home needs Android to take the surface away, which happens some time after the activity stops; the device test waits for the log line instead of a fixed time.

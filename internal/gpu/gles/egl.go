@@ -46,6 +46,9 @@ type eglLib struct {
 
 	hasGetPlatformDisplay    bool
 	hasGetPlatformDisplayEXT bool
+	// legacySurface says that window surfaces are made with eglCreateWindowSurface from the
+	// display of eglGetDisplay(EGL_DEFAULT_DISPLAY): Android's way (SPEC §24.4).
+	legacySurface bool
 }
 
 // loadEGL opens libEGL and libGLESv2 (SPEC §8.1) and binds the EGL functions. A
@@ -60,7 +63,8 @@ func loadEGL() (*eglLib, error) {
 	}
 	// libGLESv2 is opened too: it must be loaded for GL entry points to work
 	// with libglvnd, and its symbols back up eglGetProcAddress.
-	if _, err := dl.OpenOverride(glesLibraryEnv, "libGLESv2.so.2", "libGLESv2.so"); err != nil {
+	// Android has libGLESv2.so and libGLESv3.so (OpenGL ES 3 is in both).
+	if _, err := dl.OpenOverride(glesLibraryEnv, "libGLESv2.so.2", "libGLESv2.so", "libGLESv3.so"); err != nil {
 		md := loaderMetadata(err)
 		return nil, errors.New(tagEGLLoadFailed, "could not load the EGL or GLES library",
 			"library", "libGLESv2", "names", md["names"], "dlerror", md["dlerror"])
@@ -129,6 +133,12 @@ func (l *eglLib) procAddress(name string) uintptr {
 func (l *eglLib) getProcAddress(name string) uintptr { return l.procAddress(name) }
 
 func (l *eglLib) getPlatformDisplay(platform uint32, native uintptr) uintptr {
+	if platform == eglPlatformAndroid {
+		// Android has one display, the default one, and takes the ANativeWindow in
+		// eglCreateWindowSurface.
+		l.legacySurface = true
+		return l.getDisplayFn(0)
+	}
 	switch {
 	case l.hasGetPlatformDisplay:
 		return l.getPlatformDisplayFn(platform, native, 0)
@@ -169,6 +179,9 @@ func (l *eglLib) createContext(display, config uintptr, attribs []int32) uintptr
 }
 
 func (l *eglLib) createWindowSurface(display, config, nativeWindow uintptr, x11 bool) uintptr {
+	if l.legacySurface {
+		return l.createWindowSurfaceFn(display, config, nativeWindow, 0)
+	}
 	if l.hasGetPlatformDisplay || l.hasGetPlatformDisplayEXT {
 		native := nativeWindow
 		if x11 {

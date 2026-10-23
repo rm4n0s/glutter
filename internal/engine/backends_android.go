@@ -9,14 +9,15 @@ import (
 	"time"
 
 	"github.com/rm4n0s/glutter/internal/gpu"
+	"github.com/rm4n0s/glutter/internal/gpu/gles"
 	"github.com/rm4n0s/glutter/internal/gpu/nativewindow"
 	"github.com/rm4n0s/glutter/internal/platform/android"
 	"github.com/rm4n0s/glutter/internal/text"
 	"github.com/rm4n0s/glutter/ui"
 )
 
-// This file is what Run uses on Android (GOOS=android): the platform of the activity's view, the
-// software renderer into the window for now (steps 25.4 and 25.5 add GLES and Vulkan), and no
+// This file is what Run uses on Android (GOOS=android): the platform of the activity's view, OpenGL ES
+// and then the software renderer into the window (step 25.5 adds Vulkan), and no
 // system font matcher until step 25.10 (SPEC §6.3, §24).
 
 // connectDisplay makes the platform of the process. It must run on the UI thread, which is where
@@ -38,10 +39,17 @@ func screenshotPath(value string, getenv func(string) string) string {
 	return androidScreenshotPath(value, getenv)
 }
 
-// rendererCandidates is the list of Android in the order auto tries them (SPEC §24.4): soft for
-// now, drawing into the window's CPU buffers. Steps 25.4 and 25.5 put gles and vulkan before it.
+// rendererCandidates is the list of Android in the order auto tries them (SPEC §24.4): gles, then
+// soft, drawing into the window's CPU buffers. Step 25.5 puts vulkan before gles.
 func rendererCandidates() []rendererCandidate {
-	return []rendererCandidate{{Name: "soft", New: newNativeWindowRenderer}}
+	return []rendererCandidate{{Name: "gles", New: newGLESRenderer}, {Name: "soft", New: newNativeWindowRenderer}}
+}
+
+// newGLESRenderer makes the OpenGL ES renderer of Android, over EGL on the ANativeWindow. It
+// reports no damage: the buffers that Android swaps are not preserved, so every frame is drawn
+// whole.
+func newGLESRenderer(cfg *Config, log *slog.Logger) renderer {
+	return newGLRenderer("gles", gles.NewRenderer, false, cfg, log)
 }
 
 // nativeWindowRenderer is the engine's renderer of last resort on Android: soft draws the frame
