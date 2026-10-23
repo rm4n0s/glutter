@@ -1922,6 +1922,7 @@ Each milestone is broken into steps in `docs/IMPLEMENTATION.md` (written after t
 | M20 | Vulkan renderer, at parity with `soft`, default on Linux with GLES as the fallback | `vulkan` matches the `soft` goldens; `auto` uses Vulkan on Mesa and NVIDIA and GLES without Vulkan |
 | M21 | Web: platform, input, text input, WebGL 2, WebGPU, fallback, `glutter-web`, examples | the examples run in Chromium (WebGPU) and Firefox (WebGL 2) and match the goldens; release 1.1 |
 | M22 | Fonts and trees for code editors (1.2): fonts loaded at run time, fonts in `gluttertest`, the family fallback order, then font queries and the desktop's font settings, text benchmarks and an LRU glyph cache, `TreeSliver`, `ReorderableListView`, tab stops in paragraph layout and a cache of shaped runs (1.4) | a monospace font loaded by the app is used in `TextStyle`, in fallback and in goldens; release 1.2 after steps 22.1–22.3; a tab in a code line lands on its stop in every query; a line of code built again is at least 5 times cheaper; release 1.4 after step 22.10 |
+| M23 | Windows for tray apps: hiding a window and showing it again (`RegularWindowController.SetHidden`, §8.2, §8.3, §8.7), and the desktop lifecycle given by the windows (§13) | ✕ in the tray example takes the window off the screen and the task bar on X11 and Wayland while the app and its tray icon keep running, a click on the icon brings it back as it was, and `RunApp` ends only when the window closes or the app exits |
 
 ## 19. Examples (`examples/`)
 
