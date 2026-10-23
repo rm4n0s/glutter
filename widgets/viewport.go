@@ -80,7 +80,7 @@ func NewViewport(offset rendering.ViewportOffset, slivers []Widget, opts ...View
 			}
 		}
 		if count != 1 {
-			panic(errors.New("ViewportCenterInvalid", "the center key of a viewport must be the key of exactly one of its slivers",
+			panic(errors.New(tagViewportCenterInvalid, "the center key of a viewport must be the key of exactly one of its slivers",
 				"center", o.Center.String(), "matches", count))
 		}
 	}
@@ -221,7 +221,7 @@ func (e *viewportElement) renderViewport() *rendering.RenderViewport {
 // Flutter: widgets/viewport.dart _ViewportElement.mount
 func (e *viewportElement) Mount(parent Element, newSlot any) {
 	if foundation.DebugMode && e.doingMountOrUpdate {
-		panic(errors.New("ViewportReentered", "the viewport element was mounted while it mounts or updates"))
+		panic(errors.New(tagViewportReentered, "the viewport element was mounted while it mounts or updates"))
 	}
 	e.doingMountOrUpdate = true
 	e.MultiChildRenderObjectElement.Mount(parent, newSlot)
@@ -234,7 +234,7 @@ func (e *viewportElement) Mount(parent Element, newSlot any) {
 // Flutter: widgets/viewport.dart _ViewportElement.update
 func (e *viewportElement) Update(newWidget Widget) {
 	if foundation.DebugMode && e.doingMountOrUpdate {
-		panic(errors.New("ViewportReentered", "the viewport element was updated while it mounts or updates"))
+		panic(errors.New(tagViewportReentered, "the viewport element was updated while it mounts or updates"))
 	}
 	e.doingMountOrUpdate = true
 	e.MultiChildRenderObjectElement.Update(newWidget)
@@ -257,7 +257,7 @@ func (e *viewportElement) updateCenter() {
 			elementIndex++
 		}
 		if foundation.DebugMode && elementIndex >= len(children) {
-			panic(errors.New("ViewportCenterInvalid", "the center of the viewport is not among its children", "center", center.String()))
+			panic(errors.New(tagViewportCenterInvalid, "the center of the viewport is not among its children", "center", center.String()))
 		}
 		e.centerSlotIndex, e.hasCenterSlot = elementIndex, true
 	case len(children) > 0:
@@ -289,7 +289,7 @@ func (e *viewportElement) InsertRenderObjectChild(child rendering.RenderObject, 
 func (e *viewportElement) MoveRenderObjectChild(child rendering.RenderObject, oldSlot, newSlot any) {
 	e.MultiChildRenderObjectElement.MoveRenderObjectChild(child, oldSlot, newSlot)
 	if foundation.DebugMode && !e.doingMountOrUpdate {
-		panic(errors.New("ViewportReentered", "a child of the viewport moved outside of a mount or update"))
+		panic(errors.New(tagViewportReentered, "a child of the viewport moved outside of a mount or update"))
 	}
 }
 
@@ -410,3 +410,9 @@ func (w *ShrinkWrappingViewport) UpdateRenderObject(bc BuildContext, renderObjec
 	r.SetClipBehavior(w.clipBehavior)
 	r.SetScrollCacheExtent(w.scrollCacheExtent)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagViewportCenterInvalid = "ViewportCenterInvalid"
+	tagViewportReentered     = "ViewportReentered"
+)

@@ -486,7 +486,7 @@ func NewMultiTapGestureRecognizer(binding *GestureBinding, opts ...MultiTapGestu
 // Flutter: gestures/multitap.dart MultiTapGestureRecognizer.addAllowedPointer
 func (r *MultiTapGestureRecognizer) AddAllowedPointer(event *PointerDownEvent) {
 	if foundation.DebugMode && r.gestureMap[event.Pointer()] != nil {
-		panic(errors.New("MultiTapPointerAddedTwice", "the pointer is already tracked", "pointer", event.Pointer()))
+		panic(errors.New(tagMultiTapPointerAddedTwice, "the pointer is already tracked", "pointer", event.Pointer()))
 	}
 	r.gestureMap[event.Pointer()] = newTapGesture(r, event, r.LongTapDelay, r.GestureSettings)
 	if r.OnTapDown != nil {
@@ -617,7 +617,7 @@ func serialCount(count int) int {
 		return 1
 	}
 	if foundation.DebugMode && count < 0 {
-		panic(errors.New("SerialTapCountInvalid", "the count must be positive", "count", count))
+		panic(errors.New(tagSerialTapCountInvalid, "the count must be positive", "count", count))
 	}
 	return count
 }
@@ -940,3 +940,9 @@ func (r *SerialTapGestureRecognizer) checkCancel(count int) {
 //
 // Flutter: gestures/multitap.dart SerialTapGestureRecognizer.debugDescription
 func (r *SerialTapGestureRecognizer) DebugDescription() string { return "serial tap" }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagMultiTapPointerAddedTwice = "MultiTapPointerAddedTwice"
+	tagSerialTapCountInvalid     = "SerialTapCountInvalid"
+)

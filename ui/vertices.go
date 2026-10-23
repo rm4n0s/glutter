@@ -138,11 +138,11 @@ type VerticesOpts struct {
 func NewVertices(mode VertexMode, positions []Offset, opts ...VerticesOpts) *Vertices {
 	o := oneOpts(opts)
 	if o.Colors != nil && len(o.Colors) != len(positions) {
-		panic(errors.New("VerticesColorCountMismatch", `"positions" and "colors" lengths must match.`,
+		panic(errors.New(tagVerticesColorCountMismatch, `"positions" and "colors" lengths must match.`,
 			"positions", len(positions), "colors", len(o.Colors)))
 	}
 	if o.TextureCoordinates != nil && len(o.TextureCoordinates) != len(positions) {
-		panic(errors.New("VerticesTextureCountMismatch", `"positions" and "textureCoordinates" lengths must match.`,
+		panic(errors.New(tagVerticesTextureCountMismatch, `"positions" and "textureCoordinates" lengths must match.`,
 			"positions", len(positions), "textureCoordinates", len(o.TextureCoordinates)))
 	}
 	if mode == VertexModeUnspecified {
@@ -165,7 +165,7 @@ func NewVertices(mode VertexMode, positions []Offset, opts ...VerticesOpts) *Ver
 		v.indices = make([]uint16, len(o.Indices))
 		for i, idx := range o.Indices {
 			if idx < 0 || idx >= len(positions) || idx > 0xFFFF {
-				panic(errors.New("VerticesIndexInvalid",
+				panic(errors.New(tagVerticesIndexInvalid,
 					`"indices" values must be valid indices in the positions list (and at most 65535).`,
 					"index", i, "value", idx, "positions", len(positions)))
 			}
@@ -221,3 +221,10 @@ func (v *Vertices) Indices() []uint16 {
 //
 // Flutter: ui/painting.dart Vertices.dispose
 func (v *Vertices) Dispose() {}
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagVerticesColorCountMismatch   = "VerticesColorCountMismatch"
+	tagVerticesIndexInvalid         = "VerticesIndexInvalid"
+	tagVerticesTextureCountMismatch = "VerticesTextureCountMismatch"
+)

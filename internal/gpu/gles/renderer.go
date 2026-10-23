@@ -83,7 +83,7 @@ func (s *glSurface) Destroy() {
 
 func newRenderer(open func(gpu.SurfaceHandle) (*Context, *Surface, error), opts ...RendererOpts) *Renderer {
 	if len(opts) > 1 {
-		panic(errors.New("MultipleOptions", "pass at most one options value", "type", "RendererOpts", "count", len(opts)))
+		panic(errors.New(tagMultipleOptions, "pass at most one options value", "type", "RendererOpts", "count", len(opts)))
 	}
 	bg := ui.NewColor(0xFFFFFFFF)
 	if len(opts) == 1 && opts[0].HasBackground {
@@ -125,7 +125,7 @@ func (r *Renderer) DeviceName() string {
 // Flutter: no counterpart
 func (r *Renderer) Attach(h gpu.SurfaceHandle) (gpu.Surface, error) {
 	if r.closed {
-		return nil, errors.New("RendererClosed", "the renderer was closed")
+		return nil, errors.New(tagRendererClosed, "the renderer was closed")
 	}
 	var s *Surface
 	if r.ctx == nil {
@@ -171,18 +171,18 @@ func (r *Renderer) RenderCapture(s gpu.Surface, scene *ui.Scene, size ui.Size, d
 func (r *Renderer) render(s gpu.Surface, scene *ui.Scene, size ui.Size, capture bool) (*image.RGBA, error) {
 	gs, ok := s.(*glSurface)
 	if r.closed || !ok || gs.r != r || gs.surface.destroyed {
-		return nil, errors.New("RendererSurfaceInvalid", "the surface does not belong to this renderer or was destroyed")
+		return nil, errors.New(tagRendererSurfaceInvalid, "the surface does not belong to this renderer or was destroyed")
 	}
 	w, h := int(size.Width), int(size.Height)
 	if w <= 0 || h <= 0 {
-		return nil, errors.New("RendererSizeInvalid", "the size to render must be positive", "width", size.Width, "height", size.Height)
+		return nil, errors.New(tagRendererSizeInvalid, "the size to render must be positive", "width", size.Width, "height", size.Height)
 	}
 	if r.ctx.Lost() {
 		// The browser took the context: there is nothing to draw with and nothing to show.
 		// The frame after its restoration is drawn whole.
 		gs.tracker.Invalidate()
 		if capture {
-			return nil, errContextLost()
+			return nil, errors.New(tagWebGLContextLost, "the WebGL context is lost; the next frame is drawn when the browser restores it")
 		}
 		return nil, nil
 	}
@@ -295,17 +295,17 @@ func (r *Renderer) LastFrame() FrameStats { return r.last }
 // Flutter: no counterpart
 func (r *Renderer) Snapshot(scene *ui.Scene, size ui.Size) (*image.RGBA, error) {
 	if r.closed {
-		return nil, errors.New("RendererClosed", "the renderer was closed")
+		return nil, errors.New(tagRendererClosed, "the renderer was closed")
 	}
 	if r.ctx == nil {
-		return nil, errors.New("RendererNotAttached", "a snapshot needs the renderer's GL context, which the first Attach creates")
+		return nil, errors.New(tagRendererNotAttached, "a snapshot needs the renderer's GL context, which the first Attach creates")
 	}
 	w, h := int(size.Width), int(size.Height)
 	if w <= 0 || h <= 0 {
-		return nil, errors.New("RendererSizeInvalid", "the size to render must be positive", "width", size.Width, "height", size.Height)
+		return nil, errors.New(tagRendererSizeInvalid, "the size to render must be positive", "width", size.Width, "height", size.Height)
 	}
 	if r.ctx.Lost() {
-		return nil, errContextLost()
+		return nil, errors.New(tagWebGLContextLost, "the WebGL context is lost; the next frame is drawn when the browser restores it")
 	}
 	if err := r.recover(); err != nil {
 		return nil, err
@@ -387,3 +387,13 @@ func (r *Renderer) Close() error {
 	}
 	return nil
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagMultipleOptions        = "MultipleOptions"
+	tagRendererClosed         = "RendererClosed"
+	tagRendererNotAttached    = "RendererNotAttached"
+	tagRendererSizeInvalid    = "RendererSizeInvalid"
+	tagRendererSurfaceInvalid = "RendererSurfaceInvalid"
+	tagWebGLContextLost       = "WebGLContextLost"
+)

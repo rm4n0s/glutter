@@ -150,7 +150,7 @@ func newInstance(f *vkFuncs, o instanceOptions) (*instance, error) {
 		version = u32(out)
 	}
 	if version < apiVersion11 {
-		return nil, errors.New("VulkanUnsupported", "the Vulkan loader supports Vulkan 1.0 only; Glutter needs 1.1 or later",
+		return nil, errors.New(tagVulkanUnsupported, "the Vulkan loader supports Vulkan 1.0 only; Glutter needs 1.1 or later",
 			"version", int(version))
 	}
 	version = min(version, apiVersion13)
@@ -167,7 +167,7 @@ func newInstance(f *vkFuncs, o instanceOptions) (*instance, error) {
 			return nil, err
 		}
 		if !ok {
-			return nil, errors.New("VulkanUnsupported", "the validation layer is not installed (sudo dnf install vulkan-validation-layers)",
+			return nil, errors.New(tagVulkanUnsupported, "the validation layer is not installed (sudo dnf install vulkan-validation-layers)",
 				"layer", validationLayerName)
 		}
 		layers = append(layers, validationLayerName)
@@ -175,7 +175,7 @@ func newInstance(f *vkFuncs, o instanceOptions) (*instance, error) {
 	}
 	for _, e := range extensions {
 		if !contains(available, e) && (e != debugUtilsExtension || !o.Validation) {
-			return nil, errors.New("VulkanUnsupported", "the Vulkan instance lacks an extension that Glutter needs", "extension", e)
+			return nil, errors.New(tagVulkanUnsupported, "the Vulkan instance lacks an extension that Glutter needs", "extension", e)
 		}
 	}
 

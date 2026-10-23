@@ -124,11 +124,11 @@ func TestScrollPositionChecks(t *testing.T) {
 	}{
 		{"absorb a position of another scrollable", "ScrollPositionAbsorbInvalid", func() { p.Absorb(other) }},
 		{"extents in the wrong order", "ScrollPositionExtentsInvalid", func() { p.ApplyContentDimensions(10, 5) }},
-		{"set pixels while idle", "ScrollPositionNotScrolling", func() { p.SetPixels(5) }},
+		{"set pixels while idle", "ScrollPositionWithSingleContext.SetPixels.ScrollPositionNotScrolling", func() { p.SetPixels(5) }},
 		{"overscroll while idle", "ScrollOverscrollWhileIdle", func() { p.DidOverscrollBy(5) }},
 		{"metrics notification that was not scheduled", "ScrollMetricsNotificationUnscheduled", func() { p.DidUpdateScrollMetrics() }},
 		{"ensure visible of a detached object", "ScrollEnsureVisibleDetached", func() { p.EnsureVisible(rendering.NewRenderLimitedBox(nil)) }},
-		{"begin an activity of another delegate", "ScrollActivityDelegateInvalid", func() {
+		{"begin an activity of another delegate", "ScrollPositionWithSingleContext.BeginActivity.ScrollActivityDelegateInvalid", func() {
 			p.(*ScrollPositionWithSingleContext).BeginActivity(NewIdleScrollActivity(other.(*ScrollPositionWithSingleContext)))
 		}},
 		{"update the delegate of an activity to itself", "ScrollActivityDelegateSame", func() { p.Activity().UpdateDelegate(p.(*ScrollPositionWithSingleContext)) }},

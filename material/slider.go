@@ -111,13 +111,13 @@ func NewSlider(value float64, onChanged func(value float64), opts ...SliderOpts)
 		min, max := o.Min, o.Max.OrElse(1.0)
 		switch {
 		case min > max:
-			panic(errors.New("SliderMinGreaterThanMax", "the minimum of a Slider must not be greater than its maximum", "min", min, "max", max))
+			panic(errors.New(tagSliderMinGreaterThanMax, "the minimum of a Slider must not be greater than its maximum", "min", min, "max", max))
 		case value < min || value > max:
-			panic(errors.NewErrf("SliderValueOutOfRange", "Value %v is not between minimum %v and maximum %v", value, min, max))
+			panic(errors.NewErrf(tagSliderValueOutOfRange, "Value %v is not between minimum %v and maximum %v", value, min, max))
 		case o.SecondaryTrackValue.IsSome() && (o.SecondaryTrackValue.Value() < min || o.SecondaryTrackValue.Value() > max):
-			panic(errors.NewErrf("SliderSecondaryValueOutOfRange", "SecondaryValue %v is not between %v and %v", o.SecondaryTrackValue.Value(), min, max))
+			panic(errors.NewErrf(tagSliderSecondaryValueOutOfRange, "SecondaryValue %v is not between %v and %v", o.SecondaryTrackValue.Value(), min, max))
 		case o.Divisions.IsSome() && o.Divisions.Value() <= 0:
-			panic(errors.New("SliderDivisionsInvalid", "the divisions of a Slider must be greater than zero", "divisions", o.Divisions.Value()))
+			panic(errors.New(tagSliderDivisionsInvalid, "the divisions of a Slider must be greater than zero", "divisions", o.Divisions.Value()))
 		}
 	}
 	return &Slider{StatefulWidget: widgets.NewStatefulWidgetBase(widgets.WidgetOpts{Key: o.Key}), value: value, onChanged: onChanged, o: o}
@@ -1547,3 +1547,11 @@ func (r *renderValueIndicator) Dispose() {
 	r.valueIndicatorAnimation.Dispose()
 	r.RenderBox.Dispose()
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagSliderDivisionsInvalid         = "SliderDivisionsInvalid"
+	tagSliderMinGreaterThanMax        = "SliderMinGreaterThanMax"
+	tagSliderSecondaryValueOutOfRange = "SliderSecondaryValueOutOfRange"
+	tagSliderValueOutOfRange          = "SliderValueOutOfRange"
+)

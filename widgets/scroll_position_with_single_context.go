@@ -4,6 +4,7 @@ import (
 	"math"
 	"time"
 
+	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/animation"
 	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/gestures"
@@ -78,7 +79,7 @@ func InitScrollPositionWithSingleContext(p *ScrollPositionWithSingleContext, sel
 // Flutter: widgets/scroll_position_with_single_context.dart ScrollPositionWithSingleContext.setPixels
 func (p *ScrollPositionWithSingleContext) SetPixels(newPixels float64) float64 {
 	if foundation.DebugMode && !p.activity.IsScrolling() {
-		panic(scrollNotScrollingError())
+		panic(errors.New(tagScrollPositionNotScrolling, "setPixels was called while the activity of the position is not scrolling"))
 	}
 	return p.ScrollPositionBase.SetPixels(newPixels)
 }
@@ -97,7 +98,7 @@ func (p *ScrollPositionWithSingleContext) Absorb(other ScrollPosition) {
 	p.activity.UpdateDelegate(p)
 	p.userScrollDirection = o.userScrollDirection
 	if foundation.DebugMode && p.currentDrag != nil {
-		panic(scrollAbsorbDragError())
+		panic(errors.New(tagScrollPositionDragInvalid, "the scroll position has a drag already"))
 	}
 	if o.currentDrag != nil {
 		p.currentDrag = o.currentDrag
@@ -124,7 +125,7 @@ func (p *ScrollPositionWithSingleContext) BeginActivity(newActivity ScrollActivi
 		return
 	}
 	if foundation.DebugMode && newActivity.Delegate() != ScrollActivityDelegate(p) {
-		panic(scrollActivityDelegateError())
+		panic(errors.New(tagScrollActivityDelegateInvalid, "the delegate of the new activity must be the position that begins it"))
 	}
 	p.ScrollPositionBase.BeginActivity(newActivity)
 	if p.currentDrag != nil {
@@ -163,7 +164,7 @@ func (p *ScrollPositionWithSingleContext) GoIdle() { p.BeginActivity(NewIdleScro
 // Flutter: widgets/scroll_position_with_single_context.dart ScrollPositionWithSingleContext.goBallistic
 func (p *ScrollPositionWithSingleContext) GoBallistic(velocity float64) {
 	if foundation.DebugMode && !p.HasPixels() {
-		panic(scrollNoPixelsError())
+		panic(errors.New(tagScrollMetricsValueMissing, "goBallistic was called before the position has pixels", "value", "pixels"))
 	}
 	simulation := p.physics.CreateBallisticSimulation(p.self, velocity)
 	if !isNil(simulation) {
@@ -294,7 +295,7 @@ func (p *ScrollPositionWithSingleContext) Drag(details gestures.DragStartDetails
 	})
 	p.BeginActivity(NewDragScrollActivity(p, drag))
 	if foundation.DebugMode && p.currentDrag != nil {
-		panic(scrollAbsorbDragError())
+		panic(errors.New(tagScrollPositionDragInvalid, "the scroll position has a drag already"))
 	}
 	p.currentDrag = drag
 	return drag
@@ -319,3 +320,10 @@ func (p *ScrollPositionWithSingleContext) DebugFillDescription(description []str
 	description = p.ScrollPositionBase.DebugFillDescription(description)
 	return append(description, foundation.RuntimeTypeName(p.context), p.physics.String(), p.activity.String(), p.userScrollDirection.String())
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagScrollActivityDelegateInvalid = "ScrollActivityDelegateInvalid"
+	tagScrollPositionDragInvalid     = "ScrollPositionDragInvalid"
+	tagScrollPositionNotScrolling    = "ScrollPositionNotScrolling"
+)

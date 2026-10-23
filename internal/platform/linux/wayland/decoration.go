@@ -3,7 +3,6 @@
 package wayland
 
 import (
-	"fmt"
 	"log/slog"
 
 	"github.com/rm4n0s/glutter/internal/platform"
@@ -45,13 +44,13 @@ func (p *Platform) libdecorContext() *decor.Context {
 		slog.Default().Error("libdecor", "code", int(code), "message", message)
 	})
 	if err != nil {
-		slog.Default().Info("libdecor is not available; windows draw their own title bar", "error", fmt.Sprint(err))
+		slog.Default().Info("libdecor is not available; windows draw their own title bar", "err", err)
 		return nil
 	}
 	p.libdecor = ctx
 	if fd := ctx.FD(); fd >= 0 && fd != p.src.FD() {
 		if err := p.loop.AddSource(&libdecorSource{ctx: ctx, fd: fd}); err != nil {
-			slog.Default().Error("libdecor: the loop did not take its file descriptor", "error", fmt.Sprint(err))
+			slog.Default().Error("libdecor: the loop did not take its file descriptor", "err", err)
 		}
 	}
 	return ctx

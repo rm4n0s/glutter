@@ -186,9 +186,14 @@ func MaybePageStorageOf(bc BuildContext) *PageStorageBucket {
 func PageStorageOf(bc BuildContext) *PageStorageBucket {
 	b := MaybePageStorageOf(bc)
 	if b == nil && foundation.DebugMode {
-		panic(errors.New("PageStorageMissing",
+		panic(errors.New(tagPageStorageMissing,
 			"PageStorageOf was called with a context that does not contain a PageStorage widget; no PageStorage widget ancestor could be found starting from the context that was passed; this can happen because you are using a widget that looks for a PageStorage ancestor, but no such ancestor exists",
 			"context", fmt.Sprint(bc)))
 	}
 	return b
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagPageStorageMissing = "PageStorageMissing"
+)

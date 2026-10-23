@@ -123,10 +123,10 @@ func NewNavigationBar(destinations []widgets.Widget, opts ...NavigationBarOpts) 
 	o := firstOpts(opts)
 	if foundation.DebugMode {
 		if len(destinations) < 2 {
-			panic(errors.New("NavigationBarDestinations", "a NavigationBar needs at least two destinations", "destinations", len(destinations)))
+			panic(errors.New(tagNavigationBarDestinations, "a NavigationBar needs at least two destinations", "destinations", len(destinations)))
 		}
 		if o.SelectedIndex < 0 || o.SelectedIndex >= len(destinations) {
-			panic(errors.New("NavigationBarSelectedIndex", "the selected index of a NavigationBar must be one of its destinations",
+			panic(errors.New(tagNavigationBarSelectedIndex, "the selected index of a NavigationBar must be one of its destinations",
 				"selectedIndex", o.SelectedIndex, "destinations", len(destinations)))
 		}
 	}
@@ -471,7 +471,7 @@ type navigationDestinationInfo struct {
 func navigationDestinationInfoOf(bc widgets.BuildContext) *navigationDestinationInfo {
 	result, ok := widgets.DependOn[*navigationDestinationInfo](bc)
 	if !ok {
-		panic(errors.New("NavigationDestinationInfoMissing", "Navigation destinations need a navigationDestinationInfo parent, which is usually provided by NavigationBar.",
+		panic(errors.New(tagNavigationDestinationInfoMissing, "Navigation destinations need a navigationDestinationInfo parent, which is usually provided by NavigationBar.",
 			"widget", foundation.RuntimeTypeName(bc.Widget())))
 	}
 	return result
@@ -916,3 +916,10 @@ func navigationBarDefaultsM3(theme *ThemeData) NavigationBarThemeData {
 		LabelPadding: painting.NewEdgeInsetsFromLTRB(0, 4, 0, 0),
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagNavigationBarDestinations        = "NavigationBarDestinations"
+	tagNavigationBarSelectedIndex       = "NavigationBarSelectedIndex"
+	tagNavigationDestinationInfoMissing = "NavigationDestinationInfoMissing"
+)

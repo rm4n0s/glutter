@@ -206,7 +206,7 @@ func TestAnExportedDragThatIsNotAcceptedIsCanceled(t *testing.T) {
 
 func TestADraggableWithAnExportDragsInTheWindowWhenThePlatformCannot(t *testing.T) {
 	ts := gluttertest.New(t)
-	ts.FailDrags(errors.New("DragUnsupported", "no"))
+	ts.FailDrags(errors.New(tagDragUnsupported, "no"))
 	var accepted []int
 	ts.PumpWidget(dragApp(
 		NewDraggable(NewText("Dragging"), dragBox(srcKey, "Source", 100), DraggableOpts[int]{
@@ -246,7 +246,12 @@ func TestStartDragWithoutAHostThatCanFails(t *testing.T) {
 	d := ui.NewPlatformDispatcher(nil)
 	err := d.StartDrag(0, ui.DragRequest{ID: 1})
 	appErr, ok := errors.FromError(err)
-	if !ok || !appErr.HasRoute("PlatformDispatcher.StartDrag.DragUnsupported") && appErr.Tag != "DragUnsupported" {
+	if !ok || !appErr.HasRoute("PlatformDispatcher.StartDrag.DragUnsupported") && appErr.Tag != tagDragUnsupported {
 		t.Errorf("err = %v", err)
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagDragUnsupported = "DragUnsupported"
+)

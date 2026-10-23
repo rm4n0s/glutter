@@ -19,17 +19,17 @@ var _ ui.Rasterizer = (*Renderer)(nil)
 // Flutter: no counterpart
 func (r *Renderer) Snapshot(scene *ui.Scene, size ui.Size) (*image.RGBA, error) {
 	if r.closed {
-		return nil, errors.New("RendererClosed", "the renderer was closed")
+		return nil, errors.New(tagRendererClosed, "the renderer was closed")
 	}
 	if r.dev == nil {
-		return nil, errors.New("RendererNotAttached", "a snapshot needs the renderer's device, which the first frame of a window creates")
+		return nil, errors.New(tagRendererNotAttached, "a snapshot needs the renderer's device, which the first frame of a window creates")
 	}
 	w, h := int(size.Width), int(size.Height)
 	if w <= 0 || h <= 0 {
-		return nil, errors.New("RendererSizeInvalid", "the size to render must be positive", "width", size.Width, "height", size.Height)
+		return nil, errors.New(tagRendererSizeInvalid, "the size to render must be positive", "width", size.Width, "height", size.Height)
 	}
 	if w > r.dev.Limits().MaxTextureSize || h > r.dev.Limits().MaxTextureSize {
-		return nil, errors.New("RendererSizeInvalid", "the size to render is larger than the textures of the device", "width", w, "height", h, "limit", r.dev.Limits().MaxTextureSize)
+		return nil, errors.New(tagRendererSizeInvalid, "the size to render is larger than the textures of the device", "width", w, "height", h, "limit", r.dev.Limits().MaxTextureSize)
 	}
 	defer func() {
 		if r.res != nil {
@@ -69,7 +69,7 @@ func (r *Renderer) Snapshot(scene *ui.Scene, size ui.Size) (*image.RGBA, error) 
 		return nil, readErr
 	}
 	if shot == nil {
-		return nil, errors.New("RendererCaptureFailed", "the device did not deliver the snapshot it was asked to read back")
+		return nil, errors.New(tagRendererCaptureFailed, "the device did not deliver the snapshot it was asked to read back")
 	}
 	return shot, nil
 }
@@ -85,3 +85,8 @@ func (r *Renderer) RasterizeScene(scene *ui.Scene, width, height int) (*ui.Image
 	}
 	return ui.NewImageFromRGBA(img.Pix, width, height), nil
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagRendererNotAttached = "RendererNotAttached"
+)

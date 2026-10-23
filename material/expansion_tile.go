@@ -112,7 +112,7 @@ type ExpansionTile struct {
 func NewExpansionTile(title widgets.Widget, opts ...ExpansionTileOpts) *ExpansionTile {
 	o := firstOpts(opts)
 	if foundation.DebugMode && o.ExpandedCrossAxisAlignment == rendering.CrossAxisAlignmentBaseline {
-		panic(errors.New("ExpansionTileCrossAxisAlignmentBaseline", "CrossAxisAlignment.baseline is not supported since the expanded children are aligned in a column, not a row"))
+		panic(errors.New(tagExpansionTileCrossAxisAlignmentBaseline, "CrossAxisAlignment.baseline is not supported since the expanded children are aligned in a column, not a row"))
 	}
 	return &ExpansionTile{StatefulWidget: widgets.NewStatefulWidgetBase(widgets.WidgetOpts{Key: o.Key}), title: title, o: o}
 }
@@ -418,3 +418,8 @@ func (s *expansionTileState) Build(widgets.BuildContext) widgets.Widget {
 		NoMaintainState: !s.Widget().o.MaintainState, ExpansibleBuilder: s.buildExpansible,
 	})
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagExpansionTileCrossAxisAlignmentBaseline = "ExpansionTileCrossAxisAlignmentBaseline"
+)

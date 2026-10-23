@@ -107,7 +107,7 @@ func NewSwitch(value bool, onChanged func(value bool), opts ...SwitchOpts) *Swit
 	o := firstOpts(opts)
 	if foundation.DebugMode && (o.ActiveThumbImage == nil && o.OnActiveThumbImageError != nil ||
 		o.InactiveThumbImage == nil && o.OnInactiveThumbImageError != nil) {
-		panic(errors.New("SwitchThumbImageErrorWithoutImage", "the error listener of a thumb image needs the image"))
+		panic(errors.New(tagSwitchThumbImageErrorWithoutImage, "the error listener of a thumb image needs the image"))
 	}
 	return &Switch{StatelessWidget: widgets.NewStatelessWidgetBase(widgets.WidgetOpts{Key: o.Key}), value: value, onChanged: onChanged, o: o}
 }
@@ -1021,3 +1021,8 @@ func newSwitchDefaults(bc widgets.BuildContext) switchDefaults {
 	}
 	return d
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagSwitchThumbImageErrorWithoutImage = "SwitchThumbImageErrorWithoutImage"
+)

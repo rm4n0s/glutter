@@ -94,7 +94,7 @@ func NewFrameTiming(vsyncStart, buildStart, buildFinish, rasterStart, rasterFini
 // Flutter: ui/platform_dispatcher.dart FrameTiming.timestampInMicroseconds
 func (t FrameTiming) TimestampOf(phase FramePhase) time.Duration {
 	if phase <= FramePhaseUnspecified || phase > FramePhaseRasterFinishWallTime {
-		panic(errors.New("FramePhaseInvalid", "the value is not a frame phase", "phase", int(phase)))
+		panic(errors.New(tagFramePhaseInvalid, "the value is not a frame phase", "phase", int(phase)))
 	}
 	return t.phases[phase]
 }
@@ -166,3 +166,8 @@ func (t FrameTiming) String() string {
 		", pictureCacheCount: " + strconv.Itoa(t.opts.PictureCacheCount) + ", pictureCacheBytes: " + strconv.Itoa(t.opts.PictureCacheBytes) +
 		", frameNumber: " + strconv.Itoa(t.frameNumber) + ")"
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagFramePhaseInvalid = "FramePhaseInvalid"
+)

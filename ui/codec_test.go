@@ -292,6 +292,11 @@ func TestInstantiateImageCodecErrors(t *testing.T) {
 	// A PNG header that claims a huge size.
 	huge := append([]byte(nil), good...)
 	copy(huge[16:], []byte{0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00}) // 65536 x 65536
+	// A GIF that loses its end: the header is fine, the frames are not.
+	someGIF := encodeGIF(t, &gif.GIF{
+		Image: []*image.Paletted{gifFrame(image.Rect(0, 0, 4, 4), color.RGBA{R: 255, A: 255})}, Delay: []int{5},
+		Disposal: []byte{gif.DisposalNone}, Config: image.Config{Width: 4, Height: 4},
+	})
 	tests := []struct {
 		name string
 		ctx  context.Context
@@ -299,9 +304,10 @@ func TestInstantiateImageCodecErrors(t *testing.T) {
 		opts []InstantiateImageCodecOpts
 		tag  string
 	}{
-		{"empty", context.Background(), nil, nil, "ImageDecodeFailed"},
+		{"empty", context.Background(), nil, nil, "InstantiateImageCodec.ImageDecodeFailed"},
 		{"not an image", context.Background(), []byte("hello, this is not an image"), nil, "ImageDecodeFailed"},
-		{"truncated png", context.Background(), good[:len(good)/2], nil, "ImageDecodeFailed"},
+		{"truncated png", context.Background(), good[:len(good)/2], nil, "InstantiateImageCodec.ImageDecodeFailed"},
+		{"truncated gif", context.Background(), someGIF[:len(someGIF)-12], nil, "InstantiateImageCodec->decodeGIF.ImageDecodeFailed"},
 		{"too large", context.Background(), huge, nil, "ImageDecodeFailed"},
 		{"negative target", context.Background(), good, []InstantiateImageCodecOpts{{TargetWidth: -1}}, "ImageSizeInvalid"},
 		{"canceled", canceled, good, nil, "ImageDecodeCanceled"},
@@ -437,7 +443,7 @@ func FuzzInstantiateImageCodec(f *testing.F) {
 	f.Fuzz(func(t *testing.T, data []byte) {
 		c, err := InstantiateImageCodec(context.Background(), data, InstantiateImageCodecOpts{TargetWidth: 7})
 		if err != nil {
-			if appErr, ok := errors.FromError(err); !ok || appErr.Tag != "ImageDecodeFailed" {
+			if appErr, ok := errors.FromError(err); !ok || appErr.Tag != tagImageDecodeFailed {
 				t.Fatalf("unexpected error %v", err)
 			}
 			return

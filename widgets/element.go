@@ -244,7 +244,7 @@ func (b *ElementBase) Slot() any { return b.slot }
 // Flutter: widgets/framework.dart Element.depth
 func (b *ElementBase) Depth() int {
 	if foundation.DebugMode && b.lifecycle == lifecycleInitial {
-		panic(errors.New("ElementDepthBeforeMount", "depth is only available when the element has been mounted"))
+		panic(errors.New(tagElementDepthBeforeMount, "depth is only available when the element has been mounted"))
 	}
 	return b.depth
 }
@@ -260,7 +260,7 @@ func (b *ElementBase) Dirty() bool { return b.dirty }
 // Flutter: widgets/framework.dart Element.widget
 func (b *ElementBase) Widget() Widget {
 	if b.widget == nil {
-		panic(errors.New("ElementWidgetUnmounted", "the widget of an element is gone once the element is unmounted",
+		panic(errors.New(tagElementWidgetUnmounted, "the widget of an element is gone once the element is unmounted",
 			"element", b.ToStringShort()))
 	}
 	return b.widget
@@ -449,7 +449,7 @@ func (b *ElementBase) DebugVisitOnstageChildren(visitor ElementVisitor) {
 // Flutter: widgets/framework.dart Element.visitChildElements
 func (b *ElementBase) VisitChildElements(visitor ElementVisitor) {
 	if foundation.DebugMode && b.owner != nil && b.owner.debugStateLocked() {
-		panic(errors.New("VisitChildElementsDuringBuild",
+		panic(errors.New(tagVisitChildElementsDuringBuild,
 			"VisitChildElements was called during build; the child list is still being updated at that point, so the children might not be constructed yet, or might be old children that are going to be replaced"))
 	}
 	b.self.VisitChildren(visitor)
@@ -489,7 +489,7 @@ func (b *ElementBase) AttachRenderObject(newSlot any) {
 // Flutter: widgets/framework.dart Element.findRenderObject
 func (b *ElementBase) FindRenderObject() rendering.RenderObject {
 	if foundation.DebugMode && b.lifecycle != lifecycleActive {
-		panic(errors.New("FindRenderObjectInactive",
+		panic(errors.New(tagFindRenderObjectInactive,
 			"in order for an element to have a valid render object, it must be active, which means it is part of the tree; if you called this method from a State, consider guarding it with Mounted",
 			"lifecycle", b.lifecycle.String(), "element", b.ToStringShort()))
 	}
@@ -508,7 +508,7 @@ func (b *ElementBase) findAncestorRenderObject(accept func(rendering.RenderObjec
 
 func (b *ElementBase) debugCheckStateIsActiveForAncestorLookup() {
 	if foundation.DebugMode && b.lifecycle != lifecycleActive {
-		panic(errors.New("AncestorLookupOnInactiveElement",
+		panic(errors.New(tagAncestorLookupOnInactiveElement,
 			"looking up a deactivated widget's ancestor is unsafe; at this point the state of the widget's element tree is no longer stable; to safely refer to a widget's ancestor in its Dispose method, save a reference to the ancestor by looking it up in DidChangeDependencies",
 			"lifecycle", b.lifecycle.String()))
 	}
@@ -649,7 +649,7 @@ func (b *ElementBase) MarkNeedsBuild() {
 		b.owner.UIThread.AssertCurrent("Element.MarkNeedsBuild")
 	}
 	if foundation.DebugMode && b.lifecycle == lifecycleDefunct {
-		panic(errors.New("MarkNeedsBuildOnDefunctElement",
+		panic(errors.New(tagMarkNeedsBuildOnDefunctElement,
 			"SetState or MarkNeedsBuild was called on an element that has been unmounted",
 			"element", b.ToStringShort()))
 	}
@@ -661,14 +661,14 @@ func (b *ElementBase) MarkNeedsBuild() {
 			if b.isDescendantOf(b.owner.debugCurrentBuildTarget) {
 				// A descendant of the element being built is built later.
 			} else {
-				panic(errors.New("MarkNeedsBuildDuringBuild",
+				panic(errors.New(tagMarkNeedsBuildDuringBuild,
 					"SetState or MarkNeedsBuild was called during build; a widget can be marked as needing to be built during the build phase only if one of its ancestors is currently building, because the framework builds parent widgets before children, which means a dirty descendant will always be built; otherwise, the framework might not visit this widget during this build phase",
 					"widget", foundation.RuntimeTypeName(b.widget),
 					"element", b.self.String(),
 					"building", b.owner.debugCurrentBuildTarget.String()))
 			}
 		} else if b.owner.debugStateLocked() {
-			panic(errors.New("MarkNeedsBuildWhileLocked",
+			panic(errors.New(tagMarkNeedsBuildWhileLocked,
 				"SetState or MarkNeedsBuild was called when the widget tree was locked; the widget cannot be marked as needing to build because the framework is locked",
 				"widget", foundation.RuntimeTypeName(b.widget), "element", b.self.String()))
 		}
@@ -732,9 +732,22 @@ func (b *ElementBase) PerformRebuild() { b.dirty = false }
 // Flutter: widgets/framework.dart Element.didChangeDependencies
 func (b *ElementBase) DidChangeDependencies() {
 	if foundation.DebugMode && b.owner.debugCurrentBuildTarget == nil {
-		panic(errors.New("DidChangeDependenciesOutsideBuild",
+		panic(errors.New(tagDidChangeDependenciesOutsideBuild,
 			"DidChangeDependencies was called at an inappropriate time; it may only be called while the widgets are being built (not from a network or file I/O event, a timer, or a goroutine)",
 			"widget", foundation.RuntimeTypeName(b.widget)))
 	}
 	b.self.MarkNeedsBuild()
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagAncestorLookupOnInactiveElement   = "AncestorLookupOnInactiveElement"
+	tagDidChangeDependenciesOutsideBuild = "DidChangeDependenciesOutsideBuild"
+	tagElementDepthBeforeMount           = "ElementDepthBeforeMount"
+	tagElementWidgetUnmounted            = "ElementWidgetUnmounted"
+	tagFindRenderObjectInactive          = "FindRenderObjectInactive"
+	tagMarkNeedsBuildDuringBuild         = "MarkNeedsBuildDuringBuild"
+	tagMarkNeedsBuildOnDefunctElement    = "MarkNeedsBuildOnDefunctElement"
+	tagMarkNeedsBuildWhileLocked         = "MarkNeedsBuildWhileLocked"
+	tagVisitChildElementsDuringBuild     = "VisitChildElementsDuringBuild"
+)

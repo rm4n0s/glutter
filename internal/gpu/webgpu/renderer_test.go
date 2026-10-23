@@ -16,7 +16,7 @@ func TestRendererWithoutAProviderFailsToDraw(t *testing.T) {
 	defer r.Close()
 	_, err := r.Draw(gpu.SurfaceHandle{Kind: gpu.SurfaceKindWeb, Window: 1}, 8, 8, nil, false)
 	appErr, ok := errors.FromError(err)
-	if !ok || appErr.Tag != "WebGPUUnavailable" || !appErr.HasRoute("Open") {
+	if !ok || appErr.Tag != TagUnavailable || !appErr.HasRoute("Open") {
 		t.Fatalf("Draw = %v, want WebGPUUnavailable via Open", err)
 	}
 }
@@ -48,7 +48,7 @@ func TestSnapshotIsDrawnBySoft(t *testing.T) {
 	}
 	for _, bad := range []ui.Size{{}, {Width: -1, Height: 4}, {Width: 4}} {
 		_, err := r.Snapshot(scene, bad)
-		if appErr, ok := errors.FromError(err); !ok || appErr.Tag != "RendererSizeInvalid" || !appErr.HasRoute("Renderer.Snapshot.RendererSizeInvalid") {
+		if appErr, ok := errors.FromError(err); !ok || appErr.Tag != tagRendererSizeInvalid || !appErr.HasRoute("Renderer.Snapshot.RendererSizeInvalid") {
 			t.Errorf("Snapshot(%v) = %v, want RendererSizeInvalid via Renderer.Snapshot", bad, err)
 		}
 	}

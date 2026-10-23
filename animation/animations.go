@@ -336,7 +336,7 @@ func (a *CurvedAnimation) Value() float64 {
 		if foundation.DebugMode {
 			transformed := active.Transform(t)
 			if math.Round(transformed) != t {
-				panic(errors.New("CurveEndpointInvalid", fmt.Sprintf("curves must map 0.0 to near zero and 1.0 to near one but %T mapped %v to %v, which is near %v", active, t, transformed, math.Round(transformed)),
+				panic(errors.New(tagCurveEndpointInvalid, fmt.Sprintf("curves must map 0.0 to near zero and 1.0 to near one but %T mapped %v to %v, which is near %v", active, t, transformed, math.Round(transformed)),
 					"curve", fmt.Sprint(active), "t", t))
 			}
 		}
@@ -606,3 +606,8 @@ func NewAnimationMax[T int | float64](first, next Animation[T]) *CompoundAnimati
 func NewAnimationMin[T int | float64](first, next Animation[T]) *CompoundAnimation[T] {
 	return NewCompoundAnimation("AnimationMin", first, next, func(a, b T) T { return min(a, b) })
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagCurveEndpointInvalid = "CurveEndpointInvalid"
+)

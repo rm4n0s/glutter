@@ -226,7 +226,7 @@ func (p *Platform) NewWindow(cfg platform.WindowConfig) (platform.Window, error)
 		w.eglWindow = egl.create(w.surface.Ptr(), w.width, w.height)
 		if w.eglWindow == 0 {
 			w.destroy()
-			return nil, errors.New("EGLWindowFailed", "wl_egl_window_create failed", "width", w.width, "height", w.height)
+			return nil, errors.New(tagEGLWindowFailed, "wl_egl_window_create failed", "width", w.width, "height", w.height)
 		}
 	}
 	w.caps = ui.AllWindowCapabilities
@@ -1068,3 +1068,8 @@ func (w *window) destroy() {
 	w.old, w.buffer = nil, nil
 	w.freeIconBuffers()
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagEGLWindowFailed = "EGLWindowFailed"
+)

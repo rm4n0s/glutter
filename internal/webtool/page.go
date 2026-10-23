@@ -44,7 +44,7 @@ func IndexHTML(p Page) ([]byte, error) {
 	}
 	cfgJSON, err := json.Marshal(cfg)
 	if err != nil {
-		return nil, errors.NewErr("WebPageFailed", err)
+		return nil, errors.NewErr(tagWebPageFailed, err)
 	}
 	// The JSON sits inside a script element: nothing in it may end the element.
 	safe := strings.NewReplacer("<", "\\u003c", ">", "\\u003e", "&", "\\u0026").Replace(string(cfgJSON))
@@ -64,3 +64,8 @@ func IndexHTML(p Page) ([]byte, error) {
 	b.WriteString("</body>\n</html>\n")
 	return b.Bytes(), nil
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagWebPageFailed = "WebPageFailed"
+)

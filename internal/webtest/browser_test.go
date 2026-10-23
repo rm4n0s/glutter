@@ -238,7 +238,7 @@ func TestLocate(t *testing.T) {
 			})
 			if tc.failed {
 				appErr, ok := errors.FromError(err)
-				if !ok || appErr.Tag != "BrowserNotFound" || !appErr.HasRoute("Locate.BrowserNotFound") {
+				if !ok || appErr.Tag != tagBrowserNotFound || !appErr.HasRoute("Locate.BrowserNotFound") {
 					t.Fatalf("Locate = %v, want BrowserNotFound via Locate", err)
 				}
 				return
@@ -258,7 +258,7 @@ func TestParseBrowser(t *testing.T) {
 	}
 	_, err := ParseBrowser("safari")
 	appErr, ok := errors.FromError(err)
-	if !ok || appErr.Tag != "BrowserUnknown" || !appErr.HasRoute("ParseBrowser.BrowserUnknown") {
+	if !ok || appErr.Tag != tagBrowserUnknown || !appErr.HasRoute("ParseBrowser.BrowserUnknown") {
 		t.Errorf("ParseBrowser(safari) = %v, want BrowserUnknown via ParseBrowser", err)
 	}
 }
@@ -269,7 +269,7 @@ func TestLaunchFailures(t *testing.T) {
 		program, _ := fakeBrowser(t)
 		_, err := Launch(Chromium, "http://127.0.0.1:1/", LaunchOptions{Path: program})
 		appErr, ok := errors.FromError(err)
-		if !ok || appErr.Tag != "BrowserLaunchFailed" || !appErr.HasRoute("Launch.BrowserLaunchFailed") {
+		if !ok || appErr.Tag != tagBrowserLaunchFailed || !appErr.HasRoute("Launch.BrowserLaunchFailed") {
 			t.Fatalf("Launch = %v, want BrowserLaunchFailed via Launch", err)
 		}
 	})
@@ -277,7 +277,7 @@ func TestLaunchFailures(t *testing.T) {
 		t.Setenv("PATH", t.TempDir())
 		_, err := Launch(Chromium, "http://127.0.0.1:1/", LaunchOptions{})
 		appErr, ok := errors.FromError(err)
-		if !ok || appErr.Tag != "BrowserNotFound" || !appErr.HasRoute("Launch->Locate.BrowserNotFound") {
+		if !ok || appErr.Tag != tagBrowserNotFound || !appErr.HasRoute("Launch->Locate.BrowserNotFound") {
 			t.Fatalf("Launch = %v, want BrowserNotFound via Launch->Locate", err)
 		}
 	})
@@ -285,7 +285,7 @@ func TestLaunchFailures(t *testing.T) {
 		program, _ := fakeBrowser(t)
 		_, err := Launch(Browser("lynx"), "http://127.0.0.1:1/", LaunchOptions{Path: program})
 		appErr, ok := errors.FromError(err)
-		if !ok || appErr.Tag != "BrowserUnknown" || !appErr.HasRoute("Launch.BrowserUnknown") {
+		if !ok || appErr.Tag != tagBrowserUnknown || !appErr.HasRoute("Launch.BrowserUnknown") {
 			t.Fatalf("Launch = %v, want BrowserUnknown via Launch", err)
 		}
 	})
@@ -346,7 +346,7 @@ func TestShotTimesOutAndStopsTheBrowser(t *testing.T) {
 	defer cancel()
 	_, err := Shot(ctx, ShotOptions{Dir: dir, Browser: Chromium, BrowserPath: program, Timeout: 500 * time.Millisecond})
 	appErr, ok := errors.FromError(err)
-	if !ok || appErr.Tag != "BrowserTimeout" || !appErr.HasRoute("Shot->awaitScreenshot.BrowserTimeout") {
+	if !ok || appErr.Tag != tagBrowserTimeout || !appErr.HasRoute("Shot->awaitScreenshot.BrowserTimeout") {
 		t.Fatalf("Shot = %v, want BrowserTimeout via Shot->awaitScreenshot", err)
 	}
 	rec, err := os.ReadFile(record)

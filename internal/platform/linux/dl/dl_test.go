@@ -299,7 +299,7 @@ func TestCallbackRegistryLimit(t *testing.T) {
 		if !ok {
 			t.Fatalf("panic value is %T, want *errors.Error", err)
 		}
-		if appErr.Tag != "CallbackLimit" || !appErr.HasRoute("callbackRegistry.add.CallbackLimit") {
+		if appErr.Tag != tagCallbackLimit || !appErr.HasRoute("callbackRegistry.add.CallbackLimit") {
 			t.Errorf("Tag = %q, route = %s, want CallbackLimit via callbackRegistry.add", appErr.Tag, appErr.Route())
 		}
 		if appErr.Metadata["limit"] != 3 {

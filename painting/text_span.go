@@ -80,7 +80,7 @@ var (
 func NewTextSpan(opts ...TextSpanOpts) *TextSpan {
 	o := firstOpts(opts)
 	if foundation.DebugMode && o.Text.IsNone() && o.SemanticsLabel.IsSome() {
-		panic(errors.New("TextSpanLabelWithoutText", "a TextSpan with a semanticsLabel needs a text"))
+		panic(errors.New(tagTextSpanLabelWithoutText, "a TextSpan with a semanticsLabel needs a text"))
 	}
 	cursor := o.MouseCursor
 	if cursor == nil {
@@ -264,7 +264,7 @@ func (s *TextSpan) CodeUnitAtVisitor(index int, offset *Accumulator) (byte, bool
 	}
 	local := index - offset.Value()
 	if foundation.DebugMode && local < 0 {
-		panic(errors.New("TextSpanOffsetNegative", "the index is before the span", "index", index, "offset", offset.Value()))
+		panic(errors.New(tagTextSpanOffsetNegative, "the index is before the span", "index", index, "offset", offset.Value()))
 	}
 	offset.Increment(len(text))
 	if local < len(text) {
@@ -400,3 +400,9 @@ func (s *TextSpan) DebugDescribeChildren() []foundation.DiagnosticsNode {
 	}
 	return out
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagTextSpanLabelWithoutText = "TextSpanLabelWithoutText"
+	tagTextSpanOffsetNegative   = "TextSpanOffsetNegative"
+)

@@ -173,7 +173,7 @@ func TestLocalizationsNeedsAWidgetsDelegate(t *testing.T) {
 
 func TestLocalizationsLoadFailure(t *testing.T) {
 	ts := gluttertest.New(t, gluttertest.Opts{})
-	boom := errors.New("Boom", "boom")
+	boom := errors.New(tagBoom, "boom")
 	bad := &FuncLocalizationsDelegate[*greetings]{LoadFunc: func(context.Context, ui.Locale) (*greetings, error) { return nil, boom }}
 	ts.PumpWidget(localized(ui.NewLocale("en"), []LocalizationsDelegate{bad}, newLeaf()))
 	appErr := requireErrorTag(t, ts.TakeError(), "LocalizationsLoadFailed")

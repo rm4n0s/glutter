@@ -84,7 +84,7 @@ func TestSettingsWatcherWithoutAPortal(t *testing.T) {
 		name string
 		open func(context.Context) (dbus.Bus, error)
 	}{
-		{"the bus cannot be opened", func(context.Context) (dbus.Bus, error) { return nil, errors.New("NoBus", "no bus") }},
+		{"the bus cannot be opened", func(context.Context) (dbus.Bus, error) { return nil, errors.New(tagNoBus, "no bus") }},
 		{"the bus has no portal", func(context.Context) (dbus.Bus, error) { return fakebus.New(":1.6"), nil }},
 	}
 	for _, tt := range tests {
@@ -106,7 +106,7 @@ func TestSettingsWatcherWithoutAPortal(t *testing.T) {
 func TestSettingsWatcherSetAndReplace(t *testing.T) {
 	var rec settingsRecorder
 	w := &SettingsWatcher{Post: func(fn func()) { fn() }, Apply: rec.apply, Getenv: noEnv,
-		Open: func(context.Context) (dbus.Bus, error) { return nil, errors.New("NoBus", "no bus") }}
+		Open: func(context.Context) (dbus.Bus, error) { return nil, errors.New(tagNoBus, "no bus") }}
 	first, _ := w.Start()
 	dark := first
 	dark.PlatformBrightness = ui.BrightnessDark
@@ -152,3 +152,8 @@ func TestSessionBusPresent(t *testing.T) {
 		})
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagNoBus = "NoBus"
+)

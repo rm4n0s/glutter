@@ -83,7 +83,7 @@ func TestGroupCPUTime(t *testing.T) {
 	}
 	_, err := groupCPUTime(filepath.Join(dir, "missing"), []int{10})
 	appErr, ok := errors.FromError(err)
-	if !ok || appErr.Tag != "BrowserCPUUnavailable" || !appErr.HasRoute("groupCPUTime.BrowserCPUUnavailable") {
+	if !ok || appErr.Tag != tagBrowserCPUUnavailable || !appErr.HasRoute("groupCPUTime.BrowserCPUUnavailable") {
 		t.Errorf("a missing /proc gave %v", err)
 	}
 }

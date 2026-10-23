@@ -340,7 +340,7 @@ type navigationDrawerDestinationInfo struct {
 func navigationDrawerDestinationInfoOf(bc widgets.BuildContext) *navigationDrawerDestinationInfo {
 	result, ok := widgets.DependOn[*navigationDrawerDestinationInfo](bc)
 	if !ok {
-		panic(errors.New("NavigationDrawerDestinationInfoMissing", "Navigation destinations need a navigationDrawerDestinationInfo parent, which is usually provided by NavigationDrawer.",
+		panic(errors.New(tagNavigationDrawerDestinationInfoMissing, "Navigation destinations need a navigationDrawerDestinationInfo parent, which is usually provided by NavigationDrawer.",
 			"widget", foundation.RuntimeTypeName(bc.Widget())))
 	}
 	return result
@@ -377,3 +377,8 @@ func navigationDrawerDefaultsM3(theme *ThemeData) NavigationDrawerThemeData {
 		}),
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagNavigationDrawerDestinationInfoMissing = "NavigationDrawerDestinationInfoMissing"
+)

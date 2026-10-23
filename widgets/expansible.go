@@ -80,7 +80,7 @@ func (c *ExpansibleController) Toggle() {
 func ExpansibleControllerOf(bc BuildContext) *ExpansibleController {
 	c := ExpansibleControllerMaybeOf(bc)
 	if c == nil && foundation.DebugMode {
-		panic(errors.New("ExpansibleControllerNoAncestor",
+		panic(errors.New(tagExpansibleControllerNoAncestor,
 			"ExpansibleControllerOf was called with a context that does not contain an Expansible; use a Builder to get a context that is under the Expansible, or give the Expansible a GlobalKey"))
 	}
 	return c
@@ -281,3 +281,8 @@ func (s *expansibleState) Build(bc BuildContext) Widget {
 		return w.o.ExpansibleBuilder(bc, header, body, s.animationController)
 	}, result)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagExpansibleControllerNoAncestor = "ExpansibleControllerNoAncestor"
+)

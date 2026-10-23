@@ -7,7 +7,6 @@ import (
 	"image"
 	"testing"
 
-	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/internal/gpu"
 	"github.com/rm4n0s/glutter/ui"
 )
@@ -110,7 +109,8 @@ func TestDisplayDamageSwapSurvivesManyFrames(t *testing.T) {
 		for i := 0; i < 60; i++ {
 			scene := damageScene(still, damagePicture(ui.NewRectFromLTWH(float64(i), 20, 30, 30)))
 			if err := r.Render(s, scene, ui.Size{Width: float64(w), Height: float64(ht)}, 1); err != nil {
-				return errors.NewErrf("TestFrame", "frame %d: %v", i, err)
+				t.Logf("frame %d failed", i)
+				return err
 			}
 		}
 		_ = image.Rectangle{}

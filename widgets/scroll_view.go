@@ -123,14 +123,14 @@ func InitScrollView(v *ScrollView, self ScrollViewSelf, o ScrollViewOpts) {
 	if foundation.DebugMode {
 		switch {
 		case !isNil(o.Controller) && o.Primary.OrElse(false):
-			panic(errors.New("ScrollViewPrimaryWithController",
+			panic(errors.New(tagScrollViewPrimaryWithController,
 				"primary scroll views obtain their ScrollController via inheritance from a PrimaryScrollController widget; you cannot both set primary to true and pass an explicit controller"))
 		case o.ShrinkWrap && o.Center != nil:
-			panic(errors.New("ScrollViewCenterShrinkWrap", "a scroll view that shrink-wraps its content can not have a center"))
+			panic(errors.New(tagScrollViewCenterShrinkWrap, "a scroll view that shrink-wraps its content can not have a center"))
 		case !(o.Anchor >= 0 && o.Anchor <= 1):
-			panic(errors.New("ScrollViewAnchorInvalid", "the anchor of a scroll view must be between 0 and 1", "anchor", o.Anchor))
+			panic(errors.New(tagScrollViewAnchorInvalid, "the anchor of a scroll view must be between 0 and 1", "anchor", o.Anchor))
 		case o.SemanticChildCount.IsSome() && o.SemanticChildCount.Value() < 0:
-			panic(errors.New("ScrollViewSemanticChildCountInvalid", "the semantic child count of a scroll view must not be negative",
+			panic(errors.New(tagScrollViewSemanticChildCountInvalid, "the semantic child count of a scroll view must not be negative",
 				"semanticChildCount", o.SemanticChildCount.Value()))
 		}
 	}
@@ -511,7 +511,7 @@ func newListView(delegate SliverChildDelegate, o ListViewOpts, semanticChildCoun
 			given++
 		}
 		if given > 1 {
-			panic(errors.New("ListViewItemExtentConflict", "you can only pass one of itemExtent, prototypeItem and itemExtentBuilder"))
+			panic(errors.New(tagListViewItemExtentConflict, "you can only pass one of itemExtent, prototypeItem and itemExtentBuilder"))
 		}
 	}
 	v := &ListView{itemExtent: o.ItemExtent, itemExtentBuilder: o.ItemExtentBuilder, prototypeItem: o.PrototypeItem, childrenDelegate: delegate}
@@ -542,10 +542,10 @@ func NewListViewBuilder(itemBuilder NullableIndexedWidgetBuilder, opts ...ListVi
 	if foundation.DebugMode {
 		if n, ok := o.ItemCount.Get(); ok {
 			if n < 0 {
-				panic(errors.New("ListViewItemCountInvalid", "the item count of a list view must not be negative", "itemCount", n))
+				panic(errors.New(tagListViewItemCountInvalid, "the item count of a list view must not be negative", "itemCount", n))
 			}
 			if s, ok := o.SemanticChildCount.Get(); ok && s > n {
-				panic(errors.New("ListViewSemanticChildCountInvalid", "the semantic child count of a list view must not be greater than the item count",
+				panic(errors.New(tagListViewSemanticChildCountInvalid, "the semantic child count of a list view must not be greater than the item count",
 					"semanticChildCount", s, "itemCount", n))
 			}
 		}
@@ -563,7 +563,7 @@ func NewListViewBuilder(itemBuilder NullableIndexedWidgetBuilder, opts ...ListVi
 func NewListViewSeparated(itemBuilder, separatorBuilder NullableIndexedWidgetBuilder, itemCount int, opts ...ListViewOpts) *ListView {
 	o := firstOpts(opts)
 	if foundation.DebugMode && itemCount < 0 {
-		panic(errors.New("ListViewItemCountInvalid", "the item count of a list view must not be negative", "itemCount", itemCount))
+		panic(errors.New(tagListViewItemCountInvalid, "the item count of a list view must not be negative", "itemCount", itemCount))
 	}
 	delegate := separatedDelegate(itemBuilder, separatorBuilder, SliverSeparatedOpts{FindItemIndexCallback: o.FindItemIndexCallback,
 		ItemCount: foundation.Some(itemCount), AddAutomaticKeepAlives: o.AddAutomaticKeepAlives, AddRepaintBoundaries: o.AddRepaintBoundaries,
@@ -795,3 +795,14 @@ func semanticOr(a, b foundation.Opt[int]) foundation.Opt[int] {
 	}
 	return b
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagListViewItemCountInvalid            = "ListViewItemCountInvalid"
+	tagListViewItemExtentConflict          = "ListViewItemExtentConflict"
+	tagListViewSemanticChildCountInvalid   = "ListViewSemanticChildCountInvalid"
+	tagScrollViewAnchorInvalid             = "ScrollViewAnchorInvalid"
+	tagScrollViewCenterShrinkWrap          = "ScrollViewCenterShrinkWrap"
+	tagScrollViewPrimaryWithController     = "ScrollViewPrimaryWithController"
+	tagScrollViewSemanticChildCountInvalid = "ScrollViewSemanticChildCountInvalid"
+)

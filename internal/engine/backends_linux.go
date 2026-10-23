@@ -91,7 +91,7 @@ func (c *Config) x11Connector() func() (linux.Connection, error) {
 	}
 	return func() (linux.Connection, error) {
 		if c.ShmFill {
-			return nil, errors.New("ShmFillUnsupported", "the shared-memory mode is for Wayland only")
+			return nil, errors.New(tagShmFillUnsupported, "the shared-memory mode is for Wayland only")
 		}
 		p, err := x11.New("")
 		if err != nil {
@@ -125,7 +125,7 @@ func SystemFontMatcher(ctx context.Context, log *slog.Logger) text.Matcher {
 	}
 	m, err := openFontconfig(ctx)
 	if err != nil {
-		log.Info("fontconfig is not available; scanning the font directories", "error", err)
+		log.Info("fontconfig is not available; scanning the font directories", "err", err)
 		return nil
 	}
 	return m
@@ -176,3 +176,8 @@ func (m *fontconfigMatcher) Close() { m.cfg.Close() }
 func newGLESRenderer(cfg *Config, log *slog.Logger) renderer {
 	return newGLRenderer("gles", gles.NewRenderer, true, cfg, log)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagShmFillUnsupported = "ShmFillUnsupported"
+)

@@ -51,7 +51,7 @@ func (s *mouseState) replaceAnnotations(v *annotationMap) *annotationMap {
 
 func (s *mouseState) replaceLatestEvent(v gestures.PointerEvent) gestures.PointerEvent {
 	if foundation.DebugMode && v.Device() != s.latestEvent.Device() {
-		panic(errors.New("MouseTrackerDeviceChanged", "the device of a mouse state can not change",
+		panic(errors.New(tagMouseTrackerDeviceChanged, "the device of a mouse state can not change",
 			"was", s.latestEvent.Device(), "now", v.Device()))
 	}
 	prev := s.latestEvent
@@ -134,7 +134,7 @@ func (t *MouseTracker) monitorMouseConnection(task func()) {
 func (t *MouseTracker) deviceUpdatePhase(task func()) {
 	if foundation.DebugMode {
 		if t.debugDuringDeviceUpdate {
-			panic(errors.New("MouseTrackerReentered", "the mouse tracker was updated while it was updating"))
+			panic(errors.New(tagMouseTrackerReentered, "the mouse tracker was updated while it was updating"))
 		}
 		t.debugDuringDeviceUpdate = true
 	}
@@ -153,7 +153,7 @@ func shouldMarkStateDirty(state *mouseState, event gestures.PointerEvent) bool {
 		_, isAdded := event.(*gestures.PointerAddedEvent)
 		_, lastRemoved := last.(*gestures.PointerRemovedEvent)
 		if event.Device() != last.Device() || isAdded != lastRemoved {
-			panic(errors.New("MouseTrackerEventOrder", "an added event must follow a removed event on the same device",
+			panic(errors.New(tagMouseTrackerEventOrder, "an added event must follow a removed event on the same device",
 				"device", event.Device()))
 		}
 	}
@@ -306,3 +306,10 @@ func handleDeviceUpdateMouseEvents(d mouseTrackerUpdateDetails) {
 		}
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagMouseTrackerDeviceChanged = "MouseTrackerDeviceChanged"
+	tagMouseTrackerEventOrder    = "MouseTrackerEventOrder"
+	tagMouseTrackerReentered     = "MouseTrackerReentered"
+)

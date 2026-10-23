@@ -147,7 +147,7 @@ func (l *mipLevel) bicubic(fu, fv float64, t tiling) rgba {
 // checkImage returns an error for an image that cannot be drawn.
 func checkImage(img *ui.Image) error {
 	if img == nil || img.IsDisposed() {
-		return errors.New("SoftImageDisposed", "The image was disposed, or is nil, and cannot be drawn.")
+		return errors.New(tagSoftImageDisposed, "The image was disposed, or is nil, and cannot be drawn.")
 	}
 	return nil
 }
@@ -296,3 +296,8 @@ func (r *renderer) drawAtlas(op ui.OpDrawAtlas, st *state) error {
 	}
 	return nil
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagSoftImageDisposed = "SoftImageDisposed"
+)

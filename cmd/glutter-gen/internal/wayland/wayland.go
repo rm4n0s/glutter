@@ -33,7 +33,7 @@ func Run(args []string) error {
 	protocolsDir := flags.String("protocols", defaultProtocolsDir, "directory with the protocol XML files")
 	outDir := flags.String("out", defaultOutDir, "directory to write the *_gen.go files to")
 	if err := flags.Parse(args); err != nil {
-		return errors.NewErr("WaylandBadFlags", err).SetMetadata("args", args)
+		return errors.NewErr(tagWaylandBadFlags, err).SetMetadata("args", args)
 	}
 	files, err := generateDir(*protocolsDir)
 	if err != nil {
@@ -59,7 +59,7 @@ func generateDir(dir string) ([]generatedFile, error) {
 func loadProtocols(dir string) ([]*protocol, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return nil, errors.NewErr("WaylandXMLReadFailed", err).SetMetadata("dir", dir)
+		return nil, errors.NewErr(tagWaylandXMLReadFailed, err).SetMetadata("dir", dir)
 	}
 	var protocols []*protocol
 	for _, e := range entries {
@@ -68,7 +68,7 @@ func loadProtocols(dir string) ([]*protocol, error) {
 		}
 		data, err := os.ReadFile(filepath.Join(dir, e.Name()))
 		if err != nil {
-			return nil, errors.NewErr("WaylandXMLReadFailed", err).SetMetadata("file", e.Name())
+			return nil, errors.NewErr(tagWaylandXMLReadFailed, err).SetMetadata("file", e.Name())
 		}
 		p, err := parseProtocol(data, e.Name())
 		if err != nil {
@@ -77,7 +77,7 @@ func loadProtocols(dir string) ([]*protocol, error) {
 		protocols = append(protocols, p)
 	}
 	if len(protocols) == 0 {
-		return nil, errors.New("WaylandXMLReadFailed", "no .xml files found", "dir", dir)
+		return nil, errors.New(tagWaylandXMLReadFailed, "no .xml files found", "dir", dir)
 	}
 	return protocols, nil
 }
@@ -86,7 +86,7 @@ func loadProtocols(dir string) ([]*protocol, error) {
 // alone, and removes generated files that are no longer produced.
 func writeFiles(dir string, files []generatedFile) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return errors.NewErr("WaylandWriteFailed", err).SetMetadata("dir", dir)
+		return errors.NewErr(tagWaylandWriteFailed, err).SetMetadata("dir", dir)
 	}
 	want := map[string]bool{}
 	for _, f := range files {
@@ -96,12 +96,12 @@ func writeFiles(dir string, files []generatedFile) error {
 			continue
 		}
 		if err := os.WriteFile(path, f.data, 0o644); err != nil {
-			return errors.NewErr("WaylandWriteFailed", err).SetMetadata("file", path)
+			return errors.NewErr(tagWaylandWriteFailed, err).SetMetadata("file", path)
 		}
 	}
 	existing, err := filepath.Glob(filepath.Join(dir, "*_gen.go"))
 	if err != nil {
-		return errors.NewErr("WaylandWriteFailed", err).SetMetadata("dir", dir)
+		return errors.NewErr(tagWaylandWriteFailed, err).SetMetadata("dir", dir)
 	}
 	for _, path := range existing {
 		if want[filepath.Base(path)] {
@@ -112,8 +112,15 @@ func writeFiles(dir string, files []generatedFile) error {
 			continue // not ours
 		}
 		if err := os.Remove(path); err != nil {
-			return errors.NewErr("WaylandWriteFailed", err).SetMetadata("file", path)
+			return errors.NewErr(tagWaylandWriteFailed, err).SetMetadata("file", path)
 		}
 	}
 	return nil
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagWaylandBadFlags      = "WaylandBadFlags"
+	tagWaylandWriteFailed   = "WaylandWriteFailed"
+	tagWaylandXMLReadFailed = "WaylandXMLReadFailed"
+)

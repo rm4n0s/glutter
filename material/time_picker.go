@@ -228,7 +228,7 @@ func setTimePickerHourMinuteMode(bc widgets.BuildContext, value hourMinuteMode) 
 // Flutter: material/time_picker.dart _debugDialTimePickerEntryMode
 func debugDialTimePickerEntryMode(bc widgets.BuildContext) {
 	if foundation.DebugMode && !timePickerEntryModeOf(bc).isDial() {
-		panic(errors.New("TimePickerNotInDialMode", "this part of the time picker is only for the dial entry modes"))
+		panic(errors.New(tagTimePickerNotInDialMode, "this part of the time picker is only for the dial entry modes"))
 	}
 }
 
@@ -780,3 +780,8 @@ func (r *renderDayPeriodInputPadding) HitTest(result *rendering.BoxHitTestResult
 //
 // Flutter: material/curves.dart standardEasing
 func animationStandardEasing() animation.Curve { return animation.Curves.FastOutSlowIn }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagTimePickerNotInDialMode = "TimePickerNotInDialMode"
+)

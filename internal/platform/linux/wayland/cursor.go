@@ -102,7 +102,7 @@ func (c *cursors) apply(pt *pointer, cursor platform.MouseCursor) {
 		pt.shape.SetShape(pt.serial, shape)
 	default:
 		if err := c.applyFromTheme(pt, cursor); err != nil {
-			slog.Warn("the cursor could not be set", "cursor", cursor.String(), "error", err)
+			slog.Warn("the cursor could not be set", "cursor", cursor.String(), "err", err)
 		}
 	}
 }
@@ -159,7 +159,7 @@ func (c *cursors) find(cursor platform.MouseCursor, scale int32) (wlCursorImage,
 			return image, buffer, nil
 		}
 	}
-	return wlCursorImage{}, 0, errors.New("CursorNotFound", "the XCursor theme has no such cursor",
+	return wlCursorImage{}, 0, errors.New(tagCursorNotFound, "the XCursor theme has no such cursor",
 		"cursor", cursor.String(), "names", names)
 }
 
@@ -196,7 +196,7 @@ func (c *cursors) loadTheme(scale int32) (uintptr, error) {
 			if appErr, ok := errors.FromError(err); ok {
 				md = appErr.Metadata
 			}
-			return 0, errors.New("CursorLibraryFailed", "could not load libwayland-cursor", "dlerror", md["dlerror"], "names", md["names"])
+			return 0, errors.New(tagCursorLibraryFailed, "could not load libwayland-cursor", "dlerror", md["dlerror"], "names", md["names"])
 		}
 		c.api = api
 	}
@@ -208,7 +208,7 @@ func (c *cursors) loadTheme(scale int32) (uintptr, error) {
 	}
 	theme := c.api.themeLoad(name, size, c.p.sess.shm.Ptr())
 	if theme == 0 {
-		return 0, errors.New("CursorThemeFailed", "wl_cursor_theme_load failed", "theme", c.name(), "size", size)
+		return 0, errors.New(tagCursorThemeFailed, "wl_cursor_theme_load failed", "theme", c.name(), "size", size)
 	}
 	c.themes[scale] = theme
 	return theme, nil
@@ -255,3 +255,10 @@ func (c *cursors) close() {
 	}
 	c.destroyThemes()
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagCursorLibraryFailed = "CursorLibraryFailed"
+	tagCursorNotFound      = "CursorNotFound"
+	tagCursorThemeFailed   = "CursorThemeFailed"
+)

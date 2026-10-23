@@ -71,7 +71,7 @@ type FontFeature struct {
 // Flutter: ui/text.dart FontFeature
 func NewFontFeature(feature string, value int) FontFeature {
 	if len(feature) != 4 || value < 0 {
-		panic(errors.New("FontFeatureInvalid", "the feature tag must be four characters long and the value zero or positive",
+		panic(errors.New(tagFontFeatureInvalid, "the feature tag must be four characters long and the value zero or positive",
 			"feature", feature, "value", value))
 	}
 	return FontFeature{feature, value}
@@ -95,7 +95,7 @@ type FontVariation struct {
 // Flutter: ui/text.dart FontVariation
 func NewFontVariation(axis string, value float64) FontVariation {
 	if len(axis) != 4 || value < -32768 || value >= 32768 {
-		panic(errors.New("FontVariationInvalid", "the axis tag must be four characters long and the value representable as 16.16 fixed point",
+		panic(errors.New(tagFontVariationInvalid, "the axis tag must be four characters long and the value representable as 16.16 fixed point",
 			"axis", axis, "value", value))
 	}
 	return FontVariation{axis, value}
@@ -136,7 +136,7 @@ type ShadowOpts struct {
 func NewShadow(opts ...ShadowOpts) Shadow {
 	o := oneOpts(opts)
 	if o.BlurRadius < 0 {
-		panic(errors.New("ShadowBlurRadiusNegative", "text shadow blur radius should be non-negative", "blurRadius", o.BlurRadius))
+		panic(errors.New(tagShadowBlurRadiusNegative, "text shadow blur radius should be non-negative", "blurRadius", o.BlurRadius))
 	}
 	s := Shadow{Color: NewColor(0xFF000000), Offset: o.Offset, BlurRadius: o.BlurRadius}
 	if o.Color != nil {
@@ -440,3 +440,10 @@ func (p *Paragraph) Layouter() ParagraphLayout { return p.layout }
 
 // equalSlices reports whether two slices hold equal elements.
 func equalSlices[T comparable](a, b []T) bool { return slices.Equal(a, b) }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagFontFeatureInvalid       = "FontFeatureInvalid"
+	tagFontVariationInvalid     = "FontVariationInvalid"
+	tagShadowBlurRadiusNegative = "ShadowBlurRadiusNegative"
+)

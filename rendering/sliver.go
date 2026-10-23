@@ -326,7 +326,7 @@ func (c SliverConstraints) DebugAssertIsValid(opts ...DebugAssertIsValidOpts) bo
 			if o.InformationCollector != nil {
 				message += "\n" + strings.Join(o.InformationCollector(), "\n")
 			}
-			panic(errors.New("SliverConstraintsInvalid", message+"\nThe offending constraints were:\n  "+c.String()))
+			panic(errors.New(tagSliverConstraintsInvalid, message+"\nThe offending constraints were:\n  "+c.String()))
 		}
 	}
 	return c.IsNormalized()
@@ -445,7 +445,7 @@ type SliverGeometryOpts struct {
 func NewSliverGeometry(opts ...SliverGeometryOpts) SliverGeometry {
 	o := firstOpts(opts)
 	if foundation.DebugMode && o.ScrollOffsetCorrection.IsSome() && o.ScrollOffsetCorrection.Value() == 0 {
-		panic(errors.New("SliverGeometryInvalid", "the scrollOffsetCorrection of a SliverGeometry must not be zero"))
+		panic(errors.New(tagSliverGeometryInvalid, "the scrollOffsetCorrection of a SliverGeometry must not be zero"))
 	}
 	layoutExtent := o.LayoutExtent.OrElse(o.PaintExtent)
 	return SliverGeometry{
@@ -526,7 +526,7 @@ func (g SliverGeometry) DebugAssertIsValid(informationCollector ...InformationCo
 		if len(informationCollector) > 0 && informationCollector[0] != nil {
 			meta = append(meta, "information", strings.Join(informationCollector[0](), "\n"))
 		}
-		panic(errors.New("SliverGeometryInvalid", "SliverGeometry is not valid: "+summary, meta...))
+		panic(errors.New(tagSliverGeometryInvalid, "SliverGeometry is not valid: "+summary, meta...))
 	}
 	verify(g.ScrollExtent >= 0, `The "scrollExtent" is negative.`)
 	verify(g.PaintExtent >= 0, `The "paintExtent" is negative.`)
@@ -901,7 +901,7 @@ func (s *RenderSliver) HasGeometry() bool { return s.geometry.IsSome() }
 func (s *RenderSliver) Geometry() SliverGeometry {
 	g, ok := s.geometry.Get()
 	if !ok && foundation.DebugMode {
-		panic(errors.New("SliverNotLaidOut", "RenderSliver was not laid out: "+foundation.DescribeIdentity(s.self),
+		panic(errors.New(tagSliverNotLaidOut, "RenderSliver was not laid out: "+foundation.DescribeIdentity(s.self),
 			"object", foundation.DescribeIdentity(s.self)))
 	}
 	return g
@@ -916,7 +916,7 @@ func (s *RenderSliver) SetGeometry(value SliverGeometry) {
 	if foundation.DebugMode {
 		sized := s.self.SizedByParent()
 		if s.debugDoingThisResize && s.debugDoingThisLayout {
-			panic(errors.New("SliverGeometrySetterInvalid", "the sliver is resizing and laying out at the same time",
+			panic(errors.New(tagSliverGeometrySetterInvalid, "the sliver is resizing and laying out at the same time",
 				"object", foundation.DescribeIdentity(s.self)))
 		}
 		if (!sized || !s.debugDoingThisResize) && (sized || !s.debugDoingThisLayout) {
@@ -934,7 +934,7 @@ func (s *RenderSliver) SetGeometry(value SliverGeometry) {
 			} else {
 				msg += "Because this RenderSliver has SizedByParent set to false, it must set its geometry in PerformLayout()."
 			}
-			panic(errors.New("SliverGeometrySetterInvalid", msg, "object", foundation.DescribeIdentity(s.self)))
+			panic(errors.New(tagSliverGeometrySetterInvalid, msg, "object", foundation.DescribeIdentity(s.self)))
 		}
 	}
 	s.geometry = foundation.Some(value)
@@ -978,7 +978,7 @@ func (s *RenderSliver) DebugAssertDoesMeetConstraints() {
 	})
 	c := self.SliverConstraints()
 	if g.PaintOrigin+g.PaintExtent > c.RemainingPaintExtent {
-		panic(errors.New("SliverGeometryViolatesConstraints",
+		panic(errors.New(tagSliverGeometryViolatesConstraints,
 			"SliverGeometry has a paintOffset that exceeds the remainingPaintExtent from the constraints. "+
 				compareFloats("remainingPaintExtent", c.RemainingPaintExtent, "paintOrigin + paintExtent", g.PaintOrigin+g.PaintExtent)+
 				" The paintOrigin and paintExtent must cause the child sliver to paint within the viewport, and so cannot exceed the remainingPaintExtent.",
@@ -990,7 +990,7 @@ func (s *RenderSliver) DebugAssertDoesMeetConstraints() {
 //
 // Flutter: rendering/sliver.dart RenderSliver.performResize
 func (s *RenderSliver) PerformResize() {
-	panic(errors.New("SliverPerformResize", "a RenderSliver is not sized by its parent; PerformResize must not be called",
+	panic(errors.New(tagSliverPerformResize, "a RenderSliver is not sized by its parent; PerformResize must not be called",
 		"object", foundation.DescribeIdentity(s.self)))
 }
 
@@ -1031,7 +1031,7 @@ func (s *RenderSliver) HitTestChildren(*SliverHitTestResult, float64, float64) b
 // Flutter: rendering/sliver.dart RenderSliver.calculatePaintOffset
 func (s *RenderSliver) CalculatePaintOffset(constraints SliverConstraints, from, to float64) float64 {
 	if foundation.DebugMode && from > to {
-		panic(errors.New("SliverRangeInvalid", "CalculatePaintOffset needs from <= to", "from", from, "to", to))
+		panic(errors.New(tagSliverRangeInvalid, "CalculatePaintOffset needs from <= to", "from", from, "to", to))
 	}
 	a := constraints.ScrollOffset
 	b := constraints.ScrollOffset + constraints.RemainingPaintExtent
@@ -1044,7 +1044,7 @@ func (s *RenderSliver) CalculatePaintOffset(constraints SliverConstraints, from,
 // Flutter: rendering/sliver.dart RenderSliver.calculateCacheOffset
 func (s *RenderSliver) CalculateCacheOffset(constraints SliverConstraints, from, to float64) float64 {
 	if foundation.DebugMode && from > to {
-		panic(errors.New("SliverRangeInvalid", "CalculateCacheOffset needs from <= to", "from", from, "to", to))
+		panic(errors.New(tagSliverRangeInvalid, "CalculateCacheOffset needs from <= to", "from", from, "to", to))
 	}
 	a := constraints.ScrollOffset + constraints.CacheOrigin
 	b := constraints.ScrollOffset + constraints.RemainingCacheExtent
@@ -1057,7 +1057,7 @@ func (s *RenderSliver) CalculateCacheOffset(constraints SliverConstraints, from,
 // Flutter: rendering/sliver.dart RenderSliver.childMainAxisPosition
 func (s *RenderSliver) ChildMainAxisPosition(RenderObject) float64 {
 	if foundation.DebugMode {
-		panic(errors.New("SliverChildPositionMissing", foundation.RuntimeTypeName(s.self)+" does not implement ChildMainAxisPosition.",
+		panic(errors.New(tagSliverChildPositionMissing, foundation.RuntimeTypeName(s.self)+" does not implement ChildMainAxisPosition.",
 			"object", foundation.DescribeIdentity(s.self)))
 	}
 	return 0
@@ -1081,7 +1081,7 @@ func (s *RenderSliver) ChildScrollOffset(RenderObject) foundation.Opt[float64] {
 // Flutter: rendering/sliver.dart RenderSliver.applyPaintTransform
 func (s *RenderSliver) ApplyPaintTransform(RenderObject, *ui.Matrix4) {
 	if foundation.DebugMode {
-		panic(errors.New("SliverPaintTransformMissing", foundation.RuntimeTypeName(s.self)+" does not implement ApplyPaintTransform.",
+		panic(errors.New(tagSliverPaintTransformMissing, foundation.RuntimeTypeName(s.self)+" does not implement ApplyPaintTransform.",
 			"object", foundation.DescribeIdentity(s.self)))
 	}
 }
@@ -1405,7 +1405,7 @@ func (r *RenderSliverToBoxAdapter) PerformLayout() {
 	paintedChildSize := r.CalculatePaintOffset(c, 0, childExtent)
 	cacheExtent := r.CalculateCacheOffset(c, 0, childExtent)
 	if foundation.DebugMode && (math.IsInf(paintedChildSize, 0) || math.IsNaN(paintedChildSize) || paintedChildSize < 0) {
-		panic(errors.New("SliverPaintExtentInvalid", "the painted size of the child is not finite and not negative",
+		panic(errors.New(tagSliverPaintExtentInvalid, "the painted size of the child is not finite and not negative",
 			"object", foundation.DescribeIdentity(r.self), "paintedChildSize", paintedChildSize))
 	}
 	r.SetGeometry(NewSliverGeometry(SliverGeometryOpts{
@@ -1415,3 +1415,17 @@ func (r *RenderSliverToBoxAdapter) PerformLayout() {
 	}))
 	r.SetChildParentData(child, c, r.Geometry())
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagSliverChildPositionMissing        = "SliverChildPositionMissing"
+	tagSliverConstraintsInvalid          = "SliverConstraintsInvalid"
+	tagSliverGeometryInvalid             = "SliverGeometryInvalid"
+	tagSliverGeometrySetterInvalid       = "SliverGeometrySetterInvalid"
+	tagSliverGeometryViolatesConstraints = "SliverGeometryViolatesConstraints"
+	tagSliverNotLaidOut                  = "SliverNotLaidOut"
+	tagSliverPaintExtentInvalid          = "SliverPaintExtentInvalid"
+	tagSliverPaintTransformMissing       = "SliverPaintTransformMissing"
+	tagSliverPerformResize               = "SliverPerformResize"
+	tagSliverRangeInvalid                = "SliverRangeInvalid"
+)

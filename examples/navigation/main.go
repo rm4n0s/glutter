@@ -111,13 +111,13 @@ func optionsFromEnv(getenv func(string) string) (options, error) {
 		case routeHome, routeDetail, routePick:
 			o.route = v
 		default:
-			return o, errors.New("NavigationRouteInvalid", `GLUTTER_DEV_ROUTE must be "/", "/detail" or "/pick"`, "value", v)
+			return o, errors.New(tagNavigationRouteInvalid, `GLUTTER_DEV_ROUTE must be "/", "/detail" or "/pick"`, "value", v)
 		}
 	}
 	if v := getenv("GLUTTER_DEV_TAB"); v != "" {
 		n, err := strconv.Atoi(v)
 		if err != nil || n < 0 || n >= numTabs {
-			return o, errors.New("NavigationTabInvalid", "GLUTTER_DEV_TAB must be 0 or 1", "value", v)
+			return o, errors.New(tagNavigationTabInvalid, "GLUTTER_DEV_TAB must be 0 or 1", "value", v)
 		}
 		o.tab = n
 	}
@@ -572,3 +572,9 @@ func main() {
 		os.Exit(1)
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagNavigationRouteInvalid = "NavigationRouteInvalid"
+	tagNavigationTabInvalid   = "NavigationTabInvalid"
+)

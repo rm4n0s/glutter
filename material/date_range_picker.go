@@ -131,14 +131,14 @@ func ShowDateRangePicker(bc widgets.BuildContext, firstDate, lastDate time.Time,
 	}
 	if foundation.DebugMode {
 		if lastDate.Before(firstDate) {
-			panic(errors.New("ShowDateRangePickerLastDateBeforeFirstDate", "lastDate must be on or after firstDate", "lastDate", lastDate, "firstDate", firstDate))
+			panic(errors.New(tagShowDateRangePickerLastDateBeforeFirstDate, "lastDate must be on or after firstDate", "lastDate", lastDate, "firstDate", firstDate))
 		}
 		if r, ok := initial.Get(); ok {
 			if r.Start.Before(firstDate) || r.End.Before(firstDate) || r.Start.After(lastDate) || r.End.After(lastDate) {
-				panic(errors.New("ShowDateRangePickerInitialRangeOutOfBounds", "the initial date range must be between firstDate and lastDate", "initialDateRange", r, "firstDate", firstDate, "lastDate", lastDate))
+				panic(errors.New(tagShowDateRangePickerInitialRangeOutOfBounds, "the initial date range must be between firstDate and lastDate", "initialDateRange", r, "firstDate", firstDate, "lastDate", lastDate))
 			}
 			if p := o.SelectableDayPredicate; p != nil && (!p(r.Start, r.Start, r.End) || !p(r.End, r.Start, r.End)) {
-				panic(errors.New("ShowDateRangePickerInitialRangeNotSelectable", "the start and the end of the initial date range must be selectable", "initialDateRange", r))
+				panic(errors.New(tagShowDateRangePickerInitialRangeNotSelectable, "the start and the end of the initial date range must be selectable", "initialDateRange", r))
 			}
 		}
 	}
@@ -371,7 +371,7 @@ func (s *dateRangePickerDialogState) handleEntryModeToggle() {
 			s.entryMode = DatePickerEntryModeCalendar
 		default:
 			if foundation.DebugMode {
-				panic(errors.New("DateRangePickerDialogEntryModeFixed", "the entry mode of a date range picker dialog can't change from the calendarOnly and inputOnly modes", "entryMode", s.entryMode))
+				panic(errors.New(tagDateRangePickerDialogEntryModeFixed, "the entry mode of a date range picker dialog can't change from the calendarOnly and inputOnly modes", "entryMode", s.entryMode))
 			}
 		}
 	})
@@ -655,9 +655,9 @@ func newCalendarDateRangePicker(a calendarDateRangePickerArgs) *calendarDateRang
 	if foundation.DebugMode {
 		switch {
 		case !a.initialStartDate.IsZero() && !a.initialEndDate.IsZero() && a.initialStartDate.After(a.initialEndDate):
-			panic(errors.New("CalendarDateRangePickerStartAfterEnd", "initialStartDate must be on or before initialEndDate"))
+			panic(errors.New(tagCalendarDateRangePickerStartAfterEnd, "initialStartDate must be on or before initialEndDate"))
 		case a.lastDate.Before(a.firstDate):
-			panic(errors.New("CalendarDateRangePickerLastDateBeforeFirstDate", "firstDate must be on or before lastDate"))
+			panic(errors.New(tagCalendarDateRangePickerLastDateBeforeFirstDate, "firstDate must be on or before lastDate"))
 		}
 	}
 	return &calendarDateRangePicker{StatefulWidget: widgets.NewStatefulWidgetBase(), a: a}
@@ -1013,11 +1013,11 @@ func newMonthItem(a monthItemArgs) *monthItem {
 		outside := func(t time.Time) bool { return !t.IsZero() && (t.Before(a.firstDate) || t.After(a.lastDate)) }
 		switch {
 		case a.firstDate.After(a.lastDate):
-			panic(errors.New("MonthItemFirstDateAfterLastDate", "the first date of a month item must not be after the last date"))
+			panic(errors.New(tagMonthItemFirstDateAfterLastDate, "the first date of a month item must not be after the last date"))
 		case outside(a.selectedDateStart) || outside(a.selectedDateEnd):
-			panic(errors.New("MonthItemSelectionOutOfRange", "the selected dates of a month item must be between the first and the last date"))
+			panic(errors.New(tagMonthItemSelectionOutOfRange, "the selected dates of a month item must be between the first and the last date"))
 		case !a.selectedDateStart.IsZero() && !a.selectedDateEnd.IsZero() && a.selectedDateStart.After(a.selectedDateEnd):
-			panic(errors.New("MonthItemSelectionReversed", "the selected start date of a month item must not be after the selected end date"))
+			panic(errors.New(tagMonthItemSelectionReversed, "the selected start date of a month item must not be after the selected end date"))
 		}
 	}
 	return &monthItem{StatefulWidget: widgets.NewStatefulWidgetBase(), a: a}
@@ -1642,3 +1642,16 @@ func (s *inputDateRangePickerState) Build(bc widgets.BuildContext) widgets.Widge
 		field(s.endController, a.fieldEndHintText, orDefault(a.fieldEndLabelText, localizations.DateRangeEndLabel()), s.endErrorText, s.handleEndChanged, false),
 	}, widgets.RowOpts{CrossAxisAlignment: rendering.CrossAxisAlignmentStart})
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagCalendarDateRangePickerLastDateBeforeFirstDate = "CalendarDateRangePickerLastDateBeforeFirstDate"
+	tagCalendarDateRangePickerStartAfterEnd           = "CalendarDateRangePickerStartAfterEnd"
+	tagDateRangePickerDialogEntryModeFixed            = "DateRangePickerDialogEntryModeFixed"
+	tagMonthItemFirstDateAfterLastDate                = "MonthItemFirstDateAfterLastDate"
+	tagMonthItemSelectionOutOfRange                   = "MonthItemSelectionOutOfRange"
+	tagMonthItemSelectionReversed                     = "MonthItemSelectionReversed"
+	tagShowDateRangePickerInitialRangeNotSelectable   = "ShowDateRangePickerInitialRangeNotSelectable"
+	tagShowDateRangePickerInitialRangeOutOfBounds     = "ShowDateRangePickerInitialRangeOutOfBounds"
+	tagShowDateRangePickerLastDateBeforeFirstDate     = "ShowDateRangePickerLastDateBeforeFirstDate"
+)

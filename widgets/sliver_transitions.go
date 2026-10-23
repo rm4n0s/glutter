@@ -99,7 +99,7 @@ type SliverAnimatedOpacity struct {
 func NewSliverAnimatedOpacity(opacity float64, duration time.Duration, sliver Widget, opts ...SliverAnimatedOpacityOpts) *SliverAnimatedOpacity {
 	o := firstOpts(opts)
 	if foundation.DebugMode && !(opacity >= 0 && opacity <= 1) {
-		panic(errors.New("OpacityOutOfRange", "the opacity must be between 0.0 and 1.0", "opacity", opacity))
+		panic(errors.New(tagOpacityOutOfRange, "the opacity must be between 0.0 and 1.0", "opacity", opacity))
 	}
 	return &SliverAnimatedOpacity{NewImplicitlyAnimatedWidgetBase(duration, ImplicitlyAnimatedWidgetOpts{Key: o.Key, Curve: o.Curve, OnEnd: o.OnEnd}),
 		sliver, opacity, o.AlwaysIncludeSemantics}

@@ -137,7 +137,7 @@ func (s *tabBarState) updateTabController() {
 		newController = DefaultTabControllerMaybeOf(s.Context())
 	}
 	if foundation.DebugMode && newController == nil {
-		panic(errors.New("TabBarNoController", "No TabController for TabBar. When creating a TabBar, you must either provide an explicit TabController using the \"controller\" property, or you must ensure that there is a DefaultTabController above the TabBar. In this case, there was neither an explicit controller nor a default controller."))
+		panic(errors.New(tagTabBarNoController, "No TabController for TabBar. When creating a TabBar, you must either provide an explicit TabController using the \"controller\" property, or you must ensure that there is a DefaultTabController above the TabBar. In this case, there was neither an explicit controller nor a default controller."))
 	}
 
 	if newController == s.controller {
@@ -407,7 +407,7 @@ func (s *tabBarState) scheduleCheckHasValidTabsCount() {
 			return
 		}
 		if n := len(s.Widget().tabs); s.controller.Length() != n {
-			panic(errors.New("TabBarTabsCount", fmt.Sprintf("Controller's length property (%d) does not match the number of tabs (%d) present in TabBar's tabs property.", s.controller.Length(), n),
+			panic(errors.New(tagTabBarTabsCount, fmt.Sprintf("Controller's length property (%d) does not match the number of tabs (%d) present in TabBar's tabs property.", s.controller.Length(), n),
 				"controllerLength", s.controller.Length(), "tabs", n))
 		}
 	})
@@ -417,10 +417,10 @@ func (s *tabBarState) scheduleCheckHasValidTabsCount() {
 func (s *tabBarState) debugTabAlignmentIsValid(tabAlignment TabAlignment) {
 	w := s.Widget()
 	if w.o.IsScrollable && tabAlignment == TabAlignmentFill {
-		panic(errors.New("TabBarAlignmentFillScrollable", tabAlignment.String()+" is only valid for non-scrollable tab bars.", "tabAlignment", tabAlignment.Name()))
+		panic(errors.New(tagTabBarAlignmentFillScrollable, tabAlignment.String()+" is only valid for non-scrollable tab bars.", "tabAlignment", tabAlignment.Name()))
 	}
 	if !w.o.IsScrollable && (tabAlignment == TabAlignmentStart || tabAlignment == TabAlignmentStartOffset) {
-		panic(errors.New("TabBarAlignmentStartFixed", tabAlignment.String()+" is only valid for scrollable tab bars.", "tabAlignment", tabAlignment.Name()))
+		panic(errors.New(tagTabBarAlignmentStartFixed, tabAlignment.String()+" is only valid for scrollable tab bars.", "tabAlignment", tabAlignment.Name()))
 	}
 }
 
@@ -764,3 +764,11 @@ func tabsSecondaryDefaultsM3(theme *ThemeData, isScrollable bool) TabBarThemeDat
 		SplashFactory:        theme.SplashFactory, TabAlignment: alignment,
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagTabBarAlignmentFillScrollable = "TabBarAlignmentFillScrollable"
+	tagTabBarAlignmentStartFixed     = "TabBarAlignmentStartFixed"
+	tagTabBarNoController            = "TabBarNoController"
+	tagTabBarTabsCount               = "TabBarTabsCount"
+)

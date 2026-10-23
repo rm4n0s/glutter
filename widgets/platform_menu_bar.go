@@ -52,7 +52,7 @@ type ShortcutSerializationOpts struct {
 func NewShortcutSerializationCharacter(character string, opts ...ShortcutSerializationOpts) ShortcutSerialization {
 	o := firstOpts(opts)
 	if foundation.DebugMode && utf8.RuneCountInString(character) != 1 {
-		panic(errors.New("ShortcutSerializationCharacterLength", "the character of a ShortcutSerialization must be one character", "character", character))
+		panic(errors.New(tagShortcutSerializationCharacterLength, "the character of a ShortcutSerialization must be one character", "character", character))
 	}
 	return ShortcutSerialization{character: foundation.Some(character), alt: o.Alt, control: o.Control, meta: o.Meta}
 }
@@ -70,7 +70,7 @@ func NewShortcutSerializationModifier(trigger services.LogicalKeyboardKey, opts 
 			services.LogicalKeyboardKeyControl, services.LogicalKeyboardKeyControlLeft, services.LogicalKeyboardKeyControlRight,
 			services.LogicalKeyboardKeyMeta, services.LogicalKeyboardKeyMetaLeft, services.LogicalKeyboardKeyMetaRight,
 			services.LogicalKeyboardKeyShift, services.LogicalKeyboardKeyShiftLeft, services.LogicalKeyboardKeyShiftRight:
-			panic(errors.New("ShortcutSerializationModifierTrigger", "specifying a modifier key as a trigger is not allowed; use the modifier options instead", "trigger", trigger.String()))
+			panic(errors.New(tagShortcutSerializationModifierTrigger, "specifying a modifier key as a trigger is not allowed; use the modifier options instead", "trigger", trigger.String()))
 		}
 	}
 	return ShortcutSerialization{trigger: foundation.Some(trigger), alt: o.Alt, control: o.Control, meta: o.Meta, shift: o.Shift}
@@ -136,3 +136,9 @@ func (a SingleActivator) SerializeForMenu() ShortcutSerialization {
 func (a CharacterActivator) SerializeForMenu() ShortcutSerialization {
 	return NewShortcutSerializationCharacter(a.character, ShortcutSerializationOpts{Alt: a.alt, Control: a.control, Meta: a.meta})
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagShortcutSerializationCharacterLength = "ShortcutSerializationCharacterLength"
+	tagShortcutSerializationModifierTrigger = "ShortcutSerializationModifierTrigger"
+)

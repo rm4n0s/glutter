@@ -110,11 +110,11 @@ func ReadSettings(ctx context.Context, bus Bus, base platform.Settings) (platfor
 		return platform.Settings{}, err
 	}
 	if len(reply) != 1 {
-		return platform.Settings{}, errors.New("SettingsReplyInvalid", "ReadAll does not return one value", "values", len(reply))
+		return platform.Settings{}, errors.New(tagSettingsReplyInvalid, "ReadAll does not return one value", "values", len(reply))
 	}
 	all, ok := reply[0].(map[string]map[string]godbus.Variant)
 	if !ok {
-		return platform.Settings{}, errors.New("SettingsReplyInvalid", "ReadAll does not return a{sa{sv}}", "type", typeName(reply[0]))
+		return platform.Settings{}, errors.New(tagSettingsReplyInvalid, "ReadAll does not return a{sa{sv}}", "type", typeName(reply[0]))
 	}
 	s := base
 	for namespace, keys := range all {
@@ -332,3 +332,8 @@ func fontHinting(name string) platform.FontHinting {
 	}
 	return platform.FontHintingUnspecified
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagSettingsReplyInvalid = "SettingsReplyInvalid"
+)

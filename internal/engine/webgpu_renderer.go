@@ -34,7 +34,7 @@ func newWebGPURenderer(cfg *Config, log *slog.Logger) renderer {
 	}
 	return &webgpuRenderer{Renderer: webgpu.NewRenderer(func(h gpu.SurfaceHandle) (explicit.Device, error) {
 		if cfg.webgpuOpen == nil {
-			return nil, errors.New("WebGPUUnavailable", "the engine did not start WebGPU")
+			return nil, errors.New(tagWebGPUUnavailable, "the engine did not start WebGPU")
 		}
 		return cfg.webgpuOpen(h)
 	}, opts), log: log}
@@ -75,3 +75,8 @@ func webgpuLastResort(err error) bool {
 	appErr, ok := errors.FromError(err)
 	return ok && (appErr.Tag == webgpu.TagDeviceLost || appErr.Tag == webgpu.TagDeviceFailed)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagWebGPUUnavailable = "WebGPUUnavailable"
+)

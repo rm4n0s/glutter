@@ -175,7 +175,7 @@ func Perf(ctx context.Context, o PerfOptions) (PerfResult, error) {
 	} else {
 		index, err := os.ReadFile(filepath.Join(o.Dir, "index.html"))
 		if err != nil {
-			return PerfResult{}, errors.NewErr("WebPerfFailed", err).SetMetadata("what", "reading index.html of the build")
+			return PerfResult{}, errors.NewErr(tagWebPerfFailed, err).SetMetadata("what", "reading index.html of the build")
 		}
 		srv.AddPage(PerfAppPath, InjectRAFCounter(index))
 		q := url.Values{}
@@ -276,12 +276,12 @@ func (c *perfCollector) run(ctx context.Context, srv *Server, proc *Process, fai
 		select {
 		case r := <-srv.results:
 			if r.Kind == "exit" {
-				failed <- appFailed(r)
+				failed <- errors.New(tagWebAppFailed, "the app ended during the measurement", r.exitMetadata()...)
 				return
 			}
 			c.take(r)
 		case <-proc.Done():
-			failed <- browserExited(proc)
+			failed <- errors.New(tagBrowserExited, "the browser ended during the measurement", proc.exitMetadata()...)
 			return
 		case <-ctx.Done():
 			return
@@ -362,7 +362,7 @@ func awaitClicks(ctx context.Context, srv *Server, proc *Process, res *PerfResul
 					Gap     float64   `json:"gap"`
 				}
 				if err := json.Unmarshal(r.Data, &d); err != nil {
-					return errors.NewErr("WebPerfFailed", err).SetMetadata("what", "the responses to the clicks")
+					return errors.NewErr(tagWebPerfFailed, err).SetMetadata("what", "the responses to the clicks")
 				}
 				dur := func(v float64) time.Duration { return time.Duration(v * float64(time.Millisecond)) }
 				for _, c := range d {
@@ -374,12 +374,12 @@ func awaitClicks(ctx context.Context, srv *Server, proc *Process, res *PerfResul
 				}
 				return nil
 			case "exit":
-				return appFailed(r)
+				return errors.New(tagWebAppFailed, "the app ended during the measurement", r.exitMetadata()...)
 			}
 		case <-proc.Done():
-			return browserExited(proc)
+			return errors.New(tagBrowserExited, "the browser ended during the measurement", proc.exitMetadata()...)
 		case <-ctx.Done():
-			return errors.NewErr("BrowserTimeout", ctx.Err()).SetMetadata("waiting for", "the responses to the clicks")
+			return errors.NewErr(tagBrowserTimeout, ctx.Err()).SetMetadata("waiting for", "the responses to the clicks")
 		}
 	}
 }
@@ -462,7 +462,7 @@ func awaitStarts(ctx context.Context, srv *Server, proc *Process, res *PerfResul
 			case "starts":
 				var d startsData
 				if err := json.Unmarshal(r.Data, &d); err != nil {
-					return errors.NewErr("WebPerfFailed", err).SetMetadata("what", "the times of the starts")
+					return errors.NewErr(tagWebPerfFailed, err).SetMetadata("what", "the times of the starts")
 				}
 				for _, s := range d {
 					res.FirstFrames = append(res.FirstFrames, time.Duration(s.FirstFrame*float64(time.Millisecond)))
@@ -486,12 +486,12 @@ func awaitStarts(ctx context.Context, srv *Server, proc *Process, res *PerfResul
 				}
 				return nil
 			case "exit":
-				return appFailed(r)
+				return errors.New(tagWebAppFailed, "the app ended during the measurement", r.exitMetadata()...)
 			}
 		case <-proc.Done():
-			return browserExited(proc)
+			return errors.New(tagBrowserExited, "the browser ended during the measurement", proc.exitMetadata()...)
 		case <-ctx.Done():
-			return errors.NewErr("BrowserTimeout", ctx.Err()).SetMetadata("waiting for", "the app's first frames")
+			return errors.NewErr(tagBrowserTimeout, ctx.Err()).SetMetadata("waiting for", "the app's first frames")
 		}
 	}
 }
@@ -504,23 +504,23 @@ func sleepOrEnd(ctx context.Context, d time.Duration, proc *Process, failed <-ch
 	case err := <-failed:
 		return err
 	case <-proc.Done():
-		return browserExited(proc)
+		return errors.New(tagBrowserExited, "the browser ended during the measurement", proc.exitMetadata()...)
 	case <-ctx.Done():
-		return errors.NewErr("BrowserTimeout", ctx.Err()).SetMetadata("waiting for", "the app to settle")
+		return errors.NewErr(tagBrowserTimeout, ctx.Err()).SetMetadata("waiting for", "the app to settle")
 	}
 }
 
-func appFailed(r Result) error {
-	return errors.New("WebAppFailed", "the app ended during the measurement",
-		"exit code", strconv.Itoa(r.ExitCode), "message", r.Message, "shown", r.Shown, "log", strings.TrimSpace(r.Log))
+// exitMetadata is the metadata of a WebAppFailed error: how the program ended.
+func (r Result) exitMetadata() []any {
+	return []any{"exit code", strconv.Itoa(r.ExitCode), "message", r.Message, "shown", r.Shown, "log", strings.TrimSpace(r.Log)}
 }
 
-func browserExited(proc *Process) error {
-	md := []any{}
-	if proc.Err != nil {
-		md = append(md, "error", proc.Err.Error())
+// exitMetadata is the metadata of a BrowserExited error: why the browser ended, when it is known.
+func (p *Process) exitMetadata() []any {
+	if p.Err != nil {
+		return []any{"error", p.Err.Error()}
 	}
-	return errors.New("BrowserExited", "the browser ended during the measurement", md...)
+	return nil
 }
 
 // rafData reads a "raf" result.
@@ -764,3 +764,8 @@ func toText(v any) string {
 	}
 	return ""
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagWebPerfFailed = "WebPerfFailed"
+)

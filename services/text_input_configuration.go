@@ -682,7 +682,7 @@ type RawFloatingCursorPointOpts struct {
 func NewRawFloatingCursorPoint(state FloatingCursorDragState, o ...RawFloatingCursorPointOpts) RawFloatingCursorPoint {
 	op := opts.First(o)
 	if foundation.DebugMode && state == FloatingCursorDragStateUpdate && op.Offset.IsNone() {
-		panic(errors.New("RawFloatingCursorPointOffsetMissing", "a floating cursor update needs an offset"))
+		panic(errors.New(tagRawFloatingCursorPointOffsetMissing, "a floating cursor update needs an offset"))
 	}
 	return RawFloatingCursorPoint{Offset: op.Offset, StartLocation: op.StartLocation, State: state}
 }
@@ -783,3 +783,8 @@ func (s TextInputStyle) DebugFillProperties(p *foundation.DiagnosticPropertiesBu
 	p.Add(foundation.NewDoubleProperty("wordSpacing", s.WordSpacing, foundation.NumberPropertyOpts{DefaultValue: null}))
 	p.Add(foundation.NewDoubleProperty("lineHeight", s.LineHeight, foundation.NumberPropertyOpts{DefaultValue: null}))
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagRawFloatingCursorPointOffsetMissing = "RawFloatingCursorPointOffsetMissing"
+)

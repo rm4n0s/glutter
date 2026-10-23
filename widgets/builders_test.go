@@ -132,7 +132,7 @@ func waitFor(t *testing.T, ts *gluttertest.Tester, cond func() bool) {
 }
 
 func TestFutureBuilder(t *testing.T) {
-	boom := errors.New("Boom", "boom")
+	boom := errors.New(tagBoom, "boom")
 	tests := []struct {
 		name      string
 		fn        func(context.Context) (string, error)
@@ -276,7 +276,7 @@ func TestStreamBuilderSwitchesStreams(t *testing.T) {
 }
 
 func TestAsyncSnapshot(t *testing.T) {
-	boom := errors.New("Boom", "boom")
+	boom := errors.New(tagBoom, "boom")
 	data := NewAsyncSnapshotWithData(ConnectionStateDone, 3)
 	failed := NewAsyncSnapshotWithError[int](ConnectionStateDone, boom)
 	tests := []struct {
@@ -476,3 +476,8 @@ func TestNotificationListenerUpdatesItsCallback(t *testing.T) {
 		t.Errorf("got %q, want b", got)
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagBoom = "Boom"
+)

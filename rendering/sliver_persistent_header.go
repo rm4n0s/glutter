@@ -107,7 +107,7 @@ func NewPersistentHeaderShowOnScreenConfiguration(opts ...PersistentHeaderShowOn
 		MaxShowOnScreenExtent: o.MaxShowOnScreenExtent.OrElse(math.Inf(1)),
 	}
 	if foundation.DebugMode && !(c.MinShowOnScreenExtent <= c.MaxShowOnScreenExtent) {
-		panic(errors.New("PersistentHeaderShowOnScreenInvalid", "the minimum show on screen extent must not be above the maximum",
+		panic(errors.New(tagPersistentHeaderShowOnScreenInvalid, "the minimum show on screen extent must not be above the maximum",
 			"min", c.MinShowOnScreenExtent, "max", c.MaxShowOnScreenExtent))
 	}
 	return c
@@ -230,7 +230,7 @@ func (h *RenderSliverPersistentHeader) LayoutChild(scrollOffset, maxExtent float
 	}
 	minExtent := h.hooks().MinExtent()
 	if foundation.DebugMode && !(minExtent <= maxExtent) {
-		panic(errors.New("SliverPersistentHeaderExtentsInvalid", "The maxExtent for this "+foundation.RuntimeTypeName(h.self)+" is less than its minExtent.",
+		panic(errors.New(tagSliverPersistentHeaderExtentsInvalid, "The maxExtent for this "+foundation.RuntimeTypeName(h.self)+" is less than its minExtent.",
 			"maxExtent", maxExtent, "minExtent", minExtent))
 	}
 	c := h.SliverConstraints()
@@ -627,7 +627,7 @@ func (h *RenderSliverFloatingPersistentHeader) UpdateGeometry() float64 {
 
 func (h *RenderSliverFloatingPersistentHeader) updateAnimation(duration time.Duration, endValue float64, curve animation.Curve) {
 	if foundation.DebugMode && h.vsync == nil {
-		panic(errors.New("SliverFloatingHeaderVsyncMissing", "vsync must not be null if the floating header changes size animatedly.",
+		panic(errors.New(tagSliverFloatingHeaderVsyncMissing, "vsync must not be null if the floating header changes size animatedly.",
 			"object", foundation.DescribeIdentity(h.self)))
 	}
 	if h.controller == nil {
@@ -735,7 +735,7 @@ func (h *RenderSliverFloatingPersistentHeader) ShowOnScreen(opts ShowOnScreenOpt
 
 	child := h.Child()
 	if foundation.DebugMode && isNil(child) && !isNil(opts.Descendant) {
-		panic(errors.New("SliverFloatingHeaderChildMissing", "a floating header without a child was asked to show a descendant",
+		panic(errors.New(tagSliverFloatingHeaderChildMissing, "a floating header without a child was asked to show a descendant",
 			"object", foundation.DescribeIdentity(h.self)))
 	}
 	childBounds := opts.Rect
@@ -855,3 +855,11 @@ func (h *RenderSliverFloatingPinnedPersistentHeader) UpdateGeometry() float64 {
 	}))
 	return 0
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagPersistentHeaderShowOnScreenInvalid  = "PersistentHeaderShowOnScreenInvalid"
+	tagSliverFloatingHeaderChildMissing     = "SliverFloatingHeaderChildMissing"
+	tagSliverFloatingHeaderVsyncMissing     = "SliverFloatingHeaderVsyncMissing"
+	tagSliverPersistentHeaderExtentsInvalid = "SliverPersistentHeaderExtentsInvalid"
+)

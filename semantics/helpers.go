@@ -25,7 +25,7 @@ func assertNoDuplicates(mergeUp []*SemanticsConfiguration, groups [][]*Semantics
 	seen := map[*SemanticsConfiguration]bool{}
 	check := func(c *SemanticsConfiguration) {
 		if seen[c] {
-			panic(errors.New("SemanticsConfigurationDuplicated",
+			panic(errors.New(tagSemanticsConfigurationDuplicated,
 				"Duplicated SemanticsConfigurations. This can happen if the same SemanticsConfiguration was marked twice in MarkAsMergeUp and/or MarkAsSiblingMergeGroup"))
 		}
 		seen[c] = true
@@ -46,3 +46,8 @@ func optEqual[T comparable](a, b foundation.Opt[T]) bool {
 	bv, bok := b.Get()
 	return aok == bok && av == bv
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagSemanticsConfigurationDuplicated = "SemanticsConfigurationDuplicated"
+)

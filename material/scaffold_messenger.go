@@ -119,7 +119,7 @@ func (w *ScaffoldMessenger) CreateState() widgets.State { return &ScaffoldMessen
 func ScaffoldMessengerOf(bc widgets.BuildContext) *ScaffoldMessengerState {
 	scope, ok := widgets.DependOn[*scaffoldMessengerScope](bc)
 	if !ok {
-		panic(errors.New("ScaffoldMessengerMissing", "No ScaffoldMessenger widget found. "+
+		panic(errors.New(tagScaffoldMessengerMissing, "No ScaffoldMessenger widget found. "+
 			foundation.RuntimeTypeName(bc.Widget())+" widgets require a ScaffoldMessenger widget ancestor. MaterialApp makes one.",
 			"widget", foundation.RuntimeTypeName(bc.Widget())))
 	}
@@ -218,7 +218,7 @@ func (s *ScaffoldMessengerState) isRoot(scaffold *ScaffoldState) bool {
 func (s *ScaffoldMessengerState) ShowSnackBar(snackBar *SnackBar, opts ...ShowSnackBarOpts) *ScaffoldFeatureController[*SnackBar, SnackBarClosedReason] {
 	o := firstOpts(opts)
 	if foundation.DebugMode && len(s.scaffolds) == 0 {
-		panic(errors.New("ShowSnackBarNoScaffold", "ScaffoldMessenger.showSnackBar was called, but there are currently no descendant Scaffolds to present to."))
+		panic(errors.New(tagShowSnackBarNoScaffold, "ScaffoldMessenger.showSnackBar was called, but there are currently no descendant Scaffolds to present to."))
 	}
 	var duration, reverseDuration foundation.Opt[time.Duration]
 	if st := o.SnackBarAnimationStyle; st != nil {
@@ -333,7 +333,7 @@ func (s *ScaffoldMessengerState) ClearSnackBars() {
 // Flutter: material/scaffold.dart ScaffoldMessengerState.showMaterialBanner
 func (s *ScaffoldMessengerState) ShowMaterialBanner(materialBanner *MaterialBanner) *ScaffoldFeatureController[*MaterialBanner, MaterialBannerClosedReason] {
 	if foundation.DebugMode && len(s.scaffolds) == 0 {
-		panic(errors.New("ShowMaterialBannerNoScaffold", "ScaffoldMessenger.showMaterialBanner was called, but there are currently no descendant Scaffolds to present to."))
+		panic(errors.New(tagShowMaterialBannerNoScaffold, "ScaffoldMessenger.showMaterialBanner was called, but there are currently no descendant Scaffolds to present to."))
 	}
 	if s.materialBannerController == nil {
 		s.materialBannerController = MaterialBannerCreateAnimationController(s)
@@ -472,3 +472,10 @@ type scaffoldMessengerScope struct {
 func (w *scaffoldMessengerScope) UpdateShouldNotify(old widgets.Widget) bool {
 	return w.state != old.(*scaffoldMessengerScope).state
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagScaffoldMessengerMissing     = "ScaffoldMessengerMissing"
+	tagShowMaterialBannerNoScaffold = "ShowMaterialBannerNoScaffold"
+	tagShowSnackBarNoScaffold       = "ShowSnackBarNoScaffold"
+)

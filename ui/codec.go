@@ -72,10 +72,10 @@ func (c *Codec) RepetitionCount() int { return c.repeat }
 // Flutter: ui/painting.dart Codec.getNextFrame
 func (c *Codec) GetNextFrame(ctx context.Context) (FrameInfo, error) {
 	if err := ctx.Err(); err != nil {
-		return FrameInfo{}, errors.NewErr("ImageDecodeCanceled", err)
+		return FrameInfo{}, errors.NewErr(tagImageDecodeCanceled, err)
 	}
 	if c.disposed {
-		return FrameInfo{}, errors.New("CodecDisposed", "The codec was disposed.")
+		return FrameInfo{}, errors.New(tagCodecDisposed, "The codec was disposed.")
 	}
 	f := c.frames[c.next]
 	c.next = (c.next + 1) % len(c.frames)
@@ -118,19 +118,19 @@ type InstantiateImageCodecOpts struct {
 func InstantiateImageCodec(ctx context.Context, data []byte, opts ...InstantiateImageCodecOpts) (*Codec, error) {
 	o := oneOpts(opts)
 	if err := ctx.Err(); err != nil {
-		return nil, errors.NewErr("ImageDecodeCanceled", err)
+		return nil, errors.NewErr(tagImageDecodeCanceled, err)
 	}
 	if o.TargetWidth < 0 || o.TargetHeight < 0 {
-		return nil, errors.New("ImageSizeInvalid", "The target size must not be negative.",
+		return nil, errors.New(tagImageSizeInvalid, "The target size must not be negative.",
 			"targetWidth", o.TargetWidth, "targetHeight", o.TargetHeight)
 	}
 	cfg, format, err := image.DecodeConfig(bytes.NewReader(data))
 	if err != nil {
-		return nil, errors.NewErr("ImageDecodeFailed", err).SetMetadata("stage", "header")
+		return nil, errors.NewErr(tagImageDecodeFailed, err).SetMetadata("stage", "header")
 	}
 	if cfg.Width <= 0 || cfg.Height <= 0 || cfg.Width > maxImageSize || cfg.Height > maxImageSize ||
 		cfg.Width*cfg.Height > maxImagePixels {
-		return nil, errors.New("ImageDecodeFailed", "The image is too large to decode.",
+		return nil, errors.New(tagImageDecodeFailed, "The image is too large to decode.",
 			"width", cfg.Width, "height", cfg.Height, "format", format)
 	}
 	tw, th := targetSize(cfg.Width, cfg.Height, o)
@@ -139,17 +139,18 @@ func InstantiateImageCodec(ctx context.Context, data []byte, opts ...Instantiate
 	repeat := 0
 	if format == "gif" {
 		raw, repeat, err = decodeGIF(data)
-	} else {
-		var img image.Image
-		if img, _, err = image.Decode(bytes.NewReader(data)); err == nil {
-			raw = []rawFrame{{img: toPremultipliedRGBA(img)}}
+		if err != nil {
+			return nil, err
 		}
-	}
-	if err != nil {
-		return nil, errors.NewErr("ImageDecodeFailed", err).SetMetadata("format", format)
+	} else {
+		img, _, decodeErr := image.Decode(bytes.NewReader(data))
+		if decodeErr != nil {
+			return nil, errors.NewErr(tagImageDecodeFailed, decodeErr).SetMetadata("format", format)
+		}
+		raw = []rawFrame{{img: toPremultipliedRGBA(img)}}
 	}
 	if err := ctx.Err(); err != nil {
-		return nil, errors.NewErr("ImageDecodeCanceled", err)
+		return nil, errors.NewErr(tagImageDecodeCanceled, err)
 	}
 	c := &Codec{repeat: repeat}
 	for _, f := range raw {
@@ -215,17 +216,17 @@ func resizeRGBA(img *image.RGBA, w, h int) *image.RGBA {
 func decodeGIF(data []byte) ([]rawFrame, int, error) {
 	g, err := gif.DecodeAll(bytes.NewReader(data))
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, errors.NewErr(tagImageDecodeFailed, err).SetMetadata("format", "gif")
 	}
 	if len(g.Image) == 0 {
-		return nil, 0, errors.New("ImageDecodeFailed", "The GIF has no frames.")
+		return nil, 0, errors.New(tagImageDecodeFailed, "The GIF has no frames.")
 	}
 	w, h := g.Config.Width, g.Config.Height
 	if w == 0 || h == 0 { // old encoders leave the config empty
 		w, h = g.Image[0].Bounds().Dx(), g.Image[0].Bounds().Dy()
 	}
 	if w*h*len(g.Image) > 2*maxImagePixels {
-		return nil, 0, errors.New("ImageDecodeFailed", "The GIF has too many pixels in all its frames.",
+		return nil, 0, errors.New(tagImageDecodeFailed, "The GIF has too many pixels in all its frames.",
 			"width", w, "height", h, "frames", len(g.Image))
 	}
 	canvas := image.NewRGBA(image.Rect(0, 0, w, h))
@@ -314,7 +315,7 @@ const (
 // Flutter: ui/painting.dart Image.toByteData
 func (i *Image) ToByteData(format ImageByteFormat) ([]byte, error) {
 	if i.disposed {
-		return nil, errors.New("ImageDisposed", "The image was disposed.")
+		return nil, errors.New(tagImageDisposed, "The image was disposed.")
 	}
 	w, h := i.data.width, i.data.height
 	switch format {
@@ -331,9 +332,20 @@ func (i *Image) ToByteData(format ImageByteFormat) ([]byte, error) {
 		}
 		var buf bytes.Buffer
 		if err := png.Encode(&buf, &image.NRGBA{Pix: out, Stride: 4 * w, Rect: image.Rect(0, 0, w, h)}); err != nil {
-			return nil, errors.NewErr("ImageEncodeFailed", err)
+			return nil, errors.NewErr(tagImageEncodeFailed, err)
 		}
 		return buf.Bytes(), nil
 	}
-	return nil, errors.New("ImageFormatUnsupported", "The byte format is not supported.", "format", int(format))
+	return nil, errors.New(tagImageFormatUnsupported, "The byte format is not supported.", "format", int(format))
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagCodecDisposed          = "CodecDisposed"
+	tagImageDecodeCanceled    = "ImageDecodeCanceled"
+	tagImageDecodeFailed      = "ImageDecodeFailed"
+	tagImageDisposed          = "ImageDisposed"
+	tagImageEncodeFailed      = "ImageEncodeFailed"
+	tagImageFormatUnsupported = "ImageFormatUnsupported"
+	tagImageSizeInvalid       = "ImageSizeInvalid"
+)

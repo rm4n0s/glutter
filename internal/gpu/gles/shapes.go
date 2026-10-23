@@ -136,7 +136,7 @@ type FrameStats struct {
 // and the caller leaves the command out.
 func (b *frameBuilder) unsupported(what string) error {
 	if !b.skip {
-		return errors.New("GLNotImplemented", "the GPU renderer cannot draw this yet", "feature", what)
+		return errors.New(tagGLNotImplemented, "the GPU renderer cannot draw this yet", "feature", what)
 	}
 	if !b.reasons[what] {
 		if b.reasons == nil {
@@ -275,16 +275,16 @@ func (b *frameBuilder) draw(c gpu.Command) (bool, error) {
 	default:
 		return false, b.unsupported("operation " + typeName(c.Op))
 	}
-	if err == errUseMask {
+	if errors.Is(err, errUseMask) {
 		// The shape has no analytic form: its coverage comes from the atlas.
 		return ctx.pathMask(c.Op, paintOfOp(c.Op))
 	}
 	return ok, err
 }
 
-// errUseMask is returned by the analytic shapes for a shape or stroke they cannot
-// draw, which the coverage atlas draws instead.
-var errUseMask = errors.New("UseMask", "the shape has no analytic form")
+// errUseMask matches (errors.Is, by its tag) the error that the analytic shapes return for a
+// shape or stroke they cannot draw, which the coverage atlas draws instead; maskOr makes it.
+var errUseMask = &errors.Error{Tag: "UseMask"}
 
 // paintOfOp returns the paint of the shape-drawing operations.
 func paintOfOp(op ui.DisplayOp) *ui.Paint {
@@ -313,7 +313,7 @@ func paintOfOp(op ui.DisplayOp) *ui.Paint {
 // draws it, or without one the feature is unsupported.
 func (s *shapeContext) maskOr(what string) (bool, error) {
 	if s.b.res != nil {
-		return false, errUseMask
+		return false, errors.New(tagUseMask, "the shape has no analytic form", "feature", what)
 	}
 	return false, s.b.unsupported(what)
 }
@@ -532,3 +532,9 @@ func (s *shapeContext) fill(p *ui.Paint) (bool, error) {
 // typeName is the name of the dynamic type of an operation, for the list of
 // unsupported features.
 func typeName(op ui.DisplayOp) string { return fmt.Sprintf("%T", op) }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagGLNotImplemented = "GLNotImplemented"
+	tagUseMask          = "UseMask"
+)

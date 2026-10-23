@@ -153,13 +153,13 @@ func NewRawAutocomplete[T comparable](optionsViewBuilder AutocompleteOptionsView
 	o := firstOpts(opts)
 	if foundation.DebugMode {
 		if o.FieldViewBuilder == nil && (o.Key == nil || o.FocusNode == nil || o.TextEditingController == nil) {
-			panic(errors.New("RawAutocompleteNoField", "pass in a FieldViewBuilder, or otherwise create a separate field and pass in the FocusNode, TextEditingController, and a key; use the key with RawAutocompleteOnFieldSubmitted"))
+			panic(errors.New(tagRawAutocompleteNoField, "pass in a FieldViewBuilder, or otherwise create a separate field and pass in the FocusNode, TextEditingController, and a key; use the key with RawAutocompleteOnFieldSubmitted"))
 		}
 		if (o.FocusNode == nil) != (o.TextEditingController == nil) {
-			panic(errors.New("RawAutocompleteFocusNodeMismatch", "the FocusNode and the TextEditingController must be given together"))
+			panic(errors.New(tagRawAutocompleteFocusNodeMismatch, "the FocusNode and the TextEditingController must be given together"))
 		}
 		if o.TextEditingController != nil && o.InitialValue.IsSome() {
-			panic(errors.New("RawAutocompleteInitialValueAndController", "TextEditingController and InitialValue cannot be simultaneously defined"))
+			panic(errors.New(tagRawAutocompleteInitialValueAndController, "TextEditingController and InitialValue cannot be simultaneously defined"))
 		}
 	}
 	if o.DisplayStringForOption == nil {
@@ -183,7 +183,7 @@ type rawAutocompleteState interface{ onFieldSubmitted() }
 func RawAutocompleteOnFieldSubmitted(key *GlobalKey[State]) {
 	st, ok := key.CurrentState()
 	if !ok {
-		panic(errors.New("RawAutocompleteKeyNotMounted", "the key of the RawAutocomplete is not mounted"))
+		panic(errors.New(tagRawAutocompleteKeyNotMounted, "the key of the RawAutocomplete is not mounted"))
 	}
 	st.(rawAutocompleteState).onFieldSubmitted()
 }
@@ -372,7 +372,7 @@ func (s *rawAutocompleteStateOf[T]) updateHighlight(nextIndex int) {
 
 func (s *rawAutocompleteStateOf[T]) highlightOption(index int) {
 	if foundation.DebugMode && !s.canShowOptionsView() {
-		panic(errors.New("RawAutocompleteOptionsNotShowable", "the options view can not be shown, so no option can be highlighted"))
+		panic(errors.New(tagRawAutocompleteOptionsNotShowable, "the options view can not be shown, so no option can be highlighted"))
 	}
 	s.updateOptionsViewVisibility()
 	s.updateHighlight(index)
@@ -646,3 +646,12 @@ func AutocompleteHighlightedOptionOf(bc BuildContext) int {
 	}
 	return 0
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagRawAutocompleteFocusNodeMismatch         = "RawAutocompleteFocusNodeMismatch"
+	tagRawAutocompleteInitialValueAndController = "RawAutocompleteInitialValueAndController"
+	tagRawAutocompleteKeyNotMounted             = "RawAutocompleteKeyNotMounted"
+	tagRawAutocompleteNoField                   = "RawAutocompleteNoField"
+	tagRawAutocompleteOptionsNotShowable        = "RawAutocompleteOptionsNotShowable"
+)

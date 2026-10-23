@@ -268,7 +268,7 @@ func (s *selection) get(ctx context.Context, format string, done func(ui.Clipboa
 	}
 	r, w, err := os.Pipe()
 	if err != nil {
-		err = errors.NewErr("ClipboardReadFailed", err)
+		err = errors.NewErr(tagClipboardReadFailed, err)
 		c.reply(func() { done(ui.ClipboardContent{}, err) })
 		return
 	}
@@ -276,7 +276,7 @@ func (s *selection) get(ctx context.Context, format string, done func(ui.Clipboa
 	// The connection keeps its own copy of the descriptor until it has sent it.
 	if cerr := w.Close(); cerr != nil {
 		_ = r.Close()
-		err = errors.NewErr("ClipboardReadFailed", cerr)
+		err = errors.NewErr(tagClipboardReadFailed, cerr)
 		c.reply(func() { done(ui.ClipboardContent{}, err) })
 		return
 	}
@@ -459,7 +459,7 @@ func (c *clipboard) GetText(ctx context.Context, done func(string, bool, error))
 func (c *clipboard) SetContent(_ context.Context, kind ui.ClipboardKind, content ui.ClipboardContent, done func(error)) {
 	sel := c.selectionOf(kind)
 	if sel == nil {
-		err := errPrimaryUnavailable()
+		err := errors.New(tagClipboardPrimaryUnavailable, "the compositor has no primary selection")
 		if done != nil {
 			c.reply(func() { done(err) })
 		}
@@ -472,15 +472,11 @@ func (c *clipboard) SetContent(_ context.Context, kind ui.ClipboardKind, content
 func (c *clipboard) GetContent(ctx context.Context, kind ui.ClipboardKind, format string, done func(ui.ClipboardContent, error)) {
 	sel := c.selectionOf(kind)
 	if sel == nil {
-		err := errPrimaryUnavailable()
+		err := errors.New(tagClipboardPrimaryUnavailable, "the compositor has no primary selection")
 		c.reply(func() { done(ui.ClipboardContent{}, err) })
 		return
 	}
 	sel.get(ctx, format, done)
-}
-
-func errPrimaryUnavailable() error {
-	return errors.New("ClipboardPrimaryUnavailable", "the compositor has no primary selection")
 }
 
 // writeClipboard writes the data to the pipe of a reader and closes it, on a
@@ -491,10 +487,10 @@ func writeClipboard(fd int, data []byte) {
 		_ = f.SetWriteDeadline(time.Now().Add(clipboardReadTimeout))
 		if _, err := f.Write(data); err != nil {
 			// The reader quit early or was too slow; nobody is left to tell.
-			slog.Debug("the reader of the clipboard did not take all the data", "error", err)
+			slog.Debug("the reader of the clipboard did not take all the data", "err", err)
 		}
 		if err := f.Close(); err != nil {
-			slog.Debug("closing the pipe of the clipboard failed", "error", err)
+			slog.Debug("closing the pipe of the clipboard failed", "err", err)
 		}
 	}()
 }
@@ -502,7 +498,7 @@ func writeClipboard(fd int, data []byte) {
 // closeFD closes the pipe of a reader for a format the app has no data for.
 func closeFD(fd int) {
 	if err := os.NewFile(uintptr(fd), "clipboard-send").Close(); err != nil {
-		slog.Debug("closing the pipe of the clipboard failed", "error", err)
+		slog.Debug("closing the pipe of the clipboard failed", "err", err)
 	}
 }
 
@@ -517,12 +513,20 @@ func readClipboard(ctx context.Context, r *os.File) ([]byte, error) {
 	data, err := io.ReadAll(io.LimitReader(r, clipboardMaxBytes+1))
 	if err != nil {
 		if ctx.Err() != nil {
-			return nil, errors.NewErr("ClipboardReadTimeout", ctx.Err())
+			return nil, errors.NewErr(tagClipboardReadTimeout, ctx.Err())
 		}
-		return nil, errors.NewErr("ClipboardReadFailed", err)
+		return nil, errors.NewErr(tagClipboardReadFailed, err)
 	}
 	if len(data) > clipboardMaxBytes {
-		return nil, errors.New("ClipboardTooLarge", "the data of the clipboard is too large", "limit", clipboardMaxBytes)
+		return nil, errors.New(tagClipboardTooLarge, "the data of the clipboard is too large", "limit", clipboardMaxBytes)
 	}
 	return data, nil
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagClipboardPrimaryUnavailable = "ClipboardPrimaryUnavailable"
+	tagClipboardReadFailed         = "ClipboardReadFailed"
+	tagClipboardReadTimeout        = "ClipboardReadTimeout"
+	tagClipboardTooLarge           = "ClipboardTooLarge"
+)

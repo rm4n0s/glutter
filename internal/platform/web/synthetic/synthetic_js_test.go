@@ -15,7 +15,7 @@ func TestCanvasWithoutAPage(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected *errors.Error, got %T (%v)", err, err)
 	}
-	if appErr.Tag != "SyntheticCanvasNotFound" || !appErr.HasRoute("Canvas.SyntheticCanvasNotFound") {
+	if appErr.Tag != tagSyntheticCanvasNotFound || !appErr.HasRoute("Canvas.SyntheticCanvasNotFound") {
 		t.Errorf("unexpected failure path: %s", appErr.Route())
 	}
 }
@@ -27,7 +27,7 @@ func TestTextFieldWithoutAPage(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected *errors.Error, got %T (%v)", err, err)
 	}
-	if appErr.Tag != "SyntheticTextFieldNotFound" || !appErr.HasRoute("TextField.SyntheticTextFieldNotFound") {
+	if appErr.Tag != tagSyntheticTextFieldNotFound || !appErr.HasRoute("TextField.SyntheticTextFieldNotFound") {
 		t.Errorf("unexpected failure path: %s", appErr.Route())
 	}
 }

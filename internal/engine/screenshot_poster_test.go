@@ -109,14 +109,14 @@ func TestScreenshotFromARendererThatReadsBackLater(t *testing.T) {
 	if b := got.Bounds(); b.Dx() != 2 || b.Dy() != 2 {
 		t.Errorf("size = %v, want 2x2", b)
 	}
-	want := errors.New("WebGPUReadFailed", "the browser could not map the buffer of a read-back")
+	want := errors.New(tagWebGPUReadFailed, "the browser could not map the buffer of a read-back")
 	if _, err := runCapture(t, nil, true, want); err != want {
 		t.Fatalf("Run = %v, want the error of the read unchanged", err)
 	}
 }
 
 func TestScreenshotThatDoesNotArriveEndsRunWithTheError(t *testing.T) {
-	want := errors.New("ScreenshotWriteFailed", "the server said no")
+	want := errors.New(tagScreenshotWriteFailed, "the server said no")
 	_, err := runPosterCapture(t, want)
 	if err != want {
 		t.Fatalf("Run = %v, want the error of the platform unchanged", err)
@@ -126,7 +126,7 @@ func TestScreenshotThatDoesNotArriveEndsRunWithTheError(t *testing.T) {
 func TestEncodeFailsOnAnEmptyImageWithTheRoute(t *testing.T) {
 	_, err := (&Screenshot{path: "x"}).Encode(image.NewRGBA(image.Rect(0, 0, 0, 0)))
 	appErr, ok := errors.FromError(err)
-	if !ok || appErr.Tag != "ScreenshotWriteFailed" || !appErr.HasRoute("Screenshot.Encode.ScreenshotWriteFailed") {
+	if !ok || appErr.Tag != tagScreenshotWriteFailed || !appErr.HasRoute("Screenshot.Encode.ScreenshotWriteFailed") {
 		t.Fatalf("Encode = %v, want ScreenshotWriteFailed via Screenshot.Encode", err)
 	}
 }
@@ -176,3 +176,8 @@ func TestRequestAppExitDoesNothingWhereTheAppCannotExit(t *testing.T) {
 		})
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagWebGPUReadFailed = "WebGPUReadFailed"
+)

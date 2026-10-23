@@ -65,7 +65,7 @@ func TestNearZeroAndNegativeEpsilon(t *testing.T) {
 	if !NearZero(0.0005, 0.001) || NearZero(0.5, 0.001) {
 		t.Error("NearZero")
 	}
-	assertRoute(t, recoverError(t, func() { NearEqual(1, 1, -1) }), "NearEqual->panicEpsilon.EpsilonNegative")
+	assertRoute(t, recoverError(t, func() { NearEqual(1, 1, -1) }), "NearEqual.EpsilonNegative")
 }
 
 func TestToleranceDefaults(t *testing.T) {

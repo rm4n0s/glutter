@@ -90,8 +90,8 @@ func calculateOverflowRegions(overflow RelativeRect, container ui.Rect) []overfl
 	return regions
 }
 
-// overflowError is the error that reports an overflow.
-func overflowError(self RenderObject, overflow RelativeRect, hints []string) error {
+// overflowDescription returns the text of the overflow error and its hints.
+func overflowDescription(self RenderObject, overflow RelativeRect, hints []string) (text string, allHints []string) {
 	if len(hints) == 0 {
 		name := foundation.RuntimeTypeName(self)
 		hints = []string{
@@ -115,7 +115,6 @@ func overflowError(self RenderObject, overflow RelativeRect, hints []string) err
 	if overflow.Right > 0 {
 		overflows = append(overflows, formatPixels(overflow.Right)+" pixels on the right")
 	}
-	var text string
 	switch len(overflows) {
 	case 0:
 		text = "nothing"
@@ -127,9 +126,7 @@ func overflowError(self RenderObject, overflow RelativeRect, hints []string) err
 		overflows[len(overflows)-1] = "and " + overflows[len(overflows)-1]
 		text = strings.Join(overflows, ", ")
 	}
-	return errors.New("RenderOverflow", "A "+foundation.RuntimeTypeName(self)+" overflowed by "+text+".",
-		"library", "rendering library", "context", "during layout", "hints", strings.Join(hints, "\n"),
-		"object", foundation.DescribeIdentity(self))
+	return text, hints
 }
 
 // PaintOverflowIndicator paints the striped pattern on the edges of the
@@ -152,7 +149,10 @@ func (d *DebugOverflowIndicator) PaintOverflowIndicator(self RenderObject, conte
 	}
 	if !d.overflowReported {
 		d.overflowReported = true
-		err := overflowError(self, overflow, overflowHints)
+		text, hints := overflowDescription(self, overflow, overflowHints)
+		err := errors.New(tagRenderOverflow, "A "+foundation.RuntimeTypeName(self)+" overflowed by "+text+".",
+			"library", "rendering library", "context", "during layout", "hints", strings.Join(hints, "\n"),
+			"object", foundation.DescribeIdentity(self))
 		o := self.DebugOptions()
 		if o.ReportError != nil {
 			o.ReportError(err)
@@ -161,3 +161,8 @@ func (d *DebugOverflowIndicator) PaintOverflowIndicator(self RenderObject, conte
 		}
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagRenderOverflow = "RenderOverflow"
+)

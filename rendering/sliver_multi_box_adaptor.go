@@ -331,7 +331,7 @@ func (a *RenderSliverMultiBoxAdaptor) SetDebugChildIntegrityEnabled(enabled bool
 	a.debugChildIntegrityDisabled = !enabled
 	a.debugVerifyChildOrder()
 	if enabled && len(a.debugDanglingKeepAlives) != 0 {
-		panic(errors.New("SliverDanglingKeepAlives", "the adaptor has kept alive children that are not in its bucket",
+		panic(errors.New(tagSliverDanglingKeepAlives, "the adaptor has kept alive children that are not in its bucket",
 			"object", foundation.DescribeIdentity(a.self)))
 	}
 }
@@ -345,7 +345,7 @@ func (a *RenderSliverMultiBoxAdaptor) debugVerifyChildOrder() {
 		index := a.IndexOf(child)
 		child = a.ChildAfter(child)
 		if !isNil(child) && a.IndexOf(child) <= index {
-			panic(errors.New("SliverChildOrderInvalid", "the children of the adaptor are not in increasing order of their index",
+			panic(errors.New(tagSliverChildOrderInvalid, "the children of the adaptor are not in increasing order of their index",
 				"object", foundation.DescribeIdentity(a.self), "index", index))
 		}
 	}
@@ -366,7 +366,7 @@ func (a *RenderSliverMultiBoxAdaptor) debugRemoveDangling(child Box) {
 // Flutter: rendering/sliver_multi_box_adaptor.dart RenderSliverMultiBoxAdaptor.insert
 func (a *RenderSliverMultiBoxAdaptor) Insert(child, after Box) {
 	if foundation.DebugMode && a.keepAliveBucket.containsValue(child) {
-		panic(errors.New("SliverInsertKeptAlive", "a child that is kept alive was inserted again",
+		panic(errors.New(tagSliverInsertKeptAlive, "a child that is kept alive was inserted again",
 			"object", foundation.DescribeIdentity(a.self), "child", foundation.DescribeIdentity(child)))
 	}
 	a.insertAdopting(child, after, func() {
@@ -641,7 +641,7 @@ func (a *RenderSliverMultiBoxAdaptor) CalculateTrailingGarbage(lastIndex int) in
 func (a *RenderSliverMultiBoxAdaptor) CollectGarbage(leadingGarbage, trailingGarbage int) {
 	a.childManager.DebugAssertChildListLocked()
 	if foundation.DebugMode && a.ChildCount() < leadingGarbage+trailingGarbage {
-		panic(errors.New("SliverGarbageInvalid", "more children were collected than the adaptor has",
+		panic(errors.New(tagSliverGarbageInvalid, "more children were collected than the adaptor has",
 			"object", foundation.DescribeIdentity(a.self), "leading", leadingGarbage, "trailing", trailingGarbage, "childCount", a.ChildCount()))
 	}
 	a.InvokeLayoutCallback(func(Constraints) {
@@ -807,13 +807,13 @@ func (a *RenderSliverMultiBoxAdaptor) DebugAssertChildListIsNonEmptyAndContiguou
 	}
 	first := a.FirstChild()
 	if isNil(first) {
-		panic(errors.New("SliverChildListInvalid", "the child list of the adaptor is empty", "object", foundation.DescribeIdentity(a.self)))
+		panic(errors.New(tagSliverChildListInvalid, "the child list of the adaptor is empty", "object", foundation.DescribeIdentity(a.self)))
 	}
 	index := a.IndexOf(first)
 	for child := a.ChildAfter(first); !isNil(child); child = a.ChildAfter(child) {
 		index++
 		if a.IndexOf(child) != index {
-			panic(errors.New("SliverChildListInvalid", "the indices of the children of the adaptor are not contiguous",
+			panic(errors.New(tagSliverChildListInvalid, "the indices of the children of the adaptor are not contiguous",
 				"object", foundation.DescribeIdentity(a.self), "index", index))
 		}
 	}
@@ -853,3 +853,12 @@ func indexString(i foundation.Opt[int]) string {
 	}
 	return "null"
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagSliverChildListInvalid   = "SliverChildListInvalid"
+	tagSliverChildOrderInvalid  = "SliverChildOrderInvalid"
+	tagSliverDanglingKeepAlives = "SliverDanglingKeepAlives"
+	tagSliverGarbageInvalid     = "SliverGarbageInvalid"
+	tagSliverInsertKeptAlive    = "SliverInsertKeptAlive"
+)

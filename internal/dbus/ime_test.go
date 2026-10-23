@@ -2,7 +2,7 @@ package dbus_test
 
 import (
 	"context"
-	"errors"
+	stdErrors "errors"
 	"reflect"
 	"testing"
 	"time"
@@ -189,7 +189,7 @@ func TestOpenInputMethodCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	_, err := dbus.OpenInputMethod(ctx, bus, dbus.IMEOptions{}, newEventLog().add)
-	if !errors.Is(err, context.Canceled) {
+	if !stdErrors.Is(err, context.Canceled) {
 		t.Errorf("err = %v, want the cancellation", err)
 	}
 }
@@ -226,7 +226,7 @@ func TestIBusFallsBackToThePortalWhenThePrivateBusFails(t *testing.T) {
 	nameOwners(session, "org.freedesktop.portal.IBus")
 	ibusService(session, "org.freedesktop.portal.IBus", "org.freedesktop.IBus.Portal", nil)
 	opts := dbus.IMEOptions{Hint: "ibus", IBusBus: func(context.Context) (dbus.Bus, error) {
-		return nil, errors.New("no address")
+		return nil, stdErrors.New("no address")
 	}}
 	im, err := dbus.OpenInputMethod(context.Background(), session, opts, newEventLog().add)
 	if err != nil {
@@ -638,7 +638,7 @@ func TestIBusAddress(t *testing.T) {
 	read := func(name string) ([]byte, error) {
 		s, found := files[name]
 		if !found {
-			return nil, errors.New("not found: " + name)
+			return nil, stdErrors.New("not found: " + name)
 		}
 		return []byte(s), nil
 	}

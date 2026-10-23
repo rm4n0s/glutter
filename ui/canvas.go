@@ -49,7 +49,7 @@ type CanvasOpts struct {
 func NewCanvas(recorder *PictureRecorder, opts ...CanvasOpts) *Canvas {
 	o := oneOpts(opts)
 	if recorder.IsRecording() {
-		panic(errors.New("CanvasRecorderBusy", `"recorder" must not already be associated with another Canvas.`))
+		panic(errors.New(tagCanvasRecorderBusy, `"recorder" must not already be associated with another Canvas.`))
 	}
 	cull := RectLargest
 	if o.CullRect != nil {
@@ -550,11 +550,11 @@ func (c *Canvas) DrawVertices(vertices *Vertices, blendMode BlendMode, paint *Pa
 // Flutter: ui/painting.dart Canvas.drawAtlas
 func (c *Canvas) DrawAtlas(atlas *Image, transforms []RSTransform, rects []Rect, colors []Color, blendMode BlendMode, cullRect *Rect, paint *Paint) {
 	if len(transforms) != len(rects) {
-		panic(errors.New("AtlasTransformCountMismatch", `"transforms" and "rects" lengths must match.`,
+		panic(errors.New(tagAtlasTransformCountMismatch, `"transforms" and "rects" lengths must match.`,
 			"transforms", len(transforms), "rects", len(rects)))
 	}
 	if len(colors) != 0 && len(colors) != len(rects) {
-		panic(errors.New("AtlasColorCountMismatch", `If non-null, "colors" length must match that of "transforms" and "rects".`,
+		panic(errors.New(tagAtlasColorCountMismatch, `If non-null, "colors" length must match that of "transforms" and "rects".`,
 			"colors", len(colors), "rects", len(rects)))
 	}
 	if blendMode == BlendModeUnspecified {
@@ -594,3 +594,10 @@ func (c *Canvas) DrawShadow(path *Path, color Color, elevation float64, transpar
 func (c *Canvas) String() string {
 	return "Canvas(recording: " + boolString(c.recorder != nil) + ")"
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagAtlasColorCountMismatch     = "AtlasColorCountMismatch"
+	tagAtlasTransformCountMismatch = "AtlasTransformCountMismatch"
+	tagCanvasRecorderBusy          = "CanvasRecorderBusy"
+)

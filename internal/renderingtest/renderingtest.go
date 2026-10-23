@@ -81,7 +81,7 @@ func (h *Harness) Pump() { h.Stack.Pump() }
 func (h *Harness) Image() (*image.RGBA, error) {
 	s := h.LastScene()
 	if s == nil {
-		return nil, errors.New("RenderingTestNoScene", "no frame was composited yet; call Pump first")
+		return nil, errors.New(tagRenderingTestNoScene, "no frame was composited yet; call Pump first")
 	}
 	size := h.View.PhysicalSize()
 	return soft.Render(s, int(size.Width), int(size.Height))
@@ -130,3 +130,8 @@ type noSystemFonts struct{}
 func (noSystemFonts) Match(context.Context, string, int, bool, string) ([]text.FontFile, error) {
 	return nil, nil
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagRenderingTestNoScene = "RenderingTestNoScene"
+)

@@ -145,7 +145,7 @@ type Tooltip struct {
 func NewTooltip(child widgets.Widget, opts ...TooltipOpts) *Tooltip {
 	o := firstOpts(opts)
 	if foundation.DebugMode && o.Message != "" && o.RichMessage != nil {
-		panic(errors.New("TooltipMessageAndRichMessage", "message and richMessage can't both be specified"))
+		panic(errors.New(tagTooltipMessageAndRichMessage, "message and richMessage can't both be specified"))
 	}
 	return &Tooltip{StatefulWidget: widgets.NewStatefulWidgetBase(widgets.WidgetOpts{Key: o.Key}), child: child, o: o}
 }
@@ -332,3 +332,8 @@ func (w *tooltipBox) Build(widgets.BuildContext) widgets.Widget {
 			widgets.ContainerOpts{Decoration: w.decoration, Padding: w.padding, Margin: w.margin}),
 		widgets.DefaultTextStyleOpts{TextAlign: w.textAlign}))
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagTooltipMessageAndRichMessage = "TooltipMessageAndRichMessage"
+)

@@ -234,7 +234,7 @@ func TestTickerDisposeCancelsTheFuture(t *testing.T) {
 	default:
 	}
 	err := <-f.OrCancel()
-	assertRoute(t, err, "TickerCanceled")
+	assertRoute(t, err, "TickerFuture.OrCancel->TickerFuture.whenEnded.TickerCanceled")
 	appErr, _ := errors.FromError(err)
 	if !strings.Contains(appErr.Message, "was canceled before") {
 		t.Errorf("message = %q: canceled before OrCancel was used", appErr.Message)
@@ -304,7 +304,7 @@ func TestTickerFutureCancel(t *testing.T) {
 	default:
 	}
 	err := <-orCancel
-	assertRoute(t, err, "TickerCanceled")
+	assertRoute(t, err, "Ticker.Stop->TickerFuture.cancel.TickerCanceled")
 	appErr, _ := errors.FromError(err)
 	if appErr.Message != "This ticker was canceled: Ticker(spinner)" {
 		t.Errorf("message = %q", appErr.Message)

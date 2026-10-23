@@ -364,7 +364,7 @@ func TestShowNotificationErrors(t *testing.T) {
 			desktop.NotificationOpts{Actions: []desktop.NotificationAction{{ID: "a"}}}, "NotificationActionInvalid"},
 		{"no service on the bus", func(bc widgets.BuildContext) { desktop.UseBus(bc, fakebus.New(unique)) }, "s", desktop.NotificationOpts{}, "NotificationsUnavailable"},
 		{"no session bus", func(bc widgets.BuildContext) {
-			desktop.UseBusOpener(bc, func(context.Context) (dbus.Bus, error) { return nil, errors.New("DBusConnectFailed", "no bus") })
+			desktop.UseBusOpener(bc, func(context.Context) (dbus.Bus, error) { return nil, errors.New(tagDBusConnectFailed, "no bus") })
 		}, "s", desktop.NotificationOpts{}, "NotificationsUnavailable"},
 		{"no portal in the sandbox", func(bc widgets.BuildContext) {
 			desktop.UseBus(bc, fakebus.New(unique))

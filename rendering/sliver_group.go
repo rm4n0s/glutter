@@ -11,7 +11,7 @@ import (
 
 func assertSliverOutOfExtent(extent float64) {
 	if foundation.DebugMode && extent <= 0 {
-		panic(errors.New("SliverCrossAxisGroupOutOfExtent", "SliverCrossAxisGroup ran out of extent before child could be laid out. "+
+		panic(errors.New(tagSliverCrossAxisGroupOutOfExtent, "SliverCrossAxisGroup ran out of extent before child could be laid out. "+
 			"SliverCrossAxisGroup lays out any slivers with a constrained cross axis before laying out those which expand. In this case, cross axis "+
 			"extent was used up before the next sliver could be laid out. Make sure that the total amount of extent allocated by constrained "+
 			"child slivers does not exceed the cross axis extent that is available for the SliverCrossAxisGroup.", "extent", extent))
@@ -77,7 +77,7 @@ func (r *RenderSliverCrossAxisGroup) PerformLayout() {
 	c := r.SliverConstraints()
 	crossAxisExtent := c.CrossAxisExtent
 	if foundation.DebugMode && (math.IsInf(crossAxisExtent, 0) || math.IsNaN(crossAxisExtent)) {
-		panic(errors.New("SliverCrossAxisGroupExtentInfinite", "a SliverCrossAxisGroup needs a cross axis extent that is finite",
+		panic(errors.New(tagSliverCrossAxisGroupExtentInfinite, "a SliverCrossAxisGroup needs a cross axis extent that is finite",
 			"object", foundation.DescribeIdentity(r.self), "crossAxisExtent", crossAxisExtent))
 	}
 
@@ -90,7 +90,7 @@ func (r *RenderSliverCrossAxisGroup) PerformLayout() {
 			child.Layout(c.CopyWith(SliverConstraintsCopy{CrossAxisExtent: foundation.Some(remainingExtent)}), LayoutOpts{ParentUsesSize: true})
 			childCrossAxisExtent := child.Geometry().CrossAxisExtent
 			if foundation.DebugMode && !childCrossAxisExtent.IsSome() {
-				panic(errors.New("SliverCrossAxisGroupChildExtentMissing", "a child of a SliverCrossAxisGroup without a flex must set the cross axis extent of its geometry",
+				panic(errors.New(tagSliverCrossAxisGroupChildExtentMissing, "a child of a SliverCrossAxisGroup without a flex must set the cross axis extent of its geometry",
 					"object", foundation.DescribeIdentity(r.self), "child", foundation.DescribeIdentity(child)))
 			}
 			remainingExtent = math.Max(0, remainingExtent-childCrossAxisExtent.Value())
@@ -326,7 +326,7 @@ func (r *RenderSliverMainAxisGroup) PerformLayout() {
 		}
 		child = advance(child)
 		if foundation.DebugMode && !isNil(child) && math.IsInf(maxPaintExtent, 0) {
-			panic(errors.New("SliverUnreachableSliver", "Unreachable sliver found, you may have a sliver following a sliver with an infinite extent.",
+			panic(errors.New(tagSliverUnreachableSliver, "Unreachable sliver found, you may have a sliver following a sliver with an infinite extent.",
 				"object", foundation.DescribeIdentity(r.self)))
 		}
 	}
@@ -423,3 +423,11 @@ func (r *RenderSliverMainAxisGroup) VisitChildrenForSemantics(visitor RenderObje
 		}
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagSliverCrossAxisGroupChildExtentMissing = "SliverCrossAxisGroupChildExtentMissing"
+	tagSliverCrossAxisGroupExtentInfinite     = "SliverCrossAxisGroupExtentInfinite"
+	tagSliverCrossAxisGroupOutOfExtent        = "SliverCrossAxisGroupOutOfExtent"
+	tagSliverUnreachableSliver                = "SliverUnreachableSliver"
+)

@@ -44,7 +44,7 @@ func reorderableChecks(itemCount int, itemExtent foundation.Opt[float64], itemEx
 		return
 	}
 	if itemCount < 0 {
-		panic(errors.New("ReorderableItemCountNegative", "the itemCount must not be negative", "itemCount", itemCount))
+		panic(errors.New(tagReorderableItemCountNegative, "the itemCount must not be negative", "itemCount", itemCount))
 	}
 	given := 0
 	if itemExtent.IsSome() {
@@ -57,10 +57,10 @@ func reorderableChecks(itemCount int, itemExtent foundation.Opt[float64], itemEx
 		given++
 	}
 	if given > 1 {
-		panic(errors.New("ReorderableExtentConflict", "you can only pass one of itemExtent, prototypeItem and itemExtentBuilder"))
+		panic(errors.New(tagReorderableExtentConflict, "you can only pass one of itemExtent, prototypeItem and itemExtentBuilder"))
 	}
 	if (onReorderItem != nil) == (onReorder != nil) {
-		panic(errors.New("ReorderableCallbackInvalid", "exactly one of onReorderItem and onReorder must be given; the onReorder callback is obsolete and is replaced by onReorderItem"))
+		panic(errors.New(tagReorderableCallbackInvalid, "exactly one of onReorderItem and onReorder must be given; the onReorder callback is obsolete and is replaced by onReorderItem"))
 	}
 }
 
@@ -183,7 +183,7 @@ func ReorderableListMaybeOf(bc BuildContext) (*ReorderableListState, bool) {
 func ReorderableListOf(bc BuildContext) *ReorderableListState {
 	s, ok := ReorderableListMaybeOf(bc)
 	if !ok && foundation.DebugMode {
-		panic(errors.New("ReorderableListMissing", "ReorderableListOf() called with a context that does not contain a ReorderableList; this can happen when the context provided is from the same StatefulWidget that built the ReorderableList",
+		panic(errors.New(tagReorderableListMissing, "ReorderableListOf() called with a context that does not contain a ReorderableList; this can happen when the context provided is from the same StatefulWidget that built the ReorderableList",
 			"context", bc.(Element).String()))
 	}
 	return s
@@ -317,7 +317,7 @@ func SliverReorderableListMaybeOf(bc BuildContext) (*SliverReorderableListState,
 func SliverReorderableListOf(bc BuildContext) *SliverReorderableListState {
 	s, ok := SliverReorderableListMaybeOf(bc)
 	if !ok && foundation.DebugMode {
-		panic(errors.New("SliverReorderableListMissing", "SliverReorderableListOf() called with a context that does not contain a SliverReorderableList; this can happen when the context provided is from the same StatefulWidget that built the SliverReorderableList",
+		panic(errors.New(tagSliverReorderableListMissing, "SliverReorderableListOf() called with a context that does not contain a SliverReorderableList; this can happen when the context provided is from the same StatefulWidget that built the SliverReorderableList",
 			"context", bc.(Element).String()))
 	}
 	return s
@@ -432,7 +432,7 @@ func (s *SliverReorderableListState) Dispose() {
 // Flutter: widgets/reorderable_list.dart SliverReorderableListState.startItemDragReorder
 func (s *SliverReorderableListState) StartItemDragReorder(index int, event *gestures.PointerDownEvent, recognizer *gestures.MultiDragGestureRecognizer) {
 	if foundation.DebugMode && (index < 0 || index >= s.Widget().itemCount) {
-		panic(errors.New("ReorderableIndexInvalid", "the index to drag is out of range", "index", index))
+		panic(errors.New(tagReorderableIndexInvalid, "the index to drag is out of range", "index", index))
 	}
 	s.SetState(func() {
 		if s.dragInfo != nil {
@@ -449,7 +449,7 @@ func (s *SliverReorderableListState) StartItemDragReorder(index int, event *gest
 			s.recognizer.AddPointer(event)
 			s.recognizerPointer = foundation.Some(event.Pointer())
 		} else {
-			panic(errors.New("ReorderableItemNotVisible", "attempting to start a drag on a non-visible item", "index", index))
+			panic(errors.New(tagReorderableItemNotVisible, "attempting to start a drag on a non-visible item", "index", index))
 		}
 	})
 }
@@ -480,7 +480,7 @@ func (s *SliverReorderableListState) unregisterItem(index int, item *reorderable
 
 func (s *SliverReorderableListState) dragStart(position ui.Offset) gestures.Drag {
 	if foundation.DebugMode && s.dragInfo != nil {
-		panic(errors.New("ReorderableDragActive", "a drag started while another one is active"))
+		panic(errors.New(tagReorderableDragActive, "a drag started while another one is active"))
 	}
 	item := s.items.get(s.dragIndex.Value())
 	item.SetDragging(true)
@@ -718,7 +718,7 @@ func (s *SliverReorderableListState) itemBuilder(bc BuildContext, index int) Wid
 	}
 	child := w.itemBuilder(bc, index)
 	if foundation.DebugMode && child.Key() == nil {
-		panic(errors.New("ReorderableItemKeyMissing", "all list items must have a key", "index", index))
+		panic(errors.New(tagReorderableItemKeyMissing, "all list items must have a key", "index", index))
 	}
 	overlay := OverlayOf(bc, OverlayOfOpts{DebugRequiredFor: w})
 	key := NewGlobalObjectKey[State](reorderableItemKeyValue{child.Key(), index, s})
@@ -1227,3 +1227,16 @@ func restrictAxis(offset ui.Offset, scrollDirection painting.Axis) ui.Offset {
 	}
 	return ui.Offset{Dy: offset.Dy}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagReorderableCallbackInvalid   = "ReorderableCallbackInvalid"
+	tagReorderableDragActive        = "ReorderableDragActive"
+	tagReorderableExtentConflict    = "ReorderableExtentConflict"
+	tagReorderableIndexInvalid      = "ReorderableIndexInvalid"
+	tagReorderableItemCountNegative = "ReorderableItemCountNegative"
+	tagReorderableItemKeyMissing    = "ReorderableItemKeyMissing"
+	tagReorderableItemNotVisible    = "ReorderableItemNotVisible"
+	tagReorderableListMissing       = "ReorderableListMissing"
+	tagSliverReorderableListMissing = "SliverReorderableListMissing"
+)

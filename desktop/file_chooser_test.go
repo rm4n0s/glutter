@@ -262,7 +262,7 @@ func TestFileChooserUnavailable(t *testing.T) {
 	}{
 		{"no portal on the bus", func(bc widgets.BuildContext) { desktop.UseBus(bc, fakebus.New(unique)) }},
 		{"no session bus", func(bc widgets.BuildContext) {
-			desktop.UseBusOpener(bc, func(context.Context) (dbus.Bus, error) { return nil, errors.New("DBusConnectFailed", "no bus") })
+			desktop.UseBusOpener(bc, func(context.Context) (dbus.Bus, error) { return nil, errors.New(tagDBusConnectFailed, "no bus") })
 		}},
 		{"the portal has no such method", func(bc widgets.BuildContext) {
 			b := fakebus.New(unique)

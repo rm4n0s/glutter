@@ -95,7 +95,7 @@ func openIBus(ctx context.Context, session Bus, opts IMEOptions, events func(IME
 		}
 	}
 	if !haveEndpoint && !nameHasOwner(ctx, session, ibusPortalDest) {
-		return nil, errors.New("IBusNotRunning", "IBus has no private bus and no portal on the session bus")
+		return nil, errors.New(tagIBusNotRunning, "IBus has no private bus and no portal on the session bus")
 	}
 	closeOwned := func() {
 		if owned != nil {
@@ -118,7 +118,7 @@ func openIBus(ctx context.Context, session Bus, opts IMEOptions, events func(IME
 	}
 	if path == "" {
 		closeOwned()
-		return nil, errors.New("InputMethodBadReply", "IBus answered CreateInputContext without a path", "framework", "ibus")
+		return nil, errors.New(tagInputMethodBadReply, "IBus answered CreateInputContext without a path", "framework", "ibus")
 	}
 
 	c := &ibusContext{bus: bus, dest: dest, path: path, owned: owned, done: make(chan struct{})}
@@ -194,7 +194,7 @@ func (c *ibusContext) ProcessKey(ctx context.Context, key IMEKey) (bool, error) 
 		return false, err
 	}
 	if len(body) != 1 {
-		return false, errors.New("InputMethodBadReply", "IBus answered ProcessKeyEvent without a boolean", "framework", "ibus")
+		return false, errors.New(tagInputMethodBadReply, "IBus answered ProcessKeyEvent without a boolean", "framework", "ibus")
 	}
 	handled, _ := body[0].(bool)
 	return handled, nil
@@ -292,7 +292,7 @@ func IBusAddress(getenv func(string) string, readFile func(string) ([]byte, erro
 	if config == "" {
 		home := getenv("HOME")
 		if home == "" {
-			return "", errors.New("IBusAddressNotFound", "neither IBUS_ADDRESS, XDG_CONFIG_HOME nor HOME is set")
+			return "", errors.New(tagIBusAddressNotFound, "neither IBUS_ADDRESS, XDG_CONFIG_HOME nor HOME is set")
 		}
 		config = filepath.Join(home, ".config")
 	}
@@ -305,7 +305,7 @@ func IBusAddress(getenv func(string) string, readFile func(string) ([]byte, erro
 		}
 	}
 	if machine == "" {
-		return "", errors.New("IBusAddressNotFound", "the machine id is unknown, so the IBus socket file cannot be named")
+		return "", errors.New(tagIBusAddressNotFound, "the machine id is unknown, so the IBus socket file cannot be named")
 	}
 	host, number := "unix", "0"
 	if display == "wayland" {
@@ -332,14 +332,14 @@ func IBusAddress(getenv func(string) string, readFile func(string) ([]byte, erro
 	file := filepath.Join(config, "ibus", "bus", machine+"-"+host+"-"+number)
 	b, err := readFile(file)
 	if err != nil {
-		return "", errors.NewErr("IBusAddressNotFound", err).SetMetadata("file", file)
+		return "", errors.NewErr(tagIBusAddressNotFound, err).SetMetadata("file", file)
 	}
 	for _, line := range strings.Split(string(b), "\n") {
 		if addr, ok := strings.CutPrefix(strings.TrimSpace(line), "IBUS_ADDRESS="); ok && addr != "" {
 			return addr, nil
 		}
 	}
-	return "", errors.New("IBusAddressNotFound", "the IBus socket file has no IBUS_ADDRESS line", "file", file)
+	return "", errors.New(tagIBusAddressNotFound, "the IBus socket file has no IBUS_ADDRESS line", "file", file)
 }
 
 // IBusBusFromEnvironment returns a function that opens the private bus of the
@@ -356,3 +356,9 @@ func IBusBusFromEnvironment(display string) func(ctx context.Context) (Bus, erro
 		return ConnectAddress(ctx, addr)
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagIBusAddressNotFound = "IBusAddressNotFound"
+	tagIBusNotRunning      = "IBusNotRunning"
+)

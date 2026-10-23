@@ -296,7 +296,7 @@ func (t *dndTarget) readData(done func(text string, uris []string)) {
 		}
 		r, err := t.d.receivePipe(t.offer, mime)
 		if err != nil {
-			slog.Debug("a type of the drop could not be read", "type", mime, "error", err)
+			slog.Debug("a type of the drop could not be read", "type", mime, "err", err)
 			return
 		}
 		wg.Add(1)
@@ -321,12 +321,12 @@ func (t *dndTarget) readData(done func(text string, uris []string)) {
 func (d *dnd) receivePipe(o *offer, mime string) (*os.File, error) {
 	r, w, err := d.pipe()
 	if err != nil {
-		return nil, errors.NewErr("DropReadFailed", err)
+		return nil, errors.NewErr(tagDropReadFailed, err)
 	}
 	o.receive(mime, int(w.Fd()))
 	// The connection keeps its own copy of the descriptor until it has sent it.
 	if cerr := w.Close(); cerr != nil {
-		slog.Debug("closing the pipe of a drop failed", "error", cerr)
+		slog.Debug("closing the pipe of a drop failed", "err", cerr)
 	}
 	return r, nil
 }
@@ -348,14 +348,14 @@ type dndSource struct {
 // another drag of the app goes on.
 func (c *clipboard) startDrag(w *window, request ui.DragRequest) error {
 	if c == nil || c.device == nil || c.mgr == nil {
-		return errors.New("DragUnsupported", "the compositor has no wl_data_device_manager")
+		return errors.New(tagDragUnsupported, "the compositor has no wl_data_device_manager")
 	}
 	d := c.dnd
 	if d.source != nil {
-		return errors.New("DragInProgress", "a drag of the app is already going on")
+		return errors.New(tagDragInProgress, "a drag of the app is already going on")
 	}
 	if c.p.pointerSerial == 0 {
-		return errors.New("DragNoButton", "a drag starts with a pointer button that is down")
+		return errors.New(tagDragNoButton, "a drag starts with a pointer button that is down")
 	}
 	actions := request.Actions
 	if actions == ui.DropActionNone {
@@ -434,3 +434,11 @@ func (d *dnd) close() {
 		}
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagDragInProgress  = "DragInProgress"
+	tagDragNoButton    = "DragNoButton"
+	tagDragUnsupported = "DragUnsupported"
+	tagDropReadFailed  = "DropReadFailed"
+)

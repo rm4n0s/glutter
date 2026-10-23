@@ -23,8 +23,8 @@ func TestRunOutsideAPageOnJS(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected *errors.Error, got %T (%v)", err, err)
 	}
-	if appErr.Tag != "BackendUnavailable" || !appErr.HasRoute("Run->connectDisplay->New->errNoPage.BackendUnavailable") {
-		t.Errorf("got %s via %s, want BackendUnavailable via Run->connectDisplay->New->errNoPage", appErr.Tag, appErr.Route())
+	if appErr.Tag != tagBackendUnavailable || !appErr.HasRoute("Run->connectDisplay->New.BackendUnavailable") {
+		t.Errorf("got %s via %s, want BackendUnavailable via Run->connectDisplay->New", appErr.Tag, appErr.Route())
 	}
 }
 
@@ -48,7 +48,7 @@ func TestWebRendererCandidates(t *testing.T) {
 	for _, name := range []string{"vulkan", "gles"} {
 		_, err := newChooser(&Config{}, quiet(), name, cands)
 		appErr, ok := errors.FromError(err)
-		if !ok || appErr.Tag != "RendererUnavailable" {
+		if !ok || appErr.Tag != tagRendererUnavailable {
 			t.Errorf("renderer %q: got %v, want RendererUnavailable", name, err)
 		}
 	}
@@ -202,7 +202,7 @@ func TestWebGPULastResortSwitchesToWebGL(t *testing.T) {
 	if _, err := c.Draw(handle, 10, 10, nil, false); err != nil {
 		t.Fatal(err)
 	}
-	(*made)[0].err = errors.New("GPUDeviceLost", "the device is gone")
+	(*made)[0].err = errors.New(tagGPUDeviceLost, "the device is gone")
 	if _, err := c.Draw(handle, 10, 10, nil, false); err == nil || len(*made) != 1 {
 		t.Errorf("webgpu by name switched (%d renderers) or hid the error: %v", len(*made), err)
 	}
@@ -240,3 +240,6 @@ func TestTuneGC(t *testing.T) {
 		t.Errorf("memory limit = %d, want it left alone", got)
 	}
 }
+
+// The tags of the errors that this file asserts (rm4n0s/errors, R5).
+const tagBackendUnavailable = "BackendUnavailable"

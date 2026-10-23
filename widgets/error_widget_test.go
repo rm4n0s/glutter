@@ -10,7 +10,7 @@ import (
 )
 
 func TestErrorWidget(t *testing.T) {
-	err := errors.New("SomethingFailed", "something failed")
+	err := errors.New(tagSomethingFailed, "something failed")
 	tests := []struct {
 		name    string
 		w       *ErrorWidget
@@ -50,7 +50,7 @@ func TestErrorWidget(t *testing.T) {
 func TestErrorWidgetProperties(t *testing.T) {
 	skipUnlessDebug(t)
 	b := foundation.NewDiagnosticPropertiesBuilder()
-	NewErrorWidget(errors.New("Tag", "message")).DebugFillProperties(b)
+	NewErrorWidget(errors.New(tagTag, "message")).DebugFillProperties(b)
 	if len(b.Properties) != 1 || b.Properties[0].Name().OrElse("") != "message" {
 		t.Errorf("properties = %v", b.Properties)
 	}
@@ -145,3 +145,9 @@ func TestErrorWidgetInTheTreeOfABinding(t *testing.T) {
 		t.Errorf("the error box has size %v, want the 800x600 of the view", size)
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagSomethingFailed = "SomethingFailed"
+	tagTag             = "Tag"
+)

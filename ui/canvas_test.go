@@ -479,12 +479,12 @@ func TestPictureBasics(t *testing.T) {
 	for _, f := range []func(int, int, ...ToImageOpts) (*Image, error){pic.ToImage, pic.ToImageSync} {
 		if _, err := f(10, 10); err == nil {
 			t.Error("ToImage without a rasterizer is an error")
-		} else if appErr, ok := errors.FromError(err); !ok || appErr.Tag != "RasterizerMissing" {
+		} else if appErr, ok := errors.FromError(err); !ok || appErr.Tag != tagRasterizerMissing {
 			t.Errorf("error = %v", err)
 		}
 		if _, err := f(0, 10); err == nil {
 			t.Error("a zero width is an error")
-		} else if appErr, ok := errors.FromError(err); !ok || appErr.Tag != "ImageSizeInvalid" {
+		} else if appErr, ok := errors.FromError(err); !ok || appErr.Tag != tagImageSizeInvalid {
 			t.Errorf("error = %v", err)
 		}
 		fake := &fakeRasterizer{}
@@ -501,9 +501,9 @@ func TestPictureBasics(t *testing.T) {
 		}
 	}
 	// The rasterizer's own error comes back unchanged.
-	if _, err := pic.ToImage(5, 5, ToImageOpts{Rasterizer: &fakeRasterizer{err: errors.New("RasterFailed", "no")}}); err == nil {
+	if _, err := pic.ToImage(5, 5, ToImageOpts{Rasterizer: &fakeRasterizer{err: errors.New(tagRasterFailed, "no")}}); err == nil {
 		t.Error("the rasterizer's error was lost")
-	} else if appErr, ok := errors.FromError(err); !ok || appErr.Tag != "RasterFailed" {
+	} else if appErr, ok := errors.FromError(err); !ok || appErr.Tag != tagRasterFailed {
 		t.Errorf("error = %v", err)
 	}
 }
@@ -522,3 +522,8 @@ func (f *fakeRasterizer) RasterizeScene(scene *Scene, width, height int) (*Image
 	}
 	return NewImageFromRGBA(make([]byte, 4*width*height), width, height), nil
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagRasterFailed = "RasterFailed"
+)

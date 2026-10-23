@@ -113,7 +113,7 @@ func NewLogicalKeySet(key1 services.LogicalKeyboardKey, more ...services.Logical
 	keys := append([]services.LogicalKeyboardKey{key1}, more...)
 	set := NewLogicalKeySetFromSet(services.NewKeySet(keys...))
 	if foundation.DebugMode && len(set.Keys()) != len(keys) {
-		panic(errors.New("KeySetDuplicateKey", "two or more provided keys are identical; each key must appear only once"))
+		panic(errors.New(tagKeySetDuplicateKey, "two or more provided keys are identical; each key must appear only once"))
 	}
 	return set
 }
@@ -124,7 +124,7 @@ func NewLogicalKeySet(key1 services.LogicalKeyboardKey, more ...services.Logical
 // Flutter: widgets/shortcuts.dart LogicalKeySet.fromSet
 func NewLogicalKeySetFromSet(keys services.KeySet[services.LogicalKeyboardKey]) LogicalKeySet {
 	if foundation.DebugMode && len(keys) == 0 {
-		panic(errors.New("KeySetEmpty", "a key set needs at least one key"))
+		panic(errors.New(tagKeySetEmpty, "a key set needs at least one key"))
 	}
 	sorted := make([]uint64, 0, len(keys))
 	for k := range keys {
@@ -291,7 +291,7 @@ func NewSingleActivator(trigger services.LogicalKeyboardKey, opts ...SingleActiv
 			services.LogicalKeyboardKeyShift, services.LogicalKeyboardKeyShiftLeft, services.LogicalKeyboardKeyShiftRight,
 			services.LogicalKeyboardKeyAlt, services.LogicalKeyboardKeyAltLeft, services.LogicalKeyboardKeyAltRight,
 			services.LogicalKeyboardKeyMeta, services.LogicalKeyboardKeyMetaLeft, services.LogicalKeyboardKeyMetaRight:
-			panic(errors.New("SingleActivatorTriggerIsModifier", "the trigger of a SingleActivator must not be a modifier key; use the control, shift, alt and meta options", "trigger", trigger.String()))
+			panic(errors.New(tagSingleActivatorTriggerIsModifier, "the trigger of a SingleActivator must not be a modifier key; use the control, shift, alt and meta options", "trigger", trigger.String()))
 		}
 	}
 	return SingleActivator{trigger, o.Control, o.Shift, o.Alt, o.Meta, o.NumLock, o.ExcludeRepeats}
@@ -1128,7 +1128,7 @@ func (r *ShortcutRegistry) find(entry *ShortcutRegistryEntry) *registeredShortcu
 func (r *ShortcutRegistry) AddAll(value ShortcutMap) *ShortcutRegistryEntry {
 	r.DebugAssertNotDisposed()
 	if foundation.DebugMode && len(value) == 0 {
-		panic(errors.New("ShortcutRegistryEmpty", "cannot register an empty map of shortcuts"))
+		panic(errors.New(tagShortcutRegistryEmpty, "cannot register an empty map of shortcuts"))
 	}
 	entry := &ShortcutRegistryEntry{r}
 	r.registered = append(r.registered, &registeredShortcuts{entry, value})
@@ -1172,10 +1172,10 @@ func (r *ShortcutRegistry) debugCheckEntryIsValid(entry *ShortcutRegistryEntry) 
 		return
 	}
 	if entry.registry == r {
-		panic(errors.New("ShortcutRegistryEntryDisposed",
+		panic(errors.New(tagShortcutRegistryEntryDisposed,
 			"entry "+foundation.DescribeIdentity(entry)+" is invalid: the entry has already been disposed of; tokens are not valid after dispose is called on them, and should no longer be used"))
 	}
-	panic(errors.New("ShortcutRegistryEntryForeign",
+	panic(errors.New(tagShortcutRegistryEntryForeign,
 		"foreign entry "+foundation.DescribeIdentity(entry)+" used: this entry was not created by this registry, it was created by "+
 			foundation.DescribeIdentity(entry.registry)+", and should be used with that registry instead"))
 }
@@ -1189,7 +1189,7 @@ func (r *ShortcutRegistry) debugCheckForDuplicates() {
 			for _, other := range r.registered[:i] {
 				for _, o := range other.shortcuts {
 					if activatorsEqual(s.Activator, o.Activator) {
-						panic(errors.New("ShortcutRegistryDuplicate",
+						panic(errors.New(tagShortcutRegistryDuplicate,
 							"ShortcutRegistry: received a duplicate registration for the shortcut "+s.Activator.DebugDescribeKeys()+
 								" in "+foundation.DescribeIdentity(e.entry)+" and "+foundation.DescribeIdentity(other.entry),
 							"activator", s.Activator.DebugDescribeKeys()))
@@ -1208,7 +1208,7 @@ func (r *ShortcutRegistry) debugCheckForDuplicates() {
 func ShortcutRegistryOf(bc BuildContext) *ShortcutRegistry {
 	registry := ShortcutRegistryMaybeOf(bc)
 	if foundation.DebugMode && registry == nil {
-		panic(errors.New("ShortcutRegistrarNotFound",
+		panic(errors.New(tagShortcutRegistrarNotFound,
 			"unable to find a ShortcutRegistrar widget in the context: ShortcutRegistry.of() was called with a context that does not contain a ShortcutRegistrar widget",
 			"context", describeContext(bc)))
 	}
@@ -1284,3 +1284,15 @@ type shortcutRegistrarScope struct {
 func (w *shortcutRegistrarScope) UpdateShouldNotify(old Widget) bool {
 	return w.registry != old.(*shortcutRegistrarScope).registry
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagKeySetDuplicateKey               = "KeySetDuplicateKey"
+	tagKeySetEmpty                      = "KeySetEmpty"
+	tagShortcutRegistrarNotFound        = "ShortcutRegistrarNotFound"
+	tagShortcutRegistryDuplicate        = "ShortcutRegistryDuplicate"
+	tagShortcutRegistryEmpty            = "ShortcutRegistryEmpty"
+	tagShortcutRegistryEntryDisposed    = "ShortcutRegistryEntryDisposed"
+	tagShortcutRegistryEntryForeign     = "ShortcutRegistryEntryForeign"
+	tagSingleActivatorTriggerIsModifier = "SingleActivatorTriggerIsModifier"
+)

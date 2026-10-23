@@ -82,7 +82,7 @@ func (n *ClipboardStatusNotifier) Update() {
 			return
 		}
 		if err != nil {
-			n.binding.ErrorReporter()(errors.NewErr("ClipboardStatusCheckFailed", err))
+			n.binding.ErrorReporter()(errors.NewErr(tagClipboardStatusCheckFailed, err))
 			// In the case of an error from the clipboard, set the value to
 			// unknown so that it will try to update again later.
 			n.SetValue(ClipboardStatusUnknown)
@@ -138,3 +138,8 @@ func (n *ClipboardStatusNotifier) Dispose() {
 	n.disposed = true
 	n.ValueNotifier.Dispose()
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagClipboardStatusCheckFailed = "ClipboardStatusCheckFailed"
+)

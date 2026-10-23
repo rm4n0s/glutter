@@ -268,7 +268,7 @@ func (t *TextSelectionOverlay) HideHandles() { t.selectionOverlay.HideHandles() 
 // Flutter: widgets/text_selection.dart TextSelectionOverlay.showToolbar
 func (t *TextSelectionOverlay) ShowToolbar() {
 	if foundation.DebugMode && WidgetsBindingOf(t.context).Scheduler().SchedulerPhase() == schedulerPhasePersistentCallbacks {
-		panic(errors.New("ShowToolbarDuringBuild", "ShowToolbar must not be called during the build or layout phase"))
+		panic(errors.New(tagShowToolbarDuringBuild, "ShowToolbar must not be called during the build or layout phase"))
 	}
 	t.updateSelectionOverlay()
 	if t.contextMenuBuilder == nil {
@@ -541,3 +541,8 @@ func (t *TextSelectionOverlay) chooseType(textDirection ui.TextDirection, ltrTyp
 	}
 	return ltrType
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagShowToolbarDuringBuild = "ShowToolbarDuringBuild"
+)

@@ -87,7 +87,7 @@ type containerParentDataLinks[C RenderObject] interface {
 // checkDetach panics in debug builds if the sibling links are still set.
 func (d *ContainerParentData[C]) checkDetach() {
 	if foundation.DebugMode && (!isNil(d.PreviousSibling) || !isNil(d.NextSibling)) {
-		panic(errors.New("ParentDataSiblingsSet", "pointers to siblings must be nulled before detaching ParentData"))
+		panic(errors.New(tagParentDataSiblingsSet, "pointers to siblings must be nulled before detaching ParentData"))
 	}
 }
 
@@ -114,3 +114,8 @@ func isNil[T any](v T) bool { return any(v) == nil }
 func BoxParentDataOf(child RenderObject) *BoxParentData {
 	return child.ParentData().(boxParentDataHolder).boxParentData()
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagParentDataSiblingsSet = "ParentDataSiblingsSet"
+)

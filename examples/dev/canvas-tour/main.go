@@ -137,7 +137,7 @@ func newTour(getenv func(string) string) (*tour, error) {
 func (t *tour) find(v string) (int, error) {
 	if n, err := strconv.Atoi(v); err == nil {
 		if n < 1 || n > len(t.pages) {
-			return 0, errors.New("TourPageInvalid", "GLUTTER_DEV_PAGE is a page number from 1, or a scene name",
+			return 0, errors.New(tagTourPageInvalid, "GLUTTER_DEV_PAGE is a page number from 1, or a scene name",
 				"value", v, "pages", len(t.pages))
 		}
 		return n - 1, nil
@@ -147,7 +147,7 @@ func (t *tour) find(v string) (int, error) {
 			return i, nil
 		}
 	}
-	return 0, errors.New("TourPageInvalid", "GLUTTER_DEV_PAGE is a page number from 1, or a scene name",
+	return 0, errors.New(tagTourPageInvalid, "GLUTTER_DEV_PAGE is a page number from 1, or a scene name",
 		"value", v, "pages", t.pages)
 }
 
@@ -241,3 +241,8 @@ func gridScene(size ui.Size) *ui.Scene {
 	b.AddPicture(ui.Offset{}, rec.EndRecording())
 	return b.Build()
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagTourPageInvalid = "TourPageInvalid"
+)

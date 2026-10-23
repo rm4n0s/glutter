@@ -266,12 +266,12 @@ func FocusOf(bc BuildContext, opts ...FocusOfOpts) *FocusNode {
 		o.ScopeOK = true
 		node := FocusMaybeOf(bc, o)
 		if node == nil {
-			panic(errors.New("FocusNotFound",
+			panic(errors.New(tagFocusNotFound,
 				"FocusOf() was called with a context that does not contain a Focus widget: no Focus widget ancestor could be found starting from the context that was passed to FocusOf(); this can happen because you are using a widget that looks for a Focus ancestor, and do not have a Focus widget descendant in the nearest FocusScope",
 				"context", describeContext(bc)))
 		}
 		if !scopeOK && node.AsScope() != nil {
-			panic(errors.New("FocusScopeFound",
+			panic(errors.New(tagFocusScopeFound,
 				"FocusOf() was called with a context that does not contain a Focus between the given context and the nearest FocusScope widget: no Focus ancestor could be found starting from the context that was passed to FocusOf() to the point where it found the nearest FocusScope widget; this can happen because you are using a widget that looks for a Focus ancestor, and do not have a Focus widget ancestor in the current FocusScope",
 				"context", describeContext(bc)))
 		}
@@ -749,3 +749,9 @@ func (w *ExcludeFocus) Build(BuildContext) Widget {
 		DescendantsAreFocusable: foundation.Some(!w.excluding),
 	})
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagFocusNotFound   = "FocusNotFound"
+	tagFocusScopeFound = "FocusScopeFound"
+)

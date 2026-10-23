@@ -253,7 +253,7 @@ const (
 // Flutter: ui/text.dart FontWeight
 func NewFontWeight(value int) FontWeight {
 	if value < 1 || value > 1000 {
-		panic(errors.New("FontWeightInvalid", "font weight must be between 1 and 1000", "value", value))
+		panic(errors.New(tagFontWeightInvalid, "font weight must be between 1 and 1000", "value", value))
 	}
 	return FontWeight(value)
 }
@@ -338,3 +338,8 @@ func (d TextDecoration) String() string {
 	}
 	return out + "])"
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagFontWeightInvalid = "FontWeightInvalid"
+)

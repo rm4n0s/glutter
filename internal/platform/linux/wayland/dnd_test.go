@@ -264,9 +264,14 @@ func TestADragNeedsAButtonAndACompositorThatCan(t *testing.T) {
 func TestAPipeThatCannotBeMadeFailsTheRead(t *testing.T) {
 	e := startInput(t, capPointer, 0)
 	err := e.onLoopErr(func() error {
-		e.p.clip.dnd.pipe = func() (*os.File, *os.File, error) { return nil, nil, errors.New("PipeBroken", "no descriptors left") }
+		e.p.clip.dnd.pipe = func() (*os.File, *os.File, error) { return nil, nil, errors.New(tagPipeBroken, "no descriptors left") }
 		_, err := e.p.clip.dnd.receivePipe(&offer{receive: func(string, int) {}}, "text/plain")
 		return err
 	})
 	assertRoute(t, err, "dnd.receivePipe.DropReadFailed")
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagPipeBroken = "PipeBroken"
+)

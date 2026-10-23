@@ -29,7 +29,7 @@ func firstNonUniqueKey(widgets []Widget) foundation.Key {
 func DebugChildrenHaveDuplicateKeys(parent Widget, children []Widget) bool {
 	if foundation.DebugMode {
 		if k := firstNonUniqueKey(children); k != nil {
-			panic(errors.New("ChildrenHaveDuplicateKeys",
+			panic(errors.New(tagChildrenHaveDuplicateKeys,
 				"Duplicate keys found.\nIf multiple keyed widgets exist as children of another widget, they must have unique keys.\n"+
 					WidgetToStringShort(parent)+" has multiple children with key "+k.String()+".",
 				"parent", WidgetToStringShort(parent), "key", k.String()))
@@ -46,8 +46,14 @@ func DebugChildrenHaveDuplicateKeys(parent Widget, children []Widget) bool {
 func DebugItemsHaveDuplicateKeys(items []Widget) bool {
 	if foundation.DebugMode {
 		if k := firstNonUniqueKey(items); k != nil {
-			panic(errors.New("ItemsHaveDuplicateKeys", "Duplicate key found.", "key", k.String()))
+			panic(errors.New(tagItemsHaveDuplicateKeys, "Duplicate key found.", "key", k.String()))
 		}
 	}
 	return false
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagChildrenHaveDuplicateKeys = "ChildrenHaveDuplicateKeys"
+	tagItemsHaveDuplicateKeys    = "ItemsHaveDuplicateKeys"
+)

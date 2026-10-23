@@ -78,7 +78,7 @@ func TestRenderPanicsAreReported(t *testing.T) {
 		{"tagged panic keeps its tag", func(b *faultyBox) {
 			b.onLayout = func(b *faultyBox) {
 				b.SetSize(ui.Size{Width: 5, Height: 5})
-				panic(errors.New("MyOwnFailure", "tagged"))
+				panic(errors.New(tagMyOwnFailure, "tagged"))
 			}
 		}, "MyOwnFailure", "during PerformLayout()"},
 	}
@@ -124,7 +124,7 @@ func TestRenderPanicsAreReported(t *testing.T) {
 // when nobody can receive the report.
 func TestRenderPanicsPropagateWithoutReporter(t *testing.T) {
 	bad := newFaulty()
-	bad.onLayout = func(*faultyBox) { panic(errors.New("NobodyListens", "x")) }
+	bad.onLayout = func(*faultyBox) { panic(errors.New(tagNobodyListens, "x")) }
 	requireTag(t, "NobodyListens", func() { layout(t, newHarness(t), bad) })
 }
 
@@ -154,3 +154,9 @@ func TestMarkNeedsLayoutFromAnotherGoroutine(t *testing.T) {
 	}
 	box.MarkNeedsLayout() // the UI thread is fine
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagMyOwnFailure  = "MyOwnFailure"
+	tagNobodyListens = "NobodyListens"
+)

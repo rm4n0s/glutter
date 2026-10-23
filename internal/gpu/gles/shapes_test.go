@@ -406,7 +406,7 @@ func TestBuildUnsupported(t *testing.T) {
 			// Strict: GLNotImplemented, naming the feature, before anything is built.
 			_, err := build(t, false, tt.draw)
 			appErr, ok := errors.FromError(err)
-			if !ok || appErr.Tag != "GLNotImplemented" || appErr.Metadata["feature"] != tt.feature || !appErr.HasRoute("frameBuilder.unsupported.GLNotImplemented") {
+			if !ok || appErr.Tag != tagGLNotImplemented || appErr.Metadata["feature"] != tt.feature || !appErr.HasRoute("frameBuilder.unsupported.GLNotImplemented") {
 				t.Fatalf("error = %v, want GLNotImplemented for %q", err, tt.feature)
 			}
 			// Skipping: the feature is listed once, and the command is counted as skipped.
@@ -445,5 +445,32 @@ func TestBuildSkipsWholeLayers(t *testing.T) {
 	}
 	if b.stats.Drawn != 2 || b.stats.Skipped != 3 || b.stats.Commands != 5 || b.frame.items(pipeShape) != 2 {
 		t.Errorf("stats %+v, %d instances", b.stats, b.frame.items(pipeShape))
+	}
+}
+
+func TestMaskOrAsksForTheAtlas(t *testing.T) {
+	tests := []struct {
+		name string
+		res  *resources
+		tag  string
+	}{
+		{"with an atlas", &resources{}, "UseMask"},
+		{"without one", nil, "GLNotImplemented"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &shapeContext{b: &frameBuilder{res: tt.res}}
+			ok, err := s.maskOr("a dashed stroke")
+			appErr, isErr := errors.FromError(err)
+			if ok || !isErr || appErr.Tag != tt.tag || !appErr.HasRoute("shapeContext.maskOr") {
+				t.Fatalf("maskOr = %v, %v; want %s via shapeContext.maskOr", ok, err, tt.tag)
+			}
+			if appErr.Metadata["feature"] != "a dashed stroke" {
+				t.Errorf("metadata = %v", appErr.Metadata)
+			}
+			if got := errors.Is(err, errUseMask); got != (tt.tag == "UseMask") {
+				t.Errorf("errors.Is(err, errUseMask) = %v", got)
+			}
+		})
 	}
 }

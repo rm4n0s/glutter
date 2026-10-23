@@ -66,7 +66,7 @@ type DynamicSchemeOpts struct {
 func NewDynamicScheme(o DynamicSchemeOpts) *DynamicScheme {
 	if foundation.DebugMode && (o.SourceColorHct == nil || o.PrimaryPalette == nil || o.SecondaryPalette == nil ||
 		o.TertiaryPalette == nil || o.NeutralPalette == nil || o.NeutralVariantPalette == nil) {
-		panic(errors.New("DynamicSchemeIncomplete", "a scheme needs a source color and its five palettes"))
+		panic(errors.New(tagDynamicSchemeIncomplete, "a scheme needs a source color and its five palettes"))
 	}
 	if o.ErrorPalette == nil {
 		o.ErrorPalette = TonalPaletteOf(25.0, 84.0)
@@ -87,7 +87,7 @@ func NewDynamicScheme(o DynamicSchemeOpts) *DynamicScheme {
 // Flutter: material-color-utilities dynamiccolor/dynamic_scheme.dart DynamicScheme.getRotatedHue
 func GetRotatedHue(sourceColor *Hct, hues, rotations []float64) float64 {
 	if foundation.DebugMode && len(hues) != len(rotations) {
-		panic(errors.New("DynamicSchemeRotations", "hues and rotations must have the same length", "hues", len(hues), "rotations", len(rotations)))
+		panic(errors.New(tagDynamicSchemeRotations, "hues and rotations must have the same length", "hues", len(hues), "rotations", len(rotations)))
 	}
 	sourceHue := sourceColor.Hue()
 	if len(rotations) == 1 {
@@ -111,3 +111,9 @@ func (s *DynamicScheme) GetHct(c *DynamicColor) *Hct { return c.GetHct(s) }
 //
 // Flutter: material-color-utilities dynamiccolor/dynamic_scheme.dart DynamicScheme.getArgb
 func (s *DynamicScheme) GetArgb(c *DynamicColor) uint32 { return c.GetArgb(s) }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagDynamicSchemeIncomplete = "DynamicSchemeIncomplete"
+	tagDynamicSchemeRotations  = "DynamicSchemeRotations"
+)

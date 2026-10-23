@@ -39,7 +39,7 @@ func sampleColors(colors []ui.Color, stops []float64, t float64) ui.Color {
 func interpolateColorsAndStops(aColors []ui.Color, aStops []float64, bColors []ui.Color, bStops []float64, t float64) colorsAndStops {
 	if foundation.DebugMode {
 		if len(aColors) < 2 || len(bColors) < 2 || len(aStops) != len(aColors) || len(bStops) != len(bColors) {
-			panic(errors.New("GradientInterpolationInvalid",
+			panic(errors.New(tagGradientInterpolationInvalid,
 				"both gradients need at least two colors, and as many stops as colors",
 				"aColors", len(aColors), "aStops", len(aStops), "bColors", len(bColors), "bStops", len(bStops)))
 		}
@@ -134,7 +134,7 @@ func impliedStops(colors []ui.Color, stops []float64) []float64 {
 		return stops
 	}
 	if foundation.DebugMode && len(colors) < 2 {
-		panic(errors.New("GradientColorsTooFew", "colors list must have at least two colors", "colors", len(colors)))
+		panic(errors.New(tagGradientColorsTooFew, "colors list must have at least two colors", "colors", len(colors)))
 	}
 	separation := 1.0 / float64(len(colors)-1)
 	out := make([]float64, len(colors))
@@ -840,3 +840,9 @@ func (g *SweepGradient) String() string {
 	}
 	return "SweepGradient(" + strings.Join(d, ", ") + ")"
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagGradientColorsTooFew         = "GradientColorsTooFew"
+	tagGradientInterpolationInvalid = "GradientInterpolationInvalid"
+)

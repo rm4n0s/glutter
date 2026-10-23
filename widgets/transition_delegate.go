@@ -82,12 +82,12 @@ func runTransitionDelegate(d TransitionDelegate, newPageRouteHistory []RouteTran
 	// Firstly, verifies that all exiting routes have been marked.
 	for exiting := range exitingPageRoutes {
 		if exiting.IsWaitingForExitingDecision() {
-			panic(errors.New("TransitionDelegateExitingUnmarked", "the transition delegate did not decide how an exiting route leaves",
+			panic(errors.New(tagTransitionDelegateExitingUnmarked, "the transition delegate did not decide how an exiting route leaves",
 				"route", exiting.Route().String(), "delegate", foundation.RuntimeTypeName(d)))
 		}
 		for _, pageless := range pageRouteToPagelessRoutes[exiting] {
 			if pageless.IsWaitingForExitingDecision() {
-				panic(errors.New("TransitionDelegatePagelessUnmarked", "the transition delegate did not decide how a pageless route of an exiting route leaves",
+				panic(errors.New(tagTransitionDelegatePagelessUnmarked, "the transition delegate did not decide how a pageless route of an exiting route leaves",
 					"route", pageless.Route().String(), "delegate", foundation.RuntimeTypeName(d)))
 			}
 		}
@@ -97,12 +97,12 @@ func runTransitionDelegate(d TransitionDelegate, newPageRouteHistory []RouteTran
 	indexOfNextRouteInNewHistory := 0
 	for _, record := range results {
 		if record.IsWaitingForEnteringDecision() || record.IsWaitingForExitingDecision() {
-			panic(errors.New("TransitionDelegateEnteringUnmarked", "the transition delegate returned a route that still waits for a decision",
+			panic(errors.New(tagTransitionDelegateEnteringUnmarked, "the transition delegate returned a route that still waits for a decision",
 				"route", record.Route().String(), "delegate", foundation.RuntimeTypeName(d)))
 		}
 		if indexOfNextRouteInNewHistory >= len(newPageRouteHistory) || record != newPageRouteHistory[indexOfNextRouteInNewHistory] {
 			if !exitingPageRoutes[record] {
-				panic(errors.New("TransitionDelegateResultInvalid", "the transition delegate returned a route that is neither an entering route in order nor an exiting route",
+				panic(errors.New(tagTransitionDelegateResultInvalid, "the transition delegate returned a route that is neither an entering route in order nor an exiting route",
 					"route", record.Route().String(), "delegate", foundation.RuntimeTypeName(d)))
 			}
 			delete(exitingPageRoutes, record)
@@ -111,7 +111,7 @@ func runTransitionDelegate(d TransitionDelegate, newPageRouteHistory []RouteTran
 		}
 	}
 	if indexOfNextRouteInNewHistory != len(newPageRouteHistory) || len(exitingPageRoutes) != 0 {
-		panic(errors.New("TransitionDelegateResultIncomplete",
+		panic(errors.New(tagTransitionDelegateResultIncomplete,
 			"the merged result from "+foundation.RuntimeTypeName(d)+".Resolve does not include all required routes; do you remember to merge all exiting routes?",
 			"delegate", foundation.RuntimeTypeName(d)))
 	}
@@ -186,3 +186,12 @@ func (DefaultTransitionDelegate) Resolve(newPageRouteHistory []RouteTransitionRe
 	}
 	return results
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagTransitionDelegateEnteringUnmarked = "TransitionDelegateEnteringUnmarked"
+	tagTransitionDelegateExitingUnmarked  = "TransitionDelegateExitingUnmarked"
+	tagTransitionDelegatePagelessUnmarked = "TransitionDelegatePagelessUnmarked"
+	tagTransitionDelegateResultIncomplete = "TransitionDelegateResultIncomplete"
+	tagTransitionDelegateResultInvalid    = "TransitionDelegateResultInvalid"
+)

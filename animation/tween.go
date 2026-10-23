@@ -207,7 +207,7 @@ type Tween[T any] struct {
 func NewTween[T any](begin, end T) *Tween[T] {
 	lerp, ok := defaultLerp[T]()
 	if !ok {
-		panic(errors.New("TweenLerpMissing", fmt.Sprintf("cannot lerp between %v and %v; the type %T has no built-in interpolation; give the function to NewTweenFunc or add a Lerp(other, t) method to the type", begin, end, begin),
+		panic(errors.New(tagTweenLerpMissing, fmt.Sprintf("cannot lerp between %v and %v; the type %T has no built-in interpolation; give the function to NewTweenFunc or add a Lerp(other, t) method to the type", begin, end, begin),
 			"type", fmt.Sprintf("%T", begin)))
 	}
 	return NewTweenFunc(begin, end, lerp)
@@ -460,7 +460,7 @@ func NewCurveTween(curve Curve) *CurveTween {
 func (c *CurveTween) Transform(t float64) float64 {
 	if t == 0 || t == 1 {
 		if foundation.DebugMode && math.Round(c.Curve.Transform(t)) != t {
-			panic(errors.New("CurveEndpointInvalid", fmt.Sprintf("the curve %v does not map %v to near %v", c.Curve, t, t), "curve", fmt.Sprint(c.Curve), "t", t))
+			panic(errors.New(tagCurveEndpointInvalid, fmt.Sprintf("the curve %v does not map %v to near %v", c.Curve, t, t), "curve", fmt.Sprint(c.Curve), "t", t))
 		}
 		return t
 	}
@@ -471,3 +471,8 @@ func (c *CurveTween) Transform(t float64) float64 {
 //
 // Flutter: animation/tween.dart CurveTween.toString
 func (c *CurveTween) String() string { return fmt.Sprintf("CurveTween(curve: %v)", c.Curve) }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagTweenLerpMissing = "TweenLerpMissing"
+)

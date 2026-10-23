@@ -177,7 +177,7 @@ func TestPassMustEndBeforeTheNext(t *testing.T) {
 	enc.BeginPass(tex, explicit.LoadClear, ui.Color{})
 	err := panicOf(func() { enc.BeginPass(tex, explicit.LoadLoad, ui.Color{}) })
 	appErr, ok := errors.FromError(err)
-	if !ok || appErr.Tag != "FakePassNotEnded" || !appErr.HasRoute("encoder.BeginPass.FakePassNotEnded") {
+	if !ok || appErr.Tag != tagFakePassNotEnded || !appErr.HasRoute("encoder.BeginPass.FakePassNotEnded") {
 		t.Errorf("got %v, want FakePassNotEnded via encoder.BeginPass", err)
 	}
 }
@@ -270,7 +270,7 @@ func TestWriteAndCopyTexture(t *testing.T) {
 
 func TestErrIsReturnedOnce(t *testing.T) {
 	d := New()
-	d.Err = errors.New("GPUOutOfMemory", "no memory")
+	d.Err = errors.New(tagGPUOutOfMemory, "no memory")
 	if _, err := d.NewBuffer(8, explicit.BufferVertex); err == nil || !strings.Contains(err.Error(), "no memory") {
 		t.Errorf("NewBuffer = %v, want the error that was set", err)
 	}
@@ -340,7 +340,7 @@ func TestLevelsAndBufferWrites(t *testing.T) {
 			tex.Level(i)
 			return nil
 		}()
-		if appErr, ok := errors.FromError(err); !ok || appErr.Tag != "FakeLevelInvalid" || !appErr.HasRoute("texture.Level.FakeLevelInvalid") {
+		if appErr, ok := errors.FromError(err); !ok || appErr.Tag != tagFakeLevelInvalid || !appErr.HasRoute("texture.Level.FakeLevelInvalid") {
 			t.Errorf("Level(%d): got %v, want FakeLevelInvalid", i, err)
 		}
 	}
@@ -353,3 +353,8 @@ func TestLevelsAndBufferWrites(t *testing.T) {
 		t.Errorf("write %+v", last)
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagGPUOutOfMemory = "GPUOutOfMemory"
+)

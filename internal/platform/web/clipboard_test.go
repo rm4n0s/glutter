@@ -127,7 +127,7 @@ func TestClipboardReadFailure(t *testing.T) {
 	c := clipboard{post: p.post, api: api}
 	var err error
 	c.GetText(context.Background(), func(_ string, _ bool, e error) { err = e })
-	api.reads[0]("", errClipboardReadFailed("NotAllowedError: denied"))
+	api.reads[0]("", errors.New(tagWebClipboardReadFailed, "navigator.clipboard.readText failed", "detail", "NotAllowedError: denied"))
 	p.run()
 	if got := tagOf(t, err); got != "WebClipboardReadFailed" {
 		t.Errorf("tag = %s, want WebClipboardReadFailed", got)
@@ -179,7 +179,7 @@ func TestClipboardWrite(t *testing.T) {
 		t.Fatalf("writes = %q, want the text of each call, an empty content clearing the clipboard", api.writes)
 	}
 	api.wdone[0](nil)
-	api.wdone[1](errClipboardWriteFailed("NotAllowedError: no user action"))
+	api.wdone[1](errors.New(tagWebClipboardWriteFailed, "navigator.clipboard.writeText failed", "detail", "NotAllowedError: no user action"))
 	api.wdone[2](nil)
 	if len(errs) != 0 {
 		t.Fatal("answered before the UI goroutine")
@@ -214,7 +214,7 @@ func TestClipboardKindsAndFormats(t *testing.T) {
 	if tagOf(t, err) != "ClipboardPrimaryUnavailable" {
 		t.Errorf("reading the primary selection: %v", err)
 	}
-	err = errors.New("Marker", "left over")
+	err = errors.New(tagMarker, "left over")
 	c.GetContent(context.Background(), ui.ClipboardKindSystem, ui.ClipboardFormatPNG, func(cc ui.ClipboardContent, e error) { content, err = cc, e })
 	p.run()
 	if err != nil || !content.IsEmpty() || len(api.reads) != 0 {
@@ -227,10 +227,15 @@ func TestClipboardKindsAndFormats(t *testing.T) {
 		t.Errorf("reading text: %+v, %v", content, err)
 	}
 	c.GetContent(context.Background(), ui.ClipboardKindSystem, ui.ClipboardFormatText, func(cc ui.ClipboardContent, e error) { content, err = cc, e })
-	api.reads[1]("", errClipboardReadFailed("x"))
+	api.reads[1]("", errors.New(tagWebClipboardReadFailed, "navigator.clipboard.readText failed", "detail", "x"))
 	p.run()
 	if tagOf(t, err) != "WebClipboardReadFailed" || !content.IsEmpty() {
 		t.Errorf("a failed read: %+v, %v", content, err)
 	}
 	c.GetContent(context.Background(), ui.ClipboardKindSystem, ui.ClipboardFormatText, nil) // no callback: nothing happens
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagMarker = "Marker"
+)

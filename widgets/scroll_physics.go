@@ -531,10 +531,10 @@ func (p *BouncingScrollPhysics) FrictionFactor(overscrollFraction float64) float
 func (p *BouncingScrollPhysics) ApplyPhysicsToUserOffset(position ScrollMetrics, offset float64) float64 {
 	if foundation.DebugMode {
 		if offset == 0 {
-			panic(errors.New("ScrollOffsetZero", "the offset of a drag handed to the bouncing physics must not be zero"))
+			panic(errors.New(tagScrollOffsetZero, "the offset of a drag handed to the bouncing physics must not be zero"))
 		}
 		if position.MinScrollExtent() > position.MaxScrollExtent() {
-			panic(errors.New("ScrollMetricsExtentsInvalid", "the minimum scroll extent must not be past the maximum",
+			panic(errors.New(tagScrollMetricsExtentsInvalid, "the minimum scroll extent must not be past the maximum",
 				"minScrollExtent", position.MinScrollExtent(), "maxScrollExtent", position.MaxScrollExtent()))
 		}
 	}
@@ -676,7 +676,7 @@ func (p *ClampingScrollPhysics) ApplyTo(ancestor ScrollPhysics) ScrollPhysics {
 // Flutter: widgets/scroll_physics.dart ClampingScrollPhysics.applyBoundaryConditions
 func (p *ClampingScrollPhysics) ApplyBoundaryConditions(position ScrollMetrics, value float64) float64 {
 	if foundation.DebugMode && value == position.Pixels() {
-		panic(errors.New("ScrollBoundaryRedundant",
+		panic(errors.New(tagScrollBoundaryRedundant,
 			"ClampingScrollPhysics.applyBoundaryConditions() was called redundantly; the proposed new position is exactly equal to the current position of the given scroll metrics; the method should only be called when the value is going to actually change the pixels",
 			"value", value, "physics", p.String(), "position", position))
 	}
@@ -793,3 +793,9 @@ func (p *NeverScrollableScrollPhysics) AllowUserScrolling() bool { return false 
 //
 // Flutter: widgets/scroll_physics.dart NeverScrollableScrollPhysics.allowImplicitScrolling
 func (p *NeverScrollableScrollPhysics) AllowImplicitScrolling() bool { return false }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagScrollBoundaryRedundant = "ScrollBoundaryRedundant"
+	tagScrollOffsetZero        = "ScrollOffsetZero"
+)

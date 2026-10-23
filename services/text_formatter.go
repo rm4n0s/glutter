@@ -280,7 +280,7 @@ type LengthLimitingTextInputFormatterOpts struct {
 // Flutter: services/text_formatter.dart LengthLimitingTextInputFormatter.new
 func NewLengthLimitingTextInputFormatter(maxLength foundation.Opt[int], o ...LengthLimitingTextInputFormatterOpts) *LengthLimitingTextInputFormatter {
 	if n, ok := maxLength.Get(); ok && n != -1 && n <= 0 && foundation.DebugMode {
-		panic(errors.New("MaxLengthInvalid", "the limit of a LengthLimitingTextInputFormatter must be above 0, or -1", "maxLength", n))
+		panic(errors.New(tagMaxLengthInvalid, "the limit of a LengthLimitingTextInputFormatter must be above 0, or -1", "maxLength", n))
 	}
 	return &LengthLimitingTextInputFormatter{maxLength, opts.First(o).MaxLengthEnforcement}
 }
@@ -370,3 +370,8 @@ func graphemeCount(text string) int { return foundation.GraphemeCount(text) }
 
 // graphemeOffset is the byte offset where the n-th character of the text ends.
 func graphemeOffset(text string, n int) int { return foundation.GraphemeOffset(text, n) }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagMaxLengthInvalid = "MaxLengthInvalid"
+)

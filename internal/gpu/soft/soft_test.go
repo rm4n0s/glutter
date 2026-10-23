@@ -306,3 +306,34 @@ func TestRenderErrors(t *testing.T) {
 		})
 	}
 }
+
+// fakeLayer and fakeOp embed the sealed interfaces of ui, so that they satisfy them without being
+// one of the kinds the renderer knows.
+type fakeLayer struct{ ui.Layer }
+
+type fakeOp struct{ ui.DisplayOp }
+
+func TestUnsupportedKindsAreNotImplemented(t *testing.T) {
+	tests := []struct {
+		name  string
+		do    func(r *renderer, st *state) error
+		route string
+	}{
+		{"layer", func(r *renderer, st *state) error { return r.layer(fakeLayer{}, st) }, "renderer.layer.SoftNotImplemented"},
+		{"operation", func(r *renderer, st *state) error { return r.draw(fakeOp{}, st) }, "renderer.drawOp.SoftNotImplemented"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			img := image.NewRGBA(image.Rect(0, 0, 4, 4))
+			r := &renderer{img: img, mips: map[*ui.Image][]*mipLevel{}}
+			err := tt.do(r, &state{m: ui.NewMatrix4Identity(), clip: newClip(img.Rect)})
+			appErr, ok := errors.FromError(err)
+			if !ok {
+				t.Fatalf("expected *errors.Error, got %T (%v)", err, err)
+			}
+			if appErr.Tag != tagSoftNotImplemented || !appErr.HasRoute(tt.route) {
+				t.Errorf("got %s via %s, want %s", appErr.Tag, appErr.Route(), tt.route)
+			}
+		})
+	}
+}

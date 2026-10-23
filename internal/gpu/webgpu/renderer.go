@@ -39,7 +39,7 @@ func NewRenderer(open func(gpu.SurfaceHandle) (explicit.Device, error), opts ...
 func (r *Renderer) Snapshot(scene *ui.Scene, size ui.Size) (*image.RGBA, error) {
 	w, h := int(size.Width), int(size.Height)
 	if w <= 0 || h <= 0 {
-		return nil, errors.New("RendererSizeInvalid", "the size to render must be positive", "width", size.Width, "height", size.Height)
+		return nil, errors.New(tagRendererSizeInvalid, "the size to render must be positive", "width", size.Width, "height", size.Height)
 	}
 	return soft.Render(scene, w, h)
 }
@@ -55,3 +55,8 @@ func (r *Renderer) RasterizeScene(scene *ui.Scene, width, height int) (*ui.Image
 	}
 	return ui.NewImageFromRGBA(img.Pix, width, height), nil
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagRendererSizeInvalid = "RendererSizeInvalid"
+)

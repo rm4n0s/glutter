@@ -131,13 +131,13 @@ func ShowDatePicker(bc widgets.BuildContext, firstDate, lastDate time.Time, opts
 	if foundation.DebugMode {
 		switch {
 		case lastDate.Before(firstDate):
-			panic(errors.New("ShowDatePickerLastDateBeforeFirstDate", "lastDate must be on or after firstDate", "lastDate", lastDate, "firstDate", firstDate))
+			panic(errors.New(tagShowDatePickerLastDateBeforeFirstDate, "lastDate must be on or after firstDate", "lastDate", lastDate, "firstDate", firstDate))
 		case !initialDate.IsZero() && initialDate.Before(firstDate):
-			panic(errors.New("ShowDatePickerInitialDateBeforeFirstDate", "initialDate must be on or after firstDate", "initialDate", initialDate, "firstDate", firstDate))
+			panic(errors.New(tagShowDatePickerInitialDateBeforeFirstDate, "initialDate must be on or after firstDate", "initialDate", initialDate, "firstDate", firstDate))
 		case !initialDate.IsZero() && initialDate.After(lastDate):
-			panic(errors.New("ShowDatePickerInitialDateAfterLastDate", "initialDate must be on or before lastDate", "initialDate", initialDate, "lastDate", lastDate))
+			panic(errors.New(tagShowDatePickerInitialDateAfterLastDate, "initialDate must be on or before lastDate", "initialDate", initialDate, "lastDate", lastDate))
 		case o.SelectableDayPredicate != nil && !initialDate.IsZero() && !o.SelectableDayPredicate(initialDate):
-			panic(errors.New("ShowDatePickerInitialDateNotSelectable", "the initialDate must satisfy the selectableDayPredicate", "initialDate", initialDate))
+			panic(errors.New(tagShowDatePickerInitialDateNotSelectable, "the initialDate must satisfy the selectableDayPredicate", "initialDate", initialDate))
 		}
 	}
 	DebugCheckHasMaterialLocalizations(bc)
@@ -267,13 +267,13 @@ func NewDatePickerDialog(firstDate, lastDate time.Time, opts ...DatePickerDialog
 	if foundation.DebugMode {
 		switch {
 		case w.lastDate.Before(w.firstDate):
-			panic(errors.New("DatePickerDialogLastDateBeforeFirstDate", "lastDate must be on or after firstDate", "lastDate", w.lastDate, "firstDate", w.firstDate))
+			panic(errors.New(tagDatePickerDialogLastDateBeforeFirstDate, "lastDate must be on or after firstDate", "lastDate", w.lastDate, "firstDate", w.firstDate))
 		case !w.initialDate.IsZero() && w.initialDate.Before(w.firstDate):
-			panic(errors.New("DatePickerDialogInitialDateBeforeFirstDate", "initialDate must be on or after firstDate", "initialDate", w.initialDate, "firstDate", w.firstDate))
+			panic(errors.New(tagDatePickerDialogInitialDateBeforeFirstDate, "initialDate must be on or after firstDate", "initialDate", w.initialDate, "firstDate", w.firstDate))
 		case !w.initialDate.IsZero() && w.initialDate.After(w.lastDate):
-			panic(errors.New("DatePickerDialogInitialDateAfterLastDate", "initialDate must be on or before lastDate", "initialDate", w.initialDate, "lastDate", w.lastDate))
+			panic(errors.New(tagDatePickerDialogInitialDateAfterLastDate, "initialDate must be on or before lastDate", "initialDate", w.initialDate, "lastDate", w.lastDate))
 		case o.SelectableDayPredicate != nil && !w.initialDate.IsZero() && !o.SelectableDayPredicate(w.initialDate):
-			panic(errors.New("DatePickerDialogInitialDateNotSelectable", "the initialDate must satisfy the selectableDayPredicate", "initialDate", w.initialDate))
+			panic(errors.New(tagDatePickerDialogInitialDateNotSelectable, "the initialDate must satisfy the selectableDayPredicate", "initialDate", w.initialDate))
 		}
 	}
 	return w
@@ -363,7 +363,7 @@ func (s *datePickerDialogState) handleEntryModeToggle() {
 			s.handleEntryModeChanged()
 		default:
 			if foundation.DebugMode {
-				panic(errors.New("DatePickerDialogEntryModeFixed", "the entry mode of a date picker dialog can't change from the calendarOnly and inputOnly modes", "entryMode", s.entryMode))
+				panic(errors.New(tagDatePickerDialogEntryModeFixed, "the entry mode of a date picker dialog can't change from the calendarOnly and inputOnly modes", "entryMode", s.entryMode))
 			}
 		}
 	})
@@ -706,3 +706,16 @@ func (w *datePickerHeader) Build(bc widgets.BuildContext) widgets.Widget {
 		widgets.SizedBoxOpts{Width: foundation.Some(datePickerHeaderLandscapeWidth)}),
 		widgets.SemanticsOpts{Container: true})
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagDatePickerDialogEntryModeFixed             = "DatePickerDialogEntryModeFixed"
+	tagDatePickerDialogInitialDateAfterLastDate   = "DatePickerDialogInitialDateAfterLastDate"
+	tagDatePickerDialogInitialDateBeforeFirstDate = "DatePickerDialogInitialDateBeforeFirstDate"
+	tagDatePickerDialogInitialDateNotSelectable   = "DatePickerDialogInitialDateNotSelectable"
+	tagDatePickerDialogLastDateBeforeFirstDate    = "DatePickerDialogLastDateBeforeFirstDate"
+	tagShowDatePickerInitialDateAfterLastDate     = "ShowDatePickerInitialDateAfterLastDate"
+	tagShowDatePickerInitialDateBeforeFirstDate   = "ShowDatePickerInitialDateBeforeFirstDate"
+	tagShowDatePickerInitialDateNotSelectable     = "ShowDatePickerInitialDateNotSelectable"
+	tagShowDatePickerLastDateBeforeFirstDate      = "ShowDatePickerLastDateBeforeFirstDate"
+)

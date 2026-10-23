@@ -196,7 +196,7 @@ func (n *selectionStatusNotifier) Value() SelectableRegionSelectionStatus { retu
 func (n *selectionStatusNotifier) set(status SelectableRegionSelectionStatus) {
 	if foundation.DebugMode && status != SelectableRegionSelectionStatusChanging &&
 		(status != SelectableRegionSelectionStatusFinalized || n.value != SelectableRegionSelectionStatusChanging) {
-		panic(errors.New("SelectableRegionAlreadyFinalized", "attempting to finalize the selection when it is already finalized"))
+		panic(errors.New(tagSelectableRegionAlreadyFinalized, "attempting to finalize the selection when it is already finalized"))
 	}
 	n.value = status
 	n.NotifyListeners()
@@ -1111,7 +1111,7 @@ func (s *SelectableRegionState) copy() {
 	s.binding().Clipboard().SetData(ctx, services.NewClipboardData(data.PlainText), func(err error) {
 		cancel()
 		if err != nil {
-			s.binding().ErrorReporter()(errors.NewErr("SelectableRegionCopyFailed", err))
+			s.binding().ErrorReporter()(errors.NewErr(tagSelectableRegionCopyFailed, err))
 		}
 	})
 }
@@ -1319,7 +1319,7 @@ func (s *SelectableRegionState) CopySelection() {
 // Flutter: widgets/selectable_region.dart SelectableRegionState.add
 func (s *SelectableRegionState) Add(selectable rendering.Selectable) {
 	if foundation.DebugMode && s.selectable != nil {
-		panic(errors.New("SelectableRegionMultipleSelectables", "a SelectableRegion has one selectable: the SelectionContainer it creates"))
+		panic(errors.New(tagSelectableRegionMultipleSelectables, "a SelectableRegion has one selectable: the SelectionContainer it creates"))
 	}
 	s.selectable = selectable
 	s.selectableHandle = selectable.AddListener(s.updateSelectionStatus)
@@ -1331,7 +1331,7 @@ func (s *SelectableRegionState) Add(selectable rendering.Selectable) {
 // Flutter: widgets/selectable_region.dart SelectableRegionState.remove
 func (s *SelectableRegionState) Remove(selectable rendering.Selectable) {
 	if foundation.DebugMode && s.selectable != selectable {
-		panic(errors.New("SelectableRegionUnknownSelectable", "the selectable is not the one of this SelectableRegion"))
+		panic(errors.New(tagSelectableRegionUnknownSelectable, "the selectable is not the one of this SelectableRegion"))
 	}
 	s.selectable.RemoveListener(s.selectableHandle)
 	s.selectable.PushHandleLayers(nil, nil)
@@ -1437,3 +1437,11 @@ func (s *SelectableRegionState) buildActions() ActionMap {
 	m[d.IntentType()] = d
 	return m
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagSelectableRegionAlreadyFinalized    = "SelectableRegionAlreadyFinalized"
+	tagSelectableRegionCopyFailed          = "SelectableRegionCopyFailed"
+	tagSelectableRegionMultipleSelectables = "SelectableRegionMultipleSelectables"
+	tagSelectableRegionUnknownSelectable   = "SelectableRegionUnknownSelectable"
+)

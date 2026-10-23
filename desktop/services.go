@@ -66,15 +66,18 @@ func closeLate(done <-chan connectResult) {
 }
 
 // connect returns the connection to the session bus, opening it when this is the
-// first call. A failure is DBusConnectFailed, and is tried again by the next call.
-func (s *services) connect(ctx context.Context) (dbus.Bus, error) {
+// first call. A failure has the tag that the caller gives (its service's Unavailable
+// tag, SPEC §14.1; DBusConnectFailed for a caller without one), and is tried again by
+// the next call.
+func (s *services) connect(ctx context.Context, tag string) (dbus.Bus, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.bus != nil {
 		return s.bus, nil
 	}
 	if s.web != nil {
-		return nil, errors.New("DBusUnavailableOnWeb", "a web page has no session bus: D-Bus is never tried on the web")
+		// The cause is a sentinel, so that an app can still match DBusUnavailableOnWeb (SPEC §14.1).
+		return nil, errors.NewErr(tag, &errors.Error{Tag: "DBusUnavailableOnWeb", Message: "a web page has no session bus: D-Bus is never tried on the web"})
 	}
 	// The connection outlives the call that opened it, and godbus closes a connection
 	// when the context it was made with ends: the connection gets a context that never
@@ -89,16 +92,18 @@ func (s *services) connect(ctx context.Context) (dbus.Bus, error) {
 	select {
 	case r := <-done:
 		if r.err != nil {
-			return nil, r.err
+			// The opener is a seam (dbus.Connect in an app): its error is the bus's own, and the
+			// service's tag is given here, where the app first meets it.
+			return nil, errors.NewErr(tag, r.err)
 		}
 		s.bus = r.bus
 		return r.bus, nil
 	case <-timer.C:
 		closeLate(done)
-		return nil, errors.New("DBusConnectFailed", "the session bus did not answer in time", "timeout", connectTimeout.String())
+		return nil, errors.New(tag, "the session bus did not answer in time", "timeout", connectTimeout.String())
 	case <-ctx.Done():
 		closeLate(done)
-		return nil, errors.NewErr("DBusConnectFailed", ctx.Err())
+		return nil, errors.NewErr(tag, ctx.Err())
 	}
 }
 
@@ -108,7 +113,7 @@ func runProgram(ctx context.Context, env []string, name string, args ...string) 
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Env = append(os.Environ(), env...)
 	if err := cmd.Run(); err != nil {
-		return errors.NewErr("ProgramFailed", err).SetMetadata("program", name)
+		return errors.NewErr(tagProgramFailed, err).SetMetadata("program", name)
 	}
 	return nil
 }
@@ -138,10 +143,10 @@ type call struct {
 func begin(ctx context.Context, bc widgets.BuildContext) (*call, error) {
 	b := widgets.MaybeWidgetsBindingOf(bc)
 	if b == nil {
-		return nil, errors.New("DesktopWithoutBinding", "the context does not belong to a WidgetsBinding")
+		return nil, errors.New(tagDesktopWithoutBinding, "the context does not belong to a WidgetsBinding")
 	}
 	if b.UIThread().IsCurrent() {
-		return nil, errors.New("DesktopCallOnUIThread",
+		return nil, errors.New(tagDesktopCallOnUIThread,
 			"a call of package desktop waits for the desktop, so it must not be made on the UI thread: call it from a goroutine")
 	}
 	c := &call{s: servicesOf(b)}
@@ -167,7 +172,7 @@ func begin(ctx context.Context, bc widgets.BuildContext) (*call, error) {
 	select {
 	case <-done:
 	case <-ctx.Done():
-		return nil, errors.NewErr("DesktopCallCancelled", ctx.Err())
+		return nil, errors.NewErr(tagDesktopCallCancelled, ctx.Err())
 	}
 	return c, nil
 }
@@ -184,3 +189,11 @@ func (c *call) portalOptions(token string, extra map[string]godbus.Variant) map[
 	}
 	return opts
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagDesktopCallCancelled  = "DesktopCallCancelled"
+	tagDesktopCallOnUIThread = "DesktopCallOnUIThread"
+	tagDesktopWithoutBinding = "DesktopWithoutBinding"
+	tagProgramFailed         = "ProgramFailed"
+)

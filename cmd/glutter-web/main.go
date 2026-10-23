@@ -41,7 +41,7 @@ const usage = `usage:
 // stderr.
 func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	if len(args) == 0 {
-		return errors.New("WebUsage", usage)
+		return errors.New(tagWebUsage, usage)
 	}
 	switch args[0] {
 	case "build":
@@ -55,9 +55,9 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	case "help", "-h", "-help", "--help":
 		_, err := fmt.Fprintln(stdout, usage)
 		if err != nil {
-			return errors.NewErr("WebUsage", err)
+			return errors.NewErr(tagWebUsage, err)
 		}
 		return nil
 	}
-	return errors.New("WebUsage", "unknown command "+args[0]+"\n"+usage)
+	return errors.New(tagWebUsage, "unknown command "+args[0]+"\n"+usage)
 }

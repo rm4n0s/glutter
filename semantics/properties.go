@@ -129,7 +129,7 @@ type SemanticsProperties struct {
 // Flutter: semantics/semantics.dart SemanticsProperties.new
 func NewSemanticsProperties(p SemanticsProperties) *SemanticsProperties {
 	if foundation.DebugMode {
-		fail := func(msg string) { panic(errors.New("SemanticsPropertiesInvalid", msg)) }
+		fail := func(msg string) { panic(errors.New(tagSemanticsPropertiesInvalid, msg)) }
 		both := func(name string, s foundation.Opt[string], a *AttributedString) {
 			if s.IsSome() && a != nil {
 				fail("Only one of " + name + " or attributed" + name + " should be provided")
@@ -197,3 +197,8 @@ func (p *SemanticsProperties) DebugFillProperties(b *foundation.DiagnosticProper
 
 // DebugDescribeChildren is empty.
 func (p *SemanticsProperties) DebugDescribeChildren() []foundation.DiagnosticsNode { return nil }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagSemanticsPropertiesInvalid = "SemanticsPropertiesInvalid"
+)

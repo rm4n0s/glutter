@@ -121,14 +121,14 @@ func optionsFromEnv(getenv func(string) string) (options, error) {
 	if v := getenv("GLUTTER_DEV_TAB"); v != "" {
 		n, err := strconv.Atoi(v)
 		if err != nil || n < 0 || n >= len(tabNames) {
-			return o, errors.New("ScrollingTabInvalid", "GLUTTER_DEV_TAB must be a number from 0 to 6", "value", v)
+			return o, errors.New(tagScrollingTabInvalid, "GLUTTER_DEV_TAB must be a number from 0 to 6", "value", v)
 		}
 		o.tab = n
 	}
 	if v := getenv("GLUTTER_DEV_SCROLL"); v != "" {
 		n, err := strconv.ParseFloat(v, 64)
 		if err != nil || n < 0 {
-			return o, errors.New("ScrollingOffsetInvalid", "GLUTTER_DEV_SCROLL must be a number of pixels, zero or more", "value", v)
+			return o, errors.New(tagScrollingOffsetInvalid, "GLUTTER_DEV_SCROLL must be a number of pixels, zero or more", "value", v)
 		}
 		o.scroll = n
 	}
@@ -470,3 +470,9 @@ func main() {
 		os.Exit(1)
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagScrollingOffsetInvalid = "ScrollingOffsetInvalid"
+	tagScrollingTabInvalid    = "ScrollingTabInvalid"
+)

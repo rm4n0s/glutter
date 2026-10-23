@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"syscall/js"
 
+	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/internal/platform"
 	"github.com/rm4n0s/glutter/ui"
@@ -94,7 +95,8 @@ func New(opts ...Options) (*Platform, error) {
 	}
 	doc := global().Get("document")
 	if !isObject(doc) {
-		return nil, errNoPage()
+		return nil, errors.New(tagBackendUnavailable, "there is no web page to draw in: the program is not running in a browser",
+			"goos", "js")
 	}
 	cfg, err := ParseConfig(readConfigFields())
 	if err != nil {
@@ -106,7 +108,7 @@ func New(opts ...Options) (*Platform, error) {
 	} else {
 		p.host = queryHost(doc, cfg.HostElement)
 		if !isObject(p.host) {
-			return nil, errHostElementNotFound(cfg.HostElement)
+			return nil, errors.New(tagHostElementNotFound, "glutterConfig.hostElement matches no element of the page", "selector", cfg.HostElement)
 		}
 	}
 	if foundation.DebugMode {
@@ -181,7 +183,7 @@ func queryHost(doc js.Value, selector string) js.Value {
 // Flutter: lib/web_ui/lib/src/engine/platform_dispatcher.dart EnginePlatformDispatcher
 func (p *Platform) Run(ctx context.Context, h platform.Handler) error {
 	if p.running {
-		return errAlreadyRunning()
+		return errors.New(tagPlatformAlreadyRunning, "Run was called while the platform is already running")
 	}
 	p.running, p.handler = true, h
 	p.installListeners()
@@ -216,10 +218,10 @@ func (p *Platform) Post(fn func()) { p.q.post(fn) }
 // Flutter: lib/web_ui/lib/src/engine/view_embedder/flutter_view_manager.dart FlutterViewManager.registerView
 func (p *Platform) NewWindow(cfg platform.WindowConfig) (platform.Window, error) {
 	if p.win != nil {
-		return nil, errWindowUnsupported("a second window was asked for")
+		return nil, errors.New(tagWindowUnsupported, "the web has one window per page: a second window was asked for")
 	}
 	if (cfg.Kind != platform.WindowKindUnspecified && cfg.Kind != platform.WindowKindRegular) || cfg.HasParent {
-		return nil, errWindowUnsupported("dialogs and borderless windows are not supported")
+		return nil, errors.New(tagWindowUnsupported, "the web has one window per page: dialogs and borderless windows are not supported")
 	}
 	p.win = newWindow(p, ui.ImplicitViewID, cfg)
 	return p.win, nil
@@ -499,7 +501,8 @@ func (p *Platform) PostScreenshot(png []byte, done func(err error)) {
 func (p *Platform) onScreenshotResponse(_ js.Value, args []js.Value) any {
 	var err error
 	if !args[0].Get("ok").Bool() {
-		err = errScreenshotPostFailed("the server answered with status " + strconv.Itoa(args[0].Get("status").Int()))
+		err = errors.New(tagScreenshotWriteFailed, "the screenshot could not be posted to the server",
+			"detail", "the server answered with status "+strconv.Itoa(args[0].Get("status").Int()))
 	}
 	p.finishScreenshot(err)
 	return nil
@@ -507,7 +510,8 @@ func (p *Platform) onScreenshotResponse(_ js.Value, args []js.Value) any {
 
 // onScreenshotFailure is the catch callback of the screenshot's fetch.
 func (p *Platform) onScreenshotFailure(_ js.Value, args []js.Value) any {
-	p.finishScreenshot(errScreenshotPostFailed(args[0].Get("message").String()))
+	p.finishScreenshot(errors.New(tagScreenshotWriteFailed, "the screenshot could not be posted to the server",
+		"detail", args[0].Get("message").String()))
 	return nil
 }
 
@@ -525,3 +529,12 @@ func (p *Platform) finishScreenshot(err error) {
 //
 // Flutter: no counterpart
 func (p *Platform) CanExit() bool { return false }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagBackendUnavailable     = "BackendUnavailable"
+	tagHostElementNotFound    = "HostElementNotFound"
+	tagPlatformAlreadyRunning = "PlatformAlreadyRunning"
+	tagScreenshotWriteFailed  = "ScreenshotWriteFailed"
+	tagWindowUnsupported      = "WindowUnsupported"
+)

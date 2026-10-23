@@ -55,7 +55,7 @@ func (c *PaintingContext) EstimatedBounds() ui.Rect { return c.estimatedBounds }
 // Flutter: rendering/object.dart PaintingContext.repaintCompositedChild
 func RepaintCompositedChild(child RenderObject, debugAlsoPaintedParent bool) {
 	if foundation.DebugMode && !child.AsRenderObject().needsPaint {
-		panic(errors.New("RepaintNotNeeded", "a render object that does not need paint was repainted",
+		panic(errors.New(tagRepaintNotNeeded, "a render object that does not need paint was repainted",
 			"object", foundation.DescribeIdentity(child)))
 	}
 	repaintCompositedChild(child, debugAlsoPaintedParent, nil)
@@ -64,7 +64,7 @@ func RepaintCompositedChild(child RenderObject, debugAlsoPaintedParent bool) {
 func repaintCompositedChild(child RenderObject, debugAlsoPaintedParent bool, childContext *PaintingContext) {
 	cb := child.AsRenderObject()
 	if foundation.DebugMode && !child.IsRepaintBoundary() {
-		panic(errors.New("RepaintNotBoundary", "a render object that is not a repaint boundary was repainted into its own layer",
+		panic(errors.New(tagRepaintNotBoundary, "a render object that is not a repaint boundary was repainted into its own layer",
 			"object", foundation.DescribeIdentity(child)))
 	}
 	if foundation.DebugMode {
@@ -77,7 +77,7 @@ func repaintCompositedChild(child RenderObject, debugAlsoPaintedParent bool, chi
 		childLayer = layer
 	} else {
 		if foundation.DebugMode && !debugAlsoPaintedParent && !childLayer.AsLayer().Attached() {
-			panic(errors.New("RepaintLayerDetached", "a repaint boundary with a detached layer was repainted",
+			panic(errors.New(tagRepaintLayerDetached, "a repaint boundary with a detached layer was repainted",
 				"object", foundation.DescribeIdentity(child)))
 		}
 		var oldOffset ui.Offset
@@ -112,14 +112,14 @@ func debugCheckUpdatedLayer(child RenderObject, old, updated OffsetLayerLike, ol
 		return
 	}
 	if updated != old {
-		panic(errors.New("UpdateCompositedLayerNewInstance",
+		panic(errors.New(tagUpdateCompositedLayerNewInstance,
 			"UpdateCompositedLayer created a new layer instance instead of reusing the existing layer; "+
 				"it must return the old layer when it is given one",
 			"object", foundation.DescribeIdentity(child), "newLayer", foundation.DescribeIdentity(updated),
 			"oldLayer", foundation.DescribeIdentity(old)))
 	}
 	if oldOffset != updated.AsOffsetLayer().Offset() {
-		panic(errors.New("UpdateCompositedLayerOffsetChanged",
+		panic(errors.New(tagUpdateCompositedLayerOffsetChanged,
 			"UpdateCompositedLayer must not change the offset of the layer",
 			"object", foundation.DescribeIdentity(child)))
 	}
@@ -132,7 +132,7 @@ func debugCheckUpdatedLayer(child RenderObject, old, updated OffsetLayerLike, ol
 func UpdateLayerProperties(child RenderObject) {
 	cb := child.AsRenderObject()
 	if foundation.DebugMode && (!child.IsRepaintBoundary() || !cb.wasRepaintBoundary || cb.needsPaint || isNil(cb.layerHandle.Layer())) {
-		panic(errors.New("UpdateLayerPropertiesInvalid", "the layer properties of this render object can not be updated",
+		panic(errors.New(tagUpdateLayerPropertiesInvalid, "the layer properties of this render object can not be updated",
 			"object", foundation.DescribeIdentity(child)))
 	}
 	childLayer := cb.layerHandle.Layer().(OffsetLayerLike)
@@ -181,7 +181,7 @@ func (c *PaintingContext) PaintChild(child RenderObject, offset ui.Offset) {
 func (c *PaintingContext) compositeChild(child RenderObject, offset ui.Offset) {
 	cb := child.AsRenderObject()
 	if foundation.DebugMode && c.isRecording() {
-		panic(errors.New("PaintingContextRecording", "a child was composited while the context was still recording"))
+		panic(errors.New(tagPaintingContextRecording, "a child was composited while the context was still recording"))
 	}
 	if cb.needsPaint || !cb.wasRepaintBoundary {
 		RepaintCompositedChild(child, true)
@@ -205,7 +205,7 @@ func (c *PaintingContext) compositeChild(child RenderObject, offset ui.Offset) {
 // Flutter: rendering/object.dart PaintingContext.appendLayer
 func (c *PaintingContext) AppendLayer(layer Layer) {
 	if foundation.DebugMode && c.isRecording() {
-		panic(errors.New("PaintingContextRecording", "a layer was appended while the context was still recording"))
+		panic(errors.New(tagPaintingContextRecording, "a layer was appended while the context was still recording"))
 	}
 	layer.AsLayer().Remove()
 	c.containerLayer.Append(layer)
@@ -551,3 +551,14 @@ func (c *PaintingContext) String() string {
 	return foundation.DescribeIdentity(c) + "(layer: " + foundation.DescribeIdentity(c.containerLayer) +
 		", canvas bounds: " + c.estimatedBounds.String() + ")"
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagPaintingContextRecording           = "PaintingContextRecording"
+	tagRepaintLayerDetached               = "RepaintLayerDetached"
+	tagRepaintNotBoundary                 = "RepaintNotBoundary"
+	tagRepaintNotNeeded                   = "RepaintNotNeeded"
+	tagUpdateCompositedLayerNewInstance   = "UpdateCompositedLayerNewInstance"
+	tagUpdateCompositedLayerOffsetChanged = "UpdateCompositedLayerOffsetChanged"
+	tagUpdateLayerPropertiesInvalid       = "UpdateLayerPropertiesInvalid"
+)

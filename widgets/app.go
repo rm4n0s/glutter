@@ -188,16 +188,16 @@ func NewWidgetsApp(color ui.Color, opts ...WidgetsAppOpts) *WidgetsApp {
 		_, hasDefault := o.Routes[NavigatorDefaultRouteName]
 		switch {
 		case o.Home != nil && o.OnGenerateInitialRoutes != nil:
-			panic(errors.New("WidgetsAppHomeRedundant", "if onGenerateInitialRoutes is specified, the home argument will be redundant"))
+			panic(errors.New(tagWidgetsAppHomeRedundant, "if onGenerateInitialRoutes is specified, the home argument will be redundant"))
 		case o.Home != nil && hasDefault:
-			panic(errors.New("WidgetsAppHomeAndDefaultRoute", `if the home property is specified, the routes table cannot include an entry for "/", since it would be redundant`))
+			panic(errors.New(tagWidgetsAppHomeAndDefaultRoute, `if the home property is specified, the routes table cannot include an entry for "/", since it would be redundant`))
 		case o.Builder == nil && o.Home == nil && !hasDefault && o.OnGenerateRoute == nil && o.OnUnknownRoute == nil:
-			panic(errors.New("WidgetsAppNoRoute", `either the home property must be specified, or the routes table must include an entry for "/", or there must be an onGenerateRoute callback specified, or there must be an onUnknownRoute callback specified, or the builder property must be specified, because otherwise there is nothing to fall back on if the app is started with an intent that specifies an unknown route`))
+			panic(errors.New(tagWidgetsAppNoRoute, `either the home property must be specified, or the routes table must include an entry for "/", or there must be an onGenerateRoute callback specified, or there must be an onUnknownRoute callback specified, or the builder property must be specified, because otherwise there is nothing to fall back on if the app is started with an intent that specifies an unknown route`))
 		case o.Home == nil && len(o.Routes) == 0 && o.OnGenerateRoute == nil && o.OnUnknownRoute == nil &&
 			(o.Builder == nil || o.NavigatorKey != nil || o.InitialRoute != "" || len(o.NavigatorObservers) > 0):
-			panic(errors.New("WidgetsAppBuilderOnly", "if no route is provided using home, routes, onGenerateRoute, or onUnknownRoute, a builder must be provided, and navigatorKey, initialRoute and navigatorObservers must have their initial values"))
+			panic(errors.New(tagWidgetsAppBuilderOnly, "if no route is provided using home, routes, onGenerateRoute, or onUnknownRoute, a builder must be provided, and navigatorKey, initialRoute and navigatorObservers must have their initial values"))
 		case o.Builder == nil && o.OnGenerateRoute == nil && o.PageRouteBuilder == nil:
-			panic(errors.New("WidgetsAppPageRouteBuilderMissing", "if neither builder nor onGenerateRoute are provided, the pageRouteBuilder must be specified so that the default handler will know what kind of PageRoute transition to build"))
+			panic(errors.New(tagWidgetsAppPageRouteBuilderMissing, "if neither builder nor onGenerateRoute are provided, the pageRouteBuilder must be specified so that the default handler will know what kind of PageRoute transition to build"))
 		}
 	}
 	return &WidgetsApp{StatefulWidget: NewStatefulWidgetBase(WidgetOpts{Key: o.Key}), color: color, o: o}
@@ -217,11 +217,11 @@ func NewWidgetsAppRouter[T any](color ui.Color, opts ...WidgetsAppRouterOpts[T])
 	if foundation.DebugMode {
 		switch {
 		case o.RouterConfig != nil && (o.RouteInformationProvider != nil || o.RouteInformationParser != nil || o.RouterDelegate != nil || o.BackButtonDispatcher != nil):
-			panic(errors.New("WidgetsAppRouterConfigConflict", "if the routerConfig is provided, all the other router delegates must not be provided"))
+			panic(errors.New(tagWidgetsAppRouterConfigConflict, "if the routerConfig is provided, all the other router delegates must not be provided"))
 		case o.RouterConfig == nil && o.RouterDelegate == nil:
-			panic(errors.New("WidgetsAppRouterDelegateMissing", "either one of routerDelegate or routerConfig must be provided"))
+			panic(errors.New(tagWidgetsAppRouterDelegateMissing, "either one of routerDelegate or routerConfig must be provided"))
 		case o.RouterConfig == nil && o.RouteInformationProvider != nil && o.RouteInformationParser == nil:
-			panic(errors.New("WidgetsAppRouterParserMissing", "if routeInformationProvider is provided, routeInformationParser must also be provided"))
+			panic(errors.New(tagWidgetsAppRouterParserMissing, "if routeInformationProvider is provided, routeInformationParser must also be provided"))
 		}
 	}
 	r := &widgetsAppRouter{
@@ -513,7 +513,7 @@ func (s *widgetsAppState) onGenerateRoute(settings RouteSettings) Route {
 	}
 	if content != nil {
 		if w.o.PageRouteBuilder == nil {
-			panic(errors.New("WidgetsAppPageRouteBuilderMissing", "the default onGenerateRoute handler for WidgetsApp must have a pageRouteBuilder set if the home or routes properties are set", "route", name))
+			panic(errors.New(tagWidgetsAppPageRouteBuilderMissing, "the default onGenerateRoute handler for WidgetsApp must have a pageRouteBuilder set if the home or routes properties are set", "route", name))
 		}
 		return w.o.PageRouteBuilder(settings, content)
 	}
@@ -527,7 +527,7 @@ func (s *widgetsAppState) onUnknownRoute(settings RouteSettings) Route {
 	w := s.Widget()
 	if w.o.OnUnknownRoute == nil {
 		if foundation.DebugMode {
-			panic(errors.New("WidgetsAppUnknownRouteMissing",
+			panic(errors.New(tagWidgetsAppUnknownRouteMissing,
 				`could not find a generator for the route in the WidgetsApp. Generators for routes are searched for in the following order: 1. For the "/" route, the "home" property, if non-null, is used. 2. Otherwise, the "routes" table is used, if it has an entry for the route. 3. Otherwise, onGenerateRoute is called. It should return a non-null value for any valid route not handled by "home" and "routes". 4. Finally if all else fails onUnknownRoute is called. Unfortunately, onUnknownRoute was not set`,
 				"route", settings.Name()))
 		}
@@ -535,7 +535,7 @@ func (s *widgetsAppState) onUnknownRoute(settings RouteSettings) Route {
 	}
 	route := w.o.OnUnknownRoute(settings)
 	if foundation.DebugMode && route == nil {
-		panic(errors.New("WidgetsAppUnknownRouteNil", "the onUnknownRoute callback returned nil; such callbacks must never return nil", "route", settings.Name()))
+		panic(errors.New(tagWidgetsAppUnknownRouteNil, "the onUnknownRoute callback returned nil; such callbacks must never return nil", "route", settings.Name()))
 	}
 	return route
 }
@@ -702,3 +702,17 @@ func (s *widgetsAppState) Build(bc BuildContext) Widget {
 						FocusTraversalGroupOpts{Policy: NewReadingOrderTraversalPolicy()}))),
 			ShortcutsOpts{DebugLabel: "<Default WidgetsApp Shortcuts>"}))
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagWidgetsAppBuilderOnly             = "WidgetsAppBuilderOnly"
+	tagWidgetsAppHomeAndDefaultRoute     = "WidgetsAppHomeAndDefaultRoute"
+	tagWidgetsAppHomeRedundant           = "WidgetsAppHomeRedundant"
+	tagWidgetsAppNoRoute                 = "WidgetsAppNoRoute"
+	tagWidgetsAppPageRouteBuilderMissing = "WidgetsAppPageRouteBuilderMissing"
+	tagWidgetsAppRouterConfigConflict    = "WidgetsAppRouterConfigConflict"
+	tagWidgetsAppRouterDelegateMissing   = "WidgetsAppRouterDelegateMissing"
+	tagWidgetsAppRouterParserMissing     = "WidgetsAppRouterParserMissing"
+	tagWidgetsAppUnknownRouteMissing     = "WidgetsAppUnknownRouteMissing"
+	tagWidgetsAppUnknownRouteNil         = "WidgetsAppUnknownRouteNil"
+)

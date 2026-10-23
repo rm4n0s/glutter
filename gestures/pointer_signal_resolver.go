@@ -48,7 +48,7 @@ func NewPointerSignalResolver() *PointerSignalResolver { return &PointerSignalRe
 // Flutter: gestures/pointer_signal_resolver.dart PointerSignalResolver.register
 func (r *PointerSignalResolver) Register(event PointerSignalEvent, callback PointerSignalResolvedCallback) {
 	if foundation.DebugMode && r.currentEvent != nil && !isSameEvent(r.currentEvent, event) {
-		panic(errors.New("PointerSignalEventMismatch", "a signal event was registered while another is pending"))
+		panic(errors.New(tagPointerSignalEventMismatch, "a signal event was registered while another is pending"))
 	}
 	if r.firstRegisteredCallback != nil {
 		return
@@ -69,7 +69,7 @@ func (r *PointerSignalResolver) Resolve(event PointerSignalEvent) {
 		return
 	}
 	if foundation.DebugMode && !isSameEvent(r.currentEvent, event) {
-		panic(errors.New("PointerSignalEventMismatch", "a different signal event was resolved than the one registered"))
+		panic(errors.New(tagPointerSignalEventMismatch, "a different signal event was resolved than the one registered"))
 	}
 	callback, current := r.firstRegisteredCallback, r.currentEvent
 	r.firstRegisteredCallback = nil
@@ -77,3 +77,8 @@ func (r *PointerSignalResolver) Resolve(event PointerSignalEvent) {
 	// A callback that panics is reported (CallbackPanicked).
 	foundation.Guard(r.errorReporter, foundation.CallbackPanicked, "while resolving a PointerSignalEvent", nil, func() { callback(current) })
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagPointerSignalEventMismatch = "PointerSignalEventMismatch"
+)

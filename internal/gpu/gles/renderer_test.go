@@ -82,7 +82,7 @@ func TestRendererSecondSurfaceSharesContext(t *testing.T) {
 	a.Destroy()
 	a.Destroy()
 	appErr, ok := errors.FromError(r.Render(a, nil, ui.Size{Width: 4, Height: 4}, 1))
-	if !ok || appErr.Tag != "RendererSurfaceInvalid" || !appErr.HasRoute("Renderer.render.RendererSurfaceInvalid") {
+	if !ok || appErr.Tag != tagRendererSurfaceInvalid || !appErr.HasRoute("Renderer.render.RendererSurfaceInvalid") {
 		t.Errorf("Render on a destroyed surface = %v", appErr)
 	}
 }
@@ -120,14 +120,14 @@ func TestRendererErrors(t *testing.T) {
 			bareEGL.surfacelessFails = true
 			_, err := bare.Snapshot(nil, ui.Size{Width: 5, Height: 5})
 			return err
-		}, "EGLMakeCurrentSurfacelessFailed", "Renderer.Snapshot->Context.MakeCurrentSurfaceless->eglError.EGLMakeCurrentSurfacelessFailed"},
+		}, "EGLMakeCurrentSurfacelessFailed", "Renderer.Snapshot->Context.MakeCurrentSurfaceless.EGLMakeCurrentSurfacelessFailed"},
 		{"snapshot with a surface that cannot be made current", func() error {
 			stuck, stuckEGL, _ := newTestRenderer()
 			_, _ = stuck.Attach(waylandHandle)
 			stuckEGL.currentFails = true
 			_, err := stuck.Snapshot(nil, ui.Size{Width: 5, Height: 5})
 			return err
-		}, "EGLMakeCurrentFailed", "Renderer.Snapshot->Context.MakeCurrent->eglError.EGLMakeCurrentFailed"},
+		}, "EGLMakeCurrentFailed", "Renderer.Snapshot->Context.MakeCurrent.EGLMakeCurrentFailed"},
 		{"swap fails", func() error { egl.swapFails = true; return r.Render(s, nil, ui.Size{Width: 5, Height: 5}, 1) }, "EGLSwapFailed", "Context.SwapBuffers"},
 	}
 	for _, tt := range tests {
@@ -196,7 +196,7 @@ func TestRendererAttachFailure(t *testing.T) {
 	r := newRenderer(func(h gpu.SurfaceHandle) (*Context, *Surface, error) { return openWith(egl, fakeGLLoader(gl), h) })
 	_, err := r.Attach(waylandHandle)
 	appErr, ok := errors.FromError(err)
-	if !ok || appErr.Tag != "EGLNoConfig" {
+	if !ok || appErr.Tag != tagEGLNoConfig {
 		t.Fatalf("Attach = %v, want EGLNoConfig", err)
 	}
 	if err := r.Close(); err != nil {
@@ -225,7 +225,7 @@ func TestRendererClose(t *testing.T) {
 	}
 	_, err := r.Attach(waylandHandle)
 	appErr, ok := errors.FromError(err)
-	if !ok || appErr.Tag != "RendererClosed" || !appErr.HasRoute("Renderer.Attach.RendererClosed") {
+	if !ok || appErr.Tag != tagRendererClosed || !appErr.HasRoute("Renderer.Attach.RendererClosed") {
 		t.Errorf("Attach after Close = %v", err)
 	}
 }
@@ -233,7 +233,7 @@ func TestRendererClose(t *testing.T) {
 func TestNewRendererMultipleOptions(t *testing.T) {
 	defer func() {
 		appErr, ok := errors.FromError(recoverError(recover()))
-		if !ok || appErr.Tag != "MultipleOptions" || !appErr.HasRoute("newRenderer.MultipleOptions") {
+		if !ok || appErr.Tag != tagMultipleOptions || !appErr.HasRoute("newRenderer.MultipleOptions") {
 			t.Errorf("expected MultipleOptions, got %v", appErr)
 		}
 	}()
@@ -289,7 +289,7 @@ func TestRendererRenderCaptureErrors(t *testing.T) {
 	gl.errCode = 0x502
 	_, err := r.RenderCapture(s, nil, ui.Size{Width: 2, Height: 2}, 1)
 	appErr, ok := errors.FromError(err)
-	if !ok || appErr.Tag != "GLReadPixelsFailed" {
+	if !ok || appErr.Tag != tagGLReadPixelsFailed {
 		t.Errorf("RenderCapture = %v, want GLReadPixelsFailed", err)
 	}
 }
@@ -337,7 +337,7 @@ func TestRendererStrictAndSkippingModes(t *testing.T) {
 	s, _ := strict.Attach(waylandHandle)
 	err := strict.Render(s, scene, ui.Size{Width: 8, Height: 8}, 1)
 	appErr, ok := errors.FromError(err)
-	if !ok || appErr.Tag != "GLNotImplemented" || !appErr.HasRoute("Renderer.render->Renderer.drawScene->frameBuilder.command") {
+	if !ok || appErr.Tag != tagGLNotImplemented || !appErr.HasRoute("Renderer.render->Renderer.drawScene->frameBuilder.command") {
 		t.Fatalf("Render = %v, want GLNotImplemented from the frame builder", err)
 	}
 	if contains(egl.calls, "swapBuffers") {

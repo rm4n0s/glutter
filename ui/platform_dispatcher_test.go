@@ -151,7 +151,7 @@ func TestViewRender(t *testing.T) {
 	if len(host.rendered) != 1 || host.rendered[0].view != 7 || host.rendered[0].scene != scene {
 		t.Errorf("rendered = %v", host.rendered)
 	}
-	host.err = errors.New("EGLContextLost", "lost")
+	host.err = errors.New(tagEGLContextLost, "lost")
 	err := v.Render(scene)
 	appErr, ok := errors.FromError(err)
 	if !ok || !appErr.HasRoute("EGLContextLost") {
@@ -448,7 +448,7 @@ func (h *clipboardHost) GetClipboardText(_ context.Context, done func(string, bo
 func TestClipboardCallsReachTheHost(t *testing.T) {
 	host := &clipboardHost{}
 	d := NewPlatformDispatcher(host)
-	var setErr error = errors.New("NotCalled", "set was not called")
+	var setErr error = errors.New(tagNotCalled, "set was not called")
 	d.SetClipboardText(context.Background(), "hello", func(err error) { setErr = err })
 	var got string
 	var gotOK bool
@@ -469,13 +469,14 @@ func TestClipboardUnavailable(t *testing.T) {
 		t.Fatal("the results must not arrive before the calls return")
 	}
 	host.runPosted()
+	routes := map[string]string{"set": "PlatformDispatcher.SetClipboardText.ClipboardUnavailable", "get": "PlatformDispatcher.GetClipboardText.ClipboardUnavailable"}
 	for name, err := range map[string]error{"set": setErr, "get": getErr} {
 		appErr, ok := errors.FromError(err)
 		if !ok {
 			t.Errorf("%s: expected *errors.Error, got %T", name, err)
 			continue
 		}
-		if !appErr.HasRoute("errClipboardUnavailable.ClipboardUnavailable") {
+		if !appErr.HasRoute(routes[name]) {
 			t.Errorf("%s: unexpected failure path: %s", name, appErr.Route())
 		}
 	}
@@ -508,7 +509,7 @@ func (h *richClipboardHost) GetClipboard(_ context.Context, kind ClipboardKind, 
 func TestRichClipboardCallsReachTheHost(t *testing.T) {
 	host := &richClipboardHost{}
 	d := NewPlatformDispatcher(host)
-	var setErr error = errors.New("NotCalled", "set was not called")
+	var setErr error = errors.New(tagNotCalled, "set was not called")
 	d.SetClipboard(context.Background(), ClipboardKindPrimary, ClipboardContent{Text: "picked", HasText: true}, func(err error) { setErr = err })
 	var got ClipboardContent
 	d.GetClipboard(context.Background(), ClipboardKindPrimary, ClipboardFormatText, func(c ClipboardContent, err error) { got = c })
@@ -548,9 +549,10 @@ func TestRichClipboardUnavailable(t *testing.T) {
 			d.SetClipboard(context.Background(), tc.kind, tc.set, func(err error) { setErr = err })
 			d.GetClipboard(context.Background(), tc.kind, tc.fmt, func(_ ClipboardContent, err error) { getErr = err })
 			host.runPosted()
+			routes := map[string]string{"set": "PlatformDispatcher.SetClipboard.ClipboardUnavailable", "get": "PlatformDispatcher.GetClipboard.ClipboardUnavailable"}
 			for name, err := range map[string]error{"set": setErr, "get": getErr} {
 				appErr, ok := errors.FromError(err)
-				if !ok || !appErr.HasRoute("errClipboardUnavailable.ClipboardUnavailable") {
+				if !ok || !appErr.HasRoute(routes[name]) {
 					t.Errorf("%s: err = %v, want ClipboardUnavailable", name, err)
 				}
 			}
@@ -570,3 +572,9 @@ func TestClipboardContentFormats(t *testing.T) {
 		t.Error("ClipboardKind.String is wrong")
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagEGLContextLost = "EGLContextLost"
+	tagNotCalled      = "NotCalled"
+)

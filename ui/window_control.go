@@ -83,7 +83,7 @@ type WindowControlHost interface {
 func (d *PlatformDispatcher) CreateWindow(spec WindowSpec) (*View, error) {
 	h, ok := d.host.(WindowControlHost)
 	if !ok {
-		return nil, errors.New("WindowingUnsupported", "the platform cannot create windows")
+		return nil, errors.New(tagWindowingUnsupported, "the platform cannot create windows")
 	}
 	id, cfg, err := h.CreateWindow(spec)
 	if err != nil {
@@ -227,3 +227,8 @@ func (d *PlatformDispatcher) RequestViewFocusChange(id ViewID, state ViewFocusSt
 		h.RequestViewFocus(id, state, direction)
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagWindowingUnsupported = "WindowingUnsupported"
+)

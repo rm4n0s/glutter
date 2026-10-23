@@ -248,7 +248,7 @@ func (f *vkFuncs) bind(lv level, resolve resolver) error {
 			if s.optional {
 				continue
 			}
-			return errors.New("SymbolMissing", "a Vulkan function is not in the driver",
+			return errors.New(tagSymbolMissing, "a Vulkan function is not in the driver",
 				"symbol", s.names[0], "library", "libvulkan")
 		}
 		bindFunc(s.fptr, addr)
@@ -278,7 +278,7 @@ func loadLibrary(getenv func(string) string) (*vkFuncs, error) {
 		if appErr, ok := errors.FromError(err); ok {
 			md = appErr.Metadata
 		}
-		return nil, errors.New("VulkanLoadFailed", "could not load libvulkan.so.1: is a Vulkan driver installed?",
+		return nil, errors.New(tagVulkanLoadFailed, "could not load libvulkan.so.1: is a Vulkan driver installed?",
 			"names", md["names"], "dlerror", md["dlerror"])
 	}
 	f := &vkFuncs{}
@@ -317,3 +317,9 @@ func (f *vkFuncs) bindInstance(instance uintptr) error {
 func (f *vkFuncs) bindDevice(device uintptr) error {
 	return f.bind(levelDevice, func(_ level, name string) uintptr { return f.devProcAddr(device, name) })
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagSymbolMissing    = "SymbolMissing"
+	tagVulkanLoadFailed = "VulkanLoadFailed"
+)

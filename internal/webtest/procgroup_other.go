@@ -34,5 +34,10 @@ func (*privateDisplay) stop() {}
 //
 // Flutter: no counterpart
 func (*Process) CPUTime() (time.Duration, error) {
-	return 0, errors.New("BrowserCPUUnavailable", "the CPU time of the browser is read from /proc, which only Linux has")
+	return 0, errors.New(tagBrowserCPUUnavailable, "the CPU time of the browser is read from /proc, which only Linux has")
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagBrowserCPUUnavailable = "BrowserCPUUnavailable"
+)

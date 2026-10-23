@@ -45,7 +45,7 @@ func Run(args []string) error {
 	svcOut := flags.String("services-out", "", "file to write the key constants of package services to (empty: none, or "+defaultSvcOut+" with the default -out)")
 	webOut := flags.String("web-out", "", "file to write the tables of the web platform to (empty: none)")
 	if err := flags.Parse(args); err != nil {
-		return errors.NewErr("KeysBadFlags", err).SetMetadata("args", args)
+		return errors.NewErr(tagKeysBadFlags, err).SetMetadata("args", args)
 	}
 	if *svcOut == "" && *out == defaultOut {
 		*svcOut = defaultSvcOut
@@ -89,7 +89,7 @@ func writeIfChanged(path string, code []byte) error {
 		return nil
 	}
 	if err := os.WriteFile(path, code, 0o644); err != nil {
-		return errors.NewErr("KeysWriteFailed", err).SetMetadata("file", path)
+		return errors.NewErr(tagKeysWriteFailed, err).SetMetadata("file", path)
 	}
 	return nil
 }
@@ -148,26 +148,27 @@ func loadData(dir string, withSynonyms, withWeb bool) (*data, error) {
 		path := filepath.Join(dir, f.name)
 		raw, err := os.ReadFile(path)
 		if err != nil {
-			return nil, errors.NewErr("KeysDataMissing", err).
+			return nil, errors.NewErr(tagKeysDataMissing, err).
 				SetMetadata("file", path, "hint", "run scripts/fetch-reference.sh")
 		}
 		if err := json.Unmarshal(raw, f.into); err != nil {
-			return nil, errors.NewErr("KeysDataInvalid", err).SetMetadata("file", path)
+			return nil, errors.NewErr(tagKeysDataInvalid, err).SetMetadata("file", path)
 		}
 	}
 	return d, nil
 }
 
-// scanCode returns the integer scan code of a column (such as "usb" or "xkb"),
-// and false when the key has none there.
-func (k physicalKey) scanCode(column string) (uint64, bool, error) {
+// scanCode returns the integer scan code of a column (such as "usb" or "xkb")
+// of the key called name, and false when the key has none there. It fails with
+// KeysDataInvalid.
+func (k physicalKey) scanCode(name, column string) (uint64, bool, error) {
 	raw, ok := k.ScanCodes[column]
 	if !ok {
 		return 0, false, nil
 	}
 	var v uint64
 	if err := json.Unmarshal(raw, &v); err != nil {
-		return 0, false, err
+		return 0, false, errors.NewErr(tagKeysDataInvalid, err).SetMetadata("key", name, "column", column)
 	}
 	return v, true, nil
 }
@@ -187,19 +188,19 @@ func generate(d *data) ([]byte, error) {
 	xkbOf := map[string]uint64{}
 	for _, name := range sortedKeys(d.physical) {
 		k := d.physical[name]
-		xkb, hasXkb, err := k.scanCode("xkb")
+		xkb, hasXkb, err := k.scanCode(name, "xkb")
 		if err != nil {
-			return nil, errors.NewErr("KeysDataInvalid", err).SetMetadata("key", name)
+			return nil, err
 		}
-		usb, hasUSB, err := k.scanCode("usb")
+		usb, hasUSB, err := k.scanCode(name, "usb")
 		if err != nil {
-			return nil, errors.NewErr("KeysDataInvalid", err).SetMetadata("key", name)
+			return nil, err
 		}
 		if !hasXkb || !hasUSB {
 			continue
 		}
 		if prev, dup := owner[xkb]; dup {
-			return nil, errors.New("KeysDuplicate", "two physical keys share an XKB keycode",
+			return nil, errors.New(tagKeysDuplicate, "two physical keys share an XKB keycode",
 				"xkb", xkb, "keys", []string{prev, name})
 		}
 		owner[xkb] = name
@@ -214,7 +215,7 @@ func generate(d *data) ([]byte, error) {
 		k := d.logical[name]
 		for _, sym := range k.Values["gtk"] {
 			if prev, dup := logicalOwner[sym]; dup {
-				return nil, errors.New("KeysDuplicate", "two logical keys share a GTK keyval",
+				return nil, errors.New(tagKeysDuplicate, "two logical keys share a GTK keyval",
 					"keyval", sym, "keys", []string{prev, name})
 			}
 			logicalOwner[sym] = name
@@ -226,11 +227,11 @@ func generate(d *data) ([]byte, error) {
 	for _, name := range sortedKeys(d.goals) {
 		xkb, ok := xkbOf[name]
 		if !ok {
-			return nil, errors.New("KeysGoalUnknown", "a layout goal names a physical key with no XKB keycode", "key", name)
+			return nil, errors.New(tagKeysGoalUnknown, "a layout goal names a physical key with no XKB keycode", "key", name)
 		}
 		l, ok := d.logical[name]
 		if !ok {
-			return nil, errors.New("KeysGoalUnknown", "a layout goal names a key that has no logical key", "key", name)
+			return nil, errors.New(tagKeysGoalUnknown, "a layout goal names a key that has no logical key", "key", name)
 		}
 		goals = append(goals, goal{name, xkb, l.Value, d.goals[name]})
 	}
@@ -267,7 +268,7 @@ func generate(d *data) ([]byte, error) {
 
 	out, err := format.Source(b.Bytes())
 	if err != nil {
-		return nil, errors.NewErr("KeysFormatFailed", err)
+		return nil, errors.NewErr(tagKeysFormatFailed, err)
 	}
 	return out, nil
 }
@@ -289,3 +290,14 @@ func sortedUint64[V any](m map[uint64]V) []uint64 {
 	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
 	return keys
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagKeysBadFlags     = "KeysBadFlags"
+	tagKeysDataInvalid  = "KeysDataInvalid"
+	tagKeysDataMissing  = "KeysDataMissing"
+	tagKeysDuplicate    = "KeysDuplicate"
+	tagKeysFormatFailed = "KeysFormatFailed"
+	tagKeysGoalUnknown  = "KeysGoalUnknown"
+	tagKeysWriteFailed  = "KeysWriteFailed"
+)

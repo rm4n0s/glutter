@@ -329,7 +329,7 @@ func NewMaterialApp(opts ...MaterialAppOpts) *MaterialApp {
 func NewMaterialAppRouter[T any](opts ...MaterialAppRouterOpts[T]) *MaterialApp {
 	o := firstOpts(opts)
 	if foundation.DebugMode && o.RouterDelegate == nil && o.RouterConfig == nil {
-		panic(errors.New("MaterialAppRouterMissing", "either one of routerDelegate or routerConfig must be provided"))
+		panic(errors.New(tagMaterialAppRouterMissing, "either one of routerDelegate or routerConfig must be provided"))
 	}
 	a := &MaterialApp{
 		StatefulWidget: widgets.NewStatefulWidgetBase(widgets.WidgetOpts{Key: o.Key}),
@@ -504,7 +504,7 @@ func (b *MaterialScrollBehavior) BuildScrollbar(bc widgets.BuildContext, child w
 	switch b.GetPlatform(bc) {
 	case foundation.TargetPlatformLinux, foundation.TargetPlatformMacOS, foundation.TargetPlatformWindows:
 		if foundation.DebugMode && details.Controller == nil {
-			panic(errors.New("MaterialScrollbarControllerMissing", "a ScrollController is required to build a scrollbar for a Scrollable; the details of the scrollable must have a controller"))
+			panic(errors.New(tagMaterialScrollbarControllerMissing, "a ScrollController is required to build a scrollbar for a Scrollable; the details of the scrollable must have a controller"))
 		}
 		return NewScrollbar(child, ScrollbarOpts{Controller: details.Controller})
 	}
@@ -515,3 +515,9 @@ func (b *MaterialScrollBehavior) BuildScrollbar(bc widgets.BuildContext, child w
 //
 // Flutter: foundation/diagnostics.dart Diagnosticable.toString
 func (b *MaterialScrollBehavior) String() string { return "MaterialScrollBehavior" }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagMaterialAppRouterMissing           = "MaterialAppRouterMissing"
+	tagMaterialScrollbarControllerMissing = "MaterialScrollbarControllerMissing"
+)

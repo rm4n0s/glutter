@@ -260,13 +260,13 @@ func (a *ScrollAction) IsEnabledWithContext(_ Intent, bc BuildContext) bool {
 // Flutter: widgets/scrollable_helpers.dart ScrollAction.invoke
 func (a *ScrollAction) InvokeWithContext(intent Intent, bc BuildContext) any {
 	if bc == nil {
-		panic(errors.New("ScrollActionContextMissing", "cannot scroll without a context"))
+		panic(errors.New(tagScrollActionContextMissing, "cannot scroll without a context"))
 	}
 	state := ScrollableMaybeOf(bc)
 	if state == nil {
 		primary := PrimaryScrollControllerOf(bc)
 		if foundation.DebugMode && len(primary.Positions()) != 1 {
-			panic(errors.New("ScrollActionPositionsInvalid",
+			panic(errors.New(tagScrollActionPositionsInvalid,
 				"a ScrollAction was invoked with the PrimaryScrollController, but more than one ScrollPosition is attached: only one ScrollPosition can be manipulated by a ScrollAction at a time",
 				"positions", len(primary.Positions())))
 		}
@@ -278,7 +278,7 @@ func (a *ScrollAction) InvokeWithContext(intent Intent, bc BuildContext) any {
 		}
 	}
 	if foundation.DebugMode && !state.Position().HasPixels() {
-		panic(errors.New("ScrollActionNotLaidOut", "the Scrollable must be laid out before it can be scrolled via a ScrollAction"))
+		panic(errors.New(tagScrollActionNotLaidOut, "the Scrollable must be laid out before it can be scrolled via a ScrollAction"))
 	}
 	if physics := state.ResolvedPhysics(); physics != nil && !physics.ShouldAcceptUserOffset(state.Position()) {
 		return nil
@@ -394,7 +394,7 @@ func (s *EdgeDraggingAutoScroller) scroll() {
 	transformedDragTarget := transform.TransformRect(s.dragTargetRelatedToOrigin)
 	if foundation.DebugMode && !((globalRect.Size().Width+foundation.PrecisionErrorTolerance) >= transformedDragTarget.Size().Width &&
 		(globalRect.Size().Height+foundation.PrecisionErrorTolerance) >= transformedDragTarget.Size().Height) {
-		panic(errors.New("AutoScrollDragTargetTooLarge", "drag target size is larger than scrollable size, which may cause bouncing",
+		panic(errors.New(tagAutoScrollDragTargetTooLarge, "drag target size is larger than scrollable size, which may cause bouncing",
 			"dragTarget", transformedDragTarget.Size().String(), "scrollable", globalRect.Size().String()))
 	}
 	s.scrolling = true
@@ -444,3 +444,11 @@ func (s *EdgeDraggingAutoScroller) scroll() {
 		}
 	})
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagAutoScrollDragTargetTooLarge = "AutoScrollDragTargetTooLarge"
+	tagScrollActionContextMissing   = "ScrollActionContextMissing"
+	tagScrollActionNotLaidOut       = "ScrollActionNotLaidOut"
+	tagScrollActionPositionsInvalid = "ScrollActionPositionsInvalid"
+)

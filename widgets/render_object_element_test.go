@@ -221,10 +221,10 @@ func TestRenderTreeRootCannotAttachToAnAncestor(t *testing.T) {
 
 func TestLeafAndSingleChildRenderObjectElementsRefuseWrongOperations(t *testing.T) {
 	leaf := NewLeafRenderObjectElement(newBox(1, 1))
-	requireTag(t, "LeafRenderObjectHasNoChildren", func() { leaf.InsertRenderObjectChild(nil, nil) })
-	requireTag(t, "LeafRenderObjectHasNoChildren", func() { leaf.MoveRenderObjectChild(nil, nil, nil) })
-	requireTag(t, "LeafRenderObjectHasNoChildren", func() { leaf.RemoveRenderObjectChild(nil, nil) })
-	requireTag(t, "LeafRenderObjectHasNoChildren", func() { leaf.ForgetChild(nil) })
+	requireTag(t, "LeafRenderObjectElement.InsertRenderObjectChild.LeafRenderObjectHasNoChildren", func() { leaf.InsertRenderObjectChild(nil, nil) })
+	requireTag(t, "LeafRenderObjectElement.MoveRenderObjectChild.LeafRenderObjectHasNoChildren", func() { leaf.MoveRenderObjectChild(nil, nil, nil) })
+	requireTag(t, "LeafRenderObjectElement.RemoveRenderObjectChild.LeafRenderObjectHasNoChildren", func() { leaf.RemoveRenderObjectChild(nil, nil) })
+	requireTag(t, "LeafRenderObjectElement.ForgetChild.LeafRenderObjectHasNoChildren", func() { leaf.ForgetChild(nil) })
 	single := NewSingleChildRenderObjectElement(newSized(1, 1, nil))
 	requireTag(t, "SingleChildRenderObjectMove", func() { single.MoveRenderObjectChild(nil, nil, nil) })
 }

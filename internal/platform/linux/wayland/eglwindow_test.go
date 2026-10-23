@@ -134,7 +134,7 @@ func startEGLWindowWith(t *testing.T, cfg fakecomp.Config) *eglEnv {
 	win, err := p.NewWindow(config640())
 	if err != nil {
 		var appErr *errors.Error
-		if ok := errors.As(err, &appErr); ok && appErr.Tag == "LibraryLoadFailed" {
+		if ok := errors.As(err, &appErr); ok && appErr.Tag == tagLibraryLoadFailed {
 			t.Skipf("libwayland-egl is not available: %v", err)
 		}
 		t.Fatal(err)
@@ -343,7 +343,7 @@ func TestShmWindowIgnoresFrameRequestsAndHasNoNativeSurface(t *testing.T) {
 func TestNewTakesOneOptionsValue(t *testing.T) {
 	defer func() {
 		appErr, ok := errors.FromError(asErr(recover()))
-		if !ok || appErr.Tag != "MultipleOptions" {
+		if !ok || appErr.Tag != tagMultipleOptions {
 			t.Errorf("recovered %v, want a MultipleOptions error", appErr)
 		}
 	}()

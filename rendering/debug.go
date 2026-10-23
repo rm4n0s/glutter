@@ -179,7 +179,7 @@ func (o *DebugOptions) DebugAssertAllRenderVarsUnset(reason string, checkIntrins
 			o.PrintLayouts || o.CheckIntrinsicSizes != checkIntrinsicSizesOverride || o.ProfileLayoutsEnabled ||
 			o.ProfilePaintsEnabled || o.OnProfilePaint != nil || o.DisableClipLayers ||
 			o.DisablePhysicalShapeLayers || o.DisableOpacityLayers {
-			panic(errors.New("RenderDebugVarsSet", reason))
+			panic(errors.New(tagRenderDebugVarsSet, reason))
 		}
 	}
 	return true
@@ -226,7 +226,7 @@ func DebugCheckHasBoundedAxis(axis painting.Axis, constraints BoxConstraints) bo
 	switch axis {
 	case painting.AxisVertical:
 		if !constraints.HasBoundedHeight() {
-			panic(errors.New("ViewportUnboundedMainAxis", "Vertical viewport was given unbounded height. "+
+			panic(errors.New(tagViewportUnboundedMainAxis, "Vertical viewport was given unbounded height. "+
 				"Viewports expand in the scrolling direction to fill their container. In this case, a vertical viewport "+
 				"was given an unlimited amount of vertical space in which to expand. This situation typically happens "+
 				"when a scrollable widget is nested inside another scrollable widget. If this widget is always nested "+
@@ -236,14 +236,14 @@ func DebugCheckHasBoundedAxis(axis painting.Axis, constraints BoxConstraints) bo
 				"axis", axis.String()))
 		}
 		if !constraints.HasBoundedWidth() {
-			panic(errors.New("ViewportUnboundedCrossAxis", "Vertical viewport was given unbounded width. "+
+			panic(errors.New(tagViewportUnboundedCrossAxis, "Vertical viewport was given unbounded width. "+
 				"Viewports expand in the cross axis to fill their container and constrain their children to match "+
 				"their extent in the cross axis. In this case, a vertical viewport was given an unlimited amount of "+
 				"horizontal space in which to expand.", "axis", axis.String()))
 		}
 	case painting.AxisHorizontal:
 		if !constraints.HasBoundedWidth() {
-			panic(errors.New("ViewportUnboundedMainAxis", "Horizontal viewport was given unbounded width. "+
+			panic(errors.New(tagViewportUnboundedMainAxis, "Horizontal viewport was given unbounded width. "+
 				"Viewports expand in the scrolling direction to fill their container. In this case, a horizontal "+
 				"viewport was given an unlimited amount of horizontal space in which to expand. This situation "+
 				"typically happens when a scrollable widget is nested inside another scrollable widget. If this "+
@@ -253,7 +253,7 @@ func DebugCheckHasBoundedAxis(axis painting.Axis, constraints BoxConstraints) bo
 				"a single scrollable.", "axis", axis.String()))
 		}
 		if !constraints.HasBoundedHeight() {
-			panic(errors.New("ViewportUnboundedCrossAxis", "Horizontal viewport was given unbounded height. "+
+			panic(errors.New(tagViewportUnboundedCrossAxis, "Horizontal viewport was given unbounded height. "+
 				"Viewports expand in the cross axis to fill their container and constrain their children to match "+
 				"their extent in the cross axis. In this case, a horizontal viewport was given an unlimited amount of "+
 				"vertical space in which to expand.", "axis", axis.String()))
@@ -263,3 +263,10 @@ func DebugCheckHasBoundedAxis(axis painting.Axis, constraints BoxConstraints) bo
 }
 
 var _ = math.Inf
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagRenderDebugVarsSet         = "RenderDebugVarsSet"
+	tagViewportUnboundedCrossAxis = "ViewportUnboundedCrossAxis"
+	tagViewportUnboundedMainAxis  = "ViewportUnboundedMainAxis"
+)

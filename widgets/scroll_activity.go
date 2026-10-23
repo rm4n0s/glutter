@@ -145,7 +145,7 @@ func (b *ScrollActivityBase) IsDisposed() bool { return b.disposed }
 // Flutter: widgets/scroll_activity.dart ScrollActivity.updateDelegate
 func (b *ScrollActivityBase) UpdateDelegate(delegate ScrollActivityDelegate) {
 	if foundation.DebugMode && b.delegate == delegate {
-		panic(errors.New("ScrollActivityDelegateSame", "the delegate of a scroll activity was updated with the delegate it already has"))
+		panic(errors.New(tagScrollActivityDelegateSame, "the delegate of a scroll activity was updated with the delegate it already has"))
 	}
 	b.delegate = delegate
 }
@@ -362,7 +362,7 @@ type ScrollDragControllerOpts struct {
 func NewScrollDragController(delegate ScrollActivityDelegate, details gestures.DragStartDetails, opts ...ScrollDragControllerOpts) *ScrollDragController {
 	o := firstOpts(opts)
 	if t, ok := o.MotionStartDistanceThreshold.Get(); ok && foundation.DebugMode && !(t > 0) {
-		panic(errors.New("ScrollDragThresholdInvalid", "motionStartDistanceThreshold must be a positive number or none", "motionStartDistanceThreshold", t))
+		panic(errors.New(tagScrollDragThresholdInvalid, "motionStartDistanceThreshold must be a positive number or none", "motionStartDistanceThreshold", t))
 	}
 	c := &ScrollDragController{
 		delegate:                     delegate,
@@ -391,7 +391,7 @@ func (c *ScrollDragController) Delegate() ScrollActivityDelegate { return c.dele
 // Flutter: widgets/scroll_activity.dart ScrollDragController.updateDelegate
 func (c *ScrollDragController) UpdateDelegate(delegate ScrollActivityDelegate) {
 	if foundation.DebugMode && c.delegate == delegate {
-		panic(errors.New("ScrollActivityDelegateSame", "the delegate of a scroll drag controller was updated with the delegate it already has"))
+		panic(errors.New(tagScrollActivityDelegateSame, "the delegate of a scroll drag controller was updated with the delegate it already has"))
 	}
 	c.delegate = delegate
 }
@@ -451,7 +451,7 @@ func (c *ScrollDragController) adjustForScrollStartThreshold(offset float64, tim
 // Flutter: widgets/scroll_activity.dart ScrollDragController.update
 func (c *ScrollDragController) Update(details gestures.DragUpdateDetails) {
 	if foundation.DebugMode && !details.PrimaryDelta.IsSome() {
-		panic(errors.New("ScrollDragPrimaryDeltaMissing", "the details of a scroll drag update must have a primary delta"))
+		panic(errors.New(tagScrollDragPrimaryDeltaMissing, "the details of a scroll drag update must have a primary delta"))
 	}
 	c.lastDetails = details
 	offset := details.PrimaryDelta.Value()
@@ -474,7 +474,7 @@ func (c *ScrollDragController) Update(details gestures.DragUpdateDetails) {
 // Flutter: widgets/scroll_activity.dart ScrollDragController.end
 func (c *ScrollDragController) End(details gestures.DragEndDetails) {
 	if foundation.DebugMode && !details.PrimaryVelocity.IsSome() {
-		panic(errors.New("ScrollDragPrimaryVelocityMissing", "the details of a scroll drag end must have a primary velocity"))
+		panic(errors.New(tagScrollDragPrimaryVelocityMissing, "the details of a scroll drag end must have a primary velocity"))
 	}
 	// We negate the velocity here because if the touch is moving downwards, the
 	// scroll has to move upwards. It's the same reason that update() above
@@ -561,7 +561,7 @@ func (a *DragScrollActivity) DispatchScrollStartNotification(metrics ScrollMetri
 	details, _ := a.controller.LastDetails().(gestures.DragStartDetails)
 	if foundation.DebugMode {
 		if _, ok := a.controller.LastDetails().(gestures.DragStartDetails); !ok {
-			panic(errors.New("ScrollDragDetailsUnexpected", "the last details of the drag are not DragStartDetails",
+			panic(errors.New(tagScrollDragDetailsUnexpected, "the last details of the drag are not DragStartDetails",
 				"details", a.controller.LastDetails()))
 		}
 	}
@@ -575,7 +575,7 @@ func (a *DragScrollActivity) DispatchScrollStartNotification(metrics ScrollMetri
 func (a *DragScrollActivity) DispatchScrollUpdateNotification(metrics ScrollMetrics, bc BuildContext, scrollDelta float64) {
 	details, ok := a.controller.LastDetails().(gestures.DragUpdateDetails)
 	if foundation.DebugMode && !ok {
-		panic(errors.New("ScrollDragDetailsUnexpected", "the last details of the drag are not DragUpdateDetails",
+		panic(errors.New(tagScrollDragDetailsUnexpected, "the last details of the drag are not DragUpdateDetails",
 			"details", a.controller.LastDetails()))
 	}
 	DispatchNotification(bc, NewScrollUpdateNotification(metrics, bc, ScrollUpdateNotificationOpts{
@@ -589,7 +589,7 @@ func (a *DragScrollActivity) DispatchScrollUpdateNotification(metrics ScrollMetr
 func (a *DragScrollActivity) DispatchOverscrollNotification(metrics ScrollMetrics, bc BuildContext, overscroll float64) {
 	details, ok := a.controller.LastDetails().(gestures.DragUpdateDetails)
 	if foundation.DebugMode && !ok {
-		panic(errors.New("ScrollDragDetailsUnexpected", "the last details of the drag are not DragUpdateDetails",
+		panic(errors.New(tagScrollDragDetailsUnexpected, "the last details of the drag are not DragUpdateDetails",
 			"details", a.controller.LastDetails()))
 	}
 	DispatchNotification(bc, NewOverscrollNotification(metrics, bc, overscroll, OverscrollNotificationOpts{DragDetails: foundation.Some(details)}))
@@ -823,7 +823,7 @@ func NewDrivenScrollActivity(delegate ScrollActivityDelegate, opts ...DrivenScro
 // Flutter: widgets/scroll_activity.dart DrivenScrollActivity.new
 func InitDrivenScrollActivity(a *DrivenScrollActivity, self ScrollActivity, delegate ScrollActivityDelegate, o DrivenScrollActivityOpts) {
 	if foundation.DebugMode && o.Duration <= 0 {
-		panic(errors.New("ScrollDurationInvalid", "the duration of a driven scroll activity must be positive", "duration", o.Duration))
+		panic(errors.New(tagScrollDurationInvalid, "the duration of a driven scroll activity must be positive", "duration", o.Duration))
 	}
 	a.post = o.Post
 	InitScrollActivityBase(&a.ScrollActivityBase, self, delegate)
@@ -918,3 +918,13 @@ func (a *DrivenScrollActivity) Dispose() {
 func (a *DrivenScrollActivity) String() string {
 	return foundation.DescribeIdentity(a) + "(" + a.controller.String() + ")"
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagScrollActivityDelegateSame       = "ScrollActivityDelegateSame"
+	tagScrollDragDetailsUnexpected      = "ScrollDragDetailsUnexpected"
+	tagScrollDragPrimaryDeltaMissing    = "ScrollDragPrimaryDeltaMissing"
+	tagScrollDragPrimaryVelocityMissing = "ScrollDragPrimaryVelocityMissing"
+	tagScrollDragThresholdInvalid       = "ScrollDragThresholdInvalid"
+	tagScrollDurationInvalid            = "ScrollDurationInvalid"
+)

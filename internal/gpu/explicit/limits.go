@@ -76,7 +76,7 @@ func exceeded(what string, value, max int) {
 	if !foundation.DebugMode || value <= max {
 		return
 	}
-	panic(errors.New("GPULimitExceeded", "a call breaks a design limit of the explicit renderer",
+	panic(errors.New(tagGPULimitExceeded, "a call breaks a design limit of the explicit renderer",
 		"limit", what, "value", value, "max", max))
 }
 
@@ -86,7 +86,7 @@ func misaligned(what string, value, alignment int) {
 	if !foundation.DebugMode || alignment <= 1 || value%alignment == 0 {
 		return
 	}
-	panic(errors.New("GPULimitExceeded", "a call breaks a design limit of the explicit renderer",
+	panic(errors.New(tagGPULimitExceeded, "a call breaks a design limit of the explicit renderer",
 		"limit", what, "value", value, "alignment", alignment))
 }
 
@@ -176,3 +176,8 @@ func (l Limits) CheckSetBindGroup(group int, dynamicOffsets []uint32) {
 func (l Limits) CheckSetVertexBuffer(slot int) {
 	exceeded("vertex buffer slot", slot+1, l.MaxVertexBuffers)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagGPULimitExceeded = "GPULimitExceeded"
+)

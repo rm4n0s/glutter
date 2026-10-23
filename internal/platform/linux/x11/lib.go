@@ -5,7 +5,6 @@ package x11
 import (
 	"sync"
 
-	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/internal/platform/linux/dl"
 )
 
@@ -121,16 +120,16 @@ type xlib struct {
 }
 
 // loadXlib opens libX11 and libX11-xcb and binds the functions. It fails with
-// X11LoadFailed when a library cannot be loaded and with SymbolMissing when a
+// LibraryLoadFailed when a library cannot be loaded and with SymbolMissing when a
 // function is absent.
 func loadXlib() (*xlib, error) {
 	x11, err := dl.Open(libX11, "libX11.so")
 	if err != nil {
-		return nil, loadFailed(libX11, err)
+		return nil, err
 	}
 	xcb, err := dl.Open(libX11XCB, "libX11-xcb.so")
 	if err != nil {
-		return nil, loadFailed(libX11XCB, err)
+		return nil, err
 	}
 	l := new(xlib)
 	for _, b := range []struct {
@@ -191,17 +190,6 @@ func loadXlib() (*xlib, error) {
 	return l, nil
 }
 
-// loadFailed turns the loader's LibraryLoadFailed into X11LoadFailed, keeping
-// what the loader reported.
-func loadFailed(library string, err error) error {
-	md := map[string]any{}
-	if appErr, ok := errors.FromError(err); ok {
-		md = appErr.Metadata
-	}
-	return errors.New("X11LoadFailed", "could not load an X11 library",
-		"library", library, "names", md["names"], "dlerror", md["dlerror"])
-}
-
 // xi holds the bound functions of libXi, which the input needs.
 type xi struct {
 	queryVersion func(display, major, minor uintptr) int32
@@ -216,7 +204,7 @@ type xi struct {
 func loadXi() (*xi, error) {
 	lib, err := dl.Open(libXi, "libXi.so")
 	if err != nil {
-		return nil, loadFailed(libXi, err)
+		return nil, err
 	}
 	l := new(xi)
 	for _, b := range []struct {
@@ -253,7 +241,7 @@ type xrandr struct {
 func loadXrandr() (*xrandr, error) {
 	lib, err := dl.Open(libXrandr, "libXrandr.so")
 	if err != nil {
-		return nil, loadFailed(libXrandr, err)
+		return nil, err
 	}
 	l := new(xrandr)
 	for _, b := range []struct {
@@ -286,7 +274,7 @@ type xcursor struct {
 func loadXcursor() (*xcursor, error) {
 	lib, err := dl.Open(libXcursor, "libXcursor.so")
 	if err != nil {
-		return nil, loadFailed(libXcursor, err)
+		return nil, err
 	}
 	l := new(xcursor)
 	for _, b := range []struct {

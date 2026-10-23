@@ -248,7 +248,7 @@ func TestErrorsRenderObject(t *testing.T) {
 		tag  string
 		call func(t *testing.T)
 	}{
-		{"RenderObjectAbstractMethod", func(t *testing.T) { newBare().PerformLayout() }},
+		{"RenderObjectBase.PerformLayout.RenderObjectAbstractMethod", func(t *testing.T) { newBare().PerformLayout() }},
 		{"RenderObjectNoConstraints", func(t *testing.T) { newTObject(false).Constraints() }},
 		{"RenderObjectNoParent", func(t *testing.T) { newTObject(false).MarkParentNeedsLayout() }},
 		{"RenderObjectAttached", func(t *testing.T) {
@@ -531,7 +531,7 @@ func TestErrorsPipelineOwnerAndBinding(t *testing.T) {
 			h := newHarness(t)
 			rendering.NewRenderView(h.View).PerformLayout()
 		}},
-		{"RenderViewResize", func(t *testing.T) { rendering.NewRenderView(newHarness(t).View).PerformResize() }},
+		{"RenderView.PerformResize.RenderViewResize", func(t *testing.T) { rendering.NewRenderView(newHarness(t).View).PerformResize() }},
 		{"PrepareInitialFrameInvalid", func(t *testing.T) { rendering.NewRenderView(newHarness(t).View).PrepareInitialFrame() }},
 		{"CompositeFrameNotPrepared", func(t *testing.T) { _ = rendering.NewRenderView(newHarness(t).View).CompositeFrame() }},
 		{"ViewportUnboundedMainAxis", func(t *testing.T) {
@@ -579,7 +579,7 @@ func TestErrorsLayers(t *testing.T) {
 		tag  string
 		call func(t *testing.T)
 	}{
-		{"LayerAddToSceneMissing", func(t *testing.T) { newPlainLayer().AddToScene(ui.NewSceneBuilder()) }},
+		{"LayerBase.AddToScene.LayerAddToSceneMissing", func(t *testing.T) { newPlainLayer().AddToScene(ui.NewSceneBuilder()) }},
 		{"LayerAlreadyAttached", func(t *testing.T) {
 			l := newConcreteLayer()
 			l.Attach(new(int))

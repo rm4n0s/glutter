@@ -225,10 +225,10 @@ func (a *SemanticsAnnotations) DescribeSemanticsConfiguration(config *semantics.
 	}
 	if foundation.DebugMode {
 		if p.ScopesRoute.OrElse(false) && !a.explicitChildNodes {
-			panic(errors.New("SemanticsScopesRouteNeedsExplicitChildNodes", "explicitChildNodes must be set to true if scopes route is true"))
+			panic(errors.New(tagSemanticsScopesRouteNeedsExplicitChildNodes, "explicitChildNodes must be set to true if scopes route is true"))
 		}
 		if p.Toggled.OrElse(false) && p.Checked.OrElse(false) {
-			panic(errors.New("SemanticsToggledAndChecked", "a semantics node cannot be toggled and checked at the same time"))
+			panic(errors.New(tagSemanticsToggledAndChecked, "a semantics node cannot be toggled and checked at the same time"))
 		}
 	}
 	setBool := func(v foundation.Opt[bool], set func(bool)) {
@@ -858,3 +858,9 @@ func (r *RenderIndexedSemantics) DebugFillProperties(b *foundation.DiagnosticPro
 	r.RenderProxyBox.DebugFillProperties(b)
 	b.Add(foundation.NewDiagnosticsProperty("index", r.index))
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagSemanticsScopesRouteNeedsExplicitChildNodes = "SemanticsScopesRouteNeedsExplicitChildNodes"
+	tagSemanticsToggledAndChecked                  = "SemanticsToggledAndChecked"
+)

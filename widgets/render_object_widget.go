@@ -286,7 +286,7 @@ func (e *RenderObjectElement) debugCheckCompetingAncestors(result []*ParentDataE
 		"\nUsually, this indicates that one or more of the offending ParentDataWidgets listed above isn't placed inside a dedicated compatible ancestor widget that it isn't sharing with another ParentDataWidget of the same type." +
 		"\nOtherwise, separating aspects of ParentData to prevent conflicts can be done using mixins, mixing them all in on the full ParentData Object, such as KeepAlive does with KeepAliveParentDataMixin." +
 		"\nThe ownership chain for the RenderObject that received the parent data was:\n  " + e.DebugGetCreatorChain(10))
-	e.owner.reportError(errors.New("ParentDataWidgetsCompeting", msg.String()))
+	e.owner.reportError(errors.New(tagParentDataWidgetsCompeting, msg.String()))
 }
 
 // widgetString describes a widget the way Flutter's Widget.toString does: its
@@ -392,7 +392,7 @@ func (e *RenderObjectElement) updateParentData(w parentDataWidget) {
 				foundation.RuntimeTypeName(e.ancestorRenderObject.AsElement().widget) + " widget.")
 		}
 		msg.WriteString("\nThe ownership chain for the RenderObject that received the incompatible parent data was:\n  " + e.DebugGetCreatorChain(10))
-		e.owner.reportError(errors.New("ParentDataWidgetIncorrectUse", msg.String()))
+		e.owner.reportError(errors.New(tagParentDataWidgetIncorrectUse, msg.String()))
 	}
 	if apply {
 		w.ApplyParentData(e.renderObject)
@@ -421,7 +421,7 @@ func (e *RenderObjectElement) AttachRenderObject(newSlot any) {
 	e.slot = newSlot
 	e.ancestorRenderObject = e.findAncestorRenderObjectElement()
 	if foundation.DebugMode && e.ancestorRenderObject == nil {
-		e.owner.reportError(errors.New("RenderObjectAncestorMissing",
+		e.owner.reportError(errors.New(tagRenderObjectAncestorMissing,
 			"the render object for "+e.ToStringShort()+" cannot find an ancestor render object to attach to; try wrapping your widget in a View widget or any other widget that is backed by a render tree root element to serve as the root of the render tree",
 			"ownership chain", e.DebugGetCreatorChain(10)))
 	}
@@ -461,35 +461,33 @@ func NewLeafRenderObjectElement(w leafRenderObjectWidget) *LeafRenderObjectEleme
 	return e
 }
 
-func leafHasNoChildren(op string) error {
-	return errors.New("LeafRenderObjectHasNoChildren", "a leaf render object element has no children", "operation", op)
-}
-
 // InsertRenderObjectChild panics: a leaf has no children.
 //
 // Flutter: widgets/framework.dart LeafRenderObjectElement.insertRenderObjectChild
 func (e *LeafRenderObjectElement) InsertRenderObjectChild(rendering.RenderObject, any) {
-	panic(leafHasNoChildren("insert"))
+	panic(errors.New(tagLeafRenderObjectHasNoChildren, "a leaf render object element has no children", "operation", "insert"))
 }
 
 // MoveRenderObjectChild panics: a leaf has no children.
 //
 // Flutter: widgets/framework.dart LeafRenderObjectElement.moveRenderObjectChild
 func (e *LeafRenderObjectElement) MoveRenderObjectChild(rendering.RenderObject, any, any) {
-	panic(leafHasNoChildren("move"))
+	panic(errors.New(tagLeafRenderObjectHasNoChildren, "a leaf render object element has no children", "operation", "move"))
 }
 
 // RemoveRenderObjectChild panics: a leaf has no children.
 //
 // Flutter: widgets/framework.dart LeafRenderObjectElement.removeRenderObjectChild
 func (e *LeafRenderObjectElement) RemoveRenderObjectChild(rendering.RenderObject, any) {
-	panic(leafHasNoChildren("remove"))
+	panic(errors.New(tagLeafRenderObjectHasNoChildren, "a leaf render object element has no children", "operation", "remove"))
 }
 
 // ForgetChild panics: a leaf has no children.
 //
 // Flutter: widgets/framework.dart LeafRenderObjectElement.forgetChild
-func (e *LeafRenderObjectElement) ForgetChild(Element) { panic(leafHasNoChildren("forget")) }
+func (e *LeafRenderObjectElement) ForgetChild(Element) {
+	panic(errors.New(tagLeafRenderObjectHasNoChildren, "a leaf render object element has no children", "operation", "forget"))
+}
 
 // SingleChildRenderObjectElement is the element of a
 // SingleChildRenderObjectWidget.
@@ -560,7 +558,7 @@ func (e *SingleChildRenderObjectElement) InsertRenderObjectChild(child rendering
 //
 // Flutter: widgets/framework.dart SingleChildRenderObjectElement.moveRenderObjectChild
 func (e *SingleChildRenderObjectElement) MoveRenderObjectChild(rendering.RenderObject, any, any) {
-	panic(errors.New("SingleChildRenderObjectMove", "a render object with a single child has no slot to move the child to"))
+	panic(errors.New(tagSingleChildRenderObjectMove, "a render object with a single child has no slot to move the child to"))
 }
 
 // RemoveRenderObjectChild clears the child of the render object.
@@ -677,7 +675,7 @@ func (e *MultiChildRenderObjectElement) ForgetChild(child Element) {
 func (e *MultiChildRenderObjectElement) InflateWidget(newWidget Widget, newSlot any) Element {
 	newChild := e.ElementBase.InflateWidget(newWidget, newSlot)
 	if foundation.DebugMode && newChild.RenderObject() == nil {
-		e.owner.reportError(errors.New("MultiChildNeedsRenderObject",
+		e.owner.reportError(errors.New(tagMultiChildNeedsRenderObject,
 			"the children of a MultiChildRenderObjectElement must each have an associated render object; this typically means that the widget or its children are not render object widgets",
 			"widget", foundation.RuntimeTypeName(newChild.AsElement().widget)))
 	}
@@ -751,7 +749,7 @@ func (e *RenderTreeRootElement) UpdateSlot(newSlot any) {
 
 func (e *RenderTreeRootElement) debugCheckMustNotAttachRenderObjectToAncestor() {
 	if foundation.DebugMode && e.findAncestorRenderObjectElement() != nil {
-		panic(errors.New("RenderTreeRootHasAncestor",
+		panic(errors.New(tagRenderTreeRootHasAncestor,
 			"the RenderObject for "+e.ToStringShort()+" cannot maintain an independent render tree at its current location; this RenderObject is the root of an independent render tree and it cannot attach itself to an ancestor in an existing tree, but the ancestor RenderObject expects that a child will be attached; try moving the subtree that contains the widget to a location where it is not expected to attach its RenderObject to a parent",
 			"ownership chain", e.DebugGetCreatorChain(10)))
 	}
@@ -861,13 +859,13 @@ func (e *SlottedRenderObjectElement) updateChildren() {
 			e.previousSlots = append([]any(nil), slots...)
 		}
 		if !slices.Equal(e.previousSlots, slots) {
-			panic(errors.New("SlottedSlotsChanged", "the slots of a slotted render object widget must not change",
+			panic(errors.New(tagSlottedSlotsChanged, "the slots of a slotted render object widget must not change",
 				"widget", foundation.RuntimeTypeName(w)))
 		}
 		seen := map[any]struct{}{}
 		for _, s := range slots {
 			if _, dup := seen[s]; dup {
-				panic(errors.New("SlottedSlotsNotUnique", "the slots of a slotted render object widget must be unique",
+				panic(errors.New(tagSlottedSlotsNotUnique, "the slots of a slotted render object widget must be unique",
 					"widget", foundation.RuntimeTypeName(w), "slot", s))
 			}
 			seen[s] = struct{}{}
@@ -915,7 +913,7 @@ func (e *SlottedRenderObjectElement) updateChildren() {
 		e.DeactivateChild(c)
 	}
 	if foundation.DebugMode && duplicateKey != nil {
-		panic(errors.New("SlottedDuplicateKeys", "multiple widgets used the same key in a slotted render object widget; a key can only be specified on one widget at a time in the same parent widget",
+		panic(errors.New(tagSlottedDuplicateKeys, "multiple widgets used the same key in a slotted render object widget; a key can only be specified on one widget at a time in the same parent widget",
 			"widget", foundation.RuntimeTypeName(w), "key", duplicateKey.String()))
 	}
 }
@@ -943,3 +941,17 @@ func (e *SlottedRenderObjectElement) RemoveRenderObjectChild(child rendering.Ren
 func (e *SlottedRenderObjectElement) MoveRenderObjectChild(child rendering.RenderObject, oldSlot, newSlot any) {
 	e.renderObject.(slottedHolder).MoveSlotChild(child, newSlot, oldSlot)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagLeafRenderObjectHasNoChildren = "LeafRenderObjectHasNoChildren"
+	tagMultiChildNeedsRenderObject   = "MultiChildNeedsRenderObject"
+	tagParentDataWidgetIncorrectUse  = "ParentDataWidgetIncorrectUse"
+	tagParentDataWidgetsCompeting    = "ParentDataWidgetsCompeting"
+	tagRenderObjectAncestorMissing   = "RenderObjectAncestorMissing"
+	tagRenderTreeRootHasAncestor     = "RenderTreeRootHasAncestor"
+	tagSingleChildRenderObjectMove   = "SingleChildRenderObjectMove"
+	tagSlottedDuplicateKeys          = "SlottedDuplicateKeys"
+	tagSlottedSlotsChanged           = "SlottedSlotsChanged"
+	tagSlottedSlotsNotUnique         = "SlottedSlotsNotUnique"
+)

@@ -44,9 +44,9 @@ func (a *attempt) fn() func() (Connection, error) {
 func env(m map[string]string) func(string) string { return func(k string) string { return m[k] } }
 
 func TestSelect(t *testing.T) {
-	waylandErr := errors.New("WaylandConnectFailed", "no compositor", "display", "wayland-0")
-	libErr := errors.New("LibraryLoadFailed", "no libwayland-client")
-	x11Err := errors.New("X11OpenDisplayFailed", "no server")
+	waylandErr := errors.New(tagWaylandConnectFailed, "no compositor", "display", "wayland-0")
+	libErr := errors.New(tagLibraryLoadFailed, "no libwayland-client")
+	x11Err := errors.New(tagX11OpenDisplayFailed, "no server")
 
 	tests := []struct {
 		name        string
@@ -203,8 +203,8 @@ func TestSelectRoutes(t *testing.T) {
 }
 
 func TestNoDisplayCarriesWhatWasTried(t *testing.T) {
-	way := &attempt{err: errors.New("WaylandProtocolMissing", "no xdg_wm_base", "interface", "xdg_wm_base")}
-	x := &attempt{err: errors.New("X11OpenDisplayFailed", "no server", "display", ":0")}
+	way := &attempt{err: errors.New(tagWaylandProtocolMissing, "no xdg_wm_base", "interface", "xdg_wm_base")}
+	x := &attempt{err: errors.New(tagX11OpenDisplayFailed, "no server", "display", ":0")}
 	_, _, err := Select(Selection{
 		Getenv:  env(map[string]string{"WAYLAND_DISPLAY": "wayland-0", "DISPLAY": ":0"}),
 		Wayland: way.fn(), X11: x.fn(),
@@ -237,3 +237,11 @@ func TestSelectUsesTheProcessEnvironmentByDefault(t *testing.T) {
 		t.Errorf("Select = %q, %v", b, err)
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagLibraryLoadFailed      = "LibraryLoadFailed"
+	tagWaylandConnectFailed   = "WaylandConnectFailed"
+	tagWaylandProtocolMissing = "WaylandProtocolMissing"
+	tagX11OpenDisplayFailed   = "X11OpenDisplayFailed"
+)

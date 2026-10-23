@@ -137,7 +137,7 @@ func TestClipboardTooLargeToSet(t *testing.T) {
 	p := startClipboard(t)
 	err := setText(t, p, strings.Repeat("x", clipboardMaxBytes+1))
 	appErr, ok := errors.FromError(err)
-	if !ok || appErr.Tag != "ClipboardTooLarge" {
+	if !ok || appErr.Tag != tagClipboardTooLarge {
 		t.Errorf("SetText = %v, want ClipboardTooLarge", err)
 	}
 }
@@ -179,7 +179,7 @@ func TestClipboardCanceledRead(t *testing.T) {
 	// Either the cancellation or the answer wins; a canceled read is an error.
 	if r.err != nil {
 		appErr, ok := errors.FromError(r.err)
-		if !ok || appErr.Tag != "ClipboardReadTimeout" {
+		if !ok || appErr.Tag != tagClipboardReadTimeout {
 			t.Errorf("error = %v, want ClipboardReadTimeout", r.err)
 		}
 	}

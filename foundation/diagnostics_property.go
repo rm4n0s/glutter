@@ -465,7 +465,7 @@ type FlagPropertyOpts struct {
 func NewFlagProperty(name string, value Opt[bool], opts ...FlagPropertyOpts) *DiagnosticsProperty {
 	o := firstOpts(opts)
 	if DebugMode && o.IfTrue == "" && o.IfFalse == "" {
-		panic(errors.New("FlagPropertyNoDescription", "a FlagProperty needs IfTrue or IfFalse", "name", name))
+		panic(errors.New(tagFlagPropertyNoDescription, "a FlagProperty needs IfTrue or IfFalse", "name", name))
 	}
 	cfg := propertyConfig{showName: Some(o.ShowName), level: o.Level}
 	setDefault(&cfg, o.DefaultValue)
@@ -650,7 +650,7 @@ type ObjectFlagPropertyOpts struct {
 func NewObjectFlagProperty[T any](name string, value T, opts ...ObjectFlagPropertyOpts) *DiagnosticsProperty {
 	o := firstOpts(opts)
 	if DebugMode && o.IfPresent == "" && o.IfNull == "" {
-		panic(errors.New("ObjectFlagPropertyNoDescription", "an ObjectFlagProperty needs IfPresent or IfNull", "name", name))
+		panic(errors.New(tagObjectFlagPropertyNoDescription, "an ObjectFlagProperty needs IfPresent or IfNull", "name", name))
 	}
 	return newObjectFlagProperty(name, any(value), typeArg[T](), o)
 }
@@ -983,3 +983,9 @@ func (p *DiagnosticsProperty) expandedNode() DiagnosticsNode {
 	}
 	return nil
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagFlagPropertyNoDescription       = "FlagPropertyNoDescription"
+	tagObjectFlagPropertyNoDescription = "ObjectFlagPropertyNoDescription"
+)

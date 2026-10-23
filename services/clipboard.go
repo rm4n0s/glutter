@@ -106,7 +106,7 @@ func NewClipboard(backend ClipboardBackend) *Clipboard { return &Clipboard{backe
 func (c *Clipboard) SetData(ctx context.Context, data ClipboardData, done func(err error)) {
 	if c == nil || c.backend == nil {
 		if done != nil {
-			done(errClipboardUnavailable())
+			done(errors.New(tagClipboardUnavailable, "the clipboard has no backend"))
 		}
 		return
 	}
@@ -120,14 +120,14 @@ func (c *Clipboard) SetData(ctx context.Context, data ClipboardData, done func(e
 func (c *Clipboard) setRich(ctx context.Context, kind ui.ClipboardKind, data ClipboardData, done func(err error)) {
 	if c == nil || c.backend == nil {
 		if done != nil {
-			done(errClipboardUnavailable())
+			done(errors.New(tagClipboardUnavailable, "the clipboard has no backend"))
 		}
 		return
 	}
 	rich, ok := c.backend.(RichClipboardBackend)
 	if !ok {
 		if done != nil {
-			done(errClipboardUnavailable())
+			done(errors.New(tagClipboardUnavailable, "the clipboard has no backend"))
 		}
 		return
 	}
@@ -136,12 +136,12 @@ func (c *Clipboard) setRich(ctx context.Context, kind ui.ClipboardKind, data Cli
 
 func (c *Clipboard) getRich(ctx context.Context, kind ui.ClipboardKind, format string, done func(data *ClipboardData, err error)) {
 	if c == nil || c.backend == nil {
-		done(nil, errClipboardUnavailable())
+		done(nil, errors.New(tagClipboardUnavailable, "the clipboard has no backend"))
 		return
 	}
 	rich, ok := c.backend.(RichClipboardBackend)
 	if !ok {
-		done(nil, errClipboardUnavailable())
+		done(nil, errors.New(tagClipboardUnavailable, "the clipboard has no backend"))
 		return
 	}
 	rich.GetClipboard(ctx, kind, format, func(content ui.ClipboardContent, err error) {
@@ -184,7 +184,7 @@ func (c *Clipboard) GetPrimaryData(ctx context.Context, format string, done func
 // Flutter: services/clipboard.dart Clipboard.getData
 func (c *Clipboard) GetData(ctx context.Context, format string, done func(data *ClipboardData, err error)) {
 	if c == nil || c.backend == nil {
-		done(nil, errClipboardUnavailable())
+		done(nil, errors.New(tagClipboardUnavailable, "the clipboard has no backend"))
 		return
 	}
 	if format == ClipboardKImagePNG || format == ClipboardKURIList {
@@ -214,6 +214,7 @@ func (c *Clipboard) HasStrings(ctx context.Context, done func(has bool, err erro
 	})
 }
 
-func errClipboardUnavailable() error {
-	return errors.New("ClipboardUnavailable", "the clipboard has no backend")
-}
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagClipboardUnavailable = "ClipboardUnavailable"
+)

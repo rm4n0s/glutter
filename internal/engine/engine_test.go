@@ -374,7 +374,7 @@ func TestRunErrors(t *testing.T) {
 	})
 	t.Run("the window cannot be made", func(t *testing.T) {
 		h := newHarness(t, map[string]string{"DISPLAY": ":0"})
-		want := errors.New("X11WindowFailed", "XCreateWindow failed")
+		want := errors.New(tagX11WindowFailed, "XCreateWindow failed")
 		fw := &failingWindow{conn: h.c, err: want}
 		h.cfg.connect = func() (connection, error) { return fw, nil }
 		err := Run(context.Background(), h.cfg)
@@ -385,7 +385,7 @@ func TestRunErrors(t *testing.T) {
 	})
 	t.Run("the renderer fails on the first frame", func(t *testing.T) {
 		h := newHarness(t, map[string]string{"DISPLAY": ":0"})
-		h.r.err = errors.New("EGLNoConfig", "no config")
+		h.r.err = errors.New(tagEGLNoConfig, "no config")
 		h.c.Inject(metrics(10, 10))
 		h.c.Inject(fake.FrameEvent{View: 0})
 		done := h.run(t)
@@ -396,7 +396,7 @@ func TestRunErrors(t *testing.T) {
 	})
 	t.Run("a failure to close is reported when nothing else failed", func(t *testing.T) {
 		h := newHarness(t, map[string]string{"DISPLAY": ":0"})
-		h.c.closeErr = errors.New("LoopSyscallFailed", "close")
+		h.c.closeErr = errors.New(tagLoopSyscallFailed, "close")
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 		assertRoute(t, Run(ctx, h.cfg), "LoopSyscallFailed", "LoopSyscallFailed")
@@ -404,14 +404,14 @@ func TestRunErrors(t *testing.T) {
 	t.Run("a failure to close does not hide the earlier failure", func(t *testing.T) {
 		h := newHarness(t, nil)
 		h.cfg.connect = func() (connection, error) { return h.c, nil }
-		h.c.closeErr = errors.New("LoopSyscallFailed", "close")
+		h.c.closeErr = errors.New(tagLoopSyscallFailed, "close")
 		h.cfg.Getenv = func(k string) string {
 			if k == "DISPLAY" {
 				return ":0"
 			}
 			return ""
 		}
-		h.r.err = errors.New("EGLInitFailed", "no display")
+		h.r.err = errors.New(tagEGLInitFailed, "no display")
 		h.c.Inject(metrics(10, 10))
 		h.c.Inject(fake.FrameEvent{View: 0})
 		assertRoute(t, result(t, h.run(t)), "EGLInitFailed", "EGLInitFailed")
@@ -865,3 +865,11 @@ func TestTextInputReachesThePlatformAndBack(t *testing.T) {
 		t.Errorf("window text input = %+v, want %+v", st, want)
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagEGLInitFailed     = "EGLInitFailed"
+	tagEGLNoConfig       = "EGLNoConfig"
+	tagLoopSyscallFailed = "LoopSyscallFailed"
+	tagX11WindowFailed   = "X11WindowFailed"
+)

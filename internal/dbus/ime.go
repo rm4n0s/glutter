@@ -181,7 +181,7 @@ func OpenInputMethod(ctx context.Context, session Bus, opts IMEOptions, events f
 		}
 		tried = append(tried, name)
 	}
-	return nil, errors.New("InputMethodUnavailable", "neither IBus nor Fcitx5 is running", "tried", strings.Join(tried, ","))
+	return nil, errors.New(tagInputMethodUnavailable, "neither IBus nor Fcitx5 is running", "tried", strings.Join(tried, ","))
 }
 
 // nameHasOwner reports whether a service owns the well-known name on the bus.
@@ -250,3 +250,8 @@ func OpenSessionInputMethod(ctx context.Context, opts IMEOptions, events func(IM
 	}
 	return ownedBus{InputMethod: im, bus: bus}, nil
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagInputMethodUnavailable = "InputMethodUnavailable"
+)

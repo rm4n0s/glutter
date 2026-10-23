@@ -398,7 +398,7 @@ type ResizeImageOpts struct {
 func NewResizeImage(imageProvider ImageProvider, opts ...ResizeImageOpts) *ResizeImage {
 	o := firstOpts(opts)
 	if foundation.DebugMode && o.Width.IsNone() && o.Height.IsNone() {
-		panic(errors.New("ResizeImageNoSize", "a ResizeImage needs a width or a height"))
+		panic(errors.New(tagResizeImageNoSize, "a ResizeImage needs a width or a height"))
 	}
 	if o.Policy == ResizeImagePolicyUnspecified {
 		o.Policy = ResizeImagePolicyExact
@@ -435,7 +435,7 @@ func (r *ResizeImage) LoadImage(binding *PaintingBinding, key any, decode ImageD
 	k := key.(ResizeImageKey)
 	decodeResize := func(ctx context.Context, data []byte, getTargetSize TargetImageSizeCallback) (*ui.Codec, error) {
 		if getTargetSize != nil {
-			return nil, errors.New("ResizeImageComposed", "ResizeImage cannot be composed with another ImageProvider that applies getTargetSize")
+			return nil, errors.New(tagResizeImageComposed, "ResizeImage cannot be composed with another ImageProvider that applies getTargetSize")
 		}
 		return decode(ctx, data, func(intrinsicWidth, intrinsicHeight int) TargetImageSize {
 			return r.targetSize(intrinsicWidth, intrinsicHeight)
@@ -501,15 +501,6 @@ func (r *ResizeImage) targetSize(intrinsicWidth, intrinsicHeight int) TargetImag
 		}
 		return TargetImageSize{targetWidth, targetHeight}
 	}
-}
-
-// NetworkImageLoadException is the error NetworkImage fails with when the server
-// answers with a status other than 200.
-//
-// Flutter: painting/image_provider.dart NetworkImageLoadException
-func newNetworkImageLoadError(statusCode int, uri string) error {
-	return errors.New("NetworkImageLoadFailed", "HTTP request failed, statusCode: "+strconv.Itoa(statusCode)+", "+uri,
-		"statusCode", statusCode, "uri", uri)
 }
 
 // NetworkImageKey is the key of a NetworkImage: the URL, the scale and the
@@ -602,18 +593,21 @@ func (n *NetworkImage) LoadImage(binding *PaintingBinding, key any, decode Image
 func (n *NetworkImage) loadAsync(ctx context.Context, client *http.Client, chunks chan<- ImageChunkEvent, decode ImageDecoderCallback) (*ui.Codec, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, n.URL, nil)
 	if err != nil {
-		return nil, errors.NewErr("NetworkImageRequestFailed", err).SetMetadata("url", n.URL)
+		return nil, errors.NewErr(tagNetworkImageRequestFailed, err).SetMetadata("url", n.URL)
 	}
 	for name, value := range n.Headers {
 		req.Header.Add(name, value)
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, errors.NewErr("NetworkImageRequestFailed", err).SetMetadata("url", n.URL)
+		return nil, errors.NewErr(tagNetworkImageRequestFailed, err).SetMetadata("url", n.URL)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return nil, newNetworkImageLoadError(resp.StatusCode, req.URL.String())
+		// NetworkImageLoadException: the error NetworkImage fails with when the server
+		// answers with a status other than 200.
+		return nil, errors.New(tagNetworkImageLoadFailed, "HTTP request failed, statusCode: "+strconv.Itoa(resp.StatusCode)+", "+req.URL.String(),
+			"statusCode", resp.StatusCode, "uri", req.URL.String())
 	}
 	total := foundation.None[int]()
 	if resp.ContentLength >= 0 {
@@ -634,11 +628,11 @@ func (n *NetworkImage) loadAsync(ctx context.Context, client *http.Client, chunk
 			break
 		}
 		if rerr != nil {
-			return nil, errors.NewErr("NetworkImageRequestFailed", rerr).SetMetadata("url", n.URL)
+			return nil, errors.NewErr(tagNetworkImageRequestFailed, rerr).SetMetadata("url", n.URL)
 		}
 	}
 	if len(data) == 0 {
-		return nil, errors.New("NetworkImageEmpty", "NetworkImage is an empty file: "+req.URL.String(), "url", n.URL)
+		return nil, errors.New(tagNetworkImageEmpty, "NetworkImage is an empty file: "+req.URL.String(), "url", n.URL)
 	}
 	return decode(ctx, data, nil)
 }
@@ -687,9 +681,9 @@ func (f FileImage) LoadImage(binding *PaintingBinding, key any, decode ImageDeco
 		data, err := os.ReadFile(f.Path)
 		if err == nil && len(data) == 0 {
 			binding.Post(func() { binding.ImageCache().Evict(key) })
-			err = errors.New("ImageFileEmpty", f.Path+" is empty and cannot be loaded as an image.", "path", f.Path)
+			err = errors.New(tagImageFileEmpty, f.Path+" is empty and cannot be loaded as an image.", "path", f.Path)
 		} else if err != nil {
-			err = errors.NewErr("ImageFileReadFailed", err).SetMetadata("path", f.Path)
+			err = errors.NewErr(tagImageFileReadFailed, err).SetMetadata("path", f.Path)
 		}
 		if err != nil {
 			ch <- CodecResult{Err: err}
@@ -829,7 +823,7 @@ func chooseBundle(binding *PaintingBinding, own services.AssetBundle, configurat
 	case binding.AssetBundle() != nil:
 		return binding.AssetBundle(), nil
 	}
-	return nil, errors.New("AssetBundleMissing", "no asset bundle: the provider, the ImageConfiguration and the PaintingBinding have none")
+	return nil, errors.New(tagAssetBundleMissing, "no asset bundle: the provider, the ImageConfiguration and the PaintingBinding have none")
 }
 
 // ObtainKey makes the key from the bundle, the asset name and the scale.
@@ -860,3 +854,15 @@ func (e *ExactAssetImage) String() string {
 	}
 	return `ExactAssetImage(name: "` + e.KeyName() + `", scale: ` + dartfmt.ToStringAsFixed(e.Scale, 1) + ", bundle: " + b + ")"
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagAssetBundleMissing        = "AssetBundleMissing"
+	tagImageFileEmpty            = "ImageFileEmpty"
+	tagImageFileReadFailed       = "ImageFileReadFailed"
+	tagNetworkImageEmpty         = "NetworkImageEmpty"
+	tagNetworkImageLoadFailed    = "NetworkImageLoadFailed"
+	tagNetworkImageRequestFailed = "NetworkImageRequestFailed"
+	tagResizeImageComposed       = "ResizeImageComposed"
+	tagResizeImageNoSize         = "ResizeImageNoSize"
+)

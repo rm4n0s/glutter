@@ -132,7 +132,7 @@ func NewBorderSide(opts ...BorderSideOpts) BorderSide {
 		s.Style = BorderStyleSolid
 	}
 	if foundation.DebugMode && !(s.Width >= 0) {
-		panic(errors.New("BorderSideWidthNegative", "the width of a border side must not be negative", "width", s.Width))
+		panic(errors.New(tagBorderSideWidthNegative, "the width of a border side must not be negative", "width", s.Width))
 	}
 	return s
 }
@@ -208,7 +208,7 @@ func BorderSideCanMerge(a, b BorderSide) bool {
 // Flutter: painting/borders.dart BorderSide.merge
 func BorderSideMerge(a, b BorderSide) BorderSide {
 	if foundation.DebugMode && !BorderSideCanMerge(a, b) {
-		panic(errors.New("BorderSideCannotMerge", "the border sides have different styles or colors"))
+		panic(errors.New(tagBorderSideCannotMerge, "the border sides have different styles or colors"))
 	}
 	aNone, bNone := a.isNone(), b.isNone()
 	switch {
@@ -349,7 +349,7 @@ func (ShapeBorderDefaults) PreferPaintInterior() bool { return false }
 // Flutter: painting/borders.dart ShapeBorder.paintInterior
 func (ShapeBorderDefaults) PaintInterior(*ui.Canvas, ui.Rect, *ui.Paint, ui.TextDirection) {
 	if foundation.DebugMode {
-		panic(errors.New("ShapeBorderNoPaintInterior",
+		panic(errors.New(tagShapeBorderNoPaintInterior,
 			"PreferPaintInterior returns false, so it is an error to call PaintInterior"))
 	}
 }
@@ -728,3 +728,10 @@ func PaintBorder(canvas *ui.Canvas, rect ui.Rect, opts ...BorderPaintOpts) {
 //
 // Flutter: painting/borders.dart BorderSide.toString
 func (s BorderSide) String() string { return foundation.DiagnosticableString(s) }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagBorderSideCannotMerge      = "BorderSideCannotMerge"
+	tagBorderSideWidthNegative    = "BorderSideWidthNegative"
+	tagShapeBorderNoPaintInterior = "ShapeBorderNoPaintInterior"
+)

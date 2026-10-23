@@ -81,10 +81,10 @@ func NewContainer(child Widget, opts ...ContainerOpts) *Container {
 	}
 	if foundation.DebugMode {
 		if o.Margin != nil && !o.Margin.IsNonNegative() {
-			panic(errors.New("ContainerNegativePadding", "the margin of a Container must not be negative"))
+			panic(errors.New(tagContainerNegativePadding, "the margin of a Container must not be negative"))
 		}
 		if o.Padding != nil && !o.Padding.IsNonNegative() {
-			panic(errors.New("ContainerNegativePadding", "the padding of a Container must not be negative"))
+			panic(errors.New(tagContainerNegativePadding, "the padding of a Container must not be negative"))
 		}
 		if o.Decoration != nil {
 			o.Decoration.DebugAssertIsValid()
@@ -93,10 +93,10 @@ func NewContainer(child Widget, opts ...ContainerOpts) *Container {
 			c.DebugAssertIsValid()
 		}
 		if o.Decoration == nil && o.ClipBehavior != ui.ClipNone {
-			panic(errors.New("ContainerClipWithoutDecoration", "a Container with a clipBehavior needs a decoration to clip to"))
+			panic(errors.New(tagContainerClipWithoutDecoration, "a Container with a clipBehavior needs a decoration to clip to"))
 		}
 		if o.Color.IsSome() && o.Decoration != nil {
-			panic(errors.New("ContainerColorAndDecoration", "cannot provide both a color and a decoration; the color argument is just a shorthand for a decoration with the color; to use both a color and other decoration properties, set the color in the BoxDecoration instead"))
+			panic(errors.New(tagContainerColorAndDecoration, "cannot provide both a color and a decoration; the color argument is just a shorthand for a decoration with the color; to use both a color and other decoration properties, set the color in the BoxDecoration instead"))
 		}
 	}
 	constraints := o.Constraints
@@ -253,3 +253,10 @@ func (c *decorationClipper) ShouldReclip(old rendering.CustomClipper[*ui.Path]) 
 	o := old.(*decorationClipper)
 	return o.decoration != c.decoration || o.textDirection != c.textDirection
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagContainerClipWithoutDecoration = "ContainerClipWithoutDecoration"
+	tagContainerColorAndDecoration    = "ContainerColorAndDecoration"
+	tagContainerNegativePadding       = "ContainerNegativePadding"
+)

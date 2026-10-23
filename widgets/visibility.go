@@ -59,15 +59,15 @@ func NewVisibility(child Widget, opts ...VisibilityOpts) *Visibility {
 	if foundation.DebugMode {
 		switch {
 		case o.MaintainAnimation && !o.MaintainState:
-			panic(visibilityInvalid("cannot maintain animations if the state is not also maintained"))
+			panic(errors.New(tagVisibilityMaintainInvalid, "cannot maintain animations if the state is not also maintained"))
 		case o.MaintainSize && !o.MaintainAnimation:
-			panic(visibilityInvalid("cannot maintain size if animations are not maintained"))
+			panic(errors.New(tagVisibilityMaintainInvalid, "cannot maintain size if animations are not maintained"))
 		case o.MaintainSemantics && !o.MaintainSize:
-			panic(visibilityInvalid("cannot maintain semantics if size is not maintained"))
+			panic(errors.New(tagVisibilityMaintainInvalid, "cannot maintain semantics if size is not maintained"))
 		case o.MaintainInteractivity && !o.MaintainSize:
-			panic(visibilityInvalid("cannot maintain interactivity if size is not maintained"))
+			panic(errors.New(tagVisibilityMaintainInvalid, "cannot maintain interactivity if size is not maintained"))
 		case o.MaintainFocusability && !o.MaintainState:
-			panic(visibilityInvalid("cannot maintain focusability if the state is not also maintained"))
+			panic(errors.New(tagVisibilityMaintainInvalid, "cannot maintain focusability if the state is not also maintained"))
 		}
 	}
 	if o.Replacement == nil {
@@ -76,10 +76,6 @@ func NewVisibility(child Widget, opts ...VisibilityOpts) *Visibility {
 	return &Visibility{StatelessWidget: NewStatelessWidgetBase(WidgetOpts{Key: o.Key}), child: child, replacement: o.Replacement,
 		visible: o.Visible.OrElse(true), maintainState: o.MaintainState, maintainAnimation: o.MaintainAnimation, maintainSize: o.MaintainSize,
 		maintainSemantics: o.MaintainSemantics, maintainInteractivity: o.MaintainInteractivity, maintainFocusability: o.MaintainFocusability}
-}
-
-func visibilityInvalid(msg string) error {
-	return errors.New("VisibilityMaintainInvalid", msg)
 }
 
 // NewVisibilityMaintain creates a Visibility that keeps everything of the child
@@ -264,3 +260,8 @@ func (r *visibilityBox) Paint(context *rendering.PaintingContext, offset ui.Offs
 	}
 	r.RenderProxyBox.Paint(context, offset)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagVisibilityMaintainInvalid = "VisibilityMaintainInvalid"
+)

@@ -575,7 +575,7 @@ func NewAspectRatio(aspectRatio float64, child Widget, opts ...AspectRatioOpts) 
 	o := firstOpts(opts)
 	w := &AspectRatio{SingleChildRenderObjectWidget: NewSingleChildRenderObjectWidgetBase(child, WidgetOpts(o)), aspectRatio: aspectRatio}
 	if foundation.DebugMode && !(aspectRatio > 0) {
-		panic(errors.New("AspectRatioInvalid", "the aspect ratio must be above zero", "aspectRatio", aspectRatio))
+		panic(errors.New(tagAspectRatioInvalid, "the aspect ratio must be above zero", "aspectRatio", aspectRatio))
 	}
 	return w
 }
@@ -870,3 +870,8 @@ func (w *FractionalTranslation) UpdateRenderObject(bc BuildContext, renderObject
 	r.SetTranslation(w.translation)
 	r.TransformHitTests = w.transformHitTests.OrElse(true)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagAspectRatioInvalid = "AspectRatioInvalid"
+)

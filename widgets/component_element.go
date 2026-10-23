@@ -85,7 +85,7 @@ func (c *ComponentElement) PerformRebuild() {
 		foundation.GuardLazy(report, foundation.BuildPanicked, c.buildContext, c.panicInfo, func() {
 			built = c.cself.Build()
 			if foundation.DebugMode && built == nil {
-				panic(errors.New("BuildReturnedNil",
+				panic(errors.New(tagBuildReturnedNil,
 					"a build function returned nil; build functions must never return nil, to return an empty space that causes the building widget to fill available room, return a Container{}; to return an empty space that takes as little room as possible, return a SizedBox{}",
 					"widget", foundation.RuntimeTypeName(c.widget)))
 			}
@@ -189,18 +189,18 @@ func NewStatefulElement(w statefulWidget) *StatefulElement {
 	InitComponentElement(&e.ComponentElement, e, w)
 	state := w.CreateState()
 	if state == nil {
-		panic(errors.New("CreateStateReturnedNil", "CreateState returned nil",
+		panic(errors.New(tagCreateStateReturnedNil, "CreateState returned nil",
 			"widget", foundation.RuntimeTypeName(w)))
 	}
 	si := state.stateInternals()
 	sd := si.data()
 	if sd.element != nil || si.widgetAny() != nil {
-		panic(errors.New("CreateStateReturnedUsedState",
+		panic(errors.New(tagCreateStateReturnedUsedState,
 			"CreateState returned an old or invalid state instance, which already belongs to a widget; it must return a new State every time",
 			"widget", foundation.RuntimeTypeName(w), "state", foundation.RuntimeTypeName(state)))
 	}
 	if !si.bind(w) {
-		panic(errors.New("CreateStateWrongType",
+		panic(errors.New(tagCreateStateWrongType,
 			"CreateState must return a State for the type of its widget, but it returned a state of another type",
 			"widget", foundation.RuntimeTypeName(w), "state", foundation.RuntimeTypeName(state)))
 	}
@@ -221,7 +221,7 @@ func NewStatefulElement(w statefulWidget) *StatefulElement {
 // Flutter: widgets/framework.dart StatefulElement.state
 func (e *StatefulElement) State() State {
 	if e.state == nil {
-		panic(errors.New("ElementStateUnmounted", "the state of an element is gone once the element is unmounted"))
+		panic(errors.New(tagElementStateUnmounted, "the state of an element is gone once the element is unmounted"))
 	}
 	return e.state
 }
@@ -362,3 +362,12 @@ func (e *StatefulElement) DebugFillProperties(properties *foundation.DiagnosticP
 	properties.Add(foundation.NewDiagnosticsProperty("state", e.state,
 		foundation.DiagnosticsPropertyOpts{DefaultValue: foundation.DefaultNull}))
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagBuildReturnedNil             = "BuildReturnedNil"
+	tagCreateStateReturnedNil       = "CreateStateReturnedNil"
+	tagCreateStateReturnedUsedState = "CreateStateReturnedUsedState"
+	tagCreateStateWrongType         = "CreateStateWrongType"
+	tagElementStateUnmounted        = "ElementStateUnmounted"
+)

@@ -101,8 +101,8 @@ func TestBuildFailures(t *testing.T) {
 		meta string
 	}{
 		{"no package", BuildOptions{OutDir: t.TempDir()}, "WebBuildFailed", "Build", ""},
-		{"does not compile", BuildOptions{Package: "./testdata/broken", OutDir: t.TempDir()}, "WebBuildFailed", "Build", "undefined"},
-		{"no such package", BuildOptions{Package: "./testdata/nothing", OutDir: t.TempDir()}, "WebBuildFailed", "Build", "nothing"},
+		{"does not compile", BuildOptions{Package: "./testdata/broken", OutDir: t.TempDir()}, "WebBuildFailed", "Build->runGo", "undefined"},
+		{"no such package", BuildOptions{Package: "./testdata/nothing", OutDir: t.TempDir()}, "WebBuildFailed", "Build->runGo", "nothing"},
 		{"output directory is a file", BuildOptions{Package: "./testdata/hello", OutDir: filepath.Join(fileIn(t), "sub")}, "WebWriteFailed", "Build", ""},
 	}
 	for _, tc := range tests {

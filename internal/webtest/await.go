@@ -60,7 +60,7 @@ func Await(ctx context.Context, o ShotOptions, kind string) (Result, error) {
 				return res, nil
 			}
 			if res.Kind == "exit" {
-				return Result{}, errors.New("WebAppFailed", "the app ended before it reported "+strconv.Quote(kind),
+				return Result{}, errors.New(tagWebAppFailed, "the app ended before it reported "+strconv.Quote(kind),
 					"exit code", strconv.Itoa(res.ExitCode), "message", res.Message, "shown", res.Shown, "log", strings.TrimSpace(res.Log))
 			}
 		case <-proc.Done():
@@ -68,9 +68,16 @@ func Await(ctx context.Context, o ShotOptions, kind string) (Result, error) {
 			if proc.Err != nil {
 				md = append(md, "error", proc.Err.Error())
 			}
-			return Result{}, errors.New("BrowserExited", "the browser ended before the result came", md...)
+			return Result{}, errors.New(tagBrowserExited, "the browser ended before the result came", md...)
 		case <-ctx.Done():
-			return Result{}, errors.NewErr("BrowserTimeout", ctx.Err()).SetMetadata("waiting for", "the result "+kind)
+			return Result{}, errors.NewErr(tagBrowserTimeout, ctx.Err()).SetMetadata("waiting for", "the result "+kind)
 		}
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagBrowserExited  = "BrowserExited"
+	tagBrowserTimeout = "BrowserTimeout"
+	tagWebAppFailed   = "WebAppFailed"
+)

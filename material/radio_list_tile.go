@@ -123,7 +123,7 @@ type RadioListTile[T comparable] struct {
 func NewRadioListTile[T comparable](value T, opts ...RadioListTileOpts[T]) *RadioListTile[T] {
 	o := firstOpts(opts)
 	if foundation.DebugMode && o.IsThreeLine.OrElse(false) && o.Subtitle == nil {
-		panic(errors.New("RadioListTileThreeLineNoSubtitle", "a three line list tile needs a subtitle"))
+		panic(errors.New(tagRadioListTileThreeLineNoSubtitle, "a three line list tile needs a subtitle"))
 	}
 	return &RadioListTile[T]{StatefulWidget: widgets.NewStatefulWidgetBase(widgets.WidgetOpts{Key: o.Key}), value: value, o: o}
 }
@@ -250,7 +250,7 @@ func (s *radioListTileState[T]) Build(bc widgets.BuildContext) widgets.Widget {
 	o := w.o
 	if foundation.DebugMode && o.Enabled.OrElse(false) && o.OnChanged == nil {
 		if _, ok := widgets.RadioGroupMaybeOf[T](bc); !ok {
-			panic(errors.New("RadioListTileNoRegistry", "Radio is enabled but has no RadioListTile.onChange or registry above"))
+			panic(errors.New(tagRadioListTileNoRegistry, "Radio is enabled but has no RadioListTile.onChange or registry above"))
 		}
 	}
 	enabled := s.Enabled()
@@ -315,3 +315,9 @@ func (r *radioListTileRegistry[T]) GroupValue() foundation.Opt[T] {
 func (r *radioListTileRegistry[T]) RegisterClient(widgets.RadioClient[T])   {}
 func (r *radioListTileRegistry[T]) UnregisterClient(widgets.RadioClient[T]) {}
 func (r *radioListTileRegistry[T]) OnChanged(value foundation.Opt[T])       { r.state.handleChange(value) }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagRadioListTileNoRegistry          = "RadioListTileNoRegistry"
+	tagRadioListTileThreeLineNoSubtitle = "RadioListTileThreeLineNoSubtitle"
+)

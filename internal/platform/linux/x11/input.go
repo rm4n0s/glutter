@@ -105,7 +105,7 @@ type inputState struct {
 func newInputState(p *Platform) *inputState {
 	x, err := loadXiOnce()
 	if err != nil {
-		slog.Warn("XInput2 is not available: there is no keyboard and pointer input", "error", err)
+		slog.Warn("XInput2 is not available: there is no keyboard and pointer input", "err", err)
 		return nil
 	}
 	name := dl.CString("XInputExtension")
@@ -145,19 +145,19 @@ func (in *inputState) setUpKeyboard() {
 	p := in.p
 	ctx, err := xkb.NewContext()
 	if err != nil {
-		slog.Warn("the keyboard cannot be used", "error", err)
+		slog.Warn("the keyboard cannot be used", "err", err)
 		return
 	}
 	conn := p.x.getXCBConnection(p.display)
 	keymap, device, err := ctx.KeymapFromX11(conn)
 	if err != nil {
-		slog.Warn("the keymap of the X server cannot be read: keys are ignored", "error", err)
+		slog.Warn("the keymap of the X server cannot be read: keys are ignored", "err", err)
 		ctx.Close()
 		return
 	}
 	state, err := keymap.NewStateFromX11(conn, device)
 	if err != nil {
-		slog.Warn("the keyboard state cannot be read: keys are ignored", "error", err)
+		slog.Warn("the keyboard state cannot be read: keys are ignored", "err", err)
 		keymap.Close()
 		ctx.Close()
 		return
@@ -165,7 +165,7 @@ func (in *inputState) setUpKeyboard() {
 	// A locale without a compose table only loses dead keys and compose sequences.
 	compose, err := ctx.NewCompose(xkb.LocaleFromEnv(os.Getenv))
 	if err != nil {
-		slog.Warn("no compose table: dead keys and compose sequences are off", "error", err)
+		slog.Warn("no compose table: dead keys and compose sequences are off", "err", err)
 		compose = nil
 	}
 	in.xkbCtx = ctx

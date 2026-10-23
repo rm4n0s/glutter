@@ -70,7 +70,7 @@ func ScrollNotificationObserverMaybeOf(bc BuildContext) *ScrollNotificationObser
 func ScrollNotificationObserverOf(bc BuildContext) *ScrollNotificationObserverState {
 	s := ScrollNotificationObserverMaybeOf(bc)
 	if s == nil && foundation.DebugMode {
-		panic(errors.New("ScrollNotificationObserverMissing",
+		panic(errors.New(tagScrollNotificationObserverMissing,
 			"ScrollNotificationObserverOf() was called with a context that does not contain a ScrollNotificationObserver widget; no ScrollNotificationObserver widget ancestor could be found starting from the context that was passed",
 			"context", bc.(Element).String()))
 	}
@@ -104,7 +104,7 @@ type ScrollNotificationObserverState struct {
 
 func (s *ScrollNotificationObserverState) assertNotDisposed() {
 	if foundation.DebugMode && s.disposed {
-		panic(errors.New("ScrollNotificationObserverDisposed",
+		panic(errors.New(tagScrollNotificationObserverDisposed,
 			"a ScrollNotificationObserverState was used after being disposed; once you have called Dispose() on it, it can no longer be used"))
 	}
 }
@@ -155,7 +155,7 @@ func (s *ScrollNotificationObserverState) notifyListeners(notification ScrollNot
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
-					WidgetsBindingOf(s.Context()).ErrorReporter()(errors.NewErrf("ScrollNotificationObserverListenerFailed",
+					WidgetsBindingOf(s.Context()).ErrorReporter()(errors.NewErrf(tagScrollNotificationObserverListenerFailed,
 						"%v while dispatching notifications for ScrollNotificationObserverState", r))
 				}
 			}()
@@ -192,3 +192,10 @@ func (s *ScrollNotificationObserverState) Dispose() {
 	s.listeners = nil
 	s.disposed = true
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagScrollNotificationObserverDisposed       = "ScrollNotificationObserverDisposed"
+	tagScrollNotificationObserverListenerFailed = "ScrollNotificationObserverListenerFailed"
+	tagScrollNotificationObserverMissing        = "ScrollNotificationObserverMissing"
+)

@@ -365,8 +365,10 @@ func NewWidgetsBinding(ctx context.Context, d *ui.PlatformDispatcher, opts ...Wi
 }
 
 // DefaultErrorReporter makes the error reporter that logs each error at the
-// error level, with its ToJson as an attribute so that it can be replayed in a
-// test with errors.FromJson. A nil logger means slog.Default().
+// error level, with the error itself as the attribute "err". An *errors.Error
+// logs its tag, route, metadata and stack, so that a test can replay the log
+// entry through errors.ErrorJson and errors.FromJson. A nil logger means
+// slog.Default().
 //
 // Flutter: foundation/assertions.dart FlutterError.presentError
 func DefaultErrorReporter(logger *slog.Logger) foundation.ErrorReporter {
@@ -376,14 +378,10 @@ func DefaultErrorReporter(logger *slog.Logger) foundation.ErrorReporter {
 			l = slog.Default()
 		}
 		if appErr, ok := errors.FromError(err); ok {
-			if j, jerr := appErr.ToJson(); jerr == nil {
-				l.Error("glutter: "+appErr.Tag+": "+appErr.Message, "error", j)
-			} else {
-				l.Error("glutter: "+appErr.Tag+": "+appErr.Message, "error", appErr)
-			}
+			l.Error("glutter: "+appErr.Tag+": "+appErr.Message, "err", appErr)
 			return
 		}
-		l.Error("glutter: "+err.Error(), "error", err)
+		l.Error("glutter: "+err.Error(), "err", err)
 	}
 }
 
@@ -396,7 +394,7 @@ func WidgetsBindingOf(bc BuildContext) *WidgetsBinding {
 	if b := MaybeWidgetsBindingOf(bc); b != nil {
 		return b
 	}
-	panic(errors.New("WidgetsBindingMissing",
+	panic(errors.New(tagWidgetsBindingMissing,
 		"WidgetsBindingOf was called with a context whose build owner does not belong to a WidgetsBinding; widgets run by RunApp and by gluttertest always have one"))
 }
 
@@ -694,7 +692,7 @@ func (b *WidgetsBinding) ExitApplication(exitType ui.AppExitType) ui.AppExitResp
 
 func (b *WidgetsBinding) handleBuildScheduled() {
 	if foundation.DebugMode && b.debugBuildingDirtyElements {
-		panic(errors.New("BuildScheduledDuringFrame",
+		panic(errors.New(tagBuildScheduledDuringFrame,
 			"while the widget tree was being built, laid out, and painted, a new frame was scheduled to rebuild the widget tree; this might be because SetState was called from a layout or paint callback; if a change is needed to the widget tree, it should be applied as the tree is being built; scheduling a change for the subsequent frame instead results in an interface that lags behind by one frame; if this was done to make your build dependent on a size measured at layout time, consider using a LayoutBuilder, CustomSingleChildLayout, or CustomMultiChildLayout; if, on the other hand, the one frame delay is the desired effect, for example because this is an animation, consider scheduling the frame in a post-frame callback using SchedulerBinding.AddPostFrameCallback or using an AnimationController to trigger the animation"))
 	}
 	b.scheduler.EnsureVisualUpdate()
@@ -750,7 +748,7 @@ func (b *WidgetsBinding) WaitUntilFirstFrameRasterized() <-chan struct{} { retur
 func (b *WidgetsBinding) WrapWithDefaultView(root Widget) Widget {
 	view := b.d.ImplicitView()
 	if view == nil {
-		panic(errors.New("ImplicitViewMissing",
+		panic(errors.New(tagImplicitViewMissing,
 			"the app requested a view, but the platform did not provide one; this is likely because the app called RunApp to render its root widget, which expects the platform to provide a default view to render into (the implicit view); try using RunWidget instead of RunApp, which allows you to provide a View widget without requiring a default view"))
 	}
 	return NewView(view, root)
@@ -898,7 +896,7 @@ func (e *RootElement) ForgetChild(child Element) {
 // Flutter: widgets/binding.dart RootElement.mount
 func (e *RootElement) Mount(parent Element, slot any) {
 	if foundation.DebugMode && parent != nil {
-		panic(errors.New("RootElementHasParent", "the root element was mounted with a parent"))
+		panic(errors.New(tagRootElementHasParent, "the root element was mounted with a parent"))
 	}
 	e.ElementBase.Mount(parent, slot)
 	e.rebuild()
@@ -950,3 +948,11 @@ func (e *RootElement) DebugDoingBuild() bool { return false }
 //
 // Flutter: widgets/binding.dart RootElement.debugExpectsRenderObjectForSlot
 func (e *RootElement) DebugExpectsRenderObjectForSlot(any) bool { return false }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagBuildScheduledDuringFrame = "BuildScheduledDuringFrame"
+	tagImplicitViewMissing       = "ImplicitViewMissing"
+	tagRootElementHasParent      = "RootElementHasParent"
+	tagWidgetsBindingMissing     = "WidgetsBindingMissing"
+)

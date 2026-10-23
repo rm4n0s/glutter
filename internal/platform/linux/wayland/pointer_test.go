@@ -513,7 +513,7 @@ func TestCursorFailures(t *testing.T) {
 		c := newCursors(e.p)
 		c.api = nil
 		c.load = func() (*waylandCursor, error) {
-			return nil, errors.New("LibraryLoadFailed", "x", "names", []string{"libwayland-cursor.so.0"}, "dlerror", "missing")
+			return nil, errors.New(tagLibraryLoadFailed, "x", "names", []string{"libwayland-cursor.so.0"}, "dlerror", "missing")
 		}
 		_, _, err := c.find(platform.MouseCursorBasic, 1)
 		if !c.failed {
@@ -751,3 +751,8 @@ func TestEveryCursorHasItsShape(t *testing.T) {
 		}
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagLibraryLoadFailed = "LibraryLoadFailed"
+)

@@ -23,16 +23,16 @@ func generateWeb(d *data) ([]byte, error) {
 		if !ok {
 			continue
 		}
-		usb, hasUSB, err := k.scanCode("usb")
+		usb, hasUSB, err := k.scanCode(name, "usb")
 		if err != nil {
-			return nil, errors.NewErr("KeysDataInvalid", err).SetMetadata("key", name)
+			return nil, err
 		}
 		if !hasUSB {
 			continue
 		}
 		for _, c := range append([]string{code}, k.OtherWebCodes...) {
 			if prev, dup := physical[c]; dup && prev != usb {
-				return nil, errors.New("KeysDuplicate", "two physical keys share a KeyboardEvent.code", "code", c)
+				return nil, errors.New(tagKeysDuplicate, "two physical keys share a KeyboardEvent.code", "code", c)
 			}
 			physical[c] = usb
 		}
@@ -44,7 +44,7 @@ func generateWeb(d *data) ([]byte, error) {
 		k := d.logical[name]
 		for _, web := range k.Names["web"] {
 			if prev, dup := logical[web]; dup && prev != k.Value {
-				return nil, errors.New("KeysDuplicate", "two logical keys share a KeyboardEvent.key", "key", web)
+				return nil, errors.New(tagKeysDuplicate, "two logical keys share a KeyboardEvent.key", "key", web)
 			}
 			logical[web] = k.Value
 		}
@@ -55,7 +55,7 @@ func generateWeb(d *data) ([]byte, error) {
 	for _, key := range sortedKeys(d.webLocations) {
 		names := d.webLocations[key]
 		if len(names) != 4 {
-			return nil, errors.New("KeysDataInvalid", "a web location mapping needs four entries", "key", key)
+			return nil, errors.New(tagKeysDataInvalid, "a web location mapping needs four entries", "key", key)
 		}
 		var ids [4]uint64
 		for i, n := range names {
@@ -64,7 +64,7 @@ func generateWeb(d *data) ([]byte, error) {
 			}
 			l, ok := d.logical[*n]
 			if !ok {
-				return nil, errors.New("KeysGoalUnknown", "a web location mapping names a key that has no logical key", "key", key, "name", *n)
+				return nil, errors.New(tagKeysGoalUnknown, "a web location mapping names a key that has no logical key", "key", key, "name", *n)
 			}
 			ids[i] = l.Value
 		}
@@ -77,11 +77,11 @@ func generateWeb(d *data) ([]byte, error) {
 		p, ok := d.physical[name]
 		code := p.Names["chromium"]
 		if !ok || code == "" {
-			return nil, errors.New("KeysGoalUnknown", "a layout goal names a physical key with no KeyboardEvent.code", "key", name)
+			return nil, errors.New(tagKeysGoalUnknown, "a layout goal names a physical key with no KeyboardEvent.code", "key", name)
 		}
 		l, ok := d.logical[name]
 		if !ok {
-			return nil, errors.New("KeysGoalUnknown", "a layout goal names a key that has no logical key", "key", name)
+			return nil, errors.New(tagKeysGoalUnknown, "a layout goal names a key that has no logical key", "key", name)
 		}
 		goals[code] = goal{name: name, logical: l.Value, mandatory: d.goals[name]}
 	}
@@ -131,7 +131,7 @@ func generateWeb(d *data) ([]byte, error) {
 
 	out, err := format.Source(b.Bytes())
 	if err != nil {
-		return nil, errors.NewErr("KeysFormatFailed", err)
+		return nil, errors.NewErr(tagKeysFormatFailed, err)
 	}
 	return out, nil
 }

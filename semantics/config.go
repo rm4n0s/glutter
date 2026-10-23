@@ -110,7 +110,7 @@ func (c *SemanticsConfiguration) IsSemanticBoundary() bool { return c.isSemantic
 // Flutter: semantics/semantics.dart SemanticsConfiguration.isSemanticBoundary
 func (c *SemanticsConfiguration) SetIsSemanticBoundary(value bool) {
 	if foundation.DebugMode && c.isMergingSemanticsOfDescendants && !value {
-		panic(errors.New("SemanticsBoundaryRequired", "a configuration that merges the semantics of its descendants must be a semantic boundary"))
+		panic(errors.New(tagSemanticsBoundaryRequired, "a configuration that merges the semantics of its descendants must be a semantic boundary"))
 	}
 	c.isSemanticBoundary = value
 }
@@ -150,7 +150,7 @@ func (c *SemanticsConfiguration) IsMergingSemanticsOfDescendants() bool {
 // Flutter: semantics/semantics.dart SemanticsConfiguration.isMergingSemanticsOfDescendants
 func (c *SemanticsConfiguration) SetIsMergingSemanticsOfDescendants(value bool) {
 	if foundation.DebugMode && !c.isSemanticBoundary {
-		panic(errors.New("SemanticsBoundaryRequired", "only a semantic boundary can merge the semantics of its descendants"))
+		panic(errors.New(tagSemanticsBoundaryRequired, "only a semantic boundary can merge the semantics of its descendants"))
 	}
 	c.isMergingSemanticsOfDescendants = value
 	c.annotate()
@@ -173,7 +173,7 @@ func (c *SemanticsConfiguration) addArgumentlessAction(action ui.SemanticsAction
 	c.assertHandler(handler != nil)
 	c.addAction(action, func(args any) {
 		if foundation.DebugMode && args != nil {
-			panic(errors.New("SemanticsActionArgumentsUnexpected", "this action takes no arguments", "action", action.Name()))
+			panic(errors.New(tagSemanticsActionArgumentsUnexpected, "this action takes no arguments", "action", action.Name()))
 		}
 		handler()
 	})
@@ -181,7 +181,7 @@ func (c *SemanticsConfiguration) addArgumentlessAction(action ui.SemanticsAction
 
 func (c *SemanticsConfiguration) assertHandler(ok bool) {
 	if foundation.DebugMode && !ok {
-		panic(errors.New("SemanticsHandlerNil", "the handler of a semantics action must not be nil"))
+		panic(errors.New(tagSemanticsHandlerNil, "the handler of a semantics action must not be nil"))
 	}
 }
 
@@ -1220,7 +1220,7 @@ func (c *SemanticsConfiguration) HeadingLevel() int { return c.headingLevel }
 // Flutter: semantics/semantics.dart SemanticsConfiguration.headingLevel
 func (c *SemanticsConfiguration) SetHeadingLevel(v int) {
 	if foundation.DebugMode && (v < 0 || v > 6) {
-		panic(errors.New("SemanticsHeadingLevelInvalid", "the heading level must be between 0 and 6", "level", v))
+		panic(errors.New(tagSemanticsHeadingLevelInvalid, "the heading level must be between 0 and 6", "level", v))
 	}
 	if v == c.headingLevel {
 		return
@@ -1564,7 +1564,7 @@ func unionStrings(a, b []string) []string {
 // Flutter: semantics/semantics.dart SemanticsConfiguration.absorb
 func (c *SemanticsConfiguration) Absorb(child *SemanticsConfiguration) {
 	if foundation.DebugMode && c.ExplicitChildNodes {
-		panic(errors.New("SemanticsAbsorbWithExplicitChildren", "a configuration with explicit child nodes can not absorb a child"))
+		panic(errors.New(tagSemanticsAbsorbWithExplicitChildren, "a configuration with explicit child nodes can not absorb a child"))
 	}
 	if !child.hasBeenAnnotated {
 		return
@@ -1712,3 +1712,12 @@ func (c *SemanticsConfiguration) Copy() *SemanticsConfiguration {
 	n.minValue, n.maxValue = c.minValue, c.maxValue
 	return n
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagSemanticsAbsorbWithExplicitChildren = "SemanticsAbsorbWithExplicitChildren"
+	tagSemanticsActionArgumentsUnexpected  = "SemanticsActionArgumentsUnexpected"
+	tagSemanticsBoundaryRequired           = "SemanticsBoundaryRequired"
+	tagSemanticsHandlerNil                 = "SemanticsHandlerNil"
+	tagSemanticsHeadingLevelInvalid        = "SemanticsHeadingLevelInvalid"
+)

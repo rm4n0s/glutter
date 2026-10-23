@@ -296,13 +296,13 @@ func NewSnackBar(content widgets.Widget, opts ...SnackBarOpts) *SnackBar {
 	o := firstOpts(opts)
 	if foundation.DebugMode {
 		if o.Elevation.OrElse(0) < 0 {
-			panic(errors.New("SnackBarElevationNegative", "the elevation of a SnackBar must not be negative", "elevation", o.Elevation.Value()))
+			panic(errors.New(tagSnackBarElevationNegative, "the elevation of a SnackBar must not be negative", "elevation", o.Elevation.Value()))
 		}
 		if o.Width.IsSome() && o.Margin != nil {
-			panic(errors.New("SnackBarWidthAndMargin", "Width and margin can not be used together"))
+			panic(errors.New(tagSnackBarWidthAndMargin, "Width and margin can not be used together"))
 		}
 		if t, ok := o.ActionOverflowThreshold.Get(); ok && (t < 0 || t > 1) {
-			panic(errors.New("SnackBarOverflowThreshold", "Action overflow threshold must be between 0 and 1 inclusive", "threshold", t))
+			panic(errors.New(tagSnackBarOverflowThreshold, "Action overflow threshold must be between 0 and 1 inclusive", "threshold", t))
 		}
 	}
 	if o.Persist.IsNone() {
@@ -502,7 +502,7 @@ func (s *snackBarState) Build(bc widgets.BuildContext) widgets.Widget {
 			default:
 				prefix += " SnackBarBehavior.fixed was set by default."
 			}
-			return errors.New("SnackBarFloatingOnly", prefix, "parameter", parameter)
+			return errors.New(tagSnackBarFloatingOnly, prefix, "parameter", parameter)
 		}
 		if o.Margin != nil {
 			panic(message("Margin"))
@@ -740,3 +740,11 @@ func snackBarDefaultsM3(theme *ThemeData) SnackBarThemeData {
 		ActionOverflowThreshold: foundation.Some(0.25),
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagSnackBarElevationNegative = "SnackBarElevationNegative"
+	tagSnackBarFloatingOnly      = "SnackBarFloatingOnly"
+	tagSnackBarOverflowThreshold = "SnackBarOverflowThreshold"
+	tagSnackBarWidthAndMargin    = "SnackBarWidthAndMargin"
+)

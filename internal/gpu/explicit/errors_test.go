@@ -13,7 +13,7 @@ func TestIsSwapchainOutOfDate(t *testing.T) {
 		want bool
 	}{
 		{"the error of an out-of-date swapchain", errors.New(SwapchainOutOfDate, "configure again"), true},
-		{"another tagged error", errors.New("GPUOutOfMemory", "no memory"), false},
+		{"another tagged error", errors.New(tagGPUOutOfMemory, "no memory"), false},
 		{"nil", nil, false},
 	}
 	for _, tt := range tests {
@@ -24,3 +24,8 @@ func TestIsSwapchainOutOfDate(t *testing.T) {
 		})
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagGPUOutOfMemory = "GPUOutOfMemory"
+)

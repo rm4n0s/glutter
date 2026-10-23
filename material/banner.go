@@ -138,7 +138,7 @@ type MaterialBanner struct {
 func NewMaterialBanner(content widgets.Widget, actions []widgets.Widget, opts ...MaterialBannerOpts) *MaterialBanner {
 	o := firstOpts(opts)
 	if foundation.DebugMode && o.Elevation.OrElse(0) < 0 {
-		panic(errors.New("MaterialBannerElevationNegative", "the elevation of a MaterialBanner must not be negative", "elevation", o.Elevation.Value()))
+		panic(errors.New(tagMaterialBannerElevationNegative, "the elevation of a MaterialBanner must not be negative", "elevation", o.Elevation.Value()))
 	}
 	if o.OverflowAlignment == rendering.OverflowBarAlignmentUnspecified {
 		o.OverflowAlignment = rendering.OverflowBarAlignmentEnd
@@ -268,7 +268,7 @@ func (s *materialBannerState) Build(bc widgets.BuildContext) widgets.Widget {
 	widgets.DebugCheckHasMediaQuery(bc)
 	accessibleNavigation := widgets.MediaQueryAccessibleNavigationOf(bc)
 	if foundation.DebugMode && len(w.actions) == 0 {
-		panic(errors.New("MaterialBannerNoActions", "a MaterialBanner needs at least one action"))
+		panic(errors.New(tagMaterialBannerNoActions, "a MaterialBanner needs at least one action"))
 	}
 	theme := ThemeOf(bc)
 	bannerTheme := MaterialBannerThemeOf(bc)
@@ -416,3 +416,9 @@ func materialBannerDefaultsM3(theme *ThemeData) MaterialBannerThemeData {
 		ContentTextStyle: theme.TextTheme.BodyMedium,
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagMaterialBannerElevationNegative = "MaterialBannerElevationNegative"
+	tagMaterialBannerNoActions         = "MaterialBannerNoActions"
+)

@@ -243,7 +243,7 @@ func WidgetsLocalizationsOf(bc BuildContext) WidgetsLocalizations {
 	DebugCheckHasWidgetsLocalizations(bc)
 	l, ok := LocalizationsOf[WidgetsLocalizations](bc)
 	if !ok {
-		panic(errors.New("WidgetsLocalizationsMissing", "no WidgetsLocalizations found; add DefaultWidgetsLocalizationsDelegate to the delegates of the Localizations widget"))
+		panic(errors.New(tagWidgetsLocalizationsMissing, "no WidgetsLocalizations found; add DefaultWidgetsLocalizationsDelegate to the delegates of the Localizations widget"))
 	}
 	return l
 }
@@ -256,7 +256,7 @@ func WidgetsLocalizationsOf(bc BuildContext) WidgetsLocalizations {
 func DebugCheckHasWidgetsLocalizations(bc BuildContext) bool {
 	if foundation.DebugMode {
 		if _, ok := LocalizationsOf[WidgetsLocalizations](bc); !ok {
-			panic(errors.New("WidgetsLocalizationsMissing",
+			panic(errors.New(tagWidgetsLocalizationsMissing,
 				"no WidgetsLocalizations found; the widget needs the localized strings of the widgets library; the app is missing a Localizations widget with DefaultWidgetsLocalizationsDelegate (WidgetsApp and MaterialApp add one)"))
 		}
 	}
@@ -314,7 +314,7 @@ func NewLocalizations(locale ui.Locale, delegates []LocalizationsDelegate, child
 			}
 		}
 		if !found {
-			panic(errors.New("LocalizationsNoWidgetsDelegate", "the delegates of Localizations must include one for WidgetsLocalizations, such as DefaultWidgetsLocalizationsDelegate"))
+			panic(errors.New(tagLocalizationsNoWidgetsDelegate, "the delegates of Localizations must include one for WidgetsLocalizations, such as DefaultWidgetsLocalizationsDelegate"))
 		}
 	}
 	return &Localizations{NewStatefulWidgetBase(WidgetOpts{Key: o.Key}), locale, delegates, child, o.IsApplicationLevel}
@@ -328,7 +328,7 @@ func NewLocalizations(locale ui.Locale, delegates []LocalizationsDelegate, child
 func NewLocalizationsOverride(bc BuildContext, locale foundation.Opt[ui.Locale], delegates []LocalizationsDelegate, child Widget, opts ...LocalizationsOpts) *Localizations {
 	scope, ok := DependOn[*localizationsScope](bc)
 	if !ok {
-		panic(errors.New("LocalizationsMissing", "a Localizations ancestor was not found"))
+		panic(errors.New(tagLocalizationsMissing, "a Localizations ancestor was not found"))
 	}
 	merged := append(append([]LocalizationsDelegate{}, delegates...), scope.state.Widget().delegates...)
 	return NewLocalizations(locale.OrElse(scope.locale), merged, child, opts...)
@@ -361,7 +361,7 @@ func (w *Localizations) CreateState() State { return &localizationsState{} }
 func LocalizationsLocaleOf(bc BuildContext) ui.Locale {
 	l, ok := LocalizationsMaybeLocaleOf(bc)
 	if !ok {
-		panic(errors.New("LocalizationsMissing", "requested the Locale of a context that does not include a Localizations ancestor; the context must be that of a descendant of a Localizations widget"))
+		panic(errors.New(tagLocalizationsMissing, "requested the Locale of a context that does not include a Localizations ancestor; the context must be that of a descendant of a Localizations widget"))
 	}
 	return l
 }
@@ -443,7 +443,7 @@ func (s *localizationsState) load(locale ui.Locale) {
 		}
 		v, err := d.Load(context.Background(), locale)
 		if err != nil {
-			panic(errors.NewErr("LocalizationsLoadFailed", err).SetMetadata("delegate", t.String(), "locale", locale.String()))
+			panic(errors.NewErr(tagLocalizationsLoadFailed, err).SetMetadata("delegate", t.String(), "locale", locale.String()))
 		}
 		loaded[t] = v
 	}
@@ -477,3 +477,11 @@ func (s *localizationsState) Build(bc BuildContext) Widget {
 		locale:          s.locale, state: s, typeToResources: s.typeToResources, generation: s.generation,
 	}, so)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagLocalizationsLoadFailed        = "LocalizationsLoadFailed"
+	tagLocalizationsMissing           = "LocalizationsMissing"
+	tagLocalizationsNoWidgetsDelegate = "LocalizationsNoWidgetsDelegate"
+	tagWidgetsLocalizationsMissing    = "WidgetsLocalizationsMissing"
+)

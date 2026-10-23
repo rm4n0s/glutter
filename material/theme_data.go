@@ -115,7 +115,7 @@ func NewVisualDensity(opts ...VisualDensityOpts) VisualDensity {
 	if foundation.DebugMode {
 		for _, v := range [...]float64{d.Horizontal, d.Vertical} {
 			if v < VisualDensityMinimum || v > VisualDensityMaximum {
-				panic(errors.New("VisualDensityOutOfRange", "the density must be from -4 to 4", "density", v))
+				panic(errors.New(tagVisualDensityOutOfRange, "the density must be from -4 to 4", "density", v))
 			}
 		}
 	}
@@ -634,11 +634,11 @@ func NewThemeData(opts ...ThemeDataOpts) *ThemeData {
 	colorScheme := o.ColorScheme
 	if foundation.DebugMode {
 		if colorScheme != nil && o.Brightness != ui.BrightnessUnspecified && colorScheme.Brightness() != o.Brightness {
-			panic(errors.New("ThemeDataBrightnessMismatch", "ThemeData.brightness does not match ColorScheme.brightness",
+			panic(errors.New(tagThemeDataBrightnessMismatch, "ThemeData.brightness does not match ColorScheme.brightness",
 				"brightness", o.Brightness.String(), "colorScheme", colorScheme.Brightness().String()))
 		}
 		if o.ColorSchemeSeed.IsSome() && (colorScheme != nil || o.PrimarySwatch != nil || o.PrimaryColor.IsSome()) {
-			panic(errors.New("ThemeDataSeedConflict", "colorSchemeSeed cannot be given with colorScheme, primarySwatch or primaryColor"))
+			panic(errors.New(tagThemeDataSeedConflict, "colorSchemeSeed cannot be given with colorScheme, primarySwatch or primaryColor"))
 		}
 	}
 	effectiveBrightness := o.Brightness
@@ -1468,3 +1468,10 @@ func (d *ThemeData) DebugFillProperties(properties *foundation.DiagnosticPropert
 	properties.Add(foundation.NewDiagnosticsProperty("bannerTheme", d.BannerTheme, dbg(def.BannerTheme)))
 	properties.Add(foundation.NewDiagnosticsProperty("appBarTheme", d.AppBarTheme, dbg(def.AppBarTheme)))
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagThemeDataBrightnessMismatch = "ThemeDataBrightnessMismatch"
+	tagThemeDataSeedConflict       = "ThemeDataSeedConflict"
+	tagVisualDensityOutOfRange     = "VisualDensityOutOfRange"
+)

@@ -114,7 +114,7 @@ func (k *keyboard) onKeymap(format wl.WlKeyboardKeymapFormat, fd int, size uint3
 	k.keymapSeen = true
 	defer func() {
 		if err := syscall.Close(fd); err != nil {
-			slog.Warn("closing the keymap file failed", "error", err)
+			slog.Warn("closing the keymap file failed", "err", err)
 		}
 	}()
 	if k.layout != nil {
@@ -128,24 +128,24 @@ func (k *keyboard) onKeymap(format wl.WlKeyboardKeymapFormat, fd int, size uint3
 	if k.ctx == nil {
 		ctx, err := xkb.NewContext()
 		if err != nil {
-			slog.Error("the keyboard cannot be used", "error", err)
+			slog.Error("the keyboard cannot be used", "err", err)
 			return
 		}
 		k.ctx = ctx
 	}
 	keymap, err := k.ctx.KeymapFromFD(fd, size)
 	if err != nil {
-		slog.Error("the keymap of the compositor was rejected", "error", err)
+		slog.Error("the keymap of the compositor was rejected", "err", err)
 		return
 	}
 	// A locale without a compose table only loses dead keys and compose sequences.
 	compose, err := k.ctx.NewCompose(xkb.LocaleFromEnv(os.Getenv))
 	if err != nil {
-		slog.Warn("no compose table: dead keys and compose sequences are off", "error", err)
+		slog.Warn("no compose table: dead keys and compose sequences are off", "err", err)
 		compose = nil
 	}
 	if k.layout, err = xkb.NewLayout(keymap, compose); err != nil {
-		slog.Error("the keyboard cannot be used", "error", err)
+		slog.Error("the keyboard cannot be used", "err", err)
 	}
 }
 

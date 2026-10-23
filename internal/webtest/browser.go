@@ -39,7 +39,7 @@ func ParseBrowser(name string) (Browser, error) {
 	case Chromium, Firefox:
 		return Browser(name), nil
 	}
-	return "", errors.New("BrowserUnknown", "the browser is not chromium or firefox", "value", name)
+	return "", errors.New(tagBrowserUnknown, "the browser is not chromium or firefox", "value", name)
 }
 
 // executables are the names a browser's program goes by, best first.
@@ -62,7 +62,7 @@ func Locate(b Browser, lookPath func(string) (string, error)) (string, error) {
 			return path, nil
 		}
 	}
-	return "", errors.New("BrowserNotFound", "the browser is not installed (sudo dnf install chromium firefox)",
+	return "", errors.New(tagBrowserNotFound, "the browser is not installed (sudo dnf install chromium firefox)",
 		"browser", string(b), "looked for", strings.Join(names, ", "))
 }
 
@@ -185,14 +185,14 @@ func Launch(b Browser, url string, o LaunchOptions) (*Process, error) {
 	}
 	profile, err := os.MkdirTemp("", "glutter-browser-")
 	if err != nil {
-		return nil, errors.NewErr("BrowserLaunchFailed", err).SetMetadata("what", "the temporary profile")
+		return nil, errors.NewErr(tagBrowserLaunchFailed, err).SetMetadata("what", "the temporary profile")
 	}
 	home := filepath.Join(profile, "home")
 	data := filepath.Join(profile, "profile")
 	for _, d := range []string{home, data} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			_ = os.RemoveAll(profile) // the failure to make it is the one to report
-			return nil, errors.NewErr("BrowserLaunchFailed", err).SetMetadata("what", "the temporary profile")
+			return nil, errors.NewErr(tagBrowserLaunchFailed, err).SetMetadata("what", "the temporary profile")
 		}
 	}
 	scale := o.ScaleFactor
@@ -217,7 +217,7 @@ func Launch(b Browser, url string, o LaunchOptions) (*Process, error) {
 			"--window-size=" + strconv.Itoa(width) + "," + strconv.Itoa(height)}
 	default:
 		_ = os.RemoveAll(profile)
-		return nil, errors.New("BrowserUnknown", "the browser is not chromium or firefox", "value", string(b))
+		return nil, errors.New(tagBrowserUnknown, "the browser is not chromium or firefox", "value", string(b))
 	}
 	args = append(args, url)
 	secs := strconv.Itoa(max(1, int(lifetime.Seconds())))
@@ -251,7 +251,7 @@ func Launch(b Browser, url string, o LaunchOptions) (*Process, error) {
 			display.stop()
 		}
 		_ = os.RemoveAll(profile) // the failure to start is the one to report
-		return nil, errors.NewErr("BrowserLaunchFailed", err).SetMetadata("browser", string(b), "path", path)
+		return nil, errors.NewErr(tagBrowserLaunchFailed, err).SetMetadata("browser", string(b), "path", path)
 	}
 	p := &Process{cmd: cmd, profile: profile, display: display, done: make(chan struct{})}
 	go func() {
@@ -269,7 +269,7 @@ func writeFirefoxPrefs(profile, scale string) error {
 		sb.WriteString("// " + p.reason + "\nuser_pref(\"" + p.name + "\", " + p.value + ");\n")
 	}
 	if err := os.WriteFile(filepath.Join(profile, "user.js"), []byte(sb.String()), 0o644); err != nil {
-		return errors.NewErr("BrowserLaunchFailed", err).SetMetadata("what", "user.js of the Firefox profile")
+		return errors.NewErr(tagBrowserLaunchFailed, err).SetMetadata("what", "user.js of the Firefox profile")
 	}
 	return nil
 }
@@ -293,3 +293,14 @@ func (p *Process) Stop() {
 		_ = os.RemoveAll(p.profile) // a temporary directory: a leftover is harmless
 	})
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagBrowserNotFound = "BrowserNotFound"
+	tagBrowserUnknown  = "BrowserUnknown"
+)
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagBrowserLaunchFailed = "BrowserLaunchFailed"
+)

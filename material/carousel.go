@@ -309,7 +309,7 @@ func (s *carouselViewState) buildSliverCarousel() widgets.Widget {
 			ok = ok && weight > 0
 		}
 		if !ok {
-			panic(errors.New("CarouselViewFlexWeightsInvalid", "flexWeights is null or it contains non-positive integers", "flexWeights", w.flexWeights))
+			panic(errors.New(tagCarouselViewFlexWeightsInvalid, "flexWeights is null or it contains non-positive integers", "flexWeights", w.flexWeights))
 		}
 	}
 	return &sliverWeightedCarousel{SliverMultiBoxAdaptorWidget: widgets.NewSliverMultiBoxAdaptorWidgetBase(delegate),
@@ -891,7 +891,7 @@ func (p *CarouselScrollPhysics) CreateBallisticSimulation(position widgets.Scrol
 	metrics, ok := position.(*carouselPosition)
 	if !ok {
 		if foundation.DebugMode {
-			panic(errors.New("CarouselScrollPhysicsPosition", "CarouselScrollPhysics can only be used with Scrollables that uses the CarouselController"))
+			panic(errors.New(tagCarouselScrollPhysicsPosition, "CarouselScrollPhysics can only be used with Scrollables that uses the CarouselController"))
 		}
 		return p.ScrollPhysicsBase.CreateBallisticSimulation(position, velocity)
 	}
@@ -937,7 +937,7 @@ type carouselPosition struct {
 func newCarouselPosition(physics widgets.ScrollPhysics, context widgets.ScrollContext, initialItem int, itemExtent foundation.Opt[float64], flexWeights []int,
 	consumeMaxWeight, infinite bool, itemCount foundation.Opt[int], oldPosition widgets.ScrollPosition) *carouselPosition {
 	if foundation.DebugMode && (flexWeights != nil) == itemExtent.IsSome() {
-		panic(errors.New("CarouselPositionExtentOrWeights", "a carousel has either an item extent or flex weights"))
+		panic(errors.New(tagCarouselPositionExtentOrWeights, "a carousel has either an item extent or flex weights"))
 	}
 	p := &carouselPosition{initialItem: initialItem, itemToShowOnStartup: float64(initialItem), consumeMaxWeight: consumeMaxWeight, infinite: infinite,
 		itemCount: itemCount, itemExtent: itemExtent, flexWeights: flexWeights}
@@ -1190,10 +1190,10 @@ func (c *CarouselController) carouselPosition() (*carouselPosition, bool) {
 func (c *CarouselController) LeadingItem() int {
 	if foundation.DebugMode {
 		if len(c.Positions()) == 0 {
-			panic(errors.New("CarouselControllerNotAttached", "CarouselController.leadingItem cannot be accessed before a CarouselView is built with it."))
+			panic(errors.New(tagCarouselControllerNotAttached, "CarouselController.leadingItem cannot be accessed before a CarouselView is built with it."))
 		}
 		if len(c.Positions()) != 1 {
-			panic(errors.New("CarouselControllerMultipleAttached", "CarouselController.leadingItem cannot be read when multiple CarouselViews are attached to the same controller."))
+			panic(errors.New(tagCarouselControllerMultipleAttached, "CarouselController.leadingItem cannot be read when multiple CarouselViews are attached to the same controller."))
 		}
 	}
 	return c.Position().(*carouselPosition).leadingItem()
@@ -1310,7 +1310,7 @@ func (c *CarouselController) itemCount() foundation.Opt[int] {
 // Flutter: material/carousel.dart CarouselController.createScrollPosition
 func (c *CarouselController) CreateScrollPosition(physics widgets.ScrollPhysics, context widgets.ScrollContext, oldPosition widgets.ScrollPosition) widgets.ScrollPosition {
 	if foundation.DebugMode && c.carouselState == nil {
-		panic(errors.New("CarouselControllerNotAttached", "a CarouselController creates a scroll position only for the CarouselView it is attached to"))
+		panic(errors.New(tagCarouselControllerNotAttached, "a CarouselController creates a scroll position only for the CarouselView it is attached to"))
 	}
 	s := c.carouselState
 	w := s.Widget()
@@ -1330,3 +1330,12 @@ func (c *CarouselController) Attach(position widgets.ScrollPosition) {
 	p.infinite = w.o.Infinite
 	p.itemCount = c.itemCount()
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagCarouselControllerMultipleAttached = "CarouselControllerMultipleAttached"
+	tagCarouselControllerNotAttached      = "CarouselControllerNotAttached"
+	tagCarouselPositionExtentOrWeights    = "CarouselPositionExtentOrWeights"
+	tagCarouselScrollPhysicsPosition      = "CarouselScrollPhysicsPosition"
+	tagCarouselViewFlexWeightsInvalid     = "CarouselViewFlexWeightsInvalid"
+)

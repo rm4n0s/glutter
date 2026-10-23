@@ -110,7 +110,7 @@ func NewChangeNotifier() *ChangeNotifier { return &ChangeNotifier{} }
 // Flutter: foundation/change_notifier.dart ChangeNotifier.debugAssertNotDisposed
 func (n *ChangeNotifier) DebugAssertNotDisposed() bool {
 	if DebugMode && n.disposed {
-		panic(errors.New("ChangeNotifierUsedAfterDispose",
+		panic(errors.New(tagChangeNotifierUsedAfterDispose,
 			"A ChangeNotifier was used after being disposed. Once you have called Dispose() on a ChangeNotifier, it can no longer be used."))
 	}
 	return true
@@ -171,7 +171,7 @@ func (n *ChangeNotifier) RemoveListener(handle ListenerHandle) {
 func (n *ChangeNotifier) Dispose() {
 	n.DebugAssertNotDisposed()
 	if DebugMode && n.notifyDepth != 0 {
-		panic(errors.New("ChangeNotifierDisposedWhileNotifying",
+		panic(errors.New(tagChangeNotifierDisposedWhileNotifying,
 			"Dispose() was called during the call to NotifyListeners(). This is likely to cause errors since it modifies the list of listeners while the list is being used."))
 	}
 	n.disposed = true
@@ -334,3 +334,9 @@ func (v *ValueNotifier[T]) SetValue(newValue T) {
 func (v *ValueNotifier[T]) String() string {
 	return DescribeIdentity(v) + "(" + describeValue(v.value) + ")"
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagChangeNotifierDisposedWhileNotifying = "ChangeNotifierDisposedWhileNotifying"
+	tagChangeNotifierUsedAfterDispose       = "ChangeNotifierUsedAfterDispose"
+)

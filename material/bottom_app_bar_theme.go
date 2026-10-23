@@ -55,7 +55,7 @@ type BottomAppBarThemeDataOpts = BottomAppBarThemeData
 func NewBottomAppBarThemeData(opts ...BottomAppBarThemeDataOpts) BottomAppBarThemeData {
 	d := firstOpts(opts)
 	if foundation.DebugMode && d.Elevation.OrElse(0) < 0 {
-		panic(errors.New("BottomAppBarThemeElevationNegative", "the elevation of a BottomAppBarThemeData must not be negative", "elevation", d.Elevation.Value()))
+		panic(errors.New(tagBottomAppBarThemeElevationNegative, "the elevation of a BottomAppBarThemeData must not be negative", "elevation", d.Elevation.Value()))
 	}
 	return d
 }
@@ -157,3 +157,8 @@ func BottomAppBarThemeOf(bc widgets.BuildContext) BottomAppBarThemeData {
 	}
 	return ThemeOf(bc).BottomAppBarTheme
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagBottomAppBarThemeElevationNegative = "BottomAppBarThemeElevationNegative"
+)

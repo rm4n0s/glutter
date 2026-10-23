@@ -260,7 +260,7 @@ func NewInputDecoration(opts ...InputDecorationOpts) InputDecoration {
 			{"error and errorText", d.Error != nil, d.ErrorText.IsSome()},
 		} {
 			if pair.widget && pair.textIsSome {
-				panic(errors.New("InputDecorationBothGiven", "declaring both "+pair.name+" is not supported", "pair", pair.name))
+				panic(errors.New(tagInputDecorationBothGiven, "declaring both "+pair.name+" is not supported", "pair", pair.name))
 			}
 		}
 	}
@@ -667,3 +667,8 @@ func lowerFirst(s string) string {
 	}
 	return strings.ToLower(s[:1]) + s[1:]
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagInputDecorationBothGiven = "InputDecorationBothGiven"
+)

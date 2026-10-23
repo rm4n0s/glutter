@@ -204,7 +204,7 @@ func (e *multiChildComponentElement) debugCheckMustAttachRenderObject(slot any) 
 		return true
 	})
 	if hasAncestorRenderObjectElement && ancestorWantsRenderObject {
-		err := errors.New("ViewCollectionInRenderTree",
+		err := errors.New(tagViewCollectionInRenderTree,
 			fmt.Sprintf("the Element for %s cannot be inserted into slot %v of its ancestor; this element allows the creation of multiple independent render trees, which cannot be attached to an ancestor in an existing render tree, yet an ancestor render object is expecting a child; try moving the subtree that contains the widget into the view property of a ViewAnchor widget or to the root of the widget tree, where it is not expected to attach its render object", foundation.ToStringShort(e.self), slot),
 			"creatorChain", e.DebugGetCreatorChain(10))
 		if e.owner != nil && e.owner.OnError != nil {
@@ -287,3 +287,8 @@ func (e *multiChildComponentElement) DebugDoingBuild() bool { return false }
 //
 // Flutter: widgets/view.dart _MultiChildComponentElement.renderObjectAttachingChild
 func (e *multiChildComponentElement) RenderObjectAttachingChild() Element { return e.childElement }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagViewCollectionInRenderTree = "ViewCollectionInRenderTree"
+)

@@ -37,7 +37,7 @@ func NewLinearBorderEdge(opts ...LinearBorderEdgeOpts) LinearBorderEdge {
 	o := firstOpts(opts)
 	size := o.Size.OrElse(1.0)
 	if foundation.DebugMode && !(size >= 0.0 && size <= 1.0) {
-		panic(errors.New("LinearBorderEdgeSizeOutOfRange", "the size of a LinearBorderEdge must be from 0.0 to 1.0", "size", size))
+		panic(errors.New(tagLinearBorderEdgeSizeOutOfRange, "the size of a LinearBorderEdge must be from 0.0 to 1.0", "size", size))
 	}
 	return LinearBorderEdge{Size: size, Alignment: o.Alignment}
 }
@@ -373,3 +373,8 @@ func (b LinearBorder) String() string {
 }
 
 var _ OutlinedBorder = LinearBorder{}
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagLinearBorderEdgeSizeOutOfRange = "LinearBorderEdgeSizeOutOfRange"
+)

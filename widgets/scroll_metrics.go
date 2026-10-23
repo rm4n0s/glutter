@@ -214,7 +214,7 @@ func (m *ScrollMetricsMixin) ExtentBefore() float64 {
 func (m *ScrollMetricsMixin) ExtentInside() float64 {
 	min, max := m.self.MinScrollExtent(), m.self.MaxScrollExtent()
 	if foundation.DebugMode && min > max {
-		panic(errors.New("ScrollMetricsExtentsInvalid", "the minimum scroll extent must not be past the maximum",
+		panic(errors.New(tagScrollMetricsExtentsInvalid, "the minimum scroll extent must not be past the maximum",
 			"minScrollExtent", min, "maxScrollExtent", max))
 	}
 	viewport := m.self.ViewportDimension()
@@ -270,7 +270,7 @@ func NewFixedScrollMetrics(minScrollExtent, maxScrollExtent, pixels, viewportDim
 func scrollMetricsValue(v foundation.Opt[float64], name string) float64 {
 	x, ok := v.Get()
 	if !ok {
-		panic(errors.New("ScrollMetricsValueMissing", "the scroll metrics do not have a value for "+name+" (it is read before the viewport laid out)",
+		panic(errors.New(tagScrollMetricsValueMissing, "the scroll metrics do not have a value for "+name+" (it is read before the viewport laid out)",
 			"value", name))
 	}
 	return x
@@ -335,3 +335,9 @@ func (m *FixedScrollMetrics) DevicePixelRatio() float64 { return m.devicePixelRa
 func (m *FixedScrollMetrics) String() string {
 	return "FixedScrollMetrics(" + dartfmt.ToStringAsFixed(m.ExtentBefore(), 1) + "..[" + dartfmt.ToStringAsFixed(m.ExtentInside(), 1) + "].." + dartfmt.ToStringAsFixed(m.ExtentAfter(), 1) + ")"
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagScrollMetricsExtentsInvalid = "ScrollMetricsExtentsInvalid"
+	tagScrollMetricsValueMissing   = "ScrollMetricsValueMissing"
+)

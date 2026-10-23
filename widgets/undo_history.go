@@ -156,7 +156,7 @@ func (s *UndoHistoryState[T]) update(next T, has bool) {
 	defer func() { s.duringTrigger = false }()
 	s.Widget().onTriggered(next)
 	if foundation.DebugMode && s.Widget().value.Value() != next {
-		panic(errors.New("UndoHistoryValueNotSet", "onTriggered must set the value of the UndoHistory to the value it is given",
+		panic(errors.New(tagUndoHistoryValueNotSet, "onTriggered must set the value of the UndoHistory to the value it is given",
 			"triggered", next, "value", s.Widget().value.Value()))
 	}
 }
@@ -422,3 +422,8 @@ func (u *undoStack[T]) clear() {
 	u.list = nil
 	u.index = -1
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagUndoHistoryValueNotSet = "UndoHistoryValueNotSet"
+)

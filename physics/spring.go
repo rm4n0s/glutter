@@ -78,7 +78,7 @@ func NewSpringDescriptionWithDurationAndBounce(opts ...SpringDescriptionWithDura
 	o := firstOpts(opts)
 	duration := o.Duration.OrElse(500 * time.Millisecond)
 	if foundation.DebugMode && duration.Milliseconds() <= 0 {
-		panic(errors.New("SpringDurationInvalid", "Duration must be positive", "duration", duration.String()))
+		panic(errors.New(tagSpringDurationInvalid, "Duration must be positive", "duration", duration.String()))
 	}
 	durationInSeconds := float64(duration.Milliseconds()) / 1000
 	const mass = 1.0
@@ -335,3 +335,8 @@ func (s *ScrollSpringSimulation) X(time float64) float64 {
 	}
 	return s.SpringSimulation.X(time)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagSpringDurationInvalid = "SpringDurationInvalid"
+)

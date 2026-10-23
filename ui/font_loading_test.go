@@ -32,7 +32,7 @@ func TestPlatformDispatcherLoadFontFromList(t *testing.T) {
 		{"an engine that loads fonts", &loadingEngine{}, "", []string{"Mono:data"}, 1},
 		{"no engine", nil, "PlatformDispatcher.LoadFontFromList.FontLoadUnsupported", nil, 0},
 		{"an engine that cannot load fonts", nopFactory{}, "PlatformDispatcher.LoadFontFromList.FontLoadUnsupported", nil, 0},
-		{"an engine that fails", &loadingEngine{err: errors.New("FontDataInvalid", "no")}, "FontDataInvalid", nil, 0},
+		{"an engine that fails", &loadingEngine{err: errors.New(tagFontDataInvalid, "no")}, "FontDataInvalid", nil, 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -132,3 +132,8 @@ func TestPlatformDispatcherDesktopFonts(t *testing.T) {
 		t.Errorf("MonospaceFont = %q, %v", f, s)
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagFontDataInvalid = "FontDataInvalid"
+)

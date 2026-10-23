@@ -70,10 +70,10 @@ func NewCircleAvatar(opts ...CircleAvatarOpts) *CircleAvatar {
 	o := firstOpts(opts)
 	if foundation.DebugMode {
 		if o.Radius.IsSome() && (o.MinRadius.IsSome() || o.MaxRadius.IsSome()) {
-			panic(errors.New("CircleAvatarRadiusConflict", "the radius of a CircleAvatar cannot be given with its minRadius or maxRadius"))
+			panic(errors.New(tagCircleAvatarRadiusConflict, "the radius of a CircleAvatar cannot be given with its minRadius or maxRadius"))
 		}
 		if (o.BackgroundImage == nil && o.OnBackgroundImageError != nil) || (o.ForegroundImage == nil && o.OnForegroundImageError != nil) {
-			panic(errors.New("CircleAvatarImageErrorWithoutImage", "an image error callback of a CircleAvatar needs its image"))
+			panic(errors.New(tagCircleAvatarImageErrorWithoutImage, "an image error callback of a CircleAvatar needs its image"))
 		}
 	}
 	return &CircleAvatar{StatelessWidget: widgets.NewStatelessWidgetBase(widgets.WidgetOpts{Key: o.Key}), o: o}
@@ -170,3 +170,9 @@ func (w *CircleAvatar) Build(bc widgets.BuildContext) widgets.Widget {
 		Decoration:  painting.NewBoxDecoration(decoration), ForegroundDecoration: foreground,
 	})
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagCircleAvatarImageErrorWithoutImage = "CircleAvatarImageErrorWithoutImage"
+	tagCircleAvatarRadiusConflict         = "CircleAvatarRadiusConflict"
+)

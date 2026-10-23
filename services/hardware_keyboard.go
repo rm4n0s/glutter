@@ -267,7 +267,7 @@ func firstKeyOpts[T any](opts []T) T {
 	case 1:
 		return opts[0]
 	}
-	panic(errors.New("MultipleOptions", "pass at most one options value", "type", fmt.Sprintf("%T", zero)))
+	panic(errors.New(tagMultipleOptions, "pass at most one options value", "type", fmt.Sprintf("%T", zero)))
 }
 
 // KeyEventFromData makes the key event that the engine's key data describes.
@@ -290,7 +290,7 @@ func KeyEventFromData(data ui.KeyData) (KeyEvent, error) {
 	case ui.KeyEventTypeRepeat:
 		return NewKeyRepeatEvent(physical, logical, data.TimeStamp, KeyRepeatEventOpts{Character: data.Character, DeviceType: data.DeviceType}), nil
 	}
-	return nil, errors.New("KeyDataTypeInvalid", "the key data has no event type", "type", data.Type.Label())
+	return nil, errors.New(tagKeyDataTypeInvalid, "the key data has no event type", "type", data.Type.Label())
 }
 
 // KeyEventCallback handles a key event and returns whether it did.
@@ -530,7 +530,7 @@ func (k *HardwareKeyboard) RemoveHandler(handle KeyHandlerHandle) {
 
 func (k *HardwareKeyboard) dispatchKeyEvent(event KeyEvent) bool {
 	if k.duringDispatch {
-		panic(errors.New("KeyboardDispatchNested", "nested keyboard dispatching is not supported"))
+		panic(errors.New(tagKeyboardDispatchNested, "nested keyboard dispatching is not supported"))
 	}
 	k.duringDispatch = true
 	// The deferred function also runs when a handler panics and the keyboard has
@@ -674,6 +674,14 @@ func (k *HardwareKeyboard) ClearState() {
 	clear(k.lockModes)
 	k.handlers = nil
 	if k.hasModified {
-		panic(errors.New("KeyboardClearedDuringDispatch", "the keyboard was cleared during a dispatch"))
+		panic(errors.New(tagKeyboardClearedDuringDispatch, "the keyboard was cleared during a dispatch"))
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagKeyDataTypeInvalid            = "KeyDataTypeInvalid"
+	tagKeyboardClearedDuringDispatch = "KeyboardClearedDuringDispatch"
+	tagKeyboardDispatchNested        = "KeyboardDispatchNested"
+	tagMultipleOptions               = "MultipleOptions"
+)

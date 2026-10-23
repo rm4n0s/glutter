@@ -261,19 +261,19 @@ func NewEditableText(controller *TextEditingController, focusNode *FocusNode, st
 	o.MaxLines = maxLines
 	if foundation.DebugMode {
 		if foundation.GraphemeCount(o.ObscuringCharacter) != 1 {
-			panic(errors.New("EditableTextObscuringCharacterInvalid", "the obscuring character must be one character", "obscuringCharacter", o.ObscuringCharacter))
+			panic(errors.New(tagEditableTextObscuringCharacterInvalid, "the obscuring character must be one character", "obscuringCharacter", o.ObscuringCharacter))
 		}
 		if m, ok := o.MinLines.Get(); ok && m <= 0 {
-			panic(errors.New("EditableTextMinLinesInvalid", "minLines must be positive", "minLines", m))
+			panic(errors.New(tagEditableTextMinLinesInvalid, "minLines must be positive", "minLines", m))
 		}
 		if mx, ok := maxLines.Get(); ok && o.MinLines.IsSome() && mx < o.MinLines.Value() {
-			panic(errors.New("EditableTextMinLinesGreaterThanMaxLines", "minLines can't be greater than maxLines", "minLines", o.MinLines.Value(), "maxLines", mx))
+			panic(errors.New(tagEditableTextMinLinesGreaterThanMaxLines, "minLines can't be greater than maxLines", "minLines", o.MinLines.Value(), "maxLines", mx))
 		}
 		if o.Expands && (maxLines.IsSome() || o.MinLines.IsSome()) {
-			panic(errors.New("EditableTextExpandsWithLines", "minLines and maxLines must be unset when expands is true"))
+			panic(errors.New(tagEditableTextExpandsWithLines, "minLines and maxLines must be unset when expands is true"))
 		}
 		if o.ObscureText && (maxLines.IsNone() || maxLines.Value() != 1) {
-			panic(errors.New("EditableTextObscuredMultiline", "obscured fields cannot be multiline"))
+			panic(errors.New(tagEditableTextObscuredMultiline, "obscured fields cannot be multiline"))
 		}
 	}
 	w := &EditableText{
@@ -458,3 +458,12 @@ func (w *EditableText) DebugFillProperties(p *foundation.DiagnosticPropertiesBui
 		p.Add(foundation.NewIntProperty("minLines", foundation.Some(m)))
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagEditableTextExpandsWithLines            = "EditableTextExpandsWithLines"
+	tagEditableTextMinLinesGreaterThanMaxLines = "EditableTextMinLinesGreaterThanMaxLines"
+	tagEditableTextMinLinesInvalid             = "EditableTextMinLinesInvalid"
+	tagEditableTextObscuredMultiline           = "EditableTextObscuredMultiline"
+	tagEditableTextObscuringCharacterInvalid   = "EditableTextObscuringCharacterInvalid"
+)

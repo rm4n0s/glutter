@@ -206,7 +206,7 @@ func (s *EditableTextState) RenderEditable() *rendering.RenderEditable {
 func (s *EditableTextState) renderEditable() *rendering.RenderEditable {
 	r := s.RenderEditable()
 	if r == nil {
-		panic(errors.New("EditableTextNotBuilt", "the render object of the EditableText is not available before it is built"))
+		panic(errors.New(tagEditableTextNotBuilt, "the render object of the EditableText is not available before it is built"))
 	}
 	return r
 }
@@ -405,7 +405,7 @@ func (s *EditableTextState) CutSelection(cause services.SelectionChangedCause) {
 
 func (s *EditableTextState) reportClipboardError(what string, err error) {
 	if err != nil {
-		s.binding().ErrorReporter()(errors.NewErr("EditableTextClipboardFailed", err).SetMetadata("context", what))
+		s.binding().ErrorReporter()(errors.NewErr(tagEditableTextClipboardFailed, err).SetMetadata("context", what))
 	}
 }
 
@@ -425,7 +425,7 @@ func (s *EditableTextState) PasteText(cause services.SelectionChangedCause) {
 	s.binding().Clipboard().GetData(ctx, services.ClipboardKTextPlain, func(data *services.ClipboardData, err error) {
 		cancel()
 		if err != nil {
-			s.binding().ErrorReporter()(errors.NewErr("EditableTextPasteFailed", err))
+			s.binding().ErrorReporter()(errors.NewErr(tagEditableTextPasteFailed, err))
 			return
 		}
 		if data == nil || !s.Mounted() {
@@ -498,7 +498,7 @@ func (s *EditableTextState) textEditingValueForTextLayoutMetrics() services.Text
 			return w.value
 		}
 	}
-	panic(errors.New("EditableTextNotMounted", "the editable must be mounted"))
+	panic(errors.New(tagEditableTextNotMounted, "the editable must be mounted"))
 }
 
 // InitState starts to listen to the controller and the focus node.
@@ -949,3 +949,11 @@ func (s *EditableTextState) DidChangeMetrics() {
 	}
 	s.lastBottomViewInset = insets.Bottom
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagEditableTextClipboardFailed = "EditableTextClipboardFailed"
+	tagEditableTextNotBuilt        = "EditableTextNotBuilt"
+	tagEditableTextNotMounted      = "EditableTextNotMounted"
+	tagEditableTextPasteFailed     = "EditableTextPasteFailed"
+)

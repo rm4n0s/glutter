@@ -44,7 +44,7 @@ func (a *Accumulator) Value() int { return a.value }
 // Flutter: painting/inline_span.dart Accumulator.increment
 func (a *Accumulator) Increment(addend int) {
 	if foundation.DebugMode && addend < 0 {
-		panic(errors.New("AccumulatorNegativeIncrement", "an accumulator can only grow", "addend", addend))
+		panic(errors.New(tagAccumulatorNegativeIncrement, "an accumulator can only grow", "addend", addend))
 	}
 	a.value += addend
 }
@@ -86,7 +86,7 @@ type InlineSpanSemanticsInformation struct {
 func NewInlineSpanSemanticsInformation(text string, info InlineSpanSemanticsInformation) InlineSpanSemanticsInformation {
 	info.Text = text
 	if foundation.DebugMode && info.IsPlaceholder && (text != placeholderText || info.SemanticsLabelSet || info.Recognizer != nil) {
-		panic(errors.New("InlineSpanSemanticsPlaceholderInvalid", "a placeholder has the text U+FFFC and no label or recognizer"))
+		panic(errors.New(tagInlineSpanSemanticsPlaceholderInvalid, "a placeholder has the text U+FFFC and no label or recognizer"))
 	}
 	info.RequiresOwnNode = info.IsPlaceholder || info.Recognizer != nil || info.SemanticsIdentifier != ""
 	return info
@@ -338,3 +338,9 @@ func spanBuildScaler(opts []SpanBuildOpts) (TextScaler, []PlaceholderDimensions)
 	}
 	return o.TextScaler, o.Dimensions
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagAccumulatorNegativeIncrement          = "AccumulatorNegativeIncrement"
+	tagInlineSpanSemanticsPlaceholderInvalid = "InlineSpanSemanticsPlaceholderInvalid"
+)

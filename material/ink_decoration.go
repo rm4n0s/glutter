@@ -49,13 +49,13 @@ func NewInk(child widgets.Widget, opts ...InkOpts) *Ink {
 	o := firstOpts(opts)
 	if foundation.DebugMode {
 		if o.Padding != nil && !o.Padding.IsNonNegative() {
-			panic(errors.New("InkPaddingNegative", "the padding of an Ink must not be negative"))
+			panic(errors.New(tagInkPaddingNegative, "the padding of an Ink must not be negative"))
 		}
 		if o.Decoration != nil {
 			o.Decoration.DebugAssertIsValid()
 		}
 		if o.Color.IsSome() && o.Decoration != nil {
-			panic(errors.New("InkColorAndDecoration", "Cannot provide both a color and a decoration\nThe color argument is just a shorthand for \"decoration: BoxDecoration(color: color)\"."))
+			panic(errors.New(tagInkColorAndDecoration, "Cannot provide both a color and a decoration\nThe color argument is just a shorthand for \"decoration: BoxDecoration(color: color)\"."))
 		}
 	}
 	if o.Decoration == nil && o.Color.IsSome() {
@@ -101,7 +101,7 @@ type InkImageOpts struct {
 func NewInkImage(image painting.ImageProvider, child widgets.Widget, opts ...InkImageOpts) *Ink {
 	o := firstOpts(opts)
 	if foundation.DebugMode && o.Padding != nil && !o.Padding.IsNonNegative() {
-		panic(errors.New("InkPaddingNegative", "the padding of an Ink must not be negative"))
+		panic(errors.New(tagInkPaddingNegative, "the padding of an Ink must not be negative"))
 	}
 	return NewInk(child, InkOpts{Key: o.Key, Padding: o.Padding, Width: o.Width, Height: o.Height,
 		Decoration: painting.NewBoxDecoration(painting.BoxDecorationOpts{Image: painting.NewDecorationImage(image, painting.DecorationImageOpts{
@@ -337,3 +337,9 @@ func (d *InkDecoration) PaintFeature(canvas *ui.Canvas, transform *ui.Matrix4) {
 		d.painter.Paint(canvas, originOffset, sizedConfiguration)
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagInkColorAndDecoration = "InkColorAndDecoration"
+	tagInkPaddingNegative    = "InkPaddingNegative"
+)

@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"slices"
 
+	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/gestures"
 	"github.com/rm4n0s/glutter/services"
@@ -264,7 +265,7 @@ func (b *ScrollBehaviorBase) BuildScrollbar(bc BuildContext, child Widget, detai
 	switch b.self.GetPlatform(bc) {
 	case foundation.TargetPlatformLinux, foundation.TargetPlatformMacOS, foundation.TargetPlatformWindows:
 		if foundation.DebugMode && isNil(details.Controller) {
-			panic(scrollbarControllerMissingError())
+			panic(errors.New(tagScrollbarControllerMissing, "a ScrollController is required to build a scrollbar for a Scrollable; the details of the scrollable must have a controller"))
 		}
 		return NewRawScrollbar(child, RawScrollbarOpts{Controller: details.Controller})
 	}
@@ -542,3 +543,8 @@ func (w *ScrollConfiguration) UpdateShouldNotify(old Widget) bool {
 	return reflect.TypeOf(w.behavior) != reflect.TypeOf(o.behavior) ||
 		(w.behavior != o.behavior && w.behavior.ShouldNotify(o.behavior))
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagScrollbarControllerMissing = "ScrollbarControllerMissing"
+)

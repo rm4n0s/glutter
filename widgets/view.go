@@ -76,7 +76,7 @@ func ViewOf(bc BuildContext) *ui.View {
 		if LookupBoundaryDebugIsHidingAncestorWidgetOfExactType[*viewScope](bc) {
 			msg = "ViewOf was called with a context that does not have access to a View widget; the context provided to ViewOf does have a View widget ancestor, but it is hidden by a LookupBoundary; this usually means that the provided context is not associated with a View"
 		}
-		panic(errors.New("ViewOfWithoutView", msg, "context", bc.(Element).String()))
+		panic(errors.New(tagViewOfWithoutView, msg, "context", bc.(Element).String()))
 	}
 	return v
 }
@@ -267,7 +267,7 @@ func (e *rawViewElement) updateChild() {
 		e.child = e.UpdateChild(e.child, child, nil)
 	})
 	if panicked {
-		e.child = e.UpdateChild(nil, e.owner.errorWidgetFor(errors.New("ViewBuildFailed", "the content of the view could not be built")), e.slot)
+		e.child = e.UpdateChild(nil, e.owner.errorWidgetFor(errors.New(tagViewBuildFailed, "the content of the view could not be built")), e.slot)
 	}
 }
 
@@ -351,7 +351,7 @@ func (e *rawViewElement) InsertRenderObjectChild(child rendering.RenderObject, _
 
 func (e *rawViewElement) MoveRenderObjectChild(rendering.RenderObject, any, any) {
 	if foundation.DebugMode {
-		panic(errors.New("RawViewChildMoved", "the child of a view cannot be moved"))
+		panic(errors.New(tagRawViewChildMoved, "the child of a view cannot be moved"))
 	}
 }
 
@@ -394,3 +394,10 @@ func newPipelineOwnerScope(owner *rendering.PipelineOwner, child Widget) *pipeli
 func (w *pipelineOwnerScope) UpdateShouldNotify(old Widget) bool {
 	return w.pipelineOwner != old.(*pipelineOwnerScope).pipelineOwner
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagRawViewChildMoved = "RawViewChildMoved"
+	tagViewBuildFailed   = "ViewBuildFailed"
+	tagViewOfWithoutView = "ViewOfWithoutView"
+)

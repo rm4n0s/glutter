@@ -63,7 +63,7 @@ func (a *overridableAction) getOverrideAction(intent Intent, declareDependency b
 		override = maybeFindWithoutDependingOn(a.lookupContext, intent, t)
 	}
 	if foundation.DebugMode && override == Action(a) {
-		panic(errors.New("ActionOverrideSelf", "an overridable action found itself as its override"))
+		panic(errors.New(tagActionOverrideSelf, "an overridable action found itself as its override"))
 	}
 	return override
 }
@@ -94,7 +94,7 @@ func (a *overridableAction) invokeOverride(overrideAction Action, intent Intent,
 	calling := a.defaultAction
 	if a.contextVariant {
 		if bc == nil {
-			panic(errors.New("ActionContextMissing", "an overridable context action was invoked without a context"))
+			panic(errors.New(tagActionContextMissing, "an overridable context action was invoked without a context"))
 		}
 		debugCanHandleIntent(overrideAction, intent)
 		calling = &contextActionToActionAdapter{invokeContext: bc, action: a.defaultAction.(ContextAction)}
@@ -222,3 +222,9 @@ func (a *contextActionToActionAdapter) RemoveActionListener(handle ActionListene
 func (a *contextActionToActionAdapter) Invoke(intent Intent) any {
 	return a.action.InvokeWithContext(intent, a.invokeContext)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagActionContextMissing = "ActionContextMissing"
+	tagActionOverrideSelf   = "ActionOverrideSelf"
+)

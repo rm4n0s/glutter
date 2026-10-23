@@ -125,7 +125,7 @@ func TestCreateAndDestroyWindow(t *testing.T) {
 }
 
 func TestCreateWindowFailure(t *testing.T) {
-	h := &windowHost{failure: errors.New("WaylandProtocolMissing", "no")}
+	h := &windowHost{failure: errors.New(tagWaylandProtocolMissing, "no")}
 	d := NewPlatformDispatcher(h)
 	_, err := d.CreateWindow(WindowSpec{})
 	if appErr, ok := errors.FromError(err); !ok || !appErr.HasRoute("WaylandProtocolMissing") {
@@ -228,3 +228,8 @@ func TestDropActionsHas(t *testing.T) {
 		}
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagWaylandProtocolMissing = "WaylandProtocolMissing"
+)

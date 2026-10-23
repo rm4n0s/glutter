@@ -352,7 +352,7 @@ func newContext(a *api, display uintptr, onError func(code Error, message string
 	// fine: initialisation errors make libdecor_new return NULL.
 	c.ptr = a.new(display, callbacks.iface)
 	if c.ptr == 0 {
-		return nil, errors.New("LibdecorInitFailed", "libdecor_new failed: no plugin could be loaded or the compositor is not supported")
+		return nil, errors.New(tagLibdecorInitFailed, "libdecor_new failed: no plugin could be loaded or the compositor is not supported")
 	}
 	callbacks.mu.Lock()
 	callbacks.contexts[c.ptr] = c
@@ -371,7 +371,7 @@ func (c *Context) FD() int { return int(c.api.getFD(c.ptr)) }
 // Flutter: no counterpart
 func (c *Context) Dispatch() error {
 	if c.api.dispatch(c.ptr, 0) < 0 {
-		return errors.New("LibdecorDispatchFailed", "libdecor_dispatch failed")
+		return errors.New(tagLibdecorDispatchFailed, "libdecor_dispatch failed")
 	}
 	if p := c.panicValue; p != nil {
 		c.panicValue = nil
@@ -422,7 +422,7 @@ func (c *Context) Decorate(surface uintptr, h Handler) (*Frame, error) {
 		callbacks.mu.Lock()
 		delete(callbacks.frames, f.id)
 		callbacks.mu.Unlock()
-		return nil, errors.New("LibdecorDecorateFailed", "libdecor_decorate failed for the surface")
+		return nil, errors.New(tagLibdecorDecorateFailed, "libdecor_decorate failed for the surface")
 	}
 	return f, nil
 }
@@ -615,3 +615,10 @@ func (c Configuration) WindowState() (State, bool) {
 	b := dl.Bytes(buf, 4)
 	return State(uint32(b[0]) | uint32(b[1])<<8 | uint32(b[2])<<16 | uint32(b[3])<<24), true
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagLibdecorDecorateFailed = "LibdecorDecorateFailed"
+	tagLibdecorDispatchFailed = "LibdecorDispatchFailed"
+	tagLibdecorInitFailed     = "LibdecorInitFailed"
+)

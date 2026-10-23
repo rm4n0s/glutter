@@ -28,7 +28,7 @@ type combiningArenaMember struct {
 
 func (c *combiningArenaMember) AcceptGesture(pointer int) {
 	if foundation.DebugMode && (c.pointer != pointer || (c.winner == nil && len(c.members) == 0)) {
-		panic(errors.New("TeamAcceptInvalid", "the team has no member to accept for the pointer", "pointer", pointer))
+		panic(errors.New(tagTeamAcceptInvalid, "the team has no member to accept for the pointer", "pointer", pointer))
 	}
 	c.close()
 	if c.winner == nil {
@@ -55,7 +55,7 @@ func (c *combiningArenaMember) RejectGesture(pointer int) {
 
 func (c *combiningArenaMember) close() {
 	if foundation.DebugMode && c.resolved {
-		panic(errors.New("TeamResolvedTwice", "the team's member was resolved twice", "pointer", c.pointer))
+		panic(errors.New(tagTeamResolvedTwice, "the team's member was resolved twice", "pointer", c.pointer))
 	}
 	c.resolved = true
 	delete(c.owner.combiners, c.pointer)
@@ -63,7 +63,7 @@ func (c *combiningArenaMember) close() {
 
 func (c *combiningArenaMember) add(pointer int, member GestureArenaMember) GestureArenaEntry {
 	if foundation.DebugMode && (c.resolved || c.pointer != pointer) {
-		panic(errors.New("TeamAddInvalid", "a member cannot join a team's resolved member", "pointer", pointer))
+		panic(errors.New(tagTeamAddInvalid, "a member cannot join a team's resolved member", "pointer", pointer))
 	}
 	c.members = append(c.members, member)
 	if c.entry == nil {
@@ -135,3 +135,10 @@ func (t *GestureArenaTeam) Add(pointer int, member GestureArenaMember) GestureAr
 	}
 	return combiner.add(pointer, member)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagTeamAcceptInvalid = "TeamAcceptInvalid"
+	tagTeamAddInvalid    = "TeamAddInvalid"
+	tagTeamResolvedTwice = "TeamResolvedTwice"
+)

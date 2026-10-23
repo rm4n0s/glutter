@@ -11,6 +11,13 @@ import (
 	"github.com/rm4n0s/errors"
 )
 
+// TagConnectFailed is the tag of the error that Connect returns when there is no session
+// bus, or the context ends before the bus answers. A caller that treats a missing bus like a
+// missing service compares an error's Tag with it.
+//
+// Flutter: no counterpart
+const TagConnectFailed = "DBusConnectFailed"
+
 // SignalMatch selects the signals a Subscribe delivers. An empty field
 // matches every value.
 //
@@ -107,10 +114,14 @@ func SessionBusPresent(getenv func(string) string) bool {
 // Flutter: no counterpart
 func Connect(ctx context.Context) (Bus, error) {
 	conn, err := dialWithoutContext(ctx, func(connCtx context.Context) (*godbus.Conn, error) {
-		return godbus.ConnectSessionBus(godbus.WithContext(connCtx))
+		conn, err := godbus.ConnectSessionBus(godbus.WithContext(connCtx))
+		if err != nil {
+			return nil, errors.NewErr(TagConnectFailed, err)
+		}
+		return conn, nil
 	})
 	if err != nil {
-		return nil, errors.NewErr("DBusConnectFailed", err)
+		return nil, err
 	}
 	return &sessionBus{conn: conn}, nil
 }
@@ -137,7 +148,7 @@ func dialWithoutContext(ctx context.Context, dial func(connCtx context.Context) 
 				_ = r.conn.Close()
 			}
 		}()
-		return nil, ctx.Err()
+		return nil, errors.NewErr(TagConnectFailed, ctx.Err())
 	}
 }
 
@@ -162,7 +173,7 @@ func (c *sessionBus) UniqueName() string {
 func (c *sessionBus) Call(ctx context.Context, dest string, path godbus.ObjectPath, method string, args ...any) ([]any, error) {
 	call := c.conn.Object(dest, path).CallWithContext(ctx, method, 0, args...)
 	if call.Err != nil {
-		return nil, errors.NewErr("DBusCallFailed", call.Err).
+		return nil, errors.NewErr(tagDBusCallFailed, call.Err).
 			SetMetadata("dest", dest, "path", string(path), "method", method)
 	}
 	return call.Body, nil
@@ -170,7 +181,7 @@ func (c *sessionBus) Call(ctx context.Context, dest string, path godbus.ObjectPa
 
 func (c *sessionBus) Export(receiver any, path godbus.ObjectPath, iface string) error {
 	if err := c.conn.Export(receiver, path, iface); err != nil {
-		return errors.NewErr("DBusExportFailed", err).
+		return errors.NewErr(tagDBusExportFailed, err).
 			SetMetadata("path", string(path), "interface", iface)
 	}
 	return nil
@@ -184,7 +195,7 @@ func (c *sessionBus) Unexport(path godbus.ObjectPath, iface string) {
 
 func (c *sessionBus) EmitSignal(path godbus.ObjectPath, name string, values ...any) error {
 	if err := c.conn.Emit(path, name, values...); err != nil {
-		return errors.NewErr("DBusEmitFailed", err).
+		return errors.NewErr(tagDBusEmitFailed, err).
 			SetMetadata("path", string(path), "signal", name)
 	}
 	return nil
@@ -193,17 +204,17 @@ func (c *sessionBus) EmitSignal(path godbus.ObjectPath, name string, values ...a
 func (c *sessionBus) RequestName(name string) error {
 	reply, err := c.conn.RequestName(name, godbus.NameFlagDoNotQueue)
 	if err != nil {
-		return errors.NewErr("DBusRequestNameFailed", err).SetMetadata("name", name)
+		return errors.NewErr(tagDBusRequestNameFailed, err).SetMetadata("name", name)
 	}
 	if reply != godbus.RequestNameReplyPrimaryOwner {
-		return errors.New("DBusNameTaken", "another connection owns the name", "name", name)
+		return errors.New(tagDBusNameTaken, "another connection owns the name", "name", name)
 	}
 	return nil
 }
 
 func (c *sessionBus) ReleaseName(name string) error {
 	if _, err := c.conn.ReleaseName(name); err != nil {
-		return errors.NewErr("DBusReleaseNameFailed", err).SetMetadata("name", name)
+		return errors.NewErr(tagDBusReleaseNameFailed, err).SetMetadata("name", name)
 	}
 	return nil
 }
@@ -226,7 +237,7 @@ func (c *sessionBus) Subscribe(ctx context.Context, match SignalMatch) (<-chan *
 	c.conn.Signal(raw)
 	if err := c.conn.AddMatchSignalContext(ctx, opts...); err != nil {
 		c.conn.RemoveSignal(raw)
-		return nil, errors.NewErr("DBusSubscribeFailed", err).
+		return nil, errors.NewErr(tagDBusSubscribeFailed, err).
 			SetMetadata("interface", match.Interface, "member", match.Member)
 	}
 	out := make(chan *godbus.Signal, 16)
@@ -286,7 +297,7 @@ func (c *sessionBus) unsubscribe(opts []godbus.MatchOption, raw chan *godbus.Sig
 
 func (c *sessionBus) Close() error {
 	if err := c.conn.Close(); err != nil {
-		return errors.NewErr("DBusCloseFailed", err)
+		return errors.NewErr(tagDBusCloseFailed, err)
 	}
 	return nil
 }
@@ -300,15 +311,30 @@ func (c *sessionBus) Close() error {
 func ConnectAddress(ctx context.Context, address string) (Bus, error) {
 	conn, err := godbus.Dial(address, godbus.WithContext(ctx))
 	if err != nil {
-		return nil, errors.NewErr("DBusAddressDialFailed", err).SetMetadata("address", address)
+		return nil, errors.NewErr(tagDBusAddressDialFailed, err).SetMetadata("address", address)
 	}
 	if err := conn.Auth(nil); err != nil {
 		_ = conn.Close() // the authentication error is the one to report
-		return nil, errors.NewErr("DBusAddressAuthFailed", err).SetMetadata("address", address)
+		return nil, errors.NewErr(tagDBusAddressAuthFailed, err).SetMetadata("address", address)
 	}
 	if err := conn.Hello(); err != nil {
 		_ = conn.Close() // the hello error is the one to report
-		return nil, errors.NewErr("DBusAddressHelloFailed", err).SetMetadata("address", address)
+		return nil, errors.NewErr(tagDBusAddressHelloFailed, err).SetMetadata("address", address)
 	}
 	return &sessionBus{conn: conn}, nil
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagDBusAddressAuthFailed  = "DBusAddressAuthFailed"
+	tagDBusAddressDialFailed  = "DBusAddressDialFailed"
+	tagDBusAddressHelloFailed = "DBusAddressHelloFailed"
+	tagDBusCallFailed         = "DBusCallFailed"
+	tagDBusCloseFailed        = "DBusCloseFailed"
+	tagDBusEmitFailed         = "DBusEmitFailed"
+	tagDBusExportFailed       = "DBusExportFailed"
+	tagDBusNameTaken          = "DBusNameTaken"
+	tagDBusReleaseNameFailed  = "DBusReleaseNameFailed"
+	tagDBusRequestNameFailed  = "DBusRequestNameFailed"
+	tagDBusSubscribeFailed    = "DBusSubscribeFailed"
+)

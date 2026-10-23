@@ -137,7 +137,7 @@ type GlobalObjectKey[S State] struct {
 // Flutter: widgets/framework.dart GlobalObjectKey.new
 func NewGlobalObjectKey[S State](value any) GlobalObjectKey[S] {
 	if value != nil && !reflect.TypeOf(value).Comparable() {
-		panic(errors.New("GlobalObjectKeyNotComparable", "the value of a GlobalObjectKey must be comparable",
+		panic(errors.New(tagGlobalObjectKeyNotComparable, "the value of a GlobalObjectKey must be comparable",
 			"type", foundation.RuntimeTypeName(value)))
 	}
 	return GlobalObjectKey[S]{value: value}
@@ -193,3 +193,8 @@ func (k GlobalObjectKey[S]) String() string {
 
 // typeKey is a string that is the same for widgets of the same Go type.
 func typeKey(w Widget) string { return reflect.TypeOf(w).String() }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagGlobalObjectKeyNotComparable = "GlobalObjectKeyNotComparable"
+)

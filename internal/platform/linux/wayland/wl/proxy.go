@@ -89,7 +89,7 @@ func (c *Conn) register(o object, proxy uintptr, hasEvents bool) {
 	c.api.proxySetUserData(proxy, p.handle)
 	if hasEvents {
 		if c.api.proxyAddDispatcher(proxy, dispatcherPointer(), p.handle, p.handle) != 0 {
-			panic(errors.New("WaylandDispatcherFailed", "wl_proxy_add_dispatcher failed: the proxy already has a listener",
+			panic(errors.New(tagWaylandDispatcherFailed, "wl_proxy_add_dispatcher failed: the proxy already has a listener",
 				"id", c.api.proxyGetID(proxy)))
 		}
 	}
@@ -140,7 +140,7 @@ func (p *Proxy) ProxyDestroy() {
 // wl_proxy of the new object, or 0.
 func (p *Proxy) marshal(opcode uint32, iface *Interface, version, flags uint32, a *args) uintptr {
 	if p.dead {
-		panic(errors.New("WaylandObjectDestroyed", "request sent to an object that was destroyed",
+		panic(errors.New(tagWaylandObjectDestroyed, "request sent to an object that was destroyed",
 			"opcode", opcode))
 	}
 	var ifacePtr uintptr
@@ -191,3 +191,9 @@ func lookup[T any](c *Conn, proxy uintptr) T {
 	t, _ := o.(T)
 	return t
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagWaylandDispatcherFailed = "WaylandDispatcherFailed"
+	tagWaylandObjectDestroyed  = "WaylandObjectDestroyed"
+)

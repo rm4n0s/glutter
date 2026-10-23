@@ -163,7 +163,7 @@ func (c *OverlayPortalController) Hide() {
 		return
 	}
 	if foundation.DebugMode && c.zOrderIndex.IsNone() {
-		panic(errors.New("OverlayPortalHideWithoutShow", "Hide was called on an OverlayPortalController that is not attached and not showing",
+		panic(errors.New(tagOverlayPortalHideWithoutShow, "Hide was called on an OverlayPortalController that is not attached and not showing",
 			"controller", c.String()))
 	}
 	c.zOrderIndex = foundation.None[int64]()
@@ -354,7 +354,7 @@ func (s *overlayPortalState) setupController(controller *OverlayPortalController
 	if foundation.DebugMode {
 		if target := controller.attachTarget; target != nil && target != s {
 			if el, ok := target.Context().(Element); ok && el.AsElement().DebugIsActive() {
-				panic(errors.New("OverlayPortalControllerAttached", "failed to attach "+controller.String()+" to the OverlayPortal: it is already attached to another one",
+				panic(errors.New(tagOverlayPortalControllerAttached, "failed to attach "+controller.String()+" to the OverlayPortal: it is already attached to another one",
 					"controller", controller.String()))
 			}
 		}
@@ -381,7 +381,7 @@ func (s *overlayPortalState) DidUpdateWidget(oldWidget *OverlayPortal) {
 
 func (s *overlayPortalState) Activate() {
 	if foundation.DebugMode && s.Widget().controller.attachTarget != s {
-		panic(errors.New("OverlayPortalControllerDetached", "an OverlayPortal was activated while its controller is attached to another one",
+		panic(errors.New(tagOverlayPortalControllerDetached, "an OverlayPortal was activated while its controller is attached to another one",
 			"controller", s.Widget().controller.String()))
 	}
 }
@@ -396,7 +396,7 @@ func (s *overlayPortalState) Dispose() {
 
 func (s *overlayPortalState) debugCheckNotBuilding(method string) {
 	if foundation.DebugMode && WidgetsBindingOf(s.Context()).Scheduler().SchedulerPhase() == scheduler.SchedulerPhasePersistentCallbacks {
-		panic(errors.New("OverlayPortalShowDuringBuild", "OverlayPortalController."+method+" should not be called during build",
+		panic(errors.New(tagOverlayPortalShowDuringBuild, "OverlayPortalController."+method+" should not be called during build",
 			"controller", s.Widget().controller.String()))
 	}
 }
@@ -470,7 +470,7 @@ type overlayEntryLocation struct {
 
 func (l *overlayEntryLocation) addToChildModel(child *renderDeferredLayoutBox) {
 	if foundation.DebugMode && l.overlayChildRenderBox != nil {
-		panic(errors.New("OverlayLocationOccupied", "failed to add an overlay child: the location is occupied already",
+		panic(errors.New(tagOverlayLocationOccupied, "failed to add an overlay child: the location is occupied already",
 			"location", l.String(), "occupant", foundation.DescribeIdentity(l.overlayChildRenderBox)))
 	}
 	l.overlayChildRenderBox = child
@@ -482,7 +482,7 @@ func (l *overlayEntryLocation) addToChildModel(child *renderDeferredLayoutBox) {
 
 func (l *overlayEntryLocation) removeFromChildModel(child *renderDeferredLayoutBox) {
 	if foundation.DebugMode && child != l.overlayChildRenderBox {
-		panic(errors.New("OverlayLocationOccupantMismatch", "failed to remove an overlay child that is not the occupant of the location",
+		panic(errors.New(tagOverlayLocationOccupantMismatch, "failed to remove an overlay child that is not the occupant of the location",
 			"location", l.String()))
 	}
 	l.overlayChildRenderBox = nil
@@ -523,7 +523,7 @@ func (l *overlayEntryLocation) moveChild(child *renderDeferredLayoutBox, from *o
 // detaches and puts it back when it attaches again.
 func (l *overlayEntryLocation) reattachFromLayoutSurrogate(child *renderDeferredLayoutBox) {
 	if foundation.DebugMode && l.overlayChildRenderBox != nil {
-		panic(errors.New("OverlayLocationOccupied", "failed to reattach an overlay child: detachFromLayoutSurrogate must be called first",
+		panic(errors.New(tagOverlayLocationOccupied, "failed to reattach an overlay child: detachFromLayoutSurrogate must be called first",
 			"location", l.String()))
 	}
 	l.theater.addDeferredChild(child)
@@ -542,7 +542,7 @@ func (l *overlayEntryLocation) detachFromLayoutSurrogate(child *renderDeferredLa
 // the tree.
 func (l *overlayEntryLocation) debugIsLocationValid() bool {
 	if foundation.DebugMode && l.invalid {
-		panic(errors.New("OverlayLocationInvalid", l.String()+" is already disposed"))
+		panic(errors.New(tagOverlayLocationInvalid, l.String()+" is already disposed"))
 	}
 	return true
 }
@@ -569,7 +569,7 @@ func (l *overlayEntryLocation) String() string {
 // Flutter: widgets/overlay.dart _OverlayEntryWidgetState._add
 func (s *overlayEntryWidgetState) add(child *overlayEntryLocation) {
 	if foundation.DebugMode && (!s.Mounted() || child.linked) {
-		panic(errors.New("OverlayChildModelInvalid", "an overlay child was added to the child model of an entry that is not mounted, or twice",
+		panic(errors.New(tagOverlayChildModelInvalid, "an overlay child was added to the child model of an entry that is not mounted, or twice",
 			"location", child.String()))
 	}
 	insertPosition := s.lastSibling
@@ -602,7 +602,7 @@ func (s *overlayEntryWidgetState) add(child *overlayEntryLocation) {
 func (s *overlayEntryWidgetState) remove(child *overlayEntryLocation) {
 	if !child.linked {
 		if foundation.DebugMode {
-			panic(errors.New("OverlayChildModelInvalid", "an overlay child was removed from a child model that does not have it",
+			panic(errors.New(tagOverlayChildModelInvalid, "an overlay child was removed from a child model that does not have it",
 				"location", child.String()))
 		}
 		return
@@ -715,7 +715,7 @@ func (e *overlayPortalElement) Update(newWidget Widget) {
 // during global key reparenting.
 func (e *overlayPortalElement) ForgetChild(child Element) {
 	if foundation.DebugMode && child != e.child {
-		panic(errors.New("OverlayPortalForgetChild", "only the child of an OverlayPortal can be forgotten, not its overlay child"))
+		panic(errors.New(tagOverlayPortalForgetChild, "only the child of an OverlayPortal can be forgotten, not its overlay child"))
 	}
 	e.child = nil
 	e.RenderObjectElement.ForgetChild(child)
@@ -732,7 +732,7 @@ func (e *overlayPortalElement) VisitChildren(visitor ElementVisitor) {
 
 func (e *overlayPortalElement) InsertRenderObjectChild(child rendering.RenderObject, slot any) {
 	if foundation.DebugMode && child.Parent() != nil {
-		panic(errors.New("RenderObjectHasParent", "the render object of an OverlayPortal's child already has a parent",
+		panic(errors.New(tagRenderObjectHasParent, "the render object of an OverlayPortal's child already has a parent",
 			"child", foundation.DescribeIdentity(child)))
 	}
 	r := e.surrogate()
@@ -794,7 +794,7 @@ func (w *deferredLayout) UpdateRenderObject(bc BuildContext, ro rendering.Render
 	if foundation.DebugMode {
 		parent, _ := FindAncestorRenderObjectOfType[*renderLayoutSurrogateProxyBox](bc)
 		if r.layoutSurrogate != parent || parent.deferredLayoutChild != r {
-			panic(errors.New("OverlayDeferredLayoutSurrogateChanged", "the layout surrogate of an overlay child changed"))
+			panic(errors.New(tagOverlayDeferredLayoutSurrogateChanged, "the layout surrogate of an overlay child changed"))
 		}
 	}
 	// Deviation: Flutter's setter compares the new identifier with the getter,
@@ -838,7 +838,7 @@ func (r *renderDeferredLayoutBox) SetupParentData(child rendering.RenderObject) 
 func (r *renderDeferredLayoutBox) theaterOf() *renderTheater {
 	th, ok := r.Parent().(*renderTheater)
 	if !ok {
-		panic(errors.New("OverlayDeferredBoxParent", "the parent of a deferred layout box is not the theater of an Overlay",
+		panic(errors.New(tagOverlayDeferredBoxParent, "the parent of a deferred layout box is not the theater of an Overlay",
 			"parent", foundation.DescribeIdentity(r.Parent())))
 	}
 	return th
@@ -894,7 +894,7 @@ func (r *renderDeferredLayoutBox) DebugLayoutParent() rendering.RenderObject {
 func (r *renderDeferredLayoutBox) doLayoutFrom(treewalkParent rendering.RenderObject, constraints rendering.Constraints) {
 	shouldAddToDirtyList := r.needsLayoutFlag || r.Constraints() != constraints
 	if foundation.DebugMode && r.doingLayoutFromTreeWalk {
-		panic(errors.New("OverlayDeferredLayoutReentrant", "a deferred layout box was laid out while it was laid out from a tree walk"))
+		panic(errors.New(tagOverlayDeferredLayoutReentrant, "a deferred layout box was laid out while it was laid out from a tree walk"))
 	}
 	r.doingLayoutFromTreeWalk = true
 	r.RenderProxyBox.Layout(constraints)
@@ -939,7 +939,7 @@ func (r *renderDeferredLayoutBox) PerformLayout() {
 		return
 	}
 	if foundation.DebugMode && !r.BoxConstraints().IsTight() {
-		panic(errors.New("OverlayDeferredConstraintsLoose", "a deferred layout box was laid out with constraints that are not tight",
+		panic(errors.New(tagOverlayDeferredConstraintsLoose, "a deferred layout box was laid out with constraints that are not tight",
 			"constraints", r.BoxConstraints().String()))
 	}
 	theaterLayoutChild(r, child, r.BoxConstraints())
@@ -1122,7 +1122,7 @@ func (r *renderOverlayChildLayoutBuilder) scheduleLayoutCallback() { r.ScheduleL
 func (r *renderOverlayChildLayoutBuilder) layoutInfo() any {
 	info, ok := r.info.Get()
 	if !ok {
-		panic(errors.New("OverlayChildLayoutInfoMissing", "the layout information of an overlay child was read before the layout callback ran"))
+		panic(errors.New(tagOverlayChildLayoutInfoMissing, "the layout information of an overlay child was read before the layout callback ran"))
 	}
 	return info
 }
@@ -1143,7 +1143,7 @@ func (r *renderOverlayChildLayoutBuilder) childrenInHitTestOrder() iter.Seq[rend
 func (r *renderOverlayChildLayoutBuilder) theaterOf() *renderTheater {
 	parent, ok := r.Parent().(*renderDeferredLayoutBox)
 	if !ok {
-		panic(errors.New("OverlayLayoutBuilderParent", "the parent of an overlay child layout builder is not a deferred layout box",
+		panic(errors.New(tagOverlayLayoutBuilderParent, "the parent of an overlay child layout builder is not a deferred layout box",
 			"parent", foundation.DescribeIdentity(r.Parent())))
 	}
 	return parent.theaterOf()
@@ -1167,7 +1167,7 @@ func (r *renderOverlayChildLayoutBuilder) computeNewLayoutInfo() OverlayChildLay
 	if foundation.DebugMode {
 		for node := rendering.RenderObject(surrogate); node != nil && node != rendering.RenderObject(th); node = node.Parent() {
 			if follower, ok := node.(*rendering.RenderFollowerLayer); ok {
-				panic(errors.New("OverlayPaintTransformUnreliable",
+				panic(errors.New(tagOverlayPaintTransformUnreliable,
 					"The paint transform cannot be reliably computed because of RenderFollowerLayer(s). RenderFollowerLayer establishes its paint transform only after the layout phase; consider replacing the corresponding CompositedTransformFollower with OverlayPortal.overlayChildLayoutBuilder if possible.",
 					"follower", foundation.DescribeIdentity(follower)))
 			}
@@ -1253,3 +1253,24 @@ func (r *renderOverlayChildLayoutBuilder) Dispose() {
 	}
 	r.RenderProxyBox.Dispose()
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagOverlayChildLayoutInfoMissing         = "OverlayChildLayoutInfoMissing"
+	tagOverlayChildModelInvalid              = "OverlayChildModelInvalid"
+	tagOverlayDeferredBoxParent              = "OverlayDeferredBoxParent"
+	tagOverlayDeferredConstraintsLoose       = "OverlayDeferredConstraintsLoose"
+	tagOverlayDeferredLayoutReentrant        = "OverlayDeferredLayoutReentrant"
+	tagOverlayDeferredLayoutSurrogateChanged = "OverlayDeferredLayoutSurrogateChanged"
+	tagOverlayLayoutBuilderParent            = "OverlayLayoutBuilderParent"
+	tagOverlayLocationInvalid                = "OverlayLocationInvalid"
+	tagOverlayLocationOccupantMismatch       = "OverlayLocationOccupantMismatch"
+	tagOverlayLocationOccupied               = "OverlayLocationOccupied"
+	tagOverlayPaintTransformUnreliable       = "OverlayPaintTransformUnreliable"
+	tagOverlayPortalControllerAttached       = "OverlayPortalControllerAttached"
+	tagOverlayPortalControllerDetached       = "OverlayPortalControllerDetached"
+	tagOverlayPortalForgetChild              = "OverlayPortalForgetChild"
+	tagOverlayPortalHideWithoutShow          = "OverlayPortalHideWithoutShow"
+	tagOverlayPortalShowDuringBuild          = "OverlayPortalShowDuringBuild"
+	tagRenderObjectHasParent                 = "RenderObjectHasParent"
+)

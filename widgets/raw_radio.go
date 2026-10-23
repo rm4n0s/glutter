@@ -50,7 +50,7 @@ func NewRawRadio[T comparable](value T, mouseCursor WidgetStateProperty[services
 	focusNode *FocusNode, autofocus bool, groupRegistry RadioGroupRegistry[T], enabled bool,
 	builder RadioBuilder, opts ...RawRadioOpts) *RawRadio[T] {
 	if foundation.DebugMode && enabled && groupRegistry == nil {
-		panic(errors.New("RawRadioNoRegistry", "an enabled raw radio must have a registry"))
+		panic(errors.New(tagRawRadioNoRegistry, "an enabled raw radio must have a registry"))
 	}
 	o := firstOpts(opts)
 	return &RawRadio[T]{StatefulWidget: NewStatefulWidgetBase(WidgetOpts(o)), value: value, mouseCursor: mouseCursor,
@@ -196,3 +196,8 @@ func (s *rawRadioState[T]) Build(bc BuildContext) Widget {
 			Hint:                     semanticsHint,
 		})
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagRawRadioNoRegistry = "RawRadioNoRegistry"
+)

@@ -48,7 +48,7 @@ func (d dragBoundaryDelegateForRect) NearestPositionWithinBoundary(draggedObject
 		return draggedObject
 	}
 	if boundary.Right-draggedObject.Width() < boundary.Left || boundary.Bottom-draggedObject.Height() < boundary.Top {
-		panic(errors.New("DragBoundaryTooSmall", "the rect is larger than the boundary; the rect width must be less than the boundary width, and the rect height must be less than the boundary height"))
+		panic(errors.New(tagDragBoundaryTooSmall, "the rect is larger than the boundary; the rect width must be less than the boundary width, and the rect height must be less than the boundary height"))
 	}
 	left := ui.ClampDouble(draggedObject.Left, boundary.Left, boundary.Right-draggedObject.Width())
 	top := ui.ClampDouble(draggedObject.Top, boundary.Top, boundary.Bottom-draggedObject.Height())
@@ -96,7 +96,7 @@ func DragBoundaryForRectMaybeOf(bc BuildContext, opts ...DragBoundaryForRectOfOp
 	}
 	rb, ok := element.FindRenderObject().(rendering.Box)
 	if !ok || !rb.HasSize() {
-		panic(errors.New("DragBoundaryUnavailable", "DragBoundary is not available"))
+		panic(errors.New(tagDragBoundaryUnavailable, "DragBoundary is not available"))
 	}
 	var boundary ui.Rect
 	if firstOpts(opts).UseLocalPosition {
@@ -133,3 +133,9 @@ func maxF(a, b float64) float64 {
 	}
 	return b
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagDragBoundaryTooSmall    = "DragBoundaryTooSmall"
+	tagDragBoundaryUnavailable = "DragBoundaryUnavailable"
+)

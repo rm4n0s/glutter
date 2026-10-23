@@ -134,7 +134,7 @@ func TestTheFrameworkCreatesWindows(t *testing.T) {
 
 func TestWindowPlatformFailureComesBack(t *testing.T) {
 	e := newWindowsEngine(t)
-	e.h.conn = &failingWindow{conn: &conn{Platform: e.p}, err: errors.New("WaylandProtocolMissing", "dialog protocol missing")}
+	e.h.conn = &failingWindow{conn: &conn{Platform: e.p}, err: errors.New(tagWaylandProtocolMissing, "dialog protocol missing")}
 	_, err := e.d.CreateWindow(ui.WindowSpec{})
 	assertRoute(t, err, "WaylandProtocolMissing", "WaylandProtocolMissing")
 	if len(e.d.Views()) != 1 {
@@ -644,3 +644,8 @@ func TestClosingAWindowUnderThePointerRemovesThePointerFirst(t *testing.T) {
 		})
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagWaylandProtocolMissing = "WaylandProtocolMissing"
+)

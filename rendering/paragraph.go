@@ -74,7 +74,7 @@ func layoutInlineChild(child Box, childConstraints BoxConstraints, layoutChild C
 	span := textParentData(child).Span
 	if span == nil {
 		if foundation.DebugMode {
-			panic(errors.New("InlineChildWithoutSpan", "an inline child has no placeholder span in its parent data",
+			panic(errors.New(tagInlineChildWithoutSpan, "an inline child has no placeholder span in its parent data",
 				"child", foundation.DescribeIdentity(child)))
 		}
 		return painting.PlaceholderDimensionsEmpty()
@@ -111,7 +111,7 @@ func PositionInlineChildren(c *ContainerRenderObject[Box], boxes []ui.TextBox) {
 	for _, box := range boxes {
 		if isNil(child) {
 			if foundation.DebugMode {
-				panic(errors.New("InlineBoxesMismatch", "Invalid number of boxes provided to positionInlineChildren. The number of boxes ("+
+				panic(errors.New(tagInlineBoxesMismatch, "Invalid number of boxes provided to positionInlineChildren. The number of boxes ("+
 					itoa(len(boxes))+") exceeds the number of child render objects ("+itoa(c.ChildCount())+"). Each box corresponds "+
 					"to a child, but there are not enough children to position all boxes.", "boxes", len(boxes), "children", c.ChildCount()))
 			}
@@ -236,7 +236,7 @@ func NewRenderParagraph(text painting.InlineSpan, textDirection ui.TextDirection
 	if foundation.DebugMode {
 		text.DebugAssertIsValid()
 		if m, ok := o.MaxLines.Get(); ok && m <= 0 {
-			panic(errors.New("ParagraphMaxLinesInvalid", "maxLines must be greater than zero", "maxLines", m))
+			panic(errors.New(tagParagraphMaxLinesInvalid, "maxLines must be greater than zero", "maxLines", m))
 		}
 	}
 	if o.Overflow == painting.TextOverflowUnspecified {
@@ -549,7 +549,7 @@ func (r *RenderParagraph) MaxLines() foundation.Opt[int] { return r.textPainter.
 // Flutter: rendering/paragraph.dart RenderParagraph.maxLines
 func (r *RenderParagraph) SetMaxLines(value foundation.Opt[int]) {
 	if m, ok := value.Get(); ok && m <= 0 && foundation.DebugMode {
-		panic(errors.New("ParagraphMaxLinesInvalid", "maxLines must be greater than zero", "maxLines", m))
+		panic(errors.New(tagParagraphMaxLinesInvalid, "maxLines must be greater than zero", "maxLines", m))
 	}
 	if r.textPainter.MaxLines() == value {
 		return
@@ -759,7 +759,7 @@ func (r *RenderParagraph) ComputeDryLayout(constraints BoxConstraints) ui.Size {
 // Flutter: rendering/paragraph.dart RenderParagraph.computeDistanceToActualBaseline
 func (r *RenderParagraph) ComputeDistanceToActualBaseline(ui.TextBaseline) foundation.Opt[float64] {
 	if foundation.DebugMode && r.DebugNeedsLayout() {
-		panic(errors.New("BaselineNeedsLayout", "the baseline was read from a paragraph that needs layout",
+		panic(errors.New(tagBaselineNeedsLayout, "the baseline was read from a paragraph that needs layout",
 			"object", foundation.DescribeIdentity(r)))
 	}
 	r.layoutTextWithConstraints(r.BoxConstraints())
@@ -940,7 +940,7 @@ func (r *RenderParagraph) GetWordBoundary(position ui.TextPosition) ui.TextRange
 
 func (r *RenderParagraph) checkLaidOut() {
 	if foundation.DebugMode && r.DebugNeedsLayout() {
-		panic(errors.New("ParagraphNeedsLayout", "the paragraph was queried before it was laid out",
+		panic(errors.New(tagParagraphNeedsLayout, "the paragraph was queried before it was laid out",
 			"object", foundation.DescribeIdentity(r)))
 	}
 }
@@ -984,3 +984,11 @@ func (r *RenderParagraph) DebugFillProperties(b *foundation.DiagnosticProperties
 	b.Add(foundation.NewIntProperty("maxLines", r.MaxLines(), foundation.NumberPropertyOpts{IfNull: "unlimited"}))
 	b.Add(foundation.NewDoubleProperty("devicePixelRatio", foundation.Some(r.devicePixelRatio), foundation.NumberPropertyOpts{DefaultValue: 1.0}))
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagInlineBoxesMismatch      = "InlineBoxesMismatch"
+	tagInlineChildWithoutSpan   = "InlineChildWithoutSpan"
+	tagParagraphMaxLinesInvalid = "ParagraphMaxLinesInvalid"
+	tagParagraphNeedsLayout     = "ParagraphNeedsLayout"
+)

@@ -41,11 +41,11 @@ type AttributedString struct {
 func NewAttributedString(s string, attributes ...ui.StringAttribute) AttributedString {
 	if foundation.DebugMode {
 		if s == "" && len(attributes) > 0 {
-			panic(errors.New("AttributedStringInvalid", "an empty AttributedString can not have attributes"))
+			panic(errors.New(tagAttributedStringInvalid, "an empty AttributedString can not have attributes"))
 		}
 		for _, a := range attributes {
 			if r := a.Range(); len(s) < r.Start || len(s) < r.End {
-				panic(errors.New("AttributedStringInvalid", "the range of an attribute is outside of the string",
+				panic(errors.New(tagAttributedStringInvalid, "the range of an attribute is outside of the string",
 					"string", s, "range", r.String()))
 			}
 		}
@@ -258,3 +258,8 @@ func (b *SemanticsLabelBuilder) Build() string {
 //
 // Flutter: semantics/semantics.dart SemanticsLabelBuilder.clear
 func (b *SemanticsLabelBuilder) Clear() { b.parts = b.parts[:0] }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagAttributedStringInvalid = "AttributedStringInvalid"
+)

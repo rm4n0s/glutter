@@ -146,7 +146,7 @@ func (s *EditableTextState) transposeCharacters(TransposeCharactersIntent) any {
 func (s *EditableTextState) updateSelection(intent UpdateSelectionIntent) any {
 	n := len(intent.CurrentTextEditingValue.Text)
 	if foundation.DebugMode && (intent.NewSelection.Start() > n || intent.NewSelection.End() > n) {
-		panic(errors.New("UpdateSelectionOutOfRange", "the selection must not exceed the current text length",
+		panic(errors.New(tagUpdateSelectionOutOfRange, "the selection must not exceed the current text length",
 			"selection", intent.NewSelection.String(), "textLength", n))
 	}
 	s.BringIntoView(intent.NewSelection.Extent())
@@ -676,7 +676,7 @@ func tapOutsideUnfocuses(platform foundation.TargetPlatform, kind ui.PointerDevi
 			// Taps on touch screens don't unfocus: scrolling must not either.
 			return false
 		case ui.PointerDeviceKindTrackpad:
-			panic(errors.New("EditableTextTapOutsideTrackpad", "unexpected pointer down event for trackpad"))
+			panic(errors.New(tagEditableTextTapOutsideTrackpad, "unexpected pointer down event for trackpad"))
 		}
 	}
 	return true
@@ -698,3 +698,9 @@ func (a *tapUpOutsideAction) IntentType() reflect.Type {
 }
 
 func (a *tapUpOutsideAction) InvokeWithContext(Intent, BuildContext) any { return nil }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagEditableTextTapOutsideTrackpad = "EditableTextTapOutsideTrackpad"
+	tagUpdateSelectionOutOfRange      = "UpdateSelectionOutOfRange"
+)

@@ -468,7 +468,7 @@ func TestSystemTrayErrors(t *testing.T) {
 	}{
 		{"no watcher on the bus", func(bc widgets.BuildContext) { desktop.UseBus(bc, fakebus.New(unique)) }, "TrayUnavailable"},
 		{"no session bus", func(bc widgets.BuildContext) {
-			desktop.UseBusOpener(bc, func(context.Context) (dbus.Bus, error) { return nil, errors.New("DBusConnectFailed", "no bus") })
+			desktop.UseBusOpener(bc, func(context.Context) (dbus.Bus, error) { return nil, errors.New(tagDBusConnectFailed, "no bus") })
 		}, "TrayUnavailable"},
 		{"the watcher refuses", func(bc widgets.BuildContext) {
 			b := fakebus.New(unique)

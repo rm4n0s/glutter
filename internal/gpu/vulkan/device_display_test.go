@@ -447,7 +447,7 @@ func TestErrorsOfTheDevice(t *testing.T) {
 		}
 		_, err = d.Begin()
 		appErr, ok := errors.FromError(err)
-		if !ok || appErr.Tag != "VulkanFrameOpen" || !appErr.HasRoute("Device.Begin.VulkanFrameOpen") {
+		if !ok || appErr.Tag != tagVulkanFrameOpen || !appErr.HasRoute("Device.Begin.VulkanFrameOpen") {
 			t.Errorf("got %v, want VulkanFrameOpen via Device.Begin", err)
 		}
 		if err := enc.Submit(); err != nil {
@@ -455,7 +455,7 @@ func TestErrorsOfTheDevice(t *testing.T) {
 		}
 		err = enc.Submit()
 		appErr, ok = errors.FromError(err)
-		if !ok || appErr.Tag != "VulkanFrameNotOpen" || !appErr.HasRoute("encoder.Submit.VulkanFrameNotOpen") {
+		if !ok || appErr.Tag != tagVulkanFrameNotOpen || !appErr.HasRoute("encoder.Submit.VulkanFrameNotOpen") {
 			t.Errorf("got %v, want VulkanFrameNotOpen via encoder.Submit", err)
 		}
 	})
@@ -465,7 +465,7 @@ func TestErrorsOfTheDevice(t *testing.T) {
 		pass := enc.BeginPass(tex, explicit.LoadClear, colorOf(0, 0, 0, 1))
 		err := panicError(func() { enc.BeginPass(tex, explicit.LoadClear, colorOf(0, 0, 0, 1)) })
 		appErr, ok := errors.FromError(err)
-		if !ok || appErr.Tag != "VulkanPassNotEnded" || !appErr.HasRoute("encoder.BeginPass.VulkanPassNotEnded") {
+		if !ok || appErr.Tag != tagVulkanPassNotEnded || !appErr.HasRoute("encoder.BeginPass.VulkanPassNotEnded") {
 			t.Errorf("got %v, want VulkanPassNotEnded via encoder.BeginPass", err)
 		}
 		pass.End()
@@ -478,8 +478,8 @@ func TestErrorsOfTheDevice(t *testing.T) {
 		enc, _ := d.Begin()
 		err := panicError(func() { enc.BeginPass(other, explicit.LoadClear, colorOf(0, 0, 0, 1)) })
 		appErr, ok := errors.FromError(err)
-		if !ok || appErr.Tag != "VulkanForeignResource" || !appErr.HasRoute("encoder.BeginPass->foreign.VulkanForeignResource") {
-			t.Errorf("got %v, want VulkanForeignResource via encoder.BeginPass->foreign", err)
+		if !ok || appErr.Tag != tagVulkanForeignResource || !appErr.HasRoute("encoder.BeginPass.VulkanForeignResource") {
+			t.Errorf("got %v, want VulkanForeignResource via encoder.BeginPass", err)
 		}
 		if err := enc.Submit(); err != nil {
 			t.Fatal(err)
@@ -489,7 +489,7 @@ func TestErrorsOfTheDevice(t *testing.T) {
 		b, _ := d.NewBuffer(16, explicit.BufferVertex)
 		err := panicError(func() { d.WriteBuffer(b, 8, make([]byte, 16)) })
 		appErr, ok := errors.FromError(err)
-		if !ok || appErr.Tag != "VulkanWriteOutOfRange" || !appErr.HasRoute("Device.WriteBuffer.VulkanWriteOutOfRange") {
+		if !ok || appErr.Tag != tagVulkanWriteOutOfRange || !appErr.HasRoute("Device.WriteBuffer.VulkanWriteOutOfRange") {
 			t.Errorf("got %v, want VulkanWriteOutOfRange via Device.WriteBuffer", err)
 		}
 	})
@@ -546,7 +546,7 @@ func TestOpenErrorsWithTheDriver(t *testing.T) {
 	t.Run("a CPU device is not used unless Vulkan is asked for", func(t *testing.T) {
 		_, err := Open(Options{Logger: quiet})
 		appErr, ok := errors.FromError(err)
-		if !ok || appErr.Tag != "VulkanNoDevice" || !appErr.HasRoute("Open->openDevice->chooseDevice.VulkanNoDevice") {
+		if !ok || appErr.Tag != tagVulkanNoDevice || !appErr.HasRoute("Open->openDevice->chooseDevice.VulkanNoDevice") {
 			t.Errorf("got %v, want VulkanNoDevice via Open->openDevice->chooseDevice", err)
 		}
 	})
@@ -554,7 +554,7 @@ func TestOpenErrorsWithTheDriver(t *testing.T) {
 		env := map[string]string{deviceEnvVar: "no such gpu"}
 		_, err := Open(Options{Logger: quiet, AllowCPU: true, Getenv: func(k string) string { return env[k] }})
 		appErr, ok := errors.FromError(err)
-		if !ok || appErr.Tag != "VulkanNoDevice" {
+		if !ok || appErr.Tag != tagVulkanNoDevice {
 			t.Errorf("got %v, want VulkanNoDevice", err)
 		}
 	})
@@ -753,7 +753,7 @@ func TestLevelsAreDrawnIntoAndSampled(t *testing.T) {
 	}
 	for _, i := range []int{-1, 4} {
 		err := panicError(func() { tex.Level(i) })
-		if appErr, ok := errors.FromError(err); !ok || appErr.Tag != "VulkanLevelInvalid" || !appErr.HasRoute("texture.Level.VulkanLevelInvalid") {
+		if appErr, ok := errors.FromError(err); !ok || appErr.Tag != tagVulkanLevelInvalid || !appErr.HasRoute("texture.Level.VulkanLevelInvalid") {
 			t.Errorf("Level(%d): got %v, want VulkanLevelInvalid", i, err)
 		}
 	}

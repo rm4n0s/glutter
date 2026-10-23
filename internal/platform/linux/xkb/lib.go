@@ -92,7 +92,7 @@ func loadLibrary() (*library, error) {
 		if appErr, ok := errors.FromError(err); ok {
 			md = appErr.Metadata
 		}
-		return nil, errors.New("XKBLoadFailed", "could not load libxkbcommon",
+		return nil, errors.New(tagXKBLoadFailed, "could not load libxkbcommon",
 			"names", md["names"], "dlerror", md["dlerror"])
 	}
 	l := new(library)
@@ -138,3 +138,8 @@ func loadLibrary() (*library, error) {
 
 // load opens libxkbcommon once; a failure is returned on every call.
 var load = sync.OnceValues(loadLibrary)
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagXKBLoadFailed = "XKBLoadFailed"
+)

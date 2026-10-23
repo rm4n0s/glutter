@@ -161,7 +161,7 @@ func loadGL(egl eglAPI) (glAPI, error) {
 	for _, b := range g.glSymbols() {
 		address := egl.getProcAddress(b.symbol)
 		if address == 0 {
-			return nil, errors.New("SymbolMissing", "the GL driver has no such function",
+			return nil, errors.New(tagSymbolMissing, "the GL driver has no such function",
 				"library", "eglGetProcAddress", "symbol", b.symbol)
 		}
 		purego.RegisterFunc(b.fptr, address)
@@ -399,3 +399,8 @@ func (g *glLib) readPixels(x, y, w, h int32, format, kind uint32, pixels []byte)
 
 func (g *glLib) flush()  { g.flushFn() }
 func (g *glLib) finish() { g.finishFn() }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagSymbolMissing = "SymbolMissing"
+)

@@ -160,7 +160,7 @@ func MenuShortcutLabel(shortcut widgets.MenuSerializableShortcut, localizations 
 		}
 		return strings.Join(append(modifiers, character), keySeparator)
 	}
-	panic(errors.New("MenuShortcutNotSerializable", "the shortcut has neither a trigger nor a character to show in a menu"))
+	panic(errors.New(tagMenuShortcutNotSerializable, "the shortcut has neither a trigger nor a character to show in a menu"))
 }
 
 // shortcutModifierLabel is the label of a modifier key on the platform.
@@ -200,3 +200,8 @@ func shortcutModifierLabel(modifier menuModifier, l MaterialLocalizations) strin
 		return l.KeyboardKeyShift()
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagMenuShortcutNotSerializable = "MenuShortcutNotSerializable"
+)

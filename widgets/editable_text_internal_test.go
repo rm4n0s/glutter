@@ -87,12 +87,12 @@ type failingClipboard struct{ post func(func()) }
 
 func (c failingClipboard) SetClipboardText(_ context.Context, _ string, done func(error)) {
 	if done != nil {
-		c.post(func() { done(errors.New("ClipboardTestFailure", "the clipboard is broken")) })
+		c.post(func() { done(errors.New(tagClipboardTestFailure, "the clipboard is broken")) })
 	}
 }
 
 func (c failingClipboard) GetClipboardText(_ context.Context, done func(string, bool, error)) {
-	c.post(func() { done("", false, errors.New("ClipboardTestFailure", "the clipboard is broken")) })
+	c.post(func() { done("", false, errors.New(tagClipboardTestFailure, "the clipboard is broken")) })
 }
 
 func TestEditableTextReportsTheFailuresOfTheClipboard(t *testing.T) {
@@ -197,3 +197,8 @@ func TestTapOutsideUnfocuses(t *testing.T) {
 		}
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagClipboardTestFailure = "ClipboardTestFailure"
+)

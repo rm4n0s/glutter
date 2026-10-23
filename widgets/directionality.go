@@ -76,7 +76,12 @@ func DebugCheckHasDirectionality(bc BuildContext) bool {
 	if GetElementForInheritedWidget[*Directionality](bc) != nil {
 		return true
 	}
-	panic(errors.New("DirectionalityMissing",
+	panic(errors.New(tagDirectionalityMissing,
 		"no Directionality widget found; the widget needs a Directionality ancestor to know the text direction; to introduce one, wrap the widget (or the whole app) in a Directionality widget with a text direction",
 		"widget", bc.(Element).String()))
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagDirectionalityMissing = "DirectionalityMissing"
+)

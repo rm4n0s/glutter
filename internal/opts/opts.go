@@ -17,5 +17,10 @@ func First[T any](opts []T) T {
 	case 1:
 		return opts[0]
 	}
-	panic(errors.New("MultipleOptions", "more than one options value was passed", "count", len(opts)))
+	panic(errors.New(tagMultipleOptions, "more than one options value was passed", "count", len(opts)))
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagMultipleOptions = "MultipleOptions"
+)

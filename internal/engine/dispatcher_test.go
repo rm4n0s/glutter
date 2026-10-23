@@ -121,7 +121,7 @@ func TestStartGetsTheDispatcherWithItsViewSettingsAndDisplays(t *testing.T) {
 
 func TestStartErrorEndsRun(t *testing.T) {
 	h, _ := newDispatcherHarness(t)
-	h.cfg.Start = func(*ui.PlatformDispatcher) error { return errors.New("StartFailed", "no") }
+	h.cfg.Start = func(*ui.PlatformDispatcher) error { return errors.New(tagStartFailed, "no") }
 	err := Run(t.Context(), h.cfg)
 	assertRoute(t, err, "StartFailed", "StartFailed")
 	if !h.c.closed {
@@ -481,7 +481,7 @@ func TestRenderOfUnknownViewFails(t *testing.T) {
 
 func TestRendererFailureEndsRunWithTheError(t *testing.T) {
 	h, r := newDispatcherHarness(t)
-	h.r.err = errors.New("EGLContextLost", "lost")
+	h.r.err = errors.New(tagEGLContextLost, "lost")
 	var renderErr error
 	var mu sync.Mutex
 	h.cfg.Start = func(d *ui.PlatformDispatcher) error {
@@ -737,3 +737,9 @@ func TestStartDragReachesTheWindow(t *testing.T) {
 		t.Errorf("drags = %+v", drags)
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagEGLContextLost = "EGLContextLost"
+	tagStartFailed    = "StartFailed"
+)

@@ -463,7 +463,7 @@ func (r *BaseTapAndDragGestureRecognizer) AcceptGesture(pointer int) {
 	}
 	r.stopDeadlineTimer()
 	if foundation.DebugMode && r.acceptedActivePointers[pointer] {
-		panic(errors.New("TapDragPointerAcceptedTwice", "the pointer was accepted twice", "pointer", pointer))
+		panic(errors.New(tagTapDragPointerAcceptedTwice, "the pointer was accepted twice", "pointer", pointer))
 	}
 	r.acceptPointer(pointer)
 	if r.down != nil {
@@ -932,3 +932,8 @@ func NewTapAndPanGestureRecognizer(binding *GestureBinding, opts ...TapAndDragGe
 	r.initTapAndDrag(binding, r, tapAndPanAxis{}, oneOpts(opts))
 	return r
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagTapDragPointerAcceptedTwice = "TapDragPointerAcceptedTwice"
+)

@@ -81,12 +81,12 @@ func Parse(src string) (Module, error) {
 		case d[2] == "" && typ == "sampler":
 			b.Kind = KindSampler
 		default:
-			return Module{}, errors.New("ShadersUnsupportedBinding", "only uniform buffers, texture_2d<f32> and sampler can be bound (SPEC §9.3)",
+			return Module{}, errors.New(tagShadersUnsupportedBinding, "only uniform buffers, texture_2d<f32> and sampler can be bound (SPEC §9.3)",
 				"name", b.Name, "address_space", d[2], "type", typ)
 		}
 		key := [2]int{group, binding}
 		if other, ok := seen[key]; ok {
-			return Module{}, errors.New("ShadersBindingTwice", "two variables have the same group and binding",
+			return Module{}, errors.New(tagShadersBindingTwice, "two variables have the same group and binding",
 				"group", group, "binding", binding, "names", other+","+b.Name)
 		}
 		seen[key] = b.Name
@@ -103,7 +103,7 @@ func Parse(src string) (Module, error) {
 	}
 	for _, e := range entryDecl.FindAllStringSubmatch(src, -1) {
 		if e[1] == "compute" {
-			return Module{}, errors.New("ShadersComputeEntry", "there is no compute in 1.1 (SPEC §9.3)", "entry", e[2])
+			return Module{}, errors.New(tagShadersComputeEntry, "there is no compute in 1.1 (SPEC §9.3)", "entry", e[2])
 		}
 		entry := Entry{Name: e[2], Stage: strings.ToUpper(e[1][:1]) + e[1][1:]}
 		reach := reachable(entry.Name, bodies)
@@ -119,7 +119,7 @@ func Parse(src string) (Module, error) {
 		m.Entries = append(m.Entries, entry)
 	}
 	if len(m.Entries) == 0 {
-		return Module{}, errors.New("ShadersNoEntry", "the module has no @vertex or @fragment function")
+		return Module{}, errors.New(tagShadersNoEntry, "the module has no @vertex or @fragment function")
 	}
 	return m, nil
 }
@@ -132,7 +132,7 @@ func functionBodies(src string) (map[string]string, error) {
 		name := src[loc[2]:loc[3]]
 		open := strings.IndexByte(src[loc[1]:], '{')
 		if open < 0 {
-			return nil, errors.New("ShadersUnbalancedBraces", "a function has no body", "function", name)
+			return nil, errors.New(tagShadersUnbalancedBraces, "a function has no body", "function", name)
 		}
 		start := loc[1] + open
 		depth := 0
@@ -149,7 +149,7 @@ func functionBodies(src string) (map[string]string, error) {
 			}
 		}
 		if end < 0 {
-			return nil, errors.New("ShadersUnbalancedBraces", "the braces of a function are not closed", "function", name)
+			return nil, errors.New(tagShadersUnbalancedBraces, "the braces of a function are not closed", "function", name)
 		}
 		bodies[name] = src[loc[0]:end]
 	}
@@ -176,3 +176,12 @@ func reachable(name string, bodies map[string]string) []string {
 	walk(name)
 	return out
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagShadersBindingTwice       = "ShadersBindingTwice"
+	tagShadersComputeEntry       = "ShadersComputeEntry"
+	tagShadersNoEntry            = "ShadersNoEntry"
+	tagShadersUnbalancedBraces   = "ShadersUnbalancedBraces"
+	tagShadersUnsupportedBinding = "ShadersUnsupportedBinding"
+)

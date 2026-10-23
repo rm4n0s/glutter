@@ -84,14 +84,14 @@ func (b *RenderObjectBase) DescribeSemanticsClip(RenderObject) foundation.Opt[ui
 func (b *RenderObjectBase) ScheduleInitialSemantics() {
 	if foundation.DebugMode {
 		if b.owner == nil || b.parent != nil {
-			panic(errors.New("SemanticsInitialNotRoot", "ScheduleInitialSemantics needs an attached root render object",
+			panic(errors.New(tagSemanticsInitialNotRoot, "ScheduleInitialSemantics needs an attached root render object",
 				"object", foundation.DescribeIdentity(b.self)))
 		}
 		if b.owner.debugDoingSemantics {
-			panic(errors.New("SemanticsDuringSemantics", "ScheduleInitialSemantics was called while the semantics are flushed"))
+			panic(errors.New(tagSemanticsDuringSemantics, "ScheduleInitialSemantics was called while the semantics are flushed"))
 		}
 		if b.owner.semanticsOwner == nil {
-			panic(errors.New("SemanticsOwnerMissing", "ScheduleInitialSemantics needs a semantics owner on the pipeline owner"))
+			panic(errors.New(tagSemanticsOwnerMissing, "ScheduleInitialSemantics needs a semantics owner on the pipeline owner"))
 		}
 	}
 	b.owner.nodesNeedingSemanticsUpdate.add(b.self)
@@ -153,10 +153,10 @@ func (b *RenderObjectBase) ClearSemantics() {
 func (b *RenderObjectBase) MarkNeedsSemanticsUpdate() {
 	if foundation.DebugMode {
 		if b.debugDisposed {
-			panic(errors.New("RenderObjectDisposedMutated", "MarkNeedsSemanticsUpdate was called on a disposed render object"))
+			panic(errors.New(tagRenderObjectDisposedMutated, "MarkNeedsSemanticsUpdate was called on a disposed render object"))
 		}
 		if b.owner != nil && b.owner.debugDoingSemantics {
-			panic(errors.New("SemanticsMarkedWhileFlushing", "MarkNeedsSemanticsUpdate was called while the semantics are flushed",
+			panic(errors.New(tagSemanticsMarkedWhileFlushing, "MarkNeedsSemanticsUpdate was called while the semantics are flushed",
 				"object", foundation.DescribeIdentity(b.self)))
 		}
 	}
@@ -235,7 +235,7 @@ func (p *semanticsConfigurationProvider) original() *semantics.SemanticsConfigur
 		p.originalConfiguration, p.effectiveConfiguration = c, c
 		p.renderObject.DescribeSemanticsConfiguration(c)
 		if foundation.DebugMode && c.ExplicitChildNodes && c.ChildConfigurationsDelegate() != nil {
-			panic(errors.New("SemanticsExplicitNodesWithDelegate",
+			panic(errors.New(tagSemanticsExplicitNodesWithDelegate,
 				"A SemanticsConfiguration with explicitChildNode set to true cannot have a non-null childConfigsDelegate."))
 		}
 	}
@@ -1264,3 +1264,12 @@ func (s *orderedSet[T]) take() []T {
 	s.list, s.index = nil, nil
 	return out
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagSemanticsDuringSemantics           = "SemanticsDuringSemantics"
+	tagSemanticsExplicitNodesWithDelegate = "SemanticsExplicitNodesWithDelegate"
+	tagSemanticsInitialNotRoot            = "SemanticsInitialNotRoot"
+	tagSemanticsMarkedWhileFlushing       = "SemanticsMarkedWhileFlushing"
+	tagSemanticsOwnerMissing              = "SemanticsOwnerMissing"
+)

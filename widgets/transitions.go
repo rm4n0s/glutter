@@ -387,10 +387,10 @@ func NewSizeTransition(sizeFactor animation.Animation[float64], child Widget, op
 	}
 	if foundation.DebugMode {
 		if v, ok := o.FixedCrossAxisSizeFactor.Get(); ok && !(v >= 0) {
-			panic(errors.New("SizeTransitionInvalid", "the fixedCrossAxisSizeFactor of a SizeTransition must not be negative", "fixedCrossAxisSizeFactor", v))
+			panic(errors.New(tagSizeTransitionInvalid, "the fixedCrossAxisSizeFactor of a SizeTransition must not be negative", "fixedCrossAxisSizeFactor", v))
 		}
 		if o.AxisAlignment.IsSome() && o.Alignment != nil {
-			panic(errors.New("SizeTransitionInvalid", "cannot provide both axisAlignment and alignment as axisAlignment has been deprecated and superseded by alignment"))
+			panic(errors.New(tagSizeTransitionInvalid, "cannot provide both axisAlignment and alignment as axisAlignment has been deprecated and superseded by alignment"))
 		}
 	}
 	return &SizeTransition{AnimatedWidget: NewAnimatedWidgetBase(sizeFactor, WidgetOpts{Key: o.Key}), axis: o.Axis,
@@ -710,3 +710,8 @@ func (w *DefaultTextStyleTransition) Build(BuildContext) Widget {
 	return NewDefaultTextStyle(w.Style().Value(), w.child, DefaultTextStyleOpts{TextAlign: w.textAlign, SoftWrap: foundation.Some(w.softWrap),
 		Overflow: w.overflow, MaxLines: w.maxLines})
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagSizeTransitionInvalid = "SizeTransitionInvalid"
+)

@@ -729,7 +729,7 @@ func (p *renderPhysicalModelBase[T]) initPhysicalModel(self Box, child Box, elev
 		clipBehavior = ui.ClipNone
 	}
 	if foundation.DebugMode && elevation < 0 {
-		panic(errors.New("ElevationNegative", "the elevation must not be negative", "elevation", elevation))
+		panic(errors.New(tagElevationNegative, "the elevation must not be negative", "elevation", elevation))
 	}
 	p.elevation, p.color, p.shadowColor = elevation, color, shadowColor
 	p.initCustomClip(self, child, clipper, clipBehavior, defaultClip)
@@ -745,7 +745,7 @@ func (p *renderPhysicalModelBase[T]) Elevation() float64 { return p.elevation }
 // Flutter: rendering/proxy_box.dart _RenderPhysicalModelBase.elevation
 func (p *renderPhysicalModelBase[T]) SetElevation(value float64) {
 	if foundation.DebugMode && value < 0 {
-		panic(errors.New("ElevationNegative", "the elevation must not be negative", "elevation", value))
+		panic(errors.New(tagElevationNegative, "the elevation must not be negative", "elevation", value))
 	}
 	if p.elevation == value {
 		return
@@ -1003,3 +1003,8 @@ func (r *RenderPhysicalShape) DebugFillProperties(b *foundation.DiagnosticProper
 	r.renderPhysicalModelBase.DebugFillProperties(b)
 	b.Add(foundation.NewDiagnosticsProperty("clipper", r.clipper))
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagElevationNegative = "ElevationNegative"
+)

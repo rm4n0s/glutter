@@ -130,11 +130,11 @@ func (t *Ticker) IsActive() bool { return t.future != nil }
 func (t *Ticker) Start() *TickerFuture {
 	if foundation.DebugMode {
 		if t.disposed {
-			panic(errors.New("TickerUsedAfterDispose", "A ticker was started after it was disposed.",
+			panic(errors.New(tagTickerUsedAfterDispose, "A ticker was started after it was disposed.",
 				"ticker", t.String()))
 		}
 		if t.IsActive() {
-			panic(errors.New("TickerStartedTwice",
+			panic(errors.New(tagTickerStartedTwice,
 				"A ticker that is already active cannot be started again without first stopping it.",
 				"ticker", t.String()))
 		}
@@ -347,7 +347,7 @@ func (f *TickerFuture) cancel(ticker *Ticker) {
 	f.completed = foundation.Some(false)
 	f.onDone = nil
 	for _, cb := range f.onEnd {
-		cb(newTickerCanceled(ticker))
+		cb(errors.New(tagTickerCanceled, tickerCanceledMessage(ticker)))
 	}
 	f.onEnd = nil
 }
@@ -393,7 +393,7 @@ func (f *TickerFuture) whenEnded(fn func(err error)) {
 		fn(nil)
 	default:
 		// Canceled before anyone asked: the error does not name the ticker.
-		fn(newTickerCanceled(nil))
+		fn(errors.New(tagTickerCanceled, tickerCanceledMessage(nil)))
 	}
 }
 
@@ -426,10 +426,17 @@ func (f *TickerFuture) String() string {
 	return foundation.DescribeIdentity(f) + "(" + state + ")"
 }
 
-// newTickerCanceled makes the error of a canceled ticker.
-func newTickerCanceled(ticker *Ticker) error {
+// tickerCanceledMessage is the message of the error of a canceled ticker.
+func tickerCanceledMessage(ticker *Ticker) string {
 	if ticker != nil {
-		return errors.New("TickerCanceled", "This ticker was canceled: "+ticker.String())
+		return "This ticker was canceled: " + ticker.String()
 	}
-	return errors.New("TickerCanceled", "The ticker was canceled before the \"orCancel\" property was first used.")
+	return "The ticker was canceled before the \"orCancel\" property was first used."
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagTickerCanceled         = "TickerCanceled"
+	tagTickerStartedTwice     = "TickerStartedTwice"
+	tagTickerUsedAfterDispose = "TickerUsedAfterDispose"
+)

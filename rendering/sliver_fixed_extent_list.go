@@ -246,7 +246,7 @@ func (a *RenderSliverFixedExtentBoxAdaptor) DebugAssertDoesMeetConstraints() {
 		count := g.ScrollExtent / itemExtent
 		diff := math.Abs(math.Round(count) - count)
 		if diff*itemExtent > foundation.PrecisionErrorTolerance && diff > foundation.PrecisionErrorTolerance {
-			panic(errors.New("SliverFixedExtentNotMultiple",
+			panic(errors.New(tagSliverFixedExtentNotMultiple,
 				"RenderSliverFixedExtentBoxAdaptor.computeMaxScrollOffset() returned a value that is not an even multiple of its itemExtent. "+
 					"The itemExtent was "+dartDouble(itemExtent)+", but the scrollExtent was "+dartDouble(g.ScrollExtent)+". "+
 					"The difference was "+dartDouble(diff)+", which is greater than precisionErrorTolerance ("+dartDouble(foundation.PrecisionErrorTolerance)+").",
@@ -264,12 +264,12 @@ func (a *RenderSliverFixedExtentBoxAdaptor) PerformLayout() {
 	if foundation.DebugMode {
 		hasExtent, hasBuilder := hooks.ItemExtent().IsSome(), hooks.ItemExtentBuilder() != nil
 		if hasExtent == hasBuilder {
-			panic(errors.New("SliverItemExtentInvalid", "exactly one of the itemExtent and the itemExtentBuilder of a fixed extent sliver must be given",
+			panic(errors.New(tagSliverItemExtentInvalid, "exactly one of the itemExtent and the itemExtentBuilder of a fixed extent sliver must be given",
 				"object", foundation.DescribeIdentity(a.self)))
 		}
 		if !hasBuilder {
 			if e := hooks.ItemExtent().Value(); math.IsInf(e, 0) || math.IsNaN(e) || e < 0 {
-				panic(errors.New("SliverItemExtentInvalid", "the itemExtent of a fixed extent sliver must be finite and not negative",
+				panic(errors.New(tagSliverItemExtentInvalid, "the itemExtent of a fixed extent sliver must be finite and not negative",
 					"object", foundation.DescribeIdentity(a.self), "itemExtent", e))
 			}
 		}
@@ -479,3 +479,9 @@ func (r *RenderSliverVariedExtentList) SetItemExtentBuilder(value ItemExtentBuil
 func (r *RenderSliverVariedExtentList) ItemExtent() foundation.Opt[float64] {
 	return foundation.None[float64]()
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagSliverFixedExtentNotMultiple = "SliverFixedExtentNotMultiple"
+	tagSliverItemExtentInvalid      = "SliverItemExtentInvalid"
+)

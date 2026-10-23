@@ -491,7 +491,7 @@ func (b *FocusTraversalPolicyBase) moveFocus(currentNode *FocusNode, forward boo
 	}
 	sortedNodes := sortAllDescendants(nearestScope, focusedChild)
 	if len(sortedNodes) == 0 || !slices.Contains(sortedNodes, focusedChild) {
-		panic(errors.New("FocusTraversalNodeNotSorted",
+		panic(errors.New(tagFocusTraversalNodeNotSorted,
 			"the focused node is not among the sorted nodes of its scope; a SortDescendants that removes the current node breaks traversal",
 			"node", focusedChild.String()))
 	}
@@ -727,7 +727,7 @@ func sortAndFilterHorizontally(direction TraversalDirection, target ui.Rect, nod
 		case TraversalDirectionRight:
 			ok = (forward && r.Center().Dx >= target.Right) || (!forward && r.Center().Dx <= target.Right)
 		default:
-			panic(errors.New("TraversalDirectionInvalid", "invalid direction for a horizontal sort", "direction", direction.String()))
+			panic(errors.New(tagTraversalDirectionInvalid, "invalid direction for a horizontal sort", "direction", direction.String()))
 		}
 		if ok {
 			sorted = append(sorted, node)
@@ -754,7 +754,7 @@ func sortAndFilterVertically(direction TraversalDirection, target ui.Rect, nodes
 		case TraversalDirectionDown:
 			ok = (forward && r.Center().Dy >= target.Bottom) || (!forward && r.Center().Dy <= target.Bottom)
 		default:
-			panic(errors.New("TraversalDirectionInvalid", "invalid direction for a vertical sort", "direction", direction.String()))
+			panic(errors.New(tagTraversalDirectionInvalid, "invalid direction for a vertical sort", "direction", direction.String()))
 		}
 		if ok {
 			sorted = append(sorted, node)
@@ -1317,7 +1317,7 @@ type FocusOrder interface {
 // Flutter: widgets/focus_traversal.dart FocusOrder.compareTo
 func CompareFocusOrders(a, b FocusOrder) int {
 	if fmt.Sprintf("%T", a) != fmt.Sprintf("%T", b) {
-		panic(errors.New("FocusOrderIncomparable",
+		panic(errors.New(tagFocusOrderIncomparable,
 			"the sorting algorithm must not compare incomparable keys, since they do not know how to order themselves relative to each other",
 			"a", fmt.Sprint(a), "b", fmt.Sprint(b)))
 	}
@@ -1476,7 +1476,7 @@ func (w *FocusTraversalOrder) DebugFillProperties(p *foundation.DiagnosticProper
 func FocusTraversalOrderOf(bc BuildContext) FocusOrder {
 	marker, ok := GetInherited[*FocusTraversalOrder](bc)
 	if !ok {
-		panic(errors.New("FocusTraversalOrderNotFound",
+		panic(errors.New(tagFocusTraversalOrderNotFound,
 			"FocusTraversalOrderOf() was called with a context that does not contain a FocusTraversalOrder widget; no FocusTraversalOrder widget ancestor could be found starting from the context that was passed to FocusTraversalOrderOf()",
 			"context", describeContext(bc)))
 	}
@@ -1592,7 +1592,7 @@ func FocusTraversalGroupMaybeOfNode(node *FocusNode) FocusTraversalPolicy {
 func FocusTraversalGroupOf(bc BuildContext) FocusTraversalPolicy {
 	policy := FocusTraversalGroupMaybeOf(bc)
 	if policy == nil {
-		panic(errors.New("FocusTraversalPolicyMissing",
+		panic(errors.New(tagFocusTraversalPolicyMissing,
 			"unable to find a Focus or FocusScope widget in the given context, or the FocusNode from the widget that was found is not associated with a FocusTraversalPolicy; this can happen if there is not a FocusTraversalGroup that defines the policy, or if the context comes from a widget that is above the WidgetsApp, which introduces an implicit default policy",
 			"context", describeContext(bc)))
 	}
@@ -1940,7 +1940,17 @@ func requirePrimaryFocus(bc BuildContext, action string) *FocusNode {
 		focus = PrimaryFocus(bc)
 	}
 	if focus == nil {
-		panic(errors.New("FocusActionWithoutFocus", action+" was invoked without a context or without a primary focus"))
+		panic(errors.New(tagFocusActionWithoutFocus, action+" was invoked without a context or without a primary focus"))
 	}
 	return focus
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagFocusActionWithoutFocus     = "FocusActionWithoutFocus"
+	tagFocusOrderIncomparable      = "FocusOrderIncomparable"
+	tagFocusTraversalNodeNotSorted = "FocusTraversalNodeNotSorted"
+	tagFocusTraversalOrderNotFound = "FocusTraversalOrderNotFound"
+	tagFocusTraversalPolicyMissing = "FocusTraversalPolicyMissing"
+	tagTraversalDirectionInvalid   = "TraversalDirectionInvalid"
+)

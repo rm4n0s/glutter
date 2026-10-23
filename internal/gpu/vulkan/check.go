@@ -2,7 +2,10 @@
 
 package vulkan
 
-import "github.com/rm4n0s/errors"
+import (
+	"github.com/rm4n0s/errors"
+	"github.com/rm4n0s/glutter/internal/gpu/explicit"
+)
 
 // resultNames are the names of the VkResult values the backend can meet, for the
 // message of an error.
@@ -32,11 +35,11 @@ func vkError(call string, result int32) error {
 	}
 	switch result {
 	case resultErrorOutOfHost, resultErrorOutOfDevice:
-		return errors.New("GPUOutOfMemory", "the GPU or the system is out of memory", "call", call, "result", int(result), "name", name)
+		return errors.New(tagGPUOutOfMemory, "the GPU or the system is out of memory", "call", call, "result", int(result), "name", name)
 	case resultErrorDeviceLost:
-		return errors.New("VulkanDeviceLost", "the Vulkan device was lost", "call", call, "result", int(result), "name", name)
+		return errors.New(explicit.TagVulkanDeviceLost, "the Vulkan device was lost", "call", call, "result", int(result), "name", name)
 	}
-	return errors.New("VulkanCallFailed", "a Vulkan call failed", "call", call, "result", int(result), "name", name)
+	return errors.New(tagVulkanCallFailed, "a Vulkan call failed", "call", call, "result", int(result), "name", name)
 }
 
 // check returns nil for VK_SUCCESS and vkError otherwise.
@@ -46,3 +49,9 @@ func check(call string, result int32) error {
 	}
 	return vkError(call, result)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagGPUOutOfMemory   = "GPUOutOfMemory"
+	tagVulkanCallFailed = "VulkanCallFailed"
+)

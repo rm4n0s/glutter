@@ -168,11 +168,11 @@ func (w *Flex) debugCheckDirections(bc BuildContext) {
 		return
 	}
 	if w.needTextDirection() && w.effectiveTextDirection(bc) == ui.TextDirectionUnspecified {
-		panic(errors.New("FlexNeedsTextDirection", foundation.RuntimeTypeName(w)+" needs either a Directionality ancestor or a specified TextDirection",
+		panic(errors.New(tagFlexNeedsTextDirection, foundation.RuntimeTypeName(w)+" needs either a Directionality ancestor or a specified TextDirection",
 			"widget", foundation.RuntimeTypeName(w)))
 	}
 	if w.crossAxisAlignment == rendering.CrossAxisAlignmentBaseline && w.textBaseline == ui.TextBaselineUnspecified {
-		panic(errors.New("FlexNeedsTextBaseline", "a Flex with CrossAxisAlignmentBaseline needs a TextBaseline",
+		panic(errors.New(tagFlexNeedsTextBaseline, "a Flex with CrossAxisAlignmentBaseline needs a TextBaseline",
 			"widget", foundation.RuntimeTypeName(w)))
 	}
 }
@@ -531,3 +531,9 @@ func (w *ListBody) UpdateRenderObject(bc BuildContext, renderObject rendering.Re
 func (w *ListBody) axisDirection(bc BuildContext) painting.AxisDirection {
 	return AxisDirectionFromAxisReverseAndDirectionality(bc, w.mainAxis, w.reverse)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagFlexNeedsTextBaseline  = "FlexNeedsTextBaseline"
+	tagFlexNeedsTextDirection = "FlexNeedsTextDirection"
+)

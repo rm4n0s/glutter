@@ -221,7 +221,7 @@ func applyImageFilter(layer *image.RGBA, f ui.ImageFilter, ctm affine, unspecifi
 		}
 		return out, nil
 	}
-	return nil, errors.NewErrf("SoftNotImplemented", "The software renderer does not support the image filter %T.", f)
+	return nil, errors.NewErrf(tagSoftNotImplemented, "The software renderer does not support the image filter %T.", f)
 }
 
 // morphology grows (dilate) or shrinks (erode) the shapes of the image: each
@@ -326,3 +326,8 @@ func sampleImage(img *image.RGBA, x, y float64, q ui.FilterQuality) rgba {
 	}
 	return out
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagSoftNotImplemented = "SoftNotImplemented"
+)

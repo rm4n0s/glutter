@@ -68,7 +68,7 @@ type Card struct {
 func newCard(child widgets.Widget, v cardVariant, opts []CardOpts) *Card {
 	o := firstOpts(opts)
 	if foundation.DebugMode && o.Elevation.OrElse(0) < 0 {
-		panic(errors.New("CardElevationNegative", "a card's elevation must not be negative", "elevation", o.Elevation.Value()))
+		panic(errors.New(tagCardElevationNegative, "a card's elevation must not be negative", "elevation", o.Elevation.Value()))
 	}
 	return &Card{StatelessWidget: widgets.NewStatelessWidgetBase(widgets.WidgetOpts{Key: o.Key}), child: child, o: o, variant: v}
 }
@@ -151,3 +151,8 @@ func (w *Card) Build(bc widgets.BuildContext) widgets.Widget {
 			ClipBehavior:         firstNonZero(o.ClipBehavior, cardTheme.ClipBehavior, ui.ClipNone),
 		})), widgets.SemanticsOpts{Container: !o.NoSemanticContainer})
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagCardElevationNegative = "CardElevationNegative"
+)

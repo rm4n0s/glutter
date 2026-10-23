@@ -153,7 +153,7 @@ func FormMaybeOf(bc BuildContext) *FormState {
 func FormOf(bc BuildContext) *FormState {
 	f := FormMaybeOf(bc)
 	if f == nil {
-		panic(errors.New("FormNotFound", "FormOf was called with a context that does not contain a Form widget"))
+		panic(errors.New(tagFormNotFound, "FormOf was called with a context that does not contain a Form widget"))
 	}
 	return f
 }
@@ -684,3 +684,8 @@ func (s *FormFieldState[T]) Build(bc BuildContext) Widget {
 	}
 	return child
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagFormNotFound = "FormNotFound"
+)

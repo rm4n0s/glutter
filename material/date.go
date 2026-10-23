@@ -106,7 +106,7 @@ type DateTimeRange struct {
 // Flutter: material/date.dart DateTimeRange.new
 func NewDateTimeRange(start, end time.Time) DateTimeRange {
 	if foundation.DebugMode && start.After(end) {
-		panic(errors.New("DateTimeRangeEndBeforeStart", "the start of a date range must not be after its end", "start", start, "end", end))
+		panic(errors.New(tagDateTimeRangeEndBeforeStart, "the start of a date range must not be after its end", "start", start, "end", end))
 	}
 	return DateTimeRange{Start: start, End: end}
 }
@@ -473,3 +473,8 @@ func DateUtilsGetDaysInMonth(year, month int) int {
 // mod is the modulo of Dart's % operator on integers: never negative for a
 // positive divisor.
 func mod(a, n int) int { return ((a % n) + n) % n }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagDateTimeRangeEndBeforeStart = "DateTimeRangeEndBeforeStart"
+)

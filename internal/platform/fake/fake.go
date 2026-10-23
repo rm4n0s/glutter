@@ -56,7 +56,7 @@ func (p *Platform) Run(ctx context.Context, h platform.Handler) error {
 	p.mu.Lock()
 	if p.running {
 		p.mu.Unlock()
-		return errors.New("PlatformAlreadyRunning", "Run was called while the platform is already running")
+		return errors.New(tagPlatformAlreadyRunning, "Run was called while the platform is already running")
 	}
 	p.running = true
 	p.mu.Unlock()
@@ -334,3 +334,8 @@ func (p *Platform) RequestActivationToken(view ui.ViewID, done func(token string
 	p.record(Entry{Kind: EntryActivationToken, View: view})
 	p.Post(func() { done(FakeActivationToken) })
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagPlatformAlreadyRunning = "PlatformAlreadyRunning"
+)

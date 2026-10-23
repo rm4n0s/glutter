@@ -51,7 +51,7 @@ func NewClampedSimulation(simulation Simulation, opts ...ClampedSimulationOpts) 
 		dxMax:      o.DxMax.OrElse(math.Inf(1)),
 	}
 	if foundation.DebugMode && (c.xMax < c.xMin || c.dxMax < c.dxMin) {
-		panic(errors.New("ClampedRangeInvalid", "the maximum of a range must not be below its minimum",
+		panic(errors.New(tagClampedRangeInvalid, "the maximum of a range must not be below its minimum",
 			"xMin", c.xMin, "xMax", c.xMax, "dxMin", c.dxMin, "dxMax", c.dxMax))
 	}
 	return c
@@ -93,6 +93,7 @@ func describe(s Simulation) string {
 	return foundation.RuntimeTypeName(s)
 }
 
-func panicEpsilon(epsilon float64) {
-	panic(errors.New("EpsilonNegative", "epsilon must not be negative", "epsilon", epsilon))
-}
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagClampedRangeInvalid = "ClampedRangeInvalid"
+)

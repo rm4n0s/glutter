@@ -111,7 +111,7 @@ func MenuAcceleratorCallbackBindingMaybeOf(bc widgets.BuildContext) *MenuAcceler
 func MenuAcceleratorCallbackBindingOf(bc widgets.BuildContext) *MenuAcceleratorCallbackBinding {
 	b := MenuAcceleratorCallbackBindingMaybeOf(bc)
 	if foundation.DebugMode && b == nil {
-		panic(errors.New("MenuAcceleratorCallbackBindingMissing",
+		panic(errors.New(tagMenuAcceleratorCallbackBindingMissing,
 			"MenuAcceleratorCallbackBindingOf was called with a context that does not contain a MenuAcceleratorCallbackBinding; this can happen because a widget that looks for one is used without one above it"))
 	}
 	return b
@@ -388,3 +388,8 @@ func (s *menuAcceleratorLabelState) Build(bc widgets.BuildContext) widgets.Widge
 	}
 	return s.Widget().builder(bc, s.displayLabel, index)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagMenuAcceleratorCallbackBindingMissing = "MenuAcceleratorCallbackBindingMissing"
+)

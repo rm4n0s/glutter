@@ -77,7 +77,7 @@ type TextStyle struct {
 func NewTextStyle(opts ...TextStyleOpts) *TextStyle {
 	o := oneOpts(opts)
 	if o.Color != nil && o.Foreground != nil {
-		panic(errors.New("TextStyleColorAndForeground",
+		panic(errors.New(tagTextStyleColorAndForeground,
 			`Cannot provide both a color and a foreground. The color argument is just a shorthand for "foreground: Paint()..color = color".`))
 	}
 	o.FontFamilyFallback = append([]string(nil), o.FontFamilyFallback...)
@@ -392,10 +392,10 @@ type ParagraphStyle struct {
 func NewParagraphStyle(opts ...ParagraphStyleOpts) *ParagraphStyle {
 	o := oneOpts(opts)
 	if o.MaxLines != nil && *o.MaxLines < 0 {
-		panic(errors.New("MaxLinesNegative", "the maximum number of lines must not be negative", "maxLines", *o.MaxLines))
+		panic(errors.New(tagMaxLinesNegative, "the maximum number of lines must not be negative", "maxLines", *o.MaxLines))
 	}
 	if o.TabSize < 0 || math.IsNaN(o.TabSize) || math.IsInf(o.TabSize, 0) {
-		panic(errors.New("TabSizeInvalid", "the tab size must be zero or a positive number", "tabSize", o.TabSize))
+		panic(errors.New(tagTabSizeInvalid, "the tab size must be zero or a positive number", "tabSize", o.TabSize))
 	}
 	return &ParagraphStyle{o}
 }
@@ -699,7 +699,7 @@ func (b *ParagraphBuilder) PushStyle(style *TextStyle) {
 // Flutter: ui/text.dart ParagraphBuilder.pop
 func (b *ParagraphBuilder) Pop() {
 	if len(b.stack) <= 1 {
-		panic(errors.New("ParagraphBuilderPopEmpty", "Pop was called with no style pushed"))
+		panic(errors.New(tagParagraphBuilderPopEmpty, "Pop was called with no style pushed"))
 	}
 	b.stack = b.stack[:len(b.stack)-1]
 }
@@ -755,7 +755,7 @@ type AddPlaceholderOpts struct {
 func (b *ParagraphBuilder) AddPlaceholder(width, height float64, alignment PlaceholderAlignment, opts ...AddPlaceholderOpts) {
 	o := oneOpts(opts)
 	if width < 0 || height < 0 {
-		panic(errors.New("PlaceholderSizeInvalid", "the size of a placeholder must not be negative", "width", width, "height", height))
+		panic(errors.New(tagPlaceholderSizeInvalid, "the size of a placeholder must not be negative", "width", width, "height", height))
 	}
 	scale := 1.0
 	if o.Scale != nil {
@@ -803,3 +803,12 @@ func sameStyle(a, b *ResolvedTextStyle) bool {
 	return equalSlices(a.FontFamilies, b.FontFamilies) && equalSlices(a.Shadows, b.Shadows) &&
 		equalSlices(a.FontFeatures, b.FontFeatures) && equalSlices(a.FontVariations, b.FontVariations)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagMaxLinesNegative            = "MaxLinesNegative"
+	tagParagraphBuilderPopEmpty    = "ParagraphBuilderPopEmpty"
+	tagPlaceholderSizeInvalid      = "PlaceholderSizeInvalid"
+	tagTabSizeInvalid              = "TabSizeInvalid"
+	tagTextStyleColorAndForeground = "TextStyleColorAndForeground"
+)

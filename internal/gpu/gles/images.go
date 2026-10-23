@@ -86,7 +86,7 @@ func (s *shapeContext) imagePaint(p *ui.Paint) (info paintInfo, status paintStat
 // checkImage fails with GLImageDisposed for an image that cannot be drawn.
 func checkImage(img *ui.Image) error {
 	if img == nil || img.IsDisposed() {
-		return errors.New("GLImageDisposed", "the image was disposed, or is nil, and cannot be drawn")
+		return errors.New(tagGLImageDisposed, "the image was disposed, or is nil, and cannot be drawn")
 	}
 	return nil
 }
@@ -169,3 +169,8 @@ func (s *shapeContext) imageAtlas(op ui.OpDrawAtlas) (bool, error) {
 	s.imageEncoder(info, entry, &op.Paint).Atlas(op.Atlas.Width(), op.Atlas.Height(), op, mode)
 	return true, nil
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagGLImageDisposed = "GLImageDisposed"
+)

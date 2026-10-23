@@ -10,7 +10,7 @@ import (
 )
 
 func TestPaintingBindingReportError(t *testing.T) {
-	failure := errors.New("ImageLoadFailed", "no image")
+	failure := errors.New(tagImageLoadFailed, "no image")
 	tests := []struct {
 		name         string
 		withDetails  bool
@@ -76,3 +76,8 @@ func TestImageListenerPanicsAreReported(t *testing.T) {
 		t.Errorf("unexpected failure path: %s, context %v", appErr.Route(), appErr.Metadata["context"])
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagImageLoadFailed = "ImageLoadFailed"
+)

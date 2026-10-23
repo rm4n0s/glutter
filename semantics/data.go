@@ -79,7 +79,7 @@ type SemanticsData struct {
 // Flutter: semantics/semantics.dart SemanticsData.new
 func NewSemanticsData(d SemanticsData) *SemanticsData {
 	if foundation.DebugMode {
-		fail := func(msg string, kv ...any) { panic(errors.New("SemanticsDataInvalid", msg, kv...)) }
+		fail := func(msg string, kv ...any) { panic(errors.New(tagSemanticsDataInvalid, msg, kv...)) }
 		for _, s := range []struct {
 			name, text string
 		}{{"tooltip", d.Tooltip}, {"label", d.AttributedLabel.String}, {"value", d.AttributedValue.String},
@@ -267,3 +267,8 @@ func (d *SemanticsData) Equal(o *SemanticsData) bool {
 		d.HitTestBehavior == o.HitTestBehavior && slices.Equal(d.CustomSemanticsActionIDs, o.CustomSemanticsActionIDs) &&
 		setEqualStrings(d.ControlsNodes, o.ControlsNodes) && optEqual(d.MinValue, o.MinValue) && optEqual(d.MaxValue, o.MaxValue)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagSemanticsDataInvalid = "SemanticsDataInvalid"
+)

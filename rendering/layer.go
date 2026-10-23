@@ -218,7 +218,7 @@ func (b *LayerBase) fireCompositionCallbacks(includeChildren bool) {
 
 func (b *LayerBase) debugCheckMutable(what string) {
 	if foundation.DebugMode && b.debugMutationsLock {
-		panic(errors.New("LayerMutationLocked", "a layer was changed while its composition callbacks ran",
+		panic(errors.New(tagLayerMutationLocked, "a layer was changed while its composition callbacks ran",
 			"operation", what, "layer", foundation.DescribeIdentity(b.self)))
 	}
 }
@@ -257,7 +257,7 @@ func (b *LayerBase) AddCompositionCallback(callback CompositionCallback) func() 
 			}
 		}
 		if foundation.DebugMode && !found && !b.debugDisposed {
-			panic(errors.New("LayerCompositionCallbackRemoved", "the composition callback was removed twice",
+			panic(errors.New(tagLayerCompositionCallbackRemoved, "the composition callback was removed twice",
 				"layer", foundation.DescribeIdentity(b.self)))
 		}
 		b.updateSubtreeCompositionObserverCount(-1)
@@ -292,11 +292,11 @@ func (b *LayerBase) Dispose() {
 	b.debugCheckMutable("dispose")
 	if foundation.DebugMode {
 		if b.debugDisposed {
-			panic(errors.New("LayerDisposedTwice", "layers must only be disposed once; this is handled by LayerHandle",
+			panic(errors.New(tagLayerDisposedTwice, "layers must only be disposed once; this is handled by LayerHandle",
 				"layer", foundation.DescribeIdentity(b.self)))
 		}
 		if b.refCount != 0 {
-			panic(errors.New("LayerDisposedWithHandles", "do not call Dispose on a layer that handles hold; release the handles",
+			panic(errors.New(tagLayerDisposedWithHandles, "do not call Dispose on a layer that handles hold; release the handles",
 				"layer", foundation.DescribeIdentity(b.self), "handles", b.refCount))
 		}
 		b.debugDisposed = true
@@ -316,12 +316,12 @@ func (b *LayerBase) markNeedsAddToScene() {
 	b.debugCheckMutable("markNeedsAddToScene")
 	if foundation.DebugMode {
 		if b.self.AlwaysNeedsAddToScene() {
-			panic(errors.New("LayerAlwaysNeedsAddToScene",
+			panic(errors.New(tagLayerAlwaysNeedsAddToScene,
 				"a layer with AlwaysNeedsAddToScene called MarkNeedsAddToScene; it is always added",
 				"layer", foundation.DescribeIdentity(b.self)))
 		}
 		if b.debugDisposed {
-			panic(errors.New("LayerDisposedUsed", "a disposed layer was marked as needing to be added to the scene",
+			panic(errors.New(tagLayerDisposedUsed, "a disposed layer was marked as needing to be added to the scene",
 				"layer", foundation.DescribeIdentity(b.self)))
 		}
 	}
@@ -371,7 +371,7 @@ func (b *LayerBase) EngineLayer() ui.EngineLayer { return b.engineLayer }
 func (b *LayerBase) SetEngineLayer(value ui.EngineLayer) {
 	b.debugCheckMutable("engineLayer")
 	if foundation.DebugMode && b.debugDisposed {
-		panic(errors.New("LayerDisposedUsed", "the engine layer of a disposed layer was set",
+		panic(errors.New(tagLayerDisposedUsed, "the engine layer of a disposed layer was set",
 			"layer", foundation.DescribeIdentity(b.self)))
 	}
 	if b.engineLayer != nil {
@@ -409,7 +409,7 @@ func (b *LayerBase) Attached() bool { return b.owner != nil }
 // Flutter: rendering/layer.dart Layer.attach
 func (b *LayerBase) Attach(owner any) {
 	if foundation.DebugMode && b.owner != nil {
-		panic(errors.New("LayerAlreadyAttached", "the layer is attached to an owner already",
+		panic(errors.New(tagLayerAlreadyAttached, "the layer is attached to an owner already",
 			"layer", foundation.DescribeIdentity(b.self)))
 	}
 	b.owner = owner
@@ -420,7 +420,7 @@ func (b *LayerBase) Attach(owner any) {
 // Flutter: rendering/layer.dart Layer.detach
 func (b *LayerBase) Detach() {
 	if foundation.DebugMode && b.owner == nil {
-		panic(errors.New("LayerNotAttached", "a layer that is not attached was detached",
+		panic(errors.New(tagLayerNotAttached, "a layer that is not attached was detached",
 			"layer", foundation.DescribeIdentity(b.self)))
 	}
 	b.owner = nil
@@ -465,7 +465,7 @@ func (b *LayerBase) FindAnnotations(*AnnotationResult, ui.Offset, bool) bool { r
 //
 // Flutter: rendering/layer.dart Layer.addToScene
 func (b *LayerBase) AddToScene(*ui.SceneBuilder) {
-	panic(errors.New("LayerAddToSceneMissing", "the layer type does not implement AddToScene",
+	panic(errors.New(tagLayerAddToSceneMissing, "the layer type does not implement AddToScene",
 		"layer", foundation.DescribeIdentity(b.self)))
 }
 
@@ -575,7 +575,7 @@ func (h *LayerHandle[T]) Layer() T { return h.layer }
 // Flutter: rendering/layer.dart LayerHandle.layer
 func (h *LayerHandle[T]) SetLayer(layer T) {
 	if !isNilLayer(layer) && foundation.DebugMode && layer.AsLayer().debugDisposed {
-		panic(errors.New("LayerHandleDisposed", "a handle was created for a layer that was disposed already",
+		panic(errors.New(tagLayerHandleDisposed, "a handle was created for a layer that was disposed already",
 			"layer", foundation.DescribeIdentity(layer)))
 	}
 	if any(layer) == any(h.layer) {
@@ -637,7 +637,7 @@ func (l *PictureLayer) Picture() *ui.Picture { return l.picture }
 // Flutter: rendering/layer.dart PictureLayer.picture
 func (l *PictureLayer) SetPicture(p *ui.Picture) {
 	if foundation.DebugMode && l.debugDisposed {
-		panic(errors.New("LayerDisposedUsed", "the picture of a disposed layer was set", "layer", foundation.DescribeIdentity(l)))
+		panic(errors.New(tagLayerDisposedUsed, "the picture of a disposed layer was set", "layer", foundation.DescribeIdentity(l)))
 	}
 	l.markNeedsAddToScene()
 	if l.picture != nil {
@@ -689,7 +689,7 @@ func (l *PictureLayer) Dispose() {
 // Flutter: rendering/layer.dart PictureLayer.addToScene
 func (l *PictureLayer) AddToScene(builder *ui.SceneBuilder) {
 	if foundation.DebugMode && l.picture == nil {
-		panic(errors.New("LayerPropertyMissing", "a picture layer without a picture was added to a scene"))
+		panic(errors.New(tagLayerPropertyMissing, "a picture layer without a picture was added to a scene"))
 	}
 	builder.AddPicture(ui.OffsetZero, l.picture, ui.AddPictureOpts{IsComplexHint: l.isComplexHint, WillChangeHint: l.willChangeHint})
 }
@@ -729,3 +729,18 @@ func NewBackdropKey() BackdropKey { return BackdropKey{key: int(backdropKeyCount
 
 // Key is the number that identifies the backdrop.
 func (k BackdropKey) Key() int { return k.key }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagLayerAddToSceneMissing          = "LayerAddToSceneMissing"
+	tagLayerAlreadyAttached            = "LayerAlreadyAttached"
+	tagLayerAlwaysNeedsAddToScene      = "LayerAlwaysNeedsAddToScene"
+	tagLayerCompositionCallbackRemoved = "LayerCompositionCallbackRemoved"
+	tagLayerDisposedTwice              = "LayerDisposedTwice"
+	tagLayerDisposedUsed               = "LayerDisposedUsed"
+	tagLayerDisposedWithHandles        = "LayerDisposedWithHandles"
+	tagLayerHandleDisposed             = "LayerHandleDisposed"
+	tagLayerMutationLocked             = "LayerMutationLocked"
+	tagLayerNotAttached                = "LayerNotAttached"
+	tagLayerPropertyMissing            = "LayerPropertyMissing"
+)

@@ -37,7 +37,7 @@ type TitleOpts struct {
 func NewTitle(color ui.Color, child Widget, opts ...TitleOpts) *Title {
 	o := firstOpts(opts)
 	if foundation.DebugMode && color.Alpha() != 0xFF {
-		panic(errors.New("TitleColorNotOpaque", "the color of a Title must be opaque", "color", color.String()))
+		panic(errors.New(tagTitleColorNotOpaque, "the color of a Title must be opaque", "color", color.String()))
 	}
 	return &Title{NewStatefulWidgetBase(WidgetOpts{Key: o.Key}), o.Title, color, child}
 }
@@ -138,3 +138,8 @@ func (w *SafeArea) Build(bc BuildContext) Widget {
 		Right: side(right, padding.Right, o.Minimum.Right), Bottom: side(bottom, padding.Bottom, o.Minimum.Bottom),
 	}, NewMediaQueryRemovePadding(bc, RemoveSides{Left: left, Top: top, Right: right, Bottom: bottom}, w.child))
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagTitleColorNotOpaque = "TitleColorNotOpaque"
+)

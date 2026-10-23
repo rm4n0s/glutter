@@ -22,7 +22,7 @@ func Canvas() (js.Value, error) {
 		c = doc.Call("querySelector", "canvas["+ViewAttribute+"]")
 	}
 	if c.Type() != js.TypeObject {
-		return js.Undefined(), errors.New("SyntheticCanvasNotFound", "there is no page, or it has no canvas of a Glutter view yet")
+		return js.Undefined(), errors.New(tagSyntheticCanvasNotFound, "there is no page, or it has no canvas of a Glutter view yet")
 	}
 	return c, nil
 }
@@ -151,7 +151,7 @@ func TextField() (js.Value, error) {
 		f = doc.Call("querySelector", "["+TextInputAttribute+"]")
 	}
 	if f.Type() != js.TypeObject {
-		return js.Undefined(), errors.New("SyntheticTextFieldNotFound", "there is no page, or no text field of the framework has the focus")
+		return js.Undefined(), errors.New(tagSyntheticTextFieldNotFound, "there is no page, or no text field of the framework has the focus")
 	}
 	return f, nil
 }
@@ -284,3 +284,9 @@ func Paste(field js.Value, text string) (defaultPrevented bool) {
 	field.Call("dispatchEvent", ev)
 	return ev.Get("defaultPrevented").Bool()
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagSyntheticCanvasNotFound    = "SyntheticCanvasNotFound"
+	tagSyntheticTextFieldNotFound = "SyntheticTextFieldNotFound"
+)

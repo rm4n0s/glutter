@@ -92,7 +92,7 @@ var _ platform.Platform = (*Platform)(nil)
 // Flutter: no counterpart
 func New(name string, opts ...Options) (*Platform, error) {
 	if len(opts) > 1 {
-		panic(errors.New("MultipleOptions", "New takes at most one Options value", "count", len(opts)))
+		panic(errors.New(tagMultipleOptions, "New takes at most one Options value", "count", len(opts)))
 	}
 	conn, err := wl.Connect(name)
 	if err != nil {
@@ -208,7 +208,7 @@ func (p *Platform) Run(ctx context.Context, h platform.Handler) error {
 	p.mu.Lock()
 	if p.running {
 		p.mu.Unlock()
-		return errors.New("PlatformAlreadyRunning", "Run was called while the platform is already running")
+		return errors.New(tagPlatformAlreadyRunning, "Run was called while the platform is already running")
 	}
 	p.running = true
 	p.mu.Unlock()
@@ -289,3 +289,9 @@ func (p *Platform) applySettings(s platform.Settings) {
 //
 // Flutter: no counterpart
 func (p *Platform) Services() platform.Services { return p.services }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagMultipleOptions        = "MultipleOptions"
+	tagPlatformAlreadyRunning = "PlatformAlreadyRunning"
+)

@@ -108,7 +108,7 @@ func NewTransformScale(child Widget, opts ...TransformScaleOpts) *Transform {
 	o := firstOpts(opts)
 	if foundation.DebugMode && (o.Scale.IsSome() && (o.ScaleX.IsSome() || o.ScaleY.IsSome()) ||
 		!o.Scale.IsSome() && !o.ScaleX.IsSome() && !o.ScaleY.IsSome()) {
-		panic(errors.New("TransformScaleInvalid", "provide either a scale or a scaleX and a scaleY, not both"))
+		panic(errors.New(tagTransformScaleInvalid, "provide either a scale or a scaleX and a scaleY, not both"))
 	}
 	if o.Alignment == nil {
 		o.Alignment = painting.AlignmentCenter
@@ -343,3 +343,8 @@ func KeyedSubtreeWrapList(items []Widget, baseIndex int) []Widget {
 	}
 	return out
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagTransformScaleInvalid = "TransformScaleInvalid"
+)

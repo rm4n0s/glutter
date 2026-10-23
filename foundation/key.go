@@ -100,7 +100,7 @@ type ObjectKey struct {
 // Flutter: widgets/framework.dart ObjectKey.new
 func NewObjectKey(value any) ObjectKey {
 	if value != nil && !reflect.TypeOf(value).Comparable() {
-		panic(errors.New("ObjectKeyNotComparable", "the value of an ObjectKey must be comparable",
+		panic(errors.New(tagObjectKeyNotComparable, "the value of an ObjectKey must be comparable",
 			"type", RuntimeTypeName(value)))
 	}
 	return ObjectKey{value: value}
@@ -136,3 +136,8 @@ func NewUniqueKey() *UniqueKey { return &UniqueKey{id: 1} }
 //
 // Flutter: foundation/key.dart UniqueKey.toString
 func (k *UniqueKey) String() string { return "[#" + ShortHash(k) + "]" }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagObjectKeyNotComparable = "ObjectKeyNotComparable"
+)

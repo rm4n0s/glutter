@@ -477,13 +477,13 @@ func NewRenderTable(textDirection ui.TextDirection, opts ...RenderTableOpts) *Re
 	o := firstOpts(opts)
 	if foundation.DebugMode {
 		if c, ok := o.Columns.Get(); ok && c < 0 {
-			panic(errors.New("TableNegativeCount", "the number of columns of a table must not be negative", "columns", c))
+			panic(errors.New(tagTableNegativeCount, "the number of columns of a table must not be negative", "columns", c))
 		}
 		if r, ok := o.Rows.Get(); ok && r < 0 {
-			panic(errors.New("TableNegativeCount", "the number of rows of a table must not be negative", "rows", r))
+			panic(errors.New(tagTableNegativeCount, "the number of rows of a table must not be negative", "rows", r))
 		}
 		if o.Rows.IsSome() && o.Children != nil {
-			panic(errors.New("TableRowsAndChildren", "a table can not be given both a number of rows and children"))
+			panic(errors.New(tagTableRowsAndChildren, "a table can not be given both a number of rows and children"))
 		}
 	}
 	if o.DefaultColumnWidth == nil {
@@ -518,7 +518,7 @@ func NewRenderTable(textDirection ui.TextDirection, opts ...RenderTableOpts) *Re
 
 func (r *RenderTable) checkCells() {
 	if foundation.DebugMode && len(r.children) != r.rows*r.columns {
-		panic(errors.New("TableCellCountMismatch", "the cells of a table do not match its rows and columns",
+		panic(errors.New(tagTableCellCountMismatch, "the cells of a table do not match its rows and columns",
 			"cells", len(r.children), "rows", r.rows, "columns", r.columns))
 	}
 }
@@ -534,7 +534,7 @@ func (r *RenderTable) Columns() int { return r.columns }
 // Flutter: rendering/table.dart RenderTable.columns
 func (r *RenderTable) SetColumns(value int) {
 	if foundation.DebugMode && value < 0 {
-		panic(errors.New("TableNegativeCount", "the number of columns of a table must not be negative", "columns", value))
+		panic(errors.New(tagTableNegativeCount, "the number of columns of a table must not be negative", "columns", value))
 	}
 	if value == r.columns {
 		return
@@ -570,7 +570,7 @@ func (r *RenderTable) Rows() int { return r.rows }
 // Flutter: rendering/table.dart RenderTable.rows
 func (r *RenderTable) SetRows(value int) {
 	if foundation.DebugMode && value < 0 {
-		panic(errors.New("TableNegativeCount", "the number of rows of a table must not be negative", "rows", value))
+		panic(errors.New(tagTableNegativeCount, "the number of rows of a table must not be negative", "rows", value))
 	}
 	if value == r.rows {
 		return
@@ -783,11 +783,11 @@ func (r *RenderTable) SetFlatChildren(columns int, cells []Box) {
 		return
 	}
 	if foundation.DebugMode && columns < 0 {
-		panic(errors.New("TableNegativeCount", "the number of columns of a table must not be negative", "columns", columns))
+		panic(errors.New(tagTableNegativeCount, "the number of columns of a table must not be negative", "columns", columns))
 	}
 	if columns == 0 || len(cells) == 0 {
 		if foundation.DebugMode && len(cells) != 0 {
-			panic(errors.New("TableCellCountMismatch", "a table with no columns can not have cells", "cells", len(cells)))
+			panic(errors.New(tagTableCellCountMismatch, "a table with no columns can not have cells", "cells", len(cells)))
 		}
 		r.columns = columns
 		if len(r.children) == 0 {
@@ -804,7 +804,7 @@ func (r *RenderTable) SetFlatChildren(columns int, cells []Box) {
 		return
 	}
 	if foundation.DebugMode && len(cells)%columns != 0 {
-		panic(errors.New("TableCellCountMismatch", "the number of cells of a table must be a multiple of its columns",
+		panic(errors.New(tagTableCellCountMismatch, "the number of cells of a table must be a multiple of its columns",
 			"cells", len(cells), "columns", columns))
 	}
 	lost := map[Box]bool{}
@@ -875,7 +875,7 @@ func (r *RenderTable) SetChildren(cells [][]Box) {
 // Flutter: rendering/table.dart RenderTable.addRow
 func (r *RenderTable) AddRow(cells []Box) {
 	if foundation.DebugMode && len(cells) != r.columns {
-		panic(errors.New("TableCellCountMismatch", "a row must have as many cells as the table has columns",
+		panic(errors.New(tagTableCellCountMismatch, "a row must have as many cells as the table has columns",
 			"cells", len(cells), "columns", r.columns))
 	}
 	r.checkCells()
@@ -894,7 +894,7 @@ func (r *RenderTable) AddRow(cells []Box) {
 // Flutter: rendering/table.dart RenderTable.setChild
 func (r *RenderTable) SetChild(x, y int, value Box) {
 	if foundation.DebugMode && (x < 0 || x >= r.columns || y < 0 || y >= r.rows) {
-		panic(errors.New("TableCellOutOfRange", "the cell is outside the table", "x", x, "y", y, "columns", r.columns, "rows", r.rows))
+		panic(errors.New(tagTableCellOutOfRange, "the cell is outside the table", "x", x, "y", y, "columns", r.columns, "rows", r.rows))
 	}
 	r.checkCells()
 	xy := x + y*r.columns
@@ -1082,7 +1082,7 @@ func (r *RenderTable) ComputeMaxIntrinsicHeight(width float64) float64 {
 // Flutter: rendering/table.dart RenderTable.computeDistanceToActualBaseline
 func (r *RenderTable) ComputeDistanceToActualBaseline(ui.TextBaseline) foundation.Opt[float64] {
 	if foundation.DebugMode && r.DebugNeedsLayout() {
-		panic(errors.New("BaselineNeedsLayout", "the baseline was read from a table that needs layout",
+		panic(errors.New(tagBaselineNeedsLayout, "the baseline was read from a table that needs layout",
 			"object", foundation.DescribeIdentity(r)))
 	}
 	return r.baselineDistance
@@ -1093,7 +1093,7 @@ func checkColumnValue(v float64, what string, x int, positive bool) {
 		return
 	}
 	if math.IsInf(v, 0) || math.IsNaN(v) || v < 0 || (positive && v == 0) {
-		panic(errors.New("TableColumnWidthInvalid", "a TableColumnWidth gave an invalid "+what, "column", x, "value", v))
+		panic(errors.New(tagTableColumnWidthInvalid, "a TableColumnWidth gave an invalid "+what, "column", x, "value", v))
 	}
 }
 
@@ -1203,10 +1203,10 @@ func (r *RenderTable) computeColumnWidths(constraints BoxConstraints) []float64 
 func (r *RenderTable) GetRowBox(row int) ui.Rect {
 	if foundation.DebugMode {
 		if row < 0 || row >= r.rows {
-			panic(errors.New("TableCellOutOfRange", "the row is outside the table", "row", row, "rows", r.rows))
+			panic(errors.New(tagTableCellOutOfRange, "the row is outside the table", "row", row, "rows", r.rows))
 		}
 		if r.DebugNeedsLayout() {
-			panic(errors.New("TableNeedsLayout", "the row box was read from a table that needs layout",
+			panic(errors.New(tagTableNeedsLayout, "the row box was read from a table that needs layout",
 				"object", foundation.DescribeIdentity(r)))
 		}
 	}
@@ -1323,7 +1323,7 @@ func (r *RenderTable) PerformLayout() {
 			switch r.alignmentOf(child) {
 			case TableCellVerticalAlignmentBaseline:
 				if foundation.DebugMode && r.textBaseline == ui.TextBaselineUnspecified {
-					panic(errors.New("TableBaselineMissing", "An explicit textBaseline is required when using baseline alignment.",
+					panic(errors.New(tagTableBaselineMissing, "An explicit textBaseline is required when using baseline alignment.",
 						"object", foundation.DescribeIdentity(r)))
 				}
 				child.Layout(NewBoxConstraintsTightFor(TightForOpts{Width: foundation.Some(widths[x])}), LayoutOpts{ParentUsesSize: true})
@@ -1483,3 +1483,14 @@ func levelHiddenIf(hidden bool) foundation.DiagnosticLevel {
 	}
 	return foundation.DiagnosticLevelInfo
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagTableBaselineMissing    = "TableBaselineMissing"
+	tagTableCellCountMismatch  = "TableCellCountMismatch"
+	tagTableCellOutOfRange     = "TableCellOutOfRange"
+	tagTableColumnWidthInvalid = "TableColumnWidthInvalid"
+	tagTableNeedsLayout        = "TableNeedsLayout"
+	tagTableNegativeCount      = "TableNegativeCount"
+	tagTableRowsAndChildren    = "TableRowsAndChildren"
+)

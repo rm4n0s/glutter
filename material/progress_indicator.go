@@ -62,13 +62,6 @@ const (
 // Flutter: material/progress_indicator.dart RefreshProgressIndicator.defaultStrokeWidth
 const RefreshProgressIndicatorDefaultStrokeWidth = 2.5
 
-func valueAndControllerError(tag string) error {
-	return errors.New(tag, "A progress indicator cannot have both a value and a controller. "+
-		"The \"value\" property is for a determinate indicator with a specific progress, "+
-		"while the \"controller\" is for controlling the animation of an indeterminate indicator. "+
-		"To resolve this, provide only one of the two properties.")
-}
-
 // ProgressIndicator is what the progress indicators have in common: the value,
 // the colors and the semantics.
 //
@@ -233,10 +226,13 @@ func NewLinearProgressIndicator(opts ...LinearProgressIndicatorOpts) *LinearProg
 	o := firstOpts(opts)
 	if foundation.DebugMode {
 		if v, ok := o.MinHeight.Get(); ok && !(v > 0) {
-			panic(errors.New("LinearProgressIndicatorMinHeightNotPositive", "minHeight must be greater than zero", "minHeight", v))
+			panic(errors.New(tagLinearProgressIndicatorMinHeightNotPositive, "minHeight must be greater than zero", "minHeight", v))
 		}
 		if o.Value.IsSome() && o.Controller != nil {
-			panic(valueAndControllerError("LinearProgressIndicatorValueAndController"))
+			panic(errors.New(tagLinearProgressIndicatorValueAndController, "A progress indicator cannot have both a value and a controller. "+
+				"The \"value\" property is for a determinate indicator with a specific progress, "+
+				"while the \"controller\" is for controlling the animation of an indeterminate indicator. "+
+				"To resolve this, provide only one of the two properties."))
 		}
 	}
 	return &LinearProgressIndicator{
@@ -507,7 +503,10 @@ func NewCircularProgressIndicatorAdaptive(opts ...CircularProgressIndicatorOpts)
 
 func newCircularProgressIndicator(o CircularProgressIndicatorOpts, adaptive bool) *CircularProgressIndicator {
 	if foundation.DebugMode && o.Value.IsSome() && o.Controller != nil {
-		panic(valueAndControllerError("CircularProgressIndicatorValueAndController"))
+		panic(errors.New(tagCircularProgressIndicatorValueAndController, "A progress indicator cannot have both a value and a controller. "+
+			"The \"value\" property is for a determinate indicator with a specific progress, "+
+			"while the \"controller\" is for controlling the animation of an indeterminate indicator. "+
+			"To resolve this, provide only one of the two properties."))
 	}
 	return &CircularProgressIndicator{
 		ProgressIndicator: ProgressIndicator{StatefulWidget: widgets.NewStatefulWidgetBase(widgets.WidgetOpts{Key: o.Key}), value: o.Value,
@@ -890,3 +889,10 @@ func (p *refreshProgressIndicatorPainter) ShouldRepaint(old rendering.CustomPain
 	o, ok := old.(*refreshProgressIndicatorPainter)
 	return !ok || o.circularPainterOpts != p.circularPainterOpts || o.arrowheadScale != p.arrowheadScale
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagCircularProgressIndicatorValueAndController = "CircularProgressIndicatorValueAndController"
+	tagLinearProgressIndicatorMinHeightNotPositive = "LinearProgressIndicatorMinHeightNotPositive"
+	tagLinearProgressIndicatorValueAndController   = "LinearProgressIndicatorValueAndController"
+)

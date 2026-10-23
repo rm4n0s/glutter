@@ -177,7 +177,7 @@ func TestPerfErrorRoutes(t *testing.T) {
 	check := func(t *testing.T, err error, route string) {
 		t.Helper()
 		appErr, ok := errors.FromError(err)
-		if !ok || appErr.Tag != "WebPerfFailed" || !appErr.HasRoute(route) {
+		if !ok || appErr.Tag != tagWebPerfFailed || !appErr.HasRoute(route) {
 			t.Fatalf("got %v, want WebPerfFailed via %s", err, route)
 		}
 	}
@@ -234,20 +234,20 @@ func TestAwaitStartsAndClicksRead(t *testing.T) {
 	srv.results <- Result{Kind: "exit", ExitCode: 2, Log: "boom\n"}
 	var other PerfResult
 	appErr, ok := errors.FromError(awaitStarts(context.Background(), srv, proc, &other))
-	if !ok || appErr.Tag != "WebAppFailed" || !appErr.HasRoute("appFailed.WebAppFailed") && !appErr.HasRoute("WebAppFailed") {
+	if !ok || appErr.Tag != tagWebAppFailed || !appErr.HasRoute("awaitStarts.WebAppFailed") {
 		t.Errorf("an exit gave %v", appErr)
 	}
 	// A browser that ends, and a context that ends.
 	closed := &Process{done: make(chan struct{})}
 	close(closed.done)
 	appErr, ok = errors.FromError(awaitStarts(context.Background(), srv, closed, &other))
-	if !ok || appErr.Tag != "BrowserExited" {
+	if !ok || appErr.Tag != tagBrowserExited || !appErr.HasRoute("awaitStarts.BrowserExited") {
 		t.Errorf("a closed browser gave %v", appErr)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer cancel()
 	appErr, ok = errors.FromError(awaitClicks(ctx, srv, proc, &other))
-	if !ok || appErr.Tag != "BrowserTimeout" {
+	if !ok || appErr.Tag != tagBrowserTimeout {
 		t.Errorf("a timeout gave %v", appErr)
 	}
 }

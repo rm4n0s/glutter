@@ -290,9 +290,9 @@ func (r *renderListTile) computeSizes(getBaseline rendering.ChildBaselineGetter,
 	if foundation.DebugMode && tileWidth != 0 {
 		switch {
 		case leadingSize != nil && tileWidth == leadingSize.Width:
-			panic(errors.New("ListTileLeadingConsumesTileWidth", "the leading widget consumes the entire tile width, including the content padding of the ListTile: resize the tile so that the leading widget and the padding fit, use a sized widget, or replace the ListTile with a custom widget"))
+			panic(errors.New(tagListTileLeadingConsumesTileWidth, "the leading widget consumes the entire tile width, including the content padding of the ListTile: resize the tile so that the leading widget and the padding fit, use a sized widget, or replace the ListTile with a custom widget"))
 		case trailingSize != nil && tileWidth == trailingSize.Width:
-			panic(errors.New("ListTileTrailingConsumesTileWidth", "the trailing widget consumes the entire tile width, including the content padding of the ListTile: resize the tile so that the trailing widget and the padding fit, use a sized widget, or replace the ListTile with a custom widget"))
+			panic(errors.New(tagListTileTrailingConsumesTileWidth, "the trailing widget consumes the entire tile width, including the content padding of the ListTile: resize the tile so that the trailing widget and the padding fit, use a sized widget, or replace the ListTile with a custom widget"))
 		}
 	}
 	titleStart := 0.0
@@ -436,3 +436,9 @@ func (r *renderListTile) HitTestChildren(result *rendering.BoxHitTestResult, pos
 	}
 	return false
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagListTileLeadingConsumesTileWidth  = "ListTileLeadingConsumesTileWidth"
+	tagListTileTrailingConsumesTileWidth = "ListTileTrailingConsumesTileWidth"
+)

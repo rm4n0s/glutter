@@ -66,7 +66,8 @@ func (n *navigatorClipboard) finish(id int, value js.Value, err error) {
 func (n *navigatorClipboard) call(method string, arg any, done func(value js.Value, err error)) {
 	api := global().Get("navigator").Get("clipboard")
 	if !isObject(api) {
-		done(js.Undefined(), errClipboardUnavailable())
+		done(js.Undefined(), errors.New(tagWebClipboardUnavailable,
+			"the page has no navigator.clipboard: it needs a secure context (https or localhost)"))
 		return
 	}
 	n.mu.Lock()
@@ -96,7 +97,7 @@ func (n *navigatorClipboard) ReadText(done func(text string, err error)) {
 	n.call("readText", nil, func(v js.Value, err error) {
 		var r refused
 		if errors.As(err, &r) {
-			done("", errClipboardReadFailed(r.detail))
+			done("", errors.New(tagWebClipboardReadFailed, "navigator.clipboard.readText failed", "detail", r.detail))
 			return
 		}
 		if err != nil {
@@ -118,7 +119,7 @@ func (n *navigatorClipboard) WriteText(text string, done func(err error)) {
 	n.call("writeText", text, func(_ js.Value, err error) {
 		var r refused
 		if errors.As(err, &r) {
-			done(errClipboardWriteFailed(r.detail))
+			done(errors.New(tagWebClipboardWriteFailed, "navigator.clipboard.writeText failed", "detail", r.detail))
 			return
 		}
 		done(err)

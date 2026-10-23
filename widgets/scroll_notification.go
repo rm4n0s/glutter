@@ -264,7 +264,7 @@ type OverscrollNotificationOpts struct {
 // Flutter: widgets/scroll_notification.dart OverscrollNotification.new
 func NewOverscrollNotification(metrics ScrollMetrics, context BuildContext, overscroll float64, opts ...OverscrollNotificationOpts) *OverscrollNotification {
 	if foundation.DebugMode && (overscroll == 0 || overscroll != overscroll || overscroll > 1.7976931348623157e308 || overscroll < -1.7976931348623157e308) {
-		panic(errors.New("OverscrollNotificationInvalid", "the overscroll of an OverscrollNotification must be finite and not zero",
+		panic(errors.New(tagOverscrollNotificationInvalid, "the overscroll of an OverscrollNotification must be finite and not zero",
 			"overscroll", overscroll))
 	}
 	o := firstOpts(opts)
@@ -397,3 +397,8 @@ type ScrollNotificationPredicate func(notification ScrollNotification) bool
 func DefaultScrollNotificationPredicate(notification ScrollNotification) bool {
 	return notification.Depth() == 0
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagOverscrollNotificationInvalid = "OverscrollNotificationInvalid"
+)

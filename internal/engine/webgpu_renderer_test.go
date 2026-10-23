@@ -15,7 +15,7 @@ func TestWebGPURendererWithoutAStartupDeviceFailsAtTheFirstFrame(t *testing.T) {
 	defer r.Close()
 	_, err := r.Draw(gpu.SurfaceHandle{Kind: gpu.SurfaceKindWeb, Window: 1}, 8, 8, nil, false)
 	appErr, ok := errors.FromError(err)
-	if !ok || appErr.Tag != "WebGPUUnavailable" {
+	if !ok || appErr.Tag != tagWebGPUUnavailable {
 		t.Fatalf("Draw = %v, want WebGPUUnavailable", err)
 	}
 }
@@ -39,11 +39,11 @@ func TestWebGPULastResort(t *testing.T) {
 		err  error
 		want bool
 	}{
-		{"a device lost twice", errors.New("GPUDeviceLost", "the WebGPU device was lost"), true},
-		{"a new device that was refused", errors.New("WebGPUDeviceFailed", "the adapter did not give a device"), true},
-		{"a call that threw", errors.New("WebGPUCallFailed", "a call threw"), false},
-		{"no WebGPU at all", errors.New("WebGPUUnavailable", "no navigator.gpu"), false},
-		{"a size that is not positive", errors.New("RendererSizeInvalid", "bad size"), false},
+		{"a device lost twice", errors.New(tagGPUDeviceLost, "the WebGPU device was lost"), true},
+		{"a new device that was refused", errors.New(tagWebGPUDeviceFailed, "the adapter did not give a device"), true},
+		{"a call that threw", errors.New(tagWebGPUCallFailed, "a call threw"), false},
+		{"no WebGPU at all", errors.New(tagWebGPUUnavailable, "no navigator.gpu"), false},
+		{"a size that is not positive", errors.New(tagRendererSizeInvalid, "bad size"), false},
 		{"not an application error", plainError{}, false},
 	}
 	for _, tc := range tests {
@@ -58,3 +58,11 @@ func TestWebGPULastResort(t *testing.T) {
 type plainError struct{}
 
 func (plainError) Error() string { return "deadline" }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagRendererSizeInvalid = "RendererSizeInvalid"
+	tagWebGPUCallFailed    = "WebGPUCallFailed"
+	tagWebGPUDeviceFailed  = "WebGPUDeviceFailed"
+	tagGPUDeviceLost       = "GPUDeviceLost"
+)

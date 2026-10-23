@@ -345,7 +345,7 @@ func (b *ElementBase) retakeInactiveElement(key AnyGlobalKey, newWidget Widget) 
 	if parent := element.AsElement().parent; parent != nil {
 		if foundation.DebugMode {
 			if parent == b.self {
-				panic(errors.New("GlobalKeyUsedTwiceInChildList",
+				panic(errors.New(tagGlobalKeyUsedTwiceInChildList,
 					"a GlobalKey was used multiple times inside one widget's child list; a GlobalKey can only be specified on one widget at a time in the widget tree",
 					"key", key.String(), "parent", parent.String(), "first child", element.String(), "second widget", foundation.RuntimeTypeName(newWidget)))
 			}
@@ -508,3 +508,8 @@ func (b *ElementBase) updateInheritance() {
 		b.inheritedElements = nil
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagGlobalKeyUsedTwiceInChildList = "GlobalKeyUsedTwiceInChildList"
+)

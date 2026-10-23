@@ -121,7 +121,7 @@ func TestFailures(t *testing.T) {
 		{name: "bad flag", args: []string{"-nope"}, tag: "KeysBadFlags", route: "Run.KeysBadFlags"},
 		{name: "no data", files: map[string]string{}, tag: "KeysDataMissing", route: "Run->loadData.KeysDataMissing"},
 		{name: "invalid JSON", files: with("layout_goals.json", "{"), tag: "KeysDataInvalid", route: "loadData.KeysDataInvalid"},
-		{name: "a scan code that is not a number", files: with("physical_key_data.g.json", `{"KeyA": {"scanCodes": {"usb": "x", "xkb": 38}}}`), tag: "KeysDataInvalid", route: "generate.KeysDataInvalid"},
+		{name: "a scan code that is not a number", files: with("physical_key_data.g.json", `{"KeyA": {"scanCodes": {"usb": "x", "xkb": 38}}}`), tag: "KeysDataInvalid", route: "generate->physicalKey.scanCode.KeysDataInvalid"},
 		{
 			name:  "two keys with the same XKB code",
 			files: with("physical_key_data.g.json", `{"KeyA": {"scanCodes": {"usb": 1, "xkb": 38}}, "KeyB": {"scanCodes": {"usb": 2, "xkb": 38}}}`),
@@ -169,7 +169,7 @@ func TestFailures(t *testing.T) {
 		ref := writeData(t, validFiles())
 		err := Run([]string{"-reference", ref, "-out", filepath.Join(t.TempDir(), "missing-dir", "out.go")})
 		appErr, ok := errors.FromError(err)
-		if !ok || appErr.Tag != "KeysWriteFailed" || !appErr.HasRoute("Run->writeIfChanged.KeysWriteFailed") {
+		if !ok || appErr.Tag != tagKeysWriteFailed || !appErr.HasRoute("Run->writeIfChanged.KeysWriteFailed") {
 			t.Errorf("error = %v, want KeysWriteFailed via Run", err)
 		}
 	})

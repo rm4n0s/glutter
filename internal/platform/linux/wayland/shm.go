@@ -40,32 +40,32 @@ func newShmBuffer(shm *wl.WlShm, width, height int32, color uint32, onRelease fu
 // writes the pixels (4 bytes each, little endian) into the memory of the buffer.
 func newShmBufferFormat(shm *wl.WlShm, width, height int32, format wl.WlShmFormat, paint func(data []byte), onRelease func(*shmBuffer)) (b *shmBuffer, err error) {
 	if width <= 0 || height <= 0 {
-		return nil, errors.New("ShmBufferFailed", "a buffer needs a positive size", "op", "size", "width", width, "height", height)
+		return nil, errors.New(tagShmBufferFailed, "a buffer needs a positive size", "op", "size", "width", width, "height", height)
 	}
 	stride := width * 4
 	size := int(stride) * int(height)
 	if size > maxShmBytes {
-		return nil, errors.New("ShmBufferFailed", "the buffer is too large", "op", "size", "width", width, "height", height)
+		return nil, errors.New(tagShmBufferFailed, "the buffer is too large", "op", "size", "width", width, "height", height)
 	}
 
 	fd, err := memfdCreate("glutter-shm")
 	if err != nil {
-		return nil, errors.NewErr("ShmBufferFailed", err).SetMetadata("op", "memfd_create", "size", size)
+		return nil, err
 	}
 	defer func() {
 		// The pool has its own copy of the descriptor, so ours is closed on every
 		// path. A failure to close is reported unless something failed earlier.
 		if cerr := syscall.Close(fd); cerr != nil && err == nil {
 			b.free()
-			b, err = nil, errors.NewErr("ShmBufferFailed", cerr).SetMetadata("op", "close", "size", size)
+			b, err = nil, errors.NewErr(tagShmBufferFailed, cerr).SetMetadata("op", "close", "size", size)
 		}
 	}()
 	if err := syscall.Ftruncate(fd, int64(size)); err != nil {
-		return nil, errors.NewErr("ShmBufferFailed", err).SetMetadata("op", "ftruncate", "size", size)
+		return nil, errors.NewErr(tagShmBufferFailed, err).SetMetadata("op", "ftruncate", "size", size)
 	}
 	data, err := syscall.Mmap(fd, 0, size, syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
 	if err != nil {
-		return nil, errors.NewErr("ShmBufferFailed", err).SetMetadata("op", "mmap", "size", size)
+		return nil, errors.NewErr(tagShmBufferFailed, err).SetMetadata("op", "mmap", "size", size)
 	}
 	paint(data)
 
@@ -109,14 +109,19 @@ func (b *shmBuffer) free() {
 func memfdCreate(name string) (int, error) {
 	p, err := syscall.BytePtrFromString(name)
 	if err != nil {
-		return -1, err
+		return -1, errors.NewErr(tagShmBufferFailed, err).SetMetadata("op", "memfd_create", "name", name)
 	}
 	if sysMemfdCreate == 0 {
-		return -1, syscall.ENOSYS
+		return -1, errors.NewErr(tagShmBufferFailed, syscall.ENOSYS).SetMetadata("op", "memfd_create", "name", name)
 	}
 	fd, _, errno := syscall.Syscall(sysMemfdCreate, uintptr(unsafe.Pointer(p)), mfdCloexec, 0)
 	if errno != 0 {
-		return -1, errno
+		return -1, errors.NewErr(tagShmBufferFailed, errno).SetMetadata("op", "memfd_create", "name", name)
 	}
 	return int(fd), nil
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagShmBufferFailed = "ShmBufferFailed"
+)

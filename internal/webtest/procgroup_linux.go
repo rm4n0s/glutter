@@ -48,7 +48,7 @@ func startPrivateDisplay(lifetime time.Duration) (*privateDisplay, error) {
 	}
 	r, w, err := os.Pipe()
 	if err != nil {
-		return nil, errors.NewErr("BrowserLaunchFailed", err).SetMetadata("what", "the pipe of the private display")
+		return nil, errors.NewErr(tagBrowserLaunchFailed, err).SetMetadata("what", "the pipe of the private display")
 	}
 	defer func() { _ = r.Close() }() // the read end is only for the display's number
 	secs := strconv.Itoa(max(1, int(lifetime.Seconds())))
@@ -59,7 +59,7 @@ func startPrivateDisplay(lifetime time.Duration) (*privateDisplay, error) {
 	err = cmd.Start()
 	_ = w.Close() // the server has its copy
 	if err != nil {
-		return nil, errors.NewErr("BrowserLaunchFailed", err).SetMetadata("what", "Xvfb", "path", xvfb)
+		return nil, errors.NewErr(tagBrowserLaunchFailed, err).SetMetadata("what", "Xvfb", "path", xvfb)
 	}
 	d := &privateDisplay{cmd: cmd, done: make(chan struct{})}
 	go func() {
@@ -80,7 +80,7 @@ func startPrivateDisplay(lifetime time.Duration) (*privateDisplay, error) {
 	case <-time.After(10 * time.Second):
 	}
 	d.stop()
-	return nil, errors.New("BrowserLaunchFailed", "Xvfb did not say which display it took", "what", "Xvfb", "path", xvfb)
+	return nil, errors.New(tagBrowserLaunchFailed, "Xvfb did not say which display it took", "what", "Xvfb", "path", xvfb)
 }
 
 // stop kills the server and its group and waits for it.
@@ -112,7 +112,7 @@ func (p *Process) CPUTime() (time.Duration, error) {
 func groupCPUTime(proc string, groups []int) (time.Duration, error) {
 	entries, err := os.ReadDir(proc)
 	if err != nil {
-		return 0, errors.NewErr("BrowserCPUUnavailable", err).SetMetadata("dir", proc)
+		return 0, errors.NewErr(tagBrowserCPUUnavailable, err).SetMetadata("dir", proc)
 	}
 	ticks := 0
 	for _, e := range entries {
@@ -159,3 +159,8 @@ func parseStat(stat string) (pgrp, ticks int, ok bool) {
 	}
 	return vals[0], vals[1] + vals[2], true
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagBrowserCPUUnavailable = "BrowserCPUUnavailable"
+)

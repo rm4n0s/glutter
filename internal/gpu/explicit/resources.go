@@ -232,7 +232,7 @@ func (r *resources) imageTexture(img *ui.Image) (*imageEntry, error) {
 		return e, nil
 	}
 	if limit := r.dev.Limits().MaxTextureSize; w > limit || h > limit {
-		return nil, errors.New("GPUImageTooLarge", "the image is larger than the textures of the device", "width", w, "height", h, "limit", limit)
+		return nil, errors.New(TagGPUImageTooLarge, "the image is larger than the textures of the device", "width", w, "height", h, "limit", limit)
 	}
 	levels := gpu.MipLevels(w, h)
 	usage := TextureSampled

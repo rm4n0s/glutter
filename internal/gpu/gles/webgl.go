@@ -1,15 +1,10 @@
 package gles
 
-import (
-	"strconv"
-	"sync"
-
-	"github.com/rm4n0s/errors"
-)
+import "sync"
 
 // This file is the part of the WebGL 2 binding (gl_js.go, context_js.go) that is plain Go: what
-// to ask the browser for, what the context's loss and restoration do to the renderer, and the
-// errors. It builds on every OS so that the normal tests and the tests under Node run it.
+// to ask the browser for, and what the context's loss and restoration do to the renderer. It
+// builds on every OS so that the normal tests and the tests under Node run it.
 
 // eglPlatformWeb stands for the page's canvas where EGL would have a platform: the web has no
 // EGL, and the renderer's context code goes through a small imitation of it (webEGL in
@@ -91,27 +86,4 @@ func (s *lossState) rebuilt() {
 	s.mu.Lock()
 	s.rebuild = false
 	s.mu.Unlock()
-}
-
-// errWebCanvasNotFound is the error for a view whose canvas is not in the page.
-func errWebCanvasNotFound(view uintptr) error {
-	return errors.New("WebGLCanvasNotFound", "there is no canvas for the view in the page", "view", strconv.FormatUint(uint64(view), 10))
-}
-
-// errWebGL2Unavailable is the error for a canvas that gives no WebGL 2 context: the browser has
-// none (or it is turned off, or the GPU is blocklisted), or the canvas already has a context of
-// another kind (a canvas keeps the first kind it was asked for, SPEC §9.6).
-func errWebGL2Unavailable(view uintptr, reason string) error {
-	return errors.New("WebGL2Unavailable", "the canvas gave no WebGL 2 context",
-		"view", strconv.FormatUint(uint64(view), 10), "reason", reason)
-}
-
-// errWebSurfaceKind is the error for a handle that does not name a canvas.
-func errWebSurfaceKind(kind string) error {
-	return errors.New("WebGLSurfaceKindUnsupported", "WebGL draws into the canvas of a web page only", "kind", kind)
-}
-
-// errContextLost is the error for a read-back or a snapshot while the context is lost.
-func errContextLost() error {
-	return errors.New("WebGLContextLost", "the WebGL context is lost; the next frame is drawn when the browser restores it")
 }

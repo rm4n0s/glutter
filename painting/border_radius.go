@@ -208,7 +208,7 @@ func BorderRadiusGeometryLerp(a, b BorderRadiusGeometry, t float64) BorderRadius
 // Flutter: painting/border_radius.dart BorderRadiusGeometry.horizontal
 func BorderRadiusHorizontalGeometry(left, right, start, end foundation.Opt[ui.Radius]) BorderRadiusGeometry {
 	if foundation.DebugMode && (!left.IsNone() || !right.IsNone()) && (!start.IsNone() || !end.IsNone()) {
-		panic(errors.New("BorderRadiusMixedHorizontal",
+		panic(errors.New(tagBorderRadiusMixedHorizontal,
 			"the left and right values cannot be used in conjunction with start and end"))
 	}
 	if start.IsSome() || end.IsSome() {
@@ -605,4 +605,9 @@ var (
 	_ BorderRadiusGeometry = BorderRadius{}
 	_ BorderRadiusGeometry = BorderRadiusDirectional{}
 	_ fmt.Stringer         = BorderRadius{}
+)
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagBorderRadiusMixedHorizontal = "BorderRadiusMixedHorizontal"
 )

@@ -122,7 +122,7 @@ func (g *generator) protocol(p *protocol) ([]byte, error) {
 	}
 	src, err := format.Source(g.buf.Bytes())
 	if err != nil {
-		return nil, errors.NewErr("WaylandGenerateFailed", err).SetMetadata("file", p.file, "source", g.buf.String())
+		return nil, errors.NewErr(tagWaylandGenerateFailed, err).SetMetadata("file", p.file, "source", g.buf.String())
 	}
 	return src, nil
 }
@@ -488,3 +488,6 @@ func (g *generator) encode(from *iface, m *message, slot int, a *arg) string {
 		return fmt.Sprintf("argv.setFD(%d, int32(%s))", slot, n)
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const tagWaylandGenerateFailed = "WaylandGenerateFailed"

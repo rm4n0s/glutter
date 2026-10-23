@@ -270,29 +270,29 @@ func NewTextField(opts ...TextFieldOpts) *TextField {
 	}
 	if foundation.DebugMode {
 		if foundation.GraphemeCount(o.ObscuringCharacter) != 1 {
-			panic(errors.New("TextFieldObscuringCharacterInvalid", "the obscuring character must be one character", "obscuringCharacter", o.ObscuringCharacter))
+			panic(errors.New(tagTextFieldObscuringCharacterInvalid, "the obscuring character must be one character", "obscuringCharacter", o.ObscuringCharacter))
 		}
 		if m, ok := maxLines.Get(); ok && m <= 0 {
-			panic(errors.New("TextFieldMaxLinesInvalid", "maxLines must be positive", "maxLines", m))
+			panic(errors.New(tagTextFieldMaxLinesInvalid, "maxLines must be positive", "maxLines", m))
 		}
 		if m, ok := o.MinLines.Get(); ok && m <= 0 {
-			panic(errors.New("TextFieldMinLinesInvalid", "minLines must be positive", "minLines", m))
+			panic(errors.New(tagTextFieldMinLinesInvalid, "minLines must be positive", "minLines", m))
 		}
 		if mx, ok := maxLines.Get(); ok && o.MinLines.IsSome() && mx < o.MinLines.Value() {
-			panic(errors.New("TextFieldMinLinesGreaterThanMaxLines", "minLines can't be greater than maxLines", "minLines", o.MinLines.Value(), "maxLines", mx))
+			panic(errors.New(tagTextFieldMinLinesGreaterThanMaxLines, "minLines can't be greater than maxLines", "minLines", o.MinLines.Value(), "maxLines", mx))
 		}
 		if o.Expands && (maxLines.IsSome() || o.MinLines.IsSome()) {
-			panic(errors.New("TextFieldExpandsWithLines", "minLines and maxLines must be unset when expands is true"))
+			panic(errors.New(tagTextFieldExpandsWithLines, "minLines and maxLines must be unset when expands is true"))
 		}
 		if o.ObscureText && (maxLines.IsNone() || maxLines.Value() != 1) {
-			panic(errors.New("TextFieldObscuredMultiline", "obscured fields cannot be multiline"))
+			panic(errors.New(tagTextFieldObscuredMultiline, "obscured fields cannot be multiline"))
 		}
 		if n, ok := o.MaxLength.Get(); ok && n != TextFieldNoMaxLength && n <= 0 {
-			panic(errors.New("TextFieldMaxLengthInvalid", "maxLength must be TextFieldNoMaxLength or positive", "maxLength", n))
+			panic(errors.New(tagTextFieldMaxLengthInvalid, "maxLength must be TextFieldNoMaxLength or positive", "maxLength", n))
 		}
 		single := maxLines.IsSome() && maxLines.Value() == 1
 		if o.TextInputAction == services.TextInputActionNewline && !single && o.KeyboardType.IsSome() && o.KeyboardType.Value() == services.TextInputTypeText {
-			panic(errors.New("TextFieldNewlineActionWithTextKeyboard", "use the multiline keyboardType with the newline textInputAction on a multiline TextField"))
+			panic(errors.New(tagTextFieldNewlineActionWithTextKeyboard, "use the multiline keyboardType with the newline textInputAction on a multiline TextField"))
 		}
 	}
 	if o.KeyboardType.IsNone() {
@@ -822,7 +822,7 @@ func (s *textFieldState) Build(bc widgets.BuildContext) widgets.Widget {
 	w := s.Widget()
 	if foundation.DebugMode {
 		if st := s.providedStyle(); st != nil && !st.Inherit && (st.FontSize.IsNone() || st.TextBaseline == ui.TextBaselineUnspecified) {
-			panic(errors.New("TextFieldStyleNotInheriting", "an inherit false style must supply fontSize and textBaseline"))
+			panic(errors.New(tagTextFieldStyleNotInheriting, "an inherit false style must supply fontSize and textBaseline"))
 		}
 	}
 	theme := ThemeOf(bc)
@@ -1148,3 +1148,16 @@ func ptrOrNil[T any](p *T) any {
 	}
 	return p
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagTextFieldExpandsWithLines              = "TextFieldExpandsWithLines"
+	tagTextFieldMaxLengthInvalid              = "TextFieldMaxLengthInvalid"
+	tagTextFieldMaxLinesInvalid               = "TextFieldMaxLinesInvalid"
+	tagTextFieldMinLinesGreaterThanMaxLines   = "TextFieldMinLinesGreaterThanMaxLines"
+	tagTextFieldMinLinesInvalid               = "TextFieldMinLinesInvalid"
+	tagTextFieldNewlineActionWithTextKeyboard = "TextFieldNewlineActionWithTextKeyboard"
+	tagTextFieldObscuredMultiline             = "TextFieldObscuredMultiline"
+	tagTextFieldObscuringCharacterInvalid     = "TextFieldObscuringCharacterInvalid"
+	tagTextFieldStyleNotInheriting            = "TextFieldStyleNotInheriting"
+)

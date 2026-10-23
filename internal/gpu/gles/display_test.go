@@ -49,7 +49,7 @@ func (d *drawHandler) OnFrame(ui.ViewID, time.Duration) {
 	d.ran = true
 	h := d.win.NativeSurface()
 	if h.Kind != gpu.SurfaceKindWayland {
-		d.done <- result{err: errors.NewErrf("TestSurfaceKind", "surface kind = %v", h.Kind)}
+		d.done <- result{err: errors.NewErrf(tagTestSurfaceKind, "surface kind = %v", h.Kind)}
 		return
 	}
 	c, s, err := gles.Open(h)
@@ -127,3 +127,8 @@ func TestDisplayClearsTheWindowToPurple(t *testing.T) {
 		}
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagTestSurfaceKind = "TestSurfaceKind"
+)

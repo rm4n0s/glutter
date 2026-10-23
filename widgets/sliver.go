@@ -49,7 +49,7 @@ func (w *SliverMultiBoxAdaptorWidget) Delegate() SliverChildDelegate { return w.
 // Flutter: widgets/sliver.dart SliverMultiBoxAdaptorWidget.estimateMaxScrollOffset
 func (w *SliverMultiBoxAdaptorWidget) EstimateMaxScrollOffset(_ rendering.SliverConstraints, firstIndex, lastIndex int, leadingScrollOffset, trailingScrollOffset float64) foundation.Opt[float64] {
 	if foundation.DebugMode && lastIndex < firstIndex {
-		panic(errors.New("SliverLastIndexBeforeFirst", "the last index must not be less than the first", "first", firstIndex, "last", lastIndex))
+		panic(errors.New(tagSliverLastIndexBeforeFirst, "the last index must not be less than the first", "first", firstIndex, "last", lastIndex))
 	}
 	return w.delegate.EstimateMaxScrollOffset(firstIndex, lastIndex, leadingScrollOffset, trailingScrollOffset)
 }
@@ -160,7 +160,7 @@ func separatedDelegate(itemBuilder, separatorBuilder NullableIndexedWidgetBuilde
 		}
 		widget := separatorBuilder(bc, itemIndex)
 		if foundation.DebugMode && widget == nil {
-			panic(errors.New("SeparatorBuilderNil", "separatorBuilder cannot return nil"))
+			panic(errors.New(tagSeparatorBuilderNil, "separatorBuilder cannot return nil"))
 		}
 		return widget
 	}, SliverChildBuilderDelegateOpts{
@@ -572,7 +572,7 @@ func (e *SliverMultiBoxAdaptorElement) PerformRebuild() {
 	e.currentBeforeChild = nil
 	childrenUpdated := false
 	if foundation.DebugMode && e.currentlyUpdatingChildIndex.IsSome() {
-		panic(errors.New("SliverChildListLocked", "the children of a sliver were rebuilt while one of them was being updated"))
+		panic(errors.New(tagSliverChildListLocked, "the children of a sliver were rebuilt while one of them was being updated"))
 	}
 	defer func() {
 		e.currentlyUpdatingChildIndex = foundation.None[int]()
@@ -655,12 +655,12 @@ func (e *SliverMultiBoxAdaptorElement) build(index int, w sliverMultiBoxWidget) 
 // Flutter: widgets/sliver.dart SliverMultiBoxAdaptorElement.createChild
 func (e *SliverMultiBoxAdaptorElement) CreateChild(index int, after rendering.Box) {
 	if foundation.DebugMode && e.currentlyUpdatingChildIndex.IsSome() {
-		panic(errors.New("SliverChildListLocked", "a child was created while another one was being updated"))
+		panic(errors.New(tagSliverChildListLocked, "a child was created while another one was being updated"))
 	}
 	e.owner.BuildScope(e, func() {
 		insertFirst := after == nil
 		if foundation.DebugMode && !insertFirst && e.childElements.get(index-1) == nil {
-			panic(errors.New("SliverChildBeforeMissing", "the child before the one to create is not live", "index", index))
+			panic(errors.New(tagSliverChildBeforeMissing, "the child before the one to create is not live", "index", index))
 		}
 		if insertFirst {
 			e.currentBeforeChild = nil
@@ -716,7 +716,7 @@ func (e *SliverMultiBoxAdaptorElement) ForgetChild(child Element) {
 func (e *SliverMultiBoxAdaptorElement) RemoveChild(child rendering.Box) {
 	index := e.sliver().IndexOf(child)
 	if foundation.DebugMode && e.currentlyUpdatingChildIndex.IsSome() {
-		panic(errors.New("SliverChildListLocked", "a child was removed while another one was being updated"))
+		panic(errors.New(tagSliverChildListLocked, "a child was removed while another one was being updated"))
 	}
 	e.owner.BuildScope(e, func() {
 		func() {
@@ -780,7 +780,7 @@ func (e *SliverMultiBoxAdaptorElement) ChildCount() int {
 		case hi < maxInt:
 			hi = maxInt
 		default:
-			panic(errors.New("SliverChildCountUnknown",
+			panic(errors.New(tagSliverChildCountUnknown,
 				"could not find the number of children in the delegate; the childCount getter was called (implying that the delegate's builder returned nil for a positive index), but even building the child with the maximum possible index did not return nil; consider implementing the child count to avoid the cost of searching for the final child"))
 		}
 	}
@@ -816,7 +816,7 @@ func (e *SliverMultiBoxAdaptorElement) DidFinishLayout() {
 // Flutter: widgets/sliver.dart SliverMultiBoxAdaptorElement.debugAssertChildListLocked
 func (e *SliverMultiBoxAdaptorElement) DebugAssertChildListLocked() bool {
 	if foundation.DebugMode && e.currentlyUpdatingChildIndex.IsSome() {
-		panic(errors.New("SliverChildListLocked", "the child list of a sliver was changed while the sliver lays out"))
+		panic(errors.New(tagSliverChildListLocked, "the child list of a sliver was changed while the sliver lays out"))
 	}
 	return true
 }
@@ -826,7 +826,7 @@ func (e *SliverMultiBoxAdaptorElement) DebugAssertChildListLocked() bool {
 // Flutter: widgets/sliver.dart SliverMultiBoxAdaptorElement.didAdoptChild
 func (e *SliverMultiBoxAdaptorElement) DidAdoptChild(child rendering.Box) {
 	if foundation.DebugMode && e.currentlyUpdatingChildIndex.IsNone() {
-		panic(errors.New("SliverChildAdoptedOutsideUpdate", "a child was adopted by a sliver while no child was being updated"))
+		panic(errors.New(tagSliverChildAdoptedOutsideUpdate, "a child was adopted by a sliver while no child was being updated"))
 	}
 	rendering.SliverMultiBoxAdaptorParentDataOf(child).Index = e.currentlyUpdatingChildIndex
 }
@@ -841,7 +841,7 @@ func (e *SliverMultiBoxAdaptorElement) SetDidUnderflow(value bool) { e.didUnderf
 // Flutter: widgets/sliver.dart SliverMultiBoxAdaptorElement.insertRenderObjectChild
 func (e *SliverMultiBoxAdaptorElement) InsertRenderObjectChild(child rendering.RenderObject, slot any) {
 	if foundation.DebugMode && e.currentlyUpdatingChildIndex != foundation.Some(slot.(int)) {
-		panic(errors.New("SliverChildSlotMismatch", "a child was inserted into a slot other than the one being updated"))
+		panic(errors.New(tagSliverChildSlotMismatch, "a child was inserted into a slot other than the one being updated"))
 	}
 	e.sliver().Insert(child.(rendering.Box), e.currentBeforeChild)
 }
@@ -851,7 +851,7 @@ func (e *SliverMultiBoxAdaptorElement) InsertRenderObjectChild(child rendering.R
 // Flutter: widgets/sliver.dart SliverMultiBoxAdaptorElement.moveRenderObjectChild
 func (e *SliverMultiBoxAdaptorElement) MoveRenderObjectChild(child rendering.RenderObject, _, newSlot any) {
 	if foundation.DebugMode && e.currentlyUpdatingChildIndex != foundation.Some(newSlot.(int)) {
-		panic(errors.New("SliverChildSlotMismatch", "a child was moved into a slot other than the one being updated"))
+		panic(errors.New(tagSliverChildSlotMismatch, "a child was moved into a slot other than the one being updated"))
 	}
 	e.sliver().Move(child.(rendering.Box), e.currentBeforeChild)
 }
@@ -861,7 +861,7 @@ func (e *SliverMultiBoxAdaptorElement) MoveRenderObjectChild(child rendering.Ren
 // Flutter: widgets/sliver.dart SliverMultiBoxAdaptorElement.removeRenderObjectChild
 func (e *SliverMultiBoxAdaptorElement) RemoveRenderObjectChild(child rendering.RenderObject, _ any) {
 	if foundation.DebugMode && e.currentlyUpdatingChildIndex.IsNone() {
-		panic(errors.New("SliverChildRemovedOutsideUpdate", "a child was removed from a sliver while no child was being updated"))
+		panic(errors.New(tagSliverChildRemovedOutsideUpdate, "a child was removed from a sliver while no child was being updated"))
 	}
 	e.sliver().Remove(child.(rendering.Box))
 }
@@ -900,3 +900,15 @@ func (e *SliverMultiBoxAdaptorElement) DebugVisitOnstageChildren(visitor Element
 		}
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagSeparatorBuilderNil             = "SeparatorBuilderNil"
+	tagSliverChildAdoptedOutsideUpdate = "SliverChildAdoptedOutsideUpdate"
+	tagSliverChildBeforeMissing        = "SliverChildBeforeMissing"
+	tagSliverChildCountUnknown         = "SliverChildCountUnknown"
+	tagSliverChildListLocked           = "SliverChildListLocked"
+	tagSliverChildRemovedOutsideUpdate = "SliverChildRemovedOutsideUpdate"
+	tagSliverChildSlotMismatch         = "SliverChildSlotMismatch"
+	tagSliverLastIndexBeforeFirst      = "SliverLastIndexBeforeFirst"
+)

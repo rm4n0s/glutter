@@ -69,7 +69,7 @@ func NewViewingConditions(o ViewingConditionsOpts) *ViewingConditions {
 	backgroundLstar = math.Max(0.1, backgroundLstar)
 	surround := o.Surround.OrElse(2.0)
 	if foundation.DebugMode && (surround < 0.0 || surround > 2.0) {
-		panic(errors.New("ViewingConditionsSurroundInvalid", "the surround must be between 0 and 2", "surround", surround))
+		panic(errors.New(tagViewingConditionsSurroundInvalid, "the surround must be between 0 and 2", "surround", surround))
 	}
 
 	// Transform the test illuminant white in XYZ to 'cone'/'rgb' responses.
@@ -149,3 +149,8 @@ func NewViewingConditions(o ViewingConditionsOpts) *ViewingConditions {
 		RgbD: rgbD, Fl: fl, FLRoot: math.Pow(fl, 0.25), Z: z,
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagViewingConditionsSurroundInvalid = "ViewingConditionsSurroundInvalid"
+)

@@ -197,7 +197,7 @@ func Run(ctx context.Context, cfg Config) (err error) {
 		return err
 	}
 	if cfg.ShmFill && shot != nil {
-		return errors.New("ScreenshotUnsupported",
+		return errors.New(tagScreenshotUnsupported,
 			"GLUTTER_SCREENSHOT reads the frame back through OpenGL, so it does not work with the shared-memory mode")
 	}
 
@@ -251,7 +251,7 @@ func Run(ctx context.Context, cfg Config) (err error) {
 			wcfg.Decorations = platform.DecorationsLibdecor
 		case "", "auto":
 		default:
-			return errors.New("DecorationsUnknown", "GLUTTER_DECORATIONS is not auto, app or libdecor", "value", v)
+			return errors.New(tagDecorationsUnknown, "GLUTTER_DECORATIONS is not auto, app or libdecor", "value", v)
 		}
 	}
 	win, err := conn.NewWindow(wcfg)
@@ -498,7 +498,7 @@ func (h *handler) ActivationToken(view ui.ViewID, done func(token string)) {
 func (h *handler) KeepScreenOn(view ui.ViewID, on bool) error {
 	w, ok := h.windows[view]
 	if !ok {
-		return errors.New("IdleInhibitUnavailable", "the window of the view does not exist", "view", view)
+		return errors.New(tagIdleInhibitUnavailable, "the window of the view does not exist", "view", view)
 	}
 	return w.KeepScreenOn(on)
 }
@@ -616,7 +616,7 @@ func (h *handler) updateLifecycle() {
 func (h *handler) StartDrag(view ui.ViewID, request ui.DragRequest) error {
 	w, ok := h.windows[view]
 	if !ok {
-		return errors.New("ViewNotFound", "the view has no window", "view", int(view))
+		return errors.New(tagViewNotFound, "the view has no window", "view", int(view))
 	}
 	return w.StartDrag(request)
 }
@@ -1136,7 +1136,7 @@ func (h *handler) Post(fn func()) { h.conn.Post(fn) }
 func (h *handler) RenderView(view ui.ViewID, scene *ui.Scene) error {
 	w, ok := h.windows[view]
 	if !ok {
-		return errors.New("ViewNotFound", "there is no window for the view", "view", int64(view))
+		return errors.New(tagViewNotFound, "there is no window for the view", "view", int64(view))
 	}
 	w.rendered = true
 	w.lastScene = scene
@@ -1360,3 +1360,11 @@ func (h *handler) release() {
 		h.r = nil
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagDecorationsUnknown     = "DecorationsUnknown"
+	tagIdleInhibitUnavailable = "IdleInhibitUnavailable"
+	tagScreenshotUnsupported  = "ScreenshotUnsupported"
+	tagViewNotFound           = "ViewNotFound"
+)

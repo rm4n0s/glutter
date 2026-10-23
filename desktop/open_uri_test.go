@@ -170,7 +170,7 @@ func TestOpenURIFallsBackToXdgOpen(t *testing.T) {
 		}},
 		{"there is no session bus", func(_ *testing.T, bc widgets.BuildContext) {
 			desktop.UseBusOpener(bc, func(context.Context) (dbus.Bus, error) {
-				return nil, errors.New("DBusConnectFailed", "no bus")
+				return nil, errors.New(tagDBusConnectFailed, "no bus")
 			})
 		}},
 	}
@@ -197,7 +197,7 @@ func TestOpenURIFallsBackToXdgOpen(t *testing.T) {
 func TestOpenURIUnavailable(t *testing.T) {
 	ts, bc := app(t)
 	desktop.UseBus(bc, fakebus.New(unique))
-	desktop.UseProgram(bc, (&programs{err: errors.New("ProgramFailed", "xdg-open is not installed")}).run)
+	desktop.UseProgram(bc, (&programs{err: errors.New(tagProgramFailed, "xdg-open is not installed")}).run)
 	err := inGoroutine(t, ts, func() error { return desktop.OpenURI(context.Background(), bc, "https://example.org") })
 	appErr := tagged(t, err, "OpenURIUnavailable")
 	if appErr.Metadata["uri"] != "https://example.org" || appErr.Metadata["portalTag"] != "DBusCallFailed" {
@@ -270,3 +270,8 @@ func TestOpenURIGivesUpWhenThePlatformNeverAnswers(t *testing.T) {
 		t.Fatal("the call did not give up")
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagProgramFailed = "ProgramFailed"
+)

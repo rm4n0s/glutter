@@ -59,34 +59,34 @@ func openWith(egl eglAPI, loadGL func(eglAPI) (glAPI, error), h gpu.SurfaceHandl
 	case gpu.SurfaceKindWeb:
 		platform = eglPlatformWeb
 	default:
-		return nil, nil, errors.New("EGLInitFailed", "no EGL platform for this kind of surface", "kind", string(h.Kind))
+		return nil, nil, errors.New(tagEGLInitFailed, "no EGL platform for this kind of surface", "kind", string(h.Kind))
 	}
 
 	display := egl.getPlatformDisplay(platform, h.Display)
 	if display == 0 {
-		return nil, nil, eglError(egl, "EGLInitFailed", "EGL has no display for the native display", "step", "eglGetPlatformDisplay")
+		return nil, nil, errors.New(tagEGLInitFailed, "EGL has no display for the native display", "egl_error", eglErrorCode(egl), "step", "eglGetPlatformDisplay")
 	}
 	major, minor, ok := egl.initialize(display)
 	if !ok {
-		return nil, nil, eglError(egl, "EGLInitFailed", "eglInitialize failed", "step", "eglInitialize")
+		return nil, nil, errors.New(tagEGLInitFailed, "eglInitialize failed", "egl_error", eglErrorCode(egl), "step", "eglInitialize")
 	}
 	if major < 1 || (major == 1 && minor < 4) {
 		egl.terminate(display)
-		return nil, nil, errors.New("EGLInitFailed", "EGL 1.4 or newer is required", "version", fmt.Sprintf("%d.%d", major, minor))
+		return nil, nil, errors.New(tagEGLInitFailed, "EGL 1.4 or newer is required", "version", fmt.Sprintf("%d.%d", major, minor))
 	}
 	if !egl.bindAPI(eglOpenGLESAPI) {
 		egl.terminate(display)
-		return nil, nil, eglError(egl, "GLES3Unsupported", "this EGL has no OpenGL ES API", "step", "eglBindAPI")
+		return nil, nil, errors.New(tagGLES3Unsupported, "this EGL has no OpenGL ES API", "egl_error", eglErrorCode(egl), "step", "eglBindAPI")
 	}
 	config, ok := egl.chooseConfig(display, configAttribs)
 	if !ok {
 		egl.terminate(display)
-		return nil, nil, eglError(egl, "EGLNoConfig", "no EGL config has RGBA8 and OpenGL ES 3 window surfaces")
+		return nil, nil, errors.New(tagEGLNoConfig, "no EGL config has RGBA8 and OpenGL ES 3 window surfaces", "egl_error", eglErrorCode(egl))
 	}
 	context := egl.createContext(display, config, []int32{eglContextClientVers, 3, eglNone})
 	if context == 0 {
 		egl.terminate(display)
-		return nil, nil, eglError(egl, "GLES3Unsupported", "could not create an OpenGL ES 3.0 context", "step", "eglCreateContext")
+		return nil, nil, errors.New(tagGLES3Unsupported, "could not create an OpenGL ES 3.0 context", "egl_error", eglErrorCode(egl), "step", "eglCreateContext")
 	}
 
 	c := &Context{egl: egl, display: display, config: config, context: context, surface: map[*Surface]struct{}{}, load: loadGL}
@@ -113,7 +113,7 @@ func openWith(egl eglAPI, loadGL func(eglAPI) (glAPI, error), h gpu.SurfaceHandl
 	c.version = gl.getString(glVersion)
 	if !isES3(c.version) {
 		c.Close()
-		return nil, nil, errors.New("GLES3Unsupported", "the driver does not provide OpenGL ES 3.0", "version", c.version)
+		return nil, nil, errors.New(tagGLES3Unsupported, "the driver does not provide OpenGL ES 3.0", "version", c.version)
 	}
 	c.dev, err = newDevice(gl)
 	if err != nil {
@@ -145,11 +145,10 @@ func isES3(version string) bool {
 	return err == nil && major >= 3
 }
 
-// eglError makes a tagged error that carries the EGL error code. Extra is
-// key/value metadata.
-func eglError(egl eglAPI, tag, message string, extra ...any) error {
-	md := append([]any{"egl_error", fmt.Sprintf("0x%x", egl.getError())}, extra...)
-	return errors.New(tag, message, md...)
+// eglErrorCode reads the EGL error code of the failed call, for the metadata "egl_error" of the
+// error that the failing function makes.
+func eglErrorCode(egl eglAPI) string {
+	return fmt.Sprintf("0x%x", egl.getError())
 }
 
 // Device returns the GL device of the context: its programs, pools and state
@@ -170,7 +169,7 @@ func (c *Context) Version() string { return c.version }
 func (c *Context) NewSurface(h gpu.SurfaceHandle) (*Surface, error) {
 	handle := c.egl.createWindowSurface(c.display, c.config, h.Window, h.Kind == gpu.SurfaceKindX11)
 	if handle == 0 {
-		return nil, eglError(c.egl, "EGLSurfaceFailed", "could not create an EGL window surface")
+		return nil, errors.New(tagEGLSurfaceFailed, "could not create an EGL window surface", "egl_error", eglErrorCode(c.egl))
 	}
 	s := &Surface{ctx: c, handle: handle}
 	c.surface[s] = struct{}{}
@@ -235,7 +234,7 @@ func (c *Context) ResizeSurface(s *Surface, width, height int) {
 // Flutter: no counterpart
 func (c *Context) MakeCurrent(s *Surface) error {
 	if !c.egl.makeCurrent(c.display, s.handle, s.handle, c.context) {
-		return eglError(c.egl, "EGLMakeCurrentFailed", "eglMakeCurrent failed")
+		return errors.New(tagEGLMakeCurrentFailed, "eglMakeCurrent failed", "egl_error", eglErrorCode(c.egl))
 	}
 	return nil
 }
@@ -247,7 +246,7 @@ func (c *Context) MakeCurrent(s *Surface) error {
 // Flutter: no counterpart
 func (c *Context) MakeCurrentSurfaceless() error {
 	if !c.egl.makeCurrent(c.display, 0, 0, c.context) {
-		return eglError(c.egl, "EGLMakeCurrentSurfacelessFailed", "eglMakeCurrent without a surface failed")
+		return errors.New(tagEGLMakeCurrentSurfacelessFailed, "eglMakeCurrent without a surface failed", "egl_error", eglErrorCode(c.egl))
 	}
 	return nil
 }
@@ -273,7 +272,7 @@ func (c *Context) Clear(r, g, b, a float32) {
 // Flutter: no counterpart
 func (c *Context) SwapBuffers(s *Surface) error {
 	if !c.egl.swapBuffers(c.display, s.handle) {
-		return eglError(c.egl, "EGLSwapFailed", "eglSwapBuffers failed")
+		return errors.New(tagEGLSwapFailed, "eglSwapBuffers failed", "egl_error", eglErrorCode(c.egl))
 	}
 	return nil
 }
@@ -302,7 +301,7 @@ func (c *Context) SwapBuffersWithDamage(s *Surface, height int, rects []image.Re
 		flat = append(flat, int32(r.Min.X), int32(height-r.Max.Y), int32(r.Dx()), int32(r.Dy()))
 	}
 	if !c.egl.swapBuffersWithDamage(c.display, s.handle, flat) {
-		return eglError(c.egl, "EGLSwapFailed", "eglSwapBuffersWithDamage failed")
+		return errors.New(tagEGLSwapFailed, "eglSwapBuffersWithDamage failed", "egl_error", eglErrorCode(c.egl))
 	}
 	return nil
 }
@@ -314,12 +313,12 @@ func (c *Context) SwapBuffersWithDamage(s *Surface, height int, rects []image.Re
 // Flutter: no counterpart
 func (c *Context) ReadPixels(width, height int) (*image.RGBA, error) {
 	if width <= 0 || height <= 0 {
-		return nil, errors.New("GLReadPixelsFailed", "the size to read must be positive", "width", width, "height", height)
+		return nil, errors.New(tagGLReadPixelsFailed, "the size to read must be positive", "width", width, "height", height)
 	}
 	raw := make([]byte, width*height*4)
 	c.gl.readPixels(0, 0, int32(width), int32(height), glRgba, glUnsignedByte, raw)
 	if code := c.gl.getError(); code != glNoError {
-		return nil, errors.New("GLReadPixelsFailed", "glReadPixels reported an error", "gl_error", fmt.Sprintf("0x%x", code))
+		return nil, errors.New(tagGLReadPixelsFailed, "glReadPixels reported an error", "gl_error", fmt.Sprintf("0x%x", code))
 	}
 	// GL's first row is the bottom one; an image's first row is the top one.
 	img := image.NewRGBA(image.Rect(0, 0, width, height))
@@ -372,25 +371,38 @@ func (c *Context) Close() {
 func x11VisualWith(egl eglAPI, display uintptr) (uint32, error) {
 	d := egl.getPlatformDisplay(eglPlatformX11, display)
 	if d == 0 {
-		return 0, eglError(egl, "EGLInitFailed", "EGL has no display for the native display", "step", "eglGetPlatformDisplay")
+		return 0, errors.New(tagEGLInitFailed, "EGL has no display for the native display", "egl_error", eglErrorCode(egl), "step", "eglGetPlatformDisplay")
 	}
 	if _, _, ok := egl.initialize(d); !ok {
-		return 0, eglError(egl, "EGLInitFailed", "eglInitialize failed", "step", "eglInitialize")
+		return 0, errors.New(tagEGLInitFailed, "eglInitialize failed", "egl_error", eglErrorCode(egl), "step", "eglInitialize")
 	}
 	// The display is terminated again: EGL keeps the driver's connection to the X
 	// display until then, and the Xlib display may be closed (and its address
 	// reused by the next one) before Open initializes it again.
 	defer egl.terminate(d)
 	if !egl.bindAPI(eglOpenGLESAPI) {
-		return 0, eglError(egl, "GLES3Unsupported", "this EGL has no OpenGL ES API", "step", "eglBindAPI")
+		return 0, errors.New(tagGLES3Unsupported, "this EGL has no OpenGL ES API", "egl_error", eglErrorCode(egl), "step", "eglBindAPI")
 	}
 	config, ok := egl.chooseConfig(d, configAttribs)
 	if !ok {
-		return 0, eglError(egl, "EGLNoConfig", "no EGL config has RGBA8 and OpenGL ES 3 window surfaces")
+		return 0, errors.New(tagEGLNoConfig, "no EGL config has RGBA8 and OpenGL ES 3 window surfaces", "egl_error", eglErrorCode(egl))
 	}
 	id, ok := egl.getConfigAttrib(d, config, eglNativeVisualID)
 	if !ok || id == 0 {
-		return 0, eglError(egl, "EGLConfigQueryFailed", "the EGL config has no native visual", "step", "eglGetConfigAttrib")
+		return 0, errors.New(tagEGLConfigQueryFailed, "the EGL config has no native visual", "egl_error", eglErrorCode(egl), "step", "eglGetConfigAttrib")
 	}
 	return uint32(id), nil
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagEGLConfigQueryFailed            = "EGLConfigQueryFailed"
+	tagEGLInitFailed                   = "EGLInitFailed"
+	tagEGLMakeCurrentFailed            = "EGLMakeCurrentFailed"
+	tagEGLMakeCurrentSurfacelessFailed = "EGLMakeCurrentSurfacelessFailed"
+	tagEGLNoConfig                     = "EGLNoConfig"
+	tagEGLSurfaceFailed                = "EGLSurfaceFailed"
+	tagEGLSwapFailed                   = "EGLSwapFailed"
+	tagGLES3Unsupported                = "GLES3Unsupported"
+	tagGLReadPixelsFailed              = "GLReadPixelsFailed"
+)

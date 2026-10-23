@@ -44,7 +44,7 @@ func Connect(name string) (*Conn, error) {
 	}
 	display := api.displayConnect(namePtr)
 	if display == 0 {
-		return nil, errors.New("WaylandConnectFailed", "could not connect to the Wayland compositor", "display", name)
+		return nil, errors.New(tagWaylandConnectFailed, "could not connect to the Wayland compositor", "display", name)
 	}
 	return newConn(api, display), nil
 }
@@ -61,7 +61,7 @@ func ConnectFD(fd int) (*Conn, error) {
 	}
 	display := api.displayConnectToFD(int32(fd))
 	if display == 0 {
-		return nil, errors.New("WaylandConnectFailed", "could not use the socket as a Wayland connection", "fd", fd)
+		return nil, errors.New(tagWaylandConnectFailed, "could not use the socket as a Wayland connection", "fd", fd)
 	}
 	return newConn(api, display), nil
 }
@@ -195,10 +195,10 @@ func (c *Conn) lastError(operation string) error {
 		if iface := *(*uintptr)(dl.Pointer(ifacePtr)); iface != 0 {
 			name = dl.GoString((*cInterface)(dl.Pointer(iface)).Name)
 		}
-		return errors.New("WaylandProtocolError", "the compositor reported a protocol error",
+		return errors.New(tagWaylandProtocolError, "the compositor reported a protocol error",
 			"operation", operation, "interface", name, "id", *(*uint32)(dl.Pointer(idPtr)), "code", code)
 	}
-	return errors.New("WaylandConnectionLost", "the connection to the compositor failed",
+	return errors.New(tagWaylandConnectionLost, "the connection to the compositor failed",
 		"operation", operation, "errno", errno)
 }
 
@@ -208,6 +208,13 @@ func (c *Conn) lastErrorOr(operation string) error {
 	if err := c.lastError(operation); err != nil {
 		return err
 	}
-	return errors.New("WaylandConnectionLost", "the connection to the compositor failed",
+	return errors.New(tagWaylandConnectionLost, "the connection to the compositor failed",
 		"operation", operation, "errno", 0)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagWaylandConnectFailed  = "WaylandConnectFailed"
+	tagWaylandConnectionLost = "WaylandConnectionLost"
+	tagWaylandProtocolError  = "WaylandProtocolError"
+)

@@ -288,7 +288,7 @@ func (t *texture) Destroy()                   {}
 // Level implements explicit.Texture: a texture of its own, of the size of the level.
 func (t *texture) Level(i int) explicit.Texture {
 	if i < 0 || i >= t.desc.MipLevels {
-		panic(errors.New("FakeLevelInvalid", "the texture has no such mip level", "level", i, "levels", t.desc.MipLevels))
+		panic(errors.New(tagFakeLevelInvalid, "the texture has no such mip level", "level", i, "levels", t.desc.MipLevels))
 	}
 	if t.desc.MipLevels == 1 || t.parent != nil {
 		return t
@@ -424,7 +424,7 @@ type encoder struct {
 func (e *encoder) BeginPass(target explicit.Texture, load explicit.LoadOp, clear ui.Color) explicit.Pass {
 	e.d.record("BeginPass", "target=%v load=%d clear=%v", target.Desc().Format, load, clear)
 	if e.pass != nil && !e.pass.ended {
-		panic(errors.New("FakePassNotEnded", "BeginPass was called before the previous pass ended"))
+		panic(errors.New(tagFakePassNotEnded, "BeginPass was called before the previous pass ended"))
 	}
 	if t, ok := target.(*texture); ok && load == explicit.LoadClear {
 		t.fill(clear)
@@ -519,3 +519,9 @@ func (p *pass) End() {
 	p.d.record("EndPass", "")
 	p.ended = true
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagFakeLevelInvalid = "FakeLevelInvalid"
+	tagFakePassNotEnded = "FakePassNotEnded"
+)

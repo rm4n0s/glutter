@@ -29,7 +29,7 @@ var scenes = map[string]Scene{}
 // register adds a scene; it is called from init functions.
 func register(s Scene) {
 	if _, dup := scenes[s.Name]; dup {
-		panic(errors.New("ProofSceneDuplicate", "Two proof scenes have the same name.", "name", s.Name))
+		panic(errors.New(tagProofSceneDuplicate, "Two proof scenes have the same name.", "name", s.Name))
 	}
 	scenes[s.Name] = s
 }
@@ -53,7 +53,7 @@ func Names() []string {
 func Lookup(name string) (Scene, error) {
 	s, ok := scenes[name]
 	if !ok {
-		return Scene{}, errors.New("ProofSceneUnknown", "There is no proof scene with this name; -list shows them.", "name", name)
+		return Scene{}, errors.New(tagProofSceneUnknown, "There is no proof scene with this name; -list shows them.", "name", name)
 	}
 	return s, nil
 }
@@ -69,3 +69,9 @@ func singlePicture(width, height int, fn func(c *ui.Canvas)) *ui.Scene {
 	b.AddPicture(ui.Offset{}, rec.EndRecording())
 	return b.Build()
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagProofSceneDuplicate = "ProofSceneDuplicate"
+	tagProofSceneUnknown   = "ProofSceneUnknown"
+)

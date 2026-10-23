@@ -122,7 +122,7 @@ func (r *BoxHitTestResult) AddWithOutOfBandPosition(o OutOfBandOpts, hitTest Box
 		n++
 	}
 	if foundation.DebugMode && n != 1 {
-		panic(errors.New("OutOfBandOptionsInvalid", "exactly one transform or offset argument must be provided"))
+		panic(errors.New(tagOutOfBandOptionsInvalid, "exactly one transform or offset argument must be provided"))
 	}
 	switch {
 	case o.PaintOffset != nil:
@@ -132,7 +132,7 @@ func (r *BoxHitTestResult) AddWithOutOfBandPosition(o OutOfBandOpts, hitTest Box
 	default:
 		inv := tryInvert(gestures.RemovePerspectiveTransform(o.PaintTransform))
 		if inv == nil {
-			panic(errors.New("OutOfBandTransformNotInvertible", "paintTransform must be invertible"))
+			panic(errors.New(tagOutOfBandTransformNotInvertible, "paintTransform must be invertible"))
 		}
 		r.PushTransform(inv)
 	}
@@ -166,3 +166,9 @@ func NewBoxHitTestEntry(target Box, localPosition ui.Offset) *BoxHitTestEntry {
 func (e *BoxHitTestEntry) String() string {
 	return foundation.DescribeIdentity(e.Target()) + "@" + e.LocalPosition.String()
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagOutOfBandOptionsInvalid         = "OutOfBandOptionsInvalid"
+	tagOutOfBandTransformNotInvertible = "OutOfBandTransformNotInvertible"
+)

@@ -131,7 +131,7 @@ func TestWindowSizeMustSatisfyTheConstraints(t *testing.T) {
 
 func TestCreatingAWindowFailsWhenThePlatformCannot(t *testing.T) {
 	ts, bc := windowApp(t)
-	ts.SetWindowCreateError(errors.New("WindowingUnsupported", "no windows here"))
+	ts.SetWindowCreateError(errors.New(tagWindowingUnsupported, "no windows here"))
 	_, err := NewRegularWindowController(bc, ui.Size{Width: 400, Height: 300})
 	routeOf(t, err, "WindowingUnsupported")
 	_, err = NewDialogWindowController(bc, ui.Size{Width: 400, Height: 300})
@@ -842,3 +842,8 @@ func TestWindowWidgetsDoNotThrow(t *testing.T) {
 		t.Errorf("errors: %v", errs)
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagWindowingUnsupported = "WindowingUnsupported"
+)

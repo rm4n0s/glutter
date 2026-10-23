@@ -64,12 +64,12 @@ func (r *PointerRouter) AddRoute(pointer int, route PointerRoute, transform *ui.
 func (r *PointerRouter) RemoveRoute(pointer int, handle PointerRouteHandle) {
 	entries, ok := r.routes[pointer]
 	if foundation.DebugMode && !ok {
-		panic(errors.New("PointerRouteNotFound", "no route is registered for the pointer", "pointer", pointer))
+		panic(errors.New(tagPointerRouteNotFound, "no route is registered for the pointer", "pointer", pointer))
 	}
 	i := indexOfRoute(entries, handle.id)
 	if i < 0 {
 		if foundation.DebugMode {
-			panic(errors.New("PointerRouteNotFound", "the route is not registered for the pointer", "pointer", pointer))
+			panic(errors.New(tagPointerRouteNotFound, "the route is not registered for the pointer", "pointer", pointer))
 		}
 		return
 	}
@@ -100,7 +100,7 @@ func (r *PointerRouter) RemoveGlobalRoute(handle PointerRouteHandle) {
 	i := indexOfRoute(r.globalRoutes, handle.id)
 	if i < 0 {
 		if foundation.DebugMode {
-			panic(errors.New("PointerRouteNotFound", "the global route is not registered"))
+			panic(errors.New(tagPointerRouteNotFound, "the global route is not registered"))
 		}
 		return
 	}
@@ -122,7 +122,7 @@ func indexOfRoute(entries []routeEntry, id uint64) int {
 // Flutter: gestures/pointer_router.dart PointerRouter.debugGlobalRouteCount
 func (r *PointerRouter) DebugGlobalRouteCount() int {
 	if !foundation.DebugMode {
-		panic(errors.New("DebugOnly", "DebugGlobalRouteCount is not supported in release builds"))
+		panic(errors.New(tagDebugOnly, "DebugGlobalRouteCount is not supported in release builds"))
 	}
 	return len(r.globalRoutes)
 }
@@ -158,3 +158,9 @@ func (r *PointerRouter) dispatchToRoutes(event PointerEvent, current func() []ro
 		}
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagDebugOnly            = "DebugOnly"
+	tagPointerRouteNotFound = "PointerRouteNotFound"
+)

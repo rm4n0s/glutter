@@ -112,10 +112,10 @@ func awaitScreenshot(ctx context.Context, srv *Server, browserDone <-chan struct
 			default:
 			}
 			if res.ExitCode != 0 || res.Message != "" {
-				return nil, errors.New("WebAppFailed", "the app ended with an error",
+				return nil, errors.New(tagWebAppFailed, "the app ended with an error",
 					"exit code", strconv.Itoa(res.ExitCode), "message", res.Message, "shown", res.Shown, "log", strings.TrimSpace(res.Log))
 			}
-			return nil, errors.New("WebAppFailed", "the app ended without taking a screenshot", "log", strings.TrimSpace(res.Log))
+			return nil, errors.New(tagWebAppFailed, "the app ended without taking a screenshot", "log", strings.TrimSpace(res.Log))
 		case <-browserDone:
 			select {
 			case png := <-srv.shots:
@@ -124,11 +124,11 @@ func awaitScreenshot(ctx context.Context, srv *Server, browserDone <-chan struct
 			}
 			md := []any{}
 			if err := browserErr(); err != nil {
-				md = append(md, "error", err.Error())
+				md = append(md, "err", err.Error())
 			}
-			return nil, errors.New("BrowserExited", "the browser ended before the screenshot came", md...)
+			return nil, errors.New(tagBrowserExited, "the browser ended before the screenshot came", md...)
 		case <-ctx.Done():
-			return nil, errors.NewErr("BrowserTimeout", ctx.Err()).SetMetadata("waiting for", "a screenshot")
+			return nil, errors.NewErr(tagBrowserTimeout, ctx.Err()).SetMetadata("waiting for", "a screenshot")
 		}
 	}
 }

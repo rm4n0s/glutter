@@ -65,7 +65,7 @@ func TestVerticesPanics(t *testing.T) {
 	func() {
 		defer func() {
 			appErr, ok := errors.FromError(recoverError(t, recover()))
-			if !ok || appErr.Tag != "VerticesIndexInvalid" {
+			if !ok || appErr.Tag != tagVerticesIndexInvalid {
 				t.Errorf("a huge index: got %v", appErr)
 			}
 		}()

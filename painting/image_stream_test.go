@@ -176,7 +176,7 @@ func TestCompleterDisposal(t *testing.T) {
 
 func TestCompleterErrors(t *testing.T) {
 	pt := newPaintingTester(t)
-	boom := errors.New("Boom", "boom")
+	boom := errors.New(tagBoom, "boom")
 	t.Run("error listener", func(t *testing.T) {
 		c := NewImageStreamCompleter(pt.PaintingBinding)
 		rec := &imageRecorder{}
@@ -265,7 +265,7 @@ func TestOneFrameImageStreamCompleter(t *testing.T) {
 		c := NewOneFrameImageStreamCompleter(pt.PaintingBinding, ch, nil)
 		rec := &imageRecorder{}
 		c.AddListener(rec.listener())
-		ch <- ImageResult{Err: errors.New("Nope", "nope")}
+		ch <- ImageResult{Err: errors.New(tagNope, "nope")}
 		pt.waitFor(t, "the error", func() bool { return len(rec.errs) == 1 })
 	})
 	t.Run("disposed before the image", func(t *testing.T) {
@@ -383,3 +383,8 @@ func TestMultiFrameImageStreamCompleterAnimation(t *testing.T) {
 		t.Errorf("no frames after the last listener left, got %d", len(rec.images))
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagNope = "Nope"
+)

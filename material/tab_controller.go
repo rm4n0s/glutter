@@ -52,10 +52,10 @@ func NewTabController(length int, vsync scheduler.TickerProvider, opts ...TabCon
 	o := firstOpts(opts)
 	if foundation.DebugMode {
 		if length < 0 {
-			panic(errors.New("TabControllerLength", "the length of a TabController must not be negative", "length", length))
+			panic(errors.New(tagTabControllerLength, "the length of a TabController must not be negative", "length", length))
 		}
 		if o.InitialIndex < 0 || (length != 0 && o.InitialIndex >= length) {
-			panic(errors.New("TabControllerInitialIndex", "the initial index of a TabController must be one of its tabs",
+			panic(errors.New(tagTabControllerInitialIndex, "the initial index of a TabController must be one of its tabs",
 				"initialIndex", o.InitialIndex, "length", length))
 		}
 	}
@@ -108,7 +108,7 @@ func (c *TabController) Length() int { return c.length }
 
 func (c *TabController) changeIndex(value int, duration foundation.Opt[time.Duration], curve animation.Curve) {
 	if foundation.DebugMode && (value < 0 || (value >= c.length && c.length != 0)) {
-		panic(errors.New("TabControllerIndexRange", "the index of a TabController must be one of its tabs", "index", value, "length", c.length))
+		panic(errors.New(tagTabControllerIndexRange, "the index of a TabController must be one of its tabs", "index", value, "length", c.length))
 	}
 	if value == c.index || c.length < 2 {
 		return
@@ -194,7 +194,7 @@ func (c *TabController) Offset() float64 { return c.animationController.Value() 
 // Flutter: material/tab_controller.dart TabController.offset
 func (c *TabController) SetOffset(value float64) {
 	if foundation.DebugMode && (value < -1.0 || value > 1.0 || c.IndexIsChanging()) {
-		panic(errors.New("TabControllerOffset", "the offset of a TabController must be from -1 to 1, and the index must not be changing",
+		panic(errors.New(tagTabControllerOffset, "the offset of a TabController must be from -1 to 1, and the index must not be changing",
 			"offset", value, "indexIsChanging", c.IndexIsChanging()))
 	}
 	if value == c.Offset() {
@@ -260,10 +260,10 @@ func NewDefaultTabController(length int, child widgets.Widget, opts ...DefaultTa
 	o := firstOpts(opts)
 	if foundation.DebugMode {
 		if length < 0 {
-			panic(errors.New("TabControllerLength", "the length of a DefaultTabController must not be negative", "length", length))
+			panic(errors.New(tagTabControllerLength, "the length of a DefaultTabController must not be negative", "length", length))
 		}
 		if length != 0 && (o.InitialIndex < 0 || o.InitialIndex >= length) {
-			panic(errors.New("TabControllerInitialIndex", "the initial index of a DefaultTabController must be one of its tabs",
+			panic(errors.New(tagTabControllerInitialIndex, "the initial index of a DefaultTabController must be one of its tabs",
 				"initialIndex", o.InitialIndex, "length", length))
 		}
 	}
@@ -299,7 +299,7 @@ func DefaultTabControllerMaybeOf(bc widgets.BuildContext) *TabController {
 func DefaultTabControllerOf(bc widgets.BuildContext) *TabController {
 	controller := DefaultTabControllerMaybeOf(bc)
 	if controller == nil && foundation.DebugMode {
-		panic(errors.New("DefaultTabControllerMissing", "DefaultTabControllerOf() was called with a context that does not contain a DefaultTabController widget.",
+		panic(errors.New(tagDefaultTabControllerMissing, "DefaultTabControllerOf() was called with a context that does not contain a DefaultTabController widget.",
 			"widget", foundation.RuntimeTypeName(bc.Widget())))
 	}
 	return controller
@@ -350,3 +350,12 @@ func (s *defaultTabControllerState) DidUpdateWidget(old *DefaultTabController) {
 			foundation.Some(s.controller.PreviousIndex()), w.o.AnimationDuration)
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagDefaultTabControllerMissing = "DefaultTabControllerMissing"
+	tagTabControllerIndexRange     = "TabControllerIndexRange"
+	tagTabControllerInitialIndex   = "TabControllerInitialIndex"
+	tagTabControllerLength         = "TabControllerLength"
+	tagTabControllerOffset         = "TabControllerOffset"
+)

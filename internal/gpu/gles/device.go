@@ -125,7 +125,7 @@ func newDevice(gl glAPI) (*Device, error) {
 		Extensions:          map[string]bool{},
 	}
 	if !isES3(d.caps.Version) {
-		return nil, errors.New("GLES3Unsupported", "the driver does not provide OpenGL ES 3.0", "version", d.caps.Version)
+		return nil, errors.New(tagGLES3Unsupported, "the driver does not provide OpenGL ES 3.0", "version", d.caps.Version)
 	}
 	for i, n := uint32(0), uint32(gl.getInteger(glNumExtensions)); i < n; i++ {
 		d.caps.Extensions[gl.getStringi(glExtensions, i)] = true
@@ -386,7 +386,7 @@ func (d *Device) BindTexture(unit int, t *Texture) {
 
 func (d *Device) bindTextureID(unit int, id uint32) {
 	if unit < 0 || unit >= maxTrackedUnits {
-		panic(errors.New("GLTextureUnitInvalid", "the texture unit is out of range", "unit", unit, "max", maxTrackedUnits-1))
+		panic(errors.New(tagGLTextureUnitInvalid, "the texture unit is out of range", "unit", unit, "max", maxTrackedUnits-1))
 	}
 	// The unit is made the active one even when the texture is bound to it
 	// already: the calls that follow (texImage2D, texSubImage2D, texParameteri,
@@ -458,7 +458,7 @@ func (d *Device) BindArrayBuffer(b *Buffer) {
 // error flag.
 func (d *Device) checkError(operation string) error {
 	if code := d.gl.getError(); code != glNoError {
-		return errors.New("GLError", "OpenGL reported an error", "operation", operation, "gl_error", fmt.Sprintf("0x%x", code))
+		return errors.New(tagGLError, "OpenGL reported an error", "operation", operation, "gl_error", fmt.Sprintf("0x%x", code))
 	}
 	return nil
 }
@@ -514,7 +514,7 @@ func (p *Program) Attrib(name string) int32 {
 func ShaderNames() ([]string, error) {
 	entries, err := shaderFiles.ReadDir("shaders")
 	if err != nil {
-		return nil, errors.NewErr("ShaderSourceMissing", err)
+		return nil, errors.NewErr(tagShaderSourceMissing, err)
 	}
 	set := map[string]bool{}
 	for _, e := range entries {
@@ -538,15 +538,13 @@ func ShaderNames() ([]string, error) {
 func ShaderSource(name, stage string) (string, error) {
 	data, err := shaderFiles.ReadFile("shaders/" + name + "." + stage + ".glsl")
 	if err != nil {
-		return "", errors.NewErr("ShaderSourceMissing", err).SetMetadata("program", name, "stage", stage)
+		return "", errors.NewErr(tagShaderSourceMissing, err).SetMetadata("program", name, "stage", stage)
 	}
-	return expandIncludes(name, stage, string(data), func(file string) ([]byte, error) {
-		return shaderFiles.ReadFile("shaders/" + file)
-	})
+	return expandIncludes(name, stage, string(data), shaderFiles.ReadFile)
 }
 
 // expandIncludes replaces the include lines of a shader's source with the files
-// that read returns.
+// that read returns for "shaders/" and the file's name.
 func expandIncludes(name, stage, source string, read func(file string) ([]byte, error)) (string, error) {
 	var out strings.Builder
 	for _, line := range strings.SplitAfter(source, "\n") {
@@ -558,11 +556,11 @@ func expandIncludes(name, stage, source string, read func(file string) ([]byte, 
 		}
 		file, ok := strings.CutSuffix(strings.TrimPrefix(strings.TrimSpace(rest), "\""), "\"")
 		if !ok || !strings.HasPrefix(strings.TrimSpace(rest), "\"") {
-			return "", errors.New("ShaderIncludeInvalid", "an include line needs a quoted file name", "program", name, "stage", stage, "line", trimmed)
+			return "", errors.New(tagShaderIncludeInvalid, "an include line needs a quoted file name", "program", name, "stage", stage, "line", trimmed)
 		}
-		inc, err := read(file)
+		inc, err := read("shaders/" + file)
 		if err != nil {
-			return "", errors.NewErr("ShaderSourceMissing", err).SetMetadata("program", name, "stage", stage, "include", file)
+			return "", errors.NewErr(tagShaderSourceMissing, err).SetMetadata("program", name, "stage", stage, "include", file)
 		}
 		out.Write(inc)
 		if !strings.HasSuffix(string(inc), "\n") {
@@ -623,7 +621,7 @@ func (d *Device) NewProgram(name, vertexSource, fragmentSource string) (*Program
 	if d.gl.getProgramiv(id, glLinkStatus) == 0 {
 		log := d.gl.getProgramInfoLog(id)
 		d.gl.deleteProgram(id)
-		return nil, errors.New("ShaderCompileFailed", "the shader program did not link",
+		return nil, errors.New(tagShaderCompileFailed, "the shader program did not link",
 			"program", name, "stage", "link", "log", log)
 	}
 	d.live.programs++
@@ -638,7 +636,7 @@ func (d *Device) compile(program, stage string, kind uint32, source string) (uin
 	if d.gl.getShaderiv(id, glCompileStatus) == 0 {
 		log := d.gl.getShaderInfoLog(id)
 		d.gl.deleteShader(id)
-		return 0, errors.New("ShaderCompileFailed", "a shader did not compile",
+		return 0, errors.New(tagShaderCompileFailed, "a shader did not compile",
 			"program", program, "stage", stage, "log", log)
 	}
 	return id, nil
@@ -782,3 +780,12 @@ func (d *Device) Close() {
 	}
 	d.programs = nil
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagGLError              = "GLError"
+	tagGLTextureUnitInvalid = "GLTextureUnitInvalid"
+	tagShaderCompileFailed  = "ShaderCompileFailed"
+	tagShaderIncludeInvalid = "ShaderIncludeInvalid"
+	tagShaderSourceMissing  = "ShaderSourceMissing"
+)

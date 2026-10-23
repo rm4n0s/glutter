@@ -107,7 +107,7 @@ func NewRawMaterialButton(onPressed func(), child widgets.Widget, opts ...RawMat
 		}{{"elevation", o.Elevation}, {"focusElevation", o.FocusElevation}, {"hoverElevation", o.HoverElevation},
 			{"highlightElevation", o.HighlightElevation}, {"disabledElevation", o.DisabledElevation}} {
 			if v, ok := e.v.Get(); ok && !(v >= 0.0) {
-				panic(errors.New("RawMaterialButtonElevationNegative", "an elevation of a RawMaterialButton must not be negative", "elevation", e.name, "value", v))
+				panic(errors.New(tagRawMaterialButtonElevationNegative, "an elevation of a RawMaterialButton must not be negative", "elevation", e.name, "value", v))
 			}
 		}
 	}
@@ -276,3 +276,8 @@ func (s *rawMaterialButtonState) Build(bc widgets.BuildContext) widgets.Widget {
 	return widgets.NewSemantics(newInputPadding(minSize, result),
 		widgets.SemanticsOpts{Container: true, Button: foundation.Some(true), Enabled: foundation.Some(w.Enabled())})
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagRawMaterialButtonElevationNegative = "RawMaterialButtonElevationNegative"
+)

@@ -699,7 +699,7 @@ func daysInMonth(year, month int) int {
 
 func formatTwoDigitZeroPad(number int) string {
 	if foundation.DebugMode && (number < 0 || number >= 100) {
-		panic(errors.New("MaterialLocalizationsNumberRange", "a two digit number must be from 0 to 99", "number", number))
+		panic(errors.New(tagMaterialLocalizationsNumberRange, "a two digit number must be from 0 to 99", "number", number))
 	}
 	return fmt.Sprintf("%02d", number)
 }
@@ -722,7 +722,7 @@ func (l DefaultMaterialLocalizations) formatHourInFormat(timeOfDay TimeOfDay, fo
 	case TimeOfDayFormatHHColonMM:
 		return formatTwoDigitZeroPad(timeOfDay.Hour)
 	}
-	panic(errors.New("MaterialLocalizationsTimeFormat", "DefaultMaterialLocalizations does not support the time format", "format", int(format)))
+	panic(errors.New(tagMaterialLocalizationsTimeFormat, "DefaultMaterialLocalizations does not support the time format", "format", int(format)))
 }
 
 // FormatMinute formats the minute as two digits.
@@ -926,7 +926,7 @@ func (DefaultMaterialLocalizations) PageRowsInfoTitle(firstRow, lastRow, rowCoun
 // Flutter: material/material_localizations.dart DefaultMaterialLocalizations.tabLabel
 func (DefaultMaterialLocalizations) TabLabel(tabIndex, tabCount int) string {
 	if foundation.DebugMode && (tabIndex < 1 || tabCount < 1) {
-		panic(errors.New("MaterialLocalizationsTabLabel", "the index and the count of a tab label must be at least 1", "tabIndex", tabIndex, "tabCount", tabCount))
+		panic(errors.New(tagMaterialLocalizationsTabLabel, "the index and the count of a tab label must be at least 1", "tabIndex", tabIndex, "tabCount", tabCount))
 	}
 	return fmt.Sprintf("Tab %d of %d", tabIndex, tabCount)
 }
@@ -1674,3 +1674,10 @@ func (DefaultMaterialLocalizations) KeyboardKeyShift() string { return "Shift" }
 func (DefaultMaterialLocalizations) KeyboardKeySpace() string { return "Space" }
 
 var _ MaterialLocalizations = DefaultMaterialLocalizations{}
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagMaterialLocalizationsNumberRange = "MaterialLocalizationsNumberRange"
+	tagMaterialLocalizationsTabLabel    = "MaterialLocalizationsTabLabel"
+	tagMaterialLocalizationsTimeFormat  = "MaterialLocalizationsTimeFormat"
+)

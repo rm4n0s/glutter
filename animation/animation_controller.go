@@ -156,7 +156,7 @@ type AnimationController struct {
 
 func newAnimationController(vsync scheduler.TickerProvider, o AnimationControllerOpts, lower, upper float64, behavior AnimationBehavior, initial float64) *AnimationController {
 	if foundation.DebugMode && !(upper >= lower) {
-		panic(errors.New("AnimationControllerBoundsInvalid", "the upper bound of an AnimationController must not be below its lower bound", "lowerBound", lower, "upperBound", upper))
+		panic(errors.New(tagAnimationControllerBoundsInvalid, "the upper bound of an AnimationController must not be below its lower bound", "lowerBound", lower, "upperBound", upper))
 	}
 	c := &AnimationController{
 		LowerBound: lower, UpperBound: upper, DebugLabel: o.DebugLabel, AnimationBehavior: behavior,
@@ -308,7 +308,7 @@ func (c *AnimationController) assertUsable(method string) bool {
 		return true
 	}
 	if foundation.DebugMode {
-		panic(errors.New("AnimationControllerDisposed", fmt.Sprintf("AnimationController.%s() called after AnimationController.dispose(); AnimationController methods should not be used after calling dispose", method),
+		panic(errors.New(tagAnimationControllerDisposed, fmt.Sprintf("AnimationController.%s() called after AnimationController.dispose(); AnimationController methods should not be used after calling dispose", method),
 			"method", method))
 	}
 	return false
@@ -316,7 +316,7 @@ func (c *AnimationController) assertUsable(method string) bool {
 
 func (c *AnimationController) assertDuration(method string, ok bool, hint string) {
 	if foundation.DebugMode && !ok {
-		panic(errors.New("AnimationControllerNoDuration", fmt.Sprintf("AnimationController.%s() called with no duration: %s", method, hint), "method", method))
+		panic(errors.New(tagAnimationControllerNoDuration, fmt.Sprintf("AnimationController.%s() called with no duration: %s", method, hint), "method", method))
 	}
 }
 
@@ -510,10 +510,10 @@ func (c *AnimationController) Repeat(opts ...RepeatOpts) *scheduler.TickerFuture
 	c.assertDuration("repeat", hasPeriod, "pass a period, or set the Duration of the controller")
 	if foundation.DebugMode {
 		if !(hi >= lo && hi <= c.UpperBound && lo >= c.LowerBound) {
-			panic(errors.New("AnimationControllerRepeatInvalid", "the min and max of repeat() must be within the bounds of the controller, with the max not below the min", "min", lo, "max", hi))
+			panic(errors.New(tagAnimationControllerRepeatInvalid, "the min and max of repeat() must be within the bounds of the controller, with the max not below the min", "min", lo, "max", hi))
 		}
 		if n, ok := o.Count.Get(); ok && n <= 0 {
-			panic(errors.New("AnimationControllerRepeatInvalid", "the count of repeat() must be greater than zero", "count", n))
+			panic(errors.New(tagAnimationControllerRepeatInvalid, "the count of repeat() must be greater than zero", "count", n))
 		}
 	}
 	if !c.assertUsable("repeat") {
@@ -576,7 +576,7 @@ func (c *AnimationController) Fling(opts ...FlingOpts) *scheduler.TickerFuture {
 	sim := physics.NewSpringSimulation(spring, c.value, target, velocity*scale)
 	sim.SetTolerance(flingTolerance)
 	if foundation.DebugMode && sim.Type() == physics.SpringTypeUnderDamped {
-		panic(errors.New("AnimationControllerFlingUnderdamped", "the specified spring simulation is underdamped, which oscillates instead of flinging; use a different spring description, or AnimateWith with an explicit SpringSimulation",
+		panic(errors.New(tagAnimationControllerFlingUnderdamped, "the specified spring simulation is underdamped, which oscillates instead of flinging; use a different spring description, or AnimateWith with an explicit SpringSimulation",
 			"spring", spring.String()))
 	}
 	c.Stop()
@@ -655,7 +655,7 @@ func (c *AnimationController) Stop(opts ...StopOpts) {
 func (c *AnimationController) Dispose() {
 	if c.ticker == nil {
 		if foundation.DebugMode {
-			panic(errors.New("AnimationControllerDisposedTwice", "AnimationController.Dispose() called more than once; a given AnimationController cannot be disposed more than once",
+			panic(errors.New(tagAnimationControllerDisposedTwice, "AnimationController.Dispose() called more than once; a given AnimationController cannot be disposed more than once",
 				"controller", c.String()))
 		}
 		return
@@ -791,3 +791,13 @@ func (s *repeatingSimulation) Dx(float64) float64 { return (s.max - s.min) / s.p
 func (s *repeatingSimulation) IsDone(timeInSeconds float64) bool {
 	return s.count.IsSome() && timeInSeconds >= s.exitTime
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagAnimationControllerBoundsInvalid    = "AnimationControllerBoundsInvalid"
+	tagAnimationControllerDisposed         = "AnimationControllerDisposed"
+	tagAnimationControllerDisposedTwice    = "AnimationControllerDisposedTwice"
+	tagAnimationControllerFlingUnderdamped = "AnimationControllerFlingUnderdamped"
+	tagAnimationControllerNoDuration       = "AnimationControllerNoDuration"
+	tagAnimationControllerRepeatInvalid    = "AnimationControllerRepeatInvalid"
+)

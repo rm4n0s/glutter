@@ -162,7 +162,7 @@ func NewScrollbarPainter(color ui.Color, fadeoutOpacityAnimation animation.Anima
 	}
 	if foundation.DebugMode {
 		invalid := func(why string) {
-			panic(errors.New("ScrollbarPainterInvalid", why))
+			panic(errors.New(tagScrollbarPainterInvalid, why))
 		}
 		switch {
 		case o.Radius.IsSome() && !isNil(o.Shape):
@@ -274,7 +274,7 @@ func (p *ScrollbarPainter) TextDirection() ui.TextDirection { return p.textDirec
 // Flutter: widgets/scrollbar.dart ScrollbarPainter.textDirection
 func (p *ScrollbarPainter) SetTextDirection(value ui.TextDirection) {
 	if foundation.DebugMode && value == ui.TextDirectionUnspecified {
-		panic(errors.New("ScrollbarPainterInvalid", "the text direction of a scrollbar painter must be set"))
+		panic(errors.New(tagScrollbarPainterInvalid, "the text direction of a scrollbar painter must be set"))
 	}
 	if p.textDirection == value {
 		return
@@ -351,7 +351,7 @@ func (p *ScrollbarPainter) Radius() foundation.Opt[ui.Radius] { return p.radius 
 // Flutter: widgets/scrollbar.dart ScrollbarPainter.radius
 func (p *ScrollbarPainter) SetRadius(value foundation.Opt[ui.Radius]) {
 	if foundation.DebugMode && !isNil(p.shape) && value.IsSome() {
-		panic(errors.New("ScrollbarPainterInvalid", "a scrollbar painter can have a radius or a shape, not both"))
+		panic(errors.New(tagScrollbarPainterInvalid, "a scrollbar painter can have a radius or a shape, not both"))
 	}
 	if p.radius == value {
 		return
@@ -371,7 +371,7 @@ func (p *ScrollbarPainter) Shape() painting.OutlinedBorder { return p.shape }
 // Flutter: widgets/scrollbar.dart ScrollbarPainter.shape
 func (p *ScrollbarPainter) SetShape(value painting.OutlinedBorder) {
 	if foundation.DebugMode && p.radius.IsSome() && !isNil(value) {
-		panic(errors.New("ScrollbarPainterInvalid", "a scrollbar painter can have a radius or a shape, not both"))
+		panic(errors.New(tagScrollbarPainterInvalid, "a scrollbar painter can have a radius or a shape, not both"))
 	}
 	if p.shape == value {
 		return
@@ -617,14 +617,14 @@ func (p *ScrollbarPainter) paintTrack(isBorder bool) *ui.Paint {
 
 func (p *ScrollbarPainter) paintScrollbar(canvas *ui.Canvas, size ui.Size) {
 	if foundation.DebugMode && p.textDirection == ui.TextDirectionUnspecified {
-		panic(errors.New("ScrollbarPainterInvalid", "a TextDirection must be provided before a Scrollbar can be painted"))
+		panic(errors.New(tagScrollbarPainterInvalid, "a TextDirection must be provided before a Scrollbar can be painted"))
 	}
 	var x, y float64
 	var thumbSize, trackSize ui.Size
 	var trackOffset, borderStart, borderEnd ui.Offset
 	orientation := p.resolvedOrientation()
 	if foundation.DebugMode && orientation.isVertical() != p.isVertical() {
-		panic(errors.New("ScrollbarOrientationInvalid", "the given ScrollbarOrientation is incompatible with the current AxisDirection",
+		panic(errors.New(tagScrollbarOrientationInvalid, "the given ScrollbarOrientation is incompatible with the current AxisDirection",
 			"orientation", orientation.String(), "axisDirection", p.lastAxisDirection.String()))
 	}
 	pad := p.resolvedPadding
@@ -736,7 +736,7 @@ func (p *ScrollbarPainter) GetTrackToScroll(thumbOffsetLocal float64) float64 {
 // Flutter: widgets/scrollbar.dart ScrollbarPainter.getThumbScrollOffset
 func (p *ScrollbarPainter) GetThumbScrollOffset() float64 {
 	if foundation.DebugMode && !(isFinite(p.lastMetrics.MaxScrollExtent()) && isFinite(p.lastMetrics.MinScrollExtent())) {
-		panic(errors.New("ScrollbarExtentsInfinite", "the scroll extents must be finite to get the scroll offset of the thumb"))
+		panic(errors.New(tagScrollbarExtentsInfinite, "the scroll extents must be finite to get the scroll offset of the thumb"))
 	}
 	scrollableExtent := p.lastMetrics.MaxScrollExtent() - p.lastMetrics.MinScrollExtent()
 	maxFraction := p.lastMetrics.MaxScrollExtent() / scrollableExtent
@@ -1024,7 +1024,7 @@ func NewRawScrollbar(child Widget, opts ...RawScrollbarOpts) *RawScrollbar {
 	}
 	if foundation.DebugMode {
 		minLength := o.MinThumbLength.OrElse(minThumbExtent)
-		invalid := func(why string) { panic(errors.New("RawScrollbarInvalid", why)) }
+		invalid := func(why string) { panic(errors.New(tagRawScrollbarInvalid, why)) }
 		switch {
 		case o.ThumbVisibility.IsSome() && !o.ThumbVisibility.Value() && o.TrackVisibility.OrElse(false):
 			invalid("a scrollbar track cannot be drawn without a scrollbar thumb")
@@ -1172,7 +1172,7 @@ func (s *RawScrollbarState) debugScheduleCheckHasValidScrollPosition() {
 func (s *RawScrollbarState) validateInteractions(status animation.AnimationStatus) {
 	if status.IsDismissed() {
 		if foundation.DebugMode && s.fadeoutOpacityAnimation.Value() != 0.0 {
-			panic(errors.New("RawScrollbarFadeInvalid", "a dismissed scrollbar fade must have an opacity of zero"))
+			panic(errors.New(tagRawScrollbarFadeInvalid, "a dismissed scrollbar fade must have an opacity of zero"))
 		}
 	} else if !isNil(s.effectiveScrollController()) && s.virtual().EnableGestures() {
 		// Interactive scrollbars should be properly mounted, otherwise
@@ -1208,18 +1208,18 @@ func (s *RawScrollbarState) debugCheckHasValidScrollPosition() {
 		when = "the scrollbar is interactive"
 	}
 	if isNil(controller) {
-		panic(errors.New("ScrollbarControllerMissing", "a ScrollController is required when "+when+
+		panic(errors.New(tagScrollbarControllerMissing, "a ScrollController is required when "+when+
 			"; the Scrollbar was not provided a ScrollController, and attempted to use the PrimaryScrollController, but none was found",
 			"controller", controllerForError))
 	}
 	if !controller.HasClients() {
-		panic(errors.New("ScrollbarNoScrollPosition",
+		panic(errors.New(tagScrollbarNoScrollPosition,
 			"the Scrollbar's ScrollController has no ScrollPosition attached; a Scrollbar cannot be painted without a ScrollPosition; the Scrollbar attempted to use the "+
 				controllerForError+"; this ScrollController should be associated with the ScrollView that the Scrollbar is being applied to",
 			"controller", controllerForError))
 	}
 	if len(controller.Positions()) > 1 {
-		panic(errors.New("ScrollbarMultipleScrollPositions",
+		panic(errors.New(tagScrollbarMultipleScrollPositions,
 			"the "+controllerForError+" is attached to more than one ScrollPosition; the Scrollbar requires a single ScrollPosition in order to be painted; when "+when+
 				", the associated ScrollController must only have one ScrollPosition attached",
 			"controller", controllerForError, "positions", len(controller.Positions())))
@@ -1392,7 +1392,7 @@ func (s *RawScrollbarState) HandleThumbPressStart(localPosition ui.Offset) {
 	s.cancelFadeoutTimer()
 	s.fadeoutAnimationController.Forward()
 	if foundation.DebugMode && s.thumbDrag != nil {
-		panic(errors.New("RawScrollbarDragInvalid", "a thumb drag started while the scrollbar has one"))
+		panic(errors.New(tagRawScrollbarDragInvalid, "a thumb drag started while the scrollbar has one"))
 	}
 	position := s.cachedController.Position()
 	details := gestures.NewDragStartDetails(gestures.DragStartOpts{
@@ -1512,7 +1512,7 @@ func (s *RawScrollbarState) HandleTrackTapDown(details gestures.TapDownDetails) 
 	}
 	state := ScrollableMaybeOf(position.Context().NotificationContext())
 	if foundation.DebugMode && state == nil {
-		panic(errors.New("ScrollableNotFound", "the scroll position of the scrollbar has no Scrollable above its notification context"))
+		panic(errors.New(tagScrollableNotFound, "the scroll position of the scrollbar has no Scrollable above its notification context"))
 	}
 	intent := ScrollIntent{Direction: scrollDirection, Type: ScrollIncrementTypePage}
 	scrollIncrement := ScrollActionGetDirectionalIncrement(state, intent)
@@ -1837,6 +1837,14 @@ func (s *RawScrollbarState) Build(bc BuildContext) Widget {
 		NewNotificationListener[ScrollNotification](s.handleScrollNotification, child))
 }
 
-func scrollbarControllerMissingError() error {
-	return errors.New("ScrollbarControllerMissing", "a ScrollController is required to build a scrollbar for a Scrollable; the details of the scrollable must have a controller")
-}
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagRawScrollbarDragInvalid          = "RawScrollbarDragInvalid"
+	tagRawScrollbarFadeInvalid          = "RawScrollbarFadeInvalid"
+	tagRawScrollbarInvalid              = "RawScrollbarInvalid"
+	tagScrollbarExtentsInfinite         = "ScrollbarExtentsInfinite"
+	tagScrollbarMultipleScrollPositions = "ScrollbarMultipleScrollPositions"
+	tagScrollbarNoScrollPosition        = "ScrollbarNoScrollPosition"
+	tagScrollbarOrientationInvalid      = "ScrollbarOrientationInvalid"
+	tagScrollbarPainterInvalid          = "ScrollbarPainterInvalid"
+)

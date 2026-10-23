@@ -362,5 +362,5 @@ func tryError(fn func()) error {
 	if err, ok := v.(error); ok {
 		return err
 	}
-	return errors.New("UnexpectedPanic", "not an error", "value", v)
+	return errors.New(tagUnexpectedPanic, "not an error", "value", v)
 }

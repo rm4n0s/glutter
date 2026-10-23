@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"image"
+	"log"
 	"strconv"
 	"strings"
 	"syscall/js"
@@ -26,6 +27,13 @@ import (
 // viewAttribute names the view a canvas shows (internal/platform/web ViewAttribute).
 const viewAttribute = "data-glutter-view"
 
+// main runs the mode that the page asks for, and logs why it failed.
+func main() {
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
 func run() error {
 	switch mode := param("mode"); mode {
 	case "probe":
@@ -43,7 +51,7 @@ func run() error {
 	case "switch":
 		return switchApp()
 	default:
-		return errors.New("GPUWebTestModeUnknown", "the query parameter mode is not probe, parity, unavailable, loss, choose, failstart or switch", "mode", mode)
+		return errors.New(tagGPUWebTestModeUnknown, "the query parameter mode is not probe, parity, unavailable, loss, choose, failstart or switch", "mode", mode)
 	}
 	// The result is posted by an asynchronous call: the program stays until the test has it, so
 	// that its ending is not taken for the program's failure.
@@ -97,10 +105,8 @@ func describe(err error) string {
 	text := err.Error()
 	if appErr, ok := errors.FromError(err); ok {
 		text += " [" + appErr.Tag + " " + appErr.Route() + "]"
-		if j, jerr := appErr.ToJson(); jerr == nil {
-			if b, merr := json.Marshal(j.Metadata); merr == nil {
-				text += " " + string(b)
-			}
+		if b, merr := json.Marshal(appErr.Metadata); merr == nil {
+			text += " " + string(b)
 		}
 	}
 	return text
@@ -177,7 +183,7 @@ func (g *rig) frame(scene *ui.Scene) (*image.RGBA, error) {
 		return nil, err
 	}
 	if img != nil {
-		return nil, errors.New("CaptureWasSynchronous", "a WebGPU read-back came back inside Draw")
+		return nil, errors.New(tagCaptureWasSynchronous, "a WebGPU read-back came back inside Draw")
 	}
 	return g.await()
 }
@@ -187,7 +193,7 @@ func (g *rig) await() (*image.RGBA, error) {
 	case c := <-g.captured:
 		return c.img, c.err
 	case <-time.After(30 * time.Second):
-		return nil, errors.New("CaptureTimeout", "the read-back did not come in 30 seconds")
+		return nil, errors.New(tagCaptureTimeout, "the read-back did not come in 30 seconds")
 	}
 }
 
@@ -607,3 +613,10 @@ func observeSwitch(refuse bool) switchResult {
 	res.Log = js.Global().Get("__log").String()
 	return res
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagCaptureTimeout        = "CaptureTimeout"
+	tagCaptureWasSynchronous = "CaptureWasSynchronous"
+	tagGPUWebTestModeUnknown = "GPUWebTestModeUnknown"
+)

@@ -165,7 +165,7 @@ func NewRenderPadding(padding painting.EdgeInsetsGeometry, child Box, opts ...Re
 
 func assertPaddingNonNegative(padding painting.EdgeInsetsGeometry) {
 	if foundation.DebugMode && !padding.IsNonNegative() {
-		panic(errors.New("PaddingNegative", "the padding must not be negative", "padding", padding))
+		panic(errors.New(tagPaddingNegative, "the padding must not be negative", "padding", padding))
 	}
 }
 
@@ -175,7 +175,7 @@ func (r *RenderPadding) resolved() painting.EdgeInsets {
 	}
 	v := r.resolvedPadding.Value()
 	if foundation.DebugMode && !v.IsNonNegative() {
-		panic(errors.New("PaddingNegative", "the resolved padding must not be negative", "padding", v))
+		panic(errors.New(tagPaddingNegative, "the resolved padding must not be negative", "padding", v))
 	}
 	return v
 }
@@ -454,7 +454,7 @@ func NewRenderPositionedBox(child Box, opts ...RenderPositionedBoxOpts) *RenderP
 
 func assertFactor(f foundation.Opt[float64]) {
 	if v, ok := f.Get(); ok && foundation.DebugMode && v < 0 {
-		panic(errors.New("SizeFactorNegative", "a size factor must not be negative", "factor", v))
+		panic(errors.New(tagSizeFactorNegative, "a size factor must not be negative", "factor", v))
 	}
 }
 
@@ -1032,7 +1032,7 @@ func (r *RenderConstraintsTransformBox) PerformLayout() {
 		child := r.Child()
 		childConstraints := r.constraintsTransform(constraints)
 		if foundation.DebugMode && !childConstraints.IsNormalized() {
-			panic(errors.New("ConstraintsTransformNotNormalized", "the transformed constraints are not normalized",
+			panic(errors.New(tagConstraintsTransformNotNormalized, "the transformed constraints are not normalized",
 				"constraints", childConstraints, "object", foundation.DescribeIdentity(r.self)))
 		}
 		r.childConstraints = foundation.Some(childConstraints)
@@ -1759,3 +1759,10 @@ func (r *RenderBaseline) DebugFillProperties(b *foundation.DiagnosticPropertiesB
 	b.Add(foundation.NewDoubleProperty("baseline", foundation.Some(r.baseline)))
 	b.Add(foundation.NewEnumProperty("baselineType", foundation.Some(r.baselineType)))
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagConstraintsTransformNotNormalized = "ConstraintsTransformNotNormalized"
+	tagPaddingNegative                   = "PaddingNegative"
+	tagSizeFactorNegative                = "SizeFactorNegative"
+)

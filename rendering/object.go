@@ -317,11 +317,6 @@ func (b *RenderObjectBase) AsRenderObject() *RenderObjectBase { return b }
 
 func (b *RenderObjectBase) setChildModel(m renderChildModel) { b.model = m }
 
-func abstractMethod(b *RenderObjectBase, name string) {
-	panic(errors.New("RenderObjectAbstractMethod", "the render object type does not implement "+name,
-		"object", foundation.DescribeIdentity(b.self), "method", name))
-}
-
 func (b *RenderObjectBase) dbg() *renderDebugState {
 	if b.owner != nil {
 		return b.owner.debugState
@@ -370,7 +365,7 @@ func (b *RenderObjectBase) DebugDisposed() bool { return foundation.DebugMode &&
 // Flutter: rendering/object.dart RenderObject.dispose
 func (b *RenderObjectBase) Dispose() {
 	if foundation.DebugMode && b.debugDisposed {
-		panic(errors.New("RenderObjectDisposedTwice", "a render object was disposed twice",
+		panic(errors.New(tagRenderObjectDisposedTwice, "a render object was disposed twice",
 			"object", foundation.DescribeIdentity(b.self)))
 	}
 	b.layerHandle.SetLayer(nil)
@@ -410,7 +405,7 @@ func (b *RenderObjectBase) Depth() int { return b.depth }
 func (b *RenderObjectBase) RedepthChild(child RenderObject) {
 	cb := child.AsRenderObject()
 	if foundation.DebugMode && cb.owner != b.owner {
-		panic(errors.New("RenderObjectOwnerMismatch", "a child and its parent have different owners",
+		panic(errors.New(tagRenderObjectOwnerMismatch, "a child and its parent have different owners",
 			"object", foundation.DescribeIdentity(b.self), "child", foundation.DescribeIdentity(child)))
 	}
 	if cb.depth <= b.depth {
@@ -443,7 +438,7 @@ func (b *RenderObjectBase) AdoptChild(child RenderObject) {
 	cb := child.AsRenderObject()
 	if foundation.DebugMode {
 		if cb.parent != nil {
-			panic(errors.New("RenderObjectHasParent", "the child has a parent already",
+			panic(errors.New(tagRenderObjectHasParent, "the child has a parent already",
 				"object", foundation.DescribeIdentity(b.self), "child", foundation.DescribeIdentity(child)))
 		}
 		node := b.self
@@ -451,7 +446,7 @@ func (b *RenderObjectBase) AdoptChild(child RenderObject) {
 			node = node.AsRenderObject().parent
 		}
 		if node == child {
-			panic(errors.New("RenderObjectCycle", "adopting the child would make a cycle in the render tree",
+			panic(errors.New(tagRenderObjectCycle, "adopting the child would make a cycle in the render tree",
 				"object", foundation.DescribeIdentity(b.self), "child", foundation.DescribeIdentity(child)))
 		}
 	}
@@ -475,7 +470,7 @@ func (b *RenderObjectBase) DropChild(child RenderObject) {
 	cb := child.AsRenderObject()
 	if foundation.DebugMode {
 		if cb.parent != b.self || cb.Attached() != b.Attached() || cb.parentData == nil {
-			panic(errors.New("RenderObjectNotChild", "the render object is not a child of this one, or it has no parent data",
+			panic(errors.New(tagRenderObjectNotChild, "the render object is not a child of this one, or it has no parent data",
 				"object", foundation.DescribeIdentity(b.self), "child", foundation.DescribeIdentity(child)))
 		}
 	}
@@ -565,7 +560,7 @@ func (b *RenderObjectBase) debugCheckCanPerformMutations() bool {
 		return true
 	}
 	if b.debugDisposed {
-		panic(errors.New("RenderObjectDisposedMutated", "a disposed render object was mutated",
+		panic(errors.New(tagRenderObjectDisposedMutated, "a disposed render object was mutated",
 			"object", foundation.DescribeIdentity(b.self)))
 	}
 	if b.owner == nil || !b.owner.debugDoingLayout {
@@ -596,7 +591,7 @@ func (b *RenderObjectBase) debugCheckCanPerformMutations() bool {
 		msg = "a render object must not mutate another render object from a different render subtree in its " + method +
 			" method; mutating the layout of another render object may cause some of the render objects in its subtree to be laid out more than once"
 	}
-	panic(errors.New("RenderObjectMutatedDuringLayout", foundation.RuntimeTypeName(b.self)+" was mutated in "+who+": "+msg,
+	panic(errors.New(tagRenderObjectMutatedDuringLayout, foundation.RuntimeTypeName(b.self)+" was mutated in "+who+": "+msg,
 		"object", foundation.DescribeIdentity(b.self), "mutatedBy", foundation.DescribeIdentity(active)))
 }
 
@@ -618,11 +613,11 @@ func (b *RenderObjectBase) Attached() bool { return b.owner != nil }
 func (b *RenderObjectBase) Attach(owner *PipelineOwner) {
 	if foundation.DebugMode {
 		if b.debugDisposed {
-			panic(errors.New("RenderObjectDisposedMutated", "a disposed render object was attached",
+			panic(errors.New(tagRenderObjectDisposedMutated, "a disposed render object was attached",
 				"object", foundation.DescribeIdentity(b.self)))
 		}
 		if b.owner != nil {
-			panic(errors.New("RenderObjectAttached", "the render object is attached to an owner already",
+			panic(errors.New(tagRenderObjectAttached, "the render object is attached to an owner already",
 				"object", foundation.DescribeIdentity(b.self)))
 		}
 	}
@@ -652,7 +647,7 @@ func (b *RenderObjectBase) Attach(owner *PipelineOwner) {
 // Flutter: rendering/object.dart RenderObject.detach
 func (b *RenderObjectBase) Detach() {
 	if foundation.DebugMode && b.owner == nil {
-		panic(errors.New("RenderObjectNotAttached", "a render object that is not attached was detached",
+		panic(errors.New(tagRenderObjectNotAttached, "a render object that is not attached was detached",
 			"object", foundation.DescribeIdentity(b.self)))
 	}
 	b.owner = nil
@@ -672,7 +667,7 @@ func (b *RenderObjectBase) DebugNeedsLayout() bool { return foundation.DebugMode
 // Flutter: rendering/object.dart RenderObject.constraints
 func (b *RenderObjectBase) Constraints() Constraints {
 	if b.constraints == nil {
-		panic(errors.New("RenderObjectNoConstraints", "a render object does not have any constraints before it has been laid out",
+		panic(errors.New(tagRenderObjectNoConstraints, "a render object does not have any constraints before it has been laid out",
 			"object", foundation.DescribeIdentity(b.self)))
 	}
 	return b.constraints
@@ -714,7 +709,7 @@ func (b *RenderObjectBase) MarkParentNeedsLayout() {
 	b.debugCheckCanPerformMutations()
 	b.needsLayout = true
 	if foundation.DebugMode && b.parent == nil {
-		panic(errors.New("RenderObjectNoParent", "MarkParentNeedsLayout was called on a render object without a parent",
+		panic(errors.New(tagRenderObjectNoParent, "MarkParentNeedsLayout was called on a render object without a parent",
 			"object", foundation.DescribeIdentity(b.self)))
 	}
 	parent := b.parent
@@ -740,7 +735,7 @@ func (b *RenderObjectBase) MarkNeedsLayoutForSizedByParentChange() {
 func (b *RenderObjectBase) ScheduleInitialLayout() {
 	if foundation.DebugMode {
 		if b.debugDisposed || !b.Attached() || b.parent != nil || b.owner.debugDoingLayout || b.isRelayoutBoundary.IsSome() {
-			panic(errors.New("ScheduleInitialLayoutInvalid",
+			panic(errors.New(tagScheduleInitialLayoutInvalid,
 				"the initial layout can only be scheduled for an attached root that has not been laid out",
 				"object", foundation.DescribeIdentity(b.self)))
 		}
@@ -808,7 +803,7 @@ func (b *RenderObjectBase) Layout(constraints Constraints, opts ...LayoutOpts) {
 	self := b.self
 	if foundation.DebugMode {
 		if b.debugDisposed {
-			panic(errors.New("RenderObjectDisposedMutated", "a disposed render object was laid out",
+			panic(errors.New(tagRenderObjectDisposedMutated, "a disposed render object was laid out",
 				"object", foundation.DescribeIdentity(self)))
 		}
 		constraints.DebugAssertIsValid(DebugAssertIsValidOpts{
@@ -819,7 +814,7 @@ func (b *RenderObjectBase) Layout(constraints Constraints, opts ...LayoutOpts) {
 			},
 		})
 		if b.debugDoingThisResize || b.debugDoingThisLayout {
-			panic(errors.New("LayoutReentrant", "a render object was laid out while it was laying out",
+			panic(errors.New(tagLayoutReentrant, "a render object was laid out while it was laying out",
 				"object", foundation.DescribeIdentity(self)))
 		}
 		b.debugCanParentUseSize = foundation.Some(o.ParentUsesSize)
@@ -841,7 +836,7 @@ func (b *RenderObjectBase) Layout(constraints Constraints, opts ...LayoutOpts) {
 	b.constraints = constraints
 	if foundation.DebugMode {
 		if b.debugMutationsLocked || b.doingThisLayoutWithCallback {
-			panic(errors.New("LayoutReentrant", "a render object was laid out while its mutations were locked",
+			panic(errors.New(tagLayoutReentrant, "a render object was laid out while its mutations were locked",
 				"object", foundation.DescribeIdentity(self)))
 		}
 		b.debugMutationsLocked = true
@@ -902,12 +897,18 @@ func (b *RenderObjectBase) SizedByParent() bool { return false }
 // PerformResize is abstract: it panics with RenderObjectAbstractMethod.
 //
 // Flutter: rendering/object.dart RenderObject.performResize
-func (b *RenderObjectBase) PerformResize() { abstractMethod(b, "PerformResize") }
+func (b *RenderObjectBase) PerformResize() {
+	panic(errors.New(tagRenderObjectAbstractMethod, "the render object type does not implement PerformResize",
+		"object", foundation.DescribeIdentity(b.self), "method", "PerformResize"))
+}
 
 // PerformLayout is abstract: it panics with RenderObjectAbstractMethod.
 //
 // Flutter: rendering/object.dart RenderObject.performLayout
-func (b *RenderObjectBase) PerformLayout() { abstractMethod(b, "PerformLayout") }
+func (b *RenderObjectBase) PerformLayout() {
+	panic(errors.New(tagRenderObjectAbstractMethod, "the render object type does not implement PerformLayout",
+		"object", foundation.DescribeIdentity(b.self), "method", "PerformLayout"))
+}
 
 // InvokeLayoutCallback runs the callback with the constraints, and lets it change
 // the subtree of the object, which layout forbids otherwise. Call it from
@@ -916,7 +917,7 @@ func (b *RenderObjectBase) PerformLayout() { abstractMethod(b, "PerformLayout") 
 // Flutter: rendering/object.dart RenderObject.invokeLayoutCallback
 func (b *RenderObjectBase) InvokeLayoutCallback(callback LayoutCallback) {
 	if foundation.DebugMode && (!b.debugMutationsLocked || !b.debugDoingThisLayout || b.doingThisLayoutWithCallback) {
-		panic(errors.New("InvokeLayoutCallbackInvalid", "a layout callback can only be invoked from PerformLayout, once",
+		panic(errors.New(tagInvokeLayoutCallbackInvalid, "a layout callback can only be invoked from PerformLayout, once",
 			"object", foundation.DescribeIdentity(b.self)))
 	}
 	b.doingThisLayoutWithCallback = true
@@ -956,7 +957,7 @@ func (b *RenderObjectBase) AlwaysNeedsCompositing() bool { return false }
 // Flutter: rendering/object.dart RenderObject.updateCompositedLayer
 func (b *RenderObjectBase) UpdateCompositedLayer(oldLayer OffsetLayerLike) OffsetLayerLike {
 	if foundation.DebugMode && !b.self.IsRepaintBoundary() {
-		panic(errors.New("UpdateCompositedLayerNotBoundary", "UpdateCompositedLayer was called on a render object that is not a repaint boundary",
+		panic(errors.New(tagUpdateCompositedLayerNotBoundary, "UpdateCompositedLayer was called on a render object that is not a repaint boundary",
 			"object", foundation.DescribeIdentity(b.self)))
 	}
 	if oldLayer != nil {
@@ -980,7 +981,7 @@ func (b *RenderObjectBase) Layer() ContainerLayerLike {
 // Flutter: rendering/object.dart RenderObject.layer
 func (b *RenderObjectBase) SetLayer(l ContainerLayerLike) {
 	if foundation.DebugMode && b.self.IsRepaintBoundary() {
-		panic(errors.New("RenderObjectBoundaryLayer",
+		panic(errors.New(tagRenderObjectBoundaryLayer,
 			"attempted to set a layer to a repaint boundary render object; the framework creates and assigns an OffsetLayer to a repaint boundary automatically",
 			"object", foundation.DescribeIdentity(b.self)))
 	}
@@ -1003,7 +1004,7 @@ func (b *RenderObjectBase) DebugLayer() ContainerLayerLike {
 // Flutter: rendering/object.dart RenderObject.markNeedsCompositingBitsUpdate
 func (b *RenderObjectBase) MarkNeedsCompositingBitsUpdate() {
 	if foundation.DebugMode && b.debugDisposed {
-		panic(errors.New("RenderObjectDisposedMutated", "a disposed render object was marked as needing compositing bits",
+		panic(errors.New(tagRenderObjectDisposedMutated, "a disposed render object was marked as needing compositing bits",
 			"object", foundation.DescribeIdentity(b.self)))
 	}
 	if b.needsCompositingBitsUpdate {
@@ -1032,7 +1033,7 @@ func (b *RenderObjectBase) MarkNeedsCompositingBitsUpdate() {
 // Flutter: rendering/object.dart RenderObject.needsCompositing
 func (b *RenderObjectBase) NeedsCompositing() bool {
 	if foundation.DebugMode && b.needsCompositingBitsUpdate {
-		panic(errors.New("RenderObjectCompositingBitsDirty", "NeedsCompositing was read while the compositing bits were dirty",
+		panic(errors.New(tagRenderObjectCompositingBitsDirty, "NeedsCompositing was read while the compositing bits were dirty",
 			"object", foundation.DescribeIdentity(b.self)))
 	}
 	return b.needsCompositing
@@ -1098,11 +1099,11 @@ func (b *RenderObjectBase) DebugNeedsCompositedLayerUpdate() bool {
 func (b *RenderObjectBase) MarkNeedsPaint() {
 	if foundation.DebugMode {
 		if b.debugDisposed {
-			panic(errors.New("RenderObjectDisposedMutated", "a disposed render object was marked as needing paint",
+			panic(errors.New(tagRenderObjectDisposedMutated, "a disposed render object was marked as needing paint",
 				"object", foundation.DescribeIdentity(b.self)))
 		}
 		if b.owner != nil && b.owner.debugDoingPaint {
-			panic(errors.New("MarkNeedsPaintDuringPaint", "MarkNeedsPaint was called while painting",
+			panic(errors.New(tagMarkNeedsPaintDuringPaint, "MarkNeedsPaint was called while painting",
 				"object", foundation.DescribeIdentity(b.self)))
 		}
 	}
@@ -1156,11 +1157,11 @@ func (b *RenderObjectBase) MarkNeedsPaintQuietly() {
 func (b *RenderObjectBase) MarkNeedsCompositedLayerUpdate() {
 	if foundation.DebugMode {
 		if b.debugDisposed {
-			panic(errors.New("RenderObjectDisposedMutated", "a disposed render object was marked as needing a layer update",
+			panic(errors.New(tagRenderObjectDisposedMutated, "a disposed render object was marked as needing a layer update",
 				"object", foundation.DescribeIdentity(b.self)))
 		}
 		if b.owner != nil && b.owner.debugDoingPaint {
-			panic(errors.New("MarkNeedsPaintDuringPaint", "MarkNeedsCompositedLayerUpdate was called while painting",
+			panic(errors.New(tagMarkNeedsPaintDuringPaint, "MarkNeedsCompositedLayerUpdate was called while painting",
 				"object", foundation.DescribeIdentity(b.self)))
 		}
 	}
@@ -1203,7 +1204,7 @@ func (b *RenderObjectBase) skippedPaintingOnLayer() {
 func (b *RenderObjectBase) ScheduleInitialPaint(rootLayer ContainerLayerLike) {
 	if foundation.DebugMode && (!rootLayer.AsLayer().Attached() || !b.Attached() || b.parent != nil ||
 		b.owner.debugDoingPaint || !b.self.IsRepaintBoundary() || !isNil(b.layerHandle.Layer()) || !b.needsPaint) {
-		panic(errors.New("ScheduleInitialPaintInvalid",
+		panic(errors.New(tagScheduleInitialPaintInvalid,
 			"the initial paint can only be scheduled for an attached repaint boundary root that has not painted",
 			"object", foundation.DescribeIdentity(b.self)))
 	}
@@ -1218,7 +1219,7 @@ func (b *RenderObjectBase) ScheduleInitialPaint(rootLayer ContainerLayerLike) {
 func (b *RenderObjectBase) ReplaceRootLayer(rootLayer OffsetLayerLike) {
 	if foundation.DebugMode && (b.debugDisposed || !rootLayer.AsLayer().Attached() || !b.Attached() || b.parent != nil ||
 		b.owner.debugDoingPaint || !b.self.IsRepaintBoundary() || isNil(b.layerHandle.Layer())) {
-		panic(errors.New("ReplaceRootLayerInvalid", "the root layer can only be replaced for an attached repaint boundary root that has a layer",
+		panic(errors.New(tagReplaceRootLayerInvalid, "the root layer can only be replaced for an attached repaint boundary root that has a layer",
 			"object", foundation.DescribeIdentity(b.self)))
 	}
 	b.layerHandle.Layer().Detach()
@@ -1234,11 +1235,11 @@ func (b *RenderObjectBase) paintWithContext(context *PaintingContext, offset ui.
 	self := b.self
 	if foundation.DebugMode {
 		if b.debugDisposed {
-			panic(errors.New("RenderObjectDisposedMutated", "a disposed render object was painted",
+			panic(errors.New(tagRenderObjectDisposedMutated, "a disposed render object was painted",
 				"object", foundation.DescribeIdentity(self)))
 		}
 		if b.debugDoingThisPaint {
-			panic(errors.New("PaintReentrant", "tried to paint a render object reentrantly; this typically indicates an infinite recursion",
+			panic(errors.New(tagPaintReentrant, "tried to paint a render object reentrantly; this typically indicates an infinite recursion",
 				"object", foundation.DescribeIdentity(self)))
 		}
 	}
@@ -1246,7 +1247,7 @@ func (b *RenderObjectBase) paintWithContext(context *PaintingContext, offset ui.
 		return
 	}
 	if foundation.DebugMode && b.needsCompositingBitsUpdate {
-		panic(errors.New("PaintBeforeCompositingBits", "tried to paint a render object before its compositing bits were updated; "+
+		panic(errors.New(tagPaintBeforeCompositingBits, "tried to paint a render object before its compositing bits were updated; "+
 			"the tree has not yet been properly configured for creating the layer tree",
 			"object", foundation.DescribeIdentity(self)))
 	}
@@ -1262,7 +1263,7 @@ func (b *RenderObjectBase) paintWithContext(context *PaintingContext, offset ui.
 	b.guard(foundation.PaintPanicked, "paint", func() {
 		self.Paint(context, offset)
 		if foundation.DebugMode && (b.needsLayout || b.needsPaint) {
-			panic(errors.New("PaintMarkedDirty", "Paint marked the render object as needing layout or paint again",
+			panic(errors.New(tagPaintMarkedDirty, "Paint marked the render object as needing layout or paint again",
 				"object", foundation.DescribeIdentity(self)))
 		}
 	})
@@ -1277,16 +1278,16 @@ func (b *RenderObjectBase) paintWithContext(context *PaintingContext, offset ui.
 //
 // Flutter: rendering/object.dart RenderObject.paintBounds
 func (b *RenderObjectBase) PaintBounds() ui.Rect {
-	abstractMethod(b, "PaintBounds")
-	return ui.Rect{}
+	panic(errors.New(tagRenderObjectAbstractMethod, "the render object type does not implement PaintBounds",
+		"object", foundation.DescribeIdentity(b.self), "method", "PaintBounds"))
 }
 
 // SemanticBounds is abstract: it panics with RenderObjectAbstractMethod.
 //
 // Flutter: rendering/object.dart RenderObject.semanticBounds
 func (b *RenderObjectBase) SemanticBounds() ui.Rect {
-	abstractMethod(b, "SemanticBounds")
-	return ui.Rect{}
+	panic(errors.New(tagRenderObjectAbstractMethod, "the render object type does not implement SemanticBounds",
+		"object", foundation.DescribeIdentity(b.self), "method", "SemanticBounds"))
 }
 
 // DebugPaint does nothing; a box paints the debug overlays.
@@ -1305,7 +1306,7 @@ func (b *RenderObjectBase) Paint(*PaintingContext, ui.Offset) {}
 // Flutter: rendering/object.dart RenderObject.applyPaintTransform
 func (b *RenderObjectBase) ApplyPaintTransform(child RenderObject, transform *ui.Matrix4) {
 	if foundation.DebugMode && child.AsRenderObject().parent != b.self {
-		panic(errors.New("RenderObjectNotChild", "ApplyPaintTransform was called with a render object that is not a child",
+		panic(errors.New(tagRenderObjectNotChild, "ApplyPaintTransform was called with a render object that is not a child",
 			"object", foundation.DescribeIdentity(b.self), "child", foundation.DescribeIdentity(child)))
 	}
 }
@@ -1315,7 +1316,7 @@ func (b *RenderObjectBase) ApplyPaintTransform(child RenderObject, transform *ui
 // Flutter: rendering/object.dart RenderObject.paintsChild
 func (b *RenderObjectBase) PaintsChild(child RenderObject) bool {
 	if foundation.DebugMode && child.AsRenderObject().parent != b.self {
-		panic(errors.New("RenderObjectNotChild", "PaintsChild was called with a render object that is not a child",
+		panic(errors.New(tagRenderObjectNotChild, "PaintsChild was called with a render object that is not a child",
 			"object", foundation.DescribeIdentity(b.self), "child", foundation.DescribeIdentity(child)))
 	}
 	return true
@@ -1329,7 +1330,7 @@ func (b *RenderObjectBase) PaintsChild(child RenderObject) bool {
 // Flutter: rendering/object.dart RenderObject.getTransformTo
 func (b *RenderObjectBase) GetTransformTo(target RenderObject) *ui.Matrix4 {
 	if foundation.DebugMode && !b.Attached() {
-		panic(errors.New("GetTransformToDetached", "GetTransformTo needs an attached render object",
+		panic(errors.New(tagGetTransformToDetached, "GetTransformTo needs an attached render object",
 			"object", foundation.DescribeIdentity(b.self)))
 	}
 	var fromPath, toPath []RenderObject
@@ -1341,7 +1342,7 @@ func (b *RenderObjectBase) GetTransformTo(target RenderObject) *ui.Matrix4 {
 		to = b.owner.rootNode
 	}
 	notSameTree := func() *errors.Error {
-		return errors.New("RenderObjectsNotInSameTree", "the render objects are not in the same render tree",
+		return errors.New(tagRenderObjectsNotInSameTree, "the render objects are not in the same render tree",
 			"target", foundation.DescribeIdentity(target), "object", foundation.DescribeIdentity(b.self))
 	}
 	for from != to {
@@ -1516,3 +1517,32 @@ func (b *RenderObjectBase) ToStringDeep(opts ...foundation.ToStringDeepOpts) str
 	defer func() { b.dbg().activeLayout = prev }()
 	return foundation.ToStringDeep(b.self, opts...)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagGetTransformToDetached           = "GetTransformToDetached"
+	tagInvokeLayoutCallbackInvalid      = "InvokeLayoutCallbackInvalid"
+	tagLayoutReentrant                  = "LayoutReentrant"
+	tagMarkNeedsPaintDuringPaint        = "MarkNeedsPaintDuringPaint"
+	tagPaintBeforeCompositingBits       = "PaintBeforeCompositingBits"
+	tagPaintMarkedDirty                 = "PaintMarkedDirty"
+	tagPaintReentrant                   = "PaintReentrant"
+	tagRenderObjectAbstractMethod       = "RenderObjectAbstractMethod"
+	tagRenderObjectAttached             = "RenderObjectAttached"
+	tagRenderObjectBoundaryLayer        = "RenderObjectBoundaryLayer"
+	tagRenderObjectCompositingBitsDirty = "RenderObjectCompositingBitsDirty"
+	tagRenderObjectCycle                = "RenderObjectCycle"
+	tagRenderObjectDisposedMutated      = "RenderObjectDisposedMutated"
+	tagRenderObjectDisposedTwice        = "RenderObjectDisposedTwice"
+	tagRenderObjectHasParent            = "RenderObjectHasParent"
+	tagRenderObjectMutatedDuringLayout  = "RenderObjectMutatedDuringLayout"
+	tagRenderObjectNoConstraints        = "RenderObjectNoConstraints"
+	tagRenderObjectNoParent             = "RenderObjectNoParent"
+	tagRenderObjectNotAttached          = "RenderObjectNotAttached"
+	tagRenderObjectOwnerMismatch        = "RenderObjectOwnerMismatch"
+	tagRenderObjectsNotInSameTree       = "RenderObjectsNotInSameTree"
+	tagReplaceRootLayerInvalid          = "ReplaceRootLayerInvalid"
+	tagScheduleInitialLayoutInvalid     = "ScheduleInitialLayoutInvalid"
+	tagScheduleInitialPaintInvalid      = "ScheduleInitialPaintInvalid"
+	tagUpdateCompositedLayerNotBoundary = "UpdateCompositedLayerNotBoundary"
+)

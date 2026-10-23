@@ -24,8 +24,8 @@ func TestBuildPanicBecomesErrorWidget(t *testing.T) {
 		wantMsg string
 	}{
 		{"a string", "boom", foundation.BuildPanicked, "boom"},
-		{"an error", errors.New("Plain", "plain failure"), "Plain", "plain failure"},
-		{"a tagged error keeps its tag", errors.New("MyBuildFailure", "tagged failure", "k", 1), "MyBuildFailure", "tagged failure"},
+		{"an error", errors.New(tagPlain, "plain failure"), "Plain", "plain failure"},
+		{"a tagged error keeps its tag", errors.New(tagMyBuildFailure, "tagged failure", "k", 1), "MyBuildFailure", "tagged failure"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -135,7 +135,7 @@ func TestBuildPanicWithoutReporterPropagates(t *testing.T) {
 	tr := newTree(t)
 	tr.owner.OnError = nil
 	requireTag(t, "NobodyListens", func() {
-		tr.pump(newBuilder(func(BuildContext, func(func())) Widget { panic(errors.New("NobodyListens", "x")) }))
+		tr.pump(newBuilder(func(BuildContext, func(func())) Widget { panic(errors.New(tagNobodyListens, "x")) }))
 	})
 }
 
@@ -188,3 +188,10 @@ func TestRebuildPanicIsReportedAndTheNextElementBuilds(t *testing.T) {
 		t.Errorf("context = %v", appErr.Metadata["context"])
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagMyBuildFailure = "MyBuildFailure"
+	tagNobodyListens  = "NobodyListens"
+	tagPlain          = "Plain"
+)

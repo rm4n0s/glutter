@@ -33,10 +33,10 @@ func (b *buildFlags) add(fs *flag.FlagSet) {
 // parse parses the flags and returns the one package that is left.
 func parse(fs *flag.FlagSet, args []string) (string, error) {
 	if err := fs.Parse(args); err != nil {
-		return "", errors.NewErr("WebUsage", err)
+		return "", errors.NewErr(tagWebUsage, err)
 	}
 	if fs.NArg() != 1 {
-		return "", errors.New("WebUsage", "one package is needed, such as ./examples/counter\n"+usage)
+		return "", errors.New(tagWebUsage, "one package is needed, such as ./examples/counter\n"+usage)
 	}
 	return fs.Arg(0), nil
 }
@@ -72,7 +72,7 @@ func runServe(ctx context.Context, args []string, stdout, stderr io.Writer) erro
 	}
 	dir, err := os.MkdirTemp("", "glutter-web-")
 	if err != nil {
-		return errors.NewErr("WebServeFailed", err)
+		return errors.NewErr(tagWebServeFailed, err)
 	}
 	defer func() { _ = os.RemoveAll(dir) }() // a temporary directory: a leftover is harmless
 	if _, err := webtool.Build(ctx, webtool.BuildOptions{Package: pkg, OutDir: dir, Release: bf.release, HostElement: bf.host}); err != nil {
@@ -80,7 +80,7 @@ func runServe(ctx context.Context, args []string, stdout, stderr io.Writer) erro
 	}
 	ln, err := net.Listen("tcp", *addr)
 	if err != nil {
-		return errors.NewErr("WebServeFailed", err).SetMetadata("addr", *addr)
+		return errors.NewErr(tagWebServeFailed, err).SetMetadata("addr", *addr)
 	}
 	srv := &http.Server{Handler: webtool.Handler(dir), ReadHeaderTimeout: 10 * time.Second}
 	if err := say(stdout, "serving %s at http://%s/ (Ctrl-C stops it)\n", pkg, displayAddr(ln.Addr())); err != nil {
@@ -94,11 +94,11 @@ func runServe(ctx context.Context, args []string, stdout, stderr io.Writer) erro
 		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if err := srv.Shutdown(shutdown); err != nil {
-			return errors.NewErr("WebServeFailed", err)
+			return errors.NewErr(tagWebServeFailed, err)
 		}
 		return nil
 	case err := <-errc:
-		return errors.NewErr("WebServeFailed", err)
+		return errors.NewErr(tagWebServeFailed, err)
 	}
 }
 
@@ -123,7 +123,7 @@ func (q *queryFlag) String() string { return url.Values(*q).Encode() }
 func (q *queryFlag) Set(s string) error {
 	v, err := url.ParseQuery(strings.TrimPrefix(s, "?"))
 	if err != nil {
-		return errors.NewErr("WebUsage", err).SetMetadata("query", s)
+		return errors.NewErr(tagWebUsage, err).SetMetadata("query", s)
 	}
 	if *q == nil {
 		*q = queryFlag{}
@@ -155,7 +155,7 @@ func runShot(ctx context.Context, args []string, stdout, stderr io.Writer) error
 		return err
 	}
 	if *browserName == "" || *out == "" {
-		return errors.New("WebUsage", "-browser and -o are needed\n"+usage)
+		return errors.New(tagWebUsage, "-browser and -o are needed\n"+usage)
 	}
 	browser, err := webtest.ParseBrowser(*browserName)
 	if err != nil {
@@ -163,7 +163,7 @@ func runShot(ctx context.Context, args []string, stdout, stderr io.Writer) error
 	}
 	dir, err := os.MkdirTemp("", "glutter-web-")
 	if err != nil {
-		return errors.NewErr("WebServeFailed", err)
+		return errors.NewErr(tagWebServeFailed, err)
 	}
 	defer func() { _ = os.RemoveAll(dir) }() // a temporary directory: a leftover is harmless
 	if _, err := webtool.Build(ctx, webtool.BuildOptions{Package: pkg, OutDir: dir, Release: bf.release, HostElement: bf.host}); err != nil {
@@ -187,10 +187,10 @@ func runShot(ctx context.Context, args []string, stdout, stderr io.Writer) error
 		return err
 	}
 	if err := os.MkdirAll(filepath.Dir(*out), 0o755); err != nil {
-		return errors.NewErr("WebWriteFailed", err).SetMetadata("path", *out)
+		return errors.NewErr(tagWebWriteFailed, err).SetMetadata("path", *out)
 	}
 	if err := os.WriteFile(*out, png, 0o644); err != nil {
-		return errors.NewErr("WebWriteFailed", err).SetMetadata("path", *out)
+		return errors.NewErr(tagWebWriteFailed, err).SetMetadata("path", *out)
 	}
 	return say(stdout, "saved %s (%d bytes)\n", *out, len(png))
 }
@@ -215,10 +215,10 @@ func runPerf(ctx context.Context, args []string, stdout, stderr io.Writer) error
 	var bf buildFlags
 	bf.add(fs)
 	if err := fs.Parse(args); err != nil {
-		return errors.NewErr("WebUsage", err)
+		return errors.NewErr(tagWebUsage, err)
 	}
 	if *browserName == "" || (!*blank && fs.NArg() != 1) || (*blank && fs.NArg() != 0) {
-		return errors.New("WebUsage", "-browser and one package (none with -blank) are needed\n"+usage)
+		return errors.New(tagWebUsage, "-browser and one package (none with -blank) are needed\n"+usage)
 	}
 	browser, err := webtest.ParseBrowser(*browserName)
 	if err != nil {
@@ -227,7 +227,7 @@ func runPerf(ctx context.Context, args []string, stdout, stderr io.Writer) error
 	dir := ""
 	if !*blank {
 		if dir, err = os.MkdirTemp("", "glutter-web-"); err != nil {
-			return errors.NewErr("WebServeFailed", err)
+			return errors.NewErr(tagWebServeFailed, err)
 		}
 		defer func() { _ = os.RemoveAll(dir) }() // a temporary directory: a leftover is harmless
 		if _, err := webtool.Build(ctx, webtool.BuildOptions{Package: fs.Arg(0), OutDir: dir, Release: bf.release, HostElement: bf.host}); err != nil {
@@ -268,7 +268,7 @@ func parseClicks(s string) ([][2]float64, error) {
 		x, errX := strconv.ParseFloat(strings.TrimSpace(xs), 64)
 		y, errY := strconv.ParseFloat(strings.TrimSpace(ys), 64)
 		if !ok || errX != nil || errY != nil {
-			return nil, errors.New("WebUsage", "a click is x,y in CSS pixels", "value", part)
+			return nil, errors.New(tagWebUsage, "a click is x,y in CSS pixels", "value", part)
 		}
 		out = append(out, [2]float64{x, y})
 	}
@@ -278,10 +278,17 @@ func parseClicks(s string) ([][2]float64, error) {
 // say prints to w.
 func say(w io.Writer, format string, args ...any) error {
 	if _, err := fmt.Fprintf(w, format, args...); err != nil {
-		return errors.NewErr("WebUsage", err)
+		return errors.NewErr(tagWebUsage, err)
 	}
 	return nil
 }
 
 // size formats a size in bytes in megabytes.
 func size(n int64) string { return fmt.Sprintf("%.1f MB", float64(n)/(1<<20)) }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagWebServeFailed = "WebServeFailed"
+	tagWebUsage       = "WebUsage"
+	tagWebWriteFailed = "WebWriteFailed"
+)

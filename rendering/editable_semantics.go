@@ -37,7 +37,7 @@ func (r *RenderEditable) DescribeSemanticsConfiguration(config *semantics.Semant
 	for _, info := range r.semanticsInfo {
 		if info.Recognizer != nil {
 			if foundation.DebugMode && (!r.readOnly || r.obscureText) {
-				panic(errors.New("EditableRecognizerNotReadOnly", "an editable with a span that has a recognizer must be read only and not obscured"))
+				panic(errors.New(tagEditableRecognizerNotReadOnly, "an editable with a span that has a recognizer must be read only and not obscured"))
 			}
 			// For selectable rich text with a recognizer, a semantics node is
 			// needed for each text fragment.
@@ -113,7 +113,7 @@ func (r *RenderEditable) handleSetText(text string) {
 // Flutter: rendering/editable.dart RenderEditable.assembleSemanticsNode
 func (r *RenderEditable) AssembleSemanticsNode(node *semantics.SemanticsNode, config *semantics.SemanticsConfiguration, children []*semantics.SemanticsNode) {
 	if foundation.DebugMode && len(r.semanticsInfo) == 0 {
-		panic(errors.New("EditableSemanticsInfoMissing", "AssembleSemanticsNode was called without the semantics information of the text"))
+		panic(errors.New(tagEditableSemanticsInfoMissing, "AssembleSemanticsNode was called without the semantics information of the text"))
 	}
 	var newChildren []*semantics.SemanticsNode
 	currentDirection := r.TextDirection()
@@ -183,7 +183,7 @@ func (r *RenderEditable) AssembleSemanticsNode(node *semantics.SemanticsNode, co
 			}
 		default:
 			if foundation.DebugMode {
-				panic(errors.New("EditableRecognizerUnsupported", foundation.RuntimeTypeName(info.Recognizer)+" is not supported",
+				panic(errors.New(tagEditableRecognizerUnsupported, foundation.RuntimeTypeName(info.Recognizer)+" is not supported",
 					"recognizer", foundation.RuntimeTypeName(info.Recognizer)))
 			}
 		}
@@ -283,3 +283,10 @@ func (r *RenderEditable) handleMoveCursorBackwardByWord(extendSelection bool) {
 	}
 	r.setSelection(services.NewTextSelection(baseOffset, previousWord.Start), services.SelectionChangedCauseKeyboard)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagEditableRecognizerNotReadOnly = "EditableRecognizerNotReadOnly"
+	tagEditableRecognizerUnsupported = "EditableRecognizerUnsupported"
+	tagEditableSemanticsInfoMissing  = "EditableSemanticsInfoMissing"
+)

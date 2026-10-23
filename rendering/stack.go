@@ -383,7 +383,7 @@ func (s *RenderStack) ComputeDistanceToActualBaseline(baseline ui.TextBaseline) 
 // Flutter: rendering/stack.dart RenderStack.layoutPositionedChild
 func LayoutPositionedStackChild(child Box, data *StackParentData, size ui.Size, alignment painting.Alignment) bool {
 	if foundation.DebugMode && !data.IsPositioned() {
-		panic(errors.New("StackChildNotPositioned", "the child is not positioned", "child", foundation.DescribeIdentity(child)))
+		panic(errors.New(tagStackChildNotPositioned, "the child is not positioned", "child", foundation.DescribeIdentity(child)))
 	}
 	child.Layout(data.PositionedChildConstraints(size), LayoutOpts{ParentUsesSize: true})
 	childSize := child.Size()
@@ -487,7 +487,7 @@ func (s *RenderStack) computeSize(constraints BoxConstraints, layoutChild ChildL
 		size = ui.Size{Width: width, Height: height}
 	}
 	if foundation.DebugMode && !size.IsFinite() {
-		panic(errors.New("StackUnboundedConstraints", "A Stack requires bounded constraints from its parent. "+
+		panic(errors.New(tagStackUnboundedConstraints, "A Stack requires bounded constraints from its parent. "+
 			"This error commonly occurs when a Stack is placed inside a widget like Column, ListView, or other widgets "+
 			"that do not constrain their children. To fix this, wrap the Stack in a widget that provides finite height "+
 			"and width constraints, such as a SizedBox or ConstrainedBox. Use Expanded only if the parent is a Flex "+
@@ -720,3 +720,9 @@ func (s *RenderIndexedStack) DebugDescribeChildren() []foundation.DiagnosticsNod
 	}
 	return out
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagStackChildNotPositioned   = "StackChildNotPositioned"
+	tagStackUnboundedConstraints = "StackUnboundedConstraints"
+)

@@ -54,12 +54,12 @@ func (n Naga) path() string {
 func (n Naga) Version() (string, error) {
 	out, err := exec.Command(n.path(), "--version").Output()
 	if err != nil {
-		return "", errors.NewErr("ShadersNagaMissing", err).SetMetadata("command", n.path(),
+		return "", errors.NewErr(tagShadersNagaMissing, err).SetMetadata("command", n.path(),
 			"install", "cargo install naga-cli --locked")
 	}
 	fields := strings.Fields(string(out))
 	if len(fields) == 0 {
-		return "", errors.New("ShadersNagaVersionUnknown", "naga --version printed nothing", "command", n.path())
+		return "", errors.New(tagShadersNagaVersionUnknown, "naga --version printed nothing", "command", n.path())
 	}
 	return fields[len(fields)-1], nil
 }
@@ -70,7 +70,7 @@ func (n Naga) Version() (string, error) {
 func (n Naga) Compile(wgsl, spirv string) error {
 	out, err := exec.Command(n.path(), wgsl, spirv).CombinedOutput()
 	if err != nil {
-		return errors.NewErr("ShadersNagaFailed", err).SetMetadata("file", wgsl, "output", string(out))
+		return errors.NewErr(tagShadersNagaFailed, err).SetMetadata("file", wgsl, "output", string(out))
 	}
 	return nil
 }
@@ -87,7 +87,7 @@ func Run(args []string) error {
 	dir := flags.String("dir", defaultDir, "the package directory with shaders/*.wgsl")
 	naga := flags.String("naga", defaultNaga, "the naga command")
 	if err := flags.Parse(args); err != nil {
-		return errors.NewErr("ShadersBadFlags", err).SetMetadata("args", args)
+		return errors.NewErr(tagShadersBadFlags, err).SetMetadata("args", args)
 	}
 	if err := Generate(*dir, *dir, Naga{Path: *naga}); err != nil {
 		return err
@@ -101,24 +101,24 @@ func Run(args []string) error {
 func Generate(srcDir, outDir string, naga Compiler) error {
 	files, err := filepath.Glob(filepath.Join(srcDir, shadersDir, "*.wgsl"))
 	if err != nil {
-		return errors.NewErr("ShadersReadFailed", err).SetMetadata("dir", srcDir)
+		return errors.NewErr(tagShadersReadFailed, err).SetMetadata("dir", srcDir)
 	}
 	sort.Strings(files)
 	if len(files) == 0 {
-		return errors.New("ShadersNoShaders", "there is no shaders/*.wgsl in the directory", "dir", srcDir)
+		return errors.New(tagShadersNoShaders, "there is no shaders/*.wgsl in the directory", "dir", srcDir)
 	}
 	version, err := naga.Version()
 	if err != nil {
 		return err
 	}
 	if err := os.MkdirAll(filepath.Join(outDir, shadersDir), 0o755); err != nil {
-		return errors.NewErr("ShadersWriteFailed", err).SetMetadata("dir", outDir)
+		return errors.NewErr(tagShadersWriteFailed, err).SetMetadata("dir", outDir)
 	}
 	// naga compiles the text with the includes expanded, which is also the text of the
 	// generated file; it is written to a temporary directory under the file's name.
 	tmp, err := os.MkdirTemp("", "glutter-shaders-")
 	if err != nil {
-		return errors.NewErr("ShadersWriteFailed", err).SetMetadata("dir", os.TempDir())
+		return errors.NewErr(tagShadersWriteFailed, err).SetMetadata("dir", os.TempDir())
 	}
 	defer func() { _ = os.RemoveAll(tmp) }()
 	var names []string
@@ -136,7 +136,7 @@ func Generate(srcDir, outDir string, naga Compiler) error {
 		}
 		expanded := filepath.Join(tmp, filepath.Base(file))
 		if err := os.WriteFile(expanded, []byte(src), 0o644); err != nil {
-			return errors.NewErr("ShadersWriteFailed", err).SetMetadata("file", expanded)
+			return errors.NewErr(tagShadersWriteFailed, err).SetMetadata("file", expanded)
 		}
 		if err := naga.Compile(expanded, filepath.Join(outDir, shadersDir, name+".spv")); err != nil {
 			return err
@@ -150,7 +150,7 @@ func Generate(srcDir, outDir string, naga Compiler) error {
 	}
 	path := filepath.Join(outDir, generated)
 	if err := os.WriteFile(path, code, 0o644); err != nil {
-		return errors.NewErr("ShadersWriteFailed", err).SetMetadata("file", path)
+		return errors.NewErr(tagShadersWriteFailed, err).SetMetadata("file", path)
 	}
 	return nil
 }
@@ -165,15 +165,15 @@ var includeLine = regexp.MustCompile(`(?m)^[ \t]*//#include[ \t]+"([^"]+)"[ \t]*
 func expand(file string, stack []string) (string, error) {
 	for _, f := range stack {
 		if f == file {
-			return "", errors.New("ShadersIncludeCycle", "a shader includes itself", "file", file, "stack", stack)
+			return "", errors.New(tagShadersIncludeCycle, "a shader includes itself", "file", file, "stack", stack)
 		}
 	}
 	data, err := os.ReadFile(file)
 	if err != nil {
 		if len(stack) > 0 {
-			return "", errors.NewErr("ShadersIncludeMissing", err).SetMetadata("file", file, "includedBy", stack[len(stack)-1])
+			return "", errors.NewErr(tagShadersIncludeMissing, err).SetMetadata("file", file, "includedBy", stack[len(stack)-1])
 		}
-		return "", errors.NewErr("ShadersReadFailed", err).SetMetadata("file", file)
+		return "", errors.NewErr(tagShadersReadFailed, err).SetMetadata("file", file)
 	}
 	var failure error
 	text := includeLine.ReplaceAllStringFunc(string(data), func(line string) string {
@@ -203,7 +203,7 @@ func wrapParse(err error, file string) error {
 func removeStale(dir string) error {
 	spvs, err := filepath.Glob(filepath.Join(dir, shadersDir, "*.spv"))
 	if err != nil {
-		return errors.NewErr("ShadersReadFailed", err).SetMetadata("dir", dir)
+		return errors.NewErr(tagShadersReadFailed, err).SetMetadata("dir", dir)
 	}
 	for _, spv := range spvs {
 		wgsl := strings.TrimSuffix(spv, ".spv") + ".wgsl"
@@ -211,7 +211,7 @@ func removeStale(dir string) error {
 			continue
 		}
 		if err := os.Remove(spv); err != nil {
-			return errors.NewErr("ShadersWriteFailed", err).SetMetadata("file", spv)
+			return errors.NewErr(tagShadersWriteFailed, err).SetMetadata("file", spv)
 		}
 	}
 	return nil
@@ -236,7 +236,7 @@ func render(version string, names []string, mods map[string]Module, srcs map[str
 	b.WriteString("package explicit\n\nimport _ \"embed\"\n")
 	for _, name := range names {
 		if strings.Contains(srcs[name], "`") {
-			return nil, errors.New("ShadersBacktick", "a WGSL file cannot hold a backquote: it is written as a raw string", "shader", name)
+			return nil, errors.New(tagShadersBacktick, "a WGSL file cannot hold a backquote: it is written as a raw string", "shader", name)
 		}
 		id := goName(name)
 		fmt.Fprintf(&b, "\n//go:embed shaders/%s.spv\nvar spirv%s []byte\n", name, id)
@@ -253,7 +253,22 @@ func render(version string, names []string, mods map[string]Module, srcs map[str
 	}
 	out, err := format.Source(b.Bytes())
 	if err != nil {
-		return nil, errors.NewErr("ShadersFormatFailed", err)
+		return nil, errors.NewErr(tagShadersFormatFailed, err)
 	}
 	return out, nil
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagShadersBacktick           = "ShadersBacktick"
+	tagShadersBadFlags           = "ShadersBadFlags"
+	tagShadersFormatFailed       = "ShadersFormatFailed"
+	tagShadersIncludeCycle       = "ShadersIncludeCycle"
+	tagShadersIncludeMissing     = "ShadersIncludeMissing"
+	tagShadersNagaFailed         = "ShadersNagaFailed"
+	tagShadersNagaMissing        = "ShadersNagaMissing"
+	tagShadersNagaVersionUnknown = "ShadersNagaVersionUnknown"
+	tagShadersNoShaders          = "ShadersNoShaders"
+	tagShadersReadFailed         = "ShadersReadFailed"
+	tagShadersWriteFailed        = "ShadersWriteFailed"
+)

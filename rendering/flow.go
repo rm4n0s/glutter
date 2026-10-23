@@ -344,7 +344,7 @@ func (r *RenderFlow) PaintChildAt(i int, opts ...FlowPaintChildOpts) {
 	child := r.randomAccess[i]
 	data := flowParentData(child)
 	if foundation.DebugMode && data.transform != nil {
-		panic(errors.New("FlowChildPaintedTwice", "Cannot call paintChild twice for the same child. The flow delegate of type "+
+		panic(errors.New(tagFlowChildPaintedTwice, "Cannot call paintChild twice for the same child. The flow delegate of type "+
 			foundation.RuntimeTypeName(r.delegate)+" attempted to paint child "+itoa(i)+" multiple times, which is not permitted.",
 			"object", foundation.DescribeIdentity(r), "child", i))
 	}
@@ -423,3 +423,8 @@ func (r *RenderFlow) ApplyPaintTransform(child RenderObject, transform *ui.Matri
 	}
 	r.RenderBox.ApplyPaintTransform(child, transform)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagFlowChildPaintedTwice = "FlowChildPaintedTwice"
+)

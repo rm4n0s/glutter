@@ -39,7 +39,7 @@ func (o *recordingObserver) record(what string) {
 		o.onCall()
 	}
 	if o.throws {
-		panic(errors.New("ObserverFailed", o.name+" failed in "+what))
+		panic(errors.New(tagObserverFailed, o.name+" failed in "+what))
 	}
 }
 
@@ -430,3 +430,8 @@ func TestBuildScheduledDuringFrame(t *testing.T) {
 	}
 	_ = requireErrorTag(t, errs[0], "BuildScheduledDuringFrame")
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagObserverFailed = "ObserverFailed"
+)

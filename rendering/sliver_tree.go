@@ -58,7 +58,7 @@ var TreeSliverIndentationTypeNone = TreeSliverIndentationType{0.0}
 // Flutter: rendering/sliver_tree.dart TreeSliverIndentationType.custom
 func TreeSliverIndentationTypeCustom(value float64) TreeSliverIndentationType {
 	if foundation.DebugMode && value < 0 {
-		panic(errors.New("TreeSliverIndentationNegative", "the indentation of a tree must not be negative", "value", value))
+		panic(errors.New(tagTreeSliverIndentationNegative, "the indentation of a tree must not be negative", "value", value))
 	}
 	return TreeSliverIndentationType{value}
 }
@@ -154,7 +154,7 @@ func (r *RenderTreeSliver) SetIndentation(value float64) {
 		return
 	}
 	if foundation.DebugMode && value < 0 {
-		panic(errors.New("TreeSliverIndentationNegative", "the indentation of a tree must not be negative", "value", value))
+		panic(errors.New(tagTreeSliverIndentationNegative, "the indentation of a tree must not be negative", "value", value))
 	}
 	r.indentation = value
 	r.MarkNeedsLayout()
@@ -205,7 +205,7 @@ func (r *RenderTreeSliver) Dispose() {
 // Flutter: rendering/sliver_tree.dart RenderTreeSliver.performLayout
 func (r *RenderTreeSliver) PerformLayout() {
 	if foundation.DebugMode && r.SliverConstraints().AxisDirection != painting.AxisDirectionDown {
-		panic(errors.New("TreeSliverAxisDirection", "TreeSliver is only supported in Viewports with an AxisDirection.down",
+		panic(errors.New(tagTreeSliverAxisDirection, "TreeSliver is only supported in Viewports with an AxisDirection.down",
 			"axisDirection", r.SliverConstraints().AxisDirection))
 	}
 	r.updateAnimationCache()
@@ -299,7 +299,7 @@ func (r *RenderTreeSliver) OverrideIndexToLayoutOffset(index int) float64 {
 		}
 		if key, animating := r.animationLeadingIndices[current]; animating {
 			if _, known := r.animationOffsets[key]; foundation.DebugMode && !known {
-				panic(errors.New("TreeSliverAnimationOffsetMissing", "the distance of an animation is worked out before the layout offsets are asked for", "index", current))
+				panic(errors.New(tagTreeSliverAnimationOffsetMissing, "the distance of an animation is worked out before the layout offsets are asked for", "index", current))
 			}
 			totalAnimationOffset += r.animationOffsets[key] * (1 - r.activeAnimations[key].Value)
 		}
@@ -400,3 +400,10 @@ func (r *RenderTreeSliver) Paint(context *PaintingContext, offset ui.Offset) {
 		}, PushClipRectOpts{OldLayer: handle.Layer()}))
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagTreeSliverAnimationOffsetMissing = "TreeSliverAnimationOffsetMissing"
+	tagTreeSliverAxisDirection          = "TreeSliverAxisDirection"
+	tagTreeSliverIndentationNegative    = "TreeSliverIndentationNegative"
+)

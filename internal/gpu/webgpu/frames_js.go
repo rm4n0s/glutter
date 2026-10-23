@@ -7,6 +7,7 @@ import (
 
 	"syscall/js"
 
+	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/internal/gpu/explicit"
 	"github.com/rm4n0s/glutter/ui"
 )
@@ -25,7 +26,7 @@ var _ explicit.Encoder = (*encoder)(nil)
 // submitted, and with GPUDeviceLost when the device was lost.
 func (d *Device) Begin() (explicit.Encoder, error) {
 	if d.open != nil {
-		return nil, errFrameOpen()
+		return nil, errors.New(tagWebGPUFrameOpen, "Begin was called before the frame in progress was submitted")
 	}
 	if err := d.usable(); err != nil {
 		return nil, err
@@ -44,10 +45,10 @@ func (d *Device) Begin() (explicit.Encoder, error) {
 func (e *encoder) BeginPass(target explicit.Texture, load explicit.LoadOp, clear ui.Color) explicit.Pass {
 	t, ok := target.(*texture)
 	if !ok || t.d != e.d {
-		panic(errForeign("texture"))
+		panic(errors.New(tagWebGPUForeignResource, "the resource was not made by this WebGPU device", "resource", "texture"))
 	}
 	if e.pass != nil {
-		panic(errPassNotEnded())
+		panic(errors.New(tagWebGPUPassNotEnded, "BeginPass was called before the previous pass ended"))
 	}
 	att := map[string]any{"view": t.targetView(), "loadOp": "clear", "storeOp": "store"}
 	if load == explicit.LoadLoad {
@@ -65,7 +66,7 @@ func (e *encoder) CopyTexture(src explicit.Texture, r image.Rectangle, dst expli
 	s, ok1 := src.(*texture)
 	t, ok2 := dst.(*texture)
 	if !ok1 || !ok2 || s.d != e.d || t.d != e.d {
-		panic(errForeign("texture"))
+		panic(errors.New(tagWebGPUForeignResource, "the resource was not made by this WebGPU device", "resource", "texture"))
 	}
 	e.enc.Call("copyTextureToTexture",
 		map[string]any{"texture": s.tex, "mipLevel": s.base, "origin": []any{r.Min.X, r.Min.Y}},
@@ -90,7 +91,7 @@ type readJob struct {
 func (e *encoder) ReadTexture(src explicit.Texture, r image.Rectangle, done func(*image.RGBA, error)) {
 	s, ok := src.(*texture)
 	if !ok || s.d != e.d {
-		panic(errForeign("texture"))
+		panic(errors.New(tagWebGPUForeignResource, "the resource was not made by this WebGPU device", "resource", "texture"))
 	}
 	d := e.d
 	pitch := d.limits.AlignedRowPitch(r.Dx(), s.desc.Format.BytesPerPixel())
@@ -114,7 +115,7 @@ func (e *encoder) ReadTexture(src explicit.Texture, r image.Rectangle, done func
 func (e *encoder) Submit() error {
 	d := e.d
 	if d.open != e {
-		return errFrameNotOpen()
+		return errors.New(tagWebGPUFrameNotOpen, "Submit was called on a frame that is not the one in progress")
 	}
 	d.open = nil
 	after := d.after
@@ -171,7 +172,7 @@ func (p *Provider) onMapFailed(id int, message string) {
 	if lost := job.d.loss.err(); lost != nil {
 		err = lost
 	} else {
-		err = errReadFailed(message)
+		err = errors.New(tagWebGPUReadFailed, "the browser could not map the buffer of a read-back", "message", message)
 	}
 	p.post(func() { job.done(nil, err) })
 }
@@ -198,7 +199,7 @@ var _ explicit.Pass = (*pass)(nil)
 func (p *pass) SetPipeline(pl explicit.Pipeline) {
 	pp, ok := pl.(*pipeline)
 	if !ok || pp.d != p.e.d {
-		panic(errForeign("pipeline"))
+		panic(errors.New(tagWebGPUForeignResource, "the resource was not made by this WebGPU device", "resource", "pipeline"))
 	}
 	p.pipeline = pp
 	p.p.Call("setPipeline", pp.pipe)
@@ -210,7 +211,7 @@ func (p *pass) SetBindGroup(group int, g explicit.BindGroup, dynamicOffsets ...u
 	d.limits.CheckSetBindGroup(group, dynamicOffsets)
 	bg, ok := g.(*bindGroup)
 	if !ok {
-		panic(errForeign("bind group"))
+		panic(errors.New(tagWebGPUForeignResource, "the resource was not made by this WebGPU device", "resource", "bind group"))
 	}
 	if len(dynamicOffsets) == 0 {
 		p.p.Call("setBindGroup", group, bg.g)
@@ -228,7 +229,7 @@ func (p *pass) SetVertexBuffer(slot int, b explicit.Buffer, offset int) {
 	d.limits.CheckSetVertexBuffer(slot)
 	vb, ok := b.(*buffer)
 	if !ok || vb.d != d {
-		panic(errForeign("buffer"))
+		panic(errors.New(tagWebGPUForeignResource, "the resource was not made by this WebGPU device", "resource", "buffer"))
 	}
 	p.p.Call("setVertexBuffer", slot, vb.buf, offset)
 }
@@ -237,7 +238,7 @@ func (p *pass) SetVertexBuffer(slot int, b explicit.Buffer, offset int) {
 func (p *pass) SetIndexBuffer(b explicit.Buffer, offset int) {
 	ib, ok := b.(*buffer)
 	if !ok || ib.d != p.e.d {
-		panic(errForeign("buffer"))
+		panic(errors.New(tagWebGPUForeignResource, "the resource was not made by this WebGPU device", "resource", "buffer"))
 	}
 	p.p.Call("setIndexBuffer", ib.buf, "uint16", offset)
 }
@@ -263,3 +264,11 @@ func (p *pass) End() {
 	p.p.Call("end")
 	p.e.pass = nil
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagWebGPUFrameNotOpen = "WebGPUFrameNotOpen"
+	tagWebGPUFrameOpen    = "WebGPUFrameOpen"
+	tagWebGPUPassNotEnded = "WebGPUPassNotEnded"
+	tagWebGPUReadFailed   = "WebGPUReadFailed"
+)

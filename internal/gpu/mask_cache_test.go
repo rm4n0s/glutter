@@ -32,7 +32,7 @@ func newFakeMasks(pageSize, maxPages int) *fakeMasks {
 	f.NewPage = func() error { f.pages++; return nil }
 	f.Upload = func(page, x, y, w, h int, data []byte) error {
 		if len(data) != w*h {
-			return errors.New("TestBadUpload", "the data is not w x h bytes")
+			return errors.New(tagTestBadUpload, "the data is not w x h bytes")
 		}
 		f.uploads = append(f.uploads, image.Rect(x, y, x+w, y+h))
 		return nil
@@ -111,10 +111,10 @@ func TestMaskCacheEmptyCoverageAndErrors(t *testing.T) {
 	}
 
 	g := newFakeMasks(256, 1)
-	g.NewPage = func() error { return errors.New("TestNoPage", "no page") }
+	g.NewPage = func() error { return errors.New(tagTestNoPage, "no page") }
 	if _, err := g.Tiles(op, sh, m, 1, image.Rect(0, 0, 50, 50)); err == nil {
 		t.Error("a page that cannot be made did not fail")
-	} else if appErr, ok := errors.FromError(err); !ok || appErr.Tag != "TestNoPage" {
+	} else if appErr, ok := errors.FromError(err); !ok || appErr.Tag != tagTestNoPage {
 		t.Errorf("got %v, want the error of NewPage unchanged", err)
 	}
 }
@@ -237,3 +237,9 @@ func TestClipShapeOutline(t *testing.T) {
 		})
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagTestBadUpload = "TestBadUpload"
+	tagTestNoPage    = "TestNoPage"
+)

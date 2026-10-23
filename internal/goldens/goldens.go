@@ -28,6 +28,11 @@ var update = flag.Bool("update-goldens", false, "rewrite the golden images inste
 // processors.
 const DefaultTolerance = 2
 
+// TagGoldenMissing is the tag of the error of a golden image that does not exist (ReadPNG).
+//
+// Flutter: no counterpart
+const TagGoldenMissing = "GoldenMissing"
+
 // testingT is the part of testing.TB that Check needs.
 type testingT interface {
 	Helper()
@@ -67,7 +72,7 @@ func check(t testingT, dir, name string, img image.Image, tolerance int, update 
 	}
 	want, err := ReadPNG(path)
 	if err != nil {
-		if appErr, ok := errors.FromError(err); ok && appErr.Tag == "GoldenMissing" {
+		if appErr, ok := errors.FromError(err); ok && appErr.Tag == TagGoldenMissing {
 			t.Fatalf("golden %s does not exist; run the test with -update-goldens to create it", path)
 			return
 		}
@@ -186,18 +191,18 @@ func toRGBA(img image.Image) *image.RGBA {
 // Flutter: no counterpart
 func WritePNG(path string, img *image.RGBA) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return errors.NewErr("GoldenWriteFailed", err).SetMetadata("path", path)
+		return errors.NewErr(tagGoldenWriteFailed, err).SetMetadata("path", path)
 	}
 	f, err := os.Create(path)
 	if err != nil {
-		return errors.NewErr("GoldenWriteFailed", err).SetMetadata("path", path)
+		return errors.NewErr(tagGoldenWriteFailed, err).SetMetadata("path", path)
 	}
 	if err := png.Encode(f, img); err != nil {
 		_ = f.Close()
-		return errors.NewErr("GoldenWriteFailed", err).SetMetadata("path", path)
+		return errors.NewErr(tagGoldenWriteFailed, err).SetMetadata("path", path)
 	}
 	if err := f.Close(); err != nil {
-		return errors.NewErr("GoldenWriteFailed", err).SetMetadata("path", path)
+		return errors.NewErr(tagGoldenWriteFailed, err).SetMetadata("path", path)
 	}
 	return nil
 }
@@ -210,14 +215,20 @@ func ReadPNG(path string) (*image.RGBA, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, errors.NewErr("GoldenMissing", err).SetMetadata("path", path)
+			return nil, errors.NewErr(TagGoldenMissing, err).SetMetadata("path", path)
 		}
-		return nil, errors.NewErr("GoldenReadFailed", err).SetMetadata("path", path)
+		return nil, errors.NewErr(tagGoldenReadFailed, err).SetMetadata("path", path)
 	}
 	defer func() { _ = f.Close() }()
 	img, err := png.Decode(f)
 	if err != nil {
-		return nil, errors.NewErr("GoldenReadFailed", err).SetMetadata("path", path)
+		return nil, errors.NewErr(tagGoldenReadFailed, err).SetMetadata("path", path)
 	}
 	return toRGBA(img), nil
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagGoldenReadFailed  = "GoldenReadFailed"
+	tagGoldenWriteFailed = "GoldenWriteFailed"
+)

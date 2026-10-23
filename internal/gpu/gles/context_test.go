@@ -178,11 +178,11 @@ func TestOpenFailures(t *testing.T) {
 		},
 		{
 			name: "no EGL display", handle: waylandHandle,
-			tweak: func(e *fakeEGL, _ *fakeGL) { e.displayFails = true }, tag: "EGLInitFailed", route: "openWith->eglError.EGLInitFailed",
+			tweak: func(e *fakeEGL, _ *fakeGL) { e.displayFails = true }, tag: "EGLInitFailed", route: "openWith.EGLInitFailed",
 		},
 		{
 			name: "eglInitialize fails", handle: waylandHandle,
-			tweak: func(e *fakeEGL, _ *fakeGL) { e.initFails = true }, tag: "EGLInitFailed", route: "openWith->eglError.EGLInitFailed",
+			tweak: func(e *fakeEGL, _ *fakeGL) { e.initFails = true }, tag: "EGLInitFailed", route: "openWith.EGLInitFailed",
 		},
 		{
 			name: "EGL older than 1.4", handle: waylandHandle,
@@ -191,36 +191,36 @@ func TestOpenFailures(t *testing.T) {
 		},
 		{
 			name: "no OpenGL ES API", handle: waylandHandle,
-			tweak: func(e *fakeEGL, _ *fakeGL) { e.bindFails = true }, tag: "GLES3Unsupported", route: "openWith->eglError.GLES3Unsupported",
+			tweak: func(e *fakeEGL, _ *fakeGL) { e.bindFails = true }, tag: "GLES3Unsupported", route: "openWith.GLES3Unsupported",
 			cleanup: []string{"terminate"},
 		},
 		{
 			name: "no config", handle: waylandHandle,
-			tweak: func(e *fakeEGL, _ *fakeGL) { e.noConfig = true }, tag: "EGLNoConfig", route: "openWith->eglError.EGLNoConfig",
+			tweak: func(e *fakeEGL, _ *fakeGL) { e.noConfig = true }, tag: "EGLNoConfig", route: "openWith.EGLNoConfig",
 			cleanup: []string{"terminate"},
 		},
 		{
 			name: "no ES 3 context", handle: waylandHandle,
-			tweak: func(e *fakeEGL, _ *fakeGL) { e.contextFails = true }, tag: "GLES3Unsupported", route: "openWith->eglError.GLES3Unsupported",
+			tweak: func(e *fakeEGL, _ *fakeGL) { e.contextFails = true }, tag: "GLES3Unsupported", route: "openWith.GLES3Unsupported",
 			cleanup: []string{"terminate"},
 		},
 		{
 			name: "no window surface", handle: waylandHandle,
 			tweak: func(e *fakeEGL, _ *fakeGL) { e.surfaceFails = true }, tag: "EGLSurfaceFailed",
-			route:   "openWith->Context.NewSurface->eglError.EGLSurfaceFailed",
+			route:   "openWith->Context.NewSurface.EGLSurfaceFailed",
 			cleanup: []string{"destroyContext", "terminate"},
 		},
 		{
 			name: "eglMakeCurrent fails", handle: waylandHandle,
 			tweak: func(e *fakeEGL, _ *fakeGL) { e.currentFails = true }, tag: "EGLMakeCurrentFailed",
-			route:   "openWith->Context.MakeCurrent->eglError.EGLMakeCurrentFailed",
+			route:   "openWith->Context.MakeCurrent.EGLMakeCurrentFailed",
 			cleanup: []string{"destroySurface", "destroyContext", "terminate"},
 		},
 		{
 			name: "a GL function is missing", handle: waylandHandle,
 			tweak: func(*fakeEGL, *fakeGL) {},
 			loader: func(eglAPI) (glAPI, error) {
-				return nil, errors.New("SymbolMissing", "no glClear", "symbol", "glClear")
+				return nil, errors.New(tagSymbolMissing, "no glClear", "symbol", "glClear")
 			},
 			tag:     "SymbolMissing",
 			route:   "SymbolMissing", // returned unchanged
@@ -345,7 +345,7 @@ func TestContextOperations(t *testing.T) {
 	egl.swapFails = true
 	err := c.SwapBuffers(s)
 	appErr, ok := errors.FromError(err)
-	if !ok || appErr.Tag != "EGLSwapFailed" || !appErr.HasRoute("Context.SwapBuffers->eglError.EGLSwapFailed") {
+	if !ok || appErr.Tag != tagEGLSwapFailed || !appErr.HasRoute("Context.SwapBuffers.EGLSwapFailed") {
 		t.Errorf("SwapBuffers = %v, want EGLSwapFailed via Context.SwapBuffers", err)
 	}
 	egl.swapFails = false
@@ -418,7 +418,7 @@ func TestReadPixelsFlipsRows(t *testing.T) {
 		gl.errCode = 0x502
 		_, err := c.ReadPixels(2, 3)
 		appErr, ok := errors.FromError(err)
-		if !ok || appErr.Tag != "GLReadPixelsFailed" || appErr.Metadata["gl_error"] != "0x502" ||
+		if !ok || appErr.Tag != tagGLReadPixelsFailed || appErr.Metadata["gl_error"] != "0x502" ||
 			!appErr.HasRoute("Context.ReadPixels.GLReadPixelsFailed") {
 			t.Errorf("ReadPixels = %v, want GLReadPixelsFailed with gl_error 0x502", err)
 		}
@@ -426,7 +426,7 @@ func TestReadPixelsFlipsRows(t *testing.T) {
 	t.Run("a bad size", func(t *testing.T) {
 		for _, size := range [][2]int{{0, 3}, {2, 0}, {-1, -1}} {
 			_, err := c.ReadPixels(size[0], size[1])
-			if appErr, ok := errors.FromError(err); !ok || appErr.Tag != "GLReadPixelsFailed" {
+			if appErr, ok := errors.FromError(err); !ok || appErr.Tag != tagGLReadPixelsFailed {
 				t.Errorf("ReadPixels(%v) = %v, want GLReadPixelsFailed", size, err)
 			}
 		}
@@ -460,12 +460,12 @@ func TestX11VisualFailures(t *testing.T) {
 		tweak func(*fakeEGL)
 		route string
 	}{
-		{"no display", func(f *fakeEGL) { f.displayFails = true }, "x11VisualWith->eglError.EGLInitFailed"},
-		{"no initialization", func(f *fakeEGL) { f.initFails = true }, "x11VisualWith->eglError.EGLInitFailed"},
-		{"no GLES", func(f *fakeEGL) { f.bindFails = true }, "x11VisualWith->eglError.GLES3Unsupported"},
-		{"no config", func(f *fakeEGL) { f.noConfig = true }, "x11VisualWith->eglError.EGLNoConfig"},
-		{"no native visual", func(f *fakeEGL) { f.noVisual = true }, "x11VisualWith->eglError.EGLConfigQueryFailed"},
-		{"visual 0", func(f *fakeEGL) { f.visualID = 0 }, "x11VisualWith->eglError.EGLConfigQueryFailed"},
+		{"no display", func(f *fakeEGL) { f.displayFails = true }, "x11VisualWith.EGLInitFailed"},
+		{"no initialization", func(f *fakeEGL) { f.initFails = true }, "x11VisualWith.EGLInitFailed"},
+		{"no GLES", func(f *fakeEGL) { f.bindFails = true }, "x11VisualWith.GLES3Unsupported"},
+		{"no config", func(f *fakeEGL) { f.noConfig = true }, "x11VisualWith.EGLNoConfig"},
+		{"no native visual", func(f *fakeEGL) { f.noVisual = true }, "x11VisualWith.EGLConfigQueryFailed"},
+		{"visual 0", func(f *fakeEGL) { f.visualID = 0 }, "x11VisualWith.EGLConfigQueryFailed"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

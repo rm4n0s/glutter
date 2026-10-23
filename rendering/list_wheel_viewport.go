@@ -147,19 +147,19 @@ func NewRenderListWheelViewport(childManager ListWheelChildManager, offset Viewp
 	if foundation.DebugMode {
 		switch {
 		case !(r.diameterRatio > 0):
-			panic(errors.New("ListWheelViewportInvalid", listWheelDiameterRatioZeroMessage, "diameterRatio", r.diameterRatio))
+			panic(errors.New(tagListWheelViewportInvalid, listWheelDiameterRatioZeroMessage, "diameterRatio", r.diameterRatio))
 		case !(r.perspective > 0) || !(r.perspective <= 0.01):
-			panic(errors.New("ListWheelViewportInvalid", listWheelPerspectiveTooHigh, "perspective", r.perspective))
+			panic(errors.New(tagListWheelViewportInvalid, listWheelPerspectiveTooHigh, "perspective", r.perspective))
 		case !(r.magnification > 0):
-			panic(errors.New("ListWheelViewportInvalid", "the magnification must be greater than zero", "magnification", r.magnification))
+			panic(errors.New(tagListWheelViewportInvalid, "the magnification must be greater than zero", "magnification", r.magnification))
 		case !(r.overAndUnderCenterOpacity >= 0 && r.overAndUnderCenterOpacity <= 1):
-			panic(errors.New("ListWheelViewportInvalid", "the opacity must be between 0 and 1", "overAndUnderCenterOpacity", r.overAndUnderCenterOpacity))
+			panic(errors.New(tagListWheelViewportInvalid, "the opacity must be between 0 and 1", "overAndUnderCenterOpacity", r.overAndUnderCenterOpacity))
 		case !(r.squeeze > 0):
-			panic(errors.New("ListWheelViewportInvalid", "the squeeze must be greater than zero", "squeeze", r.squeeze))
+			panic(errors.New(tagListWheelViewportInvalid, "the squeeze must be greater than zero", "squeeze", r.squeeze))
 		case !(r.itemExtent > 0):
-			panic(errors.New("ListWheelViewportInvalid", "the item extent must be greater than zero", "itemExtent", r.itemExtent))
+			panic(errors.New(tagListWheelViewportInvalid, "the item extent must be greater than zero", "itemExtent", r.itemExtent))
 		case r.renderChildrenOutsideViewport && r.clipBehavior != ui.ClipNone:
-			panic(errors.New("ListWheelViewportInvalid", listWheelClipConflict))
+			panic(errors.New(tagListWheelViewportInvalid, listWheelClipConflict))
 		}
 	}
 	InitRenderBox(&r.RenderBox, r)
@@ -206,7 +206,7 @@ func (r *RenderListWheelViewport) DiameterRatio() float64 { return r.diameterRat
 // Flutter: rendering/list_wheel_viewport.dart RenderListWheelViewport.diameterRatio
 func (r *RenderListWheelViewport) SetDiameterRatio(value float64) {
 	if foundation.DebugMode && !(value > 0) {
-		panic(errors.New("ListWheelViewportInvalid", listWheelDiameterRatioZeroMessage, "diameterRatio", value))
+		panic(errors.New(tagListWheelViewportInvalid, listWheelDiameterRatioZeroMessage, "diameterRatio", value))
 	}
 	if value == r.diameterRatio {
 		return
@@ -226,7 +226,7 @@ func (r *RenderListWheelViewport) Perspective() float64 { return r.perspective }
 // Flutter: rendering/list_wheel_viewport.dart RenderListWheelViewport.perspective
 func (r *RenderListWheelViewport) SetPerspective(value float64) {
 	if foundation.DebugMode && (!(value > 0) || !(value <= 0.01)) {
-		panic(errors.New("ListWheelViewportInvalid", listWheelPerspectiveTooHigh, "perspective", value))
+		panic(errors.New(tagListWheelViewportInvalid, listWheelPerspectiveTooHigh, "perspective", value))
 	}
 	if value == r.perspective {
 		return
@@ -278,7 +278,7 @@ func (r *RenderListWheelViewport) Magnification() float64 { return r.magnificati
 // Flutter: rendering/list_wheel_viewport.dart RenderListWheelViewport.magnification
 func (r *RenderListWheelViewport) SetMagnification(value float64) {
 	if foundation.DebugMode && !(value > 0) {
-		panic(errors.New("ListWheelViewportInvalid", "the magnification must be greater than zero", "magnification", value))
+		panic(errors.New(tagListWheelViewportInvalid, "the magnification must be greater than zero", "magnification", value))
 	}
 	if value == r.magnification {
 		return
@@ -299,7 +299,7 @@ func (r *RenderListWheelViewport) OverAndUnderCenterOpacity() float64 {
 // Flutter: rendering/list_wheel_viewport.dart RenderListWheelViewport.overAndUnderCenterOpacity
 func (r *RenderListWheelViewport) SetOverAndUnderCenterOpacity(value float64) {
 	if foundation.DebugMode && !(value >= 0 && value <= 1) {
-		panic(errors.New("ListWheelViewportInvalid", "the opacity must be between 0 and 1", "overAndUnderCenterOpacity", value))
+		panic(errors.New(tagListWheelViewportInvalid, "the opacity must be between 0 and 1", "overAndUnderCenterOpacity", value))
 	}
 	if value == r.overAndUnderCenterOpacity {
 		return
@@ -318,7 +318,7 @@ func (r *RenderListWheelViewport) ItemExtent() float64 { return r.itemExtent }
 // Flutter: rendering/list_wheel_viewport.dart RenderListWheelViewport.itemExtent
 func (r *RenderListWheelViewport) SetItemExtent(value float64) {
 	if foundation.DebugMode && !(value > 0) {
-		panic(errors.New("ListWheelViewportInvalid", "the item extent must be greater than zero", "itemExtent", value))
+		panic(errors.New(tagListWheelViewportInvalid, "the item extent must be greater than zero", "itemExtent", value))
 	}
 	if value == r.itemExtent {
 		return
@@ -337,7 +337,7 @@ func (r *RenderListWheelViewport) Squeeze() float64 { return r.squeeze }
 // Flutter: rendering/list_wheel_viewport.dart RenderListWheelViewport.squeeze
 func (r *RenderListWheelViewport) SetSqueeze(value float64) {
 	if foundation.DebugMode && !(value > 0) {
-		panic(errors.New("ListWheelViewportInvalid", "the squeeze must be greater than zero", "squeeze", value))
+		panic(errors.New(tagListWheelViewportInvalid, "the squeeze must be greater than zero", "squeeze", value))
 	}
 	if value == r.squeeze {
 		return
@@ -361,7 +361,7 @@ func (r *RenderListWheelViewport) RenderChildrenOutsideViewport() bool {
 // Flutter: rendering/list_wheel_viewport.dart RenderListWheelViewport.renderChildrenOutsideViewport
 func (r *RenderListWheelViewport) SetRenderChildrenOutsideViewport(value bool) {
 	if foundation.DebugMode && r.renderChildrenOutsideViewport && r.clipBehavior != ui.ClipNone {
-		panic(errors.New("ListWheelViewportInvalid", listWheelClipConflict))
+		panic(errors.New(tagListWheelViewportInvalid, listWheelClipConflict))
 	}
 	if value == r.renderChildrenOutsideViewport {
 		return
@@ -516,7 +516,7 @@ func (r *RenderListWheelViewport) ComputeDryLayout(constraints BoxConstraints) u
 func (r *RenderListWheelViewport) IndexOf(child Box) int {
 	data := child.ParentData().(*ListWheelParentData)
 	if foundation.DebugMode && data.Index.IsNone() {
-		panic(errors.New("ListWheelChildIndexMissing", "a child of a list wheel viewport has no index"))
+		panic(errors.New(tagListWheelChildIndexMissing, "a child of a list wheel viewport has no index"))
 	}
 	return data.Index.Value()
 }
@@ -880,3 +880,9 @@ func (r *RenderListWheelViewport) ShowOnScreen(opts ShowOnScreenOpts) {
 	}
 	r.RenderBox.ShowOnScreen(ShowOnScreenOpts{Rect: rect, Duration: opts.Duration, Curve: opts.Curve})
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagListWheelChildIndexMissing = "ListWheelChildIndexMissing"
+	tagListWheelViewportInvalid   = "ListWheelViewportInvalid"
+)

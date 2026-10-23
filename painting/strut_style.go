@@ -79,13 +79,13 @@ func NewStrutStyle(opts ...StrutStyleOpts) *StrutStyle {
 	o := firstOpts(opts)
 	if foundation.DebugMode {
 		if o.FontSize.IsSome() && !(o.FontSize.Value() > 0) {
-			panic(errors.New("StrutStyleFontSizeInvalid", "the font size of a strut must be greater than zero", "fontSize", o.FontSize.Value()))
+			panic(errors.New(tagStrutStyleFontSizeInvalid, "the font size of a strut must be greater than zero", "fontSize", o.FontSize.Value()))
 		}
 		if o.Leading.IsSome() && !(o.Leading.Value() >= 0) {
-			panic(errors.New("StrutStyleLeadingInvalid", "the leading of a strut must not be negative", "leading", o.Leading.Value()))
+			panic(errors.New(tagStrutStyleLeadingInvalid, "the leading of a strut must not be negative", "leading", o.Leading.Value()))
 		}
 		if o.Package != "" && o.FontFamily == "" && o.FontFamilyFallback == nil {
-			panic(errors.New("StrutStylePackageWithoutFont", "a package needs a fontFamily or a fontFamilyFallback", "package", o.Package))
+			panic(errors.New(tagStrutStylePackageWithoutFont, "a package needs a fontFamily or a fontFamilyFallback", "package", o.Package))
 		}
 	}
 	family := o.FontFamily
@@ -383,3 +383,10 @@ func optEnum[T interface {
 	}
 	return foundation.Some(v)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagStrutStyleFontSizeInvalid    = "StrutStyleFontSizeInvalid"
+	tagStrutStyleLeadingInvalid     = "StrutStyleLeadingInvalid"
+	tagStrutStylePackageWithoutFont = "StrutStylePackageWithoutFont"
+)

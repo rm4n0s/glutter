@@ -153,7 +153,7 @@ func InitMultiSelectableSelectionContainerDelegate(m *MultiSelectableSelectionCo
 // Flutter: widgets/selectable_region.dart MultiSelectableSelectionContainerDelegate.add
 func (m *MultiSelectableSelectionContainerDelegate) Add(selectable rendering.Selectable) {
 	if foundation.DebugMode && slices.Contains(m.Selectables, selectable) {
-		panic(errors.New("SelectableAlreadyAdded", "the selectable is already in this registrar"))
+		panic(errors.New(tagSelectableAlreadyAdded, "the selectable is already in this registrar"))
 	}
 	m.additions = append(m.additions, selectable)
 	m.scheduleSelectableUpdate()
@@ -255,7 +255,7 @@ func (m *MultiSelectableSelectionContainerDelegate) removeSelectable(selectable 
 	index := slices.Index(m.Selectables, selectable)
 	if index < 0 {
 		if foundation.DebugMode {
-			panic(errors.New("SelectableNotInRegistrar", "the selectable is not in this registrar"))
+			panic(errors.New(tagSelectableNotInRegistrar, "the selectable is not in this registrar"))
 		}
 		return
 	}
@@ -1091,3 +1091,9 @@ func (m *MultiSelectableSelectionContainerDelegate) adjustSelection(event render
 	m.flushInactiveSelections()
 	return finalResult.OrElse(rendering.SelectionResultNone)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagSelectableAlreadyAdded   = "SelectableAlreadyAdded"
+	tagSelectableNotInRegistrar = "SelectableNotInRegistrar"
+)

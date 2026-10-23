@@ -56,7 +56,7 @@ type BouncingScrollSimulationOpts struct {
 func NewBouncingScrollSimulation(position, velocity, leadingExtent, trailingExtent float64, spring SpringDescription, opts ...BouncingScrollSimulationOpts) *BouncingScrollSimulation {
 	o := firstOpts(opts)
 	if foundation.DebugMode && leadingExtent > trailingExtent {
-		panic(errors.New("ScrollExtentsInvalid", "the leading extent must not be past the trailing extent",
+		panic(errors.New(tagScrollExtentsInvalid, "the leading extent must not be past the trailing extent",
 			"leadingExtent", leadingExtent, "trailingExtent", trailingExtent))
 	}
 	b := &BouncingScrollSimulation{
@@ -259,7 +259,7 @@ func (c *ClampingScrollSimulation) flingDistance() float64 {
 		distanceAgain := c.friction * clampingPhysicalCoeff *
 			math.Exp(logVelocity*clampingDecelerationRate/(clampingDecelerationRate-1))
 		if !(math.Abs(math.Abs(distance)-distanceAgain) < c.Tolerance().Distance) {
-			panic(errors.New("ClampingFlingDistanceInconsistent", "the fling distance does not match Android's calculation",
+			panic(errors.New(tagClampingFlingDistanceInconsistent, "the fling distance does not match Android's calculation",
 				"distance", distance, "distanceAgain", distanceAgain))
 		}
 	}
@@ -280,3 +280,9 @@ func (c *ClampingScrollSimulation) Dx(time float64) float64 {
 
 // IsDone is whether the fling has run its duration.
 func (c *ClampingScrollSimulation) IsDone(time float64) bool { return time >= c.duration }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagClampingFlingDistanceInconsistent = "ClampingFlingDistanceInconsistent"
+	tagScrollExtentsInvalid              = "ScrollExtentsInvalid"
+)

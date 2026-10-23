@@ -155,7 +155,7 @@ func TestWaitsTimeOutWithTheRoute(t *testing.T) {
 		if !ok {
 			t.Fatalf("%s: expected *errors.Error, got %T", name, err)
 		}
-		if appErr.Tag != "BrowserTimeout" || !appErr.HasRoute("Server."+name+".BrowserTimeout") {
+		if appErr.Tag != tagBrowserTimeout || !appErr.HasRoute("Server."+name+".BrowserTimeout") {
 			t.Errorf("%s: got %s via %s", name, appErr.Tag, appErr.Route())
 		}
 		if !errors.Is(err, context.DeadlineExceeded) {

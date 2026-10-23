@@ -126,7 +126,7 @@ func WindowScopeMaybeOf(bc BuildContext) BaseWindowController {
 func mustWindowScope(bc BuildContext, aspect any) *WindowScope {
 	s := windowScopeOf(bc, aspect)
 	if s == nil {
-		panic(errors.New("WindowScopeMissing",
+		panic(errors.New(tagWindowScopeMissing,
 			"no WindowScope found in the context; WindowScopeOf needs a RegularWindow or DialogWindow widget above the context, or the first window of the app",
 			"context", bc.(Element).String()))
 	}
@@ -348,3 +348,8 @@ func (w *DialogWindow) Child() Widget { return w.child }
 func (w *DialogWindow) Build(BuildContext) Widget {
 	return windowContent(w.controller, w.child, w.controller.appDecorations)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagWindowScopeMissing = "WindowScopeMissing"
+)

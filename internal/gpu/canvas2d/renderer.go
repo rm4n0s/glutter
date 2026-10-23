@@ -52,7 +52,7 @@ func NewRenderer(p Presenter, opts ...Options) *Renderer {
 	case 1:
 		o = opts[0]
 	default:
-		panic(errors.New("MultipleOptions", "NewRenderer takes at most one Options value", "count", len(opts)))
+		panic(errors.New(tagMultipleOptions, "NewRenderer takes at most one Options value", "count", len(opts)))
 	}
 	return &Renderer{present: p, bg: [3]uint8{uint8(o.Background.Red()), uint8(o.Background.Green()), uint8(o.Background.Blue())}}
 }
@@ -82,10 +82,10 @@ func (s *surface) Destroy() {
 // Flutter: no counterpart
 func (r *Renderer) Attach(h gpu.SurfaceHandle) (gpu.Surface, error) {
 	if r.closed {
-		return nil, errors.New("RendererClosed", "the renderer was closed")
+		return nil, errors.New(tagRendererClosed, "the renderer was closed")
 	}
 	if h.Kind != gpu.SurfaceKindWeb {
-		return nil, errors.New("SurfaceKindUnsupported", "canvas2d draws into the canvas of a web page only", "kind", string(h.Kind))
+		return nil, errors.New(tagSurfaceKindUnsupported, "canvas2d draws into the canvas of a web page only", "kind", string(h.Kind))
 	}
 	return &surface{r: r, h: h}, nil
 }
@@ -107,7 +107,7 @@ func (r *Renderer) Render(s gpu.Surface, scene *ui.Scene, size ui.Size, dpr floa
 func (r *Renderer) RenderCapture(s gpu.Surface, scene *ui.Scene, size ui.Size, _ float32) (*image.RGBA, error) {
 	surf, ok := s.(*surface)
 	if !ok || surf.r != r || surf.destroyed {
-		return nil, errors.New("SurfaceInvalid", "the surface was not attached by this renderer or was destroyed")
+		return nil, errors.New(tagSurfaceInvalid, "the surface was not attached by this renderer or was destroyed")
 	}
 	img, err := r.frame(scene, int(size.Width), int(size.Height))
 	if err != nil {
@@ -174,3 +174,11 @@ func overBackground(img *image.RGBA, bg [3]uint8) {
 		}
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagMultipleOptions        = "MultipleOptions"
+	tagRendererClosed         = "RendererClosed"
+	tagSurfaceInvalid         = "SurfaceInvalid"
+	tagSurfaceKindUnsupported = "SurfaceKindUnsupported"
+)

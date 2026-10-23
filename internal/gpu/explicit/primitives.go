@@ -27,7 +27,7 @@ func (s *shapeContext) pathMask(op ui.DisplayOp, p *ui.Paint) (bool, error) {
 	}
 	tiles, err := s.b.res.masks.Tiles(op, sh, &s.c.Transform, gpu.MaskMargin(sh, scale), s.outer)
 	if err != nil {
-		if appErr, ok := errors.FromError(err); ok && appErr.Tag == "AtlasFull" && s.b.skip {
+		if appErr, ok := errors.FromError(err); ok && appErr.Tag == TagAtlasFull && s.b.skip {
 			return false, s.b.unsupported("coverage atlas full")
 		}
 		return false, err
@@ -77,7 +77,7 @@ func (s *shapeContext) imageEncoder(info paintInfo, entry *imageEntry, p *ui.Pai
 // the command needs no more work, and ok whether it counts as drawn.
 func (s *shapeContext) image(img *ui.Image, p *ui.Paint) (info paintInfo, entry *imageEntry, done, ok bool, err error) {
 	if img == nil || img.IsDisposed() {
-		return info, nil, true, false, errors.New("GPUImageDisposed", "the image was disposed, or is nil, and cannot be drawn")
+		return info, nil, true, false, errors.New(tagGPUImageDisposed, "the image was disposed, or is nil, and cannot be drawn")
 	}
 	// The paint's shader does not apply to images, as in Skia.
 	info, status, err := s.paintWith(p, false, s.t)
@@ -86,7 +86,7 @@ func (s *shapeContext) image(img *ui.Image, p *ui.Paint) (info paintInfo, entry 
 	}
 	entry, err = s.b.res.imageTexture(img)
 	if err != nil {
-		if appErr, isErr := errors.FromError(err); isErr && appErr.Tag == "GPUImageTooLarge" && s.b.skip {
+		if appErr, isErr := errors.FromError(err); isErr && appErr.Tag == TagGPUImageTooLarge && s.b.skip {
 			return info, nil, true, false, s.b.unsupported("image larger than the textures of the device")
 		}
 		return info, nil, true, false, err

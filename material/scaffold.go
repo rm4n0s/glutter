@@ -329,7 +329,7 @@ func (d *scaffoldLayout) PerformLayout(size ui.Size) {
 			// PositionChild: if we checked sooner the SnackBar is visible because its
 			// default position is (0, 0) and it can cause confusion to the user.
 			if !((snackBarYOffsetBase - snackBarSize.Height) >= 0) {
-				panic(floatingSnackBarOffScreen())
+				panic(errors.New(tagFloatingSnackBarOffScreen, "Floating SnackBar presented off screen. A SnackBar with behavior: SnackBarBehavior.floating is positioned above the floating action button or the bottom of the screen and does not fit."))
 			}
 		}
 	}
@@ -521,7 +521,8 @@ func ScaffoldOf(bc widgets.BuildContext) *ScaffoldState {
 	if s, ok := widgets.FindAncestorStateOfType[*ScaffoldState](bc); ok {
 		return s
 	}
-	panic(scaffoldMissingError(bc))
+	panic(errors.New(tagScaffoldMissing, "Scaffold.of() called with a context that does not contain a Scaffold.",
+		"widget", foundation.RuntimeTypeName(bc.Widget())))
 }
 
 // ScaffoldMaybeOf returns the state of the closest Scaffold above the context, or
@@ -543,7 +544,8 @@ func ScaffoldMaybeOf(bc widgets.BuildContext) *ScaffoldState {
 func ScaffoldGeometryOf(bc widgets.BuildContext) foundation.ValueListenable[ScaffoldGeometry] {
 	scope, ok := widgets.DependOn[*scaffoldScope](bc)
 	if !ok {
-		panic(scaffoldGeometryMissingError(bc))
+		panic(errors.New(tagScaffoldGeometryMissing, "Scaffold.geometryOf() called with a context that does not contain a Scaffold.",
+			"widget", foundation.RuntimeTypeName(bc.Widget())))
 	}
 	return scope.geometryNotifier
 }
@@ -807,7 +809,7 @@ func (s *ScaffoldState) DidUpdateWidget(old *Scaffold) {
 	}
 	if w.o.BottomSheet != old.o.BottomSheet {
 		if foundation.DebugMode && w.o.BottomSheet != nil && s.currentBottomSheet != nil && s.currentBottomSheet.isLocalHistoryEntry {
-			panic(errors.New("ScaffoldBottomSheetUpdateConflict", "Scaffold.bottomSheet cannot be specified while a bottom sheet displayed with showBottomSheet() is still visible. Use the PersistentBottomSheetController returned by showBottomSheet() to close the old bottom sheet before creating a Scaffold with a (non null) bottomSheet."))
+			panic(errors.New(tagScaffoldBottomSheetUpdateConflict, "Scaffold.bottomSheet cannot be specified while a bottom sheet displayed with showBottomSheet() is still visible. Use the PersistentBottomSheetController returned by showBottomSheet() to close the old bottom sheet before creating a Scaffold with a (non null) bottomSheet."))
 		}
 		switch {
 		case w.o.BottomSheet == nil:
@@ -1100,16 +1102,10 @@ func (w *scaffoldScope) UpdateShouldNotify(old widgets.Widget) bool {
 	return w.hasDrawer != old.(*scaffoldScope).hasDrawer
 }
 
-func scaffoldMissingError(bc widgets.BuildContext) error {
-	return errors.New("ScaffoldMissing", "Scaffold.of() called with a context that does not contain a Scaffold.",
-		"widget", foundation.RuntimeTypeName(bc.Widget()))
-}
-
-func scaffoldGeometryMissingError(bc widgets.BuildContext) error {
-	return errors.New("ScaffoldGeometryMissing", "Scaffold.geometryOf() called with a context that does not contain a Scaffold.",
-		"widget", foundation.RuntimeTypeName(bc.Widget()))
-}
-
-func floatingSnackBarOffScreen() error {
-	return errors.New("FloatingSnackBarOffScreen", "Floating SnackBar presented off screen. A SnackBar with behavior: SnackBarBehavior.floating is positioned above the floating action button or the bottom of the screen and does not fit.")
-}
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagFloatingSnackBarOffScreen         = "FloatingSnackBarOffScreen"
+	tagScaffoldBottomSheetUpdateConflict = "ScaffoldBottomSheetUpdateConflict"
+	tagScaffoldGeometryMissing           = "ScaffoldGeometryMissing"
+	tagScaffoldMissing                   = "ScaffoldMissing"
+)

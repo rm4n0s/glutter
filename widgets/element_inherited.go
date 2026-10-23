@@ -69,10 +69,15 @@ func (e *StatefulElement) DependOnInheritedElement(ancestor InheritedElementSelf
 		target := foundation.RuntimeTypeName(ancestor.AsElement().widget)
 		switch e.state.stateInternals().data().lifecycle {
 		case StateLifecycleCreated:
-			panic(errors.New("DependOnInheritedBeforeInitState",
+			panic(errors.New(tagDependOnInheritedBeforeInitState,
 				"DependOn or DependOnInheritedElement was called before InitState completed; when an inherited widget changes, its dependent widgets are rebuilt, but if the dependent widget's reference to the inherited widget is in a constructor or an InitState method, then the rebuilt dependent widget will not reflect the changes; typically references to inherited widgets should occur in Build methods, or initialization based on them can be placed in DidChangeDependencies, which is called after InitState and whenever the dependencies change thereafter",
 				"inherited", target, "state", foundation.RuntimeTypeName(e.state)))
 		}
 	}
 	return e.ComponentElement.DependOnInheritedElement(ancestor, aspect)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagDependOnInheritedBeforeInitState = "DependOnInheritedBeforeInitState"
+)

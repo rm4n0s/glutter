@@ -152,11 +152,11 @@ func NewTextStyle(opts ...TextStyleOpts) *TextStyle {
 	o := firstOpts(opts)
 	if foundation.DebugMode {
 		if o.Color.IsSome() && o.Foreground != nil {
-			panic(errors.New("TextStyleColorAndForeground", "Cannot provide both a color and a foreground\n"+
+			panic(errors.New(tagTextStyleColorAndForeground, "Cannot provide both a color and a foreground\n"+
 				`The color argument is just a shorthand for "foreground: Paint()..color = color".`))
 		}
 		if o.BackgroundColor.IsSome() && o.Background != nil {
-			panic(errors.New("TextStyleBackgroundAndBackgroundColor", "Cannot provide both a backgroundColor and a background\n"+
+			panic(errors.New(tagTextStyleBackgroundAndBackgroundColor, "Cannot provide both a backgroundColor and a background\n"+
 				`The backgroundColor argument is just a shorthand for "background: Paint()..color = color".`))
 		}
 	}
@@ -204,11 +204,11 @@ func (s *TextStyle) unprefixedFamily() string {
 func (s *TextStyle) CopyWith(c TextStyleCopy) *TextStyle {
 	if foundation.DebugMode {
 		if c.Color.IsSome() && c.Foreground != nil {
-			panic(errors.New("TextStyleColorAndForeground", "Cannot provide both a color and a foreground\n"+
+			panic(errors.New(tagTextStyleColorAndForeground, "Cannot provide both a color and a foreground\n"+
 				`The color argument is just a shorthand for "foreground: Paint()..color = color".`))
 		}
 		if c.BackgroundColor.IsSome() && c.Background != nil {
-			panic(errors.New("TextStyleBackgroundAndBackgroundColor", "Cannot provide both a backgroundColor and a background\n"+
+			panic(errors.New(tagTextStyleBackgroundAndBackgroundColor, "Cannot provide both a backgroundColor and a background\n"+
 				`The backgroundColor argument is just a shorthand for "background: Paint()..color = color".`))
 		}
 	}
@@ -342,7 +342,7 @@ func (s *TextStyle) Apply(a TextStyleApply) *TextStyle {
 	if foundation.DebugMode {
 		bad := func(field string, set bool, factor, delta float64) {
 			if !set && (factor != 1 || delta != 0) {
-				panic(errors.New("TextStyleApplyNullField", "a factor or delta was given for a field that is null", "field", field))
+				panic(errors.New(tagTextStyleApplyNullField, "a factor or delta was given for a field that is null", "field", field))
 			}
 		}
 		bad("fontSize", s.FontSize.IsSome(), fsf, a.FontSizeDelta)
@@ -553,7 +553,7 @@ func TextStyleLerp(a, b *TextStyle, t float64) *TextStyle {
 		add(a.DecorationColor.IsNone() && b.DecorationColor.IsNone(), "decorationColor")
 		add(a.DecorationThickness.IsNone() && b.DecorationThickness.IsNone(), "decorationThickness")
 		if len(nullFields) > 0 {
-			panic(errors.New("TextStyleLerpInheritMismatch", "Failed to interpolate TextStyles with different inherit values.\n"+
+			panic(errors.New(tagTextStyleLerpInheritMismatch, "Failed to interpolate TextStyles with different inherit values.\n"+
 				"The following fields are unspecified in both TextStyles:\n"+strings.Join(nullFields, ", ")+".\n"+
 				`When "inherit" changes during the transition, these fields may observe abrupt value changes as a result, `+
 				`causing "jump"s in the transition.`+"\n"+
@@ -758,7 +758,7 @@ type GetParagraphStyleOpts struct {
 func (s *TextStyle) GetParagraphStyle(opts ...GetParagraphStyleOpts) *ui.ParagraphStyle {
 	p := firstOpts(opts)
 	if foundation.DebugMode && p.MaxLines.IsSome() && p.MaxLines.Value() <= 0 {
-		panic(errors.New("ParagraphMaxLinesInvalid", "maxLines must be greater than zero", "maxLines", p.MaxLines.Value()))
+		panic(errors.New(tagParagraphMaxLinesInvalid, "maxLines must be greater than zero", "maxLines", p.MaxLines.Value()))
 	}
 	scaler := p.TextScaler
 	if scaler == nil {
@@ -949,3 +949,12 @@ func optPaint(p *ui.Paint) foundation.Opt[*ui.Paint] {
 	}
 	return foundation.Some(p)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagParagraphMaxLinesInvalid              = "ParagraphMaxLinesInvalid"
+	tagTextStyleApplyNullField               = "TextStyleApplyNullField"
+	tagTextStyleBackgroundAndBackgroundColor = "TextStyleBackgroundAndBackgroundColor"
+	tagTextStyleColorAndForeground           = "TextStyleColorAndForeground"
+	tagTextStyleLerpInheritMismatch          = "TextStyleLerpInheritMismatch"
+)

@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -204,8 +203,8 @@ func normalizeFamily(family string) string { return font.NormalizeFamily(family)
 //
 // Flutter: engine/src/flutter/third_party/txt/src/txt/font_collection.cc FontCollection::RegisterFont
 func (c *Collection) AddBundled(family string, data []byte) error {
-	if _, err := parseFont(bytes.NewReader(data), 0); err != nil {
-		return errors.NewErr("FontBundledInvalid", err).SetMetadata("family", family)
+	if _, err := parseFont(bytes.NewReader(data), 0, "FontBundledInvalid", "family", family); err != nil {
+		return err
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -269,15 +268,15 @@ func (f *loadedFont) distance(weight int, italic bool) int {
 //
 // Flutter: dart:ui loadFontFromList
 func (c *Collection) AddFont(family string, data []byte) error {
-	desc, axes, err := describeFont(data)
+	desc, axes, err := describeFont(data, "FontDataInvalid", "family", family, "bytes", len(data))
 	if err != nil {
-		return errors.NewErr("FontDataInvalid", err).SetMetadata("family", family, "bytes", len(data))
+		return err
 	}
 	if family == "" {
 		family = desc.Family
 	}
 	if strings.TrimSpace(family) == "" {
-		return errors.New("FontFamilyMissing", "the font has no family name and the call gave none", "bytes", len(data))
+		return errors.New(tagFontFamilyMissing, "the font has no family name and the call gave none", "bytes", len(data))
 	}
 	lf := &loadedFont{family: family, sum: sha256.Sum256(data), weight: int(desc.Aspect.Weight), italic: desc.Aspect.Style == font.StyleItalic}
 	if lf.weight == 0 {
@@ -318,17 +317,18 @@ func (c *Collection) Generation() uint64 {
 }
 
 // describeFont parses the font at index 0 of data: its family and aspect, and the axes of its fvar table.
-func describeFont(data []byte) (font.Description, []tables.VariationAxisRecord, error) {
+// A failure has the tag that the caller gives (the failure that its callers know) and the metadata pairs.
+func describeFont(data []byte, tag string, metadata ...any) (font.Description, []tables.VariationAxisRecord, error) {
 	loaders, err := ot.NewLoaders(bytes.NewReader(data))
 	if err != nil {
-		return font.Description{}, nil, err
+		return font.Description{}, nil, errors.NewErr(tag, err).SetMetadata(metadata...)
 	}
 	if len(loaders) == 0 {
-		return font.Description{}, nil, io.ErrUnexpectedEOF // a file with no font in it
+		return font.Description{}, nil, errors.New(tag, "the font file has no font in it", metadata...)
 	}
 	ft, err := font.NewFont(loaders[0])
 	if err != nil {
-		return font.Description{}, nil, err
+		return font.Description{}, nil, errors.NewErr(tag, err).SetMetadata(metadata...)
 	}
 	var axes []tables.VariationAxisRecord
 	if raw, err := loaders[0].RawTable(ot.MustNewTag("fvar")); err == nil {
@@ -354,7 +354,7 @@ func describeFont(data []byte) (font.Description, []tables.VariationAxisRecord, 
 // Flutter: engine/src/flutter/third_party/txt/src/txt/font_collection.cc FontCollection::GetMinikinFontCollectionForFamilies
 func (c *Collection) Match(ctx context.Context, family string, weight int, italic bool, lang string) ([]FontFile, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, errors.NewErr("FontMatchCanceled", err).SetMetadata("family", family)
+		return nil, errors.NewErr(tagFontMatchCanceled, err).SetMetadata("family", family)
 	}
 	var out []FontFile
 	c.mu.Lock()
@@ -407,7 +407,7 @@ func (c *Collection) Match(ctx context.Context, family string, weight int, itali
 // Flutter: no counterpart
 func (c *Collection) Families(ctx context.Context) ([]string, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, errors.NewErr("FontMatchCanceled", err)
+		return nil, errors.NewErr(tagFontMatchCanceled, err)
 	}
 	seen := map[string]bool{}
 	var out []string
@@ -494,7 +494,7 @@ func supportedFont(path string) bool {
 // Flutter: engine/src/flutter/third_party/txt/src/txt/font_collection.cc FontCollection::GetFallbackFontForRune
 func (c *Collection) Fallback(ctx context.Context, family string, weight int, italic bool, lang string, r rune) (FontFile, bool, error) {
 	if err := ctx.Err(); err != nil {
-		return FontFile{}, false, errors.NewErr("FontMatchCanceled", err).SetMetadata("family", family)
+		return FontFile{}, false, errors.NewErr(tagFontMatchCanceled, err).SetMetadata("family", family)
 	}
 	matcher, err := c.matcher()
 	if err != nil {
@@ -537,11 +537,11 @@ func (c *Collection) matcher() (Matcher, error) {
 // Flutter: engine/src/flutter/third_party/txt/src/txt/font_collection.cc FontCollection::CreateMinikinFontCollection
 func (c *Collection) Face(ctx context.Context, f FontFile, variations ...Variation) (*font.Face, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, errors.NewErr("FontLoadCanceled", err).SetMetadata("path", f.Path)
+		return nil, errors.NewErr(tagFontLoadCanceled, err).SetMetadata("path", f.Path)
 	}
 	for _, v := range variations {
 		if len(v.Tag) != 4 {
-			return nil, errors.New("FontVariationInvalid", "a variation axis tag has four letters", "tag", v.Tag)
+			return nil, errors.New(tagFontVariationInvalid, "a variation axis tag has four letters", "tag", v.Tag)
 		}
 	}
 	fk := fontKey{f.Path, f.Index & 0xffff}
@@ -574,45 +574,50 @@ func (c *Collection) Face(ctx context.Context, f FontFile, variations ...Variati
 // load parses the font of a loaded font, of a bundled family or of a file.
 func (c *Collection) load(k fontKey) (*font.Font, error) {
 	if lf, ok := c.loadedByID[k.path]; ok {
-		ft, err := parseFont(bytes.NewReader(lf.data), k.index)
+		ft, err := parseFont(bytes.NewReader(lf.data), k.index, "FontLoadFailed", "path", k.path, "index", k.index)
 		if err != nil {
-			return nil, errors.NewErr("FontLoadFailed", err).SetMetadata("path", k.path, "index", k.index)
+			return nil, err
 		}
 		return ft, nil
 	}
 	if family, ok := strings.CutPrefix(k.path, BundledPrefix); ok {
 		data, found := c.bundled[normalizeFamily(family)]
 		if !found {
-			return nil, errors.New("FontLoadFailed", "there is no bundled font with that family", "path", k.path)
+			return nil, errors.New(tagFontLoadFailed, "there is no bundled font with that family", "path", k.path)
 		}
-		ft, err := parseFont(bytes.NewReader(data), k.index)
+		ft, err := parseFont(bytes.NewReader(data), k.index, "FontLoadFailed", "path", k.path, "index", k.index)
 		if err != nil {
-			return nil, errors.NewErr("FontLoadFailed", err).SetMetadata("path", k.path, "index", k.index)
+			return nil, err
 		}
 		return ft, nil
 	}
 	file, err := os.Open(k.path)
 	if err != nil {
-		return nil, errors.NewErr("FontLoadFailed", err).SetMetadata("path", k.path, "index", k.index)
+		return nil, errors.NewErr(tagFontLoadFailed, err).SetMetadata("path", k.path, "index", k.index)
 	}
 	defer func() { _ = file.Close() }() // the font is read; a failed close of a read-only file loses nothing
-	ft, err := parseFont(file, k.index)
+	ft, err := parseFont(file, k.index, "FontLoadFailed", "path", k.path, "index", k.index)
 	if err != nil {
-		return nil, errors.NewErr("FontLoadFailed", err).SetMetadata("path", k.path, "index", k.index)
+		return nil, err
 	}
 	return ft, nil
 }
 
-// parseFont reads the font at index of a font file or collection.
-func parseFont(r font.Resource, index int) (*font.Font, error) {
+// parseFont reads the font at index of a font file or collection. A failure has the tag that
+// the caller gives (the failure that its callers know) and the metadata pairs.
+func parseFont(r font.Resource, index int, tag string, metadata ...any) (*font.Font, error) {
 	loaders, err := ot.NewLoaders(r)
 	if err != nil {
-		return nil, err
+		return nil, errors.NewErr(tag, err).SetMetadata(metadata...)
 	}
 	if index < 0 || index >= len(loaders) {
-		return nil, fmt.Errorf("the font file has %d faces, there is none at index %d", len(loaders), index)
+		return nil, errors.NewErrf(tag, "the font file has %d faces, there is none at index %d", len(loaders), index).SetMetadata(metadata...)
 	}
-	return font.NewFont(loaders[index])
+	ft, err := font.NewFont(loaders[index])
+	if err != nil {
+		return nil, errors.NewErr(tag, err).SetMetadata(metadata...)
+	}
+	return ft, nil
 }
 
 // variationsKey makes the part of a face's cache key that the variations give. The
@@ -641,3 +646,12 @@ func variationsKey(vs []Variation) string {
 // parameter (SPEC §12.1). It wraps opts.First, because a parameter named opts
 // hides the package.
 func oneOpts[T any](o []T) T { return opts.First(o) }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagFontFamilyMissing    = "FontFamilyMissing"
+	tagFontLoadCanceled     = "FontLoadCanceled"
+	tagFontLoadFailed       = "FontLoadFailed"
+	tagFontMatchCanceled    = "FontMatchCanceled"
+	tagFontVariationInvalid = "FontVariationInvalid"
+)

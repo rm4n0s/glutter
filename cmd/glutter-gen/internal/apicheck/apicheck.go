@@ -94,7 +94,7 @@ func run(args []string, stdout io.Writer) error {
 	pkgs := flags.String("pkgs", strings.Join(DefaultPackages, ","), "public packages to check, as directories below the root, separated by commas")
 	allowPath := flags.String("allow", "", "file that lists the accepted violations, one \"rule pkg.Name\" per line, with # comments")
 	if err := flags.Parse(args); err != nil {
-		return errors.NewErr("ApiCheckBadFlags", err).SetMetadata("args", args)
+		return errors.NewErr(tagApiCheckBadFlags, err).SetMetadata("args", args)
 	}
 	allowed := map[string]bool{}
 	if *allowPath != "" {
@@ -128,7 +128,7 @@ func run(args []string, stdout io.Writer) error {
 	}
 	for _, v := range left {
 		if _, err := fmt.Fprintln(stdout, v); err != nil {
-			return errors.NewErr("ApiCheckWriteFailed", err)
+			return errors.NewErr(tagApiCheckWriteFailed, err)
 		}
 	}
 	var stale []string
@@ -140,14 +140,14 @@ func run(args []string, stdout io.Writer) error {
 	sort.Strings(stale)
 	for _, key := range stale {
 		if _, err := fmt.Fprintf(stdout, "%s: the allow file lists a violation that is gone\n", key); err != nil {
-			return errors.NewErr("ApiCheckWriteFailed", err)
+			return errors.NewErr(tagApiCheckWriteFailed, err)
 		}
 	}
 	if _, err := fmt.Fprintf(stdout, "apicheck: %d violations, %d accepted by the allow file\n", len(left), skipped); err != nil {
-		return errors.NewErr("ApiCheckWriteFailed", err)
+		return errors.NewErr(tagApiCheckWriteFailed, err)
 	}
 	if len(left) > 0 || len(stale) > 0 {
-		return errors.New("ApiCheckViolations", "the API breaks the conventions of SPEC §12", "violations", len(left), "stale", len(stale))
+		return errors.New(tagApiCheckViolations, "the API breaks the conventions of SPEC §12", "violations", len(left), "stale", len(stale))
 	}
 	return nil
 }
@@ -159,7 +159,7 @@ func run(args []string, stdout io.Writer) error {
 func ReadAllow(path string) (map[string]bool, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, errors.NewErr("ApiCheckAllowUnreadable", err).SetMetadata("file", path)
+		return nil, errors.NewErr(tagApiCheckAllowUnreadable, err).SetMetadata("file", path)
 	}
 	out := map[string]bool{}
 	sc := bufio.NewScanner(bytes.NewReader(data))
@@ -170,12 +170,12 @@ func ReadAllow(path string) (map[string]bool, error) {
 			continue
 		}
 		if len(fields) != 2 {
-			return nil, errors.New("ApiCheckAllowSyntax", "a line of the allow file is not \"rule pkg.Name\"", "line", sc.Text(), "file", path)
+			return nil, errors.New(tagApiCheckAllowSyntax, "a line of the allow file is not \"rule pkg.Name\"", "line", sc.Text(), "file", path)
 		}
 		out[fields[0]+" "+fields[1]] = true
 	}
 	if err := sc.Err(); err != nil {
-		return nil, errors.NewErr("ApiCheckAllowUnreadable", err).SetMetadata("file", path)
+		return nil, errors.NewErr(tagApiCheckAllowUnreadable, err).SetMetadata("file", path)
 	}
 	return out, nil
 }
@@ -189,7 +189,7 @@ func CheckDir(root, pkg string) ([]Violation, error) {
 	fset := token.NewFileSet()
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return nil, errors.NewErr("ApiCheckParseFailed", err).SetMetadata("dir", dir)
+		return nil, errors.NewErr(tagApiCheckParseFailed, err).SetMetadata("dir", dir)
 	}
 	c := &checker{fset: fset, pkg: pkg, root: root}
 	var files []*ast.File
@@ -200,7 +200,7 @@ func CheckDir(root, pkg string) ([]Violation, error) {
 		}
 		f, err := parser.ParseFile(fset, filepath.Join(dir, name), nil, parser.ParseComments)
 		if err != nil {
-			return nil, errors.NewErr("ApiCheckParseFailed", err).SetMetadata("file", filepath.Join(dir, name))
+			return nil, errors.NewErr(tagApiCheckParseFailed, err).SetMetadata("file", filepath.Join(dir, name))
 		}
 		files = append(files, f)
 	}
@@ -547,3 +547,13 @@ func (c *checker) collectAssigned(files []*ast.File) {
 		})
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagApiCheckAllowSyntax     = "ApiCheckAllowSyntax"
+	tagApiCheckAllowUnreadable = "ApiCheckAllowUnreadable"
+	tagApiCheckBadFlags        = "ApiCheckBadFlags"
+	tagApiCheckParseFailed     = "ApiCheckParseFailed"
+	tagApiCheckViolations      = "ApiCheckViolations"
+	tagApiCheckWriteFailed     = "ApiCheckWriteFailed"
+)

@@ -461,15 +461,15 @@ type xdndSource struct {
 func (d *xdnd) startDrag(w *window, request ui.DragRequest) error {
 	p := d.p
 	if d.source != nil {
-		return errors.New("DragInProgress", "a drag of the app is already going on")
+		return errors.New(tagDragInProgress, "a drag of the app is already going on")
 	}
 	if p.input == nil || p.input.buttonsDown == 0 {
-		return errors.New("DragNoButton", "a drag starts with a pointer button that is down")
+		return errors.New(tagDragNoButton, "a drag starts with a pointer button that is down")
 	}
 	sel := p.atom("XdndSelection")
 	p.x.setSelectionOwner(p.display, sel, w.xid, currentTime)
 	if p.x.getSelectionOwner(p.display, sel) != w.xid {
-		return errors.New("DragSelectionFailed", "the app could not take the XdndSelection")
+		return errors.New(tagDragSelectionFailed, "the app could not take the XdndSelection")
 	}
 	s := &xdndSource{d: d, window: w, request: request, cursor: w.cursor}
 	if request.Text != "" {
@@ -762,3 +762,10 @@ func (d *xdnd) activeDrag() *xdndSource {
 	}
 	return d.source
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagDragInProgress      = "DragInProgress"
+	tagDragNoButton        = "DragNoButton"
+	tagDragSelectionFailed = "DragSelectionFailed"
+)

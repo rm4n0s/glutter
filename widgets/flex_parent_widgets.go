@@ -165,7 +165,7 @@ func NewSpacer(opts ...SpacerOpts) *Spacer {
 	o := firstOpts(opts)
 	flex := o.Flex.OrElse(1)
 	if foundation.DebugMode && flex <= 0 {
-		panic(errors.New("SpacerFlexInvalid", "the flex of a Spacer must be above zero", "flex", flex))
+		panic(errors.New(tagSpacerFlexInvalid, "the flex of a Spacer must be above zero", "flex", flex))
 	}
 	return &Spacer{NewStatelessWidgetBase(WidgetOpts{Key: o.Key}), flex}
 }
@@ -181,3 +181,8 @@ func (w *Spacer) Flex() int { return w.flex }
 func (w *Spacer) Build(BuildContext) Widget {
 	return NewExpanded(NewSizedBoxShrink(nil), ExpandedOpts{Flex: foundation.Some(w.flex)})
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagSpacerFlexInvalid = "SpacerFlexInvalid"
+)

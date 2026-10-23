@@ -16,7 +16,7 @@ import (
 // Flutter: painting/paint_utilities.dart paintZigZag
 func PaintZigZag(canvas *ui.Canvas, paint *ui.Paint, start, end ui.Offset, zigs int, width float64) {
 	if foundation.DebugMode && zigs <= 0 {
-		panic(errors.New("PaintZigZagInvalid", "a zig-zag needs at least one zig", "zigs", zigs))
+		panic(errors.New(tagPaintZigZagInvalid, "a zig-zag needs at least one zig", "zigs", zigs))
 	}
 	canvas.Save()
 	canvas.Translate(start.Dx, start.Dy)
@@ -35,3 +35,8 @@ func PaintZigZag(canvas *ui.Canvas, paint *ui.Paint, start, end ui.Offset, zigs 
 	canvas.DrawPath(path, paint)
 	canvas.Restore()
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagPaintZigZagInvalid = "PaintZigZagInvalid"
+)

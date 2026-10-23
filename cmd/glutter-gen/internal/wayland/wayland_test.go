@@ -256,7 +256,7 @@ func TestRunWriteFailure(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected *errors.Error, got %T (%v)", err, err)
 	}
-	if appErr.Tag != "WaylandWriteFailed" || !appErr.HasRoute("Run->writeFiles.WaylandWriteFailed") {
+	if appErr.Tag != tagWaylandWriteFailed || !appErr.HasRoute("Run->writeFiles.WaylandWriteFailed") {
 		t.Errorf("Tag = %q, route = %s, want WaylandWriteFailed via Run->writeFiles", appErr.Tag, appErr.Route())
 	}
 }

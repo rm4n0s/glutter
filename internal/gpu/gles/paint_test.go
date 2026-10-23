@@ -364,7 +364,7 @@ func TestUnsupportedGroupsAreSkippedWhole(t *testing.T) {
 			break
 		}
 	}
-	if appErr, ok := errors.FromError(got); !ok || appErr.Tag != "GLNotImplemented" || appErr.Metadata["feature"] != feature {
+	if appErr, ok := errors.FromError(got); !ok || appErr.Tag != tagGLNotImplemented || appErr.Metadata["feature"] != feature {
 		t.Fatalf("error = %v, want GLNotImplemented for %q", got, feature)
 	}
 	skipping := &frameBuilder{w: 100, h: 100, skip: true}

@@ -73,7 +73,7 @@ func CaptureThemes(from, to BuildContext) *CapturedThemes {
 		return true
 	})
 	if !didFindAncestor {
-		panic(errors.New("CaptureToNotAncestor", "the provided `to` context must be an ancestor of the `from` context"))
+		panic(errors.New(tagCaptureToNotAncestor, "the provided `to` context must be an ancestor of the `from` context"))
 	}
 	return &CapturedThemes{themes}
 }
@@ -99,3 +99,8 @@ func (w *captureAll) Build(bc BuildContext) Widget {
 	}
 	return wrapped
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagCaptureToNotAncestor = "CaptureToNotAncestor"
+)

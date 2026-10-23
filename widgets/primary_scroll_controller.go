@@ -121,7 +121,7 @@ func PrimaryScrollControllerMaybeOf(bc BuildContext) ScrollController {
 func PrimaryScrollControllerOf(bc BuildContext) ScrollController {
 	c := PrimaryScrollControllerMaybeOf(bc)
 	if isNil(c) && foundation.DebugMode {
-		panic(errors.New("PrimaryScrollControllerMissing",
+		panic(errors.New(tagPrimaryScrollControllerMissing,
 			"PrimaryScrollControllerOf() was called with a context that does not contain a PrimaryScrollController widget; no PrimaryScrollController widget ancestor could be found starting from the context that was passed to PrimaryScrollControllerOf(); this can happen because you are using a widget that looks for a PrimaryScrollController ancestor, but no such ancestor exists",
 			"context", bc.(Element).String()))
 	}
@@ -134,3 +134,8 @@ func PrimaryScrollControllerOf(bc BuildContext) ScrollController {
 func (w *PrimaryScrollController) UpdateShouldNotify(old Widget) bool {
 	return w.controller != old.(*PrimaryScrollController).controller
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagPrimaryScrollControllerMissing = "PrimaryScrollControllerMissing"
+)

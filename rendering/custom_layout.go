@@ -123,11 +123,11 @@ func (d *MultiChildLayoutDelegateBase) LayoutChild(childID any, constraints BoxC
 	child := d.idToChild[childID]
 	if foundation.DebugMode {
 		if isNil(child) {
-			panic(errors.New("MultiChildLayoutNoSuchChild", "The "+d.name()+" custom multichild layout delegate tried to lay out a "+
+			panic(errors.New(tagMultiChildLayoutNoSuchChild, "The "+d.name()+" custom multichild layout delegate tried to lay out a "+
 				"non-existent child. There is no child with the id \""+fmt.Sprint(childID)+"\".", "id", childID))
 		}
 		if !d.debugChildrenNeedLays[child] {
-			panic(errors.New("MultiChildLayoutChildTwice", "The "+d.name()+" custom multichild layout delegate tried to lay out the "+
+			panic(errors.New(tagMultiChildLayoutChildTwice, "The "+d.name()+" custom multichild layout delegate tried to lay out the "+
 				"child with id \""+fmt.Sprint(childID)+"\" more than once. Each child must be laid out exactly once.", "id", childID))
 		}
 		delete(d.debugChildrenNeedLays, child)
@@ -144,7 +144,7 @@ func (d *MultiChildLayoutDelegateBase) LayoutChild(childID any, constraints BoxC
 func (d *MultiChildLayoutDelegateBase) PositionChild(childID any, offset ui.Offset) {
 	child := d.idToChild[childID]
 	if foundation.DebugMode && isNil(child) {
-		panic(errors.New("MultiChildLayoutNoSuchChild", "The "+d.name()+" custom multichild layout delegate tried to position out a "+
+		panic(errors.New(tagMultiChildLayoutNoSuchChild, "The "+d.name()+" custom multichild layout delegate tried to position out a "+
 			"non-existent child: There is no child with the id \""+fmt.Sprint(childID)+"\".", "id", childID))
 	}
 	child.ParentData().(*MultiChildLayoutParentData).Offset = offset
@@ -167,7 +167,7 @@ func (d *MultiChildLayoutDelegateBase) callPerformLayout(delegate MultiChildLayo
 	for child := firstChild; !isNil(child); {
 		data := child.ParentData().(*MultiChildLayoutParentData)
 		if foundation.DebugMode && data.ID == nil {
-			panic(errors.New("MultiChildLayoutMissingID", "Every child of a RenderCustomMultiChildLayoutBox must have an ID in its "+
+			panic(errors.New(tagMultiChildLayoutMissingID, "Every child of a RenderCustomMultiChildLayoutBox must have an ID in its "+
 				"parent data. The following child has no ID: "+foundation.DescribeIdentity(child), "child", foundation.DescribeIdentity(child)))
 		}
 		d.idToChild[data.ID] = child
@@ -189,7 +189,7 @@ func (d *MultiChildLayoutDelegateBase) callPerformLayout(delegate MultiChildLayo
 		if len(forgotten) > 1 {
 			noun = "children"
 		}
-		panic(errors.New("MultiChildLayoutChildNotLaidOut", "Each child must be laid out exactly once. The "+d.name()+
+		panic(errors.New(tagMultiChildLayoutChildNotLaidOut, "Each child must be laid out exactly once. The "+d.name()+
 			" custom multichild layout delegate forgot to lay out the following "+noun+": "+strings.Join(forgotten, ", "),
 			"children", forgotten))
 	}
@@ -335,3 +335,11 @@ func (r *RenderCustomMultiChildLayoutBox) Paint(context *PaintingContext, offset
 func (r *RenderCustomMultiChildLayoutBox) HitTestChildren(result *BoxHitTestResult, position ui.Offset) bool {
 	return DefaultHitTestChildren(&r.ContainerRenderObject, result, position)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagMultiChildLayoutChildNotLaidOut = "MultiChildLayoutChildNotLaidOut"
+	tagMultiChildLayoutChildTwice      = "MultiChildLayoutChildTwice"
+	tagMultiChildLayoutMissingID       = "MultiChildLayoutMissingID"
+	tagMultiChildLayoutNoSuchChild     = "MultiChildLayoutNoSuchChild"
+)

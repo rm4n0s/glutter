@@ -658,7 +658,7 @@ func (t *TextInput) HandleUpdateEditingStateWithDeltas(clientID int, deltas []Te
 	}
 	d, ok := client.(DeltaTextInputClient)
 	if !ok {
-		panic(errors.New("TextInputClientNotDelta", "you must be using a DeltaTextInputClient if TextInputConfiguration.EnableDeltaModel is set to true"))
+		panic(errors.New(tagTextInputClientNotDelta, "you must be using a DeltaTextInputClient if TextInputConfiguration.EnableDeltaModel is set to true"))
 	}
 	d.UpdateEditingValueWithDeltas(deltas)
 }
@@ -844,7 +844,7 @@ func (c *TextInputConnection) Attached() bool { return c.input.currentConnection
 
 func (c *TextInputConnection) mustBeAttached() {
 	if foundation.DebugMode && !c.Attached() {
-		panic(errors.New("TextInputConnectionDetached", "the text input connection is no longer attached"))
+		panic(errors.New(tagTextInputConnectionDetached, "the text input connection is no longer attached"))
 	}
 }
 
@@ -1027,3 +1027,9 @@ func (t *TextInput) HandleUnhandledKey(data ui.KeyData, controlHeld bool) (typed
 	t.HandleTextInput(ui.TextInputEvent{Commit: text, PreeditCursorBegin: -1, PreeditCursorEnd: -1})
 	return true
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagTextInputClientNotDelta     = "TextInputClientNotDelta"
+	tagTextInputConnectionDetached = "TextInputConnectionDetached"
+)

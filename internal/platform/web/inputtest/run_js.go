@@ -4,6 +4,7 @@ package main
 
 import (
 	"encoding/json"
+	"log"
 	"syscall/js"
 	"time"
 
@@ -55,6 +56,12 @@ type observations struct {
 	MenuEnabledPrevented  bool `json:"menuEnabledPrevented"`
 	MenuEnabledFlag       bool `json:"menuEnabledFlag"`
 	MenuDisabledFlag      bool `json:"menuDisabledFlag"`
+}
+
+func main() {
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
 }
 
 func run() error {

@@ -51,7 +51,7 @@ func TestSliverFailureTags(t *testing.T) {
 		{"paint transform of a sliver without it", "SliverPaintTransformMissing", func() {
 			newTestRenderSliver(rendering.SliverGeometryZero).ApplyPaintTransform(nil, ui.NewMatrix4Identity())
 		}},
-		{"sliver sized by the parent", "SliverPerformResize", func() { newTestRenderSliver(rendering.SliverGeometryZero).PerformResize() }},
+		{"sliver sized by the parent", "RenderSliver.PerformResize.SliverPerformResize", func() { newTestRenderSliver(rendering.SliverGeometryZero).PerformResize() }},
 		{"geometry with a zero correction", "SliverGeometryInvalid", func() {
 			rendering.NewSliverGeometry(rendering.SliverGeometryOpts{ScrollOffsetCorrection: foundation.Some(0.0)})
 		}},

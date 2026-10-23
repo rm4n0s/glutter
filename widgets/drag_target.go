@@ -261,7 +261,7 @@ func NewDraggable[T any](feedback, child Widget, opts ...DraggableOpts[T]) *Drag
 
 func checkMaxSimultaneousDrags(n foundation.Opt[int]) {
 	if v, ok := n.Get(); ok && v < 0 && foundation.DebugMode {
-		panic(errors.New("DraggableMaxSimultaneousDragsNegative", "maxSimultaneousDrags must not be negative", "maxSimultaneousDrags", v))
+		panic(errors.New(tagDraggableMaxSimultaneousDragsNegative, "maxSimultaneousDrags must not be negative", "maxSimultaneousDrags", v))
 	}
 }
 
@@ -889,3 +889,8 @@ func (a *dragAvatar) restrictAxis(offset ui.Offset) ui.Offset {
 	}
 	return offset
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagDraggableMaxSimultaneousDragsNegative = "DraggableMaxSimultaneousDragsNegative"
+)

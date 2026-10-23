@@ -121,7 +121,7 @@ func TestNewDeviceErrors(t *testing.T) {
 					t.Errorf("Metadata[%q] = %v, want %v", k, appErr.Metadata[k], v)
 				}
 			}
-			if appErr.Tag == "ShaderCompileFailed" && appErr.Metadata["program"] == "" {
+			if appErr.Tag == tagShaderCompileFailed && appErr.Metadata["program"] == "" {
 				t.Error("the error does not name the program")
 			}
 			// A failure leaves nothing behind in the driver.
@@ -236,7 +236,7 @@ func TestBindTextureUnitInvalid(t *testing.T) {
 	tex, _ := d.AcquireTexture(2, 2, TextureFormatUnspecified)
 	defer func() {
 		appErr, ok := errors.FromError(recoverError(recover()))
-		if !ok || appErr.Tag != "GLTextureUnitInvalid" || !appErr.HasRoute("Device.bindTextureID.GLTextureUnitInvalid") {
+		if !ok || appErr.Tag != tagGLTextureUnitInvalid || !appErr.HasRoute("Device.bindTextureID.GLTextureUnitInvalid") {
 			t.Errorf("expected GLTextureUnitInvalid, got %v", appErr)
 		}
 	}()
@@ -360,7 +360,7 @@ func TestTextureErrors(t *testing.T) {
 	d.ReleaseTexture(tex)
 	defer func() {
 		appErr, ok := errors.FromError(recoverError(recover()))
-		if !ok || appErr.Tag != "TextureReleased" || !appErr.HasRoute("Device.ReleaseTexture.TextureReleased") {
+		if !ok || appErr.Tag != tagTextureReleased || !appErr.HasRoute("Device.ReleaseTexture.TextureReleased") {
 			t.Errorf("expected TextureReleased, got %v", appErr)
 		}
 	}()
@@ -426,7 +426,7 @@ func TestBufferPool(t *testing.T) {
 	}
 	defer func() {
 		appErr, ok := errors.FromError(recoverError(recover()))
-		if !ok || appErr.Tag != "BufferReleased" || !appErr.HasRoute("Device.ReleaseBuffer.BufferReleased") {
+		if !ok || appErr.Tag != tagBufferReleased || !appErr.HasRoute("Device.ReleaseBuffer.BufferReleased") {
 			t.Errorf("expected BufferReleased, got %v", appErr)
 		}
 	}()
@@ -469,7 +469,7 @@ func TestFramebufferPool(t *testing.T) {
 	}
 	defer func() {
 		appErr, ok := errors.FromError(recoverError(recover()))
-		if !ok || appErr.Tag != "FramebufferReleased" || !appErr.HasRoute("Device.ReleaseFramebuffer.FramebufferReleased") {
+		if !ok || appErr.Tag != tagFramebufferReleased || !appErr.HasRoute("Device.ReleaseFramebuffer.FramebufferReleased") {
 			t.Errorf("expected FramebufferReleased, got %v", appErr)
 		}
 	}()
@@ -571,12 +571,12 @@ func TestConstantsMatchHeaders(t *testing.T) {
 }
 
 func TestExpandIncludes(t *testing.T) {
-	files := map[string]string{"a.glsl": "float a;\n", "b.glsl": "float b;"}
+	files := map[string]string{"shaders/a.glsl": "float a;\n", "shaders/b.glsl": "float b;"}
 	read := func(f string) ([]byte, error) {
 		if s, ok := files[f]; ok {
 			return []byte(s), nil
 		}
-		return nil, errors.New("Missing", "no such file")
+		return nil, errors.New(tagMissing, "no such file")
 	}
 	got, err := expandIncludes("p", "frag", "#version 300 es\n//#include \"a.glsl\"\nvoid main() {}\n  //#include \"b.glsl\"  \nend", read)
 	if err != nil {
@@ -677,3 +677,8 @@ func TestTextureEditsUseUnitZero(t *testing.T) {
 		})
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagMissing = "Missing"
+)

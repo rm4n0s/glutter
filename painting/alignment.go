@@ -514,7 +514,7 @@ type TextAlignVertical struct {
 // Flutter: painting/alignment.dart TextAlignVertical.new
 func NewTextAlignVertical(y float64) TextAlignVertical {
 	if foundation.DebugMode && !(y >= -1 && y <= 1) {
-		panic(errors.New("TextAlignVerticalOutOfRange", "y must be between -1.0 and 1.0", "y", y))
+		panic(errors.New(tagTextAlignVerticalOutOfRange, "y must be between -1.0 and 1.0", "y", y))
 	}
 	return TextAlignVertical{y}
 }
@@ -541,3 +541,8 @@ var (
 func (a TextAlignVertical) String() string {
 	return "TextAlignVertical(y: " + dartfmt.Double(a.Y) + ")"
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagTextAlignVerticalOutOfRange = "TextAlignVerticalOutOfRange"
+)

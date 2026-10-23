@@ -54,7 +54,7 @@ func (k *LayerLink) unregisterLeader(leader *LeaderLayer) {
 	}
 	if foundation.DebugMode {
 		if _, ok := k.previousLeaders[leader]; !ok {
-			panic(errors.New("LayerLinkLeaderUnknown", "the leader was not registered with the link"))
+			panic(errors.New(tagLayerLinkLeaderUnknown, "the leader was not registered with the link"))
 		}
 		delete(k.previousLeaders, leader)
 	}
@@ -378,17 +378,17 @@ func (l *FollowerLayer) establishTransform() {
 		return
 	}
 	if foundation.DebugMode && leader.owner != l.owner {
-		panic(errors.New("FollowerLayerLeaderOwner", "the linked LeaderLayer anchor is not in the same layer tree as the FollowerLayer"))
+		panic(errors.New(tagFollowerLayerLeaderOwner, "the linked LeaderLayer anchor is not in the same layer tree as the FollowerLayer"))
 	}
 	forward := []ContainerLayerLike{leader}
 	inverse := []ContainerLayerLike{l.self.(ContainerLayerLike)}
 	ancestor := pathsToCommonAncestor(leader, l.self, &forward, &inverse)
 	if foundation.DebugMode {
 		if ancestor == nil {
-			panic(errors.New("FollowerLayerNoCommonAncestor", "the LeaderLayer and the FollowerLayer do not have a common ancestor"))
+			panic(errors.New(tagFollowerLayerNoCommonAncestor, "the LeaderLayer and the FollowerLayer do not have a common ancestor"))
 		}
 		if !debugCheckLeaderBeforeFollower(forward, inverse) {
-			panic(errors.New("FollowerLayerLeaderAfterFollower",
+			panic(errors.New(tagFollowerLayerLeaderAfterFollower,
 				"the LeaderLayer anchor must come before the FollowerLayer in paint order, but the reverse was true"))
 		}
 	}
@@ -456,3 +456,11 @@ func (l *FollowerLayer) DebugFillProperties(p *foundation.DiagnosticPropertiesBu
 	p.Add(foundation.NewDiagnosticsProperty("link", l.Link))
 	p.Add(painting.NewTransformProperty("transform", l.LastTransform(), foundation.DiagnosticsPropertyOpts{DefaultValue: foundation.DefaultNull}))
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagFollowerLayerLeaderAfterFollower = "FollowerLayerLeaderAfterFollower"
+	tagFollowerLayerLeaderOwner         = "FollowerLayerLeaderOwner"
+	tagFollowerLayerNoCommonAncestor    = "FollowerLayerNoCommonAncestor"
+	tagLayerLinkLeaderUnknown           = "LayerLinkLeaderUnknown"
+)

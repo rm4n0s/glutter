@@ -32,11 +32,11 @@ type scanMatcher struct {
 }
 
 // defaultCacheDir is $XDG_CACHE_HOME/glutter/fonts, with ~/.cache for the
-// XDG_CACHE_HOME that is not set.
+// XDG_CACHE_HOME that is not set. It fails with FontScanFailed.
 func defaultCacheDir() (string, error) {
 	base, err := os.UserCacheDir()
 	if err != nil {
-		return "", err
+		return "", errors.NewErr(tagFontScanFailed, err)
 	}
 	return filepath.Join(base, "glutter", "fonts"), nil
 }
@@ -47,23 +47,23 @@ func newScanMatcher(cacheDir string, logger fontscan.Logger) (*scanMatcher, erro
 	if cacheDir == "" {
 		dir, err := defaultCacheDir()
 		if err != nil {
-			return nil, errors.NewErr("FontScanFailed", err)
+			return nil, err
 		}
 		cacheDir = dir
 	}
 	if err := os.MkdirAll(cacheDir, 0o700); err != nil {
-		return nil, errors.NewErr("FontScanFailed", err).SetMetadata("cacheDir", cacheDir)
+		return nil, errors.NewErr(tagFontScanFailed, err).SetMetadata("cacheDir", cacheDir)
 	}
 	if logger == nil {
 		logger = discardLogger{}
 	}
 	footprints, err := fontscan.SystemFonts(logger, cacheDir)
 	if err != nil {
-		return nil, errors.NewErr("FontScanFailed", err).SetMetadata("cacheDir", cacheDir)
+		return nil, errors.NewErr(tagFontScanFailed, err).SetMetadata("cacheDir", cacheDir)
 	}
 	fm := fontscan.NewFontMap(logger)
 	if err := fm.UseSystemFonts(cacheDir); err != nil {
-		return nil, errors.NewErr("FontScanFailed", err).SetMetadata("cacheDir", cacheDir)
+		return nil, errors.NewErr(tagFontScanFailed, err).SetMetadata("cacheDir", cacheDir)
 	}
 	return &scanMatcher{footprints: footprints, fm: fm}, nil
 }
@@ -73,7 +73,7 @@ func newScanMatcher(cacheDir string, logger fontscan.Logger) (*scanMatcher, erro
 // such as DejaVu Sans for sans-serif); then the font that covers the language.
 func (s *scanMatcher) Match(ctx context.Context, family string, weight int, italic bool, lang string) ([]FontFile, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, errors.NewErr("FontMatchCanceled", err).SetMetadata("family", family)
+		return nil, errors.NewErr(tagFontMatchCanceled, err).SetMetadata("family", family)
 	}
 	aspect := font.Aspect{Style: font.StyleNormal, Weight: font.Weight(weight), Stretch: font.StretchNormal}
 	if italic {
@@ -125,7 +125,7 @@ func (s *scanMatcher) Match(ctx context.Context, family string, weight int, ital
 // rune and the families it substitutes for the requested one).
 func (s *scanMatcher) Fallback(ctx context.Context, family string, weight int, italic bool, lang string, r rune) (FontFile, bool, error) {
 	if err := ctx.Err(); err != nil {
-		return FontFile{}, false, errors.NewErr("FontMatchCanceled", err).SetMetadata("family", family)
+		return FontFile{}, false, errors.NewErr(tagFontMatchCanceled, err).SetMetadata("family", family)
 	}
 	aspect := font.Aspect{Style: font.StyleNormal, Weight: font.Weight(weight), Stretch: font.StretchNormal}
 	if italic {
@@ -160,7 +160,7 @@ func (s *scanMatcher) Fallback(ctx context.Context, family string, weight int, i
 // from the first file of the family (only the name table is read).
 func (s *scanMatcher) Families(ctx context.Context) ([]string, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, errors.NewErr("FontMatchCanceled", err)
+		return nil, errors.NewErr(tagFontMatchCanceled, err)
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -209,7 +209,7 @@ const probeFamily = "glutter-probe-family-with-no-font"
 // family, when it is not the font that it gives for a name nothing mentions (its default).
 func (s *scanMatcher) Aliases(ctx context.Context, family string) ([]string, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, errors.NewErr("FontMatchCanceled", err).SetMetadata("family", family)
+		return nil, errors.NewErr(tagFontMatchCanceled, err).SetMetadata("family", family)
 	}
 	regular := font.Aspect{Style: font.StyleNormal, Weight: 400, Stretch: font.StretchNormal}
 	s.mu.Lock()
@@ -242,3 +242,8 @@ func aspectDistance(have, want font.Aspect) float32 {
 	}
 	return float32(d)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagFontScanFailed = "FontScanFailed"
+)

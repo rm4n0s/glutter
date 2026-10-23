@@ -99,7 +99,7 @@ func (c *ImageCache) MaximumSize() int { return c.maximumSize }
 // Flutter: painting/image_cache.dart ImageCache.maximumSize
 func (c *ImageCache) SetMaximumSize(value int) {
 	if foundation.DebugMode && value < 0 {
-		panic(errors.New("ImageCacheSizeInvalid", "the maximum size of the image cache must not be negative", "value", value))
+		panic(errors.New(tagImageCacheSizeInvalid, "the maximum size of the image cache must not be negative", "value", value))
 	}
 	if value == c.maximumSize {
 		return
@@ -129,7 +129,7 @@ func (c *ImageCache) MaximumSizeBytes() int { return c.maximumSizeBytes }
 // Flutter: painting/image_cache.dart ImageCache.maximumSizeBytes
 func (c *ImageCache) SetMaximumSizeBytes(value int) {
 	if foundation.DebugMode && value < 0 {
-		panic(errors.New("ImageCacheSizeInvalid", "the maximum size in bytes of the image cache must not be negative", "value", value))
+		panic(errors.New(tagImageCacheSizeInvalid, "the maximum size in bytes of the image cache must not be negative", "value", value))
 	}
 	if value == c.maximumSizeBytes {
 		return
@@ -412,3 +412,8 @@ type pendingImage struct {
 }
 
 func (p *pendingImage) removeListener() { p.completer.RemoveListener(p.listener) }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagImageCacheSizeInvalid = "ImageCacheSizeInvalid"
+)

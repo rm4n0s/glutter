@@ -540,7 +540,7 @@ func (b *WidgetsBinding) WindowingOwner() *WindowingOwner { return b.windowing }
 // debugCheckConstraints panics when the size does not satisfy the constraints.
 func debugCheckConstraints(size ui.Size, constraints foundation.Opt[rendering.BoxConstraints]) {
 	if c, ok := constraints.Get(); ok && foundation.DebugMode && !c.IsSatisfiedBy(size) {
-		panic(errors.New("WindowSizeViolatesConstraints", "the size of a window must satisfy its constraints",
+		panic(errors.New(tagWindowSizeViolatesConstraints, "the size of a window must satisfy its constraints",
 			"size", size.String(), "constraints", c.String()))
 	}
 }
@@ -603,7 +603,7 @@ func (o *WindowingOwner) CreateDialogWindowController(size ui.Size, opts ...Dial
 	if opt.Parent != nil {
 		parent = opt.Parent.windowBase()
 		if parent.destroyed {
-			return nil, errors.New("WindowParentDestroyed", "the parent of a dialog window was destroyed")
+			return nil, errors.New(tagWindowParentDestroyed, "the parent of a dialog window was destroyed")
 		}
 		spec.Parent, spec.HasParent = parent.view.ViewID(), true
 	}
@@ -681,3 +681,9 @@ func (o *WindowingOwner) handleCloseRequested(view ui.ViewID) bool {
 	}
 	return false
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagWindowParentDestroyed         = "WindowParentDestroyed"
+	tagWindowSizeViolatesConstraints = "WindowSizeViolatesConstraints"
+)

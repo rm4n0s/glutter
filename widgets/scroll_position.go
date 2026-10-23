@@ -454,13 +454,13 @@ func (b *ScrollPositionBase) Absorb(other ScrollPosition) {
 	if foundation.DebugMode {
 		switch {
 		case ob.context != b.context:
-			panic(errors.New("ScrollPositionAbsorbInvalid", "a scroll position can only absorb the position of the same scroll context"))
+			panic(errors.New(tagScrollPositionAbsorbInvalid, "a scroll position can only absorb the position of the same scroll context"))
 		case b.pixels.IsSome():
-			panic(errors.New("ScrollPositionAbsorbInvalid", "a scroll position can only absorb another one before it has pixels"))
+			panic(errors.New(tagScrollPositionAbsorbInvalid, "a scroll position can only absorb another one before it has pixels"))
 		case b.activity != nil:
-			panic(errors.New("ScrollPositionAbsorbInvalid", "a scroll position can only absorb another one before it has an activity"))
+			panic(errors.New(tagScrollPositionAbsorbInvalid, "a scroll position can only absorb another one before it has an activity"))
 		case ob.activity == nil:
-			panic(errors.New("ScrollPositionAbsorbInvalid", "the scroll position to absorb has no activity"))
+			panic(errors.New(tagScrollPositionAbsorbInvalid, "the scroll position to absorb has no activity"))
 		}
 	}
 	if ob.HasContentDimensions() {
@@ -493,10 +493,10 @@ func (b *ScrollPositionBase) Absorb(other ScrollPosition) {
 func (b *ScrollPositionBase) SetPixels(newPixels float64) float64 {
 	if foundation.DebugMode {
 		if !b.pixels.IsSome() {
-			panic(errors.New("ScrollMetricsValueMissing", "setPixels was called before the position has pixels", "value", "pixels"))
+			panic(errors.New(tagScrollMetricsValueMissing, "setPixels was called before the position has pixels", "value", "pixels"))
 		}
 		if binding := b.widgetsBinding(); binding != nil && binding.Scheduler().SchedulerPhase() == scheduler.SchedulerPhasePersistentCallbacks {
-			panic(errors.New("ScrollPositionChangedDuringLayout",
+			panic(errors.New(tagScrollPositionChangedDuringLayout,
 				"A scrollable's position should not change during the build, layout, and paint phases, otherwise the rendering will be confused"))
 		}
 	}
@@ -505,7 +505,7 @@ func (b *ScrollPositionBase) SetPixels(newPixels float64) float64 {
 		if foundation.DebugMode {
 			delta := newPixels - b.Pixels()
 			if math.Abs(overscroll) > math.Abs(delta) {
-				panic(errors.New("ScrollOverscrollInvalid",
+				panic(errors.New(tagScrollOverscrollInvalid,
 					"applyBoundaryConditions returned invalid overscroll value; setPixels() was called to change the scroll offset and applyBoundaryConditions reported an overscroll that is greater than the delta",
 					"from", b.Pixels(), "to", newPixels, "delta", delta, "overscroll", overscroll))
 			}
@@ -541,7 +541,7 @@ func (b *ScrollPositionBase) CorrectPixels(value float64) { b.pixels = foundatio
 // Flutter: widgets/scroll_position.dart ScrollPosition.correctBy
 func (b *ScrollPositionBase) CorrectBy(correction float64) {
 	if foundation.DebugMode && !b.pixels.IsSome() {
-		panic(errors.New("ScrollMetricsValueMissing", "an initial pixels value must exist by calling correctPixels on the scroll position", "value", "pixels"))
+		panic(errors.New(tagScrollMetricsValueMissing, "an initial pixels value must exist by calling correctPixels on the scroll position", "value", "pixels"))
 	}
 	b.pixels = foundation.Some(b.pixels.Value() + correction)
 	b.didChangeViewportDimensionOrReceiveCorrection = true
@@ -605,7 +605,7 @@ func (b *ScrollPositionBase) RestoreOffset(offset float64, initialRestore bool) 
 // Flutter: widgets/scroll_position.dart ScrollPosition.saveOffset
 func (b *ScrollPositionBase) SaveOffset() {
 	if foundation.DebugMode && !b.HasPixels() {
-		panic(errors.New("ScrollMetricsValueMissing", "saveOffset was called before the position has pixels", "value", "pixels"))
+		panic(errors.New(tagScrollMetricsValueMissing, "saveOffset was called before the position has pixels", "value", "pixels"))
 	}
 	b.context.SaveOffset(b.Pixels())
 }
@@ -620,7 +620,7 @@ func (b *ScrollPositionBase) ApplyBoundaryConditions(value float64) float64 {
 	if foundation.DebugMode {
 		delta := value - b.Pixels()
 		if math.Abs(result) > math.Abs(delta) {
-			panic(errors.New("ScrollPhysicsOverscrollInvalid",
+			panic(errors.New(tagScrollPhysicsOverscrollInvalid,
 				"applyBoundaryConditions returned invalid overscroll value; it returned an overscroll that has a greater magnitude than the delta; it is only supposed to reduce the possible range of movement, not increase it",
 				"physics", foundation.RuntimeTypeName(b.physics), "from", b.Pixels(), "to", value, "overscroll", result,
 				"minScrollExtent", b.MinScrollExtent(), "maxScrollExtent", b.MaxScrollExtent(), "viewportDimension", b.ViewportDimension()))
@@ -667,7 +667,7 @@ func (b *ScrollPositionBase) ApplyContentDimensions(minScrollExtent, maxScrollEx
 		b.didChangeViewportDimensionOrReceiveCorrection ||
 		!b.lastAxis.IsSome() || b.lastAxis.Value() != b.self.Axis() {
 		if foundation.DebugMode && minScrollExtent > maxScrollExtent {
-			panic(errors.New("ScrollPositionExtentsInvalid", "the minimum scroll extent must not be past the maximum",
+			panic(errors.New(tagScrollPositionExtentsInvalid, "the minimum scroll extent must not be past the maximum",
 				"minScrollExtent", minScrollExtent, "maxScrollExtent", maxScrollExtent))
 		}
 		b.minScrollExtent = foundation.Some(minScrollExtent)
@@ -689,7 +689,7 @@ func (b *ScrollPositionBase) ApplyContentDimensions(minScrollExtent, maxScrollEx
 		b.pendingDimensions = false
 	}
 	if foundation.DebugMode && b.didChangeViewportDimensionOrReceiveCorrection {
-		panic(errors.New("ScrollPositionCorrectionMissing", "use CorrectForNewDimensions() (and return true) to change the scroll offset during ApplyContentDimensions()"))
+		panic(errors.New(tagScrollPositionCorrectionMissing, "use CorrectForNewDimensions() (and return true) to change the scroll offset during ApplyContentDimensions()"))
 	}
 	if b.isMetricsChanged() {
 		// It is too late to send useful notifications, because the potential
@@ -782,7 +782,7 @@ func (b *ScrollPositionBase) applyAxisDirectionToAlignmentPolicy(p ScrollPositio
 func (b *ScrollPositionBase) EnsureVisible(object rendering.RenderObject, opts ...EnsureVisibleOpts) *scheduler.TickerFuture {
 	o := firstOpts(opts)
 	if foundation.DebugMode && !object.Attached() {
-		panic(errors.New("ScrollEnsureVisibleDetached", "the object to make visible must be attached"))
+		panic(errors.New(tagScrollEnsureVisibleDetached, "the object to make visible must be attached"))
 	}
 	viewport := rendering.RenderAbstractViewportMaybeOf(object)
 	if isNil(viewport) {
@@ -903,7 +903,7 @@ func (b *ScrollPositionBase) DidEndScroll() {
 // Flutter: widgets/scroll_position.dart ScrollPosition.didOverscrollBy
 func (b *ScrollPositionBase) DidOverscrollBy(value float64) {
 	if foundation.DebugMode && !b.activity.IsScrolling() {
-		panic(errors.New("ScrollOverscrollWhileIdle", "a position overscrolled while its activity was not scrolling", "overscroll", value))
+		panic(errors.New(tagScrollOverscrollWhileIdle, "a position overscrolled while its activity was not scrolling", "overscroll", value))
 	}
 	b.activity.DispatchOverscrollNotification(b.self.CopyWith(), b.context.NotificationContext(), value)
 }
@@ -923,10 +923,10 @@ func (b *ScrollPositionBase) DidUpdateScrollDirection(direction rendering.Scroll
 func (b *ScrollPositionBase) DidUpdateScrollMetrics() {
 	if foundation.DebugMode {
 		if binding := b.widgetsBinding(); binding != nil && binding.Scheduler().SchedulerPhase() == scheduler.SchedulerPhasePersistentCallbacks {
-			panic(errors.New("ScrollPositionChangedDuringLayout", "didUpdateScrollMetrics was called during the build, layout or paint phase"))
+			panic(errors.New(tagScrollPositionChangedDuringLayout, "didUpdateScrollMetrics was called during the build, layout or paint phase"))
 		}
 		if !b.haveScheduledUpdateNotification {
-			panic(errors.New("ScrollMetricsNotificationUnscheduled", "didUpdateScrollMetrics was called without a notification being scheduled"))
+			panic(errors.New(tagScrollMetricsNotificationUnscheduled, "didUpdateScrollMetrics was called without a notification being scheduled"))
 		}
 	}
 	b.haveScheduledUpdateNotification = false
@@ -994,18 +994,15 @@ func (b *ScrollPositionBase) String() string {
 	return foundation.DescribeIdentity(b.self) + "(" + strings.Join(b.self.DebugFillDescription(nil), ", ") + ")"
 }
 
-func scrollNotScrollingError() error {
-	return errors.New("ScrollPositionNotScrolling", "setPixels was called while the activity of the position is not scrolling")
-}
-
-func scrollAbsorbDragError() error {
-	return errors.New("ScrollPositionDragInvalid", "the scroll position has a drag already")
-}
-
-func scrollActivityDelegateError() error {
-	return errors.New("ScrollActivityDelegateInvalid", "the delegate of the new activity must be the position that begins it")
-}
-
-func scrollNoPixelsError() error {
-	return errors.New("ScrollMetricsValueMissing", "goBallistic was called before the position has pixels", "value", "pixels")
-}
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagScrollEnsureVisibleDetached          = "ScrollEnsureVisibleDetached"
+	tagScrollMetricsNotificationUnscheduled = "ScrollMetricsNotificationUnscheduled"
+	tagScrollOverscrollInvalid              = "ScrollOverscrollInvalid"
+	tagScrollOverscrollWhileIdle            = "ScrollOverscrollWhileIdle"
+	tagScrollPhysicsOverscrollInvalid       = "ScrollPhysicsOverscrollInvalid"
+	tagScrollPositionAbsorbInvalid          = "ScrollPositionAbsorbInvalid"
+	tagScrollPositionChangedDuringLayout    = "ScrollPositionChangedDuringLayout"
+	tagScrollPositionCorrectionMissing      = "ScrollPositionCorrectionMissing"
+	tagScrollPositionExtentsInvalid         = "ScrollPositionExtentsInvalid"
+)

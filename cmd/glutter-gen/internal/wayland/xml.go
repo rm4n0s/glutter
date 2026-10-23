@@ -78,7 +78,7 @@ const (
 func parseProtocol(data []byte, file string) (*protocol, error) {
 	p := new(protocol)
 	if err := xml.Unmarshal(data, p); err != nil {
-		return nil, errors.NewErr("WaylandXMLParseFailed", err).SetMetadata("file", file)
+		return nil, errors.NewErr(tagWaylandXMLParseFailed, err).SetMetadata("file", file)
 	}
 	p.file = file
 	for _, i := range p.Interfaces {
@@ -107,7 +107,7 @@ func newRegistry(protocols []*protocol) (*registry, error) {
 	for _, p := range protocols {
 		for _, i := range p.Interfaces {
 			if other, dup := r.ifaces[i.Name]; dup {
-				return nil, errors.New("WaylandXMLInvalid", "interface defined twice",
+				return nil, errors.New(tagWaylandXMLInvalid, "interface defined twice",
 					"interface", i.Name, "file", p.file, "otherFile", other.proto.file)
 			}
 			r.ifaces[i.Name] = i
@@ -137,7 +137,7 @@ func (r *registry) check(i *iface) error {
 				case typeObject, typeNewID:
 					if a.Interface != "" {
 						if _, ok := r.ifaces[a.Interface]; !ok {
-							return errors.New("WaylandXMLInvalid", "argument refers to an interface that no protocol defines",
+							return errors.New(tagWaylandXMLInvalid, "argument refers to an interface that no protocol defines",
 								append(where, "refers", a.Interface)...)
 						}
 					}
@@ -145,24 +145,24 @@ func (r *registry) check(i *iface) error {
 						newIDs++
 					}
 				default:
-					return errors.New("WaylandXMLInvalid", "unknown argument type", append(where, "type", a.Type)...)
+					return errors.New(tagWaylandXMLInvalid, "unknown argument type", append(where, "type", a.Type)...)
 				}
 				if a.Enum != "" {
 					if a.Type != typeInt && a.Type != typeUint {
-						return errors.New("WaylandXMLInvalid", "only int and uint arguments can have an enum", where...)
+						return errors.New(tagWaylandXMLInvalid, "only int and uint arguments can have an enum", where...)
 					}
 					if _, _, ok := r.findEnum(i, a.Enum); !ok {
-						return errors.New("WaylandXMLInvalid", "argument refers to an enum that no protocol defines",
+						return errors.New(tagWaylandXMLInvalid, "argument refers to an enum that no protocol defines",
 							append(where, "enum", a.Enum)...)
 					}
 				}
 			}
 			if newIDs > 1 {
-				return errors.New("WaylandXMLInvalid", "a message with more than one new_id argument is not supported",
+				return errors.New(tagWaylandXMLInvalid, "a message with more than one new_id argument is not supported",
 					"file", i.proto.file, "interface", i.Name, kind.name, m.Name)
 			}
 			if kind.name == "request" && m.Type != "" && m.Type != "destructor" {
-				return errors.New("WaylandXMLInvalid", "unknown request type",
+				return errors.New(tagWaylandXMLInvalid, "unknown request type",
 					"file", i.proto.file, "interface", i.Name, "request", m.Name, "type", m.Type)
 			}
 		}
@@ -191,3 +191,9 @@ func (r *registry) findEnum(from *iface, ref string) (owner *iface, e *enum, ok 
 	}
 	return nil, nil, false
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagWaylandXMLInvalid     = "WaylandXMLInvalid"
+	tagWaylandXMLParseFailed = "WaylandXMLParseFailed"
+)

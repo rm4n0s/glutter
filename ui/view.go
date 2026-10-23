@@ -171,7 +171,7 @@ func (v *View) Render(scene *Scene) error {
 		return nil
 	}
 	if v.d.host == nil {
-		return errors.New("PlatformHostMissing", "the dispatcher has no engine to render with", "view", int64(v.id))
+		return errors.New(tagPlatformHostMissing, "the dispatcher has no engine to render with", "view", int64(v.id))
 	}
 	return v.d.host.RenderView(v.id, scene)
 }
@@ -185,3 +185,8 @@ func (v *View) UpdateSemantics(update *SemanticsUpdate) {
 		h.UpdateSemantics(v.id, update)
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagPlatformHostMissing = "PlatformHostMissing"
+)

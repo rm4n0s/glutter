@@ -36,7 +36,7 @@ type Curve interface {
 
 func assertCurveParameter(t float64) {
 	if foundation.DebugMode && !(t >= 0 && t <= 1) {
-		panic(errors.New("CurveParameterOutOfRange", fmt.Sprintf("parametric value %v is outside of [0, 1] range", t), "t", t))
+		panic(errors.New(tagCurveParameterOutOfRange, fmt.Sprintf("parametric value %v is outside of [0, 1] range", t), "t", t))
 	}
 }
 
@@ -134,7 +134,7 @@ func NewInterval(begin, end float64, curve ...Curve) Interval {
 
 func (c Interval) transformInternal(t float64) float64 {
 	if foundation.DebugMode && !(c.Begin >= 0 && c.Begin <= 1 && c.End >= 0 && c.End <= 1 && c.End >= c.Begin) {
-		panic(errors.New("IntervalInvalid", "the begin and end of an Interval must be in 0 to 1, with the end not before the begin", "begin", c.Begin, "end", c.End))
+		panic(errors.New(tagIntervalInvalid, "the begin and end of an Interval must be in 0 to 1, with the end not before the begin", "begin", c.Begin, "end", c.End))
 	}
 	t = ui.ClampDouble((t-c.Begin)/(c.End-c.Begin), 0, 1)
 	if t == 0 || t == 1 {
@@ -206,7 +206,7 @@ func NewSplit(split float64, opts ...SplitOpts) Split {
 func (c Split) Transform(t float64) float64 {
 	assertCurveParameter(t)
 	if foundation.DebugMode && !(c.Split >= 0 && c.Split <= 1) {
-		panic(errors.New("SplitInvalid", "the split of a Split curve must be in 0 to 1", "split", c.Split))
+		panic(errors.New(tagSplitInvalid, "the split of a Split curve must be in 0 to 1", "split", c.Split))
 	}
 	if t == 0 || t == 1 {
 		return t
@@ -244,7 +244,7 @@ func NewThreshold(threshold float64) Threshold { return Threshold{threshold} }
 
 func (c Threshold) transformInternal(t float64) float64 {
 	if foundation.DebugMode && !(c.Threshold >= 0 && c.Threshold <= 1) {
-		panic(errors.New("ThresholdInvalid", "the threshold must be in 0 to 1", "threshold", c.Threshold))
+		panic(errors.New(tagThresholdInvalid, "the threshold must be in 0 to 1", "threshold", c.Threshold))
 	}
 	if t < c.Threshold {
 		return 0
@@ -286,7 +286,7 @@ func evaluateCubic(a, b, m float64) float64 {
 
 func (c Cubic) transformInternal(t float64) float64 {
 	if math.IsNaN(t) {
-		panic(errors.New("CubicNaN", "the parameter t of a Cubic must not be NaN"))
+		panic(errors.New(tagCubicNaN, "the parameter t of a Cubic must not be NaN"))
 	}
 	if t <= 0 {
 		return 0
@@ -444,7 +444,7 @@ func Curve2DGenerateSamples(c Curve2D, opts ...Curve2DGenerateSamplesOpts) []Cur
 		o.Tolerance = 1e-10
 	}
 	if !(o.End > o.Start) {
-		panic(errors.New("Curve2DRangeInvalid", "the end of the range must be after its start", "start", o.Start, "end", o.End))
+		panic(errors.New(tagCurve2DRangeInvalid, "the end of the range must be after its start", "start", o.Start, "end", o.End))
 	}
 	seed := 0
 	if s, ok := c.(samplingSeeder); ok {
@@ -529,10 +529,10 @@ func assertSplineArguments(controlPoints []ui.Offset, tension float64) {
 		return
 	}
 	if tension > 1 || tension < 0 {
-		panic(errors.New("CatmullRomSplineInvalid", fmt.Sprintf("tension %v must be from 0 to 1", tension), "tension", tension))
+		panic(errors.New(tagCatmullRomSplineInvalid, fmt.Sprintf("tension %v must be from 0 to 1", tension), "tension", tension))
 	}
 	if len(controlPoints) <= 3 {
-		panic(errors.New("CatmullRomSplineInvalid", "there must be at least four control points to create a CatmullRomSpline", "count", len(controlPoints)))
+		panic(errors.New(tagCatmullRomSplineInvalid, "there must be at least four control points to create a CatmullRomSpline", "count", len(controlPoints)))
 	}
 }
 
@@ -560,14 +560,14 @@ func NewCatmullRomSplinePrecompute(controlPoints []ui.Offset, opts ...CatmullRom
 func computeSplineSegments(controlPoints []ui.Offset, tension float64, startHandle, endHandle foundation.Opt[ui.Offset]) [][]ui.Offset {
 	if foundation.DebugMode {
 		if h, ok := startHandle.Get(); ok && !h.IsFinite() {
-			panic(errors.New("CatmullRomSplineInvalid", fmt.Sprintf("the provided startHandle of CatmullRomSpline must be finite; it was %v", h)))
+			panic(errors.New(tagCatmullRomSplineInvalid, fmt.Sprintf("the provided startHandle of CatmullRomSpline must be finite; it was %v", h)))
 		}
 		if h, ok := endHandle.Get(); ok && !h.IsFinite() {
-			panic(errors.New("CatmullRomSplineInvalid", fmt.Sprintf("the provided endHandle of CatmullRomSpline must be finite; it was %v", h)))
+			panic(errors.New(tagCatmullRomSplineInvalid, fmt.Sprintf("the provided endHandle of CatmullRomSpline must be finite; it was %v", h)))
 		}
 		for i, p := range controlPoints {
 			if !p.IsFinite() {
-				panic(errors.New("CatmullRomSplineInvalid", fmt.Sprintf("the provided CatmullRomSpline control point at index %d is not finite; it was %v", i, p)))
+				panic(errors.New(tagCatmullRomSplineInvalid, fmt.Sprintf("the provided CatmullRomSpline control point at index %d is not finite; it was %v", i, p)))
 			}
 		}
 	}
@@ -653,7 +653,7 @@ func assertCatmullRomPoints(points []ui.Offset, tension float64) {
 	}
 	var reasons []string
 	if !CatmullRomCurveValidateControlPoints(points, tension, &reasons) {
-		panic(errors.New("CatmullRomCurveInvalid", fmt.Sprintf("control points %v could not be validated:\n  %s", points, strings.Join(reasons, "\n  ")),
+		panic(errors.New(tagCatmullRomCurveInvalid, fmt.Sprintf("control points %v could not be validated:\n  %s", points, strings.Join(reasons, "\n  ")),
 			"reasons", strings.Join(reasons, "; ")))
 	}
 }
@@ -1112,3 +1112,15 @@ var Curves = CurvesCollection{
 	ElasticOut:     ElasticOutCurve{0.4},
 	ElasticInOut:   ElasticInOutCurve{0.4},
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagCatmullRomCurveInvalid   = "CatmullRomCurveInvalid"
+	tagCatmullRomSplineInvalid  = "CatmullRomSplineInvalid"
+	tagCubicNaN                 = "CubicNaN"
+	tagCurve2DRangeInvalid      = "Curve2DRangeInvalid"
+	tagCurveParameterOutOfRange = "CurveParameterOutOfRange"
+	tagIntervalInvalid          = "IntervalInvalid"
+	tagSplitInvalid             = "SplitInvalid"
+	tagThresholdInvalid         = "ThresholdInvalid"
+)

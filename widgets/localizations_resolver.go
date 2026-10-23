@@ -287,8 +287,13 @@ func (r *LocalizationsResolver) debugCheckLocalizations(locale ui.Locale) {
 	for _, l := range r.supportedLocales {
 		supported = append(supported, l.String())
 	}
-	r.binding.ErrorReporter()(errors.New("LocaleNotSupported",
+	r.binding.ErrorReporter()(errors.New(tagLocaleNotSupported,
 		"this application's locale, "+locale.String()+", is not supported by all of its localization delegates",
 		"unsupported", strings.Join(types, "\n"),
 		"supportedLocales", strings.Join(supported, ", ")))
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagLocaleNotSupported = "LocaleNotSupported"
+)

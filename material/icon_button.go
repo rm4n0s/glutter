@@ -112,7 +112,7 @@ func newIconButton(onPressed func(), icon widgets.Widget, variant iconButtonVari
 	o := firstOpts(opts)
 	if foundation.DebugMode {
 		if r, ok := o.SplashRadius.Get(); ok && !(r > 0) {
-			panic(errors.New("IconButtonSplashRadius", "the splash radius of an IconButton must be greater than zero", "splashRadius", r))
+			panic(errors.New(tagIconButtonSplashRadius, "the splash radius of an IconButton must be greater than zero", "splashRadius", r))
 		}
 	}
 	return &IconButton{StatelessWidget: widgets.NewStatelessWidgetBase(widgets.WidgetOpts{Key: o.Key}), onPressed: onPressed, icon: icon, o: o, variant: variant}
@@ -687,3 +687,8 @@ func iconButtonDefaultsM3(bc widgets.BuildContext, variant iconButtonVariant, to
 	}
 	return s
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagIconButtonSplashRadius = "IconButtonSplashRadius"
+)

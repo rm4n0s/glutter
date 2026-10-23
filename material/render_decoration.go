@@ -437,7 +437,7 @@ func (r *renderDecoration) computeSubtextSizes(constraints rendering.BoxConstrai
 // Flutter: material/input_decorator.dart _RenderDecoration._layout
 func (r *renderDecoration) layout(constraints rendering.BoxConstraints, layoutChild rendering.ChildLayouter, getBaseline baselineGetter) decorationLayout {
 	if foundation.DebugMode && !(constraints.MaxWidth < math.Inf(1)) {
-		panic(errors.New("InputDecoratorUnboundedWidth",
+		panic(errors.New(tagInputDecoratorUnboundedWidth,
 			"an InputDecorator, which is typically created by a TextField, cannot have an unbounded width; this happens when the parent widget does not provide a finite width constraint, for example if the InputDecorator is contained by a Row: an Expanded widget or a SizedBox can be used to constrain the width of the InputDecorator or the TextField that contains it"))
 	}
 	boxConstraints := constraints.Loosen()
@@ -1185,3 +1185,8 @@ func (r *renderDecoration) Dispose() {
 	r.SetLayer(nil)
 	r.RenderBox.Dispose()
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagInputDecoratorUnboundedWidth = "InputDecoratorUnboundedWidth"
+)

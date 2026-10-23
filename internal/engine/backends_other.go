@@ -15,7 +15,7 @@ import (
 
 // connectDisplay fails: this build has no platform backend.
 func connectDisplay(*Config, func(string) string, *slog.Logger) (connection, error) {
-	return nil, errors.New("BackendUnavailable", "this build has no platform backend for this operating system")
+	return nil, errors.New(tagBackendUnavailable, "this build has no platform backend for this operating system")
 }
 
 // processStart says it does not know when the process started.
@@ -28,3 +28,8 @@ func rendererCandidates() []rendererCandidate { return nil }
 //
 // Flutter: no counterpart
 func SystemFontMatcher(context.Context, *slog.Logger) text.Matcher { return nil }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagBackendUnavailable = "BackendUnavailable"
+)

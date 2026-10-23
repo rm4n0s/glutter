@@ -809,7 +809,7 @@ func TestDisplaySettingsFromXSettingsFollowTheDaemon(t *testing.T) {
 	var s platform.Settings
 	e.onLoop(func() {
 		// No portal: the settings come from XSETTINGS and the environment.
-		e.p.settings.Open = func(context.Context) (dbus.Bus, error) { return nil, errors.New("NoBus", "the test has no bus") }
+		e.p.settings.Open = func(context.Context) (dbus.Bus, error) { return nil, errors.New(tagNoBus, "the test has no bus") }
 		s = e.p.Settings()
 	})
 	if s.PlatformBrightness != ui.BrightnessDark || s.CursorTheme != "Bibata" || s.CursorSize != 36 {
@@ -941,7 +941,7 @@ func TestDisplayDragNobodyTakes(t *testing.T) {
 	waitFor(t, func() bool { return len(e.h.dropEvents()) >= 1 }, "the window never heard of the drag")
 	var err error
 	e.onLoop(func() { err = e.win.StartDrag(ui.DragRequest{ID: 4, Text: "y"}) })
-	if appErr, ok := errors.FromError(err); !ok || appErr.Tag != "DragInProgress" {
+	if appErr, ok := errors.FromError(err); !ok || appErr.Tag != tagDragInProgress {
 		t.Errorf("a second drag: %v", err)
 	}
 	e.onLoop(func() { source.onMotion(1270, 790); source.onRelease() })
@@ -955,7 +955,7 @@ func TestDisplayDragNobodyTakes(t *testing.T) {
 	}, "the window never heard the drag leave")
 	e.onLoop(func() { e.p.input.buttonsDown = 0 })
 	e.onLoop(func() { err = e.win.StartDrag(ui.DragRequest{ID: 5, Text: "z"}) })
-	if appErr, ok := errors.FromError(err); !ok || appErr.Tag != "DragNoButton" {
+	if appErr, ok := errors.FromError(err); !ok || appErr.Tag != tagDragNoButton {
 		t.Errorf("a drag without a button: %v", err)
 	}
 }
@@ -971,7 +971,12 @@ func TestDisplayDragFromAClosedWindowFails(t *testing.T) {
 		err = e.p.xdnd.startDrag(w, ui.DragRequest{ID: 1, Text: "x"})
 	})
 	appErr, ok := errors.FromError(err)
-	if !ok || appErr.Tag != "DragSelectionFailed" || !appErr.HasRoute("xdnd.startDrag.DragSelectionFailed") {
+	if !ok || appErr.Tag != tagDragSelectionFailed || !appErr.HasRoute("xdnd.startDrag.DragSelectionFailed") {
 		t.Errorf("err = %v", err)
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagNoBus = "NoBus"
+)

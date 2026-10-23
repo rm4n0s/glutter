@@ -339,7 +339,7 @@ func (r *GestureRecognizerBase) IsPointerPanZoomAllowed(event *PointerPanZoomSta
 func (r *GestureRecognizerBase) GetKindForPointer(pointer int) ui.PointerDeviceKind {
 	data, ok := r.pointerToEventData[pointer]
 	if foundation.DebugMode && !ok {
-		panic(errors.New("RecognizerPointerUnknown", "the pointer was not added to the recognizer", "pointer", pointer))
+		panic(errors.New(tagRecognizerPointerUnknown, "the pointer was not added to the recognizer", "pointer", pointer))
 	}
 	return data.kind
 }
@@ -351,7 +351,7 @@ func (r *GestureRecognizerBase) GetKindForPointer(pointer int) ui.PointerDeviceK
 func (r *GestureRecognizerBase) GetButtonsForPointer(pointer int) int {
 	data, ok := r.pointerToEventData[pointer]
 	if foundation.DebugMode && !ok {
-		panic(errors.New("RecognizerPointerUnknown", "the pointer was not added to the recognizer", "pointer", pointer))
+		panic(errors.New(tagRecognizerPointerUnknown, "the pointer was not added to the recognizer", "pointer", pointer))
 	}
 	return data.buttons
 }
@@ -528,7 +528,7 @@ func (r *OneSequenceGestureRecognizer) Dispose() {
 	}
 	r.trackedPointers = map[int]PointerRouteHandle{}
 	if foundation.DebugMode && len(r.entries) != 0 {
-		panic(errors.New("RecognizerEntriesLeft", "the recognizer still has arena entries after dispose"))
+		panic(errors.New(tagRecognizerEntriesLeft, "the recognizer still has arena entries after dispose"))
 	}
 	r.GestureRecognizerBase.Dispose()
 }
@@ -546,7 +546,7 @@ func (r *OneSequenceGestureRecognizer) Team() *GestureArenaTeam { return r.team 
 // Flutter: gestures/recognizer.dart OneSequenceGestureRecognizer.team
 func (r *OneSequenceGestureRecognizer) SetTeam(team *GestureArenaTeam) {
 	if foundation.DebugMode && (team == nil || len(r.entries) != 0 || len(r.trackedPointers) != 0 || r.team != nil) {
-		panic(errors.New("RecognizerTeamSetTwice",
+		panic(errors.New(tagRecognizerTeamSetTwice,
 			"the team must be set once, to a team, before any pointer is tracked"))
 	}
 	r.team = team
@@ -749,7 +749,7 @@ func (r *PrimaryPointerGestureRecognizer) InitPrimaryPointer(binding *GestureBin
 	if foundation.DebugMode {
 		for _, s := range []SlopTolerance{opts.PreAcceptSlopTolerance, opts.PostAcceptSlopTolerance} {
 			if s.kind == slopValue && s.value < 0 {
-				panic(errors.New("SlopToleranceNegative", "the slop tolerance must be unspecified, positive, or none",
+				panic(errors.New(tagSlopToleranceNegative, "the slop tolerance must be unspecified, positive, or none",
 					"value", s.value))
 			}
 		}
@@ -851,7 +851,7 @@ func (r *PrimaryPointerGestureRecognizer) HandleNonAllowedPointer(event *Pointer
 // Flutter: gestures/recognizer.dart PrimaryPointerGestureRecognizer.handleEvent
 func (r *PrimaryPointerGestureRecognizer) HandleEvent(event PointerEvent) {
 	if foundation.DebugMode && r.state == GestureRecognizerStateReady {
-		panic(errors.New("RecognizerEventWhileReady", "an event arrived while the recognizer is ready"))
+		panic(errors.New(tagRecognizerEventWhileReady, "an event arrived while the recognizer is ready"))
 	}
 	if primary, _ := r.primaryPointer.Get(); r.state == GestureRecognizerStatePossible && event.Pointer() == primary {
 		pre, hasPre := r.PreAcceptSlopTolerance().Get()
@@ -875,7 +875,7 @@ func (r *PrimaryPointerGestureRecognizer) HandleEvent(event PointerEvent) {
 // Flutter: gestures/recognizer.dart PrimaryPointerGestureRecognizer.didExceedDeadline
 func (r *PrimaryPointerGestureRecognizer) DidExceedDeadline() {
 	if foundation.DebugMode && r.deadline.IsSome() {
-		panic(errors.New("RecognizerNoDeadline", "a recognizer with a deadline must override DidExceedDeadline"))
+		panic(errors.New(tagRecognizerNoDeadline, "a recognizer with a deadline must override DidExceedDeadline"))
 	}
 }
 
@@ -911,7 +911,7 @@ func (r *PrimaryPointerGestureRecognizer) RejectGesture(pointer int) {
 // Flutter: gestures/recognizer.dart PrimaryPointerGestureRecognizer.didStopTrackingLastPointer
 func (r *PrimaryPointerGestureRecognizer) DidStopTrackingLastPointer(int) {
 	if foundation.DebugMode && r.state == GestureRecognizerStateReady {
-		panic(errors.New("RecognizerStoppedWhileReady", "the last pointer stopped while the recognizer is ready"))
+		panic(errors.New(tagRecognizerStoppedWhileReady, "the last pointer stopped while the recognizer is ready"))
 	}
 	r.stopTimer()
 	r.state = GestureRecognizerStateReady
@@ -997,3 +997,14 @@ func (p OffsetPair) Sub(other OffsetPair) OffsetPair {
 func (p OffsetPair) String() string {
 	return fmt.Sprintf("OffsetPair(local: %s, global: %s)", p.Local, p.Global)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagRecognizerEntriesLeft       = "RecognizerEntriesLeft"
+	tagRecognizerEventWhileReady   = "RecognizerEventWhileReady"
+	tagRecognizerNoDeadline        = "RecognizerNoDeadline"
+	tagRecognizerPointerUnknown    = "RecognizerPointerUnknown"
+	tagRecognizerStoppedWhileReady = "RecognizerStoppedWhileReady"
+	tagRecognizerTeamSetTwice      = "RecognizerTeamSetTwice"
+	tagSlopToleranceNegative       = "SlopToleranceNegative"
+)

@@ -443,7 +443,8 @@ func (d *PlatformDispatcher) SetClipboardText(ctx context.Context, text string, 
 		return
 	}
 	if done != nil {
-		d.Post(func() { done(errClipboardUnavailable()) })
+		err := errors.New(tagClipboardUnavailable, "the engine has no system clipboard")
+		d.Post(func() { done(err) })
 	}
 }
 
@@ -460,7 +461,8 @@ func (d *PlatformDispatcher) GetClipboardText(ctx context.Context, done func(tex
 		h.GetClipboardText(ctx, done)
 		return
 	}
-	d.Post(func() { done("", false, errClipboardUnavailable()) })
+	err := errors.New(tagClipboardUnavailable, "the engine has no system clipboard")
+	d.Post(func() { done("", false, err) })
 }
 
 // SetClipboard asks the engine to put the content on the selection of the kind
@@ -480,7 +482,8 @@ func (d *PlatformDispatcher) SetClipboard(ctx context.Context, kind ClipboardKin
 		return
 	}
 	if done != nil {
-		d.Post(func() { done(errClipboardUnavailable()) })
+		err := errors.New(tagClipboardUnavailable, "the engine has no system clipboard")
+		d.Post(func() { done(err) })
 	}
 }
 
@@ -501,11 +504,8 @@ func (d *PlatformDispatcher) GetClipboard(ctx context.Context, kind ClipboardKin
 		})
 		return
 	}
-	d.Post(func() { done(ClipboardContent{}, errClipboardUnavailable()) })
-}
-
-func errClipboardUnavailable() error {
-	return errors.New("ClipboardUnavailable", "the engine has no system clipboard")
+	err := errors.New(tagClipboardUnavailable, "the engine has no system clipboard")
+	d.Post(func() { done(ClipboardContent{}, err) })
 }
 
 // RequestAppExit asks the engine to end the app: the windows close and the
@@ -731,7 +731,7 @@ func (d *PlatformDispatcher) SetTextEngine(engine ParagraphFactory) { d.textEngi
 func (d *PlatformDispatcher) LoadFontFromList(list []byte, fontFamily string) error {
 	loader, ok := d.textEngine.(FontLoadingEngine)
 	if !ok {
-		return errors.New("FontLoadUnsupported", "the text engine cannot load fonts", "family", fontFamily)
+		return errors.New(tagFontLoadUnsupported, "the text engine cannot load fonts", "family", fontFamily)
 	}
 	if err := loader.LoadFontFromList(list, fontFamily); err != nil {
 		return err
@@ -830,3 +830,9 @@ func (d *PlatformDispatcher) SetSemanticsTreeEnabled(enabled bool) {
 		h.SetSemanticsTreeEnabled(enabled)
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagClipboardUnavailable = "ClipboardUnavailable"
+	tagFontLoadUnsupported  = "FontLoadUnsupported"
+)

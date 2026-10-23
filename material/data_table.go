@@ -311,23 +311,23 @@ func NewDataTable(columns []DataColumn, rows []DataRow, opts ...DataTableOpts) *
 	o := firstOpts(opts)
 	if foundation.DebugMode {
 		if len(columns) == 0 {
-			panic(errors.New("DataTableNoColumns", "a DataTable needs at least one column"))
+			panic(errors.New(tagDataTableNoColumns, "a DataTable needs at least one column"))
 		}
 		if i, ok := o.SortColumnIndex.Get(); ok && (i < 0 || i >= len(columns)) {
-			panic(errors.New("DataTableSortColumnIndexRange", "the sortColumnIndex of a DataTable must be a column", "sortColumnIndex", i, "columns", len(columns)))
+			panic(errors.New(tagDataTableSortColumnIndexRange, "the sortColumnIndex of a DataTable must be a column", "sortColumnIndex", i, "columns", len(columns)))
 		}
 		for i, row := range rows {
 			if len(row.Cells) != len(columns) {
-				panic(errors.New("DataTableRowCellCount", fmt.Sprintf("All rows must have the same number of cells as there are header cells (%d)", len(columns)),
+				panic(errors.New(tagDataTableRowCellCount, fmt.Sprintf("All rows must have the same number of cells as there are header cells (%d)", len(columns)),
 					"row", i, "cells", len(row.Cells)))
 			}
 		}
 		if v, ok := o.DividerThickness.Get(); ok && v < 0 {
-			panic(errors.New("DataTableDividerThicknessNegative", "the dividerThickness of a DataTable must not be negative", "dividerThickness", v))
+			panic(errors.New(tagDataTableDividerThicknessNegative, "the dividerThickness of a DataTable must not be negative", "dividerThickness", v))
 		}
 		if lo, ok := o.DataRowMinHeight.Get(); ok {
 			if hi, ok := o.DataRowMaxHeight.Get(); ok && hi < lo {
-				panic(errors.New("DataTableRowHeightRange", "the dataRowMaxHeight of a DataTable must not be less than its dataRowMinHeight", "dataRowMinHeight", lo, "dataRowMaxHeight", hi))
+				panic(errors.New(tagDataTableRowHeightRange, "the dataRowMaxHeight of a DataTable must not be less than its dataRowMinHeight", "dataRowMinHeight", lo, "dataRowMaxHeight", hi))
 			}
 		}
 	}
@@ -864,3 +864,12 @@ func (s *sortArrowState) Build(bc widgets.BuildContext) widgets.Widget {
 		widgets.NewIcon(Icons.ArrowUpward(), widgets.IconOpts{Size: foundation.Some(sortArrowIconSize)}),
 		widgets.TransformOpts{Alignment: painting.AlignmentCenter}))
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagDataTableDividerThicknessNegative = "DataTableDividerThicknessNegative"
+	tagDataTableNoColumns                = "DataTableNoColumns"
+	tagDataTableRowCellCount             = "DataTableRowCellCount"
+	tagDataTableRowHeightRange           = "DataTableRowHeightRange"
+	tagDataTableSortColumnIndexRange     = "DataTableSortColumnIndexRange"
+)

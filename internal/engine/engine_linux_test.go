@@ -17,7 +17,7 @@ func newSelectHarness(t *testing.T, env map[string]string) *harness {
 	h.cfg.connect = nil
 	h.cfg.x11 = func() (connection, error) { return h.c, nil }
 	h.cfg.wayland = func() (connection, error) {
-		return nil, errors.New("WaylandConnectFailed", "no compositor")
+		return nil, errors.New(tagWaylandConnectFailed, "no compositor")
 	}
 	return h
 }
@@ -55,7 +55,7 @@ func TestRealConnectorsReportTheirFailures(t *testing.T) {
 	_, err := cfg.x11Connector()()
 	assertRoute(t, err, "X11OpenDisplayFailed", "New.X11OpenDisplayFailed")
 	_, err = cfg.waylandConnector()()
-	if appErr, ok := errors.FromError(err); !ok || (appErr.Tag != "WaylandConnectFailed" && appErr.Tag != "LibraryLoadFailed") {
+	if appErr, ok := errors.FromError(err); !ok || (appErr.Tag != tagWaylandConnectFailed && appErr.Tag != "LibraryLoadFailed") {
 		t.Errorf("Wayland error = %v, want WaylandConnectFailed (or LibraryLoadFailed without libwayland)", err)
 	}
 	// With both broken, Run says there is no display.
@@ -66,3 +66,8 @@ func TestRealConnectorsReportTheirFailures(t *testing.T) {
 		t.Errorf("tried %v, want Wayland and X11", appErr.Metadata["tried"])
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagWaylandConnectFailed = "WaylandConnectFailed"
+)

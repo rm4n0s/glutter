@@ -114,7 +114,7 @@ func TestSaveFailures(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			err := (&Screenshot{path: tt.path}).Save(img)
 			appErr, ok := errors.FromError(err)
-			if !ok || appErr.Tag != "ScreenshotWriteFailed" || !appErr.HasRoute("Screenshot.Save.ScreenshotWriteFailed") {
+			if !ok || appErr.Tag != tagScreenshotWriteFailed || !appErr.HasRoute("Screenshot.Save.ScreenshotWriteFailed") {
 				t.Fatalf("Save = %v, want ScreenshotWriteFailed via Screenshot.Save", err)
 			}
 			if appErr.Metadata["path"] != tt.path {

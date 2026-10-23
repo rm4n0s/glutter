@@ -30,7 +30,7 @@ type CircleBorderOpts struct {
 
 func checkEccentricity(e float64) {
 	if foundation.DebugMode && !(e >= 0.0 && e <= 1.0) {
-		panic(errors.New("BorderEccentricityOutOfRange", "the eccentricity argument must be from 0.0 to 1.0", "eccentricity", e))
+		panic(errors.New(tagBorderEccentricityOutOfRange, "the eccentricity argument must be from 0.0 to 1.0", "eccentricity", e))
 	}
 }
 
@@ -280,4 +280,9 @@ func (b OvalBorder) String() string {
 var (
 	_ OutlinedBorder = CircleBorder{}
 	_ OutlinedBorder = OvalBorder{}
+)
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagBorderEccentricityOutOfRange = "BorderEccentricityOutOfRange"
 )

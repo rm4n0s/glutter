@@ -64,7 +64,7 @@ func TestStartPageInvalid(t *testing.T) {
 	for _, v := range []string{"0", "10", "-1", "nope", "shapes"} {
 		_, err := newTour(env(map[string]string{"GLUTTER_DEV_PAGE": v}))
 		appErr, ok := errors.FromError(err)
-		if !ok || appErr.Tag != "TourPageInvalid" || !appErr.HasRoute("newTour->tour.find.TourPageInvalid") {
+		if !ok || appErr.Tag != tagTourPageInvalid || !appErr.HasRoute("newTour->tour.find.TourPageInvalid") {
 			t.Errorf("%q: error = %v, want TourPageInvalid", v, err)
 		}
 	}

@@ -160,7 +160,7 @@ func (f *selectableFragment) DispatchSelectionEvent(event SelectionEvent) Select
 			result = f.updateSelectionEdgeByMultiSelectableTextBoundary(e.GlobalPosition, isEnd, f.getParagraphBoundaryAtPosition, f.getClampedParagraphBoundaryAtPosition)
 		default:
 			if foundation.DebugMode {
-				panic(errors.New("SelectionGranularityUnsupported", "moving the selection edge by line or document is not supported"))
+				panic(errors.New(tagSelectionGranularityUnsupported, "moving the selection edge by line or document is not supported"))
 			}
 		}
 	case ClearSelectionEvent:
@@ -1393,14 +1393,14 @@ func (f *selectableFragment) handleDirectionallyExtendSelection(horizontalBaseli
 	}
 	baselineInParagraphCoordinates := transform.TransformPoint(ui.Offset{Dx: horizontalBaseline}).Dx
 	if foundation.DebugMode && math.IsNaN(baselineInParagraphCoordinates) {
-		panic(errors.New("SelectionBaselineNaN", "the horizontal baseline in the paragraph coordinates is NaN"))
+		panic(errors.New(tagSelectionBaselineNaN, "the horizontal baseline in the paragraph coordinates is NaN"))
 	}
 	var newPosition ui.TextPosition
 	var result SelectionResult
 	switch movement {
 	case SelectionExtendDirectionPreviousLine, SelectionExtendDirectionNextLine:
 		if foundation.DebugMode && (f.textSelectionEnd.IsNone() || f.textSelectionStart.IsNone()) {
-			panic(errors.New("SelectionNotStarted", "extending the selection by a line needs a selection"))
+			panic(errors.New(tagSelectionNotStarted, "extending the selection by a line needs a selection"))
 		}
 		targetedEdge := f.textSelectionStart.Value()
 		if isExtent {
@@ -1647,7 +1647,7 @@ func (f *selectableFragment) GetTransformTo(ancestor RenderObject) *ui.Matrix4 {
 func (f *selectableFragment) PushHandleLayers(startHandle, endHandle *LayerLink) {
 	if !f.paragraph.Attached() {
 		if foundation.DebugMode && (startHandle != nil || endHandle != nil) {
-			panic(errors.New("SelectionHandlesOnDetached", "only clean up can be called on a paragraph that is not attached"))
+			panic(errors.New(tagSelectionHandlesOnDetached, "only clean up can be called on a paragraph that is not attached"))
 		}
 		return
 	}
@@ -1840,3 +1840,11 @@ func (r *RenderParagraph) Selections() []services.TextSelection {
 	}
 	return results
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagSelectionBaselineNaN            = "SelectionBaselineNaN"
+	tagSelectionGranularityUnsupported = "SelectionGranularityUnsupported"
+	tagSelectionHandlesOnDetached      = "SelectionHandlesOnDetached"
+	tagSelectionNotStarted             = "SelectionNotStarted"
+)

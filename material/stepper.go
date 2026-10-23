@@ -297,15 +297,15 @@ func NewStepper(steps []Step, opts ...StepperOpts) *Stepper {
 	o := firstOpts(opts)
 	if foundation.DebugMode {
 		if o.CurrentStep < 0 || o.CurrentStep >= len(steps) {
-			panic(errors.New("StepperCurrentStepRange", "the currentStep of a Stepper must be one of its steps", "currentStep", o.CurrentStep, "steps", len(steps)))
+			panic(errors.New(tagStepperCurrentStepRange, "the currentStep of a Stepper must be one of its steps", "currentStep", o.CurrentStep, "steps", len(steps)))
 		}
 		for _, v := range []foundation.Opt[float64]{o.StepIconHeight, o.StepIconWidth} {
 			if x, ok := v.Get(); ok && (x < stepSize || x > maxStepSize) {
-				panic(errors.New("StepperIconSizeRange", fmt.Sprintf("stepIconHeight and stepIconWidth must be greater than %v and less or equal to %v", stepSize, maxStepSize), "size", x))
+				panic(errors.New(tagStepperIconSizeRange, fmt.Sprintf("stepIconHeight and stepIconWidth must be greater than %v and less or equal to %v", stepSize, maxStepSize), "size", x))
 			}
 		}
 		if o.StepIconHeight.IsSome() && o.StepIconWidth.IsSome() && o.StepIconHeight != o.StepIconWidth {
-			panic(errors.New("StepperIconSizeMismatch", "If either stepIconHeight or stepIconWidth is specified, both must be specified and the values must be equal."))
+			panic(errors.New(tagStepperIconSizeMismatch, "If either stepIconHeight or stepIconWidth is specified, both must be specified and the values must be equal."))
 		}
 	}
 	return &Stepper{StatefulWidget: widgets.NewStatefulWidgetBase(widgets.WidgetOpts{Key: o.Key}), steps: steps, o: o}
@@ -344,7 +344,7 @@ func (s *stepperState) InitState() {
 
 func (s *stepperState) DidUpdateWidget(old *Stepper) {
 	if foundation.DebugMode && len(s.Widget().steps) != len(old.steps) {
-		panic(errors.New("StepperStepCountChanged", "the number of steps of a Stepper cannot change", "old", len(old.steps), "new", len(s.Widget().steps)))
+		panic(errors.New(tagStepperStepCountChanged, "the number of steps of a Stepper cannot change", "old", len(old.steps), "new", len(s.Widget().steps)))
 	}
 	for i := range old.steps {
 		s.oldStates[i] = old.steps[i].State()
@@ -761,7 +761,7 @@ func (s *stepperState) buildHorizontal() widgets.Widget {
 func (s *stepperState) Build(bc widgets.BuildContext) widgets.Widget {
 	if foundation.DebugMode {
 		if _, ok := widgets.FindAncestorWidgetOfExactType[*Stepper](bc); ok {
-			panic(errors.New("StepperNested", "Steppers must not be nested. The material specification advises that one should avoid embedding steppers within steppers. "+
+			panic(errors.New(tagStepperNested, "Steppers must not be nested. The material specification advises that one should avoid embedding steppers within steppers. "+
 				"https://material.io/archive/guidelines/components/steppers.html#steppers-usage"))
 		}
 	}
@@ -794,3 +794,12 @@ func (p *stepTrianglePainter) Paint(canvas *ui.Canvas, size ui.Size) {
 	paint.SetColor(p.color)
 	canvas.DrawPath(path, paint)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagStepperCurrentStepRange = "StepperCurrentStepRange"
+	tagStepperIconSizeMismatch = "StepperIconSizeMismatch"
+	tagStepperIconSizeRange    = "StepperIconSizeRange"
+	tagStepperNested           = "StepperNested"
+	tagStepperStepCountChanged = "StepperStepCountChanged"
+)

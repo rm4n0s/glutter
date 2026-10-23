@@ -142,7 +142,7 @@ func (b *rawMenuAnchorBase) didChangeDependencies() {
 	}
 	if newParent != b.parent {
 		if foundation.DebugMode && newParent == b.self {
-			panic(errors.New("MenuControllerMultipleAnchors", "a MenuController should only be attached to one anchor at a time"))
+			panic(errors.New(tagMenuControllerMultipleAnchors, "a MenuController should only be attached to one anchor at a time"))
 		}
 		if b.parent != nil {
 			b.parent.anchorBase().removeChild(b.self)
@@ -190,7 +190,7 @@ func (b *rawMenuAnchorBase) addChild(child menuAnchor) {
 	if foundation.DebugMode {
 		for _, c := range b.anchorChildren {
 			if c == child {
-				panic(errors.New("MenuAnchorChildAlreadyAdded", "the child anchor is already in this anchor"))
+				panic(errors.New(tagMenuAnchorChildAlreadyAdded, "the child anchor is already in this anchor"))
 			}
 		}
 	}
@@ -205,7 +205,7 @@ func (b *rawMenuAnchorBase) removeChild(child menuAnchor) {
 		}
 	}
 	if foundation.DebugMode {
-		panic(errors.New("MenuAnchorChildNotFound", "the child anchor is not in this anchor"))
+		panic(errors.New(tagMenuAnchorChildNotFound, "the child anchor is not in this anchor"))
 	}
 }
 
@@ -635,7 +635,7 @@ func (c *MenuController) CloseChildren() {
 
 func (c *MenuController) assertAttached(what string) {
 	if foundation.DebugMode && c.anchor == nil {
-		panic(errors.New("MenuControllerNotAttached", what+" was called on a MenuController that is not attached to an anchor"))
+		panic(errors.New(tagMenuControllerNotAttached, what+" was called on a MenuController that is not attached to an anchor"))
 	}
 }
 
@@ -709,3 +709,11 @@ func (a *DismissMenuAction) Invoke(Intent) any {
 //
 // Flutter: widgets/raw_menu_anchor.dart DismissMenuAction.isEnabled
 func (a *DismissMenuAction) IsEnabled(Intent) bool { return a.controller.anchor != nil }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagMenuAnchorChildAlreadyAdded   = "MenuAnchorChildAlreadyAdded"
+	tagMenuAnchorChildNotFound       = "MenuAnchorChildNotFound"
+	tagMenuControllerMultipleAnchors = "MenuControllerMultipleAnchors"
+	tagMenuControllerNotAttached     = "MenuControllerNotAttached"
+)

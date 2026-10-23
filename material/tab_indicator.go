@@ -154,7 +154,7 @@ func (p *underlinePainter) Dispose() {}
 
 func (p *underlinePainter) Paint(canvas *ui.Canvas, offset ui.Offset, configuration painting.ImageConfiguration) {
 	if foundation.DebugMode && configuration.Size.IsNone() {
-		panic(errors.New("UnderlineTabIndicatorSize", "the configuration to paint an UnderlineTabIndicator needs a size"))
+		panic(errors.New(tagUnderlineTabIndicatorSize, "the configuration to paint an UnderlineTabIndicator needs a size"))
 	}
 	rect := offset.And(configuration.Size.Value())
 	d := p.decoration
@@ -172,3 +172,8 @@ func (p *underlinePainter) Paint(canvas *ui.Canvas, offset ui.Offset, configurat
 	indicator := d.indicatorRectFor(rect, textDirection).Deflate(d.borderSide.Width / 2.0)
 	canvas.DrawLine(indicator.BottomLeft(), indicator.BottomRight(), paint)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagUnderlineTabIndicatorSize = "UnderlineTabIndicatorSize"
+)

@@ -145,7 +145,7 @@ func typographyWithPlatform(o TypographyOpts, englishLike, dense, tall *TextThem
 		case foundation.TargetPlatformLinux:
 			b, w = TypographyBlackHelsinki, TypographyWhiteHelsinki
 		default:
-			panic(errors.New("TypographyUnknownPlatform", "the platform has no typography", "platform", platform.Name()))
+			panic(errors.New(tagTypographyUnknownPlatform, "the platform has no typography", "platform", platform.Name()))
 		}
 		if black == nil {
 			black = b
@@ -251,3 +251,8 @@ func (t *Typography) DebugFillProperties(properties *foundation.DiagnosticProper
 	add("dense", t.Dense, def.Dense)
 	add("tall", t.Tall, def.Tall)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagTypographyUnknownPlatform = "TypographyUnknownPlatform"
+)

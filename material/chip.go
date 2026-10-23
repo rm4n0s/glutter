@@ -276,7 +276,7 @@ func (s *rawChipState) isTapping() bool { return s.canTap() && s.isTappingFlag }
 func (s *rawChipState) InitState() {
 	w := s.Widget()
 	if foundation.DebugMode && w.o.OnSelected != nil && w.o.OnPressed != nil {
-		panic(errors.New("RawChipSelectedAndPressed", "a RawChip cannot have both onSelected and onPressed"))
+		panic(errors.New(tagRawChipSelectedAndPressed, "a RawChip cannot have both onSelected and onPressed"))
 	}
 	s.statesController = widgets.NewWidgetStatesController()
 	s.statesController.Update(widgets.WidgetStateDisabled, !w.isEnabled())
@@ -853,3 +853,8 @@ func (f unconstrainedInkSplashFactory) Create(o InkFeatureCreateOpts) Interactiv
 }
 
 var _ = semantics.NewSemanticsConfiguration
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagRawChipSelectedAndPressed = "RawChipSelectedAndPressed"
+)

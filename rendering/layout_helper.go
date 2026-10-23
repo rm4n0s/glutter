@@ -58,8 +58,13 @@ func (childLayoutHelper) GetDryBaseline(child Box, constraints BoxConstraints, b
 // Flutter: rendering/layout_helper.dart ChildLayoutHelper.getBaseline
 func (childLayoutHelper) GetBaseline(child Box, constraints BoxConstraints, baseline ui.TextBaseline) foundation.Opt[float64] {
 	if foundation.DebugMode && (child.DebugNeedsLayout() || child.BoxConstraints() != constraints) {
-		panic(errors.New("ChildBaselineInvalid", "the baseline of a child can only be read after it was laid out with the same constraints",
+		panic(errors.New(tagChildBaselineInvalid, "the baseline of a child can only be read after it was laid out with the same constraints",
 			"child", foundation.DescribeIdentity(child)))
 	}
 	return child.GetDistanceToBaseline(baseline, BaselineOpts{OnlyReal: true})
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagChildBaselineInvalid = "ChildBaselineInvalid"
+)

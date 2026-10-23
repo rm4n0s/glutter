@@ -186,7 +186,7 @@ func (s *automaticKeepAliveState) addClient(notification KeepAliveNotification) 
 	}
 	if foundation.DebugMode {
 		if _, ok := s.handles[handle]; ok {
-			panic(errors.New("KeepAliveHandleAdded", "the same KeepAliveHandle was added to an AutomaticKeepAlive twice"))
+			panic(errors.New(tagKeepAliveHandleAdded, "the same KeepAliveHandle was added to an AutomaticKeepAlive twice"))
 		}
 	}
 	client := &keepAliveClient{callback: s.createCallback(handle)}
@@ -204,7 +204,7 @@ func (s *automaticKeepAliveState) addClient(notification KeepAliveNotification) 
 				}
 				childElement := s.childElement()
 				if childElement == nil && foundation.DebugMode {
-					panic(errors.New("KeepAliveChildMissing", "the AutomaticKeepAlive has no KeepAlive child to update"))
+					panic(errors.New(tagKeepAliveChildMissing, "the AutomaticKeepAlive has no KeepAlive child to update"))
 				}
 				if childElement != nil {
 					s.updateParentDataOfChild(childElement)
@@ -225,7 +225,7 @@ func (s *automaticKeepAliveState) childElement() *ParentDataElement {
 	}
 	pde, ok := child.(*ParentDataElement)
 	if !ok && foundation.DebugMode {
-		panic(errors.New("KeepAliveChildNotParentData", "the child of an AutomaticKeepAlive must be a KeepAlive"))
+		panic(errors.New(tagKeepAliveChildNotParentData, "the child of an AutomaticKeepAlive must be a KeepAlive"))
 	}
 	return pde
 }
@@ -247,7 +247,7 @@ func (s *automaticKeepAliveState) removeHandle(handle foundation.Listenable) {
 func (s *automaticKeepAliveState) createCallback(handle foundation.Listenable) foundation.VoidCallback {
 	callback := func() {
 		if foundation.DebugMode && !s.Mounted() {
-			panic(errors.New("KeepAliveHandleAfterDispose",
+			panic(errors.New(tagKeepAliveHandleAfterDispose,
 				"AutomaticKeepAlive handle triggered after AutomaticKeepAlive was disposed; widgets should always trigger their KeepAliveNotification handle when they are deactivated, so that they (or their handle) do not send spurious events later when they are no longer in the tree"))
 		}
 		client := s.handles[handle]
@@ -317,7 +317,7 @@ func (c *AutomaticKeepAliveClient) disposeStateMixin() {}
 func (c *AutomaticKeepAliveClient) wantKeepAlive() bool {
 	w, ok := c.state.(wantKeepAliver)
 	if !ok {
-		panic(errors.New("WantKeepAliveMissing", "a state that embeds AutomaticKeepAliveClient must have a WantKeepAlive() bool method",
+		panic(errors.New(tagWantKeepAliveMissing, "a state that embeds AutomaticKeepAliveClient must have a WantKeepAlive() bool method",
 			"state", foundation.RuntimeTypeName(c.state)))
 	}
 	return w.WantKeepAlive()
@@ -360,3 +360,12 @@ func (c *AutomaticKeepAliveClient) KeepAliveBuild() {
 		c.ensureKeepAlive()
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagKeepAliveChildMissing       = "KeepAliveChildMissing"
+	tagKeepAliveChildNotParentData = "KeepAliveChildNotParentData"
+	tagKeepAliveHandleAdded        = "KeepAliveHandleAdded"
+	tagKeepAliveHandleAfterDispose = "KeepAliveHandleAfterDispose"
+	tagWantKeepAliveMissing        = "WantKeepAliveMissing"
+)

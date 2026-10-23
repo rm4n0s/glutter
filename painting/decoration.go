@@ -81,7 +81,7 @@ func (DecorationDefaults) HitTest(ui.Size, ui.Offset, ui.TextDirection) bool { r
 //
 // Flutter: painting/decoration.dart Decoration.getClipPath
 func (DecorationDefaults) GetClipPath(ui.Rect, ui.TextDirection) *ui.Path {
-	panic(errors.New("DecorationNoClipPath", "this Decoration subclass does not expect to be used for clipping"))
+	panic(errors.New(tagDecorationNoClipPath, "this Decoration subclass does not expect to be used for clipping"))
 }
 
 // DebugFillProperties adds nothing.
@@ -148,3 +148,8 @@ type BoxPainter interface {
 	// Dispose discards any resources used by the painter.
 	Dispose()
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagDecorationNoClipPath = "DecorationNoClipPath"
+)

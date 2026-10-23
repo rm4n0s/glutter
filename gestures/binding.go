@@ -345,7 +345,7 @@ func (b *GestureBinding) CancelPointer(pointer int) {
 
 func (b *GestureBinding) flushPointerEventQueue() {
 	if foundation.DebugMode && b.scheduler.Locked() {
-		panic(errors.New("GestureBindingLocked", "pointer events cannot be flushed while the binding is locked"))
+		panic(errors.New(tagGestureBindingLocked, "pointer events cannot be flushed while the binding is locked"))
 	}
 	for len(b.pendingPointerEvents) > 0 {
 		event := b.pendingPointerEvents[0]
@@ -361,7 +361,7 @@ func (b *GestureBinding) flushPointerEventQueue() {
 // Flutter: gestures/binding.dart GestureBinding.handlePointerEvent
 func (b *GestureBinding) HandlePointerEvent(event PointerEvent) {
 	if foundation.DebugMode && b.scheduler.Locked() {
-		panic(errors.New("GestureBindingLocked", "pointer events cannot be handled while the binding is locked"))
+		panic(errors.New(tagGestureBindingLocked, "pointer events cannot be handled while the binding is locked"))
 	}
 	if b.ResamplingEnabled {
 		b.resampler.addOrDispatch(event)
@@ -379,7 +379,7 @@ func (b *GestureBinding) handlePointerEventImmediately(event PointerEvent) {
 	case *PointerDownEvent, *PointerHoverEvent, *PointerPanZoomStartEvent, PointerSignalEvent:
 		if foundation.DebugMode {
 			if _, ok := b.hitTests[event.Pointer()]; ok {
-				panic(errors.New("PointerHitTestExists",
+				panic(errors.New(tagPointerHitTestExists,
 					"the pointer of the event unexpectedly has a hit test result associated with it",
 					"event", foundation.DiagnosticableString(event, foundation.DiagnosticLevelDebug)))
 			}
@@ -434,7 +434,7 @@ func (b *GestureBinding) HitTestInView(result *HitTestResult, position ui.Offset
 // Flutter: gestures/binding.dart GestureBinding.dispatchEvent
 func (b *GestureBinding) DispatchEvent(event PointerEvent, hitTestResult *HitTestResult) {
 	if foundation.DebugMode && b.scheduler.Locked() {
-		panic(errors.New("GestureBindingLocked", "pointer events cannot be dispatched while the binding is locked"))
+		panic(errors.New(tagGestureBindingLocked, "pointer events cannot be dispatched while the binding is locked"))
 	}
 	if b.OnDispatchEvent != nil {
 		b.OnDispatchEvent(event, hitTestResult)
@@ -444,7 +444,7 @@ func (b *GestureBinding) DispatchEvent(event PointerEvent, hitTestResult *HitTes
 			switch event.(type) {
 			case *PointerAddedEvent, *PointerRemovedEvent:
 			default:
-				panic(errors.New("PointerEventNotHitTested",
+				panic(errors.New(tagPointerEventNotHitTested,
 					"only added and removed events are dispatched without a hit test result",
 					"event", event.String()))
 			}
@@ -571,3 +571,10 @@ func (b *GestureBinding) handleSampleTimeChanged() {
 		}
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagGestureBindingLocked     = "GestureBindingLocked"
+	tagPointerEventNotHitTested = "PointerEventNotHitTested"
+	tagPointerHitTestExists     = "PointerHitTestExists"
+)

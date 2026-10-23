@@ -600,7 +600,7 @@ func (n *FocusNode) Offset() ui.Offset { return n.Rect().TopLeft() }
 // Flutter: widgets/focus_manager.dart FocusNode.rect
 func (n *FocusNode) Rect() ui.Rect {
 	if n.ctx == nil {
-		panic(errors.New("FocusNodeContextMissing",
+		panic(errors.New(tagFocusNodeContextMissing,
 			"tried to get the bounds of a focus node that did not have its context set yet; the context needs to be set before evaluating traversal policies, which Attach does",
 			"node", n.String()))
 	}
@@ -735,17 +735,17 @@ func (n *FocusNode) updateManager(manager *FocusManager) {
 // it).
 func (n *FocusNode) reparent(child *FocusNode) {
 	if child == n {
-		panic(errors.New("FocusNodeReparentSelf", "tried to make a focus node into a parent of itself", "node", n.String()))
+		panic(errors.New(tagFocusNodeReparentSelf, "tried to make a focus node into a parent of itself", "node", n.String()))
 	}
 	if child.parent == n {
 		// The child is already a child of this parent.
 		return
 	}
 	if n.manager != nil && child == &n.manager.rootScope.FocusNode {
-		panic(errors.New("FocusNodeRootReparented", "reparenting the root focus node is not allowed"))
+		panic(errors.New(tagFocusNodeRootReparented, "reparenting the root focus node is not allowed"))
 	}
 	if slices.Contains(n.Ancestors(), child) {
-		panic(errors.New("FocusNodeParentLoop", "the supplied child is already an ancestor of this node; loops are not allowed",
+		panic(errors.New(tagFocusNodeParentLoop, "the supplied child is already an ancestor of this node; loops are not allowed",
 			"node", n.String(), "child", child.String()))
 	}
 	oldScope := child.EnclosingScope()
@@ -841,7 +841,7 @@ func (n *FocusNode) RequestFocus(node ...*FocusNode) {
 			n.reparent(target)
 		}
 		if !slices.Contains(target.Ancestors(), n) {
-			panic(errors.New("FocusRequestedOutsideScope",
+			panic(errors.New(tagFocusRequestedOutsideScope,
 				"focus was requested for a node that is not a descendant of the scope from which it was requested",
 				"node", target.String(), "scope", n.String()))
 		}
@@ -1113,7 +1113,7 @@ func (s *FocusScopeNode) removeFocusedChild(node *FocusNode) {
 // Flutter: widgets/focus_manager.dart FocusScopeNode.setFirstFocus
 func (s *FocusScopeNode) SetFirstFocus(scope *FocusScopeNode) {
 	if scope == s {
-		panic(errors.New("FocusScopeSelfReference", "unexpected self-reference in SetFirstFocus", "scope", s.String()))
+		panic(errors.New(tagFocusScopeSelfReference, "unexpected self-reference in SetFirstFocus", "scope", s.String()))
 	}
 	s.manager.focusDebugOpt(func() string { return "Setting scope as first focus in " + s.String() + " to node:" },
 		func() []any { return []any{scope} })
@@ -1121,7 +1121,7 @@ func (s *FocusScopeNode) SetFirstFocus(scope *FocusScopeNode) {
 		s.reparent(&scope.FocusNode)
 	}
 	if !slices.Contains(scope.Ancestors(), &s.FocusNode) {
-		panic(errors.New("FocusScopeNotChild", "the scope must be a child of this scope to set it as first focus",
+		panic(errors.New(tagFocusScopeNotChild, "the scope must be a child of this scope to set it as first focus",
 			"scope", scope.String(), "parent", s.String()))
 	}
 	if s.HasFocus() {
@@ -1524,7 +1524,7 @@ func (m *FocusManager) markNeedsUpdate() {
 // Flutter: widgets/focus_manager.dart FocusManager.applyFocusChangesIfNeeded
 func (m *FocusManager) ApplyFocusChangesIfNeeded() {
 	if m.binding != nil && foundation.DebugMode && m.binding.Scheduler().SchedulerPhase() == scheduler.SchedulerPhasePersistentCallbacks {
-		panic(errors.New("FocusChangesDuringBuild", "ApplyFocusChangesIfNeeded() should not be called during the build phase"))
+		panic(errors.New(tagFocusChangesDuringBuild, "ApplyFocusChangesIfNeeded() should not be called during the build phase"))
 	}
 	m.haveScheduledUpdate = false
 	previousFocus := m.primaryFocus
@@ -1959,3 +1959,15 @@ func describeScopeNode(s *FocusScopeNode) string {
 	}
 	return s.String()
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagFocusChangesDuringBuild    = "FocusChangesDuringBuild"
+	tagFocusNodeContextMissing    = "FocusNodeContextMissing"
+	tagFocusNodeParentLoop        = "FocusNodeParentLoop"
+	tagFocusNodeReparentSelf      = "FocusNodeReparentSelf"
+	tagFocusNodeRootReparented    = "FocusNodeRootReparented"
+	tagFocusRequestedOutsideScope = "FocusRequestedOutsideScope"
+	tagFocusScopeNotChild         = "FocusScopeNotChild"
+	tagFocusScopeSelfReference    = "FocusScopeSelfReference"
+)

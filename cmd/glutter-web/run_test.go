@@ -67,7 +67,7 @@ func TestRunUsageErrors(t *testing.T) {
 			if !ok {
 				t.Fatalf("expected *errors.Error, got %T (%v)", err, err)
 			}
-			if appErr.Tag != "WebUsage" || !appErr.HasRoute(tc.fn+".WebUsage") && !appErr.HasRoute(tc.fn+"->") {
+			if appErr.Tag != tagWebUsage || !appErr.HasRoute(tc.fn+".WebUsage") && !appErr.HasRoute(tc.fn+"->") {
 				t.Errorf("got %s via %s, want WebUsage via %s", appErr.Tag, appErr.Route(), tc.fn)
 			}
 		})
@@ -109,7 +109,7 @@ func TestQueryFlag(t *testing.T) {
 	}
 	err := q.Set("a=%zz")
 	appErr, ok := errors.FromError(err)
-	if !ok || appErr.Tag != "WebUsage" || !appErr.HasRoute("queryFlag.Set.WebUsage") {
+	if !ok || appErr.Tag != tagWebUsage || !appErr.HasRoute("queryFlag.Set.WebUsage") {
 		t.Errorf("a bad query gave %v, want WebUsage via queryFlag.Set", err)
 	}
 }
@@ -140,8 +140,8 @@ func TestBuildCommand(t *testing.T) {
 func TestBuildCommandReportsTheBuildError(t *testing.T) {
 	err := run(context.Background(), []string{"build", "-o", t.TempDir(), "./nothing-here"}, io.Discard, io.Discard)
 	appErr, ok := errors.FromError(err)
-	if !ok || appErr.Tag != "WebBuildFailed" || !appErr.HasRoute("runBuild->Build.WebBuildFailed") {
-		t.Fatalf("got %v, want WebBuildFailed via runBuild->Build", err)
+	if !ok || appErr.Tag != "WebBuildFailed" || !appErr.HasRoute("runBuild->Build->runGo.WebBuildFailed") {
+		t.Fatalf("got %v, want WebBuildFailed via runBuild->Build->runGo", err)
 	}
 }
 
@@ -226,7 +226,7 @@ func TestServeCommandListenFailure(t *testing.T) {
 	}
 	err := run(context.Background(), []string{"serve", "-addr", "256.0.0.1:1", hello}, io.Discard, io.Discard)
 	appErr, ok := errors.FromError(err)
-	if !ok || appErr.Tag != "WebServeFailed" || !appErr.HasRoute("runServe.WebServeFailed") {
+	if !ok || appErr.Tag != tagWebServeFailed || !appErr.HasRoute("runServe.WebServeFailed") {
 		t.Fatalf("got %v, want WebServeFailed via runServe", err)
 	}
 }
@@ -278,7 +278,7 @@ func TestParseClicks(t *testing.T) {
 			got, err := parseClicks(tc.in)
 			if tc.bad {
 				appErr, ok := errors.FromError(err)
-				if !ok || appErr.Tag != "WebUsage" || !appErr.HasRoute("parseClicks.WebUsage") {
+				if !ok || appErr.Tag != tagWebUsage || !appErr.HasRoute("parseClicks.WebUsage") {
 					t.Fatalf("parseClicks(%q) = %v, want WebUsage via parseClicks", tc.in, err)
 				}
 				return

@@ -50,10 +50,10 @@ func NewPositioned(child Widget, opts ...PositionedOpts) *Positioned {
 	o := firstOpts(opts)
 	if foundation.DebugMode {
 		if o.Left.IsSome() && o.Right.IsSome() && o.Width.IsSome() {
-			panic(errors.New("PositionedOverconstrained", "a Positioned cannot have a left, a right and a width"))
+			panic(errors.New(tagPositionedOverconstrained, "a Positioned cannot have a left, a right and a width"))
 		}
 		if o.Top.IsSome() && o.Bottom.IsSome() && o.Height.IsSome() {
-			panic(errors.New("PositionedOverconstrained", "a Positioned cannot have a top, a bottom and a height"))
+			panic(errors.New(tagPositionedOverconstrained, "a Positioned cannot have a top, a bottom and a height"))
 		}
 	}
 	return &Positioned{NewParentDataWidgetBase[*rendering.StackParentData](child, WidgetOpts{Key: o.Key}),
@@ -341,7 +341,7 @@ type rawIndexedStack struct {
 func newRawIndexedStack(w *IndexedStack, children []Widget) *rawIndexedStack {
 	n, ok := w.index.Get()
 	if foundation.DebugMode && ok && (n != 0 || len(children) != 0) && (n < 0 || n >= len(children)) {
-		panic(errors.New("IndexedStackIndexInvalid", "the index must be null or within the range of children",
+		panic(errors.New(tagIndexedStackIndexInvalid, "the index must be null or within the range of children",
 			"index", n, "children", len(children)))
 	}
 	return &rawIndexedStack{*NewStack(children, StackOpts{Alignment: w.alignment, TextDirection: w.textDirection,
@@ -394,3 +394,8 @@ func (e *indexedStackElement) DebugVisitOnstageChildren(visitor ElementVisitor) 
 		i++
 	})
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagIndexedStackIndexInvalid = "IndexedStackIndexInvalid"
+)

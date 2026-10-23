@@ -119,10 +119,10 @@ func newCheckboxListTile(value foundation.Opt[bool], onChanged func(foundation.O
 	o := firstOpts(opts)
 	if foundation.DebugMode {
 		if !o.Tristate && value.IsNone() {
-			panic(errors.New("CheckboxListTileValueNull", "the value of a CheckboxListTile that is not tristate can't be none"))
+			panic(errors.New(tagCheckboxListTileValueNull, "the value of a CheckboxListTile that is not tristate can't be none"))
 		}
 		if o.IsThreeLine.OrElse(false) && o.Subtitle == nil {
-			panic(errors.New("CheckboxListTileThreeLineNoSubtitle", "a three line list tile needs a subtitle"))
+			panic(errors.New(tagCheckboxListTileThreeLineNoSubtitle, "a three line list tile needs a subtitle"))
 		}
 	}
 	return &CheckboxListTile{StatelessWidget: widgets.NewStatelessWidgetBase(widgets.WidgetOpts{Key: o.Key}), value: value, onChanged: onChanged, o: o, adaptive: adaptive}
@@ -218,3 +218,9 @@ func (w *CheckboxListTile) Build(bc widgets.BuildContext) widgets.Widget {
 		TitleAlignment: o.TitleAlignment, internalNoSemanticForOnTap: !o.InternalAddSemanticForOnTap,
 	}))
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagCheckboxListTileThreeLineNoSubtitle = "CheckboxListTileThreeLineNoSubtitle"
+	tagCheckboxListTileValueNull           = "CheckboxListTileValueNull"
+)

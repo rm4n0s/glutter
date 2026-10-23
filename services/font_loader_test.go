@@ -20,7 +20,7 @@ func (*fontSink) BuildParagraph(*ui.ParagraphContent) ui.ParagraphLayout { retur
 
 func (s *fontSink) LoadFontFromList(list []byte, family string) error {
 	if string(list) == s.failOn {
-		return errors.New("FontDataInvalid", "not a font", "family", family)
+		return errors.New(tagFontDataInvalid, "not a font", "family", family)
 	}
 	s.got = append(s.got, family+":"+string(list))
 	return nil
@@ -127,7 +127,7 @@ func TestFontLoaderReused(t *testing.T) {
 			}
 			defer func() {
 				appErr, ok := errors.FromError(asError(recover()))
-				if !ok || appErr.Tag != "FontLoaderReused" {
+				if !ok || appErr.Tag != tagFontLoaderReused {
 					t.Errorf("panic = %v, want FontLoaderReused", appErr)
 				}
 			}()
@@ -136,3 +136,8 @@ func TestFontLoaderReused(t *testing.T) {
 		})
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagFontDataInvalid = "FontDataInvalid"
+)

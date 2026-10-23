@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync/atomic"
 
+	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/internal/platform"
 	"github.com/rm4n0s/glutter/ui"
 )
@@ -66,9 +67,9 @@ func (c clipboard) GetText(ctx context.Context, done func(string, bool, error)) 
 func (c clipboard) SetContent(ctx context.Context, kind ui.ClipboardKind, content ui.ClipboardContent, done func(error)) {
 	switch {
 	case kind == ui.ClipboardKindPrimary:
-		c.answerErr(done, errClipboardPrimaryUnavailable())
+		c.answerErr(done, errors.New(tagClipboardPrimaryUnavailable, "the web has no primary selection"))
 	case !content.HasText && !content.IsEmpty():
-		c.answerErr(done, errClipboardFormatUnsupported())
+		c.answerErr(done, errors.New(tagWebClipboardFormatUnsupported, "the web clipboard takes plain text only"))
 	default:
 		c.write(ctx, content.Text, done)
 	}
@@ -85,7 +86,8 @@ func (c clipboard) GetContent(ctx context.Context, kind ui.ClipboardKind, format
 	}
 	switch {
 	case kind == ui.ClipboardKindPrimary:
-		c.post(func() { done(ui.ClipboardContent{}, errClipboardPrimaryUnavailable()) })
+		err := errors.New(tagClipboardPrimaryUnavailable, "the web has no primary selection")
+		c.post(func() { done(ui.ClipboardContent{}, err) })
 	case format != "" && format != ui.ClipboardFormatText:
 		c.post(func() { done(ui.ClipboardContent{}, nil) })
 	default:
@@ -109,11 +111,12 @@ func (c clipboard) answerErr(done func(error), err error) {
 // write starts the write, and posts its result to done.
 func (c clipboard) write(ctx context.Context, text string, done func(error)) {
 	if c.api == nil {
-		c.answerErr(done, errClipboardUnavailable())
+		c.answerErr(done, errors.New(tagWebClipboardUnavailable,
+			"the page has no navigator.clipboard: it needs a secure context (https or localhost)"))
 		return
 	}
 	if err := ctx.Err(); err != nil {
-		c.answerErr(done, errClipboardWriteFailed(err.Error()))
+		c.answerErr(done, errors.New(tagWebClipboardWriteFailed, "navigator.clipboard.writeText failed", "detail", err.Error()))
 		return
 	}
 	c.api.WriteText(text, func(err error) { c.answerErr(done, err) })
@@ -122,11 +125,14 @@ func (c clipboard) write(ctx context.Context, text string, done func(error)) {
 // read starts the read, and posts its result to done once: from the promise, or when ctx ends first.
 func (c clipboard) read(ctx context.Context, done func(text string, err error)) {
 	if c.api == nil {
-		c.post(func() { done("", errClipboardUnavailable()) })
+		err := errors.New(tagWebClipboardUnavailable,
+			"the page has no navigator.clipboard: it needs a secure context (https or localhost)")
+		c.post(func() { done("", err) })
 		return
 	}
 	if err := ctx.Err(); err != nil {
-		c.post(func() { done("", errClipboardReadTimeout(err)) })
+		timeout := errors.NewErr(tagClipboardReadTimeout, err)
+		c.post(func() { done("", timeout) })
 		return
 	}
 	var answered atomic.Bool
@@ -135,9 +141,23 @@ func (c clipboard) read(ctx context.Context, done func(text string, err error)) 
 			c.post(func() { done(text, err) })
 		}
 	}
-	stop := context.AfterFunc(ctx, func() { finish("", errClipboardReadTimeout(ctx.Err())) })
+	stop := context.AfterFunc(ctx, func() { finish("", errors.NewErr(tagClipboardReadTimeout, ctx.Err())) })
 	c.api.ReadText(func(text string, err error) {
 		stop()
 		finish(text, err)
 	})
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagClipboardPrimaryUnavailable   = "ClipboardPrimaryUnavailable"
+	tagClipboardReadTimeout          = "ClipboardReadTimeout"
+	tagWebClipboardFormatUnsupported = "WebClipboardFormatUnsupported"
+)
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagWebClipboardUnavailable = "WebClipboardUnavailable"
+	tagWebClipboardWriteFailed = "WebClipboardWriteFailed"
+	tagWebClipboardReadFailed  = "WebClipboardReadFailed"
+)

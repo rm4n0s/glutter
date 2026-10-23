@@ -186,7 +186,7 @@ func allHeroesFor(bc BuildContext, isUserGestureTransition bool, navigator *Navi
 	inviteHero := func(hero *StatefulElement, tag any) {
 		if foundation.DebugMode {
 			if _, ok := result.states[tag]; ok {
-				panic(errors.New("HeroTagDuplicated",
+				panic(errors.New(tagHeroTagDuplicated,
 					"there are multiple heroes that share the same tag within a subtree; within each subtree for which heroes are to be animated (i.e. a PageRoute subtree), each Hero must have a unique non-null tag",
 					"tag", tag, "hero", hero.String()))
 			}
@@ -252,11 +252,11 @@ func (s *heroState) InitState() {
 func (s *heroState) startFlight(shouldIncludeChildInPlaceholder bool) {
 	s.shouldIncludeChild = shouldIncludeChildInPlaceholder
 	if foundation.DebugMode && !s.Mounted() {
-		panic(errors.New("HeroNotMounted", "a hero flight started for a hero that is not mounted"))
+		panic(errors.New(tagHeroNotMounted, "a hero flight started for a hero that is not mounted"))
 	}
 	box, _ := s.Context().FindRenderObject().(rendering.Box)
 	if foundation.DebugMode && (box == nil || !box.HasSize()) {
-		panic(errors.New("HeroSizeMissing", "a hero flight started for a hero whose render object has no size"))
+		panic(errors.New(tagHeroSizeMissing, "a hero flight started for a hero whose render object has no size"))
 	}
 	s.SetState(func() { s.placeholderSize = foundation.Some(box.Size()) })
 }
@@ -280,7 +280,7 @@ func (s *heroState) endFlight(keepPlaceholder bool) {
 func (s *heroState) Build(bc BuildContext) Widget {
 	if foundation.DebugMode {
 		if _, ok := FindAncestorWidgetOfExactType[*Hero](bc); ok {
-			panic(errors.New("HeroDescendantOfHero", "a Hero widget cannot be the descendant of another Hero widget"))
+			panic(errors.New(tagHeroDescendantOfHero, "a Hero widget cannot be the descendant of another Hero widget"))
 		}
 	}
 	w := s.Widget()
@@ -374,11 +374,11 @@ func (m *heroFlightManifest) createHeroRectTween(begin, end foundation.Opt[ui.Re
 // the coordinate space of the render object of the ancestor context.
 func heroBoundingBoxFor(bc, ancestorContext BuildContext) ui.Rect {
 	if foundation.DebugMode && ancestorContext == nil {
-		panic(errors.New("HeroSubtreeMissing", "a hero flight needs the subtree context of its route"))
+		panic(errors.New(tagHeroSubtreeMissing, "a hero flight needs the subtree context of its route"))
 	}
 	box := bc.FindRenderObject().(rendering.Box)
 	if foundation.DebugMode && (!box.HasSize() || !box.Size().IsFinite()) {
-		panic(errors.New("HeroSizeMissing", "a hero flight started for a hero whose render object has no finite size"))
+		panic(errors.New(tagHeroSizeMissing, "a hero flight started for a hero whose render object has no finite size"))
 	}
 	return box.GetTransformTo(ancestorContext.FindRenderObject()).TransformRect(ui.OffsetZero.And(box.Size()))
 }
@@ -567,7 +567,7 @@ func (f *heroFlight) onTick() {
 func (f *heroFlight) start(initial *heroFlightManifest) {
 	if foundation.DebugMode {
 		if f.aborted {
-			panic(errors.New("HeroFlightAborted", "a hero flight can not start after it was aborted"))
+			panic(errors.New(tagHeroFlightAborted, "a hero flight can not start after it was aborted"))
 		}
 		initialAnimation := initial.animation()
 		switch initial.flightType {
@@ -575,11 +575,11 @@ func (f *heroFlight) start(initial *heroFlightManifest) {
 			// During user gesture transitions the animation controller isn't
 			// driving the reverse transition, so the status is not important.
 			if !initial.isUserGestureTransition && initialAnimation.Status() != animation.AnimationStatusReverse {
-				panic(errors.New("HeroFlightStatusInvalid", "a pop flight needs an animation that is reversing"))
+				panic(errors.New(tagHeroFlightStatusInvalid, "a pop flight needs an animation that is reversing"))
 			}
 		case HeroFlightDirectionPush:
 			if initialAnimation.Value() != 0.0 || initialAnimation.Status() != animation.AnimationStatusForward {
-				panic(errors.New("HeroFlightStatusInvalid", "a push flight needs an animation that starts forward from 0"))
+				panic(errors.New(tagHeroFlightStatusInvalid, "a push flight needs an animation that starts forward from 0"))
 			}
 		}
 	}
@@ -607,7 +607,7 @@ func (f *heroFlight) start(initial *heroFlightManifest) {
 func (f *heroFlight) divert(newManifest *heroFlightManifest) {
 	m := f.manifest
 	if foundation.DebugMode && m.tag() != newManifest.tag() {
-		panic(errors.New("HeroFlightTagMismatch", "a hero flight can only be diverted to a flight with the same tag"))
+		panic(errors.New(tagHeroFlightTagMismatch, "a hero flight can only be diverted to a flight with the same tag"))
 	}
 	switch {
 	case m.flightType == HeroFlightDirectionPush && newManifest.flightType == HeroFlightDirectionPop:
@@ -731,10 +731,10 @@ func (c *HeroController) removeFlight(tag any) *heroFlight {
 func (c *HeroController) DidChangeTop(topRoute, previousTopRoute Route) {
 	if foundation.DebugMode {
 		if !topRoute.IsCurrent() {
-			panic(errors.New("HeroControllerRouteNotCurrent", "the top route reported to the hero controller is not the current route"))
+			panic(errors.New(tagHeroControllerRouteNotCurrent, "the top route reported to the hero controller is not the current route"))
 		}
 		if c.Navigator() == nil {
-			panic(errors.New("HeroControllerNavigatorMissing", "the hero controller is not attached to a navigator"))
+			panic(errors.New(tagHeroControllerNavigatorMissing, "the hero controller is not attached to a navigator"))
 		}
 	}
 	if previousTopRoute == nil {
@@ -862,13 +862,13 @@ func (c *HeroController) startHeroTransition(from, to PageRoute, flightType Hero
 	navigatorRenderObject, ok := navigator.Context().FindRenderObject().(rendering.Box)
 	if !ok {
 		if foundation.DebugMode {
-			panic(errors.New("HeroNavigatorRenderObjectInvalid", "the navigator has an invalid render object type",
+			panic(errors.New(tagHeroNavigatorRenderObjectInvalid, "the navigator has an invalid render object type",
 				"navigator", navigator.String()))
 		}
 		return
 	}
 	if foundation.DebugMode && !navigatorRenderObject.HasSize() {
-		panic(errors.New("HeroNavigatorSizeMissing", "the render object of the navigator has no size", "navigator", navigator.String()))
+		panic(errors.New(tagHeroNavigatorSizeMissing, "the render object of the navigator has no size", "navigator", navigator.String()))
 	}
 
 	// At this point the to heroes may have been built and laid out for the first
@@ -1017,3 +1017,19 @@ func (w *HeroMode) Enabled() bool { return w.enabled }
 //
 // Flutter: widgets/heroes.dart HeroMode.build
 func (w *HeroMode) Build(bc BuildContext) Widget { return w.child }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagHeroControllerNavigatorMissing   = "HeroControllerNavigatorMissing"
+	tagHeroControllerRouteNotCurrent    = "HeroControllerRouteNotCurrent"
+	tagHeroDescendantOfHero             = "HeroDescendantOfHero"
+	tagHeroFlightAborted                = "HeroFlightAborted"
+	tagHeroFlightStatusInvalid          = "HeroFlightStatusInvalid"
+	tagHeroFlightTagMismatch            = "HeroFlightTagMismatch"
+	tagHeroNavigatorRenderObjectInvalid = "HeroNavigatorRenderObjectInvalid"
+	tagHeroNavigatorSizeMissing         = "HeroNavigatorSizeMissing"
+	tagHeroNotMounted                   = "HeroNotMounted"
+	tagHeroSizeMissing                  = "HeroSizeMissing"
+	tagHeroSubtreeMissing               = "HeroSubtreeMissing"
+	tagHeroTagDuplicated                = "HeroTagDuplicated"
+)

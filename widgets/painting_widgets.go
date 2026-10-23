@@ -34,7 +34,7 @@ func NewOpacity(opacity float64, child Widget, opts ...OpacityOpts) *Opacity {
 	o := firstOpts(opts)
 	w := &Opacity{SingleChildRenderObjectWidget: NewSingleChildRenderObjectWidgetBase(child, WidgetOpts{Key: o.Key}), opacity: opacity, alwaysIncludeSemantics: o.AlwaysIncludeSemantics}
 	if foundation.DebugMode && !(opacity >= 0 && opacity <= 1) {
-		panic(errors.New("OpacityOutOfRange", "the opacity must be between 0.0 and 1.0", "opacity", opacity))
+		panic(errors.New(tagOpacityOutOfRange, "the opacity must be between 0.0 and 1.0", "opacity", opacity))
 	}
 	return w
 }

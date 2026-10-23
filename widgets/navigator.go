@@ -84,13 +84,13 @@ func newRouteEntry(route Route, initialState routeLifecycle, pageBased bool) *ro
 	if foundation.DebugMode {
 		if pageBased {
 			if _, ok := route.Settings().(Page); !ok {
-				panic(errors.New("RouteEntrySettingsNotAPage", "the settings of a page-based route must be a Page"))
+				panic(errors.New(tagRouteEntrySettingsNotAPage, "the settings of a page-based route must be a Page"))
 			}
 		}
 		switch initialState {
 		case routeStaging, routeAdd, routePush, routePushReplace, routeReplace:
 		default:
-			panic(errors.New("RouteEntryInitialStateInvalid", "a route entry starts in staging, add, push, pushReplace or replace",
+			panic(errors.New(tagRouteEntryInitialStateInvalid, "a route entry starts in staging, add, push, pushReplace or replace",
 				"state", int(initialState)))
 		}
 	}
@@ -122,11 +122,11 @@ func (e *routeEntry) handleAdd(navigator *NavigatorState, previousPresent Route)
 func (e *routeEntry) handlePush(navigator *NavigatorState, isNewFirst bool, previous, previousPresent Route) {
 	if foundation.DebugMode {
 		if e.currentState != routePush && e.currentState != routePushReplace && e.currentState != routeReplace {
-			panic(errors.New("RouteEntryStateInvalid", "handlePush needs a route in the push, pushReplace or replace state",
+			panic(errors.New(tagRouteEntryStateInvalid, "handlePush needs a route in the push, pushReplace or replace state",
 				"state", int(e.currentState)))
 		}
 		if e.base().installed() {
-			panic(errors.New("RouteAlreadyInstalled", "the pushed route has already been used; when pushing a route, a new Route object must be provided",
+			panic(errors.New(tagRouteAlreadyInstalled, "the pushed route has already been used; when pushing a route, a new Route object must be provided",
 				"route", e.route.String()))
 		}
 	}
@@ -135,7 +135,7 @@ func (e *routeEntry) handlePush(navigator *NavigatorState, isNewFirst bool, prev
 	e.base().navigator = navigator
 	e.route.Install()
 	if foundation.DebugMode && len(e.route.OverlayEntries()) == 0 {
-		panic(errors.New("RouteOverlayEntriesEmpty", "a route must create at least one overlay entry in Install",
+		panic(errors.New(tagRouteOverlayEntriesEmpty, "a route must create at least one overlay entry in Install",
 			"route", e.route.String()))
 	}
 	if e.currentState == routePush || e.currentState == routePushReplace {
@@ -189,7 +189,7 @@ func (e *routeEntry) handleDidPopNext(poppedRoute Route) {
 func (e *routeEntry) handlePop(navigator *NavigatorState, previousPresent Route) bool {
 	navigator.debugRequireLocked()
 	if foundation.DebugMode && !e.base().isInstalledIn(navigator) {
-		panic(errors.New("RouteNotInstalledHere", "the route is not installed in this navigator", "route", e.route.String()))
+		panic(errors.New(tagRouteNotInstalledHere, "the route is not installed in this navigator", "route", e.route.String()))
 	}
 	e.currentState = routePopping
 	if e.base().popCompleter.IsCompleted() {
@@ -234,12 +234,12 @@ func (e *routeEntry) handleRemoval(navigator *NavigatorState, previousPresent Ro
 
 func (e *routeEntry) didAdd(navigator *NavigatorState, isNewFirst bool) {
 	if foundation.DebugMode && e.base().installed() {
-		panic(errors.New("RouteAlreadyInstalled", "the added route has already been used", "route", e.route.String()))
+		panic(errors.New(tagRouteAlreadyInstalled, "the added route has already been used", "route", e.route.String()))
 	}
 	e.base().navigator = navigator
 	e.route.Install()
 	if foundation.DebugMode && len(e.route.OverlayEntries()) == 0 {
-		panic(errors.New("RouteOverlayEntriesEmpty", "a route must create at least one overlay entry in Install",
+		panic(errors.New(tagRouteOverlayEntriesEmpty, "a route must create at least one overlay entry in Install",
 			"route", e.route.String()))
 	}
 	e.route.DidAdd()
@@ -294,7 +294,7 @@ func (e *routeEntry) markNeedsExitingDecision() { e.waitingForExitingDecision = 
 // Flutter: widgets/navigator.dart _RouteEntry.markForPush
 func (e *routeEntry) MarkForPush() {
 	if foundation.DebugMode && (!e.IsWaitingForEnteringDecision() || e.IsWaitingForExitingDecision()) {
-		panic(errors.New("RouteEntryPushDecisionInvalid", "this route cannot be marked for push: either a decision has already been made or it does not require an explicit decision on how to transition in",
+		panic(errors.New(tagRouteEntryPushDecisionInvalid, "this route cannot be marked for push: either a decision has already been made or it does not require an explicit decision on how to transition in",
 			"route", e.route.String()))
 	}
 	e.currentState = routePush
@@ -305,7 +305,7 @@ func (e *routeEntry) MarkForPush() {
 // Flutter: widgets/navigator.dart _RouteEntry.markForAdd
 func (e *routeEntry) MarkForAdd() {
 	if foundation.DebugMode && (!e.IsWaitingForEnteringDecision() || e.IsWaitingForExitingDecision()) {
-		panic(errors.New("RouteEntryAddDecisionInvalid", "this route cannot be marked for add: either a decision has already been made or it does not require an explicit decision on how to transition in",
+		panic(errors.New(tagRouteEntryAddDecisionInvalid, "this route cannot be marked for add: either a decision has already been made or it does not require an explicit decision on how to transition in",
 			"route", e.route.String()))
 	}
 	e.currentState = routeAdd
@@ -320,7 +320,7 @@ const debugPopAttemptLimit = 100
 // Flutter: widgets/navigator.dart _RouteEntry.markForPop
 func (e *routeEntry) MarkForPop(result ...any) {
 	if foundation.DebugMode && (e.IsWaitingForEnteringDecision() || !e.IsWaitingForExitingDecision() || !e.isPresent()) {
-		panic(errors.New("RouteEntryPopDecisionInvalid", "this route cannot be marked for pop: either a decision has already been made or it does not require an explicit decision on how to transition out",
+		panic(errors.New(tagRouteEntryPopDecisionInvalid, "this route cannot be marked for pop: either a decision has already been made or it does not require an explicit decision on how to transition out",
 			"route", e.route.String()))
 	}
 	r := optionalResult(result)
@@ -328,12 +328,12 @@ func (e *routeEntry) MarkForPop(result ...any) {
 	for e.route.WillHandlePopInternally() {
 		attempt++
 		if foundation.DebugMode && attempt >= debugPopAttemptLimit {
-			panic(errors.New("RouteEntryPopAttemptsExceeded", "attempted to pop a route too many times, but it still handles pops internally",
+			panic(errors.New(tagRouteEntryPopAttemptsExceeded, "attempted to pop a route too many times, but it still handles pops internally",
 				"route", e.route.String(), "attempts", debugPopAttemptLimit))
 		}
 		popResult := e.route.DidPop(r)
 		if foundation.DebugMode && popResult {
-			panic(errors.New("RouteEntryPopInvalid", "a route that handles pops internally popped", "route", e.route.String()))
+			panic(errors.New(tagRouteEntryPopInvalid, "a route that handles pops internally popped", "route", e.route.String()))
 		}
 	}
 	e.pop(r, false)
@@ -346,7 +346,7 @@ func (e *routeEntry) MarkForPop(result ...any) {
 // Flutter: widgets/navigator.dart _RouteEntry.markForComplete
 func (e *routeEntry) MarkForComplete(result ...any) {
 	if foundation.DebugMode && (e.IsWaitingForEnteringDecision() || !e.IsWaitingForExitingDecision() || !e.isPresent()) {
-		panic(errors.New("RouteEntryCompleteDecisionInvalid", "this route cannot be marked for complete: either a decision has already been made or it does not require an explicit decision on how to transition out",
+		panic(errors.New(tagRouteEntryCompleteDecisionInvalid, "this route cannot be marked for complete: either a decision has already been made or it does not require an explicit decision on how to transition out",
 			"route", e.route.String()))
 	}
 	e.complete(optionalResult(result), false, false)
@@ -435,7 +435,7 @@ func routeEntryIsRoute(route Route) func(*routeEntry) bool {
 
 func (e *routeEntry) debugRequireState(method string, want routeLifecycle) {
 	if foundation.DebugMode && e.currentState != want {
-		panic(errors.New("RouteEntryStateInvalid", method+" was called on a route entry in the wrong state",
+		panic(errors.New(tagRouteEntryStateInvalid, method+" was called on a route entry in the wrong state",
 			"state", int(e.currentState), "want", int(want)))
 	}
 }
@@ -580,7 +580,7 @@ func HeroControllerScopeMaybeOf(bc BuildContext) *HeroController {
 func HeroControllerScopeOf(bc BuildContext) *HeroController {
 	controller := HeroControllerScopeMaybeOf(bc)
 	if foundation.DebugMode && controller == nil {
-		panic(errors.New("HeroControllerScopeMissing",
+		panic(errors.New(tagHeroControllerScopeMissing,
 			"HeroControllerScope.of() was called with a context that does not contain a HeroControllerScope widget",
 			"context", describeContext(bc)))
 	}
@@ -796,7 +796,7 @@ func findNavigator(bc BuildContext, opts []NavigatorOfOpts) *NavigatorState {
 func NavigatorOf(bc BuildContext, opts ...NavigatorOfOpts) *NavigatorState {
 	navigator := findNavigator(bc, opts)
 	if foundation.DebugMode && navigator == nil {
-		panic(errors.New("NavigatorMissing",
+		panic(errors.New(tagNavigatorMissing,
 			"Navigator operation requested with a context that does not include a Navigator; the context used to push or pop routes from the Navigator must be that of a widget that is a descendant of a Navigator widget",
 			"context", describeContext(bc)))
 	}
@@ -952,7 +952,7 @@ func NavigatorDefaultGenerateInitialRoutes(navigator *NavigatorState, initialRou
 			}
 		}
 		if result[len(result)-1] == nil {
-			navigator.reportError(errors.New("NavigatorInitialRouteUnknown",
+			navigator.reportError(errors.New(tagNavigatorInitialRouteUnknown,
 				"could not navigate to initial route; there was no corresponding route in the app, and therefore the initial route specified will be ignored and \"/\" will be used instead",
 				"route", "/"+initialRouteName))
 			for _, route := range result {
@@ -1040,13 +1040,13 @@ func (s *NavigatorState) reportError(err error) {
 
 func (s *NavigatorState) debugRequireLocked() {
 	if foundation.DebugMode && !s.debugLocked {
-		panic(errors.New("NavigatorNotLocked", "the history of the navigator was changed without locking it"))
+		panic(errors.New(tagNavigatorNotLocked, "the history of the navigator was changed without locking it"))
 	}
 }
 
 func (s *NavigatorState) debugRequireUnlocked() {
 	if foundation.DebugMode && s.debugLocked {
-		panic(errors.New("NavigatorLocked",
+		panic(errors.New(tagNavigatorLocked,
 			"the navigator was asked to change its history while it was changing it; do not push or pop from inside the methods of a route that run while the history changes",
 			"navigator", s.String()))
 	}
@@ -1104,7 +1104,7 @@ func (s *NavigatorState) InitState() {
 	s.debugCheckPageAPIParameters()
 	for _, observer := range s.Widget().o.Observers {
 		if foundation.DebugMode && observer.Navigator() != nil {
-			panic(errors.New("NavigatorObserverShared", "a NavigatorObserver can not be shared by two navigators",
+			panic(errors.New(tagNavigatorObserverShared, "a NavigatorObserver can not be shared by two navigators",
 				"observer", foundation.DescribeIdentity(observer)))
 		}
 		observer.setNavigator(s)
@@ -1148,7 +1148,7 @@ func (s *NavigatorState) restoreState() {
 		s.history.addAll(entries)
 	}
 	if foundation.DebugMode && len(s.history.entries) == 0 {
-		panic(errors.New("NavigatorHistoryEmpty", "the Navigator needs at least one initial route; OnGenerateInitialRoutes returned none"))
+		panic(errors.New(tagNavigatorHistoryEmpty, "the Navigator needs at least one initial route; OnGenerateInitialRoutes returned none"))
 	}
 	s.debugRequireUnlocked()
 	if foundation.DebugMode {
@@ -1228,7 +1228,7 @@ func (s *NavigatorState) updateHeroController(newHeroController *HeroController)
 						if !hasOwnership {
 							otherOwner = s.heroControllerFromScope.Navigator()
 						}
-						s.reportError(errors.New("HeroControllerShared",
+						s.reportError(errors.New(tagHeroControllerShared,
 							"a HeroController can not be shared by multiple Navigators; create a HeroControllerScope for each Navigator or use a HeroControllerScope.none to prevent the subtree from receiving a HeroController",
 							"navigators", s.String()+", "+otherOwner.String()))
 					}
@@ -1264,7 +1264,7 @@ func (s *NavigatorState) DidUpdateWidget(old *Navigator) {
 		}
 		for _, observer := range s.Widget().o.Observers {
 			if foundation.DebugMode && observer.Navigator() != nil {
-				panic(errors.New("NavigatorObserverShared", "a NavigatorObserver can not be shared by two navigators",
+				panic(errors.New(tagNavigatorObserverShared, "a NavigatorObserver can not be shared by two navigators",
 					"observer", foundation.DescribeIdentity(observer)))
 			}
 			observer.setNavigator(s)
@@ -1273,7 +1273,7 @@ func (s *NavigatorState) DidUpdateWidget(old *Navigator) {
 	}
 	if pagesChanged(old.o.Pages, s.Widget().o.Pages) {
 		if foundation.DebugMode && s.Widget().o.Pages != nil && len(s.Widget().o.Pages) == 0 {
-			s.reportError(errors.New("NavigatorPagesEmpty", "the Navigator.pages must not be empty to use the Navigator.pages API"))
+			s.reportError(errors.New(tagNavigatorPagesEmpty, "the Navigator.pages must not be empty to use the Navigator.pages API"))
 		}
 		s.updatePages()
 	}
@@ -1308,9 +1308,9 @@ func (s *NavigatorState) debugCheckPageAPIParameters() {
 	}
 	o := s.Widget().o
 	if len(o.Pages) == 0 {
-		s.reportError(errors.New("NavigatorPagesEmpty", "the Navigator.pages must not be empty to use the Navigator.pages API"))
+		s.reportError(errors.New(tagNavigatorPagesEmpty, "the Navigator.pages must not be empty to use the Navigator.pages API"))
 	} else if (o.OnDidRemovePage == nil) == (o.OnPopPage == nil) {
-		s.reportError(errors.New("NavigatorPageCallbacksInvalid",
+		s.reportError(errors.New(tagNavigatorPageCallbacksInvalid,
 			"either onDidRemovePage or onPopPage must be provided to use the Navigator.pages API but not both"))
 	}
 }
@@ -1319,7 +1319,7 @@ func (s *NavigatorState) debugCheckPageAPIParameters() {
 // settings.
 func (s *NavigatorState) debugCheckPageRoute(route Route, page Page) {
 	if foundation.DebugMode && route.Settings() != RouteSettings(page) {
-		panic(errors.New("PageRouteSettingsInvalid",
+		panic(errors.New(tagPageRouteSettingsInvalid,
 			"the settings getter of a page-based Route must return a Page object; please set the settings to the Page in the Page.CreateRoute method",
 			"page", foundation.RuntimeTypeName(page)))
 	}
@@ -1333,7 +1333,7 @@ func (s *NavigatorState) debugCheckDuplicatedPageKeys() {
 	for _, page := range s.Widget().o.Pages {
 		if key := page.Key(); key != nil {
 			if reserved[key] {
-				panic(errors.New("NavigatorPageKeyDuplicated", "there are multiple pages with the same key in Navigator.pages", "key", key))
+				panic(errors.New(tagNavigatorPageKeyDuplicated, "there are multiple pages with the same key in Navigator.pages", "key", key))
 			}
 			reserved[key] = true
 		}
@@ -1348,7 +1348,7 @@ func (s *NavigatorState) debugCheckDuplicatedPageKeys() {
 func (s *NavigatorState) updatePages() {
 	if foundation.DebugMode {
 		if s.debugUpdatingPage {
-			panic(errors.New("NavigatorPagesUpdateReentrant", "the pages of the navigator changed while they were being updated"))
+			panic(errors.New(tagNavigatorPagesUpdateReentrant, "the pages of the navigator changed while they were being updated"))
 		}
 		s.debugCheckDuplicatedPageKeys()
 		s.debugUpdatingPage = true
@@ -1585,7 +1585,7 @@ func (s *NavigatorState) Activate() {
 	s.updateEffectiveObservers()
 	for _, observer := range s.effectiveObservers {
 		if foundation.DebugMode && observer.Navigator() != nil {
-			panic(errors.New("NavigatorObserverShared", "a NavigatorObserver can not be shared by two navigators",
+			panic(errors.New(tagNavigatorObserverShared, "a NavigatorObserver can not be shared by two navigators",
 				"observer", foundation.DescribeIdentity(observer)))
 		}
 		observer.setNavigator(s)
@@ -1633,7 +1633,7 @@ func (s *NavigatorState) allRouteOverlayEntries() []*OverlayEntry {
 func (s *NavigatorState) flushHistoryUpdates(rearrangeOverlay bool) {
 	s.debugRequireLocked()
 	if foundation.DebugMode && s.debugUpdatingPage {
-		panic(errors.New("NavigatorHistoryFlushReentrant", "the history of the navigator was flushed while the pages were being updated"))
+		panic(errors.New(tagNavigatorHistoryFlushReentrant, "the history of the navigator was flushed while the pages were being updated"))
 	}
 	s.flushingHistory = true
 	// Cleans up the list, sending updates to the routes that changed. The
@@ -1729,7 +1729,7 @@ func (s *NavigatorState) flushHistoryUpdates(rearrangeOverlay bool) {
 			entry = next
 		case routeDisposing, routeDisposed, routeStaging:
 			if foundation.DebugMode {
-				panic(errors.New("RouteEntryStateInvalid", "a route entry in the history is in a state that cannot be flushed",
+				panic(errors.New(tagRouteEntryStateInvalid, "a route entry in the history is in a state that cannot be flushed",
 					"state", int(entry.currentState)))
 			}
 		}
@@ -1901,7 +1901,7 @@ func (s *NavigatorState) routeNamed(name string, arguments any, allowNull bool) 
 		return nil
 	}
 	if foundation.DebugMode && w.o.OnGenerateRoute == nil {
-		panic(errors.New("NavigatorOnGenerateRouteMissing",
+		panic(errors.New(tagNavigatorOnGenerateRouteMissing,
 			fmt.Sprintf("Navigator.onGenerateRoute was null, but the route named %q was referenced; to use the Navigator API with named routes (pushNamed, pushReplacementNamed, or pushNamedAndRemoveUntil), the Navigator must be provided with an onGenerateRoute handler", name),
 			"navigator", s.String()))
 	}
@@ -1909,13 +1909,13 @@ func (s *NavigatorState) routeNamed(name string, arguments any, allowNull bool) 
 	route := w.o.OnGenerateRoute(settings)
 	if route == nil && !allowNull {
 		if foundation.DebugMode && w.o.OnUnknownRoute == nil {
-			panic(errors.New("NavigatorOnGenerateRouteReturnedNull",
+			panic(errors.New(tagNavigatorOnGenerateRouteReturnedNull,
 				fmt.Sprintf("Navigator.onGenerateRoute returned null when requested to build route %q; the onGenerateRoute callback must never return null, unless an onUnknownRoute callback is provided as well", name),
 				"navigator", s.String()))
 		}
 		route = w.o.OnUnknownRoute(settings)
 		if foundation.DebugMode && route == nil {
-			panic(errors.New("NavigatorOnUnknownRouteReturnedNull",
+			panic(errors.New(tagNavigatorOnUnknownRouteReturnedNull,
 				fmt.Sprintf("Navigator.onUnknownRoute returned null when requested to build route %q; the onUnknownRoute callback must never return null", name),
 				"navigator", s.String()))
 		}
@@ -1988,7 +1988,7 @@ func (s *NavigatorState) unlockHistory() {
 func (s *NavigatorState) pushEntry(entry *routeEntry) {
 	s.lockHistory()
 	if foundation.DebugMode && entry.base().installed() {
-		panic(errors.New("RouteAlreadyInstalled", "the pushed route has already been used; when pushing a route, a new Route object must be provided",
+		panic(errors.New(tagRouteAlreadyInstalled, "the pushed route has already been used; when pushing a route, a new Route object must be provided",
 			"route", entry.route.String()))
 	}
 	s.history.add(entry)
@@ -2008,7 +2008,7 @@ func (s *NavigatorState) afterNavigation() {
 func (s *NavigatorState) PushReplacement(newRoute Route, opts ...NavigatorPushReplacementOpts) <-chan any {
 	o := firstOpts(opts)
 	if foundation.DebugMode && newRoute.AsRoute().installed() {
-		panic(errors.New("RouteAlreadyInstalled", "the pushed route has already been used; when pushing a route, a new Route object must be provided",
+		panic(errors.New(tagRouteAlreadyInstalled, "the pushed route has already been used; when pushing a route, a new Route object must be provided",
 			"route", newRoute.String()))
 	}
 	s.pushReplacementEntry(newRouteEntry(newRoute, routePushReplace, false), o.Result)
@@ -2019,7 +2019,7 @@ func (s *NavigatorState) pushReplacementEntry(entry *routeEntry, result any) {
 	s.lockHistory()
 	if foundation.DebugMode {
 		if len(s.history.entries) == 0 || s.history.indexWhere(routeEntryIsPresent) < 0 {
-			panic(errors.New("NavigatorNoActiveRoutes", "Navigator has no active routes to replace"))
+			panic(errors.New(tagNavigatorNoActiveRoutes, "Navigator has no active routes to replace"))
 		}
 	}
 	s.lastRouteEntryWhere(routeEntryIsPresent).complete(result, true, true)
@@ -2035,7 +2035,7 @@ func (s *NavigatorState) pushReplacementEntry(entry *routeEntry, result any) {
 // Flutter: widgets/navigator.dart NavigatorState.pushAndRemoveUntil
 func (s *NavigatorState) PushAndRemoveUntil(newRoute Route, predicate RoutePredicate) <-chan any {
 	if foundation.DebugMode && newRoute.AsRoute().installed() {
-		panic(errors.New("RouteAlreadyInstalled", "the pushed route has already been used; when pushing a route, a new Route object must be provided",
+		panic(errors.New(tagRouteAlreadyInstalled, "the pushed route has already been used; when pushing a route, a new Route object must be provided",
 			"route", newRoute.String()))
 	}
 	s.pushEntryAndRemoveUntil(newRouteEntry(newRoute, routePush, false), predicate)
@@ -2066,7 +2066,7 @@ func (s *NavigatorState) pushEntryAndRemoveUntil(entry *routeEntry, predicate Ro
 func (s *NavigatorState) Replace(oldRoute, newRoute Route) {
 	s.debugRequireUnlocked()
 	if foundation.DebugMode && !oldRoute.AsRoute().isInstalledIn(s) {
-		panic(errors.New("NavigatorRouteMissing", "this Navigator does not contain the specified oldRoute", "route", oldRoute.String()))
+		panic(errors.New(tagNavigatorRouteMissing, "this Navigator does not contain the specified oldRoute", "route", oldRoute.String()))
 	}
 	s.replaceEntry(newRouteEntry(newRoute, routeReplace, false), oldRoute)
 }
@@ -2078,15 +2078,15 @@ func (s *NavigatorState) replaceEntry(entry *routeEntry, oldRoute Route) {
 	}
 	s.lockHistory()
 	if foundation.DebugMode && entry.base().installed() {
-		panic(errors.New("RouteAlreadyInstalled", "the new route has already been used", "route", entry.route.String()))
+		panic(errors.New(tagRouteAlreadyInstalled, "the new route has already been used", "route", entry.route.String()))
 	}
 	index := s.history.indexWhere(routeEntryIsRoute(oldRoute))
 	if foundation.DebugMode {
 		if index < 0 {
-			panic(errors.New("NavigatorRouteMissing", "this Navigator does not contain the specified oldRoute", "route", oldRoute.String()))
+			panic(errors.New(tagNavigatorRouteMissing, "this Navigator does not contain the specified oldRoute", "route", oldRoute.String()))
 		}
 		if !s.history.entries[index].isPresent() {
-			panic(errors.New("NavigatorRouteRemoved", "the specified oldRoute has already been removed from the Navigator", "route", oldRoute.String()))
+			panic(errors.New(tagNavigatorRouteRemoved, "the specified oldRoute has already been removed from the Navigator", "route", oldRoute.String()))
 		}
 	}
 	wasCurrent := oldRoute.IsCurrent()
@@ -2106,10 +2106,10 @@ func (s *NavigatorState) replaceEntry(entry *routeEntry, oldRoute Route) {
 func (s *NavigatorState) ReplaceRouteBelow(anchorRoute, newRoute Route) {
 	if foundation.DebugMode {
 		if newRoute.AsRoute().installed() {
-			panic(errors.New("RouteAlreadyInstalled", "the new route has already been used", "route", newRoute.String()))
+			panic(errors.New(tagRouteAlreadyInstalled, "the new route has already been used", "route", newRoute.String()))
 		}
 		if !anchorRoute.AsRoute().isInstalledIn(s) {
-			panic(errors.New("NavigatorRouteMissing", "this Navigator does not contain the specified anchorRoute", "route", anchorRoute.String()))
+			panic(errors.New(tagNavigatorRouteMissing, "this Navigator does not contain the specified anchorRoute", "route", anchorRoute.String()))
 		}
 	}
 	s.replaceEntryBelow(newRouteEntry(newRoute, routeReplace, false), anchorRoute)
@@ -2119,10 +2119,10 @@ func (s *NavigatorState) indexBelowAnchor(anchorRoute Route) int {
 	anchorIndex := s.history.indexWhere(routeEntryIsRoute(anchorRoute))
 	if foundation.DebugMode {
 		if anchorIndex < 0 {
-			panic(errors.New("NavigatorRouteMissing", "this Navigator does not contain the specified anchorRoute", "route", anchorRoute.String()))
+			panic(errors.New(tagNavigatorRouteMissing, "this Navigator does not contain the specified anchorRoute", "route", anchorRoute.String()))
 		}
 		if !s.history.entries[anchorIndex].isPresent() {
-			panic(errors.New("NavigatorRouteRemoved", "the specified anchorRoute has already been removed from the Navigator", "route", anchorRoute.String()))
+			panic(errors.New(tagNavigatorRouteRemoved, "the specified anchorRoute has already been removed from the Navigator", "route", anchorRoute.String()))
 		}
 	}
 	index := anchorIndex - 1
@@ -2133,7 +2133,7 @@ func (s *NavigatorState) indexBelowAnchor(anchorRoute Route) int {
 		index--
 	}
 	if foundation.DebugMode && index < 0 {
-		panic(errors.New("NavigatorRouteBelowMissing", "there are no routes below the specified anchorRoute", "route", anchorRoute.String()))
+		panic(errors.New(tagNavigatorRouteBelowMissing, "there are no routes below the specified anchorRoute", "route", anchorRoute.String()))
 	}
 	return index
 }
@@ -2209,7 +2209,7 @@ func (s *NavigatorState) Pop(result ...any) {
 	if entry == nil {
 		s.unlockHistory()
 		if foundation.DebugMode {
-			panic(errors.New("NavigatorNoActiveRoutes", "Navigator has no active routes to pop"))
+			panic(errors.New(tagNavigatorNoActiveRoutes, "Navigator has no active routes to pop"))
 		}
 		return
 	}
@@ -2274,7 +2274,7 @@ func (s *NavigatorState) PopUntilWithResult(predicate RoutePredicate, result any
 func (s *NavigatorState) RemoveRoute(route Route, result ...any) {
 	s.lockHistory()
 	if foundation.DebugMode && !route.AsRoute().isInstalledIn(s) {
-		panic(errors.New("NavigatorRouteMissing", "this Navigator does not contain the specified route", "route", route.String()))
+		panic(errors.New(tagNavigatorRouteMissing, "this Navigator does not contain the specified route", "route", route.String()))
 	}
 	wasCurrent := route.IsCurrent()
 	entry := s.firstRouteEntryWhere(routeEntryIsRoute(route))
@@ -2292,7 +2292,7 @@ func (s *NavigatorState) RemoveRoute(route Route, result ...any) {
 func (s *NavigatorState) RemoveRouteBelow(anchorRoute Route, result ...any) {
 	s.lockHistory()
 	if foundation.DebugMode && !anchorRoute.AsRoute().isInstalledIn(s) {
-		panic(errors.New("NavigatorRouteMissing", "this Navigator does not contain the specified anchorRoute", "route", anchorRoute.String()))
+		panic(errors.New(tagNavigatorRouteMissing, "this Navigator does not contain the specified anchorRoute", "route", anchorRoute.String()))
 	}
 	index := s.indexBelowAnchor(anchorRoute)
 	s.history.entries[index].complete(optionalResult(result), false, true)
@@ -2320,7 +2320,7 @@ func (s *NavigatorState) FinalizeRoute(route Route) {
 			kind: observationPop, primary: route, secondary: s.getRouteBefore(index-1, routeEntryWillBePresent).routeOrNil(),
 		})
 	} else if foundation.DebugMode && entry.currentState != routePopping {
-		panic(errors.New("RouteEntryStateInvalid", "finalizeRoute was called for a route that is not popping",
+		panic(errors.New(tagRouteEntryStateInvalid, "finalizeRoute was called for a route that is not popping",
 			"state", int(entry.currentState)))
 	}
 	entry.finalize()
@@ -2358,7 +2358,7 @@ func (s *NavigatorState) DidStartUserGesture() {
 // Flutter: widgets/navigator.dart NavigatorState.didStopUserGesture
 func (s *NavigatorState) DidStopUserGesture() {
 	if foundation.DebugMode && s.userGesturesCount <= 0 {
-		panic(errors.New("NavigatorUserGestureNotStarted", "didStopUserGesture was called without a user gesture in progress"))
+		panic(errors.New(tagNavigatorUserGestureNotStarted, "didStopUserGesture was called without a user gesture in progress"))
 	}
 	s.setUserGesturesInProgress(s.userGesturesCount - 1)
 	if s.userGesturesCount == 0 {
@@ -2412,7 +2412,7 @@ func (s *NavigatorState) cancelActivePointers() {
 func (s *NavigatorState) Build(bc BuildContext) Widget {
 	s.debugRequireUnlocked()
 	if foundation.DebugMode && len(s.history.entries) == 0 {
-		panic(errors.New("NavigatorHistoryEmpty", "the Navigator has no routes to build"))
+		panic(errors.New(tagNavigatorHistoryEmpty, "the Navigator has no routes to build"))
 	}
 	var initialEntries []*OverlayEntry
 	if s.Overlay() == nil {
@@ -2458,3 +2458,41 @@ func (s *NavigatorState) Build(bc BuildContext) Widget {
 func (s *NavigatorState) String() string {
 	return foundation.DescribeIdentity(s)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagHeroControllerScopeMissing           = "HeroControllerScopeMissing"
+	tagHeroControllerShared                 = "HeroControllerShared"
+	tagNavigatorHistoryEmpty                = "NavigatorHistoryEmpty"
+	tagNavigatorHistoryFlushReentrant       = "NavigatorHistoryFlushReentrant"
+	tagNavigatorInitialRouteUnknown         = "NavigatorInitialRouteUnknown"
+	tagNavigatorLocked                      = "NavigatorLocked"
+	tagNavigatorMissing                     = "NavigatorMissing"
+	tagNavigatorNoActiveRoutes              = "NavigatorNoActiveRoutes"
+	tagNavigatorNotLocked                   = "NavigatorNotLocked"
+	tagNavigatorObserverShared              = "NavigatorObserverShared"
+	tagNavigatorOnGenerateRouteMissing      = "NavigatorOnGenerateRouteMissing"
+	tagNavigatorOnGenerateRouteReturnedNull = "NavigatorOnGenerateRouteReturnedNull"
+	tagNavigatorOnUnknownRouteReturnedNull  = "NavigatorOnUnknownRouteReturnedNull"
+	tagNavigatorPageCallbacksInvalid        = "NavigatorPageCallbacksInvalid"
+	tagNavigatorPageKeyDuplicated           = "NavigatorPageKeyDuplicated"
+	tagNavigatorPagesEmpty                  = "NavigatorPagesEmpty"
+	tagNavigatorPagesUpdateReentrant        = "NavigatorPagesUpdateReentrant"
+	tagNavigatorRouteBelowMissing           = "NavigatorRouteBelowMissing"
+	tagNavigatorRouteMissing                = "NavigatorRouteMissing"
+	tagNavigatorRouteRemoved                = "NavigatorRouteRemoved"
+	tagNavigatorUserGestureNotStarted       = "NavigatorUserGestureNotStarted"
+	tagPageRouteSettingsInvalid             = "PageRouteSettingsInvalid"
+	tagRouteAlreadyInstalled                = "RouteAlreadyInstalled"
+	tagRouteEntryAddDecisionInvalid         = "RouteEntryAddDecisionInvalid"
+	tagRouteEntryCompleteDecisionInvalid    = "RouteEntryCompleteDecisionInvalid"
+	tagRouteEntryInitialStateInvalid        = "RouteEntryInitialStateInvalid"
+	tagRouteEntryPopAttemptsExceeded        = "RouteEntryPopAttemptsExceeded"
+	tagRouteEntryPopDecisionInvalid         = "RouteEntryPopDecisionInvalid"
+	tagRouteEntryPopInvalid                 = "RouteEntryPopInvalid"
+	tagRouteEntryPushDecisionInvalid        = "RouteEntryPushDecisionInvalid"
+	tagRouteEntrySettingsNotAPage           = "RouteEntrySettingsNotAPage"
+	tagRouteEntryStateInvalid               = "RouteEntryStateInvalid"
+	tagRouteNotInstalledHere                = "RouteNotInstalledHere"
+	tagRouteOverlayEntriesEmpty             = "RouteOverlayEntriesEmpty"
+)

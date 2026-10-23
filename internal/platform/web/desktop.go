@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/rm4n0s/errors"
 )
 
 // This file is the web's side of the desktop services of package desktop (SPEC §23.7): opening a URI
@@ -184,20 +186,20 @@ func uriScheme(raw string) string {
 // Flutter: no counterpart (url_launcher_web: launchUrl)
 func (d *Desktop) OpenURI(ctx context.Context, uri string) error {
 	if err := ctx.Err(); err != nil {
-		return errOpenURIUnavailable(uri, "the context ended: "+err.Error())
+		return errors.New(tagOpenURIUnavailable, "the browser cannot open the URI", "uri", uri, "reason", "the context ended: "+err.Error())
 	}
 	if scheme := uriScheme(uri); scheme != "" {
 		for _, b := range blockedSchemes {
 			if scheme == b {
-				return errOpenURISchemeBlocked(uri, scheme)
+				return errors.New(tagOpenURISchemeBlocked, "the web does not open a URI that runs script", "uri", uri, "scheme", scheme)
 			}
 		}
 	}
 	if d == nil || d.opener == nil {
-		return errOpenURIUnavailable(uri, "the program is not running in a web page")
+		return errors.New(tagOpenURIUnavailable, "the browser cannot open the URI", "uri", uri, "reason", "the program is not running in a web page")
 	}
 	if err := d.opener.Open(uri, "_blank", "noopener"); err != nil {
-		return errOpenURIUnavailable(uri, err.Error())
+		return errors.New(tagOpenURIUnavailable, "the browser cannot open the URI", "uri", uri, "reason", err.Error())
 	}
 	return nil
 }
@@ -210,9 +212,9 @@ func (d *Desktop) ensurePermission(ctx context.Context) error {
 	case "granted":
 		return nil
 	case "denied":
-		return errNotificationsRefused(p)
+		return errors.New(tagNotificationsUnavailable, "the user did not allow the page to show notifications", "permission", p)
 	case permissionUnsupported:
-		return errNotificationsUnavailable(noNotificationsReason)
+		return errors.New(tagNotificationsUnavailable, "the page cannot show notifications", "reason", noNotificationsReason)
 	}
 	type answer struct {
 		permission string
@@ -228,14 +230,14 @@ func (d *Desktop) ensurePermission(ctx context.Context) error {
 	select {
 	case a := <-got:
 		if a.err != nil {
-			return errNotificationsUnavailable("requesting the permission failed: " + a.err.Error())
+			return errors.New(tagNotificationsUnavailable, "the page cannot show notifications", "reason", "requesting the permission failed: "+a.err.Error())
 		}
 		if a.permission != "granted" {
-			return errNotificationsRefused(a.permission)
+			return errors.New(tagNotificationsUnavailable, "the user did not allow the page to show notifications", "permission", a.permission)
 		}
 		return nil
 	case <-ctx.Done():
-		return errPermissionAborted(ctx.Err())
+		return errors.NewErr(tagNotificationPermissionAborted, ctx.Err())
 	}
 }
 
@@ -252,7 +254,7 @@ func notificationTag(id uint32) string { return "glutter-" + strconv.FormatUint(
 // Flutter: no counterpart (flutter_local_notifications)
 func (d *Desktop) ShowNotification(ctx context.Context, spec NotificationSpec) (uint32, error) {
 	if d == nil || d.notes == nil {
-		return 0, errNotificationsUnavailable(noNotificationsReason)
+		return 0, errors.New(tagNotificationsUnavailable, "the page cannot show notifications", "reason", noNotificationsReason)
 	}
 	if err := d.ensurePermission(ctx); err != nil {
 		return 0, err
@@ -310,7 +312,7 @@ func (d *Desktop) ShowNotification(ctx context.Context, spec NotificationSpec) (
 // Flutter: no counterpart
 func (d *Desktop) CloseNotification(_ context.Context, id uint32) error {
 	if d == nil || d.notes == nil {
-		return errNotificationsUnavailable(noNotificationsReason)
+		return errors.New(tagNotificationsUnavailable, "the page cannot show notifications", "reason", noNotificationsReason)
 	}
 	d.mu.Lock()
 	ln := d.live[id]
@@ -414,3 +416,16 @@ func IconURL(icon string) string {
 	}
 	return ""
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagNotificationPermissionAborted = "NotificationPermissionAborted"
+	tagOpenURISchemeBlocked          = "OpenURISchemeBlocked"
+	tagOpenURIUnavailable            = "OpenURIUnavailable"
+)
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagNotificationsUnavailable = "NotificationsUnavailable"
+	tagWebNotificationFailed    = "WebNotificationFailed"
+)

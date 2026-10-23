@@ -248,7 +248,7 @@ func TestKeyDataFailures(t *testing.T) {
 	func() {
 		defer func() {
 			appErr, _ := errors.FromError(asError(recover()))
-			if appErr == nil || appErr.Tag != "KeyDataTypeInvalid" {
+			if appErr == nil || appErr.Tag != tagKeyDataTypeInvalid {
 				t.Errorf("recovered %v, want KeyDataTypeInvalid", appErr)
 			}
 		}()

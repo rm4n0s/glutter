@@ -137,7 +137,7 @@ func NewTable(children []TableRow, opts ...TableOpts) *Table {
 
 func (w *Table) debugCheck() {
 	if w.defaultVerticalAlignment == rendering.TableCellVerticalAlignmentBaseline && w.textBaseline == ui.TextBaselineUnspecified {
-		panic(errors.New("TableBaselineMissing", "textBaseline is required if you specify the defaultVerticalAlignment with TableCellVerticalAlignmentBaseline"))
+		panic(errors.New(tagTableBaselineMissing, "textBaseline is required if you specify the defaultVerticalAlignment with TableCellVerticalAlignmentBaseline"))
 	}
 	for i, r1 := range w.children {
 		if r1.Key == nil {
@@ -145,7 +145,7 @@ func (w *Table) debugCheck() {
 		}
 		for j, r2 := range w.children {
 			if i != j && r2.Key != nil && r1.Key == r2.Key {
-				panic(errors.New("TableRowKeysDuplicate", "two or more TableRow children of this Table had the same key; all the keyed TableRow children of a Table must have different keys"))
+				panic(errors.New(tagTableRowKeysDuplicate, "two or more TableRow children of this Table had the same key; all the keyed TableRow children of a Table must have different keys"))
 			}
 		}
 	}
@@ -153,13 +153,13 @@ func (w *Table) debugCheck() {
 		cellCount := len(w.children[0].Children)
 		for _, r := range w.children {
 			if len(r.Children) != cellCount {
-				panic(errors.New("TableRowsIrregular", "table contains irregular row lengths; every TableRow in a Table must have the same number of children, so that every cell is filled",
+				panic(errors.New(tagTableRowsIrregular, "table contains irregular row lengths; every TableRow in a Table must have the same number of children, so that every cell is filled",
 					"expected", cellCount, "found", len(r.Children)))
 			}
 		}
 		for _, r := range w.children {
 			if len(r.Children) == 0 {
-				panic(errors.New("TableRowEmpty", "one or more TableRow have no children; every TableRow in a Table must have at least one child, so there is no empty row"))
+				panic(errors.New(tagTableRowEmpty, "one or more TableRow have no children; every TableRow in a Table must have at least one child, so there is no empty row"))
 			}
 		}
 	}
@@ -466,3 +466,11 @@ func (w *tableCellData) ApplyParentData(renderObject rendering.RenderObject) {
 }
 
 func (*tableCellData) DebugTypicalAncestorWidgetClass() string { return "Table" }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagTableBaselineMissing  = "TableBaselineMissing"
+	tagTableRowEmpty         = "TableRowEmpty"
+	tagTableRowKeysDuplicate = "TableRowKeysDuplicate"
+	tagTableRowsIrregular    = "TableRowsIrregular"
+)

@@ -478,7 +478,7 @@ func TestImageErrorsAndUnsupported(t *testing.T) {
 		res.beginFrame()
 		_, err := buildWith(t, res, false, fn)
 		appErr, ok := errors.FromError(err)
-		if !ok || appErr.Tag != "GLImageDisposed" {
+		if !ok || appErr.Tag != tagGLImageDisposed {
 			t.Errorf("%s: error = %v, want GLImageDisposed", name, err)
 		}
 	}
@@ -640,7 +640,7 @@ func TestShapesFallBackToTheAtlas(t *testing.T) {
 	unfit.SetStrokeJoin(ui.StrokeJoinBevel)
 	res.beginFrame()
 	_, err := buildWith(t, res, false, func(c *ui.Canvas) { c.DrawRect(rect, unfit) })
-	if appErr, ok := errors.FromError(err); !ok || appErr.Tag != "GLNotImplemented" || appErr.Metadata["feature"] != "gradient with more than 32 colors" {
+	if appErr, ok := errors.FromError(err); !ok || appErr.Tag != tagGLNotImplemented || appErr.Metadata["feature"] != "gradient with more than 32 colors" {
 		t.Errorf("error = %v", err)
 	}
 }

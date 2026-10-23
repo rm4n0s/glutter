@@ -205,7 +205,7 @@ func (r *renderer) shaderEval(sh ui.Shader, toDevice affine) (func(ui.Offset) rg
 		}
 		return r.imageShaderFunc(s, inv), false, nil
 	}
-	return nil, false, errors.NewErrf("SoftNotImplemented", "The software renderer does not support the shader %T.", sh)
+	return nil, false, errors.NewErrf(tagSoftNotImplemented, "The software renderer does not support the shader %T.", sh)
 }
 
 // shaderSource is shaderEval for the pixels of the surface, read at their

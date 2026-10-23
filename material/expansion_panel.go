@@ -190,7 +190,7 @@ func (s *expansionPanelListState) debugAllIdentifiersUnique() {
 		seen[c.Value] = true
 	}
 	if len(seen) != len(s.Widget().radios) {
-		panic(errors.New("ExpansionPanelListDuplicateValues", "all ExpansionPanelRadio identifier values must be unique"))
+		panic(errors.New(tagExpansionPanelListDuplicateValues, "all ExpansionPanelRadio identifier values must be unique"))
 	}
 }
 
@@ -255,7 +255,7 @@ func (s *expansionPanelListState) Build(bc widgets.BuildContext) widgets.Widget 
 	elevation := o.Elevation.OrElse(2)
 	if foundation.DebugMode {
 		if _, ok := ElevationToShadow[int(elevation)]; !ok || elevation != float64(int(elevation)) {
-			panic(errors.New("ExpansionPanelListInvalidElevation", "invalid value for elevation: it must be one of the keys of ElevationToShadow", "elevation", elevation))
+			panic(errors.New(tagExpansionPanelListInvalidElevation, "invalid value for elevation: it must be one of the keys of ElevationToShadow", "elevation", elevation))
 		}
 	}
 	gapSize := o.MaterialGapSize.OrElse(16)
@@ -323,3 +323,9 @@ func crossFadeState(expanded bool) widgets.CrossFadeState {
 	}
 	return widgets.CrossFadeStateShowFirst
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagExpansionPanelListDuplicateValues  = "ExpansionPanelListDuplicateValues"
+	tagExpansionPanelListInvalidElevation = "ExpansionPanelListInvalidElevation"
+)

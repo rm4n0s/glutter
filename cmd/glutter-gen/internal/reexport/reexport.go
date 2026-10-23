@@ -154,7 +154,7 @@ func Generate(o Options) ([]byte, error) {
 	for _, spec := range o.Specs {
 		pkg := o.Packages[spec.Package]
 		if pkg == nil {
-			return nil, errors.New("ReexportPackageMissing", "the package of a spec was not loaded", "package", spec.Package)
+			return nil, errors.New(tagReexportPackageMissing, "the package of a spec was not loaded", "package", spec.Package)
 		}
 		extra := map[string]bool{}
 		for _, e := range spec.Extra {
@@ -257,7 +257,7 @@ func Generate(o Options) ([]byte, error) {
 	b.Write(body.Bytes())
 	code, err := format.Source(b.Bytes())
 	if err != nil {
-		return nil, errors.NewErr("ReexportFormatFailed", err)
+		return nil, errors.NewErr(tagReexportFormatFailed, err)
 	}
 	return code, nil
 }
@@ -462,7 +462,7 @@ func funcWrapper(name string, sig *types.Signature, pkgName string, qual types.Q
 func declaredNames(dir string) (names map[string]bool, pkgName string, err error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return nil, "", errors.NewErr("ReexportReadDirFailed", err).SetMetadata("dir", dir)
+		return nil, "", errors.NewErr(tagReexportReadDirFailed, err).SetMetadata("dir", dir)
 	}
 	names = map[string]bool{}
 	fset := token.NewFileSet()
@@ -473,7 +473,7 @@ func declaredNames(dir string) (names map[string]bool, pkgName string, err error
 		}
 		f, err := parser.ParseFile(fset, filepath.Join(dir, n), nil, parser.SkipObjectResolution)
 		if err != nil {
-			return nil, "", errors.NewErr("ReexportParseFailed", err).SetMetadata("file", filepath.Join(dir, n))
+			return nil, "", errors.NewErr(tagReexportParseFailed, err).SetMetadata("file", filepath.Join(dir, n))
 		}
 		pkgName = f.Name.Name
 		for _, d := range f.Decls {
@@ -501,7 +501,7 @@ func declaredNames(dir string) (names map[string]bool, pkgName string, err error
 		}
 	}
 	if pkgName == "" {
-		return nil, "", errors.New("ReexportTargetEmpty", "the target directory has no Go file that gives the name of the package", "dir", dir)
+		return nil, "", errors.New(tagReexportTargetEmpty, "the target directory has no Go file that gives the name of the package", "dir", dir)
 	}
 	return names, pkgName, nil
 }
@@ -521,7 +521,7 @@ func Run(args []string) error {
 	target := flags.String("target", defaultTarget, "the directory of the package that gets the wrappers")
 	out := flags.String("out", defaultOut, "file to write the wrappers to")
 	if err := flags.Parse(args); err != nil {
-		return errors.NewErr("ReexportBadFlags", err).SetMetadata("args", args)
+		return errors.NewErr(tagReexportBadFlags, err).SetMetadata("args", args)
 	}
 	declared, pkgName, err := declaredNames(*target)
 	if err != nil {
@@ -529,7 +529,7 @@ func Run(args []string) error {
 	}
 	wd, err := os.Getwd()
 	if err != nil {
-		return errors.NewErr("ReexportGetwdFailed", err)
+		return errors.NewErr(tagReexportGetwdFailed, err)
 	}
 	fset := token.NewFileSet()
 	// The importer of the sources is documented to be an ImporterFrom.
@@ -539,7 +539,7 @@ func Run(args []string) error {
 	for _, s := range specs {
 		p, err := imp.ImportFrom(*module+"/"+s.Package, wd, 0)
 		if err != nil {
-			return errors.NewErr("ReexportImportFailed", err).SetMetadata("package", s.Package)
+			return errors.NewErr(tagReexportImportFailed, err).SetMetadata("package", s.Package)
 		}
 		pkgs[s.Package] = p
 	}
@@ -551,7 +551,20 @@ func Run(args []string) error {
 		return nil
 	}
 	if err := os.WriteFile(*out, code, 0o644); err != nil {
-		return errors.NewErr("ReexportWriteFailed", err).SetMetadata("file", *out)
+		return errors.NewErr(tagReexportWriteFailed, err).SetMetadata("file", *out)
 	}
 	return nil
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagReexportBadFlags       = "ReexportBadFlags"
+	tagReexportFormatFailed   = "ReexportFormatFailed"
+	tagReexportGetwdFailed    = "ReexportGetwdFailed"
+	tagReexportImportFailed   = "ReexportImportFailed"
+	tagReexportPackageMissing = "ReexportPackageMissing"
+	tagReexportParseFailed    = "ReexportParseFailed"
+	tagReexportReadDirFailed  = "ReexportReadDirFailed"
+	tagReexportTargetEmpty    = "ReexportTargetEmpty"
+	tagReexportWriteFailed    = "ReexportWriteFailed"
+)

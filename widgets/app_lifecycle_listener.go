@@ -77,7 +77,7 @@ func (l *AppLifecycleListener) Dispose() {
 
 func (l *AppLifecycleListener) debugAssertNotDisposed() {
 	if foundation.DebugMode && l.disposed {
-		panic(errors.New("AppLifecycleListenerDisposed",
+		panic(errors.New(tagAppLifecycleListenerDisposed,
 			"an AppLifecycleListener was used after being disposed; once you have called Dispose on an AppLifecycleListener, it can no longer be used"))
 	}
 }
@@ -108,7 +108,7 @@ func (l *AppLifecycleListener) DidChangeAppLifecycleState(state ui.AppLifecycleS
 	none := ui.AppLifecycleStateUnspecified
 	check := func(ok bool) {
 		if foundation.DebugMode && !ok {
-			panic(errors.New("AppLifecycleInvalidTransition", "invalid state transition from "+previous.String()+" to "+state.String(),
+			panic(errors.New(tagAppLifecycleInvalidTransition, "invalid state transition from "+previous.String()+" to "+state.String(),
 				"from", previous.String(), "to", state.String()))
 		}
 	}
@@ -168,3 +168,9 @@ func (l *AppLifecycleListener) DebugFillProperties(p *foundation.DiagnosticPrope
 	flag("onExitRequested", l.opts.OnExitRequested != nil)
 	flag("onDetach", l.opts.OnDetach != nil)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagAppLifecycleInvalidTransition = "AppLifecycleInvalidTransition"
+	tagAppLifecycleListenerDisposed  = "AppLifecycleListenerDisposed"
+)

@@ -103,7 +103,7 @@ type window struct {
 // Flutter: no counterpart
 func NewRenderer(open func(gpu.SurfaceHandle) (Device, error), opts ...RendererOpts) *Renderer {
 	if len(opts) > 1 {
-		panic(errors.New("MultipleOptions", "pass at most one options value", "type", "RendererOpts", "count", len(opts)))
+		panic(errors.New(tagMultipleOptions, "pass at most one options value", "type", "RendererOpts", "count", len(opts)))
 	}
 	r := &Renderer{open: open, blit: map[TextureFormat]Pipeline{}, pipes: map[pipeKey]Pipeline{}, windows: map[gpu.SurfaceHandle]*window{}}
 	if len(opts) == 1 {
@@ -143,10 +143,10 @@ func (r *Renderer) Describe() string {
 // Flutter: no counterpart
 func (r *Renderer) Draw(h gpu.SurfaceHandle, width, height int, scene *ui.Scene, capture bool) (*image.RGBA, error) {
 	if r.closed {
-		return nil, errors.New("RendererClosed", "the renderer was closed")
+		return nil, errors.New(tagRendererClosed, "the renderer was closed")
 	}
 	if width <= 0 || height <= 0 {
-		return nil, errors.New("RendererSizeInvalid", "the size to render must be positive", "width", width, "height", height)
+		return nil, errors.New(tagRendererSizeInvalid, "the size to render must be positive", "width", width, "height", height)
 	}
 	img, err := r.draw(h, width, height, scene, capture)
 	if IsDevicePending(err) {
@@ -162,7 +162,7 @@ func (r *Renderer) Draw(h gpu.SurfaceHandle, width, height int, scene *ui.Scene,
 		return nil, err
 	}
 	r.lost, r.lostAt = true, now
-	r.logInfo("the GPU device was lost, making it again", "error", err)
+	r.logInfo("the GPU device was lost, making it again", "err", err)
 	r.releaseDevice()
 	img, err = r.draw(h, width, height, scene, capture)
 	if IsDevicePending(err) {
@@ -177,7 +177,7 @@ const lostWindow = 10 * time.Second
 // isDeviceLost says whether the error is the loss of the device, from Vulkan or WebGPU.
 func isDeviceLost(err error) bool {
 	appErr, ok := errors.FromError(err)
-	return ok && (appErr.Tag == "VulkanDeviceLost" || appErr.Tag == "GPUDeviceLost")
+	return ok && (appErr.Tag == TagVulkanDeviceLost || appErr.Tag == TagGPUDeviceLost)
 }
 
 // now is the clock of the device-loss rule.
@@ -330,7 +330,7 @@ func (r *Renderer) frame(w *window, fb *frameBuilder, width, height int, scene *
 	}
 	late := capture && !sync && r.opts.OnCapture != nil
 	if capture && shot == nil && !late {
-		return nil, errors.New("RendererCaptureFailed", "the device did not deliver the frame it was asked to read back")
+		return nil, errors.New(tagRendererCaptureFailed, "the device did not deliver the frame it was asked to read back")
 	}
 	if err := w.sc.Present(damage); err != nil {
 		return nil, err
@@ -506,3 +506,11 @@ func (r *Renderer) logInfo(msg string, args ...any) {
 		r.opts.Log.Info(msg, args...)
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagMultipleOptions       = "MultipleOptions"
+	tagRendererCaptureFailed = "RendererCaptureFailed"
+	tagRendererClosed        = "RendererClosed"
+	tagRendererSizeInvalid   = "RendererSizeInvalid"
+)

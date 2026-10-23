@@ -69,7 +69,7 @@ func TestBindReportsAMissingSymbol(t *testing.T) {
 		return 0x1000
 	})
 	appErr, ok := errors.FromError(err)
-	if !ok || appErr.Tag != "SymbolMissing" || !appErr.HasRoute("vkFuncs.bind.SymbolMissing") {
+	if !ok || appErr.Tag != tagSymbolMissing || !appErr.HasRoute("vkFuncs.bind.SymbolMissing") {
 		t.Fatalf("got %v, want SymbolMissing via vkFuncs.bind", err)
 	}
 	if appErr.Metadata["symbol"] != missing {
@@ -134,7 +134,7 @@ func TestLoadFailed(t *testing.T) {
 	env := map[string]string{libraryEnvVar: "/nonexistent-glutter-dir/libvulkan.so.1"}
 	_, err := loadLibrary(func(k string) string { return env[k] })
 	appErr, ok := errors.FromError(err)
-	if !ok || appErr.Tag != "VulkanLoadFailed" || !appErr.HasRoute("loadLibrary.VulkanLoadFailed") {
+	if !ok || appErr.Tag != tagVulkanLoadFailed || !appErr.HasRoute("loadLibrary.VulkanLoadFailed") {
 		t.Fatalf("got %v, want VulkanLoadFailed via loadLibrary", err)
 	}
 	if names, _ := appErr.Metadata["names"].([]string); len(names) != 1 || names[0] != env[libraryEnvVar] {
@@ -143,7 +143,7 @@ func TestLoadFailed(t *testing.T) {
 	// Open returns the same error before it touches anything else.
 	_, err = Open(Options{Getenv: func(k string) string { return env[k] }})
 	appErr, ok = errors.FromError(err)
-	if !ok || appErr.Tag != "VulkanLoadFailed" || !appErr.HasRoute("Open->loadLibrary.VulkanLoadFailed") {
+	if !ok || appErr.Tag != tagVulkanLoadFailed || !appErr.HasRoute("Open->loadLibrary.VulkanLoadFailed") {
 		t.Errorf("Open: got %v, want VulkanLoadFailed via Open->loadLibrary", err)
 	}
 }

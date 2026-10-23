@@ -115,7 +115,7 @@ type BoxDecorationOpts struct {
 func NewBoxDecoration(opts ...BoxDecorationOpts) *BoxDecoration {
 	o := firstOpts(opts)
 	if foundation.DebugMode && o.BackgroundBlendMode != ui.BlendModeUnspecified && o.Color.IsNone() && o.Gradient == nil {
-		panic(errors.New("BoxDecorationBlendModeWithoutBackground",
+		panic(errors.New(tagBoxDecorationBlendModeWithoutBackground,
 			"backgroundBlendMode applies to BoxDecoration's background color or gradient, but no color or gradient was provided."))
 	}
 	d := &BoxDecoration{
@@ -180,7 +180,7 @@ func (d *BoxDecoration) CopyWith(c BoxDecorationCopy) *BoxDecoration {
 
 func boxDecorationCircleCheck(shape BoxShape, borderRadius BorderRadiusGeometry) {
 	if foundation.DebugMode && shape == BoxShapeCircle && borderRadius != nil {
-		panic(errors.New("BoxDecorationCircleBorderRadius",
+		panic(errors.New(tagBoxDecorationCircleBorderRadius,
 			"A circle cannot have a border radius. Remove either the shape or the borderRadius argument."))
 	}
 }
@@ -382,7 +382,7 @@ func (d *BoxDecoration) DebugFillProperties(p *foundation.DiagnosticPropertiesBu
 // Flutter: painting/box_decoration.dart BoxDecoration.hitTest
 func (d *BoxDecoration) HitTest(size ui.Size, position ui.Offset, td ui.TextDirection) bool {
 	if foundation.DebugMode && !(ui.Offset{}).And(size).Contains(position) {
-		panic(errors.New("DecorationHitTestOutside", "the position given to hitTest is outside the rectangle of the given size",
+		panic(errors.New(tagDecorationHitTestOutside, "the position given to hitTest is outside the rectangle of the given size",
 			"size", size.String(), "position", position.String()))
 	}
 	if d.Shape == BoxShapeCircle {
@@ -402,7 +402,7 @@ func (d *BoxDecoration) HitTest(size ui.Size, position ui.Offset, td ui.TextDire
 // Flutter: painting/box_decoration.dart BoxDecoration.createBoxPainter
 func (d *BoxDecoration) CreateBoxPainter(onChanged func()) BoxPainter {
 	if foundation.DebugMode && onChanged == nil && d.Image != nil {
-		panic(errors.New("BoxDecorationOnChangedRequired", "a BoxDecoration with an image needs an onChanged callback"))
+		panic(errors.New(tagBoxDecorationOnChangedRequired, "a BoxDecoration with an image needs an onChanged callback"))
 	}
 	return &boxDecorationPainter{decoration: d, onChanged: onChanged}
 }
@@ -531,7 +531,7 @@ func (b *boxDecorationPainter) Paint(canvas *ui.Canvas, offset ui.Offset, config
 	size, ok := configuration.Size.Get()
 	if !ok {
 		if foundation.DebugMode {
-			panic(errors.New("BoxDecorationNoSize", "the ImageConfiguration given to a BoxDecoration painter has no size"))
+			panic(errors.New(tagBoxDecorationNoSize, "the ImageConfiguration given to a BoxDecoration painter has no size"))
 		}
 		return
 	}
@@ -560,3 +560,12 @@ func optColorPtr(c foundation.Opt[ui.Color]) *ui.Color {
 	}
 	return nil
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagBoxDecorationBlendModeWithoutBackground = "BoxDecorationBlendModeWithoutBackground"
+	tagBoxDecorationCircleBorderRadius         = "BoxDecorationCircleBorderRadius"
+	tagBoxDecorationNoSize                     = "BoxDecorationNoSize"
+	tagBoxDecorationOnChangedRequired          = "BoxDecorationOnChangedRequired"
+	tagDecorationHitTestOutside                = "DecorationHitTestOutside"
+)

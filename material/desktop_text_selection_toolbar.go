@@ -47,7 +47,7 @@ type DesktopTextSelectionToolbar struct {
 // Flutter: material/desktop_text_selection_toolbar.dart DesktopTextSelectionToolbar.new
 func NewDesktopTextSelectionToolbar(anchor ui.Offset, children []widgets.Widget, opts ...widgets.WidgetOpts) *DesktopTextSelectionToolbar {
 	if foundation.DebugMode && len(children) == 0 {
-		panic(errors.New("DesktopTextSelectionToolbarNoChildren", "a DesktopTextSelectionToolbar needs at least one child"))
+		panic(errors.New(tagDesktopTextSelectionToolbarNoChildren, "a DesktopTextSelectionToolbar needs at least one child"))
 	}
 	return &DesktopTextSelectionToolbar{StatelessWidget: widgets.NewStatelessWidgetBase(firstOpts(opts)), anchor: anchor, children: children}
 }
@@ -168,3 +168,8 @@ func (w *DesktopTextSelectionToolbarButton) Build(bc widgets.BuildContext) widge
 		})}),
 		widgets.SizedBoxOpts{Width: foundation.Some(math.Inf(1))})
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagDesktopTextSelectionToolbarNoChildren = "DesktopTextSelectionToolbarNoChildren"
+)

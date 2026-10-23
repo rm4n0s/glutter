@@ -97,12 +97,12 @@ func NewRangeSlider(values RangeValues, onChanged func(values RangeValues), opts
 		min, max := o.Min, o.Max.OrElse(1.0)
 		switch {
 		case min > max:
-			panic(errors.New("RangeSliderMinGreaterThanMax", "the minimum of a RangeSlider must not be greater than its maximum", "min", min, "max", max))
+			panic(errors.New(tagRangeSliderMinGreaterThanMax, "the minimum of a RangeSlider must not be greater than its maximum", "min", min, "max", max))
 		case values.Start > values.End || values.Start < min || values.Start > max || values.End < min || values.End > max:
-			panic(errors.New("RangeSliderValuesInvalid", "the values of a RangeSlider must be in order and between the minimum and the maximum",
+			panic(errors.New(tagRangeSliderValuesInvalid, "the values of a RangeSlider must be in order and between the minimum and the maximum",
 				"values", values.String(), "min", min, "max", max))
 		case o.Divisions.IsSome() && o.Divisions.Value() <= 0:
-			panic(errors.New("RangeSliderDivisionsInvalid", "the divisions of a RangeSlider must be greater than zero", "divisions", o.Divisions.Value()))
+			panic(errors.New(tagRangeSliderDivisionsInvalid, "the divisions of a RangeSlider must be greater than zero", "divisions", o.Divisions.Value()))
 		}
 	}
 	return &RangeSlider{StatefulWidget: widgets.NewStatefulWidgetBase(widgets.WidgetOpts{Key: o.Key}), values: values, onChanged: onChanged, o: o}
@@ -1492,3 +1492,10 @@ func (r *renderRangeValueIndicator) Dispose() {
 	r.valueIndicatorAnimation.Dispose()
 	r.RenderBox.Dispose()
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagRangeSliderDivisionsInvalid  = "RangeSliderDivisionsInvalid"
+	tagRangeSliderMinGreaterThanMax = "RangeSliderMinGreaterThanMax"
+	tagRangeSliderValuesInvalid     = "RangeSliderValuesInvalid"
+)

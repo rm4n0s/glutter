@@ -34,7 +34,7 @@ func run() error {
 	case "choose", "restore":
 		return engineApp(mode)
 	default:
-		return errors.New("GLWebTestModeUnknown", "the query parameter mode is not parity, unavailable, loss, choose or restore", "mode", mode)
+		return errors.New(tagGLWebTestModeUnknown, "the query parameter mode is not parity, unavailable, loss, choose or restore", "mode", mode)
 	}
 	// The result is posted by an asynchronous call: the program stays until the test has it, so
 	// that its ending is not taken for the program's failure.
@@ -318,3 +318,8 @@ func (a *app) Build(bc m.BuildContext) m.Widget {
 		Home:                       m.NewScaffold(m.ScaffoldOpts{Body: m.NewCenter(m.NewText("WebGL 2"))}),
 	})
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagGLWebTestModeUnknown = "GLWebTestModeUnknown"
+)

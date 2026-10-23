@@ -4,7 +4,7 @@ package ime
 
 import (
 	"context"
-	"errors"
+	stdErrors "errors"
 	"fmt"
 	"reflect"
 	"testing"
@@ -140,7 +140,7 @@ func TestKeysGoThroughTheInputMethodInOrder(t *testing.T) {
 
 func TestKeyThatFailsOrTimesOutIsNotConsumed(t *testing.T) {
 	h := newHarness(t)
-	h.im.Fail["ProcessKey"] = errors.New("bus gone")
+	h.im.Fail["ProcessKey"] = stdErrors.New("bus gone")
 	h.b.SetState(enabled("", 0, 0), Rect{})
 	var handled []bool
 	h.b.ProcessKey(dbus.IMEKey{Keysym: 'a'}, func(v bool) { handled = append(handled, v) })
@@ -152,7 +152,7 @@ func TestKeyThatFailsOrTimesOutIsNotConsumed(t *testing.T) {
 
 func TestKeyWithoutConnectionIsNotConsumed(t *testing.T) {
 	h := newHarness(t)
-	h.openErr = errors.New("nobody home")
+	h.openErr = stdErrors.New("nobody home")
 	h.b.SetState(enabled("", 0, 0), Rect{})
 	var handled []bool
 	h.b.ProcessKey(dbus.IMEKey{Keysym: 'a'}, func(v bool) { handled = append(handled, v) })
@@ -312,8 +312,8 @@ func TestCloseBeforeAnyUse(t *testing.T) {
 
 func TestFailedCallsDoNotStopTheBridge(t *testing.T) {
 	h := newHarness(t)
-	h.im.Fail["SetCursorRect"] = errors.New("gone")
-	h.im.Fail["Reset"] = errors.New("gone")
+	h.im.Fail["SetCursorRect"] = stdErrors.New("gone")
+	h.im.Fail["Reset"] = stdErrors.New("gone")
 	h.b.SetState(enabled("a", 1, 1), Rect{1, 2, 3, 4})
 	h.waitCalls(4)
 	if h.im.Log()[3] != "FocusIn()" {

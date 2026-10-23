@@ -46,7 +46,12 @@ func (t *UIThread) IsCurrent() bool { return t == nil || t.id.Load() == goid.ID(
 // Flutter: no counterpart
 func (t *UIThread) AssertCurrent(what string) {
 	if DebugMode && !t.IsCurrent() {
-		panic(errors.New("WrongThread", what+" was called from a goroutine that is not the UI thread; only SetState and Post are safe to call from other goroutines (SPEC §13)",
+		panic(errors.New(tagWrongThread, what+" was called from a goroutine that is not the UI thread; only SetState and Post are safe to call from other goroutines (SPEC §13)",
 			"call", what, "uiGoroutine", t.id.Load(), "callingGoroutine", goid.ID()))
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagWrongThread = "WrongThread"
+)

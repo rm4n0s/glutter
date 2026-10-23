@@ -124,7 +124,7 @@ func (b *Bus) Call(ctx context.Context, dest string, path godbus.ObjectPath, met
 	}
 	b.mu.Unlock()
 	if h == nil {
-		return nil, errors.NewErr("DBusCallFailed", &godbus.Error{
+		return nil, errors.NewErr(tagDBusCallFailed, &godbus.Error{
 			Name: "org.freedesktop.DBus.Error.ServiceUnknown",
 			Body: []any{"The name " + dest + " was not provided by any .service files"},
 		}).SetMetadata("dest", dest)
@@ -137,7 +137,7 @@ func (b *Bus) Subscribe(ctx context.Context, m dbus.SignalMatch) (<-chan *godbus
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.closed {
-		return nil, errors.New("FakeBusClosed", "the fake bus is closed")
+		return nil, errors.New(tagFakeBusClosed, "the fake bus is closed")
 	}
 	s := &subscription{match: m, ch: make(chan *godbus.Signal, 64)}
 	b.subs[s] = struct{}{}
@@ -195,7 +195,7 @@ func (b *Bus) Export(receiver any, path godbus.ObjectPath, iface string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.closed {
-		return errors.New("FakeBusClosed", "the fake bus is closed")
+		return errors.New(tagFakeBusClosed, "the fake bus is closed")
 	}
 	b.exported[exportKey{path, iface}] = receiver
 	return nil
@@ -225,7 +225,7 @@ func (b *Bus) EmitSignal(path godbus.ObjectPath, name string, values ...any) err
 	closed := b.closed
 	b.mu.Unlock()
 	if closed {
-		return errors.New("FakeBusClosed", "the fake bus is closed")
+		return errors.New(tagFakeBusClosed, "the fake bus is closed")
 	}
 	sig := &godbus.Signal{Sender: b.unique, Path: path, Name: name, Body: values}
 	b.mu.Lock()
@@ -249,7 +249,7 @@ func (b *Bus) RequestName(name string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.taken[name] {
-		return errors.New("DBusNameTaken", "another connection owns the name", "name", name)
+		return errors.New(tagDBusNameTaken, "another connection owns the name", "name", name)
 	}
 	b.names[name] = true
 	return nil
@@ -365,3 +365,10 @@ func convert(v reflect.Value, want reflect.Type) (reflect.Value, bool) {
 	}
 	return reflect.Value{}, false
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagDBusCallFailed = "DBusCallFailed"
+	tagDBusNameTaken  = "DBusNameTaken"
+	tagFakeBusClosed  = "FakeBusClosed"
+)

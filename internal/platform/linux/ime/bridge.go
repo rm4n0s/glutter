@@ -247,7 +247,7 @@ func (w *worker) connect(b *Bridge) {
 	})
 	if err != nil {
 		if b.ctx.Err() == nil {
-			slog.Info("no input method over D-Bus: the keys go to the app as they are", "error", err)
+			slog.Info("no input method over D-Bus: the keys go to the app as they are", "err", err)
 		}
 		w.failed = true
 		b.poster.Post(func() { b.unavailable = true })
@@ -260,7 +260,7 @@ func (w *worker) connect(b *Bridge) {
 func (w *worker) close(b *Bridge) {
 	if w.im != nil {
 		if err := w.im.Close(); err != nil {
-			slog.Warn("closing the input method failed", "error", err)
+			slog.Warn("closing the input method failed", "err", err)
 		}
 	}
 	// The jobs that are left get the answer "not consumed".
@@ -278,7 +278,7 @@ func (w *worker) close(b *Bridge) {
 
 func (w *worker) warn(what string, err error) {
 	if err != nil {
-		slog.Warn("the input method call failed", "call", what, "error", err)
+		slog.Warn("the input method call failed", "call", what, "err", err)
 	}
 }
 

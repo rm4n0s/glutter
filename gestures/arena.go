@@ -166,7 +166,7 @@ func (m *GestureArenaManager) Add(pointer int, member GestureArenaMember) Gestur
 		m.log(pointer, "★ Opening new gesture arena.", nil)
 	}
 	if foundation.DebugMode && !state.isOpen {
-		panic(errors.New("GestureArenaClosed", "a member cannot join an arena that is closed", "pointer", pointer))
+		panic(errors.New(tagGestureArenaClosed, "a member cannot join an arena that is closed", "pointer", pointer))
 	}
 	state.members = append(state.members, member)
 	m.log(pointer, "Adding: "+describeMember(member), nil)
@@ -199,7 +199,7 @@ func (m *GestureArenaManager) Sweep(pointer int) {
 		return
 	}
 	if foundation.DebugMode && state.isOpen {
-		panic(errors.New("GestureArenaOpenOnSweep", "an arena must be closed before it is swept", "pointer", pointer))
+		panic(errors.New(tagGestureArenaOpenOnSweep, "an arena must be closed before it is swept", "pointer", pointer))
 	}
 	if state.isHeld {
 		state.hasPendingSweep = true
@@ -254,7 +254,7 @@ func (m *GestureArenaManager) resolve(pointer int, member GestureArenaMember, di
 	}
 	i := indexOfMember(state.members, member)
 	if foundation.DebugMode && i < 0 {
-		panic(errors.New("GestureArenaMemberUnknown", "the member is not in the arena of the pointer", "pointer", pointer))
+		panic(errors.New(tagGestureArenaMemberUnknown, "the member is not in the arena of the pointer", "pointer", pointer))
 	}
 	switch disposition {
 	case GestureAccepted:
@@ -335,3 +335,10 @@ func (m *GestureArenaManager) log(pointer int, message string, state *gestureAre
 	}
 	m.debug.print(fmt.Sprintf("Gesture arena %-4d ❙ %s%s", pointer, message, suffix))
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagGestureArenaClosed        = "GestureArenaClosed"
+	tagGestureArenaMemberUnknown = "GestureArenaMemberUnknown"
+	tagGestureArenaOpenOnSweep   = "GestureArenaOpenOnSweep"
+)

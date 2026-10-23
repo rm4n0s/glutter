@@ -81,7 +81,7 @@ func TestScrollBehaviorBuildScrollbarNeedsAControllerWhenUsingIt(t *testing.T) {
 			call := func() { NewScrollBehavior().BuildScrollbar(captured, NewContainer(nil), details) }
 			switch platform {
 			case foundation.TargetPlatformLinux, foundation.TargetPlatformMacOS, foundation.TargetPlatformWindows:
-				requireTag(t, "ScrollbarControllerMissing", call)
+				requireTag(t, "ScrollBehaviorBase.BuildScrollbar.ScrollbarControllerMissing", call)
 			default:
 				call() // does not throw if we aren't using it
 			}

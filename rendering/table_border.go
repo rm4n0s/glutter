@@ -221,11 +221,11 @@ func (b TableBorder) Paint(canvas *ui.Canvas, rect ui.Rect, rows, columns []floa
 	b = b.normalized()
 	if foundation.DebugMode {
 		if len(rows) > 0 && (rows[0] < 0 || rows[len(rows)-1] > rect.Height()) {
-			panic(errors.New("TableBorderOutOfRange", "the rows of a table border must be inside the rectangle",
+			panic(errors.New(tagTableBorderOutOfRange, "the rows of a table border must be inside the rectangle",
 				"rows", rows, "height", rect.Height()))
 		}
 		if len(columns) > 0 && (columns[0] < 0 || columns[len(columns)-1] > rect.Width()) {
-			panic(errors.New("TableBorderOutOfRange", "the columns of a table border must be inside the rectangle",
+			panic(errors.New(tagTableBorderOutOfRange, "the columns of a table border must be inside the rectangle",
 				"columns", columns, "width", rect.Width()))
 		}
 	}
@@ -266,3 +266,8 @@ func (b TableBorder) String() string {
 	return "TableBorder(" + b.Top.String() + ", " + b.Right.String() + ", " + b.Bottom.String() + ", " + b.Left.String() + ", " +
 		b.HorizontalInside.String() + ", " + b.VerticalInside.String() + ", " + b.BorderRadius.String() + ")"
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagTableBorderOutOfRange = "TableBorderOutOfRange"
+)

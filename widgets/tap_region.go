@@ -54,7 +54,7 @@ func TapRegionRegistryMaybeOf(bc BuildContext) TapRegionRegistry {
 func TapRegionRegistryOf(bc BuildContext) TapRegionRegistry {
 	r := TapRegionRegistryMaybeOf(bc)
 	if r == nil && foundation.DebugMode {
-		panic(errors.New("TapRegionRegistryMissing", "TapRegionRegistryOf was called with a context that does not contain a TapRegionSurface widget",
+		panic(errors.New(tagTapRegionRegistryMissing, "TapRegionRegistryOf was called with a context that does not contain a TapRegionSurface widget",
 			"context", bc.DescribeElement("context").String()))
 	}
 	return r
@@ -481,3 +481,8 @@ func NewTextFieldTapRegion(child Widget, opts ...TextFieldTapRegionOpts) *TapReg
 	}
 	return NewTapRegion(child, o.TapRegionOpts)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagTapRegionRegistryMissing = "TapRegionRegistryMissing"
+)

@@ -774,11 +774,11 @@ func NewDropdownButton[T comparable](items []*DropdownMenuItem[T], onChanged fun
 				}
 			}
 			if n != 1 {
-				panic(errors.NewErrf("DropdownButtonValueNotUnique", "there should be exactly one item with the value of the DropdownButton: %v; either zero or 2 or more DropdownMenuItems were detected with the same value", v))
+				panic(errors.NewErrf(tagDropdownButtonValueNotUnique, "there should be exactly one item with the value of the DropdownButton: %v; either zero or 2 or more DropdownMenuItems were detected with the same value", v))
 			}
 		}
 		if h, ok := o.ItemHeight.Get(); ok && h < MinInteractiveDimension {
-			panic(errors.New("DropdownButtonItemHeight", "the itemHeight of a DropdownButton must be at least kMinInteractiveDimension", "itemHeight", h))
+			panic(errors.New(tagDropdownButtonItemHeight, "the itemHeight of a DropdownButton must be at least kMinInteractiveDimension", "itemHeight", h))
 		}
 	}
 	return &DropdownButton[T]{StatefulWidget: widgets.NewStatefulWidgetBase(widgets.WidgetOpts{Key: o.Key}), items: items, onChanged: onChanged, o: o}
@@ -939,7 +939,7 @@ func (s *dropdownButtonState[T]) handleTap() {
 	}
 	navigator := widgets.NavigatorOf(bc)
 	if foundation.DebugMode && s.dropdownRoute != nil {
-		panic(errors.New("DropdownButtonRouteOpen", "the menu of a DropdownButton was opened while it was already open"))
+		panic(errors.New(tagDropdownButtonRouteOpen, "the menu of a DropdownButton was opened while it was already open"))
 	}
 	itemBox := bc.FindRenderObject().(rendering.Box)
 	itemRect := ui.Rect{}.Shift(itemBox.LocalToGlobal(ui.Offset{}, navigator.Context().FindRenderObject()))
@@ -1053,7 +1053,7 @@ func (s *dropdownButtonState[T]) Build(bc widgets.BuildContext) widgets.Widget {
 	if w.o.SelectedItemBuilder != nil {
 		selected := w.o.SelectedItemBuilder(bc)
 		if foundation.DebugMode && len(w.items) > 0 && len(selected) != len(w.items) {
-			panic(errors.NewErrf("DropdownButtonSelectedItemBuilder", "the selectedItemBuilder must return a list of widgets with the same length as the items list; currently, selectedItemBuilder returns a list of length %d, but items has length %d", len(selected), len(w.items)))
+			panic(errors.NewErrf(tagDropdownButtonSelectedItemBuilder, "the selectedItemBuilder must return a list of widgets with the same length as the items list; currently, selectedItemBuilder returns a list of length %d, but items has length %d", len(selected), len(w.items)))
 		}
 		items = append(items, selected...)
 	} else {
@@ -1244,3 +1244,11 @@ func (s *dropdownButtonState[T]) Build(bc widgets.BuildContext) widgets.Widget {
 	return widgets.NewSemantics(widgets.NewActions(s.actionMap, result), widgets.SemanticsOpts{
 		Button: foundation.Some(!childHasButtonSemantic), Expanded: foundation.Some(s.isMenuExpanded)})
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagDropdownButtonItemHeight          = "DropdownButtonItemHeight"
+	tagDropdownButtonRouteOpen           = "DropdownButtonRouteOpen"
+	tagDropdownButtonSelectedItemBuilder = "DropdownButtonSelectedItemBuilder"
+	tagDropdownButtonValueNotUnique      = "DropdownButtonValueNotUnique"
+)

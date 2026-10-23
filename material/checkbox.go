@@ -183,7 +183,7 @@ type Checkbox struct {
 func NewCheckbox(value foundation.Opt[bool], onChanged func(value foundation.Opt[bool]), opts ...CheckboxOpts) *Checkbox {
 	o := firstOpts(opts)
 	if foundation.DebugMode && !o.Tristate && value.IsNone() {
-		panic(errors.New("CheckboxValueNull", "the value of a Checkbox that is not tristate can't be none"))
+		panic(errors.New(tagCheckboxValueNull, "the value of a Checkbox that is not tristate can't be none"))
 	}
 	return &Checkbox{StatefulWidget: widgets.NewStatefulWidgetBase(widgets.WidgetOpts{Key: o.Key}), value: value, onChanged: onChanged, o: o}
 }
@@ -727,3 +727,8 @@ func newCheckboxDefaults(bc widgets.BuildContext) checkboxDefaults {
 	}
 	return d
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagCheckboxValueNull = "CheckboxValueNull"
+)

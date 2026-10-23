@@ -70,23 +70,23 @@ type DecodeImageFromPixelsOpts struct {
 func DecodeImageFromPixels(ctx context.Context, pixels []byte, width, height int, format PixelFormat, opts ...DecodeImageFromPixelsOpts) (*Image, error) {
 	o := oneOpts(opts)
 	if err := ctx.Err(); err != nil {
-		return nil, errors.NewErr("ImageDecodeCanceled", err)
+		return nil, errors.NewErr(tagImageDecodeCanceled, err)
 	}
 	if width <= 0 || height <= 0 || width > maxImageSize || height > maxImageSize {
-		return nil, errors.New("ImageSizeInvalid", "Invalid image dimensions.", "width", width, "height", height)
+		return nil, errors.New(tagImageSizeInvalid, "Invalid image dimensions.", "width", width, "height", height)
 	}
 	if format == PixelFormatUnspecified {
 		format = PixelFormatRGBA8888
 	}
 	if format != PixelFormatRGBA8888 && format != PixelFormatBGRA8888 {
-		return nil, errors.New("ImageFormatUnsupported", "The pixel format is not supported.", "format", int(format))
+		return nil, errors.New(tagImageFormatUnsupported, "The pixel format is not supported.", "format", int(format))
 	}
 	rowBytes := o.RowBytes
 	if rowBytes == 0 {
 		rowBytes = 4 * width
 	}
 	if rowBytes < 4*width || len(pixels) < rowBytes*(height-1)+4*width {
-		return nil, errors.New("ImagePixelsInvalid", "There are not enough pixels for the size.",
+		return nil, errors.New(tagImagePixelsInvalid, "There are not enough pixels for the size.",
 			"width", width, "height", height, "rowBytes", rowBytes, "length", len(pixels))
 	}
 	pix := make([]byte, 4*width*height)
@@ -114,7 +114,7 @@ const maxImageSize = 1 << 15
 // Flutter: no counterpart
 func NewImageFromRGBA(pix []byte, width, height int) *Image {
 	if width <= 0 || height <= 0 || len(pix) != 4*width*height {
-		panic(errors.New("ImagePixelsInvalid", "The pixels do not fit the size.", "width", width, "height", height, "length", len(pix)))
+		panic(errors.New(tagImagePixelsInvalid, "The pixels do not fit the size.", "width", width, "height", height, "length", len(pix)))
 	}
 	return &Image{data: &imageData{width: width, height: height, pix: pix}}
 }
@@ -162,3 +162,8 @@ func (i *Image) IsDisposed() bool { return i.disposed }
 func (i *Image) String() string {
 	return "[" + itoa(i.data.width) + "×" + itoa(i.data.height) + "]"
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagImagePixelsInvalid = "ImagePixelsInvalid"
+)

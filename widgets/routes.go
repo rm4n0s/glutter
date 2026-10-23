@@ -71,7 +71,7 @@ func (b *OverlayRouteBase) OverlayEntries() []*OverlayEntry { return b.overlayEn
 // Flutter: widgets/routes.dart OverlayRoute.install
 func (b *OverlayRouteBase) Install() {
 	if foundation.DebugMode && len(b.overlayEntries) > 0 {
-		panic(errors.New("OverlayRouteInstalledTwice", "the overlay entries of the route exist already; a route can be installed only once",
+		panic(errors.New(tagOverlayRouteInstalledTwice, "the overlay entries of the route exist already; a route can be installed only once",
 			"route", b.self.String()))
 	}
 	b.overlayEntries = append(b.overlayEntries, b.oself.CreateOverlayEntries()...)
@@ -310,14 +310,14 @@ func (b *TransitionRouteBase) debugRequireUsable(method string) {
 		return
 	}
 	if b.debugTransitionCompleted() {
-		panic(errors.New("TransitionRouteDisposed", "cannot reuse a "+foundation.RuntimeTypeName(b.self)+" after disposing it",
+		panic(errors.New(tagTransitionRouteDisposed, "cannot reuse a "+foundation.RuntimeTypeName(b.self)+" after disposing it",
 			"method", method))
 	}
 }
 
 func (b *TransitionRouteBase) debugRequireInstalled(method string) {
 	if foundation.DebugMode && b.controller == nil {
-		panic(errors.New("TransitionRouteNotInstalled", foundation.RuntimeTypeName(b.self)+"."+method+" was called before calling Install or after calling Dispose",
+		panic(errors.New(tagTransitionRouteNotInstalled, foundation.RuntimeTypeName(b.self)+"."+method+" was called before calling Install or after calling Dispose",
 			"method", method))
 	}
 }
@@ -348,7 +348,7 @@ func (b *TransitionRouteBase) CreateAnimation() animation.Animation[float64] {
 // Flutter: widgets/routes.dart TransitionRoute.createSimulation
 func (b *TransitionRouteBase) CreateSimulation(forward bool) physics.Simulation {
 	if foundation.DebugMode && b.tself.TransitionDuration() < 0 {
-		panic(errors.New("TransitionRouteDurationNegative", "the duration must be positive for a non-simulation animation",
+		panic(errors.New(tagTransitionRouteDurationNegative, "the duration must be positive for a non-simulation animation",
 			"duration", b.tself.TransitionDuration()))
 	}
 	return nil
@@ -357,7 +357,7 @@ func (b *TransitionRouteBase) CreateSimulation(forward bool) physics.Simulation 
 func (b *TransitionRouteBase) createSimulationAndVerify(forward bool) physics.Simulation {
 	simulation := b.tself.CreateSimulation(forward)
 	if foundation.DebugMode && b.tself.TransitionDuration() < 0 {
-		panic(errors.New("TransitionRouteDurationNegative", "the duration must be positive for an animation that doesn't use a simulation; either set TransitionDuration or set CreateSimulation",
+		panic(errors.New(tagTransitionRouteDurationNegative, "the duration must be positive for an animation that doesn't use a simulation; either set TransitionDuration or set CreateSimulation",
 			"duration", b.tself.TransitionDuration()))
 	}
 	return simulation
@@ -390,15 +390,15 @@ func (b *TransitionRouteBase) handleStatusChanged(status animation.AnimationStat
 // Flutter: widgets/routes.dart TransitionRoute.install
 func (b *TransitionRouteBase) Install() {
 	if foundation.DebugMode && b.debugTransitionCompleted() {
-		panic(errors.New("TransitionRouteDisposed", "cannot install a "+foundation.RuntimeTypeName(b.self)+" after disposing it"))
+		panic(errors.New(tagTransitionRouteDisposed, "cannot install a "+foundation.RuntimeTypeName(b.self)+" after disposing it"))
 	}
 	b.controller = b.tself.CreateAnimationController()
 	if foundation.DebugMode && b.controller == nil {
-		panic(errors.New("TransitionRouteControllerMissing", foundation.RuntimeTypeName(b.self)+".CreateAnimationController() returned nil"))
+		panic(errors.New(tagTransitionRouteControllerMissing, foundation.RuntimeTypeName(b.self)+".CreateAnimationController() returned nil"))
 	}
 	b.animation = b.tself.CreateAnimation()
 	if foundation.DebugMode && b.animation == nil {
-		panic(errors.New("TransitionRouteAnimationMissing", foundation.RuntimeTypeName(b.self)+".CreateAnimation() returned nil"))
+		panic(errors.New(tagTransitionRouteAnimationMissing, foundation.RuntimeTypeName(b.self)+".CreateAnimation() returned nil"))
 	}
 	b.statusHandle = b.animation.AddStatusListener(b.handleStatusChanged)
 	b.OverlayRouteBase.Install()
@@ -449,7 +449,7 @@ func (b *TransitionRouteBase) DidReplace(oldRoute Route) {
 func (b *TransitionRouteBase) DidPop(result any) bool {
 	b.debugRequireInstalled("DidPop")
 	if foundation.DebugMode && b.transitionCompleter.IsCompleted() {
-		panic(errors.New("TransitionRouteDisposed", "cannot reuse a "+foundation.RuntimeTypeName(b.self)+" after disposing it"))
+		panic(errors.New(tagTransitionRouteDisposed, "cannot reuse a "+foundation.RuntimeTypeName(b.self)+" after disposing it"))
 	}
 	b.result = result
 	b.simulation = b.createSimulationAndVerify(false)
@@ -602,7 +602,7 @@ func (b *TransitionRouteBase) PopGestureEnabled() bool { return false }
 // Flutter: widgets/routes.dart TransitionRoute.handleStartBackGesture
 func (b *TransitionRouteBase) HandleStartBackGesture(progress float64) {
 	if foundation.DebugMode && !b.self.IsCurrent() {
-		panic(errors.New("RouteNotCurrent", "a back gesture started for a route that is not the current one", "route", b.self.String()))
+		panic(errors.New(tagRouteNotCurrent, "a back gesture started for a route that is not the current one", "route", b.self.String()))
 	}
 	if b.controller != nil {
 		b.controller.SetValue(progress)
@@ -677,7 +677,7 @@ func (b *TransitionRouteBase) handleDragEnd(animateForward bool) {
 // Flutter: widgets/routes.dart TransitionRoute.dispose
 func (b *TransitionRouteBase) Dispose() {
 	if foundation.DebugMode && b.transitionCompleter.IsCompleted() {
-		panic(errors.New("TransitionRouteDisposed", "cannot dispose a "+foundation.RuntimeTypeName(b.self)+" twice"))
+		panic(errors.New(tagTransitionRouteDisposed, "cannot dispose a "+foundation.RuntimeTypeName(b.self)+" twice"))
 	}
 	if b.animation != nil {
 		b.animation.RemoveStatusListener(b.statusHandle)
@@ -778,7 +778,7 @@ type localHistory struct {
 
 func (h *localHistory) add(entry *LocalHistoryEntry) {
 	if foundation.DebugMode && entry.owner != nil {
-		panic(errors.New("LocalHistoryEntryOwned", "the local history entry is in the history of a route already"))
+		panic(errors.New(tagLocalHistoryEntryOwned, "the local history entry is in the history of a route already"))
 	}
 	entry.owner = h.route
 	wasEmpty := len(h.entries) == 0
@@ -796,7 +796,7 @@ func (h *localHistory) add(entry *LocalHistoryEntry) {
 func (h *localHistory) remove(entry *LocalHistoryEntry) {
 	i := slices.Index(h.entries, entry)
 	if foundation.DebugMode && (entry.owner != h.route || i < 0) {
-		panic(errors.New("LocalHistoryEntryNotOwned", "the local history entry is not in the history of this route"))
+		panic(errors.New(tagLocalHistoryEntryNotOwned, "the local history entry is not in the history of this route"))
 	}
 	internalStateChanged := false
 	if i >= 0 {
@@ -1015,7 +1015,7 @@ func (s *modalScopeState) InitState() {
 
 func (s *modalScopeState) DidUpdateWidget(old *modalScope) {
 	if foundation.DebugMode && s.Widget().route != old.route {
-		panic(errors.New("ModalScopeRouteChanged", "the route of a modal scope can not change"))
+		panic(errors.New(tagModalScopeRouteChanged, "the route of a modal scope can not change"))
 	}
 	s.updateFocusScopeNode()
 }
@@ -2280,7 +2280,7 @@ type ShowGeneralDialogOpts struct {
 func ShowGeneralDialog(bc BuildContext, pageBuilder RoutePageBuilder, opts ...ShowGeneralDialogOpts) <-chan any {
 	o := firstOpts(opts)
 	if foundation.DebugMode && o.BarrierDismissible && o.BarrierLabel == "" {
-		panic(errors.New("ShowGeneralDialogBarrierLabelMissing", "a dismissible dialog barrier needs a barrierLabel"))
+		panic(errors.New(tagShowGeneralDialogBarrierLabelMissing, "a dismissible dialog barrier needs a barrierLabel"))
 	}
 	route := NewRawDialogRoute(pageBuilder, RawDialogRouteOpts{
 		ModalRouteOpts:     ModalRouteOpts{RouteOpts: RouteOpts{Settings: o.RouteSettings, RequestFocus: o.RequestFocus}},
@@ -2293,3 +2293,18 @@ func ShowGeneralDialog(bc BuildContext, pageBuilder RoutePageBuilder, opts ...Sh
 	})
 	return NavigatorOf(bc, NavigatorOfOpts{RootNavigator: o.UseRootNavigator.OrElse(true)}).Push(route)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagLocalHistoryEntryNotOwned            = "LocalHistoryEntryNotOwned"
+	tagLocalHistoryEntryOwned               = "LocalHistoryEntryOwned"
+	tagModalScopeRouteChanged               = "ModalScopeRouteChanged"
+	tagOverlayRouteInstalledTwice           = "OverlayRouteInstalledTwice"
+	tagRouteNotCurrent                      = "RouteNotCurrent"
+	tagShowGeneralDialogBarrierLabelMissing = "ShowGeneralDialogBarrierLabelMissing"
+	tagTransitionRouteAnimationMissing      = "TransitionRouteAnimationMissing"
+	tagTransitionRouteControllerMissing     = "TransitionRouteControllerMissing"
+	tagTransitionRouteDisposed              = "TransitionRouteDisposed"
+	tagTransitionRouteDurationNegative      = "TransitionRouteDurationNegative"
+	tagTransitionRouteNotInstalled          = "TransitionRouteNotInstalled"
+)

@@ -140,7 +140,7 @@ func newFloatingActionButton(onPressed func(), child widgets.Widget, typ floatin
 		}{{"elevation", o.Elevation}, {"focusElevation", o.FocusElevation}, {"hoverElevation", o.HoverElevation},
 			{"highlightElevation", o.HighlightElevation}, {"disabledElevation", o.DisabledElevation}} {
 			if v, ok := e.v.Get(); ok && !(v >= 0.0) {
-				panic(errors.New("FloatingActionButtonElevationNegative", "an elevation of a FloatingActionButton must not be negative", "elevation", e.name, "value", v))
+				panic(errors.New(tagFloatingActionButtonElevationNegative, "an elevation of a FloatingActionButton must not be negative", "elevation", e.name, "value", v))
 			}
 		}
 	}
@@ -480,3 +480,8 @@ func (r *renderChildOverflowBox) PerformLayout() {
 		r.SetSize(constraints.Biggest())
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagFloatingActionButtonElevationNegative = "FloatingActionButtonElevationNegative"
+)

@@ -37,7 +37,7 @@ func (p *RenderProxySliver) hasChild() bool { return !isNil(p.Child()) }
 func (p *RenderProxySliver) requireChild() Sliver {
 	child := p.Child()
 	if foundation.DebugMode && isNil(child) {
-		panic(errors.New("ProxySliverChildMissing", "a proxy sliver was laid out without a child",
+		panic(errors.New(tagProxySliverChildMissing, "a proxy sliver was laid out without a child",
 			"object", foundation.DescribeIdentity(p.self)))
 	}
 	return child
@@ -538,7 +538,7 @@ func (r *RenderSliverAnimatedOpacity) updateOpacity() {
 // Flutter: rendering/proxy_box.dart RenderAnimatedOpacityMixin.paintsChild
 func (r *RenderSliverAnimatedOpacity) PaintsChild(child RenderObject) bool {
 	if foundation.DebugMode && child.Parent() != RenderObject(r.self) {
-		panic(errors.New("RenderObjectNotChild", "PaintsChild was called with a render object that is not a child",
+		panic(errors.New(tagRenderObjectNotChild, "PaintsChild was called with a render object that is not a child",
 			"object", foundation.DescribeIdentity(r.self), "child", foundation.DescribeIdentity(child)))
 	}
 	return r.opacity.Value() > 0
@@ -596,7 +596,7 @@ func NewRenderSliverConstrainedCrossAxis(maxExtent float64, sliver Sliver) *Rend
 
 func assertSliverMaxExtent(v float64) {
 	if foundation.DebugMode && !(v >= 0) {
-		panic(errors.New("SliverMaxExtentNegative", "the maximum extent must not be negative", "maxExtent", v))
+		panic(errors.New(tagSliverMaxExtentNegative, "the maximum extent must not be negative", "maxExtent", v))
 	}
 }
 
@@ -646,3 +646,9 @@ func NewRenderSliverSemanticsAnnotations(properties *semantics.SemanticsProperti
 	InitSemanticsAnnotations(&r.SemanticsAnnotations, r, properties, opts...)
 	return r
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagProxySliverChildMissing = "ProxySliverChildMissing"
+	tagSliverMaxExtentNegative = "SliverMaxExtentNegative"
+)

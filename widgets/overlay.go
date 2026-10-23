@@ -93,7 +93,7 @@ func (e *OverlayEntry) SetMaintainState(value bool) {
 	e.maintainState = value
 	if e.overlay == nil {
 		if foundation.DebugMode {
-			panic(errors.New("OverlayEntryNotInserted", "the maintainState of an OverlayEntry was changed while it is not in an Overlay"))
+			panic(errors.New(tagOverlayEntryNotInserted, "the maintainState of an OverlayEntry was changed while it is not in an Overlay"))
 		}
 		return
 	}
@@ -134,7 +134,7 @@ func (e *OverlayEntry) RemoveListener(handle foundation.ListenerHandle) {
 
 func (e *OverlayEntry) debugCheckNotDisposed() {
 	if foundation.DebugMode && e.disposedByOwner {
-		panic(errors.New("OverlayEntryDisposed", "the OverlayEntry was used after it was disposed"))
+		panic(errors.New(tagOverlayEntryDisposed, "the OverlayEntry was used after it was disposed"))
 	}
 }
 
@@ -144,7 +144,7 @@ func (e *OverlayEntry) debugCheckNotDisposed() {
 // Flutter: widgets/overlay.dart OverlayEntry.remove
 func (e *OverlayEntry) Remove() {
 	if foundation.DebugMode && e.overlay == nil {
-		panic(errors.New("OverlayEntryNotInserted", "an OverlayEntry should be removed only once"))
+		panic(errors.New(tagOverlayEntryNotInserted, "an OverlayEntry should be removed only once"))
 	}
 	e.debugCheckNotDisposed()
 	overlay := e.overlay
@@ -193,7 +193,7 @@ func (e *OverlayEntry) didUnmount() {
 func (e *OverlayEntry) Dispose() {
 	e.debugCheckNotDisposed()
 	if foundation.DebugMode && e.overlay != nil {
-		panic(errors.New("OverlayEntryStillInserted", "an OverlayEntry must first be removed from the Overlay before Dispose is called"))
+		panic(errors.New(tagOverlayEntryStillInserted, "an OverlayEntry must first be removed from the Overlay before Dispose is called"))
 	}
 	e.disposedByOwner = true
 	if !e.Mounted() && e.notifier != nil {
@@ -327,7 +327,7 @@ func renderTheaterMarkerMaybeOf(bc BuildContext, targetRootOverlay, createDepend
 func renderTheaterMarkerOf(bc BuildContext, targetRootOverlay bool) *renderTheaterMarker {
 	marker := renderTheaterMarkerMaybeOf(bc, targetRootOverlay, true)
 	if marker == nil {
-		panic(errors.New("OverlayMissing", "No Overlay widget found. "+foundation.RuntimeTypeName(bc.Widget())+
+		panic(errors.New(tagOverlayMissing, "No Overlay widget found. "+foundation.RuntimeTypeName(bc.Widget())+
 			" widgets require an Overlay widget ancestor; an overlay lets widgets float on top of other widget children; to introduce an Overlay widget, you can either directly include one, or use a widget that contains an Overlay itself, such as a Navigator, WidgetApp, MaterialApp, or CupertinoApp",
 			"context", bc.(Element).String()))
 	}
@@ -470,7 +470,7 @@ func OverlayOf(bc BuildContext, opts ...OverlayOfOpts) *OverlayState {
 		if LookupBoundaryDebugIsHidingAncestorStateOfType[*OverlayState](bc) {
 			summary = "No Overlay widget found within the closest LookupBoundary. There is an ancestor Overlay widget, but it is hidden by a LookupBoundary."
 		}
-		panic(errors.New("OverlayMissing", summary+" "+required+" widgets require an Overlay widget ancestor for correct operation. "+
+		panic(errors.New(tagOverlayMissing, summary+" "+required+" widgets require an Overlay widget ancestor for correct operation. "+
 			"The most common way to add an Overlay to an application is to include a MaterialApp, CupertinoApp or Navigator widget in the runApp() call.",
 			"context", bc.(Element).String()))
 	}
@@ -510,15 +510,15 @@ func (s *OverlayState) insertionIndex(below, above *OverlayEntry) int {
 
 func (s *OverlayState) debugCanInsertEntry(entry *OverlayEntry) {
 	if !s.Mounted() {
-		panic(errors.New("OverlayInsertDisposed", "attempted to insert an OverlayEntry to an already disposed Overlay",
+		panic(errors.New(tagOverlayInsertDisposed, "attempted to insert an OverlayEntry to an already disposed Overlay",
 			"entry", entry.String(), "overlay", foundation.DescribeIdentity(s)))
 	}
 	if s.indexOf(entry) != -1 {
-		panic(errors.New("OverlayEntryAlreadyInserted", "the specified entry is already present in the target Overlay; consider calling Remove on the OverlayEntry before inserting it to a different Overlay, or switching to the OverlayPortal API to avoid manual OverlayEntry management",
+		panic(errors.New(tagOverlayEntryAlreadyInserted, "the specified entry is already present in the target Overlay; consider calling Remove on the OverlayEntry before inserting it to a different Overlay, or switching to the OverlayPortal API to avoid manual OverlayEntry management",
 			"entry", entry.String(), "overlay", foundation.DescribeIdentity(s)))
 	}
 	if entry.overlay != nil {
-		panic(errors.New("OverlayEntryInOtherOverlay", "the specified entry is already present in a different Overlay; consider calling Remove on the OverlayEntry before inserting it to a different Overlay, or switching to the OverlayPortal API to avoid manual OverlayEntry management",
+		panic(errors.New(tagOverlayEntryInOtherOverlay, "the specified entry is already present in a different Overlay; consider calling Remove on the OverlayEntry before inserting it to a different Overlay, or switching to the OverlayPortal API to avoid manual OverlayEntry management",
 			"entry", entry.String(), "overlay", foundation.DescribeIdentity(s)))
 	}
 }
@@ -533,13 +533,13 @@ func (s *OverlayState) debugVerifyInsertPosition(above, below *OverlayEntry, new
 		return false
 	}
 	if above != nil && below != nil {
-		panic(errors.New("OverlayInsertPositionInvalid", "only one of above and below may be specified"))
+		panic(errors.New(tagOverlayInsertPositionInvalid, "only one of above and below may be specified"))
 	}
 	if above != nil && (above.overlay != s || s.indexOf(above) == -1 || (newEntries != nil && !contains(newEntries, above))) {
-		panic(errors.New("OverlayInsertPositionInvalid", "the provided entry used for above must be present in the Overlay (and in the new entries)"))
+		panic(errors.New(tagOverlayInsertPositionInvalid, "the provided entry used for above must be present in the Overlay (and in the new entries)"))
 	}
 	if below != nil && (below.overlay != s || s.indexOf(below) == -1 || (newEntries != nil && !contains(newEntries, below))) {
-		panic(errors.New("OverlayInsertPositionInvalid", "the provided entry used for below must be present in the Overlay (and in the new entries)"))
+		panic(errors.New(tagOverlayInsertPositionInvalid, "the provided entry used for below must be present in the Overlay (and in the new entries)"))
 	}
 }
 
@@ -605,10 +605,10 @@ func (s *OverlayState) Rearrange(newEntries []*OverlayEntry, opts ...OverlayInse
 		seen := map[*OverlayEntry]bool{}
 		for _, entry := range newEntries {
 			if entry.overlay != nil && entry.overlay != s {
-				panic(errors.New("OverlayEntryInOtherOverlay", "one or more of the specified entries are already present in another Overlay"))
+				panic(errors.New(tagOverlayEntryInOtherOverlay, "one or more of the specified entries are already present in another Overlay"))
 			}
 			if seen[entry] {
-				panic(errors.New("OverlayEntryDuplicate", "one or more of the specified entries are specified multiple times"))
+				panic(errors.New(tagOverlayEntryDuplicate, "one or more of the specified entries are specified multiple times"))
 			}
 			seen[entry] = true
 		}
@@ -662,7 +662,7 @@ func (s *OverlayState) DebugIsVisible(entry *OverlayEntry) bool {
 	result := false
 	if foundation.DebugMode {
 		if s.indexOf(entry) == -1 {
-			panic(errors.New("OverlayEntryNotInserted", "the entry is not in the overlay"))
+			panic(errors.New(tagOverlayEntryNotInserted, "the entry is not in the overlay"))
 		}
 		for i := len(s.entries) - 1; i > 0; i-- {
 			candidate := s.entries[i]
@@ -759,10 +759,23 @@ func DebugCheckHasOverlay(bc BuildContext) bool {
 				summary = "No Overlay widget found within the closest LookupBoundary. There is an ancestor Overlay widget, but it is hidden by a LookupBoundary."
 				within = " within the closest LookupBoundary"
 			}
-			panic(errors.New("OverlayMissing", summary+" "+foundation.RuntimeTypeName(bc.Widget())+
+			panic(errors.New(tagOverlayMissing, summary+" "+foundation.RuntimeTypeName(bc.Widget())+
 				" widgets require an Overlay widget ancestor"+within+"; an overlay lets widgets float on top of other widget children; to introduce an Overlay widget, you can either directly include one, or use a widget that contains an Overlay itself, such as a Navigator, WidgetApp, MaterialApp, or CupertinoApp",
 				"context", bc.(Element).String()))
 		}
 	}
 	return true
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagOverlayEntryAlreadyInserted  = "OverlayEntryAlreadyInserted"
+	tagOverlayEntryDisposed         = "OverlayEntryDisposed"
+	tagOverlayEntryDuplicate        = "OverlayEntryDuplicate"
+	tagOverlayEntryInOtherOverlay   = "OverlayEntryInOtherOverlay"
+	tagOverlayEntryNotInserted      = "OverlayEntryNotInserted"
+	tagOverlayEntryStillInserted    = "OverlayEntryStillInserted"
+	tagOverlayInsertDisposed        = "OverlayInsertDisposed"
+	tagOverlayInsertPositionInvalid = "OverlayInsertPositionInvalid"
+	tagOverlayMissing               = "OverlayMissing"
+)

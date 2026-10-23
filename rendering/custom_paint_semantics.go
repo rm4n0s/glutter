@@ -112,7 +112,7 @@ func (r *RenderCustomPaint) DescribeSemanticsConfiguration(config *semantics.Sem
 // Flutter: rendering/custom_paint.dart RenderCustomPaint.assembleSemanticsNode
 func (r *RenderCustomPaint) AssembleSemanticsNode(node *semantics.SemanticsNode, config *semantics.SemanticsConfiguration, children []*semantics.SemanticsNode) {
 	if foundation.DebugMode && !r.hasChild() && len(children) > 0 {
-		panic(errors.New("CustomPaintSemanticsNoChild", foundation.RuntimeTypeName(r.self)+
+		panic(errors.New(tagCustomPaintSemanticsNoChild, foundation.RuntimeTypeName(r.self)+
 			" does not have a child widget but received a non-empty list of child SemanticsNode",
 			"children", strconv.Itoa(len(children))))
 	}
@@ -156,7 +156,7 @@ func updateSemanticsChildren(oldSemantics []*semantics.SemanticsNode, newChildSe
 				continue
 			}
 			if _, dup := keys[child.Key]; dup {
-				panic(errors.New("CustomPainterSemanticsKeyDuplicated", "Failed to update the list of CustomPainterSemantics: duplicate key found",
+				panic(errors.New(tagCustomPainterSemanticsKeyDuplicated, "Failed to update the list of CustomPainterSemantics: duplicate key found",
 					"key", child.Key, "position", i))
 			}
 			keys[child.Key] = i
@@ -438,3 +438,9 @@ func (r *RenderCustomPaint) DebugFillProperties(b *foundation.DiagnosticProperti
 	b.Add(foundation.NewDiagnosticsProperty("isComplex", r.IsComplex, foundation.DiagnosticsPropertyOpts{DefaultValue: false}))
 	b.Add(foundation.NewDiagnosticsProperty("willChange", r.WillChange, foundation.DiagnosticsPropertyOpts{DefaultValue: false}))
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagCustomPaintSemanticsNoChild         = "CustomPaintSemanticsNoChild"
+	tagCustomPainterSemanticsKeyDuplicated = "CustomPainterSemanticsKeyDuplicated"
+)

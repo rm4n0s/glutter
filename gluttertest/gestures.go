@@ -134,7 +134,7 @@ func (g *TestGesture) Down(at ui.Offset) {
 	g.t.tb.Helper()
 	g.t.adopt()
 	if g.down {
-		g.t.fail(errors.New("GestureAlreadyDown", "TestGesture.Down was called on a pointer that is already pressed"))
+		g.t.fail(errors.New(tagGestureAlreadyDown, "TestGesture.Down was called on a pointer that is already pressed"))
 		return
 	}
 	g.down = true
@@ -221,7 +221,7 @@ func (g *TestGesture) requireDown(method string) {
 	g.t.adopt()
 	g.t.tb.Helper()
 	if !g.down {
-		g.t.fail(errors.New("GestureNotDown", "TestGesture."+method+" was called on a pointer that is not pressed", "method", method))
+		g.t.fail(errors.New(tagGestureNotDown, "TestGesture."+method+" was called on a pointer that is not pressed", "method", method))
 	}
 }
 
@@ -306,7 +306,7 @@ func (t *Tester) FlingFrom(at, by ui.Offset, speed float64, opts ...GestureOpts)
 	t.tb.Helper()
 	const moveCount = 50
 	if speed <= 0 || by.Distance() == 0 {
-		t.fail(errors.New("FlingInvalid", "a fling needs a speed above zero and an offset that is not zero",
+		t.fail(errors.New(tagFlingInvalid, "a fling needs a speed above zero and an offset that is not zero",
 			"speed", speed, "offset", by.Distance()))
 		return
 	}
@@ -420,12 +420,12 @@ func (t *Tester) ShowKeyboard(f Finder) *widgets.EditableTextState {
 	found := Descendant(f, ByType[*widgets.EditableText](), DescendantOpts{MatchRoot: true})
 	els := t.Elements(found)
 	if len(els) == 0 {
-		t.fail(errors.New("EnterTextNoField", "the finder found no EditableText", "finder", f.Describe()))
+		t.fail(errors.New(tagEnterTextNoField, "the finder found no EditableText", "finder", f.Describe()))
 		return nil
 	}
 	stateful, ok := els[0].(*widgets.StatefulElement)
 	if !ok {
-		t.fail(errors.New("EnterTextNoField", "the EditableText element has no state", "finder", f.Describe()))
+		t.fail(errors.New(tagEnterTextNoField, "the EditableText element has no state", "finder", f.Describe()))
 		return nil
 	}
 	state := stateful.State().(*widgets.EditableTextState)
@@ -605,7 +605,7 @@ func (g *TestTrackpadGesture) End() {
 func (g *TestTrackpadGesture) requireActive(method string) {
 	g.t.tb.Helper()
 	if !g.active {
-		g.t.fail(errors.New("GestureNotDown", "TestTrackpadGesture."+method+" was called on a gesture that has ended", "method", method))
+		g.t.fail(errors.New(tagGestureNotDown, "TestTrackpadGesture."+method+" was called on a gesture that has ended", "method", method))
 	}
 }
 
@@ -618,7 +618,7 @@ func (t *Tester) TrackpadFlingFrom(at, by ui.Offset, speed float64) {
 	t.tb.Helper()
 	const moveCount = 50
 	if speed <= 0 || by.Distance() == 0 {
-		t.fail(errors.New("FlingInvalid", "a fling needs a speed above zero and an offset that is not zero",
+		t.fail(errors.New(tagFlingInvalid, "a fling needs a speed above zero and an offset that is not zero",
 			"speed", speed, "offset", by.Distance()))
 		return
 	}
@@ -640,3 +640,11 @@ func (t *Tester) TrackpadFling(f Finder, by ui.Offset, speed float64) {
 	t.tb.Helper()
 	t.TrackpadFlingFrom(t.Center(f), by, speed)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagEnterTextNoField   = "EnterTextNoField"
+	tagFlingInvalid       = "FlingInvalid"
+	tagGestureAlreadyDown = "GestureAlreadyDown"
+	tagGestureNotDown     = "GestureNotDown"
+)

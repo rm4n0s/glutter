@@ -448,7 +448,7 @@ func InitRenderFlex(r *RenderFlex, self Box, children []Box, o RenderFlexOpts) {
 		o.ClipBehavior = ui.ClipNone
 	}
 	if o.Spacing < 0 {
-		panic(errors.New("FlexSpacingNegative", "the spacing of a RenderFlex must not be negative", "spacing", o.Spacing))
+		panic(errors.New(tagFlexSpacingNegative, "the spacing of a RenderFlex must not be negative", "spacing", o.Spacing))
 	}
 	r.direction, r.mainAxisSize, r.mainAxisAlignment = o.Direction, o.MainAxisSize.orMax(), o.MainAxisAlignment.orStart()
 	r.crossAxisAlignment, r.textDirection = o.CrossAxisAlignment.orCenter(), o.TextDirection
@@ -570,7 +570,7 @@ func (r *RenderFlex) TextBaseline() ui.TextBaseline { return r.textBaseline }
 // Flutter: rendering/flex.dart RenderFlex.textBaseline
 func (r *RenderFlex) SetTextBaseline(value ui.TextBaseline) {
 	if foundation.DebugMode && r.crossAxisAlignment == CrossAxisAlignmentBaseline && value == ui.TextBaselineUnspecified {
-		panic(errors.New("FlexBaselineMissing", "the text baseline of a RenderFlex aligned to the baseline must be set",
+		panic(errors.New(tagFlexBaselineMissing, "the text baseline of a RenderFlex aligned to the baseline must be set",
 			"object", foundation.DescribeIdentity(r)))
 	}
 	if r.textBaseline != value {
@@ -940,7 +940,7 @@ func (r *RenderFlex) debugCheckConstraints(constraints BoxConstraints, reportPar
 				ancestor = foundation.DescribeIdentity(node)
 			}
 		}
-		return errors.New("RenderFlexUnboundedFlex",
+		return errors.New(tagRenderFlexUnboundedFlex,
 			"RenderFlex children have non-zero flex but incoming "+dimension+" constraints are unbounded. "+
 				"When a "+identity+" is in a parent that does not provide a finite "+dimension+" constraint, for example "+
 				"if it is in a "+axis+" scrollable, it will try to shrink-wrap its children along the "+axis+
@@ -967,7 +967,7 @@ func (r *RenderFlex) debugCheckDirections() {
 	}
 	name := foundation.RuntimeTypeName(r)
 	missing := func(what string) {
-		panic(errors.New("FlexDirectionMissing", what, "object", foundation.DescribeIdentity(r)))
+		panic(errors.New(tagFlexDirectionMissing, what, "object", foundation.DescribeIdentity(r)))
 	}
 	if r.textDirection == ui.TextDirectionUnspecified {
 		first, last := r.FirstChild(), r.LastChild()
@@ -998,7 +998,7 @@ func (r *RenderFlex) computeSizes(constraints BoxConstraints, layoutChild ChildL
 	textBaseline := ui.TextBaselineUnspecified
 	if r.isBaselineAligned() {
 		if r.textBaseline == ui.TextBaselineUnspecified {
-			panic(errors.New("FlexBaselineMissing",
+			panic(errors.New(tagFlexBaselineMissing,
 				`To use CrossAxisAlignment.baseline, you must also specify which baseline to use using the "textBaseline" argument.`,
 				"object", foundation.DescribeIdentity(r)))
 		}
@@ -1214,3 +1214,11 @@ func optEnum[T comparable](v, unspecified T) foundation.Opt[T] {
 	}
 	return foundation.Some(v)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagFlexBaselineMissing     = "FlexBaselineMissing"
+	tagFlexDirectionMissing    = "FlexDirectionMissing"
+	tagFlexSpacingNegative     = "FlexSpacingNegative"
+	tagRenderFlexUnboundedFlex = "RenderFlexUnboundedFlex"
+)

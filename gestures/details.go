@@ -210,7 +210,7 @@ func NewDragUpdateDetails(globalPosition ui.Offset, opts ...DragUpdateOpts) Drag
 	o := oneOpts(opts)
 	if pd, ok := o.PrimaryDelta.Get(); ok && foundation.DebugMode {
 		if !((pd == o.Delta.Dx && o.Delta.Dy == 0) || (pd == o.Delta.Dy && o.Delta.Dx == 0)) {
-			panic(errors.New("DragUpdatePrimaryDeltaInvalid", "the primary delta must be the delta along one axis",
+			panic(errors.New(tagDragUpdatePrimaryDeltaInvalid, "the primary delta must be the delta along one axis",
 				"primaryDelta", pd, "delta", o.Delta.String()))
 		}
 	}
@@ -295,7 +295,7 @@ func NewDragEndDetails(opts ...DragEndOpts) DragEndDetails {
 	if pv, ok := o.PrimaryVelocity.Get(); ok && foundation.DebugMode {
 		v := o.Velocity.PixelsPerSecond
 		if !((pv == v.Dx && v.Dy == 0) || (pv == v.Dy && v.Dx == 0)) {
-			panic(errors.New("DragEndPrimaryVelocityInvalid", "the primary velocity must be the velocity along one axis",
+			panic(errors.New(tagDragEndPrimaryVelocityInvalid, "the primary velocity must be the velocity along one axis",
 				"primaryVelocity", pv, "velocity", o.Velocity.String()))
 		}
 	}
@@ -341,3 +341,9 @@ type GestureDragEndCallback func(details DragEndDetails)
 //
 // Flutter: gestures/drag_details.dart GestureDragCancelCallback
 type GestureDragCancelCallback func()
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagDragEndPrimaryVelocityInvalid = "DragEndPrimaryVelocityInvalid"
+	tagDragUpdatePrimaryDeltaInvalid = "DragUpdatePrimaryDeltaInvalid"
+)

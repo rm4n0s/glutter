@@ -175,7 +175,7 @@ func (b *frameBuilder) items(p pipeKind) int { return len(b.data[p]) / itemFloat
 // leaves the command out.
 func (b *frameBuilder) unsupported(what string) error {
 	if !b.skip {
-		return errors.New("GPUNotImplemented", "the GPU renderer cannot draw this yet", "feature", what)
+		return errors.New(tagGPUNotImplemented, "the GPU renderer cannot draw this yet", "feature", what)
 	}
 	if !b.reasons[what] {
 		if b.reasons == nil {
@@ -418,7 +418,7 @@ func (s *shapeContext) shaderSpec(sp *gpu.PaintSpec, sh ui.Shader, toDevice gpu.
 	case *ui.ImageShader:
 		img := v.Image()
 		if img == nil || img.IsDisposed() {
-			return paintUnsupported, errors.New("GPUImageDisposed", "the image was disposed, or is nil, and cannot be drawn")
+			return paintUnsupported, errors.New(tagGPUImageDisposed, "the image was disposed, or is nil, and cannot be drawn")
 		}
 		r, err := sp.SetImageShader(v, toDevice, func(img *ui.Image) (any, int, error) {
 			entry, err := s.b.res.imageTexture(img)
@@ -428,7 +428,7 @@ func (s *shapeContext) shaderSpec(sp *gpu.PaintSpec, sh ui.Shader, toDevice gpu.
 			return entry.tex, entry.levels, nil
 		})
 		if err != nil {
-			if appErr, isErr := errors.FromError(err); isErr && appErr.Tag == "GPUImageTooLarge" && s.b.skip {
+			if appErr, isErr := errors.FromError(err); isErr && appErr.Tag == TagGPUImageTooLarge && s.b.skip {
 				return paintUnsupported, s.b.unsupported("image larger than the textures of the device")
 			}
 			return paintUnsupported, err
@@ -523,3 +523,9 @@ func blendState(b gpu.FixedBlend) BlendState {
 	}
 	return BlendState{Enabled: true, SrcFactor: factor(b.Src), DstFactor: factor(b.Dst)}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagGPUImageDisposed  = "GPUImageDisposed"
+	tagGPUNotImplemented = "GPUNotImplemented"
+)

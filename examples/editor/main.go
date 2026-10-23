@@ -92,7 +92,7 @@ func dataDir(getenv func(string) string) (string, error) {
 	if home := getenv("HOME"); home != "" {
 		return filepath.Join(home, ".local", "share", dirName), nil
 	}
-	return "", errors.New("EditorNoDataDir", "neither XDG_DATA_HOME nor HOME is set")
+	return "", errors.New(tagEditorNoDataDir, "neither XDG_DATA_HOME nor HOME is set")
 }
 
 // memoryNotes are the notes of an app that has no directory to keep them in, such as a web
@@ -107,7 +107,7 @@ type memoryNotes struct {
 // load returns the saved text; found is false when nothing was saved yet.
 func (m *memoryNotes) load(ctx context.Context) (text string, found bool, err error) {
 	if err := ctx.Err(); err != nil {
-		return "", false, errors.NewErr("EditorLoadCanceled", err)
+		return "", false, errors.NewErr(tagEditorLoadCanceled, err)
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -117,7 +117,7 @@ func (m *memoryNotes) load(ctx context.Context) (text string, found bool, err er
 // save keeps the text.
 func (m *memoryNotes) save(ctx context.Context, text string) error {
 	if err := ctx.Err(); err != nil {
-		return errors.NewErr("EditorSaveCanceled", err)
+		return errors.NewErr(tagEditorSaveCanceled, err)
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -128,7 +128,7 @@ func (m *memoryNotes) save(ctx context.Context, text string) error {
 // loadNotes reads the saved file; found is false when there is none yet.
 func loadNotes(ctx context.Context, dir string) (text string, found bool, err error) {
 	if err := ctx.Err(); err != nil {
-		return "", false, errors.NewErr("EditorLoadCanceled", err)
+		return "", false, errors.NewErr(tagEditorLoadCanceled, err)
 	}
 	data, err := os.ReadFile(filepath.Join(dir, fileName))
 	switch {
@@ -137,26 +137,26 @@ func loadNotes(ctx context.Context, dir string) (text string, found bool, err er
 	case errors.Is(err, os.ErrNotExist):
 		return "", false, nil
 	}
-	return "", false, errors.NewErr("EditorReadFailed", err).SetMetadata("dir", dir)
+	return "", false, errors.NewErr(tagEditorReadFailed, err).SetMetadata("dir", dir)
 }
 
 // saveNotes writes the text to the file, through a temporary file, so that a
 // failure leaves the previous version in place.
 func saveNotes(ctx context.Context, dir, text string) error {
 	if err := ctx.Err(); err != nil {
-		return errors.NewErr("EditorSaveCanceled", err)
+		return errors.NewErr(tagEditorSaveCanceled, err)
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return errors.NewErr("EditorCreateDirFailed", err).SetMetadata("dir", dir)
+		return errors.NewErr(tagEditorCreateDirFailed, err).SetMetadata("dir", dir)
 	}
 	path := filepath.Join(dir, fileName)
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, []byte(text), 0o644); err != nil {
-		return errors.NewErr("EditorWriteFailed", err).SetMetadata("file", tmp)
+		return errors.NewErr(tagEditorWriteFailed, err).SetMetadata("file", tmp)
 	}
 	if err := os.Rename(tmp, path); err != nil {
 		_ = os.Remove(tmp)
-		return errors.NewErr("EditorRenameFailed", err).SetMetadata("file", path)
+		return errors.NewErr(tagEditorRenameFailed, err).SetMetadata("file", path)
 	}
 	return nil
 }
@@ -243,7 +243,7 @@ func optionsFromEnv(getenv func(string) string) (options, error) {
 		a, errA := strconv.Atoi(start)
 		b, errB := strconv.Atoi(end)
 		if !ok || errA != nil || errB != nil || a < 0 || b < a {
-			return o, errors.New("EditorSelectInvalid", `GLUTTER_DEV_SELECT must be "start,end" with 0 <= start <= end`, "value", v)
+			return o, errors.New(tagEditorSelectInvalid, `GLUTTER_DEV_SELECT must be "start,end" with 0 <= start <= end`, "value", v)
 		}
 		o.selectRange, o.selectStart, o.selEnd = true, a, b
 	}
@@ -549,3 +549,15 @@ func main() {
 		os.Exit(1)
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagEditorCreateDirFailed = "EditorCreateDirFailed"
+	tagEditorLoadCanceled    = "EditorLoadCanceled"
+	tagEditorNoDataDir       = "EditorNoDataDir"
+	tagEditorReadFailed      = "EditorReadFailed"
+	tagEditorRenameFailed    = "EditorRenameFailed"
+	tagEditorSaveCanceled    = "EditorSaveCanceled"
+	tagEditorSelectInvalid   = "EditorSelectInvalid"
+	tagEditorWriteFailed     = "EditorWriteFailed"
+)

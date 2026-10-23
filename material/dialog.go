@@ -81,7 +81,7 @@ type Dialog struct {
 func NewDialog(child widgets.Widget, opts ...DialogOpts) *Dialog {
 	o := firstOpts(opts)
 	if foundation.DebugMode && o.Elevation.IsSome() && o.Elevation.Value() < 0 {
-		panic(errors.New("DialogElevationNegative", "the elevation of a dialog must not be negative", "elevation", o.Elevation.Value()))
+		panic(errors.New(tagDialogElevationNegative, "the elevation of a dialog must not be negative", "elevation", o.Elevation.Value()))
 	}
 	return &Dialog{StatelessWidget: widgets.NewStatelessWidgetBase(widgets.WidgetOpts{Key: o.Key}), child: child, o: o}
 }
@@ -722,3 +722,8 @@ func dialogDefaultsM3(theme *ThemeData) DialogThemeData {
 		ActionsPadding:   painting.NewEdgeInsetsFromLTRB(24, 0, 24, 24),
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagDialogElevationNegative = "DialogElevationNegative"
+)

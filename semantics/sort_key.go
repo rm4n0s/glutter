@@ -55,7 +55,7 @@ func (b SemanticsSortKeyBase) DebugFillBase(p *foundation.DiagnosticPropertiesBu
 // Flutter: semantics/semantics.dart SemanticsSortKey.compareTo
 func SemanticsSortKeyCompare(a, b SemanticsSortKey) int {
 	if foundation.DebugMode && reflect.TypeOf(a) != reflect.TypeOf(b) {
-		panic(errors.New("SemanticsSortKeyTypeMismatch", "Semantics sort keys can only be compared to other sort keys of the same type.",
+		panic(errors.New(tagSemanticsSortKeyTypeMismatch, "Semantics sort keys can only be compared to other sort keys of the same type.",
 			"a", reflect.TypeOf(a).String(), "b", reflect.TypeOf(b).String()))
 	}
 	an, bn := a.Name(), b.Name()
@@ -85,7 +85,7 @@ type OrdinalSortKey struct {
 // Flutter: semantics/semantics.dart OrdinalSortKey.new
 func NewOrdinalSortKey(order float64, name ...string) *OrdinalSortKey {
 	if foundation.DebugMode && (math.IsInf(order, 0) || math.IsNaN(order)) {
-		panic(errors.New("OrdinalSortKeyOrderInvalid", "the order of an OrdinalSortKey must be finite", "order", order))
+		panic(errors.New(tagOrdinalSortKeyOrderInvalid, "the order of an OrdinalSortKey must be finite", "order", order))
 	}
 	k := &OrdinalSortKey{order: order}
 	if len(name) > 0 {
@@ -125,3 +125,9 @@ func (k *OrdinalSortKey) DebugFillProperties(p *foundation.DiagnosticPropertiesB
 //
 // Flutter: semantics/semantics.dart OrdinalSortKey.toString
 func (k *OrdinalSortKey) String() string { return foundation.DiagnosticableString(k) }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagOrdinalSortKeyOrderInvalid   = "OrdinalSortKeyOrderInvalid"
+	tagSemanticsSortKeyTypeMismatch = "SemanticsSortKeyTypeMismatch"
+)

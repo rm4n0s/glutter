@@ -91,13 +91,13 @@ func NewInputDatePickerFormField(firstDate, lastDate time.Time, opts ...InputDat
 	if foundation.DebugMode {
 		switch {
 		case w.lastDate.Before(w.firstDate):
-			panic(errors.New("InputDatePickerLastDateBeforeFirstDate", "lastDate must be on or after firstDate", "lastDate", w.lastDate, "firstDate", w.firstDate))
+			panic(errors.New(tagInputDatePickerLastDateBeforeFirstDate, "lastDate must be on or after firstDate", "lastDate", w.lastDate, "firstDate", w.firstDate))
 		case !w.initialDate.IsZero() && w.initialDate.Before(w.firstDate):
-			panic(errors.New("InputDatePickerInitialDateBeforeFirstDate", "initialDate must be on or after firstDate", "initialDate", w.initialDate, "firstDate", w.firstDate))
+			panic(errors.New(tagInputDatePickerInitialDateBeforeFirstDate, "initialDate must be on or after firstDate", "initialDate", w.initialDate, "firstDate", w.firstDate))
 		case !w.initialDate.IsZero() && w.initialDate.After(w.lastDate):
-			panic(errors.New("InputDatePickerInitialDateAfterLastDate", "initialDate must be on or before lastDate", "initialDate", w.initialDate, "lastDate", w.lastDate))
+			panic(errors.New(tagInputDatePickerInitialDateAfterLastDate, "initialDate must be on or before lastDate", "initialDate", w.initialDate, "lastDate", w.lastDate))
 		case o.SelectableDayPredicate != nil && !w.initialDate.IsZero() && !o.SelectableDayPredicate(w.initialDate):
-			panic(errors.New("InputDatePickerInitialDateNotSelectable", "the initialDate must satisfy the selectableDayPredicate", "initialDate", w.initialDate))
+			panic(errors.New(tagInputDatePickerInitialDateNotSelectable, "the initialDate must satisfy the selectableDayPredicate", "initialDate", w.initialDate))
 		}
 	}
 	return w
@@ -261,3 +261,11 @@ func (s *inputDatePickerFormFieldState) Build(bc widgets.BuildContext) widgets.W
 		OnFieldSubmitted: func(text string) { s.updateDate(text, w.o.OnDateSubmitted) },
 	}), widgets.SemanticsOpts{Container: true})
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagInputDatePickerInitialDateAfterLastDate   = "InputDatePickerInitialDateAfterLastDate"
+	tagInputDatePickerInitialDateBeforeFirstDate = "InputDatePickerInitialDateBeforeFirstDate"
+	tagInputDatePickerInitialDateNotSelectable   = "InputDatePickerInitialDateNotSelectable"
+	tagInputDatePickerLastDateBeforeFirstDate    = "InputDatePickerLastDateBeforeFirstDate"
+)

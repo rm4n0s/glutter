@@ -79,7 +79,7 @@ func Strlen(ptr uintptr) uintptr { return loadLibc().strlen(ptr) }
 func CString(s string) uintptr {
 	ptr := Malloc(uintptr(len(s)) + 1)
 	if ptr == 0 {
-		panic(errors.New("CStringAllocFailed", "malloc failed", "size", len(s)+1))
+		panic(errors.New(tagCStringAllocFailed, "malloc failed", "size", len(s)+1))
 	}
 	buf := unsafe.Slice((*byte)(pointer(ptr)), len(s)+1)
 	copy(buf, s)
@@ -123,3 +123,8 @@ func Bytes(addr uintptr, n int) []byte {
 	}
 	return unsafe.Slice((*byte)(Pointer(addr)), n)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagCStringAllocFailed = "CStringAllocFailed"
+)

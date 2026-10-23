@@ -44,7 +44,7 @@ type ShapeDecorationOpts struct {
 func NewShapeDecoration(shape ShapeBorder, opts ...ShapeDecorationOpts) *ShapeDecoration {
 	o := firstOpts(opts)
 	if foundation.DebugMode && o.Color.IsSome() && o.Gradient != nil {
-		panic(errors.New("ShapeDecorationColorAndGradient", "a ShapeDecoration can't have both a color and a gradient"))
+		panic(errors.New(tagShapeDecorationColorAndGradient, "a ShapeDecoration can't have both a color and a gradient"))
 	}
 	return &ShapeDecoration{Color: o.Color, Image: o.Image, Gradient: o.Gradient, Shadows: o.Shadows, Shape: shape}
 }
@@ -58,7 +58,7 @@ func NewShapeDecorationFromBoxDecoration(source *BoxDecoration) *ShapeDecoration
 	var shape ShapeBorder
 	uniform := func() {
 		if foundation.DebugMode && source.Border != nil && !source.Border.IsUniform() {
-			panic(errors.New("ShapeDecorationBorderNotUniform", "the border of the BoxDecoration must be uniform to become a shape"))
+			panic(errors.New(tagShapeDecorationBorderNotUniform, "the border of the BoxDecoration must be uniform to become a shape"))
 		}
 	}
 	switch source.Shape {
@@ -244,7 +244,7 @@ func (d *ShapeDecoration) HitTest(size ui.Size, position ui.Offset, td ui.TextDi
 // Flutter: painting/shape_decoration.dart ShapeDecoration.createBoxPainter
 func (d *ShapeDecoration) CreateBoxPainter(onChanged func()) BoxPainter {
 	if foundation.DebugMode && onChanged == nil && d.Image != nil {
-		panic(errors.New("ShapeDecorationOnChangedRequired", "a ShapeDecoration with an image needs an onChanged callback"))
+		panic(errors.New(tagShapeDecorationOnChangedRequired, "a ShapeDecoration with an image needs an onChanged callback"))
 	}
 	return &shapeDecorationPainter{decoration: d, onChanged: onChanged}
 }
@@ -372,7 +372,7 @@ func (s *shapeDecorationPainter) Paint(canvas *ui.Canvas, offset ui.Offset, conf
 	size, ok := configuration.Size.Get()
 	if !ok {
 		if foundation.DebugMode {
-			panic(errors.New("ShapeDecorationNoSize", "the ImageConfiguration given to a ShapeDecoration painter has no size"))
+			panic(errors.New(tagShapeDecorationNoSize, "the ImageConfiguration given to a ShapeDecoration painter has no size"))
 		}
 		return
 	}
@@ -386,3 +386,11 @@ func (s *shapeDecorationPainter) Paint(canvas *ui.Canvas, offset ui.Offset, conf
 }
 
 var _ Decoration = (*ShapeDecoration)(nil)
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagShapeDecorationBorderNotUniform  = "ShapeDecorationBorderNotUniform"
+	tagShapeDecorationColorAndGradient  = "ShapeDecorationColorAndGradient"
+	tagShapeDecorationNoSize            = "ShapeDecorationNoSize"
+	tagShapeDecorationOnChangedRequired = "ShapeDecorationOnChangedRequired"
+)

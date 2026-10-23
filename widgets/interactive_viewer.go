@@ -130,16 +130,16 @@ func newInteractiveViewer(child Widget, builder InteractiveViewerWidgetBuilder, 
 		m := o.BoundaryMargin
 		switch {
 		case !(minScale > 0) || !finite(minScale):
-			panic(errors.New("InteractiveViewerScaleInvalid", "the minScale must be greater than zero and finite", "minScale", minScale))
+			panic(errors.New(tagInteractiveViewerScaleInvalid, "the minScale must be greater than zero and finite", "minScale", minScale))
 		case !(friction > 0):
-			panic(errors.New("InteractiveViewerFrictionInvalid", "the interactionEndFrictionCoefficient must be greater than zero", "friction", friction))
+			panic(errors.New(tagInteractiveViewerFrictionInvalid, "the interactionEndFrictionCoefficient must be greater than zero", "friction", friction))
 		case !(maxScale > 0) || math.IsNaN(maxScale):
-			panic(errors.New("InteractiveViewerScaleInvalid", "the maxScale must be greater than zero", "maxScale", maxScale))
+			panic(errors.New(tagInteractiveViewerScaleInvalid, "the maxScale must be greater than zero", "maxScale", maxScale))
 		case maxScale < minScale:
-			panic(errors.New("InteractiveViewerScaleInvalid", "the maxScale must not be less than the minScale", "minScale", minScale, "maxScale", maxScale))
+			panic(errors.New(tagInteractiveViewerScaleInvalid, "the maxScale must not be less than the minScale", "minScale", minScale, "maxScale", maxScale))
 		case !((math.IsInf(m.Left+m.Right, 0) && math.IsInf(m.Top+m.Bottom, 0)) ||
 			(finite(m.Top) && finite(m.Right) && finite(m.Bottom) && finite(m.Left))):
-			panic(errors.New("InteractiveViewerBoundaryMarginInvalid", "the boundaryMargin must be finite in all directions or infinite in both axes"))
+			panic(errors.New(tagInteractiveViewerBoundaryMarginInvalid, "the boundaryMargin must be finite in all directions or infinite in both axes"))
 		}
 	}
 	if o.ClipBehavior == ui.ClipUnspecified {
@@ -334,11 +334,11 @@ func (s *interactiveViewerState) boundaryRect() ui.Rect {
 	boundaryRect := s.Widget().boundaryMargin.InflateRect(ui.OffsetZero.And(childSize))
 	if foundation.DebugMode {
 		if boundaryRect.IsEmpty() {
-			panic(errors.New("InteractiveViewerChildEmpty", "InteractiveViewer's child must have nonzero dimensions"))
+			panic(errors.New(tagInteractiveViewerChildEmpty, "InteractiveViewer's child must have nonzero dimensions"))
 		}
 		inf := math.IsInf
 		if !boundaryRect.IsFinite() && !(inf(boundaryRect.Left, 0) && inf(boundaryRect.Top, 0) && inf(boundaryRect.Right, 0) && inf(boundaryRect.Bottom, 0)) {
-			panic(errors.New("InteractiveViewerBoundaryInvalid", "boundaryRect must either be infinite in all directions or finite in all directions"))
+			panic(errors.New(tagInteractiveViewerBoundaryInvalid, "boundaryRect must either be infinite in all directions or finite in all directions"))
 		}
 	}
 	return boundaryRect
@@ -433,7 +433,7 @@ func (s *interactiveViewerState) matrixScale(matrix *ui.Matrix4, scale float64) 
 		return matrix.Clone()
 	}
 	if foundation.DebugMode && scale == 0 {
-		panic(errors.New("InteractiveViewerScaleZero", "scale must not be zero"))
+		panic(errors.New(tagInteractiveViewerScaleZero, "scale must not be zero"))
 	}
 	// Don't allow a zoom that makes the viewport smaller than the boundary
 	// rectangle.
@@ -805,7 +805,7 @@ func (s *interactiveViewerState) Build(BuildContext) Widget {
 			constrained: w.constrained, matrix: s.transformer.Value(), alignment: w.alignment}
 	} else {
 		if foundation.DebugMode && (w.builder == nil || w.constrained) {
-			panic(errors.New("InteractiveViewerBuilderInvalid", "a builder viewer needs a builder and can not be constrained"))
+			panic(errors.New(tagInteractiveViewerBuilderInvalid, "a builder viewer needs a builder and can not be constrained"))
 		}
 		child = NewLayoutBuilder(func(bc BuildContext, constraints rendering.BoxConstraints) Widget {
 			matrix := s.transformer.Value()
@@ -973,3 +973,14 @@ func panAxisOf(point1, point2 ui.Offset) foundation.Opt[painting.Axis] {
 	}
 	return foundation.Some(painting.AxisVertical)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagInteractiveViewerBoundaryInvalid       = "InteractiveViewerBoundaryInvalid"
+	tagInteractiveViewerBoundaryMarginInvalid = "InteractiveViewerBoundaryMarginInvalid"
+	tagInteractiveViewerBuilderInvalid        = "InteractiveViewerBuilderInvalid"
+	tagInteractiveViewerChildEmpty            = "InteractiveViewerChildEmpty"
+	tagInteractiveViewerFrictionInvalid       = "InteractiveViewerFrictionInvalid"
+	tagInteractiveViewerScaleInvalid          = "InteractiveViewerScaleInvalid"
+	tagInteractiveViewerScaleZero             = "InteractiveViewerScaleZero"
+)

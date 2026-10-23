@@ -9,6 +9,7 @@ import (
 	"syscall/js"
 	"time"
 
+	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/internal/gpu"
 	"github.com/rm4n0s/glutter/internal/gpu/explicit"
 )
@@ -96,9 +97,9 @@ func Acquire(ctx context.Context, o Options) (*Provider, error) {
 	select {
 	case <-done:
 	case <-ctx.Done():
-		waitErr = errDeviceFailed("the wait for the adapter and the device ended: " + ctx.Err().Error())
+		waitErr = errors.New(TagDeviceFailed, "the WebGPU adapter did not give a device", "reason", "the wait for the adapter and the device ended: "+ctx.Err().Error())
 	case <-timer.C:
-		waitErr = errDeviceFailed("the browser gave no adapter and device in " + timeout.String())
+		waitErr = errors.New(TagDeviceFailed, "the WebGPU adapter did not give a device", "reason", "the browser gave no adapter and device in "+timeout.String())
 	}
 	p.mu.Lock()
 	p.delivered = nil
@@ -108,20 +109,17 @@ func Acquire(ctx context.Context, o Options) (*Provider, error) {
 	}
 	state, f := p.sup.peek()
 	if state == supplyFailed {
-		return nil, failureError(f)
+		// The error is made here, in the goroutine that reports it, so that its route starts at
+		// the call of the owner.
+		switch f.tag {
+		case "unavailable":
+			return nil, errors.New(TagUnavailable, "this browser has no usable WebGPU", "reason", f.message)
+		case "shader":
+			return nil, errors.New(TagShaderInvalid, "the browser rejected a WGSL module of Glutter", "messages", f.message)
+		}
+		return nil, errors.New(TagDeviceFailed, "the WebGPU adapter did not give a device", "reason", f.message)
 	}
 	return p, nil
-}
-
-// failureError makes the error of a failed request, in the goroutine that reports it.
-func failureError(f *failure) error {
-	switch f.tag {
-	case "unavailable":
-		return errUnavailable(f.message)
-	case "shader":
-		return errShaderInvalid(f.message)
-	}
-	return errDeviceFailed(f.message)
 }
 
 // keep makes a callback for the browser. They are made once, here, and kept for the life of the
@@ -179,7 +177,7 @@ func (p *Provider) answered() {
 	}
 	state, f := p.sup.peek()
 	if state == supplyFailed {
-		p.log.Warn("the WebGPU device asked for after a loss did not come", "tag", failureError(f).Error())
+		p.log.Warn("the WebGPU device asked for after a loss did not come", "tag", f.tag, "message", f.message)
 	}
 	p.post(func() {
 		if p.o.OnDeviceReady != nil {
@@ -197,7 +195,7 @@ func (p *Provider) answered() {
 // Flutter: no counterpart
 func (p *Provider) Open(h gpu.SurfaceHandle) (explicit.Device, error) {
 	if p == nil {
-		return nil, errUnavailable("the engine did not start WebGPU")
+		return nil, errors.New(TagUnavailable, "this browser has no usable WebGPU", "reason", "the engine did not start WebGPU")
 	}
 	p.mu.Lock()
 	p.handle = h
@@ -207,9 +205,15 @@ func (p *Provider) Open(h gpu.SurfaceHandle) (explicit.Device, error) {
 	case supplyReady:
 		return p.newDevice(got.(*acquired)), nil
 	case supplyFailed:
-		return nil, failureError(f)
+		switch f.tag {
+		case "unavailable":
+			return nil, errors.New(TagUnavailable, "this browser has no usable WebGPU", "reason", f.message)
+		case "shader":
+			return nil, errors.New(TagShaderInvalid, "the browser rejected a WGSL module of Glutter", "messages", f.message)
+		}
+		return nil, errors.New(TagDeviceFailed, "the WebGPU adapter did not give a device", "reason", f.message)
 	}
-	return nil, devicePending()
+	return nil, errors.New(explicit.GPUDevicePending, "the browser has not given the new WebGPU device yet")
 }
 
 // Close destroys the device that Acquire got when nobody opened it (the platform failed to start);

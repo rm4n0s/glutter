@@ -123,7 +123,7 @@ func NestedScrollViewSliverOverlapAbsorberHandleFor(bc BuildContext) *SliverOver
 	target, ok := DependOn[*inheritedNestedScrollView](bc)
 	if !ok {
 		if foundation.DebugMode {
-			panic(errors.New("NestedScrollViewMissing",
+			panic(errors.New(tagNestedScrollViewMissing,
 				"NestedScrollView.sliverOverlapAbsorberHandleFor must be called with a context that contains a NestedScrollView"))
 		}
 		return nil
@@ -247,7 +247,7 @@ type nestedScrollViewCustomScrollView struct {
 
 func (v *nestedScrollViewCustomScrollView) BuildViewport(_ BuildContext, offset rendering.ViewportOffset, axisDirection painting.AxisDirection, slivers []Widget) Widget {
 	if foundation.DebugMode && v.shrinkWrap {
-		panic(errors.New("NestedScrollViewShrinkWrap", "a NestedScrollView can not shrink-wrap its content"))
+		panic(errors.New(tagNestedScrollViewShrinkWrap, "a NestedScrollView can not shrink-wrap its content"))
 	}
 	return NewNestedScrollViewViewport(offset, v.handle, slivers, ViewportOpts{AxisDirection: axisDirection, ClipBehavior: v.clipBehavior})
 }
@@ -314,7 +314,7 @@ func (c *nestedScrollCoordinator) outerPosition() *nestedScrollPosition {
 	}
 	positions := c.outerController.nestedPositions()
 	if foundation.DebugMode && len(positions) != 1 {
-		panic(errors.New("NestedScrollOuterPositions", "the outer controller of a NestedScrollView must have exactly one position", "positions", len(positions)))
+		panic(errors.New(tagNestedScrollOuterPositions, "the outer controller of a NestedScrollView must have exactly one position", "positions", len(positions)))
 	}
 	return positions[0]
 }
@@ -612,7 +612,7 @@ func (c *nestedScrollCoordinator) pointerScroll(delta float64) {
 
 // SetPixels is never called: the activities of the positions use their own.
 func (c *nestedScrollCoordinator) SetPixels(float64) float64 {
-	panic(errors.New("NestedScrollCoordinatorSetPixels", "the coordinator of a NestedScrollView does not set pixels"))
+	panic(errors.New(tagNestedScrollCoordinatorSetPixels, "the coordinator of a NestedScrollView does not set pixels"))
 }
 
 func (c *nestedScrollCoordinator) hold(holdCancelCallback func()) ScrollHoldController {
@@ -631,7 +631,7 @@ func (c *nestedScrollCoordinator) drag(details gestures.DragStartDetails, dragCa
 		return NewDragScrollActivity(position, drag)
 	})
 	if foundation.DebugMode && c.currentDrag != nil {
-		panic(errors.New("NestedScrollDragActive", "the coordinator has a drag already"))
+		panic(errors.New(tagNestedScrollDragActive, "the coordinator has a drag already"))
 	}
 	c.currentDrag = drag
 	return drag
@@ -932,7 +932,7 @@ func (p *nestedScrollPosition) createDrivenScrollActivity(to float64, duration t
 
 // ApplyUserOffset is never called: the coordinator applies the drags.
 func (p *nestedScrollPosition) ApplyUserOffset(float64) {
-	panic(errors.New("NestedScrollPositionApplyUserOffset", "a nested scroll position does not apply user offsets; its coordinator does"))
+	panic(errors.New(tagNestedScrollPositionApplyUserOffset, "a nested scroll position does not apply user offsets; its coordinator does"))
 }
 
 // GoIdle starts an idle activity.
@@ -981,7 +981,7 @@ func (p *nestedScrollPosition) PointerScroll(delta float64) { p.coordinator.poin
 
 // JumpToWithoutSettling is never called.
 func (p *nestedScrollPosition) JumpToWithoutSettling(float64) {
-	panic(errors.New("NestedScrollPositionJumpToWithoutSettling", "a nested scroll position does not jump without settling"))
+	panic(errors.New(tagNestedScrollPositionJumpToWithoutSettling, "a nested scroll position does not jump without settling"))
 }
 
 func (p *nestedScrollPosition) localJumpTo(value float64) {
@@ -1002,7 +1002,7 @@ func (p *nestedScrollPosition) ApplyNewDimensions() {
 
 func (p *nestedScrollPosition) updateCanDrag(innerCanDrag bool) {
 	if foundation.DebugMode && p.coordinator.outerPosition() != p {
-		panic(errors.New("NestedScrollPositionNotOuter", "only the outer position of a NestedScrollView updates whether the user can drag"))
+		panic(errors.New(tagNestedScrollPositionNotOuter, "only the outer position of a NestedScrollView updates whether the user can drag"))
 	}
 	// This is only called for the outer position.
 	// The outer position can drag if it can scroll or an inner position can.
@@ -1066,7 +1066,7 @@ type nestedOuterBallisticScrollActivity struct {
 func newNestedOuterBallisticScrollActivity(coordinator *nestedScrollCoordinator, position *nestedScrollPosition, metrics *nestedScrollMetrics,
 	simulation physics.Simulation, vsync scheduler.TickerProvider, shouldIgnorePointer bool, post func(func())) *nestedOuterBallisticScrollActivity {
 	if foundation.DebugMode && !(metrics.minRange != metrics.maxRange && metrics.maxRange > metrics.minRange) {
-		panic(errors.New("NestedScrollRangeInvalid", "the range of an outer ballistic scroll must not be empty", "minRange", metrics.minRange, "maxRange", metrics.maxRange))
+		panic(errors.New(tagNestedScrollRangeInvalid, "the range of an outer ballistic scroll must not be empty", "minRange", metrics.minRange, "maxRange", metrics.maxRange))
 	}
 	a := &nestedOuterBallisticScrollActivity{coordinator: coordinator, metrics: metrics}
 	InitBallisticScrollActivity(&a.BallisticScrollActivity, a, position, simulation, vsync, shouldIgnorePointer, post)
@@ -1108,7 +1108,7 @@ func (a *nestedOuterBallisticScrollActivity) ApplyMoveTo(value float64) bool {
 	}
 	result := a.BallisticScrollActivity.ApplyMoveTo(value + a.metrics.correctionOffset)
 	if foundation.DebugMode && !result {
-		panic(errors.New("NestedScrollOuterOverflow", "an in-range value overflowed in an outer ballistic scroll"))
+		panic(errors.New(tagNestedScrollOuterOverflow, "an in-range value overflowed in an outer ballistic scroll"))
 	}
 	return !done
 }
@@ -1150,7 +1150,7 @@ func (h *SliverOverlapAbsorberHandle) ScrollExtent() foundation.Opt[float64] { r
 
 func (h *SliverOverlapAbsorberHandle) setExtents(layoutValue, scrollValue foundation.Opt[float64]) {
 	if foundation.DebugMode && h.writers != 1 {
-		panic(errors.New("SliverOverlapAbsorberHandleWriters", "multiple RenderSliverOverlapAbsorbers have been provided the same SliverOverlapAbsorberHandle"))
+		panic(errors.New(tagSliverOverlapAbsorberHandleWriters, "multiple RenderSliverOverlapAbsorbers have been provided the same SliverOverlapAbsorberHandle"))
 	}
 	h.layoutExtent, h.scrollExtent = layoutValue, scrollValue
 }
@@ -1278,7 +1278,7 @@ func (r *RenderSliverOverlapAbsorber) Detach() {
 // layout extents, and tells the handle.
 func (r *RenderSliverOverlapAbsorber) PerformLayout() {
 	if foundation.DebugMode && r.handle.writers != 1 {
-		panic(errors.New("SliverOverlapAbsorberHandleWriters",
+		panic(errors.New(tagSliverOverlapAbsorberHandleWriters,
 			"a SliverOverlapAbsorberHandle cannot be passed to multiple RenderSliverOverlapAbsorber objects at the same time"))
 	}
 	child := r.Child()
@@ -1427,7 +1427,7 @@ func (r *RenderSliverOverlapInjector) PerformLayout() {
 	r.currentLayoutExtent = r.handle.layoutExtent
 	r.currentMaxExtent = r.handle.layoutExtent
 	if foundation.DebugMode && (r.currentLayoutExtent.IsNone() || r.currentMaxExtent.IsNone()) {
-		panic(errors.New("SliverOverlapInjectorNoExtent",
+		panic(errors.New(tagSliverOverlapInjectorNoExtent,
 			"SliverOverlapInjector has found no absorbed extent to inject; the SliverOverlapAbsorber must be an earlier descendant of a common ancestor Viewport, so that it will always be laid out before the SliverOverlapInjector during a particular frame; the SliverOverlapAbsorber is typically contained in the list of slivers provided by NestedScrollView.headerSliverBuilder"))
 	}
 	constraints := r.SliverConstraints()
@@ -1527,3 +1527,19 @@ func formatDouble(v float64) string {
 	}
 	return strconv.FormatFloat(v, 'f', -1, 64)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagNestedScrollCoordinatorSetPixels          = "NestedScrollCoordinatorSetPixels"
+	tagNestedScrollDragActive                    = "NestedScrollDragActive"
+	tagNestedScrollOuterOverflow                 = "NestedScrollOuterOverflow"
+	tagNestedScrollOuterPositions                = "NestedScrollOuterPositions"
+	tagNestedScrollPositionApplyUserOffset       = "NestedScrollPositionApplyUserOffset"
+	tagNestedScrollPositionJumpToWithoutSettling = "NestedScrollPositionJumpToWithoutSettling"
+	tagNestedScrollPositionNotOuter              = "NestedScrollPositionNotOuter"
+	tagNestedScrollRangeInvalid                  = "NestedScrollRangeInvalid"
+	tagNestedScrollViewMissing                   = "NestedScrollViewMissing"
+	tagNestedScrollViewShrinkWrap                = "NestedScrollViewShrinkWrap"
+	tagSliverOverlapAbsorberHandleWriters        = "SliverOverlapAbsorberHandleWriters"
+	tagSliverOverlapInjectorNoExtent             = "SliverOverlapInjectorNoExtent"
+)

@@ -107,7 +107,7 @@ func TestWindowAppearanceThroughTheDispatcher(t *testing.T) {
 		t.Errorf("an invalid icon reached the host: %+v", host.icons[3])
 	}
 	// The host's own error comes back.
-	host.err = errors.New("IconRefused", "no")
+	host.err = errors.New(tagIconRefused, "no")
 	if got := tagOf(t, v.SetIcon(WindowIcon{Name: "b"})); got != "IconRefused" {
 		t.Errorf("tag = %s", got)
 	}
@@ -152,3 +152,8 @@ func TestPortalThroughTheDispatcher(t *testing.T) {
 		t.Errorf("handle %q, token %q, app id %q, want none", handle, token, d.AppID())
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagIconRefused = "IconRefused"
+)

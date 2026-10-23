@@ -22,12 +22,14 @@ Glutter is a cgo-free GUI toolkit for Go that reproduces Flutter's framework API
 - Format: `gofmt -w .` (or `goimports -w .`)
 - Generate (Wayland protocol bindings, key tables, material re-exports): `go generate ./...`
 - API conventions check (SPEC §12.13): `go run ./cmd/glutter-gen apicheck -allow cmd/glutter-gen/apicheck.allow`; a new violation is fixed, or accepted in that file with a reason and a row in SPEC §12.10
+- Error rules check (SPEC §14.4): `go run ./cmd/glutter-gen errcheck -allow cmd/glutter-gen/errcheck.allow`; a new violation is fixed, or accepted in that file with a reason
 - Run an example: `go run ./examples/counter`
 - After changing dependencies: `go mod tidy`
 
 ## Definition of done
 Before reporting a task as finished, run `gofmt`, `go vet ./...`, `golangci-lint run` and `go test -race ./...`, and fix anything they report. Say so explicitly if any step was skipped or failed. Also:
 - `CGO_ENABLED=0 go build ./...` and `CGO_ENABLED=0 go test ./...` pass (proves the library stays cgo-free)
+- From step 24.1 on: `go run ./cmd/glutter-gen errcheck -allow cmd/glutter-gen/errcheck.allow` passes (the error rules of SPEC §14.4)
 - From step 19.1 on: `GOOS=js GOARCH=wasm go build ./...`, `GOOS=js GOARCH=wasm go vet ./...` and `scripts/test-wasm.sh` pass
 - Every new exported identifier has a doc comment that ends with its Flutter counterpart (see "Porting from Flutter")
 - Every changed golden image has been looked at, not just regenerated
@@ -77,24 +79,31 @@ Before reporting a task as finished, run `gofmt`, `go vet ./...`, `golangci-lint
 - Ported code is a derivative of Flutter (BSD-3-Clause). Keep `third_party/flutter/LICENSE` and the NOTICE entry (SPEC §20) intact
 
 ## Error handling
-Use `github.com/rm4n0s/errors` for all errors. Never use `fmt.Errorf`, and never import the standard library `errors` package: this package re-exports `errors.Is`, `errors.As` and `errors.Unwrap`, so a single import covers everything.
+Use `github.com/rm4n0s/errors` (v0.2.0) for all errors, the way its `AI_GUIDE.md` says. This is a requirement of the project owner: read the whole guide (it is in the module cache, `$(go env GOMODCACHE)/github.com/rm4n0s/errors@v0.2.0/AI_GUIDE.md`) before you write or change code that makes, returns, logs or tests an error, and again when the dependency version changes. SPEC §14.4 lists the rules with the reasons, and `go run ./cmd/glutter-gen errcheck -allow cmd/glutter-gen/errcheck.allow` checks them. Never use `fmt.Errorf`, and never import the standard library `errors` package under the name `errors`: this package re-exports `errors.Is`, `errors.As` and `errors.Unwrap`, so a single import covers everything (if `Join` is needed, import the standard one as `stdErrors "errors"`).
 
 **Creating errors**
-- New failure with a fixed message: `errors.New("Tag", "message", "key", value, ...)`
-  - Tag: short PascalCase name of the failure, e.g. `WaylandConnectFailed`
-  - Trailing arguments are key/value metadata pairs, e.g. `"display", name`
+- New failure with a fixed message: `errors.New("Tag", "message", "key", value, ...)`. It always has a tag and a message
+  - Tag: short PascalCase name of the thing the function cannot do, e.g. `WaylandConnectFailed`. Declare it as a constant next to the code that produces it (`const tagWaylandConnectFailed = "WaylandConnectFailed"` at the end of the file; exported as `TagX`, with a doc comment, when another package matches on it)
+  - Trailing arguments are key/value metadata pairs with string keys, e.g. `"display", name`. Give all of them in this one call; never chain `SetMetadata` after `errors.New`
 - New failure with a formatted message: `errors.NewErrf("Tag", "format %s", arg)`
-- Wrapping an error that is NOT already an `*errors.Error` (stdlib, C library error codes, third-party): `errors.NewErr("Tag", err)`. Add metadata with one `.SetMetadata("key", value, "key2", value2)` call (a second call replaces the metadata of the first)
+- Wrapping an error that comes from outside this module (stdlib, C library error codes, godbus, go-text, any third-party package): `errors.NewErr("Tag", err)`, once, where it first appears. `NewErr` and `NewErrf` take no metadata: add it with one `.SetMetadata("key", value, "key2", value2)` call. `SetMetadata` merges, so a later call in another function adds keys; `RemoveMetadata` and `SetMessage` change an error that is already made. `NewErr(tag, nil)` panics, so call it only inside `if err != nil`
+- Call the constructor in the function that fails, never in a helper that builds and returns the error: the route is the call stack at the constructor, and a helper adds a frame that is not the failing function. (The one exception is a table that turns a C error code into a tag with a switch, such as `vkError`, listed in `errcheck.allow`; an exported function or method is not a helper)
 - Every `New`, `NewErr` and `NewErrf` call captures the stack at that point
+- A sentinel for `errors.Is` is a struct literal, `&errors.Error{Tag: TagX}`. Never write `var ErrX = errors.New(...)` at package level: its route is `init`
 
 **Propagating errors**
-- If the error already came from this package, return it untouched: `return err`. Re-wrapping it would replace the Tag and the stack and break route tests
+- Every error is tagged exactly once. If the error came from a function of this module, return it untouched: `return err`. Re-wrapping it (`NewErr`, `NewErrf` with `%w`, `fmt.Errorf`) would replace the Tag and the stack and break route tests; the route already shows who called whom, so no context is added by wrapping
 - Functions return the plain `error` interface, never `*errors.Error` (avoids the non-nil-interface-holding-nil-pointer bug)
 - `errors.FromError(err)` is a plain type assertion. It fails if something else wrapped the error, so don't wrap these errors with anything
 
 **Inspecting errors**
 - `appErr, ok := errors.FromError(err)`, then use `appErr.Tag`, `appErr.Metadata`, `appErr.Message`
+- Branch on the tag constant (`appErr.Tag == pkg.TagX`) or on `errors.Is(err, sentinel)` (it matches by Tag), never on a string literal, `Message` or `Error()`
 - Use `errors.Is` / `errors.As` / `errors.Unwrap` for the underlying cause stored in `OriginalErr`
+
+**Logging errors**
+- Log with `slog` and pass the error as the attribute `"err"`: `logger.Error("what failed", "err", err)`. `*errors.Error` is an `slog.LogValuer`: the entry has `Tag`, `Message`, `Route`, `OriginalErr`, `Metadata` and `StackFrames`, and a test replays it with `json.Unmarshal` into `errors.ErrorJson` and `errors.FromJson`. Do not call `ToJson` or `json.Marshal` on an error to log it
+- Metadata values must be JSON-serializable (strings, numbers, bools, simple structs); after a round trip numbers are `float64`
 
 **Testing errors**
 - Every new failure case gets its own unique Tag and a test that asserts the route, not just that an error occurred:
@@ -107,8 +116,7 @@ Use `github.com/rm4n0s/errors` for all errors. Never use `fmt.Errorf`, and never
       t.Errorf("unexpected failure path: %s", appErr.Route())
   }
   ```
-- A route lists the call chain from outermost to innermost (`Type.Method` or `Func`, joined by `->`) and ends with the Tag. `HasRoute` matches by substring
-- Log errors with `appErr.ToJson()` so they can be replayed in a test via `errors.FromJson`
+- A route lists the call chain from outermost to innermost (`Type.Method` or `Func`, joined by `->`, no package names) and ends with the Tag. `Route` and `HasRoute` stop at the function that called them, so in a test the route starts just below the test function. `HasRoute` matches by substring: give the path from the entry function you call down to `.Tag`, so the tag is checked too. Print `appErr.Route()` when an assertion fails
 - Panics in user code and programmer errors follow SPEC §14
 
 ## Git and GitHub

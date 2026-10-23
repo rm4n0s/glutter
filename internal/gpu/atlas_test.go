@@ -189,7 +189,7 @@ func TestAtlasErrors(t *testing.T) {
 	defer func() {
 		e, _ := recover().(error)
 		appErr, ok := errors.FromError(e)
-		if !ok || appErr.Tag != "AtlasKeyStored" || !appErr.HasRoute("Atlas[...].Put.AtlasKeyStored") {
+		if !ok || appErr.Tag != tagAtlasKeyStored || !appErr.HasRoute("Atlas[...].Put.AtlasKeyStored") {
 			t.Errorf("expected AtlasKeyStored, got %v", e)
 		}
 	}()

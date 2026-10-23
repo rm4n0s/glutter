@@ -147,7 +147,7 @@ func BoxBorderLerp(a, b BoxBorder, t float64) BoxBorder {
 			Bottom: BorderSideLerp(an.Bottom.normalize(), bd.Bottom.normalize(), t),
 		}
 	}
-	panic(errors.New("BoxBorderLerpInvalid",
+	panic(errors.New(tagBoxBorderLerpInvalid,
 		"BoxBorder.lerp can only interpolate Border and BorderDirectional classes; for a more general interpolation method, consider using ShapeBorderLerp instead",
 		"a", describeBorder(a), "b", describeBorder(b)))
 }
@@ -205,7 +205,7 @@ func borderDirectionalLerpBox(a, b BorderDirectional, t float64, aNil, bNil bool
 // dimensions.
 func boxBorderGetInnerPath(b BoxBorder, rect ui.Rect, td ui.TextDirection) *ui.Path {
 	if foundation.DebugMode && td == ui.TextDirectionUnspecified {
-		panic(errors.New("TextDirectionRequired",
+		panic(errors.New(tagTextDirectionRequired,
 			"the textDirection argument to "+foundation.RuntimeTypeName(b)+".GetInnerPath must not be unspecified"))
 	}
 	p := ui.NewPath()
@@ -215,7 +215,7 @@ func boxBorderGetInnerPath(b BoxBorder, rect ui.Rect, td ui.TextDirection) *ui.P
 
 func boxBorderGetOuterPath(b BoxBorder, rect ui.Rect, td ui.TextDirection) *ui.Path {
 	if foundation.DebugMode && td == ui.TextDirectionUnspecified {
-		panic(errors.New("TextDirectionRequired",
+		panic(errors.New(tagTextDirectionRequired,
 			"the textDirection argument to "+foundation.RuntimeTypeName(b)+".GetOuterPath must not be unspecified"))
 	}
 	p := ui.NewPath()
@@ -264,7 +264,7 @@ func PaintNonUniformBorder(canvas *ui.Canvas, rect ui.Rect, o NonUniformBorderOp
 	var borderRect ui.RRect
 	if o.Shape.orDefault() == BoxShapeCircle {
 		if foundation.DebugMode && o.BorderRadius.IsSome() {
-			panic(errors.New("BoxBorderCircleRadius",
+			panic(errors.New(tagBoxBorderCircleRadius,
 				"a circle cannot have a border radius; remove either the shape or the borderRadius argument"))
 		}
 		borderRect = ui.NewRRectFromRectAndRadius(ui.NewRectFromCircle(rect.Center(), rect.ShortestSide()/2.0), ui.NewRadiusCircular(rect.Width()))
@@ -363,7 +363,7 @@ func paintBoxSides(canvas *ui.Canvas, rect ui.Rect, s boxSides, opts BoxPaintOpt
 		if s.top.Style == BorderStyleSolid {
 			if shape == BoxShapeCircle {
 				if foundation.DebugMode && opts.BorderRadius.IsSome() {
-					panic(errors.New("BoxBorderCircleRadius",
+					panic(errors.New(tagBoxBorderCircleRadius,
 						"a circle cannot have a border radius; remove either the shape or the borderRadius argument"))
 				}
 				paintUniformBorderWithCircle(canvas, rect, s.top)
@@ -401,17 +401,17 @@ func paintBoxSides(canvas *ui.Canvas, rect ui.Rect, s boxSides, opts BoxPaintOpt
 	}
 	if foundation.DebugMode {
 		if hairline && borderRadiusIsRound(opts.BorderRadius) {
-			panic(errors.New("BoxBorderHairlineRadius",
+			panic(errors.New(tagBoxBorderHairlineRadius,
 				"a hairline border like BorderSide(width: 0.0, style: solid) can only be drawn when BorderRadius is zero or nil"))
 		}
 		if opts.BorderRadius.IsSome() && (!directional && borderRadiusIsRound(opts.BorderRadius) || directional) {
-			panic(errors.New("BoxBorderNonUniformRadius", "a borderRadius can only be given on borders with uniform colors"))
+			panic(errors.New(tagBoxBorderNonUniformRadius, "a borderRadius can only be given on borders with uniform colors"))
 		}
 		if shape != BoxShapeRectangle {
-			panic(errors.New("BoxBorderNonUniformShape", "a Border can only be drawn as a circle on borders with uniform colors"))
+			panic(errors.New(tagBoxBorderNonUniformShape, "a Border can only be drawn as a circle on borders with uniform colors"))
 		}
 		if !s.strokeAlignIsUniform() || s.top.StrokeAlign != StrokeAlignInside {
-			panic(errors.New("BoxBorderStrokeAlignNonUniform",
+			panic(errors.New(tagBoxBorderStrokeAlignNonUniform,
 				"a Border can only draw strokeAlign different than StrokeAlignInside on borders with uniform colors"))
 		}
 	}
@@ -461,7 +461,7 @@ func BorderMerge(a, b Border) Border {
 	if foundation.DebugMode {
 		for _, p := range [][2]BorderSide{{a.Top, b.Top}, {a.Right, b.Right}, {a.Bottom, b.Bottom}, {a.Left, b.Left}} {
 			if !BorderSideCanMerge(p[0].normalize(), p[1].normalize()) {
-				panic(errors.New("BorderSideCannotMerge", "the border sides have different styles or colors"))
+				panic(errors.New(tagBorderSideCannotMerge, "the border sides have different styles or colors"))
 			}
 		}
 	}
@@ -656,7 +656,7 @@ func BorderDirectionalMerge(a, b BorderDirectional) BorderDirectional {
 	if foundation.DebugMode {
 		for _, p := range [][2]BorderSide{{a.Top, b.Top}, {a.Start, b.Start}, {a.End, b.End}, {a.Bottom, b.Bottom}} {
 			if !BorderSideCanMerge(p[0].normalize(), p[1].normalize()) {
-				panic(errors.New("BorderSideCannotMerge", "the border sides have different styles or colors"))
+				panic(errors.New(tagBorderSideCannotMerge, "the border sides have different styles or colors"))
 			}
 		}
 	}
@@ -830,7 +830,7 @@ func (b BorderDirectional) PaintBox(canvas *ui.Canvas, rect ui.Rect, opts BoxPai
 	s := b.asSides()
 	if !s.isUniform() && (!s.styleIsUniform() || s.top.Style != BorderStyleNone) {
 		if foundation.DebugMode && opts.TextDirection == ui.TextDirectionUnspecified {
-			panic(errors.New("TextDirectionRequired", "non-uniform BorderDirectional objects require a TextDirection when painting"))
+			panic(errors.New(tagTextDirectionRequired, "non-uniform BorderDirectional objects require a TextDirection when painting"))
 		}
 		if opts.TextDirection == ui.TextDirectionRTL {
 			s.left, s.right = s.right, s.left
@@ -863,4 +863,15 @@ func (b BorderDirectional) String() string {
 var (
 	_ BoxBorder = Border{}
 	_ BoxBorder = BorderDirectional{}
+)
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagBoxBorderCircleRadius          = "BoxBorderCircleRadius"
+	tagBoxBorderHairlineRadius        = "BoxBorderHairlineRadius"
+	tagBoxBorderLerpInvalid           = "BoxBorderLerpInvalid"
+	tagBoxBorderNonUniformRadius      = "BoxBorderNonUniformRadius"
+	tagBoxBorderNonUniformShape       = "BoxBorderNonUniformShape"
+	tagBoxBorderStrokeAlignNonUniform = "BoxBorderStrokeAlignNonUniform"
+	tagTextDirectionRequired          = "TextDirectionRequired"
 )

@@ -69,7 +69,7 @@ func NewContext() (*Context, error) {
 	}
 	ptr := lib.contextNew(0)
 	if ptr == 0 {
-		return nil, errors.New("XKBContextFailed", "xkb_context_new failed")
+		return nil, errors.New(tagXKBContextFailed, "xkb_context_new failed")
 	}
 	return &Context{lib: lib, ptr: ptr}, nil
 }
@@ -95,7 +95,7 @@ type Keymap struct {
 
 func (c *Context) newKeymap(ptr uintptr, source string) (*Keymap, error) {
 	if ptr == 0 {
-		return nil, errors.New("XKBKeymapFailed", "libxkbcommon could not compile the keymap", "source", source)
+		return nil, errors.New(tagXKBKeymapFailed, "libxkbcommon could not compile the keymap", "source", source)
 	}
 	return &Keymap{lib: c.lib, ptr: ptr, scratch: dl.Calloc(1, unsafe.Sizeof(uintptr(0)))}, nil
 }
@@ -141,11 +141,11 @@ func (c *Context) KeymapFromString(text string) (*Keymap, error) {
 // Flutter: no counterpart
 func (c *Context) KeymapFromFD(fd int, size uint32) (*Keymap, error) {
 	if size == 0 {
-		return nil, errors.New("XKBKeymapFailed", "the keymap is empty", "source", "fd")
+		return nil, errors.New(tagXKBKeymapFailed, "the keymap is empty", "source", "fd")
 	}
 	data, err := syscall.Mmap(fd, 0, int(size), syscall.PROT_READ, syscall.MAP_PRIVATE)
 	if err != nil {
-		return nil, errors.NewErr("XKBKeymapFailed", err).SetMetadata("source", "fd")
+		return nil, errors.NewErr(tagXKBKeymapFailed, err).SetMetadata("source", "fd")
 	}
 	n := len(data)
 	if data[n-1] == 0 {
@@ -154,7 +154,7 @@ func (c *Context) KeymapFromFD(fd int, size uint32) (*Keymap, error) {
 	km, kerr := c.newKeymap(c.lib.keymapNewFromBuffer(c.ptr, uintptr(unsafe.Pointer(&data[0])), uintptr(n), keymapFormatTextV1, 0), "fd")
 	if err := syscall.Munmap(data); err != nil && kerr == nil {
 		km.Close()
-		return nil, errors.NewErr("XKBKeymapFailed", err).SetMetadata("source", "fd")
+		return nil, errors.NewErr(tagXKBKeymapFailed, err).SetMetadata("source", "fd")
 	}
 	return km, kerr
 }
@@ -222,7 +222,7 @@ type State struct {
 func (k *Keymap) NewState() (*State, error) {
 	ptr := k.lib.stateNew(k.ptr)
 	if ptr == 0 {
-		return nil, errors.New("XKBStateFailed", "xkb_state_new failed")
+		return nil, errors.New(tagXKBStateFailed, "xkb_state_new failed")
 	}
 	return &State{lib: k.lib, ptr: ptr, scratch: dl.Calloc(1, scratchSize)}, nil
 }
@@ -355,12 +355,12 @@ func (c *Context) NewCompose(locale string) (*Compose, error) {
 	defer dl.Free(cl)
 	table := c.lib.composeTableNewFromLocale(c.ptr, cl, 0)
 	if table == 0 {
-		return nil, errors.New("XKBComposeFailed", "libxkbcommon has no compose table for the locale", "locale", locale)
+		return nil, errors.New(tagXKBComposeFailed, "libxkbcommon has no compose table for the locale", "locale", locale)
 	}
 	state := c.lib.composeStateNew(table, 0)
 	if state == 0 {
 		c.lib.composeTableUnref(table)
-		return nil, errors.New("XKBComposeFailed", "xkb_compose_state_new failed", "locale", locale)
+		return nil, errors.New(tagXKBComposeFailed, "xkb_compose_state_new failed", "locale", locale)
 	}
 	return &Compose{lib: c.lib, table: table, state: state, scratch: dl.Calloc(1, scratchSize)}, nil
 }
@@ -404,3 +404,10 @@ func (c *Compose) Sym() Keysym { return c.lib.composeStateGetOneSym(c.state) }
 //
 // Flutter: no counterpart
 func (c *Compose) Reset() { c.lib.composeStateReset(c.state) }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagXKBComposeFailed = "XKBComposeFailed"
+	tagXKBContextFailed = "XKBContextFailed"
+	tagXKBKeymapFailed  = "XKBKeymapFailed"
+)

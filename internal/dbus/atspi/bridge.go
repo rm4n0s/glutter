@@ -165,7 +165,7 @@ func (b *Bridge) run(ctx context.Context) {
 	session, err := b.opts.OpenSession(openCtx)
 	cancel()
 	if err != nil {
-		log.Debug("accessibility is off: no session bus", "error", err)
+		log.Debug("accessibility is off: no session bus", "err", err)
 		return
 	}
 	defer func() { _ = session.Close() }()
@@ -173,12 +173,12 @@ func (b *Bridge) run(ctx context.Context) {
 	sigs, err := session.Subscribe(ctx, dbus.SignalMatch{Sender: a11yBusDest, Path: a11yBusPath,
 		Interface: ifaceProperties, Member: "PropertiesChanged"})
 	if err != nil {
-		log.Debug("accessibility is off: cannot follow the screen reader flag", "error", err)
+		log.Debug("accessibility is off: cannot follow the screen reader flag", "err", err)
 		return
 	}
 	enabled := false
 	if on, err := readScreenReader(ctx, session); err != nil {
-		log.Debug("accessibility is off: the screen reader flag is not there", "error", err)
+		log.Debug("accessibility is off: the screen reader flag is not there", "err", err)
 	} else {
 		enabled = on
 	}
@@ -208,7 +208,7 @@ func readScreenReader(ctx context.Context, session dbus.Bus) (bool, error) {
 		return false, err
 	}
 	if len(reply) != 1 {
-		return false, errors.New("ScreenReaderFlagInvalid", "the reply of Get does not have one value", "values", len(reply))
+		return false, errors.New(tagScreenReaderFlagInvalid, "the reply of Get does not have one value", "values", len(reply))
 	}
 	v := reply[0]
 	if variant, ok := v.(godbus.Variant); ok {
@@ -216,7 +216,7 @@ func readScreenReader(ctx context.Context, session dbus.Bus) (bool, error) {
 	}
 	on, ok := v.(bool)
 	if !ok {
-		return false, errors.New("ScreenReaderFlagInvalid", "ScreenReaderEnabled is not a bool", "value", v)
+		return false, errors.New(tagScreenReaderFlagInvalid, "ScreenReaderEnabled is not a bool", "value", v)
 	}
 	return on, nil
 }
@@ -248,7 +248,7 @@ func (b *Bridge) setEnabled(ctx context.Context, session dbus.Bus, on bool) {
 	switch {
 	case on && !connected:
 		if err := b.connect(ctx, session); err != nil {
-			b.opts.Logger.Debug("accessibility is off: cannot connect to the accessibility bus", "error", err)
+			b.opts.Logger.Debug("accessibility is off: cannot connect to the accessibility bus", "err", err)
 			return
 		}
 		b.opts.Post(func() { b.host.ScreenReaderChanged(true) })
@@ -269,7 +269,7 @@ func (b *Bridge) connect(ctx context.Context, session dbus.Bus) error {
 	}
 	address, ok := firstString(reply)
 	if !ok || address == "" {
-		return errors.New("A11yAddressInvalid", "org.a11y.Bus.GetAddress did not give an address", "reply", reply)
+		return errors.New(tagA11yAddressInvalid, "org.a11y.Bus.GetAddress did not give an address", "reply", reply)
 	}
 	// The connection lives as long as ctx, that is, as the bridge (dbus.ConnectAddress ties
 	// the connection to its context).
@@ -335,7 +335,7 @@ func (b *Bridge) disconnect() {
 	b.mu.Unlock()
 	if a11y != nil {
 		if err := a11y.Close(); err != nil {
-			b.opts.Logger.Debug("closing the accessibility bus failed", "error", err)
+			b.opts.Logger.Debug("closing the accessibility bus failed", "err", err)
 		}
 	}
 }
@@ -453,7 +453,7 @@ func (b *Bridge) dispatchLocked(changes []Change) {
 		switch c.Kind {
 		case ChangeNodeAdded, ChangeNodeUpdated:
 			if err := b.exportLocked(c.Ref); err != nil {
-				b.opts.Logger.Debug("exporting an accessible object failed", "error", err)
+				b.opts.Logger.Debug("exporting an accessible object failed", "err", err)
 			}
 		case ChangeNodeRemoved:
 			b.unexportLocked(c.Ref)
@@ -499,6 +499,12 @@ func (b *Bridge) emitObject(ref NodeRef, member, detail string, d1, d2 int32, va
 // emit sends an AT-SPI2 event from the object: the signature is (siiva{sv}).
 func (b *Bridge) emit(ref NodeRef, iface, member, detail string, d1, d2 int32, value godbus.Variant) {
 	if err := b.a11y.EmitSignal(nodePath(ref), iface+"."+member, detail, d1, d2, value, map[string]godbus.Variant{}); err != nil {
-		b.opts.Logger.Debug("sending an accessibility event failed", "event", member, "error", err)
+		b.opts.Logger.Debug("sending an accessibility event failed", "event", member, "err", err)
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagA11yAddressInvalid      = "A11yAddressInvalid"
+	tagScreenReaderFlagInvalid = "ScreenReaderFlagInvalid"
+)

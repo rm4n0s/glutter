@@ -255,7 +255,7 @@ func (r *RenderBox) debugSelf() Box { return r.self.(Box) }
 func (r *RenderBox) cachedIntrinsic(dim intrinsicDimension, input float64, computer func(float64) float64) float64 {
 	if foundation.DebugMode {
 		if !r.dbg().checkingIntrinsics && r.debugDoingThisResize {
-			panic(errors.New("IntrinsicsDuringResize", "PerformResize should not depend on anything except the incoming constraints",
+			panic(errors.New(tagIntrinsicsDuringResize, "PerformResize should not depend on anything except the incoming constraints",
 				"object", foundation.DescribeIdentity(r.self)))
 		}
 		if r.dbg().checkingIntrinsics {
@@ -276,7 +276,7 @@ func (r *RenderBox) cachedIntrinsic(dim intrinsicDimension, input float64, compu
 
 func (r *RenderBox) debugCheckIntrinsicArgument(name string, argName string, value float64) {
 	if foundation.DebugMode && value < 0 {
-		panic(errors.New("IntrinsicArgumentNegative", "The "+argName+" argument to "+name+" was negative. "+
+		panic(errors.New(tagIntrinsicArgumentNegative, "The "+argName+" argument to "+name+" was negative. "+
 			"The argument must not be negative; if you perform computations on another "+argName+" before passing it, "+
 			"force the value into the valid range with math.Max or a clamp.",
 			"object", foundation.DescribeIdentity(r.self), "argument", value))
@@ -344,7 +344,7 @@ func (r *RenderBox) ComputeMaxIntrinsicHeight(float64) float64 { return 0 }
 // Flutter: rendering/box.dart RenderBox.getDryLayout
 func (r *RenderBox) GetDryLayout(constraints BoxConstraints) ui.Size {
 	if foundation.DebugMode && !r.dbg().checkingIntrinsics && r.debugDoingThisResize {
-		panic(errors.New("IntrinsicsDuringResize", "PerformResize should not depend on anything except the incoming constraints",
+		panic(errors.New(tagIntrinsicsDuringResize, "PerformResize should not depend on anything except the incoming constraints",
 			"object", foundation.DescribeIdentity(r.self)))
 	}
 	if foundation.DebugMode && r.dbg().checkingIntrinsics {
@@ -364,7 +364,7 @@ func (r *RenderBox) GetDryLayout(constraints BoxConstraints) ui.Size {
 func (r *RenderBox) computeDryLayout(constraints BoxConstraints) ui.Size {
 	if foundation.DebugMode {
 		if r.computingThisDryLayout {
-			panic(errors.New("DryLayoutReentrant", "ComputeDryLayout was called while it was running",
+			panic(errors.New(tagDryLayoutReentrant, "ComputeDryLayout was called while it was running",
 				"object", foundation.DescribeIdentity(r.self)))
 		}
 		r.computingThisDryLayout = true
@@ -413,7 +413,7 @@ func (r *RenderBox) GetDryBaseline(constraints BoxConstraints, baseline ui.TextB
 func (r *RenderBox) computeDryBaseline(constraints BoxConstraints, baseline ui.TextBaseline) BaselineOffset {
 	if foundation.DebugMode {
 		if r.computingThisDryBaseline {
-			panic(errors.New("DryLayoutReentrant", "ComputeDryBaseline was called while it was running",
+			panic(errors.New(tagDryLayoutReentrant, "ComputeDryBaseline was called while it was running",
 				"object", foundation.DescribeIdentity(r.self)))
 		}
 		r.computingThisDryBaseline = true
@@ -442,7 +442,7 @@ func (r *RenderBox) ComputeDryBaseline(BoxConstraints, ui.TextBaseline) foundati
 func (r *RenderBox) DebugCannotComputeDryLayout(reason string) bool {
 	if foundation.DebugMode {
 		if !r.dbg().checkingIntrinsics {
-			panic(errors.New("DryLayoutUnsupported", "The "+foundation.RuntimeTypeName(r.self)+" class does not support dry layout. "+reason,
+			panic(errors.New(tagDryLayoutUnsupported, "The "+foundation.RuntimeTypeName(r.self)+" class does not support dry layout. "+reason,
 				"object", foundation.DescribeIdentity(r.self)))
 		}
 		r.dbg().dryLayoutCalculationValid = false
@@ -464,7 +464,7 @@ func (r *RenderBox) HasSize() bool { return r.size.IsSome() }
 func (r *RenderBox) Size() ui.Size {
 	if foundation.DebugMode {
 		if !r.HasSize() {
-			panic(errors.New("BoxNotLaidOut", "RenderBox was not laid out: "+foundation.DescribeIdentity(r.self),
+			panic(errors.New(tagBoxNotLaidOut, "RenderBox was not laid out: "+foundation.DescribeIdentity(r.self),
 				"object", foundation.DescribeIdentity(r.self)))
 		}
 		dbg := r.dbg()
@@ -475,7 +475,7 @@ func (r *RenderBox) Size() ui.Size {
 		allowed := !doingRegularLayout || r.debugDoingThisResize || r.debugDoingThisLayout || dbg.doingBaseline ||
 			(dbg.activeLayout != nil && dbg.activeLayout == r.parent && r.debugSizeUsableByParent)
 		if !allowed {
-			panic(errors.New("BoxSizeAccessInvalid",
+			panic(errors.New(tagBoxSizeAccessInvalid,
 				"RenderBox.size accessed beyond the scope of resize, layout, or permitted parent access. "+
 					"RenderBox can always access its own size, otherwise, the only object that is allowed to read RenderBox.size "+
 					`is its parent, if they have said they will. If you hit this assert trying to access a child's size, pass `+
@@ -489,7 +489,7 @@ func (r *RenderBox) Size() ui.Size {
 			dryBox = p
 		}
 		if dryBox != nil {
-			panic(errors.New("BoxSizeAccessedInDryLayout", "RenderBox.size accessed in "+foundation.RuntimeTypeName(dryBox)+
+			panic(errors.New(tagBoxSizeAccessedInDryLayout, "RenderBox.size accessed in "+foundation.RuntimeTypeName(dryBox)+
 				".ComputeDryLayout. The ComputeDryLayout method must not access the RenderBox's own size, or the size of its child, "+
 				"because it's established in PerformLayout or PerformResize using different BoxConstraints.",
 				"object", foundation.DescribeIdentity(dryBox)))
@@ -501,7 +501,7 @@ func (r *RenderBox) Size() ui.Size {
 			dryBaselineBox = p
 		}
 		if dryBaselineBox != nil {
-			panic(errors.New("BoxSizeAccessedInDryLayout", "RenderBox.size accessed in "+foundation.RuntimeTypeName(dryBaselineBox)+
+			panic(errors.New(tagBoxSizeAccessedInDryLayout, "RenderBox.size accessed in "+foundation.RuntimeTypeName(dryBaselineBox)+
 				".ComputeDryBaseline. The ComputeDryBaseline method must not access the RenderBox's own size, or the size of its child, "+
 				"because it's established in PerformLayout or PerformResize using different BoxConstraints.",
 				"object", foundation.DescribeIdentity(dryBaselineBox)))
@@ -509,7 +509,7 @@ func (r *RenderBox) Size() ui.Size {
 	}
 	s, ok := r.size.Get()
 	if !ok {
-		panic(errors.New("BoxNotLaidOut", "RenderBox was not laid out: "+foundation.DescribeIdentity(r.self),
+		panic(errors.New(tagBoxNotLaidOut, "RenderBox was not laid out: "+foundation.DescribeIdentity(r.self),
 			"object", foundation.DescribeIdentity(r.self)))
 	}
 	return s
@@ -524,7 +524,7 @@ func (r *RenderBox) SetSize(value ui.Size) {
 	if foundation.DebugMode {
 		sized := r.self.SizedByParent()
 		if r.debugDoingThisResize && r.debugDoingThisLayout {
-			panic(errors.New("BoxSizeSetterInvalid", "the box is resizing and laying out at the same time",
+			panic(errors.New(tagBoxSizeSetterInvalid, "the box is resizing and laying out at the same time",
 				"object", foundation.DescribeIdentity(r.self)))
 		}
 		if (!sized || !r.debugDoingThisResize) && (sized || !r.debugDoingThisLayout) {
@@ -542,7 +542,7 @@ func (r *RenderBox) SetSize(value ui.Size) {
 			} else {
 				msg += "Because this RenderBox has SizedByParent set to false, it must set its size in PerformLayout()."
 			}
-			panic(errors.New("BoxSizeSetterInvalid", msg, "object", foundation.DescribeIdentity(r.self)))
+			panic(errors.New(tagBoxSizeSetterInvalid, msg, "object", foundation.DescribeIdentity(r.self)))
 		}
 		r.debugSizeUsableByParent = r.debugCanParentUseSize.OrElse(false)
 	}
@@ -587,12 +587,12 @@ func (r *RenderBox) GetDistanceToBaseline(baseline ui.TextBaseline, opts ...Base
 	dbg := r.dbg()
 	if foundation.DebugMode {
 		if dbg.doingBaseline {
-			panic(errors.New("BaselineReentrant", "GetDistanceToBaseline was called while a baseline was being computed; "+
+			panic(errors.New(tagBaselineReentrant, "GetDistanceToBaseline was called while a baseline was being computed; "+
 				"see the documentation of ComputeDistanceToActualBaseline for the calling conventions",
 				"object", foundation.DescribeIdentity(r.self)))
 		}
 		if r.DebugNeedsLayout() && !dbg.checkingIntrinsics {
-			panic(errors.New("BaselineNeedsLayout", "GetDistanceToBaseline was called on a box that needs layout",
+			panic(errors.New(tagBaselineNeedsLayout, "GetDistanceToBaseline was called on a box that needs layout",
 				"object", foundation.DescribeIdentity(r.self)))
 		}
 		if !dbg.checkingIntrinsics && r.owner != nil {
@@ -605,7 +605,7 @@ func (r *RenderBox) GetDistanceToBaseline(baseline ui.TextBaseline, opts ...Base
 					(dbg.activePaint == r.self && r.debugDoingThisPaint)
 			}
 			if !ok {
-				panic(errors.New("BaselineWrongPhase", "GetDistanceToBaseline can only be called by the parent during its layout or paint, or by the box during its paint",
+				panic(errors.New(tagBaselineWrongPhase, "GetDistanceToBaseline can only be called by the parent during its layout or paint, or by the box during its paint",
 					"object", foundation.DescribeIdentity(r.self)))
 			}
 		}
@@ -632,7 +632,7 @@ func (r *RenderBox) GetDistanceToBaseline(baseline ui.TextBaseline, opts ...Base
 // Flutter: rendering/box.dart RenderBox.getDistanceToActualBaseline
 func (r *RenderBox) GetDistanceToActualBaseline(baseline ui.TextBaseline) foundation.Opt[float64] {
 	if foundation.DebugMode && !r.dbg().doingBaseline {
-		panic(errors.New("BaselineWrongCall", "GetDistanceToActualBaseline was called outside GetDistanceToBaseline; "+
+		panic(errors.New(tagBaselineWrongCall, "GetDistanceToActualBaseline was called outside GetDistanceToBaseline; "+
 			"see the documentation of ComputeDistanceToActualBaseline for the calling conventions",
 			"object", foundation.DescribeIdentity(r.self)))
 	}
@@ -660,7 +660,7 @@ func (r *RenderBox) GetDistanceToActualBaseline(baseline ui.TextBaseline) founda
 // Flutter: rendering/box.dart RenderBox.computeDistanceToActualBaseline
 func (r *RenderBox) ComputeDistanceToActualBaseline(ui.TextBaseline) foundation.Opt[float64] {
 	if foundation.DebugMode && !r.dbg().doingBaseline {
-		panic(errors.New("BaselineWrongCall", "ComputeDistanceToActualBaseline was called outside GetDistanceToBaseline",
+		panic(errors.New(tagBaselineWrongCall, "ComputeDistanceToActualBaseline was called outside GetDistanceToBaseline",
 			"object", foundation.DescribeIdentity(r.self)))
 	}
 	return foundation.None[float64]()
@@ -691,7 +691,7 @@ func (r *RenderBox) DebugAssertDoesMeetConstraints() {
 		if r.self.SizedByParent() {
 			contract = "Because this RenderBox has SizedByParent set to true, it must set its size in PerformResize()."
 		}
-		panic(errors.New("BoxSizeNotSet", "RenderBox did not set its size during layout. "+contract+
+		panic(errors.New(tagBoxSizeNotSet, "RenderBox did not set its size during layout. "+contract+
 			" It appears that this did not happen; layout completed, but the size property is still null.",
 			"object", foundation.DescribeIdentity(r.self)))
 	}
@@ -723,10 +723,10 @@ func (r *RenderBox) DebugAssertDoesMeetConstraints() {
 			}
 			meta = append(meta, "nearestUnboundedHeight", foundation.DescribeIdentity(node))
 		}
-		panic(errors.New("BoxSizeInfinite", msg+" See https://flutter.dev/to/unbounded-constraints for more information.", meta...))
+		panic(errors.New(tagBoxSizeInfinite, msg+" See https://flutter.dev/to/unbounded-constraints for more information.", meta...))
 	}
 	if !c.IsSatisfiedBy(size) {
-		panic(errors.New("BoxSizeViolatesConstraints", foundation.RuntimeTypeName(r.self)+" does not meet its constraints. "+
+		panic(errors.New(tagBoxSizeViolatesConstraints, foundation.RuntimeTypeName(r.self)+" does not meet its constraints. "+
 			"Constraints: "+c.String()+", size: "+size.String(),
 			"object", foundation.DescribeIdentity(r.self), "constraints", c, "size", size))
 	}
@@ -769,7 +769,7 @@ func (r *RenderBox) debugCheckIntrinsics(self Box, c BoxConstraints, size ui.Siz
 		}
 	}()
 	if len(failures) > 0 {
-		panic(errors.New("BoxIntrinsicsInvalid", "The intrinsic dimension methods of the "+foundation.RuntimeTypeName(r.self)+
+		panic(errors.New(tagBoxIntrinsicsInvalid, "The intrinsic dimension methods of the "+foundation.RuntimeTypeName(r.self)+
 			" class returned values that violate the intrinsic protocol contract.",
 			"object", foundation.DescribeIdentity(r.self), "failures", failures))
 	}
@@ -781,7 +781,7 @@ func (r *RenderBox) debugCheckIntrinsics(self Box, c BoxConstraints, size ui.Siz
 		dry = self.GetDryLayout(c)
 	}()
 	if dbg.dryLayoutCalculationValid && dry != size {
-		panic(errors.New("BoxDryLayoutMismatch", "The size given to the "+foundation.RuntimeTypeName(r.self)+
+		panic(errors.New(tagBoxDryLayoutMismatch, "The size given to the "+foundation.RuntimeTypeName(r.self)+
 			" class differs from the size computed by ComputeDryLayout. The size computed is "+size.String()+
 			", which is different from "+dry.String()+", which was computed by ComputeDryLayout. The constraints used were "+c.String()+".",
 			"object", foundation.DescribeIdentity(r.self)))
@@ -811,13 +811,13 @@ func (r *RenderBox) debugVerifyDryBaselines() {
 			if dryB.IsSome() {
 				nullMethod, nonNull = nonNull, nullMethod
 			}
-			panic(errors.New("BoxDryBaselineMismatch", "The "+baseline.String()+" location returned by "+
+			panic(errors.New(tagBoxDryBaselineMismatch, "The "+baseline.String()+" location returned by "+
 				foundation.RuntimeTypeName(r.self)+".ComputeDistanceToActualBaseline differs from the baseline location computed by ComputeDryBaseline. "+
 				"The "+nullMethod+" method returned null while the "+nonNull+" returned a non-null baseline. "+
 				"Did you forget to implement "+nullMethod+" for "+foundation.RuntimeTypeName(r.self)+"? The constraints used were "+c.String()+".",
 				"object", foundation.DescribeIdentity(r.self)))
 		}
-		panic(errors.New("BoxDryBaselineMismatch", "The "+baseline.String()+" location returned by "+
+		panic(errors.New(tagBoxDryBaselineMismatch, "The "+baseline.String()+" location returned by "+
 			foundation.RuntimeTypeName(r.self)+".ComputeDistanceToActualBaseline differs from the baseline location computed by ComputeDryBaseline. "+
 			"The ComputeDryBaseline method returned "+fixedG(dryB.Value())+", while the ComputeDistanceToActualBaseline method returned "+
 			fixedG(realB.Value())+". The constraints used were "+c.String()+".",
@@ -844,7 +844,7 @@ func (r *RenderBox) MarkNeedsLayout() {
 func (r *RenderBox) PerformResize() {
 	r.SetSize(r.debugSelf().ComputeDryLayout(r.BoxConstraints()))
 	if foundation.DebugMode && !r.size.Value().IsFinite() {
-		panic(errors.New("BoxSizeInfinite", "PerformResize set an infinite size", "object", foundation.DescribeIdentity(r.self)))
+		panic(errors.New(tagBoxSizeInfinite, "PerformResize set an infinite size", "object", foundation.DescribeIdentity(r.self)))
 	}
 }
 
@@ -854,7 +854,7 @@ func (r *RenderBox) PerformResize() {
 // Flutter: rendering/box.dart RenderBox.performLayout
 func (r *RenderBox) PerformLayout() {
 	if foundation.DebugMode && !r.self.SizedByParent() {
-		panic(errors.New("BoxPerformLayoutMissing", foundation.RuntimeTypeName(r.self)+" did not implement PerformLayout(). "+
+		panic(errors.New(tagBoxPerformLayoutMissing, foundation.RuntimeTypeName(r.self)+" did not implement PerformLayout(). "+
 			"RenderBox subclasses need to either override PerformLayout() to set a size and lay out any children, or, "+
 			"set SizedByParent to true so that PerformResize() sizes the render object.",
 			"object", foundation.DescribeIdentity(r.self)))
@@ -875,7 +875,7 @@ func (r *RenderBox) HitTest(result *BoxHitTestResult, position ui.Offset) bool {
 				"If you are trying to perform a hit test during the layout phase itself, make sure you only hit test nodes that " +
 				"have completed layout (e.g. the node's children, after their Layout() method has been called)."
 		}
-		panic(errors.New("BoxHitTestNoSize", msg, "object", foundation.DescribeIdentity(r.self)))
+		panic(errors.New(tagBoxHitTestNoSize, msg, "object", foundation.DescribeIdentity(r.self)))
 	}
 	self := r.debugSelf()
 	if r.size.Value().Contains(position) {
@@ -905,11 +905,11 @@ func (r *RenderBox) HitTestChildren(*BoxHitTestResult, ui.Offset) bool { return 
 func (r *RenderBox) ApplyPaintTransform(child RenderObject, transform *ui.Matrix4) {
 	if foundation.DebugMode {
 		if child.AsRenderObject().parent != r.self {
-			panic(errors.New("RenderObjectNotChild", "ApplyPaintTransform was called with a render object that is not a child",
+			panic(errors.New(tagRenderObjectNotChild, "ApplyPaintTransform was called with a render object that is not a child",
 				"object", foundation.DescribeIdentity(r.self), "child", foundation.DescribeIdentity(child)))
 		}
 		if _, ok := child.AsRenderObject().parentData.(boxParentDataHolder); !ok {
-			panic(errors.New("ApplyPaintTransformParentData", foundation.RuntimeTypeName(r.self)+
+			panic(errors.New(tagApplyPaintTransformParentData, foundation.RuntimeTypeName(r.self)+
 				" does not implement ApplyPaintTransform: the child did not use a BoxParentData for its parent data. "+
 				"The default ApplyPaintTransform of RenderBox assumes that the children all use BoxParentData objects; "+
 				"a class that uses other parent data must provide its own.",
@@ -1060,3 +1060,29 @@ func (r *RenderBox) DebugFillProperties(p *foundation.DiagnosticPropertiesBuilde
 
 // ToStringShort is the description of the object; render boxes use the base one.
 func (r *RenderBox) ToStringShort() string { return r.RenderObjectBase.ToStringShort() }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagApplyPaintTransformParentData = "ApplyPaintTransformParentData"
+	tagBaselineNeedsLayout           = "BaselineNeedsLayout"
+	tagBaselineReentrant             = "BaselineReentrant"
+	tagBaselineWrongCall             = "BaselineWrongCall"
+	tagBaselineWrongPhase            = "BaselineWrongPhase"
+	tagBoxDryBaselineMismatch        = "BoxDryBaselineMismatch"
+	tagBoxDryLayoutMismatch          = "BoxDryLayoutMismatch"
+	tagBoxHitTestNoSize              = "BoxHitTestNoSize"
+	tagBoxIntrinsicsInvalid          = "BoxIntrinsicsInvalid"
+	tagBoxNotLaidOut                 = "BoxNotLaidOut"
+	tagBoxPerformLayoutMissing       = "BoxPerformLayoutMissing"
+	tagBoxSizeAccessInvalid          = "BoxSizeAccessInvalid"
+	tagBoxSizeAccessedInDryLayout    = "BoxSizeAccessedInDryLayout"
+	tagBoxSizeInfinite               = "BoxSizeInfinite"
+	tagBoxSizeNotSet                 = "BoxSizeNotSet"
+	tagBoxSizeSetterInvalid          = "BoxSizeSetterInvalid"
+	tagBoxSizeViolatesConstraints    = "BoxSizeViolatesConstraints"
+	tagDryLayoutReentrant            = "DryLayoutReentrant"
+	tagDryLayoutUnsupported          = "DryLayoutUnsupported"
+	tagIntrinsicArgumentNegative     = "IntrinsicArgumentNegative"
+	tagIntrinsicsDuringResize        = "IntrinsicsDuringResize"
+	tagRenderObjectNotChild          = "RenderObjectNotChild"
+)

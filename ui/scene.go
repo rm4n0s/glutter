@@ -204,10 +204,10 @@ func (s *Scene) Root() *ContainerLayer { return s.root }
 func (s *Scene) ToImage(width, height int, opts ...ToImageOpts) (*Image, error) {
 	o := oneOpts(opts)
 	if width <= 0 || height <= 0 {
-		return nil, errors.New("ImageSizeInvalid", "Invalid image dimensions.", "width", width, "height", height)
+		return nil, errors.New(tagImageSizeInvalid, "Invalid image dimensions.", "width", width, "height", height)
 	}
 	if o.Rasterizer == nil {
-		return nil, errors.New("RasterizerMissing", "Scene.ToImage needs a Rasterizer in its options.")
+		return nil, errors.New(tagRasterizerMissing, "Scene.ToImage needs a Rasterizer in its options.")
 	}
 	return o.Rasterizer.RasterizeScene(s, width, height)
 }
@@ -341,7 +341,7 @@ func NewSceneBuilder() *SceneBuilder {
 // add puts a layer under the current one.
 func (b *SceneBuilder) add(l Layer) {
 	if b.built {
-		panic(errors.New("SceneBuilderBuilt", "The SceneBuilder was already used to build a Scene."))
+		panic(errors.New(tagSceneBuilderBuilt, "The SceneBuilder was already used to build a Scene."))
 	}
 	top := b.stack[len(b.stack)-1].layer()
 	top.children = append(top.children, l)
@@ -625,7 +625,7 @@ func (b *SceneBuilder) PushShaderMask(shader Shader, maskRect Rect, blendMode Bl
 // Flutter: ui/compositing.dart SceneBuilder.pop
 func (b *SceneBuilder) Pop() {
 	if b.built {
-		panic(errors.New("SceneBuilderBuilt", "The SceneBuilder was already used to build a Scene."))
+		panic(errors.New(tagSceneBuilderBuilt, "The SceneBuilder was already used to build a Scene."))
 	}
 	if len(b.stack) > 1 {
 		b.stack = b.stack[:len(b.stack)-1]
@@ -641,7 +641,7 @@ func (b *SceneBuilder) Pop() {
 func (b *SceneBuilder) AddRetained(retained EngineLayer) {
 	h := retained.handle()
 	if h.disposed {
-		panic(errors.New("EngineLayerDisposed", "Object disposed"))
+		panic(errors.New(tagEngineLayerDisposed, "Object disposed"))
 	}
 	b.add(h.layer)
 }
@@ -676,7 +676,7 @@ func (b *SceneBuilder) AddPicture(offset Offset, picture *Picture, opts ...AddPi
 // Flutter: ui/compositing.dart SceneBuilder.build
 func (b *SceneBuilder) Build() *Scene {
 	if b.built {
-		panic(errors.New("SceneBuilderBuilt", "The SceneBuilder was already used to build a Scene."))
+		panic(errors.New(tagSceneBuilderBuilt, "The SceneBuilder was already used to build a Scene."))
 	}
 	b.built = true
 	root := b.stack[0].(*ContainerLayer)
@@ -688,3 +688,9 @@ func (b *SceneBuilder) Build() *Scene {
 //
 // Flutter: ui/compositing.dart SceneBuilder.toString
 func (b *SceneBuilder) String() string { return "SceneBuilder" }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagEngineLayerDisposed = "EngineLayerDisposed"
+	tagSceneBuilderBuilt   = "SceneBuilderBuilt"
+)

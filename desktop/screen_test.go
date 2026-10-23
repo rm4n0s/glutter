@@ -36,10 +36,15 @@ func TestKeepScreenOn(t *testing.T) {
 
 func TestKeepScreenOnWhenThePlatformCannot(t *testing.T) {
 	ts, bc := app(t)
-	ts.FailKeepScreenOn(errors.New("IdleInhibitUnavailable", "no protocol"))
+	ts.FailKeepScreenOn(errors.New(tagIdleInhibitUnavailable, "no protocol"))
 	err := desktop.KeepScreenOn(bc, true)
 	appErr, ok := errors.FromError(err)
-	if !ok || appErr.Tag != "IdleInhibitUnavailable" {
+	if !ok || appErr.Tag != tagIdleInhibitUnavailable {
 		t.Fatalf("err = %v, want the tag IdleInhibitUnavailable", err)
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagIdleInhibitUnavailable = "IdleInhibitUnavailable"
+)

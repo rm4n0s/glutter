@@ -149,10 +149,10 @@ func TestSetImageShader(t *testing.T) {
 		t.Errorf("spec %+v, %v, %v", sp, res, err)
 	}
 	// An error from the texture lookup comes back as it is.
-	failing := func(*ui.Image) (any, int, error) { return nil, 0, errors.New("TestNoTexture", "no texture") }
+	failing := func(*ui.Image) (any, int, error) { return nil, 0, errors.New(tagTestNoTexture, "no texture") }
 	sp = PaintSpec{}
 	res, err = sp.SetImageShader(shader(ui.FilterQualityLow, ui.NewMatrix4Identity()), Affine2D{A: 1, D: 1}, failing)
-	if appErr, ok := errors.FromError(err); res != PaintUnsupported || !ok || appErr.Tag != "TestNoTexture" {
+	if appErr, ok := errors.FromError(err); res != PaintUnsupported || !ok || appErr.Tag != tagTestNoTexture {
 		t.Errorf("got %v, %v", res, err)
 	}
 }
@@ -204,3 +204,8 @@ func TestSetColorFilter(t *testing.T) {
 		})
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagTestNoTexture = "TestNoTexture"
+)

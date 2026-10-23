@@ -58,7 +58,7 @@ func (l *FontLoader) AddFontAsset(bundle AssetBundle, key string) {
 
 func (l *FontLoader) assertNotLoaded() {
 	if l.loaded {
-		panic(errors.New("FontLoaderReused", "a FontLoader can load its fonts only once", "family", l.family))
+		panic(errors.New(tagFontLoaderReused, "a FontLoader can load its fonts only once", "family", l.family))
 	}
 }
 
@@ -75,14 +75,14 @@ func (l *FontLoader) Load(ctx context.Context, d *ui.PlatformDispatcher) error {
 	l.loaded = true
 	for i, load := range l.fonts {
 		if err := ctx.Err(); err != nil {
-			return errors.NewErr("FontLoadCanceled", err).SetMetadata("family", l.family, "font", i)
+			return errors.NewErr(tagFontLoadCanceled, err).SetMetadata("family", l.family, "font", i)
 		}
 		data, err := load(ctx)
 		if err != nil {
 			if _, ok := errors.FromError(err); ok {
 				return err
 			}
-			return errors.NewErr("FontLoadFailed", err).SetMetadata("family", l.family, "font", i)
+			return errors.NewErr(tagFontLoadFailed, err).SetMetadata("family", l.family, "font", i)
 		}
 		if err := d.LoadFontFromList(data, l.family); err != nil {
 			return err
@@ -90,3 +90,10 @@ func (l *FontLoader) Load(ctx context.Context, d *ui.PlatformDispatcher) error {
 	}
 	return nil
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagFontLoadCanceled = "FontLoadCanceled"
+	tagFontLoadFailed   = "FontLoadFailed"
+	tagFontLoaderReused = "FontLoaderReused"
+)

@@ -119,7 +119,7 @@ func (d *FlutterLogoDecoration) inTransition() bool {
 // Flutter: painting/flutter_logo.dart FlutterLogoDecoration.debugAssertIsValid
 func (d *FlutterLogoDecoration) DebugAssertIsValid() bool {
 	if foundation.DebugMode && !(!math.IsInf(d.position, 0) && !math.IsNaN(d.position) && d.opacity >= 0.0 && d.opacity <= 1.0) {
-		panic(errors.New("FlutterLogoInvalid", "the position of a FlutterLogoDecoration must be finite and its opacity from 0 to 1",
+		panic(errors.New(tagFlutterLogoInvalid, "the position of a FlutterLogoDecoration must be finite and its opacity from 0 to 1",
 			"position", d.position, "opacity", d.opacity))
 	}
 	return true
@@ -365,7 +365,7 @@ func (p *flutterLogoPainter) Paint(canvas *ui.Canvas, offset ui.Offset, configur
 	size, ok := configuration.Size.Get()
 	if !ok {
 		if foundation.DebugMode {
-			panic(errors.New("FlutterLogoNoSize", "the ImageConfiguration given to a FlutterLogoDecoration painter has no size"))
+			panic(errors.New(tagFlutterLogoNoSize, "the ImageConfiguration given to a FlutterLogoDecoration painter has no size"))
 		}
 		return
 	}
@@ -464,3 +464,9 @@ func (p *flutterLogoPainter) Paint(canvas *ui.Canvas, offset ui.Offset, configur
 }
 
 var _ Decoration = (*FlutterLogoDecoration)(nil)
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagFlutterLogoInvalid = "FlutterLogoInvalid"
+	tagFlutterLogoNoSize  = "FlutterLogoNoSize"
+)

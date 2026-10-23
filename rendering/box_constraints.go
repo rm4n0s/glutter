@@ -504,7 +504,7 @@ func BoxConstraintsLerp(a, b *BoxConstraints, t float64) *BoxConstraints {
 		pairs := [][2]float64{{a.MinWidth, b.MinWidth}, {a.MaxWidth, b.MaxWidth}, {a.MinHeight, b.MinHeight}, {a.MaxHeight, b.MaxHeight}}
 		for _, p := range pairs {
 			if !((isFinite(p[0]) && isFinite(p[1])) || (math.IsInf(p[0], 1) && math.IsInf(p[1], 1))) {
-				panic(errors.New("BoxConstraintsLerpUnbounded",
+				panic(errors.New(tagBoxConstraintsLerpUnbounded,
 					"cannot interpolate between finite constraints and unbounded constraints", "a", *a, "b", *b))
 			}
 		}
@@ -663,3 +663,8 @@ func fixed1(v float64) string {
 	}
 	return strconv.FormatFloat(v, 'f', 1, 64)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagBoxConstraintsLerpUnbounded = "BoxConstraintsLerpUnbounded"
+)

@@ -39,7 +39,7 @@ func TestParseConfigRejectsAWrongType(t *testing.T) {
 		if !ok {
 			t.Fatalf("hostElement %v: expected *errors.Error, got %T", v, err)
 		}
-		if appErr.Tag != "WebConfigInvalid" || !appErr.HasRoute("TestParseConfigRejectsAWrongType->ParseConfig.WebConfigInvalid") {
+		if appErr.Tag != tagWebConfigInvalid || !appErr.HasRoute("ParseConfig.WebConfigInvalid") {
 			t.Errorf("hostElement %v: got %s via %s, want WebConfigInvalid via ParseConfig", v, appErr.Tag, appErr.Route())
 		}
 	}

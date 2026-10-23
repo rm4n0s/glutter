@@ -5,6 +5,8 @@ package fakecomp
 import (
 	"fmt"
 	"time"
+
+	"github.com/rm4n0s/errors"
 )
 
 // The drag and drop of the fake compositor: another application drags over the
@@ -126,7 +128,7 @@ func (s *Server) ReadDragSource(mime string) ([]byte, error) {
 	src := s.dragSource
 	s.mu.Unlock()
 	if src == nil {
-		return nil, fmt.Errorf("the client started no drag")
+		return nil, errors.New(tagFakeCompNoDragSource, "the client started no drag")
 	}
 	return s.readSource(src, mime)
 }
@@ -161,3 +163,8 @@ func (s *Server) sendToDragSource(op uint16, args ...any) {
 	}
 	s.Send(src.id, op, args...)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagFakeCompNoDragSource = "FakeCompNoDragSource"
+)

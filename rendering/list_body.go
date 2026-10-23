@@ -117,13 +117,13 @@ func (r *RenderListBody) debugCheckConstraints(constraints BoxConstraints) {
 		mainBounded, crossBounded = constraints.HasBoundedWidth(), constraints.HasBoundedHeight()
 	}
 	if mainBounded {
-		panic(errors.New("ListBodyBoundedMainAxis", "RenderListBody must have unlimited space along its main axis. "+
+		panic(errors.New(tagListBodyBoundedMainAxis, "RenderListBody must have unlimited space along its main axis. "+
 			"RenderListBody does not clip or resize its children, so it must be placed in a parent that does not "+
 			"constrain the main axis. You probably want to put the RenderListBody inside a RenderViewport with a "+
 			"matching main axis.", "object", foundation.DescribeIdentity(r), "constraints", constraints))
 	}
 	if !crossBounded {
-		panic(errors.New("ListBodyUnboundedCrossAxis", "RenderListBody must have a bounded constraint for its cross axis. "+
+		panic(errors.New(tagListBodyUnboundedCrossAxis, "RenderListBody must have a bounded constraint for its cross axis. "+
 			"RenderListBody forces its children to expand to fit the RenderListBody's container, so it must be placed in "+
 			"a parent that constrains the cross axis to a finite dimension. If you are attempting to nest a "+
 			"RenderListBody with one direction inside one of another direction, you will want to wrap the inner one "+
@@ -331,3 +331,9 @@ func (r *RenderListBody) Paint(context *PaintingContext, offset ui.Offset) {
 func (r *RenderListBody) HitTestChildren(result *BoxHitTestResult, position ui.Offset) bool {
 	return DefaultHitTestChildren(&r.ContainerRenderObject, result, position)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagListBodyBoundedMainAxis    = "ListBodyBoundedMainAxis"
+	tagListBodyUnboundedCrossAxis = "ListBodyUnboundedCrossAxis"
+)

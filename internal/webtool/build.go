@@ -57,10 +57,10 @@ type BuildResult struct {
 // Flutter: no counterpart (flutter build web)
 func Build(ctx context.Context, o BuildOptions) (*BuildResult, error) {
 	if o.Package == "" {
-		return nil, errors.New("WebBuildFailed", "there is no package to build")
+		return nil, errors.New(tagWebBuildFailed, "there is no package to build")
 	}
 	if err := os.MkdirAll(o.OutDir, 0o755); err != nil {
-		return nil, errors.NewErr("WebWriteFailed", err).SetMetadata("path", o.OutDir)
+		return nil, errors.NewErr(tagWebWriteFailed, err).SetMetadata("path", o.OutDir)
 	}
 	env := append(os.Environ(), "GOOS=js", "GOARCH=wasm", "CGO_ENABLED=0")
 	env = append(env, o.Env...)
@@ -70,19 +70,19 @@ func Build(ctx context.Context, o BuildOptions) (*BuildResult, error) {
 		args = append(args, "-tags", "glutter_release", "-ldflags=-s -w")
 	}
 	args = append(args, o.Package)
-	if out, err := runGo(ctx, o.Dir, env, args...); err != nil {
-		return nil, errors.NewErr("WebBuildFailed", err).SetMetadata("package", o.Package, "output", out)
+	if _, err := runGo(ctx, o.Dir, env, args...); err != nil {
+		return nil, err
 	}
 	goroot, err := runGo(ctx, o.Dir, env, "env", "GOROOT")
 	if err != nil {
-		return nil, errors.NewErr("WebBuildFailed", err).SetMetadata("output", goroot)
+		return nil, err
 	}
 	execJS, err := os.ReadFile(filepath.Join(strings.TrimSpace(goroot), "lib", "wasm", "wasm_exec.js"))
 	if err != nil {
-		return nil, errors.NewErr("WebWriteFailed", err).SetMetadata("what", "wasm_exec.js of GOROOT")
+		return nil, errors.NewErr(tagWebWriteFailed, err).SetMetadata("what", "wasm_exec.js of GOROOT")
 	}
 	if err := os.WriteFile(filepath.Join(o.OutDir, "wasm_exec.js"), execJS, 0o644); err != nil {
-		return nil, errors.NewErr("WebWriteFailed", err).SetMetadata("path", filepath.Join(o.OutDir, "wasm_exec.js"))
+		return nil, errors.NewErr(tagWebWriteFailed, err).SetMetadata("path", filepath.Join(o.OutDir, "wasm_exec.js"))
 	}
 	title := o.Title
 	if title == "" {
@@ -93,33 +93,43 @@ func Build(ctx context.Context, o BuildOptions) (*BuildResult, error) {
 		return nil, err
 	}
 	if err := os.WriteFile(filepath.Join(o.OutDir, "index.html"), index, 0o644); err != nil {
-		return nil, errors.NewErr("WebWriteFailed", err).SetMetadata("path", filepath.Join(o.OutDir, "index.html"))
+		return nil, errors.NewErr(tagWebWriteFailed, err).SetMetadata("path", filepath.Join(o.OutDir, "index.html"))
 	}
 	wasmBytes, err := os.ReadFile(wasm)
 	if err != nil {
-		return nil, errors.NewErr("WebWriteFailed", err).SetMetadata("path", wasm)
+		return nil, errors.NewErr(tagWebWriteFailed, err).SetMetadata("path", wasm)
 	}
 	var zipped bytes.Buffer
 	zw, err := gzip.NewWriterLevel(&zipped, gzip.BestCompression)
 	if err != nil {
-		return nil, errors.NewErr("WebWriteFailed", err).SetMetadata("path", wasm+".gz")
+		return nil, errors.NewErr(tagWebWriteFailed, err).SetMetadata("path", wasm+".gz")
 	}
 	if _, err := zw.Write(wasmBytes); err != nil {
-		return nil, errors.NewErr("WebWriteFailed", err).SetMetadata("path", wasm+".gz")
+		return nil, errors.NewErr(tagWebWriteFailed, err).SetMetadata("path", wasm+".gz")
 	}
 	if err := zw.Close(); err != nil {
-		return nil, errors.NewErr("WebWriteFailed", err).SetMetadata("path", wasm+".gz")
+		return nil, errors.NewErr(tagWebWriteFailed, err).SetMetadata("path", wasm+".gz")
 	}
 	if err := os.WriteFile(wasm+".gz", zipped.Bytes(), 0o644); err != nil {
-		return nil, errors.NewErr("WebWriteFailed", err).SetMetadata("path", wasm+".gz")
+		return nil, errors.NewErr(tagWebWriteFailed, err).SetMetadata("path", wasm+".gz")
 	}
 	return &BuildResult{Dir: o.OutDir, WasmSize: int64(len(wasmBytes)), GzipSize: int64(zipped.Len())}, nil
 }
 
-// runGo runs the go command and returns its combined output.
+// runGo runs the go command and returns its combined output. It fails with
+// WebBuildFailed, and the output of the command is in the metadata "output".
 func runGo(ctx context.Context, dir string, env []string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "go", args...)
 	cmd.Dir, cmd.Env = dir, env
 	out, err := cmd.CombinedOutput()
-	return string(out), err
+	if err != nil {
+		return "", errors.NewErr(tagWebBuildFailed, err).SetMetadata("command", "go "+strings.Join(args, " "), "output", string(out))
+	}
+	return string(out), nil
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagWebBuildFailed = "WebBuildFailed"
+	tagWebWriteFailed = "WebWriteFailed"
+)

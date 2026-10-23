@@ -31,7 +31,7 @@ func connect(t *testing.T, cfg fakecomp.Config) (*Platform, *fakecomp.Server, er
 func connectWith(t *testing.T, cfg fakecomp.Config, opts Options) (*Platform, *fakecomp.Server, error) {
 	t.Helper()
 	if _, err := wl.Connect("glutter-probe-for-libwayland"); err != nil {
-		if appErr, ok := errors.FromError(err); ok && appErr.Tag == "LibraryLoadFailed" {
+		if appErr, ok := errors.FromError(err); ok && appErr.Tag == tagLibraryLoadFailed {
 			t.Skipf("libwayland-client is not available: %v", err)
 		}
 	}
@@ -168,7 +168,7 @@ func TestMissingRequiredGlobals(t *testing.T) {
 			if !ok {
 				t.Fatalf("expected *errors.Error, got %T (%v)", err, err)
 			}
-			if appErr.Tag != "WaylandProtocolMissing" || !appErr.HasRoute("newPlatform->newSession->session.bindRequired.WaylandProtocolMissing") {
+			if appErr.Tag != tagWaylandProtocolMissing || !appErr.HasRoute("newPlatform->newSession->session.bindRequired.WaylandProtocolMissing") {
 				t.Errorf("Tag = %q, route = %s", appErr.Tag, appErr.Route())
 			}
 			// The globals are checked in a fixed order, so with one missing it is that one.
@@ -197,7 +197,7 @@ func TestConnectFailure(t *testing.T) {
 		t.Fatalf("expected *errors.Error, got %T (%v)", err, err)
 	}
 	switch appErr.Tag {
-	case "LibraryLoadFailed":
+	case tagLibraryLoadFailed:
 		t.Skipf("libwayland-client is not available: %v", err)
 	case "WaylandConnectFailed":
 		if !appErr.HasRoute("New->Connect.WaylandConnectFailed") {
@@ -258,7 +258,7 @@ func TestRunTwiceFails(t *testing.T) {
 
 	err := p.Run(context.Background(), nopHandler{})
 	appErr, ok := errors.FromError(err)
-	if !ok || appErr.Tag != "PlatformAlreadyRunning" || !appErr.HasRoute("Platform.Run.PlatformAlreadyRunning") {
+	if !ok || appErr.Tag != tagPlatformAlreadyRunning || !appErr.HasRoute("Platform.Run.PlatformAlreadyRunning") {
 		t.Errorf("second Run returned %v, want PlatformAlreadyRunning via Platform.Run", err)
 	}
 	cancel()

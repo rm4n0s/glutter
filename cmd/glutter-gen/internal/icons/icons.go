@@ -52,12 +52,12 @@ func Run(args []string) error {
 	reference := flags.String("reference", defaultReference, "directory with the Flutter sources (see scripts/fetch-reference.sh)")
 	out := flags.String("out", defaultOut, "file to write the icons to")
 	if err := flags.Parse(args); err != nil {
-		return errors.NewErr("IconsBadFlags", err).SetMetadata("args", args)
+		return errors.NewErr(tagIconsBadFlags, err).SetMetadata("args", args)
 	}
 	path := filepath.Join(*reference, iconsFile)
 	src, err := os.ReadFile(path)
 	if err != nil {
-		return errors.NewErr("IconsReadFailed", err).SetMetadata("file", path)
+		return errors.NewErr(tagIconsReadFailed, err).SetMetadata("file", path)
 	}
 	icons, err := Parse(string(src))
 	if err != nil {
@@ -71,7 +71,7 @@ func Run(args []string) error {
 		return nil
 	}
 	if err := os.WriteFile(*out, code, 0o644); err != nil {
-		return errors.NewErr("IconsWriteFailed", err).SetMetadata("file", *out)
+		return errors.NewErr(tagIconsWriteFailed, err).SetMetadata("file", *out)
 	}
 	return nil
 }
@@ -89,20 +89,20 @@ func Parse(src string) ([]Icon, error) {
 	for _, m := range iconRE.FindAllStringSubmatch(src, -1) {
 		cp, err := strconv.ParseInt(m[2], 0, 32)
 		if err != nil {
-			return nil, errors.NewErr("IconsBadCodePoint", err).SetMetadata("icon", m[1])
+			return nil, errors.NewErr(tagIconsBadCodePoint, err).SetMetadata("icon", m[1])
 		}
 		goName := goName(m[1])
 		if other, dup := seen[goName]; dup {
-			return nil, errors.New("IconsDuplicateName", "two icons have the same Go name", "name", goName, "icons", []string{other, m[1]})
+			return nil, errors.New(tagIconsDuplicateName, "two icons have the same Go name", "name", goName, "icons", []string{other, m[1]})
 		}
 		seen[goName] = m[1]
 		icons = append(icons, Icon{DartName: m[1], GoName: goName, CodePoint: int(cp), MatchTextDirection: m[3] != ""})
 	}
 	if want := strings.Count(src, "static const IconData "); len(icons) != want {
-		return nil, errors.New("IconsUnparsed", "some icon constants do not match the expected form", "parsed", len(icons), "found", want)
+		return nil, errors.New(tagIconsUnparsed, "some icon constants do not match the expected form", "parsed", len(icons), "found", want)
 	}
 	if len(icons) == 0 {
-		return nil, errors.New("IconsNone", "no icon constants found")
+		return nil, errors.New(tagIconsNone, "no icon constants found")
 	}
 	return icons, nil
 }
@@ -142,7 +142,19 @@ func Generate(icons []Icon) ([]byte, error) {
 	}
 	code, err := format.Source(b.Bytes())
 	if err != nil {
-		return nil, errors.NewErr("IconsFormatFailed", err)
+		return nil, errors.NewErr(tagIconsFormatFailed, err)
 	}
 	return code, nil
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagIconsBadCodePoint  = "IconsBadCodePoint"
+	tagIconsBadFlags      = "IconsBadFlags"
+	tagIconsDuplicateName = "IconsDuplicateName"
+	tagIconsFormatFailed  = "IconsFormatFailed"
+	tagIconsNone          = "IconsNone"
+	tagIconsReadFailed    = "IconsReadFailed"
+	tagIconsUnparsed      = "IconsUnparsed"
+	tagIconsWriteFailed   = "IconsWriteFailed"
+)

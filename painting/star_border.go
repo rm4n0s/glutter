@@ -57,7 +57,7 @@ type StarBorderOpts struct {
 
 func starCheck(cond bool, what string, vals ...any) {
 	if foundation.DebugMode && !cond {
-		panic(errors.New("StarBorderInvalid", "invalid StarBorder argument: "+what, append([]any{"check", what}, vals...)...))
+		panic(errors.New(tagStarBorderInvalid, "invalid StarBorder argument: "+what, append([]any{"check", what}, vals...)...))
 	}
 }
 
@@ -469,3 +469,8 @@ func starAngle(a, b, c ui.Offset) float64 {
 }
 
 var _ OutlinedBorder = StarBorder{}
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagStarBorderInvalid = "StarBorderInvalid"
+)

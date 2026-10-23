@@ -854,7 +854,7 @@ func NewSemanticsUpdateBuilder() *SemanticsUpdateBuilder { return &SemanticsUpda
 // Flutter: ui/semantics.dart SemanticsUpdateBuilder.updateNode
 func (b *SemanticsUpdateBuilder) UpdateNode(n SemanticsNodeUpdate) {
 	if n.ID < 0 {
-		panic(errors.New("SemanticsUpdateInvalid", "the ID of a node must not be negative", "id", n.ID))
+		panic(errors.New(tagSemanticsUpdateInvalid, "the ID of a node must not be negative", "id", n.ID))
 	}
 	b.update.Nodes = append(b.update.Nodes, n)
 }
@@ -874,3 +874,8 @@ func (b *SemanticsUpdateBuilder) Build() *SemanticsUpdate {
 	b.update = SemanticsUpdate{}
 	return &u
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagSemanticsUpdateInvalid = "SemanticsUpdateInvalid"
+)

@@ -9,6 +9,8 @@ import (
 	"sort"
 	"syscall"
 	"time"
+
+	"github.com/rm4n0s/errors"
 )
 
 // clientSource is a data source (wl_data_source or
@@ -256,7 +258,7 @@ func (s *Server) ReadClientSelection(primary bool, mime string) ([]byte, error) 
 	}
 	s.mu.Unlock()
 	if src == nil {
-		return nil, fmt.Errorf("the client owns no selection")
+		return nil, errors.New(tagFakeCompNoSelection, "the client owns no selection", "primary", primary)
 	}
 	return s.readSource(src, mime)
 }
@@ -266,15 +268,19 @@ func (s *Server) ReadClientSelection(primary bool, mime string) ([]byte, error) 
 func (s *Server) readSource(src *clientSource, mime string) ([]byte, error) {
 	r, w, err := os.Pipe()
 	if err != nil {
-		return nil, err
+		return nil, errors.NewErr(tagFakeCompReadFailed, err).SetMetadata("op", "pipe", "mime", mime)
 	}
 	defer func() { _ = r.Close() }()
 	s.Send(src.id, src.sendOp(), mime, FD(w.Fd())) // send(mime_type, fd)
 	if err := w.Close(); err != nil {
-		return nil, err
+		return nil, errors.NewErr(tagFakeCompReadFailed, err).SetMetadata("op", "close", "mime", mime)
 	}
 	_ = r.SetReadDeadline(time.Now().Add(5 * time.Second))
-	return io.ReadAll(r)
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return nil, errors.NewErr(tagFakeCompReadFailed, err).SetMetadata("op", "read", "mime", mime)
+	}
+	return data, nil
 }
 
 // CancelClientSelection tells the client that another application took the
@@ -297,3 +303,9 @@ func (s *Server) CancelClientSelection(primary bool) {
 		s.Send(src.id, src.cancelOp()) // cancelled
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagFakeCompNoSelection = "FakeCompNoSelection"
+	tagFakeCompReadFailed  = "FakeCompReadFailed"
+)

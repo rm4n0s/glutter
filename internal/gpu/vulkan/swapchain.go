@@ -54,7 +54,7 @@ type acquiredImage struct {
 // when the window cannot be drawn into with Vulkan.
 func (d *Device) NewSwapchain(h gpu.SurfaceHandle) (explicit.Swapchain, error) {
 	if !d.windows || d.f.createSwapchain == nil {
-		return nil, errors.New("VulkanSurfaceFailed", "this Vulkan device was opened without a window: it lacks VK_KHR_swapchain")
+		return nil, errors.New(tagVulkanSurfaceFailed, "this Vulkan device was opened without a window: it lacks VK_KHR_swapchain")
 	}
 	s, err := d.surfaceFor(h)
 	if err != nil {
@@ -93,7 +93,7 @@ func (sc *swapchain) Configure(width, height int) error {
 	}
 	vkFormat, texFormat, ok := chooseSurfaceFormat(formats)
 	if !ok {
-		return errors.New("VulkanSwapchainFailed", "the surface has no B8G8R8A8_UNORM or R8G8B8A8_UNORM format", "formats", len(formats))
+		return errors.New(tagVulkanSwapchainFailed, "the surface has no B8G8R8A8_UNORM or R8G8B8A8_UNORM format", "formats", len(formats))
 	}
 	extent := extent2D{uint32(width), uint32(height)}
 	if caps.currentExtent.width != currentExtentUndefined {
@@ -103,11 +103,11 @@ func (sc *swapchain) Configure(width, height int) error {
 		extent.height = min(max(extent.height, caps.minImageExtent.height), caps.maxImageExtent.height)
 	}
 	if extent.width == 0 || extent.height == 0 {
-		return errors.New("VulkanSwapchainFailed", "the surface has no size", "width", int(extent.width), "height", int(extent.height))
+		return errors.New(tagVulkanSwapchainFailed, "the surface has no size", "width", int(extent.width), "height", int(extent.height))
 	}
 	const usage = imageUsageColor | imageUsageTransferDst
 	if caps.supportedUsageFlags&usage != usage {
-		return errors.New("VulkanSwapchainFailed", "the surface does not allow color attachment and transfer destination images", "usage", int(caps.supportedUsageFlags))
+		return errors.New(tagVulkanSwapchainFailed, "the surface does not allow color attachment and transfer destination images", "usage", int(caps.supportedUsageFlags))
 	}
 	count := caps.minImageCount + 1
 	if caps.maxImageCount > 0 {
@@ -206,7 +206,7 @@ func choosePresentMode(modes []uint32) uint32 {
 func swapchainError(call string, result int32) error {
 	switch result {
 	case resultErrorSurfaceLost, resultErrorWindowInUse, resultErrorInitFailed:
-		return errors.New("VulkanSwapchainFailed", "the swapchain of the window cannot be made or used", "call", call, "result", int(result), "name", resultNames[result])
+		return errors.New(tagVulkanSwapchainFailed, "the swapchain of the window cannot be made or used", "call", call, "result", int(result), "name", resultNames[result])
 	}
 	return vkError(call, result)
 }
@@ -291,12 +291,6 @@ func (sc *swapchain) takeObjects() func() {
 	}
 }
 
-// errOutOfDate is the error of Acquire when the swapchain must be configured again.
-func errOutOfDate(call string, result int32) error {
-	return errors.New(explicit.SwapchainOutOfDate, "the swapchain no longer matches the surface: configure it again",
-		"call", call, "result", int(result))
-}
-
 // Acquire implements explicit.Swapchain. It must be called after Begin: the image is
 // moved to the layout the frame draws in, and the frame's submit waits for the image
 // and ends with it ready to present. When the swapchain is out of date it returns the
@@ -304,13 +298,14 @@ func errOutOfDate(call string, result int32) error {
 func (sc *swapchain) Acquire() (explicit.Texture, error) {
 	d := sc.d
 	if d.open == nil {
-		return nil, errors.New("VulkanFrameNotOpen", "Acquire needs the frame that draws into the image: call Begin first")
+		return nil, errors.New(tagVulkanFrameNotOpen, "Acquire needs the frame that draws into the image: call Begin first")
 	}
 	if sc.handle == 0 || sc.recreate {
-		return nil, errOutOfDate("vkAcquireNextImageKHR", resultErrorOutOfDate)
+		return nil, errors.New(explicit.SwapchainOutOfDate, "the swapchain no longer matches the surface: configure it again",
+			"call", "vkAcquireNextImageKHR", "result", int(resultErrorOutOfDate))
 	}
 	if sc.acquired {
-		return nil, errors.New("VulkanSwapchainFailed", "the image acquired before was not presented")
+		return nil, errors.New(tagVulkanSwapchainFailed, "the image acquired before was not presented")
 	}
 	a := d.arena
 	defer a.rewind(a.mark())
@@ -322,9 +317,10 @@ func (sc *swapchain) Acquire() (explicit.Texture, error) {
 		sc.recreate = true // the image is usable; the next frame makes a new swapchain
 	case resultErrorOutOfDate:
 		sc.recreate = true
-		return nil, errOutOfDate("vkAcquireNextImageKHR", r)
+		return nil, errors.New(explicit.SwapchainOutOfDate, "the swapchain no longer matches the surface: configure it again",
+			"call", "vkAcquireNextImageKHR", "result", int(r))
 	case resultTimeout, resultNotReady:
-		return nil, errors.New("VulkanSwapchainFailed", "no swapchain image came: the window is not being shown", "result", int(r))
+		return nil, errors.New(tagVulkanSwapchainFailed, "no swapchain image came: the window is not being shown", "result", int(r))
 	default:
 		return nil, swapchainError("vkAcquireNextImageKHR", r)
 	}
@@ -344,7 +340,7 @@ func (sc *swapchain) Acquire() (explicit.Texture, error) {
 func (sc *swapchain) Present(damage []image.Rectangle) error {
 	d := sc.d
 	if !sc.acquired {
-		return errors.New("VulkanSwapchainFailed", "Present was called without an image acquired")
+		return errors.New(tagVulkanSwapchainFailed, "Present was called without an image acquired")
 	}
 	sc.acquired = false
 	a := d.arena
@@ -420,3 +416,8 @@ func (d *Device) imageBarrier(cb commandBufferH, img imageH, from, to uint32) {
 	dep := put(a, dependencyInfo{sType: sTypeDependencyInfo, imageMemoryBarrierCount: 1, pImageMemoryBarriers: barrier})
 	d.f.cmdPipelineBarrier2(cb, dep)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagVulkanSwapchainFailed = "VulkanSwapchainFailed"
+)

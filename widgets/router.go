@@ -39,7 +39,7 @@ type RouteInformationOpts struct {
 func NewRouteInformation(options ...RouteInformationOpts) *RouteInformation {
 	opts := firstOpts(options)
 	if foundation.DebugMode && opts.URI == nil {
-		panic(errors.New("RouteInformationURIMissing", "a RouteInformation needs a URI"))
+		panic(errors.New(tagRouteInformationURIMissing, "a RouteInformation needs a URI"))
 	}
 	return &RouteInformation{uri: opts.URI, state: opts.State}
 }
@@ -132,7 +132,7 @@ type Router[T any] struct {
 func NewRouter[T any](routerDelegate RouterDelegate[T], opts ...RouterOpts[T]) *Router[T] {
 	o := firstOpts(opts)
 	if foundation.DebugMode && o.RouteInformationProvider != nil && o.RouteInformationParser == nil {
-		panic(errors.New("RouterParserMissing", "a routeInformationParser must be provided when a routeInformationProvider is specified"))
+		panic(errors.New(tagRouterParserMissing, "a routeInformationParser must be provided when a routeInformationProvider is specified"))
 	}
 	return &Router[T]{NewStatefulWidgetBase(WidgetOpts{Key: o.Key}), routerDelegate, o}
 }
@@ -201,13 +201,13 @@ func findRouterScope(bc BuildContext) *routerScope {
 func RouterOf[T any](bc BuildContext) *Router[T] {
 	scope := findRouterScope(bc)
 	if foundation.DebugMode && scope == nil {
-		panic(errors.New("RouterMissing",
+		panic(errors.New(tagRouterMissing,
 			"Router operation requested with a context that does not include a Router; the context used to retrieve the Router must be that of a widget that is a descendant of a Router widget",
 			"context", describeContext(bc)))
 	}
 	router, ok := scope.routerState.routerWidget().(*Router[T])
 	if !ok {
-		panic(errors.New("RouterTypeMismatch", "the Router above the context has another configuration type",
+		panic(errors.New(tagRouterTypeMismatch, "the Router above the context has another configuration type",
 			"router", foundation.RuntimeTypeName(scope.routerState.routerWidget())))
 	}
 	return router
@@ -228,7 +228,7 @@ func RouterMaybeOf[T any](bc BuildContext) *Router[T] {
 func routerScopeElement(bc BuildContext) *routerScope {
 	el := GetElementForInheritedWidget[*routerScope](bc)
 	if el == nil {
-		panic(errors.New("RouterScopeMissing", "Router.navigate and Router.neglect need a context below a Router", "context", describeContext(bc)))
+		panic(errors.New(tagRouterScopeMissing, "Router.navigate and Router.neglect need a context below a Router", "context", describeContext(bc)))
 	}
 	return el.AsElement().widget.(*routerScope)
 }
@@ -375,7 +375,7 @@ func (s *routerState[T]) setStateWithExplicitReportStatus(status RouteInformatio
 	if foundation.DebugMode {
 		if current, ok := s.currentIntentionToReport.Get(); ok && current != RouteInformationReportingTypeNone && current != status {
 			if report := s.binding().ErrorReporter(); report != nil {
-				report(errors.New("RouterReportAmbiguous",
+				report(errors.New(tagRouterReportAmbiguous,
 					"both Router.navigate and Router.neglect have been called in this build cycle, and the Router cannot decide whether to report the route information; please make sure only one of them is called within the same build cycle"))
 			}
 		}
@@ -706,7 +706,7 @@ func (b *BackButtonDispatcherBase) invokeOwnCallback(defaultValue bool) bool {
 	result := defaultValue
 	foundation.Guard(report, foundation.CallbackPanicked, "while invoking the callback for "+foundation.RuntimeTypeName(b.self), nil, func() {
 		if len(b.callback) != 1 {
-			panic(errors.New("BackButtonDispatcherCallbacksInvalid", "a back button dispatcher must have exactly one callback to invoke it",
+			panic(errors.New(tagBackButtonDispatcherCallbacksInvalid, "a back button dispatcher must have exactly one callback to invoke it",
 				"callbacks", len(b.callback)))
 		}
 		result = b.callback[0].fn()
@@ -750,7 +750,7 @@ func (b *BackButtonDispatcherBase) TakePriority() { b.children = nil }
 // Flutter: widgets/router.dart BackButtonDispatcher.deferTo
 func (b *BackButtonDispatcherBase) DeferTo(child *ChildBackButtonDispatcher) {
 	if foundation.DebugMode && !b.self.HasCallbacks() {
-		panic(errors.New("BackButtonDispatcherEmpty", "a back button dispatcher that defers to a child must have callbacks"))
+		panic(errors.New(tagBackButtonDispatcherEmpty, "a back button dispatcher that defers to a child must have callbacks"))
 	}
 	b.children = slices.DeleteFunc(b.children, func(c *ChildBackButtonDispatcher) bool { return c == child })
 	b.children = append(b.children, child)
@@ -867,7 +867,7 @@ func (d *ChildBackButtonDispatcher) TakePriority() {
 // Flutter: widgets/router.dart ChildBackButtonDispatcher.deferTo
 func (d *ChildBackButtonDispatcher) DeferTo(child *ChildBackButtonDispatcher) {
 	if foundation.DebugMode && !d.self.HasCallbacks() {
-		panic(errors.New("ChildBackButtonDispatcherEmpty", "a child back button dispatcher that defers to a child must have callbacks"))
+		panic(errors.New(tagChildBackButtonDispatcherEmpty, "a child back button dispatcher that defers to a child must have callbacks"))
 	}
 	d.parent.DeferTo(d)
 	d.BackButtonDispatcherBase.DeferTo(child)
@@ -928,7 +928,7 @@ func (s *backButtonListenerState) DidChangeDependencies() {
 		root = scope.backButtonDispatcher
 	}
 	if foundation.DebugMode && root == nil {
-		panic(errors.New("BackButtonDispatcherMissing", "the parent router must have a backButtonDispatcher to use this widget"))
+		panic(errors.New(tagBackButtonDispatcherMissing, "the parent router must have a backButtonDispatcher to use this widget"))
 	}
 	s.dispatcher = root.CreateChildBackButtonDispatcher()
 	s.handle = s.dispatcher.AddCallback(s.Widget().onBackButtonPressed)
@@ -995,7 +995,7 @@ func InitRouteInformationParserBase[T any](b *RouteInformationParserBase[T], sel
 //
 // Flutter: widgets/router.dart RouteInformationParser.parseRouteInformation
 func (b *RouteInformationParserBase[T]) ParseRouteInformation(*RouteInformation) *Future[T] {
-	panic(errors.New("RouteInformationParserUnimplemented",
+	panic(errors.New(tagRouteInformationParserUnimplemented,
 		"one of ParseRouteInformation or ParseRouteInformationWithDependencies must be implemented"))
 }
 
@@ -1234,7 +1234,7 @@ func (p *PlatformRouteInformationProvider) Dispose() {
 // Flutter: widgets/router.dart PlatformRouteInformationProvider.didPushRouteInformation
 func (p *PlatformRouteInformationProvider) DidPushRouteInformation(routeInformation *RouteInformation) bool {
 	if foundation.DebugMode && !p.HasListeners() {
-		panic(errors.New("RouteInformationProviderNoListeners", "the platform pushed route information to a provider that has no listeners"))
+		panic(errors.New(tagRouteInformationProviderNoListeners, "the platform pushed route information to a provider that has no listeners"))
 	}
 	if p.value == routeInformation {
 		return true
@@ -1263,3 +1263,19 @@ func PopNavigatorRouterDelegatePopRoute(navigatorKey *GlobalKey[*NavigatorState]
 	}
 	return navigator.MaybePop()
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagBackButtonDispatcherCallbacksInvalid = "BackButtonDispatcherCallbacksInvalid"
+	tagBackButtonDispatcherEmpty            = "BackButtonDispatcherEmpty"
+	tagBackButtonDispatcherMissing          = "BackButtonDispatcherMissing"
+	tagChildBackButtonDispatcherEmpty       = "ChildBackButtonDispatcherEmpty"
+	tagRouteInformationParserUnimplemented  = "RouteInformationParserUnimplemented"
+	tagRouteInformationProviderNoListeners  = "RouteInformationProviderNoListeners"
+	tagRouteInformationURIMissing           = "RouteInformationURIMissing"
+	tagRouterMissing                        = "RouterMissing"
+	tagRouterParserMissing                  = "RouterParserMissing"
+	tagRouterReportAmbiguous                = "RouterReportAmbiguous"
+	tagRouterScopeMissing                   = "RouterScopeMissing"
+	tagRouterTypeMismatch                   = "RouterTypeMismatch"
+)

@@ -322,7 +322,7 @@ func NewSearchController() *SearchController {
 
 func (c *SearchController) debugCheckAttached() {
 	if foundation.DebugMode && c.anchor == nil {
-		panic(errors.New("SearchControllerNotAttached", "the SearchController is not attached to any SearchAnchor"))
+		panic(errors.New(tagSearchControllerNotAttached, "the SearchController is not attached to any SearchAnchor"))
 	}
 }
 
@@ -654,3 +654,8 @@ func (r *searchViewRoute) BuildPage(_ widgets.BuildContext, anim, _ animation.An
 		}))
 	}, nil))
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagSearchControllerNotAttached = "SearchControllerNotAttached"
+)

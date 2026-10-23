@@ -123,7 +123,7 @@ type SliverGridRegularTileLayout struct {
 func NewSliverGridRegularTileLayout(crossAxisCount int, mainAxisStride, crossAxisStride, childMainAxisExtent, childCrossAxisExtent float64, reverseCrossAxis bool) *SliverGridRegularTileLayout {
 	if foundation.DebugMode && (crossAxisCount <= 0 || !(mainAxisStride >= 0) || !(crossAxisStride >= 0) ||
 		!(childMainAxisExtent >= 0) || !(childCrossAxisExtent >= 0)) {
-		panic(errors.New("SliverGridLayoutInvalid", "a regular tile layout needs a positive cross axis count and strides and extents that are not negative",
+		panic(errors.New(tagSliverGridLayoutInvalid, "a regular tile layout needs a positive cross axis count and strides and extents that are not negative",
 			"crossAxisCount", crossAxisCount, "mainAxisStride", mainAxisStride, "crossAxisStride", crossAxisStride,
 			"childMainAxisExtent", childMainAxisExtent, "childCrossAxisExtent", childCrossAxisExtent))
 	}
@@ -208,7 +208,7 @@ type SliverGridDelegate interface {
 func assertGridSpacing(mainAxisSpacing, crossAxisSpacing, childAspectRatio float64, mainAxisExtent foundation.Opt[float64]) {
 	if foundation.DebugMode && (!(mainAxisSpacing >= 0) || !(crossAxisSpacing >= 0) || !(childAspectRatio > 0) ||
 		(mainAxisExtent.IsSome() && !(mainAxisExtent.Value() >= 0))) {
-		panic(errors.New("SliverGridDelegateInvalid", "a grid delegate needs spacings that are not negative, a positive aspect ratio and a main axis extent that is not negative",
+		panic(errors.New(tagSliverGridDelegateInvalid, "a grid delegate needs spacings that are not negative, a positive aspect ratio and a main axis extent that is not negative",
 			"mainAxisSpacing", mainAxisSpacing, "crossAxisSpacing", crossAxisSpacing, "childAspectRatio", childAspectRatio))
 	}
 }
@@ -256,7 +256,7 @@ func NewSliverGridDelegateWithFixedCrossAxisCount(crossAxisCount int, opts ...Sl
 		childAspectRatio: o.ChildAspectRatio.OrElse(1), mainAxisExtent: o.MainAxisExtent,
 	}
 	if foundation.DebugMode && crossAxisCount <= 0 {
-		panic(errors.New("SliverGridDelegateInvalid", "the cross axis count of a grid delegate must be positive", "crossAxisCount", crossAxisCount))
+		panic(errors.New(tagSliverGridDelegateInvalid, "the cross axis count of a grid delegate must be positive", "crossAxisCount", crossAxisCount))
 	}
 	assertGridSpacing(d.mainAxisSpacing, d.crossAxisSpacing, d.childAspectRatio, d.mainAxisExtent)
 	return d
@@ -362,7 +362,7 @@ func NewSliverGridDelegateWithMaxCrossAxisExtent(maxCrossAxisExtent float64, opt
 		childAspectRatio: o.ChildAspectRatio.OrElse(1), mainAxisExtent: o.MainAxisExtent,
 	}
 	if foundation.DebugMode && !(maxCrossAxisExtent > 0) {
-		panic(errors.New("SliverGridDelegateInvalid", "the maximum cross axis extent of a grid delegate must be positive", "maxCrossAxisExtent", maxCrossAxisExtent))
+		panic(errors.New(tagSliverGridDelegateInvalid, "the maximum cross axis extent of a grid delegate must be positive", "maxCrossAxisExtent", maxCrossAxisExtent))
 	}
 	assertGridSpacing(d.mainAxisSpacing, d.crossAxisSpacing, d.childAspectRatio, d.mainAxisExtent)
 	return d
@@ -412,7 +412,7 @@ func (d *SliverGridDelegateWithMaxCrossAxisExtent) MainAxisExtent() foundation.O
 // Flutter: rendering/sliver_grid.dart SliverGridDelegateWithMaxCrossAxisExtent.getLayout
 func (d *SliverGridDelegateWithMaxCrossAxisExtent) GetLayout(constraints SliverConstraints) SliverGridLayout {
 	if foundation.DebugMode && !(constraints.CrossAxisExtent > 0) {
-		panic(errors.New("SliverGridDelegateInvalid", "a grid with a maximum cross axis extent needs a cross axis extent that is positive",
+		panic(errors.New(tagSliverGridDelegateInvalid, "a grid with a maximum cross axis extent needs a cross axis extent that is positive",
 			"crossAxisExtent", constraints.CrossAxisExtent))
 	}
 	assertGridSpacing(d.mainAxisSpacing, d.crossAxisSpacing, d.childAspectRatio, d.mainAxisExtent)
@@ -638,3 +638,9 @@ func (r *RenderSliverGrid) PerformLayout() {
 	}
 	r.childManager.DidFinishLayout()
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagSliverGridDelegateInvalid = "SliverGridDelegateInvalid"
+	tagSliverGridLayoutInvalid   = "SliverGridLayoutInvalid"
+)

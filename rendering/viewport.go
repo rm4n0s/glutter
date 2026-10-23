@@ -205,7 +205,7 @@ func RenderAbstractViewportMaybeOf(object RenderObject) RenderAbstractViewport {
 func RenderAbstractViewportOf(object RenderObject) RenderAbstractViewport {
 	v := RenderAbstractViewportMaybeOf(object)
 	if v == nil && foundation.DebugMode {
-		panic(errors.New("ViewportNotFound", "RenderAbstractViewportOf() was called with a render object that was not a descendant of a "+
+		panic(errors.New(tagViewportNotFound, "RenderAbstractViewportOf() was called with a render object that was not a descendant of a "+
 			"RenderAbstractViewport. No RenderAbstractViewport render object ancestor could be found starting from the object that was "+
 			"passed to RenderAbstractViewportOf(). The render object where the viewport search started was: "+foundation.DescribeIdentity(object)))
 	}
@@ -289,7 +289,7 @@ func InitRenderViewportBase(b *RenderViewportBase, self Box, crossAxisDirection 
 		opts.AxisDirection = painting.AxisDirectionDown
 	}
 	if foundation.DebugMode && painting.AxisDirectionToAxis(opts.AxisDirection) == painting.AxisDirectionToAxis(crossAxisDirection) {
-		panic(errors.New("ViewportAxesInvalid", "the axisDirection and the crossAxisDirection of a viewport must be along different axes",
+		panic(errors.New(tagViewportAxesInvalid, "the axisDirection and the crossAxisDirection of a viewport must be along different axes",
 			"axisDirection", opts.AxisDirection.String(), "crossAxisDirection", crossAxisDirection.String()))
 	}
 	b.axisDirection = opts.AxisDirection
@@ -470,7 +470,7 @@ func (b *RenderViewportBase) Detach() {
 // ViewportIntrinsicsUnsupported unless intrinsic dimensions are being checked.
 func (b *RenderViewportBase) debugThrowIfNotCheckingIntrinsics() {
 	if foundation.DebugMode && !b.dbg().checkingIntrinsics {
-		panic(errors.New("ViewportIntrinsicsUnsupported", foundation.RuntimeTypeName(b.self)+" does not support returning intrinsic dimensions. "+
+		panic(errors.New(tagViewportIntrinsicsUnsupported, foundation.RuntimeTypeName(b.self)+" does not support returning intrinsic dimensions. "+
 			"Calculating the intrinsic dimensions would require instantiating every child of the viewport, which defeats the point of "+
 			"viewports being lazy. If you are merely trying to shrink-wrap the viewport in the main axis direction, consider a "+
 			"RenderShrinkWrappingViewport render object (ShrinkWrappingViewport widget), which achieves that effect without "+
@@ -550,7 +550,7 @@ type LayoutChildSequenceOpts struct {
 // Flutter: rendering/viewport.dart RenderViewportBase.layoutChildSequence
 func (b *RenderViewportBase) LayoutChildSequence(o LayoutChildSequenceOpts) float64 {
 	if foundation.DebugMode && (math.IsInf(o.ScrollOffset, 0) || math.IsNaN(o.ScrollOffset) || o.ScrollOffset < 0) {
-		panic(errors.New("ViewportScrollOffsetInvalid", "the scroll offset of a viewport must be finite and not negative",
+		panic(errors.New(tagViewportScrollOffsetInvalid, "the scroll offset of a viewport must be finite and not negative",
 			"scrollOffset", o.ScrollOffset, "object", foundation.DescribeIdentity(b.self)))
 	}
 	child, scrollOffset, layoutOffset := o.Child, o.ScrollOffset, o.LayoutOffset
@@ -1059,7 +1059,7 @@ func NewRenderViewport(crossAxisDirection painting.AxisDirection, offset Viewpor
 func InitRenderViewport(r *RenderViewport, self Box, crossAxisDirection painting.AxisDirection, offset ViewportOffset, opts ...RenderViewportOpts) {
 	o := firstOpts(opts)
 	if foundation.DebugMode && (o.Anchor < 0 || o.Anchor > 1) {
-		panic(errors.New("ViewportAnchorInvalid", "the anchor of a viewport must be between 0.0 and 1.0", "anchor", o.Anchor))
+		panic(errors.New(tagViewportAnchorInvalid, "the anchor of a viewport must be between 0.0 and 1.0", "anchor", o.Anchor))
 	}
 	r.anchor, r.center = o.Anchor, o.Center
 	InitRenderViewportBase(&r.RenderViewportBase, self, crossAxisDirection, offset, o.RenderViewportBaseOpts)
@@ -1094,7 +1094,7 @@ func (r *RenderViewport) Anchor() float64 { return r.anchor }
 // Flutter: rendering/viewport.dart RenderViewport.anchor
 func (r *RenderViewport) SetAnchor(value float64) {
 	if foundation.DebugMode && (value < 0 || value > 1) {
-		panic(errors.New("ViewportAnchorInvalid", "the anchor of a viewport must be between 0.0 and 1.0", "anchor", value))
+		panic(errors.New(tagViewportAnchorInvalid, "the anchor of a viewport must be between 0.0 and 1.0", "anchor", value))
 	}
 	if value == r.anchor {
 		return
@@ -1177,7 +1177,7 @@ func (r *RenderViewport) PerformLayout() {
 		}
 	}
 	if foundation.DebugMode && count >= maxLayoutCycles {
-		panic(errors.New("ViewportLayoutCyclesExceeded", "A RenderViewport exceeded its maximum number of layout cycles. "+
+		panic(errors.New(tagViewportLayoutCyclesExceeded, "A RenderViewport exceeded its maximum number of layout cycles. "+
 			"RenderViewport render objects, during layout, can retry if either their slivers or their ViewportOffset decide that the offset "+
 			"should be corrected to take into account information collected during that layout. In the case of this RenderViewport object, "+
 			"however, this happened "+strconv.Itoa(count)+" times and still there was no consensus on the scroll offset. This usually indicates a bug. "+
@@ -1193,7 +1193,7 @@ func (r *RenderViewport) PerformLayout() {
 func (r *RenderViewport) attemptLayout(mainAxisExtent, crossAxisExtent, correctedOffset float64) float64 {
 	if foundation.DebugMode && (math.IsNaN(mainAxisExtent) || mainAxisExtent < 0 || math.IsInf(mainAxisExtent, 0) ||
 		math.IsInf(crossAxisExtent, 0) || crossAxisExtent < 0 || math.IsInf(correctedOffset, 0) || math.IsNaN(correctedOffset)) {
-		panic(errors.New("ViewportExtentInvalid", "the extents and the offset of a viewport must be finite and not negative",
+		panic(errors.New(tagViewportExtentInvalid, "the extents and the offset of a viewport must be finite and not negative",
 			"mainAxisExtent", mainAxisExtent, "crossAxisExtent", crossAxisExtent, "correctedOffset", correctedOffset))
 	}
 	r.minScrollExtent = 0
@@ -1426,7 +1426,7 @@ func (r *RenderShrinkWrappingViewport) SetupParentData(child RenderObject) {
 // debugThrowIfNotCheckingIntrinsics has its own message.
 func (r *RenderShrinkWrappingViewport) debugThrowIfNotCheckingIntrinsics() {
 	if foundation.DebugMode && !r.dbg().checkingIntrinsics {
-		panic(errors.New("ViewportIntrinsicsUnsupported", foundation.RuntimeTypeName(r.self)+" does not support returning intrinsic dimensions. "+
+		panic(errors.New(tagViewportIntrinsicsUnsupported, foundation.RuntimeTypeName(r.self)+" does not support returning intrinsic dimensions. "+
 			"Calculating the intrinsic dimensions would require instantiating every child of the viewport, which defeats the point of "+
 			"viewports being lazy. If you are merely trying to shrink-wrap the viewport in the main axis direction, you should be able to "+
 			"achieve that effect by just giving the viewport loose constraints, without needing to measure its intrinsic dimensions.",
@@ -1440,12 +1440,12 @@ func (r *RenderShrinkWrappingViewport) debugCheckHasBoundedCrossAxis(constraints
 	}
 	if r.Axis() == painting.AxisVertical {
 		if !constraints.HasBoundedWidth() {
-			panic(errors.New("ViewportUnboundedCrossAxis", "Vertical viewport was given unbounded width. Viewports expand in the cross axis "+
+			panic(errors.New(tagViewportUnboundedCrossAxis, "Vertical viewport was given unbounded width. Viewports expand in the cross axis "+
 				"to fill their container and constrain their children to match their extent in the cross axis. In this case, a vertical "+
 				"shrinkwrapping viewport was given an unlimited amount of horizontal space in which to expand."))
 		}
 	} else if !constraints.HasBoundedHeight() {
-		panic(errors.New("ViewportUnboundedCrossAxis", "Horizontal viewport was given unbounded height. Viewports expand in the cross axis "+
+		panic(errors.New(tagViewportUnboundedCrossAxis, "Horizontal viewport was given unbounded height. Viewports expand in the cross axis "+
 			"to fill their container and constrain their children to match their extent in the cross axis. In this case, a horizontal "+
 			"shrinkwrapping viewport was given an unlimited amount of vertical space in which to expand."))
 	}
@@ -1507,7 +1507,7 @@ func (r *RenderShrinkWrappingViewport) PerformLayout() {
 func (r *RenderShrinkWrappingViewport) attemptLayout(mainAxisExtent, crossAxisExtent, correctedOffset float64) float64 {
 	if foundation.DebugMode && (math.IsNaN(mainAxisExtent) || mainAxisExtent < 0 || math.IsInf(crossAxisExtent, 0) ||
 		crossAxisExtent < 0 || math.IsInf(correctedOffset, 0) || math.IsNaN(correctedOffset)) {
-		panic(errors.New("ViewportExtentInvalid", "the extents and the offset of a viewport must be finite and not negative",
+		panic(errors.New(tagViewportExtentInvalid, "the extents and the offset of a viewport must be finite and not negative",
 			"mainAxisExtent", mainAxisExtent, "crossAxisExtent", crossAxisExtent, "correctedOffset", correctedOffset))
 	}
 	r.maxScrollExtent = 0
@@ -1623,3 +1623,14 @@ func (r *RenderShrinkWrappingViewport) IndexOfFirstChild() int { return 0 }
 func (r *RenderShrinkWrappingViewport) LabelForChild(index int) string {
 	return "child " + strconv.Itoa(index)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagViewportAnchorInvalid         = "ViewportAnchorInvalid"
+	tagViewportAxesInvalid           = "ViewportAxesInvalid"
+	tagViewportExtentInvalid         = "ViewportExtentInvalid"
+	tagViewportIntrinsicsUnsupported = "ViewportIntrinsicsUnsupported"
+	tagViewportLayoutCyclesExceeded  = "ViewportLayoutCyclesExceeded"
+	tagViewportNotFound              = "ViewportNotFound"
+	tagViewportScrollOffsetInvalid   = "ViewportScrollOffsetInvalid"
+)

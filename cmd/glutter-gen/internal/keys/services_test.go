@@ -140,7 +140,7 @@ func TestServicesKeyFailures(t *testing.T) {
 		{
 			"a USB usage that is not a number",
 			with("physical_key_data.g.json", `{"KeyA": {"scanCodes": {"usb": "x"}}}`),
-			"KeysDataInvalid", "generateServices.KeysDataInvalid",
+			"KeysDataInvalid", "generateServices->physicalKey.scanCode.KeysDataInvalid",
 		},
 	}
 	for _, tc := range tests {

@@ -58,7 +58,7 @@ func newCursors(p *Platform) *cursors {
 func (c *cursors) apply(w *window, cursor platform.MouseCursor) {
 	id, err := c.find(cursor, c.sizeFor(w))
 	if err != nil {
-		slog.Warn("the cursor could not be loaded", "cursor", cursor.String(), "error", err)
+		slog.Warn("the cursor could not be loaded", "cursor", cursor.String(), "err", err)
 		id = 0
 	}
 	c.p.x.defineCursor(c.p.display, w.xid, id) // 0 is None: the parent's cursor
@@ -79,7 +79,7 @@ func (c *cursors) find(cursor platform.MouseCursor, size int32) (uint64, error) 
 		if appErr, ok := errors.FromError(err); ok {
 			md = appErr.Metadata
 		}
-		return 0, errors.New("CursorLibraryFailed", "could not load libXcursor", "dlerror", md["dlerror"], "names", md["names"])
+		return 0, errors.New(tagCursorLibraryFailed, "could not load libXcursor", "dlerror", md["dlerror"], "names", md["names"])
 	}
 	if cursor == platform.MouseCursorNone {
 		return c.hidden(), nil
@@ -100,7 +100,7 @@ func (c *cursors) find(cursor platform.MouseCursor, size int32) (uint64, error) 
 		}
 	}
 	c.loaded[key] = 0
-	return 0, errors.New("CursorNotFound", "the XCursor theme has no such cursor", "cursor", cursor.String(), "names", names)
+	return 0, errors.New(tagCursorNotFound, "the XCursor theme has no such cursor", "cursor", cursor.String(), "names", names)
 }
 
 // useTheme tells libXcursor the theme and the size of the cursors to load. Without a
@@ -199,3 +199,9 @@ func (c *cursors) freeLoaded() {
 	}
 	c.loaded = map[cursorKey]uint64{}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagCursorLibraryFailed = "CursorLibraryFailed"
+	tagCursorNotFound      = "CursorNotFound"
+)

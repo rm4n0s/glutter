@@ -225,7 +225,7 @@ var _ explicit.Encoder = (*encoder)(nil)
 // previous frame was not submitted.
 func (d *Device) Begin() (explicit.Encoder, error) {
 	if d.open != nil {
-		return nil, errors.New("VulkanFrameOpen", "Begin was called before the frame in progress was submitted")
+		return nil, errors.New(tagVulkanFrameOpen, "Begin was called before the frame in progress was submitted")
 	}
 	if err := d.prepare(d.next); err != nil {
 		return nil, err
@@ -266,21 +266,15 @@ func (d *Device) barrierAll(cb commandBufferH) {
 	d.barrier(cb, stage2AllCommands, access2MemoryRead|access2MemoryWrite)
 }
 
-// foreign is the panic of a resource that this device did not make (a programmer error,
-// SPEC §14.2).
-func foreign(what string) error {
-	return errors.New("VulkanForeignResource", "the resource was not made by this Vulkan device", "resource", what)
-}
-
 // BeginPass implements explicit.Encoder. The target must be a texture of this device
 // with TextureRenderTarget.
 func (e *encoder) BeginPass(target explicit.Texture, load explicit.LoadOp, clear ui.Color) explicit.Pass {
 	t, ok := target.(*texture)
 	if !ok || t.d != e.d {
-		panic(foreign("texture"))
+		panic(errors.New(tagVulkanForeignResource, "the resource was not made by this Vulkan device", "resource", "texture"))
 	}
 	if e.pass != nil {
-		panic(errors.New("VulkanPassNotEnded", "BeginPass was called before the previous pass ended"))
+		panic(errors.New(tagVulkanPassNotEnded, "BeginPass was called before the previous pass ended"))
 	}
 	d := e.d
 	a := d.arena
@@ -313,7 +307,7 @@ func (e *encoder) CopyTexture(src explicit.Texture, r image.Rectangle, dst expli
 	s, ok1 := src.(*texture)
 	t, ok2 := dst.(*texture)
 	if !ok1 || !ok2 || s.d != e.d || t.d != e.d {
-		panic(foreign("texture"))
+		panic(errors.New(tagVulkanForeignResource, "the resource was not made by this Vulkan device", "resource", "texture"))
 	}
 	d := e.d
 	a := d.arena
@@ -332,7 +326,7 @@ func (e *encoder) CopyTexture(src explicit.Texture, r image.Rectangle, dst expli
 func (e *encoder) ReadTexture(src explicit.Texture, r image.Rectangle, done func(*image.RGBA, error)) {
 	s, ok := src.(*texture)
 	if !ok || s.d != e.d {
-		panic(foreign("texture"))
+		panic(errors.New(tagVulkanForeignResource, "the resource was not made by this Vulkan device", "resource", "texture"))
 	}
 	d := e.d
 	bpp := s.desc.Format.BytesPerPixel()
@@ -359,7 +353,7 @@ func (e *encoder) ReadTexture(src explicit.Texture, r image.Rectangle, done func
 func (e *encoder) Submit() error {
 	d := e.d
 	if d.open != e {
-		return errors.New("VulkanFrameNotOpen", "Submit was called on a frame that is not the one in progress")
+		return errors.New(tagVulkanFrameNotOpen, "Submit was called on a frame that is not the one in progress")
 	}
 	s := &d.slots[e.slot]
 	d.open = nil
@@ -448,7 +442,7 @@ var _ explicit.Pass = (*pass)(nil)
 func (p *pass) SetPipeline(pl explicit.Pipeline) {
 	pp, ok := pl.(*pipeline)
 	if !ok || pp.d != p.e.d {
-		panic(foreign("pipeline"))
+		panic(errors.New(tagVulkanForeignResource, "the resource was not made by this Vulkan device", "resource", "pipeline"))
 	}
 	p.pipeline = pp
 	p.e.d.f.cmdBindPipeline(p.e.cb, pipelineBindGraphics, pp.pipeline)
@@ -460,7 +454,7 @@ func (p *pass) SetBindGroup(group int, g explicit.BindGroup, dynamicOffsets ...u
 	d.limits.CheckSetBindGroup(group, dynamicOffsets)
 	bg, ok := g.(*bindGroup)
 	if !ok || bg.d != d {
-		panic(foreign("bind group"))
+		panic(errors.New(tagVulkanForeignResource, "the resource was not made by this Vulkan device", "resource", "bind group"))
 	}
 	a := d.arena
 	defer a.rewind(a.mark())
@@ -475,7 +469,7 @@ func (p *pass) SetVertexBuffer(slot int, b explicit.Buffer, offset int) {
 	d.limits.CheckSetVertexBuffer(slot)
 	vb, ok := b.(*buffer)
 	if !ok || vb.d != d {
-		panic(foreign("buffer"))
+		panic(errors.New(tagVulkanForeignResource, "the resource was not made by this Vulkan device", "resource", "buffer"))
 	}
 	a := d.arena
 	defer a.rewind(a.mark())
@@ -486,7 +480,7 @@ func (p *pass) SetVertexBuffer(slot int, b explicit.Buffer, offset int) {
 func (p *pass) SetIndexBuffer(b explicit.Buffer, offset int) {
 	ib, ok := b.(*buffer)
 	if !ok || ib.d != p.e.d {
-		panic(foreign("buffer"))
+		panic(errors.New(tagVulkanForeignResource, "the resource was not made by this Vulkan device", "resource", "buffer"))
 	}
 	p.e.d.f.cmdBindIndexBuffer(p.e.cb, ib.buffer, uint64(offset), indexTypeUint16)
 }
@@ -517,3 +511,11 @@ func (p *pass) End() {
 	d.barrierAll(p.e.cb)
 	p.e.pass = nil
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagVulkanForeignResource = "VulkanForeignResource"
+	tagVulkanFrameNotOpen    = "VulkanFrameNotOpen"
+	tagVulkanFrameOpen       = "VulkanFrameOpen"
+	tagVulkanPassNotEnded    = "VulkanPassNotEnded"
+)

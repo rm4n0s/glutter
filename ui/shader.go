@@ -127,13 +127,13 @@ type GradientSweepOpts struct {
 func validateColorStops(colors []Color, colorStops []float64) {
 	if colorStops == nil {
 		if len(colors) != 2 {
-			panic(errors.New("GradientColorCountInvalid", `"colors" must have length 2 if "colorStops" is omitted.`,
+			panic(errors.New(tagGradientColorCountInvalid, `"colors" must have length 2 if "colorStops" is omitted.`,
 				"colors", len(colors)))
 		}
 		return
 	}
 	if len(colors) != len(colorStops) {
-		panic(errors.New("GradientStopCountMismatch", `"colors" and "colorStops" arguments must have equal length.`,
+		panic(errors.New(tagGradientStopCountMismatch, `"colors" and "colorStops" arguments must have equal length.`,
 			"colors", len(colors), "colorStops", len(colorStops)))
 	}
 }
@@ -350,3 +350,9 @@ func (s *ImageShader) Matrix4() *Matrix4 { return &Matrix4{s.matrix} }
 //
 // Flutter: ui/painting.dart ImageShader
 func (s *ImageShader) FilterQuality() FilterQuality { return s.filterQuality }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagGradientColorCountInvalid = "GradientColorCountInvalid"
+	tagGradientStopCountMismatch = "GradientStopCountMismatch"
+)

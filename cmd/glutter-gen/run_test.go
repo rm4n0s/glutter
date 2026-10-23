@@ -24,6 +24,7 @@ func TestDispatch(t *testing.T) {
 		{name: "shaders reaches the real subcommand", args: []string{"shaders", "-nope"}, wantTag: "ShadersBadFlags", wantRoute: "dispatch->Run.ShadersBadFlags"},
 		{name: "copywith reaches the real subcommand", args: []string{"copywith", "-nope"}, wantTag: "CopyWithBadFlags", wantRoute: "dispatch->Run.CopyWithBadFlags"},
 		{name: "apicheck reaches the real subcommand", args: []string{"apicheck", "-nope"}, wantTag: "ApiCheckBadFlags", wantRoute: "dispatch->Run->run.ApiCheckBadFlags"},
+		{name: "errcheck reaches the real subcommand", args: []string{"errcheck", "-nope"}, wantTag: "ErrCheckBadFlags", wantRoute: "dispatch->Run->run.ErrCheckBadFlags"},
 		{name: "icons reaches the real subcommand", args: []string{"icons", "-nope"}, wantTag: "IconsBadFlags", wantRoute: "dispatch->Run.IconsBadFlags"},
 	}
 	for _, tt := range tests {
@@ -51,7 +52,7 @@ func TestDispatch(t *testing.T) {
 
 func TestCommandNames(t *testing.T) {
 	got := strings.Join(commandNames(), ",")
-	want := "apicheck,copywith,icons,keys,reexport,shaders,wayland"
+	want := "apicheck,copywith,errcheck,icons,keys,reexport,shaders,wayland"
 	if got != want {
 		t.Errorf("commandNames() = %q, want %q", got, want)
 	}
@@ -65,14 +66,13 @@ func TestFormatError(t *testing.T) {
 	t.Run("tagged error is printed as replayable JSON", func(t *testing.T) {
 		out := formatError(dispatch([]string{"reexport", "-nope"}))
 
-		var errJSON errors.ErrorJson
-		if err := json.Unmarshal([]byte(out), &errJSON); err != nil {
+		var entry struct {
+			Err errors.ErrorJson `json:"err"`
+		}
+		if err := json.Unmarshal([]byte(out), &entry); err != nil {
 			t.Fatalf("output is not JSON: %v\n%s", err, out)
 		}
-		replayed, err := errors.FromJson(errJSON)
-		if err != nil {
-			t.Fatalf("FromJson: %v", err)
-		}
+		replayed := errors.FromJson(entry.Err)
 		if replayed.Tag != "ReexportBadFlags" {
 			t.Errorf("Tag = %q, want ReexportBadFlags", replayed.Tag)
 		}

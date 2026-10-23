@@ -113,7 +113,7 @@ func (r *VerticalCaretMovementRun) IsValid() bool {
 
 func (r *VerticalCaretMovementRun) checkValid() {
 	if foundation.DebugMode && !r.IsValid() {
-		panic(errors.New("VerticalCaretMovementRunInvalid", "the VerticalCaretMovementRun is no longer valid: the text layout changed"))
+		panic(errors.New(tagVerticalCaretMovementRunInvalid, "the VerticalCaretMovementRun is no longer valid: the text layout changed"))
 	}
 }
 
@@ -391,28 +391,28 @@ func NewRenderEditable(textDirection ui.TextDirection, startHandleLayerLink, end
 	cursorWidth := o.CursorWidth.OrElse(1)
 	if foundation.DebugMode {
 		if m, ok := maxLines.Get(); ok && m <= 0 {
-			panic(errors.New("EditableMaxLinesInvalid", "maxLines must be positive", "maxLines", m))
+			panic(errors.New(tagEditableMaxLinesInvalid, "maxLines must be positive", "maxLines", m))
 		}
 		if m, ok := o.MinLines.Get(); ok && m <= 0 {
-			panic(errors.New("EditableMinLinesInvalid", "minLines must be positive", "minLines", m))
+			panic(errors.New(tagEditableMinLinesInvalid, "minLines must be positive", "minLines", m))
 		}
 		if mx, ok := maxLines.Get(); ok && o.MinLines.IsSome() && mx < o.MinLines.Value() {
-			panic(errors.New("EditableMinLinesGreaterThanMaxLines", "minLines can't be greater than maxLines",
+			panic(errors.New(tagEditableMinLinesGreaterThanMaxLines, "minLines can't be greater than maxLines",
 				"minLines", o.MinLines.Value(), "maxLines", mx))
 		}
 		if o.Expands && (maxLines.IsSome() || o.MinLines.IsSome()) {
-			panic(errors.New("EditableExpandsWithLines", "minLines and maxLines must be unset when expands is true",
+			panic(errors.New(tagEditableExpandsWithLines, "minLines and maxLines must be unset when expands is true",
 				"minLines", o.MinLines, "maxLines", maxLines))
 		}
 		if o.ObscuringCharacter != "" && foundation.GraphemeCount(o.ObscuringCharacter) != 1 {
-			panic(errors.New("EditableObscuringCharacterInvalid", "the obscuring character must be one character",
+			panic(errors.New(tagEditableObscuringCharacterInvalid, "the obscuring character must be one character",
 				"obscuringCharacter", o.ObscuringCharacter))
 		}
 		if cursorWidth < 0 {
-			panic(errors.New("EditableCursorWidthInvalid", "the cursor width can't be negative", "cursorWidth", cursorWidth))
+			panic(errors.New(tagEditableCursorWidthInvalid, "the cursor width can't be negative", "cursorWidth", cursorWidth))
 		}
 		if h, ok := o.CursorHeight.Get(); ok && h < 0 {
-			panic(errors.New("EditableCursorHeightInvalid", "the cursor height can't be negative", "cursorHeight", h))
+			panic(errors.New(tagEditableCursorHeightInvalid, "the cursor height can't be negative", "cursorHeight", h))
 		}
 	}
 	obscuring := o.ObscuringCharacter
@@ -471,7 +471,7 @@ func NewRenderEditable(textDirection ui.TextDirection, startHandleLayerLink, end
 	InitContainerRenderObject(&r.ContainerRenderObject, r)
 
 	if foundation.DebugMode && r.showCursor.Value() && !o.CursorColor.IsSome() {
-		panic(errors.New("EditableCursorColorMissing", "the cursor color is needed to show the cursor"))
+		panic(errors.New(tagEditableCursorColorMissing, "the cursor color is needed to show the cursor"))
 	}
 
 	heightStyle, widthStyle := o.SelectionHeightStyle, o.SelectionWidthStyle
@@ -712,7 +712,7 @@ func (r *RenderEditable) SetObscuringCharacter(value string) {
 		return
 	}
 	if foundation.DebugMode && foundation.GraphemeCount(value) != 1 {
-		panic(errors.New("EditableObscuringCharacterInvalid", "the obscuring character must be one character", "obscuringCharacter", value))
+		panic(errors.New(tagEditableObscuringCharacterInvalid, "the obscuring character must be one character", "obscuringCharacter", value))
 	}
 	r.obscuringChar = value
 	r.MarkNeedsLayout()
@@ -1105,7 +1105,7 @@ func (r *RenderEditable) MaxLines() foundation.Opt[int] { return r.maxLines }
 // Flutter: rendering/editable.dart RenderEditable.maxLines
 func (r *RenderEditable) SetMaxLines(value foundation.Opt[int]) {
 	if foundation.DebugMode && value.IsSome() && value.Value() <= 0 {
-		panic(errors.New("EditableMaxLinesInvalid", "maxLines must be positive", "maxLines", value.Value()))
+		panic(errors.New(tagEditableMaxLinesInvalid, "maxLines must be positive", "maxLines", value.Value()))
 	}
 	if r.maxLines == value {
 		return
@@ -1131,7 +1131,7 @@ func (r *RenderEditable) MinLines() foundation.Opt[int] { return r.minLines }
 // Flutter: rendering/editable.dart RenderEditable.minLines
 func (r *RenderEditable) SetMinLines(value foundation.Opt[int]) {
 	if foundation.DebugMode && value.IsSome() && value.Value() <= 0 {
-		panic(errors.New("EditableMinLinesInvalid", "minLines must be positive", "minLines", value.Value()))
+		panic(errors.New(tagEditableMinLinesInvalid, "minLines must be positive", "minLines", value.Value()))
 	}
 	if r.minLines == value {
 		return
@@ -1873,7 +1873,7 @@ func (r *RenderEditable) handleLongPressGesture() { r.HandleLongPress() }
 func (r *RenderEditable) lastTapDown() ui.Offset {
 	p, ok := r.lastTapDownPosition.Get()
 	if !ok && foundation.DebugMode {
-		panic(errors.New("EditableNoTapDown", "the editable was asked to select at the position of a tap down, but there was none"))
+		panic(errors.New(tagEditableNoTapDown, "the editable was asked to select at the position of a tap down, but there was none"))
 	}
 	return p
 }
@@ -1978,7 +1978,7 @@ func (r *RenderEditable) GetWordAtOffset(position ui.TextPosition) services.Text
 		effectiveOffset = position.Offset - 1
 	}
 	if foundation.DebugMode && effectiveOffset < 0 {
-		panic(errors.New("EditableWordOffsetNegative", "the effective offset of a word position is negative", "position", position.String()))
+		panic(errors.New(tagEditableWordOffsetNegative, "the effective offset of a word position is negative", "position", position.String()))
 	}
 	// Deviation: Flutter has a rule for iOS and Android here (selecting the
 	// previous word when the position is on whitespace); the other platforms
@@ -2243,3 +2243,18 @@ func (r *RenderEditable) DebugDescribeChildren() []foundation.DiagnosticsNode {
 func (r *RenderEditable) obscured() string {
 	return strings.Repeat(r.obscuringChar, foundation.GraphemeCount(r.PlainText()))
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagEditableCursorColorMissing          = "EditableCursorColorMissing"
+	tagEditableCursorHeightInvalid         = "EditableCursorHeightInvalid"
+	tagEditableCursorWidthInvalid          = "EditableCursorWidthInvalid"
+	tagEditableExpandsWithLines            = "EditableExpandsWithLines"
+	tagEditableMaxLinesInvalid             = "EditableMaxLinesInvalid"
+	tagEditableMinLinesGreaterThanMaxLines = "EditableMinLinesGreaterThanMaxLines"
+	tagEditableMinLinesInvalid             = "EditableMinLinesInvalid"
+	tagEditableNoTapDown                   = "EditableNoTapDown"
+	tagEditableObscuringCharacterInvalid   = "EditableObscuringCharacterInvalid"
+	tagEditableWordOffsetNegative          = "EditableWordOffsetNegative"
+	tagVerticalCaretMovementRunInvalid     = "VerticalCaretMovementRunInvalid"
+)

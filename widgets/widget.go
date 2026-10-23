@@ -166,7 +166,7 @@ func CreateElement(w Widget) Element {
 	case statelessWidget:
 		return NewStatelessElement(x)
 	}
-	panic(errors.New("WidgetKindUnknown",
+	panic(errors.New(tagWidgetKindUnknown,
 		"the framework cannot tell which element this widget needs; embed StatelessWidget and implement Build, embed StatefulWidget and implement CreateState, or implement CreateElement",
 		"widget", foundation.RuntimeTypeName(w)))
 }
@@ -217,3 +217,8 @@ func (d *widgetDescription) DebugFillProperties(p *foundation.DiagnosticProperti
 		dd.DebugFillProperties(p)
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagWidgetKindUnknown = "WidgetKindUnknown"
+)

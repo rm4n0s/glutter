@@ -256,7 +256,7 @@ func (h *tickerHost) ErrorReporter() foundation.ErrorReporter {
 func (h *tickerHost) newTicker(onTick scheduler.TickerCallback) *scheduler.Ticker {
 	b := h.binding()
 	if b == nil {
-		panic(errors.New("WidgetsBindingMissing",
+		panic(errors.New(tagWidgetsBindingMissing,
 			"a ticker was created by a State whose build owner does not belong to a WidgetsBinding; widgets run by RunApp and by gluttertest always have one"))
 	}
 	t := scheduler.NewTicker(b.Scheduler(), onTick)
@@ -301,7 +301,7 @@ func (p *SingleTickerProvider) attachStateMixin(s State) { p.attach(s) }
 // Flutter: widgets/ticker_provider.dart SingleTickerProviderStateMixin.createTicker
 func (p *SingleTickerProvider) CreateTicker(onTick scheduler.TickerCallback) *scheduler.Ticker {
 	if foundation.DebugMode && p.ticker != nil {
-		panic(errors.New("SingleTickerProviderMultipleTickers",
+		panic(errors.New(tagSingleTickerProviderMultipleTickers,
 			fmt.Sprintf("%s is a SingleTickerProvider but multiple tickers were created; a SingleTickerProvider can only be used as a TickerProvider once; if a State is used for multiple AnimationController objects, or if it is passed to other objects and those objects might use it more than one time in total, then instead of embedding a SingleTickerProvider, use a regular TickerProvider", foundation.RuntimeTypeName(p.state)),
 			"state", foundation.RuntimeTypeName(p.state)))
 	}
@@ -342,7 +342,7 @@ func (p *SingleTickerProvider) activateStateMixin() {
 
 func (p *SingleTickerProvider) disposeStateMixin() {
 	if foundation.DebugMode && p.ticker != nil && p.ticker.IsActive() {
-		panic(errors.New("TickerProviderActiveTicker",
+		panic(errors.New(tagTickerProviderActiveTicker,
 			fmt.Sprintf("%s was disposed with an active Ticker; %s created a Ticker via its SingleTickerProvider, but at the time its Dispose was called, that Ticker was still active; the Ticker must be disposed before the State is; tickers used by AnimationControllers should be disposed by calling Dispose on the AnimationController itself, otherwise the ticker will leak",
 				foundation.DescribeIdentity(p.state), foundation.RuntimeTypeName(p.state)),
 			"state", foundation.RuntimeTypeName(p.state), "ticker", p.ticker.String()))
@@ -422,7 +422,7 @@ func (p *TickerProvider) disposeStateMixin() {
 	if foundation.DebugMode {
 		for _, t := range p.tickers {
 			if t.IsActive() {
-				panic(errors.New("TickerProviderActiveTicker",
+				panic(errors.New(tagTickerProviderActiveTicker,
 					fmt.Sprintf("%s was disposed with an active Ticker; %s created a Ticker via its TickerProvider, but at the time its Dispose was called, that Ticker was still active; all Tickers must be disposed before the State is; tickers used by AnimationControllers should be disposed by calling Dispose on the AnimationController itself, otherwise the ticker will leak",
 						foundation.DescribeIdentity(p.state), foundation.RuntimeTypeName(p.state)),
 					"state", foundation.RuntimeTypeName(p.state), "ticker", t.String()))
@@ -434,3 +434,9 @@ func (p *TickerProvider) disposeStateMixin() {
 		p.notifier = nil
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagSingleTickerProviderMultipleTickers = "SingleTickerProviderMultipleTickers"
+	tagTickerProviderActiveTicker          = "TickerProviderActiveTicker"
+)

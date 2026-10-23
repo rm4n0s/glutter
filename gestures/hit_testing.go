@@ -201,7 +201,7 @@ func (r *HitTestResult) lastTransform() *ui.Matrix4 {
 // Flutter: gestures/hit_test.dart HitTestResult.add
 func (r *HitTestResult) Add(entry HitTestEntry) {
 	if foundation.DebugMode && entry.Transform() != nil {
-		panic(errors.New("HitTestEntryAddedTwice", "a hit test entry was added to a result twice",
+		panic(errors.New(tagHitTestEntryAddedTwice, "a hit test entry was added to a result twice",
 			"entry", entry))
 	}
 	entry.setTransform(r.lastTransform())
@@ -216,7 +216,7 @@ func (r *HitTestResult) Add(entry HitTestEntry) {
 // Flutter: gestures/hit_test.dart HitTestResult.pushTransform
 func (r *HitTestResult) PushTransform(transform *ui.Matrix4) {
 	if foundation.DebugMode && !debugHasNoPerspective(transform) {
-		panic(errors.New("HitTestTransformPerspective",
+		panic(errors.New(tagHitTestTransformPerspective,
 			"the third row and third column of a transform matrix for pointer events must be (0, 0, 1, 0) "+
 				"to ensure that a transformed point is directly under the pointing device; "+
 				"run the paint matrix through RemovePerspectiveTransform",
@@ -244,7 +244,7 @@ func (r *HitTestResult) PopTransform() {
 		s.transforms = s.transforms[:len(s.transforms)-1]
 	}
 	if foundation.DebugMode && len(s.transforms) == 0 {
-		panic(errors.New("HitTestTransformStackEmpty", "PopTransform was called more often than PushTransform"))
+		panic(errors.New(tagHitTestTransformStackEmpty, "PopTransform was called more often than PushTransform"))
 	}
 }
 
@@ -284,3 +284,10 @@ func describeEntry(e HitTestEntry) string {
 	}
 	return foundation.DescribeIdentity(e) + "(" + describeTarget(e.Target()) + ")"
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagHitTestEntryAddedTwice      = "HitTestEntryAddedTwice"
+	tagHitTestTransformPerspective = "HitTestTransformPerspective"
+	tagHitTestTransformStackEmpty  = "HitTestTransformStackEmpty"
+)

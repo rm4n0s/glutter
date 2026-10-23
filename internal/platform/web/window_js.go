@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"syscall/js"
 
+	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/internal/gpu"
 	"github.com/rm4n0s/glutter/internal/platform"
 	"github.com/rm4n0s/glutter/ui"
@@ -246,7 +247,9 @@ func (w *window) scheduleFrame() {
 // StartDrag fails with DragUnsupported: drag and drop is not in 1.1.
 //
 // Flutter: no counterpart
-func (w *window) StartDrag(ui.DragRequest) error { return errDragUnsupported() }
+func (w *window) StartDrag(ui.DragRequest) error {
+	return errors.New(tagDragUnsupported, "dragging from a web page is not supported")
+}
 
 // PerformWindowAction ignores the action: a page cannot move, resize or close itself.
 //
@@ -287,7 +290,13 @@ func (w *window) SetContentType(ui.ContentType) {}
 // Flutter: no counterpart
 func (w *window) KeepScreenOn(on bool) error {
 	if on {
-		return errScreenOnUnsupported()
+		return errors.New(tagIdleInhibitUnavailable, "the web platform cannot keep the screen on yet")
 	}
 	return nil
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagDragUnsupported        = "DragUnsupported"
+	tagIdleInhibitUnavailable = "IdleInhibitUnavailable"
+)

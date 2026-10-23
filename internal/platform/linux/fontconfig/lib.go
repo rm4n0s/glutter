@@ -59,7 +59,7 @@ func loadLibrary() (*library, error) {
 		if appErr, ok := errors.FromError(err); ok {
 			md = appErr.Metadata
 		}
-		return nil, errors.New("FontconfigLoadFailed", "could not load libfontconfig",
+		return nil, errors.New(tagFontconfigLoadFailed, "could not load libfontconfig",
 			"names", md["names"], "dlerror", md["dlerror"])
 	}
 	l := new(library)
@@ -90,3 +90,8 @@ func loadLibrary() (*library, error) {
 	}
 	return l, nil
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagFontconfigLoadFailed = "FontconfigLoadFailed"
+)

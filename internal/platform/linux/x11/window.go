@@ -98,7 +98,7 @@ func (p *Platform) NewWindow(cfg platform.WindowConfig) (platform.Window, error)
 	w.xid = p.x.createWindow(p.display, p.root, 0, 0, uint32(w.width), uint32(w.height), 0, depth, inputOutput, visual, mask, attrs)
 	if w.xid == 0 {
 		w.freeColormap()
-		return nil, errors.New("X11WindowFailed", "XCreateWindow failed", "width", w.width, "height", w.height)
+		return nil, errors.New(tagX11WindowFailed, "XCreateWindow failed", "width", w.width, "height", w.height)
 	}
 	p.windows[w.xid] = w
 	p.hadWindow = true
@@ -123,7 +123,7 @@ func (w *window) chooseVisual() (visual uintptr, depth int32) {
 	p := w.p
 	id, err := p.visualFor(p.display)
 	if err != nil {
-		slog.Warn("EGL has no visual for X11, so the window cannot be drawn with OpenGL", "error", err)
+		slog.Warn("EGL has no visual for X11, so the window cannot be drawn with OpenGL", "err", err)
 		return 0, 0
 	}
 	template := dl.Calloc(1, 64)
@@ -162,7 +162,7 @@ func (w *window) setProperties() {
 
 	w.SetTitle(cfg.Title)
 	if err := w.SetIcon(cfg.Icon); err != nil {
-		slog.Warn("the window icon was not set", "error", err)
+		slog.Warn("the window icon was not set", "err", err)
 	}
 
 	appID := cfg.AppID
@@ -595,7 +595,7 @@ func (w *window) SetContentType(ui.ContentType) {}
 //
 // Flutter: no counterpart
 func (w *window) KeepScreenOn(bool) error {
-	return errors.New("IdleInhibitUnavailable", "the X11 backend cannot keep the screen on")
+	return errors.New(tagIdleInhibitUnavailable, "the X11 backend cannot keep the screen on")
 }
 
 // PerformWindowAction does what the title bar of the app asks: minimize, maximize,
@@ -691,3 +691,9 @@ func (w *window) Close() {
 		w.p.loop.Stop()
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagIdleInhibitUnavailable = "IdleInhibitUnavailable"
+	tagX11WindowFailed        = "X11WindowFailed"
+)

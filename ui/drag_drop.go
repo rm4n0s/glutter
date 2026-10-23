@@ -128,7 +128,7 @@ type DragResult struct {
 func (d *PlatformDispatcher) StartDrag(view ViewID, request DragRequest) error {
 	h, ok := d.host.(DropHost)
 	if !ok {
-		return errors.New("DragUnsupported", "the platform cannot start a drag and drop operation")
+		return errors.New(tagDragUnsupported, "the platform cannot start a drag and drop operation")
 	}
 	return h.StartDrag(view, request)
 }
@@ -153,3 +153,8 @@ func (d *PlatformDispatcher) DispatchDragEnd(result DragResult) {
 		d.OnDragEnd(result)
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagDragUnsupported = "DragUnsupported"
+)

@@ -274,7 +274,7 @@ type ListTile struct {
 func NewListTile(opts ...ListTileOpts) *ListTile {
 	o := firstOpts(opts)
 	if foundation.DebugMode && o.IsThreeLine.OrElse(false) && o.Subtitle == nil {
-		panic(errors.New("ListTileThreeLineNoSubtitle", "a three line list tile needs a subtitle"))
+		panic(errors.New(tagListTileThreeLineNoSubtitle, "a three line list tile needs a subtitle"))
 	}
 	return &ListTile{StatelessWidget: widgets.NewStatelessWidgetBase(widgets.WidgetOpts{Key: o.Key}), o: o}
 }
@@ -286,7 +286,7 @@ func NewListTile(opts ...ListTileOpts) *ListTile {
 // Flutter: material/list_tile.dart ListTile.divideTiles
 func ListTileDivideTiles(bc widgets.BuildContext, tiles []widgets.Widget, color foundation.Opt[ui.Color]) []widgets.Widget {
 	if foundation.DebugMode && color.IsNone() && bc == nil {
-		panic(errors.New("ListTileDivideTilesNoColor", "divideTiles needs a color or a context"))
+		panic(errors.New(tagListTileDivideTilesNoColor, "divideTiles needs a color or a context"))
 	}
 	if len(tiles) <= 1 {
 		return tiles
@@ -545,7 +545,7 @@ func debugCheckListTileBackgroundIsHidden(bc widgets.BuildContext) {
 		return true
 	})
 	if intermediate != nil {
-		panic(errors.New("ListTileBackgroundHidden", "the ListTile is wrapped in a widget that has a background color, which hides the background and the ink splashes of the tile; wrap the ListTile in its own Material, or remove the color of the widget",
+		panic(errors.New(tagListTileBackgroundHidden, "the ListTile is wrapped in a widget that has a background color, which hides the background and the ink splashes of the tile; wrap the ListTile in its own Material, or remove the color of the widget",
 			"widget", fmt.Sprintf("%T", intermediate)))
 	}
 }
@@ -597,3 +597,10 @@ func listTileDefaultsM3(theme *ThemeData) listTileDefaults {
 		selectedColor:               foundation.Some(colors.Primary()), iconColor: foundation.Some(colors.OnSurfaceVariant()),
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagListTileBackgroundHidden    = "ListTileBackgroundHidden"
+	tagListTileDivideTilesNoColor  = "ListTileDivideTilesNoColor"
+	tagListTileThreeLineNoSubtitle = "ListTileThreeLineNoSubtitle"
+)

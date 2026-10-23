@@ -98,7 +98,7 @@ func WindowRegistryMaybeOf(bc BuildContext) *WindowRegistry {
 func WindowRegistryOf(bc BuildContext) *WindowRegistry {
 	r := WindowRegistryMaybeOf(bc)
 	if r == nil {
-		panic(errors.New("WindowRegistryMissing",
+		panic(errors.New(tagWindowRegistryMissing,
 			"no WindowRegistry found in the context; WindowRegistryOf needs a WindowManager widget above the context",
 			"context", bc.(Element).String()))
 	}
@@ -182,3 +182,8 @@ func (s *windowManagerState) Build(BuildContext) Widget {
 		registry: s.registry,
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagWindowRegistryMissing = "WindowRegistryMissing"
+)

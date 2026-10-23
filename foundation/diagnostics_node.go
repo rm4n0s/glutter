@@ -160,7 +160,7 @@ func InitDiagnosticsNodeBase(base *DiagnosticsNodeBase, self DiagnosticsNode, op
 		// A name ending with ':' indicates that the user forgot that the ':'
 		// will be automatically added for them when generating descriptions
 		// of the property.
-		panic(errors.New("DiagnosticsNameEndsWithColon", "Names of diagnostic nodes must not end with colons.", "name", name))
+		panic(errors.New(tagDiagnosticsNameEndsWithColon, "Names of diagnostic nodes must not end with colons.", "name", name))
 	}
 	*base = DiagnosticsNodeBase{
 		self:          self,
@@ -245,7 +245,7 @@ func (b *DiagnosticsNodeBase) TextTreeConfiguration() *TextTreeConfiguration {
 		return WhitespaceTextConfiguration
 	}
 	// An unspecified style cannot be drawn.
-	panic(errors.New("DiagnosticsStyleUnspecified", "a diagnostics node must have a style to be drawn",
+	panic(errors.New(tagDiagnosticsStyleUnspecified, "a diagnostics node must have a style to be drawn",
 		"type", RuntimeTypeName(b.self)))
 }
 
@@ -330,3 +330,9 @@ type DiagnosticsNodeMessageOpts struct {
 	// default.
 	NoWrap bool
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagDiagnosticsNameEndsWithColon = "DiagnosticsNameEndsWithColon"
+	tagDiagnosticsStyleUnspecified  = "DiagnosticsStyleUnspecified"
+)

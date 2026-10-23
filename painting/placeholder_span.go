@@ -102,7 +102,12 @@ func (b PlaceholderSpanBase) DebugFillBase(p *foundation.DiagnosticPropertiesBui
 // Flutter: painting/placeholder_span.dart PlaceholderSpan.debugAssertIsValid
 func (b PlaceholderSpanBase) DebugAssertIsValid() bool {
 	if foundation.DebugMode {
-		panic(errors.New("PlaceholderSpanNotImplemented", "Consider implementing the WidgetSpan interface instead."))
+		panic(errors.New(tagPlaceholderSpanNotImplemented, "Consider implementing the WidgetSpan interface instead."))
 	}
 	return true
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagPlaceholderSpanNotImplemented = "PlaceholderSpanNotImplemented"
+)

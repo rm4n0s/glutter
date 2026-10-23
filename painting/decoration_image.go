@@ -266,7 +266,7 @@ func (p *decorationImagePainter) Paint(canvas *ui.Canvas, rect ui.Rect, clipPath
 	flipHorizontally := false
 	if p.details.MatchTextDirection {
 		if foundation.DebugMode && configuration.TextDirection == ui.TextDirectionUnspecified {
-			panic(errors.New("DecorationImageNoTextDirection",
+			panic(errors.New(tagDecorationImageNoTextDirection,
 				"DecorationImage.matchTextDirection can only be used when a TextDirection is available. "+
 					"When DecorationImagePainter.paint() was called, there was no text direction provided in the ImageConfiguration object to match.",
 				"decorationImage", p.details.String(), "configuration", configuration.String()))
@@ -276,7 +276,7 @@ func (p *decorationImagePainter) Paint(canvas *ui.Canvas, rect ui.Rect, clipPath
 		}
 	}
 	if configuration.Binding == nil {
-		panic(errors.New("ImageConfigurationNoBinding", "the ImageConfiguration given to a DecorationImage painter has no PaintingBinding"))
+		panic(errors.New(tagImageConfigurationNoBinding, "the ImageConfiguration given to a DecorationImage painter has no PaintingBinding"))
 	}
 	newStream := ImageProviderResolve(configuration.Binding, p.details.Image, configuration)
 	if p.imageStream == nil || newStream.Key() != p.imageStream.Key() {
@@ -388,7 +388,7 @@ type PaintImageOpts struct {
 func PaintImage(canvas *ui.Canvas, rect ui.Rect, image *ui.Image, opts ...PaintImageOpts) {
 	o := firstOpts(opts)
 	if foundation.DebugMode && image.IsDisposed() {
-		panic(errors.New("PaintImageDisposed", "Cannot paint an image that is disposed. The caller of paintImage is expected to wait to dispose the image until after painting has completed."))
+		panic(errors.New(tagPaintImageDisposed, "Cannot paint an image that is disposed. The caller of paintImage is expected to wait to dispose the image until after painting has completed."))
 	}
 	if rect.IsEmpty() {
 		return
@@ -427,7 +427,7 @@ func PaintImage(canvas *ui.Canvas, rect ui.Rect, image *ui.Image, opts ...PaintI
 		}
 	}
 	if foundation.DebugMode && hasSlice && (fit == BoxFitNone || fit == BoxFitCover) {
-		panic(errors.New("PaintImageCenterSliceFit", "a centerSlice needs a BoxFit that shows the whole image", "fit", fit.String()))
+		panic(errors.New(tagPaintImageCenterSliceFit, "a centerSlice needs a BoxFit that shows the whole image", "fit", fit.String()))
 	}
 	fittedSizes := ApplyBoxFit(fit, inputSize.Div(scale), outputSize)
 	sourceSize := fittedSizes.Source.Mul(scale)
@@ -436,7 +436,7 @@ func PaintImage(canvas *ui.Canvas, rect ui.Rect, image *ui.Image, opts ...PaintI
 		outputSize = outputSize.Add(sliceBorder)
 		destinationSize = destinationSize.Add(sliceBorder)
 		if foundation.DebugMode && sourceSize != inputSize {
-			panic(errors.New("PaintImageCenterSliceCropped", "centerSlice was used with a BoxFit that does not guarantee that the image is fully visible"))
+			panic(errors.New(tagPaintImageCenterSliceCropped, "centerSlice was used with a BoxFit that does not guarantee that the image is fully visible"))
 		}
 	}
 	if repeat != ImageRepeatNoRepeat && destinationSize == outputSize {
@@ -587,3 +587,12 @@ func (p *blendedDecorationImagePainter) Dispose() {
 		p.b.Dispose()
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagDecorationImageNoTextDirection = "DecorationImageNoTextDirection"
+	tagImageConfigurationNoBinding    = "ImageConfigurationNoBinding"
+	tagPaintImageCenterSliceCropped   = "PaintImageCenterSliceCropped"
+	tagPaintImageCenterSliceFit       = "PaintImageCenterSliceFit"
+	tagPaintImageDisposed             = "PaintImageDisposed"
+)

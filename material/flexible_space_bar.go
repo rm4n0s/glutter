@@ -116,7 +116,7 @@ func NewFlexibleSpaceBar(opts ...FlexibleSpaceBarOpts) *FlexibleSpaceBar {
 		o.StretchModes = []StretchMode{StretchModeZoomBackground}
 	}
 	if foundation.DebugMode && o.ExpandedTitleScale.OrElse(1.5) < 1 {
-		panic(errors.New("FlexibleSpaceBarExpandedTitleScale", "the expanded title scale must be at least 1", "scale", o.ExpandedTitleScale.Value()))
+		panic(errors.New(tagFlexibleSpaceBarExpandedTitleScale, "the expanded title scale must be at least 1", "scale", o.ExpandedTitleScale.Value()))
 	}
 	return &FlexibleSpaceBar{StatefulWidget: widgets.NewStatefulWidgetBase(widgets.WidgetOpts{Key: o.Key}), o: o}
 }
@@ -233,7 +233,7 @@ func (s *flexibleSpaceBarState) Build(bc widgets.BuildContext) widgets.Widget {
 		w := s.Widget()
 		settings, ok := widgets.DependOn[*FlexibleSpaceBarSettings](bc)
 		if !ok {
-			panic(errors.New("FlexibleSpaceBarNoSettings", "a FlexibleSpaceBar needs a FlexibleSpaceBarSettings above it (FlexibleSpaceBarCreateSettings makes one)"))
+			panic(errors.New(tagFlexibleSpaceBarNoSettings, "a FlexibleSpaceBar needs a FlexibleSpaceBarSettings above it (FlexibleSpaceBarCreateSettings makes one)"))
 		}
 		var children []widgets.Widget
 		deltaExtent := settings.maxExtent - settings.minExtent
@@ -371,7 +371,7 @@ func NewFlexibleSpaceBarSettings(toolbarOpacity, minExtent, maxExtent, currentEx
 	o := firstOpts(opts)
 	if foundation.DebugMode && !(minExtent >= 0 && maxExtent >= 0 && currentExtent >= 0 && toolbarOpacity >= 0.0 &&
 		minExtent <= maxExtent && minExtent <= currentExtent && currentExtent <= maxExtent) {
-		panic(errors.New("FlexibleSpaceBarSettingsInvalid", "the extents of FlexibleSpaceBarSettings must satisfy 0 <= minExtent <= currentExtent <= maxExtent, and the toolbar opacity must not be negative",
+		panic(errors.New(tagFlexibleSpaceBarSettingsInvalid, "the extents of FlexibleSpaceBarSettings must satisfy 0 <= minExtent <= currentExtent <= maxExtent, and the toolbar opacity must not be negative",
 			"toolbarOpacity", toolbarOpacity, "minExtent", minExtent, "maxExtent", maxExtent, "currentExtent", currentExtent))
 	}
 	return &FlexibleSpaceBarSettings{InheritedWidget: widgets.NewInheritedWidgetBase(child, widgets.WidgetOpts{Key: o.Key}),
@@ -479,3 +479,10 @@ func (r *renderFlexibleSpaceHeaderOpacity) Paint(context *rendering.PaintingCont
 		layer.DebugCreator = r.DebugCreator
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagFlexibleSpaceBarExpandedTitleScale = "FlexibleSpaceBarExpandedTitleScale"
+	tagFlexibleSpaceBarNoSettings         = "FlexibleSpaceBarNoSettings"
+	tagFlexibleSpaceBarSettingsInvalid    = "FlexibleSpaceBarSettingsInvalid"
+)

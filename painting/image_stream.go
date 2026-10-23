@@ -166,7 +166,7 @@ type ImageChunkEvent struct {
 // Flutter: painting/image_stream.dart ImageChunkEvent.new
 func NewImageChunkEvent(cumulativeBytesLoaded int, expectedTotalBytes foundation.Opt[int]) ImageChunkEvent {
 	if foundation.DebugMode && (cumulativeBytesLoaded < 0 || (expectedTotalBytes.IsSome() && expectedTotalBytes.Value() < 0)) {
-		panic(errors.New("ImageChunkEventInvalid", "the byte counts of an image chunk event must not be negative",
+		panic(errors.New(tagImageChunkEventInvalid, "the byte counts of an image chunk event must not be negative",
 			"cumulativeBytesLoaded", cumulativeBytesLoaded))
 	}
 	return ImageChunkEvent{cumulativeBytesLoaded, expectedTotalBytes}
@@ -206,7 +206,7 @@ func (s *ImageStream) Completer() *ImageStreamCompleter { return s.completer }
 // Flutter: painting/image_stream.dart ImageStream.setCompleter
 func (s *ImageStream) SetCompleter(value *ImageStreamCompleter) {
 	if foundation.DebugMode && s.completer != nil {
-		panic(errors.New("ImageStreamCompleterSet", "the completer of an ImageStream can be set only once"))
+		panic(errors.New(tagImageStreamCompleterSet, "the completer of an ImageStream can be set only once"))
 	}
 	s.completer = value
 	if s.listeners != nil {
@@ -307,7 +307,7 @@ type ImageStreamCompleterHandle struct{ completer *ImageStreamCompleter }
 // Flutter: painting/image_stream.dart ImageStreamCompleterHandle.dispose
 func (h *ImageStreamCompleterHandle) Dispose() {
 	if h.completer == nil {
-		panic(errors.New("ImageStreamCompleterHandleDisposed", "the handle was already disposed"))
+		panic(errors.New(tagImageStreamCompleterHandleDisposed, "the handle was already disposed"))
 	}
 	h.completer.keepAliveHandles--
 	h.completer.maybeDispose()
@@ -484,7 +484,7 @@ func (c *ImageStreamCompleter) maybeDispose() {
 
 func (c *ImageStreamCompleter) checkDisposed() {
 	if c.disposed {
-		panic(errors.New("ImageStreamDisposed", "Stream has been disposed. An ImageStream is considered disposed once at least one "+
+		panic(errors.New(tagImageStreamDisposed, "Stream has been disposed. An ImageStream is considered disposed once at least one "+
 			"listener has been added and subsequently all listeners have been removed and no handles are outstanding from the "+
 			"keepAlive method. To resolve this error, maintain at least one listener on the stream, or create an "+
 			"ImageStreamCompleterHandle from the keepAlive method, or create a new stream for the image."))
@@ -860,3 +860,11 @@ func (m *multiFrame) afterMaybeDispose(c *ImageStreamCompleter) {
 		}
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagImageChunkEventInvalid             = "ImageChunkEventInvalid"
+	tagImageStreamCompleterHandleDisposed = "ImageStreamCompleterHandleDisposed"
+	tagImageStreamCompleterSet            = "ImageStreamCompleterSet"
+	tagImageStreamDisposed                = "ImageStreamDisposed"
+)

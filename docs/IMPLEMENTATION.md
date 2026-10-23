@@ -25,7 +25,7 @@ This file breaks the milestones in `docs/SPEC.md` §18 into small steps. Each st
 ### While you work
 
 4. **Do exactly the step's Tasks.** Don't do work that belongs to a later step, even if it looks easy. If a later step will need a hook, leave only a comment: `// TODO(step 9.2): ...`.
-5. **Follow CLAUDE.md.** In particular: `rm4n0s/errors` for every error, the Version 2 constructors (SPEC §12), no cgo and the purego rules (SPEC §8.1), and doc comments ending in `// Flutter: <file> <Symbol>`.
+5. **Follow CLAUDE.md.** In particular: `rm4n0s/errors` v0.2.0 for every error, used the way its `AI_GUIDE.md` says (the "Errors" rules below), the Version 2 constructors (SPEC §12), no cgo and the purego rules (SPEC §8.1), and doc comments ending in `// Flutter: <file> <Symbol>`.
 6. **Port, don't invent.** When Flutter has the behavior, port Flutter's algorithm, defaults and edge cases from `reference/flutter`. Port the relevant cases from the test files listed under **Tests** as table-driven Go tests. In `docs/IMPLEMENTED.md`, say how many test cases you ported.
 7. **Stop and ask the user** when any of these happens:
    - the step is ambiguous
@@ -39,6 +39,17 @@ This file breaks the milestones in `docs/SPEC.md` §18 into small steps. Each st
 
 **Processes you start.** Every compositor, browser, Wine instance or app you start for a test, a proof or a check is stopped when you are done with it: run it under `timeout -k`, in its own process group, and stop it from `t.Cleanup` or `defer` in Go code. Before you finish a step, check with `pgrep -a` that nothing you started is still running. The user works on this desktop and sees every stray window.
 
+**Errors.** `github.com/rm4n0s/errors` is used to the fullest, as its `AI_GUIDE.md` says. This is a requirement of the project owner, not a style choice. It is in the module cache, so reading it is allowed: `$(go env GOMODCACHE)/github.com/rm4n0s/errors@v0.2.0/AI_GUIDE.md` (277 lines). Read all of it before you write or change code that makes, returns, logs or tests an error, and again after the dependency moves to a new version (then also read the library's `errors.go` for changed signatures). The rules, with the guide's numbers (SPEC §14.4 has the same list with the reasons):
+- **R1.** `errors.New(tag, message, metadata...)` always has a tag and a message. A tag names one thing a function cannot do.
+- **R2.** Metadata is given in one call, as alternating `"key", value` pairs, with string keys: to `errors.New` itself, and after `NewErr` or `NewErrf` (which take no metadata) in exactly one `SetMetadata`. A later `SetMetadata` is only for data that becomes known in another function. `RemoveMetadata` and `SetMessage` exist for the rest.
+- **R3.** An error is tagged once, where it first appears. An error from a function of this module is returned as it is (`return err`): no `NewErr`, no `NewErrf("... %w")`, no `fmt.Errorf`, no new tag on the way up. An error from outside the module (the standard library, purego calls, godbus, go-text, `x/image`) is tagged where it first appears with `errors.NewErr`, so a function of this module never returns an untagged foreign error. A failure the code detects itself is `errors.New`.
+- **R4.** The constructor is called in the function that fails, never in a helper that builds and returns the error (the helper would be a frame in the route). A table that turns a C error code into a tag with a switch (`vkError`) is the one accepted exception, listed with its reason in `cmd/glutter-gen/errcheck.allow`; an exported function or method is not a helper.
+- **R5.** A tag is a constant declared next to the code that produces it (`const tagX = "X"` at the end of the file that makes the error, exported as `TagX` with a doc comment when another package matches on it). Code branches on `appErr.Tag == pkg.TagX` or `errors.Is(err, sentinel)`, never on a string literal or on `Error()` or `Message`. A sentinel is a struct literal, `&errors.Error{Tag: TagX}`, never a package-level `errors.New`. A tag built at run time from a prefix (a widget's name in a debug check) stays an expression and is listed in `errcheck.allow`.
+- **R6.** Import only `github.com/rm4n0s/errors` (it re-exports `Is`, `As` and `Unwrap`). When something else of the standard library's `errors` is needed (`Join`), import it as `stdErrors "errors"`.
+- **Logging.** An error is logged with `slog` as the attribute `"err"`: `logger.Error("...", "err", err)`. `*errors.Error` is an `slog.LogValuer`, so the entry has `Tag`, `Message`, `Route`, `OriginalErr`, `Metadata` and `StackFrames`, and a test replays it through `errors.ErrorJson` and `errors.FromJson`. Code does not call `ToJson` or `json.Marshal` on an error to log it.
+- **Tests.** Every tag has a test that asserts the path with `HasRoute("Outer->Inner.Tag")` (the entry function you call, down to the tag), and the metadata when it matters. Function names in a route are written the way the guide says: `Type.Method`, no package names.
+- `go run ./cmd/glutter-gen errcheck -allow cmd/glutter-gen/errcheck.allow` checks R2 to R6 and the logging rule over the whole module (SPEC §14.4). A new violation is fixed, or accepted in that file with a reason.
+
 ### Finishing a step
 
 8. **The standard checks must all pass.** Run them from the repo root:
@@ -49,6 +60,7 @@ This file breaks the milestones in `docs/SPEC.md` §18 into small steps. Each st
    go test -race ./...
    CGO_ENABLED=0 go build ./...
    CGO_ENABLED=0 go test ./...
+   go run ./cmd/glutter-gen errcheck -allow cmd/glutter-gen/errcheck.allow   # from step 24.1 on
    GOOS=js GOARCH=wasm go build ./...    # from step 19.1 on
    GOOS=js GOARCH=wasm go vet ./...      # from step 19.1 on
    scripts/test-wasm.sh                  # from step 19.1 on
@@ -128,6 +140,7 @@ This file breaks the milestones in `docs/SPEC.md` §18 into small steps. Each st
 | M21 Web | 21.1–21.8 | the examples on the web |
 | M22 Fonts and trees for code editors (1.2, 1.4) | 22.1–22.11 | |
 | M23 Windows for tray apps | 23.1 | `tray` |
+| M24 Errors to the fullest (`rm4n0s/errors` v0.2.0) | 24.1 | |
 
 ---
 
@@ -1649,3 +1662,22 @@ This step comes from a request for an app built on Glutter (English Tutor) that 
 7. `examples/tray` hides its window on close and shows it from the tray; SPEC and `docs/GUIDE.md` say how.
 **Tests:** table tests in `widgets` (hide, show, `Activate` on a hidden window, state kept, lifecycle `Hidden` and frames, exiting with the only window hidden); the engine over the fake platform (lifecycle, frames, `Run` going on and ending on exit, focus between windows); Wayland against the fake compositor (the requests, both decoration paths, the EGL path); `glutter_display` tests that hide and show a real window on X11 (Xvfb, with the test window manager) and Wayland (headless sway, with libdecor too); the tray example's tests.
 **Proof:** none (a hidden window shows nothing); a manual check on a real desktop of `go run ./examples/tray`: ✕ takes the window off the task bar, a click on the tray icon brings it back, "Quit" exits.
+
+## M24: Errors to the fullest
+
+The owner asked that `github.com/rm4n0s/errors` v0.2.0 is used to the fullest, the way its `AI_GUIDE.md` says, and that the requirement is written into this file. The rules are in "While you work" ("Errors") above, in CLAUDE.md and in SPEC §14.4. This step brings the code that existed before the requirement in line with them.
+
+### 24.1 Errors the way `AI_GUIDE.md` says
+**Goal:** every error of the module is made, returned, logged and tested as the v0.2.0 guide says, and a checker keeps it so.
+**Read:** `AI_GUIDE.md` of `rm4n0s/errors` v0.2.0 (all of it), SPEC §14.1, §14.2, §14.4, CLAUDE.md ("Error handling").
+**Files:** `go.mod`, `go.sum`, `cmd/glutter-gen/` (`run.go`, `errcheck.allow`, `internal/errcheck/`), every package that makes or returns an error, `widgets/binding.go` (the default reporter), `docs/`.
+**Tasks:**
+1. Move the dependency to v0.2.0 (`ToJson` returns one value and `FromJson` returns an `*Error`; `RemoveMetadata`, `SetMessage` and the `slog.LogValuer` are new). Fix what no longer builds.
+2. `glutter-gen errcheck` (SPEC §14.4): the checker reads the module for Linux, `js/wasm` and the display and browser tags, tests included, and reports `std-errors`, `fmt-errorf`, `metadata-chain`, `metadata-pairs`, `sentinel-ctor`, `error-helper`, `error-rewrap`, `error-untagged`, `tag-branch`, `tag-literal` and `error-tojson`. `cmd/glutter-gen/errcheck.allow` lists the accepted places with a reason; `TestTheModuleKeepsTheErrorRules` runs it on the module. The check is part of the standard checks from this step on.
+3. R4: the functions that only built and returned an error are gone; the constructor is called in the function that fails, and the route tests say so. Only the tables that turn a C error code into a tag stay (`errcheck.allow`).
+4. R3: an error is tagged where it first appears (`NewErr` on the foreign call) and goes up as it is. The wraps of errors of this module (`NewErr`, `NewErrf` with `%w`, `fmt.Errorf`) are gone. The public tags of SPEC §14.1 are the same as before.
+5. R5: every tag that `errors.New`, `NewErr` or `NewErrf` is given is a constant declared in the file that produces it (`tagX`; exported `TagX` where another package matches on it); code compares tags with constants or `errors.Is`; the one package-level `errors.New` is a struct-literal sentinel. A tag built at run time from a prefix stays an expression and is listed in `errcheck.allow`.
+6. Logging: errors are logged as the `slog` attribute `"err"` (the default error reporter, `glutter-gen`, the run-time logs of the engine, the platform and the D-Bus services); no `ToJson` outside tests. A test replays a logged entry through `errors.ErrorJson` and `errors.FromJson`.
+7. Update CLAUDE.md, SPEC §14.2, §14.4 and §18 (M24), and `docs/GUIDE.md` where it shows error handling.
+**Tests:** the checker (a fixture module per rule, a clean fixture, the allow file, the flags, every tag of the checker has a route test); the default reporter's log entry replays; every route assertion that went through a removed helper or a removed wrap is updated; every tag still has a route test.
+**Proof:** none. **Done when:** `go run ./cmd/glutter-gen errcheck -allow cmd/glutter-gen/errcheck.allow` reports nothing and the standard checks pass.

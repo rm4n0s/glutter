@@ -61,7 +61,7 @@ func (v Velocity) Add(other Velocity) Velocity {
 // Flutter: gestures/velocity_tracker.dart Velocity.clampMagnitude
 func (v Velocity) ClampMagnitude(minValue, maxValue float64) Velocity {
 	if foundation.DebugMode && (minValue < 0 || maxValue < 0 || maxValue < minValue) {
-		panic(errors.New("VelocityBoundsInvalid", "the bounds must be zero or more and the maximum not below the minimum",
+		panic(errors.New(tagVelocityBoundsInvalid, "the bounds must be zero or more and the maximum not below the minimum",
 			"min", minValue, "max", maxValue))
 	}
 	valueSquared := v.PixelsPerSecond.DistanceSquared()
@@ -221,7 +221,7 @@ func (t *VelocityTracker) AddPosition(tm time.Duration, position ui.Offset) {
 	}
 	if foundation.DebugMode {
 		if prev := t.touchSamples[t.index]; prev != nil && prev.time > tm {
-			panic(errors.New("VelocityPositionPrecedesPredecessor",
+			panic(errors.New(tagVelocityPositionPrecedesPredecessor,
 				"the position being added has a smaller timestamp than its predecessor",
 				"position", position.String(), "time", dartfmt.Duration(tm), "previous", prev.String()))
 		}
@@ -320,7 +320,7 @@ func (t *VelocityTracker) previousVelocityAt(index int) ui.Offset {
 	}
 	dt := (end.time - start.time).Microseconds()
 	if foundation.DebugMode && dt < 0 {
-		panic(errors.New("VelocityTimesNotIncreasing", "the samples go back in time", "dt", dt))
+		panic(errors.New(tagVelocityTimesNotIncreasing, "the samples go back in time", "dt", dt))
 	}
 	if dt > 0 {
 		// Convert dt to milliseconds to preserve floating point precision.
@@ -360,7 +360,7 @@ func (t *VelocityTracker) flingEstimate() VelocityEstimate {
 	}
 	if oldest == nil || newest == nil {
 		if foundation.DebugMode {
-			panic(errors.New("VelocityNoSamples", "there must be at least 1 point in the samples"))
+			panic(errors.New(tagVelocityNoSamples, "there must be at least 1 point in the samples"))
 		}
 		return VelocityEstimate{}
 	}
@@ -382,3 +382,11 @@ func (t *VelocityTracker) GetVelocity() Velocity {
 	}
 	return Velocity{estimate.PixelsPerSecond}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagVelocityBoundsInvalid               = "VelocityBoundsInvalid"
+	tagVelocityNoSamples                   = "VelocityNoSamples"
+	tagVelocityPositionPrecedesPredecessor = "VelocityPositionPrecedesPredecessor"
+	tagVelocityTimesNotIncreasing          = "VelocityTimesNotIncreasing"
+)

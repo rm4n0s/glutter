@@ -212,10 +212,15 @@ func AutofillScopeAttach(scope AutofillScope, textInput *TextInput, trigger Text
 	if foundation.DebugMode {
 		for _, c := range scope.AutofillClients() {
 			if !c.TextInputConfiguration().AutofillConfiguration.Enabled {
-				panic(errors.New("AutofillClientDisabled", "every client in AutofillScope.AutofillClients must enable autofill",
+				panic(errors.New(tagAutofillClientDisabled, "every client in AutofillScope.AutofillClients must enable autofill",
 					"autofillId", c.AutofillID()))
 			}
 		}
 	}
 	return textInput.Attach(trigger, configuration)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagAutofillClientDisabled = "AutofillClientDisabled"
+)

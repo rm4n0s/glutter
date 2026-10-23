@@ -151,8 +151,8 @@ func TestScaffoldErrors(t *testing.T) {
 		run  func(bc widgets.BuildContext)
 		want string
 	}{
-		{"of without a scaffold", func(bc widgets.BuildContext) { ScaffoldOf(bc) }, "ScaffoldMissing"},
-		{"geometry without a scaffold", func(bc widgets.BuildContext) { ScaffoldGeometryOf(bc) }, "ScaffoldGeometryMissing"},
+		{"of without a scaffold", func(bc widgets.BuildContext) { ScaffoldOf(bc) }, "ScaffoldOf.ScaffoldMissing"},
+		{"geometry without a scaffold", func(bc widgets.BuildContext) { ScaffoldGeometryOf(bc) }, "ScaffoldGeometryOf.ScaffoldGeometryMissing"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

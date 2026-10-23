@@ -324,7 +324,7 @@ func (r *MultiDragGestureRecognizer) removeState(pointer int) {
 		return
 	}
 	if foundation.DebugMode && r.pointers[pointer] == nil {
-		panic(errors.New("MultiDragStateUnknown", "the pointer has no state", "pointer", pointer))
+		panic(errors.New(tagMultiDragStateUnknown, "the pointer has no state", "pointer", pointer))
 	}
 	r.binding.PointerRouter.RemoveRoute(pointer, r.pointerRoutes[pointer])
 	delete(r.pointerRoutes, pointer)
@@ -558,3 +558,8 @@ func (r *DelayedMultiDragGestureRecognizer) CreateNewPointerState(event *Pointer
 //
 // Flutter: gestures/multidrag.dart DelayedMultiDragGestureRecognizer.debugDescription
 func (r *DelayedMultiDragGestureRecognizer) DebugDescription() string { return "long multidrag" }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagMultiDragStateUnknown = "MultiDragStateUnknown"
+)

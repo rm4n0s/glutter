@@ -148,7 +148,7 @@ func NewTreeSliverController[T any]() *TreeSliverController[T] { return &TreeSli
 
 func (c *TreeSliverController[T]) attached() treeSliverStateMixin[T] {
 	if c.state == nil {
-		panic(errors.New("TreeSliverControllerNotAttached", "the TreeSliverController is not attached to a TreeSliver"))
+		panic(errors.New(tagTreeSliverControllerNotAttached, "the TreeSliverController is not attached to a TreeSliver"))
 	}
 	return c.state
 }
@@ -226,7 +226,7 @@ func TreeSliverControllerOf[T any](bc BuildContext) *TreeSliverController[T] {
 	if c, ok := TreeSliverControllerMaybeOf[T](bc); ok {
 		return c
 	}
-	panic(errors.New("TreeSliverControllerNotFound",
+	panic(errors.New(tagTreeSliverControllerNotFound,
 		"TreeSliverControllerOf was called with a context that does not contain a TreeSliver of that content type: "+
 			"use a Builder to get a context under the TreeSliver, or split the build function into widgets",
 		"context", bc.DescribeElement("The context used was")))
@@ -453,7 +453,7 @@ func (s *treeSliverState[T]) InitState() {
 	s.unpackActiveNodes()
 	w := s.Widget()
 	if foundation.DebugMode && w.o.Controller != nil && w.o.Controller.state != nil {
-		panic(errors.New("TreeSliverControllerAttached",
+		panic(errors.New(tagTreeSliverControllerAttached,
 			"the provided TreeSliverController is already associated with another TreeSliver; a TreeSliverController can only be associated with one TreeSliver"))
 	}
 	s.treeController = w.o.Controller
@@ -610,7 +610,7 @@ func (s *treeSliverState[T]) updateActiveAnimations() {
 
 func (s *treeSliverState[T]) toggleNode(node *TreeSliverNode[T]) {
 	if foundation.DebugMode && !slices.Contains(s.activeNodes, node) {
-		panic(errors.New("TreeSliverNodeNotActive", "only the nodes that are shown can be toggled", "node", node.String()))
+		panic(errors.New(tagTreeSliverNodeNotActive, "only the nodes that are shown can be toggled", "node", node.String()))
 	}
 	if len(node.children) == 0 {
 		return // no state to change
@@ -694,7 +694,7 @@ type treeNodeParentDataWidget struct {
 
 func newTreeNodeParentDataWidget(depth int, child Widget) *treeNodeParentDataWidget {
 	if foundation.DebugMode && depth < 0 {
-		panic(errors.New("TreeSliverDepthNegative", "the depth of a tree node must not be negative", "depth", depth))
+		panic(errors.New(tagTreeSliverDepthNegative, "the depth of a tree node must not be negative", "depth", depth))
 	}
 	return &treeNodeParentDataWidget{NewParentDataWidgetBase[*rendering.TreeSliverNodeParentData](child), depth}
 }
@@ -733,3 +733,12 @@ func (w *sliverTree) UpdateRenderObject(_ BuildContext, ro rendering.RenderObjec
 	r.SetActiveAnimations(w.activeAnimations)
 	r.SetIndentation(w.indentation)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagTreeSliverControllerAttached    = "TreeSliverControllerAttached"
+	tagTreeSliverControllerNotAttached = "TreeSliverControllerNotAttached"
+	tagTreeSliverControllerNotFound    = "TreeSliverControllerNotFound"
+	tagTreeSliverDepthNegative         = "TreeSliverDepthNegative"
+	tagTreeSliverNodeNotActive         = "TreeSliverNodeNotActive"
+)

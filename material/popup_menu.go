@@ -908,11 +908,11 @@ type ShowMenuOpts struct {
 func showMenuRoute(bc widgets.BuildContext, items []PopupMenuEntry, o ShowMenuOpts) *popupMenuRoute {
 	if foundation.DebugMode {
 		if len(items) == 0 {
-			panic(errors.New("ShowMenuNoItems", "a popup menu needs at least one item"))
+			panic(errors.New(tagShowMenuNoItems, "a popup menu needs at least one item"))
 		}
 		DebugCheckHasMaterialLocalizations(bc)
 		if o.Position.IsSome() == (o.PositionBuilder != nil) {
-			panic(errors.New("ShowMenuPosition", "either position or positionBuilder must be provided"))
+			panic(errors.New(tagShowMenuPosition, "either position or positionBuilder must be provided"))
 		}
 	}
 	semanticLabel := o.SemanticLabel
@@ -1048,7 +1048,7 @@ type PopupMenuButton[T comparable] struct {
 func NewPopupMenuButton[T comparable](itemBuilder func(bc widgets.BuildContext) []PopupMenuEntry, opts ...PopupMenuButtonOpts[T]) *PopupMenuButton[T] {
 	o := firstOpts(opts)
 	if foundation.DebugMode && o.Child != nil && o.Icon != nil {
-		panic(errors.New("PopupMenuButtonChildAndIcon", "you can only pass a child or an icon to a PopupMenuButton, not both"))
+		panic(errors.New(tagPopupMenuButtonChildAndIcon, "you can only pass a child or an icon to a PopupMenuButton, not both"))
 	}
 	if o.Padding == nil {
 		o.Padding = painting.NewEdgeInsetsAll(8.0)
@@ -1240,3 +1240,10 @@ func (s *popupMenuButtonState[T]) Build(bc widgets.BuildContext) widgets.Widget 
 			Style:          w.o.Style,
 		}), widgets.SemanticsOpts{})
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagPopupMenuButtonChildAndIcon = "PopupMenuButtonChildAndIcon"
+	tagShowMenuNoItems             = "ShowMenuNoItems"
+	tagShowMenuPosition            = "ShowMenuPosition"
+)

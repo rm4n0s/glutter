@@ -191,7 +191,7 @@ type RefreshIndicator struct {
 
 func newRefreshIndicator(onRefresh RefreshCallback, child widgets.Widget, o RefreshIndicatorOpts, kind refreshIndicatorType) *RefreshIndicator {
 	if foundation.DebugMode && o.Elevation.OrElse(2.0) < 0 {
-		panic(errors.New("RefreshIndicatorElevationNegative", "the elevation of a RefreshIndicator must not be negative", "elevation", o.Elevation.Value()))
+		panic(errors.New(tagRefreshIndicatorElevationNegative, "the elevation of a RefreshIndicator must not be negative", "elevation", o.Elevation.Value()))
 	}
 	if o.NotificationPredicate == nil {
 		o.NotificationPredicate = widgets.DefaultScrollNotificationPredicate
@@ -547,3 +547,8 @@ func (s *RefreshIndicatorState) Build(bc widgets.BuildContext) widgets.Widget {
 	}
 	return widgets.NewStack(children)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagRefreshIndicatorElevationNegative = "RefreshIndicatorElevationNegative"
+)

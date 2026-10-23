@@ -66,7 +66,7 @@ func TestSurfaceExtensions(t *testing.T) {
 		t.Errorf("X11: %v, %v", got, err)
 	}
 	_, err = surfaceExtensions(gpu.SurfaceKindFake)
-	if appErr, ok := errors.FromError(err); !ok || appErr.Tag != "VulkanSurfaceFailed" || !appErr.HasRoute("surfaceExtensions.VulkanSurfaceFailed") {
+	if appErr, ok := errors.FromError(err); !ok || appErr.Tag != tagVulkanSurfaceFailed || !appErr.HasRoute("surfaceExtensions.VulkanSurfaceFailed") {
 		t.Errorf("a fake surface: got %v, want VulkanSurfaceFailed via surfaceExtensions", err)
 	}
 }
@@ -85,7 +85,6 @@ func TestSurfaceAndSwapchainErrors(t *testing.T) {
 		{"swapchain: initialization failed", swapchainError("vkCreateSwapchainKHR", resultErrorInitFailed), "VulkanSwapchainFailed", "swapchainError.VulkanSwapchainFailed"},
 		{"swapchain: out of device memory", swapchainError("vkCreateSwapchainKHR", resultErrorOutOfDevice), "GPUOutOfMemory", "vkError.GPUOutOfMemory"},
 		{"swapchain: device lost", swapchainError("vkQueuePresentKHR", resultErrorDeviceLost), "VulkanDeviceLost", "vkError.VulkanDeviceLost"},
-		{"out of date", errOutOfDate("vkAcquireNextImageKHR", resultErrorOutOfDate), explicit.SwapchainOutOfDate, "errOutOfDate." + explicit.SwapchainOutOfDate},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -95,8 +94,37 @@ func TestSurfaceAndSwapchainErrors(t *testing.T) {
 			}
 		})
 	}
-	if !explicit.IsSwapchainOutOfDate(errOutOfDate("vkAcquireNextImageKHR", resultErrorOutOfDate)) {
-		t.Error("the renderer cannot tell that the swapchain is out of date")
+}
+
+func TestAcquireReportsAnOutOfDateSwapchain(t *testing.T) {
+	tests := []struct {
+		name   string
+		handle swapchainH
+		result int32
+	}{
+		{"a swapchain that has no handle", 0, resultSuccess},
+		{"the surface changed under the swapchain", 1, resultErrorOutOfDate},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d := &Device{
+				f:     &vkFuncs{acquireNextImage: func(uintptr, uint64, uint64, uint64, uint64, uintptr) int32 { return tt.result }},
+				arena: &arena{},
+				open:  &encoder{},
+			}
+			sc := &swapchain{d: d, handle: tt.handle}
+			_, err := sc.Acquire()
+			appErr, ok := errors.FromError(err)
+			if !ok || appErr.Tag != explicit.SwapchainOutOfDate || !appErr.HasRoute("swapchain.Acquire."+explicit.SwapchainOutOfDate) {
+				t.Fatalf("got %v, want %s via swapchain.Acquire", err, explicit.SwapchainOutOfDate)
+			}
+			if appErr.Metadata["call"] != "vkAcquireNextImageKHR" {
+				t.Errorf("metadata = %v", appErr.Metadata)
+			}
+			if !explicit.IsSwapchainOutOfDate(err) {
+				t.Error("the renderer cannot tell that the swapchain is out of date")
+			}
+		})
 	}
 }
 
@@ -114,7 +142,7 @@ func TestCreateSurfaceNeedsTheNativeWindow(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := inst.createSurface(tt.h)
-			if appErr, ok := errors.FromError(err); !ok || appErr.Tag != "VulkanSurfaceFailed" || !appErr.HasRoute("instance.createSurface.VulkanSurfaceFailed") {
+			if appErr, ok := errors.FromError(err); !ok || appErr.Tag != tagVulkanSurfaceFailed || !appErr.HasRoute("instance.createSurface.VulkanSurfaceFailed") {
 				t.Errorf("got %v, want VulkanSurfaceFailed via instance.createSurface", err)
 			}
 		})
@@ -124,7 +152,7 @@ func TestCreateSurfaceNeedsTheNativeWindow(t *testing.T) {
 func TestChooseDeviceNeedsTheSwapchainForWindows(t *testing.T) {
 	d := testGPU(0, "No Swapchain", deviceTypeDiscrete)
 	_, _, err := chooseDevice([]physicalInfo{d}, chooseOpts{RequireSwapchain: true})
-	if appErr, ok := errors.FromError(err); !ok || appErr.Tag != "VulkanUnsupported" {
+	if appErr, ok := errors.FromError(err); !ok || appErr.Tag != tagVulkanUnsupported {
 		t.Fatalf("got %v, want VulkanUnsupported", err)
 	}
 	d.Extensions = map[string]bool{extSwapchain: true}

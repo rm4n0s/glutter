@@ -202,7 +202,7 @@ func TestAllocatorErrors(t *testing.T) {
 		a := newAllocator(newFakeMemory(), props)
 		_, err := a.alloc(req, true, true) // the only type is not host visible
 		appErr, ok := errors.FromError(err)
-		if !ok || appErr.Tag != "GPUOutOfMemory" || !appErr.HasRoute("allocator.alloc.GPUOutOfMemory") {
+		if !ok || appErr.Tag != tagGPUOutOfMemory || !appErr.HasRoute("allocator.alloc.GPUOutOfMemory") {
 			t.Errorf("got %v, want GPUOutOfMemory via allocator.alloc", err)
 		}
 	})
@@ -212,7 +212,7 @@ func TestAllocatorErrors(t *testing.T) {
 		a := newAllocator(fm, props)
 		_, err := a.alloc(req, false, true)
 		appErr, ok := errors.FromError(err)
-		if !ok || appErr.Tag != "GPUOutOfMemory" || !appErr.HasRoute("vkError.GPUOutOfMemory") {
+		if !ok || appErr.Tag != tagGPUOutOfMemory || !appErr.HasRoute("vkError.GPUOutOfMemory") {
 			t.Errorf("got %v, want the GPUOutOfMemory of vkError, unchanged", err)
 		}
 		if appErr != nil && appErr.Metadata["call"] != "vkAllocateMemory" {

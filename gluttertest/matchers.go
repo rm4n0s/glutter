@@ -21,7 +21,7 @@ import (
 // Flutter: flutter_test/lib/src/matchers.dart findsNothing
 func FindsNothing(t *Tester, f Finder) error {
 	if n := t.Count(f); n != 0 {
-		return errors.New("FindsNothingFailed", fmt.Sprintf("expected nothing, found %d: %s", n, f.Describe()),
+		return errors.New(tagFindsNothingFailed, fmt.Sprintf("expected nothing, found %d: %s", n, f.Describe()),
 			"finder", f.Describe(), "found", n)
 	}
 	return nil
@@ -42,7 +42,7 @@ func FindsWidgets(t *Tester, f Finder) error { return FindsAtLeastNWidgets(t, f,
 // Flutter: flutter_test/lib/src/matchers.dart findsNWidgets
 func FindsNWidgets(t *Tester, f Finder, n int) error {
 	if got := t.Count(f); got != n {
-		return errors.New("FindsNWidgetsFailed", fmt.Sprintf("expected %d widget(s), found %d: %s", n, got, f.Describe()),
+		return errors.New(tagFindsNWidgetsFailed, fmt.Sprintf("expected %d widget(s), found %d: %s", n, got, f.Describe()),
 			"finder", f.Describe(), "want", n, "found", got)
 	}
 	return nil
@@ -53,8 +53,15 @@ func FindsNWidgets(t *Tester, f Finder, n int) error {
 // Flutter: flutter_test/lib/src/matchers.dart findsAtLeastNWidgets
 func FindsAtLeastNWidgets(t *Tester, f Finder, n int) error {
 	if got := t.Count(f); got < n {
-		return errors.New("FindsAtLeastNWidgetsFailed", fmt.Sprintf("expected at least %d widget(s), found %d: %s", n, got, f.Describe()),
+		return errors.New(tagFindsAtLeastNWidgetsFailed, fmt.Sprintf("expected at least %d widget(s), found %d: %s", n, got, f.Describe()),
 			"finder", f.Describe(), "want", n, "found", got)
 	}
 	return nil
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagFindsAtLeastNWidgetsFailed = "FindsAtLeastNWidgetsFailed"
+	tagFindsNWidgetsFailed        = "FindsNWidgetsFailed"
+	tagFindsNothingFailed         = "FindsNothingFailed"
+)

@@ -306,7 +306,7 @@ func (e *layoutBuilderElement) rebuildWithConstraints(rendering.Constraints) {
 		foundation.GuardLazy(report, foundation.BuildPanicked, e.buildContext, e.panicInfo, func() {
 			built = e.widget.(layoutBuilderWidget).buildLayout(e, info)
 			if foundation.DebugMode && built == nil {
-				panic(errors.New("BuildReturnedNil", "a layout builder returned nil; builders must never return nil",
+				panic(errors.New(tagBuildReturnedNil, "a layout builder returned nil; builders must never return nil",
 					"widget", foundation.RuntimeTypeName(e.widget)))
 			}
 		})

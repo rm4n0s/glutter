@@ -434,7 +434,7 @@ func TestBufferFailureEndsRun(t *testing.T) {
 	err := wait(t, e.done)
 	e.stopped = true
 	appErr, ok := errors.FromError(err)
-	if !ok || appErr.Tag != "ShmBufferFailed" || appErr.Metadata["op"] != "size" {
+	if !ok || appErr.Tag != tagShmBufferFailed || appErr.Metadata["op"] != "size" {
 		t.Fatalf("Run returned %v, want ShmBufferFailed (op size)", err)
 	}
 }
@@ -443,9 +443,21 @@ func TestNewShmBufferRejectsBadSizes(t *testing.T) {
 	for _, size := range [][2]int32{{0, 10}, {10, 0}, {-1, 5}, {30000, 30000}} {
 		_, err := newShmBuffer(nil, size[0], size[1], 0, nil)
 		appErr, ok := errors.FromError(err)
-		if !ok || appErr.Tag != "ShmBufferFailed" || !appErr.HasRoute("newShmBufferFormat.ShmBufferFailed") {
+		if !ok || appErr.Tag != tagShmBufferFailed || !appErr.HasRoute("newShmBufferFormat.ShmBufferFailed") {
 			t.Errorf("newShmBuffer(%v) returned %v, want ShmBufferFailed via newShmBufferFormat", size, err)
 		}
+	}
+}
+
+func TestMemfdCreateFailsForAnInvalidName(t *testing.T) {
+	// A name with a NUL byte cannot be passed to the kernel.
+	_, err := memfdCreate("glutter\x00shm")
+	appErr, ok := errors.FromError(err)
+	if !ok {
+		t.Fatalf("expected *errors.Error, got %T: %v", err, err)
+	}
+	if !appErr.HasRoute("memfdCreate.ShmBufferFailed") || appErr.Metadata["op"] != "memfd_create" {
+		t.Errorf("unexpected failure path: %s, metadata %v", appErr.Route(), appErr.Metadata)
 	}
 }
 

@@ -255,13 +255,13 @@ func NewDropdownMenu[T comparable](dropdownMenuEntries []DropdownMenuEntry[T], o
 	o := firstOpts(opts)
 	if foundation.DebugMode {
 		if o.FilterCallback != nil && !o.EnableFilter {
-			panic(errors.New("DropdownMenuFilterCallbackWithoutFilter", "a filterCallback needs enableFilter"))
+			panic(errors.New(tagDropdownMenuFilterCallbackWithoutFilter, "a filterCallback needs enableFilter"))
 		}
 		if o.TrailingIconFocusNode != nil && o.NoShowTrailingIcon {
-			panic(errors.New("DropdownMenuTrailingIconFocusNodeWithoutIcon", "a trailingIconFocusNode needs showTrailingIcon"))
+			panic(errors.New(tagDropdownMenuTrailingIconFocusNodeWithoutIcon, "a trailingIconFocusNode needs showTrailingIcon"))
 		}
 		if o.DecorationBuilder != nil && (o.Label != nil || o.HintText.IsSome() || o.HelperText.IsSome() || o.ErrorText.IsSome()) {
-			panic(errors.New("DropdownMenuDecorationBuilderWithTexts", "a decorationBuilder can't be given with a label, hintText, helperText or errorText"))
+			panic(errors.New(tagDropdownMenuDecorationBuilderWithTexts, "a decorationBuilder can't be given with a label, hintText, helperText or errorText"))
 		}
 	}
 	if o.CloseBehavior == DropdownMenuCloseBehaviorUnspecified {
@@ -1114,3 +1114,10 @@ func dropdownMenuDefaultsM3(bc widgets.BuildContext) DropdownMenuThemeData {
 		InputDecorationTheme: &input,
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagDropdownMenuDecorationBuilderWithTexts       = "DropdownMenuDecorationBuilderWithTexts"
+	tagDropdownMenuFilterCallbackWithoutFilter      = "DropdownMenuFilterCallbackWithoutFilter"
+	tagDropdownMenuTrailingIconFocusNodeWithoutIcon = "DropdownMenuTrailingIconFocusNodeWithoutIcon"
+)

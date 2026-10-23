@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"syscall/js"
 
+	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/internal/gpu"
 	"github.com/rm4n0s/glutter/internal/gpu/explicit"
 )
@@ -40,24 +41,24 @@ var _ explicit.Swapchain = (*swapchain)(nil)
 //     another kind already
 func (d *Device) newSwapchain(h gpu.SurfaceHandle) (explicit.Swapchain, error) {
 	if h.Kind != gpu.SurfaceKindWeb {
-		return nil, errSurfaceKind(string(h.Kind))
+		return nil, errors.New(tagWebGPUSurfaceKindUnsupported, "WebGPU draws into the canvas of a web page only", "kind", string(h.Kind))
 	}
 	doc := js.Global().Get("document")
 	canvas := doc.Call("querySelector", "canvas["+viewAttribute+`="`+strconv.FormatUint(uint64(h.Window), 10)+`"]`)
 	if !canvas.Truthy() {
-		return nil, errCanvasNotFound(h.Window)
+		return nil, errors.New(tagWebGPUCanvasNotFound, "there is no canvas for the view in the page", "view", strconv.FormatUint(uint64(h.Window), 10))
 	}
 	ctx, err := tryCall("getContext", func() js.Value { return canvas.Call("getContext", "webgpu") })
 	if err != nil {
 		return nil, err
 	}
 	if !ctx.Truthy() {
-		return nil, errContextUnavailable(h.Window)
+		return nil, errors.New(tagWebGPUContextUnavailable, "the canvas gave no webgpu context", "view", strconv.FormatUint(uint64(h.Window), 10))
 	}
 	name := d.p.helper.Call("preferredFormat").String()
 	format := formatOf(name)
 	if format == explicit.TextureFormatUnspecified {
-		return nil, errConfigureFailed(js.Error{Value: js.ValueOf("the canvas format " + name + " is not one the renderer draws into")})
+		return nil, errors.NewErr(tagWebGPUConfigureFailed, js.Error{Value: js.ValueOf("the canvas format " + name + " is not one the renderer draws into")})
 	}
 	return &swapchain{d: d, view: h.Window, canvas: canvas, ctx: ctx, format: format, formatName: name}, nil
 }
@@ -76,13 +77,26 @@ func (s *swapchain) Configure(width, height int) error {
 	if s.configured {
 		return nil
 	}
-	_, err := tryCall("configure", func() js.Value {
-		return s.ctx.Call("configure", map[string]any{"device": s.d.dev, "format": s.formatName, "alphaMode": "opaque"})
-	})
-	if err != nil {
-		return errConfigureFailed(err)
+	if err := s.configureContext(); err != nil {
+		return err
 	}
 	s.configured = true
+	return nil
+}
+
+// configureContext configures the canvas context, and returns what the browser threw as
+// WebGPUConfigureFailed.
+func (s *swapchain) configureContext() (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			if je, ok := r.(js.Error); ok {
+				err = errors.NewErr(tagWebGPUConfigureFailed, je).SetMetadata("call", "configure")
+				return
+			}
+			panic(r)
+		}
+	}()
+	s.ctx.Call("configure", map[string]any{"device": s.d.dev, "format": s.formatName, "alphaMode": "opaque"})
 	return nil
 }
 
@@ -115,3 +129,11 @@ func (s *swapchain) Destroy() {
 		_, _ = tryCall("unconfigure", func() js.Value { return s.ctx.Call("unconfigure") })
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagWebGPUCanvasNotFound         = "WebGPUCanvasNotFound"
+	tagWebGPUConfigureFailed        = "WebGPUConfigureFailed"
+	tagWebGPUContextUnavailable     = "WebGPUContextUnavailable"
+	tagWebGPUSurfaceKindUnsupported = "WebGPUSurfaceKindUnsupported"
+)

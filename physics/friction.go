@@ -87,7 +87,7 @@ func NewFrictionSimulationThrough(startPosition, endPosition, startVelocity, end
 			math.Abs(startVelocity) >= math.Abs(endVelocity) &&
 			sign(endPosition-startPosition) == sign(startVelocity)
 		if !ok {
-			panic(errors.New("FrictionThroughInvalid", "the start and end values do not describe a slowing particle",
+			panic(errors.New(tagFrictionThroughInvalid, "the start and end values do not describe a slowing particle",
 				"startPosition", startPosition, "endPosition", endPosition,
 				"startVelocity", startVelocity, "endVelocity", endVelocity))
 		}
@@ -192,7 +192,7 @@ type BoundedFrictionSimulation struct {
 // Flutter: physics/friction_simulation.dart BoundedFrictionSimulation.new
 func NewBoundedFrictionSimulation(drag, position, velocity, minX, maxX float64) *BoundedFrictionSimulation {
 	if foundation.DebugMode && ui.ClampDouble(position, minX, maxX) != position {
-		panic(errors.New("FrictionPositionOutOfBounds", "the start position must be between the bounds",
+		panic(errors.New(tagFrictionPositionOutOfBounds, "the start position must be between the bounds",
 			"position", position, "minX", minX, "maxX", maxX))
 	}
 	b := &BoundedFrictionSimulation{FrictionSimulation: NewFrictionSimulation(drag, position, velocity), minX: minX, maxX: maxX}
@@ -247,3 +247,9 @@ func (b *BoundedFrictionSimulation) String() string {
 		", dx₀: " + dartfmt.ToStringAsFixed(b.v, 1) + ", x: " + dartfmt.ToStringAsFixed(b.minX, 1) + ".." +
 		dartfmt.ToStringAsFixed(b.maxX, 1) + ")"
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagFrictionPositionOutOfBounds = "FrictionPositionOutOfBounds"
+	tagFrictionThroughInvalid      = "FrictionThroughInvalid"
+)

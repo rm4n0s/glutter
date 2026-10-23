@@ -434,7 +434,7 @@ func (r *LongPressGestureRecognizer) callbacks(buttons int) (longPressButtonCall
 func (r *LongPressGestureRecognizer) currentCallbacks() (longPressButtonCallbacks, bool) {
 	c, ok := r.callbacks(r.initialButtons.Value())
 	if !ok && foundation.DebugMode {
-		panic(errors.New("LongPressButtonUnhandled", "unhandled button", "buttons", r.initialButtons.Value()))
+		panic(errors.New(tagLongPressButtonUnhandled, "unhandled button", "buttons", r.initialButtons.Value()))
 	}
 	return c, ok
 }
@@ -605,3 +605,8 @@ func (r *LongPressGestureRecognizer) AcceptGesture(int) {
 //
 // Flutter: gestures/long_press.dart LongPressGestureRecognizer.debugDescription
 func (r *LongPressGestureRecognizer) DebugDescription() string { return "long press" }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagLongPressButtonUnhandled = "LongPressButtonUnhandled"
+)

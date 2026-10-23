@@ -1,6 +1,10 @@
 package webgpu
 
-import "sync"
+import (
+	"sync"
+
+	"github.com/rm4n0s/errors"
+)
 
 // lossState is whether a device was lost or closed, and why. The browser tells about a loss in a
 // callback, which may run while the UI goroutine is between two calls, so it is guarded.
@@ -42,7 +46,7 @@ func (s *lossState) err() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.lost {
-		return errDeviceLost(s.reason, s.message)
+		return errors.New(TagDeviceLost, "the WebGPU device was lost", "reason", s.reason, "message", s.message)
 	}
 	return nil
 }

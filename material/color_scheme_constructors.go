@@ -286,7 +286,7 @@ func colorSchemeFromDynamic(scheme *mcu.DynamicScheme, brightness ui.Brightness,
 
 func buildDynamicScheme(brightness ui.Brightness, seedColor ui.Color, variant DynamicSchemeVariant, contrastLevel float64) *mcu.DynamicScheme {
 	if foundation.DebugMode && (contrastLevel < -1.0 || contrastLevel > 1.0) {
-		panic(errors.New("ColorSchemeContrastLevel", "contrastLevel must be between -1.0 and 1.0 inclusive.", "contrastLevel", contrastLevel))
+		panic(errors.New(tagColorSchemeContrastLevel, "contrastLevel must be between -1.0 and 1.0 inclusive.", "contrastLevel", contrastLevel))
 	}
 	isDark := brightness == ui.BrightnessDark
 	source := mcu.HctFromInt(seedColor.ToARGB32())
@@ -379,3 +379,8 @@ func ColorSchemeFromSwatch(opts ...ColorSchemeFromSwatchOpts) *ColorScheme {
 			OnBackground: foundation.Some(onColor(primaryIsDark)),
 		})
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagColorSchemeContrastLevel = "ColorSchemeContrastLevel"
+)

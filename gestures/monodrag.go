@@ -381,7 +381,7 @@ func (r *DragGestureRecognizer) resolveDelta(pointer int, axis dragDirection, lo
 	positive := delta > 0
 	maxPtr, ok := r.getMaxSumDeltaPointer(positive, axis).Get()
 	if foundation.DebugMode && !ok {
-		panic(errors.New("DragNoMaxDeltaPointer", "there is no pointer with a delta in this frame"))
+		panic(errors.New(tagDragNoMaxDeltaPointer, "there is no pointer with a delta in this frame"))
 	}
 	if maxPtr == pointer {
 		return delta
@@ -422,7 +422,7 @@ func (r *DragGestureRecognizer) resolveDeltaForPanGesture(axis dragDirection, lo
 // Flutter: gestures/monodrag.dart DragGestureRecognizer.handleEvent
 func (r *DragGestureRecognizer) HandleEvent(event PointerEvent) {
 	if foundation.DebugMode && r.state == dragReady {
-		panic(errors.New("DragEventWhileReady", "an event arrived while the drag recognizer is ready"))
+		panic(errors.New(tagDragEventWhileReady, "an event arrived while the drag recognizer is ready"))
 	}
 	if !event.Synthesized() {
 		switch e := event.(type) {
@@ -505,7 +505,7 @@ func dartSign(v float64) float64 {
 // Flutter: gestures/monodrag.dart DragGestureRecognizer.acceptGesture
 func (r *DragGestureRecognizer) AcceptGesture(pointer int) {
 	if foundation.DebugMode && slices.Contains(r.acceptedActivePointers, pointer) {
-		panic(errors.New("DragPointerAcceptedTwice", "the pointer was accepted twice", "pointer", pointer))
+		panic(errors.New(tagDragPointerAcceptedTwice, "the pointer was accepted twice", "pointer", pointer))
 	}
 	r.acceptedActivePointers = append(r.acceptedActivePointers, pointer)
 	r.activePointer = foundation.Some(pointer)
@@ -524,7 +524,7 @@ func (r *DragGestureRecognizer) RejectGesture(pointer int) { r.giveUpPointer(poi
 // Flutter: gestures/monodrag.dart DragGestureRecognizer.didStopTrackingLastPointer
 func (r *DragGestureRecognizer) DidStopTrackingLastPointer(pointer int) {
 	if foundation.DebugMode && r.state == dragReady {
-		panic(errors.New("DragStoppedWhileReady", "the last pointer stopped while the drag recognizer is ready"))
+		panic(errors.New(tagDragStoppedWhileReady, "the last pointer stopped while the drag recognizer is ready"))
 	}
 	switch r.state {
 	case dragPossible:
@@ -834,3 +834,11 @@ func NewPanGestureRecognizer(binding *GestureBinding, opts ...DragGestureRecogni
 	r.initDrag(binding, r, panAxis{}, oneOpts(opts))
 	return r
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagDragEventWhileReady      = "DragEventWhileReady"
+	tagDragNoMaxDeltaPointer    = "DragNoMaxDeltaPointer"
+	tagDragPointerAcceptedTwice = "DragPointerAcceptedTwice"
+	tagDragStoppedWhileReady    = "DragStoppedWhileReady"
+)

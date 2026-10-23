@@ -235,7 +235,7 @@ func (r *RenderParagraph) AssembleSemanticsNode(node *semantics.SemanticsNode, c
 			}
 		default:
 			if foundation.DebugMode {
-				panic(errors.New("ParagraphRecognizerUnsupported", foundation.RuntimeTypeName(info.Recognizer)+" is not supported",
+				panic(errors.New(tagParagraphRecognizerUnsupported, foundation.RuntimeTypeName(info.Recognizer)+" is not supported",
 					"recognizer", foundation.RuntimeTypeName(info.Recognizer)))
 			}
 		}
@@ -277,3 +277,8 @@ func (r *RenderParagraph) ClearSemantics() {
 	r.RenderBox.ClearSemantics()
 	r.psem.cachedChildNodes = nil
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagParagraphRecognizerUnsupported = "ParagraphRecognizerUnsupported"
+)

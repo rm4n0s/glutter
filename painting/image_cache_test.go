@@ -190,7 +190,7 @@ func TestImageCacheClearLiveImages(t *testing.T) {
 func TestImageCacheLoaderPanic(t *testing.T) {
 	pt := newPaintingTester(t)
 	cache := pt.ImageCache()
-	boom := errors.New("Boom", "boom")
+	boom := errors.New(tagBoom, "boom")
 	var got error
 	res := cache.PutIfAbsent("x", func() *ImageStreamCompleter { panic(boom) }, func(err error) { got = err })
 	if res != nil || got != boom {
@@ -221,3 +221,8 @@ func TestImageCacheRemovesPendingWhenCleared(t *testing.T) {
 		t.Error("a cleared pending image must not be cached when it arrives")
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagBoom = "Boom"
+)

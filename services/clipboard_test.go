@@ -137,7 +137,7 @@ func TestClipboardHasStrings(t *testing.T) {
 }
 
 func TestClipboardPassesBackendErrors(t *testing.T) {
-	boom := errors.New("BackendBoom", "the backend failed")
+	boom := errors.New(tagBackendBoom, "the backend failed")
 	m := &memoryClipboard{err: boom}
 	c := NewClipboard(m)
 	var setErr, getErr, hasErr error
@@ -162,13 +162,19 @@ func TestClipboardWithoutBackend(t *testing.T) {
 	if len(errs) != 3 {
 		t.Fatalf("got %d results, want 3", len(errs))
 	}
+	routes := []string{"Clipboard.SetData.ClipboardUnavailable", "Clipboard.GetData.ClipboardUnavailable", "Clipboard.HasStrings->Clipboard.GetData.ClipboardUnavailable"}
 	for i, err := range errs {
 		appErr, ok := errors.FromError(err)
 		if !ok {
 			t.Fatalf("%d: expected *errors.Error, got %T", i, err)
 		}
-		if !appErr.HasRoute("errClipboardUnavailable.ClipboardUnavailable") {
+		if !appErr.HasRoute(routes[i]) {
 			t.Errorf("%d: unexpected failure path: %s", i, appErr.Route())
 		}
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagBackendBoom = "BackendBoom"
+)

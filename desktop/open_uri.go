@@ -46,14 +46,14 @@ func OpenURI(ctx context.Context, bc widgets.BuildContext, uri string) error {
 // validateURI checks that the text is a URI with a scheme.
 func validateURI(uri string) error {
 	if strings.ContainsAny(uri, "\x00\r\n") {
-		return errors.New("OpenURIInvalid", "a URI cannot hold a control character", "uri", uri)
+		return errors.New(tagOpenURIInvalid, "a URI cannot hold a control character", "uri", uri)
 	}
 	u, err := url.Parse(uri)
 	if err != nil {
-		return errors.NewErr("OpenURIInvalid", err).SetMetadata("uri", uri)
+		return errors.NewErr(tagOpenURIInvalid, err).SetMetadata("uri", uri)
 	}
 	if u.Scheme == "" {
-		return errors.New("OpenURIInvalid", "a URI needs a scheme, such as https: or file:", "uri", uri)
+		return errors.New(tagOpenURIInvalid, "a URI needs a scheme, such as https: or file:", "uri", uri)
 	}
 	return nil
 }
@@ -76,7 +76,7 @@ func (c *call) openURI(ctx context.Context, uri string) error {
 		if pe, ok := errors.FromError(portalErr); ok {
 			portalTag = pe.Tag
 		}
-		return errors.NewErr("OpenURIUnavailable", err).
+		return errors.NewErr(tagOpenURIUnavailable, err).
 			SetMetadata("uri", uri, "portalTag", portalTag, "portal", portalErr.Error())
 	}
 	return nil
@@ -86,7 +86,7 @@ func (c *call) openURI(ctx context.Context, uri string) error {
 // cancels is not an error. A portal that cannot do it fails with the error of the
 // bus, or with OpenURIFailed when it answers that the interaction ended badly.
 func (c *call) openURIWithPortal(ctx context.Context, uri string) error {
-	bus, err := c.s.connect(ctx)
+	bus, err := c.s.connect(ctx, "DBusConnectFailed")
 	if err != nil {
 		return err
 	}
@@ -100,5 +100,12 @@ func (c *call) openURIWithPortal(ctx context.Context, uri string) error {
 	case dbus.PortalResponseSuccess, dbus.PortalResponseCancelled:
 		return nil
 	}
-	return errors.New("OpenURIFailed", "the OpenURI portal could not open the URI", "uri", uri, "code", uint32(resp.Code))
+	return errors.New(tagOpenURIFailed, "the OpenURI portal could not open the URI", "uri", uri, "code", uint32(resp.Code))
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagOpenURIFailed      = "OpenURIFailed"
+	tagOpenURIInvalid     = "OpenURIInvalid"
+	tagOpenURIUnavailable = "OpenURIUnavailable"
+)

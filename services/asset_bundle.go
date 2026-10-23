@@ -57,17 +57,17 @@ func NewFSAssetBundle(fsys fs.FS) *FSAssetBundle { return &FSAssetBundle{fsys: f
 // Flutter: services/asset_bundle.dart AssetBundle.load
 func (b *FSAssetBundle) Load(ctx context.Context, key string) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, errors.NewErr("AssetReadCanceled", err).SetMetadata("key", key)
+		return nil, errors.NewErr(tagAssetReadCanceled, err).SetMetadata("key", key)
 	}
 	if !fs.ValidPath(key) {
-		return nil, errors.New("AssetNotFound", "Unable to load asset: the key is not a valid path", "key", key)
+		return nil, errors.New(tagAssetNotFound, "Unable to load asset: the key is not a valid path", "key", key)
 	}
 	data, err := fs.ReadFile(b.fsys, key)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return nil, errors.New("AssetNotFound", "Unable to load asset", "key", key)
+			return nil, errors.New(tagAssetNotFound, "Unable to load asset", "key", key)
 		}
-		return nil, errors.NewErr("AssetReadFailed", err).SetMetadata("key", key)
+		return nil, errors.NewErr(tagAssetReadFailed, err).SetMetadata("key", key)
 	}
 	return data, nil
 }
@@ -77,7 +77,7 @@ func (b *FSAssetBundle) Load(ctx context.Context, key string) ([]byte, error) {
 // Flutter: services/asset_manifest.dart AssetManifest.getAssetVariants
 func (b *FSAssetBundle) Variants(ctx context.Context, key string) ([]AssetVariant, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, errors.NewErr("AssetReadCanceled", err).SetMetadata("key", key)
+		return nil, errors.NewErr(tagAssetReadCanceled, err).SetMetadata("key", key)
 	}
 	dir, file := path.Split(key)
 	dir = strings.TrimSuffix(dir, "/")
@@ -89,7 +89,7 @@ func (b *FSAssetBundle) Variants(ctx context.Context, key string) ([]AssetVarian
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil, nil
 		}
-		return nil, errors.NewErr("AssetReadFailed", err).SetMetadata("key", key)
+		return nil, errors.NewErr(tagAssetReadFailed, err).SetMetadata("key", key)
 	}
 	var out []AssetVariant
 	for _, e := range entries {
@@ -118,3 +118,10 @@ func parseScaleDirectory(name string) (float64, bool) {
 	}
 	return v, true
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagAssetNotFound     = "AssetNotFound"
+	tagAssetReadCanceled = "AssetReadCanceled"
+	tagAssetReadFailed   = "AssetReadFailed"
+)

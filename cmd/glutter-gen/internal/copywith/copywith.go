@@ -48,7 +48,7 @@ func Run(args []string) error {
 	dir := flags.String("dir", ".", "directory of the Go package to read")
 	out := flags.String("out", "", "file to write (default: "+defaultOut+" in the directory)")
 	if err := flags.Parse(args); err != nil {
-		return errors.NewErr("CopyWithBadFlags", err).SetMetadata("args", args)
+		return errors.NewErr(tagCopyWithBadFlags, err).SetMetadata("args", args)
 	}
 	if *out == "" {
 		*out = filepath.Join(*dir, defaultOut)
@@ -61,7 +61,7 @@ func Run(args []string) error {
 		return nil
 	}
 	if err := os.WriteFile(*out, code, 0o644); err != nil {
-		return errors.NewErr("CopyWithWriteFailed", err).SetMetadata("file", *out)
+		return errors.NewErr(tagCopyWithWriteFailed, err).SetMetadata("file", *out)
 	}
 	return nil
 }
@@ -90,7 +90,7 @@ func Generate(dir, skip string) ([]byte, error) {
 	fset := token.NewFileSet()
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return nil, errors.NewErr("CopyWithReadDirFailed", err).SetMetadata("dir", dir)
+		return nil, errors.NewErr(tagCopyWithReadDirFailed, err).SetMetadata("dir", dir)
 	}
 	var pkgName string
 	var targets []target
@@ -102,12 +102,12 @@ func Generate(dir, skip string) ([]byte, error) {
 		}
 		file, err := parser.ParseFile(fset, filepath.Join(dir, name), nil, parser.ParseComments)
 		if err != nil {
-			return nil, errors.NewErr("CopyWithParseFailed", err).SetMetadata("file", name)
+			return nil, errors.NewErr(tagCopyWithParseFailed, err).SetMetadata("file", name)
 		}
 		if pkgName == "" {
 			pkgName = file.Name.Name
 		} else if pkgName != file.Name.Name {
-			return nil, errors.New("CopyWithPackagesMixed", "the directory holds more than one package", "dir", dir, "packages", []string{pkgName, file.Name.Name})
+			return nil, errors.New(tagCopyWithPackagesMixed, "the directory holds more than one package", "dir", dir, "packages", []string{pkgName, file.Name.Name})
 		}
 		found, err := targetsOf(fset, file)
 		if err != nil {
@@ -119,13 +119,13 @@ func Generate(dir, skip string) ([]byte, error) {
 		targets = append(targets, found...)
 		for local, path := range importsOf(file) {
 			if old, ok := imports[local]; ok && old != path {
-				return nil, errors.New("CopyWithImportClash", "two files import different packages under one name", "name", local, "paths", []string{old, path})
+				return nil, errors.New(tagCopyWithImportClash, "two files import different packages under one name", "name", local, "paths", []string{old, path})
 			}
 			imports[local] = path
 		}
 	}
 	if len(targets) == 0 {
-		return nil, errors.New("CopyWithNoTypes", "no struct is marked with //"+annotation, "dir", dir)
+		return nil, errors.New(tagCopyWithNoTypes, "no struct is marked with //"+annotation, "dir", dir)
 	}
 	sort.Slice(targets, func(i, j int) bool { return targets[i].name < targets[j].name })
 
@@ -146,7 +146,7 @@ func Generate(dir, skip string) ([]byte, error) {
 			path = foundationPkg
 		}
 		if path == "" {
-			return nil, errors.New("CopyWithUnknownImport", "a field type uses a package that no file imports", "name", local)
+			return nil, errors.New(tagCopyWithUnknownImport, "a field type uses a package that no file imports", "name", local)
 		}
 		if pkgName == "foundation" && local == "foundation" {
 			continue
@@ -167,7 +167,7 @@ func Generate(dir, skip string) ([]byte, error) {
 	}
 	src, err := format.Source(b.Bytes())
 	if err != nil {
-		return nil, errors.NewErr("CopyWithFormatFailed", err).SetMetadata("source", b.String())
+		return nil, errors.NewErr(tagCopyWithFormatFailed, err).SetMetadata("source", b.String())
 	}
 	return src, nil
 }
@@ -206,10 +206,10 @@ func targetsOf(fset *token.FileSet, file *ast.File) ([]target, error) {
 			}
 			st, ok := ts.Type.(*ast.StructType)
 			if !ok {
-				return nil, errors.New("CopyWithNotAStruct", "only a struct can be marked with //"+annotation, "type", ts.Name.Name)
+				return nil, errors.New(tagCopyWithNotAStruct, "only a struct can be marked with //"+annotation, "type", ts.Name.Name)
 			}
 			if ts.TypeParams != nil {
-				return nil, errors.New("CopyWithGeneric", "a generic struct cannot be marked with //"+annotation, "type", ts.Name.Name)
+				return nil, errors.New(tagCopyWithGeneric, "a generic struct cannot be marked with //"+annotation, "type", ts.Name.Name)
 			}
 			t := target{name: ts.Name.Name, byValue: byValue, flutter: flutterOf(doc)}
 			seen := map[string]string{}
@@ -219,7 +219,7 @@ func targetsOf(fset *token.FileSet, file *ast.File) ([]target, error) {
 				}
 				var buf bytes.Buffer
 				if err := printer.Fprint(&buf, fset, f.Type); err != nil {
-					return nil, errors.NewErr("CopyWithPrintFailed", err).SetMetadata("type", ts.Name.Name)
+					return nil, errors.NewErr(tagCopyWithPrintFailed, err).SetMetadata("type", ts.Name.Name)
 				}
 				for _, n := range f.Names {
 					if n.Name == "_" {
@@ -227,14 +227,14 @@ func targetsOf(fset *token.FileSet, file *ast.File) ([]target, error) {
 					}
 					exp := exportedName(n.Name)
 					if other, clash := seen[exp]; clash {
-						return nil, errors.New("CopyWithNameClash", "two fields have the same exported name", "type", ts.Name.Name, "fields", []string{other, n.Name})
+						return nil, errors.New(tagCopyWithNameClash, "two fields have the same exported name", "type", ts.Name.Name, "fields", []string{other, n.Name})
 					}
 					seen[exp] = n.Name
 					t.fields = append(t.fields, field{name: n.Name, exported: exp, typ: buf.String(), isOpt: isOpt(f.Type)})
 				}
 			}
 			if len(t.fields) == 0 {
-				return nil, errors.New("CopyWithNoFields", "the struct has no field to copy", "type", ts.Name.Name)
+				return nil, errors.New(tagCopyWithNoFields, "the struct has no field to copy", "type", ts.Name.Name)
 			}
 			out = append(out, t)
 		}
@@ -345,3 +345,21 @@ func writeTarget(b *bytes.Buffer, t target, foundation string) {
 	}
 	fmt.Fprintf(b, "\t%s\n}\n", end)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagCopyWithBadFlags      = "CopyWithBadFlags"
+	tagCopyWithFormatFailed  = "CopyWithFormatFailed"
+	tagCopyWithGeneric       = "CopyWithGeneric"
+	tagCopyWithImportClash   = "CopyWithImportClash"
+	tagCopyWithNameClash     = "CopyWithNameClash"
+	tagCopyWithNoFields      = "CopyWithNoFields"
+	tagCopyWithNoTypes       = "CopyWithNoTypes"
+	tagCopyWithNotAStruct    = "CopyWithNotAStruct"
+	tagCopyWithPackagesMixed = "CopyWithPackagesMixed"
+	tagCopyWithParseFailed   = "CopyWithParseFailed"
+	tagCopyWithPrintFailed   = "CopyWithPrintFailed"
+	tagCopyWithReadDirFailed = "CopyWithReadDirFailed"
+	tagCopyWithUnknownImport = "CopyWithUnknownImport"
+	tagCopyWithWriteFailed   = "CopyWithWriteFailed"
+)

@@ -206,7 +206,7 @@ func debugCheckContextActive(bc widgets.BuildContext) {
 		return
 	}
 	if e, ok := bc.(interface{ DebugIsActive() bool }); ok && !e.DebugIsActive() {
-		panic(errors.New("ShowDialogContextInactive", "this BuildContext is no longer valid: the showDialog function was called after the widget was disposed; use a parent context instead"))
+		panic(errors.New(tagShowDialogContextInactive, "this BuildContext is no longer valid: the showDialog function was called after the widget was disposed; use a parent context instead"))
 	}
 }
 
@@ -223,3 +223,8 @@ func convertChan[T any](in <-chan any) <-chan T {
 	}()
 	return out
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagShowDialogContextInactive = "ShowDialogContextInactive"
+)

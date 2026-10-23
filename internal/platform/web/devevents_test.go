@@ -49,7 +49,7 @@ func TestParseDevEventsFailures(t *testing.T) {
 			if !ok {
 				t.Fatalf("expected *errors.Error, got %T (%v)", err, err)
 			}
-			if appErr.Tag != "WebDevEventsInvalid" || !appErr.HasRoute("ParseDevEvents.WebDevEventsInvalid") {
+			if appErr.Tag != tagWebDevEventsInvalid || !appErr.HasRoute("ParseDevEvents.WebDevEventsInvalid") {
 				t.Errorf("unexpected failure path: %s", appErr.Route())
 			}
 		})

@@ -33,7 +33,7 @@ func newLossRig(t *testing.T) *lossRig {
 func (g *lossRig) last() *fakedevice.Device { return g.devs[len(g.devs)-1] }
 
 func (g *lossRig) lose() {
-	g.last().Err = errors.New("VulkanDeviceLost", "the Vulkan device was lost", "call", "vkQueueSubmit")
+	g.last().Err = errors.New(tagVulkanDeviceLost, "the Vulkan device was lost", "call", "vkQueueSubmit")
 }
 
 func TestDeviceLostMakesEverythingAgainOnce(t *testing.T) {
@@ -63,7 +63,7 @@ func TestDeviceLostMakesEverythingAgainOnce(t *testing.T) {
 	g.lose()
 	_, err = g.r.Draw(window, 32, 32, scene, true)
 	appErr, ok := errors.FromError(err)
-	if !ok || appErr.Tag != "VulkanDeviceLost" || !appErr.HasRoute("VulkanDeviceLost") {
+	if !ok || appErr.Tag != tagVulkanDeviceLost || !appErr.HasRoute(tagVulkanDeviceLost) {
 		t.Fatalf("got %v, want VulkanDeviceLost", err)
 	}
 	if len(g.devs) != 2 {
@@ -95,9 +95,9 @@ func TestOtherErrorsAreNotDeviceLoss(t *testing.T) {
 	if _, err := g.r.Draw(window, 32, 32, scene, false); err != nil {
 		t.Fatal(err)
 	}
-	g.last().Err = errors.New("GPUOutOfMemory", "out of memory")
+	g.last().Err = errors.New(tagGPUOutOfMemory, "out of memory")
 	_, err := g.r.Draw(window, 32, 32, scene, false)
-	if appErr, ok := errors.FromError(err); !ok || appErr.Tag != "GPUOutOfMemory" {
+	if appErr, ok := errors.FromError(err); !ok || appErr.Tag != tagGPUOutOfMemory {
 		t.Fatalf("got %v, want GPUOutOfMemory", err)
 	}
 	if len(g.devs) != 1 {
@@ -107,10 +107,16 @@ func TestOtherErrorsAreNotDeviceLoss(t *testing.T) {
 
 func TestDeviceLostBeforeTheDeviceOpensIsAnError(t *testing.T) {
 	r := explicit.NewRenderer(func(gpu.SurfaceHandle) (explicit.Device, error) {
-		return nil, errors.New("VulkanDeviceLost", "lost while opening")
+		return nil, errors.New(tagVulkanDeviceLost, "lost while opening")
 	})
 	_, err := r.Draw(window, 8, 8, nil, false)
-	if appErr, ok := errors.FromError(err); !ok || appErr.Tag != "VulkanDeviceLost" {
+	if appErr, ok := errors.FromError(err); !ok || appErr.Tag != tagVulkanDeviceLost {
 		t.Fatalf("got %v", err)
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagGPUOutOfMemory   = "GPUOutOfMemory"
+	tagVulkanDeviceLost = "VulkanDeviceLost"
+)

@@ -111,13 +111,13 @@ func NewSnackBarThemeData(opts ...SnackBarThemeDataOpts) SnackBarThemeData {
 	d := firstOpts(opts)
 	if foundation.DebugMode {
 		if d.Elevation.OrElse(0) < 0 {
-			panic(errors.New("SnackBarThemeElevationNegative", "the elevation of a SnackBarThemeData must not be negative", "elevation", d.Elevation.Value()))
+			panic(errors.New(tagSnackBarThemeElevationNegative, "the elevation of a SnackBarThemeData must not be negative", "elevation", d.Elevation.Value()))
 		}
 		if d.Width.IsSome() && d.Behavior != SnackBarBehaviorFloating {
-			panic(errors.New("SnackBarThemeWidthNotFloating", "Width can only be set if behaviour is SnackBarBehavior.floating"))
+			panic(errors.New(tagSnackBarThemeWidthNotFloating, "Width can only be set if behaviour is SnackBarBehavior.floating"))
 		}
 		if t, ok := d.ActionOverflowThreshold.Get(); ok && (t < 0 || t > 1) {
-			panic(errors.New("SnackBarThemeOverflowThreshold", "Action overflow threshold must be between 0 and 1 inclusive", "threshold", t))
+			panic(errors.New(tagSnackBarThemeOverflowThreshold, "Action overflow threshold must be between 0 and 1 inclusive", "threshold", t))
 		}
 	}
 	return d
@@ -282,3 +282,10 @@ func SnackBarThemeOf(bc widgets.BuildContext) SnackBarThemeData {
 	}
 	return ThemeOf(bc).SnackBarTheme
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagSnackBarThemeElevationNegative = "SnackBarThemeElevationNegative"
+	tagSnackBarThemeOverflowThreshold = "SnackBarThemeOverflowThreshold"
+	tagSnackBarThemeWidthNotFloating  = "SnackBarThemeWidthNotFloating"
+)

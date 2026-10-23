@@ -227,7 +227,7 @@ func (n *SemanticsNode) Rect() ui.Rect { return n.rect }
 // Flutter: semantics/semantics.dart SemanticsNode.rect
 func (n *SemanticsNode) SetRect(value ui.Rect) {
 	if foundation.DebugMode && !value.IsFinite() {
-		panic(errors.New("SemanticsRectNotFinite", "a semantics node was given a rectangle that is not finite",
+		panic(errors.New(tagSemanticsRectNotFinite, "a semantics node was given a rectangle that is not finite",
 			"node", n.ToStringShort(), "rect", value.String()))
 	}
 	if n.rect != value {
@@ -301,10 +301,10 @@ func (n *SemanticsNode) replaceChildren(newChildren []*SemanticsNode) {
 		seen := map[*SemanticsNode]bool{}
 		for _, c := range newChildren {
 			if c == n {
-				panic(errors.New("SemanticsNodeOwnChild", "a semantics node can not be its own child"))
+				panic(errors.New(tagSemanticsNodeOwnChild, "a semantics node can not be its own child"))
 			}
 			if seen[c] {
-				panic(errors.New("SemanticsChildDuplicated", "a semantics node was added as a child twice", "node", c.ToStringShort()))
+				panic(errors.New(tagSemanticsChildDuplicated, "a semantics node was added as a child twice", "node", c.ToStringShort()))
 			}
 			seen[c] = true
 		}
@@ -330,7 +330,7 @@ func (n *SemanticsNode) replaceChildren(newChildren []*SemanticsNode) {
 				c.parent.dropChild(c)
 			}
 			if foundation.DebugMode && c.Attached() {
-				panic(errors.New("SemanticsChildAttached", "a child that is added to a node must not be attached", "node", c.ToStringShort()))
+				panic(errors.New(tagSemanticsChildAttached, "a child that is added to a node must not be attached", "node", c.ToStringShort()))
 			}
 			n.adoptChild(c)
 			sawChange = true
@@ -355,7 +355,7 @@ func (n *SemanticsNode) replaceChildren(newChildren []*SemanticsNode) {
 				}
 			}
 			if len(details) > 0 {
-				panic(errors.New("SemanticsChildrenMutated",
+				panic(errors.New(tagSemanticsChildrenMutated,
 					"Failed to replace child semantics nodes because the list of `SemanticsNode`s was mutated.\n"+
 						"Instead of mutating the existing list, create a new list containing the desired `SemanticsNode`s.\n"+
 						"Error details:\n"+strings.Join(details, "\n")))
@@ -368,13 +368,13 @@ func (n *SemanticsNode) replaceChildren(newChildren []*SemanticsNode) {
 			ancestor = ancestor.parent
 			if seen[ancestor] {
 				// The adopted children made a loop of parents.
-				panic(errors.New("SemanticsCycle", "a semantics node was added as a child of its own descendant"))
+				panic(errors.New(tagSemanticsCycle, "a semantics node was added as a child of its own descendant"))
 			}
 			seen[ancestor] = true
 		}
 		for _, c := range newChildren {
 			if c == ancestor {
-				panic(errors.New("SemanticsCycle", "a semantics node was added as a child of its own descendant"))
+				panic(errors.New(tagSemanticsCycle, "a semantics node was added as a child of its own descendant"))
 			}
 		}
 	}
@@ -520,7 +520,7 @@ func (n *SemanticsNode) dropChild(child *SemanticsNode) {
 // Flutter: semantics/semantics.dart SemanticsNode.attach
 func (n *SemanticsNode) Attach(owner *SemanticsOwner) {
 	if foundation.DebugMode && n.owner != nil {
-		panic(errors.New("SemanticsNodeAttached", "a semantics node was attached twice", "node", n.ToStringShort()))
+		panic(errors.New(tagSemanticsNodeAttached, "a semantics node was attached twice", "node", n.ToStringShort()))
 	}
 	n.owner = owner
 	for {
@@ -545,7 +545,7 @@ func (n *SemanticsNode) Attach(owner *SemanticsOwner) {
 // Flutter: semantics/semantics.dart SemanticsNode.detach
 func (n *SemanticsNode) Detach() {
 	if foundation.DebugMode && n.owner == nil {
-		panic(errors.New("SemanticsNodeDetached", "a semantics node that is not attached was detached", "node", n.ToStringShort()))
+		panic(errors.New(tagSemanticsNodeDetached, "a semantics node that is not attached was detached", "node", n.ToStringShort()))
 	}
 	owner := n.owner
 	delete(owner.nodes, n.id)
@@ -866,7 +866,7 @@ func (n *SemanticsNode) UpdateWith(config *SemanticsConfiguration, childrenInInv
 		n.markDirty()
 	}
 	if foundation.DebugMode && config.platformViewID.IsSome() && len(childrenInInversePaintOrder) > 0 {
-		panic(errors.New("SemanticsPlatformViewWithChildren", "SemanticsNodes with children must not specify a platformViewId."))
+		panic(errors.New(tagSemanticsPlatformViewWithChildren, "SemanticsNodes with children must not specify a platformViewId."))
 	}
 	mergeChanged := n.mergeAllDescendantsIntoThisNode != config.isMergingSemanticsOfDescendants
 
@@ -916,11 +916,11 @@ func (n *SemanticsNode) UpdateWith(config *SemanticsConfiguration, childrenInInv
 	}
 	if foundation.DebugMode {
 		if n.canPerformAction(ui.SemanticsActionIncrease) && (n.Value() == "") != (n.IncreasedValue() == "") {
-			panic(errors.New("SemanticsIncreaseWithoutValue",
+			panic(errors.New(tagSemanticsIncreaseWithoutValue,
 				`A SemanticsNode with action "increase" needs to be annotated with either both "value" and "increasedValue" or neither`))
 		}
 		if n.canPerformAction(ui.SemanticsActionDecrease) && (n.Value() == "") != (n.DecreasedValue() == "") {
-			panic(errors.New("SemanticsDecreaseWithoutValue",
+			panic(errors.New(tagSemanticsDecreaseWithoutValue,
 				`A SemanticsNode with action "decrease" needs to be annotated with either both "value" and "decreasedValue" or neither`))
 		}
 	}
@@ -1255,7 +1255,7 @@ func (n *SemanticsNode) updateChildrenInTraversalOrder() []*SemanticsNode {
 			}
 			for ; tp != nil; tp = tp.parent {
 				if tp == child {
-					panic(errors.New("SemanticsTraversalCycle", "the traversalParent cannot be the child of the traversalChild in hit-test order",
+					panic(errors.New(tagSemanticsTraversalCycle, "the traversalParent cannot be the child of the traversalChild in hit-test order",
 						"traversalParent", tpID, "traversalChild", child.id))
 				}
 			}
@@ -1268,7 +1268,7 @@ func (n *SemanticsNode) updateChildrenInTraversalOrder() []*SemanticsNode {
 			for cur := n; cur.parent != nil; {
 				cur = cur.parent
 				if set.has(cur) {
-					panic(errors.New("SemanticsTraversalCycle", "the traversalParent cannot be the child of the traversalChild in hit-test order",
+					panic(errors.New(tagSemanticsTraversalCycle, "the traversalParent cannot be the child of the traversalChild in hit-test order",
 						"traversalParent", n.id, "traversalChild", cur.id))
 				}
 			}
@@ -1621,3 +1621,19 @@ func (d *semanticsDiagnosticsNode) ToDescription(*foundation.TextTreeConfigurati
 	}
 	return d.value.ToStringShort()
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagSemanticsChildAttached            = "SemanticsChildAttached"
+	tagSemanticsChildDuplicated          = "SemanticsChildDuplicated"
+	tagSemanticsChildrenMutated          = "SemanticsChildrenMutated"
+	tagSemanticsCycle                    = "SemanticsCycle"
+	tagSemanticsDecreaseWithoutValue     = "SemanticsDecreaseWithoutValue"
+	tagSemanticsIncreaseWithoutValue     = "SemanticsIncreaseWithoutValue"
+	tagSemanticsNodeAttached             = "SemanticsNodeAttached"
+	tagSemanticsNodeDetached             = "SemanticsNodeDetached"
+	tagSemanticsNodeOwnChild             = "SemanticsNodeOwnChild"
+	tagSemanticsPlatformViewWithChildren = "SemanticsPlatformViewWithChildren"
+	tagSemanticsRectNotFinite            = "SemanticsRectNotFinite"
+	tagSemanticsTraversalCycle           = "SemanticsTraversalCycle"
+)

@@ -13,7 +13,7 @@ import (
 // Flutter: painting/debug.dart debugCheckCanResolveTextDirection
 func debugCheckCanResolveTextDirection(direction ui.TextDirection, target string) {
 	if foundation.DebugMode && direction == ui.TextDirectionUnspecified {
-		panic(errors.New("TextDirectionRequired",
+		panic(errors.New(tagTextDirectionRequired,
 			"a TextDirection is required to resolve a directional value; a directional "+target+" cannot be resolved without one",
 			"target", target))
 	}

@@ -63,7 +63,7 @@ type BottomAppBar struct {
 func NewBottomAppBar(opts ...BottomAppBarOpts) *BottomAppBar {
 	o := firstOpts(opts)
 	if foundation.DebugMode && o.Elevation.OrElse(0) < 0 {
-		panic(errors.New("BottomAppBarElevationNegative", "the elevation of a BottomAppBar must not be negative", "elevation", o.Elevation.Value()))
+		panic(errors.New(tagBottomAppBarElevationNegative, "the elevation of a BottomAppBar must not be negative", "elevation", o.Elevation.Value()))
 	}
 	if o.ClipBehavior == ui.ClipUnspecified {
 		o.ClipBehavior = ui.ClipNone
@@ -215,3 +215,8 @@ func (c *bottomAppBarClipper) ShouldReclip(old rendering.CustomClipper[*ui.Path]
 	o, ok := old.(*bottomAppBarClipper)
 	return !ok || o.geometry != c.geometry || o.shape != c.shape || o.notchMargin != c.notchMargin
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagBottomAppBarElevationNegative = "BottomAppBarElevationNegative"
+)

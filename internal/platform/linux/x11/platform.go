@@ -100,7 +100,7 @@ type Platform struct {
 var _ platform.Platform = (*Platform)(nil)
 
 // New connects to the X server named by name (empty means $DISPLAY) and sets up
-// the keyboard and pointer input. It fails with X11LoadFailed when libX11 is
+// the keyboard and pointer input. It fails with LibraryLoadFailed when libX11 is
 // missing and X11OpenDisplayFailed when the display cannot be opened. Without libXi or
 // without XInput2 on the server there is no keyboard and pointer input (a warning
 // is logged). Close releases the connection.
@@ -118,7 +118,7 @@ func New(name string) (*Platform, error) {
 	}
 	display := x.openDisplay(cname)
 	if display == 0 {
-		return nil, errors.New("X11OpenDisplayFailed", "could not open the X display", "display", name)
+		return nil, errors.New(tagX11OpenDisplayFailed, "could not open the X display", "display", name)
 	}
 	loop, err := linux.NewLoop()
 	if err != nil {
@@ -199,7 +199,7 @@ func refreshIntervalOf(rate int) time.Duration {
 func (p *Platform) xrandrRate() int {
 	r, err := loadXrandrOnce()
 	if err != nil {
-		slog.Debug("XRandR is not available: using 60 Hz", "error", err)
+		slog.Debug("XRandR is not available: using 60 Hz", "err", err)
 		return 0
 	}
 	config := r.getScreenInfo(p.display, p.root)
@@ -256,7 +256,7 @@ func (p *Platform) Run(ctx context.Context, h platform.Handler) error {
 	p.mu.Lock()
 	if p.running {
 		p.mu.Unlock()
-		return errors.New("PlatformAlreadyRunning", "Run was called while the platform is already running")
+		return errors.New(tagPlatformAlreadyRunning, "Run was called while the platform is already running")
 	}
 	p.running = true
 	p.mu.Unlock()
@@ -379,3 +379,9 @@ func (p *Platform) dispatchEvents() (handled bool) {
 	}
 	return handled
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagPlatformAlreadyRunning = "PlatformAlreadyRunning"
+	tagX11OpenDisplayFailed   = "X11OpenDisplayFailed"
+)

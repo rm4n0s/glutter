@@ -187,5 +187,5 @@ func TestInkResponseNeedsASizeToSplashFromContext(t *testing.T) {
 		}
 		return widgets.NewSizedBox(nil)
 	}), InkWellOpts{OnTap: func() {}})))
-	wantRoute(t, err, "InkResponseNoSize")
+	wantRoute(t, err, "inkResponseState.startNewSplash.InkResponseNoSize")
 }

@@ -39,7 +39,7 @@ type TextScalerClampOpts struct {
 func (o TextScalerClampOpts) resolved() (minScale, maxScale float64) {
 	minScale, maxScale = o.MinScaleFactor, o.MaxScaleFactor.OrElse(math.Inf(1))
 	if foundation.DebugMode && !(maxScale >= minScale && !math.IsNaN(maxScale) && !math.IsInf(minScale, 0) && !math.IsNaN(minScale) && minScale >= 0) {
-		panic(errors.New("TextScalerClampInvalid", "the scale factors must satisfy 0 <= minScaleFactor <= maxScaleFactor",
+		panic(errors.New(tagTextScalerClampInvalid, "the scale factors must satisfy 0 <= minScaleFactor <= maxScaleFactor",
 			"minScaleFactor", minScale, "maxScaleFactor", maxScale))
 	}
 	return minScale, maxScale
@@ -56,7 +56,7 @@ var TextScalerNoScaling TextScaler = linearTextScaler{1.0}
 // Flutter: painting/text_scaler.dart TextScaler.linear
 func NewTextScalerLinear(textScaleFactor float64) TextScaler {
 	if foundation.DebugMode && !(textScaleFactor >= 0) {
-		panic(errors.New("TextScalerInvalid", "the text scale factor must not be negative", "textScaleFactor", textScaleFactor))
+		panic(errors.New(tagTextScalerInvalid, "the text scale factor must not be negative", "textScaleFactor", textScaleFactor))
 	}
 	return linearTextScaler{textScaleFactor}
 }
@@ -83,7 +83,7 @@ func (s linearTextScaler) TextScaleFactor() float64 { return s.factor }
 
 func (s linearTextScaler) Scale(fontSize float64) float64 {
 	if foundation.DebugMode && !(fontSize >= 0 && !math.IsInf(fontSize, 0) && !math.IsNaN(fontSize)) {
-		panic(errors.New("TextScalerFontSizeInvalid", "the font size to scale must be finite and not negative", "fontSize", fontSize))
+		panic(errors.New(tagTextScalerFontSizeInvalid, "the font size to scale must be finite and not negative", "fontSize", fontSize))
 	}
 	return fontSize * s.factor
 }
@@ -116,7 +116,7 @@ func (s clampedTextScaler) TextScaleFactor() float64 {
 
 func (s clampedTextScaler) Scale(fontSize float64) float64 {
 	if foundation.DebugMode && !(fontSize >= 0 && !math.IsInf(fontSize, 0) && !math.IsNaN(fontSize)) {
-		panic(errors.New("TextScalerFontSizeInvalid", "the font size to scale must be finite and not negative", "fontSize", fontSize))
+		panic(errors.New(tagTextScalerFontSizeInvalid, "the font size to scale must be finite and not negative", "fontSize", fontSize))
 	}
 	return ui.ClampDouble(s.scaler.Scale(fontSize), s.minScale*fontSize, s.maxScale*fontSize)
 }
@@ -152,3 +152,10 @@ func TextScalerEqual(a, b TextScaler) bool {
 	}
 	return sameValue(a, b)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagTextScalerClampInvalid    = "TextScalerClampInvalid"
+	tagTextScalerFontSizeInvalid = "TextScalerFontSizeInvalid"
+	tagTextScalerInvalid         = "TextScalerInvalid"
+)

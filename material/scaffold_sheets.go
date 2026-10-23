@@ -350,7 +350,7 @@ type ShowBottomSheetOpts struct {
 func (s *ScaffoldState) ShowBottomSheet(builder widgets.WidgetBuilder, opts ...ShowBottomSheetOpts) *PersistentBottomSheetController {
 	o := firstOpts(opts)
 	if foundation.DebugMode && s.Widget().o.BottomSheet != nil {
-		panic(errors.New("ScaffoldBottomSheetShowConflict", "Scaffold.bottomSheet cannot be specified while a bottom sheet displayed with showBottomSheet() is still visible. Rebuild the Scaffold with a null bottomSheet before calling showBottomSheet()."))
+		panic(errors.New(tagScaffoldBottomSheetShowConflict, "Scaffold.bottomSheet cannot be specified while a bottom sheet displayed with showBottomSheet() is still visible. Rebuild the Scaffold with a null bottomSheet before calling showBottomSheet()."))
 	}
 	widgets.DebugCheckHasMediaQuery(s.Context())
 
@@ -376,3 +376,8 @@ func (s *ScaffoldState) ShowBottomSheet(builder widgets.WidgetBuilder, opts ...S
 func ShowBottomSheet(bc widgets.BuildContext, builder widgets.WidgetBuilder, opts ...ShowBottomSheetOpts) *PersistentBottomSheetController {
 	return ScaffoldOf(bc).ShowBottomSheet(builder, opts...)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagScaffoldBottomSheetShowConflict = "ScaffoldBottomSheetShowConflict"
+)

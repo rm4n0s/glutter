@@ -6,7 +6,7 @@ require (
 	github.com/ebitengine/purego v0.11.2
 	github.com/go-text/typesetting v0.3.4
 	github.com/godbus/dbus/v5 v5.2.4
-	github.com/rm4n0s/errors v0.0.0-20260824195921-8423e20ff67e
+	github.com/rm4n0s/errors v0.2.0
 	golang.org/x/image v0.47.0
 	golang.org/x/text v0.43.0
 )

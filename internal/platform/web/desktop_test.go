@@ -172,9 +172,9 @@ func TestOpenURI(t *testing.T) {
 
 func TestOpenURIFailures(t *testing.T) {
 	d, _, o, _ := newTestDesktop("granted")
-	o.err = errors.New("Thrown", "window.open threw")
+	o.err = errors.New(tagThrown, "window.open threw")
 	appErr, ok := errors.FromError(d.OpenURI(context.Background(), "https://example.org"))
-	if !ok || appErr.Tag != "OpenURIUnavailable" || appErr.Metadata["reason"] == "" {
+	if !ok || appErr.Tag != tagOpenURIUnavailable || appErr.Metadata["reason"] == "" {
 		t.Errorf("got %+v, want OpenURIUnavailable with a reason", appErr)
 	}
 	var none *Desktop
@@ -231,7 +231,7 @@ func TestShowNotificationWithoutPermission(t *testing.T) {
 		{"denied before", "denied", "", nil, ""},
 		{"refused at the prompt", "default", "denied", nil, ""},
 		{"the prompt dismissed", "default", "default", nil, ""},
-		{"the request failed", "default", "", errors.New("Thrown", "requestPermission threw"), "requesting the permission failed"},
+		{"the request failed", "default", "", errors.New(tagThrown, "requestPermission threw"), "requesting the permission failed"},
 		{"no Notification in the page", permissionUnsupported, "", nil, noNotificationsReason},
 	}
 	for _, tc := range tests {
@@ -247,7 +247,7 @@ func TestShowNotificationWithoutPermission(t *testing.T) {
 			}
 			err := <-got
 			appErr, ok := errors.FromError(err)
-			if !ok || appErr.Tag != "NotificationsUnavailable" {
+			if !ok || appErr.Tag != tagNotificationsUnavailable {
 				t.Fatalf("got %v, want NotificationsUnavailable", err)
 			}
 			if !appErr.HasRoute("NotificationsUnavailable") {
@@ -290,7 +290,7 @@ func TestShowNotificationWaitsForThePromptUntilTheContextEnds(t *testing.T) {
 
 func TestShowNotificationFailsWhenTheBrowserRefusesToConstructIt(t *testing.T) {
 	d, n, _, _ := newTestDesktop("granted")
-	n.showErr = errNotificationFailed("Illegal constructor")
+	n.showErr = errors.New(tagWebNotificationFailed, "the browser could not make the notification", "detail", "Illegal constructor")
 	_, err := d.ShowNotification(context.Background(), NotificationSpec{Title: "Hi", Timeout: time.Second})
 	if tag := tagOf(t, err); tag != "WebNotificationFailed" {
 		t.Fatalf("got %s", tag)
@@ -483,3 +483,8 @@ func TestIconURL(t *testing.T) {
 		}
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagThrown = "Thrown"
+)

@@ -58,7 +58,7 @@ func TonalPaletteFromHct(hct *Hct) *TonalPalette {
 // Flutter: material-color-utilities palettes/tonal_palette.dart TonalPalette.fromList
 func TonalPaletteFromList(colors []uint32) *TonalPalette {
 	if foundation.DebugMode && len(colors) != CommonSize {
-		panic(errors.New("TonalPaletteListSize", "a palette needs one color for each common tone", "colors", len(colors), "want", CommonSize))
+		panic(errors.New(tagTonalPaletteListSize, "a palette needs one color for each common tone", "colors", len(colors), "want", CommonSize))
 	}
 	cache := make(map[int]uint32, CommonSize)
 	for i, tone := range CommonTones {
@@ -225,3 +225,8 @@ func (k *KeyColor) maxChroma(tone int) float64 {
 	k.chromaCache[tone] = c
 	return c
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagTonalPaletteListSize = "TonalPaletteListSize"
+)

@@ -36,7 +36,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	out := fs.String("o", "", "the PNG file to write")
 	list := fs.Bool("list", false, "list the proof scenes")
 	if err := fs.Parse(args); err != nil {
-		return errors.NewErr("ProofUsage", err)
+		return errors.NewErr(tagProofUsage, err)
 	}
 	if *list {
 		for _, n := range proof.Names() {
@@ -45,13 +45,13 @@ func run(args []string, stdout, stderr io.Writer) error {
 				return err
 			}
 			if _, err := fmt.Fprintf(stdout, "%s\t%dx%d\t%s\n", s.Name, s.Width, s.Height, s.Description); err != nil {
-				return errors.NewErr("ProofUsage", err)
+				return errors.NewErr(tagProofUsage, err)
 			}
 		}
 		return nil
 	}
 	if *name == "" || *out == "" {
-		return errors.New("ProofUsage", "usage: glutter-proof -scene <name> -o <file.png> | glutter-proof -list")
+		return errors.New(tagProofUsage, "usage: glutter-proof -scene <name> -o <file.png> | glutter-proof -list")
 	}
 	s, err := proof.Lookup(*name)
 	if err != nil {
@@ -63,3 +63,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 	}
 	return goldens.WritePNG(*out, img)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagProofUsage = "ProofUsage"
+)

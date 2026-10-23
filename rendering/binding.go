@@ -175,7 +175,7 @@ func (b *RendererBinding) renderViewFor(id ui.ViewID) *RenderView {
 // Flutter: rendering/binding.dart RendererBinding.addRenderView
 func (b *RendererBinding) AddRenderView(view *RenderView) {
 	if foundation.DebugMode && b.renderViewFor(view.view.ViewID()) != nil {
-		panic(errors.New("RenderViewAlreadyAdded", "a render view for this view was added already",
+		panic(errors.New(tagRenderViewAlreadyAdded, "a render view for this view was added already",
 			"view", int64(view.view.ViewID())))
 	}
 	b.views = append(b.views, view)
@@ -193,7 +193,7 @@ func (b *RendererBinding) RemoveRenderView(view *RenderView) {
 		}
 	}
 	if foundation.DebugMode {
-		panic(errors.New("RenderViewNotAdded", "the render view was not added to the binding",
+		panic(errors.New(tagRenderViewNotAdded, "the render view was not added to the binding",
 			"view", int64(view.view.ViewID())))
 	}
 }
@@ -294,7 +294,7 @@ func (b *RendererBinding) DeferFirstFrame() { b.firstFrameDefs++ }
 // Flutter: rendering/binding.dart RendererBinding.allowFirstFrame
 func (b *RendererBinding) AllowFirstFrame() {
 	if foundation.DebugMode && b.firstFrameDefs <= 0 {
-		panic(errors.New("AllowFirstFrameUnbalanced", "AllowFirstFrame was called more often than DeferFirstFrame"))
+		panic(errors.New(tagAllowFirstFrameUnbalanced, "AllowFirstFrame was called more often than DeferFirstFrame"))
 	}
 	b.firstFrameDefs--
 	if !b.firstFrameSent {
@@ -468,7 +468,7 @@ func (b *RendererBinding) performSemanticsAction(action ui.SemanticsActionEvent)
 func (b *RendererBinding) GetRectOfSemanticsNodeInViewCoordinates(viewID ui.ViewID, nodeID int) (ui.Rect, bool) {
 	fail := func(msg string) (ui.Rect, bool) {
 		if foundation.DebugMode {
-			panic(errors.New("SemanticsLookupFailed", msg, "view", int(viewID), "node", nodeID))
+			panic(errors.New(tagSemanticsLookupFailed, msg, "view", int(viewID), "node", nodeID))
 		}
 		return ui.Rect{}, false
 	}
@@ -527,3 +527,11 @@ func (b *RendererBinding) DebugDumpSemanticsTree(order semantics.DebugSemanticsD
 	}
 	return out
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagAllowFirstFrameUnbalanced = "AllowFirstFrameUnbalanced"
+	tagRenderViewAlreadyAdded    = "RenderViewAlreadyAdded"
+	tagRenderViewNotAdded        = "RenderViewNotAdded"
+	tagSemanticsLookupFailed     = "SemanticsLookupFailed"
+)

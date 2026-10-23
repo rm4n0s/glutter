@@ -115,7 +115,7 @@ func NewReorderableListView(children []widgets.Widget, opts ...ReorderableListVi
 	if foundation.DebugMode {
 		for i, c := range children {
 			if c.Key() == nil {
-				panic(errors.New("ReorderableListViewChildKeyMissing", "all children of this widget must have a key", "index", i))
+				panic(errors.New(tagReorderableListViewChildKeyMissing, "all children of this widget must have a key", "index", i))
 			}
 		}
 	}
@@ -131,14 +131,14 @@ func NewReorderableListView(children []widgets.Widget, opts ...ReorderableListVi
 func NewReorderableListViewBuilder(itemBuilder widgets.IndexedWidgetBuilder, itemCount int, opts ...ReorderableListViewOpts) *ReorderableListView {
 	var o ReorderableListViewOpts
 	if len(opts) > 1 {
-		panic(errors.New("OptsCount", "pass at most one options value", "got", len(opts)))
+		panic(errors.New(tagOptsCount, "pass at most one options value", "got", len(opts)))
 	}
 	if len(opts) == 1 {
 		o = opts[0]
 	}
 	if foundation.DebugMode {
 		if itemCount < 0 {
-			panic(errors.New("ReorderableItemCountNegative", "the itemCount must not be negative", "itemCount", itemCount))
+			panic(errors.New(tagReorderableItemCountNegative, "the itemCount must not be negative", "itemCount", itemCount))
 		}
 		given := 0
 		if o.ItemExtent.IsSome() {
@@ -151,10 +151,10 @@ func NewReorderableListViewBuilder(itemBuilder widgets.IndexedWidgetBuilder, ite
 			given++
 		}
 		if given > 1 {
-			panic(errors.New("ReorderableExtentConflict", "you can only pass one of itemExtent, prototypeItem and itemExtentBuilder"))
+			panic(errors.New(tagReorderableExtentConflict, "you can only pass one of itemExtent, prototypeItem and itemExtentBuilder"))
 		}
 		if (o.OnReorderItem != nil) == (o.OnReorder != nil) {
-			panic(errors.New("ReorderableCallbackInvalid", "exactly one of onReorderItem and onReorder must be given; the onReorder callback is obsolete and is replaced by onReorderItem"))
+			panic(errors.New(tagReorderableCallbackInvalid, "exactly one of onReorderItem and onReorder must be given; the onReorder callback is obsolete and is replaced by onReorderItem"))
 		}
 	}
 	if o.ScrollDirection == painting.AxisUnspecified {
@@ -210,7 +210,7 @@ func (s *reorderableListViewState) itemBuilder(bc widgets.BuildContext, index in
 	w := s.Widget()
 	item := w.itemBuilder(bc, index)
 	if foundation.DebugMode && item.Key() == nil {
-		panic(errors.New("ReorderableListViewItemKeyMissing", "every item of ReorderableListView must have a key", "index", index))
+		panic(errors.New(tagReorderableListViewItemKeyMissing, "every item of ReorderableListView must have a key", "index", index))
 	}
 	itemKey := widgets.NewGlobalObjectKey[widgets.State](reorderableListViewChildKey{item.Key(), s})
 	if !w.opts.BuildDefaultDragHandles.OrElse(true) {
@@ -331,3 +331,13 @@ func (s *reorderableListViewState) Build(bc widgets.BuildContext) widgets.Widget
 		RestorationID: o.RestorationID, ClipBehavior: o.ClipBehavior,
 	})
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagOptsCount                          = "OptsCount"
+	tagReorderableCallbackInvalid         = "ReorderableCallbackInvalid"
+	tagReorderableExtentConflict          = "ReorderableExtentConflict"
+	tagReorderableItemCountNegative       = "ReorderableItemCountNegative"
+	tagReorderableListViewChildKeyMissing = "ReorderableListViewChildKeyMissing"
+	tagReorderableListViewItemKeyMissing  = "ReorderableListViewItemKeyMissing"
+)

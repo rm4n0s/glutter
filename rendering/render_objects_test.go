@@ -154,7 +154,7 @@ func TestRenderConstraintsTransformBox(t *testing.T) {
 		t.Fatalf("%d errors reported, want one overflow report", len(h.Errors))
 	}
 	appErr, ok := errors.FromError(h.Errors[0])
-	if !ok || !appErr.HasRoute("RenderOverflow") {
+	if !ok || !appErr.HasRoute("DebugOverflowIndicator.PaintOverflowIndicator.RenderOverflow") {
 		t.Errorf("reported %v, want a RenderOverflow error", h.Errors[0])
 	}
 	if got := box.ToStringShort(); got[len(got)-len(" OVERFLOWING"):] != " OVERFLOWING" {

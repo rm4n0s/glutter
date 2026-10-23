@@ -104,7 +104,7 @@ var TextRangeEmpty = TextRange{-1, -1}
 // Flutter: ui/text.dart TextRange
 func NewTextRange(start, end int) TextRange {
 	if start < -1 || end < -1 {
-		panic(errors.New("TextRangeInvalid", "the offsets of a text range must be at least -1", "start", start, "end", end))
+		panic(errors.New(tagTextRangeInvalid, "the offsets of a text range must be at least -1", "start", start, "end", end))
 	}
 	return TextRange{start, end}
 }
@@ -149,7 +149,7 @@ func (r TextRange) TextInside(text string) string {
 
 func (r TextRange) checked(text string) TextRange {
 	if !r.IsNormalized() || r.Start < 0 || r.End > len(text) {
-		panic(errors.New("TextRangeOutOfBounds", "the text range is not normalized or is not inside the text",
+		panic(errors.New(tagTextRangeOutOfBounds, "the text range is not normalized or is not inside the text",
 			"start", r.Start, "end", r.End, "length", len(text)))
 	}
 	return r
@@ -334,3 +334,9 @@ const (
 func (e PlaceholderAlignment) String() string {
 	return dartEnumName([]string{"unspecified", "baseline", "aboveBaseline", "belowBaseline", "top", "bottom", "middle"}, int(e), "PlaceholderAlignment")
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagTextRangeInvalid     = "TextRangeInvalid"
+	tagTextRangeOutOfBounds = "TextRangeOutOfBounds"
+)

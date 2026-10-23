@@ -70,7 +70,7 @@ func onTheWeb(t *testing.T, bc widgets.BuildContext) *fakeWeb {
 	t.Helper()
 	desktop.UseBusOpener(bc, func(context.Context) (dbus.Bus, error) {
 		t.Error("the web tried the session bus")
-		return nil, errors.New("DBusConnectFailed", "must not be called")
+		return nil, errors.New(tagDBusConnectFailed, "must not be called")
 	})
 	f := &fakeWeb{}
 	desktop.UseWeb(bc, f)
@@ -93,7 +93,7 @@ func TestOpenURIOnTheWeb(t *testing.T) {
 		t.Errorf("an invalid URI reached the browser: %v", f.opened)
 	}
 	// What the web says comes back untouched.
-	f.openErr = errors.New("OpenURISchemeBlocked", "blocked")
+	f.openErr = errors.New(tagOpenURISchemeBlocked, "blocked")
 	err = inGoroutine(t, ts, func() error { return desktop.OpenURI(context.Background(), bc, "javascript:alert(1)") })
 	assertTag(t, err, "OpenURISchemeBlocked")
 }
@@ -200,7 +200,7 @@ func TestShowNotificationOnTheWebCallsBack(t *testing.T) {
 func TestShowNotificationOnTheWebErrorsComeBackUntouched(t *testing.T) {
 	ts, bc := app(t)
 	f := onTheWeb(t, bc)
-	f.showErr = errors.New("NotificationsUnavailable", "the user did not allow the page to show notifications")
+	f.showErr = errors.New(tagNotificationsUnavailable, "the user did not allow the page to show notifications")
 	err := inGoroutine(t, ts, func() error {
 		_, err := desktop.ShowNotification(context.Background(), bc, "Title")
 		return err
@@ -239,6 +239,9 @@ func TestTheOtherServicesAreUnavailableOnTheWeb(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			err := inGoroutine(t, ts, call)
 			appErr := tagged(t, err, "FileChooserUnavailable")
+			if !appErr.HasRoute("chooseFiles->services.connect.FileChooserUnavailable") {
+				t.Errorf("unexpected failure path: %s", appErr.Route())
+			}
 			if inner, ok := errors.FromError(appErr.OriginalErr); !ok || inner.Tag != "DBusUnavailableOnWeb" {
 				t.Errorf("the cause is %v, want DBusUnavailableOnWeb", appErr.OriginalErr)
 			}
@@ -249,8 +252,17 @@ func TestTheOtherServicesAreUnavailableOnTheWeb(t *testing.T) {
 		var err error
 		waitFor(t, ts, "the error", func() bool { err = ts.TakeError(); return err != nil })
 		appErr := tagged(t, err, "TrayUnavailable")
+		if !appErr.HasRoute("tray.run->services.connect.TrayUnavailable") {
+			t.Errorf("unexpected failure path: %s", appErr.Route())
+		}
 		if inner, ok := errors.FromError(appErr.OriginalErr); !ok || inner.Tag != "DBusUnavailableOnWeb" {
 			t.Errorf("the cause is %v, want DBusUnavailableOnWeb", appErr.OriginalErr)
 		}
 	})
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagNotificationsUnavailable = "NotificationsUnavailable"
+	tagOpenURISchemeBlocked     = "OpenURISchemeBlocked"
+)

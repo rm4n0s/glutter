@@ -19,7 +19,7 @@ func routeOf(t *testing.T, err error) *errors.Error {
 }
 
 func TestPanicError(t *testing.T) {
-	tagged := errors.New("SomeDebugCheck", "a check failed")
+	tagged := errors.New(tagSomeDebugCheck, "a check failed")
 	var runtimeErr error
 	runtimeErrIndex := []int{3}
 	func() {
@@ -238,3 +238,8 @@ func TestChangeNotifierReportsPanics(t *testing.T) {
 		}
 	})
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagSomeDebugCheck = "SomeDebugCheck"
+)

@@ -47,9 +47,9 @@ func (t *Tester) Element(f Finder) widgets.Element {
 	case 1:
 		return found[0]
 	case 0:
-		t.fail(errors.New("FinderNoMatch", "the finder found nothing: "+f.Describe(), "finder", f.Describe()))
+		t.fail(errors.New(tagFinderNoMatch, "the finder found nothing: "+f.Describe(), "finder", f.Describe()))
 	default:
-		t.fail(errors.New("FinderManyMatches", fmt.Sprintf("the finder found %d elements, expected one: %s", len(found), f.Describe()),
+		t.fail(errors.New(tagFinderManyMatches, fmt.Sprintf("the finder found %d elements, expected one: %s", len(found), f.Describe()),
 			"finder", f.Describe(), "count", len(found)))
 	}
 	return nil
@@ -77,7 +77,7 @@ func WidgetAs[T widgets.Widget](t *Tester, f Finder) T {
 	w := t.Widget(f)
 	typed, ok := w.(T)
 	if !ok {
-		t.fail(errors.New("FinderWrongType", fmt.Sprintf("the finder found a %T, expected another type: %s", w, f.Describe()),
+		t.fail(errors.New(tagFinderWrongType, fmt.Sprintf("the finder found a %T, expected another type: %s", w, f.Describe()),
 			"finder", f.Describe()))
 		return zero
 	}
@@ -98,12 +98,12 @@ func StateOf[T widgets.State](t *Tester, f Finder) T {
 	}
 	stateful, ok := e.(*widgets.StatefulElement)
 	if !ok {
-		t.fail(errors.New("FinderNotStateful", "the element has no state: "+f.Describe(), "finder", f.Describe()))
+		t.fail(errors.New(tagFinderNotStateful, "the element has no state: "+f.Describe(), "finder", f.Describe()))
 		return zero
 	}
 	state, ok := stateful.State().(T)
 	if !ok {
-		t.fail(errors.New("FinderWrongType", fmt.Sprintf("the state is a %T, expected another type: %s", stateful.State(), f.Describe()),
+		t.fail(errors.New(tagFinderWrongType, fmt.Sprintf("the state is a %T, expected another type: %s", stateful.State(), f.Describe()),
 			"finder", f.Describe()))
 		return zero
 	}
@@ -133,7 +133,7 @@ func (t *Tester) box(f Finder) (rendering.Box, ui.Offset) {
 	ro := e.RenderObject()
 	b, ok := ro.(rendering.Box)
 	if !ok || ro == nil {
-		t.fail(errors.New("FinderNotBox", fmt.Sprintf("the element has no render box: %s", f.Describe()), "finder", f.Describe()))
+		t.fail(errors.New(tagFinderNotBox, fmt.Sprintf("the element has no render box: %s", f.Describe()), "finder", f.Describe()))
 		return nil, ui.Offset{}
 	}
 	return b, b.LocalToGlobal(ui.OffsetZero, nil)
@@ -188,3 +188,12 @@ func (t *Tester) BottomRight(f Finder) ui.Offset {
 	s := b.Size()
 	return b.LocalToGlobal(ui.Offset{Dx: s.Width, Dy: s.Height}, nil)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagFinderManyMatches = "FinderManyMatches"
+	tagFinderNoMatch     = "FinderNoMatch"
+	tagFinderNotBox      = "FinderNotBox"
+	tagFinderNotStateful = "FinderNotStateful"
+	tagFinderWrongType   = "FinderWrongType"
+)

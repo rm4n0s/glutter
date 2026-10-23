@@ -47,13 +47,13 @@ func NewTweenSequence[T any](items []TweenSequenceItem[T]) *TweenSequence[T] {
 
 func newTweenSequence[T any](items []TweenSequenceItem[T]) *TweenSequence[T] {
 	if len(items) == 0 {
-		panic(errors.New("TweenSequenceInvalid", "a TweenSequence needs at least one item"))
+		panic(errors.New(tagTweenSequenceInvalid, "a TweenSequence needs at least one item"))
 	}
 	s := &TweenSequence[T]{items: append([]TweenSequenceItem[T](nil), items...)}
 	total := 0.0
 	for i, item := range s.items {
 		if !(item.Weight > 0) {
-			panic(errors.New("TweenSequenceInvalid", "the weight of a TweenSequenceItem must be greater than zero", "index", i, "weight", item.Weight))
+			panic(errors.New(tagTweenSequenceInvalid, "the weight of a TweenSequenceItem must be greater than zero", "index", i, "weight", item.Weight))
 		}
 		total += item.Weight
 	}
@@ -79,7 +79,7 @@ func (s *TweenSequence[T]) evaluateAt(t float64, index int) T {
 // Flutter: animation/tween_sequence.dart TweenSequence.transform
 func (s *TweenSequence[T]) Transform(t float64) T {
 	if foundation.DebugMode && (t < 0 || t > 1) {
-		panic(errors.New("TweenSequenceOutOfRange", fmt.Sprintf("t %v is outside of the range [0, 1]", t), "t", t))
+		panic(errors.New(tagTweenSequenceOutOfRange, fmt.Sprintf("t %v is outside of the range [0, 1]", t), "t", t))
 	}
 	if t == 1 {
 		return s.evaluateAt(t, len(s.items)-1)
@@ -90,7 +90,7 @@ func (s *TweenSequence[T]) Transform(t float64) T {
 		}
 	}
 	if foundation.DebugMode {
-		panic(errors.New("TweenSequenceNoInterval", fmt.Sprintf("TweenSequence.Transform could not find an interval for %v", t), "t", t))
+		panic(errors.New(tagTweenSequenceNoInterval, fmt.Sprintf("TweenSequence.Transform could not find an interval for %v", t), "t", t))
 	}
 	return s.evaluateAt(t, len(s.items)-1)
 }
@@ -123,3 +123,10 @@ func NewFlippedTweenSequence(items []TweenSequenceItem[float64]) *FlippedTweenSe
 func (f *FlippedTweenSequence) Transform(t float64) float64 {
 	return 1 - f.TweenSequence.Transform(1-t)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagTweenSequenceInvalid    = "TweenSequenceInvalid"
+	tagTweenSequenceNoInterval = "TweenSequenceNoInterval"
+	tagTweenSequenceOutOfRange = "TweenSequenceOutOfRange"
+)

@@ -6,6 +6,7 @@ import (
 	"image"
 	"syscall/js"
 
+	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/internal/gpu"
 	"github.com/rm4n0s/glutter/internal/gpu/explicit"
 )
@@ -81,7 +82,7 @@ func tryCall(call string, fn func() js.Value) (v js.Value, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			if je, ok := r.(js.Error); ok {
-				err = errCallFailed(call, je)
+				err = errors.NewErr(tagWebGPUCallFailed, je).SetMetadata("call", call)
 				return
 			}
 			panic(r)
@@ -168,10 +169,10 @@ func (d *Device) NewBuffer(size int, usage explicit.BufferUsage) (explicit.Buffe
 func (d *Device) WriteBuffer(b explicit.Buffer, offset int, data []byte) {
 	vb, ok := b.(*buffer)
 	if !ok || vb.d != d {
-		panic(errForeign("buffer"))
+		panic(errors.New(tagWebGPUForeignResource, "the resource was not made by this WebGPU device", "resource", "buffer"))
 	}
 	if offset < 0 || offset+len(data) > vb.size {
-		panic(errWriteOutOfRange(offset, len(data), vb.size))
+		panic(errors.New(tagWebGPUWriteOutOfRange, "the write is outside the buffer", "offset", offset, "bytes", len(data), "size", vb.size))
 	}
 	if len(data) == 0 || d.loss.isLost() {
 		return
@@ -205,7 +206,7 @@ func (t *texture) Desc() explicit.TextureDesc { return t.desc }
 // Level implements explicit.Texture: a texture over one level, with a view of its own.
 func (t *texture) Level(i int) explicit.Texture {
 	if i < 0 || i >= t.desc.MipLevels {
-		panic(errLevelInvalid(i, t.desc.MipLevels))
+		panic(errors.New(tagWebGPULevelInvalid, "the texture has no such mip level", "level", i, "levels", t.desc.MipLevels))
 	}
 	if t.desc.MipLevels == 1 || t.parent != nil {
 		return t
@@ -251,7 +252,7 @@ func (d *Device) NewTexture(desc explicit.TextureDesc) (explicit.Texture, error)
 		desc.MipLevels = 1
 	}
 	if desc.Width < 1 || desc.Height < 1 || desc.Format.BytesPerPixel() == 0 {
-		return nil, errTextureInvalid(desc.Width, desc.Height, int(desc.Format))
+		return nil, errors.New(tagWebGPUTextureInvalid, "a texture needs a size and a format", "width", desc.Width, "height", desc.Height, "format", int(desc.Format))
 	}
 	var t *texture
 	_, err := tryCall("createTexture", func() js.Value {
@@ -275,7 +276,7 @@ func (d *Device) NewTexture(desc explicit.TextureDesc) (explicit.Texture, error)
 func (d *Device) WriteTexture(t explicit.Texture, level int, r image.Rectangle, data []byte, stride int) {
 	vt, ok := t.(*texture)
 	if !ok || vt.d != d {
-		panic(errForeign("texture"))
+		panic(errors.New(tagWebGPUForeignResource, "the resource was not made by this WebGPU device", "resource", "texture"))
 	}
 	if r.Empty() || d.loss.isLost() {
 		return
@@ -361,17 +362,17 @@ func (d *Device) NewPipeline(desc explicit.PipelineDesc) (explicit.Pipeline, err
 		return nil, err
 	}
 	if desc.Shader == nil {
-		return nil, errPipelineInvalid("a pipeline needs a shader")
+		return nil, errors.New(tagWebGPUPipelineInvalid, "a pipeline needs a shader")
 	}
 	vs, ok1 := desc.Shader.Entry(desc.VertexEntry)
 	fs, ok2 := desc.Shader.Entry(desc.FragmentEntry)
 	if !ok1 || !ok2 {
-		return nil, errPipelineInvalid("the shader lacks the entry point",
+		return nil, errors.New(tagWebGPUPipelineInvalid, "the shader lacks the entry point",
 			"shader", desc.Shader.Name, "vertex", desc.VertexEntry, "fragment", desc.FragmentEntry)
 	}
 	module, ok := d.modules[desc.Shader.Name]
 	if !ok || !module.Truthy() {
-		return nil, errPipelineInvalid("the shader is not one of the renderer's", "shader", desc.Shader.Name)
+		return nil, errors.New(tagWebGPUPipelineInvalid, "the shader is not one of the renderer's", "shader", desc.Shader.Name)
 	}
 	plan := planLayouts(vs, fs)
 	p := &pipeline{d: d, desc: desc, kinds: bindingKinds(plan)}
@@ -433,26 +434,26 @@ func (d *Device) NewBindGroup(p explicit.Pipeline, group int, entries []explicit
 	d.limits.CheckBindGroup(group, entries)
 	vp, ok := p.(*pipeline)
 	if !ok || vp.d != d {
-		panic(errForeign("pipeline"))
+		panic(errors.New(tagWebGPUForeignResource, "the resource was not made by this WebGPU device", "resource", "pipeline"))
 	}
 	if err := d.usable(); err != nil {
 		return nil, err
 	}
 	if group < 0 || group >= len(vp.layouts) {
-		return nil, errBindGroupInvalid("the pipeline has no such bind group", "group", group, "groups", len(vp.layouts))
+		return nil, errors.New(tagWebGPUBindGroupInvalid, "the pipeline has no such bind group", "group", group, "groups", len(vp.layouts))
 	}
 	resources := make([]any, 0, len(entries))
 	for _, e := range entries {
 		kind, ok := vp.kinds[group][e.Binding]
 		if !ok {
-			return nil, errBindGroupInvalid("the shader has no such binding", "group", group, "binding", e.Binding)
+			return nil, errors.New(tagWebGPUBindGroupInvalid, "the shader has no such binding", "group", group, "binding", e.Binding)
 		}
 		var resource any
 		switch kind {
 		case explicit.BindingUniformBuffer:
 			b, ok := e.Buffer.(*buffer)
 			if !ok || b.d != d {
-				panic(errForeign("buffer"))
+				panic(errors.New(tagWebGPUForeignResource, "the resource was not made by this WebGPU device", "resource", "buffer"))
 			}
 			size := e.Size
 			if size == 0 {
@@ -462,13 +463,13 @@ func (d *Device) NewBindGroup(p explicit.Pipeline, group int, entries []explicit
 		case explicit.BindingSampledTexture:
 			t, ok := e.Texture.(*texture)
 			if !ok || t.d != d {
-				panic(errForeign("texture"))
+				panic(errors.New(tagWebGPUForeignResource, "the resource was not made by this WebGPU device", "resource", "texture"))
 			}
 			resource = t.view
 		case explicit.BindingSampler:
 			s, ok := e.Sampler.(*sampler)
 			if !ok || s.d != d {
-				panic(errForeign("sampler"))
+				panic(errors.New(tagWebGPUForeignResource, "the resource was not made by this WebGPU device", "resource", "sampler"))
 			}
 			resource = s.s
 		}
@@ -490,3 +491,14 @@ func (d *Device) NewSwapchain(h gpu.SurfaceHandle) (explicit.Swapchain, error) {
 	}
 	return d.newSwapchain(h)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagWebGPUBindGroupInvalid = "WebGPUBindGroupInvalid"
+	tagWebGPUCallFailed       = "WebGPUCallFailed"
+	tagWebGPUForeignResource  = "WebGPUForeignResource"
+	tagWebGPULevelInvalid     = "WebGPULevelInvalid"
+	tagWebGPUPipelineInvalid  = "WebGPUPipelineInvalid"
+	tagWebGPUTextureInvalid   = "WebGPUTextureInvalid"
+	tagWebGPUWriteOutOfRange  = "WebGPUWriteOutOfRange"
+)

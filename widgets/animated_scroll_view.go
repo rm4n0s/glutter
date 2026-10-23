@@ -82,7 +82,7 @@ type animatedScrollView struct {
 
 func newAnimatedScrollView(itemBuilder AnimatedItemBuilder, o AnimatedScrollViewOpts) animatedScrollView {
 	if foundation.DebugMode && o.InitialItemCount < 0 {
-		panic(errors.New("AnimatedItemCountNegative", "the initialItemCount must not be negative", "initialItemCount", o.InitialItemCount))
+		panic(errors.New(tagAnimatedItemCountNegative, "the initialItemCount must not be negative", "initialItemCount", o.InitialItemCount))
 	}
 	if o.ScrollDirection == painting.AxisUnspecified {
 		o.ScrollDirection = painting.AxisVertical
@@ -119,7 +119,7 @@ func NewAnimatedList(itemBuilder AnimatedItemBuilder, opts ...AnimatedScrollView
 func NewAnimatedListSeparated(itemBuilder, separatorBuilder, removedSeparatorBuilder AnimatedItemBuilder, opts ...AnimatedScrollViewOpts) *AnimatedList {
 	o := firstOpts(opts)
 	if foundation.DebugMode && removedSeparatorBuilder == nil {
-		panic(errors.New("AnimatedRemovedSeparatorBuilderNil", "the removedSeparatorBuilder is required"))
+		panic(errors.New(tagAnimatedRemovedSeparatorBuilderNil, "the removedSeparatorBuilder is required"))
 	}
 	if o.InitialItemCount > 0 {
 		o.InitialItemCount = o.InitialItemCount*2 - 1
@@ -157,7 +157,7 @@ func AnimatedListMaybeOf(bc BuildContext) (*AnimatedListState, bool) {
 func AnimatedListOf(bc BuildContext) *AnimatedListState {
 	s, ok := AnimatedListMaybeOf(bc)
 	if !ok && foundation.DebugMode {
-		panic(errors.New("AnimatedListMissing", "AnimatedListOf() called with a context that does not contain an AnimatedList; this can happen when the context provided is from the same StatefulWidget that built the AnimatedList",
+		panic(errors.New(tagAnimatedListMissing, "AnimatedListOf() called with a context that does not contain an AnimatedList; this can happen when the context provided is from the same StatefulWidget that built the AnimatedList",
 			"context", bc.(Element).String()))
 	}
 	return s
@@ -224,7 +224,7 @@ func AnimatedGridMaybeOf(bc BuildContext) (*AnimatedGridState, bool) {
 func AnimatedGridOf(bc BuildContext) *AnimatedGridState {
 	s, ok := AnimatedGridMaybeOf(bc)
 	if !ok && foundation.DebugMode {
-		panic(errors.New("AnimatedGridMissing", "AnimatedGridOf() called with a context that does not contain an AnimatedGrid; this can happen when the context provided is from the same StatefulWidget that built the AnimatedGrid",
+		panic(errors.New(tagAnimatedGridMissing, "AnimatedGridOf() called with a context that does not contain an AnimatedGrid; this can happen when the context provided is from the same StatefulWidget that built the AnimatedGrid",
 			"context", bc.(Element).String()))
 	}
 	return s
@@ -259,7 +259,7 @@ type animatedScrollViewState struct {
 func (s *animatedScrollViewState) sliver() *animatedMultiBox {
 	st, ok := s.key.CurrentState()
 	if !ok {
-		panic(errors.New("AnimatedScrollViewNotBuilt", "the animated list or grid has not been built yet"))
+		panic(errors.New(tagAnimatedScrollViewNotBuilt, "the animated list or grid has not been built yet"))
 	}
 	return st.multiBox()
 }
@@ -441,7 +441,7 @@ type sliverAnimatedMultiBox struct {
 
 func newSliverAnimatedMultiBox(itemBuilder AnimatedItemBuilder, o SliverAnimatedListOpts) sliverAnimatedMultiBox {
 	if foundation.DebugMode && o.InitialItemCount < 0 {
-		panic(errors.New("AnimatedItemCountNegative", "the initialItemCount must not be negative", "initialItemCount", o.InitialItemCount))
+		panic(errors.New(tagAnimatedItemCountNegative, "the initialItemCount must not be negative", "initialItemCount", o.InitialItemCount))
 	}
 	return sliverAnimatedMultiBox{itemBuilder, o.FindChildIndexCallback, o.InitialItemCount}
 }
@@ -484,7 +484,7 @@ func SliverAnimatedListMaybeOf(bc BuildContext) (*SliverAnimatedListState, bool)
 func SliverAnimatedListOf(bc BuildContext) *SliverAnimatedListState {
 	s, ok := SliverAnimatedListMaybeOf(bc)
 	if !ok && foundation.DebugMode {
-		panic(errors.New("SliverAnimatedListMissing", "SliverAnimatedListOf() called with a context that does not contain a SliverAnimatedList; this can happen when the context provided is from the same StatefulWidget that built the AnimatedList",
+		panic(errors.New(tagSliverAnimatedListMissing, "SliverAnimatedListOf() called with a context that does not contain a SliverAnimatedList; this can happen when the context provided is from the same StatefulWidget that built the AnimatedList",
 			"context", bc.(Element).String()))
 	}
 	return s
@@ -560,7 +560,7 @@ func SliverAnimatedGridMaybeOf(bc BuildContext) (*SliverAnimatedGridState, bool)
 func SliverAnimatedGridOf(bc BuildContext) *SliverAnimatedGridState {
 	s, ok := SliverAnimatedGridMaybeOf(bc)
 	if !ok && foundation.DebugMode {
-		panic(errors.New("SliverAnimatedGridMissing", "SliverAnimatedGridOf() called with a context that does not contain a SliverAnimatedGrid; this can happen when the context provided is from the same StatefulWidget that built the AnimatedGrid",
+		panic(errors.New(tagSliverAnimatedGridMissing, "SliverAnimatedGridOf() called with a context that does not contain a SliverAnimatedGrid; this can happen when the context provided is from the same StatefulWidget that built the AnimatedGrid",
 			"context", bc.(Element).String()))
 	}
 	return s
@@ -667,7 +667,7 @@ func (b *animatedMultiBox) itemIndexToIndex(itemIndex int) int {
 	index := itemIndex
 	for _, item := range b.outgoing {
 		if foundation.DebugMode && item.itemIndex == itemIndex {
-			panic(errors.New("AnimatedItemOutgoing", "the item is being removed", "itemIndex", itemIndex))
+			panic(errors.New(tagAnimatedItemOutgoing, "the item is being removed", "itemIndex", itemIndex))
 		}
 		if item.itemIndex < itemIndex {
 			index--
@@ -713,7 +713,7 @@ func (b *animatedMultiBox) InsertItem(index int, opts ...AnimatedItemOpts) {
 	duration := firstOpts(opts).duration()
 	itemIndex := b.indexToItemIndex(index)
 	if foundation.DebugMode && (index < 0 || itemIndex < 0 || itemIndex > b.itemsCount) {
-		panic(errors.New("AnimatedItemIndexInvalid", "the index to insert is out of range", "index", index, "itemsCount", b.itemsCount))
+		panic(errors.New(tagAnimatedItemIndexInvalid, "the index to insert is out of range", "index", index, "itemsCount", b.itemsCount))
 	}
 	// Increment the incoming and outgoing item indices to account for the
 	// insertion.
@@ -757,10 +757,10 @@ func (b *animatedMultiBox) RemoveItem(index int, builder AnimatedRemovedItemBuil
 	itemIndex := b.indexToItemIndex(index)
 	if foundation.DebugMode {
 		if index < 0 || itemIndex < 0 || itemIndex >= b.itemsCount {
-			panic(errors.New("AnimatedItemIndexInvalid", "the index to remove is out of range", "index", index, "itemsCount", b.itemsCount))
+			panic(errors.New(tagAnimatedItemIndexInvalid, "the index to remove is out of range", "index", index, "itemsCount", b.itemsCount))
 		}
 		if activeItemAt(b.outgoing, itemIndex) != nil {
-			panic(errors.New("AnimatedItemRemovedTwice", "the item is already being removed", "index", index))
+			panic(errors.New(tagAnimatedItemRemovedTwice, "the item is already being removed", "index", index))
 		}
 	}
 	var controller *animation.AnimationController
@@ -802,3 +802,17 @@ func (b *animatedMultiBox) RemoveAllItems(builder AnimatedRemovedItemBuilder, op
 		b.RemoveItem(i, builder, opts...)
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagAnimatedGridMissing                = "AnimatedGridMissing"
+	tagAnimatedItemCountNegative          = "AnimatedItemCountNegative"
+	tagAnimatedItemIndexInvalid           = "AnimatedItemIndexInvalid"
+	tagAnimatedItemOutgoing               = "AnimatedItemOutgoing"
+	tagAnimatedItemRemovedTwice           = "AnimatedItemRemovedTwice"
+	tagAnimatedListMissing                = "AnimatedListMissing"
+	tagAnimatedRemovedSeparatorBuilderNil = "AnimatedRemovedSeparatorBuilderNil"
+	tagAnimatedScrollViewNotBuilt         = "AnimatedScrollViewNotBuilt"
+	tagSliverAnimatedGridMissing          = "SliverAnimatedGridMissing"
+	tagSliverAnimatedListMissing          = "SliverAnimatedListMissing"
+)

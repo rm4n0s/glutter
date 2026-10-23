@@ -58,7 +58,7 @@ func ParseDevEvents(script string) ([]DevEvent, error) {
 		}
 		name, args, ok := strings.Cut(step, ":")
 		if !ok {
-			return nil, errors.New("WebDevEventsInvalid", "a step must be name:arguments", "step", step)
+			return nil, errors.New(tagWebDevEventsInvalid, "a step must be name:arguments", "step", step)
 		}
 		ev := DevEvent{Kind: name}
 		parts := strings.Split(args, ",")
@@ -66,38 +66,38 @@ func ParseDevEvents(script string) ([]DevEvent, error) {
 		case "wait":
 			d, err := time.ParseDuration(args)
 			if err != nil || d < 0 {
-				return nil, errors.New("WebDevEventsInvalid", "wait takes a duration such as 500ms", "step", step)
+				return nil, errors.New(tagWebDevEventsInvalid, "wait takes a duration such as 500ms", "step", step)
 			}
 			ev.Wait = d
 		case "wheel":
 			nums, ok := floats(parts, 4)
 			if !ok {
-				return nil, errors.New("WebDevEventsInvalid", "wheel takes x,y,dx,dy", "step", step)
+				return nil, errors.New(tagWebDevEventsInvalid, "wheel takes x,y,dx,dy", "step", step)
 			}
 			ev.X, ev.Y, ev.DX, ev.DY = nums[0], nums[1], nums[2], nums[3]
 		case "tap", "move":
 			nums, ok := floats(parts, 2)
 			if !ok {
-				return nil, errors.New("WebDevEventsInvalid", name+" takes x,y", "step", step)
+				return nil, errors.New(tagWebDevEventsInvalid, name+" takes x,y", "step", step)
 			}
 			ev.X, ev.Y = nums[0], nums[1]
 		case "key":
 			if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-				return nil, errors.New("WebDevEventsInvalid", "key takes code,key", "step", step)
+				return nil, errors.New(tagWebDevEventsInvalid, "key takes code,key", "step", step)
 			}
 			ev.Code, ev.Key = parts[0], parts[1]
 		case "input", "paste":
 			if args == "" {
-				return nil, errors.New("WebDevEventsInvalid", name+" takes the text", "step", step)
+				return nil, errors.New(tagWebDevEventsInvalid, name+" takes the text", "step", step)
 			}
 			ev.Text = strings.ReplaceAll(args, `\n`, "\n")
 		case "compose":
 			if args == "" || slices.Contains(parts, "") {
-				return nil, errors.New("WebDevEventsInvalid", "compose takes the texts a,b,c", "step", step)
+				return nil, errors.New(tagWebDevEventsInvalid, "compose takes the texts a,b,c", "step", step)
 			}
 			ev.Steps = parts
 		default:
-			return nil, errors.New("WebDevEventsInvalid", "the step is not wait, wheel, tap, move, key, input, compose or paste", "step", step)
+			return nil, errors.New(tagWebDevEventsInvalid, "the step is not wait, wheel, tap, move, key, input, compose or paste", "step", step)
 		}
 		events = append(events, ev)
 	}
@@ -119,3 +119,8 @@ func floats(parts []string, n int) ([]float64, bool) {
 	}
 	return out, true
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagWebDevEventsInvalid = "WebDevEventsInvalid"
+)

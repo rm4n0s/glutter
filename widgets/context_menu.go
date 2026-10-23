@@ -296,7 +296,7 @@ func (c *ContextMenuController) IsShown() bool {
 // Flutter: widgets/context_menu_controller.dart ContextMenuController.markNeedsBuild
 func (c *ContextMenuController) MarkNeedsBuild() {
 	if foundation.DebugMode && !c.IsShown() {
-		panic(errors.New("ContextMenuNotShown", "the context menu must be shown to be marked as needing a build"))
+		panic(errors.New(tagContextMenuNotShown, "the context menu must be shown to be marked as needing a build"))
 	}
 	if c.binding != nil && c.binding.contextMenu.entry != nil {
 		c.binding.contextMenu.entry.MarkNeedsBuild()
@@ -315,3 +315,8 @@ func (c *ContextMenuController) Remove() {
 	}
 	contextMenuRemoveAny(c.binding)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagContextMenuNotShown = "ContextMenuNotShown"
+)

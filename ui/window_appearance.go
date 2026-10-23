@@ -70,7 +70,7 @@ func (i WindowIcon) IsZero() bool { return i.Name == "" && len(i.Images) == 0 }
 func (i WindowIcon) Validate() error {
 	for n, img := range i.Images {
 		if img.Size <= 0 || img.Scale < 0 || len(img.RGBA) != img.Size*img.Size*4 {
-			return errors.New("WindowIconInvalid", "an image of a window icon must have Size*Size*4 bytes and a positive size",
+			return errors.New(tagWindowIconInvalid, "an image of a window icon must have Size*Size*4 bytes and a positive size",
 				"index", n, "size", img.Size, "bytes", len(img.RGBA))
 		}
 	}
@@ -132,7 +132,7 @@ func (d *PlatformDispatcher) KeepScreenOn(id ViewID, on bool) error {
 	if h, ok := d.host.(IdleInhibitHost); ok {
 		return h.KeepScreenOn(id, on)
 	}
-	return errors.New("IdleInhibitUnavailable", "the platform cannot keep the screen on")
+	return errors.New(tagIdleInhibitUnavailable, "the platform cannot keep the screen on")
 }
 
 // SetIcon sets the icon of the window of the view; see
@@ -151,3 +151,9 @@ func (v *View) SetContentType(contentType ContentType) { v.d.SetWindowContentTyp
 //
 // Flutter: no counterpart
 func (v *View) KeepScreenOn(on bool) error { return v.d.KeepScreenOn(v.id, on) }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagIdleInhibitUnavailable = "IdleInhibitUnavailable"
+	tagWindowIconInvalid      = "WindowIconInvalid"
+)

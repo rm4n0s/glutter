@@ -703,7 +703,7 @@ func DebugCheckHasMediaQuery(bc BuildContext) bool {
 	if GetElementForInheritedWidget[*MediaQuery](bc) != nil {
 		return true
 	}
-	panic(errors.New("MediaQueryMissing",
+	panic(errors.New(tagMediaQueryMissing,
 		"no MediaQuery widget ancestor found; the widget needs a MediaQuery above it to read the media; MediaQuery is introduced by View (the app's root, made by RunApp) and by WidgetsApp, so this usually means the widget was built outside of them",
 		"widget", bc.(Element).String()))
 }
@@ -1134,7 +1134,7 @@ func NewMediaQueryWithClampedTextScaling(child Widget, opts ...MediaQueryClamped
 		maxScale = math.Inf(1)
 	}
 	if foundation.DebugMode && (maxScale < o.MinScaleFactor || math.IsNaN(maxScale) || math.IsInf(o.MinScaleFactor, 0) || o.MinScaleFactor < 0) {
-		panic(errors.New("MediaQueryClampInvalid", "the text scale factor limits of MediaQuery.withClampedTextScaling must satisfy 0 <= min <= max",
+		panic(errors.New(tagMediaQueryClampInvalid, "the text scale factor limits of MediaQuery.withClampedTextScaling must satisfy 0 <= min <= max",
 			"min", o.MinScaleFactor, "max", maxScale))
 	}
 	return newBuildFunc(func(bc BuildContext) Widget {
@@ -1246,3 +1246,9 @@ func (s *mediaQueryFromViewState) Build(bc BuildContext) Widget {
 	}
 	return NewMediaQuery(effective, s.Widget().child)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagMediaQueryClampInvalid = "MediaQueryClampInvalid"
+	tagMediaQueryMissing      = "MediaQueryMissing"
+)

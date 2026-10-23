@@ -146,21 +146,21 @@ func NewPaginatedDataTable(columns []DataColumn, source DataTableSource, opts ..
 		rows := o.RowsPerPage.OrElse(PaginatedDataTableDefaultRowsPerPage)
 		switch {
 		case len(o.Actions) > 0 && o.Header == nil:
-			panic(errors.New("PaginatedDataTableActionsWithoutHeader", "the actions of a PaginatedDataTable need a header"))
+			panic(errors.New(tagPaginatedDataTableActionsWithoutHeader, "the actions of a PaginatedDataTable need a header"))
 		case len(columns) == 0:
-			panic(errors.New("PaginatedDataTableNoColumns", "a PaginatedDataTable needs at least one column"))
+			panic(errors.New(tagPaginatedDataTableNoColumns, "a PaginatedDataTable needs at least one column"))
 		case o.SortColumnIndex.IsSome() && (o.SortColumnIndex.Value() < 0 || o.SortColumnIndex.Value() >= len(columns)):
-			panic(errors.New("PaginatedDataTableSortColumnIndexRange", "the sortColumnIndex of a PaginatedDataTable must be a column", "sortColumnIndex", o.SortColumnIndex.Value()))
+			panic(errors.New(tagPaginatedDataTableSortColumnIndexRange, "the sortColumnIndex of a PaginatedDataTable must be a column", "sortColumnIndex", o.SortColumnIndex.Value()))
 		case o.DataRowMinHeight.IsSome() && o.DataRowMaxHeight.IsSome() && o.DataRowMaxHeight.Value() < o.DataRowMinHeight.Value():
-			panic(errors.New("PaginatedDataTableRowHeightRange", "the dataRowMaxHeight of a PaginatedDataTable must not be less than its dataRowMinHeight"))
+			panic(errors.New(tagPaginatedDataTableRowHeightRange, "the dataRowMaxHeight of a PaginatedDataTable must not be less than its dataRowMinHeight"))
 		case rows <= 0:
-			panic(errors.New("PaginatedDataTableRowsPerPageNotPositive", "the rowsPerPage of a PaginatedDataTable must be greater than zero", "rowsPerPage", rows))
+			panic(errors.New(tagPaginatedDataTableRowsPerPageNotPositive, "the rowsPerPage of a PaginatedDataTable must be greater than zero", "rowsPerPage", rows))
 		case o.DividerThickness.IsSome() && o.DividerThickness.Value() < 0:
-			panic(errors.New("PaginatedDataTableDividerThicknessNegative", "the dividerThickness of a PaginatedDataTable must not be negative"))
+			panic(errors.New(tagPaginatedDataTableDividerThicknessNegative, "the dividerThickness of a PaginatedDataTable must not be negative"))
 		case o.OnRowsPerPageChanged != nil && !slices.Contains(o.AvailableRowsPerPage, rows):
-			panic(errors.New("PaginatedDataTableRowsPerPageNotAvailable", "the rowsPerPage of a PaginatedDataTable must be one of its availableRowsPerPage", "rowsPerPage", rows))
+			panic(errors.New(tagPaginatedDataTableRowsPerPageNotAvailable, "the rowsPerPage of a PaginatedDataTable must be one of its availableRowsPerPage", "rowsPerPage", rows))
 		case o.Controller != nil && o.Primary.OrElse(false):
-			panic(errors.New("PaginatedDataTablePrimaryAndController", "Primary ScrollViews obtain their ScrollController via inheritance from a PrimaryScrollController widget. You cannot both set primary to true and pass an explicit controller."))
+			panic(errors.New(tagPaginatedDataTablePrimaryAndController, "Primary ScrollViews obtain their ScrollController via inheritance from a PrimaryScrollController widget. You cannot both set primary to true and pass an explicit controller."))
 		}
 	}
 	return &PaginatedDataTable{StatefulWidget: widgets.NewStatefulWidgetBase(widgets.WidgetOpts{Key: o.Key}), columns: columns, source: source, o: o}
@@ -413,3 +413,15 @@ func (s *PaginatedDataTableState) Build(bc widgets.BuildContext) widgets.Widget 
 		return widgets.NewColumn(children, widgets.ColumnOpts{CrossAxisAlignment: rendering.CrossAxisAlignmentStretch})
 	}), CardOpts{NoSemanticContainer: true})
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagPaginatedDataTableActionsWithoutHeader     = "PaginatedDataTableActionsWithoutHeader"
+	tagPaginatedDataTableDividerThicknessNegative = "PaginatedDataTableDividerThicknessNegative"
+	tagPaginatedDataTableNoColumns                = "PaginatedDataTableNoColumns"
+	tagPaginatedDataTablePrimaryAndController     = "PaginatedDataTablePrimaryAndController"
+	tagPaginatedDataTableRowHeightRange           = "PaginatedDataTableRowHeightRange"
+	tagPaginatedDataTableRowsPerPageNotAvailable  = "PaginatedDataTableRowsPerPageNotAvailable"
+	tagPaginatedDataTableRowsPerPageNotPositive   = "PaginatedDataTableRowsPerPageNotPositive"
+	tagPaginatedDataTableSortColumnIndexRange     = "PaginatedDataTableSortColumnIndexRange"
+)

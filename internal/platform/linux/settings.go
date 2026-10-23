@@ -65,7 +65,7 @@ func (w *SettingsWatcher) Start() (settings platform.Settings, fromPortal bool) 
 		b, err := open(openCtx)
 		openCancel()
 		if err != nil {
-			slog.Debug("no session bus for the system settings", "error", err)
+			slog.Debug("no session bus for the system settings", "err", err)
 		} else {
 			bus = b
 		}
@@ -103,7 +103,7 @@ func (w *SettingsWatcher) Stop() {
 	}
 	if w.bus != nil {
 		if err := w.bus.Close(); err != nil {
-			slog.Debug("closing the session bus failed", "error", err)
+			slog.Debug("closing the session bus failed", "err", err)
 		}
 		w.bus = nil
 	}

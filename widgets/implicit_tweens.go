@@ -92,7 +92,7 @@ func NewBorderTween(begin, end foundation.Opt[painting.Border]) *animation.Tween
 func NewMatrix4Tween(begin, end *ui.Matrix4) *animation.Tween[*ui.Matrix4] {
 	return animation.NewTweenFunc(begin, end, func(b, e *ui.Matrix4, t float64) *ui.Matrix4 {
 		if b == nil || e == nil {
-			panic(errors.New("Matrix4TweenNull", "a Matrix4Tween needs both a begin and an end matrix"))
+			panic(errors.New(tagMatrix4TweenNull, "a Matrix4Tween needs both a begin and an end matrix"))
 		}
 		bt, br, bs := b.Decompose()
 		et, er, es := e.Decompose()
@@ -112,3 +112,8 @@ func NewMatrix4Tween(begin, end *ui.Matrix4) *animation.Tween[*ui.Matrix4] {
 func NewTextStyleTween(begin, end *painting.TextStyle) *animation.Tween[*painting.TextStyle] {
 	return animation.NewTweenFunc(begin, end, painting.TextStyleLerp).SetName("TextStyleTween")
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagMatrix4TweenNull = "Matrix4TweenNull"
+)

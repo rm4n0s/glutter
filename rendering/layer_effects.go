@@ -48,7 +48,7 @@ func (l *ColorFilterLayer) ColorFilter() *ui.ColorFilter { return l.colorFilter 
 // Flutter: rendering/layer.dart ColorFilterLayer.colorFilter
 func (l *ColorFilterLayer) SetColorFilter(v *ui.ColorFilter) {
 	if foundation.DebugMode && v == nil {
-		panic(errors.New("LayerPropertyMissing", "the color filter of a layer must not be nil"))
+		panic(errors.New(tagLayerPropertyMissing, "the color filter of a layer must not be nil"))
 	}
 	if !v.Equal(l.colorFilter) {
 		l.colorFilter = v
@@ -61,7 +61,7 @@ func (l *ColorFilterLayer) SetColorFilter(v *ui.ColorFilter) {
 // Flutter: rendering/layer.dart ColorFilterLayer.addToScene
 func (l *ColorFilterLayer) AddToScene(builder *ui.SceneBuilder) {
 	if l.colorFilter == nil {
-		panic(errors.New("LayerPropertyMissing", "a ColorFilterLayer without a filter was added to a scene"))
+		panic(errors.New(tagLayerPropertyMissing, "a ColorFilterLayer without a filter was added to a scene"))
 	}
 	old, _ := l.engineLayer.(*ui.ColorFilterEngineLayer)
 	l.SetEngineLayer(builder.PushColorFilter(l.colorFilter, ui.PushColorFilterOpts{OldLayer: old}))
@@ -116,7 +116,7 @@ func (l *ImageFilterLayer) ImageFilter() ui.ImageFilter { return l.imageFilter }
 // Flutter: rendering/layer.dart ImageFilterLayer.imageFilter
 func (l *ImageFilterLayer) SetImageFilter(v ui.ImageFilter) {
 	if foundation.DebugMode && v == nil {
-		panic(errors.New("LayerPropertyMissing", "the image filter of a layer must not be nil"))
+		panic(errors.New(tagLayerPropertyMissing, "the image filter of a layer must not be nil"))
 	}
 	if l.imageFilter == nil || !v.Equal(l.imageFilter) {
 		l.imageFilter = v
@@ -129,7 +129,7 @@ func (l *ImageFilterLayer) SetImageFilter(v ui.ImageFilter) {
 // Flutter: rendering/layer.dart ImageFilterLayer.addToScene
 func (l *ImageFilterLayer) AddToScene(builder *ui.SceneBuilder) {
 	if l.imageFilter == nil {
-		panic(errors.New("LayerPropertyMissing", "an ImageFilterLayer without a filter was added to a scene"))
+		panic(errors.New(tagLayerPropertyMissing, "an ImageFilterLayer without a filter was added to a scene"))
 	}
 	old, _ := l.engineLayer.(*ui.ImageFilterEngineLayer)
 	l.SetEngineLayer(builder.PushImageFilter(l.imageFilter, ui.PushImageFilterOpts{Offset: l.offset, OldLayer: old}))
@@ -188,11 +188,11 @@ func (l *TransformLayer) Transform() *ui.Matrix4 { return l.transform }
 func (l *TransformLayer) SetTransform(v *ui.Matrix4) {
 	if foundation.DebugMode {
 		if v == nil {
-			panic(errors.New("LayerPropertyMissing", "the transform of a layer must not be nil"))
+			panic(errors.New(tagLayerPropertyMissing, "the transform of a layer must not be nil"))
 		}
 		for _, c := range v.Storage() {
 			if math.IsInf(float64(c), 0) || math.IsNaN(float64(c)) {
-				panic(errors.New("TransformLayerNotFinite", "the transform of a layer must be finite", "transform", v))
+				panic(errors.New(tagTransformLayerNotFinite, "the transform of a layer must be finite", "transform", v))
 			}
 		}
 	}
@@ -209,7 +209,7 @@ func (l *TransformLayer) SetTransform(v *ui.Matrix4) {
 // Flutter: rendering/layer.dart TransformLayer.addToScene
 func (l *TransformLayer) AddToScene(builder *ui.SceneBuilder) {
 	if l.transform == nil {
-		panic(errors.New("LayerPropertyMissing", "a TransformLayer without a transform was added to a scene"))
+		panic(errors.New(tagLayerPropertyMissing, "a TransformLayer without a transform was added to a scene"))
 	}
 	l.lastEffective = l.transform
 	if l.offset != ui.OffsetZero {
@@ -328,7 +328,7 @@ func (l *OpacityLayer) SetAlpha(v int) {
 func (l *OpacityLayer) AddToScene(builder *ui.SceneBuilder) {
 	alpha, ok := l.alpha.Get()
 	if !ok {
-		panic(errors.New("LayerPropertyMissing", "an OpacityLayer without an alpha was added to a scene"))
+		panic(errors.New(tagLayerPropertyMissing, "an OpacityLayer without an alpha was added to a scene"))
 	}
 	enabled := l.firstChild != nil
 	if !enabled {
@@ -441,7 +441,7 @@ func (l *ShaderMaskLayer) AddToScene(builder *ui.SceneBuilder) {
 	rect, okR := l.maskRect.Get()
 	mode, okM := l.blendMode.Get()
 	if l.shader == nil || !okR || !okM {
-		panic(errors.New("LayerPropertyMissing", "a ShaderMaskLayer needs a shader, a mask rectangle and a blend mode"))
+		panic(errors.New(tagLayerPropertyMissing, "a ShaderMaskLayer needs a shader, a mask rectangle and a blend mode"))
 	}
 	old, _ := l.engineLayer.(*ui.ShaderMaskEngineLayer)
 	l.SetEngineLayer(builder.PushShaderMask(l.shader, rect, mode, ui.PushShaderMaskOpts{OldLayer: old}))
@@ -544,7 +544,7 @@ func (l *BackdropFilterLayer) SetBackdropKey(v foundation.Opt[BackdropKey]) {
 // Flutter: rendering/layer.dart BackdropFilterLayer.addToScene
 func (l *BackdropFilterLayer) AddToScene(builder *ui.SceneBuilder) {
 	if l.filter == nil {
-		panic(errors.New("LayerPropertyMissing", "a BackdropFilterLayer without a filter was added to a scene"))
+		panic(errors.New(tagLayerPropertyMissing, "a BackdropFilterLayer without a filter was added to a scene"))
 	}
 	old, _ := l.engineLayer.(*ui.BackdropFilterEngineLayer)
 	o := ui.PushBackdropFilterOpts{BlendMode: l.blendMode, OldLayer: old}
@@ -662,3 +662,8 @@ func (l *AnnotatedRegionLayer) DebugFillProperties(p *foundation.DiagnosticPrope
 	p.Add(foundation.NewDiagnosticsProperty("offset", l.offset, foundation.DiagnosticsPropertyOpts{DefaultValue: ui.OffsetZero}))
 	p.Add(foundation.NewDiagnosticsProperty("opaque", l.opaque, foundation.DiagnosticsPropertyOpts{DefaultValue: false}))
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagTransformLayerNotFinite = "TransformLayerNotFinite"
+)

@@ -123,7 +123,7 @@ type LeastSquaresSolver struct {
 // Flutter: gestures/lsq_solver.dart LeastSquaresSolver.new
 func NewLeastSquaresSolver(x, y, w []float64) *LeastSquaresSolver {
 	if foundation.DebugMode && (len(x) != len(y) || len(y) != len(w)) {
-		panic(errors.New("LeastSquaresLengthMismatch", "x, y and w must have the same length",
+		panic(errors.New(tagLeastSquaresLengthMismatch, "x, y and w must have the same length",
 			"x", len(x), "y", len(y), "w", len(w)))
 	}
 	return &LeastSquaresSolver{x: x, y: y, w: w}
@@ -234,3 +234,8 @@ func (s *LeastSquaresSolver) Solve(degree int) *PolynomialFit {
 	}
 	return result
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagLeastSquaresLengthMismatch = "LeastSquaresLengthMismatch"
+)

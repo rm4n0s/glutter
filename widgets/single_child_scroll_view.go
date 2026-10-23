@@ -76,7 +76,7 @@ type SingleChildScrollView struct {
 func NewSingleChildScrollView(child Widget, opts ...SingleChildScrollViewOpts) *SingleChildScrollView {
 	o := firstOpts(opts)
 	if foundation.DebugMode && !isNil(o.Controller) && o.Primary.OrElse(false) {
-		panic(errors.New("ScrollViewPrimaryWithController",
+		panic(errors.New(tagScrollViewPrimaryWithController,
 			"primary scroll views obtain their ScrollController via inheritance from a PrimaryScrollController widget; you cannot both set primary to true and pass an explicit controller"))
 	}
 	if o.ScrollDirection == painting.AxisUnspecified {

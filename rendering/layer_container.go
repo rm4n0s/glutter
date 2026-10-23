@@ -193,7 +193,7 @@ func (c *ContainerLayer) Append(child Layer) {
 			}
 		}
 		if bad != "" {
-			panic(errors.New("LayerAppendInvalid", "a layer can not be appended: "+bad,
+			panic(errors.New(tagLayerAppendInvalid, "a layer can not be appended: "+bad,
 				"container", foundation.DescribeIdentity(c.self), "child", foundation.DescribeIdentity(child)))
 		}
 	}
@@ -484,7 +484,7 @@ func ceilInt(v float64) int {
 
 func debugCheckClipBehavior(b ui.Clip) {
 	if foundation.DebugMode && b == ui.ClipNone {
-		panic(errors.New("ClipLayerBehaviorNone", "a clip layer needs a clip behavior other than none"))
+		panic(errors.New(tagClipLayerBehaviorNone, "a clip layer needs a clip behavior other than none"))
 	}
 }
 
@@ -574,7 +574,7 @@ func (l *ClipRectLayer) FindAnnotations(result *AnnotationResult, localPosition 
 func (l *ClipRectLayer) AddToScene(builder *ui.SceneBuilder) {
 	r, ok := l.clipRect.Get()
 	if !ok {
-		panic(errors.New("LayerPropertyMissing", "a ClipRectLayer without a clip rectangle was added to a scene"))
+		panic(errors.New(tagLayerPropertyMissing, "a ClipRectLayer without a clip rectangle was added to a scene"))
 	}
 	enabled := !foundation.DebugMode || !l.debugOptions().DisableClipLayers
 	if enabled {
@@ -689,7 +689,7 @@ func (l *ClipRRectLayer) FindAnnotations(result *AnnotationResult, localPosition
 func (l *ClipRRectLayer) AddToScene(builder *ui.SceneBuilder) {
 	r, ok := l.clipRRect.Get()
 	if !ok {
-		panic(errors.New("LayerPropertyMissing", "a ClipRRectLayer without a clip was added to a scene"))
+		panic(errors.New(tagLayerPropertyMissing, "a ClipRRectLayer without a clip was added to a scene"))
 	}
 	enabled := !foundation.DebugMode || !l.debugOptions().DisableClipLayers
 	if enabled {
@@ -808,7 +808,7 @@ func (l *ClipRSuperellipseLayer) FindAnnotations(result *AnnotationResult, local
 func (l *ClipRSuperellipseLayer) AddToScene(builder *ui.SceneBuilder) {
 	r, ok := l.clip.Get()
 	if !ok {
-		panic(errors.New("LayerPropertyMissing", "a ClipRSuperellipseLayer without a clip was added to a scene"))
+		panic(errors.New(tagLayerPropertyMissing, "a ClipRSuperellipseLayer without a clip was added to a scene"))
 	}
 	enabled := !foundation.DebugMode || !l.debugOptions().DisableClipLayers
 	if enabled {
@@ -922,7 +922,7 @@ func (l *ClipPathLayer) FindAnnotations(result *AnnotationResult, localPosition 
 // Flutter: rendering/layer.dart ClipPathLayer.addToScene
 func (l *ClipPathLayer) AddToScene(builder *ui.SceneBuilder) {
 	if l.clipPath == nil {
-		panic(errors.New("LayerPropertyMissing", "a ClipPathLayer without a path was added to a scene"))
+		panic(errors.New(tagLayerPropertyMissing, "a ClipPathLayer without a path was added to a scene"))
 	}
 	enabled := !foundation.DebugMode || !l.debugOptions().DisableClipLayers
 	if enabled {
@@ -944,3 +944,9 @@ func (l *ClipPathLayer) DebugFillProperties(p *foundation.DiagnosticPropertiesBu
 	l.ContainerLayer.DebugFillProperties(p)
 	p.Add(foundation.NewDiagnosticsProperty("clipBehavior", l.clipBehavior))
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagClipLayerBehaviorNone = "ClipLayerBehaviorNone"
+	tagLayerAppendInvalid    = "LayerAppendInvalid"
+)

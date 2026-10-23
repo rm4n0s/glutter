@@ -100,7 +100,7 @@ type Drawer struct {
 func NewDrawer(opts ...DrawerOpts) *Drawer {
 	o := firstOpts(opts)
 	if foundation.DebugMode && o.Elevation.OrElse(0) < 0 {
-		panic(errors.New("DrawerElevationNegative", "the elevation of a Drawer must not be negative", "elevation", o.Elevation.Value()))
+		panic(errors.New(tagDrawerElevationNegative, "the elevation of a Drawer must not be negative", "elevation", o.Elevation.Value()))
 	}
 	return &Drawer{StatelessWidget: widgets.NewStatelessWidgetBase(widgets.WidgetOpts{Key: o.Key}), o: o}
 }
@@ -300,7 +300,7 @@ func DrawerControllerMaybeOf(bc widgets.BuildContext) *DrawerController {
 func DrawerControllerOf(bc widgets.BuildContext) *DrawerController {
 	c := DrawerControllerMaybeOf(bc)
 	if c == nil {
-		panic(errors.New("DrawerControllerMissing", "DrawerController.of() was called with a context that does not contain a DrawerController widget. "+
+		panic(errors.New(tagDrawerControllerMissing, "DrawerController.of() was called with a context that does not contain a DrawerController widget. "+
 			"No DrawerController widget ancestor could be found starting from the context that was passed to DrawerController.of().",
 			"widget", foundation.RuntimeTypeName(bc.Widget())))
 	}
@@ -582,3 +582,9 @@ func (s *DrawerControllerState) Build(bc widgets.BuildContext) widgets.Widget {
 }
 
 func infinity() float64 { return math.Inf(1) }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagDrawerControllerMissing = "DrawerControllerMissing"
+	tagDrawerElevationNegative = "DrawerElevationNegative"
+)

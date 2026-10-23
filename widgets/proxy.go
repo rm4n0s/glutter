@@ -237,12 +237,12 @@ func (e *ParentDataElement) ApplyWidgetOutOfTurn(newWidget Widget) {
 	nw := newWidget.(parentDataWidget)
 	if foundation.DebugMode {
 		if c, ok := nw.(interface{ DebugCanApplyOutOfTurn() bool }); !ok || !c.DebugCanApplyOutOfTurn() {
-			panic(errors.New("ParentDataOutOfTurnNotAllowed",
+			panic(errors.New(tagParentDataOutOfTurnNotAllowed,
 				"the widget cannot apply its parent data out of turn; it must say so with DebugCanApplyOutOfTurn",
 				"widget", foundation.RuntimeTypeName(newWidget)))
 		}
 		if nw.Child() != e.widget.(proxyWidget).Child() {
-			panic(errors.New("ParentDataOutOfTurnChildChanged",
+			panic(errors.New(tagParentDataOutOfTurnChildChanged,
 				"a parent data widget applied out of turn must have the same child as the one it replaces",
 				"widget", foundation.RuntimeTypeName(newWidget)))
 		}
@@ -383,7 +383,7 @@ func (e *InheritedElement) Updated(oldWidget Widget) {
 // Flutter: widgets/framework.dart InheritedElement.notifyClients
 func (e *InheritedElement) NotifyClients(oldWidget Widget) {
 	if foundation.DebugMode && e.owner.debugCurrentBuildTarget == nil {
-		panic(errors.New("NotifyClientsOutsideBuild",
+		panic(errors.New(tagNotifyClientsOutsideBuild,
 			"NotifyClients was called at an inappropriate time; it may only be called while the widgets are being built",
 			"widget", foundation.RuntimeTypeName(e.widget)))
 	}
@@ -391,3 +391,10 @@ func (e *InheritedElement) NotifyClients(oldWidget Widget) {
 		e.iself.NotifyDependent(oldWidget, dependent)
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagNotifyClientsOutsideBuild       = "NotifyClientsOutsideBuild"
+	tagParentDataOutOfTurnChildChanged = "ParentDataOutOfTurnChildChanged"
+	tagParentDataOutOfTurnNotAllowed   = "ParentDataOutOfTurnNotAllowed"
+)

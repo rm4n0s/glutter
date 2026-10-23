@@ -86,15 +86,15 @@ func NewSegmentedButton[T comparable](segments []ButtonSegment[T], selected []T,
 	if foundation.DebugMode {
 		switch {
 		case len(segments) == 0:
-			panic(errors.New("SegmentedButtonNoSegments", "a SegmentedButton needs at least one segment"))
+			panic(errors.New(tagSegmentedButtonNoSegments, "a SegmentedButton needs at least one segment"))
 		case len(selected) == 0 && !o.EmptySelectionAllowed:
-			panic(errors.New("SegmentedButtonNoSelection", "a SegmentedButton needs a selected segment unless EmptySelectionAllowed is set"))
+			panic(errors.New(tagSegmentedButtonNoSelection, "a SegmentedButton needs a selected segment unless EmptySelectionAllowed is set"))
 		case len(selected) >= 2 && !o.MultiSelectionEnabled:
-			panic(errors.New("SegmentedButtonMultipleSelected", "a SegmentedButton can have several selected segments only with MultiSelectionEnabled"))
+			panic(errors.New(tagSegmentedButtonMultipleSelected, "a SegmentedButton can have several selected segments only with MultiSelectionEnabled"))
 		}
 		for _, s := range segments {
 			if s.Icon == nil && s.Label == nil {
-				panic(errors.New("ButtonSegmentEmpty", "a ButtonSegment needs an icon or a label", "value", s.Value))
+				panic(errors.New(tagButtonSegmentEmpty, "a ButtonSegment needs an icon or a label", "value", s.Value))
 			}
 		}
 	}
@@ -891,3 +891,11 @@ func segmentedButtonDefaultsM3(bc widgets.BuildContext) SegmentedButtonThemeData
 		SelectedIcon: NewIcon(Icons.Check()),
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagButtonSegmentEmpty              = "ButtonSegmentEmpty"
+	tagSegmentedButtonMultipleSelected = "SegmentedButtonMultipleSelected"
+	tagSegmentedButtonNoSegments       = "SegmentedButtonNoSegments"
+	tagSegmentedButtonNoSelection      = "SegmentedButtonNoSelection"
+)

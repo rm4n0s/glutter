@@ -130,11 +130,11 @@ func NewDropdownButtonFormField[T comparable](items []*DropdownMenuItem[T], onCh
 				}
 			}
 			if n != 1 {
-				panic(errors.NewErrf("DropdownButtonFormFieldValueNotUnique", "there should be exactly one item with the value of the DropdownButtonFormField: %v; either zero or 2 or more DropdownMenuItems were detected with the same value", v))
+				panic(errors.NewErrf(tagDropdownButtonFormFieldValueNotUnique, "there should be exactly one item with the value of the DropdownButtonFormField: %v; either zero or 2 or more DropdownMenuItems were detected with the same value", v))
 			}
 		}
 		if o.ErrorBuilder != nil && o.Decoration != nil && o.Decoration.ErrorText.IsSome() {
-			panic(errors.New("DropdownButtonFormFieldErrorBuilderWithErrorText", "declaring both errorBuilder and decoration.errorText is not supported"))
+			panic(errors.New(tagDropdownButtonFormFieldErrorBuilderWithErrorText, "declaring both errorBuilder and decoration.errorText is not supported"))
 		}
 	}
 	return &DropdownButtonFormField[T]{StatefulWidget: widgets.NewStatefulWidgetBase(widgets.WidgetOpts{Key: o.Key}), items: items, onChanged: onChanged, o: o}
@@ -299,3 +299,9 @@ func (s *dropdownButtonFormFieldState[T]) buildField(field *widgets.FormFieldSta
 	return widgets.NewFocus(NewDropdownButtonHideUnderline(button), widgets.FocusOpts{
 		CanRequestFocus: foundation.Some(false), SkipTraversal: foundation.Some(true)})
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagDropdownButtonFormFieldErrorBuilderWithErrorText = "DropdownButtonFormFieldErrorBuilderWithErrorText"
+	tagDropdownButtonFormFieldValueNotUnique            = "DropdownButtonFormFieldValueNotUnique"
+)

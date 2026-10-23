@@ -623,7 +623,7 @@ func newEventData(typeName string, s *eventSpec, o PointerEventOpts) eventData {
 		kind = s.kind
 	}
 	if foundation.DebugMode && s.noTrackpad && kind == ui.PointerDeviceKindTrackpad {
-		panic(errors.New("PointerEventKindTrackpad", "this pointer event cannot come from a trackpad",
+		panic(errors.New(tagPointerEventKindTrackpad, "this pointer event cannot come from a trackpad",
 			"event", typeName))
 	}
 	d := eventData{
@@ -986,3 +986,8 @@ func (d *eventData) DebugFillProperties(p *foundation.DiagnosticPropertiesBuilde
 func ToStringFull(e PointerEvent) string {
 	return foundation.DiagnosticableString(e, foundation.DiagnosticLevelFine)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagPointerEventKindTrackpad = "PointerEventKindTrackpad"
+)

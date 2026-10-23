@@ -45,7 +45,7 @@ func ScreenshotFromEnv(getenv func(string) string) (*Screenshot, error) {
 	if v := getenv(ScreenshotAfterEnv); v != "" {
 		d, err := time.ParseDuration(v)
 		if err != nil || d < 0 {
-			return nil, errors.New("ScreenshotAfterInvalid", "GLUTTER_SCREENSHOT_AFTER must be a duration such as 500ms",
+			return nil, errors.New(tagScreenshotAfterInvalid, "GLUTTER_SCREENSHOT_AFTER must be a duration such as 500ms",
 				"value", v)
 		}
 		s.after = d
@@ -72,7 +72,7 @@ func (s *Screenshot) After() time.Duration { return s.after }
 func (s *Screenshot) Encode(img *image.RGBA) ([]byte, error) {
 	var buf bytes.Buffer
 	if err := png.Encode(&buf, img); err != nil {
-		return nil, errors.NewErr("ScreenshotWriteFailed", err).SetMetadata("path", s.path)
+		return nil, errors.NewErr(tagScreenshotWriteFailed, err).SetMetadata("path", s.path)
 	}
 	return buf.Bytes(), nil
 }
@@ -83,19 +83,25 @@ func (s *Screenshot) Encode(img *image.RGBA) ([]byte, error) {
 // Flutter: no counterpart
 func (s *Screenshot) Save(img *image.RGBA) error {
 	if err := os.MkdirAll(filepath.Dir(s.path), 0o755); err != nil {
-		return errors.NewErr("ScreenshotWriteFailed", err).SetMetadata("path", s.path)
+		return errors.NewErr(tagScreenshotWriteFailed, err).SetMetadata("path", s.path)
 	}
 	f, err := os.Create(s.path)
 	if err != nil {
-		return errors.NewErr("ScreenshotWriteFailed", err).SetMetadata("path", s.path)
+		return errors.NewErr(tagScreenshotWriteFailed, err).SetMetadata("path", s.path)
 	}
 	if err := png.Encode(f, img); err != nil {
 		_ = f.Close() // the encoding error is the one to report
-		return errors.NewErr("ScreenshotWriteFailed", err).SetMetadata("path", s.path)
+		return errors.NewErr(tagScreenshotWriteFailed, err).SetMetadata("path", s.path)
 	}
 	if err := f.Close(); err != nil {
-		return errors.NewErr("ScreenshotWriteFailed", err).SetMetadata("path", s.path)
+		return errors.NewErr(tagScreenshotWriteFailed, err).SetMetadata("path", s.path)
 	}
 	slog.Info("screenshot saved", "path", s.path, "width", img.Bounds().Dx(), "height", img.Bounds().Dy())
 	return nil
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagScreenshotAfterInvalid = "ScreenshotAfterInvalid"
+	tagScreenshotWriteFailed  = "ScreenshotWriteFailed"
+)

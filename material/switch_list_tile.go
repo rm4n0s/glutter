@@ -128,10 +128,10 @@ func NewSwitchListTile(value bool, onChanged func(bool), opts ...SwitchListTileO
 	o := firstOpts(opts)
 	if foundation.DebugMode {
 		if o.ActiveThumbImage == nil && o.OnActiveThumbImageError != nil || o.InactiveThumbImage == nil && o.OnInactiveThumbImageError != nil {
-			panic(errors.New("SwitchListTileThumbImageErrorWithoutImage", "the error listener of a thumb image needs the image"))
+			panic(errors.New(tagSwitchListTileThumbImageErrorWithoutImage, "the error listener of a thumb image needs the image"))
 		}
 		if o.IsThreeLine.OrElse(false) && o.Subtitle == nil {
-			panic(errors.New("SwitchListTileThreeLineNoSubtitle", "a three line list tile needs a subtitle"))
+			panic(errors.New(tagSwitchListTileThreeLineNoSubtitle, "a three line list tile needs a subtitle"))
 		}
 	}
 	return &SwitchListTile{StatelessWidget: widgets.NewStatelessWidgetBase(widgets.WidgetOpts{Key: o.Key}), value: value, onChanged: onChanged, o: o}
@@ -192,3 +192,9 @@ func (w *SwitchListTile) Build(bc widgets.BuildContext) widgets.Widget {
 		internalNoSemanticForOnTap: !o.InternalAddSemanticForOnTap,
 	}))
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagSwitchListTileThreeLineNoSubtitle         = "SwitchListTileThreeLineNoSubtitle"
+	tagSwitchListTileThumbImageErrorWithoutImage = "SwitchListTileThumbImageErrorWithoutImage"
+)

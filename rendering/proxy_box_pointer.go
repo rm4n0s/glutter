@@ -493,7 +493,7 @@ func (r *RenderRepaintBoundary) ToImageSync(pixelRatio float64, opts ...ui.ToIma
 
 func (r *RenderRepaintBoundary) offsetLayer() *OffsetLayer {
 	if foundation.DebugMode && r.DebugNeedsPaint() {
-		panic(errors.New("RepaintBoundaryNotPainted", "ToImage was called on a repaint boundary that needs paint",
+		panic(errors.New(tagRepaintBoundaryNotPainted, "ToImage was called on a repaint boundary that needs paint",
 			"object", foundation.DescribeIdentity(r.self)))
 	}
 	return r.Layer().(OffsetLayerLike).AsOffsetLayer()
@@ -763,7 +763,7 @@ func (r *RenderOffstage) ComputeDryLayout(constraints BoxConstraints) ui.Size {
 // Flutter: rendering/proxy_box.dart RenderOffstage.performResize
 func (r *RenderOffstage) PerformResize() {
 	if foundation.DebugMode && !r.offstage {
-		panic(errors.New("OffstagePerformResize", "PerformResize was called on a RenderOffstage that is not offstage",
+		panic(errors.New(tagOffstagePerformResize, "PerformResize was called on a RenderOffstage that is not offstage",
 			"object", foundation.DescribeIdentity(r.self)))
 	}
 	r.RenderProxyBox.PerformResize()
@@ -794,7 +794,7 @@ func (r *RenderOffstage) HitTest(result *BoxHitTestResult, position ui.Offset) b
 // Flutter: rendering/proxy_box.dart RenderOffstage.paintsChild
 func (r *RenderOffstage) PaintsChild(child RenderObject) bool {
 	if foundation.DebugMode && child.Parent() != RenderObject(r.self) {
-		panic(errors.New("RenderObjectNotChild", "PaintsChild was called with a render object that is not a child",
+		panic(errors.New(tagRenderObjectNotChild, "PaintsChild was called with a render object that is not a child",
 			"object", foundation.DescribeIdentity(r.self), "child", foundation.DescribeIdentity(child)))
 	}
 	return !r.offstage
@@ -1198,7 +1198,7 @@ func (r *RenderFollowerLayer) HitTestChildren(result *BoxHitTestResult, position
 func (r *RenderFollowerLayer) Paint(context *PaintingContext, offset ui.Offset) {
 	leaderSize := r.link.LeaderSize
 	if foundation.DebugMode && leaderSize.IsNone() && r.link.Leader() != nil && r.leaderAnchor != painting.AlignmentTopLeft {
-		panic(errors.New("FollowerLeaderSizeMissing", "the layer is linked to a leader but a valid leader size is not set; "+
+		panic(errors.New(tagFollowerLeaderSizeMissing, "the layer is linked to a leader but a valid leader size is not set; "+
 			"the leader size is required when the leader anchor is not the top left",
 			"link", r.link.String(), "leaderAnchor", r.leaderAnchor))
 	}
@@ -1320,3 +1320,10 @@ func (r *RenderAnnotatedRegion) Dispose() {
 	r.layerHandle.SetLayer(nil)
 	r.RenderProxyBox.Dispose()
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagFollowerLeaderSizeMissing = "FollowerLeaderSizeMissing"
+	tagOffstagePerformResize     = "OffstagePerformResize"
+	tagRepaintBoundaryNotPainted = "RepaintBoundaryNotPainted"
+)

@@ -119,9 +119,9 @@ func TestMatchAsksForAliasesOnce(t *testing.T) {
 
 func TestMatchAliasesFailure(t *testing.T) {
 	m := &aliasMatcher{fakeMatcher: fakeMatcher{files: []FontFile{{Path: "/fonts/a.ttf", Family: "A"}}},
-		err: errors.New("AliasLookupBroken", "the matcher cannot say")}
+		err: errors.New(tagAliasLookupBroken, "the matcher cannot say")}
 	_, err := NewCollection(CollectionOpts{Matcher: m}).Match(context.Background(), "Arial", 400, false, "")
-	if appErr := routeOf(t, err); appErr.Tag != "AliasLookupBroken" || !appErr.HasRoute("AliasLookupBroken") {
+	if appErr := routeOf(t, err); appErr.Tag != tagAliasLookupBroken || !appErr.HasRoute(tagAliasLookupBroken) {
 		t.Errorf("err = %v, want the matcher's own error unchanged", err)
 	}
 }
@@ -209,11 +209,11 @@ func TestCollectionFamilies(t *testing.T) {
 
 func TestCollectionFamiliesFailures(t *testing.T) {
 	t.Run("the listing fails: the others are returned with the error", func(t *testing.T) {
-		m := &listingMatcher{err: errors.New("ListBroken", "no")}
+		m := &listingMatcher{err: errors.New(tagListBroken, "no")}
 		c := NewCollection(CollectionOpts{Matcher: m})
 		_ = c.AddFont("Mine", gomono.TTF)
 		got, err := c.Families(context.Background())
-		if appErr := routeOf(t, err); appErr.Tag != "ListBroken" {
+		if appErr := routeOf(t, err); appErr.Tag != tagListBroken {
 			t.Errorf("err = %v, want the matcher's own error", err)
 		}
 		if len(got) != 1 || got[0] != "Mine" {
@@ -264,3 +264,9 @@ func TestScanMatcherFamilies(t *testing.T) {
 		t.Errorf("unexpected failure path: %s", appErr.Route())
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagAliasLookupBroken = "AliasLookupBroken"
+	tagListBroken        = "ListBroken"
+)

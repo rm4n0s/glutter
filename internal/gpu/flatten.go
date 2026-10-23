@@ -232,7 +232,7 @@ type FlattenOpts struct {
 // Flutter: no counterpart (flutter::LayerTree::Preroll and Paint)
 func Flatten(scene *ui.Scene, opts ...FlattenOpts) (*DrawList, error) {
 	if scene == nil {
-		return nil, errors.New("FlattenSceneNil", "Flatten needs a scene")
+		return nil, errors.New(tagFlattenSceneNil, "Flatten needs a scene")
 	}
 	var o FlattenOpts
 	switch len(opts) {
@@ -240,7 +240,7 @@ func Flatten(scene *ui.Scene, opts ...FlattenOpts) (*DrawList, error) {
 	case 1:
 		o = opts[0]
 	default:
-		panic(errors.New("MultipleOptions", "pass at most one options value", "type", "FlattenOpts", "count", len(opts)))
+		panic(errors.New(tagMultipleOptions, "pass at most one options value", "type", "FlattenOpts", "count", len(opts)))
 	}
 	bounds := o.Bounds
 	if bounds == (ui.Rect{}) {
@@ -332,7 +332,7 @@ func (f *flattener) layer(l ui.Layer, st state) error {
 	case *ui.ImageFilterLayer:
 		return f.group(l, st, state{m: translated(st.m, v.Offset.Dx, v.Offset.Dy), clip: st.clip})
 	}
-	return errors.NewErrf("FlattenLayerUnknown", "Flatten does not know the layer %T.", l)
+	return errors.NewErrf(tagFlattenLayerUnknown, "Flatten does not know the layer %T.", l)
 }
 
 // boundaryGroup draws the children of l, with the state inner, inside a group that is
@@ -468,3 +468,10 @@ func clipRSuperellipse(c Clip, m *ui.Matrix4, r ui.RSuperellipse, aa bool) Clip 
 func clipPath(c Clip, m *ui.Matrix4, p *ui.Path, aa bool) Clip {
 	return c.withShape(ClipShape{Kind: ClipShapePath, Path: p, AntiAlias: aa, Transform: *m}, p.GetBounds())
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagFlattenLayerUnknown = "FlattenLayerUnknown"
+	tagFlattenSceneNil     = "FlattenSceneNil"
+	tagMultipleOptions     = "MultipleOptions"
+)

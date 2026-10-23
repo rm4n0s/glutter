@@ -416,7 +416,7 @@ func (r *RenderWrap) debugCheckDirections() {
 	}
 	name := foundation.RuntimeTypeName(r)
 	missing := func(what string) {
-		panic(errors.New("WrapDirectionMissing", what, "object", foundation.DescribeIdentity(r)))
+		panic(errors.New(tagWrapDirectionMissing, what, "object", foundation.DescribeIdentity(r)))
 	}
 	horizontal := r.direction == painting.AxisHorizontal
 	first, last := r.FirstChild(), r.LastChild()
@@ -736,3 +736,8 @@ func (r *RenderWrap) DebugFillProperties(b *foundation.DiagnosticPropertiesBuild
 	b.Add(foundation.NewEnumProperty("textDirection", optEnum(r.textDirection, ui.TextDirectionUnspecified), foundation.EnumPropertyOpts{DefaultValue: foundation.DefaultNull}))
 	b.Add(foundation.NewEnumProperty("verticalDirection", foundation.Some(r.verticalDirection), foundation.EnumPropertyOpts{DefaultValue: painting.VerticalDirectionDown}))
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagWrapDirectionMissing = "WrapDirectionMissing"
+)

@@ -54,12 +54,16 @@ type eglLib struct {
 func loadEGL() (*eglLib, error) {
 	egl, err := dl.OpenOverride(eglLibraryEnv, "libEGL.so.1", "libEGL.so")
 	if err != nil {
-		return nil, loadFailed("libEGL", err)
+		md := loaderMetadata(err)
+		return nil, errors.New(tagEGLLoadFailed, "could not load the EGL or GLES library",
+			"library", "libEGL", "names", md["names"], "dlerror", md["dlerror"])
 	}
 	// libGLESv2 is opened too: it must be loaded for GL entry points to work
 	// with libglvnd, and its symbols back up eglGetProcAddress.
 	if _, err := dl.OpenOverride(glesLibraryEnv, "libGLESv2.so.2", "libGLESv2.so"); err != nil {
-		return nil, loadFailed("libGLESv2", err)
+		md := loaderMetadata(err)
+		return nil, errors.New(tagEGLLoadFailed, "could not load the EGL or GLES library",
+			"library", "libGLESv2", "names", md["names"], "dlerror", md["dlerror"])
 	}
 	l := &eglLib{lib: egl}
 	for _, b := range []struct {
@@ -107,15 +111,13 @@ func loadEGL() (*eglLib, error) {
 	return l, nil
 }
 
-// loadFailed turns the loader's LibraryLoadFailed into the EGLLoadFailed of the
-// renderer, keeping what the loader reported.
-func loadFailed(library string, err error) error {
-	md := map[string]any{}
+// loaderMetadata returns what the loader reported about a library that did not load (its
+// LibraryLoadFailed error), for the EGLLoadFailed of the renderer.
+func loaderMetadata(err error) map[string]any {
 	if appErr, ok := errors.FromError(err); ok {
-		md = appErr.Metadata
+		return appErr.Metadata
 	}
-	return errors.New("EGLLoadFailed", "could not load the EGL or GLES library",
-		"library", library, "names", md["names"], "dlerror", md["dlerror"])
+	return map[string]any{}
 }
 
 func (l *eglLib) procAddress(name string) uintptr {
@@ -299,3 +301,8 @@ func X11Visual(display uintptr) (uint32, error) {
 func NewRenderer(opts ...RendererOpts) *Renderer {
 	return newRenderer(Open, opts...)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagEGLLoadFailed = "EGLLoadFailed"
+)

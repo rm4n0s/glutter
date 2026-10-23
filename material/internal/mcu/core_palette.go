@@ -68,7 +68,7 @@ func CorePaletteContentOf(argb uint32) *CorePalette {
 // Flutter: material-color-utilities palettes/core_palette.dart CorePalette.fromList
 func CorePaletteFromList(colors []uint32) *CorePalette {
 	if foundation.DebugMode && len(colors) != CorePaletteSize*CommonSize {
-		panic(errors.New("CorePaletteListSize", "a core palette needs one color for each common tone of each palette", "colors", len(colors), "want", CorePaletteSize*CommonSize))
+		panic(errors.New(tagCorePaletteListSize, "a core palette needs one color for each common tone of each palette", "colors", len(colors), "want", CorePaletteSize*CommonSize))
 	}
 	part := func(n int) *TonalPalette { return TonalPaletteFromList(colors[n*CommonSize : (n+1)*CommonSize]) }
 	return &CorePalette{
@@ -104,3 +104,8 @@ func (c *CorePalette) String() string {
 	return fmt.Sprintf("primary: %v\nsecondary: %v\ntertiary: %v\nneutral: %v\nneutralVariant: %v\nerror: %v\n",
 		c.Primary, c.Secondary, c.Tertiary, c.Neutral, c.NeutralVariant, c.Error)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagCorePaletteListSize = "CorePaletteListSize"
+)

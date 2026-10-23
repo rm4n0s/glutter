@@ -223,7 +223,7 @@ func loadWebGL(gl js.Value) (*glJS, error) {
 		finish:                   bind("finish"),
 	}
 	if missing != "" {
-		return nil, errors.New("SymbolMissing", "the WebGL context has no such function",
+		return nil, errors.New(tagSymbolMissing, "the WebGL context has no such function",
 			"library", "WebGL2RenderingContext", "symbol", missing)
 	}
 	if list := gl.Call("getSupportedExtensions"); list.Truthy() {
@@ -566,3 +566,8 @@ func (g *glJS) readPixels(x, y, w, h int32, format, kind uint32, pixels []byte) 
 
 func (g *glJS) flush()  { g.f.flush.Invoke() }
 func (g *glJS) finish() { g.f.finish.Invoke() }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagSymbolMissing = "SymbolMissing"
+)

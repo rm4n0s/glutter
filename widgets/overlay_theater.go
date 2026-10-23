@@ -70,7 +70,7 @@ func (e *theaterElement) DebugVisitOnstageChildren(visitor ElementVisitor) {
 	children := e.Children()
 	skip := e.widget.(*theater).skipCount
 	if foundation.DebugMode && len(children) < skip {
-		panic(errors.New("TheaterSkipCountInvalid", "the skip count is greater than the number of children"))
+		panic(errors.New(tagTheaterSkipCountInvalid, "the skip count is greater than the number of children"))
 	}
 	for _, c := range children[skip:] {
 		visitor(c)
@@ -131,7 +131,7 @@ func theaterLayoutChild(host theaterHost, child rendering.Box, nonPositionedChil
 		return
 	}
 	if _, deferred := child.(*renderDeferredLayoutBox); deferred && foundation.DebugMode {
-		panic(errors.New("OverlayDeferredChildPositioned", "all deferred layout boxes of an OverlayPortal must be non-positioned children"))
+		panic(errors.New(tagOverlayDeferredChildPositioned, "all deferred layout boxes of an OverlayPortal must be non-positioned children"))
 	}
 	rendering.LayoutPositionedStackChild(child, data, host.Size(), alignment)
 }
@@ -442,10 +442,10 @@ func (r *renderTheater) findSizeDeterminingChild() rendering.Box {
 	}
 	constraints := r.BoxConstraints()
 	if r.alwaysSizeToContent {
-		panic(errors.New("OverlaySizeToContentInvalid",
+		panic(errors.New(tagOverlaySizeToContentInvalid,
 			"Overlay was asked to size itself to content but does not have a suitable child; when alwaysSizeToContent is true, the Overlay requires at least one non-positioned OverlayEntry with canSizeOverlay set to true to determine its size; try removing alwaysSizeToContent=true or provide a suitable child that can size the Overlay"))
 	}
-	panic(errors.New("OverlayUnbounded",
+	panic(errors.New(tagOverlayUnbounded,
 		"Overlay was given infinite constraints and cannot be sized by a suitable child; the constraints given to the overlay ("+constraints.String()+") would result in an illegal infinite size ("+constraints.Biggest().String()+
 			"); to avoid that, the Overlay tried to size itself to one of its children, but no suitable non-positioned child that belongs to an OverlayEntry with canSizeOverlay set to true could be found; try wrapping the Overlay in a SizedBox to give it a finite size or use an OverlayEntry with canSizeOverlay set to true"))
 }
@@ -544,3 +544,11 @@ func (r *renderTheater) DebugDescribeChildren() []foundation.DiagnosticsNode {
 	}
 	return out
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagOverlayDeferredChildPositioned = "OverlayDeferredChildPositioned"
+	tagOverlaySizeToContentInvalid    = "OverlaySizeToContentInvalid"
+	tagOverlayUnbounded               = "OverlayUnbounded"
+	tagTheaterSkipCountInvalid        = "TheaterSkipCountInvalid"
+)

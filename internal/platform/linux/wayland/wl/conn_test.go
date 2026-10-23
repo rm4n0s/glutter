@@ -107,7 +107,7 @@ func TestConnectFailures(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected *errors.Error, got %T (%v)", err, err)
 	}
-	if appErr.Tag != "WaylandConnectFailed" || !appErr.HasRoute("Connect.WaylandConnectFailed") {
+	if appErr.Tag != tagWaylandConnectFailed || !appErr.HasRoute("Connect.WaylandConnectFailed") {
 		t.Errorf("Tag = %q, route = %s, want WaylandConnectFailed via Connect", appErr.Tag, appErr.Route())
 	}
 	if appErr.Metadata["display"] != "glutter-no-such-display" {
@@ -425,7 +425,7 @@ func TestXdgToplevel(t *testing.T) {
 	t.Run("a request on a destroyed object panics", func(t *testing.T) {
 		defer func() {
 			appErr, ok := errors.FromError(asError(recover()))
-			if !ok || appErr.Tag != "WaylandObjectDestroyed" {
+			if !ok || appErr.Tag != tagWaylandObjectDestroyed {
 				t.Errorf("recovered %v, want a WaylandObjectDestroyed error", appErr)
 			}
 		}()
@@ -472,7 +472,7 @@ func TestProtocolError(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected *errors.Error, got %T (%v)", err, err)
 	}
-	if appErr.Tag != "WaylandProtocolError" || !appErr.HasRoute("Conn.Roundtrip->Conn.lastErrorOr->Conn.lastError.WaylandProtocolError") {
+	if appErr.Tag != tagWaylandProtocolError || !appErr.HasRoute("Conn.Roundtrip->Conn.lastErrorOr->Conn.lastError.WaylandProtocolError") {
 		t.Errorf("Tag = %q, route = %s, want WaylandProtocolError via Roundtrip", appErr.Tag, appErr.Route())
 	}
 	if appErr.Metadata["interface"] != "wl_surface" || appErr.Metadata["id"] != surface.ProxyID() || appErr.Metadata["code"] != uint32(2) {
@@ -491,7 +491,7 @@ func TestConnectionLost(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected *errors.Error, got %T (%v)", err, err)
 	}
-	if appErr.Tag != "WaylandConnectionLost" || !appErr.HasRoute("Conn.Roundtrip->Conn.lastErrorOr.WaylandConnectionLost") && !appErr.HasRoute("Conn.Roundtrip->Conn.lastErrorOr->Conn.lastError.WaylandConnectionLost") {
+	if appErr.Tag != tagWaylandConnectionLost || !appErr.HasRoute("Conn.Roundtrip->Conn.lastErrorOr.WaylandConnectionLost") && !appErr.HasRoute("Conn.Roundtrip->Conn.lastErrorOr->Conn.lastError.WaylandConnectionLost") {
 		t.Errorf("Tag = %q, route = %s, want WaylandConnectionLost via Roundtrip", appErr.Tag, appErr.Route())
 	}
 }

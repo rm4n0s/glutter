@@ -93,25 +93,25 @@ func NewLoop() (*Loop, error) {
 	l := &Loop{sources: map[int]*sourceEntry{}, epfd: -1, wakeFD: -1, timerFD: -1}
 	var err error
 	if l.epfd, err = syscall.EpollCreate1(syscall.EPOLL_CLOEXEC); err != nil {
-		return nil, errors.NewErr("LoopSyscallFailed", err).SetMetadata("op", "epoll_create1")
+		return nil, errors.NewErr(tagLoopSyscallFailed, err).SetMetadata("op", "epoll_create1")
 	}
 	r, _, errno := syscall.Syscall(syscall.SYS_EVENTFD2, 0, syscall.O_NONBLOCK|syscall.O_CLOEXEC, 0)
 	if errno != 0 {
 		_ = l.Close()
-		return nil, errors.NewErr("LoopSyscallFailed", errno).SetMetadata("op", "eventfd2")
+		return nil, errors.NewErr(tagLoopSyscallFailed, errno).SetMetadata("op", "eventfd2")
 	}
 	l.wakeFD = int(r)
 	r, _, errno = syscall.Syscall(syscall.SYS_TIMERFD_CREATE, clockMonotonic, syscall.O_NONBLOCK|syscall.O_CLOEXEC, 0)
 	if errno != 0 {
 		_ = l.Close()
-		return nil, errors.NewErr("LoopSyscallFailed", errno).SetMetadata("op", "timerfd_create")
+		return nil, errors.NewErr(tagLoopSyscallFailed, errno).SetMetadata("op", "timerfd_create")
 	}
 	l.timerFD = int(r)
 	for _, fd := range []int{l.wakeFD, l.timerFD} {
 		ev := syscall.EpollEvent{Events: syscall.EPOLLIN, Fd: int32(fd)}
 		if err := syscall.EpollCtl(l.epfd, syscall.EPOLL_CTL_ADD, fd, &ev); err != nil {
 			_ = l.Close()
-			return nil, errors.NewErr("LoopSyscallFailed", err).SetMetadata("op", "epoll_ctl")
+			return nil, errors.NewErr(tagLoopSyscallFailed, err).SetMetadata("op", "epoll_ctl")
 		}
 	}
 	return l, nil
@@ -132,7 +132,7 @@ func (l *Loop) Close() error {
 			continue
 		}
 		if err := syscall.Close(*fd); err != nil && first == nil {
-			first = errors.NewErr("LoopSyscallFailed", err).SetMetadata("op", "close")
+			first = errors.NewErr(tagLoopSyscallFailed, err).SetMetadata("op", "close")
 		}
 		*fd = -1
 	}
@@ -193,7 +193,7 @@ func (l *Loop) AddSource(s Source) error {
 	fd := s.FD()
 	ev := syscall.EpollEvent{Events: syscall.EPOLLIN, Fd: int32(fd)}
 	if err := syscall.EpollCtl(l.epfd, syscall.EPOLL_CTL_ADD, fd, &ev); err != nil {
-		return errors.NewErr("LoopSyscallFailed", err).SetMetadata("op", "epoll_ctl_add", "fd", fd)
+		return errors.NewErr(tagLoopSyscallFailed, err).SetMetadata("op", "epoll_ctl_add", "fd", fd)
 	}
 	l.sources[fd] = &sourceEntry{src: s}
 	return nil
@@ -207,7 +207,7 @@ func (l *Loop) RemoveSource(s Source) error {
 	fd := s.FD()
 	delete(l.sources, fd)
 	if err := syscall.EpollCtl(l.epfd, syscall.EPOLL_CTL_DEL, fd, nil); err != nil {
-		return errors.NewErr("LoopSyscallFailed", err).SetMetadata("op", "epoll_ctl_del", "fd", fd)
+		return errors.NewErr(tagLoopSyscallFailed, err).SetMetadata("op", "epoll_ctl_del", "fd", fd)
 	}
 	return nil
 }
@@ -274,7 +274,7 @@ func (l *Loop) armTimer() error {
 	}
 	_, _, errno := syscall.Syscall6(syscall.SYS_TIMERFD_SETTIME, uintptr(l.timerFD), 0, uintptr(unsafe.Pointer(&spec)), 0, 0, 0)
 	if errno != 0 {
-		return errors.NewErr("LoopSyscallFailed", errno).SetMetadata("op", "timerfd_settime")
+		return errors.NewErr(tagLoopSyscallFailed, errno).SetMetadata("op", "timerfd_settime")
 	}
 	return nil
 }
@@ -333,7 +333,7 @@ func (l *Loop) Run(ctx context.Context) error {
 				}
 				ev := syscall.EpollEvent{Events: mask, Fd: int32(fd)}
 				if err := syscall.EpollCtl(l.epfd, syscall.EPOLL_CTL_MOD, fd, &ev); err != nil {
-					return errors.NewErr("LoopSyscallFailed", err).SetMetadata("op", "epoll_ctl_mod", "fd", fd)
+					return errors.NewErr(tagLoopSyscallFailed, err).SetMetadata("op", "epoll_ctl_mod", "fd", fd)
 				}
 				e.write = want
 			}
@@ -341,7 +341,7 @@ func (l *Loop) Run(ctx context.Context) error {
 
 		n, err := syscall.EpollWait(l.epfd, events, -1)
 		if err != nil && err != syscall.EINTR {
-			return errors.NewErr("LoopSyscallFailed", err).SetMetadata("op", "epoll_wait")
+			return errors.NewErr(tagLoopSyscallFailed, err).SetMetadata("op", "epoll_wait")
 		}
 		if n < 0 {
 			n = 0
@@ -383,3 +383,8 @@ func toEvents(e uint32) Events {
 	}
 	return out
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagLoopSyscallFailed = "LoopSyscallFailed"
+)

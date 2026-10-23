@@ -182,7 +182,7 @@ func (s *radioGroupState[T]) debugScheduleSingleSelectionCheck() {
 		if !s.Mounted() || s.debugCheckOnlySingleSelection() {
 			return
 		}
-		panic(errors.New("RadioGroupMultipleSelection",
+		panic(errors.New(tagRadioGroupMultipleSelection,
 			"RadioGroupPolicy can't be used for a radio group that allows multiple selection"))
 	})
 	s.debugSingleSelectionCheckScheduled = true
@@ -375,3 +375,8 @@ func (p *skipUnselectedRadioPolicy[T]) SortDescendants(descendants []*FocusNode,
 	}
 	return p.ReadingOrderTraversalPolicy.SortDescendants(kept, currentNode)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagRadioGroupMultipleSelection = "RadioGroupMultipleSelection"
+)

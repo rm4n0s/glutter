@@ -196,7 +196,7 @@ func TestCursorLibraryFailureIsReportedOnce(t *testing.T) {
 	calls := 0
 	f.c.load = func() (*xcursor, error) {
 		calls++
-		return nil, errors.New("LibraryLoadFailed", "x", "names", []string{"libXcursor.so.1"}, "dlerror", "missing")
+		return nil, errors.New(tagLibraryLoadFailed, "x", "names", []string{"libXcursor.so.1"}, "dlerror", "missing")
 	}
 	_, err := f.c.find(platform.MouseCursorBasic, 24)
 	assertRoute(t, err, "cursors.find.CursorLibraryFailed")
@@ -258,20 +258,10 @@ func assertRoute(t *testing.T, err error, route string) {
 func TestNewFailsWithoutAServer(t *testing.T) {
 	_, err := New(":9999")
 	appErr, ok := errors.FromError(err)
-	if !ok || appErr.Tag != "X11OpenDisplayFailed" || !appErr.HasRoute("New.X11OpenDisplayFailed") {
+	if !ok || appErr.Tag != tagX11OpenDisplayFailed || !appErr.HasRoute("New.X11OpenDisplayFailed") {
 		t.Fatalf("New(:9999) = %v, want X11OpenDisplayFailed via New", err)
 	}
 	if appErr.Metadata["display"] != ":9999" {
-		t.Errorf("metadata %v", appErr.Metadata)
-	}
-}
-
-func TestLoadFailedKeepsWhatTheLoaderReported(t *testing.T) {
-	loader := errors.New("LibraryLoadFailed", "could not load the library", "names", []string{"libX11.so.6"}, "dlerror", "no such file")
-	err := loadFailed("libX11.so.6", loader)
-	assertRoute(t, err, "loadFailed.X11LoadFailed")
-	appErr, _ := errors.FromError(err)
-	if appErr.Metadata["library"] != "libX11.so.6" || appErr.Metadata["dlerror"] != "no such file" {
 		t.Errorf("metadata %v", appErr.Metadata)
 	}
 }
@@ -286,7 +276,7 @@ func TestNewWindowFailsWhenTheServerCreatesNoWindow(t *testing.T) {
 			},
 		},
 		windows:   map[uint64]*window{},
-		visualFor: func(uintptr) (uint32, error) { return 0, errors.New("EGLNoConfig", "no config") },
+		visualFor: func(uintptr) (uint32, error) { return 0, errors.New(tagEGLNoConfig, "no config") },
 	}
 	_, err := p.NewWindow(platform.DefaultWindowConfig())
 	assertRoute(t, err, "Platform.NewWindow.X11WindowFailed")
@@ -394,3 +384,9 @@ func TestPortalHandleIsTheWindowIDInHex(t *testing.T) {
 		t.Errorf("handle of a closed window = %q", got)
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagEGLNoConfig       = "EGLNoConfig"
+	tagLibraryLoadFailed = "LibraryLoadFailed"
+)

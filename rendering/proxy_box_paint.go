@@ -168,7 +168,7 @@ func (r *RenderDecoratedBox) paintDecoration(context *PaintingContext, offset ui
 	saveCount := context.Canvas().GetSaveCount()
 	r.painter.Paint(context.Canvas(), offset, filled)
 	if foundation.DebugMode && saveCount != context.Canvas().GetSaveCount() {
-		panic(errors.New("DecorationPainterSaveMismatch", foundation.RuntimeTypeName(r.decoration)+
+		panic(errors.New(tagDecorationPainterSaveMismatch, foundation.RuntimeTypeName(r.decoration)+
 			" painter had mismatching save and restore calls; every call to save or saveLayer must be matched by a call to restore",
 			"saveCountBefore", saveCount, "saveCountAfter", context.Canvas().GetSaveCount(), "decoration", r.decoration))
 	}
@@ -737,7 +737,7 @@ func (r *RenderFittedBox) HitTestChildren(result *BoxHitTestResult, position ui.
 // Flutter: rendering/proxy_box.dart RenderFittedBox.paintsChild
 func (r *RenderFittedBox) PaintsChild(child RenderObject) bool {
 	if foundation.DebugMode && child.Parent() != RenderObject(r.self) {
-		panic(errors.New("RenderObjectNotChild", "PaintsChild was called with a render object that is not a child",
+		panic(errors.New(tagRenderObjectNotChild, "PaintsChild was called with a render object that is not a child",
 			"object", foundation.DescribeIdentity(r.self), "child", foundation.DescribeIdentity(child)))
 	}
 	return !r.Size().IsEmpty() && !child.(Box).Size().IsEmpty()
@@ -861,3 +861,8 @@ func (r *RenderFractionalTranslation) DebugFillProperties(b *foundation.Diagnost
 	b.Add(foundation.NewDiagnosticsProperty("translation", r.translation))
 	b.Add(foundation.NewDiagnosticsProperty("transformHitTests", r.TransformHitTests))
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagDecorationPainterSaveMismatch = "DecorationPainterSaveMismatch"
+)

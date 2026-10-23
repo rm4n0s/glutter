@@ -126,7 +126,7 @@ func TestInstalledFontFamilies(t *testing.T) {
 
 func TestInstalledFontFamiliesWhenTheListingFails(t *testing.T) {
 	var reported []error
-	m := listingMatcher{fontconfigLike: systemFontFiles(t), err: errors.New("ListBroken", "no")}
+	m := listingMatcher{fontconfigLike: systemFontFiles(t), err: errors.New(tagListBroken, "no")}
 	c := text.NewCollection(text.CollectionOpts{Matcher: m})
 	if err := fonts.Register(c); err != nil {
 		t.Fatal(err)
@@ -140,3 +140,8 @@ func TestInstalledFontFamiliesWhenTheListingFails(t *testing.T) {
 		t.Errorf("reported %v, want the listing error", reported)
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagListBroken = "ListBroken"
+)

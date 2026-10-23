@@ -52,7 +52,7 @@ func NewPageController(opts ...PageControllerOpts) *PageController {
 	o := firstOpts(opts)
 	fraction := o.ViewportFraction.OrElse(1)
 	if foundation.DebugMode && !(fraction > 0) {
-		panic(errors.New("ViewportFractionInvalid", "the viewport fraction must be greater than zero", "viewportFraction", fraction))
+		panic(errors.New(tagViewportFractionInvalid, "the viewport fraction must be greater than zero", "viewportFraction", fraction))
 	}
 	c := &PageController{initialPage: o.InitialPage, keepPage: o.KeepPage.OrElse(true), viewportFraction: fraction}
 	InitScrollControllerBase(&c.ScrollControllerBase, c, ScrollControllerOpts{OnAttach: o.OnAttach, OnDetach: o.OnDetach})
@@ -83,10 +83,10 @@ func (c *PageController) ViewportFraction() float64 { return c.viewportFraction 
 func (c *PageController) Page() foundation.Opt[float64] {
 	if foundation.DebugMode {
 		if len(c.positions) == 0 {
-			panic(errors.New("PageControllerNotAttached", "PageController.page cannot be accessed before a PageView is built with it"))
+			panic(errors.New(tagPageControllerNotAttached, "PageController.page cannot be accessed before a PageView is built with it"))
 		}
 		if len(c.positions) != 1 {
-			panic(errors.New("PageControllerMultipleViews", "the page property cannot be read when multiple PageViews are attached to the same PageController"))
+			panic(errors.New(tagPageControllerMultipleViews, "the page property cannot be read when multiple PageViews are attached to the same PageController"))
 		}
 	}
 	return c.Position().(*pagePosition).Page()
@@ -97,10 +97,10 @@ func (c *PageController) debugCheckAttached() {
 		return
 	}
 	if len(c.positions) == 0 {
-		panic(errors.New("PageControllerNotAttached", "PageController is not attached to a PageView"))
+		panic(errors.New(tagPageControllerNotAttached, "PageController is not attached to a PageView"))
 	}
 	if len(c.positions) != 1 {
-		panic(errors.New("PageControllerMultipleViews", "multiple PageViews are attached to the same PageController"))
+		panic(errors.New(tagPageControllerMultipleViews, "multiple PageViews are attached to the same PageController"))
 	}
 }
 
@@ -248,7 +248,7 @@ type pagePosition struct {
 
 func newPagePosition(physics ScrollPhysics, context ScrollContext, initialPage int, keepPage bool, viewportFraction float64, oldPosition ScrollPosition) *pagePosition {
 	if foundation.DebugMode && !(viewportFraction > 0) {
-		panic(errors.New("ViewportFractionInvalid", "the viewport fraction must be greater than zero", "viewportFraction", viewportFraction))
+		panic(errors.New(tagViewportFractionInvalid, "the viewport fraction must be greater than zero", "viewportFraction", viewportFraction))
 	}
 	p := &pagePosition{initialPage: initialPage, pageToUseOnStartup: float64(initialPage), viewportFraction: viewportFraction}
 	InitScrollPositionWithSingleContext(&p.ScrollPositionWithSingleContext, p, physics, context, ScrollPositionWithSingleContextOpts{
@@ -281,7 +281,7 @@ func (p *pagePosition) initialPageOffset() float64 {
 // Flutter: widgets/page_view.dart _PagePosition.getPageFromPixels
 func (p *pagePosition) GetPageFromPixels(pixels, viewportDimension float64) float64 {
 	if foundation.DebugMode && !(viewportDimension > 0) {
-		panic(errors.New("PageViewportDimensionInvalid", "the viewport dimension must be greater than zero", "viewportDimension", viewportDimension))
+		panic(errors.New(tagPageViewportDimensionInvalid, "the viewport dimension must be greater than zero", "viewportDimension", viewportDimension))
 	}
 	actual := math.Max(0, pixels-p.initialPageOffset()) / (viewportDimension * p.viewportFraction)
 	round := math.Round(actual)
@@ -306,7 +306,7 @@ func (p *pagePosition) Page() foundation.Opt[float64] {
 		return foundation.None[float64]()
 	}
 	if foundation.DebugMode && !p.HasContentDimensions() && p.haveDimensions {
-		panic(errors.New("PageBeforeContentDimensions", "page value is only available after content dimensions are established"))
+		panic(errors.New(tagPageBeforeContentDimensions, "page value is only available after content dimensions are established"))
 	}
 	if !p.HasContentDimensions() && !p.haveDimensions {
 		return foundation.None[float64]()
@@ -410,7 +410,7 @@ func (p *pagePosition) ApplyViewportDimension(viewportDimension float64) bool {
 func (p *pagePosition) Absorb(other ScrollPosition) {
 	p.ScrollPositionWithSingleContext.Absorb(other)
 	if foundation.DebugMode && p.cachedPage.IsSome() {
-		panic(errors.New("PageCachedPageSet", "a page position absorbed another one while it had a cached page"))
+		panic(errors.New(tagPageCachedPageSet, "a page position absorbed another one while it had a cached page"))
 	}
 	if o, ok := other.(*pagePosition); ok && o.cachedPage.IsSome() {
 		p.cachedPage = o.cachedPage
@@ -600,7 +600,7 @@ type PageView struct {
 func newPageView(delegate SliverChildDelegate, o PageViewOpts) *PageView {
 	if foundation.DebugMode {
 		if e, ok := o.ScrollCacheExtent.Get(); ok && (e.Value() > 0) != o.AllowImplicitScrolling {
-			panic(errors.New("PageViewScrollCacheExtentInconsistent",
+			panic(errors.New(tagPageViewScrollCacheExtentInconsistent,
 				"scrollCacheExtent and allowImplicitScrolling must be consistent: scrollCacheExtent must be greater than 0.0 when allowImplicitScrolling is true, and must be 0.0 when allowImplicitScrolling is false"))
 		}
 	}
@@ -770,3 +770,14 @@ func (s *pageViewState) Build(bc BuildContext) Widget {
 			HitTestBehavior: w.hitTestBehavior, ScrollBehavior: scrollBehavior,
 		}))
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagPageBeforeContentDimensions           = "PageBeforeContentDimensions"
+	tagPageCachedPageSet                     = "PageCachedPageSet"
+	tagPageControllerMultipleViews           = "PageControllerMultipleViews"
+	tagPageControllerNotAttached             = "PageControllerNotAttached"
+	tagPageViewScrollCacheExtentInconsistent = "PageViewScrollCacheExtentInconsistent"
+	tagPageViewportDimensionInvalid          = "PageViewportDimensionInvalid"
+	tagViewportFractionInvalid               = "ViewportFractionInvalid"
+)

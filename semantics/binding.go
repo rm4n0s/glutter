@@ -26,7 +26,7 @@ type SemanticsHandle struct {
 func (h *SemanticsHandle) Dispose() {
 	if h.disposed {
 		if foundation.DebugMode {
-			panic(errors.New("SemanticsHandleDisposedTwice", "a semantics handle was disposed twice"))
+			panic(errors.New(tagSemanticsHandleDisposedTwice, "a semantics handle was disposed twice"))
 		}
 		return
 	}
@@ -220,3 +220,8 @@ func (b *SemanticsBinding) DisableAnimations() bool {
 	}
 	return value
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagSemanticsHandleDisposedTwice = "SemanticsHandleDisposedTwice"
+)

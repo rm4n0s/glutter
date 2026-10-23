@@ -96,7 +96,7 @@ func Select(s Selection) (Connection, Backend, error) {
 		return connect(log, BackendX11, s.X11, source+"="+name)
 	case "":
 	default:
-		return nil, "", errors.New("BackendUnknown", "the backend must be wayland or x11",
+		return nil, "", errors.New(tagBackendUnknown, "the backend must be wayland or x11",
 			"value", name, "from", source)
 	}
 
@@ -106,7 +106,7 @@ func Select(s Selection) (Connection, Backend, error) {
 		if err == nil {
 			return conn, b, nil
 		}
-		log.Warn("Wayland is not usable", "WAYLAND_DISPLAY", display, "error", describe(err))
+		log.Warn("Wayland is not usable", "WAYLAND_DISPLAY", display, "err", err)
 		tried = append(tried, "wayland: "+describe(err))
 	}
 	if display := getenv("DISPLAY"); display != "" {
@@ -118,10 +118,10 @@ func Select(s Selection) (Connection, Backend, error) {
 		if err == nil {
 			return conn, b, nil
 		}
-		log.Warn("X11 is not usable", "DISPLAY", display, "error", describe(err))
+		log.Warn("X11 is not usable", "DISPLAY", display, "err", err)
 		tried = append(tried, "x11: "+describe(err))
 	}
-	return nil, "", errors.New("NoDisplay", "no Wayland compositor or X server could be used",
+	return nil, "", errors.New(tagNoDisplay, "no Wayland compositor or X server could be used",
 		"tried", tried, "WAYLAND_DISPLAY", getenv("WAYLAND_DISPLAY"), "DISPLAY", getenv("DISPLAY"))
 }
 
@@ -129,7 +129,7 @@ func Select(s Selection) (Connection, Backend, error) {
 // the caller does not provide fails with BackendUnavailable.
 func connect(log *slog.Logger, b Backend, fn func() (Connection, error), why string) (Connection, Backend, error) {
 	if fn == nil {
-		return nil, "", errors.New("BackendUnavailable", "this build has no such backend", "backend", string(b))
+		return nil, "", errors.New(tagBackendUnavailable, "this build has no such backend", "backend", string(b))
 	}
 	conn, err := fn()
 	if err != nil {
@@ -147,3 +147,10 @@ func describe(err error) string {
 	}
 	return err.Error()
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagBackendUnavailable = "BackendUnavailable"
+	tagBackendUnknown     = "BackendUnknown"
+	tagNoDisplay          = "NoDisplay"
+)

@@ -335,7 +335,7 @@ func TestPointerSignalResolverErrors(t *testing.T) {
 func TestLeastSquaresSolverLengthMismatch(t *testing.T) {
 	err := recoverError(t, func() { NewLeastSquaresSolver([]float64{1, 2}, []float64{1}, []float64{1, 1}) })
 	appErr, ok := errors.FromError(err)
-	if !ok || appErr.Tag != "LeastSquaresLengthMismatch" {
+	if !ok || appErr.Tag != tagLeastSquaresLengthMismatch {
 		t.Errorf("unexpected error %v", err)
 	}
 }

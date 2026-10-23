@@ -238,7 +238,7 @@ func startApp(ctx context.Context, d *ui.PlatformDispatcher, app Widget, wrap bo
 	})
 	d.IsIdle = b.IsIdle
 	if wrap && d.ImplicitView() == nil {
-		return nil, errors.New("ImplicitViewMissing", "the platform did not provide the implicit view that RunApp shows the app in")
+		return nil, errors.New(tagImplicitViewMissing, "the platform did not provide the implicit view that RunApp shows the app in")
 	}
 	root := app
 	if wrap {
@@ -289,10 +289,10 @@ func systemTextEngine(ctx context.Context, logger *slog.Logger) *layout.Engine {
 	}
 	c := text.NewCollection(text.CollectionOpts{Matcher: engine.SystemFontMatcher(ctx, logger)})
 	if err := fonts.Register(c); err != nil {
-		logger.Error("the bundled fonts could not be registered", "error", err)
+		logger.Error("the bundled fonts could not be registered", "err", err)
 	}
 	return layout.NewEngine(ctx, c, layout.EngineOpts{OnFontError: func(err error) {
-		logger.Warn("a font could not be loaded", "error", err)
+		logger.Warn("a font could not be loaded", "err", err)
 	}})
 }
 
@@ -307,15 +307,15 @@ func loadFontSources(ctx context.Context, d *ui.PlatformDispatcher, sources []Fo
 		loader := services.NewFontLoader(src.Family)
 		switch {
 		case src.Data != nil && src.Asset != "":
-			return errors.New("FontSourceInvalid", "a font source has both Data and Asset", "family", src.Family, "index", i)
+			return errors.New(tagFontSourceInvalid, "a font source has both Data and Asset", "family", src.Family, "index", i)
 		case src.Data != nil:
 			loader.AddFontBytes(src.Data)
 		case src.Asset != "" && bundle == nil:
-			return errors.New("FontSourceInvalid", "a font source names an Asset but RunAppOpts.Assets is not set", "family", src.Family, "asset", src.Asset, "index", i)
+			return errors.New(tagFontSourceInvalid, "a font source names an Asset but RunAppOpts.Assets is not set", "family", src.Family, "asset", src.Asset, "index", i)
 		case src.Asset != "":
 			loader.AddFontAsset(bundle, src.Asset)
 		default:
-			return errors.New("FontSourceInvalid", "a font source has neither Data nor Asset", "family", src.Family, "index", i)
+			return errors.New(tagFontSourceInvalid, "a font source has neither Data nor Asset", "family", src.Family, "index", i)
 		}
 		if err := loader.Load(ctx, d); err != nil {
 			return err
@@ -323,3 +323,8 @@ func loadFontSources(ctx context.Context, d *ui.PlatformDispatcher, sources []Fo
 	}
 	return nil
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagFontSourceInvalid = "FontSourceInvalid"
+)

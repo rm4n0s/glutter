@@ -4,6 +4,7 @@ package gles
 
 import (
 	"context"
+	"fmt"
 	"image"
 	"image/png"
 	"math"
@@ -123,7 +124,7 @@ func TestDisplayDeviceCompilesEveryShader(t *testing.T) {
 			return err
 		}
 		if got := c.Device().Stats().Programs; got != len(names) {
-			return errors.NewErrf("TestPrograms", "%d programs for %d shader pairs", got, len(names))
+			return errors.NewErrf(tagTestPrograms, "%d programs for %d shader pairs", got, len(names))
 		}
 		for _, name := range names {
 			if _, err := c.Device().Program(name); err != nil {
@@ -133,8 +134,8 @@ func TestDisplayDeviceCompilesEveryShader(t *testing.T) {
 		// The driver rejects bad GLSL with a readable log.
 		_, err = c.Device().NewProgram("broken", "#version 300 es\nvoid main() { gl_Position = nope; }", "#version 300 es\nvoid main() {}")
 		appErr, ok := errors.FromError(err)
-		if !ok || appErr.Tag != "ShaderCompileFailed" || appErr.Metadata["log"] == "" {
-			return errors.NewErrf("TestBrokenShader", "expected ShaderCompileFailed with a log, got %v", err)
+		if !ok || appErr.Tag != tagShaderCompileFailed || appErr.Metadata["log"] == "" {
+			return errors.New(tagTestBrokenShader, "expected ShaderCompileFailed with a log", "got", fmt.Sprint(err))
 		}
 		t.Logf("driver log for a broken shader: %v", appErr.Metadata["log"])
 		return c.Device().checkError("end")
@@ -172,7 +173,7 @@ func TestDisplayDrawSolidIntoFramebuffer(t *testing.T) {
 		for i := 0; i < len(raw); i += 4 {
 			px := [4]uint8{raw[i], raw[i+1], raw[i+2], raw[i+3]}
 			if abs(int(px[0])-128) > 1 || px[1] != 0 || px[2] != 0 || abs(int(px[3])-128) > 1 {
-				return errors.NewErrf("TestPixel", "pixel %d = %v, want about [128 0 0 128]", i/4, px)
+				return errors.NewErrf(tagTestPixel, "pixel %d = %v, want about [128 0 0 128]", i/4, px)
 			}
 		}
 		d.ReleaseFramebuffer(fb)
@@ -237,7 +238,7 @@ func TestDisplayTextureUploadAndBlit(t *testing.T) {
 				i := (y*4 + x) * 4
 				got := [4]uint8{raw[i], raw[i+1], raw[i+2], raw[i+3]}
 				if w := want[(y/2)*2+x/2]; got != w {
-					return errors.NewErrf("TestPixel", "pixel %d,%d = %v, want %v", x, y, got, w)
+					return errors.NewErrf(tagTestPixel, "pixel %d,%d = %v, want %v", x, y, got, w)
 				}
 			}
 		}
@@ -268,12 +269,12 @@ func TestDisplayRendererRendersBackground(t *testing.T) {
 				return err
 			}
 			if len(raw) != w*hgt*4 {
-				return errors.NewErrf("TestSize", "read %d bytes for %dx%d", len(raw), w, hgt)
+				return errors.NewErrf(tagTestSize, "read %d bytes for %dx%d", len(raw), w, hgt)
 			}
 			for i := 0; i < len(raw); i += 4 {
 				got := [4]uint8{raw[i], raw[i+1], raw[i+2], raw[i+3]}
 				if want := [4]uint8{0x33, 0x66, 0xCC, 0xFF}; got != want {
-					return errors.NewErrf("TestPixel", "frame %d pixel %d = %v, want %v", frame, i/4, got, want)
+					return errors.NewErrf(tagTestPixel, "frame %d pixel %d = %v, want %v", frame, i/4, got, want)
 				}
 			}
 		}
@@ -749,3 +750,11 @@ func TestDisplayPathsClipsAndImagesMatchSoftware(t *testing.T) {
 		})
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagTestBrokenShader = "TestBrokenShader"
+	tagTestPixel        = "TestPixel"
+	tagTestPrograms     = "TestPrograms"
+	tagTestSize         = "TestSize"
+)

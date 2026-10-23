@@ -99,16 +99,16 @@ func generateServices(d *data) ([]byte, error) {
 	sort.SliceStable(logical, func(i, j int) bool { return logical[i].value < logical[j].value })
 	for i := 1; i < len(logical); i++ {
 		if logical[i].value == logical[i-1].value {
-			return nil, errors.New("KeysDuplicate", "two logical keys share a value", "value", logical[i].value,
+			return nil, errors.New(tagKeysDuplicate, "two logical keys share a value", "value", logical[i].value,
 				"keys", []string{logical[i-1].name, logical[i].name})
 		}
 	}
 	var physical []physicalEntry
 	for _, name := range sortedKeys(d.physical) {
 		k := d.physical[name]
-		usb, ok, err := k.scanCode("usb")
+		usb, ok, err := k.scanCode(name, "usb")
 		if err != nil {
-			return nil, errors.NewErr("KeysDataInvalid", err).SetMetadata("key", name)
+			return nil, err
 		}
 		if !ok {
 			continue
@@ -122,7 +122,7 @@ func generateServices(d *data) ([]byte, error) {
 	sort.SliceStable(physical, func(i, j int) bool { return physical[i].usb < physical[j].usb })
 	for i := 1; i < len(physical); i++ {
 		if physical[i].usb == physical[i-1].usb {
-			return nil, errors.New("KeysDuplicate", "two physical keys share a USB usage", "usage", physical[i].usb,
+			return nil, errors.New(tagKeysDuplicate, "two physical keys share a USB usage", "usage", physical[i].usb,
 				"keys", []string{physical[i-1].name, physical[i].name})
 		}
 	}
@@ -160,7 +160,7 @@ func generateServices(d *data) ([]byte, error) {
 	for _, p := range pseudo {
 		for _, member := range d.synonyms[p] {
 			if _, ok := d.logical[member]; !ok {
-				return nil, errors.New("KeysSynonymUnknown", "a synonym names an unknown key", "key", member)
+				return nil, errors.New(tagKeysSynonymUnknown, "a synonym names an unknown key", "key", member)
 			}
 			fmt.Fprintf(&b, "\tLogicalKeyboardKey%s: LogicalKeyboardKey%s,\n", member, p)
 		}
@@ -169,7 +169,7 @@ func generateServices(d *data) ([]byte, error) {
 	b.WriteString("// logicalKeyReverseSynonyms maps a pseudo-key to the keys it stands for.\nvar logicalKeyReverseSynonyms = map[LogicalKeyboardKey][]LogicalKeyboardKey{\n")
 	for _, p := range pseudo {
 		if _, ok := d.logical[p]; !ok {
-			return nil, errors.New("KeysSynonymUnknown", "a synonym names an unknown key", "key", p)
+			return nil, errors.New(tagKeysSynonymUnknown, "a synonym names an unknown key", "key", p)
 		}
 		fmt.Fprintf(&b, "\tLogicalKeyboardKey%s: {", p)
 		for i, member := range d.synonyms[p] {
@@ -215,7 +215,12 @@ func generateServices(d *data) ([]byte, error) {
 
 	out, err := format.Source(b.Bytes())
 	if err != nil {
-		return nil, errors.NewErr("KeysFormatFailed", err)
+		return nil, errors.NewErr(tagKeysFormatFailed, err)
 	}
 	return out, nil
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagKeysSynonymUnknown = "KeysSynonymUnknown"
+)

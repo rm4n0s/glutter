@@ -21,7 +21,7 @@ func (p *Platform) startDevEvents() {
 	go func() {
 		canvas, err := synthetic.Canvas()
 		if err != nil {
-			p.log.Error("glutter: GLUTTER_DEV_EVENTS cannot start", "error", err)
+			p.log.Error("glutter: GLUTTER_DEV_EVENTS cannot start", "err", err)
 			return
 		}
 		for _, e := range events {
@@ -39,7 +39,7 @@ func (p *Platform) startDevEvents() {
 			case "input", "compose", "paste":
 				field, err := synthetic.TextField()
 				if err != nil {
-					p.log.Error("glutter: GLUTTER_DEV_EVENTS cannot find the text field", "error", err)
+					p.log.Error("glutter: GLUTTER_DEV_EVENTS cannot find the text field", "err", err)
 					continue
 				}
 				switch e.Kind {

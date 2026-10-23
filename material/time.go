@@ -89,10 +89,10 @@ type TimeOfDayOpts struct {
 func (t TimeOfDay) Replacing(o TimeOfDayOpts) TimeOfDay {
 	if foundation.DebugMode {
 		if h, ok := o.Hour.Get(); ok && (h < 0 || h >= HoursPerDay) {
-			panic(errors.New("TimeOfDayInvalid", "the hour must be from 0 to 23", "hour", h))
+			panic(errors.New(tagTimeOfDayInvalid, "the hour must be from 0 to 23", "hour", h))
 		}
 		if m, ok := o.Minute.Get(); ok && (m < 0 || m >= MinutesPerHour) {
-			panic(errors.New("TimeOfDayInvalid", "the minute must be from 0 to 59", "minute", m))
+			panic(errors.New(tagTimeOfDayInvalid, "the minute must be from 0 to 59", "minute", m))
 		}
 	}
 	return TimeOfDay{o.Hour.OrElse(t.Hour), o.Minute.OrElse(t.Minute)}
@@ -242,3 +242,8 @@ func HourFormatOf(of TimeOfDayFormat) HourFormat {
 	}
 	return HourFormatHH
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagTimeOfDayInvalid = "TimeOfDayInvalid"
+)

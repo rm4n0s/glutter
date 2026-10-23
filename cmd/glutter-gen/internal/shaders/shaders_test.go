@@ -138,7 +138,7 @@ func (f *fakeNaga) Version() (string, error) { return f.version, nil }
 func (f *fakeNaga) Compile(wgsl, spirv string) error {
 	f.calls = append(f.calls, filepath.Base(wgsl))
 	if f.failOn != "" && strings.HasSuffix(wgsl, f.failOn) {
-		return errors.New("ShadersNagaFailed", "invalid shader", "file", wgsl)
+		return errors.New(tagShadersNagaFailed, "invalid shader", "file", wgsl)
 	}
 	src, err := os.ReadFile(wgsl)
 	if err != nil {
@@ -248,7 +248,7 @@ func TestGenerateErrors(t *testing.T) {
 func TestNagaMissing(t *testing.T) {
 	_, err := Naga{Path: "/nonexistent-glutter-dir/naga"}.Version()
 	appErr, ok := errors.FromError(err)
-	if !ok || appErr.Tag != "ShadersNagaMissing" || !appErr.HasRoute("Naga.Version.ShadersNagaMissing") {
+	if !ok || appErr.Tag != tagShadersNagaMissing || !appErr.HasRoute("Naga.Version.ShadersNagaMissing") {
 		t.Fatalf("got %v, want ShadersNagaMissing via Naga.Version", err)
 	}
 	if appErr.Metadata["install"] != "cargo install naga-cli --locked" {
@@ -258,7 +258,7 @@ func TestNagaMissing(t *testing.T) {
 
 func TestRunBadFlags(t *testing.T) {
 	err := Run([]string{"-nope"})
-	if appErr, ok := errors.FromError(err); !ok || appErr.Tag != "ShadersBadFlags" || !appErr.HasRoute("Run.ShadersBadFlags") {
+	if appErr, ok := errors.FromError(err); !ok || appErr.Tag != tagShadersBadFlags || !appErr.HasRoute("Run.ShadersBadFlags") {
 		t.Errorf("got %v, want ShadersBadFlags via Run", err)
 	}
 }

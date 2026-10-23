@@ -120,7 +120,7 @@ type DirectionalCaretMovementIntentBase struct {
 
 func newCaretMovement(forward, collapseSelection, collapseAtReversal, continuesAtWrap bool) DirectionalCaretMovementIntentBase {
 	if foundation.DebugMode && collapseSelection && collapseAtReversal {
-		panic(errors.New("CaretMovementIntentInvalid", "an intent can not both collapse the selection and collapse it at a reversal"))
+		panic(errors.New(tagCaretMovementIntentInvalid, "an intent can not both collapse the selection and collapse it at a reversal"))
 	}
 	return DirectionalCaretMovementIntentBase{DirectionalTextEditingIntentBase{forward: forward}, collapseSelection, collapseAtReversal, continuesAtWrap}
 }
@@ -504,3 +504,8 @@ type UpdateSelectionIntent struct {
 func NewUpdateSelectionIntent(currentTextEditingValue services.TextEditingValue, newSelection services.TextSelection, cause services.SelectionChangedCause) UpdateSelectionIntent {
 	return UpdateSelectionIntent{CurrentTextEditingValue: currentTextEditingValue, NewSelection: newSelection, Cause: cause}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagCaretMovementIntentInvalid = "CaretMovementIntentInvalid"
+)

@@ -25,7 +25,7 @@ func DebugCheckHasMaterial(bc widgets.BuildContext) bool {
 	if hiddenByBoundary {
 		summary = "No Material widget found within the closest LookupBoundary. There is an ancestor Material widget, but it is hidden by a LookupBoundary."
 	}
-	panic(errors.New("MaterialMissing", summary+" "+foundation.RuntimeTypeName(bc.Widget())+" widgets require a Material widget ancestor within the closest LookupBoundary.\n"+
+	panic(errors.New(tagMaterialMissing, summary+" "+foundation.RuntimeTypeName(bc.Widget())+" widgets require a Material widget ancestor within the closest LookupBoundary.\n"+
 		"In Material Design, most widgets are conceptually \"printed\" on a sheet of material. In Flutter's material library, that material is represented by the Material widget. "+
 		"It is the Material widget that renders ink splashes, for instance. Because of this, many material library widgets require that there be a Material widget in the tree above them.\n"+
 		"To introduce a Material widget, you can either directly include one, or use a widget that contains Material itself, such as a Card, Dialog, Drawer, or Scaffold.",
@@ -45,10 +45,16 @@ func DebugCheckHasMaterialLocalizations(bc widgets.BuildContext) bool {
 	if _, ok := MaterialLocalizationsMaybeOf(bc); ok {
 		return true
 	}
-	panic(errors.New("MaterialLocalizationsMissing", "No MaterialLocalizations found. "+foundation.RuntimeTypeName(bc.Widget())+
+	panic(errors.New(tagMaterialLocalizationsMissing, "No MaterialLocalizations found. "+foundation.RuntimeTypeName(bc.Widget())+
 		" widgets require MaterialLocalizations to be provided by a Localizations widget ancestor.\n"+
 		"The material library uses Localizations to generate messages, labels, and abbreviations.\n"+
 		"To introduce a MaterialLocalizations, either use a MaterialApp at the root of your application to include them automatically, "+
 		"or add a Localization widget with a MaterialLocalizations delegate.",
 		"widget", foundation.RuntimeTypeName(bc.Widget())))
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagMaterialLocalizationsMissing = "MaterialLocalizationsMissing"
+	tagMaterialMissing              = "MaterialMissing"
+)

@@ -250,7 +250,7 @@ func (s *ScrollableState) dimensionSetCanDrag(dim *twoDimensionalDimension, valu
 func (s *ScrollableState) dimensionEnsureVisible(dim *twoDimensionalDimension, object rendering.RenderObject, opts EnsureVisibleOpts) (*scheduler.TickerFuture, *ScrollableState) {
 	if dim.vertical {
 		if foundation.DebugMode {
-			panic(errors.New("TwoDimensionalEnsureVisibleVertical", "the performEnsureVisible method was called for the vertical scrollable of a TwoDimensionalScrollable; this should not happen as the horizontal scrollable handles both axes"))
+			panic(errors.New(tagTwoDimensionalEnsureVisibleVertical, "the performEnsureVisible method was called for the vertical scrollable of a TwoDimensionalScrollable; this should not happen as the horizontal scrollable handles both axes"))
 		}
 		return scheduler.NewTickerFutureComplete(), s
 	}
@@ -366,7 +366,7 @@ func TwoDimensionalScrollableMaybeOf(bc BuildContext) (*TwoDimensionalScrollable
 func TwoDimensionalScrollableOf(bc BuildContext) *TwoDimensionalScrollableState {
 	s, ok := TwoDimensionalScrollableMaybeOf(bc)
 	if !ok && foundation.DebugMode {
-		panic(errors.New("TwoDimensionalScrollableMissing",
+		panic(errors.New(tagTwoDimensionalScrollableMissing,
 			"TwoDimensionalScrollableOf() was called with a context that does not contain a TwoDimensionalScrollable widget; this can happen because you are using a widget that looks for a TwoDimensionalScrollable ancestor, but no such ancestor exists",
 			"context", bc.(Element).String()))
 	}
@@ -390,7 +390,7 @@ type TwoDimensionalScrollableState struct {
 func (s *TwoDimensionalScrollableState) VerticalScrollable() *ScrollableState {
 	st, ok := s.verticalOuterKey.CurrentState()
 	if !ok && foundation.DebugMode {
-		panic(errors.New("TwoDimensionalScrollableNotBuilt", "the vertical scrollable has not been built yet"))
+		panic(errors.New(tagTwoDimensionalScrollableNotBuilt, "the vertical scrollable has not been built yet"))
 	}
 	return st
 }
@@ -401,7 +401,7 @@ func (s *TwoDimensionalScrollableState) VerticalScrollable() *ScrollableState {
 func (s *TwoDimensionalScrollableState) HorizontalScrollable() *ScrollableState {
 	st, ok := s.horizontalInnerKey.CurrentState()
 	if !ok && foundation.DebugMode {
-		panic(errors.New("TwoDimensionalScrollableNotBuilt", "the horizontal scrollable has not been built yet"))
+		panic(errors.New(tagTwoDimensionalScrollableNotBuilt, "the horizontal scrollable has not been built yet"))
 	}
 	return st
 }
@@ -446,10 +446,10 @@ func (s *TwoDimensionalScrollableState) Build(bc BuildContext) Widget {
 	w := s.Widget()
 	if foundation.DebugMode {
 		if painting.AxisDirectionToAxis(w.verticalDetails.Direction) != painting.AxisVertical {
-			panic(errors.New("TwoDimensionalScrollableAxisInvalid", "TwoDimensionalScrollable.verticalDetails are not Axis.vertical"))
+			panic(errors.New(tagTwoDimensionalScrollableAxisInvalid, "TwoDimensionalScrollable.verticalDetails are not Axis.vertical"))
 		}
 		if painting.AxisDirectionToAxis(w.horizontalDetails.Direction) != painting.AxisHorizontal {
-			panic(errors.New("TwoDimensionalScrollableAxisInvalid", "TwoDimensionalScrollable.horizontalDetails are not Axis.horizontal"))
+			panic(errors.New(tagTwoDimensionalScrollableAxisInvalid, "TwoDimensionalScrollable.horizontalDetails are not Axis.horizontal"))
 		}
 	}
 	verticalController, horizontalController := w.verticalDetails.Controller, w.horizontalDetails.Controller
@@ -499,3 +499,11 @@ type twoDimensionalScrollableScope struct {
 }
 
 func (w *twoDimensionalScrollableScope) UpdateShouldNotify(Widget) bool { return false }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagTwoDimensionalEnsureVisibleVertical = "TwoDimensionalEnsureVisibleVertical"
+	tagTwoDimensionalScrollableAxisInvalid = "TwoDimensionalScrollableAxisInvalid"
+	tagTwoDimensionalScrollableMissing     = "TwoDimensionalScrollableMissing"
+	tagTwoDimensionalScrollableNotBuilt    = "TwoDimensionalScrollableNotBuilt"
+)

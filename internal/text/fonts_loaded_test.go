@@ -161,8 +161,8 @@ func TestAddFontErrors(t *testing.T) {
 		data   []byte
 		route  string
 	}{
-		{"data is not a font", "X", []byte("this is not a font"), "Collection.AddFont.FontDataInvalid"},
-		{"no data", "X", nil, "Collection.AddFont.FontDataInvalid"},
+		{"data is not a font", "X", []byte("this is not a font"), "Collection.AddFont->describeFont.FontDataInvalid"},
+		{"no data", "X", nil, "Collection.AddFont->describeFont.FontDataInvalid"},
 		{"no family and none in the font", "", nameless, "Collection.AddFont.FontFamilyMissing"},
 		{"blank family and none in the font", "  ", nameless, "Collection.AddFont.FontFamilyMissing"},
 	}

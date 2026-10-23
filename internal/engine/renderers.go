@@ -81,7 +81,7 @@ func newChooser(cfg *Config, log *slog.Logger, want string, cands []rendererCand
 		known = known || k == want
 	}
 	if !known {
-		return nil, errors.New("RendererUnknown", "the renderer is not auto, vulkan, gles, webgpu, webgl or soft",
+		return nil, errors.New(tagRendererUnknown, "the renderer is not auto, vulkan, gles, webgpu, webgl or soft",
 			"value", want)
 	}
 	for _, cand := range cands {
@@ -94,7 +94,7 @@ func newChooser(cfg *Config, log *slog.Logger, want string, cands []rendererCand
 	for i, cand := range cands {
 		have[i] = cand.Name
 	}
-	return nil, errors.New("RendererUnavailable", "this OS or build does not have that renderer",
+	return nil, errors.New(tagRendererUnavailable, "this OS or build does not have that renderer",
 		"value", want, "available", strings.Join(have, ","))
 }
 
@@ -111,7 +111,7 @@ func newChooser(cfg *Config, log *slog.Logger, want string, cands []rendererCand
 func (c *chooser) Draw(h gpu.SurfaceHandle, width, height int, scene *ui.Scene, capture bool) (*image.RGBA, error) {
 	if c.cur == nil {
 		if len(c.cand) == 0 {
-			return nil, errors.New("RendererUnavailable", "this OS or build has no renderer")
+			return nil, errors.New(tagRendererUnavailable, "this OS or build has no renderer")
 		}
 		return c.try(h, width, height, scene, capture)
 	}
@@ -119,7 +119,7 @@ func (c *chooser) Draw(h gpu.SurfaceHandle, width, height int, scene *ui.Scene, 
 	if err == nil || c.named || c.chosen.SwitchOn == nil || !c.chosen.SwitchOn(err) || len(c.after) == 0 {
 		return img, err
 	}
-	attrs := []any{"renderer", c.chosen.Name, "error", err}
+	attrs := []any{"renderer", c.chosen.Name, "err", err}
 	if appErr, ok := errors.FromError(err); ok {
 		attrs = append(attrs, "tag", appErr.Tag)
 	}
@@ -150,7 +150,7 @@ func (c *chooser) try(h gpu.SurfaceHandle, width, height int, scene *ui.Scene, c
 		if c.named {
 			return nil, err
 		}
-		attrs := []any{"renderer", cand.Name, "error", err}
+		attrs := []any{"renderer", cand.Name, "err", err}
 		if appErr, ok := errors.FromError(err); ok {
 			attrs = append(attrs, "tag", appErr.Tag)
 		}
@@ -192,3 +192,9 @@ func (c *chooser) Close() {
 		c.cur = nil
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagRendererUnavailable = "RendererUnavailable"
+	tagRendererUnknown     = "RendererUnknown"
+)

@@ -10,6 +10,13 @@ import (
 // in the smallest slot that holds it.
 var atlasClasses = []int{32, 64, 128, 256}
 
+// TagAtlasFull is the tag of the error that Atlas.Put returns when every slot of the atlas is in
+// use in the frame. A renderer that skips unsupported features compares with it to draw the
+// rest of the frame.
+//
+// Flutter: no counterpart
+const TagAtlasFull = "AtlasFull"
+
 // MaxAtlasTile is the largest width or height of a tile of an Atlas; a bigger
 // mask is cut into tiles.
 //
@@ -120,10 +127,10 @@ func (a *Atlas[K]) touch(e *AtlasEntry[K]) {
 // Flutter: no counterpart
 func (a *Atlas[K]) Put(key K, w, h int) (*AtlasEntry[K], error) {
 	if w < 0 || h < 0 || w > MaxAtlasTile || h > MaxAtlasTile {
-		return nil, errors.New("AtlasTileInvalid", "the tile size is not valid for the atlas", "width", w, "height", h, "max", MaxAtlasTile)
+		return nil, errors.New(tagAtlasTileInvalid, "the tile size is not valid for the atlas", "width", w, "height", h, "max", MaxAtlasTile)
 	}
 	if _, dup := a.entries[key]; dup {
-		panic(errors.New("AtlasKeyStored", "the key is already in the atlas"))
+		panic(errors.New(tagAtlasKeyStored, "the key is already in the atlas"))
 	}
 	e := &AtlasEntry[K]{Key: key, W: w, H: h, lastUsed: a.frame}
 	if w == 0 || h == 0 {
@@ -181,7 +188,7 @@ func (a *Atlas[K]) allocate(e *AtlasEntry[K], class int) error {
 			return nil
 		}
 	}
-	return errors.New("AtlasFull", "every slot of the atlas is in use in this frame", "class", class, "pages", len(a.pages))
+	return errors.New(TagAtlasFull, "every slot of the atlas is in use in this frame", "class", class, "pages", len(a.pages))
 }
 
 func (a *Atlas[K]) newPage(class int) *atlasPage {
@@ -262,3 +269,9 @@ func (a *Atlas[K]) Clear() {
 	a.entries = map[K]*AtlasEntry[K]{}
 	a.lru.Init()
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagAtlasKeyStored   = "AtlasKeyStored"
+	tagAtlasTileInvalid = "AtlasTileInvalid"
+)

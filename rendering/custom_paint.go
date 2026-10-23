@@ -318,13 +318,13 @@ func (r *RenderCustomPaint) paintWithPainter(canvas *ui.Canvas, offset ui.Offset
 		now := canvas.GetSaveCount()
 		name := foundation.RuntimeTypeName(painter)
 		if now > previous {
-			panic(errors.New("CustomPainterSaveUnbalanced", "The "+name+" custom painter called canvas.save() or canvas.saveLayer() at least "+
+			panic(errors.New(tagCustomPainterSaveUnbalanced, "The "+name+" custom painter called canvas.save() or canvas.saveLayer() at least "+
 				strconv.Itoa(now-previous)+" more time(s) than it called canvas.restore(). This leaves the canvas in an inconsistent "+
 				"state and will probably result in a broken display. You must pair each call to save()/saveLayer() with a later matching call to restore().",
 				"painter", name))
 		}
 		if now < previous {
-			panic(errors.New("CustomPainterRestoreUnbalanced", "The "+name+" custom painter called canvas.restore() "+
+			panic(errors.New(tagCustomPainterRestoreUnbalanced, "The "+name+" custom painter called canvas.restore() "+
 				strconv.Itoa(previous-now)+" more time(s) than it called canvas.save() or canvas.saveLayer(). This leaves the canvas in "+
 				"an inconsistent state and will result in a broken display. You should only call restore() if you first called save() or saveLayer().",
 				"painter", name))
@@ -356,3 +356,9 @@ func (r *RenderCustomPaint) Paint(context *PaintingContext, offset ui.Offset) {
 		r.setRasterCacheHints(context)
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagCustomPainterRestoreUnbalanced = "CustomPainterRestoreUnbalanced"
+	tagCustomPainterSaveUnbalanced    = "CustomPainterSaveUnbalanced"
+)

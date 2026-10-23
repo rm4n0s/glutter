@@ -1,6 +1,9 @@
 package physics
 
-import "github.com/rm4n0s/glutter/foundation"
+import (
+	"github.com/rm4n0s/errors"
+	"github.com/rm4n0s/glutter/foundation"
+)
 
 // NearEqual reports whether a and b are within epsilon of each other. Equal
 // infinities are near equal. A negative epsilon panics with the tag
@@ -9,7 +12,7 @@ import "github.com/rm4n0s/glutter/foundation"
 // Flutter: physics/utils.dart nearEqual
 func NearEqual(a, b, epsilon float64) bool {
 	if foundation.DebugMode && epsilon < 0 {
-		panicEpsilon(epsilon)
+		panic(errors.New(tagEpsilonNegative, "epsilon must not be negative", "epsilon", epsilon))
 	}
 	return (a > (b-epsilon) && a < (b+epsilon)) || a == b
 }
@@ -31,3 +34,8 @@ func NearEqualOpt(a, b foundation.Opt[float64], epsilon float64) bool {
 //
 // Flutter: physics/utils.dart nearZero
 func NearZero(a, epsilon float64) bool { return NearEqual(a, 0, epsilon) }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagEpsilonNegative = "EpsilonNegative"
+)

@@ -1,0 +1,29 @@
+# The violations of `glutter-gen errcheck` that SPEC §14.4 accepts (step 24.1). Each line is
+# "rule file:Func" with the reason above it. A line that no longer matches a violation is an
+# error, so the file cannot grow stale.
+#
+#   go run ./cmd/glutter-gen errcheck -allow cmd/glutter-gen/errcheck.allow
+
+# error-helper (R4): vkError turns the VkResult of a Vulkan call into one of three tags with a
+# switch (device lost, out of memory, any other failure) and about a dozen calls use it. The
+# route of such an error has the frame vkError; inlining the switch at every call would repeat
+# the table. The other converters (eglError) were inlined.
+error-helper internal/gpu/vulkan/check.go:vkError
+
+# error-rewrap (R3): the public tags of SPEC §14.1 (FileChooserUnavailable,
+# NotificationsUnavailable, TrayUnavailable, TrayRegisterFailed) are what an app matches on
+# when the portal or the service is missing. internal/dbus tags its failures first
+# (DBusCallFailed, DBusSubscribeFailed); package desktop gives the service's tag when
+# portalMissing says that nobody serves the interface, and the bus's error stays as the cause
+# (OriginalErr), so errors.Is still finds it. Moving the public tags into internal/dbus would
+# put the knowledge of every service there.
+error-rewrap desktop/file_chooser.go:call.chooseFiles
+error-rewrap desktop/notifications.go:CloseNotification
+error-rewrap desktop/notifications.go:call.show
+error-rewrap desktop/notifications.go:call.showWithPortal
+error-rewrap desktop/notifications.go:services.followNotifications
+error-rewrap desktop/tray.go:tray.register
+
+# error-rewrap (R3): LocalizationsDelegate is an interface that the app implements, so the
+# error of Load is not tagged by this module; the tag LocalizationsLoadFailed is the first one.
+error-rewrap widgets/localizations.go:localizationsState.load

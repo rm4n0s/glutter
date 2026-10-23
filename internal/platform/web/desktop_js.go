@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"sync"
 	"syscall/js"
+
+	"github.com/rm4n0s/errors"
 )
 
 // NewDesktop makes the web's desktop services over the browser's window.open and Notifications API. The
@@ -158,11 +160,11 @@ func (n *browserNotifications) RequestPermission(done func(permission string, er
 func (n *browserNotifications) Show(b browserNotification, serial int) (err error) {
 	api := n.api()
 	if !isObject(api) {
-		return errNotificationsUnavailable(noNotificationsReason)
+		return errors.New(tagNotificationsUnavailable, "the page cannot show notifications", "reason", noNotificationsReason)
 	}
 	defer func() {
 		if r := recover(); r != nil {
-			err = errNotificationFailed(fmt.Sprint(r))
+			err = errors.New(tagWebNotificationFailed, "the browser could not make the notification", "detail", fmt.Sprint(r))
 		}
 	}()
 	opts := global().Get("Object").New()

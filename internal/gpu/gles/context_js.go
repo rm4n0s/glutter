@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"syscall/js"
 
+	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/internal/gpu"
 )
 
@@ -65,16 +66,17 @@ var (
 // Flutter: no counterpart
 func openWeb(h gpu.SurfaceHandle, onRestored func()) (*Context, *Surface, error) {
 	if h.Kind != gpu.SurfaceKindWeb {
-		return nil, nil, errWebSurfaceKind(string(h.Kind))
+		return nil, nil, errors.New(tagWebGLSurfaceKindUnsupported, "WebGL draws into the canvas of a web page only", "kind", string(h.Kind))
 	}
 	doc := js.Global().Get("document")
 	canvas := doc.Call("querySelector", "canvas["+viewAttribute+`="`+strconv.FormatUint(uint64(h.Window), 10)+`"]`)
 	if !canvas.Truthy() {
-		return nil, nil, errWebCanvasNotFound(h.Window)
+		return nil, nil, errors.New(tagWebGLCanvasNotFound, "there is no canvas for the view in the page", "view", strconv.FormatUint(uint64(h.Window), 10))
 	}
 	gl, reason := webContext(canvas)
 	if !gl.Truthy() {
-		return nil, nil, errWebGL2Unavailable(h.Window, reason)
+		return nil, nil, errors.New(tagWebGL2Unavailable, "the canvas gave no WebGL 2 context",
+			"view", strconv.FormatUint(uint64(h.Window), 10), "reason", reason)
 	}
 	e := &webEGL{view: h.Window, canvas: canvas, gl: gl, lossState: &lossState{}, notify: onRestored}
 	e.lostFn = js.FuncOf(func(_ js.Value, args []js.Value) any {
@@ -223,3 +225,10 @@ func (e *webEGL) setSurfaceSize(_ uintptr, width, height int) {
 	e.canvas.Set("height", height)
 	e.width, e.height = width, height
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagWebGL2Unavailable           = "WebGL2Unavailable"
+	tagWebGLCanvasNotFound         = "WebGLCanvasNotFound"
+	tagWebGLSurfaceKindUnsupported = "WebGLSurfaceKindUnsupported"
+)

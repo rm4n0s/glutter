@@ -27,9 +27,14 @@ func ParseConfig(fields map[string]any) (Config, error) {
 	if v, ok := fields["hostElement"]; ok && v != nil {
 		s, isString := v.(string)
 		if !isString {
-			return Config{}, errors.New("WebConfigInvalid", "glutterConfig.hostElement must be a CSS selector string")
+			return Config{}, errors.New(tagWebConfigInvalid, "glutterConfig.hostElement must be a CSS selector string")
 		}
 		c.HostElement = strings.TrimSpace(s)
 	}
 	return c, nil
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagWebConfigInvalid = "WebConfigInvalid"
+)

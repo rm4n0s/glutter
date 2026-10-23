@@ -144,7 +144,7 @@ func (p *PipelineOwner) RootNode() RenderObject { return p.rootNode }
 // Flutter: rendering/object.dart PipelineOwner.rootNode
 func (p *PipelineOwner) SetRootNode(value RenderObject) {
 	if p.disallowRootNode && value != nil {
-		panic(errors.New("RootNodeNotAllowed", "cannot set a rootNode on the default root pipeline owner: "+
+		panic(errors.New(tagRootNodeNotAllowed, "cannot set a rootNode on the default root pipeline owner: "+
 			"it manages child pipeline owners, which have the root nodes; override the creation of the root pipeline owner to change this"))
 	}
 	if p.rootNode == value {
@@ -312,7 +312,7 @@ func (p *PipelineOwner) updateSemanticsOwner() {
 	if p.manifold != nil && p.manifold.SemanticsEnabled() {
 		if p.semanticsOwner == nil {
 			if p.onSemanticsUpdate == nil {
-				panic(errors.New("SemanticsUpdateCallbackMissing", "attempted to enable semantics without configuring an OnSemanticsUpdate callback"))
+				panic(errors.New(tagSemanticsUpdateCallbackMissing, "attempted to enable semantics without configuring an OnSemanticsUpdate callback"))
 			}
 			p.semanticsOwner = semantics.NewSemanticsOwner(p.onSemanticsUpdate)
 			if p.onSemanticsOwnerCreated != nil {
@@ -484,7 +484,7 @@ func (p *PipelineOwner) String() string { return foundation.DiagnosticableString
 // Flutter: rendering/object.dart PipelineOwner.attach
 func (p *PipelineOwner) Attach(manifold PipelineManifold) {
 	if foundation.DebugMode && p.manifold != nil {
-		panic(errors.New("PipelineOwnerAttached", "the pipeline owner is attached to a manifold already"))
+		panic(errors.New(tagPipelineOwnerAttached, "the pipeline owner is attached to a manifold already"))
 	}
 	p.manifold = manifold
 	p.semanticsListener = manifold.AddListener(p.updateSemanticsOwner)
@@ -499,7 +499,7 @@ func (p *PipelineOwner) Attach(manifold PipelineManifold) {
 // Flutter: rendering/object.dart PipelineOwner.detach
 func (p *PipelineOwner) Detach() {
 	if foundation.DebugMode && p.manifold == nil {
-		panic(errors.New("PipelineOwnerNotAttached", "the pipeline owner is not attached to a manifold"))
+		panic(errors.New(tagPipelineOwnerNotAttached, "the pipeline owner is not attached to a manifold"))
 	}
 	p.manifold.RemoveListener(p.semanticsListener)
 	p.manifold = nil
@@ -518,15 +518,15 @@ func (p *PipelineOwner) Detach() {
 func (p *PipelineOwner) AdoptChild(child *PipelineOwner) {
 	if foundation.DebugMode {
 		if child.debugParent != nil {
-			panic(errors.New("PipelineOwnerHasParent", "the pipeline owner has a parent already"))
+			panic(errors.New(tagPipelineOwnerHasParent, "the pipeline owner has a parent already"))
 		}
 		for _, c := range p.children {
 			if c == child {
-				panic(errors.New("PipelineOwnerHasParent", "the pipeline owner is a child already"))
+				panic(errors.New(tagPipelineOwnerHasParent, "the pipeline owner is a child already"))
 			}
 		}
 		if p.debugDoingChildLayout || p.debugDoingPaint {
-			panic(errors.New("PipelineOwnerChildListLocked", "cannot modify the child list after layout"))
+			panic(errors.New(tagPipelineOwnerChildListLocked, "cannot modify the child list after layout"))
 		}
 	}
 	p.children = append(p.children, child)
@@ -553,10 +553,10 @@ func (p *PipelineOwner) shareDebugWith(parent *PipelineOwner) {
 func (p *PipelineOwner) DropChild(child *PipelineOwner) {
 	if foundation.DebugMode {
 		if child.debugParent != p {
-			panic(errors.New("PipelineOwnerNotChild", "the pipeline owner is not a child of this one"))
+			panic(errors.New(tagPipelineOwnerNotChild, "the pipeline owner is not a child of this one"))
 		}
 		if p.debugDoingChildLayout || p.debugDoingPaint {
-			panic(errors.New("PipelineOwnerChildListLocked", "cannot modify the child list after layout"))
+			panic(errors.New(tagPipelineOwnerChildListLocked, "cannot modify the child list after layout"))
 		}
 	}
 	for i, c := range p.children {
@@ -587,7 +587,7 @@ func (p *PipelineOwner) VisitChildren(visitor func(child *PipelineOwner)) {
 // Flutter: rendering/object.dart PipelineOwner.dispose
 func (p *PipelineOwner) Dispose() {
 	if foundation.DebugMode && (len(p.children) > 0 || p.rootNode != nil || p.manifold != nil || p.debugParent != nil) {
-		panic(errors.New("PipelineOwnerDisposeBusy", "a pipeline owner can only be disposed when it has no children, root, manifold or parent"))
+		panic(errors.New(tagPipelineOwnerDisposeBusy, "a pipeline owner can only be disposed when it has no children, root, manifold or parent"))
 	}
 	if p.semanticsOwner != nil {
 		p.semanticsOwner.Dispose()
@@ -598,3 +598,15 @@ func (p *PipelineOwner) Dispose() {
 	p.nodesNeedingPaint = nil
 	p.nodesNeedingSemanticsUpdate.take()
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagPipelineOwnerAttached          = "PipelineOwnerAttached"
+	tagPipelineOwnerChildListLocked   = "PipelineOwnerChildListLocked"
+	tagPipelineOwnerDisposeBusy       = "PipelineOwnerDisposeBusy"
+	tagPipelineOwnerHasParent         = "PipelineOwnerHasParent"
+	tagPipelineOwnerNotAttached       = "PipelineOwnerNotAttached"
+	tagPipelineOwnerNotChild          = "PipelineOwnerNotChild"
+	tagRootNodeNotAllowed             = "RootNodeNotAllowed"
+	tagSemanticsUpdateCallbackMissing = "SemanticsUpdateCallbackMissing"
+)

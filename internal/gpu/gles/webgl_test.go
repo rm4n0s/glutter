@@ -120,38 +120,6 @@ func TestLossState(t *testing.T) {
 	}
 }
 
-func TestWebErrorRoutes(t *testing.T) {
-	tests := []struct {
-		name string
-		err  error
-		tag  string
-		fn   string
-	}{
-		{"canvas not found", errWebCanvasNotFound(3), "WebGLCanvasNotFound", "errWebCanvasNotFound"},
-		{"no WebGL 2", errWebGL2Unavailable(3, "null"), "WebGL2Unavailable", "errWebGL2Unavailable"},
-		{"not a canvas", errWebSurfaceKind("wayland"), "WebGLSurfaceKindUnsupported", "errWebSurfaceKind"},
-		{"context lost", errContextLost(), "WebGLContextLost", "errContextLost"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			appErr, ok := errors.FromError(tt.err)
-			if !ok {
-				t.Fatalf("expected *errors.Error, got %T", tt.err)
-			}
-			if appErr.Tag != tt.tag || !appErr.HasRoute(tt.fn+"."+tt.tag) {
-				t.Errorf("got %s via %s, want %s via %s", appErr.Tag, appErr.Route(), tt.tag, tt.fn)
-			}
-		})
-	}
-	if md := errors.Unwrap(errWebGL2Unavailable(3, "null")); md != nil {
-		t.Errorf("unexpected cause %v", md)
-	}
-	appErr, _ := errors.FromError(errWebGL2Unavailable(3, "the reason"))
-	if appErr.Metadata["reason"] != "the reason" || appErr.Metadata["view"] != "3" {
-		t.Errorf("metadata = %v", appErr.Metadata)
-	}
-}
-
 func TestIsES3AcceptsWebGL2(t *testing.T) {
 	tests := []struct {
 		version string

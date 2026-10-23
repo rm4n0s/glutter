@@ -135,7 +135,7 @@ func (s AsyncSnapshot[T]) RequireData() T {
 	if s.err != nil {
 		panic(s.err)
 	}
-	panic(errors.New("AsyncSnapshotEmpty", "the snapshot has neither data nor error"))
+	panic(errors.New(tagAsyncSnapshotEmpty, "the snapshot has neither data nor error"))
 }
 
 // InState is a copy of the snapshot in another connection state.
@@ -489,3 +489,8 @@ func (s *futureBuilderState[T]) unsubscribe() {
 		s.sub = nil
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagAsyncSnapshotEmpty = "AsyncSnapshotEmpty"
+)

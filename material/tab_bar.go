@@ -67,10 +67,10 @@ func NewTab(opts ...TabOpts) *Tab {
 	o := firstOpts(opts)
 	if foundation.DebugMode {
 		if o.Text == "" && o.Child == nil && o.Icon == nil {
-			panic(errors.New("TabNoContent", "Tab requires at least one of text, child, or icon to be non-null."))
+			panic(errors.New(tagTabNoContent, "Tab requires at least one of text, child, or icon to be non-null."))
 		}
 		if o.Text != "" && o.Child != nil {
-			panic(errors.New("TabTextAndChild", "Provide either text or child, not both, when creating a Tab."))
+			panic(errors.New(tagTabTextAndChild, "Provide either text or child, not both, when creating a Tab."))
 		}
 	}
 	return &Tab{StatelessWidget: widgets.NewStatelessWidgetBase(widgets.WidgetOpts{Key: o.Key}), o: o}
@@ -469,7 +469,7 @@ func (p *indicatorPainter) indicatorRect(tabBarSize ui.Size, tabIndex int) ui.Re
 	rect := ui.NewRectFromLTWH(tabLeft, 0.0, tabRight-tabLeft, tabBarSize.Height)
 
 	if !rect.Size().Ge(insets.CollapsedSize()) {
-		panic(errors.New("TabBarIndicatorPaddingTooBig", "indicatorPadding insets should be less than Tab Size",
+		panic(errors.New(tagTabBarIndicatorPaddingTooBig, "indicatorPadding insets should be less than Tab Size",
 			"rectSize", rect.Size(), "insets", insets))
 	}
 	return insets.DeflateRect(rect)
@@ -687,7 +687,7 @@ type dragAnimation struct {
 
 func (a *dragAnimation) Value() float64 {
 	if foundation.DebugMode && a.controller.IndexIsChanging() {
-		panic(errors.New("TabBarDragWhileChanging", "the drag animation of a tab cannot be read while the index is changing"))
+		panic(errors.New(tagTabBarDragWhileChanging, "the drag animation of a tab cannot be read while the index is changing"))
 	}
 	controllerMaxValue := float64(a.controller.Length() - 1)
 	controllerValue := ui.ClampDouble(a.controller.Animation().Value(), 0.0, controllerMaxValue)
@@ -752,7 +752,7 @@ func NewTabBarScrollController() *TabBarScrollController {
 // Flutter: material/tabs.dart TabBarScrollController.createScrollPosition
 func (c *TabBarScrollController) CreateScrollPosition(physics widgets.ScrollPhysics, context widgets.ScrollContext, oldPosition widgets.ScrollPosition) widgets.ScrollPosition {
 	if foundation.DebugMode && c.tabBarState == nil {
-		panic(errors.New("TabBarScrollControllerDetached", "This TabBarScrollController is not attached to any TabBar."))
+		panic(errors.New(tagTabBarScrollControllerDetached, "This TabBarScrollController is not attached to any TabBar."))
 	}
 	p := &tabBarScrollPosition{tabBar: c.tabBarState, needsPixelsCorrection: true}
 	widgets.InitScrollPositionWithSingleContext(&p.ScrollPositionWithSingleContext, p, physics, context,
@@ -871,7 +871,7 @@ func newTabBar(tabs []widgets.Widget, o TabBarOpts, isPrimary bool) *TabBar {
 		o.IndicatorWeight = foundation.Some(2.0)
 	}
 	if foundation.DebugMode && o.Indicator == nil && !(o.IndicatorWeight.Value() > 0.0) {
-		panic(errors.New("TabBarIndicatorWeight", "the indicator weight of a TabBar without an indicator must be greater than zero", "indicatorWeight", o.IndicatorWeight.Value()))
+		panic(errors.New(tagTabBarIndicatorWeight, "the indicator weight of a TabBar without an indicator must be greater than zero", "indicatorWeight", o.IndicatorWeight.Value()))
 	}
 	return &TabBar{StatefulWidget: widgets.NewStatefulWidgetBase(widgets.WidgetOpts{Key: o.Key}), tabs: tabs, o: o, isPrimary: isPrimary}
 }
@@ -932,3 +932,13 @@ func (w *TabBar) TabHasTextAndIcon() bool {
 //
 // Flutter: material/tabs.dart TabBar.createState
 func (w *TabBar) CreateState() widgets.State { return &tabBarState{} }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagTabBarDragWhileChanging        = "TabBarDragWhileChanging"
+	tagTabBarIndicatorPaddingTooBig   = "TabBarIndicatorPaddingTooBig"
+	tagTabBarIndicatorWeight          = "TabBarIndicatorWeight"
+	tagTabBarScrollControllerDetached = "TabBarScrollControllerDetached"
+	tagTabNoContent                   = "TabNoContent"
+	tagTabTextAndChild                = "TabTextAndChild"
+)

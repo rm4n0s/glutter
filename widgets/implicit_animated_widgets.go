@@ -159,10 +159,10 @@ func NewAnimatedContainer(duration time.Duration, child Widget, opts ...Animated
 	}
 	if foundation.DebugMode {
 		if o.Margin != nil && !o.Margin.IsNonNegative() {
-			panic(errors.New("ContainerNegativePadding", "the margin of an AnimatedContainer must not be negative"))
+			panic(errors.New(tagContainerNegativePadding, "the margin of an AnimatedContainer must not be negative"))
 		}
 		if o.Padding != nil && !o.Padding.IsNonNegative() {
-			panic(errors.New("ContainerNegativePadding", "the padding of an AnimatedContainer must not be negative"))
+			panic(errors.New(tagContainerNegativePadding, "the padding of an AnimatedContainer must not be negative"))
 		}
 		if o.Decoration != nil {
 			o.Decoration.DebugAssertIsValid()
@@ -171,7 +171,7 @@ func NewAnimatedContainer(duration time.Duration, child Widget, opts ...Animated
 			c.DebugAssertIsValid()
 		}
 		if o.Color.IsSome() && o.Decoration != nil {
-			panic(errors.New("ContainerColorAndDecoration", "cannot provide both a color and a decoration; the color argument is just a shorthand for a decoration with the color; to use both a color and other decoration properties, set the color in the BoxDecoration instead"))
+			panic(errors.New(tagContainerColorAndDecoration, "cannot provide both a color and a decoration; the color argument is just a shorthand for a decoration with the color; to use both a color and other decoration properties, set the color in the BoxDecoration instead"))
 		}
 	}
 	decoration := o.Decoration
@@ -351,7 +351,7 @@ type AnimatedPadding struct {
 func NewAnimatedPadding(padding painting.EdgeInsetsGeometry, duration time.Duration, child Widget, opts ...AnimatedPaddingOpts) *AnimatedPadding {
 	o := firstOpts(opts)
 	if foundation.DebugMode && !padding.IsNonNegative() {
-		panic(errors.New("ContainerNegativePadding", "the padding of an AnimatedPadding must not be negative"))
+		panic(errors.New(tagContainerNegativePadding, "the padding of an AnimatedPadding must not be negative"))
 	}
 	return &AnimatedPadding{NewImplicitlyAnimatedWidgetBase(duration, ImplicitlyAnimatedWidgetOpts(o)), padding, child}
 }
@@ -432,10 +432,10 @@ func assertFactors(widget string, width, height foundation.Opt[float64]) {
 		return
 	}
 	if v, ok := width.Get(); ok && v < 0 {
-		panic(errors.New("AlignFactorNegative", "the widthFactor of an "+widget+" must not be negative", "widthFactor", v))
+		panic(errors.New(tagAlignFactorNegative, "the widthFactor of an "+widget+" must not be negative", "widthFactor", v))
 	}
 	if v, ok := height.Get(); ok && v < 0 {
-		panic(errors.New("AlignFactorNegative", "the heightFactor of an "+widget+" must not be negative", "heightFactor", v))
+		panic(errors.New(tagAlignFactorNegative, "the heightFactor of an "+widget+" must not be negative", "heightFactor", v))
 	}
 }
 
@@ -541,7 +541,7 @@ func NewAnimatedPositioned(duration time.Duration, child Widget, opts ...Animate
 
 func assertNotOverconstrained(widget string, a, b, size, c, d, size2 foundation.Opt[float64]) {
 	if foundation.DebugMode && ((a.IsSome() && b.IsSome() && size.IsSome()) || (c.IsSome() && d.IsSome() && size2.IsSome())) {
-		panic(errors.New("PositionedOverconstrained", "an "+widget+" can't have all three of its start, end and size (or top, bottom and size) set"))
+		panic(errors.New(tagPositionedOverconstrained, "an "+widget+" can't have all three of its start, end and size (or top, bottom and size) set"))
 	}
 }
 
@@ -989,7 +989,7 @@ type AnimatedOpacity struct {
 func NewAnimatedOpacity(opacity float64, duration time.Duration, child Widget, opts ...AnimatedOpacityOpts) *AnimatedOpacity {
 	o := firstOpts(opts)
 	if foundation.DebugMode && !(opacity >= 0 && opacity <= 1) {
-		panic(errors.New("OpacityOutOfRange", "the opacity must be between 0.0 and 1.0", "opacity", opacity))
+		panic(errors.New(tagOpacityOutOfRange, "the opacity must be between 0.0 and 1.0", "opacity", opacity))
 	}
 	return &AnimatedOpacity{NewImplicitlyAnimatedWidgetBase(duration, ImplicitlyAnimatedWidgetOpts{Key: o.Key, Curve: o.Curve, OnEnd: o.OnEnd}),
 		child, opacity, o.AlwaysIncludeSemantics}
@@ -1206,7 +1206,7 @@ type AnimatedPhysicalModel struct {
 func NewAnimatedPhysicalModel(color, shadowColor ui.Color, duration time.Duration, child Widget, opts ...AnimatedPhysicalModelOpts) *AnimatedPhysicalModel {
 	o := firstOpts(opts)
 	if foundation.DebugMode && !(o.Elevation >= 0) {
-		panic(errors.New("PhysicalModelElevationNegative", "the elevation of an AnimatedPhysicalModel must not be negative", "elevation", o.Elevation))
+		panic(errors.New(tagPhysicalModelElevationNegative, "the elevation of an AnimatedPhysicalModel must not be negative", "elevation", o.Elevation))
 	}
 	if o.ClipBehavior == ui.ClipUnspecified {
 		o.ClipBehavior = ui.ClipNone
@@ -1407,3 +1407,11 @@ func (s *animatedFractionallySizedBoxState) Build(BuildContext) Widget {
 	return NewFractionallySizedBox(s.Widget().child, FractionallySizedBoxOpts{Alignment: s.alignment.Evaluate(a),
 		HeightFactor: TweenOf(s.heightFactor, a), WidthFactor: TweenOf(s.widthFactor, a)})
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagAlignFactorNegative            = "AlignFactorNegative"
+	tagOpacityOutOfRange              = "OpacityOutOfRange"
+	tagPhysicalModelElevationNegative = "PhysicalModelElevationNegative"
+	tagPositionedOverconstrained      = "PositionedOverconstrained"
+)

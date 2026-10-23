@@ -32,7 +32,7 @@ func NewServices(post func(func())) *Services {
 		Post:    post,
 		OpenSession: func(ctx context.Context) (dbus.Bus, error) {
 			if !dbus.SessionBusPresent(os.Getenv) {
-				return nil, errors.New("NoSessionBus", "there is no session bus, and an app does not start one")
+				return nil, errors.New(tagNoSessionBus, "there is no session bus, and an app does not start one")
 			}
 			return dbus.Connect(ctx)
 		},
@@ -56,3 +56,8 @@ func (a bridgeAdapter) Start(ctx context.Context, host platform.AccessibilityHos
 }
 
 var _ platform.Services = (*Services)(nil)
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagNoSessionBus = "NoSessionBus"
+)

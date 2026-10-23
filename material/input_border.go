@@ -316,7 +316,7 @@ func NewOutlineInputBorder(opts ...OutlineInputBorderOpts) OutlineInputBorder {
 	o := firstOpts(opts)
 	gap := o.GapPadding.OrElse(4.0)
 	if foundation.DebugMode && !(gap >= 0.0) {
-		panic(errors.New("OutlineInputBorderGapPadding", "the gap padding of an OutlineInputBorder must not be negative", "gapPadding", gap))
+		panic(errors.New(tagOutlineInputBorderGapPadding, "the gap padding of an OutlineInputBorder must not be negative", "gapPadding", gap))
 	}
 	return OutlineInputBorder{
 		borderSide:   inputBorderSide(o.BorderSide),
@@ -535,10 +535,10 @@ func (b OutlineInputBorder) Paint(canvas *ui.Canvas, rect ui.Rect, textDirection
 func (b OutlineInputBorder) PaintGap(canvas *ui.Canvas, rect ui.Rect, gap InputBorderGap, textDirection ui.TextDirection) {
 	if foundation.DebugMode {
 		if !(gap.Percentage >= 0.0 && gap.Percentage <= 1.0) {
-			panic(errors.New("InputBorderGapPercentage", "the gap percentage of an input border must be between 0 and 1", "gapPercentage", gap.Percentage))
+			panic(errors.New(tagInputBorderGapPercentage, "the gap percentage of an input border must be between 0 and 1", "gapPercentage", gap.Percentage))
 		}
 		if !outlineCornersAreCircular(b.borderRadius) {
-			panic(errors.New("OutlineInputBorderCorners", "the corners of an OutlineInputBorder must be circular"))
+			panic(errors.New(tagOutlineInputBorderCorners, "the corners of an OutlineInputBorder must be circular"))
 		}
 	}
 	side := b.BorderSide()
@@ -564,3 +564,10 @@ func (b OutlineInputBorder) PaintGap(canvas *ui.Canvas, rect ui.Rect, gap InputB
 func (b OutlineInputBorder) String() string {
 	return "OutlineInputBorder(" + b.BorderSide().String() + ", " + b.borderRadius.String() + ")"
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagInputBorderGapPercentage     = "InputBorderGapPercentage"
+	tagOutlineInputBorderCorners    = "OutlineInputBorderCorners"
+	tagOutlineInputBorderGapPadding = "OutlineInputBorderGapPadding"
+)

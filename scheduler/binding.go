@@ -221,7 +221,7 @@ func (b *SchedulerBinding) TimeDilation() float64 { return b.timeDilation }
 // Flutter: scheduler/binding.dart timeDilation=
 func (b *SchedulerBinding) SetTimeDilation(value float64) {
 	if foundation.DebugMode && !(value > 0) {
-		panic(errors.New("TimeDilationInvalid", "the time dilation must be larger than zero", "value", value))
+		panic(errors.New(tagTimeDilationInvalid, "the time dilation must be larger than zero", "value", value))
 	}
 	if b.timeDilation == value {
 		return
@@ -425,7 +425,7 @@ func (b *SchedulerBinding) ScheduleFrameCallback(callback FrameCallback, opts ..
 // Flutter: scheduler/binding.dart SchedulerBinding.cancelFrameCallbackWithId
 func (b *SchedulerBinding) CancelFrameCallbackWithID(id int) {
 	if foundation.DebugMode && id <= 0 {
-		panic(errors.New("FrameCallbackIDInvalid", "a frame callback ID is larger than zero", "id", id))
+		panic(errors.New(tagFrameCallbackIDInvalid, "a frame callback ID is larger than zero", "id", id))
 	}
 	b.transientCallbacks = slices.DeleteFunc(b.transientCallbacks, func(e frameCallbackEntry) bool { return e.id == id })
 	b.removedIDs[id] = true
@@ -440,7 +440,7 @@ func (b *SchedulerBinding) CancelFrameCallbackWithID(id int) {
 // Flutter: scheduler/binding.dart SchedulerBinding.debugAssertNoTransientCallbacks
 func (b *SchedulerBinding) DebugAssertNoTransientCallbacks(reason string) bool {
 	if foundation.DebugMode && b.TransientCallbackCount() > 0 {
-		panic(errors.New("TransientCallbacksPending", reason, "count", b.TransientCallbackCount()))
+		panic(errors.New(tagTransientCallbacksPending, reason, "count", b.TransientCallbackCount()))
 	}
 	return true
 }
@@ -451,7 +451,7 @@ func (b *SchedulerBinding) DebugAssertNoTransientCallbacks(reason string) bool {
 // Flutter: scheduler/binding.dart SchedulerBinding.debugAssertNoTimeDilation
 func (b *SchedulerBinding) DebugAssertNoTimeDilation(reason string) bool {
 	if foundation.DebugMode && b.timeDilation != 1 {
-		panic(errors.New("TimeDilationActive", reason, "timeDilation", b.timeDilation))
+		panic(errors.New(tagTimeDilationActive, reason, "timeDilation", b.timeDilation))
 	}
 	return true
 }
@@ -602,7 +602,7 @@ func (b *SchedulerBinding) adjustForEpoch(rawTimeStamp time.Duration) time.Durat
 func (b *SchedulerBinding) CurrentFrameTimeStamp() time.Duration {
 	ts, ok := b.currentFrameTimeStamp.Get()
 	if !ok {
-		panic(errors.New("NoFrameInProgress", "the frame time stamp is only available while a frame is built"))
+		panic(errors.New(tagNoFrameInProgress, "the frame time stamp is only available while a frame is built"))
 	}
 	return ts
 }
@@ -639,7 +639,7 @@ func (b *SchedulerBinding) HandleBeginFrame(rawTimeStamp foundation.Opt[time.Dur
 		b.lastRawTimeStamp = raw
 	}
 	if foundation.DebugMode && b.phase != SchedulerPhaseIdle {
-		panic(errors.New("FrameAlreadyBegun", "HandleBeginFrame was called while a frame is being built", "phase", b.phase.Name()))
+		panic(errors.New(tagFrameAlreadyBegun, "HandleBeginFrame was called while a frame is being built", "phase", b.phase.Name()))
 	}
 	b.hasScheduledFrame = false
 	defer foundation.StartTraceRegion("Animate").End()
@@ -665,7 +665,7 @@ func (b *SchedulerBinding) HandleBeginFrame(rawTimeStamp foundation.Opt[time.Dur
 // Flutter: scheduler/binding.dart SchedulerBinding.handleDrawFrame
 func (b *SchedulerBinding) HandleDrawFrame() {
 	if foundation.DebugMode && b.phase != SchedulerPhaseMidFrameMicrotasks {
-		panic(errors.New("FrameNotBegun", "HandleDrawFrame was called without HandleBeginFrame", "phase", b.phase.Name()))
+		panic(errors.New(tagFrameNotBegun, "HandleDrawFrame was called without HandleBeginFrame", "phase", b.phase.Name()))
 	}
 	defer foundation.StartTraceRegion("Frame").End()
 	defer func() {
@@ -693,3 +693,14 @@ func (b *SchedulerBinding) HandleDrawFrame() {
 func (b *SchedulerBinding) invokeFrameCallback(callback FrameCallback, ts time.Duration) {
 	foundation.Guard(b.ErrorReporter, foundation.CallbackPanicked, "during a scheduler callback", nil, func() { callback(ts) })
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagFrameAlreadyBegun         = "FrameAlreadyBegun"
+	tagFrameCallbackIDInvalid    = "FrameCallbackIDInvalid"
+	tagFrameNotBegun             = "FrameNotBegun"
+	tagNoFrameInProgress         = "NoFrameInProgress"
+	tagTimeDilationActive        = "TimeDilationActive"
+	tagTimeDilationInvalid       = "TimeDilationInvalid"
+	tagTransientCallbacksPending = "TransientCallbacksPending"
+)

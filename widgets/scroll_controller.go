@@ -182,10 +182,10 @@ func (c *ScrollControllerBase) HasClients() bool { return len(c.positions) > 0 }
 func (c *ScrollControllerBase) Position() ScrollPosition {
 	if foundation.DebugMode {
 		if len(c.positions) == 0 {
-			panic(errors.New("ScrollControllerNotAttached", "ScrollController not attached to any scroll views"))
+			panic(errors.New(tagScrollControllerNotAttached, "ScrollController not attached to any scroll views"))
 		}
 		if len(c.positions) != 1 {
-			panic(errors.New("ScrollControllerMultipleClients", "ScrollController attached to multiple scroll views", "clients", len(c.positions)))
+			panic(errors.New(tagScrollControllerMultipleClients, "ScrollController attached to multiple scroll views", "clients", len(c.positions)))
 		}
 	}
 	return c.positions[0]
@@ -198,7 +198,7 @@ func (c *ScrollControllerBase) Offset() float64 { return c.self.Position().Pixel
 
 func (c *ScrollControllerBase) assertAttached() {
 	if foundation.DebugMode && len(c.positions) == 0 {
-		panic(errors.New("ScrollControllerNotAttached", "ScrollController not attached to any scroll views"))
+		panic(errors.New(tagScrollControllerNotAttached, "ScrollController not attached to any scroll views"))
 	}
 }
 
@@ -233,7 +233,7 @@ func (c *ScrollControllerBase) JumpTo(value float64) {
 // Flutter: widgets/scroll_controller.dart ScrollController.attach
 func (c *ScrollControllerBase) Attach(position ScrollPosition) {
 	if foundation.DebugMode && slices.Contains(c.positions, position) {
-		panic(errors.New("ScrollControllerPositionAttached", "the position is attached to the controller already"))
+		panic(errors.New(tagScrollControllerPositionAttached, "the position is attached to the controller already"))
 	}
 	c.positions = append(c.positions, position)
 	c.notifyHandle[position] = position.AddListener(c.NotifyListeners)
@@ -250,7 +250,7 @@ func (c *ScrollControllerBase) Detach(position ScrollPosition) {
 	i := slices.Index(c.positions, position)
 	if i < 0 {
 		if foundation.DebugMode {
-			panic(errors.New("ScrollControllerPositionNotAttached", "the position is not attached to the controller"))
+			panic(errors.New(tagScrollControllerPositionNotAttached, "the position is not attached to the controller"))
 		}
 		return
 	}
@@ -353,7 +353,7 @@ func (c *TrackingScrollController) Attach(position ScrollPosition) {
 	c.ScrollControllerBase.Attach(position)
 	if foundation.DebugMode {
 		if _, ok := c.positionToListener[position]; ok {
-			panic(errors.New("ScrollControllerPositionAttached", "the position is tracked by the controller already"))
+			panic(errors.New(tagScrollControllerPositionAttached, "the position is tracked by the controller already"))
 		}
 	}
 	c.positionToListener[position] = position.AddListener(func() {
@@ -369,7 +369,7 @@ func (c *TrackingScrollController) Detach(position ScrollPosition) {
 	c.ScrollControllerBase.Detach(position)
 	if foundation.DebugMode {
 		if _, ok := c.positionToListener[position]; !ok {
-			panic(errors.New("ScrollControllerPositionNotAttached", "the position is not tracked by the controller"))
+			panic(errors.New(tagScrollControllerPositionNotAttached, "the position is not tracked by the controller"))
 		}
 	}
 	position.RemoveListener(c.positionToListener[position])
@@ -393,3 +393,11 @@ func (c *TrackingScrollController) Dispose() {
 	}
 	c.ScrollControllerBase.Dispose()
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagScrollControllerMultipleClients     = "ScrollControllerMultipleClients"
+	tagScrollControllerNotAttached         = "ScrollControllerNotAttached"
+	tagScrollControllerPositionAttached    = "ScrollControllerPositionAttached"
+	tagScrollControllerPositionNotAttached = "ScrollControllerPositionNotAttached"
+)

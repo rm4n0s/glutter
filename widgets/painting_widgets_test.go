@@ -436,7 +436,9 @@ func TestVisibilityMisuse(t *testing.T) {
 		{"focusability without state", VisibilityOpts{MaintainFocusability: true}},
 	}
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) { requireTag(t, "VisibilityMaintainInvalid", func() { NewVisibility(nil, tt.opts) }) })
+		t.Run(tt.name, func(t *testing.T) {
+			requireTag(t, "NewVisibility.VisibilityMaintainInvalid", func() { NewVisibility(nil, tt.opts) })
+		})
 	}
 }
 

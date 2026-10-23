@@ -236,11 +236,11 @@ func TestFailures(t *testing.T) {
 		{"file is not a font", func(c *Collection) error {
 			_, err := c.Face(ctx, FontFile{Path: notFont})
 			return err
-		}, "Collection.Face->Collection.load.FontLoadFailed"},
+		}, "Collection.Face->Collection.load->parseFont.FontLoadFailed"},
 		{"no face at the index", func(c *Collection) error {
 			_, err := c.Face(ctx, FontFile{Path: icons, Index: 3})
 			return err
-		}, "Collection.Face->Collection.load.FontLoadFailed"},
+		}, "Collection.Face->Collection.load->parseFont.FontLoadFailed"},
 		{"unknown bundled family", func(c *Collection) error {
 			_, err := c.Face(ctx, FontFile{Path: BundledPrefix + "Nope"})
 			return err
@@ -259,7 +259,7 @@ func TestFailures(t *testing.T) {
 		}, "Collection.Match.FontMatchCanceled"},
 		{"bundled data is not a font", func(c *Collection) error {
 			return c.AddBundled("Bad", []byte("nope"))
-		}, "Collection.AddBundled.FontBundledInvalid"},
+		}, "Collection.AddBundled->parseFont.FontBundledInvalid"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -271,7 +271,7 @@ func TestFailures(t *testing.T) {
 	}
 
 	t.Run("matcher error comes back unchanged", func(t *testing.T) {
-		want := errors.New("MatcherBroke", "the matcher failed")
+		want := errors.New(tagMatcherBroke, "the matcher failed")
 		c := NewCollection(CollectionOpts{Matcher: &fakeMatcher{err: want}})
 		_, err := c.Match(ctx, "sans-serif", 400, false, "")
 		if err != want {
@@ -437,3 +437,8 @@ func TestFallback(t *testing.T) {
 		}
 	})
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagMatcherBroke = "MatcherBroke"
+)

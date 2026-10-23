@@ -110,7 +110,7 @@ type BottomSheet struct {
 func NewBottomSheet(onClosing func(), builder widgets.WidgetBuilder, opts ...BottomSheetOpts) *BottomSheet {
 	o := firstOpts(opts)
 	if foundation.DebugMode && o.Elevation.OrElse(0) < 0 {
-		panic(errors.New("BottomSheetElevationNegative", "the elevation of a BottomSheet must not be negative", "elevation", o.Elevation.Value()))
+		panic(errors.New(tagBottomSheetElevationNegative, "the elevation of a BottomSheet must not be negative", "elevation", o.Elevation.Value()))
 	}
 	return &BottomSheet{StatefulWidget: widgets.NewStatefulWidgetBase(widgets.WidgetOpts{Key: o.Key}), onClosing: onClosing, builder: builder, o: o}
 }
@@ -186,7 +186,7 @@ func (s *bottomSheetState) handleDragStart(details gestures.DragStartDetails) {
 func (s *bottomSheetState) checkController() {
 	w := s.Widget()
 	if foundation.DebugMode && (w.EnableDrag() || w.o.ShowDragHandle.OrElse(false)) && w.o.AnimationController == nil {
-		panic(errors.New("BottomSheetNoAnimationController", "'BottomSheet.AnimationController' cannot be nil when 'BottomSheet.EnableDrag' or 'BottomSheet.ShowDragHandle' is true. "+
+		panic(errors.New(tagBottomSheetNoAnimationController, "'BottomSheet.AnimationController' cannot be nil when 'BottomSheet.EnableDrag' or 'BottomSheet.ShowDragHandle' is true. "+
 			"Use 'BottomSheetCreateAnimationController' to create one, or provide another AnimationController."))
 	}
 }
@@ -773,7 +773,7 @@ func (r *ModalBottomSheetRoute) BarrierColor() foundation.Opt[ui.Color] {
 // Flutter: material/bottom_sheet.dart ModalBottomSheetRoute.createAnimationController
 func (r *ModalBottomSheetRoute) CreateAnimationController() *animation.AnimationController {
 	if r.animationController != nil {
-		panic(errors.New("ModalBottomSheetRouteControllerExists", "the animation controller of a ModalBottomSheetRoute was created twice"))
+		panic(errors.New(tagModalBottomSheetRouteControllerExists, "the animation controller of a ModalBottomSheetRoute was created twice"))
 	}
 	if r.o.TransitionAnimationController != nil {
 		r.animationController = r.o.TransitionAnimationController
@@ -910,3 +910,10 @@ func ShowModalBottomSheet(bc widgets.BuildContext, builder widgets.WidgetBuilder
 		UseSafeArea: o.UseSafeArea, SheetAnimationStyle: o.SheetAnimationStyle,
 	}))
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagBottomSheetElevationNegative          = "BottomSheetElevationNegative"
+	tagBottomSheetNoAnimationController      = "BottomSheetNoAnimationController"
+	tagModalBottomSheetRouteControllerExists = "ModalBottomSheetRouteControllerExists"
+)

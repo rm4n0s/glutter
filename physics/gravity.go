@@ -25,7 +25,7 @@ type GravitySimulation struct {
 // Flutter: physics/gravity_simulation.dart GravitySimulation.new
 func NewGravitySimulation(acceleration, distance, endDistance, velocity float64) *GravitySimulation {
 	if foundation.DebugMode && endDistance < 0 {
-		panic(errors.New("GravityEndDistanceNegative", "endDistance must not be negative", "endDistance", endDistance))
+		panic(errors.New(tagGravityEndDistanceNegative, "endDistance must not be negative", "endDistance", endDistance))
 	}
 	return &GravitySimulation{a: acceleration, x: distance, v: velocity, end: endDistance}
 }
@@ -47,3 +47,8 @@ func (g *GravitySimulation) String() string {
 	return "GravitySimulation(g: " + dartfmt.ToStringAsFixed(g.a, 1) + ", x₀: " + dartfmt.ToStringAsFixed(g.x, 1) +
 		", dx₀: " + dartfmt.ToStringAsFixed(g.v, 1) + ", xₘₐₓ: ±" + dartfmt.ToStringAsFixed(g.end, 1) + ")"
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagGravityEndDistanceNegative = "GravityEndDistanceNegative"
+)

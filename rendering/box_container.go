@@ -14,7 +14,7 @@ import (
 func boxChildOffset[C Box](child C) ui.Offset {
 	pd, ok := child.ParentData().(boxParentDataHolder)
 	if !ok {
-		panic(errors.New("ContainerBoxParentDataMissing", "a child's parent data does not embed BoxParentData",
+		panic(errors.New(tagContainerBoxParentDataMissing, "a child's parent data does not embed BoxParentData",
 			"child", foundation.DescribeIdentity(child)))
 	}
 	return pd.boxParentData().Offset
@@ -26,7 +26,7 @@ func boxChildOffset[C Box](child C) ui.Offset {
 // Flutter: rendering/box.dart RenderBoxContainerDefaultsMixin.defaultComputeDistanceToFirstActualBaseline
 func DefaultComputeDistanceToFirstActualBaseline[C Box](c *ContainerRenderObject[C], baseline ui.TextBaseline) foundation.Opt[float64] {
 	if foundation.DebugMode && c.host.DebugNeedsLayout() {
-		panic(errors.New("BaselineNeedsLayout", "the baseline was read from a box that needs layout",
+		panic(errors.New(tagBaselineNeedsLayout, "the baseline was read from a box that needs layout",
 			"object", foundation.DescribeIdentity(c.host)))
 	}
 	for child := c.firstChild; !isNil(child); child = c.data(child).NextSibling {
@@ -43,7 +43,7 @@ func DefaultComputeDistanceToFirstActualBaseline[C Box](c *ContainerRenderObject
 // Flutter: rendering/box.dart RenderBoxContainerDefaultsMixin.defaultComputeDistanceToHighestActualBaseline
 func DefaultComputeDistanceToHighestActualBaseline[C Box](c *ContainerRenderObject[C], baseline ui.TextBaseline) foundation.Opt[float64] {
 	if foundation.DebugMode && c.host.DebugNeedsLayout() {
-		panic(errors.New("BaselineNeedsLayout", "the baseline was read from a box that needs layout",
+		panic(errors.New(tagBaselineNeedsLayout, "the baseline was read from a box that needs layout",
 			"object", foundation.DescribeIdentity(c.host)))
 	}
 	min := NoBaseline
@@ -91,3 +91,8 @@ func GetChildrenAsList[C Box](c *ContainerRenderObject[C]) []C {
 	}
 	return out
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagContainerBoxParentDataMissing = "ContainerBoxParentDataMissing"
+)

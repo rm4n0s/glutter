@@ -385,7 +385,7 @@ func TestChooserSwitchesWhenTheChosenRendererGivesUp(t *testing.T) {
 		{name: "the last resort goes to the next", want: "auto", err: lost, wantUsed: "b", wantMade: "ab", wantRenew: 1},
 		{name: "the next one fails too, so the third draws", want: "auto", failing: []string{"b"}, err: lost, wantUsed: "c", wantMade: "abc", wantRenew: 2},
 		{name: "every later candidate fails", want: "auto", failing: []string{"b", "c"}, err: lost, wantTag: "CFailed", wantMade: "abc", wantRenew: 2},
-		{name: "another error is returned", want: "auto", err: errors.New("Other", "an error of the frame"), wantTag: "Other", wantUsed: "a", wantMade: "a"},
+		{name: "another error is returned", want: "auto", err: errors.New(tagOther, "an error of the frame"), wantTag: "Other", wantUsed: "a", wantMade: "a"},
 		{name: "a name never switches", want: "vulkan", err: lost, wantTag: lostForGood, wantUsed: "a", wantMade: "a"},
 		{name: "a candidate with no last resort", want: "auto", noLastResort: true, err: lost, wantTag: lostForGood, wantUsed: "a", wantMade: "a"},
 	}
@@ -460,3 +460,8 @@ func TestChooserSwitchesWhenTheChosenRendererGivesUp(t *testing.T) {
 		})
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagOther = "Other"
+)

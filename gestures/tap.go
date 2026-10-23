@@ -291,7 +291,7 @@ func (r *BaseTapGestureRecognizer) AddAllowedPointer(event *PointerDownEvent) {
 func (r *BaseTapGestureRecognizer) StartTrackingPointer(pointer int, transform *ui.Matrix4) {
 	// The recognizer should never track any pointers when down is nil.
 	if foundation.DebugMode && r.down == nil {
-		panic(errors.New("TapTrackingWithoutDown", "the tap recognizer tracks a pointer without a down event"))
+		panic(errors.New(tagTapTrackingWithoutDown, "the tap recognizer tracks a pointer without a down event"))
 	}
 	r.PrimaryPointerGestureRecognizer.StartTrackingPointer(pointer, transform)
 }
@@ -330,7 +330,7 @@ func (r *BaseTapGestureRecognizer) Resolve(disposition GestureDisposition) {
 		// the pointer has exceeded the touch slop, the buttons have been
 		// changed, or if the recognizer is disposed.
 		if foundation.DebugMode && !r.sentTapDown {
-			panic(errors.New("TapCancelWithoutDown", "the tap won the arena without sending a tap down"))
+			panic(errors.New(tagTapCancelWithoutDown, "the tap won the arena without sending a tap down"))
 		}
 		r.checkCancel(nil, "spontaneous")
 		r.reset()
@@ -655,3 +655,9 @@ func (r *TapGestureRecognizer) HandleTapCancel(down *PointerDownEvent, _ *Pointe
 //
 // Flutter: gestures/tap.dart TapGestureRecognizer.debugDescription
 func (r *TapGestureRecognizer) DebugDescription() string { return "tap" }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagTapCancelWithoutDown   = "TapCancelWithoutDown"
+	tagTapTrackingWithoutDown = "TapTrackingWithoutDown"
+)

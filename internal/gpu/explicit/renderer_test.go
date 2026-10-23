@@ -158,9 +158,9 @@ func TestOutOfDateConfiguresAgainAndRetriesOnce(t *testing.T) {
 
 func TestOtherAcquireErrorsAreReturned(t *testing.T) {
 	r, dev, _ := newRenderer(t)
-	dev.AcquireErrs = []error{errors.New("VulkanSwapchainFailed", "no image")}
+	dev.AcquireErrs = []error{errors.New(tagVulkanSwapchainFailed, "no image")}
 	_, err := r.Draw(window, 16, 16, nil, false)
-	if appErr, ok := errors.FromError(err); !ok || appErr.Tag != "VulkanSwapchainFailed" {
+	if appErr, ok := errors.FromError(err); !ok || appErr.Tag != tagVulkanSwapchainFailed {
 		t.Errorf("got %v, want VulkanSwapchainFailed", err)
 	}
 }
@@ -267,10 +267,10 @@ func TestDrawErrors(t *testing.T) {
 		}
 	})
 	t.Run("the device cannot be opened", func(t *testing.T) {
-		want := errors.New("VulkanNoDevice", "no device")
+		want := errors.New(tagVulkanNoDevice, "no device")
 		r := explicit.NewRenderer(func(gpu.SurfaceHandle) (explicit.Device, error) { return nil, want })
 		_, err := r.Draw(window, 8, 8, nil, false)
-		if appErr, ok := errors.FromError(err); !ok || appErr.Tag != "VulkanNoDevice" || !appErr.HasRoute("VulkanNoDevice") {
+		if appErr, ok := errors.FromError(err); !ok || appErr.Tag != tagVulkanNoDevice || !appErr.HasRoute(tagVulkanNoDevice) {
 			t.Errorf("got %v, want the error of open, unchanged", err)
 		}
 		r.Close() // the renderer has no device: closing is safe
@@ -281,9 +281,9 @@ func TestDrawErrors(t *testing.T) {
 		if _, err := r.Draw(window, 8, 8, nil, false); err != nil {
 			t.Fatal(err)
 		}
-		dev.Err = errors.New("VulkanSurfaceFailed", "no surface")
+		dev.Err = errors.New(tagVulkanSurfaceFailed, "no surface")
 		_, err := r.Draw(gpu.SurfaceHandle{Kind: gpu.SurfaceKindFake, Window: 5}, 8, 8, nil, false)
-		if appErr, ok := errors.FromError(err); !ok || appErr.Tag != "VulkanSurfaceFailed" {
+		if appErr, ok := errors.FromError(err); !ok || appErr.Tag != tagVulkanSurfaceFailed {
 			t.Errorf("got %v, want VulkanSurfaceFailed", err)
 		}
 	})
@@ -391,7 +391,7 @@ func TestDeviceLostWithTheNewDeviceOnItsWay(t *testing.T) {
 	if _, err := r.Draw(window, 32, 32, scene, true); err != nil {
 		t.Fatal(err)
 	}
-	devs[0].Err = errors.New("GPUDeviceLost", "the WebGPU device was lost")
+	devs[0].Err = errors.New(tagGPUDeviceLost, "the WebGPU device was lost")
 	onItsWay = true
 	if img, err := r.Draw(window, 32, 32, scene, true); img != nil || err != nil {
 		t.Fatalf("the frame after the loss = %v, %v; want nothing and no error", img, err)
@@ -408,3 +408,11 @@ func TestDeviceLostWithTheNewDeviceOnItsWay(t *testing.T) {
 		t.Errorf("the new device made %d swapchains, want the window's one", n)
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagGPUDeviceLost         = "GPUDeviceLost"
+	tagVulkanNoDevice        = "VulkanNoDevice"
+	tagVulkanSurfaceFailed   = "VulkanSurfaceFailed"
+	tagVulkanSwapchainFailed = "VulkanSwapchainFailed"
+)

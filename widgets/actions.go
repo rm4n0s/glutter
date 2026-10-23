@@ -174,7 +174,7 @@ func (b *ActionBase) actionBase() *ActionBase { return b }
 
 func (b *ActionBase) outer() Action {
 	if b.self == nil {
-		panic(errors.New("ActionNotInitialized", "an action must call InitActionBase with its outer value"))
+		panic(errors.New(tagActionNotInitialized, "an action must call InitActionBase with its outer value"))
 	}
 	return b.self
 }
@@ -214,7 +214,7 @@ func (b *ActionBase) ToKeyEventResult(intent Intent, _ any) KeyEventResult {
 //
 // Flutter: widgets/actions.dart Action.invoke
 func (b *ActionBase) Invoke(Intent) any {
-	panic(errors.New("ActionInvokeMissing", "the action does not implement Invoke", "action", foundation.DescribeIdentity(b.self)))
+	panic(errors.New(tagActionInvokeMissing, "the action does not implement Invoke", "action", foundation.DescribeIdentity(b.self)))
 }
 
 // AddActionListener adds a listener of the action's changes.
@@ -327,7 +327,7 @@ func (b *ContextActionBase) Invoke(intent Intent) any { return b.cself.InvokeWit
 //
 // Flutter: widgets/actions.dart ContextAction.invoke
 func (b *ContextActionBase) InvokeWithContext(Intent, BuildContext) any {
-	panic(errors.New("ActionInvokeMissing", "the action does not implement InvokeWithContext", "action", foundation.DescribeIdentity(b.cself)))
+	panic(errors.New(tagActionInvokeMissing, "the action does not implement InvokeWithContext", "action", foundation.DescribeIdentity(b.cself)))
 }
 
 // actionIsEnabled is Action._isEnabled: the context variant for a ContextAction.
@@ -374,7 +374,7 @@ func debugCanHandleIntent(a Action, intent Intent) {
 		return
 	}
 	if !intentIsOfType(intent, a.IntentType()) {
-		panic(errors.New("ActionIntentMismatch",
+		panic(errors.New(tagActionIntentMismatch,
 			fmt.Sprintf("an Intent of type %v cannot be handled by %v: the Intent must be of the type %v", reflect.TypeOf(intent), foundation.DescribeIdentity(a), a.IntentType()),
 			"intent", fmt.Sprint(intent), "action", foundation.DescribeIdentity(a)))
 	}
@@ -541,7 +541,7 @@ func (d *ActionDispatcherBase) target(bc BuildContext) BuildContext {
 func (d *ActionDispatcherBase) InvokeAction(action Action, intent Intent, bc BuildContext) any {
 	target := d.target(bc)
 	if foundation.DebugMode && !actionIsEnabled(action, intent, target) {
-		panic(errors.New("ActionNotEnabled", "the action must be enabled when calling InvokeAction", "action", foundation.DescribeIdentity(action)))
+		panic(errors.New(tagActionNotEnabled, "the action must be enabled when calling InvokeAction", "action", foundation.DescribeIdentity(action)))
 	}
 	return actionInvoke(action, intent, target)
 }
@@ -824,7 +824,7 @@ func actionsFind(bc BuildContext, intent Intent, t reflect.Type) Action {
 		if intent != nil {
 			t = reflect.TypeOf(intent)
 		}
-		panic(errors.New("ActionNotFound",
+		panic(errors.New(tagActionNotFound,
 			"unable to find an action for a "+t.String()+" in an Actions widget in the given context: Actions.find() was called on a context that doesn't contain an Actions widget with a mapping for the given intent type",
 			"context", describeContext(bc), "intent", t.String()))
 	}
@@ -889,7 +889,7 @@ func ActionsInvoke(bc BuildContext, intent Intent) any {
 		return result != nil
 	})
 	if foundation.DebugMode && !actionFound {
-		panic(errors.New("ActionNotFound",
+		panic(errors.New(tagActionNotFound,
 			"unable to find an action for an Intent with type "+reflect.TypeOf(intent).String()+" in an Actions widget in the given context: Actions.invoke() was unable to find an Actions widget that contained a mapping for the given intent",
 			"context", describeContext(bc), "intent", reflect.TypeOf(intent).String()))
 	}
@@ -1090,7 +1090,7 @@ func (s *focusableActionDetectorState) mayTriggerCallback(task func(), oldWidget
 		return s.focused && s.canShowHighlight && s.canRequestFocus(target)
 	}
 	if foundation.DebugMode && WidgetsBindingOf(s.Context()).Scheduler().SchedulerPhase() == scheduler.SchedulerPhasePersistentCallbacks {
-		panic(errors.New("FocusableActionDetectorCallbackDuringBuild", "the highlight callbacks of a FocusableActionDetector must not run during the build phase"))
+		panic(errors.New(tagFocusableActionDetectorCallbackDuringBuild, "the highlight callbacks of a FocusableActionDetector must not run during the build phase"))
 	}
 	oldTarget := oldWidget
 	if oldTarget == nil {
@@ -1353,3 +1353,13 @@ func (a *PrioritizedAction) InvokeWithContext(_ Intent, bc BuildContext) any {
 	actionInvoke(a.selectedAction, a.selectedIntent, bc)
 	return nil
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagActionIntentMismatch                       = "ActionIntentMismatch"
+	tagActionInvokeMissing                        = "ActionInvokeMissing"
+	tagActionNotEnabled                           = "ActionNotEnabled"
+	tagActionNotFound                             = "ActionNotFound"
+	tagActionNotInitialized                       = "ActionNotInitialized"
+	tagFocusableActionDetectorCallbackDuringBuild = "FocusableActionDetectorCallbackDuringBuild"
+)

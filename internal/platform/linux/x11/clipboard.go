@@ -107,7 +107,7 @@ func newClipboard(p *Platform) *clipboard {
 
 func (c *clipboard) close() {
 	for _, r := range append([]*clipboardRequest(nil), c.queue...) {
-		c.finish(r, ui.ClipboardContent{}, errors.New("ClipboardReadFailed", "the platform closed"))
+		c.finish(r, ui.ClipboardContent{}, errors.New(tagClipboardReadFailed, "the platform closed"))
 	}
 	c.p.x.destroyWindow(c.p.display, c.window)
 	c.window = 0
@@ -165,11 +165,11 @@ func (c *clipboard) SetContent(_ context.Context, kind ui.ClipboardKind, content
 	var err error
 	sel := c.selectionOf(kind)
 	if contentSize(content) > clipboardMaxBytes {
-		err = errors.New("ClipboardTooLarge", "the content for the clipboard is too large", "limit", clipboardMaxBytes)
+		err = errors.New(tagClipboardTooLarge, "the content for the clipboard is too large", "limit", clipboardMaxBytes)
 	} else {
 		c.p.x.setSelectionOwner(c.p.display, sel.atom, c.window, currentTime)
 		if c.p.x.getSelectionOwner(c.p.display, sel.atom) != c.window {
-			err = errors.New("ClipboardWriteFailed", "the X server did not make the app the owner of the clipboard")
+			err = errors.New(tagClipboardWriteFailed, "the X server did not make the app the owner of the clipboard")
 		} else {
 			sel.content, sel.owned = content, true
 		}
@@ -209,10 +209,10 @@ func (c *clipboard) GetContent(ctx context.Context, kind ui.ClipboardKind, forma
 	}
 	req := &clipboardRequest{ctx: ctx, done: done, selection: sel.atom, format: format, targets: targets}
 	req.stopCtx = context.AfterFunc(ctx, func() {
-		c.p.Post(func() { c.finish(req, ui.ClipboardContent{}, errors.NewErr("ClipboardReadTimeout", ctx.Err())) })
+		c.p.Post(func() { c.finish(req, ui.ClipboardContent{}, errors.NewErr(tagClipboardReadTimeout, ctx.Err())) })
 	})
 	timer, err := c.p.loop.AfterFunc(clipboardReadTimeout, func() {
-		c.finish(req, ui.ClipboardContent{}, errors.New("ClipboardReadTimeout", "the owner of the clipboard did not answer in time"))
+		c.finish(req, ui.ClipboardContent{}, errors.New(tagClipboardReadTimeout, "the owner of the clipboard did not answer in time"))
 	})
 	if err != nil {
 		req.stopCtx()
@@ -313,7 +313,7 @@ func (c *clipboard) onSelectionNotify(ev xSelectionEvent) {
 	}
 	data, typ, ok := c.readProperty(true)
 	if !ok {
-		c.finish(req, ui.ClipboardContent{}, errors.New("ClipboardReadFailed", "the answer of the owner could not be read"))
+		c.finish(req, ui.ClipboardContent{}, errors.New(tagClipboardReadFailed, "the answer of the owner could not be read"))
 		return
 	}
 	if typ == c.atoms.incr {
@@ -331,7 +331,7 @@ func (c *clipboard) onPropertyNotify(ev xPropertyEvent) {
 		req := c.queue[0]
 		data, _, ok := c.readProperty(true)
 		if !ok {
-			c.finish(req, ui.ClipboardContent{}, errors.New("ClipboardReadFailed", "a chunk of the answer of the owner could not be read"))
+			c.finish(req, ui.ClipboardContent{}, errors.New(tagClipboardReadFailed, "a chunk of the answer of the owner could not be read"))
 			return
 		}
 		if len(data) == 0 {
@@ -339,7 +339,7 @@ func (c *clipboard) onPropertyNotify(ev xPropertyEvent) {
 			return
 		}
 		if len(req.buf)+len(data) > clipboardMaxBytes {
-			c.finish(req, ui.ClipboardContent{}, errors.New("ClipboardTooLarge", "the content of the clipboard is too large", "limit", clipboardMaxBytes))
+			c.finish(req, ui.ClipboardContent{}, errors.New(tagClipboardTooLarge, "the content of the clipboard is too large", "limit", clipboardMaxBytes))
 			return
 		}
 		req.buf = append(req.buf, data...)
@@ -358,7 +358,7 @@ func (c *clipboard) onPropertyNotify(ev xPropertyEvent) {
 // complete turns the bytes of the answer into the content and ends the read.
 func (c *clipboard) complete(req *clipboardRequest, data []byte) {
 	if len(data) > clipboardMaxBytes {
-		c.finish(req, ui.ClipboardContent{}, errors.New("ClipboardTooLarge", "the content of the clipboard is too large", "limit", clipboardMaxBytes))
+		c.finish(req, ui.ClipboardContent{}, errors.New(tagClipboardTooLarge, "the content of the clipboard is too large", "limit", clipboardMaxBytes))
 		return
 	}
 	switch req.format {
@@ -558,3 +558,11 @@ func (c *clipboard) onSelectionClear(ev xSelectionClearEvent) {
 		sel.owned, sel.content = false, ui.ClipboardContent{}
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagClipboardReadFailed  = "ClipboardReadFailed"
+	tagClipboardReadTimeout = "ClipboardReadTimeout"
+	tagClipboardTooLarge    = "ClipboardTooLarge"
+	tagClipboardWriteFailed = "ClipboardWriteFailed"
+)

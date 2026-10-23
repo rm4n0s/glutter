@@ -92,10 +92,10 @@ func (d *Device) NewBuffer(size int, usage explicit.BufferUsage) (explicit.Buffe
 func (d *Device) WriteBuffer(b explicit.Buffer, offset int, data []byte) {
 	vb, ok := b.(*buffer)
 	if !ok || vb.d != d {
-		panic(foreign("buffer"))
+		panic(errors.New(tagVulkanForeignResource, "the resource was not made by this Vulkan device", "resource", "buffer"))
 	}
 	if offset < 0 || offset+len(data) > vb.size {
-		panic(errors.New("VulkanWriteOutOfRange", "the write is outside the buffer", "offset", offset, "bytes", len(data), "size", vb.size))
+		panic(errors.New(tagVulkanWriteOutOfRange, "the write is outside the buffer", "offset", offset, "bytes", len(data), "size", vb.size))
 	}
 	if p := vb.alloc.mapped(); p != 0 {
 		copy(dl.Bytes(p+uintptr(offset), len(data)), data)
@@ -128,7 +128,7 @@ func (t *texture) Desc() explicit.TextureDesc { return t.desc }
 // its own that the parent releases.
 func (t *texture) Level(i int) explicit.Texture {
 	if i < 0 || i >= t.desc.MipLevels {
-		panic(errors.New("VulkanLevelInvalid", "the texture has no such mip level", "level", i, "levels", t.desc.MipLevels))
+		panic(errors.New(tagVulkanLevelInvalid, "the texture has no such mip level", "level", i, "levels", t.desc.MipLevels))
 	}
 	if t.desc.MipLevels == 1 || t.parent != nil {
 		return t
@@ -209,7 +209,7 @@ func (d *Device) NewTexture(desc explicit.TextureDesc) (explicit.Texture, error)
 		desc.MipLevels = 1
 	}
 	if desc.Width < 1 || desc.Height < 1 || desc.Format.BytesPerPixel() == 0 {
-		return nil, errors.New("VulkanTextureInvalid", "a texture needs a size and a format", "width", desc.Width, "height", desc.Height, "format", int(desc.Format))
+		return nil, errors.New(tagVulkanTextureInvalid, "a texture needs a size and a format", "width", desc.Width, "height", desc.Height, "format", int(desc.Format))
 	}
 	usage := uint32(imageUsageTransferDst)
 	if desc.Usage&explicit.TextureSampled != 0 {
@@ -372,7 +372,7 @@ func (d *Device) stage(n uint64) (bufferH, uint64, uintptr, error) {
 func (d *Device) WriteTexture(t explicit.Texture, level int, r image.Rectangle, data []byte, stride int) {
 	vt, ok := t.(*texture)
 	if !ok || vt.d != d {
-		panic(foreign("texture"))
+		panic(errors.New(tagVulkanForeignResource, "the resource was not made by this Vulkan device", "resource", "texture"))
 	}
 	if r.Empty() {
 		return
@@ -551,12 +551,12 @@ func (d *Device) shaderModule(s *explicit.Shader) (shaderModuleH, error) {
 func (d *Device) NewPipeline(desc explicit.PipelineDesc) (explicit.Pipeline, error) {
 	d.limits.CheckPipeline(desc)
 	if desc.Shader == nil {
-		return nil, errors.New("VulkanPipelineInvalid", "a pipeline needs a shader")
+		return nil, errors.New(tagVulkanPipelineInvalid, "a pipeline needs a shader")
 	}
 	vs, ok1 := desc.Shader.Entry(desc.VertexEntry)
 	fs, ok2 := desc.Shader.Entry(desc.FragmentEntry)
 	if !ok1 || !ok2 {
-		return nil, errors.New("VulkanPipelineInvalid", "the shader lacks the entry point",
+		return nil, errors.New(tagVulkanPipelineInvalid, "the shader lacks the entry point",
 			"shader", desc.Shader.Name, "vertex", desc.VertexEntry, "fragment", desc.FragmentEntry)
 	}
 	module, err := d.shaderModule(desc.Shader)
@@ -721,10 +721,10 @@ func (d *Device) NewBindGroup(p explicit.Pipeline, group int, entries []explicit
 	d.limits.CheckBindGroup(group, entries)
 	vp, ok := p.(*pipeline)
 	if !ok || vp.d != d {
-		panic(foreign("pipeline"))
+		panic(errors.New(tagVulkanForeignResource, "the resource was not made by this Vulkan device", "resource", "pipeline"))
 	}
 	if group < 0 || group >= len(vp.setLayout) {
-		return nil, errors.New("VulkanBindGroupInvalid", "the pipeline has no such bind group", "group", group, "groups", len(vp.setLayout))
+		return nil, errors.New(tagVulkanBindGroupInvalid, "the pipeline has no such bind group", "group", group, "groups", len(vp.setLayout))
 	}
 	slot := d.next
 	if d.open != nil {
@@ -743,14 +743,14 @@ func (d *Device) NewBindGroup(p explicit.Pipeline, group int, entries []explicit
 	for _, e := range entries {
 		kind, ok := vp.bindings[[2]int{group, e.Binding}]
 		if !ok {
-			return nil, errors.New("VulkanBindGroupInvalid", "the shader has no such binding", "group", group, "binding", e.Binding)
+			return nil, errors.New(tagVulkanBindGroupInvalid, "the shader has no such binding", "group", group, "binding", e.Binding)
 		}
 		w := writeDescriptorSet{sType: sTypeWriteDescriptorSet, dstSet: set, dstBinding: uint32(e.Binding), descriptorCount: 1, descriptorType: descriptorType(kind)}
 		switch kind {
 		case explicit.BindingUniformBuffer:
 			b, ok := e.Buffer.(*buffer)
 			if !ok || b.d != d {
-				panic(foreign("buffer"))
+				panic(errors.New(tagVulkanForeignResource, "the resource was not made by this Vulkan device", "resource", "buffer"))
 			}
 			size := uint64(e.Size)
 			if size == 0 {
@@ -760,16 +760,16 @@ func (d *Device) NewBindGroup(p explicit.Pipeline, group int, entries []explicit
 		case explicit.BindingSampledTexture:
 			t, ok := e.Texture.(*texture)
 			if !ok || t.d != d {
-				panic(foreign("texture"))
+				panic(errors.New(tagVulkanForeignResource, "the resource was not made by this Vulkan device", "resource", "texture"))
 			}
 			if t.view == 0 {
-				return nil, errors.New("VulkanBindGroupInvalid", "the texture is not TextureSampled", "binding", e.Binding)
+				return nil, errors.New(tagVulkanBindGroupInvalid, "the texture is not TextureSampled", "binding", e.Binding)
 			}
 			w.pImageInfo = put(a, descriptorImageInfo{imageView: t.view, imageLayout: layoutGeneral})
 		case explicit.BindingSampler:
 			sm, ok := e.Sampler.(*sampler)
 			if !ok || sm.d != d {
-				panic(foreign("sampler"))
+				panic(errors.New(tagVulkanForeignResource, "the resource was not made by this Vulkan device", "resource", "sampler"))
 			}
 			w.pImageInfo = put(a, descriptorImageInfo{sampler: sm.sampler})
 		}
@@ -806,3 +806,12 @@ func (d *Device) allocateSet(s *frameSlot, layout descriptorSetLayoutH) (descrip
 		}
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagVulkanBindGroupInvalid = "VulkanBindGroupInvalid"
+	tagVulkanLevelInvalid     = "VulkanLevelInvalid"
+	tagVulkanPipelineInvalid  = "VulkanPipelineInvalid"
+	tagVulkanTextureInvalid   = "VulkanTextureInvalid"
+	tagVulkanWriteOutOfRange  = "VulkanWriteOutOfRange"
+)

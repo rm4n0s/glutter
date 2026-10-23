@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"syscall/js"
 	"time"
 
@@ -95,6 +96,12 @@ type observations struct {
 	// went back to the host.
 	Gone        field `json:"gone"`
 	HostFocused bool  `json:"hostFocused"`
+}
+
+func main() {
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
 }
 
 func run() error {

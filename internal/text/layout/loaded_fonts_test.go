@@ -87,7 +87,7 @@ func TestLoadFontFromListErrors(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected *errors.Error, got %T", err)
 	}
-	if !appErr.HasRoute("Engine.LoadFontFromList->Collection.AddFont.FontDataInvalid") {
+	if !appErr.HasRoute("Engine.LoadFontFromList->Collection.AddFont->describeFont.FontDataInvalid") {
 		t.Errorf("unexpected failure path: %s", appErr.Route())
 	}
 }

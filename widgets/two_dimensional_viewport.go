@@ -97,7 +97,7 @@ func NewTwoDimensionalChildBuilderDelegate(builder TwoDimensionalIndexedWidgetBu
 
 func checkMaxIndex(v foundation.Opt[int]) {
 	if i, ok := v.Get(); ok && i < -1 && foundation.DebugMode {
-		panic(errors.New("TwoDimensionalIndexInvalid", "the maximum index must not be less than -1", "index", i))
+		panic(errors.New(tagTwoDimensionalIndexInvalid, "the maximum index must not be less than -1", "index", i))
 	}
 }
 
@@ -282,10 +282,10 @@ func NewTwoDimensionalViewportBase(verticalOffset rendering.ViewportOffset, vert
 	o := firstOpts(opts)
 	if foundation.DebugMode {
 		if verticalAxisDirection != painting.AxisDirectionDown && verticalAxisDirection != painting.AxisDirectionUp {
-			panic(errors.New("TwoDimensionalViewportAxisInvalid", "TwoDimensionalViewport.verticalAxisDirection is not Axis.vertical"))
+			panic(errors.New(tagTwoDimensionalViewportAxisInvalid, "TwoDimensionalViewport.verticalAxisDirection is not Axis.vertical"))
 		}
 		if horizontalAxisDirection != painting.AxisDirectionLeft && horizontalAxisDirection != painting.AxisDirectionRight {
-			panic(errors.New("TwoDimensionalViewportAxisInvalid", "TwoDimensionalViewport.horizontalAxisDirection is not Axis.horizontal"))
+			panic(errors.New(tagTwoDimensionalViewportAxisInvalid, "TwoDimensionalViewport.horizontalAxisDirection is not Axis.horizontal"))
 		}
 	}
 	if o.ClipBehavior == ui.ClipUnspecified {
@@ -465,7 +465,7 @@ func (e *twoDimensionalViewportElement) debugIsDoingLayout() bool {
 // Flutter: widgets/two_dimensional_viewport.dart _TwoDimensionalViewportElement.forgetChild
 func (e *twoDimensionalViewportElement) ForgetChild(child Element) {
 	if foundation.DebugMode && e.debugIsDoingLayout() {
-		panic(errors.New("TwoDimensionalViewportForgetDuringLayout", "a child was forgotten while the viewport was building"))
+		panic(errors.New(tagTwoDimensionalViewportForgetDuringLayout, "a child was forgotten while the viewport was building"))
 	}
 	e.RenderObjectElement.ForgetChild(child)
 	e.vicinityToChild.remove(child.AsElement().slot.(ChildVicinity))
@@ -518,7 +518,7 @@ func (e *twoDimensionalViewportElement) DebugDescribeChildren() []foundation.Dia
 // Flutter: widgets/two_dimensional_viewport.dart _TwoDimensionalViewportElement._startLayout
 func (e *twoDimensionalViewportElement) StartLayout() {
 	if foundation.DebugMode && e.debugIsDoingLayout() {
-		panic(errors.New("TwoDimensionalViewportLayoutNested", "the viewport started a layout while another was running"))
+		panic(errors.New(tagTwoDimensionalViewportLayoutNested, "the viewport started a layout while another was running"))
 	}
 	e.newVicinityToChild = &elementsByVicinity{}
 	e.newKeyToChild = map[foundation.Key]Element{}
@@ -529,7 +529,7 @@ func (e *twoDimensionalViewportElement) StartLayout() {
 // Flutter: widgets/two_dimensional_viewport.dart _TwoDimensionalViewportElement._buildChild
 func (e *twoDimensionalViewportElement) BuildChild(vicinity ChildVicinity) {
 	if foundation.DebugMode && !e.debugIsDoingLayout() {
-		panic(errors.New("TwoDimensionalViewportLayoutNotStarted", "a child was built outside of the layout of the viewport"))
+		panic(errors.New(tagTwoDimensionalViewportLayoutNotStarted, "a child was built outside of the layout of the viewport"))
 	}
 	e.owner.BuildScope(e, func() {
 		newWidget := e.delegate().Build(e, vicinity)
@@ -541,13 +541,13 @@ func (e *twoDimensionalViewportElement) BuildChild(vicinity ChildVicinity) {
 		if foundation.DebugMode {
 			// Ensure the child does not overwrite an existing one.
 			if e.newVicinityToChild.get(vicinity) != nil {
-				panic(errors.New("TwoDimensionalViewportChildDuplicate", "a child was built twice for the same vicinity", "vicinity", vicinity.String()))
+				panic(errors.New(tagTwoDimensionalViewportChildDuplicate, "a child was built twice for the same vicinity", "vicinity", vicinity.String()))
 			}
 		}
 		e.newVicinityToChild.set(vicinity, newChild)
 		if key := newWidget.Key(); key != nil {
 			if foundation.DebugMode && e.newKeyToChild[key] != nil {
-				panic(errors.New("TwoDimensionalViewportKeyDuplicate", "two children have the same key", "key", key.String()))
+				panic(errors.New(tagTwoDimensionalViewportKeyDuplicate, "two children have the same key", "key", key.String()))
 			}
 			e.newKeyToChild[key] = newChild
 		}
@@ -575,11 +575,11 @@ func (e *twoDimensionalViewportElement) retrieveOldElement(newWidget Widget, vic
 // Flutter: widgets/two_dimensional_viewport.dart _TwoDimensionalViewportElement._reuseChild
 func (e *twoDimensionalViewportElement) ReuseChild(vicinity ChildVicinity) {
 	if foundation.DebugMode && !e.debugIsDoingLayout() {
-		panic(errors.New("TwoDimensionalViewportLayoutNotStarted", "a child was reused outside of the layout of the viewport"))
+		panic(errors.New(tagTwoDimensionalViewportLayoutNotStarted, "a child was reused outside of the layout of the viewport"))
 	}
 	elementToReuse := e.vicinityToChild.get(vicinity)
 	if foundation.DebugMode && elementToReuse == nil {
-		panic(errors.New("TwoDimensionalViewportReuseMissing", "expected to reuse an element, but none was found", "vicinity", vicinity.String()))
+		panic(errors.New(tagTwoDimensionalViewportReuseMissing, "expected to reuse an element, but none was found", "vicinity", vicinity.String()))
 	}
 	e.vicinityToChild.remove(vicinity)
 	e.newVicinityToChild.set(vicinity, elementToReuse)
@@ -594,7 +594,7 @@ func (e *twoDimensionalViewportElement) ReuseChild(vicinity ChildVicinity) {
 // Flutter: widgets/two_dimensional_viewport.dart _TwoDimensionalViewportElement._endLayout
 func (e *twoDimensionalViewportElement) EndLayout() {
 	if foundation.DebugMode && !e.debugIsDoingLayout() {
-		panic(errors.New("TwoDimensionalViewportLayoutNotStarted", "the layout of the viewport ended but did not start"))
+		panic(errors.New(tagTwoDimensionalViewportLayoutNotStarted, "the layout of the viewport ended but did not start"))
 	}
 	// Unmount all elements that have not been reused in the layout cycle.
 	for _, element := range e.vicinityToChild.values() {
@@ -756,10 +756,10 @@ func (v *TwoDimensionalScrollView) DragStartBehavior() gestures.DragStartBehavio
 func (v *TwoDimensionalScrollView) Build(bc BuildContext) Widget {
 	if foundation.DebugMode {
 		if painting.AxisDirectionToAxis(v.verticalDetails.Direction) != painting.AxisVertical {
-			panic(errors.New("TwoDimensionalScrollViewAxisInvalid", "TwoDimensionalScrollView.verticalDetails are not Axis.vertical"))
+			panic(errors.New(tagTwoDimensionalScrollViewAxisInvalid, "TwoDimensionalScrollView.verticalDetails are not Axis.vertical"))
 		}
 		if painting.AxisDirectionToAxis(v.horizontalDetails.Direction) != painting.AxisHorizontal {
-			panic(errors.New("TwoDimensionalScrollViewAxisInvalid", "TwoDimensionalScrollView.horizontalDetails are not Axis.horizontal"))
+			panic(errors.New(tagTwoDimensionalScrollViewAxisInvalid, "TwoDimensionalScrollView.horizontalDetails are not Axis.horizontal"))
 		}
 	}
 	mainAxisDetails := v.verticalDetails
@@ -770,7 +770,7 @@ func (v *TwoDimensionalScrollView) Build(bc BuildContext) Widget {
 	if effectivePrimary {
 		// Using the PrimaryScrollController for the main axis.
 		if foundation.DebugMode && !isNil(mainAxisDetails.Controller) {
-			panic(errors.New("TwoDimensionalScrollViewPrimaryConflict",
+			panic(errors.New(tagTwoDimensionalScrollViewPrimaryConflict,
 				"TwoDimensionalScrollView.primary was explicitly set to true, but a ScrollController was provided in the ScrollableDetails of the TwoDimensionalScrollView.mainAxis"))
 		}
 		mainAxisDetails = mainAxisDetails.CopyWith(ScrollableDetailsCopy{Controller: PrimaryScrollControllerOf(bc)})
@@ -792,3 +792,17 @@ func (v *TwoDimensionalScrollView) Build(bc BuildContext) Widget {
 	}
 	return wrapKeyboardDismiss(bc, v.keyboardDismissBehavior, nil, result)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagTwoDimensionalIndexInvalid               = "TwoDimensionalIndexInvalid"
+	tagTwoDimensionalScrollViewAxisInvalid      = "TwoDimensionalScrollViewAxisInvalid"
+	tagTwoDimensionalScrollViewPrimaryConflict  = "TwoDimensionalScrollViewPrimaryConflict"
+	tagTwoDimensionalViewportAxisInvalid        = "TwoDimensionalViewportAxisInvalid"
+	tagTwoDimensionalViewportChildDuplicate     = "TwoDimensionalViewportChildDuplicate"
+	tagTwoDimensionalViewportForgetDuringLayout = "TwoDimensionalViewportForgetDuringLayout"
+	tagTwoDimensionalViewportKeyDuplicate       = "TwoDimensionalViewportKeyDuplicate"
+	tagTwoDimensionalViewportLayoutNested       = "TwoDimensionalViewportLayoutNested"
+	tagTwoDimensionalViewportLayoutNotStarted   = "TwoDimensionalViewportLayoutNotStarted"
+	tagTwoDimensionalViewportReuseMissing       = "TwoDimensionalViewportReuseMissing"
+)

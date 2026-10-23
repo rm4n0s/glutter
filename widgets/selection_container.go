@@ -166,7 +166,7 @@ func (s *selectionContainerState) RemoveListener(handle foundation.ListenerHandl
 
 func (s *selectionContainerState) assertEnabled() {
 	if foundation.DebugMode && s.Widget().disabled() {
-		panic(errors.New("SelectionContainerDisabled", "the SelectionContainer is disabled"))
+		panic(errors.New(tagSelectionContainerDisabled, "the SelectionContainer is disabled"))
 	}
 }
 
@@ -327,7 +327,7 @@ func (b *SelectionContainerDelegateBase) containerBox(what string) rendering.Box
 		ro = b.context.FindRenderObject()
 	}
 	if ro == nil {
-		panic(errors.New("SelectionContainerNotLaidOut", what+" cannot be called before the SelectionContainer is built"))
+		panic(errors.New(tagSelectionContainerNotLaidOut, what+" cannot be called before the SelectionContainer is built"))
 	}
 	return ro.(rendering.Box)
 }
@@ -359,7 +359,13 @@ func (b *SelectionContainerDelegateBase) HasSize() bool {
 func (b *SelectionContainerDelegateBase) ContainerSize() ui.Size {
 	box := b.containerBox("ContainerSize")
 	if foundation.DebugMode && !box.HasSize() {
-		panic(errors.New("SelectionContainerNotLaidOut", "ContainerSize cannot be called before the SelectionContainer is laid out"))
+		panic(errors.New(tagSelectionContainerNotLaidOut, "ContainerSize cannot be called before the SelectionContainer is laid out"))
 	}
 	return box.Size()
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagSelectionContainerDisabled   = "SelectionContainerDisabled"
+	tagSelectionContainerNotLaidOut = "SelectionContainerNotLaidOut"
+)

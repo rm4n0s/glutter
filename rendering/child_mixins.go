@@ -100,7 +100,7 @@ func (m *ContainerRenderObject[C]) data(child C) *ContainerParentData[C] {
 	pd := child.AsRenderObject().parentData
 	l, ok := pd.(containerParentDataLinks[C])
 	if !ok {
-		panic(errors.New("ContainerParentDataMissing", "a child of "+foundation.RuntimeTypeName(m.host)+
+		panic(errors.New(tagContainerParentDataMissing, "a child of "+foundation.RuntimeTypeName(m.host)+
 			" has parent data that does not embed ContainerParentData; the class should override SetupParentData",
 			"object", foundation.DescribeIdentity(m.host), "parentData", pd))
 	}
@@ -172,7 +172,7 @@ func (m *ContainerRenderObject[C]) insertAdopting(child, after C, onAdopt func()
 			msg = "the render object is a child already"
 		}
 		if msg != "" {
-			panic(errors.New("ContainerInsertInvalid", msg, "object", foundation.DescribeIdentity(m.host),
+			panic(errors.New(tagContainerInsertInvalid, msg, "object", foundation.DescribeIdentity(m.host),
 				"child", foundation.DescribeIdentity(child)))
 		}
 	}
@@ -250,7 +250,7 @@ func (m *ContainerRenderObject[C]) Move(child, after C) {
 	if foundation.DebugMode {
 		hb := m.host.AsRenderObject()
 		if any(child) == any(m.host) || any(after) == any(m.host) || any(child) == any(after) || child.AsRenderObject().parent != m.host {
-			panic(errors.New("ContainerMoveInvalid", "a child can only be moved after another child of the same container",
+			panic(errors.New(tagContainerMoveInvalid, "a child can only be moved after another child of the same container",
 				"object", foundation.DescribeIdentity(hb.self), "child", foundation.DescribeIdentity(child)))
 		}
 	}
@@ -292,7 +292,7 @@ func (m *ContainerRenderObject[C]) visitChildren(visitor RenderObjectVisitor) {
 // Flutter: rendering/object.dart ContainerRenderObjectMixin.childBefore
 func (m *ContainerRenderObject[C]) ChildBefore(child C) C {
 	if foundation.DebugMode && child.AsRenderObject().parent != m.host {
-		panic(errors.New("RenderObjectNotChild", "ChildBefore was called with a render object that is not a child",
+		panic(errors.New(tagRenderObjectNotChild, "ChildBefore was called with a render object that is not a child",
 			"child", foundation.DescribeIdentity(child)))
 	}
 	return m.data(child).PreviousSibling
@@ -303,7 +303,7 @@ func (m *ContainerRenderObject[C]) ChildBefore(child C) C {
 // Flutter: rendering/object.dart ContainerRenderObjectMixin.childAfter
 func (m *ContainerRenderObject[C]) ChildAfter(child C) C {
 	if foundation.DebugMode && child.AsRenderObject().parent != m.host {
-		panic(errors.New("RenderObjectNotChild", "ChildAfter was called with a render object that is not a child",
+		panic(errors.New(tagRenderObjectNotChild, "ChildAfter was called with a render object that is not a child",
 			"child", foundation.DescribeIdentity(child)))
 	}
 	return m.data(child).NextSibling
@@ -345,7 +345,7 @@ func InitLayoutCallbackMixin(m *LayoutCallbackMixin, host RenderObject, layoutCa
 func (m *LayoutCallbackMixin) RunLayoutCallback() {
 	hb := m.host.AsRenderObject()
 	if foundation.DebugMode && !hb.debugDoingThisLayout {
-		panic(errors.New("RunLayoutCallbackInvalid", "the layout callback can only run during PerformLayout",
+		panic(errors.New(tagRunLayoutCallbackInvalid, "the layout callback can only run during PerformLayout",
 			"object", foundation.DescribeIdentity(m.host)))
 	}
 	hb.InvokeLayoutCallback(func(Constraints) { m.callback() })
@@ -392,7 +392,7 @@ func (m *RenderObjectWithChild[C]) SetChildObject(child RenderObject) {
 	}
 	typed, ok := child.(C)
 	if !ok {
-		panic(errors.New("RenderChildTypeMismatch", "the render object is not of the type this render object accepts as a child",
+		panic(errors.New(tagRenderChildTypeMismatch, "the render object is not of the type this render object accepts as a child",
 			"parent", foundation.DescribeIdentity(m.host), "child", foundation.DescribeIdentity(child)))
 	}
 	m.SetChild(typed)
@@ -422,7 +422,7 @@ func (m *ContainerRenderObject[C]) RemoveObject(child RenderObject) { m.Remove(m
 func (m *ContainerRenderObject[C]) typed(child RenderObject) C {
 	typed, ok := child.(C)
 	if !ok {
-		panic(errors.New("RenderChildTypeMismatch", "the render object is not of the type this render object accepts as a child",
+		panic(errors.New(tagRenderChildTypeMismatch, "the render object is not of the type this render object accepts as a child",
 			"parent", foundation.DescribeIdentity(m.host), "child", foundation.DescribeIdentity(child)))
 	}
 	return typed
@@ -435,3 +435,12 @@ func (m *ContainerRenderObject[C]) typedOrZero(child RenderObject) C {
 	}
 	return m.typed(child)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagContainerInsertInvalid     = "ContainerInsertInvalid"
+	tagContainerMoveInvalid       = "ContainerMoveInvalid"
+	tagContainerParentDataMissing = "ContainerParentDataMissing"
+	tagRenderChildTypeMismatch    = "RenderChildTypeMismatch"
+	tagRunLayoutCallbackInvalid   = "RunLayoutCallbackInvalid"
+)

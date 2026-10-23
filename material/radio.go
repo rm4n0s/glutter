@@ -170,7 +170,7 @@ func (s *radioState[T]) Build(bc widgets.BuildContext) widgets.Widget {
 	w := s.Widget()
 	if foundation.DebugMode && w.o.Enabled == foundation.Some(true) && w.o.OnChanged == nil && w.o.GroupRegistry == nil {
 		if _, ok := widgets.RadioGroupMaybeOf[T](bc); !ok {
-			panic(errors.New("RadioNoRegistry", "Radio is enabled but has no Radio.onChange or registry above"))
+			panic(errors.New(tagRadioNoRegistry, "Radio is enabled but has no Radio.onChange or registry above"))
 		}
 	}
 	DebugCheckHasMaterial(bc)
@@ -470,3 +470,8 @@ func newRadioDefaults(bc widgets.BuildContext) radioDefaults {
 	}
 	return d
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagRadioNoRegistry = "RadioNoRegistry"
+)

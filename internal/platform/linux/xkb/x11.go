@@ -31,7 +31,7 @@ func loadX11Library() (*x11Library, error) {
 		if appErr, ok := errors.FromError(err); ok {
 			md = appErr.Metadata
 		}
-		return nil, errors.New("XKBLoadFailed", "could not load libxkbcommon-x11",
+		return nil, errors.New(tagXKBLoadFailed, "could not load libxkbcommon-x11",
 			"names", md["names"], "dlerror", md["dlerror"])
 	}
 	l := new(x11Library)
@@ -69,11 +69,11 @@ func (c *Context) KeymapFromX11(conn uintptr) (*Keymap, int32, error) {
 	}
 	// Version 1.0 of the extension is what libxkbcommon-x11 needs.
 	if x11.setupExtension(conn, 1, 0, 0, 0, 0, 0, 0) == 0 {
-		return nil, 0, errors.New("XKBX11SetupFailed", "the X server has no usable XKB extension")
+		return nil, 0, errors.New(tagXKBX11SetupFailed, "the X server has no usable XKB extension")
 	}
 	device := x11.coreKeyboardID(conn)
 	if device == -1 {
-		return nil, 0, errors.New("XKBX11SetupFailed", "the X server has no core keyboard")
+		return nil, 0, errors.New(tagXKBX11SetupFailed, "the X server has no core keyboard")
 	}
 	km, err := c.newKeymap(x11.keymapNewDevice(c.ptr, conn, device, 0), "x11")
 	if err != nil {
@@ -93,7 +93,13 @@ func (k *Keymap) NewStateFromX11(conn uintptr, device int32) (*State, error) {
 	}
 	ptr := x11.stateNewDevice(k.ptr, conn, device)
 	if ptr == 0 {
-		return nil, errors.New("XKBStateFailed", "xkb_x11_state_new_from_device failed")
+		return nil, errors.New(tagXKBStateFailed, "xkb_x11_state_new_from_device failed")
 	}
 	return &State{lib: k.lib, ptr: ptr, scratch: dl.Calloc(1, scratchSize)}, nil
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagXKBStateFailed    = "XKBStateFailed"
+	tagXKBX11SetupFailed = "XKBX11SetupFailed"
+)

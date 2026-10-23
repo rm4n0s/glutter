@@ -360,7 +360,7 @@ func (s *failingSource) BeforeWait() error { return s.err }
 func TestSourceErrorEndsRunUnchanged(t *testing.T) {
 	l := newTestLoop(t)
 	r, _ := newPipe(t)
-	sentinel := errors.New("SourceFailed", "the source failed")
+	sentinel := errors.New(tagSourceFailed, "the source failed")
 	if err := l.AddSource(&failingSource{pipeSource: pipeSource{fd: r}, err: sentinel}); err != nil {
 		t.Fatal(err)
 	}
@@ -424,9 +424,14 @@ func TestSyscallFailures(t *testing.T) {
 			if !ok {
 				t.Fatalf("expected *errors.Error, got %T (%v)", err, err)
 			}
-			if appErr.Tag != "LoopSyscallFailed" || !appErr.HasRoute(tt.route) {
+			if appErr.Tag != tagLoopSyscallFailed || !appErr.HasRoute(tt.route) {
 				t.Errorf("Tag = %q, route = %s, want %s", appErr.Tag, appErr.Route(), tt.route)
 			}
 		})
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagSourceFailed = "SourceFailed"
+)

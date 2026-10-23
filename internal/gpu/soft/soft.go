@@ -30,10 +30,10 @@ const flattenTolerance = 0.05
 // Flutter: no counterpart (flutter_test renders with Skia's software backend)
 func Render(scene *ui.Scene, width, height int) (*image.RGBA, error) {
 	if scene == nil {
-		return nil, errors.New("SoftSceneNil", "Render needs a scene")
+		return nil, errors.New(tagSoftSceneNil, "Render needs a scene")
 	}
 	if width <= 0 || height <= 0 || width > maxSurfaceSize || height > maxSurfaceSize {
-		return nil, errors.New("SoftSizeInvalid", "The surface size is not valid.", "width", width, "height", height)
+		return nil, errors.New(tagSoftSizeInvalid, "The surface size is not valid.", "width", width, "height", height)
 	}
 	r := &renderer{img: image.NewRGBA(image.Rect(0, 0, width, height)), mips: map[*ui.Image][]*mipLevel{}}
 	if err := r.layer(scene.Root(), &state{m: ui.NewMatrix4Identity(), clip: newClip(r.img.Rect)}); err != nil {
@@ -248,7 +248,7 @@ func (r *renderer) drawOp(op ui.DisplayOp, st *state) error {
 	case ui.OpDrawParagraph:
 		return r.drawParagraph(v, st)
 	}
-	return notImplemented("operation", op)
+	return errors.NewErrf(tagSoftNotImplemented, "The software renderer does not support the operation %T yet.", op)
 }
 
 // drawParagraph draws the glyphs, shadows, backgrounds and decorations of a paragraph, each as
@@ -268,11 +268,6 @@ func (r *renderer) drawParagraph(v ui.OpDrawParagraph, st *state) error {
 		err = r.draw(op, sub)
 	})
 	return err
-}
-
-// notImplemented is the error for what a step after this one adds.
-func notImplemented(what string, v any) error {
-	return errors.NewErrf("SoftNotImplemented", "The software renderer does not support the %s %T yet.", what, v)
 }
 
 // paintSetup is what a drawing operation needs from a paint: the color to
@@ -613,3 +608,9 @@ func (ImageRasterizer) RasterizeScene(scene *ui.Scene, width, height int) (*ui.I
 	}
 	return ui.NewImageFromRGBA(img.Pix, width, height), nil
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagSoftSceneNil    = "SoftSceneNil"
+	tagSoftSizeInvalid = "SoftSizeInvalid"
+)

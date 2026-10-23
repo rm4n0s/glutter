@@ -267,7 +267,7 @@ func WidgetStateResolveAs[T any](value any, states WidgetStates) T {
 		var zero T
 		return zero
 	}
-	panic(errors.New("WidgetStateResolveAsType", "the value is neither a WidgetStateProperty nor the type that is resolved",
+	panic(errors.New(tagWidgetStateResolveAsType, "the value is neither a WidgetStateProperty nor the type that is resolved",
 		"value", reflect.TypeOf(value).String(), "type", reflect.TypeFor[T]().String()))
 }
 
@@ -392,7 +392,7 @@ func (p *WidgetStateMapper[T]) Resolve(states WidgetStates) T {
 	if isNullable(reflect.TypeFor[T]()) {
 		return zero
 	}
-	panic(errors.New("WidgetStateMapperNoMatch",
+	panic(errors.New(tagWidgetStateMapperNoMatch,
 		"The current set of widget states is "+states.String()+".\nNone of the provided map keys matched this set, "+
 			"and the type "+reflect.TypeFor[T]().String()+" is non-nullable.\n"+
 			"Consider using a nullable type (a pointer or a foundation.Opt), or adding the WidgetStateAny key to this map.",
@@ -692,3 +692,9 @@ func (c *WidgetStatesController) Update(state WidgetState, add bool) {
 		c.SetValue(value)
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagWidgetStateMapperNoMatch = "WidgetStateMapperNoMatch"
+	tagWidgetStateResolveAsType = "WidgetStateResolveAsType"
+)

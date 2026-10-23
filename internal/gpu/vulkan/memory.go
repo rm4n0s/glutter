@@ -165,7 +165,7 @@ func (a *allocator) alloc(req memoryRequirements, host, linear bool) (allocation
 	}
 	typeIndex, ok := a.props.findType(req.memoryTypeBits, required, preferred)
 	if !ok {
-		return allocation{}, errors.New("GPUOutOfMemory", "no memory type fits the resource",
+		return allocation{}, errors.New(tagGPUOutOfMemory, "no memory type fits the resource",
 			"type_bits", int(req.memoryTypeBits), "host", host)
 	}
 	key := allocKey{typeIndex, linear}

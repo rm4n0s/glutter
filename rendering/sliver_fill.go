@@ -46,7 +46,7 @@ func NewRenderSliverFillViewport(childManager RenderSliverBoxChildManager, opts 
 
 func assertViewportFraction(v float64) {
 	if foundation.DebugMode && !(v > 0) {
-		panic(errors.New("SliverViewportFractionInvalid", "the viewport fraction must be positive", "viewportFraction", v))
+		panic(errors.New(tagSliverViewportFractionInvalid, "the viewport fraction must be positive", "viewportFraction", v))
 	}
 }
 
@@ -122,7 +122,7 @@ func (r *RenderSliverFillViewport) VisitChildrenForSemantics(visitor RenderObjec
 
 func assertFillRemainingExtentFinite(extent float64) {
 	if foundation.DebugMode && (math.IsInf(extent, 0) || math.IsNaN(extent)) {
-		panic(errors.New("SliverFillRemainingExtentInfinite", "The calculated extent for the child of SliverFillRemaining is not finite. "+
+		panic(errors.New(tagSliverFillRemainingExtentInfinite, "The calculated extent for the child of SliverFillRemaining is not finite. "+
 			"This can happen if the child is a scrollable, in which case, the hasScrollBody property of SliverFillRemaining should not be set to false.",
 			"extent", extent))
 	}
@@ -130,7 +130,7 @@ func assertFillRemainingExtentFinite(extent float64) {
 
 func assertPaintedChildSize(s Sliver, size float64) {
 	if foundation.DebugMode && (math.IsInf(size, 0) || math.IsNaN(size) || size < 0) {
-		panic(errors.New("SliverPaintExtentInvalid", "the painted size of the child is not finite and not negative",
+		panic(errors.New(tagSliverPaintExtentInvalid, "the painted size of the child is not finite and not negative",
 			"object", foundation.DescribeIdentity(s), "paintedChildSize", size))
 	}
 }
@@ -309,3 +309,9 @@ func (r *RenderSliverFillRemainingAndOverscroll) PerformLayout() {
 		r.SetChildParentData(r.Child(), c, r.Geometry())
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagSliverFillRemainingExtentInfinite = "SliverFillRemainingExtentInfinite"
+	tagSliverViewportFractionInvalid     = "SliverViewportFractionInvalid"
+)

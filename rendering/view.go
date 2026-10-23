@@ -155,7 +155,7 @@ func (r *RenderView) Size() ui.Size { return r.size }
 func (r *RenderView) Configuration() ViewConfiguration {
 	c, ok := r.configuration.Get()
 	if !ok {
-		panic(errors.New("RenderViewNoConfiguration", "RenderView has not been given a configuration yet"))
+		panic(errors.New(tagRenderViewNoConfiguration, "RenderView has not been given a configuration yet"))
 	}
 	return c
 }
@@ -192,7 +192,7 @@ func (r *RenderView) Constraints() Constraints { return r.BoxConstraints() }
 // BoxConstraints are the logical constraints of the configuration.
 func (r *RenderView) BoxConstraints() BoxConstraints {
 	if !r.HasConfiguration() {
-		panic(errors.New("RenderViewNoConfiguration",
+		panic(errors.New(tagRenderViewNoConfiguration,
 			"constraints are not available because RenderView has not been given a configuration yet"))
 	}
 	return r.Configuration().LogicalConstraints
@@ -209,7 +209,7 @@ func (r *RenderView) FlutterView() *ui.View { return r.view }
 // Flutter: rendering/view.dart RenderView.prepareInitialFrame
 func (r *RenderView) PrepareInitialFrame() {
 	if foundation.DebugMode && (r.owner == nil || r.rootTransform != nil || !r.HasConfiguration()) {
-		panic(errors.New("PrepareInitialFrameInvalid",
+		panic(errors.New(tagPrepareInitialFrameInvalid,
 			"PrepareInitialFrame needs the view attached to a pipeline owner, with a configuration, and can only be called once"))
 	}
 	r.ScheduleInitialLayout()
@@ -233,7 +233,7 @@ func (r *RenderView) DebugAssertDoesMeetConstraints() {}
 //
 // Flutter: rendering/view.dart RenderView.performResize
 func (r *RenderView) PerformResize() {
-	panic(errors.New("RenderViewResize", "a RenderView is never resized"))
+	panic(errors.New(tagRenderViewResize, "a RenderView is never resized"))
 }
 
 // PerformLayout lays out the child with the view's constraints and takes its size
@@ -242,7 +242,7 @@ func (r *RenderView) PerformResize() {
 // Flutter: rendering/view.dart RenderView.performLayout
 func (r *RenderView) PerformLayout() {
 	if foundation.DebugMode && r.rootTransform == nil {
-		panic(errors.New("RenderViewNotPrepared", "the RenderView was laid out before PrepareInitialFrame"))
+		panic(errors.New(tagRenderViewNotPrepared, "the RenderView was laid out before PrepareInitialFrame"))
 	}
 	c := r.BoxConstraints()
 	sizedByChild := !c.IsTight()
@@ -293,7 +293,7 @@ func (r *RenderView) Paint(context *PaintingContext, offset ui.Offset) {
 // Flutter: rendering/view.dart RenderView.applyPaintTransform
 func (r *RenderView) ApplyPaintTransform(child RenderObject, transform *ui.Matrix4) {
 	if foundation.DebugMode && r.rootTransform == nil {
-		panic(errors.New("RenderViewNotPrepared", "ApplyPaintTransform was called before PrepareInitialFrame"))
+		panic(errors.New(tagRenderViewNotPrepared, "ApplyPaintTransform was called before PrepareInitialFrame"))
 	}
 	transform.MultiplyBy(r.rootTransform)
 	r.RenderObjectBase.ApplyPaintTransform(child, transform)
@@ -306,7 +306,7 @@ func (r *RenderView) ApplyPaintTransform(child RenderObject, transform *ui.Matri
 func (r *RenderView) CompositeFrame() error {
 	defer foundation.StartTraceRegion("COMPOSITING").End()
 	if foundation.DebugMode && (!r.HasConfiguration() || r.rootTransform == nil || isNil(r.layerHandle.Layer())) {
-		panic(errors.New("CompositeFrameNotPrepared",
+		panic(errors.New(tagCompositeFrameNotPrepared,
 			"the RenderView needs a configuration and PrepareInitialFrame before CompositeFrame"))
 	}
 	scene := r.layerHandle.Layer().AsContainerLayer().BuildScene(ui.NewSceneBuilder())
@@ -337,7 +337,7 @@ func (r *RenderView) PaintBounds() ui.Rect {
 // Flutter: rendering/view.dart RenderView.semanticBounds
 func (r *RenderView) SemanticBounds() ui.Rect {
 	if foundation.DebugMode && r.rootTransform == nil {
-		panic(errors.New("RenderViewNotPrepared", "SemanticBounds was read before PrepareInitialFrame"))
+		panic(errors.New(tagRenderViewNotPrepared, "SemanticBounds was read before PrepareInitialFrame"))
 	}
 	return r.rootTransform.TransformRect(ui.OffsetZero.And(r.size))
 }
@@ -391,3 +391,12 @@ func (r *RenderView) DebugFillProperties(p *foundation.DiagnosticPropertiesBuild
 		p.Add(foundation.NewDiagnosticsNodeMessage("semantics enabled"))
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagCompositeFrameNotPrepared  = "CompositeFrameNotPrepared"
+	tagPrepareInitialFrameInvalid = "PrepareInitialFrameInvalid"
+	tagRenderViewNoConfiguration  = "RenderViewNoConfiguration"
+	tagRenderViewNotPrepared      = "RenderViewNotPrepared"
+	tagRenderViewResize           = "RenderViewResize"
+)

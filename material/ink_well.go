@@ -702,7 +702,7 @@ func (s *inkResponseState) startNewSplash(details *gestures.TapDownDetails, from
 	if fromContext {
 		referenceBox := s.Context().FindRenderObject().(rendering.Box)
 		if foundation.DebugMode && !referenceBox.HasSize() {
-			panic(errorInkResponseNoSize())
+			panic(errors.New(tagInkResponseNoSize, "InkResponse must be done with layout before starting a splash."))
 		}
 		globalPosition = referenceBox.LocalToGlobal(referenceBox.PaintBounds().Center(), nil)
 	} else {
@@ -945,6 +945,7 @@ func (s *inkResponseState) Build(bc widgets.BuildContext) widgets.Widget {
 	}
 }
 
-func errorInkResponseNoSize() error {
-	return errors.New("InkResponseNoSize", "InkResponse must be done with layout before starting a splash.")
-}
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagInkResponseNoSize = "InkResponseNoSize"
+)

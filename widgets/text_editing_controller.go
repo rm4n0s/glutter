@@ -52,7 +52,7 @@ func NewTextEditingControllerFromValue(value services.TextEditingValue) *TextEdi
 
 func debugCheckComposing(value services.TextEditingValue) {
 	if foundation.DebugMode && value.Composing.IsValid() && !value.IsComposingRangeValid() {
-		panic(errors.New("TextEditingControllerComposingInvalid",
+		panic(errors.New(tagTextEditingControllerComposingInvalid,
 			"the value has an invalid non-empty composing range; it is recommended to use a valid composing range, even for read-only text fields",
 			"value", value.String(), "composing", value.Composing))
 	}
@@ -100,7 +100,7 @@ func (c *TextEditingController) Selection() services.TextSelection { return c.Va
 func (c *TextEditingController) SetSelection(newSelection services.TextSelection) {
 	text := c.Text()
 	if len(text) < newSelection.End() || len(text) < newSelection.Start() {
-		panic(errors.New("TextEditingControllerSelectionInvalid", "invalid text selection",
+		panic(errors.New(tagTextEditingControllerSelectionInvalid, "invalid text selection",
 			"selection", newSelection.String(), "textLength", len(text)))
 	}
 	composing := ui.TextRangeEmpty
@@ -143,7 +143,7 @@ func (c *TextEditingController) BuildTextSpan(bc BuildContext, style *painting.T
 	}
 	value := c.Value()
 	if foundation.DebugMode && value.Composing.IsValid() && withComposing && !value.IsComposingRangeValid() {
-		panic(errors.New("TextEditingControllerComposingInvalid", "the composing range is not valid for the text",
+		panic(errors.New(tagTextEditingControllerComposingInvalid, "the composing range is not valid for the text",
 			"composing", value.Composing, "textLength", len(value.Text)))
 	}
 	if !value.IsComposingRangeValid() || !withComposing {
@@ -160,3 +160,9 @@ func (c *TextEditingController) BuildTextSpan(bc BuildContext, style *painting.T
 		painting.NewTextSpan(painting.TextSpanOpts{Text: foundation.Some(value.Composing.TextAfter(value.Text))}),
 	}})
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagTextEditingControllerComposingInvalid = "TextEditingControllerComposingInvalid"
+	tagTextEditingControllerSelectionInvalid = "TextEditingControllerSelectionInvalid"
+)

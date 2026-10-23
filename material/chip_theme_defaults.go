@@ -52,7 +52,7 @@ func ChipThemeDataFromDefaults(secondaryColor ui.Color, labelStyle *painting.Tex
 	brightness := opts.Brightness
 	primary, hasPrimary := opts.PrimaryColor.Get()
 	if foundation.DebugMode && hasPrimary == (brightness != ui.BrightnessUnspecified) {
-		panic(errors.New("ChipThemeBrightnessAndColor", "exactly one of the primary color and the brightness of ChipThemeDataFromDefaults must be given",
+		panic(errors.New(tagChipThemeBrightnessAndColor, "exactly one of the primary color and the brightness of ChipThemeDataFromDefaults must be given",
 			"hasPrimaryColor", hasPrimary, "brightness", brightness.String()))
 	}
 	if hasPrimary {
@@ -89,3 +89,8 @@ func ChipThemeDataFromDefaults(secondaryColor ui.Color, labelStyle *painting.Tex
 		IconTheme:              foundation.Some(widgets.NewIconThemeData(widgets.IconThemeDataOpts{Size: foundation.Some(18.0)})),
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagChipThemeBrightnessAndColor = "ChipThemeBrightnessAndColor"
+)

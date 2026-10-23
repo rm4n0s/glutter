@@ -330,7 +330,7 @@ type layoutCache struct {
 func newLayoutCache(layout *textLayout, textAlignment, layoutMaxWidth, contentWidth float64) *layoutCache {
 	if foundation.DebugMode {
 		if !(textAlignment >= 0 && textAlignment <= 1) || math.IsNaN(layoutMaxWidth) || math.IsNaN(contentWidth) {
-			panic(errors.New("TextPainterLayoutCacheInvalid", "the layout cache needs a text alignment in 0..1 and numeric widths",
+			panic(errors.New(tagTextPainterLayoutCacheInvalid, "the layout cache needs a text alignment in 0..1 and numeric widths",
 				"textAlignment", textAlignment, "layoutMaxWidth", layoutMaxWidth, "contentWidth", contentWidth))
 		}
 	}
@@ -482,7 +482,7 @@ func NewTextPainter(opts ...TextPainterOpts) *TextPainter {
 			o.Text.DebugAssertIsValid()
 		}
 		if o.MaxLines.IsSome() && o.MaxLines.Value() <= 0 {
-			panic(errors.New("TextPainterMaxLinesInvalid", "maxLines must be greater than zero", "maxLines", o.MaxLines.Value()))
+			panic(errors.New(tagTextPainterMaxLinesInvalid, "maxLines must be greater than zero", "maxLines", o.MaxLines.Value()))
 		}
 	}
 	if o.TextAlign == ui.TextAlignUnspecified {
@@ -564,16 +564,16 @@ func TextPainterComputeMaxIntrinsicWidth(text InlineSpan, textDirection ui.TextD
 
 func (p *TextPainter) assertTextLayoutIsValid() {
 	if p.disposed {
-		panic(errors.New("TextPainterDisposed", "the TextPainter was disposed"))
+		panic(errors.New(tagTextPainterDisposed, "the TextPainter was disposed"))
 	}
 	if p.layoutCache == nil {
-		panic(errors.New("TextPainterLayoutNotAvailable", "Text layout not available: the TextPainter has never been laid out, or its layout was invalidated"))
+		panic(errors.New(tagTextPainterLayoutNotAvailable, "Text layout not available: the TextPainter has never been laid out, or its layout was invalidated"))
 	}
 }
 
 func (p *TextPainter) assertNoRelayoutNeeded() {
 	if foundation.DebugMode && p.debugNeedsRelayout {
-		panic(errors.New("TextPainterNeedsRelayout", "the TextPainter needs a layout after the textWidthBasis changed"))
+		panic(errors.New(tagTextPainterNeedsRelayout, "the TextPainter needs a layout after the textWidthBasis changed"))
 	}
 }
 
@@ -739,7 +739,7 @@ func (p *TextPainter) MaxLines() foundation.Opt[int] { return p.maxLines }
 // Flutter: painting/text_painter.dart TextPainter.maxLines
 func (p *TextPainter) SetMaxLines(value foundation.Opt[int]) {
 	if foundation.DebugMode && value.IsSome() && value.Value() <= 0 {
-		panic(errors.New("TextPainterMaxLinesInvalid", "maxLines must be greater than zero", "maxLines", value.Value()))
+		panic(errors.New(tagTextPainterMaxLinesInvalid, "maxLines must be greater than zero", "maxLines", value.Value()))
 	}
 	if p.maxLines == value {
 		return
@@ -865,7 +865,7 @@ func (p *TextPainter) SetPlaceholderDimensions(value []PlaceholderDimensions) {
 			return len(value) >= count
 		})
 		if count != len(value) {
-			panic(errors.New("TextPainterPlaceholderCountMismatch", "the number of placeholder dimensions doesn't match the placeholders of the text",
+			panic(errors.New(tagTextPainterPlaceholderCountMismatch, "the number of placeholder dimensions doesn't match the placeholders of the text",
 				"dimensions", len(value), "placeholders", count))
 		}
 	}
@@ -875,7 +875,7 @@ func (p *TextPainter) SetPlaceholderDimensions(value []PlaceholderDimensions) {
 
 func (p *TextPainter) createParagraphStyle(alignOverride ui.TextAlign) *ui.ParagraphStyle {
 	if foundation.DebugMode && p.textDirection == ui.TextDirectionUnspecified {
-		panic(errors.New("TextPainterDirectionNotSet", "TextPainter.textDirection must be set to a non-null value before using the TextPainter"))
+		panic(errors.New(tagTextPainterDirectionNotSet, "TextPainter.textDirection must be set to a non-null value before using the TextPainter"))
 	}
 	var base *TextStyle
 	if p.text != nil {
@@ -998,7 +998,7 @@ func (p *TextPainter) createParagraph(text InlineSpan) *ui.Paragraph {
 func (p *TextPainter) Layout(minWidth, maxWidth float64) {
 	if foundation.DebugMode {
 		if math.IsNaN(maxWidth) || math.IsNaN(minWidth) {
-			panic(errors.New("TextPainterConstraintsNaN", "the width constraints must be numbers", "minWidth", minWidth, "maxWidth", maxWidth))
+			panic(errors.New(tagTextPainterConstraintsNaN, "the width constraints must be numbers", "minWidth", minWidth, "maxWidth", maxWidth))
 		}
 		p.debugNeedsRelayout = false
 	}
@@ -1008,11 +1008,11 @@ func (p *TextPainter) Layout(minWidth, maxWidth float64) {
 	}
 	text := p.text
 	if text == nil {
-		panic(errors.New("TextPainterTextNotSet", "TextPainter.text must be set to a non-null value before using the TextPainter"))
+		panic(errors.New(tagTextPainterTextNotSet, "TextPainter.text must be set to a non-null value before using the TextPainter"))
 	}
 	textDirection := p.textDirection
 	if textDirection == ui.TextDirectionUnspecified {
-		panic(errors.New("TextPainterDirectionNotSet", "TextPainter.textDirection must be set to a non-null value before using the TextPainter"))
+		panic(errors.New(tagTextPainterDirectionNotSet, "TextPainter.textDirection must be set to a non-null value before using the TextPainter"))
 	}
 	paintOffsetAlignment := computePaintOffsetFraction(p.textAlign, textDirection)
 	adjustMaxWidth := math.IsInf(maxWidth, 0) && paintOffsetAlignment != 0
@@ -1052,7 +1052,7 @@ func (p *TextPainter) Layout(minWidth, maxWidth float64) {
 func (p *TextPainter) Paint(canvas *ui.Canvas, offset ui.Offset) {
 	cache := p.layoutCache
 	if cache == nil {
-		panic(errors.New("TextPainterPaintBeforeLayout", "TextPainter.paint called when text geometry was not yet calculated. "+
+		panic(errors.New(tagTextPainterPaintBeforeLayout, "TextPainter.paint called when text geometry was not yet calculated. "+
 			"Please call layout() before paint() to position the text before painting it."))
 	}
 	po := cache.paintOffset()
@@ -1283,7 +1283,7 @@ func (p *TextPainter) computeCaretMetrics(position ui.TextPosition) (lineCaretMe
 func (p *TextPainter) GetBoxesForSelection(selection ui.TextRange, opts ...ui.BoxesForRangeOpts) []ui.TextBox {
 	p.assertTextLayoutIsValid()
 	if foundation.DebugMode && !selection.IsValid() {
-		panic(errors.New("TextPainterSelectionInvalid", "the selection must be valid", "selection", selection.String()))
+		panic(errors.New(tagTextPainterSelectionInvalid, "the selection must be valid", "selection", selection.String()))
 	}
 	p.assertNoRelayoutNeeded()
 	cached := p.layoutCache
@@ -1402,10 +1402,25 @@ func (p *TextPainter) DebugDisposed() bool { return p.disposed }
 // Flutter: painting/text_painter.dart TextPainter.dispose
 func (p *TextPainter) Dispose() {
 	if foundation.DebugMode && p.disposed {
-		panic(errors.New("TextPainterDisposed", "the TextPainter was disposed"))
+		panic(errors.New(tagTextPainterDisposed, "the TextPainter was disposed"))
 	}
 	p.disposed = true
 	p.layoutTemplate = nil
 	p.layoutCache = nil
 	p.text = nil
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagTextPainterConstraintsNaN           = "TextPainterConstraintsNaN"
+	tagTextPainterDirectionNotSet          = "TextPainterDirectionNotSet"
+	tagTextPainterDisposed                 = "TextPainterDisposed"
+	tagTextPainterLayoutCacheInvalid       = "TextPainterLayoutCacheInvalid"
+	tagTextPainterLayoutNotAvailable       = "TextPainterLayoutNotAvailable"
+	tagTextPainterMaxLinesInvalid          = "TextPainterMaxLinesInvalid"
+	tagTextPainterNeedsRelayout            = "TextPainterNeedsRelayout"
+	tagTextPainterPaintBeforeLayout        = "TextPainterPaintBeforeLayout"
+	tagTextPainterPlaceholderCountMismatch = "TextPainterPlaceholderCountMismatch"
+	tagTextPainterSelectionInvalid         = "TextPainterSelectionInvalid"
+	tagTextPainterTextNotSet               = "TextPainterTextNotSet"
+)

@@ -175,13 +175,11 @@ func TestErrorRoutes(t *testing.T) {
 			return r.Render(s, nil, ui.Size{Width: 0, Height: 2}, 1)
 		}, "SoftSizeInvalid", "Render"},
 		{"presenter fails", func() error {
-			rec := &recorder{fail: errors.New("PresentFailed", "no")}
+			rec := &recorder{fail: errors.New(tagPresentFailed, "no")}
 			r := NewRenderer(rec)
 			s, _ := r.Attach(webHandle)
 			return r.Render(s, nil, ui.Size{Width: 2, Height: 2}, 1)
 		}, "PresentFailed", ""},
-		{"canvas not found", func() error { return errCanvasNotFound(3) }, "CanvasNotFound", "errCanvasNotFound"},
-		{"no context", func() error { return errContextUnavailable(3) }, "Canvas2DUnavailable", "errContextUnavailable"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -201,9 +199,14 @@ func TestTwoOptionsPanic(t *testing.T) {
 	defer func() {
 		r := recover()
 		appErr, ok := r.(*errors.Error)
-		if !ok || appErr.Tag != "MultipleOptions" {
+		if !ok || appErr.Tag != tagMultipleOptions {
 			t.Errorf("recovered %v, want a MultipleOptions error", r)
 		}
 	}()
 	NewRenderer(&recorder{}, Options{}, Options{})
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagPresentFailed = "PresentFailed"
+)

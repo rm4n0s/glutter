@@ -108,7 +108,7 @@ func (w *window) KeepScreenOn(on bool) error {
 	}
 	mgr := w.p.sess.idleInhibit
 	if mgr == nil {
-		return errors.New("IdleInhibitUnavailable", "the compositor has no zwp_idle_inhibit_manager_v1",
+		return errors.New(tagIdleInhibitUnavailable, "the compositor has no zwp_idle_inhibit_manager_v1",
 			"interface", wl.ZwpIdleInhibitManagerV1Interface.Name)
 	}
 	w.inhibitor = mgr.CreateInhibitor(w.surface)
@@ -255,3 +255,8 @@ func (w *window) PortalHandle(done func(handle string)) {
 		}
 	}})
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagIdleInhibitUnavailable = "IdleInhibitUnavailable"
+)

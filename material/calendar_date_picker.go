@@ -484,9 +484,9 @@ func newMonthPicker(a monthPickerArgs) *monthPicker {
 	if foundation.DebugMode {
 		switch {
 		case a.firstDate.After(a.lastDate):
-			panic(errors.New("MonthPickerFirstDateAfterLastDate", "the first date of a month picker must not be after the last date"))
+			panic(errors.New(tagMonthPickerFirstDateAfterLastDate, "the first date of a month picker must not be after the last date"))
 		case !a.selectedDate.IsZero() && (a.selectedDate.Before(a.firstDate) || a.selectedDate.After(a.lastDate)):
-			panic(errors.New("MonthPickerSelectedDateOutOfRange", "the selected date of a month picker must be between the first and the last date", "selectedDate", a.selectedDate))
+			panic(errors.New(tagMonthPickerSelectedDateOutOfRange, "the selected date of a month picker must be between the first and the last date", "selectedDate", a.selectedDate))
 		}
 	}
 	return &monthPicker{StatefulWidget: widgets.NewStatefulWidgetBase(widgets.WidgetOpts{Key: a.key}), a: a}
@@ -1084,7 +1084,7 @@ func NewYearPicker(firstDate, lastDate, selectedDate time.Time, onChanged func(t
 		o.CalendarDelegate = NewGregorianCalendarDelegate()
 	}
 	if foundation.DebugMode && firstDate.After(lastDate) {
-		panic(errors.New("YearPickerFirstDateAfterLastDate", "the first date of a year picker must not be after the last date", "firstDate", firstDate, "lastDate", lastDate))
+		panic(errors.New(tagYearPickerFirstDateAfterLastDate, "the first date of a year picker must not be after the last date", "firstDate", firstDate, "lastDate", lastDate))
 	}
 	current := o.CurrentDate
 	if current.IsZero() {
@@ -1266,3 +1266,10 @@ func (d *yearPickerGridDelegate) GetLayout(constraints rendering.SliverConstrain
 }
 
 func (d *yearPickerGridDelegate) ShouldRelayout(rendering.SliverGridDelegate) bool { return false }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagMonthPickerFirstDateAfterLastDate = "MonthPickerFirstDateAfterLastDate"
+	tagMonthPickerSelectedDateOutOfRange = "MonthPickerSelectedDateOutOfRange"
+	tagYearPickerFirstDateAfterLastDate  = "YearPickerFirstDateAfterLastDate"
+)

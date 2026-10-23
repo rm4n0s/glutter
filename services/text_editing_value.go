@@ -139,7 +139,7 @@ func (v TextEditingValue) String() string {
 // with the tag TextEditingValueRangeOutOfBounds.
 func replaceRange(text string, r ui.TextRange, replacement string) string {
 	if r.Start < 0 || r.End < r.Start || r.End > len(text) {
-		panic(errors.New("TextEditingValueRangeOutOfBounds", "the range is not inside the text",
+		panic(errors.New(tagTextEditingValueRangeOutOfBounds, "the range is not inside the text",
 			"start", r.Start, "end", r.End, "length", len(text)))
 	}
 	return text[:r.Start] + replacement + text[r.End:]
@@ -161,3 +161,8 @@ func debugCheckRange(tag, what string, r ui.TextRange, text string) {
 
 // first returns the one options value of a trailing opts parameter.
 func first[T any](o []T) T { return opts.First(o) }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagTextEditingValueRangeOutOfBounds = "TextEditingValueRangeOutOfBounds"
+)

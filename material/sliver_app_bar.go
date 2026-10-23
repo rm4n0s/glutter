@@ -207,14 +207,14 @@ func newSliverAppBar(variant sliverAppVariant, opts []SliverAppBarOpts) *SliverA
 	o.ToolbarHeight = foundation.Some(o.ToolbarHeight.OrElse(defaultToolbarHeight))
 	if foundation.DebugMode {
 		if !o.Floating && o.Snap {
-			panic(errors.New("SliverAppBarSnapNotFloating", "The \"snap\" argument only makes sense for floating app bars."))
+			panic(errors.New(tagSliverAppBarSnapNotFloating, "The \"snap\" argument only makes sense for floating app bars."))
 		}
 		if !(o.StretchTriggerOffset.OrElse(100.0) > 0.0) {
-			panic(errors.New("SliverAppBarStretchTriggerOffset", "stretchTriggerOffset must be greater than zero",
+			panic(errors.New(tagSliverAppBarStretchTriggerOffset, "stretchTriggerOffset must be greater than zero",
 				"stretchTriggerOffset", o.StretchTriggerOffset.Value()))
 		}
 		if o.CollapsedHeight.IsSome() && o.CollapsedHeight.Value() < o.ToolbarHeight.Value() {
-			panic(errors.New("SliverAppBarCollapsedHeight", "The \"collapsedHeight\" argument has to be larger than or equal to [toolbarHeight].",
+			panic(errors.New(tagSliverAppBarCollapsedHeight, "The \"collapsedHeight\" argument has to be larger than or equal to [toolbarHeight].",
 				"collapsedHeight", o.CollapsedHeight.Value(), "toolbarHeight", o.ToolbarHeight.Value()))
 		}
 	}
@@ -555,7 +555,7 @@ func (w *scrollUnderFlexibleSpace) Build(bc widgets.BuildContext) widgets.Widget
 	defaults := appBarDefaults(ThemeOf(bc))
 	settings, ok := widgets.DependOn[*FlexibleSpaceBarSettings](bc)
 	if !ok {
-		panic(errors.New("ScrollUnderFlexibleSpaceNoSettings", "a medium or large SliverAppBar needs FlexibleSpaceBarSettings above its flexible space"))
+		panic(errors.New(tagScrollUnderFlexibleSpaceNoSettings, "a medium or large SliverAppBar needs FlexibleSpaceBarSettings above its flexible space"))
 	}
 	config := w.configBuilder(bc)
 
@@ -741,3 +741,11 @@ func (r *renderExpandedTitleBox) PerformLayout() {
 	child.Layout(constraints.WidthConstraints().Deflate(r.padding), rendering.LayoutOpts{ParentUsesSize: true})
 	rendering.BoxParentDataOf(child).Offset = r.childOffsetFromSize(child.Size(), r.Size())
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagScrollUnderFlexibleSpaceNoSettings = "ScrollUnderFlexibleSpaceNoSettings"
+	tagSliverAppBarCollapsedHeight        = "SliverAppBarCollapsedHeight"
+	tagSliverAppBarSnapNotFloating        = "SliverAppBarSnapNotFloating"
+	tagSliverAppBarStretchTriggerOffset   = "SliverAppBarStretchTriggerOffset"
+)

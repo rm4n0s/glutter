@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"syscall/js"
 
+	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/internal/gpu"
 )
 
@@ -48,11 +49,12 @@ func (p *canvasPresenter) find(h gpu.SurfaceHandle) (*target, error) {
 	}
 	canvas := js.Global().Get("document").Call("querySelector", "canvas["+viewAttribute+`="`+strconv.FormatUint(uint64(h.Window), 10)+`"]`)
 	if !canvas.Truthy() {
-		return nil, errCanvasNotFound(h.Window)
+		return nil, errors.New(tagCanvasNotFound, "there is no canvas for the view in the page", "view", strconv.FormatUint(uint64(h.Window), 10))
 	}
 	ctx := canvas.Call("getContext", "2d", map[string]any{"alpha": false})
 	if !ctx.Truthy() {
-		return nil, errContextUnavailable(h.Window)
+		// A canvas keeps the first kind of context it was asked for (SPEC §9.6).
+		return nil, errors.New(tagCanvas2DUnavailable, "the canvas gave no 2D context", "view", strconv.FormatUint(uint64(h.Window), 10))
 	}
 	t := &target{canvas: canvas, ctx: ctx}
 	p.targets[h.Window] = t
@@ -97,3 +99,9 @@ func (p *canvasPresenter) Present(h gpu.SurfaceHandle, img *image.RGBA) error {
 
 // Release forgets the canvas of the handle.
 func (p *canvasPresenter) Release(h gpu.SurfaceHandle) { delete(p.targets, h.Window) }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagCanvas2DUnavailable = "Canvas2DUnavailable"
+	tagCanvasNotFound      = "CanvasNotFound"
+)

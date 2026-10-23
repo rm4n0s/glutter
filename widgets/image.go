@@ -56,7 +56,7 @@ func PrecacheImage(provider painting.ImageProvider, bc BuildContext, opts ...Pre
 			if o.OnError != nil {
 				o.OnError(err)
 			} else {
-				binding.ErrorReporter()(errors.NewErr("ImagePrecacheFailed", err))
+				binding.ErrorReporter()(errors.NewErr(tagImagePrecacheFailed, err))
 			}
 		}})
 	stream.AddListener(listener)
@@ -221,10 +221,10 @@ func NewImage(image painting.ImageProvider, opts ...ImageOpts) *Image {
 
 func assertCacheSize(width, height foundation.Opt[int]) {
 	if v, ok := width.Get(); ok && v <= 0 && foundation.DebugMode {
-		panic(errors.New("ImageInvalid", "cacheWidth must be greater than zero", "cacheWidth", v))
+		panic(errors.New(tagImageInvalid, "cacheWidth must be greater than zero", "cacheWidth", v))
 	}
 	if v, ok := height.Get(); ok && v <= 0 && foundation.DebugMode {
-		panic(errors.New("ImageInvalid", "cacheHeight must be greater than zero", "cacheHeight", v))
+		panic(errors.New(tagImageInvalid, "cacheHeight must be greater than zero", "cacheHeight", v))
 	}
 }
 
@@ -700,7 +700,7 @@ type ImageIcon struct {
 func NewImageIcon(image painting.ImageProvider, opts ...ImageIconOpts) *ImageIcon {
 	o := firstOpts(opts)
 	if foundation.DebugMode && o.UseOriginalColors && o.Color.IsSome() {
-		panic(errors.New("ImageIconColorAndOriginal", "cannot provide a color while useOriginalColors is true; to use a specific color, set useOriginalColors to false or omit it"))
+		panic(errors.New(tagImageIconColorAndOriginal, "cannot provide a color while useOriginalColors is true; to use a specific color, set useOriginalColors to false or omit it"))
 	}
 	return &ImageIcon{NewStatelessWidgetBase(WidgetOpts{Key: o.Key}), image, o}
 }
@@ -725,3 +725,10 @@ func (w *ImageIcon) Build(bc BuildContext) Widget {
 	return NewSemantics(NewImage(w.image, ImageOpts{Width: sizeOpt, Height: sizeOpt, Color: imageColor, Fit: painting.BoxFitScaleDown,
 		ExcludeFromSemantics: true}), SemanticsOpts{Label: w.o.SemanticLabel})
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagImageIconColorAndOriginal = "ImageIconColorAndOriginal"
+	tagImageInvalid              = "ImageInvalid"
+	tagImagePrecacheFailed       = "ImagePrecacheFailed"
+)

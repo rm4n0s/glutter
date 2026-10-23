@@ -223,23 +223,23 @@ func NewNavigationRail(destinations []NavigationRailDestination, selectedIndex f
 	o := firstOpts(opts)
 	if foundation.DebugMode {
 		if i, ok := selectedIndex.Get(); ok && (i < 0 || i >= len(destinations)) {
-			panic(errors.New("NavigationRailSelectedIndex", "the selected index of a NavigationRail must be null or one of its destinations", "selectedIndex", i, "destinations", len(destinations)))
+			panic(errors.New(tagNavigationRailSelectedIndex, "the selected index of a NavigationRail must be null or one of its destinations", "selectedIndex", i, "destinations", len(destinations)))
 		}
 		if v, ok := o.Elevation.Get(); ok && v <= 0 {
-			panic(errors.New("NavigationRailElevation", "the elevation of a NavigationRail must be greater than zero", "elevation", v))
+			panic(errors.New(tagNavigationRailElevation, "the elevation of a NavigationRail must be greater than zero", "elevation", v))
 		}
 		if v, ok := o.MinWidth.Get(); ok && v <= 0 {
-			panic(errors.New("NavigationRailMinWidth", "the minimum width of a NavigationRail must be greater than zero", "minWidth", v))
+			panic(errors.New(tagNavigationRailMinWidth, "the minimum width of a NavigationRail must be greater than zero", "minWidth", v))
 		}
 		if v, ok := o.MinExtendedWidth.Get(); ok && v <= 0 {
-			panic(errors.New("NavigationRailMinExtendedWidth", "the minimum extended width of a NavigationRail must be greater than zero", "minExtendedWidth", v))
+			panic(errors.New(tagNavigationRailMinExtendedWidth, "the minimum extended width of a NavigationRail must be greater than zero", "minExtendedWidth", v))
 		}
 		if o.MinWidth.IsSome() && o.MinExtendedWidth.IsSome() && o.MinExtendedWidth.Value() < o.MinWidth.Value() {
-			panic(errors.New("NavigationRailMinWidths", "the minimum extended width of a NavigationRail must not be smaller than its minimum width",
+			panic(errors.New(tagNavigationRailMinWidths, "the minimum extended width of a NavigationRail must not be smaller than its minimum width",
 				"minWidth", o.MinWidth.Value(), "minExtendedWidth", o.MinExtendedWidth.Value()))
 		}
 		if o.Extended && o.LabelType != NavigationRailLabelTypeUnspecified && o.LabelType != NavigationRailLabelTypeNone {
-			panic(errors.New("NavigationRailExtendedLabels", "an extended NavigationRail can only have the label type none", "labelType", o.LabelType.Name()))
+			panic(errors.New(tagNavigationRailExtendedLabels, "an extended NavigationRail can only have the label type none", "labelType", o.LabelType.Name()))
 		}
 	}
 	return &NavigationRail{StatefulWidget: widgets.NewStatefulWidgetBase(widgets.WidgetOpts{Key: o.Key}),
@@ -286,7 +286,7 @@ func (w *navigationRailExtendedAnimation) UpdateShouldNotify(old widgets.Widget)
 func NavigationRailExtendedAnimation(bc widgets.BuildContext) animation.Animation[float64] {
 	a, ok := widgets.DependOn[*navigationRailExtendedAnimation](bc)
 	if !ok {
-		panic(errors.New("NavigationRailExtendedAnimationMissing", "NavigationRailExtendedAnimation was called with a context that does not contain a NavigationRail.",
+		panic(errors.New(tagNavigationRailExtendedAnimationMissing, "NavigationRailExtendedAnimation was called with a context that does not contain a NavigationRail.",
 			"widget", foundation.RuntimeTypeName(bc.Widget())))
 	}
 	return a.animation
@@ -804,3 +804,14 @@ func navigationRailDefaultsM3(theme *ThemeData) NavigationRailThemeData {
 		IndicatorShape: painting.NewStadiumBorder(),
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagNavigationRailElevation                = "NavigationRailElevation"
+	tagNavigationRailExtendedAnimationMissing = "NavigationRailExtendedAnimationMissing"
+	tagNavigationRailExtendedLabels           = "NavigationRailExtendedLabels"
+	tagNavigationRailMinExtendedWidth         = "NavigationRailMinExtendedWidth"
+	tagNavigationRailMinWidth                 = "NavigationRailMinWidth"
+	tagNavigationRailMinWidths                = "NavigationRailMinWidths"
+	tagNavigationRailSelectedIndex            = "NavigationRailSelectedIndex"
+)

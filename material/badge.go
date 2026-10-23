@@ -105,10 +105,10 @@ func NewBadgeCount(count int, child widgets.Widget, opts ...BadgeCountOpts) *Bad
 	maxCount := o.MaxCount.OrElse(999)
 	if foundation.DebugMode {
 		if count < 0 {
-			panic(errors.New("BadgeCountNegative", "count must be non-negative", "count", count))
+			panic(errors.New(tagBadgeCountNegative, "count must be non-negative", "count", count))
 		}
 		if maxCount <= 0 {
-			panic(errors.New("BadgeMaxCountNotPositive", "maxCount must be positive", "maxCount", maxCount))
+			panic(errors.New(tagBadgeMaxCountNotPositive, "maxCount must be positive", "maxCount", maxCount))
 		}
 	}
 	label := strconv.Itoa(count)
@@ -371,3 +371,9 @@ func (r *renderIntrinsicHorizontalStadium) ComputeDryBaseline(constraints render
 func (r *renderIntrinsicHorizontalStadium) PerformLayout() {
 	r.SetSize(r.computeSize(rendering.ChildLayoutHelper.LayoutChild, r.BoxConstraints()))
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagBadgeCountNegative       = "BadgeCountNegative"
+	tagBadgeMaxCountNotPositive = "BadgeMaxCountNotPositive"
+)

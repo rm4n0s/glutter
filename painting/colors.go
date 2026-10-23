@@ -52,7 +52,7 @@ func dartRound(v float64) int { return int(math.Round(v)) }
 
 func checkUnit(name string, v float64, hi float64, owner string) {
 	if foundation.DebugMode && !(v >= 0.0 && v <= hi) {
-		panic(errors.New("ColorComponentOutOfRange", name+" is out of range", "owner", owner, "component", name, "value", v, "max", hi))
+		panic(errors.New(tagColorComponentOutOfRange, name+" is out of range", "owner", owner, "component", name, "value", v, "max", hi))
 	}
 }
 
@@ -400,3 +400,8 @@ func ptr[T any](v T) *T { return &v }
 func NewColorProperty(name string, value foundation.Opt[ui.Color], opts ...foundation.DiagnosticsPropertyOpts) *foundation.DiagnosticsProperty {
 	return foundation.NewDiagnosticsPropertyOpt(name, value, opts...)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagColorComponentOutOfRange = "ColorComponentOutOfRange"
+)

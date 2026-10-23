@@ -38,7 +38,7 @@ func Open(names ...string) (*Lib, error) {
 	if lastErr != nil {
 		dlerror = lastErr.Error()
 	}
-	return nil, errors.New("LibraryLoadFailed", "could not load the library",
+	return nil, errors.New(tagLibraryLoadFailed, "could not load the library",
 		"names", names, "dlerror", dlerror)
 }
 
@@ -55,7 +55,7 @@ func OpenOverride(env string, names ...string) (*Lib, error) {
 		return Open(names...)
 	}
 	if !filepath.IsAbs(path) {
-		return nil, errors.New("LibraryOverrideInvalid", "the library override is not an absolute path",
+		return nil, errors.New(tagLibraryOverrideInvalid, "the library override is not an absolute path",
 			"env", env, "path", path)
 	}
 	return Open(path)
@@ -75,7 +75,7 @@ func (l *Lib) Name() string { return l.name }
 // Flutter: no counterpart
 func (l *Lib) Bind(fptr any, symbol string) error {
 	if _, err := purego.Dlsym(l.handle, symbol); err != nil {
-		return errors.NewErr("SymbolMissing", err).SetMetadata("library", l.name, "symbol", symbol)
+		return errors.NewErr(tagSymbolMissing, err).SetMetadata("library", l.name, "symbol", symbol)
 	}
 	purego.RegisterLibFunc(fptr, l.handle, symbol)
 	return nil
@@ -88,3 +88,10 @@ func (l *Lib) Has(symbol string) bool {
 	_, err := purego.Dlsym(l.handle, symbol)
 	return err == nil
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagLibraryLoadFailed      = "LibraryLoadFailed"
+	tagLibraryOverrideInvalid = "LibraryOverrideInvalid"
+	tagSymbolMissing          = "SymbolMissing"
+)

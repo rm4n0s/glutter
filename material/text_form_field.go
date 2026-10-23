@@ -63,10 +63,10 @@ func NewTextFormField(opts ...TextFormFieldOpts) *TextFormField {
 	o := firstOpts(opts)
 	if foundation.DebugMode {
 		if o.InitialValue.IsSome() && o.Controller != nil {
-			panic(errors.New("TextFormFieldInitialValueWithController", "a TextFormField can't have both an initialValue and a controller"))
+			panic(errors.New(tagTextFormFieldInitialValueWithController, "a TextFormField can't have both an initialValue and a controller"))
 		}
 		if o.ErrorBuilder != nil && o.Decoration != nil && o.Decoration.ErrorText.IsSome() {
-			panic(errors.New("TextFormFieldErrorBuilderWithErrorText", "declaring both errorBuilder and decoration.errorText is not supported"))
+			panic(errors.New(tagTextFormFieldErrorBuilderWithErrorText, "declaring both errorBuilder and decoration.errorText is not supported"))
 		}
 	}
 	// Check the parameters of the text field now, as Flutter's constructor does.
@@ -266,3 +266,9 @@ func (s *textFormFieldState) buildField(field *widgets.FormFieldState[string]) w
 	}
 	return NewTextField(o)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagTextFormFieldErrorBuilderWithErrorText  = "TextFormFieldErrorBuilderWithErrorText"
+	tagTextFormFieldInitialValueWithController = "TextFormFieldInitialValueWithController"
+)

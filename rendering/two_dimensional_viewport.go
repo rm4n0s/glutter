@@ -44,7 +44,7 @@ var ChildVicinityInvalid = ChildVicinity{XIndex: -1, YIndex: -1}
 // Flutter: widgets/two_dimensional_viewport.dart ChildVicinity.new
 func NewChildVicinity(xIndex, yIndex int) ChildVicinity {
 	if foundation.DebugMode && (xIndex < -1 || yIndex < -1) {
-		panic(errors.New("ChildVicinityInvalid", "the indices of a ChildVicinity must not be less than -1", "xIndex", xIndex, "yIndex", yIndex))
+		panic(errors.New(tagChildVicinityInvalid, "the indices of a ChildVicinity must not be less than -1", "xIndex", xIndex, "yIndex", yIndex))
 	}
 	return ChildVicinity{XIndex: xIndex, YIndex: yIndex}
 }
@@ -141,7 +141,7 @@ func (d *TwoDimensionalViewportParentData) IsVisible() bool {
 	extent, ok := d.paintExtent.Get()
 	if !ok {
 		if foundation.DebugMode {
-			panic(errors.New("ParentDataPaintExtentUnknown", "the paint extent of the child has not been determined yet; the paint extent, and therefore the visibility, of a child of a RenderTwoDimensionalViewport is computed after LayoutChildSequence"))
+			panic(errors.New(tagParentDataPaintExtentUnknown, "the paint extent of the child has not been determined yet; the paint extent, and therefore the visibility, of a child of a RenderTwoDimensionalViewport is computed after LayoutChildSequence"))
 		}
 		return false
 	}
@@ -334,10 +334,10 @@ func InitRenderTwoDimensionalViewport(r *RenderTwoDimensionalViewport, self TwoD
 	o := firstOpts(opts)
 	if foundation.DebugMode {
 		if verticalAxisDirection != painting.AxisDirectionDown && verticalAxisDirection != painting.AxisDirectionUp {
-			panic(errors.New("TwoDimensionalViewportAxisInvalid", "TwoDimensionalViewport.verticalAxisDirection is not Axis.vertical"))
+			panic(errors.New(tagTwoDimensionalViewportAxisInvalid, "TwoDimensionalViewport.verticalAxisDirection is not Axis.vertical"))
 		}
 		if horizontalAxisDirection != painting.AxisDirectionLeft && horizontalAxisDirection != painting.AxisDirectionRight {
-			panic(errors.New("TwoDimensionalViewportAxisInvalid", "TwoDimensionalViewport.horizontalAxisDirection is not Axis.horizontal"))
+			panic(errors.New(tagTwoDimensionalViewportAxisInvalid, "TwoDimensionalViewport.horizontalAxisDirection is not Axis.horizontal"))
 		}
 	}
 	if o.ClipBehavior == ui.ClipUnspecified {
@@ -578,7 +578,7 @@ func (r *RenderTwoDimensionalViewport) ParentDataOf(child Box) *TwoDimensionalVi
 			}
 		}
 		if !known {
-			panic(errors.New("TwoDimensionalViewportChildUnknown", "the child is not a child of the viewport",
+			panic(errors.New(tagTwoDimensionalViewportChildUnknown, "the child is not a child of the viewport",
 				"object", foundation.DescribeIdentity(r.self), "child", foundation.DescribeIdentity(child)))
 		}
 	}
@@ -953,15 +953,15 @@ func (r *RenderTwoDimensionalViewport) PerformLayout() {
 		r.childManager.EndLayout()
 		if foundation.DebugMode {
 			if len(r.debugOrphans) > 0 {
-				panic(errors.New("TwoDimensionalViewportOrphans", "children are left that no slot refers to", "object", foundation.DescribeIdentity(r.self)))
+				panic(errors.New(tagTwoDimensionalViewportOrphans, "children are left that no slot refers to", "object", foundation.DescribeIdentity(r.self)))
 			}
 			if len(r.debugDanglingKeepAlives) > 0 {
-				panic(errors.New("TwoDimensionalViewportDanglingKeepAlives", "kept alive children are left that no slot refers to", "object", foundation.DescribeIdentity(r.self)))
+				panic(errors.New(tagTwoDimensionalViewportDanglingKeepAlives, "kept alive children are left that no slot refers to", "object", foundation.DescribeIdentity(r.self)))
 			}
 			// Ensure nothing is kept alive that should not be any longer.
 			for _, child := range r.keepAliveBucket.values() {
 				if !r.ParentDataOf(child).KeepAlive {
-					panic(errors.New("TwoDimensionalViewportKeepAliveStale", "a child is kept alive that does not ask for it", "object", foundation.DescribeIdentity(r.self)))
+					panic(errors.New(tagTwoDimensionalViewportKeepAliveStale, "a child is kept alive that does not ask for it", "object", foundation.DescribeIdentity(r.self)))
 				}
 			}
 		}
@@ -1059,10 +1059,10 @@ func (r *RenderTwoDimensionalViewport) debugCheckContentDimensions() {
 	const hint = "Subclasses should call ApplyContentDimensions on the verticalOffset and horizontalOffset to set the min and max scroll offset. " +
 		"If the contents exceed one or both sides of the viewportDimension, ensure the viewportDimension height or width is subtracted in that axis for the correct extent."
 	if p, ok := r.verticalOffset.(hasContentDimensions); ok && !p.HasContentDimensions() {
-		panic(errors.New("TwoDimensionalViewportContentDimensions", "the verticalOffset was not given content dimensions during LayoutChildSequence", "hint", hint))
+		panic(errors.New(tagTwoDimensionalViewportContentDimensions, "the verticalOffset was not given content dimensions during LayoutChildSequence", "hint", hint))
 	}
 	if p, ok := r.horizontalOffset.(hasContentDimensions); ok && !p.HasContentDimensions() {
-		panic(errors.New("TwoDimensionalViewportContentDimensions", "the horizontalOffset was not given content dimensions during LayoutChildSequence", "hint", hint))
+		panic(errors.New(tagTwoDimensionalViewportContentDimensions, "the horizontalOffset was not given content dimensions during LayoutChildSequence", "hint", hint))
 	}
 }
 
@@ -1074,11 +1074,11 @@ func (r *RenderTwoDimensionalViewport) debugCheckContentDimensions() {
 func (r *RenderTwoDimensionalViewport) BuildOrObtainChildFor(vicinity ChildVicinity) Box {
 	if foundation.DebugMode {
 		if vicinity == ChildVicinityInvalid {
-			panic(errors.New("ChildVicinityInvalid", "the vicinity is invalid", "object", foundation.DescribeIdentity(r.self)))
+			panic(errors.New(tagChildVicinityInvalid, "the vicinity is invalid", "object", foundation.DescribeIdentity(r.self)))
 		}
 		// This should only be called during layout.
 		if !r.DebugDoingThisLayout() {
-			panic(errors.New("TwoDimensionalViewportBuildOutsideLayout", "BuildOrObtainChildFor can only be called during LayoutChildSequence",
+			panic(errors.New(tagTwoDimensionalViewportBuildOutsideLayout, "BuildOrObtainChildFor can only be called during LayoutChildSequence",
 				"object", foundation.DescribeIdentity(r.self)))
 		}
 	}
@@ -1109,7 +1109,7 @@ func (r *RenderTwoDimensionalViewport) UpdateChildPaintData(child Box) {
 	data := r.ParentDataOf(child)
 	layoutOffset, ok := data.LayoutOffset.Get()
 	if !ok {
-		panic(errors.New("TwoDimensionalViewportLayoutOffsetMissing",
+		panic(errors.New(tagTwoDimensionalViewportLayoutOffsetMissing,
 			"the child with ChildVicinity"+data.Vicinity.String()+" was not provided a layoutOffset; this should be set during LayoutChildSequence, representing the position of the child",
 			"object", foundation.DescribeIdentity(r.self)))
 	}
@@ -1190,7 +1190,7 @@ func (r *RenderTwoDimensionalViewport) ComputeAbsolutePaintOffsetFor(child Box, 
 	case painting.AxisDirectionLeft:
 		xOffset = viewport.Width - (layoutOffset.Dx + child.Size().Width)
 	default:
-		panic(errors.New("TwoDimensionalViewportAxisInvalid", "the horizontal axis direction is not horizontal"))
+		panic(errors.New(tagTwoDimensionalViewportAxisInvalid, "the horizontal axis direction is not horizontal"))
 	}
 	switch r.verticalAxisDirection {
 	case painting.AxisDirectionUp:
@@ -1198,7 +1198,7 @@ func (r *RenderTwoDimensionalViewport) ComputeAbsolutePaintOffsetFor(child Box, 
 	case painting.AxisDirectionDown:
 		yOffset = layoutOffset.Dy
 	default:
-		panic(errors.New("TwoDimensionalViewportAxisInvalid", "the vertical axis direction is not vertical"))
+		panic(errors.New(tagTwoDimensionalViewportAxisInvalid, "the vertical axis direction is not vertical"))
 	}
 	return ui.Offset{Dx: xOffset, Dy: yOffset}
 }
@@ -1238,7 +1238,7 @@ func (r *RenderTwoDimensionalViewport) InsertChild(child Box, slot ChildVicinity
 			r.debugOrphans = append(r.debugOrphans, existing)
 		}
 		if r.keepAliveBucket.containsValue(child) {
-			panic(errors.New("TwoDimensionalViewportInsertKeptAlive", "a child that is kept alive was inserted again", "object", foundation.DescribeIdentity(r.self)))
+			panic(errors.New(tagTwoDimensionalViewportInsertKeptAlive, "a child that is kept alive was inserted again", "object", foundation.DescribeIdentity(r.self)))
 		}
 	}
 	r.children.set(slot, child)
@@ -1361,3 +1361,18 @@ func (r *RenderTwoDimensionalViewport) Dispose() {
 func (r *RenderTwoDimensionalViewport) AsRenderTwoDimensionalViewport() *RenderTwoDimensionalViewport {
 	return r
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagChildVicinityInvalid                      = "ChildVicinityInvalid"
+	tagParentDataPaintExtentUnknown              = "ParentDataPaintExtentUnknown"
+	tagTwoDimensionalViewportAxisInvalid         = "TwoDimensionalViewportAxisInvalid"
+	tagTwoDimensionalViewportBuildOutsideLayout  = "TwoDimensionalViewportBuildOutsideLayout"
+	tagTwoDimensionalViewportChildUnknown        = "TwoDimensionalViewportChildUnknown"
+	tagTwoDimensionalViewportContentDimensions   = "TwoDimensionalViewportContentDimensions"
+	tagTwoDimensionalViewportDanglingKeepAlives  = "TwoDimensionalViewportDanglingKeepAlives"
+	tagTwoDimensionalViewportInsertKeptAlive     = "TwoDimensionalViewportInsertKeptAlive"
+	tagTwoDimensionalViewportKeepAliveStale      = "TwoDimensionalViewportKeepAliveStale"
+	tagTwoDimensionalViewportLayoutOffsetMissing = "TwoDimensionalViewportLayoutOffsetMissing"
+	tagTwoDimensionalViewportOrphans             = "TwoDimensionalViewportOrphans"
+)

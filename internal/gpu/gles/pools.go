@@ -97,7 +97,7 @@ func (d *Device) AcquireTexture(w, h int, format TextureFormat) (*Texture, error
 
 func (d *Device) newTexture(w, h int, format TextureFormat) (*Texture, error) {
 	if w <= 0 || h <= 0 || w > d.caps.MaxTextureSize || h > d.caps.MaxTextureSize {
-		return nil, errors.New("TextureSizeInvalid", "the texture size is not valid for this driver",
+		return nil, errors.New(tagTextureSizeInvalid, "the texture size is not valid for this driver",
 			"width", w, "height", h, "max", d.caps.MaxTextureSize)
 	}
 	key := textureKey{w, h, format}
@@ -127,7 +127,7 @@ func (d *Device) newTexture(w, h int, format TextureFormat) (*Texture, error) {
 // Flutter: no counterpart
 func (d *Device) ReleaseTexture(t *Texture) {
 	if !t.inUse {
-		panic(errors.New("TextureReleased", "the texture was already released", "id", t.id))
+		panic(errors.New(tagTextureReleased, "the texture was already released", "id", t.id))
 	}
 	t.inUse = false
 	t.lastUsed = d.frame
@@ -179,7 +179,7 @@ func (d *Device) SetTextureParams(t *Texture, minFilter, magFilter, wrapS, wrapT
 func (d *Device) UploadTexture(t *Texture, x, y, w, h int, pixels []byte) error {
 	_, glFormat, kind, bpp := t.format.glFormats()
 	if x < 0 || y < 0 || w <= 0 || h <= 0 || x+w > t.w || y+h > t.h || len(pixels) != w*h*bpp {
-		return errors.New("TextureUploadInvalid", "the rectangle or the data does not fit the texture",
+		return errors.New(tagTextureUploadInvalid, "the rectangle or the data does not fit the texture",
 			"x", x, "y", y, "width", w, "height", h, "texture", fmt.Sprintf("%dx%d", t.w, t.h), "length", len(pixels))
 	}
 	d.bindTextureID(0, t.id)
@@ -289,7 +289,7 @@ func (d *Device) bindBufferTarget(target, id uint32) {
 // Flutter: no counterpart
 func (d *Device) ReleaseBuffer(b *Buffer) {
 	if !b.inUse {
-		panic(errors.New("BufferReleased", "the buffer was already released", "id", b.id))
+		panic(errors.New(tagBufferReleased, "the buffer was already released", "id", b.id))
 	}
 	b.inUse = false
 	b.lastUsed = d.frame
@@ -312,7 +312,7 @@ func (d *Device) deleteBuffer(b *Buffer) {
 // Flutter: no counterpart
 func (d *Device) UploadBuffer(b *Buffer, data []byte) error {
 	if len(data) > b.capacity {
-		return errors.New("BufferTooSmall", "the data does not fit the buffer", "length", len(data), "capacity", b.capacity)
+		return errors.New(tagBufferTooSmall, "the data does not fit the buffer", "length", len(data), "capacity", b.capacity)
 	}
 	d.bindBufferTarget(b.target, b.id)
 	d.gl.bufferData(b.target, b.capacity, nil, glStreamDraw)
@@ -397,7 +397,7 @@ func (d *Device) AcquireFramebuffer(w, h int, stencil bool) (*Framebuffer, error
 	d.bindFramebufferID(prev)
 	if status != glFramebufferComplete {
 		d.deleteFramebuffer(f)
-		return nil, errors.New("FramebufferIncomplete", "the driver could not make the framebuffer complete",
+		return nil, errors.New(tagFramebufferIncomplete, "the driver could not make the framebuffer complete",
 			"width", w, "height", h, "stencil", stencil, "status", fmt.Sprintf("0x%x", status))
 	}
 	d.live.framebuffers++
@@ -410,7 +410,7 @@ func (d *Device) AcquireFramebuffer(w, h int, stencil bool) (*Framebuffer, error
 // Flutter: no counterpart
 func (d *Device) ReleaseFramebuffer(f *Framebuffer) {
 	if !f.inUse {
-		panic(errors.New("FramebufferReleased", "the framebuffer was already released", "id", f.id))
+		panic(errors.New(tagFramebufferReleased, "the framebuffer was already released", "id", f.id))
 	}
 	f.inUse = false
 	f.lastUsed = d.frame
@@ -434,3 +434,14 @@ func (d *Device) deleteFramebuffer(f *Framebuffer) {
 		d.live.framebuffers--
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagBufferReleased        = "BufferReleased"
+	tagBufferTooSmall        = "BufferTooSmall"
+	tagFramebufferIncomplete = "FramebufferIncomplete"
+	tagFramebufferReleased   = "FramebufferReleased"
+	tagTextureReleased       = "TextureReleased"
+	tagTextureSizeInvalid    = "TextureSizeInvalid"
+	tagTextureUploadInvalid  = "TextureUploadInvalid"
+)

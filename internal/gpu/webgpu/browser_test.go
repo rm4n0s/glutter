@@ -199,11 +199,11 @@ func TestBrowserUnavailable(t *testing.T) {
 			name, tag, route string
 			got              tagResult
 		}{
-			{"no navigator.gpu", "WebGPUUnavailable", "Acquire->", res.NoGPU},
-			{"no adapter", "WebGPUUnavailable", "Acquire->", res.NoAdapter},
-			{"no device", "WebGPUDeviceFailed", "Acquire->", res.NoDevice},
-			{"a shader the browser rejects", "ShaderModuleInvalid", "Acquire->", res.BadShader},
-			{"no answer in time", "WebGPUDeviceFailed", "Acquire->", res.Timeout},
+			{"no navigator.gpu", "WebGPUUnavailable", "Acquire.", res.NoGPU},
+			{"no adapter", "WebGPUUnavailable", "Acquire.", res.NoAdapter},
+			{"no device", "WebGPUDeviceFailed", "Acquire.", res.NoDevice},
+			{"a shader the browser rejects", "ShaderModuleInvalid", "Acquire.", res.BadShader},
+			{"no answer in time", "WebGPUDeviceFailed", "Acquire.", res.Timeout},
 			{"no provider", "WebGPUUnavailable", "Open", res.OpenOfNil},
 			{"canvas with a 2D context", "WebGPUContextUnavailable", "newSwapchain", res.Taken},
 			{"view without a canvas", "WebGPUCanvasNotFound", "newSwapchain", res.NoCanvas},

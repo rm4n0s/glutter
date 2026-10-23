@@ -213,7 +213,7 @@ func TestInputDecoratorContainer(t *testing.T) {
 		{states{name: "hovered", hover: true}, func(c *ColorScheme) ui.Color { return c.OnSurface() }, 1},
 		{states{name: "focused", focused: true}, func(c *ColorScheme) ui.Color { return c.Primary() }, 2},
 		{states{name: "focused and hovered", focused: true, hover: true}, func(c *ColorScheme) ui.Color { return c.Primary() }, 2},
-		{states{name: "error", err: true}, func(c *ColorScheme) ui.Color { return c.Error() }, 1},
+		{states{name: "err", err: true}, func(c *ColorScheme) ui.Color { return c.Error() }, 1},
 		{states{name: "error and focused", err: true, focused: true}, func(c *ColorScheme) ui.Color { return c.Error() }, 2},
 		{states{name: "error and hovered", err: true, hover: true}, func(c *ColorScheme) ui.Color { return c.OnErrorContainer() }, 1},
 		{states{name: "error, focused and hovered", err: true, focused: true, hover: true}, func(c *ColorScheme) ui.Color { return c.Error() }, 2},
@@ -440,7 +440,7 @@ func TestInputDecoratorHint(t *testing.T) {
 	}
 	allStates := []states{
 		{name: "enabled"}, {name: "disabled", disabled: true}, {name: "hovered", hover: true},
-		{name: "focused", focus: true}, {name: "error", err: true},
+		{name: "focused", focus: true}, {name: "err", err: true},
 	}
 	for _, outlined := range []bool{false, true} {
 		for _, withLabel := range []bool{false, true} {

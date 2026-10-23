@@ -33,7 +33,7 @@ func (r *callbackRegistry) add(fn any) uintptr {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.count >= r.limit {
-		panic(errors.New("CallbackLimit", "too many C to Go callbacks; create them once at startup and dispatch by user data",
+		panic(errors.New(tagCallbackLimit, "too many C to Go callbacks; create them once at startup and dispatch by user data",
 			"limit", r.limit))
 	}
 	ptr := r.register(fn)
@@ -57,3 +57,8 @@ func CallbackCount() int {
 	defer processCallbacks.mu.Unlock()
 	return processCallbacks.count
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagCallbackLimit = "CallbackLimit"
+)

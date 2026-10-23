@@ -45,8 +45,8 @@ func TestLossState(t *testing.T) {
 			}
 			if tt.wantErrTag != "" {
 				appErr, ok := errors.FromError(err)
-				if !ok || appErr.Tag != tt.wantErrTag || !appErr.HasRoute("lossState.err->errDeviceLost.GPUDeviceLost") {
-					t.Errorf("err = %v, want %s via lossState.err->errDeviceLost", err, tt.wantErrTag)
+				if !ok || appErr.Tag != tt.wantErrTag || !appErr.HasRoute("lossState.err.GPUDeviceLost") {
+					t.Errorf("err = %v, want %s via lossState.err", err, tt.wantErrTag)
 				}
 			}
 			if s.isLost() != tt.wantIsLost {

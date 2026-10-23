@@ -24,8 +24,8 @@ func TestOpenReportsEGLLoadFailed(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected *errors.Error, got %T (%v)", err, err)
 	}
-	if appErr.Tag != "EGLLoadFailed" || !appErr.HasRoute("Open->loadEGL->loadFailed.EGLLoadFailed") {
-		t.Errorf("Tag = %q, route = %s, want EGLLoadFailed via Open->loadEGL->loadFailed", appErr.Tag, appErr.Route())
+	if appErr.Tag != tagEGLLoadFailed || !appErr.HasRoute("Open->loadEGL.EGLLoadFailed") {
+		t.Errorf("Tag = %q, route = %s, want EGLLoadFailed via Open->loadEGL", appErr.Tag, appErr.Route())
 	}
 	if appErr.Metadata["library"] != "libEGL" {
 		t.Errorf("Metadata[library] = %v, want libEGL", appErr.Metadata["library"])
@@ -47,7 +47,7 @@ func TestOpenReportsGLESLoadFailed(t *testing.T) {
 	t.Setenv(glesLibraryEnv, "/nonexistent-glutter-dir/libGLESv2.so.2")
 	_, _, err := Open(waylandHandle)
 	appErr, ok := errors.FromError(err)
-	if !ok || appErr.Tag != "EGLLoadFailed" || appErr.Metadata["library"] != "libGLESv2" {
+	if !ok || appErr.Tag != tagEGLLoadFailed || appErr.Metadata["library"] != "libGLESv2" {
 		t.Errorf("Open returned %v, want EGLLoadFailed for libGLESv2", err)
 	}
 }

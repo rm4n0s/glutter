@@ -269,6 +269,11 @@ func TestConnectWithACancelledContext(t *testing.T) {
 		if tag := tagOf(t, err); tag != "DBusConnectFailed" {
 			t.Errorf("tag = %s", tag)
 		}
+		// The context ended first, or the dial failed because it ended.
+		appErr, _ := errors.FromError(err)
+		if !appErr.HasRoute("dialWithoutContext.DBusConnectFailed") && !appErr.HasRoute("Connect.func1.DBusConnectFailed") {
+			t.Errorf("unexpected failure path: %s", appErr.Route())
+		}
 		return
 	}
 	_ = bus.Close()

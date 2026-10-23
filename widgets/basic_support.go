@@ -19,14 +19,14 @@ func maybeTextDirection(bc BuildContext) ui.TextDirection {
 // (Flutter: assert(widthFactor == null || widthFactor >= 0.0)).
 func assertFactor(widget, name string, v foundation.Opt[float64]) {
 	if f, ok := v.Get(); ok && !(f >= 0) {
-		panic(errors.New("FactorNegative", "the "+name+" of a "+widget+" must not be negative", "widget", widget, "factor", name, "value", f))
+		panic(errors.New(tagFactorNegative, "the "+name+" of a "+widget+" must not be negative", "widget", widget, "factor", name, "value", f))
 	}
 }
 
 // assertNonNegative checks, in debug builds, that a value is not negative.
 func assertNonNegative(widget, name string, v float64) {
 	if !(v >= 0) {
-		panic(errors.New("ValueNegative", "the "+name+" of a "+widget+" must not be negative", "widget", widget, "name", name, "value", v))
+		panic(errors.New(tagValueNegative, "the "+name+" of a "+widget+" must not be negative", "widget", widget, "name", name, "value", v))
 	}
 }
 
@@ -55,3 +55,9 @@ func AxisDirectionFromAxisReverseAndDirectionality(bc BuildContext, axis paintin
 	}
 	return painting.AxisDirectionDown
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagFactorNegative = "FactorNegative"
+	tagValueNegative  = "ValueNegative"
+)

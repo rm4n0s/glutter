@@ -20,7 +20,7 @@ func (m memImporter) Import(path string) (*types.Package, error) {
 	if p, ok := m[path]; ok {
 		return p, nil
 	}
-	return nil, errors.New("TestImportMissing", "no such package", "path", path)
+	return nil, errors.New(tagTestImportMissing, "no such package", "path", path)
 }
 
 // check type-checks one source file as the package of the path.
@@ -437,3 +437,8 @@ func TestRunErrors(t *testing.T) {
 		}
 	})
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagTestImportMissing = "TestImportMissing"
+)

@@ -250,12 +250,12 @@ func (o *BuildOwner) ScheduleBuildFor(element Element) {
 	eb := element.AsElement()
 	if foundation.DebugMode {
 		if !eb.dirty {
-			panic(errors.New("ScheduleBuildForNotDirty",
+			panic(errors.New(tagScheduleBuildForNotDirty,
 				"ScheduleBuildFor was called for a widget that is not marked as dirty; set the dirty flag before calling it",
 				"element", element.String()))
 		}
 		if !o.debugBuilding && eb.inDirtyList {
-			panic(errors.New("ScheduleBuildForInappropriately",
+			panic(errors.New(tagScheduleBuildForInappropriately,
 				"BuildOwner.ScheduleBuildFor was called on an element that is already in the dirty list",
 				"element", element.String()))
 		}
@@ -277,7 +277,7 @@ func (o *BuildOwner) ScheduleBuildFor(element Element) {
 // Flutter: widgets/framework.dart BuildOwner.reassemble
 func (o *BuildOwner) Reassemble(root Element) {
 	if foundation.DebugMode && (root.AsElement().owner != o || root.AsElement().parent != nil) {
-		panic(errors.New("ReassembleNotRoot", "BuildOwner.Reassemble needs the root element of the owner's tree",
+		panic(errors.New(tagReassembleNotRoot, "BuildOwner.Reassemble needs the root element of the owner's tree",
 			"element", root.String()))
 	}
 	root.Reassemble()
@@ -428,7 +428,7 @@ func (o *BuildOwner) reportPanic(r any) {
 		o.OnError(err)
 		return
 	}
-	o.OnError(errors.New("UnexpectedPanic", "a panic that is not an error", "value", r))
+	o.OnError(errors.New(tagUnexpectedPanic, "a panic that is not an error", "value", r))
 }
 
 // GlobalKeyCount is the number of global keys that are in use.
@@ -514,12 +514,12 @@ func (o *BuildOwner) debugVerifyGlobalKeyReservation() {
 			newer := parent
 			if failure == nil {
 				if older.String() != newer.String() {
-					failure = errors.New("GlobalKeyUsedByMultipleParents",
+					failure = errors.New(tagGlobalKeyUsedByMultipleParents,
 						"Multiple widgets used the same GlobalKey.\nThe key "+key.String()+" was used by multiple widgets. The parents of those widgets were:\n- "+
 							older.String()+"\n- "+newer.String()+"\nA GlobalKey can only be specified on one widget at a time in the widget tree.",
 						"key", key.String())
 				} else {
-					failure = errors.New("GlobalKeyUsedByMultipleParents",
+					failure = errors.New(tagGlobalKeyUsedByMultipleParents,
 						"Multiple widgets used the same GlobalKey.\nThe key "+key.String()+" was used by multiple widgets. The parents of those widgets were different widgets that both had the following description:\n  "+
 							parent.String()+"\nA GlobalKey can only be specified on one widget at a time in the widget tree.",
 						"key", key.String())
@@ -583,7 +583,7 @@ func (o *BuildOwner) debugVerifyIllFatedPopulation() {
 		}
 	}
 	msg.WriteString("\nA GlobalKey can only be specified on one widget at a time in the widget tree.")
-	panic(errors.New("GlobalKeyUsedByMultipleWidgets", msg.String(), "keys", strings.Join(keys, ", ")))
+	panic(errors.New(tagGlobalKeyUsedByMultipleWidgets, msg.String(), "keys", strings.Join(keys, ", ")))
 }
 
 // debugVerifyKeyShenanigans checks that the parents that lost a child to a
@@ -616,7 +616,7 @@ func (o *BuildOwner) debugVerifyKeyShenanigans() {
 	if len(elementLabels) == 1 {
 		respective, s2, those2, they, think, are = "", "", "that", "it", "thinks", "is"
 	}
-	panic(errors.New("GlobalKeyDuplicateDetected",
+	panic(errors.New(tagGlobalKeyDuplicateDetected,
 		"Duplicate GlobalKey"+s+" detected in widget tree.\n"+
 			"The following GlobalKey"+s+" "+were+" specified multiple times in the widget tree. This will lead to parts of the widget tree being truncated unexpectedly, because the second time a key is seen, the previous instance is moved to the new location. The key"+s+" "+were+":\n"+
 			"- "+strings.Join(keyLabels, "\n  ")+"\n"+
@@ -745,3 +745,14 @@ func (ie *inactiveElements) remove(element Element) {
 func (o *BuildOwner) DebugInactiveElementsContain(element Element) bool {
 	return foundation.DebugMode && o.inactive.contains(element)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagGlobalKeyDuplicateDetected      = "GlobalKeyDuplicateDetected"
+	tagGlobalKeyUsedByMultipleParents  = "GlobalKeyUsedByMultipleParents"
+	tagGlobalKeyUsedByMultipleWidgets  = "GlobalKeyUsedByMultipleWidgets"
+	tagReassembleNotRoot               = "ReassembleNotRoot"
+	tagScheduleBuildForInappropriately = "ScheduleBuildForInappropriately"
+	tagScheduleBuildForNotDirty        = "ScheduleBuildForNotDirty"
+	tagUnexpectedPanic                 = "UnexpectedPanic"
+)

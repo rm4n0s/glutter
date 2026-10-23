@@ -169,11 +169,11 @@ func SaveFile(ctx context.Context, bc widgets.BuildContext, opts ...SaveFileOpts
 func SaveFiles(ctx context.Context, bc widgets.BuildContext, names []string, opts ...SaveFilesOpts) (FilesResult, error) {
 	o := firstOpts(opts)
 	if len(names) == 0 {
-		return FilesResult{}, errors.New("SaveFilesWithoutNames", "SaveFiles needs the name of at least one file")
+		return FilesResult{}, errors.New(tagSaveFilesWithoutNames, "SaveFiles needs the name of at least one file")
 	}
 	for _, n := range names {
 		if n == "" || filepath.Base(n) != n {
-			return FilesResult{}, errors.New("SaveFilesNameInvalid", "a name given to SaveFiles must be a file name without a folder", "name", n)
+			return FilesResult{}, errors.New(tagSaveFilesNameInvalid, "a name given to SaveFiles must be a file name without a folder", "name", n)
 		}
 	}
 	c, err := begin(ctx, bc)
@@ -193,7 +193,7 @@ func SaveFiles(ctx context.Context, bc widgets.BuildContext, names []string, opt
 func firstOpts[T any](opts []T) T {
 	var zero T
 	if len(opts) > 1 {
-		panic(errors.New("MultipleOptions", "a function of package desktop takes at most one options value", "count", len(opts)))
+		panic(errors.New(tagMultipleOptions, "a function of package desktop takes at most one options value", "count", len(opts)))
 	}
 	if len(opts) == 1 {
 		return opts[0]
@@ -251,9 +251,13 @@ func setFilters(opt map[string]godbus.Variant, filters []FileFilter) {
 // chooseFiles calls a method of the FileChooser portal and turns its answer into a
 // result.
 func (c *call) chooseFiles(ctx context.Context, method, title string, fill func(map[string]godbus.Variant)) (FilesResult, error) {
-	bus, err := c.s.connect(ctx)
+	bus, err := c.s.connect(ctx, "FileChooserUnavailable")
 	if err != nil {
-		return FilesResult{}, errors.NewErr("FileChooserUnavailable", err).SetMetadata("method", method)
+		// connect tags the failure with the tag given; the portal method is added to it here.
+		if appErr, ok := errors.FromError(err); ok {
+			return FilesResult{}, appErr.SetMetadata("method", method)
+		}
+		return FilesResult{}, err
 	}
 	resp, err := dbus.PortalRequest(ctx, bus, method, func(token string) []any {
 		opt := c.portalOptions(token, nil)
@@ -263,7 +267,7 @@ func (c *call) chooseFiles(ctx context.Context, method, title string, fill func(
 	})
 	if err != nil {
 		if portalMissing(err) {
-			return FilesResult{}, errors.NewErr("FileChooserUnavailable", err).SetMetadata("method", method)
+			return FilesResult{}, errors.NewErr(tagFileChooserUnavailable, err).SetMetadata("method", method)
 		}
 		return FilesResult{}, err
 	}
@@ -273,7 +277,7 @@ func (c *call) chooseFiles(ctx context.Context, method, title string, fill func(
 	case dbus.PortalResponseSuccess:
 		return parseFilesResult(resp.Results, method)
 	}
-	return FilesResult{}, errors.New("FileChooserFailed", "the file chooser portal ended the interaction without a result",
+	return FilesResult{}, errors.New(tagFileChooserFailed, "the file chooser portal ended the interaction without a result",
 		"method", method, "code", uint32(resp.Code))
 }
 
@@ -281,7 +285,7 @@ func (c *call) chooseFiles(ctx context.Context, method, title string, fill func(
 func parseFilesResult(results map[string]godbus.Variant, method string) (FilesResult, error) {
 	uris, ok := results["uris"].Value().([]string)
 	if !ok {
-		return FilesResult{}, errors.New("FileChooserReplyInvalid", "the answer of the file chooser has no list of URIs",
+		return FilesResult{}, errors.New(tagFileChooserReplyInvalid, "the answer of the file chooser has no list of URIs",
 			"method", method, "keys", mapKeys(results))
 	}
 	out := FilesResult{Paths: make([]string, 0, len(uris))}
@@ -321,7 +325,7 @@ func filterName(v any) string {
 func pathOfURI(raw string) (string, error) {
 	u, err := url.Parse(raw)
 	if err != nil || u.Scheme != "file" {
-		return "", errors.New("FileChooserReplyInvalid", "the file chooser answered with a URI that is not a file: URI", "uri", raw)
+		return "", errors.New(tagFileChooserReplyInvalid, "the file chooser answered with a URI that is not a file: URI", "uri", raw)
 	}
 	return u.Path, nil
 }
@@ -338,7 +342,7 @@ func mapKeys(m map[string]godbus.Variant) []string {
 // portalMissing says whether err is the bus telling that nobody serves the portal:
 // no connection to the bus, no such service, no such method or object, or no reply.
 func portalMissing(err error) bool {
-	if appErr, ok := errors.FromError(err); ok && appErr.Tag == "DBusConnectFailed" {
+	if appErr, ok := errors.FromError(err); ok && appErr.Tag == dbus.TagConnectFailed {
 		return true
 	}
 	// A real bus gives the error as a godbus.Error value; a test double may give a pointer.
@@ -362,3 +366,13 @@ func portalMissing(err error) bool {
 	}
 	return false
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagFileChooserFailed       = "FileChooserFailed"
+	tagFileChooserReplyInvalid = "FileChooserReplyInvalid"
+	tagFileChooserUnavailable  = "FileChooserUnavailable"
+	tagMultipleOptions         = "MultipleOptions"
+	tagSaveFilesNameInvalid    = "SaveFilesNameInvalid"
+	tagSaveFilesWithoutNames   = "SaveFilesWithoutNames"
+)

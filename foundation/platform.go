@@ -101,7 +101,12 @@ func DebugDefaultTargetPlatformOverride() Opt[TargetPlatform] {
 // Flutter: foundation/platform.dart debugDefaultTargetPlatformOverride=
 func SetDebugDefaultTargetPlatformOverride(p Opt[TargetPlatform]) {
 	if !DebugMode {
-		panic(errors.New("TargetPlatformOverrideNotDebug", "cannot modify the target platform override in non-debug builds"))
+		panic(errors.New(tagTargetPlatformOverrideNotDebug, "cannot modify the target platform override in non-debug builds"))
 	}
 	debugPlatformOverride.Store(int32(p.Value()))
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagTargetPlatformOverrideNotDebug = "TargetPlatformOverrideNotDebug"
+)

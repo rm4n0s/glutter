@@ -129,7 +129,7 @@ func New(tb TB, opts ...Opts) *Tester {
 	}
 	if len(o.Fonts) > 0 {
 		if o.TextEngine != nil {
-			tb.Fatal(errors.New("TesterFontsWithTextEngine", "Opts.Fonts and Opts.TextEngine are both set: load the fonts into your own engine"))
+			tb.Fatal(errors.New(tagTesterFontsWithTextEngine, "Opts.Fonts and Opts.TextEngine are both set: load the fonts into your own engine"))
 		}
 		extra := make([]renderingtest.Font, len(o.Fonts))
 		for i, f := range o.Fonts {
@@ -526,7 +526,7 @@ func (t *Tester) PumpAndSettle(opts ...PumpAndSettleOpts) int {
 	count := 0
 	for {
 		if t.Clock.Now().After(end) {
-			t.fail(errors.New("PumpAndSettleTimeout", "PumpAndSettle timed out: frames were still scheduled after the timeout",
+			t.fail(errors.New(tagPumpAndSettleTimeout, "PumpAndSettle timed out: frames were still scheduled after the timeout",
 				"timeout", o.Timeout.String(), "pumps", count))
 			return count
 		}
@@ -656,7 +656,7 @@ func (t *Tester) Screenshot() *image.RGBA {
 	t.tb.Helper()
 	scenes := t.Scenes()
 	if len(scenes) == 0 {
-		t.fail(errors.New("ScreenshotNoFrame", "no frame was composited yet; call PumpWidget or Pump first"))
+		t.fail(errors.New(tagScreenshotNoFrame, "no frame was composited yet; call PumpWidget or Pump first"))
 		return nil
 	}
 	img, err := soft.Render(scenes[len(scenes)-1], int(t.cfg.PhysicalSize.Width), int(t.cfg.PhysicalSize.Height))
@@ -681,3 +681,10 @@ func (t *Tester) MatchesGolden(name string) {
 	}
 	goldens.Check(t.tb, name, img)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagPumpAndSettleTimeout      = "PumpAndSettleTimeout"
+	tagScreenshotNoFrame         = "ScreenshotNoFrame"
+	tagTesterFontsWithTextEngine = "TesterFontsWithTextEngine"
+)

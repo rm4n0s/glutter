@@ -511,7 +511,7 @@ func NewRenderLimitedBox(child Box, opts ...RenderLimitedBoxOpts) *RenderLimited
 
 func (r *RenderLimitedBox) assertLimits() {
 	if foundation.DebugMode && (r.maxWidth < 0 || r.maxHeight < 0) {
-		panic(errors.New("LimitedBoxNegative", "the limits of a RenderLimitedBox must not be negative",
+		panic(errors.New(tagLimitedBoxNegative, "the limits of a RenderLimitedBox must not be negative",
 			"maxWidth", r.maxWidth, "maxHeight", r.maxHeight))
 	}
 }
@@ -615,7 +615,7 @@ func NewRenderAspectRatio(aspectRatio float64, child Box) *RenderAspectRatio {
 
 func assertAspectRatio(v float64) {
 	if foundation.DebugMode && (!(v > 0) || math.IsInf(v, 0)) {
-		panic(errors.New("AspectRatioInvalid", "the aspect ratio must be positive and finite", "aspectRatio", v))
+		panic(errors.New(tagAspectRatioInvalid, "the aspect ratio must be positive and finite", "aspectRatio", v))
 	}
 }
 
@@ -684,7 +684,7 @@ func (r *RenderAspectRatio) applyAspectRatio(constraints BoxConstraints) ui.Size
 	if foundation.DebugMode {
 		constraints.DebugAssertIsValid()
 		if !constraints.HasBoundedWidth() && !constraints.HasBoundedHeight() {
-			panic(errors.New("AspectRatioUnbounded", foundation.RuntimeTypeName(r.self)+
+			panic(errors.New(tagAspectRatioUnbounded, foundation.RuntimeTypeName(r.self)+
 				" was given an aspect ratio but also both unbounded width and unbounded height constraints; "+
 				"because both constraints were unbounded, this render object does not know how much size to consume",
 				"object", foundation.DescribeIdentity(r.self), "aspectRatio", r.aspectRatio))
@@ -793,7 +793,7 @@ func NewRenderIntrinsicWidth(child Box, opts ...RenderIntrinsicWidthOpts) *Rende
 
 func assertStep(step foundation.Opt[float64]) {
 	if v, ok := step.Get(); ok && foundation.DebugMode && !(v > 0) {
-		panic(errors.New("IntrinsicStepInvalid", "the step of an intrinsic size must be positive", "step", v))
+		panic(errors.New(tagIntrinsicStepInvalid, "the step of an intrinsic size must be positive", "step", v))
 	}
 }
 
@@ -1092,7 +1092,7 @@ func InitRenderOpacity(r *RenderOpacity, self Box, child Box, opts ...RenderOpac
 
 func assertOpacity(v float64) {
 	if foundation.DebugMode && !(v >= 0 && v <= 1) {
-		panic(errors.New("OpacityOutOfRange", "the opacity must be between 0 and 1", "opacity", v))
+		panic(errors.New(tagOpacityOutOfRange, "the opacity must be between 0 and 1", "opacity", v))
 	}
 }
 
@@ -1164,7 +1164,7 @@ func (r *RenderOpacity) VisitChildrenForSemantics(visitor RenderObjectVisitor) {
 // Flutter: rendering/proxy_box.dart RenderOpacity.paintsChild
 func (r *RenderOpacity) PaintsChild(child RenderObject) bool {
 	if foundation.DebugMode && child.Parent() != RenderObject(r.self) {
-		panic(errors.New("RenderObjectNotChild", "PaintsChild was called with a render object that is not a child",
+		panic(errors.New(tagRenderObjectNotChild, "PaintsChild was called with a render object that is not a child",
 			"object", foundation.DescribeIdentity(r.self), "child", foundation.DescribeIdentity(child)))
 	}
 	return r.alpha > 0
@@ -1338,7 +1338,7 @@ func (r *RenderAnimatedOpacity) updateOpacity() {
 // Flutter: rendering/proxy_box.dart RenderAnimatedOpacityMixin.paintsChild
 func (r *RenderAnimatedOpacity) PaintsChild(child RenderObject) bool {
 	if foundation.DebugMode && child.Parent() != RenderObject(r.self) {
-		panic(errors.New("RenderObjectNotChild", "PaintsChild was called with a render object that is not a child",
+		panic(errors.New(tagRenderObjectNotChild, "PaintsChild was called with a render object that is not a child",
 			"object", foundation.DescribeIdentity(r.self), "child", foundation.DescribeIdentity(child)))
 	}
 	return r.opacity.Value() > 0
@@ -1603,3 +1603,12 @@ func (r *RenderBackdropFilter) DebugFillProperties(b *foundation.DiagnosticPrope
 }
 
 func itoa(n int) string { return strconv.Itoa(n) }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagAspectRatioInvalid   = "AspectRatioInvalid"
+	tagAspectRatioUnbounded = "AspectRatioUnbounded"
+	tagIntrinsicStepInvalid = "IntrinsicStepInvalid"
+	tagLimitedBoxNegative   = "LimitedBoxNegative"
+	tagOpacityOutOfRange    = "OpacityOutOfRange"
+)

@@ -175,7 +175,7 @@ func (s *Server) WaitScreenshot(ctx context.Context) ([]byte, error) {
 	case png := <-s.shots:
 		return png, nil
 	case <-ctx.Done():
-		return nil, errors.NewErr("BrowserTimeout", ctx.Err()).SetMetadata("waiting for", "a screenshot")
+		return nil, errors.NewErr(tagBrowserTimeout, ctx.Err()).SetMetadata("waiting for", "a screenshot")
 	}
 }
 
@@ -188,6 +188,6 @@ func (s *Server) WaitResult(ctx context.Context) (Result, error) {
 	case res := <-s.results:
 		return res, nil
 	case <-ctx.Done():
-		return Result{}, errors.NewErr("BrowserTimeout", ctx.Err()).SetMetadata("waiting for", "a result")
+		return Result{}, errors.NewErr(tagBrowserTimeout, ctx.Err()).SetMetadata("waiting for", "a result")
 	}
 }

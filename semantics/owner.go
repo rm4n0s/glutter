@@ -130,7 +130,7 @@ func (o *SemanticsOwner) SendSemanticsUpdate() {
 			if isParent {
 				if foundation.DebugMode {
 					if existing, ok := o.traversalParentNodes[node.traversalParentID]; ok && existing != node {
-						panic(errors.New("SemanticsTraversalParentIdentifierDuplicated",
+						panic(errors.New(tagSemanticsTraversalParentIdentifierDuplicated,
 							"The traversalParentIdentifier must be unique. No two semantics nodes can share the same traversalParentIdentifier."))
 					}
 				}
@@ -214,7 +214,7 @@ func (o *SemanticsOwner) checkInvisibleNodes() {
 		"Consider removing the above invisible SemanticsNodes if they were added by your " +
 		"RenderObject.assembleSemanticsNode implementation, or filing a bug on GitHub:\n" +
 		"  https://github.com/flutter/flutter/issues/new?template=02_bug.yml"
-	panic(errors.New("SemanticsInvisibleNodes", msg))
+	panic(errors.New(tagSemanticsInvisibleNodes, msg))
 }
 
 func (o *SemanticsOwner) getSemanticsActionHandlerForID(id int, action ui.SemanticsAction, args any) SemanticsActionHandler {
@@ -310,3 +310,9 @@ func (o *SemanticsOwner) PerformActionAt(position ui.Offset, action ui.Semantics
 
 // String is "SemanticsOwner#hash".
 func (o *SemanticsOwner) String() string { return foundation.DescribeIdentity(o) }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagSemanticsInvisibleNodes                      = "SemanticsInvisibleNodes"
+	tagSemanticsTraversalParentIdentifierDuplicated = "SemanticsTraversalParentIdentifierDuplicated"
+)

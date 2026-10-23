@@ -93,7 +93,7 @@ func (s *tabBarViewState) updateTabController() {
 		newController = DefaultTabControllerMaybeOf(s.Context())
 	}
 	if foundation.DebugMode && newController == nil {
-		panic(errors.New("TabBarViewNoController", "No TabController for TabBarView. When creating a TabBarView, you must either provide an explicit TabController using the \"controller\" property, or you must ensure that there is a DefaultTabController above the TabBarView. In this case, there was neither an explicit controller nor a default controller."))
+		panic(errors.New(tagTabBarViewNoController, "No TabController for TabBarView. When creating a TabBarView, you must either provide an explicit TabController using the \"controller\" property, or you must ensure that there is a DefaultTabController above the TabBarView. In this case, there was neither an explicit controller nor a default controller."))
 	}
 
 	if newController == s.controller {
@@ -309,7 +309,7 @@ func (s *tabBarViewState) scheduleCheckHasValidChildrenCount() {
 			return
 		}
 		if n := len(s.Widget().children); s.controller.Length() != n {
-			panic(errors.New("TabBarViewChildrenCount", fmt.Sprintf("Controller's length property (%d) does not match the number of children (%d) present in TabBarView's children property.", s.controller.Length(), n),
+			panic(errors.New(tagTabBarViewChildrenCount, fmt.Sprintf("Controller's length property (%d) does not match the number of children (%d) present in TabBarView's children property.", s.controller.Length(), n),
 				"controllerLength", s.controller.Length(), "children", n))
 		}
 	})
@@ -333,3 +333,9 @@ func (s *tabBarViewState) Build(widgets.BuildContext) widgets.Widget {
 		widgets.NewPageView(s.childrenWithKey, widgets.PageViewOpts{
 			DragStartBehavior: w.o.DragStartBehavior, ClipBehavior: w.o.ClipBehavior, Controller: s.pageController, Physics: physics}))
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagTabBarViewChildrenCount = "TabBarViewChildrenCount"
+	tagTabBarViewNoController  = "TabBarViewNoController"
+)

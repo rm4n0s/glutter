@@ -41,7 +41,7 @@ type MouseCursor interface {
 type deferringMouseCursor struct{}
 
 func (deferringMouseCursor) CreateSession(int) MouseCursorSession {
-	panic(errors.New("MouseCursorDeferCreatedSession", "the defer cursor can not create a session"))
+	panic(errors.New(tagMouseCursorDeferCreatedSession, "the defer cursor can not create a session"))
 }
 func (deferringMouseCursor) DebugDescription() string { return "defer" }
 
@@ -119,7 +119,7 @@ type systemCursorSession interface {
 // Flutter: services/mouse_cursor.dart MouseCursorManager.new
 func NewMouseCursorManager(fallback MouseCursor) *MouseCursorManager {
 	if foundation.DebugMode && fallback == MouseCursorDefer {
-		panic(errors.New("MouseCursorFallbackDefers", "the fallback mouse cursor can not defer"))
+		panic(errors.New(tagMouseCursorFallbackDefers, "the fallback mouse cursor can not defer"))
 	}
 	return &MouseCursorManager{FallbackMouseCursor: fallback, lastSession: map[int]MouseCursorSession{}}
 }
@@ -405,3 +405,9 @@ var SystemMouseCursors = systemMouseCursors{
 	ZoomIn:                SystemMouseCursor{"zoomIn"},
 	ZoomOut:               SystemMouseCursor{"zoomOut"},
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagMouseCursorDeferCreatedSession = "MouseCursorDeferCreatedSession"
+	tagMouseCursorFallbackDefers      = "MouseCursorFallbackDefers"
+)

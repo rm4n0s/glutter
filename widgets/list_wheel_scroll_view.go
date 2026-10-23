@@ -289,10 +289,10 @@ func (c *FixedExtentScrollController) InitialItem() int { return c.initialItem }
 func (c *FixedExtentScrollController) SelectedItem() int {
 	if foundation.DebugMode {
 		if len(c.positions) == 0 {
-			panic(errors.New("FixedExtentControllerNotAttached", "FixedExtentScrollController.selectedItem cannot be accessed before a scroll view is built with it"))
+			panic(errors.New(tagFixedExtentControllerNotAttached, "FixedExtentScrollController.selectedItem cannot be accessed before a scroll view is built with it"))
 		}
 		if len(c.positions) != 1 {
-			panic(errors.New("FixedExtentControllerMultipleViews",
+			panic(errors.New(tagFixedExtentControllerMultipleViews,
 				"the selectedItem property cannot be read when multiple scroll views are attached to the same FixedExtentScrollController"))
 		}
 	}
@@ -403,7 +403,7 @@ type fixedExtentScrollPosition struct {
 func fixedExtentFromContext(context ScrollContext) float64 {
 	scrollable, ok := context.(*ScrollableState)
 	if !ok || scrollable.fixedItemExtent().IsNone() {
-		panic(errors.New("FixedExtentControllerWrongView", "FixedExtentScrollController can only be used with ListWheelScrollViews"))
+		panic(errors.New(tagFixedExtentControllerWrongView, "FixedExtentScrollController can only be used with ListWheelScrollViews"))
 	}
 	return scrollable.fixedItemExtent().Value()
 }
@@ -464,7 +464,7 @@ func (p *FixedExtentScrollPhysics) ApplyTo(ancestor ScrollPhysics) ScrollPhysics
 func (p *FixedExtentScrollPhysics) CreateBallisticSimulation(position ScrollMetrics, velocity float64) physics.Simulation {
 	metrics, ok := position.(*fixedExtentScrollPosition)
 	if !ok {
-		panic(errors.New("FixedExtentPhysicsWrongPosition",
+		panic(errors.New(tagFixedExtentPhysicsWrongPosition,
 			"FixedExtentScrollPhysics can only be used with Scrollables that uses the FixedExtentScrollController"))
 	}
 	// If we're out of range and not headed back in range, defer to the parent
@@ -579,24 +579,24 @@ func newListWheelScrollView(delegate ListWheelChildDelegate, itemExtent float64,
 	if foundation.DebugMode {
 		switch {
 		case !(o.DiameterRatio.OrElse(rendering.ListWheelDefaultDiameterRatio) > 0):
-			panic(errors.New("ListWheelViewportInvalid", "you can't set a diameterRatio of 0 or of a negative number; it would imply a cylinder of 0 in diameter in which case nothing will be drawn"))
+			panic(errors.New(tagListWheelViewportInvalid, "you can't set a diameterRatio of 0 or of a negative number; it would imply a cylinder of 0 in diameter in which case nothing will be drawn"))
 		case !(o.Perspective.OrElse(rendering.ListWheelDefaultPerspective) > 0) || !(o.Perspective.OrElse(rendering.ListWheelDefaultPerspective) <= 0.01):
-			panic(errors.New("ListWheelViewportInvalid", "a perspective too high will be clipped in the z-axis and therefore not renderable; value must be between 0 and 0.01"))
+			panic(errors.New(tagListWheelViewportInvalid, "a perspective too high will be clipped in the z-axis and therefore not renderable; value must be between 0 and 0.01"))
 		case !(o.Magnification.OrElse(1) > 0):
-			panic(errors.New("ListWheelViewportInvalid", "the magnification must be greater than zero"))
+			panic(errors.New(tagListWheelViewportInvalid, "the magnification must be greater than zero"))
 		case !(o.OverAndUnderCenterOpacity.OrElse(1) >= 0 && o.OverAndUnderCenterOpacity.OrElse(1) <= 1):
-			panic(errors.New("ListWheelViewportInvalid", "the opacity must be between 0 and 1"))
+			panic(errors.New(tagListWheelViewportInvalid, "the opacity must be between 0 and 1"))
 		case !(itemExtent > 0):
-			panic(errors.New("ListWheelViewportInvalid", "the item extent must be greater than zero", "itemExtent", itemExtent))
+			panic(errors.New(tagListWheelViewportInvalid, "the item extent must be greater than zero", "itemExtent", itemExtent))
 		case !(o.Squeeze.OrElse(1) > 0):
-			panic(errors.New("ListWheelViewportInvalid", "the squeeze must be greater than zero"))
+			panic(errors.New(tagListWheelViewportInvalid, "the squeeze must be greater than zero"))
 		}
 	}
 	if o.ClipBehavior == ui.ClipUnspecified {
 		o.ClipBehavior = ui.ClipHardEdge
 	}
 	if foundation.DebugMode && o.RenderChildrenOutsideViewport && o.ClipBehavior != ui.ClipNone {
-		panic(errors.New("ListWheelViewportInvalid", "cannot renderChildrenOutsideViewport and clip since children rendered outside will be clipped anyway"))
+		panic(errors.New(tagListWheelViewportInvalid, "cannot renderChildrenOutsideViewport and clip since children rendered outside will be clipped anyway"))
 	}
 	if o.HitTestBehavior == rendering.HitTestBehaviorUnspecified {
 		o.HitTestBehavior = rendering.HitTestBehaviorOpaque
@@ -896,7 +896,7 @@ func (e *ListWheelElement) ChildExistsAt(index int) bool { return e.retrieveWidg
 func (e *ListWheelElement) CreateChild(index int, after rendering.Box) {
 	e.owner.BuildScope(e, func() {
 		if foundation.DebugMode && after != nil && e.childElements.get(index-1) == nil {
-			panic(errors.New("ListWheelChildBeforeMissing", "the child before the one to create is not live", "index", index))
+			panic(errors.New(tagListWheelChildBeforeMissing, "the child before the one to create is not live", "index", index))
 		}
 		newChild := e.UpdateChild(e.childElements.get(index), e.retrieveWidget(index), index)
 		if newChild != nil {
@@ -946,7 +946,7 @@ func (e *ListWheelElement) InsertRenderObjectChild(child rendering.RenderObject,
 // MoveRenderObjectChild panics: the list is kept in contiguous increasing order,
 // so moving children around is not allowed.
 func (e *ListWheelElement) MoveRenderObjectChild(rendering.RenderObject, any, any) {
-	panic(errors.New("ListWheelChildMoved", "currently we maintain the list in contiguous increasing order, so moving children around is not allowed"))
+	panic(errors.New(tagListWheelChildMoved, "currently we maintain the list in contiguous increasing order, so moving children around is not allowed"))
 }
 
 // RemoveRenderObjectChild removes the child.
@@ -967,3 +967,14 @@ func (e *ListWheelElement) ForgetChild(child Element) {
 	e.childElements.remove(slot)
 	e.RenderObjectElement.ForgetChild(child)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagFixedExtentControllerMultipleViews = "FixedExtentControllerMultipleViews"
+	tagFixedExtentControllerNotAttached   = "FixedExtentControllerNotAttached"
+	tagFixedExtentControllerWrongView     = "FixedExtentControllerWrongView"
+	tagFixedExtentPhysicsWrongPosition    = "FixedExtentPhysicsWrongPosition"
+	tagListWheelChildBeforeMissing        = "ListWheelChildBeforeMissing"
+	tagListWheelChildMoved                = "ListWheelChildMoved"
+	tagListWheelViewportInvalid           = "ListWheelViewportInvalid"
+)

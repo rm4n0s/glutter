@@ -177,11 +177,11 @@ type notifyState struct {
 func ShowNotification(ctx context.Context, bc widgets.BuildContext, summary string, opts ...NotificationOpts) (NotificationID, error) {
 	o := firstOpts(opts)
 	if summary == "" {
-		return 0, errors.New("NotificationSummaryEmpty", "a notification needs a summary")
+		return 0, errors.New(tagNotificationSummaryEmpty, "a notification needs a summary")
 	}
 	for _, a := range o.Actions {
 		if a.ID == "" || a.Label == "" {
-			return 0, errors.New("NotificationActionInvalid", "an action of a notification needs an ID and a label", "id", a.ID, "label", a.Label)
+			return 0, errors.New(tagNotificationActionInvalid, "an action of a notification needs an ID and a label", "id", a.ID, "label", a.Label)
 		}
 	}
 	c, err := begin(ctx, bc)
@@ -210,9 +210,9 @@ func CloseNotification(ctx context.Context, bc widgets.BuildContext, id Notifica
 	if c.s.web != nil {
 		return c.s.web.CloseNotification(ctx, uint32(id))
 	}
-	bus, err := c.s.connect(ctx)
+	bus, err := c.s.connect(ctx, "NotificationsUnavailable")
 	if err != nil {
-		return errors.NewErr("NotificationsUnavailable", err)
+		return err
 	}
 	if c.s.flatpak() {
 		name, ok := c.s.notify.portalName(uint32(id))
@@ -226,7 +226,7 @@ func CloseNotification(ctx context.Context, bc widgets.BuildContext, id Notifica
 	}
 	if err != nil {
 		if portalMissing(err) {
-			return errors.NewErr("NotificationsUnavailable", err)
+			return errors.NewErr(tagNotificationsUnavailable, err)
 		}
 		return err
 	}
@@ -245,9 +245,9 @@ func (c *call) appName(o NotificationOpts) string {
 
 // show sends the notification to org.freedesktop.Notifications.
 func (c *call) show(ctx context.Context, summary string, o NotificationOpts) (NotificationID, error) {
-	bus, err := c.s.connect(ctx)
+	bus, err := c.s.connect(ctx, "NotificationsUnavailable")
 	if err != nil {
-		return 0, errors.NewErr("NotificationsUnavailable", err)
+		return 0, err
 	}
 	if err := c.s.followNotifications(bus); err != nil {
 		return 0, err
@@ -278,16 +278,16 @@ func (c *call) show(ctx context.Context, summary string, o NotificationOpts) (No
 		c.appName(o), uint32(o.ReplacesID), o.Icon, summary, body, actions, hints, timeout)
 	if err != nil {
 		if portalMissing(err) {
-			return 0, errors.NewErr("NotificationsUnavailable", err)
+			return 0, errors.NewErr(tagNotificationsUnavailable, err)
 		}
 		return 0, err
 	}
 	if len(reply) != 1 {
-		return 0, errors.New("NotificationReplyInvalid", "the reply of Notify does not have one value", "values", len(reply))
+		return 0, errors.New(tagNotificationReplyInvalid, "the reply of Notify does not have one value", "values", len(reply))
 	}
 	id, ok := reply[0].(uint32)
 	if !ok {
-		return 0, errors.New("NotificationReplyInvalid", "the reply of Notify is not a uint32", "reply", reply[0])
+		return 0, errors.New(tagNotificationReplyInvalid, "the reply of Notify is not a uint32", "reply", reply[0])
 	}
 	c.s.notify.set(id, notifyHandlers{o.OnAction, o.OnClosed})
 	return NotificationID(id), nil
@@ -295,9 +295,9 @@ func (c *call) show(ctx context.Context, summary string, o NotificationOpts) (No
 
 // showWithPortal sends the notification to the Notification portal of a sandbox.
 func (c *call) showWithPortal(ctx context.Context, summary string, o NotificationOpts) (NotificationID, error) {
-	bus, err := c.s.connect(ctx)
+	bus, err := c.s.connect(ctx, "NotificationsUnavailable")
 	if err != nil {
-		return 0, errors.NewErr("NotificationsUnavailable", err)
+		return 0, err
 	}
 	if err := c.s.followNotifications(bus); err != nil {
 		return 0, err
@@ -326,7 +326,7 @@ func (c *call) showWithPortal(ctx context.Context, summary string, o Notificatio
 	}
 	if _, err := bus.Call(ctx, dbus.PortalDest, dbus.PortalPath, portalNotificationIfc+".AddNotification", name, n); err != nil {
 		if portalMissing(err) {
-			return 0, errors.NewErr("NotificationsUnavailable", err)
+			return 0, errors.NewErr(tagNotificationsUnavailable, err)
 		}
 		return 0, err
 	}
@@ -455,7 +455,7 @@ func (s *services) followNotifications(bus dbus.Bus) error {
 		sigs, err := bus.Subscribe(ctx, match)
 		if err != nil {
 			cancel()
-			return errors.NewErr("NotificationsUnavailable", err)
+			return errors.NewErr(tagNotificationsUnavailable, err)
 		}
 		go s.deliverNotificationSignals(sigs)
 	}
@@ -555,3 +555,11 @@ func (s *services) postHandler(what string, fn func()) {
 			func() []any { return []any{"event", what} }, fn)
 	})
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagNotificationActionInvalid = "NotificationActionInvalid"
+	tagNotificationReplyInvalid  = "NotificationReplyInvalid"
+	tagNotificationSummaryEmpty  = "NotificationSummaryEmpty"
+	tagNotificationsUnavailable  = "NotificationsUnavailable"
+)

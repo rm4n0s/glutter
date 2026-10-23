@@ -177,13 +177,13 @@ func NewMaterial(child widgets.Widget, opts ...MaterialOpts) *Material {
 	o := firstOpts(opts)
 	if foundation.DebugMode {
 		if !(o.Elevation >= 0.0) {
-			panic(errors.New("MaterialElevationNegative", "the elevation of a Material must not be negative", "elevation", o.Elevation))
+			panic(errors.New(tagMaterialElevationNegative, "the elevation of a Material must not be negative", "elevation", o.Elevation))
 		}
 		if o.Shape != nil && o.BorderRadius != nil {
-			panic(errors.New("MaterialShapeAndBorderRadius", "a Material cannot have both a shape and a border radius"))
+			panic(errors.New(tagMaterialShapeAndBorderRadius, "a Material cannot have both a shape and a border radius"))
 		}
 		if o.Type == MaterialTypeCircle && (o.BorderRadius != nil || o.Shape != nil) {
-			panic(errors.New("MaterialCircleWithShape", "a Material of type circle cannot have a shape or a border radius"))
+			panic(errors.New(tagMaterialCircleWithShape, "a Material of type circle cannot have a shape or a border radius"))
 		}
 	}
 	if o.AnimationDuration == 0 {
@@ -280,12 +280,12 @@ func MaterialOf(bc widgets.BuildContext) MaterialInkController {
 	controller, ok := MaterialMaybeOf(bc)
 	if !ok && foundation.DebugMode {
 		if widgets.LookupBoundaryDebugIsHidingAncestorRenderObjectOfType[*renderInkFeatures](bc) {
-			panic(errors.New("MaterialHiddenByLookupBoundary", "Material.of() was called with a context that does not have access to a Material widget.\n"+
+			panic(errors.New(tagMaterialHiddenByLookupBoundary, "Material.of() was called with a context that does not have access to a Material widget.\n"+
 				"The context provided to Material.of() does have a Material widget ancestor, but it is hidden by a LookupBoundary. "+
 				"This can happen because you are using a widget that looks for a Material ancestor, but no such ancestor exists within the closest LookupBoundary.",
 				"context", foundation.DescribeIdentity(bc)))
 		}
-		panic(errors.New("MaterialNotFound", "Material.of() was called with a context that does not contain a Material widget.\n"+
+		panic(errors.New(tagMaterialNotFound, "Material.of() was called with a context that does not contain a Material widget.\n"+
 			"No Material widget ancestor could be found starting from the context that was passed to Material.of(). "+
 			"This can happen because you are using a widget that looks for a Material ancestor, but no such ancestor exists.",
 			"context", foundation.DescribeIdentity(bc)))
@@ -356,7 +356,7 @@ func (s *materialState) Build(bc widgets.BuildContext) widgets.Widget {
 		modelShadowColor = theme.ColorScheme.Shadow()
 	}
 	if foundation.DebugMode && !backgroundColor.IsSome() && w.o.Type != MaterialTypeTransparency {
-		panic(errors.New("MaterialColorMissing", "If Material type is not MaterialType.transparency, a color must either be passed in through the `color` property, "+
+		panic(errors.New(tagMaterialColorMissing, "If Material type is not MaterialType.transparency, a color must either be passed in through the `color` property, "+
 			"or be defined in the theme (ex. canvasColor != null if type is set to MaterialType.canvas)", "type", w.o.Type.Name()))
 	}
 	contents := w.child
@@ -505,13 +505,13 @@ func (r *renderInkFeatures) AddInkFeature(feature InkFeature) {
 	base := feature.AsInkFeature()
 	if foundation.DebugMode {
 		if base.debugDisposed {
-			panic(errors.New("InkFeatureDisposed", "an ink feature that was disposed cannot be added to a Material"))
+			panic(errors.New(tagInkFeatureDisposed, "an ink feature that was disposed cannot be added to a Material"))
 		}
 		if base.controller != r {
-			panic(errors.New("InkFeatureWrongController", "an ink feature was added to a controller other than its own"))
+			panic(errors.New(tagInkFeatureWrongController, "an ink feature was added to a controller other than its own"))
 		}
 		if slices.Contains(r.inkFeatures, feature) {
-			panic(errors.New("InkFeatureAddedTwice", "an ink feature was added to its controller twice"))
+			panic(errors.New(tagInkFeatureAddedTwice, "an ink feature was added to its controller twice"))
 		}
 	}
 	r.inkFeatures = append(r.inkFeatures, feature)
@@ -626,7 +626,7 @@ func (f *InkFeatureBase) ReferenceBox() rendering.Box { return f.referenceBox }
 func (f *InkFeatureBase) Dispose() {
 	if foundation.DebugMode {
 		if f.debugDisposed {
-			panic(errors.New("InkFeatureDisposed", "an ink feature was disposed twice"))
+			panic(errors.New(tagInkFeatureDisposed, "an ink feature was disposed twice"))
 		}
 		f.debugDisposed = true
 	}
@@ -686,10 +686,10 @@ func inkFeaturePaintTransform(fromRenderObject, toRenderObject rendering.RenderO
 func (f *InkFeatureBase) paint(canvas *ui.Canvas) {
 	if foundation.DebugMode {
 		if !f.referenceBox.Attached() {
-			panic(errors.New("InkFeatureDetached", "an ink feature was painted with a reference box that is not attached"))
+			panic(errors.New(tagInkFeatureDetached, "an ink feature was painted with a reference box that is not attached"))
 		}
 		if f.debugDisposed {
-			panic(errors.New("InkFeatureDisposed", "an ink feature was painted after it was disposed"))
+			panic(errors.New(tagInkFeatureDisposed, "an ink feature was painted after it was disposed"))
 		}
 	}
 	// Determine the transform that gets our coordinate system to be like theirs.
@@ -809,3 +809,17 @@ func (p *shapeBorderPainter) ShouldRepaint(old rendering.CustomPainter) bool {
 	o, ok := old.(*shapeBorderPainter)
 	return !ok || !foundation.ValuesEqual(o.border, p.border)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagInkFeatureAddedTwice           = "InkFeatureAddedTwice"
+	tagInkFeatureDetached             = "InkFeatureDetached"
+	tagInkFeatureDisposed             = "InkFeatureDisposed"
+	tagInkFeatureWrongController      = "InkFeatureWrongController"
+	tagMaterialCircleWithShape        = "MaterialCircleWithShape"
+	tagMaterialColorMissing           = "MaterialColorMissing"
+	tagMaterialElevationNegative      = "MaterialElevationNegative"
+	tagMaterialHiddenByLookupBoundary = "MaterialHiddenByLookupBoundary"
+	tagMaterialNotFound               = "MaterialNotFound"
+	tagMaterialShapeAndBorderRadius   = "MaterialShapeAndBorderRadius"
+)

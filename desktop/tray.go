@@ -77,7 +77,7 @@ var traySizes = [...]int{16, 22, 24, 32, 48}
 // Flutter: no counterpart
 func TrayIconFromRGBA(size int, rgba []byte) (ui.WindowIcon, error) {
 	if size <= 0 || len(rgba) != size*size*4 {
-		return ui.WindowIcon{}, errors.New("TrayIconInvalid", "a tray icon picture must have size*size*4 bytes and a positive size",
+		return ui.WindowIcon{}, errors.New(tagTrayIconInvalid, "a tray icon picture must have size*size*4 bytes and a positive size",
 			"size", size, "bytes", len(rgba))
 	}
 	src := &image.NRGBA{Pix: rgba, Stride: size * 4, Rect: image.Rect(0, 0, size, size)}
@@ -376,7 +376,7 @@ func newTray(s *services, m *trayModel) (*tray, error) {
 	s.tray.mu.Lock()
 	defer s.tray.mu.Unlock()
 	if s.tray.active {
-		return nil, errors.New("TrayDuplicate", "the app already has a system tray; an app has one at a time")
+		return nil, errors.New(tagTrayDuplicate, "the app already has a system tray; an app has one at a time")
 	}
 	s.tray.active = true
 	s.tray.count++
@@ -433,10 +433,10 @@ func (t *tray) run(ctx context.Context) {
 			return
 		}
 	}
-	bus, err := t.s.connect(ctx)
+	bus, err := t.s.connect(ctx, "TrayUnavailable")
 	if err != nil {
 		if ctx.Err() == nil {
-			t.fail(errors.NewErr("TrayUnavailable", err))
+			t.fail(err)
 		}
 		return
 	}
@@ -519,9 +519,9 @@ func (t *tray) register(ctx context.Context, bus dbus.Bus) error {
 	defer cancel()
 	if _, err := bus.Call(ctx, watcherDest, watcherPath, watcherIface+".RegisterStatusNotifierItem", t.name); err != nil {
 		if portalMissing(err) {
-			return errors.NewErr("TrayUnavailable", err)
+			return errors.NewErr(tagTrayUnavailable, err)
 		}
-		return errors.NewErr("TrayRegisterFailed", err)
+		return errors.NewErr(tagTrayRegisterFailed, err)
 	}
 	return nil
 }
@@ -751,3 +751,11 @@ func (m *trayMenu) AboutToShow(id int32) (bool, *godbus.Error) { return false, n
 func (m *trayMenu) AboutToShowGroup(ids []int32) ([]int32, []int32, *godbus.Error) {
 	return []int32{}, []int32{}, nil
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagTrayDuplicate      = "TrayDuplicate"
+	tagTrayIconInvalid    = "TrayIconInvalid"
+	tagTrayRegisterFailed = "TrayRegisterFailed"
+	tagTrayUnavailable    = "TrayUnavailable"
+)

@@ -510,7 +510,7 @@ func (s *submenuButtonState) debugValidateHoverOpenDelay() {
 		return
 	}
 	if p := s.parent(); p != nil && p.orientation() == painting.AxisHorizontal && s.Widget().o.HoverOpenDelay > 0 {
-		panic(errors.New("SubmenuButtonHoverOpenDelayInMenuBar",
+		panic(errors.New(tagSubmenuButtonHoverOpenDelayInMenuBar,
 			"a non-zero hoverOpenDelay was used in a top-level SubmenuButton situated in a MenuBar: MenuBar children can only be opened by hover if a sibling SubmenuButton is already open; when the hoverOpenDelay for a SubmenuButton is longer than the closing animation of a sibling SubmenuButton, that sibling will close before this SubmenuButton begins opening, leading to this SubmenuButton never opening",
 			"hoverOpenDelay", s.Widget().o.HoverOpenDelay.String()))
 	}
@@ -632,3 +632,8 @@ func (a *submenuDirectionalFocusAction) InvokeWithContext(intent widgets.Intent,
 	widgets.ActionsMaybeInvoke(sub.Context(), intent)
 	return nil
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagSubmenuButtonHoverOpenDelayInMenuBar = "SubmenuButtonHoverOpenDelayInMenuBar"
+)

@@ -71,10 +71,10 @@ type ToImageOpts struct {
 func (p *Picture) ToImage(width, height int, opts ...ToImageOpts) (*Image, error) {
 	o := oneOpts(opts)
 	if width <= 0 || height <= 0 {
-		return nil, errors.New("ImageSizeInvalid", "Invalid image dimensions.", "width", width, "height", height)
+		return nil, errors.New(tagImageSizeInvalid, "Invalid image dimensions.", "width", width, "height", height)
 	}
 	if o.Rasterizer == nil {
-		return nil, errors.New("RasterizerMissing", "Picture.ToImage needs a Rasterizer in its options.")
+		return nil, errors.New(tagRasterizerMissing, "Picture.ToImage needs a Rasterizer in its options.")
 	}
 	b := NewSceneBuilder()
 	b.AddPicture(Offset{}, p)
@@ -119,7 +119,7 @@ func (r *PictureRecorder) IsRecording() bool { return r.canvas != nil }
 func (r *PictureRecorder) EndRecording() *Picture {
 	c := r.canvas
 	if c == nil {
-		panic(errors.New("PictureRecorderNotRecording", "PictureRecorder did not start recording."))
+		panic(errors.New(tagPictureRecorderNotRecording, "PictureRecorder did not start recording."))
 	}
 	list := &DisplayList{ops: c.ops, cullRect: c.cullRect}
 	c.ops, c.recorder = nil, nil
@@ -133,3 +133,9 @@ func (r *PictureRecorder) EndRecording() *Picture {
 func (r *PictureRecorder) String() string {
 	return "PictureRecorder(recording: " + boolString(r.IsRecording()) + ")"
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagPictureRecorderNotRecording = "PictureRecorderNotRecording"
+	tagRasterizerMissing           = "RasterizerMissing"
+)

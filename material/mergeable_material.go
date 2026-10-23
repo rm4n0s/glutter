@@ -208,7 +208,7 @@ func (s *mergeableMaterialState) debugGapsAreValid(children []MergeableMaterialI
 		invalid = true
 	}
 	if invalid {
-		panic(errors.New("MergeableMaterialInvalidGaps", "a MergeableMaterial can't have a gap at its start or its end, or two gaps in a row"))
+		panic(errors.New(tagMergeableMaterialInvalidGaps, "a MergeableMaterial can't have a gap at its start or its end, or two gaps in a row"))
 	}
 }
 
@@ -553,3 +553,8 @@ func (r *renderMergeableMaterialListBody) Paint(context *rendering.PaintingConte
 	}
 	r.RenderListBody.Paint(context, offset)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagMergeableMaterialInvalidGaps = "MergeableMaterialInvalidGaps"
+)

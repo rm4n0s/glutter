@@ -143,7 +143,7 @@ type AppBar struct {
 func NewAppBar(opts ...AppBarOpts) *AppBar {
 	o := firstOpts(opts)
 	if foundation.DebugMode && o.Elevation.OrElse(0) < 0 {
-		panic(errors.New("AppBarElevationNegative", "the elevation of an AppBar must not be negative", "elevation", o.Elevation.Value()))
+		panic(errors.New(tagAppBarElevationNegative, "the elevation of an AppBar must not be negative", "elevation", o.Elevation.Value()))
 	}
 	if o.NotificationPredicate == nil {
 		o.NotificationPredicate = widgets.DefaultScrollNotificationPredicate
@@ -806,3 +806,8 @@ func isIconButtonWidget(w widgets.Widget) bool {
 	}
 	return false
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagAppBarElevationNegative = "AppBarElevationNegative"
+)

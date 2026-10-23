@@ -74,7 +74,7 @@ func NewDefaultTextStyle(style *painting.TextStyle, child Widget, opts ...Defaul
 
 func assertMaxLines(maxLines foundation.Opt[int]) {
 	if m, ok := maxLines.Get(); ok && m <= 0 && foundation.DebugMode {
-		panic(errors.New("TextMaxLinesInvalid", "maxLines must be greater than zero", "maxLines", m))
+		panic(errors.New(tagTextMaxLinesInvalid, "maxLines must be greater than zero", "maxLines", m))
 	}
 }
 
@@ -276,7 +276,7 @@ func DefaultTextHeightBehaviorMaybeOf(bc BuildContext) *ui.TextHeightBehavior {
 func DefaultTextHeightBehaviorOf(bc BuildContext) ui.TextHeightBehavior {
 	b := DefaultTextHeightBehaviorMaybeOf(bc)
 	if b == nil {
-		panic(errors.New("DefaultTextHeightBehaviorMissing", "no DefaultTextHeightBehavior widget found above the context"))
+		panic(errors.New(tagDefaultTextHeightBehaviorMissing, "no DefaultTextHeightBehavior widget found above the context"))
 	}
 	return *b
 }
@@ -526,7 +526,7 @@ func NewRichText(text painting.InlineSpan, opts ...RichTextOpts) *RichText {
 	o := firstOpts(opts)
 	assertMaxLines(o.MaxLines)
 	if foundation.DebugMode && o.SelectionRegistrar != nil && o.SelectionColor.IsNone() {
-		panic(errors.New("RichTextNoSelectionColor", "a RichText with a selection registrar needs a selection color"))
+		panic(errors.New(tagRichTextNoSelectionColor, "a RichText with a selection registrar needs a selection color"))
 	}
 	if o.TextAlign == ui.TextAlignUnspecified {
 		o.TextAlign = ui.TextAlignStart
@@ -649,3 +649,10 @@ func (w *RichText) UpdateRenderObject(bc BuildContext, renderObject rendering.Re
 	r.SetSelectionColor(o.SelectionColor)
 	r.SetDevicePixelRatio(richTextDevicePixelRatio(bc))
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagDefaultTextHeightBehaviorMissing = "DefaultTextHeightBehaviorMissing"
+	tagRichTextNoSelectionColor         = "RichTextNoSelectionColor"
+	tagTextMaxLinesInvalid              = "TextMaxLinesInvalid"
+)

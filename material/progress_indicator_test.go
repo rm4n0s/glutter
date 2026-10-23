@@ -337,10 +337,10 @@ func TestProgressIndicatorErrors(t *testing.T) {
 		{"linear min height", func() { NewLinearProgressIndicator(LinearProgressIndicatorOpts{MinHeight: foundation.Some(0.0)}) }, "LinearProgressIndicatorMinHeightNotPositive"},
 		{"linear value and controller", func() {
 			NewLinearProgressIndicator(LinearProgressIndicatorOpts{Value: foundation.Some(0.5), Controller: controller})
-		}, "LinearProgressIndicatorValueAndController"},
+		}, "NewLinearProgressIndicator.LinearProgressIndicatorValueAndController"},
 		{"circular value and controller", func() {
 			NewCircularProgressIndicator(CircularProgressIndicatorOpts{Value: foundation.Some(0.5), Controller: controller})
-		}, "CircularProgressIndicatorValueAndController"},
+		}, "newCircularProgressIndicator.CircularProgressIndicatorValueAndController"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) { wantRoute(t, recoverError(tc.f), tc.tag) })

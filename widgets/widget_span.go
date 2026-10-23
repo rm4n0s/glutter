@@ -43,7 +43,7 @@ func NewWidgetSpan(child Widget, opts ...WidgetSpanOpts) *WidgetSpan {
 	if foundation.DebugMode && o.Baseline == ui.TextBaselineUnspecified &&
 		(o.Alignment == ui.PlaceholderAlignmentAboveBaseline || o.Alignment == ui.PlaceholderAlignmentBelowBaseline ||
 			o.Alignment == ui.PlaceholderAlignmentBaseline) {
-		panic(errors.New("WidgetSpanNoBaseline", "a WidgetSpan aligned to the baseline needs a baseline", "alignment", o.Alignment.String()))
+		panic(errors.New(tagWidgetSpanNoBaseline, "a WidgetSpan aligned to the baseline needs a baseline", "alignment", o.Alignment.String()))
 	}
 	return &WidgetSpan{painting.NewPlaceholderSpanBase(painting.PlaceholderSpanOpts{Alignment: o.Alignment, Baseline: o.Baseline, Style: o.Style}), child}
 }
@@ -88,7 +88,7 @@ func ExtractWidgetsFromInlineSpan(span painting.InlineSpan, textScaler painting.
 			index++
 		} else if foundation.DebugMode {
 			if _, isPlaceholder := span.(painting.PlaceholderSpan); isPlaceholder {
-				panic(errors.New("PlaceholderSpanNotWidgetSpan", "a PlaceholderSpan that is not a WidgetSpan is not supported"))
+				panic(errors.New(tagPlaceholderSpanNotWidgetSpan, "a PlaceholderSpan that is not a WidgetSpan is not supported"))
 			}
 		}
 		span.VisitDirectChildren(visit)
@@ -114,14 +114,14 @@ func (s *WidgetSpan) Build(builder *ui.ParagraphBuilder, opts ...painting.SpanBu
 		o.TextScaler = painting.TextScalerNoScaling
 	}
 	if o.Dimensions == nil {
-		panic(errors.New("WidgetSpanNoDimensions", "a WidgetSpan needs the dimensions of the placeholders to build"))
+		panic(errors.New(tagWidgetSpanNoDimensions, "a WidgetSpan needs the dimensions of the placeholders to build"))
 	}
 	style := s.Style()
 	if style != nil {
 		builder.PushStyle(style.GetTextStyle(painting.GetTextStyleOpts{TextScaler: o.TextScaler}))
 	}
 	if builder.PlaceholderCount() >= len(o.Dimensions) {
-		panic(errors.New("WidgetSpanDimensionsMissing", "there are fewer placeholder dimensions than placeholders",
+		panic(errors.New(tagWidgetSpanDimensionsMissing, "there are fewer placeholder dimensions than placeholders",
 			"placeholders", builder.PlaceholderCount(), "dimensions", len(o.Dimensions)))
 	}
 	d := o.Dimensions[builder.PlaceholderCount()]
@@ -279,7 +279,7 @@ func (r *renderScaledInlineWidget) setScale(value float64) {
 		return
 	}
 	if foundation.DebugMode && (value <= 0 || math.IsInf(value, 0) || math.IsNaN(value)) {
-		panic(errors.New("InlineScaleInvalid", "the scale of an inline widget must be positive and finite", "scale", value))
+		panic(errors.New(tagInlineScaleInvalid, "the scale of an inline widget must be positive and finite", "scale", value))
 	}
 	r.scale = value
 	r.MarkNeedsLayout()
@@ -351,7 +351,7 @@ func (r *renderScaledInlineWidget) ComputeDryBaseline(constraints rendering.BoxC
 
 func (r *renderScaledInlineWidget) ComputeDryLayout(constraints rendering.BoxConstraints) ui.Size {
 	if foundation.DebugMode && constraints.HasBoundedHeight() {
-		panic(errors.New("InlineScaleBoundedHeight", "an inline widget must be laid out with unbounded height"))
+		panic(errors.New(tagInlineScaleBoundedHeight, "an inline widget must be laid out with unbounded height"))
 	}
 	var unscaled ui.Size
 	if r.Child() != nil {
@@ -367,7 +367,7 @@ func (r *renderScaledInlineWidget) PerformLayout() {
 	}
 	constraints := r.BoxConstraints()
 	if foundation.DebugMode && constraints.HasBoundedHeight() {
-		panic(errors.New("InlineScaleBoundedHeight", "an inline widget must be laid out with unbounded height"))
+		panic(errors.New(tagInlineScaleBoundedHeight, "an inline widget must be laid out with unbounded height"))
 	}
 	child.Layout(rendering.NewBoxConstraints(rendering.BoxConstraintsOpts{MaxWidth: foundation.Some(constraints.MaxWidth / r.scale)}),
 		rendering.LayoutOpts{ParentUsesSize: true})
@@ -411,3 +411,13 @@ func (r *renderScaledInlineWidget) HitTestChildren(result *rendering.BoxHitTestR
 			return child.HitTest(result, position)
 		})
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagInlineScaleBoundedHeight     = "InlineScaleBoundedHeight"
+	tagInlineScaleInvalid           = "InlineScaleInvalid"
+	tagPlaceholderSpanNotWidgetSpan = "PlaceholderSpanNotWidgetSpan"
+	tagWidgetSpanDimensionsMissing  = "WidgetSpanDimensionsMissing"
+	tagWidgetSpanNoBaseline         = "WidgetSpanNoBaseline"
+	tagWidgetSpanNoDimensions       = "WidgetSpanNoDimensions"
+)

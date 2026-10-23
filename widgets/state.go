@@ -167,7 +167,7 @@ func (s *StateOf[W]) Widget() W { return s.widget }
 func (s *StateOf[W]) Context() BuildContext {
 	if s.element == nil {
 		if foundation.DebugMode {
-			panic(errors.New("StateContextUnmounted",
+			panic(errors.New(tagStateContextUnmounted,
 				"this widget has been unmounted, so the State no longer has a context (and should be considered defunct); consider canceling any active work during Dispose or using Mounted to determine if the State is still active"))
 		}
 		return nil
@@ -227,12 +227,12 @@ func (s *StateOf[W]) SetState(fn func()) {
 	}
 	if foundation.DebugMode {
 		if s.lifecycle == StateLifecycleDefunct {
-			panic(errors.New("SetStateAfterDispose",
+			panic(errors.New(tagSetStateAfterDispose,
 				"SetState was called after Dispose on a State whose widget no longer appears in the widget tree; this can happen when code calls SetState from a timer, from an animation callback, or after an asynchronous operation (such as a request or other goroutine) completes after the widget has been removed from the tree; the preferred solution is to cancel the timer or stop listening to the animation in Dispose, another solution is to check Mounted before calling SetState (for example after an await-like gap), and a State that is retained after it left the tree might indicate a memory leak",
 				"state", foundation.RuntimeTypeName(s.self)))
 		}
 		if s.lifecycle == StateLifecycleCreated && !s.Mounted() {
-			panic(errors.New("SetStateBeforeMount",
+			panic(errors.New(tagSetStateBeforeMount,
 				"SetState was called on a State whose widget has not been inserted into the widget tree yet; it is not necessary to call SetState in the constructor, since the state is already assumed to be dirty when it is initially created",
 				"state", foundation.RuntimeTypeName(s.self)))
 		}
@@ -257,7 +257,7 @@ func (s *StateOf[W]) SetState(fn func()) {
 func (s *StateOf[W]) Go(fn func(ctx context.Context)) {
 	o := s.owner
 	if o == nil {
-		panic(errors.New("StateGoBeforeMount",
+		panic(errors.New(tagStateGoBeforeMount,
 			"Go was called on a State that has not been built yet; call it from InitState or later",
 			"state", foundation.RuntimeTypeName(s.self)))
 	}
@@ -320,3 +320,11 @@ func (d stateDescription) ToStringShort() string { return d.short }
 func (d stateDescription) DebugFillProperties(p *foundation.DiagnosticPropertiesBuilder) {
 	d.d.DebugFillProperties(p)
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagSetStateAfterDispose  = "SetStateAfterDispose"
+	tagSetStateBeforeMount   = "SetStateBeforeMount"
+	tagStateContextUnmounted = "StateContextUnmounted"
+	tagStateGoBeforeMount    = "StateGoBeforeMount"
+)

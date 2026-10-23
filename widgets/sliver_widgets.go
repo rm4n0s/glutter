@@ -37,7 +37,7 @@ type SliverOpacity struct {
 func NewSliverOpacity(opacity float64, sliver Widget, opts ...SliverOpacityOpts) *SliverOpacity {
 	o := firstOpts(opts)
 	if !(opacity >= 0 && opacity <= 1) {
-		panic(errors.New("OpacityOutOfRange", "the opacity must be between 0.0 and 1.0", "opacity", opacity))
+		panic(errors.New(tagOpacityOutOfRange, "the opacity must be between 0.0 and 1.0", "opacity", opacity))
 	}
 	return &SliverOpacity{NewSingleChildRenderObjectWidgetBase(sliver, WidgetOpts{Key: o.Key}), opacity, o.AlwaysIncludeSemantics}
 }
@@ -372,7 +372,7 @@ type SliverCrossAxisExpanded struct {
 // Flutter: widgets/sliver.dart SliverCrossAxisExpanded.new
 func NewSliverCrossAxisExpanded(flex int, sliver Widget, opts ...SliverCrossAxisExpandedOpts) *SliverCrossAxisExpanded {
 	if foundation.DebugMode && flex <= 0 {
-		panic(errors.New("SliverCrossAxisExpandedFlexInvalid", "the flex of a SliverCrossAxisExpanded must be greater than zero", "flex", flex))
+		panic(errors.New(tagSliverCrossAxisExpandedFlexInvalid, "the flex of a SliverCrossAxisExpanded must be greater than zero", "flex", flex))
 	}
 	return &SliverCrossAxisExpanded{NewParentDataWidgetBase[*rendering.SliverPhysicalContainerParentData](sliver, WidgetOpts{Key: firstOpts(opts).Key}), flex}
 }
@@ -530,7 +530,7 @@ func NewSliverFillViewport(delegate SliverChildDelegate, opts ...SliverFillViewp
 	o := firstOpts(opts)
 	fraction := o.ViewportFraction.OrElse(1)
 	if foundation.DebugMode && !(fraction > 0) {
-		panic(errors.New("ViewportFractionInvalid", "the viewport fraction must be greater than zero", "viewportFraction", fraction))
+		panic(errors.New(tagViewportFractionInvalid, "the viewport fraction must be greater than zero", "viewportFraction", fraction))
 	}
 	return &SliverFillViewport{NewStatelessWidgetBase(WidgetOpts{Key: o.Key}), delegate, fraction, o.PadEnds.OrElse(true), o.AllowImplicitScrolling.OrElse(true)}
 }
@@ -1180,3 +1180,8 @@ func (e *sliverPersistentHeaderElement) VisitChildren(visitor ElementVisitor) {
 		visitor(e.child)
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagSliverCrossAxisExpandedFlexInvalid = "SliverCrossAxisExpandedFlexInvalid"
+)

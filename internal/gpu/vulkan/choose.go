@@ -117,7 +117,7 @@ func (p physicalInfo) matches(selector string) bool {
 // the devices there are lack the version, extensions or features.
 func chooseDevice(list []physicalInfo, o chooseOpts) (device, family int, err error) {
 	if len(list) == 0 {
-		return 0, 0, errors.New("VulkanNoDevice", "Vulkan has no physical device")
+		return 0, 0, errors.New(tagVulkanNoDevice, "Vulkan has no physical device")
 	}
 	var rejected []string
 	unsupported := false
@@ -143,10 +143,10 @@ func chooseDevice(list []physicalInfo, o chooseOpts) (device, family int, err er
 		return p.Index, f, nil
 	}
 	if unsupported && (o.Selector == "" || allRejectedAsUnsupported(list, o)) {
-		return 0, 0, errors.New("VulkanUnsupported", "no Vulkan device has the version, extensions and features that Glutter needs",
+		return 0, 0, errors.New(tagVulkanUnsupported, "no Vulkan device has the version, extensions and features that Glutter needs",
 			"rejected", rejected)
 	}
-	return 0, 0, errors.New("VulkanNoDevice", "no Vulkan device can be used", "rejected", rejected, "selector", o.Selector)
+	return 0, 0, errors.New(tagVulkanNoDevice, "no Vulkan device can be used", "rejected", rejected, "selector", o.Selector)
 }
 
 // allRejectedAsUnsupported says whether every device that the selector names is
@@ -163,3 +163,9 @@ func allRejectedAsUnsupported(list []physicalInfo, o chooseOpts) bool {
 	}
 	return named > 0
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagVulkanNoDevice    = "VulkanNoDevice"
+	tagVulkanUnsupported = "VulkanUnsupported"
+)

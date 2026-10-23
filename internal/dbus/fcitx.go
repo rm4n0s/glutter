@@ -54,7 +54,7 @@ func openFcitx(ctx context.Context, bus Bus, opts IMEOptions, events func(IMEEve
 	if !nameHasOwner(ctx, bus, dest) {
 		dest = fcitxPortalDest
 		if !nameHasOwner(ctx, bus, dest) {
-			return nil, errors.New("Fcitx5NotRunning", "no Fcitx5 service is on the session bus")
+			return nil, errors.New(tagFcitx5NotRunning, "no Fcitx5 service is on the session bus")
 		}
 	}
 	program := opts.Program
@@ -75,7 +75,7 @@ func openFcitx(ctx context.Context, bus Bus, opts IMEOptions, events func(IMEEve
 		path, _ = body[0].(godbus.ObjectPath)
 	}
 	if path == "" {
-		return nil, errors.New("InputMethodBadReply", "Fcitx5 answered CreateInputContext without a path", "framework", "fcitx5")
+		return nil, errors.New(tagInputMethodBadReply, "Fcitx5 answered CreateInputContext without a path", "framework", "fcitx5")
 	}
 
 	c := &fcitxContext{bus: bus, dest: dest, path: path, done: make(chan struct{})}
@@ -162,7 +162,7 @@ func (c *fcitxContext) ProcessKey(ctx context.Context, key IMEKey) (bool, error)
 		return false, err
 	}
 	if len(body) != 1 {
-		return false, errors.New("InputMethodBadReply", "Fcitx5 answered ProcessKeyEvent without a boolean", "framework", "fcitx5")
+		return false, errors.New(tagInputMethodBadReply, "Fcitx5 answered ProcessKeyEvent without a boolean", "framework", "fcitx5")
 	}
 	handled, _ := body[0].(bool)
 	return handled, nil
@@ -241,3 +241,9 @@ func fcitxEvent(sig *godbus.Signal) (IMEEvent, bool) {
 	}
 	return IMEEvent{}, false
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagFcitx5NotRunning    = "Fcitx5NotRunning"
+	tagInputMethodBadReply = "InputMethodBadReply"
+)

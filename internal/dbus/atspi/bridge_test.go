@@ -830,7 +830,7 @@ func TestBridgeStaysOffWithoutASessionBus(t *testing.T) {
 	r := newRig(t, true)
 	r.bridge = atspi.New(atspi.Options{
 		Post:        func(f func()) { f() },
-		OpenSession: func(context.Context) (dbus.Bus, error) { return nil, errors.New("DBusConnectFailed", "no bus") },
+		OpenSession: func(context.Context) (dbus.Bus, error) { return nil, errors.New(tagDBusConnectFailed, "no bus") },
 	})
 	r.start()
 	time.Sleep(20 * time.Millisecond)
@@ -839,3 +839,8 @@ func TestBridgeStaysOffWithoutASessionBus(t *testing.T) {
 		t.Error("the host was told about a screen reader")
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagDBusConnectFailed = "DBusConnectFailed"
+)

@@ -187,7 +187,7 @@ func (s *session) bindRequired() error {
 	for _, r := range required {
 		globals := s.advertised[r.iface.Name]
 		if len(globals) == 0 {
-			return errors.New("WaylandProtocolMissing", "the compositor does not offer a required Wayland protocol",
+			return errors.New(tagWaylandProtocolMissing, "the compositor does not offer a required Wayland protocol",
 				"interface", r.iface.Name)
 		}
 		g, v := globals[0], bindVersion(globals[0], r.max)
@@ -285,3 +285,8 @@ func (s *session) recordOptional() {
 
 // close destroys the connection and with it every object.
 func (s *session) close() { s.conn.Close() }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagWaylandProtocolMissing = "WaylandProtocolMissing"
+)

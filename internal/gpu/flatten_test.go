@@ -346,14 +346,14 @@ func TestFlattenNestedPictures(t *testing.T) {
 func TestFlattenErrors(t *testing.T) {
 	_, err := Flatten(nil)
 	appErr, ok := errors.FromError(err)
-	if !ok || appErr.Tag != "FlattenSceneNil" || !appErr.HasRoute("Flatten.FlattenSceneNil") {
+	if !ok || appErr.Tag != tagFlattenSceneNil || !appErr.HasRoute("Flatten.FlattenSceneNil") {
 		t.Errorf("Flatten(nil) = %v", err)
 	}
 	func() {
 		defer func() {
 			e, _ := recover().(error)
 			appErr, ok := errors.FromError(e)
-			if !ok || appErr.Tag != "MultipleOptions" || !appErr.HasRoute("Flatten.MultipleOptions") {
+			if !ok || appErr.Tag != tagMultipleOptions || !appErr.HasRoute("Flatten.MultipleOptions") {
 				t.Errorf("expected MultipleOptions, got %v", e)
 			}
 		}()
@@ -367,7 +367,7 @@ func TestFlattenUnknownLayer(t *testing.T) {
 	f := &flattener{list: &DrawList{}}
 	err := f.layer(foreignLayer{}, state{})
 	appErr, ok := errors.FromError(err)
-	if !ok || appErr.Tag != "FlattenLayerUnknown" || !appErr.HasRoute("flattener.layer.FlattenLayerUnknown") {
+	if !ok || appErr.Tag != tagFlattenLayerUnknown || !appErr.HasRoute("flattener.layer.FlattenLayerUnknown") {
 		t.Errorf("layer = %v", err)
 	}
 }

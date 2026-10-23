@@ -167,7 +167,7 @@ func NewScaleUpdateDetails(opts ...ScaleUpdateOpts) ScaleUpdateDetails {
 	o := oneOpts(opts)
 	scale, h, v := o.Scale.OrElse(1), o.HorizontalScale.OrElse(1), o.VerticalScale.OrElse(1)
 	if foundation.DebugMode && (scale < 0 || h < 0 || v < 0) {
-		panic(errors.New("ScaleNegative", "the scales must not be negative", "scale", scale, "horizontal", h, "vertical", v))
+		panic(errors.New(tagScaleNegative, "the scales must not be negative", "scale", scale, "horizontal", h, "vertical", v))
 	}
 	return ScaleUpdateDetails{
 		FocalPointDelta: o.FocalPointDelta, FocalPoint: o.FocalPoint,
@@ -447,7 +447,7 @@ func (r *ScaleGestureRecognizer) AddAllowedPointerPanZoom(event *PointerPanZoomS
 // Flutter: gestures/scale.dart ScaleGestureRecognizer.handleEvent
 func (r *ScaleGestureRecognizer) HandleEvent(event PointerEvent) {
 	if foundation.DebugMode && r.state == scaleReady {
-		panic(errors.New("ScaleEventWhileReady", "an event arrived while the scale recognizer is ready"))
+		panic(errors.New(tagScaleEventWhileReady, "an event arrived while the scale recognizer is ready"))
 	}
 	didChangeConfiguration := false
 	shouldStartIfAccepted := false
@@ -542,7 +542,7 @@ func (r *ScaleGestureRecognizer) update() {
 func (r *ScaleGestureRecognizer) updateLines() {
 	count := r.pointerLocations.len()
 	if foundation.DebugMode && len(r.pointerQueue) < count {
-		panic(errors.New("ScalePointerQueueShort", "the pointer queue is shorter than the pointers"))
+		panic(errors.New(tagScalePointerQueueShort, "the pointer queue is shorter than the pointers"))
 	}
 	if count < 2 {
 		r.initialLine = r.currentLine
@@ -713,7 +713,7 @@ func (r *ScaleGestureRecognizer) DidStopTrackingLastPointer(int) {
 		r.oneSeq.Resolve(GestureRejected)
 	case scaleReady, scaleStarted:
 		if foundation.DebugMode {
-			panic(errors.New("ScaleStoppedInInvalidState", "the last pointer stopped while the scale was ready or started"))
+			panic(errors.New(tagScaleStoppedInInvalidState, "the last pointer stopped while the scale was ready or started"))
 		}
 	}
 	r.state = scaleReady
@@ -731,3 +731,11 @@ func (r *ScaleGestureRecognizer) Dispose() {
 //
 // Flutter: gestures/scale.dart ScaleGestureRecognizer.debugDescription
 func (r *ScaleGestureRecognizer) DebugDescription() string { return "scale" }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagScaleEventWhileReady       = "ScaleEventWhileReady"
+	tagScaleNegative              = "ScaleNegative"
+	tagScalePointerQueueShort     = "ScalePointerQueueShort"
+	tagScaleStoppedInInvalidState = "ScaleStoppedInInvalidState"
+)

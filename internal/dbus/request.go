@@ -89,7 +89,7 @@ func PortalRequest(ctx context.Context, bus Bus, method string, args func(handle
 	if len(reply) > 0 {
 		h, ok := reply[0].(godbus.ObjectPath)
 		if !ok {
-			return PortalResponse{}, errors.New("PortalReplyInvalid", "the reply of the portal method has no request handle",
+			return PortalResponse{}, errors.New(tagPortalReplyInvalid, "the reply of the portal method has no request handle",
 				"method", method, "reply", reply)
 		}
 		handle = h
@@ -107,12 +107,12 @@ func PortalRequest(ctx context.Context, bus Bus, method string, args func(handle
 	select {
 	case sig, ok := <-sigs:
 		if !ok {
-			return PortalResponse{}, errors.New("PortalRequestClosed", "the connection closed before the portal answered",
+			return PortalResponse{}, errors.New(tagPortalRequestClosed, "the connection closed before the portal answered",
 				"method", method)
 		}
 		return parsePortalResponse(sig, method)
 	case <-ctx.Done():
-		appErr := errors.NewErr("PortalRequestAborted", ctx.Err()).SetMetadata("method", method)
+		appErr := errors.NewErr(tagPortalRequestAborted, ctx.Err()).SetMetadata("method", method)
 		closeCtx, closeCancel := context.WithTimeout(context.WithoutCancel(ctx), portalCloseTimeout)
 		defer closeCancel()
 		if _, err := bus.Call(closeCtx, PortalDest, handle, portalRequestInterface+".Close"); err != nil {
@@ -137,17 +137,17 @@ func newHandleToken() string {
 
 func parsePortalResponse(sig *godbus.Signal, method string) (PortalResponse, error) {
 	if len(sig.Body) != 2 {
-		return PortalResponse{}, errors.New("PortalResponseInvalid", "the Response signal does not have two values",
+		return PortalResponse{}, errors.New(tagPortalResponseInvalid, "the Response signal does not have two values",
 			"method", method, "values", len(sig.Body))
 	}
 	code, ok := sig.Body[0].(uint32)
 	if !ok {
-		return PortalResponse{}, errors.New("PortalResponseInvalid", "the response code is not a uint32",
+		return PortalResponse{}, errors.New(tagPortalResponseInvalid, "the response code is not a uint32",
 			"method", method, "type", typeName(sig.Body[0]))
 	}
 	results, ok := sig.Body[1].(map[string]godbus.Variant)
 	if !ok {
-		return PortalResponse{}, errors.New("PortalResponseInvalid", "the results are not a dictionary of variants",
+		return PortalResponse{}, errors.New(tagPortalResponseInvalid, "the results are not a dictionary of variants",
 			"method", method, "type", typeName(sig.Body[1]))
 	}
 	return PortalResponse{Code: PortalResponseCode(code), Results: results}, nil
@@ -185,3 +185,11 @@ func mergeSignals(ctx context.Context, a, b <-chan *godbus.Signal) <-chan *godbu
 	}()
 	return out
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagPortalReplyInvalid    = "PortalReplyInvalid"
+	tagPortalRequestAborted  = "PortalRequestAborted"
+	tagPortalRequestClosed   = "PortalRequestClosed"
+	tagPortalResponseInvalid = "PortalResponseInvalid"
+)

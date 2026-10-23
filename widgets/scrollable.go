@@ -95,7 +95,7 @@ type Scrollable struct {
 func NewScrollable(viewportBuilder ViewportBuilder, opts ...ScrollableOpts) *Scrollable {
 	o := firstOpts(opts)
 	if c, ok := o.SemanticChildCount.Get(); ok && c < 0 && foundation.DebugMode {
-		panic(errors.New("ScrollableSemanticChildCountInvalid", "the semantic child count must not be negative", "semanticChildCount", c))
+		panic(errors.New(tagScrollableSemanticChildCountInvalid, "the semantic child count must not be negative", "semanticChildCount", c))
 	}
 	if o.AxisDirection == painting.AxisDirectionUnspecified {
 		o.AxisDirection = painting.AxisDirectionDown
@@ -253,7 +253,7 @@ func ScrollableOf(bc BuildContext, opts ...ScrollableOfOpts) *ScrollableState {
 		if a := firstOpts(opts).Axis; a.IsSome() {
 			axis = " for the provided Axis: " + a.Value().String()
 		}
-		panic(errors.New("ScrollableNotFound",
+		panic(errors.New(tagScrollableNotFound,
 			"ScrollableOf() was called with a context that does not contain a Scrollable widget; no Scrollable widget ancestor could be found"+axis+
 				" starting from the context that was passed to ScrollableOf(); this can happen because you are using a widget that looks for a Scrollable ancestor, but no such ancestor exists",
 			"context", bc.(Element).String()))
@@ -641,7 +641,7 @@ func (s *ScrollableState) handleDragDown(details gestures.DragDownDetails) {
 
 func (s *ScrollableState) baseDragDown(gestures.DragDownDetails) {
 	if foundation.DebugMode && (s.drag != nil || s.hold != nil) {
-		panic(errors.New("ScrollableDragStateInvalid", "a drag down arrived while the scrollable has a drag or a hold"))
+		panic(errors.New(tagScrollableDragStateInvalid, "a drag down arrived while the scrollable has a drag or a hold"))
 	}
 	s.hold = s.position.Hold(s.disposeHold)
 }
@@ -656,7 +656,7 @@ func (s *ScrollableState) handleDragStart(details gestures.DragStartDetails) {
 
 func (s *ScrollableState) baseDragStart(details gestures.DragStartDetails) {
 	if foundation.DebugMode && s.drag != nil {
-		panic(errors.New("ScrollableDragStateInvalid", "a drag start arrived while the scrollable has a drag"))
+		panic(errors.New(tagScrollableDragStateInvalid, "a drag start arrived while the scrollable has a drag"))
 	}
 	s.drag = s.position.Drag(details, s.disposeDrag)
 	if s.hold != nil {
@@ -693,7 +693,7 @@ func (s *ScrollableState) baseDragEnd(details gestures.DragEndDetails) {
 		s.drag.End(details)
 	}
 	if foundation.DebugMode && s.drag != nil {
-		panic(errors.New("ScrollableDragStateInvalid", "the drag of the scrollable did not end with the drag end"))
+		panic(errors.New(tagScrollableDragStateInvalid, "the drag of the scrollable did not end with the drag end"))
 	}
 }
 
@@ -721,7 +721,7 @@ func (s *ScrollableState) baseDragCancel() {
 		s.drag.Cancel()
 	}
 	if foundation.DebugMode && (s.hold != nil || s.drag != nil) {
-		panic(errors.New("ScrollableDragStateInvalid", "the hold and the drag of the scrollable did not end with the cancel"))
+		panic(errors.New(tagScrollableDragStateInvalid, "the hold and the drag of the scrollable did not end with the cancel"))
 	}
 }
 
@@ -862,3 +862,10 @@ func (s *ScrollableState) performEnsureVisible(object rendering.RenderObject, op
 	}
 	return s.position.EnsureVisible(object, opts), s
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagScrollableDragStateInvalid          = "ScrollableDragStateInvalid"
+	tagScrollableNotFound                  = "ScrollableNotFound"
+	tagScrollableSemanticChildCountInvalid = "ScrollableSemanticChildCountInvalid"
+)

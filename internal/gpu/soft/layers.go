@@ -3,6 +3,7 @@ package soft
 import (
 	"image"
 
+	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/ui"
 )
 
@@ -95,7 +96,7 @@ func (r *renderer) layer(l ui.Layer, st *state) error {
 	case *ui.ShaderMaskLayer:
 		return r.shaderMaskLayer(v, st)
 	default:
-		return notImplemented("layer", l)
+		return errors.NewErrf(tagSoftNotImplemented, "The software renderer does not support the layer %T yet.", l)
 	}
 	return r.children(l, st)
 }

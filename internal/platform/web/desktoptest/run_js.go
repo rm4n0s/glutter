@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"sync"
 	"syscall/js"
 	"time"
@@ -96,6 +97,12 @@ type observations struct {
 	NoAPI string `json:"noAPI"`
 	// CallbacksOnUIThread is whether every callback ran on the UI goroutine.
 	CallbacksOnUIThread bool `json:"callbacksOnUIThread"`
+}
+
+func main() {
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
 }
 
 func run() error {

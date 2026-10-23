@@ -64,7 +64,7 @@ const probeFamily = "glutter-probe-family-with-no-font"
 // Flutter: no counterpart
 func Open(ctx context.Context) (*Config, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, errors.NewErr("FontconfigCanceled", err)
+		return nil, errors.NewErr(tagFontconfigCanceled, err)
 	}
 	lib, err := loadLibrary()
 	if err != nil {
@@ -76,7 +76,7 @@ func Open(ctx context.Context) (*Config, error) {
 func newConfig(lib *library) (*Config, error) {
 	config := lib.initLoadConfigAndFonts()
 	if config == 0 {
-		return nil, errors.New("FontconfigInitFailed", "fontconfig could not load a configuration")
+		return nil, errors.New(tagFontconfigInitFailed, "fontconfig could not load a configuration")
 	}
 	return &Config{lib: lib, config: config, scratch: dl.Calloc(1, 16)}, nil
 }
@@ -129,16 +129,16 @@ func weightToFontconfig(ot int) int {
 // Flutter: no counterpart (SkFontMgr_fontconfig::onMatchFamilyStyle)
 func (c *Config) Match(ctx context.Context, family string, weight int, italic bool, lang string) ([]File, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, errors.NewErr("FontconfigCanceled", err)
+		return nil, errors.NewErr(tagFontconfigCanceled, err)
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.config == 0 {
-		return nil, errors.New("FontconfigClosed", "the fontconfig configuration is closed")
+		return nil, errors.New(tagFontconfigClosed, "the fontconfig configuration is closed")
 	}
 	pat := c.lib.patternCreate()
 	if pat == 0 {
-		return nil, errors.New("FontconfigPatternFailed", "fontconfig could not create a pattern")
+		return nil, errors.New(tagFontconfigPatternFailed, "fontconfig could not create a pattern")
 	}
 	defer c.lib.patternDestroy(pat)
 
@@ -167,7 +167,7 @@ func (c *Config) Match(ctx context.Context, family string, weight int, italic bo
 
 	set := c.lib.fontSort(c.config, pat, fcTrue, 0, c.scratch)
 	if set == 0 {
-		return nil, errors.New("FontconfigMatchFailed", "fontconfig could not sort the fonts",
+		return nil, errors.New(tagFontconfigMatchFailed, "fontconfig could not sort the fonts",
 			"family", family, "weight", weight, "italic", italic, "lang", lang)
 	}
 	defer c.lib.fontSetDestroy(set)
@@ -184,12 +184,12 @@ func (c *Config) Match(ctx context.Context, family string, weight int, italic bo
 // Flutter: no counterpart (SkFontMgr_fontconfig::onMatchFamilyStyle accepts the strongly bound families)
 func (c *Config) Aliases(ctx context.Context, family string) ([]string, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, errors.NewErr("FontconfigCanceled", err)
+		return nil, errors.NewErr(tagFontconfigCanceled, err)
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.config == 0 {
-		return nil, errors.New("FontconfigClosed", "the fontconfig configuration is closed")
+		return nil, errors.New(tagFontconfigClosed, "the fontconfig configuration is closed")
 	}
 	if c.defaults == nil {
 		d, err := c.substitutedFamilies(probeFamily)
@@ -220,31 +220,31 @@ func (c *Config) Aliases(ctx context.Context, family string) ([]string, error) {
 // Flutter: no counterpart
 func (c *Config) Families(ctx context.Context) ([]string, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, errors.NewErr("FontconfigCanceled", err)
+		return nil, errors.NewErr(tagFontconfigCanceled, err)
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.config == 0 {
-		return nil, errors.New("FontconfigClosed", "the fontconfig configuration is closed")
+		return nil, errors.New(tagFontconfigClosed, "the fontconfig configuration is closed")
 	}
 	pat := c.lib.patternCreate()
 	if pat == 0 {
-		return nil, errors.New("FontconfigPatternFailed", "fontconfig could not create a pattern")
+		return nil, errors.New(tagFontconfigPatternFailed, "fontconfig could not create a pattern")
 	}
 	defer c.lib.patternDestroy(pat)
 	objects := c.lib.objectSetCreate()
 	if objects == 0 {
-		return nil, errors.New("FontconfigPatternFailed", "fontconfig could not create an object set")
+		return nil, errors.New(tagFontconfigPatternFailed, "fontconfig could not create an object set")
 	}
 	defer c.lib.objectSetDestroy(objects)
 	name := dl.CString(objFamily)
 	defer dl.Free(name)
 	if c.lib.objectSetAdd(objects, name) == 0 {
-		return nil, errors.New("FontconfigPatternFailed", "fontconfig could not add to the object set", "object", objFamily)
+		return nil, errors.New(tagFontconfigPatternFailed, "fontconfig could not add to the object set", "object", objFamily)
 	}
 	set := c.lib.fontList(c.config, pat, objects)
 	if set == 0 {
-		return nil, errors.New("FontconfigListFailed", "fontconfig could not list the fonts")
+		return nil, errors.New(tagFontconfigListFailed, "fontconfig could not list the fonts")
 	}
 	defer c.lib.fontSetDestroy(set)
 	fs := (*fcFontSet)(dl.Pointer(set))
@@ -279,7 +279,7 @@ func containsFold(list []string, s string) bool {
 func (c *Config) substitutedFamilies(family string) ([]string, error) {
 	pat := c.lib.patternCreate()
 	if pat == 0 {
-		return nil, errors.New("FontconfigPatternFailed", "fontconfig could not create a pattern")
+		return nil, errors.New(tagFontconfigPatternFailed, "fontconfig could not create a pattern")
 	}
 	defer c.lib.patternDestroy(pat)
 	if err := c.addString(pat, objFamily, family); err != nil {
@@ -300,7 +300,7 @@ func (c *Config) addString(pat uintptr, object, value string) error {
 	defer dl.Free(obj)
 	defer dl.Free(val)
 	if c.lib.patternAddString(pat, obj, val) == 0 {
-		return errors.New("FontconfigPatternFailed", "fontconfig could not add to the pattern",
+		return errors.New(tagFontconfigPatternFailed, "fontconfig could not add to the pattern",
 			"object", object, "value", value)
 	}
 	return nil
@@ -310,7 +310,7 @@ func (c *Config) addInt(pat uintptr, object string, value int32) error {
 	obj := dl.CString(object)
 	defer dl.Free(obj)
 	if c.lib.patternAddInteger(pat, obj, value) == 0 {
-		return errors.New("FontconfigPatternFailed", "fontconfig could not add to the pattern",
+		return errors.New(tagFontconfigPatternFailed, "fontconfig could not add to the pattern",
 			"object", object, "value", value)
 	}
 	return nil
@@ -357,3 +357,13 @@ func (c *Config) getInt(pat uintptr, object string) (int32, bool) {
 	}
 	return *(*int32)(dl.Pointer(c.scratch)), true
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagFontconfigCanceled      = "FontconfigCanceled"
+	tagFontconfigClosed        = "FontconfigClosed"
+	tagFontconfigInitFailed    = "FontconfigInitFailed"
+	tagFontconfigListFailed    = "FontconfigListFailed"
+	tagFontconfigMatchFailed   = "FontconfigMatchFailed"
+	tagFontconfigPatternFailed = "FontconfigPatternFailed"
+)

@@ -1,6 +1,9 @@
 package explicit
 
-import "github.com/rm4n0s/errors"
+import (
+	"github.com/rm4n0s/errors"
+	"github.com/rm4n0s/glutter/internal/gpu"
+)
 
 // SwapchainOutOfDate is the tag of the error that Swapchain.Acquire returns when the
 // swapchain no longer matches its surface (the window was resized, or the platform asks
@@ -33,3 +36,28 @@ func IsDevicePending(err error) bool {
 	appErr, ok := errors.FromError(err)
 	return ok && appErr.Tag == GPUDevicePending
 }
+
+// TagGPUImageTooLarge is the tag of the error of an image larger than the textures of the device
+// (made by the resources of this package and compared in the shape code).
+//
+// Flutter: no counterpart
+const TagGPUImageTooLarge = "GPUImageTooLarge"
+
+// TagAtlasFull is the tag of the error of a coverage atlas that has no slot left in the frame. It
+// is produced by the atlas of internal/gpu (and the renderers' backends); this package only
+// compares with it.
+//
+// Flutter: no counterpart
+const TagAtlasFull = gpu.TagAtlasFull
+
+// TagVulkanDeviceLost is the tag of the error of a lost Vulkan device. It is produced by the Vulkan
+// backend; this package only compares with it (device loss, SPEC §9.3).
+//
+// Flutter: no counterpart
+const TagVulkanDeviceLost = "VulkanDeviceLost"
+
+// TagGPUDeviceLost is the tag of the error of a lost device of another backend, such as WebGPU's.
+// The backends produce it; this package only compares with it (device loss, SPEC §9.5).
+//
+// Flutter: no counterpart
+const TagGPUDeviceLost = "GPUDeviceLost"

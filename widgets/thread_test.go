@@ -129,7 +129,7 @@ func TestStateGoRecoversPanics(t *testing.T) {
 	tr.pump(&goer{StatefulWidget: NewStatefulWidgetBase(), start: func(s *goerState) {
 		s.Go(func(ctx context.Context) {
 			cancelled = ctx.Done()
-			panic(errors.New("GoroutineFailed", "boom in goroutine"))
+			panic(errors.New(tagGoroutineFailed, "boom in goroutine"))
 		})
 	}})
 	q.waitFor(t, func() bool { return len(tr.errs) > 0 })
@@ -175,3 +175,8 @@ func TestWrongThread(t *testing.T) {
 	// The UI thread is fine.
 	el.MarkNeedsBuild()
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagGoroutineFailed = "GoroutineFailed"
+)

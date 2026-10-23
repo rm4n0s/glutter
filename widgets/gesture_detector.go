@@ -271,14 +271,14 @@ func NewGestureDetector(child Widget, opts ...GestureDetectorOpts) *GestureDetec
 		haveScale := o.OnScaleStart != nil || o.OnScaleUpdate != nil || o.OnScaleEnd != nil
 		if havePan || haveScale {
 			if havePan && haveScale {
-				panic(errors.New("GestureDetectorConflict", "having both a pan gesture recognizer and a scale gesture recognizer is redundant; scale is a superset of pan; just use the scale gesture recognizer"))
+				panic(errors.New(tagGestureDetectorConflict, "having both a pan gesture recognizer and a scale gesture recognizer is redundant; scale is a superset of pan; just use the scale gesture recognizer"))
 			}
 			recognizer := "scale"
 			if havePan {
 				recognizer = "pan"
 			}
 			if haveVertical && haveHorizontal {
-				panic(errors.New("GestureDetectorConflict", "simultaneously having a vertical drag gesture recognizer, a horizontal drag gesture recognizer, and a "+recognizer+
+				panic(errors.New(tagGestureDetectorConflict, "simultaneously having a vertical drag gesture recognizer, a horizontal drag gesture recognizer, and a "+recognizer+
 					" gesture recognizer will result in the "+recognizer+" gesture recognizer being ignored, since the other two will catch all drags", "recognizer", recognizer))
 			}
 		}
@@ -525,7 +525,7 @@ func (s *RawGestureDetectorState) Recognizers() map[reflect.Type]gestures.Gestur
 func (s *RawGestureDetectorState) ReplaceGestureRecognizers(gestureFactories map[reflect.Type]GestureRecognizerFactory) {
 	if foundation.DebugMode {
 		if ro := s.Context().FindRenderObject(); ro == nil || !ro.AsRenderObject().Owner().DebugDoingLayout() {
-			panic(errors.New("GestureDetectorNotDuringLayout", "unexpected call to ReplaceGestureRecognizers; it can only be called during the layout phase; to set the gesture recognizers at other times, trigger a new build with SetState and provide the new gesture recognizers to the RawGestureDetector or GestureDetector"))
+			panic(errors.New(tagGestureDetectorNotDuringLayout, "unexpected call to ReplaceGestureRecognizers; it can only be called during the layout phase; to set the gesture recognizers at other times, trigger a new build with SetState and provide the new gesture recognizers to the RawGestureDetector or GestureDetector"))
 		}
 	}
 	s.syncAll(gestureFactories)
@@ -564,7 +564,7 @@ func (s *RawGestureDetectorState) syncAll(factories map[reflect.Type]GestureReco
 	s.recognizers = map[reflect.Type]gestures.GestureRecognizer{}
 	for t, f := range factories {
 		if foundation.DebugMode && f.RecognizerType() != t {
-			panic(errors.New("GestureRecognizerFactoryTypeMismatch", "the GestureRecognizerFactory is registered under another type than the recognizers it makes",
+			panic(errors.New(tagGestureRecognizerFactoryTypeMismatch, "the GestureRecognizerFactory is registered under another type than the recognizers it makes",
 				"registered", t.String(), "factory", f.RecognizerType().String()))
 		}
 		r := old[t]
@@ -772,3 +772,10 @@ func (d *defaultSemanticsGestureDelegate) dragHandler(r rendering.RenderObject, 
 		}
 	}
 }
+
+// The tags of the errors that this file makes (rm4n0s/errors, R5).
+const (
+	tagGestureDetectorConflict              = "GestureDetectorConflict"
+	tagGestureDetectorNotDuringLayout       = "GestureDetectorNotDuringLayout"
+	tagGestureRecognizerFactoryTypeMismatch = "GestureRecognizerFactoryTypeMismatch"
+)
