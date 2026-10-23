@@ -127,6 +127,7 @@ This file breaks the milestones in `docs/SPEC.md` §18 into small steps. Each st
 | M20 Vulkan renderer | 20.1–20.7 | |
 | M21 Web | 21.1–21.8 | the examples on the web |
 | M22 Fonts and trees for code editors (1.2, 1.4) | 22.1–22.11 | |
+| M23 Windows for tray apps | 23.1 | `tray` |
 
 ---
 
@@ -1629,3 +1630,22 @@ These steps come from a request by the Emetos code editor, which is built on Glu
 1. Run every check of the "Finishing a step" list and the API check; record them in `IMPLEMENTED.md`.
 2. `docs/GUIDE.md` and `README.md` mention tab stops; the SPEC version line says 1.4.
 3. Tag `v1.4.0` on `main` and push the tag. The owner asked for this release in the request that added steps 22.9 and 22.10 ("Release a new Glutter version tag when both are done"), so no further question is asked.
+
+## M23: Windows for tray apps
+
+This step comes from a request for an app built on Glutter (English Tutor) that has a system tray icon: pressing the window's ✕ should take the window off the screen and the task bar while the process and the tray icon keep running, and a click on the icon should bring it back. The owner chose the API. It was done on the branch `feat/window-hide` before it was written here.
+
+### 23.1 Hiding a window (close to the tray)
+**Goal:** an app hides a window for real (no surface, no task-bar entry, no input, no focus) and shows it again as it was, while the app keeps running.
+**Read:** SPEC §8.2 ("Hiding a window"), §8.3 ("Hidden windows"), §8.7 ("Hiding", "Closing"), §8.11 ("Frame pacing"), §13 (the lifecycle), §12.10 (the hiding row), §23.2.
+**Files:** `widgets/window_controller.go`, `ui/window_control.go`, `internal/platform/platform.go`, `internal/engine/engine.go`, `internal/platform/linux/x11/{lib,window,wmstate}.go`, `internal/platform/linux/wayland/{window,decoration,extras}.go`, `internal/platform/linux/wayland/decor/decor.go`, `internal/platform/linux/wayland/fakecomp/windowing.go`, `internal/platform/fake/`, `internal/platform/web/window_js.go`, `internal/renderhost/renderhost.go`, `gluttertest/{tester,windows}.go`, `examples/tray/`, `docs/GUIDE.md`.
+**Tasks:**
+1. `RegularWindowController.SetHidden(hidden bool)` and `IsHidden() bool`; `Activate` (and `SetMinimized(false)`) shows a hidden window first. The view, the widget tree and its state stay. Doc comments end with `// Flutter: no counterpart`, with a `// Deviation:` and a row in SPEC §12.10.
+2. The request goes through `ui.PlatformDispatcher.SetWindowHidden` (`ui.WindowControlHost`) to `platform.Window.SetHidden(hidden) bool`, which says whether the platform can hide windows.
+3. X11: withdraw the window per ICCCM (`XWithdrawWindow`, loaded through purego); show it by restoring `_NET_WM_STATE`, `XMapWindow` and `_NET_ACTIVE_WINDOW`. A withdrawn window is not minimized; the frame timer stops and the requests that would map it again do nothing.
+4. Wayland: unmap with a null buffer and destroy the role objects (decoration, dialog, export, `xdg_toplevel`, `xdg_surface`, or the libdecor frame); show by making a new role on the same `wl_surface`, with the initial commit, and draw nothing before its configure. The idle inhibitor and what else hangs on the surface stay; a frame callback in flight is forgotten. Both the plain `xdg_toplevel` path and the libdecor path.
+5. The web ignores it (returns false); the fake platform records it.
+6. The engine asks a hidden window for no frame (the one wanted is asked for on show, presented whole) and derives the desktop lifecycle from the windows: `Hidden` when every window is hidden, `Resumed` when one has the focus, `Inactive` otherwise, after the view focus events of a change. A hidden window still counts as open: `RunApp` goes on, and closing, `ExitApplication` and `RequestAppExit` work as before.
+7. `examples/tray` hides its window on close and shows it from the tray; SPEC and `docs/GUIDE.md` say how.
+**Tests:** table tests in `widgets` (hide, show, `Activate` on a hidden window, state kept, lifecycle `Hidden` and frames, exiting with the only window hidden); the engine over the fake platform (lifecycle, frames, `Run` going on and ending on exit, focus between windows); Wayland against the fake compositor (the requests, both decoration paths, the EGL path); `glutter_display` tests that hide and show a real window on X11 (Xvfb, with the test window manager) and Wayland (headless sway, with libdecor too); the tray example's tests.
+**Proof:** none (a hidden window shows nothing); a manual check on a real desktop of `go run ./examples/tray`: ✕ takes the window off the task bar, a click on the tray icon brings it back, "Quit" exits.
