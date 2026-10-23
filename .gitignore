@@ -48,3 +48,4 @@ go.work.sum
 # Binaries that `go build` leaves at the root
 /multiwindow
 /glutter-web
+.android-test/

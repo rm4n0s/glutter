@@ -25,6 +25,7 @@ func TestDispatch(t *testing.T) {
 		{name: "copywith reaches the real subcommand", args: []string{"copywith", "-nope"}, wantTag: "CopyWithBadFlags", wantRoute: "dispatch->Run.CopyWithBadFlags"},
 		{name: "apicheck reaches the real subcommand", args: []string{"apicheck", "-nope"}, wantTag: "ApiCheckBadFlags", wantRoute: "dispatch->Run->run.ApiCheckBadFlags"},
 		{name: "errcheck reaches the real subcommand", args: []string{"errcheck", "-nope"}, wantTag: "ErrCheckBadFlags", wantRoute: "dispatch->Run->run.ErrCheckBadFlags"},
+		{name: "android-dex reaches the real subcommand", args: []string{"android-dex", "-nope"}, wantTag: "AndroidDexBadFlags", wantRoute: "dispatch->Run.AndroidDexBadFlags"},
 		{name: "icons reaches the real subcommand", args: []string{"icons", "-nope"}, wantTag: "IconsBadFlags", wantRoute: "dispatch->Run.IconsBadFlags"},
 	}
 	for _, tt := range tests {
@@ -52,7 +53,7 @@ func TestDispatch(t *testing.T) {
 
 func TestCommandNames(t *testing.T) {
 	got := strings.Join(commandNames(), ",")
-	want := "apicheck,copywith,errcheck,icons,keys,reexport,shaders,wayland"
+	want := "android-dex,apicheck,copywith,errcheck,icons,keys,reexport,shaders,wayland"
 	if got != want {
 		t.Errorf("commandNames() = %q, want %q", got, want)
 	}
