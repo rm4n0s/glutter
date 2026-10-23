@@ -1,4 +1,4 @@
-//go:build linux && glutter_display
+//go:build linux && !android && glutter_display
 
 package wayland
 

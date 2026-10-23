@@ -108,14 +108,59 @@ type Pass struct {
 	Tags         []string
 }
 
+// AndroidPass is the build for Android. The module is built with cgo and the NDK's clang
+// there (SPEC §24.2), so that the *_android.go files of internal/platform/android are read.
+//
+// Flutter: no counterpart.
+var AndroidPass = Pass{GOOS: "android", GOARCH: "arm64"}
+
 // DefaultPasses are the builds that together cover every file of the module: Linux, the
-// web, and Linux with the tags of the display and browser tests.
+// web, Linux with the tags of the display and browser tests, and Android (SPEC §24.13).
 //
 // Flutter: no counterpart.
 var DefaultPasses = []Pass{
 	{GOOS: "linux", GOARCH: "amd64"},
 	{GOOS: "js", GOARCH: "wasm"},
 	{GOOS: "linux", GOARCH: "amd64", Tags: []string{"glutter_display", "glutter_browser"}},
+	AndroidPass,
+}
+
+// androidMinSDK is the API level of the NDK's clang (SPEC §24.1, D24).
+const androidMinSDK = 26
+
+// androidTriples maps a GOARCH to the triple of the NDK's clang.
+var androidTriples = map[string]string{"arm64": "aarch64-linux-android", "amd64": "x86_64-linux-android"}
+
+// ndkClang finds the NDK's clang for an architecture: the NDK is $ANDROID_NDK_HOME, else the
+// newest $ANDROID_HOME/ndk/<version>. It fails with ErrCheckAndroidNDKNotFound, which names the
+// package to install, when there is none.
+func ndkClang(getenv func(string) string, goarch string) (string, error) {
+	ndk := getenv("ANDROID_NDK_HOME")
+	if ndk == "" {
+		home := getenv("ANDROID_HOME")
+		if home == "" {
+			home = getenv("ANDROID_SDK_ROOT")
+		}
+		versions, _ := filepath.Glob(filepath.Join(home, "ndk", "*"))
+		sort.Slice(versions, func(i, j int) bool { return versions[i] < versions[j] })
+		if home != "" && len(versions) > 0 {
+			ndk = versions[len(versions)-1]
+		}
+	}
+	triple, ok := androidTriples[goarch]
+	if !ok {
+		return "", errors.New(TagErrCheckAndroidNDKNotFound, "no NDK clang is known for this architecture", "goarch", goarch)
+	}
+	cc := filepath.Join(ndk, "toolchains", "llvm", "prebuilt", "linux-x86_64", "bin", fmt.Sprintf("%s%d-clang", triple, androidMinSDK))
+	if ndk == "" {
+		return "", errors.New(TagErrCheckAndroidNDKNotFound, "the Android NDK was not found; set ANDROID_NDK_HOME or ANDROID_HOME",
+			"install", `sdkmanager "ndk;30.0.16248370"`)
+	}
+	if _, err := os.Stat(cc); err != nil {
+		return "", errors.New(TagErrCheckAndroidNDKNotFound, "the Android NDK has no clang for this architecture",
+			"clang", cc, "install", `sdkmanager "ndk;30.0.16248370"`)
+	}
+	return cc, nil
 }
 
 // Run is the subcommand. It prints the violations that the allow file does not list and
@@ -258,6 +303,13 @@ func checkPass(ctx context.Context, root string, pass Pass) ([]Violation, error)
 		"-tags", strings.Join(pass.Tags, ","), "./...")
 	cmd.Dir = root
 	cmd.Env = append(os.Environ(), "GOOS="+pass.GOOS, "GOARCH="+pass.GOARCH, "CGO_ENABLED=0")
+	if pass.GOOS == "android" {
+		cc, err := ndkClang(os.Getenv, pass.GOARCH)
+		if err != nil {
+			return nil, err
+		}
+		cmd.Env = append(cmd.Env, "CGO_ENABLED=1", "CC="+cc)
+	}
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
@@ -861,15 +913,18 @@ func (c *checker) checkSwitch(s *ast.SwitchStmt, fn string) {
 
 // The tags of the errors that this file makes (rm4n0s/errors, R5).
 const (
-	tagErrCheckAllowSyntax      = "ErrCheckAllowSyntax"
-	tagErrCheckAllowUnreadable  = "ErrCheckAllowUnreadable"
-	tagErrCheckBadFlags         = "ErrCheckBadFlags"
-	tagErrCheckExportUnreadable = "ErrCheckExportUnreadable"
-	tagErrCheckListFailed       = "ErrCheckListFailed"
-	tagErrCheckListInvalid      = "ErrCheckListInvalid"
-	tagErrCheckNoExport         = "ErrCheckNoExport"
-	tagErrCheckParseFailed      = "ErrCheckParseFailed"
-	tagErrCheckRootInvalid      = "ErrCheckRootInvalid"
-	tagErrCheckViolations       = "ErrCheckViolations"
-	tagErrCheckWriteFailed      = "ErrCheckWriteFailed"
+	// TagErrCheckAndroidNDKNotFound is the tag of the error for a missing Android NDK; the
+	// metadata "install" has the sdkmanager command.
+	TagErrCheckAndroidNDKNotFound = "ErrCheckAndroidNDKNotFound"
+	tagErrCheckAllowSyntax        = "ErrCheckAllowSyntax"
+	tagErrCheckAllowUnreadable    = "ErrCheckAllowUnreadable"
+	tagErrCheckBadFlags           = "ErrCheckBadFlags"
+	tagErrCheckExportUnreadable   = "ErrCheckExportUnreadable"
+	tagErrCheckListFailed         = "ErrCheckListFailed"
+	tagErrCheckListInvalid        = "ErrCheckListInvalid"
+	tagErrCheckNoExport           = "ErrCheckNoExport"
+	tagErrCheckParseFailed        = "ErrCheckParseFailed"
+	tagErrCheckRootInvalid        = "ErrCheckRootInvalid"
+	tagErrCheckViolations         = "ErrCheckViolations"
+	tagErrCheckWriteFailed        = "ErrCheckWriteFailed"
 )

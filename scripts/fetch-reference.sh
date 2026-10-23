@@ -26,6 +26,8 @@ FLUTTER_PATHS=(
   engine/src/flutter/lib/ui
   engine/src/flutter/lib/web_ui
   dev/tools/gen_keycodes/data
+  engine/src/flutter/shell/platform/android
+  engine/src/flutter/impeller/renderer/backend/vulkan
 )
 
 MCU_URL="https://github.com/material-foundation/material-color-utilities"

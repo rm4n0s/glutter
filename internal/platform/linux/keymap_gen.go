@@ -3,7 +3,7 @@
 // logical_key_data.g.json, layout_goals.json). Flutter is BSD-3-Clause
 // licensed; see third_party/flutter/LICENSE.
 
-//go:build linux
+//go:build linux && !android
 
 package linux
 

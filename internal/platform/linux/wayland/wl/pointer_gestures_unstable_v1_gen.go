@@ -23,7 +23,7 @@
 // ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 // THIS SOFTWARE.
 
-//go:build linux
+//go:build linux && !android
 
 package wl
 

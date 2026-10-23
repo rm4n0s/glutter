@@ -114,7 +114,7 @@ func (g *generator) protocol(p *protocol) ([]byte, error) {
 		g.p("// %s", strings.TrimSpace(line))
 	}
 	g.p("")
-	g.p("//go:build linux")
+	g.p("//go:build linux && !android")
 	g.p("")
 	g.p("package wl")
 	for _, i := range p.Interfaces {

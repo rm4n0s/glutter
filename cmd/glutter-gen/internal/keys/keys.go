@@ -242,7 +242,7 @@ func generate(d *data) ([]byte, error) {
 	b.WriteString("// Source: Flutter's dev/tools/gen_keycodes/data (physical_key_data.g.json,\n")
 	b.WriteString("// logical_key_data.g.json, layout_goals.json). Flutter is BSD-3-Clause\n")
 	b.WriteString("// licensed; see third_party/flutter/LICENSE.\n\n")
-	b.WriteString("//go:build linux\n\n")
+	b.WriteString("//go:build linux && !android\n\n")
 	b.WriteString("package linux\n\n")
 
 	b.WriteString("// xkbToPhysicalKey maps an XKB keycode (evdev scancode + 8) to the id of\n// Flutter's PhysicalKeyboardKey.\n")

@@ -2428,3 +2428,15 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - Exported constants: `explicit.TagGPUImageTooLarge`, `TagAtlasFull`, `TagVulkanDeviceLost`, `TagGPUDeviceLost`, `gpu.TagAtlasFull`, `goldens.TagGoldenMissing`, `dbus.TagConnectFailed` (internal packages only: no public API changed, and `apicheck` passes).
   - Not tested: the three `FakeCompReadFailed` sites in `fakecomp.readSource` (a failing pipe cannot be made without a 5 s time-out). Existing lint findings in files this step did not touch (`internal/engine/engine.go` unused fields, a few display-test files) are still there.
   - Follow-up: a new version of the dependency means reading its `AI_GUIDE.md` again (IMPLEMENTATION.md, "Errors").
+
+## 25.1 Build tags and the Android check
+
+- **Date:** 2026-10-23
+- **Branch:** feat/step-25.1-build-tags-android-check
+- **Summary:** The module builds and vets for `android/arm64` and `android/amd64`: the 145 files of `internal/platform/linux/...` (except the loader `dl`) are `linux && !android`, the two generators write that tag, `internal/engine/backends_linux.go` and the Linux-only tests are tagged the same, and `backends_android.go` makes `Run` fail with `BackendUnavailable` until step 25.3. `foundation/host_android.go` makes `TargetPlatformAndroid` the host. `scripts/check-android.sh` (a standard check from now on) builds and vets with the NDK's clang for API 26; `glutter-gen errcheck` has an `android/arm64` pass; `scripts/fetch-reference.sh` also fetches Flutter's Android embedding and Impeller's Vulkan backend.
+- **Main files:** `internal/platform/linux/**` (tags), `cmd/glutter-gen/internal/{keys,wayland}` (generated tag), `cmd/glutter-gen/internal/errcheck`, `internal/engine/{backends_android,backends_linux,buildtags_test}.go`, `foundation/{host_android,web_other}.go`, `scripts/{check-android,fetch-reference}.sh`, `docs/SPEC.md` (§24 "Decided in step 25.1").
+- **Tests:** `TestBuildsHaveTheirOwnBackends` (`go list -deps` of `examples/counter` on linux, js, android/arm64 and android/amd64: Android has only `linux/dl` of the Linux packages, the web none), `TestNDKClang` (7 cases) with its install-command and route tests (`ErrCheckAndroidNDKNotFound`), `TestRunHasNoPlatformOnAndroidYet` (runs on Android only). No Flutter test cases (no counterpart).
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck ✅ · apicheck ✅ · GOOS=js build, vet and `scripts/test-wasm.sh` ✅ · `scripts/check-android.sh` ✅ · display tests ✅ (`internal/engine` and `wayland` under headless sway)
+- **Proof:** none
+- **Manual checks:** none
+- **Deviations and follow-ups:** the `dl` package stays `linux` (gles and vulkan load their libraries through it), so a test says "only `linux/dl`" instead of "no package of `internal/platform/linux`". `apicheck` reads the source and does not depend on the target, so it has no Android pass. The errcheck test of the whole module leaves the Android pass out, and says so, without an NDK.

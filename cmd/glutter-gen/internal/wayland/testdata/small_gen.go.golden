@@ -4,7 +4,7 @@
 //
 // A tiny protocol that uses every feature the generator supports.
 
-//go:build linux
+//go:build linux && !android
 
 package wl
 

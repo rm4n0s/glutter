@@ -414,7 +414,19 @@ func TestTheModuleKeepsTheErrorRules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	vs, err := CheckModule(context.Background(), root, DefaultPasses)
+	passes := DefaultPasses
+	if _, err := ndkClang(os.Getenv, AndroidPass.GOARCH); err != nil {
+		// Without an NDK the *_android.go files cannot be read; scripts/check-android.sh and
+		// the errcheck command fail in that case (SPEC §24.13).
+		t.Logf("the Android pass is left out: %v", err)
+		passes = nil
+		for _, p := range DefaultPasses {
+			if p.GOOS != "android" {
+				passes = append(passes, p)
+			}
+		}
+	}
+	vs, err := CheckModule(context.Background(), root, passes)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -430,5 +442,103 @@ func TestTheModuleKeepsTheErrorRules(t *testing.T) {
 		if !used[key] {
 			t.Errorf("the allow file lists %q, which is not a violation any more", key)
 		}
+	}
+}
+
+// TestNDKClang finds the NDK's clang the way scripts/check-android.sh does, and fails with
+// ErrCheckAndroidNDKNotFound, with the install command, when there is none.
+func TestNDKClang(t *testing.T) {
+	tree := func(t *testing.T, versions ...string) string {
+		home := t.TempDir()
+		for _, v := range versions {
+			bin := filepath.Join(home, "ndk", v, "toolchains", "llvm", "prebuilt", "linux-x86_64", "bin")
+			if err := os.MkdirAll(bin, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(bin, "aarch64-linux-android26-clang"), nil, 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return home
+	}
+	tests := []struct {
+		name    string
+		env     func(t *testing.T) map[string]string
+		goarch  string
+		wantEnd string // the end of the clang's path
+		wantErr bool
+	}{
+		{name: "the newest NDK of the SDK", goarch: "arm64", wantEnd: filepath.Join("ndk", "30.0.1", "toolchains", "llvm", "prebuilt", "linux-x86_64", "bin", "aarch64-linux-android26-clang"),
+			env: func(t *testing.T) map[string]string {
+				return map[string]string{"ANDROID_HOME": tree(t, "29.0.9", "30.0.1")}
+			}},
+		{name: "ANDROID_SDK_ROOT is used when ANDROID_HOME is not set", goarch: "arm64", wantEnd: "aarch64-linux-android26-clang",
+			env: func(t *testing.T) map[string]string { return map[string]string{"ANDROID_SDK_ROOT": tree(t, "30.0.1")} }},
+		{name: "ANDROID_NDK_HOME wins", goarch: "arm64", wantEnd: filepath.Join("pinned", "toolchains", "llvm", "prebuilt", "linux-x86_64", "bin", "aarch64-linux-android26-clang"),
+			env: func(t *testing.T) map[string]string {
+				home := tree(t, "30.0.1")
+				pinned := filepath.Join(home, "pinned")
+				if err := os.Rename(filepath.Join(home, "ndk", "30.0.1"), pinned); err != nil {
+					t.Fatal(err)
+				}
+				return map[string]string{"ANDROID_NDK_HOME": pinned, "ANDROID_HOME": home}
+			}},
+		{name: "no SDK", goarch: "arm64", wantErr: true, env: func(t *testing.T) map[string]string { return nil }},
+		{name: "an SDK without an NDK", goarch: "arm64", wantErr: true,
+			env: func(t *testing.T) map[string]string { return map[string]string{"ANDROID_HOME": t.TempDir()} }},
+		{name: "an NDK without the clang of the architecture", goarch: "amd64", wantErr: true,
+			env: func(t *testing.T) map[string]string { return map[string]string{"ANDROID_HOME": tree(t, "30.0.1")} }},
+		{name: "an architecture with no triple", goarch: "riscv64", wantErr: true,
+			env: func(t *testing.T) map[string]string { return map[string]string{"ANDROID_HOME": tree(t, "30.0.1")} }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			env := tt.env(t)
+			got, err := ndkClang(func(k string) string { return env[k] }, tt.goarch)
+			if tt.wantErr {
+				appErr, ok := errors.FromError(err)
+				if !ok {
+					t.Fatalf("expected *errors.Error, got %T (%v)", err, err)
+				}
+				if !appErr.HasRoute("ndkClang." + TagErrCheckAndroidNDKNotFound) {
+					t.Errorf("unexpected failure path: %s", appErr.Route())
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.HasSuffix(got, tt.wantEnd) {
+				t.Errorf("clang = %s, want it to end with %s", got, tt.wantEnd)
+			}
+		})
+	}
+}
+
+// TestNDKClangNamesTheInstallCommand checks the metadata of the error for a missing NDK.
+func TestNDKClangNamesTheInstallCommand(t *testing.T) {
+	_, err := ndkClang(func(string) string { return "" }, "arm64")
+	appErr, ok := errors.FromError(err)
+	if !ok {
+		t.Fatalf("expected *errors.Error, got %T (%v)", err, err)
+	}
+	if got, _ := appErr.Metadata["install"].(string); !strings.HasPrefix(got, "sdkmanager ") {
+		t.Errorf("install = %q, want an sdkmanager command (route %s)", got, appErr.Route())
+	}
+}
+
+// TestAndroidPassWithoutAnNDK checks the route of the error that the Android pass gives when the
+// NDK is missing: CheckModule stops before it lists anything.
+func TestAndroidPassWithoutAnNDK(t *testing.T) {
+	t.Setenv("ANDROID_NDK_HOME", "")
+	t.Setenv("ANDROID_HOME", "")
+	t.Setenv("ANDROID_SDK_ROOT", "")
+	_, err := CheckModule(context.Background(), t.TempDir(), []Pass{AndroidPass})
+	appErr, ok := errors.FromError(err)
+	if !ok {
+		t.Fatalf("expected *errors.Error, got %T (%v)", err, err)
+	}
+	if !appErr.HasRoute("CheckModule->checkPass->ndkClang." + TagErrCheckAndroidNDKNotFound) {
+		t.Errorf("unexpected failure path: %s", appErr.Route())
 	}
 }
