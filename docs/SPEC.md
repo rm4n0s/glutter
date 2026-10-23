@@ -8,7 +8,7 @@
 | Module | `github.com/rm4n0s/glutter` |
 | License | BSD-3-Clause |
 
-Glutter is a GUI toolkit for Go that reproduces Flutter's framework API on its own Go engine. An app is a normal Go program built with `CGO_ENABLED=0 go build`: no Dart, no Skia, no C compiler, no development packages. Version 1.0 is a complete desktop toolkit for Linux (Wayland and X11), including a system tray. Version 1.1 adds a Vulkan renderer on Linux, used when the machine has Vulkan, with OpenGL ES as the fallback, and the web: WebAssembly drawn with WebGPU, or with WebGL 2 where the browser has no WebGPU (§23). Version 1.2 adds what a code editor built on Glutter needs: fonts loaded at run time, fonts in `gluttertest`, and a fallback order that tries the listed font families before the system default (§10). Version 1.3 adds font queries and the desktop's font settings, a glyph cache that drops the oldest entry, `TreeSliver` and `ReorderableListView`. Version 1.4 adds tab stops in paragraph layout and a cache of shaped runs (§10). Everything specific to an OS or GPU sits behind two internal interfaces, so Windows, macOS and mobile can be added later without changing the framework.
+Glutter is a GUI toolkit for Go that reproduces Flutter's framework API on its own Go engine. An app is a normal Go program built with `CGO_ENABLED=0 go build`: no Dart, no Skia, no C compiler, no development packages. Version 1.0 is a complete desktop toolkit for Linux (Wayland and X11), including a system tray. Version 1.1 adds a Vulkan renderer on Linux, used when the machine has Vulkan, with OpenGL ES as the fallback, and the web: WebAssembly drawn with WebGPU, or with WebGL 2 where the browser has no WebGPU (§23). Version 1.2 adds what a code editor built on Glutter needs: fonts loaded at run time, fonts in `gluttertest`, and a fallback order that tries the listed font families before the system default (§10). Version 1.3 adds font queries and the desktop's font settings, a glyph cache that drops the oldest entry, `TreeSliver` and `ReorderableListView`. Version 1.4 adds tab stops in paragraph layout and a cache of shaped runs (§10). Version 1.5 lets an app hide a window and show it again, so that an app with a tray icon closes its window to the tray (§8.7), and gives the desktop app lifecycle from the windows (§13). Everything specific to an OS or GPU sits behind two internal interfaces, so Windows, macOS and mobile can be added later without changing the framework.
 
 ---
 
@@ -63,6 +63,8 @@ Glutter is a GUI toolkit for Go that reproduces Flutter's framework API on its o
 **Scope of 1.2** (milestone M22, after 1.1; §10, §11.3): fonts loaded at run time (`LoadFontFromList`, `FontLoader`, `RunAppOpts.Fonts`), `gluttertest.Opts.Fonts`, the listed families before the system default; then font queries and the desktop's font settings, text benchmarks and an LRU glyph cache, `TreeSliver`, `ReorderableListView`.
 
 **Scope of 1.4** (milestone M22, steps 22.9 to 22.11; §10, §11.3): tab stops in paragraph layout (`ParagraphStyleOpts.TabSize`, `TextPainterOpts.TabSize`) and a cache of shaped runs in the text engine.
+
+**Scope of 1.5** (milestone M23, step 23.1; §8.2, §8.3, §8.7, §13): `RegularWindowController.SetHidden` and `IsHidden` on X11 and Wayland (ignored on the web), and the desktop lifecycle (`Resumed`, `Inactive`, `Hidden`) given by the windows.
 
 ## 4. Decisions log
 
@@ -1922,7 +1924,7 @@ Each milestone is broken into steps in `docs/IMPLEMENTATION.md` (written after t
 | M20 | Vulkan renderer, at parity with `soft`, default on Linux with GLES as the fallback | `vulkan` matches the `soft` goldens; `auto` uses Vulkan on Mesa and NVIDIA and GLES without Vulkan |
 | M21 | Web: platform, input, text input, WebGL 2, WebGPU, fallback, `glutter-web`, examples | the examples run in Chromium (WebGPU) and Firefox (WebGL 2) and match the goldens; release 1.1 |
 | M22 | Fonts and trees for code editors (1.2): fonts loaded at run time, fonts in `gluttertest`, the family fallback order, then font queries and the desktop's font settings, text benchmarks and an LRU glyph cache, `TreeSliver`, `ReorderableListView`, tab stops in paragraph layout and a cache of shaped runs (1.4) | a monospace font loaded by the app is used in `TextStyle`, in fallback and in goldens; release 1.2 after steps 22.1–22.3; a tab in a code line lands on its stop in every query; a line of code built again is at least 5 times cheaper; release 1.4 after step 22.10 |
-| M23 | Windows for tray apps: hiding a window and showing it again (`RegularWindowController.SetHidden`, §8.2, §8.3, §8.7), and the desktop lifecycle given by the windows (§13) | ✕ in the tray example takes the window off the screen and the task bar on X11 and Wayland while the app and its tray icon keep running, a click on the icon brings it back as it was, and `RunApp` ends only when the window closes or the app exits |
+| M23 | Windows for tray apps: hiding a window and showing it again (`RegularWindowController.SetHidden`, §8.2, §8.3, §8.7), and the desktop lifecycle given by the windows (§13) | ✕ in the tray example takes the window off the screen and the task bar on X11 and Wayland while the app and its tray icon keep running, a click on the icon brings it back as it was, and `RunApp` ends only when the window closes or the app exits; release 1.5 |
 
 ## 19. Examples (`examples/`)
 

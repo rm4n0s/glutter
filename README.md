@@ -131,6 +131,11 @@ func options(mono []byte) m.RunAppOpts {
 }
 ```
 
+An app that lives in the system tray closes its window to the tray: `SetHidden(true)` on the
+window's controller takes it off the screen and the task bar while the app goes on, and
+`SetHidden(false)` or `Activate()` brings it back as it was (Flutter has no counterpart;
+[`examples/tray`](examples/tray) does it from `AppLifecycleListener.OnExitRequested`).
+
 ## From Flutter to Glutter
 
 | Flutter | Glutter |
