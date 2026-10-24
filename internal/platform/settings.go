@@ -27,6 +27,9 @@ type Settings struct {
 	DisableAnimations bool
 	// HighContrast is whether the user asked for high contrast.
 	HighContrast bool
+	// AccessibleNavigation is whether an assistive technology, such as a screen reader, is in
+	// use (AccessibilityFeatures.AccessibleNavigation).
+	AccessibleNavigation bool
 	// Locales lists the user's locales, most preferred first.
 	Locales []ui.Locale
 	// CursorSize is the size of the mouse cursor in pixels; 0 means the

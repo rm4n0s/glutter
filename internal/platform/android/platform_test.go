@@ -315,7 +315,7 @@ func TestNewWindowAndWindowRoutes(t *testing.T) {
 	if w.SetHidden(true) {
 		t.Error("SetHidden reported success")
 	}
-	if p.Services() != nil || len(p.Displays()) != 1 || p.Settings().TextScaleFactor != 1 {
+	if svc := p.Services(); svc == nil || svc.Accessibility() == nil || len(p.Displays()) != 1 || p.Settings().TextScaleFactor != 1 {
 		t.Error("services, displays or settings")
 	}
 }

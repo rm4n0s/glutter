@@ -22,6 +22,8 @@ func TestParseDevEvents(t *testing.T) {
 		{"text", "text:hello world", []DevEvent{{Kind: "text", Key: "hello world"}}},
 		{"compose", "compose:k,ka,か", []DevEvent{{Kind: "compose", Key: "k,ka,か"}}},
 		{"action", "action:enter", []DevEvent{{Kind: "action"}}},
+		{"a11y click", "a11y:click,Add", []DevEvent{{Kind: "a11y", Key: "click", Label: "Add"}}},
+		{"a11y label with commas and spaces", "a11y:scrollforward,Item 1, of many", []DevEvent{{Kind: "a11y", Key: "scrollforward", Label: "Item 1, of many"}}},
 		{"back pop", "back:pop", []DevEvent{{Kind: "back", Key: "pop"}}},
 		{"back gesture and cancel", "back:gesture;back:cancel", []DevEvent{{Kind: "back", Key: "gesture"}, {Kind: "back", Key: "cancel"}}},
 		{"several, with spaces and a trailing semicolon", " wait:1s ; tap:1.5,2 ;key:KEYCODE_VOLUME_UP;", []DevEvent{
@@ -44,6 +46,7 @@ func TestParseDevEventsErrors(t *testing.T) {
 	for _, script := range []string{
 		"tap", "tap:1", "tap:a,b", "tap:1,2,3", "swipe:1,2,3,4", "swipe:1,2,3,4,0", "swipe:1,2,3,4,1.5", "wait:soon", "wait:-1s", "text:", "compose:", "action:done", "action", "back:", "back:swipe", "compose:a,,b",
 		"key:ENTER", "key:KEYCODE_enter", "key:", "back:start", "tap:1,2;nope",
+		"a11y:", "a11y:click", "a11y:click,", "a11y:tap,Add", "a11y:,Add", "a11y:CLICK,Add",
 	} {
 		t.Run(script, func(t *testing.T) {
 			_, err := ParseDevEvents(script)
@@ -63,7 +66,8 @@ func TestParseDevEventsErrors(t *testing.T) {
 func TestDevEventsAreInjectedOnceInOrder(t *testing.T) {
 	h := newFakeHost()
 	p := newPlatform(newBridge(), h, nil)
-	p.devEvents = []DevEvent{{Kind: "tap", X1: 1, Y1: 2}, {Kind: "wait", Wait: time.Millisecond}, {Kind: "key", Key: "KEYCODE_A"}}
+	p.devEvents = []DevEvent{{Kind: "tap", X1: 1, Y1: 2}, {Kind: "wait", Wait: time.Millisecond}, {Kind: "key", Key: "KEYCODE_A"},
+		{Kind: "a11y", Key: "click", Label: "Add"}}
 	p.startDevEvents()
 	p.startDevEvents() // a second start does nothing
 	deadline := time.Now().Add(5 * time.Second)
@@ -71,7 +75,7 @@ func TestDevEventsAreInjectedOnceInOrder(t *testing.T) {
 		h.mu.Lock()
 		n := len(h.injected)
 		h.mu.Unlock()
-		if n == 2 {
+		if n == 3 {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
@@ -79,7 +83,7 @@ func TestDevEventsAreInjectedOnceInOrder(t *testing.T) {
 	time.Sleep(300 * time.Millisecond)
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	want := []DevEvent{{Kind: "tap", X1: 1, Y1: 2}, {Kind: "key", Key: "KEYCODE_A"}}
+	want := []DevEvent{{Kind: "tap", X1: 1, Y1: 2}, {Kind: "key", Key: "KEYCODE_A"}, {Kind: "a11y", Key: "click", Label: "Add"}}
 	if !reflect.DeepEqual(h.injected, want) {
 		t.Errorf("injected %+v, want %+v", h.injected, want)
 	}

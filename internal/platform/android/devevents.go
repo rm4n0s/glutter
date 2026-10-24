@@ -2,6 +2,7 @@ package android
 
 import (
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -21,7 +22,7 @@ const DevEventsEnv = "GLUTTER_DEV_EVENTS"
 //
 // Flutter: no counterpart
 type DevEvent struct {
-	// Kind is "wait", "tap", "swipe", "key", "text", "compose", "action" or "back".
+	// Kind is "wait", "tap", "swipe", "key", "text", "compose", "action", "back" or "a11y".
 	Kind string
 	// Wait is how long to wait, for "wait"; and a swipe takes its Millis.
 	Wait time.Duration
@@ -32,7 +33,14 @@ type DevEvent struct {
 	// Key is the name of a key: KEYCODE_ENTER; for "text", the text to type; for "compose", the
 	// pieces that the input method composes one after the other, separated by commas.
 	Key string
+	// Label is, for "a11y", the text that the node has: Key is the action.
+	Label string
 }
+
+// a11yActions are the actions that a11y: knows, by the name of the script. The Java side maps
+// each to the AccessibilityNodeInfo action that a screen reader would perform.
+var a11yActions = []string{"click", "longclick", "scrollforward", "scrollbackward", "focus", "a11yfocus", "a11yclear",
+	"dismiss", "copy", "cut", "paste", "expand", "collapse"}
 
 var keyName = regexp.MustCompile(`^KEYCODE_[A-Z0-9_]+$`)
 
@@ -47,9 +55,12 @@ var keyName = regexp.MustCompile(`^KEYCODE_[A-Z0-9_]+$`)
 //	action:enter        the input method does the action of its Enter key (the field's action)
 //	back:pop            the system's back; back:gesture a predictive back gesture that is completed,
 //	                    back:cancel one that is cancelled
+//	a11y:click,Add      the accessibility action on the first node whose text, content description or
+//	                    hint contains the label, as a screen reader performs it: click, longclick,
+//	                    scrollforward, scrollbackward, focus, a11yfocus, a11yclear, dismiss, copy, cut,
+//	                    paste, expand or collapse (the label is the rest of the step, commas included)
 //
 // A step that is not one of these, or has the wrong arguments, fails with AndroidDevEventsInvalid.
-// The later steps of the script (text, compose, back, a11y) come with the steps that add them.
 //
 // Flutter: no counterpart
 func ParseDevEvents(script string) ([]DevEvent, error) {
@@ -110,8 +121,14 @@ func ParseDevEvents(script string) ([]DevEvent, error) {
 				return nil, errors.New(tagAndroidDevEventsInvalid, "back takes pop, gesture or cancel", "step", step)
 			}
 			ev.Key = args
+		case "a11y":
+			action, label, ok := strings.Cut(args, ",")
+			if !ok || label == "" || !slices.Contains(a11yActions, action) {
+				return nil, errors.New(tagAndroidDevEventsInvalid, "a11y takes an action and the label of a node, such as click,Add", "step", step)
+			}
+			ev.Key, ev.Label = action, label
 		default:
-			return nil, errors.New(tagAndroidDevEventsInvalid, "the step is not wait, tap, swipe, key, text, compose, action or back", "step", step)
+			return nil, errors.New(tagAndroidDevEventsInvalid, "the step is not wait, tap, swipe, key, text, compose, action, back or a11y", "step", step)
 		}
 		events = append(events, ev)
 	}
@@ -160,7 +177,7 @@ func (p *Platform) startDevEvents() {
 			case "back":
 				p.host.Inject(e)
 				time.Sleep(600 * time.Millisecond)
-			case "text", "action":
+			case "text", "action", "a11y":
 				p.host.Inject(e)
 				time.Sleep(300 * time.Millisecond)
 			case "compose":

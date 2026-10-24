@@ -113,6 +113,7 @@ func (p *Platform) activityCreated() {
 		p.sendHandlesBack()
 	}
 	p.text.resend(p.host)
+	p.a11y.resend()
 }
 
 // bridge methods

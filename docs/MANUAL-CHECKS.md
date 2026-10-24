@@ -157,3 +157,26 @@ Check, and record the answers:
 
 Answers: _(not yet recorded)_
 
+## 25.11 TalkBack
+
+**Status:** pending
+
+Turn TalkBack on (Settings → Accessibility → TalkBack), then run:
+
+```
+go run ./cmd/glutter-android run ./examples/gallery
+go run ./cmd/glutter-android run ./examples/dev/android-a11y
+```
+
+Check, and record the answers:
+
+1. Explore by touch (drag one finger over the screen): does TalkBack read the element under your finger (buttons say "button", text fields "edit box", switches and checkboxes their state)?
+2. Swipe right and left with one finger: does the focus go to the next and the previous element, in a sensible order, and scroll into view when the next element is off screen?
+3. In `android-a11y`, double-tap the "Increment" button: does the count change, and does TalkBack read the new "Count: N" (a live region)?
+4. Scroll the list with two fingers, and with the TalkBack gesture (swipe up then down with one finger, or the local context menu's "Scroll forward"): does the list scroll and does TalkBack say what is shown?
+5. Double-tap the "Name" field and type with the keyboard: does TalkBack read the characters you type, and can you move the cursor with the volume keys or the text editing controls?
+6. In `examples/gallery`, open a dialog or a menu: does TalkBack announce it, and is the page below not reachable while it is open?
+7. Turn TalkBack off: does the app go back to normal at once, and does it stay fast (no slower than before)?
+
+Answers: _(not yet recorded)_
+

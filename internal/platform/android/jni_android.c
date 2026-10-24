@@ -24,6 +24,8 @@ extern void goSystemUI(int visible);
 extern void goDisplayChanged(float density, float refresh, int displayWidth, int displayHeight);
 extern void goTextEdit(int seq, char *utf8, int n, int base, int extent, int composeBase, int composeExtent);
 extern void goClipboardText(int id, int ok, char *utf8, int n);
+extern void goA11yState(int enabled, int touch, int navigation);
+extern void goA11yAction(int nodeId, int action, char *args, int n);
 extern void goKeyEvent(int id, int action, int keyCode, int scanCode, int metaState, int repeatCount, long long eventTime,
                        int unicodeChar, int source, int deviceId);
 
@@ -285,5 +287,20 @@ JNIEXPORT void JNICALL Java_io_github_rm4n0s_glutter_Native_clipboardText(JNIEnv
   if (t != NULL) {
     goClipboardText(id, ok ? 1 : 0, (char *)t, n);
     (*env)->ReleaseByteArrayElements(env, text, t, JNI_ABORT);
+  }
+}
+
+JNIEXPORT void JNICALL Java_io_github_rm4n0s_glutter_Native_a11yState(JNIEnv *env, jclass cls, jboolean enabled, jboolean touch,
+                                                                    jboolean navigation) {
+  goA11yState(enabled ? 1 : 0, touch ? 1 : 0, navigation ? 1 : 0);
+}
+
+JNIEXPORT void JNICALL Java_io_github_rm4n0s_glutter_Native_a11yAction(JNIEnv *env, jclass cls, jint nodeId, jint action,
+                                                                     jbyteArray args) {
+  jsize n = (*env)->GetArrayLength(env, args);
+  jbyte *a = (*env)->GetByteArrayElements(env, args, NULL);
+  if (a != NULL || n == 0) {
+    goA11yAction(nodeId, action, (char *)a, n);
+    (*env)->ReleaseByteArrayElements(env, args, a, JNI_ABORT);
   }
 }

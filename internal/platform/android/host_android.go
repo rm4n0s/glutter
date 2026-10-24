@@ -55,12 +55,19 @@ func (nativeHost) Inject(e DevEvent) {
 		kind = 6
 	case "back":
 		kind = 7
+	case "a11y":
+		kind = 8
 	default:
 		return
 	}
-	key := C.CBytes([]byte(e.Key))
+	text := e.Key
+	if e.Kind == "a11y" {
+		// The action and the label travel in the one string, separated by the first comma.
+		text = e.Key + "," + e.Label
+	}
+	key := C.CBytes([]byte(text))
 	defer C.free(key)
-	C.glutter_inject(kind, C.float(e.X1), C.float(e.Y1), C.float(e.X2), C.float(e.Y2), C.int(e.Millis), (*C.char)(key), C.int(len(e.Key)))
+	C.glutter_inject(kind, C.float(e.X1), C.float(e.Y1), C.float(e.X2), C.float(e.Y2), C.int(e.Millis), (*C.char)(key), C.int(len(text)))
 }
 
 // KeyHandled implements host.

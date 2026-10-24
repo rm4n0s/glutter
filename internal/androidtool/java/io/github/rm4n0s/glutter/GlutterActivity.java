@@ -53,6 +53,9 @@ public class GlutterActivity extends Activity {
   /** Back navigation of the activity: the callback that is registered with the system. */
   private BackNavigation backNavigation;
 
+  /** The accessibility bridge of the activity's view (TalkBack and the other services). */
+  private GlutterAccessibility accessibility;
+
   /** The application's context, for what Go asks from a thread that is not the main one. */
   private static volatile Context appContext;
 
@@ -72,6 +75,7 @@ public class GlutterActivity extends Activity {
       createView();
       Native.settings(SystemSettings.describe(this));
       Native.activityCreated();
+      accessibility.start();
       return;
     }
     started = true;
@@ -86,6 +90,9 @@ public class GlutterActivity extends Activity {
     }
     Native.start(this);
     Native.activityCreated();
+    // After activityCreated, which makes Go forget the tree of the activity before: the state of
+    // the accessibility manager is reported again.
+    accessibility.start();
   }
 
   /** Makes the view and the text input that goes with it, and shows the view. */
@@ -95,6 +102,8 @@ public class GlutterActivity extends Activity {
     backNavigation = new BackNavigation(this);
     view.setBackNavigation(backNavigation);
     view.setTextInput(textInput);
+    accessibility = new GlutterAccessibility(view);
+    view.setAccessibility(accessibility);
     setContentView(view);
   }
 
@@ -179,6 +188,9 @@ public class GlutterActivity extends Activity {
     if (backNavigation != null) {
       backNavigation.release();
     }
+    if (accessibility != null) {
+      accessibility.release();
+    }
     super.onDestroy();
     if (isFinishing()) {
       // Destroyed for good, not to be created again (a configuration change or the system).
@@ -208,8 +220,9 @@ public class GlutterActivity extends Activity {
 
   /**
    * Called by Go, from any thread, for the dev events script of debug builds: a tap (kind 1), a swipe
-   * (2), a key (3), text committed through the input connection (4), a composition (5), the keyboard's action key (6)
-   * or a back (7, {@code key} is {@code pop}, {@code gesture} or {@code cancel}), dispatched to the view as the user's input is. {@code key} is UTF-8.
+   * (2), a key (3), text committed through the input connection (4), a composition (5), the keyboard's action key (6),
+   * a back (7, {@code key} is {@code pop}, {@code gesture} or {@code cancel}) or an accessibility action (8, {@code
+   * key} is the action, a comma and the label of the node), dispatched to the view as the user's input is. {@code key} is UTF-8.
    */
   static void inject(
       final int kind,
@@ -234,13 +247,15 @@ public class GlutterActivity extends Activity {
   /**
    * Called by Go, from any thread: one operation of the system's interface, haptic feedback, sounds
    * or the screen (systemui.go, operations 1 to 7; {@link SystemUI}), or of text input and the
-   * clipboard (textinput.go, 8 to 13; {@link TextInput}) or of back navigation (lifecycle.go, 14
-   * and 15; {@link BackNavigation}), done on the main thread. {@code bytes}
-   * is the operation's text as UTF-8.
+   * clipboard (textinput.go, 8 to 13; {@link TextInput}), of back navigation (back.go, 14
+   * and 15; {@link BackNavigation}) or of accessibility (accessibility.go, 16 to 18; {@link
+   * GlutterAccessibility}), done on the main thread. {@code bytes} is the operation's text as UTF-8,
+   * or, for the semantics update (16), a binary payload.
    */
   static void command(
       final int op, final long a, final long b, final long c, final long d, final byte[] bytes) {
-    final String s = new String(bytes, StandardCharsets.UTF_8);
+    final boolean binary = op == GlutterAccessibility.OP_SEMANTICS;
+    final String s = binary ? null : new String(bytes, StandardCharsets.UTF_8);
     MAIN.post(
         new Runnable() {
           @Override
@@ -248,7 +263,11 @@ public class GlutterActivity extends Activity {
             if (current == null) {
               return;
             }
-            if (op == BackNavigation.OP_FRAMEWORK_HANDLES_BACK || op == BackNavigation.OP_FINISH) {
+            if (op >= GlutterAccessibility.OP_SEMANTICS && op <= GlutterAccessibility.OP_RESET) {
+              if (current.accessibility != null) {
+                current.accessibility.command(op, a, bytes);
+              }
+            } else if (op == BackNavigation.OP_FRAMEWORK_HANDLES_BACK || op == BackNavigation.OP_FINISH) {
               if (current.backNavigation != null) {
                 current.backNavigation.command(op, a);
               }

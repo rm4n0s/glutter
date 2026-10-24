@@ -40,6 +40,8 @@ type Platform struct {
 	// devEvents is the script of GLUTTER_DEV_EVENTS, in debug builds; devStarted says it was started.
 	devEvents  []DevEvent
 	devStarted bool
+	// a11y is the accessibility bridge, which Services gives out (accessibility.go).
+	a11y *accessibility
 }
 
 var _ platform.Platform = (*Platform)(nil)
@@ -49,7 +51,9 @@ func newPlatform(b *bridge, h host, log *slog.Logger) *Platform {
 	if log == nil {
 		log = slog.Default()
 	}
-	return &Platform{b: b, host: h, log: log, touch: newTouchProcessor(), conv: newPointerConverter(), keys: newKeyboardManager()}
+	p := &Platform{b: b, host: h, log: log, touch: newTouchProcessor(), conv: newPointerConverter(), keys: newKeyboardManager()}
+	p.a11y = newAccessibility(p)
+	return p
 }
 
 // Run owns the UI thread's loop: it runs the events of the Java side and the functions that Post
@@ -200,7 +204,9 @@ func (p *Platform) Displays() []platform.Display {
 //
 // Flutter: shell/platform/android/io/flutter/embedding/engine/systemchannels/SettingsChannel.java SettingsChannel
 func (p *Platform) Settings() platform.Settings {
-	return p.b.settingsSnapshot().platformSettings(p.host.ScaledFontSize)
+	s := p.b.settingsSnapshot().platformSettings(p.host.ScaledFontSize)
+	s.AccessibleNavigation = p.b.a11ySnapshot().navigation
+	return s
 }
 
 // settingsChanged reports that the system's settings changed.
@@ -210,10 +216,11 @@ func (p *Platform) settingsChanged() {
 	}
 }
 
-// Services returns nil: the services of Android come in steps 25.11 and 25.12.
+// Services returns the services of Android: the accessibility bridge (step 25.11, accessibility.go).
+// The desktop services of step 25.12 are not part of it.
 //
 // Flutter: no counterpart
-func (p *Platform) Services() platform.Services { return nil }
+func (p *Platform) Services() platform.Services { return services{p.a11y} }
 
 // Close releases the platform. The host belongs to the process, so there is nothing to release.
 //

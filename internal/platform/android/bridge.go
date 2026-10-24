@@ -35,6 +35,8 @@ type bridge struct {
 	lifecycle lifecycleState
 	// settings are the system's settings the Java side reported last.
 	settings systemSettings
+	// a11y is the state of the accessibility manager the Java side reported last.
+	a11y a11yState
 }
 
 func newBridge() *bridge { return &bridge{wait: destroyWait, log: slog.Default()} }
@@ -273,4 +275,31 @@ func (b *bridge) textEdit(seq int, text string, base, extent, composeBase, compo
 // clipboardText is the activity's answer to a read of the clipboard.
 func (b *bridge) clipboardText(id int, ok bool, text string) {
 	b.post(func(p *Platform) { p.clipboardText(id, ok, text) })
+}
+
+// a11yChanged is the state of the accessibility manager (Native.a11yState): the bridge goes on or
+// off, and accessibleNavigation reaches the framework's settings (SPEC §24.10).
+func (b *bridge) a11yChanged(s a11yState) {
+	var differs bool
+	b.event(func(b *bridge) {
+		differs = b.a11y != s
+		b.a11y = s
+	}, func(p *Platform) {
+		if differs {
+			p.a11y.stateChanged()
+		}
+	})
+}
+
+// a11ySnapshot returns the accessibility manager's state the Java side reported last.
+func (b *bridge) a11ySnapshot() a11yState {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.a11y
+}
+
+// a11yAction is an action that an accessibility service asked for, with the arguments copied out
+// (accessibility_actions.go).
+func (b *bridge) a11yAction(nodeID, action int, args []byte) {
+	b.post(func(p *Platform) { p.a11y.perform(nodeID, action, args) })
 }

@@ -45,6 +45,9 @@ func New(opts ...Options) (*Platform, error) {
 			}
 			p.devEvents = events
 		}
+		if os.Getenv(A11yEnv) == "1" {
+			p.a11y.force()
+		}
 	}
 	return p, nil
 }

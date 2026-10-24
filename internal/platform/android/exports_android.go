@@ -87,3 +87,13 @@ func goTextEdit(seq C.int, utf8 *C.char, n C.int, base, extent, composeBase, com
 func goClipboardText(id, ok C.int, utf8 *C.char, n C.int) {
 	process.clipboardText(int(id), ok != 0, C.GoStringN(utf8, n))
 }
+
+//export goA11yState
+func goA11yState(enabled, touch, navigation C.int) {
+	process.a11yChanged(a11yState{enabled: enabled != 0, touch: touch != 0, navigation: navigation != 0})
+}
+
+//export goA11yAction
+func goA11yAction(nodeID, action C.int, args *C.char, n C.int) {
+	process.a11yAction(int(nodeID), int(action), C.GoBytes(unsafe.Pointer(args), n))
+}

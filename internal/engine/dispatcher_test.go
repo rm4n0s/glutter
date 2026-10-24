@@ -524,6 +524,8 @@ func TestPlatformConfigurationConversion(t *testing.T) {
 		{"empty", platform.Settings{}, ui.PlatformConfiguration{}},
 		{"accessibility", platform.Settings{DisableAnimations: true, HighContrast: true},
 			ui.PlatformConfiguration{AccessibilityFeatures: ui.AccessibilityFeatures{DisableAnimations: true, ReduceMotion: true, HighContrast: true}}},
+		{"a screen reader", platform.Settings{AccessibleNavigation: true},
+			ui.PlatformConfiguration{AccessibilityFeatures: ui.AccessibilityFeatures{AccessibleNavigation: true}}},
 		{"desktop fonts", platform.Settings{UIFontFamily: "Cantarell", UIFontSize: 11, MonospaceFontFamily: "Adwaita Mono", MonospaceFontSize: 12},
 			ui.PlatformConfiguration{UIFontFamily: "Cantarell", UIFontSize: 11, MonospaceFontFamily: "Adwaita Mono", MonospaceFontSize: 12}},
 		{"accent without flag is ignored", platform.Settings{AccentColor: ui.NewColor(0xFF000000)}, ui.PlatformConfiguration{}},

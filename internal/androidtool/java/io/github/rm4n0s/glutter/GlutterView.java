@@ -24,6 +24,7 @@ import android.view.ViewConfiguration;
 import android.view.WindowInsets;
 import android.view.WindowInsetsAnimation;
 import android.view.WindowManager;
+import android.view.accessibility.AccessibilityNodeProvider;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -64,6 +65,9 @@ public class GlutterView extends SurfaceView implements SurfaceHolder.Callback {
   /** Back navigation of the activity: the dev events script injects a back through it. */
   private BackNavigation backNavigation;
 
+  /** The accessibility bridge: the view's node provider, and the target of the dev events script's a11y steps. */
+  private GlutterAccessibility accessibility;
+
   /** The latest insets while the keyboard slides: they are reported when it stops. Main thread. */
   private WindowInsets deferredInsets;
 
@@ -96,6 +100,39 @@ public class GlutterView extends SurfaceView implements SurfaceHolder.Callback {
   /** Gives the view the back navigation that the dev events script acts through. */
   void setBackNavigation(BackNavigation backNavigation) {
     this.backNavigation = backNavigation;
+  }
+
+  /** Gives the view the accessibility bridge that answers the accessibility services. */
+  void setAccessibility(GlutterAccessibility accessibility) {
+    this.accessibility = accessibility;
+  }
+
+  /**
+   * The node provider of the semantics tree while an accessibility service runs (or the bridge is
+   * forced); null otherwise.
+   *
+   * <p>Ports: {@code FlutterView.getAccessibilityNodeProvider}
+   * (shell/platform/android/io/flutter/embedding/android/FlutterView.java).
+   */
+  @Override
+  public AccessibilityNodeProvider getAccessibilityNodeProvider() {
+    if (accessibility != null && accessibility.isActive()) {
+      return accessibility;
+    }
+    return null;
+  }
+
+  /**
+   * Hover events are the fingers of touch exploration: the bridge reads them, as {@code
+   * FlutterView.onHoverEvent} gives them to {@code AccessibilityBridge.onAccessibilityHoverEvent}.
+   * With touch exploration off the bridge does not take them and they go on as before.
+   */
+  @Override
+  public boolean onHoverEvent(MotionEvent event) {
+    if (accessibility != null && accessibility.onHover(event)) {
+      return true;
+    }
+    return super.onHoverEvent(event);
   }
 
   /** Gives the view the text input that makes its input connections. */
@@ -242,6 +279,14 @@ public class GlutterView extends SurfaceView implements SurfaceHolder.Callback {
   /** The dev events script (main thread): a synthetic tap, swipe or key, dispatched like real input. */
   void inject(int kind, float x1, float y1, float x2, float y2, int ms, String key) {
     final Handler handler = getHandler() != null ? getHandler() : new Handler(Looper.getMainLooper());
+    if (kind == 8) {
+      if (accessibility == null) {
+        Log.w(TAG, "a11y injected but there is no accessibility bridge");
+      } else {
+        accessibility.injectAction(key);
+      }
+      return;
+    }
     if (kind == 7) {
       if (backNavigation == null) {
         Log.w(TAG, "back injected but there is no back navigation");

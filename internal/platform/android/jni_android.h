@@ -18,7 +18,8 @@ int glutter_set_cursor(int type);
 
 // glutter_inject asks the activity to inject a synthetic event of the dev events script (kind 1 tap
 // at x1,y1; 2 swipe from x1,y1 to x2,y2 in ms milliseconds; 3 the key of that name; 4 text to
-// commit; 5 text to compose; 6 the keyboard's action key; 7 a back, the key being pop, gesture or cancel). The key is n bytes of UTF-8, with no terminating NUL.
+// commit; 5 text to compose; 6 the keyboard's action key; 7 a back, the key being pop, gesture or cancel; 8 an accessibility action, the key being the
+// action, a comma and the label of the node). The key is n bytes of UTF-8, with no terminating NUL.
 int glutter_inject(int kind, float x1, float y1, float x2, float y2, int ms, const char *key, int n);
 
 // glutter_command asks the activity to do one operation of the system's interface, feedback or screen

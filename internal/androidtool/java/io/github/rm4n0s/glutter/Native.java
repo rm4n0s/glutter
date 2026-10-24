@@ -124,4 +124,21 @@ final class Native {
 
   /** The answer to a {@code OP_CLIPBOARD_GET}: whether the clipboard has text, and the text as UTF-8. */
   static native void clipboardText(int id, boolean ok, byte[] text);
+
+  /**
+   * The state of the accessibility manager: whether an accessibility service runs, whether touch
+   * exploration is on, and Flutter's {@code accessibleNavigation} (touch exploration, or a service
+   * that asked for the nodes). Go turns the semantics tree on while a service runs or touch
+   * exploration is on.
+   */
+  static native void a11yState(boolean enabled, boolean touchExploration, boolean accessibleNavigation);
+
+  /**
+   * An accessibility service asked for an action: {@code nodeId} is the id of the semantics node,
+   * {@code action} the {@code ui.SemanticsAction} bit that {@code performAction} chose, and {@code
+   * args} its arguments (see decodeAction in accessibility_actions.go): a byte that says whether the
+   * selection is extended for a cursor move, two little-endian ints (base and extent, as UTF-8 byte
+   * offsets) for a selection, the UTF-8 text for a text, one int for a custom action.
+   */
+  static native void a11yAction(int nodeId, int action, byte[] args);
 }
