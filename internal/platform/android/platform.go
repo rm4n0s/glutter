@@ -34,6 +34,8 @@ type Platform struct {
 	// (clipboard.go).
 	text      textInput
 	clipboard *clipboard
+	// spell is the spell checker (spellcheck.go).
+	spell *spellChecker
 	// handlesBack is whether the framework handles the back gesture (back.go); framed is whether a
 	// frame was drawn.
 	handlesBack, framed bool

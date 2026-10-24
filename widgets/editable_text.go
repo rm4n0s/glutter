@@ -204,6 +204,14 @@ type EditableTextOpts struct {
 	// A configuration is compared by identity: changing it to another value
 	// recreates the selection overlay.
 	MagnifierConfiguration *TextMagnifierConfiguration
+	// SpellCheckConfiguration details how spell check is performed: the
+	// SpellCheckService that checks the text and the TextStyle of the misspelled
+	// words. Spell check is disabled for password input, including when ObscureText
+	// is set. If the service is nil, spell check is disabled unless the
+	// DefaultSpellCheckService is supported (Android), in which case it is used. If
+	// the configuration is nil, spell check is disabled. An enabled configuration
+	// needs a MisspelledTextStyle (the panic EditableTextMisspelledTextStyleMissing).
+	SpellCheckConfiguration *SpellCheckConfiguration
 }
 
 // EditableText is a basic text input field: it shows the text of a
@@ -211,9 +219,10 @@ type EditableTextOpts struct {
 // text editing shortcuts, and talks to the input method. Material's TextField is
 // built on it.
 //
-// Deviation: spell check, the stylus handwriting, Live Text, the processing of
-// the text by other apps, the floating cursor and the autofill groups are not
-// ported (SPEC §12.10).
+// Deviation: the stylus handwriting, Live Text, the processing of the text by
+// other apps, the floating cursor and the autofill groups are not ported. Spell
+// check is ported; the platform's spell checker (DefaultSpellCheckService) is
+// Android's only (SPEC §12.10).
 //
 // Flutter: widgets/editable_text.dart EditableText
 type EditableText struct {
@@ -243,7 +252,9 @@ type EditableText struct {
 // character, EditableTextMinLinesInvalid when the minimum number of lines is not
 // positive, EditableTextMinLinesGreaterThanMaxLines when it is more than the
 // maximum, EditableTextExpandsWithLines when the field expands and has a number
-// of lines, and EditableTextObscuredMultiline for an obscured multiline field.
+// of lines, EditableTextObscuredMultiline for an obscured multiline field, and
+// EditableTextMisspelledTextStyleMissing for an enabled spell check configuration
+// without a misspelled text style.
 //
 // Flutter: widgets/editable_text.dart EditableText.new
 func NewEditableText(controller *TextEditingController, focusNode *FocusNode, style *painting.TextStyle, cursorColor, backgroundCursorColor ui.Color, opts ...EditableTextOpts) *EditableText {
@@ -277,6 +288,9 @@ func NewEditableText(controller *TextEditingController, focusNode *FocusNode, st
 		}
 		if o.ObscureText && (maxLines.IsNone() || maxLines.Value() != 1) {
 			panic(errors.New(tagEditableTextObscuredMultiline, "obscured fields cannot be multiline"))
+		}
+		if c := o.SpellCheckConfiguration; c != nil && c.SpellCheckEnabled() && c.MisspelledTextStyle() == nil {
+			panic(errors.New(tagEditableTextMisspelledTextStyleMissing, "spellCheckConfiguration must specify a misspelledTextStyle if spell check behavior is desired"))
 		}
 	}
 	w := &EditableText{
@@ -434,6 +448,14 @@ func (w *EditableText) MagnifierConfiguration() *TextMagnifierConfiguration {
 	return w.o.MagnifierConfiguration
 }
 
+// SpellCheckConfiguration is the configuration that details how spell check is
+// performed; nil when the widget has none.
+//
+// Flutter: widgets/editable_text.dart EditableText.spellCheckConfiguration
+func (w *EditableText) SpellCheckConfiguration() *SpellCheckConfiguration {
+	return w.o.SpellCheckConfiguration
+}
+
 // userSelectionEnabled is whether the user can select text, which is not the
 // case for a read-only obscured field.
 //
@@ -475,6 +497,7 @@ const (
 	tagEditableTextExpandsWithLines            = "EditableTextExpandsWithLines"
 	tagEditableTextMinLinesGreaterThanMaxLines = "EditableTextMinLinesGreaterThanMaxLines"
 	tagEditableTextMinLinesInvalid             = "EditableTextMinLinesInvalid"
+	tagEditableTextMisspelledTextStyleMissing  = "EditableTextMisspelledTextStyleMissing"
 	tagEditableTextObscuredMultiline           = "EditableTextObscuredMultiline"
 	tagEditableTextObscuringCharacterInvalid   = "EditableTextObscuringCharacterInvalid"
 )

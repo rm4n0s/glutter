@@ -2,6 +2,7 @@ package widgets
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"time"
 
@@ -111,6 +112,11 @@ type EditableTextState struct {
 	clipboardHandle        foundation.ListenerHandle
 	cursorTickHandle       foundation.ListenerHandle
 	lastBottomViewInset    float64
+
+	// spellCheckConfiguration is the configuration that spell check runs with: the
+	// widget's, with the service inferred.
+	spellCheckConfiguration *SpellCheckConfiguration
+	spellCheckResults       *services.SpellCheckResults
 }
 
 type focusManagerListeners struct {
@@ -516,6 +522,7 @@ func (s *EditableTextState) InitState() {
 	s.controllerHandle = w.controller.AddListener(s.didChangeTextEditingValue)
 	s.focusHandle = w.focusNode.AddListener(s.handleFocusChanged)
 	s.cursorVisibility.SetValue(w.showCursor)
+	s.spellCheckConfiguration = s.inferSpellCheckConfiguration(w.o.SpellCheckConfiguration, w.o.ObscureText, w.keyboardType, w.o.AutofillHints)
 	s.verticalSelectionMover = newUpdateTextSelectionVerticallyAction(s)
 	s.actions = s.buildActions()
 	b.AddObserver(s)
@@ -620,6 +627,17 @@ func (s *EditableTextState) DidUpdateWidget(old *EditableText) {
 	}
 	if s.hasInputConnection() && (old.o.ObscureText != w.o.ObscureText || old.keyboardType != w.keyboardType) {
 		s.textInputConnection.UpdateConfig(s.TextInputConfiguration())
+	}
+	if !old.o.SpellCheckConfiguration.Equal(w.o.SpellCheckConfiguration) || old.o.ObscureText != w.o.ObscureText ||
+		old.keyboardType != w.keyboardType || !slices.Equal(old.o.AutofillHints, w.o.AutofillHints) {
+		s.spellCheckConfiguration = s.inferSpellCheckConfiguration(w.o.SpellCheckConfiguration, w.o.ObscureText, w.keyboardType, w.o.AutofillHints)
+		if s.SpellCheckEnabled() {
+			if text := s.value().Text; text != "" {
+				s.performSpellCheck(text)
+			}
+		} else {
+			s.spellCheckResults = nil
+		}
 	}
 	if w.style != old.style {
 		// The connection picks up the new style when it attaches in
@@ -751,8 +769,16 @@ func (s *EditableTextState) BuildTextSpan() *painting.TextSpan {
 		text := strings.Repeat(w.o.ObscuringCharacter, foundation.GraphemeCount(v.Text))
 		return painting.NewTextSpan(painting.TextSpanOpts{Style: s.style, Text: foundation.Some(text)})
 	}
-	// Read only mode should not paint text composing.
 	withComposing := !w.o.ReadOnly && s.hasFocus()
+	if s.spellCheckResultsReceived() {
+		// If the composing range is out of range for the current text, ignore it to
+		// preserve the tree integrity, otherwise in release mode a range panic
+		// would be thrown and this EditableText would be built with a broken subtree.
+		composingRegionOutOfRange := !v.IsComposingRangeValid() || !withComposing
+		return BuildTextSpanWithSpellCheckSuggestions(v, composingRegionOutOfRange, s.style,
+			s.spellCheckConfiguration.MisspelledTextStyle(), *s.spellCheckResults)
+	}
+	// Read only mode should not paint text composing.
 	return w.controller.BuildTextSpan(s.Context(), s.style, withComposing)
 }
 
@@ -872,6 +898,11 @@ func (s *EditableTextState) scrollableKeyForWidget() foundation.Key { return s.s
 func (s *EditableTextState) buildEditable(bc BuildContext, offset rendering.ViewportOffset, textScaler painting.TextScaler) Widget {
 	w := s.Widget()
 	selectionColor := w.o.SelectionColor
+	if s.selectionOverlay != nil && s.selectionOverlay.SpellCheckToolbarIsVisible() {
+		if c := s.spellCheckConfiguration.MisspelledSelectionColor(); c.IsSome() {
+			selectionColor = c
+		}
+	}
 	cursorOffset := w.o.CursorOffset.OrElse(ui.OffsetZero)
 	var heightBehavior = w.o.TextHeightBehavior
 	if heightBehavior == nil {

@@ -82,6 +82,28 @@ type Opts struct {
 	// ErrorWidgetBuilder replaces the widget that is built for a widget that
 	// panicked in Build.
 	ErrorWidgetBuilder func(err error) widgets.Widget
+	// SpellChecker gives the fake platform a spell checker, the host side of
+	// services.DefaultSpellCheckService (ui.SpellCheckHost): it gets the language
+	// tag and the text and returns the misspelled ranges (UTF-8 byte offsets) with
+	// their suggestions. The answer arrives on the next Pump, as an engine's does.
+	// With nil, the platform has no spell checker, as Linux and the web have none.
+	//
+	// Flutter: flutter_test/lib/src/platform.dart TestPlatformDispatcher.nativeSpellCheckServiceDefinedTestValue
+	SpellChecker func(languageTag, text string) []ui.SpellCheckSpan
+}
+
+// spellCheckHost is the fake host with a spell checker.
+type spellCheckHost struct {
+	*renderhost.Host
+	check func(languageTag, text string) []ui.SpellCheckSpan
+}
+
+// SpellCheckSupported says that the fake platform has a spell checker.
+func (h *spellCheckHost) SpellCheckSupported() bool { return true }
+
+// SpellCheck answers on the UI thread, at the next Pump.
+func (h *spellCheckHost) SpellCheck(_ context.Context, languageTag, text string, done func([]ui.SpellCheckSpan, error)) {
+	h.Post(func() { done(h.check(languageTag, text), nil) })
 }
 
 // Tester is a widgets binding on a fake platform with one view, a fake clock
@@ -150,7 +172,11 @@ func New(tb TB, opts ...Opts) *Tester {
 	}
 	t := &Tester{tb: tb, host: &renderhost.Host{DiscardScenes: o.DiscardScenes}, Clock: fakeclock.New(time.Time{})}
 	t.start = t.Clock.Now()
-	t.d = ui.NewPlatformDispatcher(t.host)
+	if o.SpellChecker != nil {
+		t.d = ui.NewPlatformDispatcher(&spellCheckHost{Host: t.host, check: o.SpellChecker})
+	} else {
+		t.d = ui.NewPlatformDispatcher(t.host)
+	}
 	t.host.OnHiddenChanged = t.hiddenChanged
 	t.d.SetTextEngine(o.TextEngine)
 	t.cfg = ui.ViewConfiguration{

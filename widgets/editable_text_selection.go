@@ -75,7 +75,11 @@ func (s *EditableTextState) updateSelectionOverlayAfterWidgetChange(old *Editabl
 	// If only the identity of the context menu builder changed, the overlay does
 	// not need to be recreated: just rebuild the toolbar that is shown, so its
 	// overlay entry picks up the new builder.
-	if o := s.selectionOverlay; o != nil && o.ToolbarIsVisible() && (w.o.ContextMenuBuilder == nil) == (old.o.ContextMenuBuilder == nil) {
+	//
+	// Deviation: Go cannot compare the builders, so this runs at every update of
+	// the widget; the spell check suggestions toolbar is left alone, as it does not
+	// come from the context menu builder (SPEC §12.10).
+	if o := s.selectionOverlay; o != nil && o.ToolbarIsVisible() && !o.SpellCheckToolbarIsVisible() && (w.o.ContextMenuBuilder == nil) == (old.o.ContextMenuBuilder == nil) {
 		// Deferred to the next frame because ShowToolbar needs a fully laid-out
 		// render tree, and DidUpdateWidget is called before layout.
 		s.binding().RunPostFrame(func(time.Duration) {
@@ -354,7 +358,7 @@ func (s *EditableTextState) handleContextMenuOnScroll(n ScrollNotification) {
 	// unless invalidated by a change in the value.
 	switch n.(type) {
 	case *ScrollStartNotification:
-		if s.dataWhenToolbarShow != nil || s.selectionOverlay == nil || !s.selectionOverlay.ToolbarIsVisible() {
+		if s.dataWhenToolbarShow != nil || s.selectionOverlay == nil || !s.selectionOverlay.ToolbarIsVisible() || s.selectionOverlay.SpellCheckToolbarIsVisible() {
 			return
 		}
 		r := s.RenderEditable()

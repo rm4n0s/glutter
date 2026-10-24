@@ -92,10 +92,12 @@ type SelectionOverlay struct {
 	endHandleDragInProgress   bool
 	isDraggingEnd             bool
 
-	handles        *selectionHandles
-	contextMenu    *ContextMenuController
-	buildScheduled bool
-	disposed       bool
+	handles     *selectionHandles
+	contextMenu *ContextMenuController
+	// spellCheckToolbar shows the spell check suggestions toolbar.
+	spellCheckToolbar *ContextMenuController
+	buildScheduled    bool
+	disposed          bool
 
 	// magnifierInfo is the info the magnifier follows; showMagnifier and
 	// updateMagnifier set it.
@@ -119,7 +121,7 @@ func NewSelectionOverlay(bc BuildContext, startHandleType rendering.TextSelectio
 		context: bc, o: firstOpts(opts), startHandleType: startHandleType, lineHeightAtStart: lineHeightAtStart,
 		endHandleType: endHandleType, lineHeightAtEnd: lineHeightAtEnd, selectionEndpoint: selectionEndpoints,
 		selectionControls: selectionControls, startLink: startHandleLayerLink, endLink: endHandleLayerLink,
-		toolbarLink: toolbarLayerLink, contextMenu: NewContextMenuController(),
+		toolbarLink: toolbarLayerLink, contextMenu: NewContextMenuController(), spellCheckToolbar: NewContextMenuController(),
 		magnifierInfo:       foundation.NewValueNotifier(MagnifierInfoEmpty),
 		magnifierController: NewMagnifierController(),
 		magnifierConfig:     TextMagnifierConfigurationDisabled,
@@ -225,10 +227,19 @@ func (o *SelectionOverlay) UpdateMagnifier(magnifierInfo MagnifierInfo) {
 // Flutter: widgets/text_selection.dart SelectionOverlay.context
 func (o *SelectionOverlay) Context() BuildContext { return o.context }
 
-// ToolbarIsVisible is whether the toolbar is currently visible.
+// ToolbarIsVisible is whether the toolbar is currently visible. It includes both
+// the text selection toolbar and the spell check menu.
 //
 // Flutter: widgets/text_selection.dart SelectionOverlay.toolbarIsVisible
-func (o *SelectionOverlay) ToolbarIsVisible() bool { return o.contextMenu.IsShown() }
+func (o *SelectionOverlay) ToolbarIsVisible() bool {
+	return o.contextMenu.IsShown() || o.spellCheckToolbar.IsShown()
+}
+
+// SpellCheckToolbarIsVisible is whether the spell check suggestions toolbar is
+// currently visible.
+//
+// Flutter: widgets/text_selection.dart SelectionOverlay._spellCheckToolbarController (isShown)
+func (o *SelectionOverlay) SpellCheckToolbarIsVisible() bool { return o.spellCheckToolbar.IsShown() }
 
 // StartHandleType is the type of the start selection handle.
 //
@@ -518,6 +529,26 @@ func (o *SelectionOverlay) ShowToolbar(bc BuildContext, contextMenuBuilder Widge
 	}, ContextMenuShowOpts{DebugRequiredFor: o.o.DebugRequiredFor})
 }
 
+// ShowSpellCheckSuggestionsToolbar shows the toolbar with the spell check
+// suggestions of misspelled words that are available for click-and-replace, by
+// inserting it into the overlay of the context. A nil context or builder does
+// nothing.
+//
+// Flutter: widgets/text_selection.dart SelectionOverlay.showSpellCheckSuggestionsToolbar
+func (o *SelectionOverlay) ShowSpellCheckSuggestionsToolbar(bc BuildContext, builder WidgetBuilder) {
+	if bc == nil || builder == nil {
+		return
+	}
+	renderBox, _ := bc.FindRenderObject().(rendering.Box)
+	o.spellCheckToolbar.Show(bc, func(bc BuildContext) Widget {
+		offset := ui.Offset{}
+		if renderBox != nil {
+			offset = renderBox.LocalToGlobal(ui.Offset{}, nil).Neg()
+		}
+		return newSelectionToolbarWrapper(nil, o.toolbarLink, offset, builder(bc))
+	}, ContextMenuShowOpts{DebugRequiredFor: o.o.DebugRequiredFor})
+}
+
 // MarkNeedsBuild rebuilds the selection toolbar or handles if they are present.
 //
 // Flutter: widgets/text_selection.dart SelectionOverlay.markNeedsBuild
@@ -549,6 +580,8 @@ func (o *SelectionOverlay) rebuild() {
 	}
 	if o.contextMenu.IsShown() {
 		o.contextMenu.MarkNeedsBuild()
+	} else if o.spellCheckToolbar.IsShown() {
+		o.spellCheckToolbar.MarkNeedsBuild()
 	}
 }
 
@@ -558,7 +591,7 @@ func (o *SelectionOverlay) rebuild() {
 func (o *SelectionOverlay) Hide() {
 	o.magnifierController.Hide()
 	o.HideHandles()
-	if o.contextMenu.IsShown() {
+	if o.contextMenu.IsShown() || o.spellCheckToolbar.IsShown() {
 		o.HideToolbar()
 	}
 }
@@ -567,7 +600,10 @@ func (o *SelectionOverlay) Hide() {
 // see Hide.
 //
 // Flutter: widgets/text_selection.dart SelectionOverlay.hideToolbar
-func (o *SelectionOverlay) HideToolbar() { o.contextMenu.Remove() }
+func (o *SelectionOverlay) HideToolbar() {
+	o.contextMenu.Remove()
+	o.spellCheckToolbar.Remove()
+}
 
 // Dispose disposes this object and releases resources.
 //

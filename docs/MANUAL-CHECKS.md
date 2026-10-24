@@ -237,3 +237,20 @@ Check, and record the answers:
 
 Answers: _(not yet recorded)_
 
+## 26.4 Spell check
+
+Run on the phone, with its spell checker on (Settings, System, Languages, Spell checker) and the English dictionary installed:
+
+```
+go run ./cmd/glutter-android run ./examples/dev/android-spell
+```
+
+Check, and record the answers:
+
+1. Type "helo wrld " with the keyboard (a space after the second word): are the misspelled words underlined in red with a wavy line, once you have left them?
+2. Tap a misspelled word: does a toolbar open under the field with up to three suggestions and Delete, like the one of Flutter's apps and of the system's text fields? Tap a suggestion: is the word replaced?
+3. Tap Delete on another one: is the word removed?
+4. Turn the spell checker off in the settings and come back to the app: are the underlines gone after the next edit?
+
+Answers: _(not yet recorded)_
+

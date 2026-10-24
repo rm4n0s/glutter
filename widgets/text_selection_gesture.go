@@ -291,7 +291,15 @@ func (b *TextSelectionGestureDetectorBuilder) OnSingleTapUp(details gestures.Tap
 	_, hasSel := r.Selection().Get()
 	isShiftPressedValid := b.isShiftPressed && hasSel
 	switch foundation.DefaultTargetPlatform() {
-	case foundation.TargetPlatformAndroid, foundation.TargetPlatformFuchsia:
+	case foundation.TargetPlatformAndroid:
+		e.HideToolbar(false)
+		if isShiftPressedValid {
+			b.extendSelection(details.GlobalPosition, services.SelectionChangedCauseTap)
+			return
+		}
+		r.SelectPosition(services.SelectionChangedCauseTap)
+		e.ShowSpellCheckSuggestionsToolbar()
+	case foundation.TargetPlatformFuchsia:
 		e.HideToolbar(false)
 		if isShiftPressedValid {
 			b.extendSelection(details.GlobalPosition, services.SelectionChangedCauseTap)
@@ -329,7 +337,18 @@ func (b *TextSelectionGestureDetectorBuilder) OnSingleTapUp(details gestures.Tap
 			}
 			textPosition := r.GetPositionForPoint(details.GlobalPosition)
 			isAffinityTheSame := textPosition.Affinity == previous.Affinity
+			_, wordAtCursorIndexIsMisspelled := e.FindSuggestionSpanAtCursorIndex(textPosition.Offset)
 			switch {
+			case wordAtCursorIndexIsMisspelled:
+				// If the word that was tapped is misspelled, select the word and show
+				// the spell check suggestions toolbar once. If additional taps are made
+				// on a misspelled word, toggle the toolbar.
+				r.SelectWord(services.SelectionChangedCauseTap)
+				if !previous.Equal(e.TextEditingValue().Selection) {
+					e.ShowSpellCheckSuggestionsToolbar()
+				} else {
+					e.ToggleToolbar(false)
+				}
 			case ((b.positionWasOnSelectionExclusive(textPosition) && !previous.IsCollapsed()) ||
 				(b.positionWasOnSelectionInclusive(textPosition) && previous.IsCollapsed() && isAffinityTheSame && !r.ReadOnly())) && r.HasFocus():
 				e.ToggleToolbar(false)

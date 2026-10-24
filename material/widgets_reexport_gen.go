@@ -855,6 +855,13 @@ type BuildScopeOpts = widgets.BuildScopeOpts
 // Flutter: widgets.dart BuildTextSpanFunc
 type BuildTextSpanFunc = widgets.BuildTextSpanFunc
 
+// BuildTextSpanWithSpellCheckSuggestions is widgets.BuildTextSpanWithSpellCheckSuggestions.
+//
+// Flutter: widgets.dart BuildTextSpanWithSpellCheckSuggestions
+func BuildTextSpanWithSpellCheckSuggestions(value services.TextEditingValue, composingWithinCurrentTextRange bool, style *painting.TextStyle, misspelledTextStyle *painting.TextStyle, spellCheckResults services.SpellCheckResults) *painting.TextSpan {
+	return widgets.BuildTextSpanWithSpellCheckSuggestions(value, composingWithinCurrentTextRange, style, misspelledTextStyle, spellCheckResults)
+}
+
 // Builder is widgets.Builder.
 //
 // Flutter: widgets.dart Builder
@@ -7953,6 +7960,20 @@ func NewSpacer(opts ...widgets.SpacerOpts) *widgets.Spacer {
 	return widgets.NewSpacer(opts...)
 }
 
+// NewSpellCheckConfiguration is widgets.NewSpellCheckConfiguration.
+//
+// Flutter: widgets.dart NewSpellCheckConfiguration
+func NewSpellCheckConfiguration(opts ...widgets.SpellCheckConfigurationOpts) *widgets.SpellCheckConfiguration {
+	return widgets.NewSpellCheckConfiguration(opts...)
+}
+
+// NewSpellCheckConfigurationDisabled is widgets.NewSpellCheckConfigurationDisabled.
+//
+// Flutter: widgets.dart NewSpellCheckConfigurationDisabled
+func NewSpellCheckConfigurationDisabled() *widgets.SpellCheckConfiguration {
+	return widgets.NewSpellCheckConfigurationDisabled()
+}
+
 // NewStack is widgets.NewStack.
 //
 // Flutter: widgets.dart NewStack
@@ -11058,6 +11079,21 @@ type Spacer = widgets.Spacer
 //
 // Flutter: widgets.dart SpacerOpts
 type SpacerOpts = widgets.SpacerOpts
+
+// SpellCheckConfiguration is widgets.SpellCheckConfiguration.
+//
+// Flutter: widgets.dart SpellCheckConfiguration
+type SpellCheckConfiguration = widgets.SpellCheckConfiguration
+
+// SpellCheckConfigurationCopy is widgets.SpellCheckConfigurationCopy.
+//
+// Flutter: widgets.dart SpellCheckConfigurationCopy
+type SpellCheckConfigurationCopy = widgets.SpellCheckConfigurationCopy
+
+// SpellCheckConfigurationOpts is widgets.SpellCheckConfigurationOpts.
+//
+// Flutter: widgets.dart SpellCheckConfigurationOpts
+type SpellCheckConfigurationOpts = widgets.SpellCheckConfigurationOpts
 
 // Stack is widgets.Stack.
 //

@@ -17,12 +17,17 @@ var widgetBases = map[string]bool{"InheritedTheme": true, "InheritedNotifier": t
 // toolbarReason is why the toolbars of the text selection are not on a page.
 const toolbarReason = "made by the context menu of the text fields, which opens on a right click on the Text fields page (a long press or a tap on the handle on Android)"
 
+// spellCheckReason is why the toolbar of the spell check suggestions is not on a page.
+const spellCheckReason = "made by a text field whose spell check is on when a misspelled word is tapped (Android only: it needs the platform's spell checker, see examples/dev/android-spell)"
+
 // magnifierReason is why the magnifiers have no page of their own.
 const magnifierReason = "made by the text fields while a selection handle or the cursor is dragged on Android, on the Text fields page"
 
 // notShownOnAPage are the widget constructors of package material that the
 // gallery does not call by name, each with the reason.
 var notShownOnAPage = map[string]string{
+	"NewSpellCheckSuggestionsToolbar":                 spellCheckReason,
+	"NewSpellCheckSuggestionsToolbarEditableText":     spellCheckReason,
 	"NewAdaptiveTextSelectionToolbar":                 toolbarReason,
 	"NewAdaptiveTextSelectionToolbarButtonItems":      toolbarReason,
 	"NewAdaptiveTextSelectionToolbarEditable":         toolbarReason,

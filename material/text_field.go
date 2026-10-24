@@ -234,12 +234,22 @@ type TextFieldOpts struct {
 	// other platforms (TextMagnifierAdaptiveMagnifierConfiguration). To disable
 	// the magnifier, consider passing TextMagnifierConfigurationDisabled.
 	MagnifierConfiguration *widgets.TextMagnifierConfiguration
+	// SpellCheckConfiguration details how spell check is performed: the
+	// SpellCheckService, the style of the misspelled words and the toolbar with the
+	// suggestions. Spell check is disabled for password input, and when the
+	// configuration is nil. An enabled configuration needs no more than
+	// widgets.NewSpellCheckConfiguration(): the style of the misspelled words
+	// defaults to TextFieldMaterialMisspelledTextStyle, the toolbar to
+	// TextFieldDefaultSpellCheckSuggestionsToolbarBuilder, and the service to the
+	// platform's spell checker (Android only; elsewhere spell check stays off unless
+	// a service is given).
+	SpellCheckConfiguration *widgets.SpellCheckConfiguration
 }
 
 // TextField is a Material text field: the user types text into it with the
 // keyboard. It is an EditableText in an InputDecorator.
 //
-// Deviation: the restoration of the state, the spell check, the
+// Deviation: the restoration of the state, the
 // stylus handwriting, the content insertion, the deprecated toolbarOptions and
 // the system context menu are not ported, and the Cupertino looks of the Apple
 // platforms are replaced with the Material one (SPEC §12.10).
@@ -395,6 +405,61 @@ func (w *TextField) SelectionEnabled() bool { return w.o.EnableInteractiveSelect
 // Flutter: material/text_field.dart TextField.magnifierConfiguration
 func (w *TextField) MagnifierConfiguration() *widgets.TextMagnifierConfiguration {
 	return w.o.MagnifierConfiguration
+}
+
+// SpellCheckConfiguration is the configuration of spell check; nil for none.
+//
+// Flutter: material/text_field.dart TextField.spellCheckConfiguration
+func (w *TextField) SpellCheckConfiguration() *widgets.SpellCheckConfiguration {
+	return w.o.SpellCheckConfiguration
+}
+
+// TextFieldMaterialMisspelledTextStyle is the TextStyle used to indicate misspelled
+// words in the Material style: a red wavy underline.
+//
+// Flutter: material/text_field.dart TextField.materialMisspelledTextStyle
+var TextFieldMaterialMisspelledTextStyle = painting.NewTextStyle(painting.TextStyleOpts{
+	Decoration:      foundation.Some(ui.TextDecorationUnderline),
+	DecorationColor: foundation.Some(Colors.Red.Primary),
+	DecorationStyle: ui.TextDecorationStyleWavy,
+})
+
+// TextFieldDefaultSpellCheckSuggestionsToolbarBuilder is the default builder of the
+// spell check suggestions toolbar of a TextField: the Material
+// SpellCheckSuggestionsToolbar.
+//
+// Deviation: Flutter builds the Cupertino toolbar on iOS and macOS; there is no
+// Cupertino library, so every platform gets the Material toolbar (SPEC §12.10).
+//
+// Flutter: material/text_field.dart TextField.defaultSpellCheckSuggestionsToolbarBuilder
+func TextFieldDefaultSpellCheckSuggestionsToolbarBuilder(_ widgets.BuildContext, editableTextState *widgets.EditableTextState) widgets.Widget {
+	return NewSpellCheckSuggestionsToolbarEditableText(editableTextState)
+}
+
+// TextFieldInferAndroidSpellCheckConfiguration returns a new configuration where
+// the given one has had any missing values replaced with their defaults for the
+// Android platform: the Material misspelled text style and the Material toolbar. A
+// nil or disabled configuration gives the disabled one.
+//
+// Deviation: it is used on every platform, as there is no Cupertino configuration
+// to infer on iOS and macOS (SPEC §12.10).
+//
+// Flutter: material/text_field.dart TextField.inferAndroidSpellCheckConfiguration
+func TextFieldInferAndroidSpellCheckConfiguration(configuration *widgets.SpellCheckConfiguration) *widgets.SpellCheckConfiguration {
+	if configuration == nil || configuration.Equal(widgets.NewSpellCheckConfigurationDisabled()) {
+		return widgets.NewSpellCheckConfigurationDisabled()
+	}
+	misspelledTextStyle := configuration.MisspelledTextStyle()
+	if misspelledTextStyle == nil {
+		misspelledTextStyle = TextFieldMaterialMisspelledTextStyle
+	}
+	toolbarBuilder := configuration.SpellCheckSuggestionsToolbarBuilder()
+	if toolbarBuilder == nil {
+		toolbarBuilder = TextFieldDefaultSpellCheckSuggestionsToolbarBuilder
+	}
+	return configuration.CopyWith(widgets.SpellCheckConfigurationCopy{
+		MisspelledTextStyle: misspelledTextStyle, SpellCheckSuggestionsToolbarBuilder: toolbarBuilder,
+	})
 }
 
 // CreateState creates the state.
@@ -964,6 +1029,10 @@ func (s *textFieldState) Build(bc widgets.BuildContext) widgets.Widget {
 	if maxLines.IsNone() {
 		maxLines = foundation.Some(rendering.MaxLinesUnlimited)
 	}
+	// Set configuration as disabled if not otherwise specified. If specified,
+	// ensure that configuration uses the correct style for misspelled words for
+	// the current platform, unless a custom style is specified.
+	spellCheckConfiguration := TextFieldInferAndroidSpellCheckConfiguration(w.o.SpellCheckConfiguration)
 	var editable widgets.Widget = widgets.NewRepaintBoundary(widgets.NewEditableText(controller, focusNode, style, cursorColor, ui.NewColor(0xFF8E8E93),
 		widgets.EditableTextOpts{
 			Key:                            s.editableTextKey,
@@ -1024,6 +1093,7 @@ func (s *textFieldState) Build(bc widgets.BuildContext) widgets.Widget {
 			ContextMenuBuilder:             contextMenuBuilder,
 			HintLocales:                    w.o.HintLocales,
 			MagnifierConfiguration:         magnifierConfiguration,
+			SpellCheckConfiguration:        spellCheckConfiguration,
 		}))
 	child := editable
 	if w.Decoration() != nil {

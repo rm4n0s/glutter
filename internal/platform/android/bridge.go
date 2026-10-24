@@ -278,6 +278,16 @@ func (b *bridge) textEdit(seq int, text string, base, extent, composeBase, compo
 	b.post(func(p *Platform) { p.textEdit(seq, text, base, extent, composeBase, composeExtent) })
 }
 
+// spellCheckResult is the spell checker's answer to a request.
+func (b *bridge) spellCheckResult(id, code int, text string) {
+	b.post(func(p *Platform) { p.spellCheckResult(id, code, text) })
+}
+
+// spellCheckSupport is the activity's report of whether a spell checker can be asked.
+func (b *bridge) spellCheckSupport(supported bool) {
+	b.post(func(p *Platform) { p.spellCheckSupport(supported) })
+}
+
 // clipboardText is the activity's answer to a read of the clipboard.
 func (b *bridge) clipboardText(id int, ok bool, text string) {
 	b.post(func(p *Platform) { p.clipboardText(id, ok, text) })

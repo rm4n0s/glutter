@@ -103,6 +103,14 @@ func goDesktopResult(id, code C.int, utf8 *C.char, n C.int) {
 	process.desktopResult(int(id), int(code), C.GoStringN(utf8, n))
 }
 
+//export goSpellCheckResult
+func goSpellCheckResult(id, code C.int, utf8 *C.char, n C.int) {
+	process.spellCheckResult(int(id), int(code), C.GoStringN(utf8, n))
+}
+
+//export goSpellCheckSupport
+func goSpellCheckSupport(supported C.int) { process.spellCheckSupport(supported != 0) }
+
 //export goNotificationEvent
 func goNotificationEvent(serial, kind C.int, utf8 *C.char, n C.int) {
 	process.notificationEvent(int(serial), int(kind), C.GoStringN(utf8, n))

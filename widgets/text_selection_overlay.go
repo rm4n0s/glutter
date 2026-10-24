@@ -280,6 +280,17 @@ func (t *TextSelectionOverlay) ShowToolbar() {
 	t.selectionOverlay.ShowToolbar(t.context, t.contextMenuBuilder)
 }
 
+// ShowSpellCheckSuggestionsToolbar shows the toolbar with the spell check
+// suggestions of misspelled words that are available for click-and-replace, and
+// hides the handles.
+//
+// Flutter: widgets/text_selection.dart TextSelectionOverlay.showSpellCheckSuggestionsToolbar
+func (t *TextSelectionOverlay) ShowSpellCheckSuggestionsToolbar(spellCheckSuggestionsToolbarBuilder WidgetBuilder) {
+	t.updateSelectionOverlay()
+	t.selectionOverlay.ShowSpellCheckSuggestionsToolbar(t.context, spellCheckSuggestionsToolbarBuilder)
+	t.HideHandles()
+}
+
 // ShowMagnifier shows the magnifier, and hides the toolbar if it was showing,
 // following the text position at positionToShow (global coordinates).
 //
@@ -371,6 +382,14 @@ func (t *TextSelectionOverlay) HandlesAreVisible() bool {
 //
 // Flutter: widgets/text_selection.dart TextSelectionOverlay.toolbarIsVisible
 func (t *TextSelectionOverlay) ToolbarIsVisible() bool { return t.selectionOverlay.ToolbarIsVisible() }
+
+// SpellCheckToolbarIsVisible is whether the spell check menu is currently
+// visible. ToolbarIsVisible is whether any toolbar is visible.
+//
+// Flutter: widgets/text_selection.dart TextSelectionOverlay.spellCheckToolbarIsVisible
+func (t *TextSelectionOverlay) SpellCheckToolbarIsVisible() bool {
+	return t.selectionOverlay.SpellCheckToolbarIsVisible()
+}
 
 // Hide hides the entire overlay including the toolbar and the handles.
 //

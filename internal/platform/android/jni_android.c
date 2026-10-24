@@ -25,6 +25,8 @@ extern void goDisplayChanged(float density, float refresh, int displayWidth, int
 extern void goTextEdit(int seq, char *utf8, int n, int base, int extent, int composeBase, int composeExtent);
 extern void goClipboardText(int id, int ok, char *utf8, int n);
 extern void goDesktopResult(int id, int code, char *utf8, int n);
+extern void goSpellCheckResult(int id, int code, char *utf8, int n);
+extern void goSpellCheckSupport(int supported);
 extern void goNotificationEvent(int serial, int kind, char *utf8, int n);
 extern void goA11yState(int enabled, int touch, int navigation);
 extern void goA11yAction(int nodeId, int action, char *args, int n);
@@ -314,6 +316,19 @@ JNIEXPORT void JNICALL Java_io_github_rm4n0s_glutter_Native_desktopResult(JNIEnv
     goDesktopResult(id, code, (char *)t, n);
   }
   if (t != NULL) (*env)->ReleaseByteArrayElements(env, text, t, JNI_ABORT);
+}
+
+JNIEXPORT void JNICALL Java_io_github_rm4n0s_glutter_Native_spellCheckResult(JNIEnv *env, jclass cls, jint id, jint code, jbyteArray text) {
+  jsize n = (*env)->GetArrayLength(env, text);
+  jbyte *t = (*env)->GetByteArrayElements(env, text, NULL);
+  if (t != NULL || n == 0) {
+    goSpellCheckResult(id, code, (char *)t, n);
+  }
+  if (t != NULL) (*env)->ReleaseByteArrayElements(env, text, t, JNI_ABORT);
+}
+
+JNIEXPORT void JNICALL Java_io_github_rm4n0s_glutter_Native_spellCheckSupport(JNIEnv *env, jclass cls, jboolean supported) {
+  goSpellCheckSupport(supported ? 1 : 0);
 }
 
 JNIEXPORT void JNICALL Java_io_github_rm4n0s_glutter_Native_notificationEvent(JNIEnv *env, jclass cls, jint serial, jint kind,

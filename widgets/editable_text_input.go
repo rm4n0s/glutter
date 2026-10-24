@@ -766,7 +766,7 @@ func (s *EditableTextState) UserUpdateTextEditingValue(value services.TextEditin
 	if s.Widget().o.ReadOnly {
 		shouldShowCaret = !s.value().Selection.Equal(value.Selection)
 	} else {
-		shouldShowCaret = s.value() != value
+		shouldShowCaret = !s.value().Equal(value)
 	}
 	if shouldShowCaret {
 		s.scheduleShowCaretOnScreen(true)
@@ -774,7 +774,7 @@ func (s *EditableTextState) UserUpdateTextEditingValue(value services.TextEditin
 	// Even if the value doesn't change, it may be necessary to focus and build the
 	// selection overlay. For example, this happens when right clicking an unfocused
 	// field that previously had a selection in the same spot.
-	if value == s.value() {
+	if value.Equal(s.value()) {
 		if !s.hasFocus() {
 			s.flagInternalFocus()
 			s.Widget().focusNode.RequestFocus()
@@ -813,6 +813,9 @@ func (s *EditableTextState) formatAndSetValue(value services.TextEditingValue, c
 		s.report("EditableTextFormatterPanicked", "while applying input formatters", func() {
 			for _, f := range w.inputFormatters {
 				value = f.FormatEditUpdate(old, value)
+			}
+			if s.SpellCheckEnabled() && value.Text != "" && old.Text != value.Text {
+				s.performSpellCheck(value.Text)
 			}
 		})
 	}

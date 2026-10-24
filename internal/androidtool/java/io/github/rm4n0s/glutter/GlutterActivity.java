@@ -52,6 +52,7 @@ public class GlutterActivity extends Activity {
 
   /** Back navigation of the activity: the callback that is registered with the system. */
   private BackNavigation backNavigation;
+  private SpellCheck spellCheck;
 
   /** The accessibility bridge of the activity's view (TalkBack and the other services). */
   private GlutterAccessibility accessibility;
@@ -75,6 +76,7 @@ public class GlutterActivity extends Activity {
       createView();
       Native.settings(SystemSettings.describe(this));
       Native.activityCreated();
+      spellCheck.report();
       accessibility.start();
       // The activity was made again by a tap on a notification of this process.
       DesktopServices.handleIntent(getIntent());
@@ -86,6 +88,7 @@ public class GlutterActivity extends Activity {
     createView();
     // The settings are known before main starts: the first frame is drawn with them.
     Native.settings(SystemSettings.describe(this));
+    spellCheck.report();
     if (!watching) {
       watching = true;
       SystemSettings.watch(appContext);
@@ -102,6 +105,7 @@ public class GlutterActivity extends Activity {
     view = new GlutterView(this, systemUI);
     textInput = new TextInput(view);
     backNavigation = new BackNavigation(this);
+    spellCheck = new SpellCheck(this);
     view.setBackNavigation(backNavigation);
     view.setTextInput(textInput);
     accessibility = new GlutterAccessibility(view);
@@ -175,6 +179,10 @@ public class GlutterActivity extends Activity {
   public void onWindowFocusChanged(boolean hasFocus) {
     super.onWindowFocusChanged(hasFocus);
     Native.focus(hasFocus);
+    if (hasFocus && spellCheck != null) {
+      // The user may have turned the spell checker on or off in the settings.
+      spellCheck.report();
+    }
   }
 
   /** Copies the app's directories and the {@code GLUTTER_} extras into the Go program's environment. */
@@ -210,6 +218,9 @@ public class GlutterActivity extends Activity {
     }
     if (accessibility != null) {
       accessibility.release();
+    }
+    if (spellCheck != null) {
+      spellCheck.close();
     }
     super.onDestroy();
     if (isFinishing()) {
@@ -269,7 +280,7 @@ public class GlutterActivity extends Activity {
    * or the screen (systemui.go, operations 1 to 7; {@link SystemUI}), or of text input and the
    * clipboard (textinput.go, 8 to 13; {@link TextInput}), of back navigation (back.go, 14
    * and 15; {@link BackNavigation}), of accessibility (accessibility.go, 16 to 18; {@link
-   * GlutterAccessibility}) or of the desktop services (desktop.go, 19 to 23: a URI, the
+   * GlutterAccessibility}), of the spell checker (spellcheck.go, 24; {@link SpellCheck}) or of the desktop services (desktop.go, 19 to 23: a URI, the
    * notifications; {@link DesktopServices}), done on the main thread. {@code bytes} is the
    * operation's text as UTF-8, or, for the semantics update (16) and the notification (22), a binary
    * payload.
@@ -297,6 +308,10 @@ public class GlutterActivity extends Activity {
             if (op >= GlutterAccessibility.OP_SEMANTICS && op <= GlutterAccessibility.OP_RESET) {
               if (current.accessibility != null) {
                 current.accessibility.command(op, a, bytes);
+              }
+            } else if (op == SpellCheck.OP_SPELL_CHECK) {
+              if (current.spellCheck != null) {
+                current.spellCheck.command(op, a, s);
               }
             } else if (op == BackNavigation.OP_FRAMEWORK_HANDLES_BACK || op == BackNavigation.OP_FINISH) {
               if (current.backNavigation != null) {

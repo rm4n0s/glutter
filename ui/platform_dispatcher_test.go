@@ -482,6 +482,69 @@ func TestClipboardUnavailable(t *testing.T) {
 	}
 }
 
+func TestSpellCheckUnavailable(t *testing.T) {
+	host := &fakeHost{}
+	d := NewPlatformDispatcher(host)
+	if d.SpellCheckSupported() {
+		t.Error("a host without a spell checker supports spell check")
+	}
+	var spans []SpellCheckSpan
+	var got error
+	d.SpellCheck(context.Background(), "en-US", "helo", func(s []SpellCheckSpan, err error) { spans, got = s, err })
+	if got != nil {
+		t.Fatal("the result must not arrive before the call returns")
+	}
+	host.runPosted()
+	appErr, ok := errors.FromError(got)
+	if !ok {
+		t.Fatalf("expected *errors.Error, got %T", got)
+	}
+	if !appErr.HasRoute("PlatformDispatcher.SpellCheck.SpellCheckUnavailable") {
+		t.Errorf("unexpected failure path: %s", appErr.Route())
+	}
+	if len(spans) != 0 {
+		t.Errorf("spans = %v", spans)
+	}
+}
+
+type spellCheckHost struct {
+	fakeHost
+	supported bool
+}
+
+func (h *spellCheckHost) SpellCheckSupported() bool { return h.supported }
+
+func (h *spellCheckHost) SpellCheck(_ context.Context, locale, text string, done func([]SpellCheckSpan, error)) {
+	h.Post(func() { done([]SpellCheckSpan{{Start: 0, End: len(text), Suggestions: []string{locale}}}, nil) })
+}
+
+func TestSpellCheckThroughTheHost(t *testing.T) {
+	tests := []struct {
+		name      string
+		supported bool
+		want      int
+	}{
+		{"a supporting host answers", true, 1},
+		{"a host that does not support it fails", false, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			host := &spellCheckHost{supported: tt.supported}
+			d := NewPlatformDispatcher(host)
+			if d.SpellCheckSupported() != tt.supported {
+				t.Errorf("SpellCheckSupported = %v", d.SpellCheckSupported())
+			}
+			var spans []SpellCheckSpan
+			var err error
+			d.SpellCheck(context.Background(), "en-US", "helo", func(s []SpellCheckSpan, e error) { spans, err = s, e })
+			host.runPosted()
+			if len(spans) != tt.want || (err != nil) == (tt.want == 1) {
+				t.Errorf("spans = %v, err = %v", spans, err)
+			}
+		})
+	}
+}
+
 type richClipboardHost struct {
 	fakeHost
 	system, primary ClipboardContent

@@ -140,6 +140,16 @@ final class Native {
   static native void notificationEvent(int serial, int kind, byte[] text);
 
   /**
+   * The answer to a {@code SpellCheck.OP_SPELL_CHECK}: the number of the request, the code (0 the
+   * misspelled ranges, as lines of start, end and the suggestions separated by tabs, in UTF-16
+   * offsets; 1 the request failed, and the text is the reason).
+   */
+  static native void spellCheckResult(int request, int code, byte[] text);
+
+  /** Whether a spell checker can be asked (the user has not turned it off). */
+  static native void spellCheckSupport(boolean supported);
+
+  /**
    * The state of the accessibility manager: whether an accessibility service runs, whether touch
    * exploration is on, and Flutter's {@code accessibleNavigation} (touch exploration, or a service
    * that asked for the nodes). Go turns the semantics tree on while a service runs or touch

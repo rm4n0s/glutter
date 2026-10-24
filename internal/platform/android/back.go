@@ -112,6 +112,7 @@ func (p *Platform) activityCreated() {
 	if p.handlesBack {
 		p.sendHandlesBack()
 	}
+	p.failSpellChecks()
 	p.text.resend(p.host)
 	p.a11y.resend()
 }
