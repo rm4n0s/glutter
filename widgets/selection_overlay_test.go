@@ -205,3 +205,49 @@ func TestSelectionOverlaySettersMarkTheHandlesForRebuild(t *testing.T) {
 		t.Fatalf("getters: %v %v", f.overlay.StartHandleType(), f.overlay.LineHeightAtStart())
 	}
 }
+
+// Ported from SelectionOverlay.selectionEndpoints of widgets/text_selection.dart: only Android
+// gives a selection click when the endpoints change while a handle is dragged.
+func TestSelectionOverlayEndpointsGiveHapticFeedbackWhileDraggingOnAndroid(t *testing.T) {
+	tests := []struct {
+		platform foundation.TargetPlatform
+		want     int
+	}{
+		{foundation.TargetPlatformAndroid, 1},
+		{foundation.TargetPlatformFuchsia, 0},
+		{foundation.TargetPlatformIOS, 0},
+		{foundation.TargetPlatformLinux, 0},
+	}
+	for _, tc := range tests {
+		t.Run(tc.platform.String(), func(t *testing.T) {
+			usePlatform(t, tc.platform)
+			f := newOverlayFixture(t, rendering.TextSelectionHandleTypeLeft, rendering.TextSelectionHandleTypeRight)
+			clicks := 0
+			f.ts.Binding.HapticFeedback().OnPerform = func(k ui.HapticFeedbackKind) {
+				if k == ui.HapticFeedbackSelectionClick {
+					clicks++
+				}
+			}
+			moved := []rendering.TextSelectionPoint{{Point: ui.Offset{Dx: 110, Dy: 114}}, {Point: ui.Offset{Dx: 300, Dy: 114}}}
+			// Not dragging: the endpoints change without feedback.
+			f.overlay.SetSelectionEndpoints(moved)
+			if clicks != 0 {
+				t.Fatalf("clicks without a drag = %d, want 0", clicks)
+			}
+			f.overlay.ShowHandles()
+			f.ts.Pump()
+			at := f.ts.Center(gluttertest.ByKey(handleKey(rendering.TextSelectionHandleTypeLeft)))
+			g := f.ts.StartGesture(at)
+			g.MoveTo(at.Add(ui.Offset{Dx: 30, Dy: 0}))
+			f.ts.Pump()
+			f.overlay.SetSelectionEndpoints([]rendering.TextSelectionPoint{{Point: ui.Offset{Dx: 120, Dy: 114}}, {Point: ui.Offset{Dx: 300, Dy: 114}}})
+			// The same endpoints again do not click.
+			f.overlay.SetSelectionEndpoints([]rendering.TextSelectionPoint{{Point: ui.Offset{Dx: 120, Dy: 114}}, {Point: ui.Offset{Dx: 300, Dy: 114}}})
+			g.Up()
+			f.ts.Pump()
+			if clicks != tc.want {
+				t.Errorf("clicks = %d, want %d", clicks, tc.want)
+			}
+		})
+	}
+}

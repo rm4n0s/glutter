@@ -595,3 +595,36 @@ func TestDraggableNegativeMaxSimultaneousDragsPanics(t *testing.T) {
 		NewDraggable(NewText("f"), NewText("c"), DraggableOpts[int]{MaxSimultaneousDrags: foundation.Some(-1)})
 	})
 }
+
+// Ported from LongPressDraggable.createRecognizer of widgets/drag_target.dart: the drag of a
+// LongPressDraggable starts with a selection click, unless hapticFeedbackOnStart is off.
+func TestLongPressDraggableHapticFeedbackOnStart(t *testing.T) {
+	tests := []struct {
+		name string
+		hold time.Duration
+		off  bool
+		want []ui.HapticFeedbackKind
+	}{
+		{"the drag starts", gestures.LongPressTimeout + 50*time.Millisecond, false, []ui.HapticFeedbackKind{ui.HapticFeedbackSelectionClick}},
+		{"the haptic feedback is off", gestures.LongPressTimeout + 50*time.Millisecond, true, nil},
+		{"a short press does not start a drag", 100 * time.Millisecond, false, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ts := gluttertest.New(t)
+			var got []ui.HapticFeedbackKind
+			ts.Binding.HapticFeedback().OnPerform = func(k ui.HapticFeedbackKind) { got = append(got, k) }
+			ts.PumpWidget(dragApp(
+				NewLongPressDraggable(NewText("Dragging"), dragBox(srcKey, "Source", 100), LongPressDraggableOpts[int]{
+					DraggableOpts: DraggableOpts[int]{Data: foundation.Some(1)}, NoHapticFeedbackOnStart: tt.off}),
+			))
+			g := ts.StartGesture(ts.Center(gluttertest.ByKey(srcKey)), gluttertest.GestureOpts{Pointer: 7})
+			ts.Pump(tt.hold)
+			g.Up()
+			ts.Pump()
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("haptic feedback = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

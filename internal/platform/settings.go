@@ -15,6 +15,14 @@ type Settings struct {
 	HasAccentColor bool
 	// TextScaleFactor is the system text scale; 0 means 1.
 	TextScaleFactor float64
+	// ScaleFontSize, when it is not nil, scales a font size in logical pixels the way the system
+	// does: not linearly on Android 14 and later. It is called on the UI thread. A platform that
+	// scales text linearly leaves it nil and the factor is used.
+	ScaleFontSize func(fontSize float64) float64
+	// AlwaysUse24HourFormat is whether the user wants times in 24-hour format.
+	AlwaysUse24HourFormat bool
+	// BoldText is whether the user asked for bold text.
+	BoldText bool
 	// DisableAnimations is whether the user asked for reduced motion.
 	DisableAnimations bool
 	// HighContrast is whether the user asked for high contrast.

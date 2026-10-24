@@ -1,7 +1,9 @@
 package io.github.rm4n0s.glutter;
 
 import android.app.Activity;
+import android.content.Context;
 import android.content.Intent;
+import android.content.res.Configuration;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -41,23 +43,51 @@ public class GlutterActivity extends Activity {
   /** The view of the activity that is shown. Only the main thread touches it. */
   private GlutterView view;
 
+  /** The system interface of the activity (bars, orientation, feedback). */
+  private SystemUI systemUI;
+
+  /** The application's context, for what Go asks from a thread that is not the main one. */
+  private static volatile Context appContext;
+
+  /** Whether the settings are watched: once for the process. */
+  private static boolean watching;
+
   @Override
   protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
     current = this;
+    appContext = getApplicationContext();
+    systemUI = new SystemUI(this);
+    systemUI.enableEdgeToEdge();
     if (started) {
       // A new activity in a living process: the program runs already, and the view gets the
       // new surface (SPEC §24.2).
-      view = new GlutterView(this);
+      view = new GlutterView(this, systemUI);
       setContentView(view);
+      Native.settings(SystemSettings.describe(this));
       return;
     }
     started = true;
     System.loadLibrary("app");
     setEnvironment();
-    view = new GlutterView(this);
+    view = new GlutterView(this, systemUI);
     setContentView(view);
+    // The settings are known before main starts: the first frame is drawn with them.
+    Native.settings(SystemSettings.describe(this));
+    if (!watching) {
+      watching = true;
+      SystemSettings.watch(appContext);
+    }
     Native.start(this);
+  }
+
+  @Override
+  public void onConfigurationChanged(Configuration newConfig) {
+    super.onConfigurationChanged(newConfig);
+    Native.settings(SystemSettings.describe(this));
+    if (view != null) {
+      view.reportDisplay();
+    }
   }
 
   @Override
@@ -156,6 +186,32 @@ public class GlutterActivity extends Activity {
             }
           }
         });
+  }
+
+  /**
+   * Called by Go, from any thread: one operation of the system's interface, haptic feedback, sounds
+   * or the screen (systemui.go); {@link SystemUI} does it on the main thread.
+   */
+  static void command(
+      final int op, final long a, final long b, final long c, final long d, final String s) {
+    MAIN.post(
+        new Runnable() {
+          @Override
+          public void run() {
+            if (current != null && current.systemUI != null) {
+              current.systemUI.command(op, a, b, c, d, s);
+            }
+          }
+        });
+  }
+
+  /**
+   * Called by Go, from the UI thread, and it returns at once: what the system makes of a font size
+   * of {@code size} logical pixels (not linear on Android 14 and later).
+   */
+  static float scaledFontSize(float size) {
+    Context context = appContext;
+    return context == null ? size : SystemSettings.scaledFontSize(context, size);
   }
 
   /** Called by Go, from any thread: the mouse cursor, as a {@code PointerIcon} type. */

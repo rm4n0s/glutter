@@ -56,6 +56,10 @@ type Opts struct {
 	// DevicePixelRatio is the number of physical pixels per logical pixel; the
 	// default is 1.
 	DevicePixelRatio float64
+	// ViewPadding, ViewInsets and SystemGestureInsets are the areas that the system covers, in
+	// physical pixels (flutter_test's view.padding, view.viewInsets and view.systemGestureInsets).
+	// The padding that MediaQuery gives is ViewPadding minus ViewInsets. The default is none.
+	ViewPadding, ViewInsets, SystemGestureInsets ui.ViewPadding
 	// TextEngine lays out the text. The default has only the fonts bundled with
 	// Glutter, so that the text is the same on every machine.
 	TextEngine ui.ParagraphFactory
@@ -152,6 +156,13 @@ func New(tb TB, opts ...Opts) *Tester {
 	t.cfg = ui.ViewConfiguration{
 		PhysicalSize:     ui.Size{Width: o.Size.Width * o.DevicePixelRatio, Height: o.Size.Height * o.DevicePixelRatio},
 		DevicePixelRatio: o.DevicePixelRatio,
+		ViewPadding:      o.ViewPadding, ViewInsets: o.ViewInsets, SystemGestureInsets: o.SystemGestureInsets,
+		Padding: ui.ViewPadding{
+			Left:   max(0, o.ViewPadding.Left-o.ViewInsets.Left),
+			Top:    max(0, o.ViewPadding.Top-o.ViewInsets.Top),
+			Right:  max(0, o.ViewPadding.Right-o.ViewInsets.Right),
+			Bottom: max(0, o.ViewPadding.Bottom-o.ViewInsets.Bottom),
+		},
 	}
 	t.View = t.d.AddView(ui.ImplicitViewID, t.cfg)
 	ctx, cancel := context.WithCancel(context.Background())

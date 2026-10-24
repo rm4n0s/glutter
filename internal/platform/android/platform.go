@@ -190,15 +190,18 @@ func (p *Platform) Displays() []platform.Display {
 // Flutter: services/clipboard.dart Clipboard
 func (p *Platform) Clipboard() platform.Clipboard { return unavailableClipboard{post: p.Post} }
 
-// Settings returns the defaults: light, the text scale 1 and the locale en-US. Step 25.7 reads
-// them from the system.
+// Settings returns the system's settings that the Java side reported (SPEC §24.7); until it does,
+// the defaults: light, the text scale 1 and the locale en-US.
 //
 // Flutter: shell/platform/android/io/flutter/embedding/engine/systemchannels/SettingsChannel.java SettingsChannel
 func (p *Platform) Settings() platform.Settings {
-	return platform.Settings{
-		PlatformBrightness: ui.BrightnessLight,
-		TextScaleFactor:    1,
-		Locales:            []ui.Locale{{LanguageCode: "en", CountryCode: "US"}},
+	return p.b.settingsSnapshot().platformSettings(p.host.ScaledFontSize)
+}
+
+// settingsChanged reports that the system's settings changed.
+func (p *Platform) settingsChanged() {
+	if p.handler != nil {
+		p.handler.OnSettings(p.Settings())
 	}
 }
 

@@ -171,6 +171,8 @@ type WidgetsBinding struct {
 	keyboard     *services.HardwareKeyboard
 	navigator    *services.SystemNavigator
 	sound        *services.SystemSound
+	chrome       *services.SystemChrome
+	haptic       *services.HapticFeedback
 	browserMenu  *services.BrowserContextMenu
 	clipboard    *services.Clipboard
 	textInput    *services.TextInput
@@ -312,7 +314,9 @@ func NewWidgetsBinding(ctx context.Context, d *ui.PlatformDispatcher, opts ...Wi
 		return handled
 	}
 	b.navigator = &services.SystemNavigator{OnPop: func(foundation.Opt[bool]) { d.RequestAppExit() }}
-	b.sound = &services.SystemSound{}
+	b.sound = services.NewSystemSound(d)
+	b.chrome = services.NewSystemChrome(d)
+	b.haptic = services.NewHapticFeedback(d)
 	b.browserMenu = services.NewBrowserContextMenu(d)
 	b.clipboard = services.NewClipboard(d)
 	b.textInput = services.NewTextInput(services.TextInputOpts{Backend: d, Post: d.Post})
@@ -507,6 +511,18 @@ func (b *WidgetsBinding) SystemNavigator() *services.SystemNavigator { return b.
 // Flutter: services/system_sound.dart SystemSound
 func (b *WidgetsBinding) SystemSound() *services.SystemSound { return b.sound }
 
+// SystemChrome controls the system's interface around the app (the orientations, the status bar
+// and the navigation bar); see services.SystemChrome. It does something on Android only.
+//
+// Flutter: services/system_chrome.dart SystemChrome
+func (b *WidgetsBinding) SystemChrome() *services.SystemChrome { return b.chrome }
+
+// HapticFeedback gives haptic feedback; see services.HapticFeedback. It does something on
+// Android only.
+//
+// Flutter: services/haptic_feedback.dart HapticFeedback
+func (b *WidgetsBinding) HapticFeedback() *services.HapticFeedback { return b.haptic }
+
 // BrowserContextMenu controls the browser's context menu on the web; it does nothing
 // elsewhere. See services.BrowserContextMenu.
 //
@@ -574,6 +590,7 @@ func (b *WidgetsBinding) handleLocaleChanged() {
 func (b *WidgetsBinding) handleAppLifecycleStateChanged(state ui.AppLifecycleState) {
 	for _, s := range generateStateTransitions(b.scheduler.LifecycleState(), state) {
 		b.scheduler.HandleAppLifecycleStateChanged(s)
+		b.chrome.HandleAppLifecycleStateChanged(s)
 		b.notifyObservers("didChangeAppLifecycleState", func(o WidgetsBindingObserver) { o.DidChangeAppLifecycleState(s) })
 	}
 }

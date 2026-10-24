@@ -719,6 +719,7 @@ func (s *SelectableRegionState) updateSelectedContentIfNeeded() {
 }
 
 func (s *SelectableRegionState) handleTouchLongPressStart(details gestures.LongPressStartDetails) {
+	WidgetsBindingOf(s.Context()).HapticFeedback().SelectionClick()
 	s.focusNode().RequestFocus()
 	s.selectWordAt(details.GlobalPosition)
 	s.setChanging()

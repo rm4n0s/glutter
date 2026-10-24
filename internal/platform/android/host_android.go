@@ -70,3 +70,15 @@ func (nativeHost) SetCursor(pointerIconType int) { C.glutter_set_cursor(C.int(po
 
 // ReleaseWindow implements host.
 func (nativeHost) ReleaseWindow(window uintptr) { C.glutter_release_window(C.uintptr_t(window)) }
+
+// Command implements host.
+func (nativeHost) Command(c command) {
+	text := C.CString(c.S)
+	defer C.free(unsafe.Pointer(text))
+	C.glutter_command(C.int(c.Op), C.longlong(c.A), C.longlong(c.B), C.longlong(c.C), C.longlong(c.D), text)
+}
+
+// ScaledFontSize implements host: the system's own scaling of a size in sp.
+func (nativeHost) ScaledFontSize(size float64) float64 {
+	return float64(C.glutter_scaled_font_size(C.float(size)))
+}

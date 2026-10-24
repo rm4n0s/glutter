@@ -179,14 +179,18 @@ func TestMediaQueryDataFromViewUsesTheDispatcherWithoutPlatformData(t *testing.T
 	ts := gluttertest.New(t)
 	ts.SetPlatformConfiguration(func(c *ui.PlatformConfiguration) {
 		c.TextScaleFactor = 123
+		c.AlwaysUse24HourFormat = true
 		c.PlatformBrightness = ui.BrightnessDark
 		c.AccessibilityFeatures = ui.AccessibilityFeatures{
 			AccessibleNavigation: true, InvertColors: true, DisableAnimations: true, BoldText: true, HighContrast: true, OnOffSwitchLabels: true,
 		}
 	})
 	data := NewMediaQueryDataFromView(ts.View, nil)
-	if !painting.TextScalerEqual(data.TextScaler, painting.NewTextScalerLinear(123)) || data.TextScaler.TextScaleFactor() != 123 {
-		t.Errorf("text scaler = %v, want 123", data.TextScaler)
+	if _, ok := data.TextScaler.(SystemTextScaler); !ok || data.TextScaler.TextScaleFactor() != 123 {
+		t.Errorf("text scaler = %v (%T), want a SystemTextScaler with the factor 123", data.TextScaler, data.TextScaler)
+	}
+	if !data.AlwaysUse24HourFormat {
+		t.Error("AlwaysUse24HourFormat of the dispatcher was not used")
 	}
 	if data.PlatformBrightness != ui.BrightnessDark || !data.AccessibleNavigation || !data.InvertColors || !data.DisableAnimations ||
 		!data.BoldText || !data.HighContrast || !data.OnOffSwitchLabels {
@@ -643,5 +647,95 @@ func TestMediaQueryClampedTextScalingChecksItsLimits(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			requireTag(t, "MediaQueryClampInvalid", func() { NewMediaQueryWithClampedTextScaling(newLeaf(), tc.opts) })
 		})
+	}
+}
+
+// Ported from packages/flutter/test/widgets/media_query_test.dart ('MediaQueryData.fromView uses
+// data from platformDispatcher if no platformData is provided') and from the SystemTextScaler
+// class of widgets/media_query.dart.
+func TestSystemTextScaler(t *testing.T) {
+	scalerOf := func(t *testing.T, cfg ui.PlatformConfiguration) (SystemTextScaler, *gluttertest.Tester) {
+		t.Helper()
+		ts := gluttertest.New(t)
+		ts.SetPlatformConfiguration(func(c *ui.PlatformConfiguration) { *c = cfg })
+		s, ok := NewMediaQueryDataFromView(ts.View, nil).TextScaler.(SystemTextScaler)
+		if !ok {
+			t.Fatal("the text scaler of a data made from a view is not a SystemTextScaler")
+		}
+		return s, ts
+	}
+	t.Run("scale asks the dispatcher", func(t *testing.T) {
+		s, _ := scalerOf(t, ui.PlatformConfiguration{
+			TextScaleFactor: 2,
+			ScaleFontSize:   func(size float64) float64 { return size*size/10 + size },
+		})
+		if got := s.Scale(20); got != 60 {
+			t.Errorf("Scale(20) = %v, want 60 (the platform's conversion, not the linear 40)", got)
+		}
+		if got := s.Scale(5.5); got != (5.0*5.0/10+5.0)+((6.0*6.0/10+6.0)-(5.0*5.0/10+5.0))*0.5 {
+			t.Errorf("Scale(5.5) = %v, want the interpolation of the sizes 5 and 6", got)
+		}
+	})
+	t.Run("a linear platform scales linearly", func(t *testing.T) {
+		s, _ := scalerOf(t, ui.PlatformConfiguration{TextScaleFactor: 1.5})
+		if got := s.Scale(10); got != 15 {
+			t.Errorf("Scale(10) = %v, want 15", got)
+		}
+	})
+	t.Run("equality is by the factor", func(t *testing.T) {
+		a, _ := scalerOf(t, ui.PlatformConfiguration{TextScaleFactor: 1.5})
+		b, _ := scalerOf(t, ui.PlatformConfiguration{TextScaleFactor: 1.5})
+		c, _ := scalerOf(t, ui.PlatformConfiguration{TextScaleFactor: 2})
+		one, _ := scalerOf(t, ui.PlatformConfiguration{})
+		tests := []struct {
+			name string
+			x, y painting.TextScaler
+			want bool
+		}{
+			{"same factor, two dispatchers", a, b, true},
+			{"other factor", a, c, false},
+			{"factor 1 is no scaling", one, painting.TextScalerNoScaling, true},
+			{"factor 1 is linear 1", one, painting.NewTextScalerLinear(1), true},
+			{"factor 1.5 is not linear 1.5", a, painting.NewTextScalerLinear(1.5), false},
+			{"no scaling is not factor 2", c, painting.TextScalerNoScaling, false},
+			{"nil", a, nil, false},
+		}
+		for _, tc := range tests {
+			if got := painting.TextScalerEqual(tc.x, tc.y); got != tc.want {
+				t.Errorf("%s: TextScalerEqual = %v, want %v", tc.name, got, tc.want)
+			}
+		}
+	})
+	t.Run("String", func(t *testing.T) {
+		a, _ := scalerOf(t, ui.PlatformConfiguration{TextScaleFactor: 1.5})
+		one, _ := scalerOf(t, ui.PlatformConfiguration{})
+		if a.String() != "SystemTextScaler (1.5x)" || one.String() != "SystemTextScaler (no scaling)" {
+			t.Errorf("String = %q and %q", a.String(), one.String())
+		}
+	})
+	t.Run("Clamp", func(t *testing.T) {
+		a, _ := scalerOf(t, ui.PlatformConfiguration{TextScaleFactor: 3})
+		clamped := a.Clamp(painting.TextScalerClampOpts{MaxScaleFactor: foundation.Some(2.0)})
+		if got := clamped.Scale(10); got != 20 {
+			t.Errorf("clamped Scale(10) = %v, want 20", got)
+		}
+	})
+}
+
+func TestMediaQueryDataFromViewFollowsTheSystemTextScale(t *testing.T) {
+	ts := gluttertest.New(t)
+	before := NewMediaQueryDataFromView(ts.View, nil)
+	same := NewMediaQueryDataFromView(ts.View, nil)
+	if !before.Equal(same) {
+		t.Error("two data made from the same settings differ")
+	}
+	ts.SetPlatformConfiguration(func(c *ui.PlatformConfiguration) { c.TextScaleFactor = 2; c.AlwaysUse24HourFormat = true })
+	after := NewMediaQueryDataFromView(ts.View, nil)
+	if before.Equal(after) || after.TextScaler.TextScaleFactor() != 2 || !after.AlwaysUse24HourFormat {
+		t.Errorf("the data did not follow the settings: %v", after)
+	}
+	platform := NewMediaQueryData(MediaQueryDataOpts{AlwaysUse24HourFormat: false})
+	if NewMediaQueryDataFromView(ts.View, &platform).AlwaysUse24HourFormat {
+		t.Error("the platform data does not override AlwaysUse24HourFormat")
 	}
 }

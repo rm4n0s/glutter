@@ -63,3 +63,27 @@ Check, and record the answers:
 5. With a Bluetooth keyboard, if you have one: in `examples/dev/android-input`, press K and the arrow keys: does the log say `shortcut ran`? Does Back still leave the app (until step 25.9)?
 
 Answers: _(not yet recorded)_
+
+## 25.7 Insets, system UI, feedback and settings
+
+**Status:** pending
+
+Run (on the phone, ideally one with a display cutout and gesture navigation):
+
+```
+go run ./cmd/glutter-android run ./examples/dev/android-system
+go run ./cmd/glutter-android run -env GLUTTER_DEMO=immersive ./examples/dev/android-system
+go run ./cmd/glutter-android run ./examples/gallery
+```
+
+Check, and record the answers:
+
+1. In `examples/gallery` (and in `android-system`): is the app bar below the status bar and the cutout, with nothing hidden under the gesture bar or the navigation buttons? Turn the phone to landscape: is the content clear of the cutout and the bars at the sides?
+2. Turn the dark mode of the phone on and off (the quick settings, or Settings → Display): does the gallery's "System" mode follow it at once, without the app restarting, and are the status bar icons light on dark and dark on light?
+3. Make the font larger and smaller (Settings → Display → Font size): does the text follow? On Android 14 or later, is very large text scaled less than small text?
+4. Long press on a text field or a list item with a long press action (the gallery's "Selection & chips"): do you feel a haptic tick? (Needs "Touch feedback" on in the phone's sound settings.)
+5. With `GLUTTER_DEMO=immersive`: are the bars hidden, and does a swipe from the top or bottom edge bring them back for a moment? Does the app keep working?
+6. Turn "Remove animations" (Settings → Accessibility) on: does the log show `animationsOff=true` in the `mq` lines (`adb logcat -s dev.glutter.androidsystem`)?
+7. Turn the 24-hour clock on and off, and bold text (Settings → Accessibility → Bold text, Android 12 or later): do the `mq` lines show `h24` and `bold` (bold text restarts the activity, not the app)?
+
+Answers: _(not yet recorded)_

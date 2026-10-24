@@ -22,6 +22,8 @@ type surfaceState struct {
 	// the display in hertz; displayWidth and displayHeight are its size in pixels.
 	density, refresh            float64
 	displayWidth, displayHeight int
+	// insets are the areas that the system covers (insets.go).
+	insets insets
 }
 
 // created records a new window and returns the one it replaces, 0 when there was none: the
@@ -35,7 +37,7 @@ func (s *surfaceState) created(window uintptr) (old uintptr) {
 // view or the displays differ from before.
 func (s *surfaceState) changed(width, height int, density, refresh float64, displayWidth, displayHeight int) bool {
 	next := surfaceState{window: s.window, width: width, height: height, density: density, refresh: refresh,
-		displayWidth: displayWidth, displayHeight: displayHeight}
+		displayWidth: displayWidth, displayHeight: displayHeight, insets: s.insets}
 	differs := next != *s
 	*s = next
 	return differs
@@ -58,4 +60,21 @@ func (s *surfaceState) handle() gpu.SurfaceHandle {
 		return gpu.SurfaceHandle{}
 	}
 	return gpu.SurfaceHandle{Kind: gpu.SurfaceKindAndroid, Window: s.window}
+}
+
+// insetsChanged records the insets. It reports whether they differ from before.
+func (s *surfaceState) insetsChanged(in insets) bool {
+	differs := in != s.insets
+	s.insets = in
+	return differs
+}
+
+// displayChanged records a change of the display alone (its density, refresh rate or size) and
+// reports whether it differs from before.
+func (s *surfaceState) displayChanged(density, refresh float64, displayWidth, displayHeight int) bool {
+	next := *s
+	next.density, next.refresh, next.displayWidth, next.displayHeight = density, refresh, displayWidth, displayHeight
+	differs := next != *s
+	*s = next
+	return differs
 }

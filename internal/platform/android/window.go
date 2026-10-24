@@ -17,6 +17,8 @@ type window struct {
 	id     ui.ViewID
 	title  string
 	closed bool
+	// uiChange hears of the system's bars appearing and disappearing (systemui.go).
+	uiChange func(visible bool)
 }
 
 var _ platform.Window = (*window)(nil)
@@ -40,8 +42,16 @@ func (w *window) SetSize(ui.Size) {}
 // SetSizeConstraints does nothing.
 func (w *window) SetSizeConstraints(_, _ ui.Size) {}
 
-// SetState does nothing; fullscreen (immersive mode) comes with step 25.7.
-func (w *window) SetState(platform.WindowState) {}
+// SetState makes the window fullscreen (the immersive mode of the system's interface) or normal
+// (edge to edge); the other states are the activity's own.
+func (w *window) SetState(state platform.WindowState) {
+	switch state {
+	case platform.WindowStateFullscreen:
+		w.SetEnabledSystemUIMode(ui.SystemUIModeImmersiveSticky, nil)
+	case platform.WindowStateNormal:
+		w.SetEnabledSystemUIMode(ui.SystemUIModeEdgeToEdge, nil)
+	}
+}
 
 // SetHidden returns false: an activity cannot hide its window.
 func (w *window) SetHidden(bool) bool { return false }
@@ -76,13 +86,68 @@ func (w *window) SetIcon(ui.WindowIcon) error { return nil }
 // SetContentType does nothing.
 func (w *window) SetContentType(ui.ContentType) {}
 
-// KeepScreenOn fails with IdleInhibitUnavailable until step 25.7.
-func (w *window) KeepScreenOn(bool) error {
-	return errors.New(tagIdleInhibitUnavailable, "keeping the screen on is not supported yet (step 25.7)")
+// KeepScreenOn sets FLAG_KEEP_SCREEN_ON of the window.
+//
+// Flutter: no counterpart
+func (w *window) KeepScreenOn(on bool) error {
+	a := int64(0)
+	if on {
+		a = 1
+	}
+	w.p.host.Command(command{Op: opKeepScreenOn, A: a})
+	return nil
 }
 
 // The tags of the errors that this file makes (rm4n0s/errors, R5).
 const (
-	tagDragUnsupported        = "DragUnsupported"
-	tagIdleInhibitUnavailable = "IdleInhibitUnavailable"
+	tagDragUnsupported = "DragUnsupported"
 )
+
+var _ ui.SystemChromeHost = (*window)(nil)
+
+// SetPreferredOrientations sets the requested orientation of the activity.
+//
+// Flutter: shell/platform/android/io/flutter/plugin/platform/PlatformPlugin.java PlatformPlugin.setSystemChromePreferredOrientations
+func (w *window) SetPreferredOrientations(orientations []ui.DeviceOrientation) {
+	w.p.host.Command(command{Op: opOrientation, A: int64(requestedOrientation(orientations))})
+}
+
+// SetEnabledSystemUIMode shows or hides the system's bars.
+//
+// Flutter: shell/platform/android/io/flutter/plugin/platform/PlatformPlugin.java PlatformPlugin.setSystemChromeEnabledSystemUIMode
+func (w *window) SetEnabledSystemUIMode(mode ui.SystemUIMode, overlays []ui.SystemUIOverlay) {
+	w.p.host.Command(command{Op: opUIMode, A: int64(mode), B: overlayBits(overlays)})
+}
+
+// SetSystemUIOverlayStyle sets the colors and the icons of the system's bars.
+//
+// Flutter: shell/platform/android/io/flutter/plugin/platform/PlatformPlugin.java PlatformPlugin.setSystemChromeSystemUIOverlayStyle
+func (w *window) SetSystemUIOverlayStyle(style ui.SystemUIOverlayStyle) {
+	w.p.host.Command(command{Op: opOverlayStyle, S: encodeOverlayStyle(style)})
+}
+
+// SetSystemUIChangeCallback sets the function that hears of the bars appearing and disappearing.
+//
+// Flutter: shell/platform/android/io/flutter/plugin/platform/PlatformPlugin.java PlatformPlugin (the system UI visibility listener)
+func (w *window) SetSystemUIChangeCallback(fn func(visible bool)) {
+	w.uiChange = fn
+	on := int64(0)
+	if fn != nil {
+		on = 1
+	}
+	w.p.host.Command(command{Op: opUIChangeListener, A: on})
+}
+
+// PerformHapticFeedback gives the feedback with View.performHapticFeedback.
+//
+// Flutter: shell/platform/android/io/flutter/plugin/platform/PlatformPlugin.java PlatformPlugin.vibrateHapticFeedback
+func (w *window) PerformHapticFeedback(kind ui.HapticFeedbackKind) {
+	w.p.host.Command(command{Op: opHaptic, A: int64(kind)})
+}
+
+// PlaySystemSound plays the sound with View.playSoundEffect.
+//
+// Flutter: shell/platform/android/io/flutter/plugin/platform/PlatformPlugin.java PlatformPlugin.playSystemSound
+func (w *window) PlaySystemSound(kind ui.SystemSoundKind) {
+	w.p.host.Command(command{Op: opSound, A: int64(kind)})
+}

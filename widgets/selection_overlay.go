@@ -61,9 +61,9 @@ type selectionHandles struct{ start, end *OverlayEntry }
 // SelectionOverlay builds text editing handles and the toolbar of a text
 // selection in the Overlay.
 //
-// Deviation: the magnifier, the spell check toolbar, the deprecated
+// Deviation: the magnifier, the spell check toolbar and the deprecated
 // buildToolbar path (toolbarLocation, selectionDelegate and clipboardStatus)
-// and haptic feedback are not ported (SPEC §12.10).
+// are not ported (SPEC §12.10).
 //
 // Flutter: widgets/text_selection.dart SelectionOverlay
 type SelectionOverlay struct {
@@ -348,6 +348,9 @@ func (o *SelectionOverlay) SelectionEndpoints() []rendering.TextSelectionPoint {
 func (o *SelectionOverlay) SetSelectionEndpoints(value []rendering.TextSelectionPoint) {
 	if !reflect.DeepEqual(o.selectionEndpoint, value) {
 		o.MarkNeedsBuild()
+		if (o.isDraggingEnd || o.isDraggingStart) && foundation.DefaultTargetPlatform() == foundation.TargetPlatformAndroid {
+			WidgetsBindingOf(o.context).HapticFeedback().SelectionClick()
+		}
 	}
 	o.selectionEndpoint = value
 }

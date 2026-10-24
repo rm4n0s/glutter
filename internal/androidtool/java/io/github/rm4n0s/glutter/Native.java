@@ -75,4 +75,22 @@ final class Native {
       int unicodeChar,
       int source,
       int deviceId);
+
+  /**
+   * The insets of the window in pixels: left, top, right and bottom of the system bars and the
+   * display cutout, of the input method, and of the system gestures.
+   */
+  static native void insets(int[] values);
+
+  /**
+   * The system's settings as {@code key=value} pairs separated by {@code ;} (see settings.go of
+   * the Go side): night, font, nonlinear, locales, h24, noanim, bold, contrast.
+   */
+  static native void settings(String text);
+
+  /** The system showed ({@code true}) or hid its bars because of the user. */
+  static native void systemUI(boolean visible);
+
+  /** The density, the refresh rate and the size of the display changed. */
+  static native void displayChanged(float density, float refreshRate, int displayWidth, int displayHeight);
 }

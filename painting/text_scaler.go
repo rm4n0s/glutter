@@ -142,6 +142,11 @@ func TextScalerEqual(a, b TextScaler) bool {
 	if a == nil || b == nil {
 		return a == nil && b == nil
 	}
+	// A scaler of another package that is equal to scalers of other kinds (widgets.SystemTextScaler
+	// is equal to no scaling when its factor is 1) says so itself.
+	if e, ok := a.(interface{ EqualTextScaler(TextScaler) bool }); ok {
+		return e.EqualTextScaler(b)
+	}
 	switch x := a.(type) {
 	case linearTextScaler:
 		y, ok := b.(linearTextScaler)

@@ -1,5 +1,7 @@
 package services
 
+import "github.com/rm4n0s/glutter/ui"
+
 // SystemSoundType is a sound that the system can play.
 //
 // Flutter: services/system_sound.dart SystemSoundType
@@ -40,24 +42,58 @@ func (t SystemSoundType) String() string {
 	return "SystemSoundType.unspecified"
 }
 
-// SystemSound plays the sounds of the system. The desktop has no sound for them,
-// so playing does nothing unless OnPlay is set (a test sets it to see the
-// sounds). The binding has one.
+// SystemSoundBackend is what SystemSound asks of the engine. *ui.PlatformDispatcher is one; it
+// forwards the call when the engine can play the sounds of the system (Android) and ignores it
+// otherwise.
 //
-// Deviation: Flutter sends the sound to the platform through a channel
-// (SPEC §12.10).
+// Flutter: no counterpart (the flutter/platform channel of SystemChannels.platform)
+type SystemSoundBackend interface {
+	// PlaySystemSound plays the sound.
+	PlaySystemSound(kind ui.SystemSoundKind)
+}
+
+// SystemSound plays the sounds of the system. The binding makes one
+// (WidgetsBinding.SystemSound). The desktop has no sound for them, so playing does nothing
+// there unless OnPlay is set (a test sets it to see the sounds). The zero value is usable and
+// has no backend.
+//
+// Deviation: Flutter's SystemSound is a class of static methods that call the flutter/platform
+// channel and return a Future<void> (SPEC §12.10).
 //
 // Flutter: services/system_sound.dart SystemSound
 type SystemSound struct {
 	// OnPlay is called with the type of each sound that is played.
 	OnPlay func(SystemSoundType)
+
+	backend SystemSoundBackend
+}
+
+// NewSystemSound creates a SystemSound that sends each sound to the backend, which may be nil.
+//
+// Flutter: services/system_sound.dart SystemSound
+func NewSystemSound(backend SystemSoundBackend) *SystemSound {
+	return &SystemSound{backend: backend}
 }
 
 // Play plays the sound.
 //
 // Flutter: services/system_sound.dart SystemSound.play
 func (s *SystemSound) Play(t SystemSoundType) {
-	if s != nil && s.OnPlay != nil {
+	if s == nil {
+		return
+	}
+	if s.OnPlay != nil {
 		s.OnPlay(t)
+	}
+	if s.backend == nil {
+		return
+	}
+	switch t {
+	case SystemSoundTypeClick:
+		s.backend.PlaySystemSound(ui.SystemSoundClick)
+	case SystemSoundTypeTick:
+		s.backend.PlaySystemSound(ui.SystemSoundTick)
+	case SystemSoundTypeAlert:
+		s.backend.PlaySystemSound(ui.SystemSoundAlert)
 	}
 }

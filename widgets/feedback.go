@@ -9,8 +9,6 @@ import (
 // FeedbackForTap provides platform-specific feedback for a tap: it sends the tap
 // semantics event, and plays the click sound on Android and Fuchsia.
 //
-// Deviation: haptic feedback is not ported (SPEC §12.10).
-//
 // Flutter: widgets/feedback.dart Feedback.forTap
 func FeedbackForTap(bc BuildContext) {
 	if ro := bc.FindRenderObject(); ro != nil {
@@ -37,17 +35,20 @@ func FeedbackWrapForTap(callback foundation.VoidCallback, bc BuildContext) found
 }
 
 // FeedbackForLongPress provides platform-specific feedback for a long press: it
-// sends the long press semantics event, and plays the click sound on iOS.
-//
-// Deviation: haptic feedback is not ported (SPEC §12.10).
+// sends the long press semantics event, and on Android and Fuchsia vibrates. On iOS it plays
+// the click sound and gives a heavy impact.
 //
 // Flutter: widgets/feedback.dart Feedback.forLongPress
 func FeedbackForLongPress(bc BuildContext) {
 	if ro := bc.FindRenderObject(); ro != nil {
 		ro.SendSemanticsEvent(semantics.NewLongPressSemanticsEvent())
 	}
-	if foundation.DefaultTargetPlatform() == foundation.TargetPlatformIOS {
+	switch foundation.DefaultTargetPlatform() {
+	case foundation.TargetPlatformAndroid, foundation.TargetPlatformFuchsia:
+		WidgetsBindingOf(bc).HapticFeedback().Vibrate()
+	case foundation.TargetPlatformIOS:
 		WidgetsBindingOf(bc).SystemSound().Play(services.SystemSoundTypeClick)
+		WidgetsBindingOf(bc).HapticFeedback().HeavyImpact()
 	}
 }
 

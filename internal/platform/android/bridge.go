@@ -33,6 +33,8 @@ type bridge struct {
 	surf      surfaceState
 	focused   bool
 	lifecycle lifecycleState
+	// settings are the system's settings the Java side reported last.
+	settings systemSettings
 }
 
 func newBridge() *bridge { return &bridge{wait: destroyWait, log: slog.Default()} }
@@ -206,4 +208,59 @@ func (b *bridge) snapshotAll() (surfaceState, lifecycleState, bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.surf, b.lifecycle, b.focused
+}
+
+// insetsChanged is the insets of the window (SPEC §24.7): the metrics of the view change.
+func (b *bridge) insetsChanged(in insets) {
+	var differs bool
+	b.event(func(b *bridge) { differs = b.surf.insetsChanged(in) }, func(p *Platform) {
+		if differs {
+			p.metricsChanged()
+		}
+	})
+}
+
+// displayChanged is a change of the display alone: its density, refresh rate or size.
+func (b *bridge) displayChanged(density, refresh float64, displayWidth, displayHeight int) {
+	var differs bool
+	b.event(func(b *bridge) { differs = b.surf.displayChanged(density, refresh, displayWidth, displayHeight) }, func(p *Platform) {
+		if differs {
+			p.metricsChanged()
+		}
+	})
+}
+
+// settingsChanged is the text of the system's settings (settings.go). A text that cannot be read
+// is logged and dropped.
+func (b *bridge) settingsChanged(text string) {
+	s, err := parseSettings(text)
+	if err != nil {
+		b.log.Error("the system's settings were not understood", "err", err)
+		return
+	}
+	var differs bool
+	b.event(func(b *bridge) {
+		differs = !sameSettings(b.settings, s)
+		b.settings = s
+	}, func(p *Platform) {
+		if differs {
+			p.settingsChanged()
+		}
+	})
+}
+
+// systemUIChanged is the system showing (true) or hiding (false) its bars, because of the user.
+func (b *bridge) systemUIChanged(visible bool) {
+	b.event(func(*bridge) {}, func(p *Platform) {
+		if p.win != nil && p.win.uiChange != nil {
+			p.win.uiChange(visible)
+		}
+	})
+}
+
+// settingsSnapshot returns the settings the Java side reported last.
+func (b *bridge) settingsSnapshot() systemSettings {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.settings
 }

@@ -26,6 +26,13 @@ type host interface {
 	// Inject sends a synthetic tap, swipe or key of the dev events script to the view, on the main
 	// thread, through the view's own dispatch. It is safe to call from any goroutine.
 	Inject(e DevEvent)
+	// Command asks the activity to do something on the main thread of Android: the system's
+	// interface, haptic feedback, the sounds of the system (SPEC §24.7). It is called on the UI
+	// thread.
+	Command(c command)
+	// ScaledFontSize is how the system scales a font size in logical pixels (TypedValue.applyDimension
+	// with the unit sp, as logical pixels). It is called on the UI thread and returns at once.
+	ScaledFontSize(fontSize float64) float64
 	// ReleaseWindow lets go of the native window that the surface held (ANativeWindow_release).
 	ReleaseWindow(window uintptr)
 }

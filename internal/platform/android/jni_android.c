@@ -15,6 +15,10 @@ extern void goLifecycle(int state);
 extern void goFocus(int focused);
 extern void goMotionEvent(long long *meta, int nmeta, int *ids, int nids, float *vals, int nvals, long long *times, int ntimes,
                           float pressureMin, float pressureMax, float hScroll, float vScroll);
+extern void goInsets(int *values, int n);
+extern void goSettings(char *text);
+extern void goSystemUI(int visible);
+extern void goDisplayChanged(float density, float refresh, int displayWidth, int displayHeight);
 extern void goKeyEvent(int id, int action, int keyCode, int scanCode, int metaState, int repeatCount, long long eventTime,
                        int unicodeChar, int source, int deviceId);
 
@@ -24,6 +28,8 @@ static jmethodID g_on_main_ended;     // GlutterActivity.onMainEnded(int)
 static jmethodID g_on_key_handled;    // GlutterActivity.onKeyHandled(int, boolean)
 static jmethodID g_set_cursor;        // GlutterActivity.setCursor(int)
 static jmethodID g_inject;            // GlutterActivity.inject(int, float x4, int, String)
+static jmethodID g_command;           // GlutterActivity.command(int, long x4, String)
+static jmethodID g_scaled_font_size;  // GlutterActivity.scaledFontSize(float): float
 
 JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {
   JNIEnv *env;
@@ -40,7 +46,10 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {
   g_on_key_handled = (*env)->GetStaticMethodID(env, cls, "onKeyHandled", "(IZ)V");
   g_set_cursor = (*env)->GetStaticMethodID(env, cls, "setCursor", "(I)V");
   g_inject = (*env)->GetStaticMethodID(env, cls, "inject", "(IFFFFILjava/lang/String;)V");
-  if (g_on_main_ended == NULL || g_on_key_handled == NULL || g_set_cursor == NULL || g_inject == NULL) {
+  g_command = (*env)->GetStaticMethodID(env, cls, "command", "(IJJJJLjava/lang/String;)V");
+  g_scaled_font_size = (*env)->GetStaticMethodID(env, cls, "scaledFontSize", "(F)F");
+  if (g_on_main_ended == NULL || g_on_key_handled == NULL || g_set_cursor == NULL || g_inject == NULL || g_command == NULL ||
+      g_scaled_font_size == NULL) {
     return JNI_ERR;
   }
   return JNI_VERSION_1_6;
@@ -146,6 +155,40 @@ int glutter_inject(int kind, float x1, float y1, float x2, float y2, int ms, con
   return failed;
 }
 
+int glutter_command(int op, long long a, long long b, long long c, long long d, const char *s) {
+  JNIEnv *env;
+  int attached = 0;
+  if (g_vm == NULL) return -1;
+  if ((*g_vm)->GetEnv(g_vm, (void **)&env, JNI_VERSION_1_6) == JNI_EDETACHED) {
+    if ((*g_vm)->AttachCurrentThread(g_vm, &env, NULL) != JNI_OK) return -1;
+    attached = 1;
+  }
+  jstring text = (*env)->NewStringUTF(env, s == NULL ? "" : s);
+  (*env)->CallStaticVoidMethod(env, g_activity_class, g_command, op, (jlong)a, (jlong)b, (jlong)c, (jlong)d, text);
+  (*env)->DeleteLocalRef(env, text);
+  int failed = (*env)->ExceptionCheck(env) ? -1 : 0;
+  if (failed) (*env)->ExceptionClear(env);
+  if (attached) (*g_vm)->DetachCurrentThread(g_vm);
+  return failed;
+}
+
+float glutter_scaled_font_size(float size) {
+  JNIEnv *env;
+  int attached = 0;
+  if (g_vm == NULL) return size;
+  if ((*g_vm)->GetEnv(g_vm, (void **)&env, JNI_VERSION_1_6) == JNI_EDETACHED) {
+    if ((*g_vm)->AttachCurrentThread(g_vm, &env, NULL) != JNI_OK) return size;
+    attached = 1;
+  }
+  float scaled = (*env)->CallStaticFloatMethod(env, g_activity_class, g_scaled_font_size, size);
+  if ((*env)->ExceptionCheck(env)) {
+    (*env)->ExceptionClear(env);
+    scaled = size;
+  }
+  if (attached) (*g_vm)->DetachCurrentThread(g_vm);
+  return scaled;
+}
+
 int glutter_main_ended(int code) {
   JNIEnv *env;
   int attached = 0;
@@ -171,4 +214,30 @@ int glutter_redirect_stdio(void) {
   if (dup2(fds[1], 1) < 0 || dup2(fds[1], 2) < 0) return -1;
   close(fds[1]);
   return fds[0];
+}
+
+JNIEXPORT void JNICALL Java_io_github_rm4n0s_glutter_Native_insets(JNIEnv *env, jclass cls, jintArray values) {
+  jsize n = (*env)->GetArrayLength(env, values);
+  jint *v = (*env)->GetIntArrayElements(env, values, NULL);
+  if (v != NULL) {
+    goInsets((int *)v, n);
+    (*env)->ReleaseIntArrayElements(env, values, v, JNI_ABORT);
+  }
+}
+
+JNIEXPORT void JNICALL Java_io_github_rm4n0s_glutter_Native_settings(JNIEnv *env, jclass cls, jstring text) {
+  const char *t = (*env)->GetStringUTFChars(env, text, NULL);
+  if (t != NULL) {
+    goSettings((char *)t);
+    (*env)->ReleaseStringUTFChars(env, text, t);
+  }
+}
+
+JNIEXPORT void JNICALL Java_io_github_rm4n0s_glutter_Native_systemUI(JNIEnv *env, jclass cls, jboolean visible) {
+  goSystemUI(visible ? 1 : 0);
+}
+
+JNIEXPORT void JNICALL Java_io_github_rm4n0s_glutter_Native_displayChanged(JNIEnv *env, jclass cls, jfloat density, jfloat refresh,
+                                                                         jint displayWidth, jint displayHeight) {
+  goDisplayChanged(density, refresh, displayWidth, displayHeight);
 }

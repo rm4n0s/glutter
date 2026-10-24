@@ -1,6 +1,7 @@
 package widgets_test
 
 import (
+	"slices"
 	"testing"
 	"time"
 
@@ -483,4 +484,24 @@ func TestSelectableRegionSelectAllInRichTextWithAWidgetSpan(t *testing.T) {
 	if content != nil {
 		t.Fatalf("content after clearing = %+v, want nil", content)
 	}
+}
+
+// Ported from packages/flutter/test/widgets/selectable_region_test.dart ('long press selects a
+// word and gives haptic feedback'): the long press of a touch selects the word and gives a
+// selection click on every platform.
+func TestSelectableRegionTouchLongPressGivesHapticFeedback(t *testing.T) {
+	forPlatforms(t, mobilePlatforms, func(t *testing.T, ts *gluttertest.Tester) {
+		var haptics []ui.HapticFeedbackKind
+		ts.Binding.HapticFeedback().OnPerform = func(k ui.HapticFeedbackKind) { haptics = append(haptics, k) }
+		pumpSelectable(ts, NewCenter(ltrText("How are you?")))
+		p := paragraphOf(ts, "How are you?")
+		g := ts.StartGesture(paragraphOffsetToPosition(p, 6)) // at the 'r'
+		ts.Pump(500 * time.Millisecond)
+		g.Up()
+		ts.Pump(500 * time.Millisecond)
+		requireSelection(t, p, sel(4, 7)) // `are` is selected.
+		if !slices.Equal(haptics, []ui.HapticFeedbackKind{ui.HapticFeedbackSelectionClick}) {
+			t.Errorf("haptic feedback = %v, want one selection click", haptics)
+		}
+	})
 }

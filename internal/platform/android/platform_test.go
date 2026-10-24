@@ -312,9 +312,6 @@ func TestNewWindowAndWindowRoutes(t *testing.T) {
 	if err := w.StartDrag(ui.DragRequest{}); !hasRoute(err, "window.StartDrag."+tagDragUnsupported) {
 		t.Errorf("StartDrag: %v", err)
 	}
-	if err := w.KeepScreenOn(true); !hasRoute(err, "window.KeepScreenOn."+tagIdleInhibitUnavailable) {
-		t.Errorf("KeepScreenOn: %v", err)
-	}
 	if w.SetHidden(true) {
 		t.Error("SetHidden reported success")
 	}

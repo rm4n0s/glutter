@@ -226,8 +226,11 @@ func newRawViewInternal(view *ui.View, builder func(BuildContext, *rendering.Pip
 	}
 }
 
-func (w *rawViewInternal) CreateRenderObject(BuildContext) rendering.RenderObject {
-	return rendering.NewRenderView(w.view)
+func (w *rawViewInternal) CreateRenderObject(bc BuildContext) rendering.RenderObject {
+	r := rendering.NewRenderView(w.view)
+	// The style that the annotated regions ask for goes to SystemChrome after each frame.
+	r.OnSystemUIOverlayStyle = WidgetsBindingOf(bc).SystemChrome().SetSystemUIOverlayStyle
+	return r
 }
 
 func (w *rawViewInternal) CreateElement() Element {

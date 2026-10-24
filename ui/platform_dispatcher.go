@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"math"
 	"slices"
 	"time"
 
@@ -102,6 +103,17 @@ type PlatformConfiguration struct {
 	AccessibilityFeatures AccessibilityFeatures
 	// AccentColor is the system accent color, or nil if there is none.
 	AccentColor *Color
+	// AlwaysUse24HourFormat is whether the user wants times in 24-hour format.
+	//
+	// Flutter: ui/platform_dispatcher.dart PlatformConfiguration.alwaysUse24HourFormat
+	AlwaysUse24HourFormat bool
+	// ScaleFontSize, when it is not nil, scales a font size in logical pixels the way the system
+	// does, which is not linear on Android 14 and later (the size is interpolated between the
+	// whole sizes the system converts). A platform that scales text linearly leaves it nil.
+	//
+	// Flutter: ui/platform_dispatcher.dart PlatformConfiguration.configurationId (the
+	// synchronous call getScaledFontSize)
+	ScaleFontSize func(fontSize float64) float64
 	// UIFontFamily and UIFontSize are the family and the size, in points, of
 	// the desktop's interface font (GNOME's font-name); empty and 0 when the
 	// platform does not say.
@@ -247,14 +259,17 @@ type PlatformDispatcher struct {
 	// Flutter: no counterpart
 	IsIdle func() bool
 
-	host          PlatformHost
-	views         map[ViewID]*View
-	displays      []Display
-	config        PlatformConfiguration
-	lifecycle     AppLifecycleState
-	lastFrameTime time.Duration
-	textEngine    ParagraphFactory
-	semanticsOn   bool
+	host     PlatformHost
+	views    map[ViewID]*View
+	displays []Display
+	config   PlatformConfiguration
+	// scaledFontSizes remembers the whole sizes that config.ScaleFontSize converted; it is cleared
+	// when the configuration changes.
+	scaledFontSizes map[float64]float64
+	lifecycle       AppLifecycleState
+	lastFrameTime   time.Duration
+	textEngine      ParagraphFactory
+	semanticsOn     bool
 }
 
 // NewPlatformDispatcher creates a dispatcher with no views. The host is the
@@ -337,6 +352,65 @@ func (d *PlatformDispatcher) PlatformBrightness() Brightness {
 		return BrightnessLight
 	}
 	return d.config.PlatformBrightness
+}
+
+// AlwaysUse24HourFormat is whether the user wants times in 24-hour format.
+//
+// Flutter: ui/platform_dispatcher.dart PlatformDispatcher.alwaysUse24HourFormat
+func (d *PlatformDispatcher) AlwaysUse24HourFormat() bool {
+	return d.config.AlwaysUse24HourFormat
+}
+
+// ScaleFontSize computes the scaled font size from the unscaled one, in logical pixels,
+// according to the user's text scale. A platform that scales text linearly (the
+// PlatformConfiguration has no ScaleFontSize) gives fontSize times TextScaleFactor. Otherwise
+// the sizes on both sides of fontSize are converted by the platform (and remembered until the
+// configuration changes) and the result is interpolated between them. The result is never
+// negative for a valid size.
+//
+// Flutter: ui/platform_dispatcher.dart PlatformDispatcher.scaleFontSize
+func (d *PlatformDispatcher) ScaleFontSize(fontSize float64) float64 {
+	factor := d.TextScaleFactor()
+	if factor == 1.0 {
+		return fontSize
+	}
+	floor, ceil := math.Floor(fontSize), math.Ceil(fontSize)
+	if floor == ceil {
+		// No need to interpolate if the input value is an integer.
+		if v, ok := d.scaleAndMemoize(floor); ok {
+			return v
+		}
+		return fontSize * factor
+	}
+	lower, okLower := d.scaleAndMemoize(floor)
+	upper, okUpper := d.scaleAndMemoize(ceil)
+	if !okLower || !okUpper {
+		return fontSize * factor
+	}
+	return lower + (upper-lower)*(fontSize-floor)
+}
+
+// scaleAndMemoize converts a whole font size with the platform's function. It reports false
+// when the platform has none or fails (a negative size), as Flutter's _scaleAndMemoize
+// returns null.
+//
+// Flutter: ui/platform_dispatcher.dart PlatformDispatcher._scaleAndMemoize
+func (d *PlatformDispatcher) scaleAndMemoize(fontSize float64) (float64, bool) {
+	if d.config.ScaleFontSize == nil {
+		return 0, false
+	}
+	if v, ok := d.scaledFontSizes[fontSize]; ok {
+		return v, true
+	}
+	v := d.config.ScaleFontSize(fontSize)
+	if !(v >= 0) {
+		return 0, false
+	}
+	if d.scaledFontSizes == nil {
+		d.scaledFontSizes = map[float64]float64{}
+	}
+	d.scaledFontSizes[fontSize] = v
+	return v, true
 }
 
 // AccessibilityFeatures are the system's accessibility settings.
@@ -599,7 +673,12 @@ func (d *PlatformDispatcher) UpdatePlatformConfiguration(cfg PlatformConfigurati
 		}
 		return c.TextScaleFactor
 	}
-	if scale(old) != scale(d.config) {
+	// A non-linear scaler (ScaleFontSize) is a function, which cannot be compared with the
+	// one of the last configuration, so its presence counts as a change of the text scale and
+	// the sizes it converted are forgotten (Flutter clears them when the factor changes, and
+	// takes every configuration that has a configurationId as a change).
+	if scale(old) != scale(d.config) || d.config.ScaleFontSize != nil {
+		d.scaledFontSizes = nil
 		call(d.OnTextScaleFactorChanged)
 	}
 	bright := func(c PlatformConfiguration) Brightness {
@@ -613,6 +692,9 @@ func (d *PlatformDispatcher) UpdatePlatformConfiguration(cfg PlatformConfigurati
 	}
 	if old.AccessibilityFeatures != d.config.AccessibilityFeatures {
 		call(d.OnAccessibilityFeaturesChanged)
+	}
+	if old.AlwaysUse24HourFormat != d.config.AlwaysUse24HourFormat {
+		changed = true
 	}
 	if (old.AccentColor == nil) != (d.config.AccentColor == nil) ||
 		(old.AccentColor != nil && *old.AccentColor != *d.config.AccentColor) {

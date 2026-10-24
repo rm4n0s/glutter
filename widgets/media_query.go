@@ -120,8 +120,7 @@ const (
 //
 // Deviation: the fields Glutter has no source for are left out: display
 // features and corner radii, supportsAnnounce, and the text style overrides
-// (SPEC §12.10). AlwaysUse24HourFormat comes from the parent data only, and is
-// false for a data made from the view.
+// (SPEC §12.10).
 //
 // Flutter: widgets/media_query.dart MediaQueryData
 type MediaQueryData struct {
@@ -298,7 +297,7 @@ func NewMediaQueryDataFromView(view *ui.View, platformData *MediaQueryData) Medi
 	data := MediaQueryData{
 		Size:                 ui.Size{Width: size.Width / ratio, Height: size.Height / ratio},
 		DevicePixelRatio:     ratio,
-		TextScaler:           painting.NewTextScalerLinear(d.TextScaleFactor()),
+		TextScaler:           newSystemTextScaler(d),
 		PlatformBrightness:   d.PlatformBrightness(),
 		Padding:              painting.NewEdgeInsetsFromViewPadding(view.Padding(), ratio),
 		ViewPadding:          painting.NewEdgeInsetsFromViewPadding(view.ViewPadding(), ratio),
@@ -306,9 +305,10 @@ func NewMediaQueryDataFromView(view *ui.View, platformData *MediaQueryData) Medi
 		SystemGestureInsets:  painting.NewEdgeInsetsFromViewPadding(view.SystemGestureInsets(), ratio),
 		AccessibleNavigation: features.AccessibleNavigation, InvertColors: features.InvertColors,
 		DisableAnimations: features.DisableAnimations, BoldText: features.BoldText, HighContrast: features.HighContrast,
-		OnOffSwitchLabels: features.OnOffSwitchLabels,
-		NavigationMode:    NavigationModeTraditional,
-		GestureSettings:   gestures.NewDeviceGestureSettingsFromView(view),
+		OnOffSwitchLabels:     features.OnOffSwitchLabels,
+		AlwaysUse24HourFormat: d.AlwaysUse24HourFormat(),
+		NavigationMode:        NavigationModeTraditional,
+		GestureSettings:       gestures.NewDeviceGestureSettingsFromView(view),
 	}
 	if p := platformData; p != nil {
 		data.TextScaler = p.TextScaler

@@ -5,6 +5,7 @@ import (
 
 	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/gestures"
+	"github.com/rm4n0s/glutter/services"
 	"github.com/rm4n0s/glutter/ui"
 )
 
@@ -112,6 +113,16 @@ type RenderView struct {
 	//
 	// Flutter: rendering/view.dart RenderView.automaticSystemUiAdjustment
 	AutomaticSystemUIAdjustment bool
+
+	// OnSystemUIOverlayStyle receives the style that the annotations of the layer tree ask for,
+	// when AutomaticSystemUIAdjustment is set; the widgets binding sets it to
+	// SystemChrome.SetSystemUIOverlayStyle. Nil means nobody wants it.
+	//
+	// Deviation: Flutter's RenderView calls the static SystemChrome.setSystemUIOverlayStyle;
+	// there are no static services here (SPEC §12.10).
+	//
+	// Flutter: rendering/view.dart RenderView._updateSystemChrome
+	OnSystemUIOverlayStyle func(style services.SystemUiOverlayStyle)
 }
 
 // RenderViewOpts are the optional parameters of NewRenderView.
@@ -310,8 +321,9 @@ func (r *RenderView) CompositeFrame() error {
 			"the RenderView needs a configuration and PrepareInitialFrame before CompositeFrame"))
 	}
 	scene := r.layerHandle.Layer().AsContainerLayer().BuildScene(ui.NewSceneBuilder())
-	// TODO(step 10.x): update the system chrome from the SystemUiOverlayStyle
-	// annotations when AutomaticSystemUIAdjustment is set.
+	if r.AutomaticSystemUIAdjustment {
+		r.updateSystemChrome()
+	}
 	err := r.view.Render(scene)
 	scene.Dispose()
 	if foundation.DebugMode {
@@ -323,6 +335,74 @@ func (r *RenderView) CompositeFrame() error {
 		}
 	}
 	return err
+}
+
+// updateSystemChrome takes the overlay style from the places where the system's status bar and
+// navigation bar are, and passes it to OnSystemUIOverlayStyle. The center of the status bar and
+// the center of the navigation bar are the places that are searched.
+//
+// Flutter: rendering/view.dart RenderView._updateSystemChrome
+func (r *RenderView) updateSystemChrome() {
+	if r.OnSystemUIOverlayStyle == nil {
+		return
+	}
+	bounds := r.PaintBounds()
+	padding := r.view.Padding()
+	// The center of the status bar: the horizontal center of the screen, and half of the top
+	// padding, which is the height of the system status bar.
+	top := ui.Offset{Dx: bounds.Center().Dx, Dy: padding.Top / 2.0}
+	// The center of the navigation bar. Its height is the bottom padding. The 1 is taken from
+	// the bottom because the pixels are in the range 0..bottom: on a screen 1920 high, the
+	// last pixel that is drawn is at 1919.
+	bottom := ui.Offset{Dx: bounds.Center().Dx, Dy: bounds.Bottom - 1.0 - padding.Bottom/2.0}
+	layer := r.layerHandle.Layer()
+	upper, hasUpper := LayerFind[services.SystemUiOverlayStyle](layer, top)
+	// Only Android has a customizable system navigation bar.
+	var lower services.SystemUiOverlayStyle
+	var hasLower bool
+	isAndroid := foundation.DefaultTargetPlatform() == foundation.TargetPlatformAndroid
+	if isAndroid {
+		lower, hasLower = LayerFind[services.SystemUiOverlayStyle](layer, bottom)
+	}
+	// If there is no overlay style in the UI, don't bother updating.
+	if !hasUpper && !hasLower {
+		return
+	}
+	// If both are found, the upper one gives the status bar properties and the lower one the
+	// navigation bar properties. This is for the advanced case where a widget at the top (an app
+	// bar) annotates the status bar and another at the bottom annotates the navigation bar.
+	if hasUpper && hasLower {
+		r.OnSystemUIOverlayStyle(services.SystemUiOverlayStyle{
+			StatusBarBrightness:                 upper.StatusBarBrightness,
+			StatusBarIconBrightness:             upper.StatusBarIconBrightness,
+			StatusBarColor:                      upper.StatusBarColor,
+			SystemStatusBarContrastEnforced:     upper.SystemStatusBarContrastEnforced,
+			SystemNavigationBarColor:            lower.SystemNavigationBarColor,
+			SystemNavigationBarDividerColor:     lower.SystemNavigationBarDividerColor,
+			SystemNavigationBarIconBrightness:   lower.SystemNavigationBarIconBrightness,
+			SystemNavigationBarContrastEnforced: lower.SystemNavigationBarContrastEnforced,
+		})
+		return
+	}
+	// If only one is found, it gives all the properties. This is for convenience: one annotated
+	// region (the one an AppBar makes) sets both bars.
+	defined := upper
+	if !hasUpper {
+		defined = lower
+	}
+	style := services.SystemUiOverlayStyle{
+		StatusBarBrightness:             defined.StatusBarBrightness,
+		StatusBarIconBrightness:         defined.StatusBarIconBrightness,
+		StatusBarColor:                  defined.StatusBarColor,
+		SystemStatusBarContrastEnforced: defined.SystemStatusBarContrastEnforced,
+	}
+	if isAndroid {
+		style.SystemNavigationBarColor = defined.SystemNavigationBarColor
+		style.SystemNavigationBarDividerColor = defined.SystemNavigationBarDividerColor
+		style.SystemNavigationBarIconBrightness = defined.SystemNavigationBarIconBrightness
+		style.SystemNavigationBarContrastEnforced = defined.SystemNavigationBarContrastEnforced
+	}
+	r.OnSystemUIOverlayStyle(style)
 }
 
 // PaintBounds are the view's size in physical pixels, at the origin.

@@ -20,6 +20,14 @@ int glutter_set_cursor(int type);
 // at x1,y1; 2 swipe from x1,y1 to x2,y2 in ms milliseconds; 3 the key of that name).
 int glutter_inject(int kind, float x1, float y1, float x2, float y2, int ms, const char *key);
 
+// glutter_command asks the activity to do one operation of the system's interface, feedback or screen
+// (systemui.go): op with up to four integers and a string. Returns 0 on success.
+int glutter_command(int op, long long a, long long b, long long c, long long d, const char *s);
+
+// glutter_scaled_font_size returns what the system makes of a font size in logical pixels
+// (the sp unit of Android), or the size itself when the call fails.
+float glutter_scaled_font_size(float size);
+
 // glutter_log writes one line to logcat. The priority is an ANDROID_LOG_* value.
 void glutter_log(int priority, const char *tag, const char *line);
 

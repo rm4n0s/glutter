@@ -44,9 +44,18 @@ func (e *Emulator) Install(ctx context.Context, apk string) error { return e.ADB
 
 // Launch clears the log, stops the app if it runs and starts it with the given extras (the
 // GLUTTER_ environment of the program).
+//
+// Right after the boot of an old image (API 26) the log cannot be cleared for a while, so clearing it
+// is tried again for up to two minutes.
 func (e *Emulator) Launch(ctx context.Context, appID string, extras map[string]string) error {
-	if _, err := e.ADB.Output(ctx, "logcat", "-c"); err != nil {
-		return err
+	var err error
+	for end := time.Now().Add(2 * time.Minute); ; time.Sleep(2 * time.Second) {
+		if _, err = e.ADB.Output(ctx, "logcat", "-c"); err == nil {
+			break
+		}
+		if time.Now().After(end) || ctx.Err() != nil {
+			return err
+		}
 	}
 	return e.ADB.Start(ctx, appID, extras)
 }

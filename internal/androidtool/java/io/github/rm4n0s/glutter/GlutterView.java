@@ -1,6 +1,8 @@
 package io.github.rm4n0s.glutter;
 
 import android.content.Context;
+import android.graphics.Insets;
+import android.hardware.display.DisplayManager;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
@@ -8,6 +10,7 @@ import android.os.SystemClock;
 import android.util.DisplayMetrics;
 import android.util.SparseArray;
 import android.view.Display;
+import android.view.DisplayCutout;
 import android.view.InputDevice;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
@@ -15,6 +18,7 @@ import android.view.PointerIcon;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.ViewConfiguration;
+import android.view.WindowInsets;
 import android.view.WindowManager;
 import java.util.HashSet;
 import java.util.Set;
@@ -42,8 +46,27 @@ public class GlutterView extends SurfaceView implements SurfaceHolder.Callback {
 
   private int nextKeyId = 1;
 
-  public GlutterView(Context context) {
+  /** The activity's system interface, told of the insets. */
+  private final SystemUI systemUI;
+
+  /** Hears of changes of the display: its refresh rate, density and size. */
+  private final DisplayManager.DisplayListener displayListener =
+      new DisplayManager.DisplayListener() {
+        @Override
+        public void onDisplayAdded(int displayId) {}
+
+        @Override
+        public void onDisplayRemoved(int displayId) {}
+
+        @Override
+        public void onDisplayChanged(int displayId) {
+          reportDisplay();
+        }
+      };
+
+  public GlutterView(Context context, SystemUI systemUI) {
     super(context);
+    this.systemUI = systemUI;
     getHolder().addCallback(this);
     setFocusable(true);
     setFocusableInTouchMode(true);
@@ -223,6 +246,115 @@ public class GlutterView extends SurfaceView implements SurfaceHolder.Callback {
   /** Shows the mouse cursor of a {@code PointerIcon} type (main thread). */
   void setCursorType(int type) {
     setPointerIcon(PointerIcon.getSystemIcon(getContext(), type));
+  }
+
+  @Override
+  protected void onAttachedToWindow() {
+    super.onAttachedToWindow();
+    DisplayManager dm = (DisplayManager) getContext().getSystemService(Context.DISPLAY_SERVICE);
+    if (dm != null) {
+      dm.registerDisplayListener(displayListener, new Handler(Looper.getMainLooper()));
+    }
+  }
+
+  @Override
+  protected void onDetachedFromWindow() {
+    DisplayManager dm = (DisplayManager) getContext().getSystemService(Context.DISPLAY_SERVICE);
+    if (dm != null) {
+      dm.unregisterDisplayListener(displayListener);
+    }
+    super.onDetachedFromWindow();
+  }
+
+  /**
+   * The insets of the window as Flutter works them out: the system bars and the display cutout are
+   * the padding, the input method the view insets, the system gestures the gesture insets (all in
+   * pixels).
+   *
+   * <p>Ports: {@code FlutterView.onApplyWindowInsets}
+   * (shell/platform/android/io/flutter/embedding/android/FlutterView.java).
+   */
+  @Override
+  @SuppressWarnings("deprecation")
+  public WindowInsets onApplyWindowInsets(WindowInsets insets) {
+    WindowInsets result = super.onApplyWindowInsets(insets);
+    int[] v = new int[12];
+    if (Build.VERSION.SDK_INT >= 30) {
+      Insets bars = insets.getInsets(WindowInsets.Type.systemBars());
+      Insets ime = insets.getInsets(WindowInsets.Type.ime());
+      Insets gestures = insets.getInsets(WindowInsets.Type.systemGestures());
+      v[0] = bars.left;
+      v[1] = bars.top;
+      v[2] = bars.right;
+      v[3] = bars.bottom;
+      v[4] = ime.left;
+      v[5] = ime.top;
+      v[6] = ime.right;
+      v[7] = ime.bottom;
+      v[8] = gestures.left;
+      v[9] = gestures.top;
+      v[10] = gestures.right;
+      v[11] = gestures.bottom;
+      // The display cutout and the waterfall edges count as padding too, the larger one winning.
+      DisplayCutout cutout = insets.getDisplayCutout();
+      if (cutout != null) {
+        Insets waterfall = cutout.getWaterfallInsets();
+        v[0] = Math.max(Math.max(v[0], waterfall.left), cutout.getSafeInsetLeft());
+        v[1] = Math.max(Math.max(v[1], waterfall.top), cutout.getSafeInsetTop());
+        v[2] = Math.max(Math.max(v[2], waterfall.right), cutout.getSafeInsetRight());
+        v[3] = Math.max(Math.max(v[3], waterfall.bottom), cutout.getSafeInsetBottom());
+      }
+    } else {
+      int visibility = getWindowSystemUiVisibility();
+      boolean statusBarVisible = (SYSTEM_UI_FLAG_FULLSCREEN & visibility) == 0;
+      boolean navigationBarVisible = (SYSTEM_UI_FLAG_HIDE_NAVIGATION & visibility) == 0;
+      int keyboard = guessBottomKeyboardInset(insets);
+      v[0] = insets.getSystemWindowInsetLeft();
+      v[1] = statusBarVisible ? insets.getSystemWindowInsetTop() : 0;
+      v[2] = insets.getSystemWindowInsetRight();
+      v[3] = navigationBarVisible && keyboard == 0 ? insets.getSystemWindowInsetBottom() : 0;
+      v[7] = keyboard;
+      if (Build.VERSION.SDK_INT == 29) {
+        Insets gestures = insets.getSystemGestureInsets();
+        v[8] = gestures.left;
+        v[9] = gestures.top;
+        v[10] = gestures.right;
+        v[11] = gestures.bottom;
+      }
+    }
+    for (int i = 0; i < v.length; i++) {
+      v[i] = Math.max(0, v[i]);
+    }
+    Native.insets(v);
+    systemUI.onInsets(insets);
+    return result;
+  }
+
+  /** Whether the bottom inset is the keyboard's: it is when it is higher than 18% of the screen. */
+  @SuppressWarnings("deprecation")
+  private int guessBottomKeyboardInset(WindowInsets insets) {
+    int screenHeight = getRootView().getHeight();
+    if (screenHeight == 0) {
+      // Before the first layout the root view has no height: the display's is the one to compare.
+      screenHeight = getResources().getDisplayMetrics().heightPixels;
+    }
+    if (insets.getSystemWindowInsetBottom() < screenHeight * 0.18) {
+      return 0;
+    }
+    return insets.getSystemWindowInsetBottom();
+  }
+
+  /** Tells Go the density, the refresh rate and the size of the display. */
+  void reportDisplay() {
+    DisplayMetrics real = new DisplayMetrics();
+    float refresh = 60;
+    Display display = findDisplay();
+    if (display != null) {
+      display.getRealMetrics(real);
+      refresh = display.getRefreshRate();
+    }
+    float density = getResources().getDisplayMetrics().density;
+    Native.displayChanged(density, refresh, real.widthPixels, real.heightPixels);
   }
 
   @Override

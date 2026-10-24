@@ -22,13 +22,17 @@ func (s *surfaceState) pixelRatio() float64 {
 }
 
 // viewMetrics are the metrics of the view: the physical size of the surface and the device
-// pixel ratio (SPEC §24.7). The insets come in step 25.7.
+// pixel ratio and the insets of the system's bars, the keyboard and the gestures (SPEC §24.7).
 //
 // Flutter: shell/platform/android/io/flutter/embedding/android/FlutterView.java FlutterView.sendViewportMetricsToFlutter
 func (s *surfaceState) viewMetrics() platform.ViewMetrics {
 	return platform.ViewMetrics{
 		PhysicalSize:     ui.Size{Width: float64(s.width), Height: float64(s.height)},
 		DevicePixelRatio: s.pixelRatio(),
+		ViewPadding:      s.insets.padding.viewPadding(),
+		// The keyboard's inset is not part of the padding: the framework subtracts it.
+		ViewInsets:          s.insets.keyboard.viewPadding(),
+		SystemGestureInsets: s.insets.gesture.viewPadding(),
 	}
 }
 

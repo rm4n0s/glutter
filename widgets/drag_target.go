@@ -8,6 +8,7 @@ import (
 	"github.com/rm4n0s/glutter/gestures"
 	"github.com/rm4n0s/glutter/painting"
 	"github.com/rm4n0s/glutter/rendering"
+	"github.com/rm4n0s/glutter/services"
 	"github.com/rm4n0s/glutter/ui"
 )
 
@@ -309,10 +310,18 @@ func (w *Draggable[T]) MaxSimultaneousDrags() foundation.Opt[int] { return w.opt
 // LongPressDraggable, else one by the affinity.
 //
 // Flutter: widgets/drag_target.dart Draggable.createRecognizer
-func (w *Draggable[T]) createRecognizer(g *gestures.GestureBinding, onStart gestures.GestureMultiDragStartCallback) *gestures.MultiDragGestureRecognizer {
+func (w *Draggable[T]) createRecognizer(g *gestures.GestureBinding, haptic *services.HapticFeedback, onStart gestures.GestureMultiDragStartCallback) *gestures.MultiDragGestureRecognizer {
 	o := gestures.MultiDragGestureRecognizerOpts{DebugOwner: w, AllowedButtonsFilter: w.opts.AllowedButtonsFilter}
 	var r *gestures.MultiDragGestureRecognizer
 	if w.longPress {
+		start := onStart
+		onStart = func(position ui.Offset) gestures.Drag {
+			result := start(position)
+			if result != nil && w.hapticFeedbackOnStart {
+				haptic.SelectionClick()
+			}
+			return result
+		}
 		d := gestures.NewDelayedMultiDragGestureRecognizer(g, gestures.DelayedMultiDragGestureRecognizerOpts{
 			MultiDragGestureRecognizerOpts: o, Delay: foundation.Some(w.delay)})
 		r = &d.MultiDragGestureRecognizer
@@ -331,7 +340,7 @@ func (w *Draggable[T]) createRecognizer(g *gestures.GestureBinding, onStart gest
 }
 
 // HapticFeedbackOnStart is whether a LongPressDraggable gives haptic feedback when
-// the drag starts. Linux has no haptic feedback, so it does nothing there.
+// the drag starts. The desktop has no haptic feedback, so it does nothing there.
 //
 // Flutter: widgets/drag_target.dart LongPressDraggable.hapticFeedbackOnStart
 func (w *Draggable[T]) HapticFeedbackOnStart() bool { return w.hapticFeedbackOnStart }
@@ -353,7 +362,7 @@ func (w *Draggable[T]) CreateState() State { return &draggableState[T]{} }
 type LongPressDraggableOpts[T any] struct {
 	DraggableOpts[T]
 	// NoHapticFeedbackOnStart turns off the haptic feedback when the drag starts.
-	// Linux has no haptic feedback, so it changes nothing there.
+	// The desktop has no haptic feedback, so it changes nothing there.
 	NoHapticFeedbackOnStart bool
 	// Delay is how long the pointer must stay down before the drag starts; the
 	// default is gestures.LongPressTimeout.
@@ -389,7 +398,7 @@ type draggableState[T any] struct {
 }
 
 func (s *draggableState[T]) InitState() {
-	s.recognizer = s.Widget().createRecognizer(WidgetsBindingOf(s.Context()).Gestures(), s.startDrag)
+	s.recognizer = s.Widget().createRecognizer(WidgetsBindingOf(s.Context()).Gestures(), WidgetsBindingOf(s.Context()).HapticFeedback(), s.startDrag)
 }
 
 func (s *draggableState[T]) Dispose() { s.disposeRecognizerIfInactive() }

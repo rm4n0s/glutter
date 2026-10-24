@@ -27,6 +27,9 @@ type fakeHost struct {
 	keyAnswers []string
 	cursors    []int
 	injected   []DevEvent
+	// commands are the calls to the activity; fontScale is how ScaledFontSize scales (1 when 0).
+	commands  []command
+	fontScale float64
 }
 
 func newFakeHost() *fakeHost {
@@ -67,6 +70,29 @@ func (f *fakeHost) Inject(e DevEvent) {
 	f.mu.Unlock()
 }
 
+func (f *fakeHost) Command(c command) {
+	f.mu.Lock()
+	f.commands = append(f.commands, c)
+	f.mu.Unlock()
+}
+
+// ScaledFontSize scales by fontScale.
+func (f *fakeHost) ScaledFontSize(size float64) float64 {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	scale := f.fontScale
+	if scale == 0 {
+		scale = 1
+	}
+	return size * scale
+}
+
+func (f *fakeHost) sentCommands() []command {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]command(nil), f.commands...)
+}
+
 func (f *fakeHost) SetCursor(t int) {
 	f.mu.Lock()
 	f.cursors = append(f.cursors, t)
@@ -97,7 +123,9 @@ type recorder struct {
 	mu    sync.Mutex
 	calls []string
 	// batches are the changes of the pointer data, one list for each batch.
-	batches [][]string
+	batches  [][]string
+	settings []platform.Settings
+	metrics  platform.ViewMetrics
 	// onFrame, when set, runs inside OnFrame.
 	onFrame func(time.Duration)
 }
@@ -131,8 +159,32 @@ func (r *recorder) OnFrame(_ ui.ViewID, t time.Duration) {
 	}
 }
 func (r *recorder) OnMetrics(_ ui.ViewID, m platform.ViewMetrics) {
+	r.mu.Lock()
+	r.metrics = m
+	r.mu.Unlock()
 	r.add("metrics %dx%d@%.3f", int(m.PhysicalSize.Width), int(m.PhysicalSize.Height), m.DevicePixelRatio)
 }
+func (r *recorder) OnSettings(s platform.Settings) {
+	r.mu.Lock()
+	r.settings = append(r.settings, s)
+	r.mu.Unlock()
+	r.add("settings")
+}
+
+// lastSettings is what the last OnSettings reported.
+func (r *recorder) lastSettings() platform.Settings {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.settings[len(r.settings)-1]
+}
+
+// lastMetrics is what the last OnMetrics reported.
+func (r *recorder) lastMetrics() platform.ViewMetrics {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.metrics
+}
+
 func (r *recorder) OnLifecycle(s ui.AppLifecycleState) { r.add("lifecycle %v", s) }
 func (r *recorder) OnViewFocus(_ ui.ViewID, f bool)    { r.add("focus %v", f) }
 func (r *recorder) OnDisplaysChanged()                 { r.add("displays") }

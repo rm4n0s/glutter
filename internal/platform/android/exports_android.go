@@ -48,3 +48,21 @@ func goKeyEvent(id, action, keyCode, scanCode, metaState, repeatCount C.int, eve
 
 //export goFocus
 func goFocus(focused C.int) { process.focusChanged(focused != 0) }
+
+//export goInsets
+func goInsets(values *C.int, n C.int) {
+	if in, ok := decodeInsets(unsafe.Slice((*int32)(unsafe.Pointer(values)), int(n))); ok {
+		process.insetsChanged(in)
+	}
+}
+
+//export goSettings
+func goSettings(text *C.char) { process.settingsChanged(C.GoString(text)) }
+
+//export goSystemUI
+func goSystemUI(visible C.int) { process.systemUIChanged(visible != 0) }
+
+//export goDisplayChanged
+func goDisplayChanged(density, refresh C.float, displayWidth, displayHeight C.int) {
+	process.displayChanged(float64(density), float64(refresh), int(displayWidth), int(displayHeight))
+}

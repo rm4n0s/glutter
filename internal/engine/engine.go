@@ -835,11 +835,14 @@ func PlatformConfiguration(s platform.Settings) ui.PlatformConfiguration {
 			DisableAnimations: s.DisableAnimations,
 			ReduceMotion:      s.DisableAnimations,
 			HighContrast:      s.HighContrast,
+			BoldText:          s.BoldText,
 		},
-		UIFontFamily:        s.UIFontFamily,
-		UIFontSize:          s.UIFontSize,
-		MonospaceFontFamily: s.MonospaceFontFamily,
-		MonospaceFontSize:   s.MonospaceFontSize,
+		AlwaysUse24HourFormat: s.AlwaysUse24HourFormat,
+		ScaleFontSize:         s.ScaleFontSize,
+		UIFontFamily:          s.UIFontFamily,
+		UIFontSize:            s.UIFontSize,
+		MonospaceFontFamily:   s.MonospaceFontFamily,
+		MonospaceFontSize:     s.MonospaceFontSize,
 	}
 	if s.HasAccentColor {
 		c.AccentColor = ui.Ptr(s.AccentColor)
