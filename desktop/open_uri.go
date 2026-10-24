@@ -24,6 +24,10 @@ const openURIMethod = "org.freedesktop.portal.OpenURI.OpenURI"
 // javascript: or vbscript: URI fails with OpenURISchemeBlocked, and the browser's pop-up blocker is not
 // reported.
 //
+// On Android it starts an ACTION_VIEW intent for the URI: a javascript: or vbscript: URI fails with
+// OpenURISchemeBlocked, and a URI that no app can open (or a program with no activity to start it
+// from) with OpenURIUnavailable. Android lets only an app that is on the screen start another.
+//
 // It waits for the desktop, so it must be called from a goroutine and not on the UI
 // thread (it fails with DesktopCallOnUIThread there); ctx ends the wait. A URI without
 // a scheme fails with OpenURIInvalid.
@@ -39,6 +43,9 @@ func OpenURI(ctx context.Context, bc widgets.BuildContext, uri string) error {
 	}
 	if c.s.web != nil {
 		return c.s.web.OpenURI(ctx, uri)
+	}
+	if c.s.android != nil {
+		return c.s.android.OpenURI(ctx, uri)
 	}
 	return c.openURI(ctx, uri)
 }

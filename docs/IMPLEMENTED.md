@@ -2632,3 +2632,22 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - `SemanticsService.announce` and tooltip events are not sent to the platform (`semantics.SemanticsOwnerOpts.OnSendEvent` is wired nowhere yet): follow-up for when the framework side is wired.
   - Text traversal by line, paragraph and page, and platform views, are not done.
 
+## 25.12 Services on Android
+
+- **Date:** 2026-10-24
+- **Branch:** feat/step-25.12-android-services
+- **Summary:** `desktop.OpenURI` starts an `ACTION_VIEW` intent (no app is `OpenURIUnavailable`, a script scheme `OpenURISchemeBlocked`), and `desktop.ShowNotification` and `CloseNotification` post through `NotificationManager`: one channel per urgency, the title and plain body, replace by ID, the action buttons and the body click as `PendingIntent`s, the closes (`Dismissed`, `Expired`, `ByApp`), and the `POST_NOTIFICATIONS` permission asked once per decision on Android 13 and later (a refusal is `NotificationsUnavailable`). The tray and the file dialogs are `TrayUnavailable` and `FileChooserUnavailable`, and D-Bus is never tried. The plain-Go service is `internal/platform/mobile.Desktop`, handed to package `desktop` through `platform.DesktopProvider` and `ui.PlatformDispatcher.PlatformService`.
+- **Main files:** `internal/platform/mobile/`, `internal/platform/android/` (`desktop.go`, `bridge.go`, `host.go`, `exports_android.go`, `jni_android.c`), `internal/platform/platform.go`, `ui/service_host.go`, `internal/engine/engine.go`, `desktop/` (`android.go`, `services.go`, `open_uri.go`, `notifications.go`, `install.go`), `internal/androidtool/` (`manifest.go`, `classes.dex`, `java/.../DesktopServices.java`, `NotificationReceiver.java`, `GlutterActivity.java`, `Native.java`), `internal/androidtest/services_device_test.go`, `examples/dev/android-services/`, `docs/SPEC.md` (§12.10, §24.11 "Decided in step 25.12"), `docs/MANUAL-CHECKS.md`.
+- **Tests:** plain-Go tables over fakes: URI validation and the blocked schemes, the notification's fields, the permission states (granted, refused, undecided, refused then granted in Settings, context ended), replace by ID, close by the app, the timeout, the click, a button and a swipe, the link's commands and an end-to-end run through the natives; package `desktop` with a fake Android service (the tray and the file chooser fail without any attempt at the bus); the manifest; the engine's hand-out; a route test of every new tag; `TestAppsWithDesktopServicesImportNoForeignBackend` beside `TestBuildsHaveTheirOwnBackends` (unchanged).
+- **Device tests (`-tags glutter_android`):** on `glutter-37` and `glutter-26`: `OpenURI` of an https link starts a VIEW intent (`dumpsys activity`), and of an unhandled scheme is `OpenURIUnavailable`; a notification is in `dumpsys notification` with its title and its "Reply" button; a close by the app removes it and reports reason 3; on `glutter-37`: with the permission revoked and fixed, `NotificationsUnavailable`, and tapping the "Reply" button in the shade (found with `uiautomator`) calls the app with the ID `reply`.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck ✅ · apicheck ✅ · GOOS=js build, vet and `scripts/test-wasm.sh` ✅ · `scripts/check-android.sh` ✅ · device tests ✅
+- **Proof:**
+  ![25.12 android notification](implemented-proof-images/25.12-android-notification.png)
+  The notification shade of `glutter-37` with the notification of `examples/dev/android-services`: its title "Glutter", its text and its "Reply" button.
+- **Manual checks:** pending (`docs/MANUAL-CHECKS.md`, 25.12)
+- **Deviations and follow-ups:**
+  - See SPEC §12.10 (icons, markup, urgency, persistence, timeouts, actions, close reasons, the permission, the tray and the file dialogs).
+  - The generated manifest now always declares `POST_NOTIFICATIONS` and the notification receiver.
+  - Not supported: notification icons, inline reply, delivery of a tap of an earlier process, detection of a refused background activity launch.
+  - A browser opened by `OpenURI` stays on top of the app's task on Android 8, so the device tests clear the app (`pm clear`) before each launch.
+

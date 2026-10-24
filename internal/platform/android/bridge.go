@@ -4,6 +4,8 @@ import (
 	"log/slog"
 	"sync"
 	"time"
+
+	"github.com/rm4n0s/glutter/internal/platform/mobile"
 )
 
 // destroyWait is how long surfaceDestroyed waits for the UI thread to let go of the surface
@@ -37,6 +39,10 @@ type bridge struct {
 	settings systemSettings
 	// a11y is the state of the accessibility manager the Java side reported last.
 	a11y a11yState
+	// link and desktop are the desktop services (desktop.go), made by the first call of
+	// Platform.Desktop; the answers and the events of the Java side go through link.
+	link    *desktopLink
+	desktop *mobile.Desktop
 }
 
 func newBridge() *bridge { return &bridge{wait: destroyWait, log: slog.Default()} }

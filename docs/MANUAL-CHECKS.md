@@ -180,3 +180,24 @@ Check, and record the answers:
 
 Answers: _(not yet recorded)_
 
+## 25.12 Services on Android
+
+**Status:** pending
+
+Run on the phone (with Android 13 or later, a fresh install so that the permission has not been decided):
+
+```
+go run ./cmd/glutter-android run ./examples/dev/android-services
+```
+
+Check, and record the answers:
+
+1. Tap "Open link": does the browser open example.com? Tap "Open mail": does the mail app open with a new message (or does Android ask which app)?
+2. Tap "Open bad": does the app stay as it is, with no crash (the log says `OpenURIUnavailable`)?
+3. Tap "Notify": does the system ask for the permission to send notifications, once? After you allow it, does the notification appear in the shade with the title "Glutter", the text and a "Reply" button?
+4. Pull the shade down and tap "Reply": does the app come to the front, and does the log say `notification action id=reply`? Tap the notification's body (when it has the default action) and swipe a notification away: does the log say `notification closed`?
+5. Tap "Notify" again after you denied the permission (or turn the app's notifications off in Settings): does nothing appear and the log say `NotificationsUnavailable`, with no second permission prompt in the same run?
+6. Tap "Close" after "Notify": does the notification disappear?
+
+Answers: _(not yet recorded)_
+

@@ -334,6 +334,9 @@ func TestASwipeScrollsTheScrollingExample(t *testing.T) {
 	grab := func() *image.RGBA {
 		return screenWithContent(ctx, t, e)
 	}
+	// The emulator shows a presented frame some time after the app presented it: the page is let settle, so
+	// that the first picture is the page and not the end of its start.
+	time.Sleep(3 * time.Second)
 	before := grab()
 	shell(ctx, t, e, "input", "swipe", "540", "1800", "540", "600", "300")
 	time.Sleep(3 * time.Second)

@@ -13,6 +13,7 @@ import (
 	"github.com/rm4n0s/glutter/internal/gpu"
 	"github.com/rm4n0s/glutter/internal/gpu/explicit"
 	"github.com/rm4n0s/glutter/internal/platform"
+	"github.com/rm4n0s/glutter/internal/platform/mobile"
 	"github.com/rm4n0s/glutter/ui"
 )
 
@@ -491,6 +492,23 @@ func (h *handler) ActivationToken(view ui.ViewID, done func(token string)) {
 		return
 	}
 	done("")
+}
+
+// PlatformService hands out the optional services that the platform has by itself
+// (ui.ServiceHost): for package desktop the name mobile.ServiceDesktop gives the
+// platform's URI opener and notifications, when the platform has them (Android, SPEC
+// §24.11), and nil elsewhere, where D-Bus or the web's own services do the work. It
+// may be called from any goroutine: the connection never changes.
+func (h *handler) PlatformService(name string) any {
+	if name != mobile.ServiceDesktop {
+		return nil
+	}
+	if p, ok := h.conn.(platform.DesktopProvider); ok {
+		if svc := p.Desktop(); svc != nil {
+			return svc
+		}
+	}
+	return nil
 }
 
 // KeepScreenOn stops the screen from going idle while the window of the view is

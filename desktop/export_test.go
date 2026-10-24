@@ -13,7 +13,7 @@ import (
 func UseBus(bc widgets.BuildContext, bus dbus.Bus) {
 	s := servicesOf(widgets.WidgetsBindingOf(bc))
 	s.mu.Lock()
-	s.bus, s.web = bus, nil
+	s.bus, s.web, s.android = bus, nil, nil
 	s.mu.Unlock()
 }
 
@@ -21,7 +21,7 @@ func UseBus(bc widgets.BuildContext, bus dbus.Bus) {
 func UseBusOpener(bc widgets.BuildContext, open func(ctx context.Context) (dbus.Bus, error)) {
 	s := servicesOf(widgets.WidgetsBindingOf(bc))
 	s.mu.Lock()
-	s.open, s.bus, s.web = open, nil, nil
+	s.open, s.bus, s.web, s.android = open, nil, nil, nil
 	s.mu.Unlock()
 }
 
@@ -40,12 +40,30 @@ func UseFlatpak(bc widgets.BuildContext, in bool) {
 func UseWeb(bc widgets.BuildContext, d webDesktop) {
 	s := servicesOf(widgets.WidgetsBindingOf(bc))
 	s.mu.Lock()
-	s.bus, s.web = nil, d
+	s.bus, s.web, s.android = nil, d, nil
 	s.mu.Unlock()
 }
+
+// UseAndroid makes the app run as on Android with the desktop d, whatever the platform is: URIs and
+// notifications go to d, and the session bus is never tried.
+func UseAndroid(bc widgets.BuildContext, d androidDesktop) {
+	s := servicesOf(widgets.WidgetsBindingOf(bc))
+	s.mu.Lock()
+	s.bus, s.web, s.android = nil, nil, d
+	s.mu.Unlock()
+}
+
+// AndroidDesktop is androidDesktop, for the fake of the tests.
+type AndroidDesktop = androidDesktop
 
 // WebDesktop is webDesktop, for the fake of the tests.
 type WebDesktop = webDesktop
 
 // FilterName is filterName, for the tests.
 var FilterName = filterName
+
+// NewAndroidDesktop is newAndroidDesktop, for the tests.
+var NewAndroidDesktop = newAndroidDesktop
+
+// HasAndroid says whether the services of the binding are those of Android.
+func HasAndroid(b *widgets.WidgetsBinding) bool { return servicesOf(b).android != nil }

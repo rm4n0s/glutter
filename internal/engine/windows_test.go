@@ -11,6 +11,7 @@ import (
 	"github.com/rm4n0s/glutter/internal/gpu"
 	"github.com/rm4n0s/glutter/internal/platform"
 	"github.com/rm4n0s/glutter/internal/platform/fake"
+	"github.com/rm4n0s/glutter/internal/platform/mobile"
 	"github.com/rm4n0s/glutter/ui"
 )
 
@@ -649,3 +650,38 @@ func TestClosingAWindowUnderThePointerRemovesThePointerFirst(t *testing.T) {
 const (
 	tagWaylandProtocolMissing = "WaylandProtocolMissing"
 )
+
+// desktopConn is a connection whose platform has desktop services of its own, as Android does.
+type desktopConn struct {
+	*conn
+	svc mobile.Services
+}
+
+func (c desktopConn) Desktop() mobile.Services { return c.svc }
+
+// TestPlatformServiceHandsOutTheDesktopServices: the services come through the dispatcher only for
+// a platform that has them, only under the name package desktop asks for, and never as a non-nil
+// interface around nothing.
+func TestPlatformServiceHandsOutTheDesktopServices(t *testing.T) {
+	svc := mobile.NewDesktop(nil, nil, nil)
+	tests := []struct {
+		name string
+		conn connection
+		ask  string
+		want any
+	}{
+		{"a platform with services", desktopConn{&conn{Platform: fake.New()}, svc}, mobile.ServiceDesktop, svc},
+		{"another name", desktopConn{&conn{Platform: fake.New()}, svc}, "other", nil},
+		{"a platform whose services are nil", desktopConn{&conn{Platform: fake.New()}, nil}, mobile.ServiceDesktop, nil},
+		{"a platform without desktop services", &conn{Platform: fake.New()}, mobile.ServiceDesktop, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := &handler{conn: tt.conn}
+			d := ui.NewPlatformDispatcher(h)
+			if got := d.PlatformService(tt.ask); got != tt.want {
+				t.Errorf("PlatformService(%q) = %#v, want %#v", tt.ask, got, tt.want)
+			}
+		})
+	}
+}

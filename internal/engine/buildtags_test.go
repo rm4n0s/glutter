@@ -69,3 +69,50 @@ func TestBuildsHaveTheirOwnBackends(t *testing.T) {
 		})
 	}
 }
+
+// TestAppsWithDesktopServicesImportNoForeignBackend checks the same rule for an app that imports package
+// desktop, which reaches the services of Android through the engine and the dispatcher (SPEC §24.11): the
+// Linux and web builds do not import internal/platform/android, whose plain Go would otherwise come with
+// package desktop, and the Android build imports none of the desktop backends (only the shared dl).
+func TestAppsWithDesktopServicesImportNoForeignBackend(t *testing.T) {
+	if testing.Short() {
+		t.Skip("runs go list")
+	}
+	const prefix = "github.com/rm4n0s/glutter/internal/platform/"
+	tests := []struct {
+		name         string
+		goos, goarch string
+		none         []string
+	}{
+		{name: "linux", goos: "linux", goarch: "amd64", none: []string{"android"}},
+		{name: "js", goos: "js", goarch: "wasm", none: []string{"linux/", "android"}},
+		{name: "android/arm64", goos: "android", goarch: "arm64", none: []string{"linux/wayland", "linux/x11", "linux/xkb", "linux/ime", "linux/input", "linux/fontconfig"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := exec.Command("go", "list", "-e", "-deps", "-f", "{{.ImportPath}}", "../../examples/dev/android-services")
+			cmd.Env = append(os.Environ(), "GOOS="+tt.goos, "GOARCH="+tt.goarch, "CGO_ENABLED=0")
+			if tt.goos == "android" {
+				cmd.Env = append(cmd.Env, "CGO_ENABLED=1")
+			}
+			out, err := cmd.Output()
+			if err != nil {
+				t.Fatalf("go list: %v", err)
+			}
+			if !strings.Contains(string(out), "github.com/rm4n0s/glutter/desktop\n") {
+				t.Fatalf("%s: go list did not list package desktop:\n%s", tt.name, out)
+			}
+			for _, p := range strings.Fields(string(out)) {
+				rest, ok := strings.CutPrefix(p, prefix)
+				if !ok {
+					continue
+				}
+				for _, n := range tt.none {
+					if rest == strings.TrimSuffix(n, "/") || strings.HasPrefix(rest, n) {
+						t.Errorf("%s: internal/platform/%s is imported", tt.name, rest)
+					}
+				}
+			}
+		})
+	}
+}

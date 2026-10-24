@@ -28,7 +28,8 @@ type host interface {
 	Inject(e DevEvent)
 	// Command asks the activity to do something on the main thread of Android: the system's
 	// interface, haptic feedback, the sounds of the system (SPEC §24.7). It is called on the UI
-	// thread.
+	// thread, except for the operations of the desktop services (desktop.go), which any goroutine
+	// calls.
 	Command(c command)
 	// ScaledFontSize is how the system scales a font size in logical pixels (TypedValue.applyDimension
 	// with the unit sp, as logical pixels). It is called on the UI thread and returns at once.

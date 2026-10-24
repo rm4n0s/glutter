@@ -32,8 +32,34 @@ const ConfigChanges = "orientation|keyboardHidden|keyboard|screenSize|smallestSc
 // ActivityClass is the activity of the embedding.
 const ActivityClass = "io.github.rm4n0s.glutter.GlutterActivity"
 
-// Manifest returns the text of AndroidManifest.xml: one activity, the minimum and target API
-// levels of D24, and the permissions asked for.
+// ReceiverClass is the broadcast receiver of the embedding: it hears the swipe of a notification
+// (SPEC §24.11). It is not exported, so only the system's PendingIntent reaches it.
+const ReceiverClass = "io.github.rm4n0s.glutter.NotificationReceiver"
+
+// DefaultPermissions are the permissions every generated manifest asks for, because a service of the
+// toolkit needs them: POST_NOTIFICATIONS, the runtime permission of Android 13 and later that
+// desktop.ShowNotification asks the user for (SPEC §24.11). Permissions in ManifestConfig are added to
+// them.
+//
+// Flutter: no counterpart
+var DefaultPermissions = []string{"android.permission.POST_NOTIFICATIONS"}
+
+// permissions returns the default permissions and then the config's own, each once.
+func (c ManifestConfig) permissions() []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, p := range append(append([]string(nil), DefaultPermissions...), c.Permissions...) {
+		if !seen[p] {
+			seen[p] = true
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// Manifest returns the text of AndroidManifest.xml: one activity, the receiver of the notifications'
+// delete intents, the minimum and target API levels of D24, and the permissions asked for (the
+// DefaultPermissions and the config's).
 //
 // Flutter: no counterpart
 func Manifest(c ManifestConfig) []byte {
@@ -49,7 +75,7 @@ func Manifest(c ManifestConfig) []byte {
 	fmt.Fprintf(&b, "    android:versionCode=\"1\"\n")
 	fmt.Fprintf(&b, "    android:versionName=\"1.0\">\n")
 	fmt.Fprintf(&b, "  <uses-sdk android:minSdkVersion=\"%d\" android:targetSdkVersion=\"%d\" />\n", MinSDK, TargetSDK)
-	for _, p := range c.Permissions {
+	for _, p := range c.permissions() {
 		fmt.Fprintf(&b, "  <uses-permission android:name=\"%s\" />\n", esc(p))
 	}
 	fmt.Fprintf(&b, "  <application\n")
@@ -74,6 +100,9 @@ func Manifest(c ManifestConfig) []byte {
 	fmt.Fprintf(&b, "        <category android:name=\"android.intent.category.LAUNCHER\" />\n")
 	fmt.Fprintf(&b, "      </intent-filter>\n")
 	fmt.Fprintf(&b, "    </activity>\n")
+	fmt.Fprintf(&b, "    <receiver\n")
+	fmt.Fprintf(&b, "        android:name=\"%s\"\n", ReceiverClass)
+	fmt.Fprintf(&b, "        android:exported=\"false\" />\n")
 	fmt.Fprintf(&b, "  </application>\n")
 	fmt.Fprintf(&b, "</manifest>\n")
 	return b.Bytes()

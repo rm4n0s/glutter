@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/rm4n0s/glutter/internal/gpu"
+	"github.com/rm4n0s/glutter/internal/platform/mobile"
 	"github.com/rm4n0s/glutter/ui"
 )
 
@@ -119,6 +120,17 @@ type ActivationTokenProvider interface {
 	// desktop gave none. The platform has the app id of the window and the last
 	// input event of the seat.
 	RequestActivationToken(view ui.ViewID, done func(token string))
+}
+
+// DesktopProvider is implemented by a Platform that has the desktop services of package desktop
+// itself, because the desktop has no D-Bus to offer them (Android, SPEC §24.11): opening a URI and
+// notifications. A platform without it is served by D-Bus (Linux), or by its own Desktop in
+// internal/platform/web (the web).
+//
+// Flutter: no counterpart
+type DesktopProvider interface {
+	// Desktop returns the services. It may be called from any goroutine.
+	Desktop() mobile.Services
 }
 
 // Handler receives everything the platform reports. The engine implements it.

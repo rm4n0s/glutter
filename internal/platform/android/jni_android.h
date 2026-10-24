@@ -23,8 +23,11 @@ int glutter_set_cursor(int type);
 int glutter_inject(int kind, float x1, float y1, float x2, float y2, int ms, const char *key, int n);
 
 // glutter_command asks the activity to do one operation of the system's interface, feedback or screen
-// (systemui.go) or of text input and the clipboard (textinput.go): op with up to four integers and a
-// string of n bytes of UTF-8, with no terminating NUL. Returns 0 on success.
+// (systemui.go), of text input and the clipboard (textinput.go), of back navigation (back.go), of
+// accessibility (accessibility.go) or of the desktop services (desktop.go; ops 19 to 23: URIs and
+// notifications): op with up to four integers and a string of n bytes (UTF-8, or binary for the
+// semantics update and the notification), with no terminating NUL. Any thread may call it. Returns 0 on
+// success.
 int glutter_command(int op, long long a, long long b, long long c, long long d, const char *s, int n);
 
 // glutter_scaled_font_size returns what the system makes of a font size in logical pixels

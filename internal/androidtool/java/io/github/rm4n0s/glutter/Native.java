@@ -126,6 +126,20 @@ final class Native {
   static native void clipboardText(int id, boolean ok, byte[] text);
 
   /**
+   * The answer to a request of the desktop services ({@code DesktopServices}; see desktop.go for
+   * the meaning of the code of each operation): the number of the request, the code, and a text as
+   * UTF-8 (the reason, or empty).
+   */
+  static native void desktopResult(int request, int code, byte[] text);
+
+  /**
+   * A click on a notification (kind 1), on one of its buttons (2, {@code text} is the button's ID)
+   * or its swipe (3, {@code text} is {@code dismissed}); {@code serial} is the number Go gave the
+   * notification.
+   */
+  static native void notificationEvent(int serial, int kind, byte[] text);
+
+  /**
    * The state of the accessibility manager: whether an accessibility service runs, whether touch
    * exploration is on, and Flutter's {@code accessibleNavigation} (touch exploration, or a service
    * that asked for the nodes). Go turns the semantics tree on while a service runs or touch

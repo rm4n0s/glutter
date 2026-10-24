@@ -173,6 +173,18 @@ type notifyState struct {
 // a service worker). ReplacesID replaces a notification of the page, Timeout is kept by the page, and
 // Category and AppName are not used.
 //
+// On Android it posts through the NotificationManager, on one channel per urgency (Low is silent,
+// Critical shows over the screen). Android 13 and later ask the user for the permission
+// POST_NOTIFICATIONS at the first call (the call waits for the answer, off the UI thread); a refusal,
+// and a user who turned the app's notifications off, are NotificationsUnavailable, and a refusal is not
+// asked again in the same run. The notification wears the app's icon and name (Icon, Category and
+// AppName are not used). The actions are buttons (the system shows three), and the action with the ID
+// "default" is the click on the notification. ReplacesID replaces a notification with the same ID.
+// Persistent and Critical notifications have no timeout; Timeout closes the others with
+// NotificationClosedExpired. OnClosed gets NotificationClosedDismissed when the user swiped the
+// notification away or clicked it or one of its buttons, NotificationClosedByApp for
+// CloseNotification and NotificationClosedExpired; Android reports nothing else.
+//
 // Flutter: no counterpart (Flutter apps use the flutter_local_notifications plugin)
 func ShowNotification(ctx context.Context, bc widgets.BuildContext, summary string, opts ...NotificationOpts) (NotificationID, error) {
 	o := firstOpts(opts)
@@ -190,6 +202,9 @@ func ShowNotification(ctx context.Context, bc widgets.BuildContext, summary stri
 	}
 	if c.s.web != nil {
 		return c.showOnWeb(ctx, summary, o)
+	}
+	if c.s.android != nil {
+		return c.showOnAndroid(ctx, summary, o)
 	}
 	if c.s.flatpak() {
 		return c.showWithPortal(ctx, summary, o)
@@ -209,6 +224,9 @@ func CloseNotification(ctx context.Context, bc widgets.BuildContext, id Notifica
 	}
 	if c.s.web != nil {
 		return c.s.web.CloseNotification(ctx, uint32(id))
+	}
+	if c.s.android != nil {
+		return c.s.android.CloseNotification(ctx, uint32(id))
 	}
 	bus, err := c.s.connect(ctx, "NotificationsUnavailable")
 	if err != nil {

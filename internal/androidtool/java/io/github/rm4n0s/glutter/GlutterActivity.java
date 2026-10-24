@@ -76,6 +76,8 @@ public class GlutterActivity extends Activity {
       Native.settings(SystemSettings.describe(this));
       Native.activityCreated();
       accessibility.start();
+      // The activity was made again by a tap on a notification of this process.
+      DesktopServices.handleIntent(getIntent());
       return;
     }
     started = true;
@@ -105,6 +107,24 @@ public class GlutterActivity extends Activity {
     accessibility = new GlutterAccessibility(view);
     view.setAccessibility(accessibility);
     setContentView(view);
+  }
+
+  /**
+   * A click on a notification, or on one of its buttons, brings the running activity to the front
+   * with the notification's intent (the intents have {@code FLAG_ACTIVITY_SINGLE_TOP}).
+   */
+  @Override
+  protected void onNewIntent(Intent intent) {
+    super.onNewIntent(intent);
+    DesktopServices.handleIntent(intent);
+  }
+
+  /** The answer to the prompt for {@code POST_NOTIFICATIONS} ({@link DesktopServices}). */
+  @Override
+  public void onRequestPermissionsResult(
+      int requestCode, String[] permissions, int[] grantResults) {
+    super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+    DesktopServices.permissionResult(requestCode, grantResults);
   }
 
   @Override
@@ -248,18 +268,29 @@ public class GlutterActivity extends Activity {
    * Called by Go, from any thread: one operation of the system's interface, haptic feedback, sounds
    * or the screen (systemui.go, operations 1 to 7; {@link SystemUI}), or of text input and the
    * clipboard (textinput.go, 8 to 13; {@link TextInput}), of back navigation (back.go, 14
-   * and 15; {@link BackNavigation}) or of accessibility (accessibility.go, 16 to 18; {@link
-   * GlutterAccessibility}), done on the main thread. {@code bytes} is the operation's text as UTF-8,
-   * or, for the semantics update (16), a binary payload.
+   * and 15; {@link BackNavigation}), of accessibility (accessibility.go, 16 to 18; {@link
+   * GlutterAccessibility}) or of the desktop services (desktop.go, 19 to 23: a URI, the
+   * notifications; {@link DesktopServices}), done on the main thread. {@code bytes} is the
+   * operation's text as UTF-8, or, for the semantics update (16) and the notification (22), a binary
+   * payload.
    */
   static void command(
       final int op, final long a, final long b, final long c, final long d, final byte[] bytes) {
-    final boolean binary = op == GlutterAccessibility.OP_SEMANTICS;
+    final boolean desktop = op >= DesktopServices.OP_OPEN && op <= DesktopServices.OP_CANCEL;
+    final boolean binary = op == GlutterAccessibility.OP_SEMANTICS || desktop;
     final String s = binary ? null : new String(bytes, StandardCharsets.UTF_8);
     MAIN.post(
         new Runnable() {
           @Override
           public void run() {
+            if (desktop) {
+              // These work without an activity: the app's context posts a notification.
+              Context context = appContext;
+              if (context != null) {
+                DesktopServices.command(current, context, op, a, b, c, d, bytes);
+              }
+              return;
+            }
             if (current == null) {
               return;
             }

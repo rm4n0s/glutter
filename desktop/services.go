@@ -39,6 +39,10 @@ type services struct {
 	// web, set on the web only, does what the desktop does there: it opens URIs with window.open
 	// and shows notifications with the Notifications API. With it, the session bus is never tried.
 	web webDesktop
+	// android, set on Android only, does what the desktop does there: it opens URIs with an intent and
+	// posts notifications with the notification manager (SPEC §24.11). With it, the session bus is never
+	// tried.
+	android androidDesktop
 }
 
 type servicesKey struct{}
@@ -46,7 +50,7 @@ type servicesKey struct{}
 // servicesOf returns the services of the binding.
 func servicesOf(b *widgets.WidgetsBinding) *services {
 	return b.Extension(servicesKey{}, func() any {
-		return &services{binding: b, open: dbus.Connect, run: runProgram, flatpak: inFlatpak, web: newWebDesktop()}
+		return &services{binding: b, open: dbus.Connect, run: runProgram, flatpak: inFlatpak, web: newWebDesktop(), android: newAndroidDesktop(b)}
 	}).(*services)
 }
 
@@ -78,6 +82,10 @@ func (s *services) connect(ctx context.Context, tag string) (dbus.Bus, error) {
 	if s.web != nil {
 		// The cause is a sentinel, so that an app can still match DBusUnavailableOnWeb (SPEC §14.1).
 		return nil, errors.NewErr(tag, &errors.Error{Tag: "DBusUnavailableOnWeb", Message: "a web page has no session bus: D-Bus is never tried on the web"})
+	}
+	if s.android != nil {
+		// The cause is a sentinel, so that an app can still match DBusUnavailableOnAndroid (SPEC §14.1).
+		return nil, errors.NewErr(tag, &errors.Error{Tag: "DBusUnavailableOnAndroid", Message: androidReason(tag)})
 	}
 	// The connection outlives the call that opened it, and godbus closes a connection
 	// when the context it was made with ends: the connection gets a context that never

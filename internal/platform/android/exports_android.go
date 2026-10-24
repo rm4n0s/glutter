@@ -97,3 +97,13 @@ func goA11yState(enabled, touch, navigation C.int) {
 func goA11yAction(nodeID, action C.int, args *C.char, n C.int) {
 	process.a11yAction(int(nodeID), int(action), C.GoBytes(unsafe.Pointer(args), n))
 }
+
+//export goDesktopResult
+func goDesktopResult(id, code C.int, utf8 *C.char, n C.int) {
+	process.desktopResult(int(id), int(code), C.GoStringN(utf8, n))
+}
+
+//export goNotificationEvent
+func goNotificationEvent(serial, kind C.int, utf8 *C.char, n C.int) {
+	process.notificationEvent(int(serial), int(kind), C.GoStringN(utf8, n))
+}
