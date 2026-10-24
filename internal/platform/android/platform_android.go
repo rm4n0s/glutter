@@ -1,6 +1,11 @@
 package android
 
-import "log/slog"
+import (
+	"log/slog"
+	"os"
+
+	"github.com/rm4n0s/glutter/foundation"
+)
 
 // process is the bridge of this process: JNI has one set of entry points, so the calls of the
 // Java side reach one queue, which the platform of the process drains (SPEC §24.2). It is the one
@@ -31,5 +36,15 @@ func New(opts ...Options) (*Platform, error) {
 	if o.Logger != nil {
 		process.log = o.Logger
 	}
-	return newPlatform(process, h, o.Logger), nil
+	p := newPlatform(process, h, o.Logger)
+	if foundation.DebugMode {
+		if script := os.Getenv(DevEventsEnv); script != "" {
+			events, err := ParseDevEvents(script)
+			if err != nil {
+				return nil, err
+			}
+			p.devEvents = events
+		}
+	}
+	return p, nil
 }

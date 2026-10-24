@@ -41,3 +41,25 @@ Check, and record the answers:
 4. Try `go run ./cmd/glutter-android run -env GLUTTER_RENDERER=gles ./examples/gallery`: does it still draw the same?
 
 Answers: _(not yet recorded)_
+
+## 25.6 Touch, mouse, stylus and keys on Android
+
+**Status:** pending
+
+Run:
+
+```
+go run ./cmd/glutter-android run ./examples/scrolling
+go run ./cmd/glutter-android run ./examples/gallery
+go run ./cmd/glutter-android run ./examples/dev/android-input
+```
+
+Check, and record the answers:
+
+1. In `examples/scrolling`, fling the list with one finger: does it keep moving after you lift the finger and slow down smoothly, and does a touch on the moving list stop it?
+2. In `examples/gallery`, use two fingers on a map or a zoomable widget if the page has one, and drag a slider and a switch: do they follow the finger with no lag?
+3. With a stylus, if you have one: does it draw or scroll like a finger, and is its pressure in the log of `examples/dev/android-input`?
+4. With a mouse or a trackpad, if you have one (USB or Bluetooth): does the pointer hover, do the buttons and the wheel work, and does the cursor change over a text field?
+5. With a Bluetooth keyboard, if you have one: in `examples/dev/android-input`, press K and the arrow keys: does the log say `shortcut ran`? Does Back still leave the app (until step 25.9)?
+
+Answers: _(not yet recorded)_

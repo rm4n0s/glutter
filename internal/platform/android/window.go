@@ -46,8 +46,11 @@ func (w *window) SetState(platform.WindowState) {}
 // SetHidden returns false: an activity cannot hide its window.
 func (w *window) SetHidden(bool) bool { return false }
 
-// SetCursor does nothing until step 25.6.
-func (w *window) SetCursor(platform.MouseCursor) {}
+// SetCursor shows the cursor with the PointerIcon of the system (a mouse or a stylus that hovers),
+// as Flutter's MouseCursorPlugin does.
+//
+// Flutter: shell/platform/android/io/flutter/plugin/mouse/MouseCursorPlugin.java MouseCursorPlugin
+func (w *window) SetCursor(c platform.MouseCursor) { w.p.host.SetCursor(PointerIconType(c)) }
 
 // SetTextInput does nothing until step 25.8.
 func (w *window) SetTextInput(ui.TextInputState) {}

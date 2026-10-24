@@ -45,4 +45,34 @@ final class Native {
 
   /** Whether the activity's window has the focus. */
   static native void focus(boolean focused);
+
+  /**
+   * A motion event copied out: {@code meta} is {actionMasked, actionIndex, source, buttonState,
+   * eventTime, pointerCount, historySize, generic}; {@code ids} has the pointer id and the tool
+   * type of each pointer; {@code vals} has 11 values for each pointer (x, y, pressure, size,
+   * toolMajor, toolMinor, orientation, tilt, distance, hscroll, vscroll), first for the event,
+   * then for each historical sample, oldest first; {@code histTimes} the time of each sample.
+   */
+  static native void motionEvent(
+      long[] meta,
+      int[] ids,
+      float[] vals,
+      long[] histTimes,
+      float pressureMin,
+      float pressureMax,
+      float hScrollFactor,
+      float vScrollFactor);
+
+  /** A key event copied out; {@code id} comes back in {@code GlutterActivity.onKeyHandled}. */
+  static native void keyEvent(
+      int id,
+      int action,
+      int keyCode,
+      int scanCode,
+      int metaState,
+      int repeatCount,
+      long eventTime,
+      int unicodeChar,
+      int source,
+      int deviceId);
 }

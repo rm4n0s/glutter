@@ -9,6 +9,17 @@
 // it attaches the thread to the JavaVM for the call and detaches it again. Returns 0 on success.
 int glutter_main_ended(int code);
 
+// glutter_key_handled tells the activity what the framework made of a key event: an event that it
+// did not handle is dispatched again to the view hierarchy. Returns 0 on success.
+int glutter_key_handled(int id, int handled);
+
+// glutter_set_cursor sets the mouse cursor, a PointerIcon type. Returns 0 on success.
+int glutter_set_cursor(int type);
+
+// glutter_inject asks the activity to inject a synthetic event of the dev events script (kind 1 tap
+// at x1,y1; 2 swipe from x1,y1 to x2,y2 in ms milliseconds; 3 the key of that name).
+int glutter_inject(int kind, float x1, float y1, float x2, float y2, int ms, const char *key);
+
 // glutter_log writes one line to logcat. The priority is an ANDROID_LOG_* value.
 void glutter_log(int priority, const char *tag, const char *line);
 

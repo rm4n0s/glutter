@@ -8,3 +8,5 @@
 //
 // Flutter: shell/platform/android (the embedding of the engine)
 package android
+
+//go:generate go run ../../../cmd/glutter-gen keys -reference ../../../reference/flutter -out "" -android-out keymap_gen.go

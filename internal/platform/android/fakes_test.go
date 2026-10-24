@@ -23,6 +23,10 @@ type fakeHost struct {
 	mu       sync.Mutex
 	vsyncs   int
 	released []uintptr
+	// keyAnswers are the answers to key events, "id:handled"; cursors the cursors set.
+	keyAnswers []string
+	cursors    []int
+	injected   []DevEvent
 }
 
 func newFakeHost() *fakeHost {
@@ -51,6 +55,24 @@ func (f *fakeHost) RequestVsync() {
 	f.mu.Unlock()
 }
 
+func (f *fakeHost) KeyHandled(id int, handled bool) {
+	f.mu.Lock()
+	f.keyAnswers = append(f.keyAnswers, fmt.Sprintf("%d:%v", id, handled))
+	f.mu.Unlock()
+}
+
+func (f *fakeHost) Inject(e DevEvent) {
+	f.mu.Lock()
+	f.injected = append(f.injected, e)
+	f.mu.Unlock()
+}
+
+func (f *fakeHost) SetCursor(t int) {
+	f.mu.Lock()
+	f.cursors = append(f.cursors, t)
+	f.mu.Unlock()
+}
+
 func (f *fakeHost) ReleaseWindow(w uintptr) {
 	f.mu.Lock()
 	f.released = append(f.released, w)
@@ -74,6 +96,8 @@ type recorder struct {
 	platform.NopHandler
 	mu    sync.Mutex
 	calls []string
+	// batches are the changes of the pointer data, one list for each batch.
+	batches [][]string
 	// onFrame, when set, runs inside OnFrame.
 	onFrame func(time.Duration)
 }
@@ -112,6 +136,23 @@ func (r *recorder) OnMetrics(_ ui.ViewID, m platform.ViewMetrics) {
 func (r *recorder) OnLifecycle(s ui.AppLifecycleState) { r.add("lifecycle %v", s) }
 func (r *recorder) OnViewFocus(_ ui.ViewID, f bool)    { r.add("focus %v", f) }
 func (r *recorder) OnDisplaysChanged()                 { r.add("displays") }
+func (r *recorder) OnPointer(data []ui.PointerData) {
+	var changes []string
+	for _, d := range data {
+		changes = append(changes, d.Change.String())
+	}
+	r.mu.Lock()
+	r.batches = append(r.batches, changes)
+	r.mu.Unlock()
+}
+
+// pointerChanges are the changes of each batch of pointer data, by their names.
+func (r *recorder) pointerChanges() [][]string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([][]string(nil), r.batches...)
+}
+
 func (r *recorder) OnSurfaceLost(_ ui.ViewID, h gpu.SurfaceHandle) {
 	r.add("lost %s:%d", h.Kind, h.Window)
 }

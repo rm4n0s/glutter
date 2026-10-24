@@ -3,10 +3,14 @@ package android
 /*
 #cgo LDFLAGS: -landroid -llog
 #include "jni_android.h"
+#include <stdlib.h>
 */
 import "C"
 
-import "time"
+import (
+	"time"
+	"unsafe"
+)
 
 // nativeHost is the host of the UI thread: an ALooper with an eventfd that Wake writes, and an
 // AChoreographer whose frame callbacks the looper delivers (SPEC §24.3). The looper is prepared
@@ -33,6 +37,36 @@ func (nativeHost) Wake() { C.glutter_host_wake() }
 
 // RequestVsync implements host.
 func (nativeHost) RequestVsync() { C.glutter_host_request_vsync() }
+
+// Inject implements host: the Java side builds the events and dispatches them on the main thread.
+func (nativeHost) Inject(e DevEvent) {
+	var kind C.int
+	switch e.Kind {
+	case "tap":
+		kind = 1
+	case "swipe":
+		kind = 2
+	case "key":
+		kind = 3
+	default:
+		return
+	}
+	key := C.CString(e.Key)
+	defer C.free(unsafe.Pointer(key))
+	C.glutter_inject(kind, C.float(e.X1), C.float(e.Y1), C.float(e.X2), C.float(e.Y2), C.int(e.Millis), key)
+}
+
+// KeyHandled implements host.
+func (nativeHost) KeyHandled(id int, handled bool) {
+	h := C.int(0)
+	if handled {
+		h = 1
+	}
+	C.glutter_key_handled(C.int(id), h)
+}
+
+// SetCursor implements host.
+func (nativeHost) SetCursor(pointerIconType int) { C.glutter_set_cursor(C.int(pointerIconType)) }
 
 // ReleaseWindow implements host.
 func (nativeHost) ReleaseWindow(window uintptr) { C.glutter_release_window(C.uintptr_t(window)) }

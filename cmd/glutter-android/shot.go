@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"flag"
+	"image/png"
 	"io"
 	"os"
 	"path/filepath"
@@ -172,11 +174,11 @@ func waitExit(ctx context.Context, adb androidtool.ADB, appID string, timeout ti
 	}
 }
 
-// screenOnceDrawn waits until the app has chosen its renderer (its first frame is drawn), waits
+// screenOnceDrawn waits until the app has presented its first frame, waits
 // the settle time, takes the screen and stops the app.
 func screenOnceDrawn(ctx context.Context, adb androidtool.ADB, appID string, settle, timeout time.Duration) ([]byte, error) {
 	deadline := time.Now().Add(timeout)
-	for !strings.Contains(logOf(ctx, adb, appID), "renderer chosen") {
+	for !strings.Contains(logOf(ctx, adb, appID), "first frame presented") {
 		if time.Now().After(deadline) {
 			return nil, errors.New(tagAndroidUsage, "the app drew no frame in time", "appID", appID, "log", logOf(ctx, adb, appID))
 		}
@@ -188,6 +190,12 @@ func screenOnceDrawn(ctx context.Context, adb androidtool.ADB, appID string, set
 	}
 	time.Sleep(settle)
 	png, err := adb.Screencap(ctx)
+	// The emulator shows a presented frame some time after the app presented it, on Vulkan
+	// sometimes seconds: an all-black screen is taken again for a while.
+	for end := time.Now().Add(blankWait); err == nil && blankScreen(png) && time.Now().Before(end); {
+		time.Sleep(500 * time.Millisecond)
+		png, err = adb.Screencap(ctx)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -195,6 +203,29 @@ func screenOnceDrawn(ctx context.Context, adb androidtool.ADB, appID string, set
 		return nil, err
 	}
 	return png, nil
+}
+
+// blankWait is how long a black screen is taken again.
+const blankWait = 10 * time.Second
+
+// blankScreen reports whether a screenshot is black but for the status bar: fewer than 1% of its
+// pixels are lighter than a dark gray. An image that does not decode is not blank.
+func blankScreen(data []byte) bool {
+	img, err := png.Decode(bytes.NewReader(data))
+	if err != nil {
+		return false
+	}
+	b := img.Bounds()
+	light := 0
+	for y := b.Min.Y; y < b.Max.Y; y += 4 {
+		for x := b.Min.X; x < b.Max.X; x += 4 {
+			r, g, bl, _ := img.At(x, y).RGBA()
+			if (r+g+bl)/3>>8 > 32 {
+				light++
+			}
+		}
+	}
+	return light*16*100 < b.Dx()*b.Dy()
 }
 
 // fullLogTail is the last lines of the whole log of the device, for a failure.

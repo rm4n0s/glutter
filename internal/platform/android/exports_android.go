@@ -5,6 +5,8 @@ package android
 */
 import "C"
 
+import "unsafe"
+
 // The entry points the JNI stubs of jni_android.c call, on a thread of Android (the main
 // thread). Each copies its values out and hands them to the bridge, which queues them for the UI
 // thread (SPEC §24.3).
@@ -22,6 +24,27 @@ func goSurfaceDestroyed() { process.surfaceDestroyed() }
 
 //export goLifecycle
 func goLifecycle(state C.int) { process.lifecycleChanged(lifecycleState(state)) }
+
+//export goMotionEvent
+func goMotionEvent(meta *C.longlong, nmeta C.int, ids *C.int, nids C.int, vals *C.float, nvals C.int, times *C.longlong, ntimes C.int,
+	pressureMin, pressureMax, hScroll, vScroll C.float) {
+	ev, generic, ok := decodeMotion(
+		unsafe.Slice((*int64)(unsafe.Pointer(meta)), int(nmeta)), unsafe.Slice((*int32)(unsafe.Pointer(ids)), int(nids)),
+		unsafe.Slice((*float32)(unsafe.Pointer(vals)), int(nvals)), unsafe.Slice((*int64)(unsafe.Pointer(times)), int(ntimes)),
+		float32(pressureMin), float32(pressureMax))
+	if ok {
+		process.motion(ev, generic, float64(hScroll), float64(vScroll))
+	}
+}
+
+//export goKeyEvent
+func goKeyEvent(id, action, keyCode, scanCode, metaState, repeatCount C.int, eventTime C.longlong, unicodeChar, source, deviceID C.int) {
+	process.key(int(id), keyEvent{
+		Action: int32(action), KeyCode: int32(keyCode), ScanCode: int32(scanCode), MetaState: int32(metaState),
+		RepeatCount: int32(repeatCount), EventTime: int64(eventTime), UnicodeChar: int32(unicodeChar),
+		Source: int32(source), DeviceID: int32(deviceID),
+	})
+}
 
 //export goFocus
 func goFocus(focused C.int) { process.focusChanged(focused != 0) }

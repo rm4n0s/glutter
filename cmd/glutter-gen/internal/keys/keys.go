@@ -26,15 +26,16 @@ const (
 )
 
 // Run executes `glutter-gen keys [-reference dir] [-out file] [-services-out file]
-// [-web-out file]` with the arguments that follow the subcommand name. It reads
+// [-web-out file] [-android-out file]` with the arguments that follow the subcommand name. It reads
 // Flutter's key data (physical_key_data.g.json, logical_key_data.g.json,
 // layout_goals.json, synonyms.json and web_logical_location_mapping.json under
 // dev/tools/gen_keycodes/data of the Flutter checkout in the reference directory)
 // and writes the Go tables of the platform layer to the output file, the key
 // constants of package services to the services file, and the tables of the web
-// platform (the names of KeyboardEvent.code and KeyboardEvent.key) to the web file.
+// platform (the names of KeyboardEvent.code and KeyboardEvent.key) to the web file,
+// and the tables of the Android platform (scan codes and key codes) to the Android file.
 // An empty file name skips that file; the services file is written by default
-// only when the platform file is, and the web file only when it is named.
+// only when the platform file is, and the web and Android files only when they are named.
 //
 // Flutter: dev/tools/gen_keycodes
 func Run(args []string) error {
@@ -44,6 +45,7 @@ func Run(args []string) error {
 	out := flags.String("out", defaultOut, "file to write the platform tables to (empty: none)")
 	svcOut := flags.String("services-out", "", "file to write the key constants of package services to (empty: none, or "+defaultSvcOut+" with the default -out)")
 	webOut := flags.String("web-out", "", "file to write the tables of the web platform to (empty: none)")
+	androidOut := flags.String("android-out", "", "file to write the tables of the Android platform to (empty: none)")
 	if err := flags.Parse(args); err != nil {
 		return errors.NewErr(tagKeysBadFlags, err).SetMetadata("args", args)
 	}
@@ -69,6 +71,15 @@ func Run(args []string) error {
 			return err
 		}
 		if err := writeIfChanged(*webOut, code); err != nil {
+			return err
+		}
+	}
+	if *androidOut != "" {
+		code, err := generateAndroid(src)
+		if err != nil {
+			return err
+		}
+		if err := writeIfChanged(*androidOut, code); err != nil {
 			return err
 		}
 	}

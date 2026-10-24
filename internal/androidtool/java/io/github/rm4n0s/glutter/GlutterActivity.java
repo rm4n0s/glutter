@@ -38,6 +38,9 @@ public class GlutterActivity extends Activity {
 
   private static int exitCode;
 
+  /** The view of the activity that is shown. Only the main thread touches it. */
+  private GlutterView view;
+
   @Override
   protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
@@ -45,13 +48,15 @@ public class GlutterActivity extends Activity {
     if (started) {
       // A new activity in a living process: the program runs already, and the view gets the
       // new surface (SPEC §24.2).
-      setContentView(new GlutterView(this));
+      view = new GlutterView(this);
+      setContentView(view);
       return;
     }
     started = true;
     System.loadLibrary("app");
     setEnvironment();
-    setContentView(new GlutterView(this));
+    view = new GlutterView(this);
+    setContentView(view);
     Native.start(this);
   }
 
@@ -111,6 +116,59 @@ public class GlutterActivity extends Activity {
     if (mainEnded) {
       System.exit(exitCode);
     }
+  }
+
+  /**
+   * Called by Go, from any thread, when the framework has answered a key event: an event that it did
+   * not handle is dispatched again to the rest of the view hierarchy and the system, so that Back,
+   * the volume keys and the soft keyboard's keys still work.
+   */
+  static void onKeyHandled(final int id, final boolean handled) {
+    MAIN.post(
+        new Runnable() {
+          @Override
+          public void run() {
+            if (current != null && current.view != null) {
+              current.view.keyHandled(id, handled);
+            }
+          }
+        });
+  }
+
+  /**
+   * Called by Go, from any thread, for the dev events script of debug builds: a tap (kind 1), a swipe
+   * (2) or a key (3), dispatched to the view as the user's input is.
+   */
+  static void inject(
+      final int kind,
+      final float x1,
+      final float y1,
+      final float x2,
+      final float y2,
+      final int ms,
+      final String key) {
+    MAIN.post(
+        new Runnable() {
+          @Override
+          public void run() {
+            if (current != null && current.view != null) {
+              current.view.inject(kind, x1, y1, x2, y2, ms, key);
+            }
+          }
+        });
+  }
+
+  /** Called by Go, from any thread: the mouse cursor, as a {@code PointerIcon} type. */
+  static void setCursor(final int type) {
+    MAIN.post(
+        new Runnable() {
+          @Override
+          public void run() {
+            if (current != null && current.view != null) {
+              current.view.setCursorType(type);
+            }
+          }
+        });
   }
 
   /**

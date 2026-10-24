@@ -16,6 +16,16 @@ type host interface {
 	// RequestVsync asks for one frame callback. It is called on the UI thread, and not again before
 	// the callback came.
 	RequestVsync()
+	// KeyHandled tells the activity what the framework made of the key event with the id that went
+	// with it: an event that was not handled is dispatched again to the rest of the view hierarchy
+	// and the system (SPEC §24.5). It is called on the UI thread.
+	KeyHandled(id int, handled bool)
+	// SetCursor sets the mouse cursor, as an android.view.PointerIcon type. It is called on the UI
+	// thread.
+	SetCursor(pointerIconType int)
+	// Inject sends a synthetic tap, swipe or key of the dev events script to the view, on the main
+	// thread, through the view's own dispatch. It is safe to call from any goroutine.
+	Inject(e DevEvent)
 	// ReleaseWindow lets go of the native window that the surface held (ANativeWindow_release).
 	ReleaseWindow(window uintptr)
 }

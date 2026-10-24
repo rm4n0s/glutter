@@ -26,6 +26,13 @@ type Platform struct {
 	handler platform.Handler
 	win     *window
 	frames  frameRequests
+	// touch and conv turn motion events into pointer data (motion.go).
+	touch *touchProcessor
+	conv  *pointerConverter
+	keys  *keyboardManager
+	// devEvents is the script of GLUTTER_DEV_EVENTS, in debug builds; devStarted says it was started.
+	devEvents  []DevEvent
+	devStarted bool
 }
 
 var _ platform.Platform = (*Platform)(nil)
@@ -35,7 +42,7 @@ func newPlatform(b *bridge, h host, log *slog.Logger) *Platform {
 	if log == nil {
 		log = slog.Default()
 	}
-	return &Platform{b: b, host: h, log: log}
+	return &Platform{b: b, host: h, log: log, touch: newTouchProcessor(), conv: newPointerConverter(), keys: newKeyboardManager()}
 }
 
 // Run owns the UI thread's loop: it runs the events of the Java side and the functions that Post
@@ -95,6 +102,7 @@ func (p *Platform) onVsync(frameTime time.Duration) {
 		return
 	}
 	p.handler.OnFrame(p.win.id, frameTime)
+	p.startDevEvents()
 }
 
 // surfaceLost tells the handler that the native window is gone and lets go of it. The handler
