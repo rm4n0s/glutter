@@ -342,8 +342,9 @@ func TestProofDarkGalleryUnderTheStatusBar(t *testing.T) {
 	t.Cleanup(func() { _, _ = e.ADB.Output(context.Background(), "shell", "cmd", "uimode", "night", "no") })
 	appID := installApp(ctx, t, e, "./examples/gallery")
 	t.Cleanup(func() { _, _ = e.ADB.Output(context.Background(), "shell", "am", "force-stop", appID) })
-	// The gallery has its own theme mode, light at first: the dev events tap "System" in the mode selector.
-	if err := e.Launch(ctx, appID, map[string]string{"GLUTTER_DEV_EVENTS": "wait:2s;tap:930,1464"}); err != nil {
+	// The gallery has its own theme mode, light at first: the dev events tap the moon in the app bar (the
+	// button that switches to the dark theme, at the right of the app bar of a phone).
+	if err := e.Launch(ctx, appID, map[string]string{"GLUTTER_DEV_EVENTS": "wait:2s;tap:996,200"}); err != nil {
 		t.Fatal(Describe(err))
 	}
 	if _, err := e.WaitLog(ctx, appID, "first frame presented", time.Minute); err != nil {
