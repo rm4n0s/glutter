@@ -117,8 +117,8 @@ func ParseDevEvents(script string) ([]DevEvent, error) {
 				return nil, errors.New(tagAndroidDevEventsInvalid, "action takes enter", "step", step)
 			}
 		case "back":
-			if args != "pop" && args != "gesture" && args != "cancel" {
-				return nil, errors.New(tagAndroidDevEventsInvalid, "back takes pop, gesture or cancel", "step", step)
+			if !slices.Contains([]string{"pop", "gesture", "cancel", "hold", "release"}, args) {
+				return nil, errors.New(tagAndroidDevEventsInvalid, "back takes pop, gesture, cancel, hold or release", "step", step)
 			}
 			ev.Key = args
 		case "a11y":

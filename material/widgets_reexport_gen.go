@@ -4091,6 +4091,13 @@ func MediaQueryDisableAnimationsOf(bc widgets.BuildContext) bool {
 	return widgets.MediaQueryDisableAnimationsOf(bc)
 }
 
+// MediaQueryDisplayCornerRadiiOf is widgets.MediaQueryDisplayCornerRadiiOf.
+//
+// Flutter: widgets.dart MediaQueryDisplayCornerRadiiOf
+func MediaQueryDisplayCornerRadiiOf(bc widgets.BuildContext) foundation.Opt[painting.BorderRadius] {
+	return widgets.MediaQueryDisplayCornerRadiiOf(bc)
+}
+
 // MediaQueryGestureSettingsOf is widgets.MediaQueryGestureSettingsOf.
 //
 // Flutter: widgets.dart MediaQueryGestureSettingsOf
@@ -4159,6 +4166,13 @@ func MediaQueryMaybeDisableAnimationsOf(bc widgets.BuildContext) (bool, bool) {
 // Flutter: widgets.dart MediaQueryMaybeDisableAnimationsValue
 func MediaQueryMaybeDisableAnimationsValue(bc widgets.BuildContext) bool {
 	return widgets.MediaQueryMaybeDisableAnimationsValue(bc)
+}
+
+// MediaQueryMaybeDisplayCornerRadiiOf is widgets.MediaQueryMaybeDisplayCornerRadiiOf.
+//
+// Flutter: widgets.dart MediaQueryMaybeDisplayCornerRadiiOf
+func MediaQueryMaybeDisplayCornerRadiiOf(bc widgets.BuildContext) foundation.Opt[painting.BorderRadius] {
+	return widgets.MediaQueryMaybeDisplayCornerRadiiOf(bc)
 }
 
 // MediaQueryMaybeGestureSettingsOf is widgets.MediaQueryMaybeGestureSettingsOf.

@@ -16,11 +16,16 @@ import (
 )
 
 // These tests are ported from packages/flutter/test/material/page_transitions_theme_test.dart.
-// There are no Cupertino and predictive back builders, no snapshots and no pop
-// gestures of the platforms in Glutter, so the cases about them are not ported;
-// the test of the 800 ms of FadeForwardsPageTransitionsBuilder is not ported
-// either, as the pinned Flutter source has 450 ms (kTransitionMilliseconds) and
-// the test disagrees with it.
+// There are no Cupertino builders and no snapshots in Glutter, so the cases about
+// them are not ported; the tests of the 800 ms of FadeForwardsPageTransitionsBuilder
+// ('default duration is 800ms' and 'Animation duration changes accordingly when
+// page transition builder changes') are not ported either, as the pinned Flutter
+// source has 450 ms (kTransitionMilliseconds) and the tests disagree with it. The
+// predictive back cases ('predictive back is the default on Android', 'predictive
+// back falls back to FadeForwardsPageTransition', 'predictive back gestures pop the
+// route on all platforms...' and the Android default of 'Default PageTransitionsTheme
+// platform') are in TestPageTransitionsThemeAndroid; the ones that Flutter runs for
+// TargetPlatformVariant.all() run on Android and on Linux.
 
 type vsync struct{ s *scheduler.SchedulerBinding }
 
@@ -81,12 +86,15 @@ func hasColor(colors []ui.Color, target ui.Color) bool {
 }
 
 func TestPageTransitionsTheme(t *testing.T) {
-	t.Run("the default theme has the builders of the desktop", func(t *testing.T) {
+	t.Run("the default theme has the builders of the desktop and of Android", func(t *testing.T) {
 		theme := NewPageTransitionsTheme()
 		for _, platform := range []foundation.TargetPlatform{foundation.TargetPlatformLinux, foundation.TargetPlatformWindows} {
 			if _, ok := theme.Builders()[platform].(ZoomPageTransitionsBuilder); !ok {
 				t.Errorf("the builder of %v is %T", platform, theme.Builders()[platform])
 			}
+		}
+		if _, ok := theme.Builders()[foundation.TargetPlatformAndroid].(PredictiveBackPageTransitionsBuilder); !ok {
+			t.Errorf("the builder of android is %T", theme.Builders()[foundation.TargetPlatformAndroid])
 		}
 		if theme.Builders()[foundation.TargetPlatformFuchsia] != nil {
 			t.Error("fuchsia should have no builder")
@@ -433,4 +441,184 @@ func TestIncomingRouteReceivesInputDuringFadeForwardsPop(t *testing.T) {
 		t.Errorf("the page that comes back got %d taps, want 1", taps)
 	}
 	ts.PumpAndSettle()
+}
+
+func TestPageTransitionsThemeAndroid(t *testing.T) {
+	predictive := transitionWidget("predictiveBackSharedElementPageTransition")
+	fadeForwards := transitionWidget("fadeForwardsPageTransition")
+	pushB := func() map[string]widgets.WidgetBuilder { return pushBRoutes() }
+
+	// Default PageTransitionsTheme platform. Deviation: iOS and macOS have no
+	// builder, as there is no Cupertino library.
+	t.Run("Default PageTransitionsTheme platform", func(t *testing.T) {
+		ts := gluttertest.New(t)
+		ts.PumpWidget(NewMaterialApp(MaterialAppOpts{Home: widgets.NewText("home")}))
+		theme := ThemeOf(ts.Element(gluttertest.ByText("home"))).PageTransitionsTheme
+		for p := foundation.TargetPlatformAndroid; p <= foundation.TargetPlatformWindows; p++ {
+			want := p == foundation.TargetPlatformAndroid || p == foundation.TargetPlatformLinux || p == foundation.TargetPlatformWindows
+			if got := theme.Builders()[p] != nil; got != want {
+				t.Errorf("theme builder for %v is set: %v, want %v", p, got, want)
+			}
+		}
+	})
+
+	t.Run("Default PageTransitionsTheme builds a _FadeForwardsPageTransition for android", func(t *testing.T) {
+		withPlatform(t, foundation.TargetPlatformAndroid)
+		ts := gluttertest.New(t)
+		ts.PumpWidget(NewMaterialApp(MaterialAppOpts{Routes: pushB()}))
+		if got := ThemeOf(ts.Element(gluttertest.ByText("push"))).Platform; got != foundation.TargetPlatformAndroid {
+			t.Errorf("the theme platform is %v", got)
+		}
+		if ts.Count(fadeForwards) != 1 {
+			t.Errorf("%d fade forwards transitions at the start, want 1", ts.Count(fadeForwards))
+		}
+		ts.Tap(gluttertest.ByText("push"))
+		ts.PumpAndSettle()
+		if ts.Count(gluttertest.ByText("page b")) != 1 || ts.Count(fadeForwards) != 1 {
+			t.Errorf("page b: %d, fade forwards transitions: %d, want 1 and 1", ts.Count(gluttertest.ByText("page b")), ts.Count(fadeForwards))
+		}
+	})
+
+	t.Run("predictive back gestures pop the route on all platforms regardless of whether their transition handles predictive back", func(t *testing.T) {
+		forAndroidAndLinux(t, func(t *testing.T, platform foundation.TargetPlatform) {
+			ts := gluttertest.New(t)
+			ts.PumpWidget(NewMaterialApp(MaterialAppOpts{Routes: pushB()}))
+			ts.Tap(gluttertest.ByText("push"))
+			ts.PumpAndSettle()
+			if ts.Count(gluttertest.ByText("push")) != 0 || ts.Count(gluttertest.ByText("page b")) != 1 {
+				t.Fatal("page b should be shown alone")
+			}
+
+			// Start a system pop gesture.
+			ts.StartBackGesture(0, backStart)
+			ts.Pump()
+			if ts.Count(gluttertest.ByText("push")) != 0 || ts.Count(gluttertest.ByText("page b")) != 1 {
+				t.Error("the start of the gesture should show page b alone")
+			}
+
+			// Drag the system back gesture far enough to commit.
+			ts.UpdateBackGestureProgress(0.35)
+			ts.PumpAndSettle()
+			wantPush := 0
+			if platform == foundation.TargetPlatformAndroid {
+				// Shows both pages while doing the "peek" predictive back transition.
+				wantPush = 1
+			}
+			if got := ts.Count(gluttertest.ByText("push")); got != wantPush {
+				t.Errorf("%d 'push' texts while dragging, want %d", got, wantPush)
+			}
+			if ts.Count(gluttertest.ByText("page b")) != 1 {
+				t.Error("page b should still be shown")
+			}
+
+			// Commit the system back gesture.
+			ts.CommitBackGesture()
+			ts.PumpAndSettle()
+			if ts.Count(gluttertest.ByText("push")) != 1 || ts.Count(gluttertest.ByText("page b")) != 0 {
+				t.Error("the first page should be back")
+			}
+		})
+	})
+
+	t.Run("predictive back is the default on Android", func(t *testing.T) {
+		forAndroidAndLinux(t, func(t *testing.T, platform foundation.TargetPlatform) {
+			ts := gluttertest.New(t)
+			ts.PumpWidget(NewMaterialApp(MaterialAppOpts{Routes: pushB()}))
+			builder := ThemeOf(ts.Element(gluttertest.ByText("push"))).PageTransitionsTheme.Builders()[platform]
+			_, isPredictive := builder.(PredictiveBackPageTransitionsBuilder)
+			if want := platform == foundation.TargetPlatformAndroid; isPredictive != want {
+				t.Errorf("the builder of %v is %T, predictive back: %v, want %v", platform, builder, isPredictive, want)
+			}
+		})
+	})
+
+	t.Run("predictive back falls back to FadeForwardsPageTransition", func(t *testing.T) {
+		forAndroidAndLinux(t, func(t *testing.T, platform foundation.TargetPlatform) {
+			android := platform == foundation.TargetPlatformAndroid
+			builders := map[foundation.TargetPlatform]widgets.PageTransitionsBuilder{}
+			for p := foundation.TargetPlatformAndroid; p <= foundation.TargetPlatformWindows; p++ {
+				builders[p] = NewPredictiveBackPageTransitionsBuilder()
+			}
+			ts := gluttertest.New(t)
+			ts.PumpWidget(NewMaterialApp(MaterialAppOpts{Routes: pushB(),
+				Theme: NewThemeData(ThemeDataOpts{PageTransitionsTheme: NewPageTransitionsTheme(PageTransitionsThemeOpts{Builders: builders})})}))
+			if _, ok := ThemeOf(ts.Element(gluttertest.ByText("push"))).PageTransitionsTheme.Builders()[platform].(PredictiveBackPageTransitionsBuilder); !ok {
+				t.Fatal("the builder should be PredictiveBackPageTransitionsBuilder")
+			}
+			if ts.Count(gluttertest.ByText("push")) != 1 || ts.Count(gluttertest.ByText("page b")) != 0 {
+				t.Fatal("the first page should be shown")
+			}
+
+			ts.Tap(gluttertest.ByText("push"))
+			ts.PumpAndSettle()
+			if ts.Count(gluttertest.ByText("push")) != 0 || ts.Count(gluttertest.ByText("page b")) != 1 {
+				t.Fatal("page b should be shown alone")
+			}
+
+			// Only Android sends system back gestures.
+			if android {
+				ts.StartBackGesture(0, backStart)
+				ts.Pump()
+			}
+			wantPredictive, wantFallback := 0, 1
+			if android {
+				wantPredictive, wantFallback = 1, 0
+			}
+			expect := func(step string, predictiveN, fallbackN int) {
+				t.Helper()
+				if got := ts.Count(predictive); got != predictiveN {
+					t.Errorf("%s: %d predictive back transitions, want %d", step, got, predictiveN)
+				}
+				if got := ts.Count(fadeForwards); got != fallbackN {
+					t.Errorf("%s: %d fade forwards transitions, want %d", step, got, fallbackN)
+				}
+			}
+			expect("start", wantPredictive, wantFallback)
+			if ts.Count(gluttertest.ByText("push")) != 0 || ts.Count(gluttertest.ByText("page b")) != 1 {
+				t.Error("page b should be shown alone")
+			}
+
+			// Drag the system back gesture far enough to commit.
+			if android {
+				ts.UpdateBackGestureProgress(0.35)
+				ts.PumpAndSettle()
+				if ts.Count(gluttertest.ByText("push")) != 1 {
+					t.Error("the first page should show below page b")
+				}
+			} else if ts.Count(gluttertest.ByText("push")) != 0 {
+				t.Error("the first page should not show")
+			}
+			if ts.Count(gluttertest.ByText("page b")) != 1 {
+				t.Error("page b should be shown")
+			}
+			if android {
+				expect("update", 2, 0)
+			} else {
+				expect("update", 0, 1)
+			}
+
+			if android {
+				// Commit the system back gesture on Android.
+				ts.CommitBackGesture()
+			} else {
+				// On other platforms, send a one-off system pop.
+				ts.PopRoute()
+			}
+			ts.Pump()
+			if ts.Count(gluttertest.ByText("push")) != 1 || ts.Count(gluttertest.ByText("page b")) != 1 {
+				t.Error("both pages should be shown while the route goes away")
+			}
+			if android {
+				expect("commit", 2, 0)
+			} else {
+				expect("commit", 0, 2)
+			}
+
+			ts.PumpAndSettle()
+			if ts.Count(gluttertest.ByText("push")) != 1 || ts.Count(gluttertest.ByText("page b")) != 0 {
+				t.Error("the first page should be back")
+			}
+			expect("settled", 0, 1)
+		})
+	})
 }

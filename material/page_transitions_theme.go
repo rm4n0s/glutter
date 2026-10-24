@@ -315,7 +315,8 @@ func (b FadeForwardsPageTransitionsBuilder) BuildTransitions(_ widgets.PageRoute
 // Flutter: material/page_transitions_theme.dart PageTransitionsTheme.new
 type PageTransitionsThemeOpts struct {
 	// Builders are the builders of the transitions of each platform; the default
-	// is a ZoomPageTransitionsBuilder for Linux and Windows. A platform without a
+	// is a PredictiveBackPageTransitionsBuilder for Android and a
+	// ZoomPageTransitionsBuilder for Linux and Windows. A platform without a
 	// builder uses ZoomPageTransitionsBuilder.
 	Builders map[foundation.TargetPlatform]widgets.PageTransitionsBuilder
 }
@@ -323,10 +324,9 @@ type PageTransitionsThemeOpts struct {
 // PageTransitionsTheme defines the page transitions of each platform used by a
 // PageRoute that Material makes.
 //
-// Deviation: Flutter's defaults are PredictiveBackPageTransitionsBuilder for
-// Android and CupertinoPageTransitionsBuilder for iOS and macOS; Glutter has
-// neither, so only Linux and Windows have a default and every other platform
-// uses the zoom transition.
+// Deviation: Flutter's defaults include CupertinoPageTransitionsBuilder for iOS
+// and macOS; Glutter has no Cupertino library, so those two platforms have no
+// default builder and use the zoom transition.
 //
 // Flutter: material/page_transitions_theme.dart PageTransitionsTheme
 type PageTransitionsTheme struct {
@@ -335,6 +335,7 @@ type PageTransitionsTheme struct {
 
 func defaultPageTransitionBuilders() map[foundation.TargetPlatform]widgets.PageTransitionsBuilder {
 	return map[foundation.TargetPlatform]widgets.PageTransitionsBuilder{
+		foundation.TargetPlatformAndroid: NewPredictiveBackPageTransitionsBuilder(),
 		foundation.TargetPlatformWindows: NewZoomPageTransitionsBuilder(),
 		foundation.TargetPlatformLinux:   NewZoomPageTransitionsBuilder(),
 	}

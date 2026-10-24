@@ -155,8 +155,15 @@ func page(bc m.BuildContext, title, next, label string) m.Widget {
 			m.NavigatorPush(bc, route(next))
 		}, m.NewText(label)))
 	}
+	// A page that is pushed has its own color, so that the page under it shows when the back gesture
+	// shrinks it.
+	var background m.Opt[m.Color]
+	if title != "Home" {
+		background = m.Some(m.Colors.Teal.Shade100())
+	}
 	return m.NewScaffold(m.ScaffoldOpts{
-		AppBar: m.NewAppBar(m.AppBarOpts{Title: m.NewText(title)}),
-		Body:   body,
+		AppBar:          m.NewAppBar(m.AppBarOpts{Title: m.NewText(title)}),
+		Body:            body,
+		BackgroundColor: background,
 	})
 }

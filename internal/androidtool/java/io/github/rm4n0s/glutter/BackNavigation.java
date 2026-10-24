@@ -130,13 +130,17 @@ final class BackNavigation {
 
   /**
    * The dev events script (main thread): a back through the registered callback, so that it takes
-   * the path of the system's. {@code what} is {@code pop}, {@code gesture} or {@code cancel}.
+   * the path of the system's. {@code what} is {@code pop}, {@code gesture} (start, progress and
+   * commit), {@code cancel} (start, progress and cancel), {@code hold} (start and progress to one
+   * half, the finger stays down) or {@code release} (cancels a held gesture).
    */
   void inject(String what) {
     boolean pop = what.equals("pop");
     boolean gesture = what.equals("gesture");
     boolean cancel = what.equals("cancel");
-    if (!pop && !gesture && !cancel) {
+    boolean hold = what.equals("hold");
+    boolean release = what.equals("release");
+    if (!pop && !gesture && !cancel && !hold && !release) {
       Log.w(TAG, "unknown back event: " + what);
       return;
     }
@@ -152,15 +156,19 @@ final class BackNavigation {
       if (!pop) {
         Log.w(TAG, "back gesture injected below API 34");
       }
-      if (!cancel) {
+      if (gesture || pop) {
         registered.onBackInvoked();
       }
       return;
     }
     final GestureCallback callback = (GestureCallback) registered;
+    if (release) {
+      callback.onBackCancelled();
+      return;
+    }
     final boolean commit = what.equals("gesture");
     callback.onBackStarted(new BackEvent(20f, 1200f, 0f, BackEvent.EDGE_LEFT));
-    float[] steps = commit ? new float[] {0.3f, 0.6f} : new float[] {0.4f};
+    float[] steps = commit ? new float[] {0.3f, 0.6f} : hold ? new float[] {0.25f, 0.5f} : new float[] {0.4f};
     long delay = 0;
     for (final float progress : steps) {
       delay += GESTURE_STEP_MS;
@@ -172,6 +180,9 @@ final class BackNavigation {
             }
           },
           delay);
+    }
+    if (hold) {
+      return;
     }
     handler.postDelayed(
         new Runnable() {

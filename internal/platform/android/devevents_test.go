@@ -26,6 +26,7 @@ func TestParseDevEvents(t *testing.T) {
 		{"a11y label with commas and spaces", "a11y:scrollforward,Item 1, of many", []DevEvent{{Kind: "a11y", Key: "scrollforward", Label: "Item 1, of many"}}},
 		{"back pop", "back:pop", []DevEvent{{Kind: "back", Key: "pop"}}},
 		{"back gesture and cancel", "back:gesture;back:cancel", []DevEvent{{Kind: "back", Key: "gesture"}, {Kind: "back", Key: "cancel"}}},
+		{"back hold and release", "back:hold;back:release", []DevEvent{{Kind: "back", Key: "hold"}, {Kind: "back", Key: "release"}}},
 		{"several, with spaces and a trailing semicolon", " wait:1s ; tap:1.5,2 ;key:KEYCODE_VOLUME_UP;", []DevEvent{
 			{Kind: "wait", Wait: time.Second}, {Kind: "tap", X1: 1.5, Y1: 2}, {Kind: "key", Key: "KEYCODE_VOLUME_UP"}}},
 	}

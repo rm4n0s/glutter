@@ -447,6 +447,7 @@ var aspectCases = []aspectCase{
 	{"navigationMode", func(bc BuildContext) { MediaQueryNavigationModeOf(bc) }, MediaQueryDataCopyOpts{NavigationMode: foundation.Some(NavigationModeDirectional)}, nil},
 	{"gestureSettings", func(bc BuildContext) { MediaQueryGestureSettingsOf(bc) }, MediaQueryDataCopyOpts{GestureSettings: foundation.Some(gestures.NewDeviceGestureSettings(foundation.Some(1.0)))}, nil},
 	{"systemContextMenu", func(bc BuildContext) { MediaQuerySupportsShowingSystemContextMenu(bc) }, MediaQueryDataCopyOpts{SupportsShowingSystemContextMenu: foundation.Some(true)}, nil},
+	{"displayCornerRadii", func(bc BuildContext) { MediaQueryDisplayCornerRadiiOf(bc) }, MediaQueryDataCopyOpts{DisplayCornerRadii: foundation.Some(painting.NewBorderRadiusCircular(8))}, nil},
 	{"orientation", func(bc BuildContext) { MediaQueryOrientationOf(bc) }, MediaQueryDataCopyOpts{Size: foundation.Some(ui.Size{Width: 100, Height: 200})}, []string{"size", "width", "height"}},
 }
 
@@ -737,5 +738,35 @@ func TestMediaQueryDataFromViewFollowsTheSystemTextScale(t *testing.T) {
 	platform := NewMediaQueryData(MediaQueryDataOpts{AlwaysUse24HourFormat: false})
 	if NewMediaQueryDataFromView(ts.View, &platform).AlwaysUse24HourFormat {
 		t.Error("the platform data does not override AlwaysUse24HourFormat")
+	}
+}
+
+// TestMediaQueryDisplayCornerRadii covers MediaQueryData.displayCornerRadii:
+// it is unknown by default, CopyWith sets it and keeps it, ApplyDisplayCornerRadii
+// replaces it (None makes it unknown again), and the data compare by it.
+func TestMediaQueryDisplayCornerRadii(t *testing.T) {
+	radii := painting.NewBorderRadiusCircular(33.3)
+	base := NewMediaQueryData(MediaQueryDataOpts{Size: ui.Size{Width: 800, Height: 600}})
+	tests := []struct {
+		name string
+		data MediaQueryData
+		want foundation.Opt[painting.BorderRadius]
+	}{
+		{"unknown by default", base, foundation.None[painting.BorderRadius]()},
+		{"the option sets it", NewMediaQueryData(MediaQueryDataOpts{DisplayCornerRadii: foundation.Some(radii)}), foundation.Some(radii)},
+		{"CopyWith sets it", base.CopyWith(MediaQueryDataCopyOpts{DisplayCornerRadii: foundation.Some(radii)}), foundation.Some(radii)},
+		{"CopyWith keeps it", base.ApplyDisplayCornerRadii(foundation.Some(radii)).CopyWith(MediaQueryDataCopyOpts{DevicePixelRatio: foundation.Some(2.0)}), foundation.Some(radii)},
+		{"apply replaces it", base.ApplyDisplayCornerRadii(foundation.Some(radii)), foundation.Some(radii)},
+		{"apply None clears it", base.ApplyDisplayCornerRadii(foundation.Some(radii)).ApplyDisplayCornerRadii(foundation.None[painting.BorderRadius]()), foundation.None[painting.BorderRadius]()},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.data.DisplayCornerRadii != tt.want {
+				t.Errorf("DisplayCornerRadii = %v, want %v", tt.data.DisplayCornerRadii, tt.want)
+			}
+		})
+	}
+	if base.Equal(base.ApplyDisplayCornerRadii(foundation.Some(radii))) {
+		t.Error("data with other corner radii should not be equal")
 	}
 }

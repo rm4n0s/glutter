@@ -110,6 +110,7 @@ const (
 	aspectNavigationMode
 	aspectGestureSettings
 	aspectSupportsShowingSystemContextMenu
+	aspectDisplayCornerRadii
 )
 
 // MediaQueryData holds the information about a piece of media, such as a
@@ -119,8 +120,10 @@ const (
 // NewMediaQueryDataFromView; it is a value, copy it with CopyWith.
 //
 // Deviation: the fields Glutter has no source for are left out: display
-// features and corner radii, supportsAnnounce, and the text style overrides
-// (SPEC §12.10).
+// features, supportsAnnounce, and the text style overrides (SPEC §12.10).
+// DisplayCornerRadii is there, but no view reports the corners of the display,
+// so NewMediaQueryDataFromView leaves it None; it is set with
+// ApplyDisplayCornerRadii.
 //
 // Flutter: widgets/media_query.dart MediaQueryData
 type MediaQueryData struct {
@@ -205,6 +208,11 @@ type MediaQueryData struct {
 	//
 	// Flutter: widgets/media_query.dart MediaQueryData.supportsShowingSystemContextMenu
 	SupportsShowingSystemContextMenu bool
+	// DisplayCornerRadii are the radii of the corners of the display in logical
+	// pixels; None when the corners are not known.
+	//
+	// Flutter: widgets/media_query.dart MediaQueryData.displayCornerRadii
+	DisplayCornerRadii foundation.Opt[painting.BorderRadius]
 }
 
 // MediaQueryDataOpts are the optional parameters of NewMediaQueryData. The zero
@@ -251,6 +259,9 @@ type MediaQueryDataOpts struct {
 	// SupportsShowingSystemContextMenu says that the platform can show the
 	// system context menu.
 	SupportsShowingSystemContextMenu bool
+	// DisplayCornerRadii are the radii of the corners of the display; the default is
+	// None, unknown.
+	DisplayCornerRadii foundation.Opt[painting.BorderRadius]
 }
 
 // NewMediaQueryData creates the data from the options.
@@ -264,6 +275,7 @@ func NewMediaQueryData(opts ...MediaQueryDataOpts) MediaQueryData {
 		AlwaysUse24HourFormat: o.AlwaysUse24HourFormat, AccessibleNavigation: o.AccessibleNavigation, InvertColors: o.InvertColors,
 		HighContrast: o.HighContrast, OnOffSwitchLabels: o.OnOffSwitchLabels, DisableAnimations: o.DisableAnimations,
 		BoldText: o.BoldText, NavigationMode: o.NavigationMode, SupportsShowingSystemContextMenu: o.SupportsShowingSystemContextMenu,
+		DisplayCornerRadii: o.DisplayCornerRadii,
 	}
 	if d.DevicePixelRatio == 0 {
 		d.DevicePixelRatio = 1
@@ -359,6 +371,7 @@ type MediaQueryDataCopyOpts struct {
 	NavigationMode                   foundation.Opt[NavigationMode]
 	GestureSettings                  foundation.Opt[gestures.DeviceGestureSettings]
 	SupportsShowingSystemContextMenu foundation.Opt[bool]
+	DisplayCornerRadii               foundation.Opt[painting.BorderRadius]
 }
 
 // CopyWith returns a copy with the fields in the options replaced.
@@ -419,6 +432,18 @@ func (d MediaQueryData) CopyWith(o MediaQueryDataCopyOpts) MediaQueryData {
 	if v, ok := o.SupportsShowingSystemContextMenu.Get(); ok {
 		d.SupportsShowingSystemContextMenu = v
 	}
+	if v, ok := o.DisplayCornerRadii.Get(); ok {
+		d.DisplayCornerRadii = foundation.Some(v)
+	}
+	return d
+}
+
+// ApplyDisplayCornerRadii returns a copy with the display corner radii
+// replaced; None makes them unknown (CopyWith cannot do that).
+//
+// Flutter: widgets/media_query.dart MediaQueryData.applyDisplayCornerRadii
+func (d MediaQueryData) ApplyDisplayCornerRadii(displayCornerRadii foundation.Opt[painting.BorderRadius]) MediaQueryData {
+	d.DisplayCornerRadii = displayCornerRadii
 	return d
 }
 
@@ -527,7 +552,7 @@ func (d MediaQueryData) Equal(o MediaQueryData) bool {
 		d.DisableAnimations == o.DisableAnimations && d.InvertColors == o.InvertColors &&
 		d.AccessibleNavigation == o.AccessibleNavigation && d.BoldText == o.BoldText &&
 		d.NavigationMode == o.NavigationMode && d.GestureSettings == o.GestureSettings &&
-		d.SupportsShowingSystemContextMenu == o.SupportsShowingSystemContextMenu
+		d.SupportsShowingSystemContextMenu == o.SupportsShowingSystemContextMenu && d.DisplayCornerRadii == o.DisplayCornerRadii
 }
 
 // String describes the data, such as
@@ -556,6 +581,7 @@ func (d MediaQueryData) String() string {
 		"navigationMode: " + d.NavigationMode.String(),
 		"gestureSettings: " + d.GestureSettings.String(),
 		"supportsShowingSystemContextMenu: " + fmt.Sprint(d.SupportsShowingSystemContextMenu),
+		"displayCornerRadii: " + fmt.Sprint(d.DisplayCornerRadii),
 	}
 	return "MediaQueryData(" + strings.Join(props, ", ") + ")"
 }
@@ -679,6 +705,8 @@ func (w *MediaQuery) UpdateShouldNotifyDependent(old Widget, dependencies *Aspec
 			return n.AlwaysUse24HourFormat != o.AlwaysUse24HourFormat
 		case aspectSupportsShowingSystemContextMenu:
 			return n.SupportsShowingSystemContextMenu != o.SupportsShowingSystemContextMenu
+		case aspectDisplayCornerRadii:
+			return n.DisplayCornerRadii != o.DisplayCornerRadii
 		}
 		return false
 	})
@@ -1083,6 +1111,23 @@ func MediaQuerySupportsShowingSystemContextMenu(bc BuildContext) bool {
 func MediaQueryMaybeSupportsShowingSystemContextMenu(bc BuildContext) (value, ok bool) {
 	d, ok := mediaQueryMaybeOf(bc, aspectSupportsShowingSystemContextMenu)
 	return d.SupportsShowingSystemContextMenu, ok
+}
+
+// MediaQueryDisplayCornerRadiiOf is the radii of the corners of the display,
+// None when they are not known; the context depends on them only.
+//
+// Flutter: widgets/media_query.dart MediaQuery.displayCornerRadiiOf
+func MediaQueryDisplayCornerRadiiOf(bc BuildContext) foundation.Opt[painting.BorderRadius] {
+	return mediaQueryOf(bc, aspectDisplayCornerRadii).DisplayCornerRadii
+}
+
+// MediaQueryMaybeDisplayCornerRadiiOf is MediaQueryDisplayCornerRadiiOf that
+// returns None when there is no MediaQuery.
+//
+// Flutter: widgets/media_query.dart MediaQuery.maybeDisplayCornerRadiiOf
+func MediaQueryMaybeDisplayCornerRadiiOf(bc BuildContext) foundation.Opt[painting.BorderRadius] {
+	d, _ := mediaQueryMaybeOf(bc, aspectDisplayCornerRadii)
+	return d.DisplayCornerRadii
 }
 
 // buildFunc is a stateless widget made from a function, used where Flutter uses

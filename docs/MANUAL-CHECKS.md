@@ -220,3 +220,20 @@ Check, and record the answers:
 
 Answers: _(not yet recorded)_
 
+## 26.3 Predictive back transitions
+
+Run on the phone (Android 14 or later, with "Predictive back animations" on in the developer options for the system's own animation; the app's transition does not need it):
+
+```
+go run ./cmd/glutter-android run ./examples/dev/android-back
+```
+
+Check, and record the answers:
+
+1. Tap "Push the second page", then swipe in from the left edge slowly and hold halfway: does the second page shrink, get rounded corners and follow your finger, with the home page showing around it?
+2. Let go before the middle of the screen: does the page go back to full size (cancel)? Swipe again and let go past the middle: does the page leave and the home page stay?
+3. Press the back button (or the three-button navigation's back) instead of the gesture: does the page leave with a fade and a small slide, not the shrinking?
+4. Compare with a system app or a Flutter app on the same phone: is the motion of the same kind?
+
+Answers: _(not yet recorded)_
+
