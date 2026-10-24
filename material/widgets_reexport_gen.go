@@ -175,6 +175,26 @@ type AlignTransitionOpts = widgets.AlignTransitionOpts
 // Flutter: widgets.dart AlwaysScrollableScrollPhysics
 type AlwaysScrollableScrollPhysics = widgets.AlwaysScrollableScrollPhysics
 
+// AndroidOverscrollIndicator is widgets.AndroidOverscrollIndicator.
+//
+// Flutter: widgets.dart AndroidOverscrollIndicator
+type AndroidOverscrollIndicator = widgets.AndroidOverscrollIndicator
+
+// AndroidOverscrollIndicatorGlow is widgets.AndroidOverscrollIndicatorGlow.
+//
+// Flutter: widgets.dart AndroidOverscrollIndicatorGlow
+const AndroidOverscrollIndicatorGlow = widgets.AndroidOverscrollIndicatorGlow
+
+// AndroidOverscrollIndicatorStretch is widgets.AndroidOverscrollIndicatorStretch.
+//
+// Flutter: widgets.dart AndroidOverscrollIndicatorStretch
+const AndroidOverscrollIndicatorStretch = widgets.AndroidOverscrollIndicatorStretch
+
+// AndroidOverscrollIndicatorUnspecified is widgets.AndroidOverscrollIndicatorUnspecified.
+//
+// Flutter: widgets.dart AndroidOverscrollIndicatorUnspecified
+const AndroidOverscrollIndicatorUnspecified = widgets.AndroidOverscrollIndicatorUnspecified
+
 // AnimatedAlign is widgets.AnimatedAlign.
 //
 // Flutter: widgets.dart AnimatedAlign
@@ -2853,6 +2873,16 @@ type GlobalKeyOpts = widgets.GlobalKeyOpts
 //
 // Flutter: widgets.dart GlobalObjectKey
 type GlobalObjectKey[S widgets.State] = widgets.GlobalObjectKey[S]
+
+// GlowingOverscrollIndicator is widgets.GlowingOverscrollIndicator.
+//
+// Flutter: widgets.dart GlowingOverscrollIndicator
+type GlowingOverscrollIndicator = widgets.GlowingOverscrollIndicator
+
+// GlowingOverscrollIndicatorOpts is widgets.GlowingOverscrollIndicatorOpts.
+//
+// Flutter: widgets.dart GlowingOverscrollIndicatorOpts
+type GlowingOverscrollIndicatorOpts = widgets.GlowingOverscrollIndicatorOpts
 
 // GridView is widgets.GridView.
 //
@@ -5894,6 +5924,13 @@ func NewGlobalObjectKey[S widgets.State](value any) widgets.GlobalObjectKey[S] {
 	return widgets.NewGlobalObjectKey[S](value)
 }
 
+// NewGlowingOverscrollIndicator is widgets.NewGlowingOverscrollIndicator.
+//
+// Flutter: widgets.dart NewGlowingOverscrollIndicator
+func NewGlowingOverscrollIndicator(axisDirection painting.AxisDirection, color ui.Color, child widgets.Widget, opts ...widgets.GlowingOverscrollIndicatorOpts) *widgets.GlowingOverscrollIndicator {
+	return widgets.NewGlowingOverscrollIndicator(axisDirection, color, child, opts...)
+}
+
 // NewGridView is widgets.NewGridView.
 //
 // Flutter: widgets.dart NewGridView
@@ -6655,6 +6692,13 @@ func NewOverlayWrap(child widgets.Widget, opts ...widgets.OverlayWrapOpts) widge
 // Flutter: widgets.dart NewOverridableAction
 func NewOverridableAction(defaultAction widgets.Action, bc widgets.BuildContext) widgets.Action {
 	return widgets.NewOverridableAction(defaultAction, bc)
+}
+
+// NewOverscrollIndicatorNotification is widgets.NewOverscrollIndicatorNotification.
+//
+// Flutter: widgets.dart NewOverscrollIndicatorNotification
+func NewOverscrollIndicatorNotification(leading bool) *widgets.OverscrollIndicatorNotification {
+	return widgets.NewOverscrollIndicatorNotification(leading)
 }
 
 // NewOverscrollNotification is widgets.NewOverscrollNotification.
@@ -7864,6 +7908,20 @@ func NewStreamBuilderBase[T any, S any](stream <-chan T, initial func() S, after
 	return widgets.NewStreamBuilderBase[T, S](stream, initial, afterData, build, opts...)
 }
 
+// NewStretchEffect is widgets.NewStretchEffect.
+//
+// Flutter: widgets.dart NewStretchEffect
+func NewStretchEffect(axis painting.Axis, child widgets.Widget, opts ...widgets.StretchEffectOpts) *widgets.StretchEffect {
+	return widgets.NewStretchEffect(axis, child, opts...)
+}
+
+// NewStretchingOverscrollIndicator is widgets.NewStretchingOverscrollIndicator.
+//
+// Flutter: widgets.dart NewStretchingOverscrollIndicator
+func NewStretchingOverscrollIndicator(axisDirection painting.AxisDirection, child widgets.Widget, opts ...widgets.StretchingOverscrollIndicatorOpts) *widgets.StretchingOverscrollIndicator {
+	return widgets.NewStretchingOverscrollIndicator(axisDirection, child, opts...)
+}
+
 // NewSynchronousFuture is widgets.NewSynchronousFuture.
 //
 // Flutter: widgets.dart NewSynchronousFuture
@@ -8587,6 +8645,11 @@ type OverlayState = widgets.OverlayState
 //
 // Flutter: widgets.dart OverlayWrapOpts
 type OverlayWrapOpts = widgets.OverlayWrapOpts
+
+// OverscrollIndicatorNotification is widgets.OverscrollIndicatorNotification.
+//
+// Flutter: widgets.dart OverscrollIndicatorNotification
+type OverscrollIndicatorNotification = widgets.OverscrollIndicatorNotification
 
 // OverscrollNotification is widgets.OverscrollNotification.
 //
@@ -10987,6 +11050,31 @@ type StreamBuilderBaseOpts[T any, S any] = widgets.StreamBuilderBaseOpts[T, S]
 //
 // Flutter: widgets.dart StreamBuilderOpts
 type StreamBuilderOpts[T any] = widgets.StreamBuilderOpts[T]
+
+// StretchEffect is widgets.StretchEffect.
+//
+// Flutter: widgets.dart StretchEffect
+type StretchEffect = widgets.StretchEffect
+
+// StretchEffectOpts is widgets.StretchEffectOpts.
+//
+// Flutter: widgets.dart StretchEffectOpts
+type StretchEffectOpts = widgets.StretchEffectOpts
+
+// StretchingOverscrollIndicator is widgets.StretchingOverscrollIndicator.
+//
+// Flutter: widgets.dart StretchingOverscrollIndicator
+type StretchingOverscrollIndicator = widgets.StretchingOverscrollIndicator
+
+// StretchingOverscrollIndicatorOpts is widgets.StretchingOverscrollIndicatorOpts.
+//
+// Flutter: widgets.dart StretchingOverscrollIndicatorOpts
+type StretchingOverscrollIndicatorOpts = widgets.StretchingOverscrollIndicatorOpts
+
+// SystemTextScaler is widgets.SystemTextScaler.
+//
+// Flutter: widgets.dart SystemTextScaler
+type SystemTextScaler = widgets.SystemTextScaler
 
 // Table is widgets.Table.
 //

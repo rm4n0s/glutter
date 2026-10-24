@@ -239,9 +239,11 @@ type quirkyPosition struct {
 func newQuirkyPosition(ts *gluttertest.Tester) *quirkyPosition {
 	state := scrollableOf(ts)
 	q := &quirkyPosition{}
-	InitScrollPositionBase(&q.ScrollPositionBase, q, NewClampingScrollPhysics(nil), state, ScrollPositionOpts{KeepScrollOffset: foundation.Some(false)})
-	q.CorrectPixels(0)
-	q.GoIdle()
+	// The position is set up as a constructor does, so that its user scroll direction
+	// starts idle: a GlowingOverscrollIndicator above the state (step 26.1) gets the
+	// notification of a change of the direction, which has no scroll metrics here.
+	InitScrollPositionWithSingleContext(&q.ScrollPositionWithSingleContext, q, NewClampingScrollPhysics(nil), state,
+		ScrollPositionWithSingleContextOpts{KeepScrollOffset: foundation.Some(false)})
 	return q
 }
 

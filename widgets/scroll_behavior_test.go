@@ -15,9 +15,9 @@ import (
 )
 
 // Ported from packages/flutter/test/widgets/scroll_behavior_test.dart. The
-// overscroll indicator case needs GlowingOverscrollIndicator, which is not ported
-// (SPEC §12.10); the scrolling cases scroll a Scrollable of one sliver instead of
-// a ListView or SingleChildScrollView (step 9.3).
+// scrolling cases scroll a Scrollable of one sliver instead of a ListView or
+// SingleChildScrollView (step 9.3); the overscroll indicator cases (step 26.1) use
+// a ListView and a SingleChildScrollView, as the Dart test does.
 
 var desktopAndMobile = []foundation.TargetPlatform{
 	foundation.TargetPlatformAndroid, foundation.TargetPlatformFuchsia, foundation.TargetPlatformIOS,
@@ -349,6 +349,68 @@ func TestScrollBehaviorConfigurationIsMaintainedOverMultipleCopies(t *testing.T)
 			}
 		}
 	})
+}
+
+func TestScrollBehaviorDefaultAndroidOverscrollIndicator(t *testing.T) {
+	useAndroid(t)
+	ts := gluttertest.New(t)
+	ts.PumpWidget(ltr(NewScrollConfiguration(NewScrollBehavior(),
+		NewListView([]Widget{NewSizedBox(NewText("Test"), SizedBoxOpts{Height: foundation.Some(1000.0), Width: foundation.Some(1000.0)})}))))
+
+	if ts.Exists(gluttertest.ByType[*StretchingOverscrollIndicator]()) {
+		t.Error("the default behavior built a StretchingOverscrollIndicator")
+	}
+	if got := ts.Count(gluttertest.ByType[*GlowingOverscrollIndicator]()); got != 1 {
+		t.Errorf("the default behavior built %d GlowingOverscrollIndicators, want 1", got)
+	}
+}
+
+func TestScrollBehaviorOverscrollIndicatorPerPlatform(t *testing.T) {
+	for _, platform := range desktopAndMobile {
+		t.Run(platform.String(), func(t *testing.T) {
+			usePlatform(t, platform)
+			ts := gluttertest.New(t)
+			ts.PumpWidget(ltr(NewScrollConfiguration(NewScrollBehavior(),
+				NewListView([]Widget{NewSizedBox(NewText("Test"), SizedBoxOpts{Height: foundation.Some(1000.0), Width: foundation.Some(1000.0)})}))))
+			want := platform == foundation.TargetPlatformAndroid || platform == foundation.TargetPlatformFuchsia
+			if got := ts.Exists(gluttertest.ByType[*GlowingOverscrollIndicator]()); got != want {
+				t.Errorf("glowing indicator is %v, want %v", got, want)
+			}
+			if ts.Exists(gluttertest.ByType[*StretchingOverscrollIndicator]()) {
+				t.Error("the default behavior built a StretchingOverscrollIndicator")
+			}
+		})
+	}
+}
+
+func TestScrollBehaviorOverscrollConfigurationIsMaintainedOverMultipleCopies(t *testing.T) {
+	// Regression test for https://github.com/flutter/flutter/issues/91673
+	useAndroid(t)
+	ts := gluttertest.New(t)
+	wrap := func(b ScrollBehavior) Widget {
+		return ltr(NewMediaQuery(NewMediaQueryData(MediaQueryDataOpts{Size: ui.Size{Width: 500, Height: 500}}),
+			NewScrollConfiguration(b, NewBuilder(func(BuildContext) Widget {
+				return NewSingleChildScrollView(NewContainer(nil, ContainerOpts{Height: foundation.Some(1000.0)}))
+			}))))
+	}
+	def := NewScrollBehavior()
+	ts.PumpWidget(wrap(def))
+	// Default adds a glowing overscroll indicator
+	if got := ts.Count(gluttertest.ByType[*GlowingOverscrollIndicator]()); got != 1 {
+		t.Fatalf("the default has %d glowing indicators, want 1", got)
+	}
+	once := def.CopyWith(ScrollBehaviorCopy{Overscroll: foundation.Some(false)})
+	ts.PumpWidget(wrap(once))
+	// Copy does not add indicator
+	if ts.Exists(gluttertest.ByType[*GlowingOverscrollIndicator]()) {
+		t.Fatal("the copy has a glowing indicator")
+	}
+	twice := once.CopyWith()
+	ts.PumpWidget(wrap(twice))
+	// Second copy maintains overscroll setting
+	if ts.Exists(gluttertest.ByType[*GlowingOverscrollIndicator]()) {
+		t.Error("the second copy has a glowing indicator")
+	}
 }
 
 func sameSet(a, b []ui.PointerDeviceKind) bool {

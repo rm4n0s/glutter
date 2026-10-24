@@ -85,7 +85,8 @@ func tileColor(n int) ui.Color {
 }
 
 // visibleScrollbars is the default ScrollBehavior with scrollbars whose thumb is
-// always visible, so that the scrollbars show without scrolling.
+// always visible, so that the scrollbars show without scrolling. Its overscroll indicator is Material's:
+// the stretch on Android, as the behavior of an app that extends MaterialScrollBehavior has it.
 type visibleScrollbars struct {
 	widgets.ScrollBehaviorBase
 }
@@ -94,6 +95,10 @@ func newVisibleScrollbars() *visibleScrollbars {
 	b := &visibleScrollbars{}
 	widgets.InitScrollBehaviorBase(&b.ScrollBehaviorBase, b)
 	return b
+}
+
+func (b *visibleScrollbars) BuildOverscrollIndicator(bc widgets.BuildContext, child widgets.Widget, details widgets.ScrollableDetails) widgets.Widget {
+	return material.NewMaterialScrollBehavior().BuildOverscrollIndicator(bc, child, details)
 }
 
 func (b *visibleScrollbars) BuildScrollbar(_ widgets.BuildContext, child widgets.Widget, details widgets.ScrollableDetails) widgets.Widget {

@@ -11,6 +11,50 @@ import (
 	"github.com/rm4n0s/glutter/ui"
 )
 
+// defaultGlowColor is the color of the GlowingOverscrollIndicator that
+// ScrollBehavior builds.
+//
+// Flutter: widgets/scroll_configuration.dart _kDefaultGlowColor
+var defaultGlowColor = ui.NewColor(0xFFFFFFFF)
+
+// AndroidOverscrollIndicator is the types of overscroll indicators supported by
+// TargetPlatform.android.
+//
+// Flutter: widgets/scroll_configuration.dart AndroidOverscrollIndicator
+type AndroidOverscrollIndicator int
+
+const (
+	// AndroidOverscrollIndicatorUnspecified is the zero value: the default of
+	// the context that uses it.
+	//
+	// Flutter: no counterpart
+	AndroidOverscrollIndicatorUnspecified AndroidOverscrollIndicator = iota
+	// AndroidOverscrollIndicatorStretch utilizes a StretchingOverscrollIndicator,
+	// which transforms the contents of a ScrollView when overscrolled.
+	//
+	// Flutter: widgets/scroll_configuration.dart AndroidOverscrollIndicator.stretch
+	AndroidOverscrollIndicatorStretch
+	// AndroidOverscrollIndicatorGlow utilizes a GlowingOverscrollIndicator,
+	// painting a glowing semi circle on top of the ScrollView in response to
+	// overscrolling.
+	//
+	// Flutter: widgets/scroll_configuration.dart AndroidOverscrollIndicator.glow
+	AndroidOverscrollIndicatorGlow
+)
+
+// String is the name with the enum, such as "AndroidOverscrollIndicator.stretch".
+//
+// Flutter: widgets/scroll_configuration.dart AndroidOverscrollIndicator
+func (i AndroidOverscrollIndicator) String() string {
+	switch i {
+	case AndroidOverscrollIndicatorStretch:
+		return "AndroidOverscrollIndicator.stretch"
+	case AndroidOverscrollIndicatorGlow:
+		return "AndroidOverscrollIndicator.glow"
+	}
+	return "AndroidOverscrollIndicator.unspecified"
+}
+
 // ScrollViewKeyboardDismissBehavior is how a scroll view reacts to the keyboard
 // when the user drags it. Linux has no on-screen keyboard to dismiss, so it is
 // only stored in the behavior.
@@ -94,9 +138,6 @@ func wrapKeyboardDismiss(bc BuildContext, behavior ScrollViewKeyboardDismissBeha
 // Implement it by embedding ScrollBehaviorBase (InitScrollBehaviorBase) and
 // overriding what differs.
 //
-// Deviation: buildOverscrollIndicator returns the child on every platform
-// because the Android indicators are not ported (SPEC §12.10).
-//
 // Flutter: widgets/scroll_configuration.dart ScrollBehavior
 type ScrollBehavior interface {
 	// CopyWith returns a behavior that wraps this one, with the given values
@@ -128,7 +169,8 @@ type ScrollBehavior interface {
 	// Flutter: widgets/scroll_configuration.dart ScrollBehavior.buildScrollbar
 	BuildScrollbar(bc BuildContext, child Widget, details ScrollableDetails) Widget
 	// BuildOverscrollIndicator wraps the child in an overscroll indicator; the
-	// default returns the child.
+	// default is a GlowingOverscrollIndicator on Android and Fuchsia, and the
+	// child on the other platforms.
 	//
 	// Flutter: widgets/scroll_configuration.dart ScrollBehavior.buildOverscrollIndicator
 	BuildOverscrollIndicator(bc BuildContext, child Widget, details ScrollableDetails) Widget
@@ -272,13 +314,17 @@ func (b *ScrollBehaviorBase) BuildScrollbar(bc BuildContext, child Widget, detai
 	return child
 }
 
-// BuildOverscrollIndicator is the child.
-//
-// Deviation: Flutter builds a GlowingOverscrollIndicator on Android and
-// Fuchsia; the Android indicators are not ported (SPEC §12.10).
+// BuildOverscrollIndicator applies a GlowingOverscrollIndicator to the child on
+// Android and Fuchsia, and returns the child on the other platforms.
 //
 // Flutter: widgets/scroll_configuration.dart ScrollBehavior.buildOverscrollIndicator
-func (b *ScrollBehaviorBase) BuildOverscrollIndicator(_ BuildContext, child Widget, _ ScrollableDetails) Widget {
+func (b *ScrollBehaviorBase) BuildOverscrollIndicator(bc BuildContext, child Widget, details ScrollableDetails) Widget {
+	// When modifying this function, consider modifying the implementation in
+	// the Material and Cupertino subclasses as well.
+	switch b.self.GetPlatform(bc) {
+	case foundation.TargetPlatformAndroid, foundation.TargetPlatformFuchsia:
+		return NewGlowingOverscrollIndicator(details.Direction, defaultGlowColor, child)
+	}
 	return child
 }
 

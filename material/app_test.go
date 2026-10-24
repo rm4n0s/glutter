@@ -1,6 +1,7 @@
 package material_test
 
 import (
+	"strconv"
 	"testing"
 	"time"
 
@@ -9,6 +10,8 @@ import (
 	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/gluttertest"
 	. "github.com/rm4n0s/glutter/material"
+	"github.com/rm4n0s/glutter/painting"
+	"github.com/rm4n0s/glutter/rendering"
 	"github.com/rm4n0s/glutter/ui"
 	"github.com/rm4n0s/glutter/widgets"
 )
@@ -16,8 +19,9 @@ import (
 // These tests are ported from packages/flutter/test/material/app_test.dart. A
 // GestureDetector over a Text stands in for the ElevatedButton and a Focus for
 // the TextField, which come with their components (step 13); the cases of the
-// Cupertino localizations, the overscroll indicator of Android, the debug grid,
-// the restoration and the cases that need the Scaffold are not ported.
+// Cupertino localizations, the debug grid, the restoration and the cases that
+// need the Scaffold are not ported. The overscroll indicator cases of Android
+// (step 26.1) are at the end of the file.
 
 var includeOffstage = gluttertest.FindOpts{IncludeOffstage: true}
 
@@ -704,5 +708,199 @@ func TestMaterialAppErrors(t *testing.T) {
 	err := recoverError(func() { NewMaterialAppRouter[*routeInfo]() })
 	if appErr, ok := errors.FromError(err); !ok || !appErr.HasRoute("MaterialAppRouterMissing") {
 		t.Errorf("unexpected error %v", err)
+	}
+}
+
+// foregroundCircleColors are the colors of the circles that the foreground
+// painter of the CustomPaint draws.
+func foregroundCircleColors(t *testing.T, ts *gluttertest.Tester, f gluttertest.Finder) []ui.Color {
+	t.Helper()
+	renderObject, ok := ts.RenderObject(f).(*rendering.RenderCustomPaint)
+	if !ok {
+		t.Fatalf("%s is not a CustomPaint", f.Describe())
+	}
+	recorder := ui.NewPictureRecorder()
+	canvas := ui.NewCanvas(recorder)
+	renderObject.ForegroundPainter().Paint(canvas, ts.Size(f))
+	var colors []ui.Color
+	for _, op := range recorder.EndRecording().DisplayList().Ops() {
+		if circle, ok := op.(ui.OpDrawCircle); ok {
+			colors = append(colors, circle.Paint.Color())
+		}
+	}
+	return colors
+}
+
+func TestMaterial2MaterialAppProvidesDefaultOverscrollColor(t *testing.T) {
+	useAndroid(t)
+	ts := gluttertest.New(t)
+	slowDrag := func(start, offset ui.Offset) {
+		gesture := ts.StartGesture(start)
+		for index := 0; index < 10; index++ {
+			gesture.MoveBy(offset)
+			ts.Pump(20 * time.Millisecond)
+		}
+		gesture.Up()
+	}
+
+	// The overscroll color should be a transparent version of the colorScheme's
+	// secondary color.
+	secondaryColor := ui.NewColor(0xff008800)
+	glowSecondaryColor := secondaryColor.WithOpacity(0.05)
+	theme := NewThemeDataFrom(NewColorSchemeLight().CopyWith(ColorSchemeCopy{Secondary: foundation.Some(secondaryColor)}), nil, foundation.Some(false))
+	ts.PumpWidget(NewMaterialApp(MaterialAppOpts{
+		Theme: theme,
+		Home:  widgets.NewSingleChildScrollView(widgets.NewSizedBox(nil, widgets.SizedBoxOpts{Height: foundation.Some(2000.0)})),
+	}))
+
+	// The Dart test paints the first CustomPaint of the tree, the one of the debug banner, with its
+	// descendants; the Go test reads the painter of the indicator.
+	painter := gluttertest.First(gluttertest.Descendant(gluttertest.ByType[*widgets.GlowingOverscrollIndicator](), gluttertest.ByType[*widgets.CustomPaint]()))
+	slowDrag(ui.Offset{Dx: 200, Dy: 200}, ui.Offset{Dy: 5})
+	if colors := foregroundCircleColors(t, ts, painter); len(colors) != 1 || colors[0] != glowSecondaryColor {
+		t.Errorf("the circles are %v, want one of %v", colors, glowSecondaryColor)
+	}
+}
+
+func TestMaterialScrollBehaviorBuildsTheOverscrollIndicatorOfAndroid(t *testing.T) {
+	list := func() widgets.Widget {
+		return widgets.NewListView([]widgets.Widget{
+			widgets.NewSizedBox(widgets.NewText("Test"), widgets.SizedBoxOpts{Height: foundation.Some(1000.0), Width: foundation.Some(1000.0)})})
+	}
+	tests := []struct {
+		name        string
+		app         func() MaterialAppOpts // the theme is made after the platform is set
+		wantStretch bool
+		wantGlow    bool
+	}{
+		{"Material2 - ScrollBehavior default android overscroll indicator", func() MaterialAppOpts {
+			return MaterialAppOpts{Theme: NewThemeData(ThemeDataOpts{UseMaterial3: foundation.Some(false)}), ScrollBehavior: NewMaterialScrollBehavior()}
+		}, false, true},
+		{"Material3 - ScrollBehavior default android overscroll indicator", func() MaterialAppOpts {
+			return MaterialAppOpts{ScrollBehavior: NewMaterialScrollBehavior()}
+		}, true, false},
+		{"MaterialScrollBehavior default stretch android overscroll indicator", func() MaterialAppOpts { return MaterialAppOpts{} }, true, false},
+		{"Overscroll indicator can be set by theme", func() MaterialAppOpts { // The current default is M3 and stretch overscroll, setting via the theme should override.
+			return MaterialAppOpts{Theme: NewThemeData().CopyWith(ThemeDataCopy{UseMaterial3: foundation.Some(false)})}
+		}, false, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			useAndroid(t)
+			ts := gluttertest.New(t)
+			app := tt.app()
+			app.Home = list()
+			ts.PumpWidget(NewMaterialApp(app))
+
+			if got := ts.Count(gluttertest.ByType[*widgets.StretchingOverscrollIndicator]()); (got == 1) != tt.wantStretch || got > 1 {
+				t.Errorf("%d StretchingOverscrollIndicators, want stretch %v", got, tt.wantStretch)
+			}
+			if got := ts.Count(gluttertest.ByType[*widgets.GlowingOverscrollIndicator]()); (got == 1) != tt.wantGlow || got > 1 {
+				t.Errorf("%d GlowingOverscrollIndicators, want glow %v", got, tt.wantGlow)
+			}
+		})
+	}
+}
+
+func TestMaterialScrollBehaviorOverscrollIndicatorOnOtherPlatforms(t *testing.T) {
+	tests := []struct {
+		platform foundation.TargetPlatform
+		want     string
+	}{
+		{foundation.TargetPlatformAndroid, "stretch"},
+		{foundation.TargetPlatformFuchsia, "glow"},
+		{foundation.TargetPlatformIOS, "none"},
+		{foundation.TargetPlatformLinux, "none"},
+		{foundation.TargetPlatformMacOS, "none"},
+		{foundation.TargetPlatformWindows, "none"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.platform.String(), func(t *testing.T) {
+			ts := gluttertest.New(t)
+			controller := widgets.NewScrollController()
+			defer controller.Dispose()
+			theme := NewThemeData(ThemeDataOpts{Platform: foundation.Some(tt.platform)})
+			ts.PumpWidget(NewMaterialApp(MaterialAppOpts{
+				Theme: theme,
+				Home: widgets.NewListView([]widgets.Widget{
+					widgets.NewSizedBox(nil, widgets.SizedBoxOpts{Height: foundation.Some(1000.0)})}, widgets.ListViewOpts{Controller: controller}),
+			}))
+			got := "none"
+			switch {
+			case ts.Exists(gluttertest.ByType[*widgets.StretchingOverscrollIndicator]()):
+				got = "stretch"
+			case ts.Exists(gluttertest.ByType[*widgets.GlowingOverscrollIndicator]()):
+				got = "glow"
+			}
+			if got != tt.want {
+				t.Errorf("the overscroll indicator is %q, want %q", got, tt.want)
+			}
+			for _, glow := range ts.Widgets(gluttertest.ByType[*widgets.GlowingOverscrollIndicator]()) {
+				if got := glow.(*widgets.GlowingOverscrollIndicator).Color(); got != theme.ColorScheme.Secondary() {
+					t.Errorf("the glow color is %v, want the secondary color of the theme", got)
+				}
+			}
+		})
+	}
+}
+
+func TestMaterial3ListViewClipBehaviorUpdatesOverscrollIndicatorClipBehavior(t *testing.T) {
+	useAndroid(t)
+	buildFrame := func(clipBehavior ui.Clip) widgets.Widget {
+		return NewMaterialApp(MaterialAppOpts{Home: widgets.NewColumn([]widgets.Widget{
+			widgets.NewSizedBox(widgets.NewListViewBuilder(func(_ widgets.BuildContext, index int) widgets.Widget {
+				return widgets.NewPadding(painting.NewEdgeInsetsAll(10.0), widgets.NewText("Index "+strconv.Itoa(index)))
+			}, widgets.ListViewOpts{ItemCount: foundation.Some(20), ClipBehavior: clipBehavior}), widgets.SizedBoxOpts{Height: foundation.Some(300.0)}),
+			widgets.NewOpacity(0.5, widgets.NewContainer(nil, widgets.ContainerOpts{Color: foundation.Some(ui.NewColor(0xD0FF0000)), Height: foundation.Some(100.0)})),
+		})})
+	}
+	firstClip := func(ts *gluttertest.Tester) *rendering.RenderClipRect {
+		for _, e := range ts.Elements(gluttertest.Everything()) {
+			if r, ok := e.RenderObject().(*rendering.RenderClipRect); ok {
+				return r
+			}
+		}
+		t.Fatal("no RenderClipRect")
+		return nil
+	}
+	tests := []struct {
+		name  string
+		clip  ui.Clip
+		after ui.Clip
+	}{
+		{"the default clip behavior", ui.ClipHardEdge, ui.ClipHardEdge},
+		{"a custom clip behavior", ui.ClipNone, ui.ClipNone},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ts := gluttertest.New(t)
+			ts.PumpWidget(buildFrame(tt.clip))
+			if ts.Count(gluttertest.ByType[*widgets.StretchingOverscrollIndicator]()) != 1 || ts.Exists(gluttertest.ByType[*widgets.GlowingOverscrollIndicator]()) {
+				t.Fatal("expected the stretching indicator alone")
+			}
+			index1 := gluttertest.ByText("Index 1")
+			if !ts.Exists(index1) {
+				t.Fatal("Index 1 is missing")
+			}
+			// Currently not clipping
+			if got := firstClip(ts).ClipBehavior(); got != ui.ClipNone {
+				t.Errorf("clip behavior = %v, want Clip.none", got)
+			}
+
+			gesture := ts.StartGesture(ts.Center(index1))
+			// Overscroll the start.
+			gesture.MoveBy(ui.Offset{Dy: 200})
+			ts.PumpAndSettle()
+			if !ts.Exists(index1) || ts.Center(index1).Dy <= 0 {
+				t.Errorf("Index 1 is at %v", ts.Center(index1))
+			}
+			// Now clipping
+			if got := firstClip(ts).ClipBehavior(); got != tt.after {
+				t.Errorf("clip behavior = %v, want %v", got, tt.after)
+			}
+
+			gesture.Up()
+			ts.PumpAndSettle()
+		})
 	}
 }

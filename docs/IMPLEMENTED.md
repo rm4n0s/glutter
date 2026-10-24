@@ -2651,3 +2651,19 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - Not supported: notification icons, inline reply, delivery of a tap of an earlier process, detection of a refused background activity launch.
   - A browser opened by `OpenURI` stays on top of the app's task on Android 8, so the device tests clear the app (`pm clear`) before each launch.
 
+## 26.1 Overscroll indicators
+
+- **Date:** 2026-10-24
+- **Branch:** feat/step-26.1-overscroll-indicators
+- **Summary:** Scrolling past the end shows Material's overscroll indicator on Android and Fuchsia, as in Flutter: `GlowingOverscrollIndicator`, `StretchingOverscrollIndicator`, `OverscrollIndicatorNotification` and `StretchEffect` are ported from `widgets/overscroll_indicator.dart` and `widgets/stretch_effect.dart`, and the scroll behaviors build them (`ScrollBehaviorBase.BuildOverscrollIndicator` a white glow; `MaterialScrollBehavior` the stretch with Material 3 on Android, else the glow in `ColorScheme.secondary`). The stretch is the matrix-transform form of Flutter's fallback (there is no fragment-shader image filter). `examples/scrolling`'s behavior uses Material's overscroll indicator.
+- **Main files:** `widgets/overscroll_indicator.go`, `widgets/stretch_effect.go`, `widgets/scroll_configuration.go`, `material/app.go`, `material/widgets_reexport_gen.go`, the tests `widgets/overscroll_indicator_test.go`, `widgets/overscroll_stretch_indicator_test.go`, `widgets/stretch_effect_test.go`, `widgets/scroll_behavior_test.go`, `material/app_test.go`, `widgets/testdata/goldens/overscroll_stretch_*.png`, `examples/scrolling/main.go`, `docs/SPEC.md` (§12.10, §24.12).
+- **Tests:** the Dart tests of `overscroll_indicator_test.dart` (19 of 19), `overscroll_stretch_indicator_test.dart` (24 of 24; the 11 that Flutter skips with `skip: shaderSupported` run here, because the fallback is what Glutter has), the overscroll cases of `scroll_behavior_test.dart` (including the one that was skipped, 'default android overscroll indicator') and `material/app_test.dart` (6), plus per-platform tables of both behaviors, the `StretchEffect` transform and alignment, and the tags `GlowingOverscrollVelocityWithDrag`, `StretchingOverscrollVelocityWithDrag` and `StretchEffectStrengthInvalid` with route tests. 16 goldens of the stretch (all looked at: the boxes' boundaries move with the stretch in every axis direction and text direction, and the no-overflow case shows no stretch).
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck ✅ · apicheck ✅ · GOOS=js build, vet and `scripts/test-wasm.sh` ✅ · `scripts/check-android.sh` ✅ · device tests ✅
+- **Proof:**
+  ![26.1 android stretch](implemented-proof-images/26.1-android-stretch.png)
+  `examples/scrolling` on `glutter-37`: at rest (left) and with the finger held 1900 px past the top (right, taken with `adb shell input swipe` and `adb exec-out screencap` while the swipe was still down): the rows are stretched, Row 13 is 42 px lower. The two screenshots are put side by side with their captions.
+- **Manual checks:** none for this step.
+- **Deviations and follow-ups:**
+  - See SPEC §12.10 (the fallback stretch, the notification's fields, the post of the `whenComplete`, the new tags, the test differences).
+  - The stretch is small: in the proof a pull of 1900 px scales the rows by about 2.6% (the spacing goes from 126 to 129 px). That is what the ported fallback gives (its tests match the Dart numbers); the shader path of Flutter, which Glutter does not have, may show more.
+

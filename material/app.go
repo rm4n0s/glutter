@@ -467,11 +467,6 @@ func (s *materialAppState) Build(widgets.BuildContext) widgets.Widget {
 // platform comes from the theme, and the vertical scrollables of the desktop
 // platforms have a scrollbar.
 //
-// Deviation: Flutter builds a Material Scrollbar (scrollbar.dart, ported in step
-// 13.9) and, on Android, the stretching or glowing overscroll indicators; until
-// then this behavior builds the RawScrollbar of the widgets layer and no
-// overscroll indicator.
-//
 // Flutter: material/app.dart MaterialScrollBehavior
 type MaterialScrollBehavior struct {
 	widgets.ScrollBehaviorBase
@@ -509,6 +504,31 @@ func (b *MaterialScrollBehavior) BuildScrollbar(bc widgets.BuildContext, child w
 		return NewScrollbar(child, ScrollbarOpts{Controller: details.Controller})
 	}
 	return child
+}
+
+// BuildOverscrollIndicator wraps the child in a StretchingOverscrollIndicator on
+// Android when the theme uses Material 3, and in a GlowingOverscrollIndicator
+// (colored with the secondary color of the theme) on Android otherwise and on
+// Fuchsia. The other platforms have none.
+//
+// Flutter: material/app.dart MaterialScrollBehavior.buildOverscrollIndicator
+func (b *MaterialScrollBehavior) BuildOverscrollIndicator(bc widgets.BuildContext, child widgets.Widget, details widgets.ScrollableDetails) widgets.Widget {
+	// When modifying this function, consider modifying the implementation in
+	// the base class ScrollBehavior as well.
+	indicator := widgets.AndroidOverscrollIndicatorGlow
+	if ThemeOf(bc).UseMaterial3 {
+		indicator = widgets.AndroidOverscrollIndicatorStretch
+	}
+	switch b.GetPlatform(bc) {
+	case foundation.TargetPlatformIOS, foundation.TargetPlatformLinux, foundation.TargetPlatformMacOS, foundation.TargetPlatformWindows:
+		return child
+	case foundation.TargetPlatformAndroid:
+		if indicator == widgets.AndroidOverscrollIndicatorStretch {
+			return widgets.NewStretchingOverscrollIndicator(details.Direction, child, widgets.StretchingOverscrollIndicatorOpts{
+				ClipBehavior: details.DecorationClipBehavior.OrElse(ui.ClipHardEdge)})
+		}
+	}
+	return widgets.NewGlowingOverscrollIndicator(details.Direction, ThemeOf(bc).ColorScheme.Secondary(), child)
 }
 
 // String is the name of the type.
