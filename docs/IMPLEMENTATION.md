@@ -146,6 +146,7 @@ This file breaks the milestones in `docs/SPEC.md` §18 into small steps. Each st
 | M24 Errors to the fullest (`rm4n0s/errors` v0.2.0) | 24.1 | |
 | M25 Android platform (1.6) | 25.1–25.12 | `dev/android-hello`, `dev/android-services`; the examples on the emulator |
 | M26 Android behaviors of the framework, and 1.6 | 26.1–26.6 | every example but `multiwindow` and `tray` on Android |
+| M27 Fixes for Emetos (1.7) | 27.1–27.11 | `multiwindow` |
 
 ---
 
@@ -1959,3 +1960,144 @@ These steps port what earlier steps left out because only Android (or a touch sc
 - the API check and the error rules check
 
 Then update the SPEC's version paragraph and the README, and **ask the user** before tagging `v1.6.0` and pushing the tag.
+
+## M27: Fixes for Emetos (1.7)
+
+These steps come from the issues that the Emetos code editor (built on Glutter, see M22) found and worked around. Each issue names the Emetos workaround, which is a `// Glutter:` comment in Emetos; the steps here only change Glutter, and never read the Emetos sources (they are outside this project folder). 27.1 and 27.2 are bugs (Glutter differs from Flutter and something breaks), 27.3–27.5 are gaps of the desktop windows, 27.6–27.9 are additions to Flutter's API, each with a `// Deviation:` comment and a row in SPEC §12.10, and 27.10 is the cold start. 27.11 releases them.
+
+### 27.1 Scroll positions after their Scrollable is gone
+**Goal:** a `Scrollable` that leaves the tree in the frame after its metrics changed no longer makes the program panic.
+**Read:** SPEC §11.1 (scrolling), §13 (`Post`), §14.2.
+**Port from:** `packages/flutter/lib/src/widgets/scroll_position.dart` (`didUpdateScrollMetrics`, `dispose`, the `scheduleMicrotask` calls), `scrollable.dart` (`notificationContext`, `storageContext`).
+**Files:** `widgets/scroll_position.go`, `widgets/scroll_position_with_single_context.go`, `widgets/scrollable.go`, `internal/engine/` (the test).
+**Tasks:**
+1. `ScrollPositionBase.DidUpdateScrollMetrics` panics in debug builds when the position was disposed before the function it posted ran: it reaches the binding through `widgetsBinding()`, which calls `StorageContext()`, the context of an unmounted state. Flutter asserts on the global scheduler and never touches the context there. Keep a `disposed` flag (set by `Dispose`); a function that a position posted does nothing once it is set. The debug checks read the binding the position kept when it was attached (no context lookup).
+2. Look at every other function a position, an activity or a `ScrollableState` posts or schedules (`post`, timers, `AddPostFrameCallback`), and at every use of `StorageContext()` or `Context()` that can run after `Dispose`; give each the same guard.
+**Tests:** `DidUpdateScrollMetrics` after `Dispose` does nothing (table: each posted function); a widget test where a `TextField` inside a `Scrollable` is removed in the frame after its metrics changed. `gluttertest` runs the posted functions inside `Pump`, in the same frame, which hides the bug, so also add a test that runs the real loop (the engine over the fake platform): a window whose width drops under the size where a `Scrollable` is taken out of the tree, then one more frame, and no panic.
+**Proof:** none.
+
+### 27.2 `gluttertest`: unmount the tree at the end of a test, and a fake desktop without a file chooser
+**Goal:** the states of a widget test are disposed when the test ends, and a test can see the failure of a desktop that has no file chooser portal.
+**Read:** SPEC §17, §12.10 (the `gluttertest` rows), §8.9 (file dialogs).
+**Port from:** flutter_test's `TestWidgetsFlutterBinding._runTestBody` (not in `reference/`): after the test body, when no error is pending, it runs `runApp(Container(key: UniqueKey()))` and pumps, so every state is disposed.
+**Files:** `gluttertest/tester.go`, `gluttertest/desktop.go`, `gluttertest/doc.go`, `desktop/` (only if the tag is not reachable).
+**Tasks:**
+1. The `Tester`'s cleanup pumps an empty widget before it cancels the binding's context, unless the test failed already (as flutter_test does), so `State.Dispose` runs and every `State.Lifetime()` is cancelled. An error that the unmounting reports fails the test like any other. Cleanups run last in, first out, so a cleanup that the test registered after `New` still sees the tree.
+2. Fix the tests of this module that break because their states now get disposed (each one is a real disposal bug, or a test that relied on the tree outliving it); never weaken a test.
+3. `FakeDesktop.DisableFileChooser()`: the file chooser calls then fail with the tag the real desktop gives when there is no portal (`FileChooserUnavailable`), until the test ends.
+4. Measure `go test -race ./...` of the module before and after, and say both in `IMPLEMENTED.md`.
+**Tests:** a state's `Dispose` runs and its lifetime is cancelled at the end of a test (a `t.Run` subtest that checks afterwards); a test that already failed is not unmounted; an error while unmounting is reported; `DisableFileChooser` with open, save and directory dialogs (route tests of the failure).
+**Proof:** none.
+
+### 27.3 The focus of a window
+**Goal:** an app knows whether each window has the focus from the moment it is created, also on a compositor whose seat has no keyboard.
+**Read:** SPEC §8.2, §8.3, §8.7, §12.10 (the `ViewFocusEvent` row), §13, §15 (idle and unfocused).
+**Port from:** Flutter's GTK embedder follows `GtkWindow`'s `is-active` (the compositor's activation) for the view focus (`shell/platform/linux/fl_view.cc`, not in `reference/`; SPEC §12.10 says what is done here).
+**Files:** `internal/platform/linux/wayland/{window,decoration,keyboard}.go`, `internal/platform/linux/wayland/decor/`, `internal/platform/linux/wayland/fakecomp/`, `internal/platform/linux/x11/`, `internal/engine/engine.go`, `internal/platform/fake/`, `gluttertest/`.
+**Tasks:**
+1. Wayland: the view focus follows the toplevel's `activated` state (the states of `xdg_toplevel.configure`, and libdecor's `LIBDECOR_WINDOW_STATE_ACTIVE`), not `wl_keyboard.enter` and `leave`, which keep routing the keys. A seat without a keyboard (the headless sway of the tests) then has focused windows too.
+2. A new window gets a `ViewFocusEvent` as soon as its focus is known (Wayland: its first configure; X11: its first focus event, or the active window of `_NET_ACTIVE_WINDOW` when it is mapped), so `DidChangeViewFocus` is called once for it; until then it counts as focused, as before.
+3. Update the SPEC §12.10 row and §8.2/§8.3, and the idle-and-unfocused measurement of `scripts/perf.sh` (it can now run headless: a second window takes the focus).
+**Tests:** Wayland against the fake compositor (activated with and without a keyboard, with libdecor, the first configure sends the event, keys still follow `wl_keyboard`); X11 on its fake or under Xvfb; the engine queues the initial event with the first frame's input.
+**Display tests:** headless sway (no keyboard): two windows, the focus moves to the one the compositor activates; X11 under Xvfb with the test window manager.
+**Proof:** none. A manual check on a real desktop: two windows of `examples/multiwindow`, the focus follows the clicks and `Alt+Tab`.
+
+### 27.4 What a window controller can do, and the first window in tests
+**Goal:** the title, activation and full screen of any window, the first one included, are reachable without an interface assertion, a window can open maximized or full screen, and a test sees the first window like the others.
+**Read:** SPEC §8.7, §12.10 (the window controller rows), §17.
+**Port from:** `packages/flutter/lib/src/widgets/_window.dart` (`BaseWindowController`, `RegularWindowController`, `DialogWindowController`).
+**Files:** `widgets/window_controller.go`, `widgets/window_scope.go`, `ui/window_control.go`, `internal/platform/` (initial state), `internal/engine/`, `gluttertest/windows.go`, `docs/GUIDE.md`.
+**Tasks:**
+1. An exported interface, beside `BaseWindowController`, with what both regular and dialog windows can do: `Title`, `SetTitle`, `Activate`, `IsActivated`, `SetMinimized`, `IsMinimized`, and for regular windows `SetMaximized`, `IsMaximized`, `SetFullscreen`, `IsFullscreen` (in a second interface or with a "can" query; decide and write it in SPEC §12.10). `WindowScopeOf` stays Flutter's (`BaseWindowController`); a new `WindowScopeControllerOf`-style accessor, or the interface on the value it returns, reaches the rest. `// Flutter: no counterpart`, with a `// Deviation:`.
+2. `RegularWindowControllerOpts.State` (normal, maximized, full screen; the zero value is normal), as `WindowConfig.State` of the first window: the platform creates the window in that state, so it never shows at its size first. No position (Wayland gives clients none).
+3. `Tester.Windows()` lists the implicit view too (its title, size and state), or the `Tester` gets `ViewTitle(view)`; choose the one that keeps the existing tests meaningful, and say which in SPEC §12.10.
+**Tests:** table tests over the regular, dialog and implicit controllers (each method, through `WindowScope`); a window created maximized and full screen on the fake platform; Wayland and X11 send the state before the first commit or map (fake compositor, X11 fake); the implicit view's title in `Tester`.
+**Display tests:** headless sway and Xvfb: a window opened maximized has the output's size in its first frame.
+**Proof:** none.
+
+### 27.5 Closing and destroying the first window
+**Goal:** an app with several windows handles the close request of the first window like any other window's, and can destroy the first window while others stay.
+**Read:** SPEC §8.7 ("Closing"), §12.10 (the rows on `WindowingOwner.ImplicitWindowController`, `WindowScope` and closing), §13 (the lifecycle and `RunApp`).
+**Port from:** `packages/flutter/lib/src/widgets/_window.dart` (`RegularWindowControllerDelegate.onWindowCloseRequested`, `WindowingOwner`), `widgets/app_lifecycle_listener.dart`.
+**Files:** `widgets/window_controller.go`, `widgets/binding.go`, `widgets/run_app.go`, `widgets/app_lifecycle_listener.go`, `internal/engine/`, `gluttertest/windows.go`, `examples/multiwindow/`, `docs/GUIDE.md`.
+**Tasks:**
+1. The close request of the implicit window goes to a delegate the app can give it (`WindowingOwner.SetImplicitWindowDelegate`, or a `RunAppOpts` field; decide and record it), with the view; without one it stays an exit request, as now, so a single-window app does not change.
+2. `ImplicitWindowController().Destroy()` when other windows exist removes the implicit view: the `View` that `RunApp` wrapped the app in is taken out of the tree (its states are disposed) and the platform window is closed. `RunApp` ends when the last window is destroyed, as for the other windows. Destroying it when it is the only window is an exit, as closing it is.
+3. `examples/multiwindow`: closing the first window while a second one is open keeps the app running.
+**Tests:** the close request of the first window reaches the delegate with its view, and an exit request without one; destroying the first window with others open (its states disposed, the view gone from the dispatcher, frames go on for the others, `RunApp` goes on, then ends with the last); destroying it alone; the multiwindow example's test.
+**Display tests:** headless sway and Xvfb: two windows, the first is closed, the second keeps drawing and receiving input.
+**Proof:** none.
+
+### 27.6 `RawTooltip`: a delay read on enter, show and hide callbacks, a controller, dismissal by a key
+**Goal:** a hover can follow the rules of an editor (shown at once when another hover hid less than a moment ago, shown for the item that got the keyboard focus, hidden by Escape) with `RawTooltip` alone.
+**Read:** SPEC §11.1 and §11.2 (tooltips), §12.10 (the `RawTooltip` row).
+**Port from:** `packages/flutter/lib/src/widgets/raw_tooltip.dart` (Glutter's port is `widgets/raw_tooltip.go`).
+**Files:** `widgets/raw_tooltip.go`, `material/tooltip.go` (pass the options through when it builds a `RawTooltip`), `material/widgets_reexport_gen.go` (regenerated).
+**Tasks:**
+1. `RawTooltipOpts.HoverDelayFunc func() time.Duration`, read when the pointer enters; it wins over `HoverDelay`.
+2. `OnShown` and `OnHidden` callbacks, called when the overlay's animation starts showing and when it is dismissed (whatever hid it: exit, tap, `RawTooltipDismissAll`, the controller, the key).
+3. `RawTooltipController` (`Show`, `Hide`, `IsShowing`), given in the options; it works on the state that it is attached to and does nothing when none is.
+4. `DismissOnKey bool`: a key down while the tooltip shows hides it, and the key is not handled (a `HardwareKeyboard` handler that returns false), as Flutter's `Tooltip` does for Escape on desktop.
+5. Every addition gets `// Deviation:` and a row in SPEC §12.10.
+**Tests:** table tests for each option (the delay function read at each enter, the callbacks for every way of hiding, the controller on a mounted and an unmounted tooltip, a key hides it and still reaches the focused widget); the Flutter test cases of `raw_tooltip_test.dart` that the port has still pass.
+**Proof:** none.
+
+### 27.7 The cursor of a pressed pointer
+**Goal:** while a button is held after a press in a region, the cursor stays the one of that region, whatever the pointer moves over, until the button is released.
+**Read:** SPEC §8.5 (cursors), §11.1 (`MouseRegion`), §12.10.
+**Port from:** `packages/flutter/lib/src/rendering/mouse_tracker.dart`, `services/mouse_cursor.dart` (`MouseCursorManager.handleDeviceCursorUpdate`), `rendering/proxy_box.dart` (`RenderMouseRegion`).
+**Files:** `widgets/pointer_widgets.go`, `rendering/mouse_tracker.go`, `rendering/proxy_box*.go` (`RenderMouseRegion`), `services/mouse_cursor.go`, `material/widgets_reexport_gen.go`.
+**Tasks:**
+1. `MouseRegionOpts.HoldCursorWhilePressed bool`: when a pointer goes down inside such a region, the mouse tracker keeps that region as the cursor's source for the device until the pointer goes up or is cancelled; the cursor changes if the region's own cursor changes meanwhile, and the region being removed ends the hold. The hover events (`OnEnter`, `OnExit`, `OnHover`) stay as they are.
+2. `// Deviation:` and a row in SPEC §12.10.
+**Tests:** table tests: press in a sash-like region and move over a region with its own cursor and over empty space, release; the region's cursor changing during the hold; the region removed during the hold; a touch pointer (no cursor); several mice.
+**Proof:** none. A manual check: `examples/gallery`'s split pane (or a small `examples/dev` sash) keeps the resize cursor while the pointer outruns it.
+
+### 27.8 `Draggable` and `DragTarget` for lists and tabs
+**Goal:** a click on a draggable row stays a click, a running drag can be cancelled with Escape, and a target can scroll or expand while the pointer rests over it.
+**Read:** SPEC §11.1 (drag and drop), §12.10 (the `Draggable` rows), §8.5 (input).
+**Port from:** `packages/flutter/lib/src/widgets/drag_target.dart`, `gestures/multidrag.dart` (`computeHitSlop`), `rendering/proxy_box.dart` (`RenderMouseRegion.hitTest`, `RenderProxyBoxWithHitTestBehavior`).
+**Files:** `widgets/drag_target.go`, `gestures/multidrag.go`, `rendering/`, `material/widgets_reexport_gen.go`.
+**Tasks:**
+1. `MultiDragGestureRecognizerOpts.Slop` and `DraggableOpts.Slop` (`foundation.Opt[float64]`): the distance before a drag starts, for every pointer kind; the default stays Flutter's (`computeHitSlop`: 1 px for a mouse).
+2. `DraggableOpts.CancelOnEscape bool`: while its drag runs, Escape (a `HardwareKeyboard` handler) cancels it as a cancelled pointer would: `OnDraggableCanceled`, the targets' `OnLeave`, the avatar removed.
+3. `DragTargetOpts.RepeatMove bool`: while a drag is over the target, `OnMove` is called once per frame even when the pointer does not move (a frame is scheduled for it only while such a drag is over such a target, so idle CPU stays 0 otherwise).
+4. Check the report that the non-opaque `MouseRegion` of `ScrollableElement` makes the rows' hit test report "not hit" to what is above it, so a deferring `Listener` above misses the press. Flutter's `RenderMouseRegion` reports a hit when a child was hit. If Glutter differs, fix it as a bug with a test from `proxy_box_test.dart` or `mouse_region_test.dart`; if not, write a test that shows the case works.
+5. `// Deviation:` and rows in SPEC §12.10 for 1–3.
+**Tests:** table tests: a mouse moving 3 px with a slop of 4 px is a tap, 5 px is a drag; Escape during a drag and outside one; `RepeatMove` calls per frame and no frames when not over the target; the hit test of a `Listener` above a list.
+**Proof:** none.
+
+### 27.9 `TreeSliver`: changing children, lazy nodes, node identity
+**Goal:** a tree can keep its nodes between changes: remove and replace children, show a chevron on a folder whose children are not read yet, and find nodes by a key.
+**Read:** SPEC §11.3 (`TreeSliver`, step 22.7), §12.10 (the `TreeSliver` rows).
+**Port from:** `packages/flutter/lib/src/widgets/sliver_tree.dart` (`TreeSliverNode.children` is a mutable list in Flutter; `toggleNode`, `getNodeFor`, `onNodeToggle`).
+**Files:** `widgets/sliver_tree.go`, `material/widgets_reexport_gen.go`.
+**Tasks:**
+1. `TreeSliverNode.SetChildren`, `RemoveChild` and `InsertChild` (Flutter's children list is mutable, so these are a port, not a deviation): the parent and depth of the nodes are kept right, and the sliver is told to rebuild its active nodes, as Flutter's "modifying the children ... will cause the tree to be rebuilt".
+2. `TreeSliverNodeOpts.HasChildren bool` (a lazy node): it can be toggled with no children; toggling it calls `OnNodeToggle`, where the app adds the children, and the node then shows them (with the animation of the sliver).
+3. `TreeSliverOpts.NodeKey func(T) any` (comparable keys): `GetNodeFor`, `IsExpanded` and keeping the expansion when the tree is rebuilt with new nodes use it; without it, `reflect.DeepEqual` as now.
+4. `// Deviation:` and rows in SPEC §12.10 for 2 and 3.
+**Tests:** the cases of `sliver_tree_test.dart` that touch children and the controller, still passing; table tests for each new function (depth and parent after a move, removal of an expanded node, a lazy node toggled and filled, keys across a rebuild with new node values).
+**Proof:** none.
+
+### 27.10 Cold start: what the first draw costs, and a shader cache
+**Goal:** the first draw is profiled part by part, a second start compiles no shader, and the cold start is closer to SPEC §15.
+**Read:** SPEC §9.1, §9.4, §9.6, §15, `docs/PERFORMANCE.md`.
+**Files:** `internal/engine/{engine,renderers}.go`, `internal/gpu/gles/device.go` (and a new cache file), `internal/gpu/vulkan/` (`VkPipelineCache`), `scripts/perf.sh`, `docs/PERFORMANCE.md`.
+**Tasks:**
+1. With `GLUTTER_FRAME_STATS=1`, the startup log splits "first draw" into each renderer tried (with its error and how long it took), the context or device, the shaders or pipelines, and the first frame.
+2. GLES: a program cache with `glGetProgramBinary`/`glProgramBinary` (GLES 3.0) in `$XDG_CACHE_HOME/glutter/shaders/`, keyed by the hash of the sources and the driver (`GL_VENDOR`, `GL_RENDERER`, `GL_VERSION`); a binary the driver refuses is compiled again and replaced; a cache that cannot be written is logged once and ignored. Not on the web.
+3. Vulkan: a `VkPipelineCache` saved in the same directory, checked by the header's vendor, device and UUID.
+4. Compile only the programs the first frame needs before it; the others when first used (or in the idle time after the first frame), so a rare path does not delay the start.
+5. Measure the cold start with `scripts/perf.sh` (warm and empty caches), and with the Vulkan try that fails on the headless compositor; record the numbers in `docs/PERFORMANCE.md`. If the failed Vulkan try costs a large part, say so and ask the user whether `auto` should try GLES first where Vulkan presents to no output.
+**Tests:** the cache over the fake GL (hit, miss, a refused binary, a changed driver, an unwritable directory, route tests for new tags); lazy compilation (a program compiled once, at first use); the startup log's parts.
+**Display tests:** headless sway: a second start finds every program in the cache (counted in the log).
+**Proof:** none. A manual check: the cold start of `examples/counter` with the GPU, `scripts/perf.sh` in the user's session, recorded in `docs/PERFORMANCE.md`.
+
+### 27.11 Release 1.7
+**Tasks:** confirm and record in `IMPLEMENTED.md`:
+- the standard checks, the display tests, the browser tests and the device tests
+- the manual checks of 27.3, 27.7 and 27.10
+- the API check and the error rules check
+
+Then update the SPEC's version paragraph and the README, and **ask the user** before tagging `v1.7.0` and pushing the tag.
