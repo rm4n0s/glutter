@@ -280,6 +280,12 @@ type ScrollPositionBase struct {
 	hasSemanticActions                            bool
 
 	isScrollingNotifier *foundation.ValueNotifier[bool]
+
+	// binding is the widgets binding of the storage context, kept from the time
+	// the position is made: the position is disposed in a function that was
+	// posted, when its storage context may be unmounted already.
+	binding  *WidgetsBinding
+	disposed bool
 }
 
 // InitScrollPositionBase sets the outer value, the physics and the context, and
@@ -296,6 +302,7 @@ func InitScrollPositionBase(b *ScrollPositionBase, self ScrollPosition, physics 
 	b.didChangeViewportDimensionOrReceiveCorrection = true
 	b.isScrollingNotifier = foundation.NewValueNotifier(false)
 	InitScrollMetricsMixin(&b.ScrollMetricsMixin, self)
+	b.binding = MaybeWidgetsBindingOf(context.StorageContext())
 	if !isNil(o.OldPosition) {
 		self.Absorb(o.OldPosition)
 	}
@@ -429,12 +436,19 @@ func (b *ScrollPositionBase) AllowImplicitScrolling() bool { return b.physics.Al
 // Flutter: widgets/scroll_position.dart ScrollPosition.activity
 func (b *ScrollPositionBase) Activity() ScrollActivity { return b.activity }
 
+// widgetsBinding is the binding the position kept. It never reads the storage
+// context once the position is disposed, since the state of a disposed
+// scrollable has no context.
 func (b *ScrollPositionBase) widgetsBinding() *WidgetsBinding {
-	return MaybeWidgetsBindingOf(b.context.StorageContext())
+	if b.binding == nil && !b.disposed {
+		b.binding = MaybeWidgetsBindingOf(b.context.StorageContext())
+	}
+	return b.binding
 }
 
 // post runs fn after the code that runs now (the microtask of Dart); at once if
-// there is no binding.
+// there is no binding. It also works after Dispose: the activity that another
+// position absorbed ends through the post of the position it came from.
 func (b *ScrollPositionBase) post(fn func()) {
 	if binding := b.widgetsBinding(); binding != nil {
 		binding.Post(fn)
@@ -564,10 +578,13 @@ func (b *ScrollPositionBase) ForcePixels(value float64) {
 }
 
 // SaveScrollOffset writes the position to the PageStorage of the storage
-// context, if there is one.
+// context, if there is one. It does nothing once the position is disposed.
 //
 // Flutter: widgets/scroll_position.dart ScrollPosition.saveScrollOffset
 func (b *ScrollPositionBase) SaveScrollOffset() {
+	if b.disposed {
+		return
+	}
 	if bucket := MaybePageStorageOf(b.context.StorageContext()); bucket != nil {
 		bucket.WriteState(b.context.StorageContext(), b.Pixels())
 	}
@@ -917,10 +934,19 @@ func (b *ScrollPositionBase) DidUpdateScrollDirection(direction rendering.Scroll
 }
 
 // DidUpdateScrollMetrics dispatches a ScrollMetricsNotification. It is called in
-// a microtask after the metrics changed during layout.
+// a microtask after the metrics changed during layout, and does nothing when the
+// position was disposed meanwhile.
+//
+// Deviation: the disposed check, and the debug checks read the binding the
+// position kept, not the storage context, which the state of a scrollable that
+// left the tree no longer has (SPEC §12.10).
 //
 // Flutter: widgets/scroll_position.dart ScrollPosition.didUpdateScrollMetrics
 func (b *ScrollPositionBase) DidUpdateScrollMetrics() {
+	if b.disposed {
+		// The function was posted before the scrollable left the tree.
+		return
+	}
 	if foundation.DebugMode {
 		if binding := b.widgetsBinding(); binding != nil && binding.Scheduler().SchedulerPhase() == scheduler.SchedulerPhasePersistentCallbacks {
 			panic(errors.New(tagScrollPositionChangedDuringLayout, "didUpdateScrollMetrics was called during the build, layout or paint phase"))
@@ -944,10 +970,12 @@ func (b *ScrollPositionBase) RecommendDeferredLoading(bc BuildContext) bool {
 }
 
 // Dispose disposes the activity (nil if another position absorbed it) and the
-// notifiers.
+// notifiers. A function that the position posted earlier no longer reaches the
+// storage context, which is gone with the state of the scrollable.
 //
 // Flutter: widgets/scroll_position.dart ScrollPosition.dispose
 func (b *ScrollPositionBase) Dispose() {
+	b.disposed = true
 	if b.activity != nil {
 		b.activity.Dispose() // it will be nil if it got absorbed by another ScrollPosition
 	}
