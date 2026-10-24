@@ -2574,3 +2574,23 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - A selection that only the input method moved (a cursor swiped on the space bar) is not sent to the framework, as on the web.
   - If the activity is recreated in a living process (bold text restarts it), the new activity starts with no text input although the framework may still have a field focused, until the field changes.
   - Found on the way: an AOSP keyboard on API 26 composes the word that was just committed, so the Enter key now commits the composing text first.
+
+## 25.9 Lifecycle, back navigation and exit
+
+- **Date:** 2026-10-24
+- **Branch:** feat/step-25.9-lifecycle-back-exit
+- **Summary:** The lifecycle follows the activity and its window's focus (`Resumed`, `Inactive`, `Hidden`, `Paused`, `Detached`). Back works as in a Flutter app: the activity registers its back callback only while the framework wants it (`SystemNavigator.SetFrameworkHandlesBack` through the new `ui.BackHost`), a plain back is `HandlePopRoute`, and on API 34 and later the system's predictive gesture reaches the framework as `PredictiveBackEvent`s (`HandleStartBackGesture`, `HandleUpdateBackGestureProgress`, `HandleCommitBackGesture`, `HandleCancelBackGesture` on `WidgetsBindingObserver`, ported from `widgets/binding.dart`); a back the framework does not handle finishes the activity. `onTrimMemory` calls the framework's memory pressure handlers, a new activity in a living process asks again for the back callback and the text input, and `GLUTTER_DEV_EVENTS` has `back:pop|gesture|cancel`.
+- **Main files:** `ui/back.go`, `ui/platform_dispatcher.go`, `services/predictive_back_event.go`, `services/system_navigator.go`, `widgets/binding.go`, `internal/platform/back.go`, `internal/engine/back.go`, `internal/platform/android/` (`back.go`, `lifecycle.go`, `platform.go`, `textinput.go`, `devevents.go`, `exports_android.go`, `host_android.go`, `jni_android.c`), `internal/androidtool/java/.../` (`BackNavigation.java`, `GlutterActivity.java`, `GlutterView.java`, `Native.java`) and `classes.dex`, `internal/androidtest/back_device_test.go`, `examples/dev/android-back/`, `docs/SPEC.md` (§12.10, §24.8 "Decided in step 25.9"), `docs/MANUAL-CHECKS.md`.
+- **Tests:** Go tables of the plain parts (the lifecycle mapping with the focus; back events in logical pixels and edges; a back from a button is not a gesture; trim memory by level and by the first frame; the commands of `SetFrameworkHandlesBack` and the resend for a new activity; the dev events `back:`), the engine's forwarding, `predictive_back_event_test.dart` (8 cases), the back gesture observers of `binding_test.dart`, and `pop_scope_test.dart` on Android and Linux with the `frameworkHandlesBack` checks that §12.10 had left out.
+- **Device tests (`-tags glutter_android`):** on `glutter-37` and `glutter-26`: Home gives Inactive, Hidden, Paused and coming back Resumed; Back (the key and the callback) pops a route; Back on the first route leaves the app (the activity is finished); a `PopScope` that cannot pop keeps the page; a scripted gesture gives the framework start, progress and commit on `glutter-37` (a cancelled one gives the cancel and keeps the page) and a plain pop on `glutter-26`; a killed background process starts again from `main` in a new process.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck ✅ · apicheck ✅ · GOOS=js build, vet and `scripts/test-wasm.sh` ✅ · `scripts/check-android.sh` ✅ · device tests ✅
+- **Proof:** none (the transitions come in step 26.3).
+- **Manual checks:** pending (`docs/MANUAL-CHECKS.md`, 25.9)
+- **Deviations and follow-ups:**
+  - See SPEC §12.10 (the back events and channels, a back from a button).
+  - The device tests use `examples/dev/android-back` instead of `examples/navigation` (SPEC §24.8); the latter is a manual check.
+  - `onTrimMemory` does not trim the renderer's caches: only the framework's handlers run (follow-up).
+  - `am kill` does not always kill a stopped app on API 26, so the kill test sends the signal with `run-as` after three tries.
+  - Found on the way: since step 25.8 the Android binary imported `internal/platform/web` (for `TextEditor`), which `TestBuildsHaveTheirOwnBackends` forbids; the plain-Go text model moved to `internal/platform/textedit` and `web` keeps aliases (SPEC §24.6).
+  - Closes the 25.8 follow-up: a new activity in a living process now gets the text input of the focused field again.
+

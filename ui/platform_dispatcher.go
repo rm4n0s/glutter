@@ -151,6 +151,26 @@ type PlatformDispatcher struct {
 	//
 	// Flutter: ui/platform_dispatcher.dart PlatformDispatcher.onLocaleChanged
 	OnLocaleChanged func()
+	// OnPopRoute is called when the system asks the app to go back (SPEC §24.8). The binding sets it.
+	//
+	// Flutter: widgets/binding.dart WidgetsBinding.handlePopRoute
+	OnPopRoute func()
+	// OnStartBackGesture is called when a predictive back gesture starts; it returns whether the
+	// framework took it. The binding sets it.
+	//
+	// Flutter: widgets/binding.dart WidgetsBinding._handleStartBackGesture
+	OnStartBackGesture func(BackGestureEvent) bool
+	// OnUpdateBackGestureProgress, OnCommitBackGesture and OnCancelBackGesture are called as a
+	// predictive back gesture goes on, ends and is cancelled. The binding sets them.
+	//
+	// Flutter: widgets/binding.dart WidgetsBinding._handleUpdateBackGestureProgress
+	OnUpdateBackGestureProgress func(BackGestureEvent)
+	OnCommitBackGesture         func()
+	OnCancelBackGesture         func()
+	// OnMemoryPressure is called when the system is low on memory. The binding sets it.
+	//
+	// Flutter: widgets/binding.dart WidgetsBinding.handleMemoryPressure
+	OnMemoryPressure func()
 	// OnTextScaleFactorChanged is called when the text scale factor changes.
 	//
 	// Flutter: ui/platform_dispatcher.dart PlatformDispatcher.onTextScaleFactorChanged

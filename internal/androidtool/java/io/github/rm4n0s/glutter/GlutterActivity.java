@@ -50,6 +50,9 @@ public class GlutterActivity extends Activity {
   /** Text input, the soft keyboard and the clipboard of the activity. */
   private TextInput textInput;
 
+  /** Back navigation of the activity: the callback that is registered with the system. */
+  private BackNavigation backNavigation;
+
   /** The application's context, for what Go asks from a thread that is not the main one. */
   private static volatile Context appContext;
 
@@ -68,6 +71,7 @@ public class GlutterActivity extends Activity {
       // new surface (SPEC §24.2).
       createView();
       Native.settings(SystemSettings.describe(this));
+      Native.activityCreated();
       return;
     }
     started = true;
@@ -81,12 +85,15 @@ public class GlutterActivity extends Activity {
       SystemSettings.watch(appContext);
     }
     Native.start(this);
+    Native.activityCreated();
   }
 
   /** Makes the view and the text input that goes with it, and shows the view. */
   private void createView() {
     view = new GlutterView(this, systemUI);
     textInput = new TextInput(view);
+    backNavigation = new BackNavigation(this);
+    view.setBackNavigation(backNavigation);
     view.setTextInput(textInput);
     setContentView(view);
   }
@@ -98,6 +105,23 @@ public class GlutterActivity extends Activity {
     if (view != null) {
       view.reportDisplay();
     }
+  }
+
+  /**
+   * The legacy back (below API 33, or the back key): a pop through the framework, which exits the
+   * app by itself when it cannot pop (FlutterActivity.onBackPressed calls {@code popRoute}).
+   */
+  @Override
+  @SuppressWarnings("deprecation")
+  public void onBackPressed() {
+    Native.back(BackNavigation.KIND_POP, 0, 0, 0, 0);
+  }
+
+  /** The system is short of memory: the framework's memory pressure handlers run (SPEC §24.8). */
+  @Override
+  public void onTrimMemory(int level) {
+    Native.trimMemory(level);
+    super.onTrimMemory(level);
   }
 
   @Override
@@ -152,7 +176,14 @@ public class GlutterActivity extends Activity {
     if (current == this) {
       current = null;
     }
+    if (backNavigation != null) {
+      backNavigation.release();
+    }
     super.onDestroy();
+    if (isFinishing()) {
+      // Destroyed for good, not to be created again (a configuration change or the system).
+      Native.lifecycle(4);
+    }
     if (mainEnded) {
       System.exit(exitCode);
     }
@@ -177,8 +208,8 @@ public class GlutterActivity extends Activity {
 
   /**
    * Called by Go, from any thread, for the dev events script of debug builds: a tap (kind 1), a swipe
-   * (2), a key (3), text committed through the input connection (4), a composition (5) or the keyboard's action key (6),
-   * dispatched to the view as the user's input is. {@code key} is UTF-8.
+   * (2), a key (3), text committed through the input connection (4), a composition (5), the keyboard's action key (6)
+   * or a back (7, {@code key} is {@code pop}, {@code gesture} or {@code cancel}), dispatched to the view as the user's input is. {@code key} is UTF-8.
    */
   static void inject(
       final int kind,
@@ -203,7 +234,8 @@ public class GlutterActivity extends Activity {
   /**
    * Called by Go, from any thread: one operation of the system's interface, haptic feedback, sounds
    * or the screen (systemui.go, operations 1 to 7; {@link SystemUI}), or of text input and the
-   * clipboard (textinput.go, 8 and up; {@link TextInput}), done on the main thread. {@code bytes}
+   * clipboard (textinput.go, 8 to 13; {@link TextInput}) or of back navigation (lifecycle.go, 14
+   * and 15; {@link BackNavigation}), done on the main thread. {@code bytes}
    * is the operation's text as UTF-8.
    */
   static void command(
@@ -216,7 +248,11 @@ public class GlutterActivity extends Activity {
             if (current == null) {
               return;
             }
-            if (op >= TextInput.OP_TEXT_START) {
+            if (op == BackNavigation.OP_FRAMEWORK_HANDLES_BACK || op == BackNavigation.OP_FINISH) {
+              if (current.backNavigation != null) {
+                current.backNavigation.command(op, a);
+              }
+            } else if (op >= TextInput.OP_TEXT_START) {
               if (current.textInput != null) {
                 current.textInput.command(op, a, b, c, d, s);
               }

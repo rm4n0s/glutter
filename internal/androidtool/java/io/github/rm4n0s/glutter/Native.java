@@ -40,8 +40,28 @@ final class Native {
    */
   static native void surfaceDestroyed();
 
-  /** The lifecycle of the activity: 1 resumed, 2 paused, 3 stopped. */
+  /**
+   * The lifecycle of the activity: 1 resumed, 2 paused, 3 stopped, 4 destroyed for good (finishing,
+   * not destroyed to be created again).
+   */
   static native void lifecycle(int state);
+
+  /**
+   * A new activity of the living process has its view: Go sends again what it keeps on the
+   * activity (whether the framework handles back, the text input state).
+   */
+  static native void activityCreated();
+
+  /**
+   * A back: {@code kind} 1 is a pop (a plain system back), 2 the start of a back gesture, 3 its
+   * progress, 4 its commit, 5 its cancel; {@code touchX} and {@code touchY} are in pixels and
+   * {@code progress} is 0 to 1 (0 for kinds 1, 4 and 5); {@code edge} is 0 unspecified, 1 left, 2
+   * right.
+   */
+  static native void back(int kind, float touchX, float touchY, float progress, int edge);
+
+  /** {@code Activity.onTrimMemory}: the {@code TRIM_MEMORY_*} level. */
+  static native void trimMemory(int level);
 
   /** Whether the activity's window has the focus. */
   static native void focus(boolean focused);

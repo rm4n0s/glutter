@@ -13,6 +13,9 @@ extern void goSurfaceChanged(int width, int height, float density, float refresh
 extern void goSurfaceDestroyed(void);
 extern void goLifecycle(int state);
 extern void goFocus(int focused);
+extern void goActivityCreated(void);
+extern void goBack(int kind, float x, float y, float progress, int edge);
+extern void goTrimMemory(int level);
 extern void goMotionEvent(long long *meta, int nmeta, int *ids, int nids, float *vals, int nvals, long long *times, int ntimes,
                           float pressureMin, float pressureMax, float hScroll, float vScroll);
 extern void goInsets(int *values, int n);
@@ -87,6 +90,15 @@ JNIEXPORT void JNICALL Java_io_github_rm4n0s_glutter_Native_surfaceDestroyed(JNI
 JNIEXPORT void JNICALL Java_io_github_rm4n0s_glutter_Native_lifecycle(JNIEnv *env, jclass cls, jint state) { goLifecycle(state); }
 
 JNIEXPORT void JNICALL Java_io_github_rm4n0s_glutter_Native_focus(JNIEnv *env, jclass cls, jboolean focused) { goFocus(focused ? 1 : 0); }
+
+JNIEXPORT void JNICALL Java_io_github_rm4n0s_glutter_Native_activityCreated(JNIEnv *env, jclass cls) { goActivityCreated(); }
+
+JNIEXPORT void JNICALL Java_io_github_rm4n0s_glutter_Native_back(JNIEnv *env, jclass cls, jint kind, jfloat x, jfloat y, jfloat progress,
+                                                               jint edge) {
+  goBack(kind, x, y, progress, edge);
+}
+
+JNIEXPORT void JNICALL Java_io_github_rm4n0s_glutter_Native_trimMemory(JNIEnv *env, jclass cls, jint level) { goTrimMemory(level); }
 
 JNIEXPORT void JNICALL Java_io_github_rm4n0s_glutter_Native_motionEvent(JNIEnv *env, jclass cls, jlongArray meta, jintArray ids,
                                                                       jfloatArray vals, jlongArray times, jfloat pressureMin,

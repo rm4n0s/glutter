@@ -428,17 +428,22 @@ func TestMetricsAndDisplay(t *testing.T) {
 func TestLifecycleMapping(t *testing.T) {
 	tests := []struct {
 		in      lifecycleState
+		focused bool
 		want    ui.AppLifecycleState
 		visible bool
 	}{
-		{lifecycleUnknown, ui.AppLifecycleStateResumed, true},
-		{lifecycleResumed, ui.AppLifecycleStateResumed, true},
-		{lifecyclePaused, ui.AppLifecycleStateInactive, true},
-		{lifecycleStopped, ui.AppLifecycleStateHidden, false},
+		{lifecycleUnknown, false, ui.AppLifecycleStateResumed, true},
+		{lifecycleResumed, true, ui.AppLifecycleStateResumed, true},
+		{lifecycleResumed, false, ui.AppLifecycleStateInactive, true},
+		{lifecyclePaused, true, ui.AppLifecycleStateInactive, true},
+		{lifecyclePaused, false, ui.AppLifecycleStateInactive, true},
+		{lifecycleStopped, false, ui.AppLifecycleStatePaused, false},
+		{lifecycleStopped, true, ui.AppLifecycleStatePaused, false},
+		{lifecycleDestroyed, false, ui.AppLifecycleStateDetached, false},
 	}
 	for _, tt := range tests {
-		if tt.in.appState() != tt.want || tt.in.visible() != tt.visible {
-			t.Errorf("%d: %v visible=%v, want %v visible=%v", tt.in, tt.in.appState(), tt.in.visible(), tt.want, tt.visible)
+		if got := tt.in.appState(tt.focused); got != tt.want || tt.in.visible() != tt.visible {
+			t.Errorf("%d focused=%v: %v visible=%v, want %v visible=%v", tt.in, tt.focused, got, tt.in.visible(), tt.want, tt.visible)
 		}
 	}
 }

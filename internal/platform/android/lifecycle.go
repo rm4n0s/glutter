@@ -2,8 +2,8 @@ package android
 
 import "github.com/rm4n0s/glutter/ui"
 
-// lifecycleState is what the activity reports (SPEC §24.8): the first version of step 25.3 knows
-// resumed, paused and stopped; step 25.9 completes it.
+// lifecycleState is what the activity reports (SPEC §24.8): resumed, paused, stopped and destroyed.
+// The framework's state also depends on whether the window has the focus.
 //
 // Flutter: shell/platform/android/io/flutter/embedding/engine/systemchannels/LifecycleChannel.java
 type lifecycleState int
@@ -18,20 +18,32 @@ const (
 	lifecyclePaused
 	// lifecycleStopped is onStop: the app is not visible.
 	lifecycleStopped
+	// lifecycleDestroyed is onDestroy of an activity that finishes: the app is detached.
+	lifecycleDestroyed
 )
 
-// appState maps the activity's state to the framework's.
-func (l lifecycleState) appState() ui.AppLifecycleState {
+// appState maps the activity's state and the focus of its window to the framework's: Resumed while
+// the activity is resumed and has the focus, Inactive while it is resumed without it or paused,
+// Paused once it is stopped (the framework goes through Hidden itself), Detached when it is
+// destroyed. Before the activity said anything the app is Resumed.
+//
+// Flutter: shell/platform/android/io/flutter/embedding/engine/systemchannels/LifecycleChannel.java LifecycleChannel
+func (l lifecycleState) appState(focused bool) ui.AppLifecycleState {
 	switch l {
 	case lifecycleResumed:
-		return ui.AppLifecycleStateResumed
+		if focused {
+			return ui.AppLifecycleStateResumed
+		}
+		return ui.AppLifecycleStateInactive
 	case lifecyclePaused:
 		return ui.AppLifecycleStateInactive
 	case lifecycleStopped:
-		return ui.AppLifecycleStateHidden
+		return ui.AppLifecycleStatePaused
+	case lifecycleDestroyed:
+		return ui.AppLifecycleStateDetached
 	}
 	return ui.AppLifecycleStateResumed
 }
 
-// visible says whether frames can be drawn: the activity is not stopped.
-func (l lifecycleState) visible() bool { return l != lifecycleStopped }
+// visible says whether frames can be drawn: the activity is neither stopped nor destroyed.
+func (l lifecycleState) visible() bool { return l != lifecycleStopped && l != lifecycleDestroyed }

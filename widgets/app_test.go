@@ -17,9 +17,7 @@ import (
 // These tests are ported from packages/flutter/test/widgets/app_test.dart. A
 // focusable box that toggles on ActivateIntent stands in for the Material
 // Checkbox, and the cases of Apple's text shortcuts (DefaultTextEditingShortcuts
-// has only the Linux bindings) and of the predictive back of Android
-// (SystemNavigator.SetFrameworkHandlesBack does nothing on the desktop) are not
-// ported.
+// has only the Linux bindings) are not ported.
 
 var appColor = ui.NewColor(0xFF123456)
 
@@ -491,4 +489,68 @@ func TestLocalizationsResolver(t *testing.T) {
 			t.Errorf("delegates = %v", got)
 		}
 	})
+}
+
+// Ported from the group 'Android Predictive Back' of app_test.dart.
+func TestWidgetsAppCallsSetFrameworkHandlesBackOnlyWhenTheAppIsReady(t *testing.T) {
+	skipUnlessDebug(t)
+	foundation.SetDebugDefaultTargetPlatformOverride(foundation.Some(foundation.TargetPlatformAndroid))
+	t.Cleanup(func() { foundation.SetDebugDefaultTargetPlatformOverride(foundation.None[foundation.TargetPlatform]()) })
+	ts := gluttertest.New(t)
+	var calls []bool
+	ts.Binding.SystemNavigator().OnSetFrameworkHandlesBack = func(v bool) { calls = append(calls, v) }
+	// Start in the resumed state, where setFrameworkHandlesBack is called like normal.
+	ts.Dispatcher().SetAppLifecycleState(ui.AppLifecycleStateResumed)
+
+	var current BuildContext
+	ts.PumpWidget(NewWidgetsApp(appColor, WidgetsAppOpts{
+		Builder: func(bc BuildContext, _ Widget) Widget { current = bc; return NewPlaceholder(nil) },
+	}))
+	if len(calls) != 0 {
+		t.Fatalf("calls = %v, want none before a notification", calls)
+	}
+	notify := func(canHandlePop bool) {
+		DispatchNotification(current, NavigationNotification{CanHandlePop: canHandlePop})
+		ts.PumpAndSettle()
+	}
+
+	if foundation.IsWeb {
+		// system_navigator.dart: the call is for Android and not for the web.
+		notify(true)
+		notify(false)
+		if len(calls) != 0 {
+			t.Fatalf("web: calls = %v, want none", calls)
+		}
+		return
+	}
+	notify(true)
+	if len(calls) == 0 || !calls[len(calls)-1] {
+		t.Fatalf("calls = %v, want the last to be true", calls)
+	}
+	notify(false)
+	if calls[len(calls)-1] {
+		t.Fatalf("calls = %v, want the last to be false", calls)
+	}
+
+	// In the inactive state it is still called: this could happen when responding to a tap on
+	// a notification when the app is not active and immediately navigating, for example.
+	ts.Dispatcher().SetAppLifecycleState(ui.AppLifecycleStateInactive)
+	n := len(calls)
+	notify(true)
+	if len(calls) != n+1 {
+		t.Fatalf("inactive: calls = %v, want %d", calls, n+1)
+	}
+	notify(false)
+	if len(calls) != n+2 {
+		t.Fatalf("inactive: calls = %v, want %d", calls, n+2)
+	}
+
+	// In the detached state it is not called.
+	ts.Dispatcher().SetAppLifecycleState(ui.AppLifecycleStateDetached)
+	n = len(calls)
+	notify(true)
+	notify(false)
+	if len(calls) != n {
+		t.Errorf("detached: calls = %v, want %d", calls, n)
+	}
 }

@@ -25,6 +25,17 @@ func goSurfaceDestroyed() { process.surfaceDestroyed() }
 //export goLifecycle
 func goLifecycle(state C.int) { process.lifecycleChanged(lifecycleState(state)) }
 
+//export goActivityCreated
+func goActivityCreated() { process.activityCreated() }
+
+//export goBack
+func goBack(kind C.int, x, y, progress C.float, edge C.int) {
+	process.back(int(kind), float64(x), float64(y), float64(progress), int(edge))
+}
+
+//export goTrimMemory
+func goTrimMemory(level C.int) { process.trimMemory(int(level)) }
+
 //export goMotionEvent
 func goMotionEvent(meta *C.longlong, nmeta C.int, ids *C.int, nids C.int, vals *C.float, nvals C.int, times *C.longlong, ntimes C.int,
 	pressureMin, pressureMax, hScroll, vScroll C.float) {

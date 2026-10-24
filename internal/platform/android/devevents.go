@@ -21,7 +21,7 @@ const DevEventsEnv = "GLUTTER_DEV_EVENTS"
 //
 // Flutter: no counterpart
 type DevEvent struct {
-	// Kind is "wait", "tap", "swipe", "key", "text", "compose" or "action".
+	// Kind is "wait", "tap", "swipe", "key", "text", "compose", "action" or "back".
 	Kind string
 	// Wait is how long to wait, for "wait"; and a swipe takes its Millis.
 	Wait time.Duration
@@ -45,6 +45,8 @@ var keyName = regexp.MustCompile(`^KEYCODE_[A-Z0-9_]+$`)
 //	text:hello          the input method commits the text into the text field that has the focus
 //	compose:a,b,c       the input method composes a, then b, then c, and ends with c committed
 //	action:enter        the input method does the action of its Enter key (the field's action)
+//	back:pop            the system's back; back:gesture a predictive back gesture that is completed,
+//	                    back:cancel one that is cancelled
 //
 // A step that is not one of these, or has the wrong arguments, fails with AndroidDevEventsInvalid.
 // The later steps of the script (text, compose, back, a11y) come with the steps that add them.
@@ -103,8 +105,13 @@ func ParseDevEvents(script string) ([]DevEvent, error) {
 			if args != "enter" {
 				return nil, errors.New(tagAndroidDevEventsInvalid, "action takes enter", "step", step)
 			}
+		case "back":
+			if args != "pop" && args != "gesture" && args != "cancel" {
+				return nil, errors.New(tagAndroidDevEventsInvalid, "back takes pop, gesture or cancel", "step", step)
+			}
+			ev.Key = args
 		default:
-			return nil, errors.New(tagAndroidDevEventsInvalid, "the step is not wait, tap, swipe, key, text, compose or action", "step", step)
+			return nil, errors.New(tagAndroidDevEventsInvalid, "the step is not wait, tap, swipe, key, text, compose, action or back", "step", step)
 		}
 		events = append(events, ev)
 	}
@@ -150,6 +157,9 @@ func (p *Platform) startDevEvents() {
 			case "key":
 				p.host.Inject(e)
 				time.Sleep(100 * time.Millisecond)
+			case "back":
+				p.host.Inject(e)
+				time.Sleep(600 * time.Millisecond)
 			case "text", "action":
 				p.host.Inject(e)
 				time.Sleep(300 * time.Millisecond)

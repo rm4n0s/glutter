@@ -8,7 +8,8 @@ import (
 
 // SystemNavigator controls the navigation of the system around the app: popping
 // the last route closes the app, and a router tells the system about its route
-// information. The binding makes one, and sets OnPop to end the app.
+// information. The binding makes one, sets OnPop to end the app and sets
+// OnSetFrameworkHandlesBack to tell the engine (the Android back gesture).
 //
 // Deviation: Flutter sends these calls to the platform through the
 // flutter/platform and flutter/navigation channels; here they are the hooks of
@@ -19,6 +20,9 @@ import (
 type SystemNavigator struct {
 	// OnPop is called by Pop; the binding sets it to end the app.
 	OnPop func(animated foundation.Opt[bool])
+	// OnSetFrameworkHandlesBack is called by SetFrameworkHandlesBack; the binding sets it to tell
+	// the engine, which tells the system (SPEC §24.8).
+	OnSetFrameworkHandlesBack func(frameworkHandlesBack bool)
 	// OnSelectSingleEntryHistory is called by SelectSingleEntryHistory.
 	OnSelectSingleEntryHistory func()
 	// OnSelectMultiEntryHistory is called by SelectMultiEntryHistory.
@@ -28,10 +32,23 @@ type SystemNavigator struct {
 }
 
 // SetFrameworkHandlesBack tells the system whether the framework handles the back
-// gesture. It matters only on Android; here it does nothing.
+// gesture: something that can pop, or a PopScope that cannot. The system then gives
+// the gesture to the app and shows its predictive animation; else it does its own.
+// It matters only on Android: on any other target platform, and on the web, the
+// call does nothing, as in Flutter.
+//
+// Deviation: Flutter sends the SystemNavigator.setFrameworkHandlesBack call of the
+// flutter/platform channel; here it is the OnSetFrameworkHandlesBack hook (SPEC §12.10).
 //
 // Flutter: services/system_navigator.dart SystemNavigator.setFrameworkHandlesBack
-func (n *SystemNavigator) SetFrameworkHandlesBack(bool) {}
+func (n *SystemNavigator) SetFrameworkHandlesBack(frameworkHandlesBack bool) {
+	if foundation.IsWeb || foundation.DefaultTargetPlatform() != foundation.TargetPlatformAndroid {
+		return
+	}
+	if n != nil && n.OnSetFrameworkHandlesBack != nil {
+		n.OnSetFrameworkHandlesBack(frameworkHandlesBack)
+	}
+}
 
 // Pop tells the system to pop the top route, which closes the app when it is the
 // last one. Animated says whether the system animates it (iOS only).

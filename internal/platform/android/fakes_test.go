@@ -128,8 +128,9 @@ type recorder struct {
 	metrics  platform.ViewMetrics
 	// onFrame, when set, runs inside OnFrame.
 	onFrame func(time.Duration)
-	// events are the text input events the engine got.
+	// events are the text input events the engine got; backs the back gesture events.
 	events []ui.TextInputEvent
+	backs  []ui.BackGestureEvent
 }
 
 func (r *recorder) OnTextInput(e ui.TextInputEvent) {

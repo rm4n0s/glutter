@@ -43,6 +43,35 @@ type WidgetsBindingObserver interface {
 	//
 	// Flutter: widgets/binding.dart WidgetsBindingObserver.didPushRouteInformation
 	DidPushRouteInformation(routeInformation *RouteInformation) bool
+	// HandleStartBackGesture is called at the start of a predictive back gesture.
+	// Observers are notified in registration order until all have been notified;
+	// each that returns true, and only those, is notified of the subsequent events
+	// of the same gesture (HandleUpdateBackGestureProgress and the rest). Return
+	// true if the notification was handled, for example by starting a predictive
+	// back animation. If every observer returns false, a pop results when
+	// HandleCommitBackGesture would be called, as in a non-predictive system back
+	// gesture. Used only on Android devices that support predictive back.
+	//
+	// Flutter: widgets/binding.dart WidgetsBindingObserver.handleStartBackGesture
+	HandleStartBackGesture(backEvent services.PredictiveBackEvent) bool
+	// HandleUpdateBackGestureProgress is called when a predictive back gesture
+	// moves, on the observers that took its start.
+	//
+	// Flutter: widgets/binding.dart WidgetsBindingObserver.handleUpdateBackGestureProgress
+	HandleUpdateBackGestureProgress(backEvent services.PredictiveBackEvent)
+	// HandleCommitBackGesture is called when a predictive back gesture finishes
+	// successfully, meaning that the current route should be popped, on the
+	// observers that took its start. If there is none, the binding pops as in a
+	// non-predictive system back gesture.
+	//
+	// Flutter: widgets/binding.dart WidgetsBindingObserver.handleCommitBackGesture
+	HandleCommitBackGesture()
+	// HandleCancelBackGesture is called when a predictive back gesture is
+	// canceled, meaning that no navigation should occur, on the observers that
+	// took its start.
+	//
+	// Flutter: widgets/binding.dart WidgetsBindingObserver.handleCancelBackGesture
+	HandleCancelBackGesture()
 	// DidChangeMetrics is called when the metrics of a view change.
 	//
 	// Flutter: widgets/binding.dart WidgetsBindingObserver.didChangeMetrics
@@ -100,6 +129,28 @@ func (WidgetsBindingObserverBase) DidPopRoute() bool { return false }
 //
 // Flutter: widgets/binding.dart WidgetsBindingObserver.didPushRouteInformation
 func (WidgetsBindingObserverBase) DidPushRouteInformation(*RouteInformation) bool { return false }
+
+// HandleStartBackGesture does not take the gesture.
+//
+// Flutter: widgets/binding.dart WidgetsBindingObserver.handleStartBackGesture
+func (WidgetsBindingObserverBase) HandleStartBackGesture(services.PredictiveBackEvent) bool {
+	return false
+}
+
+// HandleUpdateBackGestureProgress does nothing.
+//
+// Flutter: widgets/binding.dart WidgetsBindingObserver.handleUpdateBackGestureProgress
+func (WidgetsBindingObserverBase) HandleUpdateBackGestureProgress(services.PredictiveBackEvent) {}
+
+// HandleCommitBackGesture does nothing.
+//
+// Flutter: widgets/binding.dart WidgetsBindingObserver.handleCommitBackGesture
+func (WidgetsBindingObserverBase) HandleCommitBackGesture() {}
+
+// HandleCancelBackGesture does nothing.
+//
+// Flutter: widgets/binding.dart WidgetsBindingObserver.handleCancelBackGesture
+func (WidgetsBindingObserverBase) HandleCancelBackGesture() {}
 
 // DidChangeMetrics does nothing.
 //
@@ -187,10 +238,12 @@ type WidgetsBinding struct {
 	extMu      sync.Mutex
 	extensions map[any]any
 
-	observers   []WidgetsBindingObserver
-	windowing   *WindowingOwner
-	switcher    ApplicationSwitcherDescription
-	contextMenu contextMenuState
+	observers []WidgetsBindingObserver
+	// backGestureObservers are the observers that handle the active predictive back gesture.
+	backGestureObservers []WidgetsBindingObserver
+	windowing            *WindowingOwner
+	switcher             ApplicationSwitcherDescription
+	contextMenu          contextMenuState
 	// rawTooltips are the tooltips that are open, and the state their mouse
 	// regions share while hit testing.
 	rawTooltips rawTooltipRegistry
@@ -313,7 +366,16 @@ func NewWidgetsBinding(ctx context.Context, d *ui.PlatformDispatcher, opts ...Wi
 		}
 		return handled
 	}
-	b.navigator = &services.SystemNavigator{OnPop: func(foundation.Opt[bool]) { d.RequestAppExit() }}
+	b.navigator = &services.SystemNavigator{
+		OnPop:                     func(foundation.Opt[bool]) { d.RequestAppExit() },
+		OnSetFrameworkHandlesBack: d.SetFrameworkHandlesBack,
+	}
+	d.OnPopRoute = func() { b.HandlePopRoute() }
+	d.OnStartBackGesture = b.handleStartBackGesture
+	d.OnUpdateBackGestureProgress = b.handleUpdateBackGestureProgress
+	d.OnCommitBackGesture = b.HandleCommitBackGesture
+	d.OnCancelBackGesture = b.HandleCancelBackGesture
+	d.OnMemoryPressure = b.HandleMemoryPressure
 	b.sound = services.NewSystemSound(d)
 	b.chrome = services.NewSystemChrome(d)
 	b.haptic = services.NewHapticFeedback(d)
@@ -630,7 +692,8 @@ func generateStateTransitions(previous, state ui.AppLifecycleState) []ui.AppLife
 }
 
 // HandleMemoryPressure tells the painting binding to drop its image cache and
-// the observers about it. Nothing calls it on Linux desktop yet.
+// the observers about it. The dispatcher calls it when the system is low on memory
+// (Android).
 //
 // Flutter: widgets/binding.dart WidgetsBinding.handleMemoryPressure
 func (b *WidgetsBinding) HandleMemoryPressure() {
@@ -656,6 +719,97 @@ func (b *WidgetsBinding) HandlePopRoute() bool {
 	}
 	b.navigator.Pop()
 	return false
+}
+
+// handleStartBackGesture is the dispatcher's OnStartBackGesture: it makes the
+// event and calls HandleStartBackGesture. An event that fails the assertions of
+// PredictiveBackEvent is reported, and the gesture is not taken.
+func (b *WidgetsBinding) handleStartBackGesture(e ui.BackGestureEvent) bool {
+	var event services.PredictiveBackEvent
+	if b.backEvent(e, "WidgetsBinding.handleStartBackGesture", &event) {
+		b.backGestureObservers = nil
+		return false
+	}
+	return b.HandleStartBackGesture(event)
+}
+
+func (b *WidgetsBinding) handleUpdateBackGestureProgress(e ui.BackGestureEvent) {
+	if len(b.backGestureObservers) == 0 {
+		return
+	}
+	var event services.PredictiveBackEvent
+	if b.backEvent(e, "WidgetsBinding.handleUpdateBackGestureProgress", &event) {
+		return
+	}
+	b.HandleUpdateBackGestureProgress(event)
+}
+
+// backEvent makes the event from the engine's, reporting the panic of a bad one;
+// it reports whether it failed.
+func (b *WidgetsBinding) backEvent(e ui.BackGestureEvent, context string, out *services.PredictiveBackEvent) (failed bool) {
+	return foundation.Guard(b.report, foundation.CallbackPanicked, "while reading the event of "+context, nil,
+		func() { *out = services.NewPredictiveBackEventFromUI(e) })
+}
+
+// HandleStartBackGesture tells the observers, in order of registration, that a
+// predictive back gesture starts. The observers that return true are the only
+// ones that hear of the rest of the gesture. It reports whether one did.
+//
+// Flutter: widgets/binding.dart WidgetsBinding._handleStartBackGesture
+func (b *WidgetsBinding) HandleStartBackGesture(backEvent services.PredictiveBackEvent) bool {
+	b.backGestureObservers = nil
+	for _, observer := range slices.Clone(b.observers) {
+		foundation.Guard(b.report, foundation.CallbackPanicked,
+			"while dispatching notifications for WidgetsBindingObserver.handleStartBackGesture", nil,
+			func() {
+				if observer.HandleStartBackGesture(backEvent) {
+					b.backGestureObservers = append(b.backGestureObservers, observer)
+				}
+			})
+	}
+	return len(b.backGestureObservers) > 0
+}
+
+// HandleUpdateBackGestureProgress tells the observers that took the start of the
+// gesture that it moved.
+//
+// Flutter: widgets/binding.dart WidgetsBinding._handleUpdateBackGestureProgress
+func (b *WidgetsBinding) HandleUpdateBackGestureProgress(backEvent services.PredictiveBackEvent) {
+	for _, observer := range slices.Clone(b.backGestureObservers) {
+		foundation.Guard(b.report, foundation.CallbackPanicked,
+			"while dispatching notifications for WidgetsBindingObserver.handleUpdateBackGestureProgress", nil,
+			func() { observer.HandleUpdateBackGestureProgress(backEvent) })
+	}
+}
+
+// HandleCommitBackGesture tells the observers that took the start of the gesture
+// that it finished. If none did, the route is popped like a normal,
+// non-predictive back (HandlePopRoute): this happens when a back gesture occurs
+// but no predictive back route transition exists to handle it.
+//
+// Flutter: widgets/binding.dart WidgetsBinding._handleCommitBackGesture
+func (b *WidgetsBinding) HandleCommitBackGesture() {
+	if len(b.backGestureObservers) == 0 {
+		b.HandlePopRoute()
+		return
+	}
+	for _, observer := range slices.Clone(b.backGestureObservers) {
+		foundation.Guard(b.report, foundation.CallbackPanicked,
+			"while dispatching notifications for WidgetsBindingObserver.handleCommitBackGesture", nil,
+			func() { observer.HandleCommitBackGesture() })
+	}
+}
+
+// HandleCancelBackGesture tells the observers that took the start of the gesture
+// that it was canceled.
+//
+// Flutter: widgets/binding.dart WidgetsBinding._handleCancelBackGesture
+func (b *WidgetsBinding) HandleCancelBackGesture() {
+	for _, observer := range slices.Clone(b.backGestureObservers) {
+		foundation.Guard(b.report, foundation.CallbackPanicked,
+			"while dispatching notifications for WidgetsBindingObserver.handleCancelBackGesture", nil,
+			func() { observer.HandleCancelBackGesture() })
+	}
 }
 
 // HandlePushRouteInformation tells the observers, in order of registration, that

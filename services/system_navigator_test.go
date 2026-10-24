@@ -58,6 +58,37 @@ func TestSystemNavigatorNavigationCalls(t *testing.T) {
 	}
 }
 
+func TestSystemNavigatorSetFrameworkHandlesBack(t *testing.T) {
+	tests := []struct {
+		platform foundation.TargetPlatform
+		want     []bool
+	}{
+		{foundation.TargetPlatformAndroid, []bool{true, false}},
+		{foundation.TargetPlatformIOS, nil},
+		{foundation.TargetPlatformMacOS, nil},
+		{foundation.TargetPlatformFuchsia, nil},
+		{foundation.TargetPlatformLinux, nil},
+		{foundation.TargetPlatformWindows, nil},
+	}
+	for _, tc := range tests {
+		t.Run(tc.platform.Name(), func(t *testing.T) {
+			if foundation.IsWeb {
+				// system_navigator.dart: the call is for Android and not for the web.
+				tc.want = nil
+			}
+			foundation.SetDebugDefaultTargetPlatformOverride(foundation.Some(tc.platform))
+			t.Cleanup(func() { foundation.SetDebugDefaultTargetPlatformOverride(foundation.None[foundation.TargetPlatform]()) })
+			var got []bool
+			n := &SystemNavigator{OnSetFrameworkHandlesBack: func(v bool) { got = append(got, v) }}
+			n.SetFrameworkHandlesBack(true)
+			n.SetFrameworkHandlesBack(false)
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("OnSetFrameworkHandlesBack calls = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestSystemNavigatorWithoutHooksDoesNothing(t *testing.T) {
 	var n SystemNavigator
 	n.Pop()
@@ -70,6 +101,7 @@ func TestSystemNavigatorWithoutHooksDoesNothing(t *testing.T) {
 	nilNavigator.SelectSingleEntryHistory()
 	nilNavigator.SelectMultiEntryHistory()
 	nilNavigator.RouteInformationUpdated(nil, nil, false)
+	nilNavigator.SetFrameworkHandlesBack(true)
 }
 
 func TestSystemSound(t *testing.T) {

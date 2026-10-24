@@ -61,6 +61,9 @@ public class GlutterView extends SurfaceView implements SurfaceHolder.Callback {
   /** Text input of the activity: the input connection comes from it. */
   private TextInput textInput;
 
+  /** Back navigation of the activity: the dev events script injects a back through it. */
+  private BackNavigation backNavigation;
+
   /** The latest insets while the keyboard slides: they are reported when it stops. Main thread. */
   private WindowInsets deferredInsets;
 
@@ -88,6 +91,11 @@ public class GlutterView extends SurfaceView implements SurfaceHolder.Callback {
     getHolder().addCallback(this);
     setFocusable(true);
     setFocusableInTouchMode(true);
+  }
+
+  /** Gives the view the back navigation that the dev events script acts through. */
+  void setBackNavigation(BackNavigation backNavigation) {
+    this.backNavigation = backNavigation;
   }
 
   /** Gives the view the text input that makes its input connections. */
@@ -234,6 +242,14 @@ public class GlutterView extends SurfaceView implements SurfaceHolder.Callback {
   /** The dev events script (main thread): a synthetic tap, swipe or key, dispatched like real input. */
   void inject(int kind, float x1, float y1, float x2, float y2, int ms, String key) {
     final Handler handler = getHandler() != null ? getHandler() : new Handler(Looper.getMainLooper());
+    if (kind == 7) {
+      if (backNavigation == null) {
+        Log.w(TAG, "back injected but there is no back navigation");
+      } else {
+        backNavigation.inject(key);
+      }
+      return;
+    }
     if (kind >= 4 && kind <= 6) {
       if (textInput == null) {
         Log.w(TAG, "text injected but there is no text input");

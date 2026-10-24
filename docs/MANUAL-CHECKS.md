@@ -113,3 +113,26 @@ Check, and record the answers:
 8. Move the caret by swiping on the space bar (Gboard): does the caret follow? (Known limit: it may not, SPEC §24.6.)
 
 Answers: _(not yet recorded)_
+
+## 25.9 Lifecycle, back navigation and exit
+
+**Status:** pending
+
+Run (a phone with Android 14 or later, gesture navigation, and "Predictive back animations" on in Developer options if the phone has that switch):
+
+```
+go run ./cmd/glutter-android run ./examples/navigation
+go run ./cmd/glutter-android run ./examples/dev/android-back
+```
+
+Check, and record the answers:
+
+1. In `examples/navigation`, push a page and swipe back from the left or right edge: does the page follow your finger and then pop, and does a swipe you let go of early cancel and keep the page? Does the system's predictive animation (the page shrinks and the one below shows) play, or does the app show its own? (SPEC §24.8: it depends on the theme's page transitions.)
+2. The same with the 3-button navigation (Settings → System → Navigation): does the Back button pop the page?
+3. On the first page, does Back (swipe or button) leave the app and show the home screen, and does opening the app again start it where it was (still running) or from the beginning (killed)?
+4. Press Home and open the app again from the launcher and from the recent-apps screen: does it come back as it was, with no flicker or black frame? Is the screen drawn again at once after the lock screen?
+5. `examples/dev/android-back`: push the third page (it cannot be popped): does Back leave you on it? Look at `adb logcat` (filter on "lifecycle") while you do it: are the `lifecycle` lines in order (Inactive, Hidden, Paused on Home; Resumed on return)?
+6. Swipe the app away from the recent-apps screen and start it again: does it start from the beginning?
+
+Answers: _(not yet recorded)_
+

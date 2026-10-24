@@ -53,6 +53,8 @@ func (nativeHost) Inject(e DevEvent) {
 		kind = 5
 	case "action":
 		kind = 6
+	case "back":
+		kind = 7
 	default:
 		return
 	}

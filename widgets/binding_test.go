@@ -4,31 +4,43 @@ import (
 	"github.com/rm4n0s/glutter/gluttertest"
 	. "github.com/rm4n0s/glutter/widgets"
 	"slices"
+	"strings"
 	"testing"
 
+	"context"
+
 	"github.com/rm4n0s/errors"
+	"github.com/rm4n0s/glutter/foundation"
+	"github.com/rm4n0s/glutter/internal/renderhost"
 	"github.com/rm4n0s/glutter/rendering"
+	"github.com/rm4n0s/glutter/services"
 	"github.com/rm4n0s/glutter/ui"
 )
 
 // Ported from packages/flutter/test/widgets/binding_test.dart: the observer
 // tests (the lifecycle, the reentrant removal, 'WidgetsBindingObserver callbacks
 // handle exceptions gracefully', the pop route, the memory pressure) and
-// 'Application lifecycle affects frame scheduling'. The route push and back
-// gesture tests, the view focus tests and the stack filter test are not ported:
-// Glutter has no navigation channel, no predictive back and no view focus
-// events yet, and no stack filters.
+// 'Application lifecycle affects frame scheduling', and the back gesture tests
+// (handleStartBackGesture, handleUpdateBackGestureProgress, handleCommitBackGesture and
+// handleCancelBackGesture, with the dispatcher in place of the flutter/backgesture channel).
+// The route push tests, the view focus tests and the stack filter test are not ported:
+// Glutter has no navigation channel and no stack filters.
 
 // recordingObserver is LoggingObserver and ThrowingObserver of binding_test.dart.
 type recordingObserver struct {
 	WidgetsBindingObserverBase
-	log      *[]string
-	name     string
-	throws   bool
-	pops     bool
-	response ui.AppExitResponse
-	states   []ui.AppLifecycleState
-	locales  [][]ui.Locale
+	log    *[]string
+	name   string
+	throws bool
+	pops   bool
+	// takesBackGesture is what HandleStartBackGesture returns.
+	takesBackGesture bool
+	// throwsAfterStart makes the observer panic in the callbacks of a back gesture after its
+	// start (BackGestureThrowingObserver); the start itself returns takesBackGesture.
+	throwsAfterStart bool
+	response         ui.AppExitResponse
+	states           []ui.AppLifecycleState
+	locales          [][]ui.Locale
 	// onCall runs at each callback, for the reentrant test.
 	onCall func()
 }
@@ -38,13 +50,22 @@ func (o *recordingObserver) record(what string) {
 	if o.onCall != nil {
 		o.onCall()
 	}
-	if o.throws {
+	if o.throws || (o.throwsAfterStart && what != "handleStartBackGesture") {
 		panic(errors.New(tagObserverFailed, o.name+" failed in "+what))
 	}
 }
 
 func (o *recordingObserver) DidPopRoute() bool { o.record("didPopRoute"); return o.pops }
-func (o *recordingObserver) DidChangeMetrics() { o.record("didChangeMetrics") }
+func (o *recordingObserver) HandleStartBackGesture(services.PredictiveBackEvent) bool {
+	o.record("handleStartBackGesture")
+	return o.takesBackGesture
+}
+func (o *recordingObserver) HandleUpdateBackGestureProgress(services.PredictiveBackEvent) {
+	o.record("handleUpdateBackGestureProgress")
+}
+func (o *recordingObserver) HandleCommitBackGesture() { o.record("handleCommitBackGesture") }
+func (o *recordingObserver) HandleCancelBackGesture() { o.record("handleCancelBackGesture") }
+func (o *recordingObserver) DidChangeMetrics()        { o.record("didChangeMetrics") }
 func (o *recordingObserver) DidChangeTextScaleFactor() {
 	o.record("didChangeTextScaleFactor")
 }
@@ -67,6 +88,10 @@ func (o *recordingObserver) DidHaveMemoryPressure() { o.record("didHaveMemoryPre
 func (o *recordingObserver) DidChangeAccessibilityFeatures() {
 	o.record("didChangeAccessibilityFeatures")
 }
+
+// startBackGestureEvent is the event of the start of the Dart tests: touchOffset [5.0, 300.0],
+// progress 0.0, swipeEdge 0 (left).
+var startBackEvent = ui.BackGestureEvent{HasTouchOffset: true, TouchX: 5, TouchY: 300, SwipeEdge: ui.BackSwipeEdgeLeft}
 
 func TestObserversHandleExceptionsGracefully(t *testing.T) {
 	tests := []struct {
@@ -93,13 +118,31 @@ func TestObserversHandleExceptionsGracefully(t *testing.T) {
 			ts.SetPlatformConfiguration(func(c *ui.PlatformConfiguration) { c.Locales = []ui.Locale{{LanguageCode: "es"}} })
 		}},
 		{"didHaveMemoryPressure", func(ts *gluttertest.Tester) { ts.Binding.HandleMemoryPressure() }},
+		{"handleStartBackGesture", func(ts *gluttertest.Tester) { ts.Dispatcher().StartBackGesture(startBackEvent) }},
+		{"handleUpdateBackGestureProgress", func(ts *gluttertest.Tester) {
+			ts.Dispatcher().StartBackGesture(startBackEvent)
+			ts.Dispatcher().UpdateBackGestureProgress(ui.BackGestureEvent{HasTouchOffset: true, TouchX: 100, TouchY: 300, Progress: 0.35, SwipeEdge: ui.BackSwipeEdgeLeft})
+		}},
+		{"handleCommitBackGesture", func(ts *gluttertest.Tester) {
+			ts.Dispatcher().StartBackGesture(startBackEvent)
+			ts.Dispatcher().CommitBackGesture()
+		}},
+		{"handleCancelBackGesture", func(ts *gluttertest.Tester) {
+			ts.Dispatcher().StartBackGesture(startBackEvent)
+			ts.Dispatcher().CancelBackGesture()
+		}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			ts := gluttertest.New(t)
 			var log []string
+			// The back gesture cases use BackGestureThrowingObserver, which takes the start and
+			// throws in the rest; the others use ThrowingObserver.
 			throwing := &recordingObserver{log: &log, name: "throwing", throws: true}
-			logging := &recordingObserver{log: &log, name: "logging"}
+			if strings.HasPrefix(tc.name, "handle") && tc.name != "handleStartBackGesture" {
+				throwing = &recordingObserver{log: &log, name: "throwing", throwsAfterStart: true, takesBackGesture: true}
+			}
+			logging := &recordingObserver{log: &log, name: "logging", takesBackGesture: true}
 			ts.Binding.AddObserver(throwing)
 			ts.Binding.AddObserver(logging)
 			tc.trigger(ts)
@@ -429,6 +472,253 @@ func TestBuildScheduledDuringFrame(t *testing.T) {
 		t.Fatalf("%d errors, want 1: %v", len(errs), errs)
 	}
 	_ = requireErrorTag(t, errs[0], "BuildScheduledDuringFrame")
+}
+
+func TestBackGestureObservers(t *testing.T) {
+	update := ui.BackGestureEvent{HasTouchOffset: true, TouchX: 100, TouchY: 300, Progress: 0.35, SwipeEdge: ui.BackSwipeEdgeLeft}
+	tests := []struct {
+		name string
+		// takes is whether each observer takes the start, in order of registration.
+		takes []bool
+		// run is what the engine does.
+		run func(d *ui.PlatformDispatcher) (tookStart bool)
+		// wantLog lists the calls, wantExit the exit requests that a pop with no handler makes.
+		wantLog   []string
+		wantTook  bool
+		wantExits int
+	}{
+		{
+			name:  "start asks every observer, and only those that took it hear the rest",
+			takes: []bool{false, true, true},
+			run: func(d *ui.PlatformDispatcher) bool {
+				took := d.StartBackGesture(startBackEvent)
+				d.UpdateBackGestureProgress(update)
+				d.CommitBackGesture()
+				return took
+			},
+			wantLog: []string{
+				"a:handleStartBackGesture", "b:handleStartBackGesture", "c:handleStartBackGesture",
+				"b:handleUpdateBackGestureProgress", "c:handleUpdateBackGestureProgress",
+				"b:handleCommitBackGesture", "c:handleCommitBackGesture",
+			},
+			wantTook: true,
+		},
+		{
+			name:  "cancel goes to the observers that took the start",
+			takes: []bool{true, false},
+			run: func(d *ui.PlatformDispatcher) bool {
+				took := d.StartBackGesture(startBackEvent)
+				d.CancelBackGesture()
+				return took
+			},
+			wantLog:  []string{"a:handleStartBackGesture", "b:handleStartBackGesture", "a:handleCancelBackGesture"},
+			wantTook: true,
+		},
+		{
+			name:  "commit with no observer that took the start pops the route",
+			takes: []bool{false, false},
+			run: func(d *ui.PlatformDispatcher) bool {
+				took := d.StartBackGesture(startBackEvent)
+				d.UpdateBackGestureProgress(update)
+				d.CommitBackGesture()
+				return took
+			},
+			// The pop asks the observers (DidPopRoute logs nothing here) and then exits.
+			wantLog:   []string{"a:handleStartBackGesture", "b:handleStartBackGesture", "a:didPopRoute", "b:didPopRoute"},
+			wantTook:  false,
+			wantExits: 1,
+		},
+		{
+			name:      "commit without a start pops the route",
+			takes:     nil,
+			run:       func(d *ui.PlatformDispatcher) bool { d.CommitBackGesture(); return false },
+			wantExits: 1,
+		},
+		{
+			name:  "cancel without a start does nothing",
+			takes: []bool{true},
+			run:   func(d *ui.PlatformDispatcher) bool { d.CancelBackGesture(); return false },
+		},
+		{
+			name:  "update without a start does nothing",
+			takes: []bool{true},
+			run:   func(d *ui.PlatformDispatcher) bool { d.UpdateBackGestureProgress(update); return false },
+		},
+		{
+			name:  "a new start forgets the observers of the gesture before",
+			takes: []bool{true},
+			run: func(d *ui.PlatformDispatcher) bool {
+				d.StartBackGesture(startBackEvent)
+				// The second start clears the list of the first, so the observer is in it once.
+				took := d.StartBackGesture(startBackEvent)
+				d.UpdateBackGestureProgress(update)
+				return took
+			},
+			wantLog: []string{
+				"a:handleStartBackGesture", "a:handleStartBackGesture", "a:handleUpdateBackGestureProgress",
+			},
+			wantTook: true,
+		},
+		{
+			name:  "a cancel does not forget the observers (Flutter clears them only at the next start)",
+			takes: []bool{true},
+			run: func(d *ui.PlatformDispatcher) bool {
+				d.StartBackGesture(startBackEvent)
+				d.CancelBackGesture()
+				d.CommitBackGesture()
+				return true
+			},
+			wantLog:  []string{"a:handleStartBackGesture", "a:handleCancelBackGesture", "a:handleCommitBackGesture"},
+			wantTook: true,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ts := gluttertest.New(t)
+			var log []string
+			for i, takes := range tc.takes {
+				ts.Binding.AddObserver(&recordingObserver{log: &log, name: string(rune('a' + i)), takesBackGesture: takes})
+			}
+			if got := tc.run(ts.Dispatcher()); got != tc.wantTook {
+				t.Errorf("StartBackGesture = %v, want %v", got, tc.wantTook)
+			}
+			if !slices.Equal(log, tc.wantLog) {
+				t.Errorf("log = %v, want %v", log, tc.wantLog)
+			}
+			if ts.ExitRequests() != tc.wantExits {
+				t.Errorf("exit requests = %d, want %d", ts.ExitRequests(), tc.wantExits)
+			}
+		})
+	}
+}
+
+func TestBackGestureEventReachesTheObserver(t *testing.T) {
+	ts := gluttertest.New(t)
+	var got []services.PredictiveBackEvent
+	obs := &eventObserver{onStart: func(e services.PredictiveBackEvent) bool { got = append(got, e); return true },
+		onUpdate: func(e services.PredictiveBackEvent) { got = append(got, e) }}
+	ts.Binding.AddObserver(obs)
+	ts.Dispatcher().StartBackGesture(startBackEvent)
+	ts.Dispatcher().UpdateBackGestureProgress(ui.BackGestureEvent{HasTouchOffset: true, TouchX: 100, TouchY: 300, Progress: 0.35, SwipeEdge: ui.BackSwipeEdgeRight})
+	want := []services.PredictiveBackEvent{
+		services.NewPredictiveBackEvent(foundation.Some(ui.Offset{Dx: 5, Dy: 300}), 0, services.SwipeEdgeLeft),
+		services.NewPredictiveBackEvent(foundation.Some(ui.Offset{Dx: 100, Dy: 300}), 0.35, services.SwipeEdgeRight),
+	}
+	if len(got) != len(want) {
+		t.Fatalf("events = %v, want %v", got, want)
+	}
+	for i := range want {
+		if !got[i].Equal(want[i]) {
+			t.Errorf("event %d = %v, want %v", i, got[i], want[i])
+		}
+	}
+}
+
+// eventObserver is an observer that hands the back gesture events to functions.
+type eventObserver struct {
+	WidgetsBindingObserverBase
+	onStart  func(services.PredictiveBackEvent) bool
+	onUpdate func(services.PredictiveBackEvent)
+}
+
+func (o *eventObserver) HandleStartBackGesture(e services.PredictiveBackEvent) bool {
+	return o.onStart(e)
+}
+func (o *eventObserver) HandleUpdateBackGestureProgress(e services.PredictiveBackEvent) {
+	o.onUpdate(e)
+}
+
+func TestBackGestureWithABadEventIsReported(t *testing.T) {
+	tests := []struct {
+		name  string
+		event ui.BackGestureEvent
+	}{
+		{"progress out of range", ui.BackGestureEvent{Progress: 2, SwipeEdge: ui.BackSwipeEdgeLeft}},
+		{"no swipe edge", ui.BackGestureEvent{Progress: 0.5}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ts := gluttertest.New(t)
+			var log []string
+			ts.Binding.AddObserver(&recordingObserver{log: &log, name: "a", takesBackGesture: true})
+			if ts.Dispatcher().StartBackGesture(tc.event) {
+				t.Error("the framework took a gesture whose event is not valid")
+			}
+			if len(log) != 0 {
+				t.Errorf("the observer heard of a bad event: %v", log)
+			}
+			errs := ts.TakeErrors()
+			if len(errs) != 1 {
+				t.Fatalf("%d errors reported, want 1: %v", len(errs), errs)
+			}
+			appErr, ok := errors.FromError(errs[0])
+			if !ok {
+				t.Fatalf("expected *errors.Error, got %T", errs[0])
+			}
+			if !foundation.IsRecoveredPanic(errs[0]) {
+				t.Errorf("the error is not the report of a recovered panic: %s", appErr.Route())
+			}
+		})
+	}
+}
+
+func TestDispatcherCallbacksReachTheBinding(t *testing.T) {
+	ts := gluttertest.New(t)
+	var log []string
+	ts.Binding.AddObserver(&recordingObserver{log: &log, name: "a", pops: true})
+	ts.Dispatcher().PopRoute()
+	ts.Dispatcher().NotifyMemoryPressure()
+	if want := []string{"a:didPopRoute", "a:didHaveMemoryPressure"}; !slices.Equal(log, want) {
+		t.Errorf("log = %v, want %v", log, want)
+	}
+	if ts.ExitRequests() != 0 {
+		t.Errorf("exit requests = %d, want 0 (an observer handled the pop)", ts.ExitRequests())
+	}
+}
+
+// backHost is a host that implements ui.BackHost.
+type backHost struct {
+	*renderhost.Host
+	calls []bool
+}
+
+func (h *backHost) SetFrameworkHandlesBack(handles bool) { h.calls = append(h.calls, handles) }
+
+func TestSetFrameworkHandlesBackReachesTheBackHost(t *testing.T) {
+	skipUnlessDebug(t)
+	foundation.SetDebugDefaultTargetPlatformOverride(foundation.Some(foundation.TargetPlatformAndroid))
+	t.Cleanup(func() { foundation.SetDebugDefaultTargetPlatformOverride(foundation.None[foundation.TargetPlatform]()) })
+	tests := []struct {
+		name string
+		host ui.PlatformHost
+		call []bool
+		want []bool
+	}{
+		{"a host with BackHost", &backHost{Host: &renderhost.Host{}}, []bool{true, false}, []bool{true, false}},
+		{"a host without BackHost", &renderhost.Host{}, []bool{true, false}, nil},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if foundation.IsWeb {
+				// system_navigator.dart: the call is for Android and not for the web.
+				tc.want = nil
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			t.Cleanup(cancel)
+			d := ui.NewPlatformDispatcher(tc.host)
+			b := NewWidgetsBinding(ctx, d, WidgetsBindingOpts{ErrorReporter: func(err error) { t.Error(err) }})
+			for _, v := range tc.call {
+				b.SystemNavigator().SetFrameworkHandlesBack(v)
+			}
+			if bh, ok := tc.host.(*backHost); ok {
+				if !slices.Equal(bh.calls, tc.want) {
+					t.Errorf("host calls = %v, want %v", bh.calls, tc.want)
+				}
+			} else if tc.want != nil {
+				t.Error("test table error")
+			}
+		})
+	}
 }
 
 // The tags of the errors that this file makes (rm4n0s/errors, R5).

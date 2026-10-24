@@ -2,7 +2,7 @@ package android
 
 import (
 	"github.com/rm4n0s/glutter/internal/platform"
-	"github.com/rm4n0s/glutter/internal/platform/web"
+	"github.com/rm4n0s/glutter/internal/platform/textedit"
 	"github.com/rm4n0s/glutter/ui"
 )
 
@@ -169,7 +169,7 @@ func inputTypeOf(s ui.TextInputState) int {
 //
 // Flutter: shell/platform/android/io/flutter/plugin/editing/TextInputPlugin.java TextInputPlugin
 type textInput struct {
-	editor web.TextEditor
+	editor textedit.TextEditor
 	// active is whether a text field has the focus; config is what the input method was told.
 	active bool
 	config editorConfig
@@ -219,7 +219,7 @@ func (t *textInput) edit(seq int, text string, base, extent, composeBase, compos
 	if !t.active {
 		return ui.TextInputEvent{}, false
 	}
-	return t.editor.Handle(web.EditingState{
+	return t.editor.Handle(textedit.EditingState{
 		Text: text, Base: max(0, base), Extent: max(0, extent), ComposingBase: composeBase, ComposingExtent: composeExtent,
 	})
 }
@@ -242,4 +242,15 @@ func (p *Platform) textEdit(seq int, text string, base, extent, composeBase, com
 		return
 	}
 	p.handler.OnTextInput(ev)
+}
+
+// resend asks the activity again for the text input that is on, after a new activity came into the
+// process: it starts it and writes the framework's state.
+func (t *textInput) resend(h host) {
+	if !t.active {
+		return
+	}
+	state := t.editor.State()
+	t.active = false
+	t.setState(h, state)
 }

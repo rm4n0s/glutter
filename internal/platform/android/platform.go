@@ -34,6 +34,9 @@ type Platform struct {
 	// (clipboard.go).
 	text      textInput
 	clipboard *clipboard
+	// handlesBack is whether the framework handles the back gesture (back.go); framed is whether a
+	// frame was drawn.
+	handlesBack, framed bool
 	// devEvents is the script of GLUTTER_DEV_EVENTS, in debug builds; devStarted says it was started.
 	devEvents  []DevEvent
 	devStarted bool
@@ -65,7 +68,7 @@ func (p *Platform) Run(ctx context.Context, h platform.Handler) error {
 	defer context.AfterFunc(ctx, p.host.Wake)()
 
 	state, lifecycle, focused := p.b.snapshotAll()
-	h.OnLifecycle(lifecycle.appState())
+	h.OnLifecycle(lifecycle.appState(focused))
 	if p.win != nil {
 		if state.ready() {
 			h.OnMetrics(p.win.id, state.viewMetrics())
@@ -106,6 +109,7 @@ func (p *Platform) onVsync(frameTime time.Duration) {
 		return
 	}
 	p.handler.OnFrame(p.win.id, frameTime)
+	p.framed = true
 	p.startDevEvents()
 }
 
@@ -145,8 +149,8 @@ func (p *Platform) metricsChanged() {
 // lifecycleChanged reports the activity's lifecycle. A frame that was wanted while the app was
 // stopped is asked for when it is visible again (the loop does it).
 func (p *Platform) lifecycleChanged() {
-	_, lifecycle, _ := p.b.snapshotAll()
-	p.handler.OnLifecycle(lifecycle.appState())
+	_, lifecycle, focused := p.b.snapshotAll()
+	p.handler.OnLifecycle(lifecycle.appState(focused))
 	if lifecycle.visible() {
 		p.frames.request()
 	}
@@ -154,10 +158,12 @@ func (p *Platform) lifecycleChanged() {
 
 // focusChanged reports that the window got or lost the focus.
 func (p *Platform) focusChanged() {
-	_, _, focused := p.b.snapshotAll()
+	_, lifecycle, focused := p.b.snapshotAll()
 	if p.win != nil {
 		p.handler.OnViewFocus(p.win.id, focused)
 	}
+	// The focus is part of the app's state: a resumed activity without it is Inactive.
+	p.handler.OnLifecycle(lifecycle.appState(focused))
 }
 
 // Post runs fn on the UI thread, in order with the events of the Java side. It is safe to call
