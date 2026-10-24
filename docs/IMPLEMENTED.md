@@ -2742,3 +2742,38 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - A scenario with taps needs a debug build (`GLUTTER_DEV_EVENTS`), whose frames are 5 to 10 times longer; the release numbers use `GLUTTER_GALLERY_PAGE`, `GLUTTER_GALLERY_ANIMATE` and `GLUTTER_GALLERY_REBUILD`.
   - `glutter-android shot -avd glutter-26` failed twice with `adb logcat -c` ("failed to clear the 'main' log") right after the boot of the API 26 emulator; the device tests are not affected. To look at.
 
+## 26.6 Release checklist for 1.6
+
+- **Date:** 2026-10-25
+- **Branch:** feat/step-26.6-release-1.6
+- **Summary:** The checklist for 1.6 was run on the tree of `main` after step 26.5 (commit `0152255`, with one test fix on this branch) and is recorded here. **Every code check passes. 1.6 is not ready to tag yet: the manual checks of 25.4 to 25.12 and 26.2 to 26.5 are the owner's and none is recorded, and the Android performance targets are proposed from the emulator and wait for the owner's phone.** The tag `v1.6.0` was **not** created and nothing was pushed but this entry; the owner decides (see "To decide"). The SPEC's version paragraph now says what 1.6 has.
+- **Main files:** `docs/IMPLEMENTED.md`, `docs/SPEC.md` (the version paragraph), `internal/androidtest/system_device_test.go` (the dark gallery test of 25.7 tapped a coordinate of the desktop layout; step 26.5 moved it, and the test failed in the device run of 26.5 that was published before its result was read: now it taps the moon of the app bar).
+- **Tests:** none added.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck (the error rules of SPEC §14.4) ✅ · apicheck (SPEC §12.13) ✅ · `GOOS=js GOARCH=wasm` build, vet and `scripts/test-wasm.sh` ✅ · `scripts/check-android.sh` ✅ · **display tests** (`scripts/headless-wayland.sh -- go test -race -tags glutter_display ./...` under sway, and the X11 package under `scripts/headless-x11.sh`) ✅ · **browser tests** (`go test -tags glutter_browser ./...`) ✅ · **device tests** (`go test -p 1 -tags glutter_android ./internal/androidtest`, both emulators; the dark gallery test re-run after its fix) ✅
+- **Proof:** none for this step.
+- **Manual checks (the owner's, on a phone; each section of `docs/MANUAL-CHECKS.md` has the commands and the questions):**
+  | Step | Check | State |
+  |---|---|---|
+  | 25.4 | GLES on Android | **PENDING** |
+  | 25.5 | Vulkan on Android and choosing the renderer | **PENDING** |
+  | 25.6 | touch, mouse, stylus and keys | **PENDING** |
+  | 25.7 | insets, system UI, feedback and settings | **PENDING** |
+  | 25.8 | text input, the soft keyboard and the clipboard | **PENDING** |
+  | 25.9 | lifecycle, back navigation and exit | **PENDING** |
+  | 25.10 | fonts | **PENDING** |
+  | 25.11 | TalkBack | **PENDING** |
+  | 25.12 | services (opening a URI, notifications) | **PENDING** |
+  | 26.2 | the text selection toolbar and the magnifier (not required by the plan) | **PENDING** |
+  | 26.3 | predictive back transitions | **PENDING** |
+  | 26.4 | spell check | **PENDING** |
+  | 26.5 | the examples, the gallery's frames, and the numbers of `scripts/perf-android.sh -d <serial>` | **PENDING** |
+- **Performance targets (26.5, SPEC §15 "Android"):**
+  - **Met on the emulator** (release builds): idle CPU of the counter (0 ticks in 10 s); UI thread build time of an animation-only frame (0.4 to 0.65 ms against 4 ms) and of a full rebuild of a gallery page (5.5 to 7.4 ms against 16 ms); cold start to the first frame with the software renderer (0.55 to 0.9 s against 1 s); APK per ABI (counter 25.8 MiB against 30, gallery 37.0 MiB against 42); memory of the counter (PSS 74 MB against 100).
+  - **Not measurable on the emulator:** the frame rate of the gallery (its GPU is SwiftShader: 1.5 s a frame with Vulkan, 150 ms with the software renderer) and the cold start with a GPU renderer (1.5 s with Vulkan, 3.3 s with OpenGL ES, both through SwiftShader). They need the phone.
+  - The targets are proposals until the owner reads the phone's numbers (26.5 in `docs/MANUAL-CHECKS.md`); no exception is recorded because nothing was missed on the emulator.
+- **To decide (the owner):**
+  1. **Do the manual checks above** (13 sections) and record the answers in `docs/MANUAL-CHECKS.md`; anything that fails is a fix before the tag.
+  2. **Confirm or change the Android targets** of SPEC §15 after reading the phone's numbers.
+  3. **Tag `v1.6.0`**, and push the tag. **No tag was created.** After the manual checks are recorded and the owner says yes, the tag is made on `main`.
+- **Deviations and follow-ups:** the follow-ups named in the entries of 25.4 to 26.5 (among them: the arena of two pointers that made `TestTextFieldMagnifier` flaky in 26.2 (26.3), the API 37 image's spell checker with no dictionary offline (26.4), `glutter-android shot -avd glutter-26` failing at `logcat -c` after the boot (26.5), the Android size levers (PERFORMANCE.md), and the web's size targets of 21.8 that are still the owner's decision).
+
