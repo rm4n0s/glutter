@@ -42,13 +42,19 @@ var galleryPages = []Page{
 // columnWidth is the width of a section, for two of them side by side in the page.
 const columnWidth = 392.0
 
-// section is a titled part of a page, columnWidth wide.
+// sectionWidth is the width of a section: columnWidth, or the width of a phone's screen less the
+// margins when that is narrower.
+func sectionWidth(bc m.BuildContext) float64 {
+	return min(columnWidth, m.MediaQueryWidthOf(bc)-24-16)
+}
+
+// section is a titled part of a page, columnWidth wide (less on a narrow window).
 func section(bc m.BuildContext, title string, child m.Widget) m.Widget {
 	theme := m.ThemeOf(bc)
 	return m.NewPadding(m.NewEdgeInsetsFromLTRB(24, 16, 0, 8), m.NewSizedBox(m.NewColumn([]m.Widget{
 		m.NewPadding(m.NewEdgeInsetsFromLTRB(0, 0, 0, 12), m.NewText(title, m.TextOpts{Style: theme.TextTheme.TitleMedium})),
 		child,
-	}, m.ColumnOpts{CrossAxisAlignment: m.CrossAxisAlignmentStart}), m.SizedBoxOpts{Width: m.Some(columnWidth)}))
+	}, m.ColumnOpts{CrossAxisAlignment: m.CrossAxisAlignmentStart}), m.SizedBoxOpts{Width: m.Some(sectionWidth(bc))}))
 }
 
 // demoButton is a filled tonal button.
@@ -68,7 +74,7 @@ func framed(bc m.BuildContext, child m.Widget) m.Widget {
 
 func buildAppBarsPage(bc m.BuildContext) m.Widget {
 	top := func(children ...m.Widget) m.Widget {
-		return m.NewRow(children, m.RowOpts{CrossAxisAlignment: m.CrossAxisAlignmentStart})
+		return m.NewWrap(children)
 	}
 	return m.NewListView([]m.Widget{
 		top(section(bc, "AppBar", NewAppBarDemos()), section(bc, "SliverAppBar: medium and large", NewSliverAppBarDemos())),

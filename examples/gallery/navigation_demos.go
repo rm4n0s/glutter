@@ -6,7 +6,7 @@ import (
 
 func buildNavigationPage(bc m.BuildContext) m.Widget {
 	top := func(children ...m.Widget) m.Widget {
-		return m.NewRow(children, m.RowOpts{CrossAxisAlignment: m.CrossAxisAlignmentStart})
+		return m.NewWrap(children)
 	}
 	return m.NewListView([]m.Widget{
 		top(section(bc, "NavigationBar", NewNavigationBarDemo()), section(bc, "TabBar and TabBarView", NewTabsDemo())),

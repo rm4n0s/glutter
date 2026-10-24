@@ -660,6 +660,48 @@ func main() { println(notesPlace()) }
   milliseconds. Build with `-release` for anything you measure, and read
   [PERFORMANCE.md](PERFORMANCE.md).
 
+## For Flutter Android developers
+
+If you build Flutter apps for Android, this is what is the same and what is not.
+
+- **Build and run.** There is no `flutter run` or `flutter build apk`: `go run ./cmd/glutter-android run ./your/app`
+  builds the APK (one program for arm64 and one for x86_64), installs it on the connected phone or
+  the running emulator, starts it and streams its log until you press Ctrl+C. `build -release` makes the
+  release APK (`-key` and `-cert` sign it; a debug build is signed with a key the tool makes once), and
+  `shot -screen -o file.png` takes a screenshot. It needs the Android SDK and NDK (`ANDROID_HOME`) and
+  Java for `apksigner`; a missing piece says which `sdkmanager` package to install. There is no Gradle
+  and no `android/` folder: the manifest is generated (one activity with the `configChanges` that
+  Flutter declares), and `-app-id`, `-label`, `-icon` and `-permission INTERNET` change it.
+- **`--dart-define` and arguments.** `-env GLUTTER_X=v` (repeatable) on `run` and `shot` gives the
+  activity an intent extra that is copied into the program's environment before `main` runs:
+  `os.Getenv("GLUTTER_X")`. `adb shell am start --es GLUTTER_X v` does the same by hand.
+- **Files and logs.** `HOME` is the app's files directory (`getApplicationDocumentsDirectory`), and
+  `os` works there as on any Linux. `slog` goes to `logcat` with the level as the priority and the app
+  ID as the tag, so `adb logcat -s <app id>` shows only your app; `debugPrint` has no counterpart,
+  use `slog`.
+- **No plugins.** There is no platform channel and no pub.dev: what a plugin does for you is the
+  standard library (`net/http`, `os`), the `desktop` package (`OpenURI`, notifications, which ask for
+  the permission), or your own Java and NDK code if you need it. The framework's own platform services
+  (clipboard, text input, system UI, haptic feedback, the back gesture, settings) are `services` as in
+  Flutter.
+- **Back.** `PopScope` and the `Navigator` work as in Flutter: the activity asks the system for the back
+  gesture only while something can handle it, so the system's own back (leaving the app) happens when
+  nothing can pop. Material's pages use the predictive back transition on Android 14 and later, with
+  `PredictiveBackPageTransitionsBuilder` as the theme's default for Android, as in Flutter.
+- **Platform checks.** `foundation.DefaultTargetPlatform()` is `TargetPlatformAndroid`, so the framework takes
+  the Android branches it takes in Flutter (clamping scroll physics and the overscroll glow or stretch,
+  the Android text selection toolbar, tap target sizes, the typography). `GOOS=android` is a tag of the
+  Go toolchain: the framework does not check `runtime.GOOS`, and neither should your app.
+- **Renderers.** Flutter has Impeller. Glutter has Vulkan, OpenGL ES and a CPU renderer into the
+  window, chosen at the first frame (Vulkan on Android 10 and later where the driver is good);
+  `-env GLUTTER_RENDERER=gles` chooses by hand, and the log line `renderer chosen` says which one runs.
+- **Not on Android:** a second window, the tray, file dialogs, autofill, an Android App Bundle (an APK
+  only), and the plugins' channels. Accessibility (TalkBack), the soft keyboard and input methods, the
+  system fonts and emoji, dark mode, text scale, locales, reduced motion and the system bars work.
+- **Size and start.** The program is a Go binary: a release counter is about 26 MiB per ABI and the
+  gallery 37 MiB, and it starts in about 0.6 s on the emulator with the CPU renderer. Build with
+  `-release` for anything you measure, and read [PERFORMANCE.md](PERFORMANCE.md).
+
 ## What is not the same
 
 - **No `const` widgets.** Go has no const constructors. Build a widget once and reuse it

@@ -71,7 +71,7 @@ func (w *SliverAppBarDemos) Build(bc m.BuildContext) m.Widget {
 				return m.NewPadding(m.NewEdgeInsetsSymmetric(0, 16), m.NewAlign(m.NewText("Item "+itoa(i+1)), m.AlignOpts{Alignment: m.AlignmentCenterLeft}))
 			}, 48),
 		}, m.CustomScrollViewOpts{Primary: m.Some(false)}), m.MaterialOpts{Type: m.MaterialTypeTransparency})),
-			m.SizedBoxOpts{Width: m.Some((columnWidth - 12) / 2), Height: m.Some(280.0)})
+			m.SizedBoxOpts{Width: m.Some((sectionWidth(bc) - 12) / 2), Height: m.Some(280.0)})
 	}
 	return m.NewRow([]m.Widget{
 		list(m.NewSliverAppBarMedium(m.SliverAppBarOpts{NoPrimary: true, Title: m.NewText("Medium")})),

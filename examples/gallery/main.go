@@ -229,17 +229,34 @@ func NewGalleryShell(page int, dark bool, onPage func(int), onToggleMode func())
 	return &GalleryShell{page: page, dark: dark, onPage: onPage, onToggleMode: onToggleMode}
 }
 
+// narrowWidth is the width in logical pixels under which the shell, as on a phone, keeps the list of the
+// pages in a drawer instead of beside the page (Material's compact window size class).
+const narrowWidth = 600.0
+
 func (w *GalleryShell) Build(bc m.BuildContext) m.Widget {
 	colors := m.ThemeOf(bc).ColorScheme
 	icon, tooltip := m.Icons.DarkMode(), "Switch to the dark theme"
 	if w.dark {
 		icon, tooltip = m.Icons.LightMode(), "Switch to the light theme"
 	}
+	appBar := m.NewAppBar(m.AppBarOpts{
+		Title:   m.NewText("Glutter gallery"),
+		Actions: []m.Widget{NewIconAction(icon, tooltip, w.onToggleMode), m.NewSizedBox(nil, m.SizedBoxOpts{Width: m.Some(8.0)})},
+	})
+	if m.MediaQueryWidthOf(bc) < narrowWidth {
+		return m.NewScaffold(m.ScaffoldOpts{
+			AppBar: appBar,
+			Drawer: m.NewBuilder(func(dc m.BuildContext) m.Widget {
+				return NewPageDrawer(w.page, func(i int) {
+					w.onPage(i)
+					m.ScaffoldOf(dc).CloseDrawer()
+				})
+			}),
+			Body: galleryPages[w.page].Build(bc),
+		})
+	}
 	return m.NewScaffold(m.ScaffoldOpts{
-		AppBar: m.NewAppBar(m.AppBarOpts{
-			Title:   m.NewText("Glutter gallery"),
-			Actions: []m.Widget{NewIconAction(icon, tooltip, w.onToggleMode), m.NewSizedBox(nil, m.SizedBoxOpts{Width: m.Some(8.0)})},
-		}),
+		AppBar: appBar,
 		Body: m.NewRow([]m.Widget{
 			NewPageRail(w.page, w.onPage),
 			m.NewColoredBox(colors.OutlineVariant(), m.NewSizedBox(nil, m.SizedBoxOpts{Width: m.Some(1.0)})),
@@ -262,4 +279,17 @@ func NewPageRail(selected int, onSelect func(int)) m.Widget {
 	}
 	return m.NewNavigationRail(destinations, m.Some(selected), m.NavigationRailOpts{
 		Extended: true, MinExtendedWidth: m.Some(240.0), OnDestinationSelected: onSelect})
+}
+
+// pageDrawerKey is the key of the drawer of the pages.
+var pageDrawerKey = m.NewKey("page-drawer")
+
+// NewPageDrawer is the navigation drawer of a narrow window (a phone) with a destination for each page.
+func NewPageDrawer(selected int, onSelect func(int)) m.Widget {
+	children := make([]m.Widget, len(galleryPages))
+	for i, p := range galleryPages {
+		children[i] = m.NewNavigationDrawerDestination(m.NewIcon(p.Icon), m.NewText(p.Name))
+	}
+	return m.NewNavigationDrawer(children, m.NavigationDrawerOpts{
+		Key: pageDrawerKey, SelectedIndex: m.Some(selected), OnDestinationSelected: onSelect})
 }

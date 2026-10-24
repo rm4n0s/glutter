@@ -12,7 +12,7 @@ import (
 
 func buildTextFieldsPage(bc m.BuildContext) m.Widget {
 	top := func(children ...m.Widget) m.Widget {
-		return m.NewRow(children, m.RowOpts{CrossAxisAlignment: m.CrossAxisAlignmentStart})
+		return m.NewWrap(children)
 	}
 	return m.NewListView([]m.Widget{
 		top(section(bc, "Filled", NewFilledFieldsDemo()), section(bc, "Outlined", NewOutlinedFieldsDemo())),

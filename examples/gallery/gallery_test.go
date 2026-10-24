@@ -60,6 +60,60 @@ func openNavigationPage(t *testing.T) *gluttertest.Tester {
 	return ts
 }
 
+// drawerIsOpen is whether the drawer is on the screen: a drawer that was closed stays in the tree, to the left of it.
+func drawerIsOpen(ts *gluttertest.Tester) bool {
+	f := gluttertest.ByKey(pageDrawerKey)
+	return ts.Exists(f) && ts.TopLeft(f).Dx > -1
+}
+
+// TestNarrowWindowHasTheDrawer checks the shell on a phone's width: the pages are in a drawer that the app bar's
+// button opens, not in a rail beside the page, and choosing one opens its page and closes the drawer.
+func TestNarrowWindowHasTheDrawer(t *testing.T) {
+	useLinux(t)
+	ts := gluttertest.New(t, gluttertest.Opts{Size: m.Size{Width: 411, Height: 890}})
+	ts.PumpWidget(NewGalleryApp())
+	if ts.Exists(gluttertest.ByType[*m.NavigationRail]()) {
+		t.Error("the rail is shown on a narrow window")
+	}
+	if drawerIsOpen(ts) {
+		t.Error("the drawer is shown before it is opened")
+	}
+	ts.Tap(gluttertest.ByTooltip("Open navigation menu"))
+	ts.PumpAndSettle()
+	if !drawerIsOpen(ts) {
+		t.Fatal("the drawer did not open")
+	}
+	ts.Tap(gluttertest.Descendant(gluttertest.ByKey(pageDrawerKey), gluttertest.ByText("Navigation & tabs")))
+	ts.PumpAndSettle()
+	if drawerIsOpen(ts) {
+		t.Error("the drawer is still open after a page was chosen")
+	}
+	if !ts.Exists(gluttertest.ByText("TabBar and TabBarView")) {
+		t.Error("the chosen page is not shown")
+	}
+}
+
+// TestEveryPageFitsANarrowWindow opens each page of the gallery through the drawer at the width of a phone: the
+// sections wrap and shrink, and nothing overflows (the tester fails the test on a RenderOverflow).
+func TestEveryPageFitsANarrowWindow(t *testing.T) {
+	for i, page := range galleryPages {
+		t.Run(page.Slug, func(t *testing.T) {
+			useLinux(t)
+			ts := gluttertest.New(t, gluttertest.Opts{Size: m.Size{Width: 411, Height: 890}})
+			ts.PumpWidget(NewGalleryApp())
+			if i > 0 {
+				ts.Tap(gluttertest.ByTooltip("Open navigation menu"))
+				ts.PumpAndSettle()
+				ts.Tap(gluttertest.Descendant(gluttertest.ByKey(pageDrawerKey), gluttertest.ByText(page.Name)))
+				ts.PumpAndSettle()
+			}
+			if drawerIsOpen(ts) {
+				t.Error("the drawer is still open")
+			}
+		})
+	}
+}
+
 func TestRailSwitchesPages(t *testing.T) {
 	ts := openNavigationPage(t)
 	for _, text := range []string{"NavigationBar", "TabBar and TabBarView", "NavigationRail", "NavigationDrawer", "Explore page"} {

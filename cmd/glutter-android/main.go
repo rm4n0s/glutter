@@ -34,7 +34,8 @@ const usage = `usage:
   glutter-android build   [-o app.apk] [-abi arm64,amd64] [-release] [-key k.pk8 -cert c.pem] [-app-id id] [-label name] [-icon icon.png] [-permission NAME]... <package>
   glutter-android install [-device serial] [build flags] <package|app.apk>
   glutter-android run     [-device serial] [-env GLUTTER_X=v]... [build flags] <package>
-  glutter-android shot    [-avd glutter-37 | -device serial] [-renderer r] [-env GLUTTER_X=v]... [-screen] -o file.png [build flags] <package>`
+  glutter-android shot    [-avd glutter-37 | -device serial] [-renderer r] [-env GLUTTER_X=v]... [-screen] -o file.png [build flags] <package>
+  glutter-android perf    [-avd glutter-37 | -device serial] [-release=true] [-abi arm64,amd64] [-renderer r] [-env GLUTTER_X=v]... [-starts 5] [-settle 8s] [-seconds 10] [-frames=true] [-format text|markdown] [-o report] <package>`
 
 // run does what the command line asks. stdout gets what the commands print; flag errors go to
 // stderr.
@@ -51,6 +52,8 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		return runRun(ctx, args[1:], stdout, stderr)
 	case "shot":
 		return runShot(ctx, args[1:], stdout, stderr)
+	case "perf":
+		return runPerf(ctx, args[1:], stdout, stderr)
 	case "help", "-h", "-help", "--help":
 		_, err := fmt.Fprintln(stdout, usage)
 		if err != nil {

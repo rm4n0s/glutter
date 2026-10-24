@@ -254,3 +254,25 @@ Check, and record the answers:
 
 Answers: _(not yet recorded)_
 
+## 26.5 The examples on Android, size and performance
+
+Run on the phone, with a release build (the numbers of a debug build are 5 to 10 times worse):
+
+```
+scripts/perf-android.sh -d <serial> -m -o phone.md       # the numbers; paste them in docs/PERFORMANCE.md
+go run ./cmd/glutter-android build -release -key key.pk8 -cert cert.pem -o gallery.apk ./examples/gallery
+adb install -r gallery.apk
+```
+
+(`-key` and `-cert` are the files that the tool made for debug builds, `$XDG_CONFIG_HOME/glutter/android-debug/key.pk8` and `cert.pem`, or your own.)
+
+Check, and record the answers:
+
+1. Open the gallery: is the list of pages in a drawer (the button at the left of the app bar), and does each page fit the width of the screen, with no overflow stripes and no cut text?
+2. Scroll the pages (Lists & cards, Data & progress) and open Data & progress, where the progress indicators animate: does it keep up with the display (no stutter)? Switch the theme with the moon button: does the whole app change at once? Change pages through the drawer a few times: is each change quick?
+3. Start the counter and the gallery from the launcher: how long until you see the first frame (about)? Is it acceptable?
+4. Run the other examples (`layout`, `animations`, `scrolling`, `navigation`, `editor`, `custompaint`, `todo`): does each start and work with touch?
+5. The numbers of the first command: do they meet the targets of SPEC §15 (Android)? If not, which ones are not, and may they stay as exceptions or must they be worked on?
+
+Answers: _(not yet recorded)_
+

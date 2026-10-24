@@ -1954,7 +1954,19 @@ Benchmarks (`go test -bench`) in `rendering`, `widgets`, `examples/gallery` and 
 | Size of `app.wasm.gz`, counter / gallery | < 4 MB / < 5 MB (on 2026-10-21, without the web platform and renderers: 2.3 MB / 2.4 MB) |
 | Start to first frame, `app.wasm` in the browser's cache | < 1 s |
 
-**Android** (1.6): the targets (idle CPU, frame rate and frame times of the gallery, cold start to first frame, APK size per ABI) are measured on the emulator and on the owner's phone in step 26.5 and written here with the owner's approval.
+**Android** (1.6), release builds made by `glutter-android build -release` (a debug build is far slower: its frames are 5 to 10 times longer), measured with `scripts/perf-android.sh` (`glutter-android perf`, §24.13). Proposed in step 26.5 from the emulator (an API 37 x86_64 image: the host's CPU, and a GPU that is SwiftShader, a software Vulkan, so a frame's GPU time is not a phone's) and confirmed or changed on the owner's phone (`docs/MANUAL-CHECKS.md`, 26.5):
+
+| Metric | Target |
+|---|---|
+| Idle CPU (counter, no input) | ~0%: no frames scheduled, no timers armed (0 CPU ticks in 10 s) |
+| Frame rate (gallery data page, one animation) | the display's refresh rate with no dropped frames (the phone only: the emulator's GPU takes about 1.5 s for a frame of the gallery) |
+| UI thread build time per frame, animation-only frame | < 4 ms |
+| UI thread build time per frame, full rebuild of the gallery page | < 16 ms |
+| Cold start to first frame (`first frame presented since_run`, software renderer) | < 1 s |
+| APK size per ABI, counter / gallery | < 30 MiB / < 42 MiB |
+| Memory (`dumpsys meminfo` TOTAL PSS), counter | < 100 MB |
+
+`docs/PERFORMANCE.md` has the numbers, what is not the same as on the desktop (the APK holds the program uncompressed, aligned to 16 KB, §24.1) and the exceptions.
 
 ## 16. Build and runtime requirements
 
@@ -2060,7 +2072,7 @@ Each milestone is broken into steps in `docs/IMPLEMENTATION.md` (written after t
 
 `counter`, `layout` (Row/Column/Stack/Wrap), `animations`, `scrolling` (lists, grids, slivers), `navigation`, `editor` (text editing, clipboard, IME), `gallery` (all Material components, light/dark), `multiwindow`, `tray` (tray + notifications + file dialog), `custompaint`, `todo` (a DataTable of tasks with Edit and Delete buttons in each row).
 
-On the web (1.1) every example except `multiwindow` and `tray` builds and runs (§23), and on Android (1.6) too (§24).
+On the web (1.1) every example except `multiwindow` and `tray` builds and runs (§23), and on Android (1.6) too (§24). `examples/examples_test.go` builds each of them for `android/arm64` (skipped without an NDK and under `-short`), and a device test (`TestEveryExampleDrawsItsFirstFrame`) starts each on the two emulators and waits for its first frame. In a window narrower than 600 logical pixels (a phone) the gallery keeps its list of pages in a drawer that the app bar's button opens, its sections shrink to the width of the screen and wrap, and the data table scrolls sideways.
 
 ## 20. Licensing and third-party code
 
@@ -2389,4 +2401,5 @@ InkSparkle stays a deviation (it needs a custom fragment shader, a non-goal, §2
 - **Proof method E**: `glutter-android shot [-avd glutter-37] [-renderer r] [-env K=V]... [-screen] -o file.png <package>` builds and installs the app, starts it with `GLUTTER_SCREENSHOT=1`, and pulls the PNG the app saves after its first idle frame (step 7.4) from its files directory. `-screen` saves the device's whole screen with `adb exec-out screencap -p` instead, for what lies outside the app's surface: the status bar, the keyboard, a notification.
 - **Debug-only scripted events.** In debug builds `GLUTTER_DEV_EVENTS` (an intent extra) is a script in the form of the web's (§23.4 "Decided in step 21.2"), replayed after the first frame by the Java side on the main thread, through the same paths as the user's input: `tap:x,y`, `swipe:x1,y1,x2,y2,ms`, `key:KEYCODE_X`, `text:...` and `compose:a,b,c` through the input connection, `back:start,progress...,commit|cancel` through the back callbacks, `a11y:action,label` through the accessibility provider, `wait:ms`. The device tests and the proofs use it where `adb shell input` cannot reach (the input connection, the back gesture, accessibility actions). A bad script is `AndroidDevEventsInvalid`.
 - **Vulkan validation** on Android: the Khronos validation layer for Android (`libVkLayer_khronos_validation.so`, from the Android release of Vulkan-ValidationLayers) is packed into the test APKs by `glutter-android build -vulkan-validation <dir>`, and a validation error fails the device test.
+- **Performance measurements** (step 26.5): `glutter-android perf [-avd glutter-37 | -device serial] [-release=true] [-abi arm64,amd64] [-renderer r] [-env K=V]... [-starts N] [-settle d] [-seconds N] [-format text|markdown] <package>` builds the package (release by default, signed with the debug key so that it installs over a debug build), installs it and prints the APK size per ABI and the size of each `libapp.so`, the cold start (`am start -W`'s TotalTime and WaitTime, and the engine's `first frame presented since_run`, over N starts), the idle CPU (`/proc/<pid>/stat` over the window), the engine's frame statistics (`GLUTTER_FRAME_STATS=1`, parsed by `internal/perfstats`, which `glutter-web perf` shares) and the memory (`dumpsys meminfo` PSS and RSS, and `VmRSS` and `VmHWM`). `GLUTTER_DEV_EVENTS` is read only in debug builds, so a scenario that taps or swipes needs `-release=false` (`perf` refuses the pair, `AndroidPerfDevEventsRelease`). `scripts/perf-android.sh` runs the counter, the gallery with an animation, the gallery rebuilt in every frame and the gallery navigation scenario, for the emulator or a phone (`-d serial`). The emulator's GPU is SwiftShader, so its raster times are not a phone's (§15).
 - **Real phones.** The emulator runs x86_64 code and translates GLES and Vulkan to the host's GPU, so it cannot show arm64 code or a phone's GPU driver. The steps that touch input, rendering or text input end with manual checks on the owner's phone (`glutter-android run`), recorded in `IMPLEMENTED.md`.

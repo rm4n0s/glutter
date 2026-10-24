@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/rm4n0s/errors"
+	"github.com/rm4n0s/glutter/internal/perfstats"
 	"github.com/rm4n0s/glutter/internal/platform/web"
 )
 
@@ -64,18 +65,7 @@ type PerfOptions struct {
 // of one second.
 //
 // Flutter: no counterpart
-type PerfFrames struct {
-	Renderer string
-	// FPS is the number of frames drawn in the second.
-	FPS int
-	// Build and Raster are the average and the worst time on the UI goroutine of the build
-	// (build, layout, paint and the scene) and of the renderer's calls; Over16 is the number of
-	// frames whose sum was over a 60th of a second.
-	BuildAvg, BuildMax, RasterAvg, RasterMax time.Duration
-	Over16                                   int
-	// GoHeapMB and GoSysMB are the memory of the Go runtime.
-	GoHeapMB, GoSysMB int
-}
+type PerfFrames = perfstats.Frames
 
 // PerfResult is what Perf measured.
 //
@@ -577,91 +567,18 @@ func (x *PerfResult) addLog(log string) {
 // quotes when they hold blanks) into its pairs.
 //
 // Flutter: no counterpart
-func ParseLogLine(line string) map[string]string {
-	kv := map[string]string{}
-	for i := 0; i < len(line); {
-		for i < len(line) && line[i] == ' ' {
-			i++
-		}
-		start := i
-		for i < len(line) && line[i] != ' ' && line[i] != '=' {
-			i++
-		}
-		if i >= len(line) || line[i] != '=' {
-			// A word that is not a pair (the time, the level, the message): skip it.
-			for i < len(line) && line[i] != ' ' {
-				i++
-			}
-			continue
-		}
-		key := line[start:i]
-		i++
-		var value string
-		if i < len(line) && line[i] == '"' {
-			end := i + 1
-			for end < len(line) && (line[end] != '"' || line[end-1] == '\\') {
-				end++
-			}
-			if end < len(line) {
-				if v, err := strconv.Unquote(line[i : end+1]); err == nil {
-					value = v
-				} else {
-					value = line[i+1 : end]
-				}
-				i = end + 1
-			} else {
-				value, i = line[i+1:], len(line)
-			}
-		} else {
-			end := i
-			for end < len(line) && line[end] != ' ' {
-				end++
-			}
-			value, i = line[i:end], end
-		}
-		kv[key] = value
-	}
-	return kv
-}
+func ParseLogLine(line string) map[string]string { return perfstats.ParseLogLine(line) }
 
 // ParseFramesLine reads a "frames" line of the engine's statistics; ok is false for a line that
 // is not one or has a value that is not a number or a duration.
 //
 // Flutter: no counterpart
-func ParseFramesLine(line string) (PerfFrames, bool) {
-	kv := ParseLogLine(line)
-	var f PerfFrames
-	f.Renderer = kv["renderer"]
-	ints := map[string]*int{"fps": &f.FPS, "over_16ms": &f.Over16, "go_heap_mb": &f.GoHeapMB, "go_sys_mb": &f.GoSysMB}
-	for k, dst := range ints {
-		v, err := strconv.Atoi(kv[k])
-		if err != nil {
-			return PerfFrames{}, false
-		}
-		*dst = v
-	}
-	durations := map[string]*time.Duration{"build_avg": &f.BuildAvg, "build_max": &f.BuildMax, "raster_avg": &f.RasterAvg, "raster_max": &f.RasterMax}
-	for k, dst := range durations {
-		v, err := time.ParseDuration(kv[k])
-		if err != nil {
-			return PerfFrames{}, false
-		}
-		*dst = v
-	}
-	return f, true
-}
+func ParseFramesLine(line string) (PerfFrames, bool) { return perfstats.ParseFramesLine(line) }
 
 // Median is the middle value of the durations (the upper one for an even count), or zero for none.
 //
 // Flutter: no counterpart
-func Median(d []time.Duration) time.Duration {
-	if len(d) == 0 {
-		return 0
-	}
-	s := append([]time.Duration(nil), d...)
-	sort.Slice(s, func(i, j int) bool { return s[i] < s[j] })
-	return s[len(s)/2]
-}
+func Median(d []time.Duration) time.Duration { return perfstats.Median(d) }
 
 // Summary is the result as lines of "key value", for scripts (scripts/perf-web.sh reads them).
 // Times are in milliseconds.

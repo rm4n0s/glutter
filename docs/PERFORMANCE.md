@@ -33,6 +33,9 @@ go test -tags glutter_release ./widgets ./rendering ./examples/gallery ./interna
 # the numbers that need a running app: idle CPU, cold start, memory, the gallery's frames
 scripts/perf.sh -n 7 -s 10
 
+# the Android numbers (step 26.5): sizes, cold start, idle CPU, frames, memory, on the emulator or a phone (-d serial)
+scripts/perf-android.sh -m
+
 # the web numbers (step 21.7): sizes, start, idle CPU, frames, a full rebuild, clicks; Chromium and Firefox
 scripts/perf-web.sh
 # the framework in WebAssembly under Node (the same V8 as Chromium's): add -cpuprofile with node --cpu-prof
@@ -237,6 +240,42 @@ at the default.
   build=... raster=...`), so that the frame behind a click can be told from its second's average.
 - `glutter-web perf` is described in SPEC §23.8; it needs `chromium`, `firefox` and `Xvfb`.
 
+## Android (step 26.5)
+
+`scripts/perf-android.sh` (`glutter-android perf`, SPEC §15 and §24.13), release builds (`-tags glutter_release`, `-ldflags=-s -w`), 2026-10-25.
+
+| | |
+|---|---|
+| Device | the emulator `glutter-37`: Android 17 (API 37, 16 KB pages), x86_64, 1080x2400 at density 2.625, on the machine above |
+| GPU | **SwiftShader**: the emulator's Vulkan (gfxstream) is a software rasterizer, and its OpenGL ES is ANGLE on top of it. A frame's GPU time here is the host's CPU, not a phone's GPU |
+| Phone | not measured yet: the owner runs `scripts/perf-android.sh -d <serial>` (docs/MANUAL-CHECKS.md, 26.5) |
+| What is run | the counter (cold start, idle, memory) and the gallery (the data page with its indicators animating, `GLUTTER_GALLERY_ANIMATE=1`; the same page rebuilt in every frame, `GLUTTER_GALLERY_REBUILD=1`), each with the renderer the row says |
+
+The "build" figures are the engine's own (`GLUTTER_FRAME_STATS`): the time on the UI goroutine of the build, layout, paint and the scene. They are CPU time on the host and are usable. The "raster" figures are the renderer's calls: with SwiftShader they wait for a software GPU and mean nothing for a phone, so the frame rate is a target for the phone only.
+
+| Metric (SPEC §15, Android) | Target | Emulator | |
+|---|---|---|---|
+| Idle CPU, counter | ~0% | 0 CPU ticks (`/proc/<pid>/stat`) in 10 s, no frame logged | met |
+| Frame rate, gallery data page, one animation | the display's refresh rate, no dropped frames | Vulkan (SwiftShader) 0.7 frames a second (a frame takes 1.4 to 1.6 s); the software renderer 6.8 frames a second (150 ms a frame at 1080x2400) | **phone only** |
+| UI thread build time, animation-only frame | < 4 ms | 0.4 to 0.65 ms (software renderer and Vulkan); the first second 7 to 28 ms | met |
+| UI thread build time, full rebuild of the gallery data page | < 16 ms | 5.5 to 7.4 ms a frame, worst frame 12 ms; the first second 14.8 ms (software renderer) | met |
+| Cold start to first frame (`since_run`), software renderer | < 1 s | counter median 633 ms (552 to 963); gallery 866 ms (535 to 902) | met |
+| APK size per ABI, counter | < 30 MiB | arm64 **25.8 MiB** (27,030,049 bytes), amd64 27.6 MiB | met |
+| APK size per ABI, gallery | < 42 MiB | arm64 **37.0 MiB** (38,773,281 bytes), amd64 39.8 MiB | met |
+| Memory, counter (`dumpsys meminfo` TOTAL PSS) | < 100 MB | 74 MB after the settle and after 10 idle seconds (RSS 191 MB, VmRSS 194 MB) | met |
+
+Other numbers of the same runs, for the record (the emulator, medians of 3 to 5 starts):
+
+- Cold start to the first frame with the other renderers, counter: Vulkan (SwiftShader) 1.5 s (1.45 to 1.64), OpenGL ES (ANGLE over SwiftShader) 3.3 s (3.0 to 5.4). The part that is not the renderer is the software run's 0.55 to 0.65 s: the Go runtime, the fonts, the first build, layout and paint. `am start -W` says 0.24 to 0.38 s for the same starts: it ends when the activity's window shows, before the first frame of the app.
+- APK with both ABIs: 53.3 MiB (counter), 76.7 MiB (gallery). The program (`libapp.so`) is 25.7 MiB (arm64) and 27.5 MiB (amd64) for the counter, 36.9 MiB and 39.7 MiB for the gallery, and is **stored uncompressed and aligned to 16 KB** in the APK so that the system maps it from the file (§24.1, tested by `TestLibrariesAre16KBAligned`); compressing it would take the APK to roughly 40% of its size (`gzip -9` of the debug library gives 42%) and the installed app would be the same size.
+- Memory of the gallery data page animating: PSS 105 to 109 MB with Vulkan, 190 to 220 MB with the software renderer (its framebuffers). A debug build, scrolling and changing pages in the gallery (`GLUTTER_DEV_EVENTS`, the default of `scripts/perf-android.sh -t navigation`), reaches PSS 282 MB, and a page change costs 50 to 150 ms of build time in it: debug builds check the thread of every call; the targets are for release builds.
+
+### Exceptions and what is not measured
+
+1. **Frame rate on a phone.** The emulator cannot say it. `scripts/perf-android.sh -d <serial> -t animation` on the owner's phone gives it, and the manual check of 26.5 asks the owner to judge the gallery by eye. If the phone drops frames, the profile starts from the raster column of that run.
+2. **Cold start with a GPU renderer.** On the emulator the renderer's own start (Vulkan or OpenGL ES through SwiftShader) is 1 to 3 s and is not a phone's; the target is for the software renderer, which is the framework's own cost, and the phone's number with its Vulkan is read from the same command.
+3. **The sizes are large for an APK**: the program is a Go binary with the framework, the renderers, the shaders and two bundled fonts (Roboto and Material Icons), and the web's size work (see "Targets not met" above, items about brotli, font subsets and generated methods) applies to the APK too. The targets are set at what the measurements give with a margin; none of the levers is applied.
+
 ## Text: code-like paragraphs (step 22.6)
 
 A code view draws many short lines of monospace text, each in many styled spans. The
@@ -381,6 +420,7 @@ available during this work, so they are **pending approval**.
 
 ## Pending
 
+- Android: the same numbers on the owner's phone (`scripts/perf-android.sh -d <serial>`), and the frame rate of the gallery there (see "Android (step 26.5)"); the targets of SPEC §15 are proposed from the emulator until then.
 - Text: the benchmarks of steps 22.6 and 22.10 were not run under `GOOS=js`. A page where one line changed still costs 14 lines (see "Text: the cache of shaped runs"): the next step would be to skip the builder and the analysis for a line whose content is the same as the last frame's, which only the caller knows.
 - The web table: measure the targets again with a real display, and Firefox on a GPU (the Firefox numbers here are Mesa's software rasterizer). The two targets that are not met (sizes, late frames) need the user's decision (see "Targets not met" under Web).
 

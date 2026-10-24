@@ -15,7 +15,7 @@ const fullWidth = 2*columnWidth + 24
 
 func buildDataPage(bc m.BuildContext) m.Widget {
 	top := func(children ...m.Widget) m.Widget {
-		return m.NewRow(children, m.RowOpts{CrossAxisAlignment: m.CrossAxisAlignmentStart})
+		return m.NewWrap(children)
 	}
 	wide := func(title string, child m.Widget) m.Widget {
 		theme := m.ThemeOf(bc)
@@ -117,16 +117,25 @@ func (s *dataTableDemoState) Build(bc m.BuildContext) m.Widget {
 		index = foundation.Some(s.sortIndex)
 	}
 	return m.NewColumn([]m.Widget{
-		framed(bc, m.NewDataTable(columns, rows, m.DataTableOpts{SortColumnIndex: index, SortDescending: !s.ascending,
+		sideways(bc, framed(bc, m.NewDataTable(columns, rows, m.DataTableOpts{SortColumnIndex: index, SortDescending: !s.ascending,
 			OnSelectAll: func(v foundation.Opt[bool]) {
 				s.SetState(func() {
 					for _, d := range s.desserts {
 						d.selected = v.OrElse(false)
 					}
 				})
-			}})),
+			}}))),
 		m.NewPadding(m.NewEdgeInsetsFromLTRB(0, 8, 0, 0), m.NewText(fmt.Sprintf("Selected rows: %d", selected))),
 	}, m.ColumnOpts{CrossAxisAlignment: m.CrossAxisAlignmentStart})
+}
+
+// sideways is the table as it is: as wide as the page on a wide window, and as wide as its columns, scrolling
+// sideways, on a narrow one (a phone).
+func sideways(bc m.BuildContext, table m.Widget) m.Widget {
+	if m.MediaQueryWidthOf(bc) < narrowWidth {
+		return m.NewSingleChildScrollView(table, m.SingleChildScrollViewOpts{ScrollDirection: m.AxisHorizontal})
+	}
+	return table
 }
 
 // ProgressDemos has linear and circular indicators, determinate and not.

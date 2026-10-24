@@ -13,6 +13,8 @@ Available now:
 | `headless-x11.sh` | Run a command under a headless X server (`Xvfb`, on a free display number, no window manager) with `DISPLAY` set: `scripts/headless-x11.sh -- go test -tags glutter_display ./internal/platform/linux/x11/` (needs `xorg-x11-server-Xvfb`) |
 | `fetch-wayland-protocols.sh` | Download the Wayland protocol XML files into `internal/platform/linux/wayland/protocols/` and record the release tags in its `VERSIONS` file. `--latest` moves to the newest releases; then run `go generate ./internal/platform/linux/wayland/...` |
 | `test-wasm.sh` | Run the unit tests of every package that builds for the web under Node (`GOOS=js GOARCH=wasm go test`, with the minimal environment that Go's wasm loader needs): `scripts/test-wasm.sh` or `scripts/test-wasm.sh ./foundation/...` (needs `nodejs`) |
+| `check-android.sh` | Build and vet the module for android/arm64 and android/amd64 with the NDK (needs `ANDROID_HOME`, no device): `scripts/check-android.sh` |
+| `perf-android.sh` | The Android numbers of SPEC §15 with release builds: APK sizes, cold start, idle CPU, frame times, memory, on the emulator or a phone (`glutter-android perf`): `scripts/perf-android.sh -m -o report.md`, `-d serial` for a phone, `-t counter,gallery,animation,navigation` |
 
 To come, in the order of `docs/IMPLEMENTATION.md`:
 

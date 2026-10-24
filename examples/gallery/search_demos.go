@@ -30,7 +30,7 @@ func matchingCountries(query string) []string {
 
 func buildSearchPage(bc m.BuildContext) m.Widget {
 	top := func(children ...m.Widget) m.Widget {
-		return m.NewRow(children, m.RowOpts{CrossAxisAlignment: m.CrossAxisAlignmentStart})
+		return m.NewWrap(children)
 	}
 	return m.NewListView([]m.Widget{
 		top(section(bc, "SearchAnchor.bar: a search bar that opens a view", NewCountrySearchDemo()), section(bc, "SearchBar", NewSearchBarDemo())),
