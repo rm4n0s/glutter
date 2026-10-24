@@ -31,13 +31,18 @@ type SelectionAreaOpts struct {
 	NoContextMenu bool
 	// OnSelectionChanged is called when the selected content changes.
 	OnSelectionChanged func(content *rendering.SelectedContent)
+	// MagnifierConfiguration is the configuration for the magnifier in the
+	// selection region.
+	//
+	// By default (nil), it builds a TextMagnifier on Android and nothing on the
+	// other platforms (TextMagnifierAdaptiveMagnifierConfiguration). To disable
+	// the magnifier, consider passing widgets.TextMagnifierConfigurationDisabled.
+	MagnifierConfiguration *widgets.TextMagnifierConfiguration
 }
 
 // SelectionArea is a widget that covers its subtree with a SelectableRegion that
 // has the Material look: the user can select the text of the Text widgets below
 // it with the pointer, and copy it from the context menu.
-//
-// Deviation: the magnifier is not ported (SPEC §12.10).
 //
 // Flutter: material/selection_area.dart SelectionArea
 type SelectionArea struct {
@@ -112,10 +117,15 @@ func (s *SelectionAreaState) Build(bc widgets.BuildContext) widgets.Widget {
 	case contextMenuBuilder == nil:
 		contextMenuBuilder = defaultSelectionAreaContextMenuBuilder
 	}
+	magnifierConfiguration := w.o.MagnifierConfiguration
+	if magnifierConfiguration == nil {
+		magnifierConfiguration = TextMagnifierAdaptiveMagnifierConfiguration()
+	}
 	return widgets.NewSelectableRegion(controls, w.child, widgets.SelectableRegionOpts{
-		Key:                s.selectableRegionKey,
-		FocusNode:          w.o.FocusNode,
-		ContextMenuBuilder: contextMenuBuilder,
-		OnSelectionChanged: w.o.OnSelectionChanged,
+		Key:                    s.selectableRegionKey,
+		FocusNode:              w.o.FocusNode,
+		ContextMenuBuilder:     contextMenuBuilder,
+		OnSelectionChanged:     w.o.OnSelectionChanged,
+		MagnifierConfiguration: magnifierConfiguration,
 	})
 }

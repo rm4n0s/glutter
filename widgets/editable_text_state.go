@@ -934,7 +934,9 @@ func (s *EditableTextState) DidChangeMetrics() {
 	if !s.Mounted() {
 		return
 	}
-	insets, _ := MediaQueryMaybeViewInsetsOf(s.Context())
+	// The view is read, not the MediaQuery: when the metrics change, the MediaQuery
+	// is not built with the new insets yet.
+	insets := ViewOf(s.Context()).ViewInsets()
 	if s.lastBottomViewInset != insets.Bottom {
 		s.binding().RunPostFrame(func(time.Duration) {
 			if s.selectionOverlay != nil {

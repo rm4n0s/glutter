@@ -31,10 +31,11 @@ type layerRec struct {
 	// blur makes the layer's alpha the coverage of a blurred shape.
 	blur *maskBlur
 	// drawnOnly, backdrop and shaderMask are the effect fields of the same name.
-	drawnOnly  bool
-	backdrop   []gpu.FilterPass
-	isBackdrop bool
-	shaderMask *ui.ShaderMaskLayer
+	drawnOnly   bool
+	backdrop    []gpu.FilterPass
+	backdropSrc image.Rectangle
+	isBackdrop  bool
+	shaderMask  *ui.ShaderMaskLayer
 	// boundary is the layer of a group that the raster cache may keep (a layer that
 	// gpu.FlattenOpts.Boundary made a group), and cacheKey its key at the top level.
 	boundary ui.Layer
@@ -56,7 +57,7 @@ func (b *frameBuilder) pushLayer(rec *layerRec) {
 	b.layers = append(b.layers, rec)
 	var eff *effect
 	if rec.isBackdrop {
-		eff = &effect{backdrop: true, passes: rec.backdrop, mask: -1}
+		eff = &effect{backdrop: true, passes: rec.backdrop, src: rec.backdropSrc, mask: -1}
 	}
 	b.calls = append(b.calls, drawCall{callKey: callKey{op: opBeginLayer, eff: eff}, rect: rec.rect})
 }
@@ -151,7 +152,12 @@ func (b *frameBuilder) beginLayer(c gpu.Command) error {
 	}
 	if rec.isBackdrop {
 		// The backdrop is the copy of the pixels under the layer, filtered.
-		rec.backdrop, _ = gpu.FilterPasses(rec.filter, rec.ctm, rec.tile, rect.Dx(), rect.Dy())
+		if src, pass, ok := gpu.BackdropMatrix(rec.filter, rec.ctm, rect, b.target()); ok {
+			// A filter that moves pixels reads them from where it moves them from.
+			rec.backdrop, rec.backdropSrc = []gpu.FilterPass{pass}, src
+		} else {
+			rec.backdrop, _ = gpu.FilterPasses(rec.filter, rec.ctm, rec.tile, rect.Dx(), rect.Dy())
+		}
 		if len(rec.backdrop) == 0 {
 			rec.backdrop = []gpu.FilterPass{{Kind: gpu.PassCopy, OutW: rect.Dx(), OutH: rect.Dy()}}
 		}

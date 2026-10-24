@@ -25,6 +25,10 @@ func TestAndroidHello(t *testing.T) {
 	for _, avd := range []string{"glutter-37", "glutter-37-16k"} {
 		t.Run(avd, func(t *testing.T) {
 			e := Shared(t, avd)
+			if avd == "glutter-37-16k" {
+				// Only this test uses the 16 KB image: its emulator goes when the test is done.
+				t.Cleanup(func() { ReleaseShared(avd) })
+			}
 			ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
 			defer cancel()
 			apk, appID, err := e.BuildAPK(ctx, "./examples/dev/android-hello", t.TempDir(), androidtool.BuildOptions{})

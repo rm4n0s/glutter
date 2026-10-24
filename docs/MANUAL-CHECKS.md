@@ -201,3 +201,22 @@ Check, and record the answers:
 
 Answers: _(not yet recorded)_
 
+## 26.2 The Material text selection toolbar and the magnifier
+
+**Status:** pending (not required by the plan: the magnifier on the GPU renderers is only tested on desktop GPUs and, with the software renderer, on the emulator)
+
+Run on the phone (the default renderer is Vulkan or OpenGL ES):
+
+```
+go run ./cmd/glutter-android run -env GLUTTER_DEMO=single ./examples/dev/android-text
+```
+
+Check, and record the answers:
+
+1. Type a few words in the first field and long-press a word: does it get selected, with two handles and the toolbar above it (Cut, Copy, Paste, Select all)? Does a long toolbar show the overflow button, and does it open the second page with the back arrow?
+2. Drag a handle: does a magnifier appear above your finger, showing the text under it enlarged, following the finger, and disappear when you let go?
+3. Drag the cursor handle of an empty selection (tap once, then drag the drop-shaped handle): does the magnifier show too?
+4. Does the toolbar look like the phone's own (white rounded bar, dark text), and the dark theme's one dark?
+
+Answers: _(not yet recorded)_
+

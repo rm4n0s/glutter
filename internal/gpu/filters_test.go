@@ -1,6 +1,7 @@
 package gpu
 
 import (
+	"image"
 	"math"
 	"testing"
 
@@ -111,5 +112,74 @@ func TestFilterPassesOfEveryFilter(t *testing.T) {
 	}
 	if got, _ := FilterPasses(ui.NewImageFilterMatrix(rot, ui.ImageFilterMatrixOpts{FilterQuality: ui.FilterQualityNone}), ctm, ui.TileModeDecal, 4, 4); got[0].Quality != 1 {
 		t.Errorf("nearest quality = %d", got[0].Quality)
+	}
+}
+
+func TestBackdropMatrix(t *testing.T) {
+	// A magnifier: scale 2 around the point (300, 300) of a lens at (200, 200) of 100 x 100.
+	magnify := func(scale, cx, cy, fx, fy float64) ui.ImageFilter {
+		m := ui.NewMatrix4Identity()
+		m.Translate(float32(scale*(-fx-cx)+cx), float32(scale*(-fy-cy)+cy), 0)
+		m.Scale(float32(scale), float32(scale), float32(scale))
+		return ui.NewImageFilterMatrix(m, ui.ImageFilterMatrixOpts{FilterQuality: ui.FilterQualityHigh})
+	}
+	screen := image.Rect(0, 0, 800, 600)
+	lens := image.Rect(200, 200, 300, 300)
+	tests := []struct {
+		name       string
+		filter     ui.ImageFilter
+		ctm        Affine2D
+		bounds     image.Rectangle
+		wantOK     bool
+		wantSrc    image.Rectangle
+		wantNoRead bool
+	}{
+		{"a magnifier reads what is under its focal point", magnify(2, 250, 250, 50, 50), Affine2D{A: 1, D: 1}, screen, true,
+			// The lens maps back to (275, 275) to (325, 325), plus the pixel of the bilinear taps.
+			image.Rect(274, 274, 326, 326), false},
+		{"under a scale of the canvas", magnify(2, 125, 125, 25, 25), Scaling(2, 2), screen, true, image.Rect(274, 274, 326, 326), false},
+		{"nothing under the surface it reads", magnify(2, 250, 250, 50, 400), Affine2D{A: 1, D: 1}, image.Rect(0, 0, 800, 560), true,
+			image.Rectangle{}, true},
+		{"a blur reads the pixels of the layer", blurFilter(2, 2, ui.TileModeMirror), Affine2D{A: 1, D: 1}, screen, false, lens, false},
+		{"a singular matrix reads nothing special", ui.NewImageFilterMatrix(ui.NewMatrix4Zero()), Affine2D{A: 1, D: 1}, screen, false, lens, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			src, pass, ok := BackdropMatrix(tt.filter, tt.ctm, lens, tt.bounds)
+			if ok != tt.wantOK {
+				t.Fatalf("ok = %v, want %v", ok, tt.wantOK)
+			}
+			if !ok {
+				if src != lens {
+					t.Errorf("src = %v, want the layer's rectangle", src)
+				}
+				return
+			}
+			if tt.wantNoRead {
+				if pass.Quality != 2 || src.Dx() != 1 || src.Dy() != 1 {
+					t.Errorf("src = %v, quality %d, want one pixel and no drawing", src, pass.Quality)
+				}
+				return
+			}
+			if src != tt.wantSrc {
+				t.Errorf("src = %v, want %v", src, tt.wantSrc)
+			}
+			if pass.Kind != PassMatrix || pass.OutW != 100 || pass.OutH != 100 || pass.Quality != 0 {
+				t.Fatalf("pass = %+v", pass)
+			}
+			// What the shader of the pass computes, over a copy of src, must be the pixel of the
+			// surface that the filter reads, relative to the corner of src.
+			inv, _ := tt.ctm.Invert()
+			filterBack, _ := inv.Then(AffineOf(tt.filter.(*ui.MatrixImageFilter).Matrix())).Then(tt.ctm).Invert()
+			for _, q := range [][2]int{{0, 0}, {99, 0}, {0, 99}, {50, 50}, {99, 99}} {
+				devX, devY := float64(src.Min.X+q[0])+0.5, float64(src.Min.Y+q[1])+0.5
+				gotX := float64(pass.Inv[0])*devX + float64(pass.Inv[2])*devY + float64(pass.Inv[4]) - float64(src.Min.X)
+				gotY := float64(pass.Inv[1])*devX + float64(pass.Inv[3])*devY + float64(pass.Inv[5]) - float64(src.Min.Y)
+				want := filterBack.Apply(float64(lens.Min.X+q[0])+0.5, float64(lens.Min.Y+q[1])+0.5)
+				if math.Abs(gotX-(want.Dx-float64(src.Min.X))) > 1e-3 || math.Abs(gotY-(want.Dy-float64(src.Min.Y))) > 1e-3 {
+					t.Errorf("output pixel %v reads (%.3f, %.3f) of the copy, want (%.3f, %.3f)", q, gotX, gotY, want.Dx-float64(src.Min.X), want.Dy-float64(src.Min.Y))
+				}
+			}
+		})
 	}
 }

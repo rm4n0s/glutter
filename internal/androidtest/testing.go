@@ -36,6 +36,19 @@ func Shared(t testing.TB, avd string) *Emulator {
 	return e
 }
 
+// ReleaseShared stops the emulator of the AVD that Shared started, when its tests are done, so that
+// fewer emulators (about 5 GB of memory each) run at once; a later Shared starts it again.
+//
+// Flutter: no counterpart
+func ReleaseShared(avd string) {
+	sharedMu.Lock()
+	defer sharedMu.Unlock()
+	if e, ok := shared[avd]; ok {
+		e.Stop()
+		delete(shared, avd)
+	}
+}
+
 // StopShared stops the emulators that Shared started.
 //
 // Flutter: no counterpart

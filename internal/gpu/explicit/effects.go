@@ -31,6 +31,9 @@ type effect struct {
 	passes []gpu.FilterPass
 	// backdrop says that the layer starts as the filtered copy of the pixels under it.
 	backdrop bool
+	// src is the pixels of the surface that a backdrop is copied from, when they are not the
+	// layer's (a filter that moves pixels reads them from elsewhere); empty for the layer's.
+	src image.Rectangle
 	// mask is -1 when the layer's pixels are composited, else the blur style (0 to 3) by which
 	// the layer's alpha, a shape blurred by the passes, is the coverage that the paint fills.
 	mask int32

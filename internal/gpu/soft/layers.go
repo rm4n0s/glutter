@@ -149,12 +149,21 @@ func (r *renderer) clipLayer(l ui.Layer, st *state, shape *ui.Path, behavior ui.
 // backdrop; it is composited with the layer's blend mode, which is source-over
 // by default, so where the filter leaves the backdrop transparent the original
 // shows. A blur without a tile mode mirrors the backdrop at its edges, as
-// Flutter's backdrop filters do.
+// Flutter's backdrop filters do. A matrix filter reads the backdrop where it
+// moves it from, which can be outside the clip.
 func (r *renderer) backdropLayer(v *ui.BackdropFilterLayer, st *state) error {
 	rec := r.beginLayer(st.clip.bounds)
-	backdrop := image.NewRGBA(r.img.Rect)
-	for y := backdrop.Rect.Min.Y; y < backdrop.Rect.Max.Y; y++ {
-		for x := backdrop.Rect.Min.X; x < backdrop.Rect.Max.X; x++ {
+	bounds := r.img.Rect
+	source := bounds
+	if _, moves := v.Filter.(*ui.MatrixImageFilter); moves {
+		// A filter that moves pixels (a magnifier) reads them from where it maps them from,
+		// which can be outside the layer: from all of the surface under it, as Skia reads the
+		// backdrop of a layer through the filter's reverse bounds.
+		source = rec.prev.Rect
+	}
+	backdrop := image.NewRGBA(source)
+	for y := source.Min.Y; y < source.Max.Y; y++ {
+		for x := source.Min.X; x < source.Max.X; x++ {
 			i, j := backdrop.PixOffset(x, y), rec.prev.PixOffset(x, y)
 			copy(backdrop.Pix[i:i+4], rec.prev.Pix[j:j+4])
 		}
@@ -164,7 +173,12 @@ func (r *renderer) backdropLayer(v *ui.BackdropFilterLayer, st *state) error {
 		r.img = rec.prev
 		return err
 	}
-	copy(r.img.Pix, filtered.Pix)
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			i, j := r.img.PixOffset(x, y), filtered.PixOffset(x, y)
+			copy(r.img.Pix[i:i+4], filtered.Pix[j:j+4])
+		}
+	}
 	err = r.children(v, st)
 	if ferr := r.endLayer(rec, st.clip, compositeParams{alpha: 1, mode: v.BlendMode}); err == nil {
 		err = ferr

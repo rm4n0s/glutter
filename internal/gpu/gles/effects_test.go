@@ -292,6 +292,42 @@ func TestSceneImageFilterAndBackdropLayers(t *testing.T) {
 	}
 }
 
+func TestSceneBackdropMatrixFilterReadsWhereItMovesPixelsFrom(t *testing.T) {
+	sb := ui.NewSceneBuilder()
+	// A filter that moves the pixels down by 25: the layer at (20, 20) to (40, 40) shows the
+	// pixels that are 25 above it, which are not under the layer.
+	sb.PushClipRect(ui.NewRectFromLTWH(20, 20, 20, 20))
+	sb.PushBackdropFilter(ui.NewImageFilterMatrix(ui.NewMatrix4TranslationValues(0, 25, 0)))
+	sb.Pop()
+	sb.Pop()
+	list, err := gpu.Flatten(sb.Build(), gpu.FlattenOpts{Bounds: ui.NewRectFromLTWH(0, 0, 64, 64)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := &frameBuilder{w: 64, h: 64}
+	for _, c := range list.Commands {
+		if err := b.command(c); err != nil {
+			t.Fatal(err)
+		}
+	}
+	begin := b.frame.calls[0]
+	if begin.eff == nil || !begin.eff.backdrop || len(begin.eff.passes) != 1 || begin.eff.passes[0].Kind != gpu.PassMatrix {
+		t.Fatalf("backdrop begin = %+v", begin.eff)
+	}
+	// The pixels it reads, (19, -6) to (41, 16), are cut to the surface: the copy is of those, and
+	// the pass reads them from the corner of the copy.
+	if begin.rect != image.Rect(20, 20, 40, 40) || begin.eff.src != image.Rect(19, 0, 41, 16) {
+		t.Errorf("backdrop layer = %v, source %v", begin.rect, begin.eff.src)
+	}
+	pass := begin.eff.passes[0]
+	// The first output pixel is the surface pixel (20, 20), which reads (20.5, -4.5).
+	gotX := float64(pass.Inv[0])*(19.5) + float64(pass.Inv[2])*(0.5) + float64(pass.Inv[4]) - 19
+	gotY := float64(pass.Inv[1])*(19.5) + float64(pass.Inv[3])*(0.5) + float64(pass.Inv[5]) - 0
+	if gotX != 1.5 || gotY != -4.5 {
+		t.Errorf("the first output pixel reads (%v, %v) of the copy, want (1.5, -4.5)", gotX, gotY)
+	}
+}
+
 func TestShaderMaskPaintsTheShaderIntoTheLayer(t *testing.T) {
 	rec := ui.NewPictureRecorder()
 	ui.NewCanvas(rec).DrawRect(ui.NewRectFromLTWH(0, 0, 40, 40), solidPaint(0xFF000000))

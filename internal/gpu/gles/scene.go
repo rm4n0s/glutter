@@ -302,15 +302,21 @@ func (dr *drawer) beginLayer(c *drawCall) error {
 	gl := dr.r.ctx.gl
 	w, h := c.rect.Dx(), c.rect.Dy()
 	var backdrop *Texture
+	src := c.rect
 	if c.eff != nil && c.eff.backdrop {
-		// The copy is of the framebuffer that is bound now: the layer's parent.
+		// The copy is of the framebuffer that is bound now: the layer's parent. It is of the
+		// pixels under the layer, unless the filter reads them from elsewhere.
+		if !c.eff.src.Empty() {
+			src = c.eff.src
+		}
 		t := dr.cur
-		tex, err := d.AcquireTexture(w, h, TextureFormatRGBA8)
+		sw, sh := src.Dx(), src.Dy()
+		tex, err := d.AcquireTexture(sw, sh, TextureFormatRGBA8)
 		if err != nil {
 			return err
 		}
 		defer d.ReleaseTexture(tex)
-		if err := d.CopyFramebuffer(0, tex, c.rect.Min.X-t.rect.Min.X, t.rect.Dy()-(c.rect.Min.Y-t.rect.Min.Y)-h, w, h); err != nil {
+		if err := d.CopyFramebuffer(0, tex, src.Min.X-t.rect.Min.X, t.rect.Dy()-(src.Min.Y-t.rect.Min.Y)-sh, sw, sh); err != nil {
 			return err
 		}
 		backdrop = tex
@@ -321,7 +327,7 @@ func (dr *drawer) beginLayer(c *drawCall) error {
 	}
 	dr.open = append(dr.open, dr.cur)
 	if backdrop != nil {
-		if _, err := dr.runPasses(backdrop, w, h, [2]int{c.rect.Min.X, c.rect.Min.Y}, c.eff.passes, fb); err != nil {
+		if _, err := dr.runPasses(backdrop, src.Dx(), src.Dy(), [2]int{src.Min.X, src.Min.Y}, c.eff.passes, fb); err != nil {
 			return err
 		}
 		dr.enter(renderTarget{fb: fb, rect: c.rect})

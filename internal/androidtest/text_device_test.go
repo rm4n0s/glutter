@@ -102,7 +102,11 @@ func TestTheKeyboardsHeightIsTheBottomViewInset(t *testing.T) {
 	forEachDevice(t, func(t *testing.T, e *Emulator, ctx context.Context) {
 		appID := textApp(ctx, t, e, "single", "")
 		var inset, dpr float64
-		for end := time.Now().Add(40 * time.Second); inset == 0; time.Sleep(500 * time.Millisecond) {
+		// The keyboard's height is the last value of its animation: it is read until it has not changed
+		// for two reads (a slow emulator takes more than half a second to slide it in).
+		var previous float64
+		for end := time.Now().Add(40 * time.Second); inset == 0 || inset != previous; time.Sleep(700 * time.Millisecond) {
+			previous = inset
 			log, err := e.Log(ctx, appID)
 			if err != nil {
 				t.Fatal(Describe(err))

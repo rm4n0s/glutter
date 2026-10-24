@@ -1,6 +1,7 @@
 package gpu
 
 import (
+	"image"
 	"math"
 
 	"github.com/rm4n0s/glutter/ui"
@@ -210,4 +211,60 @@ func MatrixPass(f *ui.MatrixImageFilter, ctm Affine2D, w, h int) FilterPass {
 		p.Quality = 1
 	}
 	return p
+}
+
+// BackdropMatrix plans a backdrop filter that only moves pixels (an ImageFilter.matrix, as a
+// magnifier uses): its layer of the pixels rect reads the pixels under it from where the filter
+// maps them from, which can be outside rect, as Skia reads the backdrop of a layer through the
+// filter's reverse bounds. src is the pixels of the surface to copy (within bounds, the pixels of
+// the layer under it, and with one pixel more for the bilinear taps), and pass reads them: the
+// pass is to run over a copy of src whose top left corner is the origin of the pass, with an
+// output of rect's size. When nothing under the layer is read, src is one pixel and pass draws
+// nothing. ok is false for any other filter, whose backdrop is the pixels of rect.
+//
+// Flutter: no counterpart
+func BackdropMatrix(f ui.ImageFilter, ctm Affine2D, rect, bounds image.Rectangle) (src image.Rectangle, pass FilterPass, ok bool) {
+	m, isMatrix := f.(*ui.MatrixImageFilter)
+	if !isMatrix {
+		return rect, FilterPass{}, false
+	}
+	pass = MatrixPass(m, ctm, rect.Dx(), rect.Dy())
+	inv, invertible := ctm.Invert()
+	if !invertible {
+		return rect, FilterPass{}, false
+	}
+	// back maps a pixel of the output to the pixel it reads.
+	back, invertible := inv.Then(AffineOf(m.Matrix())).Then(ctm).Invert()
+	if !invertible {
+		return rect, FilterPass{}, false
+	}
+	// The pixels that the rectangle reads: the box of its corners moved back.
+	lo, hi := [2]float64{math.Inf(1), math.Inf(1)}, [2]float64{math.Inf(-1), math.Inf(-1)}
+	for _, c := range [4][2]float64{
+		{float64(rect.Min.X), float64(rect.Min.Y)}, {float64(rect.Max.X), float64(rect.Min.Y)},
+		{float64(rect.Min.X), float64(rect.Max.Y)}, {float64(rect.Max.X), float64(rect.Max.Y)},
+	} {
+		p := back.Apply(c[0], c[1])
+		lo[0], lo[1] = math.Min(lo[0], p.Dx), math.Min(lo[1], p.Dy)
+		hi[0], hi[1] = math.Max(hi[0], p.Dx), math.Max(hi[1], p.Dy)
+	}
+	if math.IsNaN(lo[0]+lo[1]+hi[0]+hi[1]) || math.IsInf(lo[0]+lo[1]+hi[0]+hi[1], 0) {
+		return rect, FilterPass{}, false
+	}
+	clamp := func(v float64) int { return int(max(-1e9, min(1e9, v))) }
+	src = image.Rect(clamp(math.Floor(lo[0]))-1, clamp(math.Floor(lo[1]))-1, clamp(math.Ceil(hi[0]))+1, clamp(math.Ceil(hi[1]))+1).Intersect(bounds)
+	if src.Empty() {
+		pass.Quality = 2
+		return image.Rectangle{Min: rect.Min, Max: rect.Min.Add(image.Pt(1, 1))}, pass, true
+	}
+	if pass.Quality == 2 {
+		return src, pass, true
+	}
+	// The pass computes the pixel it reads from its origin, which is the corner of src and not
+	// the one of rect: move the matrix by the difference.
+	d := rect.Min.Sub(src.Min)
+	dx, dy := float64(d.X), float64(d.Y)
+	pass.Inv[4] = float32(float64(pass.Inv[4]) + float64(pass.Inv[0])*dx + float64(pass.Inv[2])*dy)
+	pass.Inv[5] = float32(float64(pass.Inv[5]) + float64(pass.Inv[1])*dx + float64(pass.Inv[3])*dy)
+	return src, pass, true
 }

@@ -107,10 +107,10 @@ func (s *EditableTextState) didChangeTextEditingValue() {
 func (s *EditableTextState) handleFocusChanged() {
 	s.openOrCloseInputConnectionIfNeeded()
 	s.startOrStopCursorTimerIfNeeded()
+	s.updateOrDisposeSelectionOverlayIfNeeded()
 	if s.hasFocus() {
 		// Listen for changing view insets, which indicates the keyboard showing up.
-		insets, _ := MediaQueryMaybeViewInsetsOf(s.Context())
-		s.lastBottomViewInset = insets.Bottom
+		s.lastBottomViewInset = ViewOf(s.Context()).ViewInsets().Bottom
 		if !s.Widget().o.ReadOnly {
 			s.scheduleShowCaretOnScreen(true)
 		}

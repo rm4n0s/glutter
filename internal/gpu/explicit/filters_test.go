@@ -408,3 +408,30 @@ func TestDamageIsCountedInTheFrameStats(t *testing.T) {
 		}
 	}
 }
+
+func TestBackdropMatrixFilterCopiesWhereItReadsFrom(t *testing.T) {
+	r, dev, _ := newRenderer(t)
+	b := ui.NewSceneBuilder()
+	// A filter that moves the pixels down by 25: the layer at (20, 20) to (40, 40) shows the
+	// pixels that are 25 above it, which are not under the layer.
+	b.PushClipRect(ui.NewRectFromLTWH(20, 20, 20, 20))
+	b.PushBackdropFilter(ui.NewImageFilterMatrix(ui.NewMatrix4TranslationValues(0, 25, 0)))
+	b.Pop()
+	b.Pop()
+	if _, err := r.Draw(window, 64, 64, b.Build(), false); err != nil {
+		t.Fatal(err)
+	}
+	if st := r.LastFrame(); st.Skipped != 0 {
+		t.Fatalf("stats %+v", st)
+	}
+	var copies []string
+	for _, c := range opsOfLastFrame(dev) {
+		if c.Op == "CopyTexture" {
+			copies = append(copies, c.Args)
+		}
+	}
+	// The pixels it reads (19, -6) to (41, 16) are cut to the surface; the copy is of those.
+	if want := []string{"rect=(19,0)-(41,16) at=(0,0)"}; !reflect.DeepEqual(copies, want) {
+		t.Errorf("copies %v, want %v", copies, want)
+	}
+}

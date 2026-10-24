@@ -227,12 +227,19 @@ type TextFieldOpts struct {
 	CannotRequestFocus bool
 	// HintLocales are the languages the user is expected to type in.
 	HintLocales []ui.Locale
+	// MagnifierConfiguration is the configuration for the magnifier of this text
+	// field.
+	//
+	// By default (nil), it builds a TextMagnifier on Android and nothing on the
+	// other platforms (TextMagnifierAdaptiveMagnifierConfiguration). To disable
+	// the magnifier, consider passing TextMagnifierConfigurationDisabled.
+	MagnifierConfiguration *widgets.TextMagnifierConfiguration
 }
 
 // TextField is a Material text field: the user types text into it with the
 // keyboard. It is an EditableText in an InputDecorator.
 //
-// Deviation: the restoration of the state, the spell check, the magnifier, the
+// Deviation: the restoration of the state, the spell check, the
 // stylus handwriting, the content insertion, the deprecated toolbarOptions and
 // the system context menu are not ported, and the Cupertino looks of the Apple
 // platforms are replaced with the Material one (SPEC §12.10).
@@ -381,6 +388,14 @@ func (w *TextField) ReadOnly() bool { return w.o.ReadOnly }
 //
 // Flutter: material/text_field.dart TextField.selectionEnabled
 func (w *TextField) SelectionEnabled() bool { return w.o.EnableInteractiveSelection.Value() }
+
+// MagnifierConfiguration is the configuration for the magnifier of this text
+// field, or nil for the one of the platform (TextMagnifierAdaptiveMagnifierConfiguration).
+//
+// Flutter: material/text_field.dart TextField.magnifierConfiguration
+func (w *TextField) MagnifierConfiguration() *widgets.TextMagnifierConfiguration {
+	return w.o.MagnifierConfiguration
+}
 
 // CreateState creates the state.
 //
@@ -941,6 +956,10 @@ func (s *textFieldState) Build(bc widgets.BuildContext) widgets.Widget {
 	case contextMenuBuilder == nil:
 		contextMenuBuilder = defaultTextFieldContextMenuBuilder
 	}
+	magnifierConfiguration := w.o.MagnifierConfiguration
+	if magnifierConfiguration == nil {
+		magnifierConfiguration = TextMagnifierAdaptiveMagnifierConfiguration()
+	}
 	maxLines := w.maxLines
 	if maxLines.IsNone() {
 		maxLines = foundation.Some(rendering.MaxLinesUnlimited)
@@ -1004,6 +1023,7 @@ func (s *textFieldState) Build(bc widgets.BuildContext) widgets.Widget {
 			EnableInlinePrediction:         w.o.EnableInlinePrediction,
 			ContextMenuBuilder:             contextMenuBuilder,
 			HintLocales:                    w.o.HintLocales,
+			MagnifierConfiguration:         magnifierConfiguration,
 		}))
 	child := editable
 	if w.Decoration() != nil {

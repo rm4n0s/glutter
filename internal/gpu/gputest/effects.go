@@ -290,5 +290,29 @@ func EffectScenes() []EffectScene {
 			b.Pop()
 			return b.Build()
 		}},
+		{"a backdrop matrix filter reads outside its clip (a magnifier)", Tolerance{6, 2, 0}, func() *ui.Scene {
+			b := ui.NewSceneBuilder()
+			b.AddPicture(ui.Offset{}, PictureOf(StripesAndDisc))
+			// A lens at (32, 20) to (96, 50) that magnifies by 2 what is 45 pixels below its center.
+			lens := ui.NewRectFromLTWH(32, 20, 64, 30)
+			const scale = 2.0
+			c, f := lens.Center(), ui.Offset{Dx: lens.Center().Dx, Dy: lens.Center().Dy + 45}
+			m := ui.NewMatrix4Identity()
+			m.Translate(float32(scale*(-f.Dx-c.Dx)+c.Dx), float32(scale*(-f.Dy-c.Dy)+c.Dy), 0)
+			m.Scale(scale, scale, scale)
+			b.PushClipRRect(ui.NewRRectFromRectXY(lens, 12, 12))
+			b.PushBackdropFilter(ui.NewImageFilterMatrix(m, ui.ImageFilterMatrixOpts{FilterQuality: ui.FilterQualityHigh}))
+			b.Pop()
+			b.Pop()
+			// A second lens at the bottom edge, which reads from below the surface: nothing.
+			bottom := ui.NewRectFromLTWH(20, 100, 40, 24)
+			m2 := ui.NewMatrix4Identity()
+			m2.Translate(0, -60, 0)
+			b.PushClipRect(bottom)
+			b.PushBackdropFilter(ui.NewImageFilterMatrix(m2))
+			b.Pop()
+			b.Pop()
+			return b.Build()
+		}},
 	}
 }

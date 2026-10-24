@@ -458,7 +458,12 @@ func (r *Renderer) drawScene(enc Encoder, slot *frameSlot, frameTex Texture, fb 
 		}
 		plans[i].frame = frameOff
 		if c.eff != nil && len(c.eff.passes) > 0 && (c.op == opBeginLayer || c.count != 0) {
-			plans[i].passes = planPasses(push, &emptyPaint, c.eff.passes, c.rect.Dx(), c.rect.Dy(), c.rect.Min)
+			src := c.rect
+			if c.op == opBeginLayer && c.eff.backdrop && !c.eff.src.Empty() {
+				// A backdrop filter that moves pixels reads them from where it moves them from.
+				src = c.eff.src
+			}
+			plans[i].passes = planPasses(push, &emptyPaint, c.eff.passes, src.Dx(), src.Dy(), src.Min)
 		}
 		if c.op == opBeginLayer || c.count == 0 {
 			continue
@@ -531,12 +536,18 @@ func (r *Renderer) drawScene(enc Encoder, slot *frameSlot, frameTex Texture, fb 
 			load := LoadClear
 			if c.eff != nil && c.eff.backdrop {
 				// The layer starts as the filtered copy of the pixels under it.
-				bd, err := r.layerTexture(w, h)
+				// It is a copy of the pixels under the layer, unless the filter reads them from
+				// elsewhere.
+				src := c.rect
+				if !c.eff.src.Empty() {
+					src = c.eff.src
+				}
+				bd, err := r.layerTexture(roundUp(src.Dx(), limit), roundUp(src.Dy(), limit))
 				if err != nil {
 					r.releaseLayer(tex)
 					return fail(err)
 				}
-				enc.CopyTexture(cur.tex, c.rect.Sub(cur.rect.Min), bd, image.Point{})
+				enc.CopyTexture(cur.tex, src.Sub(cur.rect.Min), bd, image.Point{})
 				_, err = r.runPasses(enc, groups, filterPipe, plans[i].passes, c.eff.passes, bd, tex)
 				r.releaseLayer(bd)
 				if err != nil {

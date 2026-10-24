@@ -64,9 +64,8 @@ type TextSelectionGestureHandler interface {
 // press selects a word. Embed it in the builder of a text field and call
 // InitTextSelectionGestureDetectorBuilder.
 //
-// Deviation: the magnifier, the floating cursor, the stylus handwriting, the
-// force press and the spell check toolbar of the mobile platforms are not
-// ported (SPEC §12.10).
+// Deviation: the floating cursor, the stylus handwriting, the force press and
+// the spell check toolbar of the mobile platforms are not ported (SPEC §12.10).
 //
 // Flutter: widgets/text_selection.dart TextSelectionGestureDetectorBuilder
 type TextSelectionGestureDetectorBuilder struct {
@@ -365,6 +364,44 @@ func (b *TextSelectionGestureDetectorBuilder) positionWasOnSelectionInclusive(p 
 // Flutter: widgets/text_selection.dart TextSelectionGestureDetectorBuilder.onSingleTapCancel
 func (b *TextSelectionGestureDetectorBuilder) OnSingleTapCancel() {}
 
+// showMagnifierIfSupportedByPlatform shows the magnifier on supported
+// platforms at the given offset, currently only Android and iOS.
+//
+// Flutter: widgets/text_selection.dart TextSelectionGestureDetectorBuilder._showMagnifierIfSupportedByPlatform
+func (b *TextSelectionGestureDetectorBuilder) showMagnifierIfSupportedByPlatform(positionToShow ui.Offset) {
+	switch foundation.DefaultTargetPlatform() {
+	case foundation.TargetPlatformAndroid, foundation.TargetPlatformIOS:
+		if e := b.EditableText(); e != nil {
+			e.ShowMagnifier(positionToShow)
+		}
+	}
+}
+
+// hideMagnifierIfSupportedByPlatform hides the magnifier on supported
+// platforms, currently only Android and iOS.
+//
+// Flutter: widgets/text_selection.dart TextSelectionGestureDetectorBuilder._hideMagnifierIfSupportedByPlatform
+func (b *TextSelectionGestureDetectorBuilder) hideMagnifierIfSupportedByPlatform() {
+	if !b.isEditableTextMounted() {
+		return
+	}
+
+	switch foundation.DefaultTargetPlatform() {
+	case foundation.TargetPlatformAndroid, foundation.TargetPlatformIOS:
+		if e := b.EditableText(); e != nil {
+			e.HideMagnifier()
+		}
+	}
+}
+
+// isEditableTextMounted is whether the EditableText is mounted.
+//
+// Flutter: widgets/text_selection.dart TextSelectionGestureDetectorBuilder._isEditableTextMounted
+func (b *TextSelectionGestureDetectorBuilder) isEditableTextMounted() bool {
+	c := b.delegate.EditableTextKey().CurrentContext()
+	return c != nil && c.Mounted()
+}
+
 // OnSingleLongTapStart handles the start of a long press, which selects a word.
 //
 // Flutter: widgets/text_selection.dart TextSelectionGestureDetectorBuilder.onSingleLongTapStart
@@ -386,6 +423,9 @@ func (b *TextSelectionGestureDetectorBuilder) OnSingleLongTapStart(details gestu
 	default:
 		r.SelectWord(services.SelectionChangedCauseLongPress)
 	}
+
+	b.showMagnifierIfSupportedByPlatform(details.GlobalPosition)
+
 	b.dragStartViewportOffset = r.Offset().Pixels()
 	b.dragStartScrollOffset = b.scrollPosition()
 }
@@ -400,15 +440,20 @@ func (b *TextSelectionGestureDetectorBuilder) OnSingleLongTapMoveUpdate(details 
 	}
 	r := b.RenderEditable()
 	editableOffset, scrollableOffset := b.dragOffsets()
+	selectWords := true
 	switch foundation.DefaultTargetPlatform() {
 	case foundation.TargetPlatformIOS, foundation.TargetPlatformMacOS:
 		if !b.longPressStartedWithoutFx && !r.ReadOnly() {
 			r.SelectPositionAt(details.GlobalPosition, foundation.None[ui.Offset](), services.SelectionChangedCauseLongPress)
-			return
+			selectWords = false
 		}
 	}
-	r.SelectWordsInRange(details.GlobalPosition.Sub(details.OffsetFromOrigin).Sub(editableOffset).Sub(scrollableOffset),
-		foundation.Some(details.GlobalPosition), services.SelectionChangedCauseLongPress)
+	if selectWords {
+		r.SelectWordsInRange(details.GlobalPosition.Sub(details.OffsetFromOrigin).Sub(editableOffset).Sub(scrollableOffset),
+			foundation.Some(details.GlobalPosition), services.SelectionChangedCauseLongPress)
+	}
+
+	b.showMagnifierIfSupportedByPlatform(details.GlobalPosition)
 }
 
 // OnSingleLongTapEnd handles the end of a long press.
@@ -427,6 +472,7 @@ func (b *TextSelectionGestureDetectorBuilder) OnSingleLongTapEnd(gestures.LongPr
 func (b *TextSelectionGestureDetectorBuilder) OnSingleLongTapCancel() { b.onSingleLongTapEndOrCancel() }
 
 func (b *TextSelectionGestureDetectorBuilder) onSingleLongTapEndOrCancel() {
+	b.hideMagnifierIfSupportedByPlatform()
 	b.longPressStartedWithoutFx = false
 	b.dragStartViewportOffset = 0
 	b.dragStartScrollOffset = 0
@@ -591,13 +637,26 @@ func (b *TextSelectionGestureDetectorBuilder) OnDragSelectionStart(details gestu
 		}
 		return
 	}
+	isPrecise := hasKind && (kind == ui.PointerDeviceKindMouse || kind == ui.PointerDeviceKindTrackpad)
 	switch foundation.DefaultTargetPlatform() {
-	case foundation.TargetPlatformLinux, foundation.TargetPlatformMacOS, foundation.TargetPlatformWindows:
-		r.SelectPositionAt(details.GlobalPosition, foundation.None[ui.Offset](), services.SelectionChangedCauseDrag)
-	default:
-		if kind == ui.PointerDeviceKindMouse || kind == ui.PointerDeviceKindTrackpad || r.HasFocus() {
+	case foundation.TargetPlatformIOS:
+		if isPrecise {
 			r.SelectPositionAt(details.GlobalPosition, foundation.None[ui.Offset](), services.SelectionChangedCauseDrag)
 		}
+	case foundation.TargetPlatformAndroid, foundation.TargetPlatformFuchsia:
+		switch {
+		case isPrecise:
+			r.SelectPositionAt(details.GlobalPosition, foundation.None[ui.Offset](), services.SelectionChangedCauseDrag)
+		case hasKind:
+			// For Android, Fuchsia, and iOS platforms, a touch drag does not
+			// initiate unless the editable has focus.
+			if r.HasFocus() {
+				r.SelectPositionAt(details.GlobalPosition, foundation.None[ui.Offset](), services.SelectionChangedCauseDrag)
+				b.showMagnifierIfSupportedByPlatform(details.GlobalPosition)
+			}
+		}
+	default:
+		r.SelectPositionAt(details.GlobalPosition, foundation.None[ui.Offset](), services.SelectionChangedCauseDrag)
 	}
 }
 
@@ -615,24 +674,57 @@ func (b *TextSelectionGestureDetectorBuilder) OnDragSelectionUpdate(details gest
 		dragStart := details.GlobalPosition.Sub(details.OffsetFromOrigin)
 		from := dragStart.Sub(editableOffset).Sub(scrollableOffset)
 		to := foundation.Some(details.GlobalPosition)
+		kind, hasKind := details.Kind.Get()
+		isPrecise := hasKind && (kind == ui.PointerDeviceKindMouse || kind == ui.PointerDeviceKindTrackpad)
 		switch effectiveConsecutiveTapCount(details.ConsecutiveTapCount) {
 		case 2:
+			// Select word by word.
 			r.SelectWordsInRange(from, to, services.SelectionChangedCauseDrag)
+			if hasKind && !isPrecise {
+				b.showMagnifierIfSupportedByPlatform(details.GlobalPosition)
+			}
 			return
 		case 3:
+			// Select paragraph-by-paragraph.
 			switch foundation.DefaultTargetPlatform() {
 			case foundation.TargetPlatformLinux:
 				b.selectLinesInRange(from, to, services.SelectionChangedCauseDrag)
 			case foundation.TargetPlatformWindows, foundation.TargetPlatformMacOS:
 				b.selectParagraphsInRange(from, to, services.SelectionChangedCauseDrag)
 			default:
-				if k, ok := details.Kind.Get(); ok && (k == ui.PointerDeviceKindMouse || k == ui.PointerDeviceKindTrackpad) {
+				if isPrecise {
 					b.selectParagraphsInRange(from, to, services.SelectionChangedCauseDrag)
 				}
+				// Triple tap to drag is not present on these platforms when using
+				// non-precise pointer devices at the moment.
 			}
 			return
 		}
-		r.SelectPositionAt(from, to, services.SelectionChangedCauseDrag)
+		switch foundation.DefaultTargetPlatform() {
+		case foundation.TargetPlatformIOS:
+			// With a mouse device, a drag should select the range from the origin
+			// of the drag to the current position of the drag. With a touch
+			// device, nothing should happen.
+			if isPrecise {
+				r.SelectPositionAt(from, to, services.SelectionChangedCauseDrag)
+			}
+		case foundation.TargetPlatformAndroid, foundation.TargetPlatformFuchsia:
+			// With a precise pointer device, such as a mouse, trackpad, or stylus,
+			// the drag will select the text spanning the origin of the drag to the
+			// end of the drag. With a touch device, the cursor should move with the
+			// drag.
+			switch {
+			case isPrecise || (hasKind && (kind == ui.PointerDeviceKindStylus || kind == ui.PointerDeviceKindInvertedStylus)):
+				r.SelectPositionAt(from, to, services.SelectionChangedCauseDrag)
+			case hasKind:
+				if r.HasFocus() {
+					r.SelectPositionAt(details.GlobalPosition, foundation.None[ui.Offset](), services.SelectionChangedCauseDrag)
+					b.showMagnifierIfSupportedByPlatform(details.GlobalPosition)
+				}
+			}
+		default:
+			r.SelectPositionAt(from, to, services.SelectionChangedCauseDrag)
+		}
 		return
 	}
 	start, _ := b.dragStartSelection.Get()
@@ -672,6 +764,8 @@ func (b *TextSelectionGestureDetectorBuilder) OnDragSelectionEnd(details gesture
 	if b.isShiftPressed {
 		b.dragStartSelection = foundation.None[services.TextSelection]()
 	}
+
+	b.hideMagnifierIfSupportedByPlatform()
 }
 
 // BuildGestureDetector builds the detector for the text field's child.

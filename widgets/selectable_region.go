@@ -32,6 +32,10 @@ type SelectableRegionOpts struct {
 	FocusNode *FocusNode
 	// OnSelectionChanged is called when the selected content changes.
 	OnSelectionChanged func(content *rendering.SelectedContent)
+	// MagnifierConfiguration is the configuration for the magnifier used with
+	// selections in this region; by default (nil) it is
+	// TextMagnifierConfigurationDisabled.
+	MagnifierConfiguration *TextMagnifierConfiguration
 }
 
 // SelectableRegion is a widget that introduces an area for user selections.
@@ -53,8 +57,8 @@ type SelectableRegionOpts struct {
 // tree. Each non-leaf node in the tree is a SelectionContainer, and the leaf
 // node is a leaf widget whose render object implements Selectable.
 //
-// Deviation: the magnifier, the web context menu, the text processing actions
-// and the share button are not ported (SPEC §12.10).
+// Deviation: the web context menu, the text processing actions and the share
+// button are not ported (SPEC §12.10).
 //
 // Flutter: widgets/selectable_region.dart SelectableRegion
 type SelectableRegion struct {
@@ -82,6 +86,17 @@ func (w *SelectableRegion) Child() Widget { return w.child }
 //
 // Flutter: widgets/selectable_region.dart SelectableRegion.selectionControls
 func (w *SelectableRegion) SelectionControls() TextSelectionControls { return w.selectionControls }
+
+// MagnifierConfiguration is the configuration for the magnifier used with
+// selections in this region. By default, it is TextMagnifierConfigurationDisabled.
+//
+// Flutter: widgets/selectable_region.dart SelectableRegion.magnifierConfiguration
+func (w *SelectableRegion) MagnifierConfiguration() *TextMagnifierConfiguration {
+	if w.o.MagnifierConfiguration == nil {
+		return TextMagnifierConfigurationDisabled
+	}
+	return w.o.MagnifierConfiguration
+}
 
 // SelectableButtonItemsCallbacks are the callbacks of the buttons that
 // GetSelectableButtonItems returns; OnShare may be nil.
@@ -838,6 +853,9 @@ func (s *SelectableRegionState) triggerSelectionEndEdgeUpdate(granularity render
 func (s *SelectableRegionState) onAnyDragEnd(gestures.DragEndDetails) {
 	draggingHandles := s.selectionOverlay != nil && (s.selectionOverlay.IsDraggingStartHandle() || s.selectionOverlay.IsDraggingEndHandle())
 	if !draggingHandles {
+		if s.selectionOverlay != nil {
+			s.selectionOverlay.HideMagnifier()
+		}
 		s.showToolbar(foundation.None[ui.Offset]())
 	}
 	s.finalizeSelection()
@@ -880,6 +898,8 @@ func (s *SelectableRegionState) stopSelectionStartEdgeUpdate() {
 func (s *SelectableRegionState) handleSelectionStartHandleDragStart(details gestures.DragStartDetails) {
 	local := s.selectionDelegate.Value().StartSelectionPoint.LocalPosition
 	s.selectionStartHandleDragPosition = s.selectable.GetTransformTo(nil).TransformPoint(local)
+
+	s.selectionOverlay.ShowMagnifier(s.buildInfoForMagnifier(details.GlobalPosition, s.selectionDelegate.Value().StartSelectionPoint))
 	s.updateSelectedContentIfNeeded()
 }
 
@@ -889,6 +909,8 @@ func (s *SelectableRegionState) handleSelectionStartHandleDragUpdate(details ges
 	// it to the center of the line to make it feel more natural.
 	s.selectionStartPosition = foundation.Some(s.selectionStartHandleDragPosition.Sub(ui.Offset{Dy: s.selectionDelegate.Value().StartSelectionPoint.LineHeight / 2}))
 	s.triggerSelectionStartEdgeUpdate(rendering.TextGranularityUnspecified)
+
+	s.selectionOverlay.UpdateMagnifier(s.buildInfoForMagnifier(details.GlobalPosition, s.selectionDelegate.Value().StartSelectionPoint))
 	s.updateSelectedContentIfNeeded()
 	s.setChanging()
 }
@@ -896,6 +918,8 @@ func (s *SelectableRegionState) handleSelectionStartHandleDragUpdate(details ges
 func (s *SelectableRegionState) handleSelectionEndHandleDragStart(details gestures.DragStartDetails) {
 	local := s.selectionDelegate.Value().EndSelectionPoint.LocalPosition
 	s.selectionEndHandleDragPosition = s.selectable.GetTransformTo(nil).TransformPoint(local)
+
+	s.selectionOverlay.ShowMagnifier(s.buildInfoForMagnifier(details.GlobalPosition, s.selectionDelegate.Value().EndSelectionPoint))
 	s.updateSelectedContentIfNeeded()
 }
 
@@ -903,8 +927,32 @@ func (s *SelectableRegionState) handleSelectionEndHandleDragUpdate(details gestu
 	s.selectionEndHandleDragPosition = s.selectionEndHandleDragPosition.Add(details.Delta)
 	s.selectionEndPosition = foundation.Some(s.selectionEndHandleDragPosition.Sub(ui.Offset{Dy: s.selectionDelegate.Value().EndSelectionPoint.LineHeight / 2}))
 	s.triggerSelectionEndEdgeUpdate(rendering.TextGranularityUnspecified)
+
+	s.selectionOverlay.UpdateMagnifier(s.buildInfoForMagnifier(details.GlobalPosition, s.selectionDelegate.Value().EndSelectionPoint))
 	s.updateSelectedContentIfNeeded()
 	s.setChanging()
+}
+
+// buildInfoForMagnifier is the geometry that the magnifier follows while a
+// selection handle is dragged.
+//
+// Flutter: widgets/selectable_region.dart SelectableRegionState._buildInfoForMagnifier
+func (s *SelectableRegionState) buildInfoForMagnifier(globalGesturePosition ui.Offset, selectionPoint *rendering.SelectionPoint) MagnifierInfo {
+	globalTransformAsOffset := s.selectable.GetTransformTo(nil).TransformPoint(ui.Offset{})
+	globalSelectionPointPosition := selectionPoint.LocalPosition.Add(globalTransformAsOffset)
+	caretRect := ui.NewRectFromLTWH(
+		globalSelectionPointPosition.Dx,
+		globalSelectionPointPosition.Dy-selectionPoint.LineHeight,
+		0,
+		selectionPoint.LineHeight,
+	)
+
+	return MagnifierInfo{
+		GlobalGesturePosition: globalGesturePosition,
+		CaretRect:             caretRect,
+		FieldBounds:           globalTransformAsOffset.And(s.selectable.Size()),
+		CurrentLineBoundaries: globalTransformAsOffset.And(s.selectable.Size()),
+	}
 }
 
 func (s *SelectableRegionState) createSelectionOverlay() {
@@ -933,6 +981,7 @@ func (s *SelectableRegionState) createSelectionOverlay() {
 			OnEndHandleDragStart:    s.handleSelectionEndHandleDragStart,
 			OnEndHandleDragUpdate:   s.handleSelectionEndHandleDragUpdate,
 			OnEndHandleDragEnd:      s.onAnyDragEnd,
+			MagnifierConfiguration:  s.Widget().MagnifierConfiguration(),
 		})
 }
 
@@ -1350,6 +1399,9 @@ func (s *SelectableRegionState) Dispose() {
 	s.selectionDelegate.Dispose()
 	s.selectionStatusNotifier.Dispose()
 	if s.selectionOverlay != nil {
+		// In case dispose was triggered before gesture end, remove the magnifier so it
+		// doesn't remain stuck in the overlay forever.
+		s.selectionOverlay.HideMagnifier()
 		s.selectionOverlay.Dispose()
 		s.selectionOverlay = nil
 	}

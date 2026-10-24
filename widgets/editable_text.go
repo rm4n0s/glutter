@@ -199,11 +199,11 @@ type EditableTextOpts struct {
 	// EnableInlinePrediction turns the inline prediction of the input method on
 	// or off.
 	EnableInlinePrediction foundation.Opt[bool]
-	// MagnifierConfiguration is reserved for the magnifier of the selection
-	// handles.
-	//
-	// Deviation: the magnifier is not ported (SPEC §12.10).
-	MagnifierConfiguration any
+	// MagnifierConfiguration is the configuration for the magnifier to use with
+	// selections in this text field; nil is TextMagnifierConfigurationDisabled.
+	// A configuration is compared by identity: changing it to another value
+	// recreates the selection overlay.
+	MagnifierConfiguration *TextMagnifierConfiguration
 }
 
 // EditableText is a basic text input field: it shows the text of a
@@ -212,8 +212,8 @@ type EditableTextOpts struct {
 // built on it.
 //
 // Deviation: spell check, the stylus handwriting, Live Text, the processing of
-// the text by other apps, the floating cursor, the magnifier and the autofill
-// groups are not ported (SPEC §12.10).
+// the text by other apps, the floating cursor and the autofill groups are not
+// ported (SPEC §12.10).
 //
 // Flutter: widgets/editable_text.dart EditableText
 type EditableText struct {
@@ -250,6 +250,9 @@ func NewEditableText(controller *TextEditingController, focusNode *FocusNode, st
 	o := firstOpts(opts)
 	if o.ObscuringCharacter == "" {
 		o.ObscuringCharacter = "•"
+	}
+	if o.MagnifierConfiguration == nil {
+		o.MagnifierConfiguration = TextMagnifierConfigurationDisabled
 	}
 	maxLines := o.MaxLines
 	switch {
@@ -422,6 +425,14 @@ func (w *EditableText) InputFormatters() []services.TextInputFormatter {
 //
 // Flutter: widgets/editable_text.dart EditableText.selectionEnabled
 func (w *EditableText) SelectionEnabled() bool { return w.enableInteractiveSelection }
+
+// MagnifierConfiguration is the configuration for the magnifier to use with
+// selections in this text field.
+//
+// Flutter: widgets/editable_text.dart EditableText.magnifierConfiguration
+func (w *EditableText) MagnifierConfiguration() *TextMagnifierConfiguration {
+	return w.o.MagnifierConfiguration
+}
 
 // userSelectionEnabled is whether the user can select text, which is not the
 // case for a read-only obscured field.

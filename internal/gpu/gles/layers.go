@@ -25,6 +25,9 @@ type effect struct {
 	passes []filterPass
 	// backdrop says that the layer starts as the filtered copy of the pixels under it.
 	backdrop bool
+	// src is the pixels of the surface that a backdrop is copied from, when they are not the
+	// layer's (a filter that moves pixels reads them from elsewhere); empty for the layer's.
+	src image.Rectangle
 	// mask is -1 when the layer's pixels are composited, else the blur style (0 to 3)
 	// by which the layer's alpha, a shape blurred by the passes, is the coverage
 	// that the paint fills.
@@ -57,10 +60,11 @@ type layerRec struct {
 	// blur makes the layer's alpha the coverage of a blurred shape.
 	blur *maskBlur
 	// drawnOnly, backdrop and shaderMask are the effect fields of the same name.
-	drawnOnly  bool
-	backdrop   []filterPass
-	isBackdrop bool
-	shaderMask *ui.ShaderMaskLayer
+	drawnOnly   bool
+	backdrop    []filterPass
+	backdropSrc image.Rectangle
+	isBackdrop  bool
+	shaderMask  *ui.ShaderMaskLayer
 	// boundary is the layer of a group that the raster cache may keep (a layer that
 	// gpu.FlattenOpts.Boundary made a group), and cacheKey its key at the top level.
 	boundary ui.Layer
@@ -97,7 +101,7 @@ func (b *frameBuilder) pushLayer(rec *layerRec) {
 	b.layers = append(b.layers, rec)
 	var eff *effect
 	if rec.isBackdrop {
-		eff = &effect{backdrop: true, passes: rec.backdrop, mask: -1}
+		eff = &effect{backdrop: true, passes: rec.backdrop, src: rec.backdropSrc, mask: -1}
 	}
 	b.frame.beginLayer(rec.rect, eff)
 }
@@ -192,7 +196,12 @@ func (b *frameBuilder) beginLayer(c gpu.Command) error {
 	}
 	if rec.isBackdrop {
 		// The backdrop is the copy of the pixels under the layer, filtered.
-		rec.backdrop, _ = filterPasses(rec.filter, rec.ctm, rec.tile, rect.Dx(), rect.Dy())
+		if src, pass, ok := gpu.BackdropMatrix(rec.filter, rec.ctm, rect, b.target()); ok {
+			// A filter that moves pixels reads them from where it moves them from.
+			rec.backdrop, rec.backdropSrc = []filterPass{pass}, src
+		} else {
+			rec.backdrop, _ = filterPasses(rec.filter, rec.ctm, rec.tile, rect.Dx(), rect.Dy())
+		}
 		rec.filter = nil
 	}
 	b.pushLayer(rec)

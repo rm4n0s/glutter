@@ -3941,6 +3941,58 @@ func LookupBoundaryVisitChildElements(bc widgets.BuildContext, visitor widgets.E
 	widgets.LookupBoundaryVisitChildElements(bc, visitor)
 }
 
+// MagnifierBuilder is widgets.MagnifierBuilder.
+//
+// Flutter: widgets.dart MagnifierBuilder
+type MagnifierBuilder = widgets.MagnifierBuilder
+
+// MagnifierController is widgets.MagnifierController.
+//
+// Flutter: widgets.dart MagnifierController
+type MagnifierController = widgets.MagnifierController
+
+// MagnifierControllerHideOpts is widgets.MagnifierControllerHideOpts.
+//
+// Flutter: widgets.dart MagnifierControllerHideOpts
+type MagnifierControllerHideOpts = widgets.MagnifierControllerHideOpts
+
+// MagnifierControllerOpts is widgets.MagnifierControllerOpts.
+//
+// Flutter: widgets.dart MagnifierControllerOpts
+type MagnifierControllerOpts = widgets.MagnifierControllerOpts
+
+// MagnifierControllerShiftWithinBounds is widgets.MagnifierControllerShiftWithinBounds.
+//
+// Flutter: widgets.dart MagnifierControllerShiftWithinBounds
+func MagnifierControllerShiftWithinBounds(rect ui.Rect, bounds ui.Rect) ui.Rect {
+	return widgets.MagnifierControllerShiftWithinBounds(rect, bounds)
+}
+
+// MagnifierControllerShowOpts is widgets.MagnifierControllerShowOpts.
+//
+// Flutter: widgets.dart MagnifierControllerShowOpts
+type MagnifierControllerShowOpts = widgets.MagnifierControllerShowOpts
+
+// MagnifierDecoration is widgets.MagnifierDecoration.
+//
+// Flutter: widgets.dart MagnifierDecoration
+type MagnifierDecoration = widgets.MagnifierDecoration
+
+// MagnifierDecorationOpts is widgets.MagnifierDecorationOpts.
+//
+// Flutter: widgets.dart MagnifierDecorationOpts
+type MagnifierDecorationOpts = widgets.MagnifierDecorationOpts
+
+// MagnifierInfo is widgets.MagnifierInfo.
+//
+// Flutter: widgets.dart MagnifierInfo
+type MagnifierInfo = widgets.MagnifierInfo
+
+// MagnifierInfoEmpty is widgets.MagnifierInfoEmpty.
+//
+// Flutter: widgets.dart MagnifierInfoEmpty
+var MagnifierInfoEmpty = widgets.MagnifierInfoEmpty
+
 // MatrixTransition is widgets.MatrixTransition.
 //
 // Flutter: widgets.dart MatrixTransition
@@ -6407,6 +6459,27 @@ func NewLookupBoundary(child widgets.Widget, opts ...widgets.WidgetOpts) *widget
 	return widgets.NewLookupBoundary(child, opts...)
 }
 
+// NewMagnifierController is widgets.NewMagnifierController.
+//
+// Flutter: widgets.dart NewMagnifierController
+func NewMagnifierController(opts ...widgets.MagnifierControllerOpts) *widgets.MagnifierController {
+	return widgets.NewMagnifierController(opts...)
+}
+
+// NewMagnifierDecoration is widgets.NewMagnifierDecoration.
+//
+// Flutter: widgets.dart NewMagnifierDecoration
+func NewMagnifierDecoration(opts ...widgets.MagnifierDecorationOpts) *widgets.MagnifierDecoration {
+	return widgets.NewMagnifierDecoration(opts...)
+}
+
+// NewMagnifierInfo is widgets.NewMagnifierInfo.
+//
+// Flutter: widgets.dart NewMagnifierInfo
+func NewMagnifierInfo(globalGesturePosition ui.Offset, caretRect ui.Rect, fieldBounds ui.Rect, currentLineBoundaries ui.Rect) widgets.MagnifierInfo {
+	return widgets.NewMagnifierInfo(globalGesturePosition, caretRect, fieldBounds, currentLineBoundaries)
+}
+
 // NewMatrix4Tween is widgets.NewMatrix4Tween.
 //
 // Flutter: widgets.dart NewMatrix4Tween
@@ -6972,6 +7045,13 @@ func NewRawGestureDetector(child widgets.Widget, opts ...widgets.RawGestureDetec
 // Flutter: widgets.dart NewRawImage
 func NewRawImage(image *ui.Image, opts ...widgets.RawImageOpts) *widgets.RawImage {
 	return widgets.NewRawImage(image, opts...)
+}
+
+// NewRawMagnifier is widgets.NewRawMagnifier.
+//
+// Flutter: widgets.dart NewRawMagnifier
+func NewRawMagnifier(size ui.Size, opts ...widgets.RawMagnifierOpts) *widgets.RawMagnifier {
+	return widgets.NewRawMagnifier(size, opts...)
 }
 
 // NewRawMenuAnchor is widgets.NewRawMenuAnchor.
@@ -7992,6 +8072,13 @@ func NewTextFieldTapRegion(child widgets.Widget, opts ...widgets.TextFieldTapReg
 	return widgets.NewTextFieldTapRegion(child, opts...)
 }
 
+// NewTextMagnifierConfiguration is widgets.NewTextMagnifierConfiguration.
+//
+// Flutter: widgets.dart NewTextMagnifierConfiguration
+func NewTextMagnifierConfiguration(opts ...widgets.TextMagnifierConfigurationOpts) *widgets.TextMagnifierConfiguration {
+	return widgets.NewTextMagnifierConfiguration(opts...)
+}
+
 // NewTextRich is widgets.NewTextRich.
 //
 // Flutter: widgets.dart NewTextRich
@@ -8025,6 +8112,13 @@ func NewTextSelectionOverlay(value services.TextEditingValue, bc widgets.BuildCo
 // Flutter: widgets.dart NewTextSelectionToolbarAnchorsFromSelection
 func NewTextSelectionToolbarAnchorsFromSelection(renderBox rendering.Box, startGlyphHeight float64, endGlyphHeight float64, selectionEndpoints []rendering.TextSelectionPoint) widgets.TextSelectionToolbarAnchors {
 	return widgets.NewTextSelectionToolbarAnchorsFromSelection(renderBox, startGlyphHeight, endGlyphHeight, selectionEndpoints)
+}
+
+// NewTextSelectionToolbarLayoutDelegate is widgets.NewTextSelectionToolbarLayoutDelegate.
+//
+// Flutter: widgets.dart NewTextSelectionToolbarLayoutDelegate
+func NewTextSelectionToolbarLayoutDelegate(anchorAbove ui.Offset, anchorBelow ui.Offset, opts ...widgets.TextSelectionToolbarLayoutDelegateOpts) *widgets.TextSelectionToolbarLayoutDelegate {
+	return widgets.NewTextSelectionToolbarLayoutDelegate(anchorAbove, anchorBelow, opts...)
 }
 
 // NewTextStyleTween is widgets.NewTextStyleTween.
@@ -9167,6 +9261,16 @@ type RawImage = widgets.RawImage
 //
 // Flutter: widgets.dart RawImageOpts
 type RawImageOpts = widgets.RawImageOpts
+
+// RawMagnifier is widgets.RawMagnifier.
+//
+// Flutter: widgets.dart RawMagnifier
+type RawMagnifier = widgets.RawMagnifier
+
+// RawMagnifierOpts is widgets.RawMagnifierOpts.
+//
+// Flutter: widgets.dart RawMagnifierOpts
+type RawMagnifierOpts = widgets.RawMagnifierOpts
 
 // RawMenuAnchor is widgets.RawMenuAnchor.
 //
@@ -10951,6 +11055,36 @@ type Stack = widgets.Stack
 // Flutter: widgets.dart StackOpts
 type StackOpts = widgets.StackOpts
 
+// StandardComponentType is widgets.StandardComponentType.
+//
+// Flutter: widgets.dart StandardComponentType
+type StandardComponentType = widgets.StandardComponentType
+
+// StandardComponentTypeBackButton is widgets.StandardComponentTypeBackButton.
+//
+// Flutter: widgets.dart StandardComponentTypeBackButton
+const StandardComponentTypeBackButton = widgets.StandardComponentTypeBackButton
+
+// StandardComponentTypeCloseButton is widgets.StandardComponentTypeCloseButton.
+//
+// Flutter: widgets.dart StandardComponentTypeCloseButton
+const StandardComponentTypeCloseButton = widgets.StandardComponentTypeCloseButton
+
+// StandardComponentTypeDrawerButton is widgets.StandardComponentTypeDrawerButton.
+//
+// Flutter: widgets.dart StandardComponentTypeDrawerButton
+const StandardComponentTypeDrawerButton = widgets.StandardComponentTypeDrawerButton
+
+// StandardComponentTypeMoreButton is widgets.StandardComponentTypeMoreButton.
+//
+// Flutter: widgets.dart StandardComponentTypeMoreButton
+const StandardComponentTypeMoreButton = widgets.StandardComponentTypeMoreButton
+
+// StandardComponentTypeUnspecified is widgets.StandardComponentTypeUnspecified.
+//
+// Flutter: widgets.dart StandardComponentTypeUnspecified
+const StandardComponentTypeUnspecified = widgets.StandardComponentTypeUnspecified
+
 // State is widgets.State.
 //
 // Flutter: widgets.dart State
@@ -11170,6 +11304,21 @@ type TextFieldTapRegionGroupID = widgets.TextFieldTapRegionGroupID
 // Flutter: widgets.dart TextFieldTapRegionOpts
 type TextFieldTapRegionOpts = widgets.TextFieldTapRegionOpts
 
+// TextMagnifierConfiguration is widgets.TextMagnifierConfiguration.
+//
+// Flutter: widgets.dart TextMagnifierConfiguration
+type TextMagnifierConfiguration = widgets.TextMagnifierConfiguration
+
+// TextMagnifierConfigurationDisabled is widgets.TextMagnifierConfigurationDisabled.
+//
+// Flutter: widgets.dart TextMagnifierConfigurationDisabled
+var TextMagnifierConfigurationDisabled = widgets.TextMagnifierConfigurationDisabled
+
+// TextMagnifierConfigurationOpts is widgets.TextMagnifierConfigurationOpts.
+//
+// Flutter: widgets.dart TextMagnifierConfigurationOpts
+type TextMagnifierConfigurationOpts = widgets.TextMagnifierConfigurationOpts
+
 // TextOpts is widgets.TextOpts.
 //
 // Flutter: widgets.dart TextOpts
@@ -11231,6 +11380,23 @@ type TextSelectionToolbarAnchors = widgets.TextSelectionToolbarAnchors
 func TextSelectionToolbarAnchorsSelectionRect(renderBox rendering.Box, startGlyphHeight float64, endGlyphHeight float64, selectionEndpoints []rendering.TextSelectionPoint) ui.Rect {
 	return widgets.TextSelectionToolbarAnchorsSelectionRect(renderBox, startGlyphHeight, endGlyphHeight, selectionEndpoints)
 }
+
+// TextSelectionToolbarLayoutDelegate is widgets.TextSelectionToolbarLayoutDelegate.
+//
+// Flutter: widgets.dart TextSelectionToolbarLayoutDelegate
+type TextSelectionToolbarLayoutDelegate = widgets.TextSelectionToolbarLayoutDelegate
+
+// TextSelectionToolbarLayoutDelegateCenterOn is widgets.TextSelectionToolbarLayoutDelegateCenterOn.
+//
+// Flutter: widgets.dart TextSelectionToolbarLayoutDelegateCenterOn
+func TextSelectionToolbarLayoutDelegateCenterOn(position float64, width float64, max float64) float64 {
+	return widgets.TextSelectionToolbarLayoutDelegateCenterOn(position, width, max)
+}
+
+// TextSelectionToolbarLayoutDelegateOpts is widgets.TextSelectionToolbarLayoutDelegateOpts.
+//
+// Flutter: widgets.dart TextSelectionToolbarLayoutDelegateOpts
+type TextSelectionToolbarLayoutDelegateOpts = widgets.TextSelectionToolbarLayoutDelegateOpts
 
 // TickerMode is widgets.TickerMode.
 //

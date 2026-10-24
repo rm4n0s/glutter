@@ -122,14 +122,16 @@ type TextSelectionOverlayOpts struct {
 	OnSelectionHandleTapped foundation.VoidCallback
 	// ContextMenuBuilder builds the context menu of the toolbar.
 	ContextMenuBuilder WidgetBuilder
+	// MagnifierConfiguration is the configuration for the magnifier; nil is
+	// TextMagnifierConfigurationDisabled.
+	MagnifierConfiguration *TextMagnifierConfiguration
 }
 
 // TextSelectionOverlay manages a pair of text selection handles, and the
 // toolbar, of a RenderEditable. The selection handles are displayed in the
 // Overlay that most closely encloses the given BuildContext.
 //
-// Deviation: the magnifier and the spell check suggestions toolbar are not
-// ported (SPEC §12.10).
+// Deviation: the spell check suggestions toolbar is not ported (SPEC §12.10).
 //
 // Flutter: widgets/text_selection.dart TextSelectionOverlay
 type TextSelectionOverlay struct {
@@ -198,6 +200,7 @@ func NewTextSelectionOverlay(value services.TextEditingValue, bc BuildContext, t
 			ToolbarVisible:          t.effectiveToolbarVisibility,
 			OnSelectionHandleTapped: o.OnSelectionHandleTapped,
 			DragStartBehavior:       o.DragStartBehavior,
+			MagnifierConfiguration:  o.MagnifierConfiguration,
 		})
 	return t
 }
@@ -277,6 +280,48 @@ func (t *TextSelectionOverlay) ShowToolbar() {
 	t.selectionOverlay.ShowToolbar(t.context, t.contextMenuBuilder)
 }
 
+// ShowMagnifier shows the magnifier, and hides the toolbar if it was showing,
+// following the text position at positionToShow (global coordinates).
+//
+// Flutter: widgets/text_selection.dart TextSelectionOverlay.showMagnifier
+func (t *TextSelectionOverlay) ShowMagnifier(positionToShow ui.Offset) {
+	position := t.renderObject.GetPositionForPoint(positionToShow)
+	t.updateSelectionOverlay()
+	t.selectionOverlay.ShowMagnifier(t.buildMagnifier(position, positionToShow))
+}
+
+// UpdateMagnifier updates the current magnifier with a new position, so the
+// magnifier can respond accordingly. If there is no magnifier, this does
+// nothing.
+//
+// Flutter: widgets/text_selection.dart TextSelectionOverlay.updateMagnifier
+func (t *TextSelectionOverlay) UpdateMagnifier(positionToShow ui.Offset) {
+	position := t.renderObject.GetPositionForPoint(positionToShow)
+	t.updateSelectionOverlay()
+	t.selectionOverlay.UpdateMagnifier(t.buildMagnifier(position, positionToShow))
+}
+
+// HideMagnifier hides the current magnifier. This does nothing if there is no
+// magnifier.
+//
+// Flutter: widgets/text_selection.dart TextSelectionOverlay.hideMagnifier
+func (t *TextSelectionOverlay) HideMagnifier() { t.selectionOverlay.HideMagnifier() }
+
+// MagnifierIsVisible is whether the magnifier is currently visible.
+//
+// Flutter: widgets/text_selection.dart TextSelectionOverlay.magnifierIsVisible
+func (t *TextSelectionOverlay) MagnifierIsVisible() bool {
+	return t.selectionOverlay.MagnifierIsVisible()
+}
+
+// MagnifierExists is whether the magnifier currently exists.
+//
+// This differs from MagnifierIsVisible in that the magnifier may exist in the
+// overlay, but not be shown.
+//
+// Flutter: widgets/text_selection.dart TextSelectionOverlay.magnifierExists
+func (t *TextSelectionOverlay) MagnifierExists() bool { return t.selectionOverlay.MagnifierExists() }
+
 // Update updates the text selection to the new value.
 //
 // Flutter: widgets/text_selection.dart TextSelectionOverlay.update
@@ -350,6 +395,45 @@ func (t *TextSelectionOverlay) Dispose() {
 	t.HideToolbar()
 }
 
+// buildMagnifier works out the geometry the magnifier follows, in the
+// coordinates of the root overlay.
+//
+// Flutter: widgets/text_selection.dart TextSelectionOverlay._buildMagnifier
+func (t *TextSelectionOverlay) buildMagnifier(currentTextPosition ui.TextPosition, globalGesturePosition ui.Offset) MagnifierInfo {
+	renderEditable := t.renderObject
+	lineAtOffset := renderEditable.GetLineAtOffset(currentTextPosition)
+	positionAtEndOfLine := ui.TextPosition{Offset: lineAtOffset.ExtentOffset, Affinity: ui.TextAffinityUpstream}
+
+	// Default affinity is downstream.
+	positionAtBeginningOfLine := ui.NewTextPosition(lineAtOffset.BaseOffset)
+
+	localLineBoundaries := ui.NewRectFromPoints(
+		renderEditable.GetLocalRectForCaret(positionAtBeginningOfLine).TopCenter(),
+		renderEditable.GetLocalRectForCaret(positionAtEndOfLine).BottomCenter())
+	overlay, _ := OverlayOf(t.context, OverlayOfOpts{RootOverlay: true}).Context().FindRenderObject().(rendering.Box)
+	var overlayObject rendering.RenderObject
+	if overlay != nil {
+		overlayObject = overlay
+	}
+	transformToOverlay := renderEditable.GetTransformTo(overlayObject)
+	overlayLineBoundaries := transformToOverlay.TransformRect(localLineBoundaries)
+
+	localCaretRect := renderEditable.GetLocalRectForCaret(currentTextPosition)
+	overlayCaretRect := transformToOverlay.TransformRect(localCaretRect)
+
+	overlayGesturePosition := globalGesturePosition
+	if overlay != nil {
+		overlayGesturePosition = overlay.GlobalToLocal(globalGesturePosition, nil)
+	}
+
+	return MagnifierInfo{
+		FieldBounds:           transformToOverlay.TransformRect(renderEditable.PaintBounds()),
+		GlobalGesturePosition: overlayGesturePosition,
+		CaretRect:             overlayCaretRect,
+		CurrentLineBoundaries: overlayLineBoundaries,
+	}
+}
+
 func (t *TextSelectionOverlay) glyphHeight(selectedGrapheme func(selected string) (start, end int)) float64 {
 	currText := t.selectionDelegate.TextEditingValue().Text
 	sel := t.selection()
@@ -415,10 +499,18 @@ func (t *TextSelectionOverlay) handleSelectionEndHandleDragStart(details gesture
 	centerOfLineLocal := endpoints[len(endpoints)-1].Point.Dy - t.renderObject.PreferredLineHeight()/2
 	centerOfLineGlobal := t.renderObject.LocalToGlobal(ui.Offset{Dy: centerOfLineLocal}, nil).Dy
 	t.endHandleDragTarget = centerOfLineGlobal - details.GlobalPosition.Dy
+	// Instead of finding the TextPosition at the handle's location directly,
+	// use the vertical center of the line that it points to. This is because
+	// selection handles typically hang above or below the line that they point
+	// to.
+	position := t.renderObject.GetPositionForPoint(ui.Offset{Dx: details.GlobalPosition.Dx, Dy: centerOfLineGlobal})
+
 	// The drag start selection is only utilized on Apple platforms.
 	if t.isApple() && t.dragStartSelection.IsNone() {
 		t.dragStartSelection = foundation.Some(t.selection())
 	}
+
+	t.selectionOverlay.ShowMagnifier(t.buildMagnifier(position, details.GlobalPosition))
 }
 
 func (t *TextSelectionOverlay) handleSelectionEndHandleDragUpdate(details gestures.DragUpdateDetails) {
@@ -441,7 +533,8 @@ func (t *TextSelectionOverlay) handleSelectionEndHandleDragUpdate(details gestur
 		// On Apple platforms, dragging the base handle makes it the extent.
 		start := t.dragStartSelection.OrElse(t.selection())
 		if start.IsCollapsed() {
-			t.handleSelectionHandleChanged(services.NewTextSelectionCollapsed(position.Offset, services.TextSelectionOpts{Affinity: position.Affinity}))
+			t.selectionOverlay.UpdateMagnifier(t.buildMagnifier(position, details.GlobalPosition))
+			t.handleSelectionHandleChanged(services.NewTextSelectionFromPosition(position))
 			return
 		}
 		// Use this instead of dragStartSelection.isNormalized because
@@ -453,7 +546,8 @@ func (t *TextSelectionOverlay) handleSelectionEndHandleDragUpdate(details gestur
 		newSelection = services.NewTextSelection(base, position.Offset)
 	} else {
 		if t.selection().IsCollapsed() {
-			t.handleSelectionHandleChanged(services.NewTextSelectionCollapsed(position.Offset, services.TextSelectionOpts{Affinity: position.Affinity}))
+			t.selectionOverlay.UpdateMagnifier(t.buildMagnifier(position, details.GlobalPosition))
+			t.handleSelectionHandleChanged(services.NewTextSelectionFromPosition(position))
 			return
 		}
 		newSelection = services.NewTextSelection(t.selection().BaseOffset, position.Offset)
@@ -461,7 +555,10 @@ func (t *TextSelectionOverlay) handleSelectionEndHandleDragUpdate(details gestur
 			return // Don't allow order swapping.
 		}
 	}
+
 	t.handleSelectionHandleChanged(newSelection)
+
+	t.selectionOverlay.UpdateMagnifier(t.buildMagnifier(newSelection.Extent(), details.GlobalPosition))
 }
 
 func (t *TextSelectionOverlay) handleSelectionStartHandleDragStart(details gestures.DragStartDetails) {
@@ -469,14 +566,24 @@ func (t *TextSelectionOverlay) handleSelectionStartHandleDragStart(details gestu
 		return
 	}
 	t.startHandleDragPosition = details.GlobalPosition.Dy
+	// Use local coordinates when dealing with line height, because in case of a
+	// scale transformation, the line height will also be scaled.
 	endpoints := t.selectionOverlay.SelectionEndpoints()
 	centerOfLineLocal := endpoints[0].Point.Dy - t.renderObject.PreferredLineHeight()/2
 	centerOfLineGlobal := t.renderObject.LocalToGlobal(ui.Offset{Dy: centerOfLineLocal}, nil).Dy
 	t.startHandleDragTarget = centerOfLineGlobal - details.GlobalPosition.Dy
+	// Instead of finding the TextPosition at the handle's location directly,
+	// use the vertical center of the line that it points to. This is because
+	// selection handles typically hang above or below the line that they point
+	// to.
+	position := t.renderObject.GetPositionForPoint(ui.Offset{Dx: details.GlobalPosition.Dx, Dy: centerOfLineGlobal})
+
 	// The drag start selection is only utilized on Apple platforms.
 	if t.isApple() && t.dragStartSelection.IsNone() {
 		t.dragStartSelection = foundation.Some(t.selection())
 	}
+
+	t.selectionOverlay.ShowMagnifier(t.buildMagnifier(position, details.GlobalPosition))
 }
 
 func (t *TextSelectionOverlay) handleSelectionStartHandleDragUpdate(details gestures.DragUpdateDetails) {
@@ -496,7 +603,8 @@ func (t *TextSelectionOverlay) handleSelectionStartHandleDragUpdate(details gest
 	if t.isApple() {
 		start := t.dragStartSelection.OrElse(t.selection())
 		if start.IsCollapsed() {
-			t.handleSelectionHandleChanged(services.NewTextSelectionCollapsed(position.Offset, services.TextSelectionOpts{Affinity: position.Affinity}))
+			t.selectionOverlay.UpdateMagnifier(t.buildMagnifier(position, details.GlobalPosition))
+			t.handleSelectionHandleChanged(services.NewTextSelectionFromPosition(position))
 			return
 		}
 		base := start.BaseOffset
@@ -506,7 +614,8 @@ func (t *TextSelectionOverlay) handleSelectionStartHandleDragUpdate(details gest
 		newSelection = services.NewTextSelection(base, position.Offset)
 	} else {
 		if t.selection().IsCollapsed() {
-			t.handleSelectionHandleChanged(services.NewTextSelectionCollapsed(position.Offset, services.TextSelectionOpts{Affinity: position.Affinity}))
+			t.selectionOverlay.UpdateMagnifier(t.buildMagnifier(position, details.GlobalPosition))
+			t.handleSelectionHandleChanged(services.NewTextSelectionFromPosition(position))
 			return
 		}
 		newSelection = services.NewTextSelection(position.Offset, t.selection().ExtentOffset)
@@ -514,6 +623,13 @@ func (t *TextSelectionOverlay) handleSelectionStartHandleDragUpdate(details gest
 			return // Don't allow order swapping.
 		}
 	}
+
+	current := newSelection.Base()
+	if newSelection.Extent().Offset < newSelection.Base().Offset {
+		current = newSelection.Extent()
+	}
+	t.selectionOverlay.UpdateMagnifier(t.buildMagnifier(current, details.GlobalPosition))
+
 	t.handleSelectionHandleChanged(newSelection)
 }
 
@@ -523,8 +639,11 @@ func (t *TextSelectionOverlay) handleAnyDragEnd(gestures.DragEndDetails) {
 	}
 	t.dragStartSelection = foundation.None[services.TextSelection]()
 	draggingHandles := t.selectionOverlay.IsDraggingStartHandle() || t.selectionOverlay.IsDraggingEndHandle()
-	if !draggingHandles && !t.selection().IsCollapsed() {
-		t.selectionOverlay.ShowToolbar(t.context, t.contextMenuBuilder)
+	if !draggingHandles {
+		t.selectionOverlay.HideMagnifier()
+		if !t.selection().IsCollapsed() {
+			t.selectionOverlay.ShowToolbar(t.context, t.contextMenuBuilder)
+		}
 	}
 }
 

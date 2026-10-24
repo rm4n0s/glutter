@@ -54,6 +54,9 @@ type SelectionOverlayOpts struct {
 	DragStartBehavior gestures.DragStartBehavior
 	// OnSelectionHandleTapped is called when a handle is tapped.
 	OnSelectionHandleTapped foundation.VoidCallback
+	// MagnifierConfiguration is the configuration for the magnifier. By default
+	// (nil), SelectionOverlay's TextMagnifierConfiguration is disabled.
+	MagnifierConfiguration *TextMagnifierConfiguration
 }
 
 type selectionHandles struct{ start, end *OverlayEntry }
@@ -61,9 +64,9 @@ type selectionHandles struct{ start, end *OverlayEntry }
 // SelectionOverlay builds text editing handles and the toolbar of a text
 // selection in the Overlay.
 //
-// Deviation: the magnifier, the spell check toolbar and the deprecated
-// buildToolbar path (toolbarLocation, selectionDelegate and clipboardStatus)
-// are not ported (SPEC §12.10).
+// Deviation: the spell check toolbar and the deprecated buildToolbar path
+// (toolbarLocation, selectionDelegate and clipboardStatus) are not ported
+// (SPEC §12.10).
 //
 // Flutter: widgets/text_selection.dart SelectionOverlay
 type SelectionOverlay struct {
@@ -93,6 +96,15 @@ type SelectionOverlay struct {
 	contextMenu    *ContextMenuController
 	buildScheduled bool
 	disposed       bool
+
+	// magnifierInfo is the info the magnifier follows; showMagnifier and
+	// updateMagnifier set it.
+	magnifierInfo *foundation.ValueNotifier[MagnifierInfo]
+	// magnifierController shows and hides the magnifier. It should not be used
+	// directly, except from ShowMagnifier and HideMagnifier: the magnifier needs
+	// to orchestrate with other properties in SelectionOverlay.
+	magnifierController *MagnifierController
+	magnifierConfig     *TextMagnifierConfiguration
 }
 
 // NewSelectionOverlay creates an object that manages overlay entries for
@@ -103,12 +115,109 @@ func NewSelectionOverlay(bc BuildContext, startHandleType rendering.TextSelectio
 	endHandleType rendering.TextSelectionHandleType, lineHeightAtEnd float64, selectionEndpoints []rendering.TextSelectionPoint,
 	selectionControls TextSelectionControls, startHandleLayerLink, endHandleLayerLink, toolbarLayerLink *rendering.LayerLink,
 	opts ...SelectionOverlayOpts) *SelectionOverlay {
-	return &SelectionOverlay{
+	o := &SelectionOverlay{
 		context: bc, o: firstOpts(opts), startHandleType: startHandleType, lineHeightAtStart: lineHeightAtStart,
 		endHandleType: endHandleType, lineHeightAtEnd: lineHeightAtEnd, selectionEndpoint: selectionEndpoints,
 		selectionControls: selectionControls, startLink: startHandleLayerLink, endLink: endHandleLayerLink,
 		toolbarLink: toolbarLayerLink, contextMenu: NewContextMenuController(),
+		magnifierInfo:       foundation.NewValueNotifier(MagnifierInfoEmpty),
+		magnifierController: NewMagnifierController(),
+		magnifierConfig:     TextMagnifierConfigurationDisabled,
 	}
+	if o.o.MagnifierConfiguration != nil {
+		o.magnifierConfig = o.o.MagnifierConfiguration
+	}
+	return o
+}
+
+// MagnifierConfiguration is the configuration for the magnifier.
+//
+// By default, SelectionOverlay's TextMagnifierConfiguration is disabled.
+//
+// Flutter: widgets/text_selection.dart SelectionOverlay.magnifierConfiguration
+func (o *SelectionOverlay) MagnifierConfiguration() *TextMagnifierConfiguration {
+	return o.magnifierConfig
+}
+
+// MagnifierIsVisible is whether the magnifier is currently visible.
+//
+// Flutter: widgets/text_selection.dart SelectionOverlay.magnifierIsVisible
+func (o *SelectionOverlay) MagnifierIsVisible() bool { return o.magnifierController.Shown() }
+
+// MagnifierExists is whether the magnifier currently exists.
+//
+// This differs from MagnifierIsVisible in that the magnifier may exist in the
+// overlay, but not be shown.
+//
+// Flutter: widgets/text_selection.dart SelectionOverlay.magnifierExists
+func (o *SelectionOverlay) MagnifierExists() bool { return o.magnifierController.OverlayEntry() != nil }
+
+// ShowMagnifier shows the magnifier, and hides the toolbar if it was showing
+// when ShowMagnifier was called. This is safe to call on platforms not mobile,
+// since a magnifier builder will not be provided, or the magnifier builder will
+// return nil on platforms not mobile.
+//
+// This is NOT the source of truth for if the magnifier is up or not, since
+// magnifiers may hide themselves. If this info is needed, check
+// MagnifierIsVisible.
+//
+// Flutter: widgets/text_selection.dart SelectionOverlay.showMagnifier
+func (o *SelectionOverlay) ShowMagnifier(initialMagnifierInfo MagnifierInfo) {
+	// Do not show the magnifier if one already exists.
+	if o.magnifierController.OverlayEntry() != nil {
+		return
+	}
+	if o.ToolbarIsVisible() {
+		o.HideToolbar()
+	}
+
+	// Start from empty, so we don't utilize any remnant values.
+	o.magnifierInfo.SetValue(initialMagnifierInfo)
+
+	// Pre-build the magnifiers so we can tell if we've built something or not.
+	// If we don't build a magnifiers, then we should not insert anything in the
+	// overlay.
+	builtMagnifier := o.magnifierConfig.MagnifierBuilder()(o.context, o.magnifierController, o.magnifierInfo)
+	if builtMagnifier == nil {
+		return
+	}
+
+	var below *OverlayEntry
+	if !o.magnifierConfig.ShouldDisplayHandlesInMagnifier() && o.handles != nil {
+		below = o.handles.start
+	}
+	o.magnifierController.Show(o.context, func(BuildContext) Widget { return builtMagnifier }, MagnifierControllerShowOpts{Below: below})
+}
+
+// HideMagnifier hides the current magnifier. This does nothing if there is no
+// magnifier.
+//
+// Flutter: widgets/text_selection.dart SelectionOverlay.hideMagnifier
+func (o *SelectionOverlay) HideMagnifier() {
+	// This cannot be a check on MagnifierController.Shown, since it's possible
+	// that the magnifier is still in the overlay, but not shown in cases where
+	// the magnifier hides itself.
+	if o.magnifierController.OverlayEntry() == nil {
+		return
+	}
+	o.magnifierController.Hide()
+}
+
+// UpdateMagnifier updates the current magnifier with new selection data, so the
+// magnifier can respond accordingly.
+//
+// If the magnifier is not shown, this still updates the magnifier position
+// because the magnifier may have hidden itself and is looking for a cue to
+// reshow itself.
+//
+// If there is no magnifier in the overlay, this does nothing.
+//
+// Flutter: widgets/text_selection.dart SelectionOverlay.updateMagnifier
+func (o *SelectionOverlay) UpdateMagnifier(magnifierInfo MagnifierInfo) {
+	if o.magnifierController.OverlayEntry() == nil {
+		return
+	}
+	o.magnifierInfo.SetValue(magnifierInfo)
 }
 
 // Context is the context in which the selection handles should appear.
@@ -398,11 +507,13 @@ func (o *SelectionOverlay) ShowToolbar(bc BuildContext, contextMenuBuilder Widge
 		return
 	}
 	renderBox, _ := bc.FindRenderObject().(rendering.Box)
-	offset := ui.Offset{}
-	if renderBox != nil {
-		offset = renderBox.LocalToGlobal(ui.Offset{}, nil).Neg()
-	}
 	o.contextMenu.Show(bc, func(bc BuildContext) Widget {
+		// The offset is read at each build, as Flutter's closure does: the field may
+		// have moved since the toolbar was shown (the keyboard came up, a scroll).
+		offset := ui.Offset{}
+		if renderBox != nil {
+			offset = renderBox.LocalToGlobal(ui.Offset{}, nil).Neg()
+		}
 		return newSelectionToolbarWrapper(o.o.ToolbarVisible, o.toolbarLink, offset, contextMenuBuilder(bc))
 	}, ContextMenuShowOpts{DebugRequiredFor: o.o.DebugRequiredFor})
 }
@@ -445,6 +556,7 @@ func (o *SelectionOverlay) rebuild() {
 //
 // Flutter: widgets/text_selection.dart SelectionOverlay.hide
 func (o *SelectionOverlay) Hide() {
+	o.magnifierController.Hide()
 	o.HideHandles()
 	if o.contextMenu.IsShown() {
 		o.HideToolbar()
@@ -463,6 +575,7 @@ func (o *SelectionOverlay) HideToolbar() { o.contextMenu.Remove() }
 func (o *SelectionOverlay) Dispose() {
 	o.disposed = true
 	o.Hide()
+	o.magnifierInfo.Dispose()
 }
 
 func (o *SelectionOverlay) buildHandle(handleType rendering.TextSelectionHandleType, hidden bool, link *rendering.LayerLink,

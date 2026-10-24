@@ -46,6 +46,7 @@ func (s *EditableTextState) createSelectionOverlay() *TextSelectionOverlay {
 		TextSelectionOverlayOpts{
 			DebugRequiredFor: w, SelectionControls: w.o.SelectionControls, DragStartBehavior: w.o.DragStartBehavior,
 			OnSelectionHandleTapped: w.o.OnSelectionHandleTapped, ContextMenuBuilder: builder,
+			MagnifierConfiguration: w.o.MagnifierConfiguration,
 		})
 }
 
@@ -85,7 +86,7 @@ func (s *EditableTextState) updateSelectionOverlayAfterWidgetChange(old *Editabl
 	}
 	if s.selectionOverlay != nil &&
 		((w.o.ContextMenuBuilder == nil) != (old.o.ContextMenuBuilder == nil) || w.o.SelectionControls != old.o.SelectionControls ||
-			w.o.DragStartBehavior != old.o.DragStartBehavior) {
+			w.o.DragStartBehavior != old.o.DragStartBehavior || w.o.MagnifierConfiguration != old.o.MagnifierConfiguration) {
 		shouldShowToolbar := s.selectionOverlay.ToolbarIsVisible()
 		shouldShowHandles := s.selectionOverlay.HandlesVisible()
 		s.selectionOverlay.Dispose()
@@ -453,4 +454,37 @@ func (s *EditableTextState) caretPadding(lineHeight float64) painting.EdgeInsets
 	}
 	padding.Bottom = bottom
 	return padding
+}
+
+// ShowMagnifier shows the magnifier at the position given by positionToShow, if
+// no magnifier exists.
+//
+// Updates the magnifier to the position given by positionToShow, if a magnifier
+// exits.
+//
+// Does nothing if a magnifier couldn't be shown, such as when the selection
+// overlay does not currently exist.
+//
+// Flutter: widgets/editable_text.dart EditableTextState.showMagnifier
+func (s *EditableTextState) ShowMagnifier(positionToShow ui.Offset) {
+	if s.selectionOverlay == nil {
+		return
+	}
+
+	if s.selectionOverlay.MagnifierExists() {
+		s.selectionOverlay.UpdateMagnifier(positionToShow)
+	} else {
+		s.selectionOverlay.ShowMagnifier(positionToShow)
+	}
+}
+
+// HideMagnifier hides the magnifier.
+//
+// Flutter: widgets/editable_text.dart EditableTextState.hideMagnifier
+func (s *EditableTextState) HideMagnifier() {
+	if s.selectionOverlay == nil {
+		return
+	}
+
+	s.selectionOverlay.HideMagnifier()
 }

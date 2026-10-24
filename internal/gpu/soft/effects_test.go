@@ -573,6 +573,44 @@ func TestBackdropFilterLayer(t *testing.T) {
 	}
 }
 
+func TestBackdropMatrixFilterReadsOutsideTheClip(t *testing.T) {
+	// A filter that moves pixels by 20 up or down: the lens at (8, 8) to (24, 16) shows pixels
+	// that are not under it.
+	tests := []struct {
+		name  string
+		shift float32
+		// want is the color the lens shows at (16, 12), where the picture has a red square at
+		// (12, 28) to (20, 36) and nothing else.
+		want [4]uint8
+	}{
+		{"it shows what is 20 below the lens", -20, [4]uint8{255, 0, 0, 255}},
+		{"it shows what is 20 above the lens", 20, [4]uint8{255, 255, 255, 255}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b := ui.NewSceneBuilder()
+			rec := ui.NewPictureRecorder()
+			c := ui.NewCanvas(rec)
+			c.DrawRect(rectAt(0, 0, 32, 48), paint(0xFFFFFFFF))
+			c.DrawRect(rectAt(12, 28, 8, 8), paint(0xFFFF0000))
+			b.AddPicture(ui.Offset{}, rec.EndRecording())
+			b.PushClipRect(rectAt(8, 8, 16, 8))
+			b.PushBackdropFilter(ui.NewImageFilterMatrix(ui.NewMatrix4TranslationValues(0, tt.shift, 0)))
+			img, err := Render(b.Build(), 32, 48)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := px(img, 16, 12); got != tt.want {
+				t.Errorf("the lens shows %v, want %v", got, tt.want)
+			}
+			// Outside the clip nothing changed.
+			if got := px(img, 16, 30); got != [4]uint8{255, 0, 0, 255} {
+				t.Errorf("outside the clip = %v", got)
+			}
+		})
+	}
+}
+
 func TestBackdropFilterBlendAndId(t *testing.T) {
 	// A backdrop with the dstOver blend: the original stays over the filtered image.
 	b := ui.NewSceneBuilder()
