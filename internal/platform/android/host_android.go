@@ -9,7 +9,6 @@ import "C"
 
 import (
 	"time"
-	"unsafe"
 )
 
 // nativeHost is the host of the UI thread: an ALooper with an eventfd that Wake writes, and an
@@ -48,12 +47,18 @@ func (nativeHost) Inject(e DevEvent) {
 		kind = 2
 	case "key":
 		kind = 3
+	case "text":
+		kind = 4
+	case "compose":
+		kind = 5
+	case "action":
+		kind = 6
 	default:
 		return
 	}
-	key := C.CString(e.Key)
-	defer C.free(unsafe.Pointer(key))
-	C.glutter_inject(kind, C.float(e.X1), C.float(e.Y1), C.float(e.X2), C.float(e.Y2), C.int(e.Millis), key)
+	key := C.CBytes([]byte(e.Key))
+	defer C.free(key)
+	C.glutter_inject(kind, C.float(e.X1), C.float(e.Y1), C.float(e.X2), C.float(e.Y2), C.int(e.Millis), (*C.char)(key), C.int(len(e.Key)))
 }
 
 // KeyHandled implements host.
@@ -73,9 +78,10 @@ func (nativeHost) ReleaseWindow(window uintptr) { C.glutter_release_window(C.uin
 
 // Command implements host.
 func (nativeHost) Command(c command) {
-	text := C.CString(c.S)
-	defer C.free(unsafe.Pointer(text))
-	C.glutter_command(C.int(c.Op), C.longlong(c.A), C.longlong(c.B), C.longlong(c.C), C.longlong(c.D), text)
+	// The text goes as bytes of UTF-8 (any valid text, with NUL and four-byte characters).
+	text := C.CBytes([]byte(c.S))
+	defer C.free(text)
+	C.glutter_command(C.int(c.Op), C.longlong(c.A), C.longlong(c.B), C.longlong(c.C), C.longlong(c.D), (*C.char)(text), C.int(len(c.S)))
 }
 
 // ScaledFontSize implements host: the system's own scaling of a size in sp.

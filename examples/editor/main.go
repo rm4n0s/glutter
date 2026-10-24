@@ -427,11 +427,13 @@ func (s *editorState) save() {
 	})
 }
 
-func (s *editorState) Build(widgets.BuildContext) widgets.Widget {
+func (s *editorState) Build(bc widgets.BuildContext) widgets.Widget {
 	body := widgets.NewColumn([]widgets.Widget{
 		widgets.NewExpanded(widgets.NewPadding(painting.NewEdgeInsetsAll(16), s.panels())),
 		s.statusBar(),
 	}, widgets.ColumnOpts{CrossAxisAlignment: rendering.CrossAxisAlignmentStretch})
+	// Clear of the system bars and the cutout, and above the soft keyboard (nothing, on the desktop).
+	padded := widgets.NewPadding(painting.NewEdgeInsetsFromLTRB(0, 0, 0, widgets.MediaQueryViewInsetsOf(bc).Bottom), widgets.NewSafeArea(body))
 	return widgets.NewShortcuts(widgets.ShortcutMap{
 		{Activator: widgets.NewSingleActivator(services.LogicalKeyboardKeyKeyS, widgets.SingleActivatorOpts{Control: true}), Intent: saveIntent{}},
 		{Activator: widgets.NewSingleActivator(services.LogicalKeyboardKeyKeyY, widgets.SingleActivatorOpts{Control: true}), Intent: widgets.RedoTextIntent{Cause: services.SelectionChangedCauseKeyboard}},
@@ -440,7 +442,7 @@ func (s *editorState) Build(widgets.BuildContext) widgets.Widget {
 			s.save()
 			return nil
 		}),
-	}, widgets.NewColoredBox(surface, body)))
+	}, widgets.NewColoredBox(surface, padded)))
 }
 
 // panels are the editor on the left and the saved file on the right.

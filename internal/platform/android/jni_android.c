@@ -19,6 +19,8 @@ extern void goInsets(int *values, int n);
 extern void goSettings(char *text);
 extern void goSystemUI(int visible);
 extern void goDisplayChanged(float density, float refresh, int displayWidth, int displayHeight);
+extern void goTextEdit(int seq, char *utf8, int n, int base, int extent, int composeBase, int composeExtent);
+extern void goClipboardText(int id, int ok, char *utf8, int n);
 extern void goKeyEvent(int id, int action, int keyCode, int scanCode, int metaState, int repeatCount, long long eventTime,
                        int unicodeChar, int source, int deviceId);
 
@@ -27,8 +29,8 @@ static jclass g_activity_class;       // global reference to GlutterActivity
 static jmethodID g_on_main_ended;     // GlutterActivity.onMainEnded(int)
 static jmethodID g_on_key_handled;    // GlutterActivity.onKeyHandled(int, boolean)
 static jmethodID g_set_cursor;        // GlutterActivity.setCursor(int)
-static jmethodID g_inject;            // GlutterActivity.inject(int, float x4, int, String)
-static jmethodID g_command;           // GlutterActivity.command(int, long x4, String)
+static jmethodID g_inject;            // GlutterActivity.inject(int, float x4, int, byte[])
+static jmethodID g_command;           // GlutterActivity.command(int, long x4, byte[])
 static jmethodID g_scaled_font_size;  // GlutterActivity.scaledFontSize(float): float
 
 JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {
@@ -45,8 +47,8 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {
   g_on_main_ended = (*env)->GetStaticMethodID(env, cls, "onMainEnded", "(I)V");
   g_on_key_handled = (*env)->GetStaticMethodID(env, cls, "onKeyHandled", "(IZ)V");
   g_set_cursor = (*env)->GetStaticMethodID(env, cls, "setCursor", "(I)V");
-  g_inject = (*env)->GetStaticMethodID(env, cls, "inject", "(IFFFFILjava/lang/String;)V");
-  g_command = (*env)->GetStaticMethodID(env, cls, "command", "(IJJJJLjava/lang/String;)V");
+  g_inject = (*env)->GetStaticMethodID(env, cls, "inject", "(IFFFFI[B)V");
+  g_command = (*env)->GetStaticMethodID(env, cls, "command", "(IJJJJ[B)V");
   g_scaled_font_size = (*env)->GetStaticMethodID(env, cls, "scaledFontSize", "(F)F");
   if (g_on_main_ended == NULL || g_on_key_handled == NULL || g_set_cursor == NULL || g_inject == NULL || g_command == NULL ||
       g_scaled_font_size == NULL) {
@@ -138,7 +140,16 @@ int glutter_key_handled(int id, int handled) { return call_activity(g_on_key_han
 
 int glutter_set_cursor(int type) { return call_activity(g_set_cursor, type, JNI_FALSE, 0); }
 
-int glutter_inject(int kind, float x1, float y1, float x2, float y2, int ms, const char *key) {
+// new_bytes makes a byte[] of n bytes (UTF-8 text, any valid sequence: unlike NewStringUTF it
+// takes four-byte characters). NULL with an exception pending when it fails.
+static jbyteArray new_bytes(JNIEnv *env, const char *s, int n) {
+  if (s == NULL || n < 0) n = 0;
+  jbyteArray array = (*env)->NewByteArray(env, n);
+  if (array != NULL && n > 0) (*env)->SetByteArrayRegion(env, array, 0, n, (const jbyte *)s);
+  return array;
+}
+
+int glutter_inject(int kind, float x1, float y1, float x2, float y2, int ms, const char *key, int n) {
   JNIEnv *env;
   int attached = 0;
   if (g_vm == NULL) return -1;
@@ -146,16 +157,18 @@ int glutter_inject(int kind, float x1, float y1, float x2, float y2, int ms, con
     if ((*g_vm)->AttachCurrentThread(g_vm, &env, NULL) != JNI_OK) return -1;
     attached = 1;
   }
-  jstring name = (*env)->NewStringUTF(env, key);
-  (*env)->CallStaticVoidMethod(env, g_activity_class, g_inject, kind, x1, y1, x2, y2, ms, name);
-  (*env)->DeleteLocalRef(env, name);
+  jbyteArray name = new_bytes(env, key, n);
+  if (name != NULL) {
+    (*env)->CallStaticVoidMethod(env, g_activity_class, g_inject, kind, x1, y1, x2, y2, ms, name);
+    (*env)->DeleteLocalRef(env, name);
+  }
   int failed = (*env)->ExceptionCheck(env) ? -1 : 0;
   if (failed) (*env)->ExceptionClear(env);
   if (attached) (*g_vm)->DetachCurrentThread(g_vm);
   return failed;
 }
 
-int glutter_command(int op, long long a, long long b, long long c, long long d, const char *s) {
+int glutter_command(int op, long long a, long long b, long long c, long long d, const char *s, int n) {
   JNIEnv *env;
   int attached = 0;
   if (g_vm == NULL) return -1;
@@ -163,9 +176,11 @@ int glutter_command(int op, long long a, long long b, long long c, long long d, 
     if ((*g_vm)->AttachCurrentThread(g_vm, &env, NULL) != JNI_OK) return -1;
     attached = 1;
   }
-  jstring text = (*env)->NewStringUTF(env, s == NULL ? "" : s);
-  (*env)->CallStaticVoidMethod(env, g_activity_class, g_command, op, (jlong)a, (jlong)b, (jlong)c, (jlong)d, text);
-  (*env)->DeleteLocalRef(env, text);
+  jbyteArray text = new_bytes(env, s, n);
+  if (text != NULL) {
+    (*env)->CallStaticVoidMethod(env, g_activity_class, g_command, op, (jlong)a, (jlong)b, (jlong)c, (jlong)d, text);
+    (*env)->DeleteLocalRef(env, text);
+  }
   int failed = (*env)->ExceptionCheck(env) ? -1 : 0;
   if (failed) (*env)->ExceptionClear(env);
   if (attached) (*g_vm)->DetachCurrentThread(g_vm);
@@ -240,4 +255,23 @@ JNIEXPORT void JNICALL Java_io_github_rm4n0s_glutter_Native_systemUI(JNIEnv *env
 JNIEXPORT void JNICALL Java_io_github_rm4n0s_glutter_Native_displayChanged(JNIEnv *env, jclass cls, jfloat density, jfloat refresh,
                                                                          jint displayWidth, jint displayHeight) {
   goDisplayChanged(density, refresh, displayWidth, displayHeight);
+}
+
+JNIEXPORT void JNICALL Java_io_github_rm4n0s_glutter_Native_textEdit(JNIEnv *env, jclass cls, jint seq, jbyteArray text, jint base,
+                                                                   jint extent, jint composeBase, jint composeExtent) {
+  jsize n = (*env)->GetArrayLength(env, text);
+  jbyte *t = (*env)->GetByteArrayElements(env, text, NULL);
+  if (t != NULL) {
+    goTextEdit(seq, (char *)t, n, base, extent, composeBase, composeExtent);
+    (*env)->ReleaseByteArrayElements(env, text, t, JNI_ABORT);
+  }
+}
+
+JNIEXPORT void JNICALL Java_io_github_rm4n0s_glutter_Native_clipboardText(JNIEnv *env, jclass cls, jint id, jboolean ok, jbyteArray text) {
+  jsize n = (*env)->GetArrayLength(env, text);
+  jbyte *t = (*env)->GetByteArrayElements(env, text, NULL);
+  if (t != NULL) {
+    goClipboardText(id, ok ? 1 : 0, (char *)t, n);
+    (*env)->ReleaseByteArrayElements(env, text, t, JNI_ABORT);
+  }
 }

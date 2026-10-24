@@ -62,9 +62,6 @@ func (w *window) SetHidden(bool) bool { return false }
 // Flutter: shell/platform/android/io/flutter/plugin/mouse/MouseCursorPlugin.java MouseCursorPlugin
 func (w *window) SetCursor(c platform.MouseCursor) { w.p.host.SetCursor(PointerIconType(c)) }
 
-// SetTextInput does nothing until step 25.8.
-func (w *window) SetTextInput(ui.TextInputState) {}
-
 // RequestFrame asks for a frame: one choreographer callback is asked for when the app is visible
 // and has a surface, and requests made before that are one frame that comes then.
 func (w *window) RequestFrame() { w.p.frames.request() }

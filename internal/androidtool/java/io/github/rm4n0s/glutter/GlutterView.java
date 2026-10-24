@@ -8,6 +8,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
 import android.util.DisplayMetrics;
+import android.util.Log;
 import android.util.SparseArray;
 import android.view.Display;
 import android.view.DisplayCutout;
@@ -17,10 +18,14 @@ import android.view.MotionEvent;
 import android.view.PointerIcon;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
+import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputConnection;
 import android.view.ViewConfiguration;
 import android.view.WindowInsets;
+import android.view.WindowInsetsAnimation;
 import android.view.WindowManager;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -31,12 +36,16 @@ import java.util.Set;
  * (shell/platform/android/io/flutter/embedding/android/FlutterView.java and
  * FlutterSurfaceView.java), the parts that steps 25.3 and 25.6 need: the surface's life, the
  * motion and key events, and the mouse cursor ({@code AndroidTouchProcessor}, {@code
- * KeyboardManager}, {@code MouseCursorPlugin}). The view copies the values out of the events; Go
- * does the conversion.
+ * KeyboardManager}, {@code MouseCursorPlugin}), and, from step 25.8, the input connection ({@code
+ * FlutterView.onCreateInputConnection}) and the insets while the keyboard slides ({@code
+ * ImeSyncDeferringInsetsCallback}). The view copies the values out of the events; Go does the
+ * conversion.
  */
 public class GlutterView extends SurfaceView implements SurfaceHolder.Callback {
   /** Values copied for each pointer: x, y, pressure, size, toolMajor, toolMinor, orientation, tilt, distance, hscroll, vscroll. */
   private static final int VALUES = 11;
+
+  private static final String TAG = "GlutterJava";
 
   /** Key events that Go has not answered yet, by the id that went with them. Main thread only. */
   private final SparseArray<KeyEvent> pendingKeys = new SparseArray<>();
@@ -48,6 +57,15 @@ public class GlutterView extends SurfaceView implements SurfaceHolder.Callback {
 
   /** The activity's system interface, told of the insets. */
   private final SystemUI systemUI;
+
+  /** Text input of the activity: the input connection comes from it. */
+  private TextInput textInput;
+
+  /** The latest insets while the keyboard slides: they are reported when it stops. Main thread. */
+  private WindowInsets deferredInsets;
+
+  /** Whether the keyboard is sliding: the insets come from the animation then. */
+  private boolean imeAnimating;
 
   /** Hears of changes of the display: its refresh rate, density and size. */
   private final DisplayManager.DisplayListener displayListener =
@@ -70,6 +88,35 @@ public class GlutterView extends SurfaceView implements SurfaceHolder.Callback {
     getHolder().addCallback(this);
     setFocusable(true);
     setFocusableInTouchMode(true);
+  }
+
+  /** Gives the view the text input that makes its input connections. */
+  void setTextInput(TextInput textInput) {
+    this.textInput = textInput;
+    if (Build.VERSION.SDK_INT >= 30) {
+      setWindowInsetsAnimationCallback(new ImeInsetsCallback());
+    }
+  }
+
+  /** A text editor, with an input connection, while a text field of the framework has the focus. */
+  @Override
+  public boolean onCheckIsTextEditor() {
+    return textInput != null && textInput.isActive();
+  }
+
+  /**
+   * The input connection for the soft keyboard: null unless a text field has the focus.
+   *
+   * <p>Ports: {@code FlutterView.onCreateInputConnection}
+   * (shell/platform/android/io/flutter/embedding/android/FlutterView.java), which asks the text
+   * input plugin.
+   */
+  @Override
+  public InputConnection onCreateInputConnection(EditorInfo outAttrs) {
+    if (textInput == null) {
+      return null;
+    }
+    return textInput.createInputConnection(outAttrs);
   }
 
   @Override
@@ -187,6 +234,18 @@ public class GlutterView extends SurfaceView implements SurfaceHolder.Callback {
   /** The dev events script (main thread): a synthetic tap, swipe or key, dispatched like real input. */
   void inject(int kind, float x1, float y1, float x2, float y2, int ms, String key) {
     final Handler handler = getHandler() != null ? getHandler() : new Handler(Looper.getMainLooper());
+    if (kind >= 4 && kind <= 6) {
+      if (textInput == null) {
+        Log.w(TAG, "text injected but there is no text input");
+      } else if (kind == 4) {
+        textInput.injectText(key);
+      } else if (kind == 6) {
+        textInput.injectAction();
+      } else {
+        textInput.injectCompose(key);
+      }
+      return;
+    }
     if (kind == 3) {
       int code = KeyEvent.keyCodeFromString(key);
       long now = SystemClock.uptimeMillis();
@@ -259,6 +318,8 @@ public class GlutterView extends SurfaceView implements SurfaceHolder.Callback {
 
   @Override
   protected void onDetachedFromWindow() {
+    imeAnimating = false;
+    deferredInsets = null;
     DisplayManager dm = (DisplayManager) getContext().getSystemService(Context.DISPLAY_SERVICE);
     if (dm != null) {
       dm.unregisterDisplayListener(displayListener);
@@ -278,6 +339,20 @@ public class GlutterView extends SurfaceView implements SurfaceHolder.Callback {
   @SuppressWarnings("deprecation")
   public WindowInsets onApplyWindowInsets(WindowInsets insets) {
     WindowInsets result = super.onApplyWindowInsets(insets);
+    if (imeAnimating) {
+      // The keyboard slides: the insets of the animation are reported, and these (the end state)
+      // when it stops.
+      deferredInsets = insets;
+    } else {
+      reportInsets(insets);
+    }
+    systemUI.onInsets(insets);
+    return result;
+  }
+
+  /** Works the insets out and tells Go (pixels). */
+  @SuppressWarnings("deprecation")
+  private void reportInsets(WindowInsets insets) {
     int[] v = new int[12];
     if (Build.VERSION.SDK_INT >= 30) {
       Insets bars = insets.getInsets(WindowInsets.Type.systemBars());
@@ -326,8 +401,53 @@ public class GlutterView extends SurfaceView implements SurfaceHolder.Callback {
       v[i] = Math.max(0, v[i]);
     }
     Native.insets(v);
-    systemUI.onInsets(insets);
-    return result;
+  }
+
+  /**
+   * Follows the keyboard's animation frame by frame (API 30 and later), so that the layout moves
+   * with it. The insets of the final state, which the system dispatches when the animation
+   * starts, are held back until it ends.
+   *
+   * <p>Ports: {@code ImeSyncDeferringInsetsCallback}
+   * (shell/platform/android/io/flutter/plugin/editing/ImeSyncDeferringInsetsCallback.java), as far
+   * as reporting each step of the animation; Flutter also defers the final inset to the animation's
+   * start, which the change of the layout of this view does not need.
+   */
+  private final class ImeInsetsCallback extends WindowInsetsAnimation.Callback {
+    ImeInsetsCallback() {
+      super(WindowInsetsAnimation.Callback.DISPATCH_MODE_CONTINUE_ON_SUBTREE);
+    }
+
+    @Override
+    public void onPrepare(WindowInsetsAnimation animation) {
+      if ((animation.getTypeMask() & WindowInsets.Type.ime()) != 0) {
+        imeAnimating = true;
+      }
+    }
+
+    @Override
+    public WindowInsets onProgress(WindowInsets insets, List<WindowInsetsAnimation> animations) {
+      if (imeAnimating) {
+        reportInsets(insets);
+      }
+      return insets;
+    }
+
+    @Override
+    public void onEnd(WindowInsetsAnimation animation) {
+      if (!imeAnimating || (animation.getTypeMask() & WindowInsets.Type.ime()) == 0) {
+        return;
+      }
+      imeAnimating = false;
+      WindowInsets last = deferredInsets;
+      deferredInsets = null;
+      if (last == null) {
+        last = getRootWindowInsets();
+      }
+      if (last != null) {
+        reportInsets(last);
+      }
+    }
   }
 
   /** Whether the bottom inset is the keyboard's: it is when it is higher than 18% of the screen. */

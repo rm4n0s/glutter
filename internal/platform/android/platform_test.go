@@ -325,40 +325,6 @@ func hasRoute(err error, route string) bool {
 	return ok && appErr.HasRoute(route)
 }
 
-func TestClipboardFailsWithClipboardUnavailable(t *testing.T) {
-	h := newHarness(t)
-	h.run()
-	clip := h.p.Clipboard()
-	type result struct {
-		name string
-		err  error
-	}
-	results := make(chan result, 4)
-	ctx := context.Background()
-	clip.SetText(ctx, "x", func(err error) { results <- result{"SetText", err} })
-	clip.GetText(ctx, func(_ string, ok bool, err error) {
-		if ok {
-			t.Error("GetText found text")
-		}
-		results <- result{"GetText", err}
-	})
-	clip.SetContent(ctx, ui.ClipboardKindUnspecified, ui.ClipboardContent{}, func(err error) { results <- result{"SetContent", err} })
-	clip.GetContent(ctx, ui.ClipboardKindUnspecified, "text/plain", func(_ ui.ClipboardContent, err error) { results <- result{"GetContent", err} })
-	for i := 0; i < 4; i++ {
-		select {
-		case r := <-results:
-			if !hasRoute(r.err, "unavailableClipboard."+r.name+"."+tagClipboardUnavailable) {
-				t.Errorf("%s: %v", r.name, r.err)
-			}
-		case <-time.After(5 * time.Second):
-			t.Fatal("a clipboard call never answered")
-		}
-	}
-	// A nil done function is fine.
-	clip.SetText(ctx, "x", nil)
-	h.sync(func() {})
-}
-
 func TestFrameRequests(t *testing.T) {
 	var f frameRequests
 	if f.shouldSchedule(true) {

@@ -87,3 +87,29 @@ Check, and record the answers:
 7. Turn the 24-hour clock on and off, and bold text (Settings → Accessibility → Bold text, Android 12 or later): do the `mq` lines show `h24` and `bold` (bold text restarts the activity, not the app)?
 
 Answers: _(not yet recorded)_
+
+## 25.8 Text input, the soft keyboard and the clipboard
+
+**Status:** pending
+
+Run (with the keyboard you use, Gboard or another):
+
+```
+go run ./cmd/glutter-android run ./examples/editor
+go run ./cmd/glutter-android run ./examples/dev/android-text
+go run ./cmd/glutter-android run -env GLUTTER_DEMO=password ./examples/dev/android-text
+go run ./cmd/glutter-android run -env GLUTTER_DEMO=multi ./examples/dev/android-text
+```
+
+Check, and record the answers:
+
+1. In `examples/editor` and the first field of `android-text`: type with autocorrect on (a misspelled word, then a space): does the correction replace it, and does one Backspace undo it? Type with swipe typing (glide across the letters): does the word appear, with a space?
+2. Does the keyboard push the content up (the field stays visible) and does it move smoothly as it opens and closes?
+3. With a Japanese or Chinese input method (Gboard's Japanese 12-key or Pinyin; add it in Settings → Languages): is the text being composed underlined, can you pick a candidate, and does it commit into the field?
+4. Insert an emoji from the keyboard: does it appear, and does Backspace remove it whole?
+5. The password field (`GLUTTER_DEMO=password`): are the characters hidden, and does the keyboard offer no suggestions or a password keyboard?
+6. The multiline field (`GLUTTER_DEMO=multi`): does Enter make a new line? In the single-line field, does the Enter key's label say Done and does it hide the keyboard or submit?
+7. Select text in the field and copy it (long press, then Copy), open another app and paste: is it the same text? Copy text in another app and paste it in the field with the toolbar's Paste.
+8. Move the caret by swiping on the space bar (Gboard): does the caret follow? (Known limit: it may not, SPEC §24.6.)
+
+Answers: _(not yet recorded)_

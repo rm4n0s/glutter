@@ -27,6 +27,7 @@ func TestManifest(t *testing.T) {
         android:exported="true"
         android:launchMode="singleTop"
         android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+        android:windowSoftInputMode="adjustResize"
         android:hardwareAccelerated="true">
       <intent-filter>
         <action android:name="android.intent.action.MAIN" />

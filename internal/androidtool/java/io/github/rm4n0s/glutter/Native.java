@@ -93,4 +93,15 @@ final class Native {
 
   /** The density, the refresh rate and the size of the display changed. */
   static native void displayChanged(float density, float refreshRate, int displayWidth, int displayHeight);
+
+  /**
+   * The input method edited the text field: the sequence number of this edit (a counter per
+   * process, from 1), the text as UTF-8, the selection and the composing region in UTF-16 offsets
+   * (the composing region is -1, -1 when there is none).
+   */
+  static native void textEdit(
+      int seq, byte[] text, int base, int extent, int composeBase, int composeExtent);
+
+  /** The answer to a {@code OP_CLIPBOARD_GET}: whether the clipboard has text, and the text as UTF-8. */
+  static native void clipboardText(int id, boolean ok, byte[] text);
 }

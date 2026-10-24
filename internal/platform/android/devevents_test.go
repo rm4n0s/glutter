@@ -19,6 +19,9 @@ func TestParseDevEvents(t *testing.T) {
 		{"tap", "tap:540,1200", []DevEvent{{Kind: "tap", X1: 540, Y1: 1200}}},
 		{"swipe", "swipe:540,1800,540,600,300", []DevEvent{{Kind: "swipe", X1: 540, Y1: 1800, X2: 540, Y2: 600, Millis: 300}}},
 		{"key", "key:KEYCODE_ENTER", []DevEvent{{Kind: "key", Key: "KEYCODE_ENTER"}}},
+		{"text", "text:hello world", []DevEvent{{Kind: "text", Key: "hello world"}}},
+		{"compose", "compose:k,ka,か", []DevEvent{{Kind: "compose", Key: "k,ka,か"}}},
+		{"action", "action:enter", []DevEvent{{Kind: "action"}}},
 		{"several, with spaces and a trailing semicolon", " wait:1s ; tap:1.5,2 ;key:KEYCODE_VOLUME_UP;", []DevEvent{
 			{Kind: "wait", Wait: time.Second}, {Kind: "tap", X1: 1.5, Y1: 2}, {Kind: "key", Key: "KEYCODE_VOLUME_UP"}}},
 	}
@@ -37,7 +40,7 @@ func TestParseDevEvents(t *testing.T) {
 
 func TestParseDevEventsErrors(t *testing.T) {
 	for _, script := range []string{
-		"tap", "tap:1", "tap:a,b", "tap:1,2,3", "swipe:1,2,3,4", "swipe:1,2,3,4,0", "swipe:1,2,3,4,1.5", "wait:soon", "wait:-1s",
+		"tap", "tap:1", "tap:a,b", "tap:1,2,3", "swipe:1,2,3,4", "swipe:1,2,3,4,0", "swipe:1,2,3,4,1.5", "wait:soon", "wait:-1s", "text:", "compose:", "action:done", "action", "compose:a,,b",
 		"key:ENTER", "key:KEYCODE_enter", "key:", "back:start", "tap:1,2;nope",
 	} {
 		t.Run(script, func(t *testing.T) {

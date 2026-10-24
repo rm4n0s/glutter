@@ -264,3 +264,13 @@ func (b *bridge) settingsSnapshot() systemSettings {
 	defer b.mu.Unlock()
 	return b.settings
 }
+
+// textEdit is an edit of the input method, with the number that the Java side gave it (SPEC §24.6).
+func (b *bridge) textEdit(seq int, text string, base, extent, composeBase, composeExtent int) {
+	b.post(func(p *Platform) { p.textEdit(seq, text, base, extent, composeBase, composeExtent) })
+}
+
+// clipboardText is the activity's answer to a read of the clipboard.
+func (b *bridge) clipboardText(id int, ok bool, text string) {
+	b.post(func(p *Platform) { p.clipboardText(id, ok, text) })
+}

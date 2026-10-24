@@ -17,12 +17,14 @@ int glutter_key_handled(int id, int handled);
 int glutter_set_cursor(int type);
 
 // glutter_inject asks the activity to inject a synthetic event of the dev events script (kind 1 tap
-// at x1,y1; 2 swipe from x1,y1 to x2,y2 in ms milliseconds; 3 the key of that name).
-int glutter_inject(int kind, float x1, float y1, float x2, float y2, int ms, const char *key);
+// at x1,y1; 2 swipe from x1,y1 to x2,y2 in ms milliseconds; 3 the key of that name; 4 text to
+// commit; 5 text to compose; 6 the keyboard's action key). The key is n bytes of UTF-8, with no terminating NUL.
+int glutter_inject(int kind, float x1, float y1, float x2, float y2, int ms, const char *key, int n);
 
 // glutter_command asks the activity to do one operation of the system's interface, feedback or screen
-// (systemui.go): op with up to four integers and a string. Returns 0 on success.
-int glutter_command(int op, long long a, long long b, long long c, long long d, const char *s);
+// (systemui.go) or of text input and the clipboard (textinput.go): op with up to four integers and a
+// string of n bytes of UTF-8, with no terminating NUL. Returns 0 on success.
+int glutter_command(int op, long long a, long long b, long long c, long long d, const char *s, int n);
 
 // glutter_scaled_font_size returns what the system makes of a font size in logical pixels
 // (the sp unit of Android), or the size itself when the call fails.

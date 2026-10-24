@@ -67,6 +67,7 @@ func Manifest(c ManifestConfig) []byte {
 	fmt.Fprintf(&b, "        android:exported=\"true\"\n")
 	fmt.Fprintf(&b, "        android:launchMode=\"singleTop\"\n")
 	fmt.Fprintf(&b, "        android:configChanges=\"%s\"\n", ConfigChanges)
+	fmt.Fprintf(&b, "        android:windowSoftInputMode=\"adjustResize\"\n")
 	fmt.Fprintf(&b, "        android:hardwareAccelerated=\"true\">\n")
 	fmt.Fprintf(&b, "      <intent-filter>\n")
 	fmt.Fprintf(&b, "        <action android:name=\"android.intent.action.MAIN\" />\n")

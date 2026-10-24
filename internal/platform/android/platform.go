@@ -30,6 +30,10 @@ type Platform struct {
 	touch *touchProcessor
 	conv  *pointerConverter
 	keys  *keyboardManager
+	// text is the text field that has the focus (textinput.go); clipboard is the clipboard
+	// (clipboard.go).
+	text      textInput
+	clipboard *clipboard
 	// devEvents is the script of GLUTTER_DEV_EVENTS, in debug builds; devStarted says it was started.
 	devEvents  []DevEvent
 	devStarted bool
@@ -184,11 +188,6 @@ func (p *Platform) Displays() []platform.Display {
 	state := p.b.snapshot()
 	return []platform.Display{state.display()}
 }
-
-// Clipboard returns the clipboard: every call fails with ClipboardUnavailable until step 25.8.
-//
-// Flutter: services/clipboard.dart Clipboard
-func (p *Platform) Clipboard() platform.Clipboard { return unavailableClipboard{post: p.Post} }
 
 // Settings returns the system's settings that the Java side reported (SPEC §24.7); until it does,
 // the defaults: light, the text scale 1 and the locale en-US.

@@ -66,3 +66,13 @@ func goSystemUI(visible C.int) { process.systemUIChanged(visible != 0) }
 func goDisplayChanged(density, refresh C.float, displayWidth, displayHeight C.int) {
 	process.displayChanged(float64(density), float64(refresh), int(displayWidth), int(displayHeight))
 }
+
+//export goTextEdit
+func goTextEdit(seq C.int, utf8 *C.char, n C.int, base, extent, composeBase, composeExtent C.int) {
+	process.textEdit(int(seq), C.GoStringN(utf8, n), int(base), int(extent), int(composeBase), int(composeExtent))
+}
+
+//export goClipboardText
+func goClipboardText(id, ok C.int, utf8 *C.char, n C.int) {
+	process.clipboardText(int(id), ok != 0, C.GoStringN(utf8, n))
+}

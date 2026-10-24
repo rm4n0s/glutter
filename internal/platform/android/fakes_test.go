@@ -128,6 +128,21 @@ type recorder struct {
 	metrics  platform.ViewMetrics
 	// onFrame, when set, runs inside OnFrame.
 	onFrame func(time.Duration)
+	// events are the text input events the engine got.
+	events []ui.TextInputEvent
+}
+
+func (r *recorder) OnTextInput(e ui.TextInputEvent) {
+	r.mu.Lock()
+	r.events = append(r.events, e)
+	r.mu.Unlock()
+}
+
+// textEvents are the text input events the engine got.
+func (r *recorder) textEvents() []ui.TextInputEvent {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]ui.TextInputEvent(nil), r.events...)
 }
 
 func (r *recorder) add(format string, a ...any) {

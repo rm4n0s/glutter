@@ -8,6 +8,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import java.io.File;
+import java.nio.charset.StandardCharsets;
 
 /**
  * The activity of a Glutter app. It copies the {@code GLUTTER_} extras of the intent and the
@@ -46,6 +47,9 @@ public class GlutterActivity extends Activity {
   /** The system interface of the activity (bars, orientation, feedback). */
   private SystemUI systemUI;
 
+  /** Text input, the soft keyboard and the clipboard of the activity. */
+  private TextInput textInput;
+
   /** The application's context, for what Go asks from a thread that is not the main one. */
   private static volatile Context appContext;
 
@@ -62,16 +66,14 @@ public class GlutterActivity extends Activity {
     if (started) {
       // A new activity in a living process: the program runs already, and the view gets the
       // new surface (SPEC §24.2).
-      view = new GlutterView(this, systemUI);
-      setContentView(view);
+      createView();
       Native.settings(SystemSettings.describe(this));
       return;
     }
     started = true;
     System.loadLibrary("app");
     setEnvironment();
-    view = new GlutterView(this, systemUI);
-    setContentView(view);
+    createView();
     // The settings are known before main starts: the first frame is drawn with them.
     Native.settings(SystemSettings.describe(this));
     if (!watching) {
@@ -79,6 +81,14 @@ public class GlutterActivity extends Activity {
       SystemSettings.watch(appContext);
     }
     Native.start(this);
+  }
+
+  /** Makes the view and the text input that goes with it, and shows the view. */
+  private void createView() {
+    view = new GlutterView(this, systemUI);
+    textInput = new TextInput(view);
+    view.setTextInput(textInput);
+    setContentView(view);
   }
 
   @Override
@@ -167,7 +177,8 @@ public class GlutterActivity extends Activity {
 
   /**
    * Called by Go, from any thread, for the dev events script of debug builds: a tap (kind 1), a swipe
-   * (2) or a key (3), dispatched to the view as the user's input is.
+   * (2), a key (3), text committed through the input connection (4), a composition (5) or the keyboard's action key (6),
+   * dispatched to the view as the user's input is. {@code key} is UTF-8.
    */
   static void inject(
       final int kind,
@@ -176,13 +187,14 @@ public class GlutterActivity extends Activity {
       final float x2,
       final float y2,
       final int ms,
-      final String key) {
+      final byte[] key) {
+    final String keyText = new String(key, StandardCharsets.UTF_8);
     MAIN.post(
         new Runnable() {
           @Override
           public void run() {
             if (current != null && current.view != null) {
-              current.view.inject(kind, x1, y1, x2, y2, ms, key);
+              current.view.inject(kind, x1, y1, x2, y2, ms, keyText);
             }
           }
         });
@@ -190,15 +202,25 @@ public class GlutterActivity extends Activity {
 
   /**
    * Called by Go, from any thread: one operation of the system's interface, haptic feedback, sounds
-   * or the screen (systemui.go); {@link SystemUI} does it on the main thread.
+   * or the screen (systemui.go, operations 1 to 7; {@link SystemUI}), or of text input and the
+   * clipboard (textinput.go, 8 and up; {@link TextInput}), done on the main thread. {@code bytes}
+   * is the operation's text as UTF-8.
    */
   static void command(
-      final int op, final long a, final long b, final long c, final long d, final String s) {
+      final int op, final long a, final long b, final long c, final long d, final byte[] bytes) {
+    final String s = new String(bytes, StandardCharsets.UTF_8);
     MAIN.post(
         new Runnable() {
           @Override
           public void run() {
-            if (current != null && current.systemUI != null) {
+            if (current == null) {
+              return;
+            }
+            if (op >= TextInput.OP_TEXT_START) {
+              if (current.textInput != null) {
+                current.textInput.command(op, a, b, c, d, s);
+              }
+            } else if (current.systemUI != null) {
               current.systemUI.command(op, a, b, c, d, s);
             }
           }
