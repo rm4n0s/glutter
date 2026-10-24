@@ -13,17 +13,28 @@ import (
 // endless.
 const maxPaintDepth = 64
 
-// colorGlyph returns the picture of a glyph that the COLR table of the face paints, in font
-// units with y growing up (it is drawn under a scale of size/upem and -size/upem), or nil if
-// the glyph is not a COLR glyph. fg is the color the paint with the palette index 0xFFFF
-// has: the color of the text.
+// colorGlyph returns the picture of a color glyph, in font units with y growing up (it is
+// drawn under a scale of size/upem and -size/upem), or nil if the glyph is not a color glyph.
+// It is a COLR glyph when the COLR table of the face paints it (fg is the color the paint with
+// the palette index 0xFFFF has: the color of the text), and else a bitmap glyph when the face
+// has a bitmap for it (bitmap.go; fg does not matter then).
 //
-// Flutter: no counterpart (Skia draws COLR through FreeType's color glyph support)
-func (e *Engine) colorGlyph(face *font.Face, gid font.GID, fg ui.Color) *ui.Picture {
-	if face.COLR == nil {
+// Flutter: no counterpart (Skia draws color glyphs through FreeType's color glyph support)
+func (e *Engine) colorGlyph(face *font.Face, gid font.GID, fg ui.Color, size float64) *ui.Picture {
+	if face.COLR != nil {
+		if pic := e.colrGlyph(face, gid, fg); pic != nil {
+			return pic
+		}
+	}
+	if len(e.shapes.info(face).strikes) == 0 {
 		return nil
 	}
-	key := colorKey{face, gid, fg}
+	return e.bitmapGlyph(face, gid, size)
+}
+
+// colrGlyph returns the picture of a glyph that the COLR table of the face paints, or nil.
+func (e *Engine) colrGlyph(face *font.Face, gid font.GID, fg ui.Color) *ui.Picture {
+	key := colorKey{face: face, gid: gid, fg: fg}
 	if pic, ok := e.pictures.get(key); ok {
 		return pic
 	}

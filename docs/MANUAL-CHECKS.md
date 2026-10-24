@@ -136,3 +136,24 @@ Check, and record the answers:
 
 Answers: _(not yet recorded)_
 
+## 25.10 Fonts on Android
+
+**Status:** pending
+
+Run on the phone, and again with the phone's language set to Japanese, Chinese and Korean (Settings → System → Languages), and on a phone with Android 12 or older if you have one:
+
+```
+go run ./cmd/glutter-android run ./examples/dev/android-fonts
+go run ./cmd/glutter-android run -env GLUTTER_DEMO=ja-JP ./examples/dev/android-fonts
+```
+
+Check, and record the answers:
+
+1. Does every line show real letters (Latin, Greek, Cyrillic, Arabic, Hebrew, Devanagari, Thai, Chinese, Japanese, Korean) and no empty boxes or question marks?
+2. Are the emoji in color, and do they look like the phone's own emoji (the 5 emoji of the last line: grinning face, party popper, thumbs up, heart, rocket)?
+3. Are the Chinese and Japanese lines drawn with different forms of 直骨 (each in the form of its own language)?
+4. Does the Arabic line read right to left, joined, and the Hebrew line right to left?
+5. In `examples/gallery`, does the text look right (Roboto, not a fallback font, for Latin text)?
+
+Answers: _(not yet recorded)_
+

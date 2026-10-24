@@ -16,11 +16,13 @@ type glyphKey struct {
 	size float64
 }
 
-// colorKey identifies the picture of a color glyph with a foreground color.
+// colorKey identifies the picture of a color glyph: a COLR glyph with a foreground color, or
+// a bitmap glyph with the pixels per em of the strike that its size picks.
 type colorKey struct {
 	face *font.Face
 	gid  font.GID
 	fg   ui.Color
+	ppem uint16
 }
 
 // maxCachedGlyphs bounds each of the glyph caches; when one is full, the entry that was
@@ -181,7 +183,7 @@ func (p *paragraph) paintGlyphs(l *line, emit func(ui.ParagraphDraw)) {
 				continue
 			}
 			origin := ui.Offset{Dx: l.left + pr.x + g.x, Dy: l.baseline + g.y}
-			if pic := p.eng.colorGlyph(face, g.id, st.Color); pic != nil {
+			if pic := p.eng.colorGlyph(face, g.id, st.Color, pr.run.size); pic != nil {
 				s := pr.run.size / float64(face.Upem())
 				m := ui.NewMatrix4Diagonal3Values(float32(s), float32(-s), 1)
 				emit(ui.ParagraphDraw{Op: ui.OpDrawPicture{Picture: pic}, Offset: origin, Matrix: m, Snap: true})

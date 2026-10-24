@@ -2594,3 +2594,25 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - Found on the way: since step 25.8 the Android binary imported `internal/platform/web` (for `TextEditor`), which `TestBuildsHaveTheirOwnBackends` forbids; the plain-Go text model moved to `internal/platform/textedit` and `web` keeps aliases (SPEC §24.6).
   - Closes the 25.8 follow-up: a new activity in a living process now gets the text input of the focused field again.
 
+## 25.10 Fonts on Android
+
+- **Date:** 2026-10-24
+- **Branch:** feat/step-25.10-android-fonts
+- **Summary:** Text uses the system's fonts and fallback as an Android app does. `internal/text/androidfonts` (plain Go) is a port of Skia's Android font manager: it parses `/system/etc/fonts.xml` and the `fonts_customization.xml` files (the formats of API 26 to 37) and matches a family (names, aliases, weights, styles) with the fallback chain in Skia's order, by language (CJK by locale, with the script inferred), and per character; `engine.SystemFontMatcher` gives it to the `text.Collection` (the bundled Roboto and Material Icons stay first). CBDT/CBLC (and sbix) bitmap glyphs, the emoji font of Android 8 to 12, are drawn by the layout engine, on Android and on Linux. `scripts/fetch-reference.sh` also fetches Skia at the revision Flutter's `DEPS` pins (`reference/skia`).
+- **Main files:** `internal/text/androidfonts/`, `internal/text/layout/` (`bitmap.go`, `colr.go`, `paint.go`, `shapecache.go`, `cbdtfont_test.go`, `bitmap_test.go`, `testdata/goldens/bitmap-glyphs.png`), `internal/engine/backends_android.go`, `scripts/fetch-reference.sh`, `third_party/skia/LICENSE`, `NOTICE`, `internal/androidtest/fonts_device_test.go`, `examples/dev/android-fonts/`, `docs/SPEC.md` (§12.10, §20, §24.9 "Decided in step 25.10"), `docs/MANUAL-CHECKS.md`.
+- **Tests:** table tests of the parser over fixture files for the formats of API 26, 28 and 31 and the customization format (families, names, aliases, languages, variants, weights, styles, indexes, files), of the matcher's choices (`sans-serif`, `serif`, `monospace`, an alias, `zh-Hans`, `zh-Hant`, `ja`, `ko`, an emoji, an unknown family, weights, italics), of the language matching and the glyph check, and the error routes (98% of the statements); for the bitmap glyphs, a font built in memory with two strikes and the index and image formats 1, 3, 17 and 18: the strike choice, the placement by the bearings, the scale, the cache, broken data (`BitmapGlyphInvalid`) and a golden of the glyphs at 20 and 40 px.
+- **Device tests (`-tags glutter_android`):** on `glutter-37` and `glutter-26`, in the locales `en-US` and `ja-JP`: the system matcher of the app finds a font with a glyph for every character of the Latin, Greek, Cyrillic, Arabic, Hebrew, Devanagari, Thai, Chinese, Japanese, Korean and emoji lines, and the screen is the app's page.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck ✅ · apicheck ✅ · GOOS=js build, vet and `scripts/test-wasm.sh` ✅ · `scripts/check-android.sh` ✅ · device tests ✅
+- **Proof:**
+  ![25.10 android text](implemented-proof-images/25.10-android-text.png)
+  `examples/dev/android-fonts` on `glutter-37`: Latin, Greek, Cyrillic, Arabic, Hebrew, Devanagari, Thai, Chinese, Japanese (with its own forms of 直骨), Korean and color emoji, all in the system's fonts.
+  ![25.10 android text api26](implemented-proof-images/25.10-android-text-api26.png)
+  The same page on `glutter-26` (Android 8), whose emoji font is the CBDT bitmap font: the five emoji are in color.
+- **Manual checks:** pending (`docs/MANUAL-CHECKS.md`, 25.10)
+- **Deviations and follow-ups:**
+  - See SPEC §12.10 (the parser, the style matching, the language matching, the customization files, the CBDT strike choice and filter).
+  - The step said `fontscan` is given the cache directory in the app's cache directory; the matcher replaces the scan on Android, so `fontscan` is used only when `fonts.xml` cannot be read (its cache directory is then `XDG_CACHE_HOME`, which the embedding sets, SPEC §24.9).
+  - The CBDT unit tests use a font that the test builds instead of a subset of Noto Color Emoji (no font tool is installed, and a generated font needs no license file); the device tests draw the real emoji font of API 26.
+  - A weight alias such as `sans-serif-thin` of API 31 and later points to the shared variable Roboto, and `FontFile` carries no axis values, so the alias's weight is lost (follow-up).
+  - The bitmap strike is chosen from the logical size, not the device size (follow-up, §12.10). SVG glyphs and sbix tests are not done.
+

@@ -74,7 +74,9 @@ func (c *shapeCache) clear() {
 type faceInfo struct {
 	id uint32
 	// hasExtents is false when the font has no horizontal extents, and then the others are not set.
-	hasExtents                   bool
+	hasExtents bool
+	// strikes are the bitmap strikes of the font (CBDT, sbix, EBDT); its glyphs may be bitmaps (bitmap.go).
+	strikes                      []font.BitmapSize
 	upem                         float64
 	ascender, descender, lineGap float32
 }
@@ -84,7 +86,7 @@ func (c *shapeCache) info(f *font.Face) *faceInfo {
 	if fi, ok := c.faces[f]; ok {
 		return fi
 	}
-	fi := &faceInfo{id: uint32(len(c.faces)) + 1}
+	fi := &faceInfo{id: uint32(len(c.faces)) + 1, strikes: f.BitmapSizes()}
 	if ext, ok := f.FontHExtents(); ok && (ext.Ascender != 0 || ext.Descender != 0) {
 		fi.hasExtents, fi.upem = true, float64(f.Upem())
 		fi.ascender, fi.descender, fi.lineGap = ext.Ascender, ext.Descender, ext.LineGap

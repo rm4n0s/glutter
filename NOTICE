@@ -17,6 +17,13 @@ Flutter key data (BSD-3-Clause)
   Copyright 2014 The Flutter Authors. All rights reserved.
   License text: third_party/flutter/LICENSE
 
+Skia (BSD-3-Clause)
+  The Android font configuration parser and the font matcher of
+  internal/text/androidfonts are ported from Skia's src/ports/SkFontMgr_android*.
+  https://skia.googlesource.com/skia
+  Copyright 2011 Google Inc. All rights reserved.
+  License text: third_party/skia/LICENSE
+
 material-color-utilities (Apache-2.0)
   The Material 3 color algorithms are ported from
   https://github.com/material-foundation/material-color-utilities

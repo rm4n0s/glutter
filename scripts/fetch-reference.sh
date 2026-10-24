@@ -3,8 +3,8 @@
 #
 # Usage: scripts/fetch-reference.sh   (from anywhere; works relative to the repo root)
 #
-# First run: clones the `stable` branch of flutter/flutter and the
-# material-color-utilities repository into reference/, then records the exact
+# First run: clones the `stable` branch of flutter/flutter, the
+# material-color-utilities repository and Skia (at Flutter's pinned revision) into reference/, then records the exact
 # commits in reference/VERSION.
 # Later runs: reference/VERSION exists, so exactly the recorded commits are
 # checked out. To move to a newer Flutter, delete reference/ and run again.
@@ -29,6 +29,12 @@ FLUTTER_PATHS=(
   engine/src/flutter/shell/platform/android
   engine/src/flutter/impeller/renderer/backend/vulkan
 )
+
+# Skia, at the revision that Flutter's DEPS pins (skia_revision) at the pinned Flutter commit: the
+# Android font manager (SPEC §24.9) is ported from it.
+SKIA_URL="https://skia.googlesource.com/skia"
+SKIA_DIR="$REF/skia"
+SKIA_PATHS=(src/ports include/ports)
 
 MCU_URL="https://github.com/material-foundation/material-color-utilities"
 MCU_DIR="$REF/material-color-utilities"
@@ -104,15 +110,28 @@ if [[ -f "$VERSION_FILE" ]]; then
   log "Using the commits recorded in $VERSION_FILE"
   flutter_commit="$(read_version flutter_commit)"
   mcu_commit="$(read_version material_color_utilities_commit)"
+  skia_commit="$(read_version skia_commit)"
   if [[ -z "$flutter_commit" || -z "$mcu_commit" ]]; then
     log "error: $VERSION_FILE is incomplete; delete reference/ and run again"
     exit 1
   fi
   ensure_repo "$FLUTTER_URL" "$FLUTTER_DIR" "" "$flutter_commit" "${FLUTTER_PATHS[@]}"
   ensure_repo "$MCU_URL" "$MCU_DIR" "" "$mcu_commit" "${MCU_PATHS[@]}"
+  if [[ -z "$skia_commit" ]]; then
+    # An older reference/VERSION: the revision is in Flutter's DEPS.
+    skia_commit="$(sed -n "s/^[[:space:]]*'skia_revision': '\([0-9a-f]*\)'.*/\1/p" "$FLUTTER_DIR/DEPS" | head -n 1)"
+    echo "skia_repository=$SKIA_URL" >>"$VERSION_FILE"
+    echo "skia_commit=$skia_commit" >>"$VERSION_FILE"
+  fi
+  ensure_repo "$SKIA_URL" "$SKIA_DIR" "" "$skia_commit" "${SKIA_PATHS[@]}"
+  if ! grep -q '^skia_date=' "$VERSION_FILE"; then
+    echo "skia_date=$(commit_date "$SKIA_DIR")" >>"$VERSION_FILE"
+  fi
 else
   ensure_repo "$FLUTTER_URL" "$FLUTTER_DIR" "$FLUTTER_BRANCH" "" "${FLUTTER_PATHS[@]}"
   ensure_repo "$MCU_URL" "$MCU_DIR" "" "" "${MCU_PATHS[@]}"
+  skia_commit="$(sed -n "s/^[[:space:]]*'skia_revision': '\([0-9a-f]*\)'.*/\1/p" "$FLUTTER_DIR/DEPS" | head -n 1)"
+  ensure_repo "$SKIA_URL" "$SKIA_DIR" "" "$skia_commit" "${SKIA_PATHS[@]}"
   {
     echo "flutter_repository=$FLUTTER_URL"
     echo "flutter_branch=$FLUTTER_BRANCH"
@@ -122,6 +141,9 @@ else
     echo "material_color_utilities_repository=$MCU_URL"
     echo "material_color_utilities_commit=$(git -C "$MCU_DIR" rev-parse HEAD)"
     echo "material_color_utilities_date=$(commit_date "$MCU_DIR")"
+    echo "skia_repository=$SKIA_URL"
+    echo "skia_commit=$(git -C "$SKIA_DIR" rev-parse HEAD)"
+    echo "skia_date=$(commit_date "$SKIA_DIR")"
   } >"$VERSION_FILE"
 fi
 
@@ -130,6 +152,12 @@ missing=0
 for p in "${FLUTTER_PATHS[@]}" LICENSE; do
   if [[ ! -e "$FLUTTER_DIR/$p" ]]; then
     log "error: missing in reference/flutter: $p"
+    missing=1
+  fi
+done
+for p in "${SKIA_PATHS[@]}" LICENSE; do
+  if [[ ! -e "$SKIA_DIR/$p" ]]; then
+    log "error: missing in reference/skia: $p"
     missing=1
   fi
 done

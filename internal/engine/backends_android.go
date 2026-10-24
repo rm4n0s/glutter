@@ -16,12 +16,13 @@ import (
 	"github.com/rm4n0s/glutter/internal/gpu/vulkan"
 	"github.com/rm4n0s/glutter/internal/platform/android"
 	"github.com/rm4n0s/glutter/internal/text"
+	"github.com/rm4n0s/glutter/internal/text/androidfonts"
 	"github.com/rm4n0s/glutter/ui"
 )
 
 // This file is what Run uses on Android (GOOS=android): the platform of the activity's view, Vulkan,
-// OpenGL ES and then the software renderer into the window, and no system font matcher until step
-// 25.10 (SPEC §6.3, §24).
+// OpenGL ES and then the software renderer into the window, and the system font matcher of the
+// device's fonts.xml (SPEC §6.3, §24).
 
 // connectDisplay makes the platform of the process. It must run on the UI thread, which is where
 // the looper is prepared (SPEC §24.3). It fails with LooperUnavailable.
@@ -146,7 +147,20 @@ func (r *nativeWindowRenderer) Close() {
 	}
 }
 
-// SystemFontMatcher returns nil: the text.Collection scans the font directories until step 25.10.
+// SystemFontMatcher returns the font matcher of the device: the families, aliases and fallback chain of
+// /system/etc/fonts.xml read as Skia's Android font manager reads them (SPEC §24.9). When the files
+// cannot be read, it logs why and returns nil, and the text.Collection scans the font directories.
 //
 // Flutter: no counterpart
-func SystemFontMatcher(context.Context, *slog.Logger) text.Matcher { return nil }
+func SystemFontMatcher(_ context.Context, log *slog.Logger) text.Matcher {
+	opts := androidfonts.DefaultOptions()
+	opts.Logger = log
+	m, err := androidfonts.New(opts)
+	if err != nil {
+		if log != nil {
+			log.Warn("the system fonts of Android could not be read; the font directories are scanned", "err", err)
+		}
+		return nil
+	}
+	return m
+}
