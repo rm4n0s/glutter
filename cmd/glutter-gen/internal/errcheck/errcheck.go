@@ -114,15 +114,24 @@ type Pass struct {
 // Flutter: no counterpart.
 var AndroidPass = Pass{GOOS: "android", GOARCH: "arm64"}
 
+// WindowsPass is the build for Windows with the tag of the Wine tests, so that the *_windows.go
+// files and the tests that run inside Wine are read (SPEC §25.13). It needs no toolchain besides
+// the go command: Windows is built without cgo.
+//
+// Flutter: no counterpart.
+var WindowsPass = Pass{GOOS: "windows", GOARCH: "amd64", Tags: []string{"glutter_wine"}}
+
 // DefaultPasses are the builds that together cover every file of the module: Linux, the
-// web, Linux with the tags of the display and browser tests, and Android (SPEC §24.13).
+// web, Linux with the tags of the display, browser and Wine tests (the host-side tests that start
+// Wine), Android (SPEC §24.13) and Windows with the tag of the Wine tests (SPEC §25.13).
 //
 // Flutter: no counterpart.
 var DefaultPasses = []Pass{
 	{GOOS: "linux", GOARCH: "amd64"},
 	{GOOS: "js", GOARCH: "wasm"},
-	{GOOS: "linux", GOARCH: "amd64", Tags: []string{"glutter_display", "glutter_browser"}},
+	{GOOS: "linux", GOARCH: "amd64", Tags: []string{"glutter_display", "glutter_browser", "glutter_wine"}},
 	AndroidPass,
+	WindowsPass,
 }
 
 // androidMinSDK is the API level of the NDK's clang (SPEC §24.1, D24).

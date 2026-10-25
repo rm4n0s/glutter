@@ -32,6 +32,11 @@ const (
 	//
 	// Flutter: no counterpart
 	SurfaceKindAndroid SurfaceKind = "android"
+	// SurfaceKindWin32 is a window of Windows (SPEC §25.5). Window is the HWND and Display the
+	// HINSTANCE of the module that made it; Surface is zero. Only a GPU backend looks inside.
+	//
+	// Flutter: no counterpart
+	SurfaceKindWin32 SurfaceKind = "win32"
 	// SurfaceKindFake is the surface of the scripted test platform. No GPU
 	// backend renders into it.
 	//

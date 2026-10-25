@@ -575,8 +575,3 @@ func (g *glJS) readPixels(x, y, w, h int32, format, kind uint32, pixels []byte) 
 
 func (g *glJS) flush()  { g.f.flush.Invoke() }
 func (g *glJS) finish() { g.f.finish.Invoke() }
-
-// The tags of the errors that this file makes (rm4n0s/errors, R5).
-const (
-	tagSymbolMissing = "SymbolMissing"
-)

@@ -31,8 +31,8 @@ func TestDefaultTargetPlatform(t *testing.T) {
 	if !DebugMode {
 		t.Skip("the override works in debug builds only")
 	}
-	if got := DefaultTargetPlatform(); got != TargetPlatformLinux {
-		t.Errorf("default = %v, want linux", got)
+	if got := DefaultTargetPlatform(); got != hostWant {
+		t.Errorf("default = %v, want %v, the host of this build", got, hostWant)
 	}
 	if got := DebugDefaultTargetPlatformOverride(); got.IsSome() {
 		t.Errorf("override = %v, want none", got)

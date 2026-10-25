@@ -434,8 +434,3 @@ func (g *glLib) readPixels(x, y, w, h int32, format, kind uint32, pixels []byte)
 
 func (g *glLib) flush()  { g.flushFn() }
 func (g *glLib) finish() { g.finishFn() }
-
-// The tags of the errors that this file makes (rm4n0s/errors, R5).
-const (
-	tagSymbolMissing = "SymbolMissing"
-)

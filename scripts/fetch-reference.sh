@@ -27,7 +27,14 @@ FLUTTER_PATHS=(
   engine/src/flutter/lib/web_ui
   dev/tools/gen_keycodes/data
   engine/src/flutter/shell/platform/android
+  engine/src/flutter/shell/platform/windows
+  engine/src/flutter/shell/platform/common
   engine/src/flutter/impeller/renderer/backend/vulkan
+)
+# Directories that Windows steps port from if the pinned commit has them (SPEC §25): the C++
+# accessibility library of the engine (ui/accessibility, in third_party). Not an error when absent.
+FLUTTER_OPTIONAL_PATHS=(
+  engine/src/flutter/third_party/accessibility
 )
 
 # Skia, at the revision that Flutter's DEPS pins (skia_revision) at the pinned Flutter commit: the
@@ -115,7 +122,7 @@ if [[ -f "$VERSION_FILE" ]]; then
     log "error: $VERSION_FILE is incomplete; delete reference/ and run again"
     exit 1
   fi
-  ensure_repo "$FLUTTER_URL" "$FLUTTER_DIR" "" "$flutter_commit" "${FLUTTER_PATHS[@]}"
+  ensure_repo "$FLUTTER_URL" "$FLUTTER_DIR" "" "$flutter_commit" "${FLUTTER_PATHS[@]}" "${FLUTTER_OPTIONAL_PATHS[@]}"
   ensure_repo "$MCU_URL" "$MCU_DIR" "" "$mcu_commit" "${MCU_PATHS[@]}"
   if [[ -z "$skia_commit" ]]; then
     # An older reference/VERSION: the revision is in Flutter's DEPS.
@@ -128,7 +135,7 @@ if [[ -f "$VERSION_FILE" ]]; then
     echo "skia_date=$(commit_date "$SKIA_DIR")" >>"$VERSION_FILE"
   fi
 else
-  ensure_repo "$FLUTTER_URL" "$FLUTTER_DIR" "$FLUTTER_BRANCH" "" "${FLUTTER_PATHS[@]}"
+  ensure_repo "$FLUTTER_URL" "$FLUTTER_DIR" "$FLUTTER_BRANCH" "" "${FLUTTER_PATHS[@]}" "${FLUTTER_OPTIONAL_PATHS[@]}"
   ensure_repo "$MCU_URL" "$MCU_DIR" "" "" "${MCU_PATHS[@]}"
   skia_commit="$(sed -n "s/^[[:space:]]*'skia_revision': '\([0-9a-f]*\)'.*/\1/p" "$FLUTTER_DIR/DEPS" | head -n 1)"
   ensure_repo "$SKIA_URL" "$SKIA_DIR" "" "$skia_commit" "${SKIA_PATHS[@]}"
@@ -153,6 +160,11 @@ for p in "${FLUTTER_PATHS[@]}" LICENSE; do
   if [[ ! -e "$FLUTTER_DIR/$p" ]]; then
     log "error: missing in reference/flutter: $p"
     missing=1
+  fi
+done
+for p in "${FLUTTER_OPTIONAL_PATHS[@]}"; do
+  if [[ ! -e "$FLUTTER_DIR/$p" ]]; then
+    log "note: not in reference/flutter at the pinned commit (optional): $p"
   fi
 done
 for p in "${SKIA_PATHS[@]}" LICENSE; do

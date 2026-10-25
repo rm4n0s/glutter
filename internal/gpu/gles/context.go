@@ -428,4 +428,7 @@ const (
 	tagEGLSwapFailed                   = "EGLSwapFailed"
 	tagGLES3Unsupported                = "GLES3Unsupported"
 	tagGLReadPixelsFailed              = "GLReadPixelsFailed"
+	// tagSymbolMissing is made by the loaders of the GL functions (gl_purego.go, gl_js.go) and
+	// used by the tests of this file, which build on every OS.
+	tagSymbolMissing = "SymbolMissing"
 )

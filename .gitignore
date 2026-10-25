@@ -52,3 +52,4 @@ go.work.sum
 /multiwindow
 /glutter-web
 .android-test/
+.wine-test/

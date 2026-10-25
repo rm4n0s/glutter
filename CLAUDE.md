@@ -3,7 +3,7 @@
 Guidance for Claude Code when working in this repository (Go, hosted on GitHub).
 
 ## Project
-Glutter is a cgo-free GUI toolkit for Go (Android, from 1.6, is the one exception) that reproduces Flutter's framework API (widgets, rendering, gestures, animation, Material 3) on its own engine: a Wayland/X11 platform layer, a Vulkan renderer with an OpenGL ES 3.0 fallback (system libraries called through purego), and text layout on go-text. Linux desktop comes first; 1.1 adds the web (`GOOS=js GOARCH=wasm`, WebGPU with a WebGL 2 fallback, standard Go only, no TinyGo); 1.6 adds Android (`GOOS=android`, an APK built by `cmd/glutter-android`, a small Java embedding, Vulkan with a GLES fallback; SPEC §24). Every OS- and GPU-specific piece sits behind internal interfaces so Windows, macOS and mobile can be added later.
+Glutter is a cgo-free GUI toolkit for Go (Android, from 1.6, is the one exception) that reproduces Flutter's framework API (widgets, rendering, gestures, animation, Material 3) on its own engine: a Wayland/X11 platform layer, a Vulkan renderer with an OpenGL ES 3.0 fallback (system libraries called through purego), and text layout on go-text. Linux desktop comes first; 1.1 adds the web (`GOOS=js GOARCH=wasm`, WebGPU with a WebGL 2 fallback, standard Go only, no TinyGo); 1.6 adds Android (`GOOS=android`, an APK built by `cmd/glutter-android`, a small Java embedding, Vulkan with a GLES fallback; SPEC §24); 1.8 adds Windows (`GOOS=windows`, Win32 through the standard library's `syscall`, Direct3D 12 at feature level 11_0; SPEC §25), tested under Wine. Every OS- and GPU-specific piece sits behind internal interfaces so Windows, macOS and mobile can be added later.
 
 **`docs/SPEC.md` is the source of truth.** Read the sections that cover a task before starting it. If the code and the spec disagree, or a task needs a decision the spec doesn't make, ask instead of guessing. When a decision changes, update the spec on the same branch.
 
@@ -19,6 +19,9 @@ Glutter is a cgo-free GUI toolkit for Go (Android, from 1.6, is the one exceptio
 - Android check (from step 25.1): `scripts/check-android.sh` (build and vet for android/arm64 and android/amd64 with the NDK; needs `ANDROID_HOME`)
 - Tests on the Android emulator (from step 25.2): `go test -p 1 -tags glutter_android ./...` (SPEC §24.13; they start and stop the emulator themselves)
 - Run an example on Android (from step 25.2): `go run ./cmd/glutter-android run ./examples/counter` (a connected phone or a running emulator)
+- Windows build and checks (from step 28.1): `GOOS=windows GOARCH=amd64 go build ./...`, `GOOS=windows GOARCH=amd64 go vet ./...`, `GOOS=windows GOARCH=arm64 go build ./...`, `scripts/test-windows.sh` (the unit tests of the packages that build for Windows, under Wine)
+- Wine tests (from step 28.1): `GOOS=windows go test -tags glutter_wine -exec scripts/wine-exec.sh -p 1 <packages>`; the host-side harness: `go test -tags glutter_wine -p 1 ./internal/winetest`
+- Run a Windows program under Wine, headless: `scripts/wine-exec.sh ./app.exe`; a screenshot of the X root: `scripts/wine-screenshot.sh out.png -- <command>`
 - Update golden images: `go test ./... -run Golden -update-goldens`, then review every changed PNG
 - Vet: `go vet ./...`
 - Lint: `golangci-lint run`
@@ -35,6 +38,7 @@ Before reporting a task as finished, run `gofmt`, `go vet ./...`, `golangci-lint
 - From step 24.1 on: `go run ./cmd/glutter-gen errcheck -allow cmd/glutter-gen/errcheck.allow` passes (the error rules of SPEC §14.4)
 - From step 19.1 on: `GOOS=js GOARCH=wasm go build ./...`, `GOOS=js GOARCH=wasm go vet ./...` and `scripts/test-wasm.sh` pass
 - From step 25.1 on: `scripts/check-android.sh` passes
+- From step 28.1 on: `GOOS=windows GOARCH=amd64 go build ./...` and `go vet ./...`, `GOOS=windows GOARCH=arm64 go build ./...`, and `scripts/test-windows.sh` pass
 - Every new exported identifier has a doc comment that ends with its Flutter counterpart (see "Porting from Flutter")
 - Every changed golden image has been looked at, not just regenerated
 
@@ -43,8 +47,9 @@ Before reporting a task as finished, run `gofmt`, `go vet ./...`, `golangci-lint
 - `ui/` is the engine API (Flutter's `dart:ui`): geometry, Canvas, Paint, Path, Scene, Paragraph, views, input events
 - `desktop/` holds desktop services Flutter leaves to plugins: system tray, notifications, file dialogs, open-URI
 - `gluttertest/` is the widget-testing package (Flutter's `flutter_test`)
-- `internal/platform/` holds the platform interface and its backends (`linux/wayland`, `linux/x11`, `web`, `android`, `fake`)
+- `internal/platform/` holds the platform interface and its backends (`linux/wayland`, `linux/x11`, `web`, `android`, `windows`, `fake`); `windows/win32` is the package that calls Windows (DLLs, COM, callbacks, the struct mirrors and their `layouttest`)
 - `internal/gpu/` holds the renderer interface and its backends (`vulkan`, `gles`, `soft`, `webgpu`, `canvas2d`, `nativewindow`), and `shadercache` keeps what they compile between runs; `explicit` is the renderer that `vulkan` and `webgpu` share, with its WGSL shaders
+- `internal/winetest/` is the Wine harness; `.wine-test/` (git-ignored) holds its prefix
 - `internal/text/` holds paragraph layout on go-text; `internal/dbus/` holds the D-Bus services
 - `cmd/glutter-gen/` holds the code generators; `cmd/glutter-web/` builds, serves and screenshots apps for the web; `cmd/glutter-android/` builds, installs, runs and screenshots apps on Android, with `internal/androidtool` (packaging, the Java embedding and its checked-in `classes.dex`) and `internal/androidtest` (the emulator harness); `examples/<app>/` holds runnable examples (public API only), and `examples/dev/<app>/` holds early development examples that may use `internal/`; `scripts/` holds helper scripts
 - `docs/IMPLEMENTATION.md` is the step-by-step plan; `docs/IMPLEMENTED.md` logs finished steps; `docs/implemented-proof-images/` holds each step's proof screenshots
@@ -58,6 +63,7 @@ Before reporting a task as finished, run `gofmt`, `go vet ./...`, `golangci-lint
 - No global mutable state. In particular, no singletons like Flutter's `WidgetsBinding.instance`: code reaches the binding through `BuildContext` or constructors. Package-level read-only values (`Colors`, `Icons`, `Curves`) are fine and are never reassigned
 - Prefer the standard library. Allowed dependencies: `github.com/rm4n0s/errors`, `github.com/go-text/typesetting`, `golang.org/x/image`, `github.com/godbus/dbus/v5` and `github.com/ebitengine/purego`. Ask before adding any other
 - **No cgo**: never write `import "C"`, except in the `*_android.go` files of `internal/platform/android` (JNI and the NDK, D21; SPEC §24.2). C libraries are otherwise called only through purego, and only under `internal/platform/<os>/...`, `internal/gpu/gles`, `internal/gpu/vulkan` and `internal/gpu/nativewindow`. `GOOS=android` satisfies the `linux` tag: a file only for the Linux desktop says `linux && !android`. OS build tags are allowed only there, in `internal/dbus`, `internal/platform/web`, `internal/webtest` (the process group of the browsers it starts), `internal/gpu/webgpu`, `internal/gpu/canvas2d`, the `backends_<goos>.go` files of `internal/engine`, `internal/androidtest` (the emulator's process group), `foundation/web_*.go` and `foundation/host_android.go` (SPEC §6.3). C memory, Go mirrors of C structs and function pointers never cross those package boundaries
+- **Windows** is called only through the standard library's `syscall` (`SyscallN`, `NewCallback`), never purego and never `golang.org/x/sys/windows` (not an allowed dependency), and only in `internal/platform/windows/...`, `internal/gpu/d3d12`, `internal/gpu/gdiwindow` and the Windows files of `internal/engine`. The `windows` build tag is allowed there, in `internal/winetest` (with `linux` for the side that starts Wine), `internal/engine/backends_windows.go`, `foundation/host_windows.go` and `cmd/glutter-windows`. `GOOS=windows` satisfies neither `linux` nor `unix`. The Go mirrors of Win32 and COM structures live in files with no OS tag and each has a `layouttest` against the mingw-w64 headers (skipped without `mingw64-gcc`). Callbacks are made once, as with purego (SPEC §6.3 rules 10–11, §25.2)
 - `syscall/js` is imported only in `internal/platform/web`, `internal/gpu/webgpu`, `internal/gpu/canvas2d` and the WebGL 2 files of `internal/gpu/gles`. Once the event listeners are installed, the UI goroutine never waits for a JavaScript promise (SPEC §23.3)
 - purego rules (SPEC §8.1):
   - never call a C variadic function; use the non-variadic variant (e.g. `wl_proxy_marshal_array_flags`)
@@ -139,8 +145,8 @@ Use `github.com/rm4n0s/errors` (v0.2.0) for all errors, the way its `AI_GUIDE.md
 ## Don't
 - Don't edit generated files (`*_gen.go`); regenerate them with `go generate ./...`
 - Don't commit secrets or `.env` files
-- Don't let a Linux, Wayland, X11, GL, Vulkan, WebGPU, JavaScript, JNI or Android NDK type appear in a public package or in `internal/platform`'s or `internal/gpu`'s interfaces
-- Don't leave processes running: every compositor, browser, Wine instance, Android emulator, `adb` server or app started for a test, a proof or a check is stopped when it is no longer needed (run it under `timeout -k`, in its own process group), and `pgrep -a` shows nothing left before a task is reported done
+- Don't let a Linux, Wayland, X11, GL, Vulkan, WebGPU, JavaScript, JNI, Android NDK, Win32, COM or Direct3D type appear in a public package or in `internal/platform`'s or `internal/gpu`'s interfaces
+- Don't leave processes running: every compositor, browser, Wine instance (wineserver, explorer.exe, winedevice; Wine runs only on a headless Xvfb, with `ulimit -c 1`, its prefix in `.wine-test/prefix`, stopped with `wineserver -k`, never `-w`), Android emulator, `adb` server or app started for a test, a proof or a check is stopped when it is no longer needed (run it under `timeout -k`, in its own process group), and `pgrep -a` shows nothing left before a task is reported done
 - Never look for, list, open or read files outside this project folder (no home-directory databases, configs, logs or other projects). If something outside it is needed, ask the user to provide it. Exceptions: dependency source in the Go module cache, system C headers (`/usr/include`) when writing or checking Go mirrors of C structs, and the Android SDK and NDK under `$ANDROID_HOME` (the owner asked for them to be used on 2026-10-23). The emulator's virtual devices and the test `adb` server live in `.android-test/` at the module root, never in `~/.android`
 
 ## Testing notes
@@ -149,4 +155,5 @@ Use `github.com/rm4n0s/errors` (v0.2.0) for all errors, the way its `AI_GUIDE.md
 - Tests that open real windows or GL contexts carry the `glutter_display` build tag and are skipped by the default test run. Vulkan display tests use Mesa's lavapipe with validation on (SPEC §17)
 - Tests that run in a headless browser carry the `glutter_browser` build tag; they use `internal/webtest` and temporary browser profiles
 - Tests that run on the Android emulator carry the `glutter_android` build tag; they use `internal/androidtest`. What only a real phone shows is a manual check (SPEC §24.13)
+- Tests that run inside Wine carry the `glutter_wine` build tag; `scripts/test-windows.sh` runs the unit tests of the packages that build for Windows under Wine
 - Every error Tag has a route test

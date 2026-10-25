@@ -6,6 +6,7 @@ import (
 	"image/png"
 	"log/slog"
 	"os"
+	"path"
 	"path/filepath"
 	"time"
 
@@ -31,7 +32,7 @@ func androidScreenshotPath(value string, getenv func(string) string) string {
 	if value != "1" {
 		return value
 	}
-	return filepath.Join(getenv("HOME"), "glutter-screenshot.png")
+	return path.Join(getenv("HOME"), "glutter-screenshot.png") // an Android path, with slashes on every host
 }
 
 // Screenshot is a pending capture of the window content to a PNG file.

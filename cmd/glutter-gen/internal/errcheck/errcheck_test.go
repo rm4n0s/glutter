@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -540,5 +541,37 @@ func TestAndroidPassWithoutAnNDK(t *testing.T) {
 	}
 	if !appErr.HasRoute("CheckModule->checkPass->ndkClang." + TagErrCheckAndroidNDKNotFound) {
 		t.Errorf("unexpected failure path: %s", appErr.Route())
+	}
+}
+
+// TestDefaultPassesCoverEveryBuild checks that the default passes read the files of each target:
+// Linux, the web, the display, browser and Wine tests of the host, Android, and Windows with the
+// tag of the tests that run in Wine (SPEC §14.4, §25.13).
+func TestDefaultPassesCoverEveryBuild(t *testing.T) {
+	tests := []struct {
+		name         string
+		goos, goarch string
+		tag          string // a tag that the pass must have; empty means any
+	}{
+		{"Linux", "linux", "amd64", ""},
+		{"the web", "js", "wasm", ""},
+		{"the display and browser tests", "linux", "amd64", "glutter_display"},
+		{"the browser tests", "linux", "amd64", "glutter_browser"},
+		{"the host-side Wine tests", "linux", "amd64", "glutter_wine"},
+		{"Android", "android", "arm64", ""},
+		{"Windows with the Wine tests", "windows", "amd64", "glutter_wine"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for _, p := range DefaultPasses {
+				if p.GOOS != tt.goos || p.GOARCH != tt.goarch {
+					continue
+				}
+				if tt.tag == "" || slices.Contains(p.Tags, tt.tag) {
+					return
+				}
+			}
+			t.Errorf("no default pass for %s/%s with the tag %q", tt.goos, tt.goarch, tt.tag)
+		})
 	}
 }
