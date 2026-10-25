@@ -40,6 +40,77 @@ type BaseWindowController interface {
 	windowBase() *windowControllerBase
 }
 
+// WindowController is what every window that an app can reach with WindowScopeOf can
+// do: a regular window (the first one included) and a dialog. WindowControllerOf gives
+// it for the window that hosts a context, so the title, the activation and the
+// minimized state are reachable without an assertion. What only a regular window can
+// do (maximize, full screen) is in MaximizableWindowController: a controller is one
+// when the window can be maximized, and a type assertion asks.
+//
+// Deviation: Flutter's RegularWindowController and DialogWindowController declare
+// these members each, and BaseWindowController has none of them; the interface is
+// Glutter's, so that WindowScopeOf's result needs no assertion to the concrete type
+// (SPEC §12.10).
+//
+// Flutter: no counterpart
+type WindowController interface {
+	BaseWindowController
+	// Title is the title of the window.
+	//
+	// Flutter: widgets/_window.dart RegularWindowController.title
+	Title() string
+	// SetTitle asks for a new title of the window.
+	//
+	// Flutter: widgets/_window.dart RegularWindowController.setTitle
+	SetTitle(title string)
+	// Activate asks for the window to be shown and focused.
+	//
+	// Flutter: widgets/_window.dart RegularWindowController.activate
+	Activate()
+	// IsActivated is whether the window is focused.
+	//
+	// Flutter: widgets/_window.dart RegularWindowController.isActivated
+	IsActivated() bool
+	// SetMinimized asks for the window to be minimized, or shown again.
+	//
+	// Flutter: widgets/_window.dart RegularWindowController.setMinimized
+	SetMinimized(minimized bool)
+	// IsMinimized is whether the window is minimized.
+	//
+	// Flutter: widgets/_window.dart RegularWindowController.isMinimized
+	IsMinimized() bool
+}
+
+// MaximizableWindowController is a WindowController that can be maximized and made
+// fullscreen: the regular windows. A dialog is not one.
+//
+// Flutter: no counterpart
+type MaximizableWindowController interface {
+	WindowController
+	// SetMaximized asks for the window to be maximized, or restored.
+	//
+	// Flutter: widgets/_window.dart RegularWindowController.setMaximized
+	SetMaximized(maximized bool)
+	// IsMaximized is whether the window is maximized.
+	//
+	// Flutter: widgets/_window.dart RegularWindowController.isMaximized
+	IsMaximized() bool
+	// SetFullscreen asks for the window to be fullscreen, or to go back.
+	//
+	// Flutter: widgets/_window.dart RegularWindowController.setFullscreen
+	SetFullscreen(fullscreen bool)
+	// IsFullscreen is whether the window is fullscreen.
+	//
+	// Flutter: widgets/_window.dart RegularWindowController.isFullscreen
+	IsFullscreen() bool
+}
+
+var (
+	_ WindowController            = (*RegularWindowController)(nil)
+	_ WindowController            = (*DialogWindowController)(nil)
+	_ MaximizableWindowController = (*RegularWindowController)(nil)
+)
+
 // windowSnapshot is what a WindowScope tells its dependents about a window.
 type windowSnapshot struct {
 	size                                                ui.Size
@@ -475,6 +546,13 @@ type RegularWindowControllerOpts struct {
 	Icon ui.WindowIcon
 	// ContentType is the hint about what the window shows.
 	ContentType ui.ContentType
+	// State is the state the window is created in: the platform creates it
+	// maximized, minimized or fullscreen, so it never shows at its size first. The
+	// zero value is a normal window. No position can be asked for (Wayland gives
+	// clients none).
+	//
+	// Flutter: no counterpart
+	State WindowState
 }
 
 // DialogWindowControllerOpts are the optional parameters of
@@ -576,7 +654,7 @@ func (o *WindowingOwner) CreateRegularWindowController(size ui.Size, opts ...Reg
 		c.delegate = RegularWindowControllerDelegateBase{}
 	}
 	spec := ui.WindowSpec{Kind: ui.WindowKindRegular, Size: size, AppDecorations: opt.Decorations == DecorationsApp,
-		Icon: opt.Icon, ContentType: opt.ContentType}
+		Icon: opt.Icon, ContentType: opt.ContentType, State: opt.State.startState()}
 	if err := o.newController(c, spec, opt.Constraints, opt.Title); err != nil {
 		return nil, err
 	}

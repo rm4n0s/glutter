@@ -659,3 +659,53 @@ func TestDisplayViewFocusFollowsTheActivatedWindow(t *testing.T) {
 		t.Errorf("a seat without a keyboard reported the keyboard focus: %q", kb)
 	}
 }
+
+// TestDisplayAWindowCreatedInItsState opens windows in each start state on sway, which
+// tiles them over the output (HEADLESS_FLOATING=0; a floating window of sway ignores the
+// state). The platform asks for the state before the first commit (the fake compositor
+// test), so sway has the window in that state when it maps it: the window reports the
+// state and the size of the output, not the 300x200 it asked for.
+func TestDisplayAWindowCreatedInItsState(t *testing.T) {
+	if os.Getenv("HEADLESS_FLOATING") != "0" {
+		t.Skip("sway must tile the windows (HEADLESS_FLOATING=0 for scripts/headless-wayland.sh)")
+	}
+	for _, tt := range []struct {
+		name  string
+		state platform.WindowState
+		check func(info ui.WindowInfo) bool
+	}{
+		// sway never says "maximized" (it tiles the window over the output instead), so
+		// the size is what shows it.
+		{"maximized", platform.WindowStateMaximized, func(ui.WindowInfo) bool { return true }},
+		{"fullscreen", platform.WindowStateFullscreen, func(i ui.WindowInfo) bool { return i.Fullscreen }},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			p := connectToCompositor(t)
+			cfg := platform.DefaultWindowConfig()
+			cfg.Title, cfg.AppID, cfg.Size = "Glutter start state", "dev.glutter.startstate", ui.Size{Width: 300, Height: 200}
+			cfg.State = tt.state
+			if _, err := p.NewWindow(cfg); err != nil {
+				t.Fatal(err)
+			}
+			h := &recHandler{allowClose: true}
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			done := make(chan error, 1)
+			go func() { done <- p.Run(ctx, h) }()
+			defer func() {
+				cancel()
+				if err := <-done; err != nil {
+					t.Errorf("Run returned %v", err)
+				}
+			}()
+			waitUntil(t, func() bool {
+				info, ok := h.lastWindowInfo()
+				return ok && tt.check(info)
+			}, "the window never reported the state "+strconv.Itoa(int(tt.state)))
+			waitUntil(t, func() bool {
+				m := h.metricsSeen()
+				size := m[len(m)-1].PhysicalSize
+				return size.Width >= 1000 && size.Height >= 600
+			}, "the window never got the size of the output (1280x800 by default)")
+		})
+	}
+}

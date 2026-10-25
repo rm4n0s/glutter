@@ -179,12 +179,15 @@ func (wm *testWM) handle(ev uintptr) {
 	switch view[xAnyEvent](ev).typ {
 	case mapRequest:
 		r := view[xMapRequestEvent](ev)
-		if wm.withdrawnSet[r.window] {
-			// A withdrawn window comes back as a new one: its state is what the client
-			// set before it asked for the map (EWMH).
+		if _, known := wm.states[r.window]; wm.withdrawnSet[r.window] || !known {
+			// A new window, or a withdrawn one that comes back as a new one: its state is
+			// what the client set before it asked for the map (EWMH).
 			delete(wm.withdrawnSet, r.window)
 			wm.states[r.window] = wm.readLongs(r.window, wm.atom("_NET_WM_STATE"))
-			if wm.bigState(r.window) {
+			switch {
+			case containsAtom(wm.states[r.window], wm.atom("_NET_WM_STATE_FULLSCREEN")):
+				wm.x.resizeWindow(wm.display, r.window, wmFullscreenW, wmFullscreenH)
+			case wm.bigState(r.window):
 				wm.x.resizeWindow(wm.display, r.window, wmMaximizedW, wmMaximizedH)
 			}
 		}
@@ -768,5 +771,35 @@ func TestDisplayTheFocusEventsAreTheViewFocus(t *testing.T) {
 	e.onLoop(func() {})
 	if got, want := e.h.focusSeen(), []bool{false, true, false}; !reflect.DeepEqual(got, want) {
 		t.Errorf("view focus events = %v, want %v", got, want)
+	}
+}
+
+// A window created maximized or fullscreen has its _NET_WM_STATE set before the map, so
+// the window manager maps it in that state and the first frame already has its size.
+func TestDisplayAWindowCreatedInItsState(t *testing.T) {
+	tests := []struct {
+		name  string
+		state platform.WindowState
+		size  ui.Size
+		check func(ui.WindowInfo) bool
+	}{
+		{"maximized", platform.WindowStateMaximized, ui.Size{Width: wmMaximizedW, Height: wmMaximizedH}, func(i ui.WindowInfo) bool { return i.Maximized }},
+		{"fullscreen", platform.WindowStateFullscreen, ui.Size{Width: wmFullscreenW, Height: wmFullscreenH}, func(i ui.WindowInfo) bool { return i.Fullscreen }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := windowConfig()
+			cfg.State = tt.state
+			e, _ := startWithWM(t, cfg)
+			waitFor(t, func() bool { return tt.check(e.h.lastInfo()) }, "the window did not report its state")
+			waitFor(t, func() bool { return e.h.lastSize() == tt.size }, "the window did not get the size of its state")
+			// The first report the app heard already had the state: no frame at 400x300 first.
+			e.h.mu.Lock()
+			first := e.h.metrics[0]
+			e.h.mu.Unlock()
+			if !tt.check(first.Window) || first.PhysicalSize != tt.size {
+				t.Errorf("the first report was %v %+v, want the state and the size %v", first.PhysicalSize, first.Window, tt.size)
+			}
+		})
 	}
 }

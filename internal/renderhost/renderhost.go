@@ -78,6 +78,9 @@ type Host struct {
 	// HiddenViews says which views the framework hid, the implicit one included;
 	// a view that was shown again is false.
 	HiddenViews map[ui.ViewID]bool
+	// ViewTitles are the last titles the framework set, for every view: the implicit
+	// one too, which Windows does not list.
+	ViewTitles map[ui.ViewID]string
 	// OnHiddenChanged, when set, is called after the framework hid or showed a
 	// window, without the lock: the tester gives the app its lifecycle from it.
 	OnHiddenChanged func()
@@ -161,6 +164,10 @@ func (h *Host) DestroyWindow(view ui.ViewID) {
 func (h *Host) SetWindowTitle(view ui.ViewID, title string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	if h.ViewTitles == nil {
+		h.ViewTitles = map[ui.ViewID]string{}
+	}
+	h.ViewTitles[view] = title
 	if w := h.window(view); w != nil {
 		w.Title = title
 	}

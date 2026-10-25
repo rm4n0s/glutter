@@ -733,3 +733,32 @@ func TestKeyboardFocusRoutesTheKeysAndViewFocusIsTold(t *testing.T) {
 		t.Errorf("focus events = %+v, want the activation of the second window", events)
 	}
 }
+
+func TestAWindowIsCreatedInItsStartState(t *testing.T) {
+	tests := []struct {
+		name  string
+		state ui.WindowStartState
+		want  platform.WindowState
+	}{
+		{"default", ui.WindowStartStateUnspecified, platform.WindowStateUnspecified},
+		{"normal", ui.WindowStartStateNormal, platform.WindowStateUnspecified},
+		{"maximized", ui.WindowStartStateMaximized, platform.WindowStateMaximized},
+		{"minimized", ui.WindowStartStateMinimized, platform.WindowStateMinimized},
+		{"fullscreen", ui.WindowStartStateFullscreen, platform.WindowStateFullscreen},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := newWindowsEngine(t)
+			if _, err := e.d.CreateWindow(ui.WindowSpec{Size: ui.Size{Width: 200, Height: 100}, State: tt.state}); err != nil {
+				t.Fatal(err)
+			}
+			w := e.p.Windows()[1]
+			if got := w.Config().State; got != tt.want {
+				t.Errorf("the platform got the state %v, want %v", got, tt.want)
+			}
+			if got := w.State(); got != tt.want && (got != platform.WindowStateNormal || tt.want != platform.WindowStateUnspecified) {
+				t.Errorf("the fake window starts in the state %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

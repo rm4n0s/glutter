@@ -113,6 +113,29 @@ func WindowScopeOf(bc BuildContext) BaseWindowController {
 	return mustWindowScope(bc, nil).controller
 }
 
+// WindowControllerOf is WindowScopeOf for what both kinds of windows can do: the
+// controller of the window that hosts the context as a WindowController, so the
+// title, the activation and the minimized state need no assertion. It panics like
+// WindowScopeOf when there is no scope. A regular window is also a
+// MaximizableWindowController.
+//
+// Deviation: Glutter's accessor; Flutter's WindowScope.of gives a BaseWindowController
+// (SPEC §12.10).
+//
+// Flutter: widgets/_window.dart WindowScope.of
+func WindowControllerOf(bc BuildContext) WindowController {
+	return WindowScopeOf(bc).(WindowController)
+}
+
+// WindowControllerMaybeOf is WindowControllerOf that returns nil when there is no
+// scope.
+//
+// Flutter: widgets/_window.dart WindowScope.maybeOf
+func WindowControllerMaybeOf(bc BuildContext) WindowController {
+	c, _ := WindowScopeMaybeOf(bc).(WindowController)
+	return c
+}
+
 // WindowScopeMaybeOf is WindowScopeOf that returns nil when there is no scope.
 //
 // Flutter: widgets/_window.dart WindowScope.maybeOf

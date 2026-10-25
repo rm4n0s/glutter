@@ -548,6 +548,14 @@ func (h *handler) CreateWindow(spec ui.WindowSpec) (ui.ViewID, ui.ViewConfigurat
 		return 0, ui.ViewConfiguration{}, err
 	}
 	cfg.Icon, cfg.ContentType = spec.Icon, spec.ContentType
+	switch spec.State {
+	case ui.WindowStartStateMaximized:
+		cfg.State = platform.WindowStateMaximized
+	case ui.WindowStartStateMinimized:
+		cfg.State = platform.WindowStateMinimized
+	case ui.WindowStartStateFullscreen:
+		cfg.State = platform.WindowStateFullscreen
+	}
 	win, err := h.conn.NewWindow(cfg)
 	if err != nil {
 		return 0, ui.ViewConfiguration{}, err

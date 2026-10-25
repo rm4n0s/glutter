@@ -281,3 +281,40 @@ func TestWindowActionsForTheFrameworkWindows(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// A window created maximized, minimized or fullscreen asks for that state before its
+// first commit, so the compositor configures it in that state and it never shows at its
+// size first (step 27.4).
+func TestAWindowIsCreatedInItsState(t *testing.T) {
+	tests := []struct {
+		name  string
+		state platform.WindowState
+		want  string // the request before the first commit
+	}{
+		{"maximized", platform.WindowStateMaximized, "xdg_toplevel.set_maximized"},
+		{"minimized", platform.WindowStateMinimized, "xdg_toplevel.set_minimized"},
+		{"fullscreen", platform.WindowStateFullscreen, "xdg_toplevel.set_fullscreen"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := config640()
+			cfg.State = tt.state
+			e := startWindows(t, fakecomp.Config{}, cfg)
+			e.waitMapped()
+			lines := e.srv.Requests()
+			state, commit := index(lines, 0, tt.want), index(lines, 0, "wl_surface.commit")
+			if state < 0 || commit < 0 || state > commit {
+				t.Errorf("%s is at %d and the first commit at %d in:\n%s", tt.want, state, commit, strings.Join(lines, "\n"))
+			}
+			// The other states are not asked for.
+			for _, other := range []string{"xdg_toplevel.set_maximized", "xdg_toplevel.set_minimized", "xdg_toplevel.set_fullscreen"} {
+				if other != tt.want && index(lines, 0, other) >= 0 {
+					t.Errorf("%s was sent for a window created in the state %v", other, tt.state)
+				}
+			}
+			if err := e.stop(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}

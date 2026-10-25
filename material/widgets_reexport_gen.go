@@ -4010,6 +4010,11 @@ type MatrixTransition = widgets.MatrixTransition
 // Flutter: widgets.dart MatrixTransitionOpts
 type MatrixTransitionOpts = widgets.MatrixTransitionOpts
 
+// MaximizableWindowController is widgets.MaximizableWindowController.
+//
+// Flutter: widgets.dart MaximizableWindowController
+type MaximizableWindowController = widgets.MaximizableWindowController
+
 // MaybeDirectionalityOf is widgets.MaybeDirectionalityOf.
 //
 // Flutter: widgets.dart MaybeDirectionalityOf
@@ -12476,6 +12481,25 @@ func WidgetsLocalizationsOf(bc widgets.BuildContext) widgets.WidgetsLocalization
 //
 // Flutter: widgets.dart WindowConfig
 type WindowConfig = widgets.WindowConfig
+
+// WindowController is widgets.WindowController.
+//
+// Flutter: widgets.dart WindowController
+type WindowController = widgets.WindowController
+
+// WindowControllerMaybeOf is widgets.WindowControllerMaybeOf.
+//
+// Flutter: widgets.dart WindowControllerMaybeOf
+func WindowControllerMaybeOf(bc widgets.BuildContext) widgets.WindowController {
+	return widgets.WindowControllerMaybeOf(bc)
+}
+
+// WindowControllerOf is widgets.WindowControllerOf.
+//
+// Flutter: widgets.dart WindowControllerOf
+func WindowControllerOf(bc widgets.BuildContext) widgets.WindowController {
+	return widgets.WindowControllerOf(bc)
+}
 
 // WindowDecoration is widgets.WindowDecoration.
 //

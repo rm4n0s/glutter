@@ -48,7 +48,40 @@ type WindowSpec struct {
 	Icon WindowIcon
 	// ContentType is the hint about what the window shows.
 	ContentType ContentType
+	// State is the state the window is created in; the platform creates it in that
+	// state, so it never shows at its size first. The zero value is a normal window.
+	State WindowStartState
 }
+
+// WindowStartState is the state a window is created in (WindowSpec.State).
+//
+// Flutter: no counterpart
+type WindowStartState int
+
+// The values of WindowStartState.
+const (
+	// WindowStartStateUnspecified is the zero value and means WindowStartStateNormal.
+	//
+	// Flutter: no counterpart
+	WindowStartStateUnspecified WindowStartState = iota
+	// WindowStartStateNormal is a window that is neither maximized, minimized nor
+	// fullscreen.
+	//
+	// Flutter: no counterpart
+	WindowStartStateNormal
+	// WindowStartStateMaximized is a maximized window.
+	//
+	// Flutter: no counterpart
+	WindowStartStateMaximized
+	// WindowStartStateMinimized is a minimized window.
+	//
+	// Flutter: no counterpart
+	WindowStartStateMinimized
+	// WindowStartStateFullscreen is a fullscreen window.
+	//
+	// Flutter: no counterpart
+	WindowStartStateFullscreen
+)
 
 // WindowControlHost is what the engine implements to create, change and destroy
 // the windows that the framework asks for (widgets/_window.dart). A host without

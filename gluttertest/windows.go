@@ -40,6 +40,26 @@ func (t *Tester) Windows() []TestWindow {
 	return out
 }
 
+// ViewTitle is the last title that the app set for the window of the view, the
+// implicit view's too (Windows lists only the windows that the app created). It is the
+// title of a created window until the app sets another one, and empty for a view whose
+// title was never set.
+//
+// Flutter: no counterpart
+func (t *Tester) ViewTitle(view ui.ViewID) string {
+	t.host.Lock()
+	defer t.host.Unlock()
+	if title, ok := t.host.ViewTitles[view]; ok {
+		return title
+	}
+	for _, w := range t.host.Windows {
+		if w.View == view {
+			return w.Spec.Title
+		}
+	}
+	return ""
+}
+
 // ViewActions are the actions that were asked of the window of a view (minimize,
 // maximize, ...), in order.
 //

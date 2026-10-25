@@ -47,6 +47,19 @@ const (
 	WindowStateFullscreen
 )
 
+// startState is the state that the platform creates a window in.
+func (s WindowState) startState() ui.WindowStartState {
+	switch s {
+	case WindowStateMaximized:
+		return ui.WindowStartStateMaximized
+	case WindowStateMinimized:
+		return ui.WindowStartStateMinimized
+	case WindowStateFullscreen:
+		return ui.WindowStartStateFullscreen
+	}
+	return ui.WindowStartStateNormal
+}
+
 // WindowConfig describes the first window of an app (RunAppOpts.Window). The
 // zero value is a regular, resizable, decorated window of a size the platform
 // chooses.

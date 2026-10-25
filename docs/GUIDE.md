@@ -722,5 +722,10 @@ If you build Flutter apps for Android, this is what is the same and what is not.
   `AppLifecycleListener.OnExitRequested`, which then returns `AppExitResponseCancel`. The window
   leaves the screen and the task bar, the app keeps running, and `SetHidden(false)` or
   `Activate()` brings it back as it was; `examples/tray` does this.
+- **The window you are in.** `WindowControllerOf(bc)` is the controller of the window that hosts
+  `bc` (the first window included) with `Title`, `SetTitle`, `Activate`, `IsActivated` and
+  `SetMinimized`; a regular window is also a `MaximizableWindowController` (`SetMaximized`,
+  `SetFullscreen`), asked with a type assertion. `RegularWindowControllerOpts.State` and
+  `WindowConfig.State` open a window maximized or fullscreen, so it never shows small first.
 - **Where the list of every difference is.** SPEC §12.10, one row per deviation, kept up to
   date.

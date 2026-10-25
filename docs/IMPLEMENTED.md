@@ -2827,3 +2827,18 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - `scripts/perf.sh` has a new row, the idle CPU of the counter while a second window (the gallery) has the focus; it runs headless now. Measured 0.00% with 4 s.
   - A fake platform window or the web do not need a change: they call `OnViewFocus` only. `gluttertest` already had `SetViewFocus`.
   - A mistake of mine while testing: one run of the X11 display tests used the `DISPLAY=:0` of my shell, so test windows showed on the real desktop for a few seconds before I switched to `scripts/headless-x11.sh`. The display tests must always run under that script.
+
+## 27.4 What a window controller can do, and the first window in tests
+
+- **Date:** 2026-10-25
+- **Branch:** feat/step-27.4-window-controller
+- **Summary:** `widgets.WindowController` (`Title`, `SetTitle`, `Activate`, `IsActivated`, `SetMinimized`, `IsMinimized`) is implemented by the regular windows, the first window and the dialogs; `MaximizableWindowController` adds `SetMaximized`, `IsMaximized`, `SetFullscreen`, `IsFullscreen` and only the regular windows implement it (a type assertion is the "can" query). `WindowControllerOf` and `WindowControllerMaybeOf` give them from a context. `RegularWindowControllerOpts.State` creates the window maximized, minimized or fullscreen (`ui.WindowSpec.State`, `ui.WindowStartState`, to `platform.WindowConfig.State`, which Wayland and X11 send before the first commit or map). `Tester.ViewTitle(view)` gives the title of any view, the implicit one included.
+- **Main files:** `widgets/{window_controller,window_scope,run_app}.go`, `ui/window_control.go`, `internal/engine/engine.go`, `internal/renderhost/renderhost.go`, `gluttertest/windows.go`, `material/widgets_reexport_gen.go` (regenerated), `docs/SPEC.md` (§12.10), `docs/GUIDE.md`.
+- **Tests:** table tests over the first window, a regular window and a dialog through `WindowControllerOf` (each method; a dialog is not maximizable) and the scope's missing tag; the start states (5) and the dialog's; `ViewTitle` of the implicit view and of a created one; the engine passes the start state to the platform (5); Wayland against the fake compositor asks for the state before the first commit (3). Flutter test cases ported: 0.
+- **Display tests:** headless sway (`HEADLESS_FLOATING=0`): windows created maximized and fullscreen are the output's size (sway never says "maximized", it tiles, so the size shows it); X11 under Xvfb with the test window manager (which now reads the `_NET_WM_STATE` of a new window at its map, as a real one does): the first report of a window created maximized or fullscreen already has the state and the manager's size.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck ✅ · apicheck ✅ · `GOOS=js GOARCH=wasm` build, vet and `scripts/test-wasm.sh` ✅ · `scripts/check-android.sh` ✅ · display tests ✅ (Wayland with floating windows, the new test with `HEADLESS_FLOATING=0`, X11)
+- **Proof:** none.
+- **Manual checks:** none.
+- **Deviations and follow-ups:**
+  - **Decided (SPEC §12.10):** two interfaces, not a "can" method; `Tester.Windows()` stays the windows the app created (the existing tests index it from the first one) and `Tester.ViewTitle` is added for the implicit view. The state of the implicit window in tests stays `ViewActions` and `SetWindowInfo`.
+  - `TestDisplayScaleSizesTheBuffer` needs floating windows, so the Wayland display suite runs with the default `HEADLESS_FLOATING`; only `TestDisplayAWindowCreatedInItsState` needs `HEADLESS_FLOATING=0` (it skips otherwise).
