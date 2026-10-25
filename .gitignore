@@ -38,6 +38,9 @@ go.work.sum
 # Personal Claude Code settings (not shared)
 .claude/settings.local.json
 
+# The briefs the managing session writes for its worker agents (docs/IMPLEMENTATION.md, "Who does the work")
+/.claude/briefs/
+
 # Golden test output of a failed comparison (internal/goldens)
 *.actual.png
 *.diff.png

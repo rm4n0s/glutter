@@ -8,6 +8,17 @@ This file breaks the milestones in `docs/SPEC.md` §18 into small steps. Each st
 
 ## Rules
 
+### Who does the work
+
+The owner's choice (2026-10-25): the main session is the **manager** (Opus 5.5, high effort) and **workers** write the code (Sonnet 5.5 agents, launched with the Agent tool, `model: "sonnet"`, `effort: "high"`). The rules below apply to the step as a whole; this part says who does what.
+
+- **The manager** does rules 1–3 (finds the step, reads it, the SPEC sections and the Flutter sources it names, creates the branch), then writes a brief for each worker in `.claude/briefs/step-<id>[-<part>].md` (git-ignored; never committed). A brief is the only thing the worker knows: the goal, the tasks it owns, the files and SPEC sections to read, the Flutter files to port, the tests to write, the decisions already made and those it must bring back instead of making, and the rules it must follow (CLAUDE.md, the "Errors" rules, the purego rules, doc comments, `// Deviation:` and SPEC §12.10, `go generate ./material`, processes it starts are stopped, display tests only under `scripts/headless-wayland.sh` or `scripts/headless-x11.sh`, heavy Go runs with the memory cap the manager names in the brief, e.g. a `ulimit -v` wrapper given to `-toolexec`).
+- **Workers run in the shared checkout, on the step branch, without worktree isolation**: an isolated worktree starts from `main`, not from the step branch. A worker never runs a git command that changes state (commit, merge, rebase, stash, push, tag, branch, switch, reset, checkout of files); the manager does all of them.
+- **One worker per step**, or several at once only when their parts touch disjoint directories and do not depend on each other; at most three at a time, since parallel `-race` builds can run the machine out of memory. A part that needs another part's API waits for it.
+- **The manager reviews the work, not the summary**: it reads the diff, runs the tests the worker says pass and the checks of rule 8 itself, and looks at every proof image. What is wrong, missing or outside the step goes back to the same worker (SendMessage, so it keeps its context) with the concrete failure. The manager writes only small fixes itself (a few lines, a doc comment, a test table row).
+- **Questions.** A worker that hits a case of rule 7 stops and reports it; the manager decides what the plan and the SPEC already decide, and asks the user otherwise (rule 7). The manager answers "what is going on" questions of the user while workers run, and never reports a worker's result before it arrived.
+- **The manager finishes the step**: the `IMPLEMENTED.md` entry (rule 10; it may have a worker draft it, and checks every claim in it), the commit, the publish and the tag (rules 11–12), the report (rule 13), and deletes the step's briefs.
+
 ### Before you start a step
 
 1. **Find your step.** It's the first step in this file that has no entry in `docs/IMPLEMENTED.md`. Do only that step. Never work on two steps at once, and never skip ahead.

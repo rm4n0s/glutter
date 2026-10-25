@@ -134,6 +134,7 @@ Use `github.com/rm4n0s/errors` (v0.2.0) for all errors, the way its `AI_GUIDE.md
 ## Working through the steps
 - Never stop to ask for confirmation, and never end a turn with a question such as "Should I start the next step?", until every step in `docs/IMPLEMENTATION.md` is finished (through the last one). After a step is published, report it briefly and start the next step in the same turn
 - A request such as "publish to main" that is already satisfied gets a one-line answer, then work continues with the next step
+- **Manager and workers** (the owner's choice, 2026-10-25): the main session (Opus 5.5, high effort) manages and Sonnet 5.5 agents at high effort write the code (Agent tool with `model: "sonnet"`, `effort: "high"`). The manager reads the step and the SPEC, writes the brief, launches and steers the workers, reviews their diffs, runs the checks, and does the git work; it writes only small fixes itself. The details are in `docs/IMPLEMENTATION.md`, Rules, "Who does the work"
 
 ## Don't
 - Don't edit generated files (`*_gen.go`); regenerate them with `go generate ./...`
