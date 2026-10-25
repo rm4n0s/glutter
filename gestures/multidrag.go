@@ -80,6 +80,7 @@ type MultiDragPointerState struct {
 	Kind            ui.PointerDeviceKind
 	velocityTracker *VelocityTracker
 
+	slop                     foundation.Opt[float64]
 	client                   Drag
 	pendingDelta             foundation.Opt[ui.Offset]
 	lastPendingEventTimeStmp foundation.Opt[time.Duration]
@@ -116,6 +117,19 @@ func (s *MultiDragPointerState) GestureSettings() foundation.Opt[DeviceGestureSe
 //
 // Flutter: gestures/multidrag.dart MultiDragPointerState.pendingDelta
 func (s *MultiDragPointerState) PendingDelta() foundation.Opt[ui.Offset] { return s.pendingDelta }
+
+// HitSlop is how far the pointer may move before the drag starts: the Slop of the
+// recognizer, or ComputeHitSlop of the kind of the pointer.
+//
+// Deviation: Flutter always uses computeHitSlop (SPEC §12.10).
+//
+// Flutter: gestures/events.dart computeHitSlop
+func (s *MultiDragPointerState) HitSlop() float64 {
+	if v, ok := s.slop.Get(); ok {
+		return v
+	}
+	return ComputeHitSlop(s.Kind, s.gestureSettings)
+}
 
 func (s *MultiDragPointerState) setArenaEntry(entry GestureArenaEntry) { s.arenaEntry = entry }
 
@@ -224,6 +238,13 @@ type MultiDragGestureRecognizerOpts struct {
 	// AllowedButtonsFilter says whether the buttons of a pointer are allowed;
 	// the default allows the primary button only.
 	AllowedButtonsFilter AllowedButtonsFilter
+	// Slop is how far a pointer moves before the drag starts (or, for a delayed
+	// drag, before it is rejected), for every kind of pointer; none for
+	// ComputeHitSlop of the kind.
+	//
+	// Deviation: Flutter has no such parameter: the slop is computeHitSlop (SPEC
+	// §12.10).
+	Slop foundation.Opt[float64]
 }
 
 // MultiDragGestureRecognizer is the base of the recognizers that track several
@@ -240,6 +261,7 @@ type MultiDragGestureRecognizer struct {
 	// Flutter: gestures/multidrag.dart MultiDragGestureRecognizer.onStart
 	OnStart GestureMultiDragStartCallback
 
+	slop          foundation.Opt[float64]
 	pointers      map[int]MultiDragPointerStateHooks
 	pointerRoutes map[int]PointerRouteHandle
 	disposed      bool
@@ -255,6 +277,7 @@ func (r *MultiDragGestureRecognizer) InitMultiDrag(binding *GestureBinding, self
 	}
 	r.Init(binding, self, GestureRecognizerOpts{DebugOwner: opts.DebugOwner, SupportedDevices: opts.SupportedDevices, AllowedButtonsFilter: filter})
 	r.multi = self
+	r.slop = opts.Slop
 	r.pointers = map[int]MultiDragPointerStateHooks{}
 	r.pointerRoutes = map[int]PointerRouteHandle{}
 }
@@ -265,6 +288,7 @@ func (r *MultiDragGestureRecognizer) InitMultiDrag(binding *GestureBinding, self
 // Flutter: gestures/multidrag.dart MultiDragGestureRecognizer.addAllowedPointer
 func (r *MultiDragGestureRecognizer) AddAllowedPointer(event *PointerDownEvent) {
 	state := r.multi.CreateNewPointerState(event)
+	state.Base().slop = r.slop
 	r.pointers[event.Pointer()] = state
 	r.pointerRoutes[event.Pointer()] = r.binding.PointerRouter.AddRoute(event.Pointer(), r.handleEvent, nil)
 	state.Base().setArenaEntry(r.binding.GestureArena.Add(event.Pointer(), r.multi))
@@ -357,7 +381,7 @@ type axisPointerState struct {
 }
 
 func (s *axisPointerState) CheckForResolutionAfterMove() {
-	if s.measure(s.pendingDelta.Value()) > ComputeHitSlop(s.Kind, s.gestureSettings) {
+	if s.measure(s.pendingDelta.Value()) > s.HitSlop() {
 		s.Resolve(GestureAccepted)
 	}
 }
@@ -497,7 +521,7 @@ func (s *delayedPointerState) CheckForResolutionAfterMove() {
 		// timer expires.
 		return
 	}
-	if s.pendingDelta.Value().Distance() > ComputeHitSlop(s.Kind, s.gestureSettings) {
+	if s.pendingDelta.Value().Distance() > s.HitSlop() {
 		s.Resolve(GestureRejected)
 		s.ensureTimerStopped()
 	}

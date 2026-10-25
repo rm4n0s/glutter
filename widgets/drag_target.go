@@ -226,6 +226,18 @@ type DraggableOpts[T any] struct {
 	// AllowedButtonsFilter says which buttons may start a drag; the default allows
 	// the primary button.
 	AllowedButtonsFilter gestures.AllowedButtonsFilter
+	// Slop is how far a pointer of any kind moves before the drag starts, so that a
+	// click on a draggable row with a small movement stays a click; none for
+	// Flutter's computeHitSlop (1 pixel for a mouse, the touch slop for the others).
+	//
+	// Deviation: Flutter has no such parameter (SPEC §12.10).
+	Slop foundation.Opt[float64]
+	// CancelOnEscape cancels a running drag of this draggable when the Escape key
+	// goes down: the drag ends as if the pointer was cancelled (OnDraggableCanceled,
+	// the OnLeave of the targets, the feedback removed).
+	//
+	// Deviation: Flutter has no such parameter (SPEC §12.10).
+	CancelOnEscape bool
 	// Export, when set, makes the drag a drag of the platform: other applications
 	// and the other windows of the app can receive what it returns (Glutter's
 	// addition; Flutter has no drag and drop between applications). The feedback is
@@ -311,7 +323,7 @@ func (w *Draggable[T]) MaxSimultaneousDrags() foundation.Opt[int] { return w.opt
 //
 // Flutter: widgets/drag_target.dart Draggable.createRecognizer
 func (w *Draggable[T]) createRecognizer(g *gestures.GestureBinding, haptic *services.HapticFeedback, onStart gestures.GestureMultiDragStartCallback) *gestures.MultiDragGestureRecognizer {
-	o := gestures.MultiDragGestureRecognizerOpts{DebugOwner: w, AllowedButtonsFilter: w.opts.AllowedButtonsFilter}
+	o := gestures.MultiDragGestureRecognizerOpts{DebugOwner: w, AllowedButtonsFilter: w.opts.AllowedButtonsFilter, Slop: w.opts.Slop}
 	var r *gestures.MultiDragGestureRecognizer
 	if w.longPress {
 		start := onStart
@@ -440,7 +452,10 @@ func (s *draggableState[T]) startDrag(position ui.Offset) gestures.Drag {
 		data = v
 	}
 	view := ViewOf(bc)
+	// stopKeys removes the Escape handler of CancelOnEscape once the drag is over.
+	stopKeys := func() {}
 	end := func(velocity gestures.Velocity, offset ui.Offset, wasAccepted bool) {
+		stopKeys()
 		if s.Mounted() {
 			s.SetState(func() { s.activeCount-- })
 		} else {
@@ -479,6 +494,17 @@ func (s *draggableState[T]) startDrag(position ui.Offset) gestures.Drag {
 			ignoringFeedbackPointer:   o.IgnoringFeedbackPointer.OrElse(true),
 			viewID:                    view.ViewID(),
 		})
+	}
+	if o.CancelOnEscape {
+		keyboard := WidgetsBindingOf(bc).Keyboard()
+		handle := keyboard.AddHandler(func(event services.KeyEvent) bool {
+			if _, ok := event.(*services.KeyDownEvent); ok && event.LogicalKey() == services.LogicalKeyboardKeyEscape {
+				drag.Cancel()
+				return true
+			}
+			return false
+		})
+		stopKeys = func() { keyboard.RemoveHandler(handle) }
 	}
 	if o.OnDragStarted != nil {
 		o.OnDragStarted()
@@ -526,6 +552,13 @@ type DragTargetOpts[T any] struct {
 	// HitTestBehavior is how the target behaves during hit testing; the default is
 	// HitTestBehaviorTranslucent.
 	HitTestBehavior rendering.HitTestBehavior
+	// RepeatMove calls OnMove once per frame while a drag is over the target, also
+	// when the pointer does not move, so that a target can scroll or expand while the
+	// pointer rests over it. A frame is scheduled only while such a drag is over such
+	// a target.
+	//
+	// Deviation: Flutter calls onMove only when the pointer moves (SPEC §12.10).
+	RepeatMove bool
 }
 
 // DragTarget is a widget that receives the data of a Draggable when it is dropped
@@ -576,6 +609,7 @@ type dragTargetRef interface {
 	didLeave(avatar *dragAvatar)
 	didDrop(avatar *dragAvatar)
 	didMove(avatar *dragAvatar)
+	repeatsMove() bool
 }
 
 type dragTargetState[T any] struct {
@@ -651,6 +685,8 @@ func (s *dragTargetState[T]) didDrop(avatar *dragAvatar) {
 	}
 }
 
+func (s *dragTargetState[T]) repeatsMove() bool { return s.Widget().opts.RepeatMove }
+
 func (s *dragTargetState[T]) didMove(avatar *dragAvatar) {
 	if !s.Mounted() || avatar.data == nil {
 		return
@@ -724,6 +760,8 @@ type dragAvatar struct {
 	entry          *OverlayEntry
 	// finished is whether the drag is over.
 	finished bool
+	// repeatID is the frame callback that reports the moves of RepeatMove targets, or 0.
+	repeatID int
 }
 
 func newDragAvatar(args dragAvatarArgs) *dragAvatar {
@@ -740,6 +778,9 @@ func newDragAvatar(args dragAvatarArgs) *dragAvatar {
 //
 // Flutter: widgets/drag_target.dart _DragAvatar.update
 func (a *dragAvatar) Update(details gestures.DragUpdateDetails) {
+	if a.finished {
+		return // cancelled while the pointer is still down (the Escape key)
+	}
 	oldPosition := a.position
 	a.position = a.position.Add(a.restrictAxis(details.Delta))
 	a.updateDrag(a.position)
@@ -761,6 +802,13 @@ func (a *dragAvatar) End(details gestures.DragEndDetails) {
 func (a *dragAvatar) Cancel() { a.finishDrag(dragEndCanceled, foundation.None[gestures.Velocity]()) }
 
 func (a *dragAvatar) updateDrag(globalPosition ui.Offset) {
+	a.updateDragReport(globalPosition, false)
+	a.scheduleRepeat()
+}
+
+// updateDragReport hits tests at the position and tells the targets. On a repeat (a frame
+// with no movement) only the targets with RepeatMove get the move.
+func (a *dragAvatar) updateDragReport(globalPosition ui.Offset, repeat bool) {
 	a.lastOffset = globalPosition.Sub(a.dragStartPoint)
 	if a.overlayState != nil && a.overlayState.Mounted() {
 		box := a.overlayState.Context().FindRenderObject().(rendering.Box)
@@ -790,7 +838,9 @@ func (a *dragAvatar) updateDrag(globalPosition ui.Offset) {
 	// If everything is the same, report moves and be done.
 	if listsMatch {
 		for _, target := range append([]dragTargetRef(nil), a.enteredTargets...) {
-			target.didMove(a)
+			if !repeat || target.repeatsMove() {
+				target.didMove(a)
+			}
 		}
 		return
 	}
@@ -840,11 +890,41 @@ func (a *dragAvatar) leaveAllEntered() {
 	a.enteredTargets = nil
 }
 
+// wantsRepeat is whether a target the drag is over has RepeatMove.
+func (a *dragAvatar) wantsRepeat() bool {
+	for _, t := range a.enteredTargets {
+		if t.repeatsMove() {
+			return true
+		}
+	}
+	return false
+}
+
+// scheduleRepeat schedules the frame that reports the moves of the RepeatMove targets,
+// if the drag is over one and no frame is waiting. Nothing is scheduled otherwise.
+func (a *dragAvatar) scheduleRepeat() {
+	if a.finished || a.repeatID != 0 || a.binding == nil || !a.wantsRepeat() {
+		return
+	}
+	a.repeatID = a.binding.Scheduler().ScheduleFrameCallback(func(time.Duration) {
+		a.repeatID = 0
+		if a.finished {
+			return
+		}
+		a.updateDragReport(a.position, true)
+		a.scheduleRepeat()
+	})
+}
+
 func (a *dragAvatar) finishDrag(kind dragEndKind, velocity foundation.Opt[gestures.Velocity]) {
 	if a.finished {
 		return
 	}
 	a.finished = true
+	if a.repeatID != 0 {
+		a.binding.Scheduler().CancelFrameCallbackWithID(a.repeatID)
+		a.repeatID = 0
+	}
 	wasAccepted := false
 	if kind == dragEndDropped && a.activeTarget != nil {
 		a.activeTarget.didDrop(a)

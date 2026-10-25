@@ -2884,3 +2884,17 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Proof:** none.
 - **Manual checks:** the split pane of `examples/gallery` (or a small sash in `examples/dev`) keeps the resize cursor while the pointer outruns it with the button held. Not done here: no real display is used by the agent runs.
 - **Deviations and follow-ups:** the option is a deviation from Flutter (SPEC §12.10). `material` needed no regeneration: only an options field was added.
+
+## 27.8 `Draggable` and `DragTarget` for lists and tabs
+
+- **Date:** 2026-10-25
+- **Branch:** feat/step-27.8-draggable
+- **Summary:** `MultiDragGestureRecognizerOpts.Slop` and `DraggableOpts.Slop` (`Opt[float64]`) set the distance before a drag starts, for every kind of pointer (the default stays `ComputeHitSlop`); `MultiDragPointerState.HitSlop()` is the one in use. `DraggableOpts.CancelOnEscape` adds a `HardwareKeyboard` handler for as long as the drag runs: Escape cancels it like a cancelled pointer (`OnDraggableCanceled`, `OnLeave` of the targets, the feedback removed) and is handled; the avatar ignores the moves and the release that follow. `DragTargetOpts.RepeatMove` calls `OnMove` once per frame while a drag is over the target even when the pointer rests; the avatar hit tests again on those frames, and requests a frame only while it is over such a target.
+- **Main files:** `gestures/multidrag.go`, `widgets/drag_target.go`, `widgets/drag_target_options_test.go`, `docs/SPEC.md` (§12.10).
+- **Tests:** `widgets/drag_target_options_test.go`: a draggable row with a tap in it: a mouse moving 3 px with a slop of 4 is a click, 5 px is a drag, 3 px with the default slop is a drag, and the same for touch (5 cases); Escape during a drag, another key, and Escape with no option (3 cases, with the release after the cancel); the handler gone after the drag; `RepeatMove` calls per frame, none without the option or off the target, and no frame request or callback left over (3 cases); the hit test of a `Listener` above a plain list, a list in a `RawScrollbar`, in an opaque and in a non-opaque `MouseRegion` (5 cases).
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck ✅ · apicheck ✅ · `GOOS=js GOARCH=wasm` build, vet and `scripts/test-wasm.sh` ✅ · `scripts/check-android.sh` ✅ · display tests none
+- **Proof:** none.
+- **Manual checks:** none.
+- **Deviations and follow-ups:**
+  - Task 4 (the hit test of a list under a `Listener`): Glutter does not differ from Flutter. `RenderMouseRegion.HitTest` is `super.hitTest && opaque` in both, so a **non-opaque** `MouseRegion` reports "not hit" to what is above it, in Flutter as well; the report's premise ("Flutter reports a hit when a child was hit") does not hold for that case. Nothing in `Scrollable`, `ListView` or `RawScrollbar` builds a non-opaque region (`RawScrollbar`'s is the default opaque one), and a deferring `Listener` above a plain list, or a list in a scrollbar or an opaque region, gets the press: the tests show it. An app that puts its own non-opaque `MouseRegion` around its rows has to give the `Listener` `HitTestBehaviorOpaque` or `Translucent`. No code change.
+  - A `LongPressDraggable` takes `Slop` too: it is the slop within which the pointer may move before the delay passes.
