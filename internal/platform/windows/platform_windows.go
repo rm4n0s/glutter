@@ -14,6 +14,7 @@ import (
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/internal/platform"
+	"github.com/rm4n0s/glutter/internal/platform/windows/ime"
 	"github.com/rm4n0s/glutter/internal/platform/windows/win32"
 	"github.com/rm4n0s/glutter/ui"
 )
@@ -86,6 +87,10 @@ type Platform struct {
 	pointers *pointerTracker
 	// keys handles the key messages of every window: they share one keyboard (keymanager.go).
 	keys *keyboardManager
+	// imm is the interface to the input methods that the windows' text inputs use; script is the
+	// part of it that the scripted compositions drive (textinput_windows.go).
+	imm    ime.IMM
+	script *scriptedIMM
 
 	// turns counts the turns of the message loop, for the tests that look for an idle app.
 	turns atomic.Uint64
@@ -127,6 +132,8 @@ func New(opts Options) (*Platform, error) {
 	}
 	p.pointers = newPointerTracker(p.pointerClock)
 	p.keys = newKeyboardManager(winKeyHost{}, p.pointerClock, p.sendKey)
+	p.script = &scriptedIMM{IMM: ime.System{}}
+	p.imm = p.script
 	p.setupConsole()
 	p.setupDPIAwareness()
 	if err := win32.OleInitialize(); err != nil {
@@ -451,6 +458,10 @@ func (p *Platform) runDevEvents(i int) {
 		switch ev.Kind {
 		case "key", "keydown", "keyup":
 			p.runDevKey(ev)
+		case "text":
+			p.runDevText(ev)
+		case "compose", "composing":
+			p.runDevCompose(ev)
 		default:
 			p.runDevMouse(ev)
 		}

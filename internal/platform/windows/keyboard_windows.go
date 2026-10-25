@@ -87,11 +87,17 @@ func (w *window) onKey(msg uint32, wparam, lparam uintptr) (uintptr, bool) {
 	return 0, false
 }
 
-// onChar handles the character messages that reach the window procedure.
+// onChar handles the character messages that reach the window procedure: those of a system key are
+// the key manager's, and a WM_CHAR is a character that no key made (the characters of a key were
+// taken when its key down was handled), which the text input types (SPEC §25.7).
 //
 // Flutter: shell/platform/windows/flutter_window.cc FlutterWindow::HandleMessage (WM_CHAR, WM_SYSCHAR, WM_DEADCHAR)
-func (w *window) onChar(msg uint32) (uintptr, bool) {
+func (w *window) onChar(msg uint32, wparam uintptr) (uintptr, bool) {
 	if w.p.handler != nil && w.p.keys.handleChar(msg) == keyConsumed {
+		return 0, true
+	}
+	if msg == win32.WMChar && w.text != nil {
+		w.text.HandleChar(uint16(wparam))
 		return 0, true
 	}
 	return 0, false

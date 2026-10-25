@@ -2,6 +2,7 @@ package windows
 
 import (
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -21,7 +22,8 @@ const DevEventsEnv = "GLUTTER_DEV_EVENTS"
 //
 // Flutter: no counterpart
 type DevEvent struct {
-	// Kind is the name of the step: "wait", "move", "tap", "wheel", "key", "keydown" or "keyup".
+	// Kind is the name of the step: "wait", "move", "tap", "wheel", "key", "keydown", "keyup",
+	// "text", "compose" or "composing".
 	Kind string
 	// Wait is how long to wait, for "wait".
 	Wait time.Duration
@@ -34,6 +36,11 @@ type DevEvent struct {
 	// Keys are the virtual-key codes of a "key", "keydown" or "keyup": "key" presses them in order
 	// and releases them in the opposite order.
 	Keys []uint32
+	// Text is the text of a "text" step.
+	Text string
+	// Steps are the pieces of a "compose" or "composing" step, each the composition string of an
+	// update.
+	Steps []string
 }
 
 // ParseDevEvents reads a dev events script: steps separated by ";", each "name:arguments".
@@ -45,18 +52,23 @@ type DevEvent struct {
 //	key:A             presses and releases a key; key:SHIFT+LEFT presses Shift, then Left, and releases both
 //	keydown:SHIFT     presses a key and keeps it down (until keyup:SHIFT)
 //	keyup:SHIFT       releases a key
+//	text:Hello        types the text as WM_CHAR messages (a keyboard layout's or an input method's
+//	                  characters; its blanks are typed, but \n and the other control characters
+//	                  type nothing; no ";")
+//	compose:a,b,c     an input method composes a, then b, then c, commits c and ends the composition
+//	composing:a,b,c   the same, but the composition stays in progress (a later compose: or
+//	                  composing: goes on with it)
 //
 // A key is a name of Flutter's table of virtual keys (the name of the VK_ constant without the prefix,
 // in any case, with or without "VK_": RETURN, BACK, LEFT, PRIOR, F1, SHIFT, CONTROL, MENU...), a
 // letter or a digit, or one of the aliases ENTER, BACKSPACE, CTRL, ALT, ESC, DEL, PAGEUP and PAGEDOWN.
-// text and compose come with step 28.5. A step that is not known, or has the wrong arguments, fails
-// with WindowsDevEventsInvalid.
+// A step that is not known, or has the wrong arguments, fails with WindowsDevEventsInvalid.
 //
 // Flutter: no counterpart
 func ParseDevEvents(script string) ([]DevEvent, error) {
 	var events []DevEvent
-	for _, step := range strings.Split(script, ";") {
-		step = strings.TrimSpace(step)
+	for _, raw := range strings.Split(script, ";") {
+		step := strings.TrimSpace(raw)
 		if step == "" {
 			continue
 		}
@@ -89,8 +101,21 @@ func ParseDevEvents(script string) ([]DevEvent, error) {
 				return nil, errors.New(TagWindowsDevEventsInvalid, "key takes key names joined by +, such as SHIFT+LEFT; keydown and keyup take one name", "step", step)
 			}
 			events = append(events, DevEvent{Kind: name, Keys: keys})
+		case "text":
+			// The blanks of the text are the text: only the step's own leading blanks go.
+			_, args, _ = strings.Cut(strings.TrimLeft(raw, " \t\r\n"), ":")
+			if args == "" {
+				return nil, errors.New(TagWindowsDevEventsInvalid, "text takes the text to type", "step", step)
+			}
+			events = append(events, DevEvent{Kind: name, Text: args})
+		case "compose", "composing":
+			pieces := strings.Split(args, ",")
+			if args == "" || slices.Contains(pieces, "") {
+				return nil, errors.New(TagWindowsDevEventsInvalid, "compose and composing take the pieces a,b,c", "step", step)
+			}
+			events = append(events, DevEvent{Kind: name, Steps: pieces})
 		default:
-			return nil, errors.New(TagWindowsDevEventsInvalid, "the step is not wait, move, tap, wheel, key, keydown or keyup (text and compose come with step 28.5)", "step", step)
+			return nil, errors.New(TagWindowsDevEventsInvalid, "the step is not wait, move, tap, wheel, key, keydown, keyup, text, compose or composing", "step", step)
 		}
 	}
 	return events, nil

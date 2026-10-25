@@ -16,16 +16,11 @@ import (
 	"github.com/rm4n0s/glutter/internal/winetest"
 )
 
-// TestWineScriptedKeysEditTheText builds the editor for Windows and types into it with the scripted
-// keys of GLUTTER_DEV_EVENTS, which put real key input into the system's queue (SPEC §25.6, §25.13).
-// Each frame, after the keys, must show in the text area what the frame of an editor that starts
-// with that text and selection shows (GLUTTER_DEV_TEXT and GLUTTER_DEV_SELECT), pixel for pixel:
-// letters, Shift, Backspace, Delete, the arrows, Home and End, Page Down, Control+A and the word
-// movement of Control+Shift+arrows. The clipboard keys (Control+C, X and V) need the clipboard of
-// Windows, which comes with step 28.6. A key that moves the caret by the layout (a page, a line
-// break, a word) waits for a frame after the edit it follows: those actions work on the value that
-// the last frame laid out, as Flutter's do, and keys of one step can all arrive before the next frame. Run it with `go test -tags glutter_wine -p 1 ./examples/editor`.
-func TestWineScriptedKeysEditTheText(t *testing.T) {
+// wineEditor builds the editor for Windows and returns a function that runs it under Wine with the given
+// environment and returns the frame it saved (GLUTTER_SCREENSHOT, 5 seconds after the start). The
+// processes of Wine are stopped when the test ends, and the test fails if any is left.
+func wineEditor(t *testing.T) func(name string, env ...string) *image.RGBA {
+	t.Helper()
 	h, err := winetest.New("")
 	if err != nil {
 		t.Fatal(err)
@@ -48,7 +43,7 @@ func TestWineScriptedKeysEditTheText(t *testing.T) {
 			t.Errorf("processes left running:\n%s", strings.Join(left, "\n"))
 		}
 	})
-	run := func(name string, env ...string) *image.RGBA {
+	return func(name string, env ...string) *image.RGBA {
 		t.Helper()
 		shot := filepath.Join(dir, name+".png")
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
@@ -67,6 +62,19 @@ func TestWineScriptedKeysEditTheText(t *testing.T) {
 		}
 		return img
 	}
+}
+
+// TestWineScriptedKeysEditTheText builds the editor for Windows and types into it with the scripted
+// keys of GLUTTER_DEV_EVENTS, which put real key input into the system's queue (SPEC §25.6, §25.13).
+// Each frame, after the keys, must show in the text area what the frame of an editor that starts
+// with that text and selection shows (GLUTTER_DEV_TEXT and GLUTTER_DEV_SELECT), pixel for pixel:
+// letters, Shift, Backspace, Delete, the arrows, Home and End, Page Down, Control+A and the word
+// movement of Control+Shift+arrows. The clipboard keys (Control+C, X and V) need the clipboard of
+// Windows, which comes with step 28.6. A key that moves the caret by the layout (a page, a line
+// break, a word) waits for a frame after the edit it follows: those actions work on the value that
+// the last frame laid out, as Flutter's do, and keys of one step can all arrive before the next frame. Run it with `go test -tags glutter_wine -p 1 ./examples/editor`.
+func TestWineScriptedKeysEditTheText(t *testing.T) {
+	run := wineEditor(t)
 	typeHello := "key:SHIFT+H;key:E;key:L;key:L;key:O;key:SPACE;key:W;key:O;key:R;key:L;key:D;wait:300ms"
 	// The text area of the 820 x 460 window, without the status bar (it changes with the caret).
 	area := image.Rect(16, 36, 480, 412)

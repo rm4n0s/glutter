@@ -10,6 +10,7 @@ import (
 	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/internal/gpu"
 	"github.com/rm4n0s/glutter/internal/platform"
+	"github.com/rm4n0s/glutter/internal/platform/windows/ime"
 	"github.com/rm4n0s/glutter/internal/platform/windows/win32"
 	"github.com/rm4n0s/glutter/ui"
 )
@@ -70,6 +71,8 @@ type window struct {
 	mouse     *mouseTranslator
 	touch     *pointerTranslator
 	synthetic bool
+	// text is the text input of the window: the input method and the characters (textinput_windows.go).
+	text *ime.Input
 }
 
 var _ platform.Window = (*window)(nil)
@@ -384,6 +387,9 @@ func (w *window) dispatch(hwnd uintptr, msg uint32, wparam, lparam uintptr) uint
 	case win32.WMSetFocus:
 		w.reportKeyboardFocus(true)
 		p.keys.focusGained()
+		if w.text != nil {
+			w.text.FocusChanged()
+		}
 	case win32.WMKillFocus:
 		// The keys held down are released before the handler is told that the keys go elsewhere.
 		p.keys.releaseAll()
@@ -393,8 +399,18 @@ func (w *window) dispatch(hwnd uintptr, msg uint32, wparam, lparam uintptr) uint
 			return result
 		}
 	case win32.WMChar, win32.WMDeadChar, win32.WMSysChar, win32.WMSysDeadChar:
-		if result, handled := w.onChar(msg); handled {
+		if result, handled := w.onChar(msg, wparam); handled {
 			return result
+		}
+	case win32.WMIMESetContext, win32.WMIMEStartComposition, win32.WMIMEComposition, win32.WMIMEEndComposition:
+		result, handled, out := w.onIME(msg, wparam, lparam)
+		if handled {
+			return result
+		}
+		lparam = out
+	case win32.WMUniChar:
+		if wparam == win32.UnicodeNoChar {
+			return 1 // this window understands WM_UNICHAR; DefWindowProc makes WM_CHAR of the others
 		}
 	case win32.WMInputLangChange:
 		p.keys.layoutChanged()
@@ -874,11 +890,6 @@ func (w *window) SetHidden(hidden bool) bool {
 	w.p.scheduleVsync()
 	return true
 }
-
-// SetTextInput does nothing until step 28.5.
-//
-// Flutter: no counterpart
-func (w *window) SetTextInput(ui.TextInputState) {}
 
 // StartDrag fails with DragUnsupported until step 28.12.
 //

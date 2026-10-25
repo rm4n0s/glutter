@@ -145,7 +145,7 @@ func bypassesFramework(key uint32) bool {
 // Flutter: shell/platform/windows/keyboard_manager.cc KeyboardManager::HandleMessage
 func (m *keyboardManager) handleKey(q keyQueue, msg uint32, wparam, lparam uintptr, msgTime uint32) keyAnswer {
 	if wparam == win32.VKPacket {
-		return keyToSystem // a character that SendInput sent; the text input takes it (step 28.5)
+		return keyToSystem // a character that SendInput sent: DefWindowProc ignores the key, and the WM_CHAR that follows is typed by the text input (SPEC §25.7)
 	}
 	scan := uint32(lparam>>16) & 0xff
 	extended := (lparam>>24)&1 == 1
@@ -198,7 +198,7 @@ func (m *keyboardManager) handleKey(q keyQueue, msg uint32, wparam, lparam uintp
 // key were taken when the key down was handled, so what comes here is a WM_SYSCHAR or
 // WM_SYSDEADCHAR of a system key (consumed when the framework handled the key, so that Windows does
 // not beep or open the system menu for it), or text that no key made (an input method's, or
-// SendInput's), which the text input takes in step 28.5.
+// SendInput's), which the text input types (SPEC §25.7).
 //
 // Flutter: shell/platform/windows/keyboard_manager.cc KeyboardManager::HandleMessage (WM_CHAR, WM_SYSCHAR)
 func (m *keyboardManager) handleChar(msg uint32) keyAnswer {

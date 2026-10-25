@@ -17,8 +17,9 @@ import (
 //
 // Not ported: the cases of the redispatching (SlowFrameworkResponse*, RestartClearsKeyboardState,
 // the channel handler), which Flutter needs because the framework answers later and which do not
-// exist here (the framework answers at once), and the Vietnamese Telex and text input cases, which
-// belong to the input methods of step 28.5.
+// exist here (the framework answers at once), the slow-response Vietnamese Telex cases for the same
+// reason. The Telex case with the fast response and the end of the text input submit case are in
+// textinput_test.go (step 28.5), with the text input.
 
 // The ids of the keys that the tests expect.
 const (

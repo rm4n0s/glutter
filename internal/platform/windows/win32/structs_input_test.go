@@ -27,6 +27,8 @@ func TestInputStructSizes(t *testing.T) {
 		{"INPUT (keyboard)", unsafe.Sizeof(KeyInput{}), 40},
 		{"KEYBDINPUT", unsafe.Sizeof(KeybdInput{}), 24},
 		{"CURSORINFO", unsafe.Sizeof(CursorInfo{}), 24},
+		{"COMPOSITIONFORM", unsafe.Sizeof(CompositionForm{}), 28},
+		{"CANDIDATEFORM", unsafe.Sizeof(CandidateForm{}), 32},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -54,6 +56,10 @@ func TestInputStructSizes(t *testing.T) {
 		{"KEYBDINPUT.dwFlags", unsafe.Offsetof(KeybdInput{}.Flags), 4},
 		{"KEYBDINPUT.dwExtraInfo", unsafe.Offsetof(KeybdInput{}.ExtraInfo), 16},
 		{"CURSORINFO.hCursor", unsafe.Offsetof(CursorInfo{}.Cursor), 8},
+		{"COMPOSITIONFORM.ptCurrentPos", unsafe.Offsetof(CompositionForm{}.CurrentPos), 4},
+		{"COMPOSITIONFORM.rcArea", unsafe.Offsetof(CompositionForm{}.Area), 12},
+		{"CANDIDATEFORM.ptCurrentPos", unsafe.Offsetof(CandidateForm{}.CurrentPos), 8},
+		{"CANDIDATEFORM.rcArea", unsafe.Offsetof(CandidateForm{}.Area), 16},
 	}
 	for _, tt := range offsets {
 		if tt.got != tt.want {

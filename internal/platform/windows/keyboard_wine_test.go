@@ -19,6 +19,8 @@ import (
 type keyRec struct {
 	*rec
 	keys []ui.KeyData
+	// texts are the events of the text input that the platform gave at once.
+	texts []ui.TextInputEvent
 	// answer is what OnKeySync says for the key data that is not synthesized.
 	answer bool
 }
@@ -27,8 +29,8 @@ func (r *keyRec) OnKeySync(d ui.KeyData) bool {
 	r.keys = append(r.keys, d)
 	return r.answer && !d.Synthesized
 }
-func (r *keyRec) OnPointerSync([]ui.PointerData)    {}
-func (r *keyRec) OnTextInputSync(ui.TextInputEvent) {}
+func (r *keyRec) OnPointerSync([]ui.PointerData)      {}
+func (r *keyRec) OnTextInputSync(e ui.TextInputEvent) { r.texts = append(r.texts, e) }
 
 // kd is the part of a key data that the tests compare.
 type kd struct {

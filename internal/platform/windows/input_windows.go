@@ -21,6 +21,7 @@ func (w *window) initInput() {
 	w.touch = newPointerTranslator(w.p.pointers, w.id)
 	win32.SetWindowFeedbackSetting(w.hwnd, win32.FeedbackTouchContactVisualization, false)
 	win32.SetWindowFeedbackSetting(w.hwnd, win32.FeedbackPenBarrelVisualization, false)
+	w.initText()
 }
 
 // flushPointers sends the data the translators made as one batch.

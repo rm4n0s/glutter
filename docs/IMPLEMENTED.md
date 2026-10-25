@@ -3120,3 +3120,59 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - Control+C, X and V are not tested yet: they need the Windows clipboard of step 28.6.
   - Fixed in this step: `win32.QSAllInput` was `0x04FF`, which lacks `QS_TOUCH` and `QS_POINTER`. The message loop would not have woken for queued touch and pen messages from step 28.3. It is now `0x1CFF`, found by the layout test.
   - Found, not changed (same as Flutter): the actions that move by the layout use the value of the last laid-out frame. These are the page actions (Page Up, Page Down), the line-break actions (Home, End) and the word actions. A Page Down in the same turn as typing puts the old text back, and a Shift+End right after a Delete selects nothing. The scripted events therefore need a `wait:` between an edit and such a key, and the editor test has one; without it, the test failed or passed depending on timing. Typing at human speed always has a frame in between.
+
+## 28.5 Text input and IMEs
+
+- **Date:** 2026-10-25
+- **Branch:** feat/step-28.5-windows-ime
+- **Summary:** Text fields on Windows now work with the input methods. The composition is drawn in the field, and the candidate window follows the caret.
+  - `internal/platform/windows/ime` is a plain-Go model over a small `IMM` interface. `imm_windows.go` calls imm32, and `imetest` is a fake of it.
+  - The IME messages become `TextInputEvent`s through `textedit.TextEditor`:
+    - `WM_IME_STARTCOMPOSITION` and `WM_IME_ENDCOMPOSITION`;
+    - `WM_IME_COMPOSITION`: `GCS_COMPSTR` with `GCS_CURSORPOS` is the preedit, and `GCS_RESULTSTR` is the commit;
+    - `WM_IME_SETCONTEXT` hides the system composition window.
+  - A `WM_CHAR` that no key made is typed, with surrogate pairs. It comes from an input method or from `SendInput` with `KEYEVENTF_UNICODE`.
+  - `SetTextInput` turns the IME on while a text field has the focus and off otherwise. It keeps the composition window, the candidate window and the system caret at the scaled caret rectangle.
+  - `GLUTTER_DEV_EVENTS` gains `text:`, `compose:` and `composing:`. They are sent as real window messages, and only the strings of the input context come from the script.
+- **Main files:**
+  - `internal/platform/windows/ime/`
+  - `internal/platform/windows/`: `textinput_windows.go`, `devevents.go`, `window_windows.go`, `keyboard_windows.go`
+  - `internal/platform/windows/win32/`: `imm_windows.go`, `consts_ime.go`, `structs_ime.go`
+  - SPEC §12.10, §25.6, §25.7
+- **Tests:**
+  - `ime` over the fake IMM, covering 96% of statements:
+    - Japanese and Chinese sessions, a cancel, an emptied string;
+    - a result and a new composing string in one message, a selection replaced by the first preedit;
+    - surrogate pairs and combining marks, a missing or invalid caret position, characters;
+    - a composition across a framework state change, the IME on and off, the abort when the field goes away;
+    - the candidate window placement at scales 1, 1.25, 1.5 and 2.
+  - Ported from Flutter:
+    - the 7 `OnImeComposition*` cases of `window_unittests.cc`;
+    - `CompositionCursorPos` and `VerifyComposingSendStateUpdate` of `text_input_plugin_unittest.cc`, with the behavior of 3 more cases tested;
+    - the Telex case and the end of the submit case of `keyboard_unittests.cc`, and the `VK_PROCESSKEY` case.
+  - The `COMPOSITIONFORM` and `CANDIDATEFORM` mirrors and 30 constants are checked against the mingw-w64 headers.
+- **Wine tests:**
+  - The input context follows the field: `ImmAssociateContext(NULL)` turns the IME off and back on.
+  - `ImmGetCandidateWindow`, `ImmGetCompositionWindow` and `GetCaretPos` give the caret rectangle and follow it.
+  - Scripted text and compositions arrive as `Preedit` and `Commit`.
+  - Wine's own IME composes through `ImmSetCompositionStringW`.
+  - Unicode text from `SendInput` is typed once, and typed letters are not typed twice.
+  - `examples/editor`: 5 cases compared pixel for pixel with an editor started with the committed text. A composition in progress differs from the plain text only by the underline.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck ✅ · apicheck ✅ · `GOOS=js GOARCH=wasm` build, vet and `scripts/test-wasm.sh` ✅ · `scripts/check-android.sh` ✅ · `GOOS=windows` amd64 build and vet, arm64 build ✅ · `scripts/test-windows.sh` ✅ · Wine tests ✅ · layout test against the headers ✅ · nothing left running ✅
+- **Proof:** method F, `docs/implemented-proof-images/28.5-windows-editor-preedit.png`: `examples/editor` under Wine after scripted text and compositions. "café" was composed and committed, and "preedit" is still being composed: it is underlined, with the caret at its end.
+
+  ![28.5](implemented-proof-images/28.5-windows-editor-preedit.png)
+- **Manual checks (pending, for the owner's PC; collected in `docs/MANUAL-CHECKS.md` by step 28.15):**
+  - the Microsoft IMEs: Japanese (type, convert, choose a candidate), Chinese Pinyin, Korean;
+  - the candidate window next to the caret at 100% and 150% scale, and on a second monitor;
+  - the emoji panel (Win+.);
+  - the touch keyboard and handwriting panel, if there is a touch screen (they may not work: record it).
+- **Deviations and follow-ups:**
+  - Four new rows in SPEC §12.10:
+    - the system caret lives while a field has the focus;
+    - `TextInputEvent`s are sent instead of editing states;
+    - the candidate window keeps the caret rectangle clear;
+    - `WM_IME_STARTCOMPOSITION` is answered 0.
+  - When the field loses the focus, the composition is cancelled, as Wayland's `leave` does; Flutter's `clearClient` commits it.
+  - Wine's `CPS_CANCEL` commits the string like `CPS_COMPLETE`, so the cancel is tested over the fake.
+  - Not done: composition clauses and attributes, reconversion, the handwriting panel.
