@@ -4,6 +4,7 @@ package engine
 
 import (
 	"context"
+	"github.com/rm4n0s/glutter/internal/gpu/shadercache"
 	"image"
 	"log/slog"
 	"os"
@@ -191,3 +192,7 @@ func tuneGC() {
 		debug.SetMemoryLimit(webMemoryLimit)
 	}
 }
+
+// defaultShaderCacheDir is the directory of the shader cache when Config names none: the web has no home,
+// so the environment names none (SPEC §9.7).
+func defaultShaderCacheDir(getenv func(string) string) string { return shadercache.Dir(getenv) }

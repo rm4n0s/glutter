@@ -95,8 +95,9 @@ func TestNewShaderCache(t *testing.T) {
 		env     map[string]string
 		wantDir string // "" for no cache
 	}{
-		{"the config's directory", filepath.Join(tmp, "cfg"), map[string]string{"XDG_CACHE_HOME": "/x"}, filepath.Join(tmp, "cfg")},
-		{"the environment's", "", map[string]string{"XDG_CACHE_HOME": tmp}, filepath.Join(tmp, "glutter", "shaders")},
+		{"the config's directory", filepath.Join(tmp, "cfg"), map[string]string{"XDG_CACHE_HOME": "/x", "LocalAppData": "/x"}, filepath.Join(tmp, "cfg")},
+		// XDG_CACHE_HOME is the base on Linux and LocalAppData on Windows (defaultShaderCacheDir).
+		{"the environment's", "", map[string]string{"XDG_CACHE_HOME": tmp, "LocalAppData": tmp}, filepath.Join(tmp, "glutter", "shaders")},
 		{"turned off beats the config", filepath.Join(tmp, "cfg"), map[string]string{"GLUTTER_SHADER_CACHE": "0"}, ""},
 		{"no place for it", "", map[string]string{}, ""},
 	}

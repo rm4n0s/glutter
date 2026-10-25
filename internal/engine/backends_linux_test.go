@@ -147,3 +147,26 @@ func TestFontQueriesOverFontconfig(t *testing.T) {
 		t.Error("the families are not sorted")
 	}
 }
+
+// The directory of the shader cache on Linux is the one of the environment: XDG_CACHE_HOME, else
+// ~/.cache; the variable of Windows is not read (SPEC §9.7).
+func TestDefaultShaderCacheDirIsTheXDGOne(t *testing.T) {
+	tests := []struct {
+		name string
+		env  map[string]string
+		want string
+	}{
+		{"xdg cache home", map[string]string{"XDG_CACHE_HOME": "/x/cache", "HOME": "/home/u"}, "/x/cache/glutter/shaders"},
+		{"home", map[string]string{"HOME": "/home/u"}, "/home/u/.cache/glutter/shaders"},
+		{"LocalAppData is not read", map[string]string{"LocalAppData": "/c/local"}, ""},
+		{"turned off", map[string]string{"GLUTTER_SHADER_CACHE": "0", "HOME": "/home/u"}, ""},
+		{"no home", nil, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := defaultShaderCacheDir(func(k string) string { return tt.env[k] }); got != tt.want {
+				t.Errorf("defaultShaderCacheDir = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

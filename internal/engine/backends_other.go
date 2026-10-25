@@ -4,6 +4,7 @@ package engine
 
 import (
 	"context"
+	"github.com/rm4n0s/glutter/internal/gpu/shadercache"
 	"log/slog"
 	"time"
 
@@ -36,3 +37,7 @@ func SystemFontMatcher(context.Context, *slog.Logger) text.Matcher { return nil 
 const (
 	tagBackendUnavailable = "BackendUnavailable"
 )
+
+// defaultShaderCacheDir is the directory of the shader cache when Config names none: the environment's
+// (SPEC §9.7).
+func defaultShaderCacheDir(getenv func(string) string) string { return shadercache.Dir(getenv) }

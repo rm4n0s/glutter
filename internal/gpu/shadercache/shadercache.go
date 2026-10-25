@@ -22,8 +22,9 @@ import (
 // Flutter: no counterpart
 const EnvVar = "GLUTTER_SHADER_CACHE"
 
-// Dir is the directory of the cache: $XDG_CACHE_HOME/glutter/shaders, or ~/.cache/glutter/shaders; empty when
-// the cache is turned off (EnvVar is "0") or the environment names no home (the web).
+// Dir is the directory of the cache on Linux and the other Unix systems: $XDG_CACHE_HOME/glutter/shaders, or
+// ~/.cache/glutter/shaders; empty when the cache is turned off (EnvVar is "0") or the environment names no
+// home (the web). Windows keeps the cache under %LOCALAPPDATA% (DirUnder); the engine chooses (SPEC §9.7).
 //
 // Flutter: no counterpart
 func Dir(getenv func(string) string) string {
@@ -37,6 +38,19 @@ func Dir(getenv func(string) string) string {
 		return filepath.Join(home, ".cache", "glutter", "shaders")
 	}
 	return ""
+}
+
+// DirUnder is the directory of the cache under the user's cache directory of the operating system:
+// base/glutter/shaders. Windows uses it with %LOCALAPPDATA%, which is what os.UserCacheDir returns there
+// (SPEC §9.7). It is empty when the cache is turned off (EnvVar is "0") or base is empty (the environment
+// names no such directory).
+//
+// Flutter: no counterpart
+func DirUnder(getenv func(string) string, base string) string {
+	if getenv(EnvVar) == "0" || base == "" {
+		return ""
+	}
+	return filepath.Join(base, "glutter", "shaders")
 }
 
 // Cache is a directory of cached binaries. It is used from the UI thread, as the renderers are.

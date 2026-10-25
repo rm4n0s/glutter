@@ -4,6 +4,7 @@ package engine
 
 import (
 	"context"
+	"github.com/rm4n0s/glutter/internal/gpu/shadercache"
 	"log/slog"
 	"time"
 
@@ -97,3 +98,11 @@ const (
 	tagBackendUnavailable = "BackendUnavailable"
 	tagBackendUnknown     = "BackendUnknown"
 )
+
+// defaultShaderCacheDir is the directory of the shader cache when Config names none: glutter\shaders
+// under %LOCALAPPDATA%, which is what os.UserCacheDir returns on Windows (SPEC §9.7). The variable is read
+// through getenv, so a test can set it; XDG_CACHE_HOME and HOME, which Wine passes through from the host,
+// are not read.
+func defaultShaderCacheDir(getenv func(string) string) string {
+	return shadercache.DirUnder(getenv, getenv("LocalAppData"))
+}

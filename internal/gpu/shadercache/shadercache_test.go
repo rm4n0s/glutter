@@ -165,3 +165,25 @@ func TestNilReportIsFine(t *testing.T) {
 		t.Error("a value that could not be stored was found")
 	}
 }
+
+func TestDirUnder(t *testing.T) {
+	tests := []struct {
+		name string
+		env  map[string]string
+		base string
+		want string
+	}{
+		{"under the base", nil, "/c/Users/u/AppData/Local", filepath.Join("/c/Users/u/AppData/Local", "glutter", "shaders")},
+		{"the other variables are not read", map[string]string{"XDG_CACHE_HOME": "/x", "HOME": "/h"}, "/b", filepath.Join("/b", "glutter", "shaders")},
+		{"no base", map[string]string{"HOME": "/h"}, "", ""},
+		{"turned off", map[string]string{EnvVar: "0"}, "/b", ""},
+		{"on for any other value", map[string]string{EnvVar: "1"}, "/b", filepath.Join("/b", "glutter", "shaders")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := DirUnder(func(k string) string { return tt.env[k] }, tt.base); got != tt.want {
+				t.Errorf("DirUnder = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

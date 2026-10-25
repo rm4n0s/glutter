@@ -45,7 +45,7 @@ type rendererCandidate struct {
 }
 
 // newShaderCache makes the cache of what the GPU drivers compile (SPEC §9.7): in Config.ShaderCacheDir, or the
-// directory of the environment. It is nil when the cache is off (GLUTTER_SHADER_CACHE=0) or there is no place for
+// directory of the operating system (defaultShaderCacheDir). It is nil when the cache is off (GLUTTER_SHADER_CACHE=0) or there is no place for
 // it (the web). A cache that cannot be read or written is logged once and then ignored.
 func newShaderCache(cfg *Config, getenv func(string) string, log *slog.Logger) *shadercache.Cache {
 	if getenv(shadercache.EnvVar) == "0" {
@@ -53,7 +53,7 @@ func newShaderCache(cfg *Config, getenv func(string) string, log *slog.Logger) *
 	}
 	dir := cfg.ShaderCacheDir
 	if dir == "" {
-		dir = shadercache.Dir(getenv)
+		dir = defaultShaderCacheDir(getenv)
 	}
 	if dir == "" {
 		return nil

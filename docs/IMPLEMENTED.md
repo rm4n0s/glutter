@@ -3288,3 +3288,83 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - A missing `d3dcompiler_47.dll` returns win32's own tag. Mapping it to `D3D12LoadFailed` is step 28.8's.
   - `shadercache.Dir` still reads `XDG_CACHE_HOME` or `HOME`. On Windows it must be `os.UserCacheDir()` (SPEC §9.7): step 28.8.
   - The Android emulator harness had a race: `setRotation` slept a fixed 2 seconds, and right after another test turned the emulator back, the frame was taken before the turn finished. It now waits up to 20 seconds for the window manager to report `mCurrentRotation`. The emulator never reports a half turn for an app, so that case waits the full 20 seconds.
+
+## 28.8 The Direct3D 12 device: adapter, memory and resources
+
+- **Date:** 2026-10-25
+- **Branch:** feat/step-28.8-d3d12-device
+- **Summary:**
+  - **The device:** `internal/gpu/d3d12` now has an offscreen `explicit.Device` on Direct3D 12.
+    - It loads `d3d12.dll` and `dxgi.dll` from System32; a failure is `D3D12LoadFailed`.
+    - It chooses the adapter and makes the device at feature level 11_0, with a queue, a fence and two frame slots.
+    - It reports the adapter, the feature level and the binding tier at startup (SPEC §9.7).
+  - **The adapter choice** is a pure function over the adapters DXGI lists:
+    - hardware first, software adapters skipped;
+    - WARP by name, or as the last candidate of `auto`;
+    - an index, or a part of a name;
+    - the errors are `D3D12NoAdapter` and `D3D12Unsupported`.
+    - `GLUTTER_D3D12_DEBUG=1` turns on the debug layer, or logs that it is missing and goes on.
+  - **Resources:**
+    - committed buffers on mapped upload heaps;
+    - textures in rgba8, bgra8 and r8, with mip levels and `Level(i)` views;
+    - samplers, with CPU descriptors;
+    - `WriteTexture` goes through a 16 MiB staging ring: rows pitched to 256 bytes, copies placed at 512, a half of the ring for each frame slot;
+    - `ReadTexture` goes through readback buffers and calls `done` after the fence;
+    - `CopyTexture` works, and so does a `BeginPass` that clears or loads.
+  - **States:** a tracker keeps the state of every texture level and batches the barriers into one `ResourceBarrier`. One subresource in two states in one pass is `D3D12StateConflict`.
+  - **Errors:** `d3d12Error` is the one table that turns an `HRESULT` into `GPUOutOfMemory`, `GPUDeviceLost` (with `GetDeviceRemovedReason` as `reason`) or `D3D12CallFailed`.
+  - **Shader cache on Windows:** the shader cache directory is now under `%LOCALAPPDATA%` (`defaultShaderCacheDir`, `shadercache.DirUnder`). Wine passes the host's `XDG_CACHE_HOME` and `HOME` through, so they are not read on Windows. Linux is unchanged.
+- **Main files:**
+  - `internal/gpu/d3d12/`:
+    - plain Go: `adapter.go`, `errors.go`, `check.go`, `states.go`, `memory.go`, `mapping.go`, `debug.go`, `vtables.go`, `types.go`, `doc.go`;
+    - Windows only: `dll_windows.go`, `device_windows.go`, `memory_windows.go`, `resources_windows.go`, `fence_windows.go`, `frames_windows.go`, `descriptors_windows.go`.
+  - `internal/gpu/shadercache/shadercache.go`
+  - `internal/engine/`: `renderers.go`, `backends_<goos>.go`
+  - SPEC §9.7 and §9.8
+- **Tests:**
+  - Table tests, run on Linux:
+    - the adapter choice: 13 cases, and 6 failures with route tests;
+    - the state tracker: batches, levels, 5 conflicts;
+    - the staging ring: alignment, wrap, a request larger than the ring, release by frame;
+    - the row pitch and size, against `Limits.AlignedRowPitch`;
+    - the slot pool, the `HRESULT` table with routes, the format, filter and address mappings, the debug-message parser;
+    - the shader cache directory on Linux and on Windows.
+  - Layout test against the mingw-w64 headers: the structures, 56 vtable indexes, the constants and the IIDs.
+  - No golden image changed.
+- **Wine tests** (29 tests, run 4 times):
+  - **The device and the adapter:**
+    - a device at feature level 11_0 with the adapter that `auto` chooses, and its startup line;
+    - an adapter by index and by a part of its name; a wrong one is `D3D12NoAdapter`;
+    - `D3D12Unsupported`, and `D3D12LoadFailed` in 5 cases;
+    - the debug layer is missing: a warning is logged and the device is made;
+    - a lost device.
+  - **Resources:**
+    - a buffer written and read back exactly through a GPU copy;
+    - 3 formats in 7 sizes written and read back, from a source pitch that is not 256-aligned;
+    - writes of a part of a texture, and writes before a frame, inside a frame and inside a pass;
+    - an 8.4 MB write through an upload buffer of its own;
+    - mip levels with views of one level, copies including copies between levels, and a copy of a texture onto itself, which is `D3D12StateConflict`;
+    - clear and load passes, read back;
+    - the 11 programmer-error and call-error tags, with routes;
+    - sampler descriptors reused, and a second sampler heap;
+    - the texture layout against `GetCopyableFootprints`.
+  - **Frames and cleanup:**
+    - 100 frames do not grow memory: COM objects, resources, committed bytes and descriptors are counted, and so is the device's reference count;
+    - the fence wait returns once the GPU is done;
+    - `Close` leaves nothing behind;
+    - a second device works in the same process.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ (also with `GOOS=windows` on `d3d12` and `win32`) · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck ✅ · apicheck ✅ · `GOOS=js GOARCH=wasm` build, vet and `scripts/test-wasm.sh` ✅ · `scripts/check-android.sh` ✅ · `GOOS=windows` amd64 build and vet, arm64 build ✅ · `scripts/test-windows.sh` ✅ · Wine tests ✅ · layout test against the headers ✅ · nothing left running ✅
+- **Proof:** none.
+- **Manual checks (pending, for the owner's PC):**
+  - the debug layer and its info queue, whose messages are read after each `Submit`;
+  - a real device removal;
+  - WARP;
+  - the real adapter names and feature levels;
+  - a buffer of 0 bytes is refused (vkd3d accepts it).
+- **Deviations and follow-ups:**
+  - `D3D12LoadFailed` re-tags win32's error for the device's DLLs, because the SPEC names that tag. The shader compiler's loader keeps win32's own tags.
+  - `d3d12Error` is not listed in `errcheck.allow`: it returns nil on success, so the checker does not flag it.
+  - `BeginPass` only clears or loads. The draw commands, `NewPipeline` and `NewBindGroup` (step 28.9) and `NewSwapchain` (step 28.10) fail with `D3D12NotImplemented`.
+  - Textures and samplers already have CPU descriptors; step 28.9 copies them into the frame heaps.
+  - A texture write made inside a pass is staged in the half of the frame that will run its copy. The Vulkan backend stages it in the open frame's half while the copy runs in the next frame. This is latent: today's renderer makes all its texture writes (masks, glyphs, images) while it builds the frame, before any pass. Fix it in Vulkan if a write inside a pass is ever added.
+  - Where vkd3d under Wine differs from Windows: it lists one made-up adapter (a GeForce GTX 470 over lavapipe), has no WARP and no debug layer, and accepts a buffer of 0 bytes.

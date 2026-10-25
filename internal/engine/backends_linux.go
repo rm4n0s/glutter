@@ -4,6 +4,7 @@ package engine
 
 import (
 	"context"
+	"github.com/rm4n0s/glutter/internal/gpu/shadercache"
 	"log/slog"
 	"os"
 	"time"
@@ -188,3 +189,7 @@ func newGLESRenderer(cfg *Config, log *slog.Logger) renderer {
 const (
 	tagShmFillUnsupported = "ShmFillUnsupported"
 )
+
+// defaultShaderCacheDir is the directory of the shader cache when Config names none: $XDG_CACHE_HOME or
+// ~/.cache, then glutter/shaders (SPEC §9.7).
+func defaultShaderCacheDir(getenv func(string) string) string { return shadercache.Dir(getenv) }

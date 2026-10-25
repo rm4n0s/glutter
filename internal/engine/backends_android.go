@@ -4,6 +4,7 @@ package engine
 
 import (
 	"context"
+	"github.com/rm4n0s/glutter/internal/gpu/shadercache"
 	"image"
 	"log/slog"
 	"os"
@@ -164,3 +165,7 @@ func SystemFontMatcher(_ context.Context, log *slog.Logger) text.Matcher {
 	}
 	return m
 }
+
+// defaultShaderCacheDir is the directory of the shader cache when Config names none: the environment's
+// (SPEC §9.7); an app on Android gives Config.ShaderCacheDir its cache directory.
+func defaultShaderCacheDir(getenv func(string) string) string { return shadercache.Dir(getenv) }

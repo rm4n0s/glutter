@@ -4,6 +4,8 @@ package engine
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -27,5 +29,41 @@ func TestConnectDisplayChoosesTheBackendOfWindows(t *testing.T) {
 			cfg := Config{Logger: quiet(), Backend: tt.backend, Getenv: func(k string) string { return env[k] }}
 			assertRoute(t, Run(context.Background(), cfg), tt.tag, tt.route)
 		})
+	}
+}
+
+// The directory of the shader cache on Windows is glutter\shaders under %LOCALAPPDATA%; XDG_CACHE_HOME
+// and HOME, which Wine passes through from the host, are not read (SPEC §9.7).
+func TestDefaultShaderCacheDirIsUnderLocalAppData(t *testing.T) {
+	local := filepath.Join("C:\\Users", "u", "AppData", "Local")
+	tests := []struct {
+		name string
+		env  map[string]string
+		want string
+	}{
+		{"under LocalAppData", map[string]string{"LocalAppData": local}, filepath.Join(local, "glutter", "shaders")},
+		{"XDG_CACHE_HOME and HOME are not read", map[string]string{"LocalAppData": local, "XDG_CACHE_HOME": "/x", "HOME": "/h"}, filepath.Join(local, "glutter", "shaders")},
+		{"only HOME", map[string]string{"HOME": "/h"}, ""},
+		{"turned off", map[string]string{"GLUTTER_SHADER_CACHE": "0", "LocalAppData": local}, ""},
+		{"nothing", nil, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := defaultShaderCacheDir(func(k string) string { return tt.env[k] }); got != tt.want {
+				t.Errorf("defaultShaderCacheDir = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// With the real environment: os.UserCacheDir of Windows is %LOCALAPPDATA%, and the engine's directory
+// is under it.
+func TestDefaultShaderCacheDirAgreesWithUserCacheDir(t *testing.T) {
+	base, err := os.UserCacheDir()
+	if err != nil {
+		t.Skipf("no LocalAppData in this environment: %v", err)
+	}
+	if got, want := defaultShaderCacheDir(os.Getenv), filepath.Join(base, "glutter", "shaders"); got != want {
+		t.Errorf("defaultShaderCacheDir = %q, os.UserCacheDir gives %q", got, want)
 	}
 }
