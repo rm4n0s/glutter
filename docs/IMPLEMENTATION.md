@@ -168,7 +168,7 @@ The owner's choice (2026-10-25): the main session is the **manager** (Opus 5.5, 
 | M25 Android platform (1.6) | 25.1–25.12 | `dev/android-hello`, `dev/android-services`; the examples on the emulator |
 | M26 Android behaviors of the framework, and 1.6 | 26.1–26.6 | every example but `multiwindow` and `tray` on Android |
 | M27 Fixes for Emetos (1.7) | 27.1–27.11 | `multiwindow` |
-| M28 Windows (1.8) | 28.1–28.16 | every example, `tray` and `multiwindow` included |
+| M28 Windows (1.8) | 28.1–28.19 | every example, `tray` and `multiwindow` included |
 
 ---
 
@@ -2145,7 +2145,7 @@ Install a missing tool only by asking the user (rule 7), with the command from t
 
 The owner chose on 2026-10-25 to port to Windows next, as release 1.8, "everything at once": every example that runs on Linux runs on Windows, `tray` and `multiwindow` included. That is the platform layer (windows, input, text input and IMEs, clipboard, cursors, DPI, displays, settings, fonts, lifecycle), the desktop services (tray, notifications, file dialogs, open URI), OLE drag and drop, UI Automation, the packaging of an `.exe`, and a Direct3D 12 renderer. The owner also decided: the renderer is Direct3D 12 at feature level 11_0 with shader model 5.1, as a new `explicit.Device` (D25, replacing the ANGLE plan of §6.4); the shaders are HLSL that naga writes and `D3DCompile` compiles at run time; Windows is called with `syscall`, not purego and not `golang.org/x/sys/windows`; and the tests run under Wine, with the rest as manual checks on a real PC. SPEC §25 and §9.8 are the design; each step adds a "Decided in step" paragraph to the section it settles, as the web and Android steps did.
 
-Before 28.1 there is no Flutter Windows embedder in `reference/`: **step 28.1 adds `engine/src/flutter/shell/platform/windows` and `shell/platform/common` to the fetch and checks every "Port from" path below**, and corrects this plan where a file is named differently or is missing. Windows is tested under Wine (SPEC §25.13): the steps that open windows or use the GPU list **Wine tests**, the visible ones list a **Proof** of method F, and the things Wine cannot show are **Manual checks** on a Windows PC, which 28.15 collects in `docs/MANUAL-CHECKS.md`. Step order: the platform (28.2 to 28.6) draws with `soft`; the Direct3D 12 renderer (28.7 to 28.10) comes after it; the services, drag and drop and accessibility (28.11 to 28.13) need both.
+Before 28.1 there is no Flutter Windows embedder in `reference/`: **step 28.1 adds `engine/src/flutter/shell/platform/windows` and `shell/platform/common` to the fetch and checks every "Port from" path below**, and corrects this plan where a file is named differently or is missing. Windows is tested under Wine (SPEC §25.13): the steps that open windows or use the GPU list **Wine tests**, the visible ones list a **Proof** of method F, and the things Wine cannot show are **Manual checks** on a Windows PC, which 28.15 collects in `docs/MANUAL-CHECKS.md`. Step order: the platform (28.2 to 28.6) draws with `soft`; the Direct3D 12 renderer (28.7 to 28.10) comes after it; the services, drag and drop and accessibility (28.11 to 28.13) need both. Steps 28.16 to 28.18 fix what Emetos asked for (its issues file, the owner's decision of 2026-10-25), so that they ship in 1.8.
 
 ### 28.1 Windows groundwork
 **Goal:** `GOOS=windows` builds and vets, an `.exe` can call Windows (DLLs, COM, callbacks), Go's mirrors of Windows structures are checked against the mingw-w64 headers, and the Windows tests run under Wine with one command.
@@ -2394,11 +2394,54 @@ Before 28.1 there is no Flutter Windows embedder in `reference/`: **step 28.1 ad
 **Manual checks:** the sweep of task 3.
 **Done when:** the default "Done when", every example draws its first frame under Wine, the Windows numbers are in `docs/PERFORMANCE.md`, and `docs/MANUAL-CHECKS.md` has a section for each step.
 
-### 28.16 Release 1.8
+### 28.16 Font fallback that loads only the fonts that can help (Emetos)
+**Goal:** a character that no font of the style has, a tab or another control character among them, no longer makes Glutter parse every font file of the style. A candidate is ruled out by its character map before its outlines are read, so a font that covers only another script costs nothing until that script is shown.
+**Why:** Emetos found it (issues file, "A character no font has makes Glutter load every font of the style"). The first row with a tab made `styleFonts.ResolveFace` (`internal/text/layout/engine.go`) parse the 62 files that fontconfig lists for `monospace`: 116 MB on disk, 170 MB of Go heap and 300 MB more resident memory, on the UI thread in the first frame. Emetos works around it with a tiny font that has a glyph for U+0009.
+**Read:** SPEC §10 (text, fonts, the fallback order of 1.2), §12.10 (the `Collection` and fallback rows), the 22.1–22.3 and 27.x entries of `docs/IMPLEMENTED.md` about fonts.
+**Port from:** none. HarfBuzz and go-text's `shaping` take the default-ignorable characters out of the run and give the control characters no glyph of their own. `fontscan`'s footprints keep a font's coverage (`Runes`) without parsing it.
+**Files:** `internal/text/layout/engine.go` (`styleFonts`), `internal/text/fonts.go` (`Collection`: coverage, lazy loading), `internal/text/scan.go` and the matchers if they must hand out coverage (`fontconfig`, `androidfonts`, `winfonts`, the web's), SPEC §10 and §12.10.
+**Tasks:**
+1. Control characters (general category `Cc`) and default-ignorable code points resolve to the first face of the style that loads, without the search and without the system fallback. The shaper keeps measuring a tab as before (tab stops of 1.4).
+2. Each candidate's coverage is known before it is parsed: from the matcher where it has it (fontconfig's charset, `fontscan` footprints, the `winfonts` and `androidfonts` caches), else from the `cmap` table alone, read once and kept. A candidate whose coverage lacks the rune is skipped without `font.NewFont`.
+3. A face is parsed only when it is chosen. If go-text can read glyph outlines lazily (a glyph the first time it is drawn), use that; if it cannot without changing go-text, say so and keep the full parse of the chosen face only.
+4. A rune that no candidate covers goes to the system fallback (unchanged), then to the first face's missing-glyph box, still without parsing the rest.
+**Tests:** a style of many fonts, written for the test, in which only the first and the last have Latin: a tab, `\r`, U+200B, U+FEFF and an unassigned code point parse at most the first file (count `Collection.load` calls); a Greek letter that only the third font has parses the first and the third; the result per rune is cached as before; the measures of a paragraph with tabs are unchanged (the tab-stop tests of 1.4 and a golden of a paragraph with tabs); the coverage from each matcher and from a `cmap` alone; a font whose `cmap` cannot be read is skipped with `FontLoadFailed` logged once. A benchmark: the first layout of a 10,000-line Go file with tabs against a style of 60 fonts, with its allocations, before and after (recorded in the entry).
+**Display tests:** none.
+**Proof:** none.
+**Manual checks:** none; Emetos removes its `fonts.ControlsFont` workaround and checks its memory (its own issue).
+
+### 28.17 `TreeSliverNode.SetExpanded` (Emetos)
+**Goal:** an app can say which nodes of a `TreeSliver` are expanded without making the nodes again, also for nodes that are not shown.
+**Why:** Emetos found it (issues file, "TreeSliver cannot set the expansion of a node that exists"). Its tree keeps the expansion in its model, by key, and must build every node again at each change, because a node's expansion can be given only when the node is made or toggled while it is shown.
+**Read:** SPEC §11.3 (`TreeSliver`), §12.10 (the `sliver_tree.dart` rows), the 22.7 and 27.9 entries of `docs/IMPLEMENTED.md`.
+**Port from:** none (Flutter's `TreeSliverNode._expanded` is private; the setter is a Glutter addition).
+**Files:** `widgets/sliver_tree.go`, its tests, `material/widgets_reexport_gen.go` if it changes, SPEC §12.10.
+**Tasks:**
+1. `TreeSliverNode.SetExpanded(expanded bool)`: sets the expansion of a node whether it is shown or not; a node with no children and not lazy stays collapsed (as the constructor does). When the node belongs to a shown `TreeSliver`, the tree makes its active nodes again (the callback of 27.9), with no animation; `TreeSliverController.ExpandNode` and `CollapseNode` keep animating. Setting the value the node has does nothing.
+2. The `// Deviation:` comment and a §12.10 row: a Glutter addition, because Go apps keep their tree's state in a model and Dart apps rebuild the nodes.
+**Tests:** a hidden descendant expanded with `SetExpanded`, then its ancestor expanded: the descendant's children show; a shown node expanded and collapsed: the rows, `Parent()` and `Depth()` are right and no animation runs; a leaf stays collapsed; a lazy node expands; the same value twice rebuilds nothing; `NodeKey` with nodes made again keeps the model's expansion when the app sets it with `SetExpanded` (Emetos's case); the controller still animates.
+**Proof:** none.
+**Manual checks:** none.
+
+### 28.18 The drag area of `WindowDecoration` (Emetos)
+**Goal:** only the title and the empty part of `WindowDecoration`'s bar move the window, maximize it on a double click and open the window menu on a right click; the widgets an app puts in `Leading` and `Actions` get their own gestures only.
+**Why:** Emetos found it (issues file, "WindowDecoration: the whole bar is the drag area"). Its menu button, workspace tabs and `+` button sit in the bar, so a drag of a tab moved the window, a double click maximized it and a right click asked for the window menu. Emetos works around it with a `GestureDetector` of no-op callbacks around its strip.
+**Read:** SPEC §8.2 (step 3, `WindowDecoration`), §12.10 (the `WindowDecoration` row), the 27.4 entry of `docs/IMPLEMENTED.md`.
+**Port from:** none (Glutter's own widget).
+**Files:** `widgets/window_decoration.go`, its tests, SPEC §8.2 and §12.10.
+**Tasks:**
+1. The bar is a row of the `Leading` widgets, the draggable area and the `Actions` widgets; the gesture detector of the window (pan, double tap, secondary tap) covers the draggable area only: the title (default or `Title`) and the space around it, which takes the rest of the row. The window buttons stay as they are.
+2. Update the §12.10 row and the sentence of §8.2.
+**Tests:** a drag starting on a `Leading` widget and one on an `Actions` widget do not call `PerformWindowAction`; a drag on the title and one on the empty space between the title and the actions start a move; a double tap and a right click the same way; a `GestureDetector` with `OnTap` in `Actions` gets its tap at once (no wait for a double tap of the bar); the golden of the bar is unchanged.
+**Proof:** none.
+**Manual checks:** none; Emetos removes its no-op detector (its own issue).
+
+### 28.19 Release 1.8
 **Tasks:** confirm and record in `IMPLEMENTED.md`:
 - the standard checks including the four Windows ones, the display tests, the browser tests, the device tests and the Wine tests (`GOOS=windows go test -tags glutter_wine -exec "$PWD/scripts/wine-exec.sh" -p 1 ./...` and the host-side Wine tests)
 - the manual checks of 28.2 to 28.15 on a Windows PC, with the owner's answers in `docs/MANUAL-CHECKS.md`
 - the performance numbers (28.15) and the Windows targets of SPEC §15, confirmed by the owner
 - the API check and the error rules check
+- the Emetos fixes of 28.16 to 28.18, listed in the release notes with what Emetos can remove (`fonts.ControlsFont`, the rebuilt tree nodes, the no-op detector of its title bar)
 
-Then update the SPEC's version paragraph (the 1.8 sentence) and the scope table, the README, and `third_party/flutter` NOTICE entries for the Windows embedder, and **ask the user** before tagging `v1.8.0` and pushing the tag.
+Then update the SPEC's version paragraph (the 1.8 sentence: Windows, and the fixes for Emetos) and the scope table, the README, and `third_party/flutter` NOTICE entries for the Windows embedder, and **ask the user** before tagging `v1.8.0` and pushing the tag.
