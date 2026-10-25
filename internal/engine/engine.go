@@ -885,6 +885,8 @@ func PlatformConfiguration(s platform.Settings) ui.PlatformConfiguration {
 		UIFontSize:            s.UIFontSize,
 		MonospaceFontFamily:   s.MonospaceFontFamily,
 		MonospaceFontSize:     s.MonospaceFontSize,
+		CaretBlinkTime:        s.CaretBlinkTime,
+		DoubleClickTime:       s.DoubleClickTime,
 	}
 	if s.HasAccentColor {
 		c.AccentColor = ui.Ptr(s.AccentColor)

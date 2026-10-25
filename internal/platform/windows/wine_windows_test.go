@@ -39,6 +39,9 @@ type rec struct {
 	lost        int
 	displays    int
 	onFrame     func(view ui.ViewID)
+	// settings are the settings OnSettings got, and lifecycle the states OnLifecycle got.
+	settings  []platform.Settings
+	lifecycle []ui.AppLifecycleState
 	// batches are the batches OnPointer got, and pointers the same data in one list.
 	batches  [][]ui.PointerData
 	pointers []ui.PointerData
@@ -57,6 +60,8 @@ func (r *rec) OnKeyboardFocus(_ ui.ViewID, f bool) { r.kfocus = append(r.kfocus,
 func (r *rec) OnCloseRequest(v ui.ViewID) bool     { r.closes = append(r.closes, v); return r.closeAnswer }
 func (r *rec) OnContentLost(ui.ViewID)             { r.lost++ }
 func (r *rec) OnDisplaysChanged()                  { r.displays++ }
+func (r *rec) OnSettings(s platform.Settings)      { r.settings = append(r.settings, s) }
+func (r *rec) OnLifecycle(s ui.AppLifecycleState)  { r.lifecycle = append(r.lifecycle, s) }
 
 // newTestPlatform locks the thread, starts the platform and closes it when the test ends.
 func newTestPlatform(t *testing.T, opts ...Options) (*Platform, *rec) {

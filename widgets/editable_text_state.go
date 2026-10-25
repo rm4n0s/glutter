@@ -71,7 +71,11 @@ type EditableTextState struct {
 	AutomaticKeepAliveClient
 	WidgetsBindingObserverBase
 
-	cursorTimer        *periodicTimer
+	cursorTimer *periodicTimer
+	// cursorPeriod is the period of cursorTimer (the system's caret blink time when it started) and
+	// cursorBlinks whether the caret blinks at all.
+	cursorPeriod       time.Duration
+	cursorBlinks       bool
 	cursorBlinkOpacity *animation.AnimationController
 	cursorVisibility   *foundation.ValueNotifier[bool]
 	editableKey        *GlobalKey[State]

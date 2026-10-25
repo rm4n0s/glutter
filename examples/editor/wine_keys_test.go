@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -69,8 +70,8 @@ func wineEditor(t *testing.T) func(name string, env ...string) *image.RGBA {
 // Each frame, after the keys, must show in the text area what the frame of an editor that starts
 // with that text and selection shows (GLUTTER_DEV_TEXT and GLUTTER_DEV_SELECT), pixel for pixel:
 // letters, Shift, Backspace, Delete, the arrows, Home and End, Page Down, Control+A and the word
-// movement of Control+Shift+arrows. The clipboard keys (Control+C, X and V) need the clipboard of
-// Windows, which comes with step 28.6. A key that moves the caret by the layout (a page, a line
+// movement of Control+Shift+arrows. The clipboard keys (Control+C, X and V) are in
+// TestWineClipboardKeysCopyCutAndPaste. A key that moves the caret by the layout (a page, a line
 // break, a word) waits for a frame after the edit it follows: those actions work on the value that
 // the last frame laid out, as Flutter's do, and keys of one step can all arrive before the next frame. Run it with `go test -tags glutter_wine -p 1 ./examples/editor`.
 func TestWineScriptedKeysEditTheText(t *testing.T) {
@@ -99,6 +100,42 @@ func TestWineScriptedKeysEditTheText(t *testing.T) {
 			want := run("start", "GLUTTER_DEV_TEXT="+tt.text, "GLUTTER_DEV_SELECT="+tt.sel)
 			if n := diff(want, got, area); n != 0 {
 				t.Errorf("the text area differs from the editor that starts with %q selected at %s in %d pixels", tt.text, tt.sel, n)
+			}
+		})
+	}
+}
+
+// TestWineClipboardKeysCopyCutAndPaste types, copies, cuts, moves and pastes with Control+C, X and V
+// through the clipboard of Windows (SPEC §25.7, §25.13), and compares the text area, pixel for pixel,
+// with the editor that starts with the text and the selection the keys must end in. A wait comes
+// after each edit and each copy: the paste reads the clipboard on a thread of its own and its
+// answer comes with a later frame, and the keys that move by the layout work on the value the last
+// frame laid out (SPEC §25.6, "Decided in step 28.4"). Run it with `go test -tags glutter_wine -p 1 ./examples/editor`.
+func TestWineClipboardKeysCopyCutAndPaste(t *testing.T) {
+	run := wineEditor(t)
+	typeHello := "key:SHIFT+H;key:E;key:L;key:L;key:O;key:SPACE;key:W;key:O;key:R;key:L;key:D;wait:300ms"
+	area := image.Rect(16, 36, 480, 412)
+	// Each script ends with Control+A: a caret blinks, and the two editors would show it at different
+	// phases; a selection does not. The text says where the paste landed.
+	tests := []struct {
+		name string
+		keys string
+		text string
+	}{
+		{"copy everything and paste it at the end", typeHello + ";key:CONTROL+A;key:CONTROL+C;wait:300ms;key:END;key:CONTROL+V;wait:500ms", "Hello worldHello world"},
+		{"cut everything and paste it back", typeHello + ";key:CONTROL+A;key:CONTROL+X;wait:500ms;key:CONTROL+V;wait:500ms", "Hello world"},
+		{"copy a word and paste it at the start", typeHello + ";key:CONTROL+SHIFT+LEFT;key:CONTROL+C;wait:300ms;key:HOME;key:CONTROL+V;wait:500ms", "worldHello world"},
+		{"cut a word and paste it at the start", typeHello + ";key:CONTROL+SHIFT+LEFT;key:CONTROL+X;wait:500ms;key:HOME;key:CONTROL+V;wait:500ms", "worldHello "},
+		{"paste replaces the selection", typeHello + ";key:CONTROL+SHIFT+LEFT;key:CONTROL+C;wait:300ms;key:CONTROL+A;key:CONTROL+V;wait:500ms", "world"},
+		{"paste twice", typeHello + ";key:CONTROL+SHIFT+LEFT;key:CONTROL+C;wait:300ms;key:END;key:CONTROL+V;wait:500ms;key:CONTROL+V;wait:500ms", "Hello worldworldworld"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := run("clipboard-keys", "GLUTTER_DEV_EVENTS=wait:2s;"+tt.keys+";key:CONTROL+A;wait:300ms")
+			sel := "0," + strconv.Itoa(len(tt.text))
+			want := run("clipboard-start", "GLUTTER_DEV_TEXT="+tt.text, "GLUTTER_DEV_SELECT="+sel)
+			if n := diff(want, got, area); n != 0 {
+				t.Errorf("the text area differs from the editor that starts with %q selected at %s in %d pixels", tt.text, sel, n)
 			}
 		})
 	}

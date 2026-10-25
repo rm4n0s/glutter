@@ -13,6 +13,8 @@ import (
 	"github.com/rm4n0s/glutter/internal/goldens"
 	"github.com/rm4n0s/glutter/internal/gpu/gputest"
 	"github.com/rm4n0s/glutter/internal/platform"
+	"github.com/rm4n0s/glutter/internal/text"
+	"github.com/rm4n0s/glutter/internal/text/winfonts"
 	"github.com/rm4n0s/glutter/ui"
 )
 
@@ -52,5 +54,30 @@ func TestRunDrawsIntoAWindowAndSavesTheFrame(t *testing.T) {
 	}
 	if got := at(150, 80); got.A != 255 {
 		t.Errorf("a pixel outside = %v, want an opaque one", got)
+	}
+}
+
+// TestSystemFontMatcherIsTheMatcherOfWindows checks that the engine gives the Collection the
+// matcher of Windows (SPEC §25.8), here over the fonts of the prefix of Wine, and that a font it
+// finds loads.
+func TestSystemFontMatcherIsTheMatcherOfWindows(t *testing.T) {
+	t.Setenv("LocalAppData", t.TempDir())
+	ctx := context.Background()
+	m := SystemFontMatcher(ctx, quiet())
+	if _, ok := m.(*winfonts.Matcher); !ok {
+		t.Fatalf("the matcher is %T, want the matcher of winfonts", m)
+	}
+	c := text.NewCollection(text.CollectionOpts{Matcher: m})
+	files, err := c.Match(ctx, "Liberation Sans", 400, false, "")
+	if err != nil || len(files) == 0 {
+		t.Fatalf("Match(Liberation Sans) = %+v, %v", files, err)
+	}
+	face, err := c.Face(ctx, files[0])
+	if err != nil || face == nil {
+		t.Fatalf("Face = %v, %v", face, err)
+	}
+	families, err := c.Families(ctx)
+	if err != nil || len(families) == 0 {
+		t.Errorf("Families = %v, %v", families, err)
 	}
 }

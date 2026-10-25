@@ -37,10 +37,32 @@ func (s *EditableTextState) showBlinkingCursor() bool {
 // Flutter: widgets/editable_text.dart EditableTextState.cursorCurrentlyVisible
 func (s *EditableTextState) CursorCurrentlyVisible() bool { return s.blinkController().Value() > 0 }
 
-// CursorBlinkInterval is the time the caret is on, and then off.
+// CursorBlinkInterval is the time the caret is on, and then off. It is Flutter's 500 ms unless the
+// system says another (Windows: the caret blink time of the control panel); a system whose user
+// turned the blinking off gives the 500 ms as well, since the caret then does not blink at all.
+//
+// Deviation: Flutter's interval is a constant (SPEC §12.10).
 //
 // Flutter: widgets/editable_text.dart EditableTextState.cursorBlinkInterval
-func (s *EditableTextState) CursorBlinkInterval() time.Duration { return cursorBlinkHalfPeriod }
+func (s *EditableTextState) CursorBlinkInterval() time.Duration {
+	period, _ := s.blinkPeriod()
+	return period
+}
+
+// blinkPeriod is the time the caret is on, and then off: what the system says
+// (PlatformDispatcher.CaretBlinkTime), Flutter's cursorBlinkHalfPeriod when it says nothing.
+// blinks is false when the user turned the blinking off: the caret stays on.
+//
+// Deviation: Flutter blinks at the constant _kCursorBlinkHalfPeriod (SPEC §12.10).
+func (s *EditableTextState) blinkPeriod() (period time.Duration, blinks bool) {
+	switch t := s.binding().PlatformDispatcher().CaretBlinkTime(); {
+	case t == ui.CaretBlinkNever:
+		return cursorBlinkHalfPeriod, false
+	case t > 0:
+		return t, true
+	}
+	return cursorBlinkHalfPeriod, true
+}
 
 func (s *EditableTextState) startCursorBlink() {
 	if !s.Widget().showCursor || !s.tickersEnabled {
@@ -53,12 +75,24 @@ func (s *EditableTextState) startCursorBlink() {
 	if s.deterministicCursor() {
 		return
 	}
-	s.cursorTimer = newPeriodicTimer(s.binding().Gestures(), cursorBlinkHalfPeriod, s.onCursorTick)
+	// When the system says the caret does not blink, the timer still runs, at Flutter's period, only
+	// to see the setting change: the caret stays on and the tick does nothing else.
+	s.cursorPeriod, s.cursorBlinks = s.blinkPeriod()
+	s.cursorTimer = newPeriodicTimer(s.binding().Gestures(), s.cursorPeriod, s.onCursorTick)
 }
 
 func (s *EditableTextState) onCursorTick() {
+	if period, blinks := s.blinkPeriod(); blinks != s.cursorBlinks || period != s.cursorPeriod {
+		// The system's blink time changed while the caret was on the screen: start again with the
+		// new one (the caret is on, and stays on when the user turned the blinking off).
+		s.startCursorBlink()
+		return
+	}
+	if !s.cursorBlinks {
+		return
+	}
 	if !s.cursorTimer.isActive() && s.tickersEnabled {
-		s.cursorTimer = newPeriodicTimer(s.binding().Gestures(), cursorBlinkHalfPeriod, s.onCursorTick)
+		s.cursorTimer = newPeriodicTimer(s.binding().Gestures(), s.cursorPeriod, s.onCursorTick)
 	}
 	if s.blinkController().Value() == 0 {
 		s.blinkController().SetValue(1)

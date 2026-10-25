@@ -129,7 +129,30 @@ type PlatformConfiguration struct {
 	// Flutter: no counterpart
 	MonospaceFontFamily string
 	MonospaceFontSize   float64
+	// CaretBlinkTime is the time the caret of a text field stays on, and then off, as the
+	// system says; zero when the platform does not say, CaretBlinkNever when the user turned
+	// the blinking off.
+	//
+	// Deviation: Flutter blinks at a fixed half period of 500 ms (SPEC §12.10).
+	//
+	// Flutter: no counterpart (widgets/editable_text.dart _kCursorBlinkHalfPeriod is a constant)
+	CaretBlinkTime time.Duration
+	// DoubleClickTime is the longest time between the two clicks of a double click, as the
+	// system says; zero when the platform does not say. The gestures keep Flutter's
+	// kDoubleTapTimeout; apps and the framework can read it with
+	// PlatformDispatcher.DoubleClickTime.
+	//
+	// Deviation: Flutter's double-tap timeout is a constant (SPEC §12.10).
+	//
+	// Flutter: no counterpart (gestures/constants.dart kDoubleTapTimeout is a constant)
+	DoubleClickTime time.Duration
 }
+
+// CaretBlinkNever is the CaretBlinkTime of a system whose user turned the caret's blinking off:
+// the caret of a text field stays on.
+//
+// Flutter: no counterpart
+const CaretBlinkNever time.Duration = -1
 
 // PlatformDispatcher is the central point where the framework meets the
 // platform: the views, the frame callbacks, the input, and the system
@@ -730,6 +753,9 @@ func (d *PlatformDispatcher) UpdatePlatformConfiguration(cfg PlatformConfigurati
 		(old.AccentColor != nil && *old.AccentColor != *d.config.AccentColor) {
 		changed = true
 	}
+	if old.CaretBlinkTime != d.config.CaretBlinkTime || old.DoubleClickTime != d.config.DoubleClickTime {
+		changed = true
+	}
 	if old.UIFontFamily != d.config.UIFontFamily || old.UIFontSize != d.config.UIFontSize ||
 		old.MonospaceFontFamily != d.config.MonospaceFontFamily || old.MonospaceFontSize != d.config.MonospaceFontSize {
 		changed = true
@@ -897,6 +923,19 @@ func (d *PlatformDispatcher) UIFont() (family string, size float64) {
 func (d *PlatformDispatcher) MonospaceFont() (family string, size float64) {
 	return d.config.MonospaceFontFamily, d.config.MonospaceFontSize
 }
+
+// CaretBlinkTime is the time the caret of a text field stays on, and then off, as the system
+// says: zero when the platform does not say (the framework uses 500 ms) and CaretBlinkNever when
+// the user turned the blinking off.
+//
+// Flutter: no counterpart
+func (d *PlatformDispatcher) CaretBlinkTime() time.Duration { return d.config.CaretBlinkTime }
+
+// DoubleClickTime is the longest time between the two clicks of a double click, as the system
+// says; zero when the platform does not say.
+//
+// Flutter: no counterpart
+func (d *PlatformDispatcher) DoubleClickTime() time.Duration { return d.config.DoubleClickTime }
 
 // TextEngine is the text engine that lays out paragraphs; it is nil until the
 // engine sets one. The framework gives it to ParagraphBuilder.

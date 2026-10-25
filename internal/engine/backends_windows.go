@@ -5,19 +5,18 @@ package engine
 import (
 	"context"
 	"log/slog"
-	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/internal/gpu/gdiwindow"
 	"github.com/rm4n0s/glutter/internal/platform/windows"
 	"github.com/rm4n0s/glutter/internal/text"
+	"github.com/rm4n0s/glutter/internal/text/winfonts"
 )
 
 // This file is what Run uses on Windows (GOOS=windows): the Win32 platform with its windows and
-// message loop, and the software renderer into the window with GDI (SPEC §6.3, §25). The Direct3D
-// 12 renderer comes with step 28.10, the system font matcher with 28.6.
+// message loop, and the software renderer into the window with GDI (SPEC §6.3, §25), and the system
+// font matcher (step 28.6). The Direct3D 12 renderer comes with step 28.10.
 
 // backendEnv is the environment variable that names the platform backend; Windows has one,
 // "win32", which is also what an empty value means.
@@ -73,23 +72,24 @@ func (bundledOnly) Match(context.Context, string, int, bool, string) ([]text.Fon
 	return nil, nil
 }
 
-// SystemFontMatcher returns nil when the machine has a font directory (%WINDIR%\Fonts), so that the
-// text.Collection scans it, and a matcher with no system fonts when it has none: the prefix of Wine
-// has no such directory, and a scan that fails would stop every paragraph. The matcher of the system
-// fonts of Windows comes with step 28.6 (TODO(step 28.6): the families, the aliases and the fallback
-// chain of Windows).
+// SystemFontMatcher returns the font matcher of Windows (SPEC §25.8): the fonts that the registry
+// and the font directories list, read with go-text, the generic families (sans-serif is Segoe UI,
+// serif Times New Roman, monospace Consolas, cursive Segoe Script, system-ui Segoe UI Variable or
+// Segoe UI), and the fallback chain by script and language. When no installed font can be read
+// (a prefix of Wine with no fonts), it logs why and returns a matcher with no system fonts: a scan
+// that fails would stop every paragraph.
 //
 // Flutter: no counterpart
-func SystemFontMatcher(_ context.Context, log *slog.Logger) text.Matcher {
-	if root := os.Getenv("SYSTEMROOT"); root != "" { // the variable that go-text's font scan reads
-		if st, err := os.Stat(filepath.Join(root, "Fonts")); err == nil && st.IsDir() {
-			return nil
+func SystemFontMatcher(ctx context.Context, log *slog.Logger) text.Matcher {
+	faces := windows.SystemFonts(ctx, log)
+	m, err := winfonts.New(winfonts.Options{Faces: faces, Locale: windows.UserLocale()})
+	if err != nil {
+		if log != nil {
+			log.Info("this machine has no font the app can read; only the bundled fonts and the fonts of the app are used", "err", err)
 		}
+		return bundledOnly{}
 	}
-	if log != nil {
-		log.Info("this machine has no font directory; only the bundled fonts and the fonts of the app are used")
-	}
-	return bundledOnly{}
+	return m
 }
 
 // The tags of the errors that this file makes (rm4n0s/errors, R5).

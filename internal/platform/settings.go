@@ -1,6 +1,10 @@
 package platform
 
-import "github.com/rm4n0s/glutter/ui"
+import (
+	"time"
+
+	"github.com/rm4n0s/glutter/ui"
+)
 
 // Settings is the system-wide configuration the app follows.
 //
@@ -53,6 +57,17 @@ type Settings struct {
 	// 0 when the platform does not say.
 	MonospaceFontFamily string
 	MonospaceFontSize   float64
+	// CaretBlinkTime is the time the caret of a text field stays on, and then off, as the
+	// system says (Windows: GetCaretBlinkTime). Zero means the platform does not say and the
+	// framework's 500 ms is used; ui.CaretBlinkNever means the user turned blinking off.
+	//
+	// Deviation: Flutter blinks at a fixed half period (SPEC §12.10).
+	CaretBlinkTime time.Duration
+	// DoubleClickTime is the longest time between the two clicks of a double click, as the
+	// system says (Windows: GetDoubleClickTime); zero means the platform does not say.
+	//
+	// Deviation: Flutter's double-tap timeout is a constant, kDoubleTapTimeout (SPEC §12.10).
+	DoubleClickTime time.Duration
 }
 
 // FontAntialiasing is how the system wants text smoothed. The zero value,

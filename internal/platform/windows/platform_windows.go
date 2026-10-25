@@ -71,7 +71,8 @@ type Platform struct {
 	// quit says the loop ends: the last window was destroyed, or a panic is on its way out.
 	quit     bool
 	panicked *panicRecord
-	// dark is whether the apps of the system are dark (read once; step 28.6 follows the setting).
+	// dark is whether the apps of the system are dark (read when the platform starts, and kept
+	// current by every read of the settings).
 	dark bool
 	// oleReady says OleInitialize worked, so that Close undoes it.
 	oleReady bool
@@ -87,6 +88,23 @@ type Platform struct {
 	pointers *pointerTracker
 	// keys handles the key messages of every window: they share one keyboard (keymanager.go).
 	keys *keyboardManager
+	// sys is what the last read of the settings gave, settings the settings made of it, and
+	// settingsRead whether there was a read; settingsPending says a read is waiting for the next
+	// turn of the loop (settings_windows.go).
+	sys             settingsInput
+	settings        platform.Settings
+	settingsRead    bool
+	settingsPending bool
+	// titleBarApplied, when it is not nil, is called each time a window's title bar is made light or
+	// dark (the tests look at it: Wine does not report the attribute back).
+	titleBarApplied func(hwnd uintptr, dark bool)
+	// life remembers the lifecycle state that was reported and lifePending says an update waits
+	// for the next turn of the loop; ended says the app is ending (lifecycle_windows.go).
+	life        lifecycleTracker
+	lifePending bool
+	ended       bool
+	// clip is the clipboard, made by the first call of Clipboard.
+	clip *clipboard
 	// imm is the interface to the input methods that the windows' text inputs use; script is the
 	// part of it that the scripted compositions drive (textinput_windows.go).
 	imm    ime.IMM
@@ -257,6 +275,9 @@ func (p *Platform) Run(ctx context.Context, h platform.Handler) error {
 			return err
 		}
 	}
+	if p.panicked == nil { // the handler that panicked is not told anything more
+		p.endLifecycle()
+	}
 	if rec := p.panicked; rec != nil {
 		p.panicked = nil
 		p.log.Error("the handler panicked in a window procedure", "panic", rec.value, "stack", string(rec.stack))
@@ -365,25 +386,17 @@ func (t serviceTarget) handleMessage(hwnd uintptr, msg uint32, wparam, lparam ui
 		case win32.WMDisplayChange:
 			p.displaysChanged()
 			return 0
+		case win32.WMSettingChange, win32.WMDwmColorizationColorChanged:
+			p.settingChanged()
+			return 0
+		case win32.WMQueryEndSession:
+			return p.onQueryEndSession()
+		case win32.WMEndSession:
+			p.onEndSession(sessionEnding(wparam))
+			return 0
 		}
 		return win32.DefWindowProc(hwnd, msg, wparam, lparam)
 	})
-}
-
-// Clipboard returns a clipboard that fails every call with ClipboardUnavailable until step 28.6.
-//
-// Flutter: no counterpart
-func (p *Platform) Clipboard() platform.Clipboard { return unavailableClipboard{} }
-
-// Settings returns the defaults until step 28.6 reads the settings of Windows: a light theme, a
-// text scale of 1 and the locale en-US.
-//
-// Flutter: no counterpart
-func (p *Platform) Settings() platform.Settings {
-	return platform.Settings{
-		PlatformBrightness: ui.BrightnessLight, TextScaleFactor: 1,
-		Locales: []ui.Locale{ui.NewLocale("en", "US")},
-	}
 }
 
 // Services returns nil: Windows has no services until step 28.11 (the tray, the notifications)

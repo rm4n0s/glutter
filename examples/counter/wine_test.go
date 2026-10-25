@@ -104,3 +104,75 @@ func darkPixels(img *image.RGBA, r image.Rectangle) int {
 	}
 	return n
 }
+
+// TestWineSelfCaptureAcceptsEveryFormOfPath runs the counter under Wine with GLUTTER_SCREENSHOT as a
+// path with a drive and backslashes, with a drive and forward slashes, a relative path (the working
+// directory is the program's), a relative path in directories that are not there yet, and with a
+// delay (GLUTTER_SCREENSHOT_AFTER); each run must save the frame (SPEC §25.5, §25.13). Run it with
+// `go test -tags glutter_wine -p 1 ./examples/counter`.
+func TestWineSelfCaptureAcceptsEveryFormOfPath(t *testing.T) {
+	h, err := winetest.New("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	exe := filepath.Join(dir, "counter.exe")
+	build := exec.Command("go", "build", "-o", exe, "./examples/counter")
+	build.Dir = h.Root
+	build.Env = append(os.Environ(), "GOOS=windows", "GOARCH=amd64", "CGO_ENABLED=0")
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("go build: %v\n%s", err, out)
+	}
+	t.Cleanup(func() {
+		stop, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		if err := h.Stop(stop); err != nil {
+			t.Errorf("Stop: %v", err)
+		}
+		if left := winetest.Leftovers(h.Root); len(left) > 0 {
+			t.Errorf("processes left running:\n%s", strings.Join(left, "\n"))
+		}
+	})
+	// The host's /tmp/x is Z:\tmp\x to a Windows program.
+	windowsPath := func(hostPath string) string { return `Z:` + strings.ReplaceAll(hostPath, "/", `\`) }
+	work := filepath.Join(dir, "work")
+	if err := os.MkdirAll(work, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name  string
+		path  string
+		after string
+		file  string // where the frame must be, on the host
+	}{
+		{"a drive and backslashes", windowsPath(filepath.Join(dir, "drive.png")), "", filepath.Join(dir, "drive.png")},
+		{"a drive and forward slashes", "Z:" + filepath.Join(dir, "slashes.png"), "", filepath.Join(dir, "slashes.png")},
+		{"a relative path", "relative.png", "", filepath.Join(work, "relative.png")},
+		{"a relative path in new directories", `sub\dir\nested.png`, "", filepath.Join(work, "sub", "dir", "nested.png")},
+		{"a delay", windowsPath(filepath.Join(dir, "after.png")), "700ms", filepath.Join(dir, "after.png")},
+	}
+	for _, tt := range tests {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+		env := []string{"GLUTTER_SCREENSHOT=" + tt.path}
+		if tt.after != "" {
+			env = append(env, "GLUTTER_SCREENSHOT_AFTER="+tt.after)
+		}
+		res, err := h.Run(ctx, exe, winetest.RunOptions{Env: env, Dir: work, Timeout: time.Minute})
+		cancel()
+		if err != nil || res.ExitCode != 0 {
+			t.Errorf("%s: %v, status %d\n%s", tt.name, err, res.ExitCode, res.Output)
+			continue
+		}
+		img, err := goldens.ReadPNG(tt.file)
+		if err != nil {
+			t.Errorf("%s: no frame at %s: %v\n%s", tt.name, tt.file, err, res.Output)
+			continue
+		}
+		if b := img.Bounds(); b.Dx() < 480 || b.Dy() < 640 {
+			t.Errorf("%s: the frame is %v", tt.name, b)
+		}
+		if darkPixels(img, image.Rect(60, 310, 420, 380)) < 50 {
+			t.Errorf("%s: the text of the counter is missing", tt.name)
+		}
+	}
+}

@@ -3176,3 +3176,64 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - When the field loses the focus, the composition is cancelled, as Wayland's `leave` does; Flutter's `clearClient` commits it.
   - Wine's `CPS_CANCEL` commits the string like `CPS_COMPLETE`, so the cancel is tested over the fake.
   - Not done: composition clauses and attributes, reconversion, the handwriting panel.
+
+## 28.6 Clipboard, settings, fonts and lifecycle
+
+- **Date:** 2026-10-25
+- **Branch:** feat/step-28.6-windows-clipboard-settings
+- **Summary:**
+  - **Clipboard:** copy and paste work on Windows for text, files and images (`CF_UNICODETEXT`, `CF_HDROP`, `PNG` and `CF_DIBV5`). A busy clipboard is retried, and reads run on a thread of their own with the context.
+  - **Settings:** the app follows the system's settings live on `WM_SETTINGCHANGE`:
+    - dark or light app mode, applied to the title bars of every window;
+    - accent color, high contrast, text size and animations;
+    - locales, the 24-hour clock and the UI fonts;
+    - the caret blink time and the double-click time, now in `Settings` and `ui.PlatformConfiguration`. `EditableText` blinks at the system's rate, and not at all when the system says never.
+  - **Fonts:** text uses the system's fonts through the new `internal/text/winfonts` matcher, with the generic families and a fallback chain by script and language. It is plugged into `engine.SystemFontMatcher`.
+  - **Lifecycle:** the app follows Windows' lifecycle (Resumed, Inactive, Hidden, Detached). While it is Hidden, no frames are drawn. The end of the session ends `Run`.
+- **Main files:**
+  - `internal/platform/windows/`: `clipboard.go`, `clipboard_windows.go`, `settings.go`, `settings_windows.go`, `lifecycle.go`, `lifecycle_windows.go`, `fonts.go`, `fonts_windows.go`
+  - `internal/platform/windows/win32/`: the clipboard and settings bindings, and the mirrors `DropFiles`, `BitmapV5Header`, `HighContrast`, `LogFont`, `NonClientMetrics`
+  - `internal/text/winfonts/`
+  - `internal/platform/settings.go`, `ui/platform_dispatcher.go`, `internal/engine/backends_windows.go`, `widgets/editable_text_input.go`
+  - SPEC §12.10, §25.7, §25.8, §25.14
+- **Tests:**
+  - Plain Go, no Windows needed:
+    - the clipboard conversions and the busy retry;
+    - the settings over fixture registry values;
+    - the lifecycle table;
+    - the font file list, and the font matcher over the fonts of a stock Windows 10 and 11;
+    - `Scan` and the font cache over real font files;
+    - 8 blink cases of `EditableText`.
+  - Every new error tag has a route test.
+  - The new mirrors are checked against the mingw-w64 headers.
+  - No Flutter test was ported case for case. The cases of `settings_plugin`, `system_utils` and the lifecycle manager are table tests here.
+- **Wine tests** (each run at least twice):
+  - the real clipboard with text, files and an image; a second window and a second process stand in for another program;
+  - a busy clipboard is retried and then gives `ClipboardBusy`; a read cancelled by its context gives `ClipboardReadTimeout`;
+  - settings written into the prefix's registry and broadcast: the dark mode and the text size are followed live, with the title bars of both windows;
+  - the lifecycle: minimize, restore, hide, several windows, the end of the session;
+  - `SystemFonts` and the engine's font matcher;
+  - `GLUTTER_SCREENSHOT` with five kinds of path;
+  - Control+C, X and V in `examples/editor`: 6 cases compared pixel for pixel.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck ✅ · apicheck ✅ · `GOOS=js GOARCH=wasm` build, vet and `scripts/test-wasm.sh` ✅ · `scripts/check-android.sh` ✅ · `GOOS=windows` amd64 build and vet, arm64 build ✅ · `scripts/test-windows.sh` ✅ · Wine tests ✅ · layout test against the headers ✅ · nothing left running ✅
+- **Proof:** method F, `docs/implemented-proof-images/28.6-windows-text.png`: `examples/dev/text-tour` under Wine. The Latin text shows in all its styles, and the Hebrew line comes from Liberation Sans. Arabic, CJK and emoji are boxes, because Wine has no font for them; on a real PC they are a manual check.
+
+  ![28.6](implemented-proof-images/28.6-windows-text.png)
+- **Manual checks (pending, for the owner's PC; collected in `docs/MANUAL-CHECKS.md` by step 28.15):**
+  - copy and paste text, files and an image to and from Notepad, Explorer and Paint;
+  - switch between dark and light, and change the accent color, the text size, high contrast and the animation effects;
+  - the CJK text and the color emoji of `examples/dev/text-tour`;
+  - the caret blink following the Control Panel setting;
+  - log off or restart with the app open.
+- **Deviations and follow-ups:**
+  - New SPEC §12.10 row: `CaretBlinkTime` and `DoubleClickTime` are in `Settings`, and `EditableText` blinks at the system's rate. The double-tap timeout stays at 300 ms.
+  - The font cache is a JSON file of `winfonts` in `os.UserCacheDir()`, not go-text's `fontscan` index. `fontscan` scans fixed directories, but the registry can list fonts anywhere, such as Wine's `Z:\` paths.
+  - Wine's prefix has no Tahoma, Segoe UI or Consolas. The generic families fall back to stand-ins (Arial, Tahoma, Liberation Sans, DejaVu Sans), and the Wine test finds Liberation Sans.
+  - When the system says the caret never blinks, the blink timer still ticks every 500 ms while a text field has the focus. It only checks whether the setting changed, and draws no frame. A notification of platform-configuration changes to `EditableText` would remove this timer.
+  - Under Wine, a reader in another process waits for the clipboard owner's message loop, so the tests keep that loop running.
+  - Found, not fixed: a second `engine.Run` in one process fails under Wine with `RegisterClassExW`, because the window class is never unregistered.
+  - Not done:
+    - clipboard data rendered on demand, `CF_BITMAP`, HTML and RTF;
+    - the clipboard change listener;
+    - the ClearType orientation;
+    - whether a screen reader is running (step 28.13).

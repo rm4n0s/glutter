@@ -13,7 +13,7 @@ import (
 // Linux host and is skipped, with the install command, when the compiler is missing.
 func TestLayoutAgainstTheHeaders(t *testing.T) {
 	layouttest.Check(t, layouttest.Spec{
-		Headers: []string{"windows.h", "unknwn.h", "dxgi.h", "dwmapi.h", "shellscalingapi.h", "imm.h"},
+		Headers: []string{"windows.h", "unknwn.h", "dxgi.h", "dwmapi.h", "shellscalingapi.h", "imm.h", "shlobj.h"},
 		Structs: []layouttest.Struct{
 			layouttest.StructOf("GUID", GUID{}),
 			layouttest.StructOf("POINT", Point{}),
@@ -43,6 +43,11 @@ func TestLayoutAgainstTheHeaders(t *testing.T) {
 			layouttest.StructOf("CURSORINFO", CursorInfo{}),
 			layouttest.StructOf("COMPOSITIONFORM", CompositionForm{}),
 			layouttest.StructOf("CANDIDATEFORM", CandidateForm{}),
+			layouttest.StructOf("DROPFILES", DropFiles{}),
+			layouttest.StructOf("BITMAPV5HEADER", BitmapV5Header{}),
+			layouttest.StructOf("HIGHCONTRASTW", HighContrast{}),
+			layouttest.StructOf("LOGFONTW", LogFont{}),
+			layouttest.StructOf("NONCLIENTMETRICSW", NonClientMetrics{}),
 		},
 		VTables: []layouttest.VTable{{CName: "IUnknownVtbl", Methods: []layouttest.Method{
 			{Name: "QueryInterface", Index: IUnknownQueryInterface},
@@ -357,6 +362,31 @@ func TestLayoutAgainstTheHeaders(t *testing.T) {
 			{Name: "ISC_SHOWUICOMPOSITIONWINDOW", Value: uint32(ISCShowUICompositionWindow)},
 			{Name: "ISC_SHOWUIALLCANDIDATEWINDOW", Value: uint32(ISCShowUIAllCandidateWindow)},
 			{Name: "UNICODE_NOCHAR", Value: uint32(UnicodeNoChar)},
+			{Name: "CF_DIB", Value: uint32(CFDIB)},
+			{Name: "CF_UNICODETEXT", Value: uint32(CFUnicodeText)},
+			{Name: "CF_HDROP", Value: uint32(CFHDrop)},
+			{Name: "CF_DIBV5", Value: uint32(CFDIBV5)},
+			{Name: "BI_BITFIELDS", Value: uint32(BIBitfields)},
+			{Name: "LCS_sRGB", Value: uint32(LCSsRGB)},
+			{Name: "LCS_GM_IMAGES", Value: uint32(LCSGMImages)},
+			{Name: "SPI_GETNONCLIENTMETRICS", Value: uint32(SPIGetNonClientMetrics)},
+			{Name: "SPI_GETHIGHCONTRAST", Value: uint32(SPIGetHighContrast)},
+			{Name: "SPI_GETFONTSMOOTHING", Value: uint32(SPIGetFontSmoothing)},
+			{Name: "SPI_GETCLIENTAREAANIMATION", Value: uint32(SPIGetClientAreaAnimation)},
+			{Name: "SPI_GETFONTSMOOTHINGTYPE", Value: uint32(SPIGetFontSmoothingType)},
+			{Name: "SPI_GETFONTSMOOTHINGORIENTATION", Value: uint32(SPIGetFontSmoothingOrientation)},
+			{Name: "FE_FONTSMOOTHINGSTANDARD", Value: uint32(FEFontSmoothingStandard)},
+			{Name: "FE_FONTSMOOTHINGCLEARTYPE", Value: uint32(FEFontSmoothingClearType)},
+			{Name: "HCF_HIGHCONTRASTON", Value: uint32(HCFHighContrastOn)},
+			{Name: "SM_CXCURSOR", Value: uint32(SMCxCursor)},
+			{Name: "MUI_LANGUAGE_NAME", Value: uint32(MUILanguageName)},
+			{Name: "LOCALE_SSHORTTIME", Value: uint32(LocaleSShortTime)},
+			{Name: "ENDSESSION_CLOSEAPP", Value: uint32(EndSessionCloseApp)},
+			{Name: "ENDSESSION_CRITICAL", Value: uint32(EndSessionCritical)},
+			{Name: "ENDSESSION_LOGOFF", Value: uint32(EndSessionLogoff)},
+			{Name: "KEY_READ", Value: uint32(KeyRead)},
+			{Name: "RRF_RT_REG_SZ", Value: uint32(RRFRTRegSZ)},
+			{Name: "RRF_RT_REG_EXPAND_SZ", Value: uint32(RRFRTRegExpandSZ)},
 		},
 	})
 }

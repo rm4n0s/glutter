@@ -253,6 +253,7 @@ func (w *window) firstShow() {
 	if !w.focusKnown && !w.closed {
 		w.reportFocus(w.activated)
 	}
+	p.lifecycleChanged()
 	p.startDevEvents()
 }
 
@@ -377,8 +378,16 @@ func (w *window) dispatch(hwnd uintptr, msg uint32, wparam, lparam uintptr) uint
 	case win32.WMDpiChanged:
 		w.onDpiChanged(wparam, win32.View[win32.Rect](lparam))
 		return 0
+	case win32.WMQueryEndSession:
+		return p.onQueryEndSession()
+	case win32.WMEndSession:
+		p.onEndSession(sessionEnding(wparam))
+		return 0
+	case win32.WMShowWindow:
+		p.lifecycleChanged()
 	case win32.WMActivate:
 		w.activated = wparam&0xFFFF != win32.WAInactive
+		p.lifecycleChanged()
 		w.reportFocus(w.activated)
 		if w.shown {
 			w.reportMetrics() // the window info says whether the window is active
@@ -455,9 +464,11 @@ func (w *window) dispatch(hwnd uintptr, msg uint32, wparam, lparam uintptr) uint
 			p.modalTurn()
 			return 0
 		}
-	case win32.WMDwmColorizationColorChanged:
-		w.applyTitleBarTheme()
-		return 0
+	case win32.WMSettingChange, win32.WMDwmColorizationColorChanged:
+		p.settingChanged()
+		if msg == win32.WMDwmColorizationColorChanged {
+			return 0
+		}
 	case win32.WMNCDestroy:
 		w.onDestroyed()
 	}
@@ -488,6 +499,8 @@ func (w *window) onSize(wparam, lparam uintptr) {
 		return
 	}
 	cw, ch := int32(lparam&0xFFFF), int32((lparam>>16)&0xFFFF)
+	p := w.p
+	defer p.lifecycleChanged()
 	if st.minimized {
 		changed := !w.state.minimized
 		w.state = st
@@ -616,6 +629,7 @@ func (w *window) onDestroyed() {
 	w.modalTimer = false
 	w.releaseIcons()
 	delete(p.windows, w.hwnd)
+	p.lifecycleChanged()
 	unregisterTarget(w.token)
 	if w.keepOn {
 		w.keepOn = false
@@ -848,6 +862,7 @@ func (w *window) SetHidden(hidden bool) bool {
 		return true
 	}
 	w.hidden = hidden
+	defer w.p.lifecycleChanged()
 	if hidden {
 		switch {
 		case !w.shown:
