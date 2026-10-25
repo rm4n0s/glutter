@@ -891,9 +891,9 @@ func TestWinePassErrors(t *testing.T) {
 	if err := e1.Submit(); err != nil {
 		t.Fatal(err)
 	}
-	// The swap chain is step 28.10's.
+	// A handle that is not a window of Windows cannot have a swap chain.
 	_, err = d.NewSwapchain(gpuHandle())
-	_ = wantRoute(t, err, tagD3D12NotImplemented, "Device.NewSwapchain.D3D12NotImplemented")
+	_ = wantRoute(t, err, TagD3D12SwapchainFailed, "Device.NewSwapchain.D3D12SwapchainFailed")
 }
 
 func TestWineResourceErrors(t *testing.T) {

@@ -495,6 +495,30 @@ type d3d12Rect struct {
 	Bottom int32 `c:"bottom"`
 }
 
+// dxgiSwapChainDesc1 is the Go mirror of DXGI_SWAP_CHAIN_DESC1 (SPEC §9.8 "Swap chain").
+type dxgiSwapChainDesc1 struct {
+	Width       uint32         `c:"Width"`
+	Height      uint32         `c:"Height"`
+	Format      uint32         `c:"Format"`
+	Stereo      int32          `c:"Stereo"`
+	SampleDesc  dxgiSampleDesc `c:"SampleDesc"`
+	BufferUsage uint32         `c:"BufferUsage"`
+	BufferCount uint32         `c:"BufferCount"`
+	Scaling     uint32         `c:"Scaling"`
+	SwapEffect  uint32         `c:"SwapEffect"`
+	AlphaMode   uint32         `c:"AlphaMode"`
+	Flags       uint32         `c:"Flags"`
+}
+
+// dxgiPresentParameters is the Go mirror of DXGI_PRESENT_PARAMETERS (IDXGISwapChain1::Present1): the
+// dirty rectangles, and the scroll rectangle and offset, which the device leaves out.
+type dxgiPresentParameters struct {
+	DirtyRectsCount uint32  `c:"DirtyRectsCount"`
+	DirtyRects      uintptr `c:"pDirtyRects"`
+	ScrollRect      uintptr `c:"pScrollRect"`
+	ScrollOffset    uintptr `c:"pScrollOffset"`
+}
+
 // d3d12VertexBufferView is the Go mirror of D3D12_VERTEX_BUFFER_VIEW.
 type d3d12VertexBufferView struct {
 	BufferLocation uint64 `c:"BufferLocation"`
@@ -610,6 +634,18 @@ const (
 	dxgiErrorDriverInternalError uint32 = 0x887A0020
 	dxgiErrorNotFound            uint32 = 0x887A0002
 	dxgiErrorSDKComponentMissing uint32 = 0x887A002D
+
+	// The swap chain (SPEC §9.8): DXGI_USAGE_RENDER_TARGET_OUTPUT, DXGI_SCALING_NONE,
+	// DXGI_SWAP_EFFECT_FLIP_DISCARD, DXGI_ALPHA_MODE_IGNORE, DXGI_MWA_NO_WINDOW_CHANGES and
+	// DXGI_MWA_NO_ALT_ENTER, and DXGI_STATUS_OCCLUDED, the success code of a Present to a window that
+	// cannot be seen.
+	dxgiUsageRenderTargetOutput uint32 = 0x20
+	dxgiScalingNone             uint32 = 1
+	dxgiSwapEffectFlipDiscard   uint32 = 4
+	dxgiAlphaModeIgnore         uint32 = 3
+	dxgiMWANoWindowChanges      uint32 = 1
+	dxgiMWANoAltEnter           uint32 = 2
+	dxgiStatusOccluded          uint32 = 0x087A0001
 
 	// D3D12_MESSAGE_SEVERITY.
 	messageSeverityCorruption uint32 = 0

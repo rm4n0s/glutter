@@ -23,20 +23,25 @@
 // bytecode through the shader cache, the pipeline state, and a pipeline library where the device has
 // one), NewBindGroup (the descriptors copied into the shader-visible heaps of the frame slot, in
 // blocks), and the encoder's passes with their barriers, root arguments, vertex and index buffers,
-// scissor and draws. The swap chain comes with 28.10.
+// scissor and draws. Step 28.10 adds the swap chain (NewSwapchain: a flip-model swap chain for the
+// HWND of a window, two buffers, resized with ResizeBuffers after the GPU is idle, presented with
+// dirty rectangles and a sync interval of 0), which the engine's Windows renderers draw windows with
+// (SPEC §9.6, §9.8).
 //
-//   - adapter.go, errors.go, check.go, states.go, memory.go, mapping.go, rootsig.go, blocks.go and
-//     debug.go are plain Go, tested on Linux: the adapter choice, the table of HRESULTs, the state
-//     tracker, the staging ring, the layout of a copy, the descriptor numbers, the mapping of formats,
-//     samplers, blends, vertex formats and load operations, the planner of root signatures, the
-//     allocator of descriptor blocks, and the reading of a message of the debug layer. types.go and vtables.go have the Go mirrors of the
-//     structures of DXGI and Direct3D 12, the positions of the methods of their interfaces and their
-//     IDs, all checked against the mingw-w64 headers by layout_test.go.
+//   - adapter.go, errors.go, check.go, states.go, memory.go, mapping.go, rootsig.go, blocks.go,
+//     debug.go and present.go are plain Go, tested on Linux: the adapter choice, the table of
+//     HRESULTs, the state tracker, the staging ring, the layout of a copy, the descriptor numbers, the
+//     mapping of formats, samplers, blends, vertex formats and load operations, the planner of root
+//     signatures, the allocator of descriptor blocks, the reading of a message of the debug layer, and
+//     the formats of the swap chain and the dirty rectangles of a present. types.go and vtables.go
+//     have the Go mirrors of the structures of DXGI and Direct3D 12, the positions of the methods of
+//     their interfaces and their IDs, all checked against the mingw-w64 headers by layout_test.go.
 //   - dll_windows.go, device_windows.go, memory_windows.go, resources_windows.go, fence_windows.go,
 //     frames_windows.go, descriptors_windows.go, rootsig_windows.go, pipeline_windows.go,
-//     bindgroup_windows.go and encoder_windows.go call Windows through syscall, and are tested under
-//     Wine (the *_wine_test.go files, the glutter_wine tag): among them the parity test, which draws
-//     every proof scene through the explicit renderer and compares it with the software renderer.
+//     bindgroup_windows.go, encoder_windows.go and swapchain_windows.go call Windows through syscall,
+//     and are tested under Wine (the *_wine_test.go files, the glutter_wine tag): among them the
+//     parity test, which draws every proof scene through the explicit renderer and compares it with
+//     the software renderer.
 //
 // Flutter: no counterpart. Flutter's Windows embedder draws through ANGLE.
 package d3d12

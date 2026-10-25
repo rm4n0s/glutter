@@ -88,14 +88,19 @@ type Device struct {
 	// device that is lost on demand.
 	removed func() win32.HRESULT
 
-	slots   [framesInFlight]frameSlot
-	next    int      // the slot of the next frame
-	last    int      // the slot most recently submitted, -1 before the first
-	open    *encoder // the frame being recorded
-	pending []func(list win32.Object)
-	staging staging
-	tracker *stateTracker[*texture]
-	live    map[any]func() // what to destroy at Close: every resource that is not destroyed yet
+	slots [framesInFlight]frameSlot
+	next  int      // the slot of the next frame
+	last  int      // the slot most recently submitted, -1 before the first
+	open  *encoder // the frame being recorded
+	// toPresent are the swap chain buffers that were acquired for the frame being recorded: Submit puts
+	// them back in the state COMMON (PRESENT) before it closes the list.
+	toPresent []*texture
+	// swapFormats replaces the formats of the swap chain, for the test of a device that accepts none.
+	swapFormats []swapFormat
+	pending     []func(list win32.Object)
+	staging     staging
+	tracker     *stateTracker[*texture]
+	live        map[any]func() // what to destroy at Close: every resource that is not destroyed yet
 
 	cpu         [3]*cpuHeaps // render target views, shader resource views and samplers
 	debugErrors []string

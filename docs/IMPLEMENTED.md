@@ -3419,3 +3419,71 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - The parity test wraps the device in an offscreen BGRA swap chain until step 28.10 adds the real one. `NewSwapchain` still fails with `D3D12NotImplemented`.
   - The whole Wine suite of `internal/gpu/d3d12` takes 3 to 4 minutes, within `wine-exec.sh`'s 600-second limit.
   - **Found by an out-of-memory crash of the manager's session during the checks:** vkd3d takes about 120 MB of host memory for every shader-visible descriptor heap, whatever its size. The first version used blocks of 8192 views and 1024 samplers, and its test used blocks of 6, barely more than the groups bound at once. Nearly every bind group then needed a heap of its own: 93 heaps, about 11 GB. The fix is the bigger blocks, the cap of 8 blocks per slot, and the shared tables. The heavy test now peaks at about 1 GB, and the whole suite stays above 13 GB of free memory. On Windows a heap of 65536 descriptors is about 2 MB of GPU memory.
+
+## 28.10 Presentation and the renderer choice
+
+- **Date:** 2026-10-25
+- **Branch:** feat/step-28.10-d3d12-present
+- **Summary:** under Wine, windows are now drawn by `d3d12`, and the renderer is chosen with its fallbacks.
+  - **Swap chain:**
+    - a flip-model swap chain on the command queue for the `HWND`, with two buffers, in BGRA or else RGBA, and no sRGB;
+    - `MakeWindowAssociation`;
+    - `Configure` calls `ResizeBuffers` once the GPU is idle and the old buffers are released; the same size, or a size of zero, does nothing;
+    - `Acquire` takes the current buffer, and `Submit` puts it back in the present state;
+    - `Present1` uses sync interval 0, with the damage as dirty rectangles;
+    - `DXGI_STATUS_OCCLUDED` counts as a success;
+    - `D3D12SwapchainFailed` is for a surface that is not a window, a format list DXGI refuses, or a swap chain left without buffers. The other failures carry the tags of the `HRESULT` table. `D3D12NotImplemented` is gone.
+  - **The Windows candidates:**
+    - `d3d12` on hardware, then `d3d12` on WARP (logged as `d3d12 (warp)`, and left out when `GLUTTER_D3D12_ADAPTER` names an adapter), then `soft`;
+    - a device that opens but fails its first frame still goes on to WARP;
+    - by name, `d3d12` is the only candidate and never falls back;
+    - each failed try is logged once;
+    - `gles` and `vulkan` are `RendererUnavailable`.
+  - **Startup log:** `renderer chosen` with the adapter, the shaders built and those from the cache, and a new `pipeline library` line (`gpu.PipelineLibraryReporter`).
+  - **GDI after a swap chain (SPEC §22):** under Wine, GDI draws into a window that had a swap chain, even after the device is closed, so the child-window design was not built. A real PC is a manual check.
+- **Main files:**
+  - `internal/gpu/d3d12/`: `swapchain_windows.go`, `present.go`
+  - `internal/engine/`: `windows_candidates.go`, `explicit_options.go`, `backends_windows.go`, `renderers.go`
+  - `internal/gpu/startup.go`, `internal/gpu/explicit/renderer.go` (`PipelineLibrary`, additive)
+  - SPEC §9.6, §9.8, §22, §25.5
+- **Tests:**
+  - **Plain Go:**
+    - the dirty rectangles (13 cases);
+    - the format fallback (7 cases);
+    - the device-failure rule (8 cases);
+    - the Windows chooser over fake renderers (21 cases, with the names and the WARP skip);
+    - the renderer options, and the log lines;
+    - the layout of the DXGI mirrors against the mingw-w64 headers.
+- **Wine tests** (each run at least twice; none took more than 1.5 GB of memory):
+  - **`d3d12`:**
+    - resizing to 5 sizes; a resize waits for the GPU and releases the buffers; 40 resizes leave nothing behind;
+    - dirty rectangles; the occluded, removed, reset, hung, out-of-memory and invalid-argument answers; the error routes;
+    - two windows share one device;
+    - a frame with damage equals a whole frame;
+    - a device lost at present is recovered on the same window, and a second loss ends with `GPUDeviceLost`.
+  - **GDI after a swap chain:** with the device closed, and with it open.
+  - **The engine:**
+    - `auto` chooses `d3d12`, and its frame equals `soft`'s;
+    - `GLUTTER_D3D12_ADAPTER` naming nothing ends on `soft`, with one log line;
+    - `GLUTTER_RENDERER=d3d12` ends with `D3D12NoAdapter`;
+    - `gles` and `vulkan` are unavailable;
+    - an idle app draws 1 frame in 4 seconds.
+  - **Examples:**
+    - the counter drawn by `d3d12` equals `soft` (largest difference 2 levels), also at scale 1.5;
+    - the gallery drawn by `d3d12` equals `soft`: 74 of 836,000 pixels are more than 8 levels off, with a largest difference of 12.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck ✅ · apicheck ✅ · `GOOS=js GOARCH=wasm` build, vet and `scripts/test-wasm.sh` ✅ · `scripts/check-android.sh` ✅ · `GOOS=windows` amd64 build and vet, arm64 build ✅ · `scripts/test-windows.sh` ✅ · Wine tests ✅ · layout test against the headers ✅ · nothing left running ✅
+- **Proof:** method F, `docs/implemented-proof-images/28.10-windows-gallery-d3d12.png`. It is the Buttons page of `examples/gallery`, drawn by `d3d12` on vkd3d (`renderer chosen renderer="d3d12: NVIDIA GeForce GTX 470 (10DE:06CD)"`), with its shadows, hover states and icons. The first frame takes 12 seconds on an empty shader cache and about 2.7 seconds warm.
+
+  ![28.10](implemented-proof-images/28.10-windows-gallery-d3d12.png)
+- **Manual checks (pending, for the owner's PC; collected in `docs/MANUAL-CHECKS.md` by step 28.15):**
+  - the list of step 28.10: the adapter in the log, two GPUs, resizing and dragging between monitors, WARP and `soft`, the debug layer, user switching, lock, sleep, GPU disable, Remote Desktop;
+  - GDI drawing into a window after its swap chain is gone (DWM may keep showing the flip-model surface; the remedy would be the child window of SPEC §25.5).
+- **Deviations and follow-ups:**
+  - Under Wine, `auto` now draws with `d3d12`. So `TestWineFirstFrameIsTheCounter`, which compares with the `soft` golden, runs with `GLUTTER_RENDERER=soft`. The editor's pixel-for-pixel Wine tests run with `GLUTTER_RASTER_CACHE=0`, because a layer drawn from the raster cache is about 200 pixels off a direct draw.
+  - A window taller than the 800-pixel headless screen is cut by Windows, so the scale 1.5 test checks the width.
+  - The engine has no `Snapshot` hook. `Renderer.Snapshot` is tested on the device, with real swap chains.
+  - `golangci-lint` with `GOOS=windows` reports older items outside this step, left for step 28.15's sweep:
+    - the fields `wayland` and `x11` of `internal/engine/engine.go`, unused on Windows;
+    - `glesRenderer` in `internal/engine/gles_renderer.go`;
+    - `bufferSize` and `windowBuffer` in `internal/gpu/nativewindow/buffer.go`;
+    - an unchecked `proc.Call` in `internal/platform/windows/settings_wine_test.go:50`.

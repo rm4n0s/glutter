@@ -9,6 +9,9 @@ import (
 	"time"
 
 	"github.com/rm4n0s/errors"
+	"github.com/rm4n0s/glutter/internal/gpu"
+	"github.com/rm4n0s/glutter/internal/gpu/d3d12"
+	"github.com/rm4n0s/glutter/internal/gpu/explicit"
 	"github.com/rm4n0s/glutter/internal/gpu/gdiwindow"
 	"github.com/rm4n0s/glutter/internal/platform/windows"
 	"github.com/rm4n0s/glutter/internal/text"
@@ -16,8 +19,8 @@ import (
 )
 
 // This file is what Run uses on Windows (GOOS=windows): the Win32 platform with its windows and
-// message loop, and the software renderer into the window with GDI (SPEC §6.3, §25), and the system
-// font matcher (step 28.6). The Direct3D 12 renderer comes with step 28.10.
+// message loop, the renderers (Direct3D 12 on hardware and on WARP, and the software renderer into the
+// window with GDI, SPEC §9.6, §25.5), and the system font matcher (step 28.6).
 
 // backendEnv is the environment variable that names the platform backend; Windows has one,
 // "win32", which is also what an empty value means.
@@ -52,11 +55,43 @@ func screenshotPath(value string, _ func(string) string) string { return value }
 // processStart says it does not know when the process started.
 func processStart() (time.Time, bool) { return time.Time{}, false }
 
-// rendererCandidates are the renderers of Windows in the order auto tries them: soft into the
-// window with GDI until step 28.10 adds Direct3D 12, which asked for by name is RendererUnavailable
-// (SPEC §25.5).
+// rendererCandidates are the renderers of Windows in the order auto tries them: d3d12 on a hardware
+// adapter, d3d12 on WARP, then soft into the window with GDI (SPEC §9.6, §25.5). gles and vulkan are
+// RendererUnavailable.
 func rendererCandidates() []rendererCandidate {
-	return []rendererCandidate{{Name: "soft", New: newSoftWindowRenderer}}
+	return windowsCandidates(newD3D12Renderer(false), newD3D12Renderer(true), newSoftWindowRenderer)
+}
+
+// newD3D12Renderer returns the constructor of the explicit renderer over a Direct3D 12 device, which it
+// opens at the first frame (SPEC §9.8). warp is the candidate that uses WARP, Windows' own software
+// adapter: it asks the device for the adapter "warp" (GLUTTER_D3D12_ADAPTER is not read for it, since the
+// candidate is left out when that variable names an adapter). The hardware candidate never falls back to
+// WARP inside the device (Options.AllowWarp is false): a device that fails, or a first frame that does not
+// present, moves the chooser on to the WARP candidate, which is a try of its own and is logged.
+func newD3D12Renderer(warp bool) func(cfg *Config, log *slog.Logger) renderer {
+	return func(cfg *Config, log *slog.Logger) renderer {
+		getenv := configGetenv(cfg)
+		opts := explicitOptions(cfg, getenv, log)
+		dev := d3d12.Options{Logger: log, Getenv: getenv}
+		if c := newShaderCache(cfg, getenv, log); c != nil {
+			dev.ShaderCache = c
+		}
+		if warp {
+			dev.Getenv = func(k string) string {
+				if k == d3d12.AdapterEnvVar {
+					return "warp"
+				}
+				return getenv(k)
+			}
+		}
+		return explicit.NewRenderer(func(gpu.SurfaceHandle) (explicit.Device, error) {
+			d, err := d3d12.Open(dev)
+			if err != nil {
+				return nil, err
+			}
+			return d, nil
+		}, opts)
+	}
 }
 
 // newSoftWindowRenderer makes the renderer that presents the soft frame with GDI.

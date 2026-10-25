@@ -134,3 +134,61 @@ func TestShaderCacheFailureIsLoggedOnce(t *testing.T) {
 }
 
 const tagFirstRendererFailed = "FirstRendererFailed"
+
+// libraryRenderer is a renderer that reports its start and says whether its device has a pipeline library.
+type libraryRenderer struct {
+	*reportingRenderer
+	present, known bool
+}
+
+func (r *libraryRenderer) PipelineLibrary() (present, known bool) { return r.present, r.known }
+
+// The start of a renderer with a pipeline library (Direct3D 12, SPEC §9.8) names the library after the shaders; one
+// whose device has none of the concept, and one that does not report it, say nothing about it.
+func TestChooserLogsThePipelineLibrary(t *testing.T) {
+	handle := gpu.SurfaceHandle{Kind: gpu.SurfaceKindFake, Window: 1}
+	report := gpu.StartupReport{Context: 30 * time.Millisecond, Shaders: 20 * time.Millisecond, Built: 3, Cached: 5, CacheBytes: 4096}
+	tests := []struct {
+		name           string
+		present, known bool
+		plain          bool // a renderer that is not a PipelineLibraryReporter
+		want, unwanted string
+	}{
+		{"a library that was loaded", true, true, false, `stage="pipeline library" renderer=d3d12 present=true loaded_bytes=4096`, ""},
+		{"a device without a library (vkd3d)", false, true, false, `stage="pipeline library" renderer=d3d12 present=false loaded_bytes=4096`, ""},
+		{"a device that has no such thing (Vulkan)", false, false, false, "", "pipeline library"},
+		{"a renderer that cannot say", false, false, true, "", "pipeline library"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			log, buf := recordingLog()
+			cfg := &Config{Getenv: func(k string) string {
+				if k == FrameStatsEnv {
+					return "1"
+				}
+				return ""
+			}}
+			cand := rendererCandidate{Name: "d3d12", New: func(*Config, *slog.Logger) renderer {
+				rep := &reportingRenderer{fakeRenderer: &fakeRenderer{}, report: report}
+				if tt.plain {
+					return rep
+				}
+				return &libraryRenderer{reportingRenderer: rep, present: tt.present, known: tt.known}
+			}}
+			c, err := newChooser(cfg, log, "auto", []rendererCandidate{cand})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := c.Draw(handle, 10, 10, nil, false); err != nil {
+				t.Fatal(err)
+			}
+			out := buf.String()
+			if tt.want != "" && !strings.Contains(out, tt.want) {
+				t.Errorf("the log lacks %q:\n%s", tt.want, out)
+			}
+			if tt.unwanted != "" && strings.Contains(out, tt.unwanted) {
+				t.Errorf("the log has %q:\n%s", tt.unwanted, out)
+			}
+		})
+	}
+}

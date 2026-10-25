@@ -9,7 +9,10 @@ import (
 	"testing"
 
 	"github.com/rm4n0s/glutter/internal/gpu"
+	"github.com/rm4n0s/glutter/internal/gpu/d3d12"
+	"github.com/rm4n0s/glutter/internal/gpu/explicit"
 	"github.com/rm4n0s/glutter/internal/platform/windows/win32"
+	"github.com/rm4n0s/glutter/ui"
 )
 
 // These tests draw into a real window under Wine on a headless X server and read the pixels back
@@ -159,5 +162,71 @@ func TestExposureRepaintsTheKeptFrameInTheWindow(t *testing.T) {
 	paint(hwnd) // what the window procedure does on WM_PAINT
 	if got := pixel(t, hwnd, 10, 10); got != (color.RGBA{G: 200, A: 255}) {
 		t.Errorf("after the exposure the pixel is %v, want the kept frame", got)
+	}
+}
+
+// TestGDIDrawsIntoAWindowThatHadASwapChain is the check of SPEC §22: after d3d12 made a flip-model swap chain
+// for a window and released it, `soft` draws into the same window with GDI, which is what auto does when d3d12
+// fails after its swap chain was made. Under Wine the pixels of GDI are there. Whether they are on Windows, where
+// DWM may keep showing nothing for a window that had a flip-model swap chain, is the manual check of step 28.10:
+// if not, the surface becomes a child window that is made again (platform.SurfaceRenewer, SPEC §25.5).
+func TestGDIDrawsIntoAWindowThatHadASwapChain(t *testing.T) {
+	tests := []struct {
+		name        string
+		closeDevice bool
+	}{
+		{"after the device was closed, as the chooser leaves it", true},
+		{"with the device still open", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			hwnd := makeWindow(t, 120, 90)
+			h := gpu.SurfaceHandle{Kind: gpu.SurfaceKindWin32, Window: hwnd}
+			dev, err := d3d12.Open(d3d12.Options{Getenv: func(string) string { return "" }})
+			if err != nil {
+				t.Fatalf("d3d12.Open: %+v", err)
+			}
+			sc, err := dev.NewSwapchain(h)
+			if err != nil {
+				_ = dev.Close()
+				t.Fatalf("NewSwapchain: %+v", err)
+			}
+			for i := 0; i < 3; i++ { // presented a few times, as a first frame and the frames after it are
+				e, err := dev.Begin()
+				if err != nil {
+					t.Fatal(err)
+				}
+				tex, err := sc.Acquire()
+				if err != nil {
+					t.Fatal(err)
+				}
+				e.BeginPass(tex, explicit.LoadClear, ui.Color{G: 1, A: 1}).End()
+				if err := e.Submit(); err != nil {
+					t.Fatal(err)
+				}
+				if err := sc.Present(nil); err != nil {
+					t.Fatal(err)
+				}
+			}
+			sc.Destroy()
+			if tt.closeDevice {
+				if err := dev.Close(); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				defer func() { _ = dev.Close() }()
+			}
+			p := NewPresenter()
+			defer p.Release(h)
+			red := color.RGBA{R: 255, A: 255}
+			if err := p.Present(h, solid(120, 90, red), gpu.Damage{Full: true}); err != nil {
+				t.Fatal(err)
+			}
+			for _, pt := range [][2]int32{{0, 0}, {119, 0}, {60, 45}, {0, 89}, {119, 89}} {
+				if got := pixel(t, hwnd, pt[0], pt[1]); got != red {
+					t.Errorf("GDI after a swap chain: pixel %v = %v, want red", pt, got)
+				}
+			}
+		})
 	}
 }

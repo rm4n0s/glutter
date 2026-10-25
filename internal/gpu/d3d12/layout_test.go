@@ -83,6 +83,8 @@ func TestLayoutAgainstTheHeaders(t *testing.T) {
 			layouttest.StructOf("D3D12_VERTEX_BUFFER_VIEW", d3d12VertexBufferView{}),
 			layouttest.StructOf("D3D12_INDEX_BUFFER_VIEW", d3d12IndexBufferView{}),
 			layouttest.StructOf("D3D12_DISCARD_REGION", d3d12DiscardRegion{}),
+			layouttest.StructOf("DXGI_SWAP_CHAIN_DESC1", dxgiSwapChainDesc1{}),
+			layouttest.StructOf("DXGI_PRESENT_PARAMETERS", dxgiPresentParameters{}),
 		},
 		VTables: []layouttest.VTable{
 			{CName: "ID3D10BlobVtbl", Methods: []layouttest.Method{
@@ -98,6 +100,17 @@ func TestLayoutAgainstTheHeaders(t *testing.T) {
 				{Name: "EnumAdapters1", Index: factoryEnumAdapters1},
 				{Name: "EnumWarpAdapter", Index: factoryEnumWarpAdapter},
 				{Name: "EnumAdapterByGpuPreference", Index: factoryEnumAdapterByGPUPreference},
+			}},
+			{CName: "IDXGIFactory2Vtbl", Methods: []layouttest.Method{
+				{Name: "MakeWindowAssociation", Index: factoryMakeWindowAssociation},
+				{Name: "CreateSwapChainForHwnd", Index: factoryCreateSwapChainForHwnd},
+			}},
+			{CName: "IDXGISwapChain3Vtbl", Methods: []layouttest.Method{
+				{Name: "GetBuffer", Index: swapChainGetBuffer},
+				{Name: "ResizeBuffers", Index: swapChainResizeBuffers},
+				{Name: "GetDesc1", Index: swapChainGetDesc1},
+				{Name: "Present1", Index: swapChainPresent1},
+				{Name: "GetCurrentBackBufferIndex", Index: swapChainGetCurrentBackBufferIndex},
 			}},
 			{CName: "IDXGIAdapter1Vtbl", Methods: []layouttest.Method{
 				{Name: "GetDesc1", Index: adapterGetDesc1},
@@ -233,6 +246,13 @@ func TestLayoutAgainstTheHeaders(t *testing.T) {
 			{Name: "D3D12_COMPARISON_FUNC_NEVER", Value: comparisonNever},
 			{Name: "D3D12_TEXTURE_DATA_PITCH_ALIGNMENT", Value: textureDataPitchAlignment},
 			{Name: "D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT", Value: textureDataPlacementAlignment},
+			{Name: "DXGI_USAGE_RENDER_TARGET_OUTPUT", Value: dxgiUsageRenderTargetOutput},
+			{Name: "DXGI_SCALING_NONE", Value: dxgiScalingNone},
+			{Name: "DXGI_SWAP_EFFECT_FLIP_DISCARD", Value: dxgiSwapEffectFlipDiscard},
+			{Name: "DXGI_ALPHA_MODE_IGNORE", Value: dxgiAlphaModeIgnore},
+			{Name: "DXGI_MWA_NO_WINDOW_CHANGES", Value: dxgiMWANoWindowChanges},
+			{Name: "DXGI_MWA_NO_ALT_ENTER", Value: dxgiMWANoAltEnter},
+			{Name: "DXGI_STATUS_OCCLUDED", Value: dxgiStatusOccluded},
 			{Name: "DXGI_ERROR_DRIVER_INTERNAL_ERROR", Value: dxgiErrorDriverInternalError},
 			{Name: "DXGI_ERROR_NOT_FOUND", Value: dxgiErrorNotFound},
 			{Name: "DXGI_ERROR_SDK_COMPONENT_MISSING", Value: dxgiErrorSDKComponentMissing},
@@ -289,7 +309,7 @@ func TestLayoutAgainstTheHeaders(t *testing.T) {
 func TestIIDsAgainstTheHeaders(t *testing.T) {
 	dir := "/usr/x86_64-w64-mingw32/sys-root/mingw/include"
 	var text strings.Builder
-	for _, h := range []string{"d3d12.h", "d3d12sdklayers.h", "dxgi.h", "dxgi1_4.h", "dxgi1_6.h"} {
+	for _, h := range []string{"d3d12.h", "d3d12sdklayers.h", "dxgi.h", "dxgi1_2.h", "dxgi1_4.h", "dxgi1_6.h"} {
 		b, err := os.ReadFile(filepath.Join(dir, h))
 		if err != nil {
 			t.Skipf("the mingw-w64 headers are not installed (%v): %s", err, layouttest.InstallCommand)
@@ -326,7 +346,7 @@ func TestIIDsAgainstTheHeaders(t *testing.T) {
 // compares them.
 func namedIIDs() map[string]win32.GUID {
 	return map[string]win32.GUID{
-		"IDXGIFactory1": iidDXGIFactory1, "IDXGIFactory4": iidDXGIFactory4, "IDXGIFactory6": iidDXGIFactory6,
+		"IDXGIFactory1": iidDXGIFactory1, "IDXGIFactory2": iidDXGIFactory2, "IDXGISwapChain3": iidDXGISwapChain3, "IDXGIFactory4": iidDXGIFactory4, "IDXGIFactory6": iidDXGIFactory6,
 		"IDXGIAdapter1": iidDXGIAdapter1, "ID3D12Device": iidDevice, "ID3D12CommandQueue": iidCommandQueue,
 		"ID3D12CommandAllocator": iidCommandAllocator, "ID3D12GraphicsCommandList": iidGraphicsCommandList,
 		"ID3D12Fence": iidFence, "ID3D12Resource": iidResource, "ID3D12DescriptorHeap": iidDescriptorHeap,

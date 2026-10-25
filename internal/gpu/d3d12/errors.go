@@ -28,6 +28,10 @@ const (
 	// TagD3D12CallFailed is the tag of the error for a method of Direct3D 12 or DXGI that returned a
 	// failed HRESULT that has no tag of its own; the metadata are "method" and "hresult".
 	TagD3D12CallFailed = "D3D12CallFailed"
+	// TagD3D12SwapchainFailed is the tag of the error for a swap chain that cannot be made: the surface is not
+	// a window of Windows, DXGI accepted no format, or a resize left it without buffers (SPEC §9.8); the
+	// metadata are the "window" and, for a refused format, "refused" with each format and the answer.
+	TagD3D12SwapchainFailed = "D3D12SwapchainFailed"
 	// tagGPUOutOfMemory and tagGPUDeviceLost are the tags of SPEC §9.3, which every explicit backend
 	// makes; explicit.Renderer recovers from the second (SPEC §9.3, "Decided in step 20.7").
 	tagGPUOutOfMemory = "GPUOutOfMemory"

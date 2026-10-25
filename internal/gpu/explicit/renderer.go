@@ -205,6 +205,20 @@ func (r *Renderer) StartupReport() gpu.StartupReport {
 
 var _ gpu.StartupReporter = (*Renderer)(nil)
 
+// PipelineLibrary says whether the device keeps a library of serialized pipelines (Direct3D 12's
+// ID3D12PipelineLibrary, which vkd3d does not have, SPEC §9.8), when the device has the concept: its method
+// HasPipelineLibrary. known is false for a device that does not.
+//
+// Flutter: no counterpart
+func (r *Renderer) PipelineLibrary() (present, known bool) {
+	if d, ok := r.dev.(interface{ HasPipelineLibrary() bool }); ok {
+		return d.HasPipelineLibrary(), true
+	}
+	return false, false
+}
+
+var _ gpu.PipelineLibraryReporter = (*Renderer)(nil)
+
 // lostWindow is how long a second loss of the device after a first one ends the app.
 const lostWindow = 10 * time.Second
 

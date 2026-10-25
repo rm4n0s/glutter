@@ -26,3 +26,12 @@ type StartupReport struct {
 type StartupReporter interface {
 	StartupReport() StartupReport
 }
+
+// PipelineLibraryReporter is implemented by a renderer whose device may keep a library of serialized pipelines
+// (Direct3D 12, SPEC §9.8): PipelineLibrary says whether the device has one, and known whether the device has the
+// concept at all, so that the log of the start names a library only where there is something to say.
+//
+// Flutter: no counterpart
+type PipelineLibraryReporter interface {
+	PipelineLibrary() (present, known bool)
+}

@@ -51,7 +51,10 @@ func wineEditor(t *testing.T) func(name string, env ...string) *image.RGBA {
 		defer cancel()
 		data := filepath.Join(dir, name+"-data")
 		res, err := h.Run(ctx, exe, winetest.RunOptions{
-			Env:     append([]string{"GLUTTER_DEV_DATA_DIR=" + data, "GLUTTER_SCREENSHOT=" + shot, "GLUTTER_SCREENSHOT_AFTER=5s"}, env...),
+			// The editor is drawn by d3d12 (auto). Its raster cache draws a layer that has been the same for three frames as a
+			// texture, a few pixels away from the direct draw, so the frame after many keys would not equal the frame of an
+			// editor that starts with the same text: these tests compare pixel for pixel, so the cache is off.
+			Env:     append([]string{"GLUTTER_DEV_DATA_DIR=" + data, "GLUTTER_SCREENSHOT=" + shot, "GLUTTER_SCREENSHOT_AFTER=5s", "GLUTTER_RASTER_CACHE=0"}, env...),
 			Timeout: time.Minute,
 		})
 		if err != nil || res.ExitCode != 0 {

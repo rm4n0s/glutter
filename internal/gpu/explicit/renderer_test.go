@@ -638,3 +638,38 @@ func TestEveryDrawStartsAtTheFirstVertexAndInstance(t *testing.T) {
 		t.Errorf("%d draws: the scene should draw shapes, a mask, filter passes, a layer and the blit", draws)
 	}
 }
+
+// libraryDevice is a fake device that says whether it keeps a pipeline library, as Direct3D 12's does.
+type libraryDevice struct {
+	*fakedevice.Device
+	has bool
+}
+
+func (d libraryDevice) HasPipelineLibrary() bool { return d.has }
+
+func TestRendererReportsThePipelineLibraryOfItsDevice(t *testing.T) {
+	tests := []struct {
+		name           string
+		open           func() explicit.Device // nil: the renderer has not drawn yet
+		present, known bool
+	}{
+		{"before the first frame", nil, false, false},
+		{"a device without the concept", func() explicit.Device { return fakedevice.New() }, false, false},
+		{"a device without a library", func() explicit.Device { return libraryDevice{Device: fakedevice.New(), has: false} }, false, true},
+		{"a device with one", func() explicit.Device { return libraryDevice{Device: fakedevice.New(), has: true} }, true, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := explicit.NewRenderer(func(gpu.SurfaceHandle) (explicit.Device, error) { return tt.open(), nil })
+			defer r.Close()
+			if tt.open != nil {
+				if _, err := r.Draw(window, 8, 8, nil, false); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if present, known := r.PipelineLibrary(); present != tt.present || known != tt.known {
+				t.Errorf("PipelineLibrary = %v, %v; want %v, %v", present, known, tt.present, tt.known)
+			}
+		})
+	}
+}

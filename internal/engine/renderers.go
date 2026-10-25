@@ -15,7 +15,7 @@ import (
 
 // RendererEnv is the environment variable that chooses the renderer, as
 // Config.Renderer does (SPEC §9.6): "auto" (the default), or the name of a renderer.
-// Linux has "vulkan" and "gles"; the web has "webgpu", "webgl" and "soft"; Windows has "d3d12" (from step 28.10) and "soft".
+// Linux has "vulkan" and "gles"; the web has "webgpu", "webgl" and "soft"; Windows has "d3d12" and "soft".
 //
 // Flutter: no counterpart
 const RendererEnv = "GLUTTER_RENDERER"
@@ -33,6 +33,14 @@ var knownRenderers = []string{"vulkan", "gles", "webgpu", "webgl", "d3d12", "sof
 type rendererCandidate struct {
 	// Name is what Config.Renderer and GLUTTER_RENDERER call it.
 	Name string
+	// Label is what the log calls the candidate when it is not Name: Windows has "d3d12" twice, on
+	// a hardware adapter and on WARP, and a renderer asked for by name is the first of them. Empty means
+	// Name.
+	Label string
+	// Skip, when set, says whether auto leaves the candidate out: Windows' WARP candidate has nothing to
+	// add when GLUTTER_D3D12_ADAPTER names an adapter, since the first candidate has tried it already. A
+	// skipped candidate is not tried and not logged. A renderer asked for by name is never skipped.
+	Skip func(cfg *Config) bool
 	// New makes the renderer. It must not touch the GPU: the first Draw does, and its
 	// error says whether the renderer works.
 	New func(cfg *Config, log *slog.Logger) renderer
@@ -42,6 +50,14 @@ type rendererCandidate struct {
 	// device that was lost twice in ten seconds or cannot be had again; Vulkan does not. A
 	// renderer asked for by name never switches.
 	SwitchOn func(err error) bool
+}
+
+// label is the name of the candidate in the log.
+func (c rendererCandidate) label() string {
+	if c.Label != "" {
+		return c.Label
+	}
+	return c.Name
 }
 
 // newShaderCache makes the cache of what the GPU drivers compile (SPEC §9.7): in Config.ShaderCacheDir, or the
@@ -145,7 +161,7 @@ func (c *chooser) Draw(h gpu.SurfaceHandle, width, height int, scene *ui.Scene, 
 	if err == nil || c.named || c.chosen.SwitchOn == nil || !c.chosen.SwitchOn(err) || len(c.after) == 0 {
 		return img, err
 	}
-	attrs := []any{"renderer", c.chosen.Name, "err", err}
+	attrs := []any{"renderer", c.chosen.label(), "err", err}
 	if appErr, ok := errors.FromError(err); ok {
 		attrs = append(attrs, "tag", appErr.Tag)
 	}
@@ -160,6 +176,11 @@ func (c *chooser) try(h gpu.SurfaceHandle, width, height int, scene *ui.Scene, c
 	var last error
 	for tried := 0; len(c.cand) > 0; tried++ {
 		cand := c.cand[0]
+		if !c.named && cand.Skip != nil && cand.Skip(c.cfg) {
+			c.cand = c.cand[1:]
+			tried--
+			continue
+		}
 		if (tried > 0 || c.renew) && c.cfg.renewSurface != nil {
 			// What the renderer before this one did to the native surface (the web's canvas
 			// keeps the first kind of context it was asked for) must not reach this one.
@@ -170,24 +191,27 @@ func (c *chooser) try(h gpu.SurfaceHandle, width, height int, scene *ui.Scene, c
 		img, err := r.Draw(h, width, height, scene, capture)
 		took := time.Since(start)
 		if err == nil {
-			c.cur, c.name, c.chosen, c.after, c.cand, c.renew = r, cand.Name, cand, c.cand[1:], nil, false
+			c.cur, c.name, c.chosen, c.after, c.cand, c.renew = r, cand.label(), cand, c.cand[1:], nil, false
 			c.log.Info("renderer chosen", "renderer", c.Describe())
-			c.logStartup(cand.Name, took, r)
+			c.logStartup(cand.label(), took, r)
 			return img, nil
 		}
 		r.Close()
 		if c.frameStats() {
-			c.log.Info("startup", "stage", "renderer tried", "renderer", cand.Name, "took", took.Round(time.Millisecond), "err", err)
+			c.log.Info("startup", "stage", "renderer tried", "renderer", cand.label(), "took", took.Round(time.Millisecond), "err", err)
 		}
 		if c.named {
 			return nil, err
 		}
-		attrs := []any{"renderer", cand.Name, "err", err}
+		attrs := []any{"renderer", cand.label(), "err", err}
 		if appErr, ok := errors.FromError(err); ok {
 			attrs = append(attrs, "tag", appErr.Tag)
 		}
 		c.log.Info("renderer not usable, trying the next", attrs...)
 		last, c.cand = err, c.cand[1:]
+	}
+	if last == nil {
+		return nil, errors.New(tagRendererUnavailable, "every renderer of this OS or build was left out")
 	}
 	return nil, last
 }
@@ -218,6 +242,11 @@ func (c *chooser) logStartup(name string, took time.Duration, r renderer) {
 	c.log.Info("startup", "stage", "GPU context or device", "renderer", name, "took", round(s.Context))
 	c.log.Info("startup", "stage", "shaders", "renderer", name, "took", round(s.Shaders),
 		"built", s.Built, "from_cache", s.Cached, "refused", s.Refused, "pipeline_cache_bytes", s.CacheBytes)
+	if pl, ok := r.(gpu.PipelineLibraryReporter); ok {
+		if present, known := pl.PipelineLibrary(); known {
+			c.log.Info("startup", "stage", "pipeline library", "renderer", name, "present", present, "loaded_bytes", s.CacheBytes)
+		}
+	}
 	c.log.Info("startup", "stage", "frame without the above", "renderer", name, "took", round(max(0, took-s.Context-s.Shaders)))
 }
 

@@ -8,7 +8,6 @@ import (
 	"unsafe"
 
 	"github.com/rm4n0s/errors"
-	"github.com/rm4n0s/glutter/internal/gpu"
 	"github.com/rm4n0s/glutter/internal/gpu/explicit"
 	"github.com/rm4n0s/glutter/internal/platform/windows/win32"
 )
@@ -162,6 +161,7 @@ func (e *encoder) Submit() error {
 	}
 	s := &d.slots[e.slot]
 	d.open = nil
+	e.presentBarrier()
 	if err := d.hr(e.list, "ID3D12GraphicsCommandList::Close", listClose); err != nil {
 		return d.failReads(e, err)
 	}
@@ -239,11 +239,6 @@ func (d *Device) finishRead(rd *pendingRead) {
 	rd.done(img, nil)
 }
 
-// NewSwapchain implements explicit.Device; step 28.10.
-func (d *Device) NewSwapchain(gpu.SurfaceHandle) (explicit.Swapchain, error) {
-	return nil, errors.New(tagD3D12NotImplemented, "swap chains of the Direct3D 12 device are step 28.10's", "command", "NewSwapchain")
-}
-
 // drainDebugMessages reads the messages of the debug layer's info queue after a frame, logs the
 // errors and keeps them for DebugErrors. Without the layer there is no queue and nothing to read.
 func (d *Device) drainDebugMessages() {
@@ -293,7 +288,4 @@ const (
 	// tagD3D12RectOutOfRange is the tag of the programmer error of a copy or a read of a rectangle that
 	// is not inside the texture; the metadata are "op" and the rectangles and sizes.
 	tagD3D12RectOutOfRange = "D3D12RectOutOfRange"
-	// tagD3D12NotImplemented is the tag of a command that the device gets in a later step (28.10: the
-	// swap chain); the metadata name the "command".
-	tagD3D12NotImplemented = "D3D12NotImplemented"
 )

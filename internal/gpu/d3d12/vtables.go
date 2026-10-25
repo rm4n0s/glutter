@@ -16,6 +16,18 @@ const (
 	adapterCheckInterfaceSupport      = 9  // IDXGIAdapter::CheckInterfaceSupport
 )
 
+// The methods of IDXGIFactory2 and of the swap chain interfaces IDXGISwapChain, 1 and 3 (SPEC §9.8
+// "Swap chain").
+const (
+	factoryMakeWindowAssociation       = 8  // IDXGIFactory::MakeWindowAssociation
+	factoryCreateSwapChainForHwnd      = 15 // IDXGIFactory2::CreateSwapChainForHwnd
+	swapChainGetBuffer                 = 9  // IDXGISwapChain::GetBuffer
+	swapChainResizeBuffers             = 13 // IDXGISwapChain::ResizeBuffers
+	swapChainGetDesc1                  = 18 // IDXGISwapChain1::GetDesc1
+	swapChainPresent1                  = 22 // IDXGISwapChain1::Present1
+	swapChainGetCurrentBackBufferIndex = 36 // IDXGISwapChain3::GetCurrentBackBufferIndex
+)
+
 // The methods of ID3D12Device.
 const (
 	deviceCreateCommandQueue         = 8
@@ -96,6 +108,8 @@ const (
 // The interface IDs.
 var (
 	iidDXGIFactory1        = win32.MustParseGUID("{770aae78-f26f-4dba-a829-253c83d1b387}")
+	iidDXGIFactory2        = win32.MustParseGUID("{50c83a1c-e072-4c48-87b0-3630fa36a6d0}")
+	iidDXGISwapChain3      = win32.MustParseGUID("{94d99bdb-f1f8-4ab0-b236-7da0170edab1}")
 	iidDXGIFactory4        = win32.MustParseGUID("{1bc6ea02-ef36-464f-bf0c-21ca39e5168a}")
 	iidDXGIFactory6        = win32.MustParseGUID("{c1b6694f-ff09-44a9-b03c-77900a0a1d17}")
 	iidDXGIAdapter1        = win32.MustParseGUID("{29038f61-3839-4626-91fd-086879011a05}")

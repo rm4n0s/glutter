@@ -48,7 +48,7 @@ type Config struct {
 	// GLUTTER_BACKEND environment variable.
 	Backend string
 	// Renderer, when not empty, is "auto", or the name of the renderer to use
-	// ("vulkan" or "gles" on Linux), and overrides the GLUTTER_RENDERER environment
+	// ("vulkan" or "gles" on Linux, "d3d12" or "soft" on Windows), and overrides the GLUTTER_RENDERER environment
 	// variable. Empty means "auto": the first candidate of the OS that presents its
 	// first frame. A renderer asked for by name never falls back (SPEC §9.6).
 	Renderer string

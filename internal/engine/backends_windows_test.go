@@ -6,7 +6,10 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/rm4n0s/glutter/internal/gpu/d3d12"
 )
 
 func TestConnectDisplayChoosesTheBackendOfWindows(t *testing.T) {
@@ -65,5 +68,24 @@ func TestDefaultShaderCacheDirAgreesWithUserCacheDir(t *testing.T) {
 	}
 	if got, want := defaultShaderCacheDir(os.Getenv), filepath.Join(base, "glutter", "shaders"); got != want {
 		t.Errorf("defaultShaderCacheDir = %q, os.UserCacheDir gives %q", got, want)
+	}
+}
+
+// The engine does not import package d3d12 in the files that the other hosts build, so it names the variable
+// of the adapter itself (windows_candidates.go); here the two are compared.
+func TestD3D12AdapterEnvIsTheDevicesOwn(t *testing.T) {
+	if d3d12AdapterEnv != d3d12.AdapterEnvVar {
+		t.Errorf("the engine reads %q, the device %q", d3d12AdapterEnv, d3d12.AdapterEnvVar)
+	}
+}
+
+// The renderers of Windows are the three of SPEC §9.6, in that order.
+func TestWindowsRendererCandidates(t *testing.T) {
+	var names []string
+	for _, c := range rendererCandidates() {
+		names = append(names, c.label())
+	}
+	if got := strings.Join(names, ","); got != "d3d12,d3d12 (warp),soft" {
+		t.Errorf("candidates %q, want d3d12,d3d12 (warp),soft", got)
 	}
 }
