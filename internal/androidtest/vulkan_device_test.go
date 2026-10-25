@@ -35,6 +35,20 @@ func setRotation(ctx context.Context, t *testing.T, e *Emulator, rotation int) {
 		_, _ = e.ADB.Output(context.Background(), "shell", "settings", "put", "system", "user_rotation", "0")
 	})
 	shell(ctx, t, e, "settings", "put", "system", "user_rotation", fmt.Sprint(rotation))
+	// The turn takes a while, and longer right after another test turned it back: wait until the
+	// window manager reports it (a fixed sleep raced with it), then let the activity settle.
+	want := fmt.Sprintf("mCurrentRotation=ROTATION_%d", rotation*90)
+	deadline := time.Now().Add(20 * time.Second)
+	for time.Now().Before(deadline) {
+		out, err := e.ADB.Output(ctx, "shell", "dumpsys", "window", "displays")
+		if err != nil || !strings.Contains(string(out), "mCurrentRotation=") {
+			break // a system that does not report it: the settle time below is all there is
+		}
+		if strings.Contains(string(out), want) {
+			break
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
 	time.Sleep(2 * time.Second)
 }
 

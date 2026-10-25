@@ -1,6 +1,7 @@
 package explicit
 
 import (
+	"encoding/binary"
 	"image"
 	"log/slog"
 	"time"
@@ -61,9 +62,12 @@ type Renderer struct {
 	opts    RendererOpts
 	dev     Device
 	sampler Sampler
-	blit    map[TextureFormat]Pipeline
-	windows map[gpu.SurfaceHandle]*window
-	closed  bool
+	// rotations is the uniform buffer of the blit: the pre-rotation of the swapchain, one entry
+	// for each of the four rotations, a dynamic offset apart (blit.wgsl).
+	rotations Buffer
+	blit      map[TextureFormat]Pipeline
+	windows   map[gpu.SurfaceHandle]*window
+	closed    bool
 	// cacheSaved is whether the pipeline cache was saved after the first frame.
 	cacheSaved bool
 	// pipes holds the pipelines of the primitives, one for each fixed blend.
@@ -229,7 +233,13 @@ func (r *Renderer) draw(h gpu.SurfaceHandle, width, height int, scene *ui.Scene,
 			_ = dev.Close()
 			return nil, err
 		}
-		r.dev, r.sampler = dev, sampler
+		rotations, err := newRotationBuffer(dev)
+		if err != nil {
+			sampler.Destroy()
+			_ = dev.Close()
+			return nil, err
+		}
+		r.dev, r.sampler, r.rotations = dev, sampler, rotations
 	}
 	w, err := r.window(h)
 	if err != nil {
@@ -320,18 +330,18 @@ func (r *Renderer) frame(w *window, fb *frameBuilder, width, height int, scene *
 	}
 
 	// The blit into the swapchain image, whatever its format.
-	group, err := r.dev.NewBindGroup(blit, 0, []Binding{{Binding: 0, Texture: w.frame}, {Binding: 1, Sampler: r.sampler}})
+	group, err := r.blitGroup(blit, w.frame, r.sampler)
 	if err != nil {
 		_ = enc.Submit()
 		return nil, err
 	}
-	// The blit covers the whole image, so the pass does not load it. The instance index tells the
+	// The blit covers the whole image, so the pass does not load it. The uniform tells the
 	// shader the pre-rotation of the swapchain (blit.wgsl).
 	rotation := w.sc.PreRotation()
 	pass := enc.BeginPass(img, LoadDontCare, bg)
 	pass.SetPipeline(blit)
-	pass.SetBindGroup(0, group)
-	pass.Draw(3, 1, 0, int(rotation))
+	pass.SetBindGroup(0, group, r.rotationOffset(rotation))
+	pass.Draw(3, 1, 0, 0)
 	pass.End()
 
 	var shot *image.RGBA
@@ -397,7 +407,7 @@ func (r *Renderer) blitAgain(w *window, width, height int, bg ui.Color) error {
 		_ = enc.Submit()
 		return err
 	}
-	group, err := r.dev.NewBindGroup(blit, 0, []Binding{{Binding: 0, Texture: w.frame}, {Binding: 1, Sampler: r.sampler}})
+	group, err := r.blitGroup(blit, w.frame, r.sampler)
 	if err != nil {
 		_ = enc.Submit()
 		return err
@@ -405,8 +415,8 @@ func (r *Renderer) blitAgain(w *window, width, height int, bg ui.Color) error {
 	rotation := w.sc.PreRotation()
 	pass := enc.BeginPass(img, LoadDontCare, bg)
 	pass.SetPipeline(blit)
-	pass.SetBindGroup(0, group)
-	pass.Draw(3, 1, 0, int(rotation))
+	pass.SetBindGroup(0, group, r.rotationOffset(rotation))
+	pass.Draw(3, 1, 0, 0)
 	pass.End()
 	if err := enc.Submit(); err != nil {
 		return err
@@ -475,6 +485,42 @@ func (r *Renderer) build(scene *ui.Scene, width, height int, useCache bool) (*fr
 //
 // Flutter: no counterpart
 func (r *Renderer) LastFrame() FrameStats { return r.last }
+
+// rotationUniformSize is the size of the Blit uniform of blit.wgsl: a vec4<u32> whose first
+// component is the rotation.
+const rotationUniformSize = 16
+
+// newRotationBuffer makes the buffer that holds the Blit uniform of each rotation, one entry for
+// each of the four, a UniformOffsetAlignment apart, so that a draw picks one with its dynamic
+// offset. It is written once.
+func newRotationBuffer(dev Device) (Buffer, error) {
+	align := dev.Limits().UniformOffsetAlignment
+	b, err := dev.NewBuffer(4*align, BufferUniform)
+	if err != nil {
+		return nil, err
+	}
+	data := make([]byte, 4*align)
+	for rot := Rotation0; rot <= Rotation270; rot++ {
+		binary.LittleEndian.PutUint32(data[int(rot)*align:], uint32(rot))
+	}
+	dev.WriteBuffer(b, 0, data)
+	return b, nil
+}
+
+// rotationOffset is the dynamic offset of the Blit uniform of the rotation.
+func (r *Renderer) rotationOffset(rot Rotation) uint32 {
+	return uint32(int(rot) * r.dev.Limits().UniformOffsetAlignment)
+}
+
+// blitGroup makes group 0 of the blit pipeline: the texture to copy, its sampler and the Blit
+// uniform. The draw gives the offset of the rotation to SetBindGroup (rotationOffset; 0 for none).
+func (r *Renderer) blitGroup(pipe Pipeline, src Texture, s Sampler) (BindGroup, error) {
+	return r.dev.NewBindGroup(pipe, 0, []Binding{
+		{Binding: 0, Texture: src},
+		{Binding: 1, Sampler: s},
+		{Binding: 2, Buffer: r.rotations, Size: rotationUniformSize},
+	})
+}
 
 // blitPipeline returns the pipeline that copies the frame texture into an image of the
 // format, made once.
@@ -570,6 +616,10 @@ func (r *Renderer) releaseDevice() {
 	if r.sampler != nil {
 		r.sampler.Destroy()
 		r.sampler = nil
+	}
+	if r.rotations != nil {
+		r.rotations.Destroy()
+		r.rotations = nil
 	}
 	if r.dev != nil {
 		_ = r.dev.Close()

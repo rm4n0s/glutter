@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -16,15 +17,17 @@ func TestGeneratedShaders(t *testing.T) {
 		entries []EntryPoint
 	}{
 		{ShaderBlit, "blit", []EntryPoint{
-			{Name: "vs_main", Stage: ShaderStageVertex, Bindings: []ShaderBinding{}},
+			{Name: "vs_main", Stage: ShaderStageVertex, Bindings: []ShaderBinding{
+				{Name: "blit", Group: 0, Binding: 2, Kind: BindingUniformBuffer, Register: ShaderRegister{Class: "b", Space: 0, Index: 2}},
+			}},
 			{Name: "fs_main", Stage: ShaderStageFragment, Bindings: []ShaderBinding{
-				{Name: "frameTexture", Group: 0, Binding: 0, Kind: BindingSampledTexture},
-				{Name: "frameSampler", Group: 0, Binding: 1, Kind: BindingSampler},
+				{Name: "frameTexture", Group: 0, Binding: 0, Kind: BindingSampledTexture, Register: ShaderRegister{Class: "t", Space: 0, Index: 0}},
+				{Name: "frameSampler", Group: 0, Binding: 1, Kind: BindingSampler, Register: ShaderRegister{Class: "s", Space: 0, Index: 1}},
 			}},
 		}},
 		{ShaderSolid, "solid", []EntryPoint{
 			{Name: "vs_main", Stage: ShaderStageVertex, Bindings: []ShaderBinding{
-				{Name: "frame", Group: 0, Binding: 0, Kind: BindingUniformBuffer},
+				{Name: "frame", Group: 0, Binding: 0, Kind: BindingUniformBuffer, Register: ShaderRegister{Class: "b", Space: 0, Index: 0}},
 			}},
 			{Name: "fs_main", Stage: ShaderStageFragment, Bindings: []ShaderBinding{}},
 		}},
@@ -114,5 +117,49 @@ func TestShadersListsEveryGeneratedShader(t *testing.T) {
 		if !listed[name] {
 			t.Errorf("shaders/%s.wgsl is not in Shaders()", name)
 		}
+	}
+}
+
+// TestGeneratedHLSL checks the HLSL of every shader against the contract of step 28.7 (D25, SPEC §9.8):
+// each binding is at register(<class>B, spaceG), the class is the kind's, nothing of naga's sampler heap
+// is left, and the entry points are functions of the text under their WGSL names.
+func TestGeneratedHLSL(t *testing.T) {
+	classes := map[BindingKind]string{BindingUniformBuffer: "b", BindingSampledTexture: "t", BindingSampler: "s"}
+	for _, s := range Shaders() {
+		t.Run(s.Name, func(t *testing.T) {
+			if s.HLSL == "" {
+				t.Fatal("no HLSL")
+			}
+			for _, bad := range []string{"nagaSamplerHeap", "nagaComparisonSamplerHeap", "SamplerIndexArray", "space255", "SV_InstanceID"} {
+				if strings.Contains(s.HLSL, bad) {
+					t.Errorf("the HLSL has %q", bad)
+				}
+			}
+			for _, d := range regexp.MustCompile(`register\(([^)]*)\)`).FindAllStringSubmatch(s.HLSL, -1) {
+				if !regexp.MustCompile(`^[bts]\d+, space\d+$`).MatchString(d[1]) {
+					t.Errorf("register(%s) is not register(<class>B, spaceG)", d[1])
+				}
+			}
+			for _, e := range s.Entries {
+				if !regexp.MustCompile(`(?m)^\w+ ` + e.Name + `\(`).MatchString(s.HLSL) {
+					t.Errorf("the HLSL has no function %s", e.Name)
+				}
+				for _, b := range e.Bindings {
+					want := ShaderRegister{Class: classes[b.Kind], Space: b.Group, Index: b.Binding}
+					if b.Register != want {
+						t.Errorf("%s.%s: register %v, want %v", e.Name, b.Name, b.Register, want)
+					}
+					if !strings.Contains(s.HLSL, "register("+want.String()+")") {
+						t.Errorf("%s.%s: the HLSL does not declare register(%s)", e.Name, b.Name, want)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestShaderRegisterString(t *testing.T) {
+	if got := (ShaderRegister{Class: "t", Space: 1, Index: 3}).String(); got != "t3, space1" {
+		t.Errorf("String = %q", got)
 	}
 }

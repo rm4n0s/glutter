@@ -131,6 +131,10 @@ type fakeNaga struct {
 	version string
 	failOn  string
 	calls   []string
+	// hlslEdit, when set, changes the HLSL that CompileHLSL writes (nagaStyleHLSL of the WGSL).
+	hlslEdit func(string) string
+	// t is the test, for nagaStyleHLSL.
+	t *testing.T
 }
 
 func (f *fakeNaga) Version() (string, error) { return f.version, nil }
@@ -145,6 +149,20 @@ func (f *fakeNaga) Compile(wgsl, spirv string) error {
 		return err
 	}
 	return os.WriteFile(spirv, append([]byte("SPV:"), src...), 0o644)
+}
+
+// CompileHLSL writes the HLSL that naga would write for the WGSL (nagaStyleHLSL), edited by hlslEdit.
+func (f *fakeNaga) CompileHLSL(wgsl, hlsl string) error {
+	f.calls = append(f.calls, filepath.Base(wgsl)+":hlsl")
+	src, err := os.ReadFile(wgsl)
+	if err != nil {
+		return err
+	}
+	text := nagaStyleHLSL(f.t, string(src))
+	if f.hlslEdit != nil {
+		text = f.hlslEdit(text)
+	}
+	return os.WriteFile(hlsl, []byte(text), 0o644)
 }
 
 func writeShaders(t *testing.T, files map[string]string) string {
@@ -169,12 +187,12 @@ const tinyShader = `@group(0) @binding(0) var<uniform> u: U;
 func TestGenerate(t *testing.T) {
 	src := writeShaders(t, map[string]string{"blur_pass.wgsl": tinyShader, "solid.wgsl": tinyShader, "notes.txt": "ignored"})
 	out := t.TempDir()
-	naga := &fakeNaga{version: "9.8.7"}
+	naga := &fakeNaga{t: t, version: "9.8.7"}
 	if err := Generate(src, out, naga); err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(naga.calls, []string{"blur_pass.wgsl", "solid.wgsl"}) {
-		t.Errorf("naga ran on %v, want each shader once, in order", naga.calls)
+	if !reflect.DeepEqual(naga.calls, []string{"blur_pass.wgsl", "blur_pass.wgsl:hlsl", "solid.wgsl", "solid.wgsl:hlsl"}) {
+		t.Errorf("naga ran on %v, want each shader once for the SPIR-V and once for the HLSL, in order", naga.calls)
 	}
 	for _, name := range []string{"blur_pass", "solid"} {
 		spv, err := os.ReadFile(filepath.Join(out, shadersDir, name+".spv"))
@@ -196,8 +214,10 @@ func TestGenerate(t *testing.T) {
 		"//go:embed shaders/blur_pass.spv",
 		"var ShaderBlurPass = &Shader{",
 		"var ShaderSolid = &Shader{",
-		`{Name: "u", Group: 0, Binding: 0, Kind: BindingUniformBuffer}`,
+		`{Name: "u", Group: 0, Binding: 0, Kind: BindingUniformBuffer, Register: ShaderRegister{Class: "b", Space: 0, Index: 0}}`,
 		`{Name: "fs_main", Stage: ShaderStageFragment, Bindings: []ShaderBinding{}}`,
+		"HLSL: `cbuffer u : register(b0, space0) { T u; }",
+		"float4 vs_main()",
 		"// Flutter: no counterpart",
 	} {
 		if !strings.Contains(text, want) {
@@ -206,7 +226,7 @@ func TestGenerate(t *testing.T) {
 	}
 	// The same input gives the same files.
 	out2 := t.TempDir()
-	if err := Generate(src, out2, &fakeNaga{version: "9.8.7"}); err != nil {
+	if err := Generate(src, out2, &fakeNaga{t: t, version: "9.8.7"}); err != nil {
 		t.Fatal(err)
 	}
 	code2, _ := os.ReadFile(filepath.Join(out2, generated))
@@ -223,10 +243,10 @@ func TestGenerateErrors(t *testing.T) {
 		tag   string
 		route string
 	}{
-		{"no shaders", map[string]string{}, &fakeNaga{version: "1"}, "ShadersNoShaders", "Generate.ShadersNoShaders"},
-		{"naga rejects a shader", map[string]string{"bad.wgsl": tinyShader}, &fakeNaga{version: "1", failOn: "bad.wgsl"}, "ShadersNagaFailed", "ShadersNagaFailed"},
-		{"a shader the parser rejects", map[string]string{"bad.wgsl": "fn helper() {}"}, &fakeNaga{version: "1"}, "ShadersNoEntry", "Generate->Parse.ShadersNoEntry"},
-		{"a backquote in the WGSL", map[string]string{"bad.wgsl": tinyShader + "// a `quote`\n"}, &fakeNaga{version: "1"}, "ShadersBacktick", "Generate->render.ShadersBacktick"},
+		{"no shaders", map[string]string{}, &fakeNaga{t: t, version: "1"}, "ShadersNoShaders", "Generate.ShadersNoShaders"},
+		{"naga rejects a shader", map[string]string{"bad.wgsl": tinyShader}, &fakeNaga{t: t, version: "1", failOn: "bad.wgsl"}, "ShadersNagaFailed", "ShadersNagaFailed"},
+		{"a shader the parser rejects", map[string]string{"bad.wgsl": "fn helper() {}"}, &fakeNaga{t: t, version: "1"}, "ShadersNoEntry", "Generate->Parse.ShadersNoEntry"},
+		{"a backquote in the WGSL", map[string]string{"bad.wgsl": tinyShader + "// a `quote`\n"}, &fakeNaga{t: t, version: "1"}, "ShadersBacktick", "Generate->render.ShadersBacktick"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -339,7 +359,7 @@ func TestIncludesAreExpanded(t *testing.T) {
 		"deeper.wgsl.inc": "const K: f32 = 2.0;\n",
 	})
 	out := t.TempDir()
-	naga := &fakeNaga{version: "1.0.0"}
+	naga := &fakeNaga{t: t, version: "1.0.0"}
 	if err := Generate(src, out, naga); err != nil {
 		t.Fatal(err)
 	}
@@ -348,7 +368,7 @@ func TestIncludesAreExpanded(t *testing.T) {
 	if err != nil || !bytes.Contains(spv, []byte("struct U { x: f32 }\nconst K: f32 = 2.0;\n@group")) || bytes.Contains(spv, []byte("#include")) {
 		t.Errorf("the compiled text: %v\n%s", err, spv)
 	}
-	if !reflect.DeepEqual(naga.calls, []string{"main.wgsl"}) {
+	if !reflect.DeepEqual(naga.calls, []string{"main.wgsl", "main.wgsl:hlsl"}) {
 		t.Errorf("naga ran on %v", naga.calls)
 	}
 	code, _ := os.ReadFile(filepath.Join(out, generated))
@@ -356,7 +376,7 @@ func TestIncludesAreExpanded(t *testing.T) {
 		t.Errorf("the generated file does not hold the expanded text:\n%s", code)
 	}
 	// The bindings of an included file count for the entry points that use them.
-	if !strings.Contains(string(code), `{Name: "u", Group: 0, Binding: 0, Kind: BindingUniformBuffer}`) {
+	if !strings.Contains(string(code), `{Name: "u", Group: 0, Binding: 0, Kind: BindingUniformBuffer, Register: ShaderRegister{Class: "b", Space: 0, Index: 0}}`) {
 		t.Error("the binding is missing")
 	}
 }
@@ -373,7 +393,7 @@ func TestIncludeErrors(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := Generate(writeShaders(t, tt.files), t.TempDir(), &fakeNaga{version: "1"})
+			err := Generate(writeShaders(t, tt.files), t.TempDir(), &fakeNaga{t: t, version: "1"})
 			appErr, ok := errors.FromError(err)
 			if !ok || appErr.Tag != tt.tag || !appErr.HasRoute("expand."+tt.tag) {
 				t.Errorf("got %v, want %s through expand", err, tt.tag)

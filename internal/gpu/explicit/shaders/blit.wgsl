@@ -5,13 +5,24 @@
 // needs no vertex buffer: draw 3 vertices. Clip space points up and texture space
 // points down, so the V coordinate is flipped and the picture stays upright.
 //
-// The instance index is the pre-rotation of the swapchain (explicit.Rotation, SPEC §24.4): the
+// The Blit uniform is the pre-rotation of the swapchain (explicit.Rotation, SPEC §24.4): the
 // image of the swapchain is the frame rotated clockwise by that many quarter turns, so that the
-// presentation engine need not rotate it. The renderer draws one instance, numbered with the
-// rotation (firstInstance), which is 0 on every window system but Android's.
+// presentation engine need not rotate it. The renderer picks the rotation with the dynamic offset
+// of the binding; it is 0 on every window system but Android's. (It is a uniform and not the first
+// instance of the draw, because Direct3D's SV_InstanceID does not include the first instance, SPEC
+// §9.8.)
+
+struct Blit {
+	// rotation is the number of quarter turns; the other three components are padding.
+	rotation: u32,
+	pad0: u32,
+	pad1: u32,
+	pad2: u32,
+}
 
 @group(0) @binding(0) var frameTexture: texture_2d<f32>;
 @group(0) @binding(1) var frameSampler: sampler;
+@group(0) @binding(2) var<uniform> blit: Blit;
 
 struct VertexOutput {
 	@builtin(position) position: vec4<f32>,
@@ -19,7 +30,8 @@ struct VertexOutput {
 }
 
 @vertex
-fn vs_main(@builtin(vertex_index) index: u32, @builtin(instance_index) rotation: u32) -> VertexOutput {
+fn vs_main(@builtin(vertex_index) index: u32) -> VertexOutput {
+	let rotation = blit.rotation;
 	let p = vec2<f32>(f32((index << 1u) & 2u), f32(index & 2u));
 	// The position in the image, from its top left, as a fraction.
 	let a = p.x;

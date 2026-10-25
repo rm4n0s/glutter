@@ -13,7 +13,7 @@ import (
 // Linux host and is skipped, with the install command, when the compiler is missing.
 func TestLayoutAgainstTheHeaders(t *testing.T) {
 	layouttest.Check(t, layouttest.Spec{
-		Headers: []string{"windows.h", "unknwn.h", "dxgi.h", "dwmapi.h", "shellscalingapi.h", "imm.h", "shlobj.h"},
+		Headers: []string{"windows.h", "unknwn.h", "dxgi.h", "dwmapi.h", "shellscalingapi.h", "imm.h", "shlobj.h", "winver.h"},
 		Structs: []layouttest.Struct{
 			layouttest.StructOf("GUID", GUID{}),
 			layouttest.StructOf("POINT", Point{}),
@@ -48,6 +48,7 @@ func TestLayoutAgainstTheHeaders(t *testing.T) {
 			layouttest.StructOf("HIGHCONTRASTW", HighContrast{}),
 			layouttest.StructOf("LOGFONTW", LogFont{}),
 			layouttest.StructOf("NONCLIENTMETRICSW", NonClientMetrics{}),
+			layouttest.StructOf("VS_FIXEDFILEINFO", VSFixedFileInfo{}),
 		},
 		VTables: []layouttest.VTable{{CName: "IUnknownVtbl", Methods: []layouttest.Method{
 			{Name: "QueryInterface", Index: IUnknownQueryInterface},
@@ -385,6 +386,7 @@ func TestLayoutAgainstTheHeaders(t *testing.T) {
 			{Name: "ENDSESSION_CRITICAL", Value: uint32(EndSessionCritical)},
 			{Name: "ENDSESSION_LOGOFF", Value: uint32(EndSessionLogoff)},
 			{Name: "KEY_READ", Value: uint32(KeyRead)},
+			{Name: "VS_FFI_SIGNATURE", Value: VSFixedFileInfoSignature},
 			{Name: "RRF_RT_REG_SZ", Value: uint32(RRFRTRegSZ)},
 			{Name: "RRF_RT_REG_EXPAND_SZ", Value: uint32(RRFRTRegExpandSZ)},
 		},

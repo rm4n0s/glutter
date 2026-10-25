@@ -707,13 +707,13 @@ func (r *Renderer) generateMips(enc Encoder) error {
 	}
 	for _, e := range mips {
 		for level := 1; level < e.levels; level++ {
-			group, err := r.dev.NewBindGroup(pipe, 0, []Binding{{Binding: 0, Texture: e.tex.Level(level - 1)}, {Binding: 1, Sampler: r.mipSampler}})
+			group, err := r.blitGroup(pipe, e.tex.Level(level-1), r.mipSampler)
 			if err != nil {
 				return err
 			}
 			pass := enc.BeginPass(e.tex.Level(level), LoadClear, ui.Color{})
 			pass.SetPipeline(pipe)
-			pass.SetBindGroup(0, group)
+			pass.SetBindGroup(0, group, r.rotationOffset(Rotation0))
 			pass.SetScissor(image.Rect(0, 0, max(e.w>>level, 1), max(e.h>>level, 1)))
 			pass.Draw(3, 1, 0, 0)
 			pass.End()

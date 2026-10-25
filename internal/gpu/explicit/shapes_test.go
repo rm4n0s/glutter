@@ -188,9 +188,10 @@ func TestInstanceDataIsUploadedOncePerFrameIntoTheSlot(t *testing.T) {
 			buffers++
 		}
 	}
-	// One instance buffer and one uniform buffer for each of the two frames in flight.
-	if buffers != 2*explicit.FramesInFlight {
-		t.Errorf("%d buffers made over 5 frames, want %d", buffers, 2*explicit.FramesInFlight)
+	// One instance buffer and one uniform buffer for each of the two frames in flight, and the buffer
+	// that holds the rotations of the blit, made once.
+	if buffers != 2*explicit.FramesInFlight+1 {
+		t.Errorf("%d buffers made over 5 frames, want %d", buffers, 2*explicit.FramesInFlight+1)
 	}
 	var offsets []string
 	for _, c := range dev.Calls() {
@@ -305,8 +306,15 @@ func TestNothingToDraw(t *testing.T) {
 	if got := scenePass(dev); len(got) != 0 {
 		t.Errorf("the scene pass drew %v", got)
 	}
-	if slicesContains(dev.Ops(), "WriteBuffer") {
-		t.Errorf("an empty frame wrote buffers: %v", dev.Ops())
+	// Only the rotations of the blit were written (once, when the device opened).
+	writes := 0
+	for _, op := range dev.Ops() {
+		if op == "WriteBuffer" {
+			writes++
+		}
+	}
+	if writes != 1 {
+		t.Errorf("an empty frame wrote %d buffers, want only the rotations of the blit: %v", writes, dev.Ops())
 	}
 }
 

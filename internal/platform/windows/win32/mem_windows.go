@@ -29,3 +29,19 @@ func Bytes(addr uintptr, n int) []byte {
 	}
 	return unsafe.Slice((*byte)(at(addr)), n)
 }
+
+// CString copies the NUL-terminated string (ANSI or UTF-8 bytes) of memory that Windows owns at addr
+// into a Go string; "" for a null address. The string a COM object returns lives as long as the
+// object, so the caller copies it before it releases the object.
+//
+// Flutter: no counterpart
+func CString(addr uintptr) string {
+	if addr == 0 {
+		return ""
+	}
+	n := 0
+	for *(*byte)(at(addr + uintptr(n))) != 0 {
+		n++
+	}
+	return string(unsafe.Slice((*byte)(at(addr)), n))
+}

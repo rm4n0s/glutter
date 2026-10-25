@@ -279,23 +279,57 @@ func TestBlitCopiesAnUploadedTexture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The Blit uniform: the rotation in quarter turns, one entry for each, 256 bytes apart.
+	rotations := rotationBuffer(t, d)
 	dst := target(t, d, 8, 4, explicit.TextureFormatBGRA8Unorm)
-	group, err := d.NewBindGroup(pipe, 0, []explicit.Binding{{Binding: 0, Texture: src}, {Binding: 1, Sampler: sampler}})
+	red, blue := color.RGBA{255, 0, 0, 255}, color.RGBA{0, 0, 255, 255}
+	tests := []struct {
+		name     string
+		rotation uint32
+		// the pixels at the top left, top right, bottom left and bottom right
+		corners [4]color.RGBA
+	}{
+		{"upright", 0, [4]color.RGBA{red, red, blue, blue}},
+		{"one turn clockwise", 1, [4]color.RGBA{blue, red, blue, red}},
+		{"a half turn", 2, [4]color.RGBA{blue, blue, red, red}},
+		{"three turns", 3, [4]color.RGBA{red, blue, red, blue}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			enc, _ := d.Begin()
+			// A bind group lives for the frame it is made in.
+			group, err := d.NewBindGroup(pipe, 0, []explicit.Binding{{Binding: 0, Texture: src}, {Binding: 1, Sampler: sampler}, {Binding: 2, Buffer: rotations, Size: 16}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			pass := enc.BeginPass(dst, explicit.LoadClear, colorOf(0, 0, 0, 1))
+			pass.SetPipeline(pipe)
+			pass.SetBindGroup(0, group, tt.rotation*256)
+			pass.Draw(3, 1, 0, 0)
+			pass.End()
+			img := readBack(t, d, dst, enc)
+			wantPixel(t, img, 0, 0, tt.corners[0]) // upright: the top row is red
+			wantPixel(t, img, 7, 0, tt.corners[1])
+			wantPixel(t, img, 0, 3, tt.corners[2])
+			wantPixel(t, img, 7, 3, tt.corners[3])
+		})
+	}
+}
+
+// rotationBuffer is the buffer of the Blit uniform of the renderer: the rotations 0 to 3, a uniform
+// offset apart (256).
+func rotationBuffer(t *testing.T, d *Device) explicit.Buffer {
+	t.Helper()
+	b, err := d.NewBuffer(4*256, explicit.BufferUniform)
 	if err != nil {
 		t.Fatal(err)
 	}
-	enc, _ := d.Begin()
-	pass := enc.BeginPass(dst, explicit.LoadClear, colorOf(0, 0, 0, 1))
-	pass.SetPipeline(pipe)
-	pass.SetBindGroup(0, group)
-	pass.Draw(3, 1, 0, 0)
-	pass.End()
-	img := readBack(t, d, dst, enc)
-	red, blue := color.RGBA{255, 0, 0, 255}, color.RGBA{0, 0, 255, 255}
-	wantPixel(t, img, 0, 0, red) // the picture is upright: the top row is red
-	wantPixel(t, img, 7, 1, red)
-	wantPixel(t, img, 0, 3, blue)
-	wantPixel(t, img, 7, 2, blue)
+	data := make([]byte, 4*256)
+	for i := 0; i < 4; i++ {
+		data[i*256] = byte(i)
+	}
+	d.WriteBuffer(b, 0, data)
+	return b
 }
 
 func TestCopyTexture(t *testing.T) {
@@ -703,15 +737,16 @@ func TestLevelsAreDrawnIntoAndSampled(t *testing.T) {
 	if tex.Level(1) != tex.Level(1) {
 		t.Error("Level made another texture for the same level")
 	}
+	rotations := rotationBuffer(t, d)
 	enc, _ := d.Begin()
 	for level := 1; level < 4; level++ {
-		group, err := d.NewBindGroup(pipe, 0, []explicit.Binding{{Binding: 0, Texture: tex.Level(level - 1)}, {Binding: 1, Sampler: sampler}})
+		group, err := d.NewBindGroup(pipe, 0, []explicit.Binding{{Binding: 0, Texture: tex.Level(level - 1)}, {Binding: 1, Sampler: sampler}, {Binding: 2, Buffer: rotations, Size: 16}})
 		if err != nil {
 			t.Fatal(err)
 		}
 		pass := enc.BeginPass(tex.Level(level), explicit.LoadClear, colorOf(0, 0, 0, 0))
 		pass.SetPipeline(pipe)
-		pass.SetBindGroup(0, group)
+		pass.SetBindGroup(0, group, 0)
 		pass.Draw(3, 1, 0, 0)
 		pass.End()
 	}

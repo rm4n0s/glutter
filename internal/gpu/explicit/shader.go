@@ -1,5 +1,7 @@
 package explicit
 
+import "strconv"
+
 // ShaderStage is the stage of a shader entry point.
 //
 // Flutter: no counterpart
@@ -71,6 +73,26 @@ func (k BindingKind) String() string {
 	return "unspecified"
 }
 
+// ShaderRegister is where the HLSL of a shader binds a resource (D25, SPEC §9.8): for the binding
+// B of the group G, `register(<Class>B, spaceG)`. The generator makes every register of
+// shaders_gen.go like that and checks the HLSL against it.
+//
+// Flutter: no counterpart
+type ShaderRegister struct {
+	// Class is the register class: "b" for a constant buffer (a uniform), "t" for a texture and "s"
+	// for a sampler.
+	Class string
+	// Space is the register space, the group of the binding.
+	Space int
+	// Index is the register number, the binding number.
+	Index int
+}
+
+// String returns the register as HLSL writes it, such as "t3, space1".
+func (r ShaderRegister) String() string {
+	return r.Class + strconv.Itoa(r.Index) + ", space" + strconv.Itoa(r.Space)
+}
+
 // ShaderBinding is one resource a shader reads, from its declaration in the WGSL:
 // `@group(g) @binding(b) var ...`.
 //
@@ -82,6 +104,8 @@ type ShaderBinding struct {
 	Group, Binding int
 	// Kind says what the resource is.
 	Kind BindingKind
+	// Register is where the HLSL binds the resource (Direct3D 12 only).
+	Register ShaderRegister
 }
 
 // EntryPoint is a function of a shader that a pipeline stage runs.
@@ -108,6 +132,10 @@ type Shader struct {
 	WGSL string
 	// SPIRV is what naga made from WGSL: one module with every entry point.
 	SPIRV []byte
+	// HLSL is what naga made from WGSL for shader model 5.1, after the generator put every
+	// binding at `register(<class>B, spaceG)` (ShaderBinding.Register): one file with every entry
+	// point, under the names they have in the WGSL. Direct3D 12 compiles it with D3DCompile.
+	HLSL string
 	// Entries are the entry points of the module.
 	Entries []EntryPoint
 }

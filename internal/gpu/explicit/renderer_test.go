@@ -41,7 +41,7 @@ func TestDrawStagesAFrame(t *testing.T) {
 		t.Errorf("the device was opened %d times", *opened)
 	}
 	want := []string{
-		"NewSampler", "NewSwapchain", "Configure", "NewTexture", // the first frame: the sampler, the window's swapchain, the frame texture
+		"NewSampler", "NewBuffer", "WriteBuffer", "NewSwapchain", "Configure", "NewTexture", // the first frame: the sampler, the rotations of the blit, the window's swapchain, the frame texture
 		"Begin", "Acquire", "NewPipeline", "BeginPass", "EndPass", // the frame texture is cleared to the background
 		"NewBindGroup", "BeginPass", "SetPipeline", "SetBindGroup", "Draw", "EndPass", // and blitted into the swapchain image
 		"ReadTexture", "Submit", "Present",
@@ -443,7 +443,8 @@ func TestBlitPassDoesNotLoadTheSwapchainImage(t *testing.T) {
 }
 
 // A swapchain with a pre-transform of quarter turns gets the frame drawn rotated: the blit says the
-// rotation in its instance index, the swapchain's images have their size turned, and the damage is
+// rotation with the dynamic offset of its uniform (Direct3D's SV_InstanceID leaves out the first
+// instance, so the draw's firstInstance stays 0), the swapchain's images have their size turned, and the damage is
 // told in the rotated image's coordinates.
 func TestPreRotationIsAppliedToTheBlitAndTheDamage(t *testing.T) {
 	tests := []struct {
@@ -466,18 +467,24 @@ func TestPreRotationIsAppliedToTheBlitAndTheDamage(t *testing.T) {
 				}
 			}
 			calls := dev.Calls()
-			var draw, present, configure string
+			var draw, bind, present, configure string
+			var lastBind string
 			for _, c := range calls {
 				switch c.Op {
+				case "SetBindGroup":
+					lastBind = c.Args
 				case "Draw":
-					draw = c.Args
+					draw, bind = c.Args, lastBind
 				case "Present":
 					present = c.Args
 				case "Configure":
 					configure = c.Args
 				}
 			}
-			if want := fmt.Sprintf("firstInstance=%d", tt.rotation); !strings.HasSuffix(draw, want) {
+			if want := fmt.Sprintf("group=0 offsets=[%d]", int(tt.rotation)*256); bind != want {
+				t.Errorf("the blit binds %q, want %q", bind, want)
+			}
+			if want := "firstVertex=0 firstInstance=0"; !strings.HasSuffix(draw, want) {
 				t.Errorf("the blit is %q, want it to end with %s", draw, want)
 			}
 			if present != tt.damage {
@@ -534,19 +541,28 @@ func TestStaleSwapchainBlitsTheFrameAgain(t *testing.T) {
 	if _, err := r.Draw(window, 40, 30, nil, false); err != nil {
 		t.Fatal(err)
 	}
-	var draws, configures, presents []string
+	var draws, binds, configures, presents []string
+	var lastBind string
 	for _, c := range dev.Calls() {
 		switch c.Op {
+		case "SetBindGroup":
+			lastBind = c.Args
 		case "Draw":
 			draws = append(draws, c.Args)
+			binds = append(binds, lastBind)
 		case "Configure":
 			configures = append(configures, c.Args)
 		case "Present":
 			presents = append(presents, c.Args)
 		}
 	}
-	if len(draws) != 2 || !strings.HasSuffix(draws[0], "firstInstance=0") || !strings.HasSuffix(draws[1], "firstInstance=1") {
-		t.Errorf("the blits are %v, want one unrotated and one rotated by a turn", draws)
+	if len(binds) != 2 || binds[0] != "group=0 offsets=[0]" || binds[1] != "group=0 offsets=[256]" {
+		t.Errorf("the blits bind %v, want one unrotated and one rotated by a turn", binds)
+	}
+	for _, d := range draws {
+		if !strings.HasSuffix(d, "firstVertex=0 firstInstance=0") {
+			t.Errorf("the blit is %q, want a draw from the first vertex and the first instance", d)
+		}
 	}
 	if len(configures) != 2 || len(presents) != 2 {
 		t.Errorf("configures %v, presents %v: want two of each", configures, presents)
@@ -577,5 +593,48 @@ func TestStaleSwapchainBlitsTheFrameAgain(t *testing.T) {
 	}
 	if n != 1 {
 		t.Errorf("the next frame has %d blits, want 1", n)
+	}
+}
+
+// Direct3D's SV_InstanceID and SV_VertexID leave out the first instance and the first vertex of a draw
+// as Vulkan's do not (SPEC §9.8), so no draw of the renderer starts anywhere but at 0: the rotation of the
+// blit is a uniform. A frame with shapes, a layer with an image filter, a blend that reads the pixels
+// under it and a mask filter draws all the pipelines.
+func TestEveryDrawStartsAtTheFirstVertexAndInstance(t *testing.T) {
+	r, dev, _ := newRenderer(t, explicit.RendererOpts{Damage: true})
+	dev.Rotation = explicit.Rotation270
+	blur := solid(0xC0000000)
+	blur.SetImageFilter(ui.NewImageFilterBlur(ui.ImageFilterBlurOpts{SigmaX: 2, SigmaY: 3}))
+	soft := solid(0xFF204080)
+	soft.SetMaskFilter(ui.NewMaskFilterBlur(ui.BlurStyleSolid, 3))
+	blend := solid(0xFF00FF00)
+	blend.SetBlendMode(ui.BlendModeMultiply)
+	scene := sceneOf(func(c *ui.Canvas) {
+		c.DrawRect(ui.NewRectFromLTWH(0, 0, 50, 50), solid(0xFFFF0000))
+		c.DrawRect(ui.NewRectFromLTWH(10, 10, 50, 50), blend)
+		c.DrawPath(star(), soft)
+		c.SaveLayer(&ui.Rect{Left: 10, Top: 10, Right: 60, Bottom: 60}, blur)
+		c.DrawRect(ui.NewRectFromLTWH(20, 20, 20, 20), solid(0xFFFF0000))
+		c.Restore()
+	})
+	if _, err := r.Draw(window, 100, 100, scene, false); err != nil {
+		t.Fatal(err)
+	}
+	draws := 0
+	for _, c := range dev.Calls() {
+		switch c.Op {
+		case "Draw":
+			draws++
+			if !strings.Contains(c.Args, "firstVertex=0 firstInstance=0") {
+				t.Errorf("Draw(%s) starts past the first vertex or instance", c.Args)
+			}
+		case "DrawIndexed":
+			if !strings.Contains(c.Args, "baseVertex=0 firstInstance=0") {
+				t.Errorf("DrawIndexed(%s) starts past the first vertex or instance", c.Args)
+			}
+		}
+	}
+	if draws < 6 {
+		t.Errorf("%d draws: the scene should draw shapes, a mask, filter passes, a layer and the blit", draws)
 	}
 }

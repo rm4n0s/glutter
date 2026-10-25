@@ -26,7 +26,7 @@ Glutter is a cgo-free GUI toolkit for Go (Android, from 1.6, is the one exceptio
 - Vet: `go vet ./...`
 - Lint: `golangci-lint run`
 - Format: `gofmt -w .` (or `goimports -w .`)
-- Generate (Wayland protocol bindings, key tables, material re-exports): `go generate ./...`
+- Generate (Wayland protocol bindings, key tables, material re-exports, shaders): `go generate ./...`; the shaders need naga 30.0.1 (D20), and `glutter-gen shaders` also writes the HLSL, rewriting naga's sampler heap into plain registers. A shader never reads `instance_index` (SPEC §9.8)
 - API conventions check (SPEC §12.13): `go run ./cmd/glutter-gen apicheck -allow cmd/glutter-gen/apicheck.allow`; a new violation is fixed, or accepted in that file with a reason and a row in SPEC §12.10
 - Error rules check (SPEC §14.4): `go run ./cmd/glutter-gen errcheck -allow cmd/glutter-gen/errcheck.allow`; a new violation is fixed, or accepted in that file with a reason
 - Run an example: `go run ./examples/counter`

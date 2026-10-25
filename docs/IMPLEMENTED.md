@@ -3237,3 +3237,54 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
     - the clipboard change listener;
     - the ClearType orientation;
     - whether a screen reader is running (step 28.13).
+
+## 28.7 Shaders for Direct3D 12
+
+- **Date:** 2026-10-25
+- **Branch:** feat/step-28.7-d3d12-shaders
+- **Summary:**
+  - **HLSL generation:** `glutter-gen shaders` now also writes the HLSL (shader model 5.1) of every shader into `shaders_gen.go`, as `Shader.HLSL` with `ShaderBinding.Register` per binding.
+  - **The sampler rewrite:** naga 30.0.1's command line cannot place samplers: it writes a sampler heap with index buffers in `space255`. By the owner's decision (2026-10-25), the generator rewrites naga's HLSL into plain `register(sB, spaceG)` declarations, so every binding sits at `register(<class>B, spaceG)` and Resource Binding Tier 1 hardware keeps working. The generator fails on any shape it does not know, and checks every register against the WGSL.
+  - **Rotation:** the blit's pre-rotation moved from the first instance to a uniform on every backend, because Direct3D's `SV_InstanceID` does not include the first instance.
+  - **The `internal/gpu/d3d12` package:** it compiles each entry point with `D3DCompile` from `d3dcompiler_47.dll` and keeps the DXBC in the shader cache. The cache key is the HLSL, the entry point, the target, the flags and the compiler's file version. It reads the registers back with `D3DReflect`.
+- **Main files:**
+  - `cmd/glutter-gen/internal/shaders/`: `hlsl.go`, `shaders.go`
+  - `internal/gpu/explicit/`: `shader.go`, `shaders_gen.go`, `shaders/blit.wgsl`, `renderer.go`, `scene.go`
+  - `internal/gpu/d3d12/`: `doc.go`, `compiler.go`, `hlslcache.go`, `types.go`, `compile_windows.go`, `reflect_windows.go`
+  - `internal/platform/windows/win32/`: `version_windows.go`, `structs_version.go`, `mem_windows.go`
+  - SPEC §9.8 and §24.5, and `docs/IMPLEMENTATION.md` steps 28.7 and 28.9
+- **Tests:**
+  - **Generator:**
+    - the rewrite over a real naga fixture, with every kind of binding, two groups and comparison samplers;
+    - 11 rewrite errors and 6 check mismatches, with route tests;
+    - `dropConstStructs`;
+    - tests against the real naga, skipped where naga is missing.
+  - **Renderer (`explicit`):** `TestGeneratedHLSL` and `TestEveryDrawStartsAtTheFirstVertexAndInstance`. The rotation tests were updated for the uniform.
+  - **`d3d12`:**
+    - each part of the cache key, and `ValidDXBC`;
+    - the cache over a directory: hit, miss, bad header, unwritable directory, no cache;
+    - the compile flags;
+    - a route test of `D3D12ShaderCompileFailed`;
+    - a layout test against the mingw-w64 headers.
+  - **Display, browser and device tests:**
+    - Vulkan on lavapipe draws the blit in all four rotations, and its parity with `soft` holds;
+    - the WebGPU browser tests pass;
+    - on the Android emulator, `TestVulkanDrawsUprightInEveryOrientation` and `TestVulkanParityInLandscapeWithValidation` pass.
+  - No golden image changed.
+- **Wine tests** (run twice):
+  - all 16 entry points compile to `vs_5_1`/`ps_5_1` and start with `DXBC`;
+  - a second compile is a cache hit, and `D3DCompile` is not called;
+  - a changed compiler version is a cache miss;
+  - `D3DReflect` gives the recorded registers and spaces for every entry point;
+  - the vertex semantics are right;
+  - a broken HLSL gives `D3D12ShaderCompileFailed` with the compiler's line.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck ✅ · apicheck ✅ · `GOOS=js GOARCH=wasm` build, vet and `scripts/test-wasm.sh` ✅ · `scripts/check-android.sh` ✅ · `GOOS=windows` amd64 build and vet, arm64 build ✅ · `scripts/test-windows.sh` ✅ · Wine tests ✅ · layout test against the headers ✅ · Android emulator rotation tests ✅ · nothing left running ✅
+- **Proof:** none.
+- **Manual checks (pending, for the owner's PC):** the HLSL compiles with Microsoft's `d3dcompiler_47.dll`, with no X4014 or X4121 warnings (derivatives in non-uniform control flow). The shaders were checked for that by reading them, because Wine's compiler does not enforce it.
+- **Deviations and follow-ups:**
+  - The generator removes `const` from struct-typed locals in the HLSL. Wine's `d3dcompiler_47` (vkd3d-shader 1.18) compiles a vertex shader that returns a const struct into code that ignores its inputs. The change does not alter the meaning.
+  - The generator refuses `SV_InstanceID`, so that nothing can depend on a first instance again.
+  - Wine's compiler writes `shader.hlsl:3:28: E5005: ...` and Microsoft's writes `shader.hlsl(3,28-43): error X3004: ...`. The test accepts both.
+  - A missing `d3dcompiler_47.dll` returns win32's own tag. Mapping it to `D3D12LoadFailed` is step 28.8's.
+  - `shadercache.Dir` still reads `XDG_CACHE_HOME` or `HOME`. On Windows it must be `os.UserCacheDir()` (SPEC §9.7): step 28.8.
+  - The Android emulator harness had a race: `setRotation` slept a fixed 2 seconds, and right after another test turned the emulator back, the frame was taken before the turn finished. It now waits up to 20 seconds for the window manager to report `mCurrentRotation`. The emulator never reports a half turn for an app, so that case waits the full 20 seconds.
