@@ -51,9 +51,9 @@ func pumpContainer(ts *gluttertest.Tester, child Widget) {
 }
 
 func TestSelectionContainerUpdatesItsRegistrarAndDelegateBasedOnTheNumberOfSelectables(t *testing.T) {
-	ts := gluttertest.New(t)
 	registrar, delegate := newTestSelectionRegistrar(), newTestContainerDelegate()
 	t.Cleanup(delegate.Dispose)
+	ts := gluttertest.New(t)
 	pumpContainer(ts, NewSelectionContainer(delegate, columnOf(ltrText("column1"), ltrText("column2"), ltrText("column3")),
 		SelectionContainerOpts{Registrar: registrar}))
 	ts.PumpAndSettle()
@@ -78,11 +78,13 @@ func TestSelectionContainerDisabledContainer(t *testing.T) {
 }
 
 func TestSelectionContainerSwappingOutContainerDelegateDoesNotCrash(t *testing.T) {
-	ts := gluttertest.New(t)
 	registrar, delegate := newTestSelectionRegistrar(), newTestContainerDelegate()
 	t.Cleanup(delegate.Dispose)
 	childDelegate := newTestContainerDelegate()
 	t.Cleanup(childDelegate.Dispose)
+	newDelegate := newTestContainerDelegate()
+	t.Cleanup(newDelegate.Dispose)
+	ts := gluttertest.New(t)
 	build := func(d SelectionContainerDelegate) Widget {
 		return NewSelectionContainer(delegate, NewBuilder(func(bc BuildContext) Widget {
 			return NewSelectionContainer(d, ltrTextPlain("dummy"), SelectionContainerOpts{Registrar: SelectionContainerMaybeOf(bc)})
@@ -93,8 +95,6 @@ func TestSelectionContainerSwappingOutContainerDelegateDoesNotCrash(t *testing.T
 	if len(registrar.selectables) != 1 || !delegate.Value().HasContent {
 		t.Fatalf("selectables = %d, hasContent = %v", len(registrar.selectables), delegate.Value().HasContent)
 	}
-	newDelegate := newTestContainerDelegate()
-	t.Cleanup(newDelegate.Dispose)
 	pumpContainer(ts, build(newDelegate))
 	ts.PumpAndSettle()
 	if len(registrar.selectables) != 1 || !delegate.Value().HasContent {
@@ -105,11 +105,11 @@ func TestSelectionContainerSwappingOutContainerDelegateDoesNotCrash(t *testing.T
 func ltrTextPlain(text string) Widget { return NewText(text) }
 
 func TestSelectionContainerCanUpdateWithinOneFrame(t *testing.T) {
-	ts := gluttertest.New(t)
 	registrar, delegate := newTestSelectionRegistrar(), newTestContainerDelegate()
 	t.Cleanup(delegate.Dispose)
 	childDelegate := newTestContainerDelegate()
 	t.Cleanup(childDelegate.Dispose)
+	ts := gluttertest.New(t)
 	// The Text widget has an internal SelectionContainer.
 	pumpContainer(ts, NewSelectionContainer(delegate, NewBuilder(func(bc BuildContext) Widget {
 		return NewSelectionContainer(childDelegate, ltrTextPlain("dummy"), SelectionContainerOpts{Registrar: SelectionContainerMaybeOf(bc)})
@@ -143,9 +143,9 @@ func TestSelectionContainerRegistersItselfIfThereIsASelectableChild(t *testing.T
 }
 
 func TestSelectionContainerGetsRegistrarFromContextIfNotProvided(t *testing.T) {
-	ts := gluttertest.New(t)
 	registrar, delegate := newTestSelectionRegistrar(), newTestContainerDelegate()
 	t.Cleanup(delegate.Dispose)
+	ts := gluttertest.New(t)
 	pumpContainer(ts, NewSelectionRegistrarScope(registrar, NewSelectionContainer(delegate, columnOf(ltrText("column1")))))
 	ts.PumpAndSettle()
 	if len(registrar.selectables) != 1 {

@@ -28,9 +28,18 @@ func (r *overlayOnlyRoute) CreateOverlayEntries() []*OverlayEntry {
 	return []*OverlayEntry{NewOverlayEntry(func(BuildContext) Widget { return NewContainer(nil) })}
 }
 
-func navTagsApp(ts *gluttertest.Tester) *GlobalKey[*NavigatorState] {
+func navTagsApp(t *testing.T, ts *gluttertest.Tester) *GlobalKey[*NavigatorState] {
 	key := NewGlobalKey[*NavigatorState]()
 	ts.PumpWidget(navTestApp(navTestAppOpts{navigatorKey: key, home: navText("home")}))
+	// The tests trip the checks in the middle of a change of the history, which
+	// leaves the navigator locked: Flutter never unlocks it, so that the object
+	// becomes unusable. The unmounting at the end of the test disposes it, which
+	// needs it unlocked, so the cleanup (it runs before the unmounting) does.
+	t.Cleanup(func() {
+		if state, ok := key.CurrentState(); ok {
+			state.ForceUnlockHistory()
+		}
+	})
 	return key
 }
 
@@ -65,7 +74,7 @@ func TestNavigatorTagsOfThePublicAPI(t *testing.T) {
 	t.Run("NavigatorLocked", func(t *testing.T) {
 		// A route that pushes another one while it is installed.
 		ts := gluttertest.New(t)
-		key := navTagsApp(ts)
+		key := navTagsApp(t, ts)
 		state := navState(t, key)
 		l := newRoutesLog()
 		route := newLHTestRoute(l, "pusher")
@@ -73,10 +82,15 @@ func TestNavigatorTagsOfThePublicAPI(t *testing.T) {
 			route.installHook = func() { state.Push(newPlainPage()) }
 			state.Push(route)
 		})
+		// The pusher is half installed, so the navigator cannot be disposed cleanly;
+		// what the unmounting reports is not what the test is about.
+		state.ForceUnlockHistory()
+		ts.PumpWidget(NewSizedBox(nil))
+		ts.TakeErrors()
 	})
 	t.Run("NavigatorNoActiveRoutes", func(t *testing.T) {
 		ts := gluttertest.New(t)
-		key := navTagsApp(ts)
+		key := navTagsApp(t, ts)
 		state := navState(t, key)
 		state.RemoveRoute(ModalRouteOf(ts.Element(gluttertest.ByText("home"))))
 		requireTag(t, "NavigatorNoActiveRoutes", func() { state.PushReplacement(newPlainPage()) })
@@ -92,18 +106,18 @@ func TestNavigatorTagsOfThePublicAPI(t *testing.T) {
 	})
 	t.Run("NavigatorRouteBelowMissing", func(t *testing.T) {
 		ts := gluttertest.New(t)
-		key := navTagsApp(ts)
+		key := navTagsApp(t, ts)
 		first := ModalRouteOf(ts.Element(gluttertest.ByText("home")))
 		requireTag(t, "NavigatorRouteBelowMissing", func() { navState(t, key).ReplaceRouteBelow(first, newPlainPage()) })
 	})
 	t.Run("NavigatorRouteMissing", func(t *testing.T) {
 		ts := gluttertest.New(t)
-		key := navTagsApp(ts)
+		key := navTagsApp(t, ts)
 		requireTag(t, "NavigatorRouteMissing", func() { navState(t, key).Replace(newPlainPage(), newPlainPage()) })
 	})
 	t.Run("NavigatorRouteRemoved", func(t *testing.T) {
 		ts := gluttertest.New(t)
-		key := navTagsApp(ts)
+		key := navTagsApp(t, ts)
 		state := navState(t, key)
 		route := newPlainPage()
 		state.Push(route)
@@ -113,7 +127,7 @@ func TestNavigatorTagsOfThePublicAPI(t *testing.T) {
 	})
 	t.Run("NavigatorUserGestureNotStarted", func(t *testing.T) {
 		ts := gluttertest.New(t)
-		key := navTagsApp(ts)
+		key := navTagsApp(t, ts)
 		requireTag(t, "NavigatorUserGestureNotStarted", func() { navState(t, key).DidStopUserGesture() })
 	})
 	t.Run("OverlayRouteInstalledTwice", func(t *testing.T) {
@@ -123,19 +137,19 @@ func TestNavigatorTagsOfThePublicAPI(t *testing.T) {
 	})
 	t.Run("RouteAlreadyInstalled", func(t *testing.T) {
 		ts := gluttertest.New(t)
-		key := navTagsApp(ts)
+		key := navTagsApp(t, ts)
 		route := newPlainPage()
 		navPush(key, route)
 		requireTag(t, "RouteAlreadyInstalled", func() { navPush(key, route) })
 	})
 	t.Run("RouteOverlayEntriesEmpty", func(t *testing.T) {
 		ts := gluttertest.New(t)
-		key := navTagsApp(ts)
+		key := navTagsApp(t, ts)
 		requireTag(t, "RouteOverlayEntriesEmpty", func() { navPush(key, newNotAnnouncedRoute()) })
 	})
 	t.Run("RouteNotCurrent", func(t *testing.T) {
 		ts := gluttertest.New(t)
-		key := navTagsApp(ts)
+		key := navTagsApp(t, ts)
 		home := ModalRouteOf(ts.Element(gluttertest.ByText("home"))).(TransitionRoute)
 		navPush(key, newPlainPage())
 		ts.PumpAndSettle()
@@ -143,7 +157,7 @@ func TestNavigatorTagsOfThePublicAPI(t *testing.T) {
 	})
 	t.Run("HeroControllerRouteNotCurrent", func(t *testing.T) {
 		ts := gluttertest.New(t)
-		key := navTagsApp(ts)
+		key := navTagsApp(t, ts)
 		home := ModalRouteOf(ts.Element(gluttertest.ByText("home")))
 		navPush(key, newPlainPage())
 		ts.PumpAndSettle()
@@ -153,7 +167,7 @@ func TestNavigatorTagsOfThePublicAPI(t *testing.T) {
 	})
 	t.Run("HeroControllerNavigatorMissing", func(t *testing.T) {
 		ts := gluttertest.New(t)
-		navTagsApp(ts)
+		navTagsApp(t, ts)
 		home := ModalRouteOf(ts.Element(gluttertest.ByText("home")))
 		controller := NewHeroController()
 		defer controller.Dispose()
@@ -167,13 +181,13 @@ func TestTransitionRouteTags(t *testing.T) {
 
 	t.Run("TransitionRouteControllerMissing", func(t *testing.T) {
 		ts := gluttertest.New(t)
-		key := navTagsApp(ts)
+		key := navTagsApp(t, ts)
 		route := newCurvedPageRoute(page, func(r *curvedPageRoute) { r.nilController = true })
 		requireTag(t, "TransitionRouteControllerMissing", func() { navPush(key, route) })
 	})
 	t.Run("TransitionRouteAnimationMissing", func(t *testing.T) {
 		ts := gluttertest.New(t)
-		key := navTagsApp(ts)
+		key := navTagsApp(t, ts)
 		route := newCurvedPageRoute(page, func(r *curvedPageRoute) { r.nilAnimation = true })
 		requireTag(t, "TransitionRouteAnimationMissing", func() { navPush(key, route) })
 	})

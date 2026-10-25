@@ -67,6 +67,9 @@ const (
 	chooserIfc   = "org.freedesktop.portal.FileChooser"
 )
 
+// fileChooserMethods are the methods of the file chooser portal that package desktop calls.
+var fileChooserMethods = []string{"OpenFile", "SaveFile", "SaveFiles"}
+
 // FakeDesktop installs a fake desktop in the app and returns it. Call it before the
 // app first uses package desktop (before the SystemTray is pumped).
 //
@@ -89,11 +92,23 @@ func (t *Tester) FakeDesktop() *FakeDesktop {
 			f.registered = append(f.registered, c.Args[0].(string))
 			return nil, nil
 		})
-	for _, m := range []string{"OpenFile", "SaveFile", "SaveFiles"} {
+	for _, m := range fileChooserMethods {
 		b.Handle(dbus.PortalDest, dbus.PortalPath, chooserIfc+"."+m, f.chooser)
 	}
 	desktop.InstallBus(t.Binding, b)
 	return f
+}
+
+// DisableFileChooser takes the file chooser portal away, as on a desktop that has none:
+// the calls of desktop.OpenFiles, SaveFile and SaveFiles (the dialogs for files, for
+// folders and for saving) fail with FileChooserUnavailable, until the test ends. A dialog
+// that is open already stays open.
+//
+// Flutter: no counterpart
+func (f *FakeDesktop) DisableFileChooser() {
+	for _, m := range fileChooserMethods {
+		f.bus.Unhandle(dbus.PortalDest, dbus.PortalPath, chooserIfc+"."+m)
+	}
 }
 
 func (f *FakeDesktop) notify(c fakebus.Call) ([]any, error) {

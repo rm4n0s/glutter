@@ -37,6 +37,7 @@ func (f *fakeTB) Fatal(args ...any) {
 	panic(fatalStop{})
 }
 func (f *fakeTB) Logf(string, ...any) {}
+func (f *fakeTB) Failed() bool        { return len(f.errorfs) > 0 || len(f.fatals) > 0 }
 func (f *fakeTB) Cleanup(fn func())   { f.cleanups = append(f.cleanups, fn) }
 
 // runCleanups runs the cleanups last first, as testing.T does.

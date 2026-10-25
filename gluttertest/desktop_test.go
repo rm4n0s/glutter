@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/desktop"
 	"github.com/rm4n0s/glutter/ui"
 	"github.com/rm4n0s/glutter/widgets"
@@ -194,5 +195,86 @@ func TestFakeDesktopAnswerWithoutADialogFails(t *testing.T) {
 	}()
 	if len(tb.errorfs) != 1 || !strings.Contains(tb.errorfs[0], "no file dialog is open") {
 		t.Errorf("failures = %q", tb.errorfs)
+	}
+}
+
+func TestFakeDesktopWithoutAFileChooser(t *testing.T) {
+	tests := []struct {
+		name string
+		call func(ctx context.Context, bc widgets.BuildContext) error
+		// route is the path from the function the app calls down to the tag.
+		route string
+	}{
+		{"open files", func(ctx context.Context, bc widgets.BuildContext) error {
+			_, err := desktop.OpenFiles(ctx, bc)
+			return err
+		}, "OpenFiles->call.chooseFiles.FileChooserUnavailable"},
+		{"open a folder", func(ctx context.Context, bc widgets.BuildContext) error {
+			_, err := desktop.OpenFiles(ctx, bc, desktop.OpenFilesOpts{Directory: true})
+			return err
+		}, "OpenFiles->call.chooseFiles.FileChooserUnavailable"},
+		{"save a file", func(ctx context.Context, bc widgets.BuildContext) error {
+			_, err := desktop.SaveFile(ctx, bc)
+			return err
+		}, "SaveFile->call.chooseFiles.FileChooserUnavailable"},
+		{"save files", func(ctx context.Context, bc widgets.BuildContext) error {
+			_, err := desktop.SaveFiles(ctx, bc, []string{"a.txt"})
+			return err
+		}, "SaveFiles->call.chooseFiles.FileChooserUnavailable"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ts := New(t)
+			fd := ts.FakeDesktop()
+			fd.DisableFileChooser()
+			ts.PumpWidget(widgets.NewDirectionality(ui.TextDirectionLTR, widgets.NewText("main")))
+			bc := ts.Element(ByText("main"))
+			errs := make(chan error, 1)
+			go func() { errs <- tt.call(context.Background(), bc) }()
+			var err error
+			fd.WaitFor("the failure", func() bool {
+				select {
+				case err = <-errs:
+					return true
+				default:
+					return false
+				}
+			})
+			appErr, ok := errors.FromError(err)
+			if !ok {
+				t.Fatalf("expected *errors.Error, got %T (%v)", err, err)
+			}
+			if !appErr.HasRoute(tt.route) {
+				t.Errorf("unexpected failure path: %s", appErr.Route())
+			}
+			if appErr.Metadata["method"] == nil {
+				t.Errorf("the error has no method in its metadata: %v", appErr.Metadata)
+			}
+			if fd.PendingFileChoosers() != 0 {
+				t.Error("a dialog is open")
+			}
+		})
+	}
+}
+
+func TestFakeDesktopFileChooserWorksUntilItIsDisabled(t *testing.T) {
+	ts := New(t)
+	fd := ts.FakeDesktop()
+	ts.PumpWidget(widgets.NewDirectionality(ui.TextDirectionLTR, widgets.NewText("main")))
+	bc := ts.Element(ByText("main"))
+	// A dialog that is open stays open when the portal goes away, and can be answered.
+	results := make(chan desktop.FilesResult, 1)
+	go func() {
+		res, err := desktop.OpenFiles(context.Background(), bc)
+		if err != nil {
+			t.Error(err)
+		}
+		results <- res
+	}()
+	fd.WaitFor("a dialog", func() bool { return fd.PendingFileChoosers() == 1 })
+	fd.DisableFileChooser()
+	fd.AnswerFileChooser("/d.txt")
+	if res := <-waitResult(fd, results); !reflect.DeepEqual(res.Paths, []string{"/d.txt"}) {
+		t.Errorf("result = %+v", res)
 	}
 }

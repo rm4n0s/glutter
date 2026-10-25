@@ -22,5 +22,14 @@
 // SPEC §14.2) does not stop the test where it happens; it is kept, and the test
 // fails at its end unless it took the error with TakeError.
 //
+// At the end of a test the tree is unmounted, as flutter_test does after the body
+// of a test: New registers a cleanup that pumps an empty widget, so every
+// State.Dispose runs and every State.Lifetime is cancelled. It does nothing when
+// the test failed already or when the framework reported an error that the test
+// did not take. Cleanups run last in, first out, so a cleanup that the test
+// registers after New still sees the tree; an object that the tree uses and that
+// the test disposes (a controller, a delegate) is registered with t.Cleanup before
+// New, to be disposed after the unmounting.
+//
 // Flutter: package:flutter_test/flutter_test.dart.
 package gluttertest

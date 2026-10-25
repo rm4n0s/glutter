@@ -976,18 +976,24 @@ func (s *dropdownButtonState[T]) handleTap() {
 	s.dropdownRoute = route
 	s.focusNode().RequestFocus()
 	navigator.Push(route)
+	binding := widgets.WidgetsBindingOf(bc)
 	route.PoppedThen(func(result any) {
-		s.removeDropdownRoute()
-		if s.Mounted() {
-			s.SetState(func() { s.isMenuExpanded = false })
-		}
-		r, ok := result.(dropdownRouteResult[T])
-		if !s.Mounted() || !ok {
-			return
-		}
-		if f := s.Widget().onChanged; f != nil {
-			f(r.result)
-		}
+		// Flutter runs the callback of the future as a microtask, after the code
+		// that completed it: the dismissal in Dispose has finished and the state is
+		// not mounted any more (SPEC §12.10).
+		binding.Post(func() {
+			s.removeDropdownRoute()
+			if s.Mounted() {
+				s.SetState(func() { s.isMenuExpanded = false })
+			}
+			r, ok := result.(dropdownRouteResult[T])
+			if !s.Mounted() || !ok {
+				return
+			}
+			if f := s.Widget().onChanged; f != nil {
+				f(r.result)
+			}
+		})
 	})
 	if w.o.OnTap != nil {
 		w.o.OnTap()

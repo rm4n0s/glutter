@@ -202,7 +202,27 @@ func New(tb TB, opts ...Opts) *Tester {
 		Painting:           po,
 	})
 	tb.Cleanup(t.checkNoErrorsLeft)
+	// Cleanups run last in, first out: the tree is unmounted before the errors
+	// that it reports are checked, and after the cleanups that the test registered.
+	tb.Cleanup(t.unmountTree)
 	return t
+}
+
+// unmountTree replaces the tree with an empty widget and pumps, so that every
+// State.Dispose runs and every State.Lifetime is cancelled, as flutter_test does
+// at the end of a test body. It does nothing when the test failed already, when the
+// framework reported an error that the test did not take, or when no widget was
+// pumped.
+//
+// Flutter: flutter_test/lib/src/binding.dart TestWidgetsFlutterBinding._runTestBody
+func (t *Tester) unmountTree() {
+	if f, ok := t.tb.(interface{ Failed() bool }); ok && f.Failed() {
+		return
+	}
+	if len(t.errs) > 0 || !t.Binding.IsRootWidgetAttached() {
+		return
+	}
+	t.PumpWidget(widgets.NewSizedBox(nil, widgets.SizedBoxOpts{Key: foundation.NewUniqueKey()}))
 }
 
 // hiddenChanged gives the app the lifecycle state that its windows give, as the

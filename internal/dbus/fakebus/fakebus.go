@@ -88,6 +88,17 @@ func (b *Bus) Handle(dest string, path godbus.ObjectPath, method string, h Handl
 	b.handlers[handlerKey(dest, path, method)] = h
 }
 
+// Unhandle removes the handler of dest, path and method, so that the call fails
+// with org.freedesktop.DBus.Error.ServiceUnknown as if nobody served it (unless
+// HandleAnyPath gave dest and method a handler).
+//
+// Flutter: no counterpart
+func (b *Bus) Unhandle(dest string, path godbus.ObjectPath, method string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	delete(b.handlers, handlerKey(dest, path, method))
+}
+
 // HandleAnyPath makes h answer the calls to dest and method on any object path
 // that has no handler of its own.
 //
