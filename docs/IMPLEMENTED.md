@@ -2858,3 +2858,17 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - **Decided:** a method on the owner, not a `RunAppOpts` field, so the app can change the delegate while it runs. The windows that must outlive the first one cannot be below its `View`: with `RunApp` that is only so when a `WindowManager` is above the `View`, so an app that wants to close its first window uses `RunWidget` with a `WindowManager` around `WrapWithDefaultView` (the example does; GUIDE and SPEC §12.10 say so). `RunApp` itself is unchanged.
   - The unmounting at the end of a `gluttertest` test (27.2) now pumps a `ViewCollection` of no views with no `View` around it: with the implicit view gone, a `SizedBox` in a `View` panicked with `ImplicitViewMissing` (found by the new tests).
   - `TestRunTwiceFails` of the Wayland package failed once in a combined display run with `TempDir: mkdir /tmp/...: no such file or directory` (seen a second time earlier, in a repeated run): the temp directory disappears under the test, which is not related to this step; it passed in three more runs of the package.
+
+## 27.6 `RawTooltip`: a delay read on enter, show and hide callbacks, a controller, dismissal by a key
+
+- **Date:** 2026-10-25
+- **Branch:** feat/step-27.6-raw-tooltip
+- **Summary:** `RawTooltipOpts` has `HoverDelayFunc` (read each time a mouse enters; wins over `HoverDelay`), `OnShown` and `OnHidden` (called when the animation leaves the dismissed state and when it returns to it, whatever hid the tooltip), `Controller` (`RawTooltipController`: `Show`, `Hide`, `IsShowing`, attached to the state of the widget it is given to, and doing nothing when none is) and `DismissOnKey` (a `HardwareKeyboard` handler that hides a showing tooltip on a key down and never handles the event). Each has a `// Deviation:` comment and a row in SPEC §12.10.
+- **Main files:** `widgets/raw_tooltip.go`, `widgets/raw_tooltip_options_test.go`, `material/widgets_reexport_gen.go` (regenerated), `docs/SPEC.md` (§12.10).
+- **Tests:** `widgets/raw_tooltip_options_test.go`: the delay function read at each enter (4 cases, also against `HoverDelay`); `OnShown` and `OnHidden` once each for six ways of hiding (the mouse leaving, a tap elsewhere, `RawTooltipDismissAll`, the controller, a key, the widget leaving the tree); the controller on a mounted tooltip, an unmounted one, and after it was replaced; `DismissOnKey` on and off, no hide of a tooltip that never showed, and the key reaching the focused widget. The 13 Flutter cases of `raw_tooltip_test.dart` that were ported earlier still pass.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck ✅ · apicheck ✅ · `GOOS=js GOARCH=wasm` build, vet and `scripts/test-wasm.sh` ✅ · `scripts/check-android.sh` ✅ · display tests none
+- **Proof:** none.
+- **Manual checks:** none.
+- **Deviations and follow-ups:**
+  - `OnHidden` is also called when the widget leaves the tree while the tooltip shows (the controller is disposed and sends no status), so an app that keeps a list of the hovers that show does not keep a dead one.
+  - `material.Tooltip` gets no matching options: the plan's goal is `RawTooltip` alone, and `material/tooltip.go` needed no change (it builds `RawTooltipOpts` by field name).

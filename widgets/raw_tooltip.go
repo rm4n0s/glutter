@@ -9,6 +9,7 @@ import (
 	"github.com/rm4n0s/glutter/gestures"
 	"github.com/rm4n0s/glutter/painting"
 	"github.com/rm4n0s/glutter/rendering"
+	"github.com/rm4n0s/glutter/services"
 	"github.com/rm4n0s/glutter/ui"
 )
 
@@ -172,6 +173,79 @@ type RawTooltipOpts struct {
 	PositionDelegate TooltipPositionDelegate
 	// IgnorePointer makes the tooltip ignore pointer events.
 	IgnorePointer bool
+	// HoverDelayFunc, when set, gives the hover delay each time a mouse enters the
+	// child, instead of HoverDelay: an app can show a tooltip at once when another one
+	// was hidden a moment ago.
+	//
+	// Deviation: Flutter reads the hover delay once, when the widget is built (SPEC
+	// §12.10).
+	HoverDelayFunc func() time.Duration
+	// OnShown is called when the tooltip starts to show: its animation leaves the
+	// dismissed state.
+	//
+	// Deviation: Flutter has no such callback (SPEC §12.10).
+	OnShown foundation.VoidCallback
+	// OnHidden is called when the tooltip is dismissed, whatever hid it: the mouse
+	// leaving, a tap, RawTooltipDismissAll, the controller, a key (DismissOnKey), or
+	// the widget leaving the tree while it showed.
+	//
+	// Deviation: Flutter has no such callback (SPEC §12.10).
+	OnHidden foundation.VoidCallback
+	// Controller shows and hides the tooltip from code; it works on the state of the
+	// widget it is given to.
+	//
+	// Deviation: Flutter reaches the state through a GlobalKey (SPEC §12.10).
+	Controller *RawTooltipController
+	// DismissOnKey hides the tooltip when a key goes down while it shows, as Flutter's
+	// Tooltip does for the escape key on the desktop. The key event is not handled: it
+	// goes on to the widgets as if the tooltip were not there.
+	//
+	// Deviation: Flutter's Tooltip reacts to the escape key only (SPEC §12.10).
+	DismissOnKey bool
+}
+
+// RawTooltipController shows and hides a RawTooltip from code. Give it in
+// RawTooltipOpts.Controller; it works on the tooltip it is attached to, and does
+// nothing when none is.
+//
+// Deviation: Flutter's apps reach RawTooltipState through a GlobalKey (SPEC §12.10).
+//
+// Flutter: no counterpart
+type RawTooltipController struct{ state *RawTooltipState }
+
+// NewRawTooltipController creates a controller that is attached to no tooltip yet.
+//
+// Flutter: no counterpart
+func NewRawTooltipController() *RawTooltipController { return &RawTooltipController{} }
+
+// Show shows the tooltip at once, without the hover delay, and keeps it until it is
+// hidden. It does nothing when no tooltip is attached.
+//
+// Flutter: widgets/raw_tooltip.dart RawTooltipState.ensureTooltipVisible
+func (c *RawTooltipController) Show() {
+	if c.state != nil {
+		c.state.EnsureTooltipVisible()
+	}
+}
+
+// Hide hides the tooltip at once. It does nothing when no tooltip is attached.
+//
+// Flutter: no counterpart
+func (c *RawTooltipController) Hide() {
+	if c.state != nil {
+		c.state.scheduleDismissTooltip(0)
+	}
+}
+
+// IsShowing is whether the tooltip shows or is animating in. It is false when no
+// tooltip is attached.
+//
+// Flutter: no counterpart
+func (c *RawTooltipController) IsShowing() bool { return c.state != nil && c.state.isShowing() }
+
+// isShowing is whether the tooltip shows or is animating in.
+func (s *RawTooltipState) isShowing() bool {
+	return s.backingController != nil && s.backingController.Status().IsForwardOrCompleted()
 }
 
 // RawTooltip is a widget that shows a tooltip component when a gesture
@@ -249,6 +323,10 @@ type RawTooltipState struct {
 	// other UI component.
 	activeHoveringPointerDevices map[int]struct{}
 	animationStatus              animation.AnimationStatus
+
+	controllerOfWidget *RawTooltipController
+	keyHandle          services.KeyHandlerHandle
+	keyHandlerAdded    bool
 }
 
 func (s *RawTooltipState) registry() *rawTooltipRegistry {
@@ -283,9 +361,19 @@ func (s *RawTooltipState) handleStatusChanged(status animation.AnimationStatus) 
 			r.opened = slices.Delete(r.opened, i, i+1)
 		}
 		s.overlayController.Hide()
+		s.animationStatus = status
+		if f := s.Widget().o.OnHidden; f != nil {
+			f()
+		}
+		return
 	case wasDismissed && !isDismissed:
 		s.overlayController.Show()
 		s.registry().opened = append(s.registry().opened, s)
+		s.animationStatus = status
+		if f := s.Widget().o.OnShown; f != nil {
+			f()
+		}
+		return
 	}
 	s.animationStatus = status
 }
@@ -459,6 +547,9 @@ func (s *RawTooltipState) handleMouseEnter(event *gestures.PointerEnterEvent) {
 		t.scheduleDismissTooltip(0)
 	}
 	delay := s.Widget().o.HoverDelay
+	if f := s.Widget().o.HoverDelayFunc; f != nil {
+		delay = f()
+	}
 	if len(toDismiss) > 0 {
 		delay = 0
 	}
@@ -495,6 +586,45 @@ func (s *RawTooltipState) EnsureTooltipVisible() bool {
 // Flutter: widgets/raw_tooltip.dart RawTooltipState.initState
 func (s *RawTooltipState) InitState() {
 	s.routeHandle = s.gestureBinding().PointerRouter.AddGlobalRoute(s.handleGlobalPointerEvent, nil)
+	s.updateControllerAndKeys()
+}
+
+// DidUpdateWidget attaches the new controller and follows DismissOnKey.
+//
+// Flutter: widgets/raw_tooltip.dart RawTooltipState.didUpdateWidget
+func (s *RawTooltipState) DidUpdateWidget(*RawTooltip) { s.updateControllerAndKeys() }
+
+// updateControllerAndKeys attaches the controller of the widget (and lets go of the
+// old one), and adds or removes the key handler for DismissOnKey.
+func (s *RawTooltipState) updateControllerAndKeys() {
+	o := s.Widget().o
+	if s.controllerOfWidget != o.Controller {
+		if s.controllerOfWidget != nil && s.controllerOfWidget.state == s {
+			s.controllerOfWidget.state = nil
+		}
+		s.controllerOfWidget = o.Controller
+		if o.Controller != nil {
+			o.Controller.state = s
+		}
+	}
+	keyboard := WidgetsBindingOf(s.Context()).Keyboard()
+	switch {
+	case o.DismissOnKey && !s.keyHandlerAdded:
+		s.keyHandle = keyboard.AddHandler(s.handleKeyEvent)
+		s.keyHandlerAdded = true
+	case !o.DismissOnKey && s.keyHandlerAdded:
+		keyboard.RemoveHandler(s.keyHandle)
+		s.keyHandlerAdded = false
+	}
+}
+
+// handleKeyEvent hides the tooltip when a key goes down while it shows. It never handles
+// the event.
+func (s *RawTooltipState) handleKeyEvent(event services.KeyEvent) bool {
+	if _, ok := event.(*services.KeyDownEvent); ok && s.isShowing() {
+		s.scheduleDismissTooltip(0)
+	}
+	return false
 }
 
 func (s *RawTooltipState) buildTooltipOverlay(bc BuildContext, layoutInfo OverlayChildLayoutInfo) Widget {
@@ -535,10 +665,18 @@ func (s *RawTooltipState) exclusiveMouseRegion(child Widget) Widget {
 // Flutter: widgets/raw_tooltip.dart RawTooltipState.dispose
 func (s *RawTooltipState) Dispose() {
 	s.gestureBinding().PointerRouter.RemoveGlobalRoute(s.routeHandle)
+	if s.keyHandlerAdded {
+		WidgetsBindingOf(s.Context()).Keyboard().RemoveHandler(s.keyHandle)
+		s.keyHandlerAdded = false
+	}
+	if c := s.controllerOfWidget; c != nil && c.state == s {
+		c.state = nil
+	}
 	r := s.registry()
 	if i := slices.Index(r.opened, s); i >= 0 {
 		r.opened = slices.Delete(r.opened, i, i+1)
 	}
+	wasShown := !s.animationStatus.IsDismissed()
 	// The recognizers may call their registered cancel callbacks if there's a
 	// gesture in progress. Remove the callbacks to prevent unnecessary side
 	// effects (such as animations).
@@ -556,6 +694,11 @@ func (s *RawTooltipState) Dispose() {
 	}
 	if s.overlayAnimation != nil {
 		s.overlayAnimation.Dispose()
+	}
+	if wasShown {
+		if f := s.Widget().o.OnHidden; f != nil {
+			f()
+		}
 	}
 }
 

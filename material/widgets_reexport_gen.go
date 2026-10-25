@@ -7115,6 +7115,13 @@ func NewRawTooltip(semanticsTooltip foundation.Opt[string], tooltipBuilder widge
 	return widgets.NewRawTooltip(semanticsTooltip, tooltipBuilder, child, opts...)
 }
 
+// NewRawTooltipController is widgets.NewRawTooltipController.
+//
+// Flutter: widgets.dart NewRawTooltipController
+func NewRawTooltipController() *widgets.RawTooltipController {
+	return widgets.NewRawTooltipController()
+}
+
 // NewRawView is widgets.NewRawView.
 //
 // Flutter: widgets.dart NewRawView
@@ -9386,6 +9393,11 @@ type RawScrollbarSubclass = widgets.RawScrollbarSubclass
 //
 // Flutter: widgets.dart RawTooltip
 type RawTooltip = widgets.RawTooltip
+
+// RawTooltipController is widgets.RawTooltipController.
+//
+// Flutter: widgets.dart RawTooltipController
+type RawTooltipController = widgets.RawTooltipController
 
 // RawTooltipDismissAll is widgets.RawTooltipDismissAll.
 //
