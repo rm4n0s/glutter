@@ -21,11 +21,14 @@ const defaultTreeRowExtent = 40.0
 //
 // Flutter: widgets/sliver_tree.dart TreeSliverNode
 type TreeSliverNode[T any] struct {
-	content  T
-	children []*TreeSliverNode[T]
-	expanded bool
-	depth    foundation.Opt[int]
-	parent   *TreeSliverNode[T]
+	content     T
+	children    []*TreeSliverNode[T]
+	hasChildren bool
+	expanded    bool
+	depth       foundation.Opt[int]
+	parent      *TreeSliverNode[T]
+	// changed tells the TreeSliver that shows the node that its children changed.
+	changed func()
 }
 
 // TreeSliverNodeOpts are the optional parameters of NewTreeSliverNode.
@@ -34,8 +37,16 @@ type TreeSliverNode[T any] struct {
 type TreeSliverNodeOpts[T any] struct {
 	// Children are the nodes below this one; none for a leaf.
 	Children []*TreeSliverNode[T]
-	// Expanded is whether the children are shown. A node without children is never expanded.
+	// Expanded is whether the children are shown. A node without children is never expanded, unless
+	// HasChildren is set.
 	Expanded bool
+	// HasChildren makes the node one that has children that are not read yet (a lazy node, such as a folder
+	// whose entries are listed when it opens): it can be toggled with no children, and the default node
+	// builder shows its arrow. Toggling it calls OnNodeToggle, where the app adds the children (SetChildren),
+	// which the node then shows, with the animation of the sliver when they are there at once.
+	//
+	// Deviation: Flutter's node has children or has none (SPEC §12.10).
+	HasChildren bool
 }
 
 // NewTreeSliverNode creates a node that holds the content.
@@ -43,7 +54,8 @@ type TreeSliverNodeOpts[T any] struct {
 // Flutter: widgets/sliver_tree.dart TreeSliverNode.new
 func NewTreeSliverNode[T any](content T, opts ...TreeSliverNodeOpts[T]) *TreeSliverNode[T] {
 	o := firstOpts(opts)
-	return &TreeSliverNode[T]{content: content, children: o.Children, expanded: len(o.Children) > 0 && o.Expanded}
+	return &TreeSliverNode[T]{content: content, children: o.Children, hasChildren: o.HasChildren,
+		expanded: (len(o.Children) > 0 || o.HasChildren) && o.Expanded}
 }
 
 // Content is the content the node holds.
@@ -56,14 +68,76 @@ func (n *TreeSliverNode[T]) Content() T { return n.content }
 // Flutter: widgets/sliver_tree.dart TreeSliverNode.children
 func (n *TreeSliverNode[T]) Children() []*TreeSliverNode[T] { return n.children }
 
-// AddChild adds a node below this one. Dart's children is a list that the app changes; here the node has a
-// method, and the TreeSliver shows the change when it is built again (a setState).
+// AddChild adds a node below this one, after the others. Dart's children is a list that the app changes; here
+// the node has methods (AddChild, InsertChild, RemoveChild, SetChildren), and the TreeSliver that shows the node
+// is told, so it shows the change at once, as Flutter's does when the list is changed and the tree is built again.
 //
 // Deviation: Flutter's children is mutable (SPEC §12.10).
 //
 // Flutter: widgets/sliver_tree.dart TreeSliverNode.children
 func (n *TreeSliverNode[T]) AddChild(child *TreeSliverNode[T]) {
 	n.children = append(n.children, child)
+	n.childrenChanged()
+}
+
+// InsertChild adds a node below this one at the index (0 to the number of children; the end for a larger one).
+//
+// Flutter: widgets/sliver_tree.dart TreeSliverNode.children
+func (n *TreeSliverNode[T]) InsertChild(index int, child *TreeSliverNode[T]) {
+	n.children = slices.Insert(n.children, max(0, min(index, len(n.children))), child)
+	n.childrenChanged()
+}
+
+// RemoveChild removes the node from the children of this one, and reports whether it was one. The removed node
+// has no parent and no depth, and its subtree leaves the tree with it, whatever its state. A node that held its
+// last child is collapsed (a lazy node is not).
+//
+// Flutter: widgets/sliver_tree.dart TreeSliverNode.children
+func (n *TreeSliverNode[T]) RemoveChild(child *TreeSliverNode[T]) bool {
+	i := slices.Index(n.children, child)
+	if i < 0 {
+		return false
+	}
+	n.children = slices.Delete(slices.Clone(n.children), i, i+1)
+	if child.parent == n {
+		child.parent = nil
+		child.depth = foundation.None[int]()
+	}
+	n.childrenChanged()
+	return true
+}
+
+// SetChildren replaces the children of this one. The old children that are not among the new ones have no
+// parent and no depth any more. A node left with no children is collapsed (a lazy node is not).
+//
+// Flutter: widgets/sliver_tree.dart TreeSliverNode.children
+func (n *TreeSliverNode[T]) SetChildren(children []*TreeSliverNode[T]) {
+	for _, old := range n.children {
+		if old.parent == n && !slices.Contains(children, old) {
+			old.parent = nil
+			old.depth = foundation.None[int]()
+		}
+	}
+	n.children = slices.Clone(children)
+	n.childrenChanged()
+}
+
+// HasChildren is whether the node has children, or is a lazy node whose children are not read yet.
+//
+// Deviation: Flutter's node has children or has none (SPEC §12.10).
+//
+// Flutter: widgets/sliver_tree.dart TreeSliverNode.children
+func (n *TreeSliverNode[T]) HasChildren() bool { return n.hasChildren || len(n.children) > 0 }
+
+// childrenChanged keeps the expansion right after the children changed and tells the TreeSliver that shows the
+// node, which makes the active nodes again (and with them the parent and the depth of every node).
+func (n *TreeSliverNode[T]) childrenChanged() {
+	if len(n.children) == 0 && !n.hasChildren {
+		n.expanded = false
+	}
+	if n.changed != nil {
+		n.changed()
+	}
 }
 
 // IsExpanded is whether the children are shown (or being shown).
@@ -275,6 +349,13 @@ type TreeSliverOpts[T any] struct {
 	Controller *TreeSliverController[T]
 	// OnNodeToggle is called when a node is toggled, after its state changed.
 	OnNodeToggle TreeSliverNodeCallback[T]
+	// NodeKey gives the key of the content of a node: GetNodeFor and IsExpanded find the node whose key is
+	// the key of the content, and a tree that is built again with new node objects keeps the expansion of the
+	// nodes whose keys were in the tree before. The keys must be comparable. Without it, contents are compared
+	// with reflect.DeepEqual and the new nodes keep their own state.
+	//
+	// Deviation: Flutter compares the contents with ==, and its nodes are kept by the app (SPEC §12.10).
+	NodeKey func(content T) any
 	// ToggleAnimationStyle is the curve and the duration of the animation of a toggle; AnimationStyleNoAnimation, or
 	// a zero duration, skips it. The default is TreeSliverDefaultToggleAnimationStyle.
 	ToggleAnimationStyle foundation.Opt[animation.AnimationStyle]
@@ -377,7 +458,7 @@ func TreeSliverDefaultTreeNodeBuilder[T any](bc BuildContext, node *TreeSliverNo
 	}
 	index := TreeSliverControllerOf[T](bc).GetActiveIndexFor(node).Value()
 	var arrow Widget
-	if len(node.children) > 0 {
+	if node.HasChildren() {
 		turns := 0.0
 		if node.expanded {
 			turns = 0.25
@@ -414,11 +495,43 @@ type treeSliverState[T any] struct {
 
 	currentAnimationForParent map[*TreeSliverNode[T]]*treeAnimationRecord
 	activeAnimations          map[*foundation.UniqueKey]rendering.TreeSliverNodesAnimation
+
+	// notify is what the nodes call when their children change.
+	notify func()
+	// toggling is whether toggleNode is running: it makes the active nodes again by itself.
+	toggling bool
 }
 
 var _ treeSliverStateMixin[any] = (*treeSliverState[any])(nil)
 
 func (s *treeSliverState[T]) controller() *TreeSliverController[T] { return s.treeController }
+
+// childrenChanged is called by a node whose children changed: the active nodes are made again, and the
+// animations of nodes that left the tree or lost their children end. Flutter's tree shows the change when it
+// is built again.
+func (s *treeSliverState[T]) childrenChanged() {
+	if s.toggling || !s.Mounted() {
+		return
+	}
+	s.SetState(func() {
+		s.unpackActiveNodes()
+		s.dropStaleAnimations()
+		s.updateActiveAnimations()
+	})
+}
+
+// dropStaleAnimations ends the animations of the nodes that are not in the tree any more, and of those that
+// have no children to animate.
+func (s *treeSliverState[T]) dropStaleAnimations() {
+	for node, record := range s.currentAnimationForParent {
+		if len(node.children) > 0 && slices.Contains(s.activeNodes, node) {
+			continue
+		}
+		record.animation.Dispose()
+		record.controller.Dispose()
+		delete(s.currentAnimationForParent, node)
+	}
+}
 
 func (s *treeSliverState[T]) shouldUnpackNode(node *TreeSliverNode[T]) bool {
 	if len(node.children) == 0 {
@@ -440,6 +553,7 @@ func (s *treeSliverState[T]) unpack(depth int, nodes []*TreeSliverNode[T], paren
 	for _, node := range nodes {
 		node.depth = foundation.Some(depth)
 		node.parent = parent
+		node.changed = s.notify
 		s.activeNodes = append(s.activeNodes, node)
 		if s.shouldUnpackNode(node) {
 			s.unpack(depth+1, node.children, node)
@@ -448,6 +562,7 @@ func (s *treeSliverState[T]) unpack(depth int, nodes []*TreeSliverNode[T], paren
 }
 
 func (s *treeSliverState[T]) InitState() {
+	s.notify = s.childrenChanged
 	s.currentAnimationForParent = map[*TreeSliverNode[T]]*treeAnimationRecord{}
 	s.activeAnimations = map[*foundation.UniqueKey]rendering.TreeSliverNodesAnimation{}
 	s.unpackActiveNodes()
@@ -481,7 +596,10 @@ func (s *treeSliverState[T]) DidUpdateWidget(old *TreeSliver[T]) {
 		s.treeController = w.o.Controller
 		s.treeController.state = s
 	}
+	s.keepExpansion(old.tree, w.tree)
 	s.unpackActiveNodes()
+	s.dropStaleAnimations()
+	s.updateActiveAnimations()
 }
 
 func (s *treeSliverState[T]) Dispose() {
@@ -526,6 +644,42 @@ func (s *treeSliverState[T]) Build(BuildContext) Widget {
 // contentEqual is Dart's == on two contents. Deviation: reflect.DeepEqual, since Go can not compare every T.
 func contentEqual[T any](a, b T) bool { return reflect.DeepEqual(a, b) }
 
+// sameContent compares two contents by the NodeKey of the tree, or by contentEqual without one.
+func (s *treeSliverState[T]) sameContent(a, b T) bool {
+	if key := s.Widget().o.NodeKey; key != nil {
+		return key(a) == key(b)
+	}
+	return contentEqual(a, b)
+}
+
+// keepExpansion gives the new nodes that have the key of a node of the old tree the expansion of that node, when
+// the tree has a NodeKey. The animations of old nodes that are not in the new tree end.
+func (s *treeSliverState[T]) keepExpansion(old, tree []*TreeSliverNode[T]) {
+	key := s.Widget().o.NodeKey
+	if key == nil {
+		return
+	}
+	before := map[any]*TreeSliverNode[T]{}
+	var collect func(nodes []*TreeSliverNode[T])
+	collect = func(nodes []*TreeSliverNode[T]) {
+		for _, n := range nodes {
+			before[key(n.content)] = n
+			collect(n.children)
+		}
+	}
+	collect(old)
+	var apply func(nodes []*TreeSliverNode[T])
+	apply = func(nodes []*TreeSliverNode[T]) {
+		for _, n := range nodes {
+			if was := before[key(n.content)]; was != nil && was != n && n.HasChildren() {
+				n.expanded = was.expanded
+			}
+			apply(n.children)
+		}
+	}
+	apply(tree)
+}
+
 func (s *treeSliverState[T]) isExpanded(node *TreeSliverNode[T]) bool {
 	found := s.searchNode(node.content, s.Widget().tree)
 	return found != nil && found.expanded
@@ -544,7 +698,7 @@ func (s *treeSliverState[T]) searchNode(content T, tree []*TreeSliverNode[T]) *T
 	for len(tree) > 0 {
 		var nextDepth []*TreeSliverNode[T]
 		for _, node := range tree {
-			if contentEqual(node.content, content) {
+			if s.sameContent(node.content, content) {
 				return node
 			}
 			nextDepth = append(nextDepth, node.children...)
@@ -601,6 +755,9 @@ func (s *treeSliverState[T]) updateActiveAnimations() {
 	// time the active nodes change.
 	clear(s.activeAnimations)
 	for node, record := range s.currentAnimationForParent {
+		if len(node.children) == 0 {
+			continue
+		}
 		leadingChildIndex := slices.Index(s.activeNodes, node) + 1
 		s.activeAnimations[record.key] = rendering.TreeSliverNodesAnimation{
 			FromIndex: leadingChildIndex, ToIndex: leadingChildIndex + len(node.children) - 1, Value: record.animation.Value(),
@@ -612,14 +769,29 @@ func (s *treeSliverState[T]) toggleNode(node *TreeSliverNode[T]) {
 	if foundation.DebugMode && !slices.Contains(s.activeNodes, node) {
 		panic(errors.New(tagTreeSliverNodeNotActive, "only the nodes that are shown can be toggled", "node", node.String()))
 	}
-	if len(node.children) == 0 {
+	if !node.HasChildren() {
 		return // no state to change
 	}
 	w := s.Widget()
 	s.SetState(func() {
 		node.expanded = !node.expanded
+		s.toggling = true
+		defer func() { s.toggling = false }()
 		if w.o.OnNodeToggle != nil {
+			// The app adds the children of a lazy node here.
 			w.o.OnNodeToggle(node)
+		}
+		if len(node.children) == 0 {
+			// A lazy node whose children are not there (yet): there is nothing to animate. They show when
+			// the app sets them.
+			if record := s.currentAnimationForParent[node]; record != nil {
+				record.animation.Dispose()
+				record.controller.Dispose()
+				delete(s.currentAnimationForParent, node)
+			}
+			s.unpackActiveNodes()
+			s.updateActiveAnimations()
+			return
 		}
 		if record := s.currentAnimationForParent[node]; record != nil {
 			// Let go of the old animation if the node was already animating.
