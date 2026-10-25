@@ -3368,3 +3368,54 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - Textures and samplers already have CPU descriptors; step 28.9 copies them into the frame heaps.
   - A texture write made inside a pass is staged in the half of the frame that will run its copy. The Vulkan backend stages it in the open frame's half while the copy runs in the next frame. This is latent: today's renderer makes all its texture writes (masks, glyphs, images) while it builds the frame, before any pass. Fix it in Vulkan if a write inside a pass is ever added.
   - Where vkd3d under Wine differs from Windows: it lists one made-up adapter (a GeForce GTX 470 over lavapipe), has no WARP and no debug layer, and accepts a buffer of 0 bytes.
+
+## 28.9 The Direct3D 12 device: pipelines, passes and parity
+
+- **Date:** 2026-10-25
+- **Branch:** feat/step-28.9-d3d12-pipelines
+- **Summary:** `explicit.Device` on Direct3D 12 now draws offscreen, and every proof scene matches `soft`.
+  - **Root signatures:** a plain-Go planner (`planRoot`) makes them from each pipeline's bindings:
+    - a root CBV for each uniform binding, and a texture table and a sampler table for each group, with the spaces equal to the groups (Resource Binding Tier 1);
+    - 2 to 10 DWORDs for the renderer's eight shaders;
+    - serialized at version 1.0 and shared by shape.
+  - **Pipelines:** `NewPipeline` takes the DXBC through the cache of step 28.7 and makes the input layout (`LOC<n>` semantics), the blend state, the target format and the PSO. A pipeline library is used where the device has one: its blob goes in the shader cache, keyed by vendor, device, revision and driver version.
+  - **Bind groups:** their descriptors are copied into the shader-visible heaps of the frame slot, in blocks of 65536 views and 2048 samplers, so a normal frame uses one heap of each kind. A table of the same descriptors already in the block is shared by the groups that use it. A null SRV or the default sampler stands in for an unused slot. When a new block starts, the groups bound from older blocks are copied into it (`settleBlocks`, plain Go, at most 5 rounds). A slot makes at most 8 blocks of each kind; a frame that needs more fails with `GPUOutOfMemory` instead of growing.
+  - **The encoder:**
+    - `BeginPass` clears, loads, or discards for a don't-care (`DiscardResource`), and sets the viewport and the scissor;
+    - `SetPipeline`, and `SetBindGroup` with dynamic offsets as root CBV addresses;
+    - vertex and index buffers, `Draw` and `DrawIndexed`;
+    - the barriers of sampled textures, issued when a group is bound.
+- **Main files:**
+  - `internal/gpu/d3d12/`:
+    - plain Go: `rootsig.go`, `blocks.go`, `mapping.go`, `types.go`, `vtables.go`;
+    - Windows only: `rootsig_windows.go`, `pipeline_windows.go`, `bindgroup_windows.go`, `encoder_windows.go`, and changes in `device_windows.go`, `descriptors_windows.go`, `frames_windows.go`, `fence_windows.go` and `resources_windows.go`.
+  - SPEC §9.8
+- **Tests:**
+  - **Layout:** every new mirror, vtable index, constant and IID against the mingw-w64 headers.
+  - **Planner:** over the eight shaders, and against `D3DReflect` of every entry point.
+  - **Tables:** the block allocator, the mappings, the library key.
+  - **The encoder** over a Go-made COM proxy of the command list and the queue: the order of barriers, heaps and root arguments.
+  - **Heap switching:** the block allocator, the shared tables and `settleBlocks` in plain Go (600 groups over small blocks make 2 blocks, the other slot the same, a third frame none, and the cap refuses more); under Wine, 20 frames with 24-descriptor blocks are pixel-identical to big blocks and make no block after the first frame of each slot.
+  - **The pipeline library:** store, save and load by a second device, and a refused blob dropped, with a library made in Go, since vkd3d has none.
+  - **Route tests** of `D3D12PipelineInvalid` and `D3D12BindGroupInvalid`.
+  - **Goldens:** none changed, and `internal/gpu/explicit` is untouched.
+- **Wine tests** (107 tests, run 3 times):
+  - **Parity:** the 8 proof scenes, the 13 shape scenes, the 9 effect scenes, and one scene with a layer, a backdrop blur, a blend that reads the destination and a mask filter, all within `gputest.ProofTolerances`, with no tolerance widened. The largest difference is 34 levels, in `decorations`.
+  - **Cache:** a second run compiles no pipeline (counted).
+  - **Device loss:** a first loss is recovered with identical pixels, a second within 10 seconds ends in `GPUDeviceLost`, and losses 11 seconds apart are each recovered.
+  - **Leaks:** 200 frames leave the device's resource counts unchanged, and `Close` leaves nothing.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ (also with `GOOS=windows` on `d3d12`) · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck ✅ · apicheck ✅ · `GOOS=js GOARCH=wasm` build, vet and `scripts/test-wasm.sh` ✅ · `scripts/check-android.sh` ✅ · `GOOS=windows` amd64 build and vet, arm64 build ✅ · `scripts/test-windows.sh` ✅ · Wine tests ✅ · layout test against the headers ✅ · nothing left running ✅
+- **Proof:** none (offscreen; the window is step 28.10).
+- **Manual checks (pending, for the owner's PC):**
+  - a real pipeline library: saved after the first frame, and loaded at the next start;
+  - `DiscardResource` as a real don't-care;
+  - first-frame times with a real GPU. Under vkd3d the first frame of `blend-modes` takes 14 seconds, because vkd3d compiles the shaders slowly.
+- **Deviations and follow-ups:**
+  - vkd3d (Wine 11.0) differs from Windows:
+    - `CreatePipelineLibrary` returns `DXGI_ERROR_UNSUPPORTED`, so under Wine the pipelines are made again at each start;
+    - `DiscardResource` does nothing;
+    - root signature flags and the compiler's optimization flag are ignored.
+  - `NewPipeline` makes the PSO at once, not at its first use, so that it can return an error.
+  - The parity test wraps the device in an offscreen BGRA swap chain until step 28.10 adds the real one. `NewSwapchain` still fails with `D3D12NotImplemented`.
+  - The whole Wine suite of `internal/gpu/d3d12` takes 3 to 4 minutes, within `wine-exec.sh`'s 600-second limit.
+  - **Found by an out-of-memory crash of the manager's session during the checks:** vkd3d takes about 120 MB of host memory for every shader-visible descriptor heap, whatever its size. The first version used blocks of 8192 views and 1024 samplers, and its test used blocks of 6, barely more than the groups bound at once. Nearly every bind group then needed a heap of its own: 93 heaps, about 11 GB. The fix is the bigger blocks, the cap of 8 blocks per slot, and the shared tables. The heavy test now peaks at about 1 GB, and the whole suite stays above 13 GB of free memory. On Windows a heap of 65536 descriptors is about 2 MB of GPU memory.

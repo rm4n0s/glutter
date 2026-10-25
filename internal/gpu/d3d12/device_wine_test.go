@@ -875,18 +875,6 @@ func TestWinePassErrors(t *testing.T) {
 			t.Errorf("%s: %s via %s", name, appErr.Tag, appErr.Route())
 		}
 	}
-	// The commands of step 28.9 are not there yet.
-	for name, fn := range map[string]func(){
-		"SetPipeline": func() { pass.SetPipeline(nil) }, "SetBindGroup": func() { pass.SetBindGroup(0, nil) },
-		"SetVertexBuffer": func() { pass.SetVertexBuffer(0, nil, 0) }, "SetIndexBuffer": func() { pass.SetIndexBuffer(nil, 0) },
-		"SetScissor": func() { pass.SetScissor(image.Rectangle{}) }, "Draw": func() { pass.Draw(3, 1, 0, 0) },
-		"DrawIndexed": func() { pass.DrawIndexed(3, 1, 0, 0, 0) },
-	} {
-		appErr := expectPanic(t, fn)
-		if appErr.Tag != tagD3D12NotImplemented || !appErr.HasRoute("pass."+name+".D3D12NotImplemented") {
-			t.Errorf("%s: %s via %s", name, appErr.Tag, appErr.Route())
-		}
-	}
 	pass.End()
 	if err := e.Submit(); err != nil {
 		t.Fatal(err)
@@ -903,13 +891,9 @@ func TestWinePassErrors(t *testing.T) {
 	if err := e1.Submit(); err != nil {
 		t.Fatal(err)
 	}
-	for name, fn := range map[string]func() error{
-		"NewPipeline":  func() error { _, err := d.NewPipeline(explicit.PipelineDesc{}); return err },
-		"NewBindGroup": func() error { _, err := d.NewBindGroup(nil, 0, nil); return err },
-		"NewSwapchain": func() error { _, err := d.NewSwapchain(gpuHandle()); return err },
-	} {
-		_ = wantRoute(t, fn(), tagD3D12NotImplemented, "Device."+name+".D3D12NotImplemented")
-	}
+	// The swap chain is step 28.10's.
+	_, err = d.NewSwapchain(gpuHandle())
+	_ = wantRoute(t, err, tagD3D12NotImplemented, "Device.NewSwapchain.D3D12NotImplemented")
 }
 
 func TestWineResourceErrors(t *testing.T) {

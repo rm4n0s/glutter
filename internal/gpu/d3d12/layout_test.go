@@ -14,6 +14,20 @@ import (
 	"github.com/rm4n0s/glutter/internal/platform/windows/win32/layouttest"
 )
 
+// d3d12RootDescriptorTable is the Go mirror of D3D12_ROOT_DESCRIPTOR_TABLE: the table variant of the
+// union of a root parameter, which d3d12RootParameter holds as two words (only the layout test uses it).
+type d3d12RootDescriptorTable struct {
+	NumDescriptorRanges uint32  `c:"NumDescriptorRanges"`
+	DescriptorRanges    uintptr `c:"pDescriptorRanges"`
+}
+
+// d3d12RootDescriptor is the Go mirror of D3D12_ROOT_DESCRIPTOR: the variant of a root constant buffer
+// view, the first word of the union (only the layout test uses it).
+type d3d12RootDescriptor struct {
+	ShaderRegister uint32 `c:"ShaderRegister"`
+	RegisterSpace  uint32 `c:"RegisterSpace"`
+}
+
 // TestLayoutAgainstTheHeaders checks the Go mirrors of the shader reflection and of the device, the
 // positions of the methods of the interfaces the backend calls, the compile flags and the values of
 // the enumerations against the mingw-w64 headers (SPEC §25.2). It runs on the Linux host and is
@@ -48,6 +62,27 @@ func TestLayoutAgainstTheHeaders(t *testing.T) {
 			layouttest.StructOf("D3D12_FEATURE_DATA_FEATURE_LEVELS", d3d12FeatureLevels{}),
 			layouttest.StructOf("D3D12_FEATURE_DATA_D3D12_OPTIONS", d3d12Options{}),
 			layouttest.StructOf("D3D12_MESSAGE", d3d12Message{}),
+			layouttest.StructOf("D3D12_DESCRIPTOR_RANGE", d3d12DescriptorRange{}),
+			layouttest.StructOf("D3D12_ROOT_DESCRIPTOR_TABLE", d3d12RootDescriptorTable{}),
+			layouttest.StructOf("D3D12_ROOT_DESCRIPTOR", d3d12RootDescriptor{}),
+			layouttest.StructOf("D3D12_ROOT_PARAMETER", d3d12RootParameter{}),
+			layouttest.StructOf("D3D12_ROOT_SIGNATURE_DESC", d3d12RootSignatureDesc{}),
+			layouttest.StructOf("D3D12_SHADER_BYTECODE", d3d12ShaderBytecode{}),
+			layouttest.StructOf("D3D12_STREAM_OUTPUT_DESC", d3d12StreamOutputDesc{}),
+			layouttest.StructOf("D3D12_RENDER_TARGET_BLEND_DESC", d3d12RenderTargetBlendDesc{}),
+			layouttest.StructOf("D3D12_BLEND_DESC", d3d12BlendDesc{}),
+			layouttest.StructOf("D3D12_RASTERIZER_DESC", d3d12RasterizerDesc{}),
+			layouttest.StructOf("D3D12_DEPTH_STENCILOP_DESC", d3d12DepthStencilOpDesc{}),
+			layouttest.StructOf("D3D12_DEPTH_STENCIL_DESC", d3d12DepthStencilDesc{}),
+			layouttest.StructOf("D3D12_INPUT_ELEMENT_DESC", d3d12InputElementDesc{}),
+			layouttest.StructOf("D3D12_INPUT_LAYOUT_DESC", d3d12InputLayoutDesc{}),
+			layouttest.StructOf("D3D12_CACHED_PIPELINE_STATE", d3d12CachedPipelineState{}),
+			layouttest.StructOf("D3D12_GRAPHICS_PIPELINE_STATE_DESC", d3d12GraphicsPipelineStateDesc{}),
+			layouttest.StructOf("D3D12_VIEWPORT", d3d12Viewport{}),
+			layouttest.StructOf("D3D12_RECT", d3d12Rect{}),
+			layouttest.StructOf("D3D12_VERTEX_BUFFER_VIEW", d3d12VertexBufferView{}),
+			layouttest.StructOf("D3D12_INDEX_BUFFER_VIEW", d3d12IndexBufferView{}),
+			layouttest.StructOf("D3D12_DISCARD_REGION", d3d12DiscardRegion{}),
 		},
 		VTables: []layouttest.VTable{
 			{CName: "ID3D10BlobVtbl", Methods: []layouttest.Method{
@@ -64,11 +99,17 @@ func TestLayoutAgainstTheHeaders(t *testing.T) {
 				{Name: "EnumWarpAdapter", Index: factoryEnumWarpAdapter},
 				{Name: "EnumAdapterByGpuPreference", Index: factoryEnumAdapterByGPUPreference},
 			}},
-			{CName: "IDXGIAdapter1Vtbl", Methods: []layouttest.Method{{Name: "GetDesc1", Index: adapterGetDesc1}}},
+			{CName: "IDXGIAdapter1Vtbl", Methods: []layouttest.Method{
+				{Name: "GetDesc1", Index: adapterGetDesc1},
+				{Name: "CheckInterfaceSupport", Index: adapterCheckInterfaceSupport},
+			}},
 			{CName: "ID3D12DeviceVtbl", Methods: []layouttest.Method{
 				{Name: "CreateCommandQueue", Index: deviceCreateCommandQueue},
 				{Name: "CreateCommandAllocator", Index: deviceCreateCommandAllocator},
+				{Name: "CreateGraphicsPipelineState", Index: deviceCreateGraphicsPipeline},
 				{Name: "CreateCommandList", Index: deviceCreateCommandList},
+				{Name: "CreateRootSignature", Index: deviceCreateRootSignature},
+				{Name: "CopyDescriptorsSimple", Index: deviceCopyDescriptorsSimple},
 				{Name: "CheckFeatureSupport", Index: deviceCheckFeatureSupport},
 				{Name: "CreateDescriptorHeap", Index: deviceCreateDescriptorHeap},
 				{Name: "GetDescriptorHandleIncrementSize", Index: deviceGetDescriptorIncrementSize},
@@ -79,6 +120,13 @@ func TestLayoutAgainstTheHeaders(t *testing.T) {
 				{Name: "CreateFence", Index: deviceCreateFence},
 				{Name: "GetDeviceRemovedReason", Index: deviceGetDeviceRemovedReason},
 				{Name: "GetCopyableFootprints", Index: deviceGetCopyableFootprints},
+			}},
+			{CName: "ID3D12Device1Vtbl", Methods: []layouttest.Method{{Name: "CreatePipelineLibrary", Index: device1CreatePipelineLibrary}}},
+			{CName: "ID3D12PipelineLibraryVtbl", Methods: []layouttest.Method{
+				{Name: "StorePipeline", Index: libraryStorePipeline},
+				{Name: "LoadGraphicsPipeline", Index: libraryLoadGraphicsPipeline},
+				{Name: "GetSerializedSize", Index: librarySerializedSize},
+				{Name: "Serialize", Index: librarySerialize},
 			}},
 			{CName: "ID3D12CommandQueueVtbl", Methods: []layouttest.Method{
 				{Name: "ExecuteCommandLists", Index: queueExecuteCommandLists},
@@ -92,17 +140,33 @@ func TestLayoutAgainstTheHeaders(t *testing.T) {
 			{CName: "ID3D12ResourceVtbl", Methods: []layouttest.Method{
 				{Name: "Map", Index: resourceMap},
 				{Name: "Unmap", Index: resourceUnmap},
+				{Name: "GetGPUVirtualAddress", Index: resourceGPUAddress},
 			}},
 			{CName: "ID3D12DescriptorHeapVtbl", Methods: []layouttest.Method{
 				{Name: "GetCPUDescriptorHandleForHeapStart", Index: heapGetCPUHandleStart},
+				{Name: "GetGPUDescriptorHandleForHeapStart", Index: heapGetGPUHandleStart},
 			}},
 			{CName: "ID3D12GraphicsCommandListVtbl", Methods: []layouttest.Method{
 				{Name: "Close", Index: listClose},
 				{Name: "Reset", Index: listReset},
+				{Name: "DrawInstanced", Index: listDrawInstanced},
+				{Name: "DrawIndexedInstanced", Index: listDrawIndexedInstanced},
 				{Name: "CopyBufferRegion", Index: listCopyBufferRegion},
 				{Name: "CopyTextureRegion", Index: listCopyTextureRegion},
+				{Name: "IASetPrimitiveTopology", Index: listIASetPrimitiveTopo},
+				{Name: "RSSetViewports", Index: listRSSetViewports},
+				{Name: "RSSetScissorRects", Index: listRSSetScissorRects},
+				{Name: "SetPipelineState", Index: listSetPipelineState},
 				{Name: "ResourceBarrier", Index: listResourceBarrier},
+				{Name: "SetDescriptorHeaps", Index: listSetDescriptorHeaps},
+				{Name: "SetGraphicsRootSignature", Index: listSetRootSignature},
+				{Name: "SetGraphicsRootDescriptorTable", Index: listSetRootTable},
+				{Name: "SetGraphicsRootConstantBufferView", Index: listSetRootCBV},
+				{Name: "IASetIndexBuffer", Index: listIASetIndexBuffer},
+				{Name: "IASetVertexBuffers", Index: listIASetVertexBuffers},
+				{Name: "OMSetRenderTargets", Index: listOMSetRenderTargets},
 				{Name: "ClearRenderTargetView", Index: listClearRenderTargetView},
+				{Name: "DiscardResource", Index: listDiscardResource},
 			}},
 			{CName: "ID3D12DebugVtbl", Methods: []layouttest.Method{{Name: "EnableDebugLayer", Index: debugEnableDebugLayer}}},
 			{CName: "ID3D12InfoQueueVtbl", Methods: []layouttest.Method{
@@ -176,6 +240,46 @@ func TestLayoutAgainstTheHeaders(t *testing.T) {
 			{Name: "D3D12_MESSAGE_SEVERITY_ERROR", Value: messageSeverityError},
 			{Name: "D3D12_MESSAGE_SEVERITY_WARNING", Value: messageSeverityWarning},
 			{Name: "D3D12_RESOURCE_BINDING_TIER_1", Value: resourceBindingTier1},
+			{Name: "D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE", Value: rootParameterTable},
+			{Name: "D3D12_ROOT_PARAMETER_TYPE_CBV", Value: rootParameterCBV},
+			{Name: "D3D12_DESCRIPTOR_RANGE_TYPE_SRV", Value: descriptorRangeSRV},
+			{Name: "D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER", Value: descriptorRangeSampler},
+			{Name: "D3D12_SHADER_VISIBILITY_ALL", Value: shaderVisibilityAll},
+			{Name: "D3D12_SHADER_VISIBILITY_VERTEX", Value: shaderVisibilityVertex},
+			{Name: "D3D12_SHADER_VISIBILITY_PIXEL", Value: shaderVisibilityPixel},
+			{Name: "D3D_ROOT_SIGNATURE_VERSION_1", Value: rootSignatureVersion1},
+			{Name: "D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT", Value: rootFlagAllowInputLayout},
+			{Name: "D3D12_ROOT_SIGNATURE_FLAG_DENY_HULL_SHADER_ROOT_ACCESS", Value: rootFlagDenyHull},
+			{Name: "D3D12_ROOT_SIGNATURE_FLAG_DENY_DOMAIN_SHADER_ROOT_ACCESS", Value: rootFlagDenyDomain},
+			{Name: "D3D12_ROOT_SIGNATURE_FLAG_DENY_GEOMETRY_SHADER_ROOT_ACCESS", Value: rootFlagDenyGeometry},
+			{Name: "D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND", Value: descriptorRangeAppend},
+			{Name: "D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE", Value: descriptorHeapShaderVisible},
+			{Name: "D3D12_BLEND_ZERO", Value: blendZero},
+			{Name: "D3D12_BLEND_ONE", Value: blendOne},
+			{Name: "D3D12_BLEND_SRC_ALPHA", Value: blendSrcAlpha},
+			{Name: "D3D12_BLEND_INV_SRC_ALPHA", Value: blendInvSrcAlpha},
+			{Name: "D3D12_BLEND_DEST_ALPHA", Value: blendDestAlpha},
+			{Name: "D3D12_BLEND_INV_DEST_ALPHA", Value: blendInvDestAlpha},
+			{Name: "D3D12_BLEND_OP_ADD", Value: blendOpAdd},
+			{Name: "D3D12_COLOR_WRITE_ENABLE_ALL", Value: uint32(colorWriteEnableAll)},
+			{Name: "D3D12_LOGIC_OP_NOOP", Value: logicOpNoop},
+			{Name: "D3D12_FILL_MODE_SOLID", Value: fillModeSolid},
+			{Name: "D3D12_CULL_MODE_NONE", Value: cullModeNone},
+			{Name: "D3D12_COMPARISON_FUNC_ALWAYS", Value: comparisonAlways},
+			{Name: "D3D12_STENCIL_OP_KEEP", Value: stencilOpKeep},
+			{Name: "D3D12_DEPTH_WRITE_MASK_ZERO", Value: depthWriteMaskZero},
+			{Name: "D3D12_DEFAULT_SAMPLE_MASK", Value: defaultSampleMask},
+			{Name: "D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE", Value: topologyTypeTriangle},
+			{Name: "D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST", Value: topologyTriangleList},
+			{Name: "D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA", Value: inputPerVertex},
+			{Name: "D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA", Value: inputPerInstance},
+			{Name: "DXGI_FORMAT_R32_FLOAT", Value: dxgiFormatR32},
+			{Name: "DXGI_FORMAT_R32G32_FLOAT", Value: dxgiFormatRG32},
+			{Name: "DXGI_FORMAT_R32G32B32_FLOAT", Value: dxgiFormatRGB32},
+			{Name: "DXGI_FORMAT_R32G32B32A32_FLOAT", Value: dxgiFormatRGBA32},
+			{Name: "DXGI_FORMAT_R16_UINT", Value: dxgiFormatR16Uint},
+			{Name: "D3D12_ERROR_ADAPTER_NOT_FOUND", Value: d3d12ErrorAdapterNotFound},
+			{Name: "D3D12_ERROR_DRIVER_VERSION_MISMATCH", Value: d3d12ErrorDriverVersionMismatch},
 		},
 	})
 }
@@ -227,5 +331,7 @@ func namedIIDs() map[string]win32.GUID {
 		"ID3D12CommandAllocator": iidCommandAllocator, "ID3D12GraphicsCommandList": iidGraphicsCommandList,
 		"ID3D12Fence": iidFence, "ID3D12Resource": iidResource, "ID3D12DescriptorHeap": iidDescriptorHeap,
 		"ID3D12Debug": iidDebug, "ID3D12InfoQueue": iidInfoQueue,
+		"ID3D12RootSignature": iidRootSignature, "ID3D12PipelineState": iidPipelineState, "ID3D12Device1": iidDevice1,
+		"ID3D12PipelineLibrary": iidPipelineLibrary, "IDXGIDevice": iidDXGIDevice,
 	}
 }

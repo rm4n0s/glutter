@@ -11,7 +11,6 @@ import (
 	"github.com/rm4n0s/glutter/internal/gpu"
 	"github.com/rm4n0s/glutter/internal/gpu/explicit"
 	"github.com/rm4n0s/glutter/internal/platform/windows/win32"
-	"github.com/rm4n0s/glutter/ui"
 )
 
 // pendingRead is a ReadTexture that waits for the frame to finish: a readback buffer with the layout
@@ -31,6 +30,15 @@ type encoder struct {
 	list  win32.Object
 	pass  *pass
 	reads []*pendingRead
+
+	// The state of the command list, which lasts from pass to pass (the state of a Direct3D 12 command
+	// list does): the root signature and the pipeline state that were set, the groups that were bound
+	// to the root signature, and the shader-visible heaps that were set.
+	root        *rootSig
+	pso         win32.Object
+	bound       [maxBindGroups]boundGroup
+	viewHeap    int // the block of the resource heap that was set, -1 for none
+	samplerHeap int
 }
 
 var _ explicit.Encoder = (*encoder)(nil)
@@ -57,7 +65,7 @@ func (d *Device) Begin() (explicit.Encoder, error) {
 		return nil, err
 	}
 	s.state = slotRecording
-	e := &encoder{d: d, slot: d.next, list: s.list}
+	e := &encoder{d: d, slot: d.next, list: s.list, viewHeap: -1, samplerHeap: -1}
 	d.open = e
 	pending := d.pending
 	d.pending = nil
@@ -65,32 +73,6 @@ func (d *Device) Begin() (explicit.Encoder, error) {
 		fn(e.list)
 	}
 	return e, nil
-}
-
-// BeginPass implements explicit.Encoder. The target must be a texture of this device with
-// TextureRenderTarget. The pass of this step only clears or keeps the target: the commands that draw
-// are step 28.9's, and a call of them fails with D3D12NotImplemented.
-func (e *encoder) BeginPass(target explicit.Texture, load explicit.LoadOp, clear ui.Color) explicit.Pass {
-	d := e.d
-	t := d.own2texture(target)
-	if e.pass != nil {
-		panic(errors.New(tagD3D12PassNotEnded, "BeginPass was called before the previous pass ended"))
-	}
-	if t.rtv < 0 {
-		panic(errors.New(tagD3D12TextureInvalid, "the target of a pass needs TextureRenderTarget", "usage", int(t.desc.Usage)))
-	}
-	d.tracker.begin()
-	if err := d.tracker.need(t.root, t.base, stateRenderTarget); err != nil {
-		d.tracker.end()
-		panic(err)
-	}
-	d.barrier(e.list)
-	if load != explicit.LoadLoad { // LoadDontCare clears too: a backend without the operation clears (SPEC §9.3)
-		rgba := [4]float32{clear.R, clear.G, clear.B, clear.A}
-		e.list.Call(listClearRenderTargetView, t.rtvHandle(), uintptr(unsafe.Pointer(&rgba[0])), 0, 0)
-	}
-	e.pass = &pass{e: e, target: t}
-	return e.pass
 }
 
 // CopyTexture implements explicit.Encoder: the barriers (the source in COPY_SOURCE, the destination
@@ -257,68 +239,6 @@ func (d *Device) finishRead(rd *pendingRead) {
 	rd.done(img, nil)
 }
 
-// pass records the draws of one render pass; in this step it only holds the target.
-type pass struct {
-	e      *encoder
-	target *texture
-}
-
-var _ explicit.Pass = (*pass)(nil)
-
-// The commands that draw are step 28.9's; each fails with D3D12NotImplemented, a programmer error.
-
-// SetPipeline implements explicit.Pass; step 28.9.
-func (p *pass) SetPipeline(explicit.Pipeline) {
-	panic(errors.New(tagD3D12NotImplemented, "this command of the Direct3D 12 device is step 28.9's", "command", "SetPipeline"))
-}
-
-// SetBindGroup implements explicit.Pass; step 28.9.
-func (p *pass) SetBindGroup(int, explicit.BindGroup, ...uint32) {
-	panic(errors.New(tagD3D12NotImplemented, "this command of the Direct3D 12 device is step 28.9's", "command", "SetBindGroup"))
-}
-
-// SetVertexBuffer implements explicit.Pass; step 28.9.
-func (p *pass) SetVertexBuffer(int, explicit.Buffer, int) {
-	panic(errors.New(tagD3D12NotImplemented, "this command of the Direct3D 12 device is step 28.9's", "command", "SetVertexBuffer"))
-}
-
-// SetIndexBuffer implements explicit.Pass; step 28.9.
-func (p *pass) SetIndexBuffer(explicit.Buffer, int) {
-	panic(errors.New(tagD3D12NotImplemented, "this command of the Direct3D 12 device is step 28.9's", "command", "SetIndexBuffer"))
-}
-
-// SetScissor implements explicit.Pass; step 28.9.
-func (p *pass) SetScissor(image.Rectangle) {
-	panic(errors.New(tagD3D12NotImplemented, "this command of the Direct3D 12 device is step 28.9's", "command", "SetScissor"))
-}
-
-// Draw implements explicit.Pass; step 28.9.
-func (p *pass) Draw(int, int, int, int) {
-	panic(errors.New(tagD3D12NotImplemented, "this command of the Direct3D 12 device is step 28.9's", "command", "Draw"))
-}
-
-// DrawIndexed implements explicit.Pass; step 28.9.
-func (p *pass) DrawIndexed(int, int, int, int, int) {
-	panic(errors.New(tagD3D12NotImplemented, "this command of the Direct3D 12 device is step 28.9's", "command", "DrawIndexed"))
-}
-
-// End implements explicit.Pass: the target stays in the state RENDER_TARGET until the next
-// operation that needs another.
-func (p *pass) End() {
-	p.e.d.tracker.end()
-	p.e.pass = nil
-}
-
-// NewPipeline implements explicit.Device; step 28.9.
-func (d *Device) NewPipeline(explicit.PipelineDesc) (explicit.Pipeline, error) {
-	return nil, errors.New(tagD3D12NotImplemented, "pipelines of the Direct3D 12 device are step 28.9's", "command", "NewPipeline")
-}
-
-// NewBindGroup implements explicit.Device; step 28.9.
-func (d *Device) NewBindGroup(explicit.Pipeline, int, []explicit.Binding) (explicit.BindGroup, error) {
-	return nil, errors.New(tagD3D12NotImplemented, "bind groups of the Direct3D 12 device are step 28.9's", "command", "NewBindGroup")
-}
-
 // NewSwapchain implements explicit.Device; step 28.10.
 func (d *Device) NewSwapchain(gpu.SurfaceHandle) (explicit.Swapchain, error) {
 	return nil, errors.New(tagD3D12NotImplemented, "swap chains of the Direct3D 12 device are step 28.10's", "command", "NewSwapchain")
@@ -373,7 +293,7 @@ const (
 	// tagD3D12RectOutOfRange is the tag of the programmer error of a copy or a read of a rectangle that
 	// is not inside the texture; the metadata are "op" and the rectangles and sizes.
 	tagD3D12RectOutOfRange = "D3D12RectOutOfRange"
-	// tagD3D12NotImplemented is the tag of a command that the device gets in a later step (28.9: the
-	// pipelines, bind groups and draw commands; 28.10: the swap chain); the metadata name the "command".
+	// tagD3D12NotImplemented is the tag of a command that the device gets in a later step (28.10: the
+	// swap chain); the metadata name the "command".
 	tagD3D12NotImplemented = "D3D12NotImplemented"
 )

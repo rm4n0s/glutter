@@ -31,6 +31,11 @@ type frameSlot struct {
 	list     win32.Object
 	fence    uint64
 	deferred []func()
+	// views and samplers are the shader-visible heaps of the slot, in blocks, which the bind groups
+	// made for the slot fill; gen counts the times the slot was reused, so that a bind group of an
+	// earlier frame is told.
+	views, samplers *shaderHeaps
+	gen             uint64
 }
 
 // runDeferred runs and forgets what was waiting for the GPU.
@@ -78,6 +83,8 @@ func (d *Device) createSlots() error {
 		if err := d.hr(s.list, "ID3D12GraphicsCommandList::Close", listClose); err != nil {
 			return err
 		}
+		s.views = newShaderHeaps(descriptorHeapSRV, d.viewBlock, d.viewIncr)
+		s.samplers = newShaderHeaps(descriptorHeapSampler, d.samplerBlock, d.samplerIncr)
 	}
 	return nil
 }
@@ -148,6 +155,11 @@ func (d *Device) recycle(index int) {
 	s := &d.slots[index]
 	s.runDeferred()
 	d.staging.ring.reset(index)
+	if s.views != nil {
+		s.views.reset()
+		s.samplers.reset()
+	}
+	s.gen++
 	s.state = slotReady
 }
 

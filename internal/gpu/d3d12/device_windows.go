@@ -37,6 +37,16 @@ type Options struct {
 	AllowWarp bool
 	// Debug turns on the debug layer, as GLUTTER_D3D12_DEBUG=1 does.
 	Debug bool
+	// ShaderCache keeps the bytecode that D3DCompile makes, and the serialized pipeline library
+	// (SPEC §9.7); *shadercache.Cache is one. nil is no cache.
+	ShaderCache BlobCache
+
+	// viewBlock and samplerBlock are the sizes of the blocks of the shader-visible heaps, in
+	// descriptors; a test makes them small to see a block added. noLibrary makes no pipeline library, as
+	// a driver without one does.
+	viewBlock, samplerBlock int
+	noLibrary               bool
+	makeLibrary             func(blob []byte) (win32.Object, win32.HRESULT)
 }
 
 // adapterEntry is an adapter DXGI listed, with the object.
@@ -89,6 +99,25 @@ type Device struct {
 
 	cpu         [3]*cpuHeaps // render target views, shader resource views and samplers
 	debugErrors []string
+
+	// viewBlock and samplerBlock are the sizes of the blocks of the slots' shader-visible heaps, and
+	// viewIncr and samplerIncr the sizes of their descriptors.
+	viewBlock, samplerBlock int
+	viewIncr, samplerIncr   uintptr
+
+	// roots are the root signatures, by the shape of their bindings; the pipelines share them.
+	roots map[string]*rootSig
+	// cache keeps the bytecode and the pipeline library; compiler is made when the first pipeline needs
+	// it, and dxbc remembers the bytecode of each entry point for the pipelines that share it.
+	cache    BlobCache
+	compiler *Compiler
+	dxbc     map[dxbcKey][]byte
+	library  pipelineLibrary
+	pipes    pipelineStats
+	noLib    bool
+	// makeLibrary replaces ID3D12Device1::CreatePipelineLibrary; a test gives a library of its own,
+	// since the one of the real device is not there under Wine.
+	makeLibrary func(blob []byte) (win32.Object, win32.HRESULT)
 }
 
 var _ explicit.Device = (*Device)(nil)
@@ -119,6 +148,12 @@ type Stats struct {
 	Descriptors int
 	// StagingUsed is how many bytes of the staging ring each frame slot has taken.
 	StagingUsed [framesInFlight]int
+	// Pipelines are the pipelines that were made and not destroyed, and RootSignatures the root
+	// signatures there are (one for each shape of bindings).
+	Pipelines, RootSignatures int
+	// ViewBlocks and SamplerBlocks are the blocks of shader-visible heaps the frame slots have made
+	// (they are reused), and ViewDescriptors and SamplerDescriptors the descriptors taken in them now.
+	ViewBlocks, SamplerBlocks, ViewDescriptors, SamplerDescriptors int
 }
 
 // Open loads Direct3D 12, chooses the adapter (SPEC §9.8) and makes the device at feature level 11_0,
@@ -154,6 +189,14 @@ func openWith(o Options, names entryNames, level uint32) (*Device, error) {
 	d := &Device{
 		log: log, getenv: getenv, libs: libs, limits: explicit.DefaultLimits(), last: -1,
 		tracker: newStateTracker[*texture](), live: map[any]func(){}, staging: staging{ring: newStagingRing(stagingSize)},
+		viewBlock: viewBlockSize, samplerBlock: samplerBlockSize, roots: map[string]*rootSig{}, dxbc: map[dxbcKey][]byte{},
+		cache: o.ShaderCache, noLib: o.noLibrary, makeLibrary: o.makeLibrary,
+	}
+	if o.viewBlock > 0 {
+		d.viewBlock = o.viewBlock
+	}
+	if o.samplerBlock > 0 {
+		d.samplerBlock = o.samplerBlock
 	}
 	d.removed = d.deviceRemovedReason
 	d.cpu = [3]*cpuHeaps{newCPUHeaps(descriptorHeapRTV), newCPUHeaps(descriptorHeapSRV), newCPUHeaps(descriptorHeapSampler)}
@@ -239,6 +282,8 @@ func (d *Device) openDevice(o Options, level uint32) error {
 			"feature_level", featureLevelName(level), "tried", tried)
 	}
 	d.queryFeatures()
+	d.viewIncr = d.dev.Call(deviceGetDescriptorIncrementSize, uintptr(descriptorHeapSRV))
+	d.samplerIncr = d.dev.Call(deviceGetDescriptorIncrementSize, uintptr(descriptorHeapSampler))
 	if d.debugLayer {
 		d.openInfoQueue()
 	}
@@ -484,11 +529,20 @@ func (d *Device) BindingTier() int { return int(d.bindingTier) }
 // Flutter: no counterpart
 func (d *Device) DebugLayer() bool { return d.debugLayer }
 
-// StartupReport implements gpu.StartupReporter: the time it took to open the device (SPEC §9.7).
-// The shaders and pipelines are counted from step 28.9.
+// StartupReport implements gpu.StartupReporter (SPEC §9.7): the time it took to open the device, the
+// time of the shaders and pipelines made so far, how many shaders were compiled, taken from the cache
+// or refused (a cache file without a DXBC header), and the size of the pipeline library that was
+// loaded.
 //
 // Flutter: no counterpart
-func (d *Device) StartupReport() gpu.StartupReport { return gpu.StartupReport{Context: d.opened} }
+func (d *Device) StartupReport() gpu.StartupReport {
+	rep := gpu.StartupReport{Context: d.opened, Shaders: d.pipes.took, CacheBytes: d.library.loaded}
+	if d.compiler != nil {
+		st := d.compiler.Stats()
+		rep.Built, rep.Cached, rep.Refused = st.Compiled, st.FromCache, st.Refused
+	}
+	return rep
+}
 
 var _ gpu.StartupReporter = (*Device)(nil)
 
@@ -516,6 +570,15 @@ func (d *Device) Stats() Stats {
 	}
 	for i := range s.StagingUsed {
 		s.StagingUsed[i] = d.staging.ring.used(i)
+	}
+	s.Pipelines, s.RootSignatures = d.pipes.live, len(d.roots)
+	for i := range d.slots {
+		if v := d.slots[i].views; v != nil {
+			s.ViewBlocks += len(v.heaps)
+			s.SamplerBlocks += len(d.slots[i].samplers.heaps)
+			s.ViewDescriptors += v.alloc.used()
+			s.SamplerDescriptors += d.slots[i].samplers.alloc.used()
+		}
 	}
 	return s
 }
@@ -547,15 +610,25 @@ func (d *Device) Close() error {
 		for i := range d.slots {
 			d.slots[i].runDeferred()
 		}
+		d.SavePipelineCache()
 		for _, destroy := range d.live {
 			destroy()
 		}
 		d.live = nil
+		d.library.destroy(d)
+		for _, rs := range d.roots {
+			d.disown(rs.obj)
+		}
+		d.roots = nil
 		d.staging.destroy(d)
 		for _, h := range d.cpu {
 			h.destroy(d)
 		}
 		for i := range d.slots {
+			if d.slots[i].views != nil {
+				d.slots[i].views.destroy(d)
+				d.slots[i].samplers.destroy(d)
+			}
 			d.disown(d.slots[i].list)
 			d.disown(d.slots[i].alloc)
 			d.slots[i] = frameSlot{}

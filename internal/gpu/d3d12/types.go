@@ -331,6 +331,192 @@ type d3d12Message struct {
 	DescriptionLength uintptr `c:"DescriptionByteLength"`
 }
 
+// d3d12DescriptorRange is the Go mirror of D3D12_DESCRIPTOR_RANGE (version 1.0 of the root signature).
+type d3d12DescriptorRange struct {
+	RangeType                         uint32 `c:"RangeType"`
+	NumDescriptors                    uint32 `c:"NumDescriptors"`
+	BaseShaderRegister                uint32 `c:"BaseShaderRegister"`
+	RegisterSpace                     uint32 `c:"RegisterSpace"`
+	OffsetInDescriptorsFromTableStart uint32 `c:"OffsetInDescriptorsFromTableStart"`
+}
+
+// d3d12RootParameter is the Go mirror of D3D12_ROOT_PARAMETER: the type, the union (a table or a root
+// descriptor, the larger variant is a table) and the visibility. The union is two words; rootCBV and
+// rootTable write the variants.
+type d3d12RootParameter struct {
+	ParameterType    uint32    `c:"ParameterType"`
+	Union            [2]uint64 `c:"DescriptorTable"`
+	ShaderVisibility uint32    `c:"ShaderVisibility"`
+}
+
+// d3d12RootSignatureDesc is the Go mirror of D3D12_ROOT_SIGNATURE_DESC (version 1.0).
+type d3d12RootSignatureDesc struct {
+	NumParameters     uint32  `c:"NumParameters"`
+	Parameters        uintptr `c:"pParameters"`
+	NumStaticSamplers uint32  `c:"NumStaticSamplers"`
+	StaticSamplers    uintptr `c:"pStaticSamplers"`
+	Flags             uint32  `c:"Flags"`
+}
+
+// d3d12ShaderBytecode is the Go mirror of D3D12_SHADER_BYTECODE.
+type d3d12ShaderBytecode struct {
+	Code   uintptr `c:"pShaderBytecode"`
+	Length uintptr `c:"BytecodeLength"`
+}
+
+// d3d12StreamOutputDesc is the Go mirror of D3D12_STREAM_OUTPUT_DESC (unused: all zero).
+type d3d12StreamOutputDesc struct {
+	Declaration      uintptr `c:"pSODeclaration"`
+	NumEntries       uint32  `c:"NumEntries"`
+	BufferStrides    uintptr `c:"pBufferStrides"`
+	NumStrides       uint32  `c:"NumStrides"`
+	RasterizedStream uint32  `c:"RasterizedStream"`
+}
+
+// d3d12RenderTargetBlendDesc is the Go mirror of D3D12_RENDER_TARGET_BLEND_DESC.
+type d3d12RenderTargetBlendDesc struct {
+	BlendEnable           uint32 `c:"BlendEnable"`
+	LogicOpEnable         uint32 `c:"LogicOpEnable"`
+	SrcBlend              uint32 `c:"SrcBlend"`
+	DestBlend             uint32 `c:"DestBlend"`
+	BlendOp               uint32 `c:"BlendOp"`
+	SrcBlendAlpha         uint32 `c:"SrcBlendAlpha"`
+	DestBlendAlpha        uint32 `c:"DestBlendAlpha"`
+	BlendOpAlpha          uint32 `c:"BlendOpAlpha"`
+	LogicOp               uint32 `c:"LogicOp"`
+	RenderTargetWriteMask uint8  `c:"RenderTargetWriteMask"`
+}
+
+// d3d12BlendDesc is the Go mirror of D3D12_BLEND_DESC.
+type d3d12BlendDesc struct {
+	AlphaToCoverageEnable  uint32                        `c:"AlphaToCoverageEnable"`
+	IndependentBlendEnable uint32                        `c:"IndependentBlendEnable"`
+	RenderTarget           [8]d3d12RenderTargetBlendDesc `c:"RenderTarget"`
+}
+
+// d3d12RasterizerDesc is the Go mirror of D3D12_RASTERIZER_DESC.
+type d3d12RasterizerDesc struct {
+	FillMode              uint32  `c:"FillMode"`
+	CullMode              uint32  `c:"CullMode"`
+	FrontCounterClockwise uint32  `c:"FrontCounterClockwise"`
+	DepthBias             int32   `c:"DepthBias"`
+	DepthBiasClamp        float32 `c:"DepthBiasClamp"`
+	SlopeScaledDepthBias  float32 `c:"SlopeScaledDepthBias"`
+	DepthClipEnable       uint32  `c:"DepthClipEnable"`
+	MultisampleEnable     uint32  `c:"MultisampleEnable"`
+	AntialiasedLineEnable uint32  `c:"AntialiasedLineEnable"`
+	ForcedSampleCount     uint32  `c:"ForcedSampleCount"`
+	ConservativeRaster    uint32  `c:"ConservativeRaster"`
+}
+
+// d3d12DepthStencilOpDesc is the Go mirror of D3D12_DEPTH_STENCILOP_DESC.
+type d3d12DepthStencilOpDesc struct {
+	StencilFailOp      uint32 `c:"StencilFailOp"`
+	StencilDepthFailOp uint32 `c:"StencilDepthFailOp"`
+	StencilPassOp      uint32 `c:"StencilPassOp"`
+	StencilFunc        uint32 `c:"StencilFunc"`
+}
+
+// d3d12DepthStencilDesc is the Go mirror of D3D12_DEPTH_STENCIL_DESC.
+type d3d12DepthStencilDesc struct {
+	DepthEnable      uint32                  `c:"DepthEnable"`
+	DepthWriteMask   uint32                  `c:"DepthWriteMask"`
+	DepthFunc        uint32                  `c:"DepthFunc"`
+	StencilEnable    uint32                  `c:"StencilEnable"`
+	StencilReadMask  uint8                   `c:"StencilReadMask"`
+	StencilWriteMask uint8                   `c:"StencilWriteMask"`
+	FrontFace        d3d12DepthStencilOpDesc `c:"FrontFace"`
+	BackFace         d3d12DepthStencilOpDesc `c:"BackFace"`
+}
+
+// d3d12InputElementDesc is the Go mirror of D3D12_INPUT_ELEMENT_DESC.
+type d3d12InputElementDesc struct {
+	SemanticName         uintptr `c:"SemanticName"`
+	SemanticIndex        uint32  `c:"SemanticIndex"`
+	Format               uint32  `c:"Format"`
+	InputSlot            uint32  `c:"InputSlot"`
+	AlignedByteOffset    uint32  `c:"AlignedByteOffset"`
+	InputSlotClass       uint32  `c:"InputSlotClass"`
+	InstanceDataStepRate uint32  `c:"InstanceDataStepRate"`
+}
+
+// d3d12InputLayoutDesc is the Go mirror of D3D12_INPUT_LAYOUT_DESC.
+type d3d12InputLayoutDesc struct {
+	Elements    uintptr `c:"pInputElementDescs"`
+	NumElements uint32  `c:"NumElements"`
+}
+
+// d3d12CachedPipelineState is the Go mirror of D3D12_CACHED_PIPELINE_STATE.
+type d3d12CachedPipelineState struct {
+	Blob uintptr `c:"pCachedBlob"`
+	Size uintptr `c:"CachedBlobSizeInBytes"`
+}
+
+// d3d12GraphicsPipelineStateDesc is the Go mirror of D3D12_GRAPHICS_PIPELINE_STATE_DESC.
+type d3d12GraphicsPipelineStateDesc struct {
+	RootSignature         uintptr                  `c:"pRootSignature"`
+	VS                    d3d12ShaderBytecode      `c:"VS"`
+	PS                    d3d12ShaderBytecode      `c:"PS"`
+	DS                    d3d12ShaderBytecode      `c:"DS"`
+	HS                    d3d12ShaderBytecode      `c:"HS"`
+	GS                    d3d12ShaderBytecode      `c:"GS"`
+	StreamOutput          d3d12StreamOutputDesc    `c:"StreamOutput"`
+	BlendState            d3d12BlendDesc           `c:"BlendState"`
+	SampleMask            uint32                   `c:"SampleMask"`
+	RasterizerState       d3d12RasterizerDesc      `c:"RasterizerState"`
+	DepthStencilState     d3d12DepthStencilDesc    `c:"DepthStencilState"`
+	InputLayout           d3d12InputLayoutDesc     `c:"InputLayout"`
+	IBStripCutValue       uint32                   `c:"IBStripCutValue"`
+	PrimitiveTopologyType uint32                   `c:"PrimitiveTopologyType"`
+	NumRenderTargets      uint32                   `c:"NumRenderTargets"`
+	RTVFormats            [8]uint32                `c:"RTVFormats"`
+	DSVFormat             uint32                   `c:"DSVFormat"`
+	SampleDesc            dxgiSampleDesc           `c:"SampleDesc"`
+	NodeMask              uint32                   `c:"NodeMask"`
+	CachedPSO             d3d12CachedPipelineState `c:"CachedPSO"`
+	Flags                 uint32                   `c:"Flags"`
+}
+
+// d3d12Viewport is the Go mirror of D3D12_VIEWPORT.
+type d3d12Viewport struct {
+	TopLeftX float32 `c:"TopLeftX"`
+	TopLeftY float32 `c:"TopLeftY"`
+	Width    float32 `c:"Width"`
+	Height   float32 `c:"Height"`
+	MinDepth float32 `c:"MinDepth"`
+	MaxDepth float32 `c:"MaxDepth"`
+}
+
+// d3d12Rect is the Go mirror of D3D12_RECT (RECT).
+type d3d12Rect struct {
+	Left   int32 `c:"left"`
+	Top    int32 `c:"top"`
+	Right  int32 `c:"right"`
+	Bottom int32 `c:"bottom"`
+}
+
+// d3d12VertexBufferView is the Go mirror of D3D12_VERTEX_BUFFER_VIEW.
+type d3d12VertexBufferView struct {
+	BufferLocation uint64 `c:"BufferLocation"`
+	SizeInBytes    uint32 `c:"SizeInBytes"`
+	StrideInBytes  uint32 `c:"StrideInBytes"`
+}
+
+// d3d12IndexBufferView is the Go mirror of D3D12_INDEX_BUFFER_VIEW.
+type d3d12IndexBufferView struct {
+	BufferLocation uint64 `c:"BufferLocation"`
+	SizeInBytes    uint32 `c:"SizeInBytes"`
+	Format         uint32 `c:"Format"`
+}
+
+// d3d12DiscardRegion is the Go mirror of D3D12_DISCARD_REGION.
+type d3d12DiscardRegion struct {
+	NumRects         uint32  `c:"NumRects"`
+	Rects            uintptr `c:"pRects"`
+	FirstSubresource uint32  `c:"FirstSubresource"`
+	NumSubresources  uint32  `c:"NumSubresources"`
+}
+
 // The values of the enumerations and flags of the headers that the device uses; the layout test
 // checks each one.
 const (
@@ -432,4 +618,60 @@ const (
 
 	// D3D12_RESOURCE_BINDING_TIER_1 is the tier that the device needs (SPEC §9.8).
 	resourceBindingTier1 uint32 = 1
+
+	// D3D12_ROOT_PARAMETER_TYPE, D3D12_DESCRIPTOR_RANGE_TYPE, D3D12_SHADER_VISIBILITY and
+	// D3D_ROOT_SIGNATURE_VERSION_1 (SPEC §9.8 "Binding model").
+	rootParameterTable     uint32 = 0
+	rootParameterCBV       uint32 = 2
+	descriptorRangeSRV     uint32 = 0
+	descriptorRangeSampler uint32 = 3
+	shaderVisibilityAll    uint32 = 0
+	shaderVisibilityVertex uint32 = 1
+	shaderVisibilityPixel  uint32 = 5
+	rootSignatureVersion1  uint32 = 1
+	// D3D12_ROOT_SIGNATURE_FLAG_*: the input assembler reads the vertex buffers, and the stages the
+	// renderer does not use cannot read the root arguments.
+	rootFlagAllowInputLayout uint32 = 0x1
+	rootFlagDenyHull         uint32 = 0x4
+	rootFlagDenyDomain       uint32 = 0x8
+	rootFlagDenyGeometry     uint32 = 0x10
+	// D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND, the offset that follows the range before.
+	descriptorRangeAppend uint32 = 0xFFFFFFFF
+	// D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE.
+	descriptorHeapShaderVisible uint32 = 1
+
+	// D3D12_BLEND, D3D12_BLEND_OP_ADD and D3D12_COLOR_WRITE_ENABLE_ALL.
+	blendZero           uint32 = 1
+	blendOne            uint32 = 2
+	blendSrcAlpha       uint32 = 5
+	blendInvSrcAlpha    uint32 = 6
+	blendDestAlpha      uint32 = 7
+	blendInvDestAlpha   uint32 = 8
+	blendOpAdd          uint32 = 1
+	colorWriteEnableAll uint8  = 0xF
+	// D3D12_LOGIC_OP_NOOP, D3D12_FILL_MODE_SOLID, D3D12_CULL_MODE_NONE, D3D12_COMPARISON_FUNC_ALWAYS,
+	// D3D12_STENCIL_OP_KEEP, D3D12_DEPTH_WRITE_MASK_ZERO and D3D12_DEFAULT_SAMPLE_MASK.
+	logicOpNoop        uint32 = 4
+	fillModeSolid      uint32 = 3
+	cullModeNone       uint32 = 1
+	comparisonAlways   uint32 = 8
+	stencilOpKeep      uint32 = 1
+	depthWriteMaskZero uint32 = 0
+	defaultSampleMask  uint32 = 0xFFFFFFFF
+	// D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE and D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST.
+	topologyTypeTriangle uint32 = 3
+	topologyTriangleList uint32 = 4
+	// D3D12_INPUT_CLASSIFICATION.
+	inputPerVertex   uint32 = 0
+	inputPerInstance uint32 = 1
+	// The formats of the vertex attributes and of the index buffer.
+	dxgiFormatR32     uint32 = 41 // DXGI_FORMAT_R32_FLOAT
+	dxgiFormatRG32    uint32 = 16 // DXGI_FORMAT_R32G32_FLOAT
+	dxgiFormatRGB32   uint32 = 6  // DXGI_FORMAT_R32G32B32_FLOAT
+	dxgiFormatRGBA32  uint32 = 2  // DXGI_FORMAT_R32G32B32A32_FLOAT
+	dxgiFormatR16Uint uint32 = 57 // DXGI_FORMAT_R16_UINT
+	// D3D12_ERROR_ADAPTER_NOT_FOUND and D3D12_ERROR_DRIVER_VERSION_MISMATCH: what a pipeline library
+	// says of a blob that belongs to another adapter or driver (SPEC §9.8 "Pipelines").
+	d3d12ErrorAdapterNotFound       uint32 = 0x887E0001
+	d3d12ErrorDriverVersionMismatch uint32 = 0x887E0002
 )

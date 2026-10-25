@@ -13,16 +13,20 @@ const (
 	factoryEnumWarpAdapter            = 27 // IDXGIFactory4::EnumWarpAdapter
 	factoryEnumAdapterByGPUPreference = 29 // IDXGIFactory6::EnumAdapterByGpuPreference
 	adapterGetDesc1                   = 10 // IDXGIAdapter1::GetDesc1
+	adapterCheckInterfaceSupport      = 9  // IDXGIAdapter::CheckInterfaceSupport
 )
 
 // The methods of ID3D12Device.
 const (
 	deviceCreateCommandQueue         = 8
 	deviceCreateCommandAllocator     = 9
+	deviceCreateGraphicsPipeline     = 10 // CreateGraphicsPipelineState
 	deviceCreateCommandList          = 12
 	deviceCheckFeatureSupport        = 13
 	deviceCreateDescriptorHeap       = 14
 	deviceGetDescriptorIncrementSize = 15 // GetDescriptorHandleIncrementSize
+	deviceCreateRootSignature        = 16
+	deviceCopyDescriptorsSimple      = 24
 	deviceCreateShaderResourceView   = 18
 	deviceCreateRenderTargetView     = 20
 	deviceCreateSampler              = 22
@@ -30,6 +34,15 @@ const (
 	deviceCreateFence                = 36
 	deviceGetDeviceRemovedReason     = 37
 	deviceGetCopyableFootprints      = 38
+)
+
+// The methods of ID3D12Device1 and ID3D12PipelineLibrary.
+const (
+	device1CreatePipelineLibrary = 44
+	libraryStorePipeline         = 8
+	libraryLoadGraphicsPipeline  = 9
+	librarySerializedSize        = 11 // GetSerializedSize
+	librarySerialize             = 12
 )
 
 // The methods of ID3D12CommandQueue, ID3D12CommandAllocator, ID3D12Fence, ID3D12Resource and
@@ -42,17 +55,33 @@ const (
 	fenceSetEventOnComplete  = 9 // SetEventOnCompletion
 	resourceMap              = 8
 	resourceUnmap            = 9
-	heapGetCPUHandleStart    = 9 // GetCPUDescriptorHandleForHeapStart
+	resourceGPUAddress       = 11 // GetGPUVirtualAddress
+	heapGetCPUHandleStart    = 9  // GetCPUDescriptorHandleForHeapStart
+	heapGetGPUHandleStart    = 10 // GetGPUDescriptorHandleForHeapStart
 )
 
 // The methods of ID3D12GraphicsCommandList.
 const (
 	listClose                 = 9
 	listReset                 = 10
+	listDrawInstanced         = 12
+	listDrawIndexedInstanced  = 13
 	listCopyBufferRegion      = 15
 	listCopyTextureRegion     = 16
+	listIASetPrimitiveTopo    = 20 // IASetPrimitiveTopology
+	listRSSetViewports        = 21
+	listRSSetScissorRects     = 22
+	listSetPipelineState      = 25
 	listResourceBarrier       = 26
+	listSetDescriptorHeaps    = 28
+	listSetRootSignature      = 30 // SetGraphicsRootSignature
+	listSetRootTable          = 32 // SetGraphicsRootDescriptorTable
+	listSetRootCBV            = 38 // SetGraphicsRootConstantBufferView
+	listIASetIndexBuffer      = 43
+	listIASetVertexBuffers    = 44
+	listOMSetRenderTargets    = 46
 	listClearRenderTargetView = 48
+	listDiscardResource       = 51
 )
 
 // The methods of ID3D12Debug and ID3D12InfoQueue.
@@ -79,4 +108,9 @@ var (
 	iidDescriptorHeap      = win32.MustParseGUID("{8efb471d-616c-4f49-90f7-127bb763fa51}")
 	iidDebug               = win32.MustParseGUID("{344488b7-6846-474b-b989-f027448245e0}")
 	iidInfoQueue           = win32.MustParseGUID("{0742a90b-c387-483f-b946-30a7e4e61458}")
+	iidRootSignature       = win32.MustParseGUID("{c54a6b66-72df-4ee8-8be5-a946a1429214}")
+	iidPipelineState       = win32.MustParseGUID("{765a30f3-f624-4c6f-a828-ace948622445}")
+	iidDevice1             = win32.MustParseGUID("{77acce80-638e-4e65-8895-c1f23386863e}")
+	iidPipelineLibrary     = win32.MustParseGUID("{c64226a8-9201-46af-b4cc-53fb9ff7414f}")
+	iidDXGIDevice          = win32.MustParseGUID("{54ec77fa-1377-44e6-8c32-88fd5f44c84c}")
 )

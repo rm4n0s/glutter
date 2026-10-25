@@ -17,6 +17,7 @@ type buffer struct {
 	d         *Device
 	res       win32.Object
 	ptr       uintptr
+	va        uint64 // the GPU virtual address, which a root constant buffer view names
 	size      int
 	destroyed bool
 }
@@ -55,7 +56,7 @@ func (d *Device) NewBuffer(size int, _ explicit.BufferUsage) (explicit.Buffer, e
 		d.releaseBuffer(res, n)
 		return nil, err
 	}
-	b := &buffer{d: d, res: res, ptr: ptr, size: size}
+	b := &buffer{d: d, res: res, ptr: ptr, va: uint64(res.Call(resourceGPUAddress)), size: size}
 	d.counts.buffers++
 	d.live[b] = func() { b.destroyed = true; d.counts.buffers--; d.releaseBuffer(b.res, b.allocated()) }
 	return b, nil
