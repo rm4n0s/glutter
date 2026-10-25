@@ -16,12 +16,24 @@ type testAnnotationTarget struct {
 	onEnter services.PointerEnterEventListener
 	onHover services.PointerHoverEventListener
 	onExit  services.PointerExitEventListener
+	// cursor is the cursor of the region; nil defers. hold makes it keep the cursor of
+	// a pressed pointer, and invalid makes it a region that left the tree.
+	cursor        services.MouseCursor
+	hold, invalid bool
 }
 
 func (t *testAnnotationTarget) OnEnter() services.PointerEnterEventListener { return t.onEnter }
 func (t *testAnnotationTarget) OnExit() services.PointerExitEventListener   { return t.onExit }
-func (t *testAnnotationTarget) Cursor() services.MouseCursor                { return services.MouseCursorDefer }
-func (t *testAnnotationTarget) ValidForMouseTracker() bool                  { return true }
+func (t *testAnnotationTarget) Cursor() services.MouseCursor {
+	if t.cursor == nil {
+		return services.MouseCursorDefer
+	}
+	return t.cursor
+}
+func (t *testAnnotationTarget) ValidForMouseTracker() bool { return !t.invalid }
+
+// HoldCursorWhilePressed is what a region with HoldCursorWhilePressed answers.
+func (t *testAnnotationTarget) HoldCursorWhilePressed() bool { return t.hold }
 func (t *testAnnotationTarget) HandleEvent(event gestures.PointerEvent, _ gestures.HitTestEntry) {
 	if h, ok := event.(*gestures.PointerHoverEvent); ok && t.onHover != nil {
 		t.onHover(h)

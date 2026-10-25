@@ -152,6 +152,15 @@ type MouseRegionOpts struct {
 	// HitTestBehavior is how to behave during hit testing; the default is
 	// HitTestBehaviorOpaque.
 	HitTestBehavior rendering.HitTestBehavior
+	// HoldCursorWhilePressed keeps the cursor of this region, for a mouse that was
+	// pressed inside it, until the button is released, whatever the pointer moves over:
+	// the sash of a split view keeps its resize cursor while the pointer outruns it. The
+	// cursor changes if the cursor of the region does, and the hold ends if the region
+	// leaves the tree. OnEnter, OnExit and OnHover are not affected.
+	//
+	// Deviation: Flutter's cursor follows the regions under the pointer while a button
+	// is held too (SPEC §12.10).
+	HoldCursorWhilePressed bool
 }
 
 // MouseRegion tracks mouse pointers entering, hovering over and leaving its
@@ -209,7 +218,8 @@ func (w *MouseRegion) HitTestBehavior() rendering.HitTestBehavior { return w.opt
 // Flutter: widgets/basic.dart MouseRegion.createRenderObject
 func (w *MouseRegion) CreateRenderObject(BuildContext) rendering.RenderObject {
 	return rendering.NewRenderMouseRegion(nil, rendering.RenderMouseRegionOpts{OnEnter: w.opts.OnEnter, OnHover: w.opts.OnHover,
-		OnExit: w.opts.OnExit, Cursor: w.opts.Cursor, Opaque: w.opts.Opaque, HitTestBehavior: w.opts.HitTestBehavior})
+		OnExit: w.opts.OnExit, Cursor: w.opts.Cursor, Opaque: w.opts.Opaque, HitTestBehavior: w.opts.HitTestBehavior,
+		HoldCursorWhilePressed: w.opts.HoldCursorWhilePressed})
 }
 
 // UpdateRenderObject copies the configuration to the render object.
@@ -223,4 +233,5 @@ func (w *MouseRegion) UpdateRenderObject(_ BuildContext, renderObject rendering.
 	r.SetCursor(w.opts.Cursor)
 	r.SetOpaque(w.opts.Opaque.OrElse(true))
 	r.SetHitTestBehavior(w.opts.HitTestBehavior)
+	r.SetHoldCursorWhilePressed(w.opts.HoldCursorWhilePressed)
 }

@@ -41,6 +41,16 @@ func (m *annotationMap) has(a services.MouseTrackerAnnotation) bool {
 type mouseState struct {
 	annotations *annotationMap
 	latestEvent gestures.PointerEvent
+	// held is the annotation whose cursor the device keeps while a button is down: the
+	// region that asked for it (cursorHolder) and was under the pointer when it went
+	// down. nil when there is none.
+	held services.MouseTrackerAnnotation
+}
+
+// cursorHolder is what an annotation implements to keep the cursor of a pressed pointer
+// (RenderMouseRegion.HoldCursorWhilePressed).
+type cursorHolder interface {
+	HoldCursorWhilePressed() bool
 }
 
 func (s *mouseState) replaceAnnotations(v *annotationMap) *annotationMap {
@@ -184,11 +194,49 @@ func (t *MouseTracker) findAnnotations(state *mouseState) *annotationMap {
 
 func (t *MouseTracker) handleDeviceUpdate(d mouseTrackerUpdateDetails) {
 	handleDeviceUpdateMouseEvents(d)
-	cursors := make([]services.MouseCursor, 0, len(d.nextAnnotations.keys))
-	for _, a := range d.nextAnnotations.keys {
+	t.mouseCursorManager.HandleDeviceCursorUpdate(d.device(), d.triggeringEvent, t.cursorCandidates(t.mouseStates[d.device()], d.nextAnnotations))
+}
+
+// cursorCandidates are the cursors of the annotations under the pointer, nearest first.
+// The cursor of the held annotation comes first while a button is down; it ends when the
+// annotation is not valid any more (its region left the tree).
+func (t *MouseTracker) cursorCandidates(state *mouseState, annotations *annotationMap) []services.MouseCursor {
+	cursors := make([]services.MouseCursor, 0, len(annotations.keys)+1)
+	if state != nil && state.held != nil {
+		if state.held.ValidForMouseTracker() {
+			cursors = append(cursors, state.held.Cursor())
+		} else {
+			state.held = nil
+		}
+	}
+	for _, a := range annotations.keys {
 		cursors = append(cursors, a.Cursor())
 	}
-	t.mouseCursorManager.HandleDeviceCursorUpdate(d.device(), d.triggeringEvent, cursors)
+	return cursors
+}
+
+// trackPress follows the buttons of the device: a press inside a region that holds the
+// cursor makes it the source of the cursor, and the release or cancel ends it. It reports
+// whether the hold changed.
+func (t *MouseTracker) trackPress(state *mouseState, event gestures.PointerEvent, result *gestures.HitTestResult) bool {
+	switch event.(type) {
+	case *gestures.PointerDownEvent:
+		var held services.MouseTrackerAnnotation
+		for _, a := range hitTestResultToAnnotations(result).keys {
+			if h, ok := a.(cursorHolder); ok && h.HoldCursorWhilePressed() && a.ValidForMouseTracker() {
+				held = a
+				break
+			}
+		}
+		changed := held != state.held
+		state.held = held
+		return changed
+	case *gestures.PointerUpEvent, *gestures.PointerCancelEvent:
+		changed := state.held != nil
+		state.held = nil
+		return changed
+	}
+	return false
 }
 
 // UpdateWithEvent updates the annotations under the device of a mouse or stylus
@@ -215,7 +263,17 @@ func (t *MouseTracker) UpdateWithEvent(event gestures.PointerEvent, hitTestResul
 	}
 	device := event.Device()
 	existing := t.mouseStates[device]
+	holdChanged := false
+	if existing != nil {
+		holdChanged = t.trackPress(existing, event, result)
+	}
 	if !shouldMarkStateDirty(existing, event) {
+		if holdChanged {
+			// The pointer did not move over anything new, but the source of the cursor changed.
+			t.deviceUpdatePhase(func() {
+				t.mouseCursorManager.HandleDeviceCursorUpdate(device, event, t.cursorCandidates(existing, existing.annotations))
+			})
+		}
 		return
 	}
 	t.monitorMouseConnection(func() {

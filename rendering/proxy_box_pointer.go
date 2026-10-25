@@ -208,6 +208,7 @@ type RenderMouseRegion struct {
 	cursor               services.MouseCursor
 	validForMouseTracker bool
 	opaque               bool
+	holdCursor           bool
 }
 
 // RenderMouseRegionOpts are the optional parameters of NewRenderMouseRegion.
@@ -228,6 +229,9 @@ type RenderMouseRegionOpts struct {
 	Opaque foundation.Opt[bool]
 	// HitTestBehavior defaults to HitTestBehaviorOpaque.
 	HitTestBehavior HitTestBehavior
+	// HoldCursorWhilePressed keeps this region as the source of the cursor of a mouse
+	// that was pressed inside it, until the button is released.
+	HoldCursorWhilePressed bool
 }
 
 // NewRenderMouseRegion creates the box.
@@ -252,6 +256,7 @@ func InitRenderMouseRegion(r *RenderMouseRegion, self Box, child Box, o RenderMo
 	}
 	r.onEnter, r.onHover, r.onExit, r.cursor = o.OnEnter, o.OnHover, o.OnExit, o.Cursor
 	r.validForMouseTracker, r.opaque = o.ValidForMouseTracker.OrElse(true), o.Opaque.OrElse(true)
+	r.holdCursor = o.HoldCursorWhilePressed
 	InitRenderProxyBoxWithHitTestBehavior(&r.RenderProxyBoxWithHitTestBehavior, self, o.HitTestBehavior, child)
 }
 
@@ -408,6 +413,21 @@ func (r *RenderMouseRegion) SetCursor(value services.MouseCursor) {
 		r.MarkNeedsPaint()
 	}
 }
+
+// HoldCursorWhilePressed is whether a mouse that was pressed inside the region keeps
+// the region's cursor until the button is released, whatever the mouse moves over.
+//
+// Deviation: Flutter's cursor follows the regions under the pointer even while a
+// button is held (SPEC §12.10).
+//
+// Flutter: no counterpart
+func (r *RenderMouseRegion) HoldCursorWhilePressed() bool { return r.holdCursor }
+
+// SetHoldCursorWhilePressed changes HoldCursorWhilePressed. A hold that is going on
+// ends with the next press.
+//
+// Flutter: no counterpart
+func (r *RenderMouseRegion) SetHoldCursorWhilePressed(value bool) { r.holdCursor = value }
 
 // ValidForMouseTracker is false for a detached region.
 //

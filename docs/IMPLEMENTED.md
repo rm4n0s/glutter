@@ -2872,3 +2872,15 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Deviations and follow-ups:**
   - `OnHidden` is also called when the widget leaves the tree while the tooltip shows (the controller is disposed and sends no status), so an app that keeps a list of the hovers that show does not keep a dead one.
   - `material.Tooltip` gets no matching options: the plan's goal is `RawTooltip` alone, and `material/tooltip.go` needed no change (it builds `RawTooltipOpts` by field name).
+
+## 27.7 The cursor of a pressed pointer
+
+- **Date:** 2026-10-25
+- **Branch:** feat/step-27.7-pressed-cursor
+- **Summary:** `MouseRegionOpts.HoldCursorWhilePressed` (and `RenderMouseRegion.HoldCursorWhilePressed`): when a mouse or stylus goes down inside such a region, the `MouseTracker` keeps that region as the source of the cursor of the device until the pointer goes up or is cancelled. The tracker keeps the held annotation in the state of each device, offers its cursor first to `HandleDeviceCursorUpdate` while it is valid for the tracker (an invalid one ends the hold), and sends a cursor update on a press or release that does not move the pointer over anything new. `OnEnter`, `OnExit` and `OnHover` are unchanged.
+- **Main files:** `rendering/{mouse_tracker,proxy_box_pointer}.go`, `widgets/pointer_widgets.go`, `rendering/mouse_tracker_hold_test.go`, `widgets/mouse_region_hold_test.go`, `docs/SPEC.md` (§12.10).
+- **Tests:** `rendering/mouse_tracker_hold_test.go`: press in a sash-like region and move over another region and over nothing, release (6 table cases: with and without the option, a press elsewhere, a cancel, the next press, release over another region); the region's cursor changing during the hold and the region removed during it; the hover events unchanged; two mice independent and a touch pointer with no cursor. `widgets/mouse_region_hold_test.go`: the widget option, with and without it.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck ✅ · apicheck ✅ · `GOOS=js GOARCH=wasm` build, vet and `scripts/test-wasm.sh` ✅ · `scripts/check-android.sh` ✅ · display tests none
+- **Proof:** none.
+- **Manual checks:** the split pane of `examples/gallery` (or a small sash in `examples/dev`) keeps the resize cursor while the pointer outruns it with the button held. Not done here: no real display is used by the agent runs.
+- **Deviations and follow-ups:** the option is a deviation from Flutter (SPEC §12.10). `material` needed no regeneration: only an options field was added.
