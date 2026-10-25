@@ -28,6 +28,11 @@ const openURIMethod = "org.freedesktop.portal.OpenURI.OpenURI"
 // OpenURISchemeBlocked, and a URI that no app can open (or a program with no activity to start it
 // from) with OpenURIUnavailable. Android lets only an app that is on the screen start another.
 //
+// On Windows it is ShellExecuteExW with the verb "open", which also starts programs, so a URI is refused
+// with OpenURISchemeBlocked when its scheme has one letter (a path of a drive such as C:\x), is javascript:
+// or vbscript:, or is a file: URI of a program or a script (.exe, .bat, .lnk, .ps1, ...); a URI that no
+// program is registered for is OpenURIUnavailable.
+//
 // It waits for the desktop, so it must be called from a goroutine and not on the UI
 // thread (it fails with DesktopCallOnUIThread there); ctx ends the wait. A URI without
 // a scheme fails with OpenURIInvalid.
@@ -46,6 +51,9 @@ func OpenURI(ctx context.Context, bc widgets.BuildContext, uri string) error {
 	}
 	if c.s.android != nil {
 		return c.s.android.OpenURI(ctx, uri)
+	}
+	if c.s.windows != nil {
+		return c.s.windows.OpenURI(ctx, uri)
 	}
 	return c.openURI(ctx, uri)
 }

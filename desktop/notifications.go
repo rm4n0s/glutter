@@ -185,6 +185,18 @@ type notifyState struct {
 // notification away or clicked it or one of its buttons, NotificationClosedByApp for
 // CloseNotification and NotificationClosedExpired; Android reports nothing else.
 //
+// On Windows it is a balloon of the notification area (NIF_INFO), which Windows 10 and 11 show as a toast.
+// A balloon has a title (63 characters at most), a body (255; the markup is stripped, and an empty body is
+// a space), the icon of the urgency (Critical is the warning, Low is silent) and, from Icon, a large icon
+// when it is the path of a PNG or JPEG file. It has no buttons: only the action with the ID "default" is
+// used, a click on the balloon (OnAction("default"), then OnClosed with NotificationClosedDismissed); the
+// other actions are not shown. Windows shows one balloon at a time and sets its time itself, so the
+// notifications wait in a queue; Timeout ends the balloon sooner (NotificationClosedExpired), and one that
+// the shell does not end is expired after 15 seconds. ReplacesID replaces a notification that is shown or
+// waits, in place. When Focus Assist or Do not disturb hides the balloon, the app is not told. An app with
+// no notification area is NotificationsUnavailable and a shell that refuses the balloon is
+// WindowsBalloonFailed.
+//
 // Flutter: no counterpart (Flutter apps use the flutter_local_notifications plugin)
 func ShowNotification(ctx context.Context, bc widgets.BuildContext, summary string, opts ...NotificationOpts) (NotificationID, error) {
 	o := firstOpts(opts)
@@ -205,6 +217,9 @@ func ShowNotification(ctx context.Context, bc widgets.BuildContext, summary stri
 	}
 	if c.s.android != nil {
 		return c.showOnAndroid(ctx, summary, o)
+	}
+	if c.s.windows != nil {
+		return c.showOnMobile(ctx, c.s.windows, summary, o, true)
 	}
 	if c.s.flatpak() {
 		return c.showWithPortal(ctx, summary, o)
@@ -227,6 +242,9 @@ func CloseNotification(ctx context.Context, bc widgets.BuildContext, id Notifica
 	}
 	if c.s.android != nil {
 		return c.s.android.CloseNotification(ctx, uint32(id))
+	}
+	if c.s.windows != nil {
+		return c.s.windows.CloseNotification(ctx, uint32(id))
 	}
 	bus, err := c.s.connect(ctx, "NotificationsUnavailable")
 	if err != nil {

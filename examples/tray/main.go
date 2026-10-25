@@ -6,13 +6,23 @@
 // notification with an "Open" action that brings the window back, and "Open file…"
 // opens the file dialog of the desktop (desktop.OpenFiles) and shows the chosen path.
 //
-// The tray uses the StatusNotifierItem protocol: KDE Plasma, XFCE and Cinnamon show
+// On Linux the tray uses the StatusNotifierItem protocol: KDE Plasma, XFCE and Cinnamon show
 // it, and GNOME shows it with the AppIndicator extension. Without it the app still
-// works and reports TrayUnavailable once. It uses only the public packages.
+// works and reports TrayUnavailable once. On Windows (GOOS=windows) it is an icon of the
+// notification area (Windows 11 and 10 may put it in the overflow area at first: drag it to
+// the bar) with a popup menu; a left click shows the window, a right click opens the menu, and
+// the icon comes back when Explorer restarts. What Windows lacks: a notification there is a
+// balloon, which Windows 10 and 11 show as a toast, and it has no buttons, so only the action
+// "default" (a click on the balloon) exists and the "Open" button is not shown; balloons wait for
+// each other and are not shown at all while Focus Assist is on. The file dialog is the common
+// dialog of Windows, whose filters are listed in a menu next to the name. It uses only the public
+// packages.
 //
 // Run it with: go run ./examples/tray
 //
-// Environment: GLUTTER_BACKEND=x11|wayland, GLUTTER_SCREENSHOT=<file.png>.
+// Environment: GLUTTER_BACKEND=x11|wayland (Linux), GLUTTER_SCREENSHOT=<file.png>. In debug
+// builds only, for screenshots: GLUTTER_DEV_OPEN_FILE=1 opens the file dialog as soon as the
+// window is shown, and GLUTTER_DEV_NOTIFY=1 hides the window in the tray and shows a notification.
 package main
 
 import (
@@ -21,9 +31,12 @@ import (
 	"image/color"
 	"image/draw"
 	"log"
+	"os"
 	"strings"
+	"time"
 
 	"github.com/rm4n0s/glutter/desktop"
+	"github.com/rm4n0s/glutter/foundation"
 	m "github.com/rm4n0s/glutter/material"
 	"github.com/rm4n0s/glutter/ui"
 )
@@ -84,6 +97,20 @@ func (s *trayPageState) InitState() {
 	}
 	s.icon = icon
 	s.lifecycle = m.NewAppLifecycleListener(s.binding, m.AppLifecycleListenerOpts{OnExitRequested: s.onExitRequested})
+	if foundation.DebugMode && os.Getenv("GLUTTER_DEV_OPEN_FILE") != "" {
+		s.binding.Scheduler().AddPostFrameCallback(func(time.Duration) { s.openFile() })
+	}
+	if foundation.DebugMode && os.Getenv("GLUTTER_DEV_NOTIFY") != "" {
+		// The window is shown after its first frame, so it is hidden a little later.
+		s.binding.Scheduler().AddPostFrameCallback(func(time.Duration) {
+			time.AfterFunc(500*time.Millisecond, func() {
+				s.binding.Post(func() {
+					s.hideWindow()
+					s.newNotification()
+				})
+			})
+		})
+	}
 }
 
 func (s *trayPageState) Dispose() {
@@ -163,7 +190,14 @@ func (s *trayPageState) newNotification() {
 func (s *trayPageState) openFile() {
 	bc := s.Context()
 	s.Go(func(ctx context.Context) {
-		res, err := desktop.OpenFiles(ctx, bc, desktop.OpenFilesOpts{Title: "Open a file"})
+		res, err := desktop.OpenFiles(ctx, bc, desktop.OpenFilesOpts{
+			Title: "Open a file",
+			Filters: []desktop.FileFilter{
+				{Name: "Text files", Patterns: []string{"*.txt", "*.md"}},
+				{Name: "Images", Patterns: []string{"*.png", "*.jpg"}},
+				{Name: "All files"},
+			},
+		})
 		switch {
 		case err != nil:
 			s.setStatus("Open failed: " + err.Error())

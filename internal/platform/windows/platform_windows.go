@@ -25,6 +25,9 @@ const (
 	msgWake = win32.WMApp + 1
 	// msgVsync is posted by the vsync thread: a frame may be drawn.
 	msgVsync = win32.WMApp + 2
+	// msgTray is the callback message of the notify icons (SPEC §25.9): Shell_NotifyIconW sends it to the
+	// service window, whose procedure hands it to Desktop.
+	msgTray = win32.WMApp + 3
 )
 
 // Options are the optional parameters of New.
@@ -105,6 +108,10 @@ type Platform struct {
 	ended       bool
 	// clip is the clipboard, made by the first call of Clipboard.
 	clip *clipboard
+	// desk is the desktop services (tray, balloons, dialogs, URIs), made once by the first call of
+	// Desktop, which may come from any goroutine (services_windows.go).
+	deskOnce sync.Once
+	desk     atomic.Pointer[Desktop]
 	// imm is the interface to the input methods that the windows' text inputs use; script is the
 	// part of it that the scripted compositions drive (textinput_windows.go).
 	imm    ime.IMM
@@ -376,10 +383,24 @@ type serviceTarget struct{ p *Platform }
 func (t serviceTarget) handleMessage(hwnd uintptr, msg uint32, wparam, lparam uintptr) uintptr {
 	p := t.p
 	return p.guard(func() uintptr {
+		if d := p.desk.Load(); d != nil && d.isTaskbarCreated(msg) {
+			d.onTaskbarCreated()
+			return 0
+		}
 		switch msg {
 		case msgWake:
 			p.runPosted()
 			return 0
+		case msgTray:
+			if d := p.desk.Load(); d != nil {
+				d.onIconMessage(wparam, lparam)
+			}
+			return 0
+		case win32.WMTimer:
+			if wparam == modalTimerID {
+				p.modalTurn()
+				return 0
+			}
 		case msgVsync:
 			p.onVsync()
 			return 0
@@ -399,8 +420,8 @@ func (t serviceTarget) handleMessage(hwnd uintptr, msg uint32, wparam, lparam ui
 	})
 }
 
-// Services returns nil: Windows has no services until step 28.11 (the tray, the notifications)
-// and 28.13 (accessibility).
+// Services returns nil: the tray, the notifications, the file dialogs and the URIs are the desktop
+// services of Desktop (step 28.11), and the accessibility bridge comes with step 28.13.
 //
 // Flutter: no counterpart
 func (p *Platform) Services() platform.Services { return nil }
@@ -421,6 +442,9 @@ func (p *Platform) teardown() {
 		return
 	}
 	p.closed = true
+	if d := p.desk.Load(); d != nil {
+		d.Close() // the notify icons would stay in the tray as ghosts
+	}
 	for _, w := range p.sortedWindows() {
 		w.Close()
 	}

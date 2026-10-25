@@ -43,6 +43,10 @@ type services struct {
 	// posts notifications with the notification manager (SPEC §24.11). With it, the session bus is never
 	// tried.
 	android androidDesktop
+	// windows, set on Windows only, does what the desktop does there: it opens URIs with ShellExecuteEx, shows
+	// notifications as tray balloons, puts the icon in the notification area and shows the item dialogs (SPEC
+	// §25.9). With it, the session bus is never tried.
+	windows windowsDesktop
 }
 
 type servicesKey struct{}
@@ -50,7 +54,12 @@ type servicesKey struct{}
 // servicesOf returns the services of the binding.
 func servicesOf(b *widgets.WidgetsBinding) *services {
 	return b.Extension(servicesKey{}, func() any {
-		return &services{binding: b, open: dbus.Connect, run: runProgram, flatpak: inFlatpak, web: newWebDesktop(), android: newAndroidDesktop(b)}
+		win := newWindowsDesktop(b)
+		var android androidDesktop
+		if win == nil {
+			android = newAndroidDesktop(b) // Windows' services have the interface of Android's too
+		}
+		return &services{binding: b, open: dbus.Connect, run: runProgram, flatpak: inFlatpak, web: newWebDesktop(), android: android, windows: win}
 	}).(*services)
 }
 
@@ -82,6 +91,10 @@ func (s *services) connect(ctx context.Context, tag string) (dbus.Bus, error) {
 	if s.web != nil {
 		// The cause is a sentinel, so that an app can still match DBusUnavailableOnWeb (SPEC §14.1).
 		return nil, errors.NewErr(tag, &errors.Error{Tag: "DBusUnavailableOnWeb", Message: "a web page has no session bus: D-Bus is never tried on the web"})
+	}
+	if s.windows != nil {
+		// The cause is a sentinel, so that an app can still match DBusUnavailableOnWindows (SPEC §14.1).
+		return nil, errors.NewErr(tag, &errors.Error{Tag: "DBusUnavailableOnWindows", Message: windowsReason(tag)})
 	}
 	if s.android != nil {
 		// The cause is a sentinel, so that an app can still match DBusUnavailableOnAndroid (SPEC §14.1).

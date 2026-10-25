@@ -3487,3 +3487,57 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
     - `glesRenderer` in `internal/engine/gles_renderer.go`;
     - `bufferSize` and `windowBuffer` in `internal/gpu/nativewindow/buffer.go`;
     - an unchecked `proc.Call` in `internal/platform/windows/settings_wine_test.go:50`.
+
+## 28.11 Desktop services: tray, notifications, file dialogs, open URI
+
+- **Date:** 2026-10-25
+- **Branch:** feat/step-28.11-windows-desktop
+- **Summary:** `examples/tray` works on Windows.
+  - **Tray:** a notify icon (`Shell_NotifyIconW`, version 4) with a popup menu built when it is shown.
+  - **Notifications:** tray balloons, in a queue.
+  - **File dialogs:** `IFileOpenDialog` and `IFileSaveDialog`, on a worker thread that is locked and runs `CoInitializeEx`.
+  - **Open URI:** `ShellExecuteExW`, after Windows' own checks.
+  - **Plumbing:** package `desktop` takes the Windows value from the platform, as it takes Android's, and never tries D-Bus (`DBusUnavailableOnWindows`). The Windows value is Android's interface plus `TrayHost` and `FileDialogHost`, so neither platform's services are taken for the other's.
+- **Main files:**
+  - `internal/platform/windows/`:
+    - plain Go: `services.go`, `tray.go`, `balloon.go`, `filedialog.go`;
+    - Windows glue: `services_windows.go`, `tray_windows.go`, `menu_windows.go`, `openuri_windows.go`, `filedialog_windows.go`, `worker_windows.go`.
+  - `internal/platform/desktopservices.go`
+  - `internal/platform/windows/win32/`: `consts_services.go`, `shell_windows.go`, and the mirrors `NotifyIconData`, `MenuItemInfo`, `ShellExecuteInfo` and `ComdlgFilterSpec`
+  - `desktop/windows.go`, `examples/tray`
+  - SPEC §25.9
+- **Tests:**
+  - Plain Go, over a fake shell and a fake dialog:
+    - the tray diff, the item numbering and the escaping of `&`;
+    - the balloon queue: replace in place, replace a queued one, a close starts the next, the expiry, the limits of 63, 127 and 255 characters, the echo of a hide;
+    - the filter specs and the dialog options of each kind;
+    - the URI table: `https`, `mailto`, `C:\x`, `javascript:`, a `file:` URI of an `.exe` and of a `.txt`, an empty string, control characters;
+    - `ERROR_CANCELLED` becomes `Cancelled`;
+    - a route test of every tag.
+  - The plumbing in `desktop`.
+  - The layout test of the new mirrors against the mingw-w64 headers.
+  - No Flutter test was ported (Flutter has no counterpart).
+- **Wine tests** (each run twice; the whole package stays under 1.5 GB):
+  - **Tray, menu and balloon**, in a process of their own on Wine's `explorer /desktop=glutter,800x600`:
+    - the icon is added, modified and deleted, and a click reaches `OnActivate`;
+    - `TaskbarCreated` brings the icon back;
+    - the menu read back with `GetMenuItemInfoW`;
+    - a balloon, and its click.
+  - **File dialogs:** five kinds, each shown on the worker thread and closed with `IDCANCEL`; a dialog closed by its context.
+  - **Open URI:** a custom scheme registered in the prefix opens a helper program, which writes a file; blocked schemes are refused before `ShellExecuteExW` is called.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck ✅ · apicheck ✅ · `GOOS=js GOARCH=wasm` build, vet and `scripts/test-wasm.sh` ✅ · `scripts/check-android.sh` ✅ · `GOOS=windows` amd64 build and vet, arm64 build ✅ · `scripts/test-windows.sh` ✅ · Wine tests ✅ · layout test against the headers ✅ · nothing left running ✅
+- **Proof:** method F.
+  - `28.11-windows-tray.png`: `examples/tray` on Wine's explorer desktop, with its teal icon in Wine's tray at the top left and the balloon "Glutter tray / Your note is empty".
+  - `28.11-windows-file-dialog.png`: the open dialog of `examples/tray`, with the filter "Text files (*.txt;*.md)".
+
+  ![28.11 tray](implemented-proof-images/28.11-windows-tray.png)
+  ![28.11 file dialog](implemented-proof-images/28.11-windows-file-dialog.png)
+- **Manual checks (pending, for the owner's PC; collected in `docs/MANUAL-CHECKS.md` by step 28.15):**
+  - the list of step 28.11;
+  - whether Windows 10 and 11 show the balloon of an icon hidden in the overflow area. If they do not, the icon must be shown while a notification is up; that is not done yet.
+- **Deviations and follow-ups** (the decisions are in SPEC §25.9, "Decided in step 28.11"):
+  - Windows' balloons have no buttons: their only action is "default".
+  - A balloon with no time-out, a persistent one and a critical one are ended as expired after 15 seconds, so that a silent shell cannot stall the queue.
+  - The tray tests run in a child process. Under Wine, after a thread has joined another desktop, a window made later on the default desktop fails with a `BadWindow` error and ends the process.
+  - The custom scheme is written under `HKLM\Software\Classes` of the private prefix, because Wine's `HKCR` does not read `HKCU\Software\Classes`. It is removed when the test ends.
+  - `examples/tray` gained debug-only variables for the proofs (`GLUTTER_DEV_NOTIFY`, `GLUTTER_DEV_OPEN_FILE`) and file filters in its Open dialog. Its tests and goldens are unchanged.

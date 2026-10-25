@@ -95,3 +95,74 @@ type NonClientMetrics struct {
 	MessageFont     LogFont `c:"lfMessageFont"`
 	PaddedBorder    int32   `c:"iPaddedBorderWidth"`
 }
+
+// NotifyIconData is the Go mirror of NOTIFYICONDATAW, the structure of Shell_NotifyIconW (SPEC
+// §25.9). It is the structure of Windows Vista and later, whose size is cbSize; the union of
+// uTimeout and uVersion is the one field UVersion.
+//
+// Flutter: no counterpart
+type NotifyIconData struct {
+	Size            uint32      `c:"cbSize"`
+	Wnd             uintptr     `c:"hWnd"`
+	ID              uint32      `c:"uID"`
+	Flags           uint32      `c:"uFlags"`
+	CallbackMessage uint32      `c:"uCallbackMessage"`
+	Icon            uintptr     `c:"hIcon"`
+	Tip             [128]uint16 `c:"szTip"`
+	State           uint32      `c:"dwState"`
+	StateMask       uint32      `c:"dwStateMask"`
+	Info            [256]uint16 `c:"szInfo"`
+	Version         uint32      `c:"uVersion"`
+	InfoTitle       [64]uint16  `c:"szInfoTitle"`
+	InfoFlags       uint32      `c:"dwInfoFlags"`
+	GUIDItem        GUID        `c:"guidItem"`
+	BalloonIcon     uintptr     `c:"hBalloonIcon"`
+}
+
+// MenuItemInfo is the Go mirror of MENUITEMINFOW.
+//
+// Flutter: no counterpart
+type MenuItemInfo struct {
+	Size         uint32  `c:"cbSize"`
+	Mask         uint32  `c:"fMask"`
+	Type         uint32  `c:"fType"`
+	State        uint32  `c:"fState"`
+	ID           uint32  `c:"wID"`
+	SubMenu      uintptr `c:"hSubMenu"`
+	BmpChecked   uintptr `c:"hbmpChecked"`
+	BmpUnchecked uintptr `c:"hbmpUnchecked"`
+	ItemData     uintptr `c:"dwItemData"`
+	TypeData     uintptr `c:"dwTypeData"`
+	CCH          uint32  `c:"cch"`
+	BmpItem      uintptr `c:"hbmpItem"`
+}
+
+// ShellExecuteInfo is the Go mirror of SHELLEXECUTEINFOW.
+//
+// Flutter: no counterpart
+type ShellExecuteInfo struct {
+	Size         uint32  `c:"cbSize"`
+	Mask         uint32  `c:"fMask"`
+	Wnd          uintptr `c:"hwnd"`
+	Verb         uintptr `c:"lpVerb"`
+	File         uintptr `c:"lpFile"`
+	Parameters   uintptr `c:"lpParameters"`
+	Directory    uintptr `c:"lpDirectory"`
+	Show         int32   `c:"nShow"`
+	InstApp      uintptr `c:"hInstApp"`
+	IDList       uintptr `c:"lpIDList"`
+	Class        uintptr `c:"lpClass"`
+	KeyClass     uintptr `c:"hkeyClass"`
+	HotKey       uint32  `c:"dwHotKey"`
+	Icon         uintptr `c:"hIcon"`
+	ProcessValue uintptr `c:"hProcess"`
+}
+
+// ComdlgFilterSpec is the Go mirror of COMDLG_FILTERSPEC, one entry of the file types of an item
+// dialog: both members point to UTF-16 text with a terminating NUL.
+//
+// Flutter: no counterpart
+type ComdlgFilterSpec struct {
+	Name uintptr `c:"pszName"`
+	Spec uintptr `c:"pszSpec"`
+}

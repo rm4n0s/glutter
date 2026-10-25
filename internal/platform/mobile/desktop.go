@@ -200,6 +200,9 @@ type NotificationSpec struct {
 	ReplacesID uint32
 	// Actions are the buttons; the one with the ID "default" is the click on the notification.
 	Actions []Action
+	// Icon is the path of an image file or the name of a theme icon, as the app gave it. Windows uses a
+	// PNG or JPEG file as the large icon of the balloon; Android and the web have their own icons.
+	Icon string
 	// OnAction is called, on any goroutine, with the ID of the action the user chose; the click on the
 	// notification is the action "default", only when Actions has it. nil listens to nothing.
 	OnAction func(id string)
@@ -298,6 +301,12 @@ func uriScheme(raw string) string {
 	}
 	return strings.ToLower(raw[:i])
 }
+
+// URIScheme is the scheme of the URI as a browser reads it (leading control characters and spaces are dropped,
+// tabs and newlines inside it are ignored), in lower case; it is empty when the URI has none.
+//
+// Flutter: no counterpart
+func URIScheme(raw string) string { return uriScheme(raw) }
 
 // OpenURI starts an ACTION_VIEW intent for the URI (SPEC §24.11). A scheme that runs script
 // (javascript:, vbscript:) is OpenURISchemeBlocked, as on the web. A URI that no app can handle, a

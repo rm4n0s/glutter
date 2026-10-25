@@ -46,11 +46,21 @@ func androidReason(tag string) string {
 // program. The icon (a theme name or a file the system cannot read) and the Category and AppName have
 // nowhere to go: the notification wears the app's icon and name.
 func (c *call) showOnAndroid(ctx context.Context, summary string, o NotificationOpts) (NotificationID, error) {
+	return c.showOnMobile(ctx, c.s.android, summary, o, false)
+}
+
+// showOnMobile is showOnAndroid for the platform services svc, which are Android's or Windows': a
+// notification there is a title, a plain-text body, actions, an urgency, a time-out and two callbacks.
+// withIcon passes the app's Icon on, for the platform that has a place for it (a balloon of Windows).
+func (c *call) showOnMobile(ctx context.Context, svc androidDesktop, summary string, o NotificationOpts, withIcon bool) (NotificationID, error) {
 	body := o.Body
 	if o.BodyMarkup {
 		body = web.StripMarkup(body)
 	}
 	spec := mobile.NotificationSpec{Title: summary, Body: body, ReplacesID: uint32(o.ReplacesID)}
+	if withIcon {
+		spec.Icon = o.Icon
+	}
 	switch o.Urgency {
 	case NotificationUrgencyLow:
 		spec.Urgency = mobile.UrgencyLow
@@ -72,7 +82,7 @@ func (c *call) showOnAndroid(ctx context.Context, summary string, o Notification
 			s.postHandler("close", func() { onClosed(NotificationCloseReason(r)) })
 		}
 	}
-	id, err := s.android.ShowNotification(ctx, spec)
+	id, err := svc.ShowNotification(ctx, spec)
 	if err != nil {
 		return 0, err
 	}

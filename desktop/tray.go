@@ -126,7 +126,12 @@ type SystemTrayOpts struct {
 // while it is in the widget tree, and keeps the icon, the tip, the status and the
 // menu up to date when it is rebuilt with other values. It builds its child. It uses
 // the StatusNotifierItem protocol with a dbusmenu menu (SPEC §8.9); KDE, XFCE, Cinnamon
-// and others show it, and GNOME shows it only with the AppIndicator extension. When no
+// and others show it, and GNOME shows it only with the AppIndicator extension. On Windows it is a
+// notify icon of the notification area (Shell_NotifyIconW) with a popup menu: the tooltip is 127
+// characters at most, a click calls OnActivate (without it, and with a Menu, the menu opens), a click
+// with the middle button OnSecondaryActivate, a right click opens the menu, and the icon comes back
+// when Explorer restarts; the status, the attention icon and OnScroll have no counterpart there, and
+// the icon is the picture nearest to the size of a small icon. When no
 // desktop shows icons, the error TrayUnavailable is reported once through the error
 // reporter of the binding and the widget is just its child. An app has one tray at a
 // time; a second one reports TrayDuplicate.
@@ -167,6 +172,8 @@ type systemTrayState struct {
 	widgets.StateOf[*SystemTray]
 	appID string
 	tray  *tray
+	// win is the icon on Windows, where the platform has the tray and the bus is never used.
+	win *winTray
 	// tried is whether the tray was asked for: a tray that failed is not asked again.
 	tried bool
 }
@@ -180,6 +187,17 @@ func (s *systemTrayState) DidChangeDependencies() {
 		s.appID = v.PlatformDispatcher().AppID()
 	}
 	b := widgets.WidgetsBindingOf(s.Context())
+	if svc := servicesOf(b); svc.windows != nil {
+		t, err := newWinTray(svc, s.traySpec(svc))
+		if err != nil {
+			if rep := b.ErrorReporter(); rep != nil {
+				rep(err)
+			}
+			return
+		}
+		s.win = t
+		return
+	}
 	t, err := newTray(servicesOf(b), s.model())
 	if err != nil {
 		if rep := b.ErrorReporter(); rep != nil {
@@ -192,12 +210,20 @@ func (s *systemTrayState) DidChangeDependencies() {
 }
 
 func (s *systemTrayState) DidUpdateWidget(*SystemTray) {
+	if s.win != nil {
+		s.win.update(s.traySpec(s.win.s))
+		return
+	}
 	if s.tray != nil {
 		s.tray.update(s.model())
 	}
 }
 
 func (s *systemTrayState) Dispose() {
+	if s.win != nil {
+		s.win.release()
+		return
+	}
 	if s.tray != nil {
 		s.tray.release()
 	}

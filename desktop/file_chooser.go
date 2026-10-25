@@ -10,6 +10,7 @@ import (
 	godbus "github.com/godbus/dbus/v5"
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/internal/dbus"
+	"github.com/rm4n0s/glutter/internal/platform"
 	"github.com/rm4n0s/glutter/widgets"
 )
 
@@ -116,12 +117,26 @@ type SaveFilesOpts struct {
 // It waits for the user, so it must be called from a goroutine and not on the UI
 // thread (it fails with DesktopCallOnUIThread there); ctx closes the dialog.
 //
+// On Windows it is the common item dialog (IFileOpenDialog), modal to the window of bc (not with NotModal),
+// on a thread of its own; a file filter is its name and its patterns joined by ";" (the MIME types have no
+// counterpart), the first one is selected, and the one the user left selected is FilesResult.Filter.
+// Filters do not apply to folders. A dialog that cannot be made is FileChooserUnavailable and any other
+// failure FileChooserFailed.
+//
 // Flutter: no counterpart (Flutter apps use the file_selector plugin)
 func OpenFiles(ctx context.Context, bc widgets.BuildContext, opts ...OpenFilesOpts) (FilesResult, error) {
 	o := firstOpts(opts)
 	c, err := begin(ctx, bc)
 	if err != nil {
 		return FilesResult{}, err
+	}
+	if c.s.windows != nil {
+		spec := platform.FileDialogSpec{Kind: platform.FileDialogOpen, Title: o.Title, AcceptLabel: o.AcceptLabel,
+			Multiple: o.Multiple, Directory: o.Directory, Folder: o.CurrentFolder}
+		if !o.Directory {
+			spec.Filters = filtersOf(o.Filters)
+		}
+		return c.showFileDialog(ctx, spec, o.NotModal)
 	}
 	return c.chooseFiles(ctx, openFileMethod, o.Title, func(opt map[string]godbus.Variant) {
 		setCommon(opt, o.AcceptLabel, o.NotModal, o.CurrentFolder)
@@ -147,6 +162,15 @@ func SaveFile(ctx context.Context, bc widgets.BuildContext, opts ...SaveFileOpts
 	if err != nil {
 		return FilesResult{}, err
 	}
+	if c.s.windows != nil {
+		spec := platform.FileDialogSpec{Kind: platform.FileDialogSave, Title: o.Title, AcceptLabel: o.AcceptLabel,
+			Filters: filtersOf(o.Filters), Folder: o.CurrentFolder, FileName: o.CurrentName}
+		if o.CurrentFile != "" {
+			folder, name := currentFileParts(o.CurrentFile)
+			spec.Folder, spec.FileName = folder, name
+		}
+		return c.showFileDialog(ctx, spec, o.NotModal)
+	}
 	return c.chooseFiles(ctx, saveFileMethod, o.Title, func(opt map[string]godbus.Variant) {
 		setCommon(opt, o.AcceptLabel, o.NotModal, o.CurrentFolder)
 		setFilters(opt, o.Filters)
@@ -163,7 +187,8 @@ func SaveFile(ctx context.Context, bc widgets.BuildContext, opts ...SaveFileOpts
 // folder, with the names given, and waits for the user. The paths in the result are
 // where to write them, in the order of names; none is made. A name is a file name
 // without a folder. See OpenFiles for the rules of the call, the cancel and the
-// failures.
+// failures. On Windows it asks before overwriting a file, and a file name with no extension gets the one
+// of the first pattern of the first filter.
 //
 // Flutter: no counterpart (Flutter apps use the file_selector plugin)
 func SaveFiles(ctx context.Context, bc widgets.BuildContext, names []string, opts ...SaveFilesOpts) (FilesResult, error) {
@@ -179,6 +204,11 @@ func SaveFiles(ctx context.Context, bc widgets.BuildContext, names []string, opt
 	c, err := begin(ctx, bc)
 	if err != nil {
 		return FilesResult{}, err
+	}
+	if c.s.windows != nil {
+		spec := platform.FileDialogSpec{Kind: platform.FileDialogSaveMany, Title: o.Title, AcceptLabel: o.AcceptLabel,
+			Folder: o.CurrentFolder, Names: names}
+		return c.showFileDialog(ctx, spec, o.NotModal)
 	}
 	return c.chooseFiles(ctx, saveFilesMethod, o.Title, func(opt map[string]godbus.Variant) {
 		setCommon(opt, o.AcceptLabel, o.NotModal, o.CurrentFolder)
