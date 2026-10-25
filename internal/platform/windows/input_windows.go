@@ -62,6 +62,11 @@ func (w *window) onMouse(msg uint32, wparam, lparam uintptr) (uintptr, bool) {
 	result := uintptr(0)
 	switch msg {
 	case win32.WMMouseMove:
+		if !w.synthetic {
+			// The message says which of Shift and Control are down: a window that did not get their
+			// key messages learns it here (Flutter's OnPointerMove does the same).
+			w.p.keys.syncModifiers(wparam&win32.MKShift != 0, wparam&win32.MKControl != 0)
+		}
 		fx = w.mouse.move(wparam, lparam)
 	case win32.WMLButtonDown, win32.WMRButtonDown, win32.WMMButtonDown, win32.WMXButtonDown:
 		fx = w.mouse.buttonDown(msg, wparam, lparam)

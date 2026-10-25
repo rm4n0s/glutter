@@ -383,8 +383,21 @@ func (w *window) dispatch(hwnd uintptr, msg uint32, wparam, lparam uintptr) uint
 		// DefWindowProc moves the keyboard focus to the window.
 	case win32.WMSetFocus:
 		w.reportKeyboardFocus(true)
+		p.keys.focusGained()
 	case win32.WMKillFocus:
+		// The keys held down are released before the handler is told that the keys go elsewhere.
+		p.keys.releaseAll()
 		w.reportKeyboardFocus(false)
+	case win32.WMKeyDown, win32.WMKeyUp, win32.WMSysKeyDown, win32.WMSysKeyUp:
+		if result, handled := w.onKey(msg, wparam, lparam); handled {
+			return result
+		}
+	case win32.WMChar, win32.WMDeadChar, win32.WMSysChar, win32.WMSysDeadChar:
+		if result, handled := w.onChar(msg); handled {
+			return result
+		}
+	case win32.WMInputLangChange:
+		p.keys.layoutChanged()
 	case win32.WMMouseMove, win32.WMLButtonDown, win32.WMLButtonUp, win32.WMRButtonDown, win32.WMRButtonUp,
 		win32.WMMButtonDown, win32.WMMButtonUp, win32.WMXButtonDown, win32.WMXButtonUp, win32.WMMouseLeave:
 		if result, handled := w.onMouse(msg, wparam, lparam); handled {

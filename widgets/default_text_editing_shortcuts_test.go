@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/gluttertest"
 	"github.com/rm4n0s/glutter/services"
 	. "github.com/rm4n0s/glutter/widgets"
@@ -13,10 +14,9 @@ import (
 // packages/flutter/test/widgets/default_text_editing_shortcuts_test.dart. The
 // Dart tests put an ActionSpy above an EditableText (step 11.4) and check the last
 // intent; here the spy is above a focused box and the tests check the same
-// intents. Not ported: the iOS and macOS cases (only the Linux bindings exist, so
-// every platform uses them), the web ones, the Home and End cases of Android and
-// Windows, which are the Linux ones, and the cases that check the text of an
-// EditableText.
+// intents. Not ported: the iOS, macOS and Android cases (the Linux bindings are
+// theirs), the web ones, and the cases that check the text of an EditableText. The
+// Windows cases are TestWindowsTextShortcuts.
 
 // textIntentTypes are the types of the intents the text editing shortcuts make.
 var textIntentTypes = []Intent{
@@ -225,4 +225,88 @@ func TestTextEditingIntentConstructors(t *testing.T) {
 	requireTag(t, "CaretMovementIntentInvalid", func() {
 		NewExtendSelectionToLineBreakIntent(true, true, ExtendSelectionToLineBreakIntentOpts{CollapseAtReversal: true})
 	})
+}
+
+// onPlatform makes the target platform the one of the test; release builds cannot override it,
+// so the test is skipped there.
+func onPlatform(t *testing.T, p foundation.TargetPlatform) {
+	t.Helper()
+	skipUnlessDebug(t)
+	foundation.SetDebugDefaultTargetPlatformOverride(foundation.Some(p))
+	t.Cleanup(func() { foundation.SetDebugDefaultTargetPlatformOverride(foundation.None[foundation.TargetPlatform]()) })
+}
+
+// TestWindowsTextShortcuts is the Windows case of default_text_editing_shortcuts_test.dart: the
+// common and the clipboard shortcuts, Home and End that continue at a soft wrap, no numpad
+// shortcuts.
+func TestWindowsTextShortcuts(t *testing.T) {
+	onPlatform(t, foundation.TargetPlatformWindows)
+	ts := gluttertest.New(t)
+	node := NewFocusNode()
+	defer node.Dispose()
+	var spy actionSpy
+	ts.PumpWidget(buildSpyAboveFocus(&spy, node))
+	node.RequestFocus()
+	ts.Pump()
+	type keyCase struct {
+		key  services.LogicalKeyboardKey
+		opts SingleActivatorOpts
+		want Intent
+	}
+	keyboard := services.SelectionChangedCauseKeyboard
+	wrap := ExtendSelectionToLineBreakIntentOpts{ContinuesAtWrap: true}
+	home, end := services.LogicalKeyboardKeyHome, services.LogicalKeyboardKeyEnd
+	for _, c := range []keyCase{
+		{services.LogicalKeyboardKeyBackspace, SingleActivatorOpts{Control: true}, NewDeleteToNextWordBoundaryIntent(false)},
+		{services.LogicalKeyboardKeyDelete, SingleActivatorOpts{}, NewDeleteCharacterIntent(true)},
+		{services.LogicalKeyboardKeyArrowLeft, SingleActivatorOpts{Shift: true}, NewExtendSelectionByCharacterIntent(false, false)},
+		{services.LogicalKeyboardKeyPageUp, SingleActivatorOpts{}, NewExtendSelectionVerticallyToAdjacentPageIntent(false, true)},
+		{services.LogicalKeyboardKeyPageDown, SingleActivatorOpts{Shift: true}, NewExtendSelectionVerticallyToAdjacentPageIntent(true, false)},
+		{home, SingleActivatorOpts{}, NewExtendSelectionToLineBreakIntent(false, true, wrap)},
+		{end, SingleActivatorOpts{}, NewExtendSelectionToLineBreakIntent(true, true, wrap)},
+		{home, SingleActivatorOpts{Shift: true}, NewExtendSelectionToLineBreakIntent(false, false, wrap)},
+		{end, SingleActivatorOpts{Shift: true}, NewExtendSelectionToLineBreakIntent(true, false, wrap)},
+		{home, SingleActivatorOpts{Control: true}, NewExtendSelectionToDocumentBoundaryIntent(false, true)},
+		{end, SingleActivatorOpts{Control: true}, NewExtendSelectionToDocumentBoundaryIntent(true, true)},
+		{home, SingleActivatorOpts{Control: true, Shift: true}, NewExtendSelectionToDocumentBoundaryIntent(false, false)},
+		{end, SingleActivatorOpts{Control: true, Shift: true}, NewExtendSelectionToDocumentBoundaryIntent(true, false)},
+		{services.LogicalKeyboardKeyKeyA, SingleActivatorOpts{Control: true}, SelectAllTextIntent{Cause: keyboard}},
+		{services.LogicalKeyboardKeyKeyC, SingleActivatorOpts{Control: true}, NewCopySelectionTextIntentCopy()},
+		{services.LogicalKeyboardKeyKeyV, SingleActivatorOpts{Control: true}, PasteTextIntent{Cause: keyboard}},
+		{services.LogicalKeyboardKeyInsert, SingleActivatorOpts{Shift: true}, PasteTextIntent{Cause: keyboard}},
+		{services.LogicalKeyboardKeyKeyZ, SingleActivatorOpts{Control: true, Shift: true}, RedoTextIntent{Cause: keyboard}},
+	} {
+		spy.last = nil
+		sendKeyCombination(ts, NewSingleActivator(c.key, c.opts))
+		if spy.last != c.want {
+			t.Errorf("%v %+v: intent = %#v, want %#v", c.key, c.opts, spy.last, c.want)
+		}
+	}
+	// The numpad shortcuts are the Linux map's: a Windows keyboard has the numpad keys as arrows
+	// through the virtual keys, not through the shortcuts.
+	spy.last = nil
+	sendKeyCombination(ts, NewSingleActivator(services.LogicalKeyboardKeyNumpad4, SingleActivatorOpts{}))
+	if spy.last != nil {
+		t.Errorf("numpad 4 made %#v on Windows, want no intent", spy.last)
+	}
+}
+
+// TestDefaultTextEditingShortcutMapByPlatform checks that Windows has its own map and the other
+// platforms keep the Linux one.
+func TestDefaultTextEditingShortcutMapByPlatform(t *testing.T) {
+	skipUnlessDebug(t)
+	count := func(p foundation.TargetPlatform) int {
+		foundation.SetDebugDefaultTargetPlatformOverride(foundation.Some(p))
+		defer foundation.SetDebugDefaultTargetPlatformOverride(foundation.None[foundation.TargetPlatform]())
+		return len(DefaultTextEditingShortcutMap())
+	}
+	linux := count(foundation.TargetPlatformLinux)
+	for _, p := range []foundation.TargetPlatform{foundation.TargetPlatformAndroid, foundation.TargetPlatformMacOS, foundation.TargetPlatformIOS, foundation.TargetPlatformFuchsia} {
+		if got := count(p); got != linux {
+			t.Errorf("%v has %d shortcuts, the Linux map %d", p, got, linux)
+		}
+	}
+	if got := count(foundation.TargetPlatformWindows); got >= linux {
+		t.Errorf("Windows has %d shortcuts, Linux %d: the Windows map has no numpad shortcuts", got, linux)
+	}
 }

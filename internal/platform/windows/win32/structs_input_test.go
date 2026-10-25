@@ -24,6 +24,8 @@ func TestInputStructSizes(t *testing.T) {
 		{"POINTER_PEN_INFO", unsafe.Sizeof(PointerPenInfo{}), 120},
 		{"MOUSEINPUT", unsafe.Sizeof(MouseInput{}), 32},
 		{"INPUT", unsafe.Sizeof(Input{}), 40},
+		{"INPUT (keyboard)", unsafe.Sizeof(KeyInput{}), 40},
+		{"KEYBDINPUT", unsafe.Sizeof(KeybdInput{}), 24},
 		{"CURSORINFO", unsafe.Sizeof(CursorInfo{}), 24},
 	}
 	for _, tt := range tests {
@@ -48,6 +50,9 @@ func TestInputStructSizes(t *testing.T) {
 		{"POINTER_PEN_INFO.tiltY", unsafe.Offsetof(PointerPenInfo{}.TiltY), 116},
 		{"INPUT.mi", unsafe.Offsetof(Input{}.Mouse), 8},
 		{"MOUSEINPUT.dwExtraInfo", unsafe.Offsetof(MouseInput{}.ExtraInfo), 24},
+		{"INPUT.ki", unsafe.Offsetof(KeyInput{}.Key), 8},
+		{"KEYBDINPUT.dwFlags", unsafe.Offsetof(KeybdInput{}.Flags), 4},
+		{"KEYBDINPUT.dwExtraInfo", unsafe.Offsetof(KeybdInput{}.ExtraInfo), 16},
 		{"CURSORINFO.hCursor", unsafe.Offsetof(CursorInfo{}.Cursor), 8},
 	}
 	for _, tt := range offsets {

@@ -3063,3 +3063,60 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
     - custom cursors (`createCustomCursor`);
     - DirectManipulation (SPEC §25.6: no `PointerPanZoom` on Windows in 1.8);
     - modifier sync on mouse move (step 28.4).
+
+## 28.4 Keyboard
+
+- **Date:** 2026-10-25
+- **Branch:** feat/step-28.4-windows-keyboard
+- **Summary:** Windows keys are now reported to the framework the way Flutter's embedder reports them, on any keyboard layout.
+  - `glutter-gen keys -windows-out` writes the key tables from Flutter's key data into `internal/platform/windows/keymap_gen.go`. The file header names the pinned Flutter commit.
+  - A plain-Go converter (port of `KeyboardKeyEmbedderHandler`) and manager (port of `KeyboardManager`) turn the key messages and the queued character messages into key data:
+    - key messages: `WM_KEYDOWN`, `WM_KEYUP`, `WM_SYSKEYDOWN`, `WM_SYSKEYUP`;
+    - synthesized modifier and lock events, and repeats;
+    - the fake left Control that comes with AltGr is dropped;
+    - held keys are released on `WM_KILLFOCUS`, and the lock states are read again on `WM_SETFOCUS`.
+  - `DefaultTextEditingShortcutMap()` gives the Windows map on Windows.
+  - `GLUTTER_DEV_EVENTS` gains `key:`, `keydown:` and `keyup:`, sent with `SendInput`.
+- **Main files:**
+  - `cmd/glutter-gen/internal/keys/windows.go`
+  - `internal/platform/windows/`: `keyboard.go`, `keymanager.go`, `deadkeys.go`, `keyboard_windows.go`, `keymap_gen.go`, `devevents.go`
+  - `internal/platform/windows/win32/`: `consts_key.go`, `key_windows.go`, `structs_input.go`
+  - `widgets/default_text_editing_shortcuts.go`
+  - SPEC §11.1, §12.10, §25.6
+- **Tests:**
+  - About 75 table cases adapted from about 30 tests of `keyboard_unittests.cc`, `keyboard_key_embedder_handler_unittests.cc` and `keyboard_key_handler_unittests.cc`. The redispatching, channel and Telex tests are not ported.
+  - The generated tables equal the three maps of `flutter_key_map.g.cc`, plus 42 spot checks.
+  - The generator, over fixtures with 10 route-tested failures and over the real data (157 physical and 121 logical keys).
+  - The Windows cases of `default_text_editing_shortcuts_test.dart` and `editable_text_shortcuts_test.dart`.
+  - The layout test against the mingw-w64 headers now really runs (`mingw64-gcc` is installed). It covers the new `KEYBDINPUT` and the 66 new constants, and its first run found `QS_ALLINPUT` wrong (see below).
+- **Wine tests:**
+  - Keys typed with `SendInput` give the right key data in order: letters, Shift, Backspace, Delete, the arrows, Home, End, Page Down, Return, Space, Control+A, Escape.
+  - A held key repeats; held keys are released when the window loses focus; the lock states are seen after the focus returns.
+  - Alt alone does not open the system menu, Alt+Space does, and Alt+F4 closes the window.
+  - The scripted keys reach the framework.
+  - `examples/editor`: 7 cases of typed keys, each compared pixel for pixel with an editor started with the same text and selection.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck ✅ · apicheck ✅ · `GOOS=js GOARCH=wasm` build, vet and `scripts/test-wasm.sh` ✅ · `scripts/check-android.sh` ✅ · `GOOS=windows` amd64 build and vet, arm64 build ✅ · `scripts/test-windows.sh` ✅ · Wine tests ✅ · layout test against the headers ✅ · nothing left running ✅
+- **Proof:** method F, `docs/implemented-proof-images/28.4-windows-editor.png`. It shows `examples/editor` under Wine after scripted keys: "Hello world", a new line, "Typed with keys", then Shift+Control+Left twice to select "with keys". The status bar reads "Ln 2, Col 7 (9 selected)".
+
+  ![28.4](implemented-proof-images/28.4-windows-editor.png)
+- **Manual checks (pending, for the owner's PC; collected in `docs/MANUAL-CHECKS.md` by step 28.15):**
+  - a German or French layout and a Russian or Greek one;
+  - AltGr characters and dead keys;
+  - the numpad;
+  - Windows-key combinations;
+  - Alt+F4, Alt+Space and F10;
+  - key repeat;
+  - switching layouts with Win+Space while the app runs.
+- **Deviations and follow-ups:**
+  - Six new rows in SPEC §12.10:
+    - a dead key has no character, and every character message after a key down is part of that key's text;
+    - the fake left Control of AltGr is dropped;
+    - the answers to system keys;
+    - keys are released and lock states read again when the focus changes;
+    - layout goals apply on Windows;
+    - the character messages are always taken.
+  - The SPEC §25.6 sentence on AltGr is corrected: Flutter forwards the fake Control and forges its key up.
+  - Wine ignores a loaded keyboard layout, so the German half of the layout-goal Wine test skips. Recorded answers stand in for it.
+  - Control+C, X and V are not tested yet: they need the Windows clipboard of step 28.6.
+  - Fixed in this step: `win32.QSAllInput` was `0x04FF`, which lacks `QS_TOUCH` and `QS_POINTER`. The message loop would not have woken for queued touch and pen messages from step 28.3. It is now `0x1CFF`, found by the layout test.
+  - Found, not changed (same as Flutter): the actions that move by the layout use the value of the last laid-out frame. These are the page actions (Page Up, Page Down), the line-break actions (Home, End) and the word actions. A Page Down in the same turn as typing puts the old text back, and a Shift+End right after a Delete selects nothing. The scripted events therefore need a `wait:` between an edit and such a key, and the editor test has one; without it, the test failed or passed depending on timing. Typing at human speed always has a frame in between.

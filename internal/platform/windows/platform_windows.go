@@ -84,6 +84,8 @@ type Platform struct {
 
 	// pointers keeps the state of the mouse, touch and pen pointers of every window (pointerstate.go).
 	pointers *pointerTracker
+	// keys handles the key messages of every window: they share one keyboard (keymanager.go).
+	keys *keyboardManager
 
 	// turns counts the turns of the message loop, for the tests that look for an idle app.
 	turns atomic.Uint64
@@ -124,6 +126,7 @@ func New(opts Options) (*Platform, error) {
 		p.getenv = os.Getenv
 	}
 	p.pointers = newPointerTracker(p.pointerClock)
+	p.keys = newKeyboardManager(winKeyHost{}, p.pointerClock, p.sendKey)
 	p.setupConsole()
 	p.setupDPIAwareness()
 	if err := win32.OleInitialize(); err != nil {
@@ -445,7 +448,12 @@ func (p *Platform) runDevEvents(i int) {
 			p.timers.add(time.Now().Add(ev.Wait), func() { p.runDevEvents(next) })
 			return
 		}
-		p.runDevMouse(ev)
+		switch ev.Kind {
+		case "key", "keydown", "keyup":
+			p.runDevKey(ev)
+		default:
+			p.runDevMouse(ev)
+		}
 	}
 	select {
 	case <-p.devDone:

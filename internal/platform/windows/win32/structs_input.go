@@ -83,6 +83,28 @@ type Input struct {
 	Mouse MouseInput `c:"mi"`
 }
 
+// KeybdInput is the Go mirror of KEYBDINPUT, the keyboard member of INPUT (step 28.4).
+//
+// Flutter: no counterpart
+type KeybdInput struct {
+	VK        uint16  `c:"wVk"`
+	Scan      uint16  `c:"wScan"`
+	Flags     uint32  `c:"dwFlags"`
+	Time      uint32  `c:"time"`
+	ExtraInfo uintptr `c:"dwExtraInfo"`
+}
+
+// KeyInput is the Go mirror of INPUT for a keyboard input. The union of INPUT is as large as its
+// mouse member, so the keyboard member is followed by 8 bytes of padding and the whole is 40 bytes
+// on a 64-bit target, the same as Input.
+//
+// Flutter: no counterpart
+type KeyInput struct {
+	Type uint32     `c:"type"`
+	Key  KeybdInput `c:"ki"`
+	_    [8]byte
+}
+
 // CursorInfo is the Go mirror of CURSORINFO (GetCursorInfo).
 //
 // Flutter: no counterpart

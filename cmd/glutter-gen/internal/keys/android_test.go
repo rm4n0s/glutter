@@ -166,7 +166,7 @@ func TestAndroidTablesEqualFlutterKeyboardMap(t *testing.T) {
 	if err != nil {
 		t.Skipf("KeyboardMap.java is missing (%v)", err)
 	}
-	src, err := loadData(filepath.Join(ref, dataDir), false, false)
+	src, err := loadData(filepath.Join(ref, dataDir), false, false, false)
 	if err != nil {
 		t.Fatal(err)
 	}

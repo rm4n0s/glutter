@@ -505,10 +505,11 @@ const (
 	//
 	// Flutter: no counterpart
 	PMRemove = 0x0001
-	// QSAllInput is QS_ALLINPUT.
+	// QSAllInput is QS_ALLINPUT as Windows 8 and later define it, with QS_TOUCH and QS_POINTER, so
+	// that the wait of the message loop ends for the pointer messages of touch and pen.
 	//
 	// Flutter: no counterpart
-	QSAllInput = 0x04FF
+	QSAllInput = 0x1CFF
 	// MWMOInputAvailable is MWMO_INPUTAVAILABLE.
 	//
 	// Flutter: no counterpart

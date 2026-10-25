@@ -570,3 +570,30 @@ func TestEditableTextShortcutsClipboard(t *testing.T) {
 }
 
 var _ = time.Second
+
+// TestEditableTextShortcutsWindowsEndContinuesAtWrap is the Windows difference of Home and End: they
+// continue at a soft wrap (ExtendSelectionToLineBreakIntent.continuesAtWrap), so End pressed at
+// the end of a wrapped line goes to the end of the line after it, where on Linux it stays.
+func TestEditableTextShortcutsWindowsEndContinuesAtWrap(t *testing.T) {
+	skipUnlessDebug(t)
+	measure := gluttertest.New(t)
+	measure.PumpWidget(testWidgetsApp(testWidgetsAppOpts{home: NewAlign(NewRichText(painting.NewTextSpan(painting.TextSpanOpts{
+		Text: foundation.Some(testSoftwrapText[:20]), Style: painting.NewTextStyle(painting.TextStyleOpts{FontFamily: "Roboto", FontSize: foundation.Some(10.0)})})),
+		AlignOpts{Alignment: painting.AlignmentTopLeft})}))
+	width := measure.Size(gluttertest.ByType[*RichText]()).Width + 1
+	for _, tc := range []struct {
+		platform foundation.TargetPlatform
+		want     services.TextSelection
+	}{
+		{foundation.TargetPlatformLinux, collapsedUp(20)},
+		{foundation.TargetPlatformWindows, collapsedUp(40)},
+	} {
+		t.Run(tc.platform.String(), func(t *testing.T) {
+			foundation.SetDebugDefaultTargetPlatformOverride(foundation.Some(tc.platform))
+			t.Cleanup(func() { foundation.SetDebugDefaultTargetPlatformOverride(foundation.None[foundation.TargetPlatform]()) })
+			f := newEditableFixture(t, testSoftwrapText, collapsedUp(20), fieldOpts{width: width})
+			f.press(services.LogicalKeyboardKeyEnd)
+			f.expectSelection(t, tc.want)
+		})
+	}
+}

@@ -22,20 +22,22 @@ const (
 	defaultOut       = "internal/platform/linux/keymap_gen.go"
 	defaultSvcOut    = "services/keyboard_key_gen.go"
 	webLocationFile  = "web_logical_location_mapping.json"
+	windowsScanFile  = "windows_scancode_logical_map.json"
 	dataDir          = "dev/tools/gen_keycodes/data"
 )
 
 // Run executes `glutter-gen keys [-reference dir] [-out file] [-services-out file]
-// [-web-out file] [-android-out file]` with the arguments that follow the subcommand name. It reads
+// [-web-out file] [-android-out file] [-windows-out file]` with the arguments that follow the subcommand name. It reads
 // Flutter's key data (physical_key_data.g.json, logical_key_data.g.json,
 // layout_goals.json, synonyms.json and web_logical_location_mapping.json under
 // dev/tools/gen_keycodes/data of the Flutter checkout in the reference directory)
 // and writes the Go tables of the platform layer to the output file, the key
 // constants of package services to the services file, and the tables of the web
 // platform (the names of KeyboardEvent.code and KeyboardEvent.key) to the web file,
-// and the tables of the Android platform (scan codes and key codes) to the Android file.
-// An empty file name skips that file; the services file is written by default
-// only when the platform file is, and the web and Android files only when they are named.
+// and the tables of the Android platform (scan codes and key codes) to the Android file,
+// and the tables of the Windows platform (scan codes, virtual keys and the layout goals) to
+// the Windows file. An empty file name skips that file; the services file is written by default
+// only when the platform file is, and the web, Android and Windows files only when they are named.
 //
 // Flutter: dev/tools/gen_keycodes
 func Run(args []string) error {
@@ -46,13 +48,14 @@ func Run(args []string) error {
 	svcOut := flags.String("services-out", "", "file to write the key constants of package services to (empty: none, or "+defaultSvcOut+" with the default -out)")
 	webOut := flags.String("web-out", "", "file to write the tables of the web platform to (empty: none)")
 	androidOut := flags.String("android-out", "", "file to write the tables of the Android platform to (empty: none)")
+	windowsOut := flags.String("windows-out", "", "file to write the tables of the Windows platform to (empty: none)")
 	if err := flags.Parse(args); err != nil {
 		return errors.NewErr(tagKeysBadFlags, err).SetMetadata("args", args)
 	}
 	if *svcOut == "" && *out == defaultOut {
 		*svcOut = defaultSvcOut
 	}
-	src, err := loadData(filepath.Join(*reference, dataDir), *svcOut != "", *webOut != "")
+	src, err := loadData(filepath.Join(*reference, dataDir), *svcOut != "", *webOut != "", *windowsOut != "")
 	if err != nil {
 		return err
 	}
@@ -80,6 +83,15 @@ func Run(args []string) error {
 			return err
 		}
 		if err := writeIfChanged(*androidOut, code); err != nil {
+			return err
+		}
+	}
+	if *windowsOut != "" {
+		code, err := generateWindows(src, pinnedFlutter(*reference))
+		if err != nil {
+			return err
+		}
+		if err := writeIfChanged(*windowsOut, code); err != nil {
 			return err
 		}
 	}
@@ -131,9 +143,12 @@ type data struct {
 	// webLocations maps a KeyboardEvent.key to the names of the logical keys at the
 	// locations standard, left, right and numpad (nil for none).
 	webLocations map[string][]*string
+	// windowsScan maps the physical key whose scan code decides the logical key (the numpad
+	// and the right-hand Control and Alt) to the name of that logical key.
+	windowsScan map[string]string
 }
 
-func loadData(dir string, withSynonyms, withWeb bool) (*data, error) {
+func loadData(dir string, withSynonyms, withWeb, withWindows bool) (*data, error) {
 	d := &data{}
 	files := []struct {
 		name string
@@ -154,6 +169,12 @@ func loadData(dir string, withSynonyms, withWeb bool) (*data, error) {
 			name string
 			into any
 		}{webLocationFile, &d.webLocations})
+	}
+	if withWindows {
+		files = append(files, struct {
+			name string
+			into any
+		}{windowsScanFile, &d.windowsScan})
 	}
 	for _, f := range files {
 		path := filepath.Join(dir, f.name)

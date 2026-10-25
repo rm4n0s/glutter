@@ -1,6 +1,7 @@
 package widgets
 
 import (
+	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/services"
 )
 
@@ -8,8 +9,8 @@ import (
 // of the text editing intents (a Shortcuts widget), for the text fields below it.
 // Actions for the intents are provided by the text fields.
 //
-// Deviation: only the Linux bindings are ported (SPEC §12.10); every target
-// platform uses them.
+// Deviation: only the Linux and Windows bindings are ported (SPEC §12.10); every
+// target platform but Windows uses the Linux ones.
 //
 // Flutter: widgets/default_text_editing_shortcuts.dart DefaultTextEditingShortcuts
 type DefaultTextEditingShortcuts struct {
@@ -38,10 +39,14 @@ func (w *DefaultTextEditingShortcuts) Build(BuildContext) Widget {
 }
 
 // DefaultTextEditingShortcutMap returns the default text editing bindings of the
-// current platform (the Linux bindings; see DefaultTextEditingShortcuts).
+// current platform: the Windows bindings when the target platform is Windows, the
+// Linux bindings on every other (see DefaultTextEditingShortcuts).
 //
 // Flutter: widgets/default_text_editing_shortcuts.dart DefaultTextEditingShortcuts._shortcuts
 func DefaultTextEditingShortcutMap() ShortcutMap {
+	if foundation.DefaultTargetPlatform() == foundation.TargetPlatformWindows {
+		return windowsShortcutMap()
+	}
 	m := make(ShortcutMap, 0, 160)
 	m = append(m, commonTextShortcuts()...)
 	m = append(m, clipboardTextShortcuts()...)
@@ -204,4 +209,26 @@ func linuxTextShortcuts() ShortcutMap {
 		textShortcut(home, shortcutOpts{Shift: true, Control: true}, NewExtendSelectionToDocumentBoundaryIntent(false, false)),
 		textShortcut(end, shortcutOpts{Shift: true, Control: true}, NewExtendSelectionToDocumentBoundaryIntent(true, false)),
 	}
+}
+
+// windowsShortcutMap is _windowsShortcuts: the common and the clipboard shortcuts, and Home and End,
+// which continue at a soft wrap. Page Up and Page Down are in the common shortcuts.
+//
+// Flutter: widgets/default_text_editing_shortcuts.dart DefaultTextEditingShortcuts._windowsShortcuts
+func windowsShortcutMap() ShortcutMap {
+	home, end := services.LogicalKeyboardKeyHome, services.LogicalKeyboardKeyEnd
+	wrap := ExtendSelectionToLineBreakIntentOpts{ContinuesAtWrap: true}
+	m := make(ShortcutMap, 0, 100)
+	m = append(m, commonTextShortcuts()...)
+	m = append(m, clipboardTextShortcuts()...)
+	return append(m,
+		textShortcut(home, shortcutOpts{}, NewExtendSelectionToLineBreakIntent(false, true, wrap)),
+		textShortcut(end, shortcutOpts{}, NewExtendSelectionToLineBreakIntent(true, true, wrap)),
+		textShortcut(home, shortcutOpts{Shift: true}, NewExtendSelectionToLineBreakIntent(false, false, wrap)),
+		textShortcut(end, shortcutOpts{Shift: true}, NewExtendSelectionToLineBreakIntent(true, false, wrap)),
+		textShortcut(home, shortcutOpts{Control: true}, NewExtendSelectionToDocumentBoundaryIntent(false, true)),
+		textShortcut(end, shortcutOpts{Control: true}, NewExtendSelectionToDocumentBoundaryIntent(true, true)),
+		textShortcut(home, shortcutOpts{Shift: true, Control: true}, NewExtendSelectionToDocumentBoundaryIntent(false, false)),
+		textShortcut(end, shortcutOpts{Shift: true, Control: true}, NewExtendSelectionToDocumentBoundaryIntent(true, false)),
+	)
 }
