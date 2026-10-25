@@ -87,8 +87,12 @@ This file breaks the milestones in `docs/SPEC.md` §18 into small steps. Each st
     git switch main && git pull --ff-only
     git merge --ff-only feat/step-6.5-multi-child-render-objects
     git push origin main
+    git tag -a step-6.5 -m "Step 6.5: Add multi-child render objects"
+    git push origin step-6.5
     git branch -d feat/step-6.5-multi-child-render-objects
     ```
+    - **Tag every published step** with an annotated tag `step-<id>` (the step's id as in this file) on the commit now on `main`, and push it right after the push of `main`. The step is finished only when the tag is on `origin` too. If the tag already exists, stop and tell the user; never move or delete a tag.
+    - The release tags `v<major>.<minor>.<patch>` are a separate thing: the release-checklist steps (`Release 1.x`) end with asking the user, and only the user's yes makes the `v…` tag.
     If `--ff-only` fails, rebase the step branch onto `main`, run the standard checks again, and retry. If the push is rejected or fails (authentication, network), stop and tell the user. Don't start the next step until the push succeeded.
 13. **Report to the user.** Give the step id, a two-line summary, the check results, the proof image paths, and the commit hash now on `main`.
 

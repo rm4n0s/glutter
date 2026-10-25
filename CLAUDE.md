@@ -126,6 +126,7 @@ Use `github.com/rm4n0s/errors` (v0.2.0) for all errors, the way its `AI_GUIDE.md
 ## Git and GitHub
 - Never commit or push directly to `main`; work on a branch named `feat/...` or `fix/...`
 - **Exception:** if `docs/IMPLEMENTATION.md` exists, follow its Rules section for the steps it lists. Each step is done on its own branch, one at a time, and a finished step (all four Definition-of-done checks passing) is published to `main` by a fast-forward merge and push, without a PR, after its entry is added to `docs/IMPLEMENTED.md` on that branch. Never commit work for a step directly on `main`. Everything not covered by that file (other changes, fixes outside the listed steps) still follows the rule above
+- **Tags:** after a finished step is pushed to `main`, tag its commit with an annotated tag `step-<id>` (e.g. `step-27.7`) and push the tag; the step counts as finished when the tag is on `origin`. Never move or delete a tag. The release tags `v1.7.0` and the like are made only after the user says yes (the release-checklist steps ask)
 - Commit messages: imperative mood, e.g. "Add retry to client"
 - PRs: short description, link the issue (`Closes #123`), keep them small
 - No `.github/` directory and no GitHub Actions workflows: never add them. The four Definition-of-done checks are run locally
