@@ -9,6 +9,9 @@
 // a text editor or into another window of the app. (Drags between applications need
 // a pointer button held down, so they cannot be tried on a headless compositor.)
 //
+// Closing the first window while another is open keeps the app running; the app ends
+// with the last window.
+//
 // Run it with: go run ./examples/multiwindow
 //
 // Environment: GLUTTER_BACKEND=x11|wayland, GLUTTER_SCREENSHOT=<file.png>. In debug
@@ -29,13 +32,38 @@ import (
 )
 
 func main() {
-	err := m.RunApp(m.NewWindowManager(NewMultiWindowApp()), m.RunAppOpts{
+	err := m.RunWidget(NewMultiWindowRoot(), m.RunAppOpts{
 		AppID:  "dev.glutter.multiwindow",
 		Window: m.WindowConfig{Title: "Main window", Size: m.Size{Width: 420, Height: 520}},
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
+}
+
+// MultiWindowRoot is the root of the app: the WindowManager that holds the windows is
+// above the View of the first window, as RunApp would put it below, so that the other
+// windows do not go away with the first one. Closing the first window (or its Close
+// button) destroys only that window; the app goes on while another window is open and
+// ends with the last.
+type MultiWindowRoot struct{ m.StatefulWidget }
+
+// NewMultiWindowRoot creates the root.
+func NewMultiWindowRoot() *MultiWindowRoot { return &MultiWindowRoot{m.NewStatefulWidgetBase()} }
+
+func (r *MultiWindowRoot) CreateState() m.State { return &multiWindowRootState{} }
+
+type multiWindowRootState struct{ m.StateOf[*MultiWindowRoot] }
+
+func (s *multiWindowRootState) InitState() {
+	// The user closing the first window destroys it, as for the other windows, and does
+	// not ask the app to exit.
+	m.WidgetsBindingOf(s.Context()).WindowingOwner().SetImplicitWindowDelegate(m.RegularWindowControllerDelegateBase{})
+}
+
+func (s *multiWindowRootState) Build(bc m.BuildContext) m.Widget {
+	b := m.WidgetsBindingOf(bc)
+	return m.NewWindowManager(b.WrapWithDefaultView(b.WrapWithWindowScope(m.NewWindowDecoration(NewMultiWindowApp()))))
 }
 
 // MultiWindowApp is the app of the first window: a Material app whose home page is

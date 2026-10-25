@@ -20,13 +20,13 @@ func useLinux(t *testing.T) {
 	t.Cleanup(func() { foundation.SetDebugDefaultTargetPlatformOverride(foundation.None[foundation.TargetPlatform]()) })
 }
 
-// newTester pumps the app as RunApp shows it: in the first window, which has a
-// controller of its own.
+// newTester pumps the app as main shows it: the first window, which has a controller
+// of its own, below the WindowManager.
 func newTester(t *testing.T) *gluttertest.Tester {
 	t.Helper()
 	useLinux(t)
 	ts := gluttertest.New(t, gluttertest.Opts{Size: m.Size{Width: 420, Height: 520}})
-	ts.PumpWidget(ts.Binding.WrapWithWindowScope(m.NewWindowManager(NewMultiWindowApp())))
+	ts.PumpWidget(NewMultiWindowRoot(), gluttertest.PumpWidgetOpts{NoView: true})
 	return ts
 }
 
@@ -177,5 +177,32 @@ func TestTheChipIsDraggedOutOfTheWindowAsText(t *testing.T) {
 	ts.Pump()
 	if n := ts.Count(gluttertest.ByText("From this app: this window")); n != 1 {
 		t.Errorf("the data of the chip is shown %d times, want 1", n)
+	}
+}
+
+func TestClosingTheFirstWindowKeepsTheOtherOpen(t *testing.T) {
+	ts := newTester(t)
+	ts.Tap(gluttertest.ByText("New window"))
+	ts.Pump()
+	second := ts.Windows()[0]
+	// The user closes the first window: its delegate destroys it, and nothing asks the app to exit.
+	if ts.RequestWindowClose(ui.ImplicitViewID) {
+		t.Error("the engine would close the first window itself, with the request to exit")
+	}
+	ts.Pump()
+	if ts.Dispatcher().View(ui.ImplicitViewID) != nil {
+		t.Error("the first window is still there")
+	}
+	if n := ts.Count(gluttertest.ByText("Add one")); n != 1 {
+		t.Fatalf("%d pages are shown, want only the second window's", n)
+	}
+	if second.Destroyed || ts.ExitRequests() != 0 {
+		t.Errorf("the second window is destroyed = %v, exit requests = %d", second.Destroyed, ts.ExitRequests())
+	}
+	// The second window still works.
+	ts.Tap(gluttertest.ByText("Add one"))
+	ts.Pump()
+	if n := ts.Count(gluttertest.ByText("1")); n != 1 {
+		t.Errorf("the counter of the second window shows 1 in %d places, want 1", n)
 	}
 }

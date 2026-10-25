@@ -427,6 +427,7 @@ func NewWidgetsBinding(ctx context.Context, d *ui.PlatformDispatcher, opts ...Wi
 	b.windowing = newWindowingOwner(b)
 	b.installDrop()
 	d.OnWindowCloseRequested = b.windowing.handleCloseRequested
+	d.OnViewRemoved = b.windowing.viewRemoved
 	return b
 }
 

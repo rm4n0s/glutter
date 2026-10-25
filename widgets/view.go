@@ -100,11 +100,25 @@ type viewState struct {
 	policy      FocusTraversalPolicy
 	viewFocus   bool
 	scopeHandle foundation.ListenerHandle
+	goneHandle  foundation.ListenerHandle
 }
 
 func (s *viewState) binding() *WidgetsBinding { return WidgetsBindingOf(s.Context()) }
 
+// implicitGone is whether this is the View of the implicit view and the first
+// window is gone, closed by the platform or destroyed with its controller.
+func (s *viewState) implicitGone() bool {
+	return s.Widget().view.ViewID() == ui.ImplicitViewID && s.binding().WindowingOwner().implicitGone.Value()
+}
+
 func (s *viewState) InitState() {
+	if s.Widget().view.ViewID() == ui.ImplicitViewID {
+		s.goneHandle = s.binding().WindowingOwner().implicitGone.AddListener(func() {
+			if s.Mounted() {
+				s.SetState(func() {})
+			}
+		})
+	}
 	label := ""
 	if foundation.DebugMode {
 		label = "View Scope"
@@ -116,6 +130,9 @@ func (s *viewState) InitState() {
 }
 
 func (s *viewState) Dispose() {
+	if s.Widget().view.ViewID() == ui.ImplicitViewID {
+		s.binding().WindowingOwner().implicitGone.RemoveListener(s.goneHandle)
+	}
 	s.binding().RemoveObserver(s)
 	s.scopeNode.RemoveListener(s.scopeHandle)
 	s.scopeNode.Dispose()
@@ -169,6 +186,13 @@ func (s *viewState) DidChangeViewFocus(event ui.ViewFocusEvent) {
 // FocusTraversalGroup and the view's focus scope.
 func (s *viewState) Build(bc BuildContext) Widget {
 	w := s.Widget()
+	if s.implicitGone() {
+		// The first window was closed or destroyed while other windows go on: its
+		// content is taken out of the tree, and its states are disposed.
+		// A ViewCollection of no views is a widget with no render object, which is
+		// right wherever a View is (at the root, or in a collection of views).
+		return NewViewCollection(nil)
+	}
 	return NewRawView(w.view, NewMediaQueryFromView(w.view,
 		// This view's focus subtree is attached directly to the root scope rather
 		// than nested under the scope of an enclosing view (which happens when a

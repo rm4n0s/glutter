@@ -250,6 +250,13 @@ type PlatformDispatcher struct {
 	//
 	// Flutter: services/binding.dart ServicesBinding.handleRequestAppExit
 	OnExitRequested func(view ViewID) AppExitResponse
+	// OnViewRemoved is called after a view was removed (RemoveView), whoever removed
+	// it: the platform closed its window, or the framework destroyed it. The framework
+	// installs it so that the first window's controller and View know that it is gone
+	// (SPEC §8.7 "Closing").
+	//
+	// Flutter: no counterpart
+	OnViewRemoved func(view ViewID)
 	// OnViewFocusChange is called when a view gets or loses the focus.
 	//
 	// Flutter: ui/platform_dispatcher.dart PlatformDispatcher.onViewFocusChange
@@ -643,6 +650,9 @@ func (d *PlatformDispatcher) RemoveView(id ViewID) {
 	if v, ok := d.views[id]; ok {
 		v.destroyed = true // the framework may still render into it until its widget goes
 		delete(d.views, id)
+		if d.OnViewRemoved != nil {
+			d.OnViewRemoved(id)
+		}
 	}
 }
 

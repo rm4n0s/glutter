@@ -727,5 +727,11 @@ If you build Flutter apps for Android, this is what is the same and what is not.
   `SetMinimized`; a regular window is also a `MaximizableWindowController` (`SetMaximized`,
   `SetFullscreen`), asked with a type assertion. `RegularWindowControllerOpts.State` and
   `WindowConfig.State` open a window maximized or fullscreen, so it never shows small first.
+- **Closing the first window.** By default closing it is a request to exit the app. Give it a
+  delegate with `WindowingOwner().SetImplicitWindowDelegate(d)` and it closes like any window;
+  `ImplicitWindowController().Destroy()` removes it, its content leaves the tree, and the app goes
+  on while other windows are open. For that the other windows must not be inside the first
+  window's `View`: use `RunWidget` with a `WindowManager` around the `View`
+  (`examples/multiwindow` does).
 - **Where the list of every difference is.** SPEC §12.10, one row per deviation, kept up to
   date.

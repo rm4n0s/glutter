@@ -222,7 +222,9 @@ func (t *Tester) unmountTree() {
 	if len(t.errs) > 0 || !t.Binding.IsRootWidgetAttached() {
 		return
 	}
-	t.PumpWidget(widgets.NewSizedBox(nil, widgets.SizedBoxOpts{Key: foundation.NewUniqueKey()}))
+	// A collection of no views, with no View around it: the implicit view may be gone
+	// (the app destroyed the first window), and it has no render object to attach.
+	t.PumpWidget(widgets.NewViewCollection(nil, widgets.ViewCollectionOpts{Key: foundation.NewUniqueKey()}), PumpWidgetOpts{NoView: true})
 }
 
 // hiddenChanged gives the app the lifecycle state that its windows give, as the

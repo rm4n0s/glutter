@@ -606,9 +606,14 @@ func NewDialogWindowController(bc BuildContext, size ui.Size, opts ...DialogWind
 type WindowingOwner struct {
 	b           *WidgetsBinding
 	controllers []BaseWindowController
+	// implicitGone is whether the first window was destroyed or closed: the View of
+	// the implicit view then shows nothing (its states are disposed).
+	implicitGone *foundation.ValueNotifier[bool]
 }
 
-func newWindowingOwner(b *WidgetsBinding) *WindowingOwner { return &WindowingOwner{b: b} }
+func newWindowingOwner(b *WidgetsBinding) *WindowingOwner {
+	return &WindowingOwner{b: b, implicitGone: foundation.NewValueNotifier(false)}
+}
 
 // WindowingOwner is the owner of the windows of the app.
 //
@@ -700,9 +705,13 @@ func (o *WindowingOwner) CreateDialogWindowController(size ui.Size, opts ...Dial
 }
 
 // ImplicitWindowController is the controller of the first window, the one that
-// RunApp makes. It is made on the first call. Closing the window by the user does
-// not go through its delegate: it is a request to exit the app, as for any app that
-// has only that window (AppLifecycleListener.OnExitRequested).
+// RunApp makes. It is made on the first call. Closing the window by the user is a
+// request to exit the app, as for any app that has only that window
+// (AppLifecycleListener.OnExitRequested), unless a delegate was given with
+// SetImplicitWindowDelegate. Destroy removes the window; when other windows exist the
+// app goes on without it: the View of the implicit view shows nothing from then on and
+// its states are disposed, so the other windows must not be below that View (a
+// WindowManager above it, or a ViewCollection).
 //
 // Deviation: Flutter has no controller for the window that the embedder makes,
 // so a dialog cannot name it as its parent; here it can (SPEC §12.10).
@@ -729,6 +738,44 @@ func (o *WindowingOwner) ImplicitWindowController() (*RegularWindowController, b
 	return c, true
 }
 
+// SetImplicitWindowDelegate gives the delegate that is asked when the user closes the
+// first window, instead of the request to exit the app; its OnWindowDestroyed is
+// called when the window is gone. With nil the close request is an exit request
+// again. A delegate that does not destroy the window keeps it open, so an app with
+// several windows can close the first one like any other.
+//
+// Deviation: Flutter has no controller for the window that the embedder makes
+// (SPEC §12.10).
+//
+// Flutter: no counterpart
+func (o *WindowingOwner) SetImplicitWindowDelegate(delegate RegularWindowControllerDelegate) {
+	c, ok := o.ImplicitWindowController()
+	if !ok {
+		return
+	}
+	if delegate == nil {
+		c.delegate, c.onClose = RegularWindowControllerDelegateBase{}, nil
+		return
+	}
+	c.delegate = delegate
+	c.onClose = func() { c.delegate.OnWindowCloseRequested(c) }
+}
+
+// viewRemoved follows the dispatcher: the first window is gone, whoever closed it. Its
+// controller is destroyed (its delegate hears of it), and the View of the implicit view
+// shows nothing.
+func (o *WindowingOwner) viewRemoved(view ui.ViewID) {
+	if view != ui.ImplicitViewID {
+		return
+	}
+	o.implicitGone.SetValue(true)
+	for _, c := range slices.Clone(o.controllers) {
+		if base := c.windowBase(); base.implicit {
+			base.destroy()
+		}
+	}
+}
+
 // forget drops a controller whose window is gone.
 func (o *WindowingOwner) forget(c BaseWindowController) {
 	o.controllers = slices.DeleteFunc(o.controllers, func(x BaseWindowController) bool { return x == c })
@@ -743,13 +790,17 @@ func (o *WindowingOwner) refresh() {
 
 // handleCloseRequested hands the request to close a window to the delegate of its
 // controller. It reports whether there is one: if so, the engine leaves the window
-// open and the delegate decides. The window of the implicit controller is not
-// handed over; the request to exit the app is.
+// open and the delegate decides. The window of the implicit controller is handed over
+// only when SetImplicitWindowDelegate gave it a delegate; otherwise the request to exit
+// the app is.
 func (o *WindowingOwner) handleCloseRequested(view ui.ViewID) bool {
 	for _, c := range o.controllers {
 		base := c.windowBase()
-		if base.view.ViewID() != view || base.implicit {
+		if base.view.ViewID() != view {
 			continue
+		}
+		if base.implicit && base.onClose == nil {
+			return false // no delegate: the request to exit the app
 		}
 		if base.destroyed || base.onClose == nil {
 			return true
