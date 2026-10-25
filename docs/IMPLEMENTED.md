@@ -2932,3 +2932,27 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - Android keeps no shader cache yet (no `HOME`; the app's cache directory is not wired), and the web has none.
   - `SPEC` numbering: the new section is §9.7 (there was none).
   - **A flaky display test of step 27.5 was fixed (the test, not the engine).** `TestDisplayTheFirstWindowCanBeDestroyedWhileOthersGoOn` failed about 4 runs in 10 with `eglMakeCurrent failed` (`EGL_BAD_ACCESS`, 0x3002) after the first window's surface was released, with or without this step's changes. Cause: the three child tests that call `engine.Run` from a test goroutine did not pin it to an OS thread. `RunApp` runs on the main goroutine, which `internal/platform` keeps on the main thread (SPEC §8.1), but a test goroutine may move to another thread between frames, and EGL refuses a context that is current on the thread it left. The children now call `runtime.LockOSThread()`; 0 failures in 20 runs on sway, and the whole engine display set passes on sway (3 runs) and on Xvfb. The run of step 27.5 passed by luck. The failing child now also prints the error's route and metadata.
+
+## 27.11 Release checklist for 1.7
+
+- **Date:** 2026-10-25
+- **Branch:** feat/step-27.11-release-1.7
+- **Summary:** The checklist for 1.7 was run on the tree of `main` after step 27.10 (commit `05ccb1f`) with this branch's changes (documents, a small example for a manual check) and is recorded here. **Every code check passes. 1.7 waits for the owner for two things: the manual checks of 27.3, 27.7 and 27.10, and the decision to tag.** The tag `v1.7.0` was **not** created and nothing was pushed but this entry. The SPEC's version paragraph and the README now say what 1.7 has.
+- **Main files:** `docs/IMPLEMENTED.md`, `docs/SPEC.md` (the version paragraph), `README.md`, `docs/MANUAL-CHECKS.md` (sections 27.3, 27.7 and 27.10, for the desktop), `examples/dev/sash/main.go` (the sash of the manual check of 27.7, public API only).
+- **Tests:** none added.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck (the error rules of SPEC §14.4) ✅ · apicheck (SPEC §12.13) ✅ · `GOOS=js GOARCH=wasm` build, vet and `scripts/test-wasm.sh` ✅ · `scripts/check-android.sh` ✅ · **display tests** (`scripts/headless-wayland.sh -- go test -race -tags glutter_display ./...` under sway: every package passes except `internal/platform/linux/x11`, whose tests need an X server and run under `scripts/headless-x11.sh`: that package, `internal/gpu/gles` and `internal/engine` pass there) ✅ · **browser tests** (`go test -tags glutter_browser ./...`, 91 packages) ✅ · **device tests** (`go test -p 1 -tags glutter_android ./internal/androidtest`, both emulators, 61 tests) ✅ with one flake, below.
+- **Proof:** none for this step.
+- **Manual checks (the owner's, on a desktop session; each section of `docs/MANUAL-CHECKS.md` has the commands and the questions):**
+  | Step | Check | State |
+  |---|---|---|
+  | 27.3 | the focus of the windows of `examples/multiwindow` follows the clicks, `Alt+Tab` and a minimize | **PENDING** |
+  | 27.7 | `examples/dev/sash` keeps the resize cursor while the pointer outruns the bar | **PENDING** |
+  | 27.10 | the cold start with the GPU (`scripts/perf.sh`, the log of the start), and whether the Vulkan try succeeds on the desktop | **PENDING** |
+- **To decide (the owner):**
+  1. **Do the manual checks above** and record the answers in `docs/MANUAL-CHECKS.md`; anything that fails is a fix before the tag.
+  2. **Should `auto` try GLES first where Vulkan presents to no output?** On a headless compositor the failed Vulkan try costs about 600 ms of a 960 ms cold start (320 ms with `GLUTTER_RENDERER=gles`); on a desktop where Vulkan works nothing is paid. Not changed; SPEC §9.6 says Vulkan first (27.10, `docs/PERFORMANCE.md` "Cold start").
+  3. **Tag `v1.7.0`**, and push the tag. **No tag was created.** After the manual checks are recorded and the owner says yes, the tag is made on `main`.
+- **Deviations and follow-ups:**
+  - **Device test flake.** In the full device run, `TestVulkanDrawsUprightInEveryOrientation/rotation_3` failed once with `the screen is (1080,2400), want (2400,1080)` (the emulator had not applied the rotation when the screenshot was taken); the test passed alone (all four rotations, 83 s). The same family as the early black screenshot noted in step 26.
+  - **Display test fixed in 27.10.** The first-window test of 27.5 was flaky until its child tests pinned the goroutine to an OS thread (see 27.10).
+  - The follow-ups named in the entries of 27.1 to 27.10 (among them: `TestRunTwiceFails` of the Wayland package that failed twice on a `TempDir`, unrelated to the steps; the cache of Mesa's disk cache doing the work that the shader cache does in Glutter on llvmpipe; Android keeping no shader cache yet).

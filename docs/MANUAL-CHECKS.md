@@ -1,8 +1,9 @@
 # Manual checks on a phone
 
-Checks that only a real phone shows. Each step's entry in `docs/IMPLEMENTED.md` says "pending" until the
-owner has done them and their answers are recorded here. Tool: `adb devices` must list the phone (USB
-debugging on). Run the commands from the module root.
+Checks that only a real phone shows (sections 25.4 to 26.5), and, in the last three sections (27.3, 27.7
+and 27.10), checks that only a real desktop shows. Each step's entry in `docs/IMPLEMENTED.md` says "pending"
+until the owner has done them and their answers are recorded here. Tool for the phone: `adb devices` must list
+the phone (USB debugging on). Run the commands from the module root.
 
 ## 25.4 GLES on Android
 
@@ -276,3 +277,63 @@ Check, and record the answers:
 
 Answers: _(not yet recorded)_
 
+## 27.3 The focus of a window (desktop)
+
+**Status:** pending
+
+Run on your desktop session (Wayland or X11), not headless:
+
+```
+go run ./examples/multiwindow
+```
+
+Check, and record the answers:
+
+1. Open the second window. Click each window in turn: does the text field of the window you click take the keyboard (type a letter), and does the one you left stop showing a caret?
+2. Press `Alt+Tab` (or your desktop's window switch) to move between the two windows and back: does the caret follow the active window each time, with no click?
+3. Minimize one window and bring it back from the task bar: is its caret there again, without a click?
+
+Answers: _(not yet recorded)_
+
+## 27.7 The cursor of a pressed pointer (desktop)
+
+**Status:** pending
+
+Run on your desktop session:
+
+```
+go run ./examples/dev/sash
+```
+
+Check, and record the answers:
+
+1. Move over the thin blue bar between the two panels: do you get the resize arrows? Over the right panel, the hand?
+2. Press on the bar and drag quickly to the right, over the right panel, and out of the window: do the resize arrows stay the whole time, and does the left panel follow the mouse?
+3. Let go over the right panel: does the hand show at once? Let go outside the window and come back: is the cursor the one of what is under it?
+4. Press on the right panel (not on the bar) and drag over the bar: does the cursor stay the hand until you let go (the bar does not take it)?
+
+Answers: _(not yet recorded)_
+
+## 27.10 The cold start with a GPU (desktop)
+
+**Status:** pending
+
+Run on your desktop session, on the machine with the GPU (a headless compositor cannot present GPU buffers, so the numbers of `docs/PERFORMANCE.md` for 27.10 are llvmpipe's):
+
+```
+scripts/perf.sh -n 5 -s 5
+```
+
+and, for the parts of one start:
+
+```
+GLUTTER_FRAME_STATS=1 go run -tags glutter_release ./examples/counter 2>&1 | grep -E "stage=|renderer chosen"
+```
+
+Check, and record the answers:
+
+1. The table's two cold start rows (empty caches, both warm) and the table of the parts: how long is the first draw, and which part is the largest (the Vulkan try, the GPU context, the shaders, the frame)? Does `from_cache` show every program on the second start?
+2. With `auto`, does the Vulkan try succeed on your desktop (the log says `renderer chosen renderer="vulkan: ..."`), so the 600 ms that it costs on a headless compositor is not paid?
+3. `ls ~/.cache/glutter/shaders`: are there files after the first start, and does `GLUTTER_SHADER_CACHE=0` leave the directory alone?
+
+Answers: _(not yet recorded)_

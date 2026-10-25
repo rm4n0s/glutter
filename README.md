@@ -136,6 +136,16 @@ window's controller takes it off the screen and the task bar while the app goes 
 `SetHidden(false)` or `Activate()` brings it back as it was (Flutter has no counterpart;
 [`examples/tray`](examples/tray) does it from `AppLifecycleListener.OnExitRequested`).
 
+The controller of a window (`WindowControllerOf(bc)`, or the one a `RegularWindow` is made with) sets its
+title, activates it, minimizes it, maximizes it, makes it full screen, and takes the state a window opens
+in; closing the first window can be an ordinary close that leaves other windows open
+(`WindowingOwner().SetImplicitWindowDelegate`; [`examples/multiwindow`](examples/multiwindow) does it).
+`MouseRegionOpts.HoldCursorWhilePressed` keeps a region's cursor while a button is held (a sash that the
+pointer outruns), and `DraggableOpts.Slop`, `CancelOnEscape` and `DragTargetOpts.RepeatMove` make a draggable
+row stay a click, cancel with Escape, and let a list scroll under a waiting drag.
+`TreeSliverNode` has `SetChildren`, `InsertChild` and `RemoveChild`, lazy nodes (`HasChildren`) and
+`TreeSliverOpts.NodeKey`; `RawTooltip` has a hover delay read on enter, callbacks and a controller.
+
 ## From Flutter to Glutter
 
 | Flutter | Glutter |
