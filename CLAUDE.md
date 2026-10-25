@@ -156,5 +156,5 @@ Use `github.com/rm4n0s/errors` (v0.2.0) for all errors, the way its `AI_GUIDE.md
 - Tests that run in a headless browser carry the `glutter_browser` build tag; they use `internal/webtest` and temporary browser profiles
 - Tests that run on the Android emulator carry the `glutter_android` build tag; they use `internal/androidtest`. What only a real phone shows is a manual check (SPEC §24.13)
 - Tests that run inside Wine carry the `glutter_wine` build tag; `scripts/test-windows.sh` runs the unit tests of the packages that build for Windows under Wine
-- A test that opens Windows windows keeps one OS thread from `New` to `Close` (`runtime.LockOSThread`). The Wine prefix gets copies of the host's Liberation Sans in `C:\windows\Fonts` (`scripts/wine-exec.sh`); some Wine tests are host-side (`go test -tags glutter_wine -p 1 ./internal/winetest ./internal/platform/windows ./examples/counter`): they start Wine themselves
+- A test that opens Windows windows keeps one OS thread from `New` to `Close` (`runtime.LockOSThread`). The Wine prefix gets copies of the host's Liberation Sans in `C:\windows\Fonts` (`scripts/wine-exec.sh`); some Wine tests are host-side (`go test -tags glutter_wine -p 1 ./internal/winetest ./internal/platform/windows ./examples/counter ./examples/scrolling`): they start Wine themselves
 - Every error Tag has a route test

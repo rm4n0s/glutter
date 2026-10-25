@@ -64,6 +64,12 @@ type window struct {
 	cursor platform.MouseCursor
 	// modalTimer is whether a modal loop's timer is running for this window.
 	modalTimer bool
+
+	// The translators of the pointer input (input_windows.go). synthetic is set while a scripted
+	// event is sent to the window.
+	mouse     *mouseTranslator
+	touch     *pointerTranslator
+	synthetic bool
 }
 
 var _ platform.Window = (*window)(nil)
@@ -119,6 +125,7 @@ func (p *Platform) NewWindow(cfg platform.WindowConfig) (platform.Window, error)
 	w.hwnd = hwnd
 	w.created = true
 	p.windows[hwnd] = w
+	w.initInput()
 	// The window may open on a monitor with another scale than the primary's.
 	if dpi := win32.GetDpiForWindow(hwnd); dpi != 0 {
 		w.dpi = dpi
@@ -378,6 +385,26 @@ func (w *window) dispatch(hwnd uintptr, msg uint32, wparam, lparam uintptr) uint
 		w.reportKeyboardFocus(true)
 	case win32.WMKillFocus:
 		w.reportKeyboardFocus(false)
+	case win32.WMMouseMove, win32.WMLButtonDown, win32.WMLButtonUp, win32.WMRButtonDown, win32.WMRButtonUp,
+		win32.WMMButtonDown, win32.WMMButtonUp, win32.WMXButtonDown, win32.WMXButtonUp, win32.WMMouseLeave:
+		if result, handled := w.onMouse(msg, wparam, lparam); handled {
+			return result
+		}
+	case win32.WMMouseWheel, win32.WMMouseHWheel:
+		w.onWheel(msg, wparam, lparam)
+		return 0
+	case win32.WMCaptureChanged:
+		w.onCaptureChanged(lparam)
+	case win32.WMCancelMode:
+		w.onCancelMode()
+	case win32.WMPointerEnter, win32.WMPointerDown, win32.WMPointerUpdate, win32.WMPointerUp, win32.WMPointerLeave, win32.WMPointerCaptureChanged:
+		if w.onPointer(msg, wparam) {
+			return 0
+		}
+	case win32.WMSetCursor:
+		if w.onSetCursor(lparam) {
+			return 1
+		}
 	case win32.WMClose:
 		w.onClose()
 		return 0
@@ -552,6 +579,10 @@ func (w *window) stopModalTimer() {
 // and the last one ends Run.
 func (w *window) onDestroyed() {
 	p := w.p
+	if w.touch != nil {
+		w.touch.cancelAll() // the pointers of a window that goes away are cancelled
+		w.flushPointers()
+	}
 	w.closed = true
 	w.modalTimer = false
 	w.releaseIcons()
@@ -830,11 +861,6 @@ func (w *window) SetHidden(hidden bool) bool {
 	w.p.scheduleVsync()
 	return true
 }
-
-// SetCursor remembers the cursor over the window; the cursors themselves come with step 28.3.
-//
-// Flutter: no counterpart
-func (w *window) SetCursor(cursor platform.MouseCursor) { w.cursor = cursor }
 
 // SetTextInput does nothing until step 28.5.
 //

@@ -39,6 +39,9 @@ type rec struct {
 	lost        int
 	displays    int
 	onFrame     func(view ui.ViewID)
+	// batches are the batches OnPointer got, and pointers the same data in one list.
+	batches  [][]ui.PointerData
+	pointers []ui.PointerData
 }
 
 func (r *rec) OnMetrics(_ ui.ViewID, m platform.ViewMetrics) { r.metrics = append(r.metrics, m) }

@@ -18,6 +18,13 @@ func TestParseDevEvents(t *testing.T) {
 		{"a wait", "wait:500ms", []DevEvent{{Kind: "wait", Wait: 500 * time.Millisecond}}},
 		{"several waits with blanks", " wait:1s ; wait:20ms;", []DevEvent{{Kind: "wait", Wait: time.Second}, {Kind: "wait", Wait: 20 * time.Millisecond}}},
 		{"zero is allowed", "wait:0s", []DevEvent{{Kind: "wait"}}},
+		{"a move", "move:240,400", []DevEvent{{Kind: "move", X: 240, Y: 400}}},
+		{"a tap with blanks and decimals", "tap: 12.5 , 7", []DevEvent{{Kind: "tap", X: 12.5, Y: 7}}},
+		{"a wheel", "wheel:240,400,0,300", []DevEvent{{Kind: "wheel", X: 240, Y: 400, DY: 300}}},
+		{"a wheel to the left and up", "wheel:1,2,-30,-40", []DevEvent{{Kind: "wheel", X: 1, Y: 2, DX: -30, DY: -40}}},
+		{"all the steps in a script", "wait:1ms;move:1,2;tap:3,4;wheel:5,6,7,8;wait:2ms", []DevEvent{
+			{Kind: "wait", Wait: time.Millisecond}, {Kind: "move", X: 1, Y: 2}, {Kind: "tap", X: 3, Y: 4},
+			{Kind: "wheel", X: 5, Y: 6, DX: 7, DY: 8}, {Kind: "wait", Wait: 2 * time.Millisecond}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -45,7 +52,14 @@ func TestParseDevEventsFailures(t *testing.T) {
 		{"a bad duration", "wait:soon", "wait:soon"},
 		{"a negative duration", "wait:-1s", "wait:-1s"},
 		{"a missing duration", "wait:", "wait:"},
-		{"a step that comes later", "tap:1,2", "tap:1,2"},
+		{"a step that comes later", "key:VK_A", "key:VK_A"},
+		{"a move with one number", "move:1", "move:1"},
+		{"a move with three numbers", "move:1,2,3", "move:1,2,3"},
+		{"a tap that is not a number", "tap:a,b", "tap:a,b"},
+		{"a tap with an empty number", "tap:1,", "tap:1,"},
+		{"a wheel with two numbers", "wheel:1,2", "wheel:1,2"},
+		{"a wheel with an infinity", "wheel:1,2,3,Inf", "wheel:1,2,3,Inf"},
+		{"a move with NaN", "move:NaN,1", "move:NaN,1"},
 		{"an unknown step", "dance:now", "dance:now"},
 		{"the error is in the second step", "wait:1ms;jump:3", "jump:3"},
 	}

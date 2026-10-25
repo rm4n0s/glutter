@@ -82,6 +82,9 @@ type Platform struct {
 	// modalTimers counts the modal loops that run a timer (the move and size loop and the menus).
 	modalTimers int
 
+	// pointers keeps the state of the mouse, touch and pen pointers of every window (pointerstate.go).
+	pointers *pointerTracker
+
 	// turns counts the turns of the message loop, for the tests that look for an idle app.
 	turns atomic.Uint64
 
@@ -120,6 +123,7 @@ func New(opts Options) (*Platform, error) {
 	if p.getenv == nil {
 		p.getenv = os.Getenv
 	}
+	p.pointers = newPointerTracker(p.pointerClock)
 	p.setupConsole()
 	p.setupDPIAwareness()
 	if err := win32.OleInitialize(); err != nil {
@@ -441,6 +445,7 @@ func (p *Platform) runDevEvents(i int) {
 			p.timers.add(time.Now().Add(ev.Wait), func() { p.runDevEvents(next) })
 			return
 		}
+		p.runDevMouse(ev)
 	}
 	select {
 	case <-p.devDone:

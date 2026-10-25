@@ -2998,3 +2998,68 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - A side of the maximum size that is 0 next to a limited one is cut at the virtual screen; the default window size is 800×600, as on X11.
   - The documented Wine-test command now gives the runner as `"$PWD/scripts/wine-exec.sh"`: `go test` runs the `-exec` program from each package's directory, so the relative path of 28.1 failed (CLAUDE.md, SPEC, IMPLEMENTATION and the scripts' comments are fixed).
   - The layout tests of the new mirrors (`DevMode` with its unions is the riskiest) still skip: `mingw64-gcc` and `mingw64-headers` are not installed.
+
+## 28.3 Mouse, touch, pen and cursors
+
+- **Date:** 2026-10-25
+- **Branch:** feat/step-28.3-windows-pointer
+- **Summary:** Pointer input on Windows as Flutter's embedder delivers it.
+  - Classic mouse messages: the buttons including the side ones, signed 16-bit coordinates, capture on the first button down and release on the last up, `WM_MOUSELEAVE`, and a capture lost to another window.
+  - The wheel: vertical and horizontal, the system's lines setting, `WHEEL_PAGESCROLL`, precision touchpads.
+  - Touch and pen from `WM_POINTER*`: one batch per frame, ids, pressure, tilt, rotation, the eraser end, the barrel button. A handled message never reaches `DefWindowProc`, and the system's touch and pen feedback is turned off.
+  - The cursors of `SystemMouseCursors`, through `WM_SETCURSOR` and `MouseCursorNone`.
+  - `GLUTTER_DEV_EVENTS` has `move`, `tap` and `wheel`, sent as real window messages.
+  - One `pointerTracker`, a port of `FlutterWindowsView`'s pointer state, makes the final `ui.PointerData` for all of them.
+- **Main files:**
+  - `internal/platform/windows/`: `pointerstate.go`, `mouse.go`, `wheel.go`, `pointer.go`, `idgen.go`, `cursor.go`, `devevents.go`, `input_windows.go`, `window_windows.go`, `platform_windows.go`
+  - `internal/platform/windows/win32/`: `consts_input.go`, `structs_input.go`, `input_windows.go`, `layout_test.go`
+  - `examples/counter/wine_input_test.go`, `examples/scrolling/wine_test.go`
+  - `docs/SPEC.md` (§25.6, §12.10)
+- **Tests:** about 200 table rows on the host and under Wine.
+  - The tracker.
+  - The mouse translator: a click, a drag outside with capture, a leave during a drag, two buttons, side buttons, capture taken by another window.
+  - The wheel.
+  - The touch and pen translator over recorded values: several contacts in one frame, tilt, rotation, the eraser, hover, a lost capture.
+  - The id generator, the cursor table (every name of `SystemMouseCursors`), the struct sizes.
+  - 22 Flutter test cases ported: 16 of `flutter_window_unittests.cc`, 3 of `window_unittests.cc` (`VerticalScroll`, `HorizontalScroll`, `MouseLeave`), 2 of `sequential_id_generator_unittests.cc`, `ActivateSystemCursor` of `cursor_handler_unittests.cc`, and the table of `GetCursorByName`. `flutter_windows_view_unittests.cc` has no pointer case at the pinned commit; the DirectManipulation and custom-cursor cases are not ported.
+- **Wine tests:**
+  - In the window process, with `SendInput` after `SetCursorPos`:
+    - three clicks are 3 downs and 3 ups, and two buttons work together;
+    - a drag released outside the window ends in a real up;
+    - `WM_MOUSELEAVE` removes the pointer;
+    - the capture taken by another window gives a synthesized up;
+    - the wheel scrolls by the system's lines setting;
+    - the scripted events work;
+    - `GetCursorInfo` shows the cursors of the table, and `WM_SETCURSOR` answers as it should;
+    - a destroyed window cancels its pointers.
+  - Host-side:
+    - the counter after three scripted taps shows the same text as `GLUTTER_DEV_TAPS=3`, pixel for pixel;
+    - `examples/scrolling` after a scripted wheel of 400 pixels shows the same content as `GLUTTER_DEV_SCROLL=400`, pixel for pixel.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck ✅ · apicheck ✅ · `GOOS=js GOARCH=wasm` build, vet and `scripts/test-wasm.sh` ✅ · `scripts/check-android.sh` ✅ · `GOOS=windows` amd64 build and vet, arm64 build ✅ · `scripts/test-windows.sh` ✅ · Wine tests ✅ · nothing left running ✅
+- **Proof:** method F, `docs/implemented-proof-images/28.3-windows-scrolling.png`. It is `examples/scrolling` under Wine after the scripted wheel of 500 logical pixels: the list shows Row 11 to Row 19 at the top (Row 1 to Row 9 without the scroll).
+
+  ![28.3](implemented-proof-images/28.3-windows-scrolling.png)
+- **Manual checks: pending**, collected in `docs/MANUAL-CHECKS.md` by step 28.15:
+  - all mouse buttons including the side ones, and a drag outside the window;
+  - a notched and a free-spinning wheel;
+  - a precision touchpad with two-finger scroll and pinch;
+  - a touch screen;
+  - a pen with pressure, the eraser end and the barrel button;
+  - the cursors in the gallery.
+- **Deviations and follow-ups:**
+  - The platform makes the final `PointerData`; the engine's `PointerDataPacketConverter` has no counterpart (SPEC §12.10). So:
+    - a move with no button down ends the contact;
+    - a pointer that leaves while down is lifted first;
+    - a leave for a pointer never added is ignored;
+    - each down gets a new `PointerIdentifier`.
+  - The first button of any kind takes the capture (Flutter: the left button only).
+  - Pen pressure is 0 to 1 (Flutter: 0 to 1024); a pen in the air has pressure 0.
+  - The wheel's lines setting is read at each message, and `WHEEL_PAGESCROLL` is a page of the view.
+  - Cursors with no stock counterpart take the nearest one: `grab` and `grabbing` the hand; `zoomIn`, `zoomOut` and `cell` the cross; `verticalText` the I-beam; `copy`, `alias`, `contextMenu` and `disappearing` the arrow.
+  - Wine sends `WM_MOUSELEAVE` for a captured pointer at once, Windows only after the release. So a leave during a drag waits for the last button up.
+  - Touch and pen `WM_POINTER` messages cannot be made under Wine: they are tested as plain Go, and the devices are manual checks.
+  - The layout tests of the new mirrors (`POINTER_INFO`, `POINTER_TOUCH_INFO`, `POINTER_PEN_INFO`, `INPUT`) still skip, because `mingw64-gcc` and `mingw64-headers` are not installed. Until then, `TestInputStructSizes` checks hand-computed sizes and offsets.
+  - Not done:
+    - custom cursors (`createCustomCursor`);
+    - DirectManipulation (SPEC §25.6: no `PointerPanZoom` on Windows in 1.8);
+    - modifier sync on mouse move (step 28.4).
