@@ -3,7 +3,8 @@
 // the pointer input (step 28.3), the keyboard (step 28.4), the text input and the input methods
 // (step 28.5, with package ime); the clipboard, the system settings, the list of fonts and the
 // lifecycle (step 28.6), and the tray, the notifications, the file dialogs and the opening of URIs
-// (step 28.11). The calls to
+// (step 28.11); and OLE drag and drop and the windows that an app opens besides the first (step
+// 28.12, with package ole). The calls to
 // Windows go through package win32 (SPEC §6.3 rule 10).
 //
 // The files of the backend that call Windows are named *_windows.go. The files with no OS tag hold
@@ -15,7 +16,9 @@
 // (lifecycle.go), the list of font files (fonts.go) and the desktop services (step 28.11: services.go
 // has Desktop with the checks of URIs, tray.go the tray's model, diff and menu plan, balloon.go the
 // queue of the notifications and filedialog.go the options and answers of the file dialogs, all over
-// the calls that services_windows.go makes); the model of the input methods is package ime and the
+// the calls that services_windows.go makes), drag and drop (step 28.12: dnd.go has the target of a
+// window and the runner of the drags the app starts, modal.go the count of the dialogs that block a
+// window, placement.go the places of new windows); the model of the input methods is package ime and the
 // matching of fonts is internal/text/winfonts.
 //
 // Flutter: the Windows embedder (engine/src/flutter/shell/platform/windows).

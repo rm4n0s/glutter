@@ -47,7 +47,7 @@ func regDeleteValue(t testing.TB, subKey, name string) {
 	}
 	ps, _ := win32.UTF16PtrFromString(subKey)
 	pn, _ := win32.UTF16PtrFromString(name)
-	proc.Call(win32.HKeyCurrentUser, uintptr(unsafe.Pointer(ps)), uintptr(unsafe.Pointer(pn))) // the value may not be there
+	_, _ = proc.Call(win32.HKeyCurrentUser, uintptr(unsafe.Pointer(ps)), uintptr(unsafe.Pointer(pn))) // the value may not be there
 }
 
 // resetSettings puts the values this file writes back to absent, now and when the test ends.

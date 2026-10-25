@@ -368,3 +368,11 @@ func (t *pointerTracker) mouseDown() bool {
 	st, ok := t.states[pointerKey{ui.PointerDeviceKindMouse, mouseDevice}]
 	return ok && st.buttons != 0
 }
+
+// mouseButtons are the buttons of the mouse that are down, as the bits of ui.PointerData.Buttons.
+func (t *pointerTracker) mouseButtons() int {
+	if st, ok := t.states[pointerKey{ui.PointerDeviceKindMouse, mouseDevice}]; ok {
+		return st.buttons
+	}
+	return 0
+}

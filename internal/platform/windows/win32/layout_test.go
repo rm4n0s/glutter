@@ -13,7 +13,7 @@ import (
 // Linux host and is skipped, with the install command, when the compiler is missing.
 func TestLayoutAgainstTheHeaders(t *testing.T) {
 	layouttest.Check(t, layouttest.Spec{
-		Headers: []string{"windows.h", "unknwn.h", "dxgi.h", "dwmapi.h", "shellscalingapi.h", "imm.h", "shlobj.h", "shellapi.h", "shobjidl.h", "winver.h"},
+		Headers: []string{"windows.h", "unknwn.h", "dxgi.h", "dwmapi.h", "shellscalingapi.h", "imm.h", "shlobj.h", "shellapi.h", "shobjidl.h", "winver.h", "ole2.h", "oleidl.h", "objidl.h"},
 		Structs: []layouttest.Struct{
 			layouttest.StructOf("GUID", GUID{}),
 			layouttest.StructOf("POINT", Point{}),
@@ -53,6 +53,9 @@ func TestLayoutAgainstTheHeaders(t *testing.T) {
 			layouttest.StructOf("MENUITEMINFOW", MenuItemInfo{}),
 			layouttest.StructOf("SHELLEXECUTEINFOW", ShellExecuteInfo{}),
 			layouttest.StructOf("COMDLG_FILTERSPEC", ComdlgFilterSpec{}),
+			layouttest.StructOf("FORMATETC", FormatEtc{}),
+			layouttest.StructOf("STGMEDIUM", StgMedium{}),
+			layouttest.StructOf("POINTL", Point{}),
 		},
 		VTables: []layouttest.VTable{
 			{CName: "IUnknownVtbl", Methods: []layouttest.Method{
@@ -64,6 +67,33 @@ func TestLayoutAgainstTheHeaders(t *testing.T) {
 				{Name: "GetResults", Index: IFileOpenDialogGetResults},
 			}...)},
 			{CName: "IFileSaveDialogVtbl", Methods: fileDialogMethods()},
+			{CName: "IDropTargetVtbl", Methods: []layouttest.Method{
+				{Name: "DragEnter", Index: IDropTargetDragEnter},
+				{Name: "DragOver", Index: IDropTargetDragOver},
+				{Name: "DragLeave", Index: IDropTargetDragLeave},
+				{Name: "Drop", Index: IDropTargetDrop},
+			}},
+			{CName: "IDropSourceVtbl", Methods: []layouttest.Method{
+				{Name: "QueryContinueDrag", Index: IDropSourceQueryContinueDrag},
+				{Name: "GiveFeedback", Index: IDropSourceGiveFeedback},
+			}},
+			{CName: "IDataObjectVtbl", Methods: []layouttest.Method{
+				{Name: "GetData", Index: IDataObjectGetData},
+				{Name: "GetDataHere", Index: IDataObjectGetDataHere},
+				{Name: "QueryGetData", Index: IDataObjectQueryGetData},
+				{Name: "GetCanonicalFormatEtc", Index: IDataObjectGetCanonicalFormatEtc},
+				{Name: "SetData", Index: IDataObjectSetData},
+				{Name: "EnumFormatEtc", Index: IDataObjectEnumFormatEtc},
+				{Name: "DAdvise", Index: IDataObjectDAdvise},
+				{Name: "DUnadvise", Index: IDataObjectDUnadvise},
+				{Name: "EnumDAdvise", Index: IDataObjectEnumDAdvise},
+			}},
+			{CName: "IEnumFORMATETCVtbl", Methods: []layouttest.Method{
+				{Name: "Next", Index: IEnumFormatEtcNext},
+				{Name: "Skip", Index: IEnumFormatEtcSkip},
+				{Name: "Reset", Index: IEnumFormatEtcReset},
+				{Name: "Clone", Index: IEnumFormatEtcClone},
+			}},
 			{CName: "IShellItemVtbl", Methods: []layouttest.Method{{Name: "GetDisplayName", Index: IShellItemGetDisplayName}}},
 			{CName: "IShellItemArrayVtbl", Methods: []layouttest.Method{
 				{Name: "GetCount", Index: IShellItemArrayGetCount},
@@ -189,6 +219,7 @@ func TestLayoutAgainstTheHeaders(t *testing.T) {
 			{Name: "GWL_STYLE", Value: u32(GWLStyle)},
 			{Name: "GWL_EXSTYLE", Value: u32(GWLExStyle)},
 			{Name: "GWLP_USERDATA", Value: u32(GWLPUserData)},
+			{Name: "GWLP_HWNDPARENT", Value: u32(GWLPHwndParent)},
 			{Name: "SM_CXSIZEFRAME", Value: u32(SMCxSizeFrame)},
 			{Name: "SM_CYSIZEFRAME", Value: u32(SMCySizeFrame)},
 			{Name: "SM_CXICON", Value: u32(SMCxIcon)},
@@ -459,6 +490,32 @@ func TestLayoutAgainstTheHeaders(t *testing.T) {
 			{Name: "VS_FFI_SIGNATURE", Value: VSFixedFileInfoSignature},
 			{Name: "RRF_RT_REG_SZ", Value: uint32(RRFRTRegSZ)},
 			{Name: "RRF_RT_REG_EXPAND_SZ", Value: uint32(RRFRTRegExpandSZ)},
+			{Name: "MK_ALT", Value: uint32(MKAlt)},
+			{Name: "DROPEFFECT_NONE", Value: uint32(DropEffectNone)},
+			{Name: "DROPEFFECT_COPY", Value: uint32(DropEffectCopy)},
+			{Name: "DROPEFFECT_MOVE", Value: uint32(DropEffectMove)},
+			{Name: "DROPEFFECT_LINK", Value: uint32(DropEffectLink)},
+			{Name: "DROPEFFECT_SCROLL", Value: uint32(DropEffectScroll)},
+			{Name: "CF_TEXT", Value: uint32(CFText)},
+			{Name: "CF_OEMTEXT", Value: uint32(CFOEMText)},
+			{Name: "TYMED_HGLOBAL", Value: uint32(TymedHGlobal)},
+			{Name: "TYMED_ISTREAM", Value: uint32(TymedIStream)},
+			{Name: "DVASPECT_CONTENT", Value: uint32(DVAspectContent)},
+			{Name: "DATADIR_GET", Value: uint32(DataDirGet)},
+			{Name: "DATADIR_SET", Value: uint32(DataDirSet)},
+			{Name: "DRAGDROP_S_DROP", Value: DragDropSDrop.Code()},
+			{Name: "DRAGDROP_S_CANCEL", Value: DragDropSCancel.Code()},
+			{Name: "DRAGDROP_S_USEDEFAULTCURSORS", Value: DragDropSUseDefaultCursors.Code()},
+			{Name: "DATA_S_SAMEFORMATETC", Value: DataSSameFormatEtc.Code()},
+			{Name: "S_FALSE", Value: SFalse.Code()},
+			{Name: "E_ABORT", Value: EAbort.Code()},
+			{Name: "DV_E_FORMATETC", Value: DVEFormatEtc.Code()},
+			{Name: "DV_E_LINDEX", Value: DVELIndex.Code()},
+			{Name: "DV_E_TYMED", Value: DVETymed.Code()},
+			{Name: "DV_E_DVASPECT", Value: DVEDVAspect.Code()},
+			{Name: "OLE_E_ADVISENOTSUPPORTED", Value: OLEEAdviseNotSupported.Code()},
+			{Name: "DRAGDROP_E_NOTREGISTERED", Value: DragDropENotRegistered.Code()},
+			{Name: "DRAGDROP_E_ALREADYREGISTERED", Value: DragDropEAlreadyRegistered.Code()},
 		},
 	})
 }

@@ -65,6 +65,10 @@ type window struct {
 	cursor platform.MouseCursor
 	// modalTimer is whether a modal loop's timer is running for this window.
 	modalTimer bool
+	// dropOK says RegisterDragDrop worked, so that the window revokes it (drag_windows.go).
+	dropOK bool
+	// modal counts the modal dialogs that block this window (modal.go).
+	modal modalGate
 
 	// The translators of the pointer input (input_windows.go). synthetic is set while a scripted
 	// event is sent to the window.
@@ -118,9 +122,13 @@ func (p *Platform) NewWindow(cfg platform.WindowConfig) (platform.Window, error)
 	ow, oh := w.outerSize(cw, ch)
 
 	w.token = registerTarget(w)
-	useDefault := int32(-1 << 31) // CW_USEDEFAULT, 0x80000000
+	x := int32(-1 << 31) // CW_USEDEFAULT, 0x80000000
+	y := x
+	if px, py, ok := p.defaultPlace(w, ow, oh); ok {
+		x, y = px, py
+	}
 	hwnd, err := win32.CreateWindowEx(w.styles.exStyle, windowClassName, cfg.Title, w.styles.style&^win32.WSVisible,
-		useDefault, useDefault, ow, oh, ownerHwnd, 0, p.instance, w.token)
+		x, y, ow, oh, ownerHwnd, 0, p.instance, w.token)
 	if err != nil {
 		unregisterTarget(w.token)
 		return nil, err
@@ -129,6 +137,7 @@ func (p *Platform) NewWindow(cfg platform.WindowConfig) (platform.Window, error)
 	w.created = true
 	p.windows[hwnd] = w
 	w.initInput()
+	w.registerDrop()
 	// The window may open on a monitor with another scale than the primary's.
 	if dpi := win32.GetDpiForWindow(hwnd); dpi != 0 {
 		w.dpi = dpi
@@ -160,7 +169,7 @@ func (p *Platform) NewWindow(cfg platform.WindowConfig) (platform.Window, error)
 		}
 	}
 	if cfg.Modal && w.owner != nil {
-		win32.EnableWindow(w.owner.hwnd, false)
+		w.owner.modal.block(w.owner.enable)
 	}
 	if p.handler != nil {
 		// A window made while Run is going: it shows itself after the handler has it.
@@ -386,6 +395,12 @@ func (w *window) dispatch(hwnd uintptr, msg uint32, wparam, lparam uintptr) uint
 	case win32.WMShowWindow:
 		p.lifecycleChanged()
 	case win32.WMActivate:
+		if wparam&0xFFFF != win32.WAInactive && !win32.IsWindowEnabled(hwnd) {
+			// A window that a modal dialog blocks is not activated (by the task switcher, say): the
+			// dialog is.
+			w.activateEnabledDescendant()
+			return 0
+		}
 		w.activated = wparam&0xFFFF != win32.WAInactive
 		p.lifecycleChanged()
 		w.reportFocus(w.activated)
@@ -469,6 +484,8 @@ func (w *window) dispatch(hwnd uintptr, msg uint32, wparam, lparam uintptr) uint
 		if msg == win32.WMDwmColorizationColorChanged {
 			return 0
 		}
+	case win32.WMDestroy:
+		w.revokeDrop()
 	case win32.WMNCDestroy:
 		w.onDestroyed()
 	}
@@ -906,11 +923,17 @@ func (w *window) SetHidden(hidden bool) bool {
 	return true
 }
 
-// StartDrag fails with DragUnsupported until step 28.12.
+// StartDrag starts a drag from this window (SPEC §25.10): DoDragDrop runs in a posted function, with
+// the data of the request. A pointer button must be down; the end comes to Handler.OnDragEnd. It fails
+// with DragUnsupported when OLE could not be set up, DragInProgress while another drag goes on, and
+// DragNoButton when no button is down.
 //
 // Flutter: no counterpart
-func (w *window) StartDrag(ui.DragRequest) error {
-	return errors.New(tagDragUnsupported, "drag and drop from a window of Windows comes with step 28.12")
+func (w *window) StartDrag(request ui.DragRequest) error {
+	if w.p.ole == nil || w.closed {
+		return errors.New(tagDragUnsupported, "drag and drop is not available on this window")
+	}
+	return w.p.drags().Start(w.id, request)
 }
 
 // PerformWindowAction does what the title bar of the app asks (SPEC §25.4): moves and resizes
@@ -975,21 +998,65 @@ func (w *window) showSystemMenu(at ui.Offset) {
 	}
 }
 
-// Close destroys the window. Destroy the renderer's surface for it first. When it was the last
-// window, Run returns. Closing twice does nothing.
+// Close destroys the window. Destroy the renderer's surface for it first. The dialogs that it owns go
+// first, as Windows would destroy them with their owner anyway: the handler is asked to close each one
+// (so that the framework lets go of its view), and it is destroyed whatever the answer (SPEC §25.4).
+// When it was the last window, Run returns. Closing twice does nothing.
 //
 // Flutter: shell/platform/windows/host_window.cc HostWindow::~HostWindow
 func (w *window) Close() {
 	if w.closed {
 		return
 	}
+	w.closeOwned()
+	if w.p.drag != nil {
+		w.p.drag.WindowClosed(w.id)
+	}
 	w.stopModalTimer()
 	if w.cfg.Modal && w.owner != nil && !w.owner.closed {
-		win32.EnableWindow(w.owner.hwnd, true) // before the destroy, or the owner would lose the focus
+		w.owner.modal.unblock(w.owner.enable) // before the destroy, or the owner would lose the focus
 	}
 	if err := win32.DestroyWindow(w.hwnd); err != nil {
 		w.p.log.Warn("the window could not be destroyed", "err", err)
 		w.onDestroyed()
+	}
+}
+
+// enable enables or disables the input of the window (EnableWindow).
+func (w *window) enable(enabled bool) { win32.EnableWindow(w.hwnd, enabled) }
+
+// activateEnabledDescendant activates the first window that this one owns, directly or not, that takes
+// input, and reports whether there was one.
+//
+// Flutter: shell/platform/windows/host_window.cc HostWindow::HandleWindowActivation, FindFirstEnabledDescendant
+func (w *window) activateEnabledDescendant() bool {
+	for _, c := range w.p.sortedWindows() {
+		if c.owner != w || c.closed {
+			continue
+		}
+		if win32.IsWindowEnabled(c.hwnd) {
+			win32.SetActiveWindow(c.hwnd)
+			return true
+		}
+		if c.activateEnabledDescendant() {
+			return true
+		}
+	}
+	return false
+}
+
+// closeOwned closes the windows that this window owns (its dialogs), the newest first.
+func (w *window) closeOwned() {
+	owned := w.p.sortedWindows()
+	for i := len(owned) - 1; i >= 0; i-- {
+		c := owned[i]
+		if c.owner != w || c.closed {
+			continue
+		}
+		if h := w.p.handler; h != nil {
+			h.OnCloseRequest(c.id)
+		}
+		c.Close()
 	}
 }
 

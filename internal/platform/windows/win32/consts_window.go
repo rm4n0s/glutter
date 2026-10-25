@@ -422,6 +422,10 @@ const (
 	//
 	// Flutter: no counterpart
 	GWLExStyle = -20
+	// GWLPHwndParent is GWLP_HWNDPARENT (-8): the owner of a top-level window.
+	//
+	// Flutter: no counterpart
+	GWLPHwndParent = -8
 	// GWLPUserData is GWLP_USERDATA (-21).
 	//
 	// Flutter: no counterpart

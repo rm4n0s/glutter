@@ -47,7 +47,7 @@ Before reporting a task as finished, run `gofmt`, `go vet ./...`, `golangci-lint
 - `ui/` is the engine API (Flutter's `dart:ui`): geometry, Canvas, Paint, Path, Scene, Paragraph, views, input events
 - `desktop/` holds desktop services Flutter leaves to plugins: system tray, notifications, file dialogs, open-URI
 - `gluttertest/` is the widget-testing package (Flutter's `flutter_test`)
-- `internal/platform/` holds the platform interface and its backends (`linux/wayland`, `linux/x11`, `web`, `android`, `windows`, `fake`); `windows/win32` is the package that calls Windows (DLLs, COM, callbacks, the struct mirrors and their `layouttest`)
+- `internal/platform/` holds the platform interface and its backends (`linux/wayland`, `linux/x11`, `web`, `android`, `windows`, `fake`); `windows/win32` is the package that calls Windows (DLLs, COM, callbacks, the struct mirrors and their `layouttest`), and `windows/ole` holds the COM objects Go makes for OLE drag and drop and their plain-Go models
 - `internal/gpu/` holds the renderer interface and its backends (`vulkan`, `gles`, `soft`, `webgpu`, `canvas2d`, `nativewindow`, `gdiwindow`, `d3d12`: the Direct3D 12 `explicit.Device` and its HLSL compiler), and `shadercache` keeps what they compile between runs; `explicit` is the renderer that `vulkan` and `webgpu` share, with its WGSL shaders
 - `internal/winetest/` is the Wine harness; `.wine-test/` (git-ignored) holds its prefix
 - `internal/text/` holds paragraph layout on go-text, with `androidfonts` and `winfonts` (the plain-Go matchers of the Android and Windows system fonts); `internal/dbus/` holds the D-Bus services

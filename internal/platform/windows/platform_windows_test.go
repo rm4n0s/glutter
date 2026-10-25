@@ -21,8 +21,10 @@ func assertRoute(t *testing.T, err error, tag, route string) {
 	}
 }
 
-func TestStartDragIsUnsupportedUntilStep28_12(t *testing.T) {
-	err := (&window{}).StartDrag(ui.DragRequest{})
+// A platform whose OLE objects could not be made (p.ole is nil) starts no drag: the drag stays in the
+// window, as on Linux without a data device (SPEC §25.10).
+func TestStartDragWithoutOLEIsUnsupported(t *testing.T) {
+	err := (&window{p: &Platform{}}).StartDrag(ui.DragRequest{})
 	assertRoute(t, err, "DragUnsupported", "window.StartDrag.DragUnsupported")
 }
 

@@ -280,3 +280,34 @@ func TestPhase(t *testing.T) {
 		})
 	}
 }
+
+func TestPointerTrackerMouseButtons(t *testing.T) {
+	tr := newPointerTracker(tickingClock())
+	if got := tr.mouseButtons(); got != 0 {
+		t.Errorf("buttons of a mouse nobody has seen = %d", got)
+	}
+	steps := []struct {
+		name string
+		do   func()
+		want int
+	}{
+		{"hovering", func() { tr.move(0, mouseAt(1, 1, 0)) }, 0},
+		{"the primary button goes down", func() { tr.down(0, mouseAt(1, 1, buttonPrimary)) }, buttonPrimary},
+		{"the secondary one too", func() { tr.down(0, mouseAt(1, 1, buttonSecondary)) }, buttonPrimary | buttonSecondary},
+		{"the primary one goes up", func() { tr.up(0, mouseAt(1, 1, buttonPrimary)) }, buttonSecondary},
+		{"the last one goes up", func() { tr.up(0, mouseAt(1, 1, buttonSecondary)) }, 0},
+	}
+	for _, s := range steps {
+		s.do()
+		if got := tr.mouseButtons(); got != s.want {
+			t.Errorf("%s: buttons = %d, want %d", s.name, got, s.want)
+		}
+	}
+}
+
+// The reading of a drop is limited to 5 seconds, as on the other platforms (SPEC §8.11, §25.10).
+func TestDropReadBudgetIsFiveSeconds(t *testing.T) {
+	if dropReadBudget.Seconds() != 5 {
+		t.Errorf("dropReadBudget = %v, want 5s", dropReadBudget)
+	}
+}

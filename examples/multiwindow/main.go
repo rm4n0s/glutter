@@ -7,14 +7,17 @@
 // Every window is also a drop target: drag a file from a file manager, or some text,
 // onto "Drop here" to see its path; "Drag me" can be dragged out of the window, into
 // a text editor or into another window of the app. (Drags between applications need
-// a pointer button held down, so they cannot be tried on a headless compositor.)
+// a pointer button held down, so they cannot be tried on a headless compositor.) On
+// Windows this is OLE drag and drop: Shift moves, Control copies, Alt links, and
+// Escape cancels; a dialog opens centered over its window, disables it until it
+// closes, and has no task-bar button; each new window opens a step below the last.
 //
 // Closing the first window while another is open keeps the app running; the app ends
 // with the last window.
 //
 // Run it with: go run ./examples/multiwindow
 //
-// Environment: GLUTTER_BACKEND=x11|wayland, GLUTTER_SCREENSHOT=<file.png>. In debug
+// Environment: GLUTTER_BACKEND=x11|wayland (Linux), GLUTTER_SCREENSHOT=<file.png>. In debug
 // builds: GLUTTER_DEV_OPEN=window,dialog opens a window, a dialog, or both when the
 // first window is shown.
 package main

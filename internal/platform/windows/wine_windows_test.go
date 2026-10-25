@@ -45,6 +45,18 @@ type rec struct {
 	// batches are the batches OnPointer got, and pointers the same data in one list.
 	batches  [][]ui.PointerData
 	pointers []ui.PointerData
+	// drops are the events OnDrop got, answered by dropAnswer (none when it is nil); dragEnds are the
+	// results OnDragEnd got; focused is OnViewFocus with its view (dnd_wine_test.go).
+	drops      []ui.DropEvent
+	dropAnswer func(ui.DropEvent) ui.DropActions
+	dragEnds   []ui.DragResult
+	focused    []focusChange
+}
+
+// focusChange is one call of OnViewFocus.
+type focusChange struct {
+	view    ui.ViewID
+	focused bool
 }
 
 func (r *rec) OnMetrics(_ ui.ViewID, m platform.ViewMetrics) { r.metrics = append(r.metrics, m) }
@@ -55,7 +67,10 @@ func (r *rec) OnFrame(view ui.ViewID, _ time.Duration) {
 		r.onFrame(view)
 	}
 }
-func (r *rec) OnViewFocus(_ ui.ViewID, f bool)     { r.focus = append(r.focus, f) }
+func (r *rec) OnViewFocus(v ui.ViewID, f bool) {
+	r.focus = append(r.focus, f)
+	r.focused = append(r.focused, focusChange{v, f})
+}
 func (r *rec) OnKeyboardFocus(_ ui.ViewID, f bool) { r.kfocus = append(r.kfocus, f) }
 func (r *rec) OnCloseRequest(v ui.ViewID) bool     { r.closes = append(r.closes, v); return r.closeAnswer }
 func (r *rec) OnContentLost(ui.ViewID)             { r.lost++ }

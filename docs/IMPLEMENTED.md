@@ -3541,3 +3541,66 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - The tray tests run in a child process. Under Wine, after a thread has joined another desktop, a window made later on the default desktop fails with a `BadWindow` error and ends the process.
   - The custom scheme is written under `HKLM\Software\Classes` of the private prefix, because Wine's `HKCR` does not read `HKCU\Software\Classes`. It is removed when the test ends.
   - `examples/tray` gained debug-only variables for the proofs (`GLUTTER_DEV_NOTIFY`, `GLUTTER_DEV_OPEN_FILE`) and file filters in its Open dialog. Its tests and goldens are unchanged.
+
+## 28.12 Drag and drop, and several windows
+
+- **Date:** 2026-10-25
+- **Branch:** feat/step-28.12-windows-dnd-windows
+- **Summary:** windows are OLE drop targets, a `Draggable` with `Export` starts `DoDragDrop`, and several windows work, with owners, modal dialogs and the focus.
+  - **Drop targets:**
+    - `RegisterDragDrop` for each window; `DragEnter`, `DragOver`, `DragLeave` and `Drop` become `ui.DropEvent`s.
+    - The action the framework chooses is returned as the effect. The keys narrow what is offered: Control for copy, Shift for move, Alt for link.
+    - The files, the text and the URL formats are read at the drop, within a 5-second budget and at most 16 MiB per format.
+  - **Drag sources:**
+    - `StartDrag` posts `DoDragDrop` with the data: text, files, a URL, and the private format `application/x-glutter-drag-<pid>-<id>`, by which a drag that comes back to the app is recognized.
+    - It ends with `OnDragEnd` and a synthesized pointer up.
+  - **Several windows:**
+    - A dialog has an owner, and a modal block that counts the open dialogs disables the owner. A blocked owner passes its activation on to the dialog.
+    - Closing an owner closes its dialogs first.
+    - Dialogs open centered over their owner (Flutter's `HostWindowDialog::GetInitialRect`), clamped to the work area, and other windows cascade.
+    - All the windows share one Direct3D 12 device.
+- **Main files:**
+  - `internal/platform/windows/ole/`: the COM objects made in Go (`IDropTarget`, `IDropSource`, `IDataObject`, `IEnumFORMATETC`), the reader of foreign data objects, and the plain-Go models of the effects, the formats, the enumerator, the source and the target
+  - `internal/platform/windows/`: `dnd.go`, `drag_windows.go`, `modal.go`, `placement.go`, `placement_windows.go`, `window_windows.go`
+  - `internal/platform/windows/win32/`: `consts_ole.go`, `structs_ole.go`, `ole_windows.go`
+  - `examples/multiwindow`
+  - SPEC §25.4, §25.10, §12.10
+- **Tests:**
+  - **Plain Go:**
+    - the effects mapping, in both directions;
+    - the formats, and the enumerator (`Next`, `Skip`, `Reset`, `Clone`);
+    - the source and target state machines;
+    - the drop reader: a `DROPFILES` with wide, relative and network paths, text with `\r\n`, URLs, unknown data, the budget;
+    - the drag runner: enter, over with a changed key, leave, drop, a refused drop, Escape, a window that closes, a drag back to the app's own window;
+    - the modal gate and the placement;
+    - a route test of every tag.
+  - **COM:** the objects, called through their vtables.
+  - **Layout:** the new mirrors against the mingw-w64 headers.
+  - No Flutter test was ported (Flutter has no drag and drop between applications).
+- **Wine tests** (each run twice):
+  - **Drags inside the app:**
+    - a drag between two windows (`DoDragDrop` driven by `SendInput`) arrives as the app's own data;
+    - a drag that comes back to its own window is recognized;
+    - Escape cancels a drag;
+    - a drop the app refuses ends as not accepted;
+    - the effect the framework chooses is what the drag ends with.
+  - **Data from outside the app:** a data object with files and one with text, handed to the window's registered `IDropTarget`, arrive as `ExternalDragData`. The target is found through the window property `OleDropTargetInterface`.
+  - **Several windows:**
+    - a modal dialog disables its owner until it closes;
+    - closing an owner closes its dialogs first;
+    - closing the first window keeps the second;
+    - the focus moves from one window to the other;
+    - a blocked owner activates its dialog;
+    - the task-bar buttons, and the placement;
+    - three windows of `examples/multiwindow` draw with one Direct3D 12 device.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ (also with `GOOS=windows` and `glutter_wine` on `internal/platform/windows`) · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck ✅ · apicheck ✅ · `GOOS=js GOARCH=wasm` build, vet and `scripts/test-wasm.sh` ✅ · `scripts/check-android.sh` ✅ · `GOOS=windows` amd64 build and vet, arm64 build ✅ · `scripts/test-windows.sh` ✅ · Wine tests ✅ · layout test against the headers ✅ · nothing left running ✅
+- **Proof:** method F, `docs/implemented-proof-images/28.12-windows-multiwindow.png`. On Wine's explorer desktop, it shows two windows of `examples/multiwindow` ("Main window", and "Window 1" a step below it) and the modal "Dialog" over the first window, drawn by `d3d12`. Wine draws the title bars.
+
+  ![28.12](implemented-proof-images/28.12-windows-multiwindow.png)
+- **Manual checks (pending, for the owner's PC; collected in `docs/MANUAL-CHECKS.md` by step 28.15):** the list of step 28.12. Drags with other programs (Explorer, Notepad, a browser) cannot be made under Wine.
+- **Deviations and follow-ups** (SPEC §25.4 and §25.10, "Decided in step 28.12"):
+  - Dialogs are clamped to the work area, and windows cascade by 32 logical pixels (§12.10). Without the cascade, every window that Wine places at the default position lands on top of the others.
+  - Every modal dialog of an owner stays enabled; Flutter keeps only the newest one enabled (§12.10).
+  - The 5-second read budget is checked between formats, so a `GetData` that hangs cannot be interrupted.
+  - Not done: a drag image (`IDragSourceHelper`), virtual files (`CFSTR_FILEDESCRIPTOR`) and stream media. Drags started by touch or a pen stay inside the window.
+  - The unchecked `proc.Call` in `settings_wine_test.go` that `golangci-lint` reported for `GOOS=windows` since step 28.10 is fixed.

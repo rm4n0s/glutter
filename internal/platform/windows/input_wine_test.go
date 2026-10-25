@@ -269,6 +269,7 @@ func TestTheCaptureTakenByAnotherWindowReleasesTheButtons(t *testing.T) {
 	p, r := newTestPlatform(t)
 	w := newWin(t, p, platform.WindowConfig{Size: ui.Size{Width: 320, Height: 240}})
 	other := newWin(t, p, platform.WindowConfig{Size: ui.Size{Width: 100, Height: 100}})
+	place(t, other, 700, 400) // out of the way: a window opens a step below the one before it
 	pointerSteps(t, p, r, 80*time.Millisecond,
 		func() { moveCursorTo(t, w, 100, 100) },
 		func() { sendInput(t, win32.MouseEventFLeftDown) },
@@ -452,7 +453,7 @@ func TestDestroyingAWindowCancelsItsPointers(t *testing.T) {
 	p, r := newTestPlatform(t)
 	w := newWin(t, p, platform.WindowConfig{Size: ui.Size{Width: 320, Height: 240}})
 	keep := newWin(t, p, platform.WindowConfig{Size: ui.Size{Width: 100, Height: 100}})
-	_ = keep
+	place(t, keep, 700, 400) // out of the way: a window opens a step below the one before it
 	pointerSteps(t, p, r, 80*time.Millisecond,
 		func() { moveCursorTo(t, w, 100, 100) },
 		func() { sendInput(t, win32.MouseEventFLeftDown) },

@@ -15,6 +15,7 @@ import (
 	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/internal/platform"
 	"github.com/rm4n0s/glutter/internal/platform/windows/ime"
+	"github.com/rm4n0s/glutter/internal/platform/windows/ole"
 	"github.com/rm4n0s/glutter/internal/platform/windows/win32"
 	"github.com/rm4n0s/glutter/ui"
 )
@@ -79,6 +80,10 @@ type Platform struct {
 	dark bool
 	// oleReady says OleInitialize worked, so that Close undoes it.
 	oleReady bool
+	// ole makes the COM objects of drag and drop, nil when it could not (drag and drop is off then);
+	// drag runs the drags the app starts, made by the first one (drag_windows.go).
+	ole  *ole.Env
+	drag *dragRunner
 	// appIDSet says the explicit AppUserModelID was set (it is the process's, set once).
 	appIDSet bool
 	closed   bool
@@ -165,6 +170,11 @@ func New(opts Options) (*Platform, error) {
 		return nil, err
 	}
 	p.oleReady = true
+	if env, err := ole.Shared(); err != nil {
+		p.log.Warn("drag and drop is not available: the COM objects of OLE could not be made", "err", err)
+	} else {
+		p.ole = env
+	}
 	fail := func(err error) (*Platform, error) {
 		p.teardown()
 		return nil, err
@@ -444,6 +454,9 @@ func (p *Platform) teardown() {
 	p.closed = true
 	if d := p.desk.Load(); d != nil {
 		d.Close() // the notify icons would stay in the tray as ghosts
+	}
+	if p.drag != nil {
+		p.drag.Cancel()
 	}
 	for _, w := range p.sortedWindows() {
 		w.Close()
