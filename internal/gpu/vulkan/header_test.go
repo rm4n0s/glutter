@@ -85,6 +85,7 @@ func TestStructLayouts(t *testing.T) {
 		{"VkImageViewCreateInfo", imageViewCreateInfo{}},
 		{"VkSamplerCreateInfo", samplerCreateInfo{}},
 		{"VkShaderModuleCreateInfo", shaderModuleCreateInfo{}},
+		{"VkPipelineCacheCreateInfo", pipelineCacheCreateInfo{}},
 		{"VkDescriptorSetLayoutBinding", descriptorSetLayoutBinding{}},
 		{"VkDescriptorSetLayoutCreateInfo", descriptorSetLayoutCreateInfo{}},
 		{"VkPipelineLayoutCreateInfo", pipelineLayoutCreateInfo{}},

@@ -183,7 +183,10 @@ GPU is lost, Glutter makes its resources again once and draws the frame again; a
 within ten seconds ends the app with `VulkanDeviceLost`. `GLUTTER_VULKAN_DEVICE=<index or part of
 the name>` picks another Vulkan device, `GLUTTER_VULKAN_VALIDATION=1` turns on the validation layer,
 and `GLUTTER_DAMAGE=0` and `GLUTTER_RASTER_CACHE=0` turn off the damage rectangles and the raster
-cache of both renderers.
+cache of both renderers. What the GPU drivers compile (the program binaries of GLES, the pipeline cache of
+Vulkan) is kept in `$XDG_CACHE_HOME/glutter/shaders` (`~/.cache/glutter/shaders`) so that a second start
+compiles nothing; `GLUTTER_SHADER_CACHE=0` turns it off, and `GLUTTER_FRAME_STATS=1` logs the parts of the
+start (the renderers tried, the GPU context, the shaders, the first frame).
 
 ## Web
 

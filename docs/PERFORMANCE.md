@@ -383,6 +383,50 @@ closest, at 6.1×; 9.1× against the 87 µs that step 22.6 wrote down).
   shaping it (22 to 34 µs, from 41 to 58 before). The raster time (`CodePageRaster`, 36 ms) is not
   touched.
 
+## Cold start (step 27.10)
+
+`scripts/perf.sh -n 5 -s 5` (the counter, release tags, headless Sway 1920×1080 at 1.25, Mesa's llvmpipe for GLES, the
+AMD GPU of this machine (RADV) for the Vulkan try), 2026-10-25. The script now starts the counter with three states of
+the caches (Glutter's shader cache, SPEC §9.7, and Mesa's own disk cache, which `MESA_SHADER_CACHE_DIR` moves): both empty
+(a machine that never ran the app), the driver's warm and Glutter's empty, and both warm. The parts come from
+`GLUTTER_FRAME_STATS=1`: the renderers tried that failed, the GPU context, the shaders, the rest of the frame.
+
+| Cold start to the first frame, median of 5 (from the start of the process) | `auto` (Vulkan tried first) | `GLUTTER_RENDERER=gles` |
+|---|---|---|
+| both caches empty | 4090 ms | 3570 ms |
+| the driver's cache warm, Glutter's empty | 960 ms | 330 ms |
+| both warm | 960 ms | 320 ms |
+
+| Part of the first draw, last start (ms) | both empty | driver's warm | both warm |
+|---|---|---|---|
+| `auto`: the Vulkan try that fails | 592 | 612 | 614 |
+| GPU context (EGL, llvmpipe) | 137 | 155 | 161 |
+| the 4 programs of the counter's first frame | 231 (compiled) | 64 (compiled) | 61 (from Glutter's cache) |
+| the frame itself (llvmpipe JIT of the first draws, the rest) | 2875 | 37 | 38 |
+| first draw, all of it | 3835 | 869 | 875 |
+
+What the numbers say:
+
+- **The cache works and counts as designed** (the second start finds 4 of 4 programs, `built=0 from_cache=4`; the display
+  test `TestDisplayASecondStartFindsEveryProgramInTheCache` checks it), **but on Mesa it buys almost nothing**: Mesa keeps a
+  disk cache of its own, so with it warm the programs are compiled in 56 ms (4 of them) and loaded from Glutter's cache in
+  42 ms (`GLUTTER_RENDERER=gles`, 14 ms for the counter). The large gain, 3.6 s → 0.3 s, is Mesa's cache: llvmpipe compiles the
+  shaders to machine code at the first draw (the "frame itself" row). Glutter's cache is for the drivers that keep nothing of
+  their own, and for the start after the driver's cache was cleared or the driver was updated. Where it is measured only
+  on a real GPU (the manual check below), the answer may be different.
+- **The Vulkan try that fails costs 600 ms of the 960 ms**, on a headless compositor, with `auto`: the machine has a GPU
+  that Vulkan chooses and cannot present to the compositor's output, so the try ends at the swapchain, after the instance, the
+  device and the surface were made. With `GLUTTER_RENDERER=gles` the same start is 320 ms. On a desktop with a compositor that
+  gives the GPU buffers the Vulkan try succeeds and this cost is not paid. **Decision for the user**: whether `auto` should try
+  GLES first where Vulkan presents to no output (SPEC §9.6 says `auto` tries Vulkan first; this changes it). Nothing was changed.
+- **What is left of the 150 ms target** on this machine is the context (140–160 ms: EGL display and context on llvmpipe), the
+  programs (40–60 ms), and about 85 ms of the framework before the first draw. A GPU driver starts faster than llvmpipe; the
+  reference laptop has to say.
+
+The Vulkan pipeline cache was checked on the GPU of this machine (`TestPipelineCacheSurvivesAClose`, offscreen, no window): the
+second device loads what the first saved, a cache with another vendor in its header is not given to the device, and the file
+is replaced. lavapipe returns a header that is cut short for an empty cache, so nothing is saved there.
+
 ## What was changed for the numbers
 
 Before this step the full rebuild of the gallery was 14.6 ms. The profile was dominated by
@@ -424,6 +468,7 @@ available during this work, so they are **pending approval**.
 - Text: the benchmarks of steps 22.6 and 22.10 were not run under `GOOS=js`. A page where one line changed still costs 14 lines (see "Text: the cache of shaped runs"): the next step would be to skip the builder and the analysis for a line whose content is the same as the last frame's, which only the caller knows.
 - The web table: measure the targets again with a real display, and Firefox on a GPU (the Firefox numbers here are Mesa's software rasterizer). The two targets that are not met (sizes, late frames) need the user's decision (see "Targets not met" under Web).
 
+- The cold start with the GPU of the reference hardware, in the user's session: `scripts/perf.sh` (it needs a compositor that gives the GPU buffers, which a headless one does not), and the table above with the shader cache empty and warm (step 27.10).
 - Run `GLUTTER_RENDERER=gles scripts/perf.sh` and `GLUTTER_RENDERER=vulkan scripts/perf.sh` (a headless compositor cannot present GPU buffers: use the benchmarks of the gallery with `GLUTTER_FRAME_STATS=1` on the desktop) on a machine with a GPU, and record the comparison of step 20.7.
 - Measure again on the reference hardware (Iris Xe, 1920×1080 at 1.25): the cold start,
   the memory and the raster time.

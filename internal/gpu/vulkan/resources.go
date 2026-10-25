@@ -5,6 +5,7 @@ package vulkan
 import (
 	"image"
 	"sort"
+	"time"
 
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/internal/gpu/explicit"
@@ -673,9 +674,13 @@ func (d *Device) NewPipeline(desc explicit.PipelineDesc) (explicit.Pipeline, err
 		pColorBlendState: colorBlend, pDynamicState: dynamic, layout: p.layout,
 	})
 	out = a.out()
-	if err := check("vkCreateGraphicsPipelines", d.f.createGraphicsPipelines(d.dev, 0, 1, info, 0, out)); err != nil {
+	start := time.Now()
+	err = check("vkCreateGraphicsPipelines", d.f.createGraphicsPipelines(d.dev, d.pcache.handle, 1, info, 0, out))
+	d.pcache.took += time.Since(start)
+	if err != nil {
 		return fail(err)
 	}
+	d.pcache.pipelines++
 	p.pipeline = u64(out)
 	d.live[p] = func() { p.destroyed = true; p.release() }
 	return p, nil

@@ -60,6 +60,10 @@ type Config struct {
 	// Getenv reads the environment (backend choice, self-capture); os.Getenv when
 	// nil.
 	Getenv func(string) string
+	// ShaderCacheDir is the directory of the shader cache (the program binaries of GLES and the pipeline
+	// cache of Vulkan, SPEC §9.7); the default is $XDG_CACHE_HOME/glutter/shaders. GLUTTER_SHADER_CACHE=0 turns
+	// the cache off whatever this says.
+	ShaderCacheDir string
 	// ShmFill is a development aid: on Wayland the window draws a solid color
 	// through wl_shm and never asks the engine for a frame. X11 has no such mode.
 	ShmFill bool

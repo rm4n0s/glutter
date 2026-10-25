@@ -2,6 +2,7 @@ package gles
 
 import (
 	"image"
+	"time"
 
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/internal/gpu"
@@ -38,6 +39,9 @@ type RendererOpts struct {
 	// hand over to the UI thread and ask for a frame, which draws whole after the renderer made
 	// its resources again.
 	OnContextRestored func()
+	// ProgramCache keeps the binaries of the shader programs between runs (SPEC §9.7); none compiles every
+	// program of every run. The web has no program binaries and ignores it.
+	ProgramCache ProgramCache
 }
 
 // Renderer is the GPU renderer: a gpu.Renderer that draws with OpenGL ES 3.0.
@@ -54,8 +58,10 @@ type Renderer struct {
 	last       FrameStats
 	res        *resources // the caches of paths, clip masks and images; made at the first frame
 	cache      *layerCache
-	cacheAfter int  // RendererOpts.RasterCacheAfter
-	damage     bool // RendererOpts.Damage
+	programs   ProgramCache  // RendererOpts.ProgramCache
+	opened     time.Duration // how long opening the context took
+	cacheAfter int           // RendererOpts.RasterCacheAfter
+	damage     bool          // RendererOpts.Damage
 	closed     bool
 	// beforePresent, when set, runs after a frame is drawn and before it is
 	// presented, while its pixels can still be read back (tests).
@@ -103,9 +109,34 @@ func newRenderer(open func(gpu.SurfaceHandle) (*Context, *Surface, error), opts 
 		open:       open,
 		surfaces:   map[*glSurface]struct{}{},
 		skip:       len(opts) == 1 && opts[0].SkipUnsupported,
+		programs:   programCacheOf(opts),
 		background: [4]float32{float32(bg.R) * a, float32(bg.G) * a, float32(bg.B) * a, a},
 	}
 }
+
+// programCacheOf is the program cache of the options, if there are options.
+func programCacheOf(opts []RendererOpts) ProgramCache {
+	if len(opts) == 1 {
+		return opts[0].ProgramCache
+	}
+	return nil
+}
+
+// StartupReport says how the start went: how long the context took to open and how the shader programs made so
+// far were made.
+//
+// Flutter: no counterpart
+func (r *Renderer) StartupReport() gpu.StartupReport {
+	rep := gpu.StartupReport{Context: r.opened}
+	if r.ctx != nil && r.ctx.dev != nil {
+		st := r.ctx.dev.ProgramStats()
+		rep.Shaders = st.CompileTime + st.LoadTime
+		rep.Built, rep.Cached, rep.Refused = st.Compiled, st.Loaded, st.Refused
+	}
+	return rep
+}
+
+var _ gpu.StartupReporter = (*Renderer)(nil)
 
 // DeviceName returns GL_RENDERER, the name of the GPU (or of the software
 // rasterizer) that draws, or "" before the first Attach has opened the context.
@@ -129,11 +160,16 @@ func (r *Renderer) Attach(h gpu.SurfaceHandle) (gpu.Surface, error) {
 	}
 	var s *Surface
 	if r.ctx == nil {
+		start := time.Now()
 		ctx, first, err := r.open(h)
 		if err != nil {
 			return nil, err
 		}
+		r.opened = time.Since(start)
 		r.ctx, s = ctx, first
+		if r.programs != nil {
+			ctx.Device().SetProgramCache(r.programs)
+		}
 	} else {
 		var err error
 		if s, err = r.ctx.NewSurface(h); err != nil {

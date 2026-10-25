@@ -87,19 +87,82 @@ stop_app() {
 cpu_ticks() { awk '{ sub(/^.*\) /, ""); print $12 + $13 }' "/proc/$pid/stat"; }
 
 # Cold start: the counter, several times; the median of the time from the start of the
-# process to its first frame, and of the time from the start of Run.
-since_process=()
-since_run=()
-for i in $(seq 1 "$runs"); do
-  start_app counter
-  line="$(grep "first frame presented" "$tmp/counter.log" | head -1)"
-  since_process+=("$(duration_ms "$(field "$line" since_process_start)")")
-  since_run+=("$(duration_ms "$(field "$line" since_run)")")
-  stop_app
-done
+# process to its first frame, and of the time from the start of Run. Once with an empty
+# shader cache (a new directory for each start: every program is compiled) and once with a
+# warm one (a first start fills it, SPEC §9.7). The parts of the first draw come from the log
+# of the last start (GLUTTER_FRAME_STATS=1): the renderers tried and failed, the GPU context,
+# the shaders, and the rest of the first frame.
 median() { printf '%s\n' "$@" | sort -n | awk '{ v[NR] = $1 } END { print v[int((NR + 1) / 2)] }'; }
+
+# stage_took prints the "took" of the log line of a startup stage, in milliseconds; 0 when
+# there is none. stage_sum adds those of all the lines of the stage (several renderers tried).
+stage_line() { grep "stage=$2 " "$tmp/$1.log" 2>/dev/null || grep "stage=\"$2\" " "$tmp/$1.log" 2>/dev/null || true; }
+stage_sum() {
+  local total=0 line
+  while IFS= read -r line; do
+    [[ -n "$line" ]] && total="$(awk -v a="$total" -v b="$(duration_ms "$(field "$line" took)")" 'BEGIN { printf "%.1f", a + b }')"
+  done < <(stage_line "$1" "$2")
+  echo "$total"
+}
+
+cache_root="$tmp/shader-cache"
+# cold_start runs the counter $runs times and sets since_process and since_run. The mode says
+# what the caches hold: "empty" is a machine that never ran the app (Glutter's cache and the
+# driver's own cache, Mesa's, both empty), "driver" has the driver's cache warm and Glutter's
+# empty (what a start after Glutter's cache was cleared sees), and "warm" has both warm. Mesa's
+# cache is moved with MESA_SHADER_CACHE_DIR so that the modes do not touch the user's.
+cold_start() {
+  local mode="$1" dir mesa i line
+  since_process=()
+  since_run=()
+  case "$mode" in
+    warm) dir="$cache_root/warm"; mesa="$cache_root/warm-mesa" ;;
+    driver) mesa="$cache_root/driver-mesa" ;;
+  esac
+  if [[ "$mode" == warm || "$mode" == driver ]]; then
+    # A first start fills the caches that the runs below find.
+    start_app counter XDG_CACHE_HOME="${dir:-$cache_root/prime}" MESA_SHADER_CACHE_DIR="$mesa"
+    stop_app
+  fi
+  for i in $(seq 1 "$runs"); do
+    [[ "$mode" != warm ]] && dir="$cache_root/$mode-$i"
+    [[ "$mode" == empty ]] && mesa="$cache_root/empty-mesa-$i"
+    start_app counter XDG_CACHE_HOME="$dir" MESA_SHADER_CACHE_DIR="$mesa"
+    line="$(grep "first frame presented" "$tmp/counter.log" | head -1)"
+    since_process+=("$(duration_ms "$(field "$line" since_process_start)")")
+    since_run+=("$(duration_ms "$(field "$line" since_run)")")
+    stop_app
+  done
+  cp "$tmp/counter.log" "$tmp/cold-$mode.log"
+}
+cold_start empty
 cold_process="$(median "${since_process[@]}")"
 cold_run="$(median "${since_run[@]}")"
+cold_start driver
+driver_process="$(median "${since_process[@]}")"
+driver_run="$(median "${since_run[@]}")"
+cold_start warm
+warm_process="$(median "${since_process[@]}")"
+warm_run="$(median "${since_run[@]}")"
+
+# part prints a part of the first draw of the last start of a mode, in milliseconds.
+part() {
+  local mode="$1" what="$2" line
+  cp "$tmp/cold-$mode.log" "$tmp/part.log"
+  case "$what" in
+    tried) stage_sum part "\"renderer tried\"" ;;
+    context) stage_sum part "\"GPU context or device\"" ;;
+    shaders) stage_sum part shaders ;;
+    first) stage_sum part "\"frame without the above\"" ;;
+    draw) line="$(grep "stage=\"first draw" "$tmp/part.log" | head -1)"; duration_ms "$(field "$line" took)" ;;
+  esac
+}
+shader_counts() {
+  local line
+  cp "$tmp/cold-$1.log" "$tmp/part.log"
+  line="$(grep "stage=shaders " "$tmp/part.log" | head -1)"
+  echo "$(field "$line" built) built, $(field "$line" from_cache) from the cache"
+}
 
 # Idle CPU and memory: the counter, settled, with nothing happening.
 start_app counter
@@ -159,9 +222,22 @@ cat <<TABLE
 |---|---|---|
 | Idle CPU, counter ($seconds s, no input) | ~0% | ${idle_cpu}% (${frames_idle} frames logged while idle) |
 | Idle CPU, counter without the focus (another window is active, $seconds s) | ~0% | ${unfocused_cpu}% (${frames_unfocused} frames logged since the start) |
-| Cold start to first frame, counter (median of $runs, from the start of the process) | < 150 ms | ${cold_process} ms (from the start of Run: ${cold_run} ms) |
+| Cold start to first frame, counter, empty caches: Glutter's and the driver's (median of $runs, from the start of the process) | < 150 ms | ${cold_process} ms (from the start of Run: ${cold_run} ms) |
+| Cold start to first frame, counter, the driver's cache warm and Glutter's empty (median of $runs) | < 150 ms | ${driver_process} ms (from the start of Run: ${driver_run} ms) |
+| Cold start to first frame, counter, both caches warm (median of $runs) | < 150 ms | ${warm_process} ms (from the start of Run: ${warm_run} ms) |
 | Resident memory, counter | < 60 MB | $((rss_kb / 1024)) MB (peak $((hwm_kb / 1024)) MB), of which the Go runtime asked the system for ${go_sys} MB (heap in use ${go_heap} MB) and the rest is the graphics driver and the executable |
 | Gallery, data page with indeterminate indicators, $seconds s | the display's refresh rate, no dropped frames | ${g_fps} frames per second, ${g_slow} frames over 16.7 ms, CPU ${gallery_cpu}% |
 | Gallery, build time per frame (average, worst) | UI thread < 2 ms for an animation-only frame | ${g_build} ms, ${g_build_max} ms |
 | Gallery, raster time per frame (average, worst), Mesa software renderer | (not a SPEC §15 number: no GPU here) | ${g_raster} ms, ${g_raster_max} ms |
 TABLE
+
+cat <<PARTS
+
+| Part of the first draw, last start (ms) | Empty caches | Driver's cache warm | Both warm |
+|---|---|---|---|
+| Renderers tried that failed (Vulkan without a presentable GPU) | $(part empty tried) | $(part driver tried) | $(part warm tried) |
+| GPU context or device | $(part empty context) | $(part driver context) | $(part warm context) |
+| Shaders ($(shader_counts empty); $(shader_counts driver); $(shader_counts warm)) | $(part empty shaders) | $(part driver shaders) | $(part warm shaders) |
+| The frame itself | $(part empty first) | $(part driver first) | $(part warm first) |
+| First draw, all of it | $(part empty draw) | $(part driver draw) | $(part warm draw) |
+PARTS

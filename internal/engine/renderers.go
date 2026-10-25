@@ -3,10 +3,13 @@ package engine
 import (
 	"image"
 	"log/slog"
+	"os"
 	"strings"
+	"time"
 
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/internal/gpu"
+	"github.com/rm4n0s/glutter/internal/gpu/shadercache"
 	"github.com/rm4n0s/glutter/ui"
 )
 
@@ -39,6 +42,29 @@ type rendererCandidate struct {
 	// device that was lost twice in ten seconds or cannot be had again; Vulkan does not. A
 	// renderer asked for by name never switches.
 	SwitchOn func(err error) bool
+}
+
+// newShaderCache makes the cache of what the GPU drivers compile (SPEC §9.7): in Config.ShaderCacheDir, or the
+// directory of the environment. It is nil when the cache is off (GLUTTER_SHADER_CACHE=0) or there is no place for
+// it (the web). A cache that cannot be read or written is logged once and then ignored.
+func newShaderCache(cfg *Config, getenv func(string) string, log *slog.Logger) *shadercache.Cache {
+	if getenv(shadercache.EnvVar) == "0" {
+		return nil
+	}
+	dir := cfg.ShaderCacheDir
+	if dir == "" {
+		dir = shadercache.Dir(getenv)
+	}
+	if dir == "" {
+		return nil
+	}
+	return shadercache.New(dir, func(err error) {
+		attrs := []any{"dir", dir, "err", err}
+		if appErr, ok := errors.FromError(err); ok {
+			attrs = append(attrs, "tag", appErr.Tag)
+		}
+		log.Warn("the shader cache cannot be used; the shaders are compiled at each start", attrs...)
+	})
 }
 
 // describer is a renderer that can name itself and its device, for the log: "gles:
@@ -139,14 +165,20 @@ func (c *chooser) try(h gpu.SurfaceHandle, width, height int, scene *ui.Scene, c
 			// keeps the first kind of context it was asked for) must not reach this one.
 			c.cfg.renewSurface(h)
 		}
+		start := time.Now()
 		r := cand.New(c.cfg, c.log)
 		img, err := r.Draw(h, width, height, scene, capture)
+		took := time.Since(start)
 		if err == nil {
 			c.cur, c.name, c.chosen, c.after, c.cand, c.renew = r, cand.Name, cand, c.cand[1:], nil, false
 			c.log.Info("renderer chosen", "renderer", c.Describe())
+			c.logStartup(cand.Name, took, r)
 			return img, nil
 		}
 		r.Close()
+		if c.frameStats() {
+			c.log.Info("startup", "stage", "renderer tried", "renderer", cand.Name, "took", took.Round(time.Millisecond), "err", err)
+		}
 		if c.named {
 			return nil, err
 		}
@@ -158,6 +190,35 @@ func (c *chooser) try(h gpu.SurfaceHandle, width, height int, scene *ui.Scene, c
 		last, c.cand = err, c.cand[1:]
 	}
 	return nil, last
+}
+
+// frameStats is whether GLUTTER_FRAME_STATS=1 asks for the parts of the start in the log.
+func (c *chooser) frameStats() bool {
+	getenv := c.cfg.Getenv
+	if getenv == nil {
+		getenv = os.Getenv
+	}
+	return getenv(FrameStatsEnv) == "1"
+}
+
+// logStartup splits the first draw of the renderer that was chosen into the parts the renderer measured: opening
+// the GPU, making the shader programs or pipelines (built, or taken from the shader cache), and the rest, which is
+// the frame itself.
+func (c *chooser) logStartup(name string, took time.Duration, r renderer) {
+	if !c.frameStats() {
+		return
+	}
+	round := func(d time.Duration) time.Duration { return d.Round(time.Microsecond * 100) }
+	c.log.Info("startup", "stage", "first frame of the renderer", "renderer", name, "took", round(took))
+	rep, ok := r.(gpu.StartupReporter)
+	if !ok {
+		return
+	}
+	s := rep.StartupReport()
+	c.log.Info("startup", "stage", "GPU context or device", "renderer", name, "took", round(s.Context))
+	c.log.Info("startup", "stage", "shaders", "renderer", name, "took", round(s.Shaders),
+		"built", s.Built, "from_cache", s.Cached, "refused", s.Refused, "pipeline_cache_bytes", s.CacheBytes)
+	c.log.Info("startup", "stage", "frame without the above", "renderer", name, "took", round(max(0, took-s.Context-s.Shaders)))
 }
 
 // Describe names the renderer in use and its device, or "" before the first frame.

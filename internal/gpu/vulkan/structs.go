@@ -292,6 +292,15 @@ type shaderModuleCreateInfo struct {
 	pCode    uintptr
 }
 
+type pipelineCacheCreateInfo struct {
+	sType           uint32
+	pNext           uintptr
+	flags           uint32
+	_               uint32
+	initialDataSize uintptr
+	pInitialData    uintptr
+}
+
 type descriptorSetLayoutBinding struct {
 	binding            uint32
 	descriptorType     uint32

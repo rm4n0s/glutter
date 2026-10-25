@@ -43,6 +43,9 @@ type glLib struct {
 	linkProgramFn        func(program uint32)
 	getProgramivFn       func(program, name uint32, params uintptr)
 	getProgramInfoLogFn  func(program uint32, bufSize int32, length, log uintptr)
+	getProgramBinaryFn   func(program uint32, bufSize int32, length, format, binary uintptr)
+	programBinaryFn      func(program, format uint32, binary uintptr, length int32)
+	programParameteriFn  func(program, name uint32, value int32)
 	useProgramFn         func(program uint32)
 	deleteProgramFn      func(program uint32)
 	getUniformLocationFn func(program uint32, name uintptr) int32
@@ -129,6 +132,7 @@ func (g *glLib) glSymbols() []struct {
 		{&g.getShaderivFn, "glGetShaderiv"}, {&g.getShaderInfoLogFn, "glGetShaderInfoLog"}, {&g.deleteShaderFn, "glDeleteShader"},
 		{&g.createProgramFn, "glCreateProgram"}, {&g.attachShaderFn, "glAttachShader"}, {&g.linkProgramFn, "glLinkProgram"},
 		{&g.getProgramivFn, "glGetProgramiv"}, {&g.getProgramInfoLogFn, "glGetProgramInfoLog"}, {&g.useProgramFn, "glUseProgram"},
+		{&g.getProgramBinaryFn, "glGetProgramBinary"}, {&g.programBinaryFn, "glProgramBinary"}, {&g.programParameteriFn, "glProgramParameteri"},
 		{&g.deleteProgramFn, "glDeleteProgram"}, {&g.getUniformLocationFn, "glGetUniformLocation"}, {&g.getAttribLocationFn, "glGetAttribLocation"},
 		{&g.uniform1iFn, "glUniform1i"}, {&g.uniform1fFn, "glUniform1f"}, {&g.uniform2fFn, "glUniform2f"}, {&g.uniform3fFn, "glUniform3f"},
 		{&g.uniform4fFn, "glUniform4f"}, {&g.uniform1fvFn, "glUniform1fv"}, {&g.uniform4fvFn, "glUniform4fv"},
@@ -275,6 +279,37 @@ func (g *glLib) getProgramiv(program, name uint32) int32 {
 func (g *glLib) getProgramInfoLog(program uint32) string {
 	n := g.getProgramiv(program, glInfoLogLength)
 	return g.infoLog(n, func(size int32, length, log uintptr) { g.getProgramInfoLogFn(program, size, length, log) })
+}
+
+func (g *glLib) programBinaryFormats() int32 {
+	*(*int32)(dl.Pointer(g.ids)) = 0
+	g.getIntegervFn(glNumProgramBinaryFormats, g.ids)
+	return *(*int32)(dl.Pointer(g.ids))
+}
+
+func (g *glLib) getProgramBinary(program uint32) (uint32, []byte, bool) {
+	n := g.getProgramiv(program, glProgramBinaryLength)
+	if n <= 0 {
+		return 0, nil, false
+	}
+	binary := dl.Malloc(uintptr(n))
+	defer dl.Free(binary)
+	length, format := g.ids+8, g.ids+12
+	*(*int32)(dl.Pointer(length)), *(*uint32)(dl.Pointer(format)) = 0, 0
+	g.getProgramBinaryFn(program, n, length, format, binary)
+	got := int(*(*int32)(dl.Pointer(length)))
+	if got <= 0 || got > int(n) {
+		return 0, nil, false
+	}
+	return *(*uint32)(dl.Pointer(format)), append([]byte(nil), dl.Bytes(binary, got)...), true
+}
+
+func (g *glLib) programBinary(program, format uint32, data []byte) {
+	g.programBinaryFn(program, format, g.put(data), int32(len(data)))
+}
+
+func (g *glLib) programParameteri(program, name uint32, value int32) {
+	g.programParameteriFn(program, name, value)
 }
 
 // infoLog reads an info log of up to n bytes through the callback.

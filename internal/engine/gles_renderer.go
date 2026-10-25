@@ -18,12 +18,14 @@ type glesRenderer struct {
 	// name is what GLUTTER_RENDERER calls it: "gles" or "webgl".
 	name string
 	// newGL is gles.NewRenderer of the OS.
-	newGL    func(...gles.RendererOpts) *gles.Renderer
-	redraw   func(gpu.SurfaceHandle) // Config.redraw: a context that came back wants a frame
-	log      *slog.Logger
-	skip     bool
-	cache    bool // the raster cache is on
-	damage   bool // frames tell the compositor what changed
+	newGL  func(...gles.RendererOpts) *gles.Renderer
+	redraw func(gpu.SurfaceHandle) // Config.redraw: a context that came back wants a frame
+	log    *slog.Logger
+	skip   bool
+	cache  bool // the raster cache is on
+	damage bool // frames tell the compositor what changed
+	// programs keeps the program binaries between runs (nil when the cache is off).
+	programs gles.ProgramCache
 	renderer *gles.Renderer
 	surfaces map[gpu.SurfaceHandle]gpu.Surface
 	reported int // the number of skipped commands the log last said
@@ -32,6 +34,14 @@ type glesRenderer struct {
 	// reattached is whether the first frame on a surface made for the existing context is still to
 	// come: its log line says what the frame had to make again (SPEC §24.4).
 	reattached bool
+}
+
+// StartupReport says how the start went (the context, the shader programs), for the log.
+func (r *glesRenderer) StartupReport() gpu.StartupReport {
+	if r.renderer == nil {
+		return gpu.StartupReport{}
+	}
+	return r.renderer.StartupReport()
 }
 
 // Describe names the renderer and its GPU: "gles: llvmpipe (LLVM 19.1.7, 256 bits)", or
@@ -52,8 +62,13 @@ func newGLRenderer(name string, newGL func(...gles.RendererOpts) *gles.Renderer,
 	if getenv == nil {
 		getenv = os.Getenv
 	}
+	var programs gles.ProgramCache
+	if c := newShaderCache(cfg, getenv, log); c != nil {
+		programs = c
+	}
 	return &glesRenderer{
-		name: name, newGL: newGL, redraw: cfg.redraw,
+		programs: programs,
+		name:     name, newGL: newGL, redraw: cfg.redraw,
 		log: log, skip: cfg.SkipUnsupported, surfaces: map[gpu.SurfaceHandle]gpu.Surface{},
 		cache:  !cfg.DisableRasterCache && getenv(RasterCacheEnv) != "0",
 		damage: damage && !cfg.DisableDamage && getenv(DamageEnv) != "0",
@@ -73,6 +88,7 @@ func (r *glesRenderer) Draw(h gpu.SurfaceHandle, width, height int, scene *ui.Sc
 		if r.cache {
 			opts.RasterCacheAfter = rasterCacheAfter
 		}
+		opts.ProgramCache = r.programs
 		if r.redraw != nil {
 			opts.OnContextRestored = func() { r.redraw(h) }
 		}

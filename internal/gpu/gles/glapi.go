@@ -45,6 +45,15 @@ type glAPI interface {
 	linkProgram(program uint32)
 	getProgramiv(program, name uint32) int32
 	getProgramInfoLog(program uint32) string
+	// Program binaries (GLES 3.0), for the program cache. programBinaryFormats is how many formats
+	// the driver has (0: none); getProgramBinary returns the binary of a linked program (false when
+	// the driver gives none); programBinary loads one into a program, which then has a link status
+	// (the driver may refuse it); programParameteri sets a hint such as the one that makes the binary
+	// retrievable, before the link. The web has none.
+	programBinaryFormats() int32
+	getProgramBinary(program uint32) (format uint32, data []byte, ok bool)
+	programBinary(program, format uint32, data []byte)
+	programParameteri(program, name uint32, value int32)
 	useProgram(program uint32)
 	deleteProgram(program uint32)
 	getUniformLocation(program uint32, name string) int32

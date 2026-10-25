@@ -71,6 +71,9 @@ type vkFuncs struct {
 	createPipelineLayout        func(device, pInfo, pAllocator, pLayout uintptr) int32
 	destroyPipelineLayout       func(device uintptr, layout uint64, pAllocator uintptr)
 	createGraphicsPipelines     func(device uintptr, cache uint64, count uint32, pInfos, pAllocator, pPipelines uintptr) int32
+	createPipelineCache         func(device, pInfo, pAllocator, pCache uintptr) int32
+	destroyPipelineCache        func(device uintptr, cache uint64, pAllocator uintptr)
+	getPipelineCacheData        func(device uintptr, cache uint64, pDataSize, pData uintptr) int32
 	destroyPipeline             func(device uintptr, pipeline uint64, pAllocator uintptr)
 	createDescriptorPool        func(device, pInfo, pAllocator, pPool uintptr) int32
 	destroyDescriptorPool       func(device uintptr, pool uint64, pAllocator uintptr)
@@ -189,6 +192,9 @@ func (f *vkFuncs) symbols() []symbol {
 		d(&f.createPipelineLayout, "vkCreatePipelineLayout"),
 		d(&f.destroyPipelineLayout, "vkDestroyPipelineLayout"),
 		d(&f.createGraphicsPipelines, "vkCreateGraphicsPipelines"),
+		d(&f.createPipelineCache, "vkCreatePipelineCache"),
+		d(&f.destroyPipelineCache, "vkDestroyPipelineCache"),
+		d(&f.getPipelineCacheData, "vkGetPipelineCacheData"),
 		d(&f.destroyPipeline, "vkDestroyPipeline"),
 		d(&f.createDescriptorPool, "vkCreateDescriptorPool"),
 		d(&f.destroyDescriptorPool, "vkDestroyDescriptorPool"),

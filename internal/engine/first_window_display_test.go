@@ -5,8 +5,10 @@ package engine_test
 import (
 	"context"
 	"fmt"
+	"github.com/rm4n0s/errors"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -33,6 +35,10 @@ func TestDisplayFirstWindowChild(t *testing.T) {
 	if backend == "" {
 		t.Skip("run by runFirstWindowApp")
 	}
+	// EGL binds the context to the thread that made it current: Run draws on this goroutine, which RunApp keeps on
+	// the main thread (SPEC §8.1) and a test goroutine must pin to one.
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
@@ -91,6 +97,9 @@ func TestDisplayFirstWindowChild(t *testing.T) {
 		},
 	}
 	if err := engine.Run(ctx, cfg); err != nil {
+		if appErr, ok := errors.FromError(err); ok {
+			t.Fatalf("Run: %v (route %s, metadata %v)", err, appErr.Route(), appErr.Metadata)
+		}
 		t.Fatalf("Run: %v", err)
 	}
 	fmt.Println("RUN-ENDED")

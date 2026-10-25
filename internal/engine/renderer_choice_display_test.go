@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -33,6 +34,8 @@ func TestDisplayChoiceChild(t *testing.T) {
 	if os.Getenv(choiceChildEnv) == "" {
 		t.Skip("run by chosenRenderer")
 	}
+	runtime.LockOSThread() // the EGL context belongs to one thread, as it does for RunApp on the main thread
+	defer runtime.UnlockOSThread()
 	t.Setenv("GLUTTER_SCREENSHOT", filepath.Join(t.TempDir(), "shot.png"))
 	t.Setenv("GLUTTER_BACKEND", "wayland")
 	log, buf := recordingLog()

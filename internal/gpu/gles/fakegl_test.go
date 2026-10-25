@@ -22,6 +22,11 @@ type fakeGL struct {
 	errOnce       uint32 // returned by the next getError only
 	failShader    string // "vertex" or "fragment": that stage does not compile
 	failLink      bool
+	// Program binaries: binaryFormats is how many formats the driver has; refuseBinary makes
+	// programBinary leave the program unlinked.
+	binaryFormats int32
+	refuseBinary  bool
+	linked        map[uint32]bool
 	shaderLog     string
 	fbStatus      uint32 // glFramebufferComplete when 0
 
@@ -178,13 +183,54 @@ func (g *fakeGL) getShaderInfoLog(uint32) string {
 func (g *fakeGL) deleteShader(s uint32)    { g.rec("deleteShader", s); g.del("shader", s) }
 func (g *fakeGL) createProgram() uint32    { g.rec("createProgram"); return g.gen("program") }
 func (g *fakeGL) attachShader(p, s uint32) { g.rec("attachShader", p, s) }
-func (g *fakeGL) linkProgram(p uint32)     { g.rec("linkProgram", p) }
-func (g *fakeGL) getProgramiv(_, name uint32) int32 {
+func (g *fakeGL) linkProgram(p uint32) {
+	g.rec("linkProgram", p)
+	if g.linked == nil {
+		g.linked = map[uint32]bool{}
+	}
+	g.linked[p] = !g.failLink
+}
+func (g *fakeGL) getProgramiv(p, name uint32) int32 {
 	g.rec("getProgramiv")
-	if name == glLinkStatus && g.failLink {
-		return 0
+	switch name {
+	case glLinkStatus:
+		if g.failLink && !g.linked[p] {
+			return 0
+		}
+		if !g.linked[p] && g.refuseBinary {
+			return 0
+		}
+		return 1
+	case glProgramBinaryLength:
+		return int32(len(g.binaryOf(p)))
 	}
 	return 1
+}
+
+// binaryOf is the binary the fake driver makes of a program: its name, so that a test can tell them apart.
+func (g *fakeGL) binaryOf(p uint32) []byte { return []byte(fmt.Sprintf("binary-of-%d", p)) }
+
+func (g *fakeGL) programBinaryFormats() int32 { g.rec("programBinaryFormats"); return g.binaryFormats }
+func (g *fakeGL) getProgramBinary(p uint32) (uint32, []byte, bool) {
+	g.rec("getProgramBinary", p)
+	if g.binaryFormats == 0 || !g.linked[p] {
+		return 0, nil, false
+	}
+	return 0x1234, g.binaryOf(p), true
+}
+func (g *fakeGL) programBinary(p, format uint32, data []byte) {
+	g.rec("programBinary", p, format, string(data))
+	if g.refuseBinary || format != 0x1234 {
+		g.errOnce = glInvalidEnum
+		return
+	}
+	if g.linked == nil {
+		g.linked = map[uint32]bool{}
+	}
+	g.linked[p] = true
+}
+func (g *fakeGL) programParameteri(p, name uint32, value int32) {
+	g.rec("programParameteri", p, name, value)
 }
 func (g *fakeGL) getProgramInfoLog(uint32) string {
 	g.rec("getProgramInfoLog")

@@ -39,6 +39,8 @@ type physicalInfo struct {
 	Type uint32
 	// VendorID, DeviceID and DriverVersion are the fields of those names.
 	VendorID, DeviceID, DriverVersion uint32
+	// PipelineCacheUUID is pipelineCacheUUID: it identifies the driver build that wrote a pipeline cache.
+	PipelineCacheUUID [uuidSize]byte
 	// APIVersion is the version the device supports.
 	APIVersion uint32
 	// Extensions are the device extensions.

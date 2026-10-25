@@ -401,6 +401,15 @@ func (g *glJS) getProgramiv(program, name uint32) int32 {
 func (g *glJS) getProgramInfoLog(program uint32) string {
 	return g.str(g.f.getProgramInfoLog.Invoke(g.obj(program)))
 }
+
+// WebGL 2 has no program binaries.
+func (g *glJS) programBinaryFormats() int32 { return 0 }
+func (g *glJS) getProgramBinary(uint32) (uint32, []byte, bool) {
+	return 0, nil, false
+}
+func (g *glJS) programBinary(uint32, uint32, []byte)    {}
+func (g *glJS) programParameteri(uint32, uint32, int32) {}
+
 func (g *glJS) useProgram(p uint32)    { g.f.useProgram.Invoke(g.obj(p)) }
 func (g *glJS) deleteProgram(p uint32) { g.drop(g.f.deleteProgram, p) }
 func (g *glJS) getUniformLocation(program uint32, name string) int32 {

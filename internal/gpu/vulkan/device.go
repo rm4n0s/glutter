@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"time"
 
 	"github.com/rm4n0s/glutter/internal/gpu"
 	"github.com/rm4n0s/glutter/internal/gpu/explicit"
@@ -35,6 +36,8 @@ type Options struct {
 	// that can present to it, and has the swapchain extension. Without it the device draws
 	// offscreen only.
 	Surface gpu.SurfaceHandle
+	// PipelineCache keeps the pipeline cache between runs (SPEC §9.7); none makes every pipeline from scratch.
+	PipelineCache PipelineCache
 }
 
 // Device is a Vulkan device and its queue: an explicit.Device. It is used on the UI
@@ -67,6 +70,7 @@ type Device struct {
 	surfaces    map[gpu.SurfaceHandle]*surface // the surfaces of the windows that have a swapchain
 	incremental bool                           // VK_KHR_incremental_present is enabled
 	windows     bool                           // the device was made for windows: VK_KHR_swapchain is enabled
+	pcache      pipelineCaching
 }
 
 var _ explicit.Device = (*Device)(nil)
@@ -108,6 +112,7 @@ func (m memory) free(mem deviceMemoryH) { m.d.f.freeMemory(m.d.dev, mem, 0) }
 //
 // Flutter: no counterpart
 func Open(o Options) (*Device, error) {
+	start := time.Now()
 	getenv := o.Getenv
 	if getenv == nil {
 		getenv = os.Getenv
@@ -133,17 +138,18 @@ func Open(o Options) (*Device, error) {
 	if err != nil {
 		return nil, err
 	}
-	d, err := openDevice(inst, chooseOpts{Selector: getenv(deviceEnvVar), AllowCPU: o.AllowCPU, DenyKnownBad: o.DenyKnownBad}, o.Surface, log)
+	d, err := openDevice(inst, chooseOpts{Selector: getenv(deviceEnvVar), AllowCPU: o.AllowCPU, DenyKnownBad: o.DenyKnownBad}, o.Surface, log, o.PipelineCache)
 	if err != nil {
 		inst.destroy()
 		return nil, err
 	}
+	d.pcache.opened = time.Since(start)
 	return d, nil
 }
 
 // openDevice chooses a physical device and makes the logical one. With a surface, the
 // device must be able to present to it.
-func openDevice(inst *instance, opts chooseOpts, h gpu.SurfaceHandle, log *slog.Logger) (*Device, error) {
+func openDevice(inst *instance, opts chooseOpts, h gpu.SurfaceHandle, log *slog.Logger, store PipelineCache) (*Device, error) {
 	a := &arena{}
 	defer a.free()
 	handles, infos, err := inst.physicalDevices(a)
@@ -213,6 +219,7 @@ func openDevice(inst *instance, opts chooseOpts, h gpu.SurfaceHandle, log *slog.
 		d.Close() //nolint:errcheck // the error that matters is the one being returned
 		return nil, err
 	}
+	d.initPipelineCache(store)
 	log.Info("Vulkan device", "device", d.Description(), "api", versionString(info.APIVersion), "queue_family", family)
 	return d, nil
 }
@@ -249,6 +256,7 @@ func (i *instance) describe(a *arena, index int, h physicalDeviceH) (physicalInf
 	info := physicalInfo{
 		Index: index, Name: cName(props.deviceName[:]), Type: props.deviceType,
 		VendorID: props.vendorID, DeviceID: props.deviceID, DriverVersion: props.driverVersion,
+		PipelineCacheUUID:   props.pipelineCacheUUID,
 		APIVersion:          min(props.apiVersion, i.version),
 		MaxImageDimension2D: props.limits.maxImageDimension2D,
 		Extensions:          map[string]bool{},
@@ -375,6 +383,11 @@ func (d *Device) Close() error {
 	d.closed = true
 	if d.dev != 0 {
 		_ = d.f.deviceWaitIdle(d.dev)
+		d.SavePipelineCache()
+		if d.pcache.handle != 0 {
+			d.f.destroyPipelineCache(d.dev, d.pcache.handle, 0)
+			d.pcache.handle = 0
+		}
 		for i := range d.slots {
 			d.slots[i].runDeferred()
 		}

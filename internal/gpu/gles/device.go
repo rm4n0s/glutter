@@ -1,10 +1,14 @@
 package gles
 
 import (
+	"crypto/sha256"
 	"embed"
+	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/rm4n0s/errors"
 )
@@ -57,6 +61,33 @@ type Device struct {
 	live     liveCounts
 	counts   callCounts
 	closed   bool
+	// cache keeps the binaries of the linked programs between runs; nil when there is none.
+	cache ProgramCache
+	progs ProgramStats
+}
+
+// ProgramCache keeps the binaries of linked programs between runs: shadercache.Cache is one. The key says
+// which program on which driver; a value is the format and the bytes the driver gave. A Store that fails is
+// the cache's business (it reports it once); the device goes on.
+//
+// Flutter: no counterpart
+type ProgramCache interface {
+	Load(key string) ([]byte, bool)
+	Store(key string, data []byte)
+}
+
+// ProgramStats says how the shader programs of the device were made: from their sources, or from the binaries
+// of the program cache.
+//
+// Flutter: no counterpart
+type ProgramStats struct {
+	// Compiled and Loaded are the programs made from source and from a cached binary.
+	Compiled, Loaded int
+	// Refused is the binaries that the driver did not accept (the program was then compiled), and Stored the
+	// binaries given to the cache.
+	Refused, Stored int
+	// CompileTime and LoadTime are the time the two took, together.
+	CompileTime, LoadTime time.Duration
 }
 
 // callCounts is how many GL calls the state cache saved and made, since the device
@@ -602,6 +633,14 @@ func (d *Device) Program(name string) (*Program, error) {
 //
 // Flutter: no counterpart
 func (d *Device) NewProgram(name, vertexSource, fragmentSource string) (*Program, error) {
+	key := d.programKey(name, vertexSource, fragmentSource)
+	if key != "" {
+		if p, ok := d.loadProgram(name, key); ok {
+			return p, nil
+		}
+	}
+	start := time.Now()
+	defer func() { d.progs.CompileTime += time.Since(start) }()
 	vs, err := d.compile(name, "vertex shader", glVertexShader, vertexSource)
 	if err != nil {
 		return nil, err
@@ -612,6 +651,9 @@ func (d *Device) NewProgram(name, vertexSource, fragmentSource string) (*Program
 		return nil, err
 	}
 	id := d.gl.createProgram()
+	if key != "" {
+		d.gl.programParameteri(id, glProgramBinaryRetrievable, 1)
+	}
 	d.gl.attachShader(id, vs)
 	d.gl.attachShader(id, fs)
 	d.gl.linkProgram(id)
@@ -625,7 +667,73 @@ func (d *Device) NewProgram(name, vertexSource, fragmentSource string) (*Program
 			"program", name, "stage", "link", "log", log)
 	}
 	d.live.programs++
+	d.progs.Compiled++
+	if key != "" {
+		d.storeProgram(key, id)
+	}
 	return &Program{name: name, id: id, dev: d, uniforms: map[string]int32{}, attribs: map[string]int32{}, values: map[int32]*uniformValue{}}, nil
+}
+
+// SetProgramCache gives the device the cache that its programs are loaded from and stored in. Without one
+// (the default, and always on the web), or when the driver has no program binary formats, every program is
+// compiled.
+//
+// Flutter: no counterpart
+func (d *Device) SetProgramCache(c ProgramCache) { d.cache = c }
+
+// ProgramStats says how the programs made so far were made.
+//
+// Flutter: no counterpart
+func (d *Device) ProgramStats() ProgramStats { return d.progs }
+
+// programKey is the key of a program in the cache: the hash of its sources and of the driver (GL_VENDOR,
+// GL_RENDERER and GL_VERSION), so that a new driver or a changed shader never reads an old binary. It is empty
+// when the device has no cache or the driver has no binary formats.
+func (d *Device) programKey(name, vertexSource, fragmentSource string) string {
+	if d.cache == nil || d.gl.programBinaryFormats() <= 0 {
+		return ""
+	}
+	h := sha256.New()
+	for _, part := range []string{d.caps.Vendor, d.caps.Renderer, d.caps.Version, name, vertexSource, fragmentSource} {
+		h.Write([]byte(part))
+		h.Write([]byte{0})
+	}
+	return "gles-program-" + hex.EncodeToString(h.Sum(nil))
+}
+
+// loadProgram makes the program from its cached binary. A binary the driver refuses (a driver that changed in a
+// way the key does not show) is dropped: the caller compiles the program and stores the new binary over it.
+func (d *Device) loadProgram(name, key string) (*Program, bool) {
+	data, ok := d.cache.Load(key)
+	if !ok || len(data) <= 4 {
+		return nil, false
+	}
+	start := time.Now()
+	id := d.gl.createProgram()
+	d.gl.programBinary(id, binary.LittleEndian.Uint32(data), data[4:])
+	// A refused binary leaves GL errors; they are not the renderer's.
+	for i := 0; i < 8 && d.gl.getError() != glNoError; i++ {
+	}
+	if d.gl.getProgramiv(id, glLinkStatus) == 0 {
+		d.gl.deleteProgram(id)
+		d.progs.Refused++
+		return nil, false
+	}
+	d.live.programs++
+	d.progs.Loaded++
+	d.progs.LoadTime += time.Since(start)
+	return &Program{name: name, id: id, dev: d, uniforms: map[string]int32{}, attribs: map[string]int32{}, values: map[int32]*uniformValue{}}, true
+}
+
+// storeProgram gives the binary of a linked program to the cache: the format, then the bytes.
+func (d *Device) storeProgram(key string, id uint32) {
+	format, data, ok := d.gl.getProgramBinary(id)
+	if !ok {
+		return
+	}
+	entry := binary.LittleEndian.AppendUint32(make([]byte, 0, 4+len(data)), format)
+	d.cache.Store(key, append(entry, data...))
+	d.progs.Stored++
 }
 
 // compile compiles one shader stage.

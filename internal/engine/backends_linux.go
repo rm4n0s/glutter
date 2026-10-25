@@ -68,8 +68,12 @@ func newVulkanRenderer(cfg *Config, log *slog.Logger) renderer {
 	if !cfg.DisableRasterCache && getenv(RasterCacheEnv) != "0" {
 		opts.RasterCacheAfter = rasterCacheAfter
 	}
+	var pipelines vulkan.PipelineCache
+	if c := newShaderCache(cfg, getenv, log); c != nil {
+		pipelines = c
+	}
 	return explicit.NewRenderer(func(h gpu.SurfaceHandle) (explicit.Device, error) {
-		return vulkan.Open(vulkan.Options{Logger: log, Getenv: getenv, AllowCPU: cfg.rendererNamed, Surface: h})
+		return vulkan.Open(vulkan.Options{Logger: log, Getenv: getenv, AllowCPU: cfg.rendererNamed, Surface: h, PipelineCache: pipelines})
 	}, opts)
 }
 

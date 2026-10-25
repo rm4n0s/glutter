@@ -88,6 +88,9 @@ const (
 	glCompileStatus               = 0x8B81     // GL_COMPILE_STATUS
 	glLinkStatus                  = 0x8B82     // GL_LINK_STATUS
 	glInfoLogLength               = 0x8B84     // GL_INFO_LOG_LENGTH
+	glProgramBinaryLength         = 0x8741     // GL_PROGRAM_BINARY_LENGTH
+	glProgramBinaryRetrievable    = 0x8257     // GL_PROGRAM_BINARY_RETRIEVABLE_HINT
+	glNumProgramBinaryFormats     = 0x87FE     // GL_NUM_PROGRAM_BINARY_FORMATS
 	glNoError                     = 0          // GL_NO_ERROR
 	glInvalidEnum                 = 0x0500     // GL_INVALID_ENUM
 	glInvalidValue                = 0x0501     // GL_INVALID_VALUE

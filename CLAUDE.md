@@ -44,7 +44,7 @@ Before reporting a task as finished, run `gofmt`, `go vet ./...`, `golangci-lint
 - `desktop/` holds desktop services Flutter leaves to plugins: system tray, notifications, file dialogs, open-URI
 - `gluttertest/` is the widget-testing package (Flutter's `flutter_test`)
 - `internal/platform/` holds the platform interface and its backends (`linux/wayland`, `linux/x11`, `web`, `android`, `fake`)
-- `internal/gpu/` holds the renderer interface and its backends (`vulkan`, `gles`, `soft`, `webgpu`, `canvas2d`, `nativewindow`); `explicit` is the renderer that `vulkan` and `webgpu` share, with its WGSL shaders
+- `internal/gpu/` holds the renderer interface and its backends (`vulkan`, `gles`, `soft`, `webgpu`, `canvas2d`, `nativewindow`), and `shadercache` keeps what they compile between runs; `explicit` is the renderer that `vulkan` and `webgpu` share, with its WGSL shaders
 - `internal/text/` holds paragraph layout on go-text; `internal/dbus/` holds the D-Bus services
 - `cmd/glutter-gen/` holds the code generators; `cmd/glutter-web/` builds, serves and screenshots apps for the web; `cmd/glutter-android/` builds, installs, runs and screenshots apps on Android, with `internal/androidtool` (packaging, the Java embedding and its checked-in `classes.dex`) and `internal/androidtest` (the emulator harness); `examples/<app>/` holds runnable examples (public API only), and `examples/dev/<app>/` holds early development examples that may use `internal/`; `scripts/` holds helper scripts
 - `docs/IMPLEMENTATION.md` is the step-by-step plan; `docs/IMPLEMENTED.md` logs finished steps; `docs/implemented-proof-images/` holds each step's proof screenshots

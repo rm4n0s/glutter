@@ -38,6 +38,7 @@ const (
 	sTypeImageCreateInfo                  = 14         // VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO
 	sTypeImageViewCreateInfo              = 15         // VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO
 	sTypeShaderModuleCreateInfo           = 16         // VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO
+	sTypePipelineCacheCreateInfo          = 17         // VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO
 	sTypePipelineShaderStageCreateInfo    = 18         // VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO
 	sTypePipelineVertexInputStateCreate   = 19         // VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO
 	sTypePipelineInputAssemblyStateCreate = 20         // VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO

@@ -180,6 +180,7 @@ glutter/
       canvas2d/          syscall/js: soft's image put into a 2D canvas, the web's last fallback (§9.6)
       nativewindow/      purego (libandroid): soft's image put into the ANativeWindow, Android's last fallback (§24.4)
       soft/              pure-Go rasterizer (goldens, headless)
+      shadercache/       pure Go: the directory of program binaries and pipeline caches that the drivers' compiles are kept in (§9.7)
     text/                paragraph layout, font collection, glyph outlines
     dbus/                pure Go (godbus): tray, notifications, portals, settings, AT-SPI2
   cmd/glutter-gen/       generators: Wayland protocols, key tables, re-exports, CopyWith, icons; and apicheck, the API conventions check
@@ -790,6 +791,18 @@ type Swapchain interface {
 - The startup log and `GLUTTER_FRAME_STATS` name the renderer and the device (e.g. `vulkan: AMD Radeon 8060S Graphics (RADV STRIX_HALO)`).
 
 Flutter: no counterpart. Flutter's Linux embedder draws with GL only, and Flutter web chooses between CanvasKit and Skwasm.
+
+### 9.7 The shader cache and the cold start (step 27.10)
+
+What the GPU drivers compile is kept between runs, in one directory, so that a second start does not compile again.
+
+- **Where.** `$XDG_CACHE_HOME/glutter/shaders`, else `~/.cache/glutter/shaders`; `Config.ShaderCacheDir` (the engine's, for tests and embedders) overrides it; `GLUTTER_SHADER_CACHE=0` turns the cache off whatever else says. The web has none (no home, and WebGL 2 has no program binaries); Android keeps none yet. `internal/gpu/shadercache` is the directory: a file is named by the hash of its key, written to a temporary file and renamed, so a reader never sees half of one. A cache that cannot be read or written (`ShaderCacheReadFailed`, `ShaderCacheWriteFailed`) is logged once at Warn level and ignored: the drivers compile as they did before.
+- **GLES.** `glGetProgramBinary`/`glProgramBinary` (GLES 3.0), used when the driver has binary formats (`GL_NUM_PROGRAM_BINARY_FORMATS`). One file per program; the key is the hash of the vendor, renderer and version strings (`GL_VENDOR`, `GL_RENDERER`, `GL_VERSION`), the program's name and its two sources, so a new driver or a changed shader never reads an old binary. The file holds the binary format (4 bytes, little-endian) and the bytes. A binary the driver refuses (the link status is false) is dropped: the program is compiled and the new binary replaces the file. `GL_PROGRAM_BINARY_RETRIEVABLE_HINT` is set before the link when the cache is on.
+- **Vulkan.** One `VkPipelineCache` per device, created from the file of the cache when the file's header (`VkPipelineCacheHeaderVersionOne`: size, version 1, vendor, device, `pipelineCacheUUID`) is the device's, and given to every `vkCreateGraphicsPipelines`. The key has the vendor, device and UUID, so two GPUs, or a new driver build, have a file of their own. The data is saved after the first frame and when the device closes, only when it grew and only when its header is valid for the device (lavapipe gives a header that is cut short, and nothing is saved).
+- **Only what the first frame needs.** GLES programs and Vulkan pipelines are made when a frame first uses them, not at the start (`Device.CompileAll` is for the tests). A rare path does not delay the start.
+- **The log of the start.** With `GLUTTER_FRAME_STATS=1` the engine logs `startup` lines: each renderer tried that failed (`stage="renderer tried"`, with its error and how long it took), then for the renderer that was chosen the first frame (`stage="first frame of the renderer"`), the GPU context or device, the shaders (`built`, `from_cache`, `refused`, and for Vulkan `pipeline_cache_bytes`) and the rest of the frame, and the existing `first draw` line with the total. A renderer reports its parts through `gpu.StartupReporter`.
+- **What it buys (docs/PERFORMANCE.md, "Cold start").** On Mesa's llvmpipe the driver has a disk cache of its own, which gives the same gain; Glutter's cache adds a few milliseconds there. It is for the drivers that keep nothing, and for a first start after the driver's cache was cleared.
+
 
 ---
 

@@ -64,6 +64,8 @@ type Renderer struct {
 	blit    map[TextureFormat]Pipeline
 	windows map[gpu.SurfaceHandle]*window
 	closed  bool
+	// cacheSaved is whether the pipeline cache was saved after the first frame.
+	cacheSaved bool
 	// pipes holds the pipelines of the primitives, one for each fixed blend.
 	pipes map[pipeKey]Pipeline
 	// mipSampler is the linear sampler of the downsampling pass, and imageSampler the one that
@@ -152,6 +154,9 @@ func (r *Renderer) Draw(h gpu.SurfaceHandle, width, height int, scene *ui.Scene,
 	if IsDevicePending(err) {
 		return nil, nil // the backend is getting a device and says when it has one
 	}
+	if err == nil {
+		r.savePipelineCache()
+	}
 	if err == nil || r.dev == nil || !isDeviceLost(err) {
 		return img, err
 	}
@@ -170,6 +175,31 @@ func (r *Renderer) Draw(h gpu.SurfaceHandle, width, height int, scene *ui.Scene,
 	}
 	return img, err
 }
+
+// savePipelineCache lets a device that keeps a pipeline cache save it after the first frame, so that a second start
+// finds the pipelines that the first needed even if this process does not end cleanly.
+func (r *Renderer) savePipelineCache() {
+	if r.cacheSaved || r.dev == nil {
+		return
+	}
+	r.cacheSaved = true
+	if s, ok := r.dev.(interface{ SavePipelineCache() }); ok {
+		s.SavePipelineCache()
+	}
+}
+
+// StartupReport says how the start went, when the device can tell: how long it took to open and how its pipelines
+// were made.
+//
+// Flutter: no counterpart
+func (r *Renderer) StartupReport() gpu.StartupReport {
+	if rep, ok := r.dev.(gpu.StartupReporter); ok {
+		return rep.StartupReport()
+	}
+	return gpu.StartupReport{}
+}
+
+var _ gpu.StartupReporter = (*Renderer)(nil)
 
 // lostWindow is how long a second loss of the device after a first one ends the app.
 const lostWindow = 10 * time.Second
@@ -501,6 +531,7 @@ func (r *Renderer) Close() {
 // the renderer as it was before the first frame: the next frame opens a device again. Errors of
 // the destruction are the lost device's business and are ignored.
 func (r *Renderer) releaseDevice() {
+	r.cacheSaved = false
 	for h := range r.windows {
 		r.Release(h)
 	}
