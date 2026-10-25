@@ -1,11 +1,12 @@
 // Package windows is the Win32 platform backend (SPEC §25): the windows, the message loop, the
-// input, the text input, the clipboard and the settings of Windows, behind internal/platform. It
-// has no code yet: step 28.1 adds the groundwork in package win32 (the DLL loading, the COM calls,
-// the structures and the checks of their layout), and steps 28.2 to 28.6 add the platform itself.
+// frame pacing, the displays and the process start of Windows (step 28.2), behind internal/platform;
+// the input, the text input, the clipboard and the settings come with steps 28.3 to 28.6. The
+// calls to Windows go through package win32 (SPEC §6.3 rule 10).
 //
-// Every file of the backend carries the windows build tag (or is named *_windows.go) and calls
-// Windows with the standard library's syscall through package win32 (SPEC §6.3 rule 10). This
-// untagged file keeps the package listed on every OS.
+// The files of the backend that call Windows are named *_windows.go. The files with no OS tag hold
+// the plain-Go parts, which are tested on any host: the timer heap, the frame requests, the pacer's
+// state machine, the styles and sizes of the windows, the console decision and the reader of
+// GLUTTER_DEV_EVENTS.
 //
 // Flutter: the Windows embedder (engine/src/flutter/shell/platform/windows).
 package windows

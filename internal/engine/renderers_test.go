@@ -196,6 +196,7 @@ func TestNewChooserErrors(t *testing.T) {
 		{"a known renderer this OS does not have", "webgpu", cands, "RendererUnavailable", "newChooser.RendererUnavailable"},
 		{"a known renderer that is not in the list", "webgl", cands, "RendererUnavailable", "newChooser.RendererUnavailable"},
 		{"a known renderer when the list is empty", "gles", nil, "RendererUnavailable", "newChooser.RendererUnavailable"},
+		{"Direct3D 12 until its renderer exists", "d3d12", cands, "RendererUnavailable", "newChooser.RendererUnavailable"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -271,6 +272,7 @@ func TestRunRendererErrors(t *testing.T) {
 		{"an unknown value in the option", nil, "metal", "RendererUnknown", "Run->newChooser.RendererUnknown"},
 		{"an unknown value in the environment", map[string]string{RendererEnv: "metal"}, "", "RendererUnknown", "Run->newChooser.RendererUnknown"},
 		{"a known renderer the OS does not have", nil, "webgpu", "RendererUnavailable", "Run->newChooser.RendererUnavailable"},
+		{"d3d12 is a name of Glutter, not an unknown one", nil, "d3d12", "RendererUnavailable", "Run->newChooser.RendererUnavailable"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

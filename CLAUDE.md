@@ -20,7 +20,7 @@ Glutter is a cgo-free GUI toolkit for Go (Android, from 1.6, is the one exceptio
 - Tests on the Android emulator (from step 25.2): `go test -p 1 -tags glutter_android ./...` (SPEC §24.13; they start and stop the emulator themselves)
 - Run an example on Android (from step 25.2): `go run ./cmd/glutter-android run ./examples/counter` (a connected phone or a running emulator)
 - Windows build and checks (from step 28.1): `GOOS=windows GOARCH=amd64 go build ./...`, `GOOS=windows GOARCH=amd64 go vet ./...`, `GOOS=windows GOARCH=arm64 go build ./...`, `scripts/test-windows.sh` (the unit tests of the packages that build for Windows, under Wine)
-- Wine tests (from step 28.1): `GOOS=windows go test -tags glutter_wine -exec scripts/wine-exec.sh -p 1 <packages>`; the host-side harness: `go test -tags glutter_wine -p 1 ./internal/winetest`
+- Wine tests (from step 28.1): `GOOS=windows go test -tags glutter_wine -exec "$PWD/scripts/wine-exec.sh" -p 1 <packages>`; the host-side harness: `go test -tags glutter_wine -p 1 ./internal/winetest`
 - Run a Windows program under Wine, headless: `scripts/wine-exec.sh ./app.exe`; a screenshot of the X root: `scripts/wine-screenshot.sh out.png -- <command>`
 - Update golden images: `go test ./... -run Golden -update-goldens`, then review every changed PNG
 - Vet: `go vet ./...`
@@ -48,7 +48,7 @@ Before reporting a task as finished, run `gofmt`, `go vet ./...`, `golangci-lint
 - `desktop/` holds desktop services Flutter leaves to plugins: system tray, notifications, file dialogs, open-URI
 - `gluttertest/` is the widget-testing package (Flutter's `flutter_test`)
 - `internal/platform/` holds the platform interface and its backends (`linux/wayland`, `linux/x11`, `web`, `android`, `windows`, `fake`); `windows/win32` is the package that calls Windows (DLLs, COM, callbacks, the struct mirrors and their `layouttest`)
-- `internal/gpu/` holds the renderer interface and its backends (`vulkan`, `gles`, `soft`, `webgpu`, `canvas2d`, `nativewindow`), and `shadercache` keeps what they compile between runs; `explicit` is the renderer that `vulkan` and `webgpu` share, with its WGSL shaders
+- `internal/gpu/` holds the renderer interface and its backends (`vulkan`, `gles`, `soft`, `webgpu`, `canvas2d`, `nativewindow`, `gdiwindow`), and `shadercache` keeps what they compile between runs; `explicit` is the renderer that `vulkan` and `webgpu` share, with its WGSL shaders
 - `internal/winetest/` is the Wine harness; `.wine-test/` (git-ignored) holds its prefix
 - `internal/text/` holds paragraph layout on go-text; `internal/dbus/` holds the D-Bus services
 - `cmd/glutter-gen/` holds the code generators; `cmd/glutter-web/` builds, serves and screenshots apps for the web; `cmd/glutter-android/` builds, installs, runs and screenshots apps on Android, with `internal/androidtool` (packaging, the Java embedding and its checked-in `classes.dex`) and `internal/androidtest` (the emulator harness); `examples/<app>/` holds runnable examples (public API only), and `examples/dev/<app>/` holds early development examples that may use `internal/`; `scripts/` holds helper scripts
@@ -156,4 +156,5 @@ Use `github.com/rm4n0s/errors` (v0.2.0) for all errors, the way its `AI_GUIDE.md
 - Tests that run in a headless browser carry the `glutter_browser` build tag; they use `internal/webtest` and temporary browser profiles
 - Tests that run on the Android emulator carry the `glutter_android` build tag; they use `internal/androidtest`. What only a real phone shows is a manual check (SPEC §24.13)
 - Tests that run inside Wine carry the `glutter_wine` build tag; `scripts/test-windows.sh` runs the unit tests of the packages that build for Windows under Wine
+- A test that opens Windows windows keeps one OS thread from `New` to `Close` (`runtime.LockOSThread`). The Wine prefix gets copies of the host's Liberation Sans in `C:\windows\Fonts` (`scripts/wine-exec.sh`); some Wine tests are host-side (`go test -tags glutter_wine -p 1 ./internal/winetest ./internal/platform/windows ./examples/counter`): they start Wine themselves
 - Every error Tag has a route test

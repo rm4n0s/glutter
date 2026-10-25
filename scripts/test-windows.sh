@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs the unit tests of every package that builds for Windows, under Wine (docs/SPEC.md §25.13):
-# GOOS=windows GOARCH=amd64 go test -exec scripts/wine-exec.sh -p 1, like scripts/test-wasm.sh does
+# GOOS=windows GOARCH=amd64 go test -exec "$PWD/scripts/wine-exec.sh" -p 1, like scripts/test-wasm.sh does
 # for the web.
 #
 # Usage: scripts/test-windows.sh [go test flags and packages]
@@ -11,7 +11,7 @@
 # The tests run one package at a time (-p 1): they share one prefix and one Wine server. The
 # prefix is .wine-test/prefix at the module root (scripts/wine-exec.sh). A package whose tests need
 # a window, input or the GPU carries the glutter_wine tag and is run with
-#   GOOS=windows go test -tags glutter_wine -exec scripts/wine-exec.sh -p 1 <packages>
+#   GOOS=windows go test -tags glutter_wine -exec "$PWD/scripts/wine-exec.sh" -p 1 <packages>
 # (docs/IMPLEMENTATION.md, rule 8).
 #
 # Needs Wine and Xvfb (sudo dnf install wine-core xorg-x11-server-Xvfb). Exit status: go test's;

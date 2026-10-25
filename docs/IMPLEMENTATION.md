@@ -84,7 +84,7 @@ The owner's choice (2026-10-25): the main session is the **manager** (Opus 5.5, 
    If the step lists **Display tests**, run them too: `go test -race -tags glutter_display <packages>`. They run under a headless compositor (step 1.5) unless the step says otherwise.
    If the step lists **Browser tests**, run them too: `go test -tags glutter_browser <packages>` (SPEC §17).
    If the step lists **Device tests**, run them too: `go test -tags glutter_android <packages>` (SPEC §24.13). They start the emulator themselves and stop it; run them one package at a time (`-p 1`), since one emulator needs 2–4 GB of memory.
-   If the step lists **Wine tests**, run them too (SPEC §25.13). Tests that run inside Wine: `GOOS=windows go test -tags glutter_wine -exec scripts/wine-exec.sh -p 1 <packages>`; host-side tests that start Wine themselves (`internal/winetest`, `cmd/glutter-windows`, `examples`): `go test -tags glutter_wine -p 1 <packages>`. They start Xvfb and Wine themselves and stop them (`wineserver -k`); the tests of different packages share one prefix, so run one package at a time.
+   If the step lists **Wine tests**, run them too (SPEC §25.13). Tests that run inside Wine: `GOOS=windows go test -tags glutter_wine -exec "$PWD/scripts/wine-exec.sh" -p 1 <packages>`; host-side tests that start Wine themselves (`internal/winetest`, `cmd/glutter-windows`, `examples`): `go test -tags glutter_wine -p 1 <packages>`. They start Xvfb and Wine themselves and stop them (`wineserver -k`); the tests of different packages share one prefix, so run one package at a time.
 9. **Proof images.** Only when the step has a **Proof** item:
    - Produce exactly the images it lists, in `docs/implemented-proof-images/`, named `<id>-<name>.png` (e.g. `6.6-rendering-tour.png`).
    - Use the method it names (A to F, see below).
@@ -2395,7 +2395,7 @@ Before 28.1 there is no Flutter Windows embedder in `reference/`: **step 28.1 ad
 
 ### 28.16 Release 1.8
 **Tasks:** confirm and record in `IMPLEMENTED.md`:
-- the standard checks including the four Windows ones, the display tests, the browser tests, the device tests and the Wine tests (`GOOS=windows go test -tags glutter_wine -exec scripts/wine-exec.sh -p 1 ./...` and the host-side Wine tests)
+- the standard checks including the four Windows ones, the display tests, the browser tests, the device tests and the Wine tests (`GOOS=windows go test -tags glutter_wine -exec "$PWD/scripts/wine-exec.sh" -p 1 ./...` and the host-side Wine tests)
 - the manual checks of 28.2 to 28.15 on a Windows PC, with the owner's answers in `docs/MANUAL-CHECKS.md`
 - the performance numbers (28.15) and the Windows targets of SPEC §15, confirmed by the owner
 - the API check and the error rules check

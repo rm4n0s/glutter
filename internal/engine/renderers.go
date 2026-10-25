@@ -15,7 +15,7 @@ import (
 
 // RendererEnv is the environment variable that chooses the renderer, as
 // Config.Renderer does (SPEC §9.6): "auto" (the default), or the name of a renderer.
-// Linux has "vulkan" and "gles"; the web has "webgpu", "webgl" and "soft".
+// Linux has "vulkan" and "gles"; the web has "webgpu", "webgl" and "soft"; Windows has "d3d12" (from step 28.10) and "soft".
 //
 // Flutter: no counterpart
 const RendererEnv = "GLUTTER_RENDERER"
@@ -26,7 +26,7 @@ const rendererAuto = "auto"
 // knownRenderers are the names of every renderer Glutter has on any OS. A name in
 // this list that the OS or the build does not have is RendererUnavailable; any other
 // name is RendererUnknown.
-var knownRenderers = []string{"vulkan", "gles", "webgpu", "webgl", "soft"}
+var knownRenderers = []string{"vulkan", "gles", "webgpu", "webgl", "d3d12", "soft"}
 
 // rendererCandidate is one renderer an OS can use. The backends_<goos>.go files list
 // them in the order that auto tries them.
@@ -107,7 +107,7 @@ func newChooser(cfg *Config, log *slog.Logger, want string, cands []rendererCand
 		known = known || k == want
 	}
 	if !known {
-		return nil, errors.New(tagRendererUnknown, "the renderer is not auto, vulkan, gles, webgpu, webgl or soft",
+		return nil, errors.New(tagRendererUnknown, "the renderer is not auto, vulkan, gles, webgpu, webgl, d3d12 or soft",
 			"value", want)
 	}
 	for _, cand := range cands {

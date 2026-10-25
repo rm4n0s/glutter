@@ -166,7 +166,7 @@ func TestBrowserRendererNames(t *testing.T) {
 		for _, tc := range []struct{ name, want string }{
 			{"gles", "this OS or build does not have that renderer"},
 			{"vulkan", "this OS or build does not have that renderer"},
-			{"bogus", "the renderer is not auto, vulkan, gles, webgpu, webgl or soft"},
+			{"bogus", "the renderer is not auto, vulkan, gles, webgpu, webgl, d3d12 or soft"},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				_, _, err := shot(t, b, "index.html", url.Values{"GLUTTER_RENDERER": {tc.name}})

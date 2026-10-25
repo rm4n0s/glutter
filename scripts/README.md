@@ -17,7 +17,7 @@ Available now:
 | `perf-android.sh` | The Android numbers of SPEC §15 with release builds: APK sizes, cold start, idle CPU, frame times, memory, on the emulator or a phone (`glutter-android perf`): `scripts/perf-android.sh -m -o report.md`, `-d serial` for a phone, `-t counter,gallery,animation,navigation` |
 | `wine-exec.sh` | Run a Windows program under Wine on a headless X server, with a private prefix in `.wine-test/prefix` (`GLUTTER_WINEPREFIX` moves it), `ulimit -c 1`, a timeout and `wineserver -k` at the end; it is the runner of `go test -exec`: `scripts/wine-exec.sh ./app.exe` (needs `wine-core` and `xorg-x11-server-Xvfb`) |
 | `wine-screenshot.sh` | Save the root window of the headless X server while a command runs (proof method F, for the tray, dialogs and several windows): `scripts/wine-screenshot.sh out.png -- scripts/wine-exec.sh ./app.exe` (needs `ImageMagick`; `GLUTTER_SHOT_DELAY` seconds, 3 by default) |
-| `test-windows.sh` | Run the unit tests of every package that builds for Windows, under Wine (`GOOS=windows go test -exec scripts/wine-exec.sh -p 1`): `scripts/test-windows.sh` or `scripts/test-windows.sh ./internal/platform/windows/...` |
+| `test-windows.sh` | Run the unit tests of every package that builds for Windows, under Wine (`GOOS=windows go test -exec "$PWD/scripts/wine-exec.sh" -p 1`): `scripts/test-windows.sh` or `scripts/test-windows.sh ./internal/platform/windows/...` |
 
 To come, in the order of `docs/IMPLEMENTATION.md`:
 

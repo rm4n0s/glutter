@@ -3,7 +3,7 @@
 # for `go test -exec`, and the way the proof screenshots of method F run an app.
 #
 # Usage: scripts/wine-exec.sh <program.exe> [args...]
-#        GOOS=windows go test -exec scripts/wine-exec.sh -p 1 ./internal/platform/windows/...
+#        GOOS=windows go test -exec "$PWD/scripts/wine-exec.sh" -p 1 ./internal/platform/windows/...
 #
 # What it does:
 #   - starts a headless X server (scripts/headless-x11.sh, WAYLAND_DISPLAY unset), unless one is
@@ -76,6 +76,17 @@ if [[ ! -f "$PREFIX/system.reg" ]]; then
       stop
     fi
   ) 9>"$PREFIX.lock"
+fi
+
+# The prefix of Wine has no font directory, and an app that scans the fonts of Windows (the text
+# of the Material apps asks for Segoe UI) would draw no text: give it a copy of the host's
+# Liberation Sans, the way a Windows machine has C:\Windows\Fonts (SPEC §25.13).
+FONTS="$PREFIX/drive_c/windows/Fonts"
+if ! compgen -G "$FONTS/*.ttf" >/dev/null; then
+  mkdir -p "$FONTS"
+  for f in /usr/share/fonts/liberation-sans-fonts/*.ttf /usr/share/fonts/liberation/LiberationSans-*.ttf; do
+    [[ -f "$f" ]] && cp "$f" "$FONTS/"
+  done
 fi
 
 # The program runs in the background and this script waits for it, so that a signal is handled at

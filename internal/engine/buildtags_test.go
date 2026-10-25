@@ -31,8 +31,8 @@ func TestBuildsHaveTheirOwnBackends(t *testing.T) {
 		{name: "js", goos: "js", goarch: "wasm", want: []string{"web"}, none: []string{"linux/", "android"}},
 		{name: "android/arm64", goos: "android", goarch: "arm64", none: []string{"web"}, onlyDL: true},
 		{name: "android/amd64", goos: "android", goarch: "amd64", none: []string{"web"}, onlyDL: true},
-		{name: "windows/amd64", goos: "windows", goarch: "amd64", none: []string{"linux", "android", "web"}},
-		{name: "windows/arm64", goos: "windows", goarch: "arm64", none: []string{"linux", "android", "web"}},
+		{name: "windows/amd64", goos: "windows", goarch: "amd64", want: []string{"windows", "windows/win32"}, none: []string{"linux", "android", "web"}},
+		{name: "windows/arm64", goos: "windows", goarch: "arm64", want: []string{"windows", "windows/win32"}, none: []string{"linux", "android", "web"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
