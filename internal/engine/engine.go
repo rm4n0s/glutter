@@ -331,7 +331,7 @@ type window struct {
 	// the frame of this window then only presents it.
 	pending bool
 	// title is the title of the window, which names its frame for a screen reader, and
-	// focused is whether the platform said it has the keyboard focus.
+	// focused is whether the platform said it has the focus (it is the active window).
 	title   string
 	focused bool
 	// hidden is whether the framework took the window off the screen
@@ -400,18 +400,19 @@ type handler struct {
 }
 
 var (
-	_ platform.Handler        = (*handler)(nil)
-	_ ui.PlatformHost         = (*handler)(nil)
-	_ ui.CursorHost           = (*handler)(nil)
-	_ ui.WindowHost           = (*handler)(nil)
-	_ ui.WindowControlHost    = (*handler)(nil)
-	_ ui.WindowAppearanceHost = (*handler)(nil)
-	_ ui.IdleInhibitHost      = (*handler)(nil)
-	_ ui.ViewFocusHost        = (*handler)(nil)
-	_ ui.ClipboardHost        = (*handler)(nil)
-	_ ui.RichClipboardHost    = (*handler)(nil)
-	_ ui.TextInputHost        = (*handler)(nil)
-	_ ui.SemanticsHost        = (*handler)(nil)
+	_ platform.Handler              = (*handler)(nil)
+	_ ui.PlatformHost               = (*handler)(nil)
+	_ ui.CursorHost                 = (*handler)(nil)
+	_ ui.WindowHost                 = (*handler)(nil)
+	_ ui.WindowControlHost          = (*handler)(nil)
+	_ ui.WindowAppearanceHost       = (*handler)(nil)
+	_ ui.IdleInhibitHost            = (*handler)(nil)
+	_ ui.ViewFocusHost              = (*handler)(nil)
+	_ platform.KeyboardFocusHandler = (*handler)(nil)
+	_ ui.ClipboardHost              = (*handler)(nil)
+	_ ui.RichClipboardHost          = (*handler)(nil)
+	_ ui.TextInputHost              = (*handler)(nil)
+	_ ui.SemanticsHost              = (*handler)(nil)
 
 	_ platform.AccessibilityHost = (*handler)(nil)
 )
@@ -610,7 +611,7 @@ func (h *handler) SetWindowHidden(view ui.ViewID, hidden bool) {
 
 // updateLifecycle tells the dispatcher the lifecycle state that the windows give, on
 // a platform that does not report one itself (SPEC §13): Hidden when every window is
-// hidden, Resumed when one of them has the keyboard focus, and Inactive otherwise.
+// hidden, Resumed when one of them has the focus, and Inactive otherwise.
 func (h *handler) updateLifecycle() {
 	if h.platformLifecycle || len(h.windows) == 0 {
 		return
@@ -675,7 +676,7 @@ func (h *handler) SetWindowConstraints(view ui.ViewID, min, max ui.Size) {
 // RequestViewFocus asks the platform to give the focus to the window of the view
 // (ui.ViewFocusHost). Taking the focus away is up to the user.
 func (h *handler) RequestViewFocus(view ui.ViewID, state ui.ViewFocusState, _ ui.ViewFocusDirection) {
-	if w, ok := h.windows[view]; ok && state == ui.ViewFocusStateFocused && h.focusView != view && !w.hidden {
+	if w, ok := h.windows[view]; ok && state == ui.ViewFocusStateFocused && !w.focused && !w.hidden {
 		w.PerformWindowAction(ui.WindowAction{Kind: ui.WindowActionActivate})
 	}
 }
@@ -726,8 +727,18 @@ func (h *handler) OnSurfaceLost(_ ui.ViewID, lost gpu.SurfaceHandle) {
 	}
 }
 
-// OnViewFocus tells the dispatcher that a view got or lost the keyboard focus,
-// with the input that came before it.
+// OnKeyboardFocus routes the keys, the text input and the input method to the view
+// (platform.KeyboardFocusHandler). The view focus that the framework hears of is
+// OnViewFocus's.
+func (h *handler) OnKeyboardFocus(view ui.ViewID, focused bool) {
+	if _, ok := h.windows[view]; ok && focused {
+		h.focusView = view
+	}
+}
+
+// OnViewFocus tells the dispatcher that a view got or lost the focus (the window is
+// the active one), with the input that came before it. A platform that does not call
+// OnKeyboardFocus has the keys follow it too.
 func (h *handler) OnViewFocus(view ui.ViewID, focused bool) {
 	w, ok := h.windows[view]
 	if !ok {

@@ -60,11 +60,24 @@ type displayHandler struct {
 	dragEnds []ui.DragResult
 	answer   func(ui.DropEvent) ui.DropActions
 
-	// lost counts the OnContentLost calls.
-	lost int
+	// lost counts the OnContentLost calls, and focus is what OnViewFocus was told.
+	lost  int
+	focus []bool
 
 	// draw, when set, is called for each frame on the UI thread.
 	draw func()
+}
+
+func (h *displayHandler) OnViewFocus(_ ui.ViewID, focused bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.focus = append(h.focus, focused)
+}
+
+func (h *displayHandler) focusSeen() []bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return append([]bool(nil), h.focus...)
 }
 
 func (h *displayHandler) OnContentLost(ui.ViewID) {

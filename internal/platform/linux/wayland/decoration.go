@@ -119,14 +119,21 @@ func (h libdecorHandler) Configure(c decor.Configuration) {
 	if width, height, ok := c.ContentSize(); ok {
 		w.pendingWidth, w.pendingHeight = int32(width), int32(height)
 	}
-	w.pendingStates = WindowStates{}
-	if st, ok := c.WindowState(); ok {
-		w.pendingStates = statesFromLibdecor(st)
-	} else {
-		w.pendingStates = w.states
-	}
+	st, ok := c.WindowState()
+	w.setPendingStatesFromLibdecor(st, ok)
 	w.conf = c
 	w.onSurfaceConfigure(0)
+}
+
+// setPendingStatesFromLibdecor stores the window state of a libdecor configure, whose
+// LIBDECOR_WINDOW_STATE_ACTIVE is the activated state (SPEC §8.2). A configure that
+// carries no state keeps the states of the window and does not say whether it is active.
+func (w *window) setPendingStatesFromLibdecor(st decor.State, ok bool) {
+	if ok {
+		w.pendingStates, w.pendingStatesKnown = statesFromLibdecor(st), true
+		return
+	}
+	w.pendingStates, w.pendingStatesKnown = w.states, false
 }
 
 func (h libdecorHandler) Close() { h.w.onClose() }

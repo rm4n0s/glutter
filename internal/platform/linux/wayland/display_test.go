@@ -603,3 +603,59 @@ func TestDisplayMovingBetweenOutputsRescalesTheNextFrame(t *testing.T) {
 		}
 	}
 }
+
+// TestDisplayViewFocusFollowsTheActivatedWindow opens two windows on sway and moves the
+// focus between them through sway's IPC. The headless sway has no keyboard, so no
+// wl_keyboard.enter ever comes; the view focus is the activated state of the
+// toplevel, and each window is told as soon as its first configure says which it is.
+func TestDisplayViewFocusFollowsTheActivatedWindow(t *testing.T) {
+	if _, err := exec.LookPath("swaymsg"); err != nil || os.Getenv("SWAYSOCK") == "" {
+		t.Skip("this test moves the focus through sway (run under scripts/headless-wayland.sh)")
+	}
+	p := connectToCompositor(t)
+	apps := []string{"dev.glutter.focustest.a", "dev.glutter.focustest.b"}
+	for _, app := range apps {
+		cfg := platform.DefaultWindowConfig()
+		cfg.Title, cfg.AppID, cfg.Size = app, app, ui.Size{Width: 300, Height: 200}
+		if _, err := p.NewWindow(cfg); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h := &recHandler{allowClose: true}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	done := make(chan error, 1)
+	go func() { done <- p.Run(ctx, h) }()
+	defer func() {
+		cancel()
+		if err := <-done; err != nil {
+			t.Errorf("Run returned %v", err)
+		}
+	}()
+
+	// last is the newest event of a view.
+	last := func(view string) string {
+		var got string
+		for _, ev := range h.focusSeen() {
+			if strings.HasSuffix(ev, " "+view) {
+				got = ev
+			}
+		}
+		return got
+	}
+	waitUntil(t, func() bool { return last("0") != "" && last("1") != "" }, "a window never heard of its focus")
+	for _, tc := range []struct{ app, active, other string }{
+		{apps[0], "0", "1"},
+		{apps[1], "1", "0"},
+		{apps[0], "0", "1"},
+	} {
+		if out, err := exec.Command("swaymsg", "[app_id="+tc.app+"]", "focus").CombinedOutput(); err != nil {
+			t.Fatalf("swaymsg: %v: %s", err, out)
+		}
+		waitUntil(t, func() bool { return last(tc.active) == "got "+tc.active && last(tc.other) == "lost "+tc.other },
+			"the focus did not move to "+tc.app+": "+strings.Join(h.focusSeen(), ", "))
+	}
+	t.Logf("view focus events: %q", h.focusSeen())
+	if kb := h.keyboardFocusSeen(); len(kb) != 0 {
+		t.Errorf("a seat without a keyboard reported the keyboard focus: %q", kb)
+	}
+}

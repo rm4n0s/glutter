@@ -114,14 +114,153 @@ func contains(list []string, s string) bool {
 	return false
 }
 
-func TestKeyboardFocusIsReportedAsViewFocus(t *testing.T) {
-	e := startKeyboardNoFocus(t, fakecomp.Config{Keymap: keymapFor(t, "us")})
-	e.srv.KeyboardEnter(e.surface)
-	waitUntil(t, func() bool { return len(e.h.focusEvents()) == 1 }, "the focus was not reported")
-	e.srv.KeyboardLeave(e.surface)
-	waitUntil(t, func() bool { return len(e.h.focusEvents()) == 2 }, "the loss of the focus was not reported")
-	if got, want := e.h.focusEvents(), []string{"got 0", "lost 0"}; !reflect.DeepEqual(got, want) {
-		t.Errorf("focus events = %q, want %q", got, want)
+// The xdg_toplevel.state values the tests send, and the seat capabilities.
+const (
+	stateMaximized uint32 = 1
+	stateActivated uint32 = 4
+
+	seatPointerOnly uint32 = 1 // a seat without a keyboard, as the headless sway of the tests has
+)
+
+// waitFocus waits until the handler was told the view focus events, and fails
+// when more come.
+func waitFocus(t *testing.T, e *windowEnv, want []string) {
+	t.Helper()
+	waitUntil(t, func() bool { return len(e.h.focusSeen()) >= len(want) }, "the focus events did not come: "+strings.Join(want, ", "))
+	e.onLoop(func() {}) // everything the compositor sent so far was handled
+	if got := e.h.focusSeen(); !reflect.DeepEqual(got, want) {
+		t.Errorf("view focus events = %q, want %q", got, want)
+	}
+}
+
+func TestViewFocusIsKnownAtTheFirstConfigure(t *testing.T) {
+	for _, seat := range []struct {
+		name string
+		caps uint32
+	}{{"with a keyboard", 0}, {"without a keyboard", seatPointerOnly}} {
+		tests := []struct {
+			name   string
+			states []uint32
+			want   []string
+		}{
+			{"activated", []uint32{stateActivated}, []string{"got 0"}},
+			{"activated and maximized", []uint32{stateMaximized, stateActivated}, []string{"got 0"}},
+			{"not activated", nil, []string{"lost 0"}},
+			{"maximized only", []uint32{stateMaximized}, []string{"lost 0"}},
+		}
+		for _, tt := range tests {
+			t.Run(seat.name+"/"+tt.name, func(t *testing.T) {
+				e := startWindows(t, fakecomp.Config{Capabilities: seat.caps, Toplevel: fakecomp.ToplevelConfigure{States: tt.states}}, config640())
+				e.waitMapped()
+				waitFocus(t, e, tt.want)
+				if err := e.stop(); err != nil {
+					t.Fatal(err)
+				}
+			})
+		}
+	}
+}
+
+func TestViewFocusFollowsTheActivatedState(t *testing.T) {
+	for _, seat := range []struct {
+		name string
+		caps uint32
+	}{{"with a keyboard", 0}, {"without a keyboard", seatPointerOnly}} {
+		t.Run(seat.name, func(t *testing.T) {
+			e := startWindows(t, fakecomp.Config{Capabilities: seat.caps}, config640())
+			e.waitMapped()
+			want := []string{"lost 0"}
+			waitFocus(t, e, want)
+			steps := []struct {
+				name   string
+				states []uint32
+				event  string // the event it makes, if any
+			}{
+				{"activated", []uint32{stateActivated}, "got 0"},
+				{"configured again, still activated", []uint32{stateMaximized, stateActivated}, ""},
+				{"deactivated", []uint32{stateMaximized}, "lost 0"},
+				{"configured again, still not", nil, ""},
+				{"activated again", []uint32{stateActivated}, "got 0"},
+			}
+			for _, st := range steps {
+				e.srv.ConfigureToplevel(fakecomp.ToplevelConfigure{States: st.states})
+				if st.event != "" {
+					want = append(want, st.event)
+				}
+				waitFocus(t, e, want)
+			}
+			if err := e.stop(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+// The keys follow wl_keyboard.enter and leave and the view focus follows the
+// activated state: neither makes the other.
+func TestKeyboardFocusDoesNotMakeViewFocus(t *testing.T) {
+	e := startWindows(t, fakecomp.Config{Keymap: keymapFor(t, "us")}, config640())
+	e.waitMapped()
+	waitFocus(t, e, []string{"lost 0"})
+	surface := e.srv.ID("wl_surface")
+
+	e.srv.KeyboardEnter(surface)
+	waitUntil(t, func() bool { return len(e.h.keyboardFocusSeen()) == 1 }, "the keyboard focus was not reported")
+	e.srv.KeyboardLeave(surface)
+	waitUntil(t, func() bool { return len(e.h.keyboardFocusSeen()) == 2 }, "the loss of the keyboard focus was not reported")
+	if got, want := e.h.keyboardFocusSeen(), []string{"got 0", "lost 0"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("keyboard focus events = %q, want %q", got, want)
+	}
+	if got := e.h.focusSeen(); !reflect.DeepEqual(got, []string{"lost 0"}) {
+		t.Errorf("view focus events = %q after the keyboard moved, want only the first", got)
+	}
+
+	// The window is activated while the keyboard is elsewhere.
+	e.srv.ConfigureToplevel(fakecomp.ToplevelConfigure{States: []uint32{stateActivated}})
+	waitFocus(t, e, []string{"lost 0", "got 0"})
+	if got := e.h.keyboardFocusSeen(); len(got) != 2 {
+		t.Errorf("keyboard focus events = %q after the activation, want the two from before", got)
+	}
+	if err := e.stop(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAHiddenOrClosedWindowHasNoFocus(t *testing.T) {
+	tests := []struct {
+		name string
+		end  func(e *windowEnv)
+		want []string
+	}{
+		{"hidden", func(e *windowEnv) {
+			e.onLoop(func() { e.p.windows[0].SetHidden(true) })
+		}, []string{"got 0", "lost 0"}},
+		{"hidden and shown again", func(e *windowEnv) {
+			e.onLoop(func() { e.p.windows[0].SetHidden(true) })
+			e.onLoop(func() { e.p.windows[0].SetHidden(false) })
+		}, []string{"got 0", "lost 0", "got 0"}},
+		{"closed", func(e *windowEnv) {
+			e.onLoop(func() { e.p.windows[0].Close() })
+		}, []string{"got 0", "lost 0"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := startWindows(t, fakecomp.Config{Toplevel: fakecomp.ToplevelConfigure{States: []uint32{stateActivated}}}, config640(), config640())
+			e.waitMapped()
+			waitFocus(t, e, []string{"got 0", "got 1"})
+			tt.end(e)
+			// The other window is left as it was; the first one reports its loss.
+			waitUntil(t, func() bool { return len(e.h.focusSeen()) >= 2+len(tt.want)-1 }, "the focus events did not come")
+			var first []string
+			for _, ev := range e.h.focusSeen() {
+				if strings.HasSuffix(ev, " 0") {
+					first = append(first, ev)
+				}
+			}
+			if !reflect.DeepEqual(first, tt.want) {
+				t.Errorf("view focus events of the first window = %q, want %q", first, tt.want)
+			}
+		})
 	}
 }
 

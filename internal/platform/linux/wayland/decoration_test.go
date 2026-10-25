@@ -3,11 +3,13 @@
 package wayland
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/internal/platform"
+	"github.com/rm4n0s/glutter/internal/platform/linux/wayland/decor"
 	"github.com/rm4n0s/glutter/internal/platform/linux/wayland/fakecomp"
 	"github.com/rm4n0s/glutter/ui"
 )
@@ -134,4 +136,43 @@ func TestPerformWindowActionClose(t *testing.T) {
 		t.Fatalf("Run returned %v after the window closed", err)
 	}
 	e.stopped = true
+}
+
+// libdecor's LIBDECOR_WINDOW_STATE_ACTIVE is the view focus of the window, as the
+// activated state of an xdg_toplevel is; a configure without a window state says
+// nothing about it (SPEC §8.2).
+func TestLibdecorActiveStateIsTheViewFocus(t *testing.T) {
+	type configure struct {
+		state decor.State
+		ok    bool
+	}
+	tests := []struct {
+		name       string
+		configures []configure
+		want       []string
+	}{
+		{"active", []configure{{decor.StateActive, true}}, []string{"got 7"}},
+		{"active and maximized", []configure{{decor.StateActive | decor.StateMaximized, true}}, []string{"got 7"}},
+		{"not active", []configure{{decor.StateMaximized, true}}, []string{"lost 7"}},
+		{"no state at the first configure says nothing", []configure{{0, false}}, nil},
+		{"no state, then the state", []configure{{0, false}, {decor.StateActive, true}}, []string{"got 7"}},
+		{"no state keeps the focus", []configure{{decor.StateActive, true}, {0, false}, {decor.StateActive, true}}, []string{"got 7"}},
+		{"active, then not", []configure{{decor.StateActive, true}, {0, true}}, []string{"got 7", "lost 7"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := &recHandler{}
+			w := &window{p: &Platform{handler: h}, id: 7}
+			for _, c := range tt.configures {
+				w.setPendingStatesFromLibdecor(c.state, c.ok)
+				w.states = w.pendingStates
+				if w.pendingStatesKnown {
+					w.reportFocus(w.states.Activated)
+				}
+			}
+			if got := h.focusSeen(); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("view focus events = %q, want %q", got, tt.want)
+			}
+		})
+	}
 }

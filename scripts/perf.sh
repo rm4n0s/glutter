@@ -115,6 +115,25 @@ idle_cpu="$(awk -v a="$t0" -v b="$t1" -v s="$seconds" 'BEGIN { printf "%.2f", (b
 frames_idle="$(grep -c " INFO frames " "$tmp/counter.log" || true)"
 stop_app
 
+# Idle CPU of a window that is not the active one: the counter, with a second window
+# that the compositor activates (the newest one), so the counter has lost the focus. The
+# view focus is the activated state of the toplevel, so this runs headless too (SPEC §8.2).
+start_app counter
+counter_pid="$pid"
+start_app gallery
+other_pid="$pid"
+sleep 3
+pid="$counter_pid"
+t0="$(cpu_ticks)"
+sleep "$seconds"
+t1="$(cpu_ticks)"
+unfocused_cpu="$(awk -v a="$t0" -v b="$t1" -v s="$seconds" 'BEGIN { printf "%.2f", (b - a) / (s * 100) * 100 }')"
+frames_unfocused="$(grep -c " INFO frames " "$tmp/counter.log" || true)"
+pid="$other_pid"
+stop_app
+pid="$counter_pid"
+stop_app
+
 # Frames: the gallery on the page with indeterminate progress indicators.
 start_app gallery GLUTTER_GALLERY_PAGE=data GLUTTER_GALLERY_ANIMATE=1
 sleep 2
@@ -139,6 +158,7 @@ cat <<TABLE
 | Metric | Target (SPEC §15) | Measured |
 |---|---|---|
 | Idle CPU, counter ($seconds s, no input) | ~0% | ${idle_cpu}% (${frames_idle} frames logged while idle) |
+| Idle CPU, counter without the focus (another window is active, $seconds s) | ~0% | ${unfocused_cpu}% (${frames_unfocused} frames logged since the start) |
 | Cold start to first frame, counter (median of $runs, from the start of the process) | < 150 ms | ${cold_process} ms (from the start of Run: ${cold_run} ms) |
 | Resident memory, counter | < 60 MB | $((rss_kb / 1024)) MB (peak $((hwm_kb / 1024)) MB), of which the Go runtime asked the system for ${go_sys} MB (heap in use ${go_heap} MB) and the rest is the graphics driver and the executable |
 | Gallery, data page with indeterminate indicators, $seconds s | the display's refresh rate, no dropped frames | ${g_fps} frames per second, ${g_slow} frames over 16.7 ms, CPU ${gallery_cpu}% |

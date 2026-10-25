@@ -685,3 +685,51 @@ func TestPlatformServiceHandsOutTheDesktopServices(t *testing.T) {
 		})
 	}
 }
+
+// A platform whose keyboard focus is not its view focus (Wayland: wl_keyboard against
+// the activated state) tells both: the keys, the input method and the cursor follow the
+// keyboard, and the framework hears of the view focus, the first time as soon as the
+// platform knows it, also when the window is not the active one (step 27.3).
+func TestKeyboardFocusRoutesTheKeysAndViewFocusIsTold(t *testing.T) {
+	e := newWindowsEngine(t)
+	v, err := e.d.CreateWindow(ui.WindowSpec{Size: ui.Size{Width: 200, Height: 100}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second := v.ViewID()
+	e.size(0, 800, 600)
+	e.size(second, 200, 100)
+	e.renderAll(map[ui.ViewID]*ui.Scene{0: {}, second: {}})
+	var events []ui.ViewFocusEvent
+	e.d.OnViewFocusChange = func(ev ui.ViewFocusEvent) { events = append(events, ev) }
+
+	// The first configure of each window says it is not the active one, and the
+	// events come with the input of the first frame.
+	e.h.OnViewFocus(0, false)
+	e.h.OnViewFocus(second, false)
+	if len(events) != 0 {
+		t.Fatalf("%d events before the frame", len(events))
+	}
+	e.h.OnFrame(0, time.Millisecond)
+	want := []ui.ViewFocusEvent{{ViewID: 0, State: ui.ViewFocusStateUnfocused}, {ViewID: second, State: ui.ViewFocusStateUnfocused}}
+	if len(events) != 2 || events[0] != want[0] || events[1] != want[1] {
+		t.Fatalf("focus events = %+v, want %+v", events, want)
+	}
+
+	// The keyboard enters the second window: no view focus event, the input method follows.
+	e.h.OnKeyboardFocus(second, true)
+	e.h.SetTextInput(ui.TextInputState{Enabled: true})
+	if !e.p.Windows()[1].TextInput().Enabled || e.p.Windows()[0].TextInput().Enabled {
+		t.Error("the input method is not on the window with the keyboard")
+	}
+	e.h.OnFrame(0, 2*time.Millisecond)
+	if len(events) != 2 {
+		t.Errorf("the keyboard focus made view focus events: %+v", events[2:])
+	}
+	// The window with the keyboard is activated, and the other still is not.
+	e.h.OnViewFocus(second, true)
+	e.h.OnFrame(0, 3*time.Millisecond)
+	if len(events) != 3 || events[2] != (ui.ViewFocusEvent{ViewID: second, State: ui.ViewFocusStateFocused}) {
+		t.Errorf("focus events = %+v, want the activation of the second window", events)
+	}
+}

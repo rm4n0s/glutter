@@ -163,8 +163,14 @@ type Handler interface {
 	OnDisplaysChanged()
 	// OnSettings reports changed system settings.
 	OnSettings(settings Settings)
-	// OnViewFocus reports that the keyboard focus moved to a view (true) or left it
-	// (false). When it moves from one view to another, the old view is told first.
+	// OnViewFocus reports that a view got the focus (true) or lost it (false): the
+	// window is the one the user works in, as the compositor or the window manager
+	// says (Wayland: the activated state of the toplevel; X11: the focus events, or
+	// the active window). It is also the first thing the platform tells about the
+	// focus of a new window, as soon as it is known, so a window that is not active
+	// gets a false. When it moves from one view to another, the old view is told
+	// first. A platform that has a keyboard focus of its own, which can differ from
+	// this one, also tells KeyboardFocusHandler.
 	OnViewFocus(view ui.ViewID, focused bool)
 	// OnContentLost reports that what the window shows is no longer the last frame
 	// that was presented (an X11 window was exposed, and the server kept nothing of
@@ -173,4 +179,18 @@ type Handler interface {
 	// OnCloseRequest reports that the user asked to close the view. Returning
 	// true closes the window; false keeps it open.
 	OnCloseRequest(view ui.ViewID) bool
+}
+
+// KeyboardFocusHandler is implemented by a handler that wants to know which window
+// the keys go to. A platform whose keyboard focus is not the focus of its windows
+// (Wayland: wl_keyboard.enter and leave, against the activated state; a seat may have
+// no keyboard at all) calls it besides Handler.OnViewFocus, and the handler routes the
+// keys, the text input and the input method to that window. Platforms that do not call
+// it route them to the window of OnViewFocus.
+//
+// Flutter: no counterpart
+type KeyboardFocusHandler interface {
+	// OnKeyboardFocus reports that the keys now go to a view (true) or no longer do
+	// (false).
+	OnKeyboardFocus(view ui.ViewID, focused bool)
 }

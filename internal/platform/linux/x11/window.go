@@ -35,6 +35,10 @@ type window struct {
 
 	mapped bool
 	closed bool
+
+	// focused is the view focus the handler was last told, and focusReported
+	// whether it was told at all (SPEC §8.3).
+	focused, focusReported bool
 	// hidden is whether the app withdrew the window (SetHidden); restore is the
 	// state it had then, which it gets back when it is mapped again.
 	hidden  bool
@@ -333,8 +337,37 @@ func (w *window) onMap() {
 	}
 	w.mapped = true
 	w.refreshState()
+	w.reportInitialFocus()
 	w.reportMetrics()
 	w.renderNow()
+}
+
+// reportFocus tells the handler that the view got or lost the focus, the first time
+// it is known and whenever it changes.
+func (p *Platform) reportFocus(w *window, focused bool) {
+	if w.focusReported && w.focused == focused {
+		return
+	}
+	w.focusReported, w.focused = true, focused
+	if p.handler != nil {
+		p.handler.OnViewFocus(w.id, focused)
+	}
+}
+
+// reportInitialFocus tells the handler the focus of a window that was just
+// mapped, when no focus event came yet: the window is the active window of the
+// window manager (_NET_ACTIVE_WINDOW of the root) or it is not. Without a window
+// manager that sets the property the focus is not known, and the first focus
+// event tells it.
+func (w *window) reportInitialFocus() {
+	if w.focusReported || w.closed {
+		return
+	}
+	active := w.p.readLongs(w.p.root, w.p.atoms.netActiveWindow, xaWindow, 1)
+	if len(active) == 0 {
+		return
+	}
+	w.p.reportFocus(w, active[0] == w.xid)
 }
 
 // onExpose redraws a window that was uncovered.
@@ -531,6 +564,9 @@ func (w *window) SetHidden(hidden bool) bool {
 		w.cancelFrame()
 		w.mapped = false
 		w.state.minimized, w.state.activated = false, false
+		if w.focusReported {
+			p.reportFocus(w, false) // a window off the screen has no focus
+		}
 		p.x.withdrawWindow(p.display, w.xid, p.screen)
 	} else {
 		w.setInitialState(w.restore.maximized, w.restore.fullscreen)

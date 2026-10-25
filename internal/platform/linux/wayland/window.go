@@ -102,6 +102,14 @@ type window struct {
 	// follows it.
 	pendingWidth, pendingHeight int32
 	pendingStates               WindowStates
+	// pendingStatesKnown is whether that configure said what the states are (a
+	// libdecor configure may not).
+	pendingStatesKnown bool
+
+	// activated is whether the compositor says the window is the active one, and
+	// focusReported whether the handler was told (OnViewFocus): the focus of the
+	// view follows the activated state, not the keyboard focus (SPEC §8.2).
+	activated, focusReported bool
 
 	states         WindowStates
 	decorationMode wl.ZxdgToplevelDecorationV1Mode
@@ -396,6 +404,21 @@ func (w *window) hide() {
 	}
 	w.mapped = false
 	w.states = WindowStates{}
+	if w.focusReported {
+		w.reportFocus(false) // a window off the screen has no focus
+	}
+}
+
+// reportFocus tells the handler that the view got or lost the focus, the first time
+// the compositor says which it is and whenever it changes (SPEC §8.2).
+func (w *window) reportFocus(activated bool) {
+	if w.focusReported && w.activated == activated {
+		return
+	}
+	w.focusReported, w.activated = true, activated
+	if h := w.p.handler; h != nil {
+		h.OnViewFocus(w.id, activated)
+	}
 }
 
 // reparentChildren gives the windows whose parent this one is a new parent: the
@@ -517,6 +540,7 @@ func (w *window) requestState(state platform.WindowState) {
 func (w *window) onToplevelConfigure(width, height int32, states []uint32) {
 	w.pendingWidth, w.pendingHeight = width, height
 	w.pendingStates = decodeStates(states)
+	w.pendingStatesKnown = true
 }
 
 // onSurfaceConfigure applies the stored configuration: it draws at the new
@@ -538,6 +562,9 @@ func (w *window) onSurfaceConfigure(serial uint32) {
 	infoBefore := w.info()
 	w.states = w.pendingStates
 	infoChanged := w.info() != infoBefore
+	if w.pendingStatesKnown {
+		w.reportFocus(w.states.Activated)
+	}
 	if wasSuspended && !w.states.Suspended {
 		// The frame callback in flight, if any, will not come now; the window
 		// draws at once, and its time is the time of that frame.
@@ -1024,6 +1051,9 @@ func (w *window) destroy() {
 	// released, the pointer leaves, and fingers are cancelled.
 	if kb := w.p.keyboard; kb != nil {
 		kb.windowClosed(w)
+	}
+	if w.activated {
+		w.reportFocus(false)
 	}
 	if pt := w.p.pointer; pt != nil {
 		pt.windowClosed(w)

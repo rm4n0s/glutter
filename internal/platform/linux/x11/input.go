@@ -402,9 +402,7 @@ func (in *inputState) onFocus(w *window, ev *xiEnterEvent, in2 bool) {
 		if t := in.p.text; t != nil {
 			t.focusChanged(w, true)
 		}
-		if h := in.p.handler; h != nil {
-			h.OnViewFocus(w.id, true)
-		}
+		in.p.reportFocus(w, true)
 		return
 	}
 	if in.focus == w {
@@ -414,9 +412,7 @@ func (in *inputState) onFocus(w *window, ev *xiEnterEvent, in2 bool) {
 		if t := in.p.text; t != nil {
 			t.focusChanged(w, false)
 		}
-		if h := in.p.handler; h != nil {
-			h.OnViewFocus(w.id, false)
-		}
+		in.p.reportFocus(w, false)
 	}
 }
 

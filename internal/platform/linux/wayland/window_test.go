@@ -5,6 +5,7 @@ package wayland
 import (
 	"context"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -25,6 +26,41 @@ type recHandler struct {
 	metrics    []platform.ViewMetrics
 	closeCalls []ui.ViewID
 	allowClose bool
+	// focus is what OnViewFocus was told ("got 0", "lost 0") and keyboard what
+	// OnKeyboardFocus was.
+	focus, keyboard []string
+}
+
+func (h *recHandler) OnViewFocus(view ui.ViewID, focused bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.focus = append(h.focus, focusLine(view, focused))
+}
+
+func (h *recHandler) OnKeyboardFocus(view ui.ViewID, focused bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.keyboard = append(h.keyboard, focusLine(view, focused))
+}
+
+func focusLine(view ui.ViewID, focused bool) string {
+	state := "lost"
+	if focused {
+		state = "got"
+	}
+	return state + " " + strconv.Itoa(int(view))
+}
+
+func (h *recHandler) focusSeen() []string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return append([]string(nil), h.focus...)
+}
+
+func (h *recHandler) keyboardFocusSeen() []string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return append([]string(nil), h.keyboard...)
 }
 
 func (h *recHandler) OnMetrics(_ ui.ViewID, m platform.ViewMetrics) {

@@ -3,6 +3,7 @@
 package x11
 
 import (
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -19,6 +20,13 @@ import (
 // keeps _NET_WM_STATE and WM_STATE, resizes for maximized and fullscreen windows,
 // iconifies, focuses, and records the moves, the resizes and the menus it is asked
 // for. All of its X calls are made by one goroutine.
+
+// The values of testWM.activeOnMap.
+const (
+	activeNone = iota
+	activeNew
+	activeOther
+)
 
 const (
 	mapRequest       = 20
@@ -69,6 +77,10 @@ type testWM struct {
 	normal map[uint64][2]uint32 // the size of a window that is neither maximized nor fullscreen
 	// allowed are the _NET_WM_ACTION_ names the windows get; nil means all of them.
 	allowed []string
+	// activeOnMap is what _NET_ACTIVE_WINDOW of the root says when a window is mapped:
+	// activeNew for the window itself (the manager focuses new windows), activeOther for
+	// a window of another client, and activeNone for no property (the default).
+	activeOnMap int
 	// withdrawnSet are the windows that their client withdrew: their next map reads
 	// the _NET_WM_STATE the client set, as a new window's.
 	withdrawnSet map[uint64]bool
@@ -105,10 +117,13 @@ func startTestWM(t *testing.T, p *Platform) *testWM {
 	}
 	wm.x.selectInput(d, wm.root, substructureRedirMask|substructureNotifyMask)
 	wm.x.sync(d, 0) // another window manager would make this an error
+	// The server outlives the tests: the active window of an earlier manager is gone.
+	wm.x.deleteProperty(d, wm.root, wm.atom("_NET_ACTIVE_WINDOW"))
 	go wm.run()
 	t.Cleanup(func() {
 		close(wm.stop)
 		<-wm.done
+		wm.x.deleteProperty(d, wm.root, wm.atom("_NET_ACTIVE_WINDOW"))
 		wm.x.closeDisplay(d)
 	})
 	return wm
@@ -177,6 +192,12 @@ func (wm *testWM) handle(ev uintptr) {
 		wm.states[r.window] = removeAtom(wm.states[r.window], wm.atom("_NET_WM_STATE_HIDDEN"))
 		wm.publishState(r.window)
 		wm.publishActions(r.window)
+		switch wm.activeOnMap {
+		case activeNew:
+			wm.setLongs(wm.root, wm.atom("_NET_ACTIVE_WINDOW"), xaWindow, r.window)
+		case activeOther:
+			wm.setLongs(wm.root, wm.atom("_NET_ACTIVE_WINDOW"), xaWindow, 0x7ffffff)
+		}
 		wm.x.mapWindow(wm.display, r.window)
 	case configureRequest:
 		r := view[xConfigureRequestEvent](ev)
@@ -710,5 +731,42 @@ func TestDisplayHidingWithdrawsTheWindowAndShowingMapsItAgain(t *testing.T) {
 		e.done <- nil // for the cleanup
 	case <-time.After(displayTimeout):
 		t.Fatal("Run did not return after the hidden window closed")
+	}
+}
+
+func TestDisplayTheFocusIsKnownWhenTheWindowIsMapped(t *testing.T) {
+	tests := []struct {
+		name   string
+		active int
+		want   []bool
+	}{
+		{"the window manager made the new window the active one", activeNew, []bool{true}},
+		{"another window is the active one", activeOther, []bool{false}},
+		{"no active window property: the first focus event tells", activeNone, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e, _ := startWithWM(t, windowConfig(), func(wm *testWM) { wm.activeOnMap = tt.active })
+			waitFor(t, func() bool { return len(e.h.focusSeen()) >= len(tt.want) }, "the focus was not reported")
+			e.onLoop(func() {})
+			if got := e.h.focusSeen(); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("view focus events = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestDisplayTheFocusEventsAreTheViewFocus(t *testing.T) {
+	e, wm := startWithWM(t, windowConfig(), func(wm *testWM) { wm.activeOnMap = activeOther })
+	waitFor(t, func() bool { return len(e.h.focusSeen()) == 1 }, "the first focus was not reported")
+	xid := uint64(e.win.NativeSurface().Window)
+	wm.focus(xid)
+	wm.focus(xid) // the same again: nothing new
+	waitFor(t, func() bool { return len(e.h.focusSeen()) == 2 }, "the focus was not reported")
+	wm.unfocus()
+	waitFor(t, func() bool { return len(e.h.focusSeen()) == 3 }, "the loss of the focus was not reported")
+	e.onLoop(func() {})
+	if got, want := e.h.focusSeen(), []bool{false, true, false}; !reflect.DeepEqual(got, want) {
+		t.Errorf("view focus events = %v, want %v", got, want)
 	}
 }
