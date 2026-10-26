@@ -26,6 +26,8 @@ const (
 	objFile   = "file"
 	objIndex  = "index"
 	objLang   = "lang"
+	// objCharSet is FC_CHARSET: the characters a font has.
+	objCharSet = "charset"
 )
 
 // library holds the bound functions of libfontconfig. Pointers (FcConfig*,
@@ -47,6 +49,10 @@ type library struct {
 	objectSetAdd           func(set, object uintptr) int32
 	objectSetDestroy       func(set uintptr)
 	fontList               func(config, pat, objectSet uintptr) uintptr
+	patternGetCharSet      func(pat, object uintptr, n int32, out uintptr) int32
+	charSetCopy            func(cs uintptr) uintptr
+	charSetDestroy         func(cs uintptr)
+	charSetHasChar         func(cs uintptr, ucs4 uint32) int32
 }
 
 // loadLibrary opens libfontconfig.so.1 and binds the functions. It fails with
@@ -83,6 +89,10 @@ func loadLibrary() (*library, error) {
 		{&l.objectSetAdd, "FcObjectSetAdd"},
 		{&l.objectSetDestroy, "FcObjectSetDestroy"},
 		{&l.fontList, "FcFontList"},
+		{&l.patternGetCharSet, "FcPatternGetCharSet"},
+		{&l.charSetCopy, "FcCharSetCopy"},
+		{&l.charSetDestroy, "FcCharSetDestroy"},
+		{&l.charSetHasChar, "FcCharSetHasChar"},
 	} {
 		if err := lib.Bind(b.fptr, b.symbol); err != nil {
 			return nil, err

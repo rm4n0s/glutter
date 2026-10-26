@@ -50,6 +50,15 @@ type Config struct {
 	// it knows nothing about (the default sans-serif and what it stands for); nil until
 	// the first call of Aliases.
 	defaults []string
+	// charsets are the character sets (FcCharSet *) of the fonts that Match listed, by file and face. Each
+	// is a reference that the Config holds until Close, so it outlives the font set of the Match.
+	charsets map[faceKey]uintptr
+}
+
+// faceKey is a font file and the face in it (the low 16 bits of File.Index).
+type faceKey struct {
+	path  string
+	index int
 }
 
 // probeFamily is a family name that no font and no configuration rule mentions.
@@ -78,7 +87,7 @@ func newConfig(lib *library) (*Config, error) {
 	if config == 0 {
 		return nil, errors.New(tagFontconfigInitFailed, "fontconfig could not load a configuration")
 	}
-	return &Config{lib: lib, config: config, scratch: dl.Calloc(1, 16)}, nil
+	return &Config{lib: lib, config: config, scratch: dl.Calloc(1, 16), charsets: map[faceKey]uintptr{}}, nil
 }
 
 // Close releases the configuration. The Config must not be used after.
@@ -88,6 +97,10 @@ func (c *Config) Close() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.config != 0 {
+		for _, cs := range c.charsets {
+			c.lib.charSetDestroy(cs)
+		}
+		clear(c.charsets)
 		c.lib.configDestroy(c.config)
 		dl.Free(c.scratch)
 		c.config, c.scratch = 0, 0
@@ -335,9 +348,46 @@ func (c *Config) files(set uintptr) []File {
 			f.Index = int(idx)
 		}
 		f.Family, _ = c.getString(pat, objFamily)
+		c.keepCharSet(pat, faceKey{f.Path, f.Index & 0xffff})
 		out = append(out, f)
 	}
 	return out
+}
+
+// keepCharSet remembers the character set of a font pattern, which Covers answers from: a reference
+// of the set, since the pattern goes with the font set of the Match. A font whose set is known is not
+// read again.
+func (c *Config) keepCharSet(pat uintptr, key faceKey) {
+	if _, known := c.charsets[key]; known {
+		return
+	}
+	obj := dl.CString(objCharSet)
+	defer dl.Free(obj)
+	if c.lib.patternGetCharSet(pat, obj, 0, c.scratch) != fcResultMatch {
+		return
+	}
+	cs := *(*uintptr)(dl.Pointer(c.scratch))
+	if cs = c.lib.charSetCopy(cs); cs != 0 {
+		c.charsets[key] = cs
+	}
+}
+
+// Covers says whether the font that an earlier Match listed (the file and the face in it) has a glyph for
+// r, from the character set that fontconfig keeps for it: no font file is opened. known is false for a
+// font that no Match listed, and after Close.
+//
+// Flutter: no counterpart
+func (c *Config) Covers(path string, index int, r rune) (has, known bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.config == 0 || r < 0 {
+		return false, false
+	}
+	cs, ok := c.charsets[faceKey{path, index & 0xffff}]
+	if !ok {
+		return false, false
+	}
+	return c.lib.charSetHasChar(cs, uint32(r)) != 0, true
 }
 
 func (c *Config) getString(pat uintptr, object string) (string, bool) {

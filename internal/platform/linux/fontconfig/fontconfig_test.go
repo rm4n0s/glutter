@@ -141,6 +141,10 @@ func fakeLibrary() *library {
 		defaultSubstitute:      func(uintptr) {},
 		fontSort:               func(_, _ uintptr, _ int32, _, _ uintptr) uintptr { return 0 },
 		fontSetDestroy:         func(uintptr) {},
+		patternGetCharSet:      func(_, _ uintptr, _ int32, _ uintptr) int32 { return 1 },
+		charSetCopy:            func(cs uintptr) uintptr { return cs },
+		charSetDestroy:         func(uintptr) {},
+		charSetHasChar:         func(uintptr, uint32) int32 { return 0 },
 	}
 }
 

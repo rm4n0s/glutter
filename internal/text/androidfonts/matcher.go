@@ -17,6 +17,7 @@ var (
 	_ text.Aliaser    = (*Matcher)(nil)
 	_ text.Lister     = (*Matcher)(nil)
 	_ text.Fallbacker = (*Matcher)(nil)
+	_ text.Coverer    = (*Matcher)(nil)
 )
 
 // defaultFamily is the family of a request with no name, and the default of Skia's findDefaultStyleSet.
@@ -82,7 +83,11 @@ func (s *styleSet) isEmoji() bool {
 type Matcher struct {
 	logger   *slog.Logger
 	hasGlyph func(path string, index int, r rune) bool
-	locale   string
+	// covers is hasGlyph that also says whether it could tell (Options.covers).
+	covers func(path string, index int, r rune) (has, known bool)
+	// faces are the fonts of the configuration, for Covers.
+	faces  map[fontKey]bool
+	locale string
 
 	// sets are the families in the order of the configuration; fallbacks are the ones with no name.
 	sets      []*styleSet
@@ -141,10 +146,20 @@ func New(opts Options) (*Matcher, error) {
 			opts.Logger.Error("font customization not valid", "err", err)
 		}
 	}
-	m := &Matcher{logger: opts.Logger, hasGlyph: opts.HasGlyph, locale: opts.Locale, byName: map[string]*styleSet{}}
+	m := &Matcher{logger: opts.Logger, hasGlyph: opts.HasGlyph, covers: opts.covers, locale: opts.Locale, byName: map[string]*styleSet{}}
+	if m.covers == nil { // the app's HasGlyph always tells
+		hasGlyph := opts.HasGlyph
+		m.covers = func(path string, index int, r rune) (bool, bool) { return hasGlyph(path, index, r), true }
+	}
 	m.build(families, opts.FileExists)
 	if len(m.sets) == 0 {
 		return nil, errors.New(TagUnavailable, "none of the fonts of the configuration exists", "files", opts.FontsXML, "dir", opts.FontDir)
+	}
+	m.faces = map[fontKey]bool{}
+	for _, set := range m.sets {
+		for _, f := range set.fonts {
+			m.faces[fontKey{f.path, f.index}] = true
+		}
 	}
 	return m, nil
 }
@@ -396,6 +411,27 @@ func (m *Matcher) Fallback(ctx context.Context, family string, weight int, itali
 		}
 	}
 	return text.FontFile{}, false, nil
+}
+
+// Covers implements text.Coverer with the reading of the font's cmap that Fallback uses
+// (Options.HasGlyph), so that the text layout does not parse a font that cannot show a character. It
+// knows only the fonts of the configuration, and is unknown for a font it cannot read.
+//
+// Flutter: no counterpart
+func (m *Matcher) Covers(_ context.Context, f text.FontFile, r rune) (has, known bool) {
+	if !m.listed(f.Path, f.Index) {
+		return false, false
+	}
+	return m.covers(f.Path, f.Index, r)
+}
+
+// listed says whether a font of the configuration is the face at index of the file.
+func (m *Matcher) listed(path string, index int) bool { return m.faces[fontKey{path, index}] }
+
+// fontKey is a font file and the face in it.
+type fontKey struct {
+	path  string
+	index int
 }
 
 // Aliases returns the other names of the family that has the name, its first name first: for arial

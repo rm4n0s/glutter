@@ -19,6 +19,8 @@ type discardLogger struct{}
 
 func (discardLogger) Printf(string, ...any) {}
 
+var _ Coverer = (*scanMatcher)(nil)
+
 // scanMatcher is the Matcher for systems without fontconfig: it finds fonts with
 // go-text's fontscan, which scans the font directories and keeps an index of them
 // in a cache directory.
@@ -29,6 +31,14 @@ type scanMatcher struct {
 	fm *fontscan.FontMap
 	// families is the answer of Families, made on the first call.
 	families []string
+	// byFace finds a footprint by its file and face, made on the first call of Covers.
+	byFace map[faceID]int
+}
+
+// faceID is a file and a face in it.
+type faceID struct {
+	path  string
+	index uint16
 }
 
 // defaultCacheDir is $XDG_CACHE_HOME/glutter/fonts, with ~/.cache for the
@@ -153,6 +163,27 @@ func (s *scanMatcher) Fallback(ctx context.Context, family string, weight int, i
 	fam, _ := s.fm.FontMetadata(face.Font)
 	loc := s.fm.FontLocation(face.Font)
 	return FontFile{Path: loc.File, Index: int(loc.Index), Family: fam}, true, nil
+}
+
+// Covers implements Coverer from the footprints of the scan, which keep the runes of every font (the
+// set that the scan read from its cmap): no font is opened. A font that the scan does not list is unknown.
+func (s *scanMatcher) Covers(_ context.Context, f FontFile, r rune) (has, known bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.byFace == nil {
+		s.byFace = make(map[faceID]int, len(s.footprints))
+		for i, fp := range s.footprints {
+			id := faceID{fp.Location.File, fp.Location.Index}
+			if _, dup := s.byFace[id]; !dup {
+				s.byFace[id] = i
+			}
+		}
+	}
+	i, ok := s.byFace[faceID{f.Path, uint16(f.Index & 0xffff)}]
+	if !ok {
+		return false, false
+	}
+	return s.footprints[i].Runes.Contains(r), true
 }
 
 // Families implements Lister: the family names of the fonts that the scan found. fontscan

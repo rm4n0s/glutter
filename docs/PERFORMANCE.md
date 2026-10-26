@@ -430,6 +430,43 @@ closest, at 6.1×; 9.1× against the 87 µs that step 22.6 wrote down).
   shaping it (22 to 34 µs, from 41 to 58 before). The raster time (`CodePageRaster`, 36 ms) is not
   touched.
 
+## Text: font fallback (step 28.16)
+
+A character that no font of a style has (a tab, a control character, a zero-width space, an
+unassigned code point) made `styleFonts.ResolveFace` parse every font of the style before it fell back
+to the first one: `font.NewFont` reads every table and every outline of a file. Emetos listed 62 files for
+`monospace` (116 MB on disk), and the first row with a tab parsed all of them: 170 MB of Go heap and
+300 MB more resident memory, on the UI thread in the first frame. The search now asks a character map
+first (`Collection.Covers`: fontconfig's character set, the `fontscan` footprint, the `winfonts` and
+`androidfonts` reading, else the `cmap` table alone) and parses a font only when it can have the glyph;
+the control and default-ignorable characters resolve to the first face with no search.
+
+```
+go test ./internal/text/layout -run xxx -bench FirstLayoutManyFonts -benchtime=3x -count=3 -benchmem
+```
+
+`BenchmarkFirstLayoutManyFonts` builds and lays out the 10 000 lines of a Go file with tabs (the
+indentation and the tab before a comment are spans of their own, as a highlighter makes them), in a
+style whose `monospace` lists 60 fonts: the outlines of Roboto (2.3 MB each, 141 MB in all), each
+under another character map, of which only the first and the last have Latin. Every iteration starts
+with a collection and an engine that have parsed nothing. The "before" is the tree of step 28.15 with
+only a counter of `Collection.load` added; the machine is the one of the other sections (32 cores, `GOMAXPROCS`
+unset).
+
+| | time (3 runs) | allocated | allocations | fonts parsed |
+|---|---|---|---|---|
+| before | 640, 643, 648 ms | 1 657 MB | 7.72 million | 60 |
+| after | 172, 177, 234 ms | 315 MB | 1.15 million | 1 |
+
+The first layout is 3.7 times faster at the best, and allocates a fifth of the memory (the 60
+parses were 1.34 GB of the 1.66 GB). What is left is the first font's parse (Roboto 2.3 MB) and the shaping of the
+lines. The change is on the first look-up of each character of a style; the answer is kept per character
+as before. The `cmap` of a font that no matcher knows is read once and kept; fontconfig and `fontscan`
+keep their own sets, so a font that is only looked at costs no read.
+
+go-text cannot read outlines lazily (`font.NewFont` parses `glyf`, `CFF ` and the other tables at once), so
+the font that is chosen is still parsed in full (SPEC §10, "Decided in step 28.16").
+
 ## Cold start (step 27.10)
 
 `scripts/perf.sh -n 5 -s 5` (the counter, release tags, headless Sway 1920×1080 at 1.25, Mesa's llvmpipe for GLES, the

@@ -144,6 +144,8 @@ type fontconfigMatcher struct {
 	cfg *fontconfig.Config
 }
 
+var _ text.Coverer = (*fontconfigMatcher)(nil)
+
 // openFontconfig loads libfontconfig and the user's configuration. It fails like
 // fontconfig.Open: with FontconfigLoadFailed when the library is not there.
 func openFontconfig(ctx context.Context) (*fontconfigMatcher, error) {
@@ -170,6 +172,11 @@ func (m *fontconfigMatcher) Match(ctx context.Context, family string, weight int
 // Aliases implements text.Aliaser.
 func (m *fontconfigMatcher) Aliases(ctx context.Context, family string) ([]string, error) {
 	return m.cfg.Aliases(ctx, family)
+}
+
+// Covers implements text.Coverer from the character sets that fontconfig keeps for the fonts it listed.
+func (m *fontconfigMatcher) Covers(_ context.Context, f text.FontFile, r rune) (has, known bool) {
+	return m.cfg.Covers(f.Path, f.Index, r)
 }
 
 // Families implements text.Lister.

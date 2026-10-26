@@ -3785,3 +3785,56 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - `perf` runs only under Wine on Linux; on Windows, Task Manager is the tool (manual check 28.15).
   - Allocations per frame are not measured on Windows.
   - A killed run can leave a `_glutterwin-*` copy from `wintool.Build`, or an 8 KB `/tmp/glutter-x11.*` directory, because the harness kills with SIGKILL and `headless-x11.sh`'s trap then never runs. The manager's check script now removes those directories when no Xvfb is running. Sending SIGTERM first would fix the harness itself.
+
+## 28.16 Font fallback that loads only the fonts that can help (Emetos)
+
+- **Date:** 2026-10-26
+- **Branch:** feat/step-28.16-font-fallback
+- **Summary:** `styleFonts.ResolveFace` no longer parses a font to learn that it lacks a character.
+  - **Coverage before parsing:** the new `Collection.Covers` answers from a character map, with the optional `text.Coverer` of a `Matcher`. The maps come from:
+    - fontconfig's character sets (`FcPatternGetCharSet`, kept by `Config` from the `Match` that listed the font and released by `Close`);
+    - `fontscan`'s footprints;
+    - the cmap reading that `androidfonts` and `winfonts` already had;
+    - for any other font (loaded, bundled, or unknown to the matcher), its `cmap` table alone, read once and kept.
+  - **What is skipped:** a candidate whose map lacks the character is skipped without `font.NewFont`. A candidate that may have it is parsed, and `NominalGlyph` still decides, so a matcher's "no" is trusted and its "yes" is checked.
+  - **Control characters:** control characters (`Cc`) and default-ignorable code points go to the first face that loads, with no search and no system fallback. The tab stops of 1.4 still measure with the space of the paragraph's font.
+  - **Unreadable fonts:** a font whose `cmap` cannot be read is skipped, and `FontLoadFailed` is reported once.
+  - **Why the tab was a problem:** a tab reaches `ResolveFace` only as the last character of a run that has no face yet, as in a tab span of its own, which a syntax highlighter makes. Then no font had it, and every font of the style was parsed.
+- **Main files:**
+  - `internal/text/fonts.go` (`Coverer`, `Covers`, the cmap cache, `ParsedFonts`)
+  - `internal/text/layout/engine.go` (`ResolveFace`)
+  - the matchers: `internal/text/scan.go`, `internal/platform/linux/fontconfig/`, `internal/engine/backends_linux.go`, `internal/text/androidfonts/`, `internal/text/winfonts/`
+  - `internal/text/fonttest/`: test fonts made from a bundled font with another `cmap`, so no font file is committed
+  - `docs/PERFORMANCE.md`; SPEC §10 and §12.10
+- **Benchmark** (`BenchmarkFirstLayoutManyFonts`): the first layout of 10,000 Go lines with tab spans, in a style of 60 fonts of 2.3 MB each, of which only the first and the last have Latin.
+
+  | | time | allocated | allocations | fonts parsed |
+  |---|---|---|---|---|
+  | before | 640 to 648 ms | 1,657 MB | 7.72 million | 60 |
+  | after | 172 to 234 ms | 315 MB | 1.15 million | 1 |
+- **Tests:**
+  - **`Collection.Covers`,** in table tests:
+    - from a cmap, for loaded, bundled and parsed fonts;
+    - the matcher asked first;
+    - the scan footprints against the machine's own cmaps;
+    - failures with route tests, and a failure reported once.
+  - **fontconfig:**
+    - against the real cmaps of 20 monospace fonts of this machine (no difference);
+    - with a fake library: each reference is taken once and destroyed by `Close`.
+  - **`androidfonts` and `winfonts`:** listed and unlisted faces, the default reader, an unreadable file.
+  - **The layout, over a style of 60 fonts:**
+    - 16 characters, each of which parses at most one or two files;
+    - the answers are cached, and the matcher is trusted for files that are absent;
+    - an unreadable cmap is reported once;
+    - the first face that loads is used;
+    - the tab stops are equal with 1 font and with 60;
+    - a tab font listed after one without the tab.
+  - **A new golden** of a paragraph with tabs, made with the old search and reproduced exactly by the new code. No existing golden changed.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ (also with `GOOS=windows`, amd64 and arm64, with and without `glutter_wine`) · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck ✅ · apicheck ✅ · `GOOS=js GOARCH=wasm` build, vet and `scripts/test-wasm.sh` ✅ · `scripts/check-android.sh` ✅ · `GOOS=windows` amd64 build and vet, arm64 build ✅ · `scripts/test-windows.sh` ✅ · Wine tests (now with `internal/text/winfonts`) ✅ · nothing left running ✅
+- **Proof:** none.
+- **Manual checks:** none. Emetos removes its workaround (`fonts.ControlsFont`) and checks its memory; that is its own issue.
+- **Deviations and follow-ups** (SPEC §10, "Decided in step 28.16"):
+  - go-text cannot read outlines lazily without changes to go-text: `font.NewFont` parses `glyf`, `CFF` and the other tables at once. So the face that is chosen is still parsed whole.
+  - A font with a glyph for the tab, listed after one without it, no longer draws the tab. This is the intended rule: control characters go to the first face.
+  - The step's test expected a Greek letter that only the third font has to parse the first and the third font. Only the third is parsed, because nothing needs the first.
+  - The memory of the Emetos app itself was not measured here.

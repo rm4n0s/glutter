@@ -124,6 +124,19 @@ type Fallbacker interface {
 	Fallback(ctx context.Context, family string, weight int, italic bool, lang string, r rune) (FontFile, bool, error)
 }
 
+// Coverer is a Matcher that already knows which characters its fonts have, from data it keeps
+// (fontconfig's character sets, the footprints of the font scan, the readings of a cache), so that a
+// Collection can rule a font out for a character without opening the font. A Collection uses it when
+// the Matcher implements it, for the system fonts only; for a font the Matcher knows nothing about it
+// reads the font's cmap table (Collection.Covers).
+//
+// Flutter: no counterpart
+type Coverer interface {
+	// Covers says whether the font f has a glyph for r. known is false when the Matcher cannot tell
+	// (it never listed the font, or could not read it); has is then meaningless.
+	Covers(ctx context.Context, f FontFile, r rune) (has, known bool)
+}
+
 // CollectionOpts are the optional parameters of NewCollection.
 //
 // Flutter: no counterpart
@@ -161,7 +174,12 @@ type Collection struct {
 	aliasCache map[string][]string    // normalized family → the Aliaser's answer
 	fonts      map[fontKey]*font.Font
 	faces      map[faceKey]*font.Face
-	scan       *scanMatcher // created on first use when opts.Matcher is nil
+	// cmaps are the character maps that Covers read from the fonts that no Coverer knows, by font.
+	// A nil map is a font whose cmap could not be read: Covers reported that once and it has no glyph now.
+	cmaps map[fontKey]font.Cmap
+	// parses counts the fonts that load read in full.
+	parses int
+	scan   *scanMatcher // created on first use when opts.Matcher is nil
 }
 
 // fontKey identifies a parsed font: the file and the face in it.
@@ -190,6 +208,7 @@ func NewCollection(opts ...CollectionOpts) *Collection {
 		aliasCache:   map[string][]string{},
 		fonts:        map[fontKey]*font.Font{},
 		faces:        map[faceKey]*font.Face{},
+		cmaps:        map[fontKey]font.Cmap{},
 	}
 }
 
@@ -210,6 +229,11 @@ func (c *Collection) AddBundled(family string, data []byte) error {
 	defer c.mu.Unlock()
 	c.bundled[normalizeFamily(family)] = data
 	c.bundledNames[normalizeFamily(family)] = family
+	for k := range c.cmaps { // the cmap of the font that this one replaces
+		if strings.HasPrefix(k.path, BundledPrefix) && normalizeFamily(strings.TrimPrefix(k.path, BundledPrefix)) == normalizeFamily(family) {
+			delete(c.cmaps, k)
+		}
+	}
 	c.generation++
 	return nil
 }
@@ -571,8 +595,141 @@ func (c *Collection) Face(ctx context.Context, f FontFile, variations ...Variati
 	return face, nil
 }
 
+// knownMatcher returns the Matcher that exists now, nil when there is none: the Matcher of the options,
+// or the font scan once it has been made. Unlike matcher it never starts the scan.
+func (c *Collection) knownMatcher() Matcher {
+	if c.opts.Matcher != nil {
+		return c.opts.Matcher
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.scan != nil {
+		return c.scan
+	}
+	return nil
+}
+
+// Covers says whether the font has a glyph for r, without parsing its outlines. The answer comes
+// from the Matcher when it is a Coverer and knows the font (fontconfig's character set, the footprint
+// of the font scan); otherwise from the font's cmap table alone, which is read once and kept. A font
+// the app loaded or bundled is read from its data. A font whose cmap cannot be read has no glyph, and the
+// call that finds out fails with FontLoadFailed; the later calls for that font are false with no error. It
+// fails with FontLoadCanceled when ctx is done. A true answer is a promise only of the character map:
+// Face(f).NominalGlyph(r) is the last word.
+//
+// Flutter: no counterpart
+func (c *Collection) Covers(ctx context.Context, f FontFile, r rune) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		return false, errors.NewErr(tagFontLoadCanceled, err).SetMetadata("path", f.Path)
+	}
+	fk := fontKey{f.Path, f.Index & 0xffff}
+	if !f.IsLoaded() && !f.IsBundled() {
+		if cv, ok := c.knownMatcher().(Coverer); ok {
+			if has, known := cv.Covers(ctx, FontFile{Path: fk.path, Index: fk.index, Family: f.Family}, r); known {
+				return has, nil
+			}
+		}
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if ft := c.fonts[fk]; ft != nil { // already parsed: its map is at hand
+		return hasGlyph(ft.Cmap, r), nil
+	}
+	cmap, seen := c.cmaps[fk]
+	if !seen {
+		var err error
+		if cmap, err = c.loadCmap(fk); err != nil {
+			c.cmaps[fk] = nil
+			return false, err
+		}
+		c.cmaps[fk] = cmap
+	}
+	return hasGlyph(cmap, r), nil
+}
+
+// hasGlyph says whether the map has a glyph for r; a nil map has none.
+func hasGlyph(cmap font.Cmap, r rune) bool {
+	if cmap == nil {
+		return false
+	}
+	_, ok := cmap.Lookup(r)
+	return ok
+}
+
+// loadCmap reads the cmap table of a loaded font, of a bundled family or of a file.
+func (c *Collection) loadCmap(k fontKey) (font.Cmap, error) {
+	if lf, ok := c.loadedByID[k.path]; ok {
+		cmap, err := readCmap(bytes.NewReader(lf.data), k.index, "FontLoadFailed", "path", k.path, "index", k.index)
+		if err != nil {
+			return nil, err
+		}
+		return cmap, nil
+	}
+	if family, ok := strings.CutPrefix(k.path, BundledPrefix); ok {
+		data, found := c.bundled[normalizeFamily(family)]
+		if !found {
+			return nil, errors.New(tagFontLoadFailed, "there is no bundled font with that family", "path", k.path)
+		}
+		cmap, err := readCmap(bytes.NewReader(data), k.index, "FontLoadFailed", "path", k.path, "index", k.index)
+		if err != nil {
+			return nil, err
+		}
+		return cmap, nil
+	}
+	file, err := os.Open(k.path)
+	if err != nil {
+		return nil, errors.NewErr(tagFontLoadFailed, err).SetMetadata("path", k.path, "index", k.index)
+	}
+	defer func() { _ = file.Close() }() // the cmap is copied; a failed close of a read-only file loses nothing
+	cmap, err := readCmap(file, k.index, "FontLoadFailed", "path", k.path, "index", k.index)
+	if err != nil {
+		return nil, err
+	}
+	return cmap, nil
+}
+
+// readCmap reads the character map of the font at index of a font file or collection, and nothing else
+// of the font. A failure has the tag that the caller gives and the metadata pairs.
+func readCmap(r font.Resource, index int, tag string, metadata ...any) (font.Cmap, error) {
+	loaders, err := ot.NewLoaders(r)
+	if err != nil {
+		return nil, errors.NewErr(tag, err).SetMetadata(metadata...)
+	}
+	if index < 0 || index >= len(loaders) {
+		return nil, errors.NewErrf(tag, "the font file has %d faces, there is none at index %d", len(loaders), index).SetMetadata(metadata...)
+	}
+	ld := loaders[index]
+	raw, _ := ld.RawTable(ot.MustNewTag("OS/2")) // optional: it only tells legacy symbol maps apart
+	os2, _, _ := tables.ParseOs2(raw)
+	raw, err = ld.RawTable(ot.MustNewTag("cmap"))
+	if err != nil {
+		return nil, errors.NewErr(tag, err).SetMetadata(metadata...)
+	}
+	tb, _, err := tables.ParseCmap(raw)
+	if err != nil {
+		return nil, errors.NewErr(tag, err).SetMetadata(metadata...)
+	}
+	cmap, _, err := font.ProcessCmap(tb, os2.FontPage())
+	if err != nil {
+		return nil, errors.NewErr(tag, err).SetMetadata(metadata...)
+	}
+	return cmap, nil
+}
+
+// ParsedFonts is how many fonts the Collection has tried to read in full so far (the calls of Face that had to
+// parse a font, a font that fails to load among them; a font read for its character map only, by Covers, does not count). The tests and the
+// benchmarks of the text layout use it to see that a style does not parse fonts that cannot help.
+//
+// Flutter: no counterpart
+func (c *Collection) ParsedFonts() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.parses
+}
+
 // load parses the font of a loaded font, of a bundled family or of a file.
 func (c *Collection) load(k fontKey) (*font.Font, error) {
+	c.parses++
 	if lf, ok := c.loadedByID[k.path]; ok {
 		ft, err := parseFont(bytes.NewReader(lf.data), k.index, "FontLoadFailed", "path", k.path, "index", k.index)
 		if err != nil {

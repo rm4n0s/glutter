@@ -4,8 +4,10 @@ import (
 	"context"
 	"slices"
 	"strconv"
+	"unicode"
 
 	"github.com/go-text/typesetting/font"
+	"github.com/go-text/typesetting/harfbuzz"
 	"github.com/go-text/typesetting/shaping"
 	"github.com/rm4n0s/glutter/internal/text"
 	"github.com/rm4n0s/glutter/ui"
@@ -175,6 +177,8 @@ type styleFonts struct {
 	ascii    [128]*font.Face
 	asciiSet [128]bool
 	first    *font.Face // the first face that loads: the one for a rune no face has
+	// firstTried is whether firstFace has looked for first.
+	firstTried bool
 }
 
 // forgetText empties what the engine keeps of the text it has shaped: the shaped runs and the
@@ -311,15 +315,7 @@ func (f *styleFonts) emojiFace(r rune) *font.Face {
 	if face, ok := f.emoji[r]; ok {
 		return face
 	}
-	var found *font.Face
-	for _, file := range f.emojiFiles {
-		if face := f.face(file); face != nil {
-			if _, ok := face.NominalGlyph(r); ok {
-				found = face
-				break
-			}
-		}
-	}
+	found := f.firstWith(f.emojiFiles, r)
 	f.emoji[r] = found
 	return found
 }
@@ -334,9 +330,62 @@ func (f *styleFonts) face(file text.FontFile) *font.Face {
 	return face
 }
 
+// firstWith returns the face of the first file that has a glyph for r, or nil. A file whose character map
+// says it has none is not parsed (text.Collection.Covers): only a file that may have the glyph is
+// loaded, and the face is then asked, since the map and the face can differ.
+func (f *styleFonts) firstWith(files []text.FontFile, r rune) *font.Face {
+	for _, file := range files {
+		has, err := f.e.fonts.Covers(f.e.ctx, file, r)
+		if err != nil {
+			f.e.fontError(err)
+			continue
+		}
+		if !has {
+			continue
+		}
+		face := f.face(file)
+		if face == nil {
+			continue
+		}
+		if _, ok := face.NominalGlyph(r); ok {
+			return face
+		}
+	}
+	return nil
+}
+
+// firstFace returns the first face of the style that loads: the one that draws a character no face has
+// (its missing-glyph box) and the one that stands for the characters that choose no font. It is nil when
+// no file of the style loads. Only the files before the first that loads are parsed.
+func (f *styleFonts) firstFace() *font.Face {
+	if f.first != nil || f.firstTried {
+		return f.first
+	}
+	f.firstTried = true
+	for _, file := range f.candidates() {
+		if face := f.face(file); face != nil {
+			f.first = face
+			break
+		}
+	}
+	return f.first
+}
+
+// choosesNoFont says whether the character is one that has no glyph of its own, so that searching the
+// fonts for it would only load them: a control character (general category Cc, the tab among them) or a
+// default-ignorable code point (a zero-width space, a joiner, a variation selector, the byte order mark).
+// HarfBuzz hides those from the glyphs, and go-text's face splitting does not let them change the font of a run
+// (shaping.ignoreFaceChange).
+func choosesNoFont(r rune) bool {
+	return unicode.Is(unicode.Cc, r) || harfbuzz.IsDefaultIgnorable(r)
+}
+
 // ResolveFace returns the first face of the style that has a glyph for r; when none
 // has, the first face that loads (which draws its missing-glyph box), or nil when
-// there is no font at all.
+// there is no font at all. A control character or a default-ignorable code point resolves to
+// that first face with no search. A face is parsed only when it may have the glyph: the fonts that
+// cannot show r are ruled out by their character maps first, so a style of many fonts costs only the
+// fonts that can help.
 func (f *styleFonts) ResolveFace(r rune) *font.Face {
 	if uint32(r) < 128 && f.asciiSet[r] {
 		return f.ascii[r]
@@ -345,44 +394,36 @@ func (f *styleFonts) ResolveFace(r rune) *font.Face {
 		return face
 	}
 	var found *font.Face
-	if text.IsEmoji(r) {
-		found = f.emojiFace(r)
-	}
-	for _, file := range f.candidates() {
-		if found != nil {
-			break
+	switch {
+	case choosesNoFont(r):
+		found = f.firstFace()
+	default:
+		if text.IsEmoji(r) {
+			found = f.emojiFace(r)
 		}
-		face := f.face(file)
-		if face == nil {
-			continue
+		if found == nil {
+			found = f.firstWith(f.candidates(), r)
 		}
-		if f.first == nil {
-			f.first = face
-		}
-		if _, ok := face.NominalGlyph(r); ok {
-			found = face
-			break
-		}
-	}
-	if found == nil {
-		// None of the families has the character: the system's fallback for it.
-		for _, family := range append(append([]string(nil), f.families...), defaultFamily) {
-			file, ok, err := f.e.fonts.Fallback(f.e.ctx, family, f.weight, f.italic, f.lang, r)
-			if err != nil {
-				f.e.fontError(err)
-				continue
-			}
-			if !ok {
-				continue
-			}
-			if face := f.face(file); face != nil {
-				found = face
-				break
+		if found == nil {
+			// None of the families has the character: the system's fallback for it.
+			for _, family := range append(append([]string(nil), f.families...), defaultFamily) {
+				file, ok, err := f.e.fonts.Fallback(f.e.ctx, family, f.weight, f.italic, f.lang, r)
+				if err != nil {
+					f.e.fontError(err)
+					continue
+				}
+				if !ok {
+					continue
+				}
+				if face := f.face(file); face != nil {
+					found = face
+					break
+				}
 			}
 		}
-	}
-	if found == nil {
-		found = f.first
+		if found == nil {
+			found = f.firstFace()
+		}
 	}
 	f.faces[r] = found
 	if uint32(r) < 128 {

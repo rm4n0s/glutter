@@ -119,3 +119,65 @@ func TestDefaultsWithRealFiles(t *testing.T) {
 		t.Errorf("Families = %v", families)
 	}
 }
+
+func TestCoversWithTheDefaultCheck(t *testing.T) {
+	if _, err := os.Stat(robotoPath); err != nil {
+		t.Skipf("no font file to test with: %v", err)
+	}
+	dir := t.TempDir()
+	notFont := filepath.Join(dir, "notfont.ttf")
+	if err := os.WriteFile(notFont, []byte("this is not a font"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c := newGlyphChecker()
+	tests := []struct {
+		name      string
+		path      string
+		r         rune
+		has, know bool
+	}{
+		{"a letter", robotoPath, 'A', true, true},
+		{"hiragana is not in Roboto", robotoPath, 'あ', false, true},
+		{"a file that is not a font", notFont, 'A', false, false},
+		{"a file that is not there", filepath.Join(dir, "missing.ttf"), 'A', false, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			has, known := c.covers(tt.path, 0, tt.r)
+			if has != tt.has || known != tt.know {
+				t.Errorf("covers(%q) = %t, %t; want %t, %t", tt.r, has, known, tt.has, tt.know)
+			}
+		})
+	}
+}
+
+func TestCovers(t *testing.T) {
+	d := device(t, fontsAPI26)
+	d.glyphs = map[string]string{
+		"/system/fonts/Roboto-Regular.ttf#0":      "abc",
+		"/system/fonts/NotoSansCJK-Regular.ttc#2": "あ骨",
+		"/system/fonts/NotoColorEmoji.ttf#0":      "\U0001F600",
+	}
+	m := mustNew(t, d)
+	tests := []struct {
+		name      string
+		file      text.FontFile
+		r         rune
+		has, know bool
+	}{
+		{"a letter in Roboto", text.FontFile{Path: "/system/fonts/Roboto-Regular.ttf"}, 'a', true, true},
+		{"a tab Roboto does not have", text.FontFile{Path: "/system/fonts/Roboto-Regular.ttf"}, '\t', false, true},
+		{"Han in the CJK face of the configuration", text.FontFile{Path: "/system/fonts/NotoSansCJK-Regular.ttc", Index: 2}, '骨', true, true},
+		{"Han in another face of the collection", text.FontFile{Path: "/system/fonts/NotoSansCJK-Regular.ttc", Index: 1}, '骨', false, true},
+		{"the high bits of the index are the caller's to strip", text.FontFile{Path: "/system/fonts/Roboto-Regular.ttf", Index: 0x10000}, 'a', false, false},
+		{"a font the configuration does not list", text.FontFile{Path: "/system/fonts/Other.ttf"}, 'a', false, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			has, known := m.Covers(context.Background(), tt.file, tt.r)
+			if has != tt.has || known != tt.know {
+				t.Errorf("Covers(%+v, %q) = %t, %t; want %t, %t", tt.file, tt.r, has, known, tt.has, tt.know)
+			}
+		})
+	}
+}

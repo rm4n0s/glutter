@@ -15,6 +15,7 @@ var (
 	_ text.Aliaser    = (*Matcher)(nil)
 	_ text.Lister     = (*Matcher)(nil)
 	_ text.Fallbacker = (*Matcher)(nil)
+	_ text.Coverer    = (*Matcher)(nil)
 )
 
 // Options are the parameters of New.
@@ -44,7 +45,11 @@ type family struct {
 // Flutter: no counterpart
 type Matcher struct {
 	hasGlyph func(path string, index int, r rune) bool
-	locale   string
+	// covers is hasGlyph that also says whether it could tell: the default one knows a font it cannot read.
+	covers func(path string, index int, r rune) (has, known bool)
+	locale string
+	// listed are the installed faces, for Covers.
+	listed map[faceKey]bool
 	// byKey finds a family by its normalized name; sorted is the families by name.
 	byKey  map[string]*family
 	sorted []*family
@@ -59,11 +64,16 @@ func New(opts Options) (*Matcher, error) {
 	if len(faces) == 0 {
 		return nil, errors.New(TagUnavailable, "no installed font could be read")
 	}
-	m := &Matcher{hasGlyph: opts.HasGlyph, locale: opts.Locale, byKey: map[string]*family{}}
+	m := &Matcher{hasGlyph: opts.HasGlyph, locale: opts.Locale, byKey: map[string]*family{}, listed: map[faceKey]bool{}}
 	if m.hasGlyph == nil {
-		m.hasGlyph = newGlyphChecker().hasGlyph
+		checker := newGlyphChecker()
+		m.hasGlyph, m.covers = checker.hasGlyph, checker.covers
+	} else {
+		hasGlyph := m.hasGlyph // the app's HasGlyph always tells
+		m.covers = func(path string, index int, r rune) (bool, bool) { return hasGlyph(path, index, r), true }
 	}
 	for _, f := range faces {
+		m.listed[faceKey{f.Path, f.Index}] = true
 		key := font.NormalizeFamily(f.Family)
 		fam := m.byKey[key]
 		if fam == nil {
@@ -198,6 +208,18 @@ func (m *Matcher) Fallback(ctx context.Context, name string, weight int, italic 
 		}
 	}
 	return text.FontFile{}, false, nil
+}
+
+// Covers implements text.Coverer with the reading of the font's cmap that Fallback uses
+// (Options.HasGlyph), so that the text layout does not parse a font that cannot show a character. It
+// knows only the installed faces, and is unknown for a font it cannot read.
+//
+// Flutter: no counterpart
+func (m *Matcher) Covers(_ context.Context, f text.FontFile, r rune) (has, known bool) {
+	if !m.listed[faceKey{f.Path, f.Index}] {
+		return false, false
+	}
+	return m.covers(f.Path, f.Index, r)
 }
 
 // Aliases returns the installed families that the name stands for, most preferred first: Arial for

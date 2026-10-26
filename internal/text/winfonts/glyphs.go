@@ -26,6 +26,13 @@ func newGlyphChecker() *glyphChecker {
 
 // hasGlyph says whether the face at index of the file has a glyph for r.
 func (c *glyphChecker) hasGlyph(path string, index int, r rune) bool {
+	has, _ := c.covers(path, index, r)
+	return has
+}
+
+// covers is hasGlyph that also says whether it could tell: known is false for a file that cannot be read
+// or has no face at the index, which text.Collection.Covers then reads itself and reports.
+func (c *glyphChecker) covers(path string, index int, r rune) (has, known bool) {
 	key := glyphKey{path, index}
 	c.mu.Lock()
 	cmap, ok := c.cmaps[key]
@@ -37,10 +44,10 @@ func (c *glyphChecker) hasGlyph(path string, index int, r rune) bool {
 		c.mu.Unlock()
 	}
 	if cmap == nil {
-		return false
+		return false, false
 	}
 	gid, found := cmap.Lookup(r)
-	return found && gid != 0
+	return found && gid != 0, true
 }
 
 // readCmap loads the cmap of the face, nil when the file or the face cannot be read.

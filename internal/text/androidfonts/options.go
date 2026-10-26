@@ -51,6 +51,8 @@ type Options struct {
 	// finds a font for a character. It defaults to the cmap of the font, read with go-text and
 	// kept per file and index.
 	HasGlyph func(path string, index int, r rune) bool
+	// covers is HasGlyph that also says whether it could tell: the default one knows a font it cannot read.
+	covers func(path string, index int, r rune) (has, known bool)
 	// Locale is the BCP 47 tag of the language used when a request names none (the user's
 	// locale). It is "" by default: the fonts then come in the order of the configuration.
 	Locale string
@@ -86,7 +88,8 @@ func (o Options) withDefaults() Options {
 		o.FileExists = regularFileExists
 	}
 	if o.HasGlyph == nil {
-		o.HasGlyph = newGlyphChecker().hasGlyph
+		checker := newGlyphChecker()
+		o.HasGlyph, o.covers = checker.hasGlyph, checker.covers
 	}
 	if o.Logger == nil {
 		o.Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
