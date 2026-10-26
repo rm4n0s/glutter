@@ -3,6 +3,7 @@
 #
 # Binaries for programs and plugins
 *.exe
+*.syso
 *.exe~
 *.dll
 *.so
@@ -53,3 +54,6 @@ go.work.sum
 /glutter-web
 .android-test/
 .wine-test/
+
+# The temporary copy of a package that glutter-windows builds (internal/wintool, SPEC §25.1)
+_glutterwin-*/

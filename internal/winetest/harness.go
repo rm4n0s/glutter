@@ -273,6 +273,10 @@ type RunOptions struct {
 	// Timeout is how long the program may run; zero means 120 seconds. When it passes, `timeout`
 	// ends the program and the exit code is 124.
 	Timeout time.Duration
+	// OnDisplay starts the program on the display of the environment (DISPLAY) instead of a headless
+	// X server: the window shows on the user's screen. Tests never set it; `glutter-windows run`
+	// does when it is not given -headless.
+	OnDisplay bool
 }
 
 // Run starts the Windows program exe under Wine on a headless X server and waits for it. The prefix
@@ -283,6 +287,35 @@ type RunOptions struct {
 //
 // Flutter: no counterpart
 func (h *Harness) Run(ctx context.Context, exe string, opts RunOptions) (Result, error) {
+	return h.start(ctx, opts, func(wine string, timeout time.Duration) []string {
+		argv := append([]string{wine, exe}, opts.Args...)
+		if opts.OnDisplay {
+			return h.onDisplay(timeout, argv...)
+		}
+		return h.headless(timeout, argv...)
+	})
+}
+
+// Capture starts the Windows program exe under Wine on a headless X server, as Run does, and saves
+// the root window of the server to the PNG file out after GLUTTER_SHOT_DELAY seconds (3 unless the
+// environment of opts says another value), with scripts/wine-screenshot.sh (proof method F, SPEC
+// §25.13): it shows what lies outside the program's own window, such as a dialog. The script ends
+// the program afterwards. A script status other than 0 (the program ended before the capture, or the
+// capture failed) is in the Result. opts.OnDisplay is ignored. It fails as Run does.
+//
+// Flutter: no counterpart
+func (h *Harness) Capture(ctx context.Context, exe, out string, opts RunOptions) (Result, error) {
+	return h.start(ctx, opts, func(wine string, timeout time.Duration) []string {
+		secs := strconv.Itoa(max(1, int(timeout.Seconds())))
+		argv := append([]string{}, shellPrefix...)
+		argv = append(argv, "timeout", "-k", "10s", secs+"s", filepath.Join(h.Root, "scripts", "wine-screenshot.sh"), out, "--", wine, exe)
+		return append(argv, opts.Args...)
+	})
+}
+
+// start makes the prefix, runs the command line that argv builds for the Wine launcher and the
+// timeout, and stops Wine whatever happened.
+func (h *Harness) start(ctx context.Context, opts RunOptions, argv func(wine string, timeout time.Duration) []string) (Result, error) {
 	wine, _, err := h.wineProgram()
 	if err != nil {
 		return Result{}, err
@@ -298,8 +331,7 @@ func (h *Harness) Run(ctx context.Context, exe string, opts RunOptions) (Result,
 	if dir == "" {
 		dir = h.Root
 	}
-	argv := h.headless(timeout, append([]string{wine, exe}, opts.Args...)...)
-	res, runErr := h.Exec(ctx, Command{Argv: argv, Env: h.Environment(opts.Env...), Dir: dir})
+	res, runErr := h.Exec(ctx, Command{Argv: argv(wine, timeout), Env: h.Environment(opts.Env...), Dir: dir})
 	// Stop whatever the program left, whether it ended or not. The context may be done already:
 	// stopping must still happen, so it gets a context of its own.
 	stopCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
@@ -308,6 +340,15 @@ func (h *Harness) Run(ctx context.Context, exe string, opts RunOptions) (Result,
 		return res, err
 	}
 	return res, runErr
+}
+
+// onDisplay is the command line that runs argv on the display of the environment: `timeout -k 10s
+// <n>s argv...`, inside the shell that limits core files.
+func (h *Harness) onDisplay(timeout time.Duration, argv ...string) []string {
+	secs := strconv.Itoa(max(1, int(timeout.Seconds())))
+	cmd := append([]string{}, shellPrefix...)
+	cmd = append(cmd, "timeout", "-k", "10s", secs+"s")
+	return append(cmd, argv...)
 }
 
 // The tags of the errors that this file makes (rm4n0s/errors, R5).

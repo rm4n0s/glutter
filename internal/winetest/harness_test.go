@@ -236,6 +236,38 @@ func TestRunCommandLines(t *testing.T) {
 	}
 }
 
+func TestRunOnDisplayAndCaptureCommandLines(t *testing.T) {
+	tests := []struct {
+		name string
+		call func(f *fakeHarness) error
+		want string
+	}{
+		{"on the display of the environment", func(f *fakeHarness) error {
+			_, err := f.Run(context.Background(), "/tmp/prog.exe", RunOptions{Args: []string{"-x"}, Timeout: 30 * time.Second, OnDisplay: true})
+			return err
+		}, `sh -c ulimit -c 1; exec "$@" sh timeout -k 10s 30s /usr/bin/wine64 /tmp/prog.exe -x`},
+		{"the root window captured", func(f *fakeHarness) error {
+			_, err := f.Capture(context.Background(), "/tmp/prog.exe", "/tmp/out.png", RunOptions{Args: []string{"-x"}, Env: []string{"GLUTTER_SHOT_DELAY=5"}, Timeout: 40 * time.Second, OnDisplay: true})
+			return err
+		}, `sh -c ulimit -c 1; exec "$@" sh timeout -k 10s 40s ROOT/scripts/wine-screenshot.sh /tmp/out.png -- /usr/bin/wine64 /tmp/prog.exe -x`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newFake(t, true)
+			if err := tt.call(f); err != nil {
+				t.Fatal(err)
+			}
+			got := f.lines()
+			if want := strings.ReplaceAll(tt.want, "ROOT", f.Root); len(got) != 2 || got[0] != want || got[1] != "/usr/bin/wineserver -k" {
+				t.Errorf("commands =\n%s\nwant\n%s\n/usr/bin/wineserver -k", strings.Join(got, "\n"), want)
+			}
+			if tt.name != "on the display of the environment" && !contains(f.commands[0].Env, "GLUTTER_SHOT_DELAY=5") {
+				t.Errorf("env %v has no GLUTTER_SHOT_DELAY", f.commands[0].Env)
+			}
+		})
+	}
+}
+
 func TestRunStopsWineWhenTheRunFails(t *testing.T) {
 	f := newFake(t, true)
 	f.onRun = func(c Command) (Result, error) {
@@ -257,8 +289,8 @@ func TestRunWithoutWine(t *testing.T) {
 	f.LookPath = func(string) (string, error) { return "", exec.ErrNotFound }
 	_, err := f.Run(context.Background(), "prog.exe", RunOptions{})
 	appErr, ok := errors.FromError(err)
-	if !ok || appErr.Tag != "WineNotFound" || !appErr.HasRoute("Harness.Run->Harness.wineProgram.WineNotFound") {
-		t.Errorf("got %v, want WineNotFound via Harness.Run->Harness.wineProgram", err)
+	if !ok || appErr.Tag != "WineNotFound" || !appErr.HasRoute("Harness.Run->Harness.start->Harness.wineProgram.WineNotFound") {
+		t.Errorf("got %v, want WineNotFound via Harness.Run->Harness.start->Harness.wineProgram", err)
 	}
 	if appErr.Metadata["install"] != WineInstall {
 		t.Errorf("metadata = %v", appErr.Metadata)

@@ -3662,3 +3662,57 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
     - `TestWineAnIdleD3D12AppAsksForNoFrames` (step 28.10) failed 4 times in 10, and once in the manager's own check run. Under Wine on a headless X server, a new window is activated about 4 seconds after it is made. That focus change rightly asks for one frame, which sometimes fell inside the measured interval. The app asks for no frames while idle. The test now waits until its window is in front before it measures, and its threshold is unchanged.
     - `TestWineFileDialogsAreShownOnAWorkerAndClosedByTheTest` (step 28.11) failed once in a full-package run. This was a product bug: `Worker` made a new thread, and so a new COM apartment, for every call. Wine's RPC server keeps an endpoint for every apartment that registered an interface (every file dialog does) and never removes it. At 64 endpoints its wait fails, its server thread ends, and every dialog after that hangs, after about 30 dialogs in one process. `Worker` now reuses a process-wide pool of COM threads, which are never torn down (SPEC §25.9). The test passed 800 times in a row in one process.
     - Each fixed test passed 10 times alone, and its whole package passed twice.
+
+## 28.14 The `.exe` and `glutter-windows`
+
+- **Date:** 2026-10-26
+- **Branch:** feat/step-28.14-windows-exe
+- **Summary:** `go run ./cmd/glutter-windows build ./examples/counter` makes an `.exe` with its manifest, icon and version information. `run` starts it under Wine, on the session's display or with `-headless` on Xvfb, or directly on Windows. `shot` is proof method F.
+  - **Manifest:** per-monitor DPI awareness v2, the UTF-8 code page, long paths, Common Controls 6, the supported OS versions and `asInvoker`.
+  - **The `.syso`:** a pure-Go writer makes a COFF object for amd64 and arm64, with one `.rsrc` section and an `ADDR32NB` relocation for each data entry. It holds:
+    - `RT_MANIFEST`;
+    - `RT_ICON` and `RT_GROUP_ICON`, from 16 to 256 pixels with the 256-pixel one stored as PNG, and Glutter's default icon when none is given;
+    - `RT_VERSION`.
+  - **`Build`:** a GUI build, or `-console`; `-release`, `-arch` and `-version`.
+  - **No overlay:** `go build -overlay` does not take a `.syso`, because the go command packs it from the package's real directory. So the build runs in a temporary sibling copy of the package directory (`_glutterwin-<random>`), which is removed afterwards, also on failure (SPEC §25.1, "Decided in step 28.14").
+  - **The harness:** `internal/winetest` gains `RunOptions.OnDisplay` and `Harness.Capture`.
+- **Main files:**
+  - `internal/wintool/`: `manifest.go`, `coff.go`, `rsrc.go`, `ico.go`, `versioninfo.go`, `runner.go`, `build.go`, `wine.go`
+  - `cmd/glutter-windows/`, with the probe program `testdata/probe`
+  - `internal/winetest/harness.go`
+  - `docs/GUIDE.md` (the section "For Flutter Windows developers"), `.gitignore` (`*.syso`, `_glutterwin-*/`)
+  - SPEC §25.1 and §25.14
+- **Tests:**
+  - **The manifest:** its golden text, and well-formed XML for both architectures.
+  - **The `.syso`,** read back with `debug/pe` and a resource-directory reader: the machine, the section and its relocations, the sorted tree, the data, and reproducibility.
+  - **Resources:** the icon sizes and formats; the version information, parsed back.
+  - **The builder:** its command lines through a fake runner; the temporary copy is made and removed, and the source directory is left untouched.
+  - **A real `go build`:** amd64 GUI, amd64 console and arm64 GUI builds, read with `debug/pe`.
+  - **The commands:** the launchers of `run` and `shot` over fakes.
+  - **Errors:** a route test of every new tag.
+- **Wine tests** (`cmd/glutter-windows`; run twice, peak 1.1 GB):
+  - the manifest build starts with `PerMonitorV2` awareness and code page 65001, `LoadImageW` of resource 1 returns the icon at every size, and the file version reads 1.2.3.4;
+  - a plain `go build` still runs and becomes `PerMonitorV2` at run time;
+  - a GUI build has subsystem 2, and a `-console` build subsystem 3;
+  - the `shot` of the counter equals the `soft` golden within the `d3d12` tolerance;
+  - `shot -screen` returns the 1280×800 root window;
+  - `run` shows the log and leaves nothing behind, also after a time-out.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck ✅ · apicheck ✅ · `GOOS=js GOARCH=wasm` build, vet and `scripts/test-wasm.sh` ✅ (it skips `internal/wintool`, whose tests run the go command) · `scripts/check-android.sh` ✅ · `GOOS=windows` amd64 build and vet, arm64 build ✅ · `scripts/test-windows.sh` ✅ · Wine tests ✅ · nothing left running ✅
+- **Proof:** method F, `docs/implemented-proof-images/28.14-windows-counter-exe.png`: the counter built by `glutter-windows build` and captured with `glutter-windows shot`.
+
+  ![28.14](implemented-proof-images/28.14-windows-counter-exe.png)
+- **Manual checks (pending, for the owner's PC; collected in `docs/MANUAL-CHECKS.md` by step 28.15):** the list of step 28.14:
+  - no console window opens on a double click;
+  - the icon shows in Explorer and the task bar;
+  - Properties → Details shows the version;
+  - the window is sharp at 150%;
+  - SmartScreen asks once, because the file is unsigned;
+  - started from a terminal, the log lines show there.
+- **Deviations and follow-ups:**
+  - `run` and `shot` need a Glutter checkout, because they use its `scripts/` and its Wine prefix. Outside one they fail with `WindowsUsage`.
+  - `run` prints the app's output when the app ends, not while it runs.
+  - `-screen` is not available on Windows.
+  - The build writes a temporary directory next to the package while it runs. If the process is killed, an `_glutterwin-*` directory can stay behind.
+  - The default icon (`wintool.DefaultIcon`) is drawn like `androidtool.DefaultIcon`, but the code is not shared.
+  - Not run here: `run` on the user's display.
+  - The manager removed 36 leftover `glutter-x11.*` directories and one 117 MB `glutter-apk-*` directory from `/tmp`. The latter suggests an Android packaging test that does not remove its temporary directory; step 28.15's sweep should find it.

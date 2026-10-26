@@ -702,6 +702,36 @@ If you build Flutter apps for Android, this is what is the same and what is not.
   gallery 37 MiB, and it starts in about 0.6 s on the emulator with the CPU renderer. Build with
   `-release` for anything you measure, and read [PERFORMANCE.md](PERFORMANCE.md).
 
+## For Flutter Windows developers
+
+If you build Flutter apps for Windows, this is how a Glutter app becomes an `.exe`.
+
+- **Build and run.** There is no `flutter build windows` and no `windows/` folder with a C++ runner:
+  `go run ./cmd/glutter-windows build ./your/app` makes `app.exe`, a Go program with no DLL next to
+  it (`-arch amd64,arm64` builds both, `-release` strips it and builds with `glutter_release`, `-o`
+  names the file). On Linux `run` builds it and starts it under Wine (`-headless` on a hidden X
+  server instead of your screen; it needs Wine and Xvfb and must be started in a checkout of
+  Glutter), on Windows it starts the `.exe` itself, and `shot -o file.png` saves the frame the app
+  draws. A plain `GOOS=windows CGO_ENABLED=0 go build` also gives an `.exe` that runs, but without
+  the resources below.
+- **The manifest.** The tool generates the application manifest that Flutter's runner keeps in
+  `runner.exe.manifest`: per-monitor DPI awareness v2, so the window is sharp at 150% and follows a
+  move between monitors; the UTF-8 code page; long paths; version 6 of the Common Controls, so the
+  system dialogs look current; Windows 10 and 11 as supported systems; and `asInvoker`. `-name`,
+  `-app-id` and `-version 1.2.3.4` set the description, the assembly name and the file version that
+  Explorer's Properties dialog shows. Without a manifest the program still makes itself per-monitor
+  aware when it starts, which is a little later than the manifest does it.
+- **The icon.** `-icon logo.png` takes a square PNG of at least 16 pixels and makes the icon of the
+  `.exe` (16, 24, 32, 48, 64, 128 and 256 pixels) that Explorer, the task bar and the title bar show;
+  without it the icon is Glutter's. Give a PNG of 256 pixels or more so that the large sizes are
+  sharp.
+- **The GUI subsystem and the log.** A build is a GUI program, so double-clicking it opens no console
+  window. Start it from a terminal and its `slog` lines appear there; started from Explorer, they go
+  to `OutputDebugString`, where DebugView or a debugger shows them. `-console` builds a console
+  program instead, for a tool that prints to its terminal.
+- **Unsigned.** There is no installer, MSIX or code signing: the first start of an unsigned `.exe`
+  makes SmartScreen ask once. Signing is the app author's.
+
 ## What is not the same
 
 - **No `const` widgets.** Go has no const constructors. Build a widget once and reuse it
