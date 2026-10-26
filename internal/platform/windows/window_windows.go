@@ -136,6 +136,7 @@ func (p *Platform) NewWindow(cfg platform.WindowConfig) (platform.Window, error)
 	w.hwnd = hwnd
 	w.created = true
 	p.windows[hwnd] = w
+	w.accessibilityAdd()
 	w.initInput()
 	w.registerDrop()
 	// The window may open on a monitor with another scale than the primary's.
@@ -384,6 +385,10 @@ func (w *window) dispatch(hwnd uintptr, msg uint32, wparam, lparam uintptr) uint
 	case win32.WMGetMinMaxInfo:
 		w.onGetMinMaxInfo(win32.View[win32.MinMaxInfo](lparam))
 		return 0
+	case win32.WMGetObject:
+		if r, ok := w.onGetObject(hwnd, wparam, lparam); ok {
+			return r
+		}
 	case win32.WMDpiChanged:
 		w.onDpiChanged(wparam, win32.View[win32.Rect](lparam))
 		return 0
@@ -645,6 +650,7 @@ func (w *window) onDestroyed() {
 	w.closed = true
 	w.modalTimer = false
 	w.releaseIcons()
+	w.accessibilityRemove()
 	delete(p.windows, w.hwnd)
 	p.lifecycleChanged()
 	unregisterTarget(w.token)

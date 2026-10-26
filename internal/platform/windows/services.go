@@ -56,10 +56,12 @@ type shellAPI interface {
 	// Post runs fn on the UI thread; After arms a timer there and returns the function that cancels it.
 	Post(fn func())
 	After(d time.Duration, fn func()) (stop func())
-	// Worker runs fn on a goroutine of its own, on a locked OS thread with COM initialized. ThreadID is
-	// the ID of the calling thread and CancelDialog posts the Cancel button's message to the windows of
-	// the thread with that ID (it works from any thread).
-	Worker(fn func())
+	// Worker runs fn on a locked OS thread with COM initialized, on a goroutine of its own, and then
+	// calls what fn returned (nil for nothing), which is where the answer of the call goes. The thread
+	// is kept for the next call (SPEC §25.9). ThreadID is the ID of the calling thread and CancelDialog
+	// posts the Cancel button's message to the windows of the thread with that ID (it works from any
+	// thread).
+	Worker(fn func() func())
 	ThreadID() uint32
 	CancelDialog(thread uint32)
 
@@ -173,7 +175,10 @@ func (d *Desktop) OpenURI(ctx context.Context, uri string) error {
 		return err
 	}
 	done := make(chan error, 1)
-	d.shell.Worker(func() { done <- d.shell.ShellExecute(uri) })
+	d.shell.Worker(func() func() {
+		err := d.shell.ShellExecute(uri)
+		return func() { done <- err }
+	})
 	select {
 	case err := <-done:
 		return err

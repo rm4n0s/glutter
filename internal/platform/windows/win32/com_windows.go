@@ -39,6 +39,12 @@ func (o Object) method(index int) uintptr {
 	return loadPtr(loadPtr(o.ptr) + uintptr(index)*unsafe.Sizeof(uintptr(0)))
 }
 
+// Method is the address of the method at index in the object's vtable, for a call that SyscallN cannot
+// make (a method with a double argument goes through a shim).
+//
+// Flutter: no counterpart
+func (o Object) Method(index int) uintptr { return o.method(index) }
+
 // Call calls the method at index with the object as this and the arguments after it, and returns
 // RAX. A method that returns an HRESULT is read with FromResult, or called with CallHR. A pointer
 // argument is converted in the argument list (uintptr(unsafe.Pointer(&x))), which keeps it alive for

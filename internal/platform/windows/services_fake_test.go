@@ -118,7 +118,13 @@ func (f *fakeShell) armed() int {
 	return n
 }
 
-func (f *fakeShell) Worker(fn func()) { go fn() }
+func (f *fakeShell) Worker(fn func() func()) {
+	go func() {
+		if deliver := fn(); deliver != nil {
+			deliver()
+		}
+	}()
+}
 
 func (f *fakeShell) ThreadID() uint32 { return 77 }
 

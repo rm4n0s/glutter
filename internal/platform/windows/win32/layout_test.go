@@ -13,7 +13,7 @@ import (
 // Linux host and is skipped, with the install command, when the compiler is missing.
 func TestLayoutAgainstTheHeaders(t *testing.T) {
 	layouttest.Check(t, layouttest.Spec{
-		Headers: []string{"windows.h", "unknwn.h", "dxgi.h", "dwmapi.h", "shellscalingapi.h", "imm.h", "shlobj.h", "shellapi.h", "shobjidl.h", "winver.h", "ole2.h", "oleidl.h", "objidl.h"},
+		Headers: []string{"windows.h", "unknwn.h", "dxgi.h", "dwmapi.h", "shellscalingapi.h", "imm.h", "shlobj.h", "shellapi.h", "shobjidl.h", "winver.h", "ole2.h", "oleidl.h", "objidl.h", "oleauto.h", "uiautomationcore.h"},
 		Structs: []layouttest.Struct{
 			layouttest.StructOf("GUID", GUID{}),
 			layouttest.StructOf("POINT", Point{}),
@@ -56,6 +56,9 @@ func TestLayoutAgainstTheHeaders(t *testing.T) {
 			layouttest.StructOf("FORMATETC", FormatEtc{}),
 			layouttest.StructOf("STGMEDIUM", StgMedium{}),
 			layouttest.StructOf("POINTL", Point{}),
+			layouttest.StructOf("struct UiaRect", UiaRect{}),
+			layouttest.StructOf("struct UiaPoint", UiaPoint{}),
+			layouttest.StructOf("VARIANT", Variant{}),
 		},
 		VTables: []layouttest.VTable{
 			{CName: "IUnknownVtbl", Methods: []layouttest.Method{
@@ -155,6 +158,15 @@ func TestLayoutAgainstTheHeaders(t *testing.T) {
 			{Name: "WM_SETTINGCHANGE", Value: u32(WMSettingChange)},
 			{Name: "WM_SHOWWINDOW", Value: u32(WMShowWindow)},
 			{Name: "WM_GETMINMAXINFO", Value: u32(WMGetMinMaxInfo)},
+			{Name: "WM_GETOBJECT", Value: u32(WMGetObject)},
+			{Name: "VT_EMPTY", Value: u32(VTEmpty)},
+			{Name: "VT_I4", Value: u32(VTI4)},
+			{Name: "VT_R8", Value: u32(VTR8)},
+			{Name: "VT_BSTR", Value: u32(VTBSTR)},
+			{Name: "VT_UNKNOWN", Value: u32(VTUnknown)},
+			{Name: "VT_BOOL", Value: u32(VTBool)},
+			{Name: "VT_ARRAY", Value: u32(VTArray)},
+			{Name: "(unsigned short)VARIANT_TRUE", Value: u32(VariantTrue)},
 			{Name: "WM_WINDOWPOSCHANGED", Value: u32(WMWindowPosChanged)},
 			{Name: "WM_DISPLAYCHANGE", Value: u32(WMDisplayChange)},
 			{Name: "WM_GETICON", Value: u32(WMGetIcon)},

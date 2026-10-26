@@ -52,6 +52,10 @@ type MethodDef struct {
 	// NewObject) and returns the value for RAX, usually Result(hr). It runs on the thread that
 	// Windows called from, which is the UI thread for the COM objects of the window.
 	Fn func(impl any, args []uintptr) uintptr
+	// Raw, when it is not 0, is the address of the function that the vtable gets instead of a
+	// callback made from Fn: a thunk in assembly that Windows calls with a floating-point argument
+	// (SPEC §25.2), which hands the argument's bits to a callback of its own. Fn is then not used.
+	Raw uintptr
 }
 
 // InterfaceDef describes a COM interface that Go implements: its IID and its own methods, in
@@ -116,6 +120,9 @@ type Host struct {
 	mu      sync.Mutex
 	next    uint64
 	objects map[uint64]*goObject
+	// vtbls are the vtables of the interface types, to tell the pointer of one of this Host's objects
+	// from any other (ImplOf).
+	vtbls map[uintptr]bool
 
 	blocks, freed atomic.Int64
 }
@@ -133,7 +140,7 @@ func NewHost(log *slog.Logger) (*Host, error) {
 	if log == nil {
 		log = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
-	h := &Host{heap: heap, log: log, next: 1, objects: map[uint64]*goObject{}}
+	h := &Host{heap: heap, log: log, next: 1, objects: map[uint64]*goObject{}, vtbls: map[uintptr]bool{}}
 	h.queryInterface = NewCallback(h.queryInterfaceMethod)
 	h.addRef = NewCallback(h.addRefMethod)
 	h.release = NewCallback(h.releaseMethod)
@@ -147,7 +154,7 @@ func NewHost(log *slog.Logger) (*Host, error) {
 // Flutter: no counterpart
 func (h *Host) NewInterface(def InterfaceDef) (*InterfaceType, error) {
 	for _, m := range def.Methods {
-		if m.Fn == nil || m.Args < 0 || m.Args > maxMethodArgs {
+		if (m.Fn == nil && m.Raw == 0) || m.Args < 0 || m.Args > maxMethodArgs {
 			return nil, errors.New(tagCOMInterfaceInvalid, "a method of a COM interface needs a function and 0 to 6 arguments",
 				"interface", def.Name, "method", m.Name, "args", m.Args)
 		}
@@ -159,11 +166,18 @@ func (h *Host) NewInterface(def InterfaceDef) (*InterfaceType, error) {
 	}
 	entries := []uintptr{h.queryInterface, h.addRef, h.release}
 	for _, m := range def.Methods {
+		if m.Raw != 0 {
+			entries = append(entries, m.Raw)
+			continue
+		}
 		entries = append(entries, h.trampoline(m))
 	}
 	for i, e := range entries {
 		storePtr(vtbl+uintptr(i)*unsafe.Sizeof(uintptr(0)), e)
 	}
+	h.mu.Lock()
+	h.vtbls[vtbl] = true
+	h.mu.Unlock()
 	return &InterfaceType{def: def, vtbl: vtbl, host: h}, nil
 }
 
@@ -203,6 +217,29 @@ func (h *Host) NewObject(impl any, types ...*InterfaceType) (Object, error) {
 		storePtr(block+unsafe.Sizeof(uintptr(0)), uintptr(o.handle))
 	}
 	return Object{ptr: o.blocks[0]}, nil
+}
+
+// ImplOf returns the Go value (the impl given to NewObject) behind an interface pointer, or nil when the
+// pointer is not one of this Host's live objects: a pointer that a client passes back to a method (a text
+// range given to Compare) may be a proxy or another program's object, so the vtable pointer is checked
+// before the handle is trusted.
+//
+// Flutter: no counterpart
+func (h *Host) ImplOf(ptr uintptr) any {
+	if ptr == 0 {
+		return nil
+	}
+	vtbl := loadPtr(ptr)
+	h.mu.Lock()
+	known := h.vtbls[vtbl]
+	h.mu.Unlock()
+	if !known {
+		return nil
+	}
+	if o := h.find(ptr); o != nil {
+		return o.impl
+	}
+	return nil
 }
 
 // Stats counts the objects and blocks of the Host.

@@ -16,6 +16,7 @@ import (
 	"github.com/rm4n0s/glutter/internal/platform"
 	"github.com/rm4n0s/glutter/internal/platform/windows/ime"
 	"github.com/rm4n0s/glutter/internal/platform/windows/ole"
+	"github.com/rm4n0s/glutter/internal/platform/windows/uia"
 	"github.com/rm4n0s/glutter/internal/platform/windows/win32"
 	"github.com/rm4n0s/glutter/ui"
 )
@@ -111,6 +112,11 @@ type Platform struct {
 	life        lifecycleTracker
 	lifePending bool
 	ended       bool
+	// acc is the UI Automation bridge, made by the first call of Services (accessibility_windows.go), and
+	// accWin the windows it is given.
+	accOnce sync.Once
+	acc     *uia.Bridge
+	accWin  *accWindows
 	// clip is the clipboard, made by the first call of Clipboard.
 	clip *clipboard
 	// desk is the desktop services (tray, balloons, dialogs, URIs), made once by the first call of
@@ -430,12 +436,6 @@ func (t serviceTarget) handleMessage(hwnd uintptr, msg uint32, wparam, lparam ui
 	})
 }
 
-// Services returns nil: the tray, the notifications, the file dialogs and the URIs are the desktop
-// services of Desktop (step 28.11), and the accessibility bridge comes with step 28.13.
-//
-// Flutter: no counterpart
-func (p *Platform) Services() platform.Services { return nil }
-
 // Close destroys the windows that are left and the service window, stops the vsync thread and
 // undoes OleInitialize. Do not use the platform afterwards, and do not call it while Run is
 // active. It must run on the UI thread.
@@ -457,6 +457,9 @@ func (p *Platform) teardown() {
 	}
 	if p.drag != nil {
 		p.drag.Cancel()
+	}
+	if p.acc != nil {
+		p.acc.Close() // the providers are dropped before their windows go
 	}
 	for _, w := range p.sortedWindows() {
 		w.Close()

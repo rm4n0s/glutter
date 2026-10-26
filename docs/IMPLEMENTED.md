@@ -3604,3 +3604,61 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - The 5-second read budget is checked between formats, so a `GetData` that hangs cannot be interrupted.
   - Not done: a drag image (`IDragSourceHelper`), virtual files (`CFSTR_FILEDESCRIPTOR`) and stream media. Drags started by touch or a pen stay inside the window.
   - The unchecked `proc.Call` in `settings_wine_test.go` that `golangci-lint` reported for `GOOS=windows` since step 28.10 is fixed.
+
+## 28.13 Accessibility: UI Automation
+
+- **Date:** 2026-10-26
+- **Branch:** feat/step-28.13-windows-uia
+- **Summary:** Windows now exposes the semantics tree through UI Automation.
+  - **The model:** `internal/platform/windows/uia` has a model of its own, in plain Go. The AT-SPI model of `internal/dbus/atspi` was not moved: its changes are AT-SPI states, property names and character diffs, and sharing it would have changed its behavior. Also in plain Go:
+    - the mapping to control types, properties and patterns;
+    - the UTF-16 ranges of the Text pattern;
+    - the on/off state machine, and `Core`.
+  - **The providers** are COM objects made in Go on `win32.Host`: 13 interface types, 71 callbacks for the whole process. `Bridge` is the `platform.Accessibility`.
+  - **Turning it on:** a `WM_GETOBJECT` with `UiaRootObjectId` turns accessibility on and is answered by `UiaReturnRawElementProvider`.
+  - **The thunks:** three Go-assembly thunks, for amd64 and arm64, receive the floating-point arguments of `ElementProviderFromPoint`, `IScrollProvider::SetScrollPercent` and `IRangeValueProvider::SetValue`, which `syscall.NewCallback` cannot take.
+  - **For tests:** `uia/callshim` calls methods with floating-point arguments, so a test can prove the values arrive. `uia/uiatest` is a `CUIAutomation` test client.
+- **Main files:**
+  - `internal/platform/windows/uia/`:
+    - plain Go: `model.go`, `props.go`, `patterns.go`, `text.go`, `enable.go`, `core.go`, `ids.go`, `enums.go`, `vtables.go`;
+    - Windows glue and thunks: `env_windows.go`, `bridge_windows.go`, `provider_windows.go`, `text_windows.go`, `thunk_windows.go`, `thunk_windows_amd64.s`, `thunk_windows_arm64.s`;
+    - the test helpers `callshim/`, `semtree/` and `uiatest/`.
+  - `internal/platform/windows/`: `accessibility_windows.go`, and `WM_GETOBJECT` in `window_windows.go`
+  - `internal/platform/windows/win32/`: `structs_uia.go`, `uia_windows.go`, and `MethodDef.Raw` and `Host.ImplOf` in `comobj_windows.go`
+  - SPEC §25.11 and §25.14
+- **Tests:**
+  - About 218 plain-Go table cases:
+    - the model, the control types, the names and properties, the patterns of each node;
+    - the requests, including a `SetValue` that waits for the focus, `SetRangeValue` and scrolling;
+    - the UTF-16 offsets and the text ranges;
+    - the on/off state machine, and `Core` with a fake sink.
+  - Layout tests against the mingw-w64 headers: 13 provider vtables, 19 client vtables, 129 identifiers and the enums.
+  - Under Wine, in `scripts/test-windows.sh`:
+    - the three thunks called through `callshim` with known values, edge cases and NaN;
+    - every pattern, property, `Navigate`, rectangle and text-range method, driven through the vtables;
+    - a panic in a provider becomes `E_FAIL`, and the next call still works;
+    - the objects are freed when the bridge closes;
+    - route tests of `WindowsUIAFailed`.
+- **Wine tests through the client** (run twice, at most 164 MB of memory):
+  - accessibility turns on at the first ask;
+  - the tree walk gives names, control types and bounding rectangles;
+  - the focus event arrives, also when the window is activated.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck ✅ · apicheck ✅ · `GOOS=js GOARCH=wasm` build, vet and `scripts/test-wasm.sh` ✅ · `scripts/check-android.sh` ✅ · `GOOS=windows` amd64 build and vet, arm64 build and vet of `internal/platform/windows/...` ✅ · `scripts/test-windows.sh` ✅ · Wine tests ✅ · layout test against the headers ✅ · nothing left running ✅
+- **Proof:** none.
+- **Manual checks (pending, for the owner's PC; collected in `docs/MANUAL-CHECKS.md` by step 28.15):**
+  - the list of step 28.13: Narrator and NVDA on the gallery and the counter, Accessibility Insights or Inspect, a high contrast theme;
+  - the counter's button pressed through `Invoke` by a client;
+  - the property, structure, text and live-region events reaching a client;
+  - COM marshaling between a client process and the app;
+  - the arm64 thunks, which are only built and vetted here.
+- **Deviations and follow-ups** (SPEC §25.11, "Decided in step 28.13"):
+  - Wine 11's `uiautomationcore` is a partial client:
+    - On an element, `GetCurrentPattern`, `GetCurrentPropertyValue`, `GetRuntimeId`, `SetFocus` and the typed getters return `E_NOTIMPL`.
+    - So do the tree walkers, `ElementFromPoint`, `CompareElements`, `AddPropertyChangedEventHandler` and `AddStructureChangedEventHandler`.
+    - A client subscribed to `Text_TextChanged` or `LiveRegionChanged` blocks the thread that raises the event.
+    - The client tests of the patterns and of those events skip with that message. The patterns are tested through the providers' vtables instead.
+  - `RangeValue.SetValue` posts one `Increase` or `Decrease` step, as on Linux. The Text pattern's `RangeFromPoint`, `RangeFromChild` and `FindAttribute` are not supported.
+  - Two older Wine tests failed now and then. Both are fixed on this branch:
+    - `TestWineAnIdleD3D12AppAsksForNoFrames` (step 28.10) failed 4 times in 10, and once in the manager's own check run. Under Wine on a headless X server, a new window is activated about 4 seconds after it is made. That focus change rightly asks for one frame, which sometimes fell inside the measured interval. The app asks for no frames while idle. The test now waits until its window is in front before it measures, and its threshold is unchanged.
+    - `TestWineFileDialogsAreShownOnAWorkerAndClosedByTheTest` (step 28.11) failed once in a full-package run. This was a product bug: `Worker` made a new thread, and so a new COM apartment, for every call. Wine's RPC server keeps an endpoint for every apartment that registered an interface (every file dialog does) and never removes it. At 64 endpoints its wait fails, its server thread ends, and every dialog after that hangs, after about 30 dialogs in one process. `Worker` now reuses a process-wide pool of COM threads, which are never torn down (SPEC §25.9). The test passed 800 times in a row in one process.
+    - Each fixed test passed 10 times alone, and its whole package passed twice.

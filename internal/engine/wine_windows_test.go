@@ -17,6 +17,7 @@ import (
 	"github.com/rm4n0s/glutter/internal/goldens"
 	"github.com/rm4n0s/glutter/internal/gpu/gputest"
 	"github.com/rm4n0s/glutter/internal/platform"
+	"github.com/rm4n0s/glutter/internal/platform/windows/win32"
 	"github.com/rm4n0s/glutter/internal/text"
 	"github.com/rm4n0s/glutter/internal/text/winfonts"
 	"github.com/rm4n0s/glutter/ui"
@@ -244,6 +245,22 @@ func TestWineRenderersThatWindowsDoesNotHave(t *testing.T) {
 	}
 }
 
+// activateWindow makes the engine's window with the title the foreground window, as the user would, and
+// waits until it is. It reports false when it is not one after ten seconds or when ctx ends first.
+func activateWindow(ctx context.Context, title string) bool {
+	deadline := time.Now().Add(10 * time.Second)
+	for ctx.Err() == nil && time.Now().Before(deadline) {
+		if hwnd := win32.FindWindow("GlutterWindow", title); hwnd != 0 {
+			win32.SetForegroundWindow(hwnd)
+			if win32.GetForegroundWindow() == hwnd {
+				return true
+			}
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	return false
+}
+
 // TestWineAnIdleD3D12AppAsksForNoFrames: once the first frames are drawn, an app that changes nothing is not
 // asked for another one: the scene is not built again and the swap chain presents nothing, for seconds
 // (SPEC §25.3, §15).
@@ -263,7 +280,14 @@ func TestWineAnIdleD3D12AppAsksForNoFrames(t *testing.T) {
 			time.Sleep(20 * time.Millisecond)
 		}
 		c.first = scenes.Load()
-		time.Sleep(time.Second) // the frame after the window is shown, and whatever else is settling
+		// The first frames come before the window is active: Wine's X11 driver activates a new window on
+		// its own time (about four seconds after the window is created, on a headless server with no window manager), and the
+		// focus event that follows is input, which asks for a frame. That frame is not an idle app
+		// asking for one, so the measure starts once the window is the active one.
+		if !activateWindow(ctx, "Idle") {
+			t.Errorf("the window \"Idle\" did not become the foreground window")
+		}
+		time.Sleep(time.Second) // the frame after the focus, and whatever else is settling
 		c.settled = scenes.Load()
 		time.Sleep(3 * time.Second)
 		c.end = scenes.Load()

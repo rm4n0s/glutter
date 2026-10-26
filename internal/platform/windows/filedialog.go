@@ -128,10 +128,11 @@ func (d *Desktop) ShowFileDialog(ctx context.Context, spec platform.FileDialogSp
 	}
 	var thread atomic.Uint32
 	done := make(chan answer, 1)
-	d.shell.Worker(func() {
+	d.shell.Worker(func() func() {
 		thread.Store(d.shell.ThreadID())
 		res, err := runFileDialog(d.shell, d.log, spec)
-		done <- answer{res, err}
+		thread.Store(0) // the thread goes on to other calls: nothing is cancelled on it for this one now
+		return func() { done <- answer{res, err} }
 	})
 	select {
 	case a := <-done:

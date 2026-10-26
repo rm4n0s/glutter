@@ -147,6 +147,10 @@ const (
 	//
 	// Flutter: no counterpart
 	WMShowWindow = 0x0018
+	// WMGetObject is WM_GETOBJECT: an accessibility client asks the window for an object (SPEC §25.11).
+	//
+	// Flutter: shell/platform/windows/flutter_window.cc FlutterWindow::HandleMessage
+	WMGetObject = 0x003D
 	// WMGetMinMaxInfo is WM_GETMINMAXINFO.
 	//
 	// Flutter: no counterpart
