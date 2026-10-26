@@ -3,6 +3,7 @@
 package d3d12
 
 import (
+	"bytes"
 	"encoding/binary"
 	"log/slog"
 	"strings"
@@ -371,5 +372,46 @@ func TestWinePipelineLibraryStoresAndSaves(t *testing.T) {
 	}
 	if g3.d.library.IsNil() || g3.calls != 2 || g3.d.StartupReport().CacheBytes != 0 || len(g3.lib.given) != 0 {
 		t.Errorf("after a refused blob: library nil %v, %d calls, report %+v", g3.d.library.IsNil(), g3.calls, g3.d.StartupReport())
+	}
+}
+
+// TestWineLibraryBlobIsCopiedToTheHeap checks the memory that CreatePipelineLibrary keeps: the library
+// reads its pipelines from the blob it was made with for as long as it lives, so the blob is a copy in
+// process heap memory that holds the same bytes, and is given back by freeBlob
+// (SPEC §8.1, "data C keeps lives in C memory").
+func TestWineLibraryBlobIsCopiedToTheHeap(t *testing.T) {
+	tests := []struct {
+		name string
+		blob []byte
+	}{
+		{name: "a few bytes", blob: []byte{1, 2, 3, 4, 5}},
+		{name: "a page and more", blob: func() []byte {
+			b := make([]byte, 5000)
+			for i := range b {
+				b[i] = byte(i * 7)
+			}
+			return b
+		}()},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d := &Device{log: slog.New(slog.DiscardHandler)}
+			mem, err := copyBlob(tt.blob)
+			if err != nil {
+				t.Fatal(err)
+			}
+			d.library.blobMem = mem
+			defer d.library.freeBlob(d)
+			if mem == 0 {
+				t.Fatal("the copy is at 0")
+			}
+			if got := win32.Bytes(mem, len(tt.blob)); !bytes.Equal(got, tt.blob) {
+				t.Errorf("the copy differs from the blob")
+			}
+			d.library.freeBlob(d)
+			if d.library.blobMem != 0 {
+				t.Errorf("blobMem = %#x after freeBlob, want 0", d.library.blobMem)
+			}
+		})
 	}
 }

@@ -62,11 +62,11 @@ func CreateDIBSection(info *BitmapInfo) (bitmap, bits uintptr, err error) {
 //
 // Flutter: no counterpart
 func CreateBitmap(width, height int32, planes, bitCount uint32, bits []byte) (uintptr, error) {
-	var p uintptr
+	var p unsafe.Pointer
 	if len(bits) > 0 {
-		p = uintptr(unsafe.Pointer(&bits[0]))
+		p = unsafe.Pointer(&bits[0])
 	}
-	r, errno, err := gdi32.call("CreateBitmap", uintptr(width), uintptr(height), uintptr(planes), uintptr(bitCount), p)
+	r, errno, err := gdi32.call("CreateBitmap", uintptr(width), uintptr(height), uintptr(planes), uintptr(bitCount), uintptr(p))
 	if err != nil {
 		return 0, err
 	}

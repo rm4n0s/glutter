@@ -404,7 +404,7 @@ func (d *Device) warpAdapter() (win32.Object, AdapterInfo, error) {
 // short.
 func (d *Device) queryFeatures() {
 	d.featureLevel = featureLevel11_0
-	fl := d3d12FeatureLevels{NumFeatureLevels: uint32(len(featureLevels)), FeatureLevelsRequested: uintptr(unsafe.Pointer(&featureLevels[0]))}
+	fl := d3d12FeatureLevels{NumFeatureLevels: uint32(len(featureLevels)), FeatureLevelsRequested: unsafe.Pointer(&featureLevels[0])}
 	if hr := win32.FromResult(d.dev.Call(deviceCheckFeatureSupport, uintptr(featureFeatureLevels), uintptr(unsafe.Pointer(&fl)), unsafe.Sizeof(fl))); hr.Succeeded() {
 		d.featureLevel = fl.MaxSupportedFeatureLevel
 	} else {

@@ -3,7 +3,6 @@
 package windows
 
 import (
-	"runtime"
 	"unsafe"
 
 	"github.com/rm4n0s/glutter/internal/platform/windows/win32"
@@ -27,7 +26,7 @@ func buildMenu(entries []menuEntry) (uintptr, error) {
 				return 0, err
 			}
 			info.Mask |= win32.MIIMString | win32.MIIMState
-			info.TypeData = uintptr(unsafe.Pointer(text))
+			info.TypeData = unsafe.Pointer(text)
 			if e.Disabled {
 				info.State |= win32.MFSGrayed
 			}
@@ -48,7 +47,6 @@ func buildMenu(entries []menuEntry) (uintptr, error) {
 			}
 		}
 		err := win32.InsertMenuItem(menu, uint32(i), &info)
-		runtime.KeepAlive(text) // the text is read through a number, which does not keep it alive
 		if err != nil {
 			win32.DestroyMenu(menu) // frees the submenus that were inserted too
 			if info.SubMenu != 0 {

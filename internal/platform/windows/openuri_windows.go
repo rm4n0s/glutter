@@ -3,9 +3,6 @@
 package windows
 
 import (
-	"runtime"
-	"unsafe"
-
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/internal/platform/windows/win32"
 )
@@ -28,11 +25,9 @@ func (s winShell) ShellExecute(uri string) error {
 	}
 	info := win32.ShellExecuteInfo{
 		Mask: win32.SEEMaskNoAsync | win32.SEEMaskFlagNoUI, Show: win32.SWShowNormal,
-		Verb: uintptr(unsafe.Pointer(verb)), File: uintptr(unsafe.Pointer(file)),
+		Verb: verb, File: file,
 	}
 	ok, errno, instApp, err := win32.ShellExecuteEx(&info)
-	runtime.KeepAlive(verb)
-	runtime.KeepAlive(file)
 	if err != nil {
 		return errors.New(tagOpenURIUnavailable, "ShellExecuteExW could not be called", "uri", uri, "reason", err.Error())
 	}

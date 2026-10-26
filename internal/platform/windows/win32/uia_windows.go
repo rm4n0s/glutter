@@ -84,11 +84,13 @@ func UiaRaiseAutomationPropertyChangedEvent(provider Object, property int32, old
 //
 // Flutter: third_party/accessibility/ax/platform/ax_platform_node_win.cc AXPlatformNodeWin::NotifyAccessibilityEvent
 func UiaRaiseStructureChangedEvent(provider Object, kind int32, runtimeID []int32) error {
-	var p uintptr
+	// The pointer stays unsafe.Pointer until the argument list, where call keeps it alive: UI Automation
+	// calls the providers of this process while the call runs, and that Go code can move the stack (SPEC §25.2).
+	var p unsafe.Pointer
 	if len(runtimeID) > 0 {
-		p = uintptr(unsafe.Pointer(&runtimeID[0]))
+		p = unsafe.Pointer(&runtimeID[0])
 	}
-	r, _, err := uiacore.call("UiaRaiseStructureChangedEvent", provider.Ptr(), uintptr(kind), p, uintptr(len(runtimeID)))
+	r, _, err := uiacore.call("UiaRaiseStructureChangedEvent", provider.Ptr(), uintptr(kind), uintptr(p), uintptr(len(runtimeID)))
 	if err != nil {
 		return err
 	}

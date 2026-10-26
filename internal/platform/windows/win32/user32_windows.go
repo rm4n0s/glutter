@@ -228,11 +228,13 @@ func DispatchMessage(m *Msg) uintptr {
 //
 // Flutter: no counterpart
 func MsgWaitForMultipleObjectsEx(handles []uintptr, timeout time.Duration, mask, flags uint32) (WaitResult, error) {
-	var first uintptr
+	// The pointer stays unsafe.Pointer until the argument list, where call keeps it alive: the wait
+	// dispatches the messages sent to this thread's windows, which runs Go code (SPEC §25.2).
+	var first unsafe.Pointer
 	if len(handles) > 0 {
-		first = uintptr(unsafe.Pointer(&handles[0]))
+		first = unsafe.Pointer(&handles[0])
 	}
-	r, errno, err := user32.call("MsgWaitForMultipleObjectsEx", uintptr(len(handles)), first, uintptr(timeoutMillis(timeout)), uintptr(mask), uintptr(flags))
+	r, errno, err := user32.call("MsgWaitForMultipleObjectsEx", uintptr(len(handles)), uintptr(first), uintptr(timeoutMillis(timeout)), uintptr(mask), uintptr(flags))
 	if err != nil {
 		return 0, err
 	}
@@ -332,7 +334,10 @@ func SetForegroundWindow(hwnd uintptr) bool { return boolCall(user32, "SetForegr
 // Flutter: no counterpart
 func ReleaseCapture() bool { return boolCall(user32, "ReleaseCapture") }
 
-// boolCall calls a function that returns a BOOL and reports whether it is true.
+// boolCall calls a function that returns a BOOL and reports whether it is true. A pointer converted
+// in its argument list stays alive and is moved to the heap for the call (t.call).
+//
+//go:uintptrescapes
 func boolCall(t *dllTable, name string, args ...uintptr) bool {
 	r, _, err := t.call(name, args...)
 	return err == nil && r != 0
@@ -628,15 +633,15 @@ func EnumDisplaySettingsEx(device string, mode uint32, dm *DevMode) bool {
 // Flutter: no counterpart
 func EnumDisplayDevices(device string, index uint32) (DisplayDevice, bool) {
 	dd := DisplayDevice{Size: uint32(unsafe.Sizeof(DisplayDevice{}))}
-	var name uintptr
+	var name *uint16
 	if device != "" {
 		p, err := UTF16PtrFromString(device)
 		if err != nil {
 			return DisplayDevice{}, false
 		}
-		name = uintptr(unsafe.Pointer(p))
+		name = p
 	}
-	r, _, err := user32.call("EnumDisplayDevicesW", name, uintptr(index), uintptr(unsafe.Pointer(&dd)), 0)
+	r, _, err := user32.call("EnumDisplayDevicesW", uintptr(unsafe.Pointer(name)), uintptr(index), uintptr(unsafe.Pointer(&dd)), 0)
 	if err != nil || r == 0 {
 		return DisplayDevice{}, false
 	}

@@ -196,7 +196,7 @@ func (s *swapchain) Present(damage []image.Rectangle) error {
 	rects := presentRects(damage, s.width, s.height)
 	params := dxgiPresentParameters{DirtyRectsCount: uint32(len(rects))}
 	if len(rects) > 0 {
-		params.DirtyRects = uintptr(unsafe.Pointer(&rects[0]))
+		params.DirtyRects = unsafe.Pointer(&rects[0])
 	}
 	err := s.d.hr(s.sc, "IDXGISwapChain1::Present1", swapChainPresent1, 0, 0, uintptr(unsafe.Pointer(&params)))
 	runtime.KeepAlive(rects)

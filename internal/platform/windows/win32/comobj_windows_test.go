@@ -242,3 +242,63 @@ func TestMethodOfANilObjectPanics(t *testing.T) {
 	}()
 	Object{}.Call(0)
 }
+
+// growStack uses about n KiB of stack, so that the goroutine's stack is copied to a larger one.
+//
+//go:noinline
+func growStack(n int) byte {
+	var pad [1024]byte
+	pad[n%len(pad)] = byte(n)
+	if n == 0 {
+		return pad[0]
+	}
+	return growStack(n-1) + pad[n%len(pad)]
+}
+
+// TestPointersInAStructStayValidWhenACallbackMovesTheStack is the test of the audit of SPEC §25.2: a
+// structure that Windows reads while Go code runs (a method of a Go-made object here, a window
+// procedure or a provider elsewhere) holds its pointers as pointers, so the memory they point to moves
+// to the heap with the structure when the structure is converted in the argument list of a Call. The
+// method grows the stack by 300 KiB, then writes through the text pointer; the caller's text must have
+// the write. With a uintptr member the text stays on the stack, which is copied, and the method writes
+// to the old copy.
+func TestPointersInAStructStayValidWhenACallbackMovesTheStack(t *testing.T) {
+	host, err := NewHost(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	iface, err := host.NewInterface(InterfaceDef{Name: "IStack", IID: iidFoo, Methods: []MethodDef{
+		{Name: "Check", Args: 1, Fn: func(_ any, a []uintptr) uintptr {
+			growStack(300)
+			spec := View[ComdlgFilterSpec](a[0])
+			unsafe.Slice(spec.Name, 2)[0] = 'Z'
+			return Result(SOK)
+		}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	obj, err := host.NewObject(&thing{}, iface)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer obj.Release()
+	for _, tt := range []struct {
+		name string
+		text [2]uint16
+	}{
+		{"a text on the stack", [2]uint16{'o', 0}},
+		{"another text", [2]uint16{'h', 0}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			text := tt.text
+			spec := ComdlgFilterSpec{Name: &text[0]}
+			if hr := FromResult(obj.Call(3, uintptr(unsafe.Pointer(&spec)))); hr.Failed() {
+				t.Fatalf("Check = %v", hr)
+			}
+			if text[0] != 'Z' {
+				t.Errorf("the method wrote to a copy of the text: text[0] = %q", rune(text[0]))
+			}
+		})
+	}
+}

@@ -58,6 +58,10 @@ func ImmGetCompositionValue(himc uintptr, index uint32) int32 {
 	return immGetCompositionString(himc, index, 0, 0)
 }
 
+// immGetCompositionString is ImmGetCompositionStringW; a pointer converted in its argument list
+// stays alive for the call (t.call).
+//
+//go:uintptrescapes
 func immGetCompositionString(himc uintptr, index uint32, buf uintptr, size uint32) int32 {
 	r, _, err := imm32.call("ImmGetCompositionStringW", himc, uintptr(index), buf, uintptr(size))
 	if err != nil {
@@ -72,14 +76,15 @@ func immGetCompositionString(himc uintptr, index uint32, buf uintptr, size uint3
 //
 // Flutter: shell/platform/windows/text_input_manager.cc TextInputManager::AbortComposing
 func ImmSetCompositionString(himc uintptr, index uint32, comp, read []uint16) bool {
-	var pc, pr uintptr
+	// The pointers stay unsafe.Pointer until the argument list, where call keeps them alive (SPEC §25.2).
+	var pc, pr unsafe.Pointer
 	if len(comp) > 0 {
-		pc = uintptr(unsafe.Pointer(&comp[0]))
+		pc = unsafe.Pointer(&comp[0])
 	}
 	if len(read) > 0 {
-		pr = uintptr(unsafe.Pointer(&read[0]))
+		pr = unsafe.Pointer(&read[0])
 	}
-	r, _, err := imm32.call("ImmSetCompositionStringW", himc, uintptr(index), pc, uintptr(len(comp)*2), pr, uintptr(len(read)*2))
+	r, _, err := imm32.call("ImmSetCompositionStringW", himc, uintptr(index), uintptr(pc), uintptr(len(comp)*2), uintptr(pr), uintptr(len(read)*2))
 	return err == nil && r != 0
 }
 

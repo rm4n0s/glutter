@@ -3905,3 +3905,82 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
     This is not a deviation from Flutter, because `WindowDecoration` is Glutter's own widget.
   - **Fixed here: a flaky Windows test.** `TestDataObjectOtherMethods` (`internal/platform/windows/ole`, step 28.12) failed once in `scripts/test-windows.sh`: `the canonical format = {CfFormat:0 Ptd:5 ...}`, the values from before the call. The test had converted `&fe` and `&out` to `uintptr` in a table, before the call. So the `//go:uintptrescapes` of `Object.Call` did not move them to the heap, and the stack could move while the method ran Go code. The method then wrote to the old place. The test now converts each pointer inside the call; it passed 300 runs in a row.
   - **The same hazard in product code** is audited before the release (step 28.19). `UiaRaiseStructureChangedEvent` passes `&runtimeID[0]` as a precomputed `uintptr`, and UI Automation can call the app's providers back before it returns.
+
+## 28.19 Release 1.8
+
+- **Date:** 2026-10-26
+- **Branch:** feat/step-28.19-release-1.8
+- **Summary:** the release checklist for 1.8, run on `main` after step 28.18 (commit `222da1b`) together with this branch's changes. **The owner said to finish by 09:30, publish to `main` and tag the version (2026-10-26). `step-28.19` and `v1.8.0` are tagged on that word, with the manual checks of a Windows PC still pending.**
+  - **Documents:**
+    - SPEC: the version paragraph (the 1.8 sentence), §3 "Scope of 1.8", and §20 (a row for Chromium's accessibility code);
+    - `README.md`: Windows in the introduction, and "What is new in 1.8";
+    - `NOTICE`: entries for Flutter's Windows embedder and for Chromium's accessibility code;
+    - `third_party/chromium/LICENSE`, a byte-for-byte copy of the license in the pinned reference.
+  - **Audit of Go pointers passed to Windows as `uintptr`:**
+    - Every `uintptr(unsafe.Pointer(...))` in the Windows code is now in the argument list of a `//go:uintptrescapes` or `SyscallN` call, or is a reviewed exception. Before, a stack move or the garbage collector could make the pointer stale while the call ran Go code.
+    - 22 places are fixed:
+      - `boolCall` and `immGetCompositionString` are now marked `//go:uintptrescapes`;
+      - conditional pointers stay `unsafe.Pointer` until the call;
+      - structure members that point to Go memory are pointer types now: `ShellExecuteInfo`, `ComdlgFilterSpec`, `MenuItemInfo.TypeData`, and in d3d12 the shader code, input elements, root-signature parameters, dirty rectangles and feature levels.
+    - The known case, `UiaRaiseStructureChangedEvent`, is among them.
+    - **A real bug:** `CreatePipelineLibrary` reads its blob for the whole life of the library, but it was given a Go slice that nothing kept alive. The blob is now copied to the process heap and freed after the library.
+    - **A new guard:** `go run ./cmd/glutter-gen uintptrcheck -allow cmd/glutter-gen/uintptrcheck.allow` (0 violations, 1 reviewed exception). It is part of the Definition of done from this step on.
+    - **A new test** grows the stack inside a COM method made in Go. It fails on the old struct shape.
+    - The memory that Windows keeps beyond a call is reviewed kind by kind (SPEC §25.2).
+  - **`scripts/wine-exec.sh`:** it waits, for at most 15 seconds, until the prefix's wineserver has ended, both after stopping it and before starting. Before, a run that started while the previous run's server was still ending could die with status 5 before any test ran.
+- **Main files:**
+  - `docs/SPEC.md` (§1, §3, §20, §25.2), `README.md`, `NOTICE`, `third_party/chromium/LICENSE`
+  - `cmd/glutter-gen/` (`uintptrcheck`)
+  - `internal/platform/windows/` and `win32/`, `internal/gpu/d3d12/`
+  - `scripts/wine-exec.sh`
+- **Checks:**
+  - **Standard checks** on this branch: gofmt ✅ · go vet ✅ · golangci-lint ✅ (also with `GOOS=windows`, amd64 and arm64, with and without `glutter_wine`) · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck ✅ · uintptrcheck ✅ · apicheck ✅ · `GOOS=js GOARCH=wasm` build, vet and `scripts/test-wasm.sh` ✅ · `scripts/check-android.sh` ✅ · `GOOS=windows` amd64 build and vet, arm64 build ✅ · `scripts/test-windows.sh` ✅
+  - **Display tests** under sway (`scripts/headless-wayland.sh -- go test -race -tags glutter_display ./...`) ✅. Only `internal/platform/linux/x11` fails there, because it needs an X server, as in 1.7. Under `scripts/headless-x11.sh`, the X11 package, `internal/gpu/gles` and `internal/engine` pass ✅.
+  - **Browser tests** (`go test -tags glutter_browser ./...`, 105 packages) ✅
+  - **Wine tests:**
+    - **The 13 packages that have Windows files** (`win32`, `ole`, `uia`, `ime`, `internal/platform/windows`, `d3d12`, `gdiwindow`, `engine`, `foundation` and the others) all pass under `GOOS=windows go test -tags glutter_wine -exec scripts/wine-exec.sh -p 1 ./...` (2026-10-26, 08:42–08:49). The one exception is `cmd/glutter-windows`, a host tool that runs the Go toolchain and that `test-windows.sh` leaves out. `internal/platform/windows` failed once in this run with no failing test named; it passed on a rerun right after (the intermittent failure under "Deviations").
+    - **68 packages ok, 24 FAIL.** The 22 others that fail have no Windows files. Their tests assume a Linux host, and they are not regressions of the port:
+      - Linux paths: `/home/me` becomes `\home\me` in `desktop`, and similar cases in `shadercache`, `examples/editor` and `internal/text`;
+      - Linux-only defaults: under `GOOS=windows`, `TargetPlatform` defaults to Windows, so the numpad and selection shortcuts that Flutter has only on Linux fail in `widgets`, `material` and `services`;
+      - host tools: `androidtool`, `androidtest`, `glutter-web`, `webtool`, `wintool`, `errcheck`, `apicheck`, `reexport`, `dbus`, `gles`, and the `examples` builds.
+    - A follow-up: make those tests skip or pin `TargetPlatform` under `GOOS=windows`, so that `./...` under Wine comes out clean.
+  - **Android device tests:**
+    **Not run.** The suite boots three emulators at once (about 16 GB), and with the owner's desktop apps that filled the memory: the guard stopped the run, and the emulators were shut down by hand. The device tests passed at the end of steps 28.1 to 28.18, and nothing in 28.19 touches Android (`scripts/check-android.sh` ✅).
+- **Proof:** none.
+- **What 1.8 contains:**
+  - **Windows (28.1 to 28.15):**
+    - `GOOS=windows` on amd64 and arm64, with only the standard library's `syscall`;
+    - windows and the message loop; mouse, touch, pen and cursors; the keyboard; IMM32 text input; the clipboard, settings, fonts and lifecycle;
+    - the HLSL of the shaders; the Direct3D 12 device at feature level 11_0 and its swap chain; `auto` with WARP and `soft` as fallbacks;
+    - the tray, balloons, file dialogs and open URI; OLE drag and drop and several windows; UI Automation;
+    - the `.exe` with its manifest and icon, and `glutter-windows`;
+    - every example, `tray` and `multiwindow` included, built for both architectures and drawing its first frame under Wine.
+  - **Fixes for Emetos (28.16 to 28.18),** and what Emetos can now remove:
+    - 28.16, a font fallback that parses only the fonts that can help. The first layout of 10,000 lines in a style of 60 fonts went from 640 ms to 172–234 ms, and from 60 fonts parsed to 1. Emetos removes `fonts.ControlsFont`.
+    - 28.17, `TreeSliverNode.SetExpanded`. Emetos stops making its tree nodes again.
+    - 28.18, the drag area of `WindowDecoration`. Emetos removes the no-op detector of its title bar.
+- **Manual checks (pending, for the owner's Windows 10 or 11 PC):** sections 28.2 to 28.15 of `docs/MANUAL-CHECKS.md`. Each section has the commands and the questions:
+  - 28.2, the window and the message loop;
+  - 28.3, mouse, touch, pen and cursors;
+  - 28.4, the keyboard;
+  - 28.5, text input and IMEs;
+  - 28.6, the clipboard, settings, fonts and lifecycle;
+  - 28.7, the shaders with Microsoft's compiler;
+  - 28.8, the debug layer, device removal and WARP;
+  - 28.9, a real pipeline library and `DiscardResource`;
+  - 28.10, presentation and the renderer choice, and GDI drawing after a swap chain;
+  - 28.11, the tray, balloons (and the balloon of a hidden icon), file dialogs and URIs;
+  - 28.12, drag and drop with other programs, and several windows;
+  - 28.13, Narrator, NVDA and Accessibility Insights, the UIA events, and arm64;
+  - 28.14, the `.exe`: no console, the icon, the version, sharpness at 150%, SmartScreen;
+  - 28.15, the sweep: every example, the idle CPU, the cold start, the memory.
+
+  A check that fails is a fix for 1.8.1.
+- **Still open for the owner:**
+  1. Confirm or change the Windows targets proposed in SPEC §15, after reading a PC's numbers.
+  2. Confirm D26: Windows 10 version 1809 (build 17763) as the minimum.
+  3. Toast notifications (SPEC §21). 1.8 shows tray balloons, which have no buttons and no place in the notification center.
+- **Deviations and follow-ups:**
+  - **An intermittent failure:** `internal/platform/windows` under Wine failed in 2 of 8 runs this morning (once 13.8 seconds in, once in the whole-module run), each time with no failing test named; the reruns passed. Before the `wine-exec.sh` fix, it also died at start-up with status 5. Look into it after the release.
+  - **The Android device suite** now boots three emulators at once (`glutter-37`, `glutter-26`, `glutter-37-16k`), about 16 GB. With the owner's apps that filled the memory, and the run was stopped and the emulators shut down by hand. It must be run one emulator at a time; the passes are split by subtest name.
+  - The follow-ups named in the entries of 28.2 to 28.18.

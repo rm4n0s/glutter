@@ -1,8 +1,15 @@
 package d3d12
 
+import "unsafe"
+
 // The Go mirrors of the structures of d3d12shader.h that the shader reflection returns, the positions
 // of the methods of the interfaces the backend calls, and the constants of d3dcommon.h it reads. The
 // layout test (layout_test.go) checks each against the mingw-w64 headers.
+//
+// A member that points to Go memory the device only reads during the call (the shader code, the array
+// of input elements, the dirty rectangles) is an unsafe.Pointer, not a uintptr: a uintptr keeps nothing
+// alive and does not follow the object when the stack moves (SPEC §25.2). Members that D3D12 fills with
+// its own addresses stay uintptr.
 
 // ShaderDesc is the Go mirror of D3D12_SHADER_DESC (ID3D12ShaderReflection::GetDesc).
 //
@@ -298,9 +305,9 @@ type d3d12RenderTargetViewDesc struct {
 
 // d3d12FeatureLevels is the Go mirror of D3D12_FEATURE_DATA_FEATURE_LEVELS.
 type d3d12FeatureLevels struct {
-	NumFeatureLevels         uint32  `c:"NumFeatureLevels"`
-	FeatureLevelsRequested   uintptr `c:"pFeatureLevelsRequested"`
-	MaxSupportedFeatureLevel uint32  `c:"MaxSupportedFeatureLevel"`
+	NumFeatureLevels         uint32         `c:"NumFeatureLevels"`
+	FeatureLevelsRequested   unsafe.Pointer `c:"pFeatureLevelsRequested"`
+	MaxSupportedFeatureLevel uint32         `c:"MaxSupportedFeatureLevel"`
 }
 
 // d3d12Options is the Go mirror of D3D12_FEATURE_DATA_D3D12_OPTIONS.
@@ -351,17 +358,17 @@ type d3d12RootParameter struct {
 
 // d3d12RootSignatureDesc is the Go mirror of D3D12_ROOT_SIGNATURE_DESC (version 1.0).
 type d3d12RootSignatureDesc struct {
-	NumParameters     uint32  `c:"NumParameters"`
-	Parameters        uintptr `c:"pParameters"`
-	NumStaticSamplers uint32  `c:"NumStaticSamplers"`
-	StaticSamplers    uintptr `c:"pStaticSamplers"`
-	Flags             uint32  `c:"Flags"`
+	NumParameters     uint32         `c:"NumParameters"`
+	Parameters        unsafe.Pointer `c:"pParameters"`
+	NumStaticSamplers uint32         `c:"NumStaticSamplers"`
+	StaticSamplers    uintptr        `c:"pStaticSamplers"`
+	Flags             uint32         `c:"Flags"`
 }
 
 // d3d12ShaderBytecode is the Go mirror of D3D12_SHADER_BYTECODE.
 type d3d12ShaderBytecode struct {
-	Code   uintptr `c:"pShaderBytecode"`
-	Length uintptr `c:"BytecodeLength"`
+	Code   unsafe.Pointer `c:"pShaderBytecode"`
+	Length uintptr        `c:"BytecodeLength"`
 }
 
 // d3d12StreamOutputDesc is the Go mirror of D3D12_STREAM_OUTPUT_DESC (unused: all zero).
@@ -431,19 +438,19 @@ type d3d12DepthStencilDesc struct {
 
 // d3d12InputElementDesc is the Go mirror of D3D12_INPUT_ELEMENT_DESC.
 type d3d12InputElementDesc struct {
-	SemanticName         uintptr `c:"SemanticName"`
-	SemanticIndex        uint32  `c:"SemanticIndex"`
-	Format               uint32  `c:"Format"`
-	InputSlot            uint32  `c:"InputSlot"`
-	AlignedByteOffset    uint32  `c:"AlignedByteOffset"`
-	InputSlotClass       uint32  `c:"InputSlotClass"`
-	InstanceDataStepRate uint32  `c:"InstanceDataStepRate"`
+	SemanticName         unsafe.Pointer `c:"SemanticName"`
+	SemanticIndex        uint32         `c:"SemanticIndex"`
+	Format               uint32         `c:"Format"`
+	InputSlot            uint32         `c:"InputSlot"`
+	AlignedByteOffset    uint32         `c:"AlignedByteOffset"`
+	InputSlotClass       uint32         `c:"InputSlotClass"`
+	InstanceDataStepRate uint32         `c:"InstanceDataStepRate"`
 }
 
 // d3d12InputLayoutDesc is the Go mirror of D3D12_INPUT_LAYOUT_DESC.
 type d3d12InputLayoutDesc struct {
-	Elements    uintptr `c:"pInputElementDescs"`
-	NumElements uint32  `c:"NumElements"`
+	Elements    unsafe.Pointer `c:"pInputElementDescs"`
+	NumElements uint32         `c:"NumElements"`
 }
 
 // d3d12CachedPipelineState is the Go mirror of D3D12_CACHED_PIPELINE_STATE.
@@ -513,10 +520,10 @@ type dxgiSwapChainDesc1 struct {
 // dxgiPresentParameters is the Go mirror of DXGI_PRESENT_PARAMETERS (IDXGISwapChain1::Present1): the
 // dirty rectangles, and the scroll rectangle and offset, which the device leaves out.
 type dxgiPresentParameters struct {
-	DirtyRectsCount uint32  `c:"DirtyRectsCount"`
-	DirtyRects      uintptr `c:"pDirtyRects"`
-	ScrollRect      uintptr `c:"pScrollRect"`
-	ScrollOffset    uintptr `c:"pScrollOffset"`
+	DirtyRectsCount uint32         `c:"DirtyRectsCount"`
+	DirtyRects      unsafe.Pointer `c:"pDirtyRects"`
+	ScrollRect      uintptr        `c:"pScrollRect"`
+	ScrollOffset    uintptr        `c:"pScrollOffset"`
 }
 
 // d3d12VertexBufferView is the Go mirror of D3D12_VERTEX_BUFFER_VIEW.

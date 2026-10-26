@@ -169,14 +169,14 @@ func (d *Device) makePipelineState(desc explicit.PipelineDesc, rs *rootSig, vsCo
 	elDescs := make([]d3d12InputElementDesc, len(els))
 	for i, e := range els {
 		elDescs[i] = d3d12InputElementDesc{
-			SemanticName: uintptr(unsafe.Pointer(&semanticLOC[0])), SemanticIndex: e.Location, Format: e.Format, InputSlot: e.Slot,
+			SemanticName: unsafe.Pointer(&semanticLOC[0]), SemanticIndex: e.Location, Format: e.Format, InputSlot: e.Slot,
 			AlignedByteOffset: e.Offset, InputSlotClass: e.Class, InstanceDataStepRate: e.StepRate,
 		}
 	}
 	pd := d3d12GraphicsPipelineStateDesc{
 		RootSignature: rs.obj.Ptr(),
-		VS:            d3d12ShaderBytecode{Code: uintptr(unsafe.Pointer(&vsCode[0])), Length: uintptr(len(vsCode))},
-		PS:            d3d12ShaderBytecode{Code: uintptr(unsafe.Pointer(&psCode[0])), Length: uintptr(len(psCode))},
+		VS:            d3d12ShaderBytecode{Code: unsafe.Pointer(&vsCode[0]), Length: uintptr(len(vsCode))},
+		PS:            d3d12ShaderBytecode{Code: unsafe.Pointer(&psCode[0]), Length: uintptr(len(psCode))},
 		BlendState:    blendDesc(desc.Blend),
 		SampleMask:    defaultSampleMask,
 		RasterizerState: d3d12RasterizerDesc{
@@ -193,7 +193,7 @@ func (d *Device) makePipelineState(desc explicit.PipelineDesc, rs *rootSig, vsCo
 	}
 	pd.RTVFormats[0] = dxgiFormat(desc.Target)
 	if len(elDescs) > 0 {
-		pd.InputLayout = d3d12InputLayoutDesc{Elements: uintptr(unsafe.Pointer(&elDescs[0])), NumElements: uint32(len(elDescs))}
+		pd.InputLayout = d3d12InputLayoutDesc{Elements: unsafe.Pointer(&elDescs[0]), NumElements: uint32(len(elDescs))}
 	}
 	defer runtime.KeepAlive(elDescs)
 	defer runtime.KeepAlive(vsCode)
@@ -238,6 +238,11 @@ type pipelineLibrary struct {
 	key    string
 	loaded int  // the size of the blob that was read from the cache
 	dirty  bool // a pipeline was stored since the last save
+	// blobMem is the copy of the cache's blob in process heap memory (HeapAlloc), or 0. The library reads
+	// its pipelines from the blob it was made with for as long as it lives, so the blob must stay valid
+	// and in place: Go memory could be freed (nothing in Go refers to it) and is not Windows' to keep
+	// (SPEC §8.1). destroy frees it after the library is released.
+	blobMem uintptr
 }
 
 // IsNil says whether the device has no library.
@@ -246,6 +251,35 @@ func (l *pipelineLibrary) IsNil() bool { return l.obj.IsNil() }
 func (l *pipelineLibrary) destroy(d *Device) {
 	d.disown(l.obj)
 	l.obj = win32.Object{}
+	l.freeBlob(d)
+}
+
+// freeBlob gives the heap copy of the blob back. The library that read from it has been released.
+func (l *pipelineLibrary) freeBlob(d *Device) {
+	if l.blobMem == 0 {
+		return
+	}
+	if heap, err := win32.ProcessHeap(); err != nil {
+		d.log.Warn("the process heap is not known; the blob of the pipeline library is not freed", "err", err)
+	} else if err := win32.HeapFree(heap, 0, l.blobMem); err != nil {
+		d.log.Warn("the blob of the pipeline library could not be freed", "err", err)
+	}
+	l.blobMem = 0
+}
+
+// copyBlob copies the blob into memory from the process heap, which the library made from it keeps a
+// pointer to. The errors are those of win32.ProcessHeap and win32.HeapAlloc.
+func copyBlob(blob []byte) (uintptr, error) {
+	heap, err := win32.ProcessHeap()
+	if err != nil {
+		return 0, err
+	}
+	mem, err := win32.HeapAlloc(heap, 0, uintptr(len(blob)))
+	if err != nil {
+		return 0, err
+	}
+	copy(win32.Bytes(mem, len(blob)), blob)
+	return mem, nil
 }
 
 // pipelineLibrary returns the library, making it at the first pipeline: ID3D12Device1::CreatePipelineLibrary
@@ -272,13 +306,23 @@ func (d *Device) pipelineLibrary() win32.Object {
 		d.own(dev1)
 		defer d.disown(dev1)
 		create = func(blob []byte) (win32.Object, win32.HRESULT) {
-			var out, p uintptr
+			// The library reads from the blob while it lives: it gets a copy in heap memory (blobMem).
+			var out, mem uintptr
 			if len(blob) > 0 {
-				p = uintptr(unsafe.Pointer(&blob[0]))
+				var err error
+				if mem, err = copyBlob(blob); err != nil {
+					d.log.Debug("the blob of the pipeline library could not be copied", "err", err)
+					return win32.Object{}, win32.EOutOfMemory
+				}
 			}
-			hr := win32.FromResult(dev1.Call(device1CreatePipelineLibrary, p, uintptr(len(blob)),
+			hr := win32.FromResult(dev1.Call(device1CreatePipelineLibrary, mem, uintptr(len(blob)),
 				uintptr(unsafe.Pointer(&iidPipelineLibrary)), uintptr(unsafe.Pointer(&out))))
-			runtime.KeepAlive(blob)
+			if hr.Failed() || out == 0 {
+				l.blobMem = mem
+				l.freeBlob(d)
+				return win32.ObjectFromPtr(out), hr
+			}
+			l.blobMem = mem
 			return win32.ObjectFromPtr(out), hr
 		}
 	}

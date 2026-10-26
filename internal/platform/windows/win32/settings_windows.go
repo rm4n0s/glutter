@@ -136,15 +136,15 @@ func SplitMultiSZ(buf []uint16) []string {
 //
 // Flutter: shell/platform/windows/system_utils.cc (the locale of the user)
 func GetLocaleInfoEx(locale string, lctype uint32) (string, error) {
-	var name uintptr
+	var name *uint16
 	if locale != "" {
 		p, err := UTF16PtrFromString(locale)
 		if err != nil {
 			return "", err
 		}
-		name = uintptr(unsafe.Pointer(p))
+		name = p
 	}
-	n, errno, err := kern32.call("GetLocaleInfoEx", name, uintptr(lctype), 0, 0)
+	n, errno, err := kern32.call("GetLocaleInfoEx", uintptr(unsafe.Pointer(name)), uintptr(lctype), 0, 0)
 	if err != nil {
 		return "", err
 	}
@@ -152,7 +152,7 @@ func GetLocaleInfoEx(locale string, lctype uint32) (string, error) {
 		return "", Win32Error("GetLocaleInfoEx", uint32(errno))
 	}
 	buf := make([]uint16, n)
-	n, errno, err = kern32.call("GetLocaleInfoEx", name, uintptr(lctype), uintptr(unsafe.Pointer(&buf[0])), n)
+	n, errno, err = kern32.call("GetLocaleInfoEx", uintptr(unsafe.Pointer(name)), uintptr(lctype), uintptr(unsafe.Pointer(&buf[0])), n)
 	if err != nil {
 		return "", err
 	}

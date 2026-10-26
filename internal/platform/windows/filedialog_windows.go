@@ -3,7 +3,6 @@
 package windows
 
 import (
-	"runtime"
 	"unsafe"
 
 	"github.com/rm4n0s/glutter/internal/platform/windows/win32"
@@ -51,7 +50,6 @@ func (c *comDialog) SetFileTypes(types []fileType) error {
 		return nil
 	}
 	specs := make([]win32.ComdlgFilterSpec, len(types))
-	keep := make([]*uint16, 0, 2*len(types))
 	for i, t := range types {
 		name, err := win32.UTF16PtrFromString(t.Name)
 		if err != nil {
@@ -61,12 +59,10 @@ func (c *comDialog) SetFileTypes(types []fileType) error {
 		if err != nil {
 			return err
 		}
-		keep = append(keep, name, spec)
-		specs[i] = win32.ComdlgFilterSpec{Name: uintptr(unsafe.Pointer(name)), Spec: uintptr(unsafe.Pointer(spec))}
+		specs[i] = win32.ComdlgFilterSpec{Name: name, Spec: spec}
 	}
-	err := c.obj.CallHR("IFileDialog::SetFileTypes", win32.IFileDialogSetFileTypes, uintptr(len(specs)), uintptr(unsafe.Pointer(&specs[0])))
-	runtime.KeepAlive(keep) // the specs hold the texts as numbers
-	return err
+	// The specs hold the texts as pointers, so the call keeps them alive with the array.
+	return c.obj.CallHR("IFileDialog::SetFileTypes", win32.IFileDialogSetFileTypes, uintptr(len(specs)), uintptr(unsafe.Pointer(&specs[0])))
 }
 
 func (c *comDialog) SetFileTypeIndex(index uint32) error {

@@ -64,8 +64,25 @@ if [[ "${GLUTTER_WINE_INSIDE:-}" != 1 ]]; then
   exec "$ROOT/scripts/headless-x11.sh" -- "$0" "$@"
 fi
 
-stop() { "$WINESERVER" -k >/dev/null 2>&1 || true; }
+# server_gone waits (at most 15 s) until no wineserver of this prefix is left. `wineserver -k` only asks
+# the server to end; a run that starts while the server of the run before is still ending fails at
+# once with status 5 before any of its code runs. (Never `wineserver -w`: it can wait for ever.)
+server_gone() {
+  local i pid
+  for i in $(seq 60); do
+    local found=""
+    for pid in $(pgrep -u "$(id -u)" -x wineserver 2>/dev/null); do
+      if tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null | grep -qx "WINEPREFIX=$PREFIX"; then
+        found=1
+      fi
+    done
+    [[ -z "$found" ]] && return 0
+    sleep 0.25
+  done
+}
+stop() { "$WINESERVER" -k >/dev/null 2>&1 || true; server_gone; }
 trap stop EXIT
+server_gone
 
 if [[ ! -f "$PREFIX/system.reg" ]]; then
   mkdir -p "$(dirname "$PREFIX")"

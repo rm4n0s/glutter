@@ -102,15 +102,15 @@ func GetModuleHandle(name string) (uintptr, error) {
 	if err != nil {
 		return 0, err
 	}
-	var arg uintptr
+	var arg *uint16
 	if name != "" {
 		p, err := UTF16PtrFromString(name)
 		if err != nil {
 			return 0, err
 		}
-		arg = uintptr(unsafe.Pointer(p))
+		arg = p
 	}
-	h, errno := k.getModuleHandleW.Call(arg)
+	h, errno := k.getModuleHandleW.Call(uintptr(unsafe.Pointer(arg)))
 	if h == 0 {
 		return 0, Win32Error("GetModuleHandleW", uint32(errno))
 	}

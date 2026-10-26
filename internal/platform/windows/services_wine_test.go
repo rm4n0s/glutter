@@ -351,7 +351,7 @@ func readMenu(t testing.TB, menu uintptr) []readMenuItem {
 	for i := range n {
 		buf := make([]uint16, 256)
 		info := win32.MenuItemInfo{Mask: win32.MIIMFType | win32.MIIMID | win32.MIIMState | win32.MIIMSubMenu | win32.MIIMString,
-			TypeData: uintptr(unsafe.Pointer(&buf[0])), CCH: uint32(len(buf))}
+			TypeData: unsafe.Pointer(&buf[0]), CCH: uint32(len(buf))}
 		if err := win32.GetMenuItemInfo(menu, uint32(i), &info); err != nil {
 			t.Fatalf("GetMenuItemInfo(%d): %v", i, err)
 		}

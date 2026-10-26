@@ -1,0 +1,12 @@
+# The violations of `glutter-gen uintptrcheck` that SPEC §25.2 accepts (step 28.19). Each line is
+# "rule file:Func" with the reason above it. A line that no longer matches a violation is an
+# error, so the file cannot grow stale.
+#
+#   go run ./cmd/glutter-gen uintptrcheck -allow cmd/glutter-gen/uintptrcheck.allow
+
+# ptr-escape: D3D12_ROOT_PARAMETER is a union; the descriptor table variant keeps the pointer of its
+# ranges in the second word, which is a uint64 in the Go mirror (rootsig.go fills the first). The
+# ranges are a heap slice (RootDescription.Ranges, made by append, so the GC does not move it) that
+# desc keeps alive through the runtime.KeepAlive after the call, and D3D12SerializeRootSignature
+# copies what it reads and calls no Go code, so nothing can move the stack under it.
+ptr-escape internal/gpu/d3d12/rootsig_windows.go:Device.rootSignature

@@ -15,20 +15,22 @@ import (
 	"github.com/rm4n0s/glutter/cmd/glutter-gen/internal/keys"
 	"github.com/rm4n0s/glutter/cmd/glutter-gen/internal/reexport"
 	"github.com/rm4n0s/glutter/cmd/glutter-gen/internal/shaders"
+	"github.com/rm4n0s/glutter/cmd/glutter-gen/internal/uintptrcheck"
 	"github.com/rm4n0s/glutter/cmd/glutter-gen/internal/wayland"
 )
 
 // commands maps each subcommand name to its implementation. It is read-only.
 var commands = map[string]func(args []string) error{
-	"android-dex": androiddex.Run,
-	"apicheck":    apicheck.Run,
-	"wayland":     wayland.Run,
-	"keys":        keys.Run,
-	"reexport":    reexport.Run,
-	"copywith":    copywith.Run,
-	"errcheck":    errcheck.Run,
-	"icons":       icons.Run,
-	"shaders":     shaders.Run,
+	"android-dex":  androiddex.Run,
+	"apicheck":     apicheck.Run,
+	"wayland":      wayland.Run,
+	"keys":         keys.Run,
+	"reexport":     reexport.Run,
+	"copywith":     copywith.Run,
+	"errcheck":     errcheck.Run,
+	"icons":        icons.Run,
+	"shaders":      shaders.Run,
+	"uintptrcheck": uintptrcheck.Run,
 }
 
 // commandNames returns the subcommand names in alphabetical order.

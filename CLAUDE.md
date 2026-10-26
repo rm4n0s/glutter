@@ -31,6 +31,7 @@ Glutter is a cgo-free GUI toolkit for Go (Android, from 1.6, is the one exceptio
 - Generate (Wayland protocol bindings, key tables, material re-exports, shaders): `go generate ./...`; the shaders need naga 30.0.1 (D20), and `glutter-gen shaders` also writes the HLSL, rewriting naga's sampler heap into plain registers. A shader never reads `instance_index` (SPEC §9.8)
 - API conventions check (SPEC §12.13): `go run ./cmd/glutter-gen apicheck -allow cmd/glutter-gen/apicheck.allow`; a new violation is fixed, or accepted in that file with a reason and a row in SPEC §12.10
 - Error rules check (SPEC §14.4): `go run ./cmd/glutter-gen errcheck -allow cmd/glutter-gen/errcheck.allow`; a new violation is fixed, or accepted in that file with a reason
+- Pointer rule check (SPEC §25.2, from step 28.19): `go run ./cmd/glutter-gen uintptrcheck -allow cmd/glutter-gen/uintptrcheck.allow`: in the Windows code a Go pointer becomes a `uintptr` only in the arguments of a `//go:uintptrescapes` or `SyscallN` call (a stack move or the GC would make it stale); a new violation is fixed, or accepted in that file with a reason
 - Run an example: `go run ./examples/counter`
 - After changing dependencies: `go mod tidy`
 
@@ -41,6 +42,7 @@ Before reporting a task as finished, run `gofmt`, `go vet ./...`, `golangci-lint
 - From step 19.1 on: `GOOS=js GOARCH=wasm go build ./...`, `GOOS=js GOARCH=wasm go vet ./...` and `scripts/test-wasm.sh` pass
 - From step 25.1 on: `scripts/check-android.sh` passes
 - From step 28.1 on: `GOOS=windows GOARCH=amd64 go build ./...` and `go vet ./...`, `GOOS=windows GOARCH=arm64 go build ./...`, and `scripts/test-windows.sh` pass
+- From step 28.19 on: `go run ./cmd/glutter-gen uintptrcheck -allow cmd/glutter-gen/uintptrcheck.allow` passes
 - From step 28.15 on: `GOOS=windows golangci-lint run` (amd64 and arm64, with and without `--build-tags glutter_wine`) is clean
 - Every new exported identifier has a doc comment that ends with its Flutter counterpart (see "Porting from Flutter")
 - Every changed golden image has been looked at, not just regenerated
@@ -89,7 +91,7 @@ Before reporting a task as finished, run `gofmt`, `go vet ./...`, `golangci-lint
 - Port behavior and algorithms from `reference/flutter`. Keep Flutter's names (in Go case), defaults, and the order of layout and paint operations
 - End each exported identifier's doc comment with its source, e.g. `// Flutter: widgets/basic.dart Padding`
 - A deliberate difference from Flutter goes in a `// Deviation:` comment and in SPEC §12.10
-- Ported code is a derivative of Flutter (BSD-3-Clause). Keep `third_party/flutter/LICENSE` and the NOTICE entry (SPEC §20) intact
+- Ported code is a derivative of Flutter (BSD-3-Clause). Keep `third_party/flutter/LICENSE` and the NOTICE entry (SPEC §20) intact. The UI Automation code ported from Chromium's accessibility code (via Flutter) is under Chromium's BSD-3-Clause license: keep `third_party/chromium/LICENSE` and its NOTICE entry intact
 
 ## Error handling
 Use `github.com/rm4n0s/errors` (v0.2.0) for all errors, the way its `AI_GUIDE.md` says. This is a requirement of the project owner: read the whole guide (it is in the module cache, `$(go env GOMODCACHE)/github.com/rm4n0s/errors@v0.2.0/AI_GUIDE.md`) before you write or change code that makes, returns, logs or tests an error, and again when the dependency version changes. SPEC §14.4 lists the rules with the reasons, and `go run ./cmd/glutter-gen errcheck -allow cmd/glutter-gen/errcheck.allow` checks them. Never use `fmt.Errorf`, and never import the standard library `errors` package under the name `errors`: this package re-exports `errors.Is`, `errors.As` and `errors.Unwrap`, so a single import covers everything (if `Join` is needed, import the standard one as `stdErrors "errors"`).

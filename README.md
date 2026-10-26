@@ -2,12 +2,13 @@
 
 Glutter is a GUI toolkit for Go that has **Flutter's framework API**: widgets, rendering,
 gestures, animation and Material 3. It runs on its own engine: a Wayland and X11 platform
-layer and a Vulkan renderer with an OpenGL ES 3.0 fallback, with the system libraries called through
+layer and a Vulkan renderer with an OpenGL ES 3.0 fallback (on Windows, Win32 through the standard library and
+Direct3D 12), with the system libraries called through
 [purego](https://github.com/ebitengine/purego), and text layout on
 [go-text](https://github.com/go-text/typesetting). **There is no cgo**: `CGO_ENABLED=0 go build`
 makes the app, and Go is all you need to build it.
 
-Linux desktop comes first, then the web (`GOOS=js GOARCH=wasm`), Android and Windows (`GOOS=windows`, Direct3D 12).
+Linux desktop comes first, then the web (`GOOS=js GOARCH=wasm`), Android and Windows (`GOOS=windows`, Direct3D 12; version 1.8).
 Every part that depends on the operating system or the GPU sits behind an internal interface, so macOS and iOS can be
 added later.
 
@@ -146,6 +147,17 @@ pointer outruns), and `DraggableOpts.Slop`, `CancelOnEscape` and `DragTargetOpts
 row stay a click, cancel with Escape, and let a list scroll under a waiting drag.
 `TreeSliverNode` has `SetChildren`, `InsertChild` and `RemoveChild`, lazy nodes (`HasChildren`) and
 `TreeSliverOpts.NodeKey`; `RawTooltip` has a hover delay read on enter, callbacks and a controller.
+
+**What is new in 1.8.** Windows (the "Windows" section below), and three more fixes for the application built on
+Glutter that asked for 1.7's. The font fallback no longer parses a font to learn that it lacks a character: it asks the
+font's character map first (fontconfig's, the scanner's, or the `cmap` table alone), and control characters such as the
+tab go to the first face that loads, so a style with dozens of fonts costs one parse on its first layout instead of
+dozens (an app that kept a `ControlsFont` workaround can remove it).
+`TreeSliverNode.SetExpanded` sets a node's expansion whether it is shown or not, with no animation and no
+`OnNodeToggle`, so a tree whose state lives in a model need not make its nodes again. In `WindowDecoration`, only the
+title, the empty space around it and the gap before `Leading` move the window, maximize it on a double tap and open
+its menu on a right click; the `Leading` and `Actions` widgets get their own gestures, and a tap on a button in
+`Actions` arrives at once.
 
 ## From Flutter to Glutter
 
@@ -318,6 +330,10 @@ go vet ./... && golangci-lint run
 go generate ./...
 go run ./cmd/glutter-gen apicheck -allow cmd/glutter-gen/apicheck.allow
 ```
+
+The web, Android and Windows have their own checks (`GOOS=js GOARCH=wasm go build ./...` and `scripts/test-wasm.sh`,
+`scripts/check-android.sh`, `GOOS=windows go build ./...` and `scripts/test-windows.sh` under Wine); CLAUDE.md lists
+them.
 
 ## License
 

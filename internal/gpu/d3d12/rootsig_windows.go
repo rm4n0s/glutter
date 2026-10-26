@@ -35,7 +35,7 @@ func (d *Device) rootSignature(plan *rootPlan) (*rootSig, error) {
 		}
 	}
 	if len(desc.Params) > 0 {
-		sd.Parameters = uintptr(unsafe.Pointer(&desc.Params[0]))
+		sd.Parameters = unsafe.Pointer(&desc.Params[0])
 	}
 	var blob, errs uintptr
 	r, _ := d.libs.serializeRootSignature.Call(uintptr(unsafe.Pointer(&sd)), uintptr(rootSignatureVersion1),

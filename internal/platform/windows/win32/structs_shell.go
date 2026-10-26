@@ -1,7 +1,11 @@
 package win32
 
+import "unsafe"
+
 // The Go mirrors of the structures of the clipboard and of the system settings (SPEC §25.7,
-// §25.8). The layout test of this package checks them against the mingw-w64 headers.
+// §25.8). The layout test of this package checks them against the mingw-w64 headers. A member that
+// points to Go memory (the texts of ShellExecuteInfo, ComdlgFilterSpec and MenuItemInfo) has a pointer
+// type, not uintptr, so that the memory stays alive and follows the stack when it moves (SPEC §25.2).
 
 // DropFiles is the Go mirror of DROPFILES, the header of the CF_HDROP format: the paths follow it
 // at PFiles, one after the other, each ended by a NUL, and the list by one more NUL. FWide says
@@ -123,18 +127,18 @@ type NotifyIconData struct {
 //
 // Flutter: no counterpart
 type MenuItemInfo struct {
-	Size         uint32  `c:"cbSize"`
-	Mask         uint32  `c:"fMask"`
-	Type         uint32  `c:"fType"`
-	State        uint32  `c:"fState"`
-	ID           uint32  `c:"wID"`
-	SubMenu      uintptr `c:"hSubMenu"`
-	BmpChecked   uintptr `c:"hbmpChecked"`
-	BmpUnchecked uintptr `c:"hbmpUnchecked"`
-	ItemData     uintptr `c:"dwItemData"`
-	TypeData     uintptr `c:"dwTypeData"`
-	CCH          uint32  `c:"cch"`
-	BmpItem      uintptr `c:"hbmpItem"`
+	Size         uint32         `c:"cbSize"`
+	Mask         uint32         `c:"fMask"`
+	Type         uint32         `c:"fType"`
+	State        uint32         `c:"fState"`
+	ID           uint32         `c:"wID"`
+	SubMenu      uintptr        `c:"hSubMenu"`
+	BmpChecked   uintptr        `c:"hbmpChecked"`
+	BmpUnchecked uintptr        `c:"hbmpUnchecked"`
+	ItemData     uintptr        `c:"dwItemData"`
+	TypeData     unsafe.Pointer `c:"dwTypeData"`
+	CCH          uint32         `c:"cch"`
+	BmpItem      uintptr        `c:"hbmpItem"`
 }
 
 // ShellExecuteInfo is the Go mirror of SHELLEXECUTEINFOW.
@@ -144,10 +148,10 @@ type ShellExecuteInfo struct {
 	Size         uint32  `c:"cbSize"`
 	Mask         uint32  `c:"fMask"`
 	Wnd          uintptr `c:"hwnd"`
-	Verb         uintptr `c:"lpVerb"`
-	File         uintptr `c:"lpFile"`
-	Parameters   uintptr `c:"lpParameters"`
-	Directory    uintptr `c:"lpDirectory"`
+	Verb         *uint16 `c:"lpVerb"`
+	File         *uint16 `c:"lpFile"`
+	Parameters   *uint16 `c:"lpParameters"`
+	Directory    *uint16 `c:"lpDirectory"`
 	Show         int32   `c:"nShow"`
 	InstApp      uintptr `c:"hInstApp"`
 	IDList       uintptr `c:"lpIDList"`
@@ -163,6 +167,6 @@ type ShellExecuteInfo struct {
 //
 // Flutter: no counterpart
 type ComdlgFilterSpec struct {
-	Name uintptr `c:"pszName"`
-	Spec uintptr `c:"pszSpec"`
+	Name *uint16 `c:"pszName"`
+	Spec *uint16 `c:"pszSpec"`
 }
