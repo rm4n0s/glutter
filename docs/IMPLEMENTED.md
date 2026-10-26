@@ -4032,3 +4032,42 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - Flutter has no error boundary (SPEC §12.10, `// Flutter: no counterpart`).
   - A `BuildOwner` driven without a binding does not drain the list of failed boundaries.
   - The tag `v1.8.1` waits for the owner's yes.
+
+## 28.21 The room of `WindowDecoration`'s `Leading` widgets (Emetos, 1.8.2)
+
+- **Date:** 2026-10-26
+- **Branch:** feat/step-28.21-decoration-leading-room
+- **Summary:** the `Leading` widgets of `WindowDecoration` take the room that is left in the bar after the gap, the `Actions` and the window buttons. Emetos can remove its `ConstrainedBox` and the constants it copied (12 and 46 pixels).
+  - **The new layout:** the part of the bar before the buttons is now a `CustomMultiChildLayout`, not a `Row`, laid out the way Flutter's `NavigationToolbar` is:
+    1. The `Actions` are laid out first, as one group.
+    2. Then the `Leading` widgets, as one row of minimum width. Its maximum width is what the 12-pixel gap and the `Actions` leave:
+       - a loose `Flexible` takes what it needs, up to that room;
+       - an `Expanded` one takes all of it;
+       - a widget with no width of its own (a `Row` of maximum size) is limited to the room, through a `ConstrainedBox` around it, and does not overflow.
+    3. Then the title area (the draggable area), tight to the rest. It may be 0 wide.
+  - **Unchanged:**
+    - With fixed widths that fit, the positions are those of 28.18, and the golden still matches.
+    - The gestures are as decided in 28.18.
+    - The wrapper of a keyed `Leading` widget has a key made from the widget's local key, so reordered tabs keep their state, and a finder by key finds the widget alone.
+- **Main files:** `widgets/window_decoration.go`, `widgets/window_decoration_test.go`, `widgets/export_test.go`, SPEC §8.2 and §12.10.
+- **Tests:**
+  - `TestWindowDecorationLeadingRoom` (9 cases):
+    - a loose `Flexible` wider than the bar;
+    - a narrow group;
+    - an `Expanded` `Leading`;
+    - a `Row` with no limit;
+    - an `Expanded` after a fixed widget;
+    - no `Actions`;
+    - three sets of window buttons.
+
+    Each case checks the widths and positions of the `Leading` widgets, the title area and the `Actions`, and that close still works.
+  - `TestWindowDecorationBarRightToLeft` and `TestWindowDecorationLeadingKeepsKeyedState`.
+  - The 28.18 gesture tests and the bar golden pass unchanged.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ (also `GOOS=windows`, amd64 and arm64, with and without `glutter_wine`) · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck ✅ · apicheck ✅ · uintptrcheck ✅ · `GOOS=js GOARCH=wasm` build, vet and `scripts/test-wasm.sh` ✅ · `scripts/check-android.sh` ✅ · `GOOS=windows` amd64 build and vet, arm64 build ✅ · `scripts/test-windows.sh` ✅ · nothing left running ✅
+- **Proof:** none.
+- **Manual checks:** none. Emetos removes its `ConstrainedBox` and the copied constants (its own issue).
+- **Deviations and follow-ups:**
+  - Decided in SPEC §8.2 ("Decided in step 28.21"). Not a deviation from Flutter: `WindowDecoration` is Glutter's own widget.
+  - Each fixed `Leading` widget is limited to the room of the whole group, not to the room the other widgets leave: a group of fixed widgets wider than the bar still overflows, as a `Row` does.
+  - The bar sets its own left-to-right `Directionality` (as before 28.18), so it does not mirror in an app. The layout mirrors under a right-to-left `Directionality` (tested).
+  - The tag `v1.8.2` waits for the owner's yes.

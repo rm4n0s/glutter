@@ -2473,3 +2473,34 @@ Then update the SPEC's version paragraph (the 1.8 sentence: Windows, and the fix
 - a golden is not needed.
 **Proof:** none.
 **Manual checks:** none; Emetos replaces its `recover` in `ui.NewBuilder` and in its box with a boundary (its own issue).
+
+### 28.21 The room of `WindowDecoration`'s `Leading` widgets (Emetos, 1.8.2)
+**Goal:** the `Leading` widgets of `WindowDecoration` can take the room of the bar that is left after the gap, the `Actions` and the window buttons: they are laid out before the title, as one group with a bounded maximum width, and the title (the draggable area) gets what they leave.
+**Why:** Emetos found it (issues file, "WindowDecoration: a Leading widget cannot take the room that is left"). Since 28.18 its menu and workspace tabs are `Leading` widgets, so that a drag, double click or right click on a tab is the tab's. But `Leading` widgets are children of the bar's row, next to the title, which is an `Expanded` with flex 1:
+- a `Leading` widget with an unbounded width gets no limit;
+- a `Flexible` one shares the row with the title, so the tabs get half of the bar at most.
+
+Emetos works around it with a `ConstrainedBox` whose maximum is the window's width less Glutter's private constants (the 12-pixel gap and 46 pixels for each window button). If those constants change, the workaround breaks.
+**Read:** SPEC §8.2 (step 3, `WindowDecoration`), §12.10 (the `WindowDecoration` row), the 28.18 entry of `docs/IMPLEMENTED.md`, `widgets/window_decoration.go`, and `widgets/navigation_toolbar.go` (Flutter's `NavigationToolbar` lays out leading and trailing first and gives the middle the rest, through a `MultiChildLayoutDelegate`).
+**Port from:** none (Glutter's own widget); the layout follows `NavigationToolbar`'s delegate.
+**Files:** `widgets/window_decoration.go`, its tests, SPEC §8.2 and §12.10.
+**Tasks:**
+1. Lay out the bar (the part before the window buttons) in this order, in the bar's height:
+   - the `Actions` first, as one group with loose constraints;
+   - then the `Leading` widgets, as one group (a row of minimum main-axis size) whose maximum width is what is left after the 12-pixel gap and the `Actions`. A loose `Flexible` among them takes what it needs, up to that room, and an `Expanded` one takes all of it;
+   - then the title's draggable area, which gets exactly the rest (it may be 0 wide).
+
+   The gap and the title area keep the window's gestures, as in 28.18. Right-to-left text direction mirrors the bar, as the `Row` did.
+2. Nothing changes for a bar whose `Leading` and `Actions` have fixed widths: same positions, same golden.
+3. Update the sentence of §8.2 and the §12.10 row. The doc comment of `WindowDecorationOpts.Leading` says what room the widgets get.
+**Tests (table-driven):**
+- a `Leading` group with a loose `Flexible` wider than the bar ends where the `Actions` begin, and the title area is 0 wide;
+- a narrow one takes its own width, and the title gets the rest;
+- an `Expanded` `Leading` takes all the room;
+- a `Leading` widget with an unbounded width (for example a `Row` of max size) is limited and does not overflow;
+- `Actions` keep their width; the window buttons are unchanged for each set of capabilities;
+- right to left mirrors;
+- the 28.18 gesture tests still pass (a drag on the gap and on the title moves; one on `Leading` does not);
+- the existing golden is unchanged.
+**Proof:** none.
+**Manual checks:** none; Emetos removes its `ConstrainedBox` and the copied constants (its own issue).

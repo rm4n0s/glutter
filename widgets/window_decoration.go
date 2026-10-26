@@ -1,6 +1,8 @@
 package widgets
 
 import (
+	"math"
+
 	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/gestures"
 	"github.com/rm4n0s/glutter/painting"
@@ -20,7 +22,11 @@ type WindowDecorationOpts struct {
 	Title Widget
 	// Leading are widgets at the start of the bar, before the title. They are
 	// not part of the drag area: a drag, a double tap and a right click on them
-	// are theirs alone.
+	// are theirs alone. They are laid out as one row of minimum width after the
+	// Actions, with the room that is left after the gap of 12 pixels and the
+	// Actions as the maximum width: a widget without a width of its own gets that
+	// room as its limit, a Flexible takes what it needs up to it, an Expanded
+	// takes all of it, and the title gets the rest (which may be nothing).
 	Leading []Widget
 	// Actions are widgets in the bar before the buttons of the window. Like
 	// Leading, they are not part of the drag area.
@@ -102,6 +108,7 @@ const (
 	windowDecorationBarHeight = 40.0
 	windowDecorationResize    = 6.0
 	windowButtonWidth         = 46.0
+	windowDecorationGap       = 12.0
 )
 
 // windowDecorationColors are the defaults for a brightness.
@@ -236,12 +243,138 @@ func newWindowTitleBar(view *ui.View, info ui.WindowInfo, o WindowDecorationOpts
 			},
 		})
 	}
-	items := []Widget{drag(NewSizedBox(nil, SizedBoxOpts{Width: foundation.Some(12.0), Height: foundation.Some(height)}))}
-	items = append(items, o.Leading...)
-	items = append(items, NewExpanded(drag(NewAlign(title, AlignOpts{Alignment: painting.AlignmentCenterLeft}))))
-	items = append(items, o.Actions...)
-	row := NewContainer(NewRow(items, RowOpts{}), ContainerOpts{Height: foundation.Some(height)})
+	gap := drag(NewSizedBox(nil, SizedBoxOpts{Width: foundation.Some(windowDecorationGap), Height: foundation.Some(height)}))
+	draggable := drag(NewAlign(title, AlignOpts{Alignment: painting.AlignmentCenterLeft}))
+	row := NewContainer(newWindowBar(gap, draggable, o.Leading, o.Actions, height), ContainerOpts{Height: foundation.Some(height)})
 	return NewSizedBox(NewColoredBox(bg, NewRow([]Widget{NewExpanded(row), NewRow(buttons)})), SizedBoxOpts{Height: foundation.Some(height)})
+}
+
+// windowBar lays out the part of the bar before the window buttons, as Flutter's
+// NavigationToolbar does: the Actions first, as one group; then the Leading
+// widgets, as one group that gets the room that is left after the gap and the
+// Actions; and the draggable area last, with exactly the rest (SPEC §8.2).
+type windowBar struct {
+	StatelessWidget
+	gap, title       Widget
+	leading, actions []Widget
+	height           float64
+}
+
+// newWindowBar creates the bar from the gap, the draggable area (the title with
+// its gestures), the Leading and the Actions widgets.
+func newWindowBar(gap, title Widget, leading, actions []Widget, height float64) Widget {
+	return &windowBar{StatelessWidget: NewStatelessWidgetBase(), gap: gap, title: title, leading: leading, actions: actions, height: height}
+}
+
+type windowBarSlot int
+
+const (
+	windowBarSlotGap windowBarSlot = iota
+	windowBarSlotLeading
+	windowBarSlotTitle
+	windowBarSlotActions
+)
+
+func (w *windowBar) Build(bc BuildContext) Widget {
+	d := &windowBarLayout{
+		MultiChildLayoutDelegateBase: rendering.NewMultiChildLayoutDelegateBase(nil),
+		textDirection:                DirectionalityOf(bc),
+		gap:                          windowDecorationGap,
+	}
+	children := []Widget{NewLayoutId(windowBarSlotGap, w.gap)}
+	if len(w.leading) > 0 {
+		leading := w.leading
+		// The widgets are built for the room the delegate gives the group, so
+		// that a widget without a limit of its own gets the room as its maximum.
+		children = append(children, NewLayoutId(windowBarSlotLeading, NewLayoutBuilder(func(_ BuildContext, c rendering.BoxConstraints) Widget {
+			items := make([]Widget, len(leading))
+			for i, item := range leading {
+				items[i] = limitWindowBarItem(item, c.MaxWidth)
+			}
+			return NewRow(items, RowOpts{MainAxisSize: rendering.MainAxisSizeMin})
+		})))
+	}
+	children = append(children, NewLayoutId(windowBarSlotTitle, w.title))
+	if len(w.actions) > 0 {
+		children = append(children, NewLayoutId(windowBarSlotActions, NewRow(w.actions, RowOpts{MainAxisSize: rendering.MainAxisSizeMin})))
+	}
+	return NewCustomMultiChildLayout(d, children)
+}
+
+// limitWindowBarItem gives a widget of the Leading group the room as its maximum
+// width. A Row passes an unlimited width to a child without a flex factor, so
+// a widget that fills its width (a Row of maximum size with an Expanded in it)
+// would have no limit. Flexible, Expanded and Spacer widgets get the room from
+// the Row already. The wrapper has a key made from the widget's key when that
+// is a local key (not the same key, so a finder by key finds the widget alone),
+// so that reordering keyed widgets keeps their state.
+func limitWindowBarItem(item Widget, maxWidth float64) Widget {
+	switch item.(type) {
+	case *Flexible, *Expanded, *Spacer:
+		return item
+	}
+	var key foundation.Key
+	if k, ok := item.Key().(foundation.LocalKey); ok {
+		key = windowBarItemKey{inner: k}
+	}
+	return NewConstrainedBox(rendering.NewBoxConstraints(rendering.BoxConstraintsOpts{MaxWidth: foundation.Some(maxWidth)}), item, ConstrainedBoxOpts{Key: key})
+}
+
+// windowBarItemKey is the key of the wrapper of a keyed Leading widget.
+type windowBarItemKey struct {
+	foundation.LocalKeyBase
+	inner foundation.Key
+}
+
+func (k windowBarItemKey) String() string { return "[windowBar " + k.inner.String() + "]" }
+
+// windowBarLayout is the delegate of windowBar.
+type windowBarLayout struct {
+	rendering.MultiChildLayoutDelegateBase
+	textDirection ui.TextDirection
+	gap           float64
+}
+
+func (d *windowBarLayout) PerformLayout(size ui.Size) {
+	rtl := d.textDirection == ui.TextDirectionRTL
+	place := func(slot windowBarSlot, x, width float64) {
+		if rtl {
+			x = size.Width - x - width
+		}
+		d.PositionChild(slot, ui.Offset{Dx: x, Dy: 0})
+	}
+	// Every child has the height of the bar; a widget smaller than that is
+	// centered by its group.
+	actionsWidth := 0.0
+	var actionsSize ui.Size
+	if d.HasChild(windowBarSlotActions) {
+		actionsSize = d.LayoutChild(windowBarSlotActions, rendering.BoxConstraints{MaxWidth: size.Width, MinHeight: size.Height, MaxHeight: size.Height})
+		actionsWidth = actionsSize.Width
+	}
+	gapWidth := math.Min(d.gap, size.Width)
+	d.LayoutChild(windowBarSlotGap, rendering.BoxConstraints{MaxWidth: gapWidth, MinHeight: size.Height, MaxHeight: size.Height})
+	place(windowBarSlotGap, 0, gapWidth)
+
+	leadingWidth := 0.0
+	if d.HasChild(windowBarSlotLeading) {
+		room := math.Max(0, size.Width-gapWidth-actionsWidth)
+		leadingWidth = d.LayoutChild(windowBarSlotLeading, rendering.BoxConstraints{MaxWidth: room, MinHeight: size.Height, MaxHeight: size.Height}).Width
+		place(windowBarSlotLeading, gapWidth, leadingWidth)
+	}
+
+	titleX := gapWidth + leadingWidth
+	titleWidth := math.Max(0, size.Width-titleX-actionsWidth)
+	d.LayoutChild(windowBarSlotTitle, rendering.NewBoxConstraintsTight(ui.Size{Width: titleWidth, Height: size.Height}))
+	place(windowBarSlotTitle, titleX, titleWidth)
+
+	if d.HasChild(windowBarSlotActions) {
+		place(windowBarSlotActions, size.Width-actionsWidth, actionsWidth)
+	}
+}
+
+func (d *windowBarLayout) ShouldRelayout(old rendering.MultiChildLayoutDelegate) bool {
+	o := old.(*windowBarLayout)
+	return o.textDirection != d.textDirection || o.gap != d.gap
 }
 
 type windowGlyph int
