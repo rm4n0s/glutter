@@ -4168,3 +4168,51 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - `SvgLoadFailed` is made by package `svg` (29.4).
   - Not supported: CSS variables, the `font` shorthand, `@media`, and selectors beyond SPEC §26.2.
   - The parameters of filter primitives are kept as raw strings in `FilterPrimitive.Attrs`, for 29.3 to parse.
+
+## 29.2 The SVG painter
+
+- **Date:** 2026-10-27
+- **Branch:** feat/step-29.2-svg-painter
+- **Summary:** a parsed document is recorded into a `ui.Picture` (`(*Document).Picture()` and `PictureAt(scale)`) that matches reference renders made by `rsvg-convert`. This covers SPEC §26.3 and §26.6, except text, masks, filters and markers, which are 29.3.
+  - **Viewports:**
+    - `viewBox` and `preserveAspectRatio`: every alignment, `meet`, `slice` and `none`;
+    - nested `svg` and `symbol`, and `overflow`.
+  - **Shapes and strokes:**
+    - fill and stroke in `paint-order`, with every stroke property;
+    - dashes cut with `PathMetric.ExtractPath`: a closed contour joins its first and last dash;
+    - `non-scaling-stroke`, in device pixels;
+    - `crispEdges`.
+  - **Paint servers:**
+    - linear and radial gradients, with the focal point, `fr`, units, transforms, the spread methods and `href`;
+    - patterns, as an image shader of a tile rasterized by `soft` at the device scale, made once per size;
+    - a degenerate gradient takes its last stop, as SVG 1.1 says.
+  - **Groups:**
+    - opacity through a save layer only when the group can overlap itself; otherwise it is folded into the paint;
+    - `clip-path`, with its units and rules, nesting, and the union of the clip path's children;
+    - `display` and `visibility`.
+  - **Images:** `data:` raster images through `ui`'s codec, and SVG images through the painter, at most 3 deep.
+  - **Fixes found on the way:**
+    - `ui`'s `subConic` cut a conic at both ends with a linear parameter, so `ExtractPath` on circles and arcs was up to 1% short. A 10-unit dash on a circle was 9.89 long. It is fixed, with a test. The `pathcombine-ring-and-circle` golden of `soft` changed by 1 to 3 levels on 70 edge pixels. The manager compared the old and new images: they look the same.
+    - The parser dropped `transform="rotate(a x y)"`. It is fixed, with a test.
+- **Main files:**
+  - `internal/svg/paint.go`, `paint_shape.go`, `paint_pattern.go`, `paint_clip.go`, `paint_image.go`
+  - `internal/svg/paint_test.go`, `reference_test.go`
+  - `internal/svg/testdata/reference/`: 64 documents with their references, and `equivalent/`
+  - `ui/path_curves.go`, `internal/svg/style.go`
+  - SPEC §26.1, §26.3 and §26.6
+- **Tests:**
+  - the reference comparison of 64 documents (`TestReferences`), each with its own tolerance and the reason for it;
+  - unit tests of the viewport transform (22 cases), dashes along a curve and a circle, opacity layers, degenerate gradients, `paint-order`, non-scaling stroke, `use` of viewports, clip path edge cases, the scale of pattern tiles, and images;
+  - robustness: a tile of a trillion pixels, patterns and clips that refer to themselves, a million dashes, and a singular transform;
+  - the `ExtractPath` regression test in `ui`.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ (also `GOOS=windows`, amd64 and arm64, with and without `glutter_wine`) · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck ✅ · apicheck ✅ · uintptrcheck ✅ · `GOOS=js GOARCH=wasm` build, vet and `scripts/test-wasm.sh` ✅ · `scripts/check-android.sh` ✅ · `GOOS=windows` amd64 build and vet, arm64 build ✅ · `scripts/test-windows.sh` ✅ · nothing left running ✅
+- **Proof:** none.
+- **Manual checks:** none.
+- **Deviations and follow-ups:**
+  - Where librsvg and the specifications disagree, Glutter follows the specifications, and unit tests check those cases (SPEC §26.6):
+    - degenerate gradients;
+    - `clip-path` on a `clipPath` and on its children;
+    - the width of a non-scaling stroke, which librsvg scales by the `viewBox`;
+    - `use` of an `svg` element.
+  - `internal/svg` imports `internal/gpu/soft` to rasterize pattern tiles. It is plain Go on every platform.
+  - Text, masks, filters and markers are 29.3.

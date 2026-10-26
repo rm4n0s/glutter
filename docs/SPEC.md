@@ -2837,7 +2837,7 @@ The names and defaults follow `flutter_svg` (2.x), the package Flutter apps use;
   - `.asset`, `.file` and `.network` load on a goroutine with a `context.Context` cancelled when the widget leaves the tree (§13). `.string` and `.memory` parse on first build.
   - The parsed picture is cached by its source and theme (`svg.Cache`, an LRU with a byte limit, as `flutter_svg`'s cache), so the same icon in a list is parsed once.
   - A document that cannot be loaded or parsed shows `ErrorBuilder`'s widget (by default nothing). The error goes to the app's error reporter with the tags of §26.5.
-- `svg.Parse(data []byte, opts ...ParseOpts) (*Document, error)` (`ParseOpts{Theme, Locale}`), `(*Document).Picture() *ui.Picture` and `Size()`, for an app that draws an SVG with a `CustomPainter`. A `Document` is made for one theme: `currentColor`, `em` and `ex` are resolved when it is parsed (decided in step 29.1), which is why the cache's key is the source and the theme.
+- `svg.Parse(data []byte, opts ...ParseOpts) (*Document, error)` (`ParseOpts{Theme, Locale}`), `(*Document).Picture() *ui.Picture` (`PictureAt(1)`), `PictureAt(scale float64)` and `Size()`, for an app that draws an SVG with a `CustomPainter`. `scale` is device pixels per document unit: it sets the resolution of pattern tiles and the width of `non-scaling-stroke` strokes (decided in step 29.2). The widget passes the scale it draws at. A `Document` is made for one theme: `currentColor`, `em` and `ex` are resolved when it is parsed (decided in step 29.1), which is why the cache's key is the source and the theme.
 
 ### 26.2 What is parsed (`internal/svg`)
 
@@ -2864,10 +2864,10 @@ The names and defaults follow `flutter_svg` (2.x), the package Flutter apps use;
 - **Fill and stroke:**
   - `fill-rule`, `fill-opacity`, `stroke-opacity`;
   - `stroke-width`, `stroke-linecap`, `stroke-linejoin`, `stroke-miterlimit`;
-  - `stroke-dasharray` and `stroke-dashoffset` (dashes cut from the path), and `vector-effect: non-scaling-stroke`.
+  - `stroke-dasharray` and `stroke-dashoffset` (dashes cut from the path with `PathMetric.ExtractPath`), and `vector-effect: non-scaling-stroke`, whose width is in device pixels at the scale of `PictureAt`.
 - **Paint servers:**
   - `linearGradient` and `radialGradient` (`fx`/`fy`/`fr`, `gradientUnits`, `gradientTransform`, `spreadMethod`, stops with offsets, colors and opacity), with attributes inherited through `href`;
-  - `pattern` (`patternUnits`, `patternContentUnits`, `patternTransform`, `viewBox`), as a `ui.ImageShader` of the tile recorded at the device scale.
+  - `pattern` (`patternUnits`, `patternContentUnits`, `patternTransform`, `viewBox`), as a `ui.ImageShader` of the tile, rasterized at the device scale with the software renderer (`internal/gpu/soft`, which is plain Go on every platform) and made once per pattern and size.
 - **Groups:**
   - `opacity` on a group, through a save layer;
   - `clip-path` (`clipPathUnits`, `clip-rule`, clip paths of clip paths);
@@ -2910,7 +2910,7 @@ Each has a route test (§14.4).
 - Unit tests of the parser, table-driven: every value syntax, the CSS cascade, `use` and its cycles.
 - Goldens of the painter on the software renderer, compared with reference renders:
   - the test documents are in `internal/svg/testdata/` (written for the steps: small, one feature each);
-  - the reference PNG of each was made once by `rsvg-convert` (librsvg) and is checked in;
+  - the reference PNG of each was made once by `rsvg-convert` (librsvg) and is checked in, in `internal/svg/testdata/reference/`. A feature that librsvg draws wrongly gets its reference from an equivalent document in `reference/equivalent/`. Where librsvg and the specifications disagree, Glutter follows the specifications: degenerate gradients, `clip-path` on a `clipPath`, and `use` of an `svg` element are tested by unit tests (step 29.2);
   - each golden must match its reference within a tolerance (`gputest.Tolerance`, with a per-document allowance written in the test, for anti-aliasing and text);
   - `rsvg-convert` is used only to make the references (`go test ./internal/svg -run Reference -update-references`), never at test time.
 - Widget tests of `SvgPicture` (sizing, fit, loading, caching, errors) with `gluttertest`.

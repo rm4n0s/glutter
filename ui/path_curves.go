@@ -211,10 +211,18 @@ func subCubic(p [4]Offset, t0, t1 float64) [4]Offset {
 }
 
 // subConic returns the part of the conic between t0 and t1.
+//
+// The part after t0 is a conic in standard form, whose parameter is a projective
+// change of the old one (the end weights were scaled to 1), so t1 is mapped to it:
+// with the weight of the conic at t0 (the end weight of the part, before the
+// scaling), s = (t1-t0)/(1-t0) becomes s / ((1-s)*sqrt(weight) + s). Without that
+// the part ends before or after t1 by up to a percent of a circle's quarter.
 func subConic(p [3]Offset, w, t0, t1 float64) ([3]Offset, float64) {
 	if t0 > 0 {
+		weight := (1-t0)*(1-t0) + 2*(1-t0)*t0*w + t0*t0
 		_, _, p, w = chopConicAt(p, w, t0)
-		t1 = (t1 - t0) / (1 - t0)
+		s := (t1 - t0) / (1 - t0)
+		t1 = s / ((1-s)*math.Sqrt(weight) + s)
 	}
 	if t1 < 1 {
 		p, w, _, _ = chopConicAt(p, w, t1)

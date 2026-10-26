@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="100" height="100" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="base"><stop offset="0" stop-color="#e33"/><stop offset="1" stop-color="#33e"/></linearGradient>
+    <linearGradient id="vert" xlink:href="#base" x2="0" y2="1"/>
+    <linearGradient id="own" xlink:href="#base" gradientUnits="userSpaceOnUse" x1="55" x2="95"><stop offset="0" stop-color="#0a0"/><stop offset="1" stop-color="#ff0"/></linearGradient>
+    <radialGradient id="rad" xlink:href="#base" r="0.7"/>
+    <linearGradient id="two" xlink:href="#vert" spreadMethod="reflect" y2="0.5"/>
+  </defs>
+  <rect x="5" y="5" width="40" height="40" fill="url(#vert)"/>
+  <rect x="55" y="5" width="40" height="40" fill="url(#own)"/>
+  <rect x="5" y="55" width="40" height="40" fill="url(#rad)"/>
+  <rect x="55" y="55" width="40" height="40" fill="url(#two)"/>
+</svg>

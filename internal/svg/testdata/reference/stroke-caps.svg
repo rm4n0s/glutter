@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="100" height="100" viewBox="0 0 100 100">
+  <g stroke="#333" stroke-width="12" fill="none">
+    <path d="M20 20 H80" stroke-linecap="butt"/>
+    <path d="M20 45 H80" stroke-linecap="round"/>
+    <path d="M20 70 H80" stroke-linecap="square"/>
+  </g>
+  <g stroke="#f90" stroke-width="1"><path d="M20 10V90M80 10V90"/></g>
+</svg>

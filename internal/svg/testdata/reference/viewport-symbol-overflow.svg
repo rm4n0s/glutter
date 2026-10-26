@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="100" height="100" viewBox="0 0 100 100">
+  <defs>
+    <symbol id="clipped" viewBox="0 0 10 10"><rect width="10" height="10" fill="#9c9"/><circle cx="10" cy="10" r="6" fill="#363" fill-opacity="0.8"/></symbol>
+    <symbol id="open" viewBox="0 0 10 10" overflow="visible"><rect width="10" height="10" fill="#9c9"/><circle cx="10" cy="10" r="6" fill="#363" fill-opacity="0.8"/></symbol>
+  </defs>
+  <use xlink:href="#clipped" x="10" y="10" width="30" height="30"/>
+  <use xlink:href="#open" x="55" y="10" width="30" height="30"/>
+  <use xlink:href="#open" x="10" y="55" width="40" height="30" style="overflow:hidden"/>
+  <use xlink:href="#clipped" x="60" y="55" width="30" height="30" overflow="visible"/>
+</svg>

@@ -343,3 +343,26 @@ func TestPathMetricsExtractPath(t *testing.T) {
 		pointsNear(t, "triangle", e.points, []Offset{{0, 0}, {10, 0}, {0, 10}, {0, 0}}, 1e-9)
 	})
 }
+
+func TestPathMetricsExtractPathInsideAConic(t *testing.T) {
+	// A part of a circle that starts and ends inside one conic (a quarter of an oval) has the length asked for and
+	// ends where GetTangentForOffset says: the second cut of the conic needs the projective change of its parameter.
+	r := 10.0
+	circle := NewPath()
+	circle.AddOval(Rect{-r, -r, r, r})
+	m := circle.ComputeMetrics()[0]
+	for _, tt := range []struct{ start, end float64 }{{5, 15}, {1, 14}, {2, 3}, {20, 30}, {35, 45}, {0.5, 15.5}} {
+		e := m.ExtractPath(tt.start, tt.end)
+		em := e.ComputeMetrics()[0]
+		if got, want := em.Length, tt.end-tt.start; !near(got, want, 1e-4) {
+			t.Errorf("[%v, %v]: length %v, want %v", tt.start, tt.end, got, want)
+		}
+		for _, d := range [][2]float64{{0, tt.start}, {em.Length, tt.end}} {
+			got, _ := em.GetTangentForOffset(d[0])
+			want, _ := m.GetTangentForOffset(d[1])
+			if math.Hypot(got.Position.Dx-want.Position.Dx, got.Position.Dy-want.Position.Dy) > 1e-3 {
+				t.Errorf("[%v, %v]: the part is at %v where the circle is at %v", tt.start, tt.end, got.Position, want.Position)
+			}
+		}
+	}
+}

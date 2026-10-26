@@ -316,7 +316,11 @@ func (b *builder) applyProperty(name, v string, parent, init *Style, mut func() 
 			np.overflow, np.overflowSet = false, true
 		}
 	case "transform":
+		// The attribute has the SVG syntax (rotate(a x y), no units) and the CSS property has the CSS one (angles with
+		// units); both come here, so a value is read as CSS and, if that fails, as SVG.
 		if t, ok := parseCSSTransform(v); ok {
+			np.transform = t
+		} else if t, ok := ParseTransform(v); ok {
 			np.transform = t
 		}
 	}

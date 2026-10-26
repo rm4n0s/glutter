@@ -17,7 +17,7 @@ The owner's choice (2026-10-25): the main session is the **manager** (Opus 5.5, 
 - **One worker per step**, or several at once only when their parts touch disjoint directories and do not depend on each other; at most three at a time, since parallel `-race` builds can run the machine out of memory. A part that needs another part's API waits for it.
 - **The manager reviews the work, not the summary**: it reads the diff, runs the tests the worker says pass and the checks of rule 8 itself, and looks at every proof image. What is wrong, missing or outside the step goes back to the same worker (SendMessage, so it keeps its context) with the concrete failure. The manager writes only small fixes itself (a few lines, a doc comment, a test table row).
 - **Questions.** A worker that hits a case of rule 7 stops and reports it; the manager decides what the plan and the SPEC already decide, and asks the user otherwise (rule 7). The manager answers "what is going on" questions of the user while workers run, and never reports a worker's result before it arrived.
-- **The manager finishes the step**: the `IMPLEMENTED.md` entry (rule 10; it may have a worker draft it, and checks every claim in it), the commit, the publish and the tag (rules 11–12), the report (rule 13), and deletes the step's briefs.
+- **The manager finishes the step**: the `IMPLEMENTED.md` entry (rule 10; it may have a worker draft it, and checks every claim in it), the commit, the merge into the local `main` and the tag (rules 11–12), and the push of a finished milestone (rule 12), the report (rule 13), and deletes the step's briefs.
 
 ### Before you start a step
 
@@ -95,21 +95,19 @@ The owner's choice (2026-10-25): the main session is the **manager** (Opus 5.5, 
     ```sh
     git add -A && git commit -m "Step 6.5: Add multi-child render objects"
     ```
-12. **Publish every finished step to `main`, right away.**
-    - A step counts as finished only when its commit is on `origin/main`.
-    - Publish before you start the next step. Never collect several steps into one publish, and never leave a finished step only on its branch.
-    - Publish only after rules 8–11 are complete: checks green, proof verified, `IMPLEMENTED.md` entry committed.
+12. **Merge every finished step into the local `main` right away; publish to GitHub only a finished milestone** (the owner's rule of 2026-10-27; until then every step was pushed).
+    - A step counts as finished when its commit is on the local `main` with its tag. Merge before you start the next step, and never leave a finished step only on its branch.
+    - Merge only after rules 8–11 are complete: checks green, proof verified, `IMPLEMENTED.md` entry committed.
     ```sh
-    git switch main && git pull --ff-only
+    git switch main
     git merge --ff-only feat/step-6.5-multi-child-render-objects
-    git push origin main
     git tag -a step-6.5 -m "Step 6.5: Add multi-child render objects"
-    git push origin step-6.5
     git branch -d feat/step-6.5-multi-child-render-objects
     ```
-    - **Tag every published step** with an annotated tag `step-<id>` (the step's id as in this file) on the commit now on `main`, and push it right after the push of `main`. The step is finished only when the tag is on `origin` too. If the tag already exists, stop and tell the user; never move or delete a tag.
-    - The release tags `v<major>.<minor>.<patch>` are a separate thing. When a version is finished (its release step, or the fix step that closes a patch version), its commit is published to `main` and the annotated `v…` tag is made on it and pushed at once, without asking: the owner's rule of 2026-10-26. The `Release 1.x` steps written before that rule say to ask the user; the rule replaces that question.
-    If `--ff-only` fails, rebase the step branch onto `main`, run the standard checks again, and retry. If the push is rejected or fails (authentication, network), stop and tell the user. Don't start the next step until the push succeeded.
+    - **Tag every finished step** with an annotated tag `step-<id>` (the step's id as in this file) on its commit on `main`. If the tag already exists, stop and tell the user; never move or delete a tag.
+    - **Publish the milestone** when its last step is merged and tagged. Nothing is pushed before that: `git push --follow-tags origin main` pushes `main` with every annotated tag on it that `origin` lacks (the milestone's step tags and its release tag). Then check with `git ls-remote --tags origin` that every tag of the milestone is there. The milestone is finished only when `origin/main` and its tags are there.
+    - The release tags `v<major>.<minor>.<patch>` are a separate thing. When a version is finished (its release step, or the fix step that closes a patch version), the annotated `v…` tag is made on its commit, without asking (the owner's rule of 2026-10-26), and published with the milestone. A patch version made of fix steps outside a milestone is published when the version is finished. The `Release 1.x` steps written before that rule say to ask the user; the rule replaces that question.
+    If `--ff-only` fails, rebase the step branch onto `main`, run the standard checks again, and retry. If the push of a milestone is rejected or fails (authentication, network), retry; if it still fails, stop and tell the user.
 13. **Report to the user.** Give the step id, a two-line summary, the check results, the proof image paths, and the commit hash now on `main`.
 
 **Default "Done when".** A step without a **Done when** line is done when its Tasks are complete, its **Tests** are ported and passing, its **Display tests** pass, its **Proof** images are verified, and the standard checks pass.
@@ -2687,6 +2685,6 @@ A golden that differs from its reference beyond the tolerance is explained in th
    - the display tests and the browser tests;
    - `examples/svg` under Wine, and on one Android emulator only (one AVD at a time, for memory);
    - the parse benchmark against the numbers of §26.4.
-3. Publish to `main`, and tag `step-29.5` and `v1.9.0`.
+3. Merge into `main`, tag `step-29.5` and `v1.9.0`, and publish milestone M29 (rule 12): `git push --follow-tags origin main`, which takes steps 29.2 to 29.5 and their tags to GitHub.
 **Proof:** none.
 **Manual checks:** none.

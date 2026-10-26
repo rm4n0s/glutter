@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="100" height="100" viewBox="0 0 100 100">
+  <defs>
+    <clipPath id="a"><path d="M10 10 H45 V45 H10 Z M20 20 H35 V35 H20 Z" clip-rule="evenodd"/></clipPath>
+    <clipPath id="b"><path d="M55 10 H90 V45 H55 Z M65 20 H80 V35 H65 Z" clip-rule="nonzero"/></clipPath>
+    <clipPath id="c" clip-rule="evenodd"><path d="M50 55 L65 95 L35 70 L65 70 L35 95 Z"/></clipPath>
+  </defs>
+  <rect width="100" height="50" fill="#c33" clip-path="url(#a)"/>
+  <rect width="100" height="50" fill="#33c" clip-path="url(#b)"/>
+  <rect y="50" width="100" height="50" fill="#3a3" clip-path="url(#c)"/>
+</svg>

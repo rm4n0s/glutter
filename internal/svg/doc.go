@@ -1,8 +1,10 @@
 // Package svg parses SVG documents into a tree of resolved drawing commands.
 //
-// It is the first half of Glutter's SVG support (SPEC §26, D27); the painter that records the tree into a ui.Picture
-// comes in later steps, and the package svg at the root of the module (flutter_svg's widgets) comes last. The
-// package is plain Go and uses only the standard library (encoding/xml).
+// It is the parser and the painter of Glutter's SVG support (SPEC §26, D27): Parse reads a document into a tree, and
+// (*Document).Picture records the tree into a ui.Picture (paint*.go; text, masks, filters and markers come in step
+// 29.3). The package svg at the root of the module (flutter_svg's widgets) comes last. The package is plain Go and uses
+// only the standard library (encoding/xml) and Glutter's own ui and software renderer (which makes the tiles of
+// patterns).
 //
 // # What Parse does
 //

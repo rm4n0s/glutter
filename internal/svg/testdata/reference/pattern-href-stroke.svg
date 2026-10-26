@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="100" height="100" viewBox="0 0 100 100">
+  <defs>
+    <pattern id="base" width="10" height="10" patternUnits="userSpaceOnUse"><rect width="5" height="5" fill="#333"/><rect x="5" y="5" width="5" height="5" fill="#999"/></pattern>
+    <pattern id="derived" xlink:href="#base" width="20" height="20"/>
+  </defs>
+  <rect x="5" y="5" width="40" height="40" fill="url(#base)"/>
+  <rect x="55" y="5" width="40" height="40" fill="url(#derived)"/>
+  <rect x="15" y="60" width="70" height="30" fill="none" stroke="url(#base)" stroke-width="12"/>
+</svg>

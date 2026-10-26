@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="100" height="100" viewBox="0 0 100 100">
+  <path d="M20 40 A 20 20 0 0 1 60 40" fill="none" stroke="#c33" stroke-width="3"/>
+  <path d="M20 50 A 20 20 0 1 0 60 50" fill="none" stroke="#33c" stroke-width="3"/>
+  <path d="M20 90 A 30 12 20 0 1 80 70" fill="none" stroke="#3a3" stroke-width="3"/>
+  <path d="M70 10 a 12 12 0 1 1 0.1 0" fill="#fc3"/>
+  <path d="M80 30 a 3 3 0 0 1 10 0 a 1 1 0 0 0 5 0" fill="none" stroke="#333" stroke-width="2"/>
+</svg>

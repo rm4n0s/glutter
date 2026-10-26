@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="100" height="100" viewBox="0 0 100 100">
+  <defs>
+    <g id="icon"><svg width="20" height="20" viewBox="0 0 10 10"><rect width="10" height="10" fill="#9c9"/><circle cx="5" cy="5" r="3" fill="#363"/></svg></g>
+  </defs>
+  <use xlink:href="#icon" x="10" y="10"/>
+  <use xlink:href="#icon" transform="translate(45 5) scale(2 1.5)"/>
+  <use xlink:href="#icon" transform="translate(25 65) rotate(-15)"/>
+  <g transform="translate(55 50) rotate(10)"><svg width="40" height="30" viewBox="0 0 20 20" preserveAspectRatio="xMaxYMid slice"><rect width="20" height="20" fill="#c96"/><circle cx="10" cy="10" r="7" fill="#630"/></svg></g>
+</svg>

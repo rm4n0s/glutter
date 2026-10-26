@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="100" height="100" viewBox="0 0 100 100">
+  <defs>
+    <pattern id="dots" width="20" height="20" patternUnits="userSpaceOnUse"><rect width="20" height="20" fill="#eef"/><circle cx="10" cy="10" r="6" fill="#33c"/></pattern>
+    <pattern id="stripes" x="3" y="2" width="10" height="10" patternUnits="userSpaceOnUse"><rect width="5" height="10" fill="#c33"/></pattern>
+  </defs>
+  <rect x="5" y="5" width="90" height="45" fill="url(#dots)"/>
+  <rect x="5" y="55" width="90" height="40" fill="url(#stripes)" stroke="#000"/>
+</svg>
