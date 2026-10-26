@@ -31,7 +31,7 @@ Glutter is a GUI toolkit for Go that reproduces Flutter's framework API on its o
 - macOS and iOS backends. The design supports them (§6.4), but they aren't implemented. The web comes in 1.1 (§23), Android in 1.6 (§24), Windows in 1.8 (§25).
 - TinyGo. Apps are built with the standard Go toolchain only, for the web too (D18).
 - Dart interop, Flutter plugins, and platform channels as a message codec. Go APIs are exposed directly instead.
-- Custom fragment shaders (`FragmentProgram`), 3D, video playback, WebView, SVG, printing.
+- Custom fragment shaders (`FragmentProgram`), 3D, video playback, WebView, printing. (SVG images come in 1.9, §26; SVG glyphs in fonts are still not drawn.)
 - DevTools and the widget inspector UI. Debug paint flags and tree dumps are in scope (§14.3).
 - Material 2 visuals. Only Material 3 is supported.
 - The XEmbed system tray. Only StatusNotifierItem is supported (§8.9).
@@ -98,6 +98,7 @@ Glutter is a GUI toolkit for Go that reproduces Flutter's framework API on its o
 | D24 | **Android 8.0 (API 26) is the minimum**; the target is API 37 | Chosen when M25 was planned (2026-10-23), not yet confirmed by the owner. It covers almost every device in use; newer APIs (insets types, back callbacks, the keyboard's animation) are used where the device has them. Raising it is the owner's decision. §24.1 |
 | D25 | **Windows (1.8) is Win32 through the standard library's `syscall`, drawn with Direct3D 12 at feature level 11_0 and shader model 5.1, and tested under Wine** | Decided on 2026-10-25. `internal/gpu/d3d12` is a third `explicit.Device` (after `vulkan` and `webgpu`, D19). The HLSL that naga writes from our WGSL (D20) is compiled when it is first needed by `D3DCompile` from `d3dcompiler_47.dll`, which Windows 10 has, and the bytecode is kept in the shader cache (§9.7). `auto` tries a hardware adapter, then WARP (Windows' own software adapter), then `soft` drawn into the window. Nothing is bundled with the app. Why Direct3D 12: the explicit renderer maps onto it (256-byte alignment of constant buffers and of the row pitch, dynamic offsets as root constant buffer views), and it can be tested here, because Wine runs it on the host's Vulkan (vkd3d). Rejected: ANGLE (two DLLs to ship, and a second GL path to keep next to Vulkan and WebGPU), Direct3D 11 (no explicit model, so a second renderer design), Vulkan on Windows (not on every machine, and the drivers differ), DXIL and shader model 6 (no compiler on Linux, so no test under Wine), `golang.org/x/sys/windows` (not an allowed dependency: `syscall` has the DLL loading, `SyscallN` and `NewCallback`). Replaces the plan of §6.4. §9.8, §25 |
 | D26 | **Windows 10 version 1809 (build 17763) is the minimum**, on amd64 and arm64 | Chosen when M28 was planned (2026-10-25), not yet confirmed by the owner. Go itself needs Windows 10; version 1809 has per-monitor DPI awareness v2, the DXGI 1.4 factory and flip-model swap chains, and WARP for Direct3D 12. Newer calls (`EnumAdapterByGpuPreference`, the dark title bar attribute of version 2004, the UTF-8 code page of the manifest) are used where the system has them. Raising it is the owner's decision. §25.1 |
+| D27 | **SVG images (1.9) are drawn by Glutter's own parser and painter in Go, with `flutter_svg`'s API in a package `svg`** | Decided on 2026-10-26 by the owner. Flutter's framework draws no SVG; Flutter apps use the community package `flutter_svg` (`SvgPicture.asset`, `.string`, `.memory`, `.file`, `.network`), so Glutter keeps those names and options. An SVG document is parsed once (with `encoding/xml`, no new dependency) into a tree of drawing commands and recorded into a `ui.Picture` that every renderer draws. The first version draws what icons and logos use and also text, masks, the common filters and `<style>` CSS (the owner chose the larger scope); scripts, animation (SMIL), `foreignObject` and external resources other than `<image>` with a `data:` URL are not drawn. Rejected: a binding to a C library (librsvg, resvg: cgo or purego, and not on the web), and rasterizing in Go (the result would not scale with the widget). §26 |
 
 ## 5. Size estimate
 
@@ -2245,6 +2246,7 @@ Each milestone is broken into steps in `docs/IMPLEMENTATION.md` (written after t
 | M26 | Android behaviors of the framework, and 1.6: overscroll indicators, the Material text selection toolbar and magnifier, predictive back transitions, spell check, the examples on Android with their performance (§24.12) | the ported Flutter tests pass; every example but `multiwindow` and `tray` runs on Android; release 1.6 |
 | M27 | Fixes for Emetos (1.7): scroll positions after their `Scrollable` is gone, `gluttertest` disposing the tree and a fake desktop without a file chooser, the focus of a window from its activation, what a window controller can do (title, activation, full screen, initial state) and the first window in tests, closing and destroying the first window, `RawTooltip` (delay on enter, callbacks, controller, key), the cursor of a pressed pointer, `Draggable` and `DragTarget` (slop, Escape, moves while resting), `TreeSliver` (changing children, lazy nodes, keys), the cold start (a profile of the first draw, a shader cache) | none of the Emetos workarounds is needed: the program no longer panics when a `Scrollable` leaves the tree, a test's states are disposed, a headless window gets focus events, the first window closes like the others; a second start compiles no shader; release 1.7 |
 | M28 | Windows (1.8): `GOOS=windows` build tags and checks, the Win32 bindings and COM helpers, Wine as the test runner, windows and the message loop with `soft` drawn into the window, mouse, touch, pen and cursors, the keyboard and its tables, text input with IMM32, the clipboard, settings, fonts and lifecycle, the HLSL of the shaders, the Direct3D 12 device at feature level 11_0 and its swap chain, `auto` with WARP and `soft` as fallbacks, the tray, balloons, file dialogs and open URI, OLE drag and drop and several windows, UI Automation, the `.exe` with its manifest and icon (§25); and what Emetos asked for: a font fallback that parses only the fonts that can help, `TreeSliverNode.SetExpanded`, and a `WindowDecoration` whose own widgets are not part of the drag area | every example, `tray` and `multiwindow` included, runs under Wine and draws with Direct3D 12 at feature level 11_0 and matches the goldens; the manual checks on a Windows PC are recorded; release 1.8 |
+| M29 | SVG images (1.9): the parser (`internal/svg`: XML, CSS, attributes, units, colors, transforms, path data, references), the painter (shapes, strokes, gradients, clips, opacity, viewBox, images), text, masks, filters and patterns, the `svg` package with `flutter_svg`'s widgets, and the release | the SVG test suite of §26.6 matches its reference renders; `examples/svg` runs on Linux, the web, Android and Windows; release 1.9 |
 
 ## 19. Examples (`examples/`)
 
@@ -2810,3 +2812,106 @@ Cupertino stays out (§2).
 ### 25.14 Errors
 
 The tags of Windows (more come with the steps; every one has a route test, §14.4): `Win32CallFailed` (a Win32 function failed; metadata `function`, `code`), `COMCallFailed` (a COM method returned a failed `HRESULT`; `method`, `hresult`), `Win32WindowClassFailed`, `Win32WindowCreateFailed`, `WindowsDPIAwarenessFailed`, `WindowsClipboardFormatUnsupported`, `ClipboardBusy`, `WindowsBalloonFailed`, `DBusUnavailableOnWindows`, `WindowsUIAFailed`, `OleInitFailed` (from step 28.13 `WindowsUIAFailed` is made, in `win32` and `uia`); from step 28.1 also `Win32Cancelled` (the user closed a dialog: `ERROR_CANCELLED`), `GUIDInvalid`, `UTF16EmbeddedNUL`, and the programmer errors `COMNilObject` and `COMInterfaceInvalid`; from step 28.2 also `GDIPresentFailed` and `WindowsDevEventsInvalid`, and `Win32WindowClassFailed`, `Win32WindowCreateFailed`, `WindowsDPIAwarenessFailed` and `OleInitFailed` are made (in `win32`); from step 28.6 also `ClipboardBusy`, `ClipboardReadFailed`, `ClipboardWriteFailed` (the names of Linux; a damaged format on the clipboard, or an image that is not a PNG) and `WindowsClipboardFormatUnsupported` are made, `ClipboardPrimaryUnavailable` and `ClipboardReadTimeout` are used, and `WindowsFontsUnavailable`, `WindowsFontUnreadable`, `WindowsFontCacheWriteFailed` and `WindowsFontsCanceled` are the tags of `internal/text/winfonts`; for the tools `WindowsManifestInvalid`, `WindowsResourceInvalid`, `WindowsIconInvalid` (from step 28.14 made by `internal/wintool`, with `WindowsBuildInvalid` (a build that cannot be done: no package, an unknown architecture, a package that is not one main package or has a `.syso` of its own, a file of the build that cannot be written), `WindowsCommandFailed` (the go command failed; `command`, `output`), `WindowsRunFailed` (the program cannot be started or does not end with status 0; `exitCode`), `WindowsShotFailed`, `WindowsScreenUnsupported`, and `WindowsUsage` of `glutter-windows` itself), from step 28.15 the tags of `glutter-windows perf`: `WindowsPerfBadFormat`, `WindowsPerfBadCount`, `WindowsPerfDevEventsRelease` and `WindowsPerfBadArch` (the flags), `WindowsPerfUnsupported` (not on Wine), `WindowsPerfTempDir`, `WindowsPerfCacheClear`, `WindowsPerfProcRead` (`/proc` cannot be read), `WindowsPerfNoExe`, `WindowsPerfNoProcess`, `WindowsPerfAppDied`, `WindowsPerfNoFrame`, `WindowsPerfInterrupted` and `WindowsPerfWriteFailed` (the report's place), and `PerfWriteFailed` of `internal/perfstats` (its renderer), `WineNotFound`, `WinePrefixFailed`, `WineStartFailed`, `ModuleRootNotFound` (no `go.mod` above the working directory) and, in `layouttest`, `LayoutCompilerMissing`, `LayoutHeaderMissing`, `LayoutMismatch`, `LayoutCompileFailed`, `LayoutCompilerRunFailed`, `LayoutFileFailed`; for the renderer the tags of §9.8. The tags that already exist are used where they mean the same: `LibraryLoadFailed`, `SymbolMissing`, `BackendUnavailable`, `RendererUnknown`, `RendererUnavailable`, `GPUDeviceLost`, `GPUOutOfMemory`, `WindowIconInvalid`, `TrayUnavailable`, `TrayRegisterFailed`, `TrayDuplicate`, `NotificationsUnavailable`, `FileChooserUnavailable`, `FileChooserFailed`, `OpenURIInvalid`, `OpenURISchemeBlocked`, `OpenURIUnavailable`, `ClipboardPrimaryUnavailable`, `ClipboardReadTimeout`, `DragUnsupported`.
+
+## 26. SVG images (1.9)
+
+Glutter draws SVG documents as images (D27). The package `svg` has `flutter_svg`'s widgets, and `internal/svg` holds the parser and the painter. It is plain Go, so it works the same on every platform.
+
+### 26.1 The API (package `svg`)
+
+The names and defaults follow `flutter_svg` (2.x), the package Flutter apps use; the conventions of §12 apply (positional required arguments, an options struct):
+
+- `NewSvgPictureAsset(assetName string, opts ...SvgPictureOpts)`, `NewSvgPictureString(source string, ...)`, `NewSvgPictureMemory(bytes []byte, ...)`, `NewSvgPictureFile(path string, ...)`, `NewSvgPictureNetwork(url string, ...)` (with `Headers`): the widget `SvgPicture`.
+- `SvgPictureOpts`:
+  - `Width`, `Height` (`Opt[float64]`);
+  - `Fit` (`BoxFitContain` by default), `Alignment` (center by default);
+  - `MatchTextDirection`;
+  - `AllowDrawingOutsideViewBox`, `ClipBehavior` (`ClipHardEdge` by default);
+  - `ColorFilter` (`*ui.ColorFilter`);
+  - `Theme` (`SvgTheme{CurrentColor, FontSize, XHeight}`, the values of `currentColor`, `em` and `ex`);
+  - `PlaceholderBuilder`, `ErrorBuilder`;
+  - `SemanticsLabel`, `ExcludeFromSemantics`;
+  - `Bundle` (an `AssetBundle`; the default is the app's).
+- Sizing as in `flutter_svg`: the picture's size is the document's `width` and `height`, or its `viewBox`. The widget sizes itself from `Width` and `Height`, the constraints and that size, and fits the picture with `Fit` and `Alignment`.
+- Loading:
+  - `.asset`, `.file` and `.network` load on a goroutine with a `context.Context` cancelled when the widget leaves the tree (§13). `.string` and `.memory` parse on first build.
+  - The parsed picture is cached by its source and theme (`svg.Cache`, an LRU with a byte limit, as `flutter_svg`'s cache), so the same icon in a list is parsed once.
+  - A document that cannot be loaded or parsed shows `ErrorBuilder`'s widget (by default nothing). The error goes to the app's error reporter with the tags of §26.5.
+- `svg.Parse(data []byte, opts ...ParseOpts) (*Document, error)` (`ParseOpts{Theme, Locale}`), `(*Document).Picture() *ui.Picture` and `Size()`, for an app that draws an SVG with a `CustomPainter`. A `Document` is made for one theme: `currentColor`, `em` and `ex` are resolved when it is parsed (decided in step 29.1), which is why the cache's key is the source and the theme.
+
+### 26.2 What is parsed (`internal/svg`)
+
+- **XML:** `encoding/xml`, namespaces (`svg`, `xlink`), entities, `CDATA`. Elements of other namespaces are skipped.
+- **Attributes and style.** Presentation attributes, the `style` attribute and `<style>` sheets. The CSS subset:
+  - selectors: type, `.class`, `#id`, `*`, descendant and child combinators, and lists of selectors;
+  - specificity, `!important`, and the inheritance of the properties that inherit.
+- **Values:**
+  - lengths with every unit (`px`, `pt`, `pc`, `mm`, `cm`, `in`, `em`, `ex`, `%` against the viewport in the right dimension);
+  - colors (named, `#rgb`, `#rrggbb`, `#rgba`, `#rrggbbaa`, `rgb()`/`rgba()`, `hsl()`/`hsla()`, `currentColor`, `transparent`);
+  - paints (`none`, a color, `url(#id)` with a fallback);
+  - `transform` lists, `preserveAspectRatio`, `viewBox`;
+  - path data with every command, arcs included (on `ui.Path`'s SVG arc).
+- **Structure:**
+  - `svg` (nested too), `g`, `defs`, `symbol`;
+  - `use` (with `href` and `xlink:href`), with cycles cut off;
+  - `switch` (the first child whose conditions hold), `a` (drawn as a group);
+  - `title` and `desc` (the semantics label when `SemanticsLabel` is not given).
+- **Not supported:** scripts, `foreignObject`, animation (SMIL and CSS), external references (other than `<image>` with a `data:` URL), `@import`, `@media` (its rules are skipped), and CSS selectors beyond the list above. An unknown element or attribute is skipped, as browsers do.
+
+### 26.3 What is drawn
+
+- **Shapes:** `path`, `rect` (with `rx`/`ry`), `circle`, `ellipse`, `line`, `polyline`, `polygon`.
+- **Fill and stroke:**
+  - `fill-rule`, `fill-opacity`, `stroke-opacity`;
+  - `stroke-width`, `stroke-linecap`, `stroke-linejoin`, `stroke-miterlimit`;
+  - `stroke-dasharray` and `stroke-dashoffset` (dashes cut from the path), and `vector-effect: non-scaling-stroke`.
+- **Paint servers:**
+  - `linearGradient` and `radialGradient` (`fx`/`fy`/`fr`, `gradientUnits`, `gradientTransform`, `spreadMethod`, stops with offsets, colors and opacity), with attributes inherited through `href`;
+  - `pattern` (`patternUnits`, `patternContentUnits`, `patternTransform`, `viewBox`), as a `ui.ImageShader` of the tile recorded at the device scale.
+- **Groups:**
+  - `opacity` on a group, through a save layer;
+  - `clip-path` (`clipPathUnits`, `clip-rule`, clip paths of clip paths);
+  - `mask` (`maskUnits`, `maskContentUnits`, luminance by default and `mask-type: alpha`), through a save layer, a luminance-to-alpha color matrix and `BlendMode.dstIn`;
+  - `display: none`, `visibility`, `overflow` of nested viewports.
+- **Text:**
+  - `text`, `tspan` (and `textPath` along a path, on a single line);
+  - `x`, `y`, `dx`, `dy` (lists per character), `text-anchor`;
+  - `font-family`, `font-size`, `font-weight`, `font-style`, `letter-spacing`, `word-spacing`, `text-decoration`;
+  - fill and stroke.
+
+  Glyphs come from Glutter's text layout and the app's fonts (§10). Text is laid out as SVG does, run by run, not by paragraph wrapping.
+- **Images:** `<image>` with a `data:` URL of PNG, JPEG, GIF or WebP (as `ui` decodes them), or of SVG, with `preserveAspectRatio`.
+- **Filters** (`filter`, `filterUnits`, `primitiveUnits`, the filter region):
+  - `feGaussianBlur`, `feOffset`, `feFlood`, `feColorMatrix` (every type), `feComposite` (every operator, `arithmetic` included), `feMerge`, `feBlend`, `feMorphology`, `feDropShadow`, `feComponentTransfer` (table, discrete, linear, gamma);
+  - the inputs `SourceGraphic`, `SourceAlpha` and named results.
+
+  They map onto `ui.ImageFilter`s and save layers where they can, and otherwise onto an image filter that runs on the CPU (`ui` gets what the filters need). An unknown primitive makes the filtered element draw as if it had no filter.
+- **Color:** `color-interpolation-filters` (linearRGB by default) is honored by the filters. Colors are sRGB.
+
+### 26.4 Performance
+
+- A document is parsed once per source and theme (the cache of §26.1).
+- Drawing is replaying a `ui.Picture`. A widget of a new size records again only if the picture depends on the scale (patterns, filters); the rest is scaled.
+- A filter or a mask costs a save layer. Icons have neither.
+- Parsing a typical icon (under 10 KB) takes under 1 ms on the development machine, and a large illustration (500 KB) under 50 ms, measured in a benchmark (`BenchmarkParse`).
+
+### 26.5 Errors
+
+The tags:
+- `SvgParseFailed`: the XML is not well formed (metadata `line`, `column`).
+- `SvgNotSvg`: the root is not an `svg` element.
+- `SvgInvalidValue`: a value that must be valid is not (a `viewBox` with a negative size). Invalid values of other attributes are ignored, as browsers do.
+- `SvgLoadFailed`: an asset, a file or a URL could not be read (metadata `source`). Package `svg` makes it (29.4); the other three come from `internal/svg`.
+
+Each has a route test (§14.4).
+
+### 26.6 Testing
+
+- Unit tests of the parser, table-driven: every value syntax, the CSS cascade, `use` and its cycles.
+- Goldens of the painter on the software renderer, compared with reference renders:
+  - the test documents are in `internal/svg/testdata/` (written for the steps: small, one feature each);
+  - the reference PNG of each was made once by `rsvg-convert` (librsvg) and is checked in;
+  - each golden must match its reference within a tolerance (`gputest.Tolerance`, with a per-document allowance written in the test, for anti-aliasing and text);
+  - `rsvg-convert` is used only to make the references (`go test ./internal/svg -run Reference -update-references`), never at test time.
+- Widget tests of `SvgPicture` (sizing, fit, loading, caching, errors) with `gluttertest`.
+- `examples/svg` shows a set of icons, a logo with gradients, text and a filter, and runs on every platform.

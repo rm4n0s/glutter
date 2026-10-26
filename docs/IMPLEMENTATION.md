@@ -2537,3 +2537,156 @@ Emetos works around it in its peek view: no soft wrap, an ellipsis only when the
 A golden that changes because an ellipsized line now keeps more characters is looked at, and the reason is written in the report.
 **Proof:** none.
 **Manual checks:** none. Emetos removes its workaround in `peek_widget.go` (its own issue).
+
+## M29: SVG images (1.9)
+
+The owner asked on 2026-10-26 for Glutter to draw SVG images. They chose:
+- `flutter_svg`'s API, in a package `svg`;
+- the larger scope: text, masks, filters and CSS as well as shapes;
+- a release, 1.9.
+
+SPEC §26 and D27 are the design. The parser and the painter are Glutter's own, in plain Go, so the steps need no platform work. Each step is checked on every platform by the standard checks. The reference images of the tests are made once with `rsvg-convert` (SPEC §26.6), which is installed on the development machine.
+
+`flutter_svg` is not in `reference/`. Step 29.1 adds `flutter_svg` (MIT) at a pinned version to `scripts/fetch-reference.sh` and to `reference/VERSION`, for the API's names, defaults and sizing only. The parser and the painter follow the SVG 1.1 and SVG 2 specifications, not `flutter_svg`'s compiler. Glutter's code ports none of `flutter_svg`'s code, so no license file is needed. If a step ports some, it adds the license and a NOTICE entry (SPEC §20).
+
+### 29.1 The SVG parser
+**Goal:** `internal/svg` parses an SVG document into a tree with the values resolved: XML, the CSS cascade, units, colors, transforms, path data, and `use`/`defs`/`symbol` references. Nothing is drawn yet.
+**Read:** SPEC §26 (all), D27, §14.4, §12.
+**Port from:** none (the SVG specifications). `flutter_svg` is fetched for the API of 29.4.
+**Files:**
+- `internal/svg/` (`doc.go`, the XML reader, `css.go`, `values.go` for lengths, colors, paints and transforms, `pathdata.go`, the tree and its resolution), its tests, and `internal/svg/testdata/` (the first test documents);
+- `scripts/fetch-reference.sh`, `reference/VERSION`.
+**Tasks:**
+1. Fetch `flutter_svg` at its latest release into `reference/flutter_svg`, and pin it in the script and in `VERSION`.
+2. The XML reader:
+   - elements and attributes of the SVG and xlink namespaces;
+   - `CDATA` and entities;
+   - the text content of `text`, `tspan` and `style`;
+   - every other element skipped with its children.
+3. CSS:
+   - the `style` attribute and `<style>` sheets, with the selectors of §26.2;
+   - specificity, `!important` and order;
+   - `@media` and `@import` skipped;
+   - the properties that inherit, inherited down the tree.
+4. Values, as SPEC §26.2 lists them: lengths and their units (a percentage resolved against the viewport, in its dimension), colors, paints, `transform`, `viewBox`, `preserveAspectRatio`, and number lists. An invalid value is ignored, except where §26.5 says it is an error.
+5. Path data:
+   - every command, absolute and relative;
+   - the shorthand of numbers (`1.5.5`, `-1-2`) and the flags of arcs written without spaces;
+   - the output is a `ui.Path`, with `ui.Path`'s SVG arc;
+   - drawing stops at the first error, as browsers do.
+6. The resolved tree:
+   - each element with its computed style;
+   - `use` expanded, with cycles cut and a depth limit;
+   - `symbol` and nested `svg` as viewports;
+   - `switch` (`requiredFeatures`, `systemLanguage` against the locale);
+   - references by id (gradients, patterns, clip paths, masks, filters, markers ignored) kept for the painter.
+
+   `Document.Size()` comes from `width`/`height` and the `viewBox`.
+7. The errors of §26.5, each with a route test.
+8. `BenchmarkParse` on a small icon and on a large document made by the test.
+**Tests (table-driven):**
+- every unit, color syntax, transform and path command;
+- the CSS cascade: specificity, `!important`, inheritance, the `style` attribute over the sheet over the presentation attribute;
+- `use` with a transform and an override, and a cycle;
+- the size of a document with and without `viewBox`, `width` and `height`;
+- the errors and their routes;
+- a document of another namespace in the tree is skipped.
+**Proof:** none.
+**Manual checks:** none.
+
+### 29.2 The SVG painter
+**Goal:** a parsed document is recorded into a `ui.Picture` that draws its shapes, strokes, gradients, patterns, clip paths, group opacity, nested viewports and `data:` images (SPEC §26.3, except text, masks and filters), matching reference renders made by `rsvg-convert`.
+**Read:** SPEC §26.3, §26.4, §26.6, §9 (what the renderers draw), `ui` (`Canvas`, `Path`, `Paint`, `Gradient`, `ImageShader`, `SaveLayer`).
+**Port from:** none.
+**Files:** `internal/svg/paint*.go`, its tests, `internal/svg/testdata/` (documents and their reference PNGs), the reference harness.
+**Tasks:**
+1. The harness (SPEC §26.6):
+   - for each test document, a reference PNG made by `rsvg-convert` at a fixed size (`-update-references`, which skips with the install command when `rsvg-convert` is missing);
+   - a test that renders each document with the software renderer and compares it with its reference within a tolerance.
+2. The viewport: `viewBox` and `preserveAspectRatio` (every alignment, `meet`, `slice`, `none`), nested `svg` and `symbol` viewports, `overflow`.
+3. The shapes of §26.3 (the `rx`/`ry` rules of `rect`), fill and stroke with every property, dashes, and `non-scaling-stroke`.
+4. Paint servers:
+   - linear and radial gradients with `href` inheritance, units, transforms and spread methods (focal radial gradients through the two-point conical gradient);
+   - patterns, as an image shader of the tile, recorded at the device scale.
+5. Group opacity through a save layer (only when the group has more than one child or overlaps itself), `clip-path` with its rules and units, and `display` and `visibility`.
+6. `<image>` with a `data:` URL: raster formats through `ui`'s decoder, and SVG through this painter.
+7. At least 40 test documents, one feature each, with their references.
+**Tests:**
+- the reference comparison of every document;
+- unit tests of the viewport transform for every `preserveAspectRatio`;
+- dashes along a curve.
+
+A golden that differs from its reference beyond the tolerance is explained in the report, never widened silently.
+**Proof:** none.
+**Manual checks:** none.
+
+### 29.3 Text, masks, filters and markers
+**Goal:** SVG text, masks and the filters of SPEC §26.3 are drawn, matching their reference renders.
+**Read:** SPEC §26.3 (text, masks, filters, color), §10 (paragraphs and fonts), `ui`'s image filters, color filters and save layers.
+**Port from:** none.
+**Files:** `internal/svg/text.go`, `mask.go`, `filter*.go`, their tests and test documents. Additions to `ui` if a filter needs one (an image filter run on the CPU), with their goldens.
+**Tasks:**
+1. Text:
+   - `text`, `tspan` and `textPath`, as SPEC §26.3 says;
+   - glyphs from Glutter's layout (shaped runs, the app's font collection);
+   - placement by the per-character `x`, `y`, `dx` and `dy` lists, `text-anchor` per chunk, letter and word spacing, decorations, and fill and stroke of the glyphs;
+   - the reference renders are made with the same font, a bundled one (Roboto), so that they can be compared.
+2. Masks: a luminance or alpha mask through a save layer, a color matrix and `dstIn`, with the units of the mask.
+3. Filters:
+   - the filter region and its units;
+   - the graph of primitives with named results;
+   - each primitive of §26.3 on `ui.ImageFilter`s where they exist (blur, offset, color matrix, morphology, compose);
+   - the rest on an image filter that runs on the CPU, added to `ui` with the soft renderer's support and, for the GPU renderers, a readback or an equivalent. Say which in the report.
+   - `color-interpolation-filters` (linearRGB through the gamma color filters).
+4. Markers (`marker-start`, `marker-mid`, `marker-end`, `orient`, `markerUnits`), which icons with arrows use.
+5. Test documents for each, with their references.
+**Tests:**
+- the reference comparison;
+- a filter graph with named results;
+- a mask in a group with opacity;
+- text with each anchor and in right-to-left text;
+- the GPU renderers draw the filtered documents within the tolerance of `soft` (the display tests, `glutter_display`).
+**Proof:** none.
+**Manual checks:** none.
+
+### 29.4 The `svg` package and its example
+**Goal:** apps draw SVG with `flutter_svg`'s widgets. `svg.NewSvgPictureAsset`, `.String`, `.Memory`, `.File` and `.Network` load, cache and size the picture as SPEC §26.1 says, and `examples/svg` shows it on every platform.
+**Read:** SPEC §26.1, §12, §13 (goroutines and `Post`), `reference/flutter_svg` (`svg.dart`, `SvgPicture`, `SvgTheme`, the loaders, the cache), `widgets/image.go` (how `Image` loads and sizes).
+**Port from:** `flutter_svg`'s `SvgPicture` and its loaders: names, defaults and sizing only (MIT; if code is ported, the license goes in `third_party/flutter_svg` with a NOTICE entry).
+**Files:**
+- `svg/` (`svg.go`, `picture.go`, `loaders.go`, `cache.go`, `theme.go`) and its tests;
+- `examples/svg/` with its assets and a golden;
+- `examples` registry entries (the Windows, web and Android example lists);
+- `cmd/glutter-gen` apicheck if the new package needs it.
+**Tasks:**
+1. The widget, its options and its sizing, as SPEC §26.1 says. `MatchTextDirection` mirrors in RTL. `ColorFilter` is applied to the picture. `SemanticsLabel` (or the document's `title`) goes to the semantics tree, unless `ExcludeFromSemantics`.
+2. The loaders: assets through the bundle of the context (or `Bundle`), files, and network through `net/http` with `Headers`. Each runs on a goroutine with a context cancelled when the widget leaves the tree, and parses there. `PlaceholderBuilder` shows while it loads, and `ErrorBuilder` on failure (the error is also reported, §26.5).
+3. `svg.Cache`: an LRU by source and theme with a byte limit, shared by the widgets of an app (no global state: it hangs off the binding, or is given in the options).
+4. `svg.Parse`, `Document.Picture` and `Document.Size` (SPEC §26.1).
+5. `examples/svg`: a grid of icons (`currentColor` from the theme, with a `ColorFilter`), a logo with gradients, a card with SVG text and a drop-shadow filter, and the same icon at three sizes. Add it to the lists of examples that run on the web, Android and Windows.
+**Tests:**
+- widget tests for each loader;
+- the sizes: `Width` only, `Height` only, both, neither, under tight and loose constraints, and each `Fit`;
+- the cache: one parse for two widgets of the same asset, and an eviction by size;
+- `ErrorBuilder` and `PlaceholderBuilder`;
+- semantics;
+- the example's golden.
+**Proof:** a screenshot of `examples/svg` on Linux in `docs/implemented-proof-images/`.
+**Manual checks:** none.
+
+### 29.5 Release 1.9
+**Goal:** 1.9 is checked and published with the tag `v1.9.0` (CLAUDE.md, "Tags": a finished version is tagged without asking).
+**Read:** the 28.19 entry of `docs/IMPLEMENTED.md` (the form of a release), SPEC §1, §3, §18.
+**Tasks:**
+1. Documents:
+   - the SPEC's version paragraph gets a 1.9 sentence, and the scope of §3 a "Scope of 1.9" paragraph;
+   - `README.md` gets a "What is new in 1.9" note and a short SVG example;
+   - `docs/GUIDE.md` gets a section "13. SVG images", with `flutter_svg` in Dart beside `svg` in Go (checked by the docs test).
+2. The checks:
+   - the standard checks;
+   - the display tests and the browser tests;
+   - `examples/svg` under Wine, and on one Android emulator only (one AVD at a time, for memory);
+   - the parse benchmark against the numbers of §26.4.
+3. Publish to `main`, and tag `step-29.5` and `v1.9.0`.
+**Proof:** none.
+**Manual checks:** none.

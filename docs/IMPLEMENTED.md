@@ -4118,3 +4118,53 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - The white space at the end of the kept text is dropped (`lazy …` becomes `lazy…`).
   - A ligature such as `fi` is never cut, because `p.boundary` has no cluster boundary inside it.
   - Tagged `v1.8.3` when published (the owner's rule of 2026-10-26).
+
+## 29.1 The SVG parser
+
+- **Date:** 2026-10-27
+- **Branch:** feat/step-29.1-svg-parser
+- **Summary:** milestone M29 (SVG images, 1.9) begins. The owner asked for it on 2026-10-26, and chose `flutter_svg`'s API, the larger scope and a 1.9 release. SPEC D27 and §26 are new, and SVG is no longer out of scope (§3). `internal/svg` parses an SVG document into a tree with its values resolved (SPEC §26.2). Nothing is drawn yet.
+  - **XML:** `encoding/xml`, with namespaces, CDATA, DTD entities (expanded once, never recursively) and gzip (capped).
+  - **CSS cascade:**
+    - selectors by type, class and id, `*`, and descendant and child combinators;
+    - specificity, `!important` and the style attribute;
+    - the CSS `transform` property.
+  - **Values:** lengths with every unit, colors, paints, transforms, `viewBox`, `preserveAspectRatio`, and path data (every command, as a `ui.Path`).
+  - **The tree:**
+    - each `Node` has its computed style;
+    - `use` is expanded, with cycles cut, a depth of at most 32 and at most 250,000 nodes made;
+    - `symbol` and nested `svg` are viewports, and `switch` is chosen;
+    - gradients, patterns, clip paths, masks, filters and markers are resolved to pointers, with their `href` chains merged;
+    - text keeps its position lists and white space, and `data:` images are read.
+  - **Unit resolution:** absolute units, `em`, `ex`, `rem` and percentages (against the nearest viewport, in its dimension) are resolved at parse time. The coordinates of gradients, patterns, masks and filter regions stay `Length`s, for the painter to resolve.
+  - **One theme per document:** a `Document` is made for one `Theme` (`currentColor`, font size, x-height). The SPEC's §26.1 is updated: `Parse` takes the theme, and `Picture` takes none.
+  - **`flutter_svg`** is fetched into `reference/` for the API of 29.4.
+- **Main files:**
+  - `internal/svg/` (`xml.go`, `css.go`, `style.go`, `values.go`, `numbers.go`, `colornames.go`, `pathdata.go`, `affine.go`, `tree.go`, `build.go`, `resources.go`, `textnode.go`, `document.go`, the tests and `testdata/`)
+  - `scripts/fetch-reference.sh`
+  - SPEC D27, §3, §18 and §26
+  - `docs/IMPLEMENTATION.md` (M29)
+  - `CLAUDE.md` (the layout)
+- **Tests:**
+  - table-driven tests of every unit, color syntax, transform and path command;
+  - the cascade and inheritance;
+  - `use`, with cycles and a bounded expansion; `switch`;
+  - document sizes, resources, text and images;
+  - the route of every error tag: `SvgParseFailed`, `SvgNotSvg` and `SvgInvalidValue`;
+  - the 7 documents of `testdata/`;
+  - `FuzzParse` and `FuzzPathData`, which ran 25 s and 15 s with no crash.
+- **Benchmark** (`BenchmarkParse`, against the targets of SPEC §26.4: under 1 ms for an icon, under 50 ms for 500 KB):
+
+  | Document | Time |
+  |---|---|
+  | an icon | 7.5 µs |
+  | a 787-byte document | 20.7 µs |
+  | a generated 500 KB document | 15.1 ms |
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ (also `GOOS=windows`, amd64 and arm64, with and without `glutter_wine`) · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck ✅ · apicheck ✅ · uintptrcheck ✅ · `GOOS=js GOARCH=wasm` build, vet and `scripts/test-wasm.sh` ✅ · `scripts/check-android.sh` ✅ · `GOOS=windows` amd64 build and vet, arm64 build ✅ · `scripts/test-windows.sh` ✅ · nothing left running ✅
+- **Proof:** none.
+- **Manual checks:** none.
+- **Deviations and follow-ups:**
+  - `flutter_svg` is pinned at commit `6ed5a9d` (version 2.0.10+1, 2024-11-01), not at a release tag: the repository stopped tagging at v2.0.7.
+  - `SvgLoadFailed` is made by package `svg` (29.4).
+  - Not supported: CSS variables, the `font` shorthand, `@media`, and selectors beyond SPEC §26.2.
+  - The parameters of filter primitives are kept as raw strings in `FilterPrimitive.Attrs`, for 29.3 to parse.

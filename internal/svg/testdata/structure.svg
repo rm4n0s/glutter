@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="120" height="80" viewBox="0 0 60 40">
+  <defs>
+    <symbol id="star" viewBox="0 0 10 10">
+      <polygon points="5,0 6.5,3.5 10,4 7.5,6.5 8,10 5,8 2,10 2.5,6.5 0,4 3.5,3.5"/>
+    </symbol>
+    <g id="pair"><circle r="3"/><circle cx="8" r="3"/></g>
+  </defs>
+  <use xlink:href="#star" x="2" y="2" width="12" height="12" fill="gold"/>
+  <use href="#pair" transform="translate(30 10)" fill="teal"/>
+  <switch>
+    <text systemLanguage="fr" x="2" y="30">Bonjour</text>
+    <text x="2" y="30">Hello</text>
+  </switch>
+  <svg x="30" y="20" width="20" height="15" viewBox="0 0 10 10" preserveAspectRatio="xMinYMin slice" overflow="hidden">
+    <rect width="10" height="10" fill="coral"/>
+  </svg>
+</svg>

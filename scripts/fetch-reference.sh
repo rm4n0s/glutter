@@ -4,8 +4,8 @@
 # Usage: scripts/fetch-reference.sh   (from anywhere; works relative to the repo root)
 #
 # First run: clones the `stable` branch of flutter/flutter, the
-# material-color-utilities repository and Skia (at Flutter's pinned revision) into reference/, then records the exact
-# commits in reference/VERSION.
+# material-color-utilities repository, Skia (at Flutter's pinned revision) and flutter_svg (at the commit pinned
+# below) into reference/, then records the exact commits in reference/VERSION.
 # Later runs: reference/VERSION exists, so exactly the recorded commits are
 # checked out. To move to a newer Flutter, delete reference/ and run again.
 #
@@ -42,6 +42,14 @@ FLUTTER_OPTIONAL_PATHS=(
 SKIA_URL="https://skia.googlesource.com/skia"
 SKIA_DIR="$REF/skia"
 SKIA_PATHS=(src/ports include/ports)
+
+# flutter_svg (MIT), for the API of package svg (SPEC §26.1, step 29.4): names, defaults and sizing only; the parser
+# and the painter of internal/svg follow the SVG specifications. The repository stopped tagging at v2.0.7 (2023); its
+# master (packages/flutter_svg, version 2.0.10+1) is newer, so the pin is that commit.
+FLUTTER_SVG_URL="https://github.com/dnfield/flutter_svg"
+FLUTTER_SVG_DIR="$REF/flutter_svg"
+FLUTTER_SVG_COMMIT="6ed5a9d2831ac88869a6490aac701366acad1b59"
+FLUTTER_SVG_PATHS=(packages/flutter_svg/lib packages/flutter_svg/test)
 
 MCU_URL="https://github.com/material-foundation/material-color-utilities"
 MCU_DIR="$REF/material-color-utilities"
@@ -111,6 +119,16 @@ flutter_version() {
   printf '%s' "${tag:-unknown}"
 }
 
+# write_svg_version appends the flutter_svg lines to reference/VERSION.
+write_svg_version() {
+  {
+    echo "flutter_svg_repository=$FLUTTER_SVG_URL"
+    echo "flutter_svg_commit=$(git -C "$FLUTTER_SVG_DIR" rev-parse HEAD)"
+    echo "flutter_svg_date=$(commit_date "$FLUTTER_SVG_DIR")"
+    echo "flutter_svg_version=$(sed -n 's/^version: *//p' "$FLUTTER_SVG_DIR/packages/flutter_svg/pubspec.yaml" | head -n 1)"
+  } >>"$VERSION_FILE"
+}
+
 mkdir -p "$REF"
 
 if [[ -f "$VERSION_FILE" ]]; then
@@ -134,11 +152,18 @@ if [[ -f "$VERSION_FILE" ]]; then
   if ! grep -q '^skia_date=' "$VERSION_FILE"; then
     echo "skia_date=$(commit_date "$SKIA_DIR")" >>"$VERSION_FILE"
   fi
+  svg_commit="$(read_version flutter_svg_commit)"
+  ensure_repo "$FLUTTER_SVG_URL" "$FLUTTER_SVG_DIR" "" "${svg_commit:-$FLUTTER_SVG_COMMIT}" "${FLUTTER_SVG_PATHS[@]}"
+  if [[ -z "$svg_commit" ]]; then
+    # An older reference/VERSION: record the pinned flutter_svg.
+    write_svg_version
+  fi
 else
   ensure_repo "$FLUTTER_URL" "$FLUTTER_DIR" "$FLUTTER_BRANCH" "" "${FLUTTER_PATHS[@]}" "${FLUTTER_OPTIONAL_PATHS[@]}"
   ensure_repo "$MCU_URL" "$MCU_DIR" "" "" "${MCU_PATHS[@]}"
   skia_commit="$(sed -n "s/^[[:space:]]*'skia_revision': '\([0-9a-f]*\)'.*/\1/p" "$FLUTTER_DIR/DEPS" | head -n 1)"
   ensure_repo "$SKIA_URL" "$SKIA_DIR" "" "$skia_commit" "${SKIA_PATHS[@]}"
+  ensure_repo "$FLUTTER_SVG_URL" "$FLUTTER_SVG_DIR" "" "$FLUTTER_SVG_COMMIT" "${FLUTTER_SVG_PATHS[@]}"
   {
     echo "flutter_repository=$FLUTTER_URL"
     echo "flutter_branch=$FLUTTER_BRANCH"
@@ -152,6 +177,7 @@ else
     echo "skia_commit=$(git -C "$SKIA_DIR" rev-parse HEAD)"
     echo "skia_date=$(commit_date "$SKIA_DIR")"
   } >"$VERSION_FILE"
+  write_svg_version
 fi
 
 # Every sparse path must exist; Flutter reorganizes its repository sometimes.
@@ -170,6 +196,12 @@ done
 for p in "${SKIA_PATHS[@]}" LICENSE; do
   if [[ ! -e "$SKIA_DIR/$p" ]]; then
     log "error: missing in reference/skia: $p"
+    missing=1
+  fi
+done
+for p in "${FLUTTER_SVG_PATHS[@]}" LICENSE; do
+  if [[ ! -e "$FLUTTER_SVG_DIR/$p" ]]; then
+    log "error: missing in reference/flutter_svg: $p"
     missing=1
   fi
 done

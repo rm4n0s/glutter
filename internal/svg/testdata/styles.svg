@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <style>
+    /* the logo */
+    .bg { fill: #eee; stroke: #333; stroke-width: 2 }
+    g.group > rect { fill: tomato }
+    #special { fill: gold !important }
+    @media (max-width: 10px) { .bg { fill: black } }
+    circle, ellipse { fill-opacity: .5 }
+  </style>
+  <rect class="bg" x="1" y="1" width="98" height="98" rx="8"/>
+  <g class="group" fill="blue">
+    <rect x="10" y="10" width="30" height="30"/>
+    <rect id="special" x="50" y="10" width="30" height="30" style="fill: green"/>
+    <circle cx="25" cy="70" r="15" fill="purple"/>
+    <ellipse cx="65" cy="70" rx="20" ry="10" style="fill:navy"/>
+  </g>
+</svg>

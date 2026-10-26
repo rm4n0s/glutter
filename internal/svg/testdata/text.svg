@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60">
+  <text x="10 20 30" y="20" font-family="Roboto, sans-serif" font-size="16" fill="#222">ABC<tspan dx="4" fill="red" font-weight="bold">def</tspan></text>
+  <text x="100" y="50" text-anchor="middle" letter-spacing="2" text-decoration="underline">Middle  anchored
+     text</text>
+  <path id="curve" d="M10 55 Q 100 20 190 55" fill="none"/>
+  <text font-size="10"><textPath href="#curve" startOffset="10%">On a path</textPath></text>
+</svg>
