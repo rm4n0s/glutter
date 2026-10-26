@@ -1,5 +1,9 @@
 # Glutter
 
+<p align="center">
+  <img src="docs/glutter-mascot.jpg" alt="Glutter's mascot: a fat orange cat sprawled on a sofa, burping blue feathers" width="560">
+</p>
+
 Glutter is a GUI toolkit for Go that has **Flutter's framework API**: widgets, rendering,
 gestures, animation and Material 3. It runs on its own engine: a Wayland and X11 platform
 layer and a Vulkan renderer with an OpenGL ES 3.0 fallback (on Windows, Win32 through the standard library and
@@ -158,6 +162,14 @@ dozens (an app that kept a `ControlsFont` workaround can remove it).
 title, the empty space around it and the gap before `Leading` move the window, maximize it on a double tap and open
 its menu on a right click; the `Leading` and `Actions` widgets get their own gestures, and a tap on a button in
 `Actions` arrives at once.
+
+**What is new in 1.8.1 to 1.8.3.**
+- **1.8.1:** `ErrorBoundary`. When anything below it fails to build, it shows a fallback in place of its whole child,
+  in the same frame. It is told about the error before the app's error reporter ([the guide](docs/GUIDE.md#12-a-widget-that-fails)).
+- **1.8.2:** `WindowDecoration` lays out its `Actions` first, then its `Leading` widgets, which may take all the room that
+  is left, and gives the title the rest. Tabs in the title bar no longer need the bar's sizes copied into the app.
+- **1.8.3:** a line that ends with an ellipsis keeps every character that fits before it, as in Flutter. A long word
+  with no place to break no longer leaves only the `…`.
 
 ## From Flutter to Glutter
 

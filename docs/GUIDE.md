@@ -2,7 +2,7 @@
 
 Glutter has Flutter's framework API on its own engine, so what you know carries over: the
 widget tree, `BuildContext`, `setState`, `Theme.of`, `Navigator`, animation controllers,
-`CustomPaint`. This page shows eleven things side by side, in Dart and in Go. The rules behind
+`CustomPaint`. This page shows twelve things side by side, in Dart and in Go. The rules behind
 them are in [SPEC §12](SPEC.md#12-api-conventions-flutter--go); this is the short version.
 
 **The rules in one paragraph.** A widget is made by `NewX(required..., opts ...XOpts)`. The
@@ -612,6 +612,39 @@ default, 0, is Flutter's behavior. A tab at the end of a line hangs like other w
 boxes, positions and carets after a tab are at the stop, and nothing is drawn for the tab itself.
 `Text` and `RichText` do not have the option yet; use a `TextPainter`.
 
+## 12. A widget that fails
+
+When a widget's `build` throws, Flutter shows `ErrorWidget` in its place. The builder is one for the whole app:
+
+```dart
+ErrorWidget.builder = (FlutterErrorDetails details) =>
+    const Center(child: Text('Something went wrong'));
+```
+
+Glutter does the same when a `Build` panics: the panic is recovered at the element that failed, `ErrorWidget` takes
+its place, and the error goes to the app's error reporter. It also has what Flutter does not: a boundary that takes
+the failures of its whole subtree. This is for an app that shows widgets someone else wrote, such as plugins:
+
+```go
+func pluginView(name string, view m.Widget, report func(err error)) m.Widget {
+	return m.NewErrorBoundary(func(bc m.BuildContext, err error) m.Widget {
+		return m.NewCenter(m.NewText(name + " failed"))
+	}, view, m.ErrorBoundaryOpts{OnError: report})
+}
+```
+
+When anything below the boundary fails to build, the fallback takes the place of the boundary's whole child, in
+the same frame. That covers a `Build`, a state's `InitState`, `DidUpdateWidget` or `DidChangeDependencies`, a
+`LayoutBuilder`, or an item of a `ListView.builder`. The failed widgets are never painted, and their states are
+disposed.
+- **Who is told.** `OnError` is called first, then the app's error reporter.
+- **The fallback.** It gets the first error; a `nil` fallback shows `ErrorWidget`.
+- **Trying again.** A boundary that failed stays failed. Give it a new `Key` to try the child again.
+- **Nesting.** Boundaries nest, and the nearest one takes the error. A fallback that fails goes to the next
+  boundary up.
+- **Inside `OnError`.** It runs inside the frame: don't call `SetState` on an ancestor there. Hand the work to the
+  binding's `Post`.
+
 ## For Flutter web developers
 
 If you know Flutter on the web, this is what is the same and what is not.
@@ -790,5 +823,14 @@ If you build Flutter apps for Windows, this is how a Glutter app becomes an `.ex
   on while other windows are open. For that the other windows must not be inside the first
   window's `View`: use `RunWidget` with a `WindowManager` around the `View`
   (`examples/multiwindow` does).
+- **Your own title bar.** Set `WindowConfig.Decorations` to `m.DecorationsApp` and put
+  `m.NewWindowDecoration(child, m.WindowDecorationOpts{Title: ..., Leading: ..., Actions: ...})` around your
+  app. It draws the title, the window buttons and the resize edges.
+  - Only the title and the empty space around it move the window, maximize it on a double click and open the
+    window menu on a right click. The `Leading` and `Actions` widgets get their own gestures, so tabs in the bar
+    can be dragged, double-clicked and right-clicked like any widget.
+  - The `Actions` are laid out first. The `Leading` widgets come next, as one row that may take all the room the
+    `Actions` leave: a loose `m.NewFlexible` of tabs takes what it needs, an `m.NewExpanded` takes all of it. The
+    title gets the rest.
 - **Where the list of every difference is.** SPEC §12.10, one row per deviation, kept up to
   date.
