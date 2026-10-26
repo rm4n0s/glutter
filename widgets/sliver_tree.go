@@ -29,6 +29,11 @@ type TreeSliverNode[T any] struct {
 	parent      *TreeSliverNode[T]
 	// changed tells the TreeSliver that shows the node that its children changed.
 	changed func()
+	// expansionChanged tells the TreeSliver that shows the node that the app set its expansion.
+	expansionChanged func(*TreeSliverNode[T])
+	// expandedByApp is whether the app gave the expansion with SetExpanded since a tree last took the node in;
+	// a TreeSliver with a NodeKey then does not replace it with the expansion of the old node with the same key.
+	expandedByApp bool
 }
 
 // TreeSliverNodeOpts are the optional parameters of NewTreeSliverNode.
@@ -144,6 +149,34 @@ func (n *TreeSliverNode[T]) childrenChanged() {
 //
 // Flutter: widgets/sliver_tree.dart TreeSliverNode.isExpanded
 func (n *TreeSliverNode[T]) IsExpanded() bool { return n.expanded }
+
+// SetExpanded sets whether the children are shown, for a node that is shown or not. A node with no children
+// that is not a lazy node (HasChildren) stays collapsed, as NewTreeSliverNode makes it. Setting the value the
+// node has changes nothing. When the node is shown by a TreeSliver, the tree makes its active nodes again at
+// once, with no animation of the rows (so Parent and Depth are right for the rows that come or go); the arrow
+// of the default node builder still turns, as it has an animation of its own. The tree's controller
+// (ExpandNode, CollapseNode, ToggleNode) animates and calls OnNodeToggle, which SetExpanded does not. A node
+// that is hidden keeps the value until its ancestors are expanded. Call it on the UI thread.
+//
+// A TreeSliver that has a NodeKey keeps the expansion of the old nodes for new nodes with the same key; a
+// node whose expansion the app gave with SetExpanded (even with the value the node had) before the tree took it
+// in keeps the app's value instead, so an app that builds its nodes again can set the expansion from its model.
+//
+// Deviation: Flutter's TreeSliverNode._expanded is private, and Dart apps build the nodes again to change the
+// expansion; Go apps keep the state of their tree in a model (SPEC §12.10).
+//
+// Flutter: widgets/sliver_tree.dart TreeSliverNode._expanded
+func (n *TreeSliverNode[T]) SetExpanded(expanded bool) {
+	n.expandedByApp = true
+	expanded = expanded && n.HasChildren()
+	if n.expanded == expanded {
+		return
+	}
+	n.expanded = expanded
+	if n.expansionChanged != nil {
+		n.expansionChanged(n)
+	}
+}
 
 // Depth is how deep the node is in the tree, 0 for a root node; none until the TreeSliver that has the node
 // has made it active.
@@ -498,6 +531,8 @@ type treeSliverState[T any] struct {
 
 	// notify is what the nodes call when their children change.
 	notify func()
+	// notifyExpansion is what the nodes call when the app sets their expansion.
+	notifyExpansion func(*TreeSliverNode[T])
 	// toggling is whether toggleNode is running: it makes the active nodes again by itself.
 	toggling bool
 }
@@ -514,6 +549,25 @@ func (s *treeSliverState[T]) childrenChanged() {
 		return
 	}
 	s.SetState(func() {
+		s.unpackActiveNodes()
+		s.dropStaleAnimations()
+		s.updateActiveAnimations()
+	})
+}
+
+// expansionChanged is called by a node whose expansion the app set: when the node is shown, its animation (if
+// it has one) ends, and the active nodes are made again at once, with no animation. A node that is not shown
+// has nothing to change until its ancestors open, and the active nodes are made again then.
+func (s *treeSliverState[T]) expansionChanged(node *TreeSliverNode[T]) {
+	if s.toggling || !s.Mounted() || !s.isActive(node) {
+		return
+	}
+	s.SetState(func() {
+		if record := s.currentAnimationForParent[node]; record != nil {
+			record.animation.Dispose()
+			record.controller.Dispose()
+			delete(s.currentAnimationForParent, node)
+		}
 		s.unpackActiveNodes()
 		s.dropStaleAnimations()
 		s.updateActiveAnimations()
@@ -554,6 +608,7 @@ func (s *treeSliverState[T]) unpack(depth int, nodes []*TreeSliverNode[T], paren
 		node.depth = foundation.Some(depth)
 		node.parent = parent
 		node.changed = s.notify
+		node.expansionChanged = s.notifyExpansion
 		s.activeNodes = append(s.activeNodes, node)
 		if s.shouldUnpackNode(node) {
 			s.unpack(depth+1, node.children, node)
@@ -563,10 +618,12 @@ func (s *treeSliverState[T]) unpack(depth int, nodes []*TreeSliverNode[T], paren
 
 func (s *treeSliverState[T]) InitState() {
 	s.notify = s.childrenChanged
+	s.notifyExpansion = s.expansionChanged
 	s.currentAnimationForParent = map[*TreeSliverNode[T]]*treeAnimationRecord{}
 	s.activeAnimations = map[*foundation.UniqueKey]rendering.TreeSliverNodesAnimation{}
 	s.unpackActiveNodes()
 	w := s.Widget()
+	s.keepExpansion(nil, w.tree) // the tree takes the nodes in: the marks of SetExpanded end
 	if foundation.DebugMode && w.o.Controller != nil && w.o.Controller.state != nil {
 		panic(errors.New(tagTreeSliverControllerAttached,
 			"the provided TreeSliverController is already associated with another TreeSliver; a TreeSliverController can only be associated with one TreeSliver"))
@@ -671,9 +728,10 @@ func (s *treeSliverState[T]) keepExpansion(old, tree []*TreeSliverNode[T]) {
 	var apply func(nodes []*TreeSliverNode[T])
 	apply = func(nodes []*TreeSliverNode[T]) {
 		for _, n := range nodes {
-			if was := before[key(n.content)]; was != nil && was != n && n.HasChildren() {
+			if was := before[key(n.content)]; was != nil && was != n && n.HasChildren() && !n.expandedByApp {
 				n.expanded = was.expanded
 			}
+			n.expandedByApp = false // the tree has taken the node in
 			apply(n.children)
 		}
 	}

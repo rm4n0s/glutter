@@ -3838,3 +3838,39 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - A font with a glyph for the tab, listed after one without it, no longer draws the tab. This is the intended rule: control characters go to the first face.
   - The step's test expected a Greek letter that only the third font has to parse the first and the third font. Only the third is parsed, because nothing needs the first.
   - The memory of the Emetos app itself was not measured here.
+
+## 28.17 `TreeSliverNode.SetExpanded` (Emetos)
+
+- **Date:** 2026-10-26
+- **Branch:** feat/step-28.17-tree-set-expanded
+- **Summary:** `TreeSliverNode.SetExpanded(expanded)` sets the expansion of a node whether it is shown or not. An app that keeps its tree's state in a model no longer has to make the nodes again.
+  - **Leaves and repeats:** a node with no children that is not lazy stays collapsed, and setting the value a node already has does nothing.
+  - **A shown node:** the tree ends the node's own animation and makes its active nodes again in one `SetState`. The rows do not animate, and `Parent()` and `Depth()` are right at once.
+  - **A hidden node:** its value shows when its ancestors open.
+  - **Callbacks and the controller:** `OnNodeToggle` is not called. `TreeSliverController.ExpandNode`, `CollapseNode` and `ToggleNode` still animate.
+  - **With `TreeSliverOpts.NodeKey`:** a new node whose expansion the app gave with `SetExpanded` before the tree took it in keeps that value. The expansion of the old node with the same key is carried over only to the other new nodes, as in step 27.9.
+- **Main files:** `widgets/sliver_tree.go`, `widgets/sliver_tree_expand_test.go`, SPEC §11.3 and §12.10.
+- **Tests** (`widgets/sliver_tree_expand_test.go`, table-driven):
+  - a hidden descendant expanded, then its ancestor;
+  - a shown node expanded and collapsed (4 cases): the rows, `Parent()` and `Depth()`, the row below at its final place after one frame, and no frame scheduled;
+  - `SetExpanded` during a toggle animation (2 cases);
+  - a leaf stays collapsed, also after a child is added;
+  - a lazy node expands without `OnNodeToggle`, and its children show at once;
+  - the same value twice builds no row and schedules no frame;
+  - the controller still animates (3 cases);
+  - `NodeKey` with a model, Emetos's case (5 cases and 2 subtests):
+    - the model wins, opens nodes, and closes everything;
+    - the nodes the app did not set keep the old expansion;
+    - without a key, nothing is carried over;
+    - a value set after the tree took the node in also wins;
+    - the mark ends when a tree takes the node in.
+
+  Breaking either rule on purpose makes these tests fail. The 27.9 tests pass unchanged, and no golden changed.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ (also with `GOOS=windows`, amd64 and arm64, with and without `glutter_wine`) · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck ✅ · apicheck ✅ · `GOOS=js GOARCH=wasm` build, vet and `scripts/test-wasm.sh` ✅ · `scripts/check-android.sh` ✅ · `GOOS=windows` amd64 build and vet, arm64 build ✅ · `scripts/test-windows.sh` ✅ · Wine tests ✅ · nothing left running ✅
+- **Proof:** none.
+- **Manual checks:** none. Emetos stops making its tree nodes again (its own issue).
+- **Deviations and follow-ups:**
+  - This is a Glutter addition (SPEC §12.10). Flutter's `TreeSliverNode._expanded` is private, and Dart apps make the nodes again.
+  - The rule for `NodeKey` and `SetExpanded` is in SPEC §11.3, "Decided in step 28.17": a node the app set wins over the expansion carried over, and the mark ends when a tree with a `NodeKey` takes the node in.
+  - The arrow of the default node builder still turns, because it has its own `AnimatedRotation`; only the rows do not animate.
+  - A `SetExpanded` of another shown node inside `OnNodeToggle` appears at the next remake of the active nodes.
