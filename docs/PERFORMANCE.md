@@ -36,6 +36,9 @@ scripts/perf.sh -n 7 -s 10
 # the Android numbers (step 26.5): sizes, cold start, idle CPU, frames, memory, on the emulator or a phone (-d serial)
 scripts/perf-android.sh -m
 
+# the Windows numbers (step 28.15): .exe sizes, cold start with an empty and a warm shader cache, idle CPU, frames, memory, under Wine
+scripts/perf-windows.sh -m
+
 # the web numbers (step 21.7): sizes, start, idle CPU, frames, a full rebuild, clicks; Chromium and Firefox
 scripts/perf-web.sh
 # the framework in WebAssembly under Node (the same V8 as Chromium's): add -cpuprofile with node --cpu-prof
@@ -276,6 +279,50 @@ Other numbers of the same runs, for the record (the emulator, medians of 3 to 5 
 2. **Cold start with a GPU renderer.** On the emulator the renderer's own start (Vulkan or OpenGL ES through SwiftShader) is 1 to 3 s and is not a phone's; the target is for the software renderer, which is the framework's own cost, and the phone's number with its Vulkan is read from the same command.
 3. **The sizes are large for an APK**: the program is a Go binary with the framework, the renderers, the shaders and two bundled fonts (Roboto and Material Icons), and the web's size work (see "Targets not met" above, items about brotli, font subsets and generated methods) applies to the APK too. The targets are set at what the measurements give with a margin; none of the levers is applied.
 
+## Windows (step 28.15)
+
+`scripts/perf-windows.sh` (`glutter-windows perf`, SPEC §15 and §25.13), release builds (`-tags glutter_release`, `-ldflags=-s -w`) except the navigation run, 2026-10-26. **These are Wine's numbers, not a GPU's on Windows.** The app runs under Wine 11.0 on a headless Xvfb; Wine's Direct3D 12 is vkd3d on the host's Vulkan, which here is Mesa's **lavapipe**, a CPU rasterizer, so the frame's GPU work, the first frame and the memory are the host CPU's and vkd3d's, and the CPU and the memory are those of the Wine processes of the prefix, read from `/proc`. They are for noticing regressions between steps. Nothing here says what a PC does: the targets are proposed from them and the owner confirms them on a PC (`docs/MANUAL-CHECKS.md`, 28.15).
+
+| | |
+|---|---|
+| Machine | the one above (AMD Ryzen AI Max+ 395, 32 GB, Fedora 44), no display: Xvfb 1280x800 |
+| Wine | 11.0 (staging, `wine-wow64`), a private prefix in `.wine-test/prefix` |
+| Direct3D 12 | vkd3d over lavapipe; the adapter is a made-up "NVIDIA GeForce GTX 470" at feature level 11_0 (max 11_1), no WARP, no debug layer, no pipeline library (`CreatePipelineLibrary` is unsupported) |
+| What is run | the counter and the gallery's home page (size, cold start, idle CPU, memory); the gallery's data page with its indicators animating (`GLUTTER_GALLERY_ANIMATE=1`) and the buttons page rebuilt in every frame (`GLUTTER_GALLERY_REBUILD=1`) for the frame times; a debug build of the gallery driven by `GLUTTER_DEV_EVENTS` (wheel scrolls, three page changes, two taps on the theme switch) |
+| Host cost | the whole script lowered the host's `MemAvailable` by 2.8 GB at most (one app at a time, about 1 GB for the app's process and Wine) |
+
+The "build" figures are the engine's own (`GLUTTER_FRAME_STATS=1`): the time on the UI goroutine of the build, layout, paint and the scene. The "raster" figures are the renderer's calls (recording the Direct3D 12 command lists, the present); under vkd3d the work behind them runs on other threads of the same process, which is why an animating app shows more CPU than one core (below).
+
+| Metric (SPEC §15, Windows) | Proposed target | Wine (vkd3d on lavapipe) | |
+|---|---|---|---|
+| Idle CPU, counter (Wine processes of the prefix over 10 s) | ~0%: no frames scheduled, no timers armed | the app **0 ticks** (0.00%), all five Wine processes 2 ticks (0.20%: `wineserver`); no frame logged | met |
+| Idle CPU, gallery home page | ~0% | the app 3 ticks (0.30%), all processes 5 ticks (0.50%); no frame logged | within 0.5% |
+| Frame rate, gallery data page, one animation | the display's refresh rate, no dropped frames | 60.6 frames a second (60 to 61) for 10 s | met (Xvfb has no refresh rate: this is the engine's own frame pacing, not a display's) |
+| UI thread build + raster calls, animation-only frame | < 2 ms | build 0.39 to 0.50 ms and raster 1.16 to 1.39 ms a second (about 1.7 ms); the first second 0.77 + 45 ms, because it holds the first frame (2.6 s) | met |
+| UI thread build + raster calls, full rebuild of a page | < 8 ms | build 1.8 to 2.4 ms and raster 2.3 to 3.1 ms (about 5 ms), worst frame 20.5 ms (the first second) | met |
+| Steady-state allocations, animation-only frame | <= 1 KB a frame | **not measured**: `perf` has no allocation counter; `go test -bench` on a PC measures it | open |
+| Cold start to first frame (`since_run`), warm shader cache | < 500 ms | counter 2.57 s median (2.52 to 2.64), gallery 1.53 s (1.49 to 1.56) | **not met under Wine** |
+| Cold start to first frame, empty shader cache (the first start after an install) | < 2 s | counter 11.6 s median (11.5 to 11.9), gallery 6.8 s (6.7 to 7.4) | **not met under Wine** |
+| Resident memory, counter (private working set, 10 s after the start) | < 100 MB | app VmRSS 680 MB, PSS 639 MB (all Wine processes PSS 676 MB); Go heap 8 MB and Go sys 38 MB at the first frame | **Wine's number is lavapipe's** |
+| Resident memory, gallery | < 150 MB | app VmRSS 635 MB, PSS 594 MB on the home page; 751 to 771 MB animating | same |
+| `.exe` size, counter / gallery | no target (SPEC §15) | amd64 25.3 MiB (26,567,168 bytes) / 36.3 MiB (38,038,016 bytes); arm64 23.3 MiB / 33.1 MiB | recorded |
+
+**How the proposed targets were chosen.** The UI-thread, idle-CPU and frame-rate rows are the desktop targets (SPEC §15), which Wine's numbers already meet: build, layout, paint and the renderer's calls do not depend on the GPU. The cold start and the memory are not the desktop's, because they depend on the Direct3D 12 driver, which Wine's is not: of the 2.5 s of the counter's warm start only 0.11 to 0.13 s is opening the device and 0.2 to 0.3 s reading the 10 shaders from the cache (the Go side); the other 2.0 s is vkd3d making the pipeline state objects, with lavapipe's JIT compiling each shader on first use. With an empty cache 9.2 s more go to `D3DCompile` (vkd3d-shader) of 10 entry points. A real driver makes a pipeline state object in some milliseconds and Microsoft's `D3DCompile` is the compiler of the shipped DirectX (whether it is faster than vkd3d-shader on these shaders is a manual check, 28.7), so 0.5 s warm and 2 s cold, which are a Go start plus the device plus the pipeline state objects of 10 shaders plus the first draw, are a proposal and not a measurement. The memory is the proposal of the Android target (100 MB) for the counter and a 50% margin for the gallery, because the Go runtime's own sys memory is 38 to 60 MB here and the D3D12 runtime and the driver's user-mode memory come on top of it; the 640 MB of Wine is lavapipe's JIT and vkd3d, which a PC does not have.
+
+Other numbers of the same runs, for the record:
+
+- Cold start parts (medians of 5, `GLUTTER_FRAME_STATS=1`): counter, empty cache: device 0.12 s, shaders 9.3 s (10 built), the rest of the first frame 2.2 s; warm cache: device 0.12 s, shaders 0.26 s (10 from the cache), rest 2.0 s. Gallery home page, empty: 0.12 s, 5.4 s (6 built), 1.2 s; warm: 0.13 s, 0.18 s (6 from the cache), 1.1 s. The whole command (Wine, Xvfb and the self-capture included) takes 5.9 s warm and 15 s cold for the counter.
+- The animating gallery (data page) uses **8.7 cores** in its own process (8,691 ticks in 10 s) and the rebuilt buttons page 5.3 cores, while the engine's own build and raster-call times stay at 2 to 4 ms: lavapipe's rasterizer and JIT threads are in the process. So the CPU of an animation under Wine says nothing about a PC; the idle rows above are the useful ones.
+- The debug build of the gallery under scrolling, page changes and the theme switch (`-t navigation`): 25 frames a second on average over the 11 seconds that had frames (1 to 44), build 5.5 ms on average and 160 ms at worst (a page built for the first time), raster calls 27.8 ms on average, 95 of 277 frames over 16 ms, and the app's memory grows from 654 MB to 1,066 MB. A debug build checks the thread of every call and lavapipe draws the frames, so this run is for regressions only; the targets are for release builds.
+- `.exe` sizes: the debug gallery is 53.0 MiB (amd64), 49.0 MiB (arm64). The arm64 `.exe` is 8% smaller than the amd64 one (counter and gallery alike). Windows needs no companion file: the manifest, the icon and the version information are in the `.exe` (SPEC §25.1).
+
+### Exceptions and what is not measured
+
+1. **Everything that depends on the GPU or its driver.** The first frame, the memory and the frames' raster side are vkd3d's and lavapipe's. The owner runs `scripts/perf-windows.sh`'s numbers by hand on a PC with Task Manager and `GLUTTER_FRAME_STATS=1` (`docs/MANUAL-CHECKS.md`, 28.15), and the proposed targets become confirmed ones, or change, after that.
+2. **Allocations per frame** have no Windows measurement: the frame statistics have no allocation counter. `go test -bench` of `rendering`, `widgets` and `examples/gallery` on a PC, with `-benchmem`, gives them; the benchmarks are the same as the desktop's.
+3. **Idle CPU is the CPU time of the Wine processes of the prefix**, `utime+stime` from `/proc/<pid>/stat`: it counts Wine's own `wineserver`, `services.exe`, `winedevice.exe` and `explorer.exe` (0 to 2 ticks in 10 s) and not the `Xvfb` of the harness. Windows has no such processes, so the app's own row is the one that corresponds.
+4. **The `.exe` is large** for the same reasons as the APK (the program is a Go binary with the framework, the renderers, the shaders and two bundled fonts); no lever is applied and there is no target.
+
 ## Text: code-like paragraphs (step 22.6)
 
 A code view draws many short lines of monospace text, each in many styled spans. The
@@ -464,6 +511,7 @@ available during this work, so they are **pending approval**.
 
 ## Pending
 
+- Windows: the same numbers on the owner's PC (Task Manager and `GLUTTER_FRAME_STATS=1`, `docs/MANUAL-CHECKS.md` 28.15), the allocations of an animation-only frame (`go test -bench -benchmem`), and the confirmation of the proposed targets of SPEC §15 ("Windows"); `scripts/perf-windows.sh` is Wine's table until then (see "Windows (step 28.15)").
 - Android: the same numbers on the owner's phone (`scripts/perf-android.sh -d <serial>`), and the frame rate of the gallery there (see "Android (step 26.5)"); the targets of SPEC §15 are proposed from the emulator until then.
 - Text: the benchmarks of steps 22.6 and 22.10 were not run under `GOOS=js`. A page where one line changed still costs 14 lines (see "Text: the cache of shaped runs"): the next step would be to skip the builder and the analysis for a line whose content is the same as the last frame's, which only the caller knows.
 - The web table: measure the targets again with a real display, and Firefox on a GPU (the Firefox numbers here are Mesa's software rasterizer). The two targets that are not met (sizes, late frames) need the user's decision (see "Targets not met" under Web).

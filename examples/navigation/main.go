@@ -12,7 +12,10 @@
 //
 // Run it with: go run ./examples/navigation
 //
-// Environment: GLUTTER_BACKEND=x11|wayland, GLUTTER_SCREENSHOT=<file.png>,
+// On Windows: go run ./cmd/glutter-windows run ./examples/navigation (under Wine on Linux, headless with
+// -headless; GLUTTER_BACKEND is win32 there). Nothing of this example is missing on Windows (Escape goes back as on the other platforms).
+//
+// Environment: GLUTTER_BACKEND=x11|wayland (Linux) or win32 (Windows), GLUTTER_SCREENSHOT=<file.png>,
 // GLUTTER_SCREENSHOT_AFTER=<duration>. In debug builds: GLUTTER_DEV_ROUTE=<"/",
 // "/detail" or "/pick"> opens that page first, and GLUTTER_DEV_TAB=<0 or 1>
 // opens that tab of the home page.

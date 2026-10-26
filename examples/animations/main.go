@@ -7,7 +7,10 @@
 //
 // Run it with: go run ./examples/animations
 //
-// Environment: GLUTTER_BACKEND=x11|wayland, GLUTTER_SCREENSHOT=<file.png>,
+// On Windows: go run ./cmd/glutter-windows run ./examples/animations (under Wine on Linux, headless with
+// -headless; GLUTTER_BACKEND is win32 there). Nothing of this example is missing on Windows.
+//
+// Environment: GLUTTER_BACKEND=x11|wayland (Linux) or win32 (Windows), GLUTTER_SCREENSHOT=<file.png>,
 // GLUTTER_SCREENSHOT_AFTER=<duration>.
 package main
 

@@ -58,7 +58,7 @@ func runCapture(t *testing.T, answer error, late bool, readErr error) (*posterCo
 	// The path is not used: the platform takes the PNG.
 	h := newHarness(t, map[string]string{ScreenshotEnv: "1"})
 	pc := &posterConn{conn: h.c, answer: answer}
-	h.cfg.connect = func() (connection, error) { return pc, nil }
+	h.cfg.connectors = map[string]func() (connection, error){"": func() (connection, error) { return pc, nil }}
 	if late {
 		h.cfg.newRenderer = func(cfg *Config, _ *slog.Logger) renderer {
 			return &lateRenderer{fakeRenderer: h.r, cfg: cfg, err: readErr}
@@ -149,7 +149,7 @@ func TestRequestAppExitDoesNothingWhereTheAppCannotExit(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			h := newHarness(t, nil)
 			c := tc.conn(h.c)
-			h.cfg.connect = func() (connection, error) { return c, nil }
+			h.cfg.connectors = map[string]func() (connection, error){"": func() (connection, error) { return c, nil }}
 			var stopped bool
 			h.cfg.Start = func(d *ui.PlatformDispatcher) error {
 				d.RequestAppExit()

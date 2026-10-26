@@ -7,7 +7,12 @@
 //
 // Run it with: go run ./examples/gallery
 //
-// Environment: GLUTTER_BACKEND=x11|wayland, GLUTTER_SCREENSHOT=<file.png>,
+// On Windows: go run ./cmd/glutter-windows run ./examples/gallery (under Wine on Linux, headless with
+// -headless; GLUTTER_BACKEND is win32 there). What Windows lacks here: a precision touchpad's inertia (see examples/scrolling).
+// The gallery has the native title bar, so Windows 11's snap layouts work; an app that draws its
+// own (WindowDecoration, GLUTTER_DECORATIONS=app) does not get them (SPEC §25.4).
+//
+// Environment: GLUTTER_BACKEND=x11|wayland (Linux) or win32 (Windows), GLUTTER_SCREENSHOT=<file.png>,
 // GLUTTER_SCREENSHOT_AFTER=<duration>, GLUTTER_GALLERY_PAGE=<slug> opens the page with that
 // slug (in every build; scripts/perf.sh uses it), GLUTTER_GALLERY_ANIMATE=1 starts its progress indicators animating, and
 // GLUTTER_GALLERY_REBUILD=1 builds the whole app again in every frame (scripts/perf-web.sh measures the

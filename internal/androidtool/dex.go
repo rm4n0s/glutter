@@ -49,7 +49,7 @@ func CompileDex(ctx context.Context, run Runner, sdk *SDK, javaDir, out string) 
 	if len(sources) == 0 {
 		return errors.New(TagAndroidWriteFailed, "there is no .java file", "dir", javaDir)
 	}
-	work, err := os.MkdirTemp("", "glutter-dex-")
+	work, err := os.MkdirTemp("", dexWorkPrefix)
 	if err != nil {
 		return errors.NewErr(TagAndroidWriteFailed, err).SetMetadata("what", "the temporary directory of the dex")
 	}

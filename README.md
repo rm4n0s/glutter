@@ -7,8 +7,9 @@ layer and a Vulkan renderer with an OpenGL ES 3.0 fallback, with the system libr
 [go-text](https://github.com/go-text/typesetting). **There is no cgo**: `CGO_ENABLED=0 go build`
 makes the app, and Go is all you need to build it.
 
-Linux desktop comes first, then the web (`GOOS=js GOARCH=wasm`) and Android. Every part that depends on the
-operating system or the GPU sits behind an internal interface, so Windows, macOS and iOS can be added later.
+Linux desktop comes first, then the web (`GOOS=js GOARCH=wasm`), Android and Windows (`GOOS=windows`, Direct3D 12).
+Every part that depends on the operating system or the GPU sits behind an internal interface, so macOS and iOS can be
+added later.
 
 | | |
 |---|---|
@@ -254,6 +255,30 @@ scripts/perf-android.sh -m                                      # sizes, start, 
 
 Every example except `multiwindow` and `tray` builds and runs on a phone (`examples/examples_test.go` builds them and a device test draws the first frame of each). The gallery keeps its list of pages in a drawer when the window is narrow. A release build of the counter is an APK of 26 MiB per ABI and the gallery 37 MiB; [docs/PERFORMANCE.md](docs/PERFORMANCE.md) has the numbers, the targets and what the emulator cannot measure.
 
+## Windows
+
+Glutter runs on Windows 10 (version 1809) and later, on amd64 and arm64, and it is the same Go program: `GOOS=windows CGO_ENABLED=0 go build` makes an `.exe` with no DLL next to it. Windows is called through the standard library's `syscall` (no cgo, no purego, no `golang.org/x/sys/windows`), frames are drawn with Direct3D 12 at feature level 11_0 (any GPU from about 2012, or WARP, which Windows has) and fall back to the software renderer drawn into the window with GDI, and the same shaders as the other targets are compiled to DXBC by Windows' own `d3dcompiler_47.dll`.
+
+**What to install:** Go 1.27, and nothing else, on Windows or on any other OS (no C compiler, no SDK, no DLL to ship). To run on a PC an `.exe` needs nothing that Windows 10 or 11 does not have; a screen reader that uses UI Automation (Narrator, NVDA, JAWS) and an input method are optional. To try an app on **Linux**, install Wine (`sudo dnf install wine-core wine-cms`), a headless X server (`xorg-x11-server-Xvfb`) and Mesa's lavapipe (`mesa-vulkan-drivers`): Wine's Direct3D 12 is vkd3d on the host's Vulkan.
+
+```sh
+go run ./cmd/glutter-windows build -o gallery.exe ./examples/gallery          # an .exe with its manifest and icon
+go run ./cmd/glutter-windows build -release -arch amd64,arm64 -o app.exe ./your/app   # app_amd64.exe and app_arm64.exe
+go run ./cmd/glutter-windows run ./examples/gallery            # builds, then starts it (on Linux, under Wine)
+go run ./cmd/glutter-windows shot -o gallery.png ./examples/gallery   # the frame the app draws
+scripts/perf-windows.sh -m                                     # sizes, start, CPU, frames, memory (Wine's numbers)
+```
+
+**Running under Wine** (Linux): `run` and `shot` start Wine on your display, or on a headless X server with `-headless` (`shot` always does), with a private prefix in `.wine-test/prefix` of the checkout, so nothing of `~/.wine` is touched. The tests of the Windows code run there too: `scripts/test-windows.sh` and `go test -tags glutter_wine -p 1 ./examples` (every example draws its first frame with Direct3D 12). Wine is not Windows: its adapter is a made-up GeForce, its fonts are Liberation Sans, and it has no WARP, no debug layer, no real input methods and no DWM, so a PC is the last word (`docs/MANUAL-CHECKS.md`).
+
+`build` puts the manifest (per-monitor DPI awareness v2, UTF-8, long paths, Common Controls 6), the icon (`-icon logo.png`) and the version information (`-version 1.2.3.4`, `-name`) into the `.exe`, in pure Go, and builds a GUI program (`-console` for a console one). `GLUTTER_RENDERER=auto|d3d12|soft` chooses the renderer, `GLUTTER_D3D12_ADAPTER=warp|<index>` the adapter, `GLUTTER_D3D12_DEBUG=1` the debug layer (Graphics Tools), and `GLUTTER_FRAME_STATS=1` logs the start and the frames. A GUI program has no console: start it from a terminal and its log shows there, otherwise it goes to `OutputDebugString`.
+
+**What works:** everything of the framework, Material 3 with Segoe UI, the mouse, touch and pen, the keyboard (every layout, dead keys, AltGr), input methods through IMM32, the clipboard (text, files, images), the system's settings (dark mode, accent, text size, high contrast, reduced motion, caret blink), several windows, drag and drop (OLE), the tray, notifications, the common file dialogs, `desktop.OpenURI`, and screen readers through UI Automation.
+
+**What Windows lacks:** notifications with buttons and a place in the notification center (a notification is a tray balloon with one action, a click: real toasts need a registered app identity), the snap layouts of the maximize button for an app that draws its own title bar (`WindowDecoration`; Aero Snap by dragging works), `DirectManipulation` (a precision touchpad scrolls by its wheel messages, without inertia of its own, and a pinch is Control plus wheel), TSF-only input (reconversion, the handwriting panel), the clipboard's primary selection, and plugins and platform channels (call Win32 through your own `syscall` code, or use the standard library). SPEC §25 has the list and the reasons; [docs/GUIDE.md](docs/GUIDE.md) has a note for Flutter Windows developers.
+
+Every example builds for `windows/amd64` and `windows/arm64` and runs on Windows, `multiwindow` and `tray` included (`examples/examples_test.go` builds them, and a Wine test draws the first frame of each). A release build of the counter is an `.exe` of 25 MiB and the gallery 36 MiB (amd64); [docs/PERFORMANCE.md](docs/PERFORMANCE.md) has the numbers, which are Wine's and not a GPU's, and the targets that the owner still has to confirm on a PC.
+
 ## Examples
 
 Each one uses only the public packages and has tests that run on a fake platform.
@@ -277,7 +302,8 @@ Each one uses only the public packages and has tests that run on a fake platform
 On release builds (`-tags glutter_release`) an animation-only frame costs microseconds on the UI
 thread, a full rebuild of the gallery page about 4 ms, and an idle app uses no CPU.
 [docs/PERFORMANCE.md](docs/PERFORMANCE.md) has the numbers, the machine they were measured on and
-the targets that are not met yet.
+the targets that are not met yet. On Windows the numbers under Wine (`scripts/perf-windows.sh`) are for
+noticing regressions only, and the targets are proposed until the owner confirms them on a PC.
 
 ## Working on Glutter
 

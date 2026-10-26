@@ -80,8 +80,8 @@ func newVulkanRenderer(cfg *Config, log *slog.Logger) renderer {
 
 // waylandConnector returns the function that connects the Wayland backend.
 func (c *Config) waylandConnector() func() (linux.Connection, error) {
-	if c.wayland != nil {
-		return asLinux(c.wayland)
+	if f := c.connector("wayland"); f != nil {
+		return asLinux(f)
 	}
 	return func() (linux.Connection, error) {
 		p, err := wayland.New("", wayland.Options{ShmFill: c.ShmFill})
@@ -94,8 +94,8 @@ func (c *Config) waylandConnector() func() (linux.Connection, error) {
 
 // x11Connector returns the function that connects the X11 backend.
 func (c *Config) x11Connector() func() (linux.Connection, error) {
-	if c.x11 != nil {
-		return asLinux(c.x11)
+	if f := c.connector("x11"); f != nil {
+		return asLinux(f)
 	}
 	return func() (linux.Connection, error) {
 		if c.ShmFill {

@@ -4,7 +4,10 @@
 //
 // Run it with: go run ./examples/counter
 //
-// Environment: GLUTTER_BACKEND=x11|wayland, GLUTTER_SCREENSHOT=<file.png>,
+// On Windows: go run ./cmd/glutter-windows run ./examples/counter (under Wine on Linux, headless with
+// -headless; GLUTTER_BACKEND is win32 there). Nothing of this example is missing on Windows.
+//
+// Environment: GLUTTER_BACKEND=x11|wayland (Linux) or win32 (Windows), GLUTTER_SCREENSHOT=<file.png>,
 // GLUTTER_SCREENSHOT_AFTER=<duration>. In debug builds: GLUTTER_DEV_TAPS=<n>
 // starts the counter at n, as if the button had been tapped n times.
 package main

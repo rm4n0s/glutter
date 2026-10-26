@@ -114,6 +114,7 @@ func statusMessage(ts *gluttertest.Tester) string {
 }
 
 func TestDataDir(t *testing.T) {
+	useLinux(t)
 	tests := []struct {
 		name string
 		env  map[string]string
@@ -131,6 +132,32 @@ func TestDataDir(t *testing.T) {
 		})
 	}
 	_, err := dataDir(func(string) string { return "" })
+	requireRoute(t, err, "dataDir.EditorNoDataDir")
+}
+
+func TestDataDirOnWindows(t *testing.T) {
+	if !foundation.DebugMode {
+		t.Skip("the platform override is a debug-only feature")
+	}
+	foundation.SetDebugDefaultTargetPlatformOverride(foundation.Some(foundation.TargetPlatformWindows))
+	t.Cleanup(func() { foundation.SetDebugDefaultTargetPlatformOverride(foundation.None[foundation.TargetPlatform]()) })
+	tests := []struct {
+		name string
+		env  map[string]string
+		want string
+	}{
+		{"appdata", map[string]string{"APPDATA": `C:\Users\me\AppData\Roaming`, "HOME": "/home/me", "XDG_DATA_HOME": "/data"}, filepath.Join(`C:\Users\me\AppData\Roaming`, "glutter-editor")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := dataDir(func(k string) string { return tt.env[k] })
+			if err != nil || got != tt.want {
+				t.Errorf("dataDir = %q, %v, want %q", got, err, tt.want)
+			}
+		})
+	}
+	// The HOME and XDG_DATA_HOME that Wine passes through are not used.
+	_, err := dataDir(func(k string) string { return map[string]string{"HOME": "/home/me", "XDG_DATA_HOME": "/data"}[k] })
 	requireRoute(t, err, "dataDir.EditorNoDataDir")
 }
 

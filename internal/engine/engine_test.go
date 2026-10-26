@@ -132,7 +132,7 @@ func newHarness(t *testing.T, env map[string]string) *harness {
 	h.cfg = Config{
 		Getenv:      func(k string) string { return env[k] },
 		Logger:      quiet(),
-		connect:     func() (connection, error) { return h.c, nil },
+		connectors:  map[string]func() (connection, error){"": func() (connection, error) { return h.c, nil }},
 		newRenderer: func(*Config, *slog.Logger) renderer { return h.r },
 	}
 	h.cfg.Hooks.Window = func(win platform.Window, stop func()) {
@@ -376,7 +376,7 @@ func TestRunErrors(t *testing.T) {
 		h := newHarness(t, map[string]string{"DISPLAY": ":0"})
 		want := errors.New(tagX11WindowFailed, "XCreateWindow failed")
 		fw := &failingWindow{conn: h.c, err: want}
-		h.cfg.connect = func() (connection, error) { return fw, nil }
+		h.cfg.connectors = map[string]func() (connection, error){"": func() (connection, error) { return fw, nil }}
 		err := Run(context.Background(), h.cfg)
 		assertRoute(t, err, "X11WindowFailed", "X11WindowFailed")
 		if !h.c.closed {
@@ -403,7 +403,7 @@ func TestRunErrors(t *testing.T) {
 	})
 	t.Run("a failure to close does not hide the earlier failure", func(t *testing.T) {
 		h := newHarness(t, nil)
-		h.cfg.connect = func() (connection, error) { return h.c, nil }
+		h.cfg.connectors = map[string]func() (connection, error){"": func() (connection, error) { return h.c, nil }}
 		h.c.closeErr = errors.New(tagLoopSyscallFailed, "close")
 		h.cfg.Getenv = func(k string) string {
 			if k == "DISPLAY" {

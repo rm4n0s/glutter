@@ -9,7 +9,11 @@
 //
 // Run it with: go run ./examples/scrolling
 //
-// Environment: GLUTTER_BACKEND=x11|wayland, GLUTTER_SCREENSHOT=<file.png>,
+// On Windows: go run ./cmd/glutter-windows run ./examples/scrolling (under Wine on Linux, headless with
+// -headless; GLUTTER_BACKEND is win32 there). What Windows lacks here: a precision touchpad scrolls by its wheel messages, with no
+// inertia of its own (Flutter's DirectManipulation is not done, SPEC §25.6); the wheel, touch and pen scroll as usual.
+//
+// Environment: GLUTTER_BACKEND=x11|wayland (Linux) or win32 (Windows), GLUTTER_SCREENSHOT=<file.png>,
 // GLUTTER_SCREENSHOT_AFTER=<duration>. In debug builds: GLUTTER_DEV_TAB=<0 to 6>
 // opens that tab, and GLUTTER_DEV_SCROLL=<pixels> scrolls the view of the
 // CustomScrollView tab by that much.

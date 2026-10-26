@@ -108,6 +108,28 @@ func webExamples(t *testing.T) []string {
 	return out
 }
 
+// allExamples are the directories of examples/ that hold a main package, `tray` and `multiwindow` included: every
+// example runs on Windows (SPEC §19, §25). They are found by reading the directory, so that a new example is built
+// too.
+func allExamples(t *testing.T) []string {
+	t.Helper()
+	entries, err := os.ReadDir(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []string
+	for _, e := range entries {
+		if !e.IsDir() || e.Name() == "dev" {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(e.Name(), "main.go")); err != nil {
+			continue
+		}
+		out = append(out, e.Name())
+	}
+	return out
+}
+
 // TestEveryWebExampleBuilds checks what step 21.7 asks: every example except multiwindow and tray builds for
 // js/wasm with the standard Go toolchain (SPEC §19, §23.8). The builds are cut short by -short, because the
 // first one after a change builds the framework for the web.
@@ -147,6 +169,33 @@ func TestSpecListsTheExamplesThatAreNotForTheWeb(t *testing.T) {
 	for _, name := range webExamples(t) {
 		if !listed[name] {
 			t.Errorf("%s builds for the web but SPEC §19 does not list it", name)
+		}
+	}
+}
+
+// TestSpecListsEveryExampleThatRunsOnWindows keeps allExamples and SPEC §19 together: the spec lists each of the
+// examples, says that every one runs on Windows, and names the two tests of step 28.15.
+func TestSpecListsEveryExampleThatRunsOnWindows(t *testing.T) {
+	spec := readFile(t, "..", "docs", "SPEC.md")
+	for _, want := range []string{
+		"On Windows (1.8) every example builds and runs, `tray` and `multiwindow` included",
+		"TestEveryExampleDrawsItsFirstFrameUnderWine",
+	} {
+		if !strings.Contains(spec, want) {
+			t.Errorf("SPEC §19 no longer says %q", want)
+		}
+	}
+	listed := map[string]bool{}
+	for _, n := range specExamples(t) {
+		listed[n] = true
+	}
+	names := allExamples(t)
+	if len(names) < 11 {
+		t.Errorf("found %d examples, want at least 11 (SPEC §19): %v", len(names), names)
+	}
+	for _, name := range names {
+		if !listed[name] {
+			t.Errorf("%s is an example but SPEC §19 does not list it", name)
 		}
 	}
 }

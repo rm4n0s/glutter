@@ -1,3 +1,5 @@
+//go:build linux || js
+
 package engine
 
 import (
@@ -74,10 +76,6 @@ func newGLRenderer(name string, newGL func(...gles.RendererOpts) *gles.Renderer,
 		damage: damage && !cfg.DisableDamage && getenv(DamageEnv) != "0",
 	}
 }
-
-// rasterCacheAfter is how many frames in a row a retained layer must be in the scene
-// to be drawn from a texture: three, as Flutter's raster cache does.
-const rasterCacheAfter = 3
 
 func (r *glesRenderer) Draw(h gpu.SurfaceHandle, width, height int, scene *ui.Scene, capture bool) (*image.RGBA, error) {
 	if r.renderer == nil {

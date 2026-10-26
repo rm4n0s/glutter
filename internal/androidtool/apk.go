@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/rm4n0s/errors"
 )
@@ -122,7 +123,10 @@ func Build(ctx context.Context, sdk *SDK, run Runner, o BuildOptions) (*BuildRes
 		return nil, err
 	}
 
-	work, err := os.MkdirTemp("", "glutter-apk-")
+	// Directories that a killed build left behind are removed first (tempdirs.go); this build removes its own
+	// on every path that returns.
+	sweepStaleTempDirs(os.TempDir(), time.Now(), staleTempAge, apkWorkPrefix, dexWorkPrefix)
+	work, err := os.MkdirTemp("", apkWorkPrefix)
 	if err != nil {
 		return nil, errors.NewErr(TagAndroidWriteFailed, err).SetMetadata("what", "the temporary directory of the build")
 	}
@@ -192,6 +196,9 @@ func Build(ctx context.Context, sdk *SDK, run Runner, o BuildOptions) (*BuildRes
 	if err := packAPK(base, packed, dex, abis, libs, layers); err != nil {
 		return nil, err
 	}
+	// The libraries are in the packed APK now: free their disk (this is memory under /tmp) while the
+	// APK is aligned and signed.
+	_ = os.RemoveAll(filepath.Join(work, "lib")) // best effort: a temporary directory
 
 	// 4. Align to 16 KB, then sign.
 	aligned := filepath.Join(work, "aligned.apk")

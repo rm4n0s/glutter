@@ -14,10 +14,11 @@ import (
 func newSelectHarness(t *testing.T, env map[string]string) *harness {
 	t.Helper()
 	h := newHarness(t, env)
-	h.cfg.connect = nil
-	h.cfg.x11 = func() (connection, error) { return h.c, nil }
-	h.cfg.wayland = func() (connection, error) {
-		return nil, errors.New(tagWaylandConnectFailed, "no compositor")
+	h.cfg.connectors = map[string]func() (connection, error){
+		"x11": func() (connection, error) { return h.c, nil },
+		"wayland": func() (connection, error) {
+			return nil, errors.New(tagWaylandConnectFailed, "no compositor")
+		},
 	}
 	return h
 }

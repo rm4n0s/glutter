@@ -1,7 +1,8 @@
 // Command editor is a small text editor on a WidgetsApp, without Material. The
 // left panel is a multi-line EditableText with undo and redo (Ctrl+Z, Shift+Ctrl+Z
 // and Ctrl+Y). Ctrl+S, a Shortcuts binding that maps to a SaveIntent, writes the
-// text to $XDG_DATA_HOME/glutter-editor/notes.txt (or ~/.local/share/...) in a
+// text to $XDG_DATA_HOME/glutter-editor/notes.txt (or ~/.local/share/...; on Windows
+// %APPDATA%\glutter-editor\notes.txt) in a
 // goroutine with a context.Context; a failure shows in the status bar. A web page
 // has no data directory, so on the web (foundation.IsWeb) the notes are kept in
 // memory for as long as the page is open, and the status bar says so. The right
@@ -12,8 +13,12 @@
 //
 // Run it with: go run ./examples/editor
 // On the web: go run ./cmd/glutter-web serve ./examples/editor
+// On Windows: go run ./cmd/glutter-windows run ./examples/editor (under Wine on Linux). The text
+// is typed through the keyboard layout and the input method of Windows (IMM32), Ctrl+C and Ctrl+V
+// use its clipboard, and the notes go to %APPDATA%\glutter-editor. What Windows lacks here: reconversion
+// and the touch keyboard's handwriting panel (SPEC §25.7), and the primary selection (middle-click paste).
 //
-// Environment: GLUTTER_BACKEND=x11|wayland, GLUTTER_SCREENSHOT=<file.png>,
+// Environment: GLUTTER_BACKEND=x11|wayland (Linux) or win32 (Windows), GLUTTER_SCREENSHOT=<file.png>,
 // GLUTTER_SCREENSHOT_AFTER=<duration>. In debug builds:
 // GLUTTER_DEV_DATA_DIR=<dir> keeps the notes in that directory (instead of the
 // data directory of the user), GLUTTER_DEV_TEXT=<text> replaces the text of the
@@ -84,8 +89,16 @@ func oneLine(s string, size float64, color ui.Color, weight ui.FontWeight) widge
 }
 
 // dataDir is the directory that holds the notes: $XDG_DATA_HOME/glutter-editor,
-// or ~/.local/share/glutter-editor when XDG_DATA_HOME is not set.
+// or ~/.local/share/glutter-editor when XDG_DATA_HOME is not set; on Windows
+// %APPDATA%\glutter-editor (Wine passes the host's HOME and XDG_DATA_HOME through, which are
+// not where a Windows app keeps its data).
 func dataDir(getenv func(string) string) (string, error) {
+	if foundation.DefaultTargetPlatform() == foundation.TargetPlatformWindows {
+		if base := getenv("APPDATA"); base != "" {
+			return filepath.Join(base, dirName), nil
+		}
+		return "", errors.New(tagEditorNoDataDir, "APPDATA is not set")
+	}
 	if base := getenv("XDG_DATA_HOME"); base != "" {
 		return filepath.Join(base, dirName), nil
 	}

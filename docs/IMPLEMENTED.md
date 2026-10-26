@@ -3716,3 +3716,72 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - The default icon (`wintool.DefaultIcon`) is drawn like `androidtool.DefaultIcon`, but the code is not shared.
   - Not run here: `run` on the user's display.
   - The manager removed 36 leftover `glutter-x11.*` directories and one 117 MB `glutter-apk-*` directory from `/tmp`. The latter suggests an Android packaging test that does not remove its temporary directory; step 28.15's sweep should find it.
+
+## 28.15 Every example, performance, and the manual checks
+
+- **Date:** 2026-10-26
+- **Branch:** feat/step-28.15-windows-sweep
+- **Summary:**
+  - **Every example on Windows:** all 11 examples, `tray` and `multiwindow` included, build for `windows/amd64` and `windows/arm64`. Each one draws its first frame under Wine with Direct3D 12.
+  - **Performance:** `glutter-windows perf` and `scripts/perf-windows.sh` measure:
+    - the `.exe` sizes;
+    - the cold start, with an empty and with a warm shader cache;
+    - the idle CPU and the memory of the Wine processes;
+    - the frame times.
+
+    The Windows table in `docs/PERFORMANCE.md` holds Wine's numbers (vkd3d on lavapipe), not those of a GPU on Windows. The Windows targets are proposed in SPEC §15, for the owner to confirm.
+  - **Manual checks:** `docs/MANUAL-CHECKS.md` has a section for each step from 28.2 to 28.15, for the owner's PC. Each section takes the step's "Manual checks" line and the extra checks its `IMPLEMENTED.md` entry found.
+  - **The leftovers of earlier steps are fixed:**
+    - `golangci-lint` with `GOOS=windows` is now clean, on amd64 and arm64, with and without `glutter_wine`. To get there:
+      - `gles_renderer.go` carries the build tag `linux || js`;
+      - `bufferSize` and `windowBuffer` moved to `nativewindow/buffer_linux.go`;
+      - the engine's backend test hooks became one map, `Config.connectors`.
+    - Android's `glutter-apk-*` and `glutter-dex-*` work directories were already removed on every path inside the process. The 117 MB leak came from a killed process, whose deferred clean-up never runs. `Build` now removes such directories when they are older than 2 hours, and it drops `lib/` once the APK is packed.
+- **Main files:**
+  - `examples/windows_build_test.go`, `examples/windows_wine_test.go`, `examples/examples_test.go`, the headers of nine examples, and `examples/editor/main.go`, whose notes go to `%APPDATA%\glutter-editor` on Windows
+  - `cmd/glutter-windows/perf*.go`, `scripts/perf-windows.sh`
+  - `internal/perfstats/` (summaries, `/proc` readers, report tables); `cmd/glutter-android/perf_stats.go` now aliases it
+  - `internal/engine/` (`connectors`, `gles_renderer.go`, `explicit_options.go`), `internal/gpu/nativewindow/buffer_linux.go`
+  - `internal/androidtool/tempdirs.go`
+  - `docs/PERFORMANCE.md`, `docs/MANUAL-CHECKS.md`, `README.md` (a "Windows" section), `docs/GUIDE.md`
+  - SPEC §6.2, §15, §25.1, §25.13, §25.14
+- **Tests:**
+  - **Builds:** every example builds for amd64 and arm64, and each `.exe` is read back with `debug/pe` (machine, subsystem, size).
+  - **`perf`:**
+    - the log parsers, and the `/proc` reader over a fake `/proc`;
+    - the whole measurement over a fake Wine and clock, with its failures: no frame, an app that dies, no process, a launcher error, a context that ends;
+    - the report, in text and in Markdown;
+    - a route test of each of the 14 new tags.
+  - **`perfstats`:** the summaries, the `/proc` readers, the log time, the table renderer.
+  - **`androidtool`:** the sweep of old work directories; no work directory is left after a success, after each failing program, or after a cancelled context.
+  - **The editor:** its data directory on Windows.
+- **Wine tests:**
+  - `TestEveryExampleDrawsItsFirstFrameUnderWine` (run twice, 81 seconds each, at most 1 GB of memory). Each example starts with `d3d12`, logs its first frame drawn by `d3d12`, saves a frame that has colors, and ends with status 0. The first frame comes 1.5 to 3.1 seconds after the start.
+  - The host-side Wine tests of the other packages, and `internal/engine` under Wine.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ (also with `GOOS=windows`, amd64 and arm64, with and without `glutter_wine`) · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck ✅ · apicheck ✅ · `GOOS=js GOARCH=wasm` build, vet and `scripts/test-wasm.sh` ✅ · `scripts/check-android.sh` ✅ · `GOOS=windows` amd64 build and vet, arm64 build and vet ✅ · `scripts/test-windows.sh` ✅ · Wine tests ✅ · nothing left running ✅
+- **Proof:** none.
+- **Manual checks:** the whole Windows sweep in `docs/MANUAL-CHECKS.md`, sections 28.2 to 28.15: **pending**, for the owner's PC.
+- **Numbers** (Wine, vkd3d on lavapipe, medians):
+
+  | | counter | gallery |
+  |---|---|---|
+  | first frame, warm cache | 2.57 s | 1.53 s |
+  | first frame, empty cache | 11.6 s | 6.8 s |
+  | `.exe` size (amd64) | 25.3 MiB | 36.3 MiB |
+
+  - The idle counter used 0 CPU ticks in 10 seconds.
+  - The animation ran at 60.6 fps, with a build of 0.4 to 0.5 ms per frame. A full rebuild takes about 2 ms.
+  - The memory, about 640 MB, is mostly lavapipe's.
+  - Of the warm start, about 2 seconds is vkd3d making pipelines while lavapipe compiles each shader on first use. With an empty cache, 9 more seconds go to `D3DCompile` under vkd3d-shader.
+- **Proposed targets** (SPEC §15, not confirmed; the owner confirms them at step 28.19):
+  - idle CPU about 0%;
+  - the display's refresh rate with no dropped frames;
+  - a build of less than 2 ms for a frame that only animates, and less than 8 ms for a full rebuild;
+  - at most 1 KB of allocations per frame that only animates;
+  - a cold start of less than 500 ms with a warm cache, and less than 2 s with an empty one;
+  - less than 100 MB of memory for the counter and 150 MB for the gallery;
+  - no target for the `.exe` size.
+- **Deviations and follow-ups:**
+  - `perf` runs only under Wine on Linux; on Windows, Task Manager is the tool (manual check 28.15).
+  - Allocations per frame are not measured on Windows.
+  - A killed run can leave a `_glutterwin-*` copy from `wintool.Build`, or an 8 KB `/tmp/glutter-x11.*` directory, because the harness kills with SIGKILL and `headless-x11.sh`'s trap then never runs. The manager's check script now removes those directories when no Xvfb is running. Sending SIGTERM first would fix the harness itself.

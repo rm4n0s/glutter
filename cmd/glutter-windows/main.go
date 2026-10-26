@@ -33,7 +33,8 @@ func main() {
 const usage = `usage:
   glutter-windows build [-o app.exe] [-arch amd64,arm64] [-release] [-console] [-name Name] [-app-id id] [-icon icon.png] [-version 1.2.3.4] <package>
   glutter-windows run   [-headless] [-env GLUTTER_X=v]... [-timeout d] [build flags] <package>
-  glutter-windows shot  [-env GLUTTER_X=v]... [-screen] [-settle d] [-timeout d] -o file.png [build flags] <package>`
+  glutter-windows shot  [-env GLUTTER_X=v]... [-screen] [-settle d] [-timeout d] -o file.png [build flags] <package>
+  glutter-windows perf  [-release=true] [-arch amd64,arm64] [-renderer r] [-env GLUTTER_X=v]... [-starts N] [-settle d] [-seconds N] [-frames=true] [-format text|markdown] [-o report] <package>`
 
 // run does what the command line asks. stdout gets what the commands print; flag errors go to
 // stderr.
@@ -48,6 +49,8 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		return runRun(ctx, args[1:], stdout, stderr)
 	case "shot":
 		return runShot(ctx, args[1:], stdout, stderr)
+	case "perf":
+		return runPerf(ctx, args[1:], stdout, stderr)
 	case "help", "-h", "-help", "--help":
 		_, err := fmt.Fprintln(stdout, usage)
 		if err != nil {

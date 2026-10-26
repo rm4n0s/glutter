@@ -11,7 +11,7 @@ import (
 // nothing, for the tests of package engine_test that run the framework in the
 // real loop (they cannot be in package engine: the framework imports it).
 func RunOnFake(ctx context.Context, cfg Config, p *fake.Platform) error {
-	cfg.connect = func() (connection, error) { return &conn{Platform: p}, nil }
+	cfg.connectors = map[string]func() (connection, error){"": func() (connection, error) { return &conn{Platform: p}, nil }}
 	cfg.newRenderer = func(*Config, *slog.Logger) renderer { return &fakeRenderer{} }
 	return Run(ctx, cfg)
 }

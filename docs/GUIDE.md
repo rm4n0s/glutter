@@ -729,6 +729,33 @@ If you build Flutter apps for Windows, this is how a Glutter app becomes an `.ex
   window. Start it from a terminal and its `slog` lines appear there; started from Explorer, they go
   to `OutputDebugString`, where DebugView or a debugger shows them. `-console` builds a console
   program instead, for a tool that prints to its terminal.
+- **No plugins.** A Flutter Windows app reaches the system through plugins (C++ code in
+  `windows/flutter/ephemeral` and the plugin registrant) and platform channels. A Glutter app is one
+  Go program and has neither: use the standard library, call Win32 yourself with `syscall`
+  (`syscall.NewLazyDLL("user32.dll").NewProc("MessageBeepW").Call(0)`; callbacks need
+  `syscall.NewCallback`, made once), or use `desktop` for what Flutter leaves to plugins (the file
+  dialogs, notifications, the tray, `OpenURI`). Where your code must differ, ask
+  `foundation.DefaultTargetPlatform() == foundation.TargetPlatformWindows`, as in Flutter, and never
+  `runtime.GOOS`. The framework takes Flutter's Windows branches by itself: the Windows text
+  editing shortcuts, the scrollbar and the Material text selection controls.
+- **Fonts and text.** The Material theme asks for Segoe UI on Windows, as Flutter's typography does,
+  and the matcher finds it in the registry's list of system fonts (`sans-serif` and `system-ui` are
+  Segoe UI, `monospace` is Consolas); color emoji fall back to Segoe UI Emoji and the other scripts
+  to Microsoft YaHei, Yu Gothic, Malgun Gothic and the rest of the chain of SPEC §25.8. The bundled
+  Roboto and Material Icons stay first, as on every platform.
+- **What a Flutter Windows app has that Glutter does not (yet).** Real toast notifications (a
+  notification is a tray balloon, which Windows shows as a toast but with one action: a click on
+  it); the snap layouts of Windows 11 over the maximize button of a title bar that the app draws
+  itself (`WindowDecoration`; the native bar has them); `DirectManipulation`, which gives a
+  precision touchpad its inertia (Glutter scrolls by the wheel messages the touchpad makes); the
+  touch keyboard's handwriting panel; an installer or MSIX package (you ship the `.exe`; an
+  unsigned one makes SmartScreen ask once).
+- **Testing and measuring without a PC.** `go run ./cmd/glutter-windows run ./your/app` on Linux
+  starts the `.exe` under Wine, and the repository's Wine tests run the whole Windows platform
+  there. Wine's Direct3D 12 is vkd3d on the host's Vulkan (a CPU rasterizer unless you have a
+  driver that presents on Xvfb), so frame times, the first frame (2 to 12 seconds) and the memory
+  of `scripts/perf-windows.sh` are for noticing regressions, not what a GPU does; measure on a PC
+  with Task Manager and `GLUTTER_FRAME_STATS=1`.
 - **Unsigned.** There is no installer, MSIX or code signing: the first start of an unsigned `.exe`
   makes SmartScreen ask once. Signing is the app author's.
 

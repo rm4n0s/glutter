@@ -98,9 +98,7 @@ type Config struct {
 	// rendererNamed is set by Run when the renderer was asked for by name: a CPU Vulkan
 	// device (lavapipe) is then allowed (SPEC §9.4).
 	rendererNamed bool
-	connect       func() (connection, error)                   // replaces the choice of backends_<goos>.go
-	wayland       func() (connection, error)                   // Linux only: replaces the Wayland backend
-	x11           func() (connection, error)                   // Linux only: replaces the X11 backend
+	connectors    map[string]func() (connection, error)        // replaces the choice of backends_<goos>.go (key ""), or the Wayland ("wayland") or X11 ("x11") backend of the Linux desktop
 	newRenderer   func(cfg *Config, log *slog.Logger) renderer // replaces the choice of the renderer
 	candidates    func() []rendererCandidate                   // replaces the list of backends_<goos>.go
 	// renewSurface and redraw are set by Run, for the renderers: renewSurface replaces the
@@ -119,6 +117,11 @@ type Config struct {
 	webgpuOpen  func(gpu.SurfaceHandle) (explicit.Device, error)
 	webgpuClose func()
 }
+
+// connector returns the function that replaces the connection to the display: of the whole choice of
+// backends_<goos>.go for the name "", or of the backend that the name says ("wayland" or "x11", on the Linux
+// desktop). It is nil when a test did not replace it.
+func (c *Config) connector(name string) func() (connection, error) { return c.connectors[name] }
 
 // developmentColor is what the window is cleared to before the scene is drawn,
 // #6750A4 (the seed of Material 3's default color scheme), until the framework's
@@ -228,8 +231,8 @@ func Run(ctx context.Context, cfg Config) (err error) {
 		}
 	}
 	var conn connection
-	if cfg.connect != nil {
-		conn, err = cfg.connect()
+	if connect := cfg.connector(""); connect != nil {
+		conn, err = connect()
 	} else {
 		conn, err = connectDisplay(&cfg, getenv, log)
 	}

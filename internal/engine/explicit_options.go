@@ -7,6 +7,10 @@ import (
 	"github.com/rm4n0s/glutter/ui"
 )
 
+// rasterCacheAfter is how many frames in a row a retained layer must be in the scene
+// to be drawn from a texture: three, as Flutter's raster cache does.
+const rasterCacheAfter = 3
+
 // explicitOptions are the options that the engine gives the explicit renderer over a device (SPEC §9.3):
 // the background of the development color, the log, the damage that is told to the compositor (off with
 // Config.DisableDamage or GLUTTER_DAMAGE=0), the commands the renderer may leave out
