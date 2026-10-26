@@ -2445,3 +2445,31 @@ Before 28.1 there is no Flutter Windows embedder in `reference/`: **step 28.1 ad
 - the Emetos fixes of 28.16 to 28.18, listed in the release notes with what Emetos can remove (`fonts.ControlsFont`, the rebuilt tree nodes, the no-op detector of its title bar)
 
 Then update the SPEC's version paragraph (the 1.8 sentence: Windows, and the fixes for Emetos) and the scope table, the README, and `third_party/flutter` NOTICE entries for the Windows embedder, and **ask the user** before tagging `v1.8.0` and pushing the tag.
+
+### 28.20 An error boundary (Emetos, 1.8.1)
+**Goal:** `widgets.NewErrorBoundary`, a widget that takes over the build errors of its subtree: when a widget under it fails to build, the boundary is told first and builds a fallback in place of its whole child, in the same frame.
+**Why:** Emetos found it (issues file, "No error boundary: the host cannot tell whose widget failed"). Its views of extensions must show "<Name> failed" and turn the extension off in that tab when anything the extension built fails. Glutter catches a panic at the element that failed and tells only the one `OnError` of the application, so a panic deeper than the extension's own `Build` (in a widget it built, or in a `State` it wrote) is invisible to Emetos's `recover`. The owner chose (2026-10-26): the boundary replaces its whole subtree, and the step goes in 1.8.1.
+**Read:** SPEC §14.2 (recovery points, `ErrorWidgetBuilder`, D15), §12.10, §12.13; `widgets/build_owner.go` (`errorWidgetFor`, `reportError`), `widgets/component_element.go` (`PerformRebuild`), `widgets/layout_builder.go`, `widgets/scroll_delegate.go`.
+**Port from:** none (Flutter has no error boundary; a deviation, recorded in §12.10).
+**Files:** `widgets/error_boundary.go` and its tests, `widgets/build_owner.go` and the places that call `errorWidgetFor`, the generated `material` re-exports (`go generate ./...`), SPEC §14.2 and §12.10.
+**Tasks:**
+1. `NewErrorBoundary(fallback func(bc BuildContext, err error) Widget, child Widget, opts ...ErrorBoundaryOpts) *ErrorBoundary`, with `ErrorBoundaryOpts{Key, OnError func(err error)}`. A `nil` fallback means the owner's error widget (`ErrorWidgetBuilder`, or `ErrorWidget`).
+2. Every failure that now becomes an error widget (`errorWidgetFor`: a panic in `Build`, in `UpdateChild`, so in the `InitState`, `DidUpdateWidget` and `DidChangeDependencies` of a state below, in a `LayoutBuilder`'s builder, in a lazily built child of a sliver) finds the nearest `ErrorBoundary` above the failing element. If there is one:
+   - its `OnError` is called with the error, once per error, before the owner's `OnError` (which is still called, as now);
+   - the boundary becomes failed and is rebuilt in the same build pass: it builds `fallback(bc, err)` (the first error) in place of its child, so the failed subtree is unmounted (its states disposed) and never reaches a painted frame.
+
+   Marking an ancestor dirty while a descendant builds is what Flutter forbids. Give the boundary its own way into the current build scope (the dirty list is re-sorted, as `dirtyElementsNeedsResorting` does), not a post-frame callback, which would paint the error widget for a frame.
+3. A failed boundary stays failed: a rebuild of it, or a new child from its parent, builds the fallback again, and the old child is not tried again. A new `Key` makes a new boundary (the way to try again). Further errors while it is failed are only reported.
+4. Boundaries nest: the nearest one takes the error. A panic in a fallback (or in the `OnError` callback) is an error of the boundary's own element, and goes to the next boundary up, or to the owner as now.
+5. Without a boundary nothing changes. It works in release builds too.
+6. SPEC: §14.2 says what a boundary does; a §12.10 row records the deviation (no Flutter counterpart). The doc comments end with `// Flutter: no counterpart`.
+**Tests (table-driven):**
+- a panic in a child's `Build`, in a grandchild state's `Build`, in a deeper `InitState`, in a `LayoutBuilder` and in an item of `ListView.builder` each show the fallback in the same pump, and the boundary's `OnError` is called before the owner's;
+- the failed subtree's states are disposed;
+- after the failure, a rebuild of the parent with a new child still shows the fallback; a new `Key` shows the child again;
+- nested boundaries: the inner one takes it; a panic in the inner fallback goes to the outer one;
+- a `nil` fallback shows `ErrorWidget`;
+- without a boundary, the error widget takes the failed widget's place as before;
+- a golden is not needed.
+**Proof:** none.
+**Manual checks:** none; Emetos replaces its `recover` in `ui.NewBuilder` and in its box with a boundary (its own issue).

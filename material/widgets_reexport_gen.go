@@ -2157,6 +2157,16 @@ type EmptyTextSelectionControls = widgets.EmptyTextSelectionControls
 // Flutter: widgets.dart EnsureVisibleOpts
 type EnsureVisibleOpts = widgets.EnsureVisibleOpts
 
+// ErrorBoundary is widgets.ErrorBoundary.
+//
+// Flutter: widgets.dart ErrorBoundary
+type ErrorBoundary = widgets.ErrorBoundary
+
+// ErrorBoundaryOpts is widgets.ErrorBoundaryOpts.
+//
+// Flutter: widgets.dart ErrorBoundaryOpts
+type ErrorBoundaryOpts = widgets.ErrorBoundaryOpts
+
 // ErrorWidget is widgets.ErrorWidget.
 //
 // Flutter: widgets.dart ErrorWidget
@@ -5643,6 +5653,13 @@ func NewEditableText(controller *widgets.TextEditingController, focusNode *widge
 // Flutter: widgets.dart NewEmptyTextSelectionControls
 func NewEmptyTextSelectionControls() widgets.EmptyTextSelectionControls {
 	return widgets.NewEmptyTextSelectionControls()
+}
+
+// NewErrorBoundary is widgets.NewErrorBoundary.
+//
+// Flutter: widgets.dart NewErrorBoundary
+func NewErrorBoundary(fallback func(bc widgets.BuildContext, err error) widgets.Widget, child widgets.Widget, opts ...widgets.ErrorBoundaryOpts) *widgets.ErrorBoundary {
+	return widgets.NewErrorBoundary(fallback, child, opts...)
 }
 
 // NewErrorWidget is widgets.NewErrorWidget.

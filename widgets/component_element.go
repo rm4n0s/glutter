@@ -92,7 +92,7 @@ func (c *ComponentElement) PerformRebuild() {
 		})
 		if buildErr != nil {
 			c.debugDoingBuild = false
-			owner.OnError(buildErr)
+			owner.reportBuildError(c.self, buildErr)
 			built = owner.errorWidgetFor(buildErr)
 		}
 	}()
@@ -105,9 +105,15 @@ func (c *ComponentElement) PerformRebuild() {
 		c.child = c.UpdateChild(c.child, built, c.slot)
 	})
 	if updateErr != nil {
-		owner.OnError(updateErr)
+		taken := owner.reportBuildError(c.self, updateErr)
 		// As in Flutter the old child is left to the tree: the update stopped
-		// half way, and the error widget is built from scratch.
+		// half way, and the error widget is built from scratch. When an
+		// ErrorBoundary took the error it unmounts the whole subtree, so the old
+		// child is deactivated and its state is disposed.
+		if taken {
+			dropStaleChild(c.self, c.child)
+			c.child = nil
+		}
 		c.child = c.UpdateChild(nil, owner.errorWidgetFor(updateErr), c.slot)
 	}
 }

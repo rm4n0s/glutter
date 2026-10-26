@@ -287,13 +287,23 @@ func (e *rawViewElement) renderView() *rendering.RenderView {
 }
 
 func (e *rawViewElement) updateChild() {
-	panicked := foundation.Guard(e.owner.OnError, foundation.BuildPanicked, "while building "+e.String(), func() []any {
+	var report foundation.ErrorReporter
+	taken := false
+	if e.owner.OnError != nil {
+		// An ErrorBoundary above the view is told first.
+		report = func(err error) { taken = e.owner.reportBuildError(e, err) }
+	}
+	panicked := foundation.Guard(report, foundation.BuildPanicked, "while building "+e.String(), func() []any {
 		return []any{"library", "widgets library", "element", e.String(), "creatorChain", e.DebugGetCreatorChain(12)}
 	}, func() {
 		child := e.widget.(*rawViewInternal).builder(e, e.ownerOfRender())
 		e.child = e.UpdateChild(e.child, child, nil)
 	})
 	if panicked {
+		if taken {
+			dropStaleChild(e, e.child)
+			e.child = nil
+		}
 		e.child = e.UpdateChild(nil, e.owner.errorWidgetFor(errors.New(tagViewBuildFailed, "the content of the view could not be built")), e.slot)
 	}
 }

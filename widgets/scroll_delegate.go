@@ -291,7 +291,8 @@ func guardedBuild(bc BuildContext, build func() Widget) Widget {
 	var failure error
 	foundation.Guard(func(err error) { failure = err }, foundation.BuildPanicked, "building", nil, func() { result = build() })
 	if failure != nil {
-		owner.OnError(failure)
+		from, _ := bc.(Element)
+		owner.reportBuildError(from, failure)
 		return owner.errorWidgetFor(failure)
 	}
 	return result

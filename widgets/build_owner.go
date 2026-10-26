@@ -92,7 +92,8 @@ func compareElements(a, b Element) int {
 func (s *BuildScope) tryRebuild(element Element) {
 	var report foundation.ErrorReporter
 	if o := element.AsElement().owner; o != nil && o.OnError != nil {
-		report = o.OnError
+		// An ErrorBoundary above the element is told first.
+		report = func(err error) { o.reportBuildError(element, err) }
 	}
 	foundation.Guard(report, foundation.BuildPanicked, "while rebuilding dirty elements", func() []any {
 		return []any{"library", "widgets library", "element", element.String(),
@@ -188,6 +189,12 @@ type BuildOwner struct {
 	debugStateLockLevel     int
 	debugBuilding           bool
 	debugCurrentBuildTarget Element
+
+	// hasErrorBoundary is whether an ErrorBoundary was ever mounted by this
+	// owner. failedBoundaries are the boundaries that took an error and are not
+	// rebuilt yet (see rebuildErrorBoundaries).
+	hasErrorBoundary bool
+	failedBoundaries []*errorBoundaryElement
 
 	globalKeyRegistry map[AnyGlobalKey]Element
 	// The debug checks of global keys: the elements that lost their key to

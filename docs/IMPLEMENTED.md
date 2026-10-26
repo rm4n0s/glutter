@@ -3984,3 +3984,51 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - **An intermittent failure:** `internal/platform/windows` under Wine failed in 2 of 8 runs this morning (once 13.8 seconds in, once in the whole-module run), each time with no failing test named; the reruns passed. Before the `wine-exec.sh` fix, it also died at start-up with status 5. Look into it after the release.
   - **The Android device suite** now boots three emulators at once (`glutter-37`, `glutter-26`, `glutter-37-16k`), about 16 GB. With the owner's apps that filled the memory, and the run was stopped and the emulators shut down by hand. It must be run one emulator at a time; the passes are split by subtest name.
   - The follow-ups named in the entries of 28.2 to 28.18.
+
+## 28.20 An error boundary (Emetos, 1.8.1)
+
+- **Date:** 2026-10-26
+- **Branch:** feat/step-28.20-error-boundary
+- **Summary:** `widgets.NewErrorBoundary(fallback, child, ErrorBoundaryOpts{Key, OnError})` takes over the build errors of its subtree. When a widget below it fails, the boundary builds `fallback(bc, err)` in place of its whole child, in the same frame. The owner chose this on 2026-10-26: the whole subtree is replaced, in 1.8.1.
+  - **What it takes:**
+    - a panic in `Build`;
+    - a panic in the `InitState`, `DidUpdateWidget` or `DidChangeDependencies` of a state below;
+    - a panic in a `LayoutBuilder`'s builder, in a lazily built child of a sliver, or in the content of a `View`;
+    - a panic in a lifecycle hook that `BuildScope.tryRebuild` recovers.
+  - **The order of calls:** the boundary's `OnError` is called once per error, before the owner's `OnError`, which still gets every error. The fallback gets the first error.
+  - **The same frame:**
+    - The failing element still gets its error widget, so the tree stays valid.
+    - The boundary goes into the owner's list of failed boundaries, not through `MarkNeedsBuild`.
+    - `WidgetsBinding.drawFrame` rebuilds that list, each boundary in its own `BuildScope`. It does so right after the build pass and again after each layout, until no boundary is left.
+    - A failure during layout (a `LayoutBuilder`, a sliver's children) cannot be rebuilt while its render objects are being laid out, so the layout runs first.
+    - The failed subtree is unmounted and its states are disposed before anything is painted.
+    - Without a boundary in the tree, nothing of this runs.
+  - **A failed boundary stays failed:** a rebuild, or a new child from the parent, builds the fallback again. A new `Key` makes a new boundary.
+  - **Nesting:** boundaries nest. A panic in a fallback, in what the fallback builds, or in `OnError` goes to the next boundary up, or to the owner.
+  - **A child left half updated:** when a boundary takes an `UpdateChild` error, the old child is deactivated, so its state is disposed. Without a boundary nothing changes.
+  - **The fallback** is wrapped in a `KeyedSubtree` with a private key, so it never updates the failed child, even when both are widgets of the same type.
+- **Main files:**
+  - `widgets/error_boundary.go` and its tests
+  - `widgets/build_owner.go`, `component_element.go`, `layout_builder.go`, `scroll_delegate.go`, `view.go`, `binding.go`
+  - `material/widgets_reexport_gen.go` (regenerated)
+  - SPEC §14.2 and §12.10
+- **Tests:**
+  - `TestErrorBoundaryReplacesTheSubtreeInTheSamePump` (5 cases): a failure in each of
+    - a child's `Build`,
+    - a grandchild state's `Build`,
+    - a deeper `InitState`,
+    - a `LayoutBuilder`,
+    - an item of `ListView.builder`.
+
+    In each case the fallback shows in the same pump, the boundary's `OnError` comes before the owner's, nothing of the failed subtree is painted, and its states are disposed.
+  - `TestErrorBoundaryReplacesAChildThatFailsToUpdate` (`DidUpdateWidget`) and `TestErrorBoundaryTakesAFailedLifecycleHookOfARebuild` (`DidChangeDependencies`).
+  - `TestErrorBoundaryStaysFailedUntilItsKeyChanges`, `TestErrorBoundaryFurtherErrorsAreOnlyReported`, `TestErrorBoundaryFallbackGetsTheFirstError`.
+  - `TestErrorBoundaryNested` (4 cases).
+  - A nil fallback, a healthy child, no boundary (as before), and a sibling's error that is not taken.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ (also `GOOS=windows`, amd64 and arm64, with and without `glutter_wine`) · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck ✅ · apicheck ✅ · uintptrcheck ✅ · `GOOS=js GOARCH=wasm` build, vet and `scripts/test-wasm.sh` ✅ · `scripts/check-android.sh` ✅ · `GOOS=windows` amd64 build and vet, arm64 build ✅ · `scripts/test-windows.sh` ✅ · nothing left running ✅
+- **Proof:** none.
+- **Manual checks:** none. Emetos replaces its `recover` in `ui.NewBuilder` and in its box with a boundary (its own issue).
+- **Deviations and follow-ups:**
+  - Flutter has no error boundary (SPEC §12.10, `// Flutter: no counterpart`).
+  - A `BuildOwner` driven without a binding does not drain the list of failed boundaries.
+  - The tag `v1.8.1` waits for the owner's yes.

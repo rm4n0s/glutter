@@ -888,6 +888,7 @@ func (b *WidgetsBinding) drawFrame(super func() error) error {
 	if b.rootElement != nil {
 		b.owner.BuildScope(b.rootElement, nil)
 	}
+	b.settleErrorBoundaries()
 	err := super()
 	b.owner.FinalizeTree()
 	if b.needToReportFirstFrame && b.renderer.SendFramesToEngine() {
@@ -895,6 +896,29 @@ func (b *WidgetsBinding) drawFrame(super func() error) error {
 		close(b.firstFrameDone)
 	}
 	return err
+}
+
+// settleErrorBoundaries rebuilds the ErrorBoundaries that took an error, so that
+// the failed subtrees are replaced before anything is painted. A failure of the
+// build pass is rebuilt right after the pass. A failure of the layout pass (the
+// builder of a LayoutBuilder, a lazily built child of a sliver) cannot be
+// rebuilt while the render objects of the boundary's subtree are being laid out,
+// so the layout runs first, then the rebuild, and the layout of what the
+// boundary built, until no boundary fails. Without a boundary in the tree it does
+// nothing.
+//
+// Flutter: no counterpart
+func (b *WidgetsBinding) settleErrorBoundaries() {
+	if !b.owner.hasErrorBoundary {
+		return
+	}
+	for {
+		b.owner.rebuildErrorBoundaries()
+		b.renderer.RootPipelineOwner().FlushLayout()
+		if len(b.owner.failedBoundaries) == 0 {
+			return
+		}
+	}
 }
 
 // FirstFrameRasterized is whether the first frame was sent to the engine.

@@ -311,7 +311,7 @@ func (e *layoutBuilderElement) rebuildWithConstraints(rendering.Constraints) {
 			}
 		})
 		if buildErr != nil {
-			e.owner.OnError(buildErr)
+			e.owner.reportBuildError(e, buildErr)
 			built = e.owner.errorWidgetFor(buildErr)
 		}
 		var updateErr error
@@ -323,7 +323,10 @@ func (e *layoutBuilderElement) rebuildWithConstraints(rendering.Constraints) {
 			e.child = e.UpdateChild(e.child, built, nil)
 		})
 		if updateErr != nil {
-			e.owner.OnError(updateErr)
+			if e.owner.reportBuildError(e, updateErr) {
+				dropStaleChild(e, e.child)
+				e.child = nil
+			}
 			e.child = e.UpdateChild(nil, e.owner.errorWidgetFor(updateErr), e.slot)
 		}
 		e.needsBuild = false
