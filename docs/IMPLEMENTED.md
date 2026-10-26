@@ -3874,3 +3874,34 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - The rule for `NodeKey` and `SetExpanded` is in SPEC §11.3, "Decided in step 28.17": a node the app set wins over the expansion carried over, and the mark ends when a tree with a `NodeKey` takes the node in.
   - The arrow of the default node builder still turns, because it has its own `AnimatedRotation`; only the rows do not animate.
   - A `SetExpanded` of another shown node inside `OnNodeToggle` appears at the next remake of the active nodes.
+
+## 28.18 The drag area of `WindowDecoration` (Emetos)
+
+- **Date:** 2026-10-26
+- **Branch:** feat/step-28.18-decoration-drag-area
+- **Summary:** in the bar of `WindowDecoration`, only the title, the empty space around it and the 12-pixel gap before `Leading` handle the window gestures:
+  - a drag moves the window;
+  - a double tap maximizes or restores it;
+  - a right click opens the window menu.
+
+  The `Leading` and `Actions` widgets and the window buttons are outside the bar's gesture detector, so they get only their own gestures. A tap on a button in `Actions` arrives at once, because the bar's double-tap recognizer no longer waits in its arena.
+  - **Layout:** the bar is a row of the gap, `Leading`, the draggable area (an `Expanded` with an opaque hit test) and `Actions`. The layout is unchanged: a golden made before the change still matches.
+  - **Window menu:** it now opens at the click's global position.
+- **Main files:** `widgets/window_decoration.go`, `widgets/window_decoration_test.go`, `widgets/testdata/goldens/window_decoration_bar.png`, SPEC §8.2 and §12.10.
+- **Tests:**
+  - `TestWindowDecorationDragArea` (15 cases): five places times three gestures. The places are the gap, a `Leading` widget, the title, the empty space and an `Actions` widget; the gestures are a drag, a double tap and a right click. Where the area is draggable, the window moves, maximizes or shows its menu at the right place; elsewhere nothing happens.
+  - `TestWindowDecorationActionsTapAtOnce`: a detector with `OnTap` in `Actions`, and one in `Leading`, get their tap at once, and no window action happens.
+  - `TestWindowDecorationBarGolden`: the bar with `Leading`, title and `Actions` widgets. The image was made before the change, and it still matches.
+  - The earlier gesture, button and resize tests pass unchanged.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ (also with `GOOS=windows`, amd64 and arm64, with and without `glutter_wine`) · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck ✅ · apicheck ✅ · `GOOS=js GOARCH=wasm` build, vet and `scripts/test-wasm.sh` ✅ · `scripts/check-android.sh` ✅ · `GOOS=windows` amd64 build and vet, arm64 build ✅ · `scripts/test-windows.sh` ✅ · Wine tests ✅ · nothing left running ✅
+- **Proof:** none.
+- **Manual checks:** none. Emetos removes the no-op detector of its title bar; that is its own issue.
+- **Deviations and follow-ups:**
+  - Decided in SPEC §8.2, "Decided in step 28.18":
+    - the gap before `Leading` stays draggable;
+    - the menu opens at the click's global position, because a local one would be 12 pixels off;
+    - a `Leading` or `Actions` widget without a detector of its own is not draggable.
+
+    This is not a deviation from Flutter, because `WindowDecoration` is Glutter's own widget.
+  - **Fixed here: a flaky Windows test.** `TestDataObjectOtherMethods` (`internal/platform/windows/ole`, step 28.12) failed once in `scripts/test-windows.sh`: `the canonical format = {CfFormat:0 Ptd:5 ...}`, the values from before the call. The test had converted `&fe` and `&out` to `uintptr` in a table, before the call. So the `//go:uintptrescapes` of `Object.Call` did not move them to the heap, and the stack could move while the method ran Go code. The method then wrote to the old place. The test now converts each pointer inside the call; it passed 300 runs in a row.
+  - **The same hazard in product code** is audited before the release (step 28.19). `UiaRaiseStructureChangedEvent` passes `&runtimeID[0]` as a precomputed `uintptr`, and UI Automation can call the app's providers back before it returns.

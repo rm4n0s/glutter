@@ -6,6 +6,7 @@ import (
 	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/gluttertest"
 	"github.com/rm4n0s/glutter/painting"
+	"github.com/rm4n0s/glutter/rendering"
 	"github.com/rm4n0s/glutter/ui"
 	. "github.com/rm4n0s/glutter/widgets"
 )
@@ -224,4 +225,130 @@ func TestWindowDecorationOptions(t *testing.T) {
 		t.Errorf("bar height = %v, want 30", bar.Height)
 	}
 	_ = painting.TextStyle{}
+}
+
+// TestWindowDecorationBarGolden draws the bar with widgets in Leading and
+// Actions. The image was made before the drag area changed (step 28.18): the
+// layout of the bar does not.
+func TestWindowDecorationBarGolden(t *testing.T) {
+	ts := gluttertest.New(t, gluttertest.Opts{Size: ui.Size{Width: 400, Height: 100}})
+	ts.SetViewConfiguration(func(c *ui.ViewConfiguration) { c.Window = appInfo() })
+	swatch := func(w, h float64, c uint32) Widget {
+		return NewColoredBox(ui.NewColor(c), NewSizedBox(nil, SizedBoxOpts{Width: foundation.Some(w), Height: foundation.Some(h)}))
+	}
+	ts.PumpWidget(NewDirectionality(ui.TextDirectionLTR, NewWindowDecoration(NewColoredBox(ui.NewColor(0xFFFFFBFE), nil), WindowDecorationOpts{
+		Title:   swatch(80, 14, 0xFF6750A4),
+		Leading: []Widget{swatch(24, 24, 0xFFB3261E)},
+		Actions: []Widget{swatch(30, 20, 0xFF0061A4), swatch(30, 20, 0xFF386A20)},
+	})))
+	ts.MatchesGolden("window_decoration_bar")
+}
+
+// TestWindowDecorationDragArea checks which part of the bar has the gestures of
+// the window: the gap at the start, the title and the empty space around it,
+// and not the Leading and Actions widgets (step 28.18).
+func TestWindowDecorationDragArea(t *testing.T) {
+	const y = 20.0
+	// The bar, from the left: a gap of 12, Leading (62 wide), the title and the
+	// space after it up to Actions (60 wide), and the three buttons (138).
+	leading := NewSizedBox(nil, SizedBoxOpts{Width: foundation.Some(62.0), Height: foundation.Some(40.0)})
+	actions := NewSizedBox(nil, SizedBoxOpts{Width: foundation.Some(60.0), Height: foundation.Some(40.0)})
+	const (
+		gapX, leadingX, emptyX, actionsX = 9.0, 40.0, 400.0, 800 - 138 - 30.0
+	)
+	build := func(t *testing.T, info ui.WindowInfo) *gluttertest.Tester {
+		ts, body := windowDecorationApp(t, info)
+		ts.PumpWidget(NewWindowDecoration(body, WindowDecorationOpts{Leading: []Widget{leading}, Actions: []Widget{actions}}))
+		return ts
+	}
+	for _, tt := range []struct {
+		name string
+		x    float64 // -1: the center of the title
+		move bool
+	}{
+		{"the gap before Leading", gapX, true},
+		{"a Leading widget", leadingX, false},
+		{"the title", -1, true},
+		{"the empty space between the title and the actions", emptyX, true},
+		{"an Actions widget", actionsX, false},
+	} {
+		at := func(ts *gluttertest.Tester) ui.Offset {
+			if tt.x < 0 {
+				return ui.Offset{Dx: ts.Center(gluttertest.ByText("My window")).Dx, Dy: y}
+			}
+			return ui.Offset{Dx: tt.x, Dy: y}
+		}
+		check := func(t *testing.T, ts *gluttertest.Tester, want ui.WindowActionKind) {
+			t.Helper()
+			got := ts.WindowActions()
+			if !tt.move {
+				if len(got) != 0 {
+					t.Errorf("actions = %+v, want none", got)
+				}
+				return
+			}
+			if len(got) != 1 || got[0].Kind != want {
+				t.Errorf("actions = %+v, want one %v", got, want)
+			}
+		}
+		t.Run(tt.name+": a drag", func(t *testing.T) {
+			ts := build(t, appInfo())
+			ts.DragFrom(at(ts), ui.Offset{Dx: 30, Dy: 10})
+			check(t, ts, ui.WindowActionMove)
+		})
+		t.Run(tt.name+": a double tap", func(t *testing.T) {
+			ts := build(t, appInfo())
+			ts.TapAt(at(ts))
+			ts.Pump(50 * 1000 * 1000)
+			ts.TapAt(at(ts))
+			ts.PumpAndSettle()
+			check(t, ts, ui.WindowActionMaximize)
+		})
+		t.Run(tt.name+": a right click", func(t *testing.T) {
+			ts := build(t, appInfo())
+			ts.TapAt(at(ts), gluttertest.GestureOpts{Kind: ui.PointerDeviceKindMouse, Buttons: foundation.Some(2)})
+			ts.PumpAndSettle()
+			check(t, ts, ui.WindowActionShowMenu)
+			if got := ts.WindowActions(); tt.move && len(got) == 1 && got[0].Position != at(ts) {
+				t.Errorf("menu at %v, want %v", got[0].Position, at(ts))
+			}
+		})
+	}
+}
+
+// TestWindowDecorationActionsTapAtOnce shows that the double-tap recognizer of
+// the bar is not in the arena of a widget in Actions or Leading: its tap comes
+// at once, not after the time a second tap could take (step 28.18).
+func TestWindowDecorationActionsTapAtOnce(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		leading bool
+		x       float64
+	}{
+		{"Actions", false, 800 - 138 - 30},
+		{"Leading", true, 40},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			ts, body := windowDecorationApp(t, appInfo())
+			taps := 0
+			button := NewGestureDetector(NewSizedBox(nil, SizedBoxOpts{Width: foundation.Some(60.0), Height: foundation.Some(40.0)}),
+				GestureDetectorOpts{Behavior: rendering.HitTestBehaviorOpaque, OnTap: func() { taps++ }})
+			opts := WindowDecorationOpts{Actions: []Widget{button}}
+			if tt.leading {
+				opts = WindowDecorationOpts{Leading: []Widget{button}}
+			}
+			ts.PumpWidget(NewWindowDecoration(body, opts))
+			ts.TapAt(ui.Offset{Dx: tt.x, Dy: 20})
+			if taps != 1 {
+				t.Errorf("taps right after the tap = %d, want 1 (no wait for a double tap)", taps)
+			}
+			ts.PumpAndSettle()
+			if taps != 1 {
+				t.Errorf("taps = %d, want 1", taps)
+			}
+			if got := ts.WindowActions(); len(got) != 0 {
+				t.Errorf("actions = %+v, want none", got)
+			}
+		})
+	}
 }

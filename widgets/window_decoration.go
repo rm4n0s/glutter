@@ -18,9 +18,12 @@ type WindowDecorationOpts struct {
 	// Title is the widget in the title bar; the default is the title of the window
 	// in the text style of the bar.
 	Title Widget
-	// Leading are widgets at the start of the bar, before the title.
+	// Leading are widgets at the start of the bar, before the title. They are
+	// not part of the drag area: a drag, a double tap and a right click on them
+	// are theirs alone.
 	Leading []Widget
-	// Actions are widgets in the bar before the buttons of the window.
+	// Actions are widgets in the bar before the buttons of the window. Like
+	// Leading, they are not part of the drag area.
 	Actions []Widget
 	// BackgroundColor is the color of the bar; the default is a light or a dark
 	// surface, by the brightness of the platform.
@@ -40,11 +43,12 @@ type WindowDecorationOpts struct {
 // WindowDecoration is the title bar and the borders that Glutter draws for a
 // window when the compositor and libdecor do not (SPEC §8.2). It shows the
 // title and the buttons that the compositor allows (minimize, maximize or
-// restore, close); a drag of the bar moves the window, a double tap maximizes or
-// restores it, a right click opens the window menu, and a press on the border
-// starts a resize. When another decoration draws the title bar (the window is
-// decorated by the compositor or by libdecor, or has none) it shows the child
-// alone, so an app can place it without checking.
+// restore, close); a drag of the title or of the empty space around it moves the
+// window, a double tap there maximizes or restores it, a right click there opens
+// the window menu (the widgets in Leading and Actions have their own gestures
+// only), and a press on the border starts a resize. When another decoration
+// draws the title bar (the window is decorated by the compositor or by libdecor,
+// or has none) it shows the child alone, so an app can place it without checking.
 //
 // The default RunApp wraps the app in one when the window needs it; an app that
 // sets WindowConfig.Decorations to DecorationsApp places its own.
@@ -208,9 +212,12 @@ func newWindowTitleBar(view *ui.View, info ui.WindowInfo, o WindowDecorationOpts
 		view.PerformWindowAction(ui.WindowAction{Kind: ui.WindowActionClose})
 	}))
 
-	drag := NewGestureDetector(NewContainer(NewRow(append(append(append([]Widget{NewSizedBox(nil, SizedBoxOpts{Width: foundation.Some(12.0)})}, o.Leading...),
-		NewExpanded(NewAlign(title, AlignOpts{Alignment: painting.AlignmentCenterLeft}))), o.Actions...), RowOpts{}), ContainerOpts{Height: foundation.Some(height)}),
-		GestureDetectorOpts{
+	// Only the draggable area has the gestures of the window: the gap before the
+	// Leading widgets and the title with the space around it. Leading and Actions
+	// widgets are outside it, so a drag, a double tap or a right click on them
+	// is theirs alone, and no double-tap recognizer of the bar waits in their arena.
+	drag := func(child Widget) Widget {
+		return NewGestureDetector(child, GestureDetectorOpts{
 			Behavior: rendering.HitTestBehaviorOpaque,
 			OnPanStart: func(details gestures.DragStartDetails) {
 				view.PerformWindowAction(ui.WindowAction{Kind: ui.WindowActionMove})
@@ -225,10 +232,16 @@ func newWindowTitleBar(view *ui.View, info ui.WindowInfo, o WindowDecorationOpts
 				}
 			},
 			OnSecondaryTapDown: func(details gestures.TapDownDetails) {
-				view.PerformWindowAction(ui.WindowAction{Kind: ui.WindowActionShowMenu, Position: details.LocalPosition.Translate(0, 0)})
+				view.PerformWindowAction(ui.WindowAction{Kind: ui.WindowActionShowMenu, Position: details.GlobalPosition})
 			},
 		})
-	return NewSizedBox(NewColoredBox(bg, NewRow([]Widget{NewExpanded(drag), NewRow(buttons)})), SizedBoxOpts{Height: foundation.Some(height)})
+	}
+	items := []Widget{drag(NewSizedBox(nil, SizedBoxOpts{Width: foundation.Some(12.0), Height: foundation.Some(height)}))}
+	items = append(items, o.Leading...)
+	items = append(items, NewExpanded(drag(NewAlign(title, AlignOpts{Alignment: painting.AlignmentCenterLeft}))))
+	items = append(items, o.Actions...)
+	row := NewContainer(NewRow(items, RowOpts{}), ContainerOpts{Height: foundation.Some(height)})
+	return NewSizedBox(NewColoredBox(bg, NewRow([]Widget{NewExpanded(row), NewRow(buttons)})), SizedBoxOpts{Height: foundation.Some(height)})
 }
 
 type windowGlyph int

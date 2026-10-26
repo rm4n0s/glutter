@@ -130,24 +130,28 @@ func TestDataObjectOtherMethods(t *testing.T) {
 	fe := FormatEtcOf(win32.CFUnicodeText)
 	var out win32.FormatEtc
 	out.Ptd = 5
+	// Each call converts its pointers in the call itself: Call is //go:uintptrescapes, which moves fe and out to
+	// the heap only then. A pointer made into a uintptr earlier (in a table) leaves them on the stack, which
+	// may move while the method runs Go code, and the method then writes to the old place.
 	tests := []struct {
-		name  string
-		index int
-		args  []uintptr
-		want  win32.HRESULT
+		name string
+		call func() uintptr
+		want win32.HRESULT
 	}{
-		{"GetDataHere", win32.IDataObjectGetDataHere, []uintptr{uintptr(unsafe.Pointer(&fe)), 0}, win32.ENotImpl},
-		{"GetCanonicalFormatEtc", win32.IDataObjectGetCanonicalFormatEtc, []uintptr{uintptr(unsafe.Pointer(&fe)), uintptr(unsafe.Pointer(&out))}, win32.DataSSameFormatEtc},
-		{"SetData", win32.IDataObjectSetData, []uintptr{uintptr(unsafe.Pointer(&fe)), 0, 0}, win32.ENotImpl},
-		{"DAdvise", win32.IDataObjectDAdvise, []uintptr{uintptr(unsafe.Pointer(&fe)), 0, 0, 0}, win32.OLEEAdviseNotSupported},
-		{"DUnadvise", win32.IDataObjectDUnadvise, []uintptr{1}, win32.OLEEAdviseNotSupported},
-		{"EnumDAdvise", win32.IDataObjectEnumDAdvise, []uintptr{0}, win32.OLEEAdviseNotSupported},
-		{"QueryGetData with null", win32.IDataObjectQueryGetData, []uintptr{0}, win32.EPointer},
-		{"GetData with null", win32.IDataObjectGetData, []uintptr{0, 0}, win32.EPointer},
-		{"EnumFormatEtc with null", win32.IDataObjectEnumFormatEtc, []uintptr{win32.DataDirGet, 0}, win32.EPointer},
+		{"GetDataHere", func() uintptr { return obj.Call(win32.IDataObjectGetDataHere, uintptr(unsafe.Pointer(&fe)), 0) }, win32.ENotImpl},
+		{"GetCanonicalFormatEtc", func() uintptr {
+			return obj.Call(win32.IDataObjectGetCanonicalFormatEtc, uintptr(unsafe.Pointer(&fe)), uintptr(unsafe.Pointer(&out)))
+		}, win32.DataSSameFormatEtc},
+		{"SetData", func() uintptr { return obj.Call(win32.IDataObjectSetData, uintptr(unsafe.Pointer(&fe)), 0, 0) }, win32.ENotImpl},
+		{"DAdvise", func() uintptr { return obj.Call(win32.IDataObjectDAdvise, uintptr(unsafe.Pointer(&fe)), 0, 0, 0) }, win32.OLEEAdviseNotSupported},
+		{"DUnadvise", func() uintptr { return obj.Call(win32.IDataObjectDUnadvise, 1) }, win32.OLEEAdviseNotSupported},
+		{"EnumDAdvise", func() uintptr { return obj.Call(win32.IDataObjectEnumDAdvise, 0) }, win32.OLEEAdviseNotSupported},
+		{"QueryGetData with null", func() uintptr { return obj.Call(win32.IDataObjectQueryGetData, 0) }, win32.EPointer},
+		{"GetData with null", func() uintptr { return obj.Call(win32.IDataObjectGetData, 0, 0) }, win32.EPointer},
+		{"EnumFormatEtc with null", func() uintptr { return obj.Call(win32.IDataObjectEnumFormatEtc, win32.DataDirGet, 0) }, win32.EPointer},
 	}
 	for _, tt := range tests {
-		if hr := win32.FromResult(obj.Call(tt.index, tt.args...)); hr != tt.want {
+		if hr := win32.FromResult(tt.call()); hr != tt.want {
 			t.Errorf("%s = %v, want %v", tt.name, hr, tt.want)
 		}
 	}
