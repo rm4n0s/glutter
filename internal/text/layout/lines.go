@@ -84,7 +84,7 @@ func (p *paragraph) Layout(c ui.ParagraphConstraints) {
 	p.exceededLines = overflow
 	if hasMax && len(ranges) > maxLines {
 		p.exceededLines = true
-		ranges = ranges[:maxLines]
+		ranges = p.extendLastLine(ranges, maxLines)
 	}
 
 	p.lines = p.lines[:0]
@@ -107,6 +107,28 @@ func (p *paragraph) Layout(c ui.ParagraphConstraints) {
 	p.verticalMetrics()
 	p.align()
 	p.laidOut = true
+}
+
+// extendLastLine keeps the first maxLines of the ranges, and, when the last of them is ellipsized,
+// makes it run to the next hard break or to the end of the text. The ellipsis cuts the last line at
+// the last cluster where its text and the ellipsis fit, and the words that went on to the lines
+// that are dropped are part of what it chooses from.
+func (p *paragraph) extendLastLine(ranges []lineRange, maxLines int) []lineRange {
+	kept := ranges[:maxLines]
+	if p.style.Ellipsis() == "" || maxLines == 0 {
+		return kept
+	}
+	last := &kept[maxLines-1]
+	if last.hard {
+		return kept
+	}
+	for _, lr := range ranges[maxLines:] {
+		last.end, last.visEnd, last.hard = lr.end, lr.visEnd, lr.hard
+		if lr.hard {
+			break
+		}
+	}
+	return kept
 }
 
 // breakLines breaks the text into lines of at most width, at the break opportunities of
@@ -241,10 +263,19 @@ func (p *paragraph) ellipsize(l *line, width float64) {
 	for _, g := range er.glyphs {
 		ew += g.advance
 	}
-	// The text that stays is the longest start of the line that fits with the ellipsis
-	// (all of it when it does).
-	cut := l.visEnd
-	for cut > l.start && (!p.boundary[cut] || p.span(l.start, cut, 0)+ew > width+1e-6) {
+	// The text that stays is the longest start of the line, by cluster, that fits with the
+	// ellipsis (all of it when it does), without the white space at its end.
+	cut := l.start
+	for k := l.start + 1; k <= l.visEnd; k++ {
+		if !p.boundary[k] {
+			continue
+		}
+		if p.span(l.start, k, 0)+ew > width+1e-6 {
+			break
+		}
+		cut = k
+	}
+	for cut > l.start && isHangingSpace(p.runes[cut-1]) {
 		cut--
 	}
 	*l = *p.buildLine(lineRange{start: l.start, end: cut, visEnd: cut, hard: false})

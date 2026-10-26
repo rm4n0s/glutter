@@ -2504,3 +2504,36 @@ Emetos works around it with a `ConstrainedBox` whose maximum is the window's wid
 - the existing golden is unchanged.
 **Proof:** none.
 **Manual checks:** none; Emetos removes its `ConstrainedBox` and the copied constants (its own issue).
+
+### 28.22 The ellipsis cuts the last line at a character (Emetos, 1.8.3)
+**Goal:** a line that ends with an ellipsis keeps every character that fits before the ellipsis, as Flutter does: the last line allowed by `MaxLines` is filled by grapheme cluster, not by word, before the ellipsis is added.
+**Why:** Emetos found it (issues file, "Text with `TextOverflowEllipsis`: a line with no place to break gets only the ellipsis"). A one-line `RichText` with `Overflow: TextOverflowEllipsis` and a text with no place to break that is wider than the box (`fmt.Println(Shout(Greet("ev...`, after the tab of the indentation) shows only the ellipsis. Flutter shows the characters that fit, then the ellipsis.
+
+The likely cause: `paragraph.Layout` (`internal/text/layout/lines.go`) breaks the lines by word first, keeps `MaxLines` of them, and only then calls `ellipsize` on the last kept line. When the word after the leading white space does not fit, it goes to a second line, which is dropped, so the last line is the white space and the ellipsis. A text with spaces shows the words that fit and then the ellipsis, where Flutter cuts inside the word that does not fit. With soft wrap on, a break after an ellipsis character `…` in the text leaves only that on the line.
+
+Emetos works around it in its peek view: no soft wrap, an ellipsis only when the row has spaces, otherwise a clip, and the text before the match cut short.
+**Read:** SPEC §10 (paragraph layout, `MaxLines`, ellipsis); `internal/text/layout/lines.go` (`Layout`, `breakLines`, `ellipsize`); `rendering/paragraph.go` (how `softWrap`, `MaxLines` and `Overflow` reach the paragraph); Flutter's `painting/text_painter.dart` (`ellipsis`, `maxLines`) and `rendering/paragraph.dart`.
+**Port from:** the behavior of SkParagraph's line wrapper, which is not in `reference/`. When the line being built is the last one allowed (`maxLines` reached, or the only line when there is no limit) and the paragraph has an ellipsis, it takes clusters up to the width less the ellipsis, from the start of the line, without looking for a word break, and adds the ellipsis.
+**Files:** `internal/text/layout/lines.go` and its tests, a widget-level test (`rendering` or `widgets`), and SPEC §10.
+**Tasks:**
+1. First write a test that shows the bug, at the paragraph level and through `RichText`. For each of these, give the result before and after the fix in the report:
+   - a tab and then `fmt.Println(Shout(Greet("ev...`, wider than the box, with `MaxLines: 1`;
+   - the same with `SoftWrap: false`;
+   - a text with spaces;
+   - a text that contains `…`.
+2. When a line is the last one kept and the paragraph is ellipsized, the line runs from its start to the next hard break (or the end of the text), and `ellipsize` cuts it at the last grapheme cluster boundary where the text and the ellipsis fit. Trailing white space before the ellipsis is dropped, as now.
+3. Nothing changes for text that fits, for text without an ellipsis, or for lines before the last.
+4. If the box is narrower than the ellipsis itself, the ellipsis alone is shown, as in Flutter.
+5. SPEC §10: say how the last line is cut.
+**Tests (table-driven):**
+- the four cases of task 1 keep the characters that fit, then `…`;
+- the width of the line is at most the box's width;
+- a right-to-left text;
+- a line made of a combining sequence and an emoji with ZWJ is not cut inside a cluster;
+- a box narrower than the ellipsis;
+- `MaxLines: 2`: the first line still breaks at a word, and the second is cut at a character;
+- `SoftWrap: false` without `MaxLines`.
+
+A golden that changes because an ellipsized line now keeps more characters is looked at, and the reason is written in the report.
+**Proof:** none.
+**Manual checks:** none. Emetos removes its workaround in `peek_widget.go` (its own issue).

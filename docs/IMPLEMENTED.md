@@ -4071,3 +4071,50 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - Each fixed `Leading` widget is limited to the room of the whole group, not to the room the other widgets leave: a group of fixed widgets wider than the bar still overflows, as a `Row` does.
   - The bar sets its own left-to-right `Directionality` (as before 28.18), so it does not mirror in an app. The layout mirrors under a right-to-left `Directionality` (tested).
   - The tag `v1.8.2` waits for the owner's yes.
+
+## 28.22 The ellipsis cuts the last line at a character (Emetos, 1.8.3)
+
+- **Date:** 2026-10-26
+- **Branch:** feat/step-28.22-ellipsis-cut-at-character
+- **Summary:** a line that ends with an ellipsis now keeps every character that fits before the ellipsis, as Flutter does. The last line allowed by `MaxLines` is filled by grapheme cluster, not by word, before the ellipsis is added. Emetos can remove its workaround in the peek view:
+  - the rows have no soft wrap;
+  - a row gets an ellipsis only when it has spaces;
+  - the text before the match is cut short.
+- **The cause (confirmed by a test that failed before the fix):** `paragraph.Layout` broke the lines by word, kept `MaxLines` of them, and only then ellipsized the last one. A word that did not fit went to a line that was dropped, so the line that was kept held only the white space (or the short word) before it. The path with an ellipsis and no `MaxLines`, which `SoftWrap: false` also takes, was already right.
+- **The fix,** in `internal/text/layout/lines.go`:
+  - `extendLastLine`: when `MaxLines` is exceeded and there is an ellipsis, the last kept line runs to the next hard break, or to the end of the text.
+  - `ellipsize` scans forward, by cluster boundary, for the longest start of the line that fits with the ellipsis. It stops at the first cluster that does not fit, so a long line costs only its visible part. It then drops the white space at the end of the kept text.
+- **Unchanged:**
+  - text that fits;
+  - text without an ellipsis;
+  - the lines before the last;
+  - a line that ends at a hard break;
+  - a box narrower than the ellipsis, which shows the ellipsis alone.
+- **Before and after** (`MaxLines: 1`):
+
+  | Text | Before | After |
+  |---|---|---|
+  | a tab, then `fmt.Println(Shout(Greet("ev...` | `…` | `\tfmt.Printl…` |
+  | `Hello world abcdefghijklmnopqrst uvw` | `Hello world…` | `Hello world abcdef…` |
+  | `ab…cdefghijklmnopqrstuvw` | `ab……` | `ab…cdefgh…` |
+- **Main files:**
+  - `internal/text/layout/lines.go`
+  - `internal/text/layout/ellipsis_cut_test.go`
+  - `rendering/paragraph_ellipsis_test.go`
+  - `internal/gpu/soft/testdata/goldens/proof-text-basic.png`
+  - SPEC §10 and §12.10
+- **Tests:**
+  - `TestEllipsisCutsTheLastLineAtACharacter` (9 cases, with `MaxLines: 1` and with no limit).
+  - `TestEllipsisWithTwoLines`, `TestEllipsisOnHardBreaks`.
+  - `TestEllipsisNeverCutsInsideACluster`: a sweep of widths over combining marks, ZWJ emoji, emoji modifiers and flags.
+  - `TestEllipsisInRightToLeftText`, `TestEllipsisInABoxNarrowerThanItself`, `TestEllipsisLeavesFittingTextAlone`.
+  - `TestParagraphEllipsisKeepsTheCharactersThatFit`: 9 cases through `RenderParagraph`, with `SoftWrap` on and off.
+- **Golden:** one changed, `proof-text-basic.png`. The second line of the "Ellipsis (2 lines)" paragraph went from `…then…` to `…then dr…`. The manager looked at the old and the new image: nothing else differs.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ (also `GOOS=windows`, amd64 and arm64, with and without `glutter_wine`) · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck ✅ · apicheck ✅ · uintptrcheck ✅ · `GOOS=js GOARCH=wasm` build, vet and `scripts/test-wasm.sh` ✅ · `scripts/check-android.sh` ✅ · `GOOS=windows` amd64 build and vet, arm64 build ✅ · `scripts/test-windows.sh` ✅ · nothing left running ✅
+- **Proof:** none.
+- **Manual checks:** none. Emetos removes its workaround in `peek_widget.go` (its own issue).
+- **Deviations and follow-ups:**
+  - Decided in SPEC §10 and §12.10 (the row "Lines break as Skia's paragraph module does"). Skia's paragraph module is not in `reference/`: the behavior follows the one described in the step.
+  - The white space at the end of the kept text is dropped (`lazy …` becomes `lazy…`).
+  - A ligature such as `fi` is never cut, because `p.boundary` has no cluster boundary inside it.
+  - Tagged `v1.8.3` when published (the owner's rule of 2026-10-26).
