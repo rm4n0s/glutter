@@ -4458,3 +4458,34 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - An insertion between the kept children (in the cache extent before the visible rows) still moves the visible rows, as in Flutter.
   - Grids and `SliverAnimatedList` are not covered.
   - Emetos removes `keepPlace` (its own issue).
+
+## 29.9 The clipboard of an offscreen view (Emetos)
+
+- **Date:** 2026-10-27
+- **Branch:** feat/step-29.9-view-clipboard
+- **Summary:** Emetos's issue "An `offscreen.View` has no clipboard of its own".
+  - **The option:** `offscreen.ViewOpts.Clipboard` takes a `ui.ClipboardHost`. When it is set, every clipboard call of the view's tree goes to it and never to the app's clipboard or the desktop's: copy, cut, paste, the paste check, the primary selection and rich content. When it is nil, the view uses the app's clipboard, as in 1.9.1.
+  - **A host that is not a `ui.RichClipboardHost`:** it gets the text of a call for the clipboard kind through its text methods. Every other rich call completes with an empty content and no error.
+  - **Callbacks:** the host's `done` functions run on the UI thread, and a `done` called after `Close` does nothing.
+- **Paths checked:** every clipboard path of a widget reaches `WidgetsBinding.Clipboard()`, which is built over the binding's own dispatcher, so none bypasses the view's dispatcher. No fix was needed. The paths are:
+  - `EditableText`'s copy, cut and paste, and its primary selection;
+  - `ClipboardStatusNotifier`;
+  - `SelectableRegion`;
+  - the context menu and the selection toolbar.
+- **Main files:** `offscreen/view.go`, `offscreen/view_clipboard_test.go`, `docs/SPEC.md` (§9.9, "Decisions of step 29.9").
+- **Tests (6 functions, 35 subtests, table-driven, each with a text-only and a rich host):**
+  - **Copy, cut and paste:** a `TextField` in a view, with select all, copy, cut and paste sent as key events to the view's dispatcher. The fake host gets and gives the text.
+  - **The primary selection:** on a Linux target platform, a selection and a middle click go to a rich fake, and to nothing with a text-only fake.
+  - **The paste check:** `ClipboardStatusNotifier` and `HasStrings` read the fake.
+  - **Rich calls:** set and get of text, an image and the primary selection, against both kinds of host. The tests check the exact calls each host gets and the outcome the widget side hears.
+  - **The app's clipboard is never touched:** in every case, sentinels in the parent's fake platform stay unchanged. With a nil option, the app's clipboard is used.
+  - **After `Close`:** a `done` that the host holds back and calls after `Close` does nothing, for five calls and both kinds.
+  - **Mutation checks:** with the routing disabled, 14 subtests fail; with the closed guard removed from the get paths, 5 fail. No Flutter test cases were ported, since Flutter has no counterpart.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck, apicheck, uintptrcheck ✅ · wasm build, vet and tests ✅ · check-android ✅ · Windows builds, vet, lint and test-windows ✅ · display tests: none
+- **Proof:** none
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - `ViewOpts.Clipboard` is Glutter-only (`// Flutter: no counterpart`) and changes no Flutter behavior, so there is no §12.10 row.
+  - A text-only host receives only the text of a content that has several formats.
+  - The parent's fake platform has no call counters, so the tests prove "never read or written" with sentinels instead.
+  - Emetos removes `clipboardParent` and its second binding (its own issue).

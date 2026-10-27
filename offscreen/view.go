@@ -50,6 +50,27 @@ type ViewOpts struct {
 	// MaxFrameRate is the most frames the view makes in a second, counting the time from
 	// the start of one to the start of the next; the default is 30.
 	MaxFrameRate int
+	// Clipboard is the clipboard of the view. When it is nil, the view uses the clipboard of
+	// the app (the parent's), as before: copy, cut and paste in the view reach the desktop.
+	// When it is set, every clipboard call of the view's tree (copy, cut, paste, the check
+	// that decides whether Paste is offered, the primary selection that a selection fills and
+	// a middle click pastes, rich content) goes to it, and none reaches the app's clipboard or
+	// the desktop's.
+	//
+	// SetClipboardText and GetClipboardText go to the host. If it also implements
+	// ui.RichClipboardHost, SetClipboard and GetClipboard go to it, for every kind, the
+	// primary selection included. If it does not, a rich call for the clipboard kind and the
+	// plain text format goes to its text methods (a content with a text sets that text, and
+	// its other formats are dropped), and every other rich call (the primary selection, an
+	// image, a list of URIs) does nothing: it completes with an empty content and no error.
+	//
+	// The host's callbacks (the done functions it is given) run on the UI thread of the
+	// parent: the host calls them there, or posts them with the parent binding's Post, and
+	// never before the method that took them has returned. A done function that the host
+	// calls after Close does nothing: the view drops it.
+	//
+	// Flutter: no counterpart
+	Clipboard ui.ClipboardHost
 }
 
 // View runs a widget tree in a view of its own, on a widgets binding of its own that
@@ -80,6 +101,10 @@ type View struct {
 	dpr      float64
 	cfg      ui.ViewConfiguration
 	detacher *Detacher
+	// clip is ViewOpts.Clipboard, nil for the app's clipboard; rich is clip as a
+	// ui.RichClipboardHost, nil when it is not one.
+	clip ui.ClipboardHost
+	rich ui.RichClipboardHost
 	// surface is the view's pixels; the raster goroutine uses it, and Close after that
 	// goroutine ended.
 	surface *Surface
@@ -122,7 +147,8 @@ func (g gestureClock) AfterFunc(d time.Duration, f func()) gestures.SamplingTime
 }
 
 // viewHost is the ui.PlatformHost of a View: the view's own dispatcher asks it for
-// frames and gives it the scenes. It is also the clipboard (the parent's). It has no
+// frames and gives it the scenes. It is also the clipboard: ViewOpts.Clipboard, or the
+// parent's when that is nil (SPEC §9.9). It has no
 // semantics, text input, cursor, window or drag host, so the dispatcher ignores those
 // calls of the framework.
 type viewHost struct{ v *View }
@@ -190,6 +216,8 @@ func newView(parent *widgets.WidgetsBinding, size ui.Size, root widgets.Widget, 
 		wake: make(chan struct{}, 1), quit: make(chan struct{}), done: make(chan struct{}),
 	}
 	v.idle = sync.NewCond(&v.mu)
+	v.clip = o.Clipboard
+	v.rich, _ = o.Clipboard.(ui.RichClipboardHost)
 	v.d = ui.NewPlatformDispatcher(viewHost{v})
 	v.d.SetTextEngine(parent.PlatformDispatcher().TextEngine())
 	v.uiView = v.d.AddView(ui.ImplicitViewID, cfg)
@@ -364,33 +392,76 @@ func (h viewHost) RenderView(_ ui.ViewID, scene *ui.Scene) error {
 	return nil
 }
 
-// SetClipboardText puts the text on the clipboard of the app: the view has no clipboard of
-// its own, and a text field in it copies and pastes through the parent's engine.
+// SetClipboardText puts the text on the clipboard of the view (ViewOpts.Clipboard), or of
+// the app when the view has none: a text field in it copies and pastes through the
+// parent's engine then.
 func (h viewHost) SetClipboardText(ctx context.Context, text string, done func(err error)) {
+	if h.v.clip != nil {
+		h.v.clip.SetClipboardText(ctx, text, h.guardErr(done))
+		return
+	}
 	h.v.parent.PlatformDispatcher().SetClipboardText(ctx, text, h.guardErr(done))
 }
 
-// GetClipboardText reads the text of the clipboard of the app.
+// GetClipboardText reads the text of the clipboard of the view, or of the app.
 func (h viewHost) GetClipboardText(ctx context.Context, done func(text string, ok bool, err error)) {
-	h.v.parent.PlatformDispatcher().GetClipboardText(ctx, func(text string, ok bool, err error) {
+	guarded := func(text string, ok bool, err error) {
 		if !h.v.isClosed() {
 			done(text, ok, err)
 		}
-	})
+	}
+	if h.v.clip != nil {
+		h.v.clip.GetClipboardText(ctx, guarded)
+		return
+	}
+	h.v.parent.PlatformDispatcher().GetClipboardText(ctx, guarded)
 }
 
-// SetClipboard puts the content on the selection of the app.
+// SetClipboard puts the content on the selection of the view's clipboard, or of the app's
+// when the view has none. A view clipboard that is not a ui.RichClipboardHost takes the
+// text of a content for the clipboard kind, and nothing else.
 func (h viewHost) SetClipboard(ctx context.Context, kind ui.ClipboardKind, content ui.ClipboardContent, done func(err error)) {
-	h.v.parent.PlatformDispatcher().SetClipboard(ctx, kind, content, h.guardErr(done))
+	v := h.v
+	switch {
+	case v.rich != nil:
+		v.rich.SetClipboard(ctx, kind, content, h.guardErr(done))
+	case v.clip != nil:
+		if kind != ui.ClipboardKindPrimary && content.HasText {
+			v.clip.SetClipboardText(ctx, content.Text, h.guardErr(done))
+			return
+		}
+		if done != nil {
+			h.Post(func() { done(nil) })
+		}
+	default:
+		v.parent.PlatformDispatcher().SetClipboard(ctx, kind, content, h.guardErr(done))
+	}
 }
 
-// GetClipboard reads the selection of the app.
+// GetClipboard reads the selection of the view's clipboard, or of the app's when the view
+// has none. A view clipboard that is not a ui.RichClipboardHost answers the clipboard kind
+// in the text format from its text methods, and every other call with an empty content.
 func (h viewHost) GetClipboard(ctx context.Context, kind ui.ClipboardKind, format string, done func(content ui.ClipboardContent, err error)) {
-	h.v.parent.PlatformDispatcher().GetClipboard(ctx, kind, format, func(content ui.ClipboardContent, err error) {
-		if !h.v.isClosed() {
+	v := h.v
+	guarded := func(content ui.ClipboardContent, err error) {
+		if !v.isClosed() {
 			done(content, err)
 		}
-	})
+	}
+	switch {
+	case v.rich != nil:
+		v.rich.GetClipboard(ctx, kind, format, guarded)
+	case v.clip != nil:
+		if kind != ui.ClipboardKindPrimary && format == ui.ClipboardFormatText {
+			v.clip.GetClipboardText(ctx, func(text string, ok bool, err error) {
+				guarded(ui.ClipboardContent{Text: text, HasText: ok}, err)
+			})
+			return
+		}
+		h.Post(func() { guarded(ui.ClipboardContent{}, nil) })
+	default:
+		v.parent.PlatformDispatcher().GetClipboard(ctx, kind, format, guarded)
+	}
 }
 
 // guardErr makes a result function that does nothing once the view closed; nil stays nil.
