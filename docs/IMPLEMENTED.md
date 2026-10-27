@@ -4698,3 +4698,23 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - **`soft`:** it still rasterizes the glyphs of the damaged rectangles (1.2 MB per frame).
   - **Typing:** a text change still costs the length of the text (layout and re-freeze).
   - **Vulkan:** its per-frame allocations were read from the code, not measured.
+
+## 29.16 No `testing` in programs (Emetos)
+
+- **Date:** 2026-10-27
+- **Branch:** feat/step-29.16-no-testing
+- **Summary:** Emetos's issue "`testing` is linked into every Glutter program". No Glutter program links `testing` any more, and a test keeps it that way. The plan gets steps 29.17 to 29.20 for the third Emetos list, and the release moves to 29.21.
+  - **The cause:** `internal/platform/linux/dl/layout.go` was not a test file, and it imported `testing` for `AssertLayout`. Every program that links the Linux platform (the Linux desktop and Android) therefore linked `testing`; js/wasm and Windows did not. It cost size only.
+  - **`layouttest`:** `AssertLayout` moved to `internal/platform/linux/dl/layouttest`, which only `_test.go` files import, as Windows has `win32/layouttest`. Its signature and behavior are the same, and `dl` no longer imports `testing`.
+  - **The guard:** `TestNoExampleLinksTesting` runs one `go list -deps` of the examples for each of linux/amd64, android/arm64, js/wasm, windows/amd64 and windows/arm64. It needs no cgo and no NDK, and takes 0.3 s. It fails when `testing`, `testing/...`, `net/http/httptest` or `gluttertest` is listed, and names the package that imports it.
+  - **The search:** no non-test file outside the test helper packages imports `testing`, `httptest` or `gluttertest`, for any target or test tag. Only the developer commands `glutter-android`, `glutter-web` and `glutter-proof` link them, through their harness packages.
+- **Main files:** `internal/platform/linux/dl/layouttest/layout.go` (moved from `dl`), `internal/platform/linux/dl/doc.go`, `examples/no_testing_test.go`, the layout tests of `xkb`, `fontconfig`, `x11`, `wayland`, `wayland/decor`, `wayland/wl` and `internal/gpu/nativewindow`, `docs/SPEC.md` (§8.1), `CLAUDE.md` (Layout).
+- **Tests (table-driven):**
+  - **The guard:** on the code before the move it failed for linux/amd64 and android/arm64, with `.../internal/platform/linux/dl imports testing`. After the move all five targets pass.
+  - **Its filter:** checked on lists made by hand.
+  - **Layout tests:** every one passes from its new place.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck, apicheck, uintptrcheck ✅ · wasm build, vet and tests ✅ · check-android ✅ · Windows builds, vet, lint and test-windows ✅ · display tests: none
+- **Proof:** none
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - **The developer tools:** `glutter-android`, `glutter-web` and `glutter-proof` still link `testing` through their harness packages. They are tools, not apps.

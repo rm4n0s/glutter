@@ -1,6 +1,10 @@
-//go:build linux
-
-package dl
+// Package layouttest is the helper for the layout test that every Go mirror of a
+// C struct needs (SPEC §8.1 rule 3). It imports package testing, so only test
+// files import it: package dl, which every program that loads a C library
+// links, does not.
+//
+// Flutter: no counterpart.
+package layouttest
 
 import (
 	"reflect"

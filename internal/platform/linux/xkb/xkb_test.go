@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/rm4n0s/errors"
-	"github.com/rm4n0s/glutter/internal/platform/linux/dl"
+	"github.com/rm4n0s/glutter/internal/platform/linux/dl/layouttest"
 )
 
 // Evdev scancodes (linux/input-event-codes.h).
@@ -391,7 +391,7 @@ func TestLocaleFromEnv(t *testing.T) {
 }
 
 func TestRuleNamesLayout(t *testing.T) {
-	dl.AssertLayout(t, "xkb_rule_names", 40, map[string]uintptr{
+	layouttest.AssertLayout(t, "xkb_rule_names", 40, map[string]uintptr{
 		"rules": 0, "model": 8, "layout": 16, "variant": 24, "options": 32,
 	}, ruleNames{})
 }

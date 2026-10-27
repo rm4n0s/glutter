@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/rm4n0s/errors"
-	"github.com/rm4n0s/glutter/internal/platform/linux/dl"
+	"github.com/rm4n0s/glutter/internal/platform/linux/dl/layouttest"
 )
 
 func openOrSkip(t *testing.T) *Config {
@@ -24,7 +24,7 @@ func openOrSkip(t *testing.T) *Config {
 
 func TestFontSetLayout(t *testing.T) {
 	// From struct _FcFontSet in /usr/include/fontconfig/fontconfig.h.
-	dl.AssertLayout(t, "FcFontSet", 16, map[string]uintptr{"nfont": 0, "sfont": 4, "fonts": 8}, fcFontSet{})
+	layouttest.AssertLayout(t, "FcFontSet", 16, map[string]uintptr{"nfont": 0, "sfont": 4, "fonts": 8}, fcFontSet{})
 }
 
 func TestMatch(t *testing.T) {

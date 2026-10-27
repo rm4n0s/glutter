@@ -6,7 +6,7 @@ import (
 	"testing"
 	"unsafe"
 
-	"github.com/rm4n0s/glutter/internal/platform/linux/dl"
+	"github.com/rm4n0s/glutter/internal/platform/linux/dl/layouttest"
 )
 
 // The sizes and offsets below come from wayland-util.h, compiled with gcc on
@@ -30,7 +30,7 @@ func TestStructLayouts(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			dl.AssertLayout(t, tt.name, tt.size, tt.offsets, tt.got)
+			layouttest.AssertLayout(t, tt.name, tt.size, tt.offsets, tt.got)
 		})
 	}
 }

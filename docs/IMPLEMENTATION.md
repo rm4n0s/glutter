@@ -2953,23 +2953,101 @@ Flutter behaves the same way: `SliverMultiBoxAdaptorElement.performRebuild` sets
 **Proof:** none.
 **Manual checks:** none.
 
-### 29.16 No `testing` in programs, and release 1.9.2 (Emetos)
-**Goal:** no Glutter program links the `testing` package, and a test keeps it that way. Then 1.9.2 is released.
+### 29.16 No `testing` in programs (Emetos, 1.9.2)
+**Goal:** no Glutter program links the `testing` package, and a test keeps it that way.
 **Why:** Emetos found it (issues file, "`testing` is linked into every Glutter program"). `internal/platform/linux/dl/layout.go` is not a test file, and it imports `testing` for `AssertLayout`, so every program that links the Linux platform (Linux desktop and Android) links `testing`. The manager checked on 2026-10-27 with `go list -deps ./examples/counter`: it is the only cause on linux/amd64 and android/arm64; js/wasm and windows/amd64 do not link `testing`. It costs size, nothing else (Go registers its flags only in a test binary).
 **Read:** SPEC §8.1 (rule 3, the layout tests), §25.2 (the Windows `layouttest` package, the model for this one); `internal/platform/linux/dl/layout.go` and every test that calls `dl.AssertLayout` (`xkb`, `fontconfig`, `x11`, `wayland`, `wayland/decor`, `wayland/wl`, `internal/gpu/nativewindow`, `dl` itself); `examples/examples_test.go`.
 **Port from:** none.
-**Files:** a new package `internal/platform/linux/dl/layouttest` (or the place SPEC §8.1 names, if it names one), the tests that call it, a guard test, SPEC §8.1, §1 and the scope paragraphs, `README.md`.
+**Files:** a new package `internal/platform/linux/dl/layouttest` (or the place SPEC §8.1 names, if it names one), the tests that call it, a guard test, SPEC §8.1.
 **Tasks:**
 1. Move `AssertLayout` out of package `dl` into a package that only tests import, `internal/platform/linux/dl/layouttest`, as Windows has `win32/layouttest`. The tests call it from there. `dl` no longer imports `testing`.
 2. A guard test (in `examples`, next to the build tests): `go list -deps` of every example, for linux/amd64, android/arm64 (`CGO_ENABLED=1` is not needed for the list), js/wasm, windows/amd64 and windows/arm64, and none of them lists `testing` (or `testing/...`) or `gluttertest`. When it fails, it names the package that imports it (`go list -f '{{.ImportPath}} {{.Imports}}'`).
 3. Search for any other non-test file that imports `testing`, `net/http/httptest` or `gluttertest` outside the test helper packages, and say what you found.
-4. Release 1.9.2:
-   - SPEC: the version paragraph of §1 (a 1.9.2 sentence: lists that keep what the user reads in place, an offscreen view with its own clipboard and the app's configuration, a gesture arena that no longer panics, a new pointer id for each down on Linux, shapes outside the clip culled before their masks, fewer allocations in idle frames, no `testing` in programs), a "Scope of 1.9.2" paragraph next to the one of 1.9.1;
-   - `README.md` "What is new in 1.9.2";
-   - the standard checks of rule 8, and `go run ./cmd/glutter-gen apicheck -allow cmd/glutter-gen/apicheck.allow`;
-   - merge, tag `step-29.16` and `v1.9.2`, and publish: `git push --follow-tags origin main`, which takes steps 29.8 to 29.16 and their tags to GitHub. Check with `git ls-remote --tags origin`.
 **Tests (table-driven):**
 - the guard test of task 2, which fails on the code before the move (say so in the report);
 - every layout test passes from its new place.
+**Proof:** none.
+**Manual checks:** none.
+
+### 29.17 The arena's microtasks run before the next pointer event (Emetos, 1.9.2)
+**Goal:** what the gesture arena schedules as a microtask (the default win of `tryToResolveArena`) runs before the binding handles the next pointer event, as a Dart microtask does, also when a slow frame makes several pointer events be dispatched in one turn of the event loop.
+**Why:** Emetos found it (third issues list of 2026-10-27, "The gesture arena resolves its default winner on the next turn of the event loop"). Steps 29.11 and 29.12 removed the panic and the wrong resolution, but `GestureBinding.Post` still runs the default win on the next turn of the loop. A tap whose arena is resolved by default therefore fires after the pointer events that were queued behind it, out of order. Emetos works around it with a scheduler of its own (`fixGestureArena`), chained to `GestureBinding.OnDispatchEvent`.
+**Read:** SPEC §13 (the UI thread, `Post`), §8.5; `gestures/arena.go` (`scheduleMicrotask`), `gestures/binding.go` (`flushPointerEventQueue`, `HandlePointerEvent`, `handlePointerEventImmediately`, `Post`), where the binding makes its `GestureArenaManager`; Flutter's `GestureBinding._flushPointerEventQueue` and `GestureArenaManager._tryToResolveArena` in `reference/flutter`.
+**Port from:** `gestures/binding.dart`, `gestures/arena.dart` (the behavior of Dart's microtask queue around them).
+**Files:** `gestures/binding.go`, `gestures/arena.go` if needed, their tests, SPEC §13.
+**Tasks:**
+1. The gesture binding keeps a queue of microtasks. The arena manager it makes schedules into that queue. The queue is drained, first in first out (including the tasks a task schedules), before each pointer event is handled. A single `Post` is also made when the queue goes from empty to non-empty, so that a lone event's microtasks still run on the next turn when no other event comes.
+2. Nothing else changes order: a `Post` of anything else is still a post, and a gesture binding made without the queue (tests that pass their own `scheduleMicrotask`) works as now.
+3. SPEC §13: say where Glutter's microtasks run, and that this is Dart's order for the arena.
+**Tests (table-driven):**
+- several pointer events dispatched in one turn (`flushPointerEventQueue` with a queue of events, nothing posted run in between): a tap rejected by a move past the slop, then a new press, with the same id and with new ids; the first arena is resolved before the second press is handled, and every callback fires in the order Flutter gives;
+- a lone tap still wins by default on the next turn;
+- a microtask that schedules another runs both before the next event.
+**Proof:** none.
+**Manual checks:** none.
+
+### 29.18 A field mounted with the focus opens its input connection (Emetos, 1.9.2)
+**Goal:** an `EditableText` whose `FocusNode` already has the primary focus when the field is mounted (or its state made again) takes keys, without a click.
+**Why:** Emetos found it (third issues list, "An `EditableText` mounted again with the focus on its node gets no input connection"). `EditableTextState` opens its input connection only when the focus changes (`handleFocusChanged` → `openOrCloseInputConnectionIfNeeded`), as Flutter's does. A field mounted again under a node that kept the focus shows the focus and the caret, but `services.TextInput` has no client, so every key is lost. Emetos also saw that a tap on a raw `EditableText` did not change its selection or bring the connection back.
+**Read:** SPEC §11 (text input), §13; `widgets/editable_text_state.go` (`InitState`, `DidChangeDependencies`, `DidUpdateWidget`), `widgets/editable_text_input.go` (`handleFocusChanged`, `openOrCloseInputConnectionIfNeeded`, `RequestKeyboard`), `widgets/focus_manager.go` (`ConsumeKeyboardToken`), `rendering/editable.go` (its tap recognizer); Flutter's `EditableTextState` and `RenderEditable._handleTapDown`/`_handleTap` in `reference/flutter`.
+**Port from:** `widgets/editable_text.dart`, `rendering/editable.dart` (for the tap).
+**Files:** `widgets/editable_text_state.go`, `widgets/editable_text_input.go`, maybe `rendering/editable.go`, their tests, SPEC §11 and §12.10.
+**Tasks:**
+1. When the state is made (after its first build, a post-frame callback as Flutter uses for autofocus) and the node has the primary focus, the field does what a focus change would do: it opens the input connection (when it should have one: not read only), starts the caret and puts the caret on screen. The same when `DidUpdateWidget` gets a new node that already has the focus, if that path does not do it yet. A `// Deviation:` comment and a §12.10 row: Flutter opens the connection only on a focus change or a tap.
+2. The tap: find why a tap on a raw `EditableText` did not move the caret in Emetos's test. Port Flutter's behavior: where Flutter's `RenderEditable` moves the selection and the field asks for the keyboard on a tap, Glutter does the same. Report what was wrong (or that nothing was, with the test that shows it).
+3. No second connection: a field that already has one does not open another, and nothing changes for a field without the focus.
+**Tests (table-driven):**
+- a field mounted again under a node with the primary focus (a `Stack` removed around it, a key changed) takes typed text; with and without a placeholder, as in Emetos;
+- a node given to a new field in `DidUpdateWidget` while it has the focus;
+- a read-only field opens nothing;
+- a tap on a raw `EditableText` with the focus moves the caret and the field takes keys.
+**Proof:** none.
+**Manual checks:** none.
+
+### 29.19 The caret of obscured text (Emetos, 1.9.2)
+**Goal:** with `ObscureText`, the caret, the selection and a tap's position fall on the right bullet, for any text and any obscuring character.
+**Why:** Emetos found it (third issues list, "The caret of an obscured `EditableText` is placed by byte offsets into the string of bullets"). The field shows `strings.Repeat(ObscuringCharacter, GraphemeCount(text))` (`EditableTextState.BuildTextSpan`, `RenderEditable.obscured`), but the selection keeps the byte offsets of the real text. The bullet U+2022 is three bytes, so after "secret" (offset 6) the caret is drawn after two bullets instead of six. Text that is not ASCII is wrong in other ways. In Flutter the obscured string has one character for each UTF-16 unit of the text, so its offsets are the text's; Glutter's offsets are bytes, so it must map them. Emetos works around it with `ObscuringCharacter: "*"`, which is still wrong for text that is not ASCII.
+**Read:** SPEC §10, §11; `rendering/editable.go` (every place that turns a selection or caret offset into a position of the paragraph and back: the caret rect, the selection boxes, `GetPositionForPoint`, word and line boundaries, semantics), `widgets/editable_text_state.go` (`BuildTextSpan`, the obscured last character if Glutter ports `obscureShowCharacterAtIndex`); Flutter's `RenderEditable` in `reference/flutter`.
+**Port from:** `rendering/editable.dart` (behavior; the offset map is Glutter's).
+**Files:** `rendering/editable.go`, `widgets/editable_text_state.go`, their tests and goldens, SPEC §10 or §11 and §12.10.
+**Tasks:**
+1. One grapheme of the text is one obscuring character. The render object maps an offset of the text to an offset of the obscured string (its grapheme index times the length of the obscuring character), and back (a position in the obscured string to the start of the grapheme). Every place that reads or writes paragraph offsets while the text is obscured goes through the map. An offset inside a grapheme maps to its start.
+2. If the widget shows the last typed character (Flutter's `obscureShowCharacterAtIndex`, on mobile), the map holds for it too.
+3. A `// Deviation:` comment (Flutter's map is the identity because Dart counts UTF-16 units) and a §12.10 row.
+**Tests (table-driven):**
+- the caret after "secret" is after six bullets, with the bullet and with `*`;
+- text that is not ASCII (`pässwörd`), an emoji with a ZWJ, and a combining accent: the caret, the selection boxes and a tap in the middle of the bullets each fall on the right grapheme;
+- a golden of an obscured field with the caret in the middle of its text.
+**Proof:** none.
+**Manual checks:** none.
+
+### 29.20 A jump into a long list costs one window of items (Emetos, 1.9.2)
+**Goal:** a list whose items have different heights can jump to any offset (a click on the scroll bar, `JumpTo`), and the jump lays out only the items near the new offset, not every item between the old one and the new one.
+**Why:** Emetos found it (third issues list, "A `SliverList` lays out every item between the first one it has and the offset of a jump"). `RenderSliverList.PerformLayout` finds the first child at the scroll offset from the children it has and adds more with `InsertAndLayoutChild`, as Flutter's does, so a jump into a Markdown preview of 3,000 blocks builds and lays out every block in between, in one frame. `ItemExtentBuilder` would find an item at once, but it fixes each child's extent, which a paragraph only knows after its layout. Emetos wrote its own list for this (a Fenwick tree of heights and an anchor block).
+**Read:** SPEC §11.4 (slivers, and `MaintainVisibleContentPosition` of step 29.8); `rendering/sliver_list.go` (`PerformLayout`, the leading-children path and the `ScrollOffsetCorrection` at item 0), `rendering/sliver_multi_box_adaptor.go`, `widgets/sliver.go` (`EstimateMaxScrollOffset`, the element's child manager), `widgets/scroll_view.go`; Flutter's `RenderSliverList.performLayout` in `reference/flutter`.
+**Port from:** none (Flutter has no counterpart; the default stays Flutter's).
+**Files:** `rendering/sliver_list.go`, `rendering/sliver_multi_box_adaptor.go`, `widgets/sliver.go`, `widgets/scroll_view.go`, the material re-exports, their tests, SPEC §11.4 and §12.10, `docs/GUIDE.md`.
+**Tasks:**
+1. An option `EstimateItemOffsets bool` in `ListViewOpts` and in the options of `SliverList` (the same structs that got `MaintainVisibleContentPosition`). With it, when the scroll offset is more than one viewport plus the cache extent past the last child the sliver has (or before its first), the sliver does not walk there. It drops its children and makes the child at the estimated index: the offset divided by the average extent of the items it has measured (kept across layouts), capped by the child count when it is known. That child gets the estimated layout offset. Layout goes on from there as usual.
+2. The estimate is corrected as items are measured: when the user scrolls back to item 0 and its offset is not 0, the existing `ScrollOffsetCorrection` fixes it. The scroll extent comes from `EstimateMaxScrollOffset`, as now. Nothing jumps on screen after a jump: the window shown is laid out exactly; only the offsets far from it are estimates.
+3. With the option off, nothing changes (every existing test and golden passes). With both options on, `MaintainVisibleContentPosition` still keeps the first visible row in place.
+4. A `// Deviation:` comment, a §12.10 row, SPEC §11.4, and a short example in `docs/GUIDE.md` (its docs test passes).
+**Tests (table-driven):**
+- a list of 3,000 items of varied heights: a `JumpTo` to the middle and to the end builds and lays out at most the items of one window plus the cache extent (count the builder calls), with the option; without it, the count is Flutter's (all items in between);
+- after a jump, scrolling back to the start ends with item 0 at offset 0 and no gap or overlap;
+- a jump backwards from the end;
+- with `MaintainVisibleContentPosition` too, an insert before the visible row after a jump keeps the row in place;
+- a benchmark of the jump with and without the option.
+**Proof:** none.
+**Manual checks:** none.
+
+### 29.21 Release 1.9.2 (Emetos)
+**Goal:** 1.9.2 is released with steps 29.8 to 29.20.
+**Tasks:**
+1. SPEC: the version paragraph of §1 (a 1.9.2 sentence: lists that keep what the user reads in place and jump without laying out what is in between, an offscreen view with its own clipboard and the app's configuration and a window, a gesture arena that no longer panics and runs its microtasks before the next event, a new pointer id for each down on Linux, shapes outside the clip culled before their masks, fewer allocations in idle frames, a field mounted with the focus that takes keys, the caret of obscured text, no error log without a keymap, no `testing` in programs), and a "Scope of 1.9.2" paragraph next to the one of 1.9.1.
+2. `README.md`: "What is new in 1.9.2".
+3. The standard checks of rule 8, and `go run ./cmd/glutter-gen apicheck -allow cmd/glutter-gen/apicheck.allow`.
+4. Merge, tag `step-29.21` and `v1.9.2`, and publish: `git push --follow-tags origin main`, which takes steps 29.8 to 29.21 and their tags to GitHub. Check with `git ls-remote --tags origin`.
+**Tests:** none of its own.
 **Proof:** none.
 **Manual checks:** none.

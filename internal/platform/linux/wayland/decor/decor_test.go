@@ -8,6 +8,7 @@ import (
 
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/internal/platform/linux/dl"
+	"github.com/rm4n0s/glutter/internal/platform/linux/dl/layouttest"
 )
 
 // TestLayouts checks the Go mirrors of the two interface structs of libdecor.h
@@ -16,8 +17,8 @@ func TestLayouts(t *testing.T) {
 	if unsafe.Sizeof(uintptr(0)) != 8 {
 		t.Skip("the layouts assume 64-bit pointers")
 	}
-	dl.AssertLayout(t, "libdecor_interface", 11*8, map[string]uintptr{"errorFn": 0, "reserved": 8}, interfaceStruct{})
-	dl.AssertLayout(t, "libdecor_frame_interface", 13*8,
+	layouttest.AssertLayout(t, "libdecor_interface", 11*8, map[string]uintptr{"errorFn": 0, "reserved": 8}, interfaceStruct{})
+	layouttest.AssertLayout(t, "libdecor_frame_interface", 13*8,
 		map[string]uintptr{"configure": 0, "closeFn": 8, "commit": 16, "dismissPopup": 24, "reserved": 32}, frameInterfaceStruct{})
 }
 
