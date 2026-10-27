@@ -16,6 +16,16 @@ type Picture struct {
 // Flutter: no counterpart
 func (p *Picture) DisplayList() *DisplayList { return p.list }
 
+// NewPictureFromOps makes a picture of the operations, as a PictureRecorder would after a
+// canvas with the cull rectangle recorded them. The picture owns the slice: the caller
+// does not change it afterwards. It is for code that copies a picture with some of its
+// operations replaced (package offscreen).
+//
+// Flutter: no counterpart
+func NewPictureFromOps(cullRect Rect, ops []DisplayOp) *Picture {
+	return &Picture{list: &DisplayList{ops: ops, cullRect: cullRect}}
+}
+
 // CullRect is the rectangle the canvas that recorded the picture was created
 // with: the picture has no content that matters outside it.
 //

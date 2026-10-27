@@ -33,9 +33,20 @@ const maxCoord = 1e8
 type Mask struct {
 	// Rect is the area of the surface the mask covers.
 	Rect image.Rectangle
-	// Cov holds the coverage of each pixel of Rect, row by row from the top.
+	// Cov holds the coverage of each pixel of Rect, row by row from the top. The
+	// renderer's own masks of a fill that covers its rectangle fully have none (At and
+	// Sum are not used on them).
 	Cov []float32
+
+	// rows, when it is not nil, has one entry for each row of Rect: the part of the row,
+	// as offsets from Rect.Min.X, where the coverage may be other than 0 (lo inclusive,
+	// hi exclusive). It is a hint for the renderer that Rasterize makes; a mask built
+	// any other way, or changed after Rasterize made it, has none.
+	rows []rowExtent
 }
+
+// rowExtent is the part of a row of a mask that has coverage: from lo up to hi.
+type rowExtent struct{ lo, hi int32 }
 
 // At returns the coverage of the pixel at x, y, or 0 outside the mask.
 func (m *Mask) At(x, y int) float32 {
@@ -66,6 +77,16 @@ func (m *Mask) Sum() float64 {
 //
 // Flutter: no counterpart (Skia's SkScan_AntiPath)
 func Rasterize(contours [][]ui.Offset, rule FillRule, clip image.Rectangle) *Mask {
+	return rasterize(contours, rule, clip, nil)
+}
+
+// scratch is the memory that rasterize uses between shapes, so that a renderer does not
+// allocate and clear a buffer the size of the shape for each one. Its buffer is all zeros
+// between calls. A scratch is used by one goroutine at a time.
+type scratch struct{ buf []float64 }
+
+// rasterize is Rasterize with the buffer of sc, which can be nil.
+func rasterize(contours [][]ui.Offset, rule FillRule, clip image.Rectangle, sc *scratch) *Mask {
 	bounds, ok := contourBounds(contours)
 	if !ok {
 		return nil
@@ -74,7 +95,7 @@ func Rasterize(contours [][]ui.Offset, rule FillRule, clip image.Rectangle) *Mas
 	if r.Empty() {
 		return nil
 	}
-	ac := newAccum(r.Dx(), r.Dy())
+	ac := newAccum(r.Dx(), r.Dy(), sc)
 	ox, oy := float64(r.Min.X), float64(r.Min.Y)
 	for _, c := range contours {
 		if len(c) < 2 || !finite(c) {
@@ -128,16 +149,41 @@ func clampPoint(p ui.Offset) ui.Offset {
 
 // accum is the accumulation buffer: for every pixel, the change of the signed
 // area to the left of the edges that cross it, summed along the row it becomes
-// the signed area covered.
+// the signed area covered. It remembers, for each row, the cells that were written, so
+// that the rows with nothing in them cost nothing and the buffer can be cleared again
+// cell by cell.
 type accum struct {
 	w, h   int
 	stride int
 	a      []float64
+	// ext is the part of each row, from lo up to hi (exclusive), that was written.
+	ext []rowExtent
+	sc  *scratch
 }
 
-func newAccum(w, h int) *accum {
+func newAccum(w, h int, sc *scratch) *accum {
 	s := w + 2
-	return &accum{w: w, h: h, stride: s, a: make([]float64, s*h)}
+	n := s * h
+	ac := &accum{w: w, h: h, stride: s, sc: sc, ext: make([]rowExtent, h)}
+	if sc != nil && cap(sc.buf) >= n {
+		ac.a = sc.buf[:n]
+	} else {
+		ac.a = make([]float64, n)
+		if sc != nil {
+			sc.buf = ac.a
+		}
+	}
+	for i := range ac.ext {
+		ac.ext[i] = rowExtent{lo: int32(s)}
+	}
+	return ac
+}
+
+// touch records that the cells from lo up to hi of the row were written.
+func (ac *accum) touch(y, lo, hi int) {
+	e := &ac.ext[y]
+	e.lo = min(e.lo, int32(lo))
+	e.hi = max(e.hi, int32(hi))
 }
 
 // line adds the edge from (x0, y0) to (x1, y1).
@@ -210,6 +256,7 @@ func (ac *accum) row(y int, xa, xb, d float64) {
 		switch mid := (pa + pb) / 2; {
 		case mid <= 0:
 			ac.a[y*ac.stride] += dp
+			ac.touch(y, 0, 1)
 		case mid >= w:
 		default:
 			ac.inside(y, max(0, min(w, pa)), max(0, min(w, pb)), dp)
@@ -232,6 +279,7 @@ func (ac *accum) inside(y int, x, xn, d float64) {
 		xmf := 0.5*(x+xn) - x0floor
 		line[x0i] += d - d*xmf
 		line[x0i+1] += d * xmf
+		ac.touch(y, x0i, x0i+2)
 		return
 	}
 	s := 1 / (x1 - x0)
@@ -252,29 +300,67 @@ func (ac *accum) inside(y int, x, xn, d float64) {
 		line[x1i-1] += d * (1 - a2 - am)
 	}
 	line[x1i] += d * am
+	ac.touch(y, x0i, x1i+1)
 }
 
-// mask sums the rows and applies the fill rule.
+// mask sums the rows and applies the fill rule. It clears the buffer again.
 func (ac *accum) mask(r image.Rectangle, rule FillRule) *Mask {
 	cov := make([]float32, ac.w*ac.h)
+	rows := make([]rowExtent, ac.h)
 	any := false
 	for y := 0; y < ac.h; y++ {
-		line := ac.a[y*ac.stride : y*ac.stride+ac.w]
+		e := ac.ext[y]
+		if e.hi <= e.lo {
+			continue
+		}
+		base := y * ac.stride
+		line := ac.a[base : base+ac.stride]
+		out := cov[y*ac.w : (y+1)*ac.w]
+		lo, hi := int(e.lo), min(int(e.hi), ac.w)
 		acc := 0.0
-		for x, v := range line {
-			acc += v
-			c := fold(acc, rule)
-			if c < 1.0/1024 {
-				continue
+		first, last := -1, -1
+		var prev float32
+		for x := lo; x < hi; x++ {
+			v := line[x]
+			if v != 0 {
+				acc += v
+				c := fold(acc, rule)
+				prev = 0
+				if c >= 1.0/1024 {
+					prev = float32(c)
+				}
 			}
-			cov[y*ac.w+x] = float32(c)
+			if prev != 0 {
+				out[x] = prev
+				if first < 0 {
+					first = x
+				}
+				last = x + 1
+			}
+		}
+		// Past the last cell that was written, the area stays what it is.
+		if hi < ac.w {
+			if c := fold(acc, rule); c >= 1.0/1024 {
+				f := float32(c)
+				for x := hi; x < ac.w; x++ {
+					out[x] = f
+				}
+				if first < 0 {
+					first = hi
+				}
+				last = ac.w
+			}
+		}
+		if first >= 0 {
+			rows[y] = rowExtent{lo: int32(first), hi: int32(last)}
 			any = true
 		}
+		clear(line[e.lo:min(int(e.hi), ac.stride)])
 	}
 	if !any {
 		return nil
 	}
-	return &Mask{Rect: r, Cov: cov}
+	return &Mask{Rect: r, Cov: cov, rows: rows}
 }
 
 // fold turns an accumulated signed area into coverage.

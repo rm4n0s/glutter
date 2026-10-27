@@ -130,7 +130,7 @@ func TestHugeTextIsBounded(t *testing.T) {
 	if len(tb.items) == 0 || len(tb.items) > maxTextRunes {
 		t.Errorf("%d clusters, want between 1 and %d", len(tb.items), maxTextRunes)
 	}
-	if time.Since(start) > 20*time.Second {
+	if !raceEnabled && time.Since(start) > 20*time.Second {
 		t.Errorf("took %v", time.Since(start))
 	}
 	t.Logf("%d characters laid out in %v", len(tb.items), time.Since(start))

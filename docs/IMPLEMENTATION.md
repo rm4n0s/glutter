@@ -2688,3 +2688,82 @@ A golden that differs from its reference beyond the tolerance is explained in th
 3. Merge into `main`, tag `step-29.5` and `v1.9.0`, and publish milestone M29 (rule 12): `git push --follow-tags origin main`, which takes steps 29.2 to 29.5 and their tags to GitHub.
 **Proof:** none.
 **Manual checks:** none.
+
+### 29.6 A public software rasterizer that draws on any goroutine (Emetos, 1.9.1)
+**Goal:** an app can turn a scene into pixels without `gluttertest`: package `offscreen` has a public software `ui.Rasterizer`, a `Surface` that redraws only what changed since its last frame, and a `Detacher` that makes a copy of a scene that any goroutine can draw. Full frames of the software renderer get faster.
+**Why:** Emetos found it (issues file, "No public way to draw a view off screen and to read its pixels"). Its Remote Work view needs the pixels of a second view of a workspace, drawn when it changes and handed to a goroutine that sends them. Today it uses a `gluttertest.Tester` as its rasterizer, which puts `gluttertest` and the `testing` package in the editor binary. It draws on the UI thread, where a 1280x800 frame takes about 85 ms, so its caret does not blink. Drawing on another goroutine races with the next frame's layout (`go test -race`):
+- a paragraph draws by asking the text engine that laid it out (`ui.ParagraphPainter`, through `textdraw.Expand`), whose caches have no lock;
+- the paragraph object itself is laid out again by the next frame (`paragraph.Layout`).
+
+The manager measured the software renderer on 2026-10-27: a 1280x800 `Scaffold` with no text takes about 50 ms, and one full of text about 45 ms. The time goes to compositing pixels one at a time (`composite`, `mix`, `store`), not to the glyphs. The owner chose (2026-10-27): 1.9.1, and the offscreen view on a binding of its own (step 29.7). The package and its names are SPEC D28.
+**Read:** SPEC D28, §9.1 ("Damage"), §9.2, §9.9 (new, written with this step), §13, §12.10; `internal/gpu/soft/soft.go` (`Render`, `ImageRasterizer`, `composite`), `internal/gpu/damage.go` (`DamageTracker`), `internal/gpu/textdraw/textdraw.go`, `internal/text/layout/paint.go` and `lines.go`, `ui/picture.go` (`Rasterizer`), `ui/display_list.go`, `ui/scene.go`.
+**Port from:** none (Flutter has no public software rasterizer; a deviation, recorded in §12.10).
+**Files:** the new package `offscreen` (`rasterizer.go`, `surface.go`, `detach.go` and tests), `internal/gpu/soft` (fast paths, a region to draw), `ui` (what the detacher needs: the way to make a picture from operations, a paragraph that replays a recorded drawing), SPEC §9.2, §9.9 and §12.10.
+**Tasks:**
+1. `offscreen.NewRasterizer() *Rasterizer`, a `ui.Rasterizer` that draws with `internal/gpu/soft`. It keeps nothing after `RasterizeScene` returns, and two goroutines may use one at once. Apps use it in `ui.ToImageOpts{Rasterizer: ...}` (for `Scene.ToImage`, `Picture.ToImage`, `RenderRepaintBoundary.ToImage`).
+2. `offscreen.NewDetacher() *Detacher` and `Detach(scene *ui.Scene) *ui.Scene`. Run it on the UI thread. It returns a scene that draws the same pixels and holds nothing that the framework changes later:
+   - each `OpDrawParagraph` is replaced by what its paragraph draws now (`PaintParagraph`'s `ParagraphDraw`s, recorded and replayed), so the copy never reaches the text engine or the paragraph. Glyph snapping still happens when the copy is drawn, under its transform;
+   - the pictures inside pictures are detached too;
+   - a picture without a paragraph is kept as it is;
+   - the copy of a picture is reused when the next scene has the same picture, so that the damage tracker still sees what did not change. The `Detacher` keeps only the copies of the last scene.
+
+   Find anything else a scene reaches that the UI thread changes later (images that are disposed, retained layers, paths) and make the copy safe from it; say in the report what you found. Everything the renderer reads while drawing must also be safe for two goroutines at once (no lazy cache inside a `ui.Path` or a `ui.Image`).
+3. `offscreen.NewSurface(width, height int) *Surface`, the pixels of one view across frames, used on one goroutine at a time:
+   - `Draw(scene *ui.Scene) (damage []image.Rectangle, err error)` uses a `gpu.DamageTracker`. It redraws only the damaged rectangles over the last frame: each is cleared, then the scene is drawn with that rectangle as its clip, so the pixels equal those of a whole redraw;
+   - the first frame, a new size (`Resize`) and a scene the tracker cannot bound redraw everything;
+   - a scene that changes nothing returns no damage and draws nothing. This deviates from the tracker's rule for windows (the same scene again means draw everything): the surface's pixels are never lost;
+   - `Image() *image.RGBA` is the last frame, valid until the next `Draw` or `Resize`.
+4. The software renderer:
+   - `soft` gets the way to draw a scene into a region of an existing image;
+   - profile a full 1280x800 frame (a `Scaffold` with an `AppBar`, and the same full of 14-pixel text) and add fast paths where the time goes: an opaque solid color with `srcOver` (or `src`) over full coverage written without blending, rows of a mask that are full or empty, no allocation for each draw where one can be avoided;
+   - pixels stay exactly the same: every golden test passes unchanged, and the display and parity tests that compare with `soft` keep their tolerances;
+   - targets, in `BenchmarkFrame*` benchmarks in `offscreen`: a 1280x800 frame with no text under 10 ms, the frame full of text under 25 ms, a frame where only a caret (2x18 pixels) changed under 2 ms through a `Surface`. Report the numbers before and after. If a target cannot be met, report where the time goes.
+5. `internal/gpu/soft.ImageRasterizer` and `gluttertest` keep working; `gluttertest.Tester.Screenshot` may use the new code.
+6. SPEC: the new §9.9 gets the decisions of the step; §9.2 says what `soft` serves now; a §12.10 row records the public rasterizer (no Flutter counterpart). The doc comments end with `// Flutter: no counterpart`.
+**Tests (table-driven):**
+- `RasterizeScene` gives the same pixels as `soft.Render` for the `gputest` proof scenes, and as `Tester.Screenshot` for a widget tree;
+- `Surface.Draw` after a change gives the same pixels as a whole redraw, for: text typed into a field, a moved caret, a scrolled list, a color change under an opacity layer, a backdrop blur (the tracker damages everything), a resize; and returns the damage rectangles it drew;
+- a scene that changes nothing: no damage;
+- the detached copy draws the same pixels as the scene. After the paragraphs of the source are laid out again with another width, and its images disposed, the copy still draws the old pixels;
+- a race test (`go test -race`): the UI goroutine builds frames of a widget tree whose text changes and is laid out again, while another goroutine draws the detached scenes through a `Surface`. The race detector reports nothing;
+- a picture that did not change keeps its detached copy (the damage of an unchanged frame is empty);
+- the benchmarks of task 4.
+**Proof:** none (no visible change); the numbers go in the report and `IMPLEMENTED.md`.
+**Manual checks:** none.
+
+### 29.7 An offscreen view, and release 1.9.1 (Emetos)
+**Goal:** `offscreen.NewView` runs a widget tree in a view of its own, on the app's UI thread. It draws its frames on a goroutine of its own and hands their pixels and damage to the app. Then 1.9.1 is released.
+**Why:** the rest of the same Emetos issue. Its Remote Work view makes a binding by hand today, over a `ui.PlatformHost` of its own, and paces its frames by the time the last picture took. The owner chose (2026-10-27) a view on a binding of its own, not a view in the app's binding. Glutter's binding composites every view in each frame, so a view in the app's binding would get a scene at the main window's rate, and none while that window is hidden. A binding of its own has its own frame rate, and its frames never wait for the main window.
+**Read:** SPEC D28, §9.9, §13, §12.10; the 29.6 entry of `docs/IMPLEMENTED.md`; `ui/platform_dispatcher.go` (`PlatformHost`, `SetTextEngine`, the views), `widgets/binding.go` (`NewWidgetsBinding`, `WidgetsBindingOpts`, `AttachRootWidget`, `Post`), `widgets/run_app.go` (how `RunApp` attaches the root and the `View`), `internal/renderhost` (the fake platform's host).
+**Port from:** none.
+**Files:** `offscreen/view.go` and its tests, SPEC §9.9, §12.10, §1 and §3, `README.md`, `docs/GUIDE.md`.
+**Tasks:**
+1. `offscreen.NewView(parent *widgets.WidgetsBinding, size ui.Size, root widgets.Widget, onFrame func(Frame), opts ...ViewOpts) (*View, error)`, called on the parent's UI thread:
+   - it makes a `ui.PlatformDispatcher` over a host of its own, with one view of `size` logical pixels times `ViewOpts.DevicePixelRatio` (default 1);
+   - the dispatcher shares the parent dispatcher's text engine, so fonts loaded by the app work;
+   - it makes a `widgets.WidgetsBinding` with the parent's `UIThread`, `Logger`, `ErrorReporter`, `ErrorWidgetBuilder` and `Debug`, and attaches `root` in a `widgets.View`, as `RunWidget` does;
+   - `Post` and `ScheduleFrame` go through the parent's `Post`.
+2. Frames:
+   - `ScheduleFrame` asks for one frame, at most `ViewOpts.MaxFrameRate` per second (default 30; a timer, then a post to the UI thread). Begin-frame times come from a monotonic clock;
+   - `RenderView` detaches the scene on the UI thread (29.6) and gives it to the view's raster goroutine. While that goroutine is drawing, a newer scene replaces the one waiting, so frames never queue up;
+   - the goroutine draws it into a `Surface` and calls `onFrame(Frame{Image, Damage, Number})` there. `Image` is valid only during the call (the next frame draws into it), so the callback copies what it sends. A frame with no damage calls nothing;
+   - a panic in `onFrame` is recovered and reported to the parent's error reporter; the view goes on.
+3. `View.Binding()`, so the app can send input through its dispatcher; `View.SetSize(size)`; `View.Close()`, which detaches the root, stops the timer and the goroutine, and waits for it. It is safe to call twice. After `Close` nothing is posted, and nothing is kept: no scene list grows with the frames.
+4. The tags of the errors (a nil parent or root, a size that is not positive, a view that is closed) with route tests.
+5. Documents and release:
+   - SPEC §9.9 (the view), §12.10, §1 (a 1.9.1 sentence) and §3;
+   - `README.md` "What is new in 1.9.1";
+   - `docs/GUIDE.md`: a short part on drawing a view off screen, in the section on windows or a new one (checked by the docs test).
+6. The standard checks. Then merge, tag `step-29.7` and `v1.9.1`, and publish: `git push --follow-tags origin main` (CLAUDE.md, "Tags": a fix step that closes a patch version is published with its tag).
+**Tests (table-driven):**
+- a view of a counter: a tap through its dispatcher makes a frame whose image shows the new count (compared with `Tester.Screenshot` of the same tree);
+- frames are paced: 100 `SetState` calls in a burst make at most a few frames;
+- a blinking caret in a focused `TextField` makes small damage rectangles, and the callback gets them;
+- a slow `onFrame`: the scenes in between are dropped, and the last one is drawn;
+- `Close` while a frame is being drawn waits for it, and nothing runs after;
+- 1000 frames: the memory the view holds does not grow (count the scenes kept, no timing);
+- a panic in `onFrame` is reported and the next frame is still drawn;
+- the error tags;
+- `go test -race` with the parent on its UI thread.
+**Proof:** a PNG of a frame of the view (the counter) in `docs/implemented-proof-images/29.7-offscreen.png`.
+**Manual checks:** none. Emetos removes its host, its rasterizer made of a `Tester`, and `headlessPaceFactor` (its own issue).

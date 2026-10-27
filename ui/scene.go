@@ -193,6 +193,120 @@ type Scene struct {
 // Flutter: no counterpart
 func (s *Scene) Root() *ContainerLayer { return s.root }
 
+// MapContent returns a scene with the layers of this one, in which each picture is
+// replaced by what picture returns for it and the shader of each shader mask layer by
+// what shader returns. A function that returns its argument leaves the layer as it is,
+// and a layer none of whose content, and none of whose children, changed is the same
+// layer in both scenes. The layers of the new scene do not name the layers of an earlier
+// frame they replace. Either function can be nil.
+//
+// Flutter: no counterpart
+func (s *Scene) MapContent(picture func(*Picture) *Picture, shader func(Shader) Shader) *Scene {
+	return &Scene{root: mapLayer(s.root, picture, shader).(*ContainerLayer)}
+}
+
+// mapLayer is MapContent for one layer and the ones under it.
+func mapLayer(l Layer, picture func(*Picture) *Picture, shader func(Shader) Shader) Layer {
+	var kids []Layer
+	for i, c := range l.Children() {
+		if n := mapLayer(c, picture, shader); n != c {
+			if kids == nil {
+				kids = append([]Layer(nil), l.Children()...)
+			}
+			kids[i] = n
+		}
+	}
+	// A layer whose children changed is copied with the new ones; one whose content changed
+	// is copied with it.
+	switch v := l.(type) {
+	case *ContainerLayer:
+		if kids != nil {
+			c := *v
+			c.children, c.old = kids, nil
+			return &c
+		}
+	case *TransformLayer:
+		if kids != nil {
+			c := *v
+			c.children, c.old = kids, nil
+			return &c
+		}
+	case *ClipRectLayer:
+		if kids != nil {
+			c := *v
+			c.children, c.old = kids, nil
+			return &c
+		}
+	case *ClipRRectLayer:
+		if kids != nil {
+			c := *v
+			c.children, c.old = kids, nil
+			return &c
+		}
+	case *ClipRSuperellipseLayer:
+		if kids != nil {
+			c := *v
+			c.children, c.old = kids, nil
+			return &c
+		}
+	case *ClipPathLayer:
+		if kids != nil {
+			c := *v
+			c.children, c.old = kids, nil
+			return &c
+		}
+	case *OpacityLayer:
+		if kids != nil {
+			c := *v
+			c.children, c.old = kids, nil
+			return &c
+		}
+	case *ColorFilterLayer:
+		if kids != nil {
+			c := *v
+			c.children, c.old = kids, nil
+			return &c
+		}
+	case *ImageFilterLayer:
+		if kids != nil {
+			c := *v
+			c.children, c.old = kids, nil
+			return &c
+		}
+	case *BackdropFilterLayer:
+		if kids != nil {
+			c := *v
+			c.children, c.old = kids, nil
+			return &c
+		}
+	case *ShaderMaskLayer:
+		sh := v.Shader
+		if shader != nil {
+			sh = shader(v.Shader)
+		}
+		if kids != nil || sh != v.Shader {
+			c := *v
+			c.Shader = sh
+			if kids != nil {
+				c.children = kids
+			}
+			c.old = nil
+			return &c
+		}
+	case *PictureLayer:
+		p := v.Picture
+		if picture != nil {
+			p = picture(v.Picture)
+		}
+		if p != v.Picture {
+			c := *v
+			c.Picture, c.old = p, nil
+			return &c
+		}
+	}
+	return l
+}
+
 // ToImage draws the scene into an image of the given size in pixels, with the
 // rasterizer in the options. It fails with ImageSizeInvalid for a size that is
 // not positive, and RasterizerMissing when no rasterizer is given.

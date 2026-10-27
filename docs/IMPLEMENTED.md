@@ -4339,3 +4339,49 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - The examples other than `svg` were not run again under Wine or on Android: 1.9 changes no platform code. `scripts/test-windows.sh` and `scripts/check-android.sh` pass.
   - Not in 1.9 (SPEC §3): scripts, animation, `foreignObject`, external resources, `textLength`, vertical text, six filter primitives, and SVG glyphs in fonts.
   - A follow-up: the binding's `IsIdle` could count pending SVG loads (29.4).
+
+## 29.6 A public software rasterizer that draws on any goroutine (Emetos, 1.9.1)
+
+- **Date:** 2026-10-27
+- **Branch:** feat/step-29.6
+- **Summary:** the first half of Emetos's issue "No public way to draw a view off screen and to read its pixels". The owner chose 1.9.1, and a view on a binding of its own (29.7); the design is SPEC D28 and §9.9.
+  - **The package `offscreen`** (plain Go, no OS tags), with three parts:
+    - `NewRasterizer`: a `ui.Rasterizer` over `soft.Render`, with no state;
+    - `NewDetacher`/`Detach`: a copy of a scene, made on the UI thread, that any goroutine can draw;
+    - `NewSurface`/`Draw`/`Image`/`Resize`: a surface that redraws only the damaged rectangles of `gpu.DamageTracker` over the last frame. A scene that changes nothing returns no damage.
+  - **What the detacher copies:**
+    - each paragraph becomes the `ParagraphDraw`s it emits now, replayed when the copy is drawn, so glyph snapping still follows the transform;
+    - each image gets a handle of its own, and an image shader is rebuilt over that handle.
+
+    These are the only things a scene holds that the UI thread changes later: the text engine's caches have no lock, the framework lays the same paragraph out again, and an image handle gets disposed. Paths, paints, gradients, filters and pixels are immutable. Pictures without a paragraph or an image are kept as they are. The copies of the last scene are reused, so a picture that did not change keeps its copy and the damage stays small.
+  - **`ui` additions:** `NewPictureFromOps`, and `Scene.MapContent`, which copies only the layers on the way to a changed picture or shader. Rebuilding the scene through a `SceneBuilder` would have given every clip path a new identity in each frame, and every frame would have been damaged whole.
+  - **The software renderer** (the pixels are the same; every golden and the display parity tests pass unchanged):
+    - `RenderInto(dst, scene, region)`;
+    - each mask row records the part that is not 0;
+    - the accumulation buffer is reused;
+    - a solid source-over color is blended by its own row loop, and an opaque one is written as it is where it covers fully;
+    - clips are narrowed row by row;
+    - shapes outside the clip are skipped.
+  - **Numbers** (1280x800, `go test ./offscreen -bench Frame`; targets 10, 25 and 2 ms):
+
+    | Frame | Before | After |
+    |---|---|---|
+    | `Scaffold` with an `AppBar`, no text | 51–54 ms | 6.0–6.3 ms |
+    | the same, full of 14-pixel text | 41–54 ms | 15.8–16.1 ms |
+    | only the caret changed, through a `Surface` after `Detach` | about 50 ms | 0.8 ms |
+- **Main files:** `offscreen/` (`rasterizer.go`, `detach.go`, `surface.go`, tests and benchmarks), `ui/scene.go`, `ui/picture.go`, `internal/gpu/soft/` (`soft.go`, `raster.go`, `clip.go`), `docs/SPEC.md` (D28, §9.2, §9.9, §12.10).
+- **Tests:**
+  - the rasterizer gives the same pixels as `soft.Render` for every proof, shape and effect scene of `gputest`, and as `Tester.Screenshot` for widget trees;
+  - every scene is drawn on 3 goroutines at once under `-race`;
+  - `Surface.Draw` gives the same pixels as a whole redraw, and changes nothing outside its damage, for typed text, a moved caret, a blinking caret, a scrolled list, a color under an opacity layer, a backdrop blur (damaged whole) and a resize. An unchanged scene gives no damage;
+  - the detached copy draws the same pixels, and still draws the old ones after the source's paragraphs are laid out again at another width and its images are disposed;
+  - the race test `TestDetachedScenesDrawWhileTheFrameworkGoesOn` passes. Drawing the scenes without detaching them makes the race detector report a race in `paragraph.ensureLaidOut`;
+  - `soft`: `solidRow` against `mix` byte for byte, a region against a whole drawing, the reuse of the buffer, the row extents;
+  - route tests for `SurfaceSizeInvalid`, `SurfaceSceneNil` and `SoftTargetInvalid`.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ (also `GOOS=windows`, amd64 and arm64, with and without `glutter_wine`) · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck ✅ · apicheck ✅ · uintptrcheck ✅ · `GOOS=js GOARCH=wasm` build, vet and `scripts/test-wasm.sh` ✅ · `scripts/check-android.sh` ✅ · `GOOS=windows` amd64 and arm64 build, vet ✅ · `scripts/test-windows.sh` ✅ (also with `./offscreen`, `./internal/gpu/soft` and `./ui`) · display tests of `internal/gpu/gles`, `vulkan` and `explicit` under sway ✅. The first `-race` run failed only `internal/svg`'s `TestHugeTextIsBounded` (24 s against a limit of 20 s): text layout is about 25 times slower under the race detector (0.66 s without it, 16 s with it, alone). The limit now applies only to builds without the race detector (`internal/svg/race_test.go`, `norace_test.go`).
+- **Proof:** none (no visible change).
+- **Manual checks:** none.
+- **Deviations and follow-ups:**
+  - Typing in a field, and moving the caret by a character, damage the whole surface in the tests. The `Scaffold`'s background picture is recorded again when the field repaints, and the tracker joins more than 8 rectangles into one. A blinking caret gives small damage. A whole frame now takes about 16 ms.
+  - `gluttertest.Tester.Screenshot` still calls `soft.Render`.
+  - The `glutter_wine` parity suite of `d3d12` was not run: the step changes `d3d12` only through the reference renderer, and `scripts/test-windows.sh` passes.

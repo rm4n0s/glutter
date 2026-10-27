@@ -35,16 +35,50 @@ func Render(scene *ui.Scene, width, height int) (*image.RGBA, error) {
 	if width <= 0 || height <= 0 || width > maxSurfaceSize || height > maxSurfaceSize {
 		return nil, errors.New(tagSoftSizeInvalid, "The surface size is not valid.", "width", width, "height", height)
 	}
-	r := &renderer{img: image.NewRGBA(image.Rect(0, 0, width, height)), mips: map[*ui.Image][]*mipLevel{}}
-	if err := r.layer(scene.Root(), &state{m: ui.NewMatrix4Identity(), clip: newClip(r.img.Rect)}); err != nil {
+	img := image.NewRGBA(image.Rect(0, 0, width, height))
+	if err := renderInto(img, scene, img.Rect); err != nil {
 		return nil, err
 	}
-	return r.img, nil
+	return img, nil
+}
+
+// RenderInto draws a scene over the pixels of dst, in premultiplied RGBA, but only inside
+// the region, which is cut to dst. The pixels of the region are changed as Render would
+// change them if they had been transparent before the drawing: the caller clears the
+// region first when it wants the scene alone. Everything the scene draws is clipped to the
+// region as if it were the whole surface, so the pixels in it are those of a drawing of
+// the whole scene. Only a scene with something that reads the pixels outside what it
+// draws (an image filter or a backdrop filter that reaches beyond the region) can differ:
+// a caller that redraws a part of a surface draws the whole of such a scene's reach.
+//
+// It keeps nothing between calls, and two calls on different images may run at the same
+// time.
+//
+// Flutter: no counterpart (flutter_test renders with Skia's software backend)
+func RenderInto(dst *image.RGBA, scene *ui.Scene, region image.Rectangle) error {
+	if scene == nil {
+		return errors.New(tagSoftSceneNil, "RenderInto needs a scene")
+	}
+	if dst == nil || dst.Rect.Empty() {
+		return errors.New(tagSoftTargetInvalid, "RenderInto needs an image that is not empty.")
+	}
+	return renderInto(dst, scene, region.Intersect(dst.Rect))
+}
+
+// renderInto draws the scene over the pixels of img inside the region, which img contains.
+func renderInto(img *image.RGBA, scene *ui.Scene, region image.Rectangle) error {
+	if region.Empty() {
+		return nil
+	}
+	r := &renderer{img: img, mips: map[*ui.Image][]*mipLevel{}, scratch: &scratch{}}
+	return r.layer(scene.Root(), &state{m: ui.NewMatrix4Identity(), clip: newClip(region)})
 }
 
 type renderer struct {
 	img  *image.RGBA
 	mips map[*ui.Image][]*mipLevel
+	// scratch is the memory shapes are rasterized in, for one shape after another.
+	scratch *scratch
 }
 
 // state is what Save and Restore keep: the transform and the clip.
@@ -277,6 +311,10 @@ type paintSetup struct {
 	src    source
 	mode   ui.BlendMode
 	dither bool
+	// isSolid says that src is the one color px everywhere (no shader, no color
+	// filter), which composite draws without calling src.
+	isSolid bool
+	px      rgba
 }
 
 // compositeParams is how an image or a layer is put over the surface: scaled by
@@ -341,6 +379,8 @@ func (r *renderer) setup(p *ui.Paint, toDevice affine) (paintSetup, error) {
 	if f := filtersOf(p); f != nil {
 		inner := ps.src
 		ps.src = func(x, y int) rgba { return f(inner(x, y)) }
+	} else if p.Shader() == nil {
+		ps.isSolid, ps.px = true, solidPx(p.Color())
 	}
 	return ps, nil
 }
@@ -400,12 +440,53 @@ func (r *renderer) drawPath(path *ui.Path, p *ui.Paint, st *state, forceStroke b
 	if err != nil {
 		return err
 	}
-	if st.clip.empty() {
+	if st.clip.empty() || r.outside(path, p, st, forceStroke) {
 		return nil
 	}
 	polys, rule := pathPolys(path, p, st.m, forceStroke)
 	r.fillPolys(polys, rule, p, ps, st)
 	return nil
+}
+
+// outside says that the path, drawn with the paint under the state, is surely off the
+// surface or outside the clip, so that nothing needs to be rasterized.
+func (r *renderer) outside(path *ui.Path, p *ui.Paint, st *state, forceStroke bool) bool {
+	if path.IsEmpty() {
+		return true
+	}
+	b := path.GetBounds()
+	if b == (ui.Rect{}) {
+		// The bounds of a path with a point that is not finite.
+		return false
+	}
+	grow := 0.0
+	if forceStroke || p.Style() == ui.PaintingStyleStroke {
+		width := p.StrokeWidth()
+		if width <= 0 {
+			scale := affineScale(st.m)
+			if !(scale > 0) {
+				return false
+			}
+			width = 1 / scale
+		}
+		grow = width / 2 * max(math.Sqrt2, p.StrokeMiterLimit())
+	}
+	box := ui.Rect{Left: b.Left - grow, Top: b.Top - grow, Right: b.Right + grow, Bottom: b.Bottom + grow}
+	if !box.IsFinite() {
+		return false
+	}
+	d := st.m.TransformRect(box)
+	if !d.IsFinite() {
+		return false
+	}
+	margin := 1.0
+	if mf := p.MaskFilter(); mf != nil {
+		// The shape may be off the surface and still blur onto it.
+		margin += 3 * mf.Sigma() * affineScale(st.m)
+	}
+	visible := st.clip.limit(r.img.Rect)
+	return d.Right+margin <= float64(visible.Min.X) || d.Left-margin >= float64(visible.Max.X) ||
+		d.Bottom+margin <= float64(visible.Min.Y) || d.Top-margin >= float64(visible.Max.Y)
 }
 
 // pathPolys returns the polygons, in device coordinates, and the fill rule of a
@@ -451,7 +532,7 @@ func (r *renderer) fillPolys(polys [][]ui.Offset, rule FillRule, p *ui.Paint, ps
 		margin := int(math.Ceil(3 * mf.Sigma() * affineScale(st.m)))
 		area = visible.Inset(-margin)
 	}
-	mask := Rasterize(polys, rule, area)
+	mask := rasterize(polys, rule, area, r.scratch)
 	if mask == nil {
 		return
 	}
@@ -473,9 +554,14 @@ type source func(x, y int) rgba
 // solid is the source of one color; the color is first rounded to 8 bits per
 // channel, as Skia does.
 func solid(c ui.Color) source {
-	a := float32(c.Alpha()) / 255
-	px := rgba{float32(c.Red()) / 255 * a, float32(c.Green()) / 255 * a, float32(c.Blue()) / 255 * a, a}
+	px := solidPx(c)
 	return func(int, int) rgba { return px }
+}
+
+// solidPx is the premultiplied color of c, from 0 to 1.
+func solidPx(c ui.Color) rgba {
+	a := float32(c.Alpha()) / 255
+	return rgba{float32(c.Red()) / 255 * a, float32(c.Green()) / 255 * a, float32(c.Blue()) / 255 * a, a}
 }
 
 // fillAll paints the whole clip.
@@ -484,15 +570,7 @@ func (r *renderer) fillAll(st *state, ps paintSetup) {
 	if b.Empty() {
 		return
 	}
-	r.composite(&Mask{Rect: b, Cov: ones(b.Dx() * b.Dy())}, st.clip, ps)
-}
-
-func ones(n int) []float32 {
-	s := make([]float32, n)
-	for i := range s {
-		s[i] = 1
-	}
-	return s
+	r.composite(&Mask{Rect: b}, st.clip, ps)
 }
 
 // bayer is the 8x8 ordered-dither matrix, with values from 0 to 63.
@@ -509,17 +587,29 @@ func ditherOffset(x, y int) float32 {
 	return (float32(bayer[y&7][x&7])+0.5)/64 - 0.5
 }
 
+// byteUnit is the value of a channel of 8 bits as a number from 0 to 1.
+var byteUnit = func() (t [256]float32) {
+	for i := range t {
+		t[i] = float32(i) / 255
+	}
+	return
+}()
+
 // load reads the premultiplied color of a pixel of the surface.
 func load(img *image.RGBA, x, y int) rgba {
 	i := img.PixOffset(x, y)
 	p := img.Pix[i : i+4 : i+4]
-	return rgba{float32(p[0]) / 255, float32(p[1]) / 255, float32(p[2]) / 255, float32(p[3]) / 255}
+	return rgba{byteUnit[p[0]], byteUnit[p[1]], byteUnit[p[2]], byteUnit[p[3]]}
 }
 
 // store writes a premultiplied color, with 0 to 255 channels, to the surface.
 func store(img *image.RGBA, x, y int, c [4]float32, dither float32) {
 	i := img.PixOffset(x, y)
-	px := img.Pix[i : i+4 : i+4]
+	storePix(img.Pix[i:i+4:i+4], c, dither)
+}
+
+// storePix writes a premultiplied color, with 0 to 255 channels, to four bytes.
+func storePix(px []byte, c [4]float32, dither float32) {
 	// Keep the color valid: no channel above the alpha.
 	a := min(max(c[3], 0), 255)
 	for k := 0; k < 3; k++ {
@@ -532,32 +622,117 @@ func store(img *image.RGBA, x, y int, c [4]float32, dither float32) {
 
 // composite paints the source over the surface where the mask and the clip cover
 // it, with the blend mode, in non-linear sRGB with premultiplied alpha. Where the
-// coverage is partial the result is mixed with what was there.
+// coverage is partial the result is mixed with what was there. A mask without
+// coverage covers its rectangle fully.
 func (r *renderer) composite(mask *Mask, cl clip, ps paintSetup) {
 	area := cl.limit(mask.Rect.Intersect(r.img.Rect))
-	over := ps.mode == ui.BlendModeSrcOver || ps.mode == ui.BlendModeUnspecified
+	mw := mask.Rect.Dx()
 	for y := area.Min.Y; y < area.Max.Y; y++ {
-		for x := area.Min.X; x < area.Max.X; x++ {
-			cov := mask.Cov[(y-mask.Rect.Min.Y)*mask.Rect.Dx()+(x-mask.Rect.Min.X)]
-			if cov == 0 {
+		x0, x1 := area.Min.X, area.Max.X
+		my := y - mask.Rect.Min.Y
+		if mask.rows != nil {
+			e := mask.rows[my]
+			x0, x1 = max(x0, mask.Rect.Min.X+int(e.lo)), min(x1, mask.Rect.Min.X+int(e.hi))
+			if x0 >= x1 {
 				continue
 			}
-			if cl.mask != nil {
-				cov *= cl.at(x, y)
-				if cov == 0 {
-					continue
-				}
-			}
-			s := ps.src(x, y)
-			if over && s[3] == 0 {
-				continue
-			}
-			var dither float32
-			if ps.dither {
-				dither = ditherOffset(x, y)
-			}
-			r.mix(x, y, s, ps.mode, cov, dither)
 		}
+		var cov []float32
+		if mask.Cov != nil {
+			cov = mask.Cov[my*mw+(x0-mask.Rect.Min.X) : my*mw+(x1-mask.Rect.Min.X)]
+		}
+		r.compositeRow(y, x0, x1-x0, cov, cl, ps)
+	}
+}
+
+// compositeRow paints n pixels of a row from x0, where cov is their coverage, nil for
+// full coverage.
+func (r *renderer) compositeRow(y, x0, n int, cov []float32, cl clip, ps paintSetup) {
+	var clipRow []float32
+	if cl.mask != nil {
+		clipRow = cl.mask.Cov[(y-cl.bounds.Min.Y)*cl.bounds.Dx()+(x0-cl.bounds.Min.X):]
+		clipRow = clipRow[:n]
+	}
+	over := ps.mode == ui.BlendModeSrcOver || ps.mode == ui.BlendModeUnspecified
+	if over && ps.isSolid && !ps.dither {
+		r.solidRow(y, x0, n, cov, clipRow, ps.px)
+		return
+	}
+	for i := 0; i < n; i++ {
+		c := float32(1)
+		if cov != nil {
+			c = cov[i]
+			if c == 0 {
+				continue
+			}
+		}
+		if clipRow != nil {
+			c *= clipRow[i]
+			if c == 0 {
+				continue
+			}
+		}
+		x := x0 + i
+		s := ps.src(x, y)
+		if over && s[3] == 0 {
+			continue
+		}
+		var dither float32
+		if ps.dither {
+			dither = ditherOffset(x, y)
+		}
+		r.mix(x, y, s, ps.mode, c, dither)
+	}
+}
+
+// solidRow is compositeRow for a color that is the same at every pixel, drawn with
+// source-over. It gives the same pixels as mix, with the work that does not depend on
+// the pixel done once: a color that covers an opaque pixel fully is written as it is.
+func (r *renderer) solidRow(y, x0, n int, cov, clipRow []float32, s rgba) {
+	sa := s[3]
+	if sa == 0 {
+		return
+	}
+	pix := r.img.Pix[r.img.PixOffset(x0, y):]
+	pix = pix[:4*n]
+	// The bytes of a pixel the color covers fully, when it is opaque: source-over then
+	// leaves nothing of what was there.
+	var opaque [4]byte
+	if sa == 1 {
+		opaque = [4]byte{quantize(s[0] * 255), quantize(s[1] * 255), quantize(s[2] * 255), 255}
+		if cov == nil && clipRow == nil {
+			copy(pix, opaque[:])
+			for filled := 4; filled < len(pix); filled *= 2 {
+				copy(pix[filled:], pix[:filled])
+			}
+			return
+		}
+	}
+	for i := 0; i < n; i++ {
+		c := float32(1)
+		if cov != nil {
+			c = cov[i]
+			if c == 0 {
+				continue
+			}
+		}
+		if clipRow != nil {
+			c *= clipRow[i]
+			if c == 0 {
+				continue
+			}
+		}
+		px := pix[4*i : 4*i+4 : 4*i+4]
+		if sa == 1 && c == 1 {
+			copy(px, opaque[:])
+			continue
+		}
+		inv := 1 - sa*c
+		out := [4]float32{
+			(s[0]*c + byteUnit[px[0]]*inv) * 255, (s[1]*c + byteUnit[px[1]]*inv) * 255,
+			(s[2]*c + byteUnit[px[2]]*inv) * 255, (s[3]*c + byteUnit[px[3]]*inv) * 255,
+		}
+		storePix(px, out, 0)
 	}
 }
 
@@ -611,6 +786,7 @@ func (ImageRasterizer) RasterizeScene(scene *ui.Scene, width, height int) (*ui.I
 
 // The tags of the errors that this file makes (rm4n0s/errors, R5).
 const (
-	tagSoftSceneNil    = "SoftSceneNil"
-	tagSoftSizeInvalid = "SoftSizeInvalid"
+	tagSoftSceneNil      = "SoftSceneNil"
+	tagSoftSizeInvalid   = "SoftSizeInvalid"
+	tagSoftTargetInvalid = "SoftTargetInvalid"
 )
