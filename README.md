@@ -163,6 +163,23 @@ title, the empty space around it and the gap before `Leading` move the window, m
 its menu on a right click; the `Leading` and `Actions` widgets get their own gestures, and a tap on a button in
 `Actions` arrives at once.
 
+**What is new in 1.9.** SVG images. The package `svg` has `flutter_svg`'s widgets: `NewSvgPictureAsset`, `NewSvgPictureString`, `NewSvgPictureMemory`, `NewSvgPictureFile` and `NewSvgPictureNetwork`. Glutter's own parser and painter, in plain Go, draw:
+- shapes, strokes and dashes;
+- gradients and patterns;
+- clip paths and masks;
+- text, laid out by Glutter's text engine;
+- markers and the common filters (blur, drop shadow, color matrix, compositing, blending, morphology).
+
+The same pixels come out on every platform and every renderer. `examples/svg` shows it, and [the guide](docs/GUIDE.md#13-svg-images) compares it with `flutter_svg`.
+
+```go
+func logo() m.Widget {
+	return svg.NewSvgPictureAsset("assets/logo.svg", svg.SvgPictureAssetOpts{
+		SvgPictureOpts: svg.SvgPictureOpts{Width: m.Some(48.0)},
+	})
+}
+```
+
 **What is new in 1.8.1 to 1.8.3.**
 - **1.8.1:** `ErrorBoundary`. When anything below it fails to build, it shows a fallback in place of its whole child,
   in the same frame. It is told about the error before the app's error reporter ([the guide](docs/GUIDE.md#12-a-widget-that-fails)).

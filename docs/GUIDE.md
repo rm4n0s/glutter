@@ -2,7 +2,7 @@
 
 Glutter has Flutter's framework API on its own engine, so what you know carries over: the
 widget tree, `BuildContext`, `setState`, `Theme.of`, `Navigator`, animation controllers,
-`CustomPaint`. This page shows twelve things side by side, in Dart and in Go. The rules behind
+`CustomPaint`. This page shows thirteen things side by side, in Dart and in Go. The rules behind
 them are in [SPEC §12](SPEC.md#12-api-conventions-flutter--go); this is the short version.
 
 **The rules in one paragraph.** A widget is made by `NewX(required..., opts ...XOpts)`. The
@@ -20,7 +20,7 @@ import m "github.com/rm4n0s/glutter/material"
 
 Each Go snippet below is checked by `go vet` in the test of this directory
 (`docs/docs_test.go`). The imports that they use, and that are left out for brevity, are
-`m` (`material`), `foundation`, `ui`, `painting`, `rendering`, `animation`, `context`,
+`m` (`material`), `foundation`, `ui`, `painting`, `rendering`, `animation`, `svg`, `context`,
 `strconv` and `time`.
 
 ## 1. A widget without state
@@ -644,6 +644,46 @@ disposed.
   boundary up.
 - **Inside `OnError`.** It runs inside the frame: don't call `SetState` on an ancestor there. Hand the work to the
   binding's `Post`.
+
+## 13. SVG images
+
+Flutter's framework draws no SVG: apps add the package `flutter_svg`.
+
+```dart
+SvgPicture.asset(
+  'assets/logo.svg',
+  width: 48,
+  semanticsLabel: 'Logo',
+  colorFilter: const ColorFilter.mode(Colors.teal, BlendMode.srcIn),
+)
+```
+
+Glutter has the same widget in its package `svg` (`github.com/rm4n0s/glutter/svg`), which `material` does not
+re-export:
+
+```go
+func logo() m.Widget {
+	return svg.NewSvgPictureAsset("assets/logo.svg", svg.SvgPictureAssetOpts{
+		SvgPictureOpts: svg.SvgPictureOpts{
+			Width:          m.Some(48.0),
+			SemanticsLabel: m.Some("Logo"),
+			ColorFilter:    m.NewColorFilterMode(m.Colors.Teal.Primary, m.BlendModeSrcIn),
+		},
+	})
+}
+
+func badge() m.Widget {
+	return svg.NewSvgPictureString(`<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="currentColor"/></svg>`,
+		svg.SvgPictureOpts{Width: m.Some(24.0), Theme: m.Some(svg.SvgTheme{CurrentColor: ui.NewColor(0xFFE53935)})})
+}
+```
+
+- **The constructors:** `.asset`, `.string`, `.memory`, `.file` and `.network` are `NewSvgPictureAsset`, `NewSvgPictureString`, `NewSvgPictureMemory`, `NewSvgPictureFile` and `NewSvgPictureNetwork`.
+- **Options:** the asset's `bundle` and `package` are in `SvgPictureAssetOpts`, and the network's `headers` in `SvgPictureNetworkOpts`.
+- **`currentColor`:** `SvgTheme` gives it, either per widget (`Theme`) or for a subtree (`NewDefaultSvgTheme`).
+- **Loading:** assets, files and URLs load on a goroutine. A document is parsed once and cached for the app (`CacheOf(bc)`, or your own `NewSvgCacheScope`).
+- **What is drawn:** shapes, gradients, patterns, clip paths, masks, text, markers and the common filters. What is not drawn is listed in [SPEC §26](SPEC.md#26-svg-images-19).
+- **Without a widget:** to draw an SVG in your own painter, `svg.Parse` gives a `Document`, whose `Picture()` is a `ui.Picture`.
 
 ## For Flutter web developers
 

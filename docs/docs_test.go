@@ -24,6 +24,7 @@ import (
 	m "github.com/rm4n0s/glutter/material"
 	"github.com/rm4n0s/glutter/painting"
 	"github.com/rm4n0s/glutter/rendering"
+	"github.com/rm4n0s/glutter/svg"
 	"github.com/rm4n0s/glutter/ui"
 )
 
@@ -35,6 +36,7 @@ var (
 	_ foundation.Key
 	_ painting.EdgeInsets
 	_ rendering.Box
+	_ = svg.Parse
 	_ ui.Color
 )
 

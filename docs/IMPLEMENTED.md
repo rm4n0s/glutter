@@ -4305,3 +4305,37 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - SPEC §12.10 has four new rows: the cache per binding in bytes, the recording as a `ui.Picture`, where the options live, and the error of an asset that is tagged again.
   - The binding's `IsIdle` does not wait for SVG loads, so the proof uses `GLUTTER_SCREENSHOT_AFTER`. A follow-up: a counter of pending work on the binding.
   - The widget parses with the default locale.
+
+## 29.5 Release 1.9
+
+- **Date:** 2026-10-27
+- **Branch:** feat/step-29.5-release-1.9
+- **Summary:** the release checklist of 1.9, milestone M29 (SVG images).
+  - **The documents:**
+    - the SPEC's version paragraph has a 1.9 sentence, and §3 a "Scope of 1.9" paragraph;
+    - `README.md` has "What is new in 1.9", with an SVG example;
+    - `docs/GUIDE.md` has a section "13. SVG images", with `flutter_svg` in Dart beside `svg` in Go. Its snippets are compiled by the docs test, which now imports `svg`.
+  - **The publish:** M29 is the first milestone published under the owner's rule of 2026-10-27. Steps 29.2 to 29.5 were merged and tagged locally, and go to GitHub in one push with `v1.9.0`. 29.1 had been pushed before the rule.
+- **Main files:** `docs/SPEC.md` (§1, §3), `README.md`, `docs/GUIDE.md`, `docs/docs_test.go`.
+- **Checks:**
+  - **The standard checks** on this branch: gofmt ✅ · go vet ✅ · golangci-lint ✅ (also `GOOS=windows`, amd64 and arm64, with and without `glutter_wine`) · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck ✅ · apicheck ✅ · uintptrcheck ✅ · `GOOS=js GOARCH=wasm` build, vet and `scripts/test-wasm.sh` ✅ · `scripts/check-android.sh` ✅ · `GOOS=windows` amd64 build and vet, arm64 build ✅ · `scripts/test-windows.sh` ✅
+  - **Display tests:**
+    - under sway (`scripts/headless-wayland.sh -- go test -race -tags glutter_display ./...`): 107 packages ✅. Only `internal/platform/linux/x11` fails there, because it needs an X server, as in 1.8;
+    - under `scripts/headless-x11.sh`: the X11 package, `internal/gpu/gles` and `internal/engine` ✅.
+  - **Browser tests** (`go test -tags glutter_browser ./...`): 108 packages ✅.
+  - **Wine:** `TestEveryExampleDrawsItsFirstFrameUnderWine/svg` ✅.
+  - **Android:** `TestEveryExampleDrawsItsFirstFrame/glutter-37/svg` ✅, on one emulator only, for memory.
+  - **The parse benchmark** (SPEC §26.4: under 1 ms and under 50 ms):
+
+    | Document | Time |
+    |---|---|
+    | an icon | 6.5 µs |
+    | a 787-byte document | 18.7 µs |
+    | a 500 KB document | 13.0 ms |
+  - Nothing is left running.
+- **Proof:** the proof of 29.4 (`docs/implemented-proof-images/29.4-svg.png`).
+- **Manual checks:** none.
+- **Deviations and follow-ups:**
+  - The examples other than `svg` were not run again under Wine or on Android: 1.9 changes no platform code. `scripts/test-windows.sh` and `scripts/check-android.sh` pass.
+  - Not in 1.9 (SPEC §3): scripts, animation, `foreignObject`, external resources, `textLength`, vertical text, six filter primitives, and SVG glyphs in fonts.
+  - A follow-up: the binding's `IsIdle` could count pending SVG loads (29.4).
