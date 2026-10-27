@@ -530,6 +530,8 @@ func (s *EditableTextState) InitState() {
 	s.verticalSelectionMover = newUpdateTextSelectionVerticallyAction(s)
 	s.actions = s.buildActions()
 	b.AddObserver(s)
+	// A node that has the focus before the field is made gives no focus change.
+	s.openInputConnectionIfMountedWithFocus()
 }
 
 // DidChangeAppLifecycleState remembers that the app resumed, so that the field
@@ -622,6 +624,8 @@ func (s *EditableTextState) DidUpdateWidget(old *EditableText) {
 		old.focusNode.RemoveListener(s.focusHandle)
 		s.focusHandle = w.focusNode.AddListener(s.handleFocusChanged)
 		s.UpdateKeepAlive()
+		// The new node may have the focus already; no focus change tells the field.
+		s.openInputConnectionIfMountedWithFocus()
 	}
 	if !s.shouldCreateInputConnection() {
 		s.closeInputConnectionIfNeeded()

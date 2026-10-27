@@ -4740,3 +4740,24 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Deviations and follow-ups:**
   - Dart has one microtask queue for the whole isolate; Glutter's is in the gesture binding, and only the arena uses it. The order the arena sees is Flutter's, so there is no §12.10 row.
   - Emetos can remove `fixGestureArena`.
+
+## 29.18 A field mounted with the focus opens its input connection (Emetos)
+
+- **Date:** 2026-10-27
+- **Branch:** feat/step-29.18-focused-field-connection
+- **Summary:** Emetos's issue "An `EditableText` mounted again with the focus on its node gets no input connection". `EditableTextState` opened its input connection only on a focus change or on a tap that changed the selection, as Flutter's does. A field made again under a node that kept the focus (a `Stack` removed, a key changed) showed the focus and the caret but lost every key.
+  - **The fix:** after its first frame, a field whose node has the primary focus and that has no connection does what a focus gain does. It opens the connection (not when read only), starts the caret, updates the selection overlay and puts the caret on screen. It keeps its selection instead of selecting all its text again.
+  - **A new node:** `DidUpdateWidget` does the same for a new node that already has the focus.
+  - **Left alone:** a field that already has a connection, has no focus or is gone.
+  - **The tap:** Glutter's tap path already matches Flutter's (`RenderEditable`'s tap recognizer, `SelectPosition(Tap)`, `handleSelectionChanged`, `RequestKeyboard`). A tap on a raw `EditableText` moves the caret and takes keys. The only tap that did nothing was one on the selection the field already had, in a field with no connection. Flutter does the same (its `TextField` asks for the keyboard in its gesture detector), and the mount fix removes the case.
+- **Main files:** `widgets/editable_text_input.go`, `widgets/editable_text_state.go`, `docs/SPEC.md` (§11.5, §12.10).
+- **Tests (table-driven), `widgets/editable_text_mount_focus_test.go`:**
+  - **Mounted again:** a field made again under a focused node takes typed text and keeps its selection. The cases are a stack removed or added and a key changed, with text, empty with a placeholder, and empty without one. Every case failed before the fix.
+  - **`DidUpdateWidget`:** a node that has the focus is given to the field.
+  - **Nothing opened:** a read-only field, a field that already has a connection, and a field without the focus.
+  - **Taps on a raw `EditableText`:** in the middle of the text, with and without the focus; on a field made again, in the middle and on the caret.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck, apicheck, uintptrcheck ✅ · wasm build, vet and tests ✅ · check-android ✅ · Windows builds, vet, lint and test-windows ✅ · display tests: none
+- **Proof:** none
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - **Deviation:** Flutter opens the connection only on a focus change or a tap (SPEC §12.10).

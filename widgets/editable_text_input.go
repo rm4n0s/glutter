@@ -127,7 +127,7 @@ func (s *EditableTextState) didChangeTextEditingValue() {
 		// handles visible on Android. Unregister as a listener to the text
 		// controller while making the change.
 		w.controller.RemoveListener(s.controllerHandle)
-		sel, _ := s.adjustedSelectionWhenFocused()
+		sel, _ := s.adjustedSelectionWhenFocused(false)
 		w.controller.SetSelection(sel)
 		s.controllerHandle = w.controller.AddListener(s.didChangeTextEditingValue)
 	}
@@ -139,7 +139,35 @@ func (s *EditableTextState) didChangeTextEditingValue() {
 }
 
 func (s *EditableTextState) handleFocusChanged() {
-	s.openOrCloseInputConnectionIfNeeded()
+	s.focusChanged(false)
+}
+
+// openInputConnectionIfMountedWithFocus runs what a focus gain runs, for a field
+// whose node already has the primary focus when the state is made, or when
+// DidUpdateWidget gives the field such a node: the field never saw the focus
+// arrive, so nothing else would open its input connection, start its caret or
+// put it on screen. It runs after layout (the input method needs the size and
+// the transform), and does nothing for a field that is gone, one that has no
+// focus any more, or one that already has a connection.
+//
+// Deviation: Flutter opens the input connection only when the focus changes or
+// when the user taps; a field made again under a node that kept the focus shows
+// the focus and the caret but takes no keys there. See SPEC §12.10.
+func (s *EditableTextState) openInputConnectionIfMountedWithFocus() {
+	s.binding().RunPostFrame(func(time.Duration) {
+		if !s.Mounted() || !s.Widget().focusNode.HasPrimaryFocus() || s.hasInputConnection() {
+			return
+		}
+		s.focusChanged(true)
+	})
+}
+
+// focusChanged does the work of a change of the focus. With mounted, the field
+// has the focus from the start: the connection is opened without the keyboard
+// token of a request for the focus, and the text is not selected whole again
+// (the selection the field has is kept unless it is invalid).
+func (s *EditableTextState) focusChanged(mounted bool) {
+	s.openOrCloseInputConnectionIfNeeded(mounted)
 	s.startOrStopCursorTimerIfNeeded()
 	s.updateOrDisposeSelectionOverlayIfNeeded()
 	if s.hasFocus() {
@@ -148,7 +176,7 @@ func (s *EditableTextState) handleFocusChanged() {
 		if !s.Widget().o.ReadOnly {
 			s.scheduleShowCaretOnScreen(true)
 		}
-		if sel, ok := s.adjustedSelectionWhenFocused(); ok {
+		if sel, ok := s.adjustedSelectionWhenFocused(mounted); ok {
 			s.handleSelectionChanged(sel, services.SelectionChangedCauseUnspecified)
 		}
 	} else {
@@ -162,10 +190,10 @@ func (s *EditableTextState) handleFocusChanged() {
 // end of the text when there is no selection.
 //
 // Flutter: widgets/editable_text.dart EditableTextState._adjustedSelectionWhenFocused
-func (s *EditableTextState) adjustedSelectionWhenFocused() (services.TextSelection, bool) {
+func (s *EditableTextState) adjustedSelectionWhenFocused(mounted bool) (services.TextSelection, bool) {
 	w := s.Widget()
 	v := s.value()
-	shouldSelectAll := w.selectAllOnFocus && w.SelectionEnabled() && !s.isMultiline() && !s.nextFocusChangeIntern && !s.justResumed
+	shouldSelectAll := !mounted && w.selectAllOnFocus && w.SelectionEnabled() && !s.isMultiline() && !s.nextFocusChangeIntern && !s.justResumed
 	s.justResumed = false
 	switch {
 	case shouldSelectAll:
@@ -528,8 +556,8 @@ func (s *EditableTextState) closeInputConnectionIfNeeded() {
 	}
 }
 
-func (s *EditableTextState) openOrCloseInputConnectionIfNeeded() {
-	if s.hasFocus() && s.Widget().focusNode.ConsumeKeyboardToken() {
+func (s *EditableTextState) openOrCloseInputConnectionIfNeeded(mounted bool) {
+	if s.hasFocus() && (s.Widget().focusNode.ConsumeKeyboardToken() || mounted) {
 		s.openInputConnection()
 	} else if !s.hasFocus() {
 		s.closeInputConnectionIfNeeded()
