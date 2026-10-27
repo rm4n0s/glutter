@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="100" height="100" viewBox="0 0 100 100">
+  <rect width="100" height="100" fill="#fff"/>
+  <polygon points="15,15 50,10 40,45" fill="#eef" stroke="#999" stroke-width="1"/>
+  <path d="M 55 55 L 90 55 L 90 90 L 55 90 Z" fill="#efe" stroke="#999" stroke-width="1"/>
+  <polyline points="10,60 30,95 45,60" fill="none" stroke="#999" stroke-width="1"/>
+  <g transform="translate(15 15) rotate(-68.967837)"><path d="M -4 0 L 4 0 M 0 -4 L 0 4" stroke="#c33" stroke-width="1.5" fill="none"/></g>
+  <g transform="translate(50 10) rotate(48.907647)"><path d="M -4 0 L 4 0 M 0 -4 L 0 4" stroke="#c33" stroke-width="1.5" fill="none"/></g>
+  <g transform="translate(40 45) rotate(168.069912)"><path d="M -4 0 L 4 0 M 0 -4 L 0 4" stroke="#c33" stroke-width="1.5" fill="none"/></g>
+  <g transform="translate(15 15) rotate(-68.967837)"><path d="M -4 0 L 4 0 M 0 -4 L 0 4" stroke="#c33" stroke-width="1.5" fill="none"/></g>
+  <g transform="translate(55 55) rotate(-45.000000)"><path d="M -4 0 L 4 0 M 0 -4 L 0 4" stroke="#c33" stroke-width="1.5" fill="none"/></g>
+  <g transform="translate(90 55) rotate(45.000000)"><path d="M -4 0 L 4 0 M 0 -4 L 0 4" stroke="#c33" stroke-width="1.5" fill="none"/></g>
+  <g transform="translate(90 90) rotate(135.000000)"><path d="M -4 0 L 4 0 M 0 -4 L 0 4" stroke="#c33" stroke-width="1.5" fill="none"/></g>
+  <g transform="translate(55 90) rotate(225.000000)"><path d="M -4 0 L 4 0 M 0 -4 L 0 4" stroke="#c33" stroke-width="1.5" fill="none"/></g>
+  <g transform="translate(55 55) rotate(-45.000000)"><path d="M -4 0 L 4 0 M 0 -4 L 0 4" stroke="#c33" stroke-width="1.5" fill="none"/></g>
+  <g transform="translate(10 60) rotate(60.255119)"><path d="M -4 0 L 4 0 M 0 -4 L 0 4" stroke="#c33" stroke-width="1.5" fill="none"/></g>
+  <g transform="translate(30 95) rotate(-3.273145)"><path d="M -4 0 L 4 0 M 0 -4 L 0 4" stroke="#c33" stroke-width="1.5" fill="none"/></g>
+  <g transform="translate(45 60) rotate(-66.801409)"><path d="M -4 0 L 4 0 M 0 -4 L 0 4" stroke="#c33" stroke-width="1.5" fill="none"/></g>
+</svg>

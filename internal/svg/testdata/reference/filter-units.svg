@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="100" height="100" viewBox="0 0 100 100">
+  <defs>
+    <filter id="u" filterUnits="userSpaceOnUse" x="5.3" y="5.3" width="50" height="40"><feGaussianBlur stdDeviation="4"/></filter>
+    <filter id="p" primitiveUnits="objectBoundingBox" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="0.1 0.02"/></filter>
+    <filter id="r" x="10%" y="10%" width="80%" height="80%"><feGaussianBlur stdDeviation="2"/></filter>
+  </defs>
+  <rect width="100" height="100" fill="#fff"/>
+  <rect x="10.3" y="10.3" width="60" height="30" fill="#c33" filter="url(#u)"/>
+  <rect x="55.3" y="48.3" width="35" height="40" fill="#33c" filter="url(#p)"/>
+  <rect x="8.3" y="55.3" width="35" height="35" fill="#393" filter="url(#r)"/>
+</svg>

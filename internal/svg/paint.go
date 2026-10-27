@@ -27,12 +27,35 @@ func (d *Document) Picture() *ui.Picture { return d.PictureAt(1) }
 //
 // SVG 1.1: pservers.html#Patterns; SVG 2: coords.html#VectorEffectProperty
 func (d *Document) PictureAt(scale float64) *ui.Picture {
+	return d.PictureWith(PictureOpts{Scale: scale})
+}
+
+// PictureOpts are the arguments of PictureWith.
+//
+// Flutter: no counterpart
+type PictureOpts struct {
+	// Scale is the number of device pixels to a unit of the document, as in PictureAt (1 if it is not positive).
+	Scale float64
+	// Text is the text engine that lays out the text of the document, with the fonts of the app (the dispatcher's
+	// TextEngine). With nil the document lays its text out with the fonts that Glutter bundles (Roboto), so that
+	// text works with no running app.
+	Text ui.ParagraphFactory
+}
+
+// PictureWith is PictureAt with the text engine of the app: the glyphs of the text are laid out by it, and recorded
+// into the picture as outlines, so that replaying the picture needs no fonts.
+//
+// SVG 1.1: render.html
+func (d *Document) PictureWith(opts PictureOpts) *ui.Picture {
+	scale := opts.Scale
 	if !(scale > 0) || math.IsInf(scale, 0) {
 		scale = 1
 	}
 	rec := ui.NewPictureRecorder()
 	c := ui.NewCanvas(rec)
 	p := newPainter(c, scale)
+	p.text = opts.Text
+	p.doc = d
 	if d != nil && d.Root != nil {
 		p.drawDocument(d)
 	}
@@ -55,10 +78,31 @@ type painter struct {
 	depth int
 	// tiles keeps the tile images of the patterns that were made, by pattern and size.
 	tiles map[tileKey]*ui.Image
+	// doc is the document being drawn, and text the text engine of the app (nil: the bundled fonts).
+	doc  *Document
+	text ui.ParagraphFactory
+	// texts keeps the layout of each text node that was laid out, so that its bounds and its drawing agree.
+	texts map[*Node]*textBlock
+	// active holds the masks, filters and markers being drawn: one that refers to itself is not drawn again.
+	active map[any]bool
+	// effectDepth is how many filters are being drawn inside each other.
+	effectDepth int
 }
 
 func newPainter(c *ui.Canvas, scale float64) *painter {
-	return &painter{c: c, scale: scale, ras: soft.ImageRasterizer{}, ctm: Identity, tiles: map[tileKey]*ui.Image{}}
+	return &painter{c: c, scale: scale, ras: soft.ImageRasterizer{}, ctm: Identity, tiles: map[tileKey]*ui.Image{},
+		texts: map[*Node]*textBlock{}, active: map[any]bool{}}
+}
+
+// child makes a painter that draws on another canvas with the same resources and the same settings: the pattern
+// tiles, the texts and the text engine are shared.
+func (p *painter) child(c *ui.Canvas) *painter {
+	q := newPainter(c, p.scale)
+	q.ras, q.depth, q.doc, q.text = p.ras, p.depth, p.doc, p.text
+	q.vw, q.vh = p.vw, p.vh
+	q.tiles, q.texts, q.active = p.tiles, p.texts, p.active
+	q.effectDepth = p.effectDepth
+	return q
 }
 
 func (p *painter) save() {
@@ -158,6 +202,8 @@ func innerTransform(vp *Viewport) Affine {
 // drawNode draws a node and its descendants. alpha is the opacity that the parents handed down (they fold their
 // opacity into the paints of a single shape instead of making a layer).
 //
+// The order is the one of the specification: the content, the filters, the clip path, the mask, then the opacity.
+//
 // SVG 1.1: render.html#RenderingOrder
 func (p *painter) drawNode(n *Node, alpha float64) {
 	a := alpha * n.Opacity
@@ -170,28 +216,48 @@ func (p *painter) drawNode(n *Node, alpha float64) {
 	if n.ClipPath != nil && !p.applyClip(n.ClipPath, n) {
 		return
 	}
-	// 29.3: n.Mask and n.Filters are applied here, to the layer that holds the content.
+	// A mask or a filter that cannot be drawn (a box with no area in objectBoundingBox units, a reference to itself)
+	// leaves the element out.
+	if !p.effectsApply(n) {
+		return
+	}
 	layer := false
 	if a < 1 && !foldable(n) {
 		p.c.SaveLayer(nil, alphaPaint(a))
 		layer, a = true, 1
 	}
+	masked := false
+	if n.Mask != nil {
+		masked = p.beginMask()
+	}
+	if len(n.Filters) > 0 {
+		p.drawFiltered(n, n.Filters, a)
+	} else {
+		p.drawContent(n, a)
+	}
+	if masked {
+		p.endMask(n.Mask, n)
+	}
+	if layer {
+		p.c.Restore()
+	}
+}
+
+// drawContent draws what a node is, with its transform, clip, mask, filters and opacity already dealt with.
+func (p *painter) drawContent(n *Node, a float64) {
 	switch n.Kind {
 	case NodeShape:
 		p.drawShape(n, a)
 	case NodeImage:
 		p.drawImage(n, a)
 	case NodeText:
-		// 29.3: text.
+		p.drawText(n, a)
 	case NodeSvg:
 		p.drawViewport(n, a)
 	default:
 		for _, c := range n.Children {
 			p.drawNode(c, a)
 		}
-	}
-	if layer {
-		p.c.Restore()
 	}
 }
 
@@ -232,6 +298,9 @@ func foldable(n *Node) bool {
 	switch n.Kind {
 	case NodeShape:
 		st := n.Style
+		if len(n.Vertices) > 0 {
+			return false
+		}
 		f := paintedWith(st.Fill)
 		s := paintedWith(st.Stroke) && st.StrokeWidth > 0
 		return (!f || !s) && !isPatternPaint(st.Fill) && !isPatternPaint(st.Stroke)
@@ -263,7 +332,7 @@ func alpha8(a float64) int {
 	return int(math.Round(math.Max(0, math.Min(1, a)) * 255))
 }
 
-// bounds accumulates the object bounding box of a node (the fill geometry: no strokes, no text).
+// bounds accumulates the object bounding box of a node (the fill geometry: no strokes; text by its cells).
 type bounds struct {
 	r  ui.Rect
 	ok bool
@@ -277,8 +346,22 @@ func (b *bounds) add(r ui.Rect) {
 	b.r, b.ok = r, true
 }
 
+// addTransformed adds the rectangle r seen through m (its corners' bounds).
+func (b *bounds) addTransformed(r ui.Rect, m Affine) {
+	var corners [4][2]float64
+	corners[0][0], corners[0][1] = m.Apply(r.Left, r.Top)
+	corners[1][0], corners[1][1] = m.Apply(r.Right, r.Top)
+	corners[2][0], corners[2][1] = m.Apply(r.Left, r.Bottom)
+	corners[3][0], corners[3][1] = m.Apply(r.Right, r.Bottom)
+	out := ui.NewRectFromLTRB(corners[0][0], corners[0][1], corners[0][0], corners[0][1])
+	for _, c := range corners[1:] {
+		out = out.ExpandToInclude(ui.NewRectFromLTRB(c[0], c[1], c[0], c[1]))
+	}
+	b.add(out)
+}
+
 // addNodeBounds adds the bounds of the content of a node, whose user space m maps to the target space.
-func addNodeBounds(n *Node, m Affine, b *bounds) {
+func (p *painter) addNodeBounds(n *Node, m Affine, b *bounds) {
 	switch n.Kind {
 	case NodeShape:
 		if n.Path == nil || n.Path.IsEmpty() {
@@ -295,25 +378,18 @@ func addNodeBounds(n *Node, m Affine, b *bounds) {
 		if w <= 0 || h <= 0 {
 			return
 		}
-		var corners [4][2]float64
-		corners[0][0], corners[0][1] = m.Apply(im.X, im.Y)
-		corners[1][0], corners[1][1] = m.Apply(im.X+w, im.Y)
-		corners[2][0], corners[2][1] = m.Apply(im.X, im.Y+h)
-		corners[3][0], corners[3][1] = m.Apply(im.X+w, im.Y+h)
-		r := ui.NewRectFromLTRB(corners[0][0], corners[0][1], corners[0][0], corners[0][1])
-		for _, c := range corners[1:] {
-			r = r.ExpandToInclude(ui.NewRectFromLTRB(c[0], c[1], c[0], c[1]))
-		}
-		b.add(r)
+		b.addTransformed(ui.NewRectFromLTWH(im.X, im.Y, w, h), m)
 	case NodeText:
-		// 29.3: the bounds of text.
+		if tb := p.textBlockOf(n); tb != nil && tb.cells.ok {
+			b.addTransformed(tb.cells.r, m)
+		}
 	default:
 		inner := m
 		if n.Kind == NodeSvg && n.Viewport != nil {
 			inner = m.Mul(innerTransform(n.Viewport))
 		}
 		for _, c := range n.Children {
-			addNodeBounds(c, inner.Mul(c.Transform), b)
+			p.addNodeBounds(c, inner.Mul(c.Transform), b)
 		}
 	}
 }
@@ -323,17 +399,17 @@ func addNodeBounds(n *Node, m Affine, b *bounds) {
 // height.
 //
 // SVG 1.1: coords.html#ObjectBoundingBox
-func objectBBox(n *Node) (ui.Rect, bool) {
+func (p *painter) objectBBox(n *Node) (ui.Rect, bool) {
 	var b bounds
 	inner := Identity
 	if n.Kind == NodeSvg && n.Viewport != nil {
 		inner = innerTransform(n.Viewport)
 	}
-	if n.Kind == NodeShape || n.Kind == NodeImage {
-		addNodeBounds(n, Identity, &b)
+	if n.Kind == NodeShape || n.Kind == NodeImage || n.Kind == NodeText {
+		p.addNodeBounds(n, Identity, &b)
 	} else {
 		for _, c := range n.Children {
-			addNodeBounds(c, inner.Mul(c.Transform), &b)
+			p.addNodeBounds(c, inner.Mul(c.Transform), &b)
 		}
 	}
 	return b.r, b.ok && b.r.Width() > 0 && b.r.Height() > 0

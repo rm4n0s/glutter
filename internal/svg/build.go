@@ -250,6 +250,17 @@ func (b *builder) buildShape(e *element, st *Style, np *nodeProps, ctx *buildCtx
 	n := b.newNode(NodeShape, e, st, np, ctx)
 	n.Path = path
 	n.Shape = kind
+	if !ctx.inClip && (st.MarkerStart != nil || st.MarkerMid != nil || st.MarkerEnd != nil) {
+		switch kind {
+		case ShapePath:
+			d, _ := e.attr("d")
+			vc := newVertexCollector()
+			appendPathData(ui.NewPath(), d, vc)
+			n.Vertices = vc.verts
+		case ShapeLine, ShapePolyline, ShapePolygon:
+			n.Vertices = verticesOfPath(path)
+		}
+	}
 	return n
 }
 

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="100" height="100" viewBox="0 0 100 100">
+  <defs>
+    <filter id="m"><feColorMatrix type="matrix" values="0 1 0 0 0  0 0 1 0 0  1 0 0 0 0  0 0 0 1 0"/></filter>
+    <filter id="s"><feColorMatrix type="saturate" values="0.2"/></filter>
+    <filter id="h"><feColorMatrix type="hueRotate" values="90"/></filter>
+    <filter id="l"><feColorMatrix type="luminanceToAlpha"/></filter>
+    <linearGradient id="g" x1="0" x2="1"><stop offset="0" stop-color="#e33"/><stop offset="0.5" stop-color="#3c3"/><stop offset="1" stop-color="#33e"/></linearGradient>
+  </defs>
+  <rect width="100" height="100" fill="#fff"/>
+  <rect x="5.3" y="5.3" width="40" height="40" fill="url(#g)" filter="url(#m)"/>
+  <rect x="55.3" y="5.3" width="40" height="40" fill="url(#g)" filter="url(#s)"/>
+  <rect x="5.3" y="55.3" width="40" height="40" fill="url(#g)" filter="url(#h)"/>
+  <rect x="55.3" y="55.3" width="40" height="40" fill="url(#g)" filter="url(#l)"/>
+</svg>

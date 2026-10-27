@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="100" height="100" viewBox="0 0 100 100">
+  <defs>
+    <filter id="b"><feGaussianBlur stdDeviation="2"/></filter>
+  </defs>
+  <rect width="100" height="100" fill="#fff"/>
+  <rect x="0" y="40" width="100" height="14" fill="#999"/>
+  <g opacity="0.5" filter="url(#b)"><rect x="15.3" y="15.3" width="40" height="40" fill="#c33"/><rect x="40.3" y="40.3" width="40" height="40" fill="#33c"/></g>
+</svg>

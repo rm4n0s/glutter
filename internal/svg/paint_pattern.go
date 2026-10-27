@@ -85,8 +85,9 @@ func (p *painter) makeTile(pt *Pattern, w, h float64, pw, ph int, content Affine
 	rec := ui.NewPictureRecorder()
 	c := ui.NewCanvas(rec)
 	q := newPainter(c, 1)
-	q.ras, q.depth = p.ras, p.depth
+	q.ras, q.depth, q.doc, q.text = p.ras, p.depth, p.doc, p.text
 	q.vw, q.vh = p.vw, p.vh
+	q.active = p.active
 	if pt.ViewBox != nil {
 		q.vw, q.vh = pt.ViewBox.Width, pt.ViewBox.Height
 	}

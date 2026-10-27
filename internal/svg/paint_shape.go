@@ -10,8 +10,24 @@ import (
 // path) draws the stroke solid.
 const maxDashes = 200_000
 
-// drawShape fills and strokes a shape in the order paint-order says. alpha is the opacity that the shape's parents
-// handed down.
+// lazyBBox is the object bounding box of what is being painted, measured when a paint server needs it.
+type lazyBBox struct {
+	measure func() (ui.Rect, bool)
+	r       ui.Rect
+	ok      bool
+	done    bool
+}
+
+func (l *lazyBBox) get() (ui.Rect, bool) {
+	if !l.done {
+		l.r, l.ok = l.measure()
+		l.done = true
+	}
+	return l.r, l.ok
+}
+
+// drawShape fills and strokes a shape in the order paint-order says, and draws its markers. alpha is the opacity that
+// the shape's parents handed down.
 //
 // SVG 1.1: painting.html#Introduction
 func (p *painter) drawShape(n *Node, alpha float64) {
@@ -19,6 +35,13 @@ func (p *painter) drawShape(n *Node, alpha float64) {
 	if !st.Visible || n.Path == nil || n.Path.IsEmpty() {
 		return
 	}
+	bb := &lazyBBox{measure: func() (ui.Rect, bool) { return p.objectBBox(n) }}
+	p.paintGeometry(n.Path, st, n.VectorEffect, bb, alpha, func() { p.drawMarkers(n, alpha) })
+}
+
+// paintGeometry fills and strokes a path with a style in the order of paint-order; markers is called at the place that
+// paint-order gives the markers (nil for text, which has none).
+func (p *painter) paintGeometry(path *ui.Path, st *Style, ve VectorEffect, bb *lazyBBox, alpha float64, markers func()) {
 	var done [3]bool
 	for _, layer := range st.PaintOrder {
 		if int(layer) >= len(done) || done[layer] {
@@ -27,38 +50,37 @@ func (p *painter) drawShape(n *Node, alpha float64) {
 		done[layer] = true
 		switch layer {
 		case PaintLayerFill:
-			p.fillShape(n, alpha)
+			p.fillPath(path, st, bb, alpha)
 		case PaintLayerStroke:
-			p.strokeShape(n, alpha)
+			p.strokePath(path, st, ve, bb, alpha)
 		case PaintLayerMarkers:
-			// 29.3: markers.
+			if markers != nil {
+				markers()
+			}
 		}
 	}
 }
 
-// fillShape fills the geometry of a shape with its fill.
-func (p *painter) fillShape(n *Node, alpha float64) {
-	st := n.Style
+// fillPath fills a path with the fill of a style.
+func (p *painter) fillPath(path *ui.Path, st *Style, bb *lazyBBox, alpha float64) {
 	if st.Fill.Kind == PaintKindNone {
 		return
 	}
 	paint := ui.NewPaint()
 	paint.SetStyle(ui.PaintingStyleFill)
 	paint.SetIsAntiAlias(st.ShapeRendering != ShapeRenderingCrispEdges)
-	if !p.setPaint(paint, st.Fill, st.FillOpacity*alpha, n, Identity) {
+	if !p.setPaint(paint, st.Fill, st.FillOpacity*alpha, bb, Identity) {
 		return
 	}
-	p.c.DrawPath(n.Path, paint)
+	p.c.DrawPath(path, paint)
 }
 
-// strokeShape strokes the geometry of a shape: dashed if stroke-dasharray says so, and with a width in device pixels
-// under vector-effect: non-scaling-stroke.
-func (p *painter) strokeShape(n *Node, alpha float64) {
-	st := n.Style
+// strokePath strokes a path with the stroke of a style: dashed if stroke-dasharray says so, and with a width in device
+// pixels under vector-effect: non-scaling-stroke.
+func (p *painter) strokePath(path *ui.Path, st *Style, ve VectorEffect, bb *lazyBBox, alpha float64) {
 	if st.Stroke.Kind == PaintKindNone || !(st.StrokeWidth > 0) {
 		return
 	}
-	path := n.Path
 	paint := ui.NewPaint()
 	paint.SetStyle(ui.PaintingStyleStroke)
 	paint.SetIsAntiAlias(st.ShapeRendering != ShapeRenderingCrispEdges)
@@ -69,7 +91,7 @@ func (p *painter) strokeShape(n *Node, alpha float64) {
 		paint.SetStrokeMiterLimit(st.MiterLimit)
 	}
 	toLocal := Identity
-	if n.VectorEffect == VectorEffectNonScalingStroke {
+	if ve == VectorEffectNonScalingStroke {
 		// The stroke is made in device pixels: the canvas goes to the device's space, the path with it, and the paint
 		// servers follow.
 		toDevice := Scale(p.scale, p.scale).Mul(p.ctm)
@@ -88,7 +110,7 @@ func (p *painter) strokeShape(n *Node, alpha float64) {
 	if len(st.DashArray) > 0 {
 		path = dashPath(path, st.DashArray, st.DashOffset)
 	}
-	if !p.setPaint(paint, st.Stroke, st.StrokeOpacity*alpha, n, toLocal) {
+	if !p.setPaint(paint, st.Stroke, st.StrokeOpacity*alpha, bb, toLocal) {
 		return
 	}
 	p.c.DrawPath(path, paint)
@@ -114,18 +136,18 @@ func strokeJoin(j LineJoin) ui.StrokeJoin {
 	return ui.StrokeJoinMiter
 }
 
-// setPaint sets the color or the shader of a paint from an SVG paint, with the opacity. n is the element that is
-// painted (its bounding box gives the units of the paint servers) and toLocal maps its user space to the canvas's.
+// setPaint sets the color or the shader of a paint from an SVG paint, with the opacity. bb is the bounding box of what
+// is painted (it gives the units of the paint servers) and toLocal maps its user space to the canvas's.
 // It reports whether anything is to be drawn.
 //
 // SVG 1.1: painting.html#SpecifyingPaint
-func (p *painter) setPaint(paint *ui.Paint, pt Paint, opacity float64, n *Node, toLocal Affine) bool {
+func (p *painter) setPaint(paint *ui.Paint, pt Paint, opacity float64, bb *lazyBBox, toLocal Affine) bool {
 	switch pt.Kind {
 	case PaintKindColor:
 		paint.SetColor(withOpacity(pt.Color, opacity))
 		return true
 	case PaintKindServer:
-		bbox, hasBBox := objectBBox(n)
+		bbox, hasBBox := bb.get()
 		switch s := pt.Server.(type) {
 		case *Gradient:
 			shader, color, ok := p.gradientShader(s, bbox, hasBBox, toLocal)

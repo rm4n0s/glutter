@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="100" height="100" viewBox="0 0 100 100">
+  <defs>
+    <filter id="over" primitiveUnits="objectBoundingBox" x="0" y="0" width="1" height="1"><feFlood flood-color="#33c" result="b" x="0.4" y="0.4" width="0.6" height="0.6"/><feComposite in="SourceGraphic" in2="b" operator="over"/></filter>
+    <filter id="in" primitiveUnits="objectBoundingBox" x="0" y="0" width="1" height="1"><feFlood flood-color="#33c" result="b" x="0.4" y="0.4" width="0.6" height="0.6"/><feComposite in="SourceGraphic" in2="b" operator="in"/></filter>
+    <filter id="out" primitiveUnits="objectBoundingBox" x="0" y="0" width="1" height="1"><feFlood flood-color="#33c" result="b" x="0.4" y="0.4" width="0.6" height="0.6"/><feComposite in="SourceGraphic" in2="b" operator="out"/></filter>
+    <filter id="atop" primitiveUnits="objectBoundingBox" x="0" y="0" width="1" height="1"><feFlood flood-color="#33c" result="b" x="0.4" y="0.4" width="0.6" height="0.6"/><feComposite in="SourceGraphic" in2="b" operator="atop"/></filter>
+    <filter id="xor" primitiveUnits="objectBoundingBox" x="0" y="0" width="1" height="1"><feFlood flood-color="#33c" result="b" x="0.4" y="0.4" width="0.6" height="0.6"/><feComposite in="SourceGraphic" in2="b" operator="xor"/></filter>
+  </defs>
+  <rect width="100" height="100" fill="#fff"/>
+  <rect x="3.3" y="3.3" width="28" height="28" fill="#c33" filter="url(#over)"/>
+  <rect x="36.3" y="3.3" width="28" height="28" fill="#c33" filter="url(#in)"/>
+  <rect x="69.3" y="3.3" width="28" height="28" fill="#c33" filter="url(#out)"/>
+  <rect x="3.3" y="45.3" width="28" height="28" fill="#c33" filter="url(#atop)"/>
+  <rect x="36.3" y="45.3" width="28" height="28" fill="#c33" filter="url(#xor)"/>
+</svg>

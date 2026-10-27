@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="100" height="100" viewBox="0 0 100 100">
+  <rect width="100" height="100" fill="#fff"/>
+  <text x="4" y="30" font-family="Roboto" font-size="12" fill="#333">plain <tspan fill="#c33" font-weight="bold">bold</tspan> <tspan font-size="8" fill="#33c">small</tspan> end</text>
+  <text x="6" y="60" font-family="Roboto" font-size="14" fill="#333">a<tspan font-style="italic">b<tspan fill="#393">c</tspan>d</tspan>e</text>
+  <text x="50" y="86" font-family="Roboto" font-size="11" text-anchor="middle" fill="#333">centered <tspan fill="#c33">with</tspan> tspan</text>
+</svg>

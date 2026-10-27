@@ -3,9 +3,11 @@ package svg
 import (
 	"math"
 	"strings"
+	"sync"
 
 	"github.com/rm4n0s/errors"
 
+	"github.com/rm4n0s/glutter/internal/text/layout"
 	"github.com/rm4n0s/glutter/ui"
 )
 
@@ -29,6 +31,11 @@ type Document struct {
 	// Title and Desc are the text of the first title and desc elements that are children of the root; the semantics
 	// label of the picture when the app gives none.
 	Title, Desc string
+
+	// engine is the text engine of PictureAt, made on first use (defaultEngine), and engineMu orders its users.
+	engineOnce sync.Once
+	engine     *layout.Engine
+	engineMu   sync.Mutex
 }
 
 // Parse reads an SVG document (XML, optionally gzip-compressed) and builds its tree. The errors are SvgParseFailed

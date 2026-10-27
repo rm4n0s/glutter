@@ -2837,7 +2837,7 @@ The names and defaults follow `flutter_svg` (2.x), the package Flutter apps use;
   - `.asset`, `.file` and `.network` load on a goroutine with a `context.Context` cancelled when the widget leaves the tree (§13). `.string` and `.memory` parse on first build.
   - The parsed picture is cached by its source and theme (`svg.Cache`, an LRU with a byte limit, as `flutter_svg`'s cache), so the same icon in a list is parsed once.
   - A document that cannot be loaded or parsed shows `ErrorBuilder`'s widget (by default nothing). The error goes to the app's error reporter with the tags of §26.5.
-- `svg.Parse(data []byte, opts ...ParseOpts) (*Document, error)` (`ParseOpts{Theme, Locale}`), `(*Document).Picture() *ui.Picture` (`PictureAt(1)`), `PictureAt(scale float64)` and `Size()`, for an app that draws an SVG with a `CustomPainter`. `scale` is device pixels per document unit: it sets the resolution of pattern tiles and the width of `non-scaling-stroke` strokes (decided in step 29.2). The widget passes the scale it draws at. A `Document` is made for one theme: `currentColor`, `em` and `ex` are resolved when it is parsed (decided in step 29.1), which is why the cache's key is the source and the theme.
+- `svg.Parse(data []byte, opts ...ParseOpts) (*Document, error)` (`ParseOpts{Theme, Locale}`), `(*Document).Picture() *ui.Picture` (`PictureAt(1)`), `PictureAt(scale float64)`, `PictureWith(PictureOpts{Scale, Text})` and `Size()`, for an app that draws an SVG with a `CustomPainter`. `scale` is device pixels per document unit: it sets the resolution of pattern tiles and the width of `non-scaling-stroke` strokes (decided in step 29.2). `Text` is the app's text engine (`ui.ParagraphFactory`); without it the text is set in the bundled Roboto. The widget passes the dispatcher's text engine and the device scale it draws at (decided in step 29.3). A `Document` is made for one theme: `currentColor`, `em` and `ex` are resolved when it is parsed (decided in step 29.1), which is why the cache's key is the source and the theme.
 
 ### 26.2 What is parsed (`internal/svg`)
 
@@ -2871,21 +2871,37 @@ The names and defaults follow `flutter_svg` (2.x), the package Flutter apps use;
 - **Groups:**
   - `opacity` on a group, through a save layer;
   - `clip-path` (`clipPathUnits`, `clip-rule`, clip paths of clip paths);
-  - `mask` (`maskUnits`, `maskContentUnits`, luminance by default and `mask-type: alpha`), through a save layer, a luminance-to-alpha color matrix and `BlendMode.dstIn`;
+  - `mask` (`maskUnits`, `maskContentUnits`, luminance by default and `mask-type: alpha`), through a save layer, a luminance-to-alpha color matrix (over black, since the matrix works on straight colors) and `BlendMode.dstIn`;
   - `display: none`, `visibility`, `overflow` of nested viewports.
+- **Markers** (on `path`, `line`, `polyline` and `polygon`):
+  - the vertices are those of the path commands, so an arc is one segment;
+  - `orient` (`auto`, `auto-start-reverse`, an angle), `markerUnits`, `viewBox`, `refX`/`refY`, and the clipping by `overflow`;
+  - the start and end markers of a closed subpath turn by the bisector, as SVG 2 says (librsvg differs);
+  - at most 10,000 markers per shape.
 - **Text:**
   - `text`, `tspan` (and `textPath` along a path, on a single line);
   - `x`, `y`, `dx`, `dy` (lists per character), `text-anchor`;
   - `font-family`, `font-size`, `font-weight`, `font-style`, `letter-spacing`, `word-spacing`, `text-decoration`;
   - fill and stroke.
 
-  Glyphs come from Glutter's text layout and the app's fonts (§10). Text is laid out as SVG does, run by run, not by paragraph wrapping.
+  Glyphs come from Glutter's text layout and the app's fonts (§10). How (decided in step 29.3):
+  - a `text` element is shaped as one line with no wrapping, so kerning and joining work across `tspan`s;
+  - the painter places each cluster: by the position lists, by the anchor of each chunk, and along the path of a `textPath`;
+  - glyphs are recorded as outlines (`ui.Path`), so fill, stroke, gradients, patterns, `paint-order` and clip paths work on text;
+  - a decoration is painted with the fill and stroke of the span it is in;
+  - a text element is cut at 50,000 characters.
+
+  Not supported: `textLength`, `lengthAdjust`, `direction`, `unicode-bidi`, vertical text and the baseline properties.
 - **Images:** `<image>` with a `data:` URL of PNG, JPEG, GIF or WebP (as `ui` decodes them), or of SVG, with `preserveAspectRatio`.
 - **Filters** (`filter`, `filterUnits`, `primitiveUnits`, the filter region):
   - `feGaussianBlur`, `feOffset`, `feFlood`, `feColorMatrix` (every type), `feComposite` (every operator, `arithmetic` included), `feMerge`, `feBlend`, `feMorphology`, `feDropShadow`, `feComponentTransfer` (table, discrete, linear, gamma);
   - the inputs `SourceGraphic`, `SourceAlpha` and named results.
 
-  They map onto `ui.ImageFilter`s and save layers where they can, and otherwise onto an image filter that runs on the CPU (`ui` gets what the filters need). An unknown primitive makes the filtered element draw as if it had no filter.
+  The whole graph runs on the CPU (decided in step 29.3): the element is rasterized by `soft` at the device scale into a buffer as large as the filter region, the primitives run on 8-bit premultiplied pixels, and the result is drawn as an image, so every renderer shows the same pixels.
+  - Limits: at most 4M pixels per buffer (a larger region is drawn at a lower resolution), 100 primitives per filter, and a work budget beyond which the filter is not drawn.
+  - The primitives that are not supported (`feImage`, `feTile`, `feTurbulence`, `feConvolveMatrix`, `feDisplacementMap`, the lighting primitives) make the element draw as if it had no filter.
+  - The inputs `BackgroundImage`, `FillPaint` and `StrokePaint` are transparent.
+  - An error (a negative deviation, a filter with no primitive, a region with no area) leaves the element out, as the specification says.
 - **Color:** `color-interpolation-filters` (linearRGB by default) is honored by the filters. Colors are sRGB.
 
 ### 26.4 Performance
@@ -2910,7 +2926,7 @@ Each has a route test (§14.4).
 - Unit tests of the parser, table-driven: every value syntax, the CSS cascade, `use` and its cycles.
 - Goldens of the painter on the software renderer, compared with reference renders:
   - the test documents are in `internal/svg/testdata/` (written for the steps: small, one feature each);
-  - the reference PNG of each was made once by `rsvg-convert` (librsvg) and is checked in, in `internal/svg/testdata/reference/`. A feature that librsvg draws wrongly gets its reference from an equivalent document in `reference/equivalent/`. Where librsvg and the specifications disagree, Glutter follows the specifications: degenerate gradients, `clip-path` on a `clipPath`, and `use` of an `svg` element are tested by unit tests (step 29.2);
+  - the reference PNG of each was made once by `rsvg-convert` (librsvg) and is checked in, in `internal/svg/testdata/reference/`. A feature that librsvg draws wrongly or lacks gets its reference from an equivalent document in `reference/equivalent/`: the lists of `x`, `y`, `dx`, `dy` and `rotate`, `word-spacing`, `textPath`, and the markers of closed subpaths. The references with text are made with only the bundled Roboto visible to `rsvg-convert`, through a temporary fontconfig file. Where librsvg and the specifications disagree, Glutter follows the specifications: degenerate gradients, `clip-path` on a `clipPath`, and `use` of an `svg` element are tested by unit tests (step 29.2);
   - each golden must match its reference within a tolerance (`gputest.Tolerance`, with a per-document allowance written in the test, for anti-aliasing and text);
   - `rsvg-convert` is used only to make the references (`go test ./internal/svg -run Reference -update-references`), never at test time.
 - Widget tests of `SvgPicture` (sizing, fit, loading, caching, errors) with `gluttertest`.

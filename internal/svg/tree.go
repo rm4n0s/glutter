@@ -61,6 +61,9 @@ type Node struct {
 	Path *ui.Path
 	// Shape says which element the NodeShape came from.
 	Shape ShapeKind
+	// Vertices are the vertices of a path, line, polyline or polygon, where its markers go; set only when the style has
+	// a marker property.
+	Vertices []Vertex
 	// Viewport is set for a NodeSvg.
 	Viewport *Viewport
 	// Text is set for a NodeText.

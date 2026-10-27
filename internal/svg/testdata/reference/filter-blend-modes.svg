@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="100" height="100" viewBox="0 0 100 100">
+  <defs>
+    <filter id="mul" x="0" y="0" width="1" height="1"><feFlood flood-color="#3c9" result="f"/><feBlend in="SourceGraphic" in2="f" mode="multiply"/></filter>
+    <filter id="scr" x="0" y="0" width="1" height="1"><feFlood flood-color="#3c9" result="f"/><feBlend in="SourceGraphic" in2="f" mode="screen"/></filter>
+    <filter id="dar" x="0" y="0" width="1" height="1"><feFlood flood-color="#3c9" result="f"/><feBlend in="SourceGraphic" in2="f" mode="darken"/></filter>
+    <filter id="lig" x="0" y="0" width="1" height="1"><feFlood flood-color="#3c9" result="f"/><feBlend in="SourceGraphic" in2="f" mode="lighten"/></filter>
+    <filter id="nor" x="0" y="0" width="1" height="1"><feFlood flood-color="#3c9" flood-opacity="0.5" result="f"/><feBlend in="SourceGraphic" in2="f" mode="normal"/></filter>
+    <filter id="dif" x="0" y="0" width="1" height="1"><feFlood flood-color="#3c9" result="f"/><feBlend in="SourceGraphic" in2="f" mode="difference"/></filter>
+    <linearGradient id="g" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#e33"/><stop offset="1" stop-color="#fc3"/></linearGradient>
+  </defs>
+  <rect width="100" height="100" fill="#fff"/>
+  <rect x="4.3" y="4.3" width="28" height="40" fill="url(#g)" filter="url(#mul)"/>
+  <rect x="36.3" y="4.3" width="28" height="40" fill="url(#g)" filter="url(#scr)"/>
+  <rect x="68.3" y="4.3" width="28" height="40" fill="url(#g)" filter="url(#dar)"/>
+  <rect x="4.3" y="54.3" width="28" height="40" fill="url(#g)" filter="url(#lig)"/>
+  <rect x="36.3" y="54.3" width="28" height="40" fill="url(#g)" filter="url(#nor)"/>
+  <rect x="68.3" y="54.3" width="28" height="40" fill="url(#g)" filter="url(#dif)"/>
+</svg>

@@ -15,12 +15,13 @@ import (
 // SVG 1.1: paths.html#PathDataBNF; SVG 2: paths.html#PathDataErrorHandling
 func ParsePathData(d string) (*ui.Path, bool) {
 	p := ui.NewPath()
-	ok := appendPathData(p, d)
+	ok := appendPathData(p, d, nil)
 	return p, ok
 }
 
-// appendPathData adds the path data to p; it reports whether the data was well formed to its end.
-func appendPathData(p *ui.Path, d string) bool {
+// appendPathData adds the path data to p; it reports whether the data was well formed to its end. When vc is not nil,
+// it gets each command, for the vertices of markers.
+func appendPathData(p *ui.Path, d string, vc *vertexCollector) bool {
 	var (
 		cx, cy   float64 // the current point
 		sx, sy   float64 // the start of the current subpath
@@ -65,6 +66,9 @@ func appendPathData(p *ui.Path, d string) bool {
 			if haveMove {
 				p.Close()
 				cx, cy = sx, sy
+				if vc != nil {
+					vc.closePath()
+				}
 			}
 			prev = 'Z'
 			lcx, lcy = cx, cy
@@ -103,23 +107,38 @@ func appendPathData(p *ui.Path, d string) bool {
 			cx, cy = num[0]+ox, num[1]+oy
 			sx, sy = cx, cy
 			p.MoveTo(cx, cy)
+			if vc != nil {
+				vc.move(cx, cy)
+			}
 			haveMove = true
 			lcx, lcy = cx, cy
 		case 'L':
 			cx, cy = num[0]+ox, num[1]+oy
 			p.LineTo(cx, cy)
+			if vc != nil {
+				vc.line(cx, cy)
+			}
 			lcx, lcy = cx, cy
 		case 'H':
 			cx = num[0] + ox
 			p.LineTo(cx, cy)
+			if vc != nil {
+				vc.line(cx, cy)
+			}
 			lcx, lcy = cx, cy
 		case 'V':
 			cy = num[0] + oy
 			p.LineTo(cx, cy)
+			if vc != nil {
+				vc.line(cx, cy)
+			}
 			lcx, lcy = cx, cy
 		case 'C':
 			x1, y1 := num[0]+ox, num[1]+oy
 			x2, y2 := num[2]+ox, num[3]+oy
+			if vc != nil {
+				vc.cubic(x1, y1, x2, y2, num[4]+ox, num[5]+oy)
+			}
 			cx, cy = num[4]+ox, num[5]+oy
 			p.CubicTo(x1, y1, x2, y2, cx, cy)
 			lcx, lcy = x2, y2
@@ -129,11 +148,17 @@ func appendPathData(p *ui.Path, d string) bool {
 				x1, y1 = 2*cx-lcx, 2*cy-lcy
 			}
 			x2, y2 := num[0]+ox, num[1]+oy
+			if vc != nil {
+				vc.cubic(x1, y1, x2, y2, num[2]+ox, num[3]+oy)
+			}
 			cx, cy = num[2]+ox, num[3]+oy
 			p.CubicTo(x1, y1, x2, y2, cx, cy)
 			lcx, lcy = x2, y2
 		case 'Q':
 			x1, y1 := num[0]+ox, num[1]+oy
+			if vc != nil {
+				vc.quad(x1, y1, num[2]+ox, num[3]+oy)
+			}
 			cx, cy = num[2]+ox, num[3]+oy
 			p.QuadraticBezierTo(x1, y1, cx, cy)
 			lcx, lcy = x1, y1
@@ -142,19 +167,27 @@ func appendPathData(p *ui.Path, d string) bool {
 			if prev == 'Q' || prev == 'T' {
 				x1, y1 = 2*cx-lcx, 2*cy-lcy
 			}
+			if vc != nil {
+				vc.quad(x1, y1, num[0]+ox, num[1]+oy)
+			}
 			cx, cy = num[0]+ox, num[1]+oy
 			p.QuadraticBezierTo(x1, y1, cx, cy)
 			lcx, lcy = x1, y1
 		case 'A':
 			rx, ry := math.Abs(num[0]), math.Abs(num[1])
-			cx, cy = num[5]+ox, num[6]+oy
+			ex, ey := num[5]+ox, num[6]+oy
 			sweep := num[4] == 1
-			p.ArcToPoint(ui.Offset{Dx: cx, Dy: cy}, ui.ArcToPointOpts{
+			arcOpts := ui.ArcToPointOpts{
 				Radius:    ui.Radius{X: rx, Y: ry},
 				Rotation:  num[2] * math.Pi / 180,
 				LargeArc:  num[3] == 1,
 				Clockwise: &sweep,
-			})
+			}
+			if vc != nil {
+				vc.arc(ex, ey, arcOpts)
+			}
+			cx, cy = ex, ey
+			p.ArcToPoint(ui.Offset{Dx: cx, Dy: cy}, arcOpts)
 			lcx, lcy = cx, cy
 		}
 		prev = up

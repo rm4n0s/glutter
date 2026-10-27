@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="100" height="100" viewBox="0 0 100 100">
+  <defs>
+    <filter id="o" x="-10%" y="-10%" width="200%" height="200%"><feOffset dx="10" dy="6"/></filter>
+    <filter id="p" primitiveUnits="objectBoundingBox" x="-50%" y="-50%" width="200%" height="200%"><feOffset dx="0.5" dy="0.25"/></filter>
+  </defs>
+  <rect width="100" height="100" fill="#fff"/>
+  <rect x="10.3" y="10.3" width="30" height="25" fill="#c33" filter="url(#o)"/>
+  <rect x="10.3" y="10.3" width="30" height="25" fill="none" stroke="#999" stroke-width="0.5"/>
+  <rect x="45.3" y="55.3" width="20" height="20" fill="#33c" filter="url(#p)"/>
+</svg>

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="100" height="100" viewBox="0 0 100 100">
+  <rect width="100" height="100" fill="#fff"/>
+  <path d="M 10 20 L 90 60" stroke="#ccc" stroke-width="0.5" fill="none"/>
+  <text transform="translate(10 20) rotate(26.56505117707799)" font-family="Roboto" font-size="12" fill="#036">Text on a line</text>
+</svg>

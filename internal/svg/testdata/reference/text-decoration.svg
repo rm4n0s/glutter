@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="100" height="100" viewBox="0 0 100 100">
+  <rect width="100" height="100" fill="#fff"/>
+  <text x="8" y="26" font-family="Roboto" font-size="16" text-decoration="underline" fill="#036">Underline</text>
+  <text x="8" y="56" font-family="Roboto" font-size="16" text-decoration="line-through" fill="#c33">Strike out</text>
+  <text x="8" y="86" font-family="Roboto" font-size="16" text-decoration="overline" fill="#393">Overline</text>
+</svg>

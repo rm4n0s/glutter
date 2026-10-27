@@ -4216,3 +4216,40 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
     - `use` of an `svg` element.
   - `internal/svg` imports `internal/gpu/soft` to rasterize pattern tiles. It is plain Go on every platform.
   - Text, masks, filters and markers are 29.3.
+
+## 29.3 Text, masks, filters and markers
+
+- **Date:** 2026-10-27
+- **Branch:** feat/step-29.3-svg-text-filters
+- **Summary:** the painter now draws text, masks, the filters of SPEC §26.3 and markers, matching reference renders made by `rsvg-convert` (SPEC §26.3, §26.6).
+  - **Text:**
+    - each `text` element is one line of the app's text engine, placed cluster by cluster;
+    - x, y, dx, dy and rotate lists, an anchor per chunk, `textPath`, letter and word spacing, and decorations;
+    - fill, stroke, gradients and clip paths work on the glyph outlines;
+    - a new `layout.Clusterer` gives the clusters and their outlines;
+    - `PictureWith` takes the app's text engine, and `PictureAt` uses the bundled fonts.
+  - **Masks:** a save layer, a luminance-to-alpha matrix and `dstIn`, with mask units, regions and masks of masks.
+  - **Filters:** the whole graph runs on the CPU on 8-bit pixels at the device scale, so every renderer draws the same image.
+    - The primitives: blur, offset, flood, color matrix, composite (arithmetic too), merge, blend (16 modes), morphology, drop shadow, and component transfer.
+    - Subregions, named results, linearRGB and sRGB, and lists of filters.
+    - Limits: 4M pixels per buffer, 100 primitives and a work budget.
+  - **Markers:** vertices read from the path commands; `auto`, `auto-start-reverse` and angles; units, `viewBox` and `refX`/`refY`.
+- **Main files:**
+  - `internal/svg/`: `text.go`, `mask.go`, `filter.go`, `filter_ops.go`, `marker.go`, `vertices.go`, their tests, and 46 documents in `testdata/reference/` and 7 in `equivalent/`
+  - `internal/text/layout/clusters.go`
+  - `internal/gpu/gles/svg_display_test.go`
+  - SPEC §26
+- **Tests:**
+  - the reference comparison of 110 documents, each tolerance with its reason;
+  - unit tests of every pixel operation, of text placement (right-to-left too), masks, filter graphs with named results, and markers;
+  - robustness: huge regions and radii, deep graphs, masks and markers that refer to themselves, and 135,000 characters;
+  - the display test: 15 documents drawn on GLES under headless sway are within 1 level of `soft`.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ (also `GOOS=windows`, amd64 and arm64, with and without `glutter_wine`) · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck ✅ · apicheck ✅ · uintptrcheck ✅ · `GOOS=js GOARCH=wasm` build, vet and `scripts/test-wasm.sh` ✅ · `scripts/check-android.sh` ✅ · `GOOS=windows` amd64 build and vet, arm64 build ✅ · `scripts/test-windows.sh` ✅ · the display test of 29.3 under headless sway ✅ · nothing left running ✅
+- **Proof:** none.
+- **Manual checks:** none.
+- **Deviations and follow-ups:**
+  - librsvg lacks the lists of x, y, dx, dy and rotate, `word-spacing`, `textPath`, and the bisector of the markers of a closed subpath. Those references come from equivalent documents that place each character or marker by hand.
+  - Not supported:
+    - `textLength`, `lengthAdjust`, `direction` and vertical text;
+    - the primitives `feImage`, `feTile`, `feTurbulence`, `feConvolveMatrix`, `feDisplacementMap` and the lighting primitives (the filter is skipped).
+  - 29.4 must pass the app's text engine and the device scale to `PictureWith`.

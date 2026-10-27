@@ -13,10 +13,10 @@ func (p *painter) applyClip(cp *ClipPath, n *Node) bool {
 	var hasBBox, measured bool
 	for ; cp != nil; cp = cp.ClipPath {
 		if cp.Units == UnitsObjectBoundingBox && !measured {
-			bbox, hasBBox = objectBBox(n)
+			bbox, hasBBox = p.objectBBox(n)
 			measured = true
 		}
-		path, ok := clipGeometry(cp, bbox, hasBBox)
+		path, ok := p.clipGeometry(cp, bbox, hasBBox)
 		if !ok {
 			return false
 		}
@@ -30,7 +30,7 @@ func (p *painter) applyClip(cp *ClipPath, n *Node) bool {
 // element's, for the objectBoundingBox units.
 //
 // SVG 1.1: masking.html#EstablishingANewClippingPath
-func clipGeometry(cp *ClipPath, bbox ui.Rect, hasBBox bool) (*ui.Path, bool) {
+func (p *painter) clipGeometry(cp *ClipPath, bbox ui.Rect, hasBBox bool) (*ui.Path, bool) {
 	m := cp.Transform
 	if cp.Units == UnitsObjectBoundingBox {
 		if !hasBBox {
@@ -40,7 +40,7 @@ func clipGeometry(cp *ClipPath, bbox ui.Rect, hasBBox bool) (*ui.Path, bool) {
 	}
 	var paths []*ui.Path
 	for _, c := range cp.Children {
-		collectClip(c, m, bbox, hasBBox, &paths)
+		p.collectClip(c, m, bbox, hasBBox, &paths)
 	}
 	switch len(paths) {
 	case 0:
@@ -58,7 +58,7 @@ func clipGeometry(cp *ClipPath, bbox ui.Rect, hasBBox bool) (*ui.Path, bool) {
 
 // collectClip adds the paths of a child of a clip path (a shape, or a use of one: a group) to the list, transformed by
 // m, with the node's own clip-path applied.
-func collectClip(n *Node, m Affine, bbox ui.Rect, hasBBox bool, out *[]*ui.Path) {
+func (p *painter) collectClip(n *Node, m Affine, bbox ui.Rect, hasBBox bool, out *[]*ui.Path) {
 	m = m.Mul(n.Transform)
 	switch n.Kind {
 	case NodeShape:
@@ -68,9 +68,9 @@ func collectClip(n *Node, m Affine, bbox ui.Rect, hasBBox bool, out *[]*ui.Path)
 		path := n.Path.Transform(m.Matrix4())
 		if n.ClipPath != nil {
 			// The clip-path of a child is in the child's own user space.
-			cb, ok := objectBBox(n)
+			cb, ok := p.objectBBox(n)
 			for cp := n.ClipPath; cp != nil; cp = cp.ClipPath {
-				g, good := clipGeometry(cp, cb, ok)
+				g, good := p.clipGeometry(cp, cb, ok)
 				if !good {
 					return
 				}
@@ -79,10 +79,29 @@ func collectClip(n *Node, m Affine, bbox ui.Rect, hasBBox bool, out *[]*ui.Path)
 		}
 		*out = append(*out, path)
 	case NodeText:
-		// 29.3: the outlines of text clip too.
+		// The outlines of text clip too: its glyphs and its decorations, in the text's own user space.
+		if !n.Style.Visible {
+			return
+		}
+		tb := p.textBlockOf(n)
+		if tb == nil || tb.outline == nil || tb.outline.IsEmpty() {
+			return
+		}
+		path := tb.outline.Transform(m.Matrix4())
+		if n.ClipPath != nil {
+			cb, ok := p.objectBBox(n)
+			for cp := n.ClipPath; cp != nil; cp = cp.ClipPath {
+				g, good := p.clipGeometry(cp, cb, ok)
+				if !good {
+					return
+				}
+				path = ui.PathCombine(ui.PathOperationIntersect, path, g.Transform(m.Matrix4()))
+			}
+		}
+		*out = append(*out, path)
 	default:
 		for _, c := range n.Children {
-			collectClip(c, m, bbox, hasBBox, out)
+			p.collectClip(c, m, bbox, hasBBox, out)
 		}
 	}
 }
