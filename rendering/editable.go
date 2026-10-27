@@ -123,7 +123,7 @@ func (r *VerticalCaretMovementRun) textPositionForLine(lineNumber int) positionA
 		return cached
 	}
 	newOffset := ui.Offset{Dx: r.currentOffset.Dx, Dy: r.lineMetrics[lineNumber].Baseline}
-	entry := positionAtOffset{offset: newOffset, position: r.editable.textPainter.GetPositionForOffset(newOffset)}
+	entry := positionAtOffset{offset: newOffset, position: r.editable.positionForOffset(newOffset)}
 	r.positionCache[lineNumber] = entry
 	return entry
 }
@@ -225,6 +225,8 @@ type RenderEditable struct {
 	devicePixelRatio  float64
 	obscuringChar     string
 	obscureText       bool
+	obscuredText      foundation.Opt[string]
+	obscuredBounds    []int
 	clipBehavior      ui.Clip
 	enableInteractive foundation.Opt[bool]
 	maxScrollExtent   float64
@@ -334,6 +336,11 @@ type RenderEditableOpts struct {
 	ObscuringCharacter string
 	// ObscureText hides the text.
 	ObscureText bool
+	// ObscuredText is the text of the field when Text is that text with every
+	// grapheme replaced by the obscuring character (what EditableText does); the
+	// selection and the offsets are then offsets of ObscuredText, and the editable
+	// maps them to the offsets of Text. None means Text is the text of the field.
+	ObscuredText foundation.Opt[string]
 	// Locale selects region-specific glyphs.
 	Locale foundation.Opt[ui.Locale]
 	// CursorWidth is the width of the caret; the default is 1.
@@ -452,6 +459,7 @@ func NewRenderEditable(textDirection ui.TextDirection, startHandleLayerLink, end
 		devicePixelRatio:          o.DevicePixelRatio.OrElse(1),
 		obscuringChar:             obscuring,
 		obscureText:               o.ObscureText,
+		obscuredText:              o.ObscuredText,
 		clipBehavior:              clip,
 		enableInteractive:         o.EnableInteractiveSelection,
 		ignorePointer:             o.IgnorePointer,
@@ -466,6 +474,9 @@ func NewRenderEditable(textDirection ui.TextDirection, startHandleLayerLink, end
 	}
 	if r.showCursor == nil {
 		r.showCursor = foundation.NewValueNotifier(false)
+	}
+	if text, ok := o.ObscuredText.Get(); ok {
+		r.obscuredBounds = foundation.GraphemeBoundaries(text)
 	}
 	InitRenderBox(&r.RenderBox, r)
 	InitContainerRenderObject(&r.ContainerRenderObject, r)
@@ -792,8 +803,8 @@ func (r *RenderEditable) SelectionEndInViewport() foundation.ValueListenable[boo
 }
 
 func (r *RenderEditable) textPositionVertical(position ui.TextPosition, verticalOffset float64) ui.TextPosition {
-	caretOffset := r.textPainter.GetOffsetForCaret(position, r.caretPrototype)
-	return r.textPainter.GetPositionForOffset(caretOffset.Translate(0, verticalOffset))
+	caretOffset := r.caretOffsetFor(position, r.caretPrototype)
+	return r.positionForOffset(caretOffset.Translate(0, verticalOffset))
 }
 
 // GetLineAtOffset returns the line that the position is on, as a selection. When
@@ -801,10 +812,10 @@ func (r *RenderEditable) textPositionVertical(position ui.TextPosition, vertical
 //
 // Flutter: rendering/editable.dart RenderEditable.getLineAtOffset
 func (r *RenderEditable) GetLineAtOffset(position ui.TextPosition) services.TextSelection {
-	line := r.textPainter.GetLineBoundary(position)
 	if r.obscureText {
-		return services.NewTextSelection(0, len(r.PlainText()))
+		return services.NewTextSelection(0, r.textLength())
 	}
+	line := r.textPainter.GetLineBoundary(position)
 	return services.NewTextSelection(line.Start, line.End)
 }
 
@@ -812,7 +823,7 @@ func (r *RenderEditable) GetLineAtOffset(position ui.TextPosition) services.Text
 //
 // Flutter: rendering/editable.dart RenderEditable.getWordBoundary
 func (r *RenderEditable) GetWordBoundary(position ui.TextPosition) ui.TextRange {
-	return r.textPainter.GetWordBoundary(position)
+	return r.fromPaintRange(r.textPainter.GetWordBoundary(r.toPaintPosition(position)))
 }
 
 // GetTextPositionAbove returns the position on the line above, at the same
@@ -841,12 +852,12 @@ func (r *RenderEditable) updateSelectionExtentsVisibility(effectiveOffset ui.Off
 		return
 	}
 	visibleRegion := ui.OffsetZero.And(r.Size())
-	startOffset := r.textPainter.GetOffsetForCaret(ui.TextPosition{Offset: sel.Start(), Affinity: sel.Affinity}, r.caretPrototype)
+	startOffset := r.caretOffsetFor(ui.TextPosition{Offset: sel.Start(), Affinity: sel.Affinity}, r.caretPrototype)
 	// The check is approximate: the rounding of the layout can put the caret
 	// slightly (less than half a pixel) outside.
 	const visibleRegionSlop = 0.5
 	r.selectionStartInViewport.SetValue(visibleRegion.Inflate(visibleRegionSlop).Contains(startOffset.Add(effectiveOffset)))
-	endOffset := r.textPainter.GetOffsetForCaret(ui.TextPosition{Offset: sel.End(), Affinity: sel.Affinity}, r.caretPrototype)
+	endOffset := r.caretOffsetFor(ui.TextPosition{Offset: sel.End(), Affinity: sel.Affinity}, r.caretPrototype)
 	r.selectionEndInViewport.SetValue(visibleRegion.Inflate(visibleRegionSlop).Contains(endOffset.Add(effectiveOffset)))
 }
 
@@ -1432,7 +1443,7 @@ func (r *RenderEditable) SetClipBehavior(value ui.Clip) {
 func (r *RenderEditable) GetBoxesForSelection(selection services.TextSelection) []ui.TextBox {
 	r.computeTextMetricsIfNeeded()
 	paintOffset := r.paintOffset()
-	boxes := r.textPainter.GetBoxesForSelection(selection.Range(), ui.BoxesForRangeOpts{
+	boxes := r.textPainter.GetBoxesForSelection(r.toPaintRange(selection.Range()), ui.BoxesForRangeOpts{
 		HeightStyle: r.SelectionHeightStyle(), WidthStyle: r.SelectionWidthStyle(),
 	})
 	out := make([]ui.TextBox, len(boxes))
@@ -1597,14 +1608,14 @@ func (r *RenderEditable) GetEndpointsForSelection(selection services.TextSelecti
 	paintOffset := r.paintOffset()
 	var boxes []ui.TextBox
 	if !selection.IsCollapsed() {
-		boxes = r.textPainter.GetBoxesForSelection(selection.Range(), ui.BoxesForRangeOpts{
+		boxes = r.textPainter.GetBoxesForSelection(r.toPaintRange(selection.Range()), ui.BoxesForRangeOpts{
 			HeightStyle: r.SelectionHeightStyle(), WidthStyle: r.SelectionWidthStyle(),
 		})
 	}
 	if len(boxes) == 0 {
 		// This doesn't work well at a boundary of left-to-right and
 		// right-to-left text.
-		caretOffset := r.textPainter.GetOffsetForCaret(selection.Extent(), r.caretPrototype)
+		caretOffset := r.caretOffsetFor(selection.Extent(), r.caretPrototype)
 		start := ui.Offset{Dy: r.PreferredLineHeight()}.Add(caretOffset).Add(paintOffset)
 		return []TextSelectionPoint{{Point: start}}
 	}
@@ -1627,7 +1638,7 @@ func (r *RenderEditable) GetRectForComposingRange(rng ui.TextRange) (ui.Rect, bo
 		return ui.Rect{}, false
 	}
 	r.computeTextMetricsIfNeeded()
-	boxes := r.textPainter.GetBoxesForSelection(rng, ui.BoxesForRangeOpts{
+	boxes := r.textPainter.GetBoxesForSelection(r.toPaintRange(rng), ui.BoxesForRangeOpts{
 		HeightStyle: r.SelectionHeightStyle(), WidthStyle: r.SelectionWidthStyle(),
 	})
 	if len(boxes) == 0 {
@@ -1646,7 +1657,7 @@ func (r *RenderEditable) GetRectForComposingRange(rng ui.TextRange) (ui.Rect, bo
 // Flutter: rendering/editable.dart RenderEditable.getPositionForPoint
 func (r *RenderEditable) GetPositionForPoint(globalPosition ui.Offset) ui.TextPosition {
 	r.computeTextMetricsIfNeeded()
-	return r.textPainter.GetPositionForOffset(r.GlobalToLocal(globalPosition, nil).Sub(r.paintOffset()))
+	return r.positionForOffset(r.GlobalToLocal(globalPosition, nil).Sub(r.paintOffset()))
 }
 
 // GetLocalRectForCaret returns the rectangle of the caret at the position, in
@@ -1656,13 +1667,13 @@ func (r *RenderEditable) GetPositionForPoint(globalPosition ui.Offset) ui.TextPo
 func (r *RenderEditable) GetLocalRectForCaret(caretPosition ui.TextPosition) ui.Rect {
 	r.computeTextMetricsIfNeeded()
 	caretPrototype := r.caretPrototype
-	caretOffset := r.textPainter.GetOffsetForCaret(caretPosition, caretPrototype)
+	caretOffset := r.caretOffsetFor(caretPosition, caretPrototype)
 	caretRect := caretPrototype.Shift(caretOffset.Add(r.CursorOffset()))
 	scrollableWidth := math.Max(r.textPainter.Width()+r.caretMargin(), r.Size().Width)
 	caretX := ui.ClampDouble(caretRect.Left, 0, math.Max(scrollableWidth-r.caretMargin(), 0))
 	caretRect = ui.NewRectFromLTWH(caretX, caretRect.Top, caretRect.Width(), caretRect.Height())
 
-	fullHeight := r.textPainter.GetFullHeightForCaret(caretPosition, caretPrototype)
+	fullHeight := r.textPainter.GetFullHeightForCaret(r.toPaintPosition(caretPosition), caretPrototype)
 	// Override the height to take the full height of the glyph at the position.
 	// Deviation: only the code of the platforms that are not Apple's is ported.
 	caretHeight := r.CursorHeight()
@@ -1892,10 +1903,10 @@ func (r *RenderEditable) SelectPosition(cause services.SelectionChangedCause) {
 func (r *RenderEditable) SelectPositionAt(from ui.Offset, to foundation.Opt[ui.Offset], cause services.SelectionChangedCause) {
 	r.computeTextMetricsIfNeeded()
 	paintOffset := r.paintOffset()
-	fromPosition := r.textPainter.GetPositionForOffset(r.GlobalToLocal(from, nil).Sub(paintOffset))
+	fromPosition := r.positionForOffset(r.GlobalToLocal(from, nil).Sub(paintOffset))
 	baseOffset, extentOffset := fromPosition.Offset, fromPosition.Offset
 	if t, ok := to.Get(); ok {
-		extentOffset = r.textPainter.GetPositionForOffset(r.GlobalToLocal(t, nil).Sub(paintOffset)).Offset
+		extentOffset = r.positionForOffset(r.GlobalToLocal(t, nil).Sub(paintOffset)).Offset
 	}
 	r.setSelection(services.NewTextSelection(baseOffset, extentOffset, services.TextSelectionOpts{Affinity: fromPosition.Affinity}), cause)
 }
@@ -1921,11 +1932,11 @@ func (r *RenderEditable) SelectWord(cause services.SelectionChangedCause) {
 func (r *RenderEditable) SelectWordsInRange(from ui.Offset, to foundation.Opt[ui.Offset], cause services.SelectionChangedCause) {
 	r.computeTextMetricsIfNeeded()
 	paintOffset := r.paintOffset()
-	fromPosition := r.textPainter.GetPositionForOffset(r.GlobalToLocal(from, nil).Sub(paintOffset))
+	fromPosition := r.positionForOffset(r.GlobalToLocal(from, nil).Sub(paintOffset))
 	fromWord := r.GetWordAtOffset(fromPosition)
 	toPosition := fromPosition
 	if t, ok := to.Get(); ok {
-		toPosition = r.textPainter.GetPositionForOffset(r.GlobalToLocal(t, nil).Sub(paintOffset))
+		toPosition = r.positionForOffset(r.GlobalToLocal(t, nil).Sub(paintOffset))
 	}
 	toWord := fromWord
 	if toPosition != fromPosition {
@@ -1945,8 +1956,8 @@ func (r *RenderEditable) SelectWordsInRange(from ui.Offset, to foundation.Opt[ui
 // Flutter: rendering/editable.dart RenderEditable.selectWordEdge
 func (r *RenderEditable) SelectWordEdge(cause services.SelectionChangedCause) {
 	r.computeTextMetricsIfNeeded()
-	position := r.textPainter.GetPositionForOffset(r.GlobalToLocal(r.lastTapDown(), nil).Sub(r.paintOffset()))
-	word := r.textPainter.GetWordBoundary(position)
+	position := r.positionForOffset(r.GlobalToLocal(r.lastTapDown(), nil).Sub(r.paintOffset()))
+	word := r.GetWordBoundary(position)
 	var sel services.TextSelection
 	if position.Offset <= word.Start {
 		sel = services.NewTextSelectionCollapsed(word.Start)
@@ -1962,14 +1973,14 @@ func (r *RenderEditable) SelectWordEdge(cause services.SelectionChangedCause) {
 //
 // Flutter: rendering/editable.dart RenderEditable.getWordAtOffset
 func (r *RenderEditable) GetWordAtOffset(position ui.TextPosition) services.TextSelection {
-	plain := r.PlainText()
+	length := r.textLength()
 	// When long-pressing past the end of the text, make a collapsed cursor.
-	if position.Offset >= len(plain) {
-		return services.NewTextSelectionFromPosition(ui.TextPosition{Offset: len(plain), Affinity: ui.TextAffinityUpstream})
+	if position.Offset >= length {
+		return services.NewTextSelectionFromPosition(ui.TextPosition{Offset: length, Affinity: ui.TextAffinityUpstream})
 	}
 	// If the text is obscured, the entire sentence is one word.
 	if r.obscureText {
-		return services.NewTextSelection(0, len(plain))
+		return services.NewTextSelection(0, length)
 	}
 	word := r.textPainter.GetWordBoundary(position)
 	effectiveOffset := position.Offset
@@ -2110,7 +2121,7 @@ func (r *RenderEditable) PerformLayout() {
 // Flutter: rendering/editable.dart RenderEditable.startVerticalCaretMovement
 func (r *RenderEditable) StartVerticalCaretMovement(startPosition ui.TextPosition) *VerticalCaretMovementRun {
 	metrics := r.textPainter.ComputeLineMetrics()
-	line, offset := r.lineNumberFor(startPosition, metrics)
+	line, offset := r.lineNumberFor(r.toPaintPosition(startPosition), metrics)
 	return &VerticalCaretMovementRun{
 		editable: r, lineMetrics: metrics, currentTextPosition: startPosition,
 		currentLine: line, currentOffset: offset, positionCache: map[int]positionAtOffset{},

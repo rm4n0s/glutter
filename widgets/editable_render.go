@@ -70,6 +70,19 @@ func (w *editableRender) effectiveLocale(bc BuildContext) foundation.Opt[ui.Loca
 	return foundation.None[ui.Locale]()
 }
 
+// obscuredText is the text of the field while it is obscured: the span has one
+// obscuring character for each of its graphemes, and the render object maps the
+// offsets of the selection to the offsets of the span with it.
+//
+// Deviation: Flutter's obscured span has one character for each UTF-16 unit, so
+// the offsets are the same (SPEC §12.10).
+func (w *editableRender) obscuredText() foundation.Opt[string] {
+	if !w.obscureText {
+		return foundation.None[string]()
+	}
+	return foundation.Some(w.value.Text)
+}
+
 // CreateRenderObject creates the render editable.
 //
 // Flutter: widgets/editable_text.dart _Editable.createRenderObject
@@ -89,7 +102,7 @@ func (w *editableRender) CreateRenderObject(bc BuildContext) rendering.RenderObj
 		ShowCursor: w.showCursor, DisableForceLine: !w.forceLine, ReadOnly: w.readOnly, HasFocus: w.hasFocus, MaxLines: maxLines,
 		MinLines: w.minLines, Expands: w.expands, StrutStyle: w.strutStyle, SelectionColor: w.selectionColor, TextScaler: w.textScaler,
 		TextAlign: w.textAlign, Locale: w.effectiveLocale(bc), Selection: foundation.Some(w.value.Selection), IgnorePointer: w.rendererIgnoresPointer,
-		ObscuringCharacter: w.obscuringCharacter, ObscureText: w.obscureText, TextHeightBehavior: w.textHeightBehavior,
+		ObscuringCharacter: w.obscuringCharacter, ObscureText: w.obscureText, ObscuredText: w.obscuredText(), TextHeightBehavior: w.textHeightBehavior,
 		TextWidthBasis: w.textWidthBasis, CursorWidth: foundation.Some(w.cursorWidth), CursorHeight: w.cursorHeight, CursorRadius: w.cursorRadius,
 		PaintCursorAboveText: w.paintCursorAboveText, CursorOffset: w.cursorOffset, DevicePixelRatio: foundation.Some(w.devicePixelRatio),
 		SelectionHeightStyle: w.selectionHeightStyle, SelectionWidthStyle: w.selectionWidthStyle,
@@ -128,6 +141,7 @@ func (w *editableRender) UpdateRenderObject(bc BuildContext, renderObject render
 	r.SetTextWidthBasis(w.textWidthBasis)
 	r.SetObscuringCharacter(w.obscuringCharacter)
 	r.SetObscureText(w.obscureText)
+	r.SetObscuredText(w.obscuredText())
 	r.SetCursorWidth(w.cursorWidth)
 	r.SetCursorHeight(w.cursorHeight)
 	r.SetCursorRadius(w.cursorRadius)

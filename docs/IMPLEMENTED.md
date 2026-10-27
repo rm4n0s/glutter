@@ -4761,3 +4761,30 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Manual checks:** none
 - **Deviations and follow-ups:**
   - **Deviation:** Flutter opens the connection only on a focus change or a tap (SPEC §12.10).
+
+## 29.19 The caret of obscured text (Emetos)
+
+- **Date:** 2026-10-27
+- **Branch:** feat/step-29.19-obscured-caret
+- **Summary:** Emetos's issue "The caret of an obscured `EditableText` is placed by byte offsets into the string of bullets". The field shows one obscuring character for each grapheme of its text, but the selection kept the byte offsets of the real text. A bullet is 3 bytes, so after "secret" the caret was drawn after two bullets, and text that is not ASCII was wrong in other ways.
+  - **The map:** `RenderEditable` maps an offset of the text to an offset of the obscured string: the grapheme index times the length of the obscuring character. It maps back to the start of the grapheme at `offset / len(obscuringChar)`. An offset inside a grapheme goes to the start of the grapheme. The grapheme boundaries are kept with the text and worked out again when it changes.
+  - **The text of the field:** `RenderEditableOpts.ObscuredText` and `SetObscuredText`. `EditableText` passes the text of its value while `ObscureText` is true. None (the default) maps nothing.
+  - **Where the map applies:**
+    - the caret rect, the selection boxes and endpoints, and the composing rect;
+    - `GetPositionForPoint`, `SelectPositionAt`, `SelectWordsInRange` and `SelectWordEdge`;
+    - the word, line and vertical boundaries, and `StartVerticalCaretMovement`;
+    - the selection highlight, the autocorrect prompt, and the visibility of the ends of the selection.
+  - **Semantics:** the value of the node is the bullets, so its selection and the screen reader's set-selection and cursor moves use the offsets of the bullets.
+  - **Not ported:** `obscureShowCharacterAtIndex`, which Glutter never had.
+- **Main files:** `rendering/{editable,editable_obscure,editable_painters,editable_semantics}.go`, `widgets/editable_render.go`, `docs/SPEC.md` (§10, §12.10).
+- **Tests (table-driven):**
+  - **Rendering:** each test compares an obscured editable with a plain one that shows the same bullets, for `•` and `*` and for `secret`, `pässwörd`, a combining accent, a ZWJ emoji and CJK. They cover the caret, the selection boxes and endpoints, a tap on each bullet, words and lines, vertical movement, the semantics selection and moves, and a text change. With the map turned off they give 568 failures.
+  - **Widgets:** the caret, tap and box checks through a real `EditableText`.
+  - **Goldens (new; looked at by the manager):**
+    - `editable_text_obscured_caret.png`: 8 bullets, with the caret after the 4th.
+    - `editable_text_obscured_selection.png`: the selection behind bullets 3 to 5.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck, apicheck, uintptrcheck ✅ · wasm build, vet and tests ✅ · check-android ✅ · Windows builds, vet, lint and test-windows ✅ · display tests: none
+- **Proof:** none
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - **Offsets:** Flutter's map is the identity because Dart counts UTF-16 units; Glutter's is a real map (SPEC §12.10).

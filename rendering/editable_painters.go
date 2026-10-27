@@ -80,7 +80,7 @@ func (p *textHighlightPainter) Paint(canvas *ui.Canvas, _ ui.Size, renderEditabl
 	paint := ui.NewPaint()
 	paint.SetColor(color)
 	textPainter := renderEditable.textPainter
-	boxes := textPainter.GetBoxesForSelection(rng, ui.BoxesForRangeOpts{HeightStyle: p.selectionHeightStyle, WidthStyle: p.selectionWidthStyle})
+	boxes := textPainter.GetBoxesForSelection(renderEditable.toPaintRange(rng), ui.BoxesForRangeOpts{HeightStyle: p.selectionHeightStyle, WidthStyle: p.selectionWidthStyle})
 	seen := map[ui.TextBox]bool{}
 	bounds := ui.NewRectFromLTWH(0, 0, textPainter.Width(), textPainter.Height())
 	for _, box := range boxes {

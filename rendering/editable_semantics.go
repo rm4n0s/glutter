@@ -89,12 +89,14 @@ func (r *RenderEditable) DescribeSemanticsConfiguration(config *semantics.Semant
 		config.SetOnSetText(r.handleSetText)
 	}
 	if sel, ok := r.selection.Get(); ok && r.SelectionEnabled() && sel.IsValid() {
-		config.SetTextSelection(sel)
-		if _, ok := r.textPainter.GetOffsetBefore(sel.ExtentOffset); ok {
+		// The value of the node is the obscured string, so its selection is in
+		// the offsets of that string.
+		config.SetTextSelection(r.toPaintSelection(sel))
+		if _, ok := r.textPainter.GetOffsetBefore(r.toPaint(sel.ExtentOffset)); ok {
 			config.SetOnMoveCursorBackwardByWord(r.handleMoveCursorBackwardByWord)
 			config.SetOnMoveCursorBackwardByCharacter(r.handleMoveCursorBackwardByCharacter)
 		}
-		if _, ok := r.textPainter.GetOffsetAfter(sel.ExtentOffset); ok {
+		if _, ok := r.textPainter.GetOffsetAfter(r.toPaint(sel.ExtentOffset)); ok {
 			config.SetOnMoveCursorForwardByWord(r.handleMoveCursorForwardByWord)
 			config.SetOnMoveCursorForwardByCharacter(r.handleMoveCursorForwardByCharacter)
 		}
@@ -227,15 +229,17 @@ func (r *RenderEditable) ClearSemantics() {
 }
 
 func (r *RenderEditable) handleSetSelection(selection services.TextSelection) {
-	r.setSelection(selection, services.SelectionChangedCauseKeyboard)
+	// The selection comes from the value of the node, the obscured string.
+	r.setSelection(r.fromPaintSelection(selection), services.SelectionChangedCauseKeyboard)
 }
 
 func (r *RenderEditable) handleMoveCursorForwardByCharacter(extendSelection bool) {
 	sel := r.selection.Value()
-	extentOffset, ok := r.textPainter.GetOffsetAfter(sel.ExtentOffset)
+	extentOffset, ok := r.textPainter.GetOffsetAfter(r.toPaint(sel.ExtentOffset))
 	if !ok {
 		return
 	}
+	extentOffset = r.fromPaint(extentOffset)
 	baseOffset := sel.BaseOffset
 	if !extendSelection {
 		baseOffset = extentOffset
@@ -245,10 +249,11 @@ func (r *RenderEditable) handleMoveCursorForwardByCharacter(extendSelection bool
 
 func (r *RenderEditable) handleMoveCursorBackwardByCharacter(extendSelection bool) {
 	sel := r.selection.Value()
-	extentOffset, ok := r.textPainter.GetOffsetBefore(sel.ExtentOffset)
+	extentOffset, ok := r.textPainter.GetOffsetBefore(r.toPaint(sel.ExtentOffset))
 	if !ok {
 		return
 	}
+	extentOffset = r.fromPaint(extentOffset)
 	baseOffset := sel.BaseOffset
 	if !extendSelection {
 		baseOffset = extentOffset
@@ -258,11 +263,12 @@ func (r *RenderEditable) handleMoveCursorBackwardByCharacter(extendSelection boo
 
 func (r *RenderEditable) handleMoveCursorForwardByWord(extendSelection bool) {
 	sel := r.selection.Value()
-	currentWord := r.textPainter.GetWordBoundary(sel.Extent())
+	currentWord := r.textPainter.GetWordBoundary(r.toPaintPosition(sel.Extent()))
 	nextWord, ok := r.getNextWord(currentWord.End)
 	if !ok {
 		return
 	}
+	nextWord = r.fromPaintRange(nextWord)
 	baseOffset := nextWord.Start
 	if extendSelection {
 		baseOffset = sel.BaseOffset
@@ -272,11 +278,12 @@ func (r *RenderEditable) handleMoveCursorForwardByWord(extendSelection bool) {
 
 func (r *RenderEditable) handleMoveCursorBackwardByWord(extendSelection bool) {
 	sel := r.selection.Value()
-	currentWord := r.textPainter.GetWordBoundary(sel.Extent())
+	currentWord := r.textPainter.GetWordBoundary(r.toPaintPosition(sel.Extent()))
 	previousWord, ok := r.getPreviousWord(currentWord.Start - 1)
 	if !ok {
 		return
 	}
+	previousWord = r.fromPaintRange(previousWord)
 	baseOffset := previousWord.Start
 	if extendSelection {
 		baseOffset = sel.BaseOffset
