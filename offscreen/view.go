@@ -4,6 +4,7 @@ import (
 	"context"
 	"image"
 	"math"
+	"slices"
 	"sync"
 	"time"
 
@@ -71,6 +72,24 @@ type ViewOpts struct {
 	//
 	// Flutter: no counterpart
 	Clipboard ui.ClipboardHost
+	// PlatformConfiguration is a fixed platform configuration for the view (locales, text
+	// scale and its scaler, brightness, accessibility features, accent color, fonts, caret
+	// blink time, the rest of the struct). When it is set, the view has it from the start and
+	// keeps it: the parent's later changes are ignored. The app may still change it through
+	// the view's dispatcher, with Binding().PlatformDispatcher().UpdatePlatformConfiguration.
+	// When it is not set, the view starts with the parent's configuration and follows its
+	// changes until Close (SPEC §9.9).
+	//
+	// Flutter: no counterpart
+	PlatformConfiguration foundation.Opt[ui.PlatformConfiguration]
+	// Window is the window of the view's configuration from the start: whether the app draws
+	// the title bar (ui.DecorationApp), whether the window is activated, maximized, and the
+	// rest of ui.WindowInfo. The zero value is a window with no decoration, not activated. The
+	// view has no window of its own: the value is what a WindowDecoration or a title bar in
+	// the tree reads. Change it later with SetWindow.
+	//
+	// Flutter: no counterpart
+	Window ui.WindowInfo
 }
 
 // View runs a widget tree in a view of its own, on a widgets binding of its own that
@@ -99,8 +118,13 @@ type View struct {
 	start    time.Time
 	minGap   time.Duration
 	dpr      float64
-	cfg      ui.ViewConfiguration
 	detacher *Detacher
+	// fixed is whether ViewOpts.PlatformConfiguration was set: the view then does not follow
+	// the parent. follower is the observer that does, on the parent's binding until Close, and
+	// followed is the configuration it last gave the view's dispatcher.
+	fixed    bool
+	follower *configFollower
+	followed ui.PlatformConfiguration
 	// clip is ViewOpts.Clipboard, nil for the app's clipboard; rich is clip as a
 	// ui.RichClipboardHost, nil when it is not one.
 	clip ui.ClipboardHost
@@ -168,8 +192,11 @@ var (
 //     RunWidget's WrapWithDefaultView does, so MediaQuery and the rest work. It shares the
 //     text engine of the parent's dispatcher (fonts the app loaded work), and the binding
 //     shares the parent's UI thread, error reporter, ErrorWidgetBuilder, debug flags,
-//     asset bundle and HTTP client. The platform configuration (locale, brightness, text
-//     scale) is the default one; change it with Binding().PlatformDispatcher().
+//     asset bundle and HTTP client. The view starts with a copy of the platform configuration
+//     of the parent's dispatcher (locale, brightness, text scale, accessibility features,
+//     fonts, caret blink time, the rest), before the tree is mounted, and follows its changes
+//     until Close; with ViewOpts.PlatformConfiguration it has that one and ignores the parent's.
+//     ViewOpts.Window is the window of its configuration.
 //   - onFrame runs on the goroutine of the view, one call at a time. A panic in it is
 //     recovered and reported to the parent's error reporter (CallbackPanicked), and the
 //     view goes on. It must not call Close or wait for the UI thread: Close waits for it.
@@ -204,7 +231,7 @@ func newView(parent *widgets.WidgetsBinding, size ui.Size, root widgets.Widget, 
 	if rate == 0 {
 		rate = defaultMaxFrameRate
 	}
-	cfg := ui.ViewConfiguration{PhysicalSize: ui.Size{Width: size.Width * dpr, Height: size.Height * dpr}, DevicePixelRatio: dpr}
+	cfg := ui.ViewConfiguration{PhysicalSize: ui.Size{Width: size.Width * dpr, Height: size.Height * dpr}, DevicePixelRatio: dpr, Window: o.Window}
 	if !validPhysicalSize(cfg.PhysicalSize) {
 		return nil, errors.New(tagViewSizeInvalid, "the size of a view is positive and fits in a surface",
 			"width", size.Width, "height", size.Height, "devicePixelRatio", dpr)
@@ -212,7 +239,7 @@ func newView(parent *widgets.WidgetsBinding, size ui.Size, root widgets.Widget, 
 
 	v := &View{
 		parent: parent, onFrame: onFrame, report: parent.ErrorReporter(), clock: clock, start: clock.Now(),
-		minGap: time.Second / time.Duration(rate), dpr: dpr, cfg: cfg, detacher: NewDetacher(),
+		minGap: time.Second / time.Duration(rate), dpr: dpr, detacher: NewDetacher(),
 		wake: make(chan struct{}, 1), quit: make(chan struct{}), done: make(chan struct{}),
 	}
 	v.idle = sync.NewCond(&v.mu)
@@ -221,6 +248,15 @@ func newView(parent *widgets.WidgetsBinding, size ui.Size, root widgets.Widget, 
 	v.d = ui.NewPlatformDispatcher(viewHost{v})
 	v.d.SetTextEngine(parent.PlatformDispatcher().TextEngine())
 	v.uiView = v.d.AddView(ui.ImplicitViewID, cfg)
+	// The configuration is set before the binding exists, so the tree is mounted once, with
+	// the values it will keep.
+	if fixed, ok := o.PlatformConfiguration.Get(); ok {
+		v.fixed = true
+		v.d.UpdatePlatformConfiguration(cloneConfiguration(fixed))
+	} else {
+		v.followed = parentConfiguration(parent.PlatformDispatcher())
+		v.d.UpdatePlatformConfiguration(v.followed)
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	v.cancel = cancel
@@ -235,9 +271,118 @@ func newView(parent *widgets.WidgetsBinding, size ui.Size, root widgets.Widget, 
 		Clock:              gestureClock{clock},
 		Painting:           painting.PaintingBindingOpts{AssetBundle: pp.AssetBundle(), HTTPClient: pp.HTTPClient()},
 	})
+	if !v.fixed {
+		v.follower = &configFollower{v: v}
+		parent.AddObserver(v.follower)
+	}
 	go v.rasterLoop()
 	v.binding.AttachRootWidget(v.binding.WrapWithDefaultView(root))
 	return v, nil
+}
+
+// configFollower is the observer that gives the view's dispatcher the parent's platform
+// configuration again when the parent's binding hears of a change (SPEC §9.9).
+type configFollower struct {
+	widgets.WidgetsBindingObserverBase
+	v *View
+}
+
+// DidChangeTextScaleFactor follows the parent. It always copies: a platform scaler is a
+// function, which cannot be compared, and the dispatcher reports a configuration that has one
+// as a change of the text scale.
+func (f *configFollower) DidChangeTextScaleFactor() { f.v.followParent(true) }
+
+// DidChangePlatformBrightness follows the parent.
+func (f *configFollower) DidChangePlatformBrightness() { f.v.followParent(false) }
+
+// DidChangeLocales follows the parent.
+func (f *configFollower) DidChangeLocales([]ui.Locale) { f.v.followParent(false) }
+
+// DidChangeAccessibilityFeatures follows the parent.
+func (f *configFollower) DidChangeAccessibilityFeatures() { f.v.followParent(false) }
+
+// followParent gives the view's dispatcher the parent's configuration again, when it differs
+// from the one the view last got (or always, with force). The fields with no observer method
+// (the accent color, the 24-hour format, the fonts, the caret blink time, the double click
+// time) reach the parent's binding through no callback at all, so the view also checks them at
+// the start of each of its frames.
+func (v *View) followParent(force bool) {
+	if v.fixed || v.isClosed() {
+		return
+	}
+	cfg := parentConfiguration(v.parent.PlatformDispatcher())
+	if !force && sameConfiguration(cfg, v.followed) {
+		return
+	}
+	v.followed = cfg
+	v.d.UpdatePlatformConfiguration(cfg)
+}
+
+// parentConfiguration is the platform configuration of the dispatcher, made from its getters
+// (the dispatcher keeps the struct to itself). Its ScaleFontSize is the dispatcher's own
+// ScaleFontSize, which gives the sizes the platform's scaler gives for whole sizes and
+// interpolates between them, so a view whose dispatcher interpolates again gets the same sizes.
+func parentConfiguration(d *ui.PlatformDispatcher) ui.PlatformConfiguration {
+	cfg := ui.PlatformConfiguration{
+		Locales:               d.Locales(),
+		TextScaleFactor:       d.TextScaleFactor(),
+		PlatformBrightness:    d.PlatformBrightness(),
+		AccessibilityFeatures: d.AccessibilityFeatures(),
+		AlwaysUse24HourFormat: d.AlwaysUse24HourFormat(),
+		ScaleFontSize:         d.ScaleFontSize,
+		CaretBlinkTime:        d.CaretBlinkTime(),
+		DoubleClickTime:       d.DoubleClickTime(),
+	}
+	if c := d.AccentColor(); c != nil {
+		accent := *c
+		cfg.AccentColor = &accent
+	}
+	cfg.UIFontFamily, cfg.UIFontSize = d.UIFont()
+	cfg.MonospaceFontFamily, cfg.MonospaceFontSize = d.MonospaceFont()
+	return cfg
+}
+
+// cloneConfiguration copies what the dispatcher would share with the caller: the locales and
+// the accent color.
+func cloneConfiguration(cfg ui.PlatformConfiguration) ui.PlatformConfiguration {
+	cfg.Locales = slices.Clone(cfg.Locales)
+	if cfg.AccentColor != nil {
+		accent := *cfg.AccentColor
+		cfg.AccentColor = &accent
+	}
+	return cfg
+}
+
+// sameConfiguration is whether two configurations are equal in every field but ScaleFontSize,
+// which is a function.
+func sameConfiguration(a, b ui.PlatformConfiguration) bool {
+	if (a.AccentColor == nil) != (b.AccentColor == nil) || (a.AccentColor != nil && *a.AccentColor != *b.AccentColor) {
+		return false
+	}
+	return slices.Equal(a.Locales, b.Locales) &&
+		a.TextScaleFactor == b.TextScaleFactor &&
+		a.PlatformBrightness == b.PlatformBrightness &&
+		a.AccessibilityFeatures == b.AccessibilityFeatures &&
+		a.AlwaysUse24HourFormat == b.AlwaysUse24HourFormat &&
+		a.UIFontFamily == b.UIFontFamily && a.UIFontSize == b.UIFontSize &&
+		a.MonospaceFontFamily == b.MonospaceFontFamily && a.MonospaceFontSize == b.MonospaceFontSize &&
+		a.CaretBlinkTime == b.CaretBlinkTime && a.DoubleClickTime == b.DoubleClickTime
+}
+
+// viewConfiguration is the configuration of the view's ui.View, made from its getters.
+func (v *View) viewConfiguration() ui.ViewConfiguration {
+	u := v.uiView
+	cfg := ui.ViewConfiguration{
+		PhysicalSize: u.PhysicalSize(), DevicePixelRatio: u.DevicePixelRatio(),
+		ViewPadding: u.ViewPadding(), ViewInsets: u.ViewInsets(), SystemGestureInsets: u.SystemGestureInsets(), Padding: u.Padding(),
+		PhysicalConstraints: u.PhysicalConstraints(), Display: u.Display(), GestureSettings: u.GestureSettings(), Window: u.Window(),
+	}
+	// The getter gives tight constraints around the size when the platform set none; keep
+	// them unset, so that they follow the size when it changes.
+	if cfg.PhysicalConstraints == ui.NewViewConstraintsTight(cfg.PhysicalSize) {
+		cfg.PhysicalConstraints = ui.ViewConstraints{}
+	}
+	return cfg
 }
 
 // validPhysicalSize is whether a size in pixels, rounded up, fits in a Surface.
@@ -255,10 +400,12 @@ func validPhysicalSize(s ui.Size) bool {
 // Flutter: no counterpart
 func (v *View) Binding() *widgets.WidgetsBinding { return v.binding }
 
-// SetSize changes the size of the view, in logical pixels. The framework hears of it as a
-// change of the view's metrics and lays out again; the next frame has the new size in
-// pixels and damages all of it. It fails for a size that is not positive (tag
-// ViewSizeInvalid) and for a view that was closed (tag ViewClosed).
+// SetSize changes the size of the view, in logical pixels, and nothing else of its
+// configuration: the window, the padding, the insets and the display features that the app set
+// with UpdateViewConfiguration stay. The framework hears of it as a change of the view's
+// metrics and lays out again; the next frame has the new size in pixels and damages all of it.
+// It fails for a size that is not positive (tag ViewSizeInvalid) and for a view that was
+// closed (tag ViewClosed).
 //
 // Flutter: no counterpart
 func (v *View) SetSize(size ui.Size) error {
@@ -271,11 +418,32 @@ func (v *View) SetSize(size ui.Size) error {
 		return errors.New(tagViewSizeInvalid, "the size of a view is positive and fits in a surface",
 			"width", size.Width, "height", size.Height, "devicePixelRatio", v.dpr)
 	}
-	if physical == v.cfg.PhysicalSize {
+	cfg := v.viewConfiguration()
+	if physical == cfg.PhysicalSize {
 		return nil
 	}
-	v.cfg.PhysicalSize = physical
-	v.d.UpdateViewConfiguration(ui.ImplicitViewID, v.cfg)
+	cfg.PhysicalSize = physical
+	v.d.UpdateViewConfiguration(ui.ImplicitViewID, cfg)
+	return nil
+}
+
+// SetWindow changes the window of the view's configuration (ViewOpts.Window) and nothing
+// else of it. The framework hears of it as a change of the view's metrics, as it does when a
+// platform changes the state of a window: a WindowDecoration builds again. It fails for a view
+// that was closed (tag ViewClosed).
+//
+// Flutter: no counterpart
+func (v *View) SetWindow(info ui.WindowInfo) error {
+	if v.isClosed() {
+		return errors.New(tagViewClosed, "the view was closed")
+	}
+	v.parent.UIThread().AssertCurrent("offscreen.View.SetWindow")
+	cfg := v.viewConfiguration()
+	if cfg.Window == info {
+		return nil
+	}
+	cfg.Window = info
+	v.d.UpdateViewConfiguration(ui.ImplicitViewID, cfg)
 	return nil
 }
 
@@ -303,6 +471,9 @@ func (v *View) Close() {
 	v.pending = nil
 	v.mu.Unlock()
 	v.cancel()
+	if v.follower != nil {
+		v.parent.RemoveObserver(v.follower)
+	}
 
 	// Unmount the tree with a frame of its own, as the tester does: nothing is rendered
 	// (the view is closed) and no frame is asked for.
@@ -363,6 +534,7 @@ func (v *View) runFrame() {
 	now := v.clock.Now()
 	v.lastBegin, v.haveLast = now, true
 	v.mu.Unlock()
+	v.followParent(false)
 	v.d.BeginFrame(now.Sub(v.start))
 	v.d.DrawFrame()
 }

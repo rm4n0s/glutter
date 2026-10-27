@@ -4489,3 +4489,35 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - A text-only host receives only the text of a content that has several formats.
   - The parent's fake platform has no call counters, so the tests prove "never read or written" with sentinels instead.
   - Emetos removes `clipboardParent` and its second binding (its own issue).
+
+## 29.10 The platform configuration and the window of an offscreen view (Emetos)
+
+- **Date:** 2026-10-27
+- **Branch:** feat/step-29.10-view-configuration
+- **Summary:** Emetos's issue "An `offscreen.View` starts with a default platform configuration and a blank window".
+  - **The configuration:** `NewView` copies the whole `ui.PlatformConfiguration` of the parent's dispatcher into the view's dispatcher before the tree is mounted. A state that reads the text scale, brightness, locale or window in `InitState` sees the app's values in the first frame, with no second build. The view then follows the parent's changes until `Close`. The owner chose following the parent as the default (2026-10-27).
+  - **How it follows:**
+    - an observer of the parent's binding (removed in `Close`) copies the configuration again when the text scale, brightness, locales or accessibility features change;
+    - the accent color, the 24-hour format, the fonts, the caret blink time and the double-click time reach the parent's binding through no callback, so the view compares them at the start of each of its frames;
+    - the parent dispatcher's `OnPlatformConfigurationChanged` is not taken over, and no public API was added. Flutter also keeps the configuration struct private, so the view builds it from the dispatcher's getters. A reflection test fails if a field of `ui.PlatformConfiguration` has no case.
+  - **`ViewOpts.PlatformConfiguration`:** a fixed configuration. The view keeps it, registers no observer and ignores the parent's changes. The app may still change it through the view's dispatcher.
+  - **The window:** `ViewOpts.Window` is the window of the first `ViewConfiguration`. `View.SetWindow(info)` changes it (tag `ViewClosed` after `Close`), and the framework hears of it as a change of metrics.
+  - **`SetSize`:** it reads the current configuration from the view's dispatcher and changes only the size. The window stays, and so does what the app set with `UpdateViewConfiguration`: padding, insets, display, gesture settings and constraints. Constraints equal to tight around the size count as unset, so they follow the size. The view's private copy of the configuration is gone.
+- **Main files:** `offscreen/view.go`, `offscreen/view_config_test.go`, `offscreen/view_test.go`, `offscreen/export_test.go`, `docs/SPEC.md` (§9.9, "Decisions of step 29.10"; the 29.7 follow-up is closed).
+- **Tests (8 functions, about 27 subtests, table-driven):**
+  - **The first frame:** `InitState` and the first build see the parent's values, with exactly one build.
+  - **Every field:** a change of each field of the parent's configuration reaches the view, with a rebuild.
+  - **A fixed configuration:** the view keeps it.
+  - **After `Close`:** the view stops following, and the observer is removed.
+  - **The window:** a `WindowDecoration` is drawn active, inactive and undecorated, from the option and from `SetWindow`, and drawn back to identical pixels.
+  - **What `SetSize` and `SetWindow` keep:** padding, insets, display, gesture settings, the window and the constraints the app set.
+  - **The error:** `SetWindow` after `Close` returns `ViewClosed`, with a route test.
+  - **Mutation checks:** without the per-frame comparison, 6 field cases fail; without the observer, 6 cases fail. No Flutter test cases were ported, since Flutter has no counterpart.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck, apicheck, uintptrcheck ✅ · wasm build, vet and tests ✅ · check-android ✅ · Windows builds, vet, lint and test-windows ✅ · display tests: none
+- **Proof:** none
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - All the additions are Glutter-only (`// Flutter: no counterpart`), so there is no §12.10 row.
+  - The fields that have no observer method reach the view at its next frame.
+  - The parent's window is not copied into the view.
+  - Emetos removes `viewSetup`, `configure` and `applyWindow` (its own issue).

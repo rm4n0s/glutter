@@ -113,8 +113,18 @@ type harness struct {
 // newHarness makes a parent and a view of root. The view's callback copies the image.
 func newHarness(t *testing.T, root widgets.Widget, size ui.Size, opts ...offscreen.ViewOpts) *harness {
 	t.Helper()
+	return newHarnessWith(t, nil, root, size, opts...)
+}
+
+// newHarnessWith is newHarness with a function that prepares the parent (its platform
+// configuration, say) before the view is made.
+func newHarnessWith(t *testing.T, prepare func(parent *gluttertest.Tester), root widgets.Widget, size ui.Size, opts ...offscreen.ViewOpts) *harness {
+	t.Helper()
 	h := &harness{t: t, parent: gluttertest.New(t, gluttertest.Opts{Size: ui.Size{Width: 320, Height: 200}})}
 	h.parent.PumpWidget(widgets.NewSizedBoxShrink(nil))
+	if prepare != nil {
+		prepare(h.parent)
+	}
 	v, err := offscreen.NewViewWithClock(h.parent.Binding, size, root, h.record, h.parent.Clock, opts...)
 	if err != nil {
 		t.Fatal(err)
@@ -632,6 +642,14 @@ func TestViewErrors(t *testing.T) {
 			v.Close()
 			return v.SetSize(size)
 		}, "View.SetSize.ViewClosed"},
+		{"SetWindow after Close", func() error {
+			v, err := offscreen.NewView(parent.Binding, size, newCounter(nil), noop)
+			if err != nil {
+				return err
+			}
+			v.Close()
+			return v.SetWindow(ui.WindowInfo{Activated: true})
+		}, "View.SetWindow.ViewClosed"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -44,3 +44,9 @@ func (v *View) Scheduled() bool {
 
 // IsClosed is whether Close began.
 func IsClosed(v *View) bool { return v.isClosed() }
+
+// Following is whether the view's observer is registered on the parent's binding. It
+// removes the observer, so call it once, at the end of a test.
+func (v *View) Following() bool {
+	return v.follower != nil && v.parent.RemoveObserver(v.follower)
+}
