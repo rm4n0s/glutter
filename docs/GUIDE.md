@@ -2,7 +2,7 @@
 
 Glutter has Flutter's framework API on its own engine, so what you know carries over: the
 widget tree, `BuildContext`, `setState`, `Theme.of`, `Navigator`, animation controllers,
-`CustomPaint`. This page shows thirteen things side by side, in Dart and in Go. The rules behind
+`CustomPaint`. This page shows fourteen things side by side, in Dart and in Go. The rules behind
 them are in [SPEC §12](SPEC.md#12-api-conventions-flutter--go); this is the short version.
 
 **The rules in one paragraph.** A widget is made by `NewX(required..., opts ...XOpts)`. The
@@ -20,7 +20,7 @@ import m "github.com/rm4n0s/glutter/material"
 
 Each Go snippet below is checked by `go vet` in the test of this directory
 (`docs/docs_test.go`). The imports that they use, and that are left out for brevity, are
-`m` (`material`), `foundation`, `ui`, `painting`, `rendering`, `animation`, `svg`, `context`,
+`m` (`material`), `foundation`, `ui`, `painting`, `rendering`, `animation`, `svg`, `offscreen`, `context`,
 `strconv` and `time`.
 
 ## 1. A widget without state
@@ -684,6 +684,47 @@ func badge() m.Widget {
 - **Loading:** assets, files and URLs load on a goroutine. A document is parsed once and cached for the app (`CacheOf(bc)`, or your own `NewSvgCacheScope`).
 - **What is drawn:** shapes, gradients, patterns, clip paths, masks, text, markers and the common filters. What is not drawn is listed in [SPEC §26](SPEC.md#26-svg-images-19).
 - **Without a widget:** to draw an SVG in your own painter, `svg.Parse` gives a `Document`, whose `Picture()` is a `ui.Picture`.
+
+## 14. Drawing a view off screen
+
+Flutter can draw a widget into an image (`RenderRepaintBoundary.toImage`) and can show a second view in a window the
+embedder made, but it has no way to run a tree that nobody sees and read its pixels as they change. Glutter's package
+`offscreen` (`github.com/rm4n0s/glutter/offscreen`, which `material` does not re-export) does:
+
+```go
+// startView runs root in a view of 1280x800 pixels. Call it on the UI thread, where parent
+// is the binding of the app (WidgetsBindingOf(bc)).
+func startView(parent *m.WidgetsBinding, root m.Widget, send func(pixels []byte, width int)) (*offscreen.View, error) {
+	return offscreen.NewView(parent, m.Size{Width: 1280, Height: 800}, root, func(f offscreen.Frame) {
+		// This runs on the goroutine of the view. f.Image is drawn into again as soon as it
+		// returns, so copy what you send; f.Damage says which rectangles changed.
+		send(append([]byte(nil), f.Image.Pix...), f.Image.Rect.Dx())
+	}, offscreen.ViewOpts{DevicePixelRatio: 1, MaxFrameRate: 30})
+}
+
+// tap sends a touch to the view, as an engine does. Call it on the UI thread.
+func tap(v *offscreen.View, x, y float64) {
+	d := v.Binding().PlatformDispatcher()
+	p := ui.PointerData{Kind: ui.PointerDeviceKindTouch, PhysicalX: x, PhysicalY: y}
+	down, up := p, p
+	down.Change, up.Change = ui.PointerChangeDown, ui.PointerChangeUp
+	d.DispatchPointerDataPacket(ui.PointerDataPacket{Data: []ui.PointerData{down}})
+	d.DispatchPointerDataPacket(ui.PointerDataPacket{Data: []ui.PointerData{up}})
+}
+```
+
+- **A binding of its own.** The tree is built, laid out and painted on the app's UI thread, but the view has its own
+  `WidgetsBinding`, so its frame rate is its own (at most `MaxFrameRate`, 30 by default) and does not depend on the
+  app's windows. It shares the app's text engine (fonts you loaded work), error reporter and assets. Reach its binding
+  with `View.Binding()`.
+- **The drawing is on another goroutine.** A frame's scene is copied on the UI thread (`NewDetacher`) and drawn into a
+  `NewSurface`, which redraws only what changed. A newer frame replaces one that waits, so a slow callback makes the view
+  drop frames and never queue them. A frame that changed no pixel calls nothing.
+- **Size and end.** `SetSize` changes the size in logical pixels. `Close` unmounts the tree (every `State.Dispose`
+  runs), waits for the goroutine, and may be called twice; do not call it from the callback.
+- **Without a view.** To turn a picture into an image once, give `offscreen.NewRasterizer()` to
+  `ToImageOpts{Rasterizer: ...}`. It draws with the software renderer, with no window and no GPU, on any goroutine.
+- **Not in the view.** It has no window, no accessibility tree and no input method; the clipboard is the app's.
 
 ## For Flutter web developers
 

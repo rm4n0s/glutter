@@ -180,6 +180,24 @@ func logo() m.Widget {
 }
 ```
 
+**What is new in 1.9.1.** Drawing a view off screen, for an app that needs the pixels of a second view (a remote
+view, a thumbnail, a preview). The package `offscreen` has:
+- `NewRasterizer`, a `ui.Rasterizer` on the software renderer (for `Scene.ToImage`), safe on any goroutine;
+- `NewDetacher`, which copies a scene on the UI thread into one that any goroutine can draw;
+- `NewSurface`, the pixels of one view across frames, which redraws only the rectangles that changed;
+- `NewView`, which runs a widget tree in a view of its own, on its own binding, at most 30 frames a second, and
+  calls your function on a goroutine with the image and the damage of each frame ([the guide](docs/GUIDE.md#14-drawing-a-view-off-screen)).
+
+The software renderer is also faster, with the same pixels: a full 1280x800 frame takes about 6 ms (16 ms full of text) where it took about 50.
+
+```go
+func startView(parent *m.WidgetsBinding, root m.Widget, send func(pixels []byte, width int)) (*offscreen.View, error) {
+	return offscreen.NewView(parent, m.Size{Width: 1280, Height: 800}, root, func(f offscreen.Frame) {
+		send(append([]byte(nil), f.Image.Pix...), f.Image.Rect.Dx()) // the image is valid only in this call
+	})
+}
+```
+
 **What is new in 1.8.1 to 1.8.3.**
 - **1.8.1:** `ErrorBoundary`. When anything below it fails to build, it shows a fallback in place of its whole child,
   in the same frame. It is told about the error before the app's error reporter ([the guide](docs/GUIDE.md#12-a-widget-that-fails)).

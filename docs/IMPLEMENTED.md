@@ -4385,3 +4385,45 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - Typing in a field, and moving the caret by a character, damage the whole surface in the tests. The `Scaffold`'s background picture is recorded again when the field repaints, and the tracker joins more than 8 rectangles into one. A blinking caret gives small damage. A whole frame now takes about 16 ms.
   - `gluttertest.Tester.Screenshot` still calls `soft.Render`.
   - The `glutter_wine` parity suite of `d3d12` was not run: the step changes `d3d12` only through the reference renderer, and `scripts/test-windows.sh` passes.
+
+## 29.7 An offscreen view, and release 1.9.1 (Emetos)
+
+- **Date:** 2026-10-27
+- **Branch:** feat/step-29.7
+- **Summary:** the second half of Emetos's issue "No public way to draw a view off screen and to read its pixels", and the release of 1.9.1.
+  - **`offscreen.NewView(parent, size, root, onFrame, ViewOpts{DevicePixelRatio, MaxFrameRate})`** runs a widget tree in a view of its own:
+    - it has a `WidgetsBinding` of its own on the parent's UI thread, and shares the parent's error reporter, error widget builder, debug options, assets, HTTP client and text engine;
+    - the root is wrapped as `RunWidget` wraps it.
+  - **Frames:**
+    - they are paced at `MaxFrameRate` (default 30): the first request posts at once, a later one waits for the gap, and two requests make one frame;
+    - each scene is detached on the UI thread and drawn into a `Surface` on the view's goroutine;
+    - `onFrame` gets `Frame{Image, Damage, Number}`. `Image` is valid only during the call. A newer scene replaces the one that waits, and a frame with no damage calls nothing.
+  - **The rest of the API:**
+    - `View.Binding()` (input goes through its dispatcher: `DispatchPointerDataPacket`, `DispatchKeyData`, `DispatchTextInput`);
+    - `SetSize`;
+    - `Close`, which unmounts the tree, stops the timer, waits for the goroutine and posts nothing afterwards.
+  - **What the view lacks:** a window, an accessibility bridge and an input method. Its clipboard is the parent's. Its gesture timers use the clock that paces its frames.
+  - **Documents:** SPEC §9.9 (the decisions), §12.10, §1 (the 1.9.1 sentence) and §3 ("Scope of 1.9.1"); `README.md` "What is new in 1.9.1"; `docs/GUIDE.md` section "14. Drawing a view off screen", whose snippet `docs/docs_test.go` compiles.
+  - **The publish:** `v1.9.1` closes the patch version. Steps 29.6 and 29.7 and the tag go to GitHub in one push.
+- **Main files:** `offscreen/view.go`, `offscreen/view_test.go`, `offscreen/export_test.go`, `docs/SPEC.md`, `README.md`, `docs/GUIDE.md`, `docs/docs_test.go`.
+- **Tests (15 functions, on the parent tester's fake clock, so pacing is a count of frames):**
+  - **Pixels:** a counter tapped through the view's dispatcher gives the same pixels as `Tester.Screenshot` (0, 1 and 3 taps).
+  - **Size and fonts:** the size and the device pixel ratio (a size is rounded up), `SetSize`, and the shared text engine.
+  - **Pacing:** 100 changes in a burst make at most 3 frames, and one request never makes two frames.
+  - **Damage and dropped frames:** a blinking caret damages one 64x64 tile. A slow callback drops the frames in between and gets the last one.
+  - **`Close`:** it waits for a running callback and stops the timer. A frame posted before `Close` does nothing.
+  - **Memory and errors:**
+    - 1000 frames keep the same number of scenes and copies;
+    - a panic in `onFrame` is reported and the next frame is drawn;
+    - no goroutine is left;
+    - the tags `ViewParentNil`, `ViewRootNil`, `ViewCallbackNil`, `ViewSizeInvalid`, `ViewOptionInvalid` and `ViewClosed` have route tests.
+  - **Races:** a test under `-race` runs 400 frames with changing text and resizes.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ (also `GOOS=windows`, amd64 and arm64, with and without `glutter_wine`) · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck ✅ · apicheck ✅ · uintptrcheck ✅ · `GOOS=js GOARCH=wasm` build, vet and `scripts/test-wasm.sh` ✅ (with `offscreen`) · `scripts/check-android.sh` ✅ · `GOOS=windows` amd64 and arm64 build, vet ✅ · `scripts/test-windows.sh` ✅ (also with `./offscreen`). No display tests: the step changes no renderer.
+- **Proof:**
+  ![29.7 offscreen](implemented-proof-images/29.7-offscreen.png)
+  A 480x360 frame of the Material counter drawn by an `offscreen.View`, after a tap on the button sent through the view's dispatcher: the app bar, the label, a large "1" and the button.
+- **Manual checks:** none. Emetos removes its host, its rasterizer made of a `Tester` and `headlessPaceFactor` (its own issue).
+- **Deviations and follow-ups:**
+  - `NewView` returns `(*View, error)`, unlike the other constructors (SPEC §12.10).
+  - The view's platform configuration (brightness, locale, text scale) is the default one, not the app's. An app sets it with `View.Binding().PlatformDispatcher().UpdatePlatformConfiguration`. A follow-up could copy the parent's configuration when the view is made and follow its changes.
+  - Typing still damages the whole surface (29.6); a whole frame takes about 16 ms.

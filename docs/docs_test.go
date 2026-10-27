@@ -22,6 +22,7 @@ import (
 	"github.com/rm4n0s/glutter/animation"
 	"github.com/rm4n0s/glutter/foundation"
 	m "github.com/rm4n0s/glutter/material"
+	"github.com/rm4n0s/glutter/offscreen"
 	"github.com/rm4n0s/glutter/painting"
 	"github.com/rm4n0s/glutter/rendering"
 	"github.com/rm4n0s/glutter/svg"
@@ -37,6 +38,7 @@ var (
 	_ painting.EdgeInsets
 	_ rendering.Box
 	_ = svg.Parse
+	_ = offscreen.NewView
 	_ ui.Color
 )
 
