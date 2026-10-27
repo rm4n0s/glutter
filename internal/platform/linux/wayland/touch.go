@@ -15,7 +15,7 @@ type touch struct {
 }
 
 func newTouch(p *Platform) *touch {
-	t := &touch{p: p, b: input.NewTouchBatcher(p.now)}
+	t := &touch{p: p, b: input.NewTouchBatcher(p.now, p.pointerIDs)}
 	t.obj = p.sess.seat.GetTouch()
 	t.obj.SetEvents(&wl.WlTouchEvents{
 		OnDown: func(_ uint32, _ uint32, surface *wl.WlSurface, id int32, x, y float64) {

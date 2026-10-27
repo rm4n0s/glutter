@@ -756,3 +756,96 @@ func TestEveryCursorHasItsShape(t *testing.T) {
 const (
 	tagLibraryLoadFailed = "LibraryLoadFailed"
 )
+
+// downs returns the pointer identifiers of the downs in the batches, with the device of each.
+func downs(batches [][]ui.PointerData) (ids, devices []int) {
+	for _, b := range batches {
+		for _, d := range b {
+			if d.Change == ui.PointerChangeDown {
+				ids = append(ids, d.PointerIdentifier)
+				devices = append(devices, d.Device)
+			}
+		}
+	}
+	return ids, devices
+}
+
+func TestPointerIdentifiersAreNewAtEachDownThroughTheCompositor(t *testing.T) {
+	e := startInput(t, capPointer|capTouch, 0, tabletGlobal)
+	pen := e.srv.AddTabletTool(fakecomp.ToolPen)
+
+	// Two presses of the mouse in a row.
+	e.srv.PointerEnter(e.surface, 1, 1)
+	e.srv.PointerButton(0x110, true)
+	e.srv.PointerMotion(2, 2)
+	e.srv.PointerButton(0x110, false)
+	e.srv.PointerFrame()
+	e.srv.PointerButton(0x110, true)
+	e.srv.PointerButton(0x110, false)
+	e.srv.PointerFrame()
+	// The compositor reuses the id 0 of the finger: two touches, one after the other.
+	e.srv.TouchDown(e.surface, 0, 10, 10)
+	e.srv.TouchFrame()
+	e.srv.TouchUp(0)
+	e.srv.TouchFrame()
+	e.srv.TouchDown(e.surface, 0, 10, 10)
+	e.srv.TouchDown(e.surface, 1, 20, 20)
+	e.srv.TouchFrame()
+	// And two contacts of the pen.
+	e.srv.ToolProximityIn(pen)
+	e.srv.ToolSend(pen, "frame", uint32(1))
+	for i := uint32(0); i < 2; i++ {
+		e.srv.ToolSend(pen, "down", uint32(10+i))
+		e.srv.ToolSend(pen, "frame", uint32(2+2*i))
+		e.srv.ToolSend(pen, "up")
+		e.srv.ToolSend(pen, "frame", uint32(3+2*i))
+	}
+
+	batches := e.batches()
+	ids, devices := downs(batches)
+	wantDevices := []int{
+		input.MouseDevice, input.MouseDevice,
+		input.TouchDeviceBase, input.TouchDeviceBase, input.TouchDeviceBase + 1,
+		input.StylusDeviceBase + 1, input.StylusDeviceBase + 1,
+	}
+	if len(ids) != len(wantDevices) {
+		t.Fatalf("downs of devices %v, want %v", devices, wantDevices)
+	}
+	seen := map[int]bool{}
+	for i, id := range ids {
+		if id == 0 || seen[id] {
+			t.Errorf("down %d (device %d) has the identifier %d; all: %v", i, devices[i], id, ids)
+		}
+		seen[id] = true
+	}
+
+	// Every event of a contact carries the identifier of its down.
+	current := map[int]int{}
+	for _, b := range batches {
+		for _, d := range b {
+			switch d.Change {
+			case ui.PointerChangeDown:
+				current[d.Device] = d.PointerIdentifier
+			case ui.PointerChangeMove, ui.PointerChangeUp, ui.PointerChangeCancel:
+				if d.PointerIdentifier != current[d.Device] {
+					t.Errorf("%v of device %d has the identifier %d, want %d", d.Change, d.Device, d.PointerIdentifier, current[d.Device])
+				}
+			}
+		}
+	}
+
+	// The seat loses its pointer and gets it back: the new batcher goes on counting.
+	last := ids[len(ids)-1]
+	e.srv.SeatCapabilities(capTouch)
+	waitUntil(t, func() bool { return len(e.srv.RequestsWith("wl_pointer.release")) == 1 }, "the pointer was not released")
+	e.batches()
+	e.srv.SeatCapabilities(capPointer | capTouch)
+	waitUntil(t, func() bool { return len(e.srv.RequestsWith("wl_seat.get_pointer")) == 2 }, "the pointer did not come back")
+	e.srv.PointerEnter(e.surface, 1, 1)
+	e.srv.PointerButton(0x110, true)
+	e.srv.PointerFrame()
+	ids, _ = downs(e.batches())
+	if len(ids) != 1 || ids[0] <= last {
+		t.Errorf("after the pointer came back: identifiers %v, want one above %d", ids, last)
+	}
+}

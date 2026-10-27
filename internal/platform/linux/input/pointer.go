@@ -137,6 +137,13 @@ type PointerBatcher struct {
 	// batcher gets are logical.
 	Scale float64
 
+	// ids gives the pointer identifiers; id is the identifier of the mouse: a new one at
+	// each down (the first button), kept by every event until the pointer is added again.
+	// panID is the identifier of the pan/zoom gesture that is in progress.
+	ids   *PointerIDs
+	id    int
+	panID int
+
 	view    ui.ViewID
 	inside  bool
 	x, y    float64 // the position, physical
@@ -158,11 +165,16 @@ type PointerBatcher struct {
 	out []ui.PointerData
 }
 
-// NewPointerBatcher makes a batcher whose events carry the times that now gives.
+// NewPointerBatcher makes a batcher whose events carry the times that now gives and the pointer
+// identifiers that ids gives (nil: a counter of its own). The batchers of one platform share ids,
+// so that two contacts never have the same identifier.
 //
 // Flutter: no counterpart
-func NewPointerBatcher(now func() time.Duration) *PointerBatcher {
-	return &PointerBatcher{now: now, Scale: 1}
+func NewPointerBatcher(now func() time.Duration, ids *PointerIDs) *PointerBatcher {
+	if ids == nil {
+		ids = NewPointerIDs()
+	}
+	return &PointerBatcher{now: now, Scale: 1, ids: ids}
 }
 
 // base returns the data every event of the pointer has.
@@ -173,9 +185,11 @@ func (b *PointerBatcher) base(change ui.PointerChange) ui.PointerData {
 		Change:    change,
 		Kind:      ui.PointerDeviceKindMouse,
 		Device:    MouseDevice,
-		PhysicalX: b.x,
-		PhysicalY: b.y,
-		Buttons:   b.buttons,
+		// A hover carries the identifier of the last press, a down a new one.
+		PointerIdentifier: b.id,
+		PhysicalX:         b.x,
+		PhysicalY:         b.y,
+		Buttons:           b.buttons,
 	}
 }
 
@@ -192,6 +206,7 @@ func (b *PointerBatcher) Enter(view ui.ViewID, x, y float64) {
 	b.view, b.inside = view, true
 	b.x, b.y = x*b.Scale, y*b.Scale
 	b.buttons = 0
+	b.id = 0 // a pointer that is added has had no contact yet
 	b.emit(b.base(ui.PointerChangeAdd))
 }
 
@@ -256,6 +271,7 @@ func (b *PointerBatcher) Button(code uint32, pressed bool) {
 	}
 	switch {
 	case pressed && was == 0:
+		b.id = b.ids.next()
 		b.emit(b.base(ui.PointerChangeDown))
 	case !pressed && b.buttons == 0:
 		b.emit(b.base(ui.PointerChangeUp))
@@ -394,6 +410,7 @@ func (b *PointerBatcher) panData(change ui.PointerChange) ui.PointerData {
 	d := b.base(change)
 	d.Kind = ui.PointerDeviceKindTrackpad
 	d.Device = TrackpadDevice
+	d.PointerIdentifier = b.panID
 	d.Buttons = 0
 	d.Scale = 1
 	return d
@@ -403,6 +420,7 @@ func (b *PointerBatcher) panData(change ui.PointerChange) ui.PointerData {
 func (b *PointerBatcher) startPan(kind panKind) {
 	b.endPan()
 	b.pan = kind
+	b.panID = b.ids.next()
 	b.panX, b.panY = 0, 0
 	b.emit(b.panData(ui.PointerChangePanZoomStart))
 }

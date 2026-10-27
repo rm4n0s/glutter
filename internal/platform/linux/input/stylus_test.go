@@ -15,7 +15,7 @@ func stylusEv(change ui.PointerChange, kind ui.PointerDeviceKind, id int, x, y, 
 
 func TestStylusSequence(t *testing.T) {
 	pen := ui.PointerDeviceKindStylus
-	b := NewStylusBatcher(tickingClock())
+	b := NewStylusBatcher(tickingClock(), nil)
 	b.AddTool(4, pen)
 	// The tool comes near at (10, 20) and hovers.
 	b.ProximityIn(4, 3)
@@ -44,8 +44,11 @@ func TestStylusSequence(t *testing.T) {
 		stylusEv(ui.PointerChangeUp, pen, 4, 15, 25, 0, 0, 0),
 		stylusEv(ui.PointerChangeRemove, pen, 4, 15, 25, 0, 0, 0),
 	})
+	// The tool has no contact when it is added and hovers: the identifier is 0, then the first
+	// contact gives a new one that its move, up and remove carry.
+	wantID := []int{0, 0, 1, 1, 1, 1}
 	for i, d := range got {
-		if d.ViewID != 3 || d.PointerIdentifier != 4 || d.PressureMax != 1 || d.DistanceMax != 1 {
+		if d.ViewID != 3 || d.PointerIdentifier != wantID[i] || d.PressureMax != 1 || d.DistanceMax != 1 {
 			t.Errorf("event %d: view %d, identifier %d, pressure max %v, distance max %v", i, d.ViewID, d.PointerIdentifier, d.PressureMax, d.DistanceMax)
 		}
 	}
@@ -59,7 +62,7 @@ func TestStylusSequence(t *testing.T) {
 
 func TestStylusKinds(t *testing.T) {
 	for _, kind := range []ui.PointerDeviceKind{ui.PointerDeviceKindStylus, ui.PointerDeviceKindInvertedStylus, ui.PointerDeviceKindTouch, ui.PointerDeviceKindMouse} {
-		b := NewStylusBatcher(tickingClock())
+		b := NewStylusBatcher(tickingClock(), nil)
 		b.AddTool(1, kind)
 		b.ProximityIn(1, 0)
 		b.Frame(1)
@@ -84,7 +87,7 @@ func TestStylusBarrelButtons(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			b := NewStylusBatcher(tickingClock())
+			b := NewStylusBatcher(tickingClock(), nil)
 			b.AddTool(1, pen)
 			b.ProximityIn(1, 0)
 			b.Motion(1, 5, 5)
@@ -110,7 +113,7 @@ func TestStylusBarrelButtons(t *testing.T) {
 		})
 	}
 	// During a hover the barrel button shows in the hover.
-	b := NewStylusBatcher(tickingClock())
+	b := NewStylusBatcher(tickingClock(), nil)
 	b.AddTool(1, pen)
 	b.ProximityIn(1, 0)
 	b.Frame(1)
@@ -123,7 +126,7 @@ func TestStylusBarrelButtons(t *testing.T) {
 }
 
 func TestStylusLeavingWhileTouching(t *testing.T) {
-	b := NewStylusBatcher(tickingClock())
+	b := NewStylusBatcher(tickingClock(), nil)
 	b.AddTool(1, ui.PointerDeviceKindStylus)
 	b.ProximityIn(1, 0)
 	b.Frame(1)
@@ -148,7 +151,7 @@ func TestStylusLeavingWhileTouching(t *testing.T) {
 
 func TestStylusTool(t *testing.T) {
 	t.Run("removing a tool that is near removes it from the view", func(t *testing.T) {
-		b := NewStylusBatcher(tickingClock())
+		b := NewStylusBatcher(tickingClock(), nil)
 		b.AddTool(1, ui.PointerDeviceKindStylus)
 		b.ProximityIn(1, 0)
 		b.Frame(1)
@@ -166,7 +169,7 @@ func TestStylusTool(t *testing.T) {
 		}
 	})
 	t.Run("a window that goes away cancels the tool on it", func(t *testing.T) {
-		b := NewStylusBatcher(tickingClock())
+		b := NewStylusBatcher(tickingClock(), nil)
 		b.AddTool(1, ui.PointerDeviceKindStylus)
 		b.AddTool(2, ui.PointerDeviceKindStylus)
 		b.ProximityIn(1, 7)
@@ -183,7 +186,7 @@ func TestStylusTool(t *testing.T) {
 		}
 	})
 	t.Run("scale", func(t *testing.T) {
-		b := NewStylusBatcher(tickingClock())
+		b := NewStylusBatcher(tickingClock(), nil)
 		b.Scale = 2
 		b.AddTool(1, ui.PointerDeviceKindStylus)
 		b.ProximityIn(1, 0)
@@ -215,7 +218,7 @@ func TestTiltAngles(t *testing.T) {
 			}
 		})
 	}
-	b := NewStylusBatcher(tickingClock())
+	b := NewStylusBatcher(tickingClock(), nil)
 	b.AddTool(1, ui.PointerDeviceKindStylus)
 	b.ProximityIn(1, 0)
 	b.Tilt(1, 0, 45)
@@ -223,7 +226,7 @@ func TestTiltAngles(t *testing.T) {
 	if got := b.Take()[0]; math.Abs(got.Tilt-math.Pi/4) > 1e-6 || math.Abs(got.Orientation-math.Pi/2) > 1e-6 {
 		t.Errorf("tilt %v, orientation %v", got.Tilt, got.Orientation)
 	}
-	b = NewStylusBatcher(tickingClock())
+	b = NewStylusBatcher(tickingClock(), nil)
 	b.AddTool(1, ui.PointerDeviceKindStylus)
 	b.ProximityIn(1, 0)
 	b.Rotation(1, 90)

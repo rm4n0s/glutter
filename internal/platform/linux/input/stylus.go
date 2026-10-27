@@ -48,6 +48,9 @@ type stylusTool struct {
 	hasRotation       bool
 	buttons           int // the barrel and mouse buttons that are down
 	present, touching bool
+	// pointer is the pointer identifier of the last contact of the tool: a new one at each
+	// down, kept until the tool is added again (0 until its first down).
+	pointer int
 
 	// The events of the frame that is being collected.
 	in, out, down, up, changed bool
@@ -67,15 +70,21 @@ type StylusBatcher struct {
 	// Scale is the number of physical pixels per logical pixel; the positions the
 	// batcher gets are logical.
 	Scale float64
+	ids   *PointerIDs
 	tools map[int]*stylusTool
 	out   []ui.PointerData
 }
 
-// NewStylusBatcher makes a batcher whose events carry the times that now gives.
+// NewStylusBatcher makes a batcher whose events carry the times that now gives and the pointer
+// identifiers that ids gives (nil: a counter of its own). A tool gets a new identifier at each
+// contact with the surface. The batchers of one platform share ids.
 //
 // Flutter: no counterpart
-func NewStylusBatcher(now func() time.Duration) *StylusBatcher {
-	return &StylusBatcher{now: now, Scale: 1, tools: map[int]*stylusTool{}}
+func NewStylusBatcher(now func() time.Duration, ids *PointerIDs) *StylusBatcher {
+	if ids == nil {
+		ids = NewPointerIDs()
+	}
+	return &StylusBatcher{now: now, Scale: 1, ids: ids, tools: map[int]*stylusTool{}}
 }
 
 // AddTool announces a tool. The kind is stylus for a pen, a brush, a pencil or an
@@ -228,7 +237,7 @@ func (b *StylusBatcher) data(id int, t *stylusTool, change ui.PointerChange) ui.
 		Change:            change,
 		Kind:              t.kind,
 		Device:            StylusDeviceBase + id,
-		PointerIdentifier: id,
+		PointerIdentifier: t.pointer,
 		PhysicalX:         t.x * b.Scale,
 		PhysicalY:         t.y * b.Scale,
 		PressureMax:       1,
@@ -272,6 +281,7 @@ func (b *StylusBatcher) Frame(id int) {
 	}
 	if t.in {
 		t.present = true
+		t.pointer = 0 // a pointer that is added has had no contact yet
 		t.lastX, t.lastY = t.x, t.y
 		b.emit(id, t, ui.PointerChangeAdd, 0, 0)
 	}
@@ -279,6 +289,7 @@ func (b *StylusBatcher) Frame(id int) {
 		switch {
 		case t.down && !t.touching:
 			t.touching = true
+			t.pointer = b.ids.next()
 			b.emit(id, t, ui.PointerChangeDown, 0, 0)
 		case t.up && t.touching:
 			t.touching = false

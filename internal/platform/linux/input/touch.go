@@ -16,6 +16,7 @@ type touchPoint struct {
 	major       float64 // the ellipse of the contact, logical pixels across (0 when unknown)
 	minor       float64
 	orientation float64 // radians
+	pointer     int     // the pointer identifier of the contact; 0 until its down
 }
 
 // TouchBatcher turns the events of a touch screen into ui.PointerData. Each finger is a
@@ -29,16 +30,23 @@ type TouchBatcher struct {
 	now func() time.Duration
 	// Scale is the number of physical pixels per logical pixel; the positions the
 	// batcher gets are logical.
-	Scale  float64
-	points map[int32]*touchPoint
-	out    []ui.PointerData
+	Scale      float64
+	pointerIDs *PointerIDs
+	points     map[int32]*touchPoint
+	out        []ui.PointerData
 }
 
-// NewTouchBatcher makes a batcher whose events carry the times that now gives.
+// NewTouchBatcher makes a batcher whose events carry the times that now gives and the pointer
+// identifiers that ids gives (nil: a counter of its own). A finger gets a new identifier at each
+// down, whatever the id the compositor or the X server gives it (they reuse them), and its events
+// carry it until it lifts. The batchers of one platform share ids.
 //
 // Flutter: no counterpart
-func NewTouchBatcher(now func() time.Duration) *TouchBatcher {
-	return &TouchBatcher{now: now, Scale: 1, points: map[int32]*touchPoint{}}
+func NewTouchBatcher(now func() time.Duration, ids *PointerIDs) *TouchBatcher {
+	if ids == nil {
+		ids = NewPointerIDs()
+	}
+	return &TouchBatcher{now: now, Scale: 1, pointerIDs: ids, points: map[int32]*touchPoint{}}
 }
 
 func (t *TouchBatcher) data(id int32, pt *touchPoint, change ui.PointerChange) ui.PointerData {
@@ -48,7 +56,7 @@ func (t *TouchBatcher) data(id int32, pt *touchPoint, change ui.PointerChange) u
 		Change:            change,
 		Kind:              ui.PointerDeviceKindTouch,
 		Device:            TouchDeviceBase + int(id),
-		PointerIdentifier: int(id),
+		PointerIdentifier: pt.pointer,
 		PhysicalX:         pt.x,
 		PhysicalY:         pt.y,
 		Pressure:          1,
@@ -74,7 +82,9 @@ func (t *TouchBatcher) Down(view ui.ViewID, id int32, x, y float64) {
 	t.cancelPoint(id)
 	pt := &touchPoint{view: view, x: x * t.Scale, y: y * t.Scale}
 	t.points[id] = pt
-	t.out = append(t.out, t.data(id, pt, ui.PointerChangeAdd), t.data(id, pt, ui.PointerChangeDown))
+	t.out = append(t.out, t.data(id, pt, ui.PointerChangeAdd))
+	pt.pointer = t.pointerIDs.next()
+	t.out = append(t.out, t.data(id, pt, ui.PointerChangeDown))
 }
 
 // Motion reports a finger that moved.

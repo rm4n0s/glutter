@@ -11,7 +11,7 @@ import (
 )
 
 func TestPointerEnterMotionButtonsLeave(t *testing.T) {
-	b := NewPointerBatcher(tickingClock())
+	b := NewPointerBatcher(tickingClock(), nil)
 	b.Enter(3, 10.5, 20)
 	b.Motion(12, 22)
 	b.Button(0x110, true) // left down
@@ -49,7 +49,7 @@ func TestPointerEnterMotionButtonsLeave(t *testing.T) {
 }
 
 func TestPointerLeaveWithButtonsDownReleasesThem(t *testing.T) {
-	b := NewPointerBatcher(tickingClock())
+	b := NewPointerBatcher(tickingClock(), nil)
 	b.Enter(0, 5, 5)
 	b.Button(0x110, true)
 	b.Button(0x112, true)
@@ -69,7 +69,7 @@ func TestPointerLeaveWithButtonsDownReleasesThem(t *testing.T) {
 }
 
 func TestPointerEnterWhileInsideLeavesFirst(t *testing.T) {
-	b := NewPointerBatcher(tickingClock())
+	b := NewPointerBatcher(tickingClock(), nil)
 	b.Enter(1, 1, 1)
 	b.Enter(2, 3, 3)
 	got := b.Frame()
@@ -99,7 +99,7 @@ func TestPointerButtonMapping(t *testing.T) {
 			if got := buttonBit(tt.code); got != tt.want {
 				t.Errorf("buttonBit(0x%x) = %d, want %d", tt.code, got, tt.want)
 			}
-			b := NewPointerBatcher(tickingClock())
+			b := NewPointerBatcher(tickingClock(), nil)
 			b.Enter(0, 0, 0)
 			b.Frame()
 			b.Button(tt.code, true)
@@ -112,7 +112,7 @@ func TestPointerButtonMapping(t *testing.T) {
 }
 
 func TestPointerIgnoresEventsOutsideAWindow(t *testing.T) {
-	b := NewPointerBatcher(tickingClock())
+	b := NewPointerBatcher(tickingClock(), nil)
 	b.Motion(1, 1)
 	b.Button(0x110, true)
 	b.AxisSource(AxisSourceWheel)
@@ -126,7 +126,7 @@ func TestPointerIgnoresEventsOutsideAWindow(t *testing.T) {
 }
 
 func TestPointerScale(t *testing.T) {
-	b := NewPointerBatcher(tickingClock())
+	b := NewPointerBatcher(tickingClock(), nil)
 	b.Scale = 2
 	b.Enter(0, 10, 20)
 	b.Motion(11, 22)
@@ -251,7 +251,7 @@ func TestPointerWheelScrolling(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			b := NewPointerBatcher(tickingClock())
+			b := NewPointerBatcher(tickingClock(), nil)
 			b.Enter(0, 4, 6)
 			b.Frame()
 			tt.feed(b)
@@ -270,7 +270,7 @@ func panEv(change ui.PointerChange, panX, panY, dx, dy, scale, rot float64) ev {
 
 func TestPointerTouchpadScrollWithStop(t *testing.T) {
 	const v, h = AxisVertical, AxisHorizontal
-	b := NewPointerBatcher(tickingClock())
+	b := NewPointerBatcher(tickingClock(), nil)
 	b.Enter(0, 4, 6)
 	b.Frame()
 
@@ -312,7 +312,7 @@ func TestPointerTouchpadScrollWithStop(t *testing.T) {
 
 func TestPointerTouchpadStopWithoutGestureAndMovementAndStopTogether(t *testing.T) {
 	const v = AxisVertical
-	b := NewPointerBatcher(tickingClock())
+	b := NewPointerBatcher(tickingClock(), nil)
 	b.Enter(0, 4, 6)
 	b.Frame()
 
@@ -334,7 +334,7 @@ func TestPointerTouchpadStopWithoutGestureAndMovementAndStopTogether(t *testing.
 }
 
 func TestPointerPinch(t *testing.T) {
-	b := NewPointerBatcher(tickingClock())
+	b := NewPointerBatcher(tickingClock(), nil)
 	b.Enter(0, 4, 6)
 	b.Frame()
 
@@ -351,7 +351,7 @@ func TestPointerPinch(t *testing.T) {
 }
 
 func TestPointerSwipeIsAPan(t *testing.T) {
-	b := NewPointerBatcher(tickingClock())
+	b := NewPointerBatcher(tickingClock(), nil)
 	b.Enter(0, 4, 6)
 	b.Frame()
 	b.SwipeBegin()
@@ -366,7 +366,7 @@ func TestPointerSwipeIsAPan(t *testing.T) {
 
 func TestPointerGesturesEndOneAnotherAndOnLeave(t *testing.T) {
 	const v = AxisVertical
-	b := NewPointerBatcher(tickingClock())
+	b := NewPointerBatcher(tickingClock(), nil)
 	b.Enter(0, 4, 6)
 	b.Frame()
 
@@ -394,7 +394,7 @@ func TestPointerGesturesEndOneAnotherAndOnLeave(t *testing.T) {
 }
 
 func TestPointerAxisDirectionIsRecorded(t *testing.T) {
-	b := NewPointerBatcher(tickingClock())
+	b := NewPointerBatcher(tickingClock(), nil)
 	b.AxisDirection(AxisVertical, true)
 	b.AxisDirection(AxisHorizontal, false)
 	if !reflect.DeepEqual(b.inverted, [2]bool{true, false}) {
@@ -403,7 +403,7 @@ func TestPointerAxisDirectionIsRecorded(t *testing.T) {
 }
 
 func TestLeavingForgetsHalfCollectedAxes(t *testing.T) {
-	b := NewPointerBatcher(tickingClock())
+	b := NewPointerBatcher(tickingClock(), nil)
 	b.Enter(0, 1, 1)
 	b.Frame()
 	b.AxisSource(AxisSourceWheel)

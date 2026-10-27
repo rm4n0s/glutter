@@ -4556,3 +4556,30 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Deviations and follow-ups:**
   - The identity check is the one Flutter asserts, so there is no §12.10 row.
   - Step 29.12 gives each down on Linux a new pointer id, as Flutter's engine and Glutter's Windows, Android and web platforms do. That removes the cause, and also the case left here: `Hold` and `Release` look the arena up by pointer id alone, as in Flutter.
+
+## 29.12 A new pointer id for each down on Linux (Emetos)
+
+- **Date:** 2026-10-27
+- **Branch:** feat/step-29.12-linux-pointer-ids
+- **Summary:** the Linux platform (Wayland and X11) gives every contact a new pointer id when it goes down. Flutter's engine converter does the same (`UpdatePointerIdentifier`), as do Glutter's Windows, Android and web platforms.
+  - **Before:** every mouse press had id 0, a touch kept the compositor's touch id (which the compositor reuses), and a stylus kept its tool id. So two gestures could share an arena key: the cause that step 29.11 found, and the case it left (`Hold` and `Release` look the arena up by pointer id alone, as in Flutter).
+  - **The counter:** `input.PointerIDs` starts at 1 and never gives the same id twice in a run. There is one per platform instance, shared by the mouse, touch and stylus batchers. On Wayland it lives on the `Platform`, because the seat can lose its devices and get them back.
+  - **Mouse:** the first button down gets a new id. The other buttons of the press, the moves and the up keep it. Hover events, scroll signals, and the up and remove made on a leave carry the id of the last press. The id is 0 from the add to the first press.
+  - **Touch:** a new id at each down, whatever id the compositor or the X server gives. Two touches at once have different ids. A down on an id that is already down cancels the first contact. The add before the down carries 0, as in Flutter.
+  - **Stylus:** a new id at each contact of a tool, which hover, up, remove and cancel carry until the next contact.
+  - **Trackpad pan and zoom:** a new id at the start of each gesture, as Flutter gives at `PanZoomStart`.
+  - **Unchanged:** `Device`, positions, buttons, kinds, the synthesized events and the public API. The framework only copies the ids it gets.
+- **Main files:** `internal/platform/linux/input/ids.go`, `pointer.go`, `touch.go`, `stylus.go`; `internal/platform/linux/wayland/platform.go`, `pointer.go`, `touch.go`, `tablet.go`; `internal/platform/linux/x11/input.go`; `docs/SPEC.md` (§8.5, a §12.10 row).
+- **Tests (table-driven):**
+  - **`input`:** the mouse (5 cases, and the scroll signal), touch (5), the stylus (4), the shared counter, and the trackpad gestures.
+  - **Wayland:** on the fake compositor, the mouse, touch and a pen together. The touch id 0 is reused, and the ids keep rising after the seat's pointer comes back.
+  - **X11:** mouse presses and touches with a reused detail, on one counter.
+  - **A widget test:** a double tap goes through the Linux batchers into a `GestureDetector`, for the mouse and for a touch screen that reuses id 0, with the sequence of 29.11.
+  - No Flutter test cases were ported.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck, apicheck, uintptrcheck ✅ · wasm build, vet and tests ✅ · check-android ✅ · Windows builds, vet, lint and test-windows ✅ · display tests: `internal/platform/linux/wayland`, `x11` and `input` ✅
+- **Proof:** none
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - In Flutter the engine's converter gives the ids. Here the platform's batchers give them, as on Windows, Android and the web; a §12.10 row records it.
+  - Touch and the tablet were tested on the fake compositor only, not on devices.
+  - A worker's run hit one timing flake under machine load, `TestClosingAHiddenWindowEndsRun` in `wayland`. It passed 8 times in a row on a rerun and does not touch pointers.

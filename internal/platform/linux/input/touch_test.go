@@ -14,7 +14,7 @@ func touchEv(change ui.PointerChange, id int, x, y, dx, dy float64, buttons int)
 }
 
 func TestTouchSequence(t *testing.T) {
-	b := NewTouchBatcher(tickingClock())
+	b := NewTouchBatcher(tickingClock(), nil)
 	b.Down(2, 0, 10, 20)
 	b.Motion(0, 12, 19)
 	b.Up(0)
@@ -27,7 +27,11 @@ func TestTouchSequence(t *testing.T) {
 		touchEv(ui.PointerChangeRemove, 0, 12, 19, 0, 0, 0),
 	})
 	for i, d := range got {
-		if d.ViewID != 2 || d.PointerIdentifier != 0 {
+		wantID := 1 // the contact's identifier is new at the down, not the compositor's id
+		if d.Change == ui.PointerChangeAdd {
+			wantID = 0
+		}
+		if d.ViewID != 2 || d.PointerIdentifier != wantID {
 			t.Errorf("event %d: view %d, identifier %d", i, d.ViewID, d.PointerIdentifier)
 		}
 		wantPressure := 1.0
@@ -44,7 +48,7 @@ func TestTouchSequence(t *testing.T) {
 }
 
 func TestTwoFingersAreTwoDevices(t *testing.T) {
-	b := NewTouchBatcher(tickingClock())
+	b := NewTouchBatcher(tickingClock(), nil)
 	b.Down(0, 7, 1, 1)
 	b.Down(0, 3, 50, 50)
 	b.Motion(7, 2, 2)
@@ -60,7 +64,7 @@ func TestTwoFingersAreTwoDevices(t *testing.T) {
 }
 
 func TestTouchCancel(t *testing.T) {
-	b := NewTouchBatcher(tickingClock())
+	b := NewTouchBatcher(tickingClock(), nil)
 	b.Down(0, 5, 1, 1)
 	b.Down(0, 2, 9, 9)
 	b.Take()
@@ -81,7 +85,7 @@ func TestTouchCancel(t *testing.T) {
 }
 
 func TestTouchCancelView(t *testing.T) {
-	b := NewTouchBatcher(tickingClock())
+	b := NewTouchBatcher(tickingClock(), nil)
 	b.Down(1, 0, 1, 1)
 	b.Down(2, 1, 2, 2)
 	b.Take()
@@ -98,7 +102,7 @@ func TestTouchCancelView(t *testing.T) {
 }
 
 func TestTouchDownOfAFingerThatIsDownCancelsTheOldOne(t *testing.T) {
-	b := NewTouchBatcher(tickingClock())
+	b := NewTouchBatcher(tickingClock(), nil)
 	b.Down(0, 0, 1, 1)
 	b.Take()
 	b.Down(0, 0, 5, 5)
@@ -111,7 +115,7 @@ func TestTouchDownOfAFingerThatIsDownCancelsTheOldOne(t *testing.T) {
 }
 
 func TestTouchShapeAndOrientationShowInLaterEvents(t *testing.T) {
-	b := NewTouchBatcher(tickingClock())
+	b := NewTouchBatcher(tickingClock(), nil)
 	b.Down(0, 0, 1, 1)
 	b.Shape(0, 12, 8) // the axes of the ellipse; Flutter wants radii
 	b.Orientation(0, 90)
@@ -135,7 +139,7 @@ func TestTouchShapeAndOrientationShowInLaterEvents(t *testing.T) {
 }
 
 func TestTouchScale(t *testing.T) {
-	b := NewTouchBatcher(tickingClock())
+	b := NewTouchBatcher(tickingClock(), nil)
 	b.Scale = 1.5
 	b.Down(0, 0, 10, 20)
 	b.Motion(0, 12, 20)

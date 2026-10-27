@@ -10,6 +10,7 @@ import (
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/internal/platform"
 	"github.com/rm4n0s/glutter/internal/platform/linux"
+	"github.com/rm4n0s/glutter/internal/platform/linux/input"
 	"github.com/rm4n0s/glutter/internal/platform/linux/wayland/decor"
 	"github.com/rm4n0s/glutter/internal/platform/linux/wayland/wl"
 	"github.com/rm4n0s/glutter/ui"
@@ -67,6 +68,10 @@ type Platform struct {
 	// inputSerial is the serial of the last input event of the seat, which
 	// set_selection needs.
 	inputSerial uint32
+	// pointerIDs gives the pointer identifiers of the mouse, the touch screen and the tablet
+	// tools, so that no two contacts of a run have the same one (the seat can lose and regain
+	// its devices, which makes new batchers).
+	pointerIDs *input.PointerIDs
 	// pointerSerial is the serial of the last pointer button event, which moves,
 	// resizes and the window menu need.
 	pointerSerial uint32
@@ -123,12 +128,13 @@ func newPlatform(conn *wl.Conn, opts Options) (*Platform, error) {
 		return nil, err
 	}
 	p := &Platform{
-		opts:    opts,
-		start:   time.Now(),
-		loop:    loop,
-		sess:    sess,
-		src:     &connSource{conn: conn},
-		windows: map[ui.ViewID]*window{},
+		pointerIDs: input.NewPointerIDs(),
+		opts:       opts,
+		start:      time.Now(),
+		loop:       loop,
+		sess:       sess,
+		src:        &connSource{conn: conn},
+		windows:    map[ui.ViewID]*window{},
 	}
 	p.takeStartupToken()
 	p.cursors = newCursors(p)

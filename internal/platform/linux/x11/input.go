@@ -128,8 +128,9 @@ func newInputState(p *Platform) *inputState {
 	}
 	in.hasTouch = *view[int32](ver + 4) >= 2
 
-	in.pointer = input.NewPointerBatcher(p.now)
-	in.touch = input.NewTouchBatcher(p.now)
+	ids := input.NewPointerIDs()
+	in.pointer = input.NewPointerBatcher(p.now, ids)
+	in.touch = input.NewTouchBatcher(p.now, ids)
 	in.setUpKeyboard()
 	in.refreshDevices()
 	// Learn when the devices change, so the scroll axes stay right.

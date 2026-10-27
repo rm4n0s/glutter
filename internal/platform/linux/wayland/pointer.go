@@ -30,7 +30,7 @@ type pointer struct {
 }
 
 func newPointer(p *Platform) *pointer {
-	pt := &pointer{p: p, b: input.NewPointerBatcher(p.now)}
+	pt := &pointer{p: p, b: input.NewPointerBatcher(p.now, p.pointerIDs)}
 	pt.obj = p.sess.seat.GetPointer()
 	pt.framed = pt.obj.ProxyVersion() >= 5
 	pt.obj.SetEvents(&wl.WlPointerEvents{

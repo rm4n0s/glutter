@@ -66,9 +66,10 @@ func newInput(t *testing.T, layout string) (*inputState, *recorder) {
 	rec := &recorder{}
 	now := time.Now()
 	p := &Platform{start: now, handler: rec, windows: map[uint64]*window{}}
+	ids := input.NewPointerIDs()
 	in := &inputState{
 		p: p, layout: l,
-		pointer: input.NewPointerBatcher(p.now), touch: input.NewTouchBatcher(p.now),
+		pointer: input.NewPointerBatcher(p.now, ids), touch: input.NewTouchBatcher(p.now, ids),
 		scroll: map[scrollKey]*scrollAxis{},
 	}
 	return in, rec
@@ -499,5 +500,43 @@ func TestXIMask(t *testing.T) {
 		if got := xiMask(tt.types...); !reflect.DeepEqual(got, tt.want) {
 			t.Errorf("xiMask(%v) = %v, want %v", tt.types, got, tt.want)
 		}
+	}
+}
+
+func TestPointerIdentifiersAreNewAtEachDown(t *testing.T) {
+	in, rec := newInput(t, "us")
+	w := &window{id: 1}
+	in.onEnterLeave(w, &xiEnterEvent{eventX: 10, eventY: 20}, true)
+	// Two presses of the mouse in a row, each with a move.
+	for i := 0; i < 2; i++ {
+		in.onButton(w, &xiDeviceEvent{detail: 1, eventX: 10, eventY: 20}, true)
+		in.onMotion(w, &xiDeviceEvent{eventX: float64(11 + i), eventY: 20})
+		in.onButton(w, &xiDeviceEvent{detail: 1, eventX: float64(11 + i), eventY: 20}, false)
+	}
+	// The X server reuses the id of a touch: two touches with the same detail, then a second finger.
+	in.onTouch(w, &xiDeviceEvent{detail: 100, eventX: 5, eventY: 6}, xiTouchBegin)
+	in.onTouch(w, &xiDeviceEvent{detail: 100}, xiTouchEnd)
+	in.onTouch(w, &xiDeviceEvent{detail: 100, eventX: 5, eventY: 6}, xiTouchBegin)
+	in.onTouch(w, &xiDeviceEvent{detail: 101, eventX: 8, eventY: 6}, xiTouchBegin)
+	in.onTouch(w, &xiDeviceEvent{detail: 100}, xiTouchEnd)
+	in.onTouch(w, &xiDeviceEvent{detail: 101}, xiTouchEnd)
+
+	var downIDs []int
+	current := map[int]int{}
+	for _, b := range rec.takeBatches() {
+		for _, d := range b {
+			switch d.Change {
+			case ui.PointerChangeDown:
+				downIDs = append(downIDs, d.PointerIdentifier)
+				current[d.Device] = d.PointerIdentifier
+			case ui.PointerChangeMove, ui.PointerChangeUp:
+				if d.PointerIdentifier != current[d.Device] {
+					t.Errorf("%v of device %d has the identifier %d, want %d", d.Change, d.Device, d.PointerIdentifier, current[d.Device])
+				}
+			}
+		}
+	}
+	if want := []int{1, 2, 3, 4, 5}; !reflect.DeepEqual(downIDs, want) {
+		t.Errorf("identifiers of the downs %v, want %v (mouse and touch share one counter)", downIDs, want)
 	}
 }

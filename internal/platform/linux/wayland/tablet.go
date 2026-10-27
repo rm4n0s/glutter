@@ -40,7 +40,7 @@ func newTablet(p *Platform) *tablet {
 	if mgr == nil {
 		return nil
 	}
-	t := &tablet{p: p, b: input.NewStylusBatcher(p.now), tools: map[*wl.ZwpTabletToolV2]*tabletTool{}}
+	t := &tablet{p: p, b: input.NewStylusBatcher(p.now, p.pointerIDs), tools: map[*wl.ZwpTabletToolV2]*tabletTool{}}
 	t.seat = mgr.GetTabletSeat(p.sess.seat)
 	t.seat.SetEvents(&wl.ZwpTabletSeatV2Events{OnToolAdded: t.toolAdded})
 	return t
