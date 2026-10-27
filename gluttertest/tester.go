@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"image"
+	"io/fs"
 	"runtime"
 	"strings"
 	"time"
@@ -17,6 +18,7 @@ import (
 	"github.com/rm4n0s/glutter/internal/renderhost"
 	"github.com/rm4n0s/glutter/internal/renderingtest"
 	"github.com/rm4n0s/glutter/semantics"
+	"github.com/rm4n0s/glutter/services"
 	"github.com/rm4n0s/glutter/ui"
 	"github.com/rm4n0s/glutter/widgets"
 )
@@ -74,6 +76,12 @@ type Opts struct {
 	Fonts []Font
 	// Debug are the debug flags; the default is a fresh set, all off.
 	Debug *widgets.DebugOptions
+	// Assets is the file system that the binding's asset bundle reads from, as RunAppOpts.Assets is
+	// for an app: a test of a widget that loads an asset with no bundle of its own (an image, an
+	// SVG picture) finds its files here. Without it the bundle finds nothing.
+	//
+	// Flutter: no counterpart (a test sets rootBundle with a DefaultAssetBundle)
+	Assets fs.FS
 	// DiscardScenes drops the scenes that the view renders instead of keeping them
 	// for Scenes and Screenshot: for benchmarks that run many frames.
 	//
@@ -194,6 +202,9 @@ func New(tb TB, opts ...Opts) *Tester {
 	ctx, cancel := context.WithCancel(context.Background())
 	tb.Cleanup(cancel)
 	po := widgetsPaintingOpts(t.Clock)
+	if o.Assets != nil {
+		po.AssetBundle = services.NewFSAssetBundle(o.Assets)
+	}
 	t.Binding = widgets.NewWidgetsBinding(ctx, t.d, widgets.WidgetsBindingOpts{
 		Debug:              o.Debug,
 		ErrorReporter:      func(err error) { t.errs = append(t.errs, err) },

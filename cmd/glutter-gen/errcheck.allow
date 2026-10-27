@@ -27,3 +27,9 @@ error-rewrap desktop/tray.go:tray.register
 # error-rewrap (R3): LocalizationsDelegate is an interface that the app implements, so the
 # error of Load is not tagged by this module; the tag LocalizationsLoadFailed is the first one.
 error-rewrap widgets/localizations.go:localizationsState.load
+
+# error-rewrap (R3): services.AssetBundle is an interface that the app implements, so the error of
+# Load is not always tagged by this module; SPEC §26.5 names one tag for an asset that cannot be
+# read (SvgLoadFailed, with the "source"), and the bundle's error (AssetNotFound for Glutter's)
+# stays as the cause, so errors.Is still finds it.
+error-rewrap svg/loaders.go:assetSource.load

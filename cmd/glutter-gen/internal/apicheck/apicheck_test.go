@@ -175,6 +175,26 @@ type unexported struct{}
 			want: []string{RuleDocRef + " pkg.A", RuleDocRef + " pkg.B", RuleDocRef + " pkg.C", RuleDocRef + " pkg.G", RuleDocRef + " pkg.Func"},
 		},
 		{
+			name: "the reference of package svg is flutter_svg",
+			src: `package pkg
+
+// A is from flutter_svg.
+//
+// flutter_svg: svg.dart SvgPicture
+type A struct{}
+
+// B has the reference in the last line of its paragraph.
+// flutter_svg: no counterpart
+type B struct{}
+
+// C names flutter_svg but does not reference it.
+//
+// Not flutter_svg: nothing
+type C struct{}
+`,
+			want: []string{RuleDocRef + " pkg.C"},
+		},
+		{
 			name: "enum zero values",
 			src: `package pkg
 

@@ -215,6 +215,7 @@ func (b *builder) pattern(e *element) *Pattern {
 	}
 	b.busy[e] = true
 	defer delete(b.busy, e)
+	b.scaleDependent = true
 	chain := b.refChain(e, isPattern)
 	p := &Pattern{}
 	v, _ := chainAttr(chain, "patternUnits")
@@ -459,6 +460,7 @@ func (b *builder) filter(id string) *Filter {
 	}
 	b.busy[e] = true
 	defer delete(b.busy, e)
+	b.scaleDependent = true
 	chain := b.refChain(e, isFilter)
 	pct := func(v float64) Length { return Length{v, UnitPercent} }
 	f := &Filter{}

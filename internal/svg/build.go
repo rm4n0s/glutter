@@ -44,6 +44,9 @@ type builder struct {
 	busy     map[*element]bool
 	useStack []*element
 	useNodes int
+	// scaleDependent is set when the document has something that the scale it is drawn at changes: a pattern, a
+	// filter, a non-scaling stroke or an SVG image (Document.ScaleDependent).
+	scaleDependent bool
 }
 
 // languagesOf returns the language tag of the locale, in lower case ("en" for the zero locale). A tag in
@@ -614,6 +617,9 @@ func (b *builder) buildImage(e *element, st *Style, np *nodeProps, ctx *buildCtx
 		if par, ok := ParsePreserveAspectRatio(v); ok {
 			img.PreserveAspectRatio = par
 		}
+	}
+	if strings.Contains(mime, "svg") {
+		b.scaleDependent = true
 	}
 	n := b.newNode(NodeImage, e, st, np, ctx)
 	n.Image = img

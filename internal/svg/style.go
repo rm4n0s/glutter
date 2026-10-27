@@ -305,6 +305,7 @@ func (b *builder) applyProperty(name, v string, parent, init *Style, mut func() 
 	case "vector-effect":
 		if strings.Contains(v, "non-scaling-stroke") {
 			np.vectorEffect = VectorEffectNonScalingStroke
+			b.scaleDependent = true
 		} else {
 			np.vectorEffect = VectorEffectNone
 		}

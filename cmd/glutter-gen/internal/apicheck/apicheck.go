@@ -26,7 +26,7 @@ import (
 // Flutter: no counterpart.
 var DefaultPackages = []string{
 	"foundation", "scheduler", "animation", "physics", "gestures", "painting", "rendering",
-	"semantics", "services", "widgets", "material", "ui", "desktop", "gluttertest",
+	"semantics", "services", "widgets", "material", "ui", "desktop", "gluttertest", "svg",
 }
 
 // The rules, as they are named in a report and in an allow file.
@@ -40,7 +40,8 @@ const (
 	// RuleCtorSize says that a constructor has at most six required parameters (SPEC §12.1).
 	RuleCtorSize = "ctor-size"
 	// RuleDocRef says that the doc comment of a constructor, a function or a type ends with
-	// a "Flutter:" or "Glutter-specific:" paragraph.
+	// a "Flutter:", "Glutter-specific:" or "flutter_svg:" paragraph (the last one is the reference
+	// of package svg, which ports the flutter_svg package, SPEC §26).
 	RuleDocRef = "doc-ref"
 	// RuleEnumZero says that the zero value of an enum is <Enum>Unspecified (SPEC §12.3).
 	RuleEnumZero = "enum-zero"
@@ -335,6 +336,18 @@ func (c *checker) checkGen(d *ast.GenDecl) {
 	}
 }
 
+// docRefPrefixes start the last paragraph of a doc comment: the source of the identifier.
+var docRefPrefixes = []string{"Flutter:", "Glutter-specific:", "flutter_svg:"}
+
+func isDocRef(line string) bool {
+	for _, p := range docRefPrefixes {
+		if strings.HasPrefix(line, p) {
+			return true
+		}
+	}
+	return false
+}
+
 // checkDoc checks that the last paragraph of the comment is a reference to Flutter.
 func (c *checker) checkDoc(doc *ast.CommentGroup, pos token.Pos, name string) {
 	if doc == nil {
@@ -343,15 +356,15 @@ func (c *checker) checkDoc(doc *ast.CommentGroup, pos token.Pos, name string) {
 	}
 	paras := strings.Split(strings.TrimSpace(doc.Text()), "\n\n")
 	last := strings.TrimSpace(paras[len(paras)-1])
-	if strings.HasPrefix(last, "Flutter:") || strings.HasPrefix(last, "Glutter-specific:") {
+	if isDocRef(last) {
 		return
 	}
 	// The reference may be the last line of a paragraph that has no blank line before it.
 	lines := strings.Split(last, "\n")
-	if l := strings.TrimSpace(lines[len(lines)-1]); strings.HasPrefix(l, "Flutter:") || strings.HasPrefix(l, "Glutter-specific:") {
+	if isDocRef(strings.TrimSpace(lines[len(lines)-1])) {
 		return
 	}
-	c.add(RuleDocRef, pos, name, "the doc comment does not end with a \"Flutter:\" or \"Glutter-specific:\" reference")
+	c.add(RuleDocRef, pos, name, "the doc comment does not end with a \"Flutter:\", \"Glutter-specific:\" or \"flutter_svg:\" reference")
 }
 
 // collectEnums finds the integer types with named values and their first value.

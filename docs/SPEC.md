@@ -1866,6 +1866,10 @@ Flutter's `assert` checks become checks that exist only in debug builds (`founda
 | `WM_IME_STARTCOMPOSITION` is answered `TRUE` | it is answered 0, which the documentation of the message says to answer when it is handled | no difference for Windows; step 28.5 |
 | `HostWindowDialog::GetInitialRect` centers a dialog in its owner's frame without looking at the work area, and every other window opens at `CW_USEDEFAULT` | the dialog is centered the same way and then moved into the work area of its owner's monitor when it fits; a window opens a step (32 logical pixels) below and to the right of the newest window that is open and in its normal state, and starts again at the corner of the work area when it would not fit; a window that starts maximized, minimized or full screen is left to Windows | Windows cascades `CW_USEDEFAULT` windows only on a desktop whose shell does it (Wine, with no window manager, puts every window at the corner); step 28.12 |
 | `HostWindow::UpdateModalStateLayer` keeps only the newest dialog of an owner enabled, and disables the other dialogs of the same owner | an owner is disabled while any of its modal dialogs is open (`modalGate` counts them) and every dialog stays enabled; a dialog of a dialog blocks the dialog below it the same way | two dialogs of one window are rare, and Windows' own rule for an owned popup is the same as ours; step 28.12 |
+| `flutter_svg` keeps one global `svg.cache` of 100 entries | `svg.Cache` is an LRU with a limit in bytes (16 MiB by default), one per binding (`CacheOf(bc)`, held through `WidgetsBinding.Extension`) or given with `svg.NewSvgCacheScope` | no global mutable state (CLAUDE.md); bytes bound memory better than a count |
+| `flutter_svg` compiles an SVG to `vector_graphics`' binary format on an isolate and draws it | `svg` parses on a goroutine (`State.Go`) and records a `ui.Picture`; a document with a pattern, a filter, a non-scaling stroke or an SVG image is recorded at the scale it is drawn at (at most 4 pictures per document) | Glutter's own parser and painter (D27, §26) |
+| `SvgPicture.asset(bundle:, package:)` and `.network(headers:)` are parameters of all the constructors' common list in places | `Bundle` and `Package` are in `SvgPictureAssetOpts`, `Headers` in `SvgPictureNetworkOpts`; each embeds `SvgPictureOpts` | one options struct per constructor (§12), as `ImageAssetOpts` does |
+| the error of an asset bundle reaches `errorBuilder` as it is | it is tagged `SvgLoadFailed` (with `source`), and the bundle's error stays as its cause (`errors.Is` finds it) | §26.5 names one tag for a source that cannot be read; `AssetBundle` is an interface that apps implement (listed in `errcheck.allow`) |
 
 ### 12.11 One import for apps
 
@@ -2250,7 +2254,7 @@ Each milestone is broken into steps in `docs/IMPLEMENTATION.md` (written after t
 
 ## 19. Examples (`examples/`)
 
-`counter`, `layout` (Row/Column/Stack/Wrap), `animations`, `scrolling` (lists, grids, slivers), `navigation`, `editor` (text editing, clipboard, IME), `gallery` (all Material components, light/dark), `multiwindow`, `tray` (tray + notifications + file dialog), `custompaint`, `todo` (a DataTable of tasks with Edit and Delete buttons in each row).
+`counter`, `layout` (Row/Column/Stack/Wrap), `animations`, `scrolling` (lists, grids, slivers), `navigation`, `editor` (text editing, clipboard, IME), `gallery` (all Material components, light/dark), `multiwindow`, `tray` (tray + notifications + file dialog), `custompaint`, `todo` (a DataTable of tasks with Edit and Delete buttons in each row), `svg` (SVG pictures with package `svg`: icons, a logo with gradients, text and a filter; §26).
 
 On the web (1.1) every example except `multiwindow` and `tray` builds and runs (§23), and on Android (1.6) too (§24). On Windows (1.8) every example builds and runs, `tray` and `multiwindow` included (§25): `examples/examples_test.go` builds each of them for `windows/amd64` and `windows/arm64` with `CGO_ENABLED=0` (skipped under `-short`), and a Wine test (`TestEveryExampleDrawsItsFirstFrameUnderWine`, `glutter_wine`) starts each under Wine and waits for its first frame. `examples/examples_test.go` also builds each example but `multiwindow` and `tray` for `android/arm64` (skipped without an NDK and under `-short`), and a device test (`TestEveryExampleDrawsItsFirstFrame`) starts each on the two emulators and waits for its first frame. In a window narrower than 600 logical pixels (a phone) the gallery keeps its list of pages in a drawer that the app bar's button opens, its sections shrink to the width of the screen and wrap, and the data table scrolls sideways.
 
@@ -2831,11 +2835,17 @@ The names and defaults follow `flutter_svg` (2.x), the package Flutter apps use;
   - `Theme` (`SvgTheme{CurrentColor, FontSize, XHeight}`, the values of `currentColor`, `em` and `ex`);
   - `PlaceholderBuilder`, `ErrorBuilder`;
   - `SemanticsLabel`, `ExcludeFromSemantics`;
-  - `Bundle` (an `AssetBundle`; the default is the app's).
+  - `Key`; `SvgPictureAssetOpts` adds `Bundle` (an `AssetBundle`; the default is the binding's) and `Package`, and `SvgPictureNetworkOpts` adds `Headers` (decided in step 29.4).
 - Sizing as in `flutter_svg`: the picture's size is the document's `width` and `height`, or its `viewBox`. The widget sizes itself from `Width` and `Height`, the constraints and that size, and fits the picture with `Fit` and `Alignment`.
 - Loading:
   - `.asset`, `.file` and `.network` load on a goroutine with a `context.Context` cancelled when the widget leaves the tree (§13). `.string` and `.memory` parse on first build.
-  - The parsed picture is cached by its source and theme (`svg.Cache`, an LRU with a byte limit, as `flutter_svg`'s cache), so the same icon in a list is parsed once.
+  - The parsed picture is cached by its source and theme, so the same icon in a list is parsed once (decided in step 29.4):
+    - `svg.Cache` is an LRU with a limit in bytes (`NewCache(CacheOpts{MaximumSizeBytes})`, 16 MiB by default), estimated from the document's nodes;
+    - `CacheOf(bc)` returns the cache of the nearest `SvgCacheScope`, or else the binding's own;
+    - widgets that load the same source at once share one load, and a failed or cancelled load is not cached.
+  - `DefaultSvgTheme` gives the `SvgTheme` of the widgets below it.
+  - A document is recorded once at scale 1 and scaled to every box. One with a pattern, a filter, a non-scaling stroke or an SVG image is recorded at the device pixel ratio times its fit scale (rounded up to 1/8, at most 32), with at most 4 pictures per document.
+  - The widget parses with the default locale; `ParseOpts.Locale` is for callers of `Parse`.
   - A document that cannot be loaded or parsed shows `ErrorBuilder`'s widget (by default nothing). The error goes to the app's error reporter with the tags of §26.5.
 - `svg.Parse(data []byte, opts ...ParseOpts) (*Document, error)` (`ParseOpts{Theme, Locale}`), `(*Document).Picture() *ui.Picture` (`PictureAt(1)`), `PictureAt(scale float64)`, `PictureWith(PictureOpts{Scale, Text})` and `Size()`, for an app that draws an SVG with a `CustomPainter`. `scale` is device pixels per document unit: it sets the resolution of pattern tiles and the width of `non-scaling-stroke` strokes (decided in step 29.2). `Text` is the app's text engine (`ui.ParagraphFactory`); without it the text is set in the bundled Roboto. The widget passes the dispatcher's text engine and the device scale it draws at (decided in step 29.3). A `Document` is made for one theme: `currentColor`, `em` and `ex` are resolved when it is parsed (decided in step 29.1), which is why the cache's key is the source and the theme.
 

@@ -4253,3 +4253,55 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
     - `textLength`, `lengthAdjust`, `direction` and vertical text;
     - the primitives `feImage`, `feTile`, `feTurbulence`, `feConvolveMatrix`, `feDisplacementMap` and the lighting primitives (the filter is skipped).
   - 29.4 must pass the app's text engine and the device scale to `PictureWith`.
+
+## 29.4 The `svg` package and its example
+
+- **Date:** 2026-10-27
+- **Branch:** feat/step-29.4-svg-package
+- **Summary:** apps draw SVG with `flutter_svg`'s widgets. `svg.NewSvgPictureAsset`, `NewSvgPictureString`, `NewSvgPictureMemory`, `NewSvgPictureFile` and `NewSvgPictureNetwork` load, cache, size and draw the picture (SPEC §26.1), and `examples/svg` shows it.
+  - **The widget:**
+    - It is sized as `flutter_svg` sizes it: `Width` and `Height`, the constraints, the document's size.
+    - It is fitted with `Fit` and `Alignment`, and has `ClipBehavior`, `AllowDrawingOutsideViewBox`, `MatchTextDirection` and `ColorFilter`.
+    - The semantics label comes from `SemanticsLabel`, or else from the document's title.
+    - `PlaceholderBuilder` and `ErrorBuilder`; the errors also go to the error reporter.
+  - **Loading:**
+    - Assets, files and network sources load and parse on a goroutine that ends when the widget leaves the tree.
+    - Strings and bytes are parsed on the first build.
+    - A cached document is drawn in the first frame.
+  - **The cache:** an LRU with a byte limit, keyed by source and theme, one per binding (`CacheOf`) or given with `SvgCacheScope`. Widgets that load the same source at once share one load.
+  - **Drawing:** a picture is recorded once per document. A document with a pattern, a filter or a stroke that does not scale is recorded at the scale it is drawn at.
+  - **The example:**
+    - 8 icons taking `currentColor` from a `DefaultSvgTheme`, and the same icons through a `ColorFilter`;
+    - one icon at 3 sizes;
+    - a logo with gradients;
+    - a card with SVG text and a drop-shadow filter.
+
+    It runs on every platform: the lists of examples are read from the directory.
+  - **`gluttertest.Opts.Assets`** gives a test's binding an asset bundle.
+- **Main files:**
+  - `svg/` (`svg.go`, `theme.go`, `cache.go`, `loaders.go`, `picture.go`, the tests)
+  - `internal/svg/info.go`
+  - `examples/svg/`
+  - `gluttertest/tester.go`
+  - `cmd/glutter-gen/internal/apicheck` (`flutter_svg:` doc comments, and the `svg` package), `cmd/glutter-gen/errcheck.allow`
+  - SPEC §12.10, §19 and §26.1
+  - `README.md` (the example's row)
+  - `CLAUDE.md`
+- **Tests:**
+  - about 143 cases in `svg/`, which also pass under wasm:
+    - sizes, fits, alignment, clips, right to left and `ColorFilter`;
+    - the recording scale;
+    - every loader, network included, with `httptest`;
+    - changes of the source and of the theme;
+    - the cache: eviction, LRU order, shared loads, a load taken over after a cancel, one parse for two widgets, the binding's cache and scopes;
+    - cancelling when the widget leaves the tree, placeholders, errors and semantics;
+  - the routes of `SvgLoadFailed` for an asset, a file and the network, and of the three parse tags through `Parse`;
+  - the tests of `info.go`, of `Opts.Assets` and of apicheck;
+  - the example's test and golden.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ (also `GOOS=windows`, amd64 and arm64, with and without `glutter_wine`) · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck ✅ · apicheck ✅ · uintptrcheck ✅ · `GOOS=js GOARCH=wasm` build, vet and `scripts/test-wasm.sh` ✅ · `scripts/check-android.sh` ✅ · `GOOS=windows` amd64 build and vet, arm64 build ✅ · `scripts/test-windows.sh` ✅ · nothing left running ✅
+- **Proof:** `docs/implemented-proof-images/29.4-svg.png`, `examples/svg` on Linux under headless sway, drawn by GLES on llvmpipe. The manager looked at it: icons, tint, sizes, gradients, text and shadow are all right.
+- **Manual checks:** none.
+- **Deviations and follow-ups:**
+  - SPEC §12.10 has four new rows: the cache per binding in bytes, the recording as a `ui.Picture`, where the options live, and the error of an asset that is tagged again.
+  - The binding's `IsIdle` does not wait for SVG loads, so the proof uses `GLUTTER_SCREENSHOT_AFTER`. A follow-up: a counter of pending work on the binding.
+  - The widget parses with the default locale.

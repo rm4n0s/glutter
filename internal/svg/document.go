@@ -32,6 +32,9 @@ type Document struct {
 	// label of the picture when the app gives none.
 	Title, Desc string
 
+	// scaleDependent is Parse's answer for ScaleDependent.
+	scaleDependent bool
+
 	// engine is the text engine of PictureAt, made on first use (defaultEngine), and engineMu orders its users.
 	engineOnce sync.Once
 	engine     *layout.Engine
@@ -145,6 +148,7 @@ func Parse(data []byte, opts ...ParseOpts) (*Document, error) {
 		return nil, b.err
 	}
 	doc.Root = n
+	doc.scaleDependent = b.scaleDependent
 	size := doc.intrinsicSize(w, h, hasW, hasH)
 	vp.Width, vp.Height = size.Width, size.Height
 	return doc, nil
