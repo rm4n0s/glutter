@@ -78,6 +78,15 @@ func New() *Device { return &Device{limits: explicit.DefaultLimits()} }
 // Flutter: no counterpart
 func (d *Device) Calls() []Call { return slices.Clone(d.calls) }
 
+// Reset forgets the calls and the buffer writes made so far, for a benchmark that draws many
+// frames.
+//
+// Flutter: no counterpart
+func (d *Device) Reset() {
+	d.calls = d.calls[:0]
+	d.Writes = d.Writes[:0]
+}
+
 // Ops returns the names of the calls made so far.
 //
 // Flutter: no counterpart

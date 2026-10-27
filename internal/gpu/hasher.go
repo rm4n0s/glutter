@@ -2,7 +2,10 @@ package gpu
 
 import "math"
 
-// Hasher is a 64-bit FNV-1a hash that the cache keys of the renderers are made with.
+// Hasher is a 64-bit hash that the cache keys of the renderers are made with. It takes a whole
+// 64-bit word at a time (a multiply and a shift each, mixing every bit of the word into every
+// bit of the state, so that two numbers that differ in one bit, as the signs of two coordinates
+// do, never cancel), where the FNV-1a it replaced took one byte at a time.
 //
 // Flutter: no counterpart
 type Hasher uint64
@@ -16,12 +19,10 @@ func NewHasher() Hasher { return 14695981039346656037 }
 //
 // Flutter: no counterpart
 func (h *Hasher) U64(v uint64) {
-	x := uint64(*h)
-	for i := 0; i < 8; i++ {
-		x ^= v & 0xff
-		x *= 1099511628211
-		v >>= 8
-	}
+	x := (uint64(*h) ^ v) * 0x9E3779B97F4A7C15
+	x ^= x >> 32
+	x *= 0xD6E8FEB86659FD93
+	x ^= x >> 29
 	*h = Hasher(x)
 }
 

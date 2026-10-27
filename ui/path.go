@@ -90,6 +90,9 @@ type Path struct {
 	points   []Offset
 	weights  []float64
 	fillType PathFillType
+	// derived is the fingerprint and the bounds, kept up to date by every change of the
+	// verbs, points and weights (path_fingerprint.go).
+	derived pathDerived
 	// lastMoveTo is the index in points of the point of the last moveTo, or its
 	// bitwise complement (negative) when the next segment must start with a
 	// moveTo of its own: at the start, and after a close. As in Skia.
@@ -110,6 +113,7 @@ func NewPathFrom(source *Path) *Path {
 		points:     append([]Offset(nil), source.points...),
 		weights:    append([]float64(nil), source.weights...),
 		fillType:   source.fillType,
+		derived:    source.derived,
 		lastMoveTo: source.lastMoveTo,
 	}
 }
@@ -165,8 +169,8 @@ func (p *Path) injectMoveToIfNeeded() {
 // Flutter: ui/painting.dart Path.moveTo
 func (p *Path) MoveTo(x, y float64) {
 	p.lastMoveTo = len(p.points)
-	p.verbs = append(p.verbs, PathVerbMove)
-	p.points = append(p.points, Offset{x, y})
+	p.appendVerb(PathVerbMove)
+	p.appendPoint(x, y)
 }
 
 // RelativeMoveTo starts a new sub-path at the given offset from the last point.
@@ -182,8 +186,8 @@ func (p *Path) RelativeMoveTo(dx, dy float64) {
 // Flutter: ui/painting.dart Path.lineTo
 func (p *Path) LineTo(x, y float64) {
 	p.injectMoveToIfNeeded()
-	p.verbs = append(p.verbs, PathVerbLine)
-	p.points = append(p.points, Offset{x, y})
+	p.appendVerb(PathVerbLine)
+	p.appendPoint(x, y)
 }
 
 // RelativeLineTo adds a straight line segment from the current point to the
@@ -202,8 +206,9 @@ func (p *Path) RelativeLineTo(dx, dy float64) {
 // Flutter: ui/painting.dart Path.quadraticBezierTo
 func (p *Path) QuadraticBezierTo(x1, y1, x2, y2 float64) {
 	p.injectMoveToIfNeeded()
-	p.verbs = append(p.verbs, PathVerbQuad)
-	p.points = append(p.points, Offset{x1, y1}, Offset{x2, y2})
+	p.appendVerb(PathVerbQuad)
+	p.appendPoint(x1, y1)
+	p.appendPoint(x2, y2)
 }
 
 // RelativeQuadraticBezierTo is QuadraticBezierTo with the points given as
@@ -222,8 +227,10 @@ func (p *Path) RelativeQuadraticBezierTo(x1, y1, x2, y2 float64) {
 // Flutter: ui/painting.dart Path.cubicTo
 func (p *Path) CubicTo(x1, y1, x2, y2, x3, y3 float64) {
 	p.injectMoveToIfNeeded()
-	p.verbs = append(p.verbs, PathVerbCubic)
-	p.points = append(p.points, Offset{x1, y1}, Offset{x2, y2}, Offset{x3, y3})
+	p.appendVerb(PathVerbCubic)
+	p.appendPoint(x1, y1)
+	p.appendPoint(x2, y2)
+	p.appendPoint(x3, y3)
 }
 
 // RelativeCubicTo is CubicTo with the points given as offsets from the current
@@ -254,9 +261,10 @@ func (p *Path) ConicTo(x1, y1, x2, y2, w float64) {
 		p.QuadraticBezierTo(x1, y1, x2, y2)
 	default:
 		p.injectMoveToIfNeeded()
-		p.verbs = append(p.verbs, PathVerbConic)
-		p.points = append(p.points, Offset{x1, y1}, Offset{x2, y2})
-		p.weights = append(p.weights, w)
+		p.appendVerb(PathVerbConic)
+		p.appendPoint(x1, y1)
+		p.appendPoint(x2, y2)
+		p.appendWeight(w)
 	}
 }
 
@@ -276,7 +284,7 @@ func (p *Path) RelativeConicTo(x1, y1, x2, y2, w float64) {
 // Flutter: ui/painting.dart Path.close
 func (p *Path) Close() {
 	if n := len(p.verbs); n > 0 && p.verbs[n-1] != PathVerbClose {
-		p.verbs = append(p.verbs, PathVerbClose)
+		p.appendVerb(PathVerbClose)
 	}
 	// Signal that a segment that follows needs a moveTo of its own.
 	if p.lastMoveTo >= 0 {
@@ -291,6 +299,7 @@ func (p *Path) Reset() {
 	p.verbs = p.verbs[:0]
 	p.points = p.points[:0]
 	p.weights = p.weights[:0]
+	p.derived = pathDerived{}
 	p.lastMoveTo = ^0
 }
 
@@ -461,9 +470,15 @@ func (p *Path) addPath(src *Path, offset Offset, matrix *Matrix4, extend bool) {
 		} else {
 			p.lastMoveTo = ^(^src.lastMoveTo + n)
 		}
-		p.verbs = append(p.verbs, src.verbs...)
-		p.points = append(p.points, mapped...)
-		p.weights = append(p.weights, src.weights...)
+		for _, v := range src.verbs {
+			p.appendVerb(v)
+		}
+		for _, pt := range mapped {
+			p.appendPoint(pt.Dx, pt.Dy)
+		}
+		for _, w := range src.weights {
+			p.appendWeight(w)
+		}
 		return
 	}
 	pi, wi := 0, 0
@@ -552,6 +567,7 @@ func (p *Path) Shift(offset Offset) *Path {
 	for i := range c.points {
 		c.points[i] = c.points[i].Add(offset)
 	}
+	c.rehash()
 	return c
 }
 
@@ -576,6 +592,7 @@ func (p *Path) Transform(matrix *Matrix4) *Path {
 			pi += pointsPerVerb[v]
 		}
 	}
+	c.rehash()
 	return c
 }
 
@@ -591,14 +608,10 @@ func (p *Path) Transform(matrix *Matrix4) *Path {
 //
 // Flutter: ui/painting.dart Path.getBounds
 func (p *Path) GetBounds() Rect {
-	var acc boundsAcc
-	for _, pt := range p.points {
-		if !pt.IsFinite() {
-			return Rect{}
-		}
-		acc.add(pt)
+	if p.derived.nonFinite {
+		return Rect{}
 	}
-	return acc.rect()
+	return p.derived.bounds.rect()
 }
 
 // GetTightBounds computes the smallest rectangle that contains the path itself:

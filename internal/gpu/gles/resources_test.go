@@ -6,6 +6,7 @@ import (
 
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/internal/gpu"
+	"github.com/rm4n0s/glutter/internal/gpu/gputest"
 	"github.com/rm4n0s/glutter/ui"
 )
 
@@ -642,5 +643,92 @@ func TestShapesFallBackToTheAtlas(t *testing.T) {
 	_, err := buildWith(t, res, false, func(c *ui.Canvas) { c.DrawRect(rect, unfit) })
 	if appErr, ok := errors.FromError(err); !ok || appErr.Tag != tagGLNotImplemented || appErr.Metadata["feature"] != "gradient with more than 32 colors" {
 		t.Errorf("error = %v", err)
+	}
+}
+
+// TestCullsShapesOutsideTheClip: a shape of any kind that lies outside the clip of its command
+// makes no instance and asks the atlas for nothing, under any transform; the same shape in view is
+// drawn (SPEC §9.1, "Culling").
+func TestCullsShapesOutsideTheClip(t *testing.T) {
+	strokeWith := func(width float64) *ui.Paint {
+		p := solidPaint(0xFF204080)
+		p.SetStyle(ui.PaintingStyleStroke)
+		p.SetStrokeWidth(width)
+		return p
+	}
+	paints := []struct {
+		name string
+		p    *ui.Paint
+	}{{"fill", solidPaint(0xFF204080)}, {"stroke", strokeWith(6)}, {"hairline", strokeWith(0)}}
+	far := ui.NewRectFromLTWH(500, 300, 40, 30)
+	near := ui.NewRectFromLTWH(10, 10, 40, 30)
+	items := func(b *frameBuilder) int {
+		return b.frame.items(pipeShape) + b.frame.items(pipeMask) + b.frame.items(pipeImage) + b.frame.items(pipeLayer)
+	}
+	for _, pp := range paints {
+		for _, tr := range gputest.CullTransforms() {
+			for _, sh := range gputest.CullShapes() {
+				t.Run(pp.name+"/"+tr.Name+"/"+sh.Name, func(t *testing.T) {
+					res, _, _ := newTestResources(t)
+					draw := func(rect ui.Rect) (*frameBuilder, int) {
+						asks := res.masks.Requests
+						b := frameWith(t, res, func(c *ui.Canvas) {
+							c.ClipRect(ui.NewRectFromLTWH(0, 0, 100, 60))
+							tr.Apply(c)
+							sh.Draw(c, rect, pp.p)
+						})
+						return b, res.masks.Requests - asks
+					}
+					b, asks := draw(near)
+					if items(b) == 0 || b.stats.Culled != 0 {
+						t.Fatalf("the shape in view: %d instances, %+v, want instances and no culling", items(b), b.stats)
+					}
+					if sh.Atlas && asks == 0 {
+						t.Errorf("the shape in view asked the atlas for nothing")
+					}
+					tiles := res.masks.Rasterized
+					b, asks = draw(far)
+					if items(b) != 0 || asks != 0 || res.masks.Rasterized != tiles {
+						t.Errorf("the shape outside the clip: %d instances, %d atlas requests, %d tiles, want none", items(b), asks, res.masks.Rasterized-tiles)
+					}
+					if b.stats.Culled != b.stats.Commands || b.stats.Drawn != b.stats.Commands || b.stats.Skipped != 0 {
+						t.Errorf("the shape outside the clip: %+v, want every command culled", b.stats)
+					}
+				})
+			}
+		}
+	}
+}
+
+// TestCullKeepsWhatTouchesTheClip: a shape whose stroke or anti-aliased edge reaches the clip is
+// drawn.
+func TestCullKeepsWhatTouchesTheClip(t *testing.T) {
+	stroke := solidPaint(0xFF204080)
+	stroke.SetStyle(ui.PaintingStyleStroke)
+	stroke.SetStrokeWidth(8)
+	tests := []struct {
+		name  string
+		rect  ui.Rect
+		paint *ui.Paint
+	}{
+		{"the edge pixel of a fill", ui.NewRectFromLTRB(99.5, 10, 140, 50), solidPaint(0xFF204080)},
+		{"the stroke reaches in", ui.NewRectFromLTRB(102, 10, 140, 50), stroke},
+	}
+	for _, tt := range tests {
+		for _, sh := range gputest.CullShapes() {
+			if sh.Name == "line" || sh.Name == "points" || sh.Name == "arc" || sh.Name == "shadow" || sh.Name == "image" {
+				continue // the geometry is not the rectangle's edge
+			}
+			t.Run(tt.name+"/"+sh.Name, func(t *testing.T) {
+				res, _, _ := newTestResources(t)
+				b := frameWith(t, res, func(c *ui.Canvas) {
+					c.ClipRect(ui.NewRectFromLTWH(0, 0, 100, 60))
+					sh.Draw(c, tt.rect, tt.paint)
+				})
+				if b.stats.Culled != 0 {
+					t.Errorf("stats %+v, want the shape drawn", b.stats)
+				}
+			})
+		}
 	}
 }

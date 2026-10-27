@@ -23,6 +23,9 @@ type FrameStats struct {
 	Commands int
 	// Drawn is the number of commands drawn.
 	Drawn int
+	// Culled is the number of commands that were left out, counted in Drawn, because they lie
+	// outside the part of the surface their clip reaches (SPEC §9.3, "Culling").
+	Culled int
 	// Skipped is the number of commands left out because the renderer cannot draw them
 	// yet; only a renderer with SkipUnsupported skips.
 	Skipped int
@@ -34,6 +37,9 @@ type FrameStats struct {
 	// earlier frame's cache could have saved: coverage tiles rasterized, clip masks made and
 	// images uploaded.
 	TilesRasterized, ClipMasksBuilt, ImagesUploaded int
+	// AtlasRequests is the number of times the frame asked the coverage atlas for the tiles of a
+	// shape; a shape that culling leaves out asks for none.
+	AtlasRequests int
 	// CachedLayersMade is the number of layers drawn into a texture that the raster cache keeps,
 	// and CachedLayersDrawn the number drawn from such a texture instead of from their contents
 	// (SPEC §9.1 "Raster cache").
@@ -247,9 +253,17 @@ func (b *frameBuilder) draw(c gpu.Command) (bool, error) {
 	if outer.Empty() {
 		return true, nil
 	}
+	// Culling (SPEC §9.3): a command that leaves the clip untouched is done before its paint is
+	// read, its geometry hashed, its clip mask made or the atlas asked.
+	if gpu.OutsideClip(c.Op, &c.Transform, outer) {
+		b.stats.Culled++
+		return true, nil
+	}
 	p := gpu.PaintOf(c.Op)
-	if q, with := gpu.PaintAccess(c.Op); q != nil && q.ImageFilter() != nil {
-		return b.filteredDraw(c, q, with)
+	if p != nil && p.ImageFilter() != nil {
+		if q, with := gpu.PaintAccess(c.Op); q != nil {
+			return b.filteredDraw(c, q, with)
+		}
 	}
 	sc := &shapeContext{b: b, c: c, t: gpu.AffineOf(&c.Transform), outer: outer}
 	cb := c.Clip.Bounds
@@ -265,9 +279,11 @@ func (b *frameBuilder) draw(c gpu.Command) (bool, error) {
 		sc.mask = mask
 	}
 
-	if q, with := gpu.PaintAccess(c.Op); q != nil && q.MaskFilter() != nil {
-		if handled, ok, err := sc.maskFiltered(q, with); handled {
-			return ok, err
+	if p != nil && p.MaskFilter() != nil {
+		if q, with := gpu.PaintAccess(c.Op); q != nil {
+			if handled, ok, err := sc.maskFiltered(q, with); handled {
+				return ok, err
+			}
 		}
 	}
 

@@ -13,6 +13,27 @@ import (
 //
 // Flutter: no counterpart
 func ShapeBounds(op ui.DisplayOp) (ui.Rect, bool) {
+	r, _, ok := shapeBounds(op)
+	return r, ok
+}
+
+// paintFacts is what culling needs to know of a paint, read where the paint is at hand so that
+// no pointer to it is returned (which would put a copy of the operation on the heap).
+type paintFacts struct {
+	// filtered says that the paint has an image filter or a mask filter, which reach past the
+	// bounds of the shape.
+	filtered bool
+	// stroked says that the shape is drawn as a stroke, with this miter limit.
+	stroked bool
+	miter   float64
+}
+
+func factsOf(p *ui.Paint, stroked bool) paintFacts {
+	return paintFacts{filtered: p.ImageFilter() != nil || p.MaskFilter() != nil, stroked: stroked, miter: p.StrokeMiterLimit()}
+}
+
+// shapeBounds is ShapeBounds with the facts of the paint that culling needs.
+func shapeBounds(op ui.DisplayOp) (ui.Rect, paintFacts, bool) {
 	var r ui.Rect
 	var p *ui.Paint
 	switch v := op.(type) {
@@ -37,19 +58,20 @@ func ShapeBounds(op ui.DisplayOp) (ui.Rect, bool) {
 		p = &v.Paint
 	case ui.OpDrawPoints:
 		if len(v.Points) == 0 {
-			return ui.Rect{}, false
+			return ui.Rect{}, paintFacts{}, false
 		}
 		r = pointsBounds(v.Points)
 		p = &v.Paint
 	default:
-		return ui.Rect{}, false
+		return ui.Rect{}, paintFacts{}, false
 	}
-	if p.Style() == ui.PaintingStyleStroke || isLineOrPoints(op) {
+	stroked := p.Style() == ui.PaintingStyleStroke || isLineOrPoints(op)
+	if stroked {
 		// A stroke reaches half its width, or a miter's length, past the geometry.
 		grow := max(p.StrokeWidth(), 0) / 2 * max(math.Sqrt2, p.StrokeMiterLimit())
 		r = ui.Rect{Left: r.Left - grow, Top: r.Top - grow, Right: r.Right + grow, Bottom: r.Bottom + grow}
 	}
-	return r, r.IsFinite()
+	return r, factsOf(p, stroked), r.IsFinite()
 }
 
 func rectOfRRect(r ui.RRect) ui.Rect {

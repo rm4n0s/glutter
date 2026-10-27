@@ -179,8 +179,9 @@ type MaskCache struct {
 	NewPage func() error
 	// Upload copies the bytes of a tile, w x h, row by row, to the page at (x, y).
 	Upload func(page, x, y, w, h int, data []byte) error
-	// Rasterized counts the tiles that were rasterized.
-	Rasterized int
+	// Rasterized counts the tiles that were rasterized, and Requests the calls of Tiles (a
+	// shape that culling leaves out makes none).
+	Rasterized, Requests int
 }
 
 // NewMaskCache returns an empty cache whose atlas has pages of pageSize pixels, at most
@@ -218,6 +219,7 @@ func (c *MaskCache) Clear() { c.atlas.Clear(); c.pages = 0 }
 //
 // Flutter: no counterpart
 func (c *MaskCache) Tiles(op ui.DisplayOp, sh OpShape, m *ui.Matrix4, margin float64, visible image.Rectangle) ([]MaskTile, error) {
+	c.Requests++
 	st := m.Storage()
 	e, f := float64(st[12]), float64(st[13])
 	ox, oy := math.Floor(e), math.Floor(f)

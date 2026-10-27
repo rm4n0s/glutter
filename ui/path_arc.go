@@ -348,12 +348,14 @@ func (p *Path) arcToPoint(rx, ry, angle float64, largeArc, cw bool, x, y float64
 			mappedCtrl = Offset{math.Round(mappedCtrl.Dx), math.Round(mappedCtrl.Dy)}
 			mappedEnd = Offset{math.Round(mappedEnd.Dx), math.Round(mappedEnd.Dy)}
 		}
+		if i == segments-1 {
+			// The final point must match the input point by definition; use it, so that
+			// rounding errors above cannot matter.
+			mappedEnd = Offset{x, y}
+		}
 		p.ConicTo(mappedCtrl.Dx, mappedCtrl.Dy, mappedEnd.Dx, mappedEnd.Dy, w)
 		startTheta = endTheta
 	}
-	// The final point must match the input point by definition; replace it so
-	// that rounding errors above cannot matter.
-	p.points[len(p.points)-1] = Offset{x, y}
 }
 
 // AddArc adds a new sub-path with one arc segment that consists of the arc that

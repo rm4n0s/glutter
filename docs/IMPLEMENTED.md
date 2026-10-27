@@ -4583,3 +4583,49 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - In Flutter the engine's converter gives the ids. Here the platform's batchers give them, as on Windows, Android and the web; a §12.10 row records it.
   - Touch and the tablet were tested on the fake compositor only, not on devices.
   - A worker's run hit one timing flake under machine load, `TestClosingAHiddenWindowEndsRun` in `wayland`. It passed 8 times in a row on a rerun and does not touch pointers.
+
+## 29.13 Shapes outside the clip are skipped before their mask is made (Emetos)
+
+- **Date:** 2026-10-27
+- **Branch:** feat/step-29.13-cull-shapes
+- **Summary:** Emetos's issue "Drawing cost grows with everything on the page, including what's off screen".
+  - **The cause:** a profile of a tall scrolled list showed that the coverage atlas was not the cost: `Tiles` already returned early for a shape out of view. The manager's reading had said it was. The cost was work done for every command in every frame, before anything could reject it:
+    - `ShapeOf`'s byte-by-byte hash of the path (`Fingerprint`): 16% of a frame in `explicit` and 23% in `gles`;
+    - the interning of the paint: 21% and 31%;
+    - the copy of the operation that `PaintOf` makes, an allocation for each command.
+  - **Culling:** `gpu.OutsideClip` runs in `draw` of `explicit` and `gles`, before the paint, the hash, the clip mask and the atlas.
+    - **What it does:** it maps the bounds of the shape (strokes included), image or shadow to the surface. It adds 1.5 pixels for the anti-aliased edge (2 for an image), and for a stroke half a pixel times the larger of √2 and the miter. Then it compares them with the pixels the clip reaches.
+    - **What it culls:** rects, rounded rects, ovals, circles, arcs, paths, lines, points, images, nine-patches and shadows. Text reaches the renderers as paths and images, so it is culled too.
+    - **What it never culls:** paints with a mask or image filter, perspective transforms, non-finite bounds, `DrawColor`, `DrawPaint`, vertices and atlas draws.
+    - **Counters:** `FrameStats.Culled` and `FrameStats.AtlasRequests` count the effect.
+  - **Path keys:** `ui.Path` keeps its fingerprint and its bounds up to date as it is built, so `Fingerprint` and `GetBounds` take constant time and write nothing. A detached scene drawn on two goroutines stays safe (SPEC §9.9).
+    - **The fingerprint:** three sums, over the verbs, the points and the conic weights, of a SplitMix64 hash of each element with its index.
+    - **Updates:** appending adds to the sums; `Shift`, `Transform` and `Reset` recompute them; recorded paths are copies.
+    - **The hasher:** `gpu.Hasher` takes a 64-bit word at a time. The atlas and clip-mask keys change in value only, and no golden changed.
+    - **`ArcToPoint`:** it ends its last conic exactly at the point, instead of replacing the point afterwards, so the result is the same path.
+  - **Numbers** (`BenchmarkScrolledList`, 12 rows visible, the minimum of 5 runs on a loaded machine):
+
+    | Frame | rows=50 | rows=500 | rows=5000 | allocations at 5000 |
+    |---|---|---|---|---|
+    | `explicit`, before | 1.87 ms | 4.9 ms | 38.9 ms | 246,046 |
+    | `explicit`, after | 1.57 ms | 1.9 ms | 5.1 ms | 1,419 |
+    | `gles` (flattening excluded), before | 0.51 ms | 4.85 ms | 31.0 ms | 175,094 |
+    | `gles`, after | 0.08 ms | 0.20 ms | 1.29 ms | 556 |
+
+    What is left at 5,000 rows in `explicit` is mostly the fake device's clear and `Flatten`, which still copies every command.
+- **Main files:** `internal/gpu/cull.go`, `bounds.go`, `hasher.go`, `mask.go`, `gputest/cull.go`, `gputest/scrolled.go`; `internal/gpu/explicit/frame.go`, `renderer.go`, `bench_test.go`; `internal/gpu/gles/shapes.go`, `scene.go`, `bench_test.go`; `ui/path_fingerprint.go`, `path.go`, `path_arc.go`, `path_flatten.go`; `docs/SPEC.md` (§9.1, §9.3).
+- **Tests (table-driven):**
+  - **Culled shapes:** 11 kinds under identity, translation, scale and rotation, with fill, stroke and hairline, in `explicit` and `gles` (about 158 subtests each). A culled shape makes no instance, no atlas request, no tile and no upload.
+  - **Shapes that stay drawn:** those that only touch the clip with an edge or a stroke.
+  - **Commands that are never culled:** filters, perspective, `DrawColor`, `DrawPaint`, non-finite bounds and empty point lists.
+  - **Path state:** the kept fingerprint and bounds equal a recompute for 14 ways to build a path, and the fingerprint and hasher pass collision tests.
+  - **Scaling:** a 5,000-row list does the same work as a 50-row one.
+  - **Two goroutines:** two renderers draw one scene at once under `-race`.
+  - **Mutation check:** with culling disabled, 145 subtests fail.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck, apicheck, uintptrcheck ✅ · wasm build, vet and tests ✅ · check-android ✅ · Windows builds, vet, lint and test-windows ✅ · display tests: `internal/gpu/gles`, `vulkan` and `explicit` under `scripts/headless-wayland.sh` ✅
+- **Proof:** none
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - Vertices, atlas draws, `DrawColor` and `DrawPaint` are not culled.
+  - `Flatten` is now the main cost that grows with the scene.
+  - A culled command counts as drawn, so an unsupported feature in a command that is out of view is no longer reported.

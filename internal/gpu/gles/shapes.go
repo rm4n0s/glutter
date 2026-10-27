@@ -108,6 +108,9 @@ type FrameStats struct {
 	Commands int
 	// Drawn is the number of commands drawn.
 	Drawn int
+	// Culled is the number of commands that were left out, counted in Drawn, because they
+	// lie outside the part of the surface their clip reaches (SPEC §9.1, "Culling").
+	Culled int
 	// Skipped is the number of commands left out because the renderer cannot draw
 	// them yet; only a renderer with SkipUnsupported skips.
 	Skipped int
@@ -119,6 +122,9 @@ type FrameStats struct {
 	// did that an earlier frame's cache could have saved: coverage tiles
 	// rasterized, clip masks made and images uploaded.
 	TilesRasterized, ClipMasksBuilt, ImagesUploaded int
+	// AtlasRequests is the number of times the frame asked the coverage atlas for the tiles of a
+	// shape; a shape that culling leaves out asks for none.
+	AtlasRequests int
 	// CachedLayersDrawn is the number of retained layers drawn from the raster
 	// cache's textures, and CachedLayersMade the number drawn into them.
 	CachedLayersDrawn, CachedLayersMade int
@@ -210,6 +216,12 @@ func (b *frameBuilder) draw(c gpu.Command) (bool, error) {
 		if b.res == nil {
 			return false, b.unsupported("operation " + typeName(c.Op))
 		}
+	}
+	// Culling (SPEC §9.1): a command that leaves the clip untouched is done before its paint is
+	// read, its geometry hashed, its clip mask made or the atlas asked.
+	if outer := pixelRect(c.Clip.Bounds).Intersect(b.target()); !outer.Empty() && gpu.OutsideClip(c.Op, &c.Transform, outer) {
+		b.stats.Culled++
+		return true, nil
 	}
 	if p, with := gpu.PaintAccess(c.Op); p != nil && p.ImageFilter() != nil {
 		return b.filteredDraw(c, p, with)

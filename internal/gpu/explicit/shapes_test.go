@@ -6,12 +6,14 @@ import (
 	"math"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/internal/gpu"
 	"github.com/rm4n0s/glutter/internal/gpu/explicit"
 	"github.com/rm4n0s/glutter/internal/gpu/explicit/fakedevice"
+	"github.com/rm4n0s/glutter/internal/gpu/gputest"
 	"github.com/rm4n0s/glutter/ui"
 )
 
@@ -339,4 +341,146 @@ func testImage(n int) *ui.Image {
 		copy(pix[i:], []byte{0x20, 0x40, 0x80, 0xFF})
 	}
 	return ui.NewImageFromRGBA(pix, n, n)
+}
+
+// TestCullsShapesOutsideTheClip: a shape of any kind that lies outside the clip of its command
+// makes no instance and asks the atlas for nothing, under any transform; the same shape in view is
+// drawn (SPEC §9.3, "Culling").
+func TestCullsShapesOutsideTheClip(t *testing.T) {
+	strokeWith := func(width float64) *ui.Paint {
+		p := solid(0xFF204080)
+		p.SetStyle(ui.PaintingStyleStroke)
+		p.SetStrokeWidth(width)
+		return p
+	}
+	paints := []struct {
+		name string
+		p    *ui.Paint
+	}{{"fill", solid(0xFF204080)}, {"stroke", strokeWith(6)}, {"hairline", strokeWith(0)}}
+	far := ui.NewRectFromLTWH(500, 300, 40, 30)
+	near := ui.NewRectFromLTWH(10, 10, 40, 30)
+	for _, pp := range paints {
+		for _, tr := range gputest.CullTransforms() {
+			for _, sh := range gputest.CullShapes() {
+				t.Run(pp.name+"/"+tr.Name+"/"+sh.Name, func(t *testing.T) {
+					r, _, _ := newRenderer(t)
+					draw := func(rect ui.Rect) explicit.FrameStats {
+						scene := sceneOf(func(c *ui.Canvas) {
+							c.ClipRect(ui.NewRectFromLTWH(0, 0, 100, 60))
+							tr.Apply(c)
+							sh.Draw(c, rect, pp.p)
+						})
+						if _, err := r.Draw(window, 200, 100, scene, false); err != nil {
+							t.Fatal(err)
+						}
+						return r.LastFrame()
+					}
+					in := draw(near)
+					if in.Instances == 0 || in.Culled != 0 {
+						t.Fatalf("the shape in view: %+v, want instances and no culling", in)
+					}
+					if sh.Atlas && in.AtlasRequests == 0 {
+						t.Errorf("the shape in view asked the atlas for nothing: %+v", in)
+					}
+					out := draw(far)
+					if out.Instances != 0 || out.AtlasRequests != 0 || out.TilesRasterized != 0 || out.ImagesUploaded != 0 {
+						t.Errorf("the shape outside the clip: %+v, want no instance, no atlas request and no upload", out)
+					}
+					if out.Culled != out.Commands || out.Drawn != out.Commands || out.Skipped != 0 {
+						t.Errorf("the shape outside the clip: %+v, want every command culled", out)
+					}
+				})
+			}
+		}
+	}
+}
+
+// TestCullKeepsWhatTouchesTheClip: a shape whose stroke or anti-aliased edge reaches the clip is
+// drawn.
+func TestCullKeepsWhatTouchesTheClip(t *testing.T) {
+	stroke := solid(0xFF204080)
+	stroke.SetStyle(ui.PaintingStyleStroke)
+	stroke.SetStrokeWidth(8)
+	tests := []struct {
+		name  string
+		rect  ui.Rect
+		paint *ui.Paint
+	}{
+		{"the edge pixel of a fill", ui.NewRectFromLTRB(99.5, 10, 140, 50), solid(0xFF204080)},
+		{"the stroke reaches in", ui.NewRectFromLTRB(102, 10, 140, 50), stroke},
+	}
+	for _, tt := range tests {
+		for _, sh := range gputest.CullShapes() {
+			if sh.Name == "line" || sh.Name == "points" || sh.Name == "arc" || sh.Name == "shadow" || sh.Name == "image" {
+				continue // the geometry is not the rectangle's edge
+			}
+			t.Run(tt.name+"/"+sh.Name, func(t *testing.T) {
+				r, _, _ := newRenderer(t)
+				scene := sceneOf(func(c *ui.Canvas) {
+					c.ClipRect(ui.NewRectFromLTWH(0, 0, 100, 60))
+					sh.Draw(c, tt.rect, tt.paint)
+				})
+				if _, err := r.Draw(window, 200, 100, scene, false); err != nil {
+					t.Fatal(err)
+				}
+				if st := r.LastFrame(); st.Culled != 0 || st.Instances == 0 {
+					t.Errorf("stats %+v, want the shape drawn", st)
+				}
+			})
+		}
+	}
+}
+
+// TestScrolledListCostDoesNotGrowWithTheScene: a list of 5000 rows through the viewport makes the
+// same instances, atlas requests and tiles as one of 50, and the other rows are culled.
+func TestScrolledListCostDoesNotGrowWithTheScene(t *testing.T) {
+	stats := func(rows int) explicit.FrameStats {
+		r, _, _ := newRenderer(t)
+		scene := gputest.ScrolledList(rows, 10*gputest.ScrolledRowHeight)
+		if _, err := r.Draw(window, gputest.ScrolledWidth, gputest.ScrolledHeight, scene, false); err != nil {
+			t.Fatal(err)
+		}
+		return r.LastFrame()
+	}
+	small, big := stats(50), stats(5000)
+	if big.Instances != small.Instances || big.AtlasRequests != small.AtlasRequests || big.TilesRasterized != small.TilesRasterized || big.Batches != small.Batches {
+		t.Errorf("5000 rows: %+v\n  50 rows: %+v\nwant the same work", big, small)
+	}
+	if small.AtlasRequests == 0 || small.Instances == 0 {
+		t.Errorf("50 rows drew nothing: %+v", small)
+	}
+	if big.Culled < big.Commands-small.Commands {
+		t.Errorf("5000 rows culled %d commands of %d, want at least %d", big.Culled, big.Commands, big.Commands-small.Commands)
+	}
+}
+
+// TestTwoGoroutinesDrawOneScene: two renderers on two goroutines draw one scene, whose paths
+// keep their fingerprints and bounds (SPEC §9.3, "Path keys", §9.9). Nothing in drawing writes a
+// path, so the race detector (go test -race) reports nothing, and the frames agree.
+func TestTwoGoroutinesDrawOneScene(t *testing.T) {
+	scene := gputest.ScrolledList(300, 20*gputest.ScrolledRowHeight)
+	const goroutines = 2
+	got := make([]explicit.FrameStats, goroutines)
+	var wg sync.WaitGroup
+	for g := 0; g < goroutines; g++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			dev := fakedevice.New()
+			dev.CompleteReadsOnSubmit = true
+			r := explicit.NewRenderer(func(gpu.SurfaceHandle) (explicit.Device, error) { return dev, nil })
+			defer r.Close()
+			for i := 0; i < 10; i++ {
+				if _, err := r.Draw(window, gputest.ScrolledWidth, gputest.ScrolledHeight, scene, false); err != nil {
+					t.Error(err)
+					return
+				}
+			}
+			got[g] = r.LastFrame()
+		}()
+	}
+	wg.Wait()
+	if got[0].Instances == 0 || !reflect.DeepEqual(got[0], got[1]) {
+		t.Errorf("frames differ: %+v and %+v", got[0], got[1])
+	}
 }

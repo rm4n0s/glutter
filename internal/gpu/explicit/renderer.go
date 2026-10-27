@@ -467,7 +467,7 @@ func (r *Renderer) build(scene *ui.Scene, width, height int, useCache bool) (*fr
 		r.res = res
 	}
 	r.res.beginFrame()
-	tiles0, clips0, images0 := r.res.masks.Rasterized, r.res.clipMasksBuilt, r.res.imagesUploaded
+	tiles0, clips0, images0, asks0 := r.res.masks.Rasterized, r.res.clipMasksBuilt, r.res.imagesUploaded, r.res.masks.Requests
 	fb := &frameBuilder{w: width, h: height, skip: r.opts.SkipUnsupported, res: r.res}
 	if scene != nil {
 		fo := gpu.FlattenOpts{Bounds: ui.NewRectFromLTWH(0, 0, float64(width), float64(height))}
@@ -489,6 +489,7 @@ func (r *Renderer) build(scene *ui.Scene, width, height int, useCache bool) (*fr
 	fb.stats.Instances = fb.items(pipeShape) + fb.items(pipeMask) + fb.items(pipeImage)
 	fb.stats.Vertices, fb.stats.Batches = fb.items(pipeVertices), len(fb.calls)
 	fb.stats.TilesRasterized = r.res.masks.Rasterized - tiles0
+	fb.stats.AtlasRequests = r.res.masks.Requests - asks0
 	fb.stats.ClipMasksBuilt = r.res.clipMasksBuilt - clips0
 	fb.stats.ImagesUploaded = r.res.imagesUploaded - images0
 	r.last = fb.stats
