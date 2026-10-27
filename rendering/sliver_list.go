@@ -1,6 +1,8 @@
 package rendering
 
 import (
+	"math"
+
 	"github.com/rm4n0s/glutter/foundation"
 )
 
@@ -11,13 +13,21 @@ import (
 // Flutter: rendering/sliver_list.dart RenderSliverList
 type RenderSliverList struct {
 	RenderSliverMultiBoxAdaptor
+
+	// What the sliver measured, for the EstimateItemOffsets option: the sum and
+	// the number of the extents of the children that came into the layout, and
+	// the indices of the first and the last child of the last layout (both -1
+	// before the first).
+	measuredSum                 float64
+	measuredCount               int
+	measuredFirst, measuredLast int
 }
 
 // NewRenderSliverList creates the sliver.
 //
 // Flutter: rendering/sliver_list.dart RenderSliverList.new
 func NewRenderSliverList(childManager RenderSliverBoxChildManager) *RenderSliverList {
-	r := &RenderSliverList{}
+	r := &RenderSliverList{measuredFirst: -1, measuredLast: -1}
 	InitRenderSliverMultiBoxAdaptor(&r.RenderSliverMultiBoxAdaptor, r, childManager)
 	return r
 }
@@ -85,6 +95,15 @@ func (r *RenderSliverList) PerformLayout() {
 		}
 	}
 
+	estimator, estimates := r.childManager.(SliverItemOffsetEstimator)
+	estimates = estimates && estimator.EstimatesItemOffsets()
+	if estimates && !r.jumpToEstimatedChild(constraints, scrollOffset, targetEndScrollOffset) {
+		// The manager has no child at the estimated index: no children are left.
+		r.SetGeometry(SliverGeometryZero)
+		r.childManager.DidFinishLayout()
+		return
+	}
+
 	// Find the last child that is at or before the scrollOffset.
 	earliestUsefulChild = r.FirstChild()
 	for earliestScrollOffset := r.ChildScrollOffset(earliestUsefulChild).Value(); earliestScrollOffset > scrollOffset; earliestScrollOffset = r.ChildScrollOffset(earliestUsefulChild).Value() {
@@ -118,6 +137,20 @@ func (r *RenderSliverList) PerformLayout() {
 		firstChildScrollOffset := earliestScrollOffset - r.PaintExtentOf(r.FirstChild())
 		// firstChildScrollOffset may contain double precision error
 		if firstChildScrollOffset < -foundation.PrecisionErrorTolerance {
+			if estimates {
+				// Deviation: the offsets are estimates (the EstimateItemOffsets
+				// option), so the children before this one are not known to be
+				// few: all of them are inserted in this pass, and the scroll
+				// offset is corrected once, by the offset of the first item, not
+				// by the extent of one child for each pass.
+				for r.IndexOf(r.FirstChild()) > 0 {
+					leading := r.InsertAndLayoutLeadingChild(childConstraints, LayoutOpts{ParentUsesSize: true})
+					if isNil(leading) {
+						break
+					}
+					firstChildScrollOffset -= r.PaintExtentOf(r.FirstChild())
+				}
+			}
 			// Let's assume there is no child before the first child. We will
 			// correct it on the next layout if it is not.
 			r.SetGeometry(NewSliverGeometry(SliverGeometryOpts{ScrollOffsetCorrection: foundation.Some(-firstChildScrollOffset)}))
@@ -136,10 +169,12 @@ func (r *RenderSliverList) PerformLayout() {
 
 	// If the scroll offset is at zero, we should make sure we are actually at the
 	// beginning of the list.
-	if keeper, ok := r.childManager.(SliverVisibleContentKeeper); ok && keeper.KeepsVisibleContentPosition() &&
+	keeper, isKeeper := r.childManager.(SliverVisibleContentKeeper)
+	if (isKeeper && keeper.KeepsVisibleContentPosition() || estimates) &&
 		scrollOffset < foundation.PrecisionErrorTolerance {
 		// Deviation: when items were inserted before the children that were kept in
-		// place (the MaintainVisibleContentPosition option), all of the children
+		// place (the MaintainVisibleContentPosition option), or the offsets are
+		// estimates (the EstimateItemOffsets option), all of the children
 		// before the first one are inserted in this pass and the scroll offset is
 		// corrected once, by their extent less the offset of the first child. One
 		// child for each pass, as below, would take more passes than a viewport
@@ -270,6 +305,9 @@ func (r *RenderSliverList) PerformLayout() {
 	r.CollectGarbage(leadingGarbage, trailingGarbage)
 
 	r.DebugAssertChildListIsNonEmptyAndContiguous()
+	if estimates {
+		r.recordMeasuredExtents()
+	}
 	var estimatedMaxScrollOffset float64
 	if reachedEnd {
 		estimatedMaxScrollOffset = endScrollOffset
@@ -301,4 +339,68 @@ func (r *RenderSliverList) PerformLayout() {
 		r.childManager.SetDidUnderflow(true)
 	}
 	r.childManager.DidFinishLayout()
+}
+
+// recordMeasuredExtents adds the extents of the children that were not in the
+// last layout to the average that the EstimateItemOffsets option estimates with.
+// All of the children are laid out when it is called.
+func (r *RenderSliverList) recordMeasuredExtents() {
+	first, last := r.FirstChild(), r.LastChild()
+	if isNil(first) || isNil(last) {
+		return
+	}
+	for child := first; !isNil(child); child = r.ChildAfter(child) {
+		index := r.IndexOf(child)
+		if index >= r.measuredFirst && index <= r.measuredLast || !child.HasSize() {
+			continue
+		}
+		r.measuredSum += r.PaintExtentOf(child)
+		r.measuredCount++
+	}
+	r.measuredFirst, r.measuredLast = r.IndexOf(first), r.IndexOf(last)
+}
+
+// jumpToEstimatedChild is the EstimateItemOffsets option. When the window that
+// the layout has to fill (the viewport and the cache area) starts or ends more
+// than a window away from the children that the sliver has, it drops them and
+// creates the child at the index that the average extent gives for the scroll
+// offset, with the offset that the average gives, so the layout goes on from
+// there and does not walk through the children in between. It returns false
+// only if the manager has no child at all.
+func (r *RenderSliverList) jumpToEstimatedChild(constraints SliverConstraints, scrollOffset, targetEndScrollOffset float64) bool {
+	if r.measuredCount == 0 {
+		return true
+	}
+	first, last := r.FirstChild(), r.LastChild()
+	if isNil(first) || isNil(last) || !first.HasSize() || !last.HasSize() ||
+		!r.ChildScrollOffset(first).IsSome() || !r.ChildScrollOffset(last).IsSome() {
+		return true
+	}
+	window := max(constraints.ViewportMainAxisExtent, constraints.RemainingCacheExtent)
+	firstOffset := r.ChildScrollOffset(first).Value()
+	lastEnd := r.ChildScrollOffset(last).Value() + r.PaintExtentOf(last)
+	if scrollOffset <= lastEnd+window && targetEndScrollOffset >= firstOffset-window {
+		return true
+	}
+	average := r.measuredSum / float64(r.measuredCount)
+	if average <= 0 {
+		return true
+	}
+	index := int(math.Floor(scrollOffset / average))
+	if count, ok := r.childManager.EstimatedChildCount().Get(); ok {
+		index = min(index, count-1)
+	}
+	index = max(index, 0)
+	if index == r.IndexOf(first) {
+		return true
+	}
+	r.CollectGarbage(r.ChildCount(), 0)
+	r.measuredFirst, r.measuredLast = -1, -1
+	if r.AddInitialChild(AddInitialChildOpts{Index: index, LayoutOffset: float64(index) * average}) {
+		return true
+	}
+	// An unbounded list that ends before the estimate: start again from its first
+	// child, as the list does without the option.
+	r.childManager.SetDidUnderflow(false)
+	return r.AddInitialChild()
 }

@@ -4788,3 +4788,35 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Manual checks:** none
 - **Deviations and follow-ups:**
   - **Offsets:** Flutter's map is the identity because Dart counts UTF-16 units; Glutter's is a real map (SPEC §12.10).
+
+## 29.20 A jump into a long list costs one window of items (Emetos)
+
+- **Date:** 2026-10-27
+- **Branch:** feat/step-29.20-list-jump-estimate
+- **Summary:** Emetos's issue "A `SliverList` lays out every item between the first one it has and the offset of a jump". `RenderSliverList` walked from the children it had to the new offset, as Flutter's does, building and laying out every item in between, in one frame.
+  - **The option:** `EstimateItemOffsets` in `ListViewOpts` and in the options of `SliverList`. It does not apply to grids or to the fixed, varied and prototype extent lists, which find an index at once. It is off by default.
+  - **The jump:** when the scroll offset is more than a window (the viewport or the cache extent) from the children, the sliver drops them. It builds the child at the index that the average extent of the items it has measured gives, at the estimated offset, and lays out from there.
+  - **How the option reaches the render object:** the element implements `rendering.SliverItemOffsetEstimator`, found as `SliverVisibleContentKeeper` is (29.8).
+  - **On the way back:** the children before a child with a negative offset are inserted in one pass, and the scroll offset is corrected once, as `ScrollOffsetCorrection` does for item 0. What is shown is laid out exactly; only the offsets far from it are estimates.
+  - **With `MaintainVisibleContentPosition`:** both options work together.
+- **Main files:** `rendering/sliver_list.go`, `rendering/sliver_multi_box_adaptor.go`, `widgets/sliver.go`, `widgets/scroll_view.go`, `docs/SPEC.md` (§11.4, §12.10), `docs/GUIDE.md`.
+- **Tests (table-driven), `widgets/estimate_item_offsets_test.go`:**
+  - **Builder calls** for a `JumpTo` in 3,000 items of 30 to 119 px:
+
+    | Jump | Option on | Option off |
+    |---|---|---|
+    | To the middle | 16 | 1,445 |
+    | To the end | 12 | 2,891 |
+    | To the middle, reverse list | 16 | |
+
+    Every case also checks that the built items are consecutive, with no gap and no overlap.
+  - **Back to the start:** after a jump, scrolling back in 400 px steps ends with item 0 at offset 0, with no gap or overlap after any step.
+  - **Backwards:** a jump backwards from the end builds at most 40 items.
+  - **With `MaintainVisibleContentPosition`:** rows inserted before the visible row after a jump keep it in place. With the option off, the rows move 395 px.
+  - **Benchmark:** `BenchmarkEstimateItemOffsetsJump`, a jump to the middle and back. Without the option: 1.4 s and 500,000 allocations. With it: 14 ms and 5,600.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck, apicheck, uintptrcheck ✅ · wasm build, vet and tests ✅ · check-android ✅ · Windows builds, vet, lint and test-windows ✅ · display tests: none
+- **Proof:** none
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - **Deviation:** Flutter has no such option (SPEC §12.10).
+  - **The scroll bar:** its thumb follows the estimated extent. When the estimate is corrected near item 0, the thumb moves a little (about 1.5% of the track in one run), as on the web's virtual lists.

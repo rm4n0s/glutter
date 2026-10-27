@@ -231,6 +231,29 @@ func logList(lines []logLine, ctl m.ScrollController) m.Widget {
 }
 ```
 
+A list of items of different heights (a Markdown preview of thousands of blocks) has another
+option that Flutter does not have: `EstimateItemOffsets`. Flutter finds the first item at a
+scroll offset by walking from the items it has, building and laying out every item in between, so
+a click on the scroll bar or a `JumpTo` far away costs the whole list in one frame. With the
+option on, a jump of more than a viewport and the cache extent builds only the items near the new
+offset: the list divides the offset by the average height of the items it has measured and starts
+there. The items shown are laid out exactly; only the offsets far from them are estimates, and
+the list corrects them when the user scrolls back to the start. It applies to `ListView` without
+`ItemExtent`, `ItemExtentBuilder` and `PrototypeItem` (those find an item at once), and to
+`SliverList`:
+
+```go
+func preview(blocks []string, ctl m.ScrollController) m.Widget {
+	return m.NewListViewBuilder(func(bc m.BuildContext, i int) m.Widget {
+		return m.NewText(blocks[i])
+	}, m.ListViewOpts{
+		Controller:          ctl,
+		ItemCount:           m.Some(len(blocks)),
+		EstimateItemOffsets: true,
+	})
+}
+```
+
 ## 5. Inherited data and `of`
 
 Flutter:

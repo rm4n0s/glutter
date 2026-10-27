@@ -490,6 +490,20 @@ type ListViewOpts struct {
 	//
 	// Flutter: no counterpart
 	MaintainVisibleContentPosition bool
+	// EstimateItemOffsets lets a jump into a long list of items of different
+	// extents (a click on the scroll bar, a JumpTo) lay out only the items near
+	// the new offset. When the offset is more than the viewport and the cache
+	// extent away from the items the list has, it does not build the items in
+	// between: it builds the item at the index that the average extent of the
+	// items it has measured gives for the offset, at the offset that the average
+	// gives, and goes on from there. The offsets far from the window shown are
+	// estimates, which the list corrects as the user scrolls back: at item 0 the
+	// scroll offset is corrected so that the item starts at 0. It applies to
+	// SliverList and to a ListView without ItemExtent, ItemExtentBuilder and
+	// PrototypeItem (lists with those find an index at once), not to grids.
+	//
+	// Flutter: no counterpart
+	EstimateItemOffsets bool
 }
 
 func (o ListViewOpts) scrollViewOpts(semanticChildCount foundation.Opt[int]) ScrollViewOpts {
@@ -509,6 +523,7 @@ type ListView struct {
 	prototypeItem     Widget
 	childrenDelegate  SliverChildDelegate
 	keepVisible       bool
+	estimateOffsets   bool
 }
 
 func newListView(delegate SliverChildDelegate, o ListViewOpts, semanticChildCount foundation.Opt[int]) *ListView {
@@ -528,7 +543,7 @@ func newListView(delegate SliverChildDelegate, o ListViewOpts, semanticChildCoun
 		}
 	}
 	v := &ListView{itemExtent: o.ItemExtent, itemExtentBuilder: o.ItemExtentBuilder, prototypeItem: o.PrototypeItem, childrenDelegate: delegate,
-		keepVisible: o.MaintainVisibleContentPosition}
+		keepVisible: o.MaintainVisibleContentPosition, estimateOffsets: o.EstimateItemOffsets}
 	InitBoxScrollView(&v.BoxScrollView, v, o.Padding, o.scrollViewOpts(semanticChildCount))
 	return v
 }
@@ -619,7 +634,7 @@ func (v *ListView) ChildrenDelegate() SliverChildDelegate { return v.childrenDel
 //
 // Flutter: widgets/scroll_view.dart ListView.buildChildLayout
 func (v *ListView) BuildChildLayout(BuildContext) Widget {
-	opts := SliverListWidgetOpts{MaintainVisibleContentPosition: v.keepVisible}
+	opts := SliverListWidgetOpts{MaintainVisibleContentPosition: v.keepVisible, EstimateItemOffsets: v.estimateOffsets}
 	switch {
 	case v.itemExtent.IsSome():
 		return NewSliverFixedExtentList(v.childrenDelegate, v.itemExtent.Value(), opts)

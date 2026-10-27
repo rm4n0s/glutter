@@ -107,6 +107,23 @@ type SliverVisibleContentKeeper interface {
 	TakeScrollOffsetCorrection() float64
 }
 
+// SliverItemOffsetEstimator is what a RenderSliverBoxChildManager implements, in
+// addition, when its list estimates the offset of the items it jumps to (the
+// EstimateItemOffsets option of the list widgets). RenderSliverList looks for it
+// in its child manager with a type assertion.
+//
+// Flutter: no counterpart
+type SliverItemOffsetEstimator interface {
+	// EstimatesItemOffsets is whether the option is on. A RenderSliverList then
+	// does not walk through the children between its children and a scroll offset
+	// that is more than a window (the viewport and the cache area) away from them:
+	// it creates the child at the index that the average extent of the items it
+	// has measured gives for the offset.
+	//
+	// Flutter: no counterpart
+	EstimatesItemOffsets() bool
+}
+
 // RenderSliverBoxChildManagerDefaults is the default of the methods of a
 // RenderSliverBoxChildManager that Flutter gives a body: an embedding manager
 // does not have to implement them.

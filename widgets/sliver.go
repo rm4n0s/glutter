@@ -30,6 +30,7 @@ type SliverMultiBoxAdaptorWidget struct {
 	RenderObjectWidget
 	delegate                       SliverChildDelegate
 	maintainVisibleContentPosition bool
+	estimateItemOffsets            bool
 }
 
 // NewSliverMultiBoxAdaptorWidgetBase creates the embedded base of a sliver with
@@ -54,6 +55,12 @@ func (w *SliverMultiBoxAdaptorWidget) Delegate() SliverChildDelegate { return w.
 func (w *SliverMultiBoxAdaptorWidget) MaintainVisibleContentPosition() bool {
 	return w.maintainVisibleContentPosition
 }
+
+// EstimateItemOffsets is whether the sliver estimates the offset of the items it
+// jumps to. Only SliverList can be given it.
+//
+// Flutter: no counterpart
+func (w *SliverMultiBoxAdaptorWidget) EstimateItemOffsets() bool { return w.estimateItemOffsets }
 
 // EstimateMaxScrollOffset asks the delegate; none lets the sliver extrapolate.
 //
@@ -100,6 +107,20 @@ type SliverBuilderOpts struct {
 	//
 	// Flutter: no counterpart
 	MaintainVisibleContentPosition bool
+	// EstimateItemOffsets lets a jump into a long list of items of different
+	// extents (a click on the scroll bar, a JumpTo) lay out only the items near
+	// the new offset. When the offset is more than the viewport and the cache
+	// extent away from the items the list has, it does not build the items in
+	// between: it builds the item at the index that the average extent of the
+	// items it has measured gives for the offset, at the offset that the average
+	// gives, and goes on from there. The offsets far from the window shown are
+	// estimates, which the list corrects as the user scrolls back: at item 0 the
+	// scroll offset is corrected so that the item starts at 0. It applies to
+	// SliverList and to a ListView without ItemExtent, ItemExtentBuilder and
+	// PrototypeItem (lists with those find an index at once), not to grids.
+	//
+	// Flutter: no counterpart
+	EstimateItemOffsets bool
 }
 
 func (o SliverBuilderOpts) delegate(itemBuilder NullableIndexedWidgetBuilder) *SliverChildBuilderDelegate {
@@ -137,6 +158,20 @@ type SliverListOpts struct {
 	//
 	// Flutter: no counterpart
 	MaintainVisibleContentPosition bool
+	// EstimateItemOffsets lets a jump into a long list of items of different
+	// extents (a click on the scroll bar, a JumpTo) lay out only the items near
+	// the new offset. When the offset is more than the viewport and the cache
+	// extent away from the items the list has, it does not build the items in
+	// between: it builds the item at the index that the average extent of the
+	// items it has measured gives for the offset, at the offset that the average
+	// gives, and goes on from there. The offsets far from the window shown are
+	// estimates, which the list corrects as the user scrolls back: at item 0 the
+	// scroll offset is corrected so that the item starts at 0. It applies to
+	// SliverList and to a ListView without ItemExtent, ItemExtentBuilder and
+	// PrototypeItem (lists with those find an index at once), not to grids.
+	//
+	// Flutter: no counterpart
+	EstimateItemOffsets bool
 }
 
 func (o SliverListOpts) delegate(children []Widget) *SliverChildListDelegate {
@@ -178,6 +213,20 @@ type SliverSeparatedOpts struct {
 	//
 	// Flutter: no counterpart
 	MaintainVisibleContentPosition bool
+	// EstimateItemOffsets lets a jump into a long list of items of different
+	// extents (a click on the scroll bar, a JumpTo) lay out only the items near
+	// the new offset. When the offset is more than the viewport and the cache
+	// extent away from the items the list has, it does not build the items in
+	// between: it builds the item at the index that the average extent of the
+	// items it has measured gives for the offset, at the offset that the average
+	// gives, and goes on from there. The offsets far from the window shown are
+	// estimates, which the list corrects as the user scrolls back: at item 0 the
+	// scroll offset is corrected so that the item starts at 0. It applies to
+	// SliverList and to a ListView without ItemExtent, ItemExtentBuilder and
+	// PrototypeItem (lists with those find an index at once), not to grids.
+	//
+	// Flutter: no counterpart
+	EstimateItemOffsets bool
 }
 
 // separatedDelegate is the delegate of SliverList.separated and
@@ -235,6 +284,20 @@ type SliverListWidgetOpts struct {
 	//
 	// Flutter: no counterpart
 	MaintainVisibleContentPosition bool
+	// EstimateItemOffsets lets a jump into a long list of items of different
+	// extents (a click on the scroll bar, a JumpTo) lay out only the items near
+	// the new offset. When the offset is more than the viewport and the cache
+	// extent away from the items the list has, it does not build the items in
+	// between: it builds the item at the index that the average extent of the
+	// items it has measured gives for the offset, at the offset that the average
+	// gives, and goes on from there. The offsets far from the window shown are
+	// estimates, which the list corrects as the user scrolls back: at item 0 the
+	// scroll offset is corrected so that the item starts at 0. It applies to
+	// SliverList and to a ListView without ItemExtent, ItemExtentBuilder and
+	// PrototypeItem (lists with those find an index at once), not to grids.
+	//
+	// Flutter: no counterpart
+	EstimateItemOffsets bool
 }
 
 // SliverList is a sliver that places box children in a linear array along the
@@ -252,6 +315,7 @@ func NewSliverList(delegate SliverChildDelegate, opts ...SliverListWidgetOpts) *
 	o := firstOpts(opts)
 	w := &SliverList{NewSliverMultiBoxAdaptorWidgetBase(delegate, WidgetOpts{Key: o.Key})}
 	w.maintainVisibleContentPosition = o.MaintainVisibleContentPosition
+	w.estimateItemOffsets = o.EstimateItemOffsets
 	return w
 }
 
@@ -260,7 +324,7 @@ func NewSliverList(delegate SliverChildDelegate, opts ...SliverListWidgetOpts) *
 // Flutter: widgets/sliver.dart SliverList.builder
 func NewSliverListBuilder(itemBuilder NullableIndexedWidgetBuilder, opts ...SliverBuilderOpts) *SliverList {
 	o := firstOpts(opts)
-	return NewSliverList(o.delegate(itemBuilder), SliverListWidgetOpts{Key: o.Key, MaintainVisibleContentPosition: o.MaintainVisibleContentPosition})
+	return NewSliverList(o.delegate(itemBuilder), SliverListWidgetOpts{Key: o.Key, MaintainVisibleContentPosition: o.MaintainVisibleContentPosition, EstimateItemOffsets: o.EstimateItemOffsets})
 }
 
 // NewSliverListSeparated creates a sliver list with a separator between the
@@ -269,7 +333,7 @@ func NewSliverListBuilder(itemBuilder NullableIndexedWidgetBuilder, opts ...Sliv
 // Flutter: widgets/sliver.dart SliverList.separated
 func NewSliverListSeparated(itemBuilder, separatorBuilder NullableIndexedWidgetBuilder, opts ...SliverSeparatedOpts) *SliverList {
 	o := firstOpts(opts)
-	return NewSliverList(separatedDelegate(itemBuilder, separatorBuilder, o), SliverListWidgetOpts{Key: o.Key, MaintainVisibleContentPosition: o.MaintainVisibleContentPosition})
+	return NewSliverList(separatedDelegate(itemBuilder, separatorBuilder, o), SliverListWidgetOpts{Key: o.Key, MaintainVisibleContentPosition: o.MaintainVisibleContentPosition, EstimateItemOffsets: o.EstimateItemOffsets})
 }
 
 // NewSliverListList creates a sliver list of the children.
@@ -277,7 +341,7 @@ func NewSliverListSeparated(itemBuilder, separatorBuilder NullableIndexedWidgetB
 // Flutter: widgets/sliver.dart SliverList.list
 func NewSliverListList(children []Widget, opts ...SliverListOpts) *SliverList {
 	o := firstOpts(opts)
-	return NewSliverList(o.delegate(children), SliverListWidgetOpts{Key: o.Key, MaintainVisibleContentPosition: o.MaintainVisibleContentPosition})
+	return NewSliverList(o.delegate(children), SliverListWidgetOpts{Key: o.Key, MaintainVisibleContentPosition: o.MaintainVisibleContentPosition, EstimateItemOffsets: o.EstimateItemOffsets})
 }
 
 // CreateElement creates the element; its moved children leave their index empty.
@@ -647,6 +711,15 @@ func (e *SliverMultiBoxAdaptorElement) TakeScrollOffsetCorrection() float64 {
 	c := e.pendingScrollOffsetCorrection
 	e.pendingScrollOffsetCorrection = 0
 	return c
+}
+
+// EstimatesItemOffsets is whether the widget has the EstimateItemOffsets option
+// on.
+//
+// Flutter: no counterpart
+func (e *SliverMultiBoxAdaptorElement) EstimatesItemOffsets() bool {
+	w, ok := e.widget.(interface{ EstimateItemOffsets() bool })
+	return ok && w.EstimateItemOffsets()
 }
 
 // keepsContentInPlace is whether this rebuild keeps the visible children where
