@@ -40,11 +40,13 @@ type estimateConfig struct {
 	estimate bool
 	keep     bool
 	reverse  bool
+	// discard drops the scenes that the frames make, for the tests of the memory (leak_test.go).
+	discard bool
 }
 
 func newEstimateList(t testing.TB, cfg estimateConfig) *estimateList {
 	t.Helper()
-	l := &estimateList{t: t, ts: gluttertest.New(t, gluttertest.Opts{}), ctl: NewScrollController(), reverse: cfg.reverse}
+	l := &estimateList{t: t, ts: gluttertest.New(t, gluttertest.Opts{DiscardScenes: cfg.discard}), ctl: NewScrollController(), reverse: cfg.reverse}
 	for i := 0; i < estimateItems; i++ {
 		l.ids = append(l.ids, i)
 	}

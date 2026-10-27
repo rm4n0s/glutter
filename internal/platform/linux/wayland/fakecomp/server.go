@@ -251,6 +251,14 @@ func (s *Server) Requests() []string {
 	return append([]string(nil), s.log...)
 }
 
+// ClearRequests forgets the log of requests, for a test that runs for many steps and measures its
+// memory.
+func (s *Server) ClearRequests() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.log = nil
+}
+
 // ID returns the ID of the object of the interface that the client created or
 // bound last, or 0.
 //

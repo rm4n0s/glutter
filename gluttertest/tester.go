@@ -364,6 +364,33 @@ func (t *Tester) ActivatedCursors() []CursorActivation {
 	return out
 }
 
+// ClearLogs forgets what the fake platform keeps of what the app asked of it: the text input
+// states, the cursor activations, the window and view actions, the focus events, the drags, the
+// semantics updates and the windows that the app destroyed. A test that runs the app for many
+// steps and measures its memory calls it, so that the log of the fake platform is not counted as
+// the memory of the app.
+//
+// Flutter: no counterpart
+func (t *Tester) ClearLogs() {
+	t.host.Lock()
+	defer t.host.Unlock()
+	t.host.TextInputStates = nil
+	t.host.ActivatedCursors = nil
+	t.host.WindowActions = nil
+	t.host.ViewActions = nil
+	t.host.FocusEvents = nil
+	t.host.Drags = nil
+	t.host.SemanticsUpdates = nil
+	kept := t.host.Windows[:0]
+	for _, w := range t.host.Windows {
+		if !w.Destroyed {
+			kept = append(kept, w)
+		}
+	}
+	clear(t.host.Windows[len(kept):])
+	t.host.Windows = kept
+}
+
 // WindowActions are the actions that a title bar of the app asked of the window
 // (move, resize, minimize, ...), in order.
 //

@@ -81,6 +81,12 @@ func (e *arenaEntry) Resolve(disposition GestureDisposition) {
 	e.arena.resolve(e.pointer, e.state, e.member, disposition)
 }
 
+// defunct says that the arena of the entry resolved: Resolve has no effect any more.
+func (e *arenaEntry) defunct() bool { return e.arena.arenas[e.pointer] != e.state }
+
+// defunctEntry is a GestureArenaEntry that can say that its arena resolved.
+type defunctEntry interface{ defunct() bool }
+
 type gestureArena struct {
 	members         []GestureArenaMember
 	isOpen          bool

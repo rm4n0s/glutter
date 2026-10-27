@@ -678,6 +678,27 @@ func (w *overlayPortalRenderWidget) CreateRenderObject(BuildContext) rendering.R
 	return r
 }
 
+// DidUnmountRenderObject takes the location of the overlay child out of the child model of its
+// entry. The portal's render object detaches when the portal is removed, which takes the
+// overlay child out of the theater but keeps its location in the list (the list is not told, so
+// that a portal that is reattached finds its place); and the overlay child's element is not
+// detached then, so removeChild never runs for it. Without this the list keeps a location for
+// every portal that was ever removed, until the entry is.
+//
+// Deviation: Flutter has no such step, and its list of the entry holds the location of each
+// portal that was removed (SPEC §12.10).
+//
+// Flutter: widgets/overlay.dart _OverlayPortalElement.unmount
+func (w *overlayPortalRenderWidget) DidUnmountRenderObject(rendering.RenderObject) {
+	if l := w.overlayLocation; l != nil && l.linked {
+		if l.childModel.Mounted() {
+			l.childModel.remove(l)
+		} else {
+			l.prev, l.next, l.linked = nil, nil, false
+		}
+	}
+}
+
 func (w *overlayPortalRenderWidget) UpdateRenderObject(_ BuildContext, ro rendering.RenderObject) {
 	ro.(*renderLayoutSurrogateProxyBox).overlayLocation = w.overlayLocation
 }

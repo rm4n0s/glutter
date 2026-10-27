@@ -223,6 +223,31 @@ type GestureRecognizerBase struct {
 	AllowedButtonsFilter AllowedButtonsFilter
 
 	pointerToEventData map[int]recognizerEventData
+	// pointerRing holds the pointers of pointerToEventData in the order they were added, to
+	// forget the oldest (see rememberPointer).
+	pointerRing []int
+	ringNext    int
+}
+
+// maxRememberedPointers is how many pointers a recognizer remembers the kind and buttons of.
+// Flutter keeps them for as long as the recognizer lives, and with a new pointer id for every
+// press that is a record for each press of a recognizer that lives as long as the app. A pointer
+// that is still down is one of the last few, so the oldest are forgotten.
+const maxRememberedPointers = 256
+
+// rememberPointer keeps the data of the pointer, and forgets the data of the pointer that was
+// added maxRememberedPointers pointers ago.
+func (r *GestureRecognizerBase) rememberPointer(pointer int, data recognizerEventData) {
+	if _, ok := r.pointerToEventData[pointer]; !ok {
+		if len(r.pointerRing) < maxRememberedPointers {
+			r.pointerRing = append(r.pointerRing, pointer)
+		} else {
+			delete(r.pointerToEventData, r.pointerRing[r.ringNext])
+			r.pointerRing[r.ringNext] = pointer
+			r.ringNext = (r.ringNext + 1) % maxRememberedPointers
+		}
+	}
+	r.pointerToEventData[pointer] = data
 }
 
 // Init sets up the base. self is the recognizer that embeds it (usually its
@@ -271,7 +296,7 @@ func (r *GestureRecognizerBase) supports(kind ui.PointerDeviceKind) bool {
 //
 // Flutter: gestures/recognizer.dart GestureRecognizer.addPointerPanZoom
 func (r *GestureRecognizerBase) AddPointerPanZoom(event *PointerPanZoomStartEvent) {
-	r.pointerToEventData[event.Pointer()] = recognizerEventData{kind: event.Kind(), buttons: event.Buttons()}
+	r.rememberPointer(event.Pointer(), recognizerEventData{kind: event.Kind(), buttons: event.Buttons()})
 	if r.self.IsPointerPanZoomAllowed(event) {
 		r.self.AddAllowedPointerPanZoom(event)
 	} else {
@@ -288,9 +313,12 @@ func (r *GestureRecognizerBase) AddAllowedPointerPanZoom(*PointerPanZoomStartEve
 // AddPointer remembers the kind and buttons of the pointer, and hands it to
 // AddAllowedPointer, or to HandleNonAllowedPointer if it is not allowed.
 //
+// Deviation: it remembers the kind and buttons of the last 256 pointers, not of all of them
+// (SPEC §12.10).
+//
 // Flutter: gestures/recognizer.dart GestureRecognizer.addPointer
 func (r *GestureRecognizerBase) AddPointer(event *PointerDownEvent) {
-	r.pointerToEventData[event.Pointer()] = recognizerEventData{kind: event.Kind(), buttons: event.Buttons()}
+	r.rememberPointer(event.Pointer(), recognizerEventData{kind: event.Kind(), buttons: event.Buttons()})
 	if r.self.IsPointerAllowed(event) {
 		r.self.AddAllowedPointer(event)
 	} else {
@@ -563,8 +591,18 @@ func (r *OneSequenceGestureRecognizer) addPointerToArena(pointer int) GestureAre
 // the recognizer to the arena of the pointer. The transform is applied to the
 // events.
 //
+// Deviation: it first forgets the entries of the arenas that have resolved. Flutter keeps them
+// until the recognizer resolves or is disposed (flutter/flutter#117356), and with a new pointer
+// id for every press that is an entry, an arena and its members for each press of a recognizer
+// that lives as long as the app (SPEC §12.10).
+//
 // Flutter: gestures/recognizer.dart OneSequenceGestureRecognizer.startTrackingPointer
 func (r *OneSequenceGestureRecognizer) StartTrackingPointer(pointer int, transform *ui.Matrix4) {
+	for p, e := range r.entries {
+		if d, ok := e.(defunctEntry); ok && d.defunct() {
+			delete(r.entries, p)
+		}
+	}
 	r.trackedPointers[pointer] = r.binding.PointerRouter.AddRoute(pointer, r.oneSeq.HandleEvent, transform)
 	r.entries[pointer] = r.addPointerToArena(pointer)
 }

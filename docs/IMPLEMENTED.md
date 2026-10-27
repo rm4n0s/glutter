@@ -4820,3 +4820,41 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Deviations and follow-ups:**
   - **Deviation:** Flutter has no such option (SPEC §12.10).
   - **The scroll bar:** its thumb follows the estimated extent. When the estimate is corrected near item 0, the thumb moves a little (about 1.5% of the track in one run), as on the web's virtual lists.
+
+## 29.21 No memory leaks in a running app
+
+- **Date:** 2026-10-28
+- **Branch:** feat/step-29.21-leak-hunt
+- **Summary:** the owner made memory leaks a priority (2026-10-28). A harness runs a scenario N times and then 4N times, and compares the live heap, the goroutines and other counters. Its first run found eight leaks, and all are fixed at their cause.
+  - **The largest leak, in `ui`:** a layer pushed with an `oldLayer` held that layer strongly. Every frame the app ever repainted therefore stayed alive, with all its pictures: about 40 KB and 230 objects for each page push. `OldLayer` is now a weak reference to the framework's handle.
+  - **The other seven:**
+    - `ScaffoldMessenger.register` registered a scaffold again at each dependency change (Flutter keeps a set);
+    - `RenderTapRegionSurface` kept the hit-test results of removed subtrees;
+    - `OneSequenceGestureRecognizer.entries` kept an arena entry for each pointer (flutter#117356). Since 29.12 every press has a new id, so this grew with every press;
+    - `GestureRecognizerBase` kept the kind and buttons of every pointer; it now keeps the last 256;
+    - `ScaleGestureRecognizer` kept a velocity tracker for each pointer;
+    - the overlay portal left its location in its entry's child model after it was removed;
+    - the undo stack kept the redo entries it dropped.
+  - **The harness:** `internal/leaktest` (tests only). `LEAKTEST_SCALE` makes the soaks longer, `LEAKTEST_REPORT` writes the numbers, and `LEAKTEST_PROFILE` writes heap profiles at base, N and 4N.
+  - **C memory:** `dl.LiveBlocks`, `dl.TrackBlocks` and `dl.CHeapInUse` (glibc `mallinfo2`). The Wayland platform on the fake compositor is flat on all three.
+  - **GPU resources:** `fakedevice.Live` counts the GPU resources made and not destroyed, and closing a renderer destroys all of them.
+  - **Bounded by design:** the image cache, the SVG cache, the shaped-run and analysis caches, the glyph caches, the image and mask textures, and the recognizers' pointer data. Each bound is tested (SPEC §15).
+- **Main files:**
+  - **The harness:** `internal/leaktest/`.
+  - **Leak fixes:** `ui/scene.go`, `material/scaffold_messenger.go`, `widgets/{tap_region,overlay_portal,undo_history}.go`, `gestures/{recognizer,arena,team,scale}.go`.
+  - **Counters:** `internal/platform/linux/dl/libc.go`, `internal/gpu/explicit/fakedevice/fakedevice.go`, `gluttertest/tester.go` (`ClearLogs`).
+  - **Docs:** `docs/SPEC.md` (§12.10, §15), `CLAUDE.md` (commands, layout, testing notes).
+- **Tests (table-driven):**
+  - **60 scenarios:** routes, dialogs, menus, mounted widgets, text input, taps and drags with new pointer ids, scrolling, windows, images, fonts, the renderers, the Wayland platform, `offscreen` and the editor. Each stays flat in the heap, the goroutines and its counters. The numbers are in SPEC §15.
+  - **One unit test for each leak**, each failing before its fix: `TestSceneBuilderOldLayerDoesNotChainFrames`, `TestScaffoldIsFreedAfterItsRouteIsPopped`, `TestTapRegionSurfaceKeepsNoHitTestOfARemovedChild`, `TestRecognizersForgetTheArenasOfPastPointers`, `TestRecognizersRememberTheLastPointersOnly`, `TestRecognizersKeepNoStateForFinishedPointers`, `TestOverlayPortalLeavesNoLocationWhenItIsRemoved`, `TestUndoStackDropsTheRedoEntriesItReplaces`, and `TestUndoStackIsBounded` for the bound.
+  - **Closing a renderer** destroys every resource (`explicit` and `gles`).
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck, apicheck, uintptrcheck ✅ · wasm build, vet and tests ✅ · check-android ✅ · Windows builds, vet, lint and test-windows ✅ · display tests: none
+- **Proof:** none
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - **Deviations:** five rows in SPEC §12.10: the weak `OldLayer`, the portal's location, the tap region's entry, the recognizers' entries and pointer data, and the bound of the undo stack.
+  - **The undo stack is bounded** (decided by the owner): at most 1,000 entries and 16 MiB of text, the oldest dropped first. Flutter's has no bound, but in Go every entry holds a copy of the whole text (§12.10).
+  - **Not changed, as in Flutter:** fonts loaded under new names are kept for the life of the app.
+  - **Not measured:** the C memory of X11, a real EGL and GL, Vulkan, Android and Windows. They were read, not run: every C allocation is paired with a `Free` or with its owner's `Close`.
+  - **A fake's artifact:** `fakecomp` sends no `delete_id` for destroyed objects, so libwayland's id table grows a little in the clipboard and window scenarios on the fake.
+  - **Public API:** `gluttertest.Tester.ClearLogs` is new, and `ui.Layer.OldLayer()` can return nil once its handle is gone.

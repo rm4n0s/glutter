@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/rm4n0s/glutter/foundation"
+	"github.com/rm4n0s/glutter/internal/renderhost"
 	"github.com/rm4n0s/glutter/ui"
 	"github.com/rm4n0s/glutter/widgets"
 )
@@ -238,5 +239,30 @@ func TestPumpRunsPostedWorkBetweenBeginAndDrawFrame(t *testing.T) {
 	want := []string{"begin", "posted", "post frame"}
 	if strings.Join(order, ",") != strings.Join(want, ",") {
 		t.Errorf("order = %v, want %v", order, want)
+	}
+}
+
+func TestClearLogsForgetsWhatTheFakePlatformKept(t *testing.T) {
+	ts := New(t, Opts{})
+	ts.PumpWidget(widgets.NewDirectionality(ui.TextDirectionLTR, widgets.NewSizedBox(nil)))
+	ts.host.Lock()
+	ts.host.TextInputStates = append(ts.host.TextInputStates, ui.TextInputState{})
+	ts.host.ActivatedCursors = append(ts.host.ActivatedCursors, renderhost.CursorActivation{Device: 1, Kind: "click"})
+	ts.host.WindowActions = append(ts.host.WindowActions, ui.WindowAction{Kind: ui.WindowActionMinimize})
+	ts.host.Windows = append(ts.host.Windows, &renderhost.FakeWindow{View: 7, Destroyed: true}, &renderhost.FakeWindow{View: 8})
+	ts.host.Unlock()
+	ts.ClearLogs()
+	if n := len(ts.TextInputStates()); n != 0 {
+		t.Errorf("%d text input states stay", n)
+	}
+	if n := len(ts.ActivatedCursors()); n != 0 {
+		t.Errorf("%d cursor activations stay", n)
+	}
+	if n := len(ts.WindowActions()); n != 0 {
+		t.Errorf("%d window actions stay", n)
+	}
+	// A window that is alive is not a log: the app can still reach it.
+	if ws := ts.Windows(); len(ws) != 1 || ws[0].View != 8 {
+		t.Errorf("windows = %+v, want only the one of view 8", ws)
 	}
 }

@@ -319,7 +319,9 @@ func (g *fakeGL) texImage2D(t uint32, level, internal, w, h int32, format, kind 
 }
 func (g *fakeGL) texSubImage2D(t uint32, level, x, y, w, h int32, format, kind uint32, data []byte) {
 	g.rec("texSubImage2D", t, level, x, y, w, h, format, kind, len(data))
-	g.uploads = append(g.uploads, len(data))
+	if !g.quiet {
+		g.uploads = append(g.uploads, len(data))
+	}
 }
 func (g *fakeGL) generateMipmap(t uint32) { g.rec("generateMipmap", t) }
 func (g *fakeGL) copyTexSubImage2D(t uint32, level, xo, yo, x, y, w, h int32) {

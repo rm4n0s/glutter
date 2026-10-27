@@ -96,7 +96,6 @@ func (w *TapRegionSurface) CreateRenderObject(bc BuildContext) rendering.RenderO
 type RenderTapRegionSurface struct {
 	rendering.RenderProxyBoxWithHitTestBehavior
 	gestures        *gestures.GestureBinding
-	cachedResults   map[gestures.HitTestEntry]*rendering.BoxHitTestResult
 	registered      []*RenderTapRegion
 	groupIDToRegion map[any][]*RenderTapRegion
 }
@@ -106,7 +105,7 @@ type RenderTapRegionSurface struct {
 //
 // Flutter: widgets/tap_region.dart RenderTapRegionSurface.new
 func NewRenderTapRegionSurface(g *gestures.GestureBinding) *RenderTapRegionSurface {
-	r := &RenderTapRegionSurface{gestures: g, cachedResults: map[gestures.HitTestEntry]*rendering.BoxHitTestResult{}, groupIDToRegion: map[any][]*RenderTapRegion{}}
+	r := &RenderTapRegionSurface{gestures: g, groupIDToRegion: map[any][]*RenderTapRegion{}}
 	rendering.InitRenderProxyBoxWithHitTestBehavior(&r.RenderProxyBoxWithHitTestBehavior, r, rendering.HitTestBehaviorDeferToChild, nil)
 	return r
 }
@@ -164,14 +163,23 @@ func (r *RenderTapRegionSurface) HitTest(result *rendering.BoxHitTestResult, pos
 	self := rendering.Box(r)
 	hitTarget := self.HitTestChildren(result, position) || self.HitTestSelf(position)
 	if hitTarget {
-		entry := rendering.NewBoxHitTestEntry(self, position)
-		if len(r.cachedResults) > 256 {
-			clear(r.cachedResults)
-		}
-		r.cachedResults[entry] = result
-		result.Add(entry)
+		result.Add(&tapRegionHitTestEntry{BoxHitTestEntry: *rendering.NewBoxHitTestEntry(self, position), result: result})
 	}
 	return hitTarget
+}
+
+// tapRegionHitTestEntry is the entry of a tap region surface in a hit test result. It keeps the
+// result, so that HandleEvent can tell which regions the hit test reached.
+//
+// Deviation: Flutter keeps the results in an Expando keyed by the entries, which holds them
+// weakly. A map in Go would hold them (and the render objects of their paths) until it is
+// cleaned, so the entry carries its result: both go together when the hit test result of the
+// event is dropped (SPEC §12.10).
+//
+// Flutter: widgets/tap_region.dart RenderTapRegionSurface._cachedResults
+type tapRegionHitTestEntry struct {
+	rendering.BoxHitTestEntry
+	result *rendering.BoxHitTestResult
 }
 
 // classifyRegions splits the registered regions into the ones the hit test path
@@ -214,13 +222,11 @@ func (r *RenderTapRegionSurface) HandleEvent(event gestures.PointerEvent, entry 
 	if len(r.registered) == 0 {
 		return
 	}
-	result := r.cachedResults[entry]
-	if result == nil {
+	e, ok := entry.(*tapRegionHitTestEntry)
+	if !ok {
 		return
 	}
-	if isUp {
-		delete(r.cachedResults, entry)
-	}
+	result := e.result
 	inside, outside := r.classifyRegions(result)
 	consumeOutsideTaps := false
 	for _, region := range outside {

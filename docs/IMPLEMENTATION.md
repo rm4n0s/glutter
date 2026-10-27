@@ -3041,13 +3041,37 @@ Flutter behaves the same way: `SliverMultiBoxAdaptorElement.performRebuild` sets
 **Proof:** none.
 **Manual checks:** none.
 
-### 29.21 Release 1.9.2 (Emetos)
-**Goal:** 1.9.2 is released with steps 29.8 to 29.20.
+### 29.21 No memory leaks in a running app (1.9.2)
+**Goal:** an app that runs for hours keeps a flat live heap, a flat goroutine count and flat C memory: what a frame, a gesture, a route, a field, a window or an off-screen view takes is given back when it is done. Every leak found is fixed.
+**Why:** the owner made memory leaks a priority (2026-10-27). Step 29.15 cut the garbage of an idle frame, but nothing tests that the memory an app holds stays flat over time. Emetos measured a flat live heap in one idle run (34 to 64 MB); a leak would show only in longer use: routes pushed and popped, fields focused, windows and views opened and closed, images and fonts loaded.
+**Read:** SPEC §9 (caches: glyph, raster, atlas, mask, path, shader, image), §10 (font and shaped-run caches), §13 (the UI thread, `Post`, timers), §14, §9.9 (`offscreen.View.Close`); `foundation` (`ChangeNotifier` listeners), `scheduler` (tickers, frame callbacks), `gestures` (`hitTests`, the arena and router maps by pointer, the 29.17 microtask queue), `widgets` (element and state disposal, `GlobalKey` registry, `FocusManager`), `painting` (image cache), `internal/gpu` caches, `internal/platform/*` (per-window and per-pointer state, purego C memory).
+**Port from:** none.
+**Files:** wherever the leaks are; leak tests next to the code; SPEC §15 (a "memory over time" paragraph).
+**Tasks:**
+1. A leak harness for tests (`gluttertest` or an internal test helper): run a scenario N times, then `runtime.GC()` (twice) and read `runtime.MemStats.HeapInuse`/`HeapObjects` and `runtime.NumGoroutine()`. A scenario leaks when the live heap or the goroutines grow with N (compare N and 4N runs, not an absolute bound, so it is not flaky). Where a leak is found, a heap profile (`pprof` `inuse_space`, diffed between the two runs) names the site.
+2. Scenarios, each table-driven:
+   - idle caret frames of `examples/editor` (the 29.15 scene), with `explicit`, `gles` (fake devices) and `soft`;
+   - scrolling a long list back and forth, with `MaintainVisibleContentPosition` and `EstimateItemOffsets`;
+   - pushing and popping a route with an animation, a dialog, a tooltip, a menu;
+   - mounting and unmounting widgets with tickers, focus nodes, text controllers, scroll controllers, `GlobalKey`s, images, `SvgPicture`s;
+   - focusing and unfocusing a text field (input connection, caret timer, selection overlay, the 29.18 post-frame path);
+   - taps, drags, double taps and long presses with new pointer ids each time (the arena, router and `hitTests` maps; 29.12 makes every press a new id, so a map keyed by pointer that is not cleaned grows);
+   - opening and closing windows on the fake platform (multiwindow), and `offscreen.NewView`/`Close` (goroutines, binding, surface);
+   - loading fonts and images at run time (the caches must stay within their bounds).
+3. Fix every leak found, at its cause (a missing `RemoveListener`, `Dispose`, `Stop`, map delete, cache bound). A cache that grows by design gets a bound and a test of the bound.
+4. C memory: for the Linux backends (purego), check that what is malloc'd per frame, per event or per window is freed (count allocations and frees through `dl`'s helpers in a test, on the fake compositor where possible). Report what cannot be tested without a display.
+5. SPEC §15: what is tested, and the numbers (live heap and goroutines after N and 4N runs of each scenario).
+**Tests (table-driven):** the scenarios of task 2 as tests under the default `go test` (fast enough: a few seconds each; longer soaks behind `-short=false` only if needed), each failing before its fix when a leak was found.
+**Proof:** none.
+**Manual checks:** none.
+
+### 29.22 Release 1.9.2 (Emetos)
+**Goal:** 1.9.2 is released with steps 29.8 to 29.21.
 **Tasks:**
 1. SPEC: the version paragraph of §1 (a 1.9.2 sentence: lists that keep what the user reads in place and jump without laying out what is in between, an offscreen view with its own clipboard and the app's configuration and a window, a gesture arena that no longer panics and runs its microtasks before the next event, a new pointer id for each down on Linux, shapes outside the clip culled before their masks, fewer allocations in idle frames, a field mounted with the focus that takes keys, the caret of obscured text, no error log without a keymap, no `testing` in programs), and a "Scope of 1.9.2" paragraph next to the one of 1.9.1.
 2. `README.md`: "What is new in 1.9.2".
 3. The standard checks of rule 8, and `go run ./cmd/glutter-gen apicheck -allow cmd/glutter-gen/apicheck.allow`.
-4. Merge, tag `step-29.21` and `v1.9.2`, and publish: `git push --follow-tags origin main`, which takes steps 29.8 to 29.21 and their tags to GitHub. Check with `git ls-remote --tags origin`.
+4. Merge, tag `step-29.22` and `v1.9.2`, and publish: `git push --follow-tags origin main`, which takes steps 29.8 to 29.22 and their tags to GitHub. Check with `git ls-remote --tags origin`.
 **Tests:** none of its own.
 **Proof:** none.
 **Manual checks:** none.

@@ -174,7 +174,11 @@ func (s *ScaffoldMessengerState) DidChangeDependencies() {
 }
 
 func (s *ScaffoldMessengerState) register(scaffold *ScaffoldState) {
-	s.scaffolds = append(s.scaffolds, scaffold)
+	// Flutter's _scaffolds is a Set: a scaffold whose dependencies change registers again, and
+	// the one unregister at its disposal must remove it.
+	if !slices.Contains(s.scaffolds, scaffold) {
+		s.scaffolds = append(s.scaffolds, scaffold)
+	}
 	if s.isRoot(scaffold) {
 		if len(s.snackBars) > 0 {
 			scaffold.updateSnackBar()

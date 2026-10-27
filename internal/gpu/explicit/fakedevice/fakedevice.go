@@ -56,7 +56,24 @@ type Device struct {
 	// writes, so that a benchmark of the renderer counts what the renderer allocates and not
 	// what the log does.
 	Quiet bool
+
+	live Live
 }
+
+// Live is how many resources of each kind the device made that were not destroyed yet. A
+// renderer that keeps making resources and never destroys them (a texture for each frame) shows
+// here as a count that grows. Bind groups are not counted: the real devices take them from the
+// pool of a frame, which is reset when the frame is done, and their Destroy does nothing.
+//
+// Flutter: no counterpart
+type Live struct {
+	Buffers, Textures, Samplers, Pipelines int
+}
+
+// Live returns how many resources of each kind are alive.
+//
+// Flutter: no counterpart
+func (d *Device) Live() Live { return d.live }
 
 // BufferWrite is one call of WriteBuffer.
 //
@@ -140,7 +157,8 @@ func (d *Device) NewBuffer(size int, usage explicit.BufferUsage) (explicit.Buffe
 	if err := d.fail(); err != nil {
 		return nil, err
 	}
-	return &buffer{data: make([]byte, size), usage: usage}, nil
+	d.live.Buffers++
+	return &buffer{d: d, data: make([]byte, size), usage: usage}, nil
 }
 
 // NewTexture implements explicit.Device.
@@ -154,7 +172,8 @@ func (d *Device) NewTexture(desc explicit.TextureDesc) (explicit.Texture, error)
 		desc.MipLevels = 1
 	}
 	bpp := desc.Format.BytesPerPixel()
-	t := &texture{desc: desc, bpp: bpp}
+	d.live.Textures++
+	t := &texture{d: d, desc: desc, bpp: bpp}
 	if bpp > 0 && desc.Width > 0 && desc.Height > 0 {
 		t.pix = make([]byte, desc.Width*desc.Height*bpp)
 	}
@@ -167,7 +186,8 @@ func (d *Device) NewSampler(desc explicit.SamplerDesc) (explicit.Sampler, error)
 	if err := d.fail(); err != nil {
 		return nil, err
 	}
-	return &sampler{}, nil
+	d.live.Samplers++
+	return &sampler{d: d}, nil
 }
 
 // NewPipeline implements explicit.Device.
@@ -181,7 +201,8 @@ func (d *Device) NewPipeline(desc explicit.PipelineDesc) (explicit.Pipeline, err
 	if err := d.fail(); err != nil {
 		return nil, err
 	}
-	return &pipeline{desc: desc}, nil
+	d.live.Pipelines++
+	return &pipeline{d: d, desc: desc}, nil
 }
 
 // NewBindGroup implements explicit.Device.
@@ -282,12 +303,19 @@ func (d *Device) CompleteReads() {
 }
 
 type buffer struct {
-	data  []byte
-	usage explicit.BufferUsage
+	d         *Device
+	data      []byte
+	usage     explicit.BufferUsage
+	destroyed bool
 }
 
 func (b *buffer) Size() int { return len(b.data) }
-func (b *buffer) Destroy()  {}
+func (b *buffer) Destroy() {
+	if !b.destroyed {
+		b.destroyed = true
+		b.d.live.Buffers--
+	}
+}
 
 // Bytes returns what was written to the buffer, if b is a fake buffer.
 //
@@ -300,15 +328,22 @@ func Bytes(b explicit.Buffer) []byte {
 }
 
 type texture struct {
-	desc   explicit.TextureDesc
-	bpp    int
-	pix    []byte     // level 0
-	levels []*texture // the textures of Level, indexed by level
-	parent *texture
+	d         *Device // nil for the textures of the swapchain and of the mip levels
+	destroyed bool
+	desc      explicit.TextureDesc
+	bpp       int
+	pix       []byte     // level 0
+	levels    []*texture // the textures of Level, indexed by level
+	parent    *texture
 }
 
 func (t *texture) Desc() explicit.TextureDesc { return t.desc }
-func (t *texture) Destroy()                   {}
+func (t *texture) Destroy() {
+	if t.d != nil && !t.destroyed {
+		t.destroyed = true
+		t.d.live.Textures--
+	}
+}
 
 // Level implements explicit.Texture: a texture of its own, of the size of the level.
 func (t *texture) Level(i int) explicit.Texture {
@@ -387,14 +422,31 @@ func (t *texture) read(r image.Rectangle) *image.RGBA {
 	return img
 }
 
-type sampler struct{}
+type sampler struct {
+	d         *Device
+	destroyed bool
+}
 
-func (*sampler) Destroy() {}
+func (s *sampler) Destroy() {
+	if !s.destroyed {
+		s.destroyed = true
+		s.d.live.Samplers--
+	}
+}
 
-type pipeline struct{ desc explicit.PipelineDesc }
+type pipeline struct {
+	d         *Device
+	desc      explicit.PipelineDesc
+	destroyed bool
+}
 
 func (p *pipeline) Desc() explicit.PipelineDesc { return p.desc }
-func (*pipeline) Destroy()                      {}
+func (p *pipeline) Destroy() {
+	if !p.destroyed {
+		p.destroyed = true
+		p.d.live.Pipelines--
+	}
+}
 
 type bindGroup struct{}
 

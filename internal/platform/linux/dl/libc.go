@@ -3,7 +3,9 @@
 package dl
 
 import (
+	"runtime"
 	"sync"
+	"sync/atomic"
 	"unsafe"
 
 	"github.com/rm4n0s/errors"
@@ -48,24 +50,170 @@ var loadLibc = sync.OnceValue(func() *libcFuncs {
 	return f
 })
 
+// liveBlocks is the number of blocks that Malloc, Calloc and CString returned and that Free has not
+// released (see LiveBlocks).
+var liveBlocks atomic.Int64
+
+// tracker, when it is not nil, records every live block with the stack that allocated it (see
+// TrackBlocks).
+var tracker atomic.Pointer[blockTracker]
+
+type blockTracker struct {
+	mu     sync.Mutex
+	blocks map[uintptr]block
+}
+
+type block struct {
+	size  uintptr
+	stack []uintptr
+}
+
+func recordBlock(ptr, size uintptr) {
+	liveBlocks.Add(1)
+	if t := tracker.Load(); t != nil {
+		pcs := make([]uintptr, 24)
+		pcs = pcs[:runtime.Callers(3, pcs)]
+		t.mu.Lock()
+		t.blocks[ptr] = block{size: size, stack: pcs}
+		t.mu.Unlock()
+	}
+}
+
+// mallinfo2 mirrors glibc's struct mallinfo2 (malloc.h).
+type mallinfo2 struct {
+	Arena, Ordblks, Smblks, Hblks, Hblkhd, Usmblks, Fsmblks, Uordblks, Fordblks, Keepcost uintptr
+}
+
+// mallinfoFunc is mallinfo2, bound on first use; nil when libc has none (glibc before 2.33, Bionic).
+var mallinfoFunc = sync.OnceValue(func() func() mallinfo2 {
+	lib, err := Open(libcNames...)
+	if err != nil {
+		return nil
+	}
+	var f func() mallinfo2
+	if err := lib.Bind(&f, "mallinfo2"); err != nil {
+		return nil
+	}
+	return f
+})
+
+// CHeapInUse is the number of bytes that the C allocator has handed out and not taken back, all
+// callers counted: libwayland, libxkbcommon, fontconfig and the graphics drivers, and not only the
+// blocks of this package. The memory tests (step 29.21) compare it after N and after 4N runs of a
+// scenario. ok is false when libc has no mallinfo2 (glibc before 2.33, Bionic).
+//
+// Flutter: no counterpart
+func CHeapInUse() (bytes int64, ok bool) {
+	f := mallinfoFunc()
+	if f == nil {
+		return 0, false
+	}
+	m := f()
+	return int64(m.Uordblks + m.Hblkhd), true
+}
+
+// LiveBlocks is the number of blocks of C memory that Malloc, Calloc and CString made and that
+// Free has not released. A program whose C memory is flat keeps this number flat; the memory tests
+// (step 29.21) compare it after N and after 4N runs of a scenario. Memory that C allocates itself
+// (a library's own objects) is not counted.
+//
+// Flutter: no counterpart
+func LiveBlocks() int64 { return liveBlocks.Load() }
+
+// LeakedBlock is a block of C memory that was allocated while TrackBlocks was on and not freed.
+//
+// Flutter: no counterpart
+type LeakedBlock struct {
+	// Size is the size of the block in bytes.
+	Size uintptr
+	// Stack is where it was allocated, innermost function first, as "function file:line".
+	Stack []string
+}
+
+// TrackBlocks starts to record the stack of every block that Malloc, Calloc and CString make, for
+// a test that looks for the site of a block that is not freed. It returns the function that
+// stops the tracking and returns the blocks that are still alive. Tracking is slow: it is for
+// tests. Only one tracking can be on at a time; a second call stops the first.
+//
+// Flutter: no counterpart
+func TrackBlocks() (stop func() []LeakedBlock) {
+	t := &blockTracker{blocks: map[uintptr]block{}}
+	tracker.Store(t)
+	return func() []LeakedBlock {
+		tracker.CompareAndSwap(t, nil)
+		t.mu.Lock()
+		defer t.mu.Unlock()
+		out := make([]LeakedBlock, 0, len(t.blocks))
+		for _, b := range t.blocks {
+			lb := LeakedBlock{Size: b.size}
+			frames := runtime.CallersFrames(b.stack)
+			for {
+				f, more := frames.Next()
+				lb.Stack = append(lb.Stack, f.Function+" "+f.File+":"+itoa(f.Line))
+				if !more {
+					break
+				}
+			}
+			out = append(out, lb)
+		}
+		return out
+	}
+}
+
+func itoa(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	var b [20]byte
+	i := len(b)
+	for ; n > 0; n /= 10 {
+		i--
+		b[i] = byte('0' + n%10)
+	}
+	return string(b[i:])
+}
+
 // Malloc allocates size bytes of C memory and returns its address, or 0 when
 // the allocation fails. Release it with Free. C memory is where data that C
 // keeps must live (SPEC §8.1 rule 3).
 //
 // Flutter: no counterpart
-func Malloc(size uintptr) uintptr { return loadLibc().malloc(size) }
+func Malloc(size uintptr) uintptr {
+	ptr := loadLibc().malloc(size)
+	if ptr != 0 {
+		recordBlock(ptr, size)
+	}
+	return ptr
+}
 
 // Calloc allocates count*size bytes of zeroed C memory and returns its address,
 // or 0 when the allocation fails. Release it with Free.
 //
 // Flutter: no counterpart
-func Calloc(count, size uintptr) uintptr { return loadLibc().calloc(count, size) }
+func Calloc(count, size uintptr) uintptr {
+	ptr := loadLibc().calloc(count, size)
+	if ptr != 0 {
+		recordBlock(ptr, count*size)
+	}
+	return ptr
+}
 
 // Free releases C memory from Malloc, Calloc or CString. Freeing 0 does
 // nothing.
 //
 // Flutter: no counterpart
-func Free(ptr uintptr) { loadLibc().free(ptr) }
+func Free(ptr uintptr) {
+	if ptr == 0 {
+		return
+	}
+	liveBlocks.Add(-1)
+	if t := tracker.Load(); t != nil {
+		t.mu.Lock()
+		delete(t.blocks, ptr)
+		t.mu.Unlock()
+	}
+	loadLibc().free(ptr)
+}
 
 // Strlen returns the length in bytes of the NUL-terminated C string at ptr,
 // not counting the NUL.

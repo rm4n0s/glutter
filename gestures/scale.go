@@ -444,6 +444,9 @@ func (r *ScaleGestureRecognizer) AddAllowedPointerPanZoom(event *PointerPanZoomS
 
 // HandleEvent follows the pointers.
 //
+// Deviation: it forgets the velocity tracker of a pointer when the pointer is up or cancelled
+// (SPEC §12.10).
+//
 // Flutter: gestures/scale.dart ScaleGestureRecognizer.handleEvent
 func (r *ScaleGestureRecognizer) HandleEvent(event PointerEvent) {
 	if foundation.DebugMode && r.state == scaleReady {
@@ -453,8 +456,7 @@ func (r *ScaleGestureRecognizer) HandleEvent(event PointerEvent) {
 	shouldStartIfAccepted := false
 	switch e := event.(type) {
 	case *PointerMoveEvent:
-		tracker := r.velocityTrackers[e.Pointer()]
-		if !e.Synthesized() {
+		if tracker := r.velocityTrackers[e.Pointer()]; tracker != nil && !e.Synthesized() {
 			tracker.AddPosition(e.TimeStamp(), e.Position())
 		}
 		r.pointerLocations.set(e.Pointer(), e.Position())
@@ -477,8 +479,8 @@ func (r *ScaleGestureRecognizer) HandleEvent(event PointerEvent) {
 		shouldStartIfAccepted = true
 		r.lastTransform = e.Transform()
 	case *PointerPanZoomUpdateEvent:
-		if !e.Synthesized() && !r.TrackpadScrollCausesScale {
-			r.velocityTrackers[e.Pointer()].AddPosition(e.TimeStamp(), e.Pan())
+		if tracker := r.velocityTrackers[e.Pointer()]; tracker != nil && !e.Synthesized() && !r.TrackpadScrollCausesScale {
+			tracker.AddPosition(e.TimeStamp(), e.Pan())
 		}
 		r.pointerPanZooms.set(e.Pointer(), pointerPanZoomData{parent: r, position: e.Position(), pan: e.Pan(), scale: e.Scale(), rotation: e.Rotation()})
 		r.lastTransform = e.Transform()
@@ -491,6 +493,12 @@ func (r *ScaleGestureRecognizer) HandleEvent(event PointerEvent) {
 	r.update()
 	if !didChangeConfiguration || r.reconfigure(event.Pointer()) {
 		r.advanceStateMachine(shouldStartIfAccepted, event)
+	}
+	switch event.(type) {
+	case *PointerUpEvent, *PointerCancelEvent, *PointerPanZoomEndEvent:
+		// reconfigure read the velocity of the pointer; nothing reads it again. Flutter keeps the
+		// trackers until the recognizer is disposed, one for each pointer it ever saw.
+		delete(r.velocityTrackers, event.Pointer())
 	}
 	r.StopTrackingIfPointerNoLongerDown(event)
 }
@@ -698,6 +706,7 @@ func (r *ScaleGestureRecognizer) AcceptGesture(int) {
 //
 // Flutter: gestures/scale.dart ScaleGestureRecognizer.rejectGesture
 func (r *ScaleGestureRecognizer) RejectGesture(pointer int) {
+	delete(r.velocityTrackers, pointer)
 	r.pointerPanZooms.remove(pointer)
 	r.pointerLocations.remove(pointer)
 	r.pointerQueue = slices.DeleteFunc(r.pointerQueue, func(p int) bool { return p == pointer })

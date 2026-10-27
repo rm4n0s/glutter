@@ -2000,6 +2000,11 @@ Flutter's `assert` checks become checks that exist only in debug builds (`founda
 | Flutter has no way to read the pixels of a view as they are drawn | `offscreen.Frame` gives the image of the view and the rectangles that changed, on a goroutine of the view, valid only during the callback | the frames are drawn by `soft` on that goroutine, and the next frame draws into the same image (§9.9) |
 | `SliverMultiBoxAdaptorElement.performRebuild` gives a child that moved to a new index no layout offset (`null`) and gives the old offsets to the children that take the old indices, so that inserted items push the visible ones | `MaintainVisibleContentPosition bool` in `ListViewOpts` and in the options of `SliverList`, `SliverFixedExtentList`, `SliverVariedExtentList` and `SliverPrototypeExtentList` (`// Flutter: no counterpart`; the name of React Native's `FlatList`): away from its leading edge, a moved child keeps its layout offset and the old offsets are not handed on (§11.4). Off by default, and then Flutter's behavior. `rendering.SliverVisibleContentKeeper`, which the child manager implements, tells `RenderSliverList` and `RenderSliverFixedExtentBoxAdaptor` | a live log (Emetos) must keep the item the user reads in place while items arrive at its start, and a correction of the scroll offset for every frame with new items (CSS scroll anchoring) costs a layout pass each time |
 | `RenderSliverList.performLayout` finds the first child at the scroll offset by building and laying out every child from the ones it has | `EstimateItemOffsets bool` in `ListViewOpts` and in the options of `SliverList`: when the offset is more than a viewport and the cache extent from the children it has, the sliver drops them and starts at the child whose index is the offset divided by the average extent it measured, at that estimated offset; with it, the children before a child of negative offset are inserted in one pass, not one for each pass | a jump (the scroll bar, `JumpTo`) into a list of items of different heights, whose extents are known only after their layout, lays out every item in between (Emetos); off by default, so the default is Flutter's (§11.4) |
+| A layer that is pushed with an `oldLayer` keeps that layer (and so, one after the other, every frame the app ever drew with all its pictures) | `ui.Layer.OldLayer` is held weakly: it returns the layer of the previous frame as long as the `EngineLayer` handle that was passed is alive (the framework keeps it for the next frame), and nil after | in Dart the engine layers are native objects that the `EngineLayer` handle owns and disposes; in Go a strong link was a chain of all frames (step 29.21) |
+| `UndoHistory` keeps every value of the field (`_UndoStack`) | The undo stack keeps at most 1,000 values and 16 MiB of text (the length of `TextEditingValue.Text`), and drops the oldest first; the current value and the one before it are always kept | a Dart string is shared between the values of the stack only when it is the same object; in Go every edit makes a new copy of the whole text, so an unbounded stack of a large field grows by the size of the text at each edit (step 29.21) |
+| `_OverlayPortalElement` takes the location of its overlay child out of the entry's list only when the child's element is detached, which does not happen when the portal itself is removed | the widget of the portal takes its location out of the list when the render object is unmounted (`DidUnmountRenderObject`) | the list of the entry grew by one location for every portal that was shown and removed, and the theater read all of them on each paint (step 29.21) |
+| `RenderTapRegionSurface` keeps the results of its hit tests in an `Expando` keyed by the entries | the entry that the surface adds is a `tapRegionHitTestEntry` that holds its result | an `Expando` is weak; a Go map held every result, and the render objects of its path, until it was cleared (step 29.21) |
+| `OneSequenceGestureRecognizer._entries` keeps the arena entry of every pointer until the recognizer resolves or is disposed (flutter/flutter#117356), and `GestureRecognizer._pointerToEventData` keeps the kind and buttons of every pointer for the life of the recognizer | `StartTrackingPointer` first forgets the entries of the arenas that have resolved; a recognizer remembers the kind and buttons of the last 256 pointers; `ScaleGestureRecognizer` forgets the velocity tracker of a pointer that is up | with a new pointer id for each press (step 29.12) these were a record and an arena for each press of a recognizer that lives as long as the app (step 29.21) |
 
 ### 12.11 One import for apps
 
@@ -2240,6 +2245,79 @@ Benchmarks (`go test -bench`) in `rendering`, `widgets`, `examples/gallery` and 
 | `offscreen`, `Detach` / `Surface.Draw` (`soft`) | none (reported) | 2.3 KB / 1.22 MB (the software rasterizer, §9.3) |
 
 Before the step the renderers allocated 6 MB for the editor with 50 lines of text and 600 MB with 5,000, and the bytes grew with the text; Emetos's 5 MB for each blink is what the editor with a text of 40 to 50 lines gives, all of it in the renderer (the framework's share was 13.5 KB at every length). The numbers of the renderers are on the fake devices, which count what the renderer allocates (the Vulkan device adds a few kilobytes of bind group slices, §9.3).
+
+**Memory over time** (step 29.21). An app that runs for hours keeps a flat live heap, a flat goroutine count and flat C memory: what a frame, a gesture, a route, a field, a window or an off-screen view takes is given back when it is done. `internal/leaktest` (imported by tests only) runs a scenario's step N times and 4N times and, after two garbage collections each time, compares `HeapAlloc`, `HeapInuse`, `HeapObjects` and `runtime.NumGoroutine()`; a scenario leaks when the live heap grows from N to 4N by more than 256 KB plus 2% of the heap, when the live objects grow by more than 300, or when the goroutines grow at all. It is a comparison of two runs, not an absolute bound. Counters of other things (GPU resources of the fake devices, the blocks of C memory, the C heap) are compared the same way. `LEAKTEST_SCALE=n` multiplies every N for a longer soak, `LEAKTEST_REPORT=file` writes the numbers, and `LEAKTEST_PROFILE=dir` writes the heap profile at the base, at N and at 4N of every scenario (`go tool pprof -sample_index=inuse_space -base <name>.n.pb.gz <test binary> <name>.4n.pb.gz` names the site; run the test binary with `-test.memprofile` and a small `-test.memprofilerate`).
+
+What the tests run (all under the default `go test`, a few seconds each): routes (a page, a page with a hero, a dialog, a tooltip, a menu, a popup menu, a snack bar, a bottom sheet), widgets that are mounted and unmounted (animations and tickers, a text field, a list with a scroll controller, focus nodes, a `GlobalKey`, an image, an `SvgPicture`, tabs, buttons with ink), a text field that is focused, typed into and unfocused, taps, double taps, long presses, drags and flings with a new pointer id each time, hovers, scrolling a long list back and forth with `MaintainVisibleContentPosition` and `EstimateItemOffsets`, windows opened and closed on the fake platform, the caret frames of `examples/editor` (the framework, the `explicit` renderer on the fake device, `gles` on the fake GL, and `soft` through `offscreen.Surface`), resized windows, an image that is new in each frame, `offscreen` views that are made and closed, images and fonts loaded while the app runs (the image cache keeps its bound, a font that is loaded again is not kept twice), SVG pictures through a cache of a small limit, and the Wayland platform on the fake compositor (key presses, modifiers, pointer, touch, cursors, clipboard, windows, titles and frames, connections) with the blocks of C memory that `dl.Malloc`, `dl.Calloc` and `dl.CString` made and the C heap (`dl.CHeapInUse`, glibc's `mallinfo2`, which counts the memory of libwayland and libxkbcommon too). The fake devices count what they made and did not destroy, and closing a renderer destroys all of it. Not tested without a display or a GPU: the X11 backend, `gles` over a real EGL, Vulkan, and the native window of `nativewindow`; their C allocations are each paired with a `Free` in the same function or with the `Close` of their owner (checked by reading).
+
+Numbers of the default run (the live heap is `HeapAlloc`; the bytes of the fake devices and of the fake compositor are not the app's):
+
+| Scenario | N / 4N | Live heap, KB (base / N / 4N) | Live objects | Goroutines | Other counters (base / N / 4N) |
+|---|---|---|---|---|---|
+| `material/routes/push and pop a page` | 25 / 100 | 12,166 / 12,169 / 12,171 | 76,795 / 76,818 / 76,838 | 3 / 3 / 3 |  |
+| `material/routes/show and close a dialog` | 25 / 100 | 12,304 / 12,307 / 12,308 | 77,095 / 77,104 / 77,117 | 3 / 3 / 3 |  |
+| `material/routes/show and hide a tooltip` | 25 / 100 | 12,265 / 12,265 / 12,266 | 77,040 / 77,042 / 77,046 | 3 / 3 / 3 |  |
+| `material/routes/show and dismiss a snack bar` | 25 / 100 | 12,328 / 12,329 / 12,332 | 77,326 / 77,328 / 77,327 | 3 / 3 / 3 |  |
+| `material/routes/open and close a bottom sheet` | 25 / 100 | 12,280 / 12,280 / 12,281 | 77,318 / 77,320 / 77,324 | 3 / 3 / 3 |  |
+| `material/routes/show and close a popup menu` | 25 / 100 | 12,296 / 12,297 / 12,299 | 77,402 / 77,403 / 77,404 | 3 / 3 / 3 |  |
+| `material/routes/push and pop a page with a hero` | 25 / 100 | 12,310 / 12,310 / 12,312 | 77,565 / 77,567 / 77,573 | 3 / 3 / 3 |  |
+| `material/routes/open and close a menu` | 25 / 100 | 12,587 / 12,588 / 12,589 | 78,860 / 78,864 / 78,869 | 3 / 3 / 3 |  |
+| `material/mount/progress indicator` | 25 / 100 | 12,273 / 12,273 / 12,273 | 77,298 / 77,300 / 77,299 | 3 / 3 / 3 |  |
+| `material/mount/switch` | 25 / 100 | 12,277 / 12,277 / 12,277 | 77,323 / 77,323 / 77,323 | 3 / 3 / 3 |  |
+| `material/mount/checkbox` | 25 / 100 | 12,276 / 12,276 / 12,276 | 77,317 / 77,317 / 77,317 | 3 / 3 / 3 |  |
+| `material/mount/slider` | 25 / 100 | 12,278 / 12,278 / 12,278 | 77,335 / 77,335 / 77,335 | 3 / 3 / 3 |  |
+| `material/mount/text field` | 25 / 100 | 12,364 / 12,364 / 12,364 | 77,897 / 77,899 / 77,907 | 3 / 3 / 3 |  |
+| `material/mount/list with scroll controller` | 25 / 100 | 12,655 / 12,660 / 12,664 | 79,183 / 79,186 / 79,195 | 3 / 3 / 3 |  |
+| `material/mount/focus nodes` | 25 / 100 | 12,284 / 12,285 / 12,286 | 77,423 / 77,423 / 77,422 | 3 / 3 / 3 |  |
+| `material/mount/global key` | 25 / 100 | 12,281 / 12,281 / 12,281 | 77,413 / 77,413 / 77,412 | 3 / 3 / 3 |  |
+| `material/mount/memory image` | 25 / 100 | 12,467 / 12,468 / 12,468 | 78,658 / 78,661 / 78,660 | 3 / 3 / 3 |  |
+| `material/mount/svg picture` | 25 / 100 | 12,469 / 12,469 / 12,469 | 78,659 / 78,659 / 78,658 | 3 / 3 / 3 |  |
+| `material/mount/tabs` | 25 / 100 | 12,509 / 12,509 / 12,510 | 78,889 / 78,891 / 78,895 | 3 / 3 / 3 |  |
+| `material/mount/ink well and buttons` | 25 / 100 | 12,528 / 12,529 / 12,531 | 78,849 / 78,850 / 78,849 | 3 / 3 / 3 |  |
+| `material/input/focus and unfocus a text field` | 150 / 600 | 12,452 / 12,474 / 12,497 | 78,649 / 78,658 / 78,672 | 3 / 3 / 3 |  |
+| `material/input/type in a field with the selection handles` | 50 / 200 | 12,496 / 12,516 / 12,538 | 78,683 / 78,690 / 78,693 | 3 / 3 / 3 |  |
+| `material/input/taps with a new pointer each time` | 300 / 1200 | 12,319 / 12,338 / 12,338 | 77,640 / 77,647 / 77,646 | 3 / 3 / 3 |  |
+| `material/input/double taps and long presses` | 200 / 800 | 12,332 / 12,355 / 12,356 | 77,679 / 77,679 / 77,677 | 3 / 3 / 3 |  |
+| `material/input/drags and flings` | 40 / 160 | 12,782 / 12,799 / 12,823 | 80,705 / 80,719 / 80,725 | 3 / 3 / 3 |  |
+| `material/input/hover over many regions` | 300 / 1200 | 13,702 / 13,703 / 13,704 | 85,840 / 85,854 / 85,859 | 3 / 3 / 3 |  |
+| `widgets/scrolling/estimate item offsets` | 100 / 400 | 835 / 842 / 845 | 5,949 / 6,002 / 6,036 | 3 / 3 / 3 |  |
+| `widgets/scrolling/maintain visible content position` | 100 / 400 | 850 / 854 / 855 | 6,082 / 6,096 / 6,110 | 3 / 3 / 3 |  |
+| `widgets/scrolling/both options, reverse` | 100 / 400 | 855 / 858 / 859 | 6,153 / 6,157 / 6,161 | 3 / 3 / 3 |  |
+| `widgets/windows/regular window` | 100 / 400 | 523 / 524 / 520 | 4,179 / 4,187 / 4,171 | 3 / 3 / 3 |  |
+| `widgets/windows/dialog window` | 100 / 400 | 526 / 526 / 521 | 4,213 / 4,216 / 4,190 | 3 / 3 / 3 |  |
+| `widgets/images/new images` | 100 / 400 | 583 / 601 / 635 | 4,600 / 4,649 / 4,735 | 3 / 3 / 3 |  |
+| `widgets/fonts/the same font again` | 200 / 800 | 1,177 / 1,177 / 1,177 | 6,220 / 6,221 / 6,220 | 3 / 3 / 3 |  |
+| `explicit/editor caret, 50 lines` | 300 / 1200 | 30,716 / 30,717 / 30,722 | 77,933 / 77,935 / 77,942 | 3 / 3 / 3 | buffers=5 / 5 / 5, pipelines=4 / 4 / 4, textures=10 / 8 / 8 |
+| `explicit/editor caret, 1500 lines` | 300 / 1200 | 77,290 / 77,291 / 77,291 | 95,382 / 95,383 / 95,380 | 3 / 3 / 3 | buffers=5 / 5 / 5, pipelines=4 / 4 / 4, textures=10 / 8 / 8 |
+| `explicit/scrolled list` | 300 / 1200 | 39,346 / 39,347 / 39,347 | 80,532 / 80,533 / 80,532 | 3 / 3 / 3 | buffers=5 / 5 / 5, pipelines=3 / 3 / 3, textures=5 / 5 / 5 |
+| `explicit/new images` | 300 / 1200 | 35,559 / 35,560 / 35,560 | 77,800 / 77,801 / 77,800 | 3 / 3 / 3 | buffers=5 / 5 / 5, pipelines=3 / 3 / 3, textures=244 / 244 / 244 |
+| `explicit/resized window` | 300 / 1200 | 246,668 / 247,389 / 246,669 | 78,248 / 78,249 / 78,246 | 3 / 3 / 3 | buffers=5 / 5 / 5, pipelines=4 / 4 / 4, textures=99 / 99 / 99 |
+| `gles/editor caret, 50 lines` | 300 / 1200 | 14,022 / 14,028 / 14,028 | 78,129 / 78,133 / 78,139 | 3 / 3 / 3 | buffers=5 / 3 / 3, framebuffers=6 / 4 / 4, programs=3 / 3 / 3, renderbuffers=0 / 0 / 0, textures=8 / 6 / 6, vaos=3 / 3 / 3 |
+| `gles/editor caret, 1500 lines` | 300 / 1200 | 60,597 / 60,597 / 60,596 | 95,591 / 95,583 / 95,579 | 3 / 3 / 3 | buffers=5 / 3 / 3, framebuffers=6 / 4 / 4, programs=3 / 3 / 3, renderbuffers=0 / 0 / 0, textures=8 / 6 / 6, vaos=3 / 3 / 3 |
+| `gles/scrolled list` | 300 / 1200 | 27,134 / 27,134 / 27,139 | 80,679 / 80,681 / 80,687 | 3 / 3 / 3 | buffers=3 / 3 / 3, framebuffers=0 / 0 / 0, programs=2 / 2 / 2, renderbuffers=0 / 0 / 0, textures=3 / 3 / 3, vaos=2 / 2 / 2 |
+| `gles/new images` | 300 / 1200 | 29,674 / 29,674 / 29,674 | 74,524 / 74,525 / 74,522 | 3 / 3 / 3 | buffers=1 / 1 / 1, framebuffers=0 / 0 / 0, programs=1 / 1 / 1, renderbuffers=0 / 0 / 0, textures=243 / 243 / 243, vaos=1 / 1 / 1 |
+| `gles/resized window` | 300 / 1200 | 27,589 / 27,589 / 27,589 | 78,628 / 78,629 / 78,626 | 3 / 3 / 3 | buffers=3 / 3 / 3, framebuffers=201 / 201 / 201, programs=3 / 3 / 3, renderbuffers=0 / 0 / 0, textures=203 / 203 / 203, vaos=3 / 3 / 3 |
+| `wayland/key presses` | 300 / 1200 | 305 / 306 / 311 | 1,398 / 1,402 / 1,406 | 5 / 5 / 5 | cblocks=1372 / 1372 / 1372 |
+| `wayland/modifiers and compose keys` | 300 / 1200 | 312 / 313 / 313 | 1,412 / 1,415 / 1,412 | 5 / 5 / 5 | cblocks=1371 / 1371 / 1371 |
+| `wayland/pointer, buttons and wheel` | 300 / 1200 | 271 / 272 / 272 | 1,431 / 1,433 / 1,429 | 5 / 5 / 5 | cblocks=1368 / 1368 / 1368 |
+| `wayland/touches` | 300 / 1200 | 272 / 273 / 273 | 1,445 / 1,446 / 1,442 | 5 / 5 / 5 | cblocks=1368 / 1368 / 1368 |
+| `wayland/cursor shapes` | 300 / 1200 | 273 / 273 / 273 | 1,440 / 1,441 / 1,436 | 5 / 5 / 5 | cblocks=1368 / 1368 / 1368 |
+| `wayland/cursors of the theme` | 300 / 1200 | 274 / 274 / 274 | 1,444 / 1,445 / 1,441 | 5 / 5 / 5 | cblocks=1368 / 1368 / 1368 |
+| `wayland/clipboard` | 150 / 600 | 281 / 291 / 331 | 1,476 / 1,477 / 1,475 | 5 / 5 / 5 | cblocks=1371 / 1371 / 1371 |
+| `wayland/windows opened and closed` | 100 / 400 | 326 / 367 / 472 | 1,470 / 1,471 / 1,474 | 5 / 5 / 5 | cblocks=1370 / 1370 / 1370 |
+| `wayland/window title and frames` | 300 / 1200 | 319 / 319 / 319 | 1,461 / 1,462 / 1,458 | 5 / 5 / 5 | cblocks=1369 / 1369 / 1369 |
+| `wayland/connect and close` | 15 / 60 | 259 / 260 / 269 | 1,217 / 1,219 / 1,238 | 2 / 2 / 2 | cblocks=1363 / 1348 / 1303 |
+| `offscreen/surface, caret frames of the editor` | 300 / 1200 | 21,962 / 21,962 / 19,327 | 80,791 / 80,794 / 80,602 | 3 / 3 / 3 |  |
+| `offscreen/detacher, a new scene for each frame` | 300 / 1200 | 20,478 / 20,478 / 19,327 | 80,740 / 80,740 / 80,611 | 3 / 3 / 3 |  |
+| `offscreen/a view that gets taps` | 100 / 400 | 18,942 / 18,945 / 18,948 | 88,585 / 88,618 / 88,642 | 4 / 4 / 4 |  |
+| `offscreen/views made and closed` | 40 / 160 | 16,316 / 16,318 / 16,322 | 84,571 / 84,589 / 84,628 | 3 / 3 / 3 |  |
+| `editor/caret frames/framework/50 lines` | 300 / 1200 | 13,108 / 13,108 / 13,109 | 77,077 / 77,080 / 77,083 | 3 / 3 / 3 |  |
+| `editor/caret frames/framework/1500 lines` | 300 / 1200 | 42,192 / 42,192 / 42,192 | 85,822 / 85,822 / 85,821 | 3 / 3 / 3 |  |
+| `svg/pictures that differ` | 150 / 600 | 405 / 405 / 406 | 3,397 / 3,405 / 3,417 | 2 / 2 / 2 |  |
+
+By design and bounded: the image cache (1,000 images and 100 MiB, as Flutter's), the SVG cache (16 MiB), the shaped-run and analysis caches (4,096 runs and 2,048 texts), the glyph caches, the idle frames of the image and mask textures of the renderers (240), and the per-recognizer record of the last 256 pointers. Bounded where Flutter is not: the undo history of a text field keeps at most 1,000 entries and 16 MiB of text, the oldest dropped first (in Go each entry holds a copy of the whole text; §12.10). By design and not bounded, as in Flutter: the fonts that the app loads under different names or bytes (`LoadFontFromList`; a font loaded again is not kept twice).
+
+The fakes keep logs that grow (the text input states, cursors and window actions of the fake platform, the scenes of a tester without `DiscardScenes`, the request log and the object tables of the fake compositor, the timers of the fake clock of the keyboard tests): the memory tests use `gluttertest.Opts.DiscardScenes`, `Tester.ClearLogs` and `fakecomp.Server.ClearRequests`. The fake compositor never sends `delete_id` for the objects that the client destroys, so libwayland's table of ids grows by about 60 bytes for each object the client makes in a long run; a real compositor sends it.
 
 **Vulkan** (1.1) meets the same targets on the same machine, and no benchmark is more than 10% slower with Vulkan than with GLES.
 

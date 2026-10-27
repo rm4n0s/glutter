@@ -12,3 +12,13 @@ func (s *NavigatorState) ForceUnlockHistory() { s.debugLocked = false }
 func NewWindowBarForTest(gap, title Widget, leading, actions []Widget, height float64) Widget {
 	return newWindowBar(gap, title, leading, actions, height)
 }
+
+// OverlayChildModelLen is the number of locations in the child model of the overlay entry that
+// bc is in: one for each OverlayPortal below it that has an overlay child.
+func OverlayChildModelLen(bc BuildContext) int {
+	n := 0
+	for l := renderTheaterMarkerOf(bc, false).overlayEntryWidgetState.firstSibling; l != nil; l = l.next {
+		n++
+	}
+	return n
+}

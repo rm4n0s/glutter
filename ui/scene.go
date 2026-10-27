@@ -1,6 +1,10 @@
 package ui
 
-import "github.com/rm4n0s/errors"
+import (
+	"weak"
+
+	"github.com/rm4n0s/errors"
+)
 
 // Layer is a node of the tree of a Scene. A scene is a tree of layers: container
 // layers that apply an effect (a transform, a clip, an opacity, a filter) to the
@@ -15,7 +19,10 @@ type Layer interface {
 	Children() []Layer
 	// OldLayer returns the layer of the previous frame this one replaces, when
 	// the app said so with an oldLayer argument, or nil. Renderers may reuse
-	// what they cached for it.
+	// what they cached for it. The layer keeps the old one only as long as the
+	// handle that was passed as oldLayer is alive (the framework keeps it for the
+	// frame that follows); then OldLayer returns nil. A strong reference would chain
+	// every frame the app ever drew to the next, and keep all their pictures.
 	OldLayer() Layer
 
 	layer() *layerBase
@@ -24,7 +31,8 @@ type Layer interface {
 // layerBase holds what every layer has.
 type layerBase struct {
 	children []Layer
-	old      Layer
+	// old is the handle that was passed as the old layer, held weakly (see Layer.OldLayer).
+	old weak.Pointer[engineLayerHandle]
 }
 
 func (b *layerBase) layer() *layerBase { return b }
@@ -37,7 +45,12 @@ func (b *layerBase) Children() []Layer { return b.children }
 // OldLayer returns the layer of the previous frame this one replaces.
 //
 // Flutter: no counterpart
-func (b *layerBase) OldLayer() Layer { return b.old }
+func (b *layerBase) OldLayer() Layer {
+	if h := b.old.Value(); h != nil {
+		return h.layer
+	}
+	return nil
+}
 
 // ContainerLayer groups layers and applies nothing. The root of a scene is one.
 //
@@ -222,61 +235,61 @@ func mapLayer(l Layer, picture func(*Picture) *Picture, shader func(Shader) Shad
 	case *ContainerLayer:
 		if kids != nil {
 			c := *v
-			c.children, c.old = kids, nil
+			c.children, c.old = kids, weak.Pointer[engineLayerHandle]{}
 			return &c
 		}
 	case *TransformLayer:
 		if kids != nil {
 			c := *v
-			c.children, c.old = kids, nil
+			c.children, c.old = kids, weak.Pointer[engineLayerHandle]{}
 			return &c
 		}
 	case *ClipRectLayer:
 		if kids != nil {
 			c := *v
-			c.children, c.old = kids, nil
+			c.children, c.old = kids, weak.Pointer[engineLayerHandle]{}
 			return &c
 		}
 	case *ClipRRectLayer:
 		if kids != nil {
 			c := *v
-			c.children, c.old = kids, nil
+			c.children, c.old = kids, weak.Pointer[engineLayerHandle]{}
 			return &c
 		}
 	case *ClipRSuperellipseLayer:
 		if kids != nil {
 			c := *v
-			c.children, c.old = kids, nil
+			c.children, c.old = kids, weak.Pointer[engineLayerHandle]{}
 			return &c
 		}
 	case *ClipPathLayer:
 		if kids != nil {
 			c := *v
-			c.children, c.old = kids, nil
+			c.children, c.old = kids, weak.Pointer[engineLayerHandle]{}
 			return &c
 		}
 	case *OpacityLayer:
 		if kids != nil {
 			c := *v
-			c.children, c.old = kids, nil
+			c.children, c.old = kids, weak.Pointer[engineLayerHandle]{}
 			return &c
 		}
 	case *ColorFilterLayer:
 		if kids != nil {
 			c := *v
-			c.children, c.old = kids, nil
+			c.children, c.old = kids, weak.Pointer[engineLayerHandle]{}
 			return &c
 		}
 	case *ImageFilterLayer:
 		if kids != nil {
 			c := *v
-			c.children, c.old = kids, nil
+			c.children, c.old = kids, weak.Pointer[engineLayerHandle]{}
 			return &c
 		}
 	case *BackdropFilterLayer:
 		if kids != nil {
 			c := *v
-			c.children, c.old = kids, nil
+			c.children, c.old = kids, weak.Pointer[engineLayerHandle]{}
 			return &c
 		}
 	case *ShaderMaskLayer:
@@ -290,7 +303,7 @@ func mapLayer(l Layer, picture func(*Picture) *Picture, shader func(Shader) Shad
 			if kids != nil {
 				c.children = kids
 			}
-			c.old = nil
+			c.old = weak.Pointer[engineLayerHandle]{}
 			return &c
 		}
 	case *PictureLayer:
@@ -300,7 +313,7 @@ func mapLayer(l Layer, picture func(*Picture) *Picture, shader func(Shader) Shad
 		}
 		if p != v.Picture {
 			c := *v
-			c.Picture, c.old = p, nil
+			c.Picture, c.old = p, weak.Pointer[engineLayerHandle]{}
 			return &c
 		}
 	}
@@ -464,7 +477,7 @@ func (b *SceneBuilder) add(l Layer) {
 // push puts a layer under the current one and makes it the current one.
 func (b *SceneBuilder) push(l Layer, old EngineLayer) {
 	if old != nil {
-		l.layer().old = old.handle().layer
+		l.layer().old = weak.Make(old.handle())
 	}
 	b.add(l)
 	b.stack = append(b.stack, l)

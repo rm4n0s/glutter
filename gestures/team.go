@@ -15,6 +15,9 @@ func (e *combiningArenaEntry) Resolve(disposition GestureDisposition) {
 	e.combiner.resolve(e.member, disposition)
 }
 
+// defunct says that the arena of the entry resolved: Resolve has no effect any more.
+func (e *combiningArenaEntry) defunct() bool { return e.combiner.resolved }
+
 // combiningArenaMember is the one member that a team puts in the arena for all
 // its members.
 type combiningArenaMember struct {

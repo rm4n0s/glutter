@@ -6,6 +6,7 @@ import (
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/gestures"
+	"github.com/rm4n0s/glutter/services"
 )
 
 // undoThrottleDuration is how long the changes of the value are coalesced into
@@ -364,9 +365,33 @@ func (c *UndoHistoryController) Dispose() {
 // undoStack is the stack of the values that can be undone and redone.
 //
 // Flutter: widgets/undo_history.dart _UndoStack
+//
+// Deviation: Flutter's _UndoStack keeps every value. Here the stack keeps at most
+// maxUndoEntries values and maxUndoBytes bytes of text, and drops the oldest
+// first: in Go each entry of a text field holds a copy of the whole text, so an
+// unbounded stack grows by the size of the text at each edit (SPEC §12.10).
 type undoStack[T comparable] struct {
 	list  []T
 	index int
+	// bytes is the size of the values in list, as undoSize counts it.
+	bytes int
+}
+
+// maxUndoEntries and maxUndoBytes bound the undo stack (see undoStack). A short
+// field keeps 1,000 steps; a field with a large text keeps the steps that fit in
+// 16 MiB. The current value and the one before it are always kept.
+const (
+	maxUndoEntries = 1000
+	maxUndoBytes   = 16 << 20
+)
+
+// undoSize is the memory of a value that the stack counts: the text of a
+// TextEditingValue, and nothing for other values.
+func undoSize[T comparable](v T) int {
+	if tv, ok := any(v).(services.TextEditingValue); ok {
+		return len(tv.Text)
+	}
+	return 0
 }
 
 func (u *undoStack[T]) currentValue() (T, bool) {
@@ -384,16 +409,41 @@ func (u *undoStack[T]) push(value T) {
 	if len(u.list) == 0 {
 		u.index = 0
 		u.list = append(u.list, value)
+		u.bytes = undoSize(value)
 		return
 	}
 	if cur, _ := u.currentValue(); value == cur {
 		return
 	}
 	if u.index != len(u.list)-1 {
+		for _, v := range u.list[u.index+1:] {
+			u.bytes -= undoSize(v)
+		}
+		clear(u.list[u.index+1:]) // the redo entries that are dropped must not stay in the array
 		u.list = u.list[:u.index+1]
 	}
 	u.list = append(u.list, value)
+	u.bytes += undoSize(value)
 	u.index = len(u.list) - 1
+	u.trim()
+}
+
+// trim drops the oldest values while the stack holds more than maxUndoEntries
+// values or maxUndoBytes bytes, and keeps the last two. It is called after a push,
+// when the current value is the last one.
+func (u *undoStack[T]) trim() {
+	drop := 0
+	for len(u.list)-drop > 2 && (len(u.list)-drop > maxUndoEntries || u.bytes > maxUndoBytes) {
+		u.bytes -= undoSize(u.list[drop])
+		drop++
+	}
+	if drop == 0 {
+		return
+	}
+	n := copy(u.list, u.list[drop:])
+	clear(u.list[n:]) // the dropped values must not stay in the array
+	u.list = u.list[:n]
+	u.index -= drop
 }
 
 func (u *undoStack[T]) undo() (T, bool) {
@@ -421,6 +471,7 @@ func (u *undoStack[T]) redo() (T, bool) {
 func (u *undoStack[T]) clear() {
 	u.list = nil
 	u.index = -1
+	u.bytes = 0
 }
 
 // The tags of the errors that this file makes (rm4n0s/errors, R5).
