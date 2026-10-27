@@ -4521,3 +4521,38 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - The fields that have no observer method reach the view at its next frame.
   - The parent's window is not copied into the view.
   - Emetos removes `viewSetup`, `configure` and `applyWindow` (its own issue).
+
+## 29.11 A default win after the arena is gone (Emetos)
+
+- **Date:** 2026-10-27
+- **Branch:** feat/step-29.11-arena-default-win
+- **Summary:** Emetos's issue "Crash (panic) in the gesture arena": `GestureArenaManager.resolveByDefault` panicked with an index out of range. The plan gets step 29.12 for the cause this step found on Linux; the later steps move up by one, and the release is now 29.16.
+  - **The cause:** Flutter runs the default resolution as a microtask, before the next event, and its pointer ids are unique for each down. Glutter's microtask is a post to the UI thread. The Linux platform also reuses pointer ids: every mouse press has id 0, a touch keeps its Wayland touch id, and a stylus keeps its tool id. So the post of an arena that had been swept or emptied could run after a new down had opened a new arena for the same id, and it then read the old, empty `state.members[0]`.
+  - **More than a panic:** the same cause made a gesture be accepted twice (after a sweep, an accept in favor of a member, or a hold and a release). It also deleted the new arena, so its member got no answer, and it let an old entry resolve in the new arena.
+  - **The fix (`gestures/arena.go`):**
+    - `resolveByDefault` does nothing unless the pointer's arena is the one it was posted for, and that arena has exactly one member. Flutter asserts the same identity (`_arenas[pointer] == state`).
+    - An entry keeps the arena it joined, and resolves only in that arena.
+    - A member that already lost is not told again outside debug mode. In debug mode, the `GestureArenaMemberUnknown` panic stays.
+    - `tryToResolveArena` does nothing when a member's callback has already resolved or replaced the arena.
+  - **Unchanged:** `GestureBinding.Post`, the pointer ids of every platform, and the ported `arena_test.go`.
+- **Main files:** `gestures/arena.go`, `gestures/arena_default_test.go`, `gestures/debug_test.go` (one struct literal is now keyed), `widgets/gesture_arena_default_test.go`.
+- **Tests (2 functions, 13 subtests, table-driven), written first:**
+  - **On the old code:** the reject case below panicked with `index out of range [0] with length 0` at `arena.go:309`. 10 of the 11 sequences failed.
+  - **`TestArenaDefaultWinAfterTheArenaIsGone`:** 11 sequences, each with every member told exactly once and no arena left over. They are:
+    - a reject, then a new down with the same id;
+    - two rejects;
+    - a sweep before the post, also with the new arena still open;
+    - a hold, a sweep and a release;
+    - a reject, then an accept in favor of the other member;
+    - a cancel sweep;
+    - an old entry resolving in the new arena;
+    - two member callbacks that end or sweep the arena while it is being resolved;
+    - the plain default win.
+  - **`TestGestureDetectorDoubleTapBeforeThePostOfTheFirstArena`:** a `GestureDetector` with `OnDoubleTap` gets two quick taps with nothing posted in between, then a third tap that makes a double tap, with unique ids and with the same id. The same-id case panicked before the fix.
+  - No Flutter test cases were ported, since Flutter has no counterpart.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck, apicheck, uintptrcheck ✅ · wasm build, vet and tests ✅ · check-android ✅ · Windows builds, vet, lint and test-windows ✅ · display tests: none
+- **Proof:** none
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - The identity check is the one Flutter asserts, so there is no §12.10 row.
+  - Step 29.12 gives each down on Linux a new pointer id, as Flutter's engine and Glutter's Windows, Android and web platforms do. That removes the cause, and also the case left here: `Hold` and `Release` look the arena up by pointer id alone, as in Flutter.

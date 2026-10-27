@@ -2868,7 +2868,27 @@ Flutter behaves the same way: `SliverMultiBoxAdaptorElement.performRebuild` sets
 **Proof:** none.
 **Manual checks:** none.
 
-### 29.12 Shapes outside the clip are skipped before their mask is made (Emetos, 1.9.2)
+### 29.12 A new pointer id for each down on Linux (Emetos, 1.9.2)
+**Goal:** the Linux platform (Wayland and X11) gives every pointer a new id at each down, as Flutter's engine does and as Glutter's Windows, Android and web platforms already do, so two gestures never share an arena key.
+**Why:** step 29.11 found the trigger of Emetos's arena crash. On Linux the mouse never sets `PointerIdentifier`, so every press has id 0. A touch keeps the Wayland touch id, which the compositor reuses, and a stylus keeps its tool id. Flutter's `PointerDataPacketConverter` (`engine/src/flutter/lib/ui/window/pointer_data_packet_converter.cc`, `UpdatePointerIdentifier`) gives a new id at each down of a device and keeps it until the up or cancel. Windows (`internal/platform/windows/pointerstate.go`), Android (`internal/platform/android/pointerconv.go`) and the web do the same. Step 29.11 made the arena safe when ids repeat; this step removes the repetition, which also fixes what 29.11 left (`Hold` and `Release` look the arena up by pointer id alone, as in Flutter).
+**Read:** SPEC §8.5 (input), §12.10; `internal/platform/linux/input` (`pointer.go`, `touch.go`, `stylus.go`, their tests), the Wayland and X11 code that calls them, `internal/platform/windows/pointerstate.go` and `internal/platform/android/pointerconv.go` (the model), the 29.11 entry of `docs/IMPLEMENTED.md`.
+**Port from:** Flutter's `engine/src/flutter/lib/ui/window/pointer_data_packet_converter.cc` (`UpdatePointerIdentifier`, the pointer states by device).
+**Files:** `internal/platform/linux/input` and its tests; the Wayland and X11 backends only if they must keep the state.
+**Tasks:**
+1. A pointer state per device (the mouse, each touch slot or id, each stylus tool), as the engine keeps: at a down the device gets a new id (a counter of the platform, never reused in a run), every event of that contact until its up or cancel carries it, and hover events between contacts carry the id of the last contact, as Flutter's converter does.
+2. The device id (`Device`) stays what it is now; only `PointerIdentifier` changes.
+3. Wayland and X11 both go through it; a touch frame with several touches gives each its own id.
+4. Nothing else changes in what the framework sees: positions, buttons, kinds and the synthesized events are the same.
+**Tests (table-driven):**
+- two mouse presses in a row get two different ids, and the moves and the up of a press carry its id;
+- a touch id that the compositor reuses gets a new pointer id at each down; two touches at once have different ids;
+- a stylus: each contact of the same tool gets a new id;
+- a cancel ends the contact like an up;
+- a widget test through the fake platform's Linux input path, if it has one: a double tap with the mouse is recognized, and the 29.11 sequence no longer reaches the guarded paths.
+**Proof:** none.
+**Manual checks:** none.
+
+### 29.13 Shapes outside the clip are skipped before their mask is made (Emetos, 1.9.2)
 **Goal:** the GPU renderers do no work for a shape that is outside the visible area. The geometry hash of a path is not made again in each frame.
 **Why:** Emetos found it (second issues list of 2026-10-27, "Drawing cost grows with everything on the page, including what's off screen"). In its preview, 85% of the drawing time is spent hashing paths and masking them, so a frame takes over a second. The manager's reading on 2026-10-27:
 - `explicit`'s `pathMask` (`internal/gpu/explicit/primitives.go`) calls `gpu.ShapeOf`, then asks the coverage atlas for tiles (`masks.Tiles`), for every path, arc and stroke the analytic pipeline cannot draw;
@@ -2896,7 +2916,7 @@ Flutter behaves the same way: `SliverMultiBoxAdaptorElement.performRebuild` sets
 **Proof:** none.
 **Manual checks:** none.
 
-### 29.13 A keyboard without a keymap is not an error (Emetos, 1.9.2)
+### 29.14 A keyboard without a keymap is not an error (Emetos, 1.9.2)
 **Goal:** when a Wayland compositor sends `wl_keyboard.keymap` with the format `no_keymap` (when the last keyboard is unplugged), Glutter drops the layout without logging an error, and keys work again when a keyboard with a keymap returns.
 **Why:** Emetos found it (second issues list of 2026-10-27, "Spurious error log"). The protocol allows `no_keymap` (format 0), but `keyboard.onKeymap` (`internal/platform/linux/wayland/keyboard.go`) logs every format other than `xkb_v1` with `slog.Error`.
 **Read:** SPEC §8.2 and §8.5 (Wayland, input); `internal/platform/linux/wayland/keyboard.go`, the `wl_keyboard.keymap` event in the Wayland protocol (`wl/wayland_gen.go`, `WlKeyboardKeymapFormatNoKeymap`).
@@ -2910,7 +2930,7 @@ Flutter behaves the same way: `SliverMultiBoxAdaptorElement.performRebuild` sets
 **Proof:** none.
 **Manual checks:** none.
 
-### 29.14 What an idle frame allocates (Emetos, 1.9.2)
+### 29.15 What an idle frame allocates (Emetos, 1.9.2)
 **Goal:** a frame in which only a caret blinks allocates little, and nothing in proportion to the parts of the scene that did not change. Glutter's share of Emetos's idle allocations is found and cut.
 **Why:** Emetos found it (second issues list of 2026-10-27, "while idle with only the cursor blinking, about 2 frames per second, the Go heap grows by about 11 MB/s until garbage collection runs"). That is about 5 MB for each idle frame. Emetos cannot yet tell whether it comes from Emetos or from Glutter; this step measures Glutter's part, with Glutter's own `examples/editor` and a large text, and fixes what is Glutter's.
 **Read:** SPEC §9.1 (damage, retained layers), §9.2, §9.9, §13, §15 (performance targets); the 29.6 entry of `docs/IMPLEMENTED.md` (how `soft` was profiled); `widgets/editable_text_state.go` (the caret blink), `rendering` (repaint boundaries, the layer tree, `compositeFrame`), `ui/scene.go`, `internal/gpu/explicit/frame.go` and `scene.go`, `internal/gpu/damage.go`, `internal/engine` (the frame loop).
@@ -2933,7 +2953,7 @@ Flutter behaves the same way: `SliverMultiBoxAdaptorElement.performRebuild` sets
 **Proof:** none.
 **Manual checks:** none.
 
-### 29.15 No `testing` in programs, and release 1.9.2 (Emetos)
+### 29.16 No `testing` in programs, and release 1.9.2 (Emetos)
 **Goal:** no Glutter program links the `testing` package, and a test keeps it that way. Then 1.9.2 is released.
 **Why:** Emetos found it (issues file, "`testing` is linked into every Glutter program"). `internal/platform/linux/dl/layout.go` is not a test file, and it imports `testing` for `AssertLayout`, so every program that links the Linux platform (Linux desktop and Android) links `testing`. The manager checked on 2026-10-27 with `go list -deps ./examples/counter`: it is the only cause on linux/amd64 and android/arm64; js/wasm and windows/amd64 do not link `testing`. It costs size, nothing else (Go registers its flags only in a test binary).
 **Read:** SPEC §8.1 (rule 3, the layout tests), §25.2 (the Windows `layouttest` package, the model for this one); `internal/platform/linux/dl/layout.go` and every test that calls `dl.AssertLayout` (`xkb`, `fontconfig`, `x11`, `wayland`, `wayland/decor`, `wayland/wl`, `internal/gpu/nativewindow`, `dl` itself); `examples/examples_test.go`.
@@ -2944,10 +2964,10 @@ Flutter behaves the same way: `SliverMultiBoxAdaptorElement.performRebuild` sets
 2. A guard test (in `examples`, next to the build tests): `go list -deps` of every example, for linux/amd64, android/arm64 (`CGO_ENABLED=1` is not needed for the list), js/wasm, windows/amd64 and windows/arm64, and none of them lists `testing` (or `testing/...`) or `gluttertest`. When it fails, it names the package that imports it (`go list -f '{{.ImportPath}} {{.Imports}}'`).
 3. Search for any other non-test file that imports `testing`, `net/http/httptest` or `gluttertest` outside the test helper packages, and say what you found.
 4. Release 1.9.2:
-   - SPEC: the version paragraph of §1 (a 1.9.2 sentence: lists that keep what the user reads in place, an offscreen view with its own clipboard and the app's configuration, a gesture arena that no longer panics, shapes outside the clip culled before their masks, fewer allocations in idle frames, no `testing` in programs), a "Scope of 1.9.2" paragraph next to the one of 1.9.1;
+   - SPEC: the version paragraph of §1 (a 1.9.2 sentence: lists that keep what the user reads in place, an offscreen view with its own clipboard and the app's configuration, a gesture arena that no longer panics, a new pointer id for each down on Linux, shapes outside the clip culled before their masks, fewer allocations in idle frames, no `testing` in programs), a "Scope of 1.9.2" paragraph next to the one of 1.9.1;
    - `README.md` "What is new in 1.9.2";
    - the standard checks of rule 8, and `go run ./cmd/glutter-gen apicheck -allow cmd/glutter-gen/apicheck.allow`;
-   - merge, tag `step-29.15` and `v1.9.2`, and publish: `git push --follow-tags origin main`, which takes steps 29.8 to 29.15 and their tags to GitHub. Check with `git ls-remote --tags origin`.
+   - merge, tag `step-29.16` and `v1.9.2`, and publish: `git push --follow-tags origin main`, which takes steps 29.8 to 29.16 and their tags to GitHub. Check with `git ls-remote --tags origin`.
 **Tests (table-driven):**
 - the guard test of task 2, which fails on the code before the move (say so in the report);
 - every layout test passes from its new place.

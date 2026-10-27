@@ -71,10 +71,14 @@ type arenaEntry struct {
 	arena   *GestureArenaManager
 	pointer int
 	member  GestureArenaMember
+	// state is the arena the member joined. A pointer id can be given again
+	// to a new pointer, so the entry resolves only in this arena, never in
+	// another arena that has the same pointer.
+	state *gestureArena
 }
 
 func (e *arenaEntry) Resolve(disposition GestureDisposition) {
-	e.arena.resolve(e.pointer, e.member, disposition)
+	e.arena.resolve(e.pointer, e.state, e.member, disposition)
 }
 
 type gestureArena struct {
@@ -170,7 +174,7 @@ func (m *GestureArenaManager) Add(pointer int, member GestureArenaMember) Gestur
 	}
 	state.members = append(state.members, member)
 	m.log(pointer, "Adding: "+describeMember(member), nil)
-	return &arenaEntry{m, pointer, member}
+	return &arenaEntry{arena: m, pointer: pointer, member: member, state: state}
 }
 
 // Close prevents new members from entering the arena of the pointer, and
@@ -247,14 +251,17 @@ func (m *GestureArenaManager) Release(pointer int) {
 	}
 }
 
-func (m *GestureArenaManager) resolve(pointer int, member GestureArenaMember, disposition GestureDisposition) {
+func (m *GestureArenaManager) resolve(pointer int, entryState *gestureArena, member GestureArenaMember, disposition GestureDisposition) {
 	state := m.arenas[pointer]
-	if state == nil {
-		return
+	if state == nil || state != entryState {
+		return // The arena of the entry has resolved already (and the pointer may have a new one).
 	}
 	i := indexOfMember(state.members, member)
 	if foundation.DebugMode && i < 0 {
 		panic(errors.New(tagGestureArenaMemberUnknown, "the member is not in the arena of the pointer", "pointer", pointer))
+	}
+	if i < 0 {
+		return // The member lost already; it is not told again, and it cannot win.
 	}
 	switch disposition {
 	case GestureAccepted:
@@ -269,9 +276,7 @@ func (m *GestureArenaManager) resolve(pointer int, member GestureArenaMember, di
 		}
 	case GestureRejected:
 		m.log(pointer, "Rejecting: "+describeMember(member), nil)
-		if i >= 0 {
-			state.members = append(state.members[:i:i], state.members[i+1:]...)
-		}
+		state.members = append(state.members[:i:i], state.members[i+1:]...)
 		member.RejectGesture(pointer)
 		if !state.isOpen {
 			m.tryToResolveArena(pointer, state)
@@ -289,6 +294,12 @@ func indexOfMember(members []GestureArenaMember, member GestureArenaMember) int 
 }
 
 func (m *GestureArenaManager) tryToResolveArena(pointer int, state *gestureArena) {
+	if m.arenas[pointer] != state {
+		// A member's callback resolved the arena while it was being resolved
+		// (Flutter asserts that it did not). The pointer may have a new arena
+		// by now, which this one must not touch.
+		return
+	}
 	switch {
 	case len(state.members) == 1:
 		m.scheduleMicrotask(func() { m.resolveByDefault(pointer, state) })
@@ -302,7 +313,12 @@ func (m *GestureArenaManager) tryToResolveArena(pointer int, state *gestureArena
 }
 
 func (m *GestureArenaManager) resolveByDefault(pointer int, state *gestureArena) {
-	if _, ok := m.arenas[pointer]; !ok {
+	// Flutter checks only that the pointer has an arena. Here the function runs
+	// as a post to the UI thread, so other pointer events can run first: the
+	// arena it was posted for can have resolved or been emptied, and the pointer
+	// can have a new arena by now (a platform gives a new pointer the id of one
+	// that is finished).
+	if m.arenas[pointer] != state || len(state.members) != 1 {
 		return // This arena has already resolved.
 	}
 	delete(m.arenas, pointer)

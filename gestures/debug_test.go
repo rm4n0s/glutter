@@ -35,7 +35,7 @@ func TestArenaErrors(t *testing.T) {
 		}, "Sweep.GestureArenaOpenOnSweep"},
 		{"resolving for a member that is not in the arena", func(a *arenaTester) {
 			a.addFirst()
-			stranger := &arenaEntry{a.arena, primaryKey, &testGestureArenaMember{t: a.t, key: primaryKey}}
+			stranger := &arenaEntry{arena: a.arena, pointer: primaryKey, member: &testGestureArenaMember{t: a.t, key: primaryKey}, state: a.arena.arenas[primaryKey]}
 			stranger.Resolve(GestureAccepted)
 		}, "resolve.GestureArenaMemberUnknown"},
 	}
