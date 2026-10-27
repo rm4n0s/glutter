@@ -193,6 +193,44 @@ func nameList(names []string) m.Widget {
 positional. `Icons.person` is the method `m.Icons.Person()` (SPEC §12.10 says why: 8,800 icons
 as fields make the Go compiler run out of memory).
 
+A list that lets the user read while items arrive at its start (a live log, a feed) has one more
+option, which Flutter does not have: `MaintainVisibleContentPosition`. Flutter moves the item the
+user reads by the height of the items inserted before it, even when the items have keys. With the
+option on, the list keeps that item in place when the list is not at its start (the new items are
+built when the user scrolls up to them), and at its start it still follows the newest item, as
+Flutter does. It needs a key on each item and a `FindChildIndexCallback` that finds an item by its
+key:
+
+```go
+type logLine struct {
+	id   int
+	text string
+}
+
+// logList shows the newest line at offset 0 (the bottom). New lines are inserted at index 0.
+func logList(lines []logLine, ctl m.ScrollController) m.Widget {
+	index := func(key foundation.Key) m.Opt[int] {
+		for i, l := range lines {
+			if key == foundation.Key(foundation.NewValueKey(l.id)) {
+				return m.Some(i)
+			}
+		}
+		return m.None[int]()
+	}
+	return m.NewListViewBuilder(func(bc m.BuildContext, i int) m.Widget {
+		return m.NewSizedBox(m.NewText(lines[i].text), m.SizedBoxOpts{
+			Key: foundation.NewValueKey(lines[i].id), Height: m.Some(24.0),
+		})
+	}, m.ListViewOpts{
+		Reverse:                        true,
+		Controller:                     ctl,
+		ItemCount:                      m.Some(len(lines)),
+		FindChildIndexCallback:         index,
+		MaintainVisibleContentPosition: true,
+	})
+}
+```
+
 ## 5. Inherited data and `of`
 
 Flutter:

@@ -136,7 +136,34 @@ func (r *RenderSliverList) PerformLayout() {
 
 	// If the scroll offset is at zero, we should make sure we are actually at the
 	// beginning of the list.
-	if scrollOffset < foundation.PrecisionErrorTolerance {
+	if keeper, ok := r.childManager.(SliverVisibleContentKeeper); ok && keeper.KeepsVisibleContentPosition() &&
+		scrollOffset < foundation.PrecisionErrorTolerance {
+		// Deviation: when items were inserted before the children that were kept in
+		// place (the MaintainVisibleContentPosition option), all of the children
+		// before the first one are inserted in this pass and the scroll offset is
+		// corrected once, by their extent less the offset of the first child. One
+		// child for each pass, as below, would take more passes than a viewport
+		// allows when many items were inserted.
+		firstChildScrollOffset := r.ChildScrollOffset(r.FirstChild()).Value()
+		inserted := false
+		for r.IndexOf(r.FirstChild()) > 0 {
+			leading := r.InsertAndLayoutLeadingChild(childConstraints, LayoutOpts{ParentUsesSize: true})
+			if isNil(leading) {
+				break
+			}
+			earliestUsefulChild, inserted = leading, true
+			firstChildScrollOffset -= r.PaintExtentOf(r.FirstChild())
+		}
+		if inserted {
+			SliverMultiBoxAdaptorParentDataOf(r.FirstChild()).LayoutOffset = foundation.Some(0.0)
+			// At the very start of the sliver (a jump to offset 0) the user asks for
+			// its first child: the children are laid out from it, with no correction.
+			if firstChildScrollOffset < -foundation.PrecisionErrorTolerance && constraints.ScrollOffset > foundation.PrecisionErrorTolerance {
+				r.SetGeometry(NewSliverGeometry(SliverGeometryOpts{ScrollOffsetCorrection: foundation.Some(-firstChildScrollOffset)}))
+				return
+			}
+		}
+	} else if scrollOffset < foundation.PrecisionErrorTolerance {
 		// We iterate from the firstChild in case the leading child has a 0 paint
 		// extent.
 		for r.IndexOf(r.FirstChild()) > 0 {

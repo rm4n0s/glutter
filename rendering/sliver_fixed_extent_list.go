@@ -276,6 +276,15 @@ func (a *RenderSliverFixedExtentBoxAdaptor) PerformLayout() {
 	}
 
 	constraints := a.SliverConstraints()
+	// Deviation: a manager that keeps the visible content in place (the
+	// MaintainVisibleContentPosition option) asks for a correction of the scroll
+	// offset, once, in the layout after it moved children to new indices.
+	if keeper, ok := a.childManager.(SliverVisibleContentKeeper); ok {
+		if correction := keeper.TakeScrollOffsetCorrection(); correction != 0 {
+			a.SetGeometry(NewSliverGeometry(SliverGeometryOpts{ScrollOffsetCorrection: foundation.Some(correction)}))
+			return
+		}
+	}
 	a.childManager.DidStartLayout()
 	a.childManager.SetDidUnderflow(false)
 

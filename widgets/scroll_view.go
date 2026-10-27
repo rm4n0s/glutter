@@ -478,6 +478,18 @@ type ListViewOpts struct {
 	// ItemCount is the number of items; none means unbounded
 	// (NewListViewBuilder).
 	ItemCount foundation.Opt[int]
+	// MaintainVisibleContentPosition keeps the items that the user reads where
+	// they are on the screen when items are inserted before them, as long as the
+	// list is not at its start; at its start the list follows the new items, as in
+	// Flutter. A live log (a reverse list whose newest item is at offset 0) can
+	// then show new items while the user reads an older one. It works for the
+	// items whose element moves to a new index by its key: with
+	// FindChildIndexCallback (or FindItemIndexCallback) and a key on each item, or
+	// with the keys of the children of NewListView. Without keys it does nothing.
+	// The name is the one of React Native's FlatList.
+	//
+	// Flutter: no counterpart
+	MaintainVisibleContentPosition bool
 }
 
 func (o ListViewOpts) scrollViewOpts(semanticChildCount foundation.Opt[int]) ScrollViewOpts {
@@ -496,6 +508,7 @@ type ListView struct {
 	itemExtentBuilder rendering.ItemExtentBuilder
 	prototypeItem     Widget
 	childrenDelegate  SliverChildDelegate
+	keepVisible       bool
 }
 
 func newListView(delegate SliverChildDelegate, o ListViewOpts, semanticChildCount foundation.Opt[int]) *ListView {
@@ -514,7 +527,8 @@ func newListView(delegate SliverChildDelegate, o ListViewOpts, semanticChildCoun
 			panic(errors.New(tagListViewItemExtentConflict, "you can only pass one of itemExtent, prototypeItem and itemExtentBuilder"))
 		}
 	}
-	v := &ListView{itemExtent: o.ItemExtent, itemExtentBuilder: o.ItemExtentBuilder, prototypeItem: o.PrototypeItem, childrenDelegate: delegate}
+	v := &ListView{itemExtent: o.ItemExtent, itemExtentBuilder: o.ItemExtentBuilder, prototypeItem: o.PrototypeItem, childrenDelegate: delegate,
+		keepVisible: o.MaintainVisibleContentPosition}
 	InitBoxScrollView(&v.BoxScrollView, v, o.Padding, o.scrollViewOpts(semanticChildCount))
 	return v
 }
@@ -605,15 +619,16 @@ func (v *ListView) ChildrenDelegate() SliverChildDelegate { return v.childrenDel
 //
 // Flutter: widgets/scroll_view.dart ListView.buildChildLayout
 func (v *ListView) BuildChildLayout(BuildContext) Widget {
+	opts := SliverListWidgetOpts{MaintainVisibleContentPosition: v.keepVisible}
 	switch {
 	case v.itemExtent.IsSome():
-		return NewSliverFixedExtentList(v.childrenDelegate, v.itemExtent.Value())
+		return NewSliverFixedExtentList(v.childrenDelegate, v.itemExtent.Value(), opts)
 	case v.itemExtentBuilder != nil:
-		return NewSliverVariedExtentList(v.childrenDelegate, v.itemExtentBuilder)
+		return NewSliverVariedExtentList(v.childrenDelegate, v.itemExtentBuilder, opts)
 	case v.prototypeItem != nil:
-		return NewSliverPrototypeExtentList(v.childrenDelegate, v.prototypeItem)
+		return NewSliverPrototypeExtentList(v.childrenDelegate, v.prototypeItem, opts)
 	}
-	return NewSliverList(v.childrenDelegate)
+	return NewSliverList(v.childrenDelegate, opts)
 }
 
 // GridViewOpts are the optional parameters of NewGridView and its named

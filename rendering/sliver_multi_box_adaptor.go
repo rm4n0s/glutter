@@ -82,6 +82,31 @@ type RenderSliverBoxChildManager interface {
 	DebugAssertChildListLocked() bool
 }
 
+// SliverVisibleContentKeeper is what a RenderSliverBoxChildManager implements, in
+// addition, when its list keeps what the user reads in place while items are
+// inserted before it (the MaintainVisibleContentPosition option of the list
+// widgets). RenderSliverList and RenderSliverFixedExtentBoxAdaptor look for it
+// in their child manager with a type assertion.
+//
+// Flutter: no counterpart
+type SliverVisibleContentKeeper interface {
+	// KeepsVisibleContentPosition is whether the option is on. A RenderSliverList
+	// that has to place the items before its first child (when it is scrolled to
+	// within the cache extent of the start) then inserts all of them and corrects
+	// the scroll offset once, not one item for each layout pass.
+	//
+	// Flutter: no counterpart
+	KeepsVisibleContentPosition() bool
+	// TakeScrollOffsetCorrection returns the correction of the scroll offset that
+	// the manager worked out when it moved the children to new indices, and
+	// forgets it, so that it is returned only once. A sliver whose layout offsets
+	// come from the index (RenderSliverFixedExtentBoxAdaptor) returns it as the
+	// ScrollOffsetCorrection of its geometry, before it lays anything out.
+	//
+	// Flutter: no counterpart
+	TakeScrollOffsetCorrection() float64
+}
+
 // RenderSliverBoxChildManagerDefaults is the default of the methods of a
 // RenderSliverBoxChildManager that Flutter gives a body: an embedding manager
 // does not have to implement them.

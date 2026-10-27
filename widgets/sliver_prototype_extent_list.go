@@ -21,7 +21,10 @@ type SliverPrototypeExtentList struct {
 //
 // Flutter: widgets/sliver_prototype_extent_list.dart SliverPrototypeExtentList.new
 func NewSliverPrototypeExtentList(delegate SliverChildDelegate, prototypeItem Widget, opts ...SliverListWidgetOpts) *SliverPrototypeExtentList {
-	return &SliverPrototypeExtentList{NewSliverMultiBoxAdaptorWidgetBase(delegate, WidgetOpts{Key: firstOpts(opts).Key}), prototypeItem}
+	o := firstOpts(opts)
+	w := &SliverPrototypeExtentList{NewSliverMultiBoxAdaptorWidgetBase(delegate, WidgetOpts{Key: o.Key}), prototypeItem}
+	w.maintainVisibleContentPosition = o.MaintainVisibleContentPosition
+	return w
 }
 
 // NewSliverPrototypeExtentListBuilder creates a prototype extent sliver list
@@ -30,7 +33,7 @@ func NewSliverPrototypeExtentList(delegate SliverChildDelegate, prototypeItem Wi
 // Flutter: widgets/sliver_prototype_extent_list.dart SliverPrototypeExtentList.builder
 func NewSliverPrototypeExtentListBuilder(itemBuilder NullableIndexedWidgetBuilder, prototypeItem Widget, opts ...SliverBuilderOpts) *SliverPrototypeExtentList {
 	o := firstOpts(opts)
-	return NewSliverPrototypeExtentList(o.delegate(itemBuilder), prototypeItem, SliverListWidgetOpts{Key: o.Key})
+	return NewSliverPrototypeExtentList(o.delegate(itemBuilder), prototypeItem, SliverListWidgetOpts{Key: o.Key, MaintainVisibleContentPosition: o.MaintainVisibleContentPosition})
 }
 
 // NewSliverPrototypeExtentListList creates a prototype extent sliver list of the
@@ -39,7 +42,7 @@ func NewSliverPrototypeExtentListBuilder(itemBuilder NullableIndexedWidgetBuilde
 // Flutter: widgets/sliver_prototype_extent_list.dart SliverPrototypeExtentList.list
 func NewSliverPrototypeExtentListList(prototypeItem Widget, children []Widget, opts ...SliverListOpts) *SliverPrototypeExtentList {
 	o := firstOpts(opts)
-	return NewSliverPrototypeExtentList(o.delegate(children), prototypeItem, SliverListWidgetOpts{Key: o.Key})
+	return NewSliverPrototypeExtentList(o.delegate(children), prototypeItem, SliverListWidgetOpts{Key: o.Key, MaintainVisibleContentPosition: o.MaintainVisibleContentPosition})
 }
 
 // PrototypeItem is the widget that gives the main axis extent of all the items.

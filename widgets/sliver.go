@@ -28,7 +28,8 @@ type sliverMultiBoxWidget interface {
 // Flutter: widgets/sliver.dart SliverMultiBoxAdaptorWidget
 type SliverMultiBoxAdaptorWidget struct {
 	RenderObjectWidget
-	delegate SliverChildDelegate
+	delegate                       SliverChildDelegate
+	maintainVisibleContentPosition bool
 }
 
 // NewSliverMultiBoxAdaptorWidgetBase creates the embedded base of a sliver with
@@ -43,6 +44,16 @@ func NewSliverMultiBoxAdaptorWidgetBase(delegate SliverChildDelegate, opts ...Wi
 //
 // Flutter: widgets/sliver.dart SliverMultiBoxAdaptorWidget.delegate
 func (w *SliverMultiBoxAdaptorWidget) Delegate() SliverChildDelegate { return w.delegate }
+
+// MaintainVisibleContentPosition is whether the sliver keeps the children that
+// the user reads in place when items are inserted before them. Only SliverList,
+// SliverFixedExtentList, SliverVariedExtentList and SliverPrototypeExtentList
+// can be given it.
+//
+// Flutter: no counterpart
+func (w *SliverMultiBoxAdaptorWidget) MaintainVisibleContentPosition() bool {
+	return w.maintainVisibleContentPosition
+}
 
 // EstimateMaxScrollOffset asks the delegate; none lets the sliver extrapolate.
 //
@@ -78,6 +89,17 @@ type SliverBuilderOpts struct {
 	AddSemanticIndexes foundation.Opt[bool]
 	// SemanticIndexOffset is added to the semantic index of every item.
 	SemanticIndexOffset int
+	// MaintainVisibleContentPosition keeps the items that the user reads where they
+	// are on the screen when items are inserted before them, as long as the list
+	// is not at its start; at its start the list follows the new items, as in
+	// Flutter. It works for the items whose element moves to a new index by its
+	// key: with FindChildIndexCallback (or FindItemIndexCallback) on a builder
+	// list, or with the keys of the children of a list of children. Without keys
+	// it does nothing. It does not apply to grids. The name is the one of React
+	// Native's FlatList.
+	//
+	// Flutter: no counterpart
+	MaintainVisibleContentPosition bool
 }
 
 func (o SliverBuilderOpts) delegate(itemBuilder NullableIndexedWidgetBuilder) *SliverChildBuilderDelegate {
@@ -104,6 +126,17 @@ type SliverListOpts struct {
 	AddSemanticIndexes foundation.Opt[bool]
 	// SemanticIndexOffset is added to the semantic index of every child.
 	SemanticIndexOffset int
+	// MaintainVisibleContentPosition keeps the items that the user reads where they
+	// are on the screen when items are inserted before them, as long as the list
+	// is not at its start; at its start the list follows the new items, as in
+	// Flutter. It works for the items whose element moves to a new index by its
+	// key: with FindChildIndexCallback (or FindItemIndexCallback) on a builder
+	// list, or with the keys of the children of a list of children. Without keys
+	// it does nothing. It does not apply to grids. The name is the one of React
+	// Native's FlatList.
+	//
+	// Flutter: no counterpart
+	MaintainVisibleContentPosition bool
 }
 
 func (o SliverListOpts) delegate(children []Widget) *SliverChildListDelegate {
@@ -134,6 +167,17 @@ type SliverSeparatedOpts struct {
 	// AddSemanticIndexes is whether to wrap each item in an IndexedSemantics; the
 	// default is true.
 	AddSemanticIndexes foundation.Opt[bool]
+	// MaintainVisibleContentPosition keeps the items that the user reads where they
+	// are on the screen when items are inserted before them, as long as the list
+	// is not at its start; at its start the list follows the new items, as in
+	// Flutter. It works for the items whose element moves to a new index by its
+	// key: with FindChildIndexCallback (or FindItemIndexCallback) on a builder
+	// list, or with the keys of the children of a list of children. Without keys
+	// it does nothing. It does not apply to grids. The name is the one of React
+	// Native's FlatList.
+	//
+	// Flutter: no counterpart
+	MaintainVisibleContentPosition bool
 }
 
 // separatedDelegate is the delegate of SliverList.separated and
@@ -180,6 +224,17 @@ func separatedDelegate(itemBuilder, separatorBuilder NullableIndexedWidgetBuilde
 type SliverListWidgetOpts struct {
 	// Key is the key of the widget.
 	Key foundation.Key
+	// MaintainVisibleContentPosition keeps the items that the user reads where they
+	// are on the screen when items are inserted before them, as long as the list
+	// is not at its start; at its start the list follows the new items, as in
+	// Flutter. It works for the items whose element moves to a new index by its
+	// key: with FindChildIndexCallback (or FindItemIndexCallback) on a builder
+	// list, or with the keys of the children of a list of children. Without keys
+	// it does nothing. It does not apply to grids. The name is the one of React
+	// Native's FlatList.
+	//
+	// Flutter: no counterpart
+	MaintainVisibleContentPosition bool
 }
 
 // SliverList is a sliver that places box children in a linear array along the
@@ -194,7 +249,10 @@ type SliverList struct {
 //
 // Flutter: widgets/sliver.dart SliverList.new
 func NewSliverList(delegate SliverChildDelegate, opts ...SliverListWidgetOpts) *SliverList {
-	return &SliverList{NewSliverMultiBoxAdaptorWidgetBase(delegate, WidgetOpts{Key: firstOpts(opts).Key})}
+	o := firstOpts(opts)
+	w := &SliverList{NewSliverMultiBoxAdaptorWidgetBase(delegate, WidgetOpts{Key: o.Key})}
+	w.maintainVisibleContentPosition = o.MaintainVisibleContentPosition
+	return w
 }
 
 // NewSliverListBuilder creates a sliver list whose items are built lazily.
@@ -202,7 +260,7 @@ func NewSliverList(delegate SliverChildDelegate, opts ...SliverListWidgetOpts) *
 // Flutter: widgets/sliver.dart SliverList.builder
 func NewSliverListBuilder(itemBuilder NullableIndexedWidgetBuilder, opts ...SliverBuilderOpts) *SliverList {
 	o := firstOpts(opts)
-	return NewSliverList(o.delegate(itemBuilder), SliverListWidgetOpts{Key: o.Key})
+	return NewSliverList(o.delegate(itemBuilder), SliverListWidgetOpts{Key: o.Key, MaintainVisibleContentPosition: o.MaintainVisibleContentPosition})
 }
 
 // NewSliverListSeparated creates a sliver list with a separator between the
@@ -211,7 +269,7 @@ func NewSliverListBuilder(itemBuilder NullableIndexedWidgetBuilder, opts ...Sliv
 // Flutter: widgets/sliver.dart SliverList.separated
 func NewSliverListSeparated(itemBuilder, separatorBuilder NullableIndexedWidgetBuilder, opts ...SliverSeparatedOpts) *SliverList {
 	o := firstOpts(opts)
-	return NewSliverList(separatedDelegate(itemBuilder, separatorBuilder, o), SliverListWidgetOpts{Key: o.Key})
+	return NewSliverList(separatedDelegate(itemBuilder, separatorBuilder, o), SliverListWidgetOpts{Key: o.Key, MaintainVisibleContentPosition: o.MaintainVisibleContentPosition})
 }
 
 // NewSliverListList creates a sliver list of the children.
@@ -219,7 +277,7 @@ func NewSliverListSeparated(itemBuilder, separatorBuilder NullableIndexedWidgetB
 // Flutter: widgets/sliver.dart SliverList.list
 func NewSliverListList(children []Widget, opts ...SliverListOpts) *SliverList {
 	o := firstOpts(opts)
-	return NewSliverList(o.delegate(children), SliverListWidgetOpts{Key: o.Key})
+	return NewSliverList(o.delegate(children), SliverListWidgetOpts{Key: o.Key, MaintainVisibleContentPosition: o.MaintainVisibleContentPosition})
 }
 
 // CreateElement creates the element; its moved children leave their index empty.
@@ -248,7 +306,10 @@ type SliverFixedExtentList struct {
 //
 // Flutter: widgets/sliver.dart SliverFixedExtentList.new
 func NewSliverFixedExtentList(delegate SliverChildDelegate, itemExtent float64, opts ...SliverListWidgetOpts) *SliverFixedExtentList {
-	return &SliverFixedExtentList{NewSliverMultiBoxAdaptorWidgetBase(delegate, WidgetOpts{Key: firstOpts(opts).Key}), itemExtent}
+	o := firstOpts(opts)
+	w := &SliverFixedExtentList{NewSliverMultiBoxAdaptorWidgetBase(delegate, WidgetOpts{Key: o.Key}), itemExtent}
+	w.maintainVisibleContentPosition = o.MaintainVisibleContentPosition
+	return w
 }
 
 // NewSliverFixedExtentListBuilder creates a fixed extent sliver list whose items
@@ -257,7 +318,7 @@ func NewSliverFixedExtentList(delegate SliverChildDelegate, itemExtent float64, 
 // Flutter: widgets/sliver.dart SliverFixedExtentList.builder
 func NewSliverFixedExtentListBuilder(itemBuilder NullableIndexedWidgetBuilder, itemExtent float64, opts ...SliverBuilderOpts) *SliverFixedExtentList {
 	o := firstOpts(opts)
-	return NewSliverFixedExtentList(o.delegate(itemBuilder), itemExtent, SliverListWidgetOpts{Key: o.Key})
+	return NewSliverFixedExtentList(o.delegate(itemBuilder), itemExtent, SliverListWidgetOpts{Key: o.Key, MaintainVisibleContentPosition: o.MaintainVisibleContentPosition})
 }
 
 // NewSliverFixedExtentListList creates a fixed extent sliver list of the
@@ -266,7 +327,7 @@ func NewSliverFixedExtentListBuilder(itemBuilder NullableIndexedWidgetBuilder, i
 // Flutter: widgets/sliver.dart SliverFixedExtentList.list
 func NewSliverFixedExtentListList(itemExtent float64, children []Widget, opts ...SliverListOpts) *SliverFixedExtentList {
 	o := firstOpts(opts)
-	return NewSliverFixedExtentList(o.delegate(children), itemExtent, SliverListWidgetOpts{Key: o.Key})
+	return NewSliverFixedExtentList(o.delegate(children), itemExtent, SliverListWidgetOpts{Key: o.Key, MaintainVisibleContentPosition: o.MaintainVisibleContentPosition})
 }
 
 // ItemExtent is the extent of every child along the main axis.
@@ -309,7 +370,10 @@ type SliverVariedExtentList struct {
 //
 // Flutter: widgets/sliver.dart SliverVariedExtentList.new
 func NewSliverVariedExtentList(delegate SliverChildDelegate, itemExtentBuilder rendering.ItemExtentBuilder, opts ...SliverListWidgetOpts) *SliverVariedExtentList {
-	return &SliverVariedExtentList{NewSliverMultiBoxAdaptorWidgetBase(delegate, WidgetOpts{Key: firstOpts(opts).Key}), itemExtentBuilder}
+	o := firstOpts(opts)
+	w := &SliverVariedExtentList{NewSliverMultiBoxAdaptorWidgetBase(delegate, WidgetOpts{Key: o.Key}), itemExtentBuilder}
+	w.maintainVisibleContentPosition = o.MaintainVisibleContentPosition
+	return w
 }
 
 // NewSliverVariedExtentListBuilder creates a varied extent sliver list whose
@@ -318,7 +382,7 @@ func NewSliverVariedExtentList(delegate SliverChildDelegate, itemExtentBuilder r
 // Flutter: widgets/sliver.dart SliverVariedExtentList.builder
 func NewSliverVariedExtentListBuilder(itemBuilder NullableIndexedWidgetBuilder, itemExtentBuilder rendering.ItemExtentBuilder, opts ...SliverBuilderOpts) *SliverVariedExtentList {
 	o := firstOpts(opts)
-	return NewSliverVariedExtentList(o.delegate(itemBuilder), itemExtentBuilder, SliverListWidgetOpts{Key: o.Key})
+	return NewSliverVariedExtentList(o.delegate(itemBuilder), itemExtentBuilder, SliverListWidgetOpts{Key: o.Key, MaintainVisibleContentPosition: o.MaintainVisibleContentPosition})
 }
 
 // NewSliverVariedExtentListList creates a varied extent sliver list of the
@@ -327,7 +391,7 @@ func NewSliverVariedExtentListBuilder(itemBuilder NullableIndexedWidgetBuilder, 
 // Flutter: widgets/sliver.dart SliverVariedExtentList.list
 func NewSliverVariedExtentListList(itemExtentBuilder rendering.ItemExtentBuilder, children []Widget, opts ...SliverListOpts) *SliverVariedExtentList {
 	o := firstOpts(opts)
-	return NewSliverVariedExtentList(o.delegate(children), itemExtentBuilder, SliverListWidgetOpts{Key: o.Key})
+	return NewSliverVariedExtentList(o.delegate(children), itemExtentBuilder, SliverListWidgetOpts{Key: o.Key, MaintainVisibleContentPosition: o.MaintainVisibleContentPosition})
 }
 
 // ItemExtentBuilder gives the extent of the child at an index.
@@ -514,11 +578,12 @@ func (e *intKeyedElements) lastKey() (int, bool) {
 // Flutter: widgets/sliver.dart SliverMultiBoxAdaptorElement
 type SliverMultiBoxAdaptorElement struct {
 	RenderObjectElement
-	replaceMovedChildren        bool
-	childElements               *intKeyedElements
-	currentBeforeChild          rendering.Box
-	currentlyUpdatingChildIndex foundation.Opt[int]
-	didUnderflow                bool
+	replaceMovedChildren          bool
+	childElements                 *intKeyedElements
+	currentBeforeChild            rendering.Box
+	currentlyUpdatingChildIndex   foundation.Opt[int]
+	didUnderflow                  bool
+	pendingScrollOffsetCorrection float64
 }
 
 // NewSliverMultiBoxAdaptorElement creates the element of a sliver with boxes.
@@ -564,7 +629,76 @@ func (e *SliverMultiBoxAdaptorElement) Update(newWidget Widget) {
 	}
 }
 
+// KeepsVisibleContentPosition is whether the widget has the
+// MaintainVisibleContentPosition option on.
+//
+// Flutter: no counterpart
+func (e *SliverMultiBoxAdaptorElement) KeepsVisibleContentPosition() bool {
+	w, ok := e.widget.(interface{ MaintainVisibleContentPosition() bool })
+	return ok && w.MaintainVisibleContentPosition()
+}
+
+// TakeScrollOffsetCorrection returns the correction of the scroll offset that
+// the last rebuild worked out for a sliver whose layout offsets come from the
+// index, and forgets it.
+//
+// Flutter: no counterpart
+func (e *SliverMultiBoxAdaptorElement) TakeScrollOffsetCorrection() float64 {
+	c := e.pendingScrollOffsetCorrection
+	e.pendingScrollOffsetCorrection = 0
+	return c
+}
+
+// keepsContentInPlace is whether this rebuild keeps the visible children where
+// they are: the option is on and the sliver was laid out away from its leading
+// edge (the scroll offset of its last constraints is above the tolerance).
+func (e *SliverMultiBoxAdaptorElement) keepsContentInPlace() bool {
+	if !e.KeepsVisibleContentPosition() || e.renderObject == nil {
+		return false
+	}
+	s := e.sliver()
+	return s.HasGeometry() && s.SliverConstraints().ScrollOffset > foundation.PrecisionErrorTolerance
+}
+
+// firstVisibleChild is the child with a layout offset whose end is the first one
+// after the scroll offset of the last constraints of the sliver, and that
+// offset. It is the one that keeps its place when a sliver whose offsets come
+// from the index corrects the scroll offset.
+func (e *SliverMultiBoxAdaptorElement) firstVisibleChild() (Element, float64) {
+	constraints := e.sliver().SliverConstraints()
+	for _, index := range e.childElements.keys() {
+		child := e.childElements.get(index)
+		if child == nil || child.RenderObject() == nil {
+			continue
+		}
+		box, ok := child.RenderObject().(rendering.Box)
+		if !ok {
+			continue
+		}
+		parentData := rendering.SliverMultiBoxAdaptorParentDataOf(box)
+		offset, ok := parentData.LayoutOffset.Get()
+		if !ok || parentData.KeptAlive() {
+			continue
+		}
+		extent := box.Size().Height
+		if constraints.Axis() == painting.AxisHorizontal {
+			extent = box.Size().Width
+		}
+		if offset+extent > constraints.ScrollOffset+foundation.PrecisionErrorTolerance {
+			return child, offset
+		}
+	}
+	return nil, 0
+}
+
 // PerformRebuild builds all the children that are live again.
+//
+// Deviation: with the MaintainVisibleContentPosition option on and the sliver
+// away from its leading edge, a child that moved to a new index keeps its layout
+// offset and the old offsets are not given to the children that take the old
+// indices, so the visible children stay where they are and the children
+// inserted before them are built only when they come into view. A sliver whose
+// offsets come from the index gets a correction of the scroll offset instead.
 //
 // Flutter: widgets/sliver.dart SliverMultiBoxAdaptorElement.performRebuild
 func (e *SliverMultiBoxAdaptorElement) PerformRebuild() {
@@ -581,6 +715,15 @@ func (e *SliverMultiBoxAdaptorElement) PerformRebuild() {
 	newChildren := newIntKeyedElements()
 	indexToLayoutOffset := map[int]float64{}
 	adaptor := e.adaptor()
+	keep := e.keepsContentInPlace()
+	var anchor Element
+	var anchorOffset float64
+	anchorNewIndex := -1
+	lowestMoved := -1  // the lowest index that a child moved to, or -1
+	lowestStable := -1 // the lowest index of a child that has a key and stays at its index, or -1
+	if keep && !e.replaceMovedChildren {
+		anchor, anchorOffset = e.firstVisibleChild()
+	}
 	processElement := func(index int) {
 		e.currentlyUpdatingChildIndex = foundation.Some(index)
 		if cur := e.childElements.get(index); cur != nil && cur != newChildren.get(index) {
@@ -615,23 +758,57 @@ func (e *SliverMultiBoxAdaptorElement) PerformRebuild() {
 		if ro := child.RenderObject(); ro != nil {
 			childParentData = rendering.SliverMultiBoxAdaptorParentDataOf(ro)
 		}
-		if childParentData != nil && childParentData.LayoutOffset.IsSome() {
+		if childParentData != nil && childParentData.LayoutOffset.IsSome() && !keep {
 			indexToLayoutOffset[index] = childParentData.LayoutOffset.Value()
 		}
+		if child == anchor {
+			if ni, ok := newIndex.Get(); ok {
+				anchorNewIndex = ni
+			}
+		}
 		if ni, ok := newIndex.Get(); ok && ni != index {
-			if childParentData != nil {
+			if childParentData != nil && !keep {
 				childParentData.LayoutOffset = foundation.None[float64]()
 			}
 			newChildren.set(ni, child)
+			if lowestMoved < 0 || ni < lowestMoved {
+				lowestMoved = ni
+			}
 			if e.replaceMovedChildren && !newChildren.has(index) {
 				newChildren.set(index, nil)
 			}
 			e.childElements.remove(index)
-		} else if !newChildren.has(index) {
-			newChildren.set(index, child)
+		} else {
+			if newIndex.IsSome() && lowestStable < 0 {
+				lowestStable = index
+			}
+			if !newChildren.has(index) {
+				newChildren.set(index, child)
+			}
 		}
 	}
 	e.sliver().SetDebugChildIntegrityEnabled(false) // Moving children will temporary violate the integrity.
+	if keep && e.replaceMovedChildren && lowestMoved >= 0 && (lowestStable < 0 || lowestStable > lowestMoved) {
+		// The indices before the lowest child that moved (when no child that has a
+		// key stays before it) are not built now, they are built when the sliver
+		// needs them, as it scrolls to them. A child that did not move and has no
+		// key (a separator) and is before them is dropped: its layout offset belongs to
+		// the old place of the list.
+		for _, index := range newChildren.keys() {
+			if index >= lowestMoved {
+				break
+			}
+			newChildren.remove(index)
+			if cur := e.childElements.get(index); cur != nil {
+				e.currentlyUpdatingChildIndex = foundation.Some(index)
+				e.childElements.set(index, e.UpdateChild(cur, nil, index))
+				childrenUpdated = true
+				if e.childElements.get(index) == nil {
+					e.childElements.remove(index)
+				}
+			}
+		}
+	}
 	for _, index := range newChildren.keys() {
 		processElement(index)
 	}
@@ -643,6 +820,18 @@ func (e *SliverMultiBoxAdaptorElement) PerformRebuild() {
 		rightBoundary := lastKey + 1
 		newChildren.set(rightBoundary, e.childElements.get(rightBoundary))
 		processElement(rightBoundary)
+	}
+	if anchor != nil && anchorNewIndex >= 0 {
+		if sliver, ok := e.renderObject.(interface{ IndexToLayoutOffset(index int) float64 }); ok {
+			correction := sliver.IndexToLayoutOffset(anchorNewIndex) - anchorOffset
+			if math.Abs(correction) < foundation.PrecisionErrorTolerance {
+				correction = 0
+			}
+			e.pendingScrollOffsetCorrection = correction
+			if correction != 0 {
+				e.sliver().MarkNeedsLayout()
+			}
+		}
 	}
 }
 

@@ -4427,3 +4427,34 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - `NewView` returns `(*View, error)`, unlike the other constructors (SPEC §12.10).
   - The view's platform configuration (brightness, locale, text scale) is the default one, not the app's. An app sets it with `View.Binding().PlatformDispatcher().UpdatePlatformConfiguration`. A follow-up could copy the parent's configuration when the view is made and follow its changes.
   - Typing still damages the whole surface (29.6); a whole frame takes about 16 ms.
+
+## 29.8 A list keeps what the user reads in place when items are inserted before it (Emetos)
+
+- **Date:** 2026-10-27
+- **Branch:** feat/step-29.8-keep-visible-content
+- **Summary:** Emetos's issue "A reverse list does not keep what the user reads in place when items are added at its start". `MaintainVisibleContentPosition` (in `ListViewOpts` and the options of `SliverList`, `SliverFixedExtentList`, `SliverVariedExtentList` and `SliverPrototypeExtentList`) keeps the items the user reads where they are when keyed items are inserted before them, while the list is away from its start. At its start the list follows the new items, as in Flutter. The plan of steps 29.8 to 29.15 (release 1.9.2) is added to `docs/IMPLEMENTATION.md` with this step.
+  - **Flutter's behavior, measured first:** a reverse `ListView.builder` of 40 keyed 50-pixel rows, 3 rows inserted at item 0. With and without `FindChildIndexCallback`, a visible row moves from 300 to 150 at offset 0 and from 250 to 100 at offset 500. With the option it stays at 250 at offset 500, and the scroll offset stays 500. At offset 0 it follows, as without the option.
+  - **`SliverList`:** away from the leading edge, `PerformRebuild` keeps the layout offset of a child that moved by its key and does not give the old offsets to the children that take the old indices. The indices before the lowest moved child are not built until the user scrolls to them. Keyless children there, such as separators, are dropped. Near the start, `RenderSliverList` inserts all the leading children in one pass and corrects the scroll offset once. Flutter corrects one child per pass, and a viewport allows 10 passes, so 30 rows would exceed the limit. At sliver offset 0 (a `JumpTo(0)`) there is no correction.
+  - **The lists whose offsets come from the index:** the element records the first visible child and its offset. After the rebuild, the next layout returns, once, a `ScrollOffsetCorrection` equal to that child's new index offset less its old offset.
+  - **New API:** `rendering.SliverVisibleContentKeeper` is an optional interface of the child manager that the render slivers find by type assertion. `SliverMultiBoxAdaptorElement` implements it, and `SliverMultiBoxAdaptorWidget.MaintainVisibleContentPosition()` reads the option.
+  - **Documents:** SPEC §11.4 (new) and a §12.10 row; `docs/GUIDE.md` section 4, a live-log example that the docs test compiles.
+- **Main files:** `widgets/sliver.go`, `widgets/sliver_prototype_extent_list.go`, `widgets/scroll_view.go`, `rendering/sliver_multi_box_adaptor.go`, `rendering/sliver_list.go`, `rendering/sliver_fixed_extent_list.go`, `widgets/maintain_visible_content_position_test.go`, `docs/SPEC.md`, `docs/GUIDE.md`, `docs/IMPLEMENTATION.md`.
+- **Tests (10 functions, table-driven, over the 4 list kinds, reverse and forward):**
+  - visible rows keep their top-left to the pixel, at offsets 500, 100 and 20, over several frames, with 25 and 30 rows at once;
+  - scrolling to the start, in one jump and in steps, shows every new row in order and contiguous, and ends at offset 0;
+  - at the start the list follows;
+  - rows appended after the visible ones move nothing;
+  - removing a visible row does not panic;
+  - without keys, or without a finder, nothing changes;
+  - with the option off, the numbers match Flutter's measured ones;
+  - the keys of `NewListView`, a separated sliver in a `CustomScrollView`, and two insertions in one frame.
+  - Flutter test cases ported: none, since Flutter has no counterpart. With the option forced off, all 48 cases of the keep test fail.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck, apicheck, uintptrcheck ✅ · wasm build, vet and tests ✅ · check-android ✅ · Windows builds, vet, lint and test-windows ✅ · display tests: none
+- **Proof:** none
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - This is a Glutter-only option, with a §12.10 row; the name comes from React Native's `FlatList`.
+  - The extent above the kept rows is learned only when the user scrolls near it, so a scroll bar shows the old extent until then.
+  - An insertion between the kept children (in the cache extent before the visible rows) still moves the visible rows, as in Flutter.
+  - Grids and `SliverAnimatedList` are not covered.
+  - Emetos removes `keepPlace` (its own issue).

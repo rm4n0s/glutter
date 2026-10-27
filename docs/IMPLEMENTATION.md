@@ -2767,3 +2767,189 @@ The manager measured the software renderer on 2026-10-27: a 1280x800 `Scaffold` 
 - `go test -race` with the parent on its UI thread.
 **Proof:** a PNG of a frame of the view (the counter) in `docs/implemented-proof-images/29.7-offscreen.png`.
 **Manual checks:** none. Emetos removes its host, its rasterizer made of a `Tester`, and `headlessPaceFactor` (its own issue).
+
+### 29.8 A list keeps what the user reads in place when items are inserted before it (Emetos, 1.9.2)
+**Goal:** a list with keyed items can keep its visible items where they are on the screen when items are inserted (or moved) before them, and it keeps following the start while the user is at the start. The new option is `MaintainVisibleContentPosition`, the name React Native's `FlatList` gives the same behavior.
+**Why:** Emetos found it (issues file, "A reverse list does not keep what the user reads in place when items are added at its start"). The Events panel of its Parasite tab is a live log in a `ListView` with `Reverse: true`, so offset 0 is the newest row. When rows are added at item 0 while the user reads an older row, that row moves away by the height of the new rows. Emetos works around it with `ScrollController.JumpTo` by the added rows times their height, when the offset is not 0 (`keepPlace` in `extensions/parasite/clienttab.go`).
+
+Flutter behaves the same way: `SliverMultiBoxAdaptorElement.performRebuild` sets the layout offset of a child that moved to a new index to null and gives the old offsets to the children now at the old indices (`widgets/sliver.dart`), even with keys and `findChildIndexCallback`. The manager checked on 2026-10-27 that Glutter matches it: in a reverse list of 50-pixel keyed rows, inserting 3 rows at item 0 moves a visible row by 150 pixels, with and without `FindChildIndexCallback`, at offset 0 and at offset 500. The owner chose (2026-10-27) the cheapest design that does what Emetos needs, in 1.9.2:
+- the sliver keeps the layout offset of a child that moved, so the visible children stay put and the scroll offset does not change;
+- the rows inserted before them are built only when they come into view, and the existing correction at item 0 (`ScrollOffsetCorrection`) fixes the offsets then;
+- a correction of the scroll offset in every frame with new rows (anchoring in the viewport, as CSS scroll anchoring does) was rejected: it costs an extra layout pass for each insertion.
+
+**Read:** SPEC §11 (scrolling, slivers), §12.10; `widgets/sliver.go` (`SliverMultiBoxAdaptorElement.PerformRebuild`, `indexToLayoutOffset`, the options structs `SliverListWidgetOpts`, `SliverBuilderOpts`, `SliverListOpts`, `SliverSeparatedOpts`), `widgets/sliver_prototype_extent_list.go`, `widgets/scroll_view.go` (`ListViewOpts`, how `ListView` picks its sliver), `widgets/scroll_delegate.go` (`FindIndexByKey`), `rendering/sliver_list.go` (`PerformLayout`: the leading children without a layout offset are collected and laid out again before the first child, and `ScrollOffsetCorrection` when item 0 does not land at 0), `rendering/sliver_fixed_extent_list.go`.
+**Port from:** none (Flutter has no such option; a deviation, recorded in §12.10). Flutter's `widgets/sliver.dart` (`performRebuild`) and `rendering/sliver_list.dart` are the code it changes.
+**Files:** `widgets/sliver.go`, `widgets/sliver_prototype_extent_list.go`, `widgets/scroll_view.go`, `rendering/sliver_list.go` and `rendering/sliver_fixed_extent_list.go` if they need it, their tests, the generated `material` re-exports (`go generate ./material`), SPEC §11 and §12.10, `docs/GUIDE.md` (the section on lists).
+**Tasks:**
+1. First write the test that shows the problem: a reverse `ListView.builder` of keyed rows of known heights with `FindChildIndexCallback`, rows inserted at item 0, at offset 0 and at an offset inside the list; the top-left of a visible row before and after. Give the numbers before and after the fix in the report.
+2. Add `MaintainVisibleContentPosition bool` to `ListViewOpts` and to the options of `SliverList`, `SliverFixedExtentList`, `SliverVariedExtentList` and `SliverPrototypeExtentList` (every options struct that their constructors take). `ListView` passes it to the sliver it makes. It works only for children whose element moves to a new index by its key (keys and `FindChildIndexCallback`, or the keys of a list of children); without keys it does nothing, and the doc comment says so.
+3. `SliverList` (the sliver whose children carry their layout offsets): when the option is on and the sliver is not at its leading edge (the `ScrollOffset` of its last constraints is above `precisionErrorTolerance`), `PerformRebuild` keeps the layout offset of a child that moved to a new index, and does not give the old offsets to the children that took its old indices. The new children then have no layout offset. `RenderSliverList.PerformLayout` already collects such leading children and lays them out before the first child that has an offset. Check that it does so for a child without an offset in the middle of the list, and fix it if it does not. When the first laid-out child is item 0 and does not land at 0, the existing `ScrollOffsetCorrection` fixes the offset, with no visible jump.
+4. At the leading edge (offset 0 of the sliver: the newest row of a reverse log, the top of a feed), nothing changes from Flutter: the new items appear at the start and the rest moves, so the list follows the start.
+5. The slivers whose layout offsets come from the index (`SliverFixedExtentList`, `SliverPrototypeExtentList`, `SliverVariedExtentList`): with the option on and not at the leading edge, the next layout returns a `ScrollOffsetCorrection` equal to the layout offset of the first visible child's new index less its offset before the rebuild. That is one correction pass, only in the frame where items were inserted before it.
+6. With the option off, nothing changes: every existing test and golden passes as it is.
+7. SPEC §11 says what the option does and why it is cheap. A §12.10 row records the deviation (Flutter has no such option; React Native's name). The doc comments of the new fields end with `// Flutter: no counterpart`, as other Glutter-only fields do, and `apicheck` passes.
+8. `docs/GUIDE.md`: a short example of a live log (a reverse list that follows the newest row and keeps an older one in place while the user reads it), checked by the docs test.
+**Tests (table-driven):**
+- reverse and forward lists, at an offset inside the list: rows inserted at item 0, several at a time, in a run of frames; the visible rows keep their top-left to the pixel, and the scroll offset does not change;
+- at offset 0: the new rows are shown at the start (the list follows), as without the option;
+- after the insertion, scrolling to the start shows every new row in order, contiguous, with no gap or overlap, and the final offset is consistent (`ScrollController.Offset` at the start is 0);
+- the fixed-extent, prototype and varied-extent lists: the same, through the correction;
+- rows inserted after the visible ones: nothing moves;
+- a visible row removed: the rest stays where Flutter puts it, with no panic;
+- no keys: the option changes nothing;
+- the option off: Flutter's behavior, as the check of 2026-10-27 measured (the row moves by the height of the new rows).
+**Proof:** none.
+**Manual checks:** none. Emetos removes `keepPlace` (its own issue).
+
+### 29.9 The clipboard of an offscreen view (Emetos, 1.9.2)
+**Goal:** an `offscreen.View` can have a clipboard of its own: `ViewOpts.Clipboard` takes a `ui.ClipboardHost`, and every clipboard path of the view's tree (copy, cut, paste, the paste check, the primary selection, rich content) goes to it and never to the desktop.
+**Why:** Emetos found it (issues file, "An `offscreen.View` has no clipboard of its own"). The clipboard calls of a view go to its parent binding (`viewHost.SetClipboardText` and the others call `parent.PlatformDispatcher()`), which is the application's, and `WidgetsBinding.Clipboard()` cannot be replaced. A view that another machine types in (Emetos's Remote Work) must not read or replace the clipboard or the primary selection of the host's desktop. Its client must hear of the text its user copies, and give it the text to paste. Emetos works around it with a second binding, made only to be the view's parent, whose platform host is the view's clipboard (`internal/gui/app/headless_clipboard.go`).
+**Read:** SPEC §9.9, D28, §12.10; `offscreen/view.go` (`viewHost`, its clipboard methods, `guardErr`), `ui/platform_dispatcher.go` (`ClipboardHost`), `ui/clipboard.go` (`RichClipboardHost`, `ClipboardKind`, the formats), `services` (the clipboard API the widgets use), `widgets/binding.go` (`Clipboard`), `widgets/editable_text.go` (copy, cut, paste, the primary selection, the paste check).
+**Port from:** none.
+**Files:** `offscreen/view.go` and its tests, SPEC §9.9.
+**Tasks:**
+1. `ViewOpts.Clipboard ui.ClipboardHost`. When it is nil, the view uses the app's clipboard, as in 1.9.1. When it is set:
+   - `SetClipboardText` and `GetClipboardText` go to it;
+   - if it also implements `ui.RichClipboardHost`, `SetClipboard` and `GetClipboard` (every kind, the primary selection included) go to it;
+   - if it does not, a rich call for the clipboard kind and the text format goes to its text methods, and every other rich call (the primary selection, other formats) does nothing: an empty content, no error. The desktop is never reached.
+2. Find every path from a widget of the view to a clipboard (the `services` clipboard, `EditableText`'s copy, cut and paste, the primary selection on a middle click and on a selection change, the paste check of the context menu, `SelectableRegion`, anything else the search finds) and check that each goes through the view's dispatcher. Say in the report what you found. A path that bypasses the dispatcher is fixed in this step.
+3. The host's callbacks run on the UI thread: the app calls `done` there (or posts it). The view keeps its guard: after `Close` a late `done` does nothing. Say so in the doc comment.
+4. SPEC §9.9: the clipboard of a view.
+**Tests (table-driven):**
+- a `TextField` in a view with a fake clipboard (text only, and rich): select all and copy, cut, paste through key events sent to the view's dispatcher; the fake gets and gives the text;
+- a selection on a platform with a primary selection (Linux, through `foundation.TargetPlatform`): it goes to a rich fake, and to nothing with a text-only fake;
+- the paste check (`HasStrings`) reads the fake;
+- in every case, the app's clipboard (the parent's fake platform) is neither read nor written;
+- nil: the app's clipboard, as in 1.9.1;
+- a `done` called after `Close` does nothing.
+**Proof:** none.
+**Manual checks:** none. Emetos removes `clipboardParent` and its second binding (its own issue).
+
+### 29.10 The platform configuration and the window of an offscreen view (Emetos, 1.9.2)
+**Goal:** an `offscreen.View` starts with the app's platform configuration and follows its changes, can be given a `ui.WindowInfo`, and `SetSize` changes only the size.
+**Why:** Emetos found it (issues file, "An `offscreen.View` starts with a default platform configuration and a blank window"). The view's platform configuration is the default one, not the app's (the 29.7 entry lists it as a follow-up). Its `ui.ViewConfiguration` has a blank `Window`: no decoration, not activated, not maximized. An app that draws its own title bar and its inactive state reads that window. `ViewOpts` sets neither. `View.SetSize` writes the view's own copy of the configuration, with a blank `Window` again, so a window set with `UpdateViewConfiguration` is lost at the next resize. The tree is mounted inside `NewView`, so a state that reads the configuration in `InitState` sees the default one. Emetos works around it with a root widget whose `InitState` sets both, and a call after each `SetSize` (`internal/gui/app/headless.go`). The owner chose (2026-10-27): the view follows the parent's configuration by default, since it needs no work from the app and mounts the tree once with the right values.
+**Read:** SPEC §9.9, D28, §12.10; `offscreen/view.go` (`newView`, `SetSize`, `cfg`), `ui/platform_dispatcher.go` (`PlatformConfiguration`, `UpdatePlatformConfiguration`, `UpdateViewConfiguration`, the `On…Changed` callbacks), `ui/window_info.go`, `widgets/binding.go` (`WidgetsBindingObserver`, `AddObserver`), and how the binding hears of fonts and the caret blink time when they change.
+**Port from:** none.
+**Files:** `offscreen/view.go` and its tests, `ui` or `widgets` if the hook of task 2 needs it, SPEC §9.9.
+**Tasks:**
+1. Before the root is attached, the view's dispatcher gets the parent dispatcher's platform configuration (all of it: locales, text scale and its scaler, brightness, accessibility features, fonts, caret blink, the rest of the struct).
+2. The view follows the parent's later changes of any field, until `Close`. The parent dispatcher's `OnPlatformConfigurationChanged` is one slot, owned by the parent binding, so do not take it. Use what the parent binding offers (a `WidgetsBindingObserver` on it, which `Close` removes), and check that every field is covered, including those with no observer method. If a field cannot be followed without a new public API, stop and report what you propose.
+3. `ViewOpts.PlatformConfiguration foundation.Opt[ui.PlatformConfiguration]`: a fixed configuration instead of the parent's, which is not followed. The app may still change it through the view's dispatcher.
+4. `ViewOpts.Window ui.WindowInfo` is the window of the view's configuration from the start; `View.SetWindow(info ui.WindowInfo) error` changes it (tag `ViewClosed` after `Close`) and the framework hears of it as a change of the view's metrics.
+5. `View.SetSize` reads the view's current configuration from the dispatcher and changes only `PhysicalSize`, so the window and what the app set with `UpdateViewConfiguration` (padding, insets, display features) are kept.
+6. SPEC §9.9: what the view's configuration is and when it changes. The 29.7 follow-up is closed.
+**Tests (table-driven):**
+- a state that reads `MediaQuery` (text scale, brightness, locale) and the window in `InitState` sees the app's values in the first frame, with no second build;
+- a change of each field of the parent's configuration reaches the view (a rebuild, the new value);
+- `ViewOpts.PlatformConfiguration`: the view keeps it and ignores the parent's changes;
+- `ViewOpts.Window` and `SetWindow`: `WindowDecoration` draws the active and inactive state; `SetWindow` after `Close` returns `ViewClosed` (a route test);
+- `SetSize` keeps the window and a padding set with `UpdateViewConfiguration`;
+- after `Close`, a change of the parent's configuration does nothing (the observer is gone).
+**Proof:** none.
+**Manual checks:** none. Emetos removes `viewSetup`, `configure` and `applyWindow` (its own issue).
+
+### 29.11 A default win after the arena is gone (Emetos, 1.9.2)
+**Goal:** the gesture arena never panics when its default resolution runs after the arena it was scheduled for has resolved, been emptied, or been replaced by a new arena for the same pointer.
+**Why:** Emetos found it (second issues list of 2026-10-27, "Crash (panic) in the gesture arena"): `gestures/arena.go` `resolveByDefault` panics with an index out of range, after the arena's members are gone, in a run with a real configuration. The manager's reading on 2026-10-27:
+- `tryToResolveArena` schedules `resolveByDefault(pointer, state)` when one member is left. Flutter does it with `scheduleMicrotask`, which runs before the next event. Glutter's "microtask" is `GestureBinding.Post`, a post to the UI thread, so other pointer events can run first;
+- `resolveByDefault` checks only that some arena exists for the pointer (`m.arenas[pointer]`), not that it is the arena it was scheduled for. If the last member rejected (the arena became empty and was removed) and a new down opened a new arena with the same pointer id before the post ran, the old, empty `state.members[0]` is read.
+**Read:** SPEC §13 (the UI thread, `Post`), the gestures part of SPEC §11; `gestures/arena.go`, `gestures/binding.go` (`Post`, how pointer events are dispatched, `Close` and `Sweep`), how pointer ids are given to a mouse, touch and pen down on each platform (`gestures/converter.go` or where `PointerData.Pointer` is set); Flutter's `gestures/arena.dart`.
+**Port from:** Flutter's `gestures/arena.dart` `_resolveByDefault` (the same check, with the identity of the arena added; a deviation, since Glutter's microtask is a post).
+**Files:** `gestures/arena.go` and its tests, SPEC §12.10 if the deviation needs a row.
+**Tasks:**
+1. First write a test that panics on the current code: the sequence of Emetos's crash, reproduced with the arena manager and a scheduler that holds the posted function until the test runs it (down, close with one member, the member rejects, a new down for the same pointer id, then the post runs). Find any other sequence that reaches the panic (a hold and release, a sweep before the post, a pointer cancel) and add each.
+2. `resolveByDefault` does nothing unless the arena of the pointer is still the one it was scheduled for and it still has exactly one member, open or closed as Flutter expects. Look at the other functions that read `state` after a post or a callback (`resolveInFavorOf` and `Sweep` call members, which may add or remove members of the same or another arena) and make them safe in the same way.
+3. A member that is told it lost or won must still be told exactly once, as now: no gesture is accepted twice, and none is left without an answer.
+4. If the cause is that pointer ids are reused on some platform where Flutter's are unique, say so in the report; do not change the ids in this step.
+**Tests (table-driven):**
+- every sequence of task 1, without a panic, and with the right member accepted or rejected once;
+- the existing arena tests, ported from Flutter's `arena_test.dart`, unchanged;
+- a widget test: two taps on a `GestureDetector` with a double-tap recognizer whose second down comes before the post of the first arena runs.
+**Proof:** none.
+**Manual checks:** none.
+
+### 29.12 Shapes outside the clip are skipped before their mask is made (Emetos, 1.9.2)
+**Goal:** the GPU renderers do no work for a shape that is outside the visible area. The geometry hash of a path is not made again in each frame.
+**Why:** Emetos found it (second issues list of 2026-10-27, "Drawing cost grows with everything on the page, including what's off screen"). In its preview, 85% of the drawing time is spent hashing paths and masking them, so a frame takes over a second. The manager's reading on 2026-10-27:
+- `explicit`'s `pathMask` (`internal/gpu/explicit/primitives.go`) calls `gpu.ShapeOf`, then asks the coverage atlas for tiles (`masks.Tiles`), for every path, arc and stroke the analytic pipeline cannot draw;
+- `ShapeOf` hashes the path with `ui.Path.Fingerprint`, an FNV over each byte of each point (`ui/path_flatten.go`), in every frame;
+- nothing checks first whether the shape's bounds, under its transform and widened by its stroke, meet the clip of the command (`s.outer`, the clip's bounds). The command is skipped only when its clip is empty;
+- `gles/paths.go` has the same order, and `gpu.ClipKey` hashes the paths of clips the same way (`internal/gpu/clipmask.go`).
+**Read:** SPEC §9.1 (GLES, the coverage atlas), §9.2, §9.3 (the explicit renderer), §9.9 (a detached scene is drawn on another goroutine: nothing the renderer reads may be a lazy cache that two goroutines write); `internal/gpu/mask.go` (`ShapeOf`, `MaskMargin`), `internal/gpu/clipmask.go`, `internal/gpu/explicit/primitives.go`, `frame.go` (`shape`), `scene.go`, `internal/gpu/gles/paths.go`, `internal/gpu/soft` (how `soft` bounds its work, for comparison), `ui/path.go` and `ui/path_flatten.go` (how a path is built and changed, `Fingerprint`), `ui/display_list.go` (what `OpDrawPath` keeps of a path).
+**Port from:** none (Impeller culls by coverage, `Entity::GetCoverage`, but Glutter's renderers are its own).
+**Files:** `internal/gpu` (`mask.go`, `clipmask.go`, a cull helper), `internal/gpu/explicit`, `internal/gpu/gles`, `ui` (the path's fingerprint), their tests and benchmarks, SPEC §9.1 and §9.3.
+**Tasks:**
+1. First a benchmark that shows the cost: a scene with many paths (icons, SVG-like shapes, strokes) in a tall scrolled list where most of them are outside the viewport, drawn through `explicit` on the fake device (`internal/gpu/explicit/fakedevice`) and through `gles` where a benchmark can run without a display. Report the time and the share of `Fingerprint` and `masks.Tiles` before and after (a CPU profile).
+2. Cull early: before anything else of a shape command (the paint, `ShapeOf`, the atlas), compute the shape's device bounds (its bounds under the transform, widened by the stroke width, the joins and the anti-aliasing margin, as `MaskMargin` does) and skip the command when they do not meet the clip bounds of the command. The test is conservative: a shape that touches the visible area is drawn as now. Do the same for the analytic shapes, images, text runs and any other command whose bounds are cheap, if they are not culled already; say which were.
+3. The fingerprint of a path is made once, not in every frame:
+   - it is computed eagerly when the path changes (or when it is recorded into a display list), never lazily on first read, so two goroutines drawing the same detached scene never write it (SPEC §9.9);
+   - a path that is not changed again keeps its fingerprint across frames, so a scene that redraws the same pictures hashes nothing;
+   - pick the cheapest design that keeps that rule (for example, a hash updated as verbs and points are added, reset by the operations that rewrite the path), and say why in the report;
+   - hash 64-bit words, not one byte at a time, if the atlas and clip-mask keys keep their quality.
+4. Nothing else changes: every golden, parity and display test passes with its current tolerances; the atlas still finds a mask it made in an earlier frame.
+5. SPEC §9.3 (and §9.1 for `gles`) says how commands are culled and how path keys are made.
+**Tests (table-driven):**
+- a shape fully outside the clip makes no atlas request and no instance (count them on the fake device), for each kind of shape command, under a translation, a scale and a rotation;
+- a shape that only touches the clip with its stroke or its anti-aliased edge is still drawn;
+- a path's fingerprint is the same as before for the same path, changes when the path changes, and is not written while the path is drawn (`go test -race` with two goroutines drawing one detached scene, as in 29.6);
+- the benchmark of task 1, with the numbers before and after in the report; the goal is that the cost of a frame grows with what is visible, not with what is in the scene.
+**Proof:** none.
+**Manual checks:** none.
+
+### 29.13 A keyboard without a keymap is not an error (Emetos, 1.9.2)
+**Goal:** when a Wayland compositor sends `wl_keyboard.keymap` with the format `no_keymap` (when the last keyboard is unplugged), Glutter drops the layout without logging an error, and keys work again when a keyboard with a keymap returns.
+**Why:** Emetos found it (second issues list of 2026-10-27, "Spurious error log"). The protocol allows `no_keymap` (format 0), but `keyboard.onKeymap` (`internal/platform/linux/wayland/keyboard.go`) logs every format other than `xkb_v1` with `slog.Error`.
+**Read:** SPEC §8.2 and §8.5 (Wayland, input); `internal/platform/linux/wayland/keyboard.go`, the `wl_keyboard.keymap` event in the Wayland protocol (`wl/wayland_gen.go`, `WlKeyboardKeymapFormatNoKeymap`).
+**Port from:** none.
+**Files:** `internal/platform/linux/wayland/keyboard.go` and its tests.
+**Tasks:**
+1. `no_keymap`: drop the layout, stop the key repeat, release the keys that are held as the compositor's leave would, and log at `Debug` at most. A format that is neither `no_keymap` nor `xkb_v1` (one the protocol may add later) stays a `Warn`, not an `Error`, since the app goes on.
+2. The keys sent while there is no keymap are ignored without a log for each key.
+3. A later `xkb_v1` keymap makes the keyboard work again, as now.
+**Tests (table-driven):** with the keyboard's handlers called directly, as the existing keyboard tests do: `no_keymap` logs nothing above `Debug` (a captured `slog` handler), drops the layout and the repeat; a key without a keymap is ignored; a new `xkb_v1` keymap restores the keys; an unknown format logs a `Warn`.
+**Proof:** none.
+**Manual checks:** none.
+
+### 29.14 What an idle frame allocates (Emetos, 1.9.2)
+**Goal:** a frame in which only a caret blinks allocates little, and nothing in proportion to the parts of the scene that did not change. Glutter's share of Emetos's idle allocations is found and cut.
+**Why:** Emetos found it (second issues list of 2026-10-27, "while idle with only the cursor blinking, about 2 frames per second, the Go heap grows by about 11 MB/s until garbage collection runs"). That is about 5 MB for each idle frame. Emetos cannot yet tell whether it comes from Emetos or from Glutter; this step measures Glutter's part, with Glutter's own `examples/editor` and a large text, and fixes what is Glutter's.
+**Read:** SPEC §9.1 (damage, retained layers), §9.2, §9.9, §13, §15 (performance targets); the 29.6 entry of `docs/IMPLEMENTED.md` (how `soft` was profiled); `widgets/editable_text_state.go` (the caret blink), `rendering` (repaint boundaries, the layer tree, `compositeFrame`), `ui/scene.go`, `internal/gpu/explicit/frame.go` and `scene.go`, `internal/gpu/damage.go`, `internal/engine` (the frame loop).
+**Port from:** none.
+**Files:** wherever the allocations are; benchmarks in the packages that own them; SPEC §15.
+**Tasks:**
+1. Measure first. Benchmarks with `b.ReportAllocs` (and a heap profile, `-memprofile`) of one caret-blink frame of a focused `TextField` in a large page (`examples/editor` with a long text, and a `Scaffold` with many widgets), split by stage:
+   - the framework's frame (build, layout, paint, `compositeFrame`), through `gluttertest` or the fake platform;
+   - the renderers: `explicit` on its fake device, `gles` where a benchmark can run, `soft`;
+   - the damage tracker and, for `offscreen.View`, the detacher and the surface.
+   Report the bytes and allocations of each stage, and the top allocation sites.
+2. Cut the allocations that grow with the scene and not with the change: a repaint of the caret should not record, copy, hash into new memory or encode again the pictures that did not change. Reuse the frame's buffers across frames (instance arrays, command lists, maps, slices) where the code makes them new for each frame.
+3. Target: a caret frame of `examples/editor` with a 5,000-line text allocates under 256 KB in each of the framework and the renderer, and the bytes do not grow with the length of the text. If a target is not met, report where the rest goes and why it cannot be cut in this step.
+4. Nothing visible changes: every golden, parity and display test passes as it is.
+5. SPEC §15: the new numbers. Say in the report what of Emetos's 5 MB per frame Glutter's own example reproduces, so that Emetos knows what is its own.
+**Tests (table-driven):**
+- the benchmarks of task 1, with the numbers before and after in the report and `IMPLEMENTED.md`;
+- an allocation test (`testing.AllocsPerRun`, or a bytes count from `runtime.ReadMemStats` around the frame) for the caret frame of the framework and of `explicit` on the fake device, with a bound well above the measured value so that it is not flaky, and below the old one;
+- `go test -race` of the buffers that are now reused across frames.
+**Proof:** none.
+**Manual checks:** none.
+
+### 29.15 No `testing` in programs, and release 1.9.2 (Emetos)
+**Goal:** no Glutter program links the `testing` package, and a test keeps it that way. Then 1.9.2 is released.
+**Why:** Emetos found it (issues file, "`testing` is linked into every Glutter program"). `internal/platform/linux/dl/layout.go` is not a test file, and it imports `testing` for `AssertLayout`, so every program that links the Linux platform (Linux desktop and Android) links `testing`. The manager checked on 2026-10-27 with `go list -deps ./examples/counter`: it is the only cause on linux/amd64 and android/arm64; js/wasm and windows/amd64 do not link `testing`. It costs size, nothing else (Go registers its flags only in a test binary).
+**Read:** SPEC §8.1 (rule 3, the layout tests), §25.2 (the Windows `layouttest` package, the model for this one); `internal/platform/linux/dl/layout.go` and every test that calls `dl.AssertLayout` (`xkb`, `fontconfig`, `x11`, `wayland`, `wayland/decor`, `wayland/wl`, `internal/gpu/nativewindow`, `dl` itself); `examples/examples_test.go`.
+**Port from:** none.
+**Files:** a new package `internal/platform/linux/dl/layouttest` (or the place SPEC §8.1 names, if it names one), the tests that call it, a guard test, SPEC §8.1, §1 and the scope paragraphs, `README.md`.
+**Tasks:**
+1. Move `AssertLayout` out of package `dl` into a package that only tests import, `internal/platform/linux/dl/layouttest`, as Windows has `win32/layouttest`. The tests call it from there. `dl` no longer imports `testing`.
+2. A guard test (in `examples`, next to the build tests): `go list -deps` of every example, for linux/amd64, android/arm64 (`CGO_ENABLED=1` is not needed for the list), js/wasm, windows/amd64 and windows/arm64, and none of them lists `testing` (or `testing/...`) or `gluttertest`. When it fails, it names the package that imports it (`go list -f '{{.ImportPath}} {{.Imports}}'`).
+3. Search for any other non-test file that imports `testing`, `net/http/httptest` or `gluttertest` outside the test helper packages, and say what you found.
+4. Release 1.9.2:
+   - SPEC: the version paragraph of §1 (a 1.9.2 sentence: lists that keep what the user reads in place, an offscreen view with its own clipboard and the app's configuration, a gesture arena that no longer panics, shapes outside the clip culled before their masks, fewer allocations in idle frames, no `testing` in programs), a "Scope of 1.9.2" paragraph next to the one of 1.9.1;
+   - `README.md` "What is new in 1.9.2";
+   - the standard checks of rule 8, and `go run ./cmd/glutter-gen apicheck -allow cmd/glutter-gen/apicheck.allow`;
+   - merge, tag `step-29.15` and `v1.9.2`, and publish: `git push --follow-tags origin main`, which takes steps 29.8 to 29.15 and their tags to GitHub. Check with `git ls-remote --tags origin`.
+**Tests (table-driven):**
+- the guard test of task 2, which fails on the code before the move (say so in the report);
+- every layout test passes from its new place.
+**Proof:** none.
+**Manual checks:** none.
