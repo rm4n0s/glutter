@@ -4718,3 +4718,25 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Manual checks:** none
 - **Deviations and follow-ups:**
   - **The developer tools:** `glutter-android`, `glutter-web` and `glutter-proof` still link `testing` through their harness packages. They are tools, not apps.
+
+## 29.17 The arena's microtasks run before the next pointer event (Emetos)
+
+- **Date:** 2026-10-27
+- **Branch:** feat/step-29.17-arena-microtasks
+- **Summary:** Emetos's issue "The gesture arena resolves its default winner on the next turn of the event loop". Steps 29.11 and 29.12 removed the panic and the wrong resolution, but not the order: the arena manager of the binding scheduled its default win with `PlatformDispatcher.Post`, so a tap resolved by default fired after the pointer events queued behind it in the same turn. This step was run in parallel with 29.18 to 29.20, each in a worktree of its own.
+  - **The queue:** `GestureBinding` keeps a queue of microtasks (`scheduleMicrotask`), and the arena manager it makes schedules into it.
+  - **The drain:** `flushMicrotasks` drains the queue first in first out, including the tasks a task schedules. It runs at the top of `handlePointerEventImmediately`, the point every event goes through (`flushPointerEventQueue`, `HandlePointerEvent` and the resampler).
+  - **A lone event:** the first task put in an empty queue also makes one `Post`, so a lone event's arena is still resolved on the next turn.
+  - **Panics:** a panic in a microtask goes to the binding's error reporter (`CallbackPanicked`), and the next task still runs. Without a reporter the panic propagates.
+  - **Unchanged:** a `Post` of anything else, and a `GestureArenaManager` made with its own `scheduleMicrotask` (the ported `arena_test.go`).
+- **Main files:** `gestures/binding.go`, `gestures/arena.go` (doc comment), `docs/SPEC.md` (§13).
+- **Tests (table-driven):**
+  - **`TestBindingMicrotasksRunBeforeTheNextPointerEvent`:** one packet, nothing posted run in between. The rows are Emetos's press, move 150 px, release and press with the same id and with new ids, two quick taps, and a lone tap that wins on the next turn. On the old code the default win came after the second press.
+  - **The queue:** a task that schedules another, FIFO order, the single post, a plain `Post` after the queue, and the panic report.
+  - **`TestGestureDetectorFirstArenaIsResolvedBeforeTheSecondPress`:** Emetos's reproduction with a `GestureDetector`. It failed on the old code.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck, apicheck, uintptrcheck ✅ · wasm build, vet and tests ✅ · check-android ✅ · Windows builds, vet, lint and test-windows ✅ · display tests: none
+- **Proof:** none
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - Dart has one microtask queue for the whole isolate; Glutter's is in the gesture binding, and only the arena uses it. The order the arena sees is Flutter's, so there is no §12.10 row.
+  - Emetos can remove `fixGestureArena`.

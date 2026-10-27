@@ -267,6 +267,7 @@ type GestureBinding struct {
 
 	clock                SamplingClock
 	pendingPointerEvents []PointerEvent
+	microtasks           []func()
 	hitTests             map[int]*HitTestResult
 	resampler            *resampler
 }
@@ -292,7 +293,7 @@ func NewGestureBinding(d *ui.PlatformDispatcher, s GestureScheduler, opts ...Ges
 		hitTests:       map[int]*HitTestResult{},
 	}
 	b.PointerRouter = NewPointerRouter()
-	b.GestureArena = NewGestureArenaManager(d.Post, GestureArenaManagerOpts{Debug: b.Debug})
+	b.GestureArena = NewGestureArenaManager(b.scheduleMicrotask, GestureArenaManagerOpts{Debug: b.Debug})
 	b.PointerSignalResolver = NewPointerSignalResolver()
 	b.SetErrorReporter(o.ErrorReporter)
 	b.resampler = newResampler(b)
@@ -374,6 +375,9 @@ func (b *GestureBinding) HandlePointerEvent(event PointerEvent) {
 }
 
 func (b *GestureBinding) handlePointerEventImmediately(event PointerEvent) {
+	// A Dart microtask runs after the handler of one event and before the next
+	// one, also when several events are handled in one turn of the event loop.
+	b.flushMicrotasks()
 	var hitTestResult *HitTestResult
 	switch e := event.(type) {
 	case *PointerDownEvent, *PointerHoverEvent, *PointerPanZoomStartEvent, PointerSignalEvent:
@@ -536,6 +540,33 @@ func (t *Timer) IsActive() bool { return !t.stopped }
 
 // Scheduler is the scheduler the binding was made with.
 func (b *GestureBinding) Scheduler() GestureScheduler { return b.scheduler }
+
+// scheduleMicrotask queues fn to run before the binding handles the next
+// pointer event, or on the next turn of the event loop when no event comes
+// first: the microtask queue of Dart, which runs after the work that is running
+// now and before the next event. The gesture arena schedules its default win
+// here (SPEC §13).
+//
+// Flutter: dart:async scheduleMicrotask
+func (b *GestureBinding) scheduleMicrotask(fn func()) {
+	wasEmpty := len(b.microtasks) == 0
+	b.microtasks = append(b.microtasks, fn)
+	if wasEmpty {
+		b.d.Post(b.flushMicrotasks)
+	}
+}
+
+// flushMicrotasks runs the queued microtasks, first in first out, including the
+// ones that a microtask schedules. A panic of a microtask goes to the error
+// reporter and the next microtask still runs.
+func (b *GestureBinding) flushMicrotasks() {
+	for len(b.microtasks) > 0 {
+		fn := b.microtasks[0]
+		b.microtasks[0] = nil
+		b.microtasks = b.microtasks[1:]
+		foundation.Guard(b.errorReporter, foundation.CallbackPanicked, "while running a microtask of the gesture binding", nil, fn)
+	}
+}
 
 // Post runs fn on the UI thread, after the work that is running now: the
 // microtask of Dart.

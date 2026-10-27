@@ -146,7 +146,7 @@ type GestureArenaManager struct {
 
 // NewGestureArenaManager creates a manager. scheduleMicrotask runs a function
 // after the work that is running now, before the next event; the binding
-// passes the dispatcher's Post.
+// passes its own microtask queue, which it drains before each pointer event.
 //
 // Flutter: gestures/arena.dart GestureArenaManager.new
 func NewGestureArenaManager(scheduleMicrotask func(fn func()), opts ...GestureArenaManagerOpts) *GestureArenaManager {
