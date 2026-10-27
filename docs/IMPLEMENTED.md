@@ -4629,3 +4629,22 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - Vertices, atlas draws, `DrawColor` and `DrawPaint` are not culled.
   - `Flatten` is now the main cost that grows with the scene.
   - A culled command counts as drawn, so an unsupported feature in a command that is out of view is no longer reported.
+
+## 29.14 A keyboard without a keymap is not an error (Emetos)
+
+- **Date:** 2026-10-27
+- **Branch:** feat/step-29.14-no-keymap
+- **Summary:** Emetos's issue "Spurious error log". When the last keyboard is unplugged, a compositor sends a `wl_keyboard.keymap` with the format `no_keymap`, which the protocol allows. `keyboard.onKeymap` logged every format other than `xkb_v1` with `slog.Error`.
+  - **`no_keymap`:** the layout is dropped, the key repeat stops, and the held keys are released with synthesized key-ups, as a leave does. The only log is one `Debug` entry.
+  - **The focus stays:** the window keeps its keyboard focus, because the compositor sends no new `enter` when a keyboard returns. Keys work as soon as the new `xkb_v1` keymap arrives.
+  - **An unknown format:** it is logged as `Warn` instead of `Error`, and the layout is dropped.
+  - **Keys with no layout:** they are ignored, with no log for each key. This was already the case.
+  - **The logger:** the keyboard logs through a `log *slog.Logger` field, which is `slog.Default()` unless a test replaces it. No global is changed.
+- **Main files:** `internal/platform/linux/wayland/keyboard.go`, `keyboard_test.go`.
+- **Tests (table-driven, on the fake compositor):**
+  - **Each format:** `no_keymap`, an unknown format and `xkb_v1`. Each case checks whether a layout is left, how many `Debug`, `Warn` and `Error` entries are logged (nothing above `Debug` for `no_keymap`), and whether keys are ignored or delivered.
+  - **A keyboard that goes and comes back:** on `no_keymap` a held key is released and its repeat stops; a new `xkb_v1` keymap makes the keys work again in the same window.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck, apicheck, uintptrcheck ✅ · wasm build, vet and tests ✅ · check-android ✅ · Windows builds, vet, lint and test-windows ✅ · display tests: none
+- **Proof:** none
+- **Manual checks:** none
+- **Deviations and follow-ups:** none

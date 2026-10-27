@@ -30,7 +30,7 @@ type keyboard struct {
 	obj *wl.WlKeyboard
 
 	ctx    *xkb.Context
-	layout *xkb.Layout // nil until the compositor sent a usable keymap
+	layout *xkb.Layout // nil until the compositor sent a usable keymap, and again after no_keymap
 	// keymapSeen is whether a wl_keyboard.keymap has been handled, usable or not.
 	keymapSeen bool
 
@@ -48,6 +48,9 @@ type keyboard struct {
 
 	// after schedules fn on the UI thread; tests replace it with a fake clock.
 	after func(d time.Duration, fn func()) (stop func())
+
+	// log is where the keyboard reports; tests replace it to capture the entries.
+	log *slog.Logger
 }
 
 type pressedKey struct {
@@ -68,6 +71,7 @@ func newKeyboard(p *Platform) *keyboard {
 		rate:  defaultRepeatRate,
 		delay: defaultRepeatDelay,
 		after: p.afterFunc,
+		log:   slog.Default(),
 	}
 	k.obj = p.sess.seat.GetKeyboard()
 	k.obj.SetEvents(&wl.WlKeyboardEvents{
@@ -110,43 +114,56 @@ func (k *keyboard) close() {
 
 // onKeymap reads the keymap that the compositor sends in a file. A keymap that
 // cannot be used leaves the keyboard without a layout: the keys are ignored
-// (and the error is logged) rather than ending the app.
+// (and the error is logged) rather than ending the app. The format no_keymap,
+// which a compositor sends when the last keyboard is unplugged, is not an
+// error: the layout is dropped, the repeat stops and the held keys are
+// released, and the focus stays so that a keyboard that returns works at once.
 func (k *keyboard) onKeymap(format wl.WlKeyboardKeymapFormat, fd int, size uint32) {
 	k.keymapSeen = true
 	defer func() {
+		if fd < 0 {
+			return
+		}
 		if err := syscall.Close(fd); err != nil {
-			slog.Warn("closing the keymap file failed", "err", err)
+			k.log.Warn("closing the keymap file failed", "err", err)
 		}
 	}()
 	if k.layout != nil {
 		k.layout.Close()
 		k.layout = nil
 	}
-	if format != wl.WlKeyboardKeymapFormatXkbV1 {
-		slog.Error("the compositor sent a keymap that is not xkb_v1", "format", uint32(format))
+	switch format {
+	case wl.WlKeyboardKeymapFormatNoKeymap:
+		k.log.Debug("the compositor sent no keymap: the keyboard is gone")
+		k.cancelRepeat()
+		k.releaseHeld()
+		return
+	case wl.WlKeyboardKeymapFormatXkbV1:
+	default:
+		k.log.Warn("the compositor sent a keymap format that is not known", "format", uint32(format))
 		return
 	}
 	if k.ctx == nil {
 		ctx, err := xkb.NewContext()
 		if err != nil {
-			slog.Error("the keyboard cannot be used", "err", err)
+			k.log.Error("the keyboard cannot be used", "err", err)
 			return
 		}
 		k.ctx = ctx
 	}
 	keymap, err := k.ctx.KeymapFromFD(fd, size)
 	if err != nil {
-		slog.Error("the keymap of the compositor was rejected", "err", err)
+		k.log.Error("the keymap of the compositor was rejected", "err", err)
 		return
 	}
 	// A locale without a compose table only loses dead keys and compose sequences.
 	compose, err := k.ctx.NewCompose(xkb.LocaleFromEnv(os.Getenv))
 	if err != nil {
-		slog.Warn("no compose table: dead keys and compose sequences are off", "err", err)
+		k.log.Warn("no compose table: dead keys and compose sequences are off", "err", err)
 		compose = nil
 	}
 	if k.layout, err = xkb.NewLayout(keymap, compose); err != nil {
-		slog.Error("the keyboard cannot be used", "err", err)
+		k.log.Error("the keyboard cannot be used", "err", err)
 	}
 }
 
@@ -217,6 +234,19 @@ func (k *keyboard) loseFocus() {
 		h.OnKeyboardFocus(k.focus.id, false)
 	}
 	k.focus = nil
+	k.deliverReleased(released)
+}
+
+// releaseHeld releases the keys that are still down, as loseFocus does, but
+// keeps the focus: the keyboard is gone, the window is not.
+func (k *keyboard) releaseHeld() {
+	released := k.pressed
+	k.pressed = nil
+	k.deliverReleased(released)
+}
+
+// deliverReleased sends a synthesized key-up event for each key.
+func (k *keyboard) deliverReleased(released []pressedKey) {
 	for _, pk := range released {
 		up := pk.data
 		up.TimeStamp = k.p.now()

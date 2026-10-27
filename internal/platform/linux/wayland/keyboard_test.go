@@ -4,13 +4,17 @@ package wayland
 
 import (
 	"context"
+	"log/slog"
+	"os"
 	"reflect"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
 	"github.com/rm4n0s/glutter/internal/platform"
 	"github.com/rm4n0s/glutter/internal/platform/linux/wayland/fakecomp"
+	"github.com/rm4n0s/glutter/internal/platform/linux/wayland/wl"
 	"github.com/rm4n0s/glutter/internal/platform/linux/xkb"
 	"github.com/rm4n0s/glutter/ui"
 )
@@ -573,4 +577,155 @@ func TestUnusableKeymapLeavesTheKeyboardSilent(t *testing.T) {
 	e.settle()
 	checkEvents(t, e.press(keyA))
 	checkEvents(t, e.release(keyA))
+}
+
+// logRecorder is a slog.Handler that keeps the level of every entry.
+type logRecorder struct {
+	mu     sync.Mutex
+	levels []slog.Level
+}
+
+func (r *logRecorder) Enabled(context.Context, slog.Level) bool { return true }
+
+func (r *logRecorder) Handle(_ context.Context, rec slog.Record) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.levels = append(r.levels, rec.Level)
+	return nil
+}
+
+func (r *logRecorder) WithAttrs([]slog.Attr) slog.Handler { return r }
+func (r *logRecorder) WithGroup(string) slog.Handler      { return r }
+
+// count returns how many entries have the level.
+func (r *logRecorder) count(level slog.Level) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	n := 0
+	for _, l := range r.levels {
+		if l == level {
+			n++
+		}
+	}
+	return n
+}
+
+// above returns how many entries are above Debug.
+func (r *logRecorder) above() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	n := 0
+	for _, l := range r.levels {
+		if l > slog.LevelDebug {
+			n++
+		}
+	}
+	return n
+}
+
+// keymapFile returns a file descriptor for a file with the text, which the
+// keyboard closes, as it does with the one a compositor sends.
+func keymapFile(t *testing.T, text string) (fd int, size uint32) {
+	t.Helper()
+	f, err := os.CreateTemp(t.TempDir(), "keymap")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString(text); err != nil {
+		t.Fatal(err)
+	}
+	fd, err = syscall.Dup(int(f.Fd()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return fd, uint32(len(text))
+}
+
+// sendKeymap hands a wl_keyboard.keymap event to the keyboard on the UI thread.
+func (e *keyEnv) sendKeymap(format wl.WlKeyboardKeymapFormat, text string) {
+	e.t.Helper()
+	fd, size := keymapFile(e.t, text)
+	e.onLoop(func() bool { e.p.keyboard.onKeymap(format, fd, size); return true })
+}
+
+func TestKeyboardKeymapFormats(t *testing.T) {
+	const unknownFormat = wl.WlKeyboardKeymapFormat(99)
+	tests := []struct {
+		name      string
+		format    wl.WlKeyboardKeymapFormat
+		text      string
+		hasLayout bool
+		debug     int
+		warn      int
+		errs      int
+	}{
+		{"no_keymap", wl.WlKeyboardKeymapFormatNoKeymap, "", false, 1, 0, 0},
+		{"unknown format", unknownFormat, "", false, 0, 1, 0},
+		{"xkb_v1", wl.WlKeyboardKeymapFormatXkbV1, "", true, 0, 0, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := startKeyboard(t, "us")
+			rec := &logRecorder{}
+			e.onLoop(func() bool { e.p.keyboard.log = slog.New(rec); return true })
+			text := tt.text
+			if text == "" {
+				text = keymapFor(t, "us")
+			}
+			e.sendKeymap(tt.format, text)
+			if got := e.onLoop(func() bool { return e.p.keyboard.layout != nil }); got != tt.hasLayout {
+				t.Errorf("layout present = %v, want %v", got, tt.hasLayout)
+			}
+			if got := rec.count(slog.LevelDebug); got > tt.debug {
+				t.Errorf("Debug entries = %d, want at most %d", got, tt.debug)
+			}
+			if got := rec.count(slog.LevelWarn); got != tt.warn {
+				t.Errorf("Warn entries = %d, want %d", got, tt.warn)
+			}
+			if got := rec.count(slog.LevelError); got != tt.errs {
+				t.Errorf("Error entries = %d, want %d", got, tt.errs)
+			}
+			if tt.format == wl.WlKeyboardKeymapFormatNoKeymap && rec.above() != 0 {
+				t.Errorf("no_keymap logged above Debug")
+			}
+			// Keys are ignored without a layout, and work with one.
+			if tt.hasLayout {
+				checkEvents(t, e.press(keyA), want{down, 0x70004, 'a', "a", false})
+			} else {
+				checkEvents(t, e.press(keyA))
+				checkEvents(t, e.release(keyA))
+			}
+		})
+	}
+}
+
+func TestKeyboardNoKeymapReleasesHeldKeysAndStopsTheRepeat(t *testing.T) {
+	e := startKeyboard(t, "us")
+	rec := &logRecorder{}
+	e.onLoop(func() bool { e.p.keyboard.log = slog.New(rec); return true })
+	e.srv.KeyboardRepeatInfo(10, 100)
+	e.settle()
+	checkEvents(t, e.press(keyA), want{down, 0x70004, 'a', "a", false})
+
+	e.sendKeymap(wl.WlKeyboardKeymapFormatNoKeymap, "")
+	checkEvents(t, e.events(), want{up, 0x70004, 'a', "", true})
+	if e.onLoop(func() bool { return e.p.keyboard.repeat != nil }) {
+		t.Error("the key repeat is still on")
+	}
+	e.advance(time.Second)
+	checkEvents(t, e.events()) // no repeat events
+	if rec.above() != 0 {
+		t.Errorf("no_keymap logged above Debug")
+	}
+
+	// A keyboard returns: its keymap makes the keys work again, in the same window.
+	e.sendKeymap(wl.WlKeyboardKeymapFormatXkbV1, keymapFor(t, "us"))
+	checkEvents(t, e.press(keyS), want{down, 0x70016, 's', "s", false})
+	checkEvents(t, e.release(keyS), want{up, 0x70016, 's', "", false})
+	if rec.above() != 0 {
+		t.Errorf("an xkb_v1 keymap logged above Debug")
+	}
 }
