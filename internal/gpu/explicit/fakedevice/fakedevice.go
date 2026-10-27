@@ -52,6 +52,10 @@ type Device struct {
 	Name string
 	// Writes are the calls of WriteBuffer, with a copy of their data.
 	Writes []BufferWrite
+	// Quiet stops the device from keeping the log of its calls and the copies of the buffer
+	// writes, so that a benchmark of the renderer counts what the renderer allocates and not
+	// what the log does.
+	Quiet bool
 }
 
 // BufferWrite is one call of WriteBuffer.
@@ -109,6 +113,9 @@ func (d *Device) Description() string { return "fake: " + d.Name }
 func (d *Device) Closed() bool { return d.closed }
 
 func (d *Device) record(op, format string, args ...any) {
+	if d.Quiet {
+		return
+	}
 	d.calls = append(d.calls, Call{Op: op, Args: fmt.Sprintf(format, args...)})
 }
 
@@ -194,7 +201,9 @@ func (d *Device) WriteBuffer(b explicit.Buffer, offset int, data []byte) {
 	if fb, ok := b.(*buffer); ok {
 		usage = fb.usage
 	}
-	d.Writes = append(d.Writes, BufferWrite{Offset: offset, Data: slices.Clone(data), Usage: usage})
+	if !d.Quiet {
+		d.Writes = append(d.Writes, BufferWrite{Offset: offset, Data: slices.Clone(data), Usage: usage})
+	}
 	if fb, ok := b.(*buffer); ok && offset >= 0 && offset+len(data) <= len(fb.data) {
 		copy(fb.data[offset:], data)
 	}
@@ -403,7 +412,11 @@ func (s *swapchain) Configure(width, height int) error {
 	if err := s.d.fail(); err != nil {
 		return err
 	}
-	s.w, s.h, s.tex = width, height, nil
+	// The images of the swapchain are kept while the size stays the same, as a device does.
+	if s.w != width || s.h != height || s.stale {
+		s.tex = nil
+	}
+	s.w, s.h = width, height
 	if s.stale {
 		s.stale = false
 		s.d.Rotation = s.d.RotationAfter

@@ -217,22 +217,47 @@ type FlattenOpts struct {
 	// that has none of that clip's shapes, so that the group's pixels do not depend
 	// on them. The group's Command.Transform is the transform of its contents.
 	Boundary func(l ui.Layer) bool
+	// Retained, when it is not nil, is asked about every group that Boundary made, when the
+	// group is not inside another group: with the transform of the group's contents and the
+	// clip it is composited under. When it says true, the renderer already has the group's
+	// pixels and will not draw its contents, and Flatten emits the group without them: the
+	// CommandBeginLayer and the CommandEndLayer only, with nothing between. A layer that was
+	// not repainted then costs nothing in a frame, however much it draws.
+	Retained func(l ui.Layer, m *ui.Matrix4, clip Clip) bool
 }
 
 // Flatten turns a scene into the list of commands that draws it. The layer tree
 // and the pictures' operations are walked in painting order. Transforms and clips
 // are folded into each command; layers that need a group become a pair of
-// CommandBeginLayer and CommandEndLayer. Nothing is dropped: a renderer decides
-// what it can draw. A clip that leaves nothing to draw does not remove the
-// commands inside it; a renderer may skip a command whose Clip is empty.
+// CommandBeginLayer and CommandEndLayer. Nothing is dropped except what cannot show:
+// a renderer decides what it can draw, and the lines of a paragraph that lie wholly
+// outside the clip are not expanded into commands. A clip that leaves nothing to draw
+// does not remove the commands inside it; a renderer may skip a command whose Clip is empty.
 //
 // It fails with FlattenSceneNil for a nil scene and FlattenLayerUnknown for a
 // layer of a type it does not know.
 //
 // Flutter: no counterpart (flutter::LayerTree::Preroll and Paint)
 func Flatten(scene *ui.Scene, opts ...FlattenOpts) (*DrawList, error) {
+	list := &DrawList{}
+	err := FlattenFunc(scene, func(c Command) error {
+		list.Commands = append(list.Commands, c)
+		return nil
+	}, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return list, nil
+}
+
+// FlattenFunc is Flatten for a caller that handles each command as it is made, so that the
+// list of a scene is never held: a frame of a large scene then allocates what its commands
+// need and no more. The first error of emit stops the walk and is returned as it is.
+//
+// Flutter: no counterpart (flutter::LayerTree::Preroll and Paint)
+func FlattenFunc(scene *ui.Scene, emit func(Command) error, opts ...FlattenOpts) error {
 	if scene == nil {
-		return nil, errors.New(tagFlattenSceneNil, "Flatten needs a scene")
+		return errors.New(tagFlattenSceneNil, "Flatten needs a scene")
 	}
 	var o FlattenOpts
 	switch len(opts) {
@@ -247,12 +272,12 @@ func Flatten(scene *ui.Scene, opts ...FlattenOpts) (*DrawList, error) {
 		const huge = 1 << 30
 		bounds = ui.Rect{Left: -huge, Top: -huge, Right: huge, Bottom: huge}
 	}
-	f := &flattener{list: &DrawList{}, boundary: o.Boundary}
+	f := &flattener{sink: emit, boundary: o.Boundary, retained: o.Retained}
 	st := state{m: *ui.NewMatrix4Identity(), clip: Clip{Bounds: bounds}}
 	if err := f.layer(scene.Root(), st); err != nil {
-		return nil, err
+		return err
 	}
-	return f.list, nil
+	return f.err
 }
 
 // state is the transform and the clip that drawing happens in.
@@ -262,11 +287,27 @@ type state struct {
 }
 
 type flattener struct {
-	list     *DrawList
+	sink     func(Command) error
 	boundary func(ui.Layer) bool
+	retained func(l ui.Layer, m *ui.Matrix4, clip Clip) bool
+	// err is the first error of the sink; after it nothing more is emitted.
+	err error
+	// depth is the number of groups that are open.
+	depth int
 }
 
-func (f *flattener) emit(c Command) { f.list.Commands = append(f.list.Commands, c) }
+func (f *flattener) emit(c Command) {
+	if f.err != nil {
+		return
+	}
+	switch c.Kind {
+	case CommandBeginLayer:
+		f.depth++
+	case CommandEndLayer:
+		f.depth--
+	}
+	f.err = f.sink(c)
+}
 
 func (f *flattener) begin(layer ui.Layer, op ui.DisplayOp, outer state) {
 	f.emit(Command{Kind: CommandBeginLayer, Layer: layer, Op: op, Transform: outer.m, Clip: outer.clip})
@@ -342,7 +383,11 @@ func (f *flattener) boundaryGroup(l ui.Layer, outer, inner state) error {
 	b := outer.clip.Bounds
 	whole := Clip{Bounds: ui.Rect{Left: math.Floor(b.Left), Top: math.Floor(b.Top), Right: math.Ceil(b.Right), Bottom: math.Ceil(b.Bottom)}}
 	f.emit(Command{Kind: CommandBeginLayer, Layer: l, Transform: inner.m, Clip: outer.clip})
-	err := f.children(l, state{m: inner.m, clip: whole})
+	var err error
+	// A group whose pixels the renderer keeps is not walked: its contents would only be dropped.
+	if f.retained == nil || f.depth != 1 || !f.retained(l, &inner.m, outer.clip) {
+		err = f.children(l, state{m: inner.m, clip: whole})
+	}
 	f.end()
 	return err
 }
@@ -382,6 +427,9 @@ func (f *flattener) picture(p *ui.Picture, st state) error {
 		}
 	}
 	for _, op := range p.DisplayList().Ops() {
+		if f.err != nil {
+			return nil
+		}
 		switch v := op.(type) {
 		case ui.OpSave:
 			stack = append(stack, stackEntry{saved: st})
@@ -410,7 +458,7 @@ func (f *flattener) picture(p *ui.Picture, st state) error {
 			// A paragraph is drawn as the glyphs, shadows, backgrounds and decorations it
 			// is made of, each under its own transform.
 			var err error
-			textdraw.Expand(v, &st.m, func(op ui.DisplayOp, m *ui.Matrix4) {
+			textdraw.ExpandVisible(v, &st.m, st.clip.Bounds, func(op ui.DisplayOp, m *ui.Matrix4) {
 				if err != nil {
 					return
 				}

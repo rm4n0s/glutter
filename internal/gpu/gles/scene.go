@@ -27,21 +27,18 @@ func (r *Renderer) drawScene(scene *ui.Scene, w, h int, useCache bool) error {
 	defer r.res.endFrame()
 	tiles0, clips0, images0, asks0 := r.res.masks.Rasterized, r.res.clipMasksBuilt, r.res.imagesUploaded, r.res.masks.Requests
 	fo := gpu.FlattenOpts{Bounds: ui.NewRectFromLTWH(0, 0, float64(w), float64(h))}
+	b := &r.builder
+	b.reset(w, h, r.skip, r.res)
 	var cache *layerCache
 	if useCache && r.cache != nil {
 		cache = r.cache
+		b.cache = cache
 		cache.BeginFrame(scene.Root())
 		fo.Boundary = cache.Boundary
+		fo.Retained = b.retained
 	}
-	list, err := gpu.Flatten(scene, fo)
-	if err != nil {
+	if err := gpu.FlattenFunc(scene, b.command, fo); err != nil {
 		return err
-	}
-	b := &frameBuilder{w: w, h: h, skip: r.skip, res: r.res, cache: cache}
-	for _, c := range list.Commands {
-		if err := b.command(c); err != nil {
-			return err
-		}
 	}
 	b.stats.Instances = b.frame.items(pipeShape) + b.frame.items(pipeMask) + b.frame.items(pipeImage) + b.frame.items(pipeLayer)
 	b.stats.Vertices = b.frame.items(pipeVertices)

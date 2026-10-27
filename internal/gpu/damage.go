@@ -231,6 +231,12 @@ func measureOps(w *damageWalk, i *pictureInfo, ops []ui.DisplayOp, ctm *ui.Matri
 				i.addUnder(&m, child.bounds)
 			}
 		case ui.OpDrawParagraph:
+			if b, ok := textdraw.Bounds(v); ok {
+				// The box of the paragraph holds what it draws; measuring the glyphs one by one
+				// would cost the length of the text each time the picture is recorded again.
+				i.addUnder(&m, b)
+				break
+			}
 			ok := textdraw.Expand(v, &m, func(inner ui.DisplayOp, im *ui.Matrix4) {
 				measureOps(w, i, []ui.DisplayOp{inner}, im)
 			})
@@ -266,8 +272,8 @@ func measureOps(w *damageWalk, i *pictureInfo, ops []ui.DisplayOp, ctm *ui.Matri
 				i.unbounded = true
 			}
 		default:
-			if p := OpPaint(op); p != nil {
-				measurePaint(i, p)
+			if img, mask := PaintFilters(op); img || mask {
+				i.unbounded = true
 			}
 			if b, ok := ShapeBounds(op); ok {
 				i.addUnder(&m, b)

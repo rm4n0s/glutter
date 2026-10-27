@@ -262,3 +262,83 @@ func TestParagraphThatCannotDrawDrawsNothing(t *testing.T) {
 		t.Errorf("Render: %v", err)
 	}
 }
+
+// withoutRows hides everything but PaintParagraph of a paragraph, so that the renderer
+// expands all of it, the way it did before it asked for the rows that show.
+type withoutRows struct {
+	ui.ParagraphLayout
+	inner ui.ParagraphPainter
+}
+
+func (w withoutRows) PaintParagraph(emit func(ui.ParagraphDraw)) { w.inner.PaintParagraph(emit) }
+
+func TestLongTextDrawnThroughAWindowIsTheSameAsDrawnWhole(t *testing.T) {
+	e := proof.BundledTextEngine()
+	rot := ui.NewMatrix4Identity()
+	rot.Translate(100, 0, 0)
+	rot.RotateZ(0.5)
+	scale := ui.NewMatrix4Identity()
+	scale.Scale(1.5, 1.5, 1)
+	text := ""
+	for i := 0; i < 120; i++ {
+		text += "Line " + string(rune('A'+i%26)) + " of a long text\n"
+	}
+	blue := ui.NewColor(0xFF1976D2)
+	tests := []struct {
+		name  string
+		style ui.TextStyleOpts
+		ctm   *ui.Matrix4
+		at    ui.Offset
+	}{
+		{"plain, the middle of the text", ui.TextStyleOpts{Color: &blue}, nil, ui.Offset{Dy: -900}},
+		{"plain, the start", ui.TextStyleOpts{Color: &blue}, nil, ui.Offset{}},
+		{"plain, the end", ui.TextStyleOpts{Color: &blue}, nil, ui.Offset{Dy: -2300}},
+		{"plain, above the window", ui.TextStyleOpts{Color: &blue}, nil, ui.Offset{Dy: -9000}},
+		{"scaled", ui.TextStyleOpts{Color: &blue}, scale, ui.Offset{Dy: -700}},
+		{"rotated", ui.TextStyleOpts{Color: &blue}, rot, ui.Offset{Dy: -300}},
+		{"a shadow that reaches into the window", ui.TextStyleOpts{Color: &blue, Shadows: []ui.Shadow{{Color: ui.NewColor(0xFF000000), Offset: ui.Offset{Dx: 2, Dy: 30}, BlurRadius: 4}}}, nil, ui.Offset{Dy: -930}},
+		{"a decoration", ui.TextStyleOpts{Color: &blue, Decoration: ui.Ptr(ui.TextDecorationUnderline | ui.TextDecorationLineThrough)}, nil, ui.Offset{Dy: -1200}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			style := tt.style
+			style.FontFamily = fonts.RobotoFamily
+			style.FontSize = ui.Ptr(16.0)
+			b := ui.NewParagraphBuilder(e, ui.NewParagraphStyle(ui.ParagraphStyleOpts{}))
+			b.PushStyle(ui.NewTextStyle(style))
+			b.AddText(text)
+			p := b.Build()
+			p.Layout(ui.NewParagraphConstraints(120))
+			painter, ok := p.Layouter().(ui.ParagraphPainter)
+			if !ok {
+				t.Fatal("the paragraph cannot draw itself")
+			}
+			scene := func(para *ui.Paragraph) *ui.Scene {
+				rec := ui.NewPictureRecorder()
+				c := ui.NewCanvas(rec)
+				c.DrawColor(ui.NewColor(0xFFFFFFFF), ui.BlendModeSrcOver)
+				if tt.ctm != nil {
+					c.Transform(tt.ctm)
+				}
+				c.DrawParagraph(para, tt.at)
+				sb := ui.NewSceneBuilder()
+				sb.AddPicture(ui.Offset{}, rec.EndRecording())
+				return sb.Build()
+			}
+			got, err := Render(scene(p), 120, 60)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want, err := Render(scene(ui.NewParagraph(withoutRows{ParagraphLayout: p.Layouter(), inner: painter})), 120, 60)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !sameImages(got, want) {
+				t.Errorf("the window shows other pixels than the whole text drawn and clipped")
+			}
+			if blank := inkBounds(want).Empty(); blank != (tt.at.Dy == -9000) {
+				t.Errorf("blank = %v: the test must show text, except where the text is out of the window", blank)
+			}
+		})
+	}
+}

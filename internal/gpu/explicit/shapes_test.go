@@ -267,7 +267,7 @@ func TestUnsupportedFeatures(t *testing.T) {
 			r, dev, _ := newRenderer(t)
 			_, err := r.Draw(window, 100, 100, scene, false)
 			appErr, ok := errors.FromError(err)
-			if !ok || appErr.Tag != "GPUNotImplemented" || !appErr.HasRoute("Renderer.build->frameBuilder.command") {
+			if !ok || appErr.Tag != "GPUNotImplemented" || !appErr.HasRoute("Renderer.build->FlattenFunc") {
 				t.Fatalf("got %v, want GPUNotImplemented through Renderer.build", err)
 			}
 			if got := appErr.Metadata["feature"]; got != tt.feature {

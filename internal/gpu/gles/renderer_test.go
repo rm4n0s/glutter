@@ -337,7 +337,7 @@ func TestRendererStrictAndSkippingModes(t *testing.T) {
 	s, _ := strict.Attach(waylandHandle)
 	err := strict.Render(s, scene, ui.Size{Width: 8, Height: 8}, 1)
 	appErr, ok := errors.FromError(err)
-	if !ok || appErr.Tag != tagGLNotImplemented || !appErr.HasRoute("Renderer.render->Renderer.drawScene->frameBuilder.command") {
+	if !ok || appErr.Tag != tagGLNotImplemented || !appErr.HasRoute("Renderer.render->Renderer.drawScene->FlattenFunc") {
 		t.Fatalf("Render = %v, want GLNotImplemented from the frame builder", err)
 	}
 	if contains(egl.calls, "swapBuffers") {

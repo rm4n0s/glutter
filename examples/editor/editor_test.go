@@ -18,7 +18,7 @@ import (
 
 // useLinux makes the framework behave as on the Linux desktop, which the example
 // is for: the tests default to Android.
-func useLinux(t *testing.T) {
+func useLinux(t testing.TB) {
 	t.Helper()
 	if !foundation.DebugMode {
 		t.Skip("the platform override is a debug-only feature")

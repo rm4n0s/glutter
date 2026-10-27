@@ -42,3 +42,61 @@ func PaintOf(op ui.DisplayOp) *ui.Paint {
 	}
 	return nil
 }
+
+// CopyPaintOf copies the paint of a drawing operation into dst and says whether the operation
+// has one. It is PaintOf for a caller that does not keep the paint: the copy lives in dst, where
+// PaintOf makes the operation escape to the heap for every call, which a frame of thousands of
+// glyphs cannot afford.
+//
+// Flutter: no counterpart
+func CopyPaintOf(op ui.DisplayOp, dst *ui.Paint) bool {
+	switch v := op.(type) {
+	case ui.OpDrawPath:
+		*dst = v.Paint
+	case ui.OpDrawRect:
+		*dst = v.Paint
+	case ui.OpDrawRRect:
+		*dst = v.Paint
+	case ui.OpDrawRSuperellipse:
+		*dst = v.Paint
+	case ui.OpDrawDRRect:
+		*dst = v.Paint
+	case ui.OpDrawOval:
+		*dst = v.Paint
+	case ui.OpDrawCircle:
+		*dst = v.Paint
+	case ui.OpDrawArc:
+		*dst = v.Paint
+	case ui.OpDrawLine:
+		*dst = v.Paint
+	case ui.OpDrawPoints:
+		*dst = v.Paint
+	case ui.OpDrawImage:
+		*dst = v.Paint
+	case ui.OpDrawImageRect:
+		*dst = v.Paint
+	case ui.OpDrawImageNine:
+		*dst = v.Paint
+	case ui.OpDrawAtlas:
+		*dst = v.Paint
+	case ui.OpDrawVertices:
+		*dst = v.Paint
+	case ui.OpDrawPaint:
+		*dst = v.Paint
+	default:
+		return false
+	}
+	return true
+}
+
+// PaintFilters says whether the paint of an operation has an image filter and a mask filter;
+// both are false for an operation without a paint.
+//
+// Flutter: no counterpart
+func PaintFilters(op ui.DisplayOp) (imageFilter, maskFilter bool) {
+	var p ui.Paint
+	if !CopyPaintOf(op, &p) {
+		return false, false
+	}
+	return p.ImageFilter() != nil, p.MaskFilter() != nil
+}

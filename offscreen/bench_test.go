@@ -1,8 +1,10 @@
 package offscreen_test
 
 import (
+	"fmt"
 	"testing"
 
+	"github.com/rm4n0s/glutter/internal/gpu/gputest/editorscene"
 	"github.com/rm4n0s/glutter/internal/gpu/soft"
 	"github.com/rm4n0s/glutter/offscreen"
 	"github.com/rm4n0s/glutter/ui"
@@ -65,5 +67,51 @@ func BenchmarkFrameCaret(b *testing.B) {
 		if len(damage) == 0 {
 			b.Fatal("the caret frame has no damage")
 		}
+	}
+}
+
+// BenchmarkEditorCaretFrame is the two stages of an offscreen view for a frame in which only the
+// caret of the text editor of examples/editor blinks, with a text of 50, 500 and 5,000 lines (step
+// 29.15): Detacher.Detach (on the UI thread) and Surface.Draw (on the drawing goroutine). The bytes
+// and allocations of a frame must not grow with the length of the text.
+func BenchmarkEditorCaretFrame(b *testing.B) {
+	for _, lines := range []int{50, 500, 5000} {
+		var raw [2]*ui.Scene // made once: b.Run calls the function again for each b.N
+		scenes := func(b *testing.B) [2]*ui.Scene {
+			if raw[0] == nil {
+				raw[0], raw[1] = editorscene.CaretScenes(b, lines)
+			}
+			return raw
+		}
+		b.Run(fmt.Sprintf("detach/lines=%d", lines), func(b *testing.B) {
+			raw := scenes(b)
+			d := offscreen.NewDetacher()
+			for i := 0; i < 4; i++ {
+				d.Detach(raw[i%2])
+			}
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				d.Detach(raw[i%2])
+			}
+		})
+		b.Run(fmt.Sprintf("draw/lines=%d", lines), func(b *testing.B) {
+			raw := scenes(b)
+			d := offscreen.NewDetacher()
+			detached := [2]*ui.Scene{d.Detach(raw[0]), d.Detach(raw[1])}
+			s := offscreen.NewSurface(editorscene.Width, editorscene.Height)
+			for i := 0; i < 4; i++ {
+				if _, err := s.Draw(detached[i%2]); err != nil {
+					b.Fatal(err)
+				}
+			}
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				if _, err := s.Draw(detached[i%2]); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
 	}
 }

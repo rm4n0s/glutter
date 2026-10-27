@@ -19,7 +19,9 @@ import (
 //
 // Flutter: no counterpart
 type FrameStats struct {
-	// Commands is the number of drawing commands in the scene.
+	// Commands is the number of drawing commands the frame walked. The commands inside a layer
+	// whose pixels the raster cache has are not walked (gpu.FlattenOpts.Retained), and the lines of a
+	// paragraph that lie outside the clip are not expanded into commands, so neither is counted.
 	Commands int
 	// Drawn is the number of commands drawn.
 	Drawn int
@@ -149,18 +151,64 @@ type frameBuilder struct {
 	// nothing to draw, whose commands are dropped.
 	layers []*layerRec
 	culled int
+	// contexts are the shape contexts of the commands being drawn, one for each level of draws
+	// inside draws (a filtered shape draws the shape again); they are kept between frames so
+	// that a command makes no allocation for its context. depth is the number in use.
+	contexts []*shapeContext
+	depth    int
 }
 
+// reset makes the builder ready for a frame of w x h pixels, keeping the memory of the frame before
+// it: the data of the pipelines, the draw calls, the paint specs and the contexts. What a frame
+// holds on to is copied to the device by upload before the next frame starts building.
+func (b *frameBuilder) reset(w, h int, skip bool, res *resources) {
+	for i := range b.data {
+		b.data[i] = b.data[i][:0]
+	}
+	clear(b.calls)
+	b.calls = b.calls[:0]
+	clear(b.layers)
+	b.layers = b.layers[:0]
+	// The specs of old frames are dropped now and then, so that a changing gradient does not
+	// grow the table for ever.
+	if len(b.specs) > maxInternedSpecs || b.res != res {
+		clear(b.specs)
+	}
+	clear(b.reasons)
+	b.w, b.h, b.skip, b.res = w, h, skip, res
+	b.cache = nil
+	b.stats = FrameStats{}
+	b.skipping, b.seq, b.culled, b.depth = 0, 0, 0, 0
+}
+
+// maxInternedSpecs is how many paint specs the table of a builder holds between frames.
+const maxInternedSpecs = 1024
+
+// context returns the shape context of the command, one level deeper than the draw that is running.
+func (b *frameBuilder) context(c gpu.Command, outer image.Rectangle) *shapeContext {
+	if b.depth == len(b.contexts) {
+		b.contexts = append(b.contexts, new(shapeContext))
+	}
+	sc := b.contexts[b.depth]
+	b.depth++
+	*sc = shapeContext{b: b, c: c, t: gpu.AffineOf(&c.Transform), outer: outer}
+	return sc
+}
+
+// release gives back the context that the last call of context returned.
+func (b *frameBuilder) release() { b.depth-- }
+
 // intern returns the one PaintSpec that equals sp.
-func (b *frameBuilder) intern(sp gpu.PaintSpec) *gpu.PaintSpec {
-	if p, ok := b.specs[sp]; ok {
+func (b *frameBuilder) intern(sp *gpu.PaintSpec) *gpu.PaintSpec {
+	if p, ok := b.specs[*sp]; ok {
 		return p
 	}
 	if b.specs == nil {
 		b.specs = map[gpu.PaintSpec]*gpu.PaintSpec{}
 	}
-	p := &sp
-	b.specs[sp] = p
+	p := new(gpu.PaintSpec)
+	*p = *sp
+	b.specs[*p] = p
 	return p
 }
 
@@ -259,13 +307,14 @@ func (b *frameBuilder) draw(c gpu.Command) (bool, error) {
 		b.stats.Culled++
 		return true, nil
 	}
-	p := gpu.PaintOf(c.Op)
-	if p != nil && p.ImageFilter() != nil {
+	hasImageFilter, hasMaskFilter := gpu.PaintFilters(c.Op)
+	if hasImageFilter {
 		if q, with := gpu.PaintAccess(c.Op); q != nil {
 			return b.filteredDraw(c, q, with)
 		}
 	}
-	sc := &shapeContext{b: b, c: c, t: gpu.AffineOf(&c.Transform), outer: outer}
+	sc := b.context(c, outer)
+	defer b.release()
 	cb := c.Clip.Bounds
 	sc.clip = [4]float32{float32(cb.Left), float32(cb.Top), float32(cb.Right), float32(cb.Bottom)}
 	if !c.Clip.IsRect() {
@@ -279,7 +328,7 @@ func (b *frameBuilder) draw(c gpu.Command) (bool, error) {
 		sc.mask = mask
 	}
 
-	if p != nil && p.MaskFilter() != nil {
+	if hasMaskFilter {
 		if q, with := gpu.PaintAccess(c.Op); q != nil {
 			if handled, ok, err := sc.maskFiltered(q, with); handled {
 				return ok, err
@@ -316,7 +365,9 @@ func (b *frameBuilder) draw(c gpu.Command) (bool, error) {
 	case ui.OpDrawPoints:
 		ok, err = sc.shape(&v.Paint, func(e *gpu.ShapeEncoder) string { return e.Segments(v.Points, &v.Paint, false, v.Mode) })
 	case ui.OpDrawPath, ui.OpDrawArc:
-		ok, err = sc.pathMask(c.Op, p)
+		var p ui.Paint
+		gpu.CopyPaintOf(c.Op, &p)
+		ok, err = sc.pathMask(c.Op, &p)
 	case ui.OpDrawColor:
 		fill := ui.NewPaint()
 		fill.SetColor(v.Color)
@@ -403,7 +454,7 @@ func (s *shapeContext) paintWith(p *ui.Paint, useShader bool, toDevice gpu.Affin
 		a := col.A
 		info.color = [4]float32{col.R * a, col.G * a, col.B * a, a}
 	}
-	info.spec = s.b.intern(sp)
+	info.spec = s.b.intern(&sp)
 	return info, paintDraw, nil
 }
 
@@ -499,9 +550,10 @@ func (s *shapeContext) shape(p *ui.Paint, draw func(e *gpu.ShapeEncoder) (needsM
 		}
 	}
 	if what := draw(enc); what != "" {
-		if op := gpu.PaintOf(s.c.Op); op != nil {
+		var p ui.Paint
+		if gpu.CopyPaintOf(s.c.Op, &p) {
 			if _, isShape := gpu.ShapeOf(s.c.Op); isShape {
-				return s.pathMask(s.c.Op, op)
+				return s.pathMask(s.c.Op, &p)
 			}
 		}
 		return false, s.b.unsupported(what)

@@ -233,3 +233,39 @@ func BenchmarkIdleFrame(b *testing.B) {
 		ts.PumpFrame(16 * time.Millisecond)
 	}
 }
+
+// BenchmarkCaretFrame is a frame in which only the caret of a focused text field blinks, in a
+// screen of about 500 elements (the screen of the other benchmarks, with an EditableText in its
+// corner): nothing builds, the caret is painted again and the layers above it are made again
+// (step 29.15). The allocations must not grow with the rest of the screen.
+func BenchmarkCaretFrame(b *testing.B) {
+	ts := gluttertest.New(b, gluttertest.Opts{Size: ui.Size{Width: 1536, Height: 864}, DevicePixelRatio: 1.25, DiscardScenes: true})
+	controller := widgets.NewTextEditingController()
+	focus := widgets.NewFocusNode()
+	field := widgets.NewEditableText(controller, focus, benchText, ui.NewColor(0xFF6750A4), ui.NewColor(0xFFCAC4D0),
+		widgets.EditableTextOpts{Autofocus: true})
+	page := widgets.NewStack([]widgets.Widget{
+		newScreen(nil),
+		widgets.NewPositioned(widgets.NewSizedBox(field, widgets.SizedBoxOpts{Width: foundation.Some(200.0), Height: foundation.Some(30.0)}),
+			widgets.PositionedOpts{Top: foundation.Some(8.0), Left: foundation.Some(8.0)}),
+	})
+	ts.PumpWidget(widgets.NewWidgetsApp(ui.NewColor(0xFFFFFFFF), widgets.WidgetsAppOpts{
+		DebugShowCheckedModeBanner: foundation.Some(false),
+		OnGenerateRoute: func(settings widgets.RouteSettings) widgets.Route {
+			return widgets.NewPageRouteBuilder(
+				func(widgets.BuildContext, animation.Animation[float64], animation.Animation[float64]) widgets.Widget {
+					return page
+				},
+				widgets.PageRouteBuilderOpts{PageRouteOpts: widgets.PageRouteOpts{RouteOpts: widgets.RouteOpts{Settings: settings}}})
+		},
+	}))
+	for i := 0; i < 6; i++ {
+		ts.PumpFrame(500 * time.Millisecond)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		ts.PumpFrame(500 * time.Millisecond)
+	}
+	b.ReportMetric(float64(countElements(ts)), "elements")
+}

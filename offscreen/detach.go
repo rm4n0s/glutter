@@ -1,6 +1,12 @@
 package offscreen
 
-import "github.com/rm4n0s/glutter/ui"
+import (
+	"math"
+
+	"github.com/rm4n0s/glutter/internal/gpu"
+	"github.com/rm4n0s/glutter/internal/gpu/textdraw"
+	"github.com/rm4n0s/glutter/ui"
+)
 
 // Detacher copies scenes, on the UI thread, into scenes that hold nothing the
 // framework changes afterwards, so that any goroutine can draw the copy while the UI
@@ -259,21 +265,110 @@ func (d *Detacher) paragraph(v ui.OpDrawParagraph) (ui.DisplayOp, bool) {
 		if draw.Matrix != nil {
 			draw.Matrix = draw.Matrix.Clone()
 		}
-		f.draws = append(f.draws, draw)
+		f.add(draw)
 	})
+	f.finish()
 	v.Paragraph = ui.NewParagraph(f)
 	return v, true
 }
 
 // frozenParagraph is the layout of a paragraph that was detached: it draws what the
 // paragraph drew, and knows nothing else. Calling another method of the layout panics.
+//
+// The draws are kept in groups of consecutive draws, each with the rows it reaches, so that a
+// renderer that draws a screenful of a long text skips the groups outside it (the same as the
+// lines of the layout of the text engine, textdraw.RowPainter), and with the box of them all
+// (textdraw.BoundsPainter), so that the damage tracker need not look at each draw.
 type frozenParagraph struct {
 	ui.ParagraphLayout
 	width, height float64
 	draws         []ui.ParagraphDraw
+	groups        []drawGroup
+	// open is the group being filled: the draws from the end of the last group on.
+	open drawGroup
+	// bounds is the box of all the draws, in the paragraph's coordinates; infinite when a draw
+	// reaches further than its geometry (a blur) or cannot be bounded.
+	bounds ui.Rect
 }
 
-var _ ui.ParagraphPainter = (*frozenParagraph)(nil)
+// drawGroup is the draws up to end (and from the end of the group before it) with the rows,
+// in the paragraph's coordinates, that they reach.
+type drawGroup struct {
+	end         int
+	top, bottom float64
+}
+
+var (
+	_ ui.ParagraphPainter    = (*frozenParagraph)(nil)
+	_ textdraw.RowPainter    = (*frozenParagraph)(nil)
+	_ textdraw.BoundsPainter = (*frozenParagraph)(nil)
+)
+
+// groupSize is how many draws make a group.
+const groupSize = 64
+
+// add keeps a draw and widens its group and the box to what it reaches.
+func (f *frozenParagraph) add(draw ui.ParagraphDraw) {
+	r := drawReach(draw)
+	if len(f.draws) == 0 {
+		f.open.top, f.open.bottom = math.Inf(1), math.Inf(-1)
+		f.bounds = ui.Rect{Left: math.Inf(1), Top: math.Inf(1), Right: math.Inf(-1), Bottom: math.Inf(-1)}
+	}
+	f.draws = append(f.draws, draw)
+	f.open.top, f.open.bottom = min(f.open.top, r.Top), max(f.open.bottom, r.Bottom)
+	f.bounds = ui.Rect{Left: min(f.bounds.Left, r.Left), Top: min(f.bounds.Top, r.Top), Right: max(f.bounds.Right, r.Right), Bottom: max(f.bounds.Bottom, r.Bottom)}
+	if len(f.draws)-f.groupStart() >= groupSize {
+		f.close()
+	}
+}
+
+func (f *frozenParagraph) groupStart() int {
+	if n := len(f.groups); n > 0 {
+		return f.groups[n-1].end
+	}
+	return 0
+}
+
+func (f *frozenParagraph) close() {
+	f.open.end = len(f.draws)
+	f.groups = append(f.groups, f.open)
+	f.open = drawGroup{top: math.Inf(1), bottom: math.Inf(-1)}
+}
+
+// finish closes the last group.
+func (f *frozenParagraph) finish() {
+	if len(f.draws) > f.groupStart() {
+		f.close()
+	}
+}
+
+// drawReach is the rectangle, in the paragraph's coordinates, that a draw can change; it is
+// infinite for a draw that cannot be bounded or that spreads past its geometry.
+func drawReach(draw ui.ParagraphDraw) ui.Rect {
+	everything := ui.Rect{Left: math.Inf(-1), Top: math.Inf(-1), Right: math.Inf(1), Bottom: math.Inf(1)}
+	if img, mask := gpu.PaintFilters(draw.Op); img || mask {
+		return everything
+	}
+	var local ui.Rect
+	if pic, ok := draw.Op.(ui.OpDrawPicture); ok {
+		if pic.Picture == nil {
+			return ui.Rect{}
+		}
+		local = pic.Picture.CullRect()
+	} else if r, ok := gpu.ShapeBounds(draw.Op); ok {
+		local = r
+	} else {
+		return everything
+	}
+	if draw.Matrix != nil {
+		local = draw.Matrix.TransformRect(local)
+	}
+	if !local.IsFinite() {
+		return everything
+	}
+	// Two pixels more, for the edge that is anti-aliased.
+	return local.Shift(draw.Offset).Inflate(2)
+}
 
 // Layout does nothing: the paragraph stays as it was when it was detached.
 func (*frozenParagraph) Layout(ui.ParagraphConstraints) {}
@@ -289,4 +384,26 @@ func (f *frozenParagraph) PaintParagraph(emit func(ui.ParagraphDraw)) {
 	for _, d := range f.draws {
 		emit(d)
 	}
+}
+
+// PaintParagraphRows emits the draws of the groups that reach the rows from top to bottom, and
+// no others, in the order they were made.
+func (f *frozenParagraph) PaintParagraphRows(top, bottom float64, emit func(ui.ParagraphDraw)) {
+	start := 0
+	for _, g := range f.groups {
+		if g.bottom >= top && g.top <= bottom {
+			for _, d := range f.draws[start:g.end] {
+				emit(d)
+			}
+		}
+		start = g.end
+	}
+}
+
+// PaintBounds is the box of everything the paragraph draws.
+func (f *frozenParagraph) PaintBounds() ui.Rect {
+	if len(f.draws) == 0 {
+		return ui.Rect{}
+	}
+	return f.bounds
 }

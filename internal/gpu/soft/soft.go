@@ -5,6 +5,7 @@ import (
 	"math"
 
 	"github.com/rm4n0s/errors"
+	"github.com/rm4n0s/glutter/internal/gpu"
 	"github.com/rm4n0s/glutter/internal/gpu/textdraw"
 	"github.com/rm4n0s/glutter/ui"
 )
@@ -222,6 +223,10 @@ func paintOf(op ui.DisplayOp) (*ui.Paint, func(*ui.Paint) ui.DisplayOp) {
 // without the filter and the blend mode, and the layer is filtered and then
 // composited with the blend mode, as Skia does.
 func (r *renderer) draw(op ui.DisplayOp, st *state) error {
+	if imageFilter, _ := gpu.PaintFilters(op); !imageFilter {
+		// The common case makes no copy of the operation (paintOf does, for each call).
+		return r.drawOp(op, st)
+	}
 	if p, with := paintOf(op); p != nil && p.ImageFilter() != nil {
 		// p points into the copy of the operation that with() changes: read what
 		// is needed from it first.
@@ -290,7 +295,9 @@ func (r *renderer) drawOp(op ui.DisplayOp, st *state) error {
 // itself draws nothing.
 func (r *renderer) drawParagraph(v ui.OpDrawParagraph, st *state) error {
 	var err error
-	textdraw.Expand(v, st.m, func(op ui.DisplayOp, m *ui.Matrix4) {
+	b := st.clip.bounds
+	visible := ui.NewRectFromLTRB(float64(b.Min.X), float64(b.Min.Y), float64(b.Max.X), float64(b.Max.Y))
+	textdraw.ExpandVisible(v, st.m, visible, func(op ui.DisplayOp, m *ui.Matrix4) {
 		if err != nil {
 			return
 		}

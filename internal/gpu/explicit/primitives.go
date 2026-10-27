@@ -17,7 +17,8 @@ func (s *shapeContext) pathMask(op ui.DisplayOp, p *ui.Paint) (bool, error) {
 	if status != paintDraw {
 		return status == paintNothing, err
 	}
-	sh, ok := gpu.ShapeOf(op)
+	var shapePaint ui.Paint
+	sh, ok := gpu.ShapeOfInto(op, &shapePaint)
 	if !ok {
 		return false, s.b.unsupported("operation " + typeName(op))
 	}

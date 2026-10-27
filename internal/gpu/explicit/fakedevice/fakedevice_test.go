@@ -358,3 +358,69 @@ func TestLevelsAndBufferWrites(t *testing.T) {
 const (
 	tagGPUOutOfMemory = "GPUOutOfMemory"
 )
+
+func TestSwapchainKeepsItsImageWhileTheSizeStays(t *testing.T) {
+	tests := []struct {
+		name     string
+		sizes    [][2]int
+		wantSame bool
+	}{
+		{"the same size twice", [][2]int{{30, 20}, {30, 20}}, true},
+		{"another size", [][2]int{{30, 20}, {40, 20}}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d := New()
+			sc, err := d.NewSwapchain(gpu.SurfaceHandle{Kind: gpu.SurfaceKindFake})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var first explicit.Texture
+			for i, size := range tt.sizes {
+				if err := sc.Configure(size[0], size[1]); err != nil {
+					t.Fatal(err)
+				}
+				tex, err := sc.Acquire()
+				if err != nil {
+					t.Fatal(err)
+				}
+				if i == 0 {
+					first = tex
+					continue
+				}
+				if (tex == first) != tt.wantSame {
+					t.Errorf("the image is the same = %v, want %v", tex == first, tt.wantSame)
+				}
+				if tex.Desc().Width != size[0] || tex.Desc().Height != size[1] {
+					t.Errorf("image %dx%d, want %dx%d", tex.Desc().Width, tex.Desc().Height, size[0], size[1])
+				}
+			}
+		})
+	}
+}
+
+func TestQuietDeviceKeepsNoLog(t *testing.T) {
+	tests := []struct {
+		name      string
+		quiet     bool
+		wantCalls bool
+	}{{"default", false, true}, {"quiet", true, false}}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d := New()
+			d.Quiet = tt.quiet
+			b, err := d.NewBuffer(16, explicit.BufferVertex)
+			if err != nil {
+				t.Fatal(err)
+			}
+			d.WriteBuffer(b, 0, []byte{1, 2, 3, 4})
+			if got := len(d.Calls()) > 0 || len(d.Writes) > 0; got != tt.wantCalls {
+				t.Errorf("log kept = %v, want %v (calls %d, writes %d)", got, tt.wantCalls, len(d.Calls()), len(d.Writes))
+			}
+			// The data still reaches the buffer.
+			if got := b.(interface{ Size() int }).Size(); got != 16 {
+				t.Errorf("buffer size = %d", got)
+			}
+		})
+	}
+}

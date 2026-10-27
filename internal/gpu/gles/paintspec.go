@@ -21,15 +21,16 @@ const (
 type paintSpec = gpu.PaintSpec
 
 // intern returns the one paintSpec that equals sp.
-func (b *frameBuilder) intern(sp paintSpec) *paintSpec {
-	if p, ok := b.specs[sp]; ok {
+func (b *frameBuilder) intern(sp *paintSpec) *paintSpec {
+	if p, ok := b.specs[*sp]; ok {
 		return p
 	}
 	if b.specs == nil {
 		b.specs = map[paintSpec]*paintSpec{}
 	}
-	p := &sp
-	b.specs[sp] = p
+	p := new(paintSpec)
+	*p = *sp
+	b.specs[*p] = p
 	return p
 }
 

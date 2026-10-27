@@ -44,9 +44,15 @@ type fakeGL struct {
 	shaderOf map[uint32]uint32 // shader name -> kind
 	locs     map[string]int32
 	uploads  []int // byte lengths given to texSubImage2D
+	// quiet stops the log of the calls, so that a benchmark counts what the renderer
+	// allocates and not what the log does.
+	quiet bool
 }
 
 func (g *fakeGL) rec(name string, args ...any) {
+	if g.quiet {
+		return
+	}
 	if g.calls == nil {
 		g.calls = map[string]int{}
 	}

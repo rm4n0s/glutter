@@ -11,6 +11,8 @@ import (
 	"github.com/rm4n0s/glutter/gluttertest"
 	"github.com/rm4n0s/glutter/internal/gpu/gputest"
 	"github.com/rm4n0s/glutter/internal/gpu/soft"
+	"github.com/rm4n0s/glutter/internal/proof"
+	"github.com/rm4n0s/glutter/material/fonts"
 	"github.com/rm4n0s/glutter/offscreen"
 	"github.com/rm4n0s/glutter/painting"
 	"github.com/rm4n0s/glutter/ui"
@@ -307,4 +309,52 @@ func TestDetachedScenesDrawWhileTheFrameworkGoesOn(t *testing.T) {
 		t.Fatal(err)
 	}
 	samePixels(t, "the last frame", surf.Image(), want)
+}
+
+func TestDetachedLongTextShowsTheSamePixelsAsTheTextItself(t *testing.T) {
+	e := proof.BundledTextEngine()
+	text := ""
+	for i := 0; i < 300; i++ {
+		text += fmt.Sprintf("Line %d of a long text, 0123456789\n", i)
+	}
+	tests := []struct {
+		name   string
+		style  ui.TextStyleOpts
+		offset float64
+	}{
+		{"the start", ui.TextStyleOpts{}, 0},
+		{"the middle", ui.TextStyleOpts{}, -2500},
+		{"the end", ui.TextStyleOpts{}, -5400},
+		{"a blurred shadow that reaches in from above", ui.TextStyleOpts{Shadows: []ui.Shadow{{Color: ui.NewColor(0xFF000000), Offset: ui.Offset{Dx: 3, Dy: 40}, BlurRadius: 8}}}, -2540},
+		{"a decoration", ui.TextStyleOpts{Decoration: ui.Ptr(ui.TextDecorationUnderline)}, -3000},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			style := tt.style
+			style.FontFamily = fonts.RobotoFamily
+			style.FontSize = ui.Ptr(15.0)
+			b := ui.NewParagraphBuilder(e, ui.NewParagraphStyle(ui.ParagraphStyleOpts{}))
+			b.PushStyle(ui.NewTextStyle(style))
+			b.AddText(text)
+			p := b.Build()
+			p.Layout(ui.NewParagraphConstraints(300))
+			rec := ui.NewPictureRecorder()
+			c := ui.NewCanvas(rec)
+			c.DrawColor(ui.NewColor(0xFFFFFFFF), ui.BlendModeSrcOver)
+			c.DrawParagraph(p, ui.Offset{Dx: 4, Dy: tt.offset})
+			sb := ui.NewSceneBuilder()
+			sb.AddPicture(ui.Offset{}, rec.EndRecording())
+			scene := sb.Build()
+
+			want, err := soft.Render(scene, 320, 200)
+			if err != nil {
+				t.Fatal(err)
+			}
+			s := offscreen.NewSurface(320, 200)
+			if _, err := s.Draw(offscreen.NewDetacher().Detach(scene)); err != nil {
+				t.Fatal(err)
+			}
+			samePixels(t, "detached", s.Image(), want)
+		})
+	}
 }

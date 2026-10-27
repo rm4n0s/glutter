@@ -2,6 +2,7 @@ package layout
 
 import (
 	"math"
+	"sort"
 
 	"github.com/go-text/typesetting/font"
 	ot "github.com/go-text/typesetting/font/opentype"
@@ -97,15 +98,66 @@ func foreground(st *ui.ResolvedTextStyle) *ui.Paint {
 // Flutter: engine/src/flutter/third_party/skia/modules/skparagraph/src/TextLine.cpp TextLine::paint
 func (p *paragraph) PaintParagraph(emit func(ui.ParagraphDraw)) {
 	p.ensureLaidOut()
-	byLine := map[int][]DecorationSegment{}
-	for _, d := range p.Decorations() {
-		byLine[d.Line] = append(byLine[d.Line], d)
+	p.paintLines(0, len(p.lines), emit)
+}
+
+// minRowsLines is the number of lines under which PaintParagraphRows paints them all: finding
+// the lines that show would cost more than painting them.
+const minRowsLines = 32
+
+// PaintParagraphRows is PaintParagraph for the lines that can reach the rows from top to
+// bottom, in the coordinates of the paragraph (textdraw.RowPainter): a long text drawn through
+// a small window costs the lines of the window, not the lines of the text. A line can reach
+// past its box by the glyphs and shadows it draws (twice the largest font size, and the
+// offset and blur of the shadows), so the lines within that distance are painted too.
+func (p *paragraph) PaintParagraphRows(top, bottom float64, emit func(ui.ParagraphDraw)) {
+	p.ensureLaidOut()
+	if len(p.lines) < minRowsLines {
+		p.paintLines(0, len(p.lines), emit)
+		return
 	}
-	for li, l := range p.lines {
+	reach := p.paintReach()
+	// The lines are stacked from the top of the paragraph down.
+	first := sort.Search(len(p.lines), func(i int) bool { l := p.lines[i]; return l.top+l.height+reach >= top })
+	last := sort.Search(len(p.lines), func(i int) bool { return p.lines[i].top-reach > bottom })
+	p.paintLines(first, last, emit)
+}
+
+// PaintBounds implements textdraw.BoundsPainter: the box of the paragraph, grown by the distance
+// the drawing of a line can reach past it.
+func (p *paragraph) PaintBounds() ui.Rect {
+	p.ensureLaidOut()
+	reach := p.paintReach()
+	right, bottom := max(p.Width(), p.LongestLine()), p.Height()
+	for _, l := range p.lines {
+		right = max(right, l.left+l.widthWithSpaces)
+		bottom = max(bottom, l.top+l.height)
+	}
+	return ui.Rect{Left: -reach, Top: -reach, Right: right + reach, Bottom: bottom + reach}
+}
+
+// paintReach is how far the drawing of a line can reach past its box, above and below.
+func (p *paragraph) paintReach() float64 {
+	reach := 0.0
+	for _, st := range p.styles {
+		r := 2 * st.FontSize
+		for _, sh := range st.Shadows {
+			r = max(r, 2*st.FontSize+math.Abs(sh.Offset.Dy)+3*sh.BlurSigma())
+		}
+		reach = max(reach, r)
+	}
+	return reach
+}
+
+// paintLines paints the lines from first up to last (not included).
+func (p *paragraph) paintLines(first, last int, emit func(ui.ParagraphDraw)) {
+	var cache glyphOps
+	for li := first; li < last; li++ {
+		l := p.lines[li]
 		p.paintBackgrounds(l, emit)
 		p.paintShadows(l, emit)
-		p.paintGlyphs(l, emit)
-		for _, d := range byLine[li] {
+		p.paintGlyphs(l, &cache, emit)
+		for _, d := range p.lineDecorations(li, l, nil) {
 			paintDecoration(d, emit)
 		}
 	}
@@ -167,9 +219,22 @@ func (p *paragraph) paintShadows(l *line, emit func(ui.ParagraphDraw)) {
 	}
 }
 
+// glyphOpKey identifies the drawing operation of a glyph: the glyph of a face at a size, in a
+// style.
+type glyphOpKey struct {
+	style *ui.ResolvedTextStyle
+	face  *font.Face
+	gid   font.GID
+	size  float64
+}
+
+// glyphOps holds the operations that draw the glyphs of the lines painted so far, so that a
+// letter that occurs a hundred times in a screen of text is one operation, not a hundred.
+type glyphOps map[glyphOpKey]ui.DisplayOp
+
 // paintGlyphs draws the glyphs of a line: outlines filled with the text paint, and color
-// glyphs as their own pictures.
-func (p *paragraph) paintGlyphs(l *line, emit func(ui.ParagraphDraw)) {
+// glyphs as their own pictures. ops is the cache of the operations of the outlines.
+func (p *paragraph) paintGlyphs(l *line, ops *glyphOps, emit func(ui.ParagraphDraw)) {
 	for ri := range l.runs {
 		pr := &l.runs[ri]
 		st := p.styles[pr.run.style]
@@ -177,7 +242,7 @@ func (p *paragraph) paintGlyphs(l *line, emit func(ui.ParagraphDraw)) {
 		if pr.run.ph != nil || face == nil {
 			continue
 		}
-		paint := foreground(st)
+		var paint *ui.Paint
 		for _, g := range pr.glyphs {
 			if p.drawsNothing(pr, &g) {
 				continue
@@ -189,9 +254,23 @@ func (p *paragraph) paintGlyphs(l *line, emit func(ui.ParagraphDraw)) {
 				emit(ui.ParagraphDraw{Op: ui.OpDrawPicture{Picture: pic}, Offset: origin, Matrix: m, Snap: true})
 				continue
 			}
-			if path := p.eng.glyphPath(face, g.id, pr.run.size); path != nil {
-				emit(ui.ParagraphDraw{Op: ui.OpDrawPath{Path: path, Paint: *paint}, Offset: origin, Snap: true})
+			path := p.eng.glyphPath(face, g.id, pr.run.size)
+			if path == nil {
+				continue
 			}
+			key := glyphOpKey{st, face, g.id, pr.run.size}
+			op, ok := (*ops)[key]
+			if !ok {
+				if paint == nil {
+					paint = foreground(st)
+				}
+				op = ui.OpDrawPath{Path: path, Paint: *paint}
+				if *ops == nil {
+					*ops = glyphOps{}
+				}
+				(*ops)[key] = op
+			}
+			emit(ui.ParagraphDraw{Op: op, Offset: origin, Snap: true})
 		}
 	}
 }

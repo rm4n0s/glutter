@@ -98,13 +98,61 @@ type frameBuilder struct {
 	culled int
 	// cache is the raster cache, or nil without one.
 	cache *layerCache
+	// contexts are the shape contexts of the commands being drawn, one for each level of draws
+	// inside draws, kept between frames so that a command makes no allocation for its context;
+	// depth is the number in use.
+	contexts []*shapeContext
+	depth    int
 }
+
+// reset makes the builder ready for a frame of w x h pixels, keeping the memory of the frame
+// before it: the data of the pipelines, the draw calls, the paint specs and the contexts.
+// What a frame holds is copied to GL before the next frame starts building.
+func (b *frameBuilder) reset(w, h int, skip bool, res *resources) {
+	for i := range b.frame.data {
+		b.frame.data[i] = b.frame.data[i][:0]
+	}
+	clear(b.frame.calls)
+	b.frame.calls = b.frame.calls[:0]
+	clear(b.layers)
+	b.layers = b.layers[:0]
+	// The specs of old frames are dropped now and then, so that a changing gradient does not
+	// grow the table for ever.
+	if len(b.specs) > maxInternedSpecs || b.res != res {
+		clear(b.specs)
+	}
+	clear(b.reasons)
+	b.w, b.h, b.skip, b.res = w, h, skip, res
+	b.cache = nil
+	b.stats = FrameStats{}
+	b.skipping, b.seq, b.culled, b.depth = 0, 0, 0, 0
+}
+
+// maxInternedSpecs is how many paint specs the table of a builder holds between frames.
+const maxInternedSpecs = 1024
+
+// context returns the shape context of the command, one level deeper than the draw that is
+// running.
+func (b *frameBuilder) context(c gpu.Command) *shapeContext {
+	if b.depth == len(b.contexts) {
+		b.contexts = append(b.contexts, new(shapeContext))
+	}
+	sc := b.contexts[b.depth]
+	b.depth++
+	*sc = shapeContext{b: b, c: c, t: affineOf(&c.Transform)}
+	return sc
+}
+
+// release gives back the context that the last call of context returned.
+func (b *frameBuilder) release() { b.depth-- }
 
 // FrameStats says what the last frame did.
 //
 // Flutter: no counterpart
 type FrameStats struct {
-	// Commands is the number of drawing commands in the scene.
+	// Commands is the number of drawing commands the frame walked. The commands inside a layer
+	// whose pixels the raster cache has are not walked (gpu.FlattenOpts.Retained), and the lines of a
+	// paragraph that lie outside the clip are not expanded into commands, so neither is counted.
 	Commands int
 	// Drawn is the number of commands drawn.
 	Drawn int
@@ -223,16 +271,22 @@ func (b *frameBuilder) draw(c gpu.Command) (bool, error) {
 		b.stats.Culled++
 		return true, nil
 	}
-	if p, with := gpu.PaintAccess(c.Op); p != nil && p.ImageFilter() != nil {
-		return b.filteredDraw(c, p, with)
+	hasImageFilter, hasMaskFilter := gpu.PaintFilters(c.Op)
+	if hasImageFilter {
+		if p, with := gpu.PaintAccess(c.Op); p != nil {
+			return b.filteredDraw(c, p, with)
+		}
 	}
-	ctx := &shapeContext{b: b, c: c, t: affineOf(&c.Transform)}
+	ctx := b.context(c)
+	defer b.release()
 	if done, ok, err := ctx.setupClip(); done {
 		return ok, err
 	}
-	if p, with := gpu.PaintAccess(c.Op); p != nil && p.MaskFilter() != nil {
-		if handled, ok, err := ctx.maskFiltered(p, with); handled {
-			return ok, err
+	if hasMaskFilter {
+		if p, with := gpu.PaintAccess(c.Op); p != nil {
+			if handled, ok, err := ctx.maskFiltered(p, with); handled {
+				return ok, err
+			}
 		}
 	}
 	var (
@@ -260,7 +314,8 @@ func (b *frameBuilder) draw(c gpu.Command) (bool, error) {
 	case ui.OpDrawPoints:
 		ok, err = ctx.segments(v.Points, &v.Paint, c.Op, v.Mode)
 	case ui.OpDrawPath:
-		ok, err = ctx.pathMask(c.Op, &v.Paint)
+		p := v.Paint
+		ok, err = ctx.pathMask(c.Op, &p)
 	case ui.OpDrawArc:
 		ok, err = ctx.pathMask(c.Op, &v.Paint)
 	case ui.OpDrawImage:
@@ -430,7 +485,7 @@ func (s *shapeContext) paintWith(p *ui.Paint, useShader bool, toDevice affine2D)
 		a := col.A
 		info.color = [4]float32{col.R * a, col.G * a, col.B * a, a}
 	}
-	info.spec = s.b.intern(sp)
+	info.spec = s.b.intern(&sp)
 	return info, paintDraw, nil
 }
 

@@ -63,7 +63,13 @@ type OpShape struct {
 // ShapeOf describes a shape-drawing operation; false for any other.
 //
 // Flutter: no counterpart
-func ShapeOf(op ui.DisplayOp) (OpShape, bool) {
+func ShapeOf(op ui.DisplayOp) (OpShape, bool) { return ShapeOfInto(op, new(ui.Paint)) }
+
+// ShapeOfInto is ShapeOf with the paint of the shape copied into dst, which the OpShape then
+// points to: a caller that keeps dst on its stack makes no allocation for the operation.
+//
+// Flutter: no counterpart
+func ShapeOfInto(op ui.DisplayOp, dst *ui.Paint) (OpShape, bool) {
 	h := NewHasher()
 	rr := func(left, top, right, bottom float64, radii ...float64) {
 		h.F64(left)
@@ -76,48 +82,58 @@ func ShapeOf(op ui.DisplayOp) (OpShape, bool) {
 	}
 	switch v := op.(type) {
 	case ui.OpDrawPath:
+		*dst = v.Paint
 		h.I(1)
 		h.U64(v.Path.Fingerprint())
-		return OpShape{h.Sum(), v.Path.GetBounds(), &v.Paint, v.Paint.Style() == ui.PaintingStyleStroke}, true
+		return OpShape{h.Sum(), v.Path.GetBounds(), dst, v.Paint.Style() == ui.PaintingStyleStroke}, true
 	case ui.OpDrawRect:
+		*dst = v.Paint
 		h.I(2)
 		rr(v.Rect.Left, v.Rect.Top, v.Rect.Right, v.Rect.Bottom)
-		return OpShape{h.Sum(), v.Rect, &v.Paint, v.Paint.Style() == ui.PaintingStyleStroke}, true
+		return OpShape{h.Sum(), v.Rect, dst, v.Paint.Style() == ui.PaintingStyleStroke}, true
 	case ui.OpDrawRRect:
+		*dst = v.Paint
 		h.I(3)
 		r := v.RRect
 		rr(r.Left, r.Top, r.Right, r.Bottom, r.TlRadiusX, r.TlRadiusY, r.TrRadiusX, r.TrRadiusY, r.BrRadiusX, r.BrRadiusY, r.BlRadiusX, r.BlRadiusY)
-		return OpShape{h.Sum(), v.RRect.OuterRect(), &v.Paint, v.Paint.Style() == ui.PaintingStyleStroke}, true
+		return OpShape{h.Sum(), v.RRect.OuterRect(), dst, v.Paint.Style() == ui.PaintingStyleStroke}, true
 	case ui.OpDrawRSuperellipse:
+		*dst = v.Paint
 		h.I(4)
 		r := v.RSuperellipse
 		rr(r.Left, r.Top, r.Right, r.Bottom, r.TlRadiusX, r.TlRadiusY, r.TrRadiusX, r.TrRadiusY, r.BrRadiusX, r.BrRadiusY, r.BlRadiusX, r.BlRadiusY)
-		return OpShape{h.Sum(), v.RSuperellipse.OuterRect(), &v.Paint, v.Paint.Style() == ui.PaintingStyleStroke}, true
+		return OpShape{h.Sum(), v.RSuperellipse.OuterRect(), dst, v.Paint.Style() == ui.PaintingStyleStroke}, true
 	case ui.OpDrawDRRect:
+		*dst = v.Paint
 		h.I(5)
 		o, in := v.Outer, v.Inner
 		rr(o.Left, o.Top, o.Right, o.Bottom, o.TlRadiusX, o.TlRadiusY, o.TrRadiusX, o.TrRadiusY, o.BrRadiusX, o.BrRadiusY, o.BlRadiusX, o.BlRadiusY)
 		rr(in.Left, in.Top, in.Right, in.Bottom, in.TlRadiusX, in.TlRadiusY, in.TrRadiusX, in.TrRadiusY, in.BrRadiusX, in.BrRadiusY, in.BlRadiusX, in.BlRadiusY)
-		return OpShape{h.Sum(), v.Outer.OuterRect(), &v.Paint, v.Paint.Style() == ui.PaintingStyleStroke}, true
+		return OpShape{h.Sum(), v.Outer.OuterRect(), dst, v.Paint.Style() == ui.PaintingStyleStroke}, true
 	case ui.OpDrawOval:
+		*dst = v.Paint
 		h.I(6)
 		rr(v.Rect.Left, v.Rect.Top, v.Rect.Right, v.Rect.Bottom)
-		return OpShape{h.Sum(), v.Rect, &v.Paint, v.Paint.Style() == ui.PaintingStyleStroke}, true
+		return OpShape{h.Sum(), v.Rect, dst, v.Paint.Style() == ui.PaintingStyleStroke}, true
 	case ui.OpDrawCircle:
+		*dst = v.Paint
 		h.I(7)
 		rr(v.Center.Dx, v.Center.Dy, v.Radius, 0)
-		return OpShape{h.Sum(), ui.NewRectFromCircle(v.Center, v.Radius), &v.Paint, v.Paint.Style() == ui.PaintingStyleStroke}, true
+		return OpShape{h.Sum(), ui.NewRectFromCircle(v.Center, v.Radius), dst, v.Paint.Style() == ui.PaintingStyleStroke}, true
 	case ui.OpDrawArc:
+		*dst = v.Paint
 		h.I(8)
 		rr(v.Rect.Left, v.Rect.Top, v.Rect.Right, v.Rect.Bottom, v.StartAngle, v.SweepAngle)
 		h.B(v.UseCenter)
-		return OpShape{h.Sum(), v.Rect, &v.Paint, v.Paint.Style() == ui.PaintingStyleStroke}, true
+		return OpShape{h.Sum(), v.Rect, dst, v.Paint.Style() == ui.PaintingStyleStroke}, true
 	case ui.OpDrawLine:
+		*dst = v.Paint
 		h.I(9)
 		rr(v.P1.Dx, v.P1.Dy, v.P2.Dx, v.P2.Dy)
 		b := ui.Rect{Left: min(v.P1.Dx, v.P2.Dx), Top: min(v.P1.Dy, v.P2.Dy), Right: max(v.P1.Dx, v.P2.Dx), Bottom: max(v.P1.Dy, v.P2.Dy)}
-		return OpShape{h.Sum(), b, &v.Paint, true}, true
+		return OpShape{h.Sum(), b, dst, true}, true
 	case ui.OpDrawPoints:
+		*dst = v.Paint
 		h.I(10)
 		h.I(int(v.Mode))
 		b := ui.Rect{Left: math.Inf(1), Top: math.Inf(1), Right: math.Inf(-1), Bottom: math.Inf(-1)}
@@ -127,7 +143,7 @@ func ShapeOf(op ui.DisplayOp) (OpShape, bool) {
 			b.Left, b.Top = min(b.Left, p.Dx), min(b.Top, p.Dy)
 			b.Right, b.Bottom = max(b.Right, p.Dx), max(b.Bottom, p.Dy)
 		}
-		return OpShape{h.Sum(), b, &v.Paint, true}, true
+		return OpShape{h.Sum(), b, dst, true}, true
 	}
 	return OpShape{}, false
 }
@@ -182,6 +198,10 @@ type MaskCache struct {
 	// Rasterized counts the tiles that were rasterized, and Requests the calls of Tiles (a
 	// shape that culling leaves out makes none).
 	Rasterized, Requests int
+	// mm and tiles are the working matrix and the result of Tiles, kept between calls so that a
+	// frame of thousands of shapes makes no allocation for them.
+	mm    ui.Matrix4
+	tiles []MaskTile
 }
 
 // NewMaskCache returns an empty cache whose atlas has pages of pageSize pixels, at most
@@ -215,7 +235,8 @@ func (c *MaskCache) Clear() { c.atlas.Clear(); c.pages = 0 }
 // Tiles returns the tiles of coverage to draw for the shape under the transform, within the
 // visible pixels, rasterizing and uploading the ones the atlas does not have. margin is how
 // far the shape's coverage can reach beyond its bounds, in its own units. It fails with
-// AtlasFull when a tile fits no page.
+// AtlasFull when a tile fits no page. The slice is the cache's own: it is valid until the next call
+// of Tiles.
 //
 // Flutter: no counterpart
 func (c *MaskCache) Tiles(op ui.DisplayOp, sh OpShape, m *ui.Matrix4, margin float64, visible image.Rectangle) ([]MaskTile, error) {
@@ -225,7 +246,8 @@ func (c *MaskCache) Tiles(op ui.DisplayOp, sh OpShape, m *ui.Matrix4, margin flo
 	ox, oy := math.Floor(e), math.Floor(f)
 	// The mask is made under the transform with only the fractional translation: it
 	// is the same wherever on the surface a whole number of pixels takes it.
-	mm := m.Clone()
+	c.mm = *m
+	mm := &c.mm
 	mm.SetEntry(0, 3, float32(e-ox))
 	mm.SetEntry(1, 3, float32(f-oy))
 	local := sh.Bounds.Inflate(margin)
@@ -245,7 +267,7 @@ func (c *MaskCache) Tiles(op ui.DisplayOp, sh OpShape, m *ui.Matrix4, margin flo
 		FX:  float32(e - ox), FY: float32(f - oy),
 	}
 	const t = MaxAtlasTile
-	var tiles []MaskTile
+	tiles := c.tiles[:0]
 	for ty := FloorDiv(view.Min.Y, t); ty <= FloorDiv(view.Max.Y-1, t); ty++ {
 		for tx := FloorDiv(view.Min.X, t); tx <= FloorDiv(view.Max.X-1, t); tx++ {
 			key.TX, key.TY = int32(tx), int32(ty)
@@ -266,6 +288,7 @@ func (c *MaskCache) Tiles(op ui.DisplayOp, sh OpShape, m *ui.Matrix4, margin flo
 			})
 		}
 	}
+	c.tiles = tiles
 	return tiles, nil
 }
 

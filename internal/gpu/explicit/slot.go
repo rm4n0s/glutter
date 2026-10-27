@@ -31,6 +31,8 @@ type frameSlot struct {
 	// ring is the uniform data of the frame being built; each entry starts at a multiple of
 	// the device's offset alignment.
 	ring []byte
+	// stage holds the bytes of the instances while they are written to the buffer.
+	stage []byte
 }
 
 // ensure makes the buffer big enough for need bytes, replacing it (the GPU finishes the
@@ -72,10 +74,19 @@ func frameUniform(w, h, ox, oy int) []byte {
 // data after the other, and the ring into its uniform buffer. It returns where the data of each
 // pipeline starts in the buffer, in bytes.
 func (r *Renderer) upload(s *frameSlot, data *[numPipes][]float32) (base [numPipes]int, err error) {
-	var all []byte
+	total := 0
 	for p := range data {
-		base[p] = len(all)
-		all = append(all, floatBytes(data[p])...)
+		base[p] = total
+		total += 4 * len(data[p])
+	}
+	// The bytes are staged in a buffer the slot keeps, so that a frame allocates none for them;
+	// the device copies what WriteBuffer is given.
+	if cap(s.stage) < total {
+		s.stage = make([]byte, total, total+total/4)
+	}
+	all := s.stage[:total]
+	for p := range data {
+		putFloats(all[base[p]:], data[p])
 	}
 	if len(all) > 0 {
 		if err := r.ensure(&s.instances, &s.instCap, len(all), BufferVertex); err != nil {
@@ -105,11 +116,17 @@ func (s *frameSlot) destroy() {
 	*s = frameSlot{}
 }
 
-// floatBytes encodes floats as the little-endian bytes the shaders read.
-func floatBytes(f []float32) []byte {
-	b := make([]byte, 4*len(f))
+// putFloats encodes floats as the little-endian bytes the shaders read, into b, which holds
+// 4*len(f) bytes at least.
+func putFloats(b []byte, f []float32) {
 	for i, v := range f {
 		binary.LittleEndian.PutUint32(b[4*i:], math.Float32bits(v))
 	}
+}
+
+// floatBytes encodes floats as the little-endian bytes the shaders read.
+func floatBytes(f []float32) []byte {
+	b := make([]byte, 4*len(f))
+	putFloats(b, f)
 	return b
 }

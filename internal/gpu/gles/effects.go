@@ -39,7 +39,7 @@ func (b *frameBuilder) filteredDraw(c gpu.Command, p *ui.Paint, with func(*ui.Pa
 	if !b.setBlend(&rec.info, &sp, mode) {
 		return false, b.unsupported("blend mode " + mode.String())
 	}
-	rec.info.spec = b.intern(sp)
+	rec.info.spec = b.intern(&sp)
 	inner := *p
 	inner.SetImageFilter(nil)
 	inner.SetBlendMode(ui.BlendModeSrcOver)
@@ -166,7 +166,7 @@ func (s *shapeContext) shadow(v ui.OpDrawShadow) (bool, error) {
 	ambientSigma, spotSigma, spotM := plan.AmbientSigma, plan.SpotSigma, plan.Spot
 
 	vis := s.outer
-	group := &layerRec{cmd: s.c, rect: vis, info: paintInfo{color: [4]float32{1, 1, 1, 1}, blend: blendFuncs[ui.BlendModeSrcOver], aa: true, spec: s.b.intern(paintSpec{})}}
+	group := &layerRec{cmd: s.c, rect: vis, info: paintInfo{color: [4]float32{1, 1, 1, 1}, blend: blendFuncs[ui.BlendModeSrcOver], aa: true, spec: s.b.intern(&paintSpec{})}}
 	s.b.pushLayer(group)
 	whole := gpu.Clip{Bounds: rectOf(vis)}
 	paintShadow := func(mat *ui.Matrix4, sigma, alpha float64) error {
@@ -180,7 +180,7 @@ func (s *shapeContext) shadow(v ui.OpDrawShadow) (bool, error) {
 		a := float32(col.Alpha()) / 255
 		info := paintInfo{
 			color: [4]float32{float32(col.Red()) / 255 * a, float32(col.Green()) / 255 * a, float32(col.Blue()) / 255 * a, a},
-			blend: blendFuncs[ui.BlendModeSrcOver], aa: true, spec: s.b.intern(paintSpec{}),
+			blend: blendFuncs[ui.BlendModeSrcOver], aa: true, spec: s.b.intern(&paintSpec{}),
 		}
 		rec := &layerRec{cmd: gpu.Command{Kind: gpu.CommandBeginLayer, Transform: *mat, Clip: whole}, rect: rect, info: info, blur: &maskBlur{sigma: sigma}}
 		s.b.pushLayer(rec)

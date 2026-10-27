@@ -346,14 +346,14 @@ func TestFlattenNestedPictures(t *testing.T) {
 func TestFlattenErrors(t *testing.T) {
 	_, err := Flatten(nil)
 	appErr, ok := errors.FromError(err)
-	if !ok || appErr.Tag != tagFlattenSceneNil || !appErr.HasRoute("Flatten.FlattenSceneNil") {
+	if !ok || appErr.Tag != tagFlattenSceneNil || !appErr.HasRoute("Flatten->FlattenFunc.FlattenSceneNil") {
 		t.Errorf("Flatten(nil) = %v", err)
 	}
 	func() {
 		defer func() {
 			e, _ := recover().(error)
 			appErr, ok := errors.FromError(e)
-			if !ok || appErr.Tag != tagMultipleOptions || !appErr.HasRoute("Flatten.MultipleOptions") {
+			if !ok || appErr.Tag != tagMultipleOptions || !appErr.HasRoute("Flatten->FlattenFunc.MultipleOptions") {
 				t.Errorf("expected MultipleOptions, got %v", e)
 			}
 		}()
@@ -364,7 +364,7 @@ func TestFlattenErrors(t *testing.T) {
 type foreignLayer struct{ ui.Layer }
 
 func TestFlattenUnknownLayer(t *testing.T) {
-	f := &flattener{list: &DrawList{}}
+	f := &flattener{sink: func(Command) error { return nil }}
 	err := f.layer(foreignLayer{}, state{})
 	appErr, ok := errors.FromError(err)
 	if !ok || appErr.Tag != tagFlattenLayerUnknown || !appErr.HasRoute("flattener.layer.FlattenLayerUnknown") {
@@ -550,3 +550,199 @@ func TestFlattenParagraphThatCannotDrawItselfDrawsNothing(t *testing.T) {
 		t.Errorf("%d commands: %v", len(l.Commands), kinds(l))
 	}
 }
+
+func TestFlattenFuncMakesTheCommandsOfFlatten(t *testing.T) {
+	pic := pictureOf(func(c *ui.Canvas) {
+		c.DrawRect(ui.NewRectFromLTWH(0, 0, 10, 10), paintOf(0xFF000000))
+		c.SaveLayer(nil, paintOf(0x80000000))
+		c.DrawRect(ui.NewRectFromLTWH(2, 2, 5, 5), paintOf(0xFFFF0000))
+		c.Restore()
+	})
+	scene := sceneOfPicture(ui.Offset{Dx: 3, Dy: 4}, pic)
+	opts := FlattenOpts{Bounds: ui.NewRectFromLTWH(0, 0, 100, 100)}
+	want, err := Flatten(scene, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []Command
+	if err := FlattenFunc(scene, func(c Command) error { got = append(got, c); return nil }, opts); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != len(want.Commands) || len(got) != 4 {
+		t.Fatalf("FlattenFunc made %d commands, Flatten %d, want 4", len(got), len(want.Commands))
+	}
+	for i := range got {
+		if got[i].Kind != want.Commands[i].Kind || got[i].Transform != want.Commands[i].Transform || got[i].Clip.Bounds != want.Commands[i].Clip.Bounds {
+			t.Errorf("command %d differs: %+v and %+v", i, got[i], want.Commands[i])
+		}
+	}
+}
+
+func TestFlattenFuncStopsAtTheFirstErrorOfTheSink(t *testing.T) {
+	pic := pictureOf(func(c *ui.Canvas) {
+		for i := 0; i < 5; i++ {
+			c.DrawRect(ui.NewRectFromLTWH(float64(i), 0, 1, 1), paintOf(0xFF000000))
+		}
+	})
+	stop := errors.New(tagTestSinkStopped, "the sink stops")
+	for _, after := range []int{1, 3, 5} {
+		n := 0
+		err := FlattenFunc(sceneOfPicture(ui.Offset{}, pic), func(Command) error {
+			n++
+			if n == after {
+				return stop
+			}
+			return nil
+		})
+		if err != stop {
+			t.Errorf("stop after %d: error = %v, want the sink's own error", after, err)
+		}
+		if n != after {
+			t.Errorf("stop after %d: the sink was called %d times", after, n)
+		}
+	}
+}
+
+func TestFlattenRetainedGroupsHaveNoContents(t *testing.T) {
+	pic := pictureOf(func(c *ui.Canvas) {
+		c.DrawRect(ui.NewRectFromLTWH(0, 0, 10, 10), paintOf(0xFF000000))
+		c.DrawRect(ui.NewRectFromLTWH(20, 0, 10, 10), paintOf(0xFF000000))
+	})
+	build := func() (*ui.Scene, ui.Layer, ui.Layer) {
+		b := ui.NewSceneBuilder()
+		outer := b.PushOffset(5, 6)
+		inner := b.PushOffset(1, 1)
+		b.AddPicture(ui.Offset{}, pic)
+		b.Pop()
+		b.Pop()
+		b.AddPicture(ui.Offset{Dx: 50}, pic)
+		return b.Build(), outer.Layer(), inner.Layer()
+	}
+	tests := []struct {
+		name string
+		// retained says which of the groups (outer, inner) the renderer has the pixels of.
+		retained func(outer, inner ui.Layer) func(ui.Layer) bool
+		want     []CommandKind
+	}{
+		{"none retained", func(_, _ ui.Layer) func(ui.Layer) bool { return func(ui.Layer) bool { return false } },
+			[]CommandKind{CommandBeginLayer, CommandBeginLayer, CommandDraw, CommandDraw, CommandEndLayer, CommandEndLayer, CommandDraw, CommandDraw}},
+		{"the outer group", func(outer, _ ui.Layer) func(ui.Layer) bool { return func(l ui.Layer) bool { return l == outer } },
+			[]CommandKind{CommandBeginLayer, CommandEndLayer, CommandDraw, CommandDraw}},
+		{"the inner group, which is inside another", func(_, inner ui.Layer) func(ui.Layer) bool { return func(l ui.Layer) bool { return l == inner } },
+			[]CommandKind{CommandBeginLayer, CommandBeginLayer, CommandDraw, CommandDraw, CommandEndLayer, CommandEndLayer, CommandDraw, CommandDraw}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			scene, outer, inner := build()
+			keep := tt.retained(outer, inner)
+			var asked []ui.Layer
+			l, err := Flatten(scene, FlattenOpts{
+				Bounds:   ui.NewRectFromLTWH(0, 0, 100, 100),
+				Boundary: func(l ui.Layer) bool { return l == outer || l == inner },
+				Retained: func(l ui.Layer, m *ui.Matrix4, clip Clip) bool {
+					asked = append(asked, l)
+					if clip.Bounds != (ui.Rect{Left: 0, Top: 0, Right: 100, Bottom: 100}) || m.Storage()[12] == 0 {
+						t.Errorf("asked with clip %+v and transform %v", clip.Bounds, m.Storage())
+					}
+					return keep(l)
+				},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := kinds(l); !equalKinds(got, tt.want) {
+				t.Errorf("kinds = %v, want %v", got, tt.want)
+			}
+			// Only a group that is not inside another is asked about.
+			if len(asked) != 1 || asked[0] != outer {
+				t.Errorf("asked about %d groups, want the outer one only", len(asked))
+			}
+		})
+	}
+}
+
+// rowGlyphs is a paragraph of lines of 10 pixels, one rectangle each, that paints only the lines
+// that can reach the rows it is asked for, and notes the rows.
+type rowGlyphs struct {
+	ui.ParagraphLayout
+	lines int
+	rows  *[2]float64
+	asked *int
+}
+
+func (g rowGlyphs) draw(i int) ui.ParagraphDraw {
+	return ui.ParagraphDraw{Op: ui.OpDrawRect{Rect: ui.NewRectFromLTWH(0, 0, 5, 8), Paint: *paintOf(0xFF000000)}, Offset: ui.Offset{Dy: float64(i) * 10}}
+}
+
+func (g rowGlyphs) PaintParagraph(emit func(ui.ParagraphDraw)) {
+	for i := 0; i < g.lines; i++ {
+		emit(g.draw(i))
+	}
+}
+
+func (g rowGlyphs) PaintParagraphRows(top, bottom float64, emit func(ui.ParagraphDraw)) {
+	*g.rows = [2]float64{top, bottom}
+	*g.asked++
+	for i := 0; i < g.lines; i++ {
+		if y := float64(i) * 10; y+8 >= top && y <= bottom {
+			emit(g.draw(i))
+		}
+	}
+}
+
+func TestFlattenExpandsOnlyTheLinesOfAParagraphThatShow(t *testing.T) {
+	tests := []struct {
+		name      string
+		transform *ui.Matrix4
+		clip      ui.Rect
+		wantRows  [2]float64
+		wantLines int
+	}{
+		{"a window on the middle", ui.NewMatrix4Identity(), ui.NewRectFromLTWH(0, 100, 50, 40), [2]float64{100 - 20, 140 - 20}, 5},
+		{"scrolled up by 300 pixels", func() *ui.Matrix4 { m := ui.NewMatrix4Identity(); m.Translate(0, -300, 0); return m }(), ui.NewRectFromLTWH(0, 0, 50, 30), [2]float64{300 - 20, 330 - 20}, 4},
+		{"scaled by two", func() *ui.Matrix4 { m := ui.NewMatrix4Identity(); m.Scale(2, 2, 1); return m }(), ui.NewRectFromLTWH(0, 100, 50, 40), [2]float64{50 - 20, 70 - 20}, 3},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var rows [2]float64
+			asked := 0
+			para := ui.NewParagraph(rowGlyphs{lines: 1000, rows: &rows, asked: &asked})
+			b := ui.NewSceneBuilder()
+			b.PushTransform(tt.transform)
+			b.AddPicture(ui.Offset{}, pictureOf(func(c *ui.Canvas) { c.DrawParagraph(para, ui.Offset{Dx: 0, Dy: 20}) }))
+			b.Pop()
+			l, err := Flatten(b.Build(), FlattenOpts{Bounds: tt.clip})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if asked != 1 || rows != tt.wantRows {
+				t.Errorf("the paragraph was asked %d times for rows %v, want once for %v", asked, rows, tt.wantRows)
+			}
+			if len(l.Commands) != tt.wantLines {
+				t.Errorf("%d commands, want %d", len(l.Commands), tt.wantLines)
+			}
+		})
+	}
+}
+
+func TestFlattenExpandsAWholeParagraphUnderATransformItCannotInvert(t *testing.T) {
+	var rows [2]float64
+	asked := 0
+	para := ui.NewParagraph(rowGlyphs{lines: 30, rows: &rows, asked: &asked})
+	perspective := ui.NewMatrix4Identity()
+	perspective.SetEntry(3, 0, 0.001)
+	b := ui.NewSceneBuilder()
+	b.PushTransform(perspective)
+	b.AddPicture(ui.Offset{}, pictureOf(func(c *ui.Canvas) { c.DrawParagraph(para, ui.Offset{}) }))
+	b.Pop()
+	l, err := Flatten(b.Build(), FlattenOpts{Bounds: ui.NewRectFromLTWH(0, 0, 50, 40)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if asked != 0 || len(l.Commands) != 30 {
+		t.Errorf("rows asked %d times, %d commands, want the whole paragraph (30 commands)", asked, len(l.Commands))
+	}
+}
+
+// tagTestSinkStopped is the tag of the error the sink of TestFlattenFuncStopsAtTheFirstErrorOfTheSink returns.
+const tagTestSinkStopped = "TestSinkStopped"

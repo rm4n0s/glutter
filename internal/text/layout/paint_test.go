@@ -303,3 +303,123 @@ func TestPaintColorEmojiIsAPicture(t *testing.T) {
 		t.Error("a color glyph's picture is made once")
 	}
 }
+
+// rowsOf returns what a laid-out paragraph emits to be drawn within the rows from top to bottom.
+func rowsOf(p *paragraph, top, bottom float64) []ui.ParagraphDraw {
+	var out []ui.ParagraphDraw
+	p.PaintParagraphRows(top, bottom, func(d ui.ParagraphDraw) { out = append(out, d) })
+	return out
+}
+
+func manyLines(n int) string {
+	text := ""
+	for i := 0; i < n; i++ {
+		text += "Line of text\n"
+	}
+	return text
+}
+
+func TestPaintParagraphRowsEmitsTheLinesThatReachTheRows(t *testing.T) {
+	e := bundledEngine(t)
+	opts := ui.TextStyleOpts{Decoration: ui.Ptr(ui.TextDecorationUnderline), Shadows: []ui.Shadow{{Color: ui.NewColor(0x80000000), Offset: ui.Offset{Dx: 1, Dy: 2}}}}
+	p := styled(e, manyLines(400), 16, opts, nil)
+	all := paintOf(p)
+	// Every piece is in the rows it is asked for when it lies in them: the pieces of the lines
+	// in the window all come, and those far from the window do not.
+	lineHeight := p.lines[1].top - p.lines[0].top
+	tests := []struct {
+		name        string
+		top, bottom float64
+	}{
+		{"the first lines", 0, 3 * lineHeight},
+		{"the middle", 200 * lineHeight, 215 * lineHeight},
+		{"the last lines", 395 * lineHeight, 500 * lineHeight},
+		{"a single row", 100 * lineHeight, 100 * lineHeight},
+		{"rows above the text", -1000, -500},
+		{"rows below the text", 1e6, 2e6},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := rowsOf(p, tt.top, tt.bottom)
+			if len(got) > len(all)/4 {
+				t.Errorf("%d pieces of %d: the lines far from the rows were painted", len(got), len(all))
+			}
+			// Each piece that the full painting makes within the rows is in the result, in order.
+			var want []ui.ParagraphDraw
+			for _, d := range all {
+				if y := pieceY(d); y >= tt.top && y <= tt.bottom {
+					want = append(want, d)
+				}
+			}
+			next := 0
+			for _, d := range got {
+				if next < len(want) && sameDraw(d, want[next]) {
+					next++
+				}
+			}
+			if next != len(want) {
+				t.Errorf("%d of the %d pieces inside the rows are missing or out of order", len(want)-next, len(want))
+			}
+		})
+	}
+	// The whole range is the whole painting.
+	if got := rowsOf(p, -1e9, 1e9); len(got) != len(all) {
+		t.Errorf("the whole range made %d pieces, want %d", len(got), len(all))
+	}
+}
+
+// pieceY is where a piece lies vertically: the baseline of a glyph, the top of a rectangle.
+func pieceY(d ui.ParagraphDraw) float64 {
+	if r, ok := d.Op.(ui.OpDrawRect); ok {
+		return d.Offset.Dy + r.Rect.Top
+	}
+	return d.Offset.Dy
+}
+
+func sameDraw(a, b ui.ParagraphDraw) bool {
+	return a.Offset == b.Offset && a.Snap == b.Snap && (a.Matrix == nil) == (b.Matrix == nil)
+}
+
+func TestPaintParagraphRowsOfAShortParagraphPaintsItAll(t *testing.T) {
+	e := bundledEngine(t)
+	p := styled(e, manyLines(minRowsLines-2), 16, ui.TextStyleOpts{}, nil)
+	if got, all := rowsOf(p, 0, 1), paintOf(p); len(got) != len(all) {
+		t.Errorf("%d pieces of %d for a paragraph of %d lines", len(got), len(all), len(p.lines))
+	}
+}
+
+func TestPaintBoundsHoldsEverythingTheParagraphDraws(t *testing.T) {
+	e := bundledEngine(t)
+	tests := []struct {
+		name string
+		text string
+		opts ui.TextStyleOpts
+		size float64
+	}{
+		{"plain text", manyLines(50), ui.TextStyleOpts{}, 16},
+		{"a shadow that reaches far", manyLines(40), ui.TextStyleOpts{Shadows: []ui.Shadow{{Color: ui.NewColor(0xFF000000), Offset: ui.Offset{Dx: 30, Dy: 40}, BlurRadius: 6}}}, 14},
+		{"big text", manyLines(10), ui.TextStyleOpts{}, 80},
+		{"a decoration", manyLines(40), ui.TextStyleOpts{Decoration: ui.Ptr(ui.TextDecorationUnderline | ui.TextDecorationOverline)}, 20},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := styled(e, tt.text, tt.size, tt.opts, nil)
+			box := p.PaintBounds()
+			for i, d := range paintOf(p) {
+				var local ui.Rect
+				switch op := d.Op.(type) {
+				case ui.OpDrawPath:
+					local = op.Path.GetBounds()
+				case ui.OpDrawRect:
+					local = op.Rect
+				default:
+					continue
+				}
+				r := local.Shift(d.Offset)
+				if r.Left < box.Left || r.Top < box.Top || r.Right > box.Right || r.Bottom > box.Bottom {
+					t.Fatalf("piece %d reaches %v, outside the box %v", i, r, box)
+				}
+			}
+		})
+	}
+}

@@ -61,10 +61,10 @@ func TestRasterCacheDrawsARetainedLayerFromItsTexture(t *testing.T) {
 		t.Errorf("the cache should hold the framebuffer: %+v", ds)
 	}
 	// From the third on, one instance draws the whole layer, and the rectangles
-	// inside it are not drawn again; they count as drawn.
+	// inside it are not walked, so they are not counted.
 	third, _ := retainedScene(kept, 20, 20)
 	st = render(third)
-	if st.CachedLayersDrawn != 1 || st.CachedLayersMade != 0 || st.Instances != 2 || st.Commands != 3 || st.Drawn != 3 || gl.calls["genFramebuffer"] != 0 {
+	if st.CachedLayersDrawn != 1 || st.CachedLayersMade != 0 || st.Instances != 2 || st.Commands != 1 || st.Drawn != 1 || gl.calls["genFramebuffer"] != 0 {
 		t.Errorf("third frame: %+v, %d framebuffers", st, gl.calls["genFramebuffer"])
 	}
 	if gl.calls["drawArraysInstanced"] != 2 {

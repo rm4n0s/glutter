@@ -243,3 +243,34 @@ const (
 	tagTestBadUpload = "TestBadUpload"
 	tagTestNoPage    = "TestNoPage"
 )
+
+func TestMaskCacheTilesOfShapesTheAtlasHasMakeNoAllocation(t *testing.T) {
+	f := newFakeMasks(512, 8)
+	var op ui.DisplayOp = ui.OpDrawRect{Rect: ui.NewRectFromLTWH(0, 0, 300, 100), Paint: *solidPaint(0xFF000000)}
+	var paint ui.Paint
+	sh, ok := ShapeOfInto(op, &paint)
+	if !ok {
+		t.Fatal("not a shape")
+	}
+	m := ui.NewMatrix4Identity()
+	m.Translate(100, 50, 0)
+	view := image.Rect(0, 0, 1000, 1000)
+	first, err := f.Tiles(op, sh, m, 0, view)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := append([]MaskTile(nil), first...)
+	n := testing.AllocsPerRun(50, func() {
+		if _, err := f.Tiles(op, sh, m, 0, view); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if n != 0 {
+		t.Errorf("%v allocations for tiles that the atlas has, want none", n)
+	}
+	// The slice is the cache's own and holds the same tiles each time.
+	got, _ := f.Tiles(op, sh, m, 0, view)
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("tiles = %+v, want %+v", got, want)
+	}
+}

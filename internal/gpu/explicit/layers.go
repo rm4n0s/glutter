@@ -127,7 +127,7 @@ func (b *frameBuilder) beginLayer(c gpu.Command) error {
 			rec.info.blend, _ = gpu.FixedBlendOf(ui.BlendModeSrcOver)
 		}
 		rec.info.aa = true
-		rec.info.spec = b.intern(sp)
+		rec.info.spec = b.intern(&sp)
 	}
 	if rec.filter != nil {
 		if _, ok := gpu.FilterPasses(rec.filter, rec.ctm, rec.tile, 1, 1); !ok {
@@ -165,6 +165,17 @@ func (b *frameBuilder) beginLayer(c gpu.Command) error {
 	}
 	b.pushLayer(rec)
 	return nil
+}
+
+// retained says that the raster cache has the pixels of the group of the layer l, so that
+// beginLayer draws them and drops what is inside: the flattener then does not walk the
+// layer. It is asked for the groups at the top level only, with the key beginLayer makes.
+func (b *frameBuilder) retained(l ui.Layer, m *ui.Matrix4, clip gpu.Clip) bool {
+	rect := gpu.PixelRect(clip.Bounds).Intersect(image.Rect(0, 0, b.w, b.h))
+	if rect.Empty() {
+		return true // beginLayer culls the group
+	}
+	return b.cache.Lookup(l, gpu.LayerKeyOf(m, rect)) != nil
 }
 
 // deviceBounds returns the pixels that a rectangle covers under the transform.

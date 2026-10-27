@@ -4648,3 +4648,53 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Proof:** none
 - **Manual checks:** none
 - **Deviations and follow-ups:** none
+
+## 29.15 What an idle frame allocates (Emetos)
+
+- **Date:** 2026-10-27
+- **Branch:** feat/step-29.15-idle-allocations
+- **Summary:** Emetos's issue "while idle with only the cursor blinking, the Go heap grows by about 11 MB/s". Glutter's own editor reproduces it, in the renderers and not in the framework.
+  - **The size:** the renderers allocated 6 MB for each blink with 50 lines of text and 600 MB with 5,000. The framework allocated 13.5 KB at any length.
+  - **The cause:** the flattener expanded the paragraph of the unchanged text picture on every frame, into one command for each glyph of the whole text. It held them in a growing list. It walked the contents of layers that the raster cache already had. Each command copied its operation several times.
+  - **Visible rows only:** `textdraw.ExpandVisible` asks the layout for the lines that reach the clip (`RowPainter`). The text engine's layout and `offscreen`'s frozen paragraph implement it. The damage tracker measures a paragraph by its box (`BoundsPainter`).
+  - **Retained layers:** with `FlattenOpts.Retained`, the flattener does not walk a layer whose pixels the raster cache has. `FlattenFunc` hands out commands one at a time, with no list.
+  - **No copies:** `CopyPaintOf`, `PaintFilters`, `ShapeOfInto`, a pointer `intern`, pooled shape contexts, one matrix per paragraph, cached glyph operations and `Tiles` scratch.
+  - **Kept between frames:** the frame builder (data, calls, specs, contexts) and the bytes staged for `WriteBuffer`.
+  - **`offscreen`:** frozen paragraphs keep their draws in groups, with their rows and a box.
+- **Main files:**
+  - `internal/gpu/{flatten,paint,mask,damage}.go`;
+  - `internal/gpu/explicit/{frame,layers,renderer,slot,primitives,effects}.go`;
+  - `internal/gpu/gles/{scene,shapes,layers,paths,paintspec,effects,renderer}.go`;
+  - `internal/gpu/soft/soft.go`, `internal/gpu/textdraw/textdraw.go`, `internal/text/layout/{paint,decor}.go`, `offscreen/detach.go`;
+  - `internal/gpu/explicit/fakedevice/fakedevice.go`, `internal/gpu/gputest/editorscene/`;
+  - `docs/SPEC.md` (§9.1, §9.3, §9.9, §15).
+- **Tests (table-driven):**
+  - **Benchmarks:**
+    - `BenchmarkCaretFrame` in `explicit`, `gles`, `examples/editor` and `widgets`;
+    - `BenchmarkEditorCaretFrame` in `offscreen`.
+  - **Allocation tests:** short and long text, with bounds (framework 128 KB, renderers 256 KB, `soft` 3 MB) and a growth check.
+  - **Pixel equality:** a long text drawn through a window equals the whole text clipped (`soft`, `offscreen`; mutation-checked).
+  - **Units:**
+    - `FlattenFunc` and `Retained`;
+    - the rows and bounds of textdraw and the layout;
+    - `CopyPaintOf`, `PaintFilters` and `ShapeOfInto`;
+    - `Tiles` without allocations.
+  - **Race:** two renderers draw one detached scene under `-race`.
+  - **Numbers** (bytes per caret frame):
+
+    | Stage | 50 lines before | 5,000 lines before | After (any length) |
+    |---|---|---|---|
+    | Framework | 13.5 KB | 13.5 KB | 13.5 KB |
+    | `explicit` | 6.07 MB | 600 MB | 38.0 KB |
+    | `gles` | 5.89 MB | 600 MB | 27.6 KB |
+    | `offscreen` `Detach` | 2.3 KB | 2.3 KB | 2.3 KB |
+    | `offscreen` `Surface.Draw` (`soft`) | 4.45 MB | 343 MB | 1.22 MB |
+
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck, apicheck, uintptrcheck ✅ · wasm build, vet and tests ✅ · check-android ✅ · Windows builds, vet, lint, test-windows and the d3d12 Wine suite ✅ · display tests: `gles`, `vulkan`, `explicit` under `scripts/headless-wayland.sh` ✅
+- **Proof:** none
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - **Counters:** `FrameStats.Commands` and `Culled` no longer count the commands that were not walked.
+  - **`soft`:** it still rasterizes the glyphs of the damaged rectangles (1.2 MB per frame).
+  - **Typing:** a text change still costs the length of the text (layout and re-freeze).
+  - **Vulkan:** its per-frame allocations were read from the code, not measured.

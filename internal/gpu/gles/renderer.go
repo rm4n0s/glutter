@@ -58,6 +58,8 @@ type Renderer struct {
 	last       FrameStats
 	res        *resources // the caches of paths, clip masks and images; made at the first frame
 	cache      *layerCache
+	// builder is the frame builder, kept between frames for the memory it holds.
+	builder    frameBuilder
 	programs   ProgramCache  // RendererOpts.ProgramCache
 	opened     time.Duration // how long opening the context took
 	cacheAfter int           // RendererOpts.RasterCacheAfter

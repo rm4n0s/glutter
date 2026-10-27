@@ -76,53 +76,73 @@ func (p *paragraph) Decorations() []DecorationSegment {
 	p.ensureLaidOut()
 	var out []DecorationSegment
 	for li, l := range p.lines {
-		geo := p.geometry(l)
-		first := len(out)
-		for ri := range l.runs {
-			pr := &l.runs[ri]
-			if pr.run.ph != nil {
+		out = p.lineDecorations(li, l, out)
+	}
+	return out
+}
+
+// lineDecorations appends the decoration segments of the line li to out.
+func (p *paragraph) lineDecorations(li int, l *line, out []DecorationSegment) []DecorationSegment {
+	if !p.hasDecorations() {
+		return out
+	}
+	geo := p.geometry(l)
+	first := len(out)
+	for ri := range l.runs {
+		pr := &l.runs[ri]
+		if pr.run.ph != nil {
+			continue
+		}
+		st := p.styles[pr.run.style]
+		if st.Decoration == ui.TextDecorationNone {
+			continue
+		}
+		x0, x1 := math.Inf(1), math.Inf(-1)
+		if pr.ellipsis {
+			x0, x1 = l.left+pr.x, l.left+pr.x+pr.width
+		}
+		for r := pr.start; r < min(pr.end, l.visEnd) && !pr.ellipsis; r++ {
+			if b := geo[r-l.start]; b.run == ri {
+				x0, x1 = min(x0, b.x0), max(x1, b.x1)
+			}
+		}
+		if x1 <= x0 {
+			continue
+		}
+		color := st.Color
+		if st.HasDecorationColor {
+			color = st.DecorationColor
+		}
+		under, strike, over, underThick, strikeThick := decorationMetrics(pr.run.face, pr.run.size, pr.run.ascent)
+		mult := st.DecorationThickness
+		style := st.DecorationStyle
+		for _, k := range []struct {
+			kind  ui.TextDecoration
+			y, th float64
+		}{
+			{ui.TextDecorationUnderline, under, underThick},
+			{ui.TextDecorationOverline, over, underThick},
+			{ui.TextDecorationLineThrough, strike, strikeThick},
+		} {
+			if st.Decoration&k.kind == 0 {
 				continue
 			}
-			st := p.styles[pr.run.style]
-			if st.Decoration == ui.TextDecorationNone {
-				continue
-			}
-			x0, x1 := math.Inf(1), math.Inf(-1)
-			if pr.ellipsis {
-				x0, x1 = l.left+pr.x, l.left+pr.x+pr.width
-			}
-			for r := pr.start; r < min(pr.end, l.visEnd) && !pr.ellipsis; r++ {
-				if b := geo[r-l.start]; b.run == ri {
-					x0, x1 = min(x0, b.x0), max(x1, b.x1)
-				}
-			}
-			if x1 <= x0 {
-				continue
-			}
-			color := st.Color
-			if st.HasDecorationColor {
-				color = st.DecorationColor
-			}
-			under, strike, over, underThick, strikeThick := decorationMetrics(pr.run.face, pr.run.size, pr.run.ascent)
-			mult := st.DecorationThickness
-			style := st.DecorationStyle
-			for _, k := range []struct {
-				kind  ui.TextDecoration
-				y, th float64
-			}{
-				{ui.TextDecorationUnderline, under, underThick},
-				{ui.TextDecorationOverline, over, underThick},
-				{ui.TextDecorationLineThrough, strike, strikeThick},
-			} {
-				if st.Decoration&k.kind == 0 {
-					continue
-				}
-				out = appendSegment(out, first, DecorationSegment{Line: li, Kind: k.kind, Style: style, Color: color, X0: x0, X1: x1,
-					Y: l.baseline + k.y, Thickness: k.th * mult, FontSize: pr.run.size})
-			}
+			out = appendSegment(out, first, DecorationSegment{Line: li, Kind: k.kind, Style: style, Color: color, X0: x0, X1: x1,
+				Y: l.baseline + k.y, Thickness: k.th * mult, FontSize: pr.run.size})
 		}
 	}
 	return out
+}
+
+// hasDecorations says whether any style of the paragraph draws a decoration: a paragraph with
+// none has no decoration segments, and the lines need not be looked at.
+func (p *paragraph) hasDecorations() bool {
+	for _, st := range p.styles {
+		if st.Decoration != ui.TextDecorationNone {
+			return true
+		}
+	}
+	return false
 }
 
 // appendSegment adds a segment, joining it to a touching segment of the same look on the

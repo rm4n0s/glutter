@@ -288,7 +288,7 @@ func TestImageErrors(t *testing.T) {
 		r, _, _ := newRenderer(t)
 		_, err := r.Draw(window, 50, 50, scene, false)
 		appErr, ok := errors.FromError(err)
-		if !ok || appErr.Tag != "GPUImageDisposed" || !appErr.HasRoute("Renderer.build->frameBuilder.command") {
+		if !ok || appErr.Tag != "GPUImageDisposed" || !appErr.HasRoute("Renderer.build->FlattenFunc") {
 			t.Errorf("got %v, want GPUImageDisposed through Renderer.build", err)
 		}
 	})
@@ -300,7 +300,7 @@ func TestImageErrors(t *testing.T) {
 		dev.SetLimits(limits)
 		_, err := strict.Draw(window, 32, 32, scene, false)
 		appErr, ok := errors.FromError(err)
-		if !ok || appErr.Tag != "GPUImageTooLarge" || !appErr.HasRoute("Renderer.build->frameBuilder.command") {
+		if !ok || appErr.Tag != "GPUImageTooLarge" || !appErr.HasRoute("Renderer.build->FlattenFunc") {
 			t.Fatalf("got %v, want GPUImageTooLarge through Renderer.build", err)
 		}
 		skipping, dev2, _ := newRenderer(t, explicit.RendererOpts{SkipUnsupported: true})

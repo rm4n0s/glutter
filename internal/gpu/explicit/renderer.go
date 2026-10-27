@@ -87,7 +87,9 @@ type Renderer struct {
 	cache  *gpu.LayerCache[Texture]
 	// slots are the buffers of the frames in flight: the frame with number n uses slot
 	// n % FramesInFlight, which the device has finished with when Begin returns.
-	slots   [FramesInFlight]frameSlot
+	slots [FramesInFlight]frameSlot
+	// builder is the frame builder, kept between frames for the memory it holds.
+	builder frameBuilder
 	frameNo int
 	last    FrameStats
 	// lost is whether the device was lost before, and lostAt when.
@@ -468,22 +470,18 @@ func (r *Renderer) build(scene *ui.Scene, width, height int, useCache bool) (*fr
 	}
 	r.res.beginFrame()
 	tiles0, clips0, images0, asks0 := r.res.masks.Rasterized, r.res.clipMasksBuilt, r.res.imagesUploaded, r.res.masks.Requests
-	fb := &frameBuilder{w: width, h: height, skip: r.opts.SkipUnsupported, res: r.res}
+	fb := &r.builder
+	fb.reset(width, height, r.opts.SkipUnsupported, r.res)
 	if scene != nil {
 		fo := gpu.FlattenOpts{Bounds: ui.NewRectFromLTWH(0, 0, float64(width), float64(height))}
 		if useCache && r.cache != nil {
 			fb.cache = r.cache
 			r.cache.BeginFrame(scene.Root())
 			fo.Boundary = r.cache.Boundary
+			fo.Retained = fb.retained
 		}
-		list, err := gpu.Flatten(scene, fo)
-		if err != nil {
+		if err := gpu.FlattenFunc(scene, fb.command, fo); err != nil {
 			return nil, err
-		}
-		for _, c := range list.Commands {
-			if err := fb.command(c); err != nil {
-				return nil, err
-			}
 		}
 	}
 	fb.stats.Instances = fb.items(pipeShape) + fb.items(pipeMask) + fb.items(pipeImage)
