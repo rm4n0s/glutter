@@ -4858,3 +4858,21 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - **Not measured:** the C memory of X11, a real EGL and GL, Vulkan, Android and Windows. They were read, not run: every C allocation is paired with a `Free` or with its owner's `Close`.
   - **A fake's artifact:** `fakecomp` sends no `delete_id` for destroyed objects, so libwayland's id table grows a little in the clipboard and window scenarios on the fake.
   - **Public API:** `gluttertest.Tester.ClearLogs` is new, and `ui.Layer.OldLayer()` can return nil once its handle is gone.
+
+## 29.22 Release 1.9.2 (Emetos)
+
+- **Date:** 2026-10-28
+- **Branch:** feat/step-29.22-release-1.9.2
+- **Summary:** 1.9.2 is released with steps 29.8 to 29.21, the fixes that Emetos's three issue lists of 2026-10-27 asked for, and the leak hunt the owner asked for.
+  - **SPEC §1:** a 1.9.2 sentence, and a "Scope of 1.9.2" paragraph next to the one of 1.9.1.
+  - **`README.md`:** "What is new in 1.9.2".
+  - **Publishing:** tags `step-29.22` and `v1.9.2`. `main` was pushed with the step tags of 29.8 to 29.22 (`git push --follow-tags origin main`).
+  - **How the steps ran:** steps 29.17 to 29.20 ran at the same time, each in a git worktree of its own under `.claude/worktrees/`. They were merged one at a time, in order, after their checks.
+- **Main files:** `docs/SPEC.md` (§1), `README.md`.
+- **Tests:** none of its own.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck, apicheck, uintptrcheck ✅ · wasm build, vet and tests ✅ · check-android ✅ · Windows builds, vet, lint and test-windows ✅ · display tests: none
+- **Proof:** none
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - **Not in 1.9.2:** `MaintainVisibleContentPosition` and `EstimateItemOffsets` for grids and `SliverAnimatedList`; a software rasterizer that allocates less than about 1 MB for a frame of text; drawing only the damaged region on the GPU.
+  - **Not measured:** the C memory of X11, a real GL, Vulkan, Android and Windows.

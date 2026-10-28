@@ -198,6 +198,19 @@ func startView(parent *m.WidgetsBinding, root m.Widget, send func(pixels []byte,
 }
 ```
 
+**What is new in 1.9.2.** Fixes for an app built on Glutter (Emetos):
+- **Lists:**
+  - `MaintainVisibleContentPosition` in `ListViewOpts` (and the list slivers' options): rows inserted before the one the user reads no longer push it away, as in a chat or a live log. At the start, the list still follows the newest row.
+  - `EstimateItemOffsets`: a jump far into a long list of items of different heights builds one window of items, not every item in between.
+- **`offscreen.View`:** a view can have a clipboard of its own (`ViewOpts.Clipboard`), follows the app's platform configuration, and has a window (`ViewOpts.Window`, `View.SetWindow`). `SetSize` keeps the rest of its configuration.
+- **Gestures:** a gesture arena no longer panics when a pointer goes down again before its arena is resolved, and it resolves in the order Flutter does. Each press on Linux gets a new pointer id.
+- **Renderers:** they skip what lies outside the clip. A frame in which only the caret blinks allocates tens of kilobytes, not megabytes that grow with the text.
+- **Text fields:** a field mounted again with the focus takes keys, and the caret of an obscured field sits on the right bullet.
+- **Memory:** eight memory leaks fixed. The largest kept every frame an app had repainted alive, about 40 KB for each page pushed. Tests now check that the live heap stays flat while an app runs. The undo history of a text field keeps at most 1,000 steps and 16 MB of text.
+- **Other:**
+  - unplugging the last Wayland keyboard no longer logs an error;
+  - programs no longer link the `testing` package.
+
 **What is new in 1.8.1 to 1.8.3.**
 - **1.8.1:** `ErrorBoundary`. When anything below it fails to build, it shows a fallback in place of its whole child,
   in the same frame. It is told about the error before the app's error reporter ([the guide](docs/GUIDE.md#12-a-widget-that-fails)).
