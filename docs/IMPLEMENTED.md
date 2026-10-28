@@ -4876,3 +4876,26 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Deviations and follow-ups:**
   - **Not in 1.9.2:** `MaintainVisibleContentPosition` and `EstimateItemOffsets` for grids and `SliverAnimatedList`; a software rasterizer that allocates less than about 1 MB for a frame of text; drawing only the damaged region on the GPU.
   - **Not measured:** the C memory of X11, a real GL, Vulkan, Android and Windows.
+
+## 29.23 Early key handlers also run when nothing has the focus (Emetos)
+
+- **Date:** 2026-10-28
+- **Branch:** feat/step-29.23-early-key-handlers-without-focus
+- **Summary:** Emetos's issue "A key handled by a hardware keyboard handler still reaches the focused widget". `FocusManager.handleKeyMessage` returned before the early handlers when `primaryFocus` was nil, as Flutter's does. That happens for a few frames when a focused widget leaves the tree (a tab closes and the next one takes its place), so a key that came then could not be claimed. Now:
+  - With no primary focus the highlight mode is updated and the early handlers run. `Handled` handles the key, and `SkipRemainingHandlers` ends it unhandled (the late handlers do not see it).
+  - Otherwise the walk up the focus chain is skipped and the late handlers run, as after a chain that ignored the key.
+  - With a primary focus nothing changes. `HardwareKeyboard.HandleKeyData` stays Flutter's: of the issue's two proposed fixes this is the smaller one, and Emetos can claim a key with an early handler alone.
+  - The doc comments of `AddEarlyKeyEventHandler` and `AddLateKeyEventHandler` say it.
+  - The plan gained steps 29.23 to 29.25 (release 1.9.3).
+- **Main files:** `widgets/focus_manager.go`, `widgets/focus_manager_test.go`, `docs/SPEC.md` (§11.6, §12.10), `docs/IMPLEMENTATION.md`.
+- **Tests (table-driven):**
+  - `TestFocusManagerKeyHandlersSeeKeysWithoutPrimaryFocus` (5 rows: early handled, both ignored, early ignored and late handled, early skip, late skip).
+  - `TestFocusManagerWithoutPrimaryFocusAndNoHandlersIgnoresTheKey`.
+  - `TestFocusManagerEarlyHandlerClaimsAKeyWhileTheFocusMovesOn` (the Emetos case: the focused node is disposed, an early handler claims the key, the focus moves to another node and that node never sees it; 2 rows).
+  - All fail without the fix. The existing key handler tests pass unchanged.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck, apicheck, uintptrcheck ✅ · wasm build, vet and tests ✅ · check-android ✅ · Windows builds, vet, lint and test-windows ✅ · display tests: none
+- **Proof:** none
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - **Deviation:** Flutter ignores a key when nothing has the focus (SPEC §12.10, §11.6).
+  - Emetos can drop the hardware handler of `internal/gui/kit/typeahead.go` and keep only the early handler.

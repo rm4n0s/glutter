@@ -1521,6 +1521,155 @@ func TestFocusManagerAddLateKeyEventHandlerWorks(t *testing.T) {
 	keyHandlerTest(t, (*FocusManager).AddLateKeyEventHandler, (*FocusManager).RemoveLateKeyEventHandler, false)
 }
 
+// Deviation: Flutter ignores a key event when no node has the primary focus;
+// here the early and the late key event handlers still see it (SPEC §12.10).
+func TestFocusManagerKeyHandlersSeeKeysWithoutPrimaryFocus(t *testing.T) {
+	const (
+		ignored = KeyEventResultIgnored
+		handled = KeyEventResultHandled
+		skip    = KeyEventResultSkipRemainingHandlers
+	)
+	tests := []struct {
+		name        string
+		early       KeyEventResult
+		late        KeyEventResult
+		wantHandled bool
+		wantEarly   int
+		wantLate    int
+	}{
+		{"early handles", handled, handled, true, 1, 0},
+		{"early ignores and late ignores", ignored, ignored, false, 1, 1},
+		{"early ignores and late handles", ignored, handled, true, 1, 1},
+		{"early skips the remaining handlers", skip, handled, false, 1, 0},
+		{"late skips the remaining handlers", ignored, skip, false, 1, 1},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ts := gluttertest.New(t)
+			ts.PumpWidget(NewSizedBox(nil))
+			fm := ts.Binding.FocusManager()
+			if fm.PrimaryFocus() != nil {
+				t.Fatalf("primary focus = %v, want nil", fm.PrimaryFocus())
+			}
+			var early, late int
+			fm.AddEarlyKeyEventHandler(func(event services.KeyEvent) KeyEventResult {
+				if _, ok := event.(*services.KeyDownEvent); ok {
+					early++
+					return tc.early
+				}
+				return ignored
+			})
+			fm.AddLateKeyEventHandler(func(event services.KeyEvent) KeyEventResult {
+				if _, ok := event.(*services.KeyDownEvent); ok {
+					late++
+					return tc.late
+				}
+				return ignored
+			})
+			if got := ts.SendKeyDownEvent(digit1); got != tc.wantHandled {
+				t.Errorf("HandleKeyData returned %v, want %v", got, tc.wantHandled)
+			}
+			ts.SendKeyUpEvent(digit1)
+			if early != tc.wantEarly || late != tc.wantLate {
+				t.Errorf("early handler calls = %d, late handler calls = %d; want %d, %d", early, late, tc.wantEarly, tc.wantLate)
+			}
+		})
+	}
+}
+
+func TestFocusManagerWithoutPrimaryFocusAndNoHandlersIgnoresTheKey(t *testing.T) {
+	ts := gluttertest.New(t)
+	ts.PumpWidget(NewSizedBox(nil))
+	if ts.Binding.FocusManager().PrimaryFocus() != nil {
+		t.Fatal("primary focus is not nil")
+	}
+	if ts.SendKeyDownEvent(digit1) {
+		t.Error("a key was handled with no focus and no handler")
+	}
+	ts.SendKeyUpEvent(digit1)
+}
+
+// TestFocusManagerEarlyHandlerClaimsAKeyWhileTheFocusMovesOn is the case of a
+// tab that closes while the next one takes its place: the focused field is
+// disposed, so nothing has the primary focus until the focus update runs.
+func TestFocusManagerEarlyHandlerClaimsAKeyWhileTheFocusMovesOn(t *testing.T) {
+	tests := []struct {
+		name        string
+		result      KeyEventResult
+		wantHandled bool
+		wantSeenByB int
+	}{
+		{"claimed", KeyEventResultHandled, true, 0},
+		{"not claimed", KeyEventResultIgnored, false, 1},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ts := gluttertest.New(t)
+			nodeA := NewFocusNode(FocusNodeOpts{DebugLabel: "A"})
+			nodeB := NewFocusNode(FocusNodeOpts{DebugLabel: "B"})
+			defer nodeB.Dispose()
+			var seenByA, seenByB, early int
+			count := func(n *int) FocusOnKeyEventCallback {
+				return func(_ *FocusNode, event services.KeyEvent) KeyEventResult {
+					if _, ok := event.(*services.KeyDownEvent); ok {
+						*n++
+					}
+					return KeyEventResultIgnored
+				}
+			}
+			ts.PumpWidget(NewColumn([]Widget{
+				NewFocus(NewSizedBox(nil), FocusOpts{FocusNode: nodeA, OnKeyEvent: count(&seenByA)}),
+				NewFocus(NewSizedBox(nil), FocusOpts{FocusNode: nodeB, OnKeyEvent: count(&seenByB)}),
+			}))
+			nodeA.RequestFocus()
+			ts.Pump()
+			fm := ts.Binding.FocusManager()
+			if fm.PrimaryFocus() != nodeA {
+				t.Fatalf("primary focus = %v, want A", fm.PrimaryFocus())
+			}
+			fm.AddEarlyKeyEventHandler(func(event services.KeyEvent) KeyEventResult {
+				if _, ok := event.(*services.KeyDownEvent); ok {
+					early++
+					return tc.result
+				}
+				return KeyEventResultIgnored
+			})
+			// The field is disposed and the next one asks for the focus, but the
+			// focus update has not run.
+			nodeA.Dispose()
+			nodeB.RequestFocus()
+			if fm.PrimaryFocus() != nil {
+				t.Fatalf("primary focus = %v, want nil before the focus update", fm.PrimaryFocus())
+			}
+			if got := ts.SendKeyDownEvent(digit1); got != tc.wantHandled {
+				t.Errorf("HandleKeyData returned %v, want %v", got, tc.wantHandled)
+			}
+			ts.SendKeyUpEvent(digit1)
+			if early != 1 {
+				t.Errorf("early handler calls = %d, want 1", early)
+			}
+			// The focus update runs: B has the focus and A saw nothing.
+			ts.Pump()
+			if fm.PrimaryFocus() != nodeB {
+				t.Fatalf("primary focus = %v, want B", fm.PrimaryFocus())
+			}
+			if seenByA != 0 {
+				t.Errorf("A saw %d keys, want 0", seenByA)
+			}
+			if seenByB != 0 {
+				t.Errorf("B saw %d keys of the first press, want 0", seenByB)
+			}
+			// A key of the next press goes through the early handler and, when it
+			// was not claimed, reaches B.
+			ts.SendKeyDownEvent(digit1)
+			ts.SendKeyUpEvent(digit1)
+			if want := tc.wantSeenByB; seenByB != want {
+				t.Errorf("B saw %d keys after the next press, want %d", seenByB, want)
+			}
+		})
+	}
+}
+
 func TestFocusManagerNotifiesListenersWhenAWidgetLosesFocusBecauseItWasRemoved(t *testing.T) {
 	ts := gluttertest.New(t)
 	nodeA := NewFocusNode(FocusNodeOpts{DebugLabel: "a"})

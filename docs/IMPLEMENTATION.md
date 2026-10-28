@@ -3075,3 +3075,52 @@ Flutter behaves the same way: `SliverMultiBoxAdaptorElement.performRebuild` sets
 **Tests:** none of its own.
 **Proof:** none.
 **Manual checks:** none.
+
+### 29.23 Early key handlers also run when nothing has the focus (Emetos, 1.9.3)
+**Goal:** a `FocusManager` early key handler (and a late one) sees every key event, also when no node has the primary focus, so that an app can claim a key before any focused widget sees it at any time.
+**Why:** Emetos found it (fourth issues list, 2026-10-28, "A key handled by a hardware keyboard handler still reaches the focused widget"). `HardwareKeyboard.HandleKeyData` gives every key to the focus system, also those a hardware handler handled, as Flutter's `KeyEventManager` does; so after F2 a fast next letter also starts the Explorer tree's find, and Enter adds a line in the editor. An early handler could claim the key, but `highlightModeManager.handleKeyMessage` returns before the early handlers when `primaryFocus` is nil (Flutter's `FocusManager.handleKeyMessage` does the same), which Emetos hits for a few frames when a tab closes and the next one takes its place (Ctrl+, opening Settings). Emetos works around it in `internal/gui/kit/typeahead.go` with a hardware handler and an early handler together. The owner's issue offered two fixes; this step takes the smaller one (early handlers that run without a focus), which keeps `HandleKeyData` Flutter's and lets Emetos drop the hardware handler.
+**Read:** SPEC §8.5 (keys), §11 (focus), §12.10; `widgets/focus_manager.go` (`handleKeyMessage`, `AddEarlyKeyEventHandler`, `AddLateKeyEventHandler`, `ApplyFocusChangesIfNeeded`), `services/hardware_keyboard.go` (`HandleKeyData`, `SetKeyMessageHandler`); Flutter's `FocusManager.handleKeyMessage` in `reference/flutter`.
+**Port from:** `widgets/focus_manager.dart` (the order of the handlers; the run without a focus is Glutter's).
+**Files:** `widgets/focus_manager.go`, its tests, SPEC §11 (where the key handlers are described) and §12.10, `docs/GUIDE.md` if it shows a way to claim keys.
+**Tasks:**
+1. When `primaryFocus` is nil, `handleKeyMessage` still updates the highlight mode, runs the early handlers (a `Handled` result handles the event, `SkipRemainingHandlers` stops it unhandled, as now), skips the walk up the focus chain, and runs the late handlers when no early handler stopped the event, as it does after a chain that ignored the key. The debug message "No primary focus" stays, for the chain.
+2. A `// Deviation:` comment and a §12.10 row: Flutter ignores a key when nothing has the focus.
+3. The doc comments of `AddEarlyKeyEventHandler` and `AddLateKeyEventHandler` say that they see the keys also when nothing has the focus.
+**Tests (table-driven):**
+- with no primary focus: an early handler that returns `Handled`, `Ignored`, `SkipRemainingHandlers`; what `HandleKeyData` returns, and whether the late handler is called, for each;
+- the Emetos case: a focused field is disposed (its node loses the focus; before the focus update runs, `primaryFocus` is nil), a key arrives and an early handler claims it, then the focus moves to another field and that field never sees the key;
+- with a primary focus, nothing changes (the existing tests pass).
+**Proof:** none.
+**Manual checks:** none.
+
+### 29.24 A UI-thread check that costs a nanosecond (Emetos, 1.9.3)
+**Goal:** `foundation.UIThread.IsCurrent` and `AssertCurrent` find the calling goroutine in about a nanosecond, with no `runtime.Stack`, on amd64 and arm64, and stay exact.
+**Why:** Emetos found it (fourth issues list, "In a debug build, the UI-thread check calls `runtime.Stack` every time something is marked for rebuild"). `AssertCurrent` runs in `MarkNeedsLayout`, `MarkNeedsBuild`, `State.Go`, `NotifyListeners` and a few more, and `goid.ID` parses the header of `runtime.Stack`, which walks the stack: measured here at 5 µs on a shallow stack and 33 µs at 200 frames. At startup plus two Markdown previews the check took 63 ms of about 150 ms of UI-thread work, and the first frame takes 100 to 114 ms in a debug build against 10 to 20 ms in a release build, so Emetos's display tests need budgets 5 to 10 times looser than the targets. `StateOf.SetState` and `BuildOwner.reportFromAnyGoroutine` call `IsCurrent` in every build, so release builds pay it on each `SetState` too. The owner chose (2026-10-28) a small function in Go assembly that returns the running goroutine's `g` pointer, which a live goroutine keeps for its whole life and no other live goroutine shares: measured at 1 ns.
+**Read:** SPEC §13 (the UI thread, `SetState`, `Post`), §6.3 (the rules for assembly and build tags), §25.2 (the COM thunks, the other assembly); `internal/goid`, `foundation/ui_thread.go`, every caller of `IsCurrent` and `AssertCurrent`.
+**Port from:** none (Dart has no goroutines).
+**Files:** `internal/goid` (`getg_amd64.s`, `getg_arm64.s`, a Go file with the declaration for those architectures, one with the `runtime.Stack` fallback for the others), `foundation/ui_thread.go`, their tests, SPEC §6.3 and §13; CLAUDE.md gets one line from the manager.
+**Tasks:**
+1. `internal/goid` gets a token of the calling goroutine: on amd64 (`MOVQ (TLS), AX`) and arm64 (`MOVD g, R0`) the `g` pointer as a `uintptr`, from a `NOSPLIT` function with no frame; on every other architecture (wasm, and any other) the number from `runtime.Stack`, as now. The parse of `runtime.Stack` stays and is tested on every architecture. `go vet` (asmdecl) is clean on amd64 and arm64, also for `GOOS=windows` and `GOOS=android`.
+2. `UIThread` stores the token of the UI goroutine (set by `NewUIThread` and `Adopt`) and compares it in `IsCurrent`. The goroutine numbers in the `WrongThread` error's metadata are read only on that path (from `runtime.Stack`, after the check failed); `NewUIThread` and `Adopt` may also keep the UI goroutine's number for it.
+3. A token can be reused once its goroutine has ended (the runtime reuses `g`s). Say in the doc comment that `Adopt` must be called again by a new UI goroutine (as the test driver already does), and check that no caller compares against a goroutine that has ended.
+4. SPEC §13: how the check finds the goroutine and what it costs. SPEC §6.3 (and §25.2 where it says assembly is only for the COM thunks): the second use of assembly, `internal/goid`. Give the manager the CLAUDE.md line.
+**Tests (table-driven):**
+- the same goroutine gets the same token at any stack depth, and two live goroutines get different ones (many at once);
+- `IsCurrent` on the UI goroutine and on others, after `Adopt` on a new goroutine;
+- `AssertCurrent` from another goroutine still panics with `WrongThread` and its metadata has the two goroutine numbers (route test);
+- the fallback parse of `runtime.Stack` headers (table of headers);
+- benchmarks of `IsCurrent` at depths 5 and 200, before and after (in the report);
+- the Wine run of `scripts/test-windows.sh` covers amd64 Windows; the arm64 builds and vets (no arm64 machine runs it).
+**Proof:** none.
+**Manual checks:** none.
+
+### 29.25 Release 1.9.3 (Emetos)
+**Goal:** 1.9.3 is released with steps 29.23 and 29.24.
+**Tasks:**
+1. SPEC: the version paragraph of §1 (a 1.9.3 sentence: early and late key handlers that run also when nothing has the focus, and a UI-thread check that no longer walks the stack), and a "Scope of 1.9.3" paragraph next to the one of 1.9.2.
+2. `README.md`: "What is new in 1.9.3".
+3. The standard checks of rule 8, and `go run ./cmd/glutter-gen apicheck -allow cmd/glutter-gen/apicheck.allow`.
+4. Merge, tag `step-29.25` and `v1.9.3`, and publish: `git push --follow-tags origin main`, which takes steps 29.23 to 29.25 and their tags to GitHub. Check with `git ls-remote --tags origin`.
+**Tests:** none of its own.
+**Proof:** none.
+**Manual checks:** none.

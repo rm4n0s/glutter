@@ -1409,7 +1409,8 @@ func (m *FocusManager) RemoveHighlightModeListener(handle FocusHandlerHandle) {
 }
 
 // AddEarlyKeyEventHandler adds a handler that sees key events before the focus
-// nodes do. If it handles the event, no node sees it.
+// nodes do. If it handles the event, no node sees it. It sees every key event,
+// also when no node has the primary focus (Flutter ignores the key then).
 //
 // Flutter: widgets/focus_manager.dart FocusManager.addEarlyKeyEventHandler
 func (m *FocusManager) AddEarlyKeyEventHandler(handler OnKeyEventCallback) FocusHandlerHandle {
@@ -1424,7 +1425,9 @@ func (m *FocusManager) RemoveEarlyKeyEventHandler(handle FocusHandlerHandle) {
 }
 
 // AddLateKeyEventHandler adds a handler that sees the key events that no focus
-// node handled.
+// node handled. It also sees the key events that arrive when no node has the
+// primary focus, unless an early handler stopped them (Flutter ignores the key
+// then).
 //
 // Flutter: widgets/focus_manager.dart FocusManager.addLateKeyEventHandler
 func (m *FocusManager) AddLateKeyEventHandler(handler OnKeyEventCallback) FocusHandlerHandle {
@@ -1773,6 +1776,14 @@ func (h *highlightModeManager) handlePointerEvent(event gestures.PointerEvent) {
 // handleKeyMessage hands the key event to the early handlers, the focus nodes
 // from the primary focus up to the root, and the late handlers, in that order.
 // It returns whether the event was handled.
+//
+// Deviation: when nothing has the primary focus, Flutter ignores the key. Here
+// the early handlers and then the late handlers still see it (the walk up the
+// focus chain has no node to start from), so that an app can claim a key at any
+// time, also in the few frames between a focused widget leaving the tree and
+// the focus moving on (SPEC §12.10). An early handler that returns
+// SkipRemainingHandlers ends the event unhandled, so the late handlers do not
+// see it then.
 func (h *highlightModeManager) handleKeyMessage(event services.KeyEvent) bool {
 	// The highlight mode is updated first, since things responding to the keys
 	// might look at it, and it should be accurate.
@@ -1783,10 +1794,12 @@ func (h *highlightModeManager) handleKeyMessage(event services.KeyEvent) bool {
 	m := h.m
 	m.focusDebug(func() string { return fmt.Sprintf("Received key event %v", event) }, nil)
 	if m.primaryFocus == nil {
-		m.focusDebug(func() string { return fmt.Sprintf("No primary focus for key event, ignored: %v", event) }, nil)
-		return false
+		m.focusDebug(func() string {
+			return fmt.Sprintf("No primary focus for key event, only the key event handlers see it: %v", event)
+		}, nil)
 	}
 	handled := false
+	stopped := false
 	// If any of the early handlers handles the key, the event is done.
 	if len(h.earlyHandlers) > 0 {
 		var results []KeyEventResult
@@ -1801,15 +1814,22 @@ func (h *highlightModeManager) handleKeyMessage(event services.KeyEvent) bool {
 			m.focusDebug(func() string {
 				return fmt.Sprintf("Key event %v propagation stopped by early key event callback.", event)
 			}, nil)
+			stopped = true
 		}
 	}
 	if handled {
 		return true
 	}
+	if m.primaryFocus == nil && stopped {
+		return false
+	}
 	// Walks the current focus from the leaf to the root, calling each node's
 	// OnKeyEvent on the way up; if one handled the event or wants to stop the
 	// propagation, it stops.
-	chain := append([]*FocusNode{m.primaryFocus}, m.primaryFocus.Ancestors()...)
+	var chain []*FocusNode
+	if m.primaryFocus != nil {
+		chain = append([]*FocusNode{m.primaryFocus}, m.primaryFocus.Ancestors()...)
+	}
 	for _, node := range chain {
 		var results []KeyEventResult
 		if node.onKeyEvent != nil {
