@@ -665,6 +665,40 @@ type FontQueryEngine interface {
 	InstalledFontFamilies() []string
 }
 
+// FontMetrics are the vertical metrics and the width of a digit of the font that a text style
+// draws with, at the style's size, in logical pixels (PlatformDispatcher.FontMetrics). They are what
+// a paragraph of one line in that style measures, so a grid of cells (a terminal) can be sized from them
+// without laying out and measuring a paragraph.
+//
+// Flutter: no counterpart
+type FontMetrics struct {
+	// Ascent and Descent are the distances from the baseline up to the top and down to the bottom of a
+	// line in the style, as the paragraph's line metrics (ComputeLineMetrics) give them: each includes
+	// half of Leading, and the style's Height, if it has one, is applied. The baseline of a one-line
+	// paragraph is Ascent below its top.
+	Ascent, Descent float64
+	// Leading is the line gap of the font (the space it asks between two lines), at the size.
+	Leading float64
+	// Height is the height of a paragraph of one line in the style: Ascent and Descent added and rounded.
+	Height float64
+	// ZeroAdvance is the advance of the digit "0": the width of a cell of a grid of a monospaced font.
+	ZeroAdvance float64
+	// Monospaced says that the font says it is monospaced (the post table's fixed pitch flag, or all its
+	// glyphs having the same advance, as fontconfig decides). It is false when the font does not say.
+	Monospaced bool
+}
+
+// FontMetricsEngine is a ParagraphFactory that can measure the font of a style without a paragraph of the
+// caller's. internal/text/layout's Engine implements it; PlatformDispatcher.FontMetrics uses it.
+//
+// Flutter: no counterpart
+type FontMetricsEngine interface {
+	ParagraphFactory
+	// FontMetrics measures the face that the style draws the digit "0" with, the way a paragraph of
+	// one line in that style does.
+	FontMetrics(style *ResolvedTextStyle) FontMetrics
+}
+
 // ParagraphBuilder is used to construct a Paragraph.
 //
 // Flutter: ui/text.dart ParagraphBuilder

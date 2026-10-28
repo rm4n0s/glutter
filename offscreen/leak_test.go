@@ -7,6 +7,7 @@ import (
 	"github.com/rm4n0s/glutter/gluttertest"
 	"github.com/rm4n0s/glutter/internal/gpu/gputest/editorscene"
 	"github.com/rm4n0s/glutter/internal/leaktest"
+	"github.com/rm4n0s/glutter/internal/proof"
 	"github.com/rm4n0s/glutter/offscreen"
 	"github.com/rm4n0s/glutter/ui"
 	"github.com/rm4n0s/glutter/widgets"
@@ -40,6 +41,26 @@ func TestLeaksOffscreen(t *testing.T) {
 			scenes := [2]*ui.Scene{on, off}
 			i := 0
 			return func() { _ = d.Detach(scenes[i%2]); i++ }
+		}},
+		{"glyph sheets and font metrics", 60, func(t *testing.T) func() {
+			// 256 clusters of two sizes: the caches of the engine are bounded, and the sheet is the caller's.
+			engine := proof.BundledTextEngine()
+			d := ui.NewPlatformDispatcher(nil)
+			d.SetTextEngine(engine)
+			clusters := latinClusters(256)
+			i := 0
+			return func() {
+				style := robotoStyle(float64(12 + 2*(i%2)))
+				i++
+				sheet, err := offscreen.NewGlyphSheet(engine, style, 1+float64(i%2)/2, clusters)
+				if err != nil {
+					t.Fatal(err)
+				}
+				sheet.Image.Dispose()
+				if _, err := d.FontMetrics(style); err != nil {
+					t.Fatal(err)
+				}
+			}
 		}},
 		{"a view that gets taps", 100, func(t *testing.T) func() {
 			probe := &counterProbe{}

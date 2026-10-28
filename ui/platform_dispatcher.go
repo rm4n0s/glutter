@@ -908,6 +908,27 @@ func (d *PlatformDispatcher) InstalledFontFamilies() []string {
 	return q.InstalledFontFamilies()
 }
 
+// FontMetrics measures the font that a text style draws with, at its size: the ascent, descent and
+// leading, the height of a line, the advance of the digit "0" and whether the font is monospaced
+// (FontMetrics). The numbers are those of a paragraph of one line in the style, without building one
+// for each style. The style is resolved against the defaults of a paragraph (black, 14 logical pixels,
+// weight 400), so a style that leaves the size or the family out gets those; nil is the default style.
+// It fails with FontMetricsUnsupported when the text engine cannot measure.
+//
+// Flutter: no counterpart
+func (d *PlatformDispatcher) FontMetrics(style *TextStyle) (FontMetrics, error) {
+	m, ok := d.textEngine.(FontMetricsEngine)
+	if !ok {
+		return FontMetrics{}, errors.New(tagFontMetricsUnsupported, "the text engine cannot measure fonts")
+	}
+	base := NewParagraphStyle().BaseTextStyle()
+	resolved := base
+	if style != nil {
+		resolved = style.Resolve(base)
+	}
+	return m.FontMetrics(&resolved), nil
+}
+
 // UIFont is the family and the size, in points, of the desktop's interface font; empty and
 // 0 when the platform does not say.
 //
@@ -986,4 +1007,6 @@ func (d *PlatformDispatcher) SetSemanticsTreeEnabled(enabled bool) {
 const (
 	tagClipboardUnavailable = "ClipboardUnavailable"
 	tagFontLoadUnsupported  = "FontLoadUnsupported"
+	// tagFontMetricsUnsupported is PlatformDispatcher.FontMetrics on a text engine that cannot measure.
+	tagFontMetricsUnsupported = "FontMetricsUnsupported"
 )

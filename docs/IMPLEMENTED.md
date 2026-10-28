@@ -4999,3 +4999,25 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Deviations and follow-ups:**
   - **Deviation:** Flutter never notifies a detached node (SPEC §12.10, §11.7).
   - **Emetos** can give the pane's `Focus` a node it owns, listen to it, and drop the flag reset in `paneView.unmounted`.
+
+## 29.29 Glyphs rasterized into an image, and the metrics of a font (Emetos)
+
+- **Date:** 2026-10-28
+- **Branch:** feat/step-29.29-glyph-rasterizing
+- **Summary:** Emetos's issue "There is no way to rasterize one glyph into an image". Its terminal fills a `DrawAtlas` sprite sheet by laying out a paragraph for each glyph, drawing it on a recording and reading it back with `Picture.ToImage`, and measures its cell from a paragraph of its own. Two calls replace that:
+  - **Font metrics:** `ui.FontMetrics` (ascent, descent, leading, line height, the advance of "0", monospaced), the optional engine interface `ui.FontMetricsEngine` next to `FontQueryEngine`, and `PlatformDispatcher.FontMetrics(style)` (tag `FontMetricsUnsupported`). `layout.Engine.FontMetrics` measures the face that draws "0", and the numbers equal a one-line paragraph's.
+  - **Glyph sheets:** `offscreen.NewGlyphSheet(engine, style, ratio, clusters)` returns a `GlyphSheet`: one image and, for each cluster, its `Rect` in device pixels, its `Offset` from the pen on the baseline, its `Advance` and `Colored`. Outline glyphs are white coverage, ready for `DrawAtlas` with `BlendModeModulate`; color glyphs keep their colors. It shapes one paragraph per distinct cluster with the engine's fonts and fallback, keeps the path and picture operations that `textdraw.Expand` emits, moves them by whole pixels into a shelf-packed sheet and draws them with one `soft.Render`. Nothing is kept after the call, and the image is the caller's. Tags `GlyphEngineMissing`, `GlyphEngineUnsupported`, `GlyphClustersMissing`, `GlyphPixelRatioInvalid`, `GlyphSheetTooLarge`.
+  - **Where:** `offscreen`, because rasterizing needs `internal/gpu/soft`, which `ui` cannot import.
+  - **Benchmark (256 clusters at 14 px):** `NewGlyphSheet` 1.5 to 1.9 ms, 1.86 MB, 15,006 allocations; a paragraph, a picture and `Picture.ToImage` per cluster 2.2 to 2.5 ms, 2.69 MB, 20,840 allocations. The fill by `soft` is most of both.
+- **Main files:** `ui/text_style.go`, `ui/platform_dispatcher.go`, `internal/text/layout/metrics.go`, `offscreen/glyphs.go`, their tests, `offscreen/leak_test.go`, `docs/SPEC.md` (§9.9, §10, §12.10), `docs/GUIDE.md` (section 15).
+- **Tests (table-driven):**
+  - **Metrics:** 7 styles (Roboto at three sizes, one with a height; Material Icons; Go Mono at three sizes, one with a height) against one-line paragraphs; the dispatcher (5 rows and the route test).
+  - **Pixels:** each cluster of a sheet equals, byte for byte, the same cluster drawn by a paragraph through `soft` at a pixel-aligned origin. 8 cases: ASCII at ratios 1, 1.5 and 2, accents (composed and combining), a space, a CJK character from a system fallback font, and a color emoji at ratios 1 and 2. The rectangles lie inside the image and do not overlap, and nothing is drawn outside them.
+  - **Errors:** 10 rows with route tests. **`DrawAtlas`:** a row drawn from a sheet matches the same row drawn by paragraphs within 2 levels, at ratios 1 and 2. **Leaks:** a scenario in `TestLeaksOffscreen`.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck, apicheck, uintptrcheck ✅ · wasm build, vet and tests ✅ · check-android ✅ · Windows builds, vet, lint and test-windows ✅ · display tests: none
+- **Proof:** none
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - **No counterpart in Flutter** (SPEC §12.10): `dart:ui` draws text only through paragraphs.
+  - **The gain is modest** (about 25 to 30%): filling the glyph paths dominates both ways. The simpler API is the main gain.
+  - **Emetos** can replace `atlas.rasterize` with `NewGlyphSheet` and its cell measurement with `FontMetrics`.

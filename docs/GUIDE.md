@@ -2,7 +2,7 @@
 
 Glutter has Flutter's framework API on its own engine, so what you know carries over: the
 widget tree, `BuildContext`, `setState`, `Theme.of`, `Navigator`, animation controllers,
-`CustomPaint`. This page shows fourteen things side by side, in Dart and in Go. The rules behind
+`CustomPaint`. This page shows fifteen things side by side, in Dart and in Go. The rules behind
 them are in [SPEC §12](SPEC.md#12-api-conventions-flutter--go); this is the short version.
 
 **The rules in one paragraph.** A widget is made by `NewX(required..., opts ...XOpts)`. The
@@ -786,6 +786,76 @@ func tap(v *offscreen.View, x, y float64) {
 - **Without a view.** To turn a picture into an image once, give `offscreen.NewRasterizer()` to
   `ToImageOpts{Rasterizer: ...}`. It draws with the software renderer, with no window and no GPU, on any goroutine.
 - **Not in the view.** It has no window, no accessibility tree and no input method; the clipboard is the app's.
+
+## 15. Glyphs in an image, and the metrics of a font
+
+A terminal draws a grid of characters, and the fastest way to do it is Flutter's `Canvas.drawAtlas`: one image with every
+character, and one draw call that places thousands of its parts and tints each one. Flutter has no way to get that image;
+you lay out a paragraph for each character and read a picture back. Glutter has two calls for it.
+`PlatformDispatcher.FontMetrics(style)` measures the font of a style without a paragraph: the ascent, descent, leading,
+line height, the advance of "0" (the width of a cell) and whether the font is monospaced. `offscreen.NewGlyphSheet` draws
+grapheme clusters into one image, with the same fonts, fallback and outlines as a paragraph, and says where each one is:
+
+```go
+// newSheet measures the font and draws the characters the grid shows, for the device pixel ratio
+// of the widget's screen. Call it on the UI thread.
+func newSheet(bc m.BuildContext, characters []string) (*offscreen.GlyphSheet, ui.FontMetrics, error) {
+	d := m.WidgetsBindingOf(bc).PlatformDispatcher()
+	ratio := m.MediaQueryDevicePixelRatioOf(bc)
+	style := ui.NewTextStyle(ui.TextStyleOpts{FontFamily: "monospace", FontSize: ui.Ptr(14.0)})
+	metrics, err := d.FontMetrics(style)
+	if err != nil {
+		return nil, ui.FontMetrics{}, err
+	}
+	sheet, err := offscreen.NewGlyphSheet(d.TextEngine(), style, ratio, characters)
+	return sheet, metrics, err
+}
+
+// drawGrid draws the rows of the grid, in logical pixels, with one DrawAtlas call. Dispose the
+// sheet's Image when the grid is done with it.
+func drawGrid(c *ui.Canvas, sheet *offscreen.GlyphSheet, metrics ui.FontMetrics, rows [][]string, color ui.Color) {
+	ratio := sheet.DevicePixelRatio
+	byCluster := make(map[string]offscreen.Glyph, len(sheet.Glyphs))
+	for _, g := range sheet.Glyphs {
+		byCluster[g.Cluster] = g
+	}
+	var transforms []ui.RSTransform
+	var rects []ui.Rect
+	var colors []ui.Color
+	for row, cells := range rows {
+		// The pen of a cell is on the baseline, on a whole pixel, so that the glyphs stay sharp.
+		baseline := float64(int((float64(row)*metrics.Height+metrics.Ascent)*ratio+0.5)) / ratio
+		for col, cluster := range cells {
+			g := byCluster[cluster]
+			if g.Rect.IsEmpty() {
+				continue // a space draws nothing
+			}
+			x := float64(int(float64(col)*metrics.ZeroAdvance*ratio+0.5)) / ratio
+			transforms = append(transforms, ui.RSTransform{
+				Scos: float32(1 / ratio), // the sheet is in pixels, the canvas in logical pixels
+				Tx:   float32(x + g.Offset.Dx/ratio),
+				Ty:   float32(baseline + g.Offset.Dy/ratio),
+			})
+			rects = append(rects, g.Rect)
+			colors = append(colors, color)
+		}
+	}
+	c.DrawAtlas(sheet.Image, transforms, rects, colors, ui.BlendModeModulate, nil, nil)
+}
+```
+
+- **The image.** Premultiplied RGBA: an outline glyph is white with its coverage as the alpha, so `BlendModeModulate` with a
+  color paints the glyph in that color. A color emoji keeps its colors (`Glyph.Colored`). The pixels are the ones a
+  paragraph draws with its origin on a whole pixel (same paths, same quarter-pixel positions, same coverage).
+- **The place of a cluster.** `Rect` is its part of the image, `Offset` the vector from the pen (the origin on the baseline)
+  to the top left corner of `Rect`, and `Advance` how far the pen moves; all in pixels of the image. A space has an empty
+  `Rect`. A cluster given twice is drawn once.
+- **The metrics** are logical pixels at the style's size and equal what a paragraph of one line in the style measures:
+  `Ascent` and `Descent` include half of `Leading` each, `Height` is a line, and `ZeroAdvance` is the cell width of a
+  monospaced font. A cell grid wants whole device pixels, so round `ZeroAdvance*ratio` and `Height*ratio` yourself, as above.
+- **Calls and errors.** Call both on the UI thread. `NewGlyphSheet` fails with `GlyphClustersMissing` for an empty list and
+  `GlyphPixelRatioInvalid` for a ratio that is not positive, `FontMetrics` with `FontMetricsUnsupported` when the text
+  engine cannot measure (SPEC §9.9).
 
 ## For Flutter web developers
 
