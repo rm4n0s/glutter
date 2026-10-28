@@ -198,6 +198,10 @@ func startView(parent *m.WidgetsBinding, root m.Widget, send func(pixels []byte,
 }
 ```
 
+**What is new in 1.9.3.** Two more fixes for Emetos:
+- **Keys:** the focus manager's early and late key handlers also see the keys that arrive while nothing has the focus, for example in the frames between a closed tab and the next one taking the focus. An app can claim a key before any focused widget with one early handler.
+- **Faster debug builds:** the check that a call comes from the UI goroutine takes about 2 nanoseconds instead of 4 to 33 microseconds. Debug builds ran it each time something was marked for rebuild; it also ran in every `SetState`, in all builds.
+
 **What is new in 1.9.2.** Fixes for an app built on Glutter (Emetos):
 - **Lists:**
   - `MaintainVisibleContentPosition` in `ListViewOpts` (and the list slivers' options): rows inserted before the one the user reads no longer push it away, as in a chat or a live log. At the start, the list still follows the newest row.

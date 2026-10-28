@@ -319,8 +319,13 @@ func TestSvgPictureTakesOverALoadThatItsPeerEnded(t *testing.T) {
 		}))
 	}
 	ts := newTester(t)
-	ts.PumpWidget(both())
+	// The first widget is mounted alone, so that its goroutine is the one that loads: with both at once, either
+	// goroutine could reach the cache first, and removing a waiter starts no new load.
+	ts.PumpWidget(widgets.NewDirectionality(ui.TextDirectionLTR, widgets.NewColumn([]widgets.Widget{
+		NewSvgPictureAsset("a.svg", SvgPictureAssetOpts{Bundle: gate, SvgPictureOpts: SvgPictureOpts{Key: k1}}),
+	})))
 	<-gate.started
+	ts.PumpWidget(both())
 	for range 3 {
 		ts.Pump()
 	}

@@ -4920,3 +4920,21 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Deviations and follow-ups:**
   - **Not run:** the arm64 assembly (Linux, Android and Windows on ARM) was built and vetted, never run.
   - **Emetos's display tests** can tighten their time budgets for debug builds.
+
+## 29.25 Release 1.9.3 (Emetos)
+
+- **Date:** 2026-10-28
+- **Branch:** feat/step-29.25-release-1.9.3
+- **Summary:** 1.9.3 is released with steps 29.23 and 29.24, the fixes of Emetos's fourth issue list (2026-10-28).
+  - **SPEC §1:** a 1.9.3 sentence, and a "Scope of 1.9.3" paragraph after the one of 1.9.2.
+  - **`README.md`:** "What is new in 1.9.3".
+  - **Publishing:** tags `step-29.25` and `v1.9.3`. `main` was pushed with the step tags of 29.23 to 29.25 (`git push --follow-tags origin main`).
+  - **How the steps ran:** 29.23 and 29.24 ran at the same time, each in a git worktree of its own, and were merged one at a time after their checks.
+  - **A flaky test fixed:** the release checks hung in `TestSvgPictureTakesOverALoadThatItsPeerEnded` (also on 1.9.2, about once in a few hundred runs). The test mounted both widgets at once and assumed the first one's goroutine reached the cache first; when the second one did, removing the first only canceled a waiter, and the test waited forever for a new load. The first widget is now mounted alone until its load has begun. The code was right. 2,000 runs pass.
+- **Main files:** `docs/SPEC.md` (§1), `README.md`, `svg/cache_test.go`.
+- **Tests:** none of its own.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck, apicheck, uintptrcheck ✅ · wasm build, vet and tests ✅ · check-android ✅ · Windows builds, vet, lint and test-windows ✅ · display tests: none
+- **Proof:** none
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - **Not in 1.9.3:** a result for a hardware keyboard handler that keeps a key from the focus system; a run of the arm64 assembly of `internal/goid` on an arm64 machine.
