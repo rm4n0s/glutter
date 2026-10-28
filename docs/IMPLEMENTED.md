@@ -4899,3 +4899,24 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Deviations and follow-ups:**
   - **Deviation:** Flutter ignores a key when nothing has the focus (SPEC §12.10, §11.6).
   - Emetos can drop the hardware handler of `internal/gui/kit/typeahead.go` and keep only the early handler.
+
+## 29.24 A UI-thread check that costs a nanosecond (Emetos)
+
+- **Date:** 2026-10-28
+- **Branch:** feat/step-29.24-cheap-ui-thread-check
+- **Summary:** Emetos's issue "In a debug build, the UI-thread check calls `runtime.Stack` every time something is marked for rebuild". `UIThread.IsCurrent` parsed the header of `runtime.Stack`, which walks the stack. It ran in every debug check (`MarkNeedsLayout`, `MarkNeedsBuild`, `State.Go`, `NotifyListeners`) and in every `SetState`, in all builds. Now:
+  - **The token:** `goid.Token` returns the address of the running goroutine's `g`. It is read by a `NOSPLIT` function in Go assembly: `getg_amd64.s` (`MOVQ (TLS), AX`) and `getg_arm64.s` (`MOVD g, R0`). Every other architecture (wasm) keeps the `runtime.Stack` number. This assembly is the owner's choice of 2026-10-28.
+  - **`UIThread`:** keeps an immutable `{token, id}` behind an `atomic.Pointer`, and `IsCurrent` compares tokens. `Adopt` reads the goroutine number only in debug builds, for the `WrongThread` metadata. The other goroutine's number is read only after the check fails.
+  - **Token reuse:** the runtime reuses the `g` of a goroutine that ended, so a new UI goroutine must call `Adopt` (the doc comments say it). No caller compares against an ended goroutine.
+  - **Cost (amd64):** `IsCurrent` went from 3.85 µs at a depth of 5 frames and 32.6 µs at 200 to 2.2 ns at both. The token alone is about 1 ns.
+- **Main files:** `internal/goid/` (`goid.go`, `token_getg.go`, `getg_amd64.s`, `getg_arm64.s`, `token_stack.go`), `foundation/ui_thread.go`, their tests, `docs/SPEC.md` (§6.3 rule 13, §12.10, §13, §25.2), `CLAUDE.md` (the assembly rule).
+- **Tests (table-driven):**
+  - **`internal/goid`:** 11 headers for the `runtime.Stack` parse; the same token at depths 0 to 2,000 and across a stack that grows and moves; different tokens for up to 2,000 live goroutines; benchmarks of `Token` and `ID`.
+  - **`foundation`:** 9 `IsCurrent` cases (a deep stack, a nil and a zero `UIThread`, `Adopt` on a new goroutine); 500 goroutines at once; the `WrongThread` route and its goroutine numbers; benchmarks of `IsCurrent`.
+  - **Where they ran:** amd64 natively, under Wine (windows/amd64) and under Node (wasm, the fallback). arm64 is built, vetted and linted only: no machine here runs it (`qemu-aarch64` is not installed).
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck, apicheck, uintptrcheck ✅ · wasm build, vet and tests ✅ · check-android ✅ · Windows builds, vet, lint and test-windows ✅ · display tests: none
+- **Proof:** none
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - **Not run:** the arm64 assembly (Linux, Android and Windows on ARM) was built and vetted, never run.
+  - **Emetos's display tests** can tighten their time budgets for debug builds.
