@@ -198,6 +198,8 @@ func startView(parent *m.WidgetsBinding, root m.Widget, send func(pixels []byte,
 }
 ```
 
+**What is new in 1.9.4.** A fix for 1.9.3's faster UI-thread check: it could take a background goroutine for the UI thread once the goroutine that drove the UI had ended (a test's subtest, for example), and that goroutine's `SetState` then ran at once instead of being posted. The check now uses the goroutine's number, which is never reused, and still takes a few nanoseconds.
+
 **What is new in 1.9.3.** Two more fixes for Emetos:
 - **Keys:** the focus manager's early and late key handlers also see the keys that arrive while nothing has the focus, for example in the frames between a closed tab and the next one taking the focus. An app can claim a key before any focused widget with one early handler.
 - **Faster debug builds:** the check that a call comes from the UI goroutine takes about 2 nanoseconds instead of 4 to 33 microseconds. Debug builds ran it each time something was marked for rebuild; it also ran in every `SetState`, in all builds.

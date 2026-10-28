@@ -4960,3 +4960,19 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Deviations and follow-ups:**
   - **Not run:** the arm64 assembly (Linux, Android and Windows on ARM).
   - **Emetos** can move to 1.9.4 and rerun `TestTheInputBoxesOfAViewNeverTouchTheClipboardOfTheHost`.
+
+## 29.27 Release 1.9.4 (Emetos)
+
+- **Date:** 2026-10-28
+- **Branch:** feat/step-29.27-release-1.9.4
+- **Summary:** 1.9.4 is released with step 29.26, the fix of the regression Emetos found in 1.9.3's UI-thread check.
+  - **SPEC §1:** a 1.9.4 sentence, and a "Scope of 1.9.4" paragraph after the one of 1.9.3.
+  - **`README.md`:** "What is new in 1.9.4".
+  - **Publishing:** tags `step-29.27` and `v1.9.4`. `main` was pushed with the step tags of 29.26 and 29.27 (`git push --follow-tags origin main`).
+- **Main files:** `docs/SPEC.md` (§1), `README.md`.
+- **Tests:** none of its own.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck, apicheck, uintptrcheck ✅ · wasm build, vet and tests ✅ · check-android ✅ · Windows builds, vet, lint and test-windows ✅ · display tests: none
+- **Proof:** none
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - **Not in 1.9.4:** a run of the arm64 assembly on an arm64 machine.
