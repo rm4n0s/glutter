@@ -26,7 +26,9 @@ type FocusOpts struct {
 	// scope has it.
 	Autofocus bool
 	// OnFocusChange is called with whether the node (or a descendant) has the
-	// focus whenever that changes.
+	// focus whenever that changes. It is not called when the widget leaves the
+	// tree with the focus: to hear that, give the widget a FocusNode you own and
+	// listen to it (see FocusNode, SPEC §11.7).
 	OnFocusChange func(hasFocus bool)
 	// OnKeyEvent is called for a key event when the node or a descendant has the
 	// focus; the default is the one of FocusNode.

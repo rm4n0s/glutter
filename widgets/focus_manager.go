@@ -179,6 +179,14 @@ func (a *FocusAttachment) Detach() {
 // leaveTree takes the node out of the focus tree: it gives up the focus and does
 // not send notifications any more.
 func (n *FocusNode) leaveTree() {
+	// Deviation: a node that leaves the tree while it has the focus (the primary
+	// focus or an ancestor of it) is told at the next focus update that it lost
+	// it; Flutter drops it from the dirty nodes and never tells it (SPEC §11.7).
+	var lostFocus []*FocusNode
+	if n.manager != nil && n.HasFocus() {
+		lostFocus = append(lostFocus, n)
+		lostFocus = append(lostFocus, n.Ancestors()...)
+	}
 	if n.HasPrimaryFocus() || (n.manager != nil && n.manager.markedForFocus == n) {
 		n.Unfocus(UnfocusDispositionPreviouslyFocusedChild)
 	}
@@ -190,6 +198,9 @@ func (n *FocusNode) leaveTree() {
 		n.parent.removeChild(n, true)
 	}
 	n.attachment = nil
+	if len(lostFocus) > 0 {
+		n.manager.markLostFocus(lostFocus)
+	}
 }
 
 // Reparent makes the node a child of the parent given, or of the nearest Focus
@@ -245,6 +256,12 @@ type FocusNodeOpts struct {
 // A FocusScopeNode is a FocusNode too: it embeds one, and AsScope turns a node
 // back into its scope.
 //
+// The listeners of a node (AddListener) are called when the focus changes. A node
+// that leaves the focus tree while it has the focus (HasFocus) notifies its
+// listeners once at the next focus update, with HasFocus false. To hear it from a
+// Focus that leaves the tree, give the Focus a node you own and listen to it:
+// Focus.OnFocusChange is not called then, since the widget is gone (SPEC §11.7).
+//
 // Deviation: Flutter's FocusNode can be subclassed to override its getters; a
 // node here is a plain struct (SPEC §12.10). A node is created with NewFocusNode,
 // is disposed with Dispose, and the focus tree is reached through a
@@ -261,6 +278,8 @@ type FocusNode struct {
 	descendantsAreFocusable   bool
 	descendantsAreTraversable bool
 	ctx                       BuildContext
+	// disposed is set by Dispose, so that the manager does not tell a disposed node.
+	disposed bool
 
 	manager          *FocusManager
 	ancestors        []*FocusNode
@@ -803,6 +822,7 @@ func (n *FocusNode) Attach(bc BuildContext, opts ...AttachOpts) *FocusAttachment
 //
 // Flutter: widgets/focus_manager.dart FocusNode.dispose
 func (n *FocusNode) Dispose() {
+	n.disposed = true
 	// Detaching also unfocuses and cleans up the manager's data structures.
 	if n.attachment != nil {
 		n.attachment.Detach()
@@ -814,6 +834,17 @@ func (n *FocusNode) Dispose() {
 		n.leaveTree()
 	}
 	n.ChangeNotifier.Dispose()
+}
+
+// notifyLostFocus tells the listeners of a node that left the tree while it had
+// the focus that it has not got it any more. A node that was disposed since, or
+// that is back in the tree (it is then told by the update that moved it), is not
+// told.
+func (n *FocusNode) notifyLostFocus() {
+	if n.disposed || n.parent != nil || n.HasFocus() {
+		return
+	}
+	n.NotifyListeners()
 }
 
 // notify tells the listeners, if the node is in the tree.
@@ -1287,6 +1318,10 @@ type FocusManager struct {
 	// dirtyNodes need to notify their listeners at the next update, in the order
 	// they were marked.
 	dirtyNodes []*FocusNode
+	// lostFocus are the nodes that left the tree while they had the focus: the
+	// detached node and the ancestors it had then (an ancestor may leave the
+	// tree after it). The next update tells those that are out of the tree.
+	lostFocus []*FocusNode
 
 	lifecycleObserver *focusLifecycleObserver
 	// suspendedNode was focused before the app lifecycle changed; it is restored as
@@ -1481,6 +1516,17 @@ func (m *FocusManager) markDetached(node *FocusNode) {
 	m.dirtyNodes = slices.DeleteFunc(m.dirtyNodes, func(n *FocusNode) bool { return n == node })
 }
 
+// markLostFocus remembers nodes that had the focus when a node left the tree, so
+// that the next update tells those of them that are out of the tree then.
+func (m *FocusManager) markLostFocus(nodes []*FocusNode) {
+	for _, n := range nodes {
+		if n != &m.rootScope.FocusNode && !slices.Contains(m.lostFocus, n) {
+			m.lostFocus = append(m.lostFocus, n)
+		}
+	}
+	m.markNeedsUpdate()
+}
+
 func (m *FocusManager) markPropertiesChanged(node *FocusNode) {
 	m.markNeedsUpdate()
 	m.focusDebug(func() string { return "Properties changed for node " + node.String() + "." }, nil)
@@ -1578,8 +1624,15 @@ func (m *FocusManager) ApplyFocusChangesIfNeeded() {
 	}
 	dirty := m.dirtyNodes
 	m.dirtyNodes = nil
+	lost := m.lostFocus
+	m.lostFocus = nil
 	for _, n := range dirty {
 		n.notify()
+	}
+	for _, n := range lost {
+		if !slices.Contains(dirty, n) {
+			n.notifyLostFocus()
+		}
 	}
 	m.focusDebug(func() string { return fmt.Sprintf("Notified %d dirty nodes:", len(dirty)) }, func() []any {
 		out := make([]any, len(dirty))

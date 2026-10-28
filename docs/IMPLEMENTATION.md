@@ -3154,3 +3154,51 @@ Flutter behaves the same way: `SliverMultiBoxAdaptorElement.performRebuild` sets
 **Tests:** none of its own.
 **Proof:** none.
 **Manual checks:** none.
+
+### 29.28 A focused node that leaves the tree is told that it lost the focus (Emetos, 1.9.5)
+**Goal:** the listeners of a focus node that is detached from the focus tree while it has the focus hear, once, that `HasFocus` is now false, so that an app that owns the node of a `Focus` learns that the focus went away with the widget.
+**Why:** Emetos found it (fifth issues list, 2026-10-28, "A pane that has the focus and leaves the tree is not told that it lost it"). The terminal draws a filled cursor while its pane has the focus and an outline otherwise; when another tab replaces the tab of a focused pane, the pane's `Focus` is unmounted and `OnFocusChange` is never called with false, so the flag stays true (Emetos clears it itself in `paneView.unmounted`). Glutter does what Flutter does: `FocusManager.markDetached` drops the node from the dirty nodes, so it is never notified, and `focusState.Dispose` removes its listener before it detaches the node.
+**Read:** SPEC §11 (focus), §11.6, §12.10, §13; `widgets/focus_manager.go` (`FocusAttachment.Detach`, `leaveTree`, `markDetached`, `ApplyFocusChangesIfNeeded`, the dirty nodes and `notify`), `widgets/focus_scope.go` (`focusState`: `InitState`, `Deactivate`, `Dispose`, `handleFocusChanged`, `hadFocus`), the order in which `BuildOwner.FinalizeTree` unmounts and disposes, and what `SetState`/`MarkNeedsBuild` do on an inactive and on a defunct state; Flutter's `FocusAttachment.detach`, `_markDetached`, `_FocusState` in `reference/flutter`.
+**Port from:** `widgets/focus_manager.dart`, `widgets/focus_scope.dart` (the notification on detach is Glutter's).
+**Files:** `widgets/focus_manager.go`, `widgets/focus_scope.go`, their tests, SPEC §11 and §12.10.
+**Tasks:**
+1. A node detached while it has the focus (`HasFocus`: the primary focus or one of its ancestors) is notified at the next focus update, with `HasFocus` false: the manager records it (and its ancestors, which may leave after it) instead of forgetting it, and the update notifies each that is out of the tree, not disposed and without the focus, once. Its listeners that are still there (a node that the app owns and keeps) hear it.
+2. `Focus` does not call `OnFocusChange(false)` when it leaves the tree. A first version did, from `Dispose` while the tree was finalized: `InkWell`, `FocusableActionDetector` and `FormField` then failed (a lookup of an inherited widget from an unmounting context panics), and so would an app's callback that reads `Theme.of`. The doc comments of `FocusNode` and `FocusOpts.OnFocusChange` say how to hear it: give the `Focus` a node you own and listen to it.
+3. `// Deviation:` comments and a §12.10 row (Flutter does not notify a detached node), and §11.7.
+**Tests (table-driven):**
+- an app-owned `FocusNode` given to a `Focus` in a tab replaced while the node (or a descendant) has the primary focus: the node's listener hears `HasFocus` false once, at the next focus update, and not again; its `OnFocusChange` gets no false, and no error is reported;
+- a listener that calls `SetState` on a state that stays works;
+- `FocusAttachment.Detach` of a focused node; a node disposed between the detach and the update is not notified; a node without the focus is not notified; a `Focus` moved with a `GlobalKey` keeps the focus and nobody is notified;
+- the existing focus tests pass.
+**Proof:** none.
+**Manual checks:** none.
+
+### 29.29 Glyphs rasterized into an image, and the metrics of a font (Emetos, 1.9.5)
+**Goal:** an app can get the pixels of glyphs (the coverage, as Glutter's text draws them) in one image with each glyph's place and metrics, and the metrics of a font at a size, without laying out and drawing a paragraph for each glyph.
+**Why:** Emetos found it (fifth issues list, "There is no way to rasterize one glyph into an image"). Its terminal draws its grid with `Canvas.DrawAtlas` from a sprite sheet of glyphs (one draw tints thousands of glyphs with `BlendModeModulate`); to fill the sheet it lays out a paragraph for each new glyph, draws it in white on a recording, and reads the picture back with `Picture.ToImage` and `offscreen`'s rasterizer, and it measures the cell (the advance of the zero, the height, the baseline) from a paragraph of its own (`extensions/terminal/atlas.go`, `atlas.rasterize`). Flutter has no such call either (`dart:ui` draws text only through paragraphs).
+**Read:** SPEC §9.1 (glyphs as paths, the coverage cache, subpixel positions), §9.9 (`offscreen`), §10 (the text engine, fallback fonts, hinting if any); `ui/text_style.go` (`ParagraphFactory`, `FontLoadingEngine`, `FontQueryEngine`), `ui/platform_dispatcher.go` (`ResolveFont`, the wrappers), `internal/text/layout` (shaping, the fallback, the font's metrics), `internal/gpu/textdraw`, `internal/gpu/soft` and `offscreen` (how a glyph's path becomes coverage); `Canvas.DrawAtlas`.
+**Port from:** none.
+**Files:** `ui` (the types and the dispatcher's wrappers), `internal/text/layout` (the engine's side), `offscreen` (the rasterizing, if it must live next to the software rasterizer), their tests, SPEC §9.9 or §10 and §12.10, `docs/GUIDE.md`.
+**Tasks:**
+1. Font metrics: an optional engine interface next to `FontQueryEngine` (e.g. `FontMetricsEngine`) and a `PlatformDispatcher.FontMetrics(style *TextStyle)` (or a name that fits the package) that gives, for the face that the style resolves to at its size: ascent, descent, line gap (leading), the height a paragraph of one line with that style gets, the advance of "0", and whether the face is monospaced if the font says so. The numbers equal what a one-line paragraph of that style measures (test that).
+2. Glyph rasterizing: a call that takes a text style, a device pixel ratio and a list of grapheme clusters (strings), shapes each cluster with the same engine and fallback as a paragraph, and returns one image (`*ui.Image`, an alpha coverage in white, so `BlendModeModulate`/`DrawAtlas` tints it) and, for each cluster, its rectangle in the image, its offset from the pen position on the baseline, and its advance. The pixels are those Glutter's text draws for that cluster at a pixel-aligned origin (same paths, same coverage; the `soft` renderer's coverage is the reference). A cluster with no glyph (a space) gets an empty rectangle and its advance. Put it where the layering allows (`ui` cannot import `internal/gpu`; `offscreen` has the software rasterizer): decide, and say why in the SPEC.
+3. Neither call needs a paragraph or a picture per glyph, and neither keeps state that grows: the image is the caller's. A benchmark of rasterizing 256 clusters against Emetos's way (a paragraph and a `Picture.ToImage` each) shows the gain.
+4. `docs/GUIDE.md`: a short example of a glyph sheet drawn with `DrawAtlas`, and its docs test.
+**Tests (table-driven):**
+- the metrics of the bundled fonts at two sizes equal a one-line paragraph's;
+- each rasterized cluster (ASCII, an accented letter, a CJK character from a fallback font, an emoji, a space) matches, pixel for pixel, the same cluster drawn by a paragraph with `soft` at a pixel-aligned origin;
+- the rectangles do not overlap and lie inside the image; an empty list and a bad ratio are errors with their own tags (route tests);
+- the benchmark.
+**Proof:** none.
+**Manual checks:** none.
+
+### 29.30 Release 1.9.5 (Emetos)
+**Goal:** 1.9.5 is released with steps 29.28 and 29.29.
+**Tasks:**
+1. SPEC: the version paragraph of §1 (a 1.9.5 sentence: a focused widget that leaves the tree is told it lost the focus; glyphs rasterized into an image and the metrics of a font without a paragraph) and a "Scope of 1.9.5" paragraph next to the one of 1.9.4.
+2. `README.md`: "What is new in 1.9.5".
+3. The standard checks of rule 8, and `go run ./cmd/glutter-gen apicheck -allow cmd/glutter-gen/apicheck.allow`.
+4. Merge, tag `step-29.30` and `v1.9.5`, and publish: `git push --follow-tags origin main`. Check with `git ls-remote --tags origin`.
+**Tests:** none of its own.
+**Proof:** none.
+**Manual checks:** none.

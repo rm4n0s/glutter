@@ -4976,3 +4976,26 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Manual checks:** none
 - **Deviations and follow-ups:**
   - **Not in 1.9.4:** a run of the arm64 assembly on an arm64 machine.
+
+## 29.28 A focused node that leaves the tree is told that it lost the focus (Emetos)
+
+- **Date:** 2026-10-28
+- **Branch:** feat/step-29.28-focus-loss-on-detach
+- **Summary:** Emetos's issue "A pane that has the focus and leaves the tree is not told that it lost it". A focus node detached while it has the focus (`HasFocus`: the primary focus or an ancestor of it) now notifies its listeners once at the next focus update, with `HasFocus` false, if it is then out of the tree and not disposed. Flutter drops such a node from the dirty nodes and never tells it.
+  - **How:** `leaveTree` records the node and its ancestors (`FocusManager.lostFocus`, `markLostFocus`; an ancestor may leave the tree after it). `ApplyFocusChangesIfNeeded` calls `notifyLostFocus` on each, skipping a node that was disposed (`FocusNode.disposed`), is back in the tree, has the focus again, or was notified as a dirty node. The list is cleared at every update.
+  - **Who hears it:** an app that gives a `Focus` a `FocusNode` it owns and listens to it. The update runs in the `Post` after the frame, so the listener may call `SetState` on a state that stays.
+  - **`Focus.OnFocusChange` is not called** when its widget leaves the tree. A first version called it from `Dispose`, while the tree was finalized. A lookup of an inherited widget from the unmounting context panicked, and so did a `SetState` on a state that stays. 5 tests of `widgets` and 7 of `material` failed (`InkWell`, `FocusableActionDetector`, the menus, `SearchBar`), and an app's callback that reads `Theme.of` would fail the same way. The doc comments of `FocusNode` and `FocusOpts.OnFocusChange` say how to hear the loss.
+  - The plan gained steps 29.28 to 29.30 (release 1.9.5).
+- **Main files:** `widgets/focus_manager.go`, `widgets/focus_scope.go` (a doc comment), `widgets/focus_detach_test.go`, `docs/SPEC.md` (§11.7, §12.10), `docs/IMPLEMENTATION.md`.
+- **Tests (table-driven):**
+  - **An app-owned node in a replaced tab:** 4 rows (the node primary, a descendant primary, each with a listener that calls `SetState` on a state that stays). The listener hears `[true false]` once, with no error.
+  - **A `Focus` with an app-owned node and an `OnFocusChange`:** the node hears false, `OnFocusChange` does not.
+  - **`Detach` of a focused node:** notified once.
+  - **Nothing is notified** for a node disposed between the detach and the update, a node without the focus, or a `Focus` moved with a `GlobalKey`.
+  - The node tests failed on the unmodified code (6 of them). The existing focus, `widgets` and `material` tests pass unchanged.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck, apicheck, uintptrcheck ✅ · wasm build, vet and tests ✅ · check-android ✅ · Windows builds, vet, lint and test-windows ✅ · display tests: none
+- **Proof:** none
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - **Deviation:** Flutter never notifies a detached node (SPEC §12.10, §11.7).
+  - **Emetos** can give the pane's `Focus` a node it owns, listen to it, and drop the flag reset in `paneView.unmounted`.
