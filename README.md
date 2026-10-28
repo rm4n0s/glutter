@@ -198,6 +198,10 @@ func startView(parent *m.WidgetsBinding, root m.Widget, send func(pixels []byte,
 }
 ```
 
+**What is new in 1.9.5.** Two more for Emetos:
+- **Focus:** a focus node that leaves the tree while it has the focus tells its listeners, once, that it lost it. Give a `Focus` a `FocusNode` you own and listen to it to know when a focused widget went away.
+- **Glyphs:** `PlatformDispatcher.FontMetrics(style)` measures a font (ascent, descent, line height, the width of "0") without a paragraph, and `offscreen.NewGlyphSheet` rasterizes glyphs into one image with each glyph's place and metrics, for a grid drawn with a single `DrawAtlas` (a terminal, for example).
+
 **What is new in 1.9.4.** A fix for 1.9.3's faster UI-thread check: it could take a background goroutine for the UI thread once the goroutine that drove the UI had ended (a test's subtest, for example), and that goroutine's `SetState` then ran at once instead of being posted. The check now uses the goroutine's number, which is never reused, and still takes a few nanoseconds.
 
 **What is new in 1.9.3.** Two more fixes for Emetos:

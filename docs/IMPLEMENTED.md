@@ -5021,3 +5021,20 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - **No counterpart in Flutter** (SPEC §12.10): `dart:ui` draws text only through paragraphs.
   - **The gain is modest** (about 25 to 30%): filling the glyph paths dominates both ways. The simpler API is the main gain.
   - **Emetos** can replace `atlas.rasterize` with `NewGlyphSheet` and its cell measurement with `FontMetrics`.
+
+## 29.30 Release 1.9.5 (Emetos)
+
+- **Date:** 2026-10-28
+- **Branch:** feat/step-29.30-release-1.9.5
+- **Summary:** 1.9.5 is released with steps 29.28 and 29.29, the fixes of Emetos's fifth issue list (2026-10-28).
+  - **SPEC §1:** a 1.9.5 sentence, and a "Scope of 1.9.5" paragraph after the one of 1.9.4.
+  - **`README.md`:** "What is new in 1.9.5".
+  - **Publishing:** tags `step-29.30` and `v1.9.5`. `main` was pushed with the step tags of 29.28 to 29.30 (`git push --follow-tags origin main`).
+  - **How the steps ran:** 29.28 and 29.29 ran at the same time in worktrees of their own. 29.28 was redone once: its first version called `OnFocusChange(false)` from `Dispose` and broke 12 tests of `widgets` and `material`.
+- **Main files:** `docs/SPEC.md` (§1), `README.md`.
+- **Tests:** none of its own.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck, apicheck, uintptrcheck ✅ · wasm build, vet and tests ✅ · check-android ✅ · Windows builds, vet, lint and test-windows ✅ · display tests: none
+- **Proof:** none
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - **Not in 1.9.5:** `Focus.OnFocusChange(false)` when the widget leaves the tree; glyph sheets made by the GPU renderers.
