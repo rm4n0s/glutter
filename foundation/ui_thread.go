@@ -12,13 +12,11 @@ import (
 // when it is created, on the main goroutine, and hands it to the parts of the
 // framework that check or branch on the calling goroutine.
 //
-// The goroutine is known by its [goid.Token], which [UIThread.IsCurrent]
-// compares in about a nanosecond at any stack depth. A token belongs to a
-// goroutine only while it lives (the runtime gives the token of an ended
-// goroutine to a new one), so the goroutine that is the UI thread must stay alive
-// while it is, and a goroutine that takes over calls [UIThread.Adopt] again: the
-// binding's goroutine does so by running for the whole life of the app, and a
-// test driver that runs on a new goroutine adopts at each of its entry points.
+// The goroutine is known by its [goid.Token], its number, which
+// [UIThread.IsCurrent] compares in a couple of nanoseconds at any stack depth.
+// The number is never given to a second goroutine, so once the UI goroutine has
+// ended, no goroutine is the UI thread until another one calls [UIThread.Adopt]:
+// a test driver that runs on a new goroutine adopts at each of its entry points.
 //
 // Flutter: no counterpart (Dart code runs on one isolate)
 type UIThread struct {
@@ -48,8 +46,7 @@ func NewUIThread() *UIThread {
 }
 
 // Adopt makes the calling goroutine the UI thread. A goroutine that takes over
-// from one that ended must call it, since a token can be reused once its
-// goroutine has ended (see [UIThread]).
+// from the one that was the UI thread must call it (see [UIThread]).
 //
 // Flutter: no counterpart
 func (t *UIThread) Adopt() {

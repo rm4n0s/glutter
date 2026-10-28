@@ -4938,3 +4938,25 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Manual checks:** none
 - **Deviations and follow-ups:**
   - **Not in 1.9.3:** a result for a hardware keyboard handler that keeps a key from the focus system; a run of the arm64 assembly of `internal/goid` on an arm64 machine.
+
+## 29.26 A UI-thread token that is never reused (Emetos)
+
+- **Date:** 2026-10-28
+- **Branch:** feat/step-29.26-ui-thread-token-never-reused
+- **Summary:** Emetos's "Glutter 1.9.3 regression": `TestTheInputBoxesOfAViewNeverTouchTheClipboardOfTheHost` failed in about 19 of 20 runs on 1.9.3. `goid.Token` is now the goroutine's number, which the runtime never reuses, so a goroutine that is not the UI thread never passes `UIThread.IsCurrent`, also after the goroutine that adopted the UI thread ended.
+  - **The cause:** step 29.24's token was the address of the goroutine's `g`, and the runtime gives the `g` of an ended goroutine to the next new one. A goroutine that drove the tester (a `t.Run` subtest, a helper goroutine) and ended left the UI thread's token free, and a background goroutine that got it ran `SetState`'s function at once on itself instead of posting it. A probe showed one of eight new goroutines passing `IsCurrent` in each of 200 rounds.
+  - **The fix:** `gword(off)` in Go assembly (`getg_amd64.s`: `MOVQ (TLS), AX`; `getg_arm64.s`: `MOVD g, R0`) returns the word at `off & 0xf8` of the running `g` (NOSPLIT, no frame; the mask keeps the read in the first 256 bytes). `Token` is `gword(offset)`, the offset loaded from an atomic, without a lock.
+  - **The calibration:** the first call (`sync.Once`) reads the 32 words of the window on the calling goroutine and on 4 new goroutines alive at the same time, and takes the one offset whose word equals the `runtime.Stack` number on all of them (byte 152 on Go 1.27 amd64; the fresh goroutines rule out the parent's number, which the `g` also holds). With none or several, `Token` is `goid.ID` for the life of the process (exact, 4 to 35 µs). Other architectures keep `ID`.
+  - **Cost (amd64):** `Token` 2.0 ns and `IsCurrent` 3.2 ns at depths 5 and 200 (1.9.3: 0.8 and 2.2 ns; 1.9.2: 4 to 33 µs).
+- **Main files:** `internal/goid/` (`getg_amd64.s`, `getg_arm64.s`, `token_getg.go`, `token_stack.go`, `goid.go`), `foundation/ui_thread.go`, their tests, `gluttertest/gestures_test.go`, `docs/SPEC.md` (§1, §6.3 rule 13, §12.10, §13), `CLAUDE.md` (the assembly rule).
+- **Tests (table-driven):**
+  - **`internal/goid`:** `findOffset` with 11 fake windows (one match, none, two, three, partial, too few samples, duplicate and zero ids); the mask of `gword` (7 offsets); the calibration finds the offset, runs from 2 and 50 goroutines at once, and `Token` falls back to `ID`; `Token` equals `ID` on up to 200 goroutines at depths 0 to 2,000; no token is given to a later goroutine (700 rounds); benchmarks.
+  - **`foundation`:** `TestUIThreadIsNotTakenByANewGoroutineAfterTheAdoptedOneEnded` (4 cases of 200 rounds), which failed on 1.9.3 in round 0.
+  - **`gluttertest`:** `TestStateSetStateFromAGoroutineAfterASubtestEndedPostsTheWork`: a tester driven from a `t.Run` subtest, then 1, 8 or 64 goroutines call `SetState` and post (3 cases of 100 rounds); it failed on 1.9.3 in round 0.
+  - **Where they ran:** amd64 natively, under Wine (windows/amd64) and under Node (wasm, the fallback). arm64 is built, vetted and linted, and the disassembly of the linux/arm64 test binary was read; no machine here runs it.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck, apicheck, uintptrcheck ✅ · wasm build, vet and tests ✅ · check-android ✅ · Windows builds, vet, lint and test-windows ✅ · display tests: none
+- **Proof:** none
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - **Not run:** the arm64 assembly (Linux, Android and Windows on ARM).
+  - **Emetos** can move to 1.9.4 and rerun `TestTheInputBoxesOfAViewNeverTouchTheClipboardOfTheHost`.

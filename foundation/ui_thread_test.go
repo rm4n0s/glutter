@@ -218,3 +218,48 @@ func BenchmarkUIThreadIsCurrent(b *testing.B) {
 		})
 	}
 }
+
+// TestUIThreadIsNotTakenByANewGoroutineAfterTheAdoptedOneEnded is the regression
+// of 1.9.3: the token was the address of the goroutine's g, and the runtime gave
+// the g of an ended goroutine to the next new one, so a goroutine that was not
+// the UI thread passed IsCurrent.
+func TestUIThreadIsNotTakenByANewGoroutineAfterTheAdoptedOneEnded(t *testing.T) {
+	tests := []struct {
+		name string
+		// adopters is how many goroutines adopt the UI thread, one after the other,
+		// each ending before the next starts.
+		adopters int
+		// newOnes is how many goroutines then ask IsCurrent, at the same time.
+		newOnes int
+	}{
+		{"one adopter, eight new goroutines", 1, 8},
+		{"three adopters, eight new goroutines", 3, 8},
+		{"one adopter, one new goroutine", 1, 1},
+		{"one adopter, sixty-four new goroutines", 1, 64},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for round := 0; round < 200; round++ {
+				ui := NewUIThread()
+				for range tt.adopters {
+					onNewGoroutine(ui.Adopt)
+				}
+				var wg sync.WaitGroup
+				passed := make([]bool, tt.newOnes)
+				for i := range passed {
+					wg.Add(1)
+					go func() {
+						defer wg.Done()
+						passed[i] = ui.IsCurrent()
+					}()
+				}
+				wg.Wait()
+				for i, p := range passed {
+					if p {
+						t.Fatalf("round %d: new goroutine %d passed IsCurrent after the adopting goroutine ended", round, i)
+					}
+				}
+			}
+		})
+	}
+}

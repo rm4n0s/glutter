@@ -3124,3 +3124,33 @@ Flutter behaves the same way: `SliverMultiBoxAdaptorElement.performRebuild` sets
 **Tests:** none of its own.
 **Proof:** none.
 **Manual checks:** none.
+
+### 29.26 A UI-thread token that is never reused (Emetos, 1.9.4)
+**Goal:** `foundation.UIThread.IsCurrent` stays about a nanosecond and is exact again: a goroutine that is not the UI thread never passes it, also after the goroutine that adopted the UI thread has ended.
+**Why:** Emetos found it (2026-10-28, "Glutter 1.9.3 regression"): `TestTheInputBoxesOfAViewNeverTouchTheClipboardOfTheHost` fails in about 19 of 20 runs on 1.9.3 and passes on 1.9.2; with 1.9.2's `UIThread` and `internal/goid` it passes. Step 29.24's token is the address of the goroutine's `g`, and the runtime gives the `g` of a goroutine that ended to the next new one. A probe here confirmed it: after a goroutine adopted the UI thread and ended, one of eight new goroutines passed `IsCurrent` in every one of 200 rounds. A test driver that runs on a goroutine that ends (a `t.Run` subtest, a helper goroutine) leaves the UI thread's token free, and a background goroutine that gets it runs `SetState`'s function at once on itself instead of posting it. 1.9.2's goroutine numbers are never reused, so it never did that.
+**Read:** SPEC §13 ("How the UI thread is recognized"), §6.3 rule 13; `internal/goid` (all of it), `foundation/ui_thread.go`, `gluttertest/tester.go` (`adopt`), `offscreen/view.go` (the view's binding shares the parent's `UIThread`).
+**Port from:** none.
+**Files:** `internal/goid` (the assembly, the calibration, the fallback), `foundation/ui_thread.go`, their tests, SPEC §6.3 and §13; maybe `gluttertest` tests.
+**Tasks:**
+1. `goid.Token` returns the goroutine's number (`goid`), which the runtime never reuses, read from the running `g` in Go assembly at an offset found once (on amd64: `MOVQ (TLS), AX` then a load at `AX + offset`; on arm64 from `g`). The offset is not hard-coded for a Go version: on first use, a calibration reads the words of the first bytes of the `g` (a bounded window, at most 256 bytes) of the calling goroutine and of a few new goroutines, and takes the one offset whose word equals the number that `runtime.Stack` gives on every one of them. If there is not exactly one such offset, `Token` uses the `runtime.Stack` number for the life of the process (slow, but exact). The calibration is safe to run from several goroutines at once (`sync.Once` or equivalent).
+2. Other architectures keep the `runtime.Stack` number, as now.
+3. `UIThread`: with tokens never reused, the warnings about reuse in the doc comments and SPEC §13 go; `Adopt` stays as it is.
+4. SPEC §13 and §6.3 rule 13: what the assembly reads now, the calibration and its fallback, and the regression of 1.9.3 with its cause.
+**Tests (table-driven):**
+- the probe: a goroutine adopts the UI thread and ends, then many new goroutines call `IsCurrent`: none passes (fails on 1.9.3); and the same through `gluttertest`: a tester driven from a `t.Run` subtest, then goroutines that call `SetState` after the subtest ended post their work instead of running it at once;
+- `Token` equals `ID` on many goroutines, at any stack depth, and two live goroutines differ;
+- the calibration: a fake window of words where exactly one offset matches, none matches, two match (the last two fall back);
+- `IsCurrent` and the `WrongThread` route test as in 29.24; the benchmarks of `IsCurrent` at depths 5 and 200 stay in nanoseconds.
+**Proof:** none.
+**Manual checks:** none.
+
+### 29.27 Release 1.9.4 (Emetos)
+**Goal:** 1.9.4 is released with step 29.26.
+**Tasks:**
+1. SPEC: the version paragraph of §1 (a 1.9.4 sentence: the UI-thread check of 1.9.3 could take a goroutine for the UI thread after the UI goroutine ended; its token is now the goroutine's number, never reused) and a "Scope of 1.9.4" paragraph next to the one of 1.9.3.
+2. `README.md`: "What is new in 1.9.4".
+3. The standard checks of rule 8, and `go run ./cmd/glutter-gen apicheck -allow cmd/glutter-gen/apicheck.allow`.
+4. Merge, tag `step-29.27` and `v1.9.4`, and publish: `git push --follow-tags origin main`. Check with `git ls-remote --tags origin`.
+**Tests:** none of its own.
+**Proof:** none.
+**Manual checks:** none.

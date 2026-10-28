@@ -1,6 +1,7 @@
 package gluttertest
 
 import (
+	"sync"
 	"testing"
 	"time"
 
@@ -505,5 +506,53 @@ func TestDragTouchSlopOptions(t *testing.T) {
 	ts.DragFrom(ui.Offset{Dx: 10, Dy: 10}, ui.Offset{Dy: 50}, GestureOpts{TouchSlopY: foundation.Some(5.0)})
 	if len(moves) != 2 || moves[0].Delta() != (ui.Offset{Dy: 5}) || moves[1].Delta() != (ui.Offset{Dy: 45}) {
 		t.Fatalf("moves: %v", moves)
+	}
+}
+
+// TestStateSetStateFromAGoroutineAfterASubtestEndedPostsTheWork is the
+// regression of 1.9.3: a tester driven from a subtest adopted the UI thread on
+// the subtest's goroutine; after the subtest ended, a background goroutine could
+// get the same token and run SetState's function inline on itself.
+func TestStateSetStateFromAGoroutineAfterASubtestEndedPostsTheWork(t *testing.T) {
+	tests := []struct {
+		name       string
+		goroutines int
+	}{
+		{"one goroutine", 1},
+		{"eight goroutines", 8},
+		{"sixty-four goroutines", 64},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ts := New(t)
+			for round := 0; round < 100; round++ {
+				// The goroutine of a subtest drives the tester and ends. Nothing on
+				// the goroutine of this test touches the tester until the end of the
+				// round, so that no live goroutine is the UI thread.
+				var s *counterState
+				t.Run("driver", func(*testing.T) {
+					ts.PumpWidget(newCounter())
+					s = StateOf[*counterState](ts, ByType[*counter]())
+				})
+				var wg sync.WaitGroup
+				ranInline := make([]bool, tt.goroutines)
+				for i := range ranInline {
+					wg.Add(1)
+					go func() {
+						defer wg.Done()
+						done := false
+						s.SetState(func() { done = true })
+						ranInline[i] = done
+					}()
+				}
+				wg.Wait()
+				for i, inline := range ranInline {
+					if inline {
+						t.Fatalf("round %d: goroutine %d ran the SetState function at once on itself", round, i)
+					}
+				}
+				ts.FlushPosted()
+			}
+		})
 	}
 }

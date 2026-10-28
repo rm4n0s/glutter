@@ -108,6 +108,78 @@ func TestTokenIsTheSameOnOneGoroutineAtAnyDepth(t *testing.T) {
 	}
 }
 
+func TestTokenEqualsIDOnManyGoroutinesAtAnyDepth(t *testing.T) {
+	tests := []struct {
+		name       string
+		goroutines int
+		depth      int
+	}{
+		{"one goroutine, shallow", 1, 0},
+		{"ten goroutines, depth 5", 10, 5},
+		{"two hundred goroutines, depth 50", 200, 50},
+		{"twenty goroutines, depth 2000", 20, 2000},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var wg sync.WaitGroup
+			bad := make(chan string, tt.goroutines)
+			for range tt.goroutines {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					at(tt.depth, func() {
+						if tok, id := Token(), ID(); tok != id || tok == 0 {
+							bad <- "Token != ID"
+						}
+					})
+				}()
+			}
+			wg.Wait()
+			close(bad)
+			for msg := range bad {
+				t.Error(msg)
+			}
+		})
+	}
+}
+
+// TestTokenIsNeverGivenToALaterGoroutine is the regression of 1.9.3: goroutines
+// that end hand their g to the next ones, and a token that was the address of the
+// g was then the same on two goroutines, one after the other.
+func TestTokenIsNeverGivenToALaterGoroutine(t *testing.T) {
+	tests := []struct {
+		name    string
+		rounds  int
+		perHand int
+	}{
+		{"one at a time", 500, 1},
+		{"eight at a time", 200, 8},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			seen := map[uint64]bool{Token(): true}
+			for round := 0; round < tt.rounds; round++ {
+				tokens := make([]uint64, tt.perHand)
+				var wg sync.WaitGroup
+				for i := range tokens {
+					wg.Add(1)
+					go func() {
+						defer wg.Done()
+						tokens[i] = Token()
+					}()
+				}
+				wg.Wait()
+				for _, tok := range tokens {
+					if tok == 0 || seen[tok] {
+						t.Fatalf("round %d: token %d is 0 or was the token of a goroutine before", round, tok)
+					}
+					seen[tok] = true
+				}
+			}
+		})
+	}
+}
+
 func TestTokensOfLiveGoroutinesDiffer(t *testing.T) {
 	tests := []struct {
 		name string

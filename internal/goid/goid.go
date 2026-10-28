@@ -2,19 +2,21 @@
 // the running goroutine, so there are two ways to tell them apart here:
 //
 //   - [Token] is what the framework compares on its hot paths (is this call
-//     from the UI goroutine? SPEC §13). On amd64 and arm64 it is the address of
-//     the runtime's record of the running goroutine (its "g"), read by a
-//     function in Go assembly in a nanosecond; on every other architecture it
-//     is [ID].
+//     from the UI goroutine? SPEC §13). It is the goroutine's number. On amd64
+//     and arm64 it is read from the runtime's record of the running goroutine
+//     (its "g") by a function in Go assembly, in a couple of nanoseconds, at the
+//     offset that a calibration found on the first call; if the calibration finds
+//     no single offset, and on every other architecture, it is [ID].
 //   - [ID] is the number of the goroutine, parsed from the header of
 //     runtime.Stack. It walks the stack: about 1.4 µs at a shallow depth and
 //     30 µs and more at 200 frames. It is for messages (the goroutine numbers
 //     that a WrongThread error names), not for a path that runs for every
 //     widget or render object.
 //
-// A token is unique among the goroutines that are alive. The runtime reuses the
-// record of a goroutine that has ended, so a token must not be kept past the
-// life of its goroutine: a new goroutine can have the token of a dead one.
+// The runtime never gives a goroutine number to a second goroutine, so a token
+// can be kept and compared after its goroutine ended: no goroutine that starts
+// later has it. (Until 1.9.3 the token was the address of the g, which the
+// runtime does give to a new goroutine after the first one ended.)
 //
 // Flutter: no counterpart (Dart has isolates, not goroutines)
 package goid
