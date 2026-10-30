@@ -10,7 +10,7 @@ import (
 	"log/slog"
 	"math"
 	"os"
-	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -27,14 +27,26 @@ import (
 // lavapipe points the Vulkan loader at lavapipe's driver file, or skips the test.
 func lavapipe(t *testing.T) {
 	t.Helper()
-	files, _ := filepath.Glob("/usr/share/vulkan/icd.d/lvp_icd.*.json")
-	if len(files) == 0 {
+	icd := lavapipeICD()
+	if icd == "" {
 		t.Skip("Mesa's lavapipe is not installed (sudo dnf install mesa-vulkan-drivers)")
 	}
 	if _, err := os.Stat("/usr/share/vulkan/explicit_layer.d/VkLayer_khronos_validation.json"); err != nil {
 		t.Skip("the validation layer is not installed (sudo dnf install vulkan-validation-layers)")
 	}
-	t.Setenv("VK_DRIVER_FILES", files[0])
+	t.Setenv("VK_DRIVER_FILES", icd)
+}
+
+// lavapipeICD is lavapipe's driver file for the architecture of this test, or "" when
+// it is not installed. A machine with Mesa's 32-bit drivers too has lvp_icd.i686.json,
+// which sorts first and which a 64-bit process cannot load.
+func lavapipeICD() string {
+	arch := map[string]string{"amd64": "x86_64", "arm64": "aarch64", "386": "i686"}[runtime.GOARCH]
+	file := "/usr/share/vulkan/icd.d/lvp_icd." + arch + ".json"
+	if _, err := os.Stat(file); err != nil {
+		return ""
+	}
+	return file
 }
 
 // openLavapipe opens lavapipe with validation, and checks at the end of the test that
@@ -660,7 +672,11 @@ func TestNoMessengerWithoutValidation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer d.Close()
+	defer func() {
+		if err := d.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
 	if d.inst.messenger != 0 || len(debugTargetsOf(d.inst)) != 0 {
 		t.Error("a debug messenger was made without validation")
 	}

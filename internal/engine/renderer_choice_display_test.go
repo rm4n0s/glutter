@@ -73,8 +73,8 @@ func chosenRenderer(t *testing.T, env map[string]string) string {
 	if os.Getenv("WAYLAND_DISPLAY") == "" {
 		t.Skip("there is no Wayland compositor (run under scripts/headless-wayland.sh)")
 	}
-	files, _ := filepath.Glob("/usr/share/vulkan/icd.d/lvp_icd.*.json")
-	if len(files) == 0 {
+	icd := lavapipeICD()
+	if icd == "" {
 		t.Skip("Mesa's lavapipe is not installed")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
@@ -84,7 +84,7 @@ func chosenRenderer(t *testing.T, env map[string]string) string {
 	cmd.Env = append(os.Environ(), choiceChildEnv+"=1")
 	for k, v := range env {
 		if v == "lavapipe" {
-			v = files[0]
+			v = icd
 		}
 		cmd.Env = append(cmd.Env, k+"="+v)
 	}
@@ -120,4 +120,16 @@ func TestDisplayVulkanByNameMayUseTheCPUDevice(t *testing.T) {
 	if !strings.Contains(line, "vulkan: llvmpipe") {
 		t.Errorf("the app used %q, want vulkan: llvmpipe", line)
 	}
+}
+
+// lavapipeICD is lavapipe's driver file for the architecture of this test, or "" when
+// it is not installed. A machine with Mesa's 32-bit drivers too has lvp_icd.i686.json,
+// which sorts first and which a 64-bit process cannot load.
+func lavapipeICD() string {
+	arch := map[string]string{"amd64": "x86_64", "arm64": "aarch64", "386": "i686"}[runtime.GOARCH]
+	file := "/usr/share/vulkan/icd.d/lvp_icd." + arch + ".json"
+	if _, err := os.Stat(file); err != nil {
+		return ""
+	}
+	return file
 }

@@ -234,7 +234,10 @@ func startDisplayWith(t *testing.T, cfg platform.WindowConfig, before func(*Plat
 	t.Cleanup(func() {
 		cancel()
 		select {
-		case <-e.done:
+		case err := <-e.done:
+			if err != nil {
+				t.Errorf("Run: %v", err)
+			}
 		case <-time.After(displayTimeout):
 			t.Error("Run did not return")
 		}
@@ -674,6 +677,9 @@ func TestDisplayWindowKinds(t *testing.T) {
 // of its own, as a settings daemon does.
 func setXftDPI(t *testing.T, dpi int) {
 	t.Helper()
+	if os.Getenv("DISPLAY") == "" {
+		t.Skip("DISPLAY is not set: run the X11 display tests under scripts/headless-x11.sh")
+	}
 	other, err := New("")
 	if err != nil {
 		t.Fatal(err)
@@ -779,6 +785,9 @@ type xsettingsDaemon struct {
 
 func startXSettingsDaemon(t *testing.T, data []byte) *xsettingsDaemon {
 	t.Helper()
+	if os.Getenv("DISPLAY") == "" {
+		t.Skip("DISPLAY is not set: run the X11 display tests under scripts/headless-x11.sh")
+	}
 	p, err := New("")
 	if err != nil {
 		t.Fatal(err)

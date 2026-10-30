@@ -166,7 +166,7 @@ func TestDisplayRasterCacheDrawsWhatTheLayerDrew(t *testing.T) {
 					}
 				}
 				// The cached frames draw fewer things: the layer is one instance.
-				if !(instances[2] < instances[0] && instances[3] == instances[2]) {
+				if instances[2] >= instances[0] || instances[3] != instances[2] {
 					t.Errorf("instances per frame = %v", instances)
 				}
 				return nil

@@ -143,8 +143,10 @@ func dumpImage(t *testing.T, name string, img image.Image) {
 		t.Errorf("dump: %v", err)
 		return
 	}
-	defer f.Close()
 	if err := png.Encode(f, img); err != nil {
+		t.Errorf("dump: %v", err)
+	}
+	if err := f.Close(); err != nil {
 		t.Errorf("dump: %v", err)
 	}
 }

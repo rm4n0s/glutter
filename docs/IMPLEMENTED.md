@@ -5142,3 +5142,29 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Manual checks:** none
 - **Deviations and follow-ups:**
   - **Deviation:** Flutter keeps the out-of-range pixels and springs back (SPEC §12.10).
+
+## 29.37 Release 1.9.7 (Emetos)
+
+- **Date:** 2026-10-30
+- **Branch:** feat/step-29.37-release-1.9.7
+- **Summary:** 1.9.7 is released with steps 29.33 to 29.36, the fixes of Emetos's sixth issues list (2026-10-30), after the suites of every environment ran on the merged code (the owner asked).
+  - **SPEC §1:** a 1.9.7 sentence, and a "Scope of 1.9.7" paragraph after the one of 1.9.6.
+  - **`README.md`:** "What is new in 1.9.7".
+  - **Test fixes:** the Vulkan display tests of `internal/gpu/vulkan` and `internal/engine` chose lavapipe with a glob of `lvp_icd.*.json`, which on a machine with Mesa's 32-bit drivers gave `lvp_icd.i686.json` ("Found no drivers"); `lavapipeICD` now takes the file of the test's architecture. `golangci-lint run --build-tags glutter_display` reported eight findings in display tests that the default lint does not build (unchecked `Close` and `Run` errors, two negated conditions, an unused helper); they are fixed. Two helpers of the X11 display tests now skip without `DISPLAY` (see the Wayland suite below).
+  - **Publishing:** tags `step-29.37` and `v1.9.7`. `main` was pushed with the step tags of 29.33 to 29.37 and the commit of `docs/FEDORA-SETUP.md` (`git push --follow-tags origin main`).
+  - **The machine:** the NVIDIA eGPU (a Razer Core X V2 over USB4) fell off the bus three times in October (NVIDIA Xid 79), the last time with a hard lockup during these suites. Every test now runs through `.claude/no-nvidia.sh` (local, not committed): a bubblewrap sandbox without the NVIDIA device nodes, with the NVIDIA Vulkan driver and layers disabled and Mesa's EGL and GLX; the AMD GPUs and lavapipe stay. Fedora's `wine` had made DXVK's `dxgi.dll` the default, which left vkd3d without an adapter; the owner set the `wine-dxgi` alternative back to Wine's.
+- **Main files:** `docs/SPEC.md` (§1), `README.md`, `internal/gpu/vulkan/device_display_test.go`, `internal/engine/renderer_choice_display_test.go`, the display tests of `internal/gpu/gles`, `internal/gpu/vulkan` and `internal/platform/linux/x11`.
+- **Tests:** none of its own.
+- **Suites of every environment** (on the merged code; each failure was run again on v1.9.6 in a worktree):
+  - **Display, X11** (`scripts/headless-x11.sh`, `-race`, `glutter_display`: engine, gles, vulkan, wayland, x11): pass.
+  - **Display, Wayland** (`scripts/headless-wayland.sh`, same packages): pass. Four tests of the X11 package failed here with "could not open the X display": the script unsets `DISPLAY` and runs sway without Xwayland, and `setXftDPI` and `startXSettingsDaemon` connected before the check that skips without `DISPLAY`; they now skip like the other X11 display tests.
+  - **Browser** (`glutter_browser`): pass but three tests that fail the same on v1.9.6, on this machine's Chromium 156: `TestBrowserRendererChoice` (the Chromium subtests read the previous page's result; Firefox 159 passes them all), `TestBrowserRestoreAsksForAFrame` and `TestBrowserPerfMeasuresTheCounter` (a CPU time of -190 ms).
+  - **Android emulator** (`glutter_android`): pass but three tests. The two `...WithValidation` tests need the Vulkan validation layer in `.android-test/vvl/`, which is not installed (optional, SPEC §24.13). `TestVulkanDrawsUprightInEveryOrientation` passed once in 5 runs on v1.9.6 and once in 6 on 1.9.7, and failed with the same numbers on both: the emulator's screen capture of the Vulkan surface is black (the swapchain is made and logged, and the in-app parity tests match the software images), so it is the emulator's display path (SwiftShader, `swangle_indirect`), not the code.
+  - **Wine, inside** (`GOOS=windows`, `glutter_wine`: engine, gdiwindow, platform/windows): pass but four tests that fail the same on v1.9.6: `TestADragThatLeavesTheWindowIsReleasedOutside` and `TestMouseLeaveRemovesThePointer` (an index of -1 in Wine 11.20's input), `TestWineAutoWithoutTheAdapterEndsOnSoft` and `TestWineD3D12ByNameNeverFallsBack` (Wine 11.20 offers a "warp" adapter named after an NVIDIA GeForce GTX 470, Wine's made-up name, so there is always an adapter).
+  - **Wine, `d3d12`** (alone): pass. `TestWineDeviceLostAtPresentMakesTheSwapchainAgainForTheSameWindow` failed once in the full run and passed on its own on 1.9.7 and on v1.9.6.
+  - **Wine, host side** (winetest, glutter-windows, platform/windows, the examples): pass but `TestWineShotScreenSavesTheRootWindow` (`cmd/glutter-windows`: no light pixels in the root window's screenshot), which fails the same on v1.9.6.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ (Linux, Windows amd64 and arm64, with and without `glutter_wine`, and Linux with `glutter_display`) · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck, apicheck, uintptrcheck ✅ · wasm build, vet and tests ✅ · check-android ✅ · Windows builds, vet and test-windows ✅ · the suites of every environment as above. Everything through `.claude/no-nvidia.sh`.
+- **Proof:** none
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - **Follow-ups:** the machine-dependent failures above (Chromium 156, Wine 11.20's input and adapter, the root-window screenshot under Wine, the emulator's capture of a Vulkan surface) are not fixed in 1.9.7.

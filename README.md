@@ -198,6 +198,12 @@ func startView(parent *m.WidgetsBinding, root m.Widget, send func(pixels []byte,
 }
 ```
 
+**What is new in 1.9.7.** Four fixes for Emetos:
+- **Input:** a frame that handles a key or a click no longer asks for a second frame that draws nothing, so a held key types at the full repeat rate.
+- **Key repeat:** on Wayland a held key repeats at the compositor's rate; a slow frame no longer slows the repeats that follow.
+- **Clipboard:** `services.ClipboardData` has an `HTML` field (`services.ClipboardKTextHTML`): copy formatted text next to the plain text, and a rich editor pastes it formatted. It works on Linux, Windows, the web and Android.
+- **Text fields:** when the text of a scrolled field gets shorter, the field shows the end of the text at once instead of springing back over a second.
+
 **What is new in 1.9.6.** A fix for Emetos: a button's `TextStyle` (from `FilledButtonStyleFrom`, `OutlinedButtonStyleFrom` or `TextButtonStyleFrom`, on the button or its theme) is merged with the default label style. A style that gives only a size or a weight keeps the theme's font and the foreground color; before, the label could vanish.
 
 **What is new in 1.9.5.** Two more for Emetos:

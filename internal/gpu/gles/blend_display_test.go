@@ -58,17 +58,6 @@ func pictureOf(fn func(c *ui.Canvas)) *ui.Picture {
 	return rec.EndRecording()
 }
 
-// stripesAndDisc is something with an edge and a gradient to put layers over.
-func stripesAndDisc(c *ui.Canvas) {
-	for i := 0; i < 8; i++ {
-		c.DrawRect(ui.NewRectFromLTWH(0, float64(i)*16, 128, 8), fillP(0xFF3050C0))
-		c.DrawRect(ui.NewRectFromLTWH(0, float64(i)*16+8, 128, 8), fillP(0xFFF0A020))
-	}
-	g := ui.NewPaint()
-	g.SetShader(ui.NewGradientRadial(ui.Offset{Dx: 64, Dy: 64}, 40, []ui.Color{ui.NewColor(0xFFFF0000), ui.NewColor(0x4000FF00)}))
-	c.DrawCircle(ui.Offset{Dx: 64, Dy: 64}, 40, g)
-}
-
 func TestDisplayPaintsAndLayersMatchSoftware(t *testing.T) {
 	tests := gputest.EffectScenes()
 	for _, tt := range tests {
