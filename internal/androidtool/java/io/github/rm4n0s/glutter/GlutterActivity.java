@@ -278,7 +278,7 @@ public class GlutterActivity extends Activity {
   /**
    * Called by Go, from any thread: one operation of the system's interface, haptic feedback, sounds
    * or the screen (systemui.go, operations 1 to 7; {@link SystemUI}), or of text input and the
-   * clipboard (textinput.go, 8 to 13; {@link TextInput}), of back navigation (back.go, 14
+   * clipboard (textinput.go, 8 to 13, and 25 and 26 for the HTML; {@link TextInput}), of back navigation (back.go, 14
    * and 15; {@link BackNavigation}), of accessibility (accessibility.go, 16 to 18; {@link
    * GlutterAccessibility}), of the spell checker (spellcheck.go, 24; {@link SpellCheck}) or of the desktop services (desktop.go, 19 to 23: a URI, the
    * notifications; {@link DesktopServices}), done on the main thread. {@code bytes} is the

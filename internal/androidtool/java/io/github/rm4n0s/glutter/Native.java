@@ -122,7 +122,10 @@ final class Native {
   static native void textEdit(
       int seq, byte[] text, int base, int extent, int composeBase, int composeExtent);
 
-  /** The answer to a {@code OP_CLIPBOARD_GET}: whether the clipboard has text, and the text as UTF-8. */
+  /**
+   * The answer to a {@code OP_CLIPBOARD_GET} or {@code OP_CLIPBOARD_GET_HTML}: whether the clipboard
+   * has text (or HTML), and the text (or the HTML) as UTF-8.
+   */
   static native void clipboardText(int id, boolean ok, byte[] text);
 
   /**

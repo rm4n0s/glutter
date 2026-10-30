@@ -2,9 +2,11 @@ package services
 
 import (
 	"context"
+	"reflect"
 	"testing"
 
 	"github.com/rm4n0s/errors"
+	"github.com/rm4n0s/glutter/ui"
 )
 
 // memoryClipboard is a MockClipboard: the text lives in the struct and the
@@ -178,3 +180,153 @@ func TestClipboardWithoutBackend(t *testing.T) {
 const (
 	tagBackendBoom = "BackendBoom"
 )
+
+// richMemoryClipboard is a memoryClipboard that is also a RichClipboardBackend: it keeps the content of
+// the system clipboard and the primary selection, and gives the format that is asked for.
+type richMemoryClipboard struct {
+	memoryClipboard
+	system, primary ui.ClipboardContent
+	setKinds        []ui.ClipboardKind
+}
+
+func (r *richMemoryClipboard) SetClipboard(_ context.Context, kind ui.ClipboardKind, content ui.ClipboardContent, done func(error)) {
+	r.setKinds = append(r.setKinds, kind)
+	if kind == ui.ClipboardKindPrimary {
+		r.primary = content
+	} else {
+		r.system = content
+	}
+	if done != nil {
+		r.pending = append(r.pending, func() { done(nil) })
+	}
+}
+
+func (r *richMemoryClipboard) GetClipboard(_ context.Context, kind ui.ClipboardKind, format string, done func(ui.ClipboardContent, error)) {
+	content := r.system
+	if kind == ui.ClipboardKindPrimary {
+		content = r.primary
+	}
+	var out ui.ClipboardContent
+	switch format {
+	case ui.ClipboardFormatText:
+		out.Text, out.HasText = content.Text, content.HasText
+	case ui.ClipboardFormatHTML:
+		out.HTML = content.HTML
+	}
+	r.pending = append(r.pending, func() { done(out, nil) })
+}
+
+func TestClipboardHTML(t *testing.T) {
+	const fragment = "<b>caf\u00e9</b> \u4e16\u754c"
+	tests := []struct {
+		name string
+		data ClipboardData
+		// want is what the backend must hold after SetData.
+		want ui.ClipboardContent
+	}{
+		{"text and HTML", ClipboardData{Text: "caf\u00e9", HTML: fragment}, ui.ClipboardContent{Text: "caf\u00e9", HasText: true, HTML: fragment}},
+		{"HTML only has no text", ClipboardData{HTML: fragment}, ui.ClipboardContent{HTML: fragment}},
+	}
+	for _, tt := range tests {
+		t.Run("set "+tt.name, func(t *testing.T) {
+			m := &richMemoryClipboard{}
+			var setErr error
+			NewClipboard(m).SetData(context.Background(), tt.data, func(err error) { setErr = err })
+			m.run()
+			if setErr != nil || !reflect.DeepEqual(m.system, tt.want) {
+				t.Errorf("backend holds %+v (error %v), want %+v", m.system, setErr, tt.want)
+			}
+			if m.text != "" || m.has {
+				t.Error("the text went through the text-only call, so the HTML was lost")
+			}
+		})
+	}
+
+	reads := []struct {
+		name     string
+		system   ui.ClipboardContent
+		format   string
+		wantNil  bool
+		wantHTML string
+	}{
+		{"read HTML", ui.ClipboardContent{Text: "t", HasText: true, HTML: fragment}, ClipboardKTextHTML, false, fragment},
+		{"a clipboard with no HTML gives nil", ui.ClipboardContent{Text: "t", HasText: true}, ClipboardKTextHTML, true, ""},
+		{"an empty clipboard gives nil", ui.ClipboardContent{}, ClipboardKTextHTML, true, ""},
+		{"the text of a clipboard that has HTML", ui.ClipboardContent{Text: "t", HasText: true, HTML: fragment}, ClipboardKTextPlain, false, ""},
+	}
+	for _, tt := range reads {
+		t.Run(tt.name, func(t *testing.T) {
+			m := &richMemoryClipboard{system: tt.system, memoryClipboard: memoryClipboard{text: tt.system.Text, has: tt.system.HasText}}
+			var got *ClipboardData
+			called := false
+			NewClipboard(m).GetData(context.Background(), tt.format, func(d *ClipboardData, err error) {
+				got, called = d, true
+				if err != nil {
+					t.Errorf("error: %v", err)
+				}
+			})
+			m.run()
+			if !called {
+				t.Fatal("done was not called")
+			}
+			if tt.wantNil != (got == nil) || got != nil && got.HTML != tt.wantHTML {
+				t.Errorf("data = %+v, want nil %v and HTML %q", got, tt.wantNil, tt.wantHTML)
+			}
+		})
+	}
+
+	t.Run("the primary selection reads HTML too", func(t *testing.T) {
+		m := &richMemoryClipboard{primary: ui.ClipboardContent{HTML: fragment}}
+		var got *ClipboardData
+		NewClipboard(m).GetPrimaryData(context.Background(), ClipboardKTextHTML, func(d *ClipboardData, _ error) { got = d })
+		m.run()
+		if got == nil || got.HTML != fragment {
+			t.Errorf("data = %+v", got)
+		}
+	})
+
+	t.Run("a text-only backend cannot take HTML", func(t *testing.T) {
+		m := &memoryClipboard{}
+		var setErr, getErr error
+		c := NewClipboard(m)
+		c.SetData(context.Background(), ClipboardData{Text: "t", HTML: fragment}, func(err error) { setErr = err })
+		c.GetData(context.Background(), ClipboardKTextHTML, func(_ *ClipboardData, err error) { getErr = err })
+		m.run()
+		for name, err := range map[string]error{"set": setErr, "get": getErr} {
+			appErr, ok := errors.FromError(err)
+			if !ok || !appErr.HasRoute("ClipboardUnavailable") {
+				t.Errorf("%s: %v, want ClipboardUnavailable", name, err)
+			}
+		}
+	})
+}
+
+func TestClipboardContentHelpers(t *testing.T) {
+	tests := []struct {
+		name    string
+		content ui.ClipboardContent
+		empty   bool
+		has     map[string]bool
+	}{
+		{"empty", ui.ClipboardContent{}, true, map[string]bool{ui.ClipboardFormatHTML: false, ui.ClipboardFormatText: false}},
+		{"HTML only", ui.ClipboardContent{HTML: "<b>x</b>"}, false, map[string]bool{ui.ClipboardFormatHTML: true, ui.ClipboardFormatText: false}},
+		{"text and HTML", ui.ClipboardContent{Text: "x", HasText: true, HTML: "<b>x</b>"}, false, map[string]bool{ui.ClipboardFormatHTML: true, ui.ClipboardFormatText: true}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.content.IsEmpty() != tt.empty {
+				t.Errorf("IsEmpty = %v", tt.content.IsEmpty())
+			}
+			for format, want := range tt.has {
+				if tt.content.Has(format) != want {
+					t.Errorf("Has(%s) = %v, want %v", format, tt.content.Has(format), want)
+				}
+			}
+		})
+	}
+	// The conversions keep the HTML.
+	d := ClipboardData{Text: "t", HTML: "<i>t</i>"}
+	if got := dataOf(d.content()); !reflect.DeepEqual(got, d) {
+		t.Errorf("round trip = %+v, want %+v", got, d)
+	}
+}

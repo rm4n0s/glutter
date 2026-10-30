@@ -152,6 +152,8 @@ func (c *richClip) GetClipboard(_ context.Context, kind ui.ClipboardKind, format
 		out.PNG = content.PNG
 	case ui.ClipboardFormatURIList:
 		out.URIs = content.URIs
+	case ui.ClipboardFormatHTML:
+		out.HTML = content.HTML
 	}
 	c.deliver(func() { done(out, nil) })
 }
@@ -449,6 +451,24 @@ func TestViewClipboardRichCalls(t *testing.T) {
 			wantRich: func(o outcome) bool { return o.answered && o.err == nil },
 		},
 		{
+			name: "set text and HTML",
+			call: func(c *services.Clipboard, ctx context.Context, done func(outcome)) {
+				c.SetData(ctx, services.ClipboardData{Text: "x", HTML: "<b>x</b>"}, func(err error) { done(outcome{err: err, answered: true}) })
+			},
+			textCalls: []string{"set text"}, richCalls: []string{"set ClipboardKind.system"},
+			wantText: func(o outcome) bool { return o.answered && o.err == nil },
+			wantRich: func(o outcome) bool { return o.answered && o.err == nil },
+		},
+		{
+			name: "get HTML from a clipboard that has none",
+			call: func(c *services.Clipboard, ctx context.Context, done func(outcome)) {
+				c.GetData(ctx, services.ClipboardKTextHTML, func(d *services.ClipboardData, err error) { done(outcome{d, err, true}) })
+			},
+			textCalls: nil, richCalls: []string{"get ClipboardKind.system text/html"},
+			wantText: func(o outcome) bool { return o.answered && o.err == nil && o.data == nil },
+			wantRich: func(o outcome) bool { return o.answered && o.err == nil && o.data == nil },
+		},
+		{
 			name: "set the primary selection",
 			call: func(c *services.Clipboard, ctx context.Context, done func(outcome)) {
 				c.SetPrimaryData(ctx, services.NewClipboardData("x"), func(err error) { done(outcome{err: err, answered: true}) })
@@ -515,6 +535,37 @@ func TestViewClipboardRichCalls(t *testing.T) {
 			})
 		}
 	}
+}
+
+// TestViewClipboardHTMLReachesTheRichHost: the HTML of a copy goes to the clipboard of the view with
+// the text, and reads back from it; the app's clipboard is not touched.
+func TestViewClipboardHTMLReachesTheRichHost(t *testing.T) {
+	h := newClipHarness(t, &clipKind{"rich", true})
+	clip := h.view.Binding().Clipboard()
+	var setErr error
+	clip.SetData(context.Background(), services.ClipboardData{Text: "caf\u00e9", HTML: "<b>caf\u00e9</b>"}, func(err error) { setErr = err })
+	h.run()
+	if setErr != nil {
+		t.Fatal(setErr)
+	}
+	h.rich.mu.Lock()
+	system := h.rich.system
+	h.rich.mu.Unlock()
+	if system.Text != "caf\u00e9" || !system.HasText || system.HTML != "<b>caf\u00e9</b>" {
+		t.Errorf("the host holds %+v", system)
+	}
+	var got *services.ClipboardData
+	clip.GetData(context.Background(), services.ClipboardKTextHTML, func(d *services.ClipboardData, err error) {
+		if err != nil {
+			t.Error(err)
+		}
+		got = d
+	})
+	h.run()
+	if got == nil || got.HTML != "<b>caf\u00e9</b>" {
+		t.Errorf("GetData(HTML) = %+v", got)
+	}
+	h.parentUntouched()
 }
 
 func equalStrings(a, b []string) bool {

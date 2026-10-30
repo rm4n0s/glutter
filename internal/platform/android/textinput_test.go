@@ -355,3 +355,83 @@ func TestClipboardKindsAndFormats(t *testing.T) {
 		t.Errorf("text reads as %+v", c)
 	}
 }
+
+// TestClipboardHTML: a content with HTML is one command (the HTML, then the text, and the length of
+// the HTML in UTF-16 units, which Java cuts it by), and the HTML is read with a command of its own whose
+// answer is the HTML.
+func TestClipboardHTML(t *testing.T) {
+	writes := []struct {
+		name    string
+		content ui.ClipboardContent
+		want    command
+	}{
+		{"text and HTML", ui.ClipboardContent{Text: "café", HasText: true, HTML: "<b>café</b>"},
+			command{Op: opClipboardSetHTML, A: 11, B: 1, S: "<b>café</b>café"}},
+		{"HTML only", ui.ClipboardContent{HTML: "<i>x</i>"}, command{Op: opClipboardSetHTML, A: 8, B: 0, S: "<i>x</i>"}},
+		{"characters outside the BMP count two units", ui.ClipboardContent{Text: "\U0001F600", HasText: true, HTML: "<p>\U0001F600</p>"},
+			command{Op: opClipboardSetHTML, A: 9, B: 1, S: "<p>\U0001F600</p>\U0001F600"}},
+		{"HTML with an image: the image is left out", ui.ClipboardContent{HTML: "<u>", PNG: []byte{1}}, command{Op: opClipboardSetHTML, A: 3, B: 0, S: "<u>"}},
+		{"invalid UTF-8 is replaced", ui.ClipboardContent{HTML: "a\xffb"}, command{Op: opClipboardSetHTML, A: 3, B: 0, S: "a�b"}},
+	}
+	for _, tt := range writes {
+		t.Run("write "+tt.name, func(t *testing.T) {
+			h := newHarness(t)
+			h.run()
+			done := make(chan error, 1)
+			h.sync(func() {
+				h.p.Clipboard().SetContent(context.Background(), ui.ClipboardKindSystem, tt.content, func(err error) { done <- err })
+			})
+			if err := <-done; err != nil {
+				t.Fatal(err)
+			}
+			if got := h.host.sentCommands(); len(got) != 1 || got[0] != tt.want {
+				t.Errorf("the commands are %+v, want %+v", got, tt.want)
+			}
+		})
+	}
+
+	reads := []struct {
+		name string
+		ok   bool
+		html string
+		want ui.ClipboardContent
+	}{
+		{"a clip with HTML", true, "<b>café</b>", ui.ClipboardContent{HTML: "<b>café</b>"}},
+		{"a clip without HTML", false, "", ui.ClipboardContent{}},
+	}
+	for _, tt := range reads {
+		t.Run("read "+tt.name, func(t *testing.T) {
+			h := newHarness(t)
+			h.run()
+			type result struct {
+				c   ui.ClipboardContent
+				err error
+			}
+			got := make(chan result, 1)
+			h.sync(func() {
+				h.p.Clipboard().GetContent(context.Background(), ui.ClipboardKindSystem, ui.ClipboardFormatHTML, func(c ui.ClipboardContent, err error) { got <- result{c, err} })
+			})
+			if cmds := h.host.sentCommands(); len(cmds) != 1 || cmds[0] != (command{Op: opClipboardGetHTML, A: 1}) {
+				t.Fatalf("the commands are %+v", cmds)
+			}
+			h.b.clipboardText(1, tt.ok, tt.html)
+			if r := <-got; r.err != nil || !reflect.DeepEqual(r.c, tt.want) {
+				t.Errorf("GetContent = %+v, want %+v", r, tt.want)
+			}
+		})
+	}
+
+	t.Run("a read of the HTML ends with its context", func(t *testing.T) {
+		h := newHarness(t)
+		h.run()
+		ctx, cancel := context.WithCancel(context.Background())
+		errs := make(chan error, 1)
+		h.sync(func() {
+			h.p.Clipboard().GetContent(ctx, ui.ClipboardKindSystem, ui.ClipboardFormatHTML, func(_ ui.ClipboardContent, err error) { errs <- err })
+		})
+		cancel()
+		if err := <-errs; !hasTag(err, tagClipboardReadTimeout) {
+			t.Errorf("the read ended with %v", err)
+		}
+	})
+}

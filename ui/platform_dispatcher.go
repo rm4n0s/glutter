@@ -601,7 +601,7 @@ func (d *PlatformDispatcher) SetClipboard(ctx context.Context, kind ClipboardKin
 		h.SetClipboard(ctx, kind, content, done)
 		return
 	}
-	if kind != ClipboardKindPrimary && content.HasText && len(content.PNG) == 0 && len(content.URIs) == 0 {
+	if kind != ClipboardKindPrimary && content.HasText && len(content.PNG) == 0 && len(content.URIs) == 0 && content.HTML == "" {
 		d.SetClipboardText(ctx, content.Text, done)
 		return
 	}

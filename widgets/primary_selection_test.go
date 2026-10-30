@@ -254,3 +254,61 @@ func TestClipboardWithoutABackendFailsTheRichCalls(t *testing.T) {
 	clip.GetPrimaryData(ctx, services.ClipboardKTextPlain, func(_ *services.ClipboardData, err error) { check("GetPrimaryData", err) })
 	clip.GetData(ctx, services.ClipboardKImagePNG, func(_ *services.ClipboardData, err error) { check("GetData", err) })
 }
+
+func TestClipboardHoldsHTMLNextToText(t *testing.T) {
+	const fragment = "<b>caf\u00e9</b> \u4e16\u754c"
+	tests := []struct {
+		name     string
+		data     services.ClipboardData
+		format   string
+		wantNil  bool
+		wantText string
+		wantHTML string
+	}{
+		{"the HTML of a copy", services.ClipboardData{Text: "caf\u00e9 \u4e16\u754c", HTML: fragment}, services.ClipboardKTextHTML, false, "", fragment},
+		{"the text of the same copy", services.ClipboardData{Text: "caf\u00e9 \u4e16\u754c", HTML: fragment}, services.ClipboardKTextPlain, false, "caf\u00e9 \u4e16\u754c", ""},
+		{"HTML only has no text", services.ClipboardData{HTML: fragment}, services.ClipboardKTextPlain, true, "", ""},
+		{"a copy with no HTML has none", services.ClipboardData{Text: "plain"}, services.ClipboardKTextHTML, true, "", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ts := gluttertest.New(t)
+			clip := ts.Binding.Clipboard()
+			var setErr error
+			clip.SetData(context.Background(), tt.data, func(err error) { setErr = err })
+			ts.FlushPosted()
+			if setErr != nil {
+				t.Fatal(setErr)
+			}
+			if ts.ClipboardHTML() != tt.data.HTML {
+				t.Errorf("host HTML = %q, want %q", ts.ClipboardHTML(), tt.data.HTML)
+			}
+			var got *services.ClipboardData
+			clip.GetData(context.Background(), tt.format, func(d *services.ClipboardData, err error) {
+				if err != nil {
+					t.Error(err)
+				}
+				got = d
+			})
+			ts.FlushPosted()
+			if tt.wantNil != (got == nil) || got != nil && (got.Text != tt.wantText || got.HTML != tt.wantHTML) {
+				t.Errorf("GetData(%s) = %+v, want nil %v, text %q, HTML %q", tt.format, got, tt.wantNil, tt.wantText, tt.wantHTML)
+			}
+		})
+	}
+
+	// Another application copies HTML only, then text, which replaces it.
+	ts := gluttertest.New(t)
+	clip := ts.Binding.Clipboard()
+	ts.SetClipboardHTML(fragment)
+	var got *services.ClipboardData
+	clip.GetData(context.Background(), services.ClipboardKTextHTML, func(d *services.ClipboardData, _ error) { got = d })
+	ts.FlushPosted()
+	if got == nil || got.HTML != fragment {
+		t.Errorf("HTML of another app = %+v", got)
+	}
+	ts.SetClipboardText("text")
+	if ts.ClipboardHTML() != "" {
+		t.Error("a new text left the HTML of the old copy")
+	}
+}

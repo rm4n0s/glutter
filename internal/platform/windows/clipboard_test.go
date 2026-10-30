@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"fmt"
 	"image"
 	"image/color"
 	"image/png"
 	"reflect"
+	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -426,7 +429,10 @@ type fakeClipboard struct {
 	getErr    error
 }
 
-const fakePNGFormat = 0xC000
+const (
+	fakePNGFormat  = 0xC000
+	fakeHTMLFormat = 0xC001
+)
 
 func newFakeClipboard() *fakeClipboard { return &fakeClipboard{data: map[uint32][]byte{}} }
 
@@ -489,6 +495,8 @@ func (f *fakeClipboard) Has(format uint32) bool {
 
 func (f *fakeClipboard) PNGFormat() (uint32, error) { return fakePNGFormat, nil }
 
+func (f *fakeClipboard) HTMLFormat() (uint32, error) { return fakeHTMLFormat, nil }
+
 func newCore(api clipboardAPI) (*clipboardCore, *[]time.Duration) {
 	var sleeps []time.Duration
 	return &clipboardCore{api: api, sleep: func(d time.Duration) { sleeps = append(sleeps, d) }}, &sleeps
@@ -499,7 +507,7 @@ func TestWriteAndReadAContentWithEveryFormat(t *testing.T) {
 	core, _ := newCore(fake)
 	img := encodePNG(t, testImage(4, 3))
 	content := ui.ClipboardContent{
-		Text: "a\nb", HasText: true, PNG: img,
+		Text: "a\nb", HasText: true, PNG: img, HTML: "<b>a</b><br>b \u00e9\u4e16",
 		URIs: []string{"file:///C:/Users/me/a%20b.txt", "file://server/share/c.txt"},
 	}
 	if err := core.write(0x1234, content); err != nil {
@@ -508,7 +516,7 @@ func TestWriteAndReadAContentWithEveryFormat(t *testing.T) {
 	if fake.owner != 0x1234 || fake.empties != 1 || fake.closes != 1 || fake.open {
 		t.Errorf("owner %#x, %d empties, %d closes, open %v", fake.owner, fake.empties, fake.closes, fake.open)
 	}
-	wantOrder := []uint32{win32.CFUnicodeText, win32.CFHDrop, fakePNGFormat, win32.CFDIBV5}
+	wantOrder := []uint32{win32.CFUnicodeText, fakeHTMLFormat, win32.CFHDrop, fakePNGFormat, win32.CFDIBV5}
 	if !reflect.DeepEqual(fake.order, wantOrder) {
 		t.Errorf("formats set in the order %v, want %v", fake.order, wantOrder)
 	}
@@ -521,6 +529,7 @@ func TestWriteAndReadAContentWithEveryFormat(t *testing.T) {
 	for format, want := range map[string]ui.ClipboardContent{
 		ui.ClipboardFormatText:    {Text: "a\nb", HasText: true},
 		ui.ClipboardFormatPNG:     {PNG: img},
+		ui.ClipboardFormatHTML:    {HTML: "<b>a</b><br>b \u00e9\u4e16"},
 		ui.ClipboardFormatURIList: {URIs: []string{"file:///C:/Users/me/a%20b.txt", "file://server/share/c.txt"}},
 		"":                        {Text: "a\nb", HasText: true},
 		"application/x-other":     {},
@@ -785,5 +794,152 @@ func TestAsyncReadKeepsTheErrorOfTheRead(t *testing.T) {
 	p.next(t)
 	if got != error(want) {
 		t.Errorf("error = %v, want the error of the read untouched", got)
+	}
+}
+
+func TestHTMLToClipboardWritesTheDescription(t *testing.T) {
+	tests := []struct {
+		name     string
+		fragment string
+		want     string // the fragment that a reader of the description gets
+	}{
+		{"ASCII", "<b>bold</b>", "<b>bold</b>"},
+		{"non-ASCII", "<p>Gr\u00fc\u00dfe \u4e16\u754c \U0001F600</p>", "<p>Gr\u00fc\u00dfe \u4e16\u754c \U0001F600</p>"},
+		{"no <html>, no <body>", "just <i>words</i>", "just <i>words</i>"},
+		{"empty", "", ""},
+		{"cut at a NUL", "a<b>b\x00c</b>", "a<b>b"},
+		{"invalid UTF-8", "a\xffb", "a\ufffdb"},
+		{"CRLF inside", "<pre>a\r\nb</pre>", "<pre>a\r\nb</pre>"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data := htmlToClipboard(tt.fragment)
+			if len(data) == 0 || data[len(data)-1] != 0 {
+				t.Fatalf("the data does not end with a NUL: %q", data)
+			}
+			if !strings.HasPrefix(string(data), "Version:0.9\r\nStartHTML:0000000105\r\nEndHTML:") {
+				t.Fatalf("header = %q", data[:min(len(data), 120)])
+			}
+			if string(data[cfHTMLHeaderSize-2:cfHTMLHeaderSize]) != "\r\n" {
+				t.Errorf("the header is not %d bytes long: %q", cfHTMLHeaderSize, data[:cfHTMLHeaderSize+10])
+			}
+			fields := map[string]int{}
+			for _, line := range strings.Split(string(data[:cfHTMLHeaderSize]), "\r\n") {
+				if name, value, ok := strings.Cut(line, ":"); ok && name != "Version" {
+					n, err := strconv.Atoi(value)
+					if err != nil {
+						t.Fatalf("%q: %v", line, err)
+					}
+					fields[name] = n
+				}
+			}
+			body := data[:len(data)-1] // the NUL is counted by no offset
+			if fields["StartHTML"] != cfHTMLHeaderSize || fields["EndHTML"] != len(body) {
+				t.Errorf("StartHTML %d EndHTML %d, want %d and %d", fields["StartHTML"], fields["EndHTML"], cfHTMLHeaderSize, len(body))
+			}
+			frag := string(body[fields["StartFragment"]:fields["EndFragment"]])
+			if frag != tt.want {
+				t.Errorf("the bytes between StartFragment and EndFragment = %q, want %q", frag, tt.want)
+			}
+			if !strings.HasSuffix(string(body[:fields["StartFragment"]]), "<!--StartFragment-->") ||
+				!strings.HasPrefix(string(body[fields["EndFragment"]:]), "<!--EndFragment-->") {
+				t.Errorf("the markers are not around the fragment: %q", body[cfHTMLHeaderSize:])
+			}
+			if got := htmlFromClipboard(data); got != tt.want {
+				t.Errorf("the round trip = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestHTMLFromClipboardOfOtherPrograms(t *testing.T) {
+	// A description as Chrome writes it: offsets, the markers, a NUL at the end.
+	chrome := func() []byte {
+		doc := "<html>\r\n<body>\r\n<!--StartFragment--><span>caf\u00e9 \u4e16</span><!--EndFragment-->\r\n</body>\r\n</html>"
+		head := "Version:1.0\r\nStartHTML:%010d\r\nEndHTML:%010d\r\nStartFragment:%010d\r\nEndFragment:%010d\r\nSourceURL:https://example.com/\r\n"
+		hl := len(fmt.Sprintf(head, 0, 0, 0, 0))
+		sf := hl + strings.Index(doc, "<span>")
+		ef := hl + strings.Index(doc, "<!--EndFragment-->")
+		return []byte(fmt.Sprintf(head, hl, hl+len(doc), sf, ef) + doc + "\x00")
+	}()
+	tests := []struct {
+		name string
+		data []byte
+		want string
+	}{
+		{"Chrome", chrome, "<span>caf\u00e9 \u4e16</span>"},
+		{"offsets of -1 for the document, markers present",
+			[]byte("Version:0.9\nStartHTML:-1\nEndHTML:-1\nStartFragment:-1\nEndFragment:-1\n<html><body><!--StartFragment--><u>x</u><!--EndFragment--></body></html>"), "<u>x</u>"},
+		{"no fragment offsets, no markers: the inside of <body>",
+			[]byte("Version:0.9\r\nStartHTML:0000000000\r\nEndHTML:0000000000\r\n<HTML><BODY bgcolor=red><p>hi</p></BODY></HTML>"), "<p>hi</p>"},
+		{"no fragment offsets, no markers, no <body>: the document",
+			[]byte("Version:0.9\r\n<p>hi</p>"), "<p>hi</p>"},
+		{"no description at all: the data is the markup", []byte("<b>raw</b>\x00"), "<b>raw</b>"},
+		{"no description, markers",
+			[]byte("<html><!--StartFragment-->in<!--EndFragment--></html>"), "in"},
+		{"offsets outside the data: the markers are used",
+			[]byte("Version:0.9\r\nStartHTML:0000000105\r\nEndHTML:0000009999\r\nStartFragment:0000000130\r\nEndFragment:0000009998\r\n<!--StartFragment-->ok<!--EndFragment-->"), "ok"},
+		{"offsets inside the description are not used",
+			[]byte("Version:0.9\r\nStartFragment:0000000001\r\nEndFragment:0000000005\r\n<!--StartFragment-->ok<!--EndFragment-->"), "ok"},
+		{"fragment offsets win over markers in the text",
+			[]byte("Version:0.9\r\nStartFragment:0000000063\r\nEndFragment:0000000066\r\n<p>abc<!--StartFragment-->no<!--EndFragment--></p>"), "<p>"},
+		{"the fragment is cut inside a multibyte character: invalid UTF-8 becomes U+FFFD",
+			[]byte("Version:0.9\r\nStartFragment:0000000063\r\nEndFragment:0000000064\r\n\xc3\xa9\xc3\xa9"), "\ufffd"},
+		{"empty", nil, ""},
+		{"only a NUL", []byte{0}, ""},
+		{"a line that is not a field ends the description",
+			[]byte("<p>a: b</p>"), "<p>a: b</p>"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := htmlFromClipboard(tt.data); got != tt.want {
+				t.Errorf("fragment = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestReadAndWriteHTMLOnTheClipboard(t *testing.T) {
+	const fragment = "<b>na\u00efve</b> \u4e16\u754c"
+	tests := []struct {
+		name    string
+		content ui.ClipboardContent
+		format  string
+		want    ui.ClipboardContent
+		formats []uint32 // what is on the clipboard after the write
+	}{
+		{"text and HTML", ui.ClipboardContent{Text: "na\u00efve", HasText: true, HTML: fragment}, ui.ClipboardFormatHTML,
+			ui.ClipboardContent{HTML: fragment}, []uint32{win32.CFUnicodeText, fakeHTMLFormat}},
+		{"text and HTML, the text", ui.ClipboardContent{Text: "na\u00efve", HasText: true, HTML: fragment}, ui.ClipboardFormatText,
+			ui.ClipboardContent{Text: "na\u00efve", HasText: true}, []uint32{win32.CFUnicodeText, fakeHTMLFormat}},
+		{"HTML only", ui.ClipboardContent{HTML: fragment}, ui.ClipboardFormatHTML,
+			ui.ClipboardContent{HTML: fragment}, []uint32{fakeHTMLFormat}},
+		{"HTML only has no text", ui.ClipboardContent{HTML: fragment}, ui.ClipboardFormatText,
+			ui.ClipboardContent{}, []uint32{fakeHTMLFormat}},
+		{"text only has no HTML", ui.ClipboardContent{Text: "t", HasText: true}, ui.ClipboardFormatHTML,
+			ui.ClipboardContent{}, []uint32{win32.CFUnicodeText}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fake := newFakeClipboard()
+			core, _ := newCore(fake)
+			if err := core.write(1, tt.content); err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(fake.order, tt.formats) {
+				t.Errorf("formats = %v, want %v", fake.order, tt.formats)
+			}
+			opens := fake.opens
+			got, err := core.read(tt.format)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("read = %+v, want %+v", got, tt.want)
+			}
+			if tt.want.IsEmpty() && fake.opens != opens {
+				t.Error("a format the clipboard lacks opened the clipboard")
+			}
+		})
 	}
 }

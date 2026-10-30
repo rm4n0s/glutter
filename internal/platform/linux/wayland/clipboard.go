@@ -39,6 +39,13 @@ const (
 	mimeURIList = "text/uri-list"
 )
 
+// The HTML formats: the app offers both, and reads the one with the charset
+// first (a program that offers a bare "text/html" mostly means UTF-8).
+var (
+	offeredHTMLMimeTypes = []string{"text/html;charset=utf-8", "text/html"}
+	readHTMLMimeTypes    = offeredHTMLMimeTypes
+)
+
 // readMimesOf are the formats of the selection that the app reads for a format
 // of the content, in order of preference.
 func readMimesOf(format string) []string {
@@ -49,6 +56,8 @@ func readMimesOf(format string) []string {
 		return []string{mimePNG}
 	case ui.ClipboardFormatURIList:
 		return []string{mimeURIList}
+	case ui.ClipboardFormatHTML:
+		return readHTMLMimeTypes
 	}
 	return nil
 }
@@ -65,6 +74,9 @@ func offeredMimesOf(c ui.ClipboardContent) []string {
 	if len(c.URIs) > 0 {
 		mimes = append(mimes, mimeURIList)
 	}
+	if c.HTML != "" {
+		mimes = append(mimes, offeredHTMLMimeTypes...)
+	}
 	return mimes
 }
 
@@ -78,6 +90,8 @@ func dataOf(c ui.ClipboardContent, mime string) (data []byte, ok bool) {
 		return c.PNG, len(c.PNG) > 0
 	case mime == mimeURIList:
 		return []byte(formatURIList(c.URIs)), len(c.URIs) > 0
+	case slices.Contains(offeredHTMLMimeTypes, mime):
+		return []byte(c.HTML), c.HTML != ""
 	}
 	return nil, false
 }
@@ -115,6 +129,8 @@ func contentOf(format string, data []byte) ui.ClipboardContent {
 		return ui.ClipboardContent{PNG: data}
 	case ui.ClipboardFormatURIList:
 		return ui.ClipboardContent{URIs: parseURIList(data)}
+	case ui.ClipboardFormatHTML:
+		return ui.ClipboardContent{HTML: strings.ToValidUTF8(string(data), "\uFFFD")}
 	}
 	return ui.ClipboardContent{}
 }
@@ -301,6 +317,8 @@ func contentIn(c ui.ClipboardContent, format string) ui.ClipboardContent {
 		return ui.ClipboardContent{PNG: c.PNG}
 	case ui.ClipboardFormatURIList:
 		return ui.ClipboardContent{URIs: c.URIs}
+	case ui.ClipboardFormatHTML:
+		return ui.ClipboardContent{HTML: c.HTML}
 	}
 	return ui.ClipboardContent{}
 }

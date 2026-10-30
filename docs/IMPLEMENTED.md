@@ -5106,3 +5106,24 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Proof:** none
 - **Manual checks:** none
 - **Deviations and follow-ups:** none (Flutter's GTK embedder leaves the repeat to GTK).
+
+## 29.35 HTML on the clipboard (Emetos)
+
+- **Date:** 2026-10-30
+- **Branch:** feat/step-29.35-clipboard-html
+- **Summary:** Emetos's fifth and sixth issues lists, "The clipboard carries plain text only": its terminal's "Copy Output as HTML" put the markup on the clipboard as text. An app can now put a fragment of HTML next to the text, the image and the files, as one copy, and read it back.
+  - **API:** `ui.ClipboardFormatHTML` (`text/html`), `ui.ClipboardContent.HTML`, `services.ClipboardData.HTML` and `services.ClipboardKTextHTML`. `SetData` with HTML takes the rich path; `GetData` and `GetPrimaryData` read the format; `IsEmpty` and `Has` count it; a host without `RichClipboardHost` fails an HTML copy with `ClipboardUnavailable`, as for an image. The manager chose one field for each format (as for the text, the image and the files), not the map of MIME types that Emetos suggested.
+  - **Wayland and X11:** `text/html;charset=utf-8` and `text/html` offered next to the text (X11 with `INCR` and the size limit counting the HTML); a read takes the charset form first; invalid UTF-8 becomes U+FFFD.
+  - **Windows:** "HTML Format" (CF_HTML) is registered; the plain-Go layer writes the description (ten-digit byte offsets), `<html><body>`, the fragment markers and the fragment, and reads another program's CF_HTML through its fragment offsets, else the markers, else the inside of `<body>`, else the whole document (offsets of -1, outside the data or inside the description are not used).
+  - **Web:** one `ClipboardItem` with `text/html` and `text/plain`; HTML is read with `navigator.clipboard.read()` where the browser allows it (no promise is waited on); without `ClipboardItem` the text alone is written.
+  - **Android:** `ClipData.newHtmlText` and `Item.getHtmlText` (operations 25 and 26 of the embedding; `classes.dex` rebuilt with `glutter-gen android-dex`). **Deviation:** a clip with HTML always has a text there, so HTML without one gets `Html.fromHtml(html)` as its text (SPEC §24.6).
+  - The fake platform, `internal/renderhost`, `offscreen` and `gluttertest` (`Tester.ClipboardHTML`, `SetClipboardHTML`) keep it.
+- **Main files:** `ui/clipboard.go`, `services/clipboard.go`, the clipboards of `internal/platform/linux/wayland`, `linux/x11`, `windows`, `web` and `android` (and the Java side), `internal/platform/fake`, `internal/renderhost`, `gluttertest/tester.go`, `docs/SPEC.md` (§12.10, §23.5, §24.6, §25.7).
+- **Tests (table-driven):** Wayland (reads of the charset and bare forms, invalid UTF-8, what is offered for text and HTML, HTML alone, text alone); X11 with `glutter_display` (text and HTML, HTML alone, a fragment over the `INCR` threshold, an owner without HTML); Windows (the CF_HTML description byte for byte, round trips with non-ASCII text, NUL and invalid UTF-8, 12 descriptions of other programs) and under Wine (round trips, the registered format's bytes, text and HTML copied both ways between two processes); the web (`TestClipboardHTML`, and Node tests with `ClipboardItem` and `read()` stubs); Android (5 writes, 2 reads, a context end); `services`, `widgets/primary_selection_test.go` and `offscreen`. They use the new field, so none compiles on the old code; they are all new cases.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ (Linux, Windows amd64 and arm64, with and without `glutter_wine`) · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck, apicheck, uintptrcheck ✅ · wasm build, vet and tests ✅ · check-android ✅ · Windows builds, vet and test-windows ✅ · Wine tests ✅ (the clipboard tests of `internal/platform/windows`, inside Wine and host-side) · display tests ✅ (the X11 clipboard tests under `scripts/headless-x11.sh`). The full checks ran on the tree rebased on 29.33; everything through `.claude/no-nvidia.sh`.
+- **Proof:** none
+- **Manual checks:** pasting into a rich editor (LibreOffice Writer) on Linux and Windows, by the owner; reading HTML in a real browser (only Node stubs here); an Android emulator run comes with step 29.37.
+- **Deviations and follow-ups:**
+  - **Deviation:** Flutter's clipboard has text only (SPEC §12.10); Android's text for HTML alone (SPEC §24.6).
+  - **Not done:** UTF-16 `text/html` from programs that offer it so on Wayland and X11 (read as UTF-8 only).
+  - **Emetos** can put its terminal's output as HTML with `ClipboardData{Text: ..., HTML: ...}`.

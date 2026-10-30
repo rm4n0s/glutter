@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"fmt"
 	"image"
 	"image/draw"
 	"image/png"
 	"net/url"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf16"
@@ -54,6 +56,8 @@ type clipboardAPI interface {
 	Has(format uint32) bool
 	// PNGFormat is the number of the registered clipboard format "PNG".
 	PNGFormat() (uint32, error)
+	// HTMLFormat is the number of the registered clipboard format "HTML Format" (CF_HTML).
+	HTMLFormat() (uint32, error)
 }
 
 // clipboardCore is the logic of the clipboard over the API of Windows.
@@ -132,6 +136,121 @@ func textFromClipboard(b []byte) string {
 		sb.WriteByte(s[i])
 	}
 	return sb.String()
+}
+
+// The CF_HTML header (https://learn.microsoft.com/en-us/windows/win32/dataxchg/html-clipboard-format):
+// the description, written with offsets of ten digits so that its length is fixed, in bytes of the
+// whole data (UTF-8), and the markers around the fragment.
+const (
+	cfHTMLHeaderFormat = "Version:0.9\r\nStartHTML:%010d\r\nEndHTML:%010d\r\nStartFragment:%010d\r\nEndFragment:%010d\r\n"
+	// cfHTMLHeaderSize is the length of the header: 13 + 22 + 20 + 26 + 24.
+	cfHTMLHeaderSize = 105
+	cfHTMLPrefix     = "<html><body>\r\n<!--StartFragment-->"
+	cfHTMLSuffix     = "<!--EndFragment-->\r\n</body></html>"
+	cfHTMLStartMark  = "<!--StartFragment-->"
+	cfHTMLEndMark    = "<!--EndFragment-->"
+)
+
+// htmlToClipboard makes the data of "HTML Format" (CF_HTML) from a fragment of HTML: the
+// description with the byte offsets, a document around the fragment (<html><body> and the markers
+// <!--StartFragment--> and <!--EndFragment-->), and a terminating NUL that no offset counts. The
+// fragment is cut at its first NUL, as the text is, and invalid UTF-8 becomes U+FFFD.
+func htmlToClipboard(fragment string) []byte {
+	if i := strings.IndexByte(fragment, 0); i >= 0 {
+		fragment = fragment[:i]
+	}
+	fragment = strings.ToValidUTF8(fragment, "\uFFFD")
+	startHTML := cfHTMLHeaderSize
+	startFragment := startHTML + len(cfHTMLPrefix)
+	endFragment := startFragment + len(fragment)
+	endHTML := endFragment + len(cfHTMLSuffix)
+	var b strings.Builder
+	b.Grow(endHTML + 1)
+	fmt.Fprintf(&b, cfHTMLHeaderFormat, startHTML, endHTML, startFragment, endFragment)
+	b.WriteString(cfHTMLPrefix)
+	b.WriteString(fragment)
+	b.WriteString(cfHTMLSuffix)
+	b.WriteByte(0)
+	return []byte(b.String())
+}
+
+// htmlFromClipboard reads the data of "HTML Format" (CF_HTML) of this or another program and gives
+// the fragment: the bytes from StartFragment to EndFragment; when the description has no usable
+// fragment offsets, what is between the markers <!--StartFragment--> and <!--EndFragment-->; when
+// there are none, the inside of <body> of the document (StartHTML to EndHTML, offsets of -1 mean
+// the whole data after the description); and else the document itself. A description that is
+// missing (the data is the markup) is read the same way. Offsets that point outside the data are
+// not used; the data ends at its first NUL; invalid UTF-8 becomes U+FFFD.
+func htmlFromClipboard(b []byte) string {
+	if i := bytes.IndexByte(b, 0); i >= 0 {
+		b = b[:i]
+	}
+	// The description: lines "Name:value" at the start of the data.
+	fields := map[string]int64{}
+	headerEnd := 0
+	for pos := 0; pos < len(b); {
+		end := bytes.IndexByte(b[pos:], '\n')
+		next := len(b)
+		line := b[pos:]
+		if end >= 0 {
+			line, next = b[pos:pos+end], pos+end+1
+		}
+		name, value, ok := strings.Cut(string(bytes.TrimRight(line, "\r")), ":")
+		if !ok || name == "" || strings.IndexFunc(name, func(r rune) bool { return (r < 'A' || r > 'Z') && (r < 'a' || r > 'z') }) >= 0 {
+			break
+		}
+		if n, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64); err == nil {
+			fields[name] = n
+		}
+		headerEnd = next
+		pos = next
+	}
+	size := int64(len(b))
+	// An offset is usable when it is inside the data after the description.
+	valid := func(start, end int64) bool { return start >= int64(headerEnd) && start <= end && end <= size }
+	var out []byte
+	if hasField(fields, "StartFragment", "EndFragment") && valid(fields["StartFragment"], fields["EndFragment"]) {
+		out = b[fields["StartFragment"]:fields["EndFragment"]]
+	} else {
+		doc := b[headerEnd:]
+		if hasField(fields, "StartHTML", "EndHTML") && valid(fields["StartHTML"], fields["EndHTML"]) {
+			doc = b[fields["StartHTML"]:fields["EndHTML"]]
+		}
+		out = fragmentOfDocument(doc)
+	}
+	return strings.ToValidUTF8(string(out), "\uFFFD")
+}
+
+// hasField says whether the description has all of the names.
+func hasField(fields map[string]int64, names ...string) bool {
+	for _, n := range names {
+		if _, ok := fields[n]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+// fragmentOfDocument is the part of an HTML document that a paste is about: between the markers
+// <!--StartFragment--> and <!--EndFragment-->, else the inside of <body>, else the document.
+func fragmentOfDocument(doc []byte) []byte {
+	if i := bytes.Index(doc, []byte(cfHTMLStartMark)); i >= 0 {
+		rest := doc[i+len(cfHTMLStartMark):]
+		if j := bytes.Index(rest, []byte(cfHTMLEndMark)); j >= 0 {
+			return rest[:j]
+		}
+	}
+	lower := bytes.ToLower(doc)
+	if i := bytes.Index(lower, []byte("<body")); i >= 0 {
+		if gt := bytes.IndexByte(lower[i:], '>'); gt >= 0 {
+			inner := i + gt + 1
+			if j := bytes.LastIndex(lower[inner:], []byte("</body")); j >= 0 {
+				return doc[inner : inner+j]
+			}
+			return doc[inner:]
+		}
+	}
+	return doc
 }
 
 // pathFromURI turns a file URI into a Windows path: file:///C:/Users/me/a%20b.txt is
@@ -373,6 +492,13 @@ func (c *clipboardCore) write(owner uintptr, content ui.ClipboardContent) error 
 	if content.HasText {
 		items = append(items, item{win32.CFUnicodeText, textBytes(textToClipboard(content.Text))})
 	}
+	if content.HTML != "" {
+		htmlFormat, err := c.api.HTMLFormat()
+		if err != nil {
+			return err
+		}
+		items = append(items, item{htmlFormat, htmlToClipboard(content.HTML)})
+	}
 	if len(content.URIs) > 0 {
 		paths := make([]string, len(content.URIs))
 		for i, uri := range content.URIs {
@@ -419,11 +545,18 @@ func (c *clipboardCore) read(format string) (ui.ClipboardContent, error) {
 		return ui.ClipboardContent{}, err
 	}
 	var wanted []uint32
+	htmlFormat := uint32(0)
 	switch format {
 	case "", ui.ClipboardFormatText:
 		wanted = []uint32{win32.CFUnicodeText}
 	case ui.ClipboardFormatURIList:
 		wanted = []uint32{win32.CFHDrop}
+	case ui.ClipboardFormatHTML:
+		htmlFormat, err = c.api.HTMLFormat()
+		if err != nil {
+			return ui.ClipboardContent{}, err
+		}
+		wanted = []uint32{htmlFormat}
 	case ui.ClipboardFormatPNG:
 		wanted = []uint32{pngFormat, win32.CFDIBV5, win32.CFDIB}
 	default:
@@ -473,6 +606,8 @@ func (c *clipboardCore) read(format string) (ui.ClipboardContent, error) {
 				return ui.ClipboardContent{}, err
 			}
 			return ui.ClipboardContent{PNG: out}, nil
+		case htmlFormat:
+			return ui.ClipboardContent{HTML: htmlFromClipboard(data)}, nil
 		default: // the registered format PNG
 			if _, err := png.DecodeConfig(bytes.NewReader(data)); err != nil {
 				return ui.ClipboardContent{}, errors.NewErr(tagClipboardReadFailed, err).SetMetadata("format", "PNG")

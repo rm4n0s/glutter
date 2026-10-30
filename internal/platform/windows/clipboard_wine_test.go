@@ -100,7 +100,9 @@ func TestWineClipboardRoundTrip(t *testing.T) {
 		{"one file", ui.ClipboardContent{URIs: []string{"file:///C:/Users/me/a%20b.txt"}}},
 		{"several files and a network path", ui.ClipboardContent{URIs: []string{"file:///C:/x/1.txt", "file:///D:/y/%C3%A9.md", "file://server/share/d/3.bin"}}},
 		{"an image", ui.ClipboardContent{PNG: png}},
-		{"text, files and an image are one copy", ui.ClipboardContent{Text: "all", HasText: true, URIs: []string{"file:///C:/z.txt"}, PNG: png}},
+		{"HTML", ui.ClipboardContent{HTML: "<b>Gr\u00fc\u00dfe</b> \u65e5\u672c\u8a9e \U00020bb7"}},
+		{"text and HTML", ui.ClipboardContent{Text: "Gr\u00fc\u00dfe", HasText: true, HTML: "<p>Gr\u00fc\u00dfe\r\n<i>x</i></p>"}},
+		{"text, files and an image are one copy", ui.ClipboardContent{Text: "all", HasText: true, HTML: "<u>all</u>", URIs: []string{"file:///C:/z.txt"}, PNG: png}},
 	}
 	clipRun(t, 60*time.Second, func(p *Platform, c *clipboard, finish func()) {
 		var steps []func(next func())
@@ -128,7 +130,9 @@ func TestWineClipboardRoundTrip(t *testing.T) {
 					}
 					read(ui.ClipboardFormatText, ui.ClipboardContent{Text: tt.content.Text, HasText: tt.content.HasText}, func() {
 						read(ui.ClipboardFormatURIList, ui.ClipboardContent{URIs: tt.content.URIs}, func() {
-							read(ui.ClipboardFormatPNG, ui.ClipboardContent{PNG: tt.content.PNG}, next)
+							read(ui.ClipboardFormatHTML, ui.ClipboardContent{HTML: tt.content.HTML}, func() {
+								read(ui.ClipboardFormatPNG, ui.ClipboardContent{PNG: tt.content.PNG}, next)
+							})
 						})
 					})
 				})
@@ -142,7 +146,7 @@ func TestWineClipboardRoundTrip(t *testing.T) {
 func TestWineClipboardTextUsesCRLFOnTheClipboardAndTheOtherFormatsAreThere(t *testing.T) {
 	clipRun(t, 30*time.Second, func(p *Platform, c *clipboard, finish func()) {
 		defer finish()
-		content := ui.ClipboardContent{Text: "a\nb", HasText: true, URIs: []string{"file:///C:/f.txt"}, PNG: wineImage(t)}
+		content := ui.ClipboardContent{Text: "a\nb", HasText: true, HTML: "<b>a</b>\u00e9", URIs: []string{"file:///C:/f.txt"}, PNG: wineImage(t)}
 		if err := c.core.write(p.service.Load(), content); err != nil {
 			t.Fatal(err)
 		}
@@ -159,6 +163,14 @@ func TestWineClipboardTextUsesCRLFOnTheClipboardAndTheOtherFormatsAreThere(t *te
 		png, _ := api.PNGFormat()
 		if !api.Has(png) {
 			t.Error("the registered format PNG is not on the clipboard")
+		}
+		htmlFormat, _ := api.HTMLFormat()
+		if name := win32.GetClipboardFormatName(htmlFormat); name != "HTML Format" {
+			t.Errorf("the HTML format is registered as %q, want %q", name, "HTML Format")
+		}
+		rawHTML, present, err := rawFormat(api, htmlFormat)
+		if err != nil || !present || !bytes.Equal(rawHTML, htmlToClipboard("<b>a</b>\u00e9")) {
+			t.Errorf("HTML Format = %q, %v, %v", rawHTML, present, err)
 		}
 		// The system makes CF_DIB and CF_BITMAP from CF_DIBV5 for the programs that ask for them.
 		if !api.Has(win32.CFDIB) {
@@ -240,15 +252,16 @@ type helperContent struct {
 	HasText bool
 	PNG     string // base64
 	URIs    []string
+	HTML    string
 }
 
 func (h helperContent) content() ui.ClipboardContent {
 	png, _ := base64.StdEncoding.DecodeString(h.PNG)
-	return ui.ClipboardContent{Text: h.Text, HasText: h.HasText, PNG: png, URIs: h.URIs}
+	return ui.ClipboardContent{Text: h.Text, HasText: h.HasText, PNG: png, URIs: h.URIs, HTML: h.HTML}
 }
 
 func helperOf(c ui.ClipboardContent) helperContent {
-	return helperContent{Text: c.Text, HasText: c.HasText, PNG: base64.StdEncoding.EncodeToString(c.PNG), URIs: c.URIs}
+	return helperContent{Text: c.Text, HasText: c.HasText, PNG: base64.StdEncoding.EncodeToString(c.PNG), URIs: c.URIs, HTML: c.HTML}
 }
 
 // TestWineClipboardHelper is the program that the tests of another process start: it does nothing
@@ -284,7 +297,7 @@ func TestWineClipboardHelper(t *testing.T) {
 			t.Fatal(err)
 		}
 		var out helperContent
-		for _, f := range []string{ui.ClipboardFormatText, ui.ClipboardFormatURIList, ui.ClipboardFormatPNG} {
+		for _, f := range []string{ui.ClipboardFormatText, ui.ClipboardFormatURIList, ui.ClipboardFormatPNG, ui.ClipboardFormatHTML} {
 			got, err := core.read(f)
 			if err != nil {
 				t.Fatal(err)
@@ -297,6 +310,9 @@ func TestWineClipboardHelper(t *testing.T) {
 			}
 			if len(got.URIs) > 0 {
 				out.URIs = got.URIs
+			}
+			if got.HTML != "" {
+				out.HTML = got.HTML
 			}
 		}
 		b, _ := json.Marshal(out)
@@ -442,7 +458,7 @@ func (h *helperProcess) stop() {
 
 func TestWineClipboardAnotherProcessWrites(t *testing.T) {
 	png := wineImage(t)
-	want := ui.ClipboardContent{Text: "from another process\r\nwith CRLF is read as LF", HasText: true, URIs: []string{"file:///C:/proc/a%20b.txt", "file://server/share/c.txt"}, PNG: png}
+	want := ui.ClipboardContent{Text: "from another process\r\nwith CRLF is read as LF", HasText: true, URIs: []string{"file:///C:/proc/a%20b.txt", "file://server/share/c.txt"}, PNG: png, HTML: "<b>from</b> another <i>process</i> \u00e9\u4e16"}
 	h := startHelper(t, "write", helperOf(want))
 	if msg := h.wait(t, 40*time.Second); msg[0] != "ready" {
 		t.Fatalf("helper said %v", msg)
@@ -463,6 +479,9 @@ func TestWineClipboardAnotherProcessWrites(t *testing.T) {
 				if len(g.URIs) > 0 {
 					got.URIs = g.URIs
 				}
+				if g.HTML != "" {
+					got.HTML = g.HTML
+				}
 				next()
 			})
 		}
@@ -470,7 +489,11 @@ func TestWineClipboardAnotherProcessWrites(t *testing.T) {
 			func(next func()) { read(ui.ClipboardFormatText, next) },
 			func(next func()) { read(ui.ClipboardFormatURIList, next) },
 			func(next func()) { read(ui.ClipboardFormatPNG, next) },
+			func(next func()) { read(ui.ClipboardFormatHTML, next) },
 			func(next func()) {
+				if got.HTML != want.HTML {
+					t.Errorf("HTML = %q, want %q", got.HTML, want.HTML)
+				}
 				if got.Text != "from another process\nwith CRLF is read as LF" || !got.HasText {
 					t.Errorf("text = %q", got.Text)
 				}
@@ -492,7 +515,7 @@ func TestWineClipboardAnotherProcessReads(t *testing.T) {
 	if msg := h.wait(t, 40*time.Second); msg[0] != "ready" {
 		t.Fatalf("helper said %v", msg)
 	}
-	want := ui.ClipboardContent{Text: "to another\nprocess", HasText: true, URIs: []string{"file:///C:/to/x.txt"}, PNG: png}
+	want := ui.ClipboardContent{Text: "to another\nprocess", HasText: true, URIs: []string{"file:///C:/to/x.txt"}, PNG: png, HTML: "<p>to <b>another</b> \u00e9</p>"}
 	clipRun(t, 90*time.Second, func(p *Platform, c *clipboard, finish func()) {
 		c.SetContent(context.Background(), ui.ClipboardKindSystem, want, func(err error) {
 			if err != nil {
@@ -516,7 +539,7 @@ func TestWineClipboardAnotherProcessReads(t *testing.T) {
 						t.Error(err)
 						return
 					}
-					if got.Text != want.Text || !got.HasText || !reflect.DeepEqual(got.URIs, want.URIs) || !reflect.DeepEqual(pixelsOf(t, got.content().PNG), pixelsOf(t, png)) {
+					if got.Text != want.Text || !got.HasText || got.HTML != want.HTML || !reflect.DeepEqual(got.URIs, want.URIs) || !reflect.DeepEqual(pixelsOf(t, got.content().PNG), pixelsOf(t, png)) {
 						t.Errorf("the other process read %+v", got)
 					}
 				})

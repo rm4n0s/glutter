@@ -6,6 +6,7 @@ import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
+import android.text.Html;
 import android.text.InputType;
 import android.text.TextUtils;
 import android.util.Log;
@@ -40,6 +41,8 @@ final class TextInput implements ListenableEditingState.EditingStateWatcher {
   static final int OP_TEXT_STOP = 10;
   static final int OP_CLIPBOARD_SET = 12;
   static final int OP_CLIPBOARD_GET = 13;
+  static final int OP_CLIPBOARD_SET_HTML = 25;
+  static final int OP_CLIPBOARD_GET_HTML = 26;
 
   private static final String TAG = "GlutterJava";
 
@@ -94,6 +97,12 @@ final class TextInput implements ListenableEditingState.EditingStateWatcher {
         break;
       case OP_CLIPBOARD_GET:
         getClipboard((int) a);
+        break;
+      case OP_CLIPBOARD_SET_HTML:
+        setClipboardHtml(s, (int) a, b != 0);
+        break;
+      case OP_CLIPBOARD_GET_HTML:
+        getClipboardHtml((int) a);
         break;
       default:
         Log.w(TAG, "unknown text input command " + op);
@@ -216,6 +225,55 @@ final class TextInput implements ListenableEditingState.EditingStateWatcher {
       Native.clipboardText(id, false, new byte[0]);
     } else {
       Native.clipboardText(id, true, text.getBytes(StandardCharsets.UTF_8));
+    }
+  }
+
+  /**
+   * Puts the HTML next to the text on the clipboard, as one clip ({@code ClipData.newHtmlText}).
+   * {@code both} is the HTML followed by the text, {@code htmlLength} the length of the HTML in
+   * UTF-16 units (so that either can hold any character), {@code hasText} whether there is a
+   * text. A clip needs a plain text for the programs that paste no HTML, so without one it is the
+   * text of the HTML ({@code Html.fromHtml}). Ports: {@code PlatformPlugin.setClipboardData}.
+   */
+  private void setClipboardHtml(String both, int htmlLength, boolean hasText) {
+    String html = both.substring(0, htmlLength);
+    String text =
+        hasText
+            ? both.substring(htmlLength)
+            : Html.fromHtml(html, Html.FROM_HTML_MODE_COMPACT).toString();
+    ClipboardManager clipboard = (ClipboardManager) context.getSystemService(Context.CLIPBOARD_SERVICE);
+    try {
+      clipboard.setPrimaryClip(ClipData.newHtmlText("text", text, html));
+    } catch (RuntimeException e) {
+      Log.w(TAG, "the clipboard could not be set", e);
+    }
+  }
+
+  /**
+   * Reads the HTML of the clipboard: the answer is {@code Native.clipboardText} with the HTML as
+   * the text. Ports: {@code PlatformPlugin.getClipboardData}.
+   */
+  private void getClipboardHtml(int id) {
+    String html = null;
+    try {
+      ClipboardManager clipboard = (ClipboardManager) context.getSystemService(Context.CLIPBOARD_SERVICE);
+      ClipData clip = clipboard.hasPrimaryClip() ? clipboard.getPrimaryClip() : null;
+      if (clip != null && clip.getDescription().hasMimeType("text/html")) {
+        for (int i = 0; i < clip.getItemCount() && html == null; i++) {
+          String item = clip.getItemAt(i).getHtmlText();
+          if (item != null && item.length() > 0) {
+            html = item;
+          }
+        }
+      }
+    } catch (RuntimeException e) {
+      // For instance a SecurityException when the content needs a permission.
+      Log.w(TAG, "the clipboard could not be read", e);
+    }
+    if (html == null) {
+      Native.clipboardText(id, false, new byte[0]);
+    } else {
+      Native.clipboardText(id, true, html.getBytes(StandardCharsets.UTF_8));
     }
   }
 

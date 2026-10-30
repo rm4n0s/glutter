@@ -21,6 +21,12 @@ const (
 	opClipboardSet = 12
 	// opClipboardGet: A is the number of the read; the answer is Native.clipboardText.
 	opClipboardGet = 13
+	// opClipboardSetHTML: S is the HTML followed by the text, A the length of the HTML in UTF-16
+	// units, B is 1 when the content has a text.
+	opClipboardSetHTML = 25
+	// opClipboardGetHTML: A is the number of the read; the answer is Native.clipboardText, with the
+	// HTML as the text.
+	opClipboardGetHTML = 26
 )
 
 // The values of android.text.InputType that the input type is made of.

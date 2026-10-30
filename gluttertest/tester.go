@@ -418,7 +418,7 @@ func (t *Tester) ClipboardText() (string, bool) {
 func (t *Tester) SetClipboardText(text string) {
 	t.host.Lock()
 	defer t.host.Unlock()
-	t.host.Clipboard, t.host.HasClipboard, t.host.ClipboardPNG, t.host.ClipboardURIs = text, true, nil, nil
+	t.host.Clipboard, t.host.HasClipboard, t.host.ClipboardPNG, t.host.ClipboardURIs, t.host.ClipboardHTML = text, true, nil, nil, ""
 }
 
 // ClearClipboard empties the fake system clipboard.
@@ -427,7 +427,7 @@ func (t *Tester) SetClipboardText(text string) {
 func (t *Tester) ClearClipboard() {
 	t.host.Lock()
 	defer t.host.Unlock()
-	t.host.Clipboard, t.host.HasClipboard, t.host.ClipboardPNG, t.host.ClipboardURIs = "", false, nil, nil
+	t.host.Clipboard, t.host.HasClipboard, t.host.ClipboardPNG, t.host.ClipboardURIs, t.host.ClipboardHTML = "", false, nil, nil, ""
 }
 
 // PrimaryText is the text on the fake primary selection, and whether there is
@@ -486,6 +486,25 @@ func (t *Tester) SetClipboardURIs(uris []string) {
 	t.host.Lock()
 	defer t.host.Unlock()
 	t.host.ClipboardURIs = uris
+}
+
+// ClipboardHTML is the fragment of HTML on the fake system clipboard, or "".
+//
+// Flutter: no counterpart
+func (t *Tester) ClipboardHTML() string {
+	t.host.Lock()
+	defer t.host.Unlock()
+	return t.host.ClipboardHTML
+}
+
+// SetClipboardHTML puts a fragment of HTML on the fake system clipboard, as
+// another application would.
+//
+// Flutter: no counterpart
+func (t *Tester) SetClipboardHTML(html string) {
+	t.host.Lock()
+	defer t.host.Unlock()
+	t.host.ClipboardHTML = html
 }
 
 // TextInputStates are the states of the text field that the framework gave to the

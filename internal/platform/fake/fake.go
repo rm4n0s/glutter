@@ -32,6 +32,7 @@ type Platform struct {
 	hasClipboard  bool
 	clipboardPNG  []byte
 	clipboardURIs []string
+	clipboardHTML string
 	primary       ui.ClipboardContent
 
 	acc *Accessibility
@@ -217,7 +218,7 @@ func (p *Platform) SetClipboardContent(kind ui.ClipboardKind, content ui.Clipboa
 		p.primary = content
 		return
 	}
-	p.clipboardText, p.hasClipboard, p.clipboardPNG, p.clipboardURIs = content.Text, content.HasText, content.PNG, content.URIs
+	p.clipboardText, p.hasClipboard, p.clipboardPNG, p.clipboardURIs, p.clipboardHTML = content.Text, content.HasText, content.PNG, content.URIs, content.HTML
 }
 
 // ClipboardContent is what the in-memory clipboard (kind system) or primary
@@ -230,7 +231,7 @@ func (p *Platform) ClipboardContent(kind ui.ClipboardKind) ui.ClipboardContent {
 	if kind == ui.ClipboardKindPrimary {
 		return p.primary
 	}
-	return ui.ClipboardContent{Text: p.clipboardText, HasText: p.hasClipboard, PNG: p.clipboardPNG, URIs: p.clipboardURIs}
+	return ui.ClipboardContent{Text: p.clipboardText, HasText: p.hasClipboard, PNG: p.clipboardPNG, URIs: p.clipboardURIs, HTML: p.clipboardHTML}
 }
 
 func (c *clipboard) SetContent(_ context.Context, kind ui.ClipboardKind, content ui.ClipboardContent, done func(error)) {
@@ -250,6 +251,8 @@ func (c *clipboard) GetContent(ctx context.Context, kind ui.ClipboardKind, forma
 		out.PNG = content.PNG
 	case ui.ClipboardFormatURIList:
 		out.URIs = content.URIs
+	case ui.ClipboardFormatHTML:
+		out.HTML = content.HTML
 	}
 	c.p.Post(func() { done(out, ctx.Err()) })
 }

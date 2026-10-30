@@ -48,10 +48,11 @@ type Host struct {
 	// text. A test can set them to play another application.
 	Clipboard    string
 	HasClipboard bool
-	// ClipboardPNG and ClipboardURIs are the other formats of the in-memory
-	// system clipboard; Primary is the in-memory primary selection.
+	// ClipboardPNG, ClipboardURIs and ClipboardHTML are the other formats of the
+	// in-memory system clipboard; Primary is the in-memory primary selection.
 	ClipboardPNG  []byte
 	ClipboardURIs []string
+	ClipboardHTML string
 	Primary       ui.ClipboardContent
 	// WindowActions are the actions that a title bar asked of the window, in order.
 	WindowActions []ui.WindowAction
@@ -239,7 +240,7 @@ func (h *Host) Unlock() { h.mu.Unlock() }
 // SetClipboardText keeps the text. done is posted, like the engine's results.
 func (h *Host) SetClipboardText(_ context.Context, text string, done func(error)) {
 	h.mu.Lock()
-	h.Clipboard, h.HasClipboard, h.ClipboardPNG, h.ClipboardURIs = text, true, nil, nil
+	h.Clipboard, h.HasClipboard, h.ClipboardPNG, h.ClipboardURIs, h.ClipboardHTML = text, true, nil, nil, ""
 	h.mu.Unlock()
 	if done != nil {
 		h.Post(func() { done(nil) })
@@ -260,7 +261,7 @@ func (h *Host) SetClipboard(_ context.Context, kind ui.ClipboardKind, content ui
 	if kind == ui.ClipboardKindPrimary {
 		h.Primary = content
 	} else {
-		h.Clipboard, h.HasClipboard, h.ClipboardPNG, h.ClipboardURIs = content.Text, content.HasText, content.PNG, content.URIs
+		h.Clipboard, h.HasClipboard, h.ClipboardPNG, h.ClipboardURIs, h.ClipboardHTML = content.Text, content.HasText, content.PNG, content.URIs, content.HTML
 	}
 	h.mu.Unlock()
 	if done != nil {
@@ -273,7 +274,7 @@ func (h *Host) GetClipboard(ctx context.Context, kind ui.ClipboardKind, format s
 	h.mu.Lock()
 	content := h.Primary
 	if kind != ui.ClipboardKindPrimary {
-		content = ui.ClipboardContent{Text: h.Clipboard, HasText: h.HasClipboard, PNG: h.ClipboardPNG, URIs: h.ClipboardURIs}
+		content = ui.ClipboardContent{Text: h.Clipboard, HasText: h.HasClipboard, PNG: h.ClipboardPNG, URIs: h.ClipboardURIs, HTML: h.ClipboardHTML}
 	}
 	h.mu.Unlock()
 	var out ui.ClipboardContent
@@ -284,6 +285,8 @@ func (h *Host) GetClipboard(ctx context.Context, kind ui.ClipboardKind, format s
 		out.PNG = content.PNG
 	case ui.ClipboardFormatURIList:
 		out.URIs = content.URIs
+	case ui.ClipboardFormatHTML:
+		out.HTML = content.HTML
 	}
 	h.Post(func() { done(out, ctx.Err()) })
 }

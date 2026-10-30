@@ -52,6 +52,11 @@ const (
 	//
 	// Flutter: no counterpart
 	ClipboardFormatURIList = "text/uri-list"
+	// ClipboardFormatHTML is a fragment of HTML (UTF-8), such as the markup that a
+	// rich text editor pastes as formatted text.
+	//
+	// Flutter: no counterpart
+	ClipboardFormatHTML = "text/html"
 )
 
 // ClipboardContent is what a clipboard holds, in the formats it has. A content
@@ -68,12 +73,20 @@ type ClipboardContent struct {
 	PNG []byte
 	// URIs are the URIs of the files or other resources; nil for none.
 	URIs []string
+	// HTML is a fragment of HTML, in UTF-8: the markup that stands for the
+	// content in a program that pastes formatted text (the "text/html" format).
+	// The empty string is none. It is a fragment, not a document: no <html> or
+	// <body> is needed, and a platform that carries a whole document (Windows'
+	// CF_HTML) puts the fragment inside one and reads it back out.
+	HTML string
 }
 
 // IsEmpty reports whether the content has no format.
 //
 // Flutter: no counterpart
-func (c ClipboardContent) IsEmpty() bool { return !c.HasText && len(c.PNG) == 0 && len(c.URIs) == 0 }
+func (c ClipboardContent) IsEmpty() bool {
+	return !c.HasText && len(c.PNG) == 0 && len(c.URIs) == 0 && c.HTML == ""
+}
 
 // Has reports whether the content has the format.
 //
@@ -86,6 +99,8 @@ func (c ClipboardContent) Has(format string) bool {
 		return len(c.PNG) > 0
 	case ClipboardFormatURIList:
 		return len(c.URIs) > 0
+	case ClipboardFormatHTML:
+		return c.HTML != ""
 	}
 	return false
 }

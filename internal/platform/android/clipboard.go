@@ -2,6 +2,7 @@ package android
 
 import (
 	"context"
+	"strings"
 
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/internal/platform"
@@ -10,8 +11,9 @@ import (
 
 // clipboard is the clipboard of Android: the text of the ClipboardManager (SPEC §24.6). A write is
 // a command to the activity; a read is a command and an event that brings the answer, which the UI
-// thread gives to the function of the call. Only text: another format reads as empty and cannot be
-// written, and there is no primary selection. Every answer is given later on the UI thread, never
+// thread gives to the function of the call. The formats are the text and the HTML (one ClipData made
+// by ClipData.newHtmlText); another format reads as empty and cannot be written, and there is no
+// primary selection. Every answer is given later on the UI thread, never
 // before the call has returned.
 //
 // Flutter: shell/platform/android/io/flutter/plugin/platform/PlatformPlugin.java PlatformPlugin.getClipboardData
@@ -40,11 +42,13 @@ func (c *clipboard) GetText(ctx context.Context, done func(string, bool, error))
 	if done == nil {
 		return
 	}
-	c.read(ctx, done)
+	c.read(ctx, opClipboardGet, done)
 }
 
-// SetContent puts the text of the content on the clipboard. The primary selection does not exist
-// (ClipboardPrimaryUnavailable), and a content without text cannot be written
+// SetContent puts the text of the content on the clipboard, and its HTML next to it as one clip
+// (ClipData.newHtmlText). Deviation: a clip with HTML always has a plain text, so a content with HTML
+// and no text gets the text that Html.fromHtml makes of the HTML. The primary selection does not exist
+// (ClipboardPrimaryUnavailable), and a content without text or HTML cannot be written
 // (AndroidClipboardFormatUnsupported), except for an empty one, which clears the clipboard.
 //
 // Flutter: shell/platform/android/io/flutter/plugin/platform/PlatformPlugin.java PlatformPlugin.setClipboardData
@@ -52,15 +56,25 @@ func (c *clipboard) SetContent(ctx context.Context, kind ui.ClipboardKind, conte
 	switch {
 	case kind == ui.ClipboardKindPrimary:
 		c.answerErr(done, errors.New(tagClipboardPrimaryUnavailable, "Android has no primary selection"))
-	case !content.HasText && !content.IsEmpty():
-		c.answerErr(done, errors.New(tagAndroidClipboardFormatUnsupported, "the clipboard of Android takes plain text only"))
+	case !content.HasText && content.HTML == "" && !content.IsEmpty():
+		c.answerErr(done, errors.New(tagAndroidClipboardFormatUnsupported, "the clipboard of Android takes text and HTML only"))
+	case content.HTML != "":
+		html := strings.ToValidUTF8(content.HTML, "\uFFFD")
+		text := strings.ToValidUTF8(content.Text, "\uFFFD")
+		hasText := int64(0)
+		if content.HasText {
+			hasText = 1
+		}
+		c.p.host.Command(command{Op: opClipboardSetHTML, A: int64(utf16Len(html)), B: hasText, S: html + text})
+		c.answerErr(done, nil)
 	default:
 		c.SetText(ctx, content.Text, done)
 	}
 }
 
-// GetContent reads the text of the clipboard when the format is plain text (or not given). Another
-// format reads as an empty content; the primary selection is ClipboardPrimaryUnavailable.
+// GetContent reads the text of the clipboard when the format is plain text (or not given), and its
+// HTML when the format is text/html. Another format reads as an empty content; the primary selection
+// is ClipboardPrimaryUnavailable.
 //
 // Flutter: shell/platform/android/io/flutter/plugin/platform/PlatformPlugin.java PlatformPlugin.getClipboardData
 func (c *clipboard) GetContent(ctx context.Context, kind ui.ClipboardKind, format string, done func(ui.ClipboardContent, error)) {
@@ -71,10 +85,18 @@ func (c *clipboard) GetContent(ctx context.Context, kind ui.ClipboardKind, forma
 	case kind == ui.ClipboardKindPrimary:
 		err := errors.New(tagClipboardPrimaryUnavailable, "Android has no primary selection")
 		c.p.Post(func() { done(ui.ClipboardContent{}, err) })
+	case format == ui.ClipboardFormatHTML:
+		c.read(ctx, opClipboardGetHTML, func(html string, _ bool, err error) {
+			if err != nil {
+				done(ui.ClipboardContent{}, err)
+				return
+			}
+			done(ui.ClipboardContent{HTML: html}, nil)
+		})
 	case format != "" && format != ui.ClipboardFormatText:
 		c.p.Post(func() { done(ui.ClipboardContent{}, nil) })
 	default:
-		c.read(ctx, func(text string, _ bool, err error) {
+		c.read(ctx, opClipboardGet, func(text string, _ bool, err error) {
 			if err != nil {
 				done(ui.ClipboardContent{}, err)
 				return
@@ -91,8 +113,9 @@ func (c *clipboard) answerErr(done func(error), err error) {
 	}
 }
 
-// read asks the activity for the text and waits for its answer, or for the end of ctx.
-func (c *clipboard) read(ctx context.Context, done func(text string, ok bool, err error)) {
+// read asks the activity for the text (op is opClipboardGet) or the HTML (opClipboardGetHTML) and waits
+// for its answer, or for the end of ctx.
+func (c *clipboard) read(ctx context.Context, op int, done func(text string, ok bool, err error)) {
 	if ctx.Err() != nil {
 		err := errors.NewErr(tagClipboardReadTimeout, ctx.Err())
 		c.p.Post(func() { done("", false, err) })
@@ -116,7 +139,7 @@ func (c *clipboard) read(ctx context.Context, done func(text string, ok bool, er
 		stop()
 		done(text, ok, err)
 	}
-	c.p.host.Command(command{Op: opClipboardGet, A: int64(id)})
+	c.p.host.Command(command{Op: op, A: int64(id)})
 }
 
 // answer is the activity's answer to a read (Native.clipboardText), on the UI thread: a read that

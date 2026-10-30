@@ -24,8 +24,13 @@ const ClipboardKImagePNG = ui.ClipboardFormatPNG
 // Flutter: no counterpart
 const ClipboardKURIList = ui.ClipboardFormatURIList
 
+// ClipboardKTextHTML is the format of a fragment of HTML, for Clipboard.GetData.
+//
+// Flutter: no counterpart
+const ClipboardKTextHTML = ui.ClipboardFormatHTML
+
 // ClipboardData is data on the clipboard: text, and Glutter's extension, an
-// image and a list of URIs. SetData puts every format that is set; GetData
+// image, a list of URIs and HTML. SetData puts every format that is set; GetData
 // returns the one that was asked for.
 //
 // Deviation: Flutter's ClipboardData has only the text (SPEC §12.10).
@@ -38,14 +43,18 @@ type ClipboardData struct {
 	PNG []byte
 	// URIs are the URIs of files or other resources; nil for none.
 	URIs []string
+	// HTML is a fragment of HTML in UTF-8, put next to the text so that a program
+	// that pastes formatted text gets the markup and one that does not gets the
+	// text; "" for none.
+	HTML string
 }
 
 func (d ClipboardData) content() ui.ClipboardContent {
-	return ui.ClipboardContent{Text: d.Text, HasText: d.Text != "" || (len(d.PNG) == 0 && len(d.URIs) == 0), PNG: d.PNG, URIs: d.URIs}
+	return ui.ClipboardContent{Text: d.Text, HasText: d.Text != "" || (len(d.PNG) == 0 && len(d.URIs) == 0 && d.HTML == ""), PNG: d.PNG, URIs: d.URIs, HTML: d.HTML}
 }
 
 func dataOf(c ui.ClipboardContent) ClipboardData {
-	return ClipboardData{Text: c.Text, PNG: c.PNG, URIs: c.URIs}
+	return ClipboardData{Text: c.Text, PNG: c.PNG, URIs: c.URIs, HTML: c.HTML}
 }
 
 // RichClipboardBackend is what a ClipboardBackend also implements to put and
@@ -110,7 +119,7 @@ func (c *Clipboard) SetData(ctx context.Context, data ClipboardData, done func(e
 		}
 		return
 	}
-	if len(data.PNG) > 0 || len(data.URIs) > 0 {
+	if len(data.PNG) > 0 || len(data.URIs) > 0 || data.HTML != "" {
 		c.setRich(ctx, ui.ClipboardKindSystem, data, done)
 		return
 	}
@@ -169,7 +178,7 @@ func (c *Clipboard) SetPrimaryData(ctx context.Context, data ClipboardData, done
 //
 // Flutter: no counterpart
 func (c *Clipboard) GetPrimaryData(ctx context.Context, format string, done func(data *ClipboardData, err error)) {
-	if format != ClipboardKTextPlain && format != ClipboardKImagePNG && format != ClipboardKURIList {
+	if format != ClipboardKTextPlain && format != ClipboardKImagePNG && format != ClipboardKURIList && format != ClipboardKTextHTML {
 		done(nil, nil)
 		return
 	}
@@ -177,7 +186,7 @@ func (c *Clipboard) GetPrimaryData(ctx context.Context, format string, done func
 }
 
 // GetData retrieves the data of the format from the clipboard: ClipboardKTextPlain,
-// ClipboardKImagePNG or ClipboardKURIList. For another format, data is nil at
+// ClipboardKImagePNG, ClipboardKURIList or ClipboardKTextHTML. For another format, data is nil at
 // once. The data is also nil when the clipboard has nothing in the format. A
 // clipboard without a backend calls done at once with ClipboardUnavailable.
 //
@@ -187,7 +196,7 @@ func (c *Clipboard) GetData(ctx context.Context, format string, done func(data *
 		done(nil, errors.New(tagClipboardUnavailable, "the clipboard has no backend"))
 		return
 	}
-	if format == ClipboardKImagePNG || format == ClipboardKURIList {
+	if format == ClipboardKImagePNG || format == ClipboardKURIList || format == ClipboardKTextHTML {
 		c.getRich(ctx, ui.ClipboardKindSystem, format, done)
 		return
 	}

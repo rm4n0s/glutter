@@ -33,6 +33,7 @@ type clipboardAtoms struct {
 	clipboard, primary, targets, incr, property uint64
 	textPlainUTF8, textPlain, text              uint64
 	imagePNG, uriList                           uint64
+	textHTMLUTF8, textHTML                      uint64
 }
 
 // xSelection is one of the selections of X11 and what the app sends while it
@@ -101,6 +102,7 @@ func newClipboard(p *Platform) *clipboard {
 		clipboard: intern("CLIPBOARD"), primary: xaPrimary, targets: intern("TARGETS"), incr: intern("INCR"),
 		property: intern("GLUTTER_CLIPBOARD"), textPlainUTF8: intern("text/plain;charset=utf-8"),
 		textPlain: intern("text/plain"), text: intern("TEXT"), imagePNG: intern("image/png"), uriList: intern("text/uri-list"),
+		textHTMLUTF8: intern("text/html;charset=utf-8"), textHTML: intern("text/html"),
 	}
 	return &clipboard{p: p, window: win, atoms: atoms, system: xSelection{atom: atoms.clipboard}, primary: xSelection{atom: atoms.primary}}
 }
@@ -153,7 +155,7 @@ func (c *clipboard) GetText(ctx context.Context, done func(string, bool, error))
 
 // contentSize is the number of bytes the content takes.
 func contentSize(content ui.ClipboardContent) int {
-	n := len(content.Text) + len(content.PNG)
+	n := len(content.Text) + len(content.PNG) + len(content.HTML)
 	for _, u := range content.URIs {
 		n += len(u) + 2
 	}
@@ -189,6 +191,8 @@ func (c *clipboard) targetsOf(format string) []uint64 {
 		return []uint64{c.atoms.imagePNG}
 	case ui.ClipboardFormatURIList:
 		return []uint64{c.atoms.uriList}
+	case ui.ClipboardFormatHTML:
+		return []uint64{c.atoms.textHTMLUTF8, c.atoms.textHTML}
 	}
 	return nil
 }
@@ -235,6 +239,8 @@ func contentIn(content ui.ClipboardContent, format string) ui.ClipboardContent {
 		return ui.ClipboardContent{PNG: content.PNG}
 	case ui.ClipboardFormatURIList:
 		return ui.ClipboardContent{URIs: content.URIs}
+	case ui.ClipboardFormatHTML:
+		return ui.ClipboardContent{HTML: content.HTML}
 	}
 	return ui.ClipboardContent{}
 }
@@ -366,6 +372,8 @@ func (c *clipboard) complete(req *clipboardRequest, data []byte) {
 		c.finish(req, ui.ClipboardContent{PNG: data}, nil)
 	case ui.ClipboardFormatURIList:
 		c.finish(req, ui.ClipboardContent{URIs: parseURIList(data)}, nil)
+	case ui.ClipboardFormatHTML:
+		c.finish(req, ui.ClipboardContent{HTML: strings.ToValidUTF8(string(data), "\uFFFD")}, nil)
 	default:
 		if req.targets[0] == xaString {
 			// STRING is Latin-1: every byte is the code point.
@@ -442,6 +450,9 @@ func (c *clipboard) onSelectionRequest(ev xSelectionRequestEvent) {
 			if len(sel.content.URIs) > 0 {
 				targets = append(targets, c.atoms.uriList)
 			}
+			if sel.content.HTML != "" {
+				targets = append(targets, c.atoms.textHTMLUTF8, c.atoms.textHTML)
+			}
 			mem := dl.Calloc(uintptr(len(targets)), 8)
 			copy(unsafe.Slice(view[uint64](mem), len(targets)), targets)
 			c.p.x.changeProperty(c.p.display, ev.requestor, property, xaAtom, 32, propModeReplace, mem, int32(len(targets)))
@@ -477,6 +488,8 @@ func (c *clipboard) dataFor(content ui.ClipboardContent, target uint64) (data []
 		return content.PNG, len(content.PNG) > 0
 	case target == c.atoms.uriList:
 		return []byte(formatURIList(content.URIs)), len(content.URIs) > 0
+	case target == c.atoms.textHTMLUTF8 || target == c.atoms.textHTML:
+		return []byte(content.HTML), content.HTML != ""
 	}
 	return nil, false
 }

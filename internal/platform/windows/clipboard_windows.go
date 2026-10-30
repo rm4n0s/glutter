@@ -15,9 +15,12 @@ import (
 
 // winClipboardAPI is clipboardAPI over the Win32 functions of the clipboard.
 type winClipboardAPI struct {
-	pngOnce sync.Once
-	png     uint32
-	pngErr  error
+	pngOnce  sync.Once
+	png      uint32
+	pngErr   error
+	htmlOnce sync.Once
+	html     uint32
+	htmlErr  error
 }
 
 var _ clipboardAPI = (*winClipboardAPI)(nil)
@@ -72,6 +75,12 @@ func (a *winClipboardAPI) PNGFormat() (uint32, error) {
 	return a.png, a.pngErr
 }
 
+// HTMLFormat registers the clipboard format "HTML Format" (CF_HTML) the first time.
+func (a *winClipboardAPI) HTMLFormat() (uint32, error) {
+	a.htmlOnce.Do(func() { a.html, a.htmlErr = win32.RegisterClipboardFormat("HTML Format") })
+	return a.html, a.htmlErr
+}
+
 // clipboard is the clipboard of Windows (SPEC §25.7). A write runs on the UI thread with the
 // service window as the owner and is complete when the call returns; a read runs on a thread of its
 // own, since the program that owns the data can render it on demand. Every answer is given later on
@@ -110,7 +119,7 @@ func (c *clipboard) GetText(ctx context.Context, done func(string, bool, error))
 	})
 }
 
-// SetContent puts the content on the clipboard as one copy: its text, its files (CF_HDROP) and its
+// SetContent puts the content on the clipboard as one copy: its text, its HTML ("HTML Format"), its files (CF_HDROP) and its
 // image (PNG and CF_DIBV5). The primary selection does not exist (ClipboardPrimaryUnavailable);
 // a URI that is not a file URI is WindowsClipboardFormatUnsupported; a clipboard that stays busy
 // is ClipboardBusy.

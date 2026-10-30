@@ -15,6 +15,23 @@ type fakeAPI struct {
 	reads  []func(string, error)
 	writes []string
 	wdone  []func(error)
+	// htmlReads are the pending reads of the HTML; rich are the ClipboardItems written.
+	htmlReads []func(string, error)
+	rich      []richWrite
+	richDone  []func(error)
+}
+
+// richWrite is a ClipboardItem that was written.
+type richWrite struct {
+	text    string
+	hasText bool
+	html    string
+}
+
+func (f *fakeAPI) ReadHTML(done func(string, error)) { f.htmlReads = append(f.htmlReads, done) }
+func (f *fakeAPI) WriteRich(text string, hasText bool, html string, done func(error)) {
+	f.rich = append(f.rich, richWrite{text, hasText, html})
+	f.richDone = append(f.richDone, done)
 }
 
 func (f *fakeAPI) ReadText(done func(string, error)) { f.reads = append(f.reads, done) }
@@ -233,6 +250,129 @@ func TestClipboardKindsAndFormats(t *testing.T) {
 		t.Errorf("a failed read: %+v, %v", content, err)
 	}
 	c.GetContent(context.Background(), ui.ClipboardKindSystem, ui.ClipboardFormatText, nil) // no callback: nothing happens
+}
+
+// TestClipboardHTML: the HTML goes next to the text in one ClipboardItem, a content with only HTML is
+// written, the HTML is read through its own call, and a failure keeps its tag.
+func TestClipboardHTML(t *testing.T) {
+	tests := []struct {
+		name    string
+		content ui.ClipboardContent
+		want    richWrite
+		plain   bool // a plain write of the text, no ClipboardItem
+	}{
+		{"text and HTML", ui.ClipboardContent{Text: "caf\u00e9", HasText: true, HTML: "<b>caf\u00e9</b>"}, richWrite{"caf\u00e9", true, "<b>caf\u00e9</b>"}, false},
+		{"HTML only", ui.ClipboardContent{HTML: "<i>\u4e16\u754c</i>"}, richWrite{"", false, "<i>\u4e16\u754c</i>"}, false},
+		{"HTML and an image: the image is left out", ui.ClipboardContent{HTML: "<p>x</p>", PNG: []byte{1}}, richWrite{"", false, "<p>x</p>"}, false},
+		{"text only is a plain write", ui.ClipboardContent{Text: "t", HasText: true}, richWrite{}, true},
+	}
+	for _, tt := range tests {
+		t.Run("write "+tt.name, func(t *testing.T) {
+			var p posts
+			api := &fakeAPI{}
+			c := clipboard{post: p.post, api: api}
+			var errs []error
+			c.SetContent(context.Background(), ui.ClipboardKindSystem, tt.content, func(err error) { errs = append(errs, err) })
+			if tt.plain {
+				if len(api.rich) != 0 || len(api.writes) != 1 {
+					t.Fatalf("rich writes %d, plain writes %d, want 0 and 1", len(api.rich), len(api.writes))
+				}
+				return
+			}
+			if len(api.rich) != 1 || len(api.writes) != 0 || api.rich[0] != tt.want {
+				t.Fatalf("rich writes %+v, plain writes %q, want %+v", api.rich, api.writes, tt.want)
+			}
+			api.richDone[0](nil)
+			if len(errs) != 0 {
+				t.Fatal("answered before the UI goroutine")
+			}
+			p.run()
+			if len(errs) != 1 || errs[0] != nil {
+				t.Errorf("answers = %v", errs)
+			}
+		})
+	}
+
+	t.Run("a refused write", func(t *testing.T) {
+		var p posts
+		api := &fakeAPI{}
+		c := clipboard{post: p.post, api: api}
+		var err error
+		c.SetContent(context.Background(), ui.ClipboardKindSystem, ui.ClipboardContent{HTML: "<b>x</b>"}, func(e error) { err = e })
+		api.richDone[0](errors.New(tagWebClipboardWriteFailed, "navigator.clipboard.write failed", "detail", "NotAllowedError"))
+		p.run()
+		if got := tagOf(t, err); got != "WebClipboardWriteFailed" {
+			t.Errorf("tag = %s", got)
+		}
+	})
+
+	reads := []struct {
+		name     string
+		html     string
+		err      error
+		wantHTML string
+		wantTag  string
+	}{
+		{"read HTML", "<b>caf\u00e9</b>", nil, "<b>caf\u00e9</b>", ""},
+		{"a clipboard with no HTML", "", nil, "", ""},
+		{"a refused read", "", errors.New(tagWebClipboardReadFailed, "navigator.clipboard.read failed", "detail", "NotAllowedError"), "", "WebClipboardReadFailed"},
+	}
+	for _, tt := range reads {
+		t.Run(tt.name, func(t *testing.T) {
+			var p posts
+			api := &fakeAPI{}
+			c := clipboard{post: p.post, api: api}
+			var content ui.ClipboardContent
+			var err error
+			c.GetContent(context.Background(), ui.ClipboardKindSystem, ui.ClipboardFormatHTML, func(cc ui.ClipboardContent, e error) { content, err = cc, e })
+			if len(api.htmlReads) != 1 || len(api.reads) != 0 || p.count() != 0 {
+				t.Fatalf("html reads %d, text reads %d, posted %d: the call must only start the read of the HTML", len(api.htmlReads), len(api.reads), p.count())
+			}
+			api.htmlReads[0](tt.html, tt.err)
+			p.run()
+			if tt.wantTag != "" {
+				if got := tagOf(t, err); got != tt.wantTag {
+					t.Errorf("tag = %s, want %s", got, tt.wantTag)
+				}
+			} else if err != nil {
+				t.Errorf("error: %v", err)
+			}
+			if content.HTML != tt.wantHTML || content.HasText {
+				t.Errorf("content = %+v, want the HTML %q only", content, tt.wantHTML)
+			}
+		})
+	}
+
+	t.Run("a read of the HTML ends with its context", func(t *testing.T) {
+		var p posts
+		api := &fakeAPI{}
+		c := clipboard{post: p.post, api: api}
+		ctx, cancel := context.WithCancel(context.Background())
+		var err error
+		answers := 0
+		c.GetContent(ctx, ui.ClipboardKindSystem, ui.ClipboardFormatHTML, func(_ ui.ClipboardContent, e error) { answers++; err = e })
+		cancel()
+		for deadline := time.Now().Add(2 * time.Second); p.count() == 0 && time.Now().Before(deadline); {
+			time.Sleep(time.Millisecond)
+		}
+		api.htmlReads[0]("late", nil)
+		p.run()
+		if answers != 1 || tagOf(t, err) != "ClipboardReadTimeout" {
+			t.Errorf("answers = %d, err = %v, want one ClipboardReadTimeout", answers, err)
+		}
+	})
+
+	t.Run("without an API", func(t *testing.T) {
+		var p posts
+		c := clipboard{post: p.post}
+		var errs []error
+		c.SetContent(context.Background(), ui.ClipboardKindSystem, ui.ClipboardContent{HTML: "<b>x</b>"}, func(e error) { errs = append(errs, e) })
+		c.GetContent(context.Background(), ui.ClipboardKindSystem, ui.ClipboardFormatHTML, func(_ ui.ClipboardContent, e error) { errs = append(errs, e) })
+		p.run()
+		if len(errs) != 2 || tagOf(t, errs[0]) != "WebClipboardUnavailable" || tagOf(t, errs[1]) != "WebClipboardUnavailable" {
+			t.Errorf("answers = %v", errs)
+		}
+	})
 }
 
 // The tags of the errors that this file makes (rm4n0s/errors, R5).
