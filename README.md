@@ -198,6 +198,8 @@ func startView(parent *m.WidgetsBinding, root m.Widget, send func(pixels []byte,
 }
 ```
 
+**What is new in 1.9.8.** A fix for Emetos: `RunAppContext(ctx, app)` (and `RunWidgetContext`) ends the app when the context ends, with the same clean exit as a closed window. With `signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)`, the app closes on Ctrl+C or when it is told to terminate.
+
 **What is new in 1.9.7.** Four fixes for Emetos:
 - **Input:** a frame that handles a key or a click no longer asks for a second frame that draws nothing, so a held key types at the full repeat rate.
 - **Key repeat:** on Wayland a held key repeats at the compositor's rate; a slow frame no longer slows the repeats that follow.

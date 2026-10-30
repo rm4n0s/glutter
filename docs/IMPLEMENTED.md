@@ -5185,3 +5185,19 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Deviations and follow-ups:**
   - **Deviation:** Flutter's `runApp` and `runWidget` take no context (SPEC §12.10).
   - **Emetos** can drop `QuitOnDone` and call `RunAppContext` with its command's context.
+
+## 29.39 Release 1.9.8 (Emetos)
+
+- **Date:** 2026-10-31
+- **Branch:** feat/step-29.39-release-1.9.8
+- **Summary:** 1.9.8 is released with step 29.38, the fix of Emetos's issue "RunApp cannot be ended from outside the widget tree" (2026-10-31).
+  - **SPEC §1:** a 1.9.8 sentence, and a "Scope of 1.9.8" paragraph after the one of 1.9.7.
+  - **`README.md`:** "What is new in 1.9.8".
+  - **Publishing:** tags `step-29.39` and `v1.9.8`. `main` was pushed with the step tags of 29.38 and 29.39 (`git push --follow-tags origin main`).
+  - **Emetos's earlier list** (the second frame after input, key repeat, HTML on the clipboard, a text field scrolled past its end), sent again on 2026-10-31, was checked against 1.9.7: all four are fixed there (steps 29.33 to 29.36), and a probe showed the field in range in every frame when its text shrinks during the scroll to the caret.
+- **Main files:** `docs/SPEC.md` (§1), `README.md`.
+- **Tests:** none of its own.
+- **Checks:** the code is that of 29.38, whose checks, display tests (`internal/engine` and `widgets` under Wayland and X11) and Wine tests (`internal/engine`) ran in full; the release changes only documents: the `docs` tests, apicheck and uintptrcheck ✅.
+- **Proof:** none
+- **Manual checks:** none
+- **Deviations and follow-ups:** none
