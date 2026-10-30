@@ -368,6 +368,9 @@ type handler struct {
 	// windows get them too.
 	appID       string
 	decorations platform.Decorations
+	// flushing is the window whose frame is flushing its input (flushInput): askFrame
+	// asks for no frame of it, because the frame that runs draws what the input changed.
+	flushing *window
 	// frameView is the view whose frame is being run, and hasFrame is whether one is.
 	frameView ui.ViewID
 	hasFrame  bool
@@ -1056,11 +1059,33 @@ func (h *handler) askFrame(w *window) {
 	if w == nil {
 		return
 	}
+	if w == h.flushing {
+		// The frame of this window is running, and what the flushed input changed is
+		// built and drawn by it (SPEC §13): a second frame would draw nothing new.
+		return
+	}
 	w.wanted = true
 	if w.hidden {
 		return // asked for when the window is shown
 	}
 	w.RequestFrame()
+}
+
+// flushInput handles the input that arrived since the last frame, for the frame of
+// the window w that is about to begin. A frame request of w that the handling makes
+// (a SetState reaches ScheduleFrame) is dropped, because BeginFrame and DrawFrame
+// follow at once and build and draw the change; a request for another window, and
+// one made after the flush (during BeginFrame or DrawFrame, or by input that arrives
+// later), still gets its frame. Input that the handling queued in turn waits for the
+// next frame, which is asked for here.
+func (h *handler) flushInput(w *window) {
+	h.flushing = w
+	defer func() { h.flushing = nil }()
+	h.input.flush()
+	if len(h.input.pending) > 0 {
+		h.flushing = nil
+		h.askFrame(w)
+	}
 }
 
 // OnFrame runs a frame of a window: the input that arrived since the last one, then
@@ -1088,7 +1113,7 @@ func (h *handler) OnFrame(view ui.ViewID, frameTime time.Duration) {
 	}
 	w.pending = false
 	h.clock.beginFrame()
-	h.input.flush()
+	h.flushInput(w)
 	for _, o := range h.windows {
 		o.rendered = false
 	}

@@ -5075,3 +5075,20 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Proof:** none
 - **Manual checks:** none
 - **Deviations and follow-ups:** none
+
+## 29.33 The frame after input is not wasted (Emetos)
+
+- **Date:** 2026-10-30
+- **Branch:** fix/step-29.33-no-frame-after-input
+- **Summary:** Emetos's sixth issues list, "the frame after input is wasted". `handler.OnFrame` handles the input queued since the last frame before `BeginFrame`; a `SetState` there reached `ScheduleFrame`, which asked every window for a frame, so the platform ran a second frame that drew the last scene again. On the software renderer a held key typed about 31 characters a second at a repeat rate of 50.
+  - **How:** `flushInput(w)` marks the window whose frame runs (`handler.flushing`) while it flushes the input, and `askFrame` asks for no frame of that window then. A request for another window, one made in `BeginFrame` or `DrawFrame` (an animation, a post-frame `SetState`), input that arrives after the flush, and input that the handling queued (asked for when the flush ends) still get their frames. `platform.Window` is unchanged; the scheduler's own flag is cleared by `BeginFrame`, which follows at once.
+  - **The plan** gained steps 29.33 to 29.37 (release 1.9.7, after the suites of every environment). Steps 29.33 to 29.36 were written by four workers at once, in worktrees; a crash of the machine (the owner's NVIDIA eGPU fell off the bus) stopped them once, and they were resumed. Since then every test runs through `.claude/no-nvidia.sh`, which hides the NVIDIA card (the owner's rule, 2026-10-30).
+- **Main files:** `internal/engine/engine.go`, `internal/engine/input_frame_test.go`, `docs/SPEC.md` (§13), `docs/IMPLEMENTATION.md`.
+- **Tests (table-driven):**
+  - **`TestTheFrameThatHandlesInputAsksForNoSecondFrame`:** 7 cases (a key or a click that calls `SetState`, a key that changes nothing, an animation the key starts, a `SetState` in a post-frame callback, a second window's request, an animation with a second window): one frame runs, and the requests of each window are counted.
+  - **`TestAHeldKeyGivesOneFrameForEachRepeat`** (1, 5 and 50 repeats give as many frames, not twice as many), **`TestInputThatArrivesBetweenFramesAsksForAFrame`**, **`TestInputThatTheFlushQueuesGetsItsFrame`**.
+  - With the suppression turned off, 6 of the 7 table cases, the held-key test (2N requests) and the queued-input test failed.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ (Linux, Windows amd64 and arm64, with and without `glutter_wine`) · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck, apicheck, uintptrcheck ✅ · wasm build, vet and tests ✅ · check-android ✅ · Windows builds, vet and test-windows ✅ · display tests: none. The first full run failed two tests outside the step, both explained and passing on a rerun: `TestCommittedWindowsTablesAreCurrent` (the machine's `reference/` had been fetched at Flutter 3.47.9 because its git-ignored `VERSION` was lost; refetched at the pinned `abaf9c52`, 3.47.7) and `TestOutputsComeAndGo` (a race in the test, fixed in step 29.34).
+- **Proof:** none
+- **Manual checks:** none
+- **Deviations and follow-ups:** none (Flutter's engine dispatches input outside frames, so it has no such request).

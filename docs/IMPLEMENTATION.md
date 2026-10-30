@@ -3231,3 +3231,69 @@ Flutter behaves the same way: `SliverMultiBoxAdaptorElement.performRebuild` sets
 **Tests:** none of its own.
 **Proof:** none.
 **Manual checks:** none.
+
+### 29.33 The frame after input is not wasted (Emetos, 1.9.7)
+**Goal:** a frame that handles a key or a click does not ask for a second frame that draws nothing new.
+**Why:** Emetos found it (sixth issues list, 2026-10-30, "the frame after input is wasted"). `handler.OnFrame` (`internal/engine/engine.go`) flushes the input queued since the last frame (`h.input.flush()`) before `BeginFrame`; what the input changes (`SetState`) schedules a frame, `ScheduleFrame` asks every window for one (`askFrame`, `RequestFrame`), and the frame that is running already builds and draws that change. The platform then runs a second frame in which the framework renders nothing and the last scene is drawn again. On the software renderer that halves the speed of a held key: about 31 characters a second at a repeat rate of 50. Emetos patched a copy to cancel the request made during the flush, before `BeginFrame`, and it typed exactly 51.
+**Read:** SPEC §8 (frames: `RequestFrame`, `OnFrame`), §9 (presenting), §13 (the frame loop); `internal/engine/engine.go` (`queueInput`, `askFrame`, `OnFrame`, `ScheduleFrame`, the `wanted`/`pending`/`rendered` flags), `internal/platform/platform.go` (`Window.RequestFrame`), each backend's `RequestFrame` (Wayland `frameRequested`, X11, Windows, web, Android, fake), `ui/platform_dispatcher.go` (`BeginFrame`, the framework's scheduled-frame state), `scheduler` (`ScheduleFrame`, `handleBeginFrame`).
+**Port from:** none (Flutter's engine dispatches input outside frames).
+**Files:** `internal/engine` (and, if a request cannot be withdrawn otherwise, `internal/platform/platform.go` and the backends), their tests, SPEC §13.
+**Tasks:**
+1. A frame request that is made while `OnFrame` flushes the input, for the window whose frame it is, before `BeginFrame`, is dropped: the frame that runs builds and draws it. A request made during `BeginFrame` or `DrawFrame` (an animation, a `SetState` in a build or a post-frame callback), or one for another window, still gets its frame, and so does input that arrives after the flush.
+2. Decide how a request is withdrawn (an engine-side flag that `askFrame` consults while flushing, so the backend is never asked, is preferred to a new platform method); bring back a change of the `platform.Window` interface before making it.
+3. SPEC §13: a sentence on the input flush and the frame request.
+**Tests (table-driven):** with the fake platform, a frame whose input calls `SetState` (a key, a click) runs one frame and asks for no other; a held key repeated N times at a rate gives N frames, not 2N; an animation started by the input still gets its next frame; input arriving between frames still asks for one; a frame request of another window during the flush is kept; the existing engine tests pass.
+**Proof:** none.
+**Manual checks:** none.
+
+### 29.34 Key repeat at a fixed rate (Emetos, 1.9.7)
+**Goal:** a held key repeats at the compositor's rate, measured from when each repeat was due, not from when the previous one was handled.
+**Why:** Emetos found it (sixth issues list, "key repeat drifts"). The Wayland backend makes the repeats itself (`internal/platform/linux/wayland/keyboard.go`: `fireRepeat` schedules the next repeat one period after it ran), so every delay in handling a repeat is added to the next, and a busy frame slows the repeat down. X11, Windows, the web and Android take the system's repeats.
+**Read:** SPEC §8.4 (keyboard), §13; `internal/platform/linux/wayland/keyboard.go` (`press`, `fireRepeat`, `cancelRepeat`, `after`), `platform.go` (`afterFunc`), the fake clock of the keyboard tests (`keyboard_test.go`).
+**Port from:** none (Flutter's GTK embedder leaves the repeat to GTK).
+**Files:** `internal/platform/linux/wayland/keyboard.go`, `keyboard_test.go`, SPEC §8.4.
+**Tasks:**
+1. The repeats of a key are due at `press + delay + n/rate`; each one is scheduled for its due time. When the handler is late by a full period or more, the repeats that are a full period late are skipped (never sent in a burst), and the next is scheduled at its due time.
+2. A change of the rate or delay (`repeat_info`), a new key, a release, the loss of the focus and a closed window stop or restart the repeat as before.
+**Tests (table-driven):** with the fake clock: on-time handling gives a repeat at each due time; a handler that takes half a period does not move the later repeats; one that takes 2.5 periods skips the missed ones and sends no burst; the existing keyboard tests pass.
+**Proof:** none.
+**Manual checks:** none.
+
+### 29.35 HTML on the clipboard (Emetos, 1.9.7)
+**Goal:** an app can put HTML next to the plain text on the clipboard (and read it), so that a rich editor pastes formatted text.
+**Why:** Emetos found it (fifth and sixth issues lists, "The clipboard carries plain text only"). Its terminal's "Copy Output as HTML" puts the markup on the clipboard as text, so a rich editor pastes the markup. `services.ClipboardData` has `Text`, `PNG` and `URIs`; Emetos asked for a map of MIME types. The decision (the manager's, following §12.10's design of one field per format): a field `HTML` (`text/html`) and a format constant `ClipboardKTextHTML`, not a generic map.
+**Read:** SPEC §12.10 (the clipboard row), §25 (the Windows clipboard, step 28.6), §23 and §24 (web and Android clipboards); `services/clipboard.go`, `ui/clipboard.go`, each backend's clipboard (`internal/platform/linux/wayland/clipboard.go`, `linux/x11/clipboard.go`, `windows/clipboard*.go`, `web/clipboard.go`, `android/clipboard.go` and its Java side, `fake/fake.go`), `offscreen` and `gluttertest` clipboards.
+**Port from:** none (Flutter's clipboard has text only).
+**Files:** `ui/clipboard.go`, `services/clipboard.go`, the backends' clipboards, their tests, SPEC §12.10, `docs/GUIDE.md` if it shows the clipboard.
+**Tasks:**
+1. `ui.ClipboardContent.HTML` and `services.ClipboardData.HTML` (a UTF-8 HTML fragment; "" is none), `services.ClipboardKTextHTML = "text/html"`; `SetData` puts it with the other formats as one copy, `GetData(ClipboardKTextHTML)` reads it.
+2. Every backend offers and reads it: Wayland and X11 offer `text/html` (with `INCR` on X11) next to the text; Windows registers "HTML Format" (CF_HTML, with its header of byte offsets) and reads it back to the fragment; the web writes a `ClipboardItem` with `text/html` (and reads it where the browser allows); Android uses `ClipData.newHtmlText` (if the Java embedding has to change, its `classes.dex` is rebuilt as SPEC §24 says); the fake platform, `offscreen` and `gluttertest` keep it.
+3. Reading HTML from a clipboard that has none gives nil, like the other formats.
+**Tests (table-driven):** the round trip of text plus HTML on each backend that has unit or fake tests (Wayland's fake compositor, X11's tests, the CF_HTML header written and parsed, including non-ASCII text and a fragment with no `<html>`); the Wine clipboard test copies text and HTML between two programs; `services` tests; the existing clipboard tests pass.
+**Wine tests:** the clipboard tests of `internal/platform/windows`.
+**Proof:** none.
+**Manual checks:** pasting into a rich editor (LibreOffice Writer) on Linux and Windows, by the owner.
+
+### 29.36 A text field scrolled past its end is corrected in the same layout (Emetos, 1.9.7)
+**Goal:** when the text of a field gets shorter than its scroll offset, the field shows the end of the text in that frame, not for about a second later.
+**Why:** Emetos found it (sixth issues list, "a text field stays scrolled out of range for about a second after its text gets shorter"; its input box works around it). `RenderEditable` gives the shorter content to its `ViewportOffset` (`ApplyContentDimensions`); the position keeps its out-of-range pixels and the idle activity goes ballistic, so the field springs back over about a second, unless the caret is brought on screen first.
+**Read:** SPEC §11.5 (text editing), §12.10; `widgets/editable_text*.go` (`showCaretOnScreen`, `scheduleShowCaretOnScreen`), `rendering/editable.go` (the offset, `performLayout`), `widgets/scroll_position*.go` (`ApplyContentDimensions`, `CorrectForNewDimensions`), `widgets/scroll_physics.go` (`AdjustPositionForNewDimensions`); Flutter's `editable_text.dart` (`_scheduleShowCaretOnScreen`, `_showCaretOnScreen`), `editable.dart`, `scroll_position.dart`, `scroll_physics.dart`.
+**Port from:** `widgets/editable_text.dart`, `rendering/editable.dart` (if Glutter differs from Flutter here, the difference is fixed; if Flutter does the same, the correction is a deviation).
+**Files:** the files above, their tests, SPEC §12.10 if it is a deviation.
+**Tasks:**
+1. Reproduce: a single-line and a multi-line field scrolled to the end, the text replaced by a shorter one (by the controller, and by deleting with keys): record the pixels of the offset over the next frames, and do the same in Flutter's logic as ported (show-caret with and without animation). Report whether Glutter differs from Flutter.
+2. Fix it so that the offset is in range in the frame of the change (the layout corrects it, as `CorrectForNewDimensions` allows, or the show-caret logic does what Flutter does); a field the user is dragging or flinging is not cut short.
+**Tests (table-driven):** single and multi-line, shrink by the controller and by Backspace held, a field not scrolled, a field being dragged; the offset is in range after one pump; the existing editable, text field and scroll tests pass.
+**Proof:** none.
+**Manual checks:** none.
+
+### 29.37 Release 1.9.7 (Emetos)
+**Goal:** 1.9.7 is released with steps 29.33 to 29.36, after every environment's tests have run.
+**Tasks:**
+1. SPEC: the version paragraph of §1 (a 1.9.7 sentence) and a "Scope of 1.9.7" paragraph next to the one of 1.9.6.
+2. `README.md`: "What is new in 1.9.7".
+3. The standard checks of rule 8, `apicheck` and `uintptrcheck`, and the suites of every environment (the owner asked, 2026-10-30): `go test -race -tags glutter_display` under `scripts/headless-wayland.sh` and under `scripts/headless-x11.sh`; `go test -tags glutter_browser`; `go test -p 1 -tags glutter_android`; the Wine tests (`GOOS=windows go test -tags glutter_wine -exec "$PWD/scripts/wine-exec.sh" -p 1` for the packages that run inside Wine, and the host-side `go test -tags glutter_wine -p 1` packages, the `d3d12` suite alone). A failure is fixed, or reported with its cause if it is the machine's.
+4. Merge, tag `step-29.37` and `v1.9.7`, and publish: `git push --follow-tags origin main`, which takes steps 29.33 to 29.37 and their tags to GitHub. Check with `git ls-remote --tags origin`.
+**Tests:** none of its own.
+**Proof:** none.
+**Manual checks:** none.
