@@ -673,6 +673,33 @@ default, 0, is Flutter's behavior. A tab at the end of a line hangs like other w
 boxes, positions and carets after a tab are at the stop, and nothing is drawn for the tab itself.
 `Text` and `RichText` do not have the option yet; use a `TextPainter`.
 
+Flutter's `runApp` has no way to end the app from outside the widget tree: the embedder ends the
+process. `RunAppContext` takes a `context.Context` first, like any Go function that waits, and
+returns nil when the context ends, after it closed the windows (the observers and
+`OnExitRequested` are not asked, as for `ExitApplication`). Glutter installs no signal handlers;
+`signal.NotifyContext` makes the context of SIGINT and SIGTERM:
+
+```go
+package main
+
+import (
+	"context"
+	"os"
+	"os/signal"
+	"syscall"
+
+	m "github.com/rm4n0s/glutter/material"
+)
+
+func main() {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	if err := m.RunAppContext(ctx, m.NewText("hello")); err != nil {
+		os.Exit(1)
+	}
+}
+```
+
 ## 12. A widget that fails
 
 When a widget's `build` throws, Flutter shows `ErrorWidget` in its place. The builder is one for the whole app:

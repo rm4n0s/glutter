@@ -246,7 +246,10 @@ func TestRunWithoutWindowHook(t *testing.T) {
 	h := newHarness(t, map[string]string{"DISPLAY": ":0"})
 	h.cfg.Hooks = Hooks{}
 	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // returns at once
+	defer cancel()
+	// The context ends once the display is connected (a context that ended before the call
+	// returns before the connection is made): the loop returns at once.
+	h.cfg.connectors = map[string]func() (connection, error){"": func() (connection, error) { cancel(); return h.c, nil }}
 	if err := Run(ctx, h.cfg); err != nil {
 		t.Fatal(err)
 	}
@@ -398,7 +401,9 @@ func TestRunErrors(t *testing.T) {
 		h := newHarness(t, map[string]string{"DISPLAY": ":0"})
 		h.c.closeErr = errors.New(tagLoopSyscallFailed, "close")
 		ctx, cancel := context.WithCancel(context.Background())
-		cancel()
+		defer cancel()
+		// The context ends once the display is connected, so that the loop returns at once.
+		h.cfg.connectors = map[string]func() (connection, error){"": func() (connection, error) { cancel(); return h.c, nil }}
 		assertRoute(t, Run(ctx, h.cfg), "LoopSyscallFailed", "LoopSyscallFailed")
 	})
 	t.Run("a failure to close does not hide the earlier failure", func(t *testing.T) {

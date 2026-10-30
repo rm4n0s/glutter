@@ -175,7 +175,8 @@ const DamageEnv = "GLUTTER_DAMAGE"
 // Run connects to the display (Wayland or X11, SPEC §6.3 rule 5), opens the first
 // window and draws it, and runs the event loop on the calling goroutine, which
 // must be the UI thread. It returns nil when ctx is cancelled or the last window
-// is closed. When GLUTTER_SCREENSHOT is set it saves a PNG of the window and
+// is closed; a ctx that ended before the call returns nil at once, before it connects to the
+// display. When GLUTTER_SCREENSHOT is set it saves a PNG of the window and
 // returns (see Screenshot).
 //
 // Errors come back unchanged: NoDisplay, BackendUnknown, the backend's own
@@ -191,6 +192,11 @@ const DamageEnv = "GLUTTER_DAMAGE"
 //
 // Flutter: engine/src/flutter/shell (the shell that runs an app)
 func Run(ctx context.Context, cfg Config) (err error) {
+	if ctx.Err() != nil {
+		// The context ended before the call: the app ends as an exit request ends it, and no
+		// window is made.
+		return nil
+	}
 	runStart := time.Now()
 	getenv := cfg.Getenv
 	if getenv == nil {

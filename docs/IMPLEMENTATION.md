@@ -3297,3 +3297,29 @@ Flutter behaves the same way: `SliverMultiBoxAdaptorElement.performRebuild` sets
 **Tests:** none of its own.
 **Proof:** none.
 **Manual checks:** none.
+
+### 29.38 RunApp ends when a context ends (Emetos, 1.9.8)
+**Goal:** a program can end `RunApp` from outside the widget tree, for example on SIGTERM or SIGINT, with a `context.Context`.
+**Why:** Emetos found it (2026-10-31, "RunApp cannot be ended from outside the widget tree"). `RunApp` and `RunWidget` make their own `context.Background()` (`widgets/run_app.go`, `run`), so a program that catches the signals (`signal.NotifyContext`) keeps its window open: the only ways to end the run are `WidgetsBinding.ExitApplication` and `PlatformDispatcher.RequestAppExit`, which need the binding. Emetos wraps its root widget in a `QuitOnDone` that waits for the context on a goroutine and posts `ExitApplication(AppExitTypeRequired)`. Emetos asked for a `RunAppOpts.Context`; the owner chose (2026-10-31) the Go form: functions that take the context as their first parameter, as CLAUDE.md asks for anything that does I/O.
+**Read:** SPEC §13 (`RunApp`, `RunAppOpts`, exit), §8.7 (exit requests), §12.10, §23.3 (the web cannot exit); `widgets/run_app.go`, `widgets/binding.go` (`ExitApplication`), `internal/engine/engine.go` (`Run`, `handler.RequestAppExit`, `release`), the platforms' `Run` (`internal/platform/linux/loop.go`, `windows/platform_windows.go`, `android/platform.go`, `web/platform_js.go`, `fake`).
+**Port from:** none (Flutter's `runApp` has no context; the embedder ends the process).
+**Files:** `widgets/run_app.go`, `internal/engine/engine.go` (if needed), their tests, `material` (regenerated), SPEC §13 and §12.10, `docs/GUIDE.md` if it shows how a program starts.
+**Tasks:**
+1. `RunAppContext(ctx, app, opts...)` and `RunWidgetContext(ctx, app, opts...)`; `RunApp` and `RunWidget` call them with `context.Background()`. The context is the parent of the one the run uses for the text engine, the binding and the engine.
+2. When the context ends, the run ends as `ExitApplication(AppExitTypeRequired)` ends it: the observers are not asked, the platform loop returns, the renderer and the display are closed, and the function returns nil. A context that has already ended returns nil before connecting to the display (no window is opened).
+3. The web: a page cannot close itself (§23.3); what a cancelled context does there is checked and written in SPEC §13.
+4. SPEC §13 (the two functions, the exit) and a §12.10 row (Flutter has no context).
+**Tests (table-driven):** with the engine's fake connection: a context cancelled from another goroutine while the loop runs ends `Run` with nil, the window and the renderer are closed; a context ended before the call opens no window; the existing exit paths are unchanged. In `widgets`: the context reaches the engine. Display (`glutter_display`, under `scripts/headless-wayland.sh` and `scripts/headless-x11.sh`) and Wine (inside, `glutter_wine`): a real window ends when the context is cancelled after the first frame.
+**Proof:** none.
+**Manual checks:** none.
+
+### 29.39 Release 1.9.8 (Emetos)
+**Goal:** 1.9.8 is released with step 29.38.
+**Tasks:**
+1. SPEC: the version paragraph of §1 (a 1.9.8 sentence) and a "Scope of 1.9.8" paragraph next to the one of 1.9.7.
+2. `README.md`: "What is new in 1.9.8".
+3. The standard checks of rule 8, `apicheck` and `uintptrcheck`, and the display and Wine tests of `internal/engine`.
+4. Merge, tag `step-29.39` and `v1.9.8`, and publish: `git push --follow-tags origin main`, which takes steps 29.38 and 29.39 and their tags to GitHub. Check with `git ls-remote --tags origin`.
+**Tests:** none of its own.
+**Proof:** none.
+**Manual checks:** none.

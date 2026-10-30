@@ -174,25 +174,59 @@ type RunAppOpts struct {
 // runs the event loop until the last window is closed or the app asks to exit.
 // It must be called on the main goroutine (SPEC §8.4, §13). The widget is
 // wrapped in a View for the window; use RunWidget to provide the View yourself.
+// It is RunAppContext with context.Background().
 //
 // The failures of the environment come back as tagged errors (SPEC §14.1):
 // NoDisplay, BackendUnknown, the platform's and the renderer's.
 //
 // Flutter: widgets/binding.dart runApp
 func RunApp(app Widget, opts ...RunAppOpts) error {
-	return run(app, true, firstOpts(opts))
+	return run(context.Background(), app, true, firstOpts(opts), engine.Run)
+}
+
+// RunAppContext is RunApp that ends when ctx ends, so that a program can end its
+// app from outside the widget tree, for example on a signal:
+//
+//	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+//
+// When ctx ends the run ends as WidgetsBinding.ExitApplication with
+// AppExitTypeRequired ends it: the observers and OnExitRequested are not asked,
+// the windows, the renderer and the display are closed, and the function returns
+// nil, not ctx.Err(). A ctx that has already ended returns nil before the
+// display is opened, so no window appears. ctx is also the parent of the context
+// of the binding's work (image loading, fonts). Glutter installs no signal
+// handlers. On the web a page cannot close itself, but the run ends and the
+// canvas is removed (SPEC §13).
+//
+// Deviation: Flutter's runApp has no context; the embedder ends the process (SPEC §12.10).
+//
+// Flutter: widgets/binding.dart runApp
+func RunAppContext(ctx context.Context, app Widget, opts ...RunAppOpts) error {
+	return run(ctx, app, true, firstOpts(opts), engine.Run)
 }
 
 // RunWidget is RunApp that does not wrap the widget in a View: the widget must
-// be, or contain, a View.
+// be, or contain, a View. It is RunWidgetContext with context.Background().
 //
 // Flutter: widgets/binding.dart runWidget
 func RunWidget(app Widget, opts ...RunAppOpts) error {
-	return run(app, false, firstOpts(opts))
+	return run(context.Background(), app, false, firstOpts(opts), engine.Run)
 }
 
-func run(app Widget, wrap bool, o RunAppOpts) error {
-	ctx, cancel := context.WithCancel(context.Background())
+// RunWidgetContext is RunAppContext that does not wrap the widget in a View: the
+// widget must be, or contain, a View.
+//
+// Deviation: Flutter's runWidget has no context; the embedder ends the process (SPEC §12.10).
+//
+// Flutter: widgets/binding.dart runWidget
+func RunWidgetContext(ctx context.Context, app Widget, opts ...RunAppOpts) error {
+	return run(ctx, app, false, firstOpts(opts), engine.Run)
+}
+
+// run is the body of the four Run functions. engineRun is engine.Run; a test gives
+// its own to see the context the engine gets.
+func run(parent context.Context, app Widget, wrap bool, o RunAppOpts, engineRun func(context.Context, engine.Config) error) error {
+	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	cfg := engine.Config{
 		Backend:  o.Backend,
@@ -208,7 +242,7 @@ func run(app Widget, wrap bool, o RunAppOpts) error {
 			return err
 		},
 	}
-	return engine.Run(ctx, cfg)
+	return engineRun(ctx, cfg)
 }
 
 // platformWindow translates the window config of the app into the platform's.

@@ -9909,6 +9909,13 @@ func RunApp(app widgets.Widget, opts ...widgets.RunAppOpts) error {
 	return widgets.RunApp(app, opts...)
 }
 
+// RunAppContext is widgets.RunAppContext.
+//
+// Flutter: widgets.dart RunAppContext
+func RunAppContext(ctx context.Context, app widgets.Widget, opts ...widgets.RunAppOpts) error {
+	return widgets.RunAppContext(ctx, app, opts...)
+}
+
 // RunAppOpts is widgets.RunAppOpts.
 //
 // Flutter: widgets.dart RunAppOpts
@@ -9919,6 +9926,13 @@ type RunAppOpts = widgets.RunAppOpts
 // Flutter: widgets.dart RunWidget
 func RunWidget(app widgets.Widget, opts ...widgets.RunAppOpts) error {
 	return widgets.RunWidget(app, opts...)
+}
+
+// RunWidgetContext is widgets.RunWidgetContext.
+//
+// Flutter: widgets.dart RunWidgetContext
+func RunWidgetContext(ctx context.Context, app widgets.Widget, opts ...widgets.RunAppOpts) error {
+	return widgets.RunWidgetContext(ctx, app, opts...)
 }
 
 // SafeArea is widgets.SafeArea.
