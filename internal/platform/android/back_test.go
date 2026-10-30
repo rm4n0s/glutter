@@ -182,7 +182,9 @@ func TestTheBridgeQueuesTheBackEventsOfTheJavaSide(t *testing.T) {
 	go func() { done <- p.Run(ctx, rec) }()
 	t.Cleanup(func() {
 		cancel()
-		<-done
+		if err := <-done; err != nil {
+			t.Errorf("Run returned %v", err)
+		}
 	})
 	waitFor(t, "Run to start", func() bool { return rec.count("lifecycle") > 0 })
 	p.Post(func() { p.framed = true })

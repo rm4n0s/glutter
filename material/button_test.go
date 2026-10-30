@@ -392,6 +392,87 @@ func TestButtonStyleSizes(t *testing.T) {
 	}
 }
 
+// TestButtonTextStyleMergesWithTheLabelStyle checks that a text style given to a
+// button, or to its theme, is merged onto the default label style: the label keeps
+// its font (with the bundled fonts alone, a style with no family drew no label) and
+// the foreground color.
+func TestButtonTextStyleMergesWithTheLabelStyle(t *testing.T) {
+	const textKind, filledKind, outlinedKind = 0, 2, 4
+	size := func(v float64) *painting.TextStyle {
+		return painting.NewTextStyle(painting.TextStyleOpts{FontSize: foundation.Some(v)})
+	}
+	bold := painting.NewTextStyle(painting.TextStyleOpts{FontWeight: ui.FontWeightW700})
+	boldTwenty := painting.NewTextStyle(painting.TextStyleOpts{FontSize: foundation.Some(20.0), FontWeight: ui.FontWeightW700})
+	noInherit := painting.NewTextStyle(painting.TextStyleOpts{Inherit: foundation.Some(false), FontFamily: "Roboto", FontSize: foundation.Some(20.0)})
+	red := Colors.Red.Shade700()
+	theme := standardTheme(true)
+	cs := theme.ColorScheme
+	// label is the default label style: the localized LabelLarge of the theme.
+	label := buttonMaterial(pumpButton(t, theme, buttonKinds[filledKind].make(func() {}, ButtonStyleButtonOpts{})), buttonKinds[filledKind].typ).TextStyle()
+	styleFrom := [...]func(ButtonStyleFromOpts) *ButtonStyle{textKind: TextButtonStyleFrom, filledKind: FilledButtonStyleFrom, outlinedKind: OutlinedButtonStyleFrom}
+	themed := func(kind int, st *ButtonStyle) ThemeDataOpts {
+		switch kind {
+		case filledKind:
+			return ThemeDataOpts{FilledButtonTheme: NewFilledButtonThemeData(FilledButtonThemeData{Style: st})}
+		case outlinedKind:
+			return ThemeDataOpts{OutlinedButtonTheme: NewOutlinedButtonThemeData(OutlinedButtonThemeData{Style: st})}
+		}
+		return ThemeDataOpts{TextButtonTheme: NewTextButtonThemeData(TextButtonThemeData{Style: st})}
+	}
+	tests := []struct {
+		name       string
+		kind       int
+		onButton   ButtonStyleFromOpts
+		onTheme    *ButtonStyleFromOpts
+		wantFamily string
+		wantSize   float64
+		wantWeight ui.FontWeight
+		wantColor  ui.Color
+	}{
+		{"filled, size on the button", filledKind, ButtonStyleFromOpts{TextStyle: size(20)}, nil,
+			label.FontFamily, 20, label.FontWeight, cs.OnPrimary()},
+		{"filled, size and foreground on the button", filledKind, ButtonStyleFromOpts{TextStyle: size(20), ForegroundColor: foundation.Some(red)}, nil,
+			label.FontFamily, 20, label.FontWeight, red},
+		{"filled, weight on the button", filledKind, ButtonStyleFromOpts{TextStyle: bold}, nil,
+			label.FontFamily, label.FontSize.Value(), ui.FontWeightW700, cs.OnPrimary()},
+		{"outlined, size on the button", outlinedKind, ButtonStyleFromOpts{TextStyle: size(20)}, nil,
+			label.FontFamily, 20, label.FontWeight, cs.Primary()},
+		{"text, size on the button", textKind, ButtonStyleFromOpts{TextStyle: size(20)}, nil,
+			label.FontFamily, 20, label.FontWeight, cs.Primary()},
+		{"filled, size and weight on the theme", filledKind, ButtonStyleFromOpts{}, &ButtonStyleFromOpts{TextStyle: boldTwenty},
+			label.FontFamily, 20, ui.FontWeightW700, cs.OnPrimary()},
+		{"outlined, size on the theme", outlinedKind, ButtonStyleFromOpts{}, &ButtonStyleFromOpts{TextStyle: size(20)},
+			label.FontFamily, 20, label.FontWeight, cs.Primary()},
+		{"text, weight on the theme and size on the button", textKind, ButtonStyleFromOpts{TextStyle: size(24)}, &ButtonStyleFromOpts{TextStyle: bold},
+			label.FontFamily, 24, ui.FontWeightW700, cs.Primary()},
+		{"a style that does not inherit replaces the label style", filledKind, ButtonStyleFromOpts{TextStyle: noInherit}, nil,
+			"Roboto", 20, ui.FontWeight(0), cs.OnPrimary()},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			to := ThemeDataOpts{}
+			if tc.onTheme != nil {
+				to = themed(tc.kind, styleFrom[tc.kind](*tc.onTheme))
+			}
+			to.UseMaterial3 = foundation.Some(true)
+			to.VisualDensity = foundation.Some(VisualDensityStandard())
+			k := buttonKinds[tc.kind]
+			ts := pumpButton(t, NewThemeData(to), k.make(func() {}, ButtonStyleButtonOpts{Style: styleFrom[tc.kind](tc.onButton)}))
+			got := buttonMaterial(ts, k.typ).TextStyle()
+			if got.FontFamily != tc.wantFamily || got.FontSize != foundation.Some(tc.wantSize) || got.FontWeight != tc.wantWeight {
+				t.Errorf("text style = family %q, size %v, weight %v; want %q, %v, %v",
+					got.FontFamily, got.FontSize, got.FontWeight, tc.wantFamily, tc.wantSize, tc.wantWeight)
+			}
+			if got.Color != foundation.Some(tc.wantColor) {
+				t.Errorf("text color = %v, want %v", got.Color, tc.wantColor)
+			}
+			if w := ts.Size(gluttertest.ByType[*widgets.RichText]()).Width; w <= 0 {
+				t.Errorf("the label is %v wide: no font has its glyphs", w)
+			}
+		})
+	}
+}
+
 func allOpt[T any](v T) widgets.WidgetStateProperty[foundation.Opt[T]] {
 	return widgets.NewWidgetStatePropertyAll(foundation.Some(v))
 }

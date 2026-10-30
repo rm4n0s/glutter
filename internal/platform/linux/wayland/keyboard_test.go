@@ -225,7 +225,9 @@ func startKeyboardNoFocus(t *testing.T, cfg fakecomp.Config) *keyEnv {
 	go func() { e.done <- p.Run(ctx, e.h) }()
 	t.Cleanup(func() {
 		cancel()
-		<-e.done
+		if err := <-e.done; err != nil {
+			t.Errorf("Run returned %v", err)
+		}
 	})
 	waitUntil(t, func() bool { _, _, ok := srv.Mapped(); return ok }, "the window was never mapped")
 	e.surface = srv.ID("wl_surface")

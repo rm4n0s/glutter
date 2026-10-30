@@ -120,7 +120,9 @@ func startWindows(t *testing.T, fake fakecomp.Config, cfgs ...platform.WindowCon
 	t.Cleanup(func() {
 		cancel()
 		if !e.stopped {
-			<-done
+			if err := <-done; err != nil {
+				t.Errorf("Run returned %v", err)
+			}
 		}
 	})
 	return e

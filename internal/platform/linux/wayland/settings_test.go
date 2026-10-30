@@ -63,7 +63,9 @@ func TestSettingsComeFromThePortalAndFollowItsChanges(t *testing.T) {
 	go func() { done <- p.Run(ctx, h) }()
 	t.Cleanup(func() {
 		cancel()
-		<-done
+		if err := <-done; err != nil {
+			t.Errorf("Run returned %v", err)
+		}
 		p.settings.Stop()
 	})
 

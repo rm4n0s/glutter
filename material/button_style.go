@@ -29,7 +29,11 @@ type ButtonLayerBuilder func(bc widgets.BuildContext, states widgets.WidgetState
 //
 // Flutter: material/button_style.dart ButtonStyle
 type ButtonStyle struct {
-	// TextStyle is the style of the text of the button, in each state.
+	// TextStyle is the style of the text of the button, in each state. A button
+	// merges it onto the text style of its theme's style and of its defaults
+	// (TextStyle.Merge): a style that gives only a size or a weight keeps the font
+	// family and the rest of the default label style, and the label keeps the
+	// foreground color. A style whose Inherit is false replaces them, as in Flutter.
 	TextStyle widgets.WidgetStateProperty[*painting.TextStyle]
 	// BackgroundColor is the color of the Material of the button, in each state.
 	BackgroundColor widgets.WidgetStateProperty[foundation.Opt[ui.Color]]

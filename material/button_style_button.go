@@ -284,6 +284,33 @@ func buttonStyleNil[T comparable](styles [3]*ButtonStyle, states widgets.WidgetS
 	return zero
 }
 
+// buttonTextStyle is the style of the label in the states: the text style of the
+// defaults, merged with the one of the theme and then with the one of the widget
+// (TextStyle.Merge, so a style that does not inherit replaces those before it).
+//
+// Deviation: Flutter takes the first of the three that is not null, so a text style
+// that gives only a size or a weight loses the font family of the default label style,
+// and where the generic family has no font (the bundled fonts alone) the label is not
+// drawn (SPEC §12.10).
+func buttonTextStyle(styles [3]*ButtonStyle, states widgets.WidgetStates) *painting.TextStyle {
+	var out *painting.TextStyle
+	for i := len(styles) - 1; i >= 0; i-- {
+		st := styles[i]
+		if st == nil || st.TextStyle == nil {
+			continue
+		}
+		ts := st.TextStyle.Resolve(states)
+		switch {
+		case ts == nil:
+		case out == nil:
+			out = ts
+		default:
+			out = out.Merge(ts)
+		}
+	}
+	return out
+}
+
 // buttonStyleValue is the first value that the styles have of a property that is not
 // a widget state property.
 func buttonStyleValue[T any](styles [3]*ButtonStyle, get func(*ButtonStyle) foundation.Opt[T]) foundation.Opt[T] {
@@ -402,7 +429,7 @@ func (s *buttonStyleState) Build(bc widgets.BuildContext) widgets.Widget {
 	}
 
 	resolvedElevation := buttonStyleOpt(styles, states, func(st *ButtonStyle) widgets.WidgetStateProperty[foundation.Opt[float64]] { return st.Elevation })
-	resolvedTextStyle := buttonStyleNil(styles, states, func(st *ButtonStyle) widgets.WidgetStateProperty[*painting.TextStyle] { return st.TextStyle })
+	resolvedTextStyle := buttonTextStyle(styles, states)
 	resolvedBackgroundColor := buttonStyleOpt(styles, states, func(st *ButtonStyle) widgets.WidgetStateProperty[foundation.Opt[ui.Color]] { return st.BackgroundColor })
 	resolvedForegroundColor := buttonStyleOpt(styles, states, func(st *ButtonStyle) widgets.WidgetStateProperty[foundation.Opt[ui.Color]] { return st.ForegroundColor })
 	resolvedShadowColor := buttonStyleOpt(styles, states, func(st *ButtonStyle) widgets.WidgetStateProperty[foundation.Opt[ui.Color]] { return st.ShadowColor })

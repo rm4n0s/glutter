@@ -3,8 +3,10 @@
 package win32
 
 import (
+	"syscall"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/rm4n0s/errors"
 )
@@ -178,12 +180,28 @@ func TestInvalidHandlesFail(t *testing.T) {
 	}
 }
 
+// performanceCounter reads QueryPerformanceCounter, in seconds. The sleep is measured with it,
+// not with time.Now: under Wine Go's clock is the interrupt time of the shared user data, which
+// Wine updates in steps, so a Sleep of 20ms read from 10 to 26ms there (2026-10-30, Wine 11.20).
+func performanceCounter(t *testing.T) float64 {
+	t.Helper()
+	k32 := syscall.NewLazyDLL("kernel32.dll")
+	var count, freq int64
+	if r, _, err := syscall.SyscallN(k32.NewProc("QueryPerformanceFrequency").Addr(), uintptr(unsafe.Pointer(&freq))); r == 0 {
+		t.Fatalf("QueryPerformanceFrequency: %v", err)
+	}
+	if r, _, err := syscall.SyscallN(k32.NewProc("QueryPerformanceCounter").Addr(), uintptr(unsafe.Pointer(&count))); r == 0 {
+		t.Fatalf("QueryPerformanceCounter: %v", err)
+	}
+	return float64(count) / float64(freq)
+}
+
 func TestSleepAndTimeouts(t *testing.T) {
-	start := time.Now()
+	start := performanceCounter(t)
 	if err := Sleep(20 * time.Millisecond); err != nil {
 		t.Fatal(err)
 	}
-	if d := time.Since(start); d < 15*time.Millisecond {
+	if d := time.Duration((performanceCounter(t) - start) * float64(time.Second)); d < 15*time.Millisecond {
 		t.Errorf("Sleep(20ms) took %v", d)
 	}
 	tests := []struct {

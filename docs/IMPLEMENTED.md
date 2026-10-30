@@ -5038,3 +5038,24 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Manual checks:** none
 - **Deviations and follow-ups:**
   - **Not in 1.9.5:** `Focus.OnFocusChange(false)` when the widget leaves the tree; glyph sheets made by the GPU renderers.
+
+## 29.31 A button's text style merges with the label style (Emetos)
+
+- **Date:** 2026-10-30
+- **Branch:** fix/step-29.31-button-text-style-merge
+- **Summary:** Emetos's issue "ButtonStyle.TextStyle hides the label". A button's text style is now the text style of its defaults, merged with the one of its theme and then the one of the widget (`TextStyle.Merge`, each resolved in the states), and then given the foreground color. Flutter takes the first of the three.
+  - **Cause:** with Flutter's rule a `TextStyle` with only a size replaced `LabelLarge`, so the label had no font family and the engine fell back to the generic `sans-serif`. With the bundled fonts alone (`gluttertest`, an off-screen engine) that finds no font: the label was 0 wide and not drawn. With the system fonts it was drawn, in the system's sans-serif rather than the theme's font (checked with a system engine: a struct literal, a size and a weight all drew).
+  - **`Inherit` false** still replaces the label style, as `TextStyle.Merge` and Flutter do. A `painting.TextStyle` struct literal has `Inherit` false; `NewTextStyle` gives true.
+  - **Lint:** `golangci-lint` 2.15.0 (installed on 2026-10-29) reported four test cleanups that dropped the error of `Run` (`<-done`); they now report it, as the other platform tests do.
+  - **A Wine timing test:** `TestSleepAndTimeouts` failed in 2 runs of 3 (`Sleep(20ms) took 14ms`). By `QueryPerformanceCounter` Wine's `Sleep` lasted 20.1 to 21.0ms, but Go's clock under Wine (the interrupt time of the shared user data, like `GetTickCount64`, which Wine updates in steps) read 10 to 26ms. The test now measures with `QueryPerformanceCounter`, and passed 5 runs of 5.
+  - The plan gained steps 29.31 and 29.32 (release 1.9.6).
+- **Main files:** `material/button_style_button.go` (`buttonTextStyle`), `material/button_style.go` and `material/button_style_from.go` (doc comments), `material/button_test.go`, `docs/SPEC.md` (§12.10), `docs/IMPLEMENTATION.md`; `internal/platform/android/back_test.go`, `internal/platform/linux/wayland/{keyboard,settings,window}_test.go`, `internal/platform/windows/win32/kernel32_windows_test.go`.
+- **Tests (table-driven):**
+  - **`TestButtonTextStyleMergesWithTheLabelStyle`:** 9 rows with the bundled fonts alone. Filled, outlined and text buttons with a size, a weight, or a size and a foreground color on the button; a size, or a size and a weight, on the theme; a weight on the theme and a size on the button. Each label has the default family, the given size and weight, the foreground color and a width. 8 rows failed before the fix (the label was 0 wide). The ninth, a style whose `Inherit` is false, replaces the label style and passes either way.
+  - The existing button, theme and golden tests pass unchanged.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ (Linux, Windows amd64 and arm64, with and without `glutter_wine`) · go test -race ✅ (`internal/gpu/explicit` with `-timeout 60m`) · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck, apicheck, uintptrcheck ✅ · wasm build, vet and tests ✅ · check-android ✅ · Windows builds, vet, lint and test-windows ✅ · display tests: none
+- **Proof:** none
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - **Deviation:** Flutter takes the first text style (SPEC §12.10).
+  - **Emetos** can give its button styles a `TextStyle` again, and stop enlarging `TextTheme.LabelLarge`.

@@ -3202,3 +3202,32 @@ Flutter behaves the same way: `SliverMultiBoxAdaptorElement.performRebuild` sets
 **Tests:** none of its own.
 **Proof:** none.
 **Manual checks:** none.
+
+### 29.31 A button's text style merges with the label style (Emetos, 1.9.6)
+**Goal:** a `ButtonStyle.TextStyle` that gives a size or a weight (from `FilledButtonStyleFrom`, `OutlinedButtonStyleFrom`, `TextButtonStyleFrom`, on the button or on its theme) changes only that: the label keeps the font family and the rest of the default label style, and the foreground color.
+**Why:** Emetos found it (2026-10-30, "ButtonStyle.TextStyle hides the label"): a button whose style has a `TextStyle` draws its background and shape but no label, also with a `ForegroundColor`; without the `TextStyle` the label is drawn. Emetos sets `TextTheme.LabelLarge` to the larger size instead. As in Flutter, `ButtonStyleButton` takes the first text style of the widget, the theme and the defaults, so a style with only a size replaces `LabelLarge` and the label has no family. The engine then looks for the generic `sans-serif`; where that finds no font (the bundled fonts alone: `gluttertest`, an off-screen engine) the label is 0 wide and nothing is drawn. With the system fonts the label is drawn, but in the system's sans-serif rather than the theme's font.
+**Read:** SPEC §12.10; `material/button_style_button.go` (`buttonStyleNil`, the build), `material/button_style.go`, `material/button_style_from.go`, `painting/text_style.go` (`Merge`, `Inherit`), `internal/text/layout/engine.go` (`defaultFamily`).
+**Port from:** `material/button_style_button.dart` (the merge is Glutter's).
+**Files:** `material/button_style_button.go`, `material/button_style.go`, `material/button_style_from.go` (doc comments), `material/button_test.go`, SPEC §12.10; the lint fixes in `internal/platform/android/back_test.go` and `internal/platform/linux/wayland/{keyboard,settings,window}_test.go`; `internal/platform/windows/win32/kernel32_windows_test.go`.
+**Tasks:**
+1. The label's text style is the text style of the defaults, merged with the one of the theme and then the one of the widget, each resolved in the states (`TextStyle.Merge`, so a style whose `Inherit` is false still replaces the others, as in Flutter). The foreground color is applied after, as before.
+2. The doc comments of `ButtonStyle.TextStyle` and `ButtonStyleFromOpts.TextStyle` say so; a `// Deviation:` comment and a §12.10 row.
+3. `golangci-lint` 2.15.0 (installed on 2026-10-29) reports a receive from a `chan error` that drops the value (the cleanups of four platform tests that wait for `Run`): check the error, as the other platform tests do.
+4. `TestSleepAndTimeouts` (`internal/platform/windows/win32`) measures the sleep with `QueryPerformanceCounter`: under Wine Go's clock is the interrupt time of the shared user data, which Wine updates in steps, and a 20ms `Sleep` read 10 to 26ms.
+**Tests (table-driven):**
+- with the bundled fonts alone, the filled, outlined and text buttons with a size, a weight, or a size and a foreground color on the button, and a size or a weight on the theme (and one on each): the label has the default family, the given size and weight, the foreground color, and a width; these failed before the fix;
+- a style whose `Inherit` is false replaces the label style;
+- the existing button, theme and golden tests pass unchanged.
+**Proof:** none.
+**Manual checks:** none.
+
+### 29.32 Release 1.9.6 (Emetos)
+**Goal:** 1.9.6 is released with step 29.31.
+**Tasks:**
+1. SPEC: the version paragraph of §1 (a 1.9.6 sentence: a button's text style is merged with the default label style) and a "Scope of 1.9.6" paragraph next to the one of 1.9.5.
+2. `README.md`: "What is new in 1.9.6".
+3. The standard checks of rule 8, and `go run ./cmd/glutter-gen apicheck -allow cmd/glutter-gen/apicheck.allow`.
+4. Merge, tag `step-29.32` and `v1.9.6`, and publish: `git push --follow-tags origin main`, which takes steps 29.31 and 29.32 and their tags to GitHub. Check with `git ls-remote --tags origin`.
+**Tests:** none of its own.
+**Proof:** none.
+**Manual checks:** none.

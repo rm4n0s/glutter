@@ -52,7 +52,8 @@ type ButtonStyleFromOpts struct {
 	OverlayColor foundation.Opt[ui.Color]
 	// Elevation is the elevation of the button at rest.
 	Elevation foundation.Opt[float64]
-	// TextStyle is the style of the text of the button.
+	// TextStyle is the style of the text of the button, merged onto the default
+	// label style (see ButtonStyle.TextStyle).
 	TextStyle *painting.TextStyle
 	// Padding is the padding between the border of the button and its child.
 	Padding painting.EdgeInsetsGeometry
