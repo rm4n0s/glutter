@@ -85,12 +85,19 @@ func (c *fakeClock) advance(d time.Duration) {
 		if next == nil {
 			break
 		}
-		c.now = next.when
+		if next.when > c.now { // a handler may have moved the clock past it
+			c.now = next.when
+		}
 		next.live = false
 		next.fn()
 	}
-	c.now = target
+	if target > c.now { // a handler may have moved the clock past the target
+		c.now = target
+	}
 }
+
+// read is the clock as the keyboard reads the time.
+func (c *fakeClock) read() time.Duration { return c.now }
 
 // keyHandler records the key events.
 type keyHandler struct {
@@ -104,6 +111,8 @@ type keyHandler struct {
 	drops    []ui.DropEvent
 	dragEnds []ui.DragResult
 	answer   func(ui.DropEvent) ui.DropActions
+	// onKey, when set, runs for each key event on the UI thread, outside the lock.
+	onKey func(ui.KeyData)
 }
 
 func (h *keyHandler) OnDrop(e ui.DropEvent) ui.DropActions {
@@ -167,8 +176,18 @@ func (h *keyHandler) pointerBatches() [][]ui.PointerData {
 
 func (h *keyHandler) OnKey(d ui.KeyData) {
 	h.mu.Lock()
-	defer h.mu.Unlock()
 	h.keys = append(h.keys, d)
+	onKey := h.onKey
+	h.mu.Unlock()
+	if onKey != nil {
+		onKey(d)
+	}
+}
+
+func (h *keyHandler) setOnKey(f func(ui.KeyData)) {
+	h.mu.Lock()
+	h.onKey = f
+	h.mu.Unlock()
 }
 
 func (h *keyHandler) seen() []ui.KeyData {
@@ -215,6 +234,7 @@ func startKeyboardNoFocus(t *testing.T, cfg fakecomp.Config) *keyEnv {
 	hasKeyboard := p.keyboard != nil
 	if hasKeyboard {
 		p.keyboard.after = e.clock.after
+		p.keyboard.now = e.clock.read
 	}
 	if _, err := p.NewWindow(config640()); err != nil {
 		t.Fatal(err)
@@ -454,6 +474,70 @@ func TestKeyRepeatTiming(t *testing.T) {
 	checkEvents(t, e.release(keyA), want{up, 0x70004, 'a', "", false})
 	e.advance(time.Second)
 	checkEvents(t, e.events())
+}
+
+// TestKeyRepeatIsOnAFixedGrid checks that each repeat is timed from when it was
+// due (press + delay + n/rate), not from when the previous one was handled.
+func TestKeyRepeatIsOnAFixedGrid(t *testing.T) {
+	const period = 40 * time.Millisecond // 25 keys per second after 400 ms
+	ms := func(v ...int) []time.Duration {
+		out := make([]time.Duration, len(v))
+		for i, x := range v {
+			out[i] = time.Duration(x) * time.Millisecond
+		}
+		return out
+	}
+	tests := []struct {
+		name string
+		// cost is the time the handler takes for the repeat with that index.
+		cost  map[int]time.Duration
+		until time.Duration
+		want  []time.Duration // the time at which each repeat is handled
+	}{
+		{"on time", nil, 600 * time.Millisecond, ms(400, 440, 480, 520, 560, 600)},
+		{
+			"a handler that takes half a period does not move the later repeats",
+			map[int]time.Duration{0: period / 2, 1: period / 2, 2: period / 2},
+			600 * time.Millisecond, ms(400, 440, 480, 520, 560, 600),
+		},
+		{
+			"a handler that takes 2.5 periods skips the missed repeats and sends no burst",
+			map[int]time.Duration{1: 5 * period / 2},
+			720 * time.Millisecond, ms(400, 440, 560, 600, 640, 680, 720),
+		},
+		{
+			"a handler that takes exactly a period skips the repeat that was due meanwhile",
+			map[int]time.Duration{0: period},
+			520 * time.Millisecond, ms(400, 480, 520),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := startKeyboard(t, "us")
+			e.srv.KeyboardRepeatInfo(25, 400)
+			e.settle()
+			var got []time.Duration // read and written on the UI thread
+			e.h.setOnKey(func(d ui.KeyData) {
+				if d.Type != ui.KeyEventTypeRepeat {
+					return
+				}
+				got = append(got, e.clock.now)
+				e.clock.now += tt.cost[len(got)-1] // the handler is slow
+			})
+			checkEvents(t, e.press(keyA), want{down, 0x70004, 'a', "a", false})
+			e.advance(tt.until)
+			var res []time.Duration
+			e.onLoop(func() bool { res = append(res, got...); return true })
+			if len(res) != len(tt.want) {
+				t.Fatalf("repeats at %v, want %v", res, tt.want)
+			}
+			for i := range res {
+				if res[i] != tt.want[i] {
+					t.Fatalf("repeats at %v, want %v", res, tt.want)
+				}
+			}
+		})
+	}
 }
 
 func TestKeyRepeatEndsWhenAnotherKeyIsPressed(t *testing.T) {

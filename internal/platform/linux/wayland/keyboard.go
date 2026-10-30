@@ -46,8 +46,10 @@ type keyboard struct {
 	rate, delay int32
 	repeat      *repeating
 
-	// after schedules fn on the UI thread; tests replace it with a fake clock.
+	// after schedules fn on the UI thread; now is the clock that the repeats are
+	// timed by. Tests replace both with a fake clock.
 	after func(d time.Duration, fn func()) (stop func())
+	now   func() time.Duration
 
 	// log is where the keyboard reports; tests replace it to capture the entries.
 	log *slog.Logger
@@ -59,10 +61,14 @@ type pressedKey struct {
 }
 
 // repeating is the key that repeats, with the function that cancels its timer.
+// due is the time (on the keyboard's clock) at which the next repeat is due: the
+// repeats are on a fixed grid, press + delay + n/rate, whatever the delay in
+// handling each of them.
 type repeating struct {
 	evdev uint32
 	data  ui.KeyData
 	stop  func()
+	due   time.Duration
 }
 
 func newKeyboard(p *Platform) *keyboard {
@@ -71,6 +77,7 @@ func newKeyboard(p *Platform) *keyboard {
 		rate:  defaultRepeatRate,
 		delay: defaultRepeatDelay,
 		after: p.afterFunc,
+		now:   p.now,
 		log:   slog.Default(),
 	}
 	k.obj = p.sess.seat.GetKeyboard()
@@ -297,8 +304,9 @@ func (k *keyboard) press(evdev uint32) {
 	// Pressing another key ends the repeat of the previous one.
 	k.cancelRepeat()
 	if key.Repeats && k.rate > 0 {
-		r := &repeating{evdev: evdev, data: data}
-		r.stop = k.after(time.Duration(k.delay)*time.Millisecond, func() { k.fireRepeat(r) })
+		delay := time.Duration(k.delay) * time.Millisecond
+		r := &repeating{evdev: evdev, data: data, due: k.now() + delay}
+		r.stop = k.after(delay, func() { k.fireRepeat(r) })
 		k.repeat = r
 	}
 }
@@ -320,7 +328,11 @@ func (k *keyboard) release(evdev uint32) {
 	k.route(evdev, up)
 }
 
-// fireRepeat sends one repeat event and schedules the next.
+// fireRepeat sends one repeat event and schedules the next for its due time,
+// not for one period after this one ran, so a late repeat does not delay the
+// ones after it. When the handler is a full period late or more, the repeats
+// that were due in the meantime are skipped (never sent in a burst) and the next
+// is the first one still to come.
 func (k *keyboard) fireRepeat(r *repeating) {
 	if k.repeat != r || k.rate <= 0 {
 		return
@@ -329,10 +341,19 @@ func (k *keyboard) fireRepeat(r *repeating) {
 	data.TimeStamp = k.p.now()
 	data.Type = ui.KeyEventTypeRepeat
 	k.route(r.evdev, data)
-	// deliver may have ended this repeat (the handler closed the window).
-	if k.repeat == r {
-		r.stop = k.after(time.Second/time.Duration(k.rate), func() { k.fireRepeat(r) })
+	// deliver may have ended this repeat (the handler closed the window), or
+	// changed its rate.
+	if k.repeat != r || k.rate <= 0 {
+		return
 	}
+	now := k.now() // after the handler: its time counts
+	period := time.Second / time.Duration(k.rate)
+	r.due += period
+	if r.due <= now {
+		// A full period late or more: skip to the first due time after now.
+		r.due += (now-r.due)/period*period + period
+	}
+	r.stop = k.after(r.due-now, func() { k.fireRepeat(r) })
 }
 
 func (k *keyboard) cancelRepeat() {

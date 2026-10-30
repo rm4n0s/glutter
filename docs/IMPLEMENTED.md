@@ -5092,3 +5092,17 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Proof:** none
 - **Manual checks:** none
 - **Deviations and follow-ups:** none (Flutter's engine dispatches input outside frames, so it has no such request).
+
+## 29.34 Key repeat at a fixed rate (Emetos)
+
+- **Date:** 2026-10-30
+- **Branch:** fix/step-29.34-key-repeat-rate
+- **Summary:** Emetos's sixth issues list, "key repeat drifts". The Wayland backend makes the repeats itself, and `fireRepeat` scheduled each one a period after the previous one ran, so every delay in handling a repeat was added to the next. X11, Windows, the web and Android take the system's repeats.
+  - **How:** `repeating.due` is the time the next repeat is due on the keyboard's clock (`keyboard.now`, `p.now` by default): `press` sets it to now plus the delay, and `fireRepeat`, after the handler (its time counts), adds a period and schedules the repeat for `due - now`. When the handler is a full period late or more, `due` moves to the first point of the grid after now, so the missed repeats are skipped and none is sent in a burst. A new key, a release, the focus lost, `repeat_info`, no keymap and a closed window stop or restart the repeat as before.
+  - **A racy test fixed:** `TestOutputsComeAndGo` checked the compositor's request log as soon as `Displays` had shrunk, but the `wl_output.release` reaches the fake compositor's goroutine after that; under load it failed (in the checks of 29.33 and 29.36, and once for this step's worker). It now waits for the release; it passed 20 runs in a row under `-race`.
+- **Main files:** `internal/platform/linux/wayland/keyboard.go`, `keyboard_test.go`, `outputs_test.go`, `docs/SPEC.md` (§8.4).
+- **Tests (table-driven):** `TestKeyRepeatIsOnAFixedGrid` (25 keys a second after 400 ms): on time (400, 440, 480, 520, 560, 600 ms), a handler that takes half a period (the same grid), one that takes 2.5 periods on the second repeat (400, 440, 560, 600, 640, 680, 720 ms: the missed ones skipped, no burst), and one that takes exactly a period (400, 480, 520 ms). With the old scheduling the half-period and 2.5-period cases failed (`[400 460 520 580]` and `[400 440 580 620 660 700]`). The fake clock never goes back, and a handler can move it.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ (Linux, Windows amd64 and arm64, with and without `glutter_wine`) · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck, apicheck, uintptrcheck ✅ · wasm build, vet and tests ✅ · check-android ✅ · Windows builds, vet and test-windows ✅ · display tests ✅ (`internal/platform/linux/wayland` with `glutter_display` under `scripts/headless-wayland.sh`; a first run failed `TestRunTwiceFails` because its `t.TempDir` parent vanished from `/tmp` while other programs ran tests, and two reruns passed). The lints first collided with a second check run of 29.35 ("parallel golangci-lint is running") and were run again alone. Everything through `.claude/no-nvidia.sh`.
+- **Proof:** none
+- **Manual checks:** none
+- **Deviations and follow-ups:** none (Flutter's GTK embedder leaves the repeat to GTK).

@@ -86,9 +86,8 @@ func TestOutputsComeAndGo(t *testing.T) {
 	if got := e.h.lastDisplays()[0]; got.ID != 2 || !got.Primary {
 		t.Errorf("displays after the unplug = %+v", got)
 	}
-	if len(e.srv.RequestsWith("wl_output.release")) != 1 {
-		t.Errorf("the removed output was not released: %v", e.srv.RequestsWith("wl_output"))
-	}
+	// The release reaches the compositor's goroutine after Displays changed: wait for it.
+	waitUntil(t, func() bool { return len(e.srv.RequestsWith("wl_output.release")) == 1 }, "the removed output was not released")
 }
 
 func TestTheViewMetricsNameTheDisplayOfTheWindow(t *testing.T) {
