@@ -99,6 +99,10 @@ type EditableTextState struct {
 	tickersEnabled      bool
 	justResumed         bool
 
+	// rangeOffset is the offset that the render object has, made once for each
+	// scroll position (a new one each build would change the listeners).
+	rangeOffset *rangeKeepingOffset
+
 	lastKnownRemoteValue   foundation.Opt[services.TextEditingValue]
 	batchEditDepth         int
 	hadFocusOnTapDown      bool
@@ -928,6 +932,9 @@ func (s *EditableTextState) buildEditable(bc BuildContext, offset rendering.View
 	if clip == ui.ClipUnspecified {
 		clip = ui.ClipHardEdge
 	}
+	if s.rangeOffset == nil || s.rangeOffset.ViewportOffset != offset {
+		s.rangeOffset = &rangeKeepingOffset{ViewportOffset: offset}
+	}
 	e := &editableRender{
 		inlineSpan: s.BuildTextSpan(), value: s.value(), cursorColor: foundation.Some(s.cursorColor()),
 		startHandleLayerLink: s.startHandleLink, endHandleLayerLink: s.endHandleLink,
@@ -935,7 +942,7 @@ func (s *EditableTextState) buildEditable(bc BuildContext, offset rendering.View
 		forceLine: !w.o.DisableForceLine, readOnly: w.o.ReadOnly, hasFocus: s.hasFocus(), maxLines: w.o.MaxLines, minLines: w.o.MinLines,
 		expands: w.o.Expands, strutStyle: w.strutStyle, selectionColor: selectionColor, textScaler: textScaler, textAlign: w.o.TextAlign,
 		textDirection: s.textDirection(), locale: w.o.Locale, obscuringCharacter: w.o.ObscuringCharacter, obscureText: w.o.ObscureText,
-		textHeightBehavior: heightBehavior, textWidthBasis: basis, offset: offset, rendererIgnoresPointer: w.o.RendererIgnoresPointer,
+		textHeightBehavior: heightBehavior, textWidthBasis: basis, offset: s.rangeOffset, rendererIgnoresPointer: w.o.RendererIgnoresPointer,
 		cursorWidth: w.o.CursorWidth.OrElse(2.0), cursorHeight: w.o.CursorHeight, cursorRadius: w.o.CursorRadius, cursorOffset: cursorOffset,
 		paintCursorAboveText: w.o.PaintCursorAboveText, selectionHeightStyle: w.selectionHeightStyle, selectionWidthStyle: w.selectionWidthStyle,
 		enableInteractiveSel: w.userSelectionEnabled(), textSelectionDelegate: s, devicePixelRatio: dpr,

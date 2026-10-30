@@ -5127,3 +5127,18 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - **Deviation:** Flutter's clipboard has text only (SPEC §12.10); Android's text for HTML alone (SPEC §24.6).
   - **Not done:** UTF-16 `text/html` from programs that offer it so on Wayland and X11 (read as UTF-8 only).
   - **Emetos** can put its terminal's output as HTML with `ClipboardData{Text: ..., HTML: ...}`.
+
+## 29.36 A text field scrolled past its end is corrected in the same layout (Emetos)
+
+- **Date:** 2026-10-30
+- **Branch:** fix/step-29.36-text-field-scroll-range
+- **Summary:** Emetos's sixth issues list, "a text field stays scrolled out of range for about a second after its text gets shorter".
+  - **Finding:** Glutter does what Flutter does (`editable_text.dart`, `editable.dart`, `scroll_position.dart`, `scroll_physics.dart` compared line by line; Flutter was read, not run). `RangeMaintainingScrollPhysics.adjustPositionForNewDimensions` compares with the metrics of the last layout, and a field that scrolled to its caret (`AnimateTo`, `JumpTo`) has moved since, so the physics keep the pixels past the new end; `ApplyNewDimensions` then goes ballistic and the clamping spring pulls the field back over about a second. Measured before the fix: a single line replaced by the controller at 2561.98 with a maximum of 0, then 1559, 687, 283, 115, 46; three lines at 208, then 126, 55, 23, 9; a held Backspace kept 2558.5 while the maximum fell from 2558 to 2481.
+  - **How:** `EditableText` gives its `RenderEditable` a wrapper of its scroll position, `rangeKeepingOffset`, made once for each position. Its `ApplyContentDimensions` calls `CorrectBy` to bring idle pixels that are past the new end to it, then gives the dimensions on; a drag or a fling (its user scroll direction is not idle) is left alone. `RenderEditable` and `ScrollPosition` are unchanged: a first version in `RenderEditable.PerformLayout` broke two rendering tests that use a fixed offset past the end on purpose.
+- **Main files:** `widgets/editable_text_scroll_range.go`, `widgets/editable_text_state.go`, `widgets/editable_text_scroll_range_test.go`, `docs/SPEC.md` (§12.10).
+- **Tests (table-driven):** `TestEditableTextOffsetIsInRangeAfterTheTextGetsShorter` (6 cases: one and three lines, the text replaced by the controller, Backspace held for 12 or 30 frames, a field not scrolled; the pixels are in range in every frame and for 10 more frames of 100 ms) and `TestEditableTextOffsetOfADragIsNotCutShort` (2 cases: a drag past the end with bouncing physics keeps its pixels when the text shrinks under the finger). With the correction turned off, the two controller cases and the single-line Backspace case failed; the others pass either way, as guards.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ (Linux, Windows amd64 and arm64, with and without `glutter_wine`) · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ (but `TestOutputsComeAndGo`, the racy test that step 29.34 fixed) · errcheck, apicheck, uintptrcheck ✅ · wasm build, vet and tests ✅ · check-android ✅ · Windows builds, vet and test-windows ✅ · display tests: none. The full checks ran on the step's first base (before 29.33 to 29.35); the release step runs every suite again on the merged code. Everything through `.claude/no-nvidia.sh`.
+- **Proof:** none
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - **Deviation:** Flutter keeps the out-of-range pixels and springs back (SPEC §12.10).
