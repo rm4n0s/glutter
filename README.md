@@ -198,6 +198,8 @@ func startView(parent *m.WidgetsBinding, root m.Widget, send func(pixels []byte,
 }
 ```
 
+**What is new in 1.9.6.** A fix for Emetos: a button's `TextStyle` (from `FilledButtonStyleFrom`, `OutlinedButtonStyleFrom` or `TextButtonStyleFrom`, on the button or its theme) is merged with the default label style. A style that gives only a size or a weight keeps the theme's font and the foreground color; before, the label could vanish.
+
 **What is new in 1.9.5.** Two more for Emetos:
 - **Focus:** a focus node that leaves the tree while it has the focus tells its listeners, once, that it lost it. Give a `Focus` a `FocusNode` you own and listen to it to know when a focused widget went away.
 - **Glyphs:** `PlatformDispatcher.FontMetrics(style)` measures a font (ascent, descent, line height, the width of "0") without a paragraph, and `offscreen.NewGlyphSheet` rasterizes glyphs into one image with each glyph's place and metrics, for a grid drawn with a single `DrawAtlas` (a terminal, for example).

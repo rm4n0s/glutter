@@ -5059,3 +5059,19 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Deviations and follow-ups:**
   - **Deviation:** Flutter takes the first text style (SPEC §12.10).
   - **Emetos** can give its button styles a `TextStyle` again, and stop enlarging `TextTheme.LabelLarge`.
+
+## 29.32 Release 1.9.6 (Emetos)
+
+- **Date:** 2026-10-30
+- **Branch:** feat/step-29.32-release-1.9.6
+- **Summary:** 1.9.6 is released with step 29.31, the fix of Emetos's issue "ButtonStyle.TextStyle hides the label" (2026-10-30).
+  - **SPEC §1:** a 1.9.6 sentence, and a "Scope of 1.9.6" paragraph after the one of 1.9.5.
+  - **`README.md`:** "What is new in 1.9.6".
+  - **Publishing:** tags `step-29.32` and `v1.9.6`. `main` was pushed with the step tags of 29.31 and 29.32 (`git push --follow-tags origin main`).
+  - **The machine:** before 29.31 could finish, Node.js, the Android SDK and NDK, and `ANDROID_HOME` were installed; `docs/FEDORA-SETUP.md` (on its own branch) lists what a Fedora machine needs.
+- **Main files:** `docs/SPEC.md` (§1), `README.md`.
+- **Tests:** none of its own.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ · go test -race ✅ · CGO_ENABLED=0 build ✅ · CGO_ENABLED=0 test ✅ · errcheck, apicheck, uintptrcheck ✅ · wasm build, vet and tests ✅ · check-android ✅ · Windows builds, vet, lint and test-windows ✅ · display tests: none (the code is that of 29.31; the release changes only documents, and the documents' tests were run again)
+- **Proof:** none
+- **Manual checks:** none
+- **Deviations and follow-ups:** none
