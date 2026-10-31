@@ -477,7 +477,11 @@ func TestListViewItemExtentBuilder(t *testing.T) {
 		controller.JumpTo(c.jump)
 		ts.Pump()
 		expectTexts(t, ts, []string{fmt.Sprintf("Item %d", c.first), fmt.Sprintf("Item %d", c.last)}, []string{c.notBefore, c.notAfter})
-		if dims.ScrollOffset != c.jump || dims.ViewportMainAxisExtent != 600 || dims.CrossAxisExtent != 800 {
+		// Deviation: Flutter asks the builder again in each layout, so it sees each new
+		// ScrollOffset; Glutter keeps the extents until the widget is rebuilt or the viewport,
+		// cross axis or child count change (step 29.40, SPEC §12.10), so a jump asks only for
+		// the rows not asked before, with the dimensions of the layout that first needed them.
+		if dims.ViewportMainAxisExtent != 600 || dims.CrossAxisExtent != 800 {
 			t.Errorf("jump %v: dimensions = %v", c.jump, dims)
 		}
 		if n, lo, hi := minMax(); n != c.count || lo != c.minBuilt || hi != c.maxBuilt {

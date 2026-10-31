@@ -413,6 +413,11 @@ type TreeSliverOpts[T any] struct {
 // CustomScrollView. A TreeSliverController does the toggling from code, and TreeSliverWrapChildToToggleNode
 // makes a widget that toggles its node when it is tapped.
 //
+// Deviation: the sliver keeps the extents of its rows (the ItemExtentBuilder) and their running sums,
+// so the builder is asked at most once for each row until the tree is rebuilt or the viewport extent,
+// the cross axis extent or the number of rows change: it must give the same extents until then, and
+// not depend on the scroll offset or the preceding scroll extent of its dimensions (SPEC §11.4, §12.10).
+//
 // Flutter: widgets/sliver_tree.dart TreeSliver
 type TreeSliver[T any] struct {
 	StatefulWidget

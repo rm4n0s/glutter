@@ -47,6 +47,9 @@ type RenderSliverFixedExtentBoxAdaptor struct {
 	RenderSliverMultiBoxAdaptor
 
 	currentLayoutDimensions foundation.Opt[SliverLayoutDimensions]
+	// sums are the running sums of the extents of a sliver whose extents come from a
+	// builder and that supports them (extentSummer); see extent_sums.
+	sums extentSums
 }
 
 // InitRenderSliverFixedExtentBoxAdaptor sets the outer object, which must have
@@ -75,6 +78,13 @@ func (a *RenderSliverFixedExtentBoxAdaptor) IndexToLayoutOffset(index int) float
 	builder := a.hooks().ItemExtentBuilder()
 	if builder == nil {
 		return a.fixedItemExtent() * float64(index)
+	}
+	if a.sumsEnabled() {
+		limit := index
+		if childCount, ok := a.childManager.EstimatedChildCount().Get(); ok {
+			limit = min(limit, childCount)
+		}
+		return a.prefixSum(limit)
 	}
 	offset := 0.0
 	for i := 0; i < index; i++ {
@@ -140,8 +150,16 @@ func (a *RenderSliverFixedExtentBoxAdaptor) GetMaxChildIndexForScrollOffset(scro
 
 // EstimateMaxScrollOffset asks the child manager for the estimate.
 //
+// Deviation: a RenderSliverVariedExtentList whose child count is known and whose builder
+// gives the extent of every child reports the total of the extents, not the estimate of
+// the child manager, so that a jump to the end lands on the last child (SPEC §11.4,
+// §12.10).
+//
 // Flutter: rendering/sliver_fixed_extent_list.dart RenderSliverFixedExtentBoxAdaptor.estimateMaxScrollOffset
 func (a *RenderSliverFixedExtentBoxAdaptor) EstimateMaxScrollOffset(constraints SliverConstraints, opts EstimateMaxScrollOffsetOpts) float64 {
+	if total, ok := a.exactMaxScrollOffset(); ok {
+		return total
+	}
 	return a.childManager.EstimateMaxScrollOffset(constraints, opts)
 }
 
@@ -157,6 +175,9 @@ func (a *RenderSliverFixedExtentBoxAdaptor) ComputeMaxScrollOffset(constraints S
 	if builder == nil {
 		return float64(a.childManager.ChildCount()) * a.fixedItemExtent()
 	}
+	if a.sumsEnabled() {
+		return a.prefixSum(a.childManager.ChildCount())
+	}
 	offset := 0.0
 	for i := 0; i < a.childManager.ChildCount(); i++ {
 		extent, ok := builder(i, a.LayoutDimensions()).Get()
@@ -171,6 +192,9 @@ func (a *RenderSliverFixedExtentBoxAdaptor) ComputeMaxScrollOffset(constraints S
 func (a *RenderSliverFixedExtentBoxAdaptor) getChildIndexForScrollOffset(scrollOffset float64, callback ItemExtentBuilder) int {
 	if scrollOffset == 0 {
 		return 0
+	}
+	if a.sumsEnabled() {
+		return a.childIndexAtSum(scrollOffset)
 	}
 	position := 0.0
 	index := 0
@@ -189,12 +213,7 @@ func (a *RenderSliverFixedExtentBoxAdaptor) getChildIndexForScrollOffset(scrollO
 }
 
 func (a *RenderSliverFixedExtentBoxAdaptor) getChildConstraints(index int) BoxConstraints {
-	var extent float64
-	if builder := a.hooks().ItemExtentBuilder(); builder == nil {
-		extent = a.fixedItemExtent()
-	} else {
-		extent = builder(index, a.LayoutDimensions()).Value()
-	}
+	extent := a.extentOf(index)
 	return a.SliverConstraints().AsBoxConstraints(AsBoxConstraintsOpts{MinExtent: extent, MaxExtent: foundation.Some(extent)})
 }
 
@@ -223,11 +242,7 @@ func (a *RenderSliverFixedExtentBoxAdaptor) dimensionsOfConstraints() SliverLayo
 //
 // Flutter: rendering/sliver_fixed_extent_list.dart RenderSliverFixedExtentBoxAdaptor.paintExtentOf
 func (a *RenderSliverFixedExtentBoxAdaptor) PaintExtentOf(child Box) float64 {
-	builder := a.hooks().ItemExtentBuilder()
-	if builder == nil {
-		return a.fixedItemExtent()
-	}
-	return builder(a.IndexOf(child), a.LayoutDimensions()).Value()
+	return a.extentOf(a.IndexOf(child))
 }
 
 // DebugAssertDoesMeetConstraints also checks that the scroll extent is a multiple
@@ -451,6 +466,15 @@ func (r *RenderSliverFixedExtentList) SetItemExtent(value float64) {
 // RenderSliverVariedExtentList is a sliver that places multiple box children,
 // whose main axis extents the builder gives, in a linear array.
 //
+// Deviation: the sliver keeps the extents and their running sums, made lazily and
+// dropped when the builder is set, the viewport extent or the cross axis extent of the
+// layout dimensions change, or the estimated child count changes. The builder must give
+// the same extents until then (it is not asked again for a row), and its extents must
+// not depend on the scroll offset or the preceding scroll extent. With them the layout
+// offset of a row is a read, the child at a scroll offset a binary search, and, when the
+// child count is known and the builder gives every extent, the scroll extent is the
+// total of the extents and not the child manager's estimate (SPEC §11.4, §12.10).
+//
 // Flutter: rendering/sliver_fixed_extent_list.dart RenderSliverVariedExtentList
 type RenderSliverVariedExtentList struct {
 	RenderSliverFixedExtentBoxAdaptor
@@ -476,11 +500,23 @@ func (r *RenderSliverVariedExtentList) ItemExtentBuilder() ItemExtentBuilder {
 // SetItemExtentBuilder changes the builder and marks the sliver as needing
 // layout. Go can not compare functions, so it always does.
 //
+// Deviation: it also drops the running sums of the extents, which the sliver keeps
+// until the builder is set again, the layout dimensions or the child count change; the
+// builder must give the same extents until then (SPEC §12.10).
+//
 // Flutter: rendering/sliver_fixed_extent_list.dart RenderSliverVariedExtentList.itemExtentBuilder
 func (r *RenderSliverVariedExtentList) SetItemExtentBuilder(value ItemExtentBuilder) {
 	r.itemExtentBuilder = value
+	r.dropExtentSums()
 	r.MarkNeedsLayout()
 }
+
+// usesExtentSums makes the sliver keep the running sums of its extents.
+func (r *RenderSliverVariedExtentList) usesExtentSums() {}
+
+// exactScrollExtent makes the sliver report the total of its extents as its scroll
+// extent when it can.
+func (r *RenderSliverVariedExtentList) exactScrollExtent() {}
 
 // ItemExtent is none.
 //

@@ -3323,3 +3323,29 @@ Flutter behaves the same way: `SliverMultiBoxAdaptorElement.performRebuild` sets
 **Tests:** none of its own.
 **Proof:** none.
 **Manual checks:** none.
+
+### 29.40 A varied extent list finds its rows without adding up every row (Emetos, 1.9.9)
+**Goal:** `SliverVariedExtentList` and `TreeSliver` find the offset of a row in constant time and the row at an offset with a binary search, and report their exact scroll extent, so that a list of 100,000 rows of different heights jumps to its end in one cheap frame and lands on the last row.
+**Why:** Emetos found it (2026-10-31, "SliverVariedExtentList is linear in the number of rows", in its step 24.4). `RenderSliverFixedExtentBoxAdaptor` (`rendering/sliver_fixed_extent_list.go`) adds up the builder's extents from row 0 in `IndexToLayoutOffset` (once for each child laid out), `GetMinChildIndexForScrollOffset`, `GetMaxChildIndexForScrollOffset` and `ComputeMaxScrollOffset`, and `RenderTreeSliver` (`rendering/sliver_tree.go`) does the same in its overrides: a frame that jumps to the end of 100,000 rows takes 40 to 60 ms. The scroll extent is the child manager's estimate until the last row is laid out, so a jump to the end stops short of it. Flutter does the same (`sliver_fixed_extent_list.dart`, `sliver_tree.dart`). Emetos works around it with its own sliver (`FixedExtentLayoutOverrides` answered from its model's row tops). The owner chose (2026-10-31) a cache in the render objects, with no new API, over an API through which the owner gives the row tops.
+**Read:** SPEC §11.4 (lists), §12.10; `rendering/sliver_fixed_extent_list.go`, `rendering/sliver_tree.go`, `rendering/sliver_multi_box_adaptor.go` (the layout that calls them), `widgets/sliver.go` (`SliverVariedExtentList`, `EstimateMaxScrollOffset`), `widgets/sliver_tree.go`; Flutter's `rendering/sliver_fixed_extent_list.dart` (`performLayout`, the estimate), `rendering/sliver_tree.dart`.
+**Port from:** none (a deviation from the files above).
+**Files:** `rendering/sliver_fixed_extent_list.go`, `rendering/sliver_tree.go`, their tests, SPEC §11.4 and §12.10, the doc comments of `ItemExtentBuilder`, `SliverVariedExtentList` and `TreeSliver`.
+**Tasks:**
+1. The varied extent list keeps the running sums of the extents, filled lazily up to the highest row a layout asks for (the whole list when the extent is needed). It drops them when the builder is set (each rebuild of the widget), when the layout dimensions change, and when the child count changes. `IndexToLayoutOffset` reads them; the index at a scroll offset is a binary search; `ComputeMaxScrollOffset` is their total. A builder that gives no extent (none) ends the list there, as now.
+2. The scroll extent is exact: when the child count is known and the builder gives every extent, the sliver reports the total instead of the child manager's estimate, so a jump to the end lands on the last row.
+3. `TreeSliver`: the same sums, with the space of the running animations added (they are few: their offsets are kept per animating row), so its lookups are not linear in the rows either.
+4. The rule, in the doc comments and SPEC §12.10 (a deviation: Flutter adds up the extents each time and estimates the scroll extent): the builder gives the same extents until the widget is rebuilt (or the layout dimensions or the child count change).
+**Tests (table-driven):** the offsets, the rows at offsets (on a boundary, inside a row, past the end, with rows of 0 extent) and the scroll extent equal those of the old adding up for lists of fixed, alternating and random extents; the builder is called at most once for each row between two rebuilds (a counting builder over many frames of scrolling); a new builder, new dimensions and a new child count are taken; a builder that gives none part way; a jump to the end of 100,000 rows lands on the last row in one frame; `TreeSliver` with an expanding and a collapsing node during its animation; a benchmark of a jump to the end of 100,000 rows (before and after in the `IMPLEMENTED.md` entry); the existing sliver, list, tree and carousel tests pass.
+**Proof:** none.
+**Manual checks:** none.
+
+### 29.41 Release 1.9.9 (Emetos)
+**Goal:** 1.9.9 is released with step 29.40.
+**Tasks:**
+1. SPEC: the version paragraph of §1 (a 1.9.9 sentence) and a "Scope of 1.9.9" paragraph next to the one of 1.9.8.
+2. `README.md`: "What is new in 1.9.9".
+3. The standard checks of rule 8, `apicheck` and `uintptrcheck`.
+4. Merge, tag `step-29.41` and `v1.9.9`, and publish: `git push --follow-tags origin main`, which takes steps 29.40 and 29.41 and their tags to GitHub. Check with `git ls-remote --tags origin`.
+**Tests:** none of its own.
+**Proof:** none.
+**Manual checks:** none.

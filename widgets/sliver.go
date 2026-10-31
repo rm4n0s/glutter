@@ -423,6 +423,14 @@ func (w *SliverFixedExtentList) UpdateRenderObject(_ BuildContext, renderObject 
 // SliverVariedExtentList is a sliver that places box children with the extents
 // that a function gives, in a linear array.
 //
+// Deviation: the sliver keeps the extents the function gives and their running sums,
+// so the function is asked at most once for each row until the widget is rebuilt or the
+// viewport extent, the cross axis extent or the child count change: it must give the
+// same extents until then, and not depend on the scroll offset or the preceding scroll
+// extent of its dimensions. A jump to the end of a long list is cheap, and, when the
+// child count is known and the function gives every extent, the scroll extent is their
+// total (SPEC §11.4, §12.10).
+//
 // Flutter: widgets/sliver.dart SliverVariedExtentList
 type SliverVariedExtentList struct {
 	SliverMultiBoxAdaptorWidget
@@ -479,7 +487,7 @@ func (w *SliverVariedExtentList) CreateRenderObject(bc BuildContext) rendering.R
 	return rendering.NewRenderSliverVariedExtentList(bc.(rendering.RenderSliverBoxChildManager), w.itemExtentBuilder)
 }
 
-// UpdateRenderObject sets the extent builder.
+// UpdateRenderObject sets the extent builder, which drops the sums of the extents.
 //
 // Flutter: widgets/sliver.dart SliverVariedExtentList.updateRenderObject
 func (w *SliverVariedExtentList) UpdateRenderObject(_ BuildContext, renderObject rendering.RenderObject) {

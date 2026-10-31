@@ -2,6 +2,7 @@ package rendering
 
 import (
 	"slices"
+	"sort"
 
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/foundation"
@@ -70,6 +71,12 @@ func TreeSliverIndentationTypeCustom(value float64) TreeSliverIndentationType {
 // Go has no virtual dispatch from an embedded base to the outer type (SPEC §12.10); the extents come from
 // the same builder.
 //
+// Deviation: like RenderSliverVariedExtentList, the sliver keeps the extents of the builder and their
+// running sums, dropped when the builder is set, the viewport extent or the cross axis extent of the layout
+// dimensions change, or the estimated child count changes; the builder must give the same extents until
+// then and not depend on the scroll offset or the preceding scroll extent. The space of the running animations
+// is added to the sums when a row or an index is looked up (SPEC §11.4, §12.10).
+//
 // Flutter: rendering/sliver_tree.dart RenderTreeSliver
 type RenderTreeSliver struct {
 	RenderSliverFixedExtentBoxAdaptor
@@ -82,6 +89,10 @@ type RenderTreeSliver struct {
 	// animationOffsets maps the key of an animation to the fixed distance that it covers, which is
 	// worked out when it starts.
 	animationOffsets map[*foundation.UniqueKey]float64
+	// animationIndices are the keys of animationLeadingIndices, in ascending order, so that
+	// the lookups read the animations that start before an index without a walk over all
+	// the rows.
+	animationIndices []int
 	clipHandles      map[*foundation.UniqueKey]*LayerHandle[*ClipRectLayer]
 }
 
@@ -118,11 +129,19 @@ func (r *RenderTreeSliver) ItemExtentBuilder() ItemExtentBuilder { return r.item
 // SetItemExtentBuilder changes the builder and marks the sliver as needing layout. Go can
 // not compare functions, so it always does.
 //
+// Deviation: it also drops the running sums of the extents, which the sliver keeps
+// until the builder is set again, the layout dimensions or the child count change; the
+// builder must give the same extents until then (SPEC §12.10).
+//
 // Flutter: rendering/sliver_fixed_extent_list.dart RenderSliverVariedExtentList.itemExtentBuilder
 func (r *RenderTreeSliver) SetItemExtentBuilder(value ItemExtentBuilder) {
 	r.itemExtentBuilder = value
+	r.dropExtentSums()
 	r.MarkNeedsLayout()
 }
+
+// usesExtentSums makes the sliver read its extents from the running sums.
+func (r *RenderTreeSliver) usesExtentSums() {}
 
 // ActiveAnimations are the animations of the nodes that are expanding or collapsing, by the key that the
 // TreeSliver gave each.
@@ -165,6 +184,11 @@ func (r *RenderTreeSliver) updateAnimationCache() {
 	for key, animation := range r.activeAnimations {
 		r.animationLeadingIndices[animation.FromIndex-1] = key
 	}
+	r.animationIndices = r.animationIndices[:0]
+	for index := range r.animationLeadingIndices {
+		r.animationIndices = append(r.animationIndices, index)
+	}
+	slices.Sort(r.animationIndices)
 	// Remove the offsets and the clip layers of the animations that are over.
 	for key := range r.animationOffsets {
 		if _, ok := r.activeAnimations[key]; !ok {
@@ -228,33 +252,94 @@ func (r *RenderTreeSliver) OverrideMaxChildIndexForScrollOffset(scrollOffset flo
 	return r.childIndexForScrollOffset(scrollOffset)
 }
 
+// childIndexForScrollOffset finds the index with the running sums. As in Flutter's loop, the
+// position after a row is the position before it plus its extent less the space that the
+// animations that start at or before it have not covered yet. While no animation has left
+// space behind (before the first, or while the animations are at their end), the position
+// after k rows is the sum of their extents, and the search is a binary search over the sums.
+// From the first animation that leaves space the position can go back (each row takes the
+// space off), so the search goes row by row, as the loop does, over the extents it has
+// already made. Like the loop, it works out the distance of an animation when the search
+// reaches the row where the animation starts.
+//
+// Deviation: the loop asks the builder for each row; this reads the running sums (SPEC §12.10).
 func (r *RenderTreeSliver) childIndexForScrollOffset(scrollOffset float64) int {
 	if scrollOffset == 0.0 {
 		return 0
 	}
-	position, totalAnimationOffset := 0.0, 0.0
-	index := 0
-	childCount, hasCount := r.childManager.EstimatedChildCount().Get()
-	for position < scrollOffset {
-		if hasCount && index > childCount-1 {
-			break
-		}
-		itemExtent, ok := r.itemExtentBuilder(index, r.LayoutDimensions()).Get()
-		if !ok {
-			break
-		}
-		if key, animating := r.animationLeadingIndices[index]; animating {
-			if _, known := r.animationOffsets[key]; !known {
-				// The distance that this block covers over the life of the animation is not worked out yet.
-				r.computeAnimationOffsetFor(key, position)
-			}
-			// The offset, as far as the animation has gone.
-			totalAnimationOffset += r.animationOffsets[key] * (1 - r.activeAnimations[key].Value)
-		}
-		position += itemExtent - totalAnimationOffset
-		index++
+	if !(scrollOffset > 0) {
+		return -1
 	}
-	return index - 1
+	limit := r.childCountLimit()
+	s := r.extentCache()
+	first := 1 // the first position (the count of rows) of the stretch
+	next := 0  // the next animation to walk
+	for next < len(r.animationIndices) && r.animationIndices[next] < 0 {
+		next++
+	}
+	for {
+		last := limit // the last position of the stretch
+		leading, animating := 0, next < len(r.animationIndices)
+		if animating {
+			leading = r.animationIndices[next]
+			last = min(last, leading)
+		}
+		for !s.ended && len(s.extents) < last && (len(s.extents) < first || s.sums[len(s.extents)] < scrollOffset) {
+			r.fillTo(s, len(s.extents)+1)
+		}
+		if hi := min(len(s.extents), last); hi >= first {
+			if i := sort.Search(hi-first+1, func(i int) bool { return s.sums[first+i] >= scrollOffset }); i <= hi-first {
+				return first + i - 1
+			}
+		}
+		if !animating || leading >= limit {
+			return min(len(s.extents), limit) - 1
+		}
+		// The search reached the row where an animation starts, if the row exists.
+		r.fillTo(s, leading+1)
+		if len(s.extents) <= leading {
+			return len(s.extents) - 1
+		}
+		total := r.animationSpace(leading, s.sums[leading], 0)
+		next++
+		if total != 0 {
+			return r.scanChildIndex(s, scrollOffset, leading, s.sums[leading], total, next, limit)
+		}
+		first = leading + 1
+	}
+}
+
+// animationSpace works out the distance of the animation that starts at the index, if it is
+// not worked out yet, with the position that the search is at, and adds the space it has not
+// covered to the total.
+func (r *RenderTreeSliver) animationSpace(index int, position, total float64) float64 {
+	key := r.animationLeadingIndices[index]
+	if _, known := r.animationOffsets[key]; !known {
+		// The distance that this block covers over the life of the animation is not worked out yet.
+		r.computeAnimationOffsetFor(key, position)
+	}
+	// The offset, as far as the animation has gone.
+	return total + r.animationOffsets[key]*(1-r.activeAnimations[key].Value)
+}
+
+// scanChildIndex is the loop of Flutter's _getChildIndexForScrollOffset, resumed in the row
+// at the index after its animation was counted, over the extents that the sums hold.
+func (r *RenderTreeSliver) scanChildIndex(s *extentSums, scrollOffset float64, index int, position, total float64, next, limit int) int {
+	for {
+		position += s.extents[index] - total
+		index++
+		if !(position < scrollOffset) || index >= limit {
+			return index - 1
+		}
+		r.fillTo(s, index+1)
+		if len(s.extents) <= index {
+			return index - 1
+		}
+		if next < len(r.animationIndices) && r.animationIndices[next] == index {
+			total = r.animationSpace(index, position, total)
+			next++
+		}
+	}
 }
 
 func (r *RenderTreeSliver) computeAnimationOffsetFor(key *foundation.UniqueKey, position float64) {
@@ -265,7 +350,7 @@ func (r *RenderTreeSliver) computeAnimationOffsetFor(key *foundation.UniqueKey, 
 	totalAnimatingOffset := 0.0
 	// Only the rows that would be visible, or in the cache extent, are animated, unless all of them fit.
 	for index := animation.FromIndex; index <= animation.ToIndex && currentPosition < targetPosition; index++ {
-		itemExtent := r.itemExtentBuilder(index, r.LayoutDimensions()).Value()
+		itemExtent := r.extentOf(index)
 		totalAnimatingOffset += itemExtent
 		currentPosition += itemExtent
 	}
@@ -287,40 +372,37 @@ func (r *RenderTreeSliver) ChildCrossAxisPosition(child RenderObject) float64 {
 //
 // Flutter: rendering/sliver_tree.dart RenderTreeSliver.indexToLayoutOffset
 func (r *RenderTreeSliver) OverrideIndexToLayoutOffset(index int) float64 {
-	position, totalAnimationOffset := 0.0, 0.0
-	childCount, hasCount := r.childManager.EstimatedChildCount().Get()
-	for current := 0; current < index; current++ {
-		if hasCount && current > childCount-1 {
-			break
-		}
-		itemExtent, ok := r.itemExtentBuilder(current, r.LayoutDimensions()).Get()
-		if !ok {
-			break
-		}
-		if key, animating := r.animationLeadingIndices[current]; animating {
-			if _, known := r.animationOffsets[key]; foundation.DebugMode && !known {
-				panic(errors.New(tagTreeSliverAnimationOffsetMissing, "the distance of an animation is worked out before the layout offsets are asked for", "index", current))
-			}
-			totalAnimationOffset += r.animationOffsets[key] * (1 - r.activeAnimations[key].Value)
-		}
-		position += itemExtent
+	if index <= 0 {
+		return 0
 	}
-	return position - totalAnimationOffset
+	limit := min(index, r.childCountLimit())
+	if limit <= 0 {
+		return 0
+	}
+	s := r.fillExtentSums(limit)
+	rows := min(limit, len(s.extents))
+	totalAnimationOffset := 0.0
+	for _, current := range r.animationIndices {
+		if current >= rows {
+			break
+		}
+		if current < 0 {
+			continue
+		}
+		key := r.animationLeadingIndices[current]
+		if _, known := r.animationOffsets[key]; foundation.DebugMode && !known {
+			panic(errors.New(tagTreeSliverAnimationOffsetMissing, "the distance of an animation is worked out before the layout offsets are asked for", "index", current))
+		}
+		totalAnimationOffset += r.animationOffsets[key] * (1 - r.activeAnimations[key].Value)
+	}
+	return s.sums[rows] - totalAnimationOffset
 }
 
 // OverrideComputeMaxScrollOffset is the extent of all the rows.
 //
 // Flutter: rendering/sliver_fixed_extent_list.dart RenderSliverFixedExtentBoxAdaptor.computeMaxScrollOffset
 func (r *RenderTreeSliver) OverrideComputeMaxScrollOffset(SliverConstraints) float64 {
-	offset := 0.0
-	for i := 0; i < r.childManager.ChildCount(); i++ {
-		extent, ok := r.itemExtentBuilder(i, r.LayoutDimensions()).Get()
-		if !ok {
-			break
-		}
-		offset += extent
-	}
-	return offset
+	return r.prefixSum(r.childManager.ChildCount())
 }
 
 // paintSegment is a run of rows that is painted together, from leadingIndex to trailingIndex.
@@ -382,9 +464,9 @@ func (r *RenderTreeSliver) Paint(context *PaintingContext, offset ui.Offset) {
 		parentIndex := max(segment.leadingIndex-1, 0)
 		leadingOffset := r.OverrideIndexToLayoutOffset(parentIndex)
 		if parentIndex != 0 {
-			leadingOffset += r.itemExtentBuilder(parentIndex, r.LayoutDimensions()).Value()
+			leadingOffset += r.extentOf(parentIndex)
 		}
-		trailingOffset := r.OverrideIndexToLayoutOffset(segment.trailingIndex) + r.itemExtentBuilder(segment.trailingIndex, r.LayoutDimensions()).Value()
+		trailingOffset := r.OverrideIndexToLayoutOffset(segment.trailingIndex) + r.extentOf(segment.trailingIndex)
 		rect := ui.NewRectFromPoints(ui.Offset{Dx: 0, Dy: leadingOffset}, ui.Offset{Dx: c.CrossAxisExtent, Dy: trailingOffset})
 		// The clip layer is kept under the key of the animation of the parent, except for the odd segment.
 		key := r.animationLeadingIndices[parentIndex]

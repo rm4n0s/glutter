@@ -46,6 +46,13 @@ func (d SliverLayoutDimensions) String() string {
 // ItemExtentBuilder gives the main axis extent of the item at the index, or none
 // to let the item decide.
 //
+// Deviation: RenderSliverVariedExtentList and RenderTreeSliver keep the extents that
+// the builder gives and add them up once, not on every call, so the builder must give
+// the same extents until the widget is rebuilt (the builder is set again) or the
+// viewport extent or the cross axis extent of the dimensions, or the child count,
+// change. The scroll offset and the preceding scroll extent of the dimensions are not
+// compared: an extent must not depend on them (SPEC §12.10).
+//
 // Flutter: rendering/sliver.dart ItemExtentBuilder
 type ItemExtentBuilder func(index int, dimensions SliverLayoutDimensions) foundation.Opt[float64]
 
