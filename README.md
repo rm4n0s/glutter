@@ -198,6 +198,8 @@ func startView(parent *m.WidgetsBinding, root m.Widget, send func(pixels []byte,
 }
 ```
 
+**What is new in 1.9.9.** A fix for Emetos: a `SliverVariedExtentList` (or a `ListView` with `ItemExtentBuilder`) and a `TreeSliver` remember the heights their builder gave, so a list of 100,000 rows of different heights jumps to its end in about a millisecond instead of 40 to 60, and lands on the last row. The builder must give the same heights until the list is rebuilt.
+
 **What is new in 1.9.8.** A fix for Emetos: `RunAppContext(ctx, app)` (and `RunWidgetContext`) ends the app when the context ends, with the same clean exit as a closed window. With `signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)`, the app closes on Ctrl+C or when it is told to terminate.
 
 **What is new in 1.9.7.** Four fixes for Emetos:

@@ -5219,3 +5219,18 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Deviations and follow-ups:**
   - **Deviation:** the sums, the exact scroll extent and the rule on the builder (SPEC §12.10).
   - **Emetos** can drop `sliverRows`, `renderSliverRows` and `exactExtentDelegate` and give `kit.List`'s `HeightOf` to a `SliverVariedExtentList` (or `ListView`'s `ItemExtentBuilder`).
+
+## 29.41 Release 1.9.9 (Emetos)
+
+- **Date:** 2026-10-31
+- **Branch:** feat/step-29.41-release-1.9.9
+- **Summary:** 1.9.9 is released with step 29.40, the fix of Emetos's issue "SliverVariedExtentList is linear in the number of rows" (2026-10-31).
+  - **SPEC §1:** a 1.9.9 sentence, and a "Scope of 1.9.9" paragraph after the one of 1.9.8.
+  - **`README.md`:** "What is new in 1.9.9".
+  - **Publishing:** tags `step-29.41` and `v1.9.9`. `main` was pushed with the step tags of 29.40 and 29.41 (`git push --follow-tags origin main`).
+- **Main files:** `docs/SPEC.md` (§1), `README.md`.
+- **Tests:** none of its own.
+- **Checks:** the code is that of 29.40, whose checks ran in full; the release changes only documents: the `docs` tests and apicheck ✅.
+- **Proof:** none
+- **Manual checks:** none
+- **Deviations and follow-ups:** none
