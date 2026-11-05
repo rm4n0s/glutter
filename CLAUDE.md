@@ -95,6 +95,7 @@ Before reporting a task as finished, run `gofmt`, `go vet ./...`, `golangci-lint
 - Port behavior and algorithms from `reference/flutter`. Keep Flutter's names (in Go case), defaults, and the order of layout and paint operations
 - End each exported identifier's doc comment with its source, e.g. `// Flutter: widgets/basic.dart Padding`
 - A deliberate difference from Flutter goes in a `// Deviation:` comment and in SPEC §12.10
+- SDL 3 (zlib) is the reference of `gpu`, `gamepad`, `audio` and `sensors` (SPEC §27, §28, D32). Code ported from it never uses SDL's names in identifiers (no `SDL_`, no `Sdl`; the owner's rule, 2026-11-05); each ported file says in a comment which SDL 3 file it comes from and that it is changed. Keep `third_party/sdl/LICENSE` and its NOTICE entry intact
 - Ported code is a derivative of Flutter (BSD-3-Clause). Keep `third_party/flutter/LICENSE` and the NOTICE entry (SPEC §20) intact. The UI Automation code ported from Chromium's accessibility code (via Flutter) is under Chromium's BSD-3-Clause license: keep `third_party/chromium/LICENSE` and its NOTICE entry intact
 
 ## Error handling
@@ -149,8 +150,6 @@ Use `github.com/rm4n0s/errors` (v0.2.0) for all errors, the way its `AI_GUIDE.md
 ## Working through the steps
 - Never stop to ask for confirmation, and never end a turn with a question such as "Should I start the next step?", until every step in `docs/IMPLEMENTATION.md` is finished (through the last one). After a step is finished (merged and tagged locally), report it briefly and start the next step in the same turn
 - A request such as "publish to main" that is already satisfied gets a one-line answer, then work continues with the next step
-- **Manager and workers** (the owner's choice, 2026-10-25): the main session (Opus 5.5, high effort) manages and Sonnet 5.5 agents at high effort write the code (Agent tool with `model: "sonnet"`, `effort: "high"`). The manager reads the step and the SPEC, writes the brief, launches and steers the workers, reviews their diffs, runs the checks, and does the git work; it writes only small fixes itself. The details are in `docs/IMPLEMENTATION.md`, Rules, "Who does the work"
-
 ## Don't
 - Don't edit generated files (`*_gen.go`); regenerate them with `go generate ./...`
 - Don't commit secrets or `.env` files

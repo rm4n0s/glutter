@@ -8,17 +8,6 @@ This file breaks the milestones in `docs/SPEC.md` §18 into small steps. Each st
 
 ## Rules
 
-### Who does the work
-
-The owner's choice (2026-10-25): the main session is the **manager** (Opus 5.5, high effort) and **workers** write the code (Sonnet 5.5 agents, launched with the Agent tool, `model: "sonnet"`, `effort: "high"`). The rules below apply to the step as a whole; this part says who does what.
-
-- **The manager** does rules 1–3 (finds the step, reads it, the SPEC sections and the Flutter sources it names, creates the branch), then writes a brief for each worker in `.claude/briefs/step-<id>[-<part>].md` (git-ignored; never committed). A brief is the only thing the worker knows: the goal, the tasks it owns, the files and SPEC sections to read, the Flutter files to port, the tests to write, the decisions already made and those it must bring back instead of making, and the rules it must follow (CLAUDE.md, the "Errors" rules, the purego rules, doc comments, `// Deviation:` and SPEC §12.10, `go generate ./material`, processes it starts are stopped, display tests only under `scripts/headless-wayland.sh` or `scripts/headless-x11.sh`, heavy Go runs with the memory cap the manager names in the brief, e.g. a `ulimit -v` wrapper given to `-toolexec`).
-- **Workers run in the shared checkout, on the step branch, without worktree isolation**: an isolated worktree starts from `main`, not from the step branch. A worker never runs a git command that changes state (commit, merge, rebase, stash, push, tag, branch, switch, reset, checkout of files); the manager does all of them.
-- **One worker per step**, or several at once only when their parts touch disjoint directories and do not depend on each other; at most three at a time, since parallel `-race` builds can run the machine out of memory. A part that needs another part's API waits for it.
-- **The manager reviews the work, not the summary**: it reads the diff, runs the tests the worker says pass and the checks of rule 8 itself, and looks at every proof image. What is wrong, missing or outside the step goes back to the same worker (SendMessage, so it keeps its context) with the concrete failure. The manager writes only small fixes itself (a few lines, a doc comment, a test table row).
-- **Questions.** A worker that hits a case of rule 7 stops and reports it; the manager decides what the plan and the SPEC already decide, and asks the user otherwise (rule 7). The manager answers "what is going on" questions of the user while workers run, and never reports a worker's result before it arrived.
-- **The manager finishes the step**: the `IMPLEMENTED.md` entry (rule 10; it may have a worker draft it, and checks every claim in it), the commit, the merge into the local `main` and the tag (rules 11–12), and the push of a finished milestone (rule 12), the report (rule 13), and deletes the step's briefs.
-
 ### Before you start a step
 
 1. **Find your step.** It's the first step in this file that has no entry in `docs/IMPLEMENTED.md`. Do only that step. Never work on two steps at once, and never skip ahead.
@@ -167,6 +156,9 @@ The owner's choice (2026-10-25): the main session is the **manager** (Opus 5.5, 
 | M26 Android behaviors of the framework, and 1.6 | 26.1–26.6 | every example but `multiwindow` and `tray` on Android |
 | M27 Fixes for Emetos (1.7) | 27.1–27.11 | `multiwindow` |
 | M28 Windows (1.8) | 28.1–28.19 | every example, `tray` and `multiwindow` included |
+| M29 SVG images (1.9), and the fixes of 1.9.1 to 1.9.9 | 29.1–29.41 | `svg` |
+| M30 3D and the GPU (1.10) | 30.1–30.14 | `gpu-triangle`, `cad` |
+| M31 Games (1.11) | 31.1–31.12 | `game3d` |
 
 ---
 
@@ -3346,6 +3338,767 @@ Flutter behaves the same way: `SliverMultiBoxAdaptorElement.performRebuild` sets
 2. `README.md`: "What is new in 1.9.9".
 3. The standard checks of rule 8, `apicheck` and `uintptrcheck`.
 4. Merge, tag `step-29.41` and `v1.9.9`, and publish: `git push --follow-tags origin main`, which takes steps 29.40 and 29.41 and their tags to GitHub. Check with `git ls-remote --tags origin`.
+**Tests:** none of its own.
+**Proof:** none.
+**Manual checks:** none.
+
+---
+
+## Tools for M30–M31
+
+Install a missing tool only by asking the user (rule 7), with the command from this table.
+
+**Never on the NVIDIA eGPU.** Every test, example, script, browser, emulator or GPU tool runs as `.claude/no-nvidia.sh -- <command>`; a hook refuses commands without it.
+
+| Tool | Needed from | Check | Install (Fedora) |
+|---|---|---|---|
+| naga 30.0.1 (D20) | 30.1 | `naga --version` | `cargo install naga-cli@30.0.1 --locked` |
+| Mesa lavapipe, and RADV for the owner's AMD GPUs | 30.1 | `ls /usr/share/vulkan/icd.d/lvp_icd.*.json /usr/share/vulkan/icd.d/radeon_icd.*.json` | `sudo dnf install mesa-vulkan-drivers` |
+| The Vulkan validation layers | 30.1 | `ls /usr/share/vulkan/explicit_layer.d/VkLayer_khronos_validation.json` | `sudo dnf install vulkan-validation-layers` |
+| `spirv-val` (optional: `glutter-gen gpushaders` validates the SPIR-V when it is there) | 30.3 | `spirv-val --version` | `sudo dnf install spirv-tools` |
+| Wine, Xvfb, mingw-w64 (as for M28) | 30.1 | see "Tools for M28" | see "Tools for M28" |
+| Chromium with WebGPU (as for M21) | 30.1 | the browser tests of `internal/gpu/webgpu` pass | see "Tools for M19–M21" |
+| The Android SDK, NDK and emulator (as for M25) | 30.1 | `scripts/check-android.sh` | see "Tools for M25–M26" |
+| Write access to `/dev/uinput` (the virtual pad of the gamepad tests) | 31.1 | `test -w /dev/uinput` | a udev rule from the owner, e.g. `echo 'KERNEL=="uinput", TAG+="uaccess"' \| sudo tee /etc/udev/rules.d/70-glutter-uinput.rules && sudo udevadm control --reload && sudo udevadm trigger /dev/uinput` |
+| A PulseAudio server for tests (`pipewire` with `pipewire-pulse`, or `pulseaudio`) and `pactl`, `parec` | 31.5 | `pactl --version`; `pipewire --version` or `pulseaudio --version` | `sudo dnf install pipewire-pulseaudio pulseaudio-utils` |
+| Real pads (Xbox, DualSense, Switch Pro, one generic), a Windows PC with a GPU, an Android phone | 31.1 (manual checks) | none | none: the owner's |
+
+---
+
+## M30: 3D and the GPU (1.10)
+
+The owner asked on 2026-11-05 for Glutter to let an app write 3D applications, CAD first and games too, with no game engine inside and no cgo. They chose:
+- Glutter's own API, with no game engine inside Glutter;
+- not to use `flutter_scene` as a reference;
+- `float64` on the CPU, so the 3D view suits CAD;
+- SDL 3 (zlib) as a reference, with its license in the NOTICE and no SDL names in the code (D32);
+- the loaders STL, OBJ, glTF, PLY and 3MF (glTF, PLY and 3MF in M31).
+- two releases: 1.10 with M30, 1.11 with M31;
+- the performance targets of SPEC §27.10 and §28.6, no 3D under `gles` and `soft`, the pads as keys by default, and PulseAudio then ALSA on Linux.
+
+SPEC §27 and D29–D31 are the design. The new pieces run on the explicit renderer only (`vulkan`, `d3d12`, `webgpu`); `gles` and `soft` report `GPUUnavailable` (SPEC §27).
+
+Each step that adds GPU code runs these tests:
+- **Display tests** on Vulkan with lavapipe (`glutter_display`, under `scripts/headless-wayland.sh` and `scripts/headless-x11.sh`)
+- **Wine tests** of `d3d12` (`glutter_wine`; the `internal/gpu/d3d12` suite alone, as CLAUDE.md says)
+- **Browser tests** of `webgpu` in Chromium (`glutter_browser`)
+- **Device tests** on the Android emulator (`glutter_android`)
+
+Steps 30.1 and 30.2 change `explicit.Device`, which the 2D renderer uses, so every golden and parity test must pass unchanged.
+
+### 30.1 The explicit device: formats, textures, depth and multisampling
+**Goal:** `explicit.Device` has the formats, texture kinds, render pass attachments and pipeline state of SPEC §27.1, on `vulkan`, `d3d12`, `webgpu` and `fakedevice`, and the 2D renderer draws exactly as before.
+**Read:** SPEC §27 (intro), §27.1, §9.3 (all, with the "Decided" paragraphs), §9.4, §9.5, §9.8, D19, D25, D29, §20 (the SDL row), §28.1.
+**Port from:** none (SDL 3's `SDL_gpu.h` and the WebGPU specification are read for the shape of the descriptors only).
+**Files:** `internal/gpu/explicit/device.go`, `limits.go`, `fakedevice/`, `internal/gpu/vulkan/`, `internal/gpu/d3d12/`, `internal/gpu/webgpu/`, their tests; `scripts/fetch-reference.sh`, `reference/VERSION`; SPEC §9.3 ("Decided in step 30.1").
+**Tasks:**
+1. Fetch SDL 3's latest 3.x release into `reference/sdl` (a sparse checkout of `include/`, `src/gpu`, `src/joystick`, `src/audio`, `src/sensor` and `test/`), and pin it in the script and in `VERSION`. Check that `third_party/sdl/LICENSE` is the `LICENSE.txt` of that release, and update its copyright line if it differs.
+2. Add the formats `RGBA16Float`, `RGBA32Float`, `R32Float`, `R32Uint`, `RG32Uint`, `Depth32Float` and `Depth24PlusStencil8`, with their bytes per pixel, the usages each allows, and the features they need (`float32-filterable` and the like).
+3. Textures:
+   - kinds 2D, 2D array, cube and 3D;
+   - mip levels and views of one level or one layer;
+   - a sample count of 1 or 4;
+   - storage textures.
+4. Render passes:
+   - up to 4 color attachments and one depth-stencil attachment;
+   - load and store operations and clear values for each;
+   - resolve targets.
+
+   `BeginPass` keeps its current form for the 2D renderer and calls the general form.
+5. Pipeline state:
+   - topologies, cull mode and front face;
+   - depth test, depth write and depth bias, and stencil;
+   - blend and color write mask per attachment;
+   - the vertex formats an app needs (`float32x1` to `x4`, `uint32`, `unorm8x4`, `snorm16x2` and the like).
+6. Clip space: WebGPU's on every backend for the pipelines made through the new descriptors (Vulkan: a negative viewport height). The 2D renderer's pipelines keep what they do now, and a parity test shows that nothing moved.
+7. The limits checks of §9.3 for each new descriptor (panic in debug builds with `GPULimitExceeded`), and `fakedevice` records the new state.
+**Tests:**
+- table-driven tests of the descriptor checks on `fakedevice`: every format with every usage, every kind with mip levels and layers, sample counts, attachments over the limit, and a resolve target of the wrong size;
+- a route test for each new tag;
+- the existing goldens and parity tests unchanged.
+
+**Display tests (`vulkan` on lavapipe, validation on):**
+- each new format is written, rendered to where it can be, and read back exactly;
+- a depth test with three overlapping triangles, with depth write on and off, and reversed-Z with `GreaterEqual`;
+- 4× multisampling resolved, its edge pixels compared with a tolerance;
+- each face of a cube map and each layer of an array is drawn and read;
+- a 3D texture is sampled;
+- a pass with 4 color attachments;
+- the clip space: a triangle at y > 0 lands in the top half.
+
+**Wine tests (`d3d12`) and browser tests (`webgpu`):** the same scenes, compared with the Vulkan readbacks within `gputest.Tolerance`.
+**Device tests:** the same scenes on the emulator's Vulkan.
+**Proof:** none.
+**Manual checks:** the same scenes on the owner's AMD GPU through RADV (`GLUTTER_VULKAN_DEVICE` naming it).
+
+### 30.2 The explicit device: storage, compute, indirect draws, copies and readback
+**Goal:** the rest of SPEC §27.1:
+- storage buffers and storage textures;
+- compute pipelines and dispatches (direct and indirect), and indirect draws;
+- the four copies, `ReadBuffer` and timestamp queries;
+- several encoders in a frame, and the rule for the first instance and the first vertex.
+**Read:** SPEC §27.1, §9.3, §9.8 ("Binding model", "Shaders", the instance index paragraph), §9.5.
+**Port from:** none.
+**Files:** as in 30.1, and `internal/gpu/explicit/shader.go` (the binding kinds and compute entry points that a generated shader may have; the 2D renderer's generator keeps refusing them for its own shaders).
+**Tasks:**
+1. Buffers: storage (read-only, read-write), indirect, copy source and destination, and map-read. `ReadBuffer` with `done` after the GPU finished, never inside the frame that asked.
+2. Compute pipelines from a shader's compute entry point; `BeginComputePass`, `Dispatch` and `DispatchIndirect`; the bind groups of compute; on Direct3D 12, a compute root signature built from the bindings, with UAVs for storage.
+3. `DrawIndirect` and `DrawIndexedIndirect`: Vulkan's `vkCmdDrawIndirect`, Direct3D 12's `ExecuteIndirect` with command signatures made once, WebGPU's.
+4. The copies between buffers and textures, with `Limits.AlignedRowPitch`.
+5. Timestamp queries where the device has them (`Features.TimestampQuery`), resolved into a buffer.
+6. Several encoders in a frame, submitted in order on the one queue, and a callback when the submitted work is done. The 2D renderer's frame stays one encoder, submitted last.
+7. The rule of §27.1 for `instance_index` and `vertex_index` in debug builds (`GPUFirstInstanceRead`), with the reflection of a shader saying whether an entry point reads them.
+**Tests:**
+- unit tests on `fakedevice`: the bind group kinds, a storage buffer bound as a uniform, an indirect buffer without the usage, a dispatch over the limit, `GPUFirstInstanceRead`;
+- route tests.
+
+**Display, Wine, browser and device tests:**
+- a compute shader that squares 1,000,000 numbers, read back exactly;
+- a compute pass writes a storage texture that a render pass samples;
+- `DrawIndirect` and `DrawIndexedIndirect` with arguments written by a compute pass;
+- each copy, with pitches that are not aligned in the source;
+- two encoders in a frame, in order;
+- a timestamp pair where the feature exists, skipped where it does not;
+- 1,000 frames of readback do not grow memory.
+**Proof:** none.
+**Manual checks:** the same on the owner's AMD GPU.
+
+### 30.3 The app's shaders: `glutter-gen gpushaders`
+**Goal:** an app's WGSL files become a generated Go file of `*gpu.Shader` values with WGSL, SPIR-V, HLSL and the reflection (SPEC §27.3, D31).
+**Read:** SPEC §27.3, §9.3 ("Decided in step 19.3", the shader generator), §9.8 ("Shaders"), D20, D31.
+**Port from:** none.
+**Files:**
+- `cmd/glutter-gen/gpushaders*.go` and its tests, and `cmd/glutter-gen/testdata/gpushaders/` (small shaders and their expected output);
+- the `gpu.Shader` type: `gpu/shader.go` (the rest of `gpu` comes in 30.4);
+- `docs/GUIDE.md` (a section on shaders).
+**Tasks:**
+1. `glutter-gen gpushaders [-check] <dir>`:
+   - every `<dir>/*.wgsl` is compiled with naga to SPIR-V (one module per file) and to HLSL for shader model 5.1, with the registers of §27.3;
+   - it writes `<name>.spv` and `<dir>/shaders_gen.go` (`// Code generated ... DO NOT EDIT.`, naga's version in the header, the package name of the directory).
+2. The reflection, read from naga's output (its `--validate` IR dump or the generated text, whichever the 2D renderer's generator already reads):
+   - entry points and their stages;
+   - bindings with their kind and the size of their structs;
+   - vertex inputs with location and format;
+   - workgroup sizes;
+   - whether `instance_index` or `vertex_index` is read.
+3. Checks:
+   - an unsupported binding is `GPUShadersBindingUnsupported`;
+   - a naga failure is `GPUShadersCompileFailed`, with its messages;
+   - naga missing is `GPUShadersNagaMissing`, with the install command;
+   - `spirv-val` runs on each module when installed;
+   - the HLSL is compiled with `D3DCompile` under Wine when `scripts/wine-exec.sh` works.
+4. `-check` compares a fresh generation with the files in the directory and fails on a difference (for an app's tests and CI).
+**Tests:**
+- table-driven tests over the testdata shaders: every binding kind, a vertex shader with several input formats, a compute shader with a workgroup size, a shader that reads `instance_index`, an unsupported binding;
+- the generated Go compiles (`go vet` on it);
+- `-check` passes on fresh output and fails after an edit;
+- route tests;
+- the tests skip when naga is not installed, naming the command.
+**Proof:** none.
+**Manual checks:** none.
+
+### 30.4 The `gpu` package
+**Goal:** the public `gpu` API of SPEC §27.2 over `explicit.Device`, reached through the binding, with the rules on threads, lifetime, device loss and errors.
+**Read:** SPEC §27.2, §27.11, §13, §14, §15 ("Memory over time"), §12 (the conventions: `NewX`, options structs, `foundation.Opt`), §9.4 and §9.5 (device loss), §6.3.
+**Port from:** none.
+**Files:**
+- `gpu/` (`doc.go`, `device.go`, `buffer.go`, `texture.go`, `sampler.go`, `shader.go`, `pipeline.go`, `bindgroup.go`, `encoder.go`, `queue.go`, `query.go`, `errors.go`) and its tests;
+- `internal/engine` (the device of the chosen renderer, given to the binding; `GPUUnavailable` under `gles` and `soft`);
+- `widgets` (the binding gives its GPU device to `gpu` through an interface, with no import of `internal` in public code: the engine registers it as a service);
+- `gluttertest` (`Tester.GPUDevice`, a recording device on `fakedevice`);
+- `material` (regenerated if `widgets` changed);
+- SPEC §27.2 ("Decided in step 30.4"), §6.2.
+**Tasks:**
+1. `DeviceOf` and `DeviceOfBinding`; `Limits` and `Features`.
+2. Every type and method of the sketch in §27.2, mapped onto `explicit.Device`, with WebGPU's names in Go form. Every exported identifier has a doc comment that ends `// Flutter: no counterpart`.
+3. The UI-thread check (`GPUWrongThread`, debug builds only), with the goroutine check of §13.
+4. `Release` on every resource. A resource used by submitted work is freed when the work is done. Debug builds log each resource still alive when the binding ends (`GPUResourceLeaked`, a warning, with what made it), and a counter for the memory tests.
+5. Device loss:
+   - the `OnLost` functions are called once;
+   - every call on the old device does nothing or returns `GPUDeviceLost`;
+   - `DeviceOf` gives the new device after the renderer has made it.
+6. Descriptor errors with the field in their metadata (`GPUInvalidDescriptor`, `GPULimitExceeded`). The encoding checks panic in debug builds and are skipped in release builds.
+7. The recording device of `gluttertest`, which keeps what was encoded for a test to check.
+8. `apicheck`: the new package follows §12, and accepted exceptions go into `apicheck.allow` with a reason and a row in SPEC §12.10.
+**Tests:**
+- unit tests on `fakedevice`: every constructor with valid and invalid descriptors (a table), and every encoding misuse panics in debug builds;
+- `GPUWrongThread` from another goroutine;
+- release of a resource in use (freed after the work);
+- a leak logged at the binding's end;
+- device loss: `OnLost` called once, then `GPUDeviceLost`, then a new device;
+- route tests of every tag;
+- a memory test (`go test -run Leaks ./gpu`) that makes and releases resources for 1,000 frames with a flat heap and no live resources;
+- `GPUUnavailable` under `soft` in `gluttertest`.
+
+**Display, Wine, browser and device tests:** a triangle drawn through `gpu` into a texture and read back; device loss through WebGPU's `destroy` in the browser test.
+**Proof:** none.
+**Manual checks:** none.
+
+### 30.5 GPU textures in the widget tree
+**Goal:** Flutter's `Texture` widget, `TextureBox`, `TextureLayer` and `SceneBuilder.AddTexture`, and the registry of SPEC §27.4. The explicit renderer composites a registered texture with no copy.
+**Read:** SPEC §27.4, §9.3 (the composite and the layers), §9.1 (the raster cache, damage), §12.
+**Port from:** `widgets/texture.dart` (`Texture`), `rendering/texture.dart` (`TextureBox`), `rendering/layer.dart` (`TextureLayer`), `dart:ui` `SceneBuilder.addTexture` (in `reference/flutter`'s engine `lib/ui/compositing.dart`); tests: `test/widgets/texture_test.dart`, `test/rendering/layers_test.dart` (the texture cases).
+**Files:**
+- `ui/scene*.go`, `rendering/texture.go`, `rendering/layer*.go`, `widgets/texture.go`, `gpu/registry.go`;
+- `internal/gpu` (flattening a texture layer), `internal/gpu/explicit` (the draw);
+- `material` (regenerated);
+- SPEC §12.10 (if anything differs).
+**Tasks:**
+1. Port the widget, the render box, the layer and `AddTexture`, with Flutter's names, defaults and the `freeze` and `filterQuality` behavior.
+2. The registry on `gpu.Device`: `RegisterTexture`, `UnregisterTexture`, `MarkTextureFrameAvailable`. The last schedules a frame and damages the layer's rectangle.
+3. The explicit renderer draws a texture layer by sampling the registered texture:
+   - premultiplied;
+   - `RGBA8Unorm` as sRGB-encoded values, `RGBA16Float` linear and encoded in the composite;
+   - with its filter quality, clips and transforms like an image.
+
+   The app's submitted work comes before the composite.
+4. `gles` and `soft`: a texture layer draws nothing, logged once at Info level. It is never raster-cached. `Scene.ToImage` follows §27.4.
+**Tests:**
+- the ported Flutter tests (count them in `IMPLEMENTED.md`);
+- the layer tree of a `Texture` in `gluttertest`;
+- damage from `MarkTextureFrameAvailable`;
+- an unregistered id draws nothing and logs once.
+
+**Display, Wine, browser and device tests:** a texture filled by a compute pass is shown under a rotated, clipped, semi-transparent 2D layer, and the frame is compared within the tolerance across the backends; an `RGBA16Float` texture with linear values is encoded correctly (a gradient's pixels checked).
+**Proof:** none.
+**Manual checks:** none.
+
+### 30.6 The GPU view, and `examples/gpu-triangle`
+**Goal:** `gpu.View` (SPEC §27.5), and a public example that draws a lit, rotating cube with depth and 4× multisampling, using only `gpu`, on Linux, Windows, the web and Android.
+**Read:** SPEC §27.5, §13 (frames, `Ticker`), §19, "Examples" in the Rules.
+**Port from:** none.
+**Files:**
+- `gpu/view.go` and its tests;
+- `examples/gpu-triangle/` (`main.go`, `shaders/cube.wgsl` and its generated files), and `examples/examples_test.go` (the Windows and Android builds, the Wine first-frame test);
+- `docs/GUIDE.md` (a section on `gpu.View`);
+- SPEC §19.
+**Tasks:**
+1. The view's render object:
+   - its size in device pixels;
+   - targets made for it (color, depth, resolve), and made again on a resize or a change of device pixel ratio, with the old ones released after the frame;
+   - its texture registered and shown through a texture layer.
+2. `onPaint` runs after the paint phase and before the composite, in paint order. The view submits the encoder and marks its frame available.
+3. `ViewOpts`: `Continuous` (a `Ticker`), `Controller.MarkNeedsPaint`, `OnInit` and `OnDispose` (again after a device loss), `Fallback`, `SemanticsLabel`, `Format`, `DepthFormat`, `SampleCount`.
+4. An idle view draws nothing (no frame is scheduled).
+5. The example:
+   - a cube with normals, a uniform buffer of its matrices (`vecmath` does not exist yet: the example has its own few lines of matrix math, replaced in 30.8), Blinn-Phong in WGSL;
+   - `Continuous`, with a Material slider for the speed and a switch for multisampling.
+**Tests:**
+- widget tests with the recording device: sizes, a resize making new targets, the order of `onPaint` and the composite, `Continuous` asking for frames, an idle view asking for none, `Fallback` under `soft`, `OnInit` again after a loss;
+- a memory test: 1,000 resizes with a flat heap and no live resources.
+
+**Display, Wine, browser and device tests:** the example's first frame on each backend; `TestEveryExampleDrawsItsFirstFrameUnderWine` includes it.
+**Proof:**
+- `30.6-gpu-triangle-linux.png` (method B on Wayland with Vulkan on lavapipe);
+- `30.6-gpu-triangle-web.png` (method D, Chromium, WebGPU);
+- `30.6-gpu-triangle-windows.png` (method F);
+- `30.6-gpu-triangle-android.png` (method E, Vulkan).
+
+Each shows the lit cube with smooth edges and the slider.
+**Manual checks:** on the owner's AMD GPU, the cube turns smoothly at the display's rate and a window resize has no frame with a stretched or empty view; the same on a Windows PC and a phone.
+
+### 30.7 Pointer lock
+**Goal:** SPEC §27.6 on Wayland, X11, Windows, the web and Android.
+**Read:** SPEC §27.6, §8.5 (pointer input), §8.11, §23.4 (web input), §24.6 (Android input), §25.4 (Windows input), §12.10.
+**Port from:** none (Flutter has no pointer lock).
+**Files:**
+- `widgets/pointer_lock.go` (`PointerLockOf`, `PointerLock`), `gestures` (the `Delta` of a locked pointer), `internal/platform` (the window's lock call);
+- `internal/platform/linux/wayland/protocols/` (`pointer-constraints-unstable-v1.xml`, `relative-pointer-unstable-v1.xml`, `VERSIONS`), regenerated bindings, `internal/platform/linux/wayland`, `internal/platform/linux/x11`;
+- `internal/platform/windows`, `internal/platform/web`, `internal/platform/android` and the Java embedding (`classes.dex` regenerated with `glutter-gen android-dex`), `internal/platform/fake`;
+- `material` (regenerated), SPEC §12.10.
+**Tasks:**
+1. The API and the fake platform:
+   - `Lock`, `Unlock`, `Locked`, listeners when the lock ends;
+   - pointer events with `Delta` and a fixed `Position` while locked, and the cursor hidden;
+   - `PointerLockUnavailable`, `PointerLockDenied`.
+2. Each backend as in the table of §27.6:
+   - the lock ends on focus loss;
+   - the lock comes back only when the app asks again;
+   - Wayland without the protocol returns `PointerLockUnavailable`.
+3. A §12.10 row (Flutter has none).
+**Tests:**
+- widget tests with the fake platform: lock, motion with `Delta`, unlock, focus loss ending the lock, the listener told;
+- route tests.
+
+**Display tests:** under the headless sway session, which has the two protocols, a locked pointer gets relative motion from injected events and keeps its position; X11 under Xvfb with `XTest` motion.
+**Wine tests:** `WM_INPUT` motion from `SendInput` reaches the app as `Delta`, and `ClipCursor` is set and released.
+**Browser tests:** `requestPointerLock` after a synthetic gesture (Chromium with the flag that allows it in tests) and `movementX`.
+**Device tests:** `requestPointerCapture` on the emulator with a mouse injected through `adb shell input mouse`.
+**Proof:** none.
+**Manual checks:** mouse look in `examples/gpu-triangle` (a debug key turns lock on) on GNOME, KDE and X11, on a Windows PC, in Chrome and Firefox, and with a mouse on an Android phone; the lock ends with Alt+Tab and Escape (web).
+
+### 30.8 `vecmath`, the camera and the navigation
+**Goal:** the package `vecmath` (SPEC §27.7), and `viewport3d`'s camera and navigation (SPEC §27.8, "The camera").
+**Read:** SPEC §27.7, §27.8, D30, §5 and §11 of the gesture arena (§12, `gestures`).
+**Port from:** none.
+**Files:**
+- `vecmath/` and its tests;
+- `viewport3d/` (`doc.go`, `camera.go`, `navigation.go`, `recognizers.go`) and their tests;
+- `examples/gpu-triangle` (its matrix math replaced by `vecmath`).
+**Tasks:**
+1. `vecmath`: every type and operation of §27.7, as values with no allocation, with the conversions to `float32` and `ui.Matrix4`.
+2. The camera:
+   - perspective (reversed-Z, infinite far plane, the near plane from bounds) and orthographic;
+   - `float64` view and projection;
+   - the camera-relative matrices of D30 (a method that gives an item's `float32` model-view);
+   - `Ray`, `Project`, `FitTo`, the standard views;
+   - animated moves with an `AnimationController`.
+3. The navigation as gesture recognizers in the arena, with the defaults and `NavigationOpts` of §27.8, keyboard actions through `Shortcuts` and `Actions`, and `LockPointer`.
+**Tests:**
+- `vecmath` tables of known values (matrices against hand-computed results) and property tests (inverse, rotation, `LookAt`, projections mapping their frustum corners onto clip space's), with no allocation;
+- precision: a point 50 km from the origin and one 0.1 mm from it, seen from 1 m, project to positions that differ by the right number of pixels, which `float32` math alone would not give;
+- navigation with `gluttertest`: drags, the wheel toward the pointer, pinch and twist, a double click to fit, each binding of `NavigationOpts`, the arena with another recognizer above the view.
+**Proof:** none.
+**Manual checks:** none.
+
+### 30.9 The 3D view: meshes, materials, lines, points and edges
+**Goal:** `viewport3d.NewView` draws a `Scene` (SPEC §27.8): meshes with instancing, the unlit, Blinn-Phong, line and point materials, transparency sorting, and the display modes with feature edges.
+**Read:** SPEC §27.8, §27.10, D30.
+**Port from:** none.
+**Files:** `viewport3d/` (`scene.go`, `mesh.go`, `material.go`, `view.go`, `edges.go`, `draw.go`, `shaders/` and their generated files) and their tests; `viewport3d/testdata/goldens/`.
+**Tasks:**
+1. `Scene` and its items:
+   - a change marks the view;
+   - batching by pipeline and material;
+   - instancing of items that share a mesh and a material;
+   - transparent items sorted back to front.
+2. Meshes:
+   - upload once;
+   - positions relative to a `float64` origin;
+   - `uint16` and `uint32` indices;
+   - bounds;
+   - `Release`.
+3. The materials of §27.8:
+   - the lines expanded into quads in the vertex shader, with width in logical pixels, anti-aliasing and stipple;
+   - points round or square.
+4. `FeatureEdges(mesh, angle)` on the CPU. The display modes are shaded, shaded with edges, wireframe and hidden line.
+5. A steady frame allocates nothing (an allocation test).
+**Tests:**
+- unit tests of the batching and sorting, the edges of a cube and of a cylinder at several angles, the camera-relative matrices of items far from the origin;
+- an allocation test of a steady frame.
+
+**Display tests:** goldens on lavapipe, each looked at:
+- every material, display mode and line style;
+- 10,000 instances;
+- a transparent item in front of and behind an opaque one;
+- a part 50 km from the origin drawn without jitter (two frames 1 mm apart).
+
+**Wine, browser and device tests:** the same scenes, compared with the goldens within the tolerance.
+**Proof:** `30.9-viewport3d-modes.png` (method B, Vulkan on lavapipe): the four display modes of one part side by side.
+**Manual checks:** none.
+
+### 30.10 Section planes, picking and selection
+**Goal:** SPEC §27.8 "Section planes", "Picking" and the selection highlight.
+**Read:** SPEC §27.8, §27.10.
+**Port from:** none.
+**Files:** `viewport3d/` (`section.go`, `pick.go`, `select.go`, their shaders) and their tests.
+**Tasks:**
+1. Up to 6 section planes in `float64` world coordinates, made camera-relative in each frame:
+   - clipped in the shaders;
+   - a cap drawn with the stencil for closed meshes;
+   - the outline of the cut.
+2. `Pick(at, done)`:
+   - an `RG32Uint` ID target and a depth target of a small rectangle, drawn only on request;
+   - read back;
+   - `PickResult` with the world point in `float64` from the depth and the inverse matrices, and the normal.
+
+   `PickRect` for box selection.
+3. The highlight color and the outline of selected items.
+**Tests:**
+- unit tests of the world point (a known depth and camera give the known point, far from the origin too);
+- the cap's stencil rule on a cube and a torus.
+
+**Display tests:**
+- a pick of each face of a cube and of a line within its width, and a box selection;
+- a pick result arrives in the next frame;
+- goldens of a section with its cap and outline, and of a selected item.
+
+**Wine, browser and device tests:** the picks and the section goldens.
+**Proof:** `30.10-section-pick.png` (method B): a part cut by a plane with its cap, one face selected.
+**Manual checks:** none.
+
+### 30.11 Overlays: grid, axes, view cube and anchored widgets
+**Goal:** SPEC §27.8 "Overlays".
+**Read:** SPEC §27.8, §12 (multi-child render objects), `widgets` `Stack`.
+**Port from:** none.
+**Files:** `viewport3d/` (`grid.go`, `axes.go`, `viewcube.go`, `anchored.go`, their shaders) and their tests.
+**Tasks:**
+1. The infinite grid with minor and major lines that fade with distance, on any plane.
+2. The axes at a corner.
+3. The view cube widget: faces, edges and corners go to the standard views with an animation, and it turns with the camera.
+4. `Anchored(point, child)`:
+   - the view is a multi-child render object whose overlay children are laid out at projected points each frame;
+   - they are hidden behind the camera, and when covered with the depth option (one readback a frame, only when such a child exists).
+
+   `View.Project` is for `CustomPainter`s.
+5. Semantics: the anchored children are in the semantics tree; the view cube has labels.
+**Tests:**
+- widget tests of `Anchored` (positions after a camera move, hidden behind the camera, the order of hit testing with the navigation);
+- the view cube's targets.
+
+**Display tests:** goldens of the grid at several angles and of the view cube.
+**Proof:** none.
+**Manual checks:** none.
+
+### 30.12 Model data, and the STL and OBJ loaders
+**Goal:** `model.Model`, `stl` and `obj` (SPEC §27.9), and `viewport3d.Upload`.
+**Read:** SPEC §27.9, §27.10, §27.11, §14.4, CLAUDE.md ("Pass `context.Context` as the first parameter").
+**Port from:** none (the STL and OBJ formats: Wavefront's OBJ and MTL descriptions).
+**Files:** `model/`, `model/stl/`, `model/obj/` and their tests and `testdata/` (small files and fuzz seeds), `viewport3d/upload.go`.
+**Tasks:**
+1. `model.Model` and its parts, as plain Go.
+2. STL as §27.9 says.
+3. OBJ as §27.9 says, with the MTL subset (`Kd`, `Ks`, `Ns`, `d`, `map_Kd`) mapped to the material.
+4. `ctx` is checked while reading, with errors and their metadata (line or byte offset).
+5. `viewport3d.Upload`.
+6. Benchmarks of 1,000,000 triangles, made by the test.
+**Tests:**
+- tables of small files: binary and ASCII STL, a binary file whose header begins with `solid`, colors, welding;
+- OBJ with negative indices, concave polygons, groups, materials, a missing material file, lines and points, `float64` positions;
+- errors with their routes;
+- a cancelled context;
+- fuzz tests (run for a minute in the step, and their seeds kept);
+- the benchmarks, with results in `IMPLEMENTED.md`.
+**Proof:** none.
+**Manual checks:** none.
+
+### 30.13 `examples/cad`, performance and memory
+**Goal:** a public example that shows the M30 work together, and the targets of SPEC §27.10 measured and met.
+**Read:** SPEC §27 (all), §15, §19, "Examples" in the Rules.
+**Port from:** none.
+**Files:**
+- `examples/cad/` (`main.go`, a small built-in part made by code, and a sample STL), `examples/examples_test.go`;
+- benchmarks in `viewport3d` and `gpu`, and the memory tests (`go test -run Leaks ./gpu ./viewport3d`);
+- `docs/GUIDE.md` (3D chapter), `README.md`;
+- SPEC §19, §15 (a row that points to §27.10), CLAUDE.md (the new packages in "Layout").
+**Tasks:**
+1. The example:
+   - opens an STL or OBJ file (the file dialog of `desktop`; on the web an `<input type=file>` is not there yet, so the web build opens the sample);
+   - navigation, the view cube and the grid;
+   - the display modes;
+   - a section plane dragged by a slider;
+   - a pick that shows the face's item and world point in a side panel;
+   - a distance measured between two picks, drawn as a dimension with an `Anchored` label.
+2. Benchmarks:
+   - 1,000,000 triangles with edges;
+   - 10,000 instanced and 10,000 separate items;
+   - a steady frame's allocations.
+
+   On lavapipe, measure and record. On the owner's AMD GPU, check against §27.10 (a manual measurement through `.claude/no-nvidia.sh`, recorded in `IMPLEMENTED.md`). A missed target is reported to the owner, never relaxed.
+3. Memory tests: open and close a model 100 times, resize 1,000 times, and lose the device; the heap stays flat and no GPU resource is left.
+4. The guide and the README.
+**Tests:** a widget test of the example with the recording device; the benchmarks; the memory tests.
+**Display, Wine, browser and device tests:** the example's first frame; `TestEveryExampleDrawsItsFirstFrameUnderWine`.
+**Proof:**
+- `30.13-cad-linux.png` (method B, Vulkan);
+- `30.13-cad-web.png` (method D, WebGPU);
+- `30.13-cad-windows.png` (method F);
+- `30.13-cad-android.png` (method E).
+
+Each shows a part with edges, a section plane and a picked face with its panel.
+**Manual checks:** the example on the owner's AMD GPU with a 1,000,000-triangle STL (the frame rate recorded), on a Windows PC with a GPU, on a phone, and in Chrome and Safari Technology Preview.
+
+### 30.14 Release 1.10
+**Goal:** 1.10 is released with steps 30.1 to 30.13.
+**Tasks:**
+1. SPEC: the version paragraph of §1 (a 1.10 sentence) and a "Scope of 1.10" paragraph next to the others.
+2. `README.md`: "What is new in 1.10".
+3. The standard checks of rule 8, `apicheck` and `uintptrcheck`, and the suites of every environment:
+   - `go test -race -tags glutter_display` under `scripts/headless-wayland.sh` and under `scripts/headless-x11.sh`;
+   - `go test -tags glutter_browser`;
+   - `go test -p 1 -tags glutter_android`;
+   - the Wine tests, the `d3d12` suite alone.
+
+   A failure is fixed, or reported with its cause if it is the machine's.
+4. Merge, tag `step-30.14` and `v1.10.0`, and publish: `git push --follow-tags origin main`, which takes steps 30.1 to 30.14 and their tags to GitHub. Check with `git ls-remote --tags origin`.
+**Tests:** none of its own.
+**Proof:** none.
+**Manual checks:** none.
+
+---
+
+## M31: Games (1.11)
+
+The owner asked on 2026-11-05 for what a game needs beyond drawing, as capable as SDL 3 for what is worth having from it: gamepads, audio and motion sensors, with SDL 3 as the reference and no SDL names in the code (D32). SPEC §28 is the design. M31 also adds the glTF, PLY and 3MF loaders and the PBR materials of `viewport3d` (SPEC §28.5).
+
+Every step that ports from SDL 3:
+- names the SDL 3 files it ports under **Port from**;
+- starts each ported file with the comment of SPEC §28.1 (the SDL 3 file, translated to Go and changed);
+- gives every type and function Glutter's own name, with no `SDL_` and no `Sdl`. A test in `cmd/glutter-gen apicheck` (added in 31.1) fails on an identifier that contains `SDL` or `Sdl`.
+
+### 31.1 Gamepads: the API, the mapping table and Linux
+**Goal:** the package `gamepad` (SPEC §28.2), the mapping parser and table, the Linux evdev backend with hotplug, the pads as game-button keys, and the fake platform's scripted pads.
+**Read:** SPEC §28 (intro), §28.1, §28.2, §28.7, §28.8, D32, §6.3, §8.4 (keys), §11.6 (focus), §12.10.
+**Port from:**
+- `reference/sdl`: `src/joystick/SDL_gamepad.c` (the mapping format and its parser), `src/joystick/SDL_gamepad_db.h` (the table), `src/joystick/SDL_joystick.c` (the pad's identity), `src/joystick/linux/SDL_sysjoystick.c` (evdev: axes, hats, the button order);
+- tests from `test/testautomation_joystick.c` where they apply.
+**Files:**
+- `gamepad/` and its tests;
+- `internal/gamepaddb/` (`mappings_gen.go`) and `cmd/glutter-gen gamepaddb`;
+- `internal/platform` (`Services.Gamepads`), `internal/platform/linux/evdev/` (plain Go with `syscall`: the ioctls and their struct mirrors with layout tests against `/usr/include/linux/input.h`), `internal/platform/fake`;
+- `services` (the game-button key events), `cmd/glutter-gen/apicheck` (the SDL-name rule);
+- SPEC §12.10, `docs/GUIDE.md`.
+**Tasks:**
+1. The API of §28.2 (the sketch; the details decided here and written into SPEC §28.2), with `ApplyDeadZone`.
+2. The mapping parser and the pad identity. `glutter-gen gamepaddb` turns SDL's table into `mappings_gen.go`. `AddMappings`.
+3. The evdev backend:
+   - enumeration, capabilities and absolute axis ranges;
+   - reading on a goroutine of its own, handed over with `Post`;
+   - hotplug through inotify;
+   - no device opened that is not a pad (keyboards and mice are left to the windowing backend).
+4. The pads as keys (the game-button keys and the arrows), on by default, `SetKeyEvents(false)`; a §12.10 row.
+5. The fake platform's scripted pads, for `gluttertest` (`Tester.ConnectPad` and the like).
+6. The apicheck rule against `SDL` and `Sdl` in identifiers.
+**Tests:**
+- the parser (valid and invalid lines, platform fields, axis ranges and inversion, half axes);
+- the identity of known pads;
+- evdev event decoding (tables of events);
+- the keys reaching `ActivateIntent` in a Material button through focus;
+- hotplug with the fake;
+- route tests of every tag;
+- the apicheck rule.
+
+**Display tests:** none.
+**Linux tests:** a virtual pad through `/dev/uinput` (an Xbox-like and a generic one): connect, buttons, axes, disconnect, the mapping found. These tests skip without write access, naming the udev rule.
+**Proof:** none.
+**Manual checks:** an Xbox pad, a DualSense, a Switch Pro and a generic pad on Linux over USB and Bluetooth: names, buttons and axes in a debug page of `examples/gallery` (added in this step, debug builds only), and focus moving through the gallery with the D-pad.
+
+### 31.2 Gamepads: rumble, Windows, the web and Android
+**Goal:** rumble on Linux, and the Windows, web and Android backends of SPEC §28.2.
+**Read:** SPEC §28.2, §28.8, §25.2 (Windows calls), §23.3, §24.6.
+**Port from:** `reference/sdl`: `src/joystick/linux/SDL_sysjoystick.c` (force feedback), `src/joystick/windows/SDL_xinputjoystick.c`, `src/joystick/windows/SDL_rawinputjoystick.c` (hotplug), `src/joystick/emscripten/SDL_sysjoystick.c` (the web's mapping), `src/joystick/android/SDL_sysjoystick.c`.
+**Files:** `internal/platform/linux/evdev/`, `internal/platform/windows/` (`xinput`, `hid` and Raw Input files, mirrors and layout tests against mingw-w64), `internal/platform/web/`, `internal/platform/android/` and the Java embedding (with `classes.dex` regenerated), and their tests.
+**Tasks:**
+1. Linux rumble with `FF_RUMBLE`: upload, play and stop, and `GamepadRumbleUnavailable` for a pad without it.
+2. Windows:
+   - XInput polled once a frame, with its rumble;
+   - HID enumeration through `hid.dll` and `SetupAPI` for pads XInput does not cover;
+   - Raw Input hotplug;
+   - the same pad never listed twice (an XInput pad's HID interface is skipped).
+3. The web:
+   - `getGamepads` read once a frame only while a pad is connected;
+   - the `standard` mapping, else the table;
+   - `dual-rumble`.
+4. Android:
+   - the pads' motion and key events routed to the service (each press arrives once);
+   - hotplug;
+   - rumble through `VibratorManager` on Android 12 and later.
+**Tests:** unit tests of the XInput state decoding, the web's mapping, and the Android event routing.
+**Linux tests:** rumble uploaded to the virtual pad.
+**Wine tests:** XInput under Wine with the virtual pad where `winebus` sees it, else skipped with the reason.
+**Browser tests:** a replaced `navigator.getGamepads` drives a Material button through focus.
+**Device tests:** `adb shell input gamepad keyevent BUTTON_A` activates a focused button on the emulator.
+**Proof:** none.
+**Manual checks:** the four pads with rumble on a Windows PC (XInput and HID), on an Android phone (Bluetooth), and in Chrome and Firefox.
+
+### 31.3 Gamepads: the HID drivers
+**Goal:** the HID drivers of SPEC §28.1 for PlayStation 4 and 5, Switch Pro and Xbox over Bluetooth, on Linux (`/dev/hidraw*`) and Windows (`hid.dll`): LEDs, touchpads, motion sensors, trigger rumble and battery.
+**Read:** SPEC §28.1, §28.2, §28.4.
+**Port from:** `reference/sdl`: `src/joystick/hidapi/SDL_hidapi_ps4.c`, `SDL_hidapi_ps5.c`, `SDL_hidapi_switch.c`, `SDL_hidapi_xboxone.c`, `SDL_hidapi_rumble.c`, `src/joystick/hidapi/SDL_hidapijoystick.c` (choosing a driver), and the CRC and report helpers they use.
+**Files:** `internal/gamepadhid/` (the drivers in plain Go, over a small transport interface) and its tests, the transports in `internal/platform/linux/evdev/` (hidraw) and `internal/platform/windows/`, `gamepad` (sensors, touchpad, LED, battery).
+**Tasks:**
+1. The transport interface (read a report, write a report, feature reports), with hidraw and Windows HID behind it. On Linux a pad goes through its HID driver when hidraw is readable, else through evdev, logged once with the udev rule.
+2. The four drivers:
+   - input reports to the layout;
+   - output reports for rumble, trigger rumble (PS5, Xbox), LEDs (the PS4 and PS5 light bar, the player LEDs);
+   - the touchpad fingers;
+   - the gyroscope and accelerometer with their calibration (feature reports);
+   - battery.
+3. The `sensors.Sensor` values of a pad (the types come from 31.7; until then a pad's sensors are read through an internal type that 31.7 makes public).
+**Tests:**
+- recorded reports in tables for each driver: buttons, axes, touchpad, sensors with calibration, battery;
+- the output reports byte for byte for rumble and LEDs, compared with SDL's;
+- the CRC of the PS5's Bluetooth reports.
+**Proof:** none.
+**Manual checks:** each of the four pads on Linux and on a Windows PC: the light bar's color set by the app, trigger rumble on a DualSense, the touchpad, the gyroscope turning a cube in a debug page.
+
+### 31.4 Audio: the API, conversion and mixing
+**Goal:** the package `audio` (SPEC §28.3) with streams, conversion, resampling and mixing, `audio/wav`, and the fake platform's audio device.
+**Read:** SPEC §28.3, §28.6, §28.7, §13, §15.
+**Port from:** `reference/sdl`: `src/audio/SDL_audiocvt.c` (conversion), `src/audio/SDL_audioresample.c` (the resampler), `src/audio/SDL_audio_channel_converters.h`, `src/audio/SDL_mixer.c` (mixing and clipping), `src/audio/SDL_wave.c` (the WAV subset of §28.3); tests from `test/testautomation_audio.c`.
+**Files:** `audio/`, `audio/wav/` and their tests; `internal/platform` (`Services.Audio`), `internal/platform/fake` (a device that pulls at a scripted rate into a buffer the test reads).
+**Tasks:**
+1. The API of §28.3 (the details decided here and written into SPEC §28.3).
+2. Sample formats, channel conversion with SDL's channel order, the resampler, gain and speed.
+3. Mixing of a device's streams in `float32` with clipping, with no allocation in the device's callback.
+4. `Put` and `Get` from any goroutine.
+5. The callback streams.
+6. `audio/wav` for the subset of §28.3.
+7. The fake device.
+**Tests:**
+- sine tones through every conversion and resampling ratio (44.1 to 48 kHz and back, 8 to 192 kHz) with a signal-to-noise threshold;
+- channel mixes against SDL's tables;
+- mixing and clipping;
+- streams from several goroutines under `-race`;
+- WAV files of every supported format, written by the test, plus invalid ones with their routes;
+- no allocation in the mix;
+- a memory test.
+**Proof:** none.
+**Manual checks:** none.
+
+### 31.5 Audio on Linux: PulseAudio and ALSA
+**Goal:** the Linux backends of SPEC §28.3, with playback, capture and hotplug.
+**Read:** SPEC §28.3, §8.1 (the purego rules), D2, D3, §20.
+**Port from:** `reference/sdl`: `src/audio/pulseaudio/SDL_pulseaudio.c`, `src/audio/alsa/SDL_alsa_audio.c` (their structure and their choices of buffer sizes and recovery).
+**Files:** `internal/platform/linux/pulse/` and `internal/platform/linux/alsa/` (purego; the struct mirrors with layout tests against `/usr/include/pulse` and `/usr/include/alsa` when installed), `internal/platform/linux` (choosing the backend), `scripts/headless-audio.sh` (a PulseAudio server with a null sink in a temporary runtime directory, stopped at the end).
+**Tasks:**
+1. PulseAudio:
+   - the threaded main loop;
+   - `pa_stream` for playback and capture, with write and read callbacks made once (§8.1);
+   - the latency attributes for the target of §28.6;
+   - the default device and hotplug through the subscription;
+   - the server lost becomes `AudioDeviceLost`, then a new connection.
+2. ALSA where no PulseAudio server answers: `snd_pcm_*` with no variadic call, recovery from underruns, no hotplug.
+3. The choice: PulseAudio, then ALSA, then `AudioUnavailable`. Every library is loaded at run time (D3).
+**Tests:** layout tests; the choice of backend (a table with fakes); route tests.
+**Linux tests (under `scripts/headless-audio.sh`):**
+- a sine tone played and recorded from the monitor, matched;
+- capture from a null source;
+- the default device changed while playing;
+- the server killed and started again;
+- ten minutes of play while 60 frames a second are drawn, with no gap (run once in the step, and a one-minute version in the suite).
+**Proof:** none.
+**Manual checks:** playback and capture on the owner's desktop (PipeWire), the latency measured with a loopback cable or the monitor, and a USB headset plugged in and out while playing.
+
+### 31.6 Audio on Windows, Android and the web
+**Goal:** the WASAPI, AAudio and Web Audio backends of SPEC §28.3.
+**Read:** SPEC §28.3, §25.2 (COM objects made in Go), §24.2, §23.3, §23.1 (`glutter-web`).
+**Port from:** `reference/sdl`: `src/audio/wasapi/SDL_wasapi.c`, `src/audio/aaudio/SDL_aaudio.c`, `src/audio/emscripten/SDL_emscriptenaudio.c`.
+**Files:** `internal/platform/windows/` (WASAPI, the COM mirrors and vtables with layout tests, the `IMMNotificationClient` object), `internal/platform/android/` (AAudio through purego, `RECORD_AUDIO` through the Java embedding), `internal/platform/web/` (the worklet), `cmd/glutter-web` (the worklet script in the build, COOP and COEP in `serve`).
+**Tasks:**
+1. WASAPI:
+   - shared mode, driven by events, on a thread in the multithreaded apartment;
+   - `IAudioClient3` where present;
+   - capture;
+   - the default device through the notification client;
+   - device invalidation becomes `AudioDeviceLost`, then a new device.
+2. AAudio:
+   - the data callback (a purego callback made once);
+   - low-latency mode;
+   - the stream made again after a disconnect;
+   - `PauseInBackground`;
+   - capture with the permission.
+3. Web Audio:
+   - the worklet, fed through `postMessage` or the `SharedArrayBuffer` ring;
+   - the 100 ms buffer;
+   - resume at the first gesture (`DeviceStateSuspended` until then);
+   - capture through `getUserMedia`.
+**Tests:** layout tests of the COM mirrors; the worklet's ring buffer (a plain-Go model of it shared with the JavaScript's tests); route tests.
+**Wine tests:** `winepulse` to the server of `scripts/headless-audio.sh`: a sine tone recorded from the monitor; the default device changed.
+**Browser tests:** Chromium with `--autoplay-policy=no-user-gesture-required` plays a tone that a tap node reads; frames of 50 ms do not make a gap with the default buffer; resume after a synthetic gesture without the flag.
+**Device tests:** AAudio's callbacks run and the timestamps advance on the emulator; the stream survives the app hidden and shown.
+**Proof:** none.
+**Manual checks:** playback, capture and a device change on a Windows PC; latency on the owner's phone; Chrome, Firefox and Safari Technology Preview.
+
+### 31.7 Motion sensors and haptics
+**Goal:** the package `sensors` (SPEC §28.4) on Android, the web and the pads, and `navigator.vibrate` for `services.HapticFeedback` on the web.
+**Read:** SPEC §28.4, §24.2, §23.3.
+**Port from:** `reference/sdl`: `src/sensor/SDL_sensor.c` (the model), `src/sensor/android/SDL_androidsensor.c`, `src/sensor/emscripten/SDL_emscriptensensor.c`.
+**Files:** `sensors/` and its tests, `internal/platform/android/` (`ASensorManager` through purego on a looper thread), `internal/platform/web/`, `gamepad` (the pads' sensors made public), `internal/platform/fake`, `services` (the web's haptics).
+**Tasks:**
+1. The API of §28.4: readings batched once a frame, `Latest`, `Rate`.
+2. The backends above, with the pads' sensors from 31.3.
+3. The web's permission at a gesture.
+4. `HapticFeedback` on the web through `navigator.vibrate`.
+**Tests:** the batching with the fake; the units and axes of each backend (tables of raw values); route tests.
+**Browser tests:** `DeviceMotionEvent`s sent by the test reach a listener.
+**Device tests:** `adb emu sensor set acceleration` reaches a listener with the right values and axes.
+**Proof:** none.
+**Manual checks:** a phone tilted turns the cube of a debug page; the same in a phone's browser; a DualSense's gyroscope.
+
+### 31.8 The glTF loader
+**Goal:** `model/gltf` (SPEC §28.5), with the extensions it lists and skins, morph targets and animations as data.
+**Read:** SPEC §27.9, §28.5, §20.
+**Port from:** the glTF 2.0 specification and the extensions' specifications (Khronos); meshoptimizer's `src/vertexcodec.cpp` and `src/indexcodec.cpp` (MIT) for `EXT_meshopt_compression`: this step adds `third_party/meshoptimizer/LICENSE`, a NOTICE entry and a SPEC §20 row.
+**Files:** `model/gltf/` and its tests and `testdata/` (models made by the tests, and CC0 sample models with their license), `model` (skins, morph targets and animations).
+**Tasks:**
+1. `.gltf` (buffers and images through the `fs.FS` or `data:` URIs) and `.glb`.
+2. Every part of §28.5, with accessors (strides, sparse accessors, normalized integers) and the quantization extension.
+3. The extensions of §28.5; an unknown required one is `GLTFExtensionUnsupported`, an unknown optional one is logged once.
+4. Validation of indices and accessor bounds, errors with the JSON path in their metadata.
+**Tests:**
+- tables of small models written by the tests for every accessor type, sparse accessors, every extension;
+- invalid files with their routes;
+- fuzz tests;
+- the CC0 sample models read with their expected counts.
+**Proof:** none.
+**Manual checks:** none.
+
+### 31.9 PBR, lighting and skinning in the 3D view
+**Goal:** `viewport3d`'s PBR material, image-based lighting, the directional shadow map, tone mapping, skinning, morph targets and `Animation.Sample` (SPEC §28.5).
+**Read:** SPEC §27.8, §28.5, the glTF specification's appendix on the BRDF.
+**Port from:** none (the glTF specification's BRDF and Khronos' PBR Neutral tone mapper; their formulas are written in WGSL).
+**Files:** `viewport3d/` (`pbr.go`, `ibl.go`, `shadow.go`, `tonemap.go`, `skin.go`, `animation.go`, their shaders) and their tests, `viewport3d/testdata/goldens/`.
+**Tasks:**
+1. The PBR metallic-roughness material with normal, occlusion and emissive maps, the glTF alpha modes and double-sided materials.
+2. Image-based lighting from a cube map prefiltered by a compute pass, and a neutral default environment.
+3. One directional shadow map with a stable fit to the view.
+4. Tone mapping into `RGBA16Float` (PBR Neutral, ACES).
+5. Skinning and morph targets in the vertex shader, with the joint matrices in a storage buffer.
+6. `Animation.Sample` with step, linear and cubic-spline interpolation.
+7. `viewport3d.Upload` for glTF models.
+**Tests:** `Animation.Sample` against hand-computed values; the joint matrices of a two-bone chain; allocation tests.
+**Display tests:** goldens on lavapipe, each looked at:
+- a grid of spheres by metallic and roughness;
+- a normal-mapped plane;
+- a skinned figure at two times;
+- morph targets;
+- the shadow of a box on a plane;
+- the CC0 sample models.
+
+**Wine, browser and device tests:** the same goldens within the tolerance.
+**Proof:** `31.9-pbr.png` (method B): the sphere grid and a sample model.
+**Manual checks:** the sample models on the owner's AMD GPU and a phone.
+
+### 31.10 The PLY and 3MF loaders
+**Goal:** `model/ply` and `model/threemf` (SPEC §28.5), and point clouds in the 3D view.
+**Read:** SPEC §27.9, §28.5.
+**Port from:** none (the PLY description; the 3MF core specification and its materials extension).
+**Files:** `model/ply/`, `model/threemf/` and their tests and `testdata/`, `viewport3d` (the point material for clouds, if anything is missing).
+**Tasks:**
+1. PLY as §28.5 says, with `float64` positions from doubles.
+2. 3MF as §28.5 says, with `archive/zip` and `encoding/xml`, and units into `model.Model`.
+**Tests:** tables of small files written by the tests (ASCII and both binary orders, point clouds, faces with many vertices; 3MF with components, transforms, units and colors); invalid files with their routes; fuzz tests; benchmarks of 1,000,000 points.
+**Display tests:** a golden of a point cloud.
+**Proof:** none.
+**Manual checks:** none.
+
+### 31.11 `examples/game3d`, performance and memory
+**Goal:** a small public 3D game that uses M30 and M31 together, and the targets of SPEC §28.6 measured and met.
+**Read:** SPEC §27, §28 (all), §15, §19, "Examples" in the Rules.
+**Port from:** none.
+**Files:**
+- `examples/game3d/` (`main.go`, shaders, a few glTF models and sounds made or chosen with CC0 licenses, kept with their license), `examples/examples_test.go`;
+- benchmarks and memory tests in `gamepad`, `audio` and `viewport3d`;
+- `docs/GUIDE.md` (a games chapter), `README.md`;
+- SPEC §19, CLAUDE.md (the new packages in "Layout").
+**Tasks:**
+1. The game:
+   - a third-person character (a skinned glTF model) moving through a small level;
+   - control by gamepad, by keyboard and by a locked mouse;
+   - sound effects and music through `audio`;
+   - rumble on a hit;
+   - a Material pause menu driven by the pad's keys;
+   - continuous frames.
+2. Benchmarks and allocation tests of a steady frame, and the latency measurements of §28.6 (on lavapipe and the null sink here; on the owner's machine manually, recorded in `IMPLEMENTED.md`). A missed target is reported to the owner, never relaxed.
+3. Memory tests: pads connected and removed 1,000 times, streams opened and closed 1,000 times, the game's level loaded 100 times. The heap stays flat and no GPU resource is left.
+4. The guide and the README.
+**Tests:** a widget test of the game with scripted pads and the fake audio device; the benchmarks; the memory tests.
+**Display, Wine, browser and device tests:** the game's first frame; `TestEveryExampleDrawsItsFirstFrameUnderWine`.
+**Proof:**
+- `31.11-game3d-linux.png` (method B);
+- `31.11-game3d-web.png` (method D);
+- `31.11-game3d-windows.png` (method F);
+- `31.11-game3d-android.png` (method E).
+**Manual checks:** the game with each real pad on Linux, a Windows PC, a phone and in Chrome and Firefox: the frame rate, the sound's latency and gaps, rumble, the pause menu with the D-pad.
+
+### 31.12 Release 1.11
+**Goal:** 1.11 is released with steps 31.1 to 31.11.
+**Tasks:**
+1. SPEC: the version paragraph of §1 (a 1.11 sentence) and a "Scope of 1.11" paragraph next to the others.
+2. `README.md`: "What is new in 1.11".
+3. The standard checks of rule 8, `apicheck` and `uintptrcheck`, and the suites of every environment as in 30.14, plus the Linux audio tests under `scripts/headless-audio.sh` and the virtual pad tests. A failure is fixed, or reported with its cause if it is the machine's.
+4. Merge, tag `step-31.12` and `v1.11.0`, and publish: `git push --follow-tags origin main`, which takes steps 31.1 to 31.12 and their tags to GitHub. Check with `git ls-remote --tags origin`.
 **Tests:** none of its own.
 **Proof:** none.
 **Manual checks:** none.

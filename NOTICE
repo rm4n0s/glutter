@@ -43,6 +43,18 @@ Skia (BSD-3-Clause)
   Copyright 2011 Google Inc. All rights reserved.
   License text: third_party/skia/LICENSE
 
+SDL 3 (zlib)
+  The design of the gpu package and the gamepad, audio and sensor services
+  (docs/SPEC.md sections 27 and 28) follows SDL 3's GPU, gamepad, audio and
+  sensor APIs. Code ported from SDL 3 (the gamepad mapping parser and table, the
+  HID drivers of the pads, the audio resampler and channel conversion, and the
+  platform backends of these services) is altered: it is translated to Go and
+  changed to fit Glutter, and each ported file says so and names the SDL 3 file
+  it comes from. Glutter's identifiers do not use SDL's names.
+  https://libsdl.org/
+  Copyright (C) 1997-2026 Sam Lantinga <slouken@libsdl.org>
+  License text: third_party/sdl/LICENSE
+
 material-color-utilities (Apache-2.0)
   The Material 3 color algorithms are ported from
   https://github.com/material-foundation/material-color-utilities

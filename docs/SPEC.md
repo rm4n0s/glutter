@@ -31,7 +31,7 @@ Glutter is a GUI toolkit for Go that reproduces Flutter's framework API on its o
 - macOS and iOS backends. The design supports them (§6.4), but they aren't implemented. The web comes in 1.1 (§23), Android in 1.6 (§24), Windows in 1.8 (§25).
 - TinyGo. Apps are built with the standard Go toolchain only, for the web too (D18).
 - Dart interop, Flutter plugins, and platform channels as a message codec. Go APIs are exposed directly instead.
-- Custom fragment shaders (`FragmentProgram`), 3D, video playback, WebView, printing. (SVG images come in 1.9, §26; SVG glyphs in fonts are still not drawn.)
+- Custom fragment shaders on a `Paint` (`FragmentProgram`), video playback, WebView, printing. (SVG images come in 1.9, §26; SVG glyphs in fonts are still not drawn. 3D comes in 1.10 through the `gpu` package and a 3D view, §27, and gamepads, audio and sensors in 1.11, §28; a game engine or a CAD geometry kernel is never part of Glutter.)
 - DevTools and the widget inspector UI. Debug paint flags and tree dumps are in scope (§14.3).
 - Material 2 visuals. Only Material 3 is supported.
 - The XEmbed system tray. Only StatusNotifierItem is supported (§8.9).
@@ -147,6 +147,10 @@ Glutter is a GUI toolkit for Go that reproduces Flutter's framework API on its o
 | D26 | **Windows 10 version 1809 (build 17763) is the minimum**, on amd64 and arm64 | Chosen when M28 was planned (2026-10-25), not yet confirmed by the owner. Go itself needs Windows 10; version 1809 has per-monitor DPI awareness v2, the DXGI 1.4 factory and flip-model swap chains, and WARP for Direct3D 12. Newer calls (`EnumAdapterByGpuPreference`, the dark title bar attribute of version 2004, the UTF-8 code page of the manifest) are used where the system has them. Raising it is the owner's decision. §25.1 |
 | D27 | **SVG images (1.9) are drawn by Glutter's own parser and painter in Go, with `flutter_svg`'s API in a package `svg`** | Decided on 2026-10-26 by the owner. Flutter's framework draws no SVG; Flutter apps use the community package `flutter_svg` (`SvgPicture.asset`, `.string`, `.memory`, `.file`, `.network`), so Glutter keeps those names and options. An SVG document is parsed once (with `encoding/xml`, no new dependency) into a tree of drawing commands and recorded into a `ui.Picture` that every renderer draws. The first version draws what icons and logos use and also text, masks, the common filters and `<style>` CSS (the owner chose the larger scope); scripts, animation (SMIL), `foreignObject` and external resources other than `<image>` with a `data:` URL are not drawn. Rejected: a binding to a C library (librsvg, resvg: cgo or purego, and not on the web), and rasterizing in Go (the result would not scale with the widget). §26 |
 | D28 | **Off-screen drawing (1.9.1) is the public package `offscreen`: a software rasterizer, a surface that redraws what changed, a detacher that makes scenes safe for any goroutine, and a view on a binding of its own** | Decided on 2026-10-27 by the owner, for Emetos's Remote Work. The rasterizer cannot be in `ui`, since `internal/gpu/soft` imports `ui`, so it is a package of its own, beside `svg`. The view has a binding of its own, not a view in the app's binding: the binding composites every view in each frame, so a view in the app's binding would get scenes at the main window's rate and none while that window is hidden. A binding of its own has its own frame rate and draws on a goroutine of its own. A scene is drawn on that goroutine only after it is detached on the UI thread: a paragraph draws by asking the text engine, whose caches have no lock, and the framework lays the same paragraph out again in the next frame. Rejected: a lock in the text engine (the paragraph would still change under the renderer), and a view drawn on the UI thread (a full 1280x800 frame of `soft` took 45 to 85 ms). §9.9 |
+| D29 | **3D (1.10) is a public GPU API and a 3D view, never a game engine**: the package `gpu` over the explicit renderer's device (Vulkan, Direct3D 12, WebGPU), a GPU texture shown in the widget tree (Flutter's `Texture`), and the package `viewport3d` that draws meshes, lines, edges, section planes and picking for CAD and games. A scene graph, physics, animation blending, asset pipelines and a geometry kernel (B-rep, NURBS, STEP) stay outside Glutter | Decided on 2026-11-05 by the owner: they want to write CAD applications and games without an engine inside Glutter, and cgo-free. `flutter_scene` is not used as a reference (the owner's choice). SDL 3's GPU API (zlib) and the WebGPU specification are the design references of `gpu`; Flutter GPU is not ported, since its API is not settled. `gles` and `soft` have no `gpu` device (`GPUUnavailable`; the owner accepted on 2026-11-05 that a machine without an explicit renderer has no 3D). 3D ships in 1.10 and the games services in 1.11, two releases (the owner's choice, 2026-11-05). Rejected: raylib (OpenGL only, `float32` only, a game library; through raylib-go it needs cgo), a port of SDL 3 as a whole (Glutter already has its windows, input, event loop and GPU backends), and a binding to a C engine (cgo, or a library every app must ship). §27 |
+| D30 | **The CPU works in `float64`, the GPU in `float32`.** `vecmath` (vectors, matrices, quaternions, rays, planes, boxes) is `float64`; `viewport3d` gives the GPU matrices relative to the camera, so the GPU sees small numbers near the eye | Chosen when M30 was planned (2026-11-05), with the owner's agreement that the 3D view must suit CAD. A 50 km site and a 0.1 mm detail draw without jitter; vertex buffers stay `float32` (or smaller), so the GPU's speed and memory are not changed. `ui.Matrix4` stays `float32`, as Flutter's 2D transforms. §27.5 |
+| D31 | **An app's shaders are WGSL, compiled ahead of time** by `glutter-gen gpushaders` with naga (the version of D20) into a generated Go file that holds the WGSL, the SPIR-V, the HLSL and the reflection of the bindings | Decided on 2026-11-05 by the owner. The shaders run as fast either way: only the translation from WGSL moves, and the driver compiles SPIR-V or HLSL at run time in both cases. SDL 3 does the same (its GPU API takes bytecode for each backend, made ahead of time with a separate tool). Building an app still needs only Go (G3); naga is needed only to change a shader, as for Glutter's own shaders. Compiling WGSL at run time needs a WGSL compiler in Go, which is an open decision (§21). §27.3 |
+| D32 | **Gamepads, audio and sensors (1.11) are Glutter's own services**, with SDL 3 (zlib) as the reference: its gamepad mapping format and table, its HID drivers of the common pads, its audio streams and resampler, and its sensor model are ported to Go per platform. **No identifier in Glutter uses SDL's names** (no `SDL_` prefix, no `Sdl` in a Go name); ported files say in a comment which SDL 3 file they come from and that they are changed, as SDL's license asks for altered versions, and `third_party/sdl/LICENSE` and the NOTICE entry keep its notice | Decided on 2026-11-05 by the owner. Linux's audio is called through purego (`libpulse`, then `libasound`; no native PipeWire, the owner's choice of 2026-11-05), Windows' through `syscall` (WASAPI, XInput, HID), Android's in `internal/platform/android` (AAudio, `ASensorManager`, the input devices), the web's through `syscall/js`. Rejected: SDL 3 through purego (a library every app must ship, no Windows path under the `syscall` rule, its own event loop, and no Go wasm build). §28 |
 
 ## 5. Size estimate
 
@@ -217,6 +221,11 @@ glutter/
   widgets/               the widgets library
   material/              Material 3 (re-exports widgets; §12.11)
   desktop/               tray, notifications, file dialogs, open URI
+  gpu/                   the public GPU API over the explicit renderer's device, and the GPU view widget (§27)
+  vecmath/               float64 vectors, matrices, quaternions, rays, planes, boxes (§27.5)
+  viewport3d/            the 3D view: camera, navigation, meshes, lines, edges, section planes, picking, overlays (§27.6)
+  model/                 plain-Go 3D model data, with loaders in model/stl, model/obj, model/gltf, model/ply, model/threemf (§27.8)
+  gamepad/ audio/ sensors/  gamepads, audio streams and motion sensors (§28)
   gluttertest/           WidgetTester, finders, golden comparison (flutter_test)
   internal/
     engine/              wires platform + gpu + text into the ui contracts
@@ -2560,6 +2569,8 @@ Each milestone is broken into steps in `docs/IMPLEMENTATION.md` (written after t
 | M27 | Fixes for Emetos (1.7): scroll positions after their `Scrollable` is gone, `gluttertest` disposing the tree and a fake desktop without a file chooser, the focus of a window from its activation, what a window controller can do (title, activation, full screen, initial state) and the first window in tests, closing and destroying the first window, `RawTooltip` (delay on enter, callbacks, controller, key), the cursor of a pressed pointer, `Draggable` and `DragTarget` (slop, Escape, moves while resting), `TreeSliver` (changing children, lazy nodes, keys), the cold start (a profile of the first draw, a shader cache) | none of the Emetos workarounds is needed: the program no longer panics when a `Scrollable` leaves the tree, a test's states are disposed, a headless window gets focus events, the first window closes like the others; a second start compiles no shader; release 1.7 |
 | M28 | Windows (1.8): `GOOS=windows` build tags and checks, the Win32 bindings and COM helpers, Wine as the test runner, windows and the message loop with `soft` drawn into the window, mouse, touch, pen and cursors, the keyboard and its tables, text input with IMM32, the clipboard, settings, fonts and lifecycle, the HLSL of the shaders, the Direct3D 12 device at feature level 11_0 and its swap chain, `auto` with WARP and `soft` as fallbacks, the tray, balloons, file dialogs and open URI, OLE drag and drop and several windows, UI Automation, the `.exe` with its manifest and icon (§25); and what Emetos asked for: a font fallback that parses only the fonts that can help, `TreeSliverNode.SetExpanded`, and a `WindowDecoration` whose own widgets are not part of the drag area | every example, `tray` and `multiwindow` included, runs under Wine and draws with Direct3D 12 at feature level 11_0 and matches the goldens; the manual checks on a Windows PC are recorded; release 1.8 |
 | M29 | SVG images (1.9): the parser (`internal/svg`: XML, CSS, attributes, units, colors, transforms, path data, references), the painter (shapes, strokes, gradients, clips, opacity, viewBox, images), text, masks, filters and patterns, the `svg` package with `flutter_svg`'s widgets, and the release | the SVG test suite of §26.6 matches its reference renders; `examples/svg` runs on Linux, the web, Android and Windows; release 1.9 |
+| M30 | 3D and the GPU (1.10): the explicit device's depth, multisampling, more formats, storage buffers, compute, indirect draws and readback; `glutter-gen gpushaders`; the `gpu` package; GPU textures in the widget tree and the GPU view; pointer lock; `vecmath` and the camera; the 3D view's meshes, lines, edges, section planes, picking and overlays; the STL and OBJ loaders; `examples/cad` (§27) | `examples/cad` opens an STL or OBJ model, orbits, shows its edges, cuts it with a section plane and picks a face, cgo-free, on Linux (Vulkan), Windows (Direct3D 12 under Wine), the web (WebGPU) and Android (Vulkan); release 1.10 |
+| M31 | Games (1.11): gamepads (evdev, XInput, the HID drivers, the web, Android) with rumble and the game-button keys, audio streams and their backends (PulseAudio and ALSA, WASAPI, AAudio, Web Audio), motion sensors, the glTF, PLY and 3MF loaders with PBR materials and skinning, `examples/game3d` (§28) | `examples/game3d` plays with a gamepad, the keyboard and a locked mouse, with sound, on Linux, Windows under Wine, the web and Android; the manual checks with real pads are recorded; release 1.11 |
 
 ## 19. Examples (`examples/`)
 
@@ -2592,6 +2603,9 @@ On the web (1.1) every example except `multiwindow` and `tray` builds and runs (
 | Chromium's accessibility code, as forked in Flutter (`engine/src/flutter/third_party/accessibility/ax/platform`; ported into `internal/platform/windows/uia`: the UI Automation provider, 1.8) | BSD-3-Clause ("The Chromium Authors") | `third_party/chromium/LICENSE`, the text of `engine/src/flutter/third_party/accessibility/LICENSE`, plus a NOTICE entry; each ported file names the Flutter file it ports |
 | Wine | LGPL-2.1-or-later | a tool: the test runner of the Windows tests (§25.13); nothing of it ships, and no Wine code is copied |
 | mingw-w64 (compiler and headers) | GPL / ZPL and public-domain headers | a tool: the layout tests of the Win32 mirrors compile a C file with it (§25.2); nothing of it ships |
+| SDL 3 (the design of `gpu`; the gamepad mapping parser and table, the HID drivers of the pads, the audio resampler and the backends of the gamepad, audio and sensor services, ported; 1.10 and 1.11) | zlib | `third_party/sdl/LICENSE` plus a NOTICE entry; each ported file names the SDL 3 file it ports and says it is changed (SDL's license asks that altered versions be marked); no Glutter identifier uses SDL's names (D32). `reference/sdl` (git-ignored) holds the pinned release |
+| `libpulse`, `libasound` (1.11) | LGPL-2.1-or-later | system libraries, loaded at run time through purego (§28.4), never bundled; no code is copied |
+| `xinput1_4.dll`, `hid.dll`, the WASAPI DLLs (1.11) | Microsoft | parts of Windows, loaded from System32 at run time |
 | `d3d12.dll`, `dxgi.dll`, `d3dcompiler_47.dll` and the other Windows DLLs | Microsoft | parts of Windows, loaded from System32 at run time (§25.2); never bundled or redistributed |
 
 **Reference sources.** `reference/flutter` holds a sparse checkout of `packages/flutter/lib` and `packages/flutter/test`, pinned to the latest stable Flutter tag when M0 starts (the tag is recorded in `reference/VERSION`). It is git-ignored and fetched by `scripts/fetch-reference.sh`.
@@ -2607,6 +2621,11 @@ New ones are added here with a recommendation and moved to §4 once decided.
 |---|---|
 | Notifications on Windows with buttons and a place in the notification center: 1.8 shows them as tray balloons (§25.9), which have no action buttons and no history | Real toast notifications through WinRT (`ToastNotificationManager`) need an AppUserModelID registered with a Start-menu shortcut and a COM activator for the buttons, and cannot be tested under Wine. Decide after 1.8 whether apps need them; the balloons stay as the fallback |
 | File dialogs on Android: the Storage Access Framework gives `content:` URIs, which the path-based `desktop.OpenFiles` and `SaveFile` cannot carry (§24.11) | An API that reads and writes through the URI (`desktop.OpenDocuments` returning readers, `SaveDocument` taking a writer), usable on Linux through the portal too. Decide before a step adds it; 1.6 returns `FileChooserUnavailable` |
+| WGSL compiled at run time (shaders an app makes while it runs, e.g. a node-based material editor): 1.10 compiles every app shader ahead of time with naga (D31) | A WGSL front end and SPIR-V and HLSL writers in Go, inside `glutter-gen`'s shader code first so they can be checked against naga's output, then in `gpu`. Large; decide after 1.10 whether apps need it. WebGPU takes WGSL as it is, so the web needs no compiler |
+| External textures: a frame made by another renderer or process (a video decoder, raylib, an embedded engine) shown with no copy, through a dma-buf on Linux, a shared handle on Windows, an `AHardwareBuffer` on Android | `gpu.Device.ImportTexture` over each backend's external memory extension, into the same `Texture` widget as §27.4. Decide after 1.10; until then a frame is copied in with `Queue.WriteTexture` |
+| The device's own motion sensors on the Linux and Windows desktops (tablets and convertibles): 1.11 reads them on Android and the web, and on every platform from the pads (§28.5) | Linux: the IIO devices in `/sys/bus/iio` (plain files) or `iio-sensor-proxy` over D-Bus, which gives only an orientation; Windows: the Sensor API over COM, which Wine lacks. Decide when an app needs it |
+| Trigger rumble and the other Windows.Gaming.Input features on Windows: 1.11 uses XInput and HID (§28.2) | Windows.Gaming.Input is WinRT, called through COM with `syscall` like the rest; a new kind of binding (activation factories, `HSTRING`). Decide after 1.11 |
+| Exclusive full screen with a display mode of its own: 1.10 has borderless full screen only, as current games and compositors prefer | Wayland has no mode setting for clients; X11 RandR and DXGI's `SetFullscreenState` could do it. Decide when a game needs it |
 
 ## 22. Risks
 
@@ -2632,6 +2651,11 @@ New ones are added here with a recommendation and moved to §4 once decided.
 | After `d3d12` fails, `soft` draws with GDI into a window that had a flip-model swap chain | under Wine GDI draws there (a test of step 28.10, §9.8); on a real PC it is a manual check of 28.10, and if GDI cannot draw there, the surface becomes a child window that is made again (`platform.SurfaceRenewer`, as on the web) |
 | Frames are paced by `DwmFlush`, which follows the compositor's cycle (the primary monitor's on Windows 10) | a window on a faster secondary monitor is paced at the compositor's rate; checked in 28.2, and the fallback pacer of §25.3 is the remedy |
 | Windows on ARM has no test machine | the arm64 build is checked on every step; the structures are the same, and the assembly thunk is small; the owner's checks on an ARM PC, if there is one |
+| An app's draw calls cross purego or `syscall` (tens of nanoseconds each), so a scene of thousands of separate draws costs milliseconds of CPU | instancing and indirect draws in `gpu` from the first version (§27.2), `viewport3d` batches by pipeline and material, and a benchmark of 10,000 objects in §27.9 |
+| A frame that allocates gets garbage-collection pauses, which a game shows as stutter | `vecmath` types are values, `gpu` writes from slices the app keeps, and `viewport3d` reuses its buffers; allocation tests of a steady frame in M30 and M31 (§27.9) |
+| An app's shader is valid WGSL but fails on one backend (naga's HLSL under `D3DCompile`, a driver's SPIR-V compiler) | `glutter-gen gpushaders` compiles the HLSL with `D3DCompile` under Wine and validates the SPIR-V with `spirv-val` when installed; the examples' shaders run on every backend in the display, Wine and browser tests |
+| Go's wasm build has one thread, so the Web Audio worklet waits for the UI goroutine to give it samples; a long frame makes a gap in the sound | a buffer of 100 ms by default, filled ahead from the UI goroutine's idle time and at each frame, larger on request (§28.4); a browser test plays through frames of 50 ms |
+| Real pads differ (firmware, Bluetooth or USB, clones), and no test can use one | SDL 3's mapping table and HID drivers, which games have used for years; a virtual pad through `uinput` in the Linux tests; the manual checks of M31 with the owner's pads |
 | Go's wasm binaries are large | `-ldflags=-s -w`, gzip made by `glutter-web`, and the size targets in §15 |
 
 ## 23. Web (`GOOS=js GOARCH=wasm`, 1.1)
@@ -3250,3 +3274,474 @@ Each has a route test (§14.4).
   - `rsvg-convert` is used only to make the references (`go test ./internal/svg -run Reference -update-references`), never at test time.
 - Widget tests of `SvgPicture` (sizing, fit, loading, caching, errors) with `gluttertest`.
 - `examples/svg` shows a set of icons, a logo with gradients, text and a filter, and runs on every platform.
+
+## 27. 3D and the GPU (1.10)
+
+Glutter 1.10 lets an app draw its own 3D, for CAD applications and for games, with no game engine inside Glutter and no cgo (D29). It has four layers, each usable without the next:
+
+1. **`gpu`**: a public GPU API over the device of the explicit renderer (§9.3): buffers, textures, samplers, WGSL shaders, render and compute pipelines, command encoders and readback (§27.2).
+2. **GPU textures in the widget tree**: Flutter's `Texture` widget and texture layer, and `gpu.View`, a widget that gives the app a render target of its size each time it must draw (§27.4, §27.5).
+3. **`vecmath`** (`float64` math, D30) and **`viewport3d`**: a 3D view for CAD and games: a camera with CAD navigation, meshes, lines, points, edges, section planes, picking and overlays. It draws a flat list of items that the app owns; it is not a scene graph (§27.7, §27.8).
+4. **`model`**: plain-Go model data and loaders. 1.10 has STL and OBJ; 1.11 adds glTF, PLY and 3MF (§27.9, §28.5).
+
+Where it runs: wherever the app draws with an explicit renderer: `vulkan` (Linux and Android), `d3d12` (Windows, WARP included) and `webgpu` (the web). With `gles` or `soft`, `gpu.DeviceOf` returns `GPUUnavailable`, a texture layer draws nothing (logged once at Info level), and `gpu.View` shows its `Fallback` widget. Nothing in this section changes how the 2D renderer draws: every golden and parity test stays as it is.
+
+What stays outside Glutter: a scene graph, physics, positional audio, animation blending and state machines, an asset pipeline, and a geometry kernel (B-rep, NURBS, booleans, STEP and IGES). An app or a separate module builds these on the four layers.
+
+The design references are SDL 3's GPU API (zlib, D32) and the WebGPU specification. `flutter_scene` is not used as a reference (the owner's choice, 2026-11-05), and Flutter GPU is not ported (its API is not settled). The doc comments of `gpu`, `vecmath`, `viewport3d` and `model` end with `// Flutter: no counterpart`, except the ports of Flutter's `Texture`, `TextureBox`, `TextureLayer` and `SceneBuilder.addTexture` (§27.4).
+
+### 27.1 What the explicit device gains
+
+`explicit.Device` (§9.3) is extended so that `gpu` can be a thin layer over it. The 2D renderer keeps using what it uses now. Each addition is made in `vulkan`, `d3d12`, `webgpu` and `fakedevice`, within WebGPU's default limits, which remain the design limits (D19):
+
+- **Formats:** `RGBA16Float`, `RGBA32Float`, `R32Float`, `R32Uint`, `RG32Uint`, `Depth32Float` and `Depth24PlusStencil8`, beside today's `RGBA8Unorm`, `BGRA8Unorm` and `R8Unorm`. There are still no sRGB formats (§9.3): an `RGBA8Unorm` target holds sRGB-encoded values, which the app's shader encodes, and an `RGBA16Float` target holds linear values, which the composite encodes (§27.4). Block-compressed formats are not in 1.10.
+- **Textures:** 2D, 2D arrays, cube maps and 3D textures, with mip levels, and a sample count of 1 or 4 (the two that WebGPU guarantees). Storage textures (write-only, `RGBA8Unorm`, `RGBA16Float`, `R32Float`, `R32Uint`) for compute.
+- **Render passes:** up to 4 color attachments and one depth-stencil attachment, each with its load and store operations and clear value, and a resolve target for a multisampled attachment.
+- **Pipeline state:** primitive topologies (triangle list and strip, line list and strip, point list), cull mode, front face, depth test, depth write and depth bias, stencil, blend and color write mask per attachment.
+- **Buffers:** storage (read-only and read-write), index buffers of `uint16` and `uint32`, indirect, copy source and destination, and map-read for readback.
+- **Compute:** compute pipelines, `Dispatch` and `DispatchIndirect`, workgroup memory.
+- **Draws:** `DrawIndirect` and `DrawIndexedIndirect`. There is no multi-draw indirect, since WebGPU has none.
+- **Copies:** buffer to buffer, buffer to texture, texture to buffer and texture to texture. `ReadBuffer` returns its data once the GPU has finished, like `ReadTexture`.
+- **Queries:** timestamp queries where the device has them (`Features.TimestampQuery`).
+- **Several command encoders in a frame**, submitted in order on the device's one queue, and a callback when the submitted work is done.
+- **Clip space is WebGPU's on every backend:** normalized device coordinates with y up, depth from 0 to 1, and the framebuffer's origin at the top left. Vulkan flips y with a negative viewport height (core since Vulkan 1.1).
+- **The first instance and the first vertex:** Direct3D 12's `SV_InstanceID` and `SV_VertexID` leave out the first instance and the base vertex of a draw (§9.8). A shader that reads `instance_index` may be drawn only with a first instance of 0, and one that reads `vertex_index` only with a first vertex and a base vertex of 0. In debug builds, any other draw panics with `GPUFirstInstanceRead`, on every backend, so the rule shows on Linux too.
+
+### 27.2 The `gpu` package
+
+The names follow WebGPU, in Go form. A sketch; the details are decided in step 30.4:
+
+```go
+package gpu
+
+func DeviceOf(bc widgets.BuildContext) (*Device, error)           // GPUUnavailable under gles or soft
+func DeviceOfBinding(b *widgets.WidgetsBinding) (*Device, error)
+
+func (d *Device) Limits() Limits
+func (d *Device) Features() Features
+func (d *Device) NewBuffer(desc BufferDesc) (*Buffer, error)
+func (d *Device) NewTexture(desc TextureDesc) (*Texture, error)
+func (d *Device) NewSampler(desc SamplerDesc) (*Sampler, error)
+func (d *Device) NewShaderModule(s *Shader) (*ShaderModule, error)  // s is made by glutter-gen gpushaders (§27.3)
+func (d *Device) NewRenderPipeline(desc RenderPipelineDesc) (*RenderPipeline, error)
+func (d *Device) NewComputePipeline(desc ComputePipelineDesc) (*ComputePipeline, error)
+func (d *Device) NewBindGroup(desc BindGroupDesc) (*BindGroup, error)
+func (d *Device) NewQuerySet(desc QuerySetDesc) (*QuerySet, error)
+func (d *Device) NewCommandEncoder() *CommandEncoder
+func (d *Device) Queue() *Queue
+func (d *Device) OnLost(fn func(err error)) func()                  // returns the function that removes fn
+
+func (q *Queue) WriteBuffer(b *Buffer, offset int, data []byte)
+func (q *Queue) WriteTexture(dst TextureCopy, data []byte, layout DataLayout, size Extent3D)
+func (q *Queue) Submit(buffers ...*CommandBuffer)
+func (q *Queue) OnSubmittedWorkDone(fn func())
+
+func (e *CommandEncoder) BeginRenderPass(desc RenderPassDesc) *RenderPass
+func (e *CommandEncoder) BeginComputePass() *ComputePass
+func (e *CommandEncoder) CopyBufferToBuffer(src *Buffer, srcOffset int, dst *Buffer, dstOffset, size int)
+func (e *CommandEncoder) CopyBufferToTexture(src BufferCopy, dst TextureCopy, size Extent3D)
+func (e *CommandEncoder) CopyTextureToBuffer(src TextureCopy, dst BufferCopy, size Extent3D)
+func (e *CommandEncoder) CopyTextureToTexture(src, dst TextureCopy, size Extent3D)
+func (e *CommandEncoder) WriteTimestamp(q *QuerySet, index int)
+func (e *CommandEncoder) ResolveQuerySet(q *QuerySet, first, count int, dst *Buffer, offset int)
+func (e *CommandEncoder) Finish() *CommandBuffer
+
+func (b *Buffer) Read(offset, size int, done func(data []byte, err error)) // done runs on the UI thread, never in the frame that asked
+func (b *Buffer) Release()   // and Release on every other resource
+```
+
+Rules:
+- **Threads:** a `Device` and everything made from it are used on the UI thread only (§13). In debug builds a call from another goroutine panics with `GPUWrongThread`. An app can prepare the bytes it writes on any goroutine.
+- **Lifetime:** every resource has `Release`. A resource still in use by submitted work is freed when that work is done. When the binding ends, debug builds log each resource that was not released (`GPUResourceLeaked`, a warning, with what made it). The memory tests (§15) count the live resources.
+- **Device loss:** when the device is lost (a driver reset, a lost WebGPU device), the renderer makes a new device as §9.4 and §9.5 say. The old device's `OnLost` functions are called once, and every call on the old device and its resources then does nothing; the calls that return an error return `GPUDeviceLost`. `DeviceOf` gives the new device, and `gpu.View` calls its `OnInit` again.
+- **Errors and programmer errors:** a descriptor that cannot be made (a size of 0, a format a usage does not allow, a broken limit) is a returned error with the field in its metadata (`GPUInvalidDescriptor`, `GPULimitExceeded`). A misuse while encoding (a pass not ended, a bind group of another layout, a draw past a buffer's end) is a programmer error: in debug builds it panics (§14), and release builds skip the checks. The checks run on every backend through `fakedevice`, so they behave the same everywhere.
+- **Not in `gpu`:** swapchains (the windows are Glutter's), GLSL or SPIR-V written by the app, bindless resources, and ray tracing.
+
+### 27.3 The app's shaders (`glutter-gen gpushaders`)
+
+An app's shaders are WGSL files, compiled ahead of time (D31):
+
+```go
+//go:generate go run github.com/rm4n0s/glutter/cmd/glutter-gen gpushaders ./shaders
+```
+
+- For each `shaders/<name>.wgsl`, `glutter-gen gpushaders` writes `<name>.spv` and adds an entry to `shaders/shaders_gen.go`: a `*gpu.Shader` variable that holds the WGSL (for WebGPU), the SPIR-V (for Vulkan, through `embed`), the HLSL for shader model 5.1 (for Direct3D 12), and the reflection: the entry points and their stages, the bindings of each entry point (group, binding, kind, the size of a uniform or storage struct), the vertex inputs (location and format) and the workgroup size of a compute entry point.
+- naga is the version of D20 (30.0.1). It is needed only to change a shader, never to build the app. The header of the generated file records the version, and `gpushaders -check` fails when the checked-in files differ from a new generation.
+- **Accepted bindings:** `var<uniform>`, `var<storage, read>` and `var<storage, read_write>`, `texture_2d`, `texture_2d_array`, `texture_cube` and `texture_3d` of `f32`, `u32` or `i32`, `texture_depth_2d`, `texture_multisampled_2d`, `texture_storage_2d` (write), `sampler` and `sampler_comparison`. The HLSL registers follow §9.8, with `u` for storage buffers and storage textures.
+- **Direct3D 12:** the HLSL is compiled by `D3DCompile` the first time a pipeline needs it, and the bytecode is kept in the shader cache (§9.7). A failed compile is `GPUShaderCompileFailed`, with the compiler's messages. The generator also compiles each shader with `D3DCompile` under Wine when Wine is installed, so most such failures show at generation.
+- `viewport3d`'s own shaders are made the same way and checked in.
+
+### 27.4 GPU textures in the widget tree
+
+Ported from Flutter:
+- `ui.SceneBuilder.AddTexture(textureID, offset, width, height, freeze, filterQuality)` (Flutter: `dart:ui` `SceneBuilder.addTexture`)
+- `rendering.TextureLayer` and `rendering.TextureBox` (`rendering/layer.dart` `TextureLayer`, `rendering/texture.dart` `TextureBox`)
+- `widgets.Texture` with `TextureID`, `Freeze` and `FilterQuality` (`widgets/texture.dart` `Texture`)
+
+Flutter's tests of these are ported.
+
+**The registry** has the names of Flutter's embedder: `Device.RegisterTexture(t *Texture) int64`, `UnregisterTexture(id)` and `MarkTextureFrameAvailable(id)`. The last one schedules a frame and damages the rectangle of each layer that shows the texture.
+
+**How it is drawn:**
+- The explicit renderer samples the registered texture directly in its composite pass. There is no copy, since the app's device is the renderer's.
+- The texture is premultiplied RGBA, scaled to the layer's rectangle with its filter quality: `RGBA8Unorm` with sRGB-encoded values, or `RGBA16Float` with linear values, which the composite encodes to sRGB.
+- The app's commands that wrote the texture are submitted before the frame's composite, so the frame shows what they drew.
+- A texture layer is never raster-cached. `Scene.ToImage` draws it on an explicit renderer and leaves it empty on `soft`.
+- With `gles` or `soft` it draws nothing.
+
+### 27.5 The GPU view (`gpu.View`)
+
+`gpu.NewView(onPaint func(f *ViewFrame), opts ...ViewOpts)` is a widget that owns a render target the size of its box in device pixels, with its depth buffer and multisampling. It calls `onPaint` when it must draw.
+
+- **`ViewOpts`:**
+  - `Format` (`RGBA8Unorm` by default, or `RGBA16Float`), `DepthFormat` (none by default) and `SampleCount` (1 or 4)
+  - `Continuous`: draw at every frame, at the display's rate, through a `Ticker`
+  - `Controller`, whose `MarkNeedsPaint` asks for one draw
+  - `OnInit(*Device)` and `OnDispose()`, for the app's resources (`OnInit` runs again after a device loss)
+  - `Fallback`: the widget shown under `GPUUnavailable`, or until a lost device is replaced
+  - `SemanticsLabel`
+- **`ViewFrame`:** the device, a command encoder, the color target (and its resolve target when multisampled), the depth target, the size in pixels, the device pixel ratio, and the frame's time (the `Ticker`'s elapsed time when `Continuous`).
+- **When it draws:** the `onPaint` callbacks run on the UI thread after the paint phase and before the scene is composited, in paint order. The view submits the encoder and marks its texture's frame available. A view that is not `Continuous` and not marked draws nothing, so an idle 3D view costs no CPU (G6).
+- **Resizing:** when the size or the device pixel ratio changes, the view makes new targets at the new size (rounded to whole pixels) and releases the old ones after the frame.
+- **Input:** the view is an ordinary box. An app wraps it in `Listener`, `GestureDetector`, `Focus` or `Shortcuts`, or uses `viewport3d`'s navigation (§27.8).
+
+### 27.6 Pointer lock
+
+A game's mouse look and a CAD orbit that never stops at the screen's edge need the pointer locked. Flutter has no such API (§12.10).
+
+- **API:** `widgets.PointerLockOf(bc)` gives the binding's `PointerLock`, with `Lock(view ui.FlutterView) error`, `Unlock()`, `Locked()`, and listeners told when the lock ends.
+- **While locked:** the cursor is hidden; a mouse's pointer events keep the `Position` where the lock began and carry the relative motion in `Delta`, unaccelerated where the platform gives it.
+- **When it ends:** when the app unlocks, when the window loses focus, when the compositor ends it, or when the user presses Escape on the web.
+- **Errors:** `PointerLockUnavailable` (Wayland without `zwp_pointer_constraints_v1`) and `PointerLockDenied` (the web, outside a user gesture).
+
+| Platform | How |
+|---|---|
+| Wayland | `zwp_pointer_constraints_v1.lock_pointer` and `zwp_relative_pointer_manager_v1` (unaccelerated motion); the two protocol XML files are added to `internal/platform/linux/wayland/protocols` with their license |
+| X11 | `XGrabPointer` with the window as the confinement, XInput2 `XI_RawMotion` events, the empty cursor |
+| Windows | Raw Input (`RegisterRawInputDevices` for the mouse, `WM_INPUT`), `ClipCursor` to the lock point, the cursor hidden; clipped again when the window is activated |
+| Web | `requestPointerLock({unadjustedMovement: true})`, else without the option; `movementX` and `movementY` |
+| Android | `View.requestPointerCapture()` (API 26) and `onCapturedPointerEvent` |
+
+### 27.7 `vecmath`
+
+`float64` math by value (D30), with no allocation:
+- types `Vec2`, `Vec3`, `Vec4`, `Quat`, `Mat3` and `Mat4` (column-major, as WGSL), `Ray`, `Plane`, `Box3`, `Sphere` and `Frustum`
+- the usual operations as methods that return values; inverses that report a singular matrix
+- `LookAt`; perspective with reversed-Z and an infinite far plane; orthographic with reversed-Z; all in WebGPU's clip space (§27.1)
+- conversions: `Mat4.Float32() [16]float32`, `Vec3.Float32() [3]float32` and `Mat4.Matrix4() ui.Matrix4`
+
+Tested with tables of known values and with property tests (an inverse times the matrix, a rotation keeps lengths, a ray meets the plane it was made from).
+
+### 27.8 The 3D view (`viewport3d`)
+
+`viewport3d.NewView(scene *Scene, camera *Camera, opts ...ViewOpts)` is a widget over `gpu.View` that draws a `Scene`.
+
+**The scene** is a flat list of items that the app owns and changes; any change marks the view for a draw. An app's own tree of parts becomes items with their world transforms.
+- Each item has a mesh, a material, a `float64` world transform, visibility, a pick ID and a layer mask.
+- A **mesh** is uploaded once and shared by its items:
+  - positions are `float32` relative to the mesh's `float64` origin, with optional normals, texture coordinates and colors;
+  - indices are `uint16` or `uint32`;
+  - primitives are triangles, lines or points, with their bounds;
+  - many items of one mesh and material are drawn instanced.
+- **Precision:** each frame the view computes every item's matrix relative to the camera in `float64` and gives the GPU `float32` (D30).
+
+**Materials:**
+- unlit (a color or a texture)
+- Blinn-Phong with a light at the camera, up to 4 directional lights and an ambient term (the CAD default)
+- lines (width in logical pixels, color, a stipple pattern, anti-aliased, expanded into quads in the vertex shader)
+- points (size in logical pixels, round or square)
+- PBR metallic-roughness comes in 1.11 with glTF (§28.5)
+
+Transparent items are sorted back to front by item; there is no order-independent transparency.
+
+**Display modes:** shaded, shaded with edges, wireframe, and hidden line (edges tested against the depth of the faces, which are drawn in the background color). `FeatureEdges(mesh, angle)` computes the feature and boundary edges on the CPU, once per mesh.
+
+**The camera:**
+- **Projections:** perspective (reversed-Z, infinite far plane, the near plane from the scene's bounds) or orthographic.
+- **Helpers:** `Ray(at)` from a point of the view, `Project(Vec3)` to a point of the view, `FitTo(Box3)`, the standard views (front, back, top, bottom, left, right, isometric), and animated moves between views.
+- **Navigation:** gesture recognizers in Glutter's gesture arena, with defaults that `NavigationOpts` changes:
+
+  | Input | Default action |
+  |---|---|
+  | Mouse | left drag orbits around the point under the pointer (else the target); middle drag or Shift with left drag pans; the wheel zooms toward the pointer; a double click fits the scene |
+  | Trackpad | pinch zooms |
+  | Touch | one finger orbits; two fingers pan, pinch and twist |
+  | Keyboard (`Shortcuts` and `Actions`) | the arrows orbit, + and − zoom |
+
+  A drag that orbits may lock the pointer (§27.6) when `NavigationOpts.LockPointer` is set.
+
+**Section planes:** up to 6 clip planes, in world coordinates as `float64`. A closed mesh can get a cap drawn with the stencil, and an outline where it is cut.
+
+**Picking:**
+- `Pick(at, done)` draws the items' IDs (an `RG32Uint` target: the pick ID and the primitive index) and the depth into a small rectangle around the point, only when asked, never every frame. It reads them back and gives `PickResult`:
+  - the item and the primitive
+  - the world point in `float64`, rebuilt from the depth and the inverse matrices
+  - the normal
+- `PickRect` gives the IDs in a rectangle, for box selection.
+- Selected items are drawn with a highlight color and an outline a set number of pixels wide.
+
+**Overlays:**
+- an infinite grid on a plane, with minor and major lines that fade with distance
+- the axes at a corner
+- a view cube widget whose faces, edges and corners go to the standard views
+- `Anchored(point Vec3, child)`: a child widget placed at a projected point each frame, hidden behind the camera (and, with an option, when the depth says it is covered), for labels and dimensions with Glutter's text, selection and accessibility
+- `View.Project`, for dimension lines drawn with a `CustomPainter` over the view
+
+Multisampling with 4 samples is the default.
+
+### 27.9 Model data and the loaders of 1.10 (`model`, `model/stl`, `model/obj`)
+
+`model.Model` is plain-Go data that a test can check without a GPU:
+- **Meshes:** positions (`float32`, or `float64` when the loader is asked and the file has more digits), normals, texture coordinates, colors, `uint32` indices and the primitive.
+- **Materials:** base color and texture, metallic, roughness, emissive, alpha mode, double-sided.
+- **Images:** encoded bytes and their type, decoded through `ui` when uploaded.
+- **Nodes:** a tree with names, `float64` transforms and meshes.
+- **Units**, when the format has them; **bounds**.
+- Skins, morph targets and animations are filled by glTF in 1.11.
+
+`viewport3d.Upload(device, model)` makes the meshes and materials and gives the items.
+
+- **STL** (`stl.Decode(ctx, r, opts)` and `stl.Load(ctx, fsys, name)`): ASCII and binary, told apart by their content. Binary color attributes (the VisCAM and SolidView conventions). Welding of equal vertices within a tolerance, for smooth normals and for edges.
+- **OBJ** (`obj.Decode`, `obj.Load`):
+  - positions, texture coordinates and normals, with negative indices
+  - polygons triangulated (a fan when convex, ear clipping otherwise)
+  - `o` and `g` as nodes, `usemtl`, and `mtllib` read through the same `fs.FS`; a missing material file gives the default material and one log line
+  - lines (`l`) and points (`p`)
+  - `float64` positions on request
+
+Every loader takes `ctx` first and checks it while it reads. Errors carry the line or the byte offset in their metadata. Each decoder has a fuzz test, and its seeds are in `testdata`.
+
+### 27.10 Performance targets
+
+Confirmed by the owner on 2026-11-05. They are checked in step 30.13; a target that is missed is reported to the owner, never relaxed silently. "The owner's machine" means its AMD GPUs through RADV, never the NVIDIA eGPU: every run goes through `.claude/no-nvidia.sh`.
+
+| What | Target |
+|---|---|
+| A `gpu.View` with nothing to draw | no frame, about 0% CPU |
+| 1,000,000 triangles with their edges, 4× multisampling, 1920×1080, on the owner's machine | at least 60 frames a second, at most 2 ms of CPU per frame |
+| 10,000 items of one mesh (instanced) / 10,000 items of different meshes | at most 1 ms / 4 ms of CPU per frame |
+| A steady frame of `viewport3d` (nothing added or removed) | no allocation (an allocation test) |
+| A pick | its result in the next frame |
+| Loading 1,000,000 triangles on the owner's machine | binary STL at most 250 ms; OBJ at most 1.5 s |
+
+On lavapipe the numbers are measured and recorded, but they are not targets.
+
+### 27.11 Errors
+
+Tags (each with a route test, §14.4):
+- **GPU:** `GPUUnavailable`, `GPUDeviceLost`, `GPUInvalidDescriptor`, `GPULimitExceeded` (the explicit device's), `GPUShaderCompileFailed`, `GPUOutOfMemory`, `GPUReadFailed`.
+- **Pointer lock:** `PointerLockUnavailable`, `PointerLockDenied`.
+- **Loaders:** `STLInvalid`, `OBJInvalid`, `ModelReadFailed` (an I/O error, wrapped where it first appears).
+- **The generator:** `glutter-gen gpushaders` reports `GPUShadersNagaMissing`, `GPUShadersCompileFailed` and `GPUShadersBindingUnsupported`.
+
+Programmer errors (`GPUWrongThread`, `GPUFirstInstanceRead`, the encoding checks of §27.2) panic in debug builds, as §14 says.
+
+### 27.12 Testing
+
+- **The explicit device's additions:**
+  - unit tests on `fakedevice`
+  - display tests on Vulkan with lavapipe and validation on (`glutter_display`)
+  - Wine tests of `d3d12` on vkd3d (`glutter_wine`)
+  - browser tests of `webgpu` in Chromium (`glutter_browser`)
+  - device tests of `vulkan` on the Android emulator (`glutter_android`)
+- **3D parity:** a set of 3D test scenes (depth, multisampling, every topology, cube maps, compute, indirect draws, readback) is drawn on each backend and compared within `gputest.Tolerance`.
+  - The goldens are made on `vulkan` with lavapipe (`-update-goldens -tags glutter_display`), kept in `viewport3d/testdata/goldens` and `gpu/testdata/goldens`, and every one is looked at.
+  - There is no `soft` reference: `soft` does not run app shaders.
+- **`gpu`:** the validation, the errors and their routes, the lifetime and leak checks, and device loss (a lost device made by `fakedevice` and by WebGPU's `destroy`).
+- **`gluttertest`:** has a recording device (`Tester.GPUDevice`), so the widget tests of an app that uses `gpu.View` or `viewport3d` run with no GPU. They check what was encoded, not pixels.
+- **`vecmath` and the CPU parts of `viewport3d`** (navigation, the pick's world point, edges, triangulation, sorting): table-driven unit tests.
+- **Gestures:** tests of the navigation with `gluttertest`.
+- **Loaders:** tables of small files written by the tests, fuzz tests, and benchmarks.
+- **Manual checks:** the owner's GPU on Linux, a Windows PC with a GPU, a phone, and Chrome, Edge and Safari Technology Preview with WebGPU.
+
+## 28. Games: gamepads, audio and motion sensors (1.11)
+
+Glutter 1.11 adds what a game needs beyond drawing: gamepads, audio, and motion sensors. Glutter already has the window, the keyboard, the mouse with pointer lock (§27.6), touch, frames at the display's rate and haptic feedback (`services.HapticFeedback`). 1.11 also adds the glTF, PLY and 3MF loaders and the PBR materials of `viewport3d` (§28.5).
+
+**How they fit Glutter:**
+- They are services of the platform, like the tray (§6.3 rule 3): `Services` gains `Gamepads()`, `Audio()` and `Sensors()`. A missing one returns a tagged error and never panics, and the fake platform has a scripted version of each for `gluttertest`.
+- The public packages `gamepad`, `audio` and `sensors` reach them through the binding: `gamepad.Of(bc)`, `audio.Of(bc)`, `sensors.Of(bc)`. There is no global state.
+- Events reach the app on the UI thread. Audio data is the one exception: it flows on the audio thread and never touches the framework (§28.3).
+- The backends live under `internal/platform/<os>/...` with the tags and calling rules of §6.3: purego on Linux and Android, `syscall` on Windows, `syscall/js` on the web.
+
+### 28.1 What is ported from SDL 3
+
+SDL 3 (zlib) is the reference of this section (D32). `reference/sdl` (git-ignored) holds its latest 3.x release, fetched by `scripts/fetch-reference.sh` and recorded in `reference/VERSION` (step 30.1). What is ported:
+- the gamepad mapping format and its parser, and SDL's built-in mapping table (`src/joystick/SDL_gamepad_db.h`), which `glutter-gen gamepaddb` turns into `internal/gamepaddb/mappings_gen.go`
+- the identification of a pad from its bus, vendor, product, version and name, which the mapping lines match on
+- the HID drivers of the common pads (`src/joystick/hidapi`: PlayStation 4 and 5, Switch Pro, Xbox One and Series over Bluetooth): their reports, rumble, LEDs, touchpads and motion sensors
+- the evdev joystick code of Linux, XInput on Windows
+- the audio format conversion, channel mixing and resampler (`src/audio`)
+- the structure of the PulseAudio, ALSA, WASAPI and AAudio backends, and the sensor model
+
+**Rules for ported code:**
+- **Names:** no identifier uses SDL's names. There is no `SDL_` prefix and no `Sdl` in a Go name; the types and functions get Glutter's own names (D32). The data format of a mapping line stays as it is, so the community's mapping files work.
+- **Each ported file** starts with a comment that names the SDL 3 file it comes from and says it was translated to Go and changed, as SDL's license asks for altered versions.
+- **The license:** `third_party/sdl/LICENSE` and the NOTICE entry keep SDL's notice.
+- **What is not taken:** SDL's event loop, windows, renderer, threads and file system. Glutter has its own, or Go's.
+
+### 28.2 Gamepads (`gamepad`)
+
+A sketch; the details are decided in step 31.1:
+
+```go
+func Of(bc widgets.BuildContext) *Gamepads    // a foundation.ChangeNotifier: pads connected and removed
+
+func (g *Gamepads) Pads() []*Pad
+func (g *Gamepads) AddMappings(text string) (int, error)  // mapping lines in the community's format
+
+func (p *Pad) ID() PadID
+func (p *Pad) Name() string
+func (p *Pad) Kind() PadKind                  // Xbox, PlayStation4, PlayStation5, SwitchPro, Generic, ...
+func (p *Pad) State() State                   // buttons and axes now
+func (p *Pad) AddListener(fn func(Event)) func()
+func (p *Pad) Rumble(low, high float64, d time.Duration) error
+func (p *Pad) RumbleTriggers(left, right float64, d time.Duration) error
+func (p *Pad) SetLED(c ui.Color) error
+func (p *Pad) Sensors() []*sensors.Sensor     // the pad's gyroscope and accelerometer
+func (p *Pad) Touchpad() []TouchpadFinger
+func (p *Pad) Battery() Battery
+```
+
+**The layout:**
+- **Buttons:** `South`, `East`, `West`, `North`, `Back`, `Guide`, `Start`, `LeftStick`, `RightStick`, `LeftShoulder`, `RightShoulder`, the four D-pad buttons, `Misc1`, four paddles and `Touchpad`.
+- **Axes:** `LeftX`, `LeftY`, `RightX`, `RightY` (from −1 to 1) and `LeftTrigger`, `RightTrigger` (from 0 to 1).
+- No dead zone is applied: that is the app's choice, and `ApplyDeadZone` helps with it.
+- `Event`s arrive on the UI thread in order, with their timestamps. `State` is for reading once a frame.
+
+**Pads as keys** (the owner's choice, 2026-11-05): by default, a pad's buttons also arrive as key events, the way Flutter's Android embedder delivers them:
+- the buttons as the physical and logical `GameButton*` keys
+- the D-pad as the arrow keys
+
+This gives every Glutter app focus traversal and activation with a pad (`ActivateIntent` on `GameButtonA`, as Flutter's default shortcuts). `Gamepads.SetKeyEvents(false)` turns it off. Flutter does this only on Android, so the desktop and the web are a deviation (§12.10). On Android, a pad's key events go through the gamepad service only, so each press arrives once.
+
+| Platform | Backend |
+|---|---|
+| Linux | evdev (`/dev/input/event*`, read with `ioctl` through `syscall`; plain Go, no library) on a goroutine of its own, handed over with `Post`; hotplug through inotify on `/dev/input`; rumble with evdev force feedback (`FF_RUMBLE`); the HID drivers through `/dev/hidraw*` for LEDs, touchpads, sensors and trigger rumble. On desktops logind gives the user the pads' event devices; hidraw often needs a udev rule. Without it the pad works through evdev with fewer features, logged once at Info level, and `docs/GUIDE.md` gives the rule |
+| Windows | XInput (`xinput1_4.dll`: up to four Xbox-compatible pads, with rumble) polled once a frame; HID through `hid.dll` and `SetupAPI` for the HID drivers and other pads; hotplug through Raw Input (`RIDEV_DEVNOTIFY`) |
+| Android | the input devices with `SOURCE_GAMEPAD` or `SOURCE_JOYSTICK`, through the Java embedding: motion events (`AXIS_*`) and key events (`KEYCODE_BUTTON_*`); hotplug through `InputManager.InputDeviceListener`; rumble through `InputDevice.getVibratorManager()` (Android 12, API 31), else `GamepadRumbleUnavailable` |
+| Web | `navigator.getGamepads()`, read once a frame while a pad is connected (never otherwise); `gamepadconnected` and `gamepaddisconnected`; the browser's `standard` mapping when it gives one, else the mapping table by the pad's id; rumble with `vibrationActuator.playEffect("dual-rumble")` where the browser has it; no LEDs or sensors |
+
+### 28.3 Audio (`audio`)
+
+A sketch; the details are decided in step 31.4:
+
+```go
+func Of(bc widgets.BuildContext) *System      // started at its first use, closed with the binding
+
+func (s *System) Devices(kind DeviceKind) []DeviceInfo
+func (s *System) AddListener(fn func()) func() // the list of devices or the default device changed
+func (s *System) OpenPlayback(ctx context.Context, opts ...DeviceOpts) (*Device, error) // the default device, which it follows, or DeviceOpts.ID
+func (s *System) OpenCapture(ctx context.Context, opts ...DeviceOpts) (*Device, error)
+
+func (d *Device) Format() Format              // sample rate, channels
+func (d *Device) NewStream(src Format) *Stream // a stream mixed into the device
+func (d *Device) NewCallbackStream(src Format, fill func(out []float32)) *Stream
+func (d *Device) SetGain(g float64)
+func (d *Device) Pause(); Resume(); Close()
+
+func (st *Stream) Put(samples any) error       // []float32, []int16 or []int32, interleaved, in the stream's format
+func (st *Stream) Get(out []float32) int       // capture
+func (st *Stream) Queued() time.Duration
+func (st *Stream) SetGain(g float64); SetSpeed(ratio float64); Clear(); Close()
+```
+
+**Data:**
+- **Formats:** signed 16-bit, signed 32-bit and 32-bit float samples, interleaved, with 1 to 8 channels in SDL's channel order.
+- **Conversion:** each stream is converted and resampled to its device's format with the code ported from SDL 3. All of a device's streams are mixed in `float32` and clipped.
+- **Decoding:** `audio/wav` reads WAV files (PCM of 8, 16, 24 and 32 bits, and float). Other codecs (Ogg Vorbis, MP3, Opus) are not in Glutter; an app decodes them itself and puts the samples. Flutter has no audio of its own either.
+
+**Threads:**
+- The device's backend runs on an OS thread of its own: a locked goroutine, or the C library's thread through a callback made once.
+- `fill` runs there and must not touch the framework.
+- `Put` and `Get` may be called from any goroutine.
+- The list of devices changes on the UI thread.
+
+**Lifecycle:** on Android, playback pauses when the app is hidden (`DeviceOpts.PauseInBackground`, true by default there).
+
+| Platform | Backend |
+|---|---|
+| Linux | PulseAudio through `libpulse.so.0` (purego: the threaded main loop and `pa_stream`, with callbacks made once), which current desktops serve through PipeWire (`pipewire-pulse`); ALSA through `libasound.so.2` (`snd_pcm_*`, never a variadic call) where no PulseAudio server answers; hotplug and the default device through PulseAudio's subscription, none on ALSA |
+| Windows | WASAPI in shared mode, driven by events (`IMMDeviceEnumerator`, `IAudioClient3` for low latency where Windows has it, else `IAudioClient`, `IAudioRenderClient`, `IAudioCaptureClient`); the default device through an `IMMNotificationClient` that Go makes (§25.2), on a thread in the multithreaded COM apartment |
+| Android | AAudio (`libaaudio.so`, through purego, as `gles` loads its libraries) with a data callback and the low-latency performance mode; capture asks for `RECORD_AUDIO` through the Java embedding |
+| Web | an AudioWorklet (a script that `glutter-web` writes into the build), fed from the UI goroutine through `postMessage`, or through a `SharedArrayBuffer` ring when the page is `crossOriginIsolated` (`glutter-web serve` sends the COOP and COEP headers); a buffer of 100 ms by default (§22); the `AudioContext` is resumed at the first user gesture (the browsers' autoplay rule), and until then a stream waits (`DeviceStateSuspended`, listeners are told); capture through `getUserMedia` |
+
+### 28.4 Motion sensors (`sensors`)
+
+`sensors.Of(bc)` gives `Available()` and `Open(kind, opts) (*Sensor, error)`.
+- **Kinds:** `Accelerometer` (m/s², gravity included) and `Gyroscope` (rad/s), in the device's natural orientation with SDL's axes (x right, y up, z out of the screen).
+- **Readings:** `Reading{Timestamp, Values [3]float64}`. A sensor gives its `Latest()` reading, and its listeners get all the readings since the last frame, once a frame, on the UI thread. `SensorOpts.Rate` asks for a rate.
+- **Pads:** a pad's sensors (§28.2) are the same type.
+
+**Backends:**
+- **Android:** `ASensorManager` (through purego from `libandroid.so`; API 26), with its event queue on a looper on an OS thread of its own.
+- **The web:** `DeviceMotionEvent`, which needs a secure context. Where the browser asks for permission, it is asked at a user gesture; a refusal is `SensorPermissionDenied`.
+- **The Linux and Windows desktops:** the pads only. Their own sensors are an open decision (§21).
+
+**Haptics:** `services.HapticFeedback` gains the web's `navigator.vibrate`, which phones' browsers have. A pad's rumble is in `gamepad`.
+
+### 28.5 The loaders of 1.11 and PBR (`model/gltf`, `model/ply`, `model/threemf`)
+
+**glTF 2.0:**
+- **Files:** `.gltf`, with its buffers and images read through an `fs.FS` or from `data:` URIs, and `.glb`.
+- **Content:** meshes, materials (metallic-roughness, normal, occlusion and emissive textures, alpha modes, double-sided), textures and samplers, nodes, cameras, skins, morph targets, animations and scenes.
+- **Extensions read:** `KHR_mesh_quantization`, `KHR_texture_transform`, `KHR_materials_emissive_strength`, `KHR_materials_unlit`, `KHR_lights_punctual` and `EXT_meshopt_compression`. The meshopt decoder is ported from meshoptimizer (MIT): that step adds `third_party/meshoptimizer/LICENSE` and a NOTICE entry.
+- **Other extensions:** an unknown optional extension is ignored and logged once; an unknown required extension (Draco and KTX2/Basis among them) is `GLTFExtensionUnsupported`.
+
+**PLY:** ASCII and binary (both byte orders).
+- Vertex properties: position, normal, color and texture coordinates; faces as lists.
+- A file without faces is a point cloud, drawn with `viewport3d`'s point material.
+- Positions are `float64` when the file stores doubles.
+
+**3MF:** the core specification: the zip with `3D/3dmodel.model`.
+- units, objects, components with their transforms, and build items
+- the materials extension's base materials and colors
+- no beam lattices or slices
+
+**`viewport3d` gains:**
+- the PBR metallic-roughness material, with image-based lighting from a cube map (prefiltered by a compute pass; a neutral default environment is made by the view)
+- one directional shadow map
+- tone mapping (Khronos PBR Neutral, and ACES) into an `RGBA16Float` target
+- skinning and morph targets in the vertex shader, with the joint matrices in a storage buffer
+- `Animation.Sample(t)`, which gives the pose at a time (step, linear and cubic-spline interpolation); there are no blend trees or state machines (§27)
+
+**Test models:** made by the tests, or CC0 models from Khronos' glTF-Sample-Assets kept in `testdata` with their license.
+
+### 28.6 Performance targets
+
+Confirmed by the owner on 2026-11-05, and checked in step 31.11; a target that is missed is reported to the owner, never relaxed silently.
+
+| What | Target |
+|---|---|
+| A pad button pressed | the app's listener has it in the next frame |
+| Audio output latency | at most 30 ms on Linux (PulseAudio) and Windows (WASAPI shared), 20 ms on the owner's phone (AAudio low latency), 120 ms on the web |
+| Ten minutes of sound while the UI draws at 60 frames a second | no gap (a sine tone recorded from a null sink and checked) |
+| A frame of `examples/game3d` at 1920×1080 on the owner's machine | at least 60 frames a second |
+| A steady frame of `viewport3d`, `gamepad` and `audio` | no allocation |
+
+### 28.7 Errors
+
+Tags (each with a route test):
+- **Gamepads:** `GamepadRumbleUnavailable`, `GamepadLEDUnavailable`, `GamepadMappingInvalid`.
+- **Audio:** `AudioUnavailable`, `AudioDeviceOpenFailed`, `AudioDeviceLost`, `AudioFormatUnsupported`, `AudioCapturePermissionDenied`, `WAVInvalid`.
+- **Sensors:** `SensorUnavailable`, `SensorPermissionDenied`.
+- **Loaders:** `GLTFInvalid`, `GLTFExtensionUnsupported`, `PLYInvalid`, `ThreeMFInvalid`.
+
+### 28.8 Testing
+
+- **Gamepads:**
+  - the mapping parser, with the cases of SDL's own tests where they apply
+  - the HID drivers, with recorded reports written in tables
+  - on Linux, a virtual pad through `/dev/uinput`, for the evdev path, hotplug and force feedback. Without write access to `/dev/uinput` the test skips and names the udev rule
+  - under Wine, XInput with the same virtual pad, where Wine's `winebus` sees it, else a manual check
+  - in the browser tests, a `navigator.getGamepads` that the test replaces
+  - on the Android emulator, `adb shell input gamepad keyevent`
+- **Audio:**
+  - the conversion and the resampler: sine tones with a signal-to-noise threshold, and SDL's tests where they apply
+  - on Linux, a PulseAudio server with a null sink, started for the test in a temporary runtime directory and stopped after; its monitor is recorded and compared
+  - under Wine, `winepulse` to the same server
+  - in Chromium, `--autoplay-policy=no-user-gesture-required` and a tap node on the worklet's output
+  - on the Android emulator, the callbacks run and the timestamps advance
+- **Sensors:** the emulator's virtual sensors (`adb emu sensor set acceleration x:y:z`), `DeviceMotionEvent`s sent by the browser test, and the pads' reports.
+- **Loaders:** fuzz tests and tables, and goldens of PBR materials in `viewport3d` on lavapipe, looked at one by one.
+- **Manual checks:** real pads (Xbox, DualSense, Switch Pro and a generic one) on Linux, on a Windows PC, on a phone and in Chrome and Firefox; the audio latency with a loopback; a phone's sensors.
