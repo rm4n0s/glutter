@@ -103,21 +103,26 @@ func (d *Device) WriteBuffer(b explicit.Buffer, offset int, data []byte) {
 	}
 }
 
-// texture is a 2D image in device-local memory, kept in the GENERAL layout.
+// texture is an image in device-local memory, kept in the GENERAL layout. A texture made by
+// Level or Layer is a view of the image of its parent and owns only its image view.
 type texture struct {
 	d         *Device
 	desc      explicit.TextureDesc
 	image     imageH
-	view      imageViewH // every mip level, for sampling; 0 for a texture that is only copied
-	rtView    imageViewH // level 0 only, when the view above has more levels and this is a render target
+	view      imageViewH // every mip level and layer, for sampling; 0 for a texture that is only copied
+	rtView    imageViewH // level 0, layer 0 only, when the view above has more and this is a render target
 	alloc     allocation
 	external  bool // an image of a swapchain, which the swapchain owns
 	destroyed bool
 	// base is the mip level of the image that this texture starts at: 0, or the level of a
-	// texture made by Level, which shares the image with its parent and owns only its view.
-	base   int
-	parent *texture
-	levels []*texture // the textures made by Level, indexed by level; nil until asked for
+	// texture made by Level or Layer, which shares the image with its parent and owns only its view.
+	base int
+	// baseLayer is the array layer of the image that this texture starts at: 0, or the layer of a
+	// texture made by Layer.
+	baseLayer int
+	parent    *texture
+	levels    []*texture          // the textures made by Level, indexed by level; nil until asked for
+	layers    map[[2]int]*texture // the textures made by Layer, by level and layer
 }
 
 var _ explicit.Texture = (*texture)(nil)
@@ -125,8 +130,35 @@ var _ explicit.Texture = (*texture)(nil)
 // Desc implements explicit.Texture.
 func (t *texture) Desc() explicit.TextureDesc { return t.desc }
 
+// aspect is the aspects of the image that the texture's format has.
+func (t *texture) aspect() uint32 { return formatAspect(t.desc.Format) }
+
+// formatAspect is the aspect mask of a format: color, or depth with the stencil when it has one.
+func formatAspect(f explicit.TextureFormat) uint32 {
+	switch {
+	case f.HasStencil():
+		return imageAspectDepth | imageAspectStencil
+	case f.IsDepthStencil():
+		return imageAspectDepth
+	}
+	return imageAspectColor
+}
+
+// viewType is the type of the image view of a texture of the kind.
+func viewType(k explicit.TextureKind) uint32 {
+	switch k {
+	case explicit.TextureKind2DArray:
+		return imageViewType2DArray
+	case explicit.TextureKindCube:
+		return imageViewTypeCube
+	case explicit.TextureKind3D:
+		return imageViewType3D
+	}
+	return imageViewType2D
+}
+
 // Level implements explicit.Texture: a texture over one level of the image, with a view of
-// its own that the parent releases.
+// its own that the parent releases. A 2D array, cube or 3D texture keeps its kind and layers.
 func (t *texture) Level(i int) explicit.Texture {
 	if i < 0 || i >= t.desc.MipLevels {
 		panic(errors.New(tagVulkanLevelInvalid, "the texture has no such mip level", "level", i, "levels", t.desc.MipLevels))
@@ -141,14 +173,48 @@ func (t *texture) Level(i int) explicit.Texture {
 		return lv
 	}
 	d := t.d
-	view, err := d.newViewRange(t.image, vkFormat(t.desc.Format), uint32(i), 1)
+	view, err := d.newViewRange(viewSpec{image: t.image, format: t.vkFormat(), typ: viewType(t.desc.Kind), aspect: t.aspect(),
+		baseLevel: uint32(i), levels: 1, baseLayer: uint32(t.baseLayer), layers: uint32(t.desc.Layers())})
 	if err != nil {
 		panic(err)
 	}
 	desc := t.desc
 	desc.Width, desc.Height, desc.MipLevels = max(desc.Width>>i, 1), max(desc.Height>>i, 1), 1
+	if desc.Kind == explicit.TextureKind3D {
+		desc.DepthOrLayers = max(desc.DepthOrLayers>>i, 1)
+	}
 	lv := &texture{d: d, desc: desc, image: t.image, view: view, external: true, base: i, parent: t}
 	t.levels[i] = lv
+	return lv
+}
+
+// Layer implements explicit.Texture: a 2D view of one layer of one level.
+func (t *texture) Layer(level, layer int) explicit.Texture {
+	t.d.limits.CheckLayer(t.desc, level, layer)
+	if t.desc.Kind == explicit.TextureKind2D {
+		return t.Level(level)
+	}
+	if t.parent != nil {
+		panic(errors.New(tagVulkanLevelInvalid, "Layer is called on the texture, not on a view of a level", "level", level, "layer", layer))
+	}
+	key := [2]int{level, layer}
+	if lv := t.layers[key]; lv != nil {
+		return lv
+	}
+	d := t.d
+	view, err := d.newViewRange(viewSpec{image: t.image, format: t.vkFormat(), typ: imageViewType2D, aspect: t.aspect(),
+		baseLevel: uint32(level), levels: 1, baseLayer: uint32(layer), layers: 1})
+	if err != nil {
+		panic(err)
+	}
+	desc := t.desc
+	desc.Kind, desc.DepthOrLayers, desc.MipLevels = explicit.TextureKind2D, 1, 1
+	desc.Width, desc.Height = max(desc.Width>>level, 1), max(desc.Height>>level, 1)
+	lv := &texture{d: d, desc: desc, image: t.image, view: view, external: true, base: level, baseLayer: layer, parent: t}
+	if t.layers == nil {
+		t.layers = map[[2]int]*texture{}
+	}
+	t.layers[key] = lv
 	return lv
 }
 
@@ -177,6 +243,9 @@ func (t *texture) release() {
 			d.f.destroyImageView(d.dev, lv.view, 0)
 		}
 	}
+	for _, lv := range t.layers {
+		d.f.destroyImageView(d.dev, lv.view, 0)
+	}
 	if t.rtView != 0 {
 		d.f.destroyImageView(d.dev, t.rtView, 0)
 	}
@@ -190,13 +259,30 @@ func (t *texture) release() {
 	d.alloc.release(t.alloc)
 }
 
+// vkFormat is the Vulkan format of the texture.
+func (t *texture) vkFormat() uint32 { return t.d.vkFormat(t.desc.Format) }
+
 // vkFormat maps a texture format.
-func vkFormat(f explicit.TextureFormat) uint32 {
+func (d *Device) vkFormat(f explicit.TextureFormat) uint32 {
 	switch f {
 	case explicit.TextureFormatBGRA8Unorm:
 		return formatBGRA8Unorm
 	case explicit.TextureFormatR8Unorm:
 		return formatR8Unorm
+	case explicit.TextureFormatRGBA16Float:
+		return formatRGBA16Sfloat
+	case explicit.TextureFormatRGBA32Float:
+		return formatRGBA32Sfloat
+	case explicit.TextureFormatR32Float:
+		return formatR32Sfloat
+	case explicit.TextureFormatR32Uint:
+		return formatR32Uint
+	case explicit.TextureFormatRG32Uint:
+		return formatRG32Uint
+	case explicit.TextureFormatDepth32Float:
+		return formatD32Sfloat
+	case explicit.TextureFormatDepth24PlusStencil8:
+		return d.depthStencil
 	}
 	return formatRGBA8Unorm
 }
@@ -206,33 +292,53 @@ func vkFormat(f explicit.TextureFormat) uint32 {
 // in the next frame, or in the one being recorded.
 func (d *Device) NewTexture(desc explicit.TextureDesc) (explicit.Texture, error) {
 	d.limits.CheckTexture(desc)
-	if desc.MipLevels < 1 {
-		desc.MipLevels = 1
-	}
-	if desc.Width < 1 || desc.Height < 1 || desc.Format.BytesPerPixel() == 0 {
+	desc = desc.Normalized()
+	if desc.Width < 1 || desc.Height < 1 || desc.DepthOrLayers < 1 || desc.Format.BytesPerPixel() == 0 {
 		return nil, errors.New(tagVulkanTextureInvalid, "a texture needs a size and a format", "width", desc.Width, "height", desc.Height, "format", int(desc.Format))
+	}
+	if desc.Usage&^desc.Format.AllowedUsage() != 0 || desc.Kind < explicit.TextureKind2D || desc.Kind > explicit.TextureKind3D {
+		return nil, errors.New(tagVulkanTextureInvalid, "the format does not allow the usage, or the kind is unknown",
+			"format", int(desc.Format), "usage", int(desc.Usage), "kind", int(desc.Kind))
 	}
 	usage := uint32(imageUsageTransferDst)
 	if desc.Usage&explicit.TextureSampled != 0 {
 		usage |= imageUsageSampled
 	}
 	if desc.Usage&explicit.TextureRenderTarget != 0 {
-		usage |= imageUsageColor | imageUsageTransferSrc
+		usage |= imageUsageTransferSrc
+		if desc.Format.IsDepthStencil() {
+			usage |= imageUsageDepthStencil
+		} else {
+			usage |= imageUsageColor
+		}
 	}
 	if desc.Usage&explicit.TextureCopySource != 0 {
 		usage |= imageUsageTransferSrc
 	}
+	if desc.Usage&explicit.TextureStorage != 0 {
+		usage |= imageUsageStorage
+	}
 	a := d.arena
 	defer a.rewind(a.mark())
-	format := vkFormat(desc.Format)
-	info := put(a, imageCreateInfo{
+	format := d.vkFormat(desc.Format)
+	info := imageCreateInfo{
 		sType: sTypeImageCreateInfo, imageType: imageType2D, format: format,
 		extent:    extent3D{uint32(desc.Width), uint32(desc.Height), 1},
-		mipLevels: uint32(desc.MipLevels), arrayLayers: 1, samples: sampleCount1,
+		mipLevels: uint32(desc.MipLevels), arrayLayers: uint32(desc.Layers()), samples: sampleCount1,
 		tiling: imageTilingOptimal, usage: usage, sharingMode: sharingExclusive, initialLayout: layoutUndefined,
-	})
+	}
+	switch desc.Kind {
+	case explicit.TextureKindCube:
+		info.flags = imageCreateCubeCompatible
+	case explicit.TextureKind3D:
+		info.imageType = imageType3D
+		info.extent.depth = uint32(desc.DepthOrLayers)
+	}
+	if desc.SampleCount == 4 {
+		info.samples = sampleCount4
+	}
 	out := a.out()
-	if err := check("vkCreateImage", d.f.createImage(d.dev, info, 0, out)); err != nil {
+	if err := check("vkCreateImage", d.f.createImage(d.dev, put(a, info), 0, out)); err != nil {
 		return nil, err
 	}
 	t := &texture{d: d, desc: desc, image: u64(out)}
@@ -256,13 +362,14 @@ func (d *Device) NewTexture(desc explicit.TextureDesc) (explicit.Texture, error)
 		return fail(err)
 	}
 	// An image can have a view only if it is sampled or drawn into.
-	if usage&(imageUsageSampled|imageUsageColor) != 0 {
-		if t.view, err = d.newView(t.image, format, uint32(desc.MipLevels)); err != nil {
+	if usage&(imageUsageSampled|imageUsageColor|imageUsageDepthStencil) != 0 {
+		if t.view, err = d.newViewRange(viewSpec{image: t.image, format: format, typ: viewType(desc.Kind), aspect: formatAspect(desc.Format),
+			levels: uint32(desc.MipLevels), layers: uint32(desc.Layers())}); err != nil {
 			return fail(err)
 		}
 	}
-	if desc.Usage&explicit.TextureRenderTarget != 0 && desc.MipLevels > 1 {
-		if t.rtView, err = d.newView(t.image, format, 1); err != nil {
+	if desc.Usage&explicit.TextureRenderTarget != 0 && desc.MipLevels > 1 && desc.Kind == explicit.TextureKind2D {
+		if t.rtView, err = d.newViewRange(viewSpec{image: t.image, format: format, typ: imageViewType2D, aspect: formatAspect(desc.Format), levels: 1, layers: 1}); err != nil {
 			return fail(err)
 		}
 	}
@@ -271,18 +378,21 @@ func (d *Device) NewTexture(desc explicit.TextureDesc) (explicit.Texture, error)
 	return t, nil
 }
 
-// newView makes a view of the first levels of the image.
-func (d *Device) newView(img imageH, format, levels uint32) (imageViewH, error) {
-	return d.newViewRange(img, format, 0, levels)
+// viewSpec says which part of an image a view shows.
+type viewSpec struct {
+	image               imageH
+	format, typ, aspect uint32
+	baseLevel, levels   uint32
+	baseLayer, layers   uint32
 }
 
-// newViewRange makes a view of count levels of the image from level base.
-func (d *Device) newViewRange(img imageH, format, base, count uint32) (imageViewH, error) {
+// newViewRange makes a view of levels of the image from baseLevel, and layers from baseLayer.
+func (d *Device) newViewRange(v viewSpec) (imageViewH, error) {
 	a := d.arena
 	defer a.rewind(a.mark())
 	info := put(a, imageViewCreateInfo{
-		sType: sTypeImageViewCreateInfo, image: img, viewType: imageViewType2D, format: format,
-		subresourceRange: imageSubresourceRange{aspectMask: imageAspectColor, baseMipLevel: base, levelCount: count, layerCount: 1},
+		sType: sTypeImageViewCreateInfo, image: v.image, viewType: v.typ, format: v.format,
+		subresourceRange: imageSubresourceRange{aspectMask: v.aspect, baseMipLevel: v.baseLevel, levelCount: v.levels, baseArrayLayer: v.baseLayer, layerCount: v.layers},
 	})
 	out := a.out()
 	if err := check("vkCreateImageView", d.f.createImageView(d.dev, info, 0, out)); err != nil {
@@ -302,7 +412,7 @@ func (d *Device) initLayout(t *texture) {
 			oldLayout: layoutUndefined, newLayout: layoutGeneral,
 			srcQueueFamilyIndex: queueFamilyIgnored, dstQueueFamilyIndex: queueFamilyIgnored,
 			image:            t.image,
-			subresourceRange: imageSubresourceRange{aspectMask: imageAspectColor, levelCount: uint32(t.desc.MipLevels), layerCount: 1},
+			subresourceRange: imageSubresourceRange{aspectMask: t.aspect(), levelCount: uint32(t.desc.MipLevels), layerCount: uint32(t.desc.Layers())},
 		})
 		dep := put(a, dependencyInfo{sType: sTypeDependencyInfo, imageMemoryBarrierCount: 1, pImageMemoryBarriers: barrier})
 		d.f.cmdPipelineBarrier2(cb, dep)
@@ -393,11 +503,58 @@ func (d *Device) WriteTexture(t explicit.Texture, level int, r image.Rectangle, 
 		defer a.rewind(a.mark())
 		region := put(a, bufferImageCopy{
 			bufferOffset:     off,
-			imageSubresource: imageSubresourceLayers{aspectMask: imageAspectColor, mipLevel: uint32(vt.base + level), layerCount: 1},
+			imageSubresource: imageSubresourceLayers{aspectMask: imageAspectColor, mipLevel: uint32(vt.base + level), baseArrayLayer: uint32(vt.baseLayer), layerCount: 1},
 			imageOffset:      offset3D{int32(r.Min.X), int32(r.Min.Y), 0},
 			imageExtent:      extent3D{uint32(r.Dx()), uint32(r.Dy()), 1},
 		})
 		d.f.cmdCopyBufferToImage(cb, buf, vt.image, layoutGeneral, 1, region)
+		d.barrierAll(cb)
+	})
+}
+
+// WriteTextureRegion implements explicit.Device: the rows are repacked into the staging ring, and
+// a command copies them into the layers of an array or a cube, or into the slices of a volume.
+func (d *Device) WriteTextureRegion(t explicit.Texture, region explicit.TextureRegion, data []byte, bytesPerRow, rowsPerImage int) {
+	vt, ok := t.(*texture)
+	if !ok || vt.d != d {
+		panic(errors.New(tagVulkanForeignResource, "the resource was not made by this Vulkan device", "resource", "texture"))
+	}
+	w, h, n := region.Size[0], region.Size[1], region.Size[2]
+	if w <= 0 || h <= 0 || n <= 0 {
+		return
+	}
+	bpp := vt.desc.Format.BytesPerPixel()
+	rowBytes := w * bpp
+	buf, off, p, err := d.stage(uint64(rowBytes * h * n))
+	if err != nil {
+		panic(err)
+	}
+	dst := dl.Bytes(p, rowBytes*h*n)
+	for z := 0; z < n; z++ {
+		for y := 0; y < h; y++ {
+			src := data[(z*rowsPerImage+y)*bytesPerRow:]
+			copy(dst[(z*h+y)*rowBytes:(z*h+y+1)*rowBytes], src[:rowBytes])
+		}
+	}
+	layers := vt.desc.Kind == explicit.TextureKind2DArray || vt.desc.Kind == explicit.TextureKindCube
+	d.inCommands(func(cb commandBufferH) {
+		a := d.arena
+		defer a.rewind(a.mark())
+		c := bufferImageCopy{
+			bufferOffset:     off,
+			imageSubresource: imageSubresourceLayers{aspectMask: imageAspectColor, mipLevel: uint32(vt.base + region.Level), baseArrayLayer: uint32(vt.baseLayer), layerCount: 1},
+			imageOffset:      offset3D{int32(region.Origin[0]), int32(region.Origin[1]), 0},
+			imageExtent:      extent3D{uint32(w), uint32(h), 1},
+		}
+		switch {
+		case layers:
+			c.imageSubresource.baseArrayLayer = uint32(vt.baseLayer + region.Origin[2])
+			c.imageSubresource.layerCount = uint32(n)
+		case vt.desc.Kind == explicit.TextureKind3D:
+			c.imageOffset.z = int32(region.Origin[2])
+			c.imageExtent.depth = uint32(n)
+		}
+		d.f.cmdCopyBufferToImage(cb, buf, vt.image, layoutGeneral, 1, put(a, c))
 		d.barrierAll(cb)
 	})
 }
@@ -453,7 +610,7 @@ func (d *Device) NewSampler(desc explicit.SamplerDesc) (explicit.Sampler, error)
 	info := put(a, samplerCreateInfo{
 		sType: sTypeSamplerCreateInfo, magFilter: vkFilter(desc.MagFilter), minFilter: vkFilter(desc.MinFilter),
 		mipmapMode: mip, addressModeU: vkAddress(desc.AddressU), addressModeV: vkAddress(desc.AddressV),
-		addressModeW: vkAddress(desc.AddressU), maxLod: maxLod, borderColor: borderTransparentBlack,
+		addressModeW: vkAddress(desc.AddressW), maxLod: maxLod, borderColor: borderTransparentBlack,
 	})
 	out := a.out()
 	if err := check("vkCreateSampler", d.f.createSampler(d.dev, info, 0, out)); err != nil {
@@ -471,7 +628,7 @@ type pipeline struct {
 	pipeline  pipelineH
 	layout    pipelineLayoutH
 	setLayout []descriptorSetLayoutH
-	bindings  map[[2]int]explicit.BindingKind
+	bindings  map[[2]int]explicit.ShaderBinding
 	destroyed bool
 }
 
@@ -507,10 +664,131 @@ func vkVertexFormat(f explicit.VertexFormat) uint32 {
 		return formatRG32Sfloat
 	case explicit.VertexFloat32x3:
 		return formatRGB32Sfloat
+	case explicit.VertexFloat32x4:
+		return formatRGBA32Sfloat
 	case explicit.VertexUnorm8x4:
 		return formatRGBA8Unorm
+	case explicit.VertexUint32:
+		return formatR32Uint
+	case explicit.VertexUint32x2:
+		return formatRG32Uint
+	case explicit.VertexUint32x3:
+		return formatRGB32Uint
+	case explicit.VertexUint32x4:
+		return formatRGBA32Uint
+	case explicit.VertexSint32:
+		return formatR32Sint
+	case explicit.VertexSint32x2:
+		return formatRG32Sint
+	case explicit.VertexSint32x3:
+		return formatRGB32Sint
+	case explicit.VertexSint32x4:
+		return formatRGBA32Sint
+	case explicit.VertexUint8x2:
+		return formatR8G8Uint
+	case explicit.VertexUint8x4:
+		return formatRGBA8Uint
+	case explicit.VertexSint8x2:
+		return formatR8G8Sint
+	case explicit.VertexSint8x4:
+		return formatRGBA8Sint
+	case explicit.VertexUnorm8x2:
+		return formatR8G8Unorm
+	case explicit.VertexSnorm8x2:
+		return formatR8G8Snorm
+	case explicit.VertexSnorm8x4:
+		return formatRGBA8Snorm
+	case explicit.VertexUint16x2:
+		return formatRG16Uint
+	case explicit.VertexUint16x4:
+		return formatRGBA16Uint
+	case explicit.VertexSint16x2:
+		return formatRG16Sint
+	case explicit.VertexSint16x4:
+		return formatRGBA16Sint
+	case explicit.VertexUnorm16x2:
+		return formatRG16Unorm
+	case explicit.VertexUnorm16x4:
+		return formatRGBA16Unorm
+	case explicit.VertexSnorm16x2:
+		return formatRG16Snorm
+	case explicit.VertexSnorm16x4:
+		return formatRGBA16Snorm
+	case explicit.VertexFloat16x2:
+		return formatRG16Sfloat
+	case explicit.VertexFloat16x4:
+		return formatRGBA16Sfloat
 	}
 	return formatRGBA32Sfloat
+}
+
+func vkTopology(t explicit.PrimitiveTopology) uint32 {
+	switch t {
+	case explicit.TopologyTriangleStrip:
+		return topologyTriangleStrip
+	case explicit.TopologyLineList:
+		return topologyLineList
+	case explicit.TopologyLineStrip:
+		return topologyLineStrip
+	case explicit.TopologyPointList:
+		return topologyPointList
+	}
+	return topologyTriangleList
+}
+
+func vkCompare(c explicit.CompareFunc) uint32 {
+	switch c {
+	case explicit.CompareNever:
+		return compareNever
+	case explicit.CompareLess:
+		return compareLess
+	case explicit.CompareEqual:
+		return compareEqual
+	case explicit.CompareLessEqual:
+		return compareLessEqual
+	case explicit.CompareGreater:
+		return compareGreater
+	case explicit.CompareNotEqual:
+		return compareNotEqual
+	case explicit.CompareGreaterEqual:
+		return compareGreaterEqual
+	}
+	return compareAlways
+}
+
+func vkStencilOp(o explicit.StencilOp) uint32 {
+	switch o {
+	case explicit.StencilZero:
+		return stencilZero
+	case explicit.StencilReplace:
+		return stencilReplace
+	case explicit.StencilInvert:
+		return stencilInvert
+	case explicit.StencilIncrementClamp:
+		return stencilIncrementClamp
+	case explicit.StencilDecrementClamp:
+		return stencilDecrementClamp
+	case explicit.StencilIncrementWrap:
+		return stencilIncrementWrap
+	case explicit.StencilDecrementWrap:
+		return stencilDecrementWrap
+	}
+	return stencilKeep
+}
+
+func vkStencilFace(f explicit.StencilFaceState, readMask, writeMask uint32) stencilOpState {
+	return stencilOpState{
+		failOp: vkStencilOp(f.FailOp), passOp: vkStencilOp(f.PassOp), depthFailOp: vkStencilOp(f.DepthFailOp),
+		compareOp: vkCompare(f.Compare), compareMask: readMask, writeMask: writeMask,
+	}
+}
+
+// stencilMask is a stencil mask of the description: 0 means every bit.
+func stencilMask(m uint32) uint32 {
+	if m == 0 {
+		return 0xFFFFFFFF
+	}
+	return m
 }
 
 func vkBlendFactor(f explicit.BlendFactor) uint32 {
@@ -529,22 +807,38 @@ func vkBlendFactor(f explicit.BlendFactor) uint32 {
 	return blendOne
 }
 
-// shaderModule returns the VkShaderModule of the shader's SPIR-V, made once.
-func (d *Device) shaderModule(s *explicit.Shader) (shaderModuleH, error) {
-	if m, ok := d.modules[s]; ok {
+// shaderModule returns the VkShaderModule of the shader's SPIR-V, made once. With points, the
+// module is the one whose vertex entry points write PointSize (withPointSize), which a pipeline
+// with the point list topology needs.
+func (d *Device) shaderModule(s *explicit.Shader, points bool) (shaderModuleH, error) {
+	key := moduleKey{s, points}
+	if m, ok := d.modules[key]; ok {
 		return m, nil
+	}
+	spirv := s.SPIRV
+	if points {
+		var err error
+		if spirv, err = withPointSize(spirv); err != nil {
+			return 0, err
+		}
 	}
 	a := d.arena
 	defer a.rewind(a.mark())
-	code := a.alloc(uintptr(len(s.SPIRV)), 8)
-	copy(dl.Bytes(code, len(s.SPIRV)), s.SPIRV)
-	info := put(a, shaderModuleCreateInfo{sType: sTypeShaderModuleCreateInfo, codeSize: uintptr(len(s.SPIRV)), pCode: code})
+	code := a.alloc(uintptr(len(spirv)), 8)
+	copy(dl.Bytes(code, len(spirv)), spirv)
+	info := put(a, shaderModuleCreateInfo{sType: sTypeShaderModuleCreateInfo, codeSize: uintptr(len(spirv)), pCode: code})
 	out := a.out()
 	if err := check("vkCreateShaderModule", d.f.createShaderModule(d.dev, info, 0, out)); err != nil {
 		return 0, err
 	}
-	d.modules[s] = u64(out)
+	d.modules[key] = u64(out)
 	return u64(out), nil
+}
+
+// moduleKey names a shader module: a shader, and whether it writes PointSize.
+type moduleKey struct {
+	shader *explicit.Shader
+	points bool
 }
 
 // NewPipeline implements explicit.Device: the descriptor set layouts come from the
@@ -560,11 +854,11 @@ func (d *Device) NewPipeline(desc explicit.PipelineDesc) (explicit.Pipeline, err
 		return nil, errors.New(tagVulkanPipelineInvalid, "the shader lacks the entry point",
 			"shader", desc.Shader.Name, "vertex", desc.VertexEntry, "fragment", desc.FragmentEntry)
 	}
-	module, err := d.shaderModule(desc.Shader)
+	module, err := d.shaderModule(desc.Shader, desc.Topology == explicit.TopologyPointList)
 	if err != nil {
 		return nil, err
 	}
-	p := &pipeline{d: d, desc: desc, bindings: map[[2]int]explicit.BindingKind{}}
+	p := &pipeline{d: d, desc: desc, bindings: map[[2]int]explicit.ShaderBinding{}}
 	fail := func(err error) (explicit.Pipeline, error) {
 		p.release2()
 		return nil, err
@@ -588,7 +882,7 @@ func (d *Device) NewPipeline(desc explicit.PipelineDesc) (explicit.Pipeline, err
 				groups[b.Group][b.Binding] = s
 			}
 			s.stage |= stage
-			p.bindings[[2]int{b.Group, b.Binding}] = b.Kind
+			p.bindings[[2]int{b.Group, b.Binding}] = b
 			maxGroup = max(maxGroup, b.Group)
 		}
 	}
@@ -643,35 +937,94 @@ func (d *Device) NewPipeline(desc explicit.PipelineDesc) (explicit.Pipeline, err
 		vertexBindingDescriptionCount: uint32(len(bindingDescs)), pVertexBindingDescriptions: putSlice(a, bindingDescs),
 		vertexAttributeDescriptionCount: uint32(len(attrDescs)), pVertexAttributeDescriptions: putSlice(a, attrDescs),
 	})
-	inputAssembly := put(a, pipelineInputAssemblyStateCreateInfo{sType: sTypePipelineInputAssemblyStateCreate, topology: topologyTriangleList})
+	inputAssembly := put(a, pipelineInputAssemblyStateCreateInfo{sType: sTypePipelineInputAssemblyStateCreate, topology: vkTopology(desc.Topology)})
 	viewportState := put(a, pipelineViewportStateCreateInfo{sType: sTypePipelineViewportStateCreate, viewportCount: 1, scissorCount: 1})
-	raster := put(a, pipelineRasterizationStateCreateInfo{
+	ds := desc.DepthStencil
+	rasterState := pipelineRasterizationStateCreateInfo{
 		sType: sTypePipelineRasterizationStateCreate, polygonMode: polygonFill, cullMode: cullNone, frontFace: frontFaceCCW, lineWidth: 1,
-	})
-	multisample := put(a, pipelineMultisampleStateCreateInfo{sType: sTypePipelineMultisampleStateCreate, rasterizationSamples: sampleCount1})
-	blend := pipelineColorBlendAttachmentState{colorWriteMask: colorComponentsAll, srcColorBlendFactor: blendOne, srcAlphaBlendFactor: blendOne}
-	if desc.Blend.Enabled {
-		blend.blendEnable = 1
-		blend.srcColorBlendFactor, blend.srcAlphaBlendFactor = vkBlendFactor(desc.Blend.SrcFactor), vkBlendFactor(desc.Blend.SrcFactor)
-		blend.dstColorBlendFactor, blend.dstAlphaBlendFactor = vkBlendFactor(desc.Blend.DstFactor), vkBlendFactor(desc.Blend.DstFactor)
-		if desc.Blend.DstFactor == explicit.BlendFactorUnspecified {
-			blend.dstColorBlendFactor, blend.dstAlphaBlendFactor = blendZero, blendZero
+	}
+	switch desc.CullMode {
+	case explicit.CullFront:
+		rasterState.cullMode = cullFront
+	case explicit.CullBack:
+		rasterState.cullMode = cullBack
+	}
+	if desc.FrontFace == explicit.FrontFaceCW {
+		rasterState.frontFace = frontFaceCW
+	}
+	if ds.DepthBias != 0 || ds.DepthBiasSlopeScale != 0 || ds.DepthBiasClamp != 0 {
+		rasterState.depthBiasEnable = 1
+		rasterState.depthBiasConstantFactor, rasterState.depthBiasSlopeFactor, rasterState.depthBiasClamp = float32(ds.DepthBias), ds.DepthBiasSlopeScale, ds.DepthBiasClamp
+	}
+	raster := put(a, rasterState)
+	samples := uint32(sampleCount1)
+	if desc.Samples() == 4 {
+		samples = sampleCount4
+	}
+	multisample := put(a, pipelineMultisampleStateCreateInfo{sType: sTypePipelineMultisampleStateCreate, rasterizationSamples: samples})
+	targets := desc.Targets()
+	blends := make([]pipelineColorBlendAttachmentState, len(targets))
+	formats := make([]uint32, len(targets))
+	for i, target := range targets {
+		formats[i] = d.vkFormat(target.Format)
+		b := &blends[i]
+		*b = pipelineColorBlendAttachmentState{colorWriteMask: target.WriteMask.Bits(), srcColorBlendFactor: blendOne, srcAlphaBlendFactor: blendOne}
+		if target.Blend.Enabled {
+			b.blendEnable = 1
+			b.srcColorBlendFactor, b.srcAlphaBlendFactor = vkBlendFactor(target.Blend.SrcFactor), vkBlendFactor(target.Blend.SrcFactor)
+			b.dstColorBlendFactor, b.dstAlphaBlendFactor = vkBlendFactor(target.Blend.DstFactor), vkBlendFactor(target.Blend.DstFactor)
+			if target.Blend.DstFactor == explicit.BlendFactorUnspecified {
+				b.dstColorBlendFactor, b.dstAlphaBlendFactor = blendZero, blendZero
+			}
+		}
+	}
+	if !d.independentBlend {
+		for _, b := range blends[1:] {
+			if b != blends[0] {
+				return fail(errors.New(tagVulkanPipelineInvalid, "the device lacks independentBlend: every color target has the same blend state and write mask",
+					"targets", len(blends)))
+			}
 		}
 	}
 	colorBlend := put(a, pipelineColorBlendStateCreateInfo{
-		sType: sTypePipelineColorBlendStateCreate, attachmentCount: 1, pAttachments: put(a, blend),
+		sType: sTypePipelineColorBlendStateCreate, attachmentCount: uint32(len(blends)), pAttachments: putSlice(a, blends),
 	})
+	dynamicStates := []uint32{dynamicViewport, dynamicScissor}
+	if ds.Format.HasStencil() {
+		dynamicStates = append(dynamicStates, dynamicStencilReference)
+	}
 	dynamic := put(a, pipelineDynamicStateCreateInfo{
-		sType: sTypePipelineDynamicStateCreate, dynamicStateCount: 2, pDynamicStates: putSlice(a, []uint32{dynamicViewport, dynamicScissor}),
+		sType: sTypePipelineDynamicStateCreate, dynamicStateCount: uint32(len(dynamicStates)), pDynamicStates: putSlice(a, dynamicStates),
 	})
-	rendering := put(a, pipelineRenderingCreateInfo{
-		sType: sTypePipelineRenderingCreateInfo, colorAttachmentCount: 1, pColorAttachmentFormats: put(a, vkFormat(desc.Target)),
-	})
+	rendering := pipelineRenderingCreateInfo{
+		sType: sTypePipelineRenderingCreateInfo, colorAttachmentCount: uint32(len(formats)), pColorAttachmentFormats: putSlice(a, formats),
+	}
+	var depthState uintptr
+	if ds.Format != explicit.TextureFormatUnspecified {
+		rendering.depthAttachmentFormat = d.vkFormat(ds.Format)
+		if ds.Format.HasStencil() {
+			rendering.stencilAttachmentFormat = rendering.depthAttachmentFormat
+		}
+		dss := pipelineDepthStencilStateCreateInfo{
+			sType: sTypePipelineDepthStencilStateCreate, depthTestEnable: 1, depthCompareOp: vkCompare(ds.DepthCompare),
+			maxDepthBounds: 1,
+		}
+		if ds.DepthWrite {
+			dss.depthWriteEnable = 1
+		}
+		if ds.Format.HasStencil() {
+			dss.stencilTestEnable = 1
+			dss.front = vkStencilFace(ds.StencilFront, stencilMask(ds.StencilReadMask), stencilMask(ds.StencilWriteMask))
+			dss.back = vkStencilFace(ds.StencilBack, stencilMask(ds.StencilReadMask), stencilMask(ds.StencilWriteMask))
+		}
+		depthState = put(a, dss)
+	}
+	renderingInfo := put(a, rendering)
 	info := put(a, graphicsPipelineCreateInfo{
-		sType: sTypeGraphicsPipelineCreateInfo, pNext: rendering,
+		sType: sTypeGraphicsPipelineCreateInfo, pNext: renderingInfo,
 		stageCount: 2, pStages: stages, pVertexInputState: vertexInput, pInputAssemblyState: inputAssembly,
 		pViewportState: viewportState, pRasterizationState: raster, pMultisampleState: multisample,
-		pColorBlendState: colorBlend, pDynamicState: dynamic, layout: p.layout,
+		pDepthStencilState: depthState, pColorBlendState: colorBlend, pDynamicState: dynamic, layout: p.layout,
 	})
 	out = a.out()
 	start := time.Now()
@@ -746,10 +1099,11 @@ func (d *Device) NewBindGroup(p explicit.Pipeline, group int, entries []explicit
 	}
 	writes := make([]writeDescriptorSet, 0, len(entries))
 	for _, e := range entries {
-		kind, ok := vp.bindings[[2]int{group, e.Binding}]
+		sb, ok := vp.bindings[[2]int{group, e.Binding}]
 		if !ok {
 			return nil, errors.New(tagVulkanBindGroupInvalid, "the shader has no such binding", "group", group, "binding", e.Binding)
 		}
+		kind := sb.Kind
 		w := writeDescriptorSet{sType: sTypeWriteDescriptorSet, dstSet: set, dstBinding: uint32(e.Binding), descriptorCount: 1, descriptorType: descriptorType(kind)}
 		switch kind {
 		case explicit.BindingUniformBuffer:
@@ -769,6 +1123,10 @@ func (d *Device) NewBindGroup(p explicit.Pipeline, group int, entries []explicit
 			}
 			if t.view == 0 {
 				return nil, errors.New(tagVulkanBindGroupInvalid, "the texture is not TextureSampled", "binding", e.Binding)
+			}
+			if t.desc.Kind.Dimension() != sb.Dimension || !t.desc.Format.SampleType(d.features).Fits(sb.Sample) {
+				return nil, errors.New(tagVulkanTextureBindingMismatch, "the texture is not the dimension or sample type that the shader declares",
+					"group", group, "binding", e.Binding, "kind", int(t.desc.Kind), "dimension", int(sb.Dimension), "format", int(t.desc.Format), "sample", int(sb.Sample))
 			}
 			w.pImageInfo = put(a, descriptorImageInfo{imageView: t.view, imageLayout: layoutGeneral})
 		case explicit.BindingSampler:
@@ -814,9 +1172,10 @@ func (d *Device) allocateSet(s *frameSlot, layout descriptorSetLayoutH) (descrip
 
 // The tags of the errors that this file makes (rm4n0s/errors, R5).
 const (
-	tagVulkanBindGroupInvalid = "VulkanBindGroupInvalid"
-	tagVulkanLevelInvalid     = "VulkanLevelInvalid"
-	tagVulkanPipelineInvalid  = "VulkanPipelineInvalid"
-	tagVulkanTextureInvalid   = "VulkanTextureInvalid"
-	tagVulkanWriteOutOfRange  = "VulkanWriteOutOfRange"
+	tagVulkanBindGroupInvalid       = "VulkanBindGroupInvalid"
+	tagVulkanLevelInvalid           = "VulkanLevelInvalid"
+	tagVulkanPipelineInvalid        = "VulkanPipelineInvalid"
+	tagVulkanTextureBindingMismatch = "VulkanTextureBindingMismatch"
+	tagVulkanTextureInvalid         = "VulkanTextureInvalid"
+	tagVulkanWriteOutOfRange        = "VulkanWriteOutOfRange"
 )

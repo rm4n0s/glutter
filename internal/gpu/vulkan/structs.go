@@ -411,6 +411,37 @@ type pipelineMultisampleStateCreateInfo struct {
 	alphaToOneEnable      uint32
 }
 
+type stencilOpState struct {
+	failOp      uint32
+	passOp      uint32
+	depthFailOp uint32
+	compareOp   uint32
+	compareMask uint32
+	writeMask   uint32
+	reference   uint32
+}
+
+type pipelineDepthStencilStateCreateInfo struct {
+	sType                 uint32
+	pNext                 uintptr
+	flags                 uint32
+	depthTestEnable       uint32
+	depthWriteEnable      uint32
+	depthCompareOp        uint32
+	depthBoundsTestEnable uint32
+	stencilTestEnable     uint32
+	front                 stencilOpState
+	back                  stencilOpState
+	minDepthBounds        float32
+	maxDepthBounds        float32
+}
+
+type formatProperties struct {
+	linearTilingFeatures  uint32
+	optimalTilingFeatures uint32
+	bufferFeatures        uint32
+}
+
 type pipelineColorBlendAttachmentState struct {
 	blendEnable         uint32
 	srcColorBlendFactor uint32

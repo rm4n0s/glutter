@@ -35,7 +35,7 @@ const (
 // Flutter: no counterpart
 type TextureFormat int
 
-// The formats of a texture.
+// The formats of a texture (SPEC §27.1).
 const (
 	// TextureFormatUnspecified is the zero value: no format.
 	//
@@ -54,14 +54,52 @@ const (
 	//
 	// Flutter: no counterpart
 	TextureFormatR8Unorm
+	// TextureFormatRGBA16Float is 8 bytes per pixel, four half floats: linear color for
+	// high dynamic range.
+	//
+	// Flutter: no counterpart
+	TextureFormatRGBA16Float
+	// TextureFormatRGBA32Float is 16 bytes per pixel, four floats. Shaders sample it with
+	// textureLoad, or with a filter when Features.Float32Filterable.
+	//
+	// Flutter: no counterpart
+	TextureFormatRGBA32Float
+	// TextureFormatR32Float is 4 bytes per pixel, one float: heights, distances.
+	//
+	// Flutter: no counterpart
+	TextureFormatR32Float
+	// TextureFormatR32Uint is 4 bytes per pixel, one unsigned integer: object ids.
+	//
+	// Flutter: no counterpart
+	TextureFormatR32Uint
+	// TextureFormatRG32Uint is 8 bytes per pixel, two unsigned integers.
+	//
+	// Flutter: no counterpart
+	TextureFormatRG32Uint
+	// TextureFormatDepth32Float is a depth buffer of one float per pixel.
+	//
+	// Flutter: no counterpart
+	TextureFormatDepth32Float
+	// TextureFormatDepth24PlusStencil8 is a depth buffer of at least 24 bits with an 8 bit
+	// stencil. It cannot be copied.
+	//
+	// Flutter: no counterpart
+	TextureFormatDepth24PlusStencil8
 )
 
-// BytesPerPixel returns the size of a pixel in bytes; 0 for an unspecified format.
+// BytesPerPixel returns the size of a pixel in bytes; 0 for an unspecified format. For
+// TextureFormatDepth24PlusStencil8 it is the 4 bytes that a pixel nominally takes: the format
+// cannot be copied, so the number is only used to count memory.
 //
 // Flutter: no counterpart
 func (f TextureFormat) BytesPerPixel() int {
 	switch f {
-	case TextureFormatRGBA8Unorm, TextureFormatBGRA8Unorm:
+	case TextureFormatRGBA32Float:
+		return 16
+	case TextureFormatRGBA16Float, TextureFormatRG32Uint:
+		return 8
+	case TextureFormatRGBA8Unorm, TextureFormatBGRA8Unorm, TextureFormatR32Float, TextureFormatR32Uint,
+		TextureFormatDepth32Float, TextureFormatDepth24PlusStencil8:
 		return 4
 	case TextureFormatR8Unorm:
 		return 1
@@ -69,8 +107,131 @@ func (f TextureFormat) BytesPerPixel() int {
 	return 0
 }
 
+// IsDepthStencil reports whether the format is a depth or depth-stencil format.
+//
+// Flutter: no counterpart
+func (f TextureFormat) IsDepthStencil() bool {
+	return f == TextureFormatDepth32Float || f == TextureFormatDepth24PlusStencil8
+}
+
+// HasStencil reports whether the format has a stencil aspect.
+//
+// Flutter: no counterpart
+func (f TextureFormat) HasStencil() bool { return f == TextureFormatDepth24PlusStencil8 }
+
+// Features are the optional features of a device (SPEC §27.1); each backend reports what it has.
+//
+// Flutter: no counterpart
+type Features struct {
+	// Float32Filterable says that RGBA32Float and R32Float textures can be read with a filtering
+	// sampler (WebGPU's float32-filterable).
+	Float32Filterable bool
+}
+
+// SampleType is how a shader reads the texels of a texture (WebGPU's GPUTextureSampleType).
+// The zero value is SampleTypeFloat.
+//
+// Flutter: no counterpart
+type SampleType int
+
+// The sample types.
+const (
+	// SampleTypeFloat is a floating point texture that a filtering sampler can read.
+	//
+	// Flutter: no counterpart
+	SampleTypeFloat SampleType = iota
+	// SampleTypeUnfilterableFloat is a floating point texture that only textureLoad and a
+	// non-filtering sampler can read.
+	//
+	// Flutter: no counterpart
+	SampleTypeUnfilterableFloat
+	// SampleTypeUint is a texture of unsigned integers, read with textureLoad.
+	//
+	// Flutter: no counterpart
+	SampleTypeUint
+)
+
+// Fits reports whether a texture that shaders read as s can be bound where a shader declares want:
+// a filterable float texture fits a float or an unfilterable float binding, a float32 texture without
+// filtering only the unfilterable one, a uint texture only a uint binding.
+//
+// Flutter: no counterpart
+func (s SampleType) Fits(want SampleType) bool {
+	switch want {
+	case SampleTypeFloat:
+		return s == SampleTypeFloat
+	case SampleTypeUnfilterableFloat:
+		return s == SampleTypeFloat || s == SampleTypeUnfilterableFloat
+	}
+	return s == want
+}
+
+// SampleType returns how shaders read the format, for a device with the features; the formats
+// that are not sampled (the depth formats) report SampleTypeFloat and have no TextureSampled
+// usage.
+//
+// Flutter: no counterpart
+func (f TextureFormat) SampleType(features Features) SampleType {
+	switch f {
+	case TextureFormatR32Uint, TextureFormatRG32Uint:
+		return SampleTypeUint
+	case TextureFormatRGBA32Float, TextureFormatR32Float:
+		if !features.Float32Filterable {
+			return SampleTypeUnfilterableFloat
+		}
+	}
+	return SampleTypeFloat
+}
+
+// RenderTargetPixelBytes is the number of bytes that the format takes in the budget of
+// Limits.MaxColorAttachmentBytesPerSample (WebGPU's render target pixel byte cost); 0 for a format
+// that is not a color attachment.
+//
+// Flutter: no counterpart
+func (f TextureFormat) RenderTargetPixelBytes() int {
+	if f.IsDepthStencil() || f == TextureFormatUnspecified {
+		return 0
+	}
+	return f.BytesPerPixel()
+}
+
+// AllowedUsage returns the uses the format allows. A format that no use allows is unspecified.
+// The depth formats are drawn into (and Depth32Float copied from), and are not sampled in 1.10.
+//
+// Flutter: no counterpart
+func (f TextureFormat) AllowedUsage() TextureUsage {
+	const common = TextureSampled | TextureRenderTarget | TextureCopySource
+	switch f {
+	case TextureFormatRGBA8Unorm, TextureFormatRGBA16Float, TextureFormatR32Float, TextureFormatR32Uint:
+		return common | TextureStorage
+	case TextureFormatBGRA8Unorm, TextureFormatR8Unorm, TextureFormatRGBA32Float, TextureFormatRG32Uint:
+		return common
+	case TextureFormatDepth32Float:
+		return TextureRenderTarget | TextureCopySource
+	case TextureFormatDepth24PlusStencil8:
+		return TextureRenderTarget
+	}
+	return 0
+}
+
+// CanBeCopied reports whether CopyTexture and ReadTextureBytes can read the format (when the
+// texture has TextureCopySource): every format but Depth24PlusStencil8.
+//
+// Flutter: no counterpart
+func (f TextureFormat) CanBeCopied() bool {
+	return f != TextureFormatUnspecified && f != TextureFormatDepth24PlusStencil8
+}
+
+// CanBeWritten reports whether Device.WriteTexture can fill the format: the depth formats cannot
+// be written (a pass fills them).
+//
+// Flutter: no counterpart
+func (f TextureFormat) CanBeWritten() bool {
+	return f != TextureFormatUnspecified && !f.IsDepthStencil()
+}
+
 // TextureUsage says what a texture is used for; values are combined with |. Every
-// texture can be written with Device.WriteTexture.
+// texture whose format CanBeWritten can be written with Device.WriteTexture.
 //
 // Flutter: no counterpart
 type TextureUsage int
@@ -89,20 +250,133 @@ const (
 	//
 	// Flutter: no counterpart
 	TextureCopySource
+	// TextureStorage is a texture that compute shaders write (SPEC §27.1). Only RGBA8Unorm,
+	// RGBA16Float, R32Float and R32Uint allow it.
+	//
+	// Flutter: no counterpart
+	TextureStorage
 )
 
-// TextureDesc describes a 2D texture.
+// TextureKind is the shape of a texture. The zero value is TextureKindUnspecified, which
+// means TextureKind2D.
+//
+// Flutter: no counterpart
+type TextureKind int
+
+// The kinds of texture.
+const (
+	// TextureKindUnspecified is the zero value and means TextureKind2D.
+	//
+	// Flutter: no counterpart
+	TextureKindUnspecified TextureKind = iota
+	// TextureKind2D is a flat image.
+	//
+	// Flutter: no counterpart
+	TextureKind2D
+	// TextureKind2DArray is TextureDesc.DepthOrLayers images of one size, indexed by layer.
+	//
+	// Flutter: no counterpart
+	TextureKind2DArray
+	// TextureKindCube is six square images, the faces +X, -X, +Y, -Y, +Z and -Z in that order
+	// (layers 0 to 5), sampled by a direction.
+	//
+	// Flutter: no counterpart
+	TextureKindCube
+	// TextureKind3D is a volume of TextureDesc.DepthOrLayers slices.
+	//
+	// Flutter: no counterpart
+	TextureKind3D
+)
+
+// TextureDesc describes a texture.
 //
 // Flutter: no counterpart
 type TextureDesc struct {
-	// Width and Height are in pixels, at most Limits.MaxTextureSize.
+	// Width and Height are in pixels, at most Limits.MaxTextureSize (Limits.MaxTextureSize3D for
+	// a 3D texture).
 	Width, Height int
+	// Kind is the shape; the zero value is a 2D texture.
+	Kind TextureKind
+	// DepthOrLayers is the number of layers of a 2D array, the depth of a 3D texture, and 6 for a
+	// cube (0 means 6); for a 2D texture it is 1 (0 means 1).
+	DepthOrLayers int
 	// Format is the pixel format.
 	Format TextureFormat
 	// MipLevels is the number of levels; 0 means 1.
 	MipLevels int
+	// SampleCount is 1 or 4 samples for each pixel; 0 means 1. A multisampled texture is a 2D
+	// texture with one level that only a pass draws into, and a resolve target gets its pixels.
+	SampleCount int
 	// Usage says how the texture is used.
 	Usage TextureUsage
+}
+
+// Normalized returns the description with the defaults filled in: kind 2D, the layers or depth
+// of the kind (1, or 6 for a cube), one mip level and one sample.
+//
+// Flutter: no counterpart
+func (d TextureDesc) Normalized() TextureDesc {
+	if d.Kind == TextureKindUnspecified {
+		d.Kind = TextureKind2D
+	}
+	switch d.Kind {
+	case TextureKind2D:
+		if d.DepthOrLayers == 0 {
+			d.DepthOrLayers = 1
+		}
+	case TextureKindCube:
+		if d.DepthOrLayers == 0 {
+			d.DepthOrLayers = 6
+		}
+	case TextureKind2DArray, TextureKind3D:
+		if d.DepthOrLayers == 0 {
+			d.DepthOrLayers = 1
+		}
+	}
+	if d.MipLevels < 1 {
+		d.MipLevels = 1
+	}
+	if d.SampleCount < 1 {
+		d.SampleCount = 1
+	}
+	return d
+}
+
+// Layers returns the number of array layers of the normalized description: the layers of an array,
+// 6 for a cube and 1 for the others.
+//
+// Flutter: no counterpart
+func (d TextureDesc) Layers() int {
+	d = d.Normalized()
+	if d.Kind == TextureKind2DArray || d.Kind == TextureKindCube {
+		return d.DepthOrLayers
+	}
+	return 1
+}
+
+// Depth returns the depth of the normalized description: the slices of a 3D texture and 1 for the
+// others.
+//
+// Flutter: no counterpart
+func (d TextureDesc) Depth() int {
+	d = d.Normalized()
+	if d.Kind == TextureKind3D {
+		return d.DepthOrLayers
+	}
+	return 1
+}
+
+// TextureRegion is a box of one mip level of a texture: the pixels from Origin, of the size Size.
+// The third coordinate is the layer of an array or a cube, or the slice of a 3D texture.
+//
+// Flutter: no counterpart
+type TextureRegion struct {
+	// Level is the mip level.
+	Level int
+	// Origin is the first pixel (x, y) and the first layer or slice (z).
+	Origin [3]int
+	// Size is the width and height in pixels and the number of layers or slices.
+	Size [3]int
 }
 
 // FilterMode is how a sampler reads between texels. The zero value is
@@ -163,15 +437,18 @@ type SamplerDesc struct {
 	MipmapFilter FilterMode
 	// AddressU and AddressV are the modes of the two directions.
 	AddressU, AddressV AddressMode
+	// AddressW is the mode of the third direction of a 3D texture.
+	AddressW AddressMode
 }
 
-// VertexFormat is the type of a vertex attribute. The zero value is
-// VertexFormatUnspecified.
+// VertexFormat is the type of a vertex attribute: WebGPU's vertex formats (SPEC §27.1). The zero
+// value is VertexFormatUnspecified.
 //
 // Flutter: no counterpart
 type VertexFormat int
 
-// The vertex formats.
+// The vertex formats. A format with unorm or snorm gives the shader floats from 0 to 1 or from
+// -1 to 1; with uint or sint, integers.
 const (
 	// VertexFormatUnspecified is the zero value: no format.
 	//
@@ -197,7 +474,128 @@ const (
 	//
 	// Flutter: no counterpart
 	VertexUnorm8x4
+	// VertexUint32 is one uint32.
+	//
+	// Flutter: no counterpart
+	VertexUint32
+	// VertexUint32x2 is two uint32.
+	//
+	// Flutter: no counterpart
+	VertexUint32x2
+	// VertexUint32x3 is three uint32.
+	//
+	// Flutter: no counterpart
+	VertexUint32x3
+	// VertexUint32x4 is four uint32.
+	//
+	// Flutter: no counterpart
+	VertexUint32x4
+	// VertexSint32 is one int32.
+	//
+	// Flutter: no counterpart
+	VertexSint32
+	// VertexSint32x2 is two int32.
+	//
+	// Flutter: no counterpart
+	VertexSint32x2
+	// VertexSint32x3 is three int32.
+	//
+	// Flutter: no counterpart
+	VertexSint32x3
+	// VertexSint32x4 is four int32.
+	//
+	// Flutter: no counterpart
+	VertexSint32x4
+	// VertexUint8x2 is two bytes read as integers.
+	//
+	// Flutter: no counterpart
+	VertexUint8x2
+	// VertexUint8x4 is four bytes read as integers.
+	//
+	// Flutter: no counterpart
+	VertexUint8x4
+	// VertexSint8x2 is two signed bytes read as integers.
+	//
+	// Flutter: no counterpart
+	VertexSint8x2
+	// VertexSint8x4 is four signed bytes read as integers.
+	//
+	// Flutter: no counterpart
+	VertexSint8x4
+	// VertexUnorm8x2 is two bytes read as numbers from 0 to 1.
+	//
+	// Flutter: no counterpart
+	VertexUnorm8x2
+	// VertexSnorm8x2 is two signed bytes read as numbers from -1 to 1.
+	//
+	// Flutter: no counterpart
+	VertexSnorm8x2
+	// VertexSnorm8x4 is four signed bytes read as numbers from -1 to 1.
+	//
+	// Flutter: no counterpart
+	VertexSnorm8x4
+	// VertexUint16x2 is two uint16 read as integers.
+	//
+	// Flutter: no counterpart
+	VertexUint16x2
+	// VertexUint16x4 is four uint16 read as integers.
+	//
+	// Flutter: no counterpart
+	VertexUint16x4
+	// VertexSint16x2 is two int16 read as integers.
+	//
+	// Flutter: no counterpart
+	VertexSint16x2
+	// VertexSint16x4 is four int16 read as integers.
+	//
+	// Flutter: no counterpart
+	VertexSint16x4
+	// VertexUnorm16x2 is two uint16 read as numbers from 0 to 1.
+	//
+	// Flutter: no counterpart
+	VertexUnorm16x2
+	// VertexUnorm16x4 is four uint16 read as numbers from 0 to 1.
+	//
+	// Flutter: no counterpart
+	VertexUnorm16x4
+	// VertexSnorm16x2 is two int16 read as numbers from -1 to 1.
+	//
+	// Flutter: no counterpart
+	VertexSnorm16x2
+	// VertexSnorm16x4 is four int16 read as numbers from -1 to 1.
+	//
+	// Flutter: no counterpart
+	VertexSnorm16x4
+	// VertexFloat16x2 is two half floats.
+	//
+	// Flutter: no counterpart
+	VertexFloat16x2
+	// VertexFloat16x4 is four half floats.
+	//
+	// Flutter: no counterpart
+	VertexFloat16x4
 )
+
+// Size returns the size of the attribute in bytes; 0 for an unspecified format.
+//
+// Flutter: no counterpart
+func (f VertexFormat) Size() int {
+	switch f {
+	case VertexFloat32, VertexUint32, VertexSint32, VertexUnorm8x4, VertexUint8x4, VertexSint8x4, VertexSnorm8x4,
+		VertexUint16x2, VertexSint16x2, VertexUnorm16x2, VertexSnorm16x2, VertexFloat16x2:
+		return 4
+	case VertexFloat32x2, VertexUint32x2, VertexSint32x2, VertexUint16x4, VertexSint16x4, VertexUnorm16x4,
+		VertexSnorm16x4, VertexFloat16x4:
+		return 8
+	case VertexFloat32x3, VertexUint32x3, VertexSint32x3:
+		return 12
+	case VertexFloat32x4, VertexUint32x4, VertexSint32x4:
+		return 16
+	case VertexUint8x2, VertexSint8x2, VertexUnorm8x2, VertexSnorm8x2:
+		return 2
+	}
+	return 0
+}
 
 // VertexAttribute is one input of the vertex shader, in a buffer.
 //
@@ -274,9 +672,267 @@ type BlendState struct {
 	SrcFactor, DstFactor BlendFactor
 }
 
+// PrimitiveTopology says how the vertices of a draw make primitives. The zero value is
+// TopologyTriangleList. A strip is not restarted by an index: the primitive restart is off.
+//
+// Flutter: no counterpart
+type PrimitiveTopology int
+
+// The topologies.
+const (
+	// TopologyTriangleList makes a triangle of each three vertices.
+	//
+	// Flutter: no counterpart
+	TopologyTriangleList PrimitiveTopology = iota
+	// TopologyTriangleStrip makes a triangle of each vertex and the two before it.
+	//
+	// Flutter: no counterpart
+	TopologyTriangleStrip
+	// TopologyLineList makes a line of each two vertices.
+	//
+	// Flutter: no counterpart
+	TopologyLineList
+	// TopologyLineStrip makes a line of each vertex and the one before it.
+	//
+	// Flutter: no counterpart
+	TopologyLineStrip
+	// TopologyPointList makes a point of each vertex.
+	//
+	// Flutter: no counterpart
+	TopologyPointList
+)
+
+// CullMode says which triangles are not drawn. The zero value is CullNone.
+//
+// Flutter: no counterpart
+type CullMode int
+
+// The cull modes.
+const (
+	// CullNone draws every triangle.
+	//
+	// Flutter: no counterpart
+	CullNone CullMode = iota
+	// CullFront leaves out the triangles that face the viewer.
+	//
+	// Flutter: no counterpart
+	CullFront
+	// CullBack leaves out the triangles that face away from the viewer.
+	//
+	// Flutter: no counterpart
+	CullBack
+)
+
+// FrontFace says which winding of a triangle on the screen faces the viewer, in the clip space
+// of SPEC §27.1 (y up). The zero value is FrontFaceCCW.
+//
+// Flutter: no counterpart
+type FrontFace int
+
+// The windings.
+const (
+	// FrontFaceCCW is a triangle whose vertices go counter-clockwise on the screen.
+	//
+	// Flutter: no counterpart
+	FrontFaceCCW FrontFace = iota
+	// FrontFaceCW is a triangle whose vertices go clockwise on the screen.
+	//
+	// Flutter: no counterpart
+	FrontFaceCW
+)
+
+// CompareFunc is the comparison of a depth or stencil test: the new value against the stored one.
+// The zero value is CompareUnspecified, which means CompareAlways.
+//
+// Flutter: no counterpart
+type CompareFunc int
+
+// The comparison functions.
+const (
+	// CompareUnspecified is the zero value and means CompareAlways.
+	//
+	// Flutter: no counterpart
+	CompareUnspecified CompareFunc = iota
+	// CompareNever never passes.
+	//
+	// Flutter: no counterpart
+	CompareNever
+	// CompareLess passes when the new value is less.
+	//
+	// Flutter: no counterpart
+	CompareLess
+	// CompareEqual passes when the values are equal.
+	//
+	// Flutter: no counterpart
+	CompareEqual
+	// CompareLessEqual passes when the new value is less or equal.
+	//
+	// Flutter: no counterpart
+	CompareLessEqual
+	// CompareGreater passes when the new value is greater: reversed-Z.
+	//
+	// Flutter: no counterpart
+	CompareGreater
+	// CompareNotEqual passes when the values differ.
+	//
+	// Flutter: no counterpart
+	CompareNotEqual
+	// CompareGreaterEqual passes when the new value is greater or equal.
+	//
+	// Flutter: no counterpart
+	CompareGreaterEqual
+	// CompareAlways always passes.
+	//
+	// Flutter: no counterpart
+	CompareAlways
+)
+
+// StencilOp is what a stencil test does to the stencil value. The zero value is StencilKeep.
+//
+// Flutter: no counterpart
+type StencilOp int
+
+// The stencil operations.
+const (
+	// StencilKeep keeps the value.
+	//
+	// Flutter: no counterpart
+	StencilKeep StencilOp = iota
+	// StencilZero sets the value to 0.
+	//
+	// Flutter: no counterpart
+	StencilZero
+	// StencilReplace sets the value to the reference of the pass (Pass.SetStencilReference).
+	//
+	// Flutter: no counterpart
+	StencilReplace
+	// StencilInvert inverts the bits of the value.
+	//
+	// Flutter: no counterpart
+	StencilInvert
+	// StencilIncrementClamp adds 1 up to the largest value.
+	//
+	// Flutter: no counterpart
+	StencilIncrementClamp
+	// StencilDecrementClamp subtracts 1 down to 0.
+	//
+	// Flutter: no counterpart
+	StencilDecrementClamp
+	// StencilIncrementWrap adds 1 and wraps to 0.
+	//
+	// Flutter: no counterpart
+	StencilIncrementWrap
+	// StencilDecrementWrap subtracts 1 and wraps to the largest value.
+	//
+	// Flutter: no counterpart
+	StencilDecrementWrap
+)
+
+// StencilFaceState is the stencil test of the front or the back faces of triangles. The zero
+// value always passes and keeps the value.
+//
+// Flutter: no counterpart
+type StencilFaceState struct {
+	// Compare is the test of the reference against the stored value.
+	Compare CompareFunc
+	// FailOp is what happens when the stencil test fails.
+	FailOp StencilOp
+	// DepthFailOp is what happens when the stencil test passes and the depth test fails.
+	DepthFailOp StencilOp
+	// PassOp is what happens when both pass.
+	PassOp StencilOp
+}
+
+// DepthStencilState is the depth and stencil state of a pipeline. The zero value is no depth-stencil
+// attachment.
+//
+// Flutter: no counterpart
+type DepthStencilState struct {
+	// Format is the format of the depth-stencil attachment of the passes that use the pipeline;
+	// TextureFormatUnspecified means the pipeline has none.
+	Format TextureFormat
+	// DepthWrite stores the depth of the fragments that pass.
+	DepthWrite bool
+	// DepthCompare is the depth test.
+	DepthCompare CompareFunc
+	// StencilFront and StencilBack are the stencil tests of the two kinds of faces. A format
+	// without a stencil ignores them.
+	StencilFront, StencilBack StencilFaceState
+	// StencilReadMask and StencilWriteMask are the bits that the test reads and the operations
+	// write; 0 means all the bits.
+	StencilReadMask, StencilWriteMask uint32
+	// DepthBias is added to the depth of each fragment, in units of the smallest difference of
+	// the depth format; DepthBiasSlopeScale times the slope of the triangle is added too, and the
+	// sum is at most DepthBiasClamp when that is not 0. Only triangles have a bias.
+	DepthBias           int32
+	DepthBiasSlopeScale float32
+	DepthBiasClamp      float32
+}
+
+// ColorWriteMask says which channels of a color attachment a pipeline writes; values are combined
+// with |. The zero value is ColorWriteAll.
+//
+// Flutter: no counterpart
+type ColorWriteMask int
+
+// The channels.
+const (
+	// ColorWriteAll writes every channel; it is the zero value.
+	//
+	// Flutter: no counterpart
+	ColorWriteAll ColorWriteMask = 0
+	// ColorWriteRed writes the red channel.
+	//
+	// Flutter: no counterpart
+	ColorWriteRed ColorWriteMask = 1 << (iota - 1)
+	// ColorWriteGreen writes the green channel.
+	//
+	// Flutter: no counterpart
+	ColorWriteGreen
+	// ColorWriteBlue writes the blue channel.
+	//
+	// Flutter: no counterpart
+	ColorWriteBlue
+	// ColorWriteAlpha writes the alpha channel.
+	//
+	// Flutter: no counterpart
+	ColorWriteAlpha
+	// ColorWriteNone writes no channel.
+	//
+	// Flutter: no counterpart
+	ColorWriteNone
+)
+
+// Bits returns the channels as the bits 1 (red), 2 (green), 4 (blue) and 8 (alpha) that every
+// backend uses: all of them for ColorWriteAll, none for ColorWriteNone.
+//
+// Flutter: no counterpart
+func (m ColorWriteMask) Bits() uint32 {
+	switch m {
+	case ColorWriteAll:
+		return 15
+	case ColorWriteNone:
+		return 0
+	}
+	return uint32(m) & 15
+}
+
+// ColorTargetState is the format, blend state and write mask of one color attachment of a
+// pipeline.
+//
+// Flutter: no counterpart
+type ColorTargetState struct {
+	// Format is the format of the attachment.
+	Format TextureFormat
+	// Blend is the blend state of the attachment.
+	Blend BlendState
+	// WriteMask says which channels are written.
+	WriteMask ColorWriteMask
+}
+
 // PipelineDesc describes a render pipeline: a generated shader, its entry points,
-// the vertex layout, the blend state and the format of the target. Triangles are the
-// only topology the renderer uses.
+// the vertex layout, the blend state, the format of the targets and the state of the
+// primitives, the depth and stencil tests and the multisampling.
 //
 // Flutter: no counterpart
 type PipelineDesc struct {
@@ -286,10 +942,50 @@ type PipelineDesc struct {
 	VertexEntry, FragmentEntry string
 	// VertexBuffers are the layouts of the vertex buffers, by slot.
 	VertexBuffers []VertexBufferLayout
-	// Blend is the blend state.
+	// Blend is the blend state of the one color target of the 2D renderer; it is the state of
+	// target 0 when ColorTargets is empty.
 	Blend BlendState
-	// Target is the format of the texture the pipeline draws into.
+	// Target is the format of the one color target of the 2D renderer; it is the format of
+	// target 0 when ColorTargets is empty.
 	Target TextureFormat
+	// ColorTargets are the color attachments of the passes that use the pipeline, 1 to
+	// Limits.MaxColorAttachments of them; when empty, the pipeline has the one target of Target and
+	// Blend. A pipeline made with ColorTargets, a Topology other than the triangle list, a
+	// culling, a depth-stencil state or SampleCount is a pipeline of the 3D API; the clip space is
+	// the same for every pipeline (SPEC §27.1).
+	ColorTargets []ColorTargetState
+	// Topology says how the vertices make primitives.
+	Topology PrimitiveTopology
+	// CullMode says which triangles are left out.
+	CullMode CullMode
+	// FrontFace says which winding faces the viewer.
+	FrontFace FrontFace
+	// DepthStencil is the depth and stencil state; the zero value has no depth-stencil
+	// attachment.
+	DepthStencil DepthStencilState
+	// SampleCount is the number of samples of the attachments: 1 or 4; 0 means 1.
+	SampleCount int
+}
+
+// Targets returns the color targets of the pipeline: ColorTargets, or the one target of Target and
+// Blend.
+//
+// Flutter: no counterpart
+func (d PipelineDesc) Targets() []ColorTargetState {
+	if len(d.ColorTargets) > 0 {
+		return d.ColorTargets
+	}
+	return []ColorTargetState{{Format: d.Target, Blend: d.Blend}}
+}
+
+// Samples returns SampleCount, with 0 meaning 1.
+//
+// Flutter: no counterpart
+func (d PipelineDesc) Samples() int {
+	if d.SampleCount < 1 {
+		return 1
+	}
+	return d.SampleCount
 }
 
 // Binding is one resource of a bind group: the entry for @binding(Binding).
@@ -334,6 +1030,74 @@ const (
 	LoadDontCare
 )
 
+// StoreOp is what a pass does with the pixels it drew when it ends. The zero value is StoreStore.
+//
+// Flutter: no counterpart
+type StoreOp int
+
+// The store operations.
+const (
+	// StoreStore keeps what the pass drew.
+	//
+	// Flutter: no counterpart
+	StoreStore StoreOp = iota
+	// StoreDiscard leaves the attachment undefined, for a target that is only resolved or only
+	// read inside the pass (a depth buffer that nothing reads later): a tile-based GPU then does
+	// not write it to memory.
+	//
+	// Flutter: no counterpart
+	StoreDiscard
+)
+
+// ColorAttachment is one color attachment of a render pass.
+//
+// Flutter: no counterpart
+type ColorAttachment struct {
+	// Target is the texture drawn into: a 2D texture, or a view of one layer or level made by
+	// Layer or Level. It has TextureRenderTarget.
+	Target Texture
+	// Resolve, when set, is a texture of one sample, of the size and format of Target, that
+	// receives the average of the samples at the end of the pass; Target is multisampled then.
+	Resolve Texture
+	// Load is what happens to the contents of Target at the start.
+	Load LoadOp
+	// Store is what happens to the contents of Target at the end. With Resolve, StoreDiscard
+	// keeps only the resolved pixels.
+	Store StoreOp
+	// Clear is the color of LoadClear, converted to the type of the format (the integers of a
+	// Uint format are the whole numbers).
+	Clear [4]float64
+}
+
+// DepthAttachment is the depth-stencil attachment of a render pass.
+//
+// Flutter: no counterpart
+type DepthAttachment struct {
+	// Target is the texture drawn into, of a depth format, with TextureRenderTarget.
+	Target Texture
+	// DepthLoad and DepthStore are what happens to the depth at the start and at the end.
+	DepthLoad  LoadOp
+	DepthStore StoreOp
+	// ClearDepth is the depth of LoadClear, from 0 to 1.
+	ClearDepth float64
+	// StencilLoad, StencilStore and ClearStencil are the same for the stencil; they are ignored
+	// by a format without one.
+	StencilLoad  LoadOp
+	StencilStore StoreOp
+	ClearStencil uint32
+}
+
+// PassDesc describes a render pass: 1 to Limits.MaxColorAttachments color attachments and at most
+// one depth-stencil attachment. They all have the same size and sample count.
+//
+// Flutter: no counterpart
+type PassDesc struct {
+	// Color are the color attachments.
+	Color []ColorAttachment
+	// Depth is the depth-stencil attachment; nil for none.
+	Depth *DepthAttachment
+}
+
 // Buffer is a GPU buffer.
 //
 // Flutter: no counterpart
@@ -344,18 +1108,25 @@ type Buffer interface {
 	Destroy()
 }
 
-// Texture is a GPU 2D texture.
+// Texture is a GPU texture.
 //
 // Flutter: no counterpart
 type Texture interface {
-	// Desc is what the texture was made with, with MipLevels at least 1.
+	// Desc is what the texture was made with, normalized (Normalized).
 	Desc() TextureDesc
 	// Level returns a texture that is the mip level i of this one: it has the size of that
 	// level and one level, and a pass can draw into it and a bind group can sample it, which
 	// is how the downsampling pass makes the mipmaps (SPEC §9.3). The texture it returns
-	// belongs to this one and goes away with it. Level(0) of a texture with one level is the
-	// texture itself.
+	// belongs to this one and goes away with it. A 2D array, cube or 3D texture keeps its kind
+	// and its layers in the view of a level, and a pass can draw into it only through Layer. Level(0)
+	// of a texture with one level is the texture itself.
 	Level(i int) Texture
+	// Layer returns a 2D texture over one layer (the face of a cube, in the order of
+	// TextureKindCube) of the mip level of a 2D array or cube texture: a pass can draw into it, a
+	// bind group can sample it as a 2D texture, and ReadTextureBytes can read it. It belongs to
+	// this texture and goes away with it. A 2D texture has the one layer 0, which is Level(level).
+	// A 3D texture has no layers: the call panics.
+	Layer(level, layer int) Texture
 	// Destroy releases the texture. The GPU finishes the frames that use it first.
 	Destroy()
 }
@@ -395,9 +1166,11 @@ type BindGroup interface {
 type Device interface {
 	// Limits are the design limits.
 	Limits() Limits
+	// Features are the optional features of the device.
+	Features() Features
 	// NewBuffer makes a buffer of size bytes.
 	NewBuffer(size int, usage BufferUsage) (Buffer, error)
-	// NewTexture makes a 2D texture.
+	// NewTexture makes a texture.
 	NewTexture(desc TextureDesc) (Texture, error)
 	// NewSampler makes a sampler.
 	NewSampler(desc SamplerDesc) (Sampler, error)
@@ -412,6 +1185,10 @@ type Device interface {
 	// WriteTexture copies the rows of data, stride bytes apart, into the rectangle r
 	// of the level of the texture.
 	WriteTexture(t Texture, level int, r image.Rectangle, data []byte, stride int)
+	// WriteTextureRegion copies data into a box of a 2D array, cube or 3D texture (or a 2D texture,
+	// with one layer): the rows of data are bytesPerRow apart and the images (the layers or slices)
+	// rowsPerImage rows apart. The data is copied before the call returns.
+	WriteTextureRegion(t Texture, region TextureRegion, data []byte, bytesPerRow, rowsPerImage int)
 	// NewSwapchain makes the swapchain of a window.
 	NewSwapchain(h gpu.SurfaceHandle) (Swapchain, error)
 	// Begin starts the commands of a frame; there is one encoder per frame.
@@ -425,13 +1202,22 @@ type Device interface {
 // Flutter: no counterpart
 type Encoder interface {
 	// BeginPass starts a pass that draws into the target, which must have
-	// TextureRenderTarget. The previous pass must have ended.
+	// TextureRenderTarget. The previous pass must have ended. It is BeginRenderPass with one color
+	// attachment that is stored.
 	BeginPass(target Texture, load LoadOp, clear ui.Color) Pass
+	// BeginRenderPass starts a pass with the attachments of desc. The previous pass must have
+	// ended.
+	BeginRenderPass(desc PassDesc) Pass
 	// CopyTexture copies the rectangle r of src to dst at the point at.
 	CopyTexture(src Texture, r image.Rectangle, dst Texture, at image.Point)
 	// ReadTexture reads the rectangle r of src. done runs once the GPU has finished,
 	// never inside the frame that asked.
 	ReadTexture(src Texture, r image.Rectangle, done func(*image.RGBA, error))
+	// ReadTextureBytes reads the rectangle r of a 2D texture (or a Level or Layer view) as the
+	// bytes of its format: the rows of r.Dx() pixels, packed, so that rowBytes is r.Dx() times the
+	// bytes of a pixel. It works for every format that CanBeCopied. done runs once the GPU has
+	// finished, never inside the frame that asked.
+	ReadTextureBytes(src Texture, r image.Rectangle, done func(data []byte, rowBytes int, err error))
 	// Submit sends the frame to the GPU.
 	Submit() error
 }
@@ -452,6 +1238,9 @@ type Pass interface {
 	SetIndexBuffer(b Buffer, offset int)
 	// SetScissor limits the draws to the rectangle, in pixels of the target.
 	SetScissor(r image.Rectangle)
+	// SetStencilReference sets the reference value of the stencil tests and of StencilReplace; it
+	// is 0 at the start of a pass.
+	SetStencilReference(ref uint32)
 	// Draw draws vertices, instances times.
 	Draw(vertices, instances, firstVertex, firstInstance int)
 	// DrawIndexed draws indices, instances times.

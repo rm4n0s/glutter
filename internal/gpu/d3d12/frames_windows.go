@@ -12,14 +12,24 @@ import (
 	"github.com/rm4n0s/glutter/internal/platform/windows/win32"
 )
 
-// pendingRead is a ReadTexture that waits for the frame to finish: a readback buffer with the layout
-// of the rectangle in it.
+// pendingRead is a ReadTexture or a ReadTextureBytes that waits for the frame to finish: a readback buffer
+// with the layout of the rectangle in it. A ReadTexture has done, a ReadTextureBytes has doneBytes.
 type pendingRead struct {
-	res    win32.Object // zero for an empty rectangle
-	layout copyLayout
-	rect   image.Rectangle
-	format explicit.TextureFormat
-	done   func(*image.RGBA, error)
+	res       win32.Object // zero for an empty rectangle
+	layout    copyLayout
+	rect      image.Rectangle
+	format    explicit.TextureFormat
+	done      func(*image.RGBA, error)
+	doneBytes func(data []byte, rowBytes int, err error)
+}
+
+// fail tells the read that it failed.
+func (rd *pendingRead) fail(err error) {
+	if rd.doneBytes != nil {
+		rd.doneBytes(nil, 0, err)
+		return
+	}
+	rd.done(nil, err)
 }
 
 // encoder records the commands of one frame.
@@ -94,15 +104,15 @@ func (e *encoder) CopyTexture(src explicit.Texture, r image.Rectangle, dst expli
 	}
 	d.tracker.begin()
 	defer d.tracker.end()
-	if err := d.tracker.need(s.root, s.base, stateCopySource); err != nil {
+	if err := d.needTexture(s, stateCopySource); err != nil {
 		panic(err)
 	}
-	if err := d.tracker.need(t.root, t.base, stateCopyDest); err != nil {
+	if err := d.needTexture(t, stateCopyDest); err != nil {
 		panic(err)
 	}
 	d.barrier(e.list)
-	srcLoc := d3d12TextureCopyIndex{Resource: s.res.Ptr(), Type: textureCopySubresourceIndex, Index: uint32(s.base)}
-	dstLoc := d3d12TextureCopyIndex{Resource: t.res.Ptr(), Type: textureCopySubresourceIndex, Index: uint32(t.base)}
+	srcLoc := d3d12TextureCopyIndex{Resource: s.res.Ptr(), Type: textureCopySubresourceIndex, Index: uint32(s.sub())}
+	dstLoc := d3d12TextureCopyIndex{Resource: t.res.Ptr(), Type: textureCopySubresourceIndex, Index: uint32(t.sub())}
 	box := d3d12Box{Left: uint32(r.Min.X), Top: uint32(r.Min.Y), Right: uint32(r.Max.X), Bottom: uint32(r.Max.Y), Back: 1}
 	e.list.Call(listCopyTextureRegion, uintptr(unsafe.Pointer(&dstLoc)), uintptr(at.X), uintptr(at.Y), 0, uintptr(unsafe.Pointer(&srcLoc)), uintptr(unsafe.Pointer(&box)))
 }
@@ -115,11 +125,33 @@ func (e *encoder) ReadTexture(src explicit.Texture, r image.Rectangle, done func
 	if e.pass != nil {
 		panic(errors.New(tagD3D12PassNotEnded, "ReadTexture was called before the pass ended"))
 	}
+	d.limits.CheckRead(s.desc, false)
 	if !r.In(image.Rect(0, 0, s.desc.Width, s.desc.Height)) {
 		panic(errors.New(tagD3D12RectOutOfRange, "the read is outside the texture", "op", "ReadTexture",
 			"rect", r.String(), "width", s.desc.Width, "height", s.desc.Height))
 	}
-	rd := &pendingRead{rect: r, format: s.desc.Format, done: done}
+	e.read(s, r, &pendingRead{rect: r, format: s.desc.Format, done: done})
+}
+
+// ReadTextureBytes implements explicit.Encoder: as ReadTexture, but done gets the bytes of the
+// pixels as the format has them, with their rows packed, and the length of a row.
+func (e *encoder) ReadTextureBytes(src explicit.Texture, r image.Rectangle, done func(data []byte, rowBytes int, err error)) {
+	d := e.d
+	s := d.own2texture(src)
+	if e.pass != nil {
+		panic(errors.New(tagD3D12PassNotEnded, "ReadTextureBytes was called before the pass ended"))
+	}
+	d.limits.CheckRead(s.desc, true)
+	if !r.In(image.Rect(0, 0, s.desc.Width, s.desc.Height)) {
+		panic(errors.New(tagD3D12RectOutOfRange, "the read is outside the texture", "op", "ReadTextureBytes",
+			"rect", r.String(), "width", s.desc.Width, "height", s.desc.Height))
+	}
+	e.read(s, r, &pendingRead{rect: r, format: s.desc.Format, doneBytes: done})
+}
+
+// read copies the rectangle of the texture into a readback buffer, for the read to finish at Submit.
+func (e *encoder) read(s *texture, r image.Rectangle, rd *pendingRead) {
+	d := e.d
 	if r.Empty() {
 		e.reads = append(e.reads, rd)
 		return
@@ -127,22 +159,22 @@ func (e *encoder) ReadTexture(src explicit.Texture, r image.Rectangle, done func
 	rd.layout = layoutOf(d.limits, r.Dx(), r.Dy(), s.desc.Format.BytesPerPixel())
 	res, err := d.createBuffer(heapTypeReadback, rd.layout.Size)
 	if err != nil {
-		done(nil, err)
+		rd.fail(err)
 		return
 	}
 	rd.res = res
 	d.tracker.begin()
 	defer d.tracker.end()
-	if err := d.tracker.need(s.root, s.base, stateCopySource); err != nil {
+	if err := d.needTexture(s, stateCopySource); err != nil {
 		panic(err)
 	}
 	d.barrier(e.list)
 	dstLoc := d3d12TextureCopyLocation{Resource: res.Ptr(), Type: textureCopyPlacedFootprint, Placed: d3d12PlacedFootprint{
 		Footprint: d3d12SubresourceFootprint{
-			Format: dxgiFormat(s.desc.Format), Width: uint32(r.Dx()), Height: uint32(r.Dy()), Depth: 1, RowPitch: uint32(rd.layout.RowPitch),
+			Format: dxgiCopyFormat(s.desc.Format), Width: uint32(r.Dx()), Height: uint32(r.Dy()), Depth: 1, RowPitch: uint32(rd.layout.RowPitch),
 		},
 	}}
-	srcLoc := d3d12TextureCopyIndex{Resource: s.res.Ptr(), Type: textureCopySubresourceIndex, Index: uint32(s.base)}
+	srcLoc := d3d12TextureCopyIndex{Resource: s.res.Ptr(), Type: textureCopySubresourceIndex, Index: uint32(s.sub())}
 	box := d3d12Box{Left: uint32(r.Min.X), Top: uint32(r.Min.Y), Right: uint32(r.Max.X), Bottom: uint32(r.Max.Y), Back: 1}
 	e.list.Call(listCopyTextureRegion, uintptr(unsafe.Pointer(&dstLoc)), 0, 0, 0, uintptr(unsafe.Pointer(&srcLoc)), uintptr(unsafe.Pointer(&box)))
 	e.reads = append(e.reads, rd)
@@ -196,29 +228,43 @@ func (d *Device) failReads(e *encoder, err error) error {
 		if !rd.res.IsNil() {
 			d.releaseBuffer(rd.res, rd.layout.Size)
 		}
-		rd.done(nil, err)
+		rd.fail(err)
 	}
 	e.reads = nil
 	return err
 }
 
 // finishRead converts what the GPU copied into the readback buffer (BGRA to RGBA, R to a gray pixel as
-// the other backends do), calls done, and frees the buffer.
+// the other backends do; ReadTextureBytes packs the rows as they are), calls done, and frees the buffer.
 func (d *Device) finishRead(rd *pendingRead) {
 	w, h := rd.rect.Dx(), rd.rect.Dy()
-	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	bpp := rd.format.BytesPerPixel()
 	if rd.res.IsNil() {
-		rd.done(img, nil)
+		if rd.doneBytes != nil {
+			rd.doneBytes(nil, w*bpp, nil)
+			return
+		}
+		rd.done(image.NewRGBA(image.Rect(0, 0, w, h)), nil)
 		return
 	}
 	ptr, err := d.mapBuffer(rd.res, true, rd.layout.Size)
 	if err != nil {
 		d.releaseBuffer(rd.res, rd.layout.Size)
-		rd.done(nil, err)
+		rd.fail(err)
 		return
 	}
 	raw := win32.Bytes(ptr, rd.layout.Size)
-	bpp := rd.format.BytesPerPixel()
+	if rd.doneBytes != nil {
+		out := make([]byte, w*bpp*h)
+		for y := 0; y < h; y++ {
+			copy(out[y*w*bpp:(y+1)*w*bpp], raw[y*rd.layout.RowPitch:])
+		}
+		unmapBuffer(rd.res, 0)
+		d.releaseBuffer(rd.res, rd.layout.Size)
+		rd.doneBytes(out, w*bpp, nil)
+		return
+	}
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
 	for y := 0; y < h; y++ {
 		row := raw[y*rd.layout.RowPitch:]
 		for x := 0; x < w; x++ {

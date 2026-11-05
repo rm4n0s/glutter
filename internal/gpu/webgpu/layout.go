@@ -12,6 +12,10 @@ type bindingPlan struct {
 	Binding    int
 	Kind       explicit.BindingKind
 	Visibility int
+	// Dimension and Sample describe a texture binding: the dimension of its view and the sample type
+	// the layout declares (SPEC §27.1).
+	Dimension explicit.TextureDimension
+	Sample    explicit.SampleType
 }
 
 // planLayouts returns the bind group layouts of a pipeline: one for each group from 0 to the
@@ -28,7 +32,7 @@ func planLayouts(vs, fs explicit.EntryPoint) [][]bindingPlan {
 			k := key{b.Group, b.Binding}
 			p := seen[k]
 			if p == nil {
-				p = &bindingPlan{Binding: b.Binding, Kind: b.Kind}
+				p = &bindingPlan{Binding: b.Binding, Kind: b.Kind, Dimension: b.Dimension, Sample: b.Sample}
 				seen[k] = p
 			}
 			p.Visibility |= stage
@@ -47,15 +51,15 @@ func planLayouts(vs, fs explicit.EntryPoint) [][]bindingPlan {
 	return groups
 }
 
-// bindingKinds returns, for each group of a plan, the kind of each binding by number: what
-// NewBindGroup checks the entries against.
-func bindingKinds(plan [][]bindingPlan) []map[int]explicit.BindingKind {
-	kinds := make([]map[int]explicit.BindingKind, len(plan))
+// bindingsByNumber returns, for each group of a plan, the binding by number: what NewBindGroup
+// checks the entries against.
+func bindingsByNumber(plan [][]bindingPlan) []map[int]bindingPlan {
+	out := make([]map[int]bindingPlan, len(plan))
 	for g, bs := range plan {
-		kinds[g] = map[int]explicit.BindingKind{}
+		out[g] = map[int]bindingPlan{}
 		for _, b := range bs {
-			kinds[g][b.Binding] = b.Kind
+			out[g][b.Binding] = b
 		}
 	}
-	return kinds
+	return out
 }

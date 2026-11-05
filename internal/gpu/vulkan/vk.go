@@ -26,6 +26,7 @@ type vkFuncs struct {
 	destroyInstance                   func(instance, pAllocator uintptr)
 	enumeratePhysicalDevices          func(instance, pCount, pDevices uintptr) int32
 	getPhysicalDeviceProperties       func(phys, pProps uintptr)
+	getPhysicalDeviceFormatProps      func(phys uintptr, format uint32, pProps uintptr)
 	getPhysicalDeviceQueueFamilyProps func(phys, pCount, pProps uintptr)
 	getPhysicalDeviceMemoryProps      func(phys, pProps uintptr)
 	enumerateDeviceExtensionProps     func(phys, layer, pCount, pProps uintptr) int32
@@ -94,6 +95,7 @@ type vkFuncs struct {
 	cmdBindIndexBuffer          func(cb uintptr, buffer, offset uint64, indexType uint32)
 	cmdSetViewport              func(cb uintptr, first, count uint32, pViewports uintptr)
 	cmdSetScissor               func(cb uintptr, first, count uint32, pScissors uintptr)
+	cmdSetStencilReference      func(cb uintptr, faceMask, reference uint32)
 	cmdDraw                     func(cb uintptr, vertices, instances, firstVertex, firstInstance uint32)
 	cmdDrawIndexed              func(cb uintptr, indices, instances, firstIndex uint32, vertexOffset int32, firstInstance uint32)
 	cmdCopyImage                func(cb uintptr, src uint64, srcLayout uint32, dst uint64, dstLayout uint32, count uint32, pRegions uintptr)
@@ -147,6 +149,7 @@ func (f *vkFuncs) symbols() []symbol {
 		i(&f.destroyInstance, "vkDestroyInstance"),
 		i(&f.enumeratePhysicalDevices, "vkEnumeratePhysicalDevices"),
 		i(&f.getPhysicalDeviceProperties, "vkGetPhysicalDeviceProperties"),
+		i(&f.getPhysicalDeviceFormatProps, "vkGetPhysicalDeviceFormatProperties"),
 		i(&f.getPhysicalDeviceQueueFamilyProps, "vkGetPhysicalDeviceQueueFamilyProperties"),
 		i(&f.getPhysicalDeviceMemoryProps, "vkGetPhysicalDeviceMemoryProperties"),
 		i(&f.enumerateDeviceExtensionProps, "vkEnumerateDeviceExtensionProperties"),
@@ -215,6 +218,7 @@ func (f *vkFuncs) symbols() []symbol {
 		d(&f.cmdBindIndexBuffer, "vkCmdBindIndexBuffer"),
 		d(&f.cmdSetViewport, "vkCmdSetViewport"),
 		d(&f.cmdSetScissor, "vkCmdSetScissor"),
+		d(&f.cmdSetStencilReference, "vkCmdSetStencilReference"),
 		d(&f.cmdDraw, "vkCmdDraw"),
 		d(&f.cmdDrawIndexed, "vkCmdDrawIndexed"),
 		d(&f.cmdCopyImage, "vkCmdCopyImage"),

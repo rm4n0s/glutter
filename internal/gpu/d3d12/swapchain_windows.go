@@ -111,8 +111,8 @@ func (s *swapchain) makeBuffers(width, height int) error {
 			s.freeBuffers()
 			return err
 		}
-		desc := explicit.TextureDesc{Width: width, Height: height, Format: s.format.Texture, MipLevels: 1, Usage: explicit.TextureRenderTarget}
-		t := &texture{d: d, desc: desc, res: d.own(win32.ObjectFromPtr(out)), srv: -1, rtv: -1}
+		desc := explicit.TextureDesc{Width: width, Height: height, Format: s.format.Texture, MipLevels: 1, Usage: explicit.TextureRenderTarget}.Normalized()
+		t := &texture{d: d, desc: desc, res: d.own(win32.ObjectFromPtr(out)), srv: -1, rtv: -1, dsv: -1}
 		t.root = t
 		d.tracker.add(t, 1)
 		d.counts.bytes += textureBytes(desc)
@@ -237,7 +237,7 @@ func (e *encoder) presentBarrier() {
 		return
 	}
 	for _, t := range d.toPresent {
-		if err := d.tracker.need(t.root, t.base, stateCommon); err != nil {
+		if err := d.needTexture(t, stateCommon); err != nil {
 			panic(err)
 		}
 	}

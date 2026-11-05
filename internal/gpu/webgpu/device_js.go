@@ -22,12 +22,15 @@ type Device struct {
 	queue  js.Value
 	info   string
 	limits explicit.Limits
-	loss   lossState
+	// features are the optional features the device was made with.
+	features explicit.Features
+	loss     lossState
 
-	modules    map[string]js.Value // the WGSL modules compiled at startup, by shader name
-	open       *encoder            // the frame being recorded
-	after      []func()            // what waits for the frame being recorded to be submitted
-	scratch    js.Value            // a Uint8Array that data crosses into JavaScript in, reused
+	modules    map[string]js.Value           // the WGSL modules compiled at startup, by shader name
+	extra      map[*explicit.Shader]js.Value // the modules of shaders that are not the renderer's, made when first used
+	open       *encoder                      // the frame being recorded
+	after      []func()                      // what waits for the frame being recorded to be submitted
+	scratch    js.Value                      // a Uint8Array that data crosses into JavaScript in, reused
 	scratchLen int
 	dynamic    js.Value // a Uint32Array of the dynamic offsets of a bind group, reused
 }
@@ -37,7 +40,8 @@ var _ explicit.Device = (*Device)(nil)
 // newDevice makes the Device over what a request for a device gave.
 func (p *Provider) newDevice(a *acquired) *Device {
 	d := &Device{p: p, dev: a.device, queue: a.device.Get("queue"), info: a.description, limits: explicit.DefaultLimits(),
-		modules: map[string]js.Value{}}
+		features: explicit.Features{Float32Filterable: a.float32Filterable},
+		modules:  map[string]js.Value{}, extra: map[*explicit.Shader]js.Value{}}
 	for _, s := range explicit.Shaders() {
 		d.modules[s.Name] = a.modules.Get(s.Name)
 	}
@@ -63,6 +67,9 @@ func (d *Device) Description() string {
 
 // Limits implements explicit.Device.
 func (d *Device) Limits() explicit.Limits { return d.limits }
+
+// Features implements explicit.Device: float32-filterable when the adapter has it.
+func (d *Device) Features() explicit.Features { return d.features }
 
 // noteValidation records an error of the browser and logs it.
 func (d *Device) noteValidation(message string) {
@@ -183,19 +190,22 @@ func (d *Device) WriteBuffer(b explicit.Buffer, offset int, data []byte) {
 	d.queue.Call("writeBuffer", vb.buf, offset, d.scratch, 0, n)
 }
 
-// texture is a GPUTexture, or a view of one level of a GPUTexture.
+// texture is a GPUTexture, or a view of one level or one layer of a GPUTexture.
 type texture struct {
 	d         *Device
 	desc      explicit.TextureDesc
 	tex       js.Value
-	view      js.Value // every level, for sampling (the level for a texture made by Level)
-	rtView    js.Value // level 0 only, when the view above has more levels
+	view      js.Value // every level and layer, for sampling (the level or the layer for a texture made by Level or Layer)
+	rtView    js.Value // level 0, layer 0 only, when the view above has more
 	external  bool     // the swapchain's texture: it goes at the end of the task
 	destroyed bool
-	// base is the mip level of the GPUTexture that this texture starts at.
-	base   int
-	parent *texture
-	levels []*texture
+	// base is the mip level of the GPUTexture that this texture starts at, and baseLayer the array
+	// layer.
+	base      int
+	baseLayer int
+	parent    *texture
+	levels    []*texture
+	layers    map[[2]int]*texture
 }
 
 var _ explicit.Texture = (*texture)(nil)
@@ -203,7 +213,8 @@ var _ explicit.Texture = (*texture)(nil)
 // Desc implements explicit.Texture.
 func (t *texture) Desc() explicit.TextureDesc { return t.desc }
 
-// Level implements explicit.Texture: a texture over one level, with a view of its own.
+// Level implements explicit.Texture: a texture over one level, with a view of its own. A 2D array,
+// cube or 3D texture keeps its kind.
 func (t *texture) Level(i int) explicit.Texture {
 	if i < 0 || i >= t.desc.MipLevels {
 		panic(errors.New(tagWebGPULevelInvalid, "the texture has no such mip level", "level", i, "levels", t.desc.MipLevels))
@@ -219,18 +230,64 @@ func (t *texture) Level(i int) explicit.Texture {
 	}
 	desc := t.desc
 	desc.Width, desc.Height, desc.MipLevels = max(desc.Width>>i, 1), max(desc.Height>>i, 1), 1
-	view := t.tex.Call("createView", map[string]any{"baseMipLevel": i, "mipLevelCount": 1})
+	if desc.Kind == explicit.TextureKind3D {
+		desc.DepthOrLayers = max(desc.DepthOrLayers>>i, 1)
+	}
+	view := t.tex.Call("createView", viewDescriptor(t.desc.Kind, i, 1, 0, t.desc.Layers()))
 	lv := &texture{d: t.d, desc: desc, tex: t.tex, view: view, base: i, parent: t}
 	t.levels[i] = lv
 	return lv
 }
 
-// targetView is the view that a pass draws into: one level.
+// viewDescriptor is the descriptor of a view of a texture of the kind: its dimension, levels and
+// layers (a 3D texture has no layers).
+func viewDescriptor(kind explicit.TextureKind, baseLevel, levels, baseLayer, layers int) map[string]any {
+	v := map[string]any{"dimension": dimensionName(kind), "baseMipLevel": baseLevel, "mipLevelCount": levels}
+	if kind != explicit.TextureKind3D {
+		v["baseArrayLayer"], v["arrayLayerCount"] = baseLayer, layers
+	}
+	return v
+}
+
+// Layer implements explicit.Texture: a 2D view of one layer of one level.
+func (t *texture) Layer(level, layer int) explicit.Texture {
+	t.d.limits.CheckLayer(t.desc, level, layer)
+	if t.desc.Kind == explicit.TextureKind2D {
+		return t.Level(level)
+	}
+	if t.parent != nil {
+		panic(errors.New(tagWebGPULevelInvalid, "Layer is called on the texture, not on a view of a level", "level", level, "layer", layer))
+	}
+	key := [2]int{level, layer}
+	if lv := t.layers[key]; lv != nil {
+		return lv
+	}
+	desc := t.desc
+	desc.Kind, desc.DepthOrLayers, desc.MipLevels = explicit.TextureKind2D, 1, 1
+	desc.Width, desc.Height = max(desc.Width>>level, 1), max(desc.Height>>level, 1)
+	view := t.tex.Call("createView", viewDescriptor(explicit.TextureKind2D, level, 1, layer, 1))
+	lv := &texture{d: t.d, desc: desc, tex: t.tex, view: view, base: level, baseLayer: layer, parent: t}
+	if t.layers == nil {
+		t.layers = map[[2]int]*texture{}
+	}
+	t.layers[key] = lv
+	return lv
+}
+
+// targetView is the view that a pass draws into: one level of one layer.
 func (t *texture) targetView() js.Value {
 	if t.rtView.Truthy() {
 		return t.rtView
 	}
 	return t.view
+}
+
+// aspect is the GPUTextureAspect that a copy of the texture reads: the depth of a depth format.
+func (t *texture) aspect() string {
+	if t.desc.Format.IsDepthStencil() {
+		return "depth-only"
+	}
+	return "all"
 }
 
 // Destroy implements explicit.Texture.
@@ -248,20 +305,22 @@ func (d *Device) NewTexture(desc explicit.TextureDesc) (explicit.Texture, error)
 	if err := d.usable(); err != nil {
 		return nil, err
 	}
-	if desc.MipLevels < 1 {
-		desc.MipLevels = 1
-	}
-	if desc.Width < 1 || desc.Height < 1 || desc.Format.BytesPerPixel() == 0 {
+	desc = desc.Normalized()
+	if desc.Width < 1 || desc.Height < 1 || desc.DepthOrLayers < 1 || desc.Format.BytesPerPixel() == 0 {
 		return nil, errors.New(tagWebGPUTextureInvalid, "a texture needs a size and a format", "width", desc.Width, "height", desc.Height, "format", int(desc.Format))
+	}
+	if desc.Usage&^desc.Format.AllowedUsage() != 0 || desc.Kind < explicit.TextureKind2D || desc.Kind > explicit.TextureKind3D {
+		return nil, errors.New(tagWebGPUTextureInvalid, "the format does not allow the usage, or the kind is unknown",
+			"format", int(desc.Format), "usage", int(desc.Usage), "kind", int(desc.Kind))
 	}
 	var t *texture
 	_, err := tryCall("createTexture", func() js.Value {
 		v := d.dev.Call("createTexture", map[string]any{
-			"size": []any{desc.Width, desc.Height}, "format": formatName(desc.Format),
-			"mipLevelCount": desc.MipLevels, "usage": textureUsage(desc.Usage),
+			"size": []any{desc.Width, desc.Height, desc.DepthOrLayers}, "dimension": textureDimensionName(desc.Kind), "format": formatName(desc.Format),
+			"mipLevelCount": desc.MipLevels, "sampleCount": desc.SampleCount, "usage": textureUsage(desc.Usage),
 		})
-		t = &texture{d: d, desc: desc, tex: v, view: v.Call("createView")}
-		if desc.Usage&explicit.TextureRenderTarget != 0 && desc.MipLevels > 1 {
+		t = &texture{d: d, desc: desc, tex: v, view: v.Call("createView", viewDescriptor(desc.Kind, 0, desc.MipLevels, 0, desc.Layers()))}
+		if desc.Usage&explicit.TextureRenderTarget != 0 && desc.MipLevels > 1 && desc.Kind == explicit.TextureKind2D {
 			t.rtView = v.Call("createView", map[string]any{"baseMipLevel": 0, "mipLevelCount": 1})
 		}
 		return v
@@ -284,10 +343,28 @@ func (d *Device) WriteTexture(t explicit.Texture, level int, r image.Rectangle, 
 	d.ensureScratch(len(data))
 	js.CopyBytesToJS(d.scratch, data)
 	d.queue.Call("writeTexture",
-		map[string]any{"texture": vt.tex, "mipLevel": vt.base + level, "origin": []any{r.Min.X, r.Min.Y}},
+		map[string]any{"texture": vt.tex, "mipLevel": vt.base + level, "origin": []any{r.Min.X, r.Min.Y, vt.baseLayer}},
 		d.scratch,
 		map[string]any{"offset": 0, "bytesPerRow": stride, "rowsPerImage": r.Dy()},
-		[]any{r.Dx(), r.Dy()})
+		[]any{r.Dx(), r.Dy(), 1})
+}
+
+// WriteTextureRegion implements explicit.Device: one copy into the reused array and one queue call.
+func (d *Device) WriteTextureRegion(t explicit.Texture, region explicit.TextureRegion, data []byte, bytesPerRow, rowsPerImage int) {
+	vt, ok := t.(*texture)
+	if !ok || vt.d != d {
+		panic(errors.New(tagWebGPUForeignResource, "the resource was not made by this WebGPU device", "resource", "texture"))
+	}
+	if region.Size[0] <= 0 || region.Size[1] <= 0 || region.Size[2] <= 0 || d.loss.isLost() {
+		return
+	}
+	d.ensureScratch(len(data))
+	js.CopyBytesToJS(d.scratch, data)
+	d.queue.Call("writeTexture",
+		map[string]any{"texture": vt.tex, "mipLevel": vt.base + region.Level, "origin": []any{region.Origin[0], region.Origin[1], vt.baseLayer + region.Origin[2]}},
+		d.scratch,
+		map[string]any{"offset": 0, "bytesPerRow": bytesPerRow, "rowsPerImage": rowsPerImage},
+		[]any{region.Size[0], region.Size[1], region.Size[2]})
 }
 
 // sampler is a GPUSampler.
@@ -312,7 +389,7 @@ func (d *Device) NewSampler(desc explicit.SamplerDesc) (explicit.Sampler, error)
 			"magFilter": filterName(desc.MagFilter), "minFilter": filterName(desc.MinFilter),
 			"mipmapFilter": filterName(desc.MipmapFilter),
 			"addressModeU": addressName(desc.AddressU), "addressModeV": addressName(desc.AddressV),
-			"addressModeW": addressName(desc.AddressU),
+			"addressModeW": addressName(desc.AddressW),
 			"lodMinClamp":  0, "lodMaxClamp": samplerLodMax(desc),
 		})
 	})
@@ -324,11 +401,11 @@ func (d *Device) NewSampler(desc explicit.SamplerDesc) (explicit.Sampler, error)
 
 // pipeline is a GPURenderPipeline with the layouts of its bind groups.
 type pipeline struct {
-	d       *Device
-	desc    explicit.PipelineDesc
-	pipe    js.Value
-	layouts []js.Value
-	kinds   []map[int]explicit.BindingKind
+	d        *Device
+	desc     explicit.PipelineDesc
+	pipe     js.Value
+	layouts  []js.Value
+	bindings []map[int]bindingPlan
 }
 
 var _ explicit.Pipeline = (*pipeline)(nil)
@@ -345,7 +422,7 @@ func layoutEntry(b bindingPlan) map[string]any {
 	e := map[string]any{"binding": b.Binding, "visibility": b.Visibility}
 	switch b.Kind {
 	case explicit.BindingSampledTexture:
-		e["texture"] = map[string]any{"sampleType": "float", "viewDimension": "2d"}
+		e["texture"] = map[string]any{"sampleType": sampleTypeName(b.Sample), "viewDimension": bindingDimensionName(b.Dimension)}
 	case explicit.BindingSampler:
 		e["sampler"] = map[string]any{"type": "filtering"}
 	default:
@@ -372,10 +449,24 @@ func (d *Device) NewPipeline(desc explicit.PipelineDesc) (explicit.Pipeline, err
 	}
 	module, ok := d.modules[desc.Shader.Name]
 	if !ok || !module.Truthy() {
-		return nil, errors.New(tagWebGPUPipelineInvalid, "the shader is not one of the renderer's", "shader", desc.Shader.Name)
+		// A shader that is not one of the renderer's (a test's, an app's) is compiled when it is first
+		// used, from its WGSL.
+		if desc.Shader.WGSL == "" {
+			return nil, errors.New(tagWebGPUPipelineInvalid, "the shader is not one of the renderer's and has no WGSL", "shader", desc.Shader.Name)
+		}
+		if module, ok = d.extra[desc.Shader]; !ok {
+			v, err := tryCall("createShaderModule", func() js.Value {
+				return d.dev.Call("createShaderModule", map[string]any{"label": desc.Shader.Name, "code": desc.Shader.WGSL})
+			})
+			if err != nil {
+				return nil, err
+			}
+			module = v
+			d.extra[desc.Shader] = v
+		}
 	}
 	plan := planLayouts(vs, fs)
-	p := &pipeline{d: d, desc: desc, kinds: bindingKinds(plan)}
+	p := &pipeline{d: d, desc: desc, bindings: bindingsByNumber(plan)}
 	_, err := tryCall("createRenderPipeline", func() js.Value {
 		var layouts []any
 		for _, g := range plan {
@@ -400,19 +491,42 @@ func (d *Device) NewPipeline(desc explicit.PipelineDesc) (explicit.Pipeline, err
 			}
 			buffers[i] = map[string]any{"arrayStride": vb.Stride, "stepMode": step, "attributes": attrs}
 		}
-		target := map[string]any{"format": formatName(desc.Target)}
-		if desc.Blend.Enabled {
-			src, dst := blendFactors(desc.Blend)
-			part := map[string]any{"srcFactor": src, "dstFactor": dst, "operation": "add"}
-			target["blend"] = map[string]any{"color": part, "alpha": part}
+		targets := make([]any, 0, len(desc.Targets()))
+		for _, ct := range desc.Targets() {
+			target := map[string]any{"format": formatName(ct.Format), "writeMask": writeMaskBits(ct.WriteMask)}
+			if ct.Blend.Enabled {
+				src, dst := blendFactors(ct.Blend)
+				part := map[string]any{"srcFactor": src, "dstFactor": dst, "operation": "add"}
+				target["blend"] = map[string]any{"color": part, "alpha": part}
+			}
+			targets = append(targets, target)
 		}
-		p.pipe = d.dev.Call("createRenderPipeline", map[string]any{
+		state := map[string]any{
 			"label":     desc.Shader.Name,
 			"layout":    pl,
 			"vertex":    map[string]any{"module": module, "entryPoint": desc.VertexEntry, "buffers": buffers},
-			"fragment":  map[string]any{"module": module, "entryPoint": desc.FragmentEntry, "targets": []any{target}},
-			"primitive": map[string]any{"topology": "triangle-list", "cullMode": "none"},
-		})
+			"fragment":  map[string]any{"module": module, "entryPoint": desc.FragmentEntry, "targets": targets},
+			"primitive": map[string]any{"topology": topologyName(desc.Topology), "cullMode": cullName(desc.CullMode), "frontFace": frontFaceName(desc.FrontFace)},
+		}
+		if n := desc.Samples(); n > 1 {
+			state["multisample"] = map[string]any{"count": n}
+		}
+		if ds := desc.DepthStencil; ds.Format != explicit.TextureFormatUnspecified {
+			face := func(f explicit.StencilFaceState) map[string]any {
+				return map[string]any{"compare": compareName(f.Compare), "failOp": stencilOpName(f.FailOp),
+					"depthFailOp": stencilOpName(f.DepthFailOp), "passOp": stencilOpName(f.PassOp)}
+			}
+			depth := map[string]any{
+				"format": formatName(ds.Format), "depthWriteEnabled": ds.DepthWrite, "depthCompare": compareName(ds.DepthCompare),
+				"depthBias": int(ds.DepthBias), "depthBiasSlopeScale": float64(ds.DepthBiasSlopeScale), "depthBiasClamp": float64(ds.DepthBiasClamp),
+			}
+			if ds.Format.HasStencil() {
+				depth["stencilFront"], depth["stencilBack"] = face(ds.StencilFront), face(ds.StencilBack)
+				depth["stencilReadMask"], depth["stencilWriteMask"] = stencilMask(ds.StencilReadMask), stencilMask(ds.StencilWriteMask)
+			}
+			state["depthStencil"] = depth
+		}
+		p.pipe = d.dev.Call("createRenderPipeline", state)
 		return p.pipe
 	})
 	if err != nil {
@@ -444,12 +558,12 @@ func (d *Device) NewBindGroup(p explicit.Pipeline, group int, entries []explicit
 	}
 	resources := make([]any, 0, len(entries))
 	for _, e := range entries {
-		kind, ok := vp.kinds[group][e.Binding]
+		plan, ok := vp.bindings[group][e.Binding]
 		if !ok {
 			return nil, errors.New(tagWebGPUBindGroupInvalid, "the shader has no such binding", "group", group, "binding", e.Binding)
 		}
 		var resource any
-		switch kind {
+		switch plan.Kind {
 		case explicit.BindingUniformBuffer:
 			b, ok := e.Buffer.(*buffer)
 			if !ok || b.d != d {
@@ -464,6 +578,10 @@ func (d *Device) NewBindGroup(p explicit.Pipeline, group int, entries []explicit
 			t, ok := e.Texture.(*texture)
 			if !ok || t.d != d {
 				panic(errors.New(tagWebGPUForeignResource, "the resource was not made by this WebGPU device", "resource", "texture"))
+			}
+			if t.desc.Kind.Dimension() != plan.Dimension || !t.desc.Format.SampleType(d.features).Fits(plan.Sample) {
+				return nil, errors.New(tagWebGPUTextureBindingMismatch, "the texture is not the dimension or sample type that the shader declares",
+					"group", group, "binding", e.Binding, "kind", int(t.desc.Kind), "dimension", int(plan.Dimension), "format", int(t.desc.Format), "sample", int(plan.Sample))
 			}
 			resource = t.view
 		case explicit.BindingSampler:
@@ -494,11 +612,12 @@ func (d *Device) NewSwapchain(h gpu.SurfaceHandle) (explicit.Swapchain, error) {
 
 // The tags of the errors that this file makes (rm4n0s/errors, R5).
 const (
-	tagWebGPUBindGroupInvalid = "WebGPUBindGroupInvalid"
-	tagWebGPUCallFailed       = "WebGPUCallFailed"
-	tagWebGPUForeignResource  = "WebGPUForeignResource"
-	tagWebGPULevelInvalid     = "WebGPULevelInvalid"
-	tagWebGPUPipelineInvalid  = "WebGPUPipelineInvalid"
-	tagWebGPUTextureInvalid   = "WebGPUTextureInvalid"
-	tagWebGPUWriteOutOfRange  = "WebGPUWriteOutOfRange"
+	tagWebGPUBindGroupInvalid       = "WebGPUBindGroupInvalid"
+	tagWebGPUCallFailed             = "WebGPUCallFailed"
+	tagWebGPUForeignResource        = "WebGPUForeignResource"
+	tagWebGPULevelInvalid           = "WebGPULevelInvalid"
+	tagWebGPUPipelineInvalid        = "WebGPUPipelineInvalid"
+	tagWebGPUTextureBindingMismatch = "WebGPUTextureBindingMismatch"
+	tagWebGPUTextureInvalid         = "WebGPUTextureInvalid"
+	tagWebGPUWriteOutOfRange        = "WebGPUWriteOutOfRange"
 )

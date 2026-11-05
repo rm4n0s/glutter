@@ -499,7 +499,7 @@ func TestWineSamplingThePassTargetIsAStateConflict(t *testing.T) {
 	p := e.BeginPass(tex, explicit.LoadClear, ui.Color{})
 	p.SetPipeline(blit)
 	appErr := expectPanic(t, func() { p.SetBindGroup(0, bg, 0) })
-	if appErr.Tag != tagD3D12StateConflict || !appErr.HasRoute("pass.SetBindGroup->stateTracker[...].need.D3D12StateConflict") {
+	if appErr.Tag != tagD3D12StateConflict || !appErr.HasRoute("pass.SetBindGroup->Device.needTexture->stateTracker[...].need.D3D12StateConflict") {
 		t.Errorf("%s via %s", appErr.Tag, appErr.Route())
 	}
 	p.End()
@@ -792,8 +792,8 @@ func TestWineEncoderOrderOfBarriersHeapsAndRootArguments(t *testing.T) {
 	// Parameters of the blit: 0 is the uniform b2, 1 the texture table, 2 the sampler table.
 	want := []string{
 		"ResourceBarrier src.0 COMMON->COPY_DEST", "CopyTextureRegion", // the upload, recorded at the start of the frame
-		"ResourceBarrier dst.0 COMMON->RENDER_TARGET", "ClearRenderTargetView", "OMSetRenderTargets", "RSSetViewports", "RSSetScissorRects", "IASetPrimitiveTopology",
-		"SetGraphicsRootSignature", "SetPipelineState",
+		"ResourceBarrier dst.0 COMMON->RENDER_TARGET", "ClearRenderTargetView", "OMSetRenderTargets", "RSSetViewports", "RSSetScissorRects",
+		"SetGraphicsRootSignature", "SetPipelineState", "IASetPrimitiveTopology",
 		"ResourceBarrier src.0 COPY_DEST->PIXEL_SHADER_RESOURCE",
 		"SetDescriptorHeaps 2", "SetGraphicsRootDescriptorTable p1", "SetGraphicsRootDescriptorTable p2", "SetGraphicsRootConstantBufferView p0",
 		"DrawInstanced 3 1 0 0",

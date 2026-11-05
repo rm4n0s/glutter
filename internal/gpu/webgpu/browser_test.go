@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/rm4n0s/errors"
+	"github.com/rm4n0s/glutter/internal/gpu/explicit/devicetest"
 	"github.com/rm4n0s/glutter/internal/gpu/gputest"
 	"github.com/rm4n0s/glutter/internal/proof"
 	"github.com/rm4n0s/glutter/internal/webtest"
@@ -163,6 +164,40 @@ func TestBrowserEveryProofSceneMatchesSoftware(t *testing.T) {
 		}
 		if len(got) != len(proof.Names()) {
 			t.Errorf("the program drew %d scenes, there are %d", len(got), len(proof.Names()))
+		}
+	})
+}
+
+// TestBrowserScenes runs the scenes that every backend of the explicit device runs (SPEC §27.12) on
+// the browser's WebGPU: formats, depth, stencil, multisampling, texture kinds, four attachments, the
+// clip space and the vertex formats, with no validation error from the browser.
+func TestBrowserScenes(t *testing.T) {
+	eachBrowserWithWebGPU(t, func(t *testing.T, b webtest.Browser) {
+		var res struct {
+			Results    []devicetest.Result `json:"results"`
+			Renderer   string              `json:"renderer"`
+			Validation []string            `json:"validation"`
+			Error      string              `json:"error"`
+		}
+		if err := json.Unmarshal(await(t, b, url.Values{"mode": {"scenes"}}, 5*time.Minute), &res); err != nil {
+			t.Fatal(err)
+		}
+		if res.Error != "" {
+			t.Fatal(res.Error)
+		}
+		t.Logf("%s runs the scenes on %q", b, res.Renderer)
+		if len(res.Validation) != 0 {
+			t.Errorf("the browser reported %d validation errors, the first: %s", len(res.Validation), res.Validation[0])
+		}
+		if len(res.Results) < 20 {
+			t.Errorf("the program ran %d parts of scenes, want every one", len(res.Results))
+		}
+		for _, r := range res.Results {
+			t.Run(r.Name, func(t *testing.T) {
+				for _, f := range r.Failures {
+					t.Error(f)
+				}
+			})
 		}
 	})
 }

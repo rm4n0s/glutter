@@ -52,6 +52,8 @@ type Device struct {
 	Name string
 	// Writes are the calls of WriteBuffer, with a copy of their data.
 	Writes []BufferWrite
+	// Supported are the optional features that Features reports.
+	Supported explicit.Features
 	// Quiet stops the device from keeping the log of its calls and the copies of the buffer
 	// writes, so that a benchmark of the renderer counts what the renderer allocates and not
 	// what the log does.
@@ -146,6 +148,9 @@ func (d *Device) fail() error {
 // Limits implements explicit.Device.
 func (d *Device) Limits() explicit.Limits { return d.limits }
 
+// Features implements explicit.Device: the features set in Supported.
+func (d *Device) Features() explicit.Features { return d.Supported }
+
 // SetLimits changes the limits the device checks, to test code that reads them.
 //
 // Flutter: no counterpart
@@ -161,20 +166,23 @@ func (d *Device) NewBuffer(size int, usage explicit.BufferUsage) (explicit.Buffe
 	return &buffer{d: d, data: make([]byte, size), usage: usage}, nil
 }
 
-// NewTexture implements explicit.Device.
+// NewTexture implements explicit.Device. A 2D texture keeps its pixels; a texture of another kind
+// keeps the pixels of its layers, which Layer and WriteTextureRegion give access to.
 func (d *Device) NewTexture(desc explicit.TextureDesc) (explicit.Texture, error) {
-	d.record("NewTexture", "%dx%d format=%d levels=%d usage=%d", desc.Width, desc.Height, desc.Format, desc.MipLevels, desc.Usage)
+	if desc.Kind == explicit.TextureKindUnspecified && desc.DepthOrLayers == 0 && desc.SampleCount == 0 {
+		d.record("NewTexture", "%dx%d format=%d levels=%d usage=%d", desc.Width, desc.Height, desc.Format, desc.MipLevels, desc.Usage)
+	} else {
+		d.record("NewTexture", "%dx%d format=%d levels=%d usage=%d kind=%d depth_or_layers=%d samples=%d", desc.Width, desc.Height, desc.Format, desc.MipLevels, desc.Usage, desc.Kind, desc.DepthOrLayers, desc.SampleCount)
+	}
 	d.limits.CheckTexture(desc)
 	if err := d.fail(); err != nil {
 		return nil, err
 	}
-	if desc.MipLevels < 1 {
-		desc.MipLevels = 1
-	}
+	desc = desc.Normalized()
 	bpp := desc.Format.BytesPerPixel()
 	d.live.Textures++
 	t := &texture{d: d, desc: desc, bpp: bpp}
-	if bpp > 0 && desc.Width > 0 && desc.Height > 0 {
+	if bpp > 0 && desc.Width > 0 && desc.Height > 0 && desc.Kind == explicit.TextureKind2D && desc.SampleCount == 1 {
 		t.pix = make([]byte, desc.Width*desc.Height*bpp)
 	}
 	return t, nil
@@ -196,7 +204,7 @@ func (d *Device) NewPipeline(desc explicit.PipelineDesc) (explicit.Pipeline, err
 	if desc.Shader != nil {
 		name = desc.Shader.Name
 	}
-	d.record("NewPipeline", "shader=%s vertex=%s fragment=%s buffers=%d target=%d", name, desc.VertexEntry, desc.FragmentEntry, len(desc.VertexBuffers), desc.Target)
+	d.record("NewPipeline", "shader=%s vertex=%s fragment=%s buffers=%d target=%d%s", name, desc.VertexEntry, desc.FragmentEntry, len(desc.VertexBuffers), desc.Target, stateText(desc))
 	d.limits.CheckPipeline(desc)
 	if err := d.fail(); err != nil {
 		return nil, err
@@ -243,6 +251,34 @@ func (d *Device) WriteTexture(t explicit.Texture, level int, r image.Rectangle, 
 		}
 		ft = ft.Level(level).(*texture)
 	}
+	d.writeRows(ft, r, data, stride)
+}
+
+// WriteTextureRegion implements explicit.Device. It writes the pixels of a 2D array or a cube
+// into their layers, and of a 3D texture into its slices (kept as one image of Width x Height x
+// Depth rows).
+func (d *Device) WriteTextureRegion(t explicit.Texture, region explicit.TextureRegion, data []byte, bytesPerRow, rowsPerImage int) {
+	d.record("WriteTextureRegion", "region=%+v bytes=%d bytesPerRow=%d rowsPerImage=%d", region, len(data), bytesPerRow, rowsPerImage)
+	ft, ok := t.(*texture)
+	if !ok || ft.bpp == 0 {
+		return
+	}
+	for z := 0; z < region.Size[2]; z++ {
+		img := data[z*rowsPerImage*bytesPerRow:]
+		var dst *texture
+		switch ft.desc.Kind {
+		case explicit.TextureKind3D:
+			dst = ft.slice(region.Level, region.Origin[2]+z)
+		default:
+			dst = ft.Layer(region.Level, region.Origin[2]+z).(*texture)
+		}
+		r := image.Rect(region.Origin[0], region.Origin[1], region.Origin[0]+region.Size[0], region.Origin[1]+region.Size[1])
+		d.writeRows(dst, r, img, bytesPerRow)
+	}
+}
+
+// writeRows copies rows of data into the pixels of a 2D texture.
+func (d *Device) writeRows(ft *texture, r image.Rectangle, data []byte, stride int) {
 	if ft.pix == nil {
 		return
 	}
@@ -284,9 +320,10 @@ func (d *Device) Close() error {
 
 // pendingRead is a ReadTexture whose done has not run.
 type pendingRead struct {
-	src  *texture
-	r    image.Rectangle
-	done func(*image.RGBA, error)
+	src       *texture
+	r         image.Rectangle
+	done      func(*image.RGBA, error)
+	doneBytes func([]byte, int, error)
 }
 
 // CompleteReads runs the done function of every ReadTexture that is waiting, as the
@@ -298,6 +335,11 @@ func (d *Device) CompleteReads() {
 	reads := d.reads
 	d.reads = nil
 	for _, rd := range reads {
+		if rd.doneBytes != nil {
+			data, rowBytes := rd.src.readBytes(rd.r)
+			rd.doneBytes(data, rowBytes, nil)
+			continue
+		}
 		rd.done(rd.src.read(rd.r), nil)
 	}
 }
@@ -335,6 +377,7 @@ type texture struct {
 	pix       []byte     // level 0
 	levels    []*texture // the textures of Level, indexed by level
 	parent    *texture
+	layers    map[[2]int]*texture // the textures of Layer and the slices of a 3D texture, by level and layer
 }
 
 func (t *texture) Desc() explicit.TextureDesc { return t.desc }
@@ -368,6 +411,40 @@ func (t *texture) Level(i int) explicit.Texture {
 		t.levels[i] = lv
 	}
 	return t.levels[i]
+}
+
+// Layer implements explicit.Texture: a 2D texture of its own, of the size of the level.
+func (t *texture) Layer(level, layer int) explicit.Texture {
+	limits := explicit.DefaultLimits()
+	if t.d != nil {
+		limits = t.d.limits
+	}
+	limits.CheckLayer(t.desc, level, layer)
+	if t.desc.Kind == explicit.TextureKind2D {
+		return t.Level(level)
+	}
+	return t.slice(level, layer)
+}
+
+// slice returns the 2D texture of a layer of an array or a cube, or of a slice of a 3D texture, at a
+// level.
+func (t *texture) slice(level, layer int) *texture {
+	key := [2]int{level, layer}
+	if st, ok := t.layers[key]; ok {
+		return st
+	}
+	if t.layers == nil {
+		t.layers = map[[2]int]*texture{}
+	}
+	desc := t.desc
+	desc.Kind, desc.DepthOrLayers = explicit.TextureKind2D, 1
+	desc.Width, desc.Height, desc.MipLevels = max(desc.Width>>level, 1), max(desc.Height>>level, 1), 1
+	st := &texture{desc: desc, bpp: t.bpp, parent: t}
+	if t.bpp > 0 {
+		st.pix = make([]byte, desc.Width*desc.Height*t.bpp)
+	}
+	t.layers[key] = st
+	return st
 }
 
 // fill sets every pixel to the color, as a clearing pass does.
@@ -420,6 +497,20 @@ func (t *texture) read(r image.Rectangle) *image.RGBA {
 		}
 	}
 	return img
+}
+
+// readBytes returns the rows of the rectangle as the bytes of the format.
+func (t *texture) readBytes(r image.Rectangle) ([]byte, int) {
+	r = r.Intersect(image.Rect(0, 0, t.desc.Width, t.desc.Height))
+	row := r.Dx() * t.bpp
+	out := make([]byte, row*r.Dy())
+	if t.pix == nil {
+		return out, row
+	}
+	for y := r.Min.Y; y < r.Max.Y; y++ {
+		copy(out[(y-r.Min.Y)*row:], t.pix[(y*t.desc.Width+r.Min.X)*t.bpp:][:row])
+	}
+	return out, row
 }
 
 type sampler struct {
@@ -529,6 +620,21 @@ func (e *encoder) BeginPass(target explicit.Texture, load explicit.LoadOp, clear
 	return e.pass
 }
 
+func (e *encoder) BeginRenderPass(desc explicit.PassDesc) explicit.Pass {
+	e.d.record("BeginRenderPass", "%s", passText(desc))
+	e.d.limits.CheckPass(desc)
+	if e.pass != nil && !e.pass.ended {
+		panic(errors.New(tagFakePassNotEnded, "BeginRenderPass was called before the previous pass ended"))
+	}
+	for _, c := range desc.Color {
+		if t, ok := c.Target.(*texture); ok && (c.Load == explicit.LoadClear || c.Load == explicit.LoadDontCare) {
+			t.fillBytes(encodeColor(t.desc.Format, c.Clear))
+		}
+	}
+	e.pass = &pass{d: e.d}
+	return e.pass
+}
+
 func (e *encoder) CopyTexture(src explicit.Texture, r image.Rectangle, dst explicit.Texture, at image.Point) {
 	e.d.record("CopyTexture", "rect=%v at=%v", r, at)
 	s, ok1 := src.(*texture)
@@ -560,7 +666,16 @@ func (e *encoder) CopyTexture(src explicit.Texture, r image.Rectangle, dst expli
 func (e *encoder) ReadTexture(src explicit.Texture, r image.Rectangle, done func(*image.RGBA, error)) {
 	e.d.record("ReadTexture", "rect=%v", r)
 	if t, ok := src.(*texture); ok {
+		e.d.limits.CheckRead(t.desc, false)
 		e.d.reads = append(e.d.reads, pendingRead{src: t, r: r, done: done})
+	}
+}
+
+func (e *encoder) ReadTextureBytes(src explicit.Texture, r image.Rectangle, done func([]byte, int, error)) {
+	e.d.record("ReadTextureBytes", "rect=%v", r)
+	if t, ok := src.(*texture); ok {
+		e.d.limits.CheckRead(t.desc, true)
+		e.d.reads = append(e.d.reads, pendingRead{src: t, r: r, doneBytes: done})
 	}
 }
 
@@ -602,6 +717,8 @@ func (p *pass) SetIndexBuffer(b explicit.Buffer, offset int) {
 }
 
 func (p *pass) SetScissor(r image.Rectangle) { p.d.record("SetScissor", "%v", r) }
+
+func (p *pass) SetStencilReference(ref uint32) { p.d.record("SetStencilReference", "%d", ref) }
 
 func (p *pass) Draw(vertices, instances, firstVertex, firstInstance int) {
 	p.d.record("Draw", "vertices=%d instances=%d firstVertex=%d firstInstance=%d", vertices, instances, firstVertex, firstInstance)

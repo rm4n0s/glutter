@@ -44,6 +44,7 @@ const (
 	sTypePipelineInputAssemblyStateCreate = 20         // VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO
 	sTypePipelineViewportStateCreate      = 22         // VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO
 	sTypePipelineRasterizationStateCreate = 23         // VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO
+	sTypePipelineDepthStencilStateCreate  = 25         // VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO
 	sTypePipelineMultisampleStateCreate   = 24         // VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO
 	sTypePipelineColorBlendStateCreate    = 26         // VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO
 	sTypePipelineDynamicStateCreate       = 27         // VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO
@@ -105,15 +106,28 @@ const (
 
 	sharingExclusive = 0 // VK_SHARING_MODE_EXCLUSIVE
 
-	imageType2D           = 1          // VK_IMAGE_TYPE_2D
-	imageViewType2D       = 1          // VK_IMAGE_VIEW_TYPE_2D
-	imageTilingOptimal    = 0          // VK_IMAGE_TILING_OPTIMAL
-	imageUsageTransferSrc = 0x00000001 // VK_IMAGE_USAGE_TRANSFER_SRC_BIT
-	imageUsageTransferDst = 0x00000002 // VK_IMAGE_USAGE_TRANSFER_DST_BIT
-	imageUsageSampled     = 0x00000004 // VK_IMAGE_USAGE_SAMPLED_BIT
-	imageUsageColor       = 0x00000010 // VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
-	sampleCount1          = 0x00000001 // VK_SAMPLE_COUNT_1_BIT
-	imageAspectColor      = 0x00000001 // VK_IMAGE_ASPECT_COLOR_BIT
+	imageType2D               = 1          // VK_IMAGE_TYPE_2D
+	imageType3D               = 2          // VK_IMAGE_TYPE_3D
+	imageViewType2D           = 1          // VK_IMAGE_VIEW_TYPE_2D
+	imageViewType3D           = 2          // VK_IMAGE_VIEW_TYPE_3D
+	imageViewTypeCube         = 3          // VK_IMAGE_VIEW_TYPE_CUBE
+	imageViewType2DArray      = 5          // VK_IMAGE_VIEW_TYPE_2D_ARRAY
+	imageCreateCubeCompatible = 0x00000010 // VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT
+	imageTilingOptimal        = 0          // VK_IMAGE_TILING_OPTIMAL
+	imageUsageTransferSrc     = 0x00000001 // VK_IMAGE_USAGE_TRANSFER_SRC_BIT
+	imageUsageTransferDst     = 0x00000002 // VK_IMAGE_USAGE_TRANSFER_DST_BIT
+	imageUsageSampled         = 0x00000004 // VK_IMAGE_USAGE_SAMPLED_BIT
+	imageUsageStorage         = 0x00000008 // VK_IMAGE_USAGE_STORAGE_BIT
+	imageUsageColor           = 0x00000010 // VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
+	imageUsageDepthStencil    = 0x00000020 // VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
+	sampleCount1              = 0x00000001 // VK_SAMPLE_COUNT_1_BIT
+	sampleCount4              = 0x00000004 // VK_SAMPLE_COUNT_4_BIT
+	imageAspectColor          = 0x00000001 // VK_IMAGE_ASPECT_COLOR_BIT
+	imageAspectDepth          = 0x00000002 // VK_IMAGE_ASPECT_DEPTH_BIT
+	imageAspectStencil        = 0x00000004 // VK_IMAGE_ASPECT_STENCIL_BIT
+	formatFeatureColorAttach  = 0x00000080 // VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT
+	formatFeatureDepthStencil = 0x00000200 // VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
+	formatFeatureSampleFilter = 0x00001000 // VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT
 
 	layoutUndefined = 0 // VK_IMAGE_LAYOUT_UNDEFINED
 	layoutGeneral   = 1 // VK_IMAGE_LAYOUT_GENERAL
@@ -125,6 +139,35 @@ const (
 	formatRG32Sfloat   = 103 // VK_FORMAT_R32G32_SFLOAT
 	formatRGB32Sfloat  = 106 // VK_FORMAT_R32G32B32_SFLOAT
 	formatRGBA32Sfloat = 109 // VK_FORMAT_R32G32B32A32_SFLOAT
+
+	formatRGBA16Sfloat    = 97  // VK_FORMAT_R16G16B16A16_SFLOAT
+	formatR32Uint         = 98  // VK_FORMAT_R32_UINT
+	formatRG32Uint        = 101 // VK_FORMAT_R32G32_UINT
+	formatD32Sfloat       = 126 // VK_FORMAT_D32_SFLOAT
+	formatD24UnormS8Uint  = 129 // VK_FORMAT_D24_UNORM_S8_UINT
+	formatD32SfloatS8Uint = 130 // VK_FORMAT_D32_SFLOAT_S8_UINT
+	formatR8G8Unorm       = 16  // VK_FORMAT_R8G8_UNORM
+	formatR8G8Snorm       = 17  // VK_FORMAT_R8G8_SNORM
+	formatR8G8Uint        = 20  // VK_FORMAT_R8G8_UINT
+	formatR8G8Sint        = 21  // VK_FORMAT_R8G8_SINT
+	formatRGBA8Snorm      = 38  // VK_FORMAT_R8G8B8A8_SNORM
+	formatRGBA8Uint       = 41  // VK_FORMAT_R8G8B8A8_UINT
+	formatRGBA8Sint       = 42  // VK_FORMAT_R8G8B8A8_SINT
+	formatRG16Unorm       = 77  // VK_FORMAT_R16G16_UNORM
+	formatRG16Snorm       = 78  // VK_FORMAT_R16G16_SNORM
+	formatRG16Uint        = 81  // VK_FORMAT_R16G16_UINT
+	formatRG16Sint        = 82  // VK_FORMAT_R16G16_SINT
+	formatRG16Sfloat      = 83  // VK_FORMAT_R16G16_SFLOAT
+	formatRGBA16Unorm     = 91  // VK_FORMAT_R16G16B16A16_UNORM
+	formatRGBA16Snorm     = 92  // VK_FORMAT_R16G16B16A16_SNORM
+	formatRGBA16Uint      = 95  // VK_FORMAT_R16G16B16A16_UINT
+	formatRGBA16Sint      = 96  // VK_FORMAT_R16G16B16A16_SINT
+	formatR32Sint         = 99  // VK_FORMAT_R32_SINT
+	formatRG32Sint        = 102 // VK_FORMAT_R32G32_SINT
+	formatRGB32Uint       = 104 // VK_FORMAT_R32G32B32_UINT
+	formatRGB32Sint       = 105 // VK_FORMAT_R32G32B32_SINT
+	formatRGBA32Uint      = 107 // VK_FORMAT_R32G32B32A32_UINT
+	formatRGBA32Sint      = 108 // VK_FORMAT_R32G32B32A32_SINT
 
 	filterNearest          = 0 // VK_FILTER_NEAREST
 	filterLinear           = 1 // VK_FILTER_LINEAR
@@ -145,15 +188,42 @@ const (
 	stageVertex   = 0x00000001 // VK_SHADER_STAGE_VERTEX_BIT
 	stageFragment = 0x00000010 // VK_SHADER_STAGE_FRAGMENT_BIT
 
-	vertexInputRateVertex   = 0   // VK_VERTEX_INPUT_RATE_VERTEX
-	vertexInputRateInstance = 1   // VK_VERTEX_INPUT_RATE_INSTANCE
-	topologyTriangleList    = 3   // VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST
-	polygonFill             = 0   // VK_POLYGON_MODE_FILL
-	cullNone                = 0   // VK_CULL_MODE_NONE
-	frontFaceCCW            = 0   // VK_FRONT_FACE_COUNTER_CLOCKWISE
-	dynamicViewport         = 0   // VK_DYNAMIC_STATE_VIEWPORT
-	dynamicScissor          = 1   // VK_DYNAMIC_STATE_SCISSOR
-	colorComponentsAll      = 0xF // all four color components: the R, G, B and A bits
+	vertexInputRateVertex   = 0 // VK_VERTEX_INPUT_RATE_VERTEX
+	vertexInputRateInstance = 1 // VK_VERTEX_INPUT_RATE_INSTANCE
+	topologyPointList       = 0 // VK_PRIMITIVE_TOPOLOGY_POINT_LIST
+	topologyLineList        = 1 // VK_PRIMITIVE_TOPOLOGY_LINE_LIST
+	topologyLineStrip       = 2 // VK_PRIMITIVE_TOPOLOGY_LINE_STRIP
+	topologyTriangleList    = 3 // VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST
+	topologyTriangleStrip   = 4 // VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP
+	polygonFill             = 0 // VK_POLYGON_MODE_FILL
+	cullNone                = 0 // VK_CULL_MODE_NONE
+	cullFront               = 1 // VK_CULL_MODE_FRONT_BIT
+	cullBack                = 2 // VK_CULL_MODE_BACK_BIT
+	frontFaceCCW            = 0 // VK_FRONT_FACE_COUNTER_CLOCKWISE
+	frontFaceCW             = 1 // VK_FRONT_FACE_CLOCKWISE
+	dynamicViewport         = 0 // VK_DYNAMIC_STATE_VIEWPORT
+	dynamicScissor          = 1 // VK_DYNAMIC_STATE_SCISSOR
+	dynamicStencilReference = 8 // VK_DYNAMIC_STATE_STENCIL_REFERENCE
+	stencilFrontAndBack     = 3 // VK_STENCIL_FACE_FRONT_AND_BACK
+
+	compareNever        = 0 // VK_COMPARE_OP_NEVER
+	compareLess         = 1 // VK_COMPARE_OP_LESS
+	compareEqual        = 2 // VK_COMPARE_OP_EQUAL
+	compareLessEqual    = 3 // VK_COMPARE_OP_LESS_OR_EQUAL
+	compareGreater      = 4 // VK_COMPARE_OP_GREATER
+	compareNotEqual     = 5 // VK_COMPARE_OP_NOT_EQUAL
+	compareGreaterEqual = 6 // VK_COMPARE_OP_GREATER_OR_EQUAL
+	compareAlways       = 7 // VK_COMPARE_OP_ALWAYS
+
+	stencilKeep           = 0   // VK_STENCIL_OP_KEEP
+	stencilZero           = 1   // VK_STENCIL_OP_ZERO
+	stencilReplace        = 2   // VK_STENCIL_OP_REPLACE
+	stencilIncrementClamp = 3   // VK_STENCIL_OP_INCREMENT_AND_CLAMP
+	stencilDecrementClamp = 4   // VK_STENCIL_OP_DECREMENT_AND_CLAMP
+	stencilInvert         = 5   // VK_STENCIL_OP_INVERT
+	stencilIncrementWrap  = 6   // VK_STENCIL_OP_INCREMENT_AND_WRAP
+	stencilDecrementWrap  = 7   // VK_STENCIL_OP_DECREMENT_AND_WRAP
+	colorComponentsAll    = 0xF // all four color components: the R, G, B and A bits
 
 	blendZero             = 0 // VK_BLEND_FACTOR_ZERO
 	blendOne              = 1 // VK_BLEND_FACTOR_ONE
@@ -178,6 +248,9 @@ const (
 	loadOpClear          = 1          // VK_ATTACHMENT_LOAD_OP_CLEAR
 	loadOpDontCare       = 2          // VK_ATTACHMENT_LOAD_OP_DONT_CARE
 	storeOpStore         = 0          // VK_ATTACHMENT_STORE_OP_STORE
+	storeOpDontCare      = 1          // VK_ATTACHMENT_STORE_OP_DONT_CARE
+	resolveSampleZero    = 0x00000001 // VK_RESOLVE_MODE_SAMPLE_ZERO_BIT
+	resolveAverage       = 0x00000002 // VK_RESOLVE_MODE_AVERAGE_BIT
 	stage2AllCommands    = 0x00010000 // VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT
 	stage2Host           = 0x00004000 // VK_PIPELINE_STAGE_2_HOST_BIT
 	access2MemoryRead    = 0x00008000 // VK_ACCESS_2_MEMORY_READ_BIT

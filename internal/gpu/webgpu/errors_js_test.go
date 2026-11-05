@@ -80,10 +80,18 @@ func TestDeviceErrorRoutes(t *testing.T) {
 			return err
 		}, "WebGPUBindGroupInvalid", "Device.NewBindGroup.WebGPUBindGroupInvalid"},
 		{"binding the shader lacks", func() error {
-			_, err := d.NewBindGroup(&pipeline{d: d, layouts: []js.Value{{}}, kinds: []map[int]explicit.BindingKind{{}}}, 0,
+			_, err := d.NewBindGroup(&pipeline{d: d, layouts: []js.Value{{}}, bindings: []map[int]bindingPlan{{}}}, 0,
 				[]explicit.Binding{{Binding: 3}})
 			return err
 		}, "WebGPUBindGroupInvalid", "Device.NewBindGroup.WebGPUBindGroupInvalid"},
+		{"a texture of the wrong dimension for the binding", func() error {
+			p := &pipeline{d: d, layouts: []js.Value{{}}, bindings: []map[int]bindingPlan{{
+				3: {Binding: 3, Kind: explicit.BindingSampledTexture, Dimension: explicit.TextureDimCube},
+			}}}
+			flat := &texture{d: d, desc: explicit.TextureDesc{Width: 4, Height: 4, Format: explicit.TextureFormatRGBA8Unorm}.Normalized()}
+			_, err := d.NewBindGroup(p, 0, []explicit.Binding{{Binding: 3, Texture: flat}})
+			return err
+		}, "WebGPUTextureBindingMismatch", "Device.NewBindGroup.WebGPUTextureBindingMismatch"},
 		{"swapchain on a handle of another kind", func() error {
 			_, err := d.newSwapchain(gpu.SurfaceHandle{Kind: gpu.SurfaceKindWayland})
 			return err
@@ -99,10 +107,10 @@ func TestDeviceErrorRoutes(t *testing.T) {
 			"WebGPUFrameNotOpen", "encoder.Submit.WebGPUFrameNotOpen"},
 		{"pass on a foreign target", func() error {
 			return panicError(t, func() { (&encoder{d: d}).BeginPass(&texture{d: other}, explicit.LoadLoad, ui.Color{}) })
-		}, "WebGPUForeignResource", "encoder.BeginPass.WebGPUForeignResource"},
+		}, "WebGPUForeignResource", "encoder.BeginPass->encoder.BeginRenderPass.WebGPUForeignResource"},
 		{"pass begun before the last one ended", func() error {
 			return panicError(t, func() { (&encoder{d: d, pass: &pass{}}).BeginPass(&texture{d: d}, explicit.LoadLoad, ui.Color{}) })
-		}, "WebGPUPassNotEnded", "encoder.BeginPass.WebGPUPassNotEnded"},
+		}, "WebGPUPassNotEnded", "encoder.BeginPass->encoder.BeginRenderPass.WebGPUPassNotEnded"},
 		{"copy of a foreign texture", func() error {
 			return panicError(t, func() {
 				(&encoder{d: d}).CopyTexture(&texture{d: other}, image.Rectangle{}, &texture{d: d}, image.Point{})
@@ -110,7 +118,7 @@ func TestDeviceErrorRoutes(t *testing.T) {
 		}, "WebGPUForeignResource", "encoder.CopyTexture.WebGPUForeignResource"},
 		{"read of a foreign texture", func() error {
 			return panicError(t, func() { (&encoder{d: d}).ReadTexture(&texture{d: other}, image.Rectangle{}, nil) })
-		}, "WebGPUForeignResource", "encoder.ReadTexture.WebGPUForeignResource"},
+		}, "WebGPUForeignResource", "encoder.ReadTexture->encoder.read.WebGPUForeignResource"},
 		{"foreign pipeline in a pass", func() error {
 			return panicError(t, func() { (&pass{e: &encoder{d: d}}).SetPipeline(&pipeline{d: other}) })
 		}, "WebGPUForeignResource", "pass.SetPipeline.WebGPUForeignResource"},

@@ -54,9 +54,14 @@ type Device struct {
 	family uint32
 	info   physicalInfo
 	limits explicit.Limits
-	alloc  *allocator
-	arena  *arena
-	closed bool
+	// features are the optional features of the device (Features).
+	features explicit.Features
+	// depthStencil is the Vulkan format that TextureFormatDepth24PlusStencil8 is made with: 24
+	// bit depth and 8 bit stencil when the device draws into it, else a 32 bit float depth.
+	depthStencil uint32
+	alloc        *allocator
+	arena        *arena
+	closed       bool
 
 	slots   [framesInFlight]frameSlot
 	next    int      // the slot of the next frame
@@ -64,13 +69,16 @@ type Device struct {
 	open    *encoder // the frame being recorded
 	pending []func(cb commandBufferH)
 	staging stagingRing
-	modules map[*explicit.Shader]shaderModuleH
+	modules map[moduleKey]shaderModuleH
 	live    map[any]func() // what to destroy at Close: every resource that is not destroyed yet
 
 	surfaces    map[gpu.SurfaceHandle]*surface // the surfaces of the windows that have a swapchain
 	incremental bool                           // VK_KHR_incremental_present is enabled
 	windows     bool                           // the device was made for windows: VK_KHR_swapchain is enabled
 	pcache      pipelineCaching
+	// independentBlend says that the device was made with the feature of that name: a pipeline
+	// can give its color targets different blend states.
+	independentBlend bool
 }
 
 var _ explicit.Device = (*Device)(nil)
@@ -197,7 +205,7 @@ func openDevice(inst *instance, opts chooseOpts, h gpu.SurfaceHandle, log *slog.
 	f := inst.f
 	d := &Device{inst: inst, f: f, log: log, phys: handles[index], family: uint32(family), info: info,
 		limits: explicit.DefaultLimits(), arena: &arena{}, last: -1,
-		modules: map[*explicit.Shader]shaderModuleH{}, live: map[any]func(){}, surfaces: map[gpu.SurfaceHandle]*surface{}}
+		modules: map[moduleKey]shaderModuleH{}, live: map[any]func(){}, surfaces: map[gpu.SurfaceHandle]*surface{}}
 	if first != nil {
 		d.surfaces[h] = first
 		first = nil // the device owns it now
@@ -215,6 +223,8 @@ func openDevice(inst *instance, opts chooseOpts, h gpu.SurfaceHandle, log *slog.
 	props = *(*physicalDeviceMemoryProperties)(dl.Pointer(mem))
 	d.alloc = newAllocator(memory{d}, newMemoryProps(props))
 
+	d.queryFormats(a)
+
 	if err := d.initFrames(); err != nil {
 		d.Close() //nolint:errcheck // the error that matters is the one being returned
 		return nil, err
@@ -223,6 +233,40 @@ func openDevice(inst *instance, opts chooseOpts, h gpu.SurfaceHandle, log *slog.
 	log.Info("Vulkan device", "device", d.Description(), "api", versionString(info.APIVersion), "queue_family", family)
 	return d, nil
 }
+
+// formatFeatures returns the features of a format with optimal tiling.
+func (d *Device) formatFeatures(a *arena, format uint32) uint32 {
+	defer a.rewind(a.mark())
+	out := a.alloc(unsafeSizeof[formatProperties](), 8)
+	d.f.getPhysicalDeviceFormatProps(d.phys, format, out)
+	return (*formatProperties)(dl.Pointer(out)).optimalTilingFeatures
+}
+
+// queryFormats finds the optional features of the formats: whether float32 textures can be
+// filtered, and the format of the depth buffer with a stencil.
+func (d *Device) queryFormats(a *arena) {
+	d.features.Float32Filterable = d.formatFeatures(a, formatRGBA32Sfloat)&formatFeatureSampleFilter != 0 &&
+		d.formatFeatures(a, formatR32Sfloat)&formatFeatureSampleFilter != 0
+	d.depthStencil = formatD24UnormS8Uint
+	if d.formatFeatures(a, formatD24UnormS8Uint)&formatFeatureDepthStencil == 0 {
+		d.depthStencil = formatD32SfloatS8Uint
+	}
+}
+
+// featureIndependentBlend is the index of independentBlend among the VkBool32 of
+// VkPhysicalDeviceFeatures.
+const featureIndependentBlend = 3
+
+// features2Bool reads the VkBool32 at the index of the features of a VkPhysicalDeviceFeatures2.
+func features2Bool(f *physicalDeviceFeatures2, index int) bool {
+	return f.features[index*4] != 0 || f.features[index*4+1] != 0 || f.features[index*4+2] != 0 || f.features[index*4+3] != 0
+}
+
+// setFeatures2Bool sets the VkBool32 at the index to VK_TRUE.
+func setFeatures2Bool(f *physicalDeviceFeatures2, index int) { f.features[index*4] = 1 }
+
+// Features implements explicit.Device.
+func (d *Device) Features() explicit.Features { return d.features }
 
 // physicalDevices lists the physical devices with what the choice needs to know.
 func (i *instance) physicalDevices(a *arena) ([]physicalDeviceH, []physicalInfo, error) {
@@ -299,6 +343,7 @@ func (i *instance) describe(a *arena, index int, h physicalDeviceH) (physicalInf
 	}
 	f2 := put(a, physicalDeviceFeatures2{sType: sTypePhysicalDeviceFeatures2, pNext: chain})
 	f.getPhysicalDeviceFeatures2(h, f2)
+	info.IndependentBlend = features2Bool((*physicalDeviceFeatures2)(dl.Pointer(f2)), featureIndependentBlend)
 	if hasDR {
 		info.DynamicRendering = (*physicalDeviceDynamicRenderingFeatures)(dl.Pointer(dr)).dynamicRendering != 0
 	}
@@ -333,10 +378,17 @@ func (d *Device) createDevice(a *arena, windows bool) error {
 	}
 	s2 := put(a, physicalDeviceSynchronization2Features{sType: sTypePhysicalDeviceSynchronization2, synchronization2: 1})
 	dr := put(a, physicalDeviceDynamicRenderingFeatures{sType: sTypePhysicalDeviceDynamicRendering, pNext: s2, dynamicRendering: 1})
+	chain := dr
+	if d.info.IndependentBlend {
+		f2 := physicalDeviceFeatures2{sType: sTypePhysicalDeviceFeatures2, pNext: dr}
+		setFeatures2Bool(&f2, featureIndependentBlend)
+		chain = put(a, f2)
+		d.independentBlend = true
+	}
 	priority := put(a, float32(1))
 	queue := put(a, deviceQueueCreateInfo{sType: sTypeDeviceQueueCreateInfo, queueFamilyIndex: d.family, queueCount: 1, pQueuePriorities: priority})
 	info := put(a, deviceCreateInfo{
-		sType: sTypeDeviceCreateInfo, pNext: dr,
+		sType: sTypeDeviceCreateInfo, pNext: chain,
 		queueCreateInfoCount: 1, pQueueCreateInfos: queue,
 		enabledExtensionCount: uint32(len(extensions)), ppEnabledExtensionNames: a.cstrings(extensions),
 	})

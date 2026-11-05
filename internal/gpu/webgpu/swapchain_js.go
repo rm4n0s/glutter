@@ -111,7 +111,7 @@ func (s *swapchain) Acquire() (explicit.Texture, error) {
 		return nil, err
 	}
 	desc := explicit.TextureDesc{Width: v.Get("width").Int(), Height: v.Get("height").Int(), Format: s.format, MipLevels: 1,
-		Usage: explicit.TextureRenderTarget}
+		Usage: explicit.TextureRenderTarget}.Normalized()
 	return &texture{d: s.d, desc: desc, tex: v, view: v.Call("createView"), external: true}, nil
 }
 

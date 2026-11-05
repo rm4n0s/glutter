@@ -24,7 +24,24 @@ type Binding struct {
 	Name           string
 	Group, Binding int
 	Kind           Kind
+	// Dim is the dimension of a texture, as the generated code spells it ("" is a 2D texture).
+	Dim string
+	// Sample is the sample type of a texture, as the generated code spells it ("" is SampleTypeFloat).
+	Sample string
 }
+
+// The dimensions of a texture binding, as explicit spells them (the zero value is "").
+const (
+	dimArray = "TextureDim2DArray"
+	dimCube  = "TextureDimCube"
+	dim3D    = "TextureDim3D"
+)
+
+// The sample types of a texture binding that are not the zero value.
+const (
+	sampleUnfilterable = "SampleTypeUnfilterableFloat"
+	sampleUint         = "SampleTypeUint"
+)
 
 // Entry is an entry point of a module and the bindings it reads.
 type Entry struct {
@@ -44,6 +61,8 @@ var (
 	blockComment = regexp.MustCompile(`(?s)/\*.*?\*/`)
 	// A binding declaration has its two attributes in either order, then var.
 	bindingDecl = regexp.MustCompile(`((?:@(?:group|binding)\(\s*\d+\s*\)\s*){2})var\s*(?:<\s*([\w\s,]*?)\s*>)?\s*(\w+)\s*:\s*([^;]+);`)
+	// A texture type: texture_2d<f32>, texture_2d_array<u32>, texture_cube<f32>, texture_3d<f32>.
+	textureType = regexp.MustCompile(`^texture_(2d_array|2d|cube|3d)<(f32|u32)>$`)
 	groupAttr   = regexp.MustCompile(`@group\(\s*(\d+)\s*\)`)
 	bindAttr    = regexp.MustCompile(`@binding\(\s*(\d+)\s*\)`)
 	entryDecl   = regexp.MustCompile(`@(vertex|fragment|compute)\s+(?:@\w+(?:\([^)]*\))?\s+)*fn\s+(\w+)`)
@@ -76,12 +95,26 @@ func Parse(src string) (Module, error) {
 		switch {
 		case d[2] == "uniform":
 			b.Kind = KindUniform
-		case d[2] == "" && typ == "texture_2d<f32>":
+		case d[2] == "" && textureType.MatchString(typ):
+			m := textureType.FindStringSubmatch(typ)
 			b.Kind = KindTexture
+			switch m[1] {
+			case "2d_array":
+				b.Dim = dimArray
+			case "cube":
+				b.Dim = dimCube
+			case "3d":
+				b.Dim = dim3D
+			}
+			if m[2] == "u32" {
+				b.Sample = sampleUint
+			} else if !filteredRead(src, b.Name) {
+				b.Sample = sampleUnfilterable
+			}
 		case d[2] == "" && typ == "sampler":
 			b.Kind = KindSampler
 		default:
-			return Module{}, errors.New(tagShadersUnsupportedBinding, "only uniform buffers, texture_2d<f32> and sampler can be bound (SPEC §9.3)",
+			return Module{}, errors.New(tagShadersUnsupportedBinding, "only uniform buffers, sampled textures (texture_2d, texture_2d_array, texture_cube and texture_3d of f32 or u32) and sampler can be bound (SPEC §9.3, §27.1)",
 				"name", b.Name, "address_space", d[2], "type", typ)
 		}
 		key := [2]int{group, binding}
@@ -122,6 +155,17 @@ func Parse(src string) (Module, error) {
 		return Module{}, errors.New(tagShadersNoEntry, "the module has no @vertex or @fragment function")
 	}
 	return m, nil
+}
+
+// filteredRead reports whether a texture may be read with a filter: its name is anywhere except as
+// the first argument of textureLoad, textureDimensions, textureNumLevels or textureNumLayers (a
+// textureSample call, or a function that takes the texture as an argument). A texture that is
+// not may be a float32 texture that has no filtering (SampleTypeUnfilterableFloat).
+func filteredRead(src, name string) bool {
+	use := regexp.MustCompile(`\b` + regexp.QuoteMeta(name) + `\b`)
+	safe := regexp.MustCompile(`\b(?:textureLoad|textureDimensions|textureNumLevels|textureNumLayers)\s*\(\s*` + regexp.QuoteMeta(name) + `\b`)
+	decl := regexp.MustCompile(`\bvar\s+` + regexp.QuoteMeta(name) + `\s*:`)
+	return len(use.FindAllStringIndex(src, -1)) != len(safe.FindAllStringIndex(src, -1))+len(decl.FindAllStringIndex(src, -1))
 }
 
 // functionBodies maps the name of each function to its signature and body, found

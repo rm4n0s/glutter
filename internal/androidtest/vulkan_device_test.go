@@ -238,3 +238,41 @@ func TestWithoutVulkanNamedFailsAndAutoUsesGLES(t *testing.T) {
 		}
 	}
 }
+
+// TestVulkanRunsTheScenesOfTheExplicitDevice runs the scenes that every backend runs (SPEC §27.1, step
+// 30.1: formats, depth, multisampling, texture kinds, four attachments, clip space, topologies, stencil,
+// vertex formats) on the emulator's Vulkan device with the validation layer on.
+func TestVulkanRunsTheScenesOfTheExplicitDevice(t *testing.T) {
+	e := Shared(t, "glutter-37")
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
+	defer cancel()
+	opts, extras := withValidation(t)
+	appID := installAppWith(ctx, t, e, "./examples/dev/android-scenes", opts)
+	if err := e.Launch(ctx, appID, extras); err != nil {
+		t.Fatal(Describe(err))
+	}
+	if err := e.WaitExit(ctx, appID, 4*time.Minute); err != nil {
+		log, _ := e.Log(ctx, appID)
+		t.Fatalf("%s\n%s", Describe(err), log)
+	}
+	files, err := e.PullAppDir(ctx, appID, "files/scenes")
+	if err != nil {
+		t.Fatal(Describe(err))
+	}
+	if _, ok := files["DONE"]; !ok {
+		log, _ := e.Log(ctx, appID)
+		t.Fatalf("the run did not finish (files: %d)\n%s", len(files), log)
+	}
+	checkNoValidationErrors(t, files)
+	ok := 0
+	for _, line := range strings.Split(strings.TrimSpace(string(files["results.txt"])), "\n") {
+		if strings.HasPrefix(line, "ok ") {
+			ok++
+			continue
+		}
+		t.Error(line)
+	}
+	if ok < 13 {
+		t.Errorf("only %d parts of the scenes ran", ok)
+	}
+}

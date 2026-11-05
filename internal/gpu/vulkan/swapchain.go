@@ -289,14 +289,14 @@ func (sc *swapchain) makeImages(a *arena, vkFormat uint32) error {
 		return swapchainError("vkGetSwapchainImagesKHR", r)
 	}
 	for _, img := range readSlice[imageH](p, int(u32(count))) {
-		view, err := d.newView(img, vkFormat, 1)
+		view, err := d.newViewRange(viewSpec{image: img, format: vkFormat, typ: imageViewType2D, aspect: imageAspectColor, levels: 1, layers: 1})
 		if err != nil {
 			return err
 		}
 		sc.images = append(sc.images, &texture{
 			d: d, image: img, view: view, external: true,
 			desc: explicit.TextureDesc{Width: sc.width, Height: sc.height, Format: sc.format, MipLevels: 1,
-				Usage: explicit.TextureRenderTarget | explicit.TextureCopySource},
+				Usage: explicit.TextureRenderTarget | explicit.TextureCopySource}.Normalized(),
 		})
 		sem, err := d.newSemaphore()
 		if err != nil {

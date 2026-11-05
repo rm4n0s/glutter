@@ -45,3 +45,11 @@ func TestUnpackRows(t *testing.T) {
 		})
 	}
 }
+
+func TestPackRows(t *testing.T) {
+	raw := []byte{1, 2, 3, 0, 0, 4, 5, 6, 0, 0, 7, 8, 9, 0, 0}
+	got := packRows(raw, 5, 3, 3)
+	if want := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9}; string(got) != string(want) {
+		t.Errorf("packRows = %v, want %v", got, want)
+	}
+}

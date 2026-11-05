@@ -29,7 +29,7 @@ func TestParse(t *testing.T) {
 			want: []Entry{
 				{Name: "vs", Stage: "Vertex"},
 				{Name: "fs", Stage: "Fragment", Bindings: []Binding{
-					{"t", 0, 0, KindTexture}, {"s", 0, 1, KindSampler}}},
+					{Name: "t", Group: 0, Binding: 0, Kind: KindTexture}, {Name: "s", Group: 0, Binding: 1, Kind: KindSampler}}},
 			},
 		},
 		{
@@ -38,7 +38,7 @@ func TestParse(t *testing.T) {
 @binding(0) @group(2) var   img: texture_2d < f32 >;
 @fragment fn fs() -> @location(0) vec4<f32> { return vec4<f32>(u.x) + textureLoad(img, vec2<i32>(0), 0); }`,
 			want: []Entry{{Name: "fs", Stage: "Fragment", Bindings: []Binding{
-				{"u", 1, 3, KindUniform}, {"img", 2, 0, KindTexture}}}},
+				{Name: "u", Group: 1, Binding: 3, Kind: KindUniform}, {Name: "img", Group: 2, Binding: 0, Kind: KindTexture, Sample: sampleUnfilterable}}}},
 		},
 		{
 			name: "a binding read through a function that the entry point calls",
@@ -49,7 +49,7 @@ fn middle() -> f32 { return inner(); }
 @vertex fn vs() -> @builtin(position) vec4<f32> { return vec4<f32>(middle()); }
 @fragment fn fs() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }`,
 			want: []Entry{
-				{Name: "vs", Stage: "Vertex", Bindings: []Binding{{"frame", 0, 0, KindUniform}}},
+				{Name: "vs", Stage: "Vertex", Bindings: []Binding{{Name: "frame", Group: 0, Binding: 0, Kind: KindUniform}}},
 				{Name: "fs", Stage: "Fragment"},
 			},
 		},
@@ -61,10 +61,43 @@ fn middle() -> f32 { return inner(); }
 			want: []Entry{{Name: "vs", Stage: "Vertex"}},
 		},
 		{
+			name: "textures of every dimension and sample type",
+			src: `@group(0) @binding(0) var a: texture_2d_array<f32>;
+@group(0) @binding(1) var c: texture_cube<f32>;
+@group(0) @binding(2) var v: texture_3d<f32>;
+@group(0) @binding(3) var u: texture_2d<u32>;
+@group(0) @binding(4) var s: sampler;
+@fragment fn fs() -> @location(0) vec4<f32> {
+	return textureSample(a, s, vec2<f32>(0.0), 1) + textureSample(c, s, vec3<f32>(0.0)) + textureSample(v, s, vec3<f32>(0.0)) + vec4<f32>(vec4<u32>(textureLoad(u, vec2<i32>(0), 0)));
+}`,
+			want: []Entry{{Name: "fs", Stage: "Fragment", Bindings: []Binding{
+				{Name: "a", Group: 0, Binding: 0, Kind: KindTexture, Dim: dimArray},
+				{Name: "c", Group: 0, Binding: 1, Kind: KindTexture, Dim: dimCube},
+				{Name: "v", Group: 0, Binding: 2, Kind: KindTexture, Dim: dim3D},
+				{Name: "u", Group: 0, Binding: 3, Kind: KindTexture, Sample: sampleUint},
+				{Name: "s", Group: 0, Binding: 4, Kind: KindSampler},
+			}}},
+		},
+		{
+			name: "a float texture that only textureLoad and textureDimensions read cannot be filtered",
+			src: `@group(0) @binding(0) var t: texture_2d<f32>;
+@fragment fn fs() -> @location(0) vec4<f32> { return textureLoad(t, vec2<i32>(textureDimensions(t)) / 2, 0); }`,
+			want: []Entry{{Name: "fs", Stage: "Fragment", Bindings: []Binding{{Name: "t", Group: 0, Binding: 0, Kind: KindTexture, Sample: sampleUnfilterable}}}},
+		},
+		{
+			name: "a float texture that is passed to a function may be filtered",
+			src: `@group(0) @binding(0) var t: texture_2d<f32>;
+@group(0) @binding(1) var s: sampler;
+fn read(tex: texture_2d<f32>, p: vec2<f32>) -> vec4<f32> { return textureSampleLevel(tex, s, p, 0.0); }
+@fragment fn fs() -> @location(0) vec4<f32> { return read(t, vec2<f32>(0.5)); }`,
+			want: []Entry{{Name: "fs", Stage: "Fragment", Bindings: []Binding{
+				{Name: "t", Group: 0, Binding: 0, Kind: KindTexture}, {Name: "s", Group: 0, Binding: 1, Kind: KindSampler}}}},
+		},
+		{
 			name: "nested braces in the body",
 			src: `@group(0) @binding(0) var<uniform> u: U;
 @fragment fn fs() -> @location(0) vec4<f32> { if (true) { for (var i = 0; i < 2; i++) { let a = u.x; } } return vec4<f32>(0.0); }`,
-			want: []Entry{{Name: "fs", Stage: "Fragment", Bindings: []Binding{{"u", 0, 0, KindUniform}}}},
+			want: []Entry{{Name: "fs", Stage: "Fragment", Bindings: []Binding{{Name: "u", Group: 0, Binding: 0, Kind: KindUniform}}}},
 		},
 	}
 	for _, tt := range tests {
@@ -105,7 +138,10 @@ func TestParseErrors(t *testing.T) {
 		route string
 	}{
 		{"a storage buffer", "@group(0) @binding(0) var<storage, read> b: array<f32>;\n@vertex fn vs() { _ = b; }", "ShadersUnsupportedBinding", "Parse.ShadersUnsupportedBinding"},
-		{"a texture of another type", "@group(0) @binding(0) var t: texture_cube<f32>;\n@vertex fn vs() { _ = t; }", "ShadersUnsupportedBinding", "Parse.ShadersUnsupportedBinding"},
+		{"a texture of integers with signs", "@group(0) @binding(0) var t: texture_2d<i32>;\n@vertex fn vs() { _ = t; }", "ShadersUnsupportedBinding", "Parse.ShadersUnsupportedBinding"},
+		{"a depth texture", "@group(0) @binding(0) var t: texture_depth_2d;\n@vertex fn vs() { _ = t; }", "ShadersUnsupportedBinding", "Parse.ShadersUnsupportedBinding"},
+		{"a multisampled texture", "@group(0) @binding(0) var t: texture_multisampled_2d<f32>;\n@vertex fn vs() { _ = t; }", "ShadersUnsupportedBinding", "Parse.ShadersUnsupportedBinding"},
+		{"a storage texture", "@group(0) @binding(0) var t: texture_storage_2d<rgba8unorm, write>;\n@vertex fn vs() { _ = t; }", "ShadersUnsupportedBinding", "Parse.ShadersUnsupportedBinding"},
 		{"a comparison sampler", "@group(0) @binding(0) var s: sampler_comparison;\n@vertex fn vs() { _ = s; }", "ShadersUnsupportedBinding", "Parse.ShadersUnsupportedBinding"},
 		{"a compute entry point", "@compute @workgroup_size(1) fn cs() {}", "ShadersComputeEntry", "Parse.ShadersComputeEntry"},
 		{"no entry point", "fn helper() {}", "ShadersNoEntry", "Parse.ShadersNoEntry"},
@@ -188,7 +224,7 @@ func TestGenerate(t *testing.T) {
 	src := writeShaders(t, map[string]string{"blur_pass.wgsl": tinyShader, "solid.wgsl": tinyShader, "notes.txt": "ignored"})
 	out := t.TempDir()
 	naga := &fakeNaga{t: t, version: "9.8.7"}
-	if err := Generate(src, out, naga); err != nil {
+	if err := Generate(defaultPackage, src, out, naga); err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(naga.calls, []string{"blur_pass.wgsl", "blur_pass.wgsl:hlsl", "solid.wgsl", "solid.wgsl:hlsl"}) {
@@ -226,7 +262,7 @@ func TestGenerate(t *testing.T) {
 	}
 	// The same input gives the same files.
 	out2 := t.TempDir()
-	if err := Generate(src, out2, &fakeNaga{t: t, version: "9.8.7"}); err != nil {
+	if err := Generate(defaultPackage, src, out2, &fakeNaga{t: t, version: "9.8.7"}); err != nil {
 		t.Fatal(err)
 	}
 	code2, _ := os.ReadFile(filepath.Join(out2, generated))
@@ -250,7 +286,7 @@ func TestGenerateErrors(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := Generate(writeShaders(t, tt.files), t.TempDir(), tt.naga)
+			err := Generate(defaultPackage, writeShaders(t, tt.files), t.TempDir(), tt.naga)
 			appErr, ok := errors.FromError(err)
 			if !ok {
 				t.Fatalf("expected *errors.Error, got %T (%v)", err, err)
@@ -327,7 +363,7 @@ func TestCheckedInFilesAreUpToDate(t *testing.T) {
 		t.Skipf("naga %s is installed, and the files were made with naga %s", version, m[1])
 	}
 	out := t.TempDir()
-	if err := Generate(src, out, naga); err != nil {
+	if err := Generate(defaultPackage, src, out, naga); err != nil {
 		t.Fatal(err)
 	}
 	files, err := filepath.Glob(filepath.Join(out, "*", "*.spv"))
@@ -360,7 +396,7 @@ func TestIncludesAreExpanded(t *testing.T) {
 	})
 	out := t.TempDir()
 	naga := &fakeNaga{t: t, version: "1.0.0"}
-	if err := Generate(src, out, naga); err != nil {
+	if err := Generate(defaultPackage, src, out, naga); err != nil {
 		t.Fatal(err)
 	}
 	// naga compiled the expanded text, once, for the shader and not for the includes.
@@ -393,7 +429,7 @@ func TestIncludeErrors(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := Generate(writeShaders(t, tt.files), t.TempDir(), &fakeNaga{t: t, version: "1"})
+			err := Generate(defaultPackage, writeShaders(t, tt.files), t.TempDir(), &fakeNaga{t: t, version: "1"})
 			appErr, ok := errors.FromError(err)
 			if !ok || appErr.Tag != tt.tag || !appErr.HasRoute("expand."+tt.tag) {
 				t.Errorf("got %v, want %s through expand", err, tt.tag)

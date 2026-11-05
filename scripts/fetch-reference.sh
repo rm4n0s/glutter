@@ -4,8 +4,8 @@
 # Usage: scripts/fetch-reference.sh   (from anywhere; works relative to the repo root)
 #
 # First run: clones the `stable` branch of flutter/flutter, the
-# material-color-utilities repository, Skia (at Flutter's pinned revision) and flutter_svg (at the commit pinned
-# below) into reference/, then records the exact commits in reference/VERSION.
+# material-color-utilities repository, Skia (at Flutter's pinned revision), flutter_svg (at the commit pinned
+# below) and SDL 3 (at the release tag pinned below) into reference/, then records the exact commits in reference/VERSION.
 # Later runs: reference/VERSION exists, so exactly the recorded commits are
 # checked out. To move to a newer Flutter, delete reference/ and run again.
 #
@@ -50,6 +50,13 @@ FLUTTER_SVG_URL="https://github.com/dnfield/flutter_svg"
 FLUTTER_SVG_DIR="$REF/flutter_svg"
 FLUTTER_SVG_COMMIT="6ed5a9d2831ac88869a6490aac701366acad1b59"
 FLUTTER_SVG_PATHS=(packages/flutter_svg/lib packages/flutter_svg/test)
+
+# SDL 3 (zlib), the reference of the packages gpu, gamepad, audio and sensors (SPEC §27, §28, D32): the shape of the GPU
+# descriptors, the gamepad mappings, the audio backends and the sensors. Nothing is imported or vendored from it.
+SDL_URL="https://github.com/libsdl-org/SDL"
+SDL_DIR="$REF/sdl"
+SDL_TAG="release-3.4.20"
+SDL_PATHS=(include src/gpu src/joystick src/audio src/sensor test)
 
 MCU_URL="https://github.com/material-foundation/material-color-utilities"
 MCU_DIR="$REF/material-color-utilities"
@@ -119,6 +126,16 @@ flutter_version() {
   printf '%s' "${tag:-unknown}"
 }
 
+# write_sdl_version appends the SDL 3 lines to reference/VERSION.
+write_sdl_version() {
+  {
+    echo "sdl_repository=$SDL_URL"
+    echo "sdl_tag=$SDL_TAG"
+    echo "sdl_commit=$(git -C "$SDL_DIR" rev-parse HEAD)"
+    echo "sdl_date=$(commit_date "$SDL_DIR")"
+  } >>"$VERSION_FILE"
+}
+
 # write_svg_version appends the flutter_svg lines to reference/VERSION.
 write_svg_version() {
   {
@@ -127,6 +144,21 @@ write_svg_version() {
     echo "flutter_svg_date=$(commit_date "$FLUTTER_SVG_DIR")"
     echo "flutter_svg_version=$(sed -n 's/^version: *//p' "$FLUTTER_SVG_DIR/packages/flutter_svg/pubspec.yaml" | head -n 1)"
   } >>"$VERSION_FILE"
+}
+
+# ensure_sdl COMMIT clones SDL 3 at SDL_TAG (a shallow clone of the tag) when it is missing, then pins to COMMIT when
+# one is recorded.
+ensure_sdl() {
+  local commit="$1"
+  if [[ ! -d "$SDL_DIR/.git" ]]; then
+    log "Cloning $SDL_URL ($SDL_TAG) into $SDL_DIR"
+    clone_sparse "$SDL_URL" "$SDL_DIR" "$SDL_TAG" "${SDL_PATHS[@]}"
+  else
+    git -C "$SDL_DIR" sparse-checkout set "${SDL_PATHS[@]}"
+  fi
+  if [[ -n "$commit" ]]; then
+    pin_commit "$SDL_DIR" "$commit"
+  fi
 }
 
 mkdir -p "$REF"
@@ -158,6 +190,12 @@ if [[ -f "$VERSION_FILE" ]]; then
     # An older reference/VERSION: record the pinned flutter_svg.
     write_svg_version
   fi
+  sdl_commit="$(read_version sdl_commit)"
+  ensure_sdl "$sdl_commit"
+  if [[ -z "$sdl_commit" ]]; then
+    # An older reference/VERSION: record the pinned SDL 3.
+    write_sdl_version
+  fi
 else
   ensure_repo "$FLUTTER_URL" "$FLUTTER_DIR" "$FLUTTER_BRANCH" "" "${FLUTTER_PATHS[@]}" "${FLUTTER_OPTIONAL_PATHS[@]}"
   ensure_repo "$MCU_URL" "$MCU_DIR" "" "" "${MCU_PATHS[@]}"
@@ -178,6 +216,8 @@ else
     echo "skia_date=$(commit_date "$SKIA_DIR")"
   } >"$VERSION_FILE"
   write_svg_version
+  ensure_sdl ""
+  write_sdl_version
 fi
 
 # Every sparse path must exist; Flutter reorganizes its repository sometimes.
@@ -202,6 +242,12 @@ done
 for p in "${FLUTTER_SVG_PATHS[@]}" LICENSE; do
   if [[ ! -e "$FLUTTER_SVG_DIR/$p" ]]; then
     log "error: missing in reference/flutter_svg: $p"
+    missing=1
+  fi
+done
+for p in "${SDL_PATHS[@]}" LICENSE.txt; do
+  if [[ ! -e "$SDL_DIR/$p" ]]; then
+    log "error: missing in reference/sdl: $p"
     missing=1
   fi
 done

@@ -303,6 +303,117 @@ type d3d12RenderTargetViewDesc struct {
 	_             [8]byte
 }
 
+// d3d12Tex2DArraySRV is the Go mirror of D3D12_TEX2D_ARRAY_SRV.
+type d3d12Tex2DArraySRV struct {
+	MostDetailedMip     uint32  `c:"MostDetailedMip"`
+	MipLevels           uint32  `c:"MipLevels"`
+	FirstArraySlice     uint32  `c:"FirstArraySlice"`
+	ArraySize           uint32  `c:"ArraySize"`
+	PlaneSlice          uint32  `c:"PlaneSlice"`
+	ResourceMinLODClamp float32 `c:"ResourceMinLODClamp"`
+}
+
+// d3d12ShaderResourceViewDescArray is the Go mirror of D3D12_SHADER_RESOURCE_VIEW_DESC with the
+// Texture2DArray variant (the largest of the union, so it needs no padding).
+type d3d12ShaderResourceViewDescArray struct {
+	Format                  uint32 `c:"Format"`
+	ViewDimension           uint32 `c:"ViewDimension"`
+	Shader4ComponentMapping uint32 `c:"Shader4ComponentMapping"`
+	_                       uint32
+	Texture2DArray          d3d12Tex2DArraySRV `c:"Texture2DArray"`
+}
+
+// d3d12TexCubeSRV is the Go mirror of D3D12_TEXCUBE_SRV.
+type d3d12TexCubeSRV struct {
+	MostDetailedMip     uint32  `c:"MostDetailedMip"`
+	MipLevels           uint32  `c:"MipLevels"`
+	ResourceMinLODClamp float32 `c:"ResourceMinLODClamp"`
+}
+
+// d3d12ShaderResourceViewDescCube is the Go mirror of D3D12_SHADER_RESOURCE_VIEW_DESC with the
+// TextureCube variant, padded to the size of the union.
+type d3d12ShaderResourceViewDescCube struct {
+	Format                  uint32 `c:"Format"`
+	ViewDimension           uint32 `c:"ViewDimension"`
+	Shader4ComponentMapping uint32 `c:"Shader4ComponentMapping"`
+	_                       uint32
+	TextureCube             d3d12TexCubeSRV `c:"TextureCube"`
+	_                       [12]byte
+}
+
+// d3d12Tex3DSRV is the Go mirror of D3D12_TEX3D_SRV.
+type d3d12Tex3DSRV struct {
+	MostDetailedMip     uint32  `c:"MostDetailedMip"`
+	MipLevels           uint32  `c:"MipLevels"`
+	ResourceMinLODClamp float32 `c:"ResourceMinLODClamp"`
+}
+
+// d3d12ShaderResourceViewDesc3D is the Go mirror of D3D12_SHADER_RESOURCE_VIEW_DESC with the
+// Texture3D variant, padded to the size of the union.
+type d3d12ShaderResourceViewDesc3D struct {
+	Format                  uint32 `c:"Format"`
+	ViewDimension           uint32 `c:"ViewDimension"`
+	Shader4ComponentMapping uint32 `c:"Shader4ComponentMapping"`
+	_                       uint32
+	Texture3D               d3d12Tex3DSRV `c:"Texture3D"`
+	_                       [12]byte
+}
+
+// d3d12Tex2DArrayRTV is the Go mirror of D3D12_TEX2D_ARRAY_RTV.
+type d3d12Tex2DArrayRTV struct {
+	MipSlice        uint32 `c:"MipSlice"`
+	FirstArraySlice uint32 `c:"FirstArraySlice"`
+	ArraySize       uint32 `c:"ArraySize"`
+	PlaneSlice      uint32 `c:"PlaneSlice"`
+}
+
+// d3d12RenderTargetViewDescArray is the Go mirror of D3D12_RENDER_TARGET_VIEW_DESC with the
+// Texture2DArray variant, padded to the size of the union.
+type d3d12RenderTargetViewDescArray struct {
+	Format         uint32             `c:"Format"`
+	ViewDimension  uint32             `c:"ViewDimension"`
+	Texture2DArray d3d12Tex2DArrayRTV `c:"Texture2DArray"`
+}
+
+// d3d12Tex2DDSV is the Go mirror of D3D12_TEX2D_DSV.
+type d3d12Tex2DDSV struct {
+	MipSlice uint32 `c:"MipSlice"`
+}
+
+// d3d12DepthStencilViewDesc is the Go mirror of D3D12_DEPTH_STENCIL_VIEW_DESC with the Texture2D
+// variant (also used for the multisampled one, whose member is a field that means nothing),
+// padded to the size of the union.
+type d3d12DepthStencilViewDesc struct {
+	Format        uint32        `c:"Format"`
+	ViewDimension uint32        `c:"ViewDimension"`
+	Flags         uint32        `c:"Flags"`
+	Texture2D     d3d12Tex2DDSV `c:"Texture2D"`
+	_             [8]byte
+}
+
+// d3d12Tex2DArrayDSV is the Go mirror of D3D12_TEX2D_ARRAY_DSV.
+type d3d12Tex2DArrayDSV struct {
+	MipSlice        uint32 `c:"MipSlice"`
+	FirstArraySlice uint32 `c:"FirstArraySlice"`
+	ArraySize       uint32 `c:"ArraySize"`
+}
+
+// d3d12DepthStencilViewDescArray is the Go mirror of D3D12_DEPTH_STENCIL_VIEW_DESC with the
+// Texture2DArray variant.
+type d3d12DepthStencilViewDescArray struct {
+	Format         uint32             `c:"Format"`
+	ViewDimension  uint32             `c:"ViewDimension"`
+	Flags          uint32             `c:"Flags"`
+	Texture2DArray d3d12Tex2DArrayDSV `c:"Texture2DArray"`
+}
+
+// d3d12FormatSupport is the Go mirror of D3D12_FEATURE_DATA_FORMAT_SUPPORT.
+type d3d12FormatSupport struct {
+	Format   uint32 `c:"Format"`
+	Support1 uint32 `c:"Support1"`
+	Support2 uint32 `c:"Support2"`
+}
+
 // d3d12FeatureLevels is the Go mirror of D3D12_FEATURE_DATA_FEATURE_LEVELS.
 type d3d12FeatureLevels struct {
 	NumFeatureLevels         uint32         `c:"NumFeatureLevels"`
@@ -552,10 +663,16 @@ type d3d12DiscardRegion struct {
 // checks each one.
 const (
 	// DXGI_FORMAT.
-	dxgiFormatUnknown   uint32 = 0
-	dxgiFormatRGBA8     uint32 = 28 // DXGI_FORMAT_R8G8B8A8_UNORM
-	dxgiFormatBGRA8     uint32 = 87 // DXGI_FORMAT_B8G8R8A8_UNORM
-	dxgiFormatR8        uint32 = 61 // DXGI_FORMAT_R8_UNORM
+	dxgiFormatUnknown uint32 = 0
+	dxgiFormatRGBA8   uint32 = 28 // DXGI_FORMAT_R8G8B8A8_UNORM
+	dxgiFormatBGRA8   uint32 = 87 // DXGI_FORMAT_B8G8R8A8_UNORM
+	dxgiFormatR8      uint32 = 61 // DXGI_FORMAT_R8_UNORM
+	// The formats of SPEC §27.1 (DXGI_FORMAT_*).
+	dxgiFormatRGBA16F   uint32 = 10 // R16G16B16A16_FLOAT
+	dxgiFormatR32U      uint32 = 42 // R32_UINT
+	dxgiFormatRG32U     uint32 = 17 // R32G32_UINT
+	dxgiFormatD32F      uint32 = 40 // D32_FLOAT
+	dxgiFormatD24S8     uint32 = 45 // D24_UNORM_S8_UINT
 	dxgiAdapterSoftware uint32 = 2  // DXGI_ADAPTER_FLAG_SOFTWARE
 
 	// DXGI_CREATE_FACTORY_DEBUG and DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE.
@@ -584,16 +701,24 @@ const (
 	// D3D12_RESOURCE_DIMENSION, D3D12_TEXTURE_LAYOUT and D3D12_RESOURCE_FLAGS.
 	resourceDimensionBuffer    uint32 = 1
 	resourceDimensionTexture2D uint32 = 3
+	resourceDimensionTexture3D uint32 = 4
 	textureLayoutUnknown       uint32 = 0
 	textureLayoutRowMajor      uint32 = 1
 	resourceFlagAllowRT        uint32 = 1
+	resourceFlagAllowDepth     uint32 = 2 // D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL
+	resourceFlagAllowUAV       uint32 = 4 // D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
+	// D3D12_RESOURCE_FLAG_DENY_SHADER_RESOURCE: a depth texture that no shader samples (SPEC §27.1).
+	resourceFlagDenyShaderResource uint32 = 8
 
 	// D3D12_RESOURCE_STATES.
 	resourceStateCommon        uint32 = 0
 	resourceStateRenderTarget  uint32 = 0x4
+	resourceStateDepthWrite    uint32 = 0x10
 	resourceStatePixelShaderRS uint32 = 0x80
 	resourceStateCopyDest      uint32 = 0x400
 	resourceStateCopySource    uint32 = 0x800
+	resourceStateResolveDest   uint32 = 0x1000
+	resourceStateResolveSource uint32 = 0x2000
 	resourceStateGenericRead   uint32 = 0xAC3
 
 	// D3D12_RESOURCE_BARRIER_TYPE_TRANSITION and D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES.
@@ -608,10 +733,26 @@ const (
 	descriptorHeapSRV     uint32 = 0
 	descriptorHeapSampler uint32 = 1
 	descriptorHeapRTV     uint32 = 2
+	descriptorHeapDSV     uint32 = 3
 
-	// D3D12_SRV_DIMENSION_TEXTURE2D and D3D12_RTV_DIMENSION_TEXTURE2D.
-	srvDimensionTexture2D uint32 = 4
-	rtvDimensionTexture2D uint32 = 4
+	// D3D12_SRV_DIMENSION_*, D3D12_RTV_DIMENSION_* and D3D12_DSV_DIMENSION_*.
+	srvDimensionTexture2D      uint32 = 4
+	srvDimensionTexture2DArray uint32 = 5
+	srvDimensionTexture3D      uint32 = 8
+	srvDimensionTextureCube    uint32 = 9
+	rtvDimensionTexture2D      uint32 = 4
+	rtvDimensionTexture2DMS    uint32 = 6
+	rtvDimensionTexture2DArray uint32 = 5
+	dsvDimensionTexture2D      uint32 = 3
+	dsvDimensionTexture2DArray uint32 = 4
+	dsvDimensionTexture2DMS    uint32 = 5
+	// D3D12_CLEAR_FLAG_DEPTH and D3D12_CLEAR_FLAG_STENCIL.
+	clearFlagDepth   uint32 = 1
+	clearFlagStencil uint32 = 2
+	// D3D12_FEATURE_FORMAT_SUPPORT, and D3D12_FORMAT_SUPPORT1_SHADER_SAMPLE: the format can be read
+	// with a filtering sampler.
+	featureFormatSupport      uint32 = 3
+	formatSupportShaderSample uint32 = 0x200
 
 	// D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING.
 	defaultComponentMapping uint32 = 0x1688
@@ -701,9 +842,33 @@ const (
 	stencilOpKeep      uint32 = 1
 	depthWriteMaskZero uint32 = 0
 	defaultSampleMask  uint32 = 0xFFFFFFFF
-	// D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE and D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST.
-	topologyTypeTriangle uint32 = 3
-	topologyTriangleList uint32 = 4
+	// The other D3D12_COMPARISON_FUNC_* and D3D12_STENCIL_OP_* values.
+	comparisonLess         uint32 = 2
+	comparisonEqual        uint32 = 3
+	comparisonLessEqual    uint32 = 4
+	comparisonGreater      uint32 = 5
+	comparisonNotEqual     uint32 = 6
+	comparisonGreaterEqual uint32 = 7
+	stencilOpZero          uint32 = 2
+	stencilOpReplace       uint32 = 3
+	stencilOpIncrSat       uint32 = 4
+	stencilOpDecrSat       uint32 = 5
+	stencilOpInvert        uint32 = 6
+	stencilOpIncr          uint32 = 7
+	stencilOpDecr          uint32 = 8
+	// D3D12_PRIMITIVE_TOPOLOGY_TYPE_* and D3D_PRIMITIVE_TOPOLOGY_*.
+	topologyTypePoint     uint32 = 1
+	topologyTypeLine      uint32 = 2
+	topologyTypeTriangle  uint32 = 3
+	topologyPointList     uint32 = 1
+	topologyLineList      uint32 = 2
+	topologyLineStrip     uint32 = 3
+	topologyTriangleList  uint32 = 4
+	topologyTriangleStrip uint32 = 5
+	// D3D12_CULL_MODE_FRONT and D3D12_CULL_MODE_BACK, and D3D12_DEPTH_WRITE_MASK_ALL.
+	cullModeFront     uint32 = 2
+	cullModeBack      uint32 = 3
+	depthWriteMaskAll uint32 = 1
 	// D3D12_INPUT_CLASSIFICATION.
 	inputPerVertex   uint32 = 0
 	inputPerInstance uint32 = 1
@@ -713,6 +878,30 @@ const (
 	dxgiFormatRGB32   uint32 = 6  // DXGI_FORMAT_R32G32B32_FLOAT
 	dxgiFormatRGBA32  uint32 = 2  // DXGI_FORMAT_R32G32B32A32_FLOAT
 	dxgiFormatR16Uint uint32 = 57 // DXGI_FORMAT_R16_UINT
+	// The other formats of the vertex attributes (DXGI_FORMAT_*): U is UINT, S is SINT, N is UNORM, SN is SNORM,
+	// F is FLOAT.
+	dxgiFormatRGB32U   uint32 = 7
+	dxgiFormatRGBA32U  uint32 = 3
+	dxgiFormatR32S     uint32 = 43
+	dxgiFormatRG32S    uint32 = 18
+	dxgiFormatRGB32S   uint32 = 8
+	dxgiFormatRGBA32S  uint32 = 4
+	dxgiFormatRG8U     uint32 = 50
+	dxgiFormatRGBA8U   uint32 = 30
+	dxgiFormatRG8S     uint32 = 52
+	dxgiFormatRGBA8S   uint32 = 32
+	dxgiFormatRG8N     uint32 = 49
+	dxgiFormatRG8SN    uint32 = 51
+	dxgiFormatRGBA8SN  uint32 = 31
+	dxgiFormatRG16U    uint32 = 36
+	dxgiFormatRGBA16U  uint32 = 12
+	dxgiFormatRG16S    uint32 = 38
+	dxgiFormatRGBA16S  uint32 = 14
+	dxgiFormatRG16N    uint32 = 35
+	dxgiFormatRGBA16N  uint32 = 11
+	dxgiFormatRG16SN   uint32 = 37
+	dxgiFormatRGBA16SN uint32 = 13
+	dxgiFormatRG16F    uint32 = 34
 	// D3D12_ERROR_ADAPTER_NOT_FOUND and D3D12_ERROR_DRIVER_VERSION_MISMATCH: what a pipeline library
 	// says of a blob that belongs to another adapter or driver (SPEC §9.8 "Pipelines").
 	d3d12ErrorAdapterNotFound       uint32 = 0x887E0001

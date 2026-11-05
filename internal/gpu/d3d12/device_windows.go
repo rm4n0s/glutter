@@ -65,6 +65,8 @@ type Device struct {
 	getenv func(string) string
 	libs   *libraries
 	limits explicit.Limits
+	// features are the optional features of the adapter (Features).
+	features explicit.Features
 
 	factory, adapter, dev, queue, infoQueue win32.Object
 	info                                    AdapterInfo
@@ -102,7 +104,7 @@ type Device struct {
 	tracker     *stateTracker[*texture]
 	live        map[any]func() // what to destroy at Close: every resource that is not destroyed yet
 
-	cpu         [3]*cpuHeaps // render target views, shader resource views and samplers
+	cpu         [4]*cpuHeaps // render target views, shader resource views, samplers and depth-stencil views
 	debugErrors []string
 
 	// viewBlock and samplerBlock are the sizes of the blocks of the slots' shader-visible heaps, and
@@ -204,7 +206,7 @@ func openWith(o Options, names entryNames, level uint32) (*Device, error) {
 		d.samplerBlock = o.samplerBlock
 	}
 	d.removed = d.deviceRemovedReason
-	d.cpu = [3]*cpuHeaps{newCPUHeaps(descriptorHeapRTV), newCPUHeaps(descriptorHeapSRV), newCPUHeaps(descriptorHeapSampler)}
+	d.cpu = [4]*cpuHeaps{newCPUHeaps(descriptorHeapRTV), newCPUHeaps(descriptorHeapSRV), newCPUHeaps(descriptorHeapSampler), newCPUHeaps(descriptorHeapDSV)}
 	if err := d.openDevice(o, level); err != nil {
 		if cerr := d.Close(); cerr != nil {
 			log.Error("closing the device that failed to open", "err", cerr)
@@ -410,6 +412,7 @@ func (d *Device) queryFeatures() {
 	} else {
 		d.log.Debug("the highest feature level of the adapter is not known", "hresult", hr.String())
 	}
+	d.features.Float32Filterable = d.formatsFilter(dxgiFormatRGBA32, dxgiFormatR32)
 	var opts d3d12Options
 	if hr := win32.FromResult(d.dev.Call(deviceCheckFeatureSupport, uintptr(featureD3D12Options), uintptr(unsafe.Pointer(&opts)), unsafe.Sizeof(opts))); hr.Succeeded() {
 		d.bindingTier = opts.ResourceBindingTier
@@ -419,6 +422,18 @@ func (d *Device) queryFeatures() {
 	} else {
 		d.log.Debug("the resource binding tier of the adapter is not known", "hresult", hr.String())
 	}
+}
+
+// formatsFilter says whether every one of the formats can be read with a filtering sampler
+// (D3D12_FORMAT_SUPPORT1_SHADER_SAMPLE); a failed question says no.
+func (d *Device) formatsFilter(formats ...uint32) bool {
+	for _, f := range formats {
+		fs := d3d12FormatSupport{Format: f}
+		if hr := win32.FromResult(d.dev.Call(deviceCheckFeatureSupport, uintptr(featureFormatSupport), uintptr(unsafe.Pointer(&fs)), unsafe.Sizeof(fs))); hr.Failed() || fs.Support1&formatSupportShaderSample == 0 {
+			return false
+		}
+	}
+	return true
 }
 
 // createQueue makes the direct command queue.
@@ -561,6 +576,10 @@ func (d *Device) report() {
 // Limits implements explicit.Device: the design limits of SPEC §9.3, which are inside those of
 // feature level 11_0 (SPEC §9.8).
 func (d *Device) Limits() explicit.Limits { return d.limits }
+
+// Features implements explicit.Device: the 32 bit float formats are filtered when the adapter says
+// that it can sample them with a filter (SPEC §27.1).
+func (d *Device) Features() explicit.Features { return d.features }
 
 // Stats counts what the device has made and not released.
 //

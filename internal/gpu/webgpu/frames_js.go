@@ -43,21 +43,69 @@ func (d *Device) Begin() (explicit.Encoder, error) {
 // BeginPass implements explicit.Encoder. The target must be a texture of this device with
 // TextureRenderTarget.
 func (e *encoder) BeginPass(target explicit.Texture, load explicit.LoadOp, clear ui.Color) explicit.Pass {
-	t, ok := target.(*texture)
-	if !ok || t.d != e.d {
-		panic(errors.New(tagWebGPUForeignResource, "the resource was not made by this WebGPU device", "resource", "texture"))
-	}
+	return e.BeginRenderPass(explicit.PassDesc{Color: []explicit.ColorAttachment{{
+		Target: target, Load: load, Clear: [4]float64{float64(clear.R), float64(clear.G), float64(clear.B), float64(clear.A)},
+	}}})
+}
+
+// BeginRenderPass implements explicit.Encoder. The attachments must be textures of this device with
+// TextureRenderTarget, 2D or a view made by Layer.
+func (e *encoder) BeginRenderPass(desc explicit.PassDesc) explicit.Pass {
 	if e.pass != nil {
 		panic(errors.New(tagWebGPUPassNotEnded, "BeginPass was called before the previous pass ended"))
 	}
-	att := map[string]any{"view": t.targetView(), "loadOp": "clear", "storeOp": "store"}
-	if load == explicit.LoadLoad {
-		att["loadOp"] = "load"
-	} else {
-		att["clearValue"] = map[string]any{"r": float64(clear.R), "g": float64(clear.G), "b": float64(clear.B), "a": float64(clear.A)}
+	attachments := make([]explicit.Texture, 0, 2*len(desc.Color)+1)
+	for _, c := range desc.Color {
+		attachments = append(attachments, c.Target)
+		if c.Resolve != nil {
+			attachments = append(attachments, c.Resolve)
+		}
 	}
-	p := e.enc.Call("beginRenderPass", map[string]any{"colorAttachments": []any{att}})
-	e.pass = &pass{e: e, p: p, target: t}
+	if desc.Depth != nil {
+		attachments = append(attachments, desc.Depth.Target)
+	}
+	for _, tex := range attachments {
+		if t, ok := tex.(*texture); !ok || t.d != e.d {
+			panic(errors.New(tagWebGPUForeignResource, "the resource was not made by this WebGPU device", "resource", "texture"))
+		}
+	}
+	e.d.limits.CheckPass(desc)
+	var first *texture
+	colors := make([]any, len(desc.Color))
+	for i, c := range desc.Color {
+		t := c.Target.(*texture)
+		if first == nil {
+			first = t
+		}
+		att := map[string]any{"view": t.targetView(), "loadOp": loadOpName(c.Load), "storeOp": storeOpName(c.Store)}
+		if att["loadOp"] == "clear" {
+			att["clearValue"] = map[string]any{"r": c.Clear[0], "g": c.Clear[1], "b": c.Clear[2], "a": c.Clear[3]}
+		}
+		if c.Resolve != nil {
+			att["resolveTarget"] = c.Resolve.(*texture).targetView()
+		}
+		colors[i] = att
+	}
+	passDesc := map[string]any{"colorAttachments": colors}
+	if dp := desc.Depth; dp != nil {
+		t := dp.Target.(*texture)
+		if first == nil {
+			first = t
+		}
+		depth := map[string]any{"view": t.targetView(), "depthLoadOp": loadOpName(dp.DepthLoad), "depthStoreOp": storeOpName(dp.DepthStore)}
+		if depth["depthLoadOp"] == "clear" {
+			depth["depthClearValue"] = dp.ClearDepth
+		}
+		if t.desc.Format.HasStencil() {
+			depth["stencilLoadOp"], depth["stencilStoreOp"] = loadOpName(dp.StencilLoad), storeOpName(dp.StencilStore)
+			if depth["stencilLoadOp"] == "clear" {
+				depth["stencilClearValue"] = float64(dp.ClearStencil)
+			}
+		}
+		passDesc["depthStencilAttachment"] = depth
+	}
+	p := e.enc.Call("beginRenderPass", passDesc)
+	e.pass = &pass{e: e, p: p, target: first}
 	return e.pass
 }
 
@@ -69,9 +117,9 @@ func (e *encoder) CopyTexture(src explicit.Texture, r image.Rectangle, dst expli
 		panic(errors.New(tagWebGPUForeignResource, "the resource was not made by this WebGPU device", "resource", "texture"))
 	}
 	e.enc.Call("copyTextureToTexture",
-		map[string]any{"texture": s.tex, "mipLevel": s.base, "origin": []any{r.Min.X, r.Min.Y}},
-		map[string]any{"texture": t.tex, "mipLevel": t.base, "origin": []any{at.X, at.Y}},
-		[]any{r.Dx(), r.Dy()})
+		map[string]any{"texture": s.tex, "mipLevel": s.base, "origin": []any{r.Min.X, r.Min.Y, s.baseLayer}},
+		map[string]any{"texture": t.tex, "mipLevel": t.base, "origin": []any{at.X, at.Y, t.baseLayer}},
+		[]any{r.Dx(), r.Dy(), 1})
 }
 
 // readJob is a ReadTexture that waits for the frame to finish and the buffer to map.
@@ -83,30 +131,53 @@ type readJob struct {
 	rect   image.Rectangle
 	format explicit.TextureFormat
 	done   func(*image.RGBA, error)
+	// doneBytes, when set, gets the bytes of the format and done is not used.
+	doneBytes func([]byte, int, error)
+}
+
+// fail tells whoever asked for the read that it did not happen.
+func (j *readJob) fail(err error) {
+	if j.doneBytes != nil {
+		j.doneBytes(nil, 0, err)
+		return
+	}
+	j.done(nil, err)
 }
 
 // ReadTexture implements explicit.Encoder: the rectangle is copied into a buffer that the CPU can
 // map, and done runs in a later task, once the GPU finished and the browser mapped the buffer; it
 // runs on the UI goroutine (SPEC §9.5, §23.3). Submit starts the mapping.
 func (e *encoder) ReadTexture(src explicit.Texture, r image.Rectangle, done func(*image.RGBA, error)) {
+	e.read(src, r, &readJob{done: done})
+}
+
+// ReadTextureBytes implements explicit.Encoder: like ReadTexture, with the bytes of the format.
+func (e *encoder) ReadTextureBytes(src explicit.Texture, r image.Rectangle, done func([]byte, int, error)) {
+	e.read(src, r, &readJob{doneBytes: done})
+}
+
+// read records the copy of the rectangle of src into a buffer that can be mapped and queues job for
+// Submit.
+func (e *encoder) read(src explicit.Texture, r image.Rectangle, job *readJob) {
 	s, ok := src.(*texture)
 	if !ok || s.d != e.d {
 		panic(errors.New(tagWebGPUForeignResource, "the resource was not made by this WebGPU device", "resource", "texture"))
 	}
 	d := e.d
+	d.limits.CheckRead(s.desc, job.doneBytes != nil)
 	pitch := d.limits.AlignedRowPitch(r.Dx(), s.desc.Format.BytesPerPixel())
 	buf, err := tryCall("createBuffer", func() js.Value {
 		return d.dev.Call("createBuffer", map[string]any{"size": pitch * r.Dy(), "usage": bufferMapRead | bufferCopyDst})
 	})
 	if err != nil {
-		done(nil, err)
+		job.fail(err)
 		return
 	}
 	e.enc.Call("copyTextureToBuffer",
-		map[string]any{"texture": s.tex, "mipLevel": s.base, "origin": []any{r.Min.X, r.Min.Y}},
+		map[string]any{"texture": s.tex, "mipLevel": s.base, "origin": []any{r.Min.X, r.Min.Y, s.baseLayer}, "aspect": s.aspect()},
 		map[string]any{"buffer": buf, "bytesPerRow": pitch, "rowsPerImage": r.Dy()},
-		[]any{r.Dx(), r.Dy()})
-	job := &readJob{d: d, buffer: buf, pitch: pitch, rect: r, format: s.desc.Format, done: done}
+		[]any{r.Dx(), r.Dy(), 1})
+	job.d, job.buffer, job.pitch, job.rect, job.format = d, buf, pitch, r, s.desc.Format
 	e.reads = append(e.reads, job)
 }
 
@@ -158,6 +229,12 @@ func (p *Provider) onMapped(id int) {
 	js.CopyBytesToGo(raw, view)
 	job.buffer.Call("unmap")
 	job.buffer.Call("destroy")
+	if job.doneBytes != nil {
+		rowBytes := job.rect.Dx() * job.format.BytesPerPixel()
+		data := packRows(raw, job.pitch, rowBytes, job.rect.Dy())
+		p.post(func() { job.doneBytes(data, rowBytes, nil) })
+		return
+	}
 	img := unpackRows(raw, job.pitch, job.rect.Dx(), job.rect.Dy(), job.format)
 	p.post(func() { job.done(img, nil) })
 }
@@ -174,7 +251,7 @@ func (p *Provider) onMapFailed(id int, message string) {
 	} else {
 		err = errors.New(tagWebGPUReadFailed, "the browser could not map the buffer of a read-back", "message", message)
 	}
-	p.post(func() { job.done(nil, err) })
+	p.post(func() { job.fail(err) })
 }
 
 func (p *Provider) takeRead(id int) *readJob {
@@ -247,6 +324,11 @@ func (p *pass) SetIndexBuffer(b explicit.Buffer, offset int) {
 func (p *pass) SetScissor(r image.Rectangle) {
 	r = r.Intersect(image.Rect(0, 0, p.target.desc.Width, p.target.desc.Height))
 	p.p.Call("setScissorRect", r.Min.X, r.Min.Y, r.Dx(), r.Dy())
+}
+
+// SetStencilReference implements explicit.Pass.
+func (p *pass) SetStencilReference(ref uint32) {
+	p.p.Call("setStencilReference", float64(ref))
 }
 
 // Draw implements explicit.Pass.

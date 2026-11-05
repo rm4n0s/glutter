@@ -18,6 +18,7 @@ type pipeline struct {
 	desc      explicit.PipelineDesc
 	root      *rootSig
 	pso       win32.Object
+	topology  uint32 // the primitive topology the input assembler is set to
 	destroyed bool
 }
 
@@ -130,8 +131,13 @@ func (d *Device) NewPipeline(desc explicit.PipelineDesc) (explicit.Pipeline, err
 		return nil, errors.New(tagD3D12PipelineInvalid, "the shader lacks the entry point",
 			"shader", desc.Shader.Name, "vertex", desc.VertexEntry, "fragment", desc.FragmentEntry)
 	}
-	if dxgiFormat(desc.Target) == dxgiFormatUnknown {
-		return nil, errors.New(tagD3D12PipelineInvalid, "a pipeline needs the format of its target", "shader", desc.Shader.Name)
+	for _, t := range desc.Targets() {
+		if dxgiFormat(t.Format) == dxgiFormatUnknown || t.Format.IsDepthStencil() {
+			return nil, errors.New(tagD3D12PipelineInvalid, "a pipeline needs the color format of each of its targets", "shader", desc.Shader.Name)
+		}
+	}
+	if ds := desc.DepthStencil.Format; ds != explicit.TextureFormatUnspecified && !ds.IsDepthStencil() {
+		return nil, errors.New(tagD3D12PipelineInvalid, "the depth-stencil format of a pipeline is a depth format", "shader", desc.Shader.Name, "format", int(ds))
 	}
 	plan, err := planRoot(vs, fs, d.limits)
 	if err != nil {
@@ -155,16 +161,17 @@ func (d *Device) NewPipeline(desc explicit.PipelineDesc) (explicit.Pipeline, err
 	if err != nil {
 		return nil, err
 	}
-	p := &pipeline{d: d, desc: desc, root: rs, pso: pso}
+	p := &pipeline{d: d, desc: desc, root: rs, pso: pso, topology: primitiveTopology(desc.Topology)}
 	d.pipes.live++
 	d.live[p] = func() { p.destroyed = true; d.pipes.live--; d.disown(p.pso) }
 	return p, nil
 }
 
-// makePipelineState makes the pipeline state object: the shader, the vertex layout, the blend state of
-// the one render target, the target format and no depth or stencil; from the pipeline library when it
-// has the pipeline.
+// makePipelineState makes the pipeline state object: the shader, the vertex layout, the blend state and
+// format of each render target, the rasterizer, depth and stencil state, the primitive type and the
+// samples; from the pipeline library when it has the pipeline.
 func (d *Device) makePipelineState(desc explicit.PipelineDesc, rs *rootSig, vsCode, psCode []byte) (win32.Object, error) {
+	targets := desc.Targets()
 	els := inputElements(desc.VertexBuffers)
 	elDescs := make([]d3d12InputElementDesc, len(els))
 	for i, e := range els {
@@ -174,24 +181,21 @@ func (d *Device) makePipelineState(desc explicit.PipelineDesc, rs *rootSig, vsCo
 		}
 	}
 	pd := d3d12GraphicsPipelineStateDesc{
-		RootSignature: rs.obj.Ptr(),
-		VS:            d3d12ShaderBytecode{Code: unsafe.Pointer(&vsCode[0]), Length: uintptr(len(vsCode))},
-		PS:            d3d12ShaderBytecode{Code: unsafe.Pointer(&psCode[0]), Length: uintptr(len(psCode))},
-		BlendState:    blendDesc(desc.Blend),
-		SampleMask:    defaultSampleMask,
-		RasterizerState: d3d12RasterizerDesc{
-			FillMode: fillModeSolid, CullMode: cullModeNone, DepthClipEnable: 1,
-		},
-		DepthStencilState: d3d12DepthStencilDesc{
-			DepthWriteMask: depthWriteMaskZero, DepthFunc: comparisonAlways,
-			FrontFace: d3d12DepthStencilOpDesc{StencilFailOp: stencilOpKeep, StencilDepthFailOp: stencilOpKeep, StencilPassOp: stencilOpKeep, StencilFunc: comparisonAlways},
-			BackFace:  d3d12DepthStencilOpDesc{StencilFailOp: stencilOpKeep, StencilDepthFailOp: stencilOpKeep, StencilPassOp: stencilOpKeep, StencilFunc: comparisonAlways},
-		},
-		PrimitiveTopologyType: topologyTypeTriangle,
-		NumRenderTargets:      1,
-		SampleDesc:            dxgiSampleDesc{Count: 1},
+		RootSignature:         rs.obj.Ptr(),
+		VS:                    d3d12ShaderBytecode{Code: unsafe.Pointer(&vsCode[0]), Length: uintptr(len(vsCode))},
+		PS:                    d3d12ShaderBytecode{Code: unsafe.Pointer(&psCode[0]), Length: uintptr(len(psCode))},
+		BlendState:            blendDescOf(targets),
+		SampleMask:            defaultSampleMask,
+		RasterizerState:       rasterizerDesc(desc),
+		DepthStencilState:     depthStencilDesc(desc.DepthStencil),
+		PrimitiveTopologyType: primitiveTopologyType(desc.Topology),
+		NumRenderTargets:      uint32(len(targets)),
+		DSVFormat:             dxgiFormat(desc.DepthStencil.Format),
+		SampleDesc:            dxgiSampleDesc{Count: uint32(desc.Samples())},
 	}
-	pd.RTVFormats[0] = dxgiFormat(desc.Target)
+	for i, t := range targets {
+		pd.RTVFormats[i] = dxgiFormat(t.Format)
+	}
 	if len(elDescs) > 0 {
 		pd.InputLayout = d3d12InputLayoutDesc{Elements: unsafe.Pointer(&elDescs[0]), NumElements: uint32(len(elDescs))}
 	}

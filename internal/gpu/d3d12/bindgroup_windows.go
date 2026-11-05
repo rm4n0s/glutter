@@ -89,7 +89,12 @@ func (d *Device) NewBindGroup(p explicit.Pipeline, group int, entries []explicit
 			}
 			tex = d.own2texture(e.Texture)
 			if tex.srv < 0 {
-				return nil, errors.New(tagD3D12BindGroupInvalid, "the texture is not TextureSampled", "group", group, "binding", n)
+				return nil, errors.New(tagD3D12BindGroupInvalid, "the texture is not TextureSampled, or is a layer of an array or a cube, which Direct3D 12 cannot sample as a 2D texture",
+					"group", group, "binding", n)
+			}
+			if sb, ok := textureBinding(pl, group, n); ok && (tex.desc.Kind.Dimension() != sb.Dimension || !tex.desc.Format.SampleType(d.features).Fits(sb.Sample)) {
+				return nil, errors.New(tagD3D12TextureBindingMismatch, "the texture is not the dimension or sample type that the shader declares",
+					"group", group, "binding", n, "kind", int(tex.desc.Kind), "dimension", int(sb.Dimension), "format", int(tex.desc.Format), "sample", int(sb.Sample))
 			}
 			src = d.cpu[1].handle(tex.srv)
 		}
@@ -197,13 +202,20 @@ func (d *Device) createNullView(dst uintptr) {
 	d.dev.Call(deviceCreateShaderResourceView, 0, uintptr(unsafe.Pointer(&srv)), dst)
 }
 
-// stateLevel is the subresource a shader resource view of the texture reads: every level of a texture
-// with several, else the one level it is.
-func (t *texture) stateLevel() int {
-	if t.desc.MipLevels > 1 {
-		return allLevels
+// textureBinding finds the declaration of the texture at the binding in the entry points of the pipeline.
+func textureBinding(p *pipeline, group, binding int) (explicit.ShaderBinding, bool) {
+	for _, name := range []string{p.desc.FragmentEntry, p.desc.VertexEntry} {
+		entry, ok := p.desc.Shader.Entry(name)
+		if !ok {
+			continue
+		}
+		for _, b := range entry.Bindings {
+			if b.Group == group && b.Binding == binding && b.Kind == explicit.BindingSampledTexture {
+				return b, true
+			}
+		}
 	}
-	return t.base
+	return explicit.ShaderBinding{}, false
 }
 
 // The tags of the errors that this file makes (rm4n0s/errors, R5).
@@ -212,4 +224,8 @@ const (
 	// entries, and of the programmer error of binding a group to a pipeline it does not fit, with
 	// the wrong number of dynamic offsets, or after its frame; the metadata name what is wrong.
 	tagD3D12BindGroupInvalid = "D3D12BindGroupInvalid"
+	// tagD3D12TextureBindingMismatch is the tag of the error for a texture bound where the shader declares
+	// another dimension or sample type (a cube where it reads a 2D texture, a float32 texture without
+	// filtering where it filters); the metadata name the binding and the kinds.
+	tagD3D12TextureBindingMismatch = "D3D12TextureBindingMismatch"
 )

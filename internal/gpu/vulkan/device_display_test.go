@@ -511,7 +511,7 @@ func TestErrorsOfTheDevice(t *testing.T) {
 		pass := enc.BeginPass(tex, explicit.LoadClear, colorOf(0, 0, 0, 1))
 		err := panicError(func() { enc.BeginPass(tex, explicit.LoadClear, colorOf(0, 0, 0, 1)) })
 		appErr, ok := errors.FromError(err)
-		if !ok || appErr.Tag != tagVulkanPassNotEnded || !appErr.HasRoute("encoder.BeginPass.VulkanPassNotEnded") {
+		if !ok || appErr.Tag != tagVulkanPassNotEnded || !appErr.HasRoute("encoder.BeginPass->encoder.BeginRenderPass.VulkanPassNotEnded") {
 			t.Errorf("got %v, want VulkanPassNotEnded via encoder.BeginPass", err)
 		}
 		pass.End()
@@ -524,7 +524,7 @@ func TestErrorsOfTheDevice(t *testing.T) {
 		enc, _ := d.Begin()
 		err := panicError(func() { enc.BeginPass(other, explicit.LoadClear, colorOf(0, 0, 0, 1)) })
 		appErr, ok := errors.FromError(err)
-		if !ok || appErr.Tag != tagVulkanForeignResource || !appErr.HasRoute("encoder.BeginPass.VulkanForeignResource") {
+		if !ok || appErr.Tag != tagVulkanForeignResource || !appErr.HasRoute("encoder.BeginPass->encoder.BeginRenderPass.VulkanForeignResource") {
 			t.Errorf("got %v, want VulkanForeignResource via encoder.BeginPass", err)
 		}
 		if err := enc.Submit(); err != nil {

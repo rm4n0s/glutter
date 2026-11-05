@@ -22,56 +22,131 @@ type boundGroup struct {
 	offs []uint32
 }
 
-// BeginPass implements explicit.Encoder. The target must be a texture of this device with
-// TextureRenderTarget. The barrier that puts it in the state RENDER_TARGET is recorded first, then
-// the clear of LoadClear, or DiscardResource for LoadDontCare (the contents are not needed, which
-// tile-based GPUs use; SPEC §9.3), then the render target, the viewport and the scissor of the whole
-// target, and the triangle list.
+// BeginPass implements explicit.Encoder: a pass with one color attachment (BeginRenderPass).
 func (e *encoder) BeginPass(target explicit.Texture, load explicit.LoadOp, clear ui.Color) explicit.Pass {
+	return e.BeginRenderPass(explicit.PassDesc{Color: []explicit.ColorAttachment{{
+		Target: target, Load: load, Clear: [4]float64{float64(clear.R), float64(clear.G), float64(clear.B), float64(clear.A)},
+	}}})
+}
+
+// BeginRenderPass implements explicit.Encoder. Every attachment must be a texture of this device with
+// TextureRenderTarget. The barrier that puts them in the states RENDER_TARGET and DEPTH_WRITE is recorded
+// first, then the clears of LoadClear (ClearRenderTargetView, ClearDepthStencilView), or DiscardResource
+// for LoadDontCare of a color attachment (the contents are not needed, which tile-based GPUs use; SPEC
+// §9.3), then the render targets, the viewport and the scissor of the whole attachments. A color
+// attachment with a resolve target is resolved when the pass ends. The depth clear passes a float
+// that the standard library's calls pass on amd64 only (depthclear_windows_arm64.go).
+func (e *encoder) BeginRenderPass(desc explicit.PassDesc) explicit.Pass {
 	d := e.d
-	t := d.own2texture(target)
 	if e.pass != nil {
 		panic(errors.New(tagD3D12PassNotEnded, "BeginPass was called before the previous pass ended"))
 	}
-	if t.rtv < 0 {
-		panic(errors.New(tagD3D12TextureInvalid, "the target of a pass needs TextureRenderTarget", "usage", int(t.desc.Usage)))
+	colors := make([]*texture, len(desc.Color))
+	for i, c := range desc.Color {
+		colors[i] = d.own2texture(c.Target)
+		if c.Resolve != nil {
+			d.own2texture(c.Resolve)
+		}
 	}
+	var depth *texture
+	if desc.Depth != nil {
+		depth = d.own2texture(desc.Depth.Target)
+	}
+	for _, t := range colors {
+		if t.rtv < 0 {
+			panic(errors.New(tagD3D12TextureInvalid, "the target of a pass needs TextureRenderTarget", "usage", int(t.desc.Usage)))
+		}
+	}
+	if depth != nil && depth.dsv < 0 {
+		panic(errors.New(tagD3D12TextureInvalid, "the depth attachment of a pass needs TextureRenderTarget", "usage", int(depth.desc.Usage)))
+	}
+	if len(colors) == 0 && depth == nil {
+		panic(errors.New(tagD3D12TextureInvalid, "a pass needs an attachment"))
+	}
+	d.limits.CheckPass(desc)
 	d.tracker.begin()
-	if err := d.tracker.need(t.root, t.base, stateRenderTarget); err != nil {
-		d.tracker.end()
-		panic(err)
+	for _, t := range colors {
+		if err := d.needTexture(t, stateRenderTarget); err != nil {
+			d.tracker.end()
+			panic(err)
+		}
+	}
+	if depth != nil {
+		if err := d.needTexture(depth, stateDepthWrite); err != nil {
+			d.tracker.end()
+			panic(err)
+		}
 	}
 	d.barrier(e.list)
-	switch loadActionOf(load) {
-	case loadActionClear:
-		rgba := [4]float32{clear.R, clear.G, clear.B, clear.A}
-		e.list.Call(listClearRenderTargetView, t.rtvHandle(), uintptr(unsafe.Pointer(&rgba[0])), 0, 0)
-	case loadActionDiscard:
-		region := d3d12DiscardRegion{FirstSubresource: uint32(t.base), NumSubresources: 1}
-		e.list.Call(listDiscardResource, t.res.Ptr(), uintptr(unsafe.Pointer(&region)))
+	p := &pass{e: e}
+	rtvs := make([]uintptr, len(colors))
+	for i, c := range desc.Color {
+		t := colors[i]
+		rtvs[i] = t.rtvHandle()
+		switch loadActionOf(c.Load) {
+		case loadActionClear:
+			rgba := [4]float32{float32(c.Clear[0]), float32(c.Clear[1]), float32(c.Clear[2]), float32(c.Clear[3])}
+			e.list.Call(listClearRenderTargetView, rtvs[i], uintptr(unsafe.Pointer(&rgba[0])), 0, 0)
+		case loadActionDiscard:
+			region := d3d12DiscardRegion{FirstSubresource: uint32(t.sub()), NumSubresources: 1}
+			e.list.Call(listDiscardResource, t.res.Ptr(), uintptr(unsafe.Pointer(&region)))
+		}
+		if c.Resolve != nil {
+			p.resolves = append(p.resolves, resolve{src: t, dst: d.own2texture(c.Resolve)})
+		}
+		p.width, p.height = t.desc.Width, t.desc.Height
 	}
-	rtv := t.rtvHandle()
-	e.list.Call(listOMSetRenderTargets, 1, uintptr(unsafe.Pointer(&rtv)), 0, 0)
-	w, h := t.desc.Width, t.desc.Height
-	vp := d3d12Viewport{Width: float32(w), Height: float32(h), MaxDepth: 1}
+	var dsv uintptr
+	if depth != nil {
+		dsv = depth.dsvHandle()
+		p.width, p.height = depth.desc.Width, depth.desc.Height
+		var flags uint32
+		if desc.Depth.DepthLoad == explicit.LoadClear {
+			flags |= clearFlagDepth
+		}
+		if depth.desc.Format.HasStencil() && desc.Depth.StencilLoad == explicit.LoadClear {
+			flags |= clearFlagStencil
+		}
+		if flags != 0 {
+			clearDepthStencil(e.list, dsv, flags, float32(desc.Depth.ClearDepth), uint8(desc.Depth.ClearStencil))
+		}
+	}
+	// A pass without a color attachment (depth only) names no render target view: the pointer is 0.
+	if len(rtvs) == 0 {
+		rtvs = make([]uintptr, 1)
+	}
+	if depth != nil {
+		e.list.Call(listOMSetRenderTargets, uintptr(len(colors)), uintptr(unsafe.Pointer(&rtvs[0])), 0, uintptr(unsafe.Pointer(&dsv)))
+	} else {
+		e.list.Call(listOMSetRenderTargets, uintptr(len(colors)), uintptr(unsafe.Pointer(&rtvs[0])), 0, 0)
+	}
+	runtime.KeepAlive(rtvs)
+	vp := d3d12Viewport{Width: float32(p.width), Height: float32(p.height), MaxDepth: 1}
 	e.list.Call(listRSSetViewports, 1, uintptr(unsafe.Pointer(&vp)))
-	rc := d3d12Rect{Right: int32(w), Bottom: int32(h)}
+	rc := d3d12Rect{Right: int32(p.width), Bottom: int32(p.height)}
 	e.list.Call(listRSSetScissorRects, 1, uintptr(unsafe.Pointer(&rc)))
-	e.list.Call(listIASetPrimitiveTopo, uintptr(topologyTriangleList))
-	e.pass = &pass{e: e, target: t}
-	return e.pass
+	e.pass = p
+	return p
 }
 
 // pass records the draws of one render pass.
 type pass struct {
-	e      *encoder
-	target *texture
-	pipe   *pipeline
+	e *encoder
+	// width and height are the size of the attachments.
+	width, height int
+	// resolves are the multisampled attachments with the textures they are resolved into at End.
+	resolves []resolve
+	pipe     *pipeline
+	// topology is the primitive topology that the input assembler was set to in this pass; 0 for none yet.
+	topology uint32
 	// vertex holds the vertex buffers that were set, by slot; they are given to the input assembler
 	// at the next draw, with the strides of the pipeline that draws.
 	vertex      [8]vertexBinding
 	vertexDirty bool
 }
+
+// resolve is a multisampled attachment and the texture of one sample that receives its average.
+type resolve struct{ src, dst *texture }
 
 // vertexBinding is a vertex buffer that was set: its address from the offset, and the bytes from
 // there to its end.
@@ -100,6 +175,10 @@ func (p *pass) SetPipeline(pl explicit.Pipeline) {
 	if e.pso != pp.pso {
 		e.list.Call(listSetPipelineState, pp.pso.Ptr())
 		e.pso = pp.pso
+	}
+	if p.topology != pp.topology {
+		e.list.Call(listIASetPrimitiveTopo, uintptr(pp.topology))
+		p.topology = pp.topology
 	}
 	p.vertexDirty = true
 }
@@ -140,7 +219,7 @@ func (p *pass) SetBindGroup(group int, g explicit.BindGroup, dynamicOffsets ...u
 		if t == nil {
 			continue
 		}
-		if err := d.tracker.need(t.root, t.stateLevel(), statePixelShaderResource); err != nil {
+		if err := d.needTexture(t, statePixelShaderResource); err != nil {
 			panic(err)
 		}
 	}
@@ -243,7 +322,7 @@ func (p *pass) SetIndexBuffer(b explicit.Buffer, offset int) {
 
 // SetScissor implements explicit.Pass. The rectangle is clipped to the target.
 func (p *pass) SetScissor(r image.Rectangle) {
-	r = r.Intersect(image.Rect(0, 0, p.target.desc.Width, p.target.desc.Height))
+	r = r.Intersect(image.Rect(0, 0, p.width, p.height))
 	rc := d3d12Rect{Left: int32(r.Min.X), Top: int32(r.Min.Y), Right: int32(r.Max.X), Bottom: int32(r.Max.Y)}
 	p.e.list.Call(listRSSetScissorRects, 1, uintptr(unsafe.Pointer(&rc)))
 }
@@ -280,9 +359,34 @@ func (p *pass) DrawIndexed(indices, instances, firstIndex, baseVertex, firstInst
 	p.e.list.Call(listDrawIndexedInstanced, uintptr(indices), uintptr(instances), uintptr(firstIndex), uintptr(uint32(int32(baseVertex))), uintptr(firstInstance))
 }
 
-// End implements explicit.Pass: the target stays in the state RENDER_TARGET until the next
-// operation that needs another.
+// SetStencilReference implements explicit.Pass: OMSetStencilRef.
+func (p *pass) SetStencilReference(ref uint32) {
+	p.e.list.Call(listOMSetStencilRef, uintptr(ref))
+}
+
+// End implements explicit.Pass: the targets stay in the state RENDER_TARGET until the next operation
+// that needs another. The multisampled attachments are resolved: each is put in the state RESOLVE_SOURCE
+// and its resolve target in RESOLVE_DEST by one barrier, and ResolveSubresource averages the samples.
 func (p *pass) End() {
-	p.e.d.tracker.end()
-	p.e.pass = nil
+	e := p.e
+	d := e.d
+	d.tracker.end()
+	e.pass = nil
+	if len(p.resolves) == 0 {
+		return
+	}
+	d.tracker.begin()
+	defer d.tracker.end()
+	for _, r := range p.resolves {
+		if err := d.needTexture(r.src, stateResolveSource); err != nil {
+			panic(err)
+		}
+		if err := d.needTexture(r.dst, stateResolveDest); err != nil {
+			panic(err)
+		}
+	}
+	d.barrier(e.list)
+	for _, r := range p.resolves {
+		e.list.Call(listResolveSubresource, r.dst.res.Ptr(), uintptr(r.dst.sub()), r.src.res.Ptr(), uintptr(r.src.sub()), uintptr(dxgiFormat(r.src.desc.Format)))
+	}
 }

@@ -65,7 +65,7 @@ func TestD3DAddress(t *testing.T) {
 }
 
 func TestSamplerDesc(t *testing.T) {
-	d := samplerDesc(explicit.SamplerDesc{MinFilter: explicit.FilterLinear, MagFilter: explicit.FilterLinear, AddressU: explicit.AddressRepeat})
+	d := samplerDesc(explicit.SamplerDesc{MinFilter: explicit.FilterLinear, MagFilter: explicit.FilterLinear, AddressU: explicit.AddressRepeat, AddressW: explicit.AddressRepeat})
 	if d.Filter != filterMinLinear|filterMagLinear || d.MaxLOD != 0 {
 		t.Errorf("without a mip filter only level 0 is read: filter %#x, MaxLOD %v", d.Filter, d.MaxLOD)
 	}
@@ -131,6 +131,13 @@ func TestDXGIVertexFormat(t *testing.T) {
 		{explicit.VertexFloat32x4, dxgiFormatRGBA32},
 		{explicit.VertexUnorm8x4, dxgiFormatRGBA8},
 		{explicit.VertexFormatUnspecified, dxgiFormatRGBA32},
+		{explicit.VertexUint32x3, dxgiFormatRGB32U},
+		{explicit.VertexSint32, dxgiFormatR32S},
+		{explicit.VertexUint8x4, dxgiFormatRGBA8U},
+		{explicit.VertexSnorm8x4, dxgiFormatRGBA8SN},
+		{explicit.VertexUnorm16x2, dxgiFormatRG16N},
+		{explicit.VertexFloat16x2, dxgiFormatRG16F},
+		{explicit.VertexFloat16x4, dxgiFormatRGBA16F},
 	}
 	for _, tt := range tests {
 		if got := dxgiVertexFormat(tt.f); got != tt.want {
@@ -250,5 +257,132 @@ func TestLibraryRefusal(t *testing.T) {
 		if got := libraryRefusal(tt.code); got != tt.want {
 			t.Errorf("libraryRefusal(%#x) = %q, want %q", tt.code, got, tt.want)
 		}
+	}
+}
+
+func TestDXGIFormatsOfTheExplicitFormats(t *testing.T) {
+	tests := []struct {
+		f    explicit.TextureFormat
+		want uint32
+		copy uint32
+	}{
+		{explicit.TextureFormatRGBA16Float, dxgiFormatRGBA16F, dxgiFormatRGBA16F},
+		{explicit.TextureFormatRGBA32Float, dxgiFormatRGBA32, dxgiFormatRGBA32},
+		{explicit.TextureFormatR32Float, dxgiFormatR32, dxgiFormatR32},
+		{explicit.TextureFormatR32Uint, dxgiFormatR32U, dxgiFormatR32U},
+		{explicit.TextureFormatRG32Uint, dxgiFormatRG32U, dxgiFormatRG32U},
+		{explicit.TextureFormatDepth32Float, dxgiFormatD32F, dxgiFormatR32}, // the depth plane is copied as R32_FLOAT
+		{explicit.TextureFormatDepth24PlusStencil8, dxgiFormatD24S8, dxgiFormatD24S8},
+		{explicit.TextureFormatUnspecified, dxgiFormatUnknown, dxgiFormatUnknown},
+	}
+	for _, tt := range tests {
+		if got := dxgiFormat(tt.f); got != tt.want {
+			t.Errorf("dxgiFormat(%d) = %d, want %d", tt.f, got, tt.want)
+		}
+		if got := dxgiCopyFormat(tt.f); got != tt.copy {
+			t.Errorf("dxgiCopyFormat(%d) = %d, want %d", tt.f, got, tt.copy)
+		}
+	}
+}
+
+func TestPrimitiveMappings(t *testing.T) {
+	tests := []struct {
+		t        explicit.PrimitiveTopology
+		wantType uint32
+		want     uint32
+	}{
+		{explicit.TopologyTriangleList, topologyTypeTriangle, topologyTriangleList},
+		{explicit.TopologyTriangleStrip, topologyTypeTriangle, topologyTriangleStrip},
+		{explicit.TopologyLineList, topologyTypeLine, topologyLineList},
+		{explicit.TopologyLineStrip, topologyTypeLine, topologyLineStrip},
+		{explicit.TopologyPointList, topologyTypePoint, topologyPointList},
+	}
+	for _, tt := range tests {
+		if got := primitiveTopologyType(tt.t); got != tt.wantType {
+			t.Errorf("primitiveTopologyType(%d) = %d, want %d", tt.t, got, tt.wantType)
+		}
+		if got := primitiveTopology(tt.t); got != tt.want {
+			t.Errorf("primitiveTopology(%d) = %d, want %d", tt.t, got, tt.want)
+		}
+	}
+	for c, want := range map[explicit.CullMode]uint32{explicit.CullNone: cullModeNone, explicit.CullFront: cullModeFront, explicit.CullBack: cullModeBack} {
+		if got := d3dCull(c); got != want {
+			t.Errorf("d3dCull(%d) = %d, want %d", c, got, want)
+		}
+	}
+}
+
+func TestRasterizerDesc(t *testing.T) {
+	tests := []struct {
+		name string
+		desc explicit.PipelineDesc
+		ccw  uint32
+		cull uint32
+		bias int32
+	}{
+		{"the default winding is counter-clockwise", explicit.PipelineDesc{}, 1, cullModeNone, 0},
+		{"clockwise", explicit.PipelineDesc{FrontFace: explicit.FrontFaceCW, CullMode: explicit.CullBack}, 0, cullModeBack, 0},
+		{"a bias", explicit.PipelineDesc{CullMode: explicit.CullFront, DepthStencil: explicit.DepthStencilState{DepthBias: -3}}, 1, cullModeFront, -3},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := rasterizerDesc(tt.desc)
+			if r.FrontCounterClockwise != tt.ccw || r.CullMode != tt.cull || r.DepthBias != tt.bias || r.FillMode != fillModeSolid || r.DepthClipEnable != 1 {
+				t.Errorf("rasterizer = %+v", r)
+			}
+		})
+	}
+}
+
+func TestDepthStencilDesc(t *testing.T) {
+	t.Run("no attachment: no test", func(t *testing.T) {
+		d := depthStencilDesc(explicit.DepthStencilState{DepthWrite: true, DepthCompare: explicit.CompareLess})
+		if d.DepthEnable != 0 || d.StencilEnable != 0 || d.DepthWriteMask != depthWriteMaskZero {
+			t.Errorf("depth-stencil = %+v", d)
+		}
+	})
+	t.Run("depth only", func(t *testing.T) {
+		d := depthStencilDesc(explicit.DepthStencilState{Format: explicit.TextureFormatDepth32Float, DepthWrite: true, DepthCompare: explicit.CompareGreaterEqual})
+		if d.DepthEnable != 1 || d.DepthWriteMask != depthWriteMaskAll || d.DepthFunc != comparisonGreaterEqual || d.StencilEnable != 0 {
+			t.Errorf("depth-stencil = %+v", d)
+		}
+	})
+	t.Run("stencil", func(t *testing.T) {
+		d := depthStencilDesc(explicit.DepthStencilState{
+			Format: explicit.TextureFormatDepth24PlusStencil8, StencilReadMask: 0x0F,
+			StencilFront: explicit.StencilFaceState{Compare: explicit.CompareEqual, FailOp: explicit.StencilZero, DepthFailOp: explicit.StencilInvert, PassOp: explicit.StencilIncrementWrap},
+			StencilBack:  explicit.StencilFaceState{Compare: explicit.CompareNever, PassOp: explicit.StencilDecrementClamp},
+		})
+		want := d3d12DepthStencilOpDesc{StencilFailOp: stencilOpZero, StencilDepthFailOp: stencilOpInvert, StencilPassOp: stencilOpIncr, StencilFunc: comparisonEqual}
+		if d.StencilEnable != 1 || d.FrontFace != want || d.StencilReadMask != 0x0F || d.StencilWriteMask != 0xFF || d.DepthFunc != comparisonAlways {
+			t.Errorf("depth-stencil = %+v", d)
+		}
+		if d.BackFace.StencilFunc != comparisonNever || d.BackFace.StencilPassOp != stencilOpDecrSat || d.BackFace.StencilFailOp != stencilOpKeep {
+			t.Errorf("back face = %+v", d.BackFace)
+		}
+	})
+}
+
+func TestBlendDescOfSeveralTargets(t *testing.T) {
+	over := explicit.BlendState{Enabled: true, SrcFactor: explicit.BlendSrcAlpha, DstFactor: explicit.BlendOneMinusSrcAlpha}
+	d := blendDescOf([]explicit.ColorTargetState{
+		{Format: explicit.TextureFormatRGBA8Unorm},
+		{Format: explicit.TextureFormatRGBA16Float, Blend: over, WriteMask: explicit.ColorWriteRed | explicit.ColorWriteAlpha},
+		{Format: explicit.TextureFormatR32Uint, WriteMask: explicit.ColorWriteNone},
+	})
+	if d.IndependentBlendEnable != 1 {
+		t.Error("several targets blend independently")
+	}
+	if rt := d.RenderTarget[0]; rt.BlendEnable != 0 || rt.RenderTargetWriteMask != 0xF {
+		t.Errorf("target 0 = %+v", rt)
+	}
+	if rt := d.RenderTarget[1]; rt.BlendEnable != 1 || rt.SrcBlend != blendSrcAlpha || rt.DestBlend != blendInvSrcAlpha || rt.RenderTargetWriteMask != 0x9 {
+		t.Errorf("target 1 = %+v", rt)
+	}
+	if rt := d.RenderTarget[2]; rt.RenderTargetWriteMask != 0 {
+		t.Errorf("target 2 = %+v", rt)
+	}
+	if one := blendDescOf([]explicit.ColorTargetState{{}}); one.IndependentBlendEnable != 0 {
+		t.Error("one target needs no independent blend")
 	}
 }

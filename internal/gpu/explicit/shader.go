@@ -50,7 +50,8 @@ const (
 	//
 	// Flutter: no counterpart
 	BindingUniformBuffer
-	// BindingSampledTexture is a `texture_2d<f32>`.
+	// BindingSampledTexture is a `texture_2d<f32>`, or a texture_2d_array, texture_cube or
+	// texture_3d of f32 or u32 (ShaderBinding.Dimension and Sample).
 	//
 	// Flutter: no counterpart
 	BindingSampledTexture
@@ -71,6 +72,47 @@ func (k BindingKind) String() string {
 		return "sampler"
 	}
 	return "unspecified"
+}
+
+// TextureDimension is the dimension of a texture binding of a shader: the WGSL type
+// texture_2d, texture_2d_array, texture_cube or texture_3d. The zero value is TextureDim2D.
+//
+// Flutter: no counterpart
+type TextureDimension int
+
+// The dimensions of a texture binding.
+const (
+	// TextureDim2D is a texture_2d.
+	//
+	// Flutter: no counterpart
+	TextureDim2D TextureDimension = iota
+	// TextureDim2DArray is a texture_2d_array.
+	//
+	// Flutter: no counterpart
+	TextureDim2DArray
+	// TextureDimCube is a texture_cube.
+	//
+	// Flutter: no counterpart
+	TextureDimCube
+	// TextureDim3D is a texture_3d.
+	//
+	// Flutter: no counterpart
+	TextureDim3D
+)
+
+// Dimension returns the dimension of the views of a texture of this kind that a shader samples.
+//
+// Flutter: no counterpart
+func (k TextureKind) Dimension() TextureDimension {
+	switch k {
+	case TextureKind2DArray:
+		return TextureDim2DArray
+	case TextureKindCube:
+		return TextureDimCube
+	case TextureKind3D:
+		return TextureDim3D
+	}
+	return TextureDim2D
 }
 
 // ShaderRegister is where the HLSL of a shader binds a resource (D25, SPEC §9.8): for the binding
@@ -104,6 +146,13 @@ type ShaderBinding struct {
 	Group, Binding int
 	// Kind says what the resource is.
 	Kind BindingKind
+	// Dimension is the dimension of a texture binding; the zero value is a 2D texture.
+	Dimension TextureDimension
+	// Sample is the sample type of a texture binding. A f32 texture that the shader reads only with
+	// textureLoad, textureDimensions and the like is SampleTypeUnfilterableFloat: any float
+	// texture can be bound to it, a float32 texture without float32-filterable too. A u32 texture
+	// is SampleTypeUint.
+	Sample SampleType
 	// Register is where the HLSL binds the resource (Direct3D 12 only).
 	Register ShaderRegister
 }

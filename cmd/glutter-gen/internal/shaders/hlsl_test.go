@@ -188,9 +188,9 @@ func TestBindingRegister(t *testing.T) {
 		space int
 		index int
 	}{
-		{Binding{"u", 0, 2, KindUniform}, "b", 0, 2},
-		{Binding{"t", 1, 3, KindTexture}, "t", 1, 3},
-		{Binding{"s", 2, 0, KindSampler}, "s", 2, 0},
+		{Binding{Name: "u", Group: 0, Binding: 2, Kind: KindUniform}, "b", 0, 2},
+		{Binding{Name: "t", Group: 1, Binding: 3, Kind: KindTexture}, "t", 1, 3},
+		{Binding{Name: "s", Group: 2, Binding: 0, Kind: KindSampler}, "s", 2, 0},
 	}
 	for _, tt := range tests {
 		class, space, index := tt.b.Register()
@@ -309,7 +309,7 @@ func TestFixtureIsWhatNagaWrites(t *testing.T) {
 func TestGenerateHLSLWithNaga(t *testing.T) {
 	n := withNaga(t)
 	out := t.TempDir()
-	if err := Generate(writeShaders(t, map[string]string{"pair.wgsl": samplerShader}), out, n); err != nil {
+	if err := Generate(defaultPackage, writeShaders(t, map[string]string{"pair.wgsl": samplerShader}), out, n); err != nil {
 		t.Fatal(err)
 	}
 	code, err := os.ReadFile(filepath.Join(out, generated))
@@ -345,7 +345,7 @@ func TestGenerateHLSLWithNaga(t *testing.T) {
 // the draw (SPEC §9.8), so the value is a uniform.
 func TestGenerateRefusesTheInstanceIndex(t *testing.T) {
 	n := withNaga(t)
-	err := Generate(writeShaders(t, map[string]string{"inst.wgsl": instanceShader}), t.TempDir(), n)
+	err := Generate(defaultPackage, writeShaders(t, map[string]string{"inst.wgsl": instanceShader}), t.TempDir(), n)
 	appErr, ok := errors.FromError(err)
 	if !ok || appErr.Tag != tagShadersHLSLInstanceID || !appErr.HasRoute("Generate->rewriteHLSL.ShadersHLSLInstanceID") {
 		t.Fatalf("got %v, want ShadersHLSLInstanceID via Generate->rewriteHLSL", err)
@@ -371,7 +371,7 @@ func TestGenerateHLSLErrors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			naga := &fakeNaga{t: t, version: "1", hlslEdit: tt.hlsl}
-			err := Generate(writeShaders(t, map[string]string{"a.wgsl": tinyShader}), t.TempDir(), naga)
+			err := Generate(defaultPackage, writeShaders(t, map[string]string{"a.wgsl": tinyShader}), t.TempDir(), naga)
 			appErr, ok := errors.FromError(err)
 			if !ok || appErr.Tag != tt.tag || !appErr.HasRoute(tt.route) {
 				t.Fatalf("got %v, want %s via %s", err, tt.tag, tt.route)

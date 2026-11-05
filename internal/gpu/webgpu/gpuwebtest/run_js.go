@@ -15,6 +15,7 @@ import (
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/internal/gpu"
 	"github.com/rm4n0s/glutter/internal/gpu/explicit"
+	"github.com/rm4n0s/glutter/internal/gpu/explicit/devicetest"
 	"github.com/rm4n0s/glutter/internal/gpu/gputest"
 	"github.com/rm4n0s/glutter/internal/gpu/soft"
 	"github.com/rm4n0s/glutter/internal/gpu/webgpu"
@@ -40,6 +41,8 @@ func run() error {
 		postResult(probe())
 	case "parity":
 		postResult(parity())
+	case "scenes":
+		postResult(scenes())
 	case "unavailable":
 		postResult(unavailable())
 	case "loss":
@@ -51,7 +54,7 @@ func run() error {
 	case "switch":
 		return switchApp()
 	default:
-		return errors.New(tagGPUWebTestModeUnknown, "the query parameter mode is not probe, parity, unavailable, loss, choose, failstart or switch", "mode", mode)
+		return errors.New(tagGPUWebTestModeUnknown, "the query parameter mode is not probe, parity, scenes, unavailable, loss, choose, failstart or switch", "mode", mode)
 	}
 	// The result is posted by an asynchronous call: the program stays until the test has it, so
 	// that its ending is not taken for the program's failure.
@@ -195,6 +198,39 @@ func (g *rig) await() (*image.RGBA, error) {
 	case <-time.After(30 * time.Second):
 		return nil, errors.New(tagCaptureTimeout, "the read-back did not come in 30 seconds")
 	}
+}
+
+// scenesResult is the result of the mode scenes.
+type scenesResult struct {
+	Results    []devicetest.Result `json:"results"`
+	Renderer   string              `json:"renderer"`
+	Validation []string            `json:"validation"`
+	Error      string              `json:"error"`
+}
+
+// scenes runs the scenes that every backend of the explicit device runs (internal/gpu/explicit/devicetest)
+// on the browser's WebGPU device, with no canvas.
+func scenes() scenesResult {
+	var res scenesResult
+	p, err := webgpu.Acquire(context.Background(), webgpu.Options{Timeout: time.Minute})
+	if err != nil {
+		res.Error = "Acquire: " + describe(err)
+		return res
+	}
+	dev, err := p.Open(handleOf(0))
+	if err != nil {
+		res.Error = "Open: " + describe(err)
+		return res
+	}
+	defer func() { _ = dev.Close() }()
+	res.Renderer = dev.(interface{ Description() string }).Description()
+	env := &devicetest.Env{Dev: dev, Pixels: true, Settle: func() { time.Sleep(time.Millisecond) }}
+	c, results := devicetest.NewCollector()
+	devicetest.Run(c, env)
+	res.Results = results()
+	time.Sleep(150 * time.Millisecond) // the browser reports a broken rule in a task of its own
+	res.Validation = p.ValidationErrors()
+	return res
 }
 
 // parity draws every proof scene with the explicit renderer on WebGPU and compares what it reads

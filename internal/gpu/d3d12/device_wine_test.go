@@ -795,7 +795,7 @@ func TestWineCopyOntoItselfIsAStateConflict(t *testing.T) {
 		t.Fatal(err)
 	}
 	appErr := expectPanic(t, func() { e.CopyTexture(tex, image.Rect(0, 0, 4, 4), tex, image.Pt(4, 4)) })
-	if appErr.Tag != tagD3D12StateConflict || !appErr.HasRoute("encoder.CopyTexture->stateTracker[...].need.D3D12StateConflict") {
+	if appErr.Tag != tagD3D12StateConflict || !appErr.HasRoute("encoder.CopyTexture->Device.needTexture->stateTracker[...].need.D3D12StateConflict") {
 		t.Errorf("%s via %s", appErr.Tag, appErr.Route())
 	}
 	if err := e.Submit(); err != nil {
@@ -859,7 +859,7 @@ func TestWinePassErrors(t *testing.T) {
 	}
 	// Not a render target.
 	appErr := expectPanic(t, func() { e.BeginPass(plain, explicit.LoadClear, ui.Color{}) })
-	if appErr.Tag != tagD3D12TextureInvalid || !appErr.HasRoute("encoder.BeginPass.D3D12TextureInvalid") {
+	if appErr.Tag != tagD3D12TextureInvalid || !appErr.HasRoute("encoder.BeginPass->encoder.BeginRenderPass.D3D12TextureInvalid") {
 		t.Errorf("%s via %s", appErr.Tag, appErr.Route())
 	}
 	pass := e.BeginPass(rt, explicit.LoadClear, ui.Color{})
@@ -871,7 +871,11 @@ func TestWinePassErrors(t *testing.T) {
 		"Submit":      func() { _ = e.Submit() },
 	} {
 		appErr := expectPanic(t, fn)
-		if appErr.Tag != tagD3D12PassNotEnded || !appErr.HasRoute("encoder."+name+".D3D12PassNotEnded") {
+		route := "encoder." + name + ".D3D12PassNotEnded"
+		if name == "BeginPass" {
+			route = "encoder.BeginPass->encoder.BeginRenderPass.D3D12PassNotEnded"
+		}
+		if appErr.Tag != tagD3D12PassNotEnded || !appErr.HasRoute(route) {
 			t.Errorf("%s: %s via %s", name, appErr.Tag, appErr.Route())
 		}
 	}
@@ -914,15 +918,25 @@ func TestWineResourceErrors(t *testing.T) {
 
 	t.Run("invalid textures", func(t *testing.T) {
 		for name, desc := range map[string]explicit.TextureDesc{
-			"no width":             {Width: 0, Height: 4, Format: explicit.TextureFormatRGBA8Unorm},
-			"no height":            {Width: 4, Height: 0, Format: explicit.TextureFormatRGBA8Unorm},
-			"no format":            {Width: 4, Height: 4},
-			"more levels than fit": {Width: 4, Height: 4, Format: explicit.TextureFormatRGBA8Unorm, MipLevels: 4},
+			"no width":  {Width: 0, Height: 4, Format: explicit.TextureFormatRGBA8Unorm},
+			"no height": {Width: 4, Height: 0, Format: explicit.TextureFormatRGBA8Unorm},
+			"no format": {Width: 4, Height: 4},
 		} {
 			_, err := d.NewTexture(desc)
 			if appErr := wantRoute(t, err, tagD3D12TextureInvalid, "Device.NewTexture.D3D12TextureInvalid"); appErr.Metadata["levels"] == nil {
 				t.Errorf("%s: metadata = %v", name, appErr.Metadata)
 			}
+		}
+		// More levels than the size has: a programmer error that panics in debug builds, an error in release.
+		more := explicit.TextureDesc{Width: 4, Height: 4, Format: explicit.TextureFormatRGBA8Unorm, MipLevels: 4}
+		if foundation.DebugMode {
+			appErr := expectPanic(t, func() { _, _ = d.NewTexture(more) })
+			if appErr.Tag != "GPUDescriptorInvalid" || !appErr.HasRoute("Device.NewTexture->Limits.CheckTexture->invalid.GPUDescriptorInvalid") {
+				t.Errorf("%s via %s", appErr.Tag, appErr.Route())
+			}
+		} else {
+			_, err := d.NewTexture(more)
+			_ = wantRoute(t, err, tagD3D12TextureInvalid, "Device.NewTexture.D3D12TextureInvalid")
 		}
 		// The most levels a size has is down to 1x1.
 		ok, err := d.NewTexture(explicit.TextureDesc{Width: 4, Height: 4, Format: explicit.TextureFormatRGBA8Unorm, MipLevels: 3, Usage: explicit.TextureSampled})
@@ -959,7 +973,11 @@ func TestWineResourceErrors(t *testing.T) {
 			"BeginPass":   func() { e.BeginPass(otherTex, explicit.LoadClear, ui.Color{}) },
 		} {
 			appErr := expectPanic(t, fn)
-			if appErr.Tag != tagD3D12ForeignResource || !appErr.HasRoute("encoder."+name+"->Device.own2texture.D3D12ForeignResource") {
+			route := "encoder." + name + "->Device.own2texture.D3D12ForeignResource"
+			if name == "BeginPass" {
+				route = "encoder.BeginPass->encoder.BeginRenderPass->Device.own2texture.D3D12ForeignResource"
+			}
+			if appErr.Tag != tagD3D12ForeignResource || !appErr.HasRoute(route) {
 				t.Errorf("%s: %s via %s", name, appErr.Tag, appErr.Route())
 			}
 		}

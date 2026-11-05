@@ -20,8 +20,31 @@ func dxgiFormat(f explicit.TextureFormat) uint32 {
 		return dxgiFormatBGRA8
 	case explicit.TextureFormatR8Unorm:
 		return dxgiFormatR8
+	case explicit.TextureFormatRGBA16Float:
+		return dxgiFormatRGBA16F
+	case explicit.TextureFormatRGBA32Float:
+		return dxgiFormatRGBA32
+	case explicit.TextureFormatR32Float:
+		return dxgiFormatR32
+	case explicit.TextureFormatR32Uint:
+		return dxgiFormatR32U
+	case explicit.TextureFormatRG32Uint:
+		return dxgiFormatRG32U
+	case explicit.TextureFormatDepth32Float:
+		return dxgiFormatD32F
+	case explicit.TextureFormatDepth24PlusStencil8:
+		return dxgiFormatD24S8
 	}
 	return dxgiFormatUnknown
+}
+
+// dxgiCopyFormat is the format of the footprint of a copy between a texture and a buffer: the format
+// of the texture, but for the depth plane of Depth32Float, which a copy reads as R32_FLOAT.
+func dxgiCopyFormat(f explicit.TextureFormat) uint32 {
+	if f == explicit.TextureFormatDepth32Float {
+		return dxgiFormatR32
+	}
+	return dxgiFormat(f)
 }
 
 // d3dFilter maps the three filters of a sampler to D3D12_FILTER: the minification filter, the
@@ -60,7 +83,7 @@ func samplerDesc(d explicit.SamplerDesc) d3d12SamplerDesc {
 	}
 	return d3d12SamplerDesc{
 		Filter:   d3dFilter(d.MinFilter, d.MagFilter, d.MipmapFilter),
-		AddressU: d3dAddress(d.AddressU), AddressV: d3dAddress(d.AddressV), AddressW: d3dAddress(d.AddressU),
+		AddressU: d3dAddress(d.AddressU), AddressV: d3dAddress(d.AddressV), AddressW: d3dAddress(d.AddressW),
 		MaxAnisotropy: 1, ComparisonFunc: comparisonNever, MaxLOD: maxLOD,
 	}
 }
@@ -92,17 +115,165 @@ func d3dBlend(f explicit.BlendFactor, destination bool) uint32 {
 // blending off the source replaces the destination; with it on, the factors are used for the color and
 // the alpha alike, with the add operation (SPEC §9.3).
 func blendDesc(b explicit.BlendState) d3d12BlendDesc {
-	rt := d3d12RenderTargetBlendDesc{
-		SrcBlend: blendOne, DestBlend: blendZero, BlendOp: blendOpAdd,
-		SrcBlendAlpha: blendOne, DestBlendAlpha: blendZero, BlendOpAlpha: blendOpAdd,
-		LogicOp: logicOpNoop, RenderTargetWriteMask: colorWriteEnableAll,
+	return blendDescOf([]explicit.ColorTargetState{{Blend: b}})
+}
+
+// blendDescOf maps the blend states and write masks of the color targets of a pipeline; with more
+// than one target, each has its own state (IndependentBlendEnable).
+func blendDescOf(targets []explicit.ColorTargetState) d3d12BlendDesc {
+	var out d3d12BlendDesc
+	if len(targets) > 1 {
+		out.IndependentBlendEnable = 1
 	}
-	if b.Enabled {
-		rt.BlendEnable = 1
-		rt.SrcBlend, rt.SrcBlendAlpha = d3dBlend(b.SrcFactor, false), d3dBlend(b.SrcFactor, false)
-		rt.DestBlend, rt.DestBlendAlpha = d3dBlend(b.DstFactor, true), d3dBlend(b.DstFactor, true)
+	for i, t := range targets {
+		rt := d3d12RenderTargetBlendDesc{
+			SrcBlend: blendOne, DestBlend: blendZero, BlendOp: blendOpAdd,
+			SrcBlendAlpha: blendOne, DestBlendAlpha: blendZero, BlendOpAlpha: blendOpAdd,
+			LogicOp: logicOpNoop, RenderTargetWriteMask: uint8(t.WriteMask.Bits()),
+		}
+		if t.Blend.Enabled {
+			rt.BlendEnable = 1
+			rt.SrcBlend, rt.SrcBlendAlpha = d3dBlend(t.Blend.SrcFactor, false), d3dBlend(t.Blend.SrcFactor, false)
+			rt.DestBlend, rt.DestBlendAlpha = d3dBlend(t.Blend.DstFactor, true), d3dBlend(t.Blend.DstFactor, true)
+		}
+		out.RenderTarget[i] = rt
 	}
-	return d3d12BlendDesc{RenderTarget: [8]d3d12RenderTargetBlendDesc{rt}}
+	return out
+}
+
+// primitiveTopologyType maps a topology to the type that a pipeline state is made for.
+func primitiveTopologyType(t explicit.PrimitiveTopology) uint32 {
+	switch t {
+	case explicit.TopologyLineList, explicit.TopologyLineStrip:
+		return topologyTypeLine
+	case explicit.TopologyPointList:
+		return topologyTypePoint
+	}
+	return topologyTypeTriangle
+}
+
+// primitiveTopology maps a topology to the D3D_PRIMITIVE_TOPOLOGY the input assembler is set to.
+func primitiveTopology(t explicit.PrimitiveTopology) uint32 {
+	switch t {
+	case explicit.TopologyTriangleStrip:
+		return topologyTriangleStrip
+	case explicit.TopologyLineList:
+		return topologyLineList
+	case explicit.TopologyLineStrip:
+		return topologyLineStrip
+	case explicit.TopologyPointList:
+		return topologyPointList
+	}
+	return topologyTriangleList
+}
+
+// d3dCull maps a cull mode.
+func d3dCull(c explicit.CullMode) uint32 {
+	switch c {
+	case explicit.CullFront:
+		return cullModeFront
+	case explicit.CullBack:
+		return cullModeBack
+	}
+	return cullModeNone
+}
+
+// d3dCompare maps a comparison; the unspecified one is always.
+func d3dCompare(c explicit.CompareFunc) uint32 {
+	switch c {
+	case explicit.CompareNever:
+		return comparisonNever
+	case explicit.CompareLess:
+		return comparisonLess
+	case explicit.CompareEqual:
+		return comparisonEqual
+	case explicit.CompareLessEqual:
+		return comparisonLessEqual
+	case explicit.CompareGreater:
+		return comparisonGreater
+	case explicit.CompareNotEqual:
+		return comparisonNotEqual
+	case explicit.CompareGreaterEqual:
+		return comparisonGreaterEqual
+	}
+	return comparisonAlways
+}
+
+// d3dStencilOp maps a stencil operation.
+func d3dStencilOp(o explicit.StencilOp) uint32 {
+	switch o {
+	case explicit.StencilZero:
+		return stencilOpZero
+	case explicit.StencilReplace:
+		return stencilOpReplace
+	case explicit.StencilInvert:
+		return stencilOpInvert
+	case explicit.StencilIncrementClamp:
+		return stencilOpIncrSat
+	case explicit.StencilDecrementClamp:
+		return stencilOpDecrSat
+	case explicit.StencilIncrementWrap:
+		return stencilOpIncr
+	case explicit.StencilDecrementWrap:
+		return stencilOpDecr
+	}
+	return stencilOpKeep
+}
+
+// stencilFace maps the stencil test of one kind of faces.
+func stencilFace(f explicit.StencilFaceState) d3d12DepthStencilOpDesc {
+	return d3d12DepthStencilOpDesc{
+		StencilFailOp: d3dStencilOp(f.FailOp), StencilDepthFailOp: d3dStencilOp(f.DepthFailOp),
+		StencilPassOp: d3dStencilOp(f.PassOp), StencilFunc: d3dCompare(f.Compare),
+	}
+}
+
+// stencilByteMask maps a stencil mask of the description: 0 means every bit, and Direct3D 12 has 8.
+func stencilByteMask(m uint32) uint8 {
+	if m == 0 {
+		return 0xFF
+	}
+	return uint8(m)
+}
+
+// depthStencilDesc maps the depth and stencil state of a pipeline. Without a depth-stencil format the
+// tests are off; with one, the depth test always runs (the comparison "always" without the write is the
+// same as no test, as in WebGPU) and the stencil test runs when the format has a stencil.
+func depthStencilDesc(ds explicit.DepthStencilState) d3d12DepthStencilDesc {
+	out := d3d12DepthStencilDesc{
+		DepthFunc: comparisonAlways,
+		FrontFace: stencilFace(explicit.StencilFaceState{}), BackFace: stencilFace(explicit.StencilFaceState{}),
+		StencilReadMask: 0xFF, StencilWriteMask: 0xFF,
+	}
+	if ds.Format == explicit.TextureFormatUnspecified {
+		return out
+	}
+	out.DepthEnable = 1
+	if ds.DepthWrite {
+		out.DepthWriteMask = depthWriteMaskAll
+	}
+	out.DepthFunc = d3dCompare(ds.DepthCompare)
+	if ds.Format.HasStencil() {
+		out.StencilEnable = 1
+		out.StencilReadMask, out.StencilWriteMask = stencilByteMask(ds.StencilReadMask), stencilByteMask(ds.StencilWriteMask)
+		out.FrontFace, out.BackFace = stencilFace(ds.StencilFront), stencilFace(ds.StencilBack)
+	}
+	return out
+}
+
+// rasterizerDesc maps the cull mode, the winding and the depth bias of a pipeline. The clip space is
+// WebGPU's, which is Direct3D's: y up, depth from 0 to 1, so a counter-clockwise triangle on the screen is
+// a front face when FrontCounterClockwise is set (SPEC §27.1).
+func rasterizerDesc(desc explicit.PipelineDesc) d3d12RasterizerDesc {
+	r := d3d12RasterizerDesc{
+		FillMode: fillModeSolid, CullMode: d3dCull(desc.CullMode), DepthClipEnable: 1,
+		DepthBias: desc.DepthStencil.DepthBias, DepthBiasClamp: desc.DepthStencil.DepthBiasClamp,
+		SlopeScaledDepthBias: desc.DepthStencil.DepthBiasSlopeScale,
+	}
+	if desc.FrontFace == explicit.FrontFaceCCW {
+		r.FrontCounterClockwise = 1
+	}
+	return r
 }
 
 // dxgiVertexFormat maps the type of a vertex attribute; the unspecified format is four floats, as in the
@@ -117,6 +288,56 @@ func dxgiVertexFormat(f explicit.VertexFormat) uint32 {
 		return dxgiFormatRGB32
 	case explicit.VertexUnorm8x4:
 		return dxgiFormatRGBA8
+	case explicit.VertexUint32:
+		return dxgiFormatR32U
+	case explicit.VertexUint32x2:
+		return dxgiFormatRG32U
+	case explicit.VertexUint32x3:
+		return dxgiFormatRGB32U
+	case explicit.VertexUint32x4:
+		return dxgiFormatRGBA32U
+	case explicit.VertexSint32:
+		return dxgiFormatR32S
+	case explicit.VertexSint32x2:
+		return dxgiFormatRG32S
+	case explicit.VertexSint32x3:
+		return dxgiFormatRGB32S
+	case explicit.VertexSint32x4:
+		return dxgiFormatRGBA32S
+	case explicit.VertexUint8x2:
+		return dxgiFormatRG8U
+	case explicit.VertexUint8x4:
+		return dxgiFormatRGBA8U
+	case explicit.VertexSint8x2:
+		return dxgiFormatRG8S
+	case explicit.VertexSint8x4:
+		return dxgiFormatRGBA8S
+	case explicit.VertexUnorm8x2:
+		return dxgiFormatRG8N
+	case explicit.VertexSnorm8x2:
+		return dxgiFormatRG8SN
+	case explicit.VertexSnorm8x4:
+		return dxgiFormatRGBA8SN
+	case explicit.VertexUint16x2:
+		return dxgiFormatRG16U
+	case explicit.VertexUint16x4:
+		return dxgiFormatRGBA16U
+	case explicit.VertexSint16x2:
+		return dxgiFormatRG16S
+	case explicit.VertexSint16x4:
+		return dxgiFormatRGBA16S
+	case explicit.VertexUnorm16x2:
+		return dxgiFormatRG16N
+	case explicit.VertexUnorm16x4:
+		return dxgiFormatRGBA16N
+	case explicit.VertexSnorm16x2:
+		return dxgiFormatRG16SN
+	case explicit.VertexSnorm16x4:
+		return dxgiFormatRGBA16SN
+	case explicit.VertexFloat16x2:
+		return dxgiFormatRG16F
+	case explicit.VertexFloat16x4:
+		return dxgiFormatRGBA16F
 	}
 	return dxgiFormatRGBA32
 }
@@ -187,9 +408,10 @@ func pipelineName(desc explicit.PipelineDesc, rootKey string, vs, ps []byte) str
 		h.Write(n[:])
 		h.Write([]byte(s))
 	}
-	part("glutter d3d12 pso 1")
+	part("glutter d3d12 pso 2")
 	part(rootKey)
 	part(fmt.Sprintf("%d|%+v|%v|%v", desc.Target, desc.Blend, desc.VertexEntry, desc.FragmentEntry))
+	part(fmt.Sprintf("%+v|%d|%d|%d|%+v|%d", desc.ColorTargets, desc.Topology, desc.CullMode, desc.FrontFace, desc.DepthStencil, desc.Samples()))
 	for _, vb := range desc.VertexBuffers {
 		part(fmt.Sprintf("%d,%v,%v", vb.Stride, vb.PerInstance, vb.Attributes))
 	}

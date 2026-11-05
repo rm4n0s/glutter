@@ -5,6 +5,7 @@ package vulkan
 import (
 	"image"
 	"image/color"
+	"math"
 
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/internal/gpu/explicit"
@@ -53,6 +54,8 @@ type pendingRead struct {
 	rect   image.Rectangle
 	format explicit.TextureFormat
 	done   func(*image.RGBA, error)
+	// doneBytes, when set, gets the bytes of the format and done is not used.
+	doneBytes func([]byte, int, error)
 }
 
 // initFrames makes the command pools, command buffers, fences and the first
@@ -269,39 +272,122 @@ func (d *Device) barrierAll(cb commandBufferH) {
 // BeginPass implements explicit.Encoder. The target must be a texture of this device
 // with TextureRenderTarget.
 func (e *encoder) BeginPass(target explicit.Texture, load explicit.LoadOp, clear ui.Color) explicit.Pass {
-	t, ok := target.(*texture)
-	if !ok || t.d != e.d {
-		panic(errors.New(tagVulkanForeignResource, "the resource was not made by this Vulkan device", "resource", "texture"))
+	return e.BeginRenderPass(explicit.PassDesc{Color: []explicit.ColorAttachment{{
+		Target: target, Load: load, Clear: [4]float64{float64(clear.R), float64(clear.G), float64(clear.B), float64(clear.A)},
+	}}})
+}
+
+func vkLoadOp(l explicit.LoadOp) uint32 {
+	switch l {
+	case explicit.LoadLoad:
+		return loadOpLoad
+	case explicit.LoadDontCare:
+		return loadOpDontCare
 	}
+	return loadOpClear
+}
+
+func vkStoreOp(s explicit.StoreOp) uint32 {
+	if s == explicit.StoreDiscard {
+		return storeOpDontCare
+	}
+	return storeOpStore
+}
+
+// colorClear is the clear value of a color attachment: floats, or the integers of a Uint format.
+func colorClear(f explicit.TextureFormat, c [4]float64) clearValue {
+	if f.SampleType(explicit.Features{}) == explicit.SampleTypeUint {
+		var v clearValue
+		for i := range v.color {
+			v.color[i] = math.Float32frombits(uint32(c[i]))
+		}
+		return v
+	}
+	return clearValue{color: [4]float32{float32(c[0]), float32(c[1]), float32(c[2]), float32(c[3])}}
+}
+
+// BeginRenderPass implements explicit.Encoder. The attachments must be textures of this device
+// with TextureRenderTarget, 2D or a view made by Layer.
+func (e *encoder) BeginRenderPass(desc explicit.PassDesc) explicit.Pass {
+	d := e.d
 	if e.pass != nil {
 		panic(errors.New(tagVulkanPassNotEnded, "BeginPass was called before the previous pass ended"))
 	}
-	d := e.d
 	a := d.arena
 	defer a.rewind(a.mark())
-	op := uint32(loadOpClear)
-	switch load {
-	case explicit.LoadLoad:
-		op = loadOpLoad
-	case explicit.LoadDontCare:
-		op = loadOpDontCare
+	attachments := make([]explicit.Texture, 0, 2*len(desc.Color)+1)
+	for _, c := range desc.Color {
+		attachments = append(attachments, c.Target)
+		if c.Resolve != nil {
+			attachments = append(attachments, c.Resolve)
+		}
 	}
-	attach := put(a, renderingAttachmentInfo{
-		sType: sTypeRenderingAttachmentInfo, imageView: t.targetView(), imageLayout: layoutGeneral,
-		loadOp: op, storeOp: storeOpStore,
-		clearValue: clearValue{color: [4]float32{clear.R, clear.G, clear.B, clear.A}},
-	})
-	w, h := uint32(t.desc.Width), uint32(t.desc.Height)
-	info := put(a, renderingInfo{
-		sType: sTypeRenderingInfo, renderArea: rect2D{extent: extent2D{w, h}}, layerCount: 1,
-		colorAttachmentCount: 1, pColorAttachments: attach,
-	})
-	d.f.cmdBeginRendering(e.cb, info)
+	if desc.Depth != nil {
+		attachments = append(attachments, desc.Depth.Target)
+	}
+	for _, tex := range attachments {
+		if t, ok := tex.(*texture); !ok || t.d != d {
+			panic(errors.New(tagVulkanForeignResource, "the resource was not made by this Vulkan device", "resource", "texture"))
+		}
+	}
+	// own is the texture of a Texture that the loop above found to be this device's.
+	own := func(tex explicit.Texture) *texture { return tex.(*texture) }
+	d.limits.CheckPass(desc)
+	var first *texture
+	colors := make([]renderingAttachmentInfo, len(desc.Color))
+	for i, c := range desc.Color {
+		t := own(c.Target)
+		if first == nil {
+			first = t
+		}
+		colors[i] = renderingAttachmentInfo{
+			sType: sTypeRenderingAttachmentInfo, imageView: t.targetView(), imageLayout: layoutGeneral,
+			loadOp: vkLoadOp(c.Load), storeOp: vkStoreOp(c.Store), clearValue: colorClear(t.desc.Format, c.Clear),
+		}
+		if c.Resolve != nil {
+			r := own(c.Resolve)
+			colors[i].resolveMode = resolveAverage
+			if t.desc.Format.SampleType(explicit.Features{}) == explicit.SampleTypeUint {
+				colors[i].resolveMode = resolveSampleZero
+			}
+			colors[i].resolveImageView, colors[i].resolveImageLayout = r.targetView(), layoutGeneral
+		}
+	}
+	info := renderingInfo{sType: sTypeRenderingInfo, layerCount: 1, colorAttachmentCount: uint32(len(colors))}
+	if len(colors) > 0 {
+		info.pColorAttachments = putSlice(a, colors)
+	}
+	var stencilRef bool
+	if dp := desc.Depth; dp != nil {
+		t := own(dp.Target)
+		if first == nil {
+			first = t
+		}
+		depth := renderingAttachmentInfo{
+			sType: sTypeRenderingAttachmentInfo, imageView: t.targetView(), imageLayout: layoutGeneral,
+			loadOp: vkLoadOp(dp.DepthLoad), storeOp: vkStoreOp(dp.DepthStore),
+		}
+		depth.clearValue.color[0] = float32(dp.ClearDepth)
+		info.pDepthAttachment = put(a, depth)
+		if t.desc.Format.HasStencil() {
+			stencil := depth
+			stencil.loadOp, stencil.storeOp = vkLoadOp(dp.StencilLoad), vkStoreOp(dp.StencilStore)
+			stencil.clearValue.color = [4]float32{math.Float32frombits(dp.ClearStencil)}
+			info.pStencilAttachment = put(a, stencil)
+			stencilRef = true
+		}
+	}
+	w, h := uint32(first.desc.Width), uint32(first.desc.Height)
+	info.renderArea = rect2D{extent: extent2D{w, h}}
+	d.f.cmdBeginRendering(e.cb, put(a, info))
 	vp := put(a, viewport{width: float32(w), height: float32(h), maxDepth: 1})
 	d.f.cmdSetViewport(e.cb, 0, 1, vp)
 	sc := put(a, rect2D{extent: extent2D{w, h}})
 	d.f.cmdSetScissor(e.cb, 0, 1, sc)
-	e.pass = &pass{e: e, target: t}
+	if stencilRef {
+		d.f.cmdSetStencilReference(e.cb, stencilFrontAndBack, 0)
+	}
+	e.pass = &pass{e: e, target: first}
 	return e.pass
 }
 
@@ -316,8 +402,8 @@ func (e *encoder) CopyTexture(src explicit.Texture, r image.Rectangle, dst expli
 	a := d.arena
 	defer a.rewind(a.mark())
 	region := put(a, imageCopy{
-		srcSubresource: imageSubresourceLayers{aspectMask: imageAspectColor, mipLevel: uint32(s.base), layerCount: 1}, srcOffset: offset3D{int32(r.Min.X), int32(r.Min.Y), 0},
-		dstSubresource: imageSubresourceLayers{aspectMask: imageAspectColor, mipLevel: uint32(t.base), layerCount: 1}, dstOffset: offset3D{int32(at.X), int32(at.Y), 0},
+		srcSubresource: imageSubresourceLayers{aspectMask: s.aspect(), mipLevel: uint32(s.base), baseArrayLayer: uint32(s.baseLayer), layerCount: 1}, srcOffset: offset3D{int32(r.Min.X), int32(r.Min.Y), 0},
+		dstSubresource: imageSubresourceLayers{aspectMask: t.aspect(), mipLevel: uint32(t.base), baseArrayLayer: uint32(t.baseLayer), layerCount: 1}, dstOffset: offset3D{int32(at.X), int32(at.Y), 0},
 		extent: extent3D{uint32(r.Dx()), uint32(r.Dy()), 1},
 	})
 	d.f.cmdCopyImage(e.cb, s.image, layoutGeneral, t.image, layoutGeneral, 1, region)
@@ -327,28 +413,49 @@ func (e *encoder) CopyTexture(src explicit.Texture, r image.Rectangle, dst expli
 // ReadTexture implements explicit.Encoder: it copies the rectangle into a buffer that
 // the CPU can read, and done runs at the end of Submit, after the GPU finished.
 func (e *encoder) ReadTexture(src explicit.Texture, r image.Rectangle, done func(*image.RGBA, error)) {
+	e.read(src, r, &pendingRead{done: done})
+}
+
+// ReadTextureBytes implements explicit.Encoder: like ReadTexture, with the bytes of the format.
+func (e *encoder) ReadTextureBytes(src explicit.Texture, r image.Rectangle, done func([]byte, int, error)) {
+	e.read(src, r, &pendingRead{doneBytes: done})
+}
+
+// read records the copy of the rectangle of src into a host buffer and queues rd for the end of
+// Submit.
+func (e *encoder) read(src explicit.Texture, r image.Rectangle, rd *pendingRead) {
 	s, ok := src.(*texture)
 	if !ok || s.d != e.d {
 		panic(errors.New(tagVulkanForeignResource, "the resource was not made by this Vulkan device", "resource", "texture"))
 	}
+	e.d.limits.CheckRead(s.desc, rd.doneBytes != nil)
 	d := e.d
 	bpp := s.desc.Format.BytesPerPixel()
 	size := uint64(r.Dx() * r.Dy() * bpp)
 	buf, al, _, err := d.newHostBuffer(size, bufferUsageTransferDst)
 	if err != nil {
-		done(nil, err)
+		if rd.doneBytes != nil {
+			rd.doneBytes(nil, 0, err)
+		} else {
+			rd.done(nil, err)
+		}
 		return
 	}
 	a := d.arena
 	defer a.rewind(a.mark())
+	aspect := uint32(imageAspectColor)
+	if s.desc.Format.IsDepthStencil() {
+		aspect = imageAspectDepth
+	}
 	region := put(a, bufferImageCopy{
-		imageSubresource: imageSubresourceLayers{aspectMask: imageAspectColor, mipLevel: uint32(s.base), layerCount: 1},
+		imageSubresource: imageSubresourceLayers{aspectMask: aspect, mipLevel: uint32(s.base), baseArrayLayer: uint32(s.baseLayer), layerCount: 1},
 		imageOffset:      offset3D{int32(r.Min.X), int32(r.Min.Y), 0},
 		imageExtent:      extent3D{uint32(r.Dx()), uint32(r.Dy()), 1},
 	})
 	d.f.cmdCopyImageToBuffer(e.cb, s.image, layoutGeneral, buf, 1, region)
 	d.barrier(e.cb, stage2Host, access2HostRead)
-	e.reads = append(e.reads, &pendingRead{buffer: buf, alloc: al, rect: r, format: s.desc.Format, done: done})
+	rd.buffer, rd.alloc, rd.rect, rd.format = buf, al, r, s.desc.Format
+	e.reads = append(e.reads, rd)
 }
 
 // Submit implements explicit.Encoder. When the frame asked for a texture to be read, it
@@ -394,7 +501,7 @@ func (e *encoder) Submit() error {
 	}
 	if err := d.waitSlot(s); err != nil {
 		for _, rd := range e.reads {
-			rd.done(nil, err)
+			rd.fail(err)
 		}
 		return err
 	}
@@ -409,12 +516,27 @@ func (e *encoder) Submit() error {
 	return nil
 }
 
+// fail tells whoever asked for the read that it did not happen.
+func (rd *pendingRead) fail(err error) {
+	if rd.doneBytes != nil {
+		rd.doneBytes(nil, 0, err)
+		return
+	}
+	rd.done(nil, err)
+}
+
 // finishRead converts what the GPU copied into the buffer, calls done, and frees the
 // buffer.
 func (d *Device) finishRead(rd *pendingRead) {
 	w, h := rd.rect.Dx(), rd.rect.Dy()
 	bpp := rd.format.BytesPerPixel()
 	raw := readBytes(rd.alloc.mapped(), w*h*bpp)
+	if rd.doneBytes != nil {
+		out := append([]byte(nil), raw...)
+		d.destroyBuffer(rd.buffer, rd.alloc)
+		rd.doneBytes(out, w*bpp, nil)
+		return
+	}
 	img := image.NewRGBA(image.Rect(0, 0, w, h))
 	for i := 0; i < w*h; i++ {
 		var c color.RGBA
@@ -495,6 +617,11 @@ func (p *pass) SetScissor(r image.Rectangle) {
 	defer a.rewind(a.mark())
 	sc := put(a, rect2D{offset: offset2D{int32(r.Min.X), int32(r.Min.Y)}, extent: extent2D{uint32(r.Dx()), uint32(r.Dy())}})
 	p.e.d.f.cmdSetScissor(p.e.cb, 0, 1, sc)
+}
+
+// SetStencilReference implements explicit.Pass.
+func (p *pass) SetStencilReference(ref uint32) {
+	p.e.d.f.cmdSetStencilReference(p.e.cb, stencilFrontAndBack, ref)
 }
 
 // Draw implements explicit.Pass.

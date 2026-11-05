@@ -31,3 +31,13 @@ func unpackRows(raw []byte, pitch, w, h int, format explicit.TextureFormat) *ima
 	}
 	return img
 }
+
+// packRows copies h rows of rowBytes bytes out of a mapped read-back buffer whose rows are pitch bytes
+// apart into one slice of packed rows.
+func packRows(raw []byte, pitch, rowBytes, h int) []byte {
+	out := make([]byte, rowBytes*h)
+	for y := 0; y < h; y++ {
+		copy(out[y*rowBytes:(y+1)*rowBytes], raw[y*pitch:y*pitch+rowBytes])
+	}
+	return out
+}

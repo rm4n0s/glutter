@@ -41,6 +41,7 @@ const (
 	deviceCopyDescriptorsSimple      = 24
 	deviceCreateShaderResourceView   = 18
 	deviceCreateRenderTargetView     = 20
+	deviceCreateDepthStencilView     = 21
 	deviceCreateSampler              = 22
 	deviceCreateCommittedResource    = 27
 	deviceCreateFence                = 36
@@ -80,9 +81,11 @@ const (
 	listDrawIndexedInstanced  = 13
 	listCopyBufferRegion      = 15
 	listCopyTextureRegion     = 16
+	listResolveSubresource    = 19
 	listIASetPrimitiveTopo    = 20 // IASetPrimitiveTopology
 	listRSSetViewports        = 21
 	listRSSetScissorRects     = 22
+	listOMSetStencilRef       = 24
 	listSetPipelineState      = 25
 	listResourceBarrier       = 26
 	listSetDescriptorHeaps    = 28
@@ -92,6 +95,7 @@ const (
 	listIASetIndexBuffer      = 43
 	listIASetVertexBuffers    = 44
 	listOMSetRenderTargets    = 46
+	listClearDepthStencilView = 47
 	listClearRenderTargetView = 48
 	listDiscardResource       = 51
 )

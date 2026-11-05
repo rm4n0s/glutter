@@ -46,6 +46,7 @@ type acquired struct {
 	adapter, device, modules js.Value
 	description              string
 	fallback                 bool
+	float32Filterable        bool
 }
 
 // Acquire asks the browser for an adapter and a device, compiles every shader of the renderer on
@@ -156,6 +157,7 @@ func (p *Provider) onAcquired(_ int, r js.Value) {
 	p.sup.deliver(&acquired{
 		adapter: r.Get("adapter"), device: r.Get("device"), modules: r.Get("modules"),
 		description: r.Get("description").String(), fallback: r.Get("fallback").Truthy(),
+		float32Filterable: r.Get("float32Filterable").Truthy(),
 	}, nil)
 	p.answered()
 }

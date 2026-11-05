@@ -28,13 +28,13 @@ func TestPlanLayouts(t *testing.T) {
 	}{
 		{"nothing is read", entryOf(), entryOf(), [][]bindingPlan{}},
 		{"the blit: a texture and a sampler in the fragment stage", entryOf(), entryOf(texture(0, 0), sampler(0, 1)),
-			[][]bindingPlan{{{0, explicit.BindingSampledTexture, shaderFragment}, {1, explicit.BindingSampler, shaderFragment}}}},
+			[][]bindingPlan{{{Binding: 0, Kind: explicit.BindingSampledTexture, Visibility: shaderFragment}, {Binding: 1, Kind: explicit.BindingSampler, Visibility: shaderFragment}}}},
 		{"a binding both stages read is visible to both", entryOf(uniform(0, 0)), entryOf(uniform(0, 0), uniform(0, 1)),
-			[][]bindingPlan{{{0, explicit.BindingUniformBuffer, shaderVertex | shaderFragment}, {1, explicit.BindingUniformBuffer, shaderFragment}}}},
+			[][]bindingPlan{{{Binding: 0, Kind: explicit.BindingUniformBuffer, Visibility: shaderVertex | shaderFragment}, {Binding: 1, Kind: explicit.BindingUniformBuffer, Visibility: shaderFragment}}}},
 		{"bindings are sorted by number", entryOf(uniform(0, 2), uniform(0, 0)), entryOf(),
-			[][]bindingPlan{{{0, explicit.BindingUniformBuffer, shaderVertex}, {2, explicit.BindingUniformBuffer, shaderVertex}}}},
+			[][]bindingPlan{{{Binding: 0, Kind: explicit.BindingUniformBuffer, Visibility: shaderVertex}, {Binding: 2, Kind: explicit.BindingUniformBuffer, Visibility: shaderVertex}}}},
 		{"a group nothing reads is empty, so the numbers stay", entryOf(), entryOf(uniform(0, 0), texture(3, 1)),
-			[][]bindingPlan{{{0, explicit.BindingUniformBuffer, shaderFragment}}, nil, nil, {{1, explicit.BindingSampledTexture, shaderFragment}}}},
+			[][]bindingPlan{{{Binding: 0, Kind: explicit.BindingUniformBuffer, Visibility: shaderFragment}}, nil, nil, {{Binding: 1, Kind: explicit.BindingSampledTexture, Visibility: shaderFragment}}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -70,11 +70,12 @@ func TestPlanLayoutsOfTheGeneratedShaders(t *testing.T) {
 		if len(plan) != want {
 			t.Errorf("shader %s: %d groups planned, the entry points use %d", s.Name, len(plan), want)
 		}
-		kinds := bindingKinds(plan)
+		byNumber := bindingsByNumber(plan)
 		for _, e := range []explicit.EntryPoint{vs, fs} {
 			for _, b := range e.Bindings {
-				if kinds[b.Group][b.Binding] != b.Kind {
-					t.Errorf("shader %s: group %d binding %d has kind %v in the plan, %v in the shader", s.Name, b.Group, b.Binding, kinds[b.Group][b.Binding], b.Kind)
+				got := byNumber[b.Group][b.Binding]
+				if got.Kind != b.Kind || got.Dimension != b.Dimension || got.Sample != b.Sample {
+					t.Errorf("shader %s: group %d binding %d is %+v in the plan, %+v in the shader", s.Name, b.Group, b.Binding, got, b)
 				}
 			}
 		}

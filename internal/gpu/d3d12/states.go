@@ -4,8 +4,9 @@ import "github.com/rm4n0s/errors"
 
 // resState is the state of a resource or of one of its subresources: the bits of
 // D3D12_RESOURCE_STATES that the device uses (SPEC §9.8 "States"). Direct3D 12 has no GENERAL
-// layout, so the device tracks the state of every texture and of every mip level that
-// Texture.Level made a view of, and the encoder batches the transitions into one ResourceBarrier.
+// layout, so the device tracks the state of every subresource of a texture (every mip level of every
+// layer; "level" in this file is the index of a subresource, mip + layer × mips) and the encoder batches the
+// transitions into one ResourceBarrier.
 type resState uint32
 
 // The states of a texture.
@@ -15,6 +16,9 @@ const (
 	statePixelShaderResource resState = resState(resourceStatePixelShaderRS)
 	stateCopyDest            resState = resState(resourceStateCopyDest)
 	stateCopySource          resState = resState(resourceStateCopySource)
+	stateDepthWrite          resState = resState(resourceStateDepthWrite)
+	stateResolveSource       resState = resState(resourceStateResolveSource)
+	stateResolveDest         resState = resState(resourceStateResolveDest)
 )
 
 // String names a state for the messages of an error.
@@ -30,6 +34,12 @@ func (s resState) String() string {
 		return "COPY_DEST"
 	case stateCopySource:
 		return "COPY_SOURCE"
+	case stateDepthWrite:
+		return "DEPTH_WRITE"
+	case stateResolveSource:
+		return "RESOLVE_SOURCE"
+	case stateResolveDest:
+		return "RESOLVE_DEST"
 	}
 	return "unknown state"
 }

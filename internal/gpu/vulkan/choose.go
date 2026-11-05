@@ -47,6 +47,9 @@ type physicalInfo struct {
 	Extensions map[string]bool
 	// DynamicRendering and Synchronization2 are the features of those names.
 	DynamicRendering, Synchronization2 bool
+	// IndependentBlend is the feature of that name: each color attachment of a pass has its own
+	// blend state and write mask.
+	IndependentBlend bool
 	// QueueFlags are the flags of each queue family, by index.
 	QueueFlags []uint32
 	// MaxImageDimension2D is the largest texture.
