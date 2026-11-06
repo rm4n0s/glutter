@@ -185,6 +185,7 @@ func (t *Texture) Release() {
 	if !t.untrack() {
 		return
 	}
+	t.d.unregisterAll(t)
 	if t.d.lostErr == nil {
 		t.exp.Destroy()
 	}

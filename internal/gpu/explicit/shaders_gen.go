@@ -2668,7 +2668,7 @@ struct Draw {
 struct Instance {
 	@location(0) quad: vec4<f32>,  // left, top, right, bottom in pixels
 	@location(1) inv0: vec4<f32>,  // pixels to texels: a, b, c, d
-	@location(2) inv1: vec4<f32>,  // e, f, flags, unused
+	@location(2) inv1: vec4<f32>,  // e, f, flags, 1 when the texels are linear values (an RGBA16Float texture layer)
 	@location(3) color: vec4<f32>, // premultiplied multiplier: the paint's alpha
 	@location(4) clip: vec4<f32>,  // left, top, right, bottom in pixels
 	@location(5) box: vec4<f32>,   // the rectangle drawn: texels, or pixels with the box flag
@@ -2823,6 +2823,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 		color = bicubic(uv, base, i32(in.img.x + 0.5));
 	} else {
 		color = textureSampleLevel(image, imageSampler, uv / vec2<f32>(base), in.img.x);
+	}
+	if in.inv1.w > 0.5 {
+		// Linear premultiplied texels (a texture layer of an RGBA16Float texture): the surface holds sRGB-encoded values.
+		let c = unpremul(color);
+		color = premul(vec4<f32>(linearToSrgb(c.rgb), c.a));
 	}
 	color = color * in.color;
 	if in.img.z >= 0.0 {
@@ -4009,24 +4014,31 @@ float4 fs_main(FragmentInput_fs_main fragmentinput_fs_main) : SV_Target0
             color = _e138;
         }
     }
-    float4 _e139 = color;
-    color = (_e139 * in_.color);
-    if ((in_.img.z >= 0.0)) {
-        float4 _e151 = color;
-        const float4 _e153 = blendPair(naga_f2i32((in_.img.z + 0.5)), _e151, in_.tint);
-        color = _e153;
+    if ((in_.inv1_.w > 0.5)) {
+        float4 _e143 = color;
+        const float4 _e144 = unpremul(_e143);
+        const float3 _e146 = linearToSrgb(_e144.xyz);
+        const float4 _e149 = premul(float4(_e146, _e144.w));
+        color = _e149;
     }
-    float4 _e154 = color;
-    const float4 _e155 = applyFilters(_e154);
-    color = _e155;
-    float _e156 = coverage;
-    if ((_e156 <= 0.0)) {
+    float4 _e150 = color;
+    color = (_e150 * in_.color);
+    if ((in_.img.z >= 0.0)) {
+        float4 _e162 = color;
+        const float4 _e164 = blendPair(naga_f2i32((in_.img.z + 0.5)), _e162, in_.tint);
+        color = _e164;
+    }
+    float4 _e165 = color;
+    const float4 _e166 = applyFilters(_e165);
+    color = _e166;
+    float _e167 = coverage;
+    if ((_e167 <= 0.0)) {
         discard;
     }
-    float4 _e159 = color;
-    float _e160 = coverage;
-    const float4 _e161 = finish(_e159, _e160, dev_9);
-    return _e161;
+    float4 _e170 = color;
+    float _e171 = coverage;
+    const float4 _e172 = finish(_e170, _e171, dev_9);
+    return _e172;
 }
 `,
 	Entries: []EntryPoint{

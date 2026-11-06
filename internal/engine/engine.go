@@ -116,7 +116,9 @@ type Config struct {
 	captured func(*image.RGBA, error)
 	// gpuEvent is told by the explicit renderers when their device is opened, lost or closed (set by Run:
 	// the hub that package gpu watches, SPEC §27.2).
-	gpuEvent    func(explicit.DeviceEvent)
+	gpuEvent func(explicit.DeviceEvent)
+	// gpuTextures is the registry of the textures the windows show; the explicit renderers draw from it.
+	gpuTextures *explicit.TextureRegistry
 	webgpuOpen  func(gpu.SurfaceHandle) (explicit.Device, error)
 	webgpuClose func()
 }
@@ -284,7 +286,8 @@ func Run(ctx context.Context, cfg Config) (err error) {
 	cfg.renewSurface, cfg.redraw = h.renewSurface, h.redrawWindow
 	cfg.post, cfg.captured = conn.Post, h.onCapture
 	h.gpu.log, h.gpu.renderer = log, h.chosenRenderer
-	cfg.gpuEvent = h.gpu.notify
+	h.gpu.textures = explicit.NewTextureRegistry()
+	cfg.gpuEvent, cfg.gpuTextures = h.gpu.notify, h.gpu.textures
 	h.first = h.addWindow(win)
 	h.first.title = wcfg.Title
 	if cfg.newRenderer != nil {
@@ -410,8 +413,10 @@ type handler struct {
 	runStart    time.Time
 	firstLogged bool
 	drewOnce    bool
-	frameStats  bool
-	stats       frameStats
+	// texturesLogged says that the log told about texture layers that this renderer cannot draw (SPEC §27.4).
+	texturesLogged bool
+	frameStats     bool
+	stats          frameStats
 
 	// platformLifecycle is whether the platform reported a lifecycle state itself
 	// (the web does); otherwise the engine derives it from the windows (SPEC §13).
@@ -1273,6 +1278,10 @@ func (h *handler) draw(w *window, scene *ui.Scene) error {
 	}
 	if err == nil {
 		h.noteFrame()
+		if !h.texturesLogged && scene.HasTexture() && !h.gpu.hasDevice() {
+			h.texturesLogged = true
+			h.log.Info("a texture layer draws nothing: the renderer has no GPU textures; they need the Vulkan, WebGPU or Direct3D 12 renderer")
+		}
 	}
 	if err != nil {
 		h.fail(err)

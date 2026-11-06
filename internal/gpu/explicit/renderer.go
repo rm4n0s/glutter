@@ -47,6 +47,9 @@ type RendererOpts struct {
 	// OnDevice is told when the renderer opens its device, loses it and closes it (DeviceEvent), on the
 	// thread that calls Draw and Close. The engine gives it to package gpu (SPEC §27.2).
 	OnDevice func(DeviceEvent)
+	// Textures is the registry of the textures that TextureLayers show (SPEC §27.4); nil when the app has none,
+	// and a texture layer then draws nothing.
+	Textures *TextureRegistry
 }
 
 // Renderer is the renderer for the explicit APIs (SPEC §9.3): the engine's renderer on
@@ -316,6 +319,7 @@ func (r *Renderer) window(h gpu.SurfaceHandle) (*window, error) {
 		return nil, err
 	}
 	w := &window{sc: sc, tracker: gpu.NewDamageTracker()}
+	w.tracker.TextureVersion = r.textureVersion
 	r.windows[h] = w
 	return w, nil
 }
@@ -478,12 +482,14 @@ func (r *Renderer) build(scene *ui.Scene, width, height int, useCache bool) (*fr
 	tiles0, clips0, images0, asks0 := r.res.masks.Rasterized, r.res.clipMasksBuilt, r.res.imagesUploaded, r.res.masks.Requests
 	fb := &r.builder
 	fb.reset(width, height, r.opts.SkipUnsupported, r.res)
+	fb.textures, fb.dev, fb.log = r.opts.Textures, r.dev, r.opts.Log
 	if scene != nil {
 		fo := gpu.FlattenOpts{Bounds: ui.NewRectFromLTWH(0, 0, float64(width), float64(height))}
 		if useCache && r.cache != nil {
 			fb.cache = r.cache
 			r.cache.BeginFrame(scene.Root())
-			fo.Boundary = r.cache.Boundary
+			// A texture changes without the scene changing: a layer that shows one is never kept (SPEC §27.4).
+			fo.Boundary = func(l ui.Layer) bool { return !l.HasTexture() && r.cache.Boundary(l) }
 			fo.Retained = fb.retained
 		}
 		if err := gpu.FlattenFunc(scene, fb.command, fo); err != nil {
@@ -600,6 +606,9 @@ func (r *Renderer) releaseDevice(kind DeviceEventKind, err error) {
 	if r.dev != nil && r.opts.OnDevice != nil {
 		r.opts.OnDevice(DeviceEvent{Kind: kind, Device: r.dev, Err: err})
 	}
+	if r.dev != nil && r.opts.Textures != nil {
+		r.opts.Textures.DropDevice(r.dev)
+	}
 	r.cacheSaved = false
 	for h := range r.windows {
 		r.Release(h)
@@ -688,4 +697,12 @@ func RotateRects(rects []image.Rectangle, width, height int, rotation Rotation) 
 		}
 	}
 	return out
+}
+
+// textureVersion is the version of a registered texture, for the damage tracker.
+func (r *Renderer) textureVersion(id int64) uint64 {
+	if r.opts.Textures == nil {
+		return 0
+	}
+	return r.opts.Textures.Version(id)
 }

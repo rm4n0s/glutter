@@ -28,7 +28,7 @@ struct Draw {
 struct Instance {
 	@location(0) quad: vec4<f32>,  // left, top, right, bottom in pixels
 	@location(1) inv0: vec4<f32>,  // pixels to texels: a, b, c, d
-	@location(2) inv1: vec4<f32>,  // e, f, flags, unused
+	@location(2) inv1: vec4<f32>,  // e, f, flags, 1 when the texels are linear values (an RGBA16Float texture layer)
 	@location(3) color: vec4<f32>, // premultiplied multiplier: the paint's alpha
 	@location(4) clip: vec4<f32>,  // left, top, right, bottom in pixels
 	@location(5) box: vec4<f32>,   // the rectangle drawn: texels, or pixels with the box flag
@@ -183,6 +183,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 		color = bicubic(uv, base, i32(in.img.x + 0.5));
 	} else {
 		color = textureSampleLevel(image, imageSampler, uv / vec2<f32>(base), in.img.x);
+	}
+	if in.inv1.w > 0.5 {
+		// Linear premultiplied texels (a texture layer of an RGBA16Float texture): the surface holds sRGB-encoded values.
+		let c = unpremul(color);
+		color = premul(vec4<f32>(linearToSrgb(c.rgb), c.a));
 	}
 	color = color * in.color;
 	if in.img.z >= 0.0 {

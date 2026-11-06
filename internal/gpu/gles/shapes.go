@@ -225,6 +225,12 @@ func (b *frameBuilder) command(c gpu.Command) error {
 			return b.endLayer()
 		}
 		return nil
+	case gpu.CommandTexture:
+		// The OpenGL ES renderer has no GPU textures of the app: the layer draws nothing (SPEC §27.4); the engine
+		// logs it once.
+		b.stats.Commands++
+		b.stats.Skipped++
+		return nil
 	}
 	b.stats.Commands++
 	switch {

@@ -26,6 +26,7 @@ type Host struct {
 	logs     bytes.Buffer
 	log      *slog.Logger
 	ended    bool
+	textures *explicit.TextureRegistry
 }
 
 var _ explicit.DeviceHost = (*Host)(nil)
@@ -34,7 +35,7 @@ var _ explicit.DeviceHost = (*Host)(nil)
 //
 // Flutter: no counterpart
 func New(dev explicit.Device) *Host {
-	h := &Host{dev: dev, watchers: map[int]func(explicit.DeviceEvent){}}
+	h := &Host{dev: dev, watchers: map[int]func(explicit.DeviceEvent){}, textures: explicit.NewTextureRegistry()}
 	h.log = slog.New(slog.NewTextHandler(&lockedWriter{h}, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	return h
 }
@@ -75,6 +76,9 @@ func (h *Host) WatchGPUDevice(fn func(explicit.DeviceEvent)) func() {
 
 // GPULogger implements explicit.DeviceHost: the log is kept for Logs.
 func (h *Host) GPULogger() *slog.Logger { return h.log }
+
+// GPUTextures implements explicit.DeviceHost.
+func (h *Host) GPUTextures() *explicit.TextureRegistry { return h.textures }
 
 // emit tells the watchers, in the order they were added.
 func (h *Host) emit(e explicit.DeviceEvent) {

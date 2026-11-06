@@ -24,6 +24,9 @@ type Layer interface {
 	// frame that follows); then OldLayer returns nil. A strong reference would chain
 	// every frame the app ever drew to the next, and keep all their pictures.
 	OldLayer() Layer
+	// HasTexture reports whether this layer or a layer under it is a TextureLayer. A renderer does not keep
+	// the pixels of such a layer (a texture changes without the scene changing).
+	HasTexture() bool
 
 	layer() *layerBase
 }
@@ -33,6 +36,8 @@ type layerBase struct {
 	children []Layer
 	// old is the handle that was passed as the old layer, held weakly (see Layer.OldLayer).
 	old weak.Pointer[engineLayerHandle]
+	// texture is set when this layer or one under it is a TextureLayer.
+	texture bool
 }
 
 func (b *layerBase) layer() *layerBase { return b }
@@ -41,6 +46,11 @@ func (b *layerBase) layer() *layerBase { return b }
 //
 // Flutter: no counterpart
 func (b *layerBase) Children() []Layer { return b.children }
+
+// HasTexture reports whether this layer or a layer under it is a TextureLayer.
+//
+// Flutter: no counterpart
+func (b *layerBase) HasTexture() bool { return b.texture }
 
 // OldLayer returns the layer of the previous frame this one replaces.
 //
@@ -193,6 +203,25 @@ type PictureLayer struct {
 	WillChangeHint bool
 }
 
+// TextureLayer draws a texture that the app registered (SPEC §27.4) into a rectangle. The renderer samples the
+// texture with the filter quality, premultiplied, scaled to the rectangle. A renderer without GPU textures draws
+// nothing.
+//
+// Flutter: flow/layers/texture_layer.h TextureLayer
+type TextureLayer struct {
+	layerBase
+	// TextureID is the id the registry gave the texture.
+	TextureID int64
+	// Offset is the top left corner of the rectangle.
+	Offset Offset
+	// Width and Height are the size of the rectangle.
+	Width, Height float64
+	// Freeze says that the layer keeps showing the texture's last frame while the app resizes it.
+	Freeze bool
+	// FilterQuality is the quality of the scaling; never FilterQualityUnspecified.
+	FilterQuality FilterQuality
+}
+
 // Scene is a composited scene: a tree of layers built by a SceneBuilder and
 // ready to be rendered. It is immutable.
 //
@@ -200,6 +229,11 @@ type PictureLayer struct {
 type Scene struct {
 	root *ContainerLayer
 }
+
+// HasTexture reports whether the scene has a TextureLayer. A nil scene has none.
+//
+// Flutter: no counterpart
+func (s *Scene) HasTexture() bool { return s != nil && s.root != nil && s.root.HasTexture() }
 
 // Root returns the layer at the top of the tree.
 //
@@ -472,6 +506,11 @@ func (b *SceneBuilder) add(l Layer) {
 	}
 	top := b.stack[len(b.stack)-1].layer()
 	top.children = append(top.children, l)
+	if l.HasTexture() {
+		for _, open := range b.stack {
+			open.layer().texture = true
+		}
+	}
 }
 
 // push puts a layer under the current one and makes it the current one.
@@ -794,6 +833,37 @@ func (b *SceneBuilder) AddPicture(offset Offset, picture *Picture, opts ...AddPi
 		return
 	}
 	b.add(&PictureLayer{Offset: offset, Picture: picture, IsComplexHint: o.IsComplexHint, WillChangeHint: o.WillChangeHint})
+}
+
+// AddTextureOpts are the optional arguments of AddTexture.
+//
+// Flutter: ui/compositing.dart SceneBuilder.addTexture
+type AddTextureOpts struct {
+	// Offset is the top left corner of the rectangle the texture is drawn into.
+	Offset Offset
+	// Width and Height are the size of the rectangle.
+	Width, Height float64
+	// Freeze says that the layer keeps showing the texture's last frame while the app resizes it.
+	Freeze bool
+	// FilterQuality is the quality of the scaling; the default is FilterQualityLow.
+	FilterQuality FilterQuality
+}
+
+// AddTexture adds a texture to the scene: the texture that the registry of package gpu knows by textureID
+// (Device.RegisterTexture), scaled to the rectangle. The renderer draws it with the pixels the app has written
+// to it by then; an id that is not registered draws nothing.
+//
+// Deviation: Flutter's ids are the embedder's; Glutter's are those of the registry of package gpu (SPEC §27.4,
+// §12.10).
+//
+// Flutter: ui/compositing.dart SceneBuilder.addTexture
+func (b *SceneBuilder) AddTexture(textureID int64, opts ...AddTextureOpts) {
+	o := oneOpts(opts)
+	q := o.FilterQuality
+	if q == FilterQualityUnspecified {
+		q = FilterQualityLow
+	}
+	b.add(&TextureLayer{layerBase: layerBase{texture: true}, TextureID: textureID, Offset: o.Offset, Width: o.Width, Height: o.Height, Freeze: o.Freeze, FilterQuality: q})
 }
 
 // Build finishes the scene and returns it. The layers that are still open are

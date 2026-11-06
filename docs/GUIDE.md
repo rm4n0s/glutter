@@ -1034,6 +1034,13 @@ func main() {}
 - **Device loss.** A driver reset or a lost WebGPU device calls the `OnLost` functions once; the old `Device` and its
   resources then do nothing, and the calls that return an error return `GPUDeviceLost`. Make the resources again in
   the `OnDevice` function.
+- **Showing a texture in the widget tree.** `id := d.RegisterTexture(texture)` gives the id (never 0; the texture needs
+  `TextureUsageTextureBinding` and the format `RGBA8Unorm`, `BGRA8Unorm` or `RGBA16Float`), and `widgets.NewTexture(id)`
+  shows it, scaled to its box with `FilterQuality` (low by default), with no copy: it is clipped, transformed and
+  faded like any other widget. After you draw into the texture, call `d.MarkTextureFrameAvailable(id)` to make a frame;
+  `Freeze` ignores that call and shows the texture as it is. An `RGBA8Unorm` texture holds sRGB-encoded values and an
+  `RGBA16Float` one linear values, which the renderer encodes. `d.UnregisterTexture(id)` (or `Release` of the texture)
+  ends it. On the OpenGL ES and software renderers the widget draws nothing, and the log says so once.
 - **In tests.** `gluttertest.New(t, gluttertest.Opts{GPU: true})` gives the app a recording device
   (`tester.GPUDevice()` keeps what was encoded: `Calls()`, `Ops()`, `Logs()`; `Lose()` loses the device). Without
   the option the app has no GPU device, as with the software renderer.

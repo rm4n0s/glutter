@@ -282,3 +282,75 @@ func TestSceneToImage(t *testing.T) {
 		t.Error("unexpected String()")
 	}
 }
+
+func TestAddTexture(t *testing.T) {
+	tests := []struct {
+		name string
+		opts AddTextureOpts
+		want TextureLayer
+	}{
+		{"the defaults", AddTextureOpts{}, TextureLayer{TextureID: 5, FilterQuality: FilterQualityLow}},
+		{"everything given", AddTextureOpts{Offset: Offset{Dx: 1, Dy: 2}, Width: 30, Height: 40, Freeze: true, FilterQuality: FilterQualityHigh},
+			TextureLayer{TextureID: 5, Offset: Offset{Dx: 1, Dy: 2}, Width: 30, Height: 40, Freeze: true, FilterQuality: FilterQualityHigh}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b := NewSceneBuilder()
+			b.AddTexture(5, tt.opts)
+			kids := b.Build().Root().Children()
+			if len(kids) != 1 {
+				t.Fatalf("%d layers", len(kids))
+			}
+			l, ok := kids[0].(*TextureLayer)
+			if !ok {
+				t.Fatalf("layer is %T", kids[0])
+			}
+			if l.TextureID != tt.want.TextureID || l.Offset != tt.want.Offset || l.Width != tt.want.Width || l.Height != tt.want.Height ||
+				l.Freeze != tt.want.Freeze || l.FilterQuality != tt.want.FilterQuality {
+				t.Errorf("layer = %+v, want %+v", *l, tt.want)
+			}
+			if !l.HasTexture() {
+				t.Errorf("a texture layer says it has no texture")
+			}
+		})
+	}
+}
+
+// TestHasTextureReachesTheLayersAbove: the layers that hold a texture, however deep, say so, and so do the retained ones.
+func TestHasTextureReachesTheLayersAbove(t *testing.T) {
+	b := NewSceneBuilder()
+	outer := b.PushOffset(1, 1)
+	inner := b.PushClipRect(Rect{Right: 10, Bottom: 10})
+	b.AddTexture(1)
+	b.Pop()
+	b.Pop()
+	plain := b.PushOffset(2, 2)
+	b.AddPicture(Offset{}, testPicture())
+	b.Pop()
+	scene := b.Build()
+	for name, l := range map[string]Layer{"outer": outer.Layer(), "inner": inner.Layer(), "root": scene.Root()} {
+		if !l.HasTexture() {
+			t.Errorf("%s says it has no texture", name)
+		}
+	}
+	if plain.Layer().HasTexture() {
+		t.Errorf("a layer without a texture says it has one")
+	}
+	if !scene.HasTexture() {
+		t.Errorf("the scene says it has no texture")
+	}
+	again := NewSceneBuilder()
+	again.AddRetained(outer)
+	if !again.Build().HasTexture() {
+		t.Errorf("a scene with a retained layer that has a texture says it has none")
+	}
+	other := NewSceneBuilder()
+	other.AddRetained(plain)
+	if other.Build().HasTexture() {
+		t.Errorf("a scene with a retained layer without a texture says it has one")
+	}
+	var nilScene *Scene
+	if nilScene.HasTexture() {
+		t.Errorf("a nil scene has a texture")
+	}
+}

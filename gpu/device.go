@@ -236,6 +236,8 @@ type Device struct {
 	// modules caches the explicit form of the shaders, so that a shader made into a module twice shares the
 	// pipelines' compiled code.
 	modules map[*Shader]*explicit.Shader
+	// registered are the textures registered for the windows to show, by id (registry.go).
+	registered map[int64]*Texture
 }
 
 type lostFn struct {
@@ -339,6 +341,10 @@ func (d *Device) lose(kind explicit.DeviceEventKind, cause error) {
 		attrs = append(attrs, "cause", cause.Error())
 	}
 	d.lostErr = errors.New(TagGPUDeviceLost, text, attrs...)
+	if d.st.host != nil && len(d.registered) > 0 {
+		d.textures().DropDevice(d.dev)
+	}
+	d.registered = nil
 	fns := d.onLost
 	d.onLost = nil
 	err := d.lostErr

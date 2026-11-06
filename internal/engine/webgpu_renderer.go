@@ -23,7 +23,7 @@ func newWebGPURenderer(cfg *Config, log *slog.Logger) renderer {
 	}
 	opts := explicit.RendererOpts{
 		Background: ui.NewColor(developmentColor), HasBackground: true, Log: log, SkipUnsupported: cfg.SkipUnsupported,
-		OnDevice: cfg.gpuEvent,
+		OnDevice: cfg.gpuEvent, Textures: cfg.gpuTextures,
 		OnCapture: func(img *image.RGBA, err error) {
 			if cfg.captured != nil {
 				cfg.captured(img, err)

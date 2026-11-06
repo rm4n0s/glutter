@@ -3,6 +3,7 @@ package explicit
 import (
 	"fmt"
 	"image"
+	"log/slog"
 
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/internal/gpu"
@@ -156,6 +157,12 @@ type frameBuilder struct {
 	// that a command makes no allocation for its context. depth is the number in use.
 	contexts []*shapeContext
 	depth    int
+	// textures are the textures the scene's texture layers name, dev the device they belong to, and log
+	// the renderer's log; missing is the ids already logged, so that a texture that is not there is logged once.
+	textures *TextureRegistry
+	dev      Device
+	log      *slog.Logger
+	missing  map[int64]bool
 }
 
 // reset makes the builder ready for a frame of w x h pixels, keeping the memory of the frame before
@@ -303,11 +310,15 @@ func (b *frameBuilder) draw(c gpu.Command) (bool, error) {
 	}
 	// Culling (SPEC §9.3): a command that leaves the clip untouched is done before its paint is
 	// read, its geometry hashed, its clip mask made or the atlas asked.
-	if gpu.OutsideClip(c.Op, &c.Transform, outer) {
+	isTexture := c.Kind == gpu.CommandTexture
+	if !isTexture && gpu.OutsideClip(c.Op, &c.Transform, outer) {
 		b.stats.Culled++
 		return true, nil
 	}
-	hasImageFilter, hasMaskFilter := gpu.PaintFilters(c.Op)
+	var hasImageFilter, hasMaskFilter bool
+	if !isTexture {
+		hasImageFilter, hasMaskFilter = gpu.PaintFilters(c.Op)
+	}
 	if hasImageFilter {
 		if q, with := gpu.PaintAccess(c.Op); q != nil {
 			return b.filteredDraw(c, q, with)
@@ -336,6 +347,9 @@ func (b *frameBuilder) draw(c gpu.Command) (bool, error) {
 		}
 	}
 
+	if isTexture {
+		return sc.texture(c.Layer.(*ui.TextureLayer))
+	}
 	var (
 		ok  bool
 		err error

@@ -34,6 +34,11 @@ const (
 	//
 	// Flutter: no counterpart
 	CommandEndLayer
+	// CommandTexture draws the texture of a ui.TextureLayer (Command.Layer) into its rectangle, under the
+	// command's transform and clip (SPEC §27.4).
+	//
+	// Flutter: no counterpart
+	CommandTexture
 )
 
 // Command is one step of drawing, with the state it is drawn in. A renderer runs
@@ -354,6 +359,9 @@ func (f *flattener) layer(l ui.Layer, st state) error {
 		return f.children(l, state{m: m, clip: st.clip})
 	case *ui.PictureLayer:
 		return f.picture(v.Picture, state{m: translated(st.m, v.Offset.Dx, v.Offset.Dy), clip: st.clip})
+	case *ui.TextureLayer:
+		f.emit(Command{Kind: CommandTexture, Layer: v, Transform: st.m, Clip: st.clip})
+		return nil
 	case *ui.ClipRectLayer:
 		return f.clipLayer(l, st, v.ClipBehavior, func(c Clip, m *ui.Matrix4, aa bool) Clip {
 			return clipRect(c, m, v.Rect, aa, false)

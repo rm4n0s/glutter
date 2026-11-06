@@ -67,6 +67,9 @@ func (r *renderer) layer(l ui.Layer, st *state) error {
 	case *ui.ContainerLayer:
 	case *ui.TransformLayer:
 		st = &state{m: st.m.Multiply(&v.Matrix), clip: st.clip}
+	case *ui.TextureLayer:
+		// The software renderer has no GPU textures: the layer draws nothing (SPEC §27.4).
+		return nil
 	case *ui.PictureLayer:
 		inner := st.clone()
 		inner.m.Translate(float32(v.Offset.Dx), float32(v.Offset.Dy), 0)

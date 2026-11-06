@@ -8192,6 +8192,13 @@ func NewTextStyleTween(begin *painting.TextStyle, end *painting.TextStyle) *anim
 	return widgets.NewTextStyleTween(begin, end)
 }
 
+// NewTexture is widgets.NewTexture.
+//
+// Flutter: widgets.dart NewTexture
+func NewTexture(textureID int64, opts ...widgets.TextureOpts) *widgets.Texture {
+	return widgets.NewTexture(textureID, opts...)
+}
+
 // NewTickerMode is widgets.NewTickerMode.
 //
 // Flutter: widgets.dart NewTickerMode
@@ -11495,6 +11502,16 @@ func TextSelectionToolbarLayoutDelegateCenterOn(position float64, width float64,
 //
 // Flutter: widgets.dart TextSelectionToolbarLayoutDelegateOpts
 type TextSelectionToolbarLayoutDelegateOpts = widgets.TextSelectionToolbarLayoutDelegateOpts
+
+// Texture is widgets.Texture.
+//
+// Flutter: widgets.dart Texture
+type Texture = widgets.Texture
+
+// TextureOpts is widgets.TextureOpts.
+//
+// Flutter: widgets.dart TextureOpts
+type TextureOpts = widgets.TextureOpts
 
 // TickerMode is widgets.TickerMode.
 //

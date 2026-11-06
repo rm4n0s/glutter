@@ -20,6 +20,8 @@ type gpuHub struct {
 	next     int
 	// renderer says whether the renderer in use has a device at all (see hasDevice).
 	renderer func() (chosen bool, name string)
+	// textures are the textures the windows show (SPEC §27.4); the explicit renderers draw from it.
+	textures *explicit.TextureRegistry
 }
 
 type gpuWatcher struct {
@@ -84,6 +86,9 @@ func (h *handler) WatchGPUDevice(fn func(explicit.DeviceEvent)) func() { return 
 
 // GPULogger implements explicit.DeviceHost.
 func (h *handler) GPULogger() *slog.Logger { return h.log }
+
+// GPUTextures implements explicit.DeviceHost.
+func (h *handler) GPUTextures() *explicit.TextureRegistry { return h.gpu.textures }
 
 var _ explicit.DeviceHost = (*handler)(nil)
 

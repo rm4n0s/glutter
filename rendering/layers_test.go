@@ -608,6 +608,7 @@ func TestLayersSupportRasterization(t *testing.T) {
 		"clipRRect": rendering.NewClipRRectLayer(), "clipRSuperellipse": rendering.NewClipRSuperellipseLayer(),
 		"imageFilter": rendering.NewImageFilterLayer(), "backdropFilter": rendering.NewBackdropFilterLayer(),
 		"colorFilter": rendering.NewColorFilterLayer(nil), "shaderMask": rendering.NewShaderMaskLayer(),
+		"texture": rendering.NewTextureLayer(ui.Rect{}, 1),
 	} {
 		if !l.SupportsRasterization() {
 			t.Errorf("%s does not support rasterization", name)
@@ -659,5 +660,36 @@ func TestLayersTransformLayerBuildsEffectiveTransform(t *testing.T) {
 	}
 	if v := math.Abs(float64(applied.Entry(0, 3)) - 5); v > 1e-6 {
 		t.Errorf("translation x = %v", applied.Entry(0, 3))
+	}
+}
+
+func TestTextureLayerAddsATextureToTheScene(t *testing.T) {
+	root := rendering.NewOffsetLayer()
+	root.Append(rendering.NewTextureLayer(ui.NewRectFromLTWH(3, 4, 50, 60), 9, rendering.TextureLayerOpts{Freeze: true, FilterQuality: ui.FilterQualityHigh}))
+	scene := root.BuildScene(ui.NewSceneBuilder())
+	var found *ui.TextureLayer
+	var walk func(l ui.Layer)
+	walk = func(l ui.Layer) {
+		if tl, ok := l.(*ui.TextureLayer); ok {
+			found = tl
+		}
+		for _, c := range l.Children() {
+			walk(c)
+		}
+	}
+	walk(scene.Root())
+	if found == nil {
+		t.Fatal("the scene has no texture layer")
+	}
+	want := ui.TextureLayer{TextureID: 9, Offset: ui.Offset{Dx: 3, Dy: 4}, Width: 50, Height: 60, Freeze: true, FilterQuality: ui.FilterQualityHigh}
+	if found.TextureID != want.TextureID || found.Offset != want.Offset || found.Width != want.Width || found.Height != want.Height ||
+		found.Freeze != want.Freeze || found.FilterQuality != want.FilterQuality {
+		t.Errorf("texture layer = %+v, want %+v", *found, want)
+	}
+	if !scene.Root().HasTexture() {
+		t.Errorf("the root of a scene with a texture says it has none")
+	}
+	if rendering.NewTextureLayer(ui.Rect{}, 1).FindAnnotations(nil, ui.Offset{}, false) {
+		t.Errorf("a texture layer absorbs hits for annotations")
 	}
 }

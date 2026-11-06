@@ -464,3 +464,22 @@ func TestLayerWithEmptyAreaDoesNothing(t *testing.T) {
 		t.Errorf("bounds of NaN = %v", got)
 	}
 }
+
+// TestATextureLayerDrawsNothing: the software renderer has no GPU textures, so a texture layer leaves the pixels under it
+// and the layers around it alone (SPEC §27.4).
+func TestATextureLayerDrawsNothing(t *testing.T) {
+	b := ui.NewSceneBuilder()
+	rec := ui.NewPictureRecorder()
+	ui.NewCanvas(rec).DrawRect(rectAt(0, 0, 8, 8), paint(0xFF00FF00))
+	b.AddPicture(ui.Offset{}, rec.EndRecording())
+	b.PushOpacity(128)
+	b.AddTexture(3, ui.AddTextureOpts{Width: 8, Height: 8})
+	b.Pop()
+	img, err := Render(b.Build(), 8, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := img.RGBAAt(4, 4); got.G != 255 || got.R != 0 || got.A != 255 {
+		t.Errorf("pixel = %v, want the green under the texture", got)
+	}
+}

@@ -93,4 +93,6 @@ type DeviceHost interface {
 	WatchGPUDevice(fn func(DeviceEvent)) (stop func())
 	// GPULogger is where package gpu logs what it finds out (a resource that was not released).
 	GPULogger() *slog.Logger
+	// GPUTextures is the registry of the textures the windows show (SPEC §27.4); the renderer draws from it.
+	GPUTextures() *TextureRegistry
 }

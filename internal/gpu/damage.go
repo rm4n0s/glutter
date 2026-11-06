@@ -51,6 +51,9 @@ type DamageTracker struct {
 	scene      *ui.Scene
 	prev       map[*ui.Picture]*pictureInfo
 	keep       []any
+	// TextureVersion, when set, gives the version of a registered texture (0 for an id that is not registered):
+	// a texture layer is damaged when the version of its texture changes (SPEC §27.4).
+	TextureVersion func(id int64) uint64
 }
 
 // NewDamageTracker returns a tracker that has seen no frame, so that the first Update
@@ -409,6 +412,16 @@ func (w *damageWalk) layer(l ui.Layer, st walkState) {
 		sig := hashMatrix(st.sig, &m)
 		id, _ := w.identity(v.Picture)
 		w.add(bounds, mix(sig, id))
+	case *ui.TextureLayer:
+		m := st.m
+		bounds := st.clip.Intersect(w.device(&m, ui.NewRectFromLTWH(v.Offset.Dx, v.Offset.Dy, v.Width, v.Height)))
+		version := uint64(0)
+		if w.t.TextureVersion != nil && !v.Freeze {
+			version = w.t.TextureVersion(v.TextureID)
+		}
+		sig := hashMatrix(st.sig, &m)
+		sig = mixFloats(sig, v.Offset.Dx, v.Offset.Dy, v.Width, v.Height, float64(v.FilterQuality), float64(b2i(v.Freeze)))
+		w.add(bounds, mix(mix(sig, uint64(v.TextureID)), version))
 	case *ui.ClipRectLayer:
 		w.clipLayer(l, st, v.ClipBehavior, v.Rect, func(h uint64) uint64 {
 			return mixFloats(h, v.Rect.Left, v.Rect.Top, v.Rect.Right, v.Rect.Bottom)
@@ -456,4 +469,11 @@ func (w *damageWalk) clipLayer(l ui.Layer, st walkState, behavior ui.Clip, local
 	sig := param(mix(hashMatrix(st.sig, &st.m), uint64(behavior)))
 	clip := st.clip.Intersect(w.device(&st.m, local))
 	w.children(l, walkState{m: st.m, clip: clip, sig: sig})
+}
+
+func b2i(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }
