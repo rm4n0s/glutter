@@ -11,6 +11,7 @@ import (
 	"github.com/rm4n0s/glutter/cmd/glutter-gen/internal/apicheck"
 	"github.com/rm4n0s/glutter/cmd/glutter-gen/internal/copywith"
 	"github.com/rm4n0s/glutter/cmd/glutter-gen/internal/errcheck"
+	"github.com/rm4n0s/glutter/cmd/glutter-gen/internal/gamepaddb"
 	"github.com/rm4n0s/glutter/cmd/glutter-gen/internal/icons"
 	"github.com/rm4n0s/glutter/cmd/glutter-gen/internal/keys"
 	"github.com/rm4n0s/glutter/cmd/glutter-gen/internal/reexport"
@@ -28,6 +29,7 @@ var commands = map[string]func(args []string) error{
 	"reexport":     reexport.Run,
 	"copywith":     copywith.Run,
 	"errcheck":     errcheck.Run,
+	"gamepaddb":    gamepaddb.Run,
 	"icons":        icons.Run,
 	"gpushaders":   shaders.RunGPU,
 	"shaders":      shaders.Run,

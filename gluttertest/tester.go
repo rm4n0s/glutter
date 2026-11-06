@@ -15,6 +15,8 @@ import (
 	"github.com/rm4n0s/glutter/internal/fakeclock"
 	"github.com/rm4n0s/glutter/internal/goldens"
 	"github.com/rm4n0s/glutter/internal/gpu/soft"
+	"github.com/rm4n0s/glutter/internal/pads"
+	"github.com/rm4n0s/glutter/internal/platform/fake"
 	"github.com/rm4n0s/glutter/internal/renderhost"
 	"github.com/rm4n0s/glutter/internal/renderingtest"
 	"github.com/rm4n0s/glutter/semantics"
@@ -136,6 +138,7 @@ type Tester struct {
 	View *ui.View
 
 	host      *renderhost.Host
+	padsvc    *fake.Gamepads
 	gpu       *GPURecorder
 	d         *ui.PlatformDispatcher
 	start     time.Time
@@ -187,6 +190,11 @@ func New(tb TB, opts ...Opts) *Tester {
 	}
 	t := &Tester{tb: tb, host: &renderhost.Host{DiscardScenes: o.DiscardScenes}, Clock: fakeclock.New(time.Time{})}
 	t.start = t.Clock.Now()
+	t.padsvc = fake.NewGamepads(t.host.Post)
+	t.host.Pads = pads.New(t.padsvc, pads.Opts{Keys: t.padKey})
+	if err := t.host.Pads.Start(); err != nil {
+		tb.Fatal(err)
+	}
 	switch {
 	case o.SpellChecker != nil && o.GPU:
 		t.gpu = newGPURecorder()

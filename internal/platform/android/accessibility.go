@@ -94,6 +94,9 @@ var _ platform.Services = services{}
 // Accessibility implements platform.Services.
 func (s services) Accessibility() platform.Accessibility { return s.a }
 
+// Gamepads implements platform.Services: Android has no gamepad service yet.
+func (s services) Gamepads() platform.Gamepads { return nil }
+
 // Start gives the bridge the host, and tells it at once whether a screen reader runs. The bridge
 // stops when ctx ends or Close is called. Unlike the desktops, Android has no service to wait
 // for: the Java side reports the accessibility manager's state (Native.a11yState) from the main

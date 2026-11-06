@@ -60,6 +60,9 @@ var _ platform.Services = accessibilityServices{}
 // Accessibility implements platform.Services.
 func (s accessibilityServices) Accessibility() platform.Accessibility { return s.acc }
 
+// Gamepads implements platform.Services: Windows has no gamepad service yet.
+func (s accessibilityServices) Gamepads() platform.Gamepads { return nil }
+
 // Services returns the services of the platform: the UI Automation bridge (SPEC §25.11). It is made on
 // the first call. When the COM objects of the providers cannot be made the log says so and there is no
 // accessibility (nil), as on a desktop without a service on Linux. The tray, the notifications, the file

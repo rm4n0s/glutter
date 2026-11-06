@@ -127,9 +127,14 @@ func (a *Accessibility) Perform(event ui.SemanticsActionEvent) {
 }
 
 // services is the fake platform's Services.
-type services struct{ a *Accessibility }
+type services struct {
+	a *Accessibility
+	g *Gamepads
+}
 
 func (s services) Accessibility() platform.Accessibility { return s.a }
+
+func (s services) Gamepads() platform.Gamepads { return s.g }
 
 // Accessibility is the fake accessibility bridge, which Services gives the engine.
 //

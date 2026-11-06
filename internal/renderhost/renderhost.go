@@ -15,6 +15,7 @@ import (
 
 	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/gestures"
+	"github.com/rm4n0s/glutter/internal/pads"
 	"github.com/rm4n0s/glutter/rendering"
 	"github.com/rm4n0s/glutter/scheduler"
 	"github.com/rm4n0s/glutter/ui"
@@ -23,6 +24,9 @@ import (
 // Host is the fake engine: it remembers the scenes a view rendered and keeps
 // the functions posted to the "UI thread" until the caller runs them.
 type Host struct {
+	// Pads is the manager of the gamepads of the fake app, or nil: the host implements pads.Host with it.
+	Pads *pads.Manager
+
 	mu        sync.Mutex
 	posted    []func()
 	scenes    []*ui.Scene
@@ -468,6 +472,9 @@ func (h *Host) RenderView(view ui.ViewID, scene *ui.Scene) error {
 
 // RequestAppExit counts the requests.
 func (h *Host) RequestAppExit() { h.mu.Lock(); h.ExitRequests++; h.mu.Unlock() }
+
+// PadManager implements pads.Host: the manager of the gamepads of the fake app, nil when the test has none.
+func (h *Host) PadManager() *pads.Manager { return h.Pads }
 
 // Post keeps the function.
 func (h *Host) Post(fn func()) { h.mu.Lock(); h.posted = append(h.posted, fn); h.mu.Unlock() }

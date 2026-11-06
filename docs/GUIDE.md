@@ -1492,6 +1492,107 @@ func main() {
   take a model out of the scene: the meshes, the materials and the textures it made are released then, and `Scene.Remove` alone
   does not release them.
 
+## 20. Gamepads
+
+`gamepad.Of(bc)` gives the pads that are connected. Whatever a pad reports, its buttons and axes are the same: `South` is
+the bottom face button (A on an Xbox pad, cross on a PlayStation one), and the sticks and triggers are numbers you can
+use as they are. The mapping from the pad's own numbers is SDL 3's table of mappings plus the Linux Gamepad
+Specification, so common pads need nothing from you. Flutter has no gamepad API; this one is Glutter's.
+
+```go
+package main
+
+import (
+	"time"
+
+	"github.com/rm4n0s/glutter/foundation"
+	"github.com/rm4n0s/glutter/gamepad"
+	m "github.com/rm4n0s/glutter/material"
+)
+
+type padView struct{ m.StatefulWidget }
+
+func newPadView() *padView { return &padView{StatefulWidget: m.NewStatefulWidgetBase()} }
+
+func (w *padView) CreateState() m.State { return &padViewState{} }
+
+type padViewState struct {
+	m.StateOf[*padView]
+	pads    *gamepad.Gamepads
+	handle  foundation.ListenerHandle
+	removes map[*gamepad.Pad]func()
+	x, y    float64
+}
+
+func (s *padViewState) InitState() {
+	s.pads = gamepad.Of(s.Context())
+	s.removes = map[*gamepad.Pad]func(){}
+	// The set of pads is a ChangeNotifier: listen to it for pads that come and go.
+	s.handle = s.pads.AddListener(s.follow)
+	s.follow()
+}
+
+func (s *padViewState) Dispose() {
+	s.pads.RemoveListener(s.handle)
+	for _, remove := range s.removes {
+		remove()
+	}
+}
+
+func (s *padViewState) follow() {
+	for _, pad := range s.pads.Pads() {
+		if _, ok := s.removes[pad]; ok {
+			continue
+		}
+		s.removes[pad] = pad.AddListener(func(e gamepad.Event) {
+			// Events arrive on the UI thread, in order, with the time the pad gave them.
+			if e.Kind == gamepad.ButtonDown && e.Button == gamepad.South {
+				_ = e.Pad.Rumble(0.5, 0.5, 200*time.Millisecond) // GamepadRumbleUnavailable when it cannot
+			}
+		})
+	}
+}
+
+// Read the state once a frame for a continuous input like a stick.
+func (s *padViewState) Build(bc m.BuildContext) m.Widget {
+	for _, pad := range s.pads.Pads() {
+		x, y := gamepad.ApplyStickDeadZone(pad.State().Axis(gamepad.LeftX), pad.State().Axis(gamepad.LeftY), 0.15)
+		s.x, s.y = s.x+x, s.y+y
+	}
+	return m.NewText("pads: " + itoa(len(s.pads.Pads())))
+}
+
+func itoa(n int) string { return string(rune('0' + n%10)) }
+
+func main() { _ = newPadView() }
+```
+
+- **No dead zone is applied.** A stick that rests off centre is the app's to correct: `ApplyDeadZone(v, dead)` for one
+  axis, `ApplyStickDeadZone(x, y, dead)` for a stick (a circle, so that a diagonal is not cut by a square). Sticks are from
+  -1 to 1 (down and right are positive), triggers from 0 to 1.
+- **Pads move the focus, too.** By default a pad's buttons are also key events: South is `GameButtonA` (Flutter's default
+  shortcuts activate the focused button with it), the D-pad is the arrow keys (the focus moves), the shoulders and
+  triggers, Start, Back and Guide are the other game-button keys. Only the window that has the focus gets them. A game that
+  reads the pads itself calls `gamepad.Of(bc).SetKeyEvents(false)`. Flutter does this on Android only (SPEC §12.10).
+- **A pad that nothing is known of.** A pad that has no mapping in the table, and that does not follow the Linux Gamepad
+  Specification, is not in `Pads()`. `AddMappings` takes lines in the community's format (the lines of SDL's
+  `gamecontrollerdb.txt`, `GUID,name,a:b0,b:b1,...,platform:Linux`; `Pad.GUID()` is the GUID to put at the start) and the pad
+  becomes a gamepad when a line is for it. The `GamepadMappingInvalid` error (`gamepad.TagMappingInvalid`) says a line that
+  cannot be read; the lines before it are added.
+- **Kinds and labels.** `Pad.Kind()` tells an Xbox pad from a PlayStation or a Switch one by the vendor and product
+  numbers, and `Pad.FaceStyle()` how its face buttons are labelled (`FaceSony`: cross, circle, square, triangle), for the
+  picture of a button you show.
+- **On Linux** the pads are read from `/dev/input/event*`. On a desktop, systemd's rules (`70-uaccess.rules`) give the user
+  at the seat the joysticks that are plugged in, so there is nothing to do. A pad that cannot be read is reported once in the log
+  (`slog`, Info) and read when the permissions change. Without a seat (a service, a container, a remote session), put the
+  user in the `input` group, or give the group the joysticks with a udev rule in `/etc/udev/rules.d/70-glutter-joystick.rules`:
+  `SUBSYSTEM=="input", ENV{ID_INPUT_JOYSTICK}=="1", GROUP="input", MODE="0660"`, then `sudo udevadm control --reload &&
+  sudo udevadm trigger`. Only a joystick or a gamepad is opened: keyboards and mice are left alone. If the system's inotify
+  instances are used up, new pads are looked for every two seconds.
+- **Tests.** `gluttertest` has `ConnectPad(PadSpec)`, which returns a `TestPad` with `Press`, `Release`, `Tap`, `SetAxis`,
+  `Disconnect` and `Rumbles()` for a pad that reports the standard layout, or, with `Axes`, `Buttons`, `Hats` and `Mapping`,
+  a raw pad with `RawButton`, `RawAxis` and `RawHat` that goes through the table of mappings.
+
 ## For Flutter web developers
 
 If you know Flutter on the web, this is what is the same and what is not.

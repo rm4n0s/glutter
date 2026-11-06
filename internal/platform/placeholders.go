@@ -8,4 +8,6 @@ package platform
 type Services interface {
 	// Accessibility returns the bridge to the assistive technologies, or nil.
 	Accessibility() Accessibility
+	// Gamepads returns the gamepad service (SPEC §28.2), or nil when the platform has none.
+	Gamepads() Gamepads
 }

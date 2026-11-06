@@ -4,6 +4,7 @@ package linux
 
 import (
 	"context"
+	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -11,14 +12,16 @@ import (
 	"github.com/rm4n0s/glutter/internal/dbus"
 	"github.com/rm4n0s/glutter/internal/dbus/atspi"
 	"github.com/rm4n0s/glutter/internal/platform"
+	"github.com/rm4n0s/glutter/internal/platform/linux/evdev"
 )
 
 // Services are the optional capabilities that the Linux backends share: the
-// accessibility bridge (AT-SPI2 over D-Bus, SPEC §8.10).
+// accessibility bridge (AT-SPI2 over D-Bus, SPEC §8.10) and the gamepads (evdev, SPEC §28.2).
 //
 // Flutter: no counterpart
 type Services struct {
 	bridge *atspi.Bridge
+	pads   *evdev.Service
 }
 
 // NewServices makes the services of a backend. post runs a function on its UI thread.
@@ -27,7 +30,7 @@ type Services struct {
 //
 // Flutter: no counterpart
 func NewServices(post func(func())) *Services {
-	return &Services{bridge: atspi.New(atspi.Options{
+	return &Services{pads: evdev.New(evdev.Opts{Post: post, Logger: slog.Default()}), bridge: atspi.New(atspi.Options{
 		AppName: filepath.Base(os.Args[0]),
 		Post:    post,
 		OpenSession: func(ctx context.Context) (dbus.Bus, error) {
@@ -45,6 +48,14 @@ func (s *Services) Accessibility() platform.Accessibility {
 		return nil
 	}
 	return bridgeAdapter{s.bridge}
+}
+
+// Gamepads returns the evdev gamepad service.
+func (s *Services) Gamepads() platform.Gamepads {
+	if s == nil || s.pads == nil {
+		return nil
+	}
+	return s.pads
 }
 
 // bridgeAdapter gives the bridge the types of the platform interface.

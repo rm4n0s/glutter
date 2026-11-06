@@ -24,7 +24,8 @@
 // GLUTTER_DEV_TEXT_FIELDS=focus,validate focuses a field and validates the form
 // of the Text fields page, and GLUTTER_DEV_QUERY=gr opens the search view of the
 // Search page with that text, and GLUTTER_DEV_PERFORMANCE_OVERLAY=1 shows the
-// performance overlay at the top of the window.
+// performance overlay at the top of the window, and GLUTTER_DEV_GAMEPADS=1 shows a panel with the gamepads
+// that are connected and what they report (the aid of the manual check of a pad, SPEC §28.8).
 package main
 
 import (
@@ -164,6 +165,12 @@ func (s *galleryAppState) Build(bc m.BuildContext) m.Widget {
 		ThemeMode:                  s.mode,
 		DebugShowCheckedModeBanner: m.Some(false),
 		ShowPerformanceOverlay:     devPerformanceOverlay(os.Getenv),
+		Builder: func(_ m.BuildContext, child m.Widget) m.Widget {
+			if devGamepads(os.Getenv) {
+				return withGamepadPanel(child)
+			}
+			return child
+		},
 		Home: NewGalleryScope(galleryPages, s.seed, s.mode,
 			func(seed int) { s.SetState(func() { s.seed = seed }) },
 			func(mode m.ThemeMode) { s.SetState(func() { s.mode = mode }) },

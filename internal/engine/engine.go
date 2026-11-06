@@ -12,6 +12,7 @@ import (
 	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/internal/gpu"
 	"github.com/rm4n0s/glutter/internal/gpu/explicit"
+	"github.com/rm4n0s/glutter/internal/pads"
 	"github.com/rm4n0s/glutter/internal/platform"
 	"github.com/rm4n0s/glutter/internal/platform/mobile"
 	"github.com/rm4n0s/glutter/ui"
@@ -317,6 +318,8 @@ func Run(ctx context.Context, cfg Config) (err error) {
 	}
 	h.startAccessibility(ctx)
 	stage("accessibility started")
+	h.startGamepads()
+	stage("gamepads started")
 	runErr := conn.Run(ctx, h)
 	if cfg.Stop != nil {
 		cfg.Stop()
@@ -415,6 +418,8 @@ type handler struct {
 	acc platform.Accessibility
 	// gpu is the device of the renderer, for package gpu (SPEC §27.2).
 	gpu gpuHub
+	// pads is the manager of the gamepads (SPEC §28.2), or nil when the platform has none.
+	pads *pads.Manager
 
 	// clock measures the frames for the dispatcher's OnReportTimings.
 	clock frameClock
@@ -1522,6 +1527,10 @@ func (h *handler) SetSemanticsTreeEnabled(bool) {}
 // release destroys the renderer and stops the accessibility bridge. It is safe to call
 // twice.
 func (h *handler) release() {
+	if h.pads != nil {
+		h.pads.Stop()
+		h.pads = nil
+	}
 	if h.acc != nil {
 		h.acc.Close()
 		h.acc = nil

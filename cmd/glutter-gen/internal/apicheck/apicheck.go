@@ -26,7 +26,7 @@ import (
 // Flutter: no counterpart.
 var DefaultPackages = []string{
 	"foundation", "scheduler", "animation", "physics", "gestures", "painting", "rendering",
-	"semantics", "services", "widgets", "material", "ui", "desktop", "gluttertest", "svg", "gpu", "vecmath", "viewport3d",
+	"semantics", "services", "widgets", "material", "ui", "desktop", "gluttertest", "svg", "gpu", "vecmath", "viewport3d", "gamepad",
 }
 
 // The rules, as they are named in a report and in an allow file.
@@ -48,6 +48,9 @@ const (
 	// RuleMutableVar says that no exported package variable exists, as it could be
 	// reassigned (CLAUDE.md, "No global mutable state").
 	RuleMutableVar = "mutable-var"
+	// RuleSDLName says that no identifier of the module, in a public package or an internal one, uses SDL's names: no SDL_
+	// prefix, no name that starts with SDL and no Sdl inside a name (SPEC §28.1, D32; the owner's rule of 2026-11-05).
+	RuleSDLName = "sdl-name"
 )
 
 // maxRequired is the largest number of required parameters of a constructor (SPEC §12.1).
@@ -116,6 +119,11 @@ func run(args []string, stdout io.Writer) error {
 		}
 		found = append(found, vs...)
 	}
+	names, err := CheckNames(*root)
+	if err != nil {
+		return err
+	}
+	found = append(found, names...)
 	var left []Violation
 	skipped := 0
 	used := map[string]bool{}
@@ -217,6 +225,84 @@ func CheckDir(root, pkg string) ([]Violation, error) {
 		return c.out[i].Line < c.out[j].Line
 	})
 	return c.out, nil
+}
+
+// skippedDirs are the directories that CheckNames does not read: the pinned sources of the references (SPEC §20), the
+// licensed code of other projects, and what tools make.
+var skippedDirs = map[string]bool{
+	".git": true, "reference": true, "third_party": true, "node_modules": true, ".wine-test": true, ".android-test": true,
+	"testdata": true, "vendor": true,
+}
+
+// CheckNames reads every Go file of the module below root, tests included, and reports the identifiers that use SDL's names
+// (RuleSDLName). The code that is ported from SDL 3 says so in its comments and in its strings, which this does not look at:
+// only the names of Go identifiers count.
+//
+// Flutter: no counterpart.
+func CheckNames(root string) ([]Violation, error) {
+	var paths []string
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if path != root && skippedDirs[d.Name()] {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if strings.HasSuffix(path, ".go") {
+			paths = append(paths, path)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, errors.NewErr(tagApiCheckWalkFailed, err).SetMetadata("root", root)
+	}
+	var out []Violation
+	fset := token.NewFileSet()
+	for _, path := range paths {
+		f, err := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
+		if err != nil {
+			return nil, errors.NewErr(tagApiCheckParseFailed, err).SetMetadata("file", path)
+		}
+		rel, relErr := filepath.Rel(root, path)
+		if relErr != nil {
+			rel = path
+		}
+		pkg := filepath.ToSlash(filepath.Dir(rel))
+		seen := map[string]bool{}
+		ast.Inspect(f, func(n ast.Node) bool {
+			id, ok := n.(*ast.Ident)
+			if !ok || !isSDLName(id.Name) || seen[id.Name] {
+				return true
+			}
+			seen[id.Name] = true
+			out = append(out, Violation{Rule: RuleSDLName, Pkg: pkg, Name: id.Name, File: filepath.ToSlash(rel), Line: fset.Position(id.Pos()).Line,
+				Message: "the identifier uses SDL's name; Glutter's own names are used (SPEC §28.1)"})
+			return true
+		})
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].File != out[j].File {
+			return out[i].File < out[j].File
+		}
+		return out[i].Line < out[j].Line
+	})
+	return out, nil
+}
+
+// isSDLName says whether a Go identifier is one of SDL's: it has SDL_ in it, starts with SDL followed by a capital letter
+// or a digit or an underscore, or has Sdl in it. (The Go names of the pads' buttons never contain these.)
+func isSDLName(name string) bool {
+	if strings.Contains(name, "SDL_") || strings.Contains(name, "Sdl") {
+		return true
+	}
+	if strings.HasPrefix(name, "SDL") {
+		rest := name[3:]
+		return rest == "" || rest[0] < 'a' || rest[0] > 'z'
+	}
+	return false
 }
 
 type checker struct {
@@ -568,5 +654,6 @@ const (
 	tagApiCheckBadFlags        = "ApiCheckBadFlags"
 	tagApiCheckParseFailed     = "ApiCheckParseFailed"
 	tagApiCheckViolations      = "ApiCheckViolations"
+	tagApiCheckWalkFailed      = "ApiCheckWalkFailed"
 	tagApiCheckWriteFailed     = "ApiCheckWriteFailed"
 )

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"testing"
@@ -427,5 +428,90 @@ func TestTheModuleKeepsTheConventions(t *testing.T) {
 		if !used[key] {
 			t.Errorf("the allow file lists %q, which is not a violation any more", key)
 		}
+	}
+}
+
+func TestCheckNames(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		want []string
+	}{
+		{"names of our own", "package pkg\n\nconst South = 1\n\nfunc DeviceName(gamepad int) int { return gamepad }\n", nil},
+		{"an SDL_ prefix", "package pkg\n\nconst SDL_GAMEPAD_BUTTON_SOUTH = 1\n", []string{"SDL_GAMEPAD_BUTTON_SOUTH"}},
+		{"Sdl in a name", "package pkg\n\ntype SdlGamepad struct{}\n\nfunc (SdlGamepad) fromSdl() {}\n", []string{"SdlGamepad", "fromSdl"}},
+		{"a name that starts with SDL", "package pkg\n\nvar SDLVersion = 3\n\nvar SDL = 1\n", []string{"SDLVersion", "SDL"}},
+		{"SDL inside a lower-case word is not SDL's", "package pkg\n\nvar SDLs int\nvar sdlOnly int\nvar notSDL int\n", nil},
+		{"strings and comments are not identifiers", "package pkg\n\n// Ported from SDL_gamepad.c of SDL 3.\nvar x = \"SDL_GAMEPAD_BUTTON_SOUTH\"\n", nil},
+		{"a local variable and a parameter count", "package pkg\n\nfunc f(Sdl_x int) { SDL_y := 1; _ = SDL_y }\n", []string{"Sdl_x", "SDL_y"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root := writePackage(t, tt.src)
+			got, err := CheckNames(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var names []string
+			for _, v := range got {
+				if v.Rule != RuleSDLName || v.Pkg != "pkg" {
+					t.Errorf("violation %+v", v)
+				}
+				names = append(names, v.Name)
+			}
+			if !reflect.DeepEqual(names, tt.want) {
+				t.Errorf("names = %v, want %v", names, tt.want)
+			}
+		})
+	}
+}
+
+func TestCheckNamesSkipsWhatIsNotOurs(t *testing.T) {
+	root := writePackage(t, "package pkg\n")
+	for _, dir := range []string{"reference/sdl", "third_party/sdl", "pkg/testdata"} {
+		if err := os.MkdirAll(filepath.Join(root, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, dir, "x.go"), []byte("package x\n\nvar SDL_Bad = 1\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got, err := CheckNames(root); err != nil || len(got) != 0 {
+		t.Errorf("violations = %v, err = %v", got, err)
+	}
+}
+
+func TestCheckNamesFailsOnABrokenFile(t *testing.T) {
+	root := writePackage(t, "package pkg\n\nfunc (\n")
+	_, err := CheckNames(root)
+	appErr, ok := errors.FromError(err)
+	if !ok {
+		t.Fatalf("expected *errors.Error, got %T (%v)", err, err)
+	}
+	if !appErr.HasRoute("CheckNames.ApiCheckParseFailed") {
+		t.Errorf("unexpected failure path: %s", appErr.Route())
+	}
+}
+
+func TestCheckNamesFailsOnAMissingRoot(t *testing.T) {
+	_, err := CheckNames(filepath.Join(t.TempDir(), "nothing"))
+	appErr, ok := errors.FromError(err)
+	if !ok {
+		t.Fatalf("expected *errors.Error, got %T (%v)", err, err)
+	}
+	if !appErr.HasRoute("CheckNames.ApiCheckWalkFailed") {
+		t.Errorf("unexpected failure path: %s", appErr.Route())
+	}
+}
+
+// TestTheModuleHasNoSDLNames checks the module itself: SDL's names are not used (the owner's rule of 2026-11-05).
+func TestTheModuleHasNoSDLNames(t *testing.T) {
+	root := filepath.Join("..", "..", "..", "..")
+	got, err := CheckNames(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, v := range got {
+		t.Errorf("%s", v)
 	}
 }

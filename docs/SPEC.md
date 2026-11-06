@@ -2112,6 +2112,7 @@ Flutter's `assert` checks become checks that exist only in debug builds (`founda
 | `firstInstance` of an indirect draw is honoured | only where the device has `indirect-first-instance` (WebGPU) and in the arguments the app writes; a shader never reads `instance_index`, and `CheckFirstIndices` panics with `GPUFirstInstanceRead` in debug builds when a pipeline that does is drawn with a first instance | the feature is not in every browser, and the vertex index and the instance index would differ between backends (step 30.2) |
 | compute pipelines are cached in a pipeline library | no: a compute pipeline is made at once from its bytecode (the bytecode itself comes from the shader cache) | the pipeline library of `d3d12` and the pipeline cache of `vulkan` keep the pipelines of the 2D renderer; compute pipelines are few (step 30.2) |
 | Flutter has no way to lock the pointer (hide the cursor and read the mouse's relative motion) | `widgets.PointerLock` (`PointerLockOf`, `Lock`, `Unlock`, `Locked`, listeners) over the platforms' lock calls (§27.6) | mouse look and a CAD orbit that never stops at the edge of the screen need it; `dart:ui` and the Flutter engine have no call for it (step 30.7) |
+| Flutter gives a gamepad's buttons as key events on Android only, and has no gamepad API | package `gamepad` (§28.2); the pads' buttons are also key events on every platform (the game-button keys, the D-pad as the arrows) to the window that has the focus, until `Gamepads.SetKeyEvents(false)` | a game and every other app move the focus and press buttons with a pad on the desktop and the web as they do on Android; a game that reads the pads itself turns the keys off (step 31.1) |
 | `vector_math`'s mutable float32 `Vector3` and `Matrix4` | `vecmath`: values in `float64` that methods return (`Mat4.Mul`, `Vec3.Add`, ...), with `Float32()` and `Matrix4()` for the GPU and the engine; `ui.Matrix4` stays the mutable float32 matrix of 2D | a CAD scene 50 km wide with a 0.1 mm detail needs `float64` on the CPU (D30), and values that do not allocate suit a math package that is called thousands of times a frame (step 30.8) |
 
 ### 12.11 One import for apps
@@ -3723,45 +3724,76 @@ SDL 3 (zlib) is the reference of this section (D32). `reference/sdl` (git-ignore
 
 ### 28.2 Gamepads (`gamepad`)
 
-A sketch; the details are decided in step 31.1:
+**The layers** (decided in step 31.1):
+- **The platform backend** (`internal/platform.Gamepads`, `Services.Gamepads()`) finds the pads and reports their raw inputs: `PadInfo` (an ID, the name, the GUID, the numbers of raw axes, buttons and hats, a mapping text of its own when the backend can make one, and what the pad can do) and `PadEvent`s (a raw axis from −32768 to 32767, a raw button, a raw hat as a mask). A pad that already reports the standard layout (a browser's `standard` mapping, XInput) says `Standard`, and its raw inputs are the buttons and axes of the layout. Its methods run on the UI thread (the backend hands over with `Post`), in order.
+- **`internal/gamepaddb`** is the port from SDL 3 (§28.1): the GUID (§ below), the name of a pad, its kind from the vendor and product (SDL's controller list), the mapping format with its parser, the table (the built-in mappings by platform, the order in which a pad is matched: exact version and CRC, then without the CRC, then without the version, then the `xinput` and `default` mappings), and `Device`, which turns the raw inputs of one pad into the buttons and axes of the layout (the rest value of an axis and its first jitters, the bindings of axes, buttons and hats, half axes, inverted axes, the threshold at half of the range). `glutter-gen gamepaddb` makes `mappings_gen.go` and `controllers_gen.go` from `SDL_gamepad_db.h` and `controller_list.h`.
+- **`internal/pads`** is the manager of the app: it owns the table and the pads that have a mapping, keeps their state, tells their listeners, and makes the key events. The engine starts it when the platform has a gamepad service, so a pad works the focus of every app, whether the app imports `gamepad` or not. The host finds it through `ui.PlatformDispatcher.HostAs` (`pads.Host`).
+- **`gamepad`** is the public face, with `Of(bc)` (and `ForBinding` for code without a `BuildContext`).
 
 ```go
 func Of(bc widgets.BuildContext) *Gamepads    // a foundation.ChangeNotifier: pads connected and removed
+func ForBinding(b *widgets.WidgetsBinding) *Gamepads
 
-func (g *Gamepads) Pads() []*Pad
+func (g *Gamepads) Pads() []*Pad              // the pads that have a mapping, in the order they were connected
+func (g *Gamepads) Available() bool           // whether the platform has a gamepad service
 func (g *Gamepads) AddMappings(text string) (int, error)  // mapping lines in the community's format
+func (g *Gamepads) SetKeyEvents(on bool)
+func (g *Gamepads) KeyEvents() bool
 
 func (p *Pad) ID() PadID
 func (p *Pad) Name() string
-func (p *Pad) Kind() PadKind                  // Xbox, PlayStation4, PlayStation5, SwitchPro, Generic, ...
-func (p *Pad) State() State                   // buttons and axes now
+func (p *Pad) Kind() PadKind                  // KindXbox360, KindXboxOne, KindPlayStation3/4/5, KindSwitchPro, KindJoyCon*, KindGameCube, KindSteam, KindGeneric
+func (p *Pad) FaceStyle() FaceStyle           // FaceABXY, FaceAXBY, FaceBAYX, FaceSony: how the face buttons are labelled
+func (p *Pad) GUID() string
+func (p *Pad) Path() string
+func (p *Pad) Connected() bool
+func (p *Pad) HasButton(b Button) bool
+func (p *Pad) HasAxis(a Axis) bool
+func (p *Pad) State() State                   // buttons and axes now: Down(b), Axis(a)
 func (p *Pad) AddListener(fn func(Event)) func()
+func (p *Pad) Battery() Battery
+func (p *Pad) CanRumble() bool
+func (p *Pad) CanRumbleTriggers() bool
+func (p *Pad) HasLED() bool
 func (p *Pad) Rumble(low, high float64, d time.Duration) error
 func (p *Pad) RumbleTriggers(left, right float64, d time.Duration) error
 func (p *Pad) SetLED(c ui.Color) error
-func (p *Pad) Sensors() []*sensors.Sensor     // the pad's gyroscope and accelerometer
-func (p *Pad) Touchpad() []TouchpadFinger
-func (p *Pad) Battery() Battery
+
+func ApplyDeadZone(v, dead float64) float64                  // one axis
+func ApplyStickDeadZone(x, y, dead float64) (float64, float64) // a stick, with a circular dead zone
 ```
+`Pad.Sensors`, `Pad.Touchpad` and the HID driver's calls come with the steps that add them (31.3 and 31.9); each is listed with its step.
 
 **The layout:**
-- **Buttons:** `South`, `East`, `West`, `North`, `Back`, `Guide`, `Start`, `LeftStick`, `RightStick`, `LeftShoulder`, `RightShoulder`, the four D-pad buttons, `Misc1`, four paddles and `Touchpad`.
-- **Axes:** `LeftX`, `LeftY`, `RightX`, `RightY` (from −1 to 1) and `LeftTrigger`, `RightTrigger` (from 0 to 1).
+- **Buttons:** `South`, `East`, `West`, `North`, `Back`, `Guide`, `Start`, `LeftStick`, `RightStick`, `LeftShoulder`, `RightShoulder`, the four D-pad buttons, `Misc1`, four paddles, `Touchpad` and `Misc2` to `Misc6`. Their order is that of a mapping line's names, and a test checks it.
+- **Axes:** `LeftX`, `LeftY`, `RightX`, `RightY` (from −1 to 1; down and right are positive) and `LeftTrigger`, `RightTrigger` (from 0 to 1).
 - No dead zone is applied: that is the app's choice, and `ApplyDeadZone` helps with it.
-- `Event`s arrive on the UI thread in order, with their timestamps. `State` is for reading once a frame.
+- `Event`s arrive on the UI thread in order, with the time the backend gave them (the system's monotonic clock). `State` is for reading once a frame. A pad that is removed lets go of what it holds first (the events and the key releases come before the removal), as SDL does.
+- A pad that has no mapping (the table has none for its GUID and the backend could not make one) is not a gamepad: it is not in `Pads()`. `AddMappings` can make it one later.
+
+**The mapping and the identity of a pad** are SDL's:
+- **The GUID** is 16 bytes: the bus, the CRC-16 of the name, the vendor, 0, the product, 0, the version (all 16 bits, little-endian), the driver signature and its data; a pad without a vendor has the first 4 bytes and then the start of its name. It is written as 32 hexadecimal digits, which is how the community's files name a pad. On Linux the bus, vendor, product and version are those of the event device and the name is the one the device reports.
+- **The mapping line** is `GUID,name,a:b0,b:b1,...`: a name of the layout (`a b x y back guide start leftstick rightstick leftshoulder rightshoulder dpup dpdown dpleft dpright misc1 paddle1 to paddle4 touchpad misc2 to misc6 leftx lefty rightx righty lefttrigger righttrigger`; `a` is `South`, `b` `East`, `x` `West`, `y` `North`) and an input of the pad: `bN` a button, `aN` an axis (a `+` or `-` in front takes a half of it, a `~` after it inverts it), `hN.M` a hat and the bit of the direction. The fields `crc:`, `type:`, `face:`, `platform:`, `hint:` and `sdk>=:` have their meaning in SDL. A line whose `hint:` says labels (`SDL_GAMECONTROLLER_USE_BUTTON_LABELS`) is turned into positions when it is added. Names of axes and buttons that are not known are skipped, a name that is too long is an error (`GamepadMappingInvalid`).
+- **Where a mapping comes from**, in the order of priority: what the app adds with `AddMappings`, SDL's built-in table of the platform, and the one the backend makes from what the pad reports (on Linux the Linux Gamepad Specification and Android's conventions, as SDL does; an analog D-pad is the two halves of an axis).
+- **The kind** is found from the vendor and product in SDL's controller list (a few pads, the Joy-Cons and the clones of the Switch Pro by name). The face buttons' style follows the kind unless the mapping says `face:`.
 
 **Pads as keys** (the owner's choice, 2026-11-05): by default, a pad's buttons also arrive as key events, the way Flutter's Android embedder delivers them:
-- the buttons as the physical and logical `GameButton*` keys
-- the D-pad as the arrow keys
+- South, East, West and North as `GameButtonA`, `GameButtonB`, `GameButtonX` and `GameButtonY`, the shoulders as `GameButtonLeft1` and `GameButtonRight1`, the triggers as `GameButtonLeft2` and `GameButtonRight2` from half their travel, Start, Back and Guide as `GameButtonStart`, `GameButtonSelect` and `GameButtonMode`, the presses of the sticks as `GameButtonThumbLeft` and `GameButtonThumbRight`
+- the D-pad as the arrow keys (`KeyEventDeviceTypeDirectionalPad`; the rest are `KeyEventDeviceTypeGamepad`)
 
-This gives every Glutter app focus traversal and activation with a pad (`ActivateIntent` on `GameButtonA`, as Flutter's default shortcuts). `Gamepads.SetKeyEvents(false)` turns it off. Flutter does this only on Android, so the desktop and the web are a deviation (§12.10). On Android, a pad's key events go through the gamepad service only, so each press arrives once.
+This gives every Glutter app focus traversal and activation with a pad (`ActivateIntent` on `GameButtonA`, as Flutter's default shortcuts). `Gamepads.SetKeyEvents(false)` turns it off. Only the window that has the focus gets them: the pads are read whether or not the app is in front. A button that is held does not repeat (Android's system repeats the D-pad; a hold here is one press). Flutter does this only on Android, so the desktop and the web are a deviation (§12.10). On Android, a pad's key events go through the gamepad service only, so each press arrives once.
 
 | Platform | Backend |
 |---|---|
-| Linux | evdev (`/dev/input/event*`, read with `ioctl` through `syscall`; plain Go, no library) on a goroutine of its own, handed over with `Post`; hotplug through inotify on `/dev/input`; rumble with evdev force feedback (`FF_RUMBLE`); the HID drivers through `/dev/hidraw*` for LEDs, touchpads, sensors and trigger rumble. On desktops logind gives the user the pads' event devices; hidraw often needs a udev rule. Without it the pad works through evdev with fewer features, logged once at Info level, and `docs/GUIDE.md` gives the rule |
+| Linux | evdev, in plain Go (`internal/platform/linux/evdev`, `syscall` and no library): a device is looked at through sysfs (`/sys/class/input/eventN/device`: the id, the name and the capabilities) before it is opened, so that **only a joystick or a gamepad is ever opened** (udev's `input_id` rules decide which, and a keyboard, a mouse, a touchpad, a tablet, a touch screen or a motion sensor is left alone); one goroutine reads all the pads with `epoll` and hands over with `Post`; the ranges of the axes come from `EVIOCGABS`, the events carry the monotonic clock (`EVIOCSCLOCKID`), and `SYN_DROPPED` is recovered from by reading the state again; hotplug through inotify on `/dev/input` (the change of the attributes of a node, which is when its permissions are set, is a signal as well), and where inotify is not there for the user (the instances the system allows are used up) the directory is looked at every two seconds; buttons, axes and hats are numbered as SDL's evdev driver numbers them, so the table's mappings fit; rumble with evdev force feedback (`FF_RUMBLE`); the HID drivers through `/dev/hidraw*` for LEDs, touchpads, sensors and trigger rumble. On desktops logind gives the user the pads' event devices; hidraw often needs a udev rule. Without it the pad works through evdev with fewer features, logged once at Info level, and `docs/GUIDE.md` gives the rule |
 | Windows | XInput (`xinput1_4.dll`: up to four Xbox-compatible pads, with rumble) polled once a frame; HID through `hid.dll` and `SetupAPI` for the HID drivers and other pads; hotplug through Raw Input (`RIDEV_DEVNOTIFY`) |
 | Android | the input devices with `SOURCE_GAMEPAD` or `SOURCE_JOYSTICK`, through the Java embedding: motion events (`AXIS_*`) and key events (`KEYCODE_BUTTON_*`); hotplug through `InputManager.InputDeviceListener`; rumble through `InputDevice.getVibratorManager()` (Android 12, API 31), else `GamepadRumbleUnavailable` |
 | Web | `navigator.getGamepads()`, read once a frame while a pad is connected (never otherwise); `gamepadconnected` and `gamepaddisconnected`; the browser's `standard` mapping when it gives one, else the mapping table by the pad's id; rumble with `vibrationActuator.playEffect("dual-rumble")` where the browser has it; no LEDs or sensors |
+
+**Deviations from SDL** (kept in the source as comments where they are):
+- No event loop and no hints: a `hint:` field of a mapping reads an environment variable (`os.Getenv`, or the `Getenv` of the engine's configuration), where SDL reads its hint table.
+- The mapping of a pad that SDL would make from the pad's reports has its analog D-pad as the halves of one axis (`dpleft:-a6,dpright:+a6`), where SDL maps all four directions to the whole axis, which makes only the first one work.
+- The delay that SDL puts on the guide button, the player indexes, the Steam virtual pads and SDL's own "ignore list" of devices (apart from the ASUS mice) are left out.
 
 ### 28.3 Audio (`audio`)
 
@@ -3863,7 +3895,7 @@ Confirmed by the owner on 2026-11-05, and checked in step 31.11; a target that i
 ### 28.7 Errors
 
 Tags (each with a route test):
-- **Gamepads:** `GamepadRumbleUnavailable`, `GamepadLEDUnavailable`, `GamepadMappingInvalid`.
+- **Gamepads:** `GamepadRumbleUnavailable`, `GamepadLEDUnavailable`, `GamepadMappingInvalid`. The Linux backend has tags of its own, which it logs and returns from `Start`: `EvdevStartFailed`, `EvdevScanFailed`, `EvdevWaitFailed`, `EvdevWatchFailed`, `EvdevDeviceOpenFailed`, `EvdevDevicePermission`, `EvdevIoctlFailed` and `EvdevSysfsReadFailed`; `glutter-gen gamepaddb` has `GamepadDBBadFlags`, `GamepadDBReadFailed`, `GamepadDBWriteFailed`, `GamepadDBSyntax` and `GamepadDBFormatFailed`; `glutter-gen apicheck` has `ApiCheckWalkFailed`.
 - **Audio:** `AudioUnavailable`, `AudioDeviceOpenFailed`, `AudioDeviceLost`, `AudioFormatUnsupported`, `AudioCapturePermissionDenied`, `WAVInvalid`.
 - **Sensors:** `SensorUnavailable`, `SensorPermissionDenied`.
 - **Loaders:** `GLTFInvalid`, `GLTFExtensionUnsupported`, `PLYInvalid`, `ThreeMFInvalid`.
