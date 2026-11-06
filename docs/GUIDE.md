@@ -1593,8 +1593,22 @@ func main() { _ = newPadView() }
   to 1 of the heavy and the light motor; a duration of 0 stops them) and `Pad.CanRumble()` says whether the pad can. It works
   on Linux (force feedback: the pad's node must be writable, which the seat's rules give with the read access), on Windows for
   the Xbox pads (XInput), on the web where the browser has `vibrationActuator` (Chrome and Edge; at most 5 seconds), and on
-  Android 12 and later; everywhere else it returns `GamepadRumbleUnavailable`. Triggers (`RumbleTriggers`) and the light
-  (`SetLED`) come with the HID drivers of PlayStation and Xbox pads.
+  Android 12 and later; everywhere else it returns `GamepadRumbleUnavailable`. `Pad.RumbleTriggers(left, right, d)` turns the
+  motors in the triggers (`CanRumbleTriggers()`: the DualSense and the Xbox One and Series pads over Bluetooth) and
+  `Pad.SetLED(color)` sets the light bar of a PlayStation pad or the Home light of a Switch Pro controller (`HasLED()`).
+- **PlayStation, Switch Pro and Bluetooth Xbox pads** have a HID driver on Linux and Windows. It gives what the system's own
+  driver does not show: the light, the trigger motors, the touchpad (`Pad.Touchpads()`, `Pad.Touches()` and
+  `Pad.AddTouchListener(fn)`: fingers with a position from 0 to 1 and a pressure), the battery (`Pad.Battery()` and
+  `Pad.Power()` also say whether the pad charges or is full) and, for the next version of Glutter's `sensors`, the gyroscope
+  and accelerometer. A pad that cannot be reached this way works as any other pad. **On Linux** that means the user must be
+  allowed to open `/dev/hidraw*`; on a desktop the seat's rules may not give hidraw access for every pad, and then the log says
+  once (`slog`, Info) that a pad is read through its event device, and a udev rule in
+  `/etc/udev/rules.d/71-glutter-gamepads.rules` gives the access:
+  `KERNEL=="hidraw*", ATTRS{idVendor}=="054c", MODE="0660", TAG+="uaccess"` (Sony), the same with `057e` (Nintendo) and `045e`
+  (Microsoft), and for pads that are connected over Bluetooth `KERNELS=="0005:054C:*", MODE="0660", TAG+="uaccess"` (and
+  `0005:057E:*`, `0005:045E:*`); then `sudo udevadm control --reload && sudo udevadm trigger`. **On Windows** there is nothing to
+  do; XInput keeps serving Xbox pads while it is there. `GLUTTER_GAMEPAD_HID=0` in the environment turns the drivers off, and
+  every pad is read the old way.
 - **On Windows** Xbox pads and the others that Windows serves through XInput are read at 125 Hz while they are connected (no
   work is done for an empty slot), and every other game controller through Raw Input and the HID parser, so a generic USB
   pad needs the line of the table that SDL has for it (`AddMappings` for a pad it does not know). A pad that only reports

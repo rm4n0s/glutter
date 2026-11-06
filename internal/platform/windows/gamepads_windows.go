@@ -4,10 +4,12 @@ package windows
 
 import (
 	"log/slog"
+	"os"
 	"runtime"
 	"sync"
 
 	"github.com/rm4n0s/errors"
+	"github.com/rm4n0s/glutter/internal/gamepadhid"
 	"github.com/rm4n0s/glutter/internal/platform"
 	"github.com/rm4n0s/glutter/internal/platform/windows/win32"
 	"github.com/rm4n0s/glutter/internal/platform/windows/winpad"
@@ -36,7 +38,8 @@ var _ platform.Gamepads = (*padService)(nil)
 // gamepads makes the gamepad service on the first call.
 func (p *Platform) gamepads() platform.Gamepads {
 	p.padsOnce.Do(func() {
-		opts := winpad.Opts{Post: p.Post, Clock: p.pointerClock, Logger: p.log, HID: newRawInputHID(p.log)}
+		opts := winpad.Opts{Post: p.Post, Clock: p.pointerClock, Logger: p.log, HID: newRawInputHID(p.log), OpenHID: openHIDTransport,
+			DisableDrivers: os.Getenv("GLUTTER_GAMEPAD_HID") == "0"}
 		x, err := win32.LoadXInput()
 		if err != nil {
 			p.log.Info("XInput is not available, so the Xbox pads are read through HID", "err", err)
@@ -169,6 +172,16 @@ func (m *padMonitor) handleMessage(hwnd uintptr, msg uint32, wparam, lparam uint
 		return 0
 	}
 	return win32.DefWindowProc(hwnd, msg, wparam, lparam)
+}
+
+// openHIDTransport opens a HID device as the transport of a HID driver (SPEC §28.2, step 31.3). GLUTTER_GAMEPAD_HID=0 turns the
+// drivers off, so that every pad is read through Raw Input.
+func openHIDTransport(path string) (gamepadhid.Transport, error) {
+	f, err := win32.OpenHidFile(path)
+	if err != nil {
+		return nil, err
+	}
+	return f, nil
 }
 
 // rawInputHID is winpad.HIDSource over Raw Input and the HID parser.

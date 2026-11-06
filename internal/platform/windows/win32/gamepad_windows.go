@@ -212,11 +212,19 @@ func GetRawInputHID(handle uintptr) (device uintptr, reports [][]byte, ok bool) 
 //
 // Flutter: no counterpart
 func CreateFile(path string, access, share, disposition uint32) (uintptr, error) {
+	return CreateFileFlags(path, access, share, disposition, 0)
+}
+
+// CreateFileFlags is CreateFile with the flags and attributes of the file as well (FILE_FLAG_OVERLAPPED for a handle whose reads
+// and writes do not wait).
+//
+// Flutter: no counterpart
+func CreateFileFlags(path string, access, share, disposition, flags uint32) (uintptr, error) {
 	p, err := UTF16PtrFromString(path)
 	if err != nil {
 		return 0, err
 	}
-	r, errno, err := kern32.call("CreateFileW", uintptr(unsafe.Pointer(p)), uintptr(access), uintptr(share), 0, uintptr(disposition), 0, 0)
+	r, errno, err := kern32.call("CreateFileW", uintptr(unsafe.Pointer(p)), uintptr(access), uintptr(share), 0, uintptr(disposition), uintptr(flags), 0)
 	if err != nil {
 		return 0, err
 	}

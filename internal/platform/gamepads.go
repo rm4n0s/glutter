@@ -34,6 +34,15 @@ type PadInfo struct {
 	Rumble, RumbleTriggers, LED bool
 	// Battery is the charge of the pad from 0 to 100, or -1 when it is not known.
 	Battery int
+	// ButtonMask says which buttons of the layout a Standard pad has, one bit for each gamepaddb.Button; 0 means all of them.
+	// A pad that reports raw inputs gets its buttons from its mapping instead.
+	ButtonMask uint32
+	// Touchpads is the number of touchpads of the pad (a PlayStation pad has one); each reports two fingers.
+	Touchpads int
+	// Sensors says that the pad has a gyroscope and an accelerometer, and SensorRate is how many readings of each it makes in
+	// a second (0 when it does not say).
+	Sensors    bool
+	SensorRate float32
 }
 
 // PadEventKind says what a PadEvent reports.
@@ -81,6 +90,103 @@ type PadHandler interface {
 	PadEvents(events []PadEvent)
 }
 
+// PadTouch is a finger on a touchpad of a pad, reported by the backends whose pads have one (the HID drivers of PlayStation
+// pads, SPEC §28.2). X and Y are from 0 to 1, from the top left corner; Down says that the finger is on the pad.
+//
+// Flutter: no counterpart
+type PadTouch struct {
+	Pad PadID
+	// Time is when the report was made, on the system's monotonic clock.
+	Time time.Duration
+	// Touchpad and Finger number the touchpad and the finger, from 0.
+	Touchpad, Finger int
+	Down             bool
+	X, Y, Pressure   float32
+}
+
+// PadSensorKind is the kind of a sensor of a pad.
+//
+// Flutter: no counterpart
+type PadSensorKind uint8
+
+const (
+	// PadGyroscope is the gyroscope: Values are in radians a second.
+	//
+	// Flutter: no counterpart
+	PadGyroscope PadSensorKind = iota
+	// PadAccelerometer is the accelerometer: Values are in metres a second squared, gravity included.
+	//
+	// Flutter: no counterpart
+	PadAccelerometer
+)
+
+// PadSensor is a reading of a motion sensor of a pad. The axes are x to the right, y up and z out of the face of the pad when it
+// lies flat with its sticks up, with the signs of the PlayStation pads, to which the others are made to agree.
+//
+// Flutter: no counterpart
+type PadSensor struct {
+	Pad PadID
+	// Time is when the report that held the reading was made, on the system's monotonic clock; SensorTime is when the sensor
+	// made the reading, on the sensor's own clock (it only means something between two readings of the same sensor).
+	Time, SensorTime time.Duration
+	Kind             PadSensorKind
+	Values           [3]float32
+}
+
+// PadPowerState says what a pad does with its battery.
+//
+// Flutter: no counterpart
+type PadPowerState uint8
+
+const (
+	// PadPowerUnknown is a pad that does not say.
+	//
+	// Flutter: no counterpart
+	PadPowerUnknown PadPowerState = iota
+	// PadOnBattery is a pad that runs on its battery.
+	//
+	// Flutter: no counterpart
+	PadOnBattery
+	// PadCharging is a pad whose battery is charging.
+	//
+	// Flutter: no counterpart
+	PadCharging
+	// PadCharged is a pad whose battery is full while it is plugged in.
+	//
+	// Flutter: no counterpart
+	PadCharged
+)
+
+// PadBattery is the battery state that a pad reported.
+//
+// Flutter: no counterpart
+type PadBattery struct {
+	Pad   PadID
+	State PadPowerState
+	// Percent is the charge from 0 to 100, or -1 when the pad does not say.
+	Percent int
+}
+
+// PadExtrasHandler is implemented by a PadHandler that takes more than the buttons and axes: the touchpad, the motion sensors
+// and the battery of the pads that have them. A backend whose pads have none never looks for it. The methods are called on the
+// UI thread, in order with the events, like the methods of PadHandler.
+//
+// Flutter: no counterpart
+type PadExtrasHandler interface {
+	PadTouch(t PadTouch)
+	PadSensor(s PadSensor)
+	PadBattery(b PadBattery)
+}
+
+// PadSensorControl is implemented by the Gamepads of a backend whose pads have motion sensors: they report only while an app
+// wants them, which saves the pad's battery and the bandwidth of its link.
+//
+// Flutter: no counterpart
+type PadSensorControl interface {
+	// SetPadSensors turns the sensors of the pad on or off. It fails with GamepadSensorsUnavailable when the pad has none.
+	SetPadSensors(id PadID, on bool) error
+}
+
 // Gamepads is the gamepad service of a platform.
 //
 // Flutter: no counterpart
@@ -119,4 +225,8 @@ const (
 	//
 	// Flutter: no counterpart
 	TagGamepadLEDUnavailable = "GamepadLEDUnavailable"
+	// TagGamepadSensorsUnavailable is the tag of the error of motion sensors that the pad or the platform does not have.
+	//
+	// Flutter: no counterpart
+	TagGamepadSensorsUnavailable = "GamepadSensorsUnavailable"
 )

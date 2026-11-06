@@ -51,6 +51,10 @@ type recorder struct {
 	added  []platform.PadInfo
 	gone   []platform.PadID
 	events []platform.PadEvent
+	// The extras that a HID driver reports (hid_linux_test.go).
+	touches   []platform.PadTouch
+	sensors   []platform.PadSensor
+	batteries []platform.PadBattery
 }
 
 func (r *recorder) PadAdded(info platform.PadInfo) {

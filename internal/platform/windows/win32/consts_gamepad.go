@@ -212,4 +212,20 @@ const (
 	//
 	// Flutter: no counterpart
 	OpenExisting = 3
+	// GenericWrite is GENERIC_WRITE.
+	//
+	// Flutter: no counterpart
+	GenericWrite = 0x40000000
+	// FileFlagOverlapped is FILE_FLAG_OVERLAPPED: the handle does its reads and writes without waiting.
+	//
+	// Flutter: no counterpart
+	FileFlagOverlapped = 0x40000000
+	// ErrorIoPending is ERROR_IO_PENDING: an overlapped call has started and has not finished.
+	//
+	// Flutter: no counterpart
+	ErrorIoPending = 997
+	// ErrorOperationAborted is ERROR_OPERATION_ABORTED: the call was cancelled (CancelIoEx, or the handle was closed).
+	//
+	// Flutter: no counterpart
+	ErrorOperationAborted = 995
 )

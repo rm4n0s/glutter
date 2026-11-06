@@ -30,6 +30,8 @@ type PadSpec struct {
 	Mapping string
 	// Rumble, RumbleTriggers and LED say what the pad can do.
 	Rumble, RumbleTriggers, LED bool
+	// Touchpads is the number of touchpads of the pad; TestPad.Touch moves fingers on them.
+	Touchpads int
 }
 
 // PadRumble is a request that the app made to a test pad to rumble or to set its light.
@@ -77,7 +79,7 @@ func (t *Tester) ConnectPad(spec ...PadSpec) *TestPad {
 	raw := s.Axes > 0 || s.Buttons > 0 || s.Hats > 0 || s.Mapping != ""
 	info := platform.PadInfo{
 		Name: s.Name, GUID: guid, Axes: s.Axes, Buttons: s.Buttons, Hats: s.Hats, Mapping: s.Mapping, Standard: !raw,
-		Rumble: s.Rumble, RumbleTriggers: s.RumbleTriggers, LED: s.LED, Battery: -1,
+		Rumble: s.Rumble, RumbleTriggers: s.RumbleTriggers, LED: s.LED, Battery: -1, Touchpads: s.Touchpads,
 	}
 	p := &TestPad{t: t, raw: raw, spec: s}
 	p.id = t.padsvc.Connect(info)
@@ -197,6 +199,32 @@ func (p *TestPad) RawAxis(i, v int) {
 // Flutter: no counterpart
 func (p *TestPad) RawHat(i int, mask uint8) {
 	p.send(platform.PadEvent{Kind: platform.PadHat, Index: i, Value: int(mask)})
+}
+
+// Touch puts a finger on a touchpad of the pad, moves it or lifts it: x and y are from 0 to 1, from the top left corner.
+//
+// Flutter: no counterpart
+func (p *TestPad) Touch(touchpad, finger int, down bool, x, y float64) {
+	p.t.adopt()
+	var pressure float32
+	if down {
+		pressure = 1
+	}
+	p.t.padsvc.SendTouch(platform.PadTouch{Pad: p.id, Time: p.t.Elapsed(), Touchpad: touchpad, Finger: finger, Down: down, X: float32(x), Y: float32(y), Pressure: pressure})
+	p.t.host.RunPosted()
+}
+
+// SetBattery makes the pad report its battery: the charge from 0 to 1, and whether it is being charged.
+//
+// Flutter: no counterpart
+func (p *TestPad) SetBattery(level float64, charging bool) {
+	p.t.adopt()
+	state := platform.PadOnBattery
+	if charging {
+		state = platform.PadCharging
+	}
+	p.t.padsvc.SendBattery(platform.PadBattery{Pad: p.id, State: state, Percent: int(level*100 + 0.5)})
+	p.t.host.RunPosted()
 }
 
 // Disconnect unplugs the pad.

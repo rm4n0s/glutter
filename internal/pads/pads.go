@@ -306,13 +306,18 @@ func (m *Manager) PadAdded(info platform.PadInfo) {
 // makePad makes the pad of the info, or returns nil when it has no mapping.
 func (m *Manager) makePad(info platform.PadInfo) *Pad {
 	p := &Pad{m: m, info: info, connected: true}
+	p.extras.init(info)
 	guid := gamepaddb.GUID(info.GUID)
 	if info.Standard {
 		p.name = info.Name
 		p.kind = gamepaddb.KindOfGUID(guid, info.Name)
 		p.face = gamepaddb.FaceStyleOf(p.kind)
-		for b := gamepaddb.Button(0); b < gamepaddb.ButtonCount; b++ {
-			p.hasButton |= 1 << b
+		if info.ButtonMask != 0 {
+			p.hasButton = info.ButtonMask
+		} else {
+			for b := gamepaddb.Button(0); b < gamepaddb.ButtonCount; b++ {
+				p.hasButton |= 1 << b
+			}
 		}
 		p.hasAxis = 1<<gamepaddb.AxisCount - 1
 		return p
@@ -353,6 +358,29 @@ func (m *Manager) PadRemoved(id platform.PadID) {
 	p.remove(0)
 	m.log.Info("gamepad removed", "name", p.name)
 	m.notify()
+}
+
+var _ platform.PadExtrasHandler = (*Manager)(nil)
+
+// PadTouch implements platform.PadExtrasHandler.
+func (m *Manager) PadTouch(t platform.PadTouch) {
+	if p := m.byID[t.Pad]; p != nil && p.connected {
+		p.touch(t)
+	}
+}
+
+// PadSensor implements platform.PadExtrasHandler.
+func (m *Manager) PadSensor(s platform.PadSensor) {
+	if p := m.byID[s.Pad]; p != nil && p.connected {
+		p.sensor(s)
+	}
+}
+
+// PadBattery implements platform.PadExtrasHandler.
+func (m *Manager) PadBattery(b platform.PadBattery) {
+	if p := m.byID[b.Pad]; p != nil && p.connected {
+		p.setPower(b)
+	}
 }
 
 // PadEvents implements platform.PadHandler.

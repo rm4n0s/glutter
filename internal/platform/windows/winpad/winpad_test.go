@@ -196,6 +196,10 @@ type recorder struct {
 	gone   []platform.PadID
 	events []platform.PadEvent
 	posts  chan func()
+	// The extras that a HID driver reports (drivers_test.go).
+	touches   []platform.PadTouch
+	sensors   []platform.PadSensor
+	batteries []platform.PadBattery
 }
 
 func newRecorder() *recorder { return &recorder{posts: make(chan func(), 1024)} }

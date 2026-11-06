@@ -28,9 +28,11 @@ type Services struct {
 // The bridge connects to the session bus only when it is started, and only if a bus is
 // there: it never starts one.
 //
+// GLUTTER_GAMEPAD_HID=0 turns the HID drivers of the gamepads off, so that every pad is read through its event device (SPEC §28.2).
+//
 // Flutter: no counterpart
 func NewServices(post func(func())) *Services {
-	return &Services{pads: evdev.New(evdev.Opts{Post: post, Logger: slog.Default()}), bridge: atspi.New(atspi.Options{
+	return &Services{pads: evdev.New(evdev.Opts{Post: post, Logger: slog.Default(), DisableHID: os.Getenv("GLUTTER_GAMEPAD_HID") == "0"}), bridge: atspi.New(atspi.Options{
 		AppName: filepath.Base(os.Args[0]),
 		Post:    post,
 		OpenSession: func(ctx context.Context) (dbus.Bus, error) {

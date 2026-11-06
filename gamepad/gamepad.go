@@ -21,6 +21,7 @@ import (
 	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/internal/gamepaddb"
 	"github.com/rm4n0s/glutter/internal/pads"
+	"github.com/rm4n0s/glutter/internal/platform"
 	"github.com/rm4n0s/glutter/ui"
 	"github.com/rm4n0s/glutter/widgets"
 )
@@ -427,6 +428,9 @@ type Battery struct {
 	// Known says whether the platform knows the charge; Level is from 0 to 1 and means nothing when Known is false.
 	Known bool
 	Level float64
+	// Charging says that the battery is being charged, and Charged that it is full while the pad is plugged in. A pad that does
+	// not say has neither.
+	Charging, Charged bool
 }
 
 // Pad is a connected gamepad. A pad has the same value for as long as it is connected.
@@ -490,10 +494,58 @@ func (p *Pad) State() State { return State{p.p.State()} }
 //
 // Flutter: no counterpart
 func (p *Pad) Battery() Battery {
-	if v := p.p.Battery(); v >= 0 {
-		return Battery{Known: true, Level: float64(v) / 100}
+	pw := p.p.Power()
+	b := Battery{Charging: pw.State == platform.PadCharging, Charged: pw.State == platform.PadCharged}
+	if pw.Percent >= 0 {
+		b.Known, b.Level = true, float64(pw.Percent)/100
 	}
-	return Battery{}
+	return b
+}
+
+// Touch is a finger on the touchpad of a pad: the PlayStation pads have one that takes two fingers.
+//
+// Flutter: no counterpart
+type Touch struct {
+	// Pad is the pad that has the touchpad.
+	Pad *Pad
+	// Time is when the pad reported the finger, on the system's monotonic clock.
+	Time time.Duration
+	// Touchpad and Finger number the touchpad and the finger, from 0.
+	Touchpad, Finger int
+	// Down says that the finger is on the touchpad; a finger that left keeps the place it left from. X and Y are from 0 to 1,
+	// from the top left corner, and Pressure is 1 for a finger that is down and 0 for one that is not.
+	Down           bool
+	X, Y, Pressure float64
+}
+
+// Touchpads is the number of touchpads of the pad: 1 for a PlayStation pad with the HID driver (SPEC §28.2), else 0. The press
+// of the touchpad is the button Touchpad; this is for the fingers on it.
+//
+// Flutter: no counterpart
+func (p *Pad) Touchpads() int { return p.p.Touchpads() }
+
+// Touches returns the fingers that are on the touchpads of the pad now.
+//
+// Flutter: no counterpart
+func (p *Pad) Touches() []Touch {
+	fingers := p.p.Touches()
+	out := make([]Touch, len(fingers))
+	for i, f := range fingers {
+		out[i] = p.touch(f)
+	}
+	return out
+}
+
+func (p *Pad) touch(f pads.Touch) Touch {
+	return Touch{Pad: p, Time: f.Time, Touchpad: f.Touchpad, Finger: f.Finger, Down: f.Down, X: float64(f.X), Y: float64(f.Y), Pressure: float64(f.Pressure)}
+}
+
+// AddTouchListener adds a function that is called, on the UI thread, when a finger goes down, moves or goes up on a touchpad of
+// the pad, and returns the function that removes it. A listener may add and remove listeners.
+//
+// Flutter: no counterpart
+func (p *Pad) AddTouchListener(fn func(Touch)) (remove func()) {
+	return p.p.AddTouchListener(func(f pads.Touch) { fn(p.touch(f)) })
 }
 
 // AddListener adds a function that is called, on the UI thread, with every change of a button or axis of the pad, and returns

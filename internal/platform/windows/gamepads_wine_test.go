@@ -251,3 +251,19 @@ func (x *scriptedXInput) GetCapabilitiesEx(uint32) (win32.XInputCapabilitiesEx, 
 func (x *scriptedXInput) GetBatteryInformation(uint32) (win32.XInputBatteryInformation, bool) {
 	return win32.XInputBatteryInformation{}, false
 }
+
+// TestWineHIDTransportFailsForADeviceThatIsNotThere: a device that is not there cannot be opened for a driver, and the error is
+// the one of CreateFileW, which the service takes as a reason to read the pad through Raw Input.
+func TestWineHIDTransportFailsForADeviceThatIsNotThere(t *testing.T) {
+	tr, err := openHIDTransport(`\\?\hid#vid_dead&pid_beef#none`)
+	if tr != nil {
+		t.Fatalf("a transport was made of nothing: %v", tr)
+	}
+	appErr, ok := errors.FromError(err)
+	if !ok {
+		t.Fatalf("expected *errors.Error, got %T (%v)", err, err)
+	}
+	if appErr.Tag != win32.TagWin32CallFailed || !appErr.HasRoute("openHIDTransport->OpenHidFile->CreateFileFlags->Win32Error.Win32CallFailed") {
+		t.Errorf("unexpected failure: tag %s, path %s", appErr.Tag, appErr.Route())
+	}
+}

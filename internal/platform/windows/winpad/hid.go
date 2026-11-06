@@ -210,10 +210,10 @@ func (t *hidTracker) update(now time.Duration, items []win32.HidpData, out []pla
 func isXInputPath(path string) bool { return strings.Contains(path, "IG_") }
 
 // busOfPath guesses the bus of a HID device from its path: Bluetooth HID devices have the Bluetooth service class of the HID
-// profile or the BTHENUM enumerator in it, the rest are taken for USB.
+// profile (or of HID over GATT, for Bluetooth Low Energy) or the BTHENUM enumerator in it, the rest are taken for USB.
 func busOfPath(path string) uint16 {
 	p := strings.ToUpper(path)
-	if strings.Contains(p, "BTHENUM") || strings.Contains(p, "BTHLEDEVICE") || strings.Contains(p, "{00001124-0000-1000-8000-00805F9B34FB}") {
+	if strings.Contains(p, "BTHENUM") || strings.Contains(p, "BTHLEDEVICE") || strings.Contains(p, "{00001124-0000-1000-8000-00805F9B34FB}") || strings.Contains(p, "{00001812-0000-1000-8000-00805F9B34FB}") {
 		return gamepaddb.BusBluetooth
 	}
 	return gamepaddb.BusUSB

@@ -9,6 +9,7 @@ import (
 
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/internal/gamepaddb"
+	"github.com/rm4n0s/glutter/internal/gamepadhid"
 	"github.com/rm4n0s/glutter/internal/platform"
 	"github.com/rm4n0s/glutter/internal/platform/padstd"
 	"github.com/rm4n0s/glutter/internal/platform/windows/win32"
@@ -69,6 +70,10 @@ type Opts struct {
 	XInput XInputAPI
 	// HID lists and reads the other pads; nil for none.
 	HID HIDSource
+	// OpenHID opens the HID device at a path as the transport of a HID driver (SPEC §28.2, step 31.3); nil gives no drivers, and
+	// every pad is read through Raw Input. DisableDrivers does the same when the transport is there.
+	OpenHID        func(path string) (gamepadhid.Transport, error)
+	DisableDrivers bool
 	// PollEvery is how often the XInput pads are read while there is one (8 ms when zero); ScanEvery how often the empty slots
 	// are looked at and the HID devices listed when Windows has told of nothing (2 s when zero).
 	PollEvery, ScanEvery time.Duration
@@ -90,9 +95,15 @@ type Service struct {
 	motors sync.Mutex
 	slots  map[platform.PadID]uint32
 	timers map[platform.PadID]*time.Timer
+
+	// drivers are the pads that HID drivers serve (drivers.go).
+	drivers driverDevices
 }
 
-var _ platform.Gamepads = (*Service)(nil)
+var (
+	_ platform.Gamepads         = (*Service)(nil)
+	_ platform.PadSensorControl = (*Service)(nil)
+)
 
 // New makes the service. It does nothing until Start.
 //
@@ -125,6 +136,7 @@ func (s *Service) Start(h platform.PadHandler) error {
 		s: s, h: h, stop: make(chan struct{}), done: make(chan struct{}),
 		wake: make(chan struct{}, 1), reports: make(chan hidReports, 256),
 		xi: map[uint32]*xinputPad{}, hid: map[uintptr]*hidPad{},
+		drv: map[uintptr]*drvPad{}, drvFailed: map[uintptr]bool{}, drvEvents: make(chan drvEvent, 16),
 	}
 	s.cur = r
 	go r.loop()
@@ -191,8 +203,11 @@ func (s *Service) HIDReports(device uintptr, reports [][]byte, at time.Duration)
 }
 
 // Rumble implements platform.Gamepads for the XInput pads: the motors turn at the strengths for d, and a timer stops them. A
-// duration of 0 stops them. A HID pad cannot rumble before its driver is there (SPEC §28.2, step 31.3).
+// duration of 0 stops them. The pads of the HID drivers rumble through their driver; a pad read through Raw Input cannot rumble.
 func (s *Service) Rumble(id platform.PadID, low, high uint16, d time.Duration) error {
+	if dev := s.drivers.get(id); dev != nil {
+		return dev.Rumble(low, high, d)
+	}
 	s.motors.Lock()
 	defer s.motors.Unlock()
 	user, ok := s.slots[id]
@@ -230,14 +245,29 @@ func (s *Service) stopMotors(id platform.PadID, user uint32) {
 	}
 }
 
-// RumbleTriggers implements platform.Gamepads: XInput has no motors for the triggers.
+// RumbleTriggers implements platform.Gamepads: the pads of the HID drivers that have motors in their triggers rumble them; XInput
+// has none.
 func (s *Service) RumbleTriggers(id platform.PadID, left, right uint16, d time.Duration) error {
+	if dev := s.drivers.get(id); dev != nil {
+		return dev.RumbleTriggers(left, right, d)
+	}
 	return errors.New(platform.TagGamepadRumbleUnavailable, "the triggers of a pad cannot rumble through XInput", "pad", int64(id))
 }
 
-// SetLED implements platform.Gamepads: neither XInput nor Raw Input can set a light.
+// SetLED implements platform.Gamepads: the pads of the HID drivers that have a light set it; neither XInput nor Raw Input can.
 func (s *Service) SetLED(id platform.PadID, r, g, b uint8) error {
+	if dev := s.drivers.get(id); dev != nil {
+		return dev.SetLED(r, g, b)
+	}
 	return errors.New(platform.TagGamepadLEDUnavailable, "the light of a pad cannot be set on Windows without its HID driver", "pad", int64(id))
+}
+
+// SetPadSensors implements platform.PadSensorControl: the sensors of a pad are on its HID driver.
+func (s *Service) SetPadSensors(id platform.PadID, on bool) error {
+	if dev := s.drivers.get(id); dev != nil {
+		return dev.SetSensors(on)
+	}
+	return errors.New(platform.TagGamepadSensorsUnavailable, "the pad has no motion sensors that Windows can reach without its HID driver", "pad", int64(id))
 }
 
 // hidReports are the reports of a HID device that Raw Input delivered together.
@@ -273,6 +303,11 @@ type run struct {
 
 	xi  map[uint32]*xinputPad
 	hid map[uintptr]*hidPad
+	// drv are the pads that HID drivers serve, by the handle of Raw Input; drvFailed the devices whose driver gave up, which are
+	// read through Raw Input; drvEvents is what the drivers tell the loop.
+	drv       map[uintptr]*drvPad
+	drvFailed map[uintptr]bool
+	drvEvents chan drvEvent
 	// warned is the notes that were made once.
 	warned map[string]bool
 }
@@ -300,7 +335,10 @@ func (r *run) loop() {
 			r.s.motors.Lock()
 			clear(r.s.slots)
 			r.s.motors.Unlock()
+			r.closeDrivers()
 			return
+		case ev := <-r.drvEvents:
+			r.driverEvent(ev)
 		case <-r.wake:
 			r.scanXInput()
 			r.scanHID()
@@ -440,8 +478,21 @@ func (r *run) scanHID() {
 			continue
 		}
 		present[d.Handle] = true
-		if r.hid[d.Handle] == nil {
+		if r.drv[d.Handle] != nil || r.hid[d.Handle] != nil {
+			continue
+		}
+		if !r.tryDriver(d) {
 			r.connectHID(d)
+		}
+	}
+	for _, p := range r.drv {
+		if !present[p.handle] {
+			r.dropDriver(p)
+		}
+	}
+	for handle := range r.drvFailed {
+		if !present[handle] {
+			delete(r.drvFailed, handle)
 		}
 	}
 	for handle, p := range r.hid {

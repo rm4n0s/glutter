@@ -21,6 +21,8 @@ type Gamepads struct {
 	nextID  platform.PadID
 	rumbles []Rumble
 	started int
+	// sensors holds the pads whose sensors are on.
+	sensors map[platform.PadID]bool
 }
 
 // Rumble is a rumble or light request that the fake service recorded.
@@ -41,7 +43,7 @@ type Rumble struct {
 //
 // Flutter: no counterpart
 func NewGamepads(post func(func())) *Gamepads {
-	return &Gamepads{post: post, pads: map[platform.PadID]platform.PadInfo{}, nextID: 1}
+	return &Gamepads{post: post, pads: map[platform.PadID]platform.PadInfo{}, nextID: 1, sensors: map[platform.PadID]bool{}}
 }
 
 // Gamepads returns the scripted gamepad service, which Services gives the engine.
@@ -189,4 +191,66 @@ func (g *Gamepads) SetLED(id platform.PadID, r, gr, b uint8) error {
 	return nil
 }
 
-var _ platform.Gamepads = (*Gamepads)(nil)
+var (
+	_ platform.Gamepads         = (*Gamepads)(nil)
+	_ platform.PadSensorControl = (*Gamepads)(nil)
+)
+
+// extras returns the handler's extras interface, or nil when it has none or the service is stopped.
+func (g *Gamepads) extras() platform.PadExtrasHandler {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.handler == nil {
+		return nil
+	}
+	x, _ := g.handler.(platform.PadExtrasHandler)
+	return x
+}
+
+// SendTouch makes a finger of a touchpad arrive.
+//
+// Flutter: no counterpart
+func (g *Gamepads) SendTouch(t platform.PadTouch) {
+	if x := g.extras(); x != nil {
+		g.post(func() { x.PadTouch(t) })
+	}
+}
+
+// SendSensor makes a reading of a motion sensor arrive. The pad's service gives it to the app only while the sensors are on.
+//
+// Flutter: no counterpart
+func (g *Gamepads) SendSensor(s platform.PadSensor) {
+	if x := g.extras(); x != nil {
+		g.post(func() { x.PadSensor(s) })
+	}
+}
+
+// SendBattery makes a state of the battery arrive.
+//
+// Flutter: no counterpart
+func (g *Gamepads) SendBattery(b platform.PadBattery) {
+	if x := g.extras(); x != nil {
+		g.post(func() { x.PadBattery(b) })
+	}
+}
+
+// SetPadSensors implements platform.PadSensorControl: the request is kept, and fails for a pad without sensors.
+func (g *Gamepads) SetPadSensors(id platform.PadID, on bool) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	info, ok := g.pads[id]
+	if !ok || !info.Sensors {
+		return errors.New(platform.TagGamepadSensorsUnavailable, "the fake pad has no motion sensors", "pad", int64(id))
+	}
+	g.sensors[id] = on
+	return nil
+}
+
+// SensorsOn says whether the app turned the sensors of the pad on.
+//
+// Flutter: no counterpart
+func (g *Gamepads) SensorsOn(id platform.PadID) bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.sensors[id]
+}

@@ -219,3 +219,15 @@ type HidpData struct {
 func (d HidpData) On() bool { return byte(d.RawValue) != 0 }
 
 func unionU16(u *[16]byte, off int) uint16 { return uint16(u[off]) | uint16(u[off+1])<<8 }
+
+// Overlapped is the Go mirror of OVERLAPPED, the structure of a call that does not wait. Windows keeps a pointer to it while the
+// call is under way, so the structure of a call lives in memory from HeapAlloc, never in Go memory (SPEC §6.3 rule 11).
+//
+// Flutter: no counterpart
+type Overlapped struct {
+	Internal     uintptr `c:"Internal"`
+	InternalHigh uintptr `c:"InternalHigh"`
+	Offset       uint32  `c:"Offset"`
+	OffsetHigh   uint32  `c:"OffsetHigh"`
+	Event        uintptr `c:"hEvent"`
+}

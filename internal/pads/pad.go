@@ -78,6 +78,8 @@ type Pad struct {
 	listeners []padListener
 	nextID    int
 	triggers  [2]bool
+	// The touchpad, the motion sensors and the battery (extras.go).
+	extras padExtras
 	// Wrapper is a place for the public type that wraps the pad, so that the same pad is the same value for the app.
 	Wrapper any
 }
@@ -202,7 +204,7 @@ func (p *Pad) HasLED() bool { return p.info.LED }
 // Battery is the charge of the pad from 0 to 100, or -1 when it is not known.
 //
 // Flutter: no counterpart
-func (p *Pad) Battery() int { return p.info.Battery }
+func (p *Pad) Battery() int { return p.extras.power.Percent }
 
 // State returns the buttons and axes of the pad now.
 //
@@ -283,8 +285,11 @@ func (p *Pad) remove(t time.Duration) {
 			p.AxisChanged(int64(t), a, 0)
 		}
 	}
+	p.releaseTouches(t)
 	p.connected = false
 	p.listeners = nil
+	p.extras.touchListeners = nil
+	p.extras.sensorListeners = nil
 }
 
 // ButtonChanged implements gamepaddb.Sink.

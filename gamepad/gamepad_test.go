@@ -438,6 +438,54 @@ func TestTheBatteryIsUnknownWithoutAReport(t *testing.T) {
 	}
 }
 
+func TestTheBatteryFollowsTheReports(t *testing.T) {
+	ts, pads := app(t)
+	pad := ts.ConnectPad()
+	p := pads.Pads()[0]
+	pad.SetBattery(0.55, true)
+	if b := p.Battery(); !b.Known || b.Level != 0.55 || !b.Charging || b.Charged {
+		t.Errorf("Battery() = %+v", b)
+	}
+	pad.SetBattery(0.25, false)
+	if b := p.Battery(); !b.Known || b.Level != 0.25 || b.Charging {
+		t.Errorf("Battery() = %+v", b)
+	}
+}
+
+func TestTheTouchpadReportsFingers(t *testing.T) {
+	ts, pads := app(t)
+	pad := ts.ConnectPad(gluttertest.PadSpec{Touchpads: 1})
+	p := pads.Pads()[0]
+	if p.Touchpads() != 1 {
+		t.Fatalf("Touchpads() = %d", p.Touchpads())
+	}
+	var got []gamepad.Touch
+	remove := p.AddTouchListener(func(tc gamepad.Touch) { got = append(got, tc) })
+
+	pad.Touch(0, 0, true, 0.25, 0.75)
+	pad.Touch(0, 1, true, 0.5, 0.5)
+	if len(got) != 2 || got[0].Pad != p || !got[0].Down || got[0].X != 0.25 || got[0].Y != 0.75 || got[0].Pressure != 1 || got[1].Finger != 1 {
+		t.Fatalf("touches = %+v", got)
+	}
+	if fingers := p.Touches(); len(fingers) != 2 || fingers[0].X != 0.25 {
+		t.Errorf("Touches() = %+v", fingers)
+	}
+	pad.Touch(0, 0, false, 0.25, 0.75)
+	if len(got) != 3 || got[2].Down || got[2].Pressure != 0 || len(p.Touches()) != 1 {
+		t.Errorf("after a finger left: %+v", got)
+	}
+	remove()
+	pad.Touch(0, 0, true, 0.1, 0.1)
+	if len(got) != 3 {
+		t.Error("a listener that was removed was called")
+	}
+	// A pad without a touchpad has none.
+	ts.ConnectPad()
+	if n := pads.Pads()[1].Touchpads(); n != 0 {
+		t.Errorf("a pad without a touchpad has %d", n)
+	}
+}
+
 func TestPadsWorkTheFocusOfAnApp(t *testing.T) {
 	var log []string
 	n1, n2 := widgets.NewFocusNode(), widgets.NewFocusNode()

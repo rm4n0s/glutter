@@ -15,6 +15,7 @@ import (
 
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/internal/gamepaddb"
+	"github.com/rm4n0s/glutter/internal/gamepadhid"
 	"github.com/rm4n0s/glutter/internal/platform"
 )
 
@@ -33,6 +34,12 @@ type Opts struct {
 	// service does so by itself (every 2 seconds) when inotify is not there for it, which happens when the user has used up the
 	// instances that the system allows; tests use it to try that way.
 	PollEvery time.Duration
+	// DisableHID turns the HID drivers off: every pad is read through its event device.
+	DisableHID bool
+	// HidDevDir is the directory of the hidraw nodes ("/dev" when empty). OpenHID opens the transport of a HID driver at a path;
+	// nil opens the hidraw node. Tests use both.
+	HidDevDir string
+	OpenHID   func(path string) (gamepadhid.Transport, error)
 }
 
 // Service is the gamepad backend of Linux (platform.Gamepads). It finds the pads among the event devices, reads them on a
@@ -54,6 +61,23 @@ type Service struct {
 	// descriptor of a pad is used only under it, so that a pad that goes away is never written to by a stale number.
 	ffMu sync.Mutex
 	ff   map[platform.PadID]*ffPad
+
+	// The HID drivers (SPEC §28.2): a pad that has one is read through its hidraw node and not its event device. hid holds the
+	// pads that are served so, which the UI thread asks to rumble and the goroutine of the loop adds and removes under hidMu.
+	noHID   bool
+	hidDir  string
+	openHID func(path string) (gamepadhid.Transport, error)
+	hidMu   sync.RWMutex
+	hid     map[platform.PadID]*hidPad
+}
+
+// hidPad is a pad that a HID driver serves.
+type hidPad struct {
+	id     platform.PadID
+	node   string
+	path   string
+	bridge *gamepadhid.Bridge
+	dev    *gamepadhid.Device
 }
 
 // ffPad is the force feedback state of an open pad.
@@ -67,7 +91,14 @@ type ffPad struct {
 //
 // Flutter: no counterpart
 func New(opts Opts) *Service {
-	s := &Service{post: opts.Post, log: opts.Logger, devDir: opts.DevDir, sysDir: opts.SysDir, pollEvery: opts.PollEvery, k: realKernel(), ff: map[platform.PadID]*ffPad{}}
+	s := &Service{post: opts.Post, log: opts.Logger, devDir: opts.DevDir, sysDir: opts.SysDir, pollEvery: opts.PollEvery, k: realKernel(), ff: map[platform.PadID]*ffPad{},
+		noHID: opts.DisableHID, hidDir: opts.HidDevDir, openHID: opts.OpenHID, hid: map[platform.PadID]*hidPad{}}
+	if s.hidDir == "" {
+		s.hidDir = "/dev"
+	}
+	if s.openHID == nil {
+		s.openHID = func(path string) (gamepadhid.Transport, error) { return openHidraw(path, realHidrawKernel()) }
+	}
 	if s.devDir == "" {
 		s.devDir = "/dev/input"
 	}
@@ -116,6 +147,9 @@ func (s *Service) Stop() {
 // Rumble implements platform.Gamepads with force feedback: an effect of type FF_RUMBLE is uploaded with the strengths and the
 // length and then played, and the kernel stops it when the length is over. A duration of 0, or no strength, stops the motors.
 func (s *Service) Rumble(id platform.PadID, low, high uint16, d time.Duration) error {
+	if dev := s.hidDevice(id); dev != nil {
+		return dev.Rumble(low, high, d)
+	}
 	s.ffMu.Lock()
 	defer s.ffMu.Unlock()
 	p := s.ff[id]
@@ -138,12 +172,38 @@ func (s *Service) Rumble(id platform.PadID, low, high uint16, d time.Duration) e
 
 // RumbleTriggers implements platform.Gamepads.
 func (s *Service) RumbleTriggers(id platform.PadID, left, right uint16, d time.Duration) error {
+	if dev := s.hidDevice(id); dev != nil {
+		return dev.RumbleTriggers(left, right, d)
+	}
 	return errors.New(platform.TagGamepadRumbleUnavailable, "the triggers of a pad cannot rumble on Linux", "pad", int64(id))
 }
 
 // SetLED implements platform.Gamepads.
 func (s *Service) SetLED(id platform.PadID, r, g, b uint8) error {
-	return errors.New(platform.TagGamepadLEDUnavailable, "the light of a pad cannot be set on Linux yet", "pad", int64(id))
+	if dev := s.hidDevice(id); dev != nil {
+		return dev.SetLED(r, g, b)
+	}
+	return errors.New(platform.TagGamepadLEDUnavailable, "the light of a pad can be set only through its HID driver", "pad", int64(id))
+}
+
+var _ platform.PadSensorControl = (*Service)(nil)
+
+// SetPadSensors implements platform.PadSensorControl: the sensors of a pad are on its HID driver.
+func (s *Service) SetPadSensors(id platform.PadID, on bool) error {
+	if dev := s.hidDevice(id); dev != nil {
+		return dev.SetSensors(on)
+	}
+	return errors.New(platform.TagGamepadSensorsUnavailable, "the sensors of a pad can be read only through its HID driver", "pad", int64(id))
+}
+
+// hidDevice returns the device of a pad that a HID driver serves, or nil.
+func (s *Service) hidDevice(id platform.PadID) *gamepadhid.Device {
+	s.hidMu.RLock()
+	defer s.hidMu.RUnlock()
+	if hp := s.hid[id]; hp != nil {
+		return hp.dev
+	}
+	return nil
 }
 
 // run is one Start of the service.
@@ -173,6 +233,22 @@ type run struct {
 	// denied are the nodes that could not be opened for want of permission: with inotify the change of their attributes
 	// says when to try again, and while polling every look does.
 	denied map[string]bool
+	// hidpads are the pads that a HID driver serves, by event node; hidFailed are the nodes whose driver could not start, which
+	// are read through their event device; warnedHID is whether the user was told that hidraw cannot be read.
+	hidpads   map[string]*hidPad
+	hidFailed map[string]bool
+	warnedHID bool
+	// hidEvents carries what the goroutines of the drivers tell the loop, and hidWake wakes the loop up for it.
+	hidEvents chan hidEvent
+	hidR      int
+	hidW      int
+}
+
+// hidEvent is what a driver tells the loop: that it could not start, or that its pad is gone.
+type hidEvent struct {
+	pad    *hidPad
+	failed bool
+	err    error
 }
 
 type retry struct {
@@ -201,7 +277,8 @@ func (s *Service) newRun(h platform.PadHandler) (*run, error) {
 		s: s, h: h, done: make(chan struct{}),
 		devices: map[int]*padDevice{}, byPath: map[string]*padDevice{}, ignored: map[string]bool{}, retries: map[string]*retry{},
 		seen: map[string]bool{}, denied: map[string]bool{},
-		epfd: -1, inofd: -1, stopR: -1, stopW: -1,
+		epfd: -1, inofd: -1, stopR: -1, stopW: -1, hidR: -1, hidW: -1,
+		hidpads: map[string]*hidPad{}, hidFailed: map[string]bool{}, hidEvents: make(chan hidEvent, 64),
 	}
 	var err error
 	if r.epfd, err = syscall.EpollCreate1(syscall.EPOLL_CLOEXEC); err != nil {
@@ -222,6 +299,12 @@ func (s *Service) newRun(h platform.PadHandler) (*run, error) {
 		return nil, errors.NewErr(tagEvdevStartFailed, err).SetMetadata("step", "pipe2")
 	}
 	r.stopR, r.stopW = p[0], p[1]
+	var hp [2]int
+	if err = syscall.Pipe2(hp[:], syscall.O_CLOEXEC|syscall.O_NONBLOCK); err != nil {
+		r.closeAll()
+		return nil, errors.NewErr(tagEvdevStartFailed, err).SetMetadata("step", "pipe2")
+	}
+	r.hidR, r.hidW = hp[0], hp[1]
 	if r.every > 0 {
 		if _, err := os.Stat(s.devDir); err != nil {
 			r.closeAll()
@@ -242,7 +325,7 @@ func (s *Service) newRun(h platform.PadHandler) (*run, error) {
 			}
 		}
 	}
-	fds := []int{r.stopR}
+	fds := []int{r.stopR, r.hidR}
 	if r.inofd >= 0 {
 		fds = append(fds, r.inofd)
 	}
@@ -258,7 +341,7 @@ func (s *Service) newRun(h platform.PadHandler) (*run, error) {
 
 // close closes the descriptors that the goroutine of the loop owns: the write end of the pipe that stops it is Stop's.
 func (r *run) close() {
-	for _, fd := range []*int{&r.epfd, &r.inofd, &r.stopR} {
+	for _, fd := range []*int{&r.epfd, &r.inofd, &r.stopR, &r.hidR} {
 		if *fd >= 0 {
 			_ = syscall.Close(*fd) // the end of the run: a descriptor that fails to close is not recoverable
 			*fd = -1
@@ -269,9 +352,11 @@ func (r *run) close() {
 // closeAll closes every descriptor, for a run that never started its goroutine.
 func (r *run) closeAll() {
 	r.close()
-	if r.stopW >= 0 {
-		_ = syscall.Close(r.stopW) // the same
-		r.stopW = -1
+	for _, fd := range []*int{&r.stopW, &r.hidW} {
+		if *fd >= 0 {
+			_ = syscall.Close(*fd) // the same
+			*fd = -1
+		}
 	}
 }
 
@@ -281,6 +366,7 @@ func (r *run) stop() {
 	_, _ = syscall.Write(r.stopW, []byte{1}) // if the pipe is gone the loop is gone, and done is closed
 	<-r.done
 	_ = syscall.Close(r.stopW) // the end of the run
+	_ = syscall.Close(r.hidW)  // the same: the drivers have ended with the loop
 }
 
 // deliver runs fn on the UI thread unless the service has been stopped by then.
@@ -301,6 +387,9 @@ func (r *run) loop() {
 			_ = syscall.Close(d.fd) // the end of the run
 		}
 		r.s.ffMu.Unlock()
+		for _, hp := range r.hidpads {
+			r.closeHID(hp)
+		}
 		r.close()
 	}()
 	r.scan()
@@ -322,6 +411,8 @@ func (r *run) loop() {
 			switch fd {
 			case r.stopR:
 				return
+			case r.hidR:
+				r.hidEventsDue()
 			case r.inofd:
 				r.watchEvents()
 			default:
@@ -472,7 +563,7 @@ func (r *run) retryDue() {
 
 // consider looks at an event device and, when it is a pad, opens it and tells the handler.
 func (r *run) consider(node string) {
-	if r.ignored[node] || r.byPath[node] != nil {
+	if r.ignored[node] || r.byPath[node] != nil || r.hidpads[node] != nil {
 		return
 	}
 	dir := filepath.Join(r.s.sysDir, node)
@@ -488,6 +579,11 @@ func (r *run) consider(node string) {
 		return
 	}
 	c.Driver = driverName(dir)
+	if r.tryHID(node, &c) {
+		delete(r.retries, node)
+		delete(r.denied, node)
+		return
+	}
 	d, info, err := r.open(node, &c)
 	if err != nil {
 		if appErr, ok := errors.FromError(err); ok && appErr.Tag == tagEvdevPermission {
@@ -634,6 +730,11 @@ func (r *run) readDevice(d *padDevice, buf []byte, batch []platform.PadEvent) []
 
 // remove lets go of the device of a node.
 func (r *run) remove(node string) {
+	if hp := r.hidpads[node]; hp != nil {
+		r.dropHID(node, hp)
+		return
+	}
+	delete(r.hidFailed, node)
 	if d := r.byPath[node]; d != nil {
 		r.drop(d)
 	}
