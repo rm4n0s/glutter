@@ -254,5 +254,8 @@ func (webServices) Accessibility() platform.Accessibility { return nil }
 // Gamepads implements platform.Services.
 func (s webServices) Gamepads() platform.Gamepads { return s.pads }
 
+// Audio implements platform.Services: the backend of the web (an AudioWorklet) is step 31.6's.
+func (webServices) Audio() platform.Audio { return nil }
+
 // tagWebRumbleFailed is the tag of the error of a rumble that the browser refused (rm4n0s/errors, R5).
 const tagWebRumbleFailed = "WebRumbleFailed"

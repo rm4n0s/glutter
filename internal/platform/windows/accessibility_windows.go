@@ -71,6 +71,9 @@ func (s windowsServices) Accessibility() platform.Accessibility {
 // Gamepads implements platform.Services.
 func (s windowsServices) Gamepads() platform.Gamepads { return s.pads }
 
+// Audio implements platform.Services: the backend of Windows (WASAPI) is step 31.6's.
+func (s windowsServices) Audio() platform.Audio { return nil }
+
 // Services returns the services of the platform: the UI Automation bridge (SPEC §25.11) and the gamepads
 // (SPEC §28.2). They are made on the first call. When the COM objects of the providers cannot be made the
 // log says so and there is no accessibility (nil), as on a desktop without a service on Linux. The tray,

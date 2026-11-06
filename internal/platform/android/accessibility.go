@@ -105,6 +105,9 @@ func (s services) Gamepads() platform.Gamepads {
 	return s.pads
 }
 
+// Audio implements platform.Services: the backend of Android (AAudio) is step 31.6's.
+func (s services) Audio() platform.Audio { return nil }
+
 // Start gives the bridge the host, and tells it at once whether a screen reader runs. The bridge
 // stops when ctx ends or Close is called. Unlike the desktops, Android has no service to wait
 // for: the Java side reports the accessibility manager's state (Native.a11yState) from the main

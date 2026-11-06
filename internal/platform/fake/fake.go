@@ -37,7 +37,8 @@ type Platform struct {
 
 	acc *Accessibility
 	// pads is the scripted gamepad service, made when it is first asked for.
-	pads *Gamepads
+	pads  *Gamepads
+	audio *Audio
 }
 
 var _ platform.Platform = (*Platform)(nil)
@@ -288,7 +289,7 @@ func (p *Platform) SetSettings(settings platform.Settings) {
 //
 // Flutter: no counterpart
 func (p *Platform) Services() platform.Services {
-	return services{p.Accessibility(), p.Gamepads()}
+	return services{p.Accessibility(), p.Gamepads(), p.Audio()}
 }
 
 // record appends an entry to the log.

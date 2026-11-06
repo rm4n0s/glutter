@@ -1623,6 +1623,81 @@ func main() { _ = newPadView() }
   `Disconnect` and `Rumbles()` for a pad that reports the standard layout, or, with `Axes`, `Buttons`, `Hats` and `Mapping`,
   a raw pad with `RawButton`, `RawAxis` and `RawHat` that goes through the table of mappings.
 
+## 21. Audio
+
+`audio.Of(bc)` is the sound of the app. Open a device, make a stream for each sound, and put samples into it: the streams of
+a device are mixed, converted to the device's format and clipped for you. Glutter reads WAV files (`audio/wav`); other codecs
+(Ogg Vorbis, MP3, Opus) are not in Glutter: decode them yourself and put the samples. Flutter has no audio of its own, so this
+package is Glutter's. The backends of the systems arrive with the next steps of 1.11; until then `audio.Of(bc).Available()` is
+false outside the tests and every open fails with `AudioUnavailable`.
+
+```go
+package main
+
+import (
+	"context"
+	"math"
+
+	"github.com/rm4n0s/glutter/audio"
+	m "github.com/rm4n0s/glutter/material"
+)
+
+type beeper struct {
+	dev *audio.Device
+	st  *audio.Stream
+}
+
+func (b *beeper) start(bc m.BuildContext) error {
+	dev, err := audio.Of(bc).OpenPlayback(context.Background()) // the default device, which it follows
+	if err != nil {
+		return err // audio.TagUnavailable, audio.TagDeviceOpenFailed, ...
+	}
+	b.dev = dev
+	b.st = dev.NewStream(audio.Format{Rate: 44100, Channels: 1}) // converted to the device's format
+	return nil
+}
+
+// beep puts half a second of a tone: the samples are a []float32 from -1 to 1 (also []int16 and []int32), one for each channel
+// of a frame.
+func (b *beeper) beep(freq float64) error {
+	const rate = 44100
+	tone := make([]float32, rate/2)
+	for i := range tone {
+		tone[i] = float32(0.3 * math.Sin(2*math.Pi*freq*float64(i)/rate))
+	}
+	if err := b.st.Put(tone); err != nil {
+		return err
+	}
+	b.st.Flush() // a sound that ends: play its last frames too
+	return nil
+}
+
+func main() { _ = &beeper{} }
+```
+
+- **Streams and the mix.** Each stream has its own format, gain (`SetGain`) and speed (`SetSpeed`: 2 plays it twice as fast, an
+  octave higher), and the device has a gain of its own. `Put` and `Get` may be called from any goroutine; everything else is for
+  the UI thread. A sound that is played again is a new `Put`. `Queued()` says how much is waiting, `Clear()` drops it.
+- **Generated sound.** `dev.NewCallbackStream(format, fill)` calls `fill(out)` on the audio thread when the device needs
+  frames: write interleaved float32 frames into `out` (what you leave alone is silence). `fill` must not touch the widgets, wait
+  for the UI thread or allocate, or the sound breaks up.
+- **Flush.** A stream whose rate or speed differs from the device's keeps its last few frames until more come (the resampler
+  needs them); `Flush()` after the last `Put` of a sound plays them out. A stream that has the device's rate and speed 1 does not
+  wait.
+- **Recording.** `OpenCapture` gives a device whose streams (`NewStream(format)` with the format you want) are read with
+  `Get(out)`, which returns the number of frames and does not wait. A stream that is not read keeps ten seconds.
+- **Devices.** `Devices(audio.Playback)` lists them (`DeviceInfo.ID` goes into `DeviceOpts.ID`), `AddListener` tells when
+  the list or the default changes. `Device.State()` is running, paused (`Pause`/`Resume`), suspended (a browser lets a page
+  make sound only after a click or a key: the device runs by itself afterwards, and `Device.AddListener` tells you), lost
+  (unplugged) or closed. A `Put` on a lost device fails with `AudioDeviceLost`.
+- **WAV files.** `wav.Decode(ctx, r)` gives `Audio{Format, Samples}` for PCM of 8, 16, 24 and 32 bits and float, ready for
+  `Put`; `Format` is the format to make the stream with. A file that is not one gives `WAVInvalid` with a message.
+- **Tests.** `gluttertest` has `tester.Audio()`: a speaker and a microphone that are the defaults, `AddDevice`, `RemoveDevice`,
+  `SetDefault`, `SetUnavailable` and `FailOpen`, and the devices the app opened (`Playback()`, `Capture()`), on which the test
+  plays the audio thread: `Pull(frames, chunk)` runs the callback and returns what would have been heard, `Push(frames)` is
+  what a microphone recorded, and `Lose`, `Suspend` and `Unsuspend` change the state. Nothing plays by itself, so a test says
+  when and for how long.
+
 ## For Flutter web developers
 
 If you know Flutter on the web, this is what is the same and what is not.

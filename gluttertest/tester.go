@@ -139,6 +139,7 @@ type Tester struct {
 
 	host      *renderhost.Host
 	padsvc    *fake.Gamepads
+	audiosvc  *fake.Audio
 	gpu       *GPURecorder
 	d         *ui.PlatformDispatcher
 	start     time.Time
@@ -191,6 +192,9 @@ func New(tb TB, opts ...Opts) *Tester {
 	t := &Tester{tb: tb, host: &renderhost.Host{DiscardScenes: o.DiscardScenes}, Clock: fakeclock.New(time.Time{})}
 	t.start = t.Clock.Now()
 	t.padsvc = fake.NewGamepads(t.host.Post)
+	t.audiosvc = fake.NewAudio()
+	t.host.AudioService = t.audiosvc
+	tb.Cleanup(t.host.RunReleaseHooks)
 	t.host.Pads = pads.New(t.padsvc, pads.Opts{Keys: t.padKey})
 	if err := t.host.Pads.Start(); err != nil {
 		tb.Fatal(err)
@@ -829,3 +833,12 @@ const (
 	tagScreenshotNoFrame         = "ScreenshotNoFrame"
 	tagTesterFontsWithTextEngine = "TesterFontsWithTextEngine"
 )
+
+// RunReleaseHooks runs what the platform's host runs when the app ends: the audio devices that the app left open are closed. The
+// tester runs it itself when the test ends; a test calls it to look at the app after that.
+//
+// Flutter: no counterpart
+func (t *Tester) RunReleaseHooks() {
+	t.adopt()
+	t.host.RunReleaseHooks()
+}

@@ -54,7 +54,7 @@ func TestDispatch(t *testing.T) {
 
 func TestCommandNames(t *testing.T) {
 	got := strings.Join(commandNames(), ",")
-	want := "android-dex,apicheck,copywith,errcheck,gamepaddb,gpushaders,icons,keys,reexport,shaders,uintptrcheck,wayland"
+	want := "android-dex,apicheck,audiochannels,copywith,errcheck,gamepaddb,gpushaders,icons,keys,reexport,shaders,uintptrcheck,wayland"
 	if got != want {
 		t.Errorf("commandNames() = %q, want %q", got, want)
 	}

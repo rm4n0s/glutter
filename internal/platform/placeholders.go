@@ -10,4 +10,6 @@ type Services interface {
 	Accessibility() Accessibility
 	// Gamepads returns the gamepad service (SPEC §28.2), or nil when the platform has none.
 	Gamepads() Gamepads
+	// Audio returns the audio service (SPEC §28.3), or nil when the platform has none.
+	Audio() Audio
 }

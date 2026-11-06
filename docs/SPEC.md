@@ -3815,26 +3815,32 @@ This gives every Glutter app focus traversal and activation with a pad (`Activat
 
 ### 28.3 Audio (`audio`)
 
-A sketch; the details are decided in step 31.4:
+**The API** (decided in step 31.4; the signatures are in the code):
 
 ```go
-func Of(bc widgets.BuildContext) *System      // started at its first use, closed with the binding
+func Of(bc widgets.BuildContext) *System      // made at its first use, closed with the app (the engine's release hook)
+func ForBinding(b *widgets.WidgetsBinding) *System
 
+func (s *System) Available() bool             // whether the platform has an audio service
 func (s *System) Devices(kind DeviceKind) []DeviceInfo
-func (s *System) AddListener(fn func()) func() // the list of devices or the default device changed
+func (s *System) AddListener(fn func()) (remove func()) // the list of devices or the default device changed (UI thread)
 func (s *System) OpenPlayback(ctx context.Context, opts ...DeviceOpts) (*Device, error) // the default device, which it follows, or DeviceOpts.ID
 func (s *System) OpenCapture(ctx context.Context, opts ...DeviceOpts) (*Device, error)
+func (s *System) Close()
 
-func (d *Device) Format() Format              // sample rate, channels
-func (d *Device) NewStream(src Format) *Stream // a stream mixed into the device
-func (d *Device) NewCallbackStream(src Format, fill func(out []float32)) *Stream
-func (d *Device) SetGain(g float64)
-func (d *Device) Pause(); Resume(); Close()
+func (d *Device) Kind() DeviceKind; Format() Format; State() DeviceState
+func (d *Device) AddListener(fn func()) (remove func())  // the state changed (UI thread)
+func (d *Device) NewStream(format Format) *Stream        // playback: the format Put takes; capture: the format Get gives
+func (d *Device) NewCallbackStream(format Format, fill func(out []float32)) *Stream
+func (d *Device) SetGain(g float64); Gain() float64
+func (d *Device) Pause() error; Resume() error; Close() error
 
 func (st *Stream) Put(samples any) error       // []float32, []int16 or []int32, interleaved, in the stream's format
-func (st *Stream) Get(out []float32) int       // capture
+func (st *Stream) Get(out []float32) int       // capture: frames written
 func (st *Stream) Queued() time.Duration
+func (st *Stream) Flush()                      // the last frames are played out too (see below)
 func (st *Stream) SetGain(g float64); SetSpeed(ratio float64); Clear(); Close()
+func (st *Stream) Gain() float64; Speed() float64; Format() Format
 ```
 
 **Data:**
@@ -3856,6 +3862,17 @@ func (st *Stream) SetGain(g float64); SetSpeed(ratio float64); Clear(); Close()
 | Windows | WASAPI in shared mode, driven by events (`IMMDeviceEnumerator`, `IAudioClient3` for low latency where Windows has it, else `IAudioClient`, `IAudioRenderClient`, `IAudioCaptureClient`); the default device through an `IMMNotificationClient` that Go makes (§25.2), on a thread in the multithreaded COM apartment |
 | Android | AAudio (`libaaudio.so`, through purego, as `gles` loads its libraries) with a data callback and the low-latency performance mode; capture asks for `RECORD_AUDIO` through the Java embedding |
 | Web | an AudioWorklet (a script that `glutter-web` writes into the build), fed from the UI goroutine through `postMessage`, or through a `SharedArrayBuffer` ring when the page is `crossOriginIsolated` (`glutter-web serve` sends the COOP and COEP headers); a buffer of 100 ms by default (§22); the `AudioContext` is resumed at the first user gesture (the browsers' autoplay rule), and until then a stream waits (`DeviceStateSuspended`, listeners are told); capture through `getUserMedia` |
+
+**Decided in step 31.4** (the API, conversion and mixing):
+- **`internal/audiocvt`** is the port of SDL 3's `SDL_audiotypecvt.c`, `SDL_audiocvt.c`, `SDL_audioqueue.c`, `SDL_audioresample.c`, `SDL_audio_channel_converters.h` and `SDL_mixer.c`: plain Go with no OS tags and no device. Samples are float32 inside the package; `Int16ToFloat32` and the others convert as SDL does (a 16-bit sample is divided by 32768; back, it is rounded to the nearest with ties to even and cut to the range). The channel layouts are SDL's (mono; stereo; 2.1; quad; 4.1; 5.1; 6.1; 7.1) and the conversions between them are SDL's tables, which `glutter-gen audiochannels` reads from `reference/sdl` and turns into the matrices of `channels_gen.go` (the generator checks that every pair of layouts has a converter that sets every channel). The resampler is SDL's bandlimited interpolation (a Kaiser window of 80 dB, a table of cubics of the filter, the position in the input as a fixed point number of 32 bits and 32 of fraction, the rate rounded up so that the input is used up) with SDL's 6 zero crossings of the SIMD version; the sine tones of the tests come out at 78 to 88 dB signal to noise for rates from 8 to 192 kHz.
+- **A `Converter` is SDL's audio stream**: what is put is queued in float32 and converted when it is taken out, so the thread that needs the samples does the work and a change of speed takes effect at once. With the same rate, speed 1 and no offset, only the channels change and nothing waits; otherwise the filter needs 7 frames before and after what it reads, so the last frames wait for the next ones (`Stream.Flush` supplies the silence after them for a sound that ends: a stream whose rate differs from the device's does not play its last few frames until it is flushed, which SDL's `SDL_FlushAudioStream` is for). When the channels are fewer afterwards they are mixed first, so that the interpolation is made of the mixed signal; when they are more they are made after. A stream keeps the frames it has used up that the filter still needs, and the queue is moved to the start of its buffer when most of it is used. Once the buffers have grown, `Put` and `Read` do not allocate.
+- **Mixing**: the audio thread's callback of a device (`Device.Fill`) clears the buffer, reads the next frames of each stream (converted to the device's format, in its own scratch buffer), adds them with the stream's gain and the device's, and clips the sum once (SDL clips each sum in the format of the device; summing in float32 and cutting once means that two loud streams do not distort before a third cancels them). It does not allocate once the buffers have grown. The list of streams is replaced as a whole when one is made or closed, so the callback never waits for it; each stream has a lock that `Put` and the callback hold for the length of a copy.
+- **Streams**: `Put` copies (the integers are converted to float32 as they are put); a `Put` of a type other than the three, or of samples that are not a whole number of frames, fails with `AudioFormatUnsupported`, on a callback or capture stream with `AudioStreamWrongKind`, on a closed stream with `AudioStreamClosed`, and when the device is lost with `AudioDeviceLost`. There is no limit on what a playback stream queues (the app decides); a capture stream that nobody reads keeps ten seconds and then drops all it has (a gap rather than a growing heap). A **callback stream** is asked for exactly the frames the conversion needs (`Converter.Needed`) and is silent where `fill` leaves its buffer alone. `SetGain` below 0 is 0, and `SetSpeed` is cut to 0.01 to 100 (SDL's limits; no error, because a gain or a speed is not a thing that fails). A format outside a rate of 1000 to 768000 or 1 to 8 channels is a programmer error for `NewStream` and `NewCallbackStream` (a panic with `AudioFormatUnsupported`, §14.2) and a returned `AudioFormatUnsupported` for `DeviceOpts.Format`.
+- **Devices and the platform** (`internal/platform.Audio`, `Services.Audio()`): `Devices(kind)`, `SetChangeHandler` (any thread; the `System` posts it to the UI thread) and `Open(ctx, kind, opts, handler)`, whose handler is called on the audio thread (`Fill(out)` for playback, `Capture(in)` for capture, `StateChanged` from any thread). A device has one format for its life, which the backend says (`Format()`): the one that was asked for when the backend can, else its own, and the streams are converted either way. The host (the engine) is found through `ui.PlatformDispatcher.HostAs` (`platform.AudioHost`, which also takes the release hooks), and a platform with no backend returns nil, which makes a `System` that lists nothing and fails with `AudioUnavailable`. `DeviceState` is `Running`, `Paused`, `Suspended` (a browser before a user gesture), `Lost` (also when the platform ends it) and `Closed`; a change is told to `Device.AddListener` on the UI thread. `System.Close` (the release hook) closes every device that is open, and `Device.Close` returns when no callback of the app runs.
+- **The fake platform** (`internal/platform/fake`, and `gluttertest.Tester.Audio()`): a speaker and a microphone that are the defaults, `AddDevice`, `RemoveDevice`, `SetDefault`, `SetUnavailable`, `FailOpen`; the test plays the audio thread: `TestAudioDevice.Pull(frames, chunk)` and `PullInto` run the callback of a playback device on the test's goroutine (a device that is not running plays silence), `Push` gives a capture device frames, and `Lose`, `Suspend` and `Unsuspend` change the state as a backend does.
+- **`audio/wav`**: `Decode(ctx, r)` and `DecodeBytes` read RIFF/WAVE files with linear PCM of 8 (unsigned), 16, 24 and 32 bits or IEEE float of 32 and 64 bits, in the plain or the `WAVE_FORMAT_EXTENSIBLE` form, with 1 to 8 channels and a rate of 1000 to 768000, into float32. The chunks are read in order, those that are not `fmt ` and `data` are skipped (an odd size is padded), a data chunk of size 0 or `0xFFFFFFFF` (a file written to a pipe) or longer than the file takes what there is, a partial last frame is dropped, and a file with no frame is invalid. The data is read with `io.ReadAll` under a limit of 2 GiB, so a header that lies cannot allocate more than there is. Each way a file can be wrong is `WAVInvalid` with its own message (the tag is the one of SPEC §28.7); a reader that fails or a context that ends is `WAVReadFailed`. A fuzz test runs the decoder on random files. What SDL's `SDL_wave.c` has beyond this (the MS and IMA ADPCM decoders, A-law and μ-law, 4-bit samples, the loop and cue chunks) is left out.
+
+**Deviations from SDL** (31.4): the type conversions are written in Go over `math` (SDL's bit tricks give the same numbers); the resampler's SIMD versions are not ported (the generic one is, with the zero crossings that SDL uses with SIMD); the channel maps (`SDL_SetAudioStreamInputChannelMap`) and the planar `Put` are left out; there is no byte swapping (the samples are native, and a big-endian file is not read); and SDL's per-stream get and put callbacks are replaced by `NewCallbackStream`, which is pulled.
 
 ### 28.4 Motion sensors (`sensors`)
 
@@ -3914,7 +3931,7 @@ Confirmed by the owner on 2026-11-05, and checked in step 31.11; a target that i
 
 Tags (each with a route test):
 - **Gamepads:** `GamepadRumbleUnavailable`, `GamepadLEDUnavailable`, `GamepadMappingInvalid`. The Linux backend has tags of its own, which it logs and returns from `Start`: `EvdevStartFailed`, `EvdevScanFailed`, `EvdevWaitFailed`, `EvdevWatchFailed`, `EvdevDeviceOpenFailed`, `EvdevDevicePermission`, `EvdevIoctlFailed` and `EvdevSysfsReadFailed`; `glutter-gen gamepaddb` has `GamepadDBBadFlags`, `GamepadDBReadFailed`, `GamepadDBWriteFailed`, `GamepadDBSyntax` and `GamepadDBFormatFailed`; `glutter-gen apicheck` has `ApiCheckWalkFailed`.
-- **Audio:** `AudioUnavailable`, `AudioDeviceOpenFailed`, `AudioDeviceLost`, `AudioFormatUnsupported`, `AudioCapturePermissionDenied`, `WAVInvalid`.
+- **Audio:** `AudioUnavailable`, `AudioDeviceOpenFailed`, `AudioDeviceLost`, `AudioFormatUnsupported`, `AudioCapturePermissionDenied`, `AudioStreamClosed`, `AudioStreamWrongKind`, `WAVInvalid`, `WAVReadFailed`; `glutter-gen audiochannels` has `AudioChannelsBadFlags`, `AudioChannelsReadFailed`, `AudioChannelsWriteFailed`, `AudioChannelsSyntax` and `AudioChannelsFormatFailed`.
 - **Sensors:** `SensorUnavailable`, `SensorPermissionDenied`.
 - **Loaders:** `GLTFInvalid`, `GLTFExtensionUnsupported`, `PLYInvalid`, `ThreeMFInvalid`.
 

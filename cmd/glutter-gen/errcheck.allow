@@ -43,3 +43,8 @@ error-rewrap svg/loaders.go:assetSource.load
 error-rewrap gpu/buffer.go:Buffer.Read
 error-rewrap gpu/pipeline.go:Device.NewRenderPipeline
 error-rewrap gpu/pipeline.go:Device.NewComputePipeline
+
+# error-untagged (R3): ctxReader is an io.Reader, and the readers around it compare what it returns with io.EOF
+# (io.ReadFull, io.LimitReader, io.CopyN): a tagged error would hide the end of the file from them. The error of the
+# context and the error of the reader go through as they are, and Decode tags what ends the read where it first appears.
+error-untagged audio/wav/wav.go:ctxReader.Read

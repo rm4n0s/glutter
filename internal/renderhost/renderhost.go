@@ -16,6 +16,7 @@ import (
 	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/gestures"
 	"github.com/rm4n0s/glutter/internal/pads"
+	"github.com/rm4n0s/glutter/internal/platform"
 	"github.com/rm4n0s/glutter/rendering"
 	"github.com/rm4n0s/glutter/scheduler"
 	"github.com/rm4n0s/glutter/ui"
@@ -26,11 +27,15 @@ import (
 type Host struct {
 	// Pads is the manager of the gamepads of the fake app, or nil: the host implements pads.Host with it.
 	Pads *pads.Manager
+	// AudioService is the audio service of the fake app, or nil: the host implements platform.AudioHost with it.
+	AudioService platform.Audio
 
-	mu        sync.Mutex
-	posted    []func()
-	scenes    []*ui.Scene
-	Scheduled int
+	mu     sync.Mutex
+	posted []func()
+	// releaseHooks are the functions of AddReleaseHook.
+	releaseHooks []func()
+	scenes       []*ui.Scene
+	Scheduled    int
 	// ExitRequests counts the calls of RequestAppExit.
 	ExitRequests int
 	// DiscardScenes makes RenderView drop the scenes instead of keeping them, for
@@ -475,6 +480,27 @@ func (h *Host) RequestAppExit() { h.mu.Lock(); h.ExitRequests++; h.mu.Unlock() }
 
 // PadManager implements pads.Host: the manager of the gamepads of the fake app, nil when the test has none.
 func (h *Host) PadManager() *pads.Manager { return h.Pads }
+
+// Audio implements platform.AudioHost: the audio service of the fake app, nil when the test has none.
+func (h *Host) Audio() platform.Audio { return h.AudioService }
+
+// AddReleaseHook implements platform.AudioHost: fn runs when RunReleaseHooks does, as the engine's runs when the app ends.
+func (h *Host) AddReleaseHook(fn func()) {
+	h.mu.Lock()
+	h.releaseHooks = append(h.releaseHooks, fn)
+	h.mu.Unlock()
+}
+
+// RunReleaseHooks runs the functions of AddReleaseHook once, the way the engine does when the app ends.
+func (h *Host) RunReleaseHooks() {
+	h.mu.Lock()
+	hooks := h.releaseHooks
+	h.releaseHooks = nil
+	h.mu.Unlock()
+	for _, fn := range hooks {
+		fn()
+	}
+}
 
 // Post keeps the function.
 func (h *Host) Post(fn func()) { h.mu.Lock(); h.posted = append(h.posted, fn); h.mu.Unlock() }

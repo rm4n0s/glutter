@@ -60,6 +60,9 @@ func (s *Services) Gamepads() platform.Gamepads {
 	return s.pads
 }
 
+// Audio returns the audio service, or nil: the backends of Linux (PulseAudio and ALSA) are step 31.5's.
+func (s *Services) Audio() platform.Audio { return nil }
+
 // bridgeAdapter gives the bridge the types of the platform interface.
 type bridgeAdapter struct{ *atspi.Bridge }
 

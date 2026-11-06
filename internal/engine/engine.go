@@ -420,6 +420,8 @@ type handler struct {
 	gpu gpuHub
 	// pads is the manager of the gamepads (SPEC §28.2), or nil when the platform has none.
 	pads *pads.Manager
+	// releaseHooks are the functions that run when the app ends (AddReleaseHook).
+	releaseHooks []func()
 
 	// clock measures the frames for the dispatcher's OnReportTimings.
 	clock frameClock
@@ -1527,6 +1529,7 @@ func (h *handler) SetSemanticsTreeEnabled(bool) {}
 // release destroys the renderer and stops the accessibility bridge. It is safe to call
 // twice.
 func (h *handler) release() {
+	h.runReleaseHooks()
 	if h.pads != nil {
 		h.pads.Stop()
 		h.pads = nil
