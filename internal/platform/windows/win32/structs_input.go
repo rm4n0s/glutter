@@ -114,3 +114,48 @@ type CursorInfo struct {
 	Cursor    uintptr `c:"hCursor"`
 	ScreenPos Point   `c:"ptScreenPos"`
 }
+
+// RawInputDevice is the Go mirror of RAWINPUTDEVICE (RegisterRawInputDevices, step 30.7).
+//
+// Flutter: no counterpart
+type RawInputDevice struct {
+	UsagePage uint16  `c:"usUsagePage"`
+	Usage     uint16  `c:"usUsage"`
+	Flags     uint32  `c:"dwFlags"`
+	Target    uintptr `c:"hwndTarget"`
+}
+
+// RawInputHeader is the Go mirror of RAWINPUTHEADER.
+//
+// Flutter: no counterpart
+type RawInputHeader struct {
+	Type   uint32  `c:"dwType"`
+	Size   uint32  `c:"dwSize"`
+	Device uintptr `c:"hDevice"`
+	WParam uintptr `c:"wParam"`
+}
+
+// RawMouse is the Go mirror of RAWMOUSE. The union of the button flags (a 32-bit value, or the two
+// 16-bit halves) is the pair ButtonFlags and ButtonData.
+//
+// Flutter: no counterpart
+type RawMouse struct {
+	Flags       uint16 `c:"usFlags"`
+	_           uint16
+	ButtonFlags uint16 `c:"usButtonFlags"`
+	ButtonData  uint16 `c:"usButtonData"`
+	RawButtons  uint32 `c:"ulRawButtons"`
+	LastX       int32  `c:"lLastX"`
+	LastY       int32  `c:"lLastY"`
+	Extra       uint32 `c:"ulExtraInformation"`
+}
+
+// RawInputMouse is the Go mirror of RAWINPUT for a mouse report (GetRawInputData): the header and
+// the mouse member of the union, which is the member the pointer lock reads. Its size is that of the
+// mouse member, not of RAWINPUT, so a buffer for GetRawInputData is sized by the call.
+//
+// Flutter: no counterpart
+type RawInputMouse struct {
+	Header RawInputHeader `c:"header"`
+	Mouse  RawMouse       `c:"data.mouse"`
+}

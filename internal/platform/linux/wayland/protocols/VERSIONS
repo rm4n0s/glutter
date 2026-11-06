@@ -24,3 +24,5 @@ file=2822956bdf13d51848ff4b5e29c509028c1204c6e06262ee926b001f43a42dbb  xdg-dialo
 file=363d547c3eefe8959160cac903ff90b311d4b183005557d73640d9df2cfd7f79  xdg-output-unstable-v1.xml
 file=c2ac9f002c6669ca6c02eb9b587b8e9108e3ce6deab4a2de58b576f4f864ca38  idle-inhibit-unstable-v1.xml
 file=203d17a26baa2ab4a8c2c9cb737c953fa3263c73a0a8aa6e552a41b3eac2196d  content-type-v1.xml
+file=f980fac900ba1dcfbbe97f588fc17b893926bd2b57624563653a1bfe4d035948  pointer-constraints-unstable-v1.xml
+file=ab4930dd3084f732b6fdd12ee6dbd0a112a758ed8a57b170366391dbeb1a22ff  relative-pointer-unstable-v1.xml

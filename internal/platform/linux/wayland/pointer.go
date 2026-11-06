@@ -138,6 +138,10 @@ func (pt *pointer) windowClosed(w *window) {
 
 // close drops the pointer. If it is in a window, it leaves first.
 func (pt *pointer) close() {
+	for _, w := range pt.p.windows {
+		w.dropPointerLock(true) // a seat without a pointer locks nothing
+	}
+	pt.b.SetLocked(false)
 	pt.b.Leave()
 	pt.focus = nil
 	pt.flush()

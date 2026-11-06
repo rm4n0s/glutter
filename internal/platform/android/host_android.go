@@ -57,6 +57,8 @@ func (nativeHost) Inject(e DevEvent) {
 		kind = 7
 	case "a11y":
 		kind = 8
+	case "relmove":
+		kind = 9
 	default:
 		return
 	}

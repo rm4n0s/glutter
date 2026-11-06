@@ -416,3 +416,39 @@ func TestLeavingForgetsHalfCollectedAxes(t *testing.T) {
 		}
 	}
 }
+
+func TestLockedPointerReportsRelativeMotionAtAFixedPosition(t *testing.T) {
+	b := NewPointerBatcher(tickingClock(), nil)
+	b.Scale = 2
+	b.Enter(1, 10, 20) // physical 20, 40
+	b.Relative(3, 3)   // not locked: nothing
+	b.SetLocked(true)
+	b.Relative(1.5, -2)
+	b.Motion(50, 60) // a warped pointer is ignored while locked
+	b.Button(0x110, true)
+	b.Relative(-1, 0.25)
+	b.Button(0x110, false)
+	b.SetLocked(false)
+	b.Motion(11, 22)
+	got := b.Frame()
+	eventsEqual(t, got, []ev{
+		{change: ui.PointerChangeAdd, kind: mouse, x: 20, y: 40},
+		{change: ui.PointerChangeHover, kind: mouse, x: 20, y: 40, dx: 3, dy: -4},
+		{change: ui.PointerChangeDown, kind: mouse, x: 20, y: 40, buttons: 1},
+		{change: ui.PointerChangeMove, kind: mouse, x: 20, y: 40, dx: -2, dy: 0.5, buttons: 1},
+		{change: ui.PointerChangeUp, kind: mouse, x: 20, y: 40},
+		{change: ui.PointerChangeHover, kind: mouse, x: 22, y: 44, dx: 2, dy: 4},
+	})
+	if b.Locked() {
+		t.Error("still locked")
+	}
+}
+
+func TestRelativeMotionOutsideAWindowIsIgnored(t *testing.T) {
+	b := NewPointerBatcher(tickingClock(), nil)
+	b.SetLocked(true)
+	b.Relative(1, 1)
+	if got := b.Frame(); len(got) != 0 {
+		t.Errorf("events outside a window: %v", got)
+	}
+}

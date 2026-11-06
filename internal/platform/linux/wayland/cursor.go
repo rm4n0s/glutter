@@ -91,6 +91,9 @@ func newCursors(p *Platform) *cursors {
 // apply sets the cursor for the pointer, which must be in a window: the serial of
 // its enter event is what the compositor checks.
 func (c *cursors) apply(pt *pointer, cursor platform.MouseCursor) {
+	if pt.focus != nil && pt.focus.pointerLockActive() {
+		cursor = platform.MouseCursorNone // a locked pointer has no cursor (SPEC §27.6)
+	}
 	switch {
 	case cursor == platform.MouseCursorNone:
 		pt.obj.SetCursor(pt.serial, nil, 0, 0) // no surface hides the cursor

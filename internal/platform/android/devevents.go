@@ -22,11 +22,12 @@ const DevEventsEnv = "GLUTTER_DEV_EVENTS"
 //
 // Flutter: no counterpart
 type DevEvent struct {
-	// Kind is "wait", "tap", "swipe", "key", "text", "compose", "action", "back" or "a11y".
+	// Kind is "wait", "tap", "swipe", "key", "text", "compose", "action", "back", "a11y" or "relmove".
 	Kind string
 	// Wait is how long to wait, for "wait"; and a swipe takes its Millis.
 	Wait time.Duration
-	// X1, Y1 and X2, Y2 are the points of a "tap" (the first) and a "swipe", in pixels of the view.
+	// X1, Y1 and X2, Y2 are the points of a "tap" (the first) and a "swipe", in pixels of the view; the
+	// motion of a "relmove" is X1, Y1.
 	X1, Y1, X2, Y2 float64
 	// Millis is how long a swipe takes.
 	Millis int
@@ -55,6 +56,8 @@ var keyName = regexp.MustCompile(`^KEYCODE_[A-Z0-9_]+$`)
 //	action:enter        the input method does the action of its Enter key (the field's action)
 //	back:pop            the system's back; back:gesture a predictive back gesture that is completed,
 //	                    back:cancel one that is cancelled
+//	relmove:dx,dy       a motion of the mouse while the pointer is captured (the pointer lock): the
+//	                    view gets it as a captured pointer event (SOURCE_MOUSE_RELATIVE)
 //	a11y:click,Add      the accessibility action on the first node whose text, content description or
 //	                    hint contains the label, as a screen reader performs it: click, longclick,
 //	                    scrollforward, scrollbackward, focus, a11yfocus, a11yclear, dismiss, copy, cut,
@@ -121,6 +124,12 @@ func ParseDevEvents(script string) ([]DevEvent, error) {
 				return nil, errors.New(tagAndroidDevEventsInvalid, "back takes pop, gesture, cancel, hold or release", "step", step)
 			}
 			ev.Key = args
+		case "relmove":
+			nums, ok := floats(parts, 2)
+			if !ok {
+				return nil, errors.New(tagAndroidDevEventsInvalid, "relmove takes dx,dy", "step", step)
+			}
+			ev.X1, ev.Y1 = nums[0], nums[1]
 		case "a11y":
 			action, label, ok := strings.Cut(args, ",")
 			if !ok || label == "" || !slices.Contains(a11yActions, action) {
@@ -128,7 +137,7 @@ func ParseDevEvents(script string) ([]DevEvent, error) {
 			}
 			ev.Key, ev.Label = action, label
 		default:
-			return nil, errors.New(tagAndroidDevEventsInvalid, "the step is not wait, tap, swipe, key, text, compose, action, back or a11y", "step", step)
+			return nil, errors.New(tagAndroidDevEventsInvalid, "the step is not wait, tap, swipe, key, text, compose, action, back, a11y or relmove", "step", step)
 		}
 		events = append(events, ev)
 	}
@@ -168,6 +177,9 @@ func (p *Platform) startDevEvents() {
 			case "tap":
 				p.host.Inject(e)
 				time.Sleep(150 * time.Millisecond)
+			case "relmove":
+				p.host.Inject(e)
+				time.Sleep(50 * time.Millisecond)
 			case "swipe":
 				p.host.Inject(e)
 				time.Sleep(time.Duration(e.Millis)*time.Millisecond + 150*time.Millisecond)

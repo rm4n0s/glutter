@@ -95,6 +95,8 @@ type Platform struct {
 
 	// pointers keeps the state of the mouse, touch and pen pointers of every window (pointerstate.go).
 	pointers *pointerTracker
+	// lock is the pointer lock of the app, if a window has it (pointerlock_windows.go).
+	lock *pointerLock
 	// keys handles the key messages of every window: they share one keyboard (keymanager.go).
 	keys *keyboardManager
 	// sys is what the last read of the settings gave, settings the settings made of it, and

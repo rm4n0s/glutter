@@ -326,3 +326,35 @@ const (
 	// Flutter: no counterpart
 	MouseEventFVirtualDesk = 0x4000
 )
+
+// The constants of the raw input of the mouse that the pointer lock uses (step 30.7, SPEC §27.6).
+const (
+	// WMInput is WM_INPUT.
+	//
+	// Flutter: no counterpart
+	WMInput = 0x00FF
+	// RIDInput is RID_INPUT, the command of GetRawInputData that reads the data of the input.
+	//
+	// Flutter: no counterpart
+	RIDInput = 0x10000003
+	// RIDEVRemove is RIDEV_REMOVE, the flag that stops the raw input of a device class.
+	//
+	// Flutter: no counterpart
+	RIDEVRemove = 0x00000001
+	// HIDUsagePageGeneric is HID_USAGE_PAGE_GENERIC, the page of the pointer devices.
+	//
+	// Flutter: no counterpart
+	HIDUsagePageGeneric = 0x01
+	// HIDUsageGenericMouse is HID_USAGE_GENERIC_MOUSE.
+	//
+	// Flutter: no counterpart
+	HIDUsageGenericMouse = 0x02
+	// RIMTypeMouse is RIM_TYPEMOUSE, the type of a raw input that is a mouse report.
+	//
+	// Flutter: no counterpart
+	RIMTypeMouse = 0
+	// MouseMoveRelative is MOUSE_MOVE_RELATIVE, the flag of a mouse report whose X and Y are motion.
+	//
+	// Flutter: no counterpart
+	MouseMoveRelative = 0x00
+)

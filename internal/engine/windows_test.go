@@ -762,3 +762,58 @@ func TestAWindowIsCreatedInItsStartState(t *testing.T) {
 		})
 	}
 }
+
+func TestPointerLockOfAWindow(t *testing.T) {
+	tests := []struct {
+		name string
+		// act ends the lock of the first window one way or another; wantEnded says whether the framework is told.
+		act       func(e *windowsEngine)
+		wantEnded bool
+	}{
+		{"the app unlocks", func(e *windowsEngine) { e.d.UnlockPointer(0) }, false},
+		{"the window loses the focus", func(e *windowsEngine) { e.h.OnViewFocus(0, false) }, true},
+		{"the platform ends the lock", func(e *windowsEngine) { e.h.OnPointerLockEnded(0) }, true},
+		{"the window is closed", func(e *windowsEngine) { e.h.forget(e.h.windows[0]) }, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := newWindowsEngine(t)
+			var ended []ui.ViewID
+			e.d.OnPointerLockEnded = func(v ui.ViewID) { ended = append(ended, v) }
+			if err := e.d.LockPointer(0); err != nil {
+				t.Fatal(err)
+			}
+			if !e.p.Windows()[0].PointerLocked() {
+				t.Fatal("the platform window is not locked")
+			}
+			tt.act(e)
+			e.h.input.flush()
+			if got := len(ended) == 1 && ended[0] == 0; got != tt.wantEnded || (!tt.wantEnded && len(ended) != 0) {
+				t.Errorf("framework told %v, want told: %v", ended, tt.wantEnded)
+			}
+			if tt.name == "the window loses the focus" && e.p.Windows()[0].PointerLocked() {
+				t.Errorf("the platform window is still locked after the focus was lost")
+			}
+			// A second end is not told again.
+			if w, ok := e.h.windows[0]; ok {
+				e.h.OnPointerLockEnded(w.id)
+			}
+			e.h.input.flush()
+			if len(ended) > 1 {
+				t.Errorf("told twice: %v", ended)
+			}
+		})
+	}
+}
+
+func TestPointerLockFails(t *testing.T) {
+	e := newWindowsEngine(t)
+	assertRoute(t, e.d.LockPointer(99), ui.TagPointerLockUnavailable, "handler.LockPointer.PointerLockUnavailable")
+	e.d.UnlockPointer(99) // nothing to do
+	// A window that cannot lock.
+	e.h.windows[7] = &window{Window: noMenuWindow{}, id: 7}
+	assertRoute(t, e.d.LockPointer(7), ui.TagPointerLockUnavailable, "handler.LockPointer.PointerLockUnavailable")
+	if e.h.windows[7].pointerLocked {
+		t.Error("a failed lock was kept")
+	}
+}

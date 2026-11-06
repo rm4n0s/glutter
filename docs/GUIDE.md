@@ -1091,6 +1091,82 @@ func main() { _ = newView() }
 - **Input.** The view is an ordinary box: wrap it in `Listener` or `GestureDetector`.
 - **Tests.** With `gluttertest.Opts{GPU: true}` the view draws on the recording device; check what the function encoded.
 
+## 18. Locking the pointer
+
+A game's mouse look, or a model that you orbit without the pointer stopping at the edge of the screen, needs the pointer
+locked: the cursor is hidden, the pointer stays where it was, and the mouse's pointer events carry the motion in `Delta`.
+Flutter has no such call; `PointerLockOf(bc)` is Glutter's.
+
+```go
+package main
+
+import (
+	"github.com/rm4n0s/errors"
+	"github.com/rm4n0s/glutter/foundation"
+	"github.com/rm4n0s/glutter/gestures"
+	m "github.com/rm4n0s/glutter/material"
+)
+
+type lookState struct {
+	m.StateOf[*look]
+	yaw, pitch float64
+	handle     foundation.ListenerHandle
+}
+
+type look struct{ m.StatefulWidget }
+
+func newLook() *look { return &look{StatefulWidget: m.NewStatefulWidgetBase()} }
+
+func (w *look) CreateState() m.State { return &lookState{} }
+
+func (s *lookState) InitState() {
+	// The lock can end without the app asking: Alt+Tab, the compositor, Escape on the web.
+	s.handle = m.PointerLockOf(s.Context()).AddListener(func() { s.SetState(func() {}) })
+}
+
+func (s *lookState) Dispose() {
+	m.PointerLockOf(s.Context()).RemoveListener(s.handle)
+}
+
+func (s *lookState) Build(bc m.BuildContext) m.Widget {
+	return m.NewListener(m.NewGestureDetector(m.NewSizedBox(m.NewText("click to look around")), m.GestureDetectorOpts{
+		OnTap: func() {
+			// Lock from a click or a key: the web refuses it otherwise (PointerLockDenied).
+			if err := m.PointerLockOf(bc).Lock(m.ViewOf(bc)); err != nil {
+				if appErr, ok := errors.FromError(err); ok && appErr.Tag == m.TagPointerLockUnavailable {
+					return // this platform cannot lock the pointer: use the drag instead
+				}
+			}
+		},
+	}), m.ListenerOpts{
+		OnPointerMove: func(e *gestures.PointerMoveEvent) {
+			if m.PointerLockOf(bc).Locked() {
+				s.SetState(func() { s.yaw += e.Delta().Dx * 0.005; s.pitch += e.Delta().Dy * 0.005 })
+			}
+		},
+		OnPointerHover: func(e *gestures.PointerHoverEvent) {
+			if m.PointerLockOf(bc).Locked() {
+				s.SetState(func() { s.yaw += e.Delta().Dx * 0.005; s.pitch += e.Delta().Dy * 0.005 })
+			}
+		},
+	})
+}
+
+func main() { _ = newLook() }
+```
+
+- **Where it works.** Wayland (a compositor with `pointer-constraints` and `relative-pointer`), X11, Windows, the web
+  and Android 8 or later. A platform that cannot gives `PointerLockUnavailable` (`TagPointerLockUnavailable`); one that
+  refuses gives `PointerLockDenied`: the web outside a click or a key, a window that is not the active one.
+- **While locked.** The cursor is hidden. The mouse's pointer events keep the `Position` they had when the lock began,
+  are hovers (moves while a button is down) and carry the motion in `Delta`, unaccelerated where the platform gives
+  it (physical pixels). Buttons still make down and up events there.
+- **When it ends.** `Unlock()`, the window losing the focus, the compositor or the system taking it back, closing the
+  window, Escape on the web. A lock that ended by itself calls the listeners; `Unlock()` does not. It does not come
+  back by itself: lock again from the next click or key.
+- **Tests.** `gluttertest` has `FailPointerLock(err)` (the next `Lock` fails), `EndPointerLock(view)` (the platform ends the
+  lock), `MoveLockedMouse(delta)` and `PointerLocked(view)` for the fake platform.
+
 ## For Flutter web developers
 
 If you know Flutter on the web, this is what is the same and what is not.

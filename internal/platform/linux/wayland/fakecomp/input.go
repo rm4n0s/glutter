@@ -44,6 +44,31 @@ func (s *Server) handleInput(iface string, op uint16, id uint32, r *reader) bool
 		s.record("zwp_pointer_gesture_swipe_v1.destroy")
 	case "zwp_pointer_gesture_pinch_v1.0":
 		s.record("zwp_pointer_gesture_pinch_v1.destroy")
+	case "zwp_pointer_constraints_v1.0":
+		s.record("zwp_pointer_constraints_v1.destroy")
+	case "zwp_pointer_constraints_v1.1": // lock_pointer(id, surface, pointer, region, lifetime)
+		lock, surface, pointer, region, lifetime := r.u32(), r.u32(), r.u32(), r.u32(), r.u32()
+		s.addObject(lock, "zwp_locked_pointer_v1")
+		s.record("zwp_pointer_constraints_v1.lock_pointer surface=%v pointer=%v region=%v lifetime=%d",
+			surface == s.WindowSurface(), pointer == s.ID("wl_pointer"), region != 0, lifetime)
+	case "zwp_pointer_constraints_v1.2": // confine_pointer(id, surface, pointer, region, lifetime)
+		confined := r.u32()
+		s.addObject(confined, "zwp_confined_pointer_v1")
+		s.record("zwp_pointer_constraints_v1.confine_pointer")
+	case "zwp_locked_pointer_v1.0":
+		s.record("zwp_locked_pointer_v1.destroy")
+	case "zwp_locked_pointer_v1.1": // set_cursor_position_hint(x, y)
+		s.record("zwp_locked_pointer_v1.set_cursor_position_hint")
+	case "zwp_locked_pointer_v1.2": // set_region(region)
+		s.record("zwp_locked_pointer_v1.set_region")
+	case "zwp_relative_pointer_manager_v1.0":
+		s.record("zwp_relative_pointer_manager_v1.destroy")
+	case "zwp_relative_pointer_manager_v1.1": // get_relative_pointer(id, pointer)
+		rel, pointer := r.u32(), r.u32()
+		s.addObject(rel, "zwp_relative_pointer_v1")
+		s.record("zwp_relative_pointer_manager_v1.get_relative_pointer pointer=%v", pointer == s.ID("wl_pointer"))
+	case "zwp_relative_pointer_v1.0":
+		s.record("zwp_relative_pointer_v1.destroy")
 	default:
 		return false
 	}
@@ -215,4 +240,21 @@ func (s *Server) SwipeEnd(cancelled bool) {
 		c = 1
 	}
 	s.Send(s.ID("zwp_pointer_gesture_swipe_v1"), 2, s.nextSerial(), uint32(0), c)
+}
+
+// PointerLocked sends zwp_locked_pointer_v1.locked: the compositor activates the lock that the client asked for.
+//
+// Flutter: no counterpart
+func (s *Server) PointerLocked() { s.Send(s.ID("zwp_locked_pointer_v1"), 0) }
+
+// PointerUnlocked sends zwp_locked_pointer_v1.unlocked: the compositor ends the lock (or refuses it).
+//
+// Flutter: no counterpart
+func (s *Server) PointerUnlocked() { s.Send(s.ID("zwp_locked_pointer_v1"), 1) }
+
+// RelativeMotion sends zwp_relative_pointer_v1.relative_motion, with the accelerated and the unaccelerated motion.
+//
+// Flutter: no counterpart
+func (s *Server) RelativeMotion(dx, dy, dxUnaccel, dyUnaccel float64) {
+	s.Send(s.ID("zwp_relative_pointer_v1"), 0, uint32(0), uint32(1000), Fixed(dx), Fixed(dy), Fixed(dxUnaccel), Fixed(dyUnaccel))
 }

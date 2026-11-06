@@ -13,6 +13,9 @@
 // On Windows: go run ./cmd/glutter-windows run ./examples/gpu-triangle. On the web: go run ./cmd/glutter-web serve
 // ./examples/gpu-triangle. On Android: go run ./cmd/glutter-android run ./examples/gpu-triangle.
 //
+// In debug builds the L key locks the pointer (the mouse look of a game; SPEC §27.6): the cursor is hidden and the
+// mouse turns the cube. L, Alt+Tab or the end of the lock (Escape on the web) gives the pointer back.
+//
 // Environment: GLUTTER_BACKEND=x11|wayland (Linux) or win32 (Windows), GLUTTER_RENDERER=vulkan|d3d12|webgpu,
 // GLUTTER_SCREENSHOT=<file.png>, GLUTTER_SCREENSHOT_AFTER=<duration>.
 package main
@@ -26,8 +29,11 @@ import (
 	"time"
 
 	"github.com/rm4n0s/glutter/examples/gpu-triangle/shaders"
+	"github.com/rm4n0s/glutter/foundation"
+	"github.com/rm4n0s/glutter/gestures"
 	"github.com/rm4n0s/glutter/gpu"
 	m "github.com/rm4n0s/glutter/material"
+	"github.com/rm4n0s/glutter/services"
 )
 
 func main() {
@@ -72,12 +78,41 @@ type cubePageState struct {
 	cube          cube
 	speed         float64
 	multisampling bool
+	lockHandle    foundation.ListenerHandle
 }
 
 // InitState starts the cube at the speed of one turn in 6 seconds, with 4x multisampling.
 func (s *cubePageState) InitState() {
 	s.speed = 1
 	s.multisampling = true
+	// A lock that ends by itself (the window lost the focus, Escape on the web) needs no work here: the mouse
+	// look stops with Locked.
+	s.lockHandle = m.PointerLockOf(s.Context()).AddListener(func() {})
+}
+
+// Dispose removes the listener of the lock.
+func (s *cubePageState) Dispose() {
+	m.PointerLockOf(s.Context()).RemoveListener(s.lockHandle)
+}
+
+// toggleLock locks the pointer, or gives it back (the L key of debug builds). A platform that cannot lock it, or
+// refuses, is logged.
+func (s *cubePageState) toggleLock(bc m.BuildContext) {
+	lock := m.PointerLockOf(bc)
+	if lock.Locked() {
+		lock.Unlock()
+		return
+	}
+	if err := lock.Lock(m.ViewOf(bc)); err != nil {
+		log.Printf("the pointer could not be locked: %v", err)
+	}
+}
+
+// look turns the cube by the motion of a locked mouse.
+func (s *cubePageState) look(bc m.BuildContext, delta m.Offset) {
+	if m.PointerLockOf(bc).Locked() {
+		s.cube.look(delta.Dx, delta.Dy)
+	}
 }
 
 func (s *cubePageState) Build(bc m.BuildContext) m.Widget {
@@ -96,7 +131,7 @@ func (s *cubePageState) Build(bc m.BuildContext) m.Widget {
 			"This app needs a GPU renderer: Vulkan, Direct3D 12 or WebGPU.", m.TextOpts{TextAlign: m.TextAlignCenter}))),
 	})
 	textTheme := m.ThemeOf(bc).TextTheme
-	return m.NewScaffold(m.ScaffoldOpts{
+	page := m.NewScaffold(m.ScaffoldOpts{
 		AppBar: m.NewAppBar(m.AppBarOpts{Title: m.NewText("GPU cube")}),
 		Body: m.NewColumn([]m.Widget{
 			m.NewExpanded(view),
@@ -108,6 +143,15 @@ func (s *cubePageState) Build(bc m.BuildContext) m.Widget {
 			})),
 		}),
 	})
+	if !foundation.DebugMode {
+		return page
+	}
+	return m.NewCallbackShortcuts([]m.CallbackShortcutEntry{
+		{Activator: m.NewSingleActivator(services.LogicalKeyboardKeyKeyL), Callback: func() { s.toggleLock(bc) }},
+	}, m.NewFocus(m.NewListener(page, m.ListenerOpts{
+		OnPointerHover: func(e *gestures.PointerHoverEvent) { s.look(bc, e.Delta()) },
+		OnPointerMove:  func(e *gestures.PointerMoveEvent) { s.look(bc, e.Delta()) },
+	}), m.FocusOpts{Autofocus: true}))
 }
 
 // --- the cube ---------------------------------------------------------------------------------------------------
@@ -123,8 +167,10 @@ type cube struct {
 	// count only, and the switch of the page changes it.
 	variants map[int]*variant
 	angle    float64
-	last     time.Duration
-	speed    func() float64
+	// yaw and pitch are the turn that the mouse look added.
+	yaw, pitch float64
+	last       time.Duration
+	speed      func() float64
 }
 
 type variant struct {
@@ -206,6 +252,15 @@ func (c *cube) variantFor(samples int) (*variant, error) {
 	return v, nil
 }
 
+// lookSensitivity is the turn, in radians, for a pixel of motion of a locked mouse.
+const lookSensitivity = 0.005
+
+// look turns the cube by a motion of the mouse in pixels.
+func (c *cube) look(dx, dy float64) {
+	c.yaw += dx * lookSensitivity
+	c.pitch = math.Max(-math.Pi/2, math.Min(math.Pi/2, c.pitch+dy*lookSensitivity))
+}
+
 // paint draws the cube into the frame of the view.
 func (c *cube) paint(f *gpu.ViewFrame) {
 	if c.dev == nil || c.uniforms == nil {
@@ -226,7 +281,7 @@ func (c *cube) paint(f *gpu.ViewFrame) {
 		speed = c.speed()
 	}
 	c.angle += dt.Seconds() * speed * 2 * math.Pi / 6
-	c.dev.Queue().WriteBuffer(c.uniforms, 0, sceneUniforms(c.angle, float64(f.Width)/float64(f.Height)))
+	c.dev.Queue().WriteBuffer(c.uniforms, 0, sceneUniforms(c.angle+c.yaw, c.pitch, float64(f.Width)/float64(f.Height)))
 
 	color := gpu.RenderPassColorAttachment{View: f.Color.View(), ClearValue: gpu.Color{R: 0.07, G: 0.09, B: 0.11, A: 1}}
 	if f.Resolve != nil {
@@ -280,12 +335,13 @@ func floatBytes(floats []float32) []byte {
 	return out
 }
 
-// sceneUniforms returns the bytes of the Scene struct of cube.wgsl for the angle of the cube.
-func sceneUniforms(angle, aspect float64) []byte {
+// sceneUniforms returns the bytes of the Scene struct of cube.wgsl for the angle of the cube and its tilt (the pitch
+// of the mouse look).
+func sceneUniforms(angle, pitch, aspect float64) []byte {
 	// A narrow view (a phone held upright) has a narrow field of view across: the camera backs off to keep the cube in.
 	back := float32(math.Max(1, 0.85/aspect))
 	eye := [3]float32{0, 1.6 * back, 4.6 * back}
-	model := mul(rotateY(float32(angle)), rotateX(0.5))
+	model := mul(rotateX(float32(pitch)), mul(rotateY(float32(angle)), rotateX(0.5)))
 	view := lookAt(eye, [3]float32{0, 0, 0}, [3]float32{0, 1, 0})
 	proj := perspective(math.Pi/4, float32(aspect), 0.1, 50)
 	mvp := mul(proj, mul(view, model))

@@ -407,6 +407,9 @@ func (w *window) dispatch(hwnd uintptr, msg uint32, wparam, lparam uintptr) uint
 			return 0
 		}
 		w.activated = wparam&0xFFFF != win32.WAInactive
+		if !w.activated {
+			w.endPointerLock(true) // the lock is for the window the user works in
+		}
 		p.lifecycleChanged()
 		w.reportFocus(w.activated)
 		if w.shown {
@@ -451,6 +454,11 @@ func (w *window) dispatch(hwnd uintptr, msg uint32, wparam, lparam uintptr) uint
 	case win32.WMMouseWheel, win32.WMMouseHWheel:
 		w.onWheel(msg, wparam, lparam)
 		return 0
+	case win32.WMInput:
+		w.onRawInput(lparam)
+		// DefWindowProc cleans up after the raw input.
+	case win32.WMWindowPosChanged:
+		w.reclip()
 	case win32.WMCaptureChanged:
 		w.onCaptureChanged(lparam)
 	case win32.WMCancelMode:
@@ -1014,6 +1022,7 @@ func (w *window) Close() {
 	if w.closed {
 		return
 	}
+	w.endPointerLock(false)
 	w.closeOwned()
 	if w.p.drag != nil {
 		w.p.drag.WindowClosed(w.id)

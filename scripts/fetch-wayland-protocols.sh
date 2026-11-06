@@ -41,6 +41,8 @@ PROTOCOL_FILES=(
   xdg-output-unstable-v1.xml
   idle-inhibit-unstable-v1.xml
   content-type-v1.xml
+  pointer-constraints-unstable-v1.xml
+  relative-pointer-unstable-v1.xml
 )
 
 log() { printf '%s\n' "$*" >&2; }

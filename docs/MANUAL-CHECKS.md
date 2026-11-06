@@ -659,3 +659,19 @@ Check, and record the answers:
 8. The proposed targets of SPEC §15 ("Windows", marked "proposed, to be confirmed by the owner"): do this PC's numbers meet them? If not, which ones are not, and may they stay as exceptions or must they be worked on?
 
 Answers: _(not yet recorded)_
+
+## 30.7 Pointer lock
+
+**Status:** pending
+
+Run `examples/gpu-triangle` in a debug build (on Linux `go run ./examples/gpu-triangle`; on Windows `go run ./cmd/glutter-windows run ./examples/gpu-triangle`; on the web `go run ./cmd/glutter-web serve ./examples/gpu-triangle`; on a phone `go run ./cmd/glutter-android run ./examples/gpu-triangle`). Press **L** (on the web, click the page first, since the browser wants a click or a key) and move the mouse.
+
+Check, and record the answers for each of: GNOME (Wayland), KDE (Wayland), an X11 session, a Windows PC, Chrome, Firefox, and an Android phone with a mouse:
+
+1. Does the cursor disappear and the cube turn with the mouse, with no limit at the edge of the screen?
+2. Does the motion feel the same as without the lock (unaccelerated, no jump when the lock starts)?
+3. Does a click while locked still reach the app (the slider and the switch do not move, since the pointer is held where it was)?
+4. Does L give the pointer back, at the place it was?
+5. Does Alt+Tab (and, on the web, Escape) end the lock, and does the pointer come back at once? Does the lock need L again afterwards?
+
+Answers: _(not yet recorded)_

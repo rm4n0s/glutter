@@ -86,6 +86,14 @@ const (
 	//
 	// Flutter: no counterpart
 	EntryKeepScreenOn EntryKind = "KeepScreenOn"
+	// EntryLockPointer records Window.LockPointer; Value is nil.
+	//
+	// Flutter: no counterpart
+	EntryLockPointer EntryKind = "LockPointer"
+	// EntryUnlockPointer records Window.UnlockPointer; Value is nil.
+	//
+	// Flutter: no counterpart
+	EntryUnlockPointer EntryKind = "UnlockPointer"
 	// EntryPortalHandle records Window.PortalHandle; Value is nil.
 	//
 	// Flutter: no counterpart
@@ -140,6 +148,29 @@ func (e PointerEvent) view() ui.ViewID {
 	return ui.ImplicitViewID
 }
 func (e PointerEvent) dispatch(_ *Platform, h platform.Handler) { h.OnPointer(e.Data) }
+
+// PointerLockEndedEvent tells the handler that the lock of a window ended by itself, as the compositor or the
+// browser does (platform.PointerLockHandler). The window is unlocked first.
+//
+// Flutter: no counterpart
+type PointerLockEndedEvent struct {
+	// View is the view whose lock ended.
+	View ui.ViewID
+}
+
+func (e PointerLockEndedEvent) view() ui.ViewID { return e.View }
+func (e PointerLockEndedEvent) dispatch(p *Platform, h platform.Handler) {
+	p.mu.Lock()
+	for _, w := range p.windows {
+		if w.id == e.View {
+			w.pointerLocked = false
+		}
+	}
+	p.mu.Unlock()
+	if l, ok := h.(platform.PointerLockHandler); ok {
+		l.OnPointerLockEnded(e.View)
+	}
+}
 
 // KeyEvent delivers a key event to Handler.OnKey.
 //

@@ -77,6 +77,10 @@ func TestStructLayouts(t *testing.T) {
 	layouttest.AssertLayout(t, "XClassHint", 16, map[string]uintptr{"resName": 0, "resClass": 8}, xClassHint{})
 	layouttest.AssertLayout(t, "XIEventMask", 16, map[string]uintptr{"deviceID": 0, "maskLen": 4, "mask": 8}, xiEventMask{})
 	layouttest.AssertLayout(t, "XIButtonState", 16, map[string]uintptr{"maskLen": 0, "mask": 8}, xiButtonState{})
+	layouttest.AssertLayout(t, "XIRawEvent", 96, map[string]uintptr{
+		"typ": 0, "serial": 8, "sendEvent": 16, "display": 24, "extension": 32, "evtype": 36, "time": 40,
+		"deviceID": 48, "sourceID": 52, "detail": 56, "flags": 60, "valuators": 64, "rawValues": 88,
+	}, xiRawEvent{})
 	layouttest.AssertLayout(t, "XIValuatorState", 24, map[string]uintptr{"maskLen": 0, "mask": 8, "values": 16}, xiValuatorState{})
 	layouttest.AssertLayout(t, "XIModifierState", 16, map[string]uintptr{"base": 0, "latched": 4, "locked": 8, "effective": 12}, xiModifierState{})
 	layouttest.AssertLayout(t, "XIDeviceEvent", 200, map[string]uintptr{

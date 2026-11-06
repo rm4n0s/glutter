@@ -182,3 +182,39 @@ func WindowFromPoint(pt Point) uintptr {
 	}
 	return r
 }
+
+// RegisterRawInputDevices asks Windows to send the raw input of a device class to a window as
+// WM_INPUT (RIDEV_REMOVE in the flags of the device stops it), and reports whether it was done.
+//
+// Flutter: no counterpart
+func RegisterRawInputDevices(devices []RawInputDevice) bool {
+	if len(devices) == 0 {
+		return true
+	}
+	return boolCall(user32, "RegisterRawInputDevices", uintptr(unsafe.Pointer(&devices[0])), uintptr(len(devices)), unsafe.Sizeof(RawInputDevice{}))
+}
+
+// GetRawInputMouse reads the report of the mouse of a WM_INPUT message (the handle is its lParam). It
+// answers false for input that is not a mouse report or cannot be read.
+//
+// Flutter: no counterpart
+func GetRawInputMouse(handle uintptr) (RawInputMouse, bool) {
+	var in RawInputMouse
+	size := uint32(unsafe.Sizeof(in))
+	r, _, err := user32.call("GetRawInputData", handle, RIDInput, uintptr(unsafe.Pointer(&in)), uintptr(unsafe.Pointer(&size)), unsafe.Sizeof(RawInputHeader{}))
+	if err != nil || r == ^uintptr(0) || in.Header.Type != RIMTypeMouse {
+		return RawInputMouse{}, false
+	}
+	return in, true
+}
+
+// ClipCursor confines the mouse cursor to a rectangle of the screen; nil lets it go everywhere again.
+// It reports whether it was done.
+//
+// Flutter: no counterpart
+func ClipCursor(r *Rect) bool {
+	if r == nil {
+		return boolCall(user32, "ClipCursor", 0)
+	}
+	return boolCall(user32, "ClipCursor", uintptr(unsafe.Pointer(r)))
+}

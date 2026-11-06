@@ -99,6 +99,15 @@ type Host struct {
 	// FocusEvents are the focus changes the framework asked the platform for, in
 	// order.
 	FocusEvents []ui.ViewFocusEvent
+	// LockPointerErr is returned by LockPointer, to test a platform that cannot lock the
+	// pointer or refuses.
+	LockPointerErr error
+	// LockedViews says which views the framework locked the pointer to; a view that was
+	// unlocked is false.
+	LockedViews map[ui.ViewID]bool
+	// PointerLocks counts the calls of LockPointer that succeeded, and PointerUnlocks the
+	// calls of UnlockPointer.
+	PointerLocks, PointerUnlocks int
 
 	nextView ui.ViewID
 	byView   map[ui.ViewID][]*ui.Scene
@@ -321,6 +330,32 @@ func (h *Host) SetWindowContentType(view ui.ViewID, contentType ui.ContentType) 
 		h.ContentTypes = map[ui.ViewID]ui.ContentType{}
 	}
 	h.ContentTypes[view] = contentType
+}
+
+// LockPointer keeps the lock of the view; it fails with LockPointerErr when that is set
+// (ui.PointerLockHost).
+func (h *Host) LockPointer(view ui.ViewID) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.LockPointerErr != nil {
+		return h.LockPointerErr
+	}
+	if h.LockedViews == nil {
+		h.LockedViews = map[ui.ViewID]bool{}
+	}
+	h.LockedViews[view] = true
+	h.PointerLocks++
+	return nil
+}
+
+// UnlockPointer ends the lock of the view (ui.PointerLockHost).
+func (h *Host) UnlockPointer(view ui.ViewID) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.LockedViews[view] {
+		h.LockedViews[view] = false
+	}
+	h.PointerUnlocks++
 }
 
 // KeepScreenOn keeps the request of the view; it fails with KeepScreenOnErr when

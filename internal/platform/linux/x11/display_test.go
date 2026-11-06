@@ -60,6 +60,9 @@ type displayHandler struct {
 	dragEnds []ui.DragResult
 	answer   func(ui.DropEvent) ui.DropActions
 
+	// lockEnds are the views whose pointer lock ended by itself.
+	lockEnds []ui.ViewID
+
 	// lost counts the OnContentLost calls, and focus is what OnViewFocus was told.
 	lost  int
 	focus []bool
@@ -78,6 +81,12 @@ func (h *displayHandler) focusSeen() []bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return append([]bool(nil), h.focus...)
+}
+
+func (h *displayHandler) OnPointerLockEnded(view ui.ViewID) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.lockEnds = append(h.lockEnds, view)
 }
 
 func (h *displayHandler) OnContentLost(ui.ViewID) {

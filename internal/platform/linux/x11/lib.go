@@ -117,6 +117,9 @@ type xlib struct {
 	getWindowProperty    func(display uintptr, window, property uint64, offset, length int64, del int32, reqType uint64, actualType, actualFormat, nitems, bytesAfter, prop uintptr) int32
 	translateCoordinates func(display uintptr, src, dest uint64, srcX, srcY int32, destX, destY, child uintptr) int32
 	getAtomName          func(display uintptr, atom uint64) uintptr
+	grabPointer          func(display uintptr, window uint64, ownerEvents int32, eventMask uint32, pointerMode, keyboardMode int32, confineTo, cursor, time uint64) int32
+	ungrabPointer        func(display uintptr, time uint64) int32
+	warpPointer          func(display uintptr, src, dest uint64, srcX, srcY int32, srcWidth, srcHeight uint32, destX, destY int32) int32
 }
 
 // loadXlib opens libX11 and libX11-xcb and binds the functions. It fails with
@@ -179,6 +182,9 @@ func loadXlib() (*xlib, error) {
 		{&l.convertSelection, "XConvertSelection"},
 		{&l.getWindowProperty, "XGetWindowProperty"},
 		{&l.getAtomName, "XGetAtomName"},
+		{&l.grabPointer, "XGrabPointer"},
+		{&l.ungrabPointer, "XUngrabPointer"},
+		{&l.warpPointer, "XWarpPointer"},
 	} {
 		if err := x11.Bind(b.fptr, b.symbol); err != nil {
 			return nil, err

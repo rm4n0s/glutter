@@ -39,7 +39,9 @@ type Platform struct {
 	firefox bool
 	// in is the state of the input (input_js.go), text the hidden text field (textinput_js.go) and clip
 	// the Clipboard API (clipboard_js.go).
-	in   inputState
+	in inputState
+	// lock is the pointer lock (pointerlock_js.go).
+	lock lockState
 	text *textInput
 	clip *navigatorClipboard
 	// devEvents is the script of GLUTTER_DEV_EVENTS, in debug builds; devStarted says it was

@@ -51,6 +51,8 @@ type rec struct {
 	dropAnswer func(ui.DropEvent) ui.DropActions
 	dragEnds   []ui.DragResult
 	focused    []focusChange
+	// lockEnds are the views whose pointer lock ended by itself (pointerlock_wine_test.go).
+	lockEnds []ui.ViewID
 }
 
 // focusChange is one call of OnViewFocus.
@@ -713,3 +715,6 @@ func TestAPanicOfTheHandlerIsRaisedAgainByRun(t *testing.T) {
 	_ = p.Run(ctx, r)
 	t.Fatal("Run returned")
 }
+
+// OnPointerLockEnded records the locks that ended by themselves.
+func (r *rec) OnPointerLockEnded(view ui.ViewID) { r.lockEnds = append(r.lockEnds, view) }

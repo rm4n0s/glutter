@@ -388,6 +388,9 @@ type PointerEvent struct {
 	Pressure, TiltX, TiltY float64
 	// TimeStamp is the time of the event, in milliseconds.
 	TimeStamp float64
+	// MovementX and MovementY are MouseEvent.movementX and movementY in CSS pixels: the motion
+	// since the previous event, which is all a locked pointer reports (SPEC §27.6).
+	MovementX, MovementY float64
 	// Alt, Ctrl, Meta and Shift are the modifier flags of the event.
 	Alt, Ctrl, Meta, Shift bool
 	// Coalesced are the events a pointermove stands for, from getCoalescedEvents; they have
@@ -506,6 +509,13 @@ type PointerInput struct {
 	lastWheel            WheelEvent
 	hasLastWheel         bool
 	lastWheelWasTrackpad bool
+
+	// lock is the pointer lock of the view, or nil (pointerlock.go).
+	lock *pointerLockInput
+	// lastX and lastY are the place of the mouse when it was last seen, in CSS pixels; seen says
+	// there was one.
+	lastX, lastY float64
+	seen         bool
 }
 
 // PointerInputOptions are the optional parameters of NewPointerInput.
@@ -591,6 +601,9 @@ func (in *PointerInput) checkModifiers(e PointerEvent) {
 // convert converts the event with the details to pointer data. pointerID is the device when
 // the event is a coalesced one, which has no pointerId of its own.
 func (in *PointerInput) convert(data []ui.PointerData, e PointerEvent, d sanitized, device int, dpr float64) []ui.PointerData {
+	if pointerKind(e.PointerType) == ui.PointerDeviceKindMouse {
+		in.lastX, in.lastY, in.seen = e.X, e.Y, true
+	}
 	return in.conv.Convert(data, PointerParams{
 		View: in.view, TimeStamp: durationOf(e.TimeStamp), Change: d.change, Kind: pointerKind(e.PointerType),
 		SignalKind: ui.PointerSignalKindNone, Device: device,
@@ -603,6 +616,7 @@ func (in *PointerInput) convert(data []ui.PointerData, e PointerEvent, d sanitiz
 //
 // Flutter: lib/web_ui/lib/src/engine/pointer_binding.dart _PointerAdapter.setup (pointerdown)
 func (in *PointerInput) Down(e PointerEvent, dpr float64) []ui.PointerData {
+	e = in.held(e)
 	in.checkModifiers(e)
 	device := deviceOf(e)
 	var data []ui.PointerData
@@ -621,6 +635,9 @@ func (in *PointerInput) Down(e PointerEvent, dpr float64) []ui.PointerData {
 //
 // Flutter: lib/web_ui/lib/src/engine/pointer_binding.dart _PointerAdapter.setup (pointermove)
 func (in *PointerInput) Move(e PointerEvent, dpr float64) []ui.PointerData {
+	if in.lock != nil && pointerKind(e.PointerType) == ui.PointerDeviceKindMouse {
+		return in.lockedMove(e, dpr)
+	}
 	in.checkModifiers(e)
 	device := deviceOf(e)
 	s := in.sanitizer(device)
@@ -654,6 +671,7 @@ func (in *PointerInput) Leave(e PointerEvent, dpr float64) []ui.PointerData {
 //
 // Flutter: lib/web_ui/lib/src/engine/pointer_binding.dart _PointerAdapter.setup (pointerup)
 func (in *PointerInput) Up(e PointerEvent, dpr float64) []ui.PointerData {
+	e = in.held(e)
 	in.checkModifiers(e)
 	device := deviceOf(e)
 	s, ok := in.sanitizers[device]

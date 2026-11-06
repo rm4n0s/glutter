@@ -148,6 +148,9 @@ type PointerBatcher struct {
 	inside  bool
 	x, y    float64 // the position, physical
 	buttons int
+	// locked is whether the pointer is locked (SetLocked): x and y stay where the lock began, and the motion
+	// is reported with Relative.
+	locked bool
 
 	source AxisSource
 	// hasSource is whether axis_source arrived in this frame.
@@ -231,11 +234,41 @@ func (b *PointerBatcher) Leave() {
 	b.hasSource = false
 }
 
+// SetLocked says that the pointer is locked (true) or free again (false). While it is locked the position does
+// not change: Motion is ignored (the compositor or the server may still report a warped pointer), and Relative
+// reports the motion.
+//
+// Flutter: no counterpart
+func (b *PointerBatcher) SetLocked(locked bool) { b.locked = locked }
+
+// Locked says whether SetLocked made the pointer locked.
+//
+// Flutter: no counterpart
+func (b *PointerBatcher) Locked() bool { return b.locked }
+
+// Relative reports the motion of a locked pointer, in logical pixels: a hover (a move while a button is down) at the
+// position the pointer had when the lock began, with the motion as its delta (SPEC §27.6). Without a lock, or outside
+// the window, it does nothing.
+//
+// Flutter: no counterpart
+func (b *PointerBatcher) Relative(dx, dy float64) {
+	if !b.inside || !b.locked {
+		return
+	}
+	change := ui.PointerChangeHover
+	if b.buttons != 0 {
+		change = ui.PointerChangeMove
+	}
+	d := b.base(change)
+	d.PhysicalDeltaX, d.PhysicalDeltaY = dx*b.Scale, dy*b.Scale
+	b.emit(d)
+}
+
 // Motion reports the pointer at a new position, in logical pixels.
 //
 // Flutter: no counterpart
 func (b *PointerBatcher) Motion(x, y float64) {
-	if !b.inside {
+	if !b.inside || b.locked {
 		return
 	}
 	nx, ny := x*b.Scale, y*b.Scale

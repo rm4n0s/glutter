@@ -13,7 +13,7 @@ import (
 // Linux host and is skipped, with the install command, when the compiler is missing.
 func TestLayoutAgainstTheHeaders(t *testing.T) {
 	layouttest.Check(t, layouttest.Spec{
-		Headers: []string{"windows.h", "unknwn.h", "dxgi.h", "dwmapi.h", "shellscalingapi.h", "imm.h", "shlobj.h", "shellapi.h", "shobjidl.h", "winver.h", "ole2.h", "oleidl.h", "objidl.h", "oleauto.h", "uiautomationcore.h"},
+		Headers: []string{"windows.h", "unknwn.h", "dxgi.h", "dwmapi.h", "shellscalingapi.h", "imm.h", "shlobj.h", "shellapi.h", "shobjidl.h", "winver.h", "ole2.h", "oleidl.h", "objidl.h", "oleauto.h", "uiautomationcore.h", "hidusage.h"},
 		Structs: []layouttest.Struct{
 			layouttest.StructOf("GUID", GUID{}),
 			layouttest.StructOf("POINT", Point{}),
@@ -41,6 +41,10 @@ func TestLayoutAgainstTheHeaders(t *testing.T) {
 			layouttest.StructOf("KEYBDINPUT", KeybdInput{}),
 			layouttest.StructOf("INPUT", KeyInput{}),
 			layouttest.StructOf("CURSORINFO", CursorInfo{}),
+			layouttest.StructOf("RAWINPUTDEVICE", RawInputDevice{}),
+			layouttest.StructOf("RAWINPUTHEADER", RawInputHeader{}),
+			layouttest.StructOf("RAWMOUSE", RawMouse{}),
+			layouttest.StructOf("RAWINPUT", RawInputMouse{}),
 			layouttest.StructOf("COMPOSITIONFORM", CompositionForm{}),
 			layouttest.StructOf("CANDIDATEFORM", CandidateForm{}),
 			layouttest.StructOf("DROPFILES", DropFiles{}),
@@ -331,6 +335,13 @@ func TestLayoutAgainstTheHeaders(t *testing.T) {
 			{Name: "WM_SETCURSOR", Value: u32(WMSetCursor)},
 			{Name: "WM_CANCELMODE", Value: u32(WMCancelMode)},
 			{Name: "WM_MOUSEMOVE", Value: u32(WMMouseMove)},
+			{Name: "WM_INPUT", Value: u32(WMInput)},
+			{Name: "RID_INPUT", Value: u32(RIDInput)},
+			{Name: "RIDEV_REMOVE", Value: u32(RIDEVRemove)},
+			{Name: "HID_USAGE_PAGE_GENERIC", Value: u32(HIDUsagePageGeneric)},
+			{Name: "HID_USAGE_GENERIC_MOUSE", Value: u32(HIDUsageGenericMouse)},
+			{Name: "RIM_TYPEMOUSE", Value: u32(RIMTypeMouse)},
+			{Name: "MOUSE_MOVE_RELATIVE", Value: u32(MouseMoveRelative)},
 			{Name: "WM_LBUTTONDOWN", Value: u32(WMLButtonDown)},
 			{Name: "WM_LBUTTONUP", Value: u32(WMLButtonUp)},
 			{Name: "WM_RBUTTONDOWN", Value: u32(WMRButtonDown)},

@@ -275,13 +275,16 @@ public class GlutterActivity extends Activity {
         });
   }
 
+  /** The command that captures the pointer (a is 1) or lets it go (a is 0): the pointer lock (pointerlock.go). */
+  static final int OP_POINTER_CAPTURE = 27;
+
   /**
    * Called by Go, from any thread: one operation of the system's interface, haptic feedback, sounds
    * or the screen (systemui.go, operations 1 to 7; {@link SystemUI}), or of text input and the
    * clipboard (textinput.go, 8 to 13, and 25 and 26 for the HTML; {@link TextInput}), of back navigation (back.go, 14
    * and 15; {@link BackNavigation}), of accessibility (accessibility.go, 16 to 18; {@link
    * GlutterAccessibility}), of the spell checker (spellcheck.go, 24; {@link SpellCheck}) or of the desktop services (desktop.go, 19 to 23: a URI, the
-   * notifications; {@link DesktopServices}), done on the main thread. {@code bytes} is the
+   * notifications; {@link DesktopServices}) or the pointer capture (pointerlock.go, 27), done on the main thread. {@code bytes} is the
    * operation's text as UTF-8, or, for the semantics update (16) and the notification (22), a binary
    * payload.
    */
@@ -316,6 +319,15 @@ public class GlutterActivity extends Activity {
             } else if (op == BackNavigation.OP_FRAMEWORK_HANDLES_BACK || op == BackNavigation.OP_FINISH) {
               if (current.backNavigation != null) {
                 current.backNavigation.command(op, a);
+              }
+            } else if (op == OP_POINTER_CAPTURE) {
+              if (current.view != null) {
+                if (a != 0) {
+                  current.view.requestFocus();
+                  current.view.requestPointerCapture();
+                } else {
+                  current.view.releasePointerCapture();
+                }
               }
             } else if (op >= TextInput.OP_TEXT_START) {
               if (current.textInput != null) {

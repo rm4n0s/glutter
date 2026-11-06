@@ -60,6 +60,14 @@ func goKeyEvent(id, action, keyCode, scanCode, metaState, repeatCount C.int, eve
 //export goFocus
 func goFocus(focused C.int) { process.focusChanged(focused != 0) }
 
+//export goPointerCapture
+func goPointerCapture(captured C.int) { process.pointerCapture(captured != 0) }
+
+//export goCapturedMotion
+func goCapturedMotion(action C.int, dx, dy C.float, buttons C.int, eventTime C.longlong) {
+	process.capturedMotion(int(action), float64(dx), float64(dy), int(buttons), int64(eventTime))
+}
+
 //export goInsets
 func goInsets(values *C.int, n C.int) {
 	if in, ok := decodeInsets(unsafe.Slice((*int32)(unsafe.Pointer(values)), int(n))); ok {

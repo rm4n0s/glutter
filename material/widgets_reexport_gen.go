@@ -9062,6 +9062,18 @@ func PointerDragAnchorStrategy(draggable widgets.Widget, bc widgets.BuildContext
 	return widgets.PointerDragAnchorStrategy(draggable, bc, position)
 }
 
+// PointerLock is widgets.PointerLock.
+//
+// Flutter: widgets.dart PointerLock
+type PointerLock = widgets.PointerLock
+
+// PointerLockOf is widgets.PointerLockOf.
+//
+// Flutter: widgets.dart PointerLockOf
+func PointerLockOf(bc widgets.BuildContext) *widgets.PointerLock {
+	return widgets.PointerLockOf(bc)
+}
+
 // PopEntry is widgets.PopEntry.
 //
 // Flutter: widgets.dart PopEntry
@@ -11344,6 +11356,16 @@ type TableRow = widgets.TableRow
 //
 // Flutter: widgets.dart TableRowOpts
 type TableRowOpts = widgets.TableRowOpts
+
+// TagPointerLockDenied is widgets.TagPointerLockDenied.
+//
+// Flutter: widgets.dart TagPointerLockDenied
+const TagPointerLockDenied = widgets.TagPointerLockDenied
+
+// TagPointerLockUnavailable is widgets.TagPointerLockUnavailable.
+//
+// Flutter: widgets.dart TagPointerLockUnavailable
+const TagPointerLockUnavailable = widgets.TagPointerLockUnavailable
 
 // TapRegion is widgets.TapRegion.
 //

@@ -9,6 +9,7 @@ import (
 	"github.com/rm4n0s/glutter/gestures"
 	m "github.com/rm4n0s/glutter/material"
 	"github.com/rm4n0s/glutter/services"
+	"github.com/rm4n0s/glutter/ui"
 )
 
 // The layout, in CSS pixels of the 480x640 viewport the tests give: the button is in a band
@@ -31,6 +32,8 @@ type probe struct {
 	post func(func())
 	// binding is the widgets binding, found when the app is built.
 	binding *m.WidgetsBinding
+	// view is the view of the app, found when it is built.
+	view *ui.View
 
 	count int
 	// downs are the pointer-down events the framework saw, as "x,y".
@@ -96,6 +99,7 @@ func (s *inputPageState) Build(bc m.BuildContext) m.Widget {
 	p := s.Widget().p
 	if p.binding == nil {
 		p.binding = m.WidgetsBindingOf(bc)
+		p.view = m.ViewOf(bc)
 		p.post = p.binding.Post
 		close(p.ready)
 	}

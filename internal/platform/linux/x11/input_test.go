@@ -540,3 +540,46 @@ func TestPointerIdentifiersAreNewAtEachDown(t *testing.T) {
 		t.Errorf("identifiers of the downs %v, want %v (mouse and touch share one counter)", downIDs, want)
 	}
 }
+
+// rawEvent makes an XIRawEvent whose raw values are for the numbered axes, in C memory.
+func rawEvent(t *testing.T, values map[int]float64) uintptr {
+	t.Helper()
+	d := valuatorEvent(t, 2, values)
+	raw := dl.Calloc(1, unsafe.Sizeof(xiRawEvent{}))
+	t.Cleanup(func() { dl.Free(raw) })
+	*view[xiRawEvent](raw) = xiRawEvent{evtype: xiRawMotion, deviceID: 2, valuators: d.valuators, rawValues: d.valuators.values}
+	return raw
+}
+
+func TestRawMotionIsRelativeMotionWhileLocked(t *testing.T) {
+	in, rec := newInput(t, "us")
+	w := &window{id: 1}
+	in.onEnterLeave(w, &xiEnterEvent{eventX: 40, eventY: 50}, true)
+	in.pointer.Scale = 2
+	rec.takeBatches()
+	in.onRawMotion(rawEvent(t, map[int]float64{0: 3, 1: -4})) // not locked: nothing
+	if got := rec.takeBatches(); len(got) != 0 {
+		t.Fatalf("raw motion without a lock: %v", got)
+	}
+	in.lock = &pointerLock{w: w, x: 40, y: 50}
+	in.pointer.SetLocked(true)
+	in.onRawMotion(rawEvent(t, map[int]float64{0: 3, 1: -4}))
+	in.onRawMotion(rawEvent(t, map[int]float64{1: 2}))       // only y changed
+	in.onRawMotion(rawEvent(t, map[int]float64{3: 9}))       // another valuator: not motion
+	in.onRawMotion(rawEvent(t, map[int]float64{0: 0, 1: 0})) // nothing moved
+	in.onMotion(w, &xiDeviceEvent{eventX: 60, eventY: 70})   // the pointer itself moves in the window: not reported
+	got := rec.takeBatches()
+	if len(got) != 2 {
+		t.Fatalf("%d batches, want 2: %v", len(got), got)
+	}
+	a, b := got[0][0], got[1][0]
+	if a.Change != ui.PointerChangeHover {
+		t.Errorf("change = %v, want a hover", a.Change)
+	}
+	if a.PhysicalX != 40 || a.PhysicalY != 50 || b.PhysicalX != 40 || b.PhysicalY != 50 {
+		t.Errorf("the position moved: %+v %+v", a, b)
+	}
+	if a.PhysicalDeltaX != 3 || a.PhysicalDeltaY != -4 || b.PhysicalDeltaX != 0 || b.PhysicalDeltaY != 2 {
+		t.Errorf("deltas = (%v, %v) and (%v, %v), want the raw units (3, -4) and (0, 2)", a.PhysicalDeltaX, a.PhysicalDeltaY, b.PhysicalDeltaX, b.PhysicalDeltaY)
+	}
+}

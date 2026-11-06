@@ -64,18 +64,31 @@ func (p *Platform) onMotion(ev motionEvent, generic bool, hScroll, vScroll float
 	if p.handler == nil || p.win == nil {
 		return
 	}
+	if data := p.convertMotion(ev, generic, hScroll, vScroll); len(data) > 0 {
+		p.handler.OnPointer(data)
+	}
+}
+
+// convertMotion makes the pointer data of a motion event, and remembers where the mouse is, for the
+// pointer lock to hold it there (pointerlock.go).
+func (p *Platform) convertMotion(ev motionEvent, generic bool, hScroll, vScroll float64) []ui.PointerData {
+	if p.lock == nil {
+		for _, ptr := range ev.Pointers {
+			if ptr.ToolType == toolTypeMouse {
+				p.mouseX, p.mouseY, p.mouseSeen, p.mouseID = ptr.X, ptr.Y, true, ptr.ID
+			}
+		}
+	}
 	var raw []ui.PointerData
 	if generic {
 		var handled bool
 		if raw, handled = p.touch.OnGenericMotionEvent(ev, hScroll, vScroll); !handled {
-			return
+			return nil
 		}
 	} else {
 		raw = p.touch.OnTouchEvent(ev)
 	}
-	if data := p.conv.Convert(raw); len(data) > 0 {
-		p.handler.OnPointer(data)
-	}
+	return p.conv.Convert(raw)
 }
 
 // key queues a key event for the UI thread; id comes back with the answer.

@@ -110,6 +110,8 @@ type keyHandler struct {
 	// for a drop event.
 	drops    []ui.DropEvent
 	dragEnds []ui.DragResult
+	// lockEnds are the views whose pointer lock ended by itself (platform.PointerLockHandler).
+	lockEnds []ui.ViewID
 	answer   func(ui.DropEvent) ui.DropActions
 	// onKey, when set, runs for each key event on the UI thread, outside the lock.
 	onKey func(ui.KeyData)
@@ -160,6 +162,18 @@ func (h *keyHandler) textEvents() []ui.TextInputEvent {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return append([]ui.TextInputEvent(nil), h.texts...)
+}
+
+func (h *keyHandler) OnPointerLockEnded(view ui.ViewID) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.lockEnds = append(h.lockEnds, view)
+}
+
+func (h *keyHandler) pointerLockEnds() []ui.ViewID {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return append([]ui.ViewID(nil), h.lockEnds...)
 }
 
 func (h *keyHandler) OnPointer(batch []ui.PointerData) {

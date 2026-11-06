@@ -11,7 +11,9 @@
 // window, press buttons, use the wheel, scroll or pinch on a touchpad, touch the
 // screen. Press Escape or close the window to quit.
 //
-// Environment: GLUTTER_BACKEND=x11 or wayland picks the windowing system (else
+// Environment: GLUTTER_DEV_LOCK=1 locks the pointer (SPEC §27.6) at the first event of
+// the mouse, to try the lock of a platform without the framework: the pointer
+// events then stay where they were, with the motion in dx and dy; GLUTTER_BACKEND=x11 or wayland picks the windowing system (else
 // the session's), GLUTTER_DEV_SHM=1 draws through a wl_shm buffer instead of EGL
 // (Wayland only), and XCURSOR_THEME and XCURSOR_SIZE choose the cursor theme
 // when the compositor does not draw the cursors itself.
@@ -57,7 +59,7 @@ func run() error {
 	cfg.AppID = "dev.glutter.input"
 	cfg.Size = ui.Size{Width: 640, Height: 400}
 
-	a := &app{}
+	a := &app{lock: os.Getenv("GLUTTER_DEV_LOCK") == "1"}
 	return engine.Run(ctx, engine.Config{
 		Window:  cfg,
 		ShmFill: os.Getenv("GLUTTER_DEV_SHM") == "1",
@@ -75,6 +77,9 @@ type app struct {
 	win           platform.Window
 	stop          func()
 	width, height int
+
+	// lock says the pointer is to be locked at the first event of the mouse; locked says it was.
+	lock, locked bool
 
 	// half is the half of the window the pointer is in: -1 left, 1 right, 0 none.
 	half int
@@ -99,6 +104,9 @@ func (a *app) onPointer(batch []ui.PointerData) {
 			"change", d.Change.String(), "kind", d.Kind.String(), "device", d.Device,
 			"x", d.PhysicalX, "y", d.PhysicalY, "buttons", d.Buttons,
 		}
+		if d.PhysicalDeltaX != 0 || d.PhysicalDeltaY != 0 {
+			attrs = append(attrs, "dx", d.PhysicalDeltaX, "dy", d.PhysicalDeltaY)
+		}
 		switch {
 		case d.SignalKind == ui.PointerSignalKindScroll:
 			attrs = append(attrs, "scrollX", d.ScrollDeltaX, "scrollY", d.ScrollDeltaY)
@@ -108,6 +116,10 @@ func (a *app) onPointer(batch []ui.PointerData) {
 			attrs = append(attrs, "id", d.PointerIdentifier)
 		}
 		slog.Info("pointer", attrs...)
+		if a.lock && !a.locked && (d.Kind == ui.PointerDeviceKindMouse || d.Kind == ui.PointerDeviceKindTrackpad) {
+			a.locked = true
+			a.lockPointer()
+		}
 		if d.Kind == ui.PointerDeviceKindMouse && d.SignalKind == ui.PointerSignalKindUnspecified {
 			a.updateCursor(d)
 		}
@@ -134,4 +146,22 @@ func (a *app) updateCursor(d ui.PointerData) {
 	} else {
 		a.win.SetCursor(platform.MouseCursorClick)
 	}
+}
+
+// lockPointer locks the pointer of the window and logs what the platform answers.
+func (a *app) lockPointer() {
+	locker, ok := a.win.(platform.PointerLocker)
+	if !ok {
+		slog.Info("lock", "result", "unavailable")
+		return
+	}
+	if err := locker.LockPointer(); err != nil {
+		if appErr, ok := errors.FromError(err); ok {
+			slog.Info("lock", "result", appErr.Tag)
+			return
+		}
+		slog.Info("lock", "result", err.Error())
+		return
+	}
+	slog.Info("lock", "result", "locked")
 }

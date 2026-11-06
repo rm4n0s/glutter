@@ -83,6 +83,19 @@ final class Native {
       float hScrollFactor,
       float vScrollFactor);
 
+  /**
+   * The pointer capture changed: the system gave it ({@code captured} true) or took it away. See
+   * {@code View.onPointerCaptureChange}.
+   */
+  static native void pointerCapture(boolean captured);
+
+  /**
+   * A sample of a captured pointer event ({@code View.onCapturedPointerEvent}): the masked action, the
+   * motion of the mouse in pixels (the x and y of an event of SOURCE_MOUSE_RELATIVE), the button
+   * state and the time.
+   */
+  static native void capturedMotion(int action, float dx, float dy, int buttons, long eventTime);
+
   /** A key event copied out; {@code id} comes back in {@code GlutterActivity.onKeyHandled}. */
   static native void keyEvent(
       int id,

@@ -182,6 +182,34 @@ public class GlutterView extends SurfaceView implements SurfaceHolder.Callback {
     return super.onGenericMotionEvent(event);
   }
 
+  /**
+   * The mouse while the pointer is captured (the pointer lock, {@code requestPointerCapture}): the x
+   * and y of each sample are the motion since the one before. The samples that Android batched come
+   * first.
+   */
+  @Override
+  public boolean onCapturedPointerEvent(MotionEvent event) {
+    int history = event.getActionMasked() == MotionEvent.ACTION_MOVE ? event.getHistorySize() : 0;
+    for (int h = 0; h < history; h++) {
+      Native.capturedMotion(
+          MotionEvent.ACTION_MOVE,
+          event.getHistoricalX(h),
+          event.getHistoricalY(h),
+          event.getButtonState(),
+          event.getHistoricalEventTime(h));
+    }
+    Native.capturedMotion(
+        event.getActionMasked(), event.getX(), event.getY(), event.getButtonState(), event.getEventTime());
+    return true;
+  }
+
+  /** The system gave the pointer capture, or took it back (Escape, the focus, another app). */
+  @Override
+  public void onPointerCaptureChange(boolean hasCapture) {
+    super.onPointerCaptureChange(hasCapture);
+    Native.pointerCapture(hasCapture);
+  }
+
   /** Copies the values of a motion event, with its historical samples, out to Go. */
   private void sendMotion(MotionEvent event, boolean generic) {
     int n = event.getPointerCount();
@@ -279,6 +307,19 @@ public class GlutterView extends SurfaceView implements SurfaceHolder.Callback {
   /** The dev events script (main thread): a synthetic tap, swipe or key, dispatched like real input. */
   void inject(int kind, float x1, float y1, float x2, float y2, int ms, String key) {
     final Handler handler = getHandler() != null ? getHandler() : new Handler(Looper.getMainLooper());
+    if (kind == 9) {
+      // A motion of the mouse while the pointer is captured, as the relative mouse of a device makes it.
+      if (!hasPointerCapture()) {
+        Log.w(TAG, "relmove injected but the pointer is not captured");
+      } else {
+        long now = SystemClock.uptimeMillis();
+        MotionEvent relative = MotionEvent.obtain(now, now, MotionEvent.ACTION_MOVE, x1, y1, 0);
+        relative.setSource(InputDevice.SOURCE_MOUSE_RELATIVE);
+        onCapturedPointerEvent(relative);
+        relative.recycle();
+      }
+      return;
+    }
     if (kind == 8) {
       if (accessibility == null) {
         Log.w(TAG, "a11y injected but there is no accessibility bridge");

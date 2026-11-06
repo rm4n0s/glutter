@@ -8,6 +8,7 @@ import (
 	"syscall/js"
 	"time"
 
+	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/internal/platform/web"
 	"github.com/rm4n0s/glutter/internal/platform/web/synthetic"
 	m "github.com/rm4n0s/glutter/material"
@@ -56,6 +57,10 @@ type observations struct {
 	MenuEnabledPrevented  bool `json:"menuEnabledPrevented"`
 	MenuEnabledFlag       bool `json:"menuEnabledFlag"`
 	MenuDisabledFlag      bool `json:"menuDisabledFlag"`
+	// LockTag is the tag of the error of a request for the pointer lock made with no user activation (the
+	// events of the test are synthetic), and LockHeld whether the app thinks it holds the lock.
+	LockTag  string `json:"lockTag"`
+	LockHeld bool   `json:"lockHeld"`
 }
 
 func main() {
@@ -154,6 +159,16 @@ func observe(p *probe) observations {
 	o.MenuDisabledPrevented = synthetic.DispatchContextMenu(canvas, listX, listY)
 	p.onUI(func() { p.binding.BrowserContextMenu().EnableContextMenu() })
 	o.MenuEnabledPrevented = synthetic.DispatchContextMenu(canvas, listX, listY)
+
+	// The pointer lock needs a click or a key of the user, which synthetic events are not: the browser
+	// would refuse, and the platform says so at once.
+	p.onUI(func() {
+		err := p.binding.PointerLock().Lock(p.view)
+		if appErr, ok := errors.FromError(err); ok {
+			o.LockTag = appErr.Tag
+		}
+		o.LockHeld = p.binding.PointerLock().Locked()
+	})
 	return o
 }
 

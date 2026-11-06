@@ -18,6 +18,8 @@ extern void goBack(int kind, float x, float y, float progress, int edge);
 extern void goTrimMemory(int level);
 extern void goMotionEvent(long long *meta, int nmeta, int *ids, int nids, float *vals, int nvals, long long *times, int ntimes,
                           float pressureMin, float pressureMax, float hScroll, float vScroll);
+extern void goPointerCapture(int captured);
+extern void goCapturedMotion(int action, float dx, float dy, int buttons, long long eventTime);
 extern void goInsets(int *values, int n);
 extern void goSettings(char *text);
 extern void goSystemUI(int visible);
@@ -264,6 +266,15 @@ JNIEXPORT void JNICALL Java_io_github_rm4n0s_glutter_Native_settings(JNIEnv *env
     goSettings((char *)t);
     (*env)->ReleaseStringUTFChars(env, text, t);
   }
+}
+
+JNIEXPORT void JNICALL Java_io_github_rm4n0s_glutter_Native_pointerCapture(JNIEnv *env, jclass cls, jboolean captured) {
+  goPointerCapture(captured ? 1 : 0);
+}
+
+JNIEXPORT void JNICALL Java_io_github_rm4n0s_glutter_Native_capturedMotion(JNIEnv *env, jclass cls, jint action, jfloat dx, jfloat dy,
+                                                                         jint buttons, jlong eventTime) {
+  goCapturedMotion(action, dx, dy, buttons, eventTime);
 }
 
 JNIEXPORT void JNICALL Java_io_github_rm4n0s_glutter_Native_systemUI(JNIEnv *env, jclass cls, jboolean visible) {

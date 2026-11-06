@@ -366,6 +366,9 @@ type window struct {
 	// hidden is whether the framework took the window off the screen
 	// (SetWindowHidden): it asks the platform for no frame until it is shown.
 	hidden bool
+	// pointerLocked is whether the framework locked the pointer to the window and the lock has not
+	// ended (SPEC §27.6).
+	pointerLocked bool
 }
 
 // handler is the platform.Handler of the engine: it draws the windows, captures
@@ -548,6 +551,52 @@ func (h *handler) PlatformService(name string) any {
 	return nil
 }
 
+// LockPointer locks the pointer to the window of the view (ui.PointerLockHost).
+func (h *handler) LockPointer(view ui.ViewID) error {
+	w, ok := h.windows[view]
+	if !ok {
+		return errors.New(ui.TagPointerLockUnavailable, "the window of the view does not exist", "view", view)
+	}
+	locker, ok := w.Window.(platform.PointerLocker)
+	if !ok {
+		return errors.New(ui.TagPointerLockUnavailable, "the window of this platform cannot lock the pointer", "view", view)
+	}
+	if err := locker.LockPointer(); err != nil {
+		return err
+	}
+	w.pointerLocked = true
+	return nil
+}
+
+// UnlockPointer ends the pointer lock of the window of the view (ui.PointerLockHost).
+func (h *handler) UnlockPointer(view ui.ViewID) {
+	w, ok := h.windows[view]
+	if !ok || !w.pointerLocked {
+		return
+	}
+	w.pointerLocked = false
+	w.Window.(platform.PointerLocker).UnlockPointer()
+}
+
+// OnPointerLockEnded is what the platform tells when a lock ended by itself (platform.PointerLockHandler).
+func (h *handler) OnPointerLockEnded(view ui.ViewID) {
+	if w, ok := h.windows[view]; ok && w.pointerLocked {
+		h.pointerLockEnded(w)
+	}
+}
+
+// pointerLockEnded forgets the lock of the window and tells the framework, in order with the input.
+func (h *handler) pointerLockEnded(w *window) {
+	w.pointerLocked = false
+	view := w.id
+	h.queueInput(w, func() { h.disp.PointerLockEnded(view) })
+}
+
+var (
+	_ ui.PointerLockHost          = (*handler)(nil)
+	_ platform.PointerLockHandler = (*handler)(nil)
+)
+
 // KeepScreenOn stops the screen from going idle while the window of the view is
 // visible (ui.IdleInhibitHost).
 func (h *handler) KeepScreenOn(view ui.ViewID, on bool) error {
@@ -622,6 +671,10 @@ func (h *handler) DestroyWindow(view ui.ViewID) {
 // exist.
 func (h *handler) forget(w *window) {
 	h.releaseMouse(w.id)
+	if w.pointerLocked {
+		w.pointerLocked = false // the platform's lock goes with its window
+		h.disp.PointerLockEnded(w.id)
+	}
 	if h.r != nil {
 		h.r.Release(w.NativeSurface())
 	}
@@ -794,6 +847,11 @@ func (h *handler) OnViewFocus(view ui.ViewID, focused bool) {
 		h.focusView = view
 	}
 	w.focused = focused
+	if !focused && w.pointerLocked {
+		// The lock ends with the focus, whatever the platform does (SPEC §27.6).
+		w.Window.(platform.PointerLocker).UnlockPointer()
+		h.pointerLockEnded(w)
+	}
 	if h.acc != nil {
 		h.acc.SetWindow(view, w.title, focused)
 	}

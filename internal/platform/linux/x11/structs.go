@@ -317,6 +317,26 @@ type xiDeviceEvent struct {
 	group     xiModifierState
 }
 
+// xiRawEvent is XIRawEvent: a motion of a device before the server accelerates and clamps it. The values are the
+// valuators that changed, raw_values the device's units, one for each set bit of the mask.
+type xiRawEvent struct {
+	typ       int32
+	_         int32
+	serial    uint64
+	sendEvent int32
+	_         int32
+	display   uintptr
+	extension int32
+	evtype    int32
+	time      uint64
+	deviceID  int32
+	sourceID  int32
+	detail    int32
+	flags     int32
+	valuators xiValuatorState
+	rawValues uintptr
+}
+
 // xiEnterEvent is XIEnterEvent: the pointer entered or left, or the focus
 // changed.
 type xiEnterEvent struct {

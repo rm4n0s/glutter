@@ -28,11 +28,16 @@ type Window struct {
 	icon      ui.WindowIcon
 	content   ui.ContentType
 	screenOn  bool
-	hidden    bool
-	closed    bool
+	// pointerLocked is whether the pointer is locked to the window.
+	pointerLocked bool
+	hidden        bool
+	closed        bool
 }
 
-var _ platform.Window = (*Window)(nil)
+var (
+	_ platform.Window        = (*Window)(nil)
+	_ platform.PointerLocker = (*Window)(nil)
+)
 
 // ID returns the window's view ID.
 //
@@ -177,6 +182,30 @@ func (w *Window) SetContentType(contentType ui.ContentType) {
 func (w *Window) KeepScreenOn(on bool) error {
 	w.set(EntryKeepScreenOn, on, func() { w.screenOn = on })
 	return nil
+}
+
+// LockPointer records the lock and always succeeds (platform.PointerLocker).
+//
+// Flutter: no counterpart
+func (w *Window) LockPointer() error {
+	w.set(EntryLockPointer, nil, func() { w.pointerLocked = true })
+	return nil
+}
+
+// UnlockPointer records the end of the lock (platform.PointerLocker).
+//
+// Flutter: no counterpart
+func (w *Window) UnlockPointer() {
+	w.set(EntryUnlockPointer, nil, func() { w.pointerLocked = false })
+}
+
+// PointerLocked returns whether the pointer is locked to the window.
+//
+// Flutter: no counterpart
+func (w *Window) PointerLocked() bool {
+	w.p.mu.Lock()
+	defer w.p.mu.Unlock()
+	return w.pointerLocked
 }
 
 // Icon returns the last icon set; the config's icon until then.

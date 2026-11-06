@@ -98,6 +98,8 @@ type inputState struct {
 	// scroll holds the axes that scroll, by device and valuator number; devices
 	// is the devices that have any, whose button 4 to 7 events are emulated.
 	scroll map[scrollKey]*scrollAxis
+	// lock is the pointer lock, nil when there is none (SPEC §27.6).
+	lock *pointerLock
 }
 
 // newInputState sets up XInput2 and the keyboard. It returns nil, after logging
@@ -319,6 +321,8 @@ func (in *inputState) handle(evtype int, data uintptr) {
 		if w := in.p.windows[ev.event]; w != nil {
 			in.onTouch(w, ev, evtype)
 		}
+	case xiRawMotion:
+		in.onRawMotion(data)
 	case xiDeviceChanged, xiHierarchyChanged:
 		in.refreshDevices()
 	}
@@ -408,6 +412,7 @@ func (in *inputState) onFocus(w *window, ev *xiEnterEvent, in2 bool) {
 	}
 	if in.focus == w {
 		in.focus = nil
+		in.endLock(w, true) // the lock ends with the focus
 		w.setActivated(false)
 		in.releaseKeys()
 		if t := in.p.text; t != nil {
@@ -597,6 +602,7 @@ func (in *inputState) onTouch(w *window, ev *xiDeviceEvent, evtype int) {
 // windowClosed lets the input go of a window that is closing: held keys are
 // released, the pointer leaves it and its fingers are cancelled.
 func (in *inputState) windowClosed(w *window) {
+	in.endLock(w, false)
 	if in.focus == w {
 		in.focus = nil
 		in.releaseKeys()

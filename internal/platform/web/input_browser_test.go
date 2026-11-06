@@ -13,6 +13,7 @@ import (
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/internal/webtest"
 	"github.com/rm4n0s/glutter/internal/webtool"
+	"github.com/rm4n0s/glutter/ui"
 )
 
 // The input tests build internal/platform/web/inputtest, a small app that dispatches synthetic DOM
@@ -70,6 +71,8 @@ type observations struct {
 	MenuEnabledPrevented   bool     `json:"menuEnabledPrevented"`
 	MenuEnabledFlag        bool     `json:"menuEnabledFlag"`
 	MenuDisabledFlag       bool     `json:"menuDisabledFlag"`
+	LockTag                string   `json:"lockTag"`
+	LockHeld               bool     `json:"lockHeld"`
 }
 
 // TestBrowserInput: in Chromium and Firefox, synthetic pointer, key, wheel and contextmenu events
@@ -120,6 +123,8 @@ func TestBrowserInput(t *testing.T) {
 		check("context menu disabled by the app", o.MenuDisabledFlag, true)
 		check("default of the contextmenu event prevented while disabled", o.MenuDisabledPrevented, true)
 		check("default of the contextmenu event prevented once enabled", o.MenuEnabledPrevented, false)
+		check("tag of the pointer lock asked for without a user activation", o.LockTag, ui.TagPointerLockDenied)
+		check("pointer lock held after the refusal", o.LockHeld, false)
 	})
 }
 

@@ -44,6 +44,12 @@ type Platform struct {
 	devStarted bool
 	// a11y is the accessibility bridge, which Services gives out (accessibility.go).
 	a11y *accessibility
+	// lock is the pointer lock, or nil; mouseX and mouseY are where the mouse was last seen, in physical
+	// pixels, when mouseSeen (pointerlock.go).
+	lock           *pointerLock
+	mouseX, mouseY float64
+	mouseSeen      bool
+	mouseID        int
 }
 
 var _ platform.Platform = (*Platform)(nil)

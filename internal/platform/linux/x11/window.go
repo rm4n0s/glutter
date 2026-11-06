@@ -562,6 +562,7 @@ func (w *window) SetHidden(hidden bool) bool {
 			w.frameWanted = true
 		}
 		w.cancelFrame()
+		p.input.endLock(w, true) // a window off the screen has no pointer
 		w.mapped = false
 		w.state.minimized, w.state.activated = false, false
 		if w.focusReported {

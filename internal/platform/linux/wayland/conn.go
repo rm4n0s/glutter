@@ -58,6 +58,8 @@ var optional = []*wl.Interface{
 	wl.ZwpTabletManagerV2Interface,
 	wl.ZwpIdleInhibitManagerV1Interface,
 	wl.WpContentTypeManagerV1Interface,
+	wl.ZwpPointerConstraintsV1Interface,
+	wl.ZwpRelativePointerManagerV1Interface,
 }
 
 // session is a connection with the registry listed and the required globals
@@ -110,6 +112,10 @@ type session struct {
 	// idleInhibit is nil without zwp_idle_inhibit_manager_v1; KeepScreenOn then
 	// fails with IdleInhibitUnavailable.
 	idleInhibit *wl.ZwpIdleInhibitManagerV1
+	// pointerConstraints and relativePointer are nil without zwp_pointer_constraints_v1 and
+	// zwp_relative_pointer_manager_v1: a pointer lock then fails with PointerLockUnavailable (SPEC §27.6).
+	pointerConstraints *wl.ZwpPointerConstraintsV1
+	relativePointer    *wl.ZwpRelativePointerManagerV1
 	// contentType is nil without wp_content_type_manager_v1.
 	contentType *wl.WpContentTypeManagerV1
 	// exporter is nil without zxdg_exporter_v2: the portals then get no parent window
@@ -256,6 +262,12 @@ func (s *session) recordOptional() {
 	}
 	if g, ok := s.optionalPresent[wl.ZwpIdleInhibitManagerV1Interface.Name]; ok {
 		s.idleInhibit = wl.BindZwpIdleInhibitManagerV1(s.registry, g.Name, bindVersion(g, 1))
+	}
+	if g, ok := s.optionalPresent[wl.ZwpPointerConstraintsV1Interface.Name]; ok {
+		s.pointerConstraints = wl.BindZwpPointerConstraintsV1(s.registry, g.Name, bindVersion(g, 1))
+	}
+	if g, ok := s.optionalPresent[wl.ZwpRelativePointerManagerV1Interface.Name]; ok {
+		s.relativePointer = wl.BindZwpRelativePointerManagerV1(s.registry, g.Name, bindVersion(g, 1))
 	}
 	if g, ok := s.optionalPresent[wl.WpContentTypeManagerV1Interface.Name]; ok {
 		s.contentType = wl.BindWpContentTypeManagerV1(s.registry, g.Name, bindVersion(g, 1))

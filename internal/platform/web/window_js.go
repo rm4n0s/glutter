@@ -271,6 +271,7 @@ func (w *window) Close() {
 		return
 	}
 	w.closed = true
+	w.UnlockPointer()
 	w.p.text.disable()
 	w.canvas.Call("remove")
 }

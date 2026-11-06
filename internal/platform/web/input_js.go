@@ -55,6 +55,7 @@ type listener struct {
 
 // makeInputFuncs makes the callbacks of the input once, at startup (SPEC §23.3).
 func (p *Platform) makeInputFuncs() {
+	p.makeLockFuncs()
 	down := p.keep(js.FuncOf(p.onPointerDown))
 	move := p.keep(js.FuncOf(p.onPointerMove))
 	up := p.keep(js.FuncOf(p.onPointerUp))
@@ -78,6 +79,8 @@ func (p *Platform) makeInputFuncs() {
 		{event: "wheel", fn: wheel, options: nonPassive},
 		{event: "keydown", fn: key},
 		{event: "keyup", fn: key},
+		{event: "pointerlockchange", fn: p.lock.changeFn},
+		{event: "pointerlockerror", fn: p.lock.errorFn},
 		{event: "touchend", fn: touch},
 		{event: "touchcancel", fn: touch},
 	}
@@ -86,11 +89,13 @@ func (p *Platform) makeInputFuncs() {
 // targetOf is where a listener goes: the pointer and wheel events to the canvas (the pointer is
 // captured by it on down, so the moves and the up arrive even outside it), the key events to the
 // host element (the canvas and the text field of step 21.3 are in it), the touch events to the
-// host.
+// host, the events of the pointer lock to the document.
 func (p *Platform) targetOf(event string) js.Value {
 	switch event {
 	case "keydown", "keyup", "touchend", "touchcancel":
 		return p.host
+	case "pointerlockchange", "pointerlockerror":
+		return global().Get("document")
 	}
 	return p.win.canvas
 }
@@ -196,6 +201,8 @@ func readPointerEvent(ev js.Value, rect js.Value) PointerEvent {
 		TiltX:       number(ev.Get("tiltX"), 0),
 		TiltY:       number(ev.Get("tiltY"), 0),
 		TimeStamp:   number(ev.Get("timeStamp"), 0),
+		MovementX:   number(ev.Get("movementX"), 0),
+		MovementY:   number(ev.Get("movementY"), 0),
 		Alt:         ev.Get("altKey").Truthy(),
 		Ctrl:        ev.Get("ctrlKey").Truthy(),
 		Meta:        ev.Get("metaKey").Truthy(),

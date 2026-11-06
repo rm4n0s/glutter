@@ -176,8 +176,10 @@ type window struct {
 	exportHandle  string
 	exportWaiting []func(handle string)
 	inhibitor     *wl.ZwpIdleInhibitorV1
-	contentType   *wl.WpContentTypeV1
-	iconBuffers   []*shmBuffer
+	// lock is the pointer lock of the window (SPEC §27.6), nil when there is none.
+	lock        *pointerLock
+	contentType *wl.WpContentTypeV1
+	iconBuffers []*shmBuffer
 
 	// cursor is the cursor over the window, set with SetCursor.
 	cursor platform.MouseCursor
@@ -386,6 +388,7 @@ func (w *window) hide() {
 		w.restore = w.states // what the compositor said; before a configure, what was asked for
 	}
 	w.hidden, w.remapping, w.activateOnMap = true, false, false
+	w.dropPointerLock(true) // a window that is not on the screen has no pointer
 	if w.frameInFlight {
 		// The callback of the last frame may never come for a surface that is not on
 		// the screen; the frame it would have allowed is drawn when the window is
@@ -1046,6 +1049,7 @@ func (w *window) Close() {
 // destroy releases the protocol objects, the native window and the buffers of the
 // window. It does not touch the platform's list of windows.
 func (w *window) destroy() {
+	w.dropPointerLock(false)
 	w.closed = true
 	// The input devices let go of the window while it still counts: held keys are
 	// released, the pointer leaves, and fingers are cancelled.

@@ -59,6 +59,16 @@ func (w *window) onMouse(msg uint32, wparam, lparam uintptr) (uintptr, bool) {
 	if !w.synthetic && isTouchOrPenMessage(win32.GetMessageExtraInfo()) {
 		return 0, true // touch and pen come as pointer messages
 	}
+	if l := w.p.lock; l != nil && l.w == w && !w.synthetic {
+		// A locked pointer is held at one place: the motion comes as raw input, and a button is
+		// at the held place, wherever Windows says the cursor is.
+		switch msg {
+		case win32.WMMouseMove, win32.WMMouseLeave:
+			return 0, true
+		default:
+			lparam = packPoint(int32(l.trans.x), int32(l.trans.y))
+		}
+	}
 	var fx mouseEffects
 	result := uintptr(0)
 	switch msg {
@@ -206,7 +216,7 @@ func (w *window) SetCursor(cursor platform.MouseCursor) {
 // showCursor makes the window's cursor the pointer's.
 func (w *window) showCursor() {
 	idc, visible := cursorResource(w.cursor)
-	if !visible {
+	if !visible || (w.p.lock != nil && w.p.lock.w == w) {
 		win32.SetCursor(0)
 		return
 	}

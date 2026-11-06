@@ -282,6 +282,12 @@ type PlatformDispatcher struct {
 	//
 	// Flutter: no counterpart
 	OnViewRemoved func(view ViewID)
+	// OnPointerLockEnded is called when the pointer lock of a view ended by itself (SPEC §27.6): the window lost the
+	// focus, the compositor or the browser ended the lock, or the window was closed. The framework installs it for
+	// widgets.PointerLock.
+	//
+	// Flutter: no counterpart
+	OnPointerLockEnded func(view ViewID)
 	// OnViewFocusChange is called when a view gets or loses the focus.
 	//
 	// Flutter: ui/platform_dispatcher.dart PlatformDispatcher.onViewFocusChange
