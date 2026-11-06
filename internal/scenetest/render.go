@@ -17,6 +17,9 @@ type Case struct {
 	Width, Height int
 	// Samples is 1 or 4; the default is 4.
 	Samples int
+	// Depth is the format of the depth target: Depth32Float (the default) or Depth24PlusStencil8, which the caps of a section
+	// need.
+	Depth gpu.TextureFormat
 	// Build makes the scene and its camera, and a function that releases what it made on the device (nil for none).
 	Build func(d *gpu.Device) (*viewport3d.Scene, *viewport3d.Camera, func())
 }
@@ -29,6 +32,12 @@ const TagReadbackFailed = "SceneReadbackFailed"
 // RunPosted, and a browser's reads finish in later tasks, so it sleeps between the calls); it is called after the commands are
 // submitted and the read is asked for.
 func Render(d *gpu.Device, wait func(done func() bool), c Case) (*image.RGBA, error) {
+	return RenderAsking(d, wait, c, nil)
+}
+
+// RenderAsking is Render for a test that makes picks: ask is called with the renderer, the scene and the camera before the frame is
+// drawn, makes the picks, and returns a function that says when their results have come (they come while wait runs).
+func RenderAsking(d *gpu.Device, wait func(done func() bool), c Case, ask func(r *viewport3d.Renderer, scene *viewport3d.Scene, cam *viewport3d.Camera) (settled func() bool)) (*image.RGBA, error) {
 	samples := c.Samples
 	if samples == 0 {
 		samples = 4
@@ -40,6 +49,10 @@ func Render(d *gpu.Device, wait func(done func() bool), c Case) (*image.RGBA, er
 	r := viewport3d.NewRenderer(scene, camera)
 	r.Init(d)
 	defer r.Dispose()
+	settled := func() bool { return true }
+	if ask != nil {
+		settled = ask(r, scene, camera)
+	}
 
 	size := gpu.Extent3D{Width: c.Width, Height: c.Height, DepthOrArrayLayers: 1}
 	resolve, err := d.NewTexture(gpu.TextureDesc{Label: "scene resolve", Size: size, Format: gpu.TextureFormatRGBA8Unorm,
@@ -59,7 +72,11 @@ func Render(d *gpu.Device, wait func(done func() bool), c Case) (*image.RGBA, er
 		defer multi.Release()
 		colorTex = multi
 	}
-	depth, err := d.NewTexture(gpu.TextureDesc{Label: "scene depth", Size: size, Format: gpu.TextureFormatDepth32Float, SampleCount: samples,
+	depthFormat := c.Depth
+	if depthFormat == gpu.TextureFormatUnspecified {
+		depthFormat = gpu.TextureFormatDepth32Float
+	}
+	depth, err := d.NewTexture(gpu.TextureDesc{Label: "scene depth", Size: size, Format: depthFormat, SampleCount: samples,
 		Usage: gpu.TextureUsageRenderAttachment})
 	if err != nil {
 		return nil, err
@@ -80,14 +97,15 @@ func Render(d *gpu.Device, wait func(done func() bool), c Case) (*image.RGBA, er
 	}
 	r.Draw(frame)
 	enc.CopyTextureToBuffer(gpu.TextureCopy{Texture: resolve}, gpu.BufferCopy{Buffer: buf, Layout: gpu.DataLayout{BytesPerRow: row}}, size)
-	if err := d.Queue().Submit(enc.Finish()); err != nil {
+	frame.Encoder = enc
+	if err := frame.Submit(); err != nil {
 		return nil, err
 	}
 	var data []byte
 	var readErr error
 	done := false
 	buf.Read(0, row*c.Height, func(b []byte, err error) { data, readErr, done = b, err, true })
-	wait(func() bool { return done })
+	wait(func() bool { return done && settled() })
 	if !done {
 		return nil, errors.New(TagReadbackFailed, "the read of the picture did not finish", "case", c.Name)
 	}

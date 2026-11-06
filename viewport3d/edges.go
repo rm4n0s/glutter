@@ -143,9 +143,9 @@ func allEdges(m *Mesh) *Mesh {
 	return m.allEdges
 }
 
-// segmentFloats is the number of float32 numbers of a line segment as the GPU reads it: two positions and the distance
-// along the polyline at the first of them.
-const segmentFloats = 7
+// segmentFloats is the number of float32 numbers of a line segment as the GPU reads it: two positions, the distance
+// along the polyline at the first of them, and the number of the segment.
+const segmentFloats = 8
 
 // segments lists the segments of a line mesh as the GPU reads them: p0, p1 and the length of the polyline up to p0, in the
 // units of the mesh. A segment that starts where the previous one ended continues its length, so that a dash pattern
@@ -161,7 +161,7 @@ func (m *Mesh) segments(dst []float32) []float32 {
 			dist = 0
 		}
 		pa, pb := m.data.Positions[3*a:3*a+3], m.data.Positions[3*b:3*b+3]
-		dst = append(dst, pa[0], pa[1], pa[2], pb[0], pb[1], pb[2], dist)
+		dst = append(dst, pa[0], pa[1], pa[2], pb[0], pb[1], pb[2], dist, float32(s))
 		dx, dy, dz := float64(pb[0]-pa[0]), float64(pb[1]-pa[1]), float64(pb[2]-pa[2])
 		dist += float32(math.Sqrt(dx*dx + dy*dy + dz*dz))
 		prevEnd = b

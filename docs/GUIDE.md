@@ -1277,6 +1277,78 @@ func main() {
   from the `OnInit` and `OnDispose` of your own `gpu.View` (with a `Depth32Float` depth target) and `Draw(frame)` from
   its paint function, to draw a scene and your own shaders in one view. `Renderer.Stats()` says what the last frame drew.
 
+**Section planes, picking and selection.** A scene has up to six section planes (`Scene.SetSectionPlanes`), in world
+coordinates in `float64`; each cuts away what its normal points to, in the faces, the lines and the points. Where a closed
+mesh is cut, a cap closes it and an outline marks the cut (`SceneStyle.Section`: no cap, the cap's color, the outline's
+color and width). A tap asks what is under the pointer with `ViewController.Pick`; the answer comes in the frame after the
+pick's own, with the item, the triangle, the world point in `float64` and the normal. `Scene.Select` highlights items with
+a color and an outline (`SceneStyle.Selection`).
+
+```go
+package main
+
+import (
+	"log"
+
+	m "github.com/rm4n0s/glutter/material"
+	"github.com/rm4n0s/glutter/ui"
+	"github.com/rm4n0s/glutter/vecmath"
+	"github.com/rm4n0s/glutter/viewport3d"
+)
+
+// A cube of 8 shared vertices: closed, so a plane that cuts it gets a cap.
+func cube() *viewport3d.Mesh {
+	mesh, err := viewport3d.NewMesh(viewport3d.MeshData{
+		Positions: []float32{-1, -1, -1, 1, -1, -1, 1, 1, -1, -1, 1, -1, -1, -1, 1, 1, -1, 1, 1, 1, 1, -1, 1, 1},
+		Indices16: []uint16{4, 5, 6, 4, 6, 7, 1, 0, 3, 1, 3, 2, 5, 1, 2, 5, 2, 6, 0, 4, 7, 0, 7, 3, 7, 6, 2, 7, 2, 3, 0, 1, 5, 0, 5, 4},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	return mesh
+}
+
+func main() {
+	scene := viewport3d.NewScene()
+	scene.Add(viewport3d.NewItem(cube(), viewport3d.NewPhongMaterial(), viewport3d.ItemOpts{PickID: 1}))
+	// Cut away what is at the right of x = 0.2.
+	scene.SetSectionPlanes(vecmath.NewPlaneFromPointNormal(vecmath.Vec3{X: 0.2}, vecmath.Vec3X))
+	camera := viewport3d.NewCamera(viewport3d.CameraOpts{Up: vecmath.Vec3Y})
+	camera.SetStandardView(viewport3d.StandardViewIsometric)
+	camera.FitTo(scene.Bounds())
+
+	ctl := viewport3d.NewViewController()
+	pick := func(at ui.Offset) {
+		ctl.Pick(at, func(r viewport3d.PickResult, err error) {
+			switch {
+			case err != nil: // viewport3d.TagPickUnavailable, or a failed read of the GPU
+				log.Println(err)
+			case r.Hit:
+				scene.Select(r.Item)
+				log.Println("picked", r.PickID, "triangle", r.Index, "at", r.Point, "normal", r.Normal)
+			default:
+				scene.ClearSelection()
+			}
+		})
+	}
+	view := m.NewGestureDetector(viewport3d.NewView(scene, camera, viewport3d.ViewOpts{Controller: ctl}),
+		m.GestureDetectorOpts{OnTapUp: func(d m.TapUpDetails) { pick(d.LocalPosition) }})
+	err := m.RunApp(m.NewMaterialApp(m.MaterialAppOpts{Home: m.NewScaffold(m.ScaffoldOpts{Body: view})}))
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+```
+
+- **Caps.** The cap is drawn with the stencil, so the view's depth target has one (`NewView` does that while a plane cuts
+  the scene). A mesh is closed when each of its edges belongs to two triangles; `Mesh.Closed()` says. A transparent item has
+  no cap, and neither has a scene in wireframe or hidden line mode.
+- **Picking.** `Pick(at, done, PickOpts{Radius})` finds the nearest primitive within `Radius` pixels (2 by default), so a line
+  of one pixel can be hit; `PickRect(rect, done)` gives the items in a box. A pick is drawn only when asked, into a target of
+  the size of the rectangle. `Scene.Raycast(ray)` answers at once on the CPU, for a question now and then.
+- **Selection.** `Item.SetSelected`, `Scene.Select`, `ClearSelection` and `Selection`. The outline is not hidden by what is in
+  front of the item.
+
 - **The math.** Matrices are column-major, as WGSL reads them, and `a.Mul(b)` applies `b` first. The clip space is
   WebGPU's, and the projections are reversed-Z (`Perspective(fovY, aspect, near)` has the far plane at infinity): the
   depth is 1 at the near plane and 0 far away, so a pipeline tests `Greater` and clears the depth to 0.

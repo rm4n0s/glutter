@@ -12,14 +12,16 @@ import (
 
 // The sizes of the uniform data, as the shaders declare them (std140-like: a vec4 is 16 bytes).
 const (
-	frameUniformSize   = 272
+	frameUniformSize   = 384
 	surfaceUniformSize = 48
 	lineUniformSize    = 64
 	pointUniformSize   = 32
-	itemUniformSize    = 64
-	instanceStride     = 64
+	itemUniformSize    = 112
+	instanceStride     = 80
 	// uniformAlign is the alignment of the offsets of the uniform buffers (the largest that a backend asks for).
 	uniformAlign = 256
+	// frameSectionOffset is where the section planes are in the frame's data, then their number.
+	frameSectionOffset = 272
 	// itemBase is where the records of the lines and points start in the uniform buffer, after the frame's data.
 	itemBase = 2 * uniformAlign
 )
@@ -31,6 +33,19 @@ const (
 	pipeTriangles pipeKind = iota
 	pipeLines
 	pipePoints
+	// pipeCapCount, pipeCapDraw and pipeCapClear are the three steps of a cap, and pipeOutline the outline of a cut (section.go).
+	pipeCapCount
+	pipeCapDraw
+	pipeCapClear
+	pipeOutline
+	// pipePickTri, pipePickLine and pipePickPoint draw the items of a pick pass (pick.go).
+	pipePickTri
+	pipePickLine
+	pipePickPoint
+	// pipeMask draws the selected items white into the mask, and pipeSelect makes the outline of the selection from it
+	// (select.go).
+	pipeMask
+	pipeSelect
 )
 
 // pipeKey is what tells the pipelines of a renderer apart.
@@ -70,6 +85,21 @@ func (r *Renderer) makePipeline(k pipeKey) (*gpu.RenderPipeline, error) {
 	if err := r.ensureModules(); err != nil {
 		return nil, err
 	}
+	if k.kind >= pipeCapCount && k.kind <= pipeOutline {
+		if err := r.ensureSectionModule(); err != nil {
+			return nil, err
+		}
+	}
+	if k.kind == pipePickTri {
+		if err := r.ensurePickModule(); err != nil {
+			return nil, err
+		}
+	}
+	if k.kind == pipeSelect {
+		if err := r.ensureSelectModule(); err != nil {
+			return nil, err
+		}
+	}
 	premult := gpu.BlendState{Enabled: true, SrcFactor: gpu.BlendFactorOne, DstFactor: gpu.BlendFactorOneMinusSrcAlpha}
 	target := gpu.ColorTargetState{Format: k.color}
 	desc := gpu.RenderPipelineDesc{Multisample: gpu.MultisampleState{Count: k.samples}}
@@ -104,6 +134,95 @@ func (r *Renderer) makePipeline(k pipeKey) (*gpu.RenderPipeline, error) {
 			{ArrayStride: 8, Attributes: []gpu.VertexAttribute{{ShaderLocation: 3, Format: gpu.VertexFormatFloat32x2, Offset: 0}}},
 		}}
 		desc.Fragment = gpu.FragmentState{Module: r.mods.line, EntryPoint: "fs_main", Targets: []gpu.ColorTargetState{target}}
+	case pipeCapCount, pipeCapClear:
+		// These draw into the stencil only: the color stays as it is.
+		target.Blend = gpu.BlendState{Enabled: true, SrcFactor: gpu.BlendFactorZero, DstFactor: gpu.BlendFactorOne}
+		depth.DepthCompare = gpu.CompareFunctionAlways
+		if k.kind == pipeCapCount {
+			desc.Label = "viewport3d cap count"
+			depth.StencilFront = gpu.StencilFaceState{Compare: gpu.CompareFunctionAlways, PassOp: gpu.StencilOperationDecrementWrap}
+			depth.StencilBack = gpu.StencilFaceState{Compare: gpu.CompareFunctionAlways, PassOp: gpu.StencilOperationIncrementWrap}
+			desc.Vertex = gpu.VertexState{Module: r.mods.section, EntryPoint: "vs_count", Buffers: []gpu.VertexBufferLayout{
+				{ArrayStride: 12, Attributes: []gpu.VertexAttribute{{ShaderLocation: 0, Format: gpu.VertexFormatFloat32x3}}}}}
+			desc.Fragment = gpu.FragmentState{Module: r.mods.section, EntryPoint: "fs_count", Targets: []gpu.ColorTargetState{target}}
+		} else {
+			desc.Label = "viewport3d cap clear"
+			face := gpu.StencilFaceState{Compare: gpu.CompareFunctionNotEqual, PassOp: gpu.StencilOperationZero, DepthFailOp: gpu.StencilOperationZero}
+			depth.StencilFront, depth.StencilBack = face, face
+			desc.Vertex = gpu.VertexState{Module: r.mods.section, EntryPoint: "vs_full"}
+			desc.Fragment = gpu.FragmentState{Module: r.mods.section, EntryPoint: "fs_clear", Targets: []gpu.ColorTargetState{target}}
+		}
+		desc.Primitive = gpu.PrimitiveState{CullMode: gpu.CullModeNone}
+	case pipeCapDraw:
+		desc.Label = "viewport3d cap"
+		depth.DepthWriteEnabled = true
+		face := gpu.StencilFaceState{Compare: gpu.CompareFunctionNotEqual, PassOp: gpu.StencilOperationZero, DepthFailOp: gpu.StencilOperationZero}
+		depth.StencilFront, depth.StencilBack = face, face
+		desc.Vertex = gpu.VertexState{Module: r.mods.section, EntryPoint: "vs_full"}
+		desc.Fragment = gpu.FragmentState{Module: r.mods.section, EntryPoint: "fs_cap", Targets: []gpu.ColorTargetState{target}}
+		desc.Primitive = gpu.PrimitiveState{CullMode: gpu.CullModeNone}
+	case pipeOutline:
+		target.Blend = premult
+		desc.Label = "viewport3d outline"
+		desc.Vertex = gpu.VertexState{Module: r.mods.section, EntryPoint: "vs_outline", Buffers: []gpu.VertexBufferLayout{
+			{ArrayStride: 36, PerInstance: true, Attributes: []gpu.VertexAttribute{
+				{ShaderLocation: 0, Format: gpu.VertexFormatFloat32x3, Offset: 0},
+				{ShaderLocation: 1, Format: gpu.VertexFormatFloat32x3, Offset: 12},
+				{ShaderLocation: 2, Format: gpu.VertexFormatFloat32x3, Offset: 24},
+			}},
+			{ArrayStride: 8, Attributes: []gpu.VertexAttribute{{ShaderLocation: 3, Format: gpu.VertexFormatFloat32x2, Offset: 0}}},
+		}}
+		desc.Fragment = gpu.FragmentState{Module: r.mods.section, EntryPoint: "fs_outline", Targets: []gpu.ColorTargetState{target}}
+	case pipeMask:
+		desc.Label = "viewport3d selection mask"
+		cull := gpu.CullModeBack
+		if k.noCull {
+			cull = gpu.CullModeNone
+		}
+		desc.Vertex = gpu.VertexState{Module: r.mods.mesh, EntryPoint: variantEntries[k.variant], Buffers: triangleLayouts(k.variant)}
+		desc.Fragment = gpu.FragmentState{Module: r.mods.mesh, EntryPoint: "fs_mask", Targets: []gpu.ColorTargetState{target}}
+		desc.Primitive = gpu.PrimitiveState{CullMode: cull}
+		// The mask has no depth: the selected items cover each other.
+		return r.dev.NewRenderPipeline(desc)
+	case pipeSelect:
+		target.Blend = premult
+		depth.DepthCompare = gpu.CompareFunctionAlways
+		desc.Label = "viewport3d selection outline"
+		desc.Vertex = gpu.VertexState{Module: r.mods.sel, EntryPoint: "vs_full"}
+		desc.Fragment = gpu.FragmentState{Module: r.mods.sel, EntryPoint: "fs_outline", Targets: []gpu.ColorTargetState{target}}
+		desc.Primitive = gpu.PrimitiveState{CullMode: gpu.CullModeNone}
+	case pipePickTri, pipePickLine, pipePickPoint:
+		// The pick pass writes the item and the primitive, and the depth value, with no blending.
+		targets := []gpu.ColorTargetState{{Format: gpu.TextureFormatRG32Uint}, {Format: gpu.TextureFormatR32Float}}
+		depth.DepthWriteEnabled = true
+		switch k.kind {
+		case pipePickTri:
+			desc.Label = "viewport3d pick triangles"
+			desc.Vertex = gpu.VertexState{Module: r.mods.pick, EntryPoint: "vs_tri", Buffers: []gpu.VertexBufferLayout{
+				{ArrayStride: 12, Attributes: []gpu.VertexAttribute{{ShaderLocation: 0, Format: gpu.VertexFormatFloat32x3}}}}}
+			desc.Fragment = gpu.FragmentState{Module: r.mods.pick, EntryPoint: "fs_tri", Targets: targets}
+			desc.Primitive = gpu.PrimitiveState{CullMode: gpu.CullModeNone}
+		case pipePickLine:
+			desc.Label = "viewport3d pick lines"
+			desc.Vertex = gpu.VertexState{Module: r.mods.line, EntryPoint: "vs_pick", Buffers: []gpu.VertexBufferLayout{
+				{ArrayStride: segmentFloats * 4, PerInstance: true, Attributes: []gpu.VertexAttribute{
+					{ShaderLocation: 0, Format: gpu.VertexFormatFloat32x3, Offset: 0},
+					{ShaderLocation: 1, Format: gpu.VertexFormatFloat32x3, Offset: 12},
+					{ShaderLocation: 2, Format: gpu.VertexFormatFloat32, Offset: 24},
+					{ShaderLocation: 4, Format: gpu.VertexFormatFloat32, Offset: 28},
+				}},
+				{ArrayStride: 8, Attributes: []gpu.VertexAttribute{{ShaderLocation: 3, Format: gpu.VertexFormatFloat32x2, Offset: 0}}},
+			}}
+			desc.Fragment = gpu.FragmentState{Module: r.mods.line, EntryPoint: "fs_pick", Targets: targets}
+		default:
+			desc.Label = "viewport3d pick points"
+			desc.Vertex = gpu.VertexState{Module: r.mods.point, EntryPoint: "vs_pick", Buffers: []gpu.VertexBufferLayout{
+				{ArrayStride: 12, PerInstance: true, Attributes: []gpu.VertexAttribute{{ShaderLocation: 0, Format: gpu.VertexFormatFloat32x3, Offset: 0}}},
+				{ArrayStride: 8, Attributes: []gpu.VertexAttribute{{ShaderLocation: 1, Format: gpu.VertexFormatFloat32x2, Offset: 0}}},
+				{ArrayStride: 4, PerInstance: true, Attributes: []gpu.VertexAttribute{{ShaderLocation: 2, Format: gpu.VertexFormatFloat32, Offset: 0}}},
+			}}
+			desc.Fragment = gpu.FragmentState{Module: r.mods.point, EntryPoint: "fs_pick", Targets: targets}
+		}
 	default:
 		target.Blend = premult
 		desc.Label = "viewport3d points"
@@ -135,6 +254,7 @@ func triangleLayouts(variant uint8) []gpu.VertexBufferLayout {
 		{ShaderLocation: 5, Format: gpu.VertexFormatFloat32x4, Offset: 16},
 		{ShaderLocation: 6, Format: gpu.VertexFormatFloat32x4, Offset: 32},
 		{ShaderLocation: 7, Format: gpu.VertexFormatFloat32x4, Offset: 48},
+		{ShaderLocation: 8, Format: gpu.VertexFormatFloat32x4, Offset: 64},
 	}})
 }
 
@@ -151,6 +271,36 @@ func (r *Renderer) ensureModules() error {
 		return err
 	}
 	r.mods.point, err = r.dev.NewShaderModule(shaders.Point)
+	return err
+}
+
+// ensureSectionModule makes the module of the sections, when the first section is drawn.
+func (r *Renderer) ensureSectionModule() error {
+	if r.mods.section != nil {
+		return nil
+	}
+	var err error
+	r.mods.section, err = r.dev.NewShaderModule(shaders.Section)
+	return err
+}
+
+// ensureSelectModule makes the module of the outline of the selection, when the first selected item is drawn.
+func (r *Renderer) ensureSelectModule() error {
+	if r.mods.sel != nil {
+		return nil
+	}
+	var err error
+	r.mods.sel, err = r.dev.NewShaderModule(shaders.Select)
+	return err
+}
+
+// ensurePickModule makes the module of the picking of triangles, when the first pick is made.
+func (r *Renderer) ensurePickModule() error {
+	if r.mods.pick != nil {
+		return nil
+	}
+	var err error
+	r.mods.pick, err = r.dev.NewShaderModule(shaders.Pick)
 	return err
 }
 
@@ -225,13 +375,20 @@ type meshGPU struct {
 	wide    bool
 	// segments are the segments of a mesh of lines, for the instances of the line shader.
 	segments *gpu.Buffer
+	// corners are the corners of the triangles of a mesh of triangles, three positions for each, made when a section or a pick
+	// first needs them: a vertex buffer of vertices that no index reorders, and the instances of the outline of a cut.
+	corners *gpu.Buffer
+	// triangles is the number of triangles in corners.
+	triangles int
+	// pointIDs are the numbers of the points of a mesh of points, for the picking.
+	pointIDs *gpu.Buffer
 	// count is the number of indices (or vertices), segments or points to draw.
 	count int
 }
 
 // release frees the buffers of the mesh.
 func (g *meshGPU) release() {
-	for _, b := range []*gpu.Buffer{g.pos, g.normals, g.uvs, g.colors, g.index, g.segments} {
+	for _, b := range []*gpu.Buffer{g.pos, g.normals, g.uvs, g.colors, g.index, g.segments, g.corners, g.pointIDs} {
 		if b != nil {
 			b.Release()
 		}

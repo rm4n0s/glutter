@@ -2,10 +2,13 @@ package viewport3d
 
 import (
 	"cmp"
+	"image"
 	"log/slog"
+	"math"
 	"math/bits"
 	"slices"
 
+	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/gpu"
 	"github.com/rm4n0s/glutter/ui"
 	"github.com/rm4n0s/glutter/vecmath"
@@ -36,6 +39,9 @@ type FrameStats struct {
 	Draws, Batches, Instances int
 	// EdgeDraws is the number of draws of the edges of meshes (one for each item that has edges drawn).
 	EdgeDraws int
+	// CapDraws is the number of caps drawn (one for each closed item and each plane that cuts it) and OutlineDraws the number of
+	// draws of the outlines of the cuts.
+	CapDraws, OutlineDraws int
 	// Pipelines is the number of pipelines the renderer has made.
 	Pipelines int
 }
@@ -52,7 +58,7 @@ type Renderer struct {
 	layers uint32
 
 	dev  *gpu.Device
-	mods struct{ mesh, line, point *gpu.ShaderModule }
+	mods struct{ mesh, line, point, section, pick, sel *gpu.ShaderModule }
 	// pipes are the pipelines by key; a key whose pipeline failed has nil.
 	pipes        map[pipeKey]*gpu.RenderPipeline
 	corners      *gpu.Buffer
@@ -66,6 +72,8 @@ type Renderer struct {
 	instanceCap int
 	frameGroup  *gpu.BindGroup
 	itemGroup   *gpu.BindGroup
+	// sectionGroup is the group of the record of an item for the section pipelines, which have no material and so use group 1.
+	sectionGroup *gpu.BindGroup
 
 	meshes []*Mesh
 	mats   []*materialCore
@@ -83,10 +91,20 @@ type Renderer struct {
 	opaque []int32
 	transp []int32
 	lines  []lineDraw
-	colors [1]gpu.RenderPassColorAttachment
+	sect   []sectionDraw
+	// selItems are the selected items that have faces, for the outline of the selection.
+	selItems []*Item
+	colors   [1]gpu.RenderPassColorAttachment
 
 	stats       FrameStats
 	warnedDepth bool
+	// mask is the texture that the outline of the selection is made from, with its size and the group that reads it.
+	mask         *gpu.Texture
+	maskGroup    *gpu.BindGroup
+	maskW, maskH int
+	// picks are the picks that wait for the next frame (pick.go).
+	picks         []pickRequest
+	warnedStencil bool
 }
 
 // drawItem is an item of triangles in the frame's draw list.
@@ -101,6 +119,9 @@ type drawItem struct {
 	mv   [16]float32
 	// instance is the item's index in the instance buffer.
 	instance int32
+	// selected is whether the item is selected, and tint the highlight that its instance carries (rgb, and how much of it).
+	selected bool
+	tint     [4]float32
 }
 
 // lineDraw is a draw of line segments or points: the edges of a mesh, an item of lines, or an item of points.
@@ -150,6 +171,8 @@ func (r *Renderer) Init(d *gpu.Device) {
 //
 // Flutter: no counterpart
 func (r *Renderer) Dispose() {
+	r.failPicks()
+	r.releaseMask()
 	for len(r.meshes) > 0 {
 		r.forgetMesh(r.meshes[len(r.meshes)-1])
 	}
@@ -162,7 +185,7 @@ func (r *Renderer) Dispose() {
 		}
 	}
 	clear(r.pipes)
-	for _, g := range []*gpu.BindGroup{r.frameGroup, r.itemGroup} {
+	for _, g := range []*gpu.BindGroup{r.frameGroup, r.itemGroup, r.sectionGroup} {
 		if g != nil {
 			g.Release()
 		}
@@ -178,14 +201,14 @@ func (r *Renderer) Dispose() {
 	if r.white != nil {
 		r.white.Release()
 	}
-	for _, m := range []*gpu.ShaderModule{r.mods.mesh, r.mods.line, r.mods.point} {
+	for _, m := range []*gpu.ShaderModule{r.mods.mesh, r.mods.line, r.mods.point, r.mods.section, r.mods.pick, r.mods.sel} {
 		if m != nil {
 			m.Release()
 		}
 	}
-	r.frameGroup, r.itemGroup, r.uniforms, r.instances, r.corners, r.pointCorners, r.sampler, r.white = nil, nil, nil, nil, nil, nil, nil, nil
+	r.frameGroup, r.itemGroup, r.sectionGroup, r.uniforms, r.instances, r.corners, r.pointCorners, r.sampler, r.white = nil, nil, nil, nil, nil, nil, nil, nil, nil
 	r.uniformCap, r.instanceCap = 0, 0
-	r.mods.mesh, r.mods.line, r.mods.point = nil, nil, nil
+	r.mods.mesh, r.mods.line, r.mods.point, r.mods.section, r.mods.pick, r.mods.sel = nil, nil, nil, nil, nil, nil
 	r.dev = nil
 }
 
@@ -208,23 +231,22 @@ func modelView(rot *vecmath.Mat4, eye vecmath.Vec3, model *vecmath.Mat4, out *[1
 }
 
 // ensureCapacity grows the uniform and instance buffers for the frame, and makes the bind groups that go with the uniforms.
-func (r *Renderer) ensureCapacity(uniformBytes, instanceBytes int, groupPipe, itemPipe *gpu.RenderPipeline) bool {
+func (r *Renderer) ensureCapacity(uniformBytes, instanceBytes int, groupPipe, itemPipe, sectionPipe *gpu.RenderPipeline) error {
 	if uniformBytes > r.uniformCap {
 		if r.uniforms != nil {
 			r.uniforms.Release()
 			r.uniforms = nil
 		}
-		for _, g := range []*gpu.BindGroup{r.frameGroup, r.itemGroup} {
+		for _, g := range []*gpu.BindGroup{r.frameGroup, r.itemGroup, r.sectionGroup} {
 			if g != nil {
 				g.Release()
 			}
 		}
-		r.frameGroup, r.itemGroup = nil, nil
+		r.frameGroup, r.itemGroup, r.sectionGroup = nil, nil, nil
 		c := max(4096, uniformBytes*2)
 		b, err := r.dev.NewBuffer(gpu.BufferDesc{Label: "viewport3d uniforms", Size: c, Usage: gpu.BufferUsageUniform | gpu.BufferUsageCopyDst})
 		if err != nil {
-			slog.Error("viewport3d: the uniform buffer could not be made", "err", err)
-			return false
+			return err
 		}
 		r.uniforms, r.uniformCap = b, c
 	}
@@ -236,8 +258,7 @@ func (r *Renderer) ensureCapacity(uniformBytes, instanceBytes int, groupPipe, it
 		c := max(64*instanceStride, instanceBytes*2)
 		b, err := r.dev.NewBuffer(gpu.BufferDesc{Label: "viewport3d instances", Size: c, Usage: gpu.BufferUsageVertex | gpu.BufferUsageCopyDst})
 		if err != nil {
-			slog.Error("viewport3d: the instance buffer could not be made", "err", err)
-			return false
+			return err
 		}
 		r.instances, r.instanceCap = b, c
 	}
@@ -246,19 +267,24 @@ func (r *Renderer) ensureCapacity(uniformBytes, instanceBytes int, groupPipe, it
 		r.frameGroup, err = r.dev.NewBindGroup(gpu.BindGroupDesc{Label: "viewport3d frame", Layout: groupPipe.BindGroupLayout(0),
 			Entries: []gpu.BindGroupEntry{{Binding: 0, Buffer: r.uniforms, Size: frameUniformSize}}})
 		if err != nil {
-			slog.Error("viewport3d: the frame bind group could not be made", "err", err)
-			return false
+			return err
 		}
 	}
 	if r.itemGroup == nil && itemPipe != nil {
 		r.itemGroup, err = r.dev.NewBindGroup(gpu.BindGroupDesc{Label: "viewport3d items", Layout: itemPipe.BindGroupLayout(2),
 			Entries: []gpu.BindGroupEntry{{Binding: 0, Buffer: r.uniforms, Size: itemUniformSize}}})
 		if err != nil {
-			slog.Error("viewport3d: the item bind group could not be made", "err", err)
-			return false
+			return err
 		}
 	}
-	return true
+	if r.sectionGroup == nil && sectionPipe != nil {
+		r.sectionGroup, err = r.dev.NewBindGroup(gpu.BindGroupDesc{Label: "viewport3d sections", Layout: sectionPipe.BindGroupLayout(1),
+			Entries: []gpu.BindGroupEntry{{Binding: 0, Buffer: r.uniforms, Size: itemUniformSize}}})
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Draw draws the scene into the targets of the frame, with the frame's encoder: a pass that clears them to the scene's background
@@ -312,7 +338,17 @@ func (r *Renderer) Draw(f *gpu.ViewFrame) {
 	r.edges.SetColor(style.edgeColor)
 	r.edges.SetWidth(style.edgeWidth)
 
-	r.items, r.opaque, r.transp, r.lines = r.items[:0], r.opaque[:0], r.transp[:0], r.lines[:0]
+	r.items, r.opaque, r.transp, r.lines, r.sect, r.selItems = r.items[:0], r.opaque[:0], r.transp[:0], r.lines[:0], r.sect[:0], r.selItems[:0]
+	// The section planes cut the faces, the lines and the points; the caps need a stencil in the depth target.
+	planes := len(r.scene.planes)
+	capsOK := style.section.cap
+	if capsOK && f.Depth.Format() != gpu.TextureFormatDepth24PlusStencil8 {
+		capsOK = false
+		if planes > 0 && !r.warnedStencil {
+			r.warnedStencil = true
+			slog.Warn("viewport3d: the view has no stencil, so the sections have no caps: give gpu.ViewOpts the DepthFormat Depth24PlusStencil8 (viewport3d.NewView does)")
+		}
+	}
 	// linePipe and pointPipe give the layouts of the groups of lines and points; each draw looks up the pipeline of its own key.
 	var linePipe, pointPipe *gpu.RenderPipeline
 	needLine := func() *gpu.RenderPipeline {
@@ -360,6 +396,12 @@ func (r *Renderer) Draw(f *gpu.ViewFrame) {
 				blend := s.Transparent() && mode != DisplayModeHiddenLine
 				pk.blend = blend
 				d := drawItem{mesh: mesh, mat: mat, pk: pk, mv: mv}
+				if it.selected {
+					d.selected, d.tint = true, tintOf(&style.selection)
+					if style.selection.outline {
+						r.selItems = append(r.selItems, it)
+					}
+				}
 				if blend {
 					d.dist = it.sphere.Center.DistanceSqTo(eye)
 					r.items = append(r.items, d)
@@ -369,11 +411,22 @@ func (r *Renderer) Draw(f *gpu.ViewFrame) {
 					if pk.noCull {
 						sig |= 8
 					}
+					if d.selected {
+						sig |= 16
+					}
 					d.key = sig<<56 | uint64(mat.id&0xFFFFFF)<<32 | uint64(mesh.id)
 					r.items = append(r.items, d)
 					r.opaque = append(r.opaque, int32(len(r.items)-1))
 				}
 				r.stats.Items++
+				if planes > 0 && mode != DisplayModeHiddenLine {
+					sd := sectionDraw{mesh: it.mesh, g: mesh, mv: mv}
+					if capsOK && !blend && it.mesh.Closed() {
+						sd.capped = true
+						sd.cap = style.section.capColor.OrElse(s.color)
+					}
+					r.sect = append(r.sect, sd)
+				}
 			}
 			if edges {
 				var em *Mesh
@@ -394,7 +447,7 @@ func (r *Renderer) Draw(f *gpu.ViewFrame) {
 				pk := base
 				pk.kind, pk.noDepthTest = pipeLines, mode == DisplayModeWireframe
 				r.lines = append(r.lines, lineDraw{mesh: seg, mat: mat, pk: pk, record: records, instanceCnt: seg.count, buf: seg.segments, corners: r.corners, edge: true})
-				r.writeRecord(records, &mv)
+				r.writeRecord(records, &mv, [4]float32{})
 				records++
 			}
 		case PrimitiveLines:
@@ -410,7 +463,7 @@ func (r *Renderer) Draw(f *gpu.ViewFrame) {
 			pk := base
 			pk.kind = pipeLines
 			r.lines = append(r.lines, lineDraw{mesh: seg, mat: mat, pk: pk, record: records, instanceCnt: seg.count, buf: seg.segments, corners: r.corners})
-			r.writeRecord(records, &mv)
+			r.writeRecord(records, &mv, r.lineTint(it, style))
 			records++
 			r.stats.Items++
 		case PrimitivePoints:
@@ -425,7 +478,7 @@ func (r *Renderer) Draw(f *gpu.ViewFrame) {
 			}
 			mat := r.materialState(it.material, pointPipe)
 			r.lines = append(r.lines, lineDraw{mesh: pts, mat: mat, pk: pk, record: records, instanceCnt: pts.count, buf: pts.pos, corners: r.pointCorners})
-			r.writeRecord(records, &mv)
+			r.writeRecord(records, &mv, r.lineTint(it, style))
 			records++
 			r.stats.Items++
 		}
@@ -442,24 +495,99 @@ func (r *Renderer) Draw(f *gpu.ViewFrame) {
 	for _, list := range [2][]int32{r.opaque, r.transp} {
 		for _, i := range list {
 			putMat(r.ibytes, int(next)*instanceStride, &r.items[i].mv)
+			t := &r.items[i].tint
+			putVec4(r.ibytes, int(next)*instanceStride+64, t[0], t[1], t[2], t[3])
 			r.items[i].instance = next
 			next++
 		}
 	}
 
+	// The outline of the selection: a record with its color and radius, and the rectangle that it covers.
+	selRecord, selRadius := -1, 0
+	var selPipe *gpu.RenderPipeline
+	var selRect image.Rectangle
+	if len(r.selItems) > 0 {
+		selRadius = min(max(int(math.Round(style.selection.width*dpr)), 1), maxOutlineRadius)
+		sp := base
+		sp.kind = pipeSelect
+		if selPipe = r.pipeline(sp); selPipe != nil {
+			if selRect = r.selectionRect(cam, r.selItems, selRadius, f.Width, f.Height, dpr); selRect.Empty() {
+				selPipe = nil
+			}
+		}
+		if selPipe != nil {
+			selRecord = records
+			records++
+			off := r.record(selRecord)
+			ident := vecmath.Mat4Identity().Float32()
+			putMat(r.ubytes, off, &ident)
+			c := style.selection.color
+			putVec4(r.ubytes, off+64, float32(c.R), float32(c.G), float32(c.B), float32(c.A))
+			putVec4(r.ubytes, off+80, float32(selRadius), 0, 0, 0)
+			putVec4(r.ubytes, off+96, 0, 0, 0, 0)
+		}
+	}
+	sectionBase := records
+	var sectionPipe *gpu.RenderPipeline
+	if planes > 0 && len(r.sect) > 0 {
+		sk := base
+		sk.kind = pipeOutline
+		if sectionPipe = r.pipeline(sk); sectionPipe == nil {
+			r.sect = r.sect[:0]
+		} else {
+			r.writeSectionRecords(records, style)
+			records += planes * len(r.sect)
+		}
+	}
+	// The picks that wait for this frame: a pass for each, after the frame's own.
+	var picks *pickPlan
+	pickEnd := 0
+	if len(r.picks) > 0 {
+		p := r.pipeline(pickKey(pipePickTri))
+		if p == nil {
+			failed := r.picks
+			r.picks = nil
+			for i := range failed {
+				failed[i].fail(errors.New(TagPickUnavailable, "the pipeline of the pick could not be made"))
+			}
+		} else if sectionPipe == nil {
+			sectionPipe = p
+		}
+	}
+	if len(r.picks) > 0 {
+		picks, pickEnd = r.planPicks(&pickCtx{f: f, cam: cam, rot: &rot, eye: eye, frustum: frustum, dpr: dpr, base: base, style: style}, &records)
+	}
 	itemPipe := linePipe
 	if itemPipe == nil {
 		itemPipe = pointPipe
 	}
-	uniformBytes := itemBase + records*uniformAlign
-	if !r.ensureCapacity(uniformBytes, max(n, 1)*instanceStride, basePipe, itemPipe) {
+	uniformBytes := max(itemBase+records*uniformAlign, pickEnd)
+	if err := r.ensureCapacity(uniformBytes, max(n, 1)*instanceStride, basePipe, itemPipe, sectionPipe); err != nil {
+		slog.Error("viewport3d: the buffers of the frame could not be made", "err", err)
+		if picks != nil {
+			for _, j := range picks.jobs {
+				j.req.fail(err)
+			}
+		}
 		return
 	}
 	r.writeFrame(f, style, cam, &rot, dpr)
+	if len(r.ubytes) < uniformBytes {
+		r.ubytes = slices.Grow(r.ubytes[:len(r.ubytes)], uniformBytes-len(r.ubytes))[:uniformBytes]
+	}
 	q := r.dev.Queue()
 	q.WriteBuffer(r.uniforms, 0, r.ubytes[:uniformBytes])
 	if n > 0 {
 		q.WriteBuffer(r.instances, 0, r.ibytes[:n*instanceStride])
+	}
+
+	if selPipe != nil && !r.ensureMask(f.Width, f.Height, selPipe) {
+		selPipe = nil
+	}
+	if selPipe != nil {
+		r.drawMask(f)
+	} else if r.mask != nil {
+		r.releaseMask()
 	}
 
 	bg := style.background
@@ -472,7 +600,7 @@ func (r *Renderer) Draw(f *gpu.ViewFrame) {
 	pass := f.Encoder.BeginRenderPass(gpu.RenderPassDesc{
 		Label:                  "viewport3d",
 		ColorAttachments:       r.colors[:],
-		DepthStencilAttachment: &gpu.RenderPassDepthStencilAttachment{View: f.Depth.View(), DepthClearValue: 0},
+		DepthStencilAttachment: &gpu.RenderPassDepthStencilAttachment{View: f.Depth.View(), DepthClearValue: 0, StencilClearValue: 0},
 	})
 	pass.SetBindGroup(0, r.frameGroup, 0)
 	var curMat *matGPU
@@ -515,6 +643,10 @@ func (r *Renderer) Draw(f *gpu.ViewFrame) {
 			i += count
 		}
 	}
+	// The caps and the outlines of the cuts, over the faces.
+	if planes > 0 && len(r.sect) > 0 {
+		r.drawSections(pass, base, sectionBase, planes)
+	}
 	// The edges, the lines and the points, over the faces.
 	var lastPipe *gpu.RenderPipeline
 	var lastMat *matGPU
@@ -541,7 +673,17 @@ func (r *Renderer) Draw(f *gpu.ViewFrame) {
 			r.stats.EdgeDraws++
 		}
 	}
+	if selPipe != nil {
+		// The outline of the selection, over everything.
+		pass.SetPipeline(selPipe)
+		pass.SetBindGroup(1, r.maskGroup, uint32(itemBase+selRecord*uniformAlign))
+		pass.SetScissorRect(selRect.Min.X, selRect.Min.Y, selRect.Dx(), selRect.Dy())
+		pass.Draw(3, 1, 0, 0)
+	}
 	pass.End()
+	if picks != nil {
+		r.drawPicks(f, picks)
+	}
 	r.stats.Pipelines = len(r.pipes)
 }
 
@@ -562,6 +704,11 @@ func (r *Renderer) bindMesh(pass *gpu.RenderPass, g *meshGPU) {
 	if g.colors != nil {
 		pass.SetVertexBuffer(slot, g.colors, 0)
 	}
+	r.setIndices(pass, g)
+}
+
+// setIndices binds the indices of a mesh, when it has any.
+func (r *Renderer) setIndices(pass *gpu.RenderPass, g *meshGPU) {
 	switch {
 	case g.index == nil:
 	case g.wide:
@@ -571,32 +718,52 @@ func (r *Renderer) bindMesh(pass *gpu.RenderPass, g *meshGPU) {
 	}
 }
 
-// writeRecord puts the model-view matrix of a line or point draw in the uniform scratch, for record n.
-func (r *Renderer) writeRecord(n int, mv *[16]float32) {
-	need := itemBase + (n+1)*uniformAlign
-	if len(r.ubytes) < need {
-		r.ubytes = slices.Grow(r.ubytes[:len(r.ubytes)], need-len(r.ubytes))[:need]
+// lineTint is the tint of the record of a line or point item: the highlight color when it is selected, else nothing.
+func (r *Renderer) lineTint(it *Item, style *resolvedStyle) [4]float32 {
+	if !it.selected {
+		return [4]float32{}
 	}
-	putMat(r.ubytes, itemBase+n*uniformAlign, mv)
+	t := tintOf(&style.selection)
+	t[3] = 1
+	return t
+}
+
+// writeRecord puts the model-view matrix of a line or point draw in the uniform scratch, for record n.
+func (r *Renderer) writeRecord(n int, mv *[16]float32, tint [4]float32) {
+	off := r.record(n)
+	putMat(r.ubytes, off, mv)
+	// The tint, and the numbers of the shader that reads the record.
+	putVec4(r.ubytes, off+64, tint[0], tint[1], tint[2], tint[3])
+	putVec4(r.ubytes, off+80, 0, 0, 0, 0)
+	putVec4(r.ubytes, off+96, 0, 0, 0, 0)
 }
 
 // writeFrame writes the frame's uniforms (the first 272 bytes of the uniform scratch).
 func (r *Renderer) writeFrame(f *gpu.ViewFrame, style *resolvedStyle, cam *Camera, rot *vecmath.Mat4, dpr float64) {
+	proj := cam.ProjectionMatrix().Float32()
+	r.writeFrameAt(0, &proj, float32(f.Width), float32(f.Height), style, cam, rot, dpr)
+}
+
+// writeFrameAt writes the frame's uniform data at the offset of the uniform scratch, for the projection and the size of the
+// target in pixels: the frame of the picking has its own.
+func (r *Renderer) writeFrameAt(off int, proj *[16]float32, w, h float32, style *resolvedStyle, cam *Camera, rot *vecmath.Mat4, dpr float64) {
+	if need := off + frameUniformSize; len(r.ubytes) < need {
+		r.ubytes = slices.Grow(r.ubytes[:len(r.ubytes)], need-len(r.ubytes))[:need]
+	}
 	if len(r.ubytes) < itemBase {
 		r.ubytes = slices.Grow(r.ubytes[:len(r.ubytes)], itemBase-len(r.ubytes))[:itemBase]
 	}
-	b := r.ubytes
-	proj := cam.ProjectionMatrix().Float32()
-	putMat(b, 0, &proj)
+	b := r.ubytes[off : off+frameUniformSize]
+	putMat(b, 0, proj)
 	// The light at the camera shines along the line of sight; the others are turned into the view's space.
 	putVec4(b, 64, 0, 0, 1, 0)
-	h := float32(style.headLight)
-	putVec4(b, 80, h, h, h, 0)
+	hl := float32(style.headLight)
+	putVec4(b, 80, hl, hl, hl, 0)
 	for i := 0; i < maxLights; i++ {
-		off := 96 + 32*i
+		lo := 96 + 32*i
 		if i >= len(style.lights) {
-			putVec4(b, off, 0, 0, 1, 0)
-			putVec4(b, off+16, 0, 0, 0, 0)
+			putVec4(b, lo, 0, 0, 1, 0)
+			putVec4(b, lo+16, 0, 0, 0, 0)
 			continue
 		}
 		l := style.lights[i]
@@ -609,12 +776,12 @@ func (r *Renderer) writeFrame(f *gpu.ViewFrame, style *resolvedStyle, cam *Camer
 		if k == 0 {
 			k = 1
 		}
-		putVec4(b, off, float32(d.X), float32(d.Y), float32(d.Z), 0)
-		putVec4(b, off+16, float32(c.R)*float32(k), float32(c.G)*float32(k), float32(c.B)*float32(k), 0)
+		putVec4(b, lo, float32(d.X), float32(d.Y), float32(d.Z), 0)
+		putVec4(b, lo+16, float32(c.R)*float32(k), float32(c.G)*float32(k), float32(c.B)*float32(k), 0)
 	}
 	a := float32(style.ambient)
 	putVec4(b, 224, a, a, a, 0)
-	w, hh := float32(f.Width), float32(f.Height)
-	putVec4(b, 240, w, hh, 1/w, 1/hh)
+	putVec4(b, 240, w, h, 1/w, 1/h)
 	putVec4(b, 256, float32(cam.Near()), float32(dpr), 0, 0)
+	putSectionPlanes(b, r.scene.planes, rot, cam.Eye())
 }

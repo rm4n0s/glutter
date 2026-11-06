@@ -38,6 +38,34 @@ type ViewFrame struct {
 	// Time is the time of the frame: the elapsed time of the view's Ticker when ViewOpts.Continuous is set, else
 	// the time of the frame that draws the view.
 	Time time.Duration
+
+	// after are the functions that run when the encoder has been submitted (AfterSubmit).
+	after []func()
+}
+
+// AfterSubmit asks for fn to be called on the UI thread right after the view submitted the frame's commands: the place to call
+// Buffer.Read for what the frame wrote (a read asked for earlier would see the work before the frame), or Queue.OnSubmittedWorkDone.
+// The functions run in the order they were asked for, in the same frame, and not at all when the submission failed.
+//
+// Flutter: no counterpart
+func (f *ViewFrame) AfterSubmit(fn func()) { f.after = append(f.after, fn) }
+
+// Submit finishes the frame's encoder, submits it and runs the functions of AfterSubmit. The view does this when its paint function
+// returns; only a program that makes a ViewFrame of its own (to draw into a texture with code written for a view) calls it. It
+// returns the error of the submission.
+//
+// Flutter: no counterpart
+func (f *ViewFrame) Submit() error {
+	err := f.Device.Queue().Submit(f.Encoder.Finish())
+	after := f.after
+	f.after = nil
+	if err != nil {
+		return err
+	}
+	for _, fn := range after {
+		fn()
+	}
+	return nil
 }
 
 // ViewController asks a View to draw (SPEC §27.5).
@@ -534,7 +562,7 @@ func (s *viewSurface) drawIfDirty(id int64) {
 	panicked := foundation.Guard(s.report, foundation.PaintPanicked, "during the paint function of a gpu.View", nil, func() {
 		f.Encoder = d.NewCommandEncoder()
 		s.onPaint(f)
-		submitErr = d.Queue().Submit(f.Encoder.Finish())
+		submitErr = f.Submit()
 	})
 	if panicked {
 		return

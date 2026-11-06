@@ -3,23 +3,7 @@
 // The positions are float32 relative to the mesh's origin and the model-view matrix of each instance takes them to the view,
 // whose origin is the eye (D30): the numbers are small near the camera.
 
-struct Light {
-	// dir points to the light, in view space.
-	dir: vec4<f32>,
-	// color is the light's color times its intensity.
-	color: vec4<f32>,
-}
-
-struct Frame {
-	proj: mat4x4<f32>,
-	// lights are the light at the camera, then up to four directional ones; an unused one has a black color.
-	lights: array<Light, 5>,
-	ambient: vec4<f32>,
-	// viewport is the width and the height of the target in pixels, and their inverses.
-	viewport: vec4<f32>,
-	// params are the near plane's distance, the device pixel ratio and two unused numbers.
-	params: vec4<f32>,
-}
+//#include "common.wgsl.inc"
 
 struct Material {
 	color: vec4<f32>,
@@ -29,7 +13,6 @@ struct Material {
 	flags: vec4<f32>,
 }
 
-@group(0) @binding(0) var<uniform> frame: Frame;
 @group(1) @binding(0) var<uniform> material: Material;
 @group(1) @binding(1) var tex: texture_2d<f32>;
 @group(1) @binding(2) var samp: sampler;
@@ -40,9 +23,11 @@ struct VOut {
 	@location(1) normal: vec3<f32>,
 	@location(2) uv: vec2<f32>,
 	@location(3) color: vec4<f32>,
+	// tint is the color of a selected item, and in a the part of it that replaces the material's.
+	@location(4) tint: vec4<f32>,
 }
 
-fn vertex_common(p: vec3<f32>, n: vec3<f32>, uv: vec2<f32>, c: vec4<f32>, m0: vec4<f32>, m1: vec4<f32>, m2: vec4<f32>, m3: vec4<f32>) -> VOut {
+fn vertex_common(p: vec3<f32>, n: vec3<f32>, uv: vec2<f32>, c: vec4<f32>, m0: vec4<f32>, m1: vec4<f32>, m2: vec4<f32>, m3: vec4<f32>, tint: vec4<f32>) -> VOut {
 	let mv = mat4x4<f32>(m0, m1, m2, m3);
 	let vp = mv * vec4<f32>(p, 1.0);
 	var o: VOut;
@@ -51,55 +36,56 @@ fn vertex_common(p: vec3<f32>, n: vec3<f32>, uv: vec2<f32>, c: vec4<f32>, m0: ve
 	o.normal = (mv * vec4<f32>(n, 0.0)).xyz;
 	o.uv = uv;
 	o.color = c;
+	o.tint = tint;
 	return o;
 }
 
 @vertex
 fn vs_p(@location(0) p: vec3<f32>,
-	@location(4) m0: vec4<f32>, @location(5) m1: vec4<f32>, @location(6) m2: vec4<f32>, @location(7) m3: vec4<f32>) -> VOut {
-	return vertex_common(p, vec3<f32>(0.0), vec2<f32>(0.0), vec4<f32>(1.0), m0, m1, m2, m3);
+	@location(4) m0: vec4<f32>, @location(5) m1: vec4<f32>, @location(6) m2: vec4<f32>, @location(7) m3: vec4<f32>, @location(8) tint: vec4<f32>) -> VOut {
+	return vertex_common(p, vec3<f32>(0.0), vec2<f32>(0.0), vec4<f32>(1.0), m0, m1, m2, m3, tint);
 }
 
 @vertex
 fn vs_pn(@location(0) p: vec3<f32>, @location(1) n: vec3<f32>,
-	@location(4) m0: vec4<f32>, @location(5) m1: vec4<f32>, @location(6) m2: vec4<f32>, @location(7) m3: vec4<f32>) -> VOut {
-	return vertex_common(p, n, vec2<f32>(0.0), vec4<f32>(1.0), m0, m1, m2, m3);
+	@location(4) m0: vec4<f32>, @location(5) m1: vec4<f32>, @location(6) m2: vec4<f32>, @location(7) m3: vec4<f32>, @location(8) tint: vec4<f32>) -> VOut {
+	return vertex_common(p, n, vec2<f32>(0.0), vec4<f32>(1.0), m0, m1, m2, m3, tint);
 }
 
 @vertex
 fn vs_pu(@location(0) p: vec3<f32>, @location(2) uv: vec2<f32>,
-	@location(4) m0: vec4<f32>, @location(5) m1: vec4<f32>, @location(6) m2: vec4<f32>, @location(7) m3: vec4<f32>) -> VOut {
-	return vertex_common(p, vec3<f32>(0.0), uv, vec4<f32>(1.0), m0, m1, m2, m3);
+	@location(4) m0: vec4<f32>, @location(5) m1: vec4<f32>, @location(6) m2: vec4<f32>, @location(7) m3: vec4<f32>, @location(8) tint: vec4<f32>) -> VOut {
+	return vertex_common(p, vec3<f32>(0.0), uv, vec4<f32>(1.0), m0, m1, m2, m3, tint);
 }
 
 @vertex
 fn vs_pc(@location(0) p: vec3<f32>, @location(3) c: vec4<f32>,
-	@location(4) m0: vec4<f32>, @location(5) m1: vec4<f32>, @location(6) m2: vec4<f32>, @location(7) m3: vec4<f32>) -> VOut {
-	return vertex_common(p, vec3<f32>(0.0), vec2<f32>(0.0), c, m0, m1, m2, m3);
+	@location(4) m0: vec4<f32>, @location(5) m1: vec4<f32>, @location(6) m2: vec4<f32>, @location(7) m3: vec4<f32>, @location(8) tint: vec4<f32>) -> VOut {
+	return vertex_common(p, vec3<f32>(0.0), vec2<f32>(0.0), c, m0, m1, m2, m3, tint);
 }
 
 @vertex
 fn vs_pnu(@location(0) p: vec3<f32>, @location(1) n: vec3<f32>, @location(2) uv: vec2<f32>,
-	@location(4) m0: vec4<f32>, @location(5) m1: vec4<f32>, @location(6) m2: vec4<f32>, @location(7) m3: vec4<f32>) -> VOut {
-	return vertex_common(p, n, uv, vec4<f32>(1.0), m0, m1, m2, m3);
+	@location(4) m0: vec4<f32>, @location(5) m1: vec4<f32>, @location(6) m2: vec4<f32>, @location(7) m3: vec4<f32>, @location(8) tint: vec4<f32>) -> VOut {
+	return vertex_common(p, n, uv, vec4<f32>(1.0), m0, m1, m2, m3, tint);
 }
 
 @vertex
 fn vs_pnc(@location(0) p: vec3<f32>, @location(1) n: vec3<f32>, @location(3) c: vec4<f32>,
-	@location(4) m0: vec4<f32>, @location(5) m1: vec4<f32>, @location(6) m2: vec4<f32>, @location(7) m3: vec4<f32>) -> VOut {
-	return vertex_common(p, n, vec2<f32>(0.0), c, m0, m1, m2, m3);
+	@location(4) m0: vec4<f32>, @location(5) m1: vec4<f32>, @location(6) m2: vec4<f32>, @location(7) m3: vec4<f32>, @location(8) tint: vec4<f32>) -> VOut {
+	return vertex_common(p, n, vec2<f32>(0.0), c, m0, m1, m2, m3, tint);
 }
 
 @vertex
 fn vs_puc(@location(0) p: vec3<f32>, @location(2) uv: vec2<f32>, @location(3) c: vec4<f32>,
-	@location(4) m0: vec4<f32>, @location(5) m1: vec4<f32>, @location(6) m2: vec4<f32>, @location(7) m3: vec4<f32>) -> VOut {
-	return vertex_common(p, vec3<f32>(0.0), uv, c, m0, m1, m2, m3);
+	@location(4) m0: vec4<f32>, @location(5) m1: vec4<f32>, @location(6) m2: vec4<f32>, @location(7) m3: vec4<f32>, @location(8) tint: vec4<f32>) -> VOut {
+	return vertex_common(p, vec3<f32>(0.0), uv, c, m0, m1, m2, m3, tint);
 }
 
 @vertex
 fn vs_pnuc(@location(0) p: vec3<f32>, @location(1) n: vec3<f32>, @location(2) uv: vec2<f32>, @location(3) c: vec4<f32>,
-	@location(4) m0: vec4<f32>, @location(5) m1: vec4<f32>, @location(6) m2: vec4<f32>, @location(7) m3: vec4<f32>) -> VOut {
-	return vertex_common(p, n, uv, c, m0, m1, m2, m3);
+	@location(4) m0: vec4<f32>, @location(5) m1: vec4<f32>, @location(6) m2: vec4<f32>, @location(7) m3: vec4<f32>, @location(8) tint: vec4<f32>) -> VOut {
+	return vertex_common(p, n, uv, c, m0, m1, m2, m3, tint);
 }
 
 @fragment
@@ -107,6 +93,9 @@ fn fs_main(in: VOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f3
 	// Derivatives and sampling are taken where the control flow is uniform, then selected.
 	let flat_normal = cross(dpdx(in.view_pos), dpdy(in.view_pos));
 	let texel = textureSample(tex, samp, in.uv);
+	if (section_clipped(in.view_pos, -1)) {
+		discard;
+	}
 
 	var base = material.color;
 	if (material.flags.y > 0.5) {
@@ -115,7 +104,7 @@ fn fs_main(in: VOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f3
 	if (material.flags.z > 0.5) {
 		base = base * texel;
 	}
-	var rgb = base.rgb;
+	var rgb = mix(base.rgb, in.tint.rgb, in.tint.a);
 	if (material.flags.x > 0.5) {
 		let v = normalize(-in.view_pos);
 		var n = in.normal;
@@ -150,4 +139,13 @@ fn fs_main(in: VOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f3
 	}
 	// Premultiplied alpha, for the blending of transparent items.
 	return vec4<f32>(min(rgb, vec3<f32>(1.0)) * a, a);
+}
+
+// fs_mask is the fragment function of the mask that the outline of a selection is made from: white where a selected item is.
+@fragment
+fn fs_mask(in: VOut) -> @location(0) vec4<f32> {
+	if (section_clipped(in.view_pos, -1)) {
+		discard;
+	}
+	return vec4<f32>(1.0);
 }

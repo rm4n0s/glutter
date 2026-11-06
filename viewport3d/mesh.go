@@ -80,6 +80,8 @@ type Mesh struct {
 	featureEdges *Mesh
 	featureAngle float64
 	allEdges     *Mesh
+	// closed is whether the mesh is a solid (Closed).
+	closed int8
 }
 
 // NewMesh checks the data and makes a mesh of it. It fails with MeshInvalid when the lengths do not agree (positions that

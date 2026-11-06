@@ -43,6 +43,17 @@ func topDown(h int, pixelsPerUnit float64) *viewport3d.Camera {
 	return cam
 }
 
+// sectionCase is the part cut by section planes (each cuts away what its normal points to), with the caps and the outlines.
+func sectionCase(name string, mode viewport3d.DisplayMode, planes ...vecmath.Plane) Case {
+	return Case{Name: name, Width: W, Height: H, Depth: gpu.TextureFormatDepth24PlusStencil8, Build: func(d *gpu.Device) (*viewport3d.Scene, *viewport3d.Camera, func()) {
+		s := viewport3d.NewScene()
+		s.SetStyle(viewport3d.SceneStyle{DisplayMode: mode})
+		s.Add(Part()...)
+		s.SetSectionPlanes(planes...)
+		return s, PartCamera(s, W, H), nil
+	}}
+}
+
 // PartCamera is Isometric turned a little, so that the three faces of a box are not lit alike by the light at the camera (an
 // isometric view sees them all at the same angle).
 func PartCamera(scene *viewport3d.Scene, w, h int) *viewport3d.Camera {
@@ -224,6 +235,34 @@ func Cases() []Case {
 			}
 			s.Add(items...)
 			return s, Isometric(s, 640, 480), nil
+		}},
+		sectionCase("section", viewport3d.DisplayModeShaded, vecmath.Plane{Normal: vecmath.Vec3X, D: -0.3}),
+		sectionCase("section-two", viewport3d.DisplayModeShadedWithEdges, vecmath.Plane{Normal: vecmath.Vec3X, D: -0.3}, vecmath.Plane{Normal: vecmath.Vec3Y, D: -0.6}),
+		{Name: "section-torus", Width: W, Height: H, Depth: gpu.TextureFormatDepth24PlusStencil8, Build: func(d *gpu.Device) (*viewport3d.Scene, *viewport3d.Camera, func()) {
+			s := viewport3d.NewScene()
+			s.SetStyle(viewport3d.SceneStyle{DisplayMode: viewport3d.DisplayModeShadedWithEdges})
+			s.Add(viewport3d.NewItem(Torus(1, 0.4, 48, 20), viewport3d.NewPhongMaterial(viewport3d.PhongOpts{Color: color32(0xFFD8873A)})))
+			// The plane through the axis of the torus: the cut is two rings.
+			s.SetSectionPlanes(vecmath.Plane{Normal: vecmath.Vec3Z})
+			cam := viewport3d.NewCamera(viewport3d.CameraOpts{Up: vecmath.Vec3Y})
+			cam.SetViewportSize(ui.Size{Width: W, Height: H})
+			cam.SetStandardView(viewport3d.StandardViewFront)
+			cam.Orbit(0.5, 0.45)
+			cam.SetBounds(s.Bounds())
+			cam.FitTo(s.Bounds())
+			return s, cam, nil
+		}},
+		{Name: "selection", Width: W, Height: H, Build: func(d *gpu.Device) (*viewport3d.Scene, *viewport3d.Camera, func()) {
+			s := viewport3d.NewScene()
+			s.SetStyle(viewport3d.SceneStyle{DisplayMode: viewport3d.DisplayModeShadedWithEdges})
+			items := Part()
+			s.Add(items...)
+			// A line and a point are selected too: they are drawn in the highlight color.
+			line := viewport3d.NewItem(Segments([3]float32{-1.2, -0.5, 0.8}, [3]float32{1.2, -0.5, 0.8}), viewport3d.NewLineMaterial(viewport3d.LineOpts{Color: color32(0xFFE0E0E0), Width: 2}))
+			dot := viewport3d.NewItem(Points([3]float32{1.2, -0.5, 0.8}), viewport3d.NewPointMaterial(viewport3d.PointOpts{Size: 8}))
+			s.Add(line, dot)
+			s.Select(items[1], items[2], line, dot)
+			return s, PartCamera(s, W, H), nil
 		}},
 		PartAt("far-a", FarOrigin, 0),
 		PartAt("far-b", FarOrigin, 0.001),

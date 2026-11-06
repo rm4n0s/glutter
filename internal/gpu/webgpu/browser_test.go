@@ -23,6 +23,7 @@ import (
 	"github.com/rm4n0s/glutter/internal/gpu/explicit/devicetest"
 	"github.com/rm4n0s/glutter/internal/gpu/gputest"
 	"github.com/rm4n0s/glutter/internal/proof"
+	"github.com/rm4n0s/glutter/internal/scenetest"
 	"github.com/rm4n0s/glutter/internal/webtest"
 	"github.com/rm4n0s/glutter/internal/webtool"
 )
@@ -70,6 +71,9 @@ func await(t *testing.T, b webtest.Browser, query url.Values, timeout time.Durat
 	defer cancel()
 	res, err := webtest.Await(ctx, webtest.ShotOptions{Dir: gpuwebSite(t), Browser: b, Query: query, Width: 480, Height: 640, Timeout: timeout}, "gpuweb")
 	if err != nil {
+		if appErr, ok := errors.FromError(err); ok {
+			t.Fatalf("Await in %s: %v (%v)", b, err, appErr.Metadata)
+		}
 		t.Fatalf("Await in %s: %v", b, err)
 	}
 	return res.Data
@@ -509,7 +513,7 @@ func TestBrowserLoaderShowsAStartFailure(t *testing.T) {
 
 // TestBrowserViewport3DScenes draws the scenes of the 3D view (internal/scenetest, step 30.9) through package gpu on the
 // browser's WebGPU and compares each picture with the golden that Vulkan on lavapipe made, within gputest.ScenesTolerance
-// (SPEC §27.12); the browser reports no validation error.
+// (SPEC §27.12), makes the picks of the same package and checks what they find; the browser reports no validation error.
 func TestBrowserViewport3DScenes(t *testing.T) {
 	eachBrowserWithWebGPU(t, func(t *testing.T, b webtest.Browser) {
 		var res struct {
@@ -521,6 +525,11 @@ func TestBrowserViewport3DScenes(t *testing.T) {
 				PNG   string `json:"png"`
 				Error string `json:"error"`
 			} `json:"scenes"`
+			Picks []struct {
+				Name    string `json:"name"`
+				Problem string `json:"problem"`
+				Error   string `json:"error"`
+			} `json:"picks"`
 		}
 		if err := json.Unmarshal(await(t, b, url.Values{"mode": {"viewport3d"}}, 5*time.Minute), &res); err != nil {
 			t.Fatal(err)
@@ -532,8 +541,16 @@ func TestBrowserViewport3DScenes(t *testing.T) {
 		if len(res.Validation) != 0 {
 			t.Errorf("the browser reported %d validation errors, the first: %s", len(res.Validation), res.Validation[0])
 		}
-		if len(res.Scenes) < 13 {
+		if len(res.Scenes) < 16 {
 			t.Errorf("the program drew %d scenes, want every one", len(res.Scenes))
+		}
+		if want := len(scenetest.PickChecks()); len(res.Picks) != want {
+			t.Errorf("the program made %d picks, want %d", len(res.Picks), want)
+		}
+		for _, p := range res.Picks {
+			if p.Error != "" || p.Problem != "" {
+				t.Errorf("pick of %s: %s %s", p.Name, p.Error, p.Problem)
+			}
 		}
 		for _, s := range res.Scenes {
 			if s.Error != "" {

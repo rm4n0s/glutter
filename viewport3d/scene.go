@@ -81,6 +81,10 @@ type SceneStyle struct {
 	EdgeColor foundation.Opt[ui.Color]
 	// EdgeWidth is the width of the edges in logical pixels; the default is 1.
 	EdgeWidth float64
+	// Section is how the cut of the section planes looks (Scene.SetSectionPlanes).
+	Section SectionStyle
+	// Selection is how the selected items look (Item.SetSelected).
+	Selection SelectionStyle
 }
 
 const (
@@ -105,6 +109,8 @@ type resolvedStyle struct {
 	edgeAngle  float64
 	edgeColor  ui.Color
 	edgeWidth  float64
+	section    resolvedSection
+	selection  resolvedSelection
 }
 
 // resolve fills in the defaults of the style.
@@ -134,6 +140,8 @@ func (s SceneStyle) resolve() resolvedStyle {
 		n = maxLights
 	}
 	r.lights = s.Lights[:n]
+	r.section = s.Section.resolve(r.edgeColor, r.edgeWidth)
+	r.selection = s.Selection.resolve()
 	return r
 }
 
@@ -155,6 +163,7 @@ type Item struct {
 	visible   bool
 	pickID    uint32
 	layers    uint32
+	selected  bool
 
 	// model is the transform of the mesh's vertices: the item's transform after the translation to the mesh's origin.
 	model vecmath.Mat4
@@ -365,6 +374,8 @@ type Scene struct {
 
 	bounds      vecmath.Box3
 	boundsValid bool
+	// planes are the section planes (section.go).
+	planes []vecmath.Plane
 	// materials counts the items that use each material, and keeps the one listener that the scene has on it.
 	materials map[Material]*materialListener
 }

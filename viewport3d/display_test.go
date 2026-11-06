@@ -60,6 +60,9 @@ func lavapipeApp(t *testing.T) (*gpuhost.App, *gpu.Device) {
 	return app, d
 }
 
+// deviceApp is the app of the picks tests: lavapipe here, Direct3D 12 under Wine (wine_test.go).
+func deviceApp(t *testing.T) (*gpuhost.App, *gpu.Device) { return lavapipeApp(t) }
+
 // keepGoing makes the Fatalf of the golden check an Errorf, so that one case that fails does not stop the others (the cases
 // run on the test's goroutine, which package gpu requires: it is the UI thread's).
 type keepGoing struct{ *testing.T }

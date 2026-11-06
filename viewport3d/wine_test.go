@@ -34,10 +34,10 @@ func checkAgainstGolden(t *testing.T, name string, got *image.RGBA, tol gputest.
 	tol.Check(t, name, gputest.DiffRect(got, want, want.Bounds()))
 }
 
-// TestWineScenesAgainstTheirGoldens draws the scenes of package scenetest on Direct3D 12 under Wine (vkd3d over lavapipe) and
-// compares each picture with the golden that Vulkan made, within the cross-backend tolerance (SPEC §27.12). The device is used
-// from the thread that made it.
-func TestWineScenesAgainstTheirGoldens(t *testing.T) {
+// deviceApp is the app of the tests that run on the device of the platform: Direct3D 12 under Wine here (vkd3d over lavapipe), Vulkan
+// on lavapipe in display_test.go. The device is used from the thread that made it.
+func deviceApp(t *testing.T) (*gpuhost.App, *gpu.Device) {
+	t.Helper()
 	runtime.LockOSThread()
 	t.Cleanup(runtime.UnlockOSThread)
 	dev, err := d3d12.Open(d3d12.Options{Debug: true, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
@@ -57,6 +57,13 @@ func TestWineScenesAgainstTheirGoldens(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	return app, d
+}
+
+// TestWineScenesAgainstTheirGoldens draws the scenes of package scenetest on Direct3D 12 under Wine (vkd3d over lavapipe) and
+// compares each picture with the golden that Vulkan made, within the cross-backend tolerance (SPEC §27.12).
+func TestWineScenesAgainstTheirGoldens(t *testing.T) {
+	app, d := deviceApp(t)
 	for _, c := range scenetest.Cases() {
 		img, err := scenetest.Render(d, waitFor(app), c)
 		if err != nil {

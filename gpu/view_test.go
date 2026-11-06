@@ -403,3 +403,54 @@ func TestTheViewIsReleasedWhenTheAppEnds(t *testing.T) {
 		t.Errorf("OnDispose ran %d times and %+v is alive", r.disposed, d.Resources())
 	}
 }
+
+func TestTheFunctionsOfAfterSubmitRunOnceInOrderAfterTheSubmission(t *testing.T) {
+	r := newViewRig(t, 1)
+	c := gpu.NewViewController()
+	var order []string
+	paint := func(f *gpu.ViewFrame) {
+		r.paint(f)
+		f.AfterSubmit(func() { order = append(order, "first:"+r.rec.Ops()[len(r.rec.Ops())-1]) })
+		f.AfterSubmit(func() { order = append(order, "second") })
+	}
+	r.ts.PumpWidget(sized(50, 50, gpu.NewView(paint, r.opts(gpu.ViewOpts{Controller: c}))))
+	if len(order) != 2 || order[0] != "first:Submit" || order[1] != "second" {
+		t.Fatalf("the functions ran as %v, want the first after the submission and then the second", order)
+	}
+	c.MarkNeedsPaint()
+	r.ts.Pump(16 * time.Millisecond)
+	if len(order) != 4 {
+		t.Errorf("after the second frame the functions ran as %v: each frame's functions run once", order)
+	}
+}
+
+func TestTheFunctionsOfAfterSubmitDoNotRunWhenTheSubmissionFailed(t *testing.T) {
+	r := newViewRig(t, 1)
+	c := gpu.NewViewController()
+	ran := 0
+	fail := false
+	paint := func(f *gpu.ViewFrame) {
+		r.paint(f)
+		f.AfterSubmit(func() { ran++ })
+		if fail {
+			r.rec.Device().Err = fakeErr("the queue failed")
+		}
+	}
+	r.ts.PumpWidget(sized(50, 50, gpu.NewView(paint, r.opts(gpu.ViewOpts{Controller: c}))))
+	if ran != 1 {
+		t.Fatalf("the first frame ran %d functions", ran)
+	}
+	fail = true
+	c.MarkNeedsPaint()
+	r.ts.Pump(16 * time.Millisecond)
+	if ran != 1 {
+		t.Errorf("a failed submission ran the functions of AfterSubmit (%d)", ran)
+	}
+	if r.ts.TakeError() == nil {
+		t.Errorf("the failed submission was not reported")
+	}
+}
+
+type fakeErr string
+
+func (e fakeErr) Error() string { return string(e) }

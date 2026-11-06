@@ -15,7 +15,7 @@ func TestRenderFailsWhenThePixelsDoNotArrive(t *testing.T) {
 	if img != nil {
 		t.Errorf("got a picture of %v", img.Bounds())
 	}
-	wantTag(t, err, scenetest.TagReadbackFailed, "Render.SceneReadbackFailed")
+	wantTag(t, err, scenetest.TagReadbackFailed, "Render->RenderAsking.SceneReadbackFailed")
 }
 
 func TestEveryCaseHasANameASizeAndABuilder(t *testing.T) {

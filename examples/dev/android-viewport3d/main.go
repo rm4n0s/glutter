@@ -2,7 +2,7 @@
 
 // Command android-viewport3d is a development example (step 30.9): the program of the Android device test of the 3D view. It
 // opens the Vulkan device through the Android platform, draws the scenes of internal/scenetest through package gpu, and
-// saves what came of them in the app's files directory, for the host to read: files/viewport3d/<name>.png for each scene,
+// draws the picks of the same package, and saves what came of them in the app's files directory, for the host to read: files/viewport3d/<name>.png for each scene,
 // errors.txt (one line "<name>: <message>" for each scene that failed), validation.txt (what the validation layer said),
 // device.txt, and DONE when the whole run finished.
 //
@@ -135,6 +135,15 @@ func (h *scenes) runAll() error {
 		}
 		if err := os.WriteFile(filepath.Join(dir, c.Name+".png"), buf.Bytes(), 0o644); err != nil {
 			return errors.NewErr(tagViewport3DWriteFailed, err).SetMetadata("file", c.Name+".png")
+		}
+	}
+	for _, c := range scenetest.PickChecks() {
+		problem, err := scenetest.RunPickCheck(d, wait, c)
+		switch {
+		case err != nil:
+			failed = append(failed, "pick "+c.Name+": "+err.Error())
+		case problem != "":
+			failed = append(failed, "pick "+c.Name+": "+problem)
 		}
 	}
 	files := map[string]string{

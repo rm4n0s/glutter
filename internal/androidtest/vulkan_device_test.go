@@ -346,7 +346,7 @@ func TestVulkanDrawsTheScenesOfThe3DView(t *testing.T) {
 		gputest.ScenesTolerance.Check(t, name, gputest.DiffRect(gotRGBA, want, want.Bounds()))
 		compared++
 	}
-	if compared < 13 {
+	if compared < 16 {
 		t.Errorf("only %d scenes were compared, want every one", compared)
 	}
 }

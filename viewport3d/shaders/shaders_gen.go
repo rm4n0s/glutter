@@ -20,57 +20,95 @@ var Line = &gpu.Shader{
 // pattern. A segment is an instance (its two ends in the mesh's units and the length of the polyline before it); the four
 // corners of the quad come from a small vertex buffer: no built-in index is read.
 
+// What the shaders of viewport3d share (SPEC §27.8): the frame's uniform data, the record of an item, and the section planes.
+
 struct Light {
+	// dir points to the light, in view space.
 	dir: vec4<f32>,
+	// color is the light's color times its intensity.
 	color: vec4<f32>,
 }
 
 struct Frame {
 	proj: mat4x4<f32>,
+	// lights are the light at the camera, then up to four directional ones; an unused one has a black color.
 	lights: array<Light, 5>,
 	ambient: vec4<f32>,
+	// viewport is the width and the height of the target in pixels, and their inverses.
 	viewport: vec4<f32>,
 	// params are the near plane's distance, the device pixel ratio and two unused numbers.
 	params: vec4<f32>,
-}
-
-struct LineMaterial {
-	color: vec4<f32>,
-	// params are: x the width in logical pixels, y the number of lengths of the dash pattern (0 for a solid line), z the
-	// relative pull of the line towards the camera (so that an edge is not hidden by the face it lies on), w the sum of the
-	// pattern.
-	params: vec4<f32>,
-	// pattern are the lengths in logical pixels: a dash, a gap, a dash, ...
-	pattern: array<vec4<f32>, 2>,
-}
-
-struct Item {
-	// mv takes the mesh's positions to the view, relative to the eye.
-	mv: mat4x4<f32>,
+	// planes are the section planes in view space, relative to the eye (D30): a point p with dot(plane.xyz, p) + plane.w > 0 is
+	// cut away.
+	planes: array<vec4<f32>, 6>,
+	// section is the number of planes in x.
+	section: vec4<f32>,
 }
 
 @group(0) @binding(0) var<uniform> frame: Frame;
-@group(1) @binding(0) var<uniform> line: LineMaterial;
-@group(2) @binding(0) var<uniform> item: Item;
 
-struct VOut {
-	@builtin(position) clip: vec4<f32>,
-	// across is the distance in pixels from the center of the line, along: the distance from its first end, along it.
-	@location(0) across: f32,
-	@location(1) along: f32,
-	@location(2) length_px: f32,
-	// stipple is the position along the dash pattern, in pixels.
-	@location(3) stipple: f32,
+// Item is the record of a line, a point or a picked item: the matrix that takes the mesh's positions to the view, relative to
+// the eye, a tint (the highlight of a selected item: its color, and the part of it that replaces the material's in a), and
+// numbers for the shader that reads it.
+struct Item {
+	mv: mat4x4<f32>,
+	tint: vec4<f32>,
+	params: vec4<f32>,
+	extra: vec4<f32>,
 }
 
-@vertex
-fn vs_main(@location(0) p0: vec3<f32>, @location(1) p1: vec3<f32>, @location(2) d0: f32, @location(3) corner: vec2<f32>) -> VOut {
-	var o: VOut;
+// section_clipped says whether a point of the view space is cut away by a section plane. skip is the plane to leave out (the
+// plane that a cap lies on), or -1.
+fn section_clipped(p: vec3<f32>, skip: i32) -> bool {
+	let count = i32(frame.section.x);
+	for (var i = 0; i < 6; i = i + 1) {
+		if (i >= count) {
+			break;
+		}
+		if (i == skip) {
+			continue;
+		}
+		let plane = frame.planes[i];
+		if (dot(plane.xyz, p) + plane.w > 0.0) {
+			return true;
+		}
+	}
+	return false;
+}
+
+// PickOut is what a pick pass writes for a pixel: the number of the item (from 1, 0 for nothing) and of the primitive in it, and
+// the depth.
+struct PickOut {
+	@location(0) ids: vec2<u32>,
+	@location(1) depth: f32,
+}
+// The quad of a line segment (SPEC §27.8): the vertex shaders of the lines, of the picking of lines and of the outline of a
+// section expand a segment into a quad in the screen with it, so that the width is in logical pixels whatever the distance.
+// It needs common.wgsl.inc.
+
+struct SegmentQuad {
+	clip: vec4<f32>,
+	// view_pos is the point of the segment that the corner is at, in view space.
+	view_pos: vec3<f32>,
+	// across is the distance in pixels from the center of the line, along: the distance from its first end, along it.
+	across: f32,
+	along: f32,
+	length_px: f32,
+	// ta and tb are the part of the segment in front of the near plane, from 0 to 1.
+	ta: f32,
+	tb: f32,
+	visible: bool,
+}
+
+// segment_quad expands the segment from a to b (view space) at a corner of the quad: corner.x is 0 at the first end and 1 at the
+// second, corner.y is -1 and 1 for the two sides. width is in logical pixels; pull moves the depth towards the camera by a
+// part of itself (so that an edge is not hidden by the face it lies on).
+fn segment_quad(a: vec3<f32>, b: vec3<f32>, corner: vec2<f32>, width: f32, pull: f32) -> SegmentQuad {
+	var o: SegmentQuad;
 	// A segment that is wholly behind the near plane is put outside the clip volume.
 	o.clip = vec4<f32>(2.0, 2.0, 2.0, 1.0);
+	o.visible = false;
 	let near = frame.params.x;
-	let a = (item.mv * vec4<f32>(p0, 1.0)).xyz;
-	let b = (item.mv * vec4<f32>(p1, 1.0)).xyz;
 	let za = -a.z;
 	let zb = -b.z;
 	if (za < near && zb < near) {
@@ -101,33 +139,100 @@ fn vs_main(@location(0) p0: vec3<f32>, @location(1) p1: vec3<f32>, @location(2) 
 		dir = vec2<f32>(1.0, 0.0);
 	}
 	let nrm = vec2<f32>(-dir.y, dir.x);
-	let half_w = 0.5 * line.params.x * frame.params.y;
+	let half_w = 0.5 * width * frame.params.y;
 	let pad = half_w + 1.0;
 	let at_end = corner.x;
 	let sgn = at_end * 2.0 - 1.0;
 	let offset = dir * (sgn * pad) + nrm * (corner.y * pad);
 	let k = mix(ka, kb, at_end);
-	o.clip = vec4<f32>(k.xy + offset / half_vp * k.w, k.z * (1.0 + line.params.z), k.w);
+	o.clip = vec4<f32>(k.xy + offset / half_vp * k.w, k.z * (1.0 + pull), k.w);
+	o.view_pos = mix(ca, cb, at_end);
 	o.across = corner.y * pad;
 	o.along = at_end * span + sgn * pad;
 	o.length_px = span;
+	o.ta = ta;
+	o.tb = tb;
+	o.visible = true;
+	return o;
+}
+
+// segment_cover is how much of a pixel of a quad of a segment the line covers, from 0 to 1, with anti-aliased sides and ends.
+fn segment_cover(width: f32, across: f32, along: f32, length_px: f32) -> f32 {
+	let half_w = 0.5 * width * frame.params.y;
+	var cover = clamp(half_w + 0.5 - abs(across), 0.0, 1.0);
+	cover = cover * clamp(along + half_w + 0.5, 0.0, 1.0) * clamp(length_px + half_w + 0.5 - along, 0.0, 1.0);
+	return cover;
+}
+
+struct LineMaterial {
+	color: vec4<f32>,
+	// params are: x the width in logical pixels, y the number of lengths of the dash pattern (0 for a solid line), z the
+	// relative pull of the line towards the camera (so that an edge is not hidden by the face it lies on), w the sum of the
+	// pattern.
+	params: vec4<f32>,
+	// pattern are the lengths in logical pixels: a dash, a gap, a dash, ...
+	pattern: array<vec4<f32>, 2>,
+}
+
+@group(1) @binding(0) var<uniform> line: LineMaterial;
+@group(2) @binding(0) var<uniform> item: Item;
+
+struct VOut {
+	@builtin(position) clip: vec4<f32>,
+	// across is the distance in pixels from the center of the line, along: the distance from its first end, along it.
+	@location(0) across: f32,
+	@location(1) along: f32,
+	@location(2) length_px: f32,
+	// stipple is the position along the dash pattern, in pixels.
+	@location(3) stipple: f32,
+	@location(4) view_pos: vec3<f32>,
+	// seg is the number of the segment in its mesh, which the picking reports.
+	@location(5) @interpolate(flat) seg: f32,
+}
+
+@vertex
+fn vs_main(@location(0) p0: vec3<f32>, @location(1) p1: vec3<f32>, @location(2) d0: f32, @location(3) corner: vec2<f32>) -> VOut {
+	return vertex_line(p0, p1, d0, corner, 0.0);
+}
+
+// vs_pick is vs_main for the picking: the segment also has its number.
+@vertex
+fn vs_pick(@location(0) p0: vec3<f32>, @location(1) p1: vec3<f32>, @location(2) d0: f32, @location(3) corner: vec2<f32>, @location(4) seg: f32) -> VOut {
+	return vertex_line(p0, p1, d0, corner, seg);
+}
+
+fn vertex_line(p0: vec3<f32>, p1: vec3<f32>, d0: f32, corner: vec2<f32>, seg: f32) -> VOut {
+	var o: VOut;
+	o.seg = seg;
+	let a = (item.mv * vec4<f32>(p0, 1.0)).xyz;
+	let b = (item.mv * vec4<f32>(p1, 1.0)).xyz;
+	let q = segment_quad(a, b, corner, line.params.x, line.params.z);
+	o.clip = q.clip;
+	if (!q.visible) {
+		return o;
+	}
+	o.across = q.across;
+	o.along = q.along;
+	o.length_px = q.length_px;
+	o.view_pos = q.view_pos;
 	// The pattern runs in screen pixels: the pixels for a unit of the mesh at this segment, from its projected length.
 	let seg_len = length(p1 - p0);
-	let units = seg_len * (tb - ta);
+	let units = seg_len * (q.tb - q.ta);
 	var per_unit = 0.0;
 	if (units > 0.0) {
-		per_unit = span / units;
+		per_unit = q.length_px / units;
 	}
-	o.stipple = (d0 + ta * seg_len) * per_unit + o.along;
+	o.stipple = (d0 + q.ta * seg_len) * per_unit + o.along;
 	return o;
 }
 
 @fragment
 fn fs_main(in: VOut) -> @location(0) vec4<f32> {
+	if (section_clipped(in.view_pos, -1)) {
+		discard;
+	}
 	let dpr = frame.params.y;
-	let half_w = 0.5 * line.params.x * dpr;
-	var cover = clamp(half_w + 0.5 - abs(in.across), 0.0, 1.0);
-	cover = cover * clamp(in.along + half_w + 0.5, 0.0, 1.0) * clamp(in.length_px + half_w + 0.5 - in.along, 0.0, 1.0);
+	var cover = segment_cover(line.params.x, in.across, in.along, in.length_px);
 	let count = i32(line.params.y);
 	if (count > 0) {
 		let total = line.params.w * dpr;
@@ -152,8 +257,23 @@ fn fs_main(in: VOut) -> @location(0) vec4<f32> {
 		}
 		cover = cover * dash;
 	}
+	let rgb = mix(line.color.rgb, item.tint.rgb, item.tint.a);
 	let a = line.color.a * cover;
-	return vec4<f32>(line.color.rgb * a, a);
+	return vec4<f32>(rgb * a, a);
+}
+
+@fragment
+fn fs_pick(in: VOut) -> PickOut {
+	if (section_clipped(in.view_pos, -1)) {
+		discard;
+	}
+	if (segment_cover(line.params.x, in.across, in.along, in.length_px) < 0.5) {
+		discard;
+	}
+	var o: PickOut;
+	o.ids = vec2<u32>(u32(item.params.x), u32(in.seg + 0.5));
+	o.depth = in.clip.z;
+	return o;
 }
 `,
 	SPIRV: spirvLine,
@@ -168,6 +288,34 @@ struct Frame {
     float4 ambient;
     float4 viewport;
     float4 params;
+    float4 planes[6];
+    float4 section;
+};
+
+struct Item {
+    row_major float4x4 mv;
+    float4 tint;
+    float4 params;
+    float4 extra;
+};
+
+struct PickOut {
+    uint2 ids : SV_Target0;
+    float depth : SV_Target1;
+};
+
+struct SegmentQuad {
+    float4 clip_;
+    float3 view_pos;
+    float across;
+    float along;
+    float length_px;
+    float ta;
+    float tb;
+    bool visible;
+    int _end_pad_0;
+    int _end_pad_1;
+    int _end_pad_2;
 };
 
 struct LineMaterial {
@@ -176,16 +324,14 @@ struct LineMaterial {
     float4 pattern[2];
 };
 
-struct Item {
-    row_major float4x4 mv;
-};
-
 struct VOut {
     float4 clip_ : SV_Position;
     float across : LOC0;
     float along : LOC1;
     float length_px : LOC2;
     float stipple : LOC3;
+    float3 view_pos : LOC4;
+    nointerpolation float seg : LOC5;
 };
 
 cbuffer frame : register(b0, space0) { Frame frame; }
@@ -193,36 +339,100 @@ cbuffer line_ : register(b0, space1) { LineMaterial line_; }
 cbuffer item : register(b0, space2) { Item item; }
 
 struct VertexOutput_vs_main {
-    float across : LOC0;
-    float along : LOC1;
-    float length_px : LOC2;
-    float stipple : LOC3;
-    float4 clip_ : SV_Position;
-};
-
-struct FragmentInput_fs_main {
     float across_1 : LOC0;
     float along_1 : LOC1;
     float length_px_1 : LOC2;
+    float stipple : LOC3;
+    float3 view_pos : LOC4;
+    nointerpolation float seg_2 : LOC5;
+    float4 clip_ : SV_Position;
+};
+
+struct VertexOutput_vs_pick {
+    float across_2 : LOC0;
+    float along_2 : LOC1;
+    float length_px_2 : LOC2;
     float stipple_1 : LOC3;
+    float3 view_pos_1 : LOC4;
+    nointerpolation float seg_3 : LOC5;
     float4 clip_1 : SV_Position;
 };
 
-VertexOutput_vs_main vs_main(float3 p0_ : LOC0, float3 p1_ : LOC1, float d0_ : LOC2, float2 corner : LOC3)
+struct FragmentInput_fs_main {
+    float across_3 : LOC0;
+    float along_3 : LOC1;
+    float length_px_3 : LOC2;
+    float stipple_2 : LOC3;
+    float3 view_pos_2 : LOC4;
+    nointerpolation float seg_4 : LOC5;
+    float4 clip_2 : SV_Position;
+};
+
+struct FragmentInput_fs_pick {
+    float across_4 : LOC0;
+    float along_4 : LOC1;
+    float length_px_4 : LOC2;
+    float stipple_3 : LOC3;
+    float3 view_pos_3 : LOC4;
+    nointerpolation float seg_5 : LOC5;
+    float4 clip_3 : SV_Position;
+};
+
+int naga_f2i32(float value) {
+    return int(clamp(value, -2147483600.0, 2147483500.0));
+}
+
+bool section_clipped(float3 p, int skip)
 {
-    VOut o = (VOut)0;
+    int i_1 = int(0);
+
+    float _e5 = frame.section.x;
+    int count = naga_f2i32(_e5);
+    uint2 loop_bound = uint2(4294967295u, 4294967295u);
+    bool loop_init = true;
+    while(true) {
+        if (all(loop_bound == uint2(0u, 0u))) { break; }
+        loop_bound -= uint2(loop_bound.y == 0u, 1u);
+        if (!loop_init) {
+            int _e28 = i_1;
+            i_1 = asint(asuint(_e28) + asuint(int(1)));
+        }
+        loop_init = false;
+        int _e9 = i_1;
+        if ((_e9 < int(6))) {
+        } else {
+            break;
+        }
+        {
+            int _e12 = i_1;
+            if ((_e12 >= count)) {
+                break;
+            }
+            int _e14 = i_1;
+            if ((_e14 == skip)) {
+                continue;
+            }
+            int _e18 = i_1;
+            float4 plane = frame.planes[_e18];
+            if (((dot(plane.xyz, p) + plane.w) > 0.0)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+SegmentQuad segment_quad(float3 a, float3 b, float2 corner_2, float width, float pull)
+{
+    SegmentQuad o_1 = (SegmentQuad)0;
     bool local = (bool)0;
     float ta = 0.0;
     float tb = 1.0;
     float2 dir = (float2)0;
-    float per_unit = 0.0;
 
-    o.clip_ = float4(2.0, 2.0, 2.0, 1.0);
+    o_1.clip_ = float4(2.0, 2.0, 2.0, 1.0);
+    o_1.visible = false;
     float near = frame.params.x;
-    float4x4 _e17 = item.mv;
-    float3 a = mul(float4(p0_, 1.0), _e17).xyz;
-    float4x4 _e24 = item.mv;
-    float3 b = mul(float4(p1_, 1.0), _e24).xyz;
     float za = -(a.z);
     float zb = -(b.z);
     if ((za < near)) {
@@ -230,12 +440,11 @@ VertexOutput_vs_main vs_main(float3 p0_ : LOC0, float3 p1_ : LOC1, float d0_ : L
     } else {
         local = false;
     }
-    bool _e38 = local;
-    if (_e38) {
-        VOut _e39 = o;
-        VOut vout = _e39;
-        VertexOutput_vs_main vout_1 = { vout.across, vout.along, vout.length_px, vout.stipple, vout.clip_ };
-        return vout_1;
+    bool _e27 = local;
+    if (_e27) {
+        SegmentQuad _e28 = o_1;
+        SegmentQuad segmentquad = _e28;
+        return segmentquad;
     }
     float cut = ((near - za) / (zb - za));
     if ((za < near)) {
@@ -244,59 +453,116 @@ VertexOutput_vs_main vs_main(float3 p0_ : LOC0, float3 p1_ : LOC1, float d0_ : L
     if ((zb < near)) {
         tb = cut;
     }
-    float _e49 = ta;
-    float3 ca = lerp(a, b, _e49);
-    float _e51 = tb;
-    float3 cb = lerp(a, b, _e51);
-    float4x4 _e55 = frame.proj;
-    float4 ka = mul(float4(ca, 1.0), _e55);
-    float4x4 _e61 = frame.proj;
-    float4 kb = mul(float4(cb, 1.0), _e61);
-    float4 _e67 = frame.viewport;
-    float2 half_vp = (0.5 * _e67.xy);
+    float _e38 = ta;
+    float3 ca = lerp(a, b, _e38);
+    float _e40 = tb;
+    float3 cb = lerp(a, b, _e40);
+    float4x4 _e44 = frame.proj;
+    float4 ka = mul(float4(ca, 1.0), _e44);
+    float4x4 _e50 = frame.proj;
+    float4 kb = mul(float4(cb, 1.0), _e50);
+    float4 _e56 = frame.viewport;
+    float2 half_vp = (0.5 * _e56.xy);
     float2 sa = ((ka.xy / (ka.w).xx) * half_vp);
     float2 sb = ((kb.xy / (kb.w).xx) * half_vp);
     dir = (sb - sa);
-    float2 _e83 = dir;
-    float span = length(_e83);
+    float2 _e72 = dir;
+    float span = length(_e72);
     if ((span > 0.0001)) {
-        float2 _e87 = dir;
-        dir = (_e87 / (span).xx);
+        float2 _e76 = dir;
+        dir = (_e76 / (span).xx);
     } else {
         dir = float2(1.0, 0.0);
     }
-    float _e94 = dir.y;
-    float _e97 = dir.x;
-    float2 nrm = float2(-(_e94), _e97);
-    float _e102 = line_.params.x;
-    float _e108 = frame.params.y;
-    float half_w = ((0.5 * _e102) * _e108);
+    float _e83 = dir.y;
+    float _e86 = dir.x;
+    float2 nrm = float2(-(_e83), _e86);
+    float _e93 = frame.params.y;
+    float half_w = ((0.5 * width) * _e93);
     float pad = (half_w + 1.0);
-    float at_end = corner.x;
+    float at_end = corner_2.x;
     float sgn = ((at_end * 2.0) - 1.0);
-    float2 _e117 = dir;
-    float2 offset = ((_e117 * (sgn * pad)) + (nrm * (corner.y * pad)));
+    float2 _e102 = dir;
+    float2 offset = ((_e102 * (sgn * pad)) + (nrm * (corner_2.y * pad)));
     float4 k = lerp(ka, kb, at_end);
-    float _e135 = line_.params.z;
-    o.clip_ = float4((k.xy + ((offset / half_vp) * k.w)), (k.z * (1.0 + _e135)), k.w);
-    o.across = (corner.y * pad);
-    o.along = ((at_end * span) + (sgn * pad));
-    o.length_px = span;
-    float seg_len = length((p1_ - p0_));
-    float _e151 = tb;
-    float _e152 = ta;
-    float units = (seg_len * (_e151 - _e152));
-    if ((units > 0.0)) {
-        per_unit = (span / units);
+    o_1.clip_ = float4((k.xy + ((offset / half_vp) * k.w)), (k.z * (1.0 + pull)), k.w);
+    o_1.view_pos = lerp(ca, cb, at_end);
+    o_1.across = (corner_2.y * pad);
+    o_1.along = ((at_end * span) + (sgn * pad));
+    o_1.length_px = span;
+    float _e133 = ta;
+    o_1.ta = _e133;
+    float _e135 = tb;
+    o_1.tb = _e135;
+    o_1.visible = true;
+    SegmentQuad _e138 = o_1;
+    SegmentQuad segmentquad_1 = _e138;
+    return segmentquad_1;
+}
+
+float segment_cover(float width_1, float across, float along, float length_px)
+{
+    float cover_1 = (float)0;
+
+    float _e9 = frame.params.y;
+    float half_w_1 = ((0.5 * width_1) * _e9);
+    cover_1 = clamp(((half_w_1 + 0.5) - abs(across)), 0.0, 1.0);
+    float _e19 = cover_1;
+    cover_1 = ((_e19 * clamp(((along + half_w_1) + 0.5), 0.0, 1.0)) * clamp((((length_px + half_w_1) + 0.5) - along), 0.0, 1.0));
+    float _e35 = cover_1;
+    return _e35;
+}
+
+VOut vertex_line(float3 p0_2, float3 p1_2, float d0_2, float2 corner_3, float seg_1)
+{
+    VOut o_2 = (VOut)0;
+    float per_unit = 0.0;
+
+    o_2.seg = seg_1;
+    float4x4 _e9 = item.mv;
+    float3 a_1 = mul(float4(p0_2, 1.0), _e9).xyz;
+    float4x4 _e16 = item.mv;
+    float3 b_1 = mul(float4(p1_2, 1.0), _e16).xyz;
+    float _e24 = line_.params.x;
+    float _e28 = line_.params.z;
+    SegmentQuad _e29 = segment_quad(a_1, b_1, corner_3, _e24, _e28);
+    o_2.clip_ = _e29.clip_;
+    if (!(_e29.visible)) {
+        VOut _e34 = o_2;
+        VOut vout = _e34;
+        return vout;
     }
-    float _e161 = ta;
-    float _e164 = per_unit;
-    float _e167 = o.along;
-    o.stipple = (((d0_ + (_e161 * seg_len)) * _e164) + _e167);
-    VOut _e169 = o;
-    VOut vout_2 = _e169;
-    VertexOutput_vs_main vout_2_ = { vout_2.across, vout_2.along, vout_2.length_px, vout_2.stipple, vout_2.clip_ };
+    o_2.across = _e29.across;
+    o_2.along = _e29.along;
+    o_2.length_px = _e29.length_px;
+    o_2.view_pos = _e29.view_pos;
+    float seg_len = length((p1_2 - p0_2));
+    float units = (seg_len * (_e29.tb - _e29.ta));
+    if ((units > 0.0)) {
+        per_unit = (_e29.length_px / units);
+    }
+    float _e59 = per_unit;
+    float _e62 = o_2.along;
+    o_2.stipple = (((d0_2 + (_e29.ta * seg_len)) * _e59) + _e62);
+    VOut _e64 = o_2;
+    VOut vout_1 = _e64;
+    return vout_1;
+}
+
+VertexOutput_vs_main vs_main(float3 p0_ : LOC0, float3 p1_ : LOC1, float d0_ : LOC2, float2 corner : LOC3)
+{
+    VOut _e5 = vertex_line(p0_, p1_, d0_, corner, 0.0);
+    VOut vout_2 = _e5;
+    VertexOutput_vs_main vout_2_ = { vout_2.across, vout_2.along, vout_2.length_px, vout_2.stipple, vout_2.view_pos, vout_2.seg, vout_2.clip_ };
     return vout_2_;
+}
+
+VertexOutput_vs_pick vs_pick(float3 p0_1 : LOC0, float3 p1_1 : LOC1, float d0_1 : LOC2, float2 corner_1 : LOC3, float seg : LOC4)
+{
+    VOut _e5 = vertex_line(p0_1, p1_1, d0_1, corner_1, seg);
+    VOut vout_3 = _e5;
+    VertexOutput_vs_pick vout_3_ = { vout_3.across, vout_3.along, vout_3.length_px, vout_3.stipple, vout_3.view_pos, vout_3.seg, vout_3.clip_ };
+    return vout_3_;
 }
 
 int naga_div(int lhs, int rhs) {
@@ -308,80 +574,107 @@ int naga_mod(int lhs, int rhs) {
     return lhs - (lhs / divisor) * divisor;
 }
 
-int naga_f2i32(float value) {
-    return int(clamp(value, -2147483600.0, 2147483500.0));
-}
-
 float4 fs_main(FragmentInput_fs_main fragmentinput_fs_main) : SV_Target0
 {
-    VOut in_ = { fragmentinput_fs_main.clip_1, fragmentinput_fs_main.across_1, fragmentinput_fs_main.along_1, fragmentinput_fs_main.length_px_1, fragmentinput_fs_main.stipple_1 };
+    VOut in_ = { fragmentinput_fs_main.clip_2, fragmentinput_fs_main.across_3, fragmentinput_fs_main.along_3, fragmentinput_fs_main.length_px_3, fragmentinput_fs_main.stipple_2, fragmentinput_fs_main.view_pos_2, fragmentinput_fs_main.seg_4 };
     float cover = (float)0;
     float acc = 0.0;
     float dash = 1.0;
     int i = int(0);
 
+    const bool _e3 = section_clipped(in_.view_pos, int(-1));
+    if (_e3) {
+        discard;
+    }
     float dpr = frame.params.y;
-    float _e8 = line_.params.x;
-    float half_w_1 = ((0.5 * _e8) * dpr);
-    cover = clamp(((half_w_1 + 0.5) - abs(in_.across)), 0.0, 1.0);
-    float _e21 = cover;
-    cover = ((_e21 * clamp(((in_.along + half_w_1) + 0.5), 0.0, 1.0)) * clamp((((in_.length_px + half_w_1) + 0.5) - in_.along), 0.0, 1.0));
-    float _e43 = line_.params.y;
-    int count = naga_f2i32(_e43);
-    if ((count > int(0))) {
-        float _e50 = line_.params.w;
-        float total = (_e50 * dpr);
+    float _e11 = line_.params.x;
+    const float _e15 = segment_cover(_e11, in_.across, in_.along, in_.length_px);
+    cover = _e15;
+    float _e20 = line_.params.y;
+    int count_1 = naga_f2i32(_e20);
+    if ((count_1 > int(0))) {
+        float _e27 = line_.params.w;
+        float total = (_e27 * dpr);
         float m = (in_.stipple - (floor((in_.stipple / total)) * total));
-        uint2 loop_bound = uint2(4294967295u, 4294967295u);
-        bool loop_init = true;
+        uint2 loop_bound_1 = uint2(4294967295u, 4294967295u);
+        bool loop_init_1 = true;
         while(true) {
-            if (all(loop_bound == uint2(0u, 0u))) { break; }
-            loop_bound -= uint2(loop_bound.y == 0u, 1u);
-            if (!loop_init) {
-                int _e107 = i;
-                i = asint(asuint(_e107) + asuint(int(1)));
+            if (all(loop_bound_1 == uint2(0u, 0u))) { break; }
+            loop_bound_1 -= uint2(loop_bound_1.y == 0u, 1u);
+            if (!loop_init_1) {
+                int _e84 = i;
+                i = asint(asuint(_e84) + asuint(int(1)));
             }
-            loop_init = false;
-            int _e64 = i;
-            if ((_e64 < int(8))) {
+            loop_init_1 = false;
+            int _e41 = i;
+            if ((_e41 < int(8))) {
             } else {
                 break;
             }
             {
-                int _e67 = i;
-                if ((_e67 >= count)) {
+                int _e44 = i;
+                if ((_e44 >= count_1)) {
                     break;
                 }
-                int _e71 = i;
-                int _e75 = i;
-                float _e79 = line_.pattern[naga_div(_e71, int(4))][naga_mod(_e75, int(4))];
-                float piece = (_e79 * dpr);
-                float _e81 = acc;
-                if ((m < (_e81 + piece))) {
-                    float _e84 = acc;
-                    float _e86 = acc;
-                    float inside = min((m - _e84), ((_e86 + piece) - m));
-                    int _e90 = i;
-                    if ((naga_mod(_e90, int(2)) == int(0))) {
+                int _e48 = i;
+                int _e52 = i;
+                float _e56 = line_.pattern[naga_div(_e48, int(4))][naga_mod(_e52, int(4))];
+                float piece = (_e56 * dpr);
+                float _e58 = acc;
+                if ((m < (_e58 + piece))) {
+                    float _e61 = acc;
+                    float _e63 = acc;
+                    float inside = min((m - _e61), ((_e63 + piece) - m));
+                    int _e67 = i;
+                    if ((naga_mod(_e67, int(2)) == int(0))) {
                         dash = clamp((0.5 + inside), 0.0, 1.0);
                     } else {
                         dash = clamp((0.5 - inside), 0.0, 1.0);
                     }
                     break;
                 }
-                float _e105 = acc;
-                acc = (_e105 + piece);
+                float _e82 = acc;
+                acc = (_e82 + piece);
             }
         }
-        float _e110 = cover;
-        float _e111 = dash;
-        cover = (_e110 * _e111);
+        float _e87 = cover;
+        float _e88 = dash;
+        cover = (_e87 * _e88);
     }
-    float _e116 = line_.color.w;
-    float _e117 = cover;
-    float a_1 = (_e116 * _e117);
-    float4 _e121 = line_.color;
-    return float4((_e121.xyz * a_1), a_1);
+    float4 _e92 = line_.color;
+    float4 _e96 = item.tint;
+    float _e101 = item.tint.w;
+    float3 rgb = lerp(_e92.xyz, _e96.xyz, _e101);
+    float _e106 = line_.color.w;
+    float _e107 = cover;
+    float a_2 = (_e106 * _e107);
+    return float4((rgb * a_2), a_2);
+}
+
+uint naga_f2u32(float value) {
+    return uint(clamp(value, 0.0, 4294967000.0));
+}
+
+PickOut fs_pick(FragmentInput_fs_pick fragmentinput_fs_pick)
+{
+    VOut in_1 = { fragmentinput_fs_pick.clip_3, fragmentinput_fs_pick.across_4, fragmentinput_fs_pick.along_4, fragmentinput_fs_pick.length_px_4, fragmentinput_fs_pick.stipple_3, fragmentinput_fs_pick.view_pos_3, fragmentinput_fs_pick.seg_5 };
+    PickOut o = (PickOut)0;
+
+    const bool _e3 = section_clipped(in_1.view_pos, int(-1));
+    if (_e3) {
+        discard;
+    }
+    float _e7 = line_.params.x;
+    const float _e11 = segment_cover(_e7, in_1.across, in_1.along, in_1.length_px);
+    if ((_e11 < 0.5)) {
+        discard;
+    }
+    float _e19 = item.params.x;
+    o.ids = uint2(naga_f2u32(_e19), naga_f2u32((in_1.seg + 0.5)));
+    o.depth = in_1.clip_.z;
+    PickOut _e29 = o;
+    PickOut pickout = _e29;
+    return pickout;
 }
 `,
 	Entries: []gpu.EntryPoint{
@@ -393,15 +686,37 @@ float4 fs_main(FragmentInput_fs_main fragmentinput_fs_main) : SV_Target0
 				{Name: "corner", Location: 3, Type: gpu.ShaderTypeFloat32x2},
 			},
 			Bindings: []gpu.ShaderBinding{
-				{Name: "frame", Group: 0, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 272, Register: gpu.ShaderRegister{Class: "b", Space: 0, Index: 0}},
+				{Name: "frame", Group: 0, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 384, Register: gpu.ShaderRegister{Class: "b", Space: 0, Index: 0}},
 				{Name: "line", Group: 1, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 64, Register: gpu.ShaderRegister{Class: "b", Space: 1, Index: 0}},
-				{Name: "item", Group: 2, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 64, Register: gpu.ShaderRegister{Class: "b", Space: 2, Index: 0}},
+				{Name: "item", Group: 2, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 112, Register: gpu.ShaderRegister{Class: "b", Space: 2, Index: 0}},
+			},
+		},
+		{Name: "vs_pick", Stage: gpu.ShaderStageVertex,
+			Inputs: []gpu.VertexInput{
+				{Name: "p0", Location: 0, Type: gpu.ShaderTypeFloat32x3},
+				{Name: "p1", Location: 1, Type: gpu.ShaderTypeFloat32x3},
+				{Name: "d0", Location: 2, Type: gpu.ShaderTypeFloat32},
+				{Name: "corner", Location: 3, Type: gpu.ShaderTypeFloat32x2},
+				{Name: "seg", Location: 4, Type: gpu.ShaderTypeFloat32},
+			},
+			Bindings: []gpu.ShaderBinding{
+				{Name: "frame", Group: 0, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 384, Register: gpu.ShaderRegister{Class: "b", Space: 0, Index: 0}},
+				{Name: "line", Group: 1, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 64, Register: gpu.ShaderRegister{Class: "b", Space: 1, Index: 0}},
+				{Name: "item", Group: 2, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 112, Register: gpu.ShaderRegister{Class: "b", Space: 2, Index: 0}},
 			},
 		},
 		{Name: "fs_main", Stage: gpu.ShaderStageFragment,
 			Bindings: []gpu.ShaderBinding{
-				{Name: "frame", Group: 0, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 272, Register: gpu.ShaderRegister{Class: "b", Space: 0, Index: 0}},
+				{Name: "frame", Group: 0, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 384, Register: gpu.ShaderRegister{Class: "b", Space: 0, Index: 0}},
 				{Name: "line", Group: 1, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 64, Register: gpu.ShaderRegister{Class: "b", Space: 1, Index: 0}},
+				{Name: "item", Group: 2, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 112, Register: gpu.ShaderRegister{Class: "b", Space: 2, Index: 0}},
+			},
+		},
+		{Name: "fs_pick", Stage: gpu.ShaderStageFragment,
+			Bindings: []gpu.ShaderBinding{
+				{Name: "frame", Group: 0, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 384, Register: gpu.ShaderRegister{Class: "b", Space: 0, Index: 0}},
+				{Name: "line", Group: 1, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 64, Register: gpu.ShaderRegister{Class: "b", Space: 1, Index: 0}},
+				{Name: "item", Group: 2, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 112, Register: gpu.ShaderRegister{Class: "b", Space: 2, Index: 0}},
 			},
 		},
 	},
@@ -417,6 +732,8 @@ var Mesh = &gpu.Shader{
 // attributes they read (p position, n normal, u texture coordinates, c color); the renderer picks the one that a mesh has.
 // The positions are float32 relative to the mesh's origin and the model-view matrix of each instance takes them to the view,
 // whose origin is the eye (D30): the numbers are small near the camera.
+
+// What the shaders of viewport3d share (SPEC §27.8): the frame's uniform data, the record of an item, and the section planes.
 
 struct Light {
 	// dir points to the light, in view space.
@@ -434,6 +751,49 @@ struct Frame {
 	viewport: vec4<f32>,
 	// params are the near plane's distance, the device pixel ratio and two unused numbers.
 	params: vec4<f32>,
+	// planes are the section planes in view space, relative to the eye (D30): a point p with dot(plane.xyz, p) + plane.w > 0 is
+	// cut away.
+	planes: array<vec4<f32>, 6>,
+	// section is the number of planes in x.
+	section: vec4<f32>,
+}
+
+@group(0) @binding(0) var<uniform> frame: Frame;
+
+// Item is the record of a line, a point or a picked item: the matrix that takes the mesh's positions to the view, relative to
+// the eye, a tint (the highlight of a selected item: its color, and the part of it that replaces the material's in a), and
+// numbers for the shader that reads it.
+struct Item {
+	mv: mat4x4<f32>,
+	tint: vec4<f32>,
+	params: vec4<f32>,
+	extra: vec4<f32>,
+}
+
+// section_clipped says whether a point of the view space is cut away by a section plane. skip is the plane to leave out (the
+// plane that a cap lies on), or -1.
+fn section_clipped(p: vec3<f32>, skip: i32) -> bool {
+	let count = i32(frame.section.x);
+	for (var i = 0; i < 6; i = i + 1) {
+		if (i >= count) {
+			break;
+		}
+		if (i == skip) {
+			continue;
+		}
+		let plane = frame.planes[i];
+		if (dot(plane.xyz, p) + plane.w > 0.0) {
+			return true;
+		}
+	}
+	return false;
+}
+
+// PickOut is what a pick pass writes for a pixel: the number of the item (from 1, 0 for nothing) and of the primitive in it, and
+// the depth.
+struct PickOut {
+	@location(0) ids: vec2<u32>,
+	@location(1) depth: f32,
 }
 
 struct Material {
@@ -444,7 +804,6 @@ struct Material {
 	flags: vec4<f32>,
 }
 
-@group(0) @binding(0) var<uniform> frame: Frame;
 @group(1) @binding(0) var<uniform> material: Material;
 @group(1) @binding(1) var tex: texture_2d<f32>;
 @group(1) @binding(2) var samp: sampler;
@@ -455,9 +814,11 @@ struct VOut {
 	@location(1) normal: vec3<f32>,
 	@location(2) uv: vec2<f32>,
 	@location(3) color: vec4<f32>,
+	// tint is the color of a selected item, and in a the part of it that replaces the material's.
+	@location(4) tint: vec4<f32>,
 }
 
-fn vertex_common(p: vec3<f32>, n: vec3<f32>, uv: vec2<f32>, c: vec4<f32>, m0: vec4<f32>, m1: vec4<f32>, m2: vec4<f32>, m3: vec4<f32>) -> VOut {
+fn vertex_common(p: vec3<f32>, n: vec3<f32>, uv: vec2<f32>, c: vec4<f32>, m0: vec4<f32>, m1: vec4<f32>, m2: vec4<f32>, m3: vec4<f32>, tint: vec4<f32>) -> VOut {
 	let mv = mat4x4<f32>(m0, m1, m2, m3);
 	let vp = mv * vec4<f32>(p, 1.0);
 	var o: VOut;
@@ -466,55 +827,56 @@ fn vertex_common(p: vec3<f32>, n: vec3<f32>, uv: vec2<f32>, c: vec4<f32>, m0: ve
 	o.normal = (mv * vec4<f32>(n, 0.0)).xyz;
 	o.uv = uv;
 	o.color = c;
+	o.tint = tint;
 	return o;
 }
 
 @vertex
 fn vs_p(@location(0) p: vec3<f32>,
-	@location(4) m0: vec4<f32>, @location(5) m1: vec4<f32>, @location(6) m2: vec4<f32>, @location(7) m3: vec4<f32>) -> VOut {
-	return vertex_common(p, vec3<f32>(0.0), vec2<f32>(0.0), vec4<f32>(1.0), m0, m1, m2, m3);
+	@location(4) m0: vec4<f32>, @location(5) m1: vec4<f32>, @location(6) m2: vec4<f32>, @location(7) m3: vec4<f32>, @location(8) tint: vec4<f32>) -> VOut {
+	return vertex_common(p, vec3<f32>(0.0), vec2<f32>(0.0), vec4<f32>(1.0), m0, m1, m2, m3, tint);
 }
 
 @vertex
 fn vs_pn(@location(0) p: vec3<f32>, @location(1) n: vec3<f32>,
-	@location(4) m0: vec4<f32>, @location(5) m1: vec4<f32>, @location(6) m2: vec4<f32>, @location(7) m3: vec4<f32>) -> VOut {
-	return vertex_common(p, n, vec2<f32>(0.0), vec4<f32>(1.0), m0, m1, m2, m3);
+	@location(4) m0: vec4<f32>, @location(5) m1: vec4<f32>, @location(6) m2: vec4<f32>, @location(7) m3: vec4<f32>, @location(8) tint: vec4<f32>) -> VOut {
+	return vertex_common(p, n, vec2<f32>(0.0), vec4<f32>(1.0), m0, m1, m2, m3, tint);
 }
 
 @vertex
 fn vs_pu(@location(0) p: vec3<f32>, @location(2) uv: vec2<f32>,
-	@location(4) m0: vec4<f32>, @location(5) m1: vec4<f32>, @location(6) m2: vec4<f32>, @location(7) m3: vec4<f32>) -> VOut {
-	return vertex_common(p, vec3<f32>(0.0), uv, vec4<f32>(1.0), m0, m1, m2, m3);
+	@location(4) m0: vec4<f32>, @location(5) m1: vec4<f32>, @location(6) m2: vec4<f32>, @location(7) m3: vec4<f32>, @location(8) tint: vec4<f32>) -> VOut {
+	return vertex_common(p, vec3<f32>(0.0), uv, vec4<f32>(1.0), m0, m1, m2, m3, tint);
 }
 
 @vertex
 fn vs_pc(@location(0) p: vec3<f32>, @location(3) c: vec4<f32>,
-	@location(4) m0: vec4<f32>, @location(5) m1: vec4<f32>, @location(6) m2: vec4<f32>, @location(7) m3: vec4<f32>) -> VOut {
-	return vertex_common(p, vec3<f32>(0.0), vec2<f32>(0.0), c, m0, m1, m2, m3);
+	@location(4) m0: vec4<f32>, @location(5) m1: vec4<f32>, @location(6) m2: vec4<f32>, @location(7) m3: vec4<f32>, @location(8) tint: vec4<f32>) -> VOut {
+	return vertex_common(p, vec3<f32>(0.0), vec2<f32>(0.0), c, m0, m1, m2, m3, tint);
 }
 
 @vertex
 fn vs_pnu(@location(0) p: vec3<f32>, @location(1) n: vec3<f32>, @location(2) uv: vec2<f32>,
-	@location(4) m0: vec4<f32>, @location(5) m1: vec4<f32>, @location(6) m2: vec4<f32>, @location(7) m3: vec4<f32>) -> VOut {
-	return vertex_common(p, n, uv, vec4<f32>(1.0), m0, m1, m2, m3);
+	@location(4) m0: vec4<f32>, @location(5) m1: vec4<f32>, @location(6) m2: vec4<f32>, @location(7) m3: vec4<f32>, @location(8) tint: vec4<f32>) -> VOut {
+	return vertex_common(p, n, uv, vec4<f32>(1.0), m0, m1, m2, m3, tint);
 }
 
 @vertex
 fn vs_pnc(@location(0) p: vec3<f32>, @location(1) n: vec3<f32>, @location(3) c: vec4<f32>,
-	@location(4) m0: vec4<f32>, @location(5) m1: vec4<f32>, @location(6) m2: vec4<f32>, @location(7) m3: vec4<f32>) -> VOut {
-	return vertex_common(p, n, vec2<f32>(0.0), c, m0, m1, m2, m3);
+	@location(4) m0: vec4<f32>, @location(5) m1: vec4<f32>, @location(6) m2: vec4<f32>, @location(7) m3: vec4<f32>, @location(8) tint: vec4<f32>) -> VOut {
+	return vertex_common(p, n, vec2<f32>(0.0), c, m0, m1, m2, m3, tint);
 }
 
 @vertex
 fn vs_puc(@location(0) p: vec3<f32>, @location(2) uv: vec2<f32>, @location(3) c: vec4<f32>,
-	@location(4) m0: vec4<f32>, @location(5) m1: vec4<f32>, @location(6) m2: vec4<f32>, @location(7) m3: vec4<f32>) -> VOut {
-	return vertex_common(p, vec3<f32>(0.0), uv, c, m0, m1, m2, m3);
+	@location(4) m0: vec4<f32>, @location(5) m1: vec4<f32>, @location(6) m2: vec4<f32>, @location(7) m3: vec4<f32>, @location(8) tint: vec4<f32>) -> VOut {
+	return vertex_common(p, vec3<f32>(0.0), uv, c, m0, m1, m2, m3, tint);
 }
 
 @vertex
 fn vs_pnuc(@location(0) p: vec3<f32>, @location(1) n: vec3<f32>, @location(2) uv: vec2<f32>, @location(3) c: vec4<f32>,
-	@location(4) m0: vec4<f32>, @location(5) m1: vec4<f32>, @location(6) m2: vec4<f32>, @location(7) m3: vec4<f32>) -> VOut {
-	return vertex_common(p, n, uv, c, m0, m1, m2, m3);
+	@location(4) m0: vec4<f32>, @location(5) m1: vec4<f32>, @location(6) m2: vec4<f32>, @location(7) m3: vec4<f32>, @location(8) tint: vec4<f32>) -> VOut {
+	return vertex_common(p, n, uv, c, m0, m1, m2, m3, tint);
 }
 
 @fragment
@@ -522,6 +884,9 @@ fn fs_main(in: VOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f3
 	// Derivatives and sampling are taken where the control flow is uniform, then selected.
 	let flat_normal = cross(dpdx(in.view_pos), dpdy(in.view_pos));
 	let texel = textureSample(tex, samp, in.uv);
+	if (section_clipped(in.view_pos, -1)) {
+		discard;
+	}
 
 	var base = material.color;
 	if (material.flags.y > 0.5) {
@@ -530,7 +895,7 @@ fn fs_main(in: VOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f3
 	if (material.flags.z > 0.5) {
 		base = base * texel;
 	}
-	var rgb = base.rgb;
+	var rgb = mix(base.rgb, in.tint.rgb, in.tint.a);
 	if (material.flags.x > 0.5) {
 		let v = normalize(-in.view_pos);
 		var n = in.normal;
@@ -566,6 +931,15 @@ fn fs_main(in: VOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f3
 	// Premultiplied alpha, for the blending of transparent items.
 	return vec4<f32>(min(rgb, vec3<f32>(1.0)) * a, a);
 }
+
+// fs_mask is the fragment function of the mask that the outline of a selection is made from: white where a selected item is.
+@fragment
+fn fs_mask(in: VOut) -> @location(0) vec4<f32> {
+	if (section_clipped(in.view_pos, -1)) {
+		discard;
+	}
+	return vec4<f32>(1.0);
+}
 `,
 	SPIRV: spirvMesh,
 	HLSL: `struct Light {
@@ -579,6 +953,20 @@ struct Frame {
     float4 ambient;
     float4 viewport;
     float4 params;
+    float4 planes[6];
+    float4 section;
+};
+
+struct Item {
+    row_major float4x4 mv;
+    float4 tint;
+    float4 params;
+    float4 extra;
+};
+
+struct PickOut {
+    uint2 ids : LOC0;
+    float depth : LOC1;
 };
 
 struct Material {
@@ -593,6 +981,7 @@ struct VOut {
     float3 normal : LOC1;
     float2 uv : LOC2;
     float4 color : LOC3;
+    float4 tint : LOC4;
 };
 
 cbuffer frame : register(b0, space0) { Frame frame; }
@@ -605,6 +994,7 @@ struct VertexOutput_vs_p {
     float3 normal : LOC1;
     float2 uv_5 : LOC2;
     float4 color : LOC3;
+    float4 tint_9 : LOC4;
     float4 clip_ : SV_Position;
 };
 
@@ -613,6 +1003,7 @@ struct VertexOutput_vs_pn {
     float3 normal_1 : LOC1;
     float2 uv_6 : LOC2;
     float4 color_1 : LOC3;
+    float4 tint_10 : LOC4;
     float4 clip_1 : SV_Position;
 };
 
@@ -621,6 +1012,7 @@ struct VertexOutput_vs_pu {
     float3 normal_2 : LOC1;
     float2 uv_7 : LOC2;
     float4 color_2 : LOC3;
+    float4 tint_11 : LOC4;
     float4 clip_2 : SV_Position;
 };
 
@@ -629,6 +1021,7 @@ struct VertexOutput_vs_pc {
     float3 normal_3 : LOC1;
     float2 uv_8 : LOC2;
     float4 color_3 : LOC3;
+    float4 tint_12 : LOC4;
     float4 clip_3 : SV_Position;
 };
 
@@ -637,6 +1030,7 @@ struct VertexOutput_vs_pnu {
     float3 normal_4 : LOC1;
     float2 uv_9 : LOC2;
     float4 color_4 : LOC3;
+    float4 tint_13 : LOC4;
     float4 clip_4 : SV_Position;
 };
 
@@ -645,6 +1039,7 @@ struct VertexOutput_vs_pnc {
     float3 normal_5 : LOC1;
     float2 uv_10 : LOC2;
     float4 color_5 : LOC3;
+    float4 tint_14 : LOC4;
     float4 clip_5 : SV_Position;
 };
 
@@ -653,6 +1048,7 @@ struct VertexOutput_vs_puc {
     float3 normal_6 : LOC1;
     float2 uv_11 : LOC2;
     float4 color_6 : LOC3;
+    float4 tint_15 : LOC4;
     float4 clip_6 : SV_Position;
 };
 
@@ -661,6 +1057,7 @@ struct VertexOutput_vs_pnuc {
     float3 normal_7 : LOC1;
     float2 uv_12 : LOC2;
     float4 color_7 : LOC3;
+    float4 tint_16 : LOC4;
     float4 clip_7 : SV_Position;
 };
 
@@ -669,94 +1066,149 @@ struct FragmentInput_fs_main {
     float3 normal_8 : LOC1;
     float2 uv_13 : LOC2;
     float4 color_8 : LOC3;
+    float4 tint_17 : LOC4;
     float4 clip_8 : SV_Position;
     bool front_1 : SV_IsFrontFace;
 };
 
-VOut vertex_common(float3 p_8, float3 n_5, float2 uv_4, float4 c_4, float4 m0_8, float4 m1_8, float4 m2_8, float4 m3_8)
+struct FragmentInput_fs_mask {
+    float3 view_pos_9 : LOC0;
+    float3 normal_9 : LOC1;
+    float2 uv_14 : LOC2;
+    float4 color_9 : LOC3;
+    float4 tint_18 : LOC4;
+    float4 clip_9 : SV_Position;
+};
+
+int naga_f2i32(float value) {
+    return int(clamp(value, -2147483600.0, 2147483500.0));
+}
+
+bool section_clipped(float3 p_8, int skip)
+{
+    int i_1 = int(0);
+
+    float _e5 = frame.section.x;
+    int count = naga_f2i32(_e5);
+    uint2 loop_bound = uint2(4294967295u, 4294967295u);
+    bool loop_init = true;
+    while(true) {
+        if (all(loop_bound == uint2(0u, 0u))) { break; }
+        loop_bound -= uint2(loop_bound.y == 0u, 1u);
+        if (!loop_init) {
+            int _e28 = i_1;
+            i_1 = asint(asuint(_e28) + asuint(int(1)));
+        }
+        loop_init = false;
+        int _e9 = i_1;
+        if ((_e9 < int(6))) {
+        } else {
+            break;
+        }
+        {
+            int _e12 = i_1;
+            if ((_e12 >= count)) {
+                break;
+            }
+            int _e14 = i_1;
+            if ((_e14 == skip)) {
+                continue;
+            }
+            int _e18 = i_1;
+            float4 plane = frame.planes[_e18];
+            if (((dot(plane.xyz, p_8) + plane.w) > 0.0)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+VOut vertex_common(float3 p_9, float3 n_5, float2 uv_4, float4 c_4, float4 m0_8, float4 m1_8, float4 m2_8, float4 m3_8, float4 tint_8)
 {
     VOut o = (VOut)0;
 
     float4x4 mv = float4x4(m0_8, m1_8, m2_8, m3_8);
-    float4 vp = mul(float4(p_8, 1.0), mv);
+    float4 vp = mul(float4(p_9, 1.0), mv);
     o.view_pos = vp.xyz;
-    float4x4 _e18 = frame.proj;
-    o.clip_ = mul(vp, _e18);
+    float4x4 _e19 = frame.proj;
+    o.clip_ = mul(vp, _e19);
     o.normal = mul(float4(n_5, 0.0), mv).xyz;
     o.uv = uv_4;
     o.color = c_4;
-    VOut _e27 = o;
-    VOut vout = _e27;
+    o.tint = tint_8;
+    VOut _e29 = o;
+    VOut vout = _e29;
     return vout;
 }
 
-VertexOutput_vs_p vs_p(float3 p : LOC0, float4 m0_ : LOC4, float4 m1_ : LOC5, float4 m2_ : LOC6, float4 m3_ : LOC7)
+VertexOutput_vs_p vs_p(float3 p : LOC0, float4 m0_ : LOC4, float4 m1_ : LOC5, float4 m2_ : LOC6, float4 m3_ : LOC7, float4 tint : LOC8)
 {
-    VOut _e11 = vertex_common(p, (0.0).xxx, (0.0).xx, (1.0).xxxx, m0_, m1_, m2_, m3_);
-    VOut vout_1 = _e11;
-    VertexOutput_vs_p vout_1_ = { vout_1.view_pos, vout_1.normal, vout_1.uv, vout_1.color, vout_1.clip_ };
+    VOut _e12 = vertex_common(p, (0.0).xxx, (0.0).xx, (1.0).xxxx, m0_, m1_, m2_, m3_, tint);
+    VOut vout_1 = _e12;
+    VertexOutput_vs_p vout_1_ = { vout_1.view_pos, vout_1.normal, vout_1.uv, vout_1.color, vout_1.tint, vout_1.clip_ };
     return vout_1_;
 }
 
-VertexOutput_vs_pn vs_pn(float3 p_1 : LOC0, float3 n : LOC1, float4 m0_1 : LOC4, float4 m1_1 : LOC5, float4 m2_1 : LOC6, float4 m3_1 : LOC7)
+VertexOutput_vs_pn vs_pn(float3 p_1 : LOC0, float3 n : LOC1, float4 m0_1 : LOC4, float4 m1_1 : LOC5, float4 m2_1 : LOC6, float4 m3_1 : LOC7, float4 tint_1 : LOC8)
 {
-    VOut _e10 = vertex_common(p_1, n, (0.0).xx, (1.0).xxxx, m0_1, m1_1, m2_1, m3_1);
-    VOut vout_2 = _e10;
-    VertexOutput_vs_pn vout_2_ = { vout_2.view_pos, vout_2.normal, vout_2.uv, vout_2.color, vout_2.clip_ };
+    VOut _e11 = vertex_common(p_1, n, (0.0).xx, (1.0).xxxx, m0_1, m1_1, m2_1, m3_1, tint_1);
+    VOut vout_2 = _e11;
+    VertexOutput_vs_pn vout_2_ = { vout_2.view_pos, vout_2.normal, vout_2.uv, vout_2.color, vout_2.tint, vout_2.clip_ };
     return vout_2_;
 }
 
-VertexOutput_vs_pu vs_pu(float3 p_2 : LOC0, float2 uv : LOC2, float4 m0_2 : LOC4, float4 m1_2 : LOC5, float4 m2_2 : LOC6, float4 m3_2 : LOC7)
+VertexOutput_vs_pu vs_pu(float3 p_2 : LOC0, float2 uv : LOC2, float4 m0_2 : LOC4, float4 m1_2 : LOC5, float4 m2_2 : LOC6, float4 m3_2 : LOC7, float4 tint_2 : LOC8)
 {
-    VOut _e10 = vertex_common(p_2, (0.0).xxx, uv, (1.0).xxxx, m0_2, m1_2, m2_2, m3_2);
-    VOut vout_3 = _e10;
-    VertexOutput_vs_pu vout_3_ = { vout_3.view_pos, vout_3.normal, vout_3.uv, vout_3.color, vout_3.clip_ };
+    VOut _e11 = vertex_common(p_2, (0.0).xxx, uv, (1.0).xxxx, m0_2, m1_2, m2_2, m3_2, tint_2);
+    VOut vout_3 = _e11;
+    VertexOutput_vs_pu vout_3_ = { vout_3.view_pos, vout_3.normal, vout_3.uv, vout_3.color, vout_3.tint, vout_3.clip_ };
     return vout_3_;
 }
 
-VertexOutput_vs_pc vs_pc(float3 p_3 : LOC0, float4 c : LOC3, float4 m0_3 : LOC4, float4 m1_3 : LOC5, float4 m2_3 : LOC6, float4 m3_3 : LOC7)
+VertexOutput_vs_pc vs_pc(float3 p_3 : LOC0, float4 c : LOC3, float4 m0_3 : LOC4, float4 m1_3 : LOC5, float4 m2_3 : LOC6, float4 m3_3 : LOC7, float4 tint_3 : LOC8)
 {
-    VOut _e10 = vertex_common(p_3, (0.0).xxx, (0.0).xx, c, m0_3, m1_3, m2_3, m3_3);
-    VOut vout_4 = _e10;
-    VertexOutput_vs_pc vout_4_ = { vout_4.view_pos, vout_4.normal, vout_4.uv, vout_4.color, vout_4.clip_ };
+    VOut _e11 = vertex_common(p_3, (0.0).xxx, (0.0).xx, c, m0_3, m1_3, m2_3, m3_3, tint_3);
+    VOut vout_4 = _e11;
+    VertexOutput_vs_pc vout_4_ = { vout_4.view_pos, vout_4.normal, vout_4.uv, vout_4.color, vout_4.tint, vout_4.clip_ };
     return vout_4_;
 }
 
-VertexOutput_vs_pnu vs_pnu(float3 p_4 : LOC0, float3 n_1 : LOC1, float2 uv_1 : LOC2, float4 m0_4 : LOC4, float4 m1_4 : LOC5, float4 m2_4 : LOC6, float4 m3_4 : LOC7)
+VertexOutput_vs_pnu vs_pnu(float3 p_4 : LOC0, float3 n_1 : LOC1, float2 uv_1 : LOC2, float4 m0_4 : LOC4, float4 m1_4 : LOC5, float4 m2_4 : LOC6, float4 m3_4 : LOC7, float4 tint_4 : LOC8)
 {
-    VOut _e9 = vertex_common(p_4, n_1, uv_1, (1.0).xxxx, m0_4, m1_4, m2_4, m3_4);
-    VOut vout_5 = _e9;
-    VertexOutput_vs_pnu vout_5_ = { vout_5.view_pos, vout_5.normal, vout_5.uv, vout_5.color, vout_5.clip_ };
+    VOut _e10 = vertex_common(p_4, n_1, uv_1, (1.0).xxxx, m0_4, m1_4, m2_4, m3_4, tint_4);
+    VOut vout_5 = _e10;
+    VertexOutput_vs_pnu vout_5_ = { vout_5.view_pos, vout_5.normal, vout_5.uv, vout_5.color, vout_5.tint, vout_5.clip_ };
     return vout_5_;
 }
 
-VertexOutput_vs_pnc vs_pnc(float3 p_5 : LOC0, float3 n_2 : LOC1, float4 c_1 : LOC3, float4 m0_5 : LOC4, float4 m1_5 : LOC5, float4 m2_5 : LOC6, float4 m3_5 : LOC7)
+VertexOutput_vs_pnc vs_pnc(float3 p_5 : LOC0, float3 n_2 : LOC1, float4 c_1 : LOC3, float4 m0_5 : LOC4, float4 m1_5 : LOC5, float4 m2_5 : LOC6, float4 m3_5 : LOC7, float4 tint_5 : LOC8)
 {
-    VOut _e9 = vertex_common(p_5, n_2, (0.0).xx, c_1, m0_5, m1_5, m2_5, m3_5);
-    VOut vout_6 = _e9;
-    VertexOutput_vs_pnc vout_6_ = { vout_6.view_pos, vout_6.normal, vout_6.uv, vout_6.color, vout_6.clip_ };
+    VOut _e10 = vertex_common(p_5, n_2, (0.0).xx, c_1, m0_5, m1_5, m2_5, m3_5, tint_5);
+    VOut vout_6 = _e10;
+    VertexOutput_vs_pnc vout_6_ = { vout_6.view_pos, vout_6.normal, vout_6.uv, vout_6.color, vout_6.tint, vout_6.clip_ };
     return vout_6_;
 }
 
-VertexOutput_vs_puc vs_puc(float3 p_6 : LOC0, float2 uv_2 : LOC2, float4 c_2 : LOC3, float4 m0_6 : LOC4, float4 m1_6 : LOC5, float4 m2_6 : LOC6, float4 m3_6 : LOC7)
+VertexOutput_vs_puc vs_puc(float3 p_6 : LOC0, float2 uv_2 : LOC2, float4 c_2 : LOC3, float4 m0_6 : LOC4, float4 m1_6 : LOC5, float4 m2_6 : LOC6, float4 m3_6 : LOC7, float4 tint_6 : LOC8)
 {
-    VOut _e9 = vertex_common(p_6, (0.0).xxx, uv_2, c_2, m0_6, m1_6, m2_6, m3_6);
-    VOut vout_7 = _e9;
-    VertexOutput_vs_puc vout_7_ = { vout_7.view_pos, vout_7.normal, vout_7.uv, vout_7.color, vout_7.clip_ };
+    VOut _e10 = vertex_common(p_6, (0.0).xxx, uv_2, c_2, m0_6, m1_6, m2_6, m3_6, tint_6);
+    VOut vout_7 = _e10;
+    VertexOutput_vs_puc vout_7_ = { vout_7.view_pos, vout_7.normal, vout_7.uv, vout_7.color, vout_7.tint, vout_7.clip_ };
     return vout_7_;
 }
 
-VertexOutput_vs_pnuc vs_pnuc(float3 p_7 : LOC0, float3 n_3 : LOC1, float2 uv_3 : LOC2, float4 c_3 : LOC3, float4 m0_7 : LOC4, float4 m1_7 : LOC5, float4 m2_7 : LOC6, float4 m3_7 : LOC7)
+VertexOutput_vs_pnuc vs_pnuc(float3 p_7 : LOC0, float3 n_3 : LOC1, float2 uv_3 : LOC2, float4 c_3 : LOC3, float4 m0_7 : LOC4, float4 m1_7 : LOC5, float4 m2_7 : LOC6, float4 m3_7 : LOC7, float4 tint_7 : LOC8)
 {
-    VOut _e8 = vertex_common(p_7, n_3, uv_3, c_3, m0_7, m1_7, m2_7, m3_7);
-    VOut vout_8 = _e8;
-    VertexOutput_vs_pnuc vout_8_ = { vout_8.view_pos, vout_8.normal, vout_8.uv, vout_8.color, vout_8.clip_ };
+    VOut _e9 = vertex_common(p_7, n_3, uv_3, c_3, m0_7, m1_7, m2_7, m3_7, tint_7);
+    VOut vout_8 = _e9;
+    VertexOutput_vs_pnuc vout_8_ = { vout_8.view_pos, vout_8.normal, vout_8.uv, vout_8.color, vout_8.tint, vout_8.clip_ };
     return vout_8_;
 }
 
 float4 fs_main(FragmentInput_fs_main fragmentinput_fs_main) : SV_Target0
 {
-    VOut in_ = { fragmentinput_fs_main.clip_8, fragmentinput_fs_main.view_pos_8, fragmentinput_fs_main.normal_8, fragmentinput_fs_main.uv_13, fragmentinput_fs_main.color_8 };
+    VOut in_ = { fragmentinput_fs_main.clip_8, fragmentinput_fs_main.view_pos_8, fragmentinput_fs_main.normal_8, fragmentinput_fs_main.uv_13, fragmentinput_fs_main.color_8, fragmentinput_fs_main.tint_17 };
     bool front = fragmentinput_fs_main.front_1;
     float4 base = (float4)0;
     float3 rgb = (float3)0;
@@ -770,95 +1222,109 @@ float4 fs_main(FragmentInput_fs_main fragmentinput_fs_main) : SV_Target0
     float3 _e5 = ddy(in_.view_pos);
     float3 flat_normal = cross(_e3, _e5);
     float4 texel = tex.Sample(samp, in_.uv);
-    float4 _e13 = material.color;
-    base = _e13;
-    float _e18 = material.flags.y;
-    if ((_e18 > 0.5)) {
-        float4 _e21 = base;
-        base = (_e21 * in_.color);
+    const bool _e13 = section_clipped(in_.view_pos, int(-1));
+    if (_e13) {
+        discard;
     }
-    float _e27 = material.flags.z;
-    if ((_e27 > 0.5)) {
-        float4 _e30 = base;
-        base = (_e30 * texel);
+    float4 _e16 = material.color;
+    base = _e16;
+    float _e21 = material.flags.y;
+    if ((_e21 > 0.5)) {
+        float4 _e24 = base;
+        base = (_e24 * in_.color);
     }
-    float4 _e32 = base;
-    rgb = _e32.xyz;
-    float _e38 = material.flags.x;
-    if ((_e38 > 0.5)) {
+    float _e30 = material.flags.z;
+    if ((_e30 > 0.5)) {
+        float4 _e33 = base;
+        base = (_e33 * texel);
+    }
+    float4 _e35 = base;
+    rgb = lerp(_e35.xyz, in_.tint.xyz, in_.tint.w);
+    float _e46 = material.flags.x;
+    if ((_e46 > 0.5)) {
         float3 v = normalize(-(in_.view_pos));
         n_4 = in_.normal;
-        float3 _e46 = n_4;
-        float3 _e47 = n_4;
-        if ((dot(_e46, _e47) < 0.25)) {
+        float3 _e54 = n_4;
+        float3 _e55 = n_4;
+        if ((dot(_e54, _e55) < 0.25)) {
             n_4 = normalize(flat_normal);
-            float3 _e52 = n_4;
-            if ((dot(_e52, v) < 0.0)) {
-                float3 _e56 = n_4;
-                n_4 = -(_e56);
+            float3 _e60 = n_4;
+            if ((dot(_e60, v) < 0.0)) {
+                float3 _e64 = n_4;
+                n_4 = -(_e64);
             }
         } else {
-            float3 _e58 = n_4;
-            n_4 = normalize(_e58);
+            float3 _e66 = n_4;
+            n_4 = normalize(_e66);
             if (!(front)) {
-                float3 _e61 = n_4;
-                n_4 = -(_e61);
+                float3 _e69 = n_4;
+                n_4 = -(_e69);
             }
         }
-        float4 _e65 = frame.ambient;
-        light = _e65.xyz;
-        uint2 loop_bound = uint2(4294967295u, 4294967295u);
-        bool loop_init = true;
+        float4 _e73 = frame.ambient;
+        light = _e73.xyz;
+        uint2 loop_bound_1 = uint2(4294967295u, 4294967295u);
+        bool loop_init_1 = true;
         while(true) {
-            if (all(loop_bound == uint2(0u, 0u))) { break; }
-            loop_bound -= uint2(loop_bound.y == 0u, 1u);
-            if (!loop_init) {
-                int _e121 = i;
-                i = asint(asuint(_e121) + asuint(int(1)));
+            if (all(loop_bound_1 == uint2(0u, 0u))) { break; }
+            loop_bound_1 -= uint2(loop_bound_1.y == 0u, 1u);
+            if (!loop_init_1) {
+                int _e129 = i;
+                i = asint(asuint(_e129) + asuint(int(1)));
             }
-            loop_init = false;
-            int _e73 = i;
-            if ((_e73 < int(5))) {
+            loop_init_1 = false;
+            int _e81 = i;
+            if ((_e81 < int(5))) {
             } else {
                 break;
             }
             {
-                int _e78 = i;
-                float4 _e81 = frame.lights[_e78].dir;
-                float3 l = normalize(_e81.xyz);
-                float3 _e84 = n_4;
-                float nl = max(dot(_e84, l), 0.0);
-                float3 _e88 = light;
-                int _e91 = i;
-                float4 _e94 = frame.lights[_e91].color;
-                light = (_e88 + (_e94.xyz * nl));
+                int _e86 = i;
+                float4 _e89 = frame.lights[_e86].dir;
+                float3 l = normalize(_e89.xyz);
+                float3 _e92 = n_4;
+                float nl = max(dot(_e92, l), 0.0);
+                float3 _e96 = light;
+                int _e99 = i;
+                float4 _e102 = frame.lights[_e99].color;
+                light = (_e96 + (_e102.xyz * nl));
                 if ((nl > 0.0)) {
                     float3 h = normalize((l + v));
-                    float3 _e102 = spec;
-                    int _e105 = i;
-                    float4 _e108 = frame.lights[_e105].color;
-                    float3 _e110 = n_4;
-                    float _e117 = material.specular.w;
-                    spec = (_e102 + (_e108.xyz * pow(max(dot(_e110, h), 0.0), _e117)));
+                    float3 _e110 = spec;
+                    int _e113 = i;
+                    float4 _e116 = frame.lights[_e113].color;
+                    float3 _e118 = n_4;
+                    float _e125 = material.specular.w;
+                    spec = (_e110 + (_e116.xyz * pow(max(dot(_e118, h), 0.0), _e125)));
                 }
             }
         }
-        float3 _e124 = rgb;
-        float3 _e125 = light;
-        float4 _e129 = material.specular;
-        float3 _e131 = spec;
-        rgb = ((_e124 * _e125) + (_e129.xyz * _e131));
+        float3 _e132 = rgb;
+        float3 _e133 = light;
+        float4 _e137 = material.specular;
+        float3 _e139 = spec;
+        rgb = ((_e132 * _e133) + (_e137.xyz * _e139));
     }
-    float _e135 = base.w;
-    a = _e135;
-    float _e140 = material.flags.w;
-    if ((_e140 > 0.5)) {
+    float _e143 = base.w;
+    a = _e143;
+    float _e148 = material.flags.w;
+    if ((_e148 > 0.5)) {
         a = 1.0;
     }
-    float3 _e144 = rgb;
-    float _e148 = a;
-    float _e150 = a;
-    return float4((min(_e144, (1.0).xxx) * _e148), _e150);
+    float3 _e152 = rgb;
+    float _e156 = a;
+    float _e158 = a;
+    return float4((min(_e152, (1.0).xxx) * _e156), _e158);
+}
+
+float4 fs_mask(FragmentInput_fs_mask fragmentinput_fs_mask) : SV_Target0
+{
+    VOut in_1 = { fragmentinput_fs_mask.clip_9, fragmentinput_fs_mask.view_pos_9, fragmentinput_fs_mask.normal_9, fragmentinput_fs_mask.uv_14, fragmentinput_fs_mask.color_9, fragmentinput_fs_mask.tint_18 };
+    const bool _e3 = section_clipped(in_1.view_pos, int(-1));
+    if (_e3) {
+        discard;
+    }
+    return (1.0).xxxx;
 }
 `,
 	Entries: []gpu.EntryPoint{
@@ -869,9 +1335,10 @@ float4 fs_main(FragmentInput_fs_main fragmentinput_fs_main) : SV_Target0
 				{Name: "m1", Location: 5, Type: gpu.ShaderTypeFloat32x4},
 				{Name: "m2", Location: 6, Type: gpu.ShaderTypeFloat32x4},
 				{Name: "m3", Location: 7, Type: gpu.ShaderTypeFloat32x4},
+				{Name: "tint", Location: 8, Type: gpu.ShaderTypeFloat32x4},
 			},
 			Bindings: []gpu.ShaderBinding{
-				{Name: "frame", Group: 0, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 272, Register: gpu.ShaderRegister{Class: "b", Space: 0, Index: 0}},
+				{Name: "frame", Group: 0, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 384, Register: gpu.ShaderRegister{Class: "b", Space: 0, Index: 0}},
 			},
 		},
 		{Name: "vs_pn", Stage: gpu.ShaderStageVertex,
@@ -882,9 +1349,10 @@ float4 fs_main(FragmentInput_fs_main fragmentinput_fs_main) : SV_Target0
 				{Name: "m1", Location: 5, Type: gpu.ShaderTypeFloat32x4},
 				{Name: "m2", Location: 6, Type: gpu.ShaderTypeFloat32x4},
 				{Name: "m3", Location: 7, Type: gpu.ShaderTypeFloat32x4},
+				{Name: "tint", Location: 8, Type: gpu.ShaderTypeFloat32x4},
 			},
 			Bindings: []gpu.ShaderBinding{
-				{Name: "frame", Group: 0, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 272, Register: gpu.ShaderRegister{Class: "b", Space: 0, Index: 0}},
+				{Name: "frame", Group: 0, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 384, Register: gpu.ShaderRegister{Class: "b", Space: 0, Index: 0}},
 			},
 		},
 		{Name: "vs_pu", Stage: gpu.ShaderStageVertex,
@@ -895,9 +1363,10 @@ float4 fs_main(FragmentInput_fs_main fragmentinput_fs_main) : SV_Target0
 				{Name: "m1", Location: 5, Type: gpu.ShaderTypeFloat32x4},
 				{Name: "m2", Location: 6, Type: gpu.ShaderTypeFloat32x4},
 				{Name: "m3", Location: 7, Type: gpu.ShaderTypeFloat32x4},
+				{Name: "tint", Location: 8, Type: gpu.ShaderTypeFloat32x4},
 			},
 			Bindings: []gpu.ShaderBinding{
-				{Name: "frame", Group: 0, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 272, Register: gpu.ShaderRegister{Class: "b", Space: 0, Index: 0}},
+				{Name: "frame", Group: 0, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 384, Register: gpu.ShaderRegister{Class: "b", Space: 0, Index: 0}},
 			},
 		},
 		{Name: "vs_pc", Stage: gpu.ShaderStageVertex,
@@ -908,9 +1377,10 @@ float4 fs_main(FragmentInput_fs_main fragmentinput_fs_main) : SV_Target0
 				{Name: "m1", Location: 5, Type: gpu.ShaderTypeFloat32x4},
 				{Name: "m2", Location: 6, Type: gpu.ShaderTypeFloat32x4},
 				{Name: "m3", Location: 7, Type: gpu.ShaderTypeFloat32x4},
+				{Name: "tint", Location: 8, Type: gpu.ShaderTypeFloat32x4},
 			},
 			Bindings: []gpu.ShaderBinding{
-				{Name: "frame", Group: 0, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 272, Register: gpu.ShaderRegister{Class: "b", Space: 0, Index: 0}},
+				{Name: "frame", Group: 0, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 384, Register: gpu.ShaderRegister{Class: "b", Space: 0, Index: 0}},
 			},
 		},
 		{Name: "vs_pnu", Stage: gpu.ShaderStageVertex,
@@ -922,9 +1392,10 @@ float4 fs_main(FragmentInput_fs_main fragmentinput_fs_main) : SV_Target0
 				{Name: "m1", Location: 5, Type: gpu.ShaderTypeFloat32x4},
 				{Name: "m2", Location: 6, Type: gpu.ShaderTypeFloat32x4},
 				{Name: "m3", Location: 7, Type: gpu.ShaderTypeFloat32x4},
+				{Name: "tint", Location: 8, Type: gpu.ShaderTypeFloat32x4},
 			},
 			Bindings: []gpu.ShaderBinding{
-				{Name: "frame", Group: 0, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 272, Register: gpu.ShaderRegister{Class: "b", Space: 0, Index: 0}},
+				{Name: "frame", Group: 0, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 384, Register: gpu.ShaderRegister{Class: "b", Space: 0, Index: 0}},
 			},
 		},
 		{Name: "vs_pnc", Stage: gpu.ShaderStageVertex,
@@ -936,9 +1407,10 @@ float4 fs_main(FragmentInput_fs_main fragmentinput_fs_main) : SV_Target0
 				{Name: "m1", Location: 5, Type: gpu.ShaderTypeFloat32x4},
 				{Name: "m2", Location: 6, Type: gpu.ShaderTypeFloat32x4},
 				{Name: "m3", Location: 7, Type: gpu.ShaderTypeFloat32x4},
+				{Name: "tint", Location: 8, Type: gpu.ShaderTypeFloat32x4},
 			},
 			Bindings: []gpu.ShaderBinding{
-				{Name: "frame", Group: 0, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 272, Register: gpu.ShaderRegister{Class: "b", Space: 0, Index: 0}},
+				{Name: "frame", Group: 0, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 384, Register: gpu.ShaderRegister{Class: "b", Space: 0, Index: 0}},
 			},
 		},
 		{Name: "vs_puc", Stage: gpu.ShaderStageVertex,
@@ -950,9 +1422,10 @@ float4 fs_main(FragmentInput_fs_main fragmentinput_fs_main) : SV_Target0
 				{Name: "m1", Location: 5, Type: gpu.ShaderTypeFloat32x4},
 				{Name: "m2", Location: 6, Type: gpu.ShaderTypeFloat32x4},
 				{Name: "m3", Location: 7, Type: gpu.ShaderTypeFloat32x4},
+				{Name: "tint", Location: 8, Type: gpu.ShaderTypeFloat32x4},
 			},
 			Bindings: []gpu.ShaderBinding{
-				{Name: "frame", Group: 0, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 272, Register: gpu.ShaderRegister{Class: "b", Space: 0, Index: 0}},
+				{Name: "frame", Group: 0, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 384, Register: gpu.ShaderRegister{Class: "b", Space: 0, Index: 0}},
 			},
 		},
 		{Name: "vs_pnuc", Stage: gpu.ShaderStageVertex,
@@ -965,17 +1438,279 @@ float4 fs_main(FragmentInput_fs_main fragmentinput_fs_main) : SV_Target0
 				{Name: "m1", Location: 5, Type: gpu.ShaderTypeFloat32x4},
 				{Name: "m2", Location: 6, Type: gpu.ShaderTypeFloat32x4},
 				{Name: "m3", Location: 7, Type: gpu.ShaderTypeFloat32x4},
+				{Name: "tint", Location: 8, Type: gpu.ShaderTypeFloat32x4},
 			},
 			Bindings: []gpu.ShaderBinding{
-				{Name: "frame", Group: 0, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 272, Register: gpu.ShaderRegister{Class: "b", Space: 0, Index: 0}},
+				{Name: "frame", Group: 0, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 384, Register: gpu.ShaderRegister{Class: "b", Space: 0, Index: 0}},
 			},
 		},
 		{Name: "fs_main", Stage: gpu.ShaderStageFragment,
 			Bindings: []gpu.ShaderBinding{
-				{Name: "frame", Group: 0, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 272, Register: gpu.ShaderRegister{Class: "b", Space: 0, Index: 0}},
+				{Name: "frame", Group: 0, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 384, Register: gpu.ShaderRegister{Class: "b", Space: 0, Index: 0}},
 				{Name: "material", Group: 1, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 48, Register: gpu.ShaderRegister{Class: "b", Space: 1, Index: 0}},
 				{Name: "tex", Group: 1, Binding: 1, Kind: gpu.BindingSampledTexture, Register: gpu.ShaderRegister{Class: "t", Space: 1, Index: 1}},
 				{Name: "samp", Group: 1, Binding: 2, Kind: gpu.BindingSampler, Register: gpu.ShaderRegister{Class: "s", Space: 1, Index: 2}},
+			},
+		},
+		{Name: "fs_mask", Stage: gpu.ShaderStageFragment,
+			Bindings: []gpu.ShaderBinding{
+				{Name: "frame", Group: 0, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 384, Register: gpu.ShaderRegister{Class: "b", Space: 0, Index: 0}},
+			},
+		},
+	},
+}
+
+//go:embed pick.spv
+var spirvPick []byte
+
+// Pick is pick.wgsl.
+var Pick = &gpu.Shader{
+	Name: "pick",
+	WGSL: `// The picking of triangles in viewport3d (SPEC §27.8): a pick pass draws the items into a small target that has, for each pixel,
+// the number of the item and of the triangle, and the depth. The triangles are drawn from a vertex buffer of their corners that
+// no index reorders, so that vertex_index / 3 is the number of the triangle. The lines and the points have vs_pick and fs_pick
+// in their own shaders.
+
+// What the shaders of viewport3d share (SPEC §27.8): the frame's uniform data, the record of an item, and the section planes.
+
+struct Light {
+	// dir points to the light, in view space.
+	dir: vec4<f32>,
+	// color is the light's color times its intensity.
+	color: vec4<f32>,
+}
+
+struct Frame {
+	proj: mat4x4<f32>,
+	// lights are the light at the camera, then up to four directional ones; an unused one has a black color.
+	lights: array<Light, 5>,
+	ambient: vec4<f32>,
+	// viewport is the width and the height of the target in pixels, and their inverses.
+	viewport: vec4<f32>,
+	// params are the near plane's distance, the device pixel ratio and two unused numbers.
+	params: vec4<f32>,
+	// planes are the section planes in view space, relative to the eye (D30): a point p with dot(plane.xyz, p) + plane.w > 0 is
+	// cut away.
+	planes: array<vec4<f32>, 6>,
+	// section is the number of planes in x.
+	section: vec4<f32>,
+}
+
+@group(0) @binding(0) var<uniform> frame: Frame;
+
+// Item is the record of a line, a point or a picked item: the matrix that takes the mesh's positions to the view, relative to
+// the eye, a tint (the highlight of a selected item: its color, and the part of it that replaces the material's in a), and
+// numbers for the shader that reads it.
+struct Item {
+	mv: mat4x4<f32>,
+	tint: vec4<f32>,
+	params: vec4<f32>,
+	extra: vec4<f32>,
+}
+
+// section_clipped says whether a point of the view space is cut away by a section plane. skip is the plane to leave out (the
+// plane that a cap lies on), or -1.
+fn section_clipped(p: vec3<f32>, skip: i32) -> bool {
+	let count = i32(frame.section.x);
+	for (var i = 0; i < 6; i = i + 1) {
+		if (i >= count) {
+			break;
+		}
+		if (i == skip) {
+			continue;
+		}
+		let plane = frame.planes[i];
+		if (dot(plane.xyz, p) + plane.w > 0.0) {
+			return true;
+		}
+	}
+	return false;
+}
+
+// PickOut is what a pick pass writes for a pixel: the number of the item (from 1, 0 for nothing) and of the primitive in it, and
+// the depth.
+struct PickOut {
+	@location(0) ids: vec2<u32>,
+	@location(1) depth: f32,
+}
+
+@group(1) @binding(0) var<uniform> item: Item;
+
+struct Picked {
+	@builtin(position) clip: vec4<f32>,
+	@location(0) view_pos: vec3<f32>,
+	@location(1) @interpolate(flat) prim: u32,
+}
+
+@vertex
+fn vs_tri(@location(0) p: vec3<f32>, @builtin(vertex_index) i: u32) -> Picked {
+	var o: Picked;
+	let v = item.mv * vec4<f32>(p, 1.0);
+	o.view_pos = v.xyz;
+	o.clip = frame.proj * v;
+	o.prim = i / 3u;
+	return o;
+}
+
+@fragment
+fn fs_tri(in: Picked) -> PickOut {
+	if (section_clipped(in.view_pos, -1)) {
+		discard;
+	}
+	var o: PickOut;
+	o.ids = vec2<u32>(u32(item.params.x), in.prim);
+	o.depth = in.clip.z;
+	return o;
+}
+`,
+	SPIRV: spirvPick,
+	HLSL: `struct Light {
+    float4 dir;
+    float4 color;
+};
+
+struct Frame {
+    row_major float4x4 proj;
+    Light lights[5];
+    float4 ambient;
+    float4 viewport;
+    float4 params;
+    float4 planes[6];
+    float4 section;
+};
+
+struct Item {
+    row_major float4x4 mv;
+    float4 tint;
+    float4 params;
+    float4 extra;
+};
+
+struct PickOut {
+    uint2 ids : SV_Target0;
+    float depth : SV_Target1;
+};
+
+struct Picked {
+    float4 clip_ : SV_Position;
+    float3 view_pos : LOC0;
+    nointerpolation uint prim : LOC1;
+};
+
+cbuffer frame : register(b0, space0) { Frame frame; }
+cbuffer item : register(b0, space1) { Item item; }
+
+struct VertexOutput_vs_tri {
+    float3 view_pos : LOC0;
+    nointerpolation uint prim : LOC1;
+    float4 clip_ : SV_Position;
+};
+
+struct FragmentInput_fs_tri {
+    float3 view_pos_1 : LOC0;
+    nointerpolation uint prim_1 : LOC1;
+    float4 clip_1 : SV_Position;
+};
+
+int naga_f2i32(float value) {
+    return int(clamp(value, -2147483600.0, 2147483500.0));
+}
+
+bool section_clipped(float3 p_1, int skip)
+{
+    int i_1 = int(0);
+
+    float _e5 = frame.section.x;
+    int count = naga_f2i32(_e5);
+    uint2 loop_bound = uint2(4294967295u, 4294967295u);
+    bool loop_init = true;
+    while(true) {
+        if (all(loop_bound == uint2(0u, 0u))) { break; }
+        loop_bound -= uint2(loop_bound.y == 0u, 1u);
+        if (!loop_init) {
+            int _e28 = i_1;
+            i_1 = asint(asuint(_e28) + asuint(int(1)));
+        }
+        loop_init = false;
+        int _e9 = i_1;
+        if ((_e9 < int(6))) {
+        } else {
+            break;
+        }
+        {
+            int _e12 = i_1;
+            if ((_e12 >= count)) {
+                break;
+            }
+            int _e14 = i_1;
+            if ((_e14 == skip)) {
+                continue;
+            }
+            int _e18 = i_1;
+            float4 plane = frame.planes[_e18];
+            if (((dot(plane.xyz, p_1) + plane.w) > 0.0)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+uint naga_div(uint lhs, uint rhs) {
+    return lhs / (rhs == 0u ? 1u : rhs);
+}
+
+VertexOutput_vs_tri vs_tri(float3 p : LOC0, uint i : SV_VertexID)
+{
+    Picked o = (Picked)0;
+
+    float4x4 _e5 = item.mv;
+    float4 v = mul(float4(p, 1.0), _e5);
+    o.view_pos = v.xyz;
+    float4x4 _e14 = frame.proj;
+    o.clip_ = mul(v, _e14);
+    o.prim = naga_div(i, 3u);
+    Picked _e19 = o;
+    Picked picked = _e19;
+    VertexOutput_vs_tri picked_1 = { picked.view_pos, picked.prim, picked.clip_ };
+    return picked_1;
+}
+
+uint naga_f2u32(float value) {
+    return uint(clamp(value, 0.0, 4294967000.0));
+}
+
+PickOut fs_tri(FragmentInput_fs_tri fragmentinput_fs_tri)
+{
+    Picked in_ = { fragmentinput_fs_tri.clip_1, fragmentinput_fs_tri.view_pos_1, fragmentinput_fs_tri.prim_1 };
+    PickOut o_1 = (PickOut)0;
+
+    const bool _e3 = section_clipped(in_.view_pos, int(-1));
+    if (_e3) {
+        discard;
+    }
+    float _e9 = item.params.x;
+    o_1.ids = uint2(naga_f2u32(_e9), in_.prim);
+    o_1.depth = in_.clip_.z;
+    PickOut _e16 = o_1;
+    PickOut pickout = _e16;
+    return pickout;
+}
+`,
+	Entries: []gpu.EntryPoint{
+		{Name: "vs_tri", Stage: gpu.ShaderStageVertex, ReadsVertexIndex: true,
+			Inputs: []gpu.VertexInput{
+				{Name: "p", Location: 0, Type: gpu.ShaderTypeFloat32x3},
+			},
+			Bindings: []gpu.ShaderBinding{
+				{Name: "frame", Group: 0, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 384, Register: gpu.ShaderRegister{Class: "b", Space: 0, Index: 0}},
+				{Name: "item", Group: 1, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 112, Register: gpu.ShaderRegister{Class: "b", Space: 1, Index: 0}},
+			},
+		},
+		{Name: "fs_tri", Stage: gpu.ShaderStageFragment,
+			Bindings: []gpu.ShaderBinding{
+				{Name: "frame", Group: 0, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 384, Register: gpu.ShaderRegister{Class: "b", Space: 0, Index: 0}},
+				{Name: "item", Group: 1, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 112, Register: gpu.ShaderRegister{Class: "b", Space: 1, Index: 0}},
 			},
 		},
 	},
@@ -991,18 +1726,67 @@ var Point = &gpu.Shader{
 // screen, and the fragment shader cuts it to a disc or a square with an anti-aliased edge. A point is an instance (its position
 // in the mesh's units); the corners of the quad come from a small vertex buffer.
 
+// What the shaders of viewport3d share (SPEC §27.8): the frame's uniform data, the record of an item, and the section planes.
+
 struct Light {
+	// dir points to the light, in view space.
 	dir: vec4<f32>,
+	// color is the light's color times its intensity.
 	color: vec4<f32>,
 }
 
 struct Frame {
 	proj: mat4x4<f32>,
+	// lights are the light at the camera, then up to four directional ones; an unused one has a black color.
 	lights: array<Light, 5>,
 	ambient: vec4<f32>,
+	// viewport is the width and the height of the target in pixels, and their inverses.
 	viewport: vec4<f32>,
 	// params are the near plane's distance, the device pixel ratio and two unused numbers.
 	params: vec4<f32>,
+	// planes are the section planes in view space, relative to the eye (D30): a point p with dot(plane.xyz, p) + plane.w > 0 is
+	// cut away.
+	planes: array<vec4<f32>, 6>,
+	// section is the number of planes in x.
+	section: vec4<f32>,
+}
+
+@group(0) @binding(0) var<uniform> frame: Frame;
+
+// Item is the record of a line, a point or a picked item: the matrix that takes the mesh's positions to the view, relative to
+// the eye, a tint (the highlight of a selected item: its color, and the part of it that replaces the material's in a), and
+// numbers for the shader that reads it.
+struct Item {
+	mv: mat4x4<f32>,
+	tint: vec4<f32>,
+	params: vec4<f32>,
+	extra: vec4<f32>,
+}
+
+// section_clipped says whether a point of the view space is cut away by a section plane. skip is the plane to leave out (the
+// plane that a cap lies on), or -1.
+fn section_clipped(p: vec3<f32>, skip: i32) -> bool {
+	let count = i32(frame.section.x);
+	for (var i = 0; i < 6; i = i + 1) {
+		if (i >= count) {
+			break;
+		}
+		if (i == skip) {
+			continue;
+		}
+		let plane = frame.planes[i];
+		if (dot(plane.xyz, p) + plane.w > 0.0) {
+			return true;
+		}
+	}
+	return false;
+}
+
+// PickOut is what a pick pass writes for a pixel: the number of the item (from 1, 0 for nothing) and of the primitive in it, and
+// the depth.
+struct PickOut {
+	@location(0) ids: vec2<u32>,
+	@location(1) depth: f32,
 }
 
 struct PointMaterial {
@@ -1011,11 +1795,6 @@ struct PointMaterial {
 	params: vec4<f32>,
 }
 
-struct Item {
-	mv: mat4x4<f32>,
-}
-
-@group(0) @binding(0) var<uniform> frame: Frame;
 @group(1) @binding(0) var<uniform> point: PointMaterial;
 @group(2) @binding(0) var<uniform> item: Item;
 
@@ -1023,11 +1802,25 @@ struct VOut {
 	@builtin(position) clip: vec4<f32>,
 	// local is the position in pixels from the center of the point.
 	@location(0) local: vec2<f32>,
+	@location(1) view_pos: vec3<f32>,
+	// index is the number of the point in its mesh, which the picking reports.
+	@location(2) @interpolate(flat) index: f32,
 }
 
 @vertex
 fn vs_main(@location(0) p: vec3<f32>, @location(1) corner: vec2<f32>) -> VOut {
+	return vertex_point(p, corner, 0.0);
+}
+
+// vs_pick is vs_main for the picking: the point also has its number.
+@vertex
+fn vs_pick(@location(0) p: vec3<f32>, @location(1) corner: vec2<f32>, @location(2) index: f32) -> VOut {
+	return vertex_point(p, corner, index);
+}
+
+fn vertex_point(p: vec3<f32>, corner: vec2<f32>, index: f32) -> VOut {
 	var o: VOut;
+	o.index = index;
 	o.clip = vec4<f32>(2.0, 2.0, 2.0, 1.0);
 	let v = item.mv * vec4<f32>(p, 1.0);
 	if (-v.z < frame.params.x) {
@@ -1038,11 +1831,15 @@ fn vs_main(@location(0) p: vec3<f32>, @location(1) corner: vec2<f32>) -> VOut {
 	let offset = corner * half_size / (0.5 * frame.viewport.xy);
 	o.clip = vec4<f32>(k.xy + offset * k.w, k.z, k.w);
 	o.local = corner * half_size;
+	o.view_pos = v.xyz;
 	return o;
 }
 
 @fragment
 fn fs_main(in: VOut) -> @location(0) vec4<f32> {
+	if (section_clipped(in.view_pos, -1)) {
+		discard;
+	}
 	let half_size = 0.5 * point.params.x * frame.params.y;
 	var cover = 0.0;
 	if (point.params.y > 0.5) {
@@ -1050,8 +1847,30 @@ fn fs_main(in: VOut) -> @location(0) vec4<f32> {
 	} else {
 		cover = clamp(half_size + 0.5 - length(in.local), 0.0, 1.0);
 	}
+	let rgb = mix(point.color.rgb, item.tint.rgb, item.tint.a);
 	let a = point.color.a * cover;
-	return vec4<f32>(point.color.rgb * a, a);
+	return vec4<f32>(rgb * a, a);
+}
+
+@fragment
+fn fs_pick(in: VOut) -> PickOut {
+	if (section_clipped(in.view_pos, -1)) {
+		discard;
+	}
+	let half_size = 0.5 * point.params.x * frame.params.y;
+	var cover = 0.0;
+	if (point.params.y > 0.5) {
+		cover = clamp(half_size + 0.5 - abs(in.local.x), 0.0, 1.0) * clamp(half_size + 0.5 - abs(in.local.y), 0.0, 1.0);
+	} else {
+		cover = clamp(half_size + 0.5 - length(in.local), 0.0, 1.0);
+	}
+	if (cover < 0.5) {
+		discard;
+	}
+	var o: PickOut;
+	o.ids = vec2<u32>(u32(item.params.x), u32(in.index + 0.5));
+	o.depth = in.clip.z;
+	return o;
 }
 `,
 	SPIRV: spirvPoint,
@@ -1066,6 +1885,20 @@ struct Frame {
     float4 ambient;
     float4 viewport;
     float4 params;
+    float4 planes[6];
+    float4 section;
+};
+
+struct Item {
+    row_major float4x4 mv;
+    float4 tint;
+    float4 params;
+    float4 extra;
+};
+
+struct PickOut {
+    uint2 ids : SV_Target0;
+    float depth : SV_Target1;
 };
 
 struct PointMaterial {
@@ -1073,13 +1906,11 @@ struct PointMaterial {
     float4 params;
 };
 
-struct Item {
-    row_major float4x4 mv;
-};
-
 struct VOut {
     float4 clip_ : SV_Position;
     float2 local : LOC0;
+    float3 view_pos : LOC1;
+    nointerpolation float index : LOC2;
 };
 
 cbuffer frame : register(b0, space0) { Frame frame; }
@@ -1088,62 +1919,182 @@ cbuffer item : register(b0, space2) { Item item; }
 
 struct VertexOutput_vs_main {
     float2 local : LOC0;
+    float3 view_pos : LOC1;
+    nointerpolation float index_2 : LOC2;
     float4 clip_ : SV_Position;
 };
 
-struct FragmentInput_fs_main {
+struct VertexOutput_vs_pick {
     float2 local_1 : LOC0;
+    float3 view_pos_1 : LOC1;
+    nointerpolation float index_3 : LOC2;
     float4 clip_1 : SV_Position;
 };
 
+struct FragmentInput_fs_main {
+    float2 local_2 : LOC0;
+    float3 view_pos_2 : LOC1;
+    nointerpolation float index_4 : LOC2;
+    float4 clip_2 : SV_Position;
+};
+
+struct FragmentInput_fs_pick {
+    float2 local_3 : LOC0;
+    float3 view_pos_3 : LOC1;
+    nointerpolation float index_5 : LOC2;
+    float4 clip_3 : SV_Position;
+};
+
+int naga_f2i32(float value) {
+    return int(clamp(value, -2147483600.0, 2147483500.0));
+}
+
+bool section_clipped(float3 p_2, int skip)
+{
+    int i = int(0);
+
+    float _e5 = frame.section.x;
+    int count = naga_f2i32(_e5);
+    uint2 loop_bound = uint2(4294967295u, 4294967295u);
+    bool loop_init = true;
+    while(true) {
+        if (all(loop_bound == uint2(0u, 0u))) { break; }
+        loop_bound -= uint2(loop_bound.y == 0u, 1u);
+        if (!loop_init) {
+            int _e28 = i;
+            i = asint(asuint(_e28) + asuint(int(1)));
+        }
+        loop_init = false;
+        int _e9 = i;
+        if ((_e9 < int(6))) {
+        } else {
+            break;
+        }
+        {
+            int _e12 = i;
+            if ((_e12 >= count)) {
+                break;
+            }
+            int _e14 = i;
+            if ((_e14 == skip)) {
+                continue;
+            }
+            int _e18 = i;
+            float4 plane = frame.planes[_e18];
+            if (((dot(plane.xyz, p_2) + plane.w) > 0.0)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+VOut vertex_point(float3 p_3, float2 corner_2, float index_1)
+{
+    VOut o_1 = (VOut)0;
+
+    o_1.index = index_1;
+    o_1.clip_ = float4(2.0, 2.0, 2.0, 1.0);
+    float4x4 _e13 = item.mv;
+    float4 v = mul(float4(p_3, 1.0), _e13);
+    float _e22 = frame.params.x;
+    if ((-(v.z) < _e22)) {
+        VOut _e24 = o_1;
+        VOut vout = _e24;
+        return vout;
+    }
+    float4x4 _e27 = frame.proj;
+    float4 k = mul(v, _e27);
+    float _e32 = point_.params.x;
+    float _e38 = frame.params.y;
+    float half_size = (((0.5 * _e32) * _e38) + 1.0);
+    float4 _e45 = frame.viewport;
+    float2 offset = ((corner_2 * half_size) / (0.5 * _e45.xy));
+    o_1.clip_ = float4((k.xy + (offset * k.w)), k.z, k.w);
+    o_1.local = (corner_2 * half_size);
+    o_1.view_pos = v.xyz;
+    VOut _e62 = o_1;
+    VOut vout_1 = _e62;
+    return vout_1;
+}
+
 VertexOutput_vs_main vs_main(float3 p : LOC0, float2 corner : LOC1)
 {
-    VOut o = (VOut)0;
-
-    o.clip_ = float4(2.0, 2.0, 2.0, 1.0);
-    float4x4 _e11 = item.mv;
-    float4 v = mul(float4(p, 1.0), _e11);
-    float _e20 = frame.params.x;
-    if ((-(v.z) < _e20)) {
-        VOut _e22 = o;
-        VOut vout = _e22;
-        VertexOutput_vs_main vout_1 = { vout.local, vout.clip_ };
-        return vout_1;
-    }
-    float4x4 _e25 = frame.proj;
-    float4 k = mul(v, _e25);
-    float _e30 = point_.params.x;
-    float _e36 = frame.params.y;
-    float half_size = (((0.5 * _e30) * _e36) + 1.0);
-    float4 _e43 = frame.viewport;
-    float2 offset = ((corner * half_size) / (0.5 * _e43.xy));
-    o.clip_ = float4((k.xy + (offset * k.w)), k.z, k.w);
-    o.local = (corner * half_size);
-    VOut _e58 = o;
-    VOut vout_2 = _e58;
-    VertexOutput_vs_main vout_2_ = { vout_2.local, vout_2.clip_ };
+    VOut _e3 = vertex_point(p, corner, 0.0);
+    VOut vout_2 = _e3;
+    VertexOutput_vs_main vout_2_ = { vout_2.local, vout_2.view_pos, vout_2.index, vout_2.clip_ };
     return vout_2_;
+}
+
+VertexOutput_vs_pick vs_pick(float3 p_1 : LOC0, float2 corner_1 : LOC1, float index : LOC2)
+{
+    VOut _e3 = vertex_point(p_1, corner_1, index);
+    VOut vout_3 = _e3;
+    VertexOutput_vs_pick vout_3_ = { vout_3.local, vout_3.view_pos, vout_3.index, vout_3.clip_ };
+    return vout_3_;
 }
 
 float4 fs_main(FragmentInput_fs_main fragmentinput_fs_main) : SV_Target0
 {
-    VOut in_ = { fragmentinput_fs_main.clip_1, fragmentinput_fs_main.local_1 };
+    VOut in_ = { fragmentinput_fs_main.clip_2, fragmentinput_fs_main.local_2, fragmentinput_fs_main.view_pos_2, fragmentinput_fs_main.index_4 };
     float cover = 0.0;
 
-    float _e4 = point_.params.x;
-    float _e10 = frame.params.y;
-    float half_size_1 = ((0.5 * _e4) * _e10);
-    float _e17 = point_.params.y;
-    if ((_e17 > 0.5)) {
+    const bool _e3 = section_clipped(in_.view_pos, int(-1));
+    if (_e3) {
+        discard;
+    }
+    float _e7 = point_.params.x;
+    float _e13 = frame.params.y;
+    float half_size_1 = ((0.5 * _e7) * _e13);
+    float _e20 = point_.params.y;
+    if ((_e20 > 0.5)) {
         cover = (clamp(((half_size_1 + 0.5) - abs(in_.local.x)), 0.0, 1.0) * clamp(((half_size_1 + 0.5) - abs(in_.local.y)), 0.0, 1.0));
     } else {
         cover = clamp(((half_size_1 + 0.5) - length(in_.local)), 0.0, 1.0);
     }
-    float _e50 = point_.color.w;
-    float _e51 = cover;
-    float a = (_e50 * _e51);
-    float4 _e55 = point_.color;
-    return float4((_e55.xyz * a), a);
+    float4 _e52 = point_.color;
+    float4 _e56 = item.tint;
+    float _e61 = item.tint.w;
+    float3 rgb = lerp(_e52.xyz, _e56.xyz, _e61);
+    float _e66 = point_.color.w;
+    float _e67 = cover;
+    float a = (_e66 * _e67);
+    return float4((rgb * a), a);
+}
+
+uint naga_f2u32(float value) {
+    return uint(clamp(value, 0.0, 4294967000.0));
+}
+
+PickOut fs_pick(FragmentInput_fs_pick fragmentinput_fs_pick)
+{
+    VOut in_1 = { fragmentinput_fs_pick.clip_3, fragmentinput_fs_pick.local_3, fragmentinput_fs_pick.view_pos_3, fragmentinput_fs_pick.index_5 };
+    float cover_1 = 0.0;
+    PickOut o = (PickOut)0;
+
+    const bool _e3 = section_clipped(in_1.view_pos, int(-1));
+    if (_e3) {
+        discard;
+    }
+    float _e7 = point_.params.x;
+    float _e13 = frame.params.y;
+    float half_size_2 = ((0.5 * _e7) * _e13);
+    float _e20 = point_.params.y;
+    if ((_e20 > 0.5)) {
+        cover_1 = (clamp(((half_size_2 + 0.5) - abs(in_1.local.x)), 0.0, 1.0) * clamp(((half_size_2 + 0.5) - abs(in_1.local.y)), 0.0, 1.0));
+    } else {
+        cover_1 = clamp(((half_size_2 + 0.5) - length(in_1.local)), 0.0, 1.0);
+    }
+    float _e50 = cover_1;
+    if ((_e50 < 0.5)) {
+        discard;
+    }
+    float _e58 = item.params.x;
+    o.ids = uint2(naga_f2u32(_e58), naga_f2u32((in_1.index + 0.5)));
+    o.depth = in_1.clip_.z;
+    PickOut _e68 = o;
+    PickOut pickout = _e68;
+    return pickout;
 }
 `,
 	Entries: []gpu.EntryPoint{
@@ -1153,15 +2104,1170 @@ float4 fs_main(FragmentInput_fs_main fragmentinput_fs_main) : SV_Target0
 				{Name: "corner", Location: 1, Type: gpu.ShaderTypeFloat32x2},
 			},
 			Bindings: []gpu.ShaderBinding{
-				{Name: "frame", Group: 0, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 272, Register: gpu.ShaderRegister{Class: "b", Space: 0, Index: 0}},
+				{Name: "frame", Group: 0, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 384, Register: gpu.ShaderRegister{Class: "b", Space: 0, Index: 0}},
 				{Name: "point", Group: 1, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 32, Register: gpu.ShaderRegister{Class: "b", Space: 1, Index: 0}},
-				{Name: "item", Group: 2, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 64, Register: gpu.ShaderRegister{Class: "b", Space: 2, Index: 0}},
+				{Name: "item", Group: 2, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 112, Register: gpu.ShaderRegister{Class: "b", Space: 2, Index: 0}},
+			},
+		},
+		{Name: "vs_pick", Stage: gpu.ShaderStageVertex,
+			Inputs: []gpu.VertexInput{
+				{Name: "p", Location: 0, Type: gpu.ShaderTypeFloat32x3},
+				{Name: "corner", Location: 1, Type: gpu.ShaderTypeFloat32x2},
+				{Name: "index", Location: 2, Type: gpu.ShaderTypeFloat32},
+			},
+			Bindings: []gpu.ShaderBinding{
+				{Name: "frame", Group: 0, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 384, Register: gpu.ShaderRegister{Class: "b", Space: 0, Index: 0}},
+				{Name: "point", Group: 1, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 32, Register: gpu.ShaderRegister{Class: "b", Space: 1, Index: 0}},
+				{Name: "item", Group: 2, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 112, Register: gpu.ShaderRegister{Class: "b", Space: 2, Index: 0}},
 			},
 		},
 		{Name: "fs_main", Stage: gpu.ShaderStageFragment,
 			Bindings: []gpu.ShaderBinding{
-				{Name: "frame", Group: 0, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 272, Register: gpu.ShaderRegister{Class: "b", Space: 0, Index: 0}},
+				{Name: "frame", Group: 0, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 384, Register: gpu.ShaderRegister{Class: "b", Space: 0, Index: 0}},
 				{Name: "point", Group: 1, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 32, Register: gpu.ShaderRegister{Class: "b", Space: 1, Index: 0}},
+				{Name: "item", Group: 2, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 112, Register: gpu.ShaderRegister{Class: "b", Space: 2, Index: 0}},
+			},
+		},
+		{Name: "fs_pick", Stage: gpu.ShaderStageFragment,
+			Bindings: []gpu.ShaderBinding{
+				{Name: "frame", Group: 0, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 384, Register: gpu.ShaderRegister{Class: "b", Space: 0, Index: 0}},
+				{Name: "point", Group: 1, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 32, Register: gpu.ShaderRegister{Class: "b", Space: 1, Index: 0}},
+				{Name: "item", Group: 2, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 112, Register: gpu.ShaderRegister{Class: "b", Space: 2, Index: 0}},
+			},
+		},
+	},
+}
+
+//go:embed section.spv
+var spirvSection []byte
+
+// Section is section.wgsl.
+var Section = &gpu.Shader{
+	Name: "section",
+	WGSL: `// The sections of viewport3d (SPEC §27.8): the cap that closes a solid mesh where a section plane cuts it, and the outline of the
+// cut. A cap is drawn in three steps with the stencil, for each plane and each closed item: vs_count and fs_count draw the part
+// of the item that the plane leaves, back faces adding one to the stencil and front faces taking one away, so that a pixel
+// whose line of sight ends inside the solid, beyond the plane, is not zero; vs_full and fs_cap then draw the plane itself
+// over the whole view, where the stencil is not zero, with the depth that the plane has at each pixel; and vs_full with
+// fs_clear sets the stencil to zero again. The outline is a quad for each triangle that the plane crosses, made by
+// vs_outline from the triangle's three corners.
+//
+// The record of the item has: tint the color of the cap, extra the color of the outline, and params the index of the plane in
+// x, the width of the outline in logical pixels in y and the pull of the outline towards the camera in z.
+
+// What the shaders of viewport3d share (SPEC §27.8): the frame's uniform data, the record of an item, and the section planes.
+
+struct Light {
+	// dir points to the light, in view space.
+	dir: vec4<f32>,
+	// color is the light's color times its intensity.
+	color: vec4<f32>,
+}
+
+struct Frame {
+	proj: mat4x4<f32>,
+	// lights are the light at the camera, then up to four directional ones; an unused one has a black color.
+	lights: array<Light, 5>,
+	ambient: vec4<f32>,
+	// viewport is the width and the height of the target in pixels, and their inverses.
+	viewport: vec4<f32>,
+	// params are the near plane's distance, the device pixel ratio and two unused numbers.
+	params: vec4<f32>,
+	// planes are the section planes in view space, relative to the eye (D30): a point p with dot(plane.xyz, p) + plane.w > 0 is
+	// cut away.
+	planes: array<vec4<f32>, 6>,
+	// section is the number of planes in x.
+	section: vec4<f32>,
+}
+
+@group(0) @binding(0) var<uniform> frame: Frame;
+
+// Item is the record of a line, a point or a picked item: the matrix that takes the mesh's positions to the view, relative to
+// the eye, a tint (the highlight of a selected item: its color, and the part of it that replaces the material's in a), and
+// numbers for the shader that reads it.
+struct Item {
+	mv: mat4x4<f32>,
+	tint: vec4<f32>,
+	params: vec4<f32>,
+	extra: vec4<f32>,
+}
+
+// section_clipped says whether a point of the view space is cut away by a section plane. skip is the plane to leave out (the
+// plane that a cap lies on), or -1.
+fn section_clipped(p: vec3<f32>, skip: i32) -> bool {
+	let count = i32(frame.section.x);
+	for (var i = 0; i < 6; i = i + 1) {
+		if (i >= count) {
+			break;
+		}
+		if (i == skip) {
+			continue;
+		}
+		let plane = frame.planes[i];
+		if (dot(plane.xyz, p) + plane.w > 0.0) {
+			return true;
+		}
+	}
+	return false;
+}
+
+// PickOut is what a pick pass writes for a pixel: the number of the item (from 1, 0 for nothing) and of the primitive in it, and
+// the depth.
+struct PickOut {
+	@location(0) ids: vec2<u32>,
+	@location(1) depth: f32,
+}
+// The quad of a line segment (SPEC §27.8): the vertex shaders of the lines, of the picking of lines and of the outline of a
+// section expand a segment into a quad in the screen with it, so that the width is in logical pixels whatever the distance.
+// It needs common.wgsl.inc.
+
+struct SegmentQuad {
+	clip: vec4<f32>,
+	// view_pos is the point of the segment that the corner is at, in view space.
+	view_pos: vec3<f32>,
+	// across is the distance in pixels from the center of the line, along: the distance from its first end, along it.
+	across: f32,
+	along: f32,
+	length_px: f32,
+	// ta and tb are the part of the segment in front of the near plane, from 0 to 1.
+	ta: f32,
+	tb: f32,
+	visible: bool,
+}
+
+// segment_quad expands the segment from a to b (view space) at a corner of the quad: corner.x is 0 at the first end and 1 at the
+// second, corner.y is -1 and 1 for the two sides. width is in logical pixels; pull moves the depth towards the camera by a
+// part of itself (so that an edge is not hidden by the face it lies on).
+fn segment_quad(a: vec3<f32>, b: vec3<f32>, corner: vec2<f32>, width: f32, pull: f32) -> SegmentQuad {
+	var o: SegmentQuad;
+	// A segment that is wholly behind the near plane is put outside the clip volume.
+	o.clip = vec4<f32>(2.0, 2.0, 2.0, 1.0);
+	o.visible = false;
+	let near = frame.params.x;
+	let za = -a.z;
+	let zb = -b.z;
+	if (za < near && zb < near) {
+		return o;
+	}
+	// The part of the segment in front of the near plane.
+	var ta = 0.0;
+	var tb = 1.0;
+	let cut = (near - za) / (zb - za);
+	if (za < near) {
+		ta = cut;
+	}
+	if (zb < near) {
+		tb = cut;
+	}
+	let ca = mix(a, b, ta);
+	let cb = mix(a, b, tb);
+	let ka = frame.proj * vec4<f32>(ca, 1.0);
+	let kb = frame.proj * vec4<f32>(cb, 1.0);
+	let half_vp = 0.5 * frame.viewport.xy;
+	let sa = ka.xy / ka.w * half_vp;
+	let sb = kb.xy / kb.w * half_vp;
+	var dir = sb - sa;
+	let span = length(dir);
+	if (span > 0.0001) {
+		dir = dir / span;
+	} else {
+		dir = vec2<f32>(1.0, 0.0);
+	}
+	let nrm = vec2<f32>(-dir.y, dir.x);
+	let half_w = 0.5 * width * frame.params.y;
+	let pad = half_w + 1.0;
+	let at_end = corner.x;
+	let sgn = at_end * 2.0 - 1.0;
+	let offset = dir * (sgn * pad) + nrm * (corner.y * pad);
+	let k = mix(ka, kb, at_end);
+	o.clip = vec4<f32>(k.xy + offset / half_vp * k.w, k.z * (1.0 + pull), k.w);
+	o.view_pos = mix(ca, cb, at_end);
+	o.across = corner.y * pad;
+	o.along = at_end * span + sgn * pad;
+	o.length_px = span;
+	o.ta = ta;
+	o.tb = tb;
+	o.visible = true;
+	return o;
+}
+
+// segment_cover is how much of a pixel of a quad of a segment the line covers, from 0 to 1, with anti-aliased sides and ends.
+fn segment_cover(width: f32, across: f32, along: f32, length_px: f32) -> f32 {
+	let half_w = 0.5 * width * frame.params.y;
+	var cover = clamp(half_w + 0.5 - abs(across), 0.0, 1.0);
+	cover = cover * clamp(along + half_w + 0.5, 0.0, 1.0) * clamp(length_px + half_w + 0.5 - along, 0.0, 1.0);
+	return cover;
+}
+
+@group(1) @binding(0) var<uniform> item: Item;
+
+struct Counted {
+	@builtin(position) clip: vec4<f32>,
+	@location(0) view_pos: vec3<f32>,
+}
+
+@vertex
+fn vs_count(@location(0) p: vec3<f32>) -> Counted {
+	var o: Counted;
+	let v = item.mv * vec4<f32>(p, 1.0);
+	o.view_pos = v.xyz;
+	o.clip = frame.proj * v;
+	return o;
+}
+
+@fragment
+fn fs_count(in: Counted) -> @location(0) vec4<f32> {
+	// Only what the plane leaves counts.
+	let plane = frame.planes[i32(item.params.x)];
+	if (dot(plane.xyz, in.view_pos) + plane.w > 0.0) {
+		discard;
+	}
+	return vec4<f32>(0.0);
+}
+
+struct Full {
+	@builtin(position) clip: vec4<f32>,
+	@location(0) ndc: vec2<f32>,
+}
+
+@vertex
+fn vs_full(@builtin(vertex_index) i: u32) -> Full {
+	// One triangle that covers the view: (-1, -1), (3, -1) and (-1, 3).
+	let x = f32((i << 1u) & 2u);
+	let y = f32(i & 2u);
+	var o: Full;
+	o.ndc = vec2<f32>(x * 2.0 - 1.0, y * 2.0 - 1.0);
+	o.clip = vec4<f32>(o.ndc, 0.0, 1.0);
+	return o;
+}
+
+struct Capped {
+	@location(0) color: vec4<f32>,
+	@builtin(frag_depth) depth: f32,
+}
+
+@fragment
+fn fs_cap(in: Full) -> Capped {
+	var o: Capped;
+	o.color = vec4<f32>(0.0);
+	o.depth = 0.0;
+	let plane = frame.planes[i32(item.params.x)];
+	// The line of sight of the pixel: from the eye, or, in an orthographic view, parallel to the axis of the view.
+	var origin = vec3<f32>(0.0);
+	var dir = vec3<f32>(in.ndc.x / frame.proj[0][0], in.ndc.y / frame.proj[1][1], -1.0);
+	if (frame.proj[3][3] > 0.5) {
+		origin = vec3<f32>(dir.xy, 0.0);
+		dir = vec3<f32>(0.0, 0.0, -1.0);
+	}
+	let facing = dot(plane.xyz, dir);
+	if (abs(facing) < 1.0e-9) {
+		discard;
+	}
+	let t = -(plane.w + dot(plane.xyz, origin)) / facing;
+	let p = origin + dir * t;
+	if (t <= 0.0 || section_clipped(p, i32(item.params.x))) {
+		discard;
+	}
+	let k = frame.proj * vec4<f32>(p, 1.0);
+	o.depth = k.z / k.w;
+	o.color = vec4<f32>(item.tint.rgb, 1.0);
+	return o;
+}
+
+@fragment
+fn fs_clear(in: Full) -> @location(0) vec4<f32> {
+	return vec4<f32>(0.0);
+}
+
+struct Outlined {
+	@builtin(position) clip: vec4<f32>,
+	@location(0) across: f32,
+	@location(1) along: f32,
+	@location(2) length_px: f32,
+	@location(3) view_pos: vec3<f32>,
+}
+
+@vertex
+fn vs_outline(@location(0) a: vec3<f32>, @location(1) b: vec3<f32>, @location(2) c: vec3<f32>, @location(3) corner: vec2<f32>) -> Outlined {
+	var o: Outlined;
+	o.clip = vec4<f32>(2.0, 2.0, 2.0, 1.0);
+	let plane = frame.planes[i32(item.params.x)];
+	let va = (item.mv * vec4<f32>(a, 1.0)).xyz;
+	let vb = (item.mv * vec4<f32>(b, 1.0)).xyz;
+	let vc = (item.mv * vec4<f32>(c, 1.0)).xyz;
+	let da = dot(plane.xyz, va) + plane.w;
+	let db = dot(plane.xyz, vb) + plane.w;
+	let dc = dot(plane.xyz, vc) + plane.w;
+	let sa = da > 0.0;
+	let sb = db > 0.0;
+	let sc = dc > 0.0;
+	// The points where the edges that cross the plane cross it.
+	var p0 = vec3<f32>(0.0);
+	var p1 = vec3<f32>(0.0);
+	var n = 0;
+	if (sa != sb) {
+		p0 = mix(va, vb, da / (da - db));
+		n = 1;
+	}
+	if (sb != sc) {
+		let p = mix(vb, vc, db / (db - dc));
+		if (n == 0) {
+			p0 = p;
+		} else {
+			p1 = p;
+		}
+		n = n + 1;
+	}
+	if (sc != sa) {
+		let p = mix(vc, va, dc / (dc - da));
+		if (n == 0) {
+			p0 = p;
+		} else {
+			p1 = p;
+		}
+		n = n + 1;
+	}
+	if (n != 2) {
+		return o;
+	}
+	let q = segment_quad(p0, p1, corner, item.params.y, item.params.z);
+	o.clip = q.clip;
+	o.across = q.across;
+	o.along = q.along;
+	o.length_px = q.length_px;
+	o.view_pos = q.view_pos;
+	return o;
+}
+
+@fragment
+fn fs_outline(in: Outlined) -> @location(0) vec4<f32> {
+	if (section_clipped(in.view_pos, i32(item.params.x))) {
+		discard;
+	}
+	let cover = segment_cover(item.params.y, in.across, in.along, in.length_px);
+	let a = item.extra.a * cover;
+	return vec4<f32>(item.extra.rgb * a, a);
+}
+`,
+	SPIRV: spirvSection,
+	HLSL: `struct Light {
+    float4 dir;
+    float4 color;
+};
+
+struct Frame {
+    row_major float4x4 proj;
+    Light lights[5];
+    float4 ambient;
+    float4 viewport;
+    float4 params;
+    float4 planes[6];
+    float4 section;
+};
+
+struct Item {
+    row_major float4x4 mv;
+    float4 tint;
+    float4 params;
+    float4 extra;
+};
+
+struct PickOut {
+    uint2 ids : LOC0;
+    float depth : LOC1;
+};
+
+struct SegmentQuad {
+    float4 clip_;
+    float3 view_pos;
+    float across;
+    float along;
+    float length_px;
+    float ta;
+    float tb;
+    bool visible;
+    int _end_pad_0;
+    int _end_pad_1;
+    int _end_pad_2;
+};
+
+struct Counted {
+    float4 clip_ : SV_Position;
+    float3 view_pos : LOC0;
+};
+
+struct Full {
+    float4 clip_ : SV_Position;
+    float2 ndc : LOC0;
+};
+
+struct Capped {
+    float4 color : SV_Target0;
+    float depth : SV_Depth;
+};
+
+struct Outlined {
+    float4 clip_ : SV_Position;
+    float across : LOC0;
+    float along : LOC1;
+    float length_px : LOC2;
+    float3 view_pos : LOC3;
+};
+
+cbuffer frame : register(b0, space0) { Frame frame; }
+cbuffer item : register(b0, space1) { Item item; }
+
+struct VertexOutput_vs_count {
+    float3 view_pos : LOC0;
+    float4 clip_ : SV_Position;
+};
+
+struct FragmentInput_fs_count {
+    float3 view_pos_1 : LOC0;
+    float4 clip_1 : SV_Position;
+};
+
+struct VertexOutput_vs_full {
+    float2 ndc : LOC0;
+    float4 clip_2 : SV_Position;
+};
+
+struct FragmentInput_fs_cap {
+    float2 ndc_1 : LOC0;
+    float4 clip_3 : SV_Position;
+};
+
+struct FragmentInput_fs_clear {
+    float2 ndc_2 : LOC0;
+    float4 clip_4 : SV_Position;
+};
+
+struct VertexOutput_vs_outline {
+    float across_1 : LOC0;
+    float along_1 : LOC1;
+    float length_px_1 : LOC2;
+    float3 view_pos_2 : LOC3;
+    float4 clip_5 : SV_Position;
+};
+
+struct FragmentInput_fs_outline {
+    float across_2 : LOC0;
+    float along_2 : LOC1;
+    float length_px_2 : LOC2;
+    float3 view_pos_3 : LOC3;
+    float4 clip_6 : SV_Position;
+};
+
+int naga_f2i32(float value) {
+    return int(clamp(value, -2147483600.0, 2147483500.0));
+}
+
+bool section_clipped(float3 p_1, int skip)
+{
+    int i_1 = int(0);
+
+    float _e5 = frame.section.x;
+    int count = naga_f2i32(_e5);
+    uint2 loop_bound = uint2(4294967295u, 4294967295u);
+    bool loop_init = true;
+    while(true) {
+        if (all(loop_bound == uint2(0u, 0u))) { break; }
+        loop_bound -= uint2(loop_bound.y == 0u, 1u);
+        if (!loop_init) {
+            int _e28 = i_1;
+            i_1 = asint(asuint(_e28) + asuint(int(1)));
+        }
+        loop_init = false;
+        int _e9 = i_1;
+        if ((_e9 < int(6))) {
+        } else {
+            break;
+        }
+        {
+            int _e12 = i_1;
+            if ((_e12 >= count)) {
+                break;
+            }
+            int _e14 = i_1;
+            if ((_e14 == skip)) {
+                continue;
+            }
+            int _e18 = i_1;
+            float4 plane = frame.planes[_e18];
+            if (((dot(plane.xyz, p_1) + plane.w) > 0.0)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+SegmentQuad segment_quad(float3 a_1, float3 b_1, float2 corner_1, float width, float pull)
+{
+    SegmentQuad o_4 = (SegmentQuad)0;
+    bool local_1 = (bool)0;
+    float ta = 0.0;
+    float tb = 1.0;
+    float2 dir_1 = (float2)0;
+
+    o_4.clip_ = float4(2.0, 2.0, 2.0, 1.0);
+    o_4.visible = false;
+    float near = frame.params.x;
+    float za = -(a_1.z);
+    float zb = -(b_1.z);
+    if ((za < near)) {
+        local_1 = (zb < near);
+    } else {
+        local_1 = false;
+    }
+    bool _e27 = local_1;
+    if (_e27) {
+        SegmentQuad _e28 = o_4;
+        SegmentQuad segmentquad = _e28;
+        return segmentquad;
+    }
+    float cut = ((near - za) / (zb - za));
+    if ((za < near)) {
+        ta = cut;
+    }
+    if ((zb < near)) {
+        tb = cut;
+    }
+    float _e38 = ta;
+    float3 ca = lerp(a_1, b_1, _e38);
+    float _e40 = tb;
+    float3 cb = lerp(a_1, b_1, _e40);
+    float4x4 _e44 = frame.proj;
+    float4 ka = mul(float4(ca, 1.0), _e44);
+    float4x4 _e50 = frame.proj;
+    float4 kb = mul(float4(cb, 1.0), _e50);
+    float4 _e56 = frame.viewport;
+    float2 half_vp = (0.5 * _e56.xy);
+    float2 sa = ((ka.xy / (ka.w).xx) * half_vp);
+    float2 sb = ((kb.xy / (kb.w).xx) * half_vp);
+    dir_1 = (sb - sa);
+    float2 _e72 = dir_1;
+    float span = length(_e72);
+    if ((span > 0.0001)) {
+        float2 _e76 = dir_1;
+        dir_1 = (_e76 / (span).xx);
+    } else {
+        dir_1 = float2(1.0, 0.0);
+    }
+    float _e83 = dir_1.y;
+    float _e86 = dir_1.x;
+    float2 nrm = float2(-(_e83), _e86);
+    float _e93 = frame.params.y;
+    float half_w = ((0.5 * width) * _e93);
+    float pad = (half_w + 1.0);
+    float at_end = corner_1.x;
+    float sgn = ((at_end * 2.0) - 1.0);
+    float2 _e102 = dir_1;
+    float2 offset = ((_e102 * (sgn * pad)) + (nrm * (corner_1.y * pad)));
+    float4 k = lerp(ka, kb, at_end);
+    o_4.clip_ = float4((k.xy + ((offset / half_vp) * k.w)), (k.z * (1.0 + pull)), k.w);
+    o_4.view_pos = lerp(ca, cb, at_end);
+    o_4.across = (corner_1.y * pad);
+    o_4.along = ((at_end * span) + (sgn * pad));
+    o_4.length_px = span;
+    float _e133 = ta;
+    o_4.ta = _e133;
+    float _e135 = tb;
+    o_4.tb = _e135;
+    o_4.visible = true;
+    SegmentQuad _e138 = o_4;
+    SegmentQuad segmentquad_1 = _e138;
+    return segmentquad_1;
+}
+
+float segment_cover(float width_1, float across, float along, float length_px)
+{
+    float cover = (float)0;
+
+    float _e9 = frame.params.y;
+    float half_w_1 = ((0.5 * width_1) * _e9);
+    cover = clamp(((half_w_1 + 0.5) - abs(across)), 0.0, 1.0);
+    float _e19 = cover;
+    cover = ((_e19 * clamp(((along + half_w_1) + 0.5), 0.0, 1.0)) * clamp((((length_px + half_w_1) + 0.5) - along), 0.0, 1.0));
+    float _e35 = cover;
+    return _e35;
+}
+
+VertexOutput_vs_count vs_count(float3 p : LOC0)
+{
+    Counted o = (Counted)0;
+
+    float4x4 _e4 = item.mv;
+    float4 v = mul(float4(p, 1.0), _e4);
+    o.view_pos = v.xyz;
+    float4x4 _e13 = frame.proj;
+    o.clip_ = mul(v, _e13);
+    Counted _e15 = o;
+    Counted counted = _e15;
+    VertexOutput_vs_count counted_1 = { counted.view_pos, counted.clip_ };
+    return counted_1;
+}
+
+float4 fs_count(FragmentInput_fs_count fragmentinput_fs_count) : SV_Target0
+{
+    Counted in_ = { fragmentinput_fs_count.clip_1, fragmentinput_fs_count.view_pos_1 };
+    float _e6 = item.params.x;
+    float4 plane_1 = frame.planes[naga_f2i32(_e6)];
+    if (((dot(plane_1.xyz, in_.view_pos) + plane_1.w) > 0.0)) {
+        discard;
+    }
+    return (0.0).xxxx;
+}
+
+VertexOutput_vs_full vs_full(uint i : SV_VertexID)
+{
+    Full o_1 = (Full)0;
+
+    float x = float(((i << 1u) & 2u));
+    float y = float((i & 2u));
+    o_1.ndc = float2(((x * 2.0) - 1.0), ((y * 2.0) - 1.0));
+    float2 _e22 = o_1.ndc;
+    o_1.clip_ = float4(_e22, 0.0, 1.0);
+    Full _e26 = o_1;
+    Full full = _e26;
+    VertexOutput_vs_full full_1 = { full.ndc, full.clip_ };
+    return full_1;
+}
+
+Capped fs_cap(FragmentInput_fs_cap fragmentinput_fs_cap)
+{
+    Full in_1 = { fragmentinput_fs_cap.clip_3, fragmentinput_fs_cap.ndc_1 };
+    Capped o_2 = (Capped)0;
+    float3 origin = (0.0).xxx;
+    float3 dir = (float3)0;
+    bool local = (bool)0;
+
+    o_2.color = (0.0).xxxx;
+    o_2.depth = 0.0;
+    float _e12 = item.params.x;
+    float4 plane_2 = frame.planes[naga_f2i32(_e12)];
+    float _e25 = frame.proj[0].x;
+    float _e33 = frame.proj[1].y;
+    dir = float3((in_1.ndc.x / _e25), (in_1.ndc.y / _e33), -1.0);
+    float _e42 = frame.proj[3].w;
+    if ((_e42 > 0.5)) {
+        float3 _e45 = dir;
+        origin = float3(_e45.xy, 0.0);
+        dir = float3(0.0, 0.0, -1.0);
+    }
+    float3 _e54 = dir;
+    float facing = dot(plane_2.xyz, _e54);
+    if ((abs(facing) < 1e-9)) {
+        discard;
+    }
+    float3 _e61 = origin;
+    float t = (-((plane_2.w + dot(plane_2.xyz, _e61))) / facing);
+    float3 _e66 = origin;
+    float3 _e67 = dir;
+    float3 p_2 = (_e66 + (_e67 * t));
+    if (!((t <= 0.0))) {
+        float _e78 = item.params.x;
+        const bool _e80 = section_clipped(p_2, naga_f2i32(_e78));
+        local = _e80;
+    } else {
+        local = true;
+    }
+    bool _e82 = local;
+    if (_e82) {
+        discard;
+    }
+    float4x4 _e85 = frame.proj;
+    float4 k_1 = mul(float4(p_2, 1.0), _e85);
+    o_2.depth = (k_1.z / k_1.w);
+    float4 _e96 = item.tint;
+    o_2.color = float4(_e96.xyz, 1.0);
+    Capped _e100 = o_2;
+    Capped capped = _e100;
+    return capped;
+}
+
+float4 fs_clear(FragmentInput_fs_clear fragmentinput_fs_clear) : SV_Target0
+{
+    Full in_2 = { fragmentinput_fs_clear.clip_4, fragmentinput_fs_clear.ndc_2 };
+    return (0.0).xxxx;
+}
+
+VertexOutput_vs_outline vs_outline(float3 a : LOC0, float3 b : LOC1, float3 c : LOC2, float2 corner : LOC3)
+{
+    Outlined o_3 = (Outlined)0;
+    float3 p0_ = (0.0).xxx;
+    float3 p1_ = (0.0).xxx;
+    int n = int(0);
+
+    o_3.clip_ = float4(2.0, 2.0, 2.0, 1.0);
+    float _e16 = item.params.x;
+    float4 plane_3 = frame.planes[naga_f2i32(_e16)];
+    float4x4 _e22 = item.mv;
+    float3 va = mul(float4(a, 1.0), _e22).xyz;
+    float4x4 _e29 = item.mv;
+    float3 vb = mul(float4(b, 1.0), _e29).xyz;
+    float4x4 _e36 = item.mv;
+    float3 vc = mul(float4(c, 1.0), _e36).xyz;
+    float da = (dot(plane_3.xyz, va) + plane_3.w);
+    float db = (dot(plane_3.xyz, vb) + plane_3.w);
+    float dc = (dot(plane_3.xyz, vc) + plane_3.w);
+    bool sa_1 = (da > 0.0);
+    bool sb_1 = (db > 0.0);
+    bool sc = (dc > 0.0);
+    if ((sa_1 != sb_1)) {
+        p0_ = lerp(va, vb, (da / (da - db)));
+        n = int(1);
+    }
+    if ((sb_1 != sc)) {
+        float3 p_3 = lerp(vb, vc, (db / (db - dc)));
+        int _e76 = n;
+        if ((_e76 == int(0))) {
+            p0_ = p_3;
+        } else {
+            p1_ = p_3;
+        }
+        int _e79 = n;
+        n = asint(asuint(_e79) + asuint(int(1)));
+    }
+    if ((sc != sa_1)) {
+        float3 p_4 = lerp(vc, va, (dc / (dc - da)));
+        int _e86 = n;
+        if ((_e86 == int(0))) {
+            p0_ = p_4;
+        } else {
+            p1_ = p_4;
+        }
+        int _e89 = n;
+        n = asint(asuint(_e89) + asuint(int(1)));
+    }
+    int _e92 = n;
+    if ((_e92 != int(2))) {
+        Outlined _e95 = o_3;
+        Outlined outlined = _e95;
+        VertexOutput_vs_outline outlined_1 = { outlined.across, outlined.along, outlined.length_px, outlined.view_pos, outlined.clip_ };
+        return outlined_1;
+    }
+    float3 _e96 = p0_;
+    float3 _e97 = p1_;
+    float _e101 = item.params.y;
+    float _e105 = item.params.z;
+    SegmentQuad _e106 = segment_quad(_e96, _e97, corner, _e101, _e105);
+    o_3.clip_ = _e106.clip_;
+    o_3.across = _e106.across;
+    o_3.along = _e106.along;
+    o_3.length_px = _e106.length_px;
+    o_3.view_pos = _e106.view_pos;
+    Outlined _e117 = o_3;
+    Outlined outlined_2 = _e117;
+    VertexOutput_vs_outline outlined_2_ = { outlined_2.across, outlined_2.along, outlined_2.length_px, outlined_2.view_pos, outlined_2.clip_ };
+    return outlined_2_;
+}
+
+float4 fs_outline(FragmentInput_fs_outline fragmentinput_fs_outline) : SV_Target0
+{
+    Outlined in_3 = { fragmentinput_fs_outline.clip_6, fragmentinput_fs_outline.across_2, fragmentinput_fs_outline.along_2, fragmentinput_fs_outline.length_px_2, fragmentinput_fs_outline.view_pos_3 };
+    float _e5 = item.params.x;
+    const bool _e7 = section_clipped(in_3.view_pos, naga_f2i32(_e5));
+    if (_e7) {
+        discard;
+    }
+    float _e11 = item.params.y;
+    const float _e15 = segment_cover(_e11, in_3.across, in_3.along, in_3.length_px);
+    float _e19 = item.extra.w;
+    float a_2 = (_e19 * _e15);
+    float4 _e23 = item.extra;
+    return float4((_e23.xyz * a_2), a_2);
+}
+`,
+	Entries: []gpu.EntryPoint{
+		{Name: "vs_count", Stage: gpu.ShaderStageVertex,
+			Inputs: []gpu.VertexInput{
+				{Name: "p", Location: 0, Type: gpu.ShaderTypeFloat32x3},
+			},
+			Bindings: []gpu.ShaderBinding{
+				{Name: "frame", Group: 0, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 384, Register: gpu.ShaderRegister{Class: "b", Space: 0, Index: 0}},
+				{Name: "item", Group: 1, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 112, Register: gpu.ShaderRegister{Class: "b", Space: 1, Index: 0}},
+			},
+		},
+		{Name: "fs_count", Stage: gpu.ShaderStageFragment,
+			Bindings: []gpu.ShaderBinding{
+				{Name: "frame", Group: 0, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 384, Register: gpu.ShaderRegister{Class: "b", Space: 0, Index: 0}},
+				{Name: "item", Group: 1, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 112, Register: gpu.ShaderRegister{Class: "b", Space: 1, Index: 0}},
+			},
+		},
+		{Name: "vs_full", Stage: gpu.ShaderStageVertex, ReadsVertexIndex: true,
+			Bindings: []gpu.ShaderBinding{},
+		},
+		{Name: "fs_cap", Stage: gpu.ShaderStageFragment,
+			Bindings: []gpu.ShaderBinding{
+				{Name: "frame", Group: 0, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 384, Register: gpu.ShaderRegister{Class: "b", Space: 0, Index: 0}},
+				{Name: "item", Group: 1, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 112, Register: gpu.ShaderRegister{Class: "b", Space: 1, Index: 0}},
+			},
+		},
+		{Name: "fs_clear", Stage: gpu.ShaderStageFragment,
+			Bindings: []gpu.ShaderBinding{},
+		},
+		{Name: "vs_outline", Stage: gpu.ShaderStageVertex,
+			Inputs: []gpu.VertexInput{
+				{Name: "a", Location: 0, Type: gpu.ShaderTypeFloat32x3},
+				{Name: "b", Location: 1, Type: gpu.ShaderTypeFloat32x3},
+				{Name: "c", Location: 2, Type: gpu.ShaderTypeFloat32x3},
+				{Name: "corner", Location: 3, Type: gpu.ShaderTypeFloat32x2},
+			},
+			Bindings: []gpu.ShaderBinding{
+				{Name: "frame", Group: 0, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 384, Register: gpu.ShaderRegister{Class: "b", Space: 0, Index: 0}},
+				{Name: "item", Group: 1, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 112, Register: gpu.ShaderRegister{Class: "b", Space: 1, Index: 0}},
+			},
+		},
+		{Name: "fs_outline", Stage: gpu.ShaderStageFragment,
+			Bindings: []gpu.ShaderBinding{
+				{Name: "frame", Group: 0, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 384, Register: gpu.ShaderRegister{Class: "b", Space: 0, Index: 0}},
+				{Name: "item", Group: 1, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 112, Register: gpu.ShaderRegister{Class: "b", Space: 1, Index: 0}},
+			},
+		},
+	},
+}
+
+//go:embed select.spv
+var spirvSelect []byte
+
+// Select is select.wgsl.
+var Select = &gpu.Shader{
+	Name: "select",
+	WGSL: `// The outline of the selection in viewport3d (SPEC §27.8): the selected items that have faces are drawn white into a mask the size
+// of the view, and fs_outline, over a rectangle around them, colors each pixel that is not in the mask and has a pixel of it within
+// the radius, with an anti-aliased edge: a line of the radius's width around the silhouette.
+//
+// The record has the color of the outline in tint and the radius in pixels in params.x.
+
+// What the shaders of viewport3d share (SPEC §27.8): the frame's uniform data, the record of an item, and the section planes.
+
+struct Light {
+	// dir points to the light, in view space.
+	dir: vec4<f32>,
+	// color is the light's color times its intensity.
+	color: vec4<f32>,
+}
+
+struct Frame {
+	proj: mat4x4<f32>,
+	// lights are the light at the camera, then up to four directional ones; an unused one has a black color.
+	lights: array<Light, 5>,
+	ambient: vec4<f32>,
+	// viewport is the width and the height of the target in pixels, and their inverses.
+	viewport: vec4<f32>,
+	// params are the near plane's distance, the device pixel ratio and two unused numbers.
+	params: vec4<f32>,
+	// planes are the section planes in view space, relative to the eye (D30): a point p with dot(plane.xyz, p) + plane.w > 0 is
+	// cut away.
+	planes: array<vec4<f32>, 6>,
+	// section is the number of planes in x.
+	section: vec4<f32>,
+}
+
+@group(0) @binding(0) var<uniform> frame: Frame;
+
+// Item is the record of a line, a point or a picked item: the matrix that takes the mesh's positions to the view, relative to
+// the eye, a tint (the highlight of a selected item: its color, and the part of it that replaces the material's in a), and
+// numbers for the shader that reads it.
+struct Item {
+	mv: mat4x4<f32>,
+	tint: vec4<f32>,
+	params: vec4<f32>,
+	extra: vec4<f32>,
+}
+
+// section_clipped says whether a point of the view space is cut away by a section plane. skip is the plane to leave out (the
+// plane that a cap lies on), or -1.
+fn section_clipped(p: vec3<f32>, skip: i32) -> bool {
+	let count = i32(frame.section.x);
+	for (var i = 0; i < 6; i = i + 1) {
+		if (i >= count) {
+			break;
+		}
+		if (i == skip) {
+			continue;
+		}
+		let plane = frame.planes[i];
+		if (dot(plane.xyz, p) + plane.w > 0.0) {
+			return true;
+		}
+	}
+	return false;
+}
+
+// PickOut is what a pick pass writes for a pixel: the number of the item (from 1, 0 for nothing) and of the primitive in it, and
+// the depth.
+struct PickOut {
+	@location(0) ids: vec2<u32>,
+	@location(1) depth: f32,
+}
+
+@group(1) @binding(0) var<uniform> item: Item;
+@group(1) @binding(1) var mask: texture_2d<f32>;
+
+struct Full {
+	@builtin(position) clip: vec4<f32>,
+}
+
+@vertex
+fn vs_full(@builtin(vertex_index) i: u32) -> Full {
+	// One triangle that covers the view: (-1, -1), (3, -1) and (-1, 3).
+	let x = f32((i << 1u) & 2u);
+	let y = f32(i & 2u);
+	var o: Full;
+	o.clip = vec4<f32>(x * 2.0 - 1.0, y * 2.0 - 1.0, 0.0, 1.0);
+	return o;
+}
+
+@fragment
+fn fs_outline(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+	let size = vec2<i32>(frame.viewport.xy);
+	let here = vec2<i32>(pos.xy);
+	if (textureLoad(mask, here, 0).r > 0.5) {
+		discard;
+	}
+	let radius = i32(item.params.x);
+	var nearest = 1.0e9;
+	for (var dy = -radius; dy <= radius; dy = dy + 1) {
+		for (var dx = -radius; dx <= radius; dx = dx + 1) {
+			let q = here + vec2<i32>(dx, dy);
+			if (q.x < 0 || q.y < 0 || q.x >= size.x || q.y >= size.y) {
+				continue;
+			}
+			if (textureLoad(mask, q, 0).r > 0.5) {
+				nearest = min(nearest, f32(dx * dx + dy * dy));
+			}
+		}
+	}
+	if (nearest > 1.0e8) {
+		discard;
+	}
+	let cover = clamp(f32(radius) + 0.5 - sqrt(nearest), 0.0, 1.0);
+	let a = item.tint.a * cover;
+	return vec4<f32>(item.tint.rgb * a, a);
+}
+`,
+	SPIRV: spirvSelect,
+	HLSL: `struct Light {
+    float4 dir;
+    float4 color;
+};
+
+struct Frame {
+    row_major float4x4 proj;
+    Light lights[5];
+    float4 ambient;
+    float4 viewport;
+    float4 params;
+    float4 planes[6];
+    float4 section;
+};
+
+struct Item {
+    row_major float4x4 mv;
+    float4 tint;
+    float4 params;
+    float4 extra;
+};
+
+struct PickOut {
+    uint2 ids : LOC0;
+    float depth : LOC1;
+};
+
+struct Full {
+    float4 clip_ : SV_Position;
+};
+
+cbuffer frame : register(b0, space0) { Frame frame; }
+cbuffer item : register(b0, space1) { Item item; }
+Texture2D<float4> mask : register(t1, space1);
+
+struct VertexOutput_vs_full {
+    float4 clip_ : SV_Position;
+};
+
+struct FragmentInput_fs_outline {
+    float4 pos_1 : SV_Position;
+};
+
+int naga_f2i32(float value) {
+    return int(clamp(value, -2147483600.0, 2147483500.0));
+}
+
+bool section_clipped(float3 p, int skip)
+{
+    int i_1 = int(0);
+
+    float _e5 = frame.section.x;
+    int count = naga_f2i32(_e5);
+    uint2 loop_bound = uint2(4294967295u, 4294967295u);
+    bool loop_init = true;
+    while(true) {
+        if (all(loop_bound == uint2(0u, 0u))) { break; }
+        loop_bound -= uint2(loop_bound.y == 0u, 1u);
+        if (!loop_init) {
+            int _e28 = i_1;
+            i_1 = asint(asuint(_e28) + asuint(int(1)));
+        }
+        loop_init = false;
+        int _e9 = i_1;
+        if ((_e9 < int(6))) {
+        } else {
+            break;
+        }
+        {
+            int _e12 = i_1;
+            if ((_e12 >= count)) {
+                break;
+            }
+            int _e14 = i_1;
+            if ((_e14 == skip)) {
+                continue;
+            }
+            int _e18 = i_1;
+            float4 plane = frame.planes[_e18];
+            if (((dot(plane.xyz, p) + plane.w) > 0.0)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+VertexOutput_vs_full vs_full(uint i : SV_VertexID)
+{
+    Full o = (Full)0;
+
+    float x = float(((i << 1u) & 2u));
+    float y = float((i & 2u));
+    o.clip_ = float4(((x * 2.0) - 1.0), ((y * 2.0) - 1.0), 0.0, 1.0);
+    Full _e22 = o;
+    Full full = _e22;
+    VertexOutput_vs_full full_1 = { full.clip_ };
+    return full_1;
+}
+
+int naga_neg(int val) {
+    return asint(-asuint(val));
+}
+
+int2 naga_f2i32(float2 value) {
+    return int2(clamp(value, -2147483600.0, 2147483500.0));
+}
+
+float4 fs_outline(FragmentInput_fs_outline fragmentinput_fs_outline) : SV_Target0
+{
+    float4 pos = fragmentinput_fs_outline.pos_1;
+    float nearest = 1000000000.0;
+    int dy = (int)0;
+    int dx = (int)0;
+    bool local = (bool)0;
+    bool local_1 = (bool)0;
+    bool local_2 = (bool)0;
+
+    float4 _e3 = frame.viewport;
+    int2 size = naga_f2i32(_e3.xy);
+    int2 here = naga_f2i32(pos.xy);
+    float4 _e10 = mask.Load(int3(here, int(0)));
+    if ((_e10.x > 0.5)) {
+        discard;
+    }
+    float _e17 = item.params.x;
+    int radius = naga_f2i32(_e17);
+    dy = naga_neg(radius);
+    uint2 loop_bound_1 = uint2(4294967295u, 4294967295u);
+    bool loop_init_1 = true;
+    while(true) {
+        if (all(loop_bound_1 == uint2(0u, 0u))) { break; }
+        loop_bound_1 -= uint2(loop_bound_1.y == 0u, 1u);
+        if (!loop_init_1) {
+            int _e79 = dy;
+            dy = asint(asuint(_e79) + asuint(int(1)));
+        }
+        loop_init_1 = false;
+        int _e23 = dy;
+        if ((_e23 <= radius)) {
+        } else {
+            break;
+        }
+        {
+            dx = naga_neg(radius);
+            uint2 loop_bound_2 = uint2(4294967295u, 4294967295u);
+            bool loop_init_2 = true;
+            while(true) {
+                if (all(loop_bound_2 == uint2(0u, 0u))) { break; }
+                loop_bound_2 -= uint2(loop_bound_2.y == 0u, 1u);
+                if (!loop_init_2) {
+                    int _e76 = dx;
+                    dx = asint(asuint(_e76) + asuint(int(1)));
+                }
+                loop_init_2 = false;
+                int _e27 = dx;
+                if ((_e27 <= radius)) {
+                } else {
+                    break;
+                }
+                {
+                    int _e29 = dx;
+                    int _e30 = dy;
+                    int2 q = asint(asuint(here) + asuint(int2(_e29, _e30)));
+                    if (!((q.x < int(0)))) {
+                        local = (q.y < int(0));
+                    } else {
+                        local = true;
+                    }
+                    bool _e43 = local;
+                    if (!(_e43)) {
+                        local_1 = (q.x >= size.x);
+                    } else {
+                        local_1 = true;
+                    }
+                    bool _e51 = local_1;
+                    if (!(_e51)) {
+                        local_2 = (q.y >= size.y);
+                    } else {
+                        local_2 = true;
+                    }
+                    bool _e59 = local_2;
+                    if (_e59) {
+                        continue;
+                    }
+                    float4 _e62 = mask.Load(int3(q, int(0)));
+                    if ((_e62.x > 0.5)) {
+                        float _e66 = nearest;
+                        int _e67 = dx;
+                        int _e68 = dx;
+                        int _e70 = dy;
+                        int _e71 = dy;
+                        nearest = min(_e66, float(asint(asuint(asint(asuint(_e67) * asuint(_e68))) + asuint(asint(asuint(_e70) * asuint(_e71))))));
+                    }
+                }
+            }
+        }
+    }
+    float _e82 = nearest;
+    if ((_e82 > 100000000.0)) {
+        discard;
+    }
+    float _e88 = nearest;
+    float cover = clamp(((float(radius) + 0.5) - sqrt(_e88)), 0.0, 1.0);
+    float _e97 = item.tint.w;
+    float a = (_e97 * cover);
+    float4 _e101 = item.tint;
+    return float4((_e101.xyz * a), a);
+}
+`,
+	Entries: []gpu.EntryPoint{
+		{Name: "vs_full", Stage: gpu.ShaderStageVertex, ReadsVertexIndex: true,
+			Bindings: []gpu.ShaderBinding{},
+		},
+		{Name: "fs_outline", Stage: gpu.ShaderStageFragment,
+			Bindings: []gpu.ShaderBinding{
+				{Name: "frame", Group: 0, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 384, Register: gpu.ShaderRegister{Class: "b", Space: 0, Index: 0}},
+				{Name: "item", Group: 1, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 112, Register: gpu.ShaderRegister{Class: "b", Space: 1, Index: 0}},
+				{Name: "mask", Group: 1, Binding: 1, Kind: gpu.BindingSampledTexture, Sample: gpu.SampleTypeUnfilterableFloat, Register: gpu.ShaderRegister{Class: "t", Space: 1, Index: 1}},
 			},
 		},
 	},

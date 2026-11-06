@@ -160,3 +160,26 @@ func Points(points ...[3]float32) *viewport3d.Mesh {
 	}
 	return mustMesh(data)
 }
+
+// Torus makes a torus around the y axis, of the radius of its ring and of its tube, with a normal for each vertex; the vertices of the
+// seams are shared, so that it is a closed mesh.
+func Torus(ring, tube float32, segments, rings int) *viewport3d.Mesh {
+	var data viewport3d.MeshData
+	for i := 0; i < segments; i++ {
+		u := 2 * math.Pi * float64(i) / float64(segments)
+		for j := 0; j < rings; j++ {
+			v := 2 * math.Pi * float64(j) / float64(rings)
+			cu, su, cv, sv := math.Cos(u), math.Sin(u), math.Cos(v), math.Sin(v)
+			data.Positions = append(data.Positions, float32((float64(ring)+float64(tube)*cv)*cu), float32(float64(tube)*sv), float32((float64(ring)+float64(tube)*cv)*su))
+			data.Normals = append(data.Normals, float32(cv*cu), float32(sv), float32(cv*su))
+		}
+	}
+	at := func(i, j int) uint32 { return uint32((i%segments)*rings + j%rings) }
+	for i := 0; i < segments; i++ {
+		for j := 0; j < rings; j++ {
+			a, b, c, d := at(i, j), at(i+1, j), at(i+1, j+1), at(i, j+1)
+			data.Indices32 = append(data.Indices32, a, d, b, b, d, c)
+		}
+	}
+	return mustMesh(data)
+}

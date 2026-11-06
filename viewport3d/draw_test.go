@@ -35,11 +35,17 @@ type drawRig struct {
 
 func newDrawRig(t *testing.T, scene *viewport3d.Scene, cam *viewport3d.Camera) *drawRig {
 	t.Helper()
+	return newDrawRigDepth(t, scene, cam, gpu.TextureFormatDepth32Float)
+}
+
+// newDrawRigDepth is newDrawRig with the depth format of the view: the caps of the section planes need a stencil.
+func newDrawRigDepth(t *testing.T, scene *viewport3d.Scene, cam *viewport3d.Camera, depth gpu.TextureFormat) *drawRig {
+	t.Helper()
 	rig := &drawRig{t: t, ts: gluttertest.New(t, gluttertest.Opts{GPU: true}), scene: scene, cam: cam, ctl: gpu.NewViewController()}
 	rig.rec = rig.ts.GPUDevice()
 	rig.r = viewport3d.NewRenderer(scene, cam)
 	view := gpu.NewView(func(f *gpu.ViewFrame) { rig.frame = *f; rig.r.Draw(f) }, gpu.ViewOpts{
-		DepthFormat: gpu.TextureFormatDepth32Float, SampleCount: 4, Controller: rig.ctl,
+		DepthFormat: depth, SampleCount: 4, Controller: rig.ctl,
 		OnInit: rig.r.Init, OnDispose: rig.r.Dispose,
 	})
 	rig.ts.PumpWidget(NewCenter(NewSizedBox(view, SizedBoxOpts{Width: foundation.Some(200.0), Height: foundation.Some(100.0)})))
