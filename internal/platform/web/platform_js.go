@@ -44,6 +44,8 @@ type Platform struct {
 	lock lockState
 	text *textInput
 	clip *navigatorClipboard
+	// pads is the gamepad service (gamepads_js.go), made by the first call of Services.
+	pads *padService
 	// devEvents is the script of GLUTTER_DEV_EVENTS, in debug builds; devStarted says it was
 	// started.
 	devEvents  []DevEvent
@@ -262,10 +264,17 @@ func (p *Platform) Settings() platform.Settings {
 	return SettingsOf(prefs)
 }
 
-// Services returns nil: the web has no desktop services of the engine yet (SPEC §23.7).
+// Services returns the services of the web: the gamepads (SPEC §28.2). The web has no other services of the engine yet
+// (SPEC §23.7), and a browser without the Gamepad API has none, so the value is nil there.
 //
 // Flutter: no counterpart
-func (p *Platform) Services() platform.Services { return nil }
+func (p *Platform) Services() platform.Services {
+	pads := p.gamepads()
+	if pads == nil {
+		return nil
+	}
+	return webServices{pads: pads}
+}
 
 // Close takes the canvas out of the page and releases the callbacks. The platform is not
 // used after it.

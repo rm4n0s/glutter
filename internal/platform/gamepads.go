@@ -93,7 +93,7 @@ type Gamepads interface {
 	// Stop ends it: no more calls reach the handler and what the backend holds is released.
 	Stop()
 	// Rumble makes the pad's motors turn for d (0 stops them); the strengths are from 0 to 65535. It fails with
-	// GamepadRumbleUnavailable when the pad or the platform cannot.
+	// GamepadRumbleUnavailable when the pad or the platform cannot, and with a tag of the backend's own when the system refuses.
 	Rumble(id PadID, low, high uint16, d time.Duration) error
 	// RumbleTriggers does the same for the motors of the triggers, and fails the same way.
 	RumbleTriggers(id PadID, left, right uint16, d time.Duration) error

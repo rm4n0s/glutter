@@ -52,21 +52,29 @@ func (a *accWindows) ClientRect(view ui.ViewID) (x, y, width, height float64, ok
 	return float64(origin.X), float64(origin.Y), float64(rc.Right - rc.Left), float64(rc.Bottom - rc.Top), true
 }
 
-// accessibilityServices is the platform.Services of Windows: the accessibility bridge.
-type accessibilityServices struct{ acc *uia.Bridge }
+// windowsServices is the platform.Services of Windows: the accessibility bridge and the gamepads.
+type windowsServices struct {
+	acc  *uia.Bridge
+	pads platform.Gamepads
+}
 
-var _ platform.Services = accessibilityServices{}
+var _ platform.Services = windowsServices{}
 
-// Accessibility implements platform.Services.
-func (s accessibilityServices) Accessibility() platform.Accessibility { return s.acc }
+// Accessibility implements platform.Services: nil when the bridge could not be made.
+func (s windowsServices) Accessibility() platform.Accessibility {
+	if s.acc == nil {
+		return nil
+	}
+	return s.acc
+}
 
-// Gamepads implements platform.Services: Windows has no gamepad service yet.
-func (s accessibilityServices) Gamepads() platform.Gamepads { return nil }
+// Gamepads implements platform.Services.
+func (s windowsServices) Gamepads() platform.Gamepads { return s.pads }
 
-// Services returns the services of the platform: the UI Automation bridge (SPEC §25.11). It is made on
-// the first call. When the COM objects of the providers cannot be made the log says so and there is no
-// accessibility (nil), as on a desktop without a service on Linux. The tray, the notifications, the file
-// dialogs and the URIs are the desktop services of Desktop.
+// Services returns the services of the platform: the UI Automation bridge (SPEC §25.11) and the gamepads
+// (SPEC §28.2). They are made on the first call. When the COM objects of the providers cannot be made the
+// log says so and there is no accessibility (nil), as on a desktop without a service on Linux. The tray,
+// the notifications, the file dialogs and the URIs are the desktop services of Desktop.
 //
 // Flutter: no counterpart
 func (p *Platform) Services() platform.Services {
@@ -82,10 +90,7 @@ func (p *Platform) Services() platform.Services {
 		}
 		p.acc = uia.NewBridge(env, p.accWin, p.log)
 	})
-	if p.acc == nil {
-		return nil
-	}
-	return accessibilityServices{p.acc}
+	return windowsServices{acc: p.acc, pads: p.gamepads()}
 }
 
 // accessibilityAdd tells the bridge that a window exists.

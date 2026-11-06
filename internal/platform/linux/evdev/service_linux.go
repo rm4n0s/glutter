@@ -49,13 +49,25 @@ type Service struct {
 
 	mu  sync.Mutex
 	cur *run
+
+	// ffMu guards ff, the pads that can rumble, which the UI thread plays and the goroutine of the loop opens and closes: the
+	// descriptor of a pad is used only under it, so that a pad that goes away is never written to by a stale number.
+	ffMu sync.Mutex
+	ff   map[platform.PadID]*ffPad
+}
+
+// ffPad is the force feedback state of an open pad.
+type ffPad struct {
+	fd int
+	// effect is the id of the effect that was uploaded, -1 before the first rumble.
+	effect int16
 }
 
 // New makes the service. It does nothing until Start.
 //
 // Flutter: no counterpart
 func New(opts Opts) *Service {
-	s := &Service{post: opts.Post, log: opts.Logger, devDir: opts.DevDir, sysDir: opts.SysDir, pollEvery: opts.PollEvery, k: realKernel()}
+	s := &Service{post: opts.Post, log: opts.Logger, devDir: opts.DevDir, sysDir: opts.SysDir, pollEvery: opts.PollEvery, k: realKernel(), ff: map[platform.PadID]*ffPad{}}
 	if s.devDir == "" {
 		s.devDir = "/dev/input"
 	}
@@ -101,9 +113,27 @@ func (s *Service) Stop() {
 	}
 }
 
-// Rumble implements platform.Gamepads: force feedback is added in a later step (SPEC §28.2).
+// Rumble implements platform.Gamepads with force feedback: an effect of type FF_RUMBLE is uploaded with the strengths and the
+// length and then played, and the kernel stops it when the length is over. A duration of 0, or no strength, stops the motors.
 func (s *Service) Rumble(id platform.PadID, low, high uint16, d time.Duration) error {
-	return errors.New(platform.TagGamepadRumbleUnavailable, "rumble is not available on Linux yet", "pad", int64(id))
+	s.ffMu.Lock()
+	defer s.ffMu.Unlock()
+	p := s.ff[id]
+	if p == nil {
+		return errors.New(platform.TagGamepadRumbleUnavailable, "the pad has no force feedback or is not there", "pad", int64(id))
+	}
+	if d <= 0 || (low == 0 && high == 0) {
+		if p.effect < 0 {
+			return nil
+		}
+		return s.k.playEffect(p.fd, p.effect, 0)
+	}
+	e := rumbleEffect(p.effect, low, high, d)
+	if err := s.k.uploadEffect(p.fd, &e); err != nil {
+		return err
+	}
+	p.effect = e.ID
+	return s.k.playEffect(p.fd, p.effect, 1)
 }
 
 // RumbleTriggers implements platform.Gamepads.
@@ -157,6 +187,8 @@ type padDevice struct {
 	fd     int
 	dec    *decoder
 	events []inputEvent
+	// rumble says that the pad can play force feedback effects.
+	rumble bool
 }
 
 // pollFallback is how often the directory is looked at when inotify is not there.
@@ -263,9 +295,12 @@ func (r *run) deliver(fn func(platform.PadHandler)) {
 func (r *run) loop() {
 	defer close(r.done)
 	defer func() {
+		r.s.ffMu.Lock()
 		for _, d := range r.devices {
+			delete(r.s.ff, d.id)
 			_ = syscall.Close(d.fd) // the end of the run
 		}
+		r.s.ffMu.Unlock()
 		r.close()
 	}()
 	r.scan()
@@ -478,6 +513,11 @@ func (r *run) consider(node string) {
 	delete(r.denied, node)
 	r.devices[d.fd] = d
 	r.byPath[node] = d
+	if d.rumble {
+		r.s.ffMu.Lock()
+		r.s.ff[d.id] = &ffPad{fd: d.fd, effect: -1}
+		r.s.ffMu.Unlock()
+	}
 	ev := syscall.EpollEvent{Events: syscall.EPOLLIN, Fd: int32(d.fd)}
 	if err := syscall.EpollCtl(r.epfd, syscall.EPOLL_CTL_ADD, d.fd, &ev); err != nil {
 		r.s.log.Warn("a gamepad cannot be watched", "err", errors.NewErr(tagEvdevWatchFailed, err).SetMetadata("device", d.path))
@@ -512,7 +552,19 @@ func (r *run) later(node string) {
 // to be ignored.
 func (r *run) open(node string, c *caps) (*padDevice, platform.PadInfo, error) {
 	path := filepath.Join(r.s.devDir, node)
-	fd, err := syscall.Open(path, syscall.O_RDONLY|syscall.O_NONBLOCK|syscall.O_CLOEXEC, 0)
+	// A pad that can rumble is opened for writing too, which force feedback needs; where the user may not write to it, the pad
+	// is read only and cannot rumble.
+	canRumble := c.FF.has(ffRumble) && r.s.k.openWritable != nil
+	fd, err := -1, error(nil)
+	if canRumble {
+		if fd, err = r.s.k.openWritable(path); err != nil {
+			r.s.log.Debug("a gamepad is read only, so it cannot rumble", "device", path, "err", err)
+			canRumble = false
+		}
+	}
+	if !canRumble {
+		fd, err = syscall.Open(path, syscall.O_RDONLY|syscall.O_NONBLOCK|syscall.O_CLOEXEC, 0)
+	}
 	if err != nil {
 		tag := tagEvdevOpenFailed
 		if err == syscall.EACCES || err == syscall.EPERM {
@@ -552,9 +604,10 @@ func (r *run) open(node string, c *caps) (*padDevice, platform.PadInfo, error) {
 		Buttons: l.buttons,
 		Hats:    l.hats,
 		Mapping: mappingOf(c, l),
+		Rumble:  canRumble,
 		Battery: -1,
 	}
-	return &padDevice{id: id, path: path, fd: fd, dec: newDecoder(id, l)}, info, nil
+	return &padDevice{id: id, path: path, fd: fd, dec: newDecoder(id, l), rumble: canRumble}, info, nil
 }
 
 // readDevice reads the events that are waiting on a device and decodes them into batch.
@@ -597,7 +650,10 @@ func (r *run) drop(d *padDevice) {
 	// again between two looks has the number it had.
 	delete(r.seen, filepath.Base(d.path))
 	_ = syscall.EpollCtl(r.epfd, syscall.EPOLL_CTL_DEL, d.fd, nil) // closing the descriptor removes it anyway
-	_ = syscall.Close(d.fd)                                        // the device is gone or given up
+	r.s.ffMu.Lock()
+	delete(r.s.ff, d.id)
+	_ = syscall.Close(d.fd) // the device is gone or given up
+	r.s.ffMu.Unlock()
 	id := d.id
 	r.deliver(func(h platform.PadHandler) { h.PadRemoved(id) })
 }
@@ -611,4 +667,6 @@ const (
 	tagEvdevPermission  = "EvdevDevicePermission"
 	tagEvdevIoctlFailed = "EvdevIoctlFailed"
 	tagEvdevWatchFailed = "EvdevWatchFailed"
+	// tagEvdevRumbleFailed is the tag of the error of a rumble that the kernel refused: the upload or the play of the effect.
+	tagEvdevRumbleFailed = "EvdevRumbleFailed"
 )

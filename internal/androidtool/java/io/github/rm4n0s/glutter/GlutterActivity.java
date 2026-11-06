@@ -52,6 +52,9 @@ public class GlutterActivity extends Activity {
 
   /** Back navigation of the activity: the callback that is registered with the system. */
   private BackNavigation backNavigation;
+
+  /** The gamepads of the activity. */
+  private GamepadInput gamepads;
   private SpellCheck spellCheck;
 
   /** The accessibility bridge of the activity's view (TalkBack and the other services). */
@@ -108,6 +111,9 @@ public class GlutterActivity extends Activity {
     spellCheck = new SpellCheck(this);
     view.setBackNavigation(backNavigation);
     view.setTextInput(textInput);
+    gamepads = new GamepadInput(this);
+    view.setGamepads(gamepads);
+    gamepads.start();
     accessibility = new GlutterAccessibility(view);
     view.setAccessibility(accessibility);
     setContentView(view);
@@ -216,6 +222,9 @@ public class GlutterActivity extends Activity {
     if (backNavigation != null) {
       backNavigation.release();
     }
+    if (gamepads != null) {
+      gamepads.stop();
+    }
     if (accessibility != null) {
       accessibility.release();
     }
@@ -283,7 +292,7 @@ public class GlutterActivity extends Activity {
    * or the screen (systemui.go, operations 1 to 7; {@link SystemUI}), or of text input and the
    * clipboard (textinput.go, 8 to 13, and 25 and 26 for the HTML; {@link TextInput}), of back navigation (back.go, 14
    * and 15; {@link BackNavigation}), of accessibility (accessibility.go, 16 to 18; {@link
-   * GlutterAccessibility}), of the spell checker (spellcheck.go, 24; {@link SpellCheck}) or of the desktop services (desktop.go, 19 to 23: a URI, the
+   * GlutterAccessibility}), of the spell checker (spellcheck.go, 24; {@link SpellCheck}), of the gamepads' rumble (gamepads.go, 28; {@link GamepadInput}) or of the desktop services (desktop.go, 19 to 23: a URI, the
    * notifications; {@link DesktopServices}) or the pointer capture (pointerlock.go, 27), done on the main thread. {@code bytes} is the
    * operation's text as UTF-8, or, for the semantics update (16) and the notification (22), a binary
    * payload.
@@ -319,6 +328,10 @@ public class GlutterActivity extends Activity {
             } else if (op == BackNavigation.OP_FRAMEWORK_HANDLES_BACK || op == BackNavigation.OP_FINISH) {
               if (current.backNavigation != null) {
                 current.backNavigation.command(op, a);
+              }
+            } else if (op == GamepadInput.OP_RUMBLE) {
+              if (current.gamepads != null) {
+                current.gamepads.command(op, a, b, c, d);
               }
             } else if (op == OP_POINTER_CAPTURE) {
               if (current.view != null) {

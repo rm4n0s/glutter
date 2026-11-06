@@ -123,3 +123,39 @@ func goSpellCheckSupport(supported C.int) { process.spellCheckSupport(supported 
 func goNotificationEvent(serial, kind C.int, utf8 *C.char, n C.int) {
 	process.notificationEvent(int(serial), int(kind), C.GoStringN(utf8, n))
 }
+
+//export goPadAdded
+func goPadAdded(device C.int, name *C.char, nname C.int, desc *C.char, ndesc C.int, vendor, product, flags C.int, axes *C.int, naxes C.int,
+	ranges *C.float, nranges C.int) {
+	d := padDescriptor{
+		DeviceID: int(device), Name: C.GoStringN(name, nname), Descriptor: C.GoStringN(desc, ndesc),
+		Vendor: int(vendor), Product: int(product), Flags: int(flags),
+	}
+	for _, a := range unsafe.Slice((*int32)(unsafe.Pointer(axes)), int(naxes)) {
+		d.Axes = append(d.Axes, int(a))
+	}
+	d.Ranges = append(d.Ranges, unsafe.Slice((*float32)(unsafe.Pointer(ranges)), int(nranges))...)
+	process.padAdded(d)
+}
+
+//export goPadRemoved
+func goPadRemoved(device C.int) { process.padRemoved(int(device)) }
+
+//export goPadSync
+func goPadSync(devices *C.int, n C.int) {
+	var ids []int
+	for _, d := range unsafe.Slice((*int32)(unsafe.Pointer(devices)), int(n)) {
+		ids = append(ids, int(d))
+	}
+	process.padSync(ids)
+}
+
+//export goPadKey
+func goPadKey(device, down, keyCode C.int, eventTime C.longlong) {
+	process.padKey(int(device), down != 0, int(keyCode), int64(eventTime))
+}
+
+//export goPadMotion
+func goPadMotion(device C.int, vals *C.float, n C.int, eventTime C.longlong) {
+	process.padMotion(int(device), unsafe.Slice((*float32)(unsafe.Pointer(vals)), int(n)), int64(eventTime))
+}

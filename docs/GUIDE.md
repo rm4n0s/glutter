@@ -1589,6 +1589,22 @@ func main() { _ = newPadView() }
   `SUBSYSTEM=="input", ENV{ID_INPUT_JOYSTICK}=="1", GROUP="input", MODE="0660"`, then `sudo udevadm control --reload &&
   sudo udevadm trigger`. Only a joystick or a gamepad is opened: keyboards and mice are left alone. If the system's inotify
   instances are used up, new pads are looked for every two seconds.
+- **Rumble.** `Pad.Rumble(low, high, d)` makes the pad's two motors turn for `d` (low and high are the strengths from 0
+  to 1 of the heavy and the light motor; a duration of 0 stops them) and `Pad.CanRumble()` says whether the pad can. It works
+  on Linux (force feedback: the pad's node must be writable, which the seat's rules give with the read access), on Windows for
+  the Xbox pads (XInput), on the web where the browser has `vibrationActuator` (Chrome and Edge; at most 5 seconds), and on
+  Android 12 and later; everywhere else it returns `GamepadRumbleUnavailable`. Triggers (`RumbleTriggers`) and the light
+  (`SetLED`) come with the HID drivers of PlayStation and Xbox pads.
+- **On Windows** Xbox pads and the others that Windows serves through XInput are read at 125 Hz while they are connected (no
+  work is done for an empty slot), and every other game controller through Raw Input and the HID parser, so a generic USB
+  pad needs the line of the table that SDL has for it (`AddMappings` for a pad it does not know). A pad that only reports
+  when something changes is at rest in the app's eyes until it first does.
+- **On the web** the browser shows a pad to a page only after the user presses one of its buttons (a privacy rule of the
+  browsers), and the page reads the pads only while one is connected. A pad with the browser's `standard` mapping is
+  already in the layout. On a page without HTTPS (other than localhost) the browser may hide the pads.
+- **On Android** a pad's buttons arrive once: as the gamepad's key events (`GameButtonA` and the others) and through
+  `gamepad.Of(bc)`, never as keyboard keys as well. The `input gamepad keyevent KEYCODE_BUTTON_A` command of the shell makes
+  a pad that Glutter calls "Virtual Gamepad" and is the way to try a pad on the emulator.
 - **Tests.** `gluttertest` has `ConnectPad(PadSpec)`, which returns a `TestPad` with `Press`, `Release`, `Tap`, `SetAxis`,
   `Disconnect` and `Rumbles()` for a pad that reports the standard layout, or, with `Axes`, `Buttons`, `Hats` and `Mapping`,
   a raw pad with `RawButton`, `RawAxis` and `RawHat` that goes through the table of mappings.

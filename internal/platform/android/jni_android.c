@@ -32,6 +32,12 @@ extern void goSpellCheckSupport(int supported);
 extern void goNotificationEvent(int serial, int kind, char *utf8, int n);
 extern void goA11yState(int enabled, int touch, int navigation);
 extern void goA11yAction(int nodeId, int action, char *args, int n);
+extern void goPadAdded(int device, char *name, int nname, char *desc, int ndesc, int vendor, int product, int flags, int *axes, int naxes,
+                       float *ranges, int nranges);
+extern void goPadRemoved(int device);
+extern void goPadSync(int *devices, int n);
+extern void goPadKey(int device, int down, int keyCode, long long eventTime);
+extern void goPadMotion(int device, float *vals, int n, long long eventTime);
 extern void goKeyEvent(int id, int action, int keyCode, int scanCode, int metaState, int repeatCount, long long eventTime,
                        int unicodeChar, int source, int deviceId);
 
@@ -350,4 +356,46 @@ JNIEXPORT void JNICALL Java_io_github_rm4n0s_glutter_Native_notificationEvent(JN
     goNotificationEvent(serial, kind, (char *)t, n);
   }
   if (t != NULL) (*env)->ReleaseByteArrayElements(env, text, t, JNI_ABORT);
+}
+
+JNIEXPORT void JNICALL Java_io_github_rm4n0s_glutter_Native_padAdded(JNIEnv *env, jclass cls, jint device, jbyteArray name, jbyteArray desc,
+                                                                   jint vendor, jint product, jint flags, jintArray axes, jfloatArray ranges) {
+  jsize nname = (*env)->GetArrayLength(env, name), ndesc = (*env)->GetArrayLength(env, desc);
+  jsize naxes = (*env)->GetArrayLength(env, axes), nranges = (*env)->GetArrayLength(env, ranges);
+  jbyte *nm = (*env)->GetByteArrayElements(env, name, NULL);
+  jbyte *ds = (*env)->GetByteArrayElements(env, desc, NULL);
+  jint *ax = (*env)->GetIntArrayElements(env, axes, NULL);
+  jfloat *rg = (*env)->GetFloatArrayElements(env, ranges, NULL);
+  if ((nm != NULL || nname == 0) && (ds != NULL || ndesc == 0) && (ax != NULL || naxes == 0) && (rg != NULL || nranges == 0)) {
+    goPadAdded(device, (char *)nm, nname, (char *)ds, ndesc, vendor, product, flags, (int *)ax, naxes, (float *)rg, nranges);
+  }
+  if (nm != NULL) (*env)->ReleaseByteArrayElements(env, name, nm, JNI_ABORT);
+  if (ds != NULL) (*env)->ReleaseByteArrayElements(env, desc, ds, JNI_ABORT);
+  if (ax != NULL) (*env)->ReleaseIntArrayElements(env, axes, ax, JNI_ABORT);
+  if (rg != NULL) (*env)->ReleaseFloatArrayElements(env, ranges, rg, JNI_ABORT);
+}
+
+JNIEXPORT void JNICALL Java_io_github_rm4n0s_glutter_Native_padRemoved(JNIEnv *env, jclass cls, jint device) { goPadRemoved(device); }
+
+JNIEXPORT void JNICALL Java_io_github_rm4n0s_glutter_Native_padSync(JNIEnv *env, jclass cls, jintArray devices) {
+  jsize n = (*env)->GetArrayLength(env, devices);
+  jint *d = (*env)->GetIntArrayElements(env, devices, NULL);
+  if (d != NULL || n == 0) {
+    goPadSync((int *)d, n);
+  }
+  if (d != NULL) (*env)->ReleaseIntArrayElements(env, devices, d, JNI_ABORT);
+}
+
+JNIEXPORT void JNICALL Java_io_github_rm4n0s_glutter_Native_padKey(JNIEnv *env, jclass cls, jint device, jboolean down, jint keyCode,
+                                                                 jlong eventTime) {
+  goPadKey(device, down ? 1 : 0, keyCode, eventTime);
+}
+
+JNIEXPORT void JNICALL Java_io_github_rm4n0s_glutter_Native_padMotion(JNIEnv *env, jclass cls, jint device, jfloatArray vals, jlong eventTime) {
+  jsize n = (*env)->GetArrayLength(env, vals);
+  jfloat *v = (*env)->GetFloatArrayElements(env, vals, NULL);
+  if (v != NULL) {
+    goPadMotion(device, (float *)v, n, eventTime);
+    (*env)->ReleaseFloatArrayElements(env, vals, v, JNI_ABORT);
+  }
 }

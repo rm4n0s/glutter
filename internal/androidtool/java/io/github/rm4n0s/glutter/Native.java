@@ -110,6 +110,32 @@ final class Native {
       int deviceId);
 
   /**
+   * An input device that is a gamepad or joystick was found: its id, name and descriptor as UTF-8, its vendor and product, the flags (1:
+   * it can rumble), the {@code MotionEvent.AXIS_*} it has and their minimum and maximum (two numbers for each).
+   */
+  static native void padAdded(
+      int device,
+      byte[] name,
+      byte[] descriptor,
+      int vendor,
+      int product,
+      int flags,
+      int[] axes,
+      float[] ranges);
+
+  /** A pad device went. */
+  static native void padRemoved(int device);
+
+  /** The ids of the pad devices there are now: Go drops the others. */
+  static native void padSync(int[] devices);
+
+  /** A button of a pad went down or up: the device id, the {@code KeyEvent} key code and the time in milliseconds. */
+  static native void padKey(int device, boolean down, int keyCode, long eventTime);
+
+  /** The joystick motion of a pad: the values of the axes in the order of {@code GamepadInput.AXES}, and the time in milliseconds. */
+  static native void padMotion(int device, float[] values, long eventTime);
+
+  /**
    * The insets of the window in pixels: left, top, right and bottom of the system bars and the
    * display cutout, of the input method, and of the system gestures.
    */

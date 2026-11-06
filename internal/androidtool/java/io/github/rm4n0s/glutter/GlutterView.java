@@ -62,6 +62,9 @@ public class GlutterView extends SurfaceView implements SurfaceHolder.Callback {
   /** Text input of the activity: the input connection comes from it. */
   private TextInput textInput;
 
+  /** The gamepads of the activity: the key events and the joystick motion of a pad go to it. */
+  private GamepadInput gamepads;
+
   /** Back navigation of the activity: the dev events script injects a back through it. */
   private BackNavigation backNavigation;
 
@@ -95,6 +98,11 @@ public class GlutterView extends SurfaceView implements SurfaceHolder.Callback {
     getHolder().addCallback(this);
     setFocusable(true);
     setFocusableInTouchMode(true);
+  }
+
+  /** Gives the view the gamepads that take the events of the pads. */
+  void setGamepads(GamepadInput gamepads) {
+    this.gamepads = gamepads;
   }
 
   /** Gives the view the back navigation that the dev events script acts through. */
@@ -173,6 +181,9 @@ public class GlutterView extends SurfaceView implements SurfaceHolder.Callback {
   /** Mouse hover, the scroll wheel and the other pointer movements that are not touches. */
   @Override
   public boolean onGenericMotionEvent(MotionEvent event) {
+    if (gamepads != null && gamepads.onMotion(event)) {
+      return true;
+    }
     boolean isPointer = event.isFromSource(InputDevice.SOURCE_CLASS_POINTER);
     int action = event.getActionMasked();
     if (isPointer && (action == MotionEvent.ACTION_HOVER_MOVE || action == MotionEvent.ACTION_SCROLL)) {
@@ -282,6 +293,10 @@ public class GlutterView extends SurfaceView implements SurfaceHolder.Callback {
     }
     if (event.getAction() == KeyEvent.ACTION_MULTIPLE) {
       return super.dispatchKeyEvent(event);
+    }
+    // The buttons of a pad go to the gamepad service, and not to the keyboard: each press arrives once.
+    if (gamepads != null && gamepads.onKey(event)) {
+      return true;
     }
     int id = nextKeyId++;
     pendingKeys.put(id, event);

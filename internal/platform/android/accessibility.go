@@ -83,19 +83,27 @@ func (a *accessibility) isClosed() bool {
 	return a.closed
 }
 
-// services is the platform.Services of Android: the accessibility bridge, and nothing else yet
-// (the desktop services come in step 25.12).
+// services is the platform.Services of Android: the accessibility bridge and the gamepads (the desktop services are
+// Platform.Desktop).
 //
 // Flutter: no counterpart
-type services struct{ a *accessibility }
+type services struct {
+	a    *accessibility
+	pads *padService
+}
 
 var _ platform.Services = services{}
 
 // Accessibility implements platform.Services.
 func (s services) Accessibility() platform.Accessibility { return s.a }
 
-// Gamepads implements platform.Services: Android has no gamepad service yet.
-func (s services) Gamepads() platform.Gamepads { return nil }
+// Gamepads implements platform.Services.
+func (s services) Gamepads() platform.Gamepads {
+	if s.pads == nil {
+		return nil
+	}
+	return s.pads
+}
 
 // Start gives the bridge the host, and tells it at once whether a screen reader runs. The bridge
 // stops when ctx ends or Close is called. Unlike the desktops, Android has no service to wait

@@ -44,6 +44,8 @@ type Platform struct {
 	devStarted bool
 	// a11y is the accessibility bridge, which Services gives out (accessibility.go).
 	a11y *accessibility
+	// pads is the gamepad service (gamepads.go).
+	pads *padService
 	// lock is the pointer lock, or nil; mouseX and mouseY are where the mouse was last seen, in physical
 	// pixels, when mouseSeen (pointerlock.go).
 	lock           *pointerLock
@@ -61,6 +63,7 @@ func newPlatform(b *bridge, h host, log *slog.Logger) *Platform {
 	}
 	p := &Platform{b: b, host: h, log: log, touch: newTouchProcessor(), conv: newPointerConverter(), keys: newKeyboardManager()}
 	p.a11y = newAccessibility(p)
+	p.pads = newPadService(h)
 	return p
 }
 
@@ -228,7 +231,7 @@ func (p *Platform) settingsChanged() {
 // The desktop services of step 25.12 are not part of it.
 //
 // Flutter: no counterpart
-func (p *Platform) Services() platform.Services { return services{p.a11y} }
+func (p *Platform) Services() platform.Services { return services{a: p.a11y, pads: p.pads} }
 
 // Close releases the platform. The host belongs to the process, so there is nothing to release.
 //

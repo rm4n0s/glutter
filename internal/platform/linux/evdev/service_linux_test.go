@@ -160,6 +160,23 @@ type fixture struct {
 	capsMu  sync.Mutex
 	caps    map[string]*caps
 	writers map[string]*os.File
+
+	// ff is what the fake kernel was asked to do with force feedback, and ffFail makes it refuse (under ffMu).
+	ffMu     sync.Mutex
+	ff       []string
+	ffEffect ffEffect
+	ffFail   error
+	// ffPlayOnly makes ffFail apply to playing an effect only, not to uploading it.
+	ffPlayOnly bool
+	// readOnly makes the fake kernel refuse to open a device for writing.
+	readOnly bool
+}
+
+// ffLog says what the fake kernel was asked to do with force feedback.
+func (f *fixture) ffLog() []string {
+	f.ffMu.Lock()
+	defer f.ffMu.Unlock()
+	return append([]string(nil), f.ff...)
 }
 
 // modes runs a test with the service told of the devices by inotify, and with it looking at the directory on a timer.
@@ -203,6 +220,37 @@ func newFixture(t *testing.T, pollEvery time.Duration) *fixture {
 			return nil, false
 		},
 		setClock: func(int) error { return nil },
+		openWritable: func(path string) (int, error) {
+			f.ffMu.Lock()
+			defer f.ffMu.Unlock()
+			if f.readOnly {
+				return -1, syscall.EACCES
+			}
+			f.ff = append(f.ff, "open "+filepath.Base(path))
+			return syscall.Open(path, syscall.O_RDONLY|syscall.O_NONBLOCK|syscall.O_CLOEXEC, 0)
+		},
+		uploadEffect: func(fd int, e *ffEffect) error {
+			f.ffMu.Lock()
+			defer f.ffMu.Unlock()
+			if f.ffFail != nil && !f.ffPlayOnly {
+				return f.ffFail
+			}
+			if e.ID < 0 {
+				e.ID = 7
+			}
+			f.ffEffect = *e
+			f.ff = append(f.ff, fmt.Sprintf("upload %d", e.ID))
+			return nil
+		},
+		playEffect: func(fd int, id int16, value int32) error {
+			f.ffMu.Lock()
+			defer f.ffMu.Unlock()
+			if f.ffFail != nil {
+				return f.ffFail
+			}
+			f.ff = append(f.ff, fmt.Sprintf("play %d %d", id, value))
+			return nil
+		},
 	}
 	t.Cleanup(func() {
 		f.s.Stop()
@@ -710,17 +758,15 @@ func TestThePadsOfTheServiceAreTheServiceOfTheMachine(t *testing.T) {
 	s.Stop()
 }
 
-func TestRumbleAndLightAreNotAvailableYet(t *testing.T) {
+func TestTriggersAndLightAreNotAvailableOnLinuxYet(t *testing.T) {
 	s := New(Opts{Post: func(func()) {}})
 	tests := []struct {
-		name  string
-		err   error
-		route string
-		tag   string
+		name string
+		err  error
+		tag  string
 	}{
-		{"rumble", s.Rumble(1, 1, 1, time.Second), "Service.Rumble.GamepadRumbleUnavailable", platform.TagGamepadRumbleUnavailable},
-		{"triggers", s.RumbleTriggers(1, 1, 1, time.Second), "Service.RumbleTriggers.GamepadRumbleUnavailable", platform.TagGamepadRumbleUnavailable},
-		{"light", s.SetLED(1, 1, 2, 3), "Service.SetLED.GamepadLEDUnavailable", platform.TagGamepadLEDUnavailable},
+		{"triggers", s.RumbleTriggers(1, 1, 1, time.Second), platform.TagGamepadRumbleUnavailable},
+		{"light", s.SetLED(1, 1, 2, 3), platform.TagGamepadLEDUnavailable},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -730,6 +776,221 @@ func TestRumbleAndLightAreNotAvailableYet(t *testing.T) {
 			}
 			if appErr.Tag != tt.tag {
 				t.Errorf("tag = %s, want %s", appErr.Tag, tt.tag)
+			}
+		})
+	}
+}
+
+func TestFFEffectLayout(t *testing.T) {
+	want := 48
+	if ptrSize == 4 {
+		want = 44
+	}
+	if got := int(unsafe.Sizeof(ffEffect{})); got != want {
+		t.Errorf("sizeof(ffEffect) = %d, want %d (the kernel's struct ff_effect)", got, want)
+	}
+	if got := unsafe.Offsetof(ffEffect{}.Union); got != 16 {
+		t.Errorf("the union is at %d, want 16", got)
+	}
+	e := rumbleEffect(-1, 0x1234, 0xabcd, 1500*time.Millisecond)
+	if e.Type != ffRumble || e.ID != -1 || e.ReplayLength != 1500 || e.ReplayDelay != 0 || e.Direction != 0 {
+		t.Errorf("rumbleEffect() = %+v", e)
+	}
+	if got := binary.NativeEndian.Uint16(e.Union[0:]); got != 0x1234 {
+		t.Errorf("strong magnitude = %#x", got)
+	}
+	if got := binary.NativeEndian.Uint16(e.Union[2:]); got != 0xabcd {
+		t.Errorf("weak magnitude = %#x", got)
+	}
+	// The ioctl number of EVIOCSFF on 64-bit machines is 0x40304580 (linux/input.h).
+	if ptrSize == 8 && eviocsff() != 0x40304580 {
+		t.Errorf("EVIOCSFF = %#x, want 0x40304580", eviocsff())
+	}
+	for _, tt := range []struct {
+		d    time.Duration
+		want uint16
+	}{{0, 1}, {time.Microsecond, 1}, {time.Hour, 0xffff}, {65535 * time.Millisecond, 0xffff}} {
+		if got := rumbleEffect(0, 1, 1, tt.d).ReplayLength; got != tt.want {
+			t.Errorf("length of %v = %d, want %d", tt.d, got, tt.want)
+		}
+	}
+	ev := ffEvent(7, 1)
+	if len(ev) != eventSize {
+		t.Fatalf("len(ffEvent) = %d, want %d", len(ev), eventSize)
+	}
+	parsed := parseEvents(ev, nil)
+	if len(parsed) != 1 || parsed[0].Type != evFF || parsed[0].Code != 7 || parsed[0].Value != 1 {
+		t.Errorf("ffEvent(7, 1) parses as %+v", parsed)
+	}
+}
+
+func rumblePad() *caps {
+	c := xbox360()
+	c.FF = bitsOf(ffRumble)
+	return c
+}
+
+func TestServiceRumble(t *testing.T) {
+	modes(t, func(t *testing.T, f *fixture) {
+		f.writeSysfs("event0", rumblePad())
+		f.writeNode("event0")
+		f.writeSysfs("event1", xbox360()) // no force feedback
+		f.writeNode("event1")
+		if err := f.s.Start(f.h); err != nil {
+			t.Fatal(err)
+		}
+		f.h.wait(t, "two pads", func() bool { return len(f.h.added) == 2 })
+		var withFF, without platform.PadInfo
+		for _, info := range f.h.added {
+			if filepath.Base(info.Path) == "event0" {
+				withFF = info
+			} else {
+				without = info
+			}
+		}
+		if !withFF.Rumble || without.Rumble {
+			t.Errorf("Rumble: %v and %v, want true and false", withFF.Rumble, without.Rumble)
+		}
+		if got := f.ffLog(); len(got) != 1 || got[0] != "open event0" {
+			t.Errorf("only the pad that can rumble is opened for writing: %v", got)
+		}
+
+		if err := f.s.Rumble(withFF.ID, 0x8000, 0x4000, 2*time.Second); err != nil {
+			t.Fatal(err)
+		}
+		f.ffMu.Lock()
+		e := f.ffEffect
+		f.ffMu.Unlock()
+		if e.ReplayLength != 2000 || binary.NativeEndian.Uint16(e.Union[0:]) != 0x8000 || binary.NativeEndian.Uint16(e.Union[2:]) != 0x4000 {
+			t.Errorf("uploaded %+v", e)
+		}
+		// The second rumble updates the effect that the kernel made, and plays it again.
+		if err := f.s.Rumble(withFF.ID, 1, 2, time.Second); err != nil {
+			t.Fatal(err)
+		}
+		if err := f.s.Rumble(withFF.ID, 0, 0, 0); err != nil {
+			t.Fatal(err)
+		}
+		want := []string{"open event0", "upload 7", "play 7 1", "upload 7", "play 7 1", "play 7 0"}
+		if got := f.ffLog(); strings.Join(got, ",") != strings.Join(want, ",") {
+			t.Errorf("force feedback calls = %v, want %v", got, want)
+		}
+
+		err := f.s.Rumble(without.ID, 1, 1, time.Second)
+		appErr, ok := errors.FromError(err)
+		if !ok {
+			t.Fatalf("expected *errors.Error, got %T (%v)", err, err)
+		}
+		if appErr.Tag != platform.TagGamepadRumbleUnavailable || !appErr.HasRoute("Service.Rumble.GamepadRumbleUnavailable") {
+			t.Errorf("unexpected failure: tag %s, path %s", appErr.Tag, appErr.Route())
+		}
+
+		// A pad that is gone cannot rumble.
+		_ = f.writers["event0"].Close() // the pad is unplugged
+		f.h.wait(t, "the pad is removed", func() bool { return len(f.h.gone) == 1 })
+		if err := f.s.Rumble(withFF.ID, 1, 1, time.Second); err == nil {
+			t.Error("a pad that is gone rumbled")
+		}
+	})
+}
+
+func TestServiceRumbleStopWithoutPlayingDoesNothing(t *testing.T) {
+	f := newFixture(t, 40*time.Millisecond)
+	f.writeSysfs("event0", rumblePad())
+	f.writeNode("event0")
+	if err := f.s.Start(f.h); err != nil {
+		t.Fatal(err)
+	}
+	f.h.wait(t, "the pad", func() bool { return len(f.h.added) == 1 })
+	if err := f.s.Rumble(f.h.added[0].ID, 0, 0, time.Second); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.ffLog(); len(got) != 1 {
+		t.Errorf("a stop before any rumble made calls: %v", got)
+	}
+}
+
+func TestServiceRumbleOfAReadOnlyPad(t *testing.T) {
+	f := newFixture(t, 40*time.Millisecond)
+	f.readOnly = true
+	f.writeSysfs("event0", rumblePad())
+	f.writeNode("event0")
+	if err := f.s.Start(f.h); err != nil {
+		t.Fatal(err)
+	}
+	f.h.wait(t, "the pad", func() bool { return len(f.h.added) == 1 })
+	if f.h.added[0].Rumble {
+		t.Error("a pad that could not be opened for writing says it can rumble")
+	}
+	if err := f.s.Rumble(f.h.added[0].ID, 1, 1, time.Second); err == nil {
+		t.Error("a read only pad rumbled")
+	}
+}
+
+func TestServiceRumbleKernelRefuses(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		low   uint16
+		prior bool
+	}{
+		{"upload", 1, false},
+		{"play", 1, false},
+		{"stop", 0, true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newFixture(t, 40*time.Millisecond)
+			f.writeSysfs("event0", rumblePad())
+			f.writeNode("event0")
+			if err := f.s.Start(f.h); err != nil {
+				t.Fatal(err)
+			}
+			f.h.wait(t, "the pad", func() bool { return len(f.h.added) == 1 })
+			id := f.h.added[0].ID
+			if tt.prior {
+				if err := f.s.Rumble(id, 1, 1, time.Second); err != nil {
+					t.Fatal(err)
+				}
+			}
+			f.ffMu.Lock()
+			f.ffFail, f.ffPlayOnly = errors.NewErr(tagEvdevRumbleFailed, syscall.EIO), tt.name == "play"
+			f.ffMu.Unlock()
+			err := f.s.Rumble(id, tt.low, tt.low, time.Second)
+			appErr, ok := errors.FromError(err)
+			if !ok {
+				t.Fatalf("expected *errors.Error, got %T (%v)", err, err)
+			}
+			// The refusal is made by the fake kernel, so the route of its error starts in the test; the routes of the real
+			// calls are in TestKernelRumbleCallsFail. What Service.Rumble must do is return it untouched.
+			if appErr.Tag != tagEvdevRumbleFailed {
+				t.Errorf("unexpected failure: tag %s, path %s", appErr.Tag, appErr.Route())
+			}
+			if !errors.Is(err, syscall.EIO) {
+				t.Errorf("the cause is lost: %v", err)
+			}
+		})
+	}
+}
+
+func TestKernelRumbleCallsFail(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		call  func() error
+		route string
+	}{
+		{"upload", func() error { return uploadEffect(-1, &ffEffect{}) }, "uploadEffect.EvdevRumbleFailed"},
+		{"play", func() error { return playEffect(-1, 0, 1) }, "playEffect.EvdevRumbleFailed"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.call()
+			appErr, ok := errors.FromError(err)
+			if !ok {
+				t.Fatalf("expected *errors.Error, got %T (%v)", err, err)
+			}
+			if !appErr.HasRoute(tt.route) {
+				t.Errorf("unexpected failure path: %s", appErr.Route())
+			}
+			if !errors.Is(err, syscall.EBADF) {
+				t.Errorf("the cause is lost: %v", err)
 			}
 		})
 	}

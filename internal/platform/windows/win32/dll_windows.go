@@ -3,6 +3,7 @@
 package win32
 
 import (
+	"strconv"
 	"strings"
 	"syscall"
 	"unsafe"
@@ -102,6 +103,18 @@ func (l *Library) OptionalProc(name string) (p *Proc, ok bool) {
 		return nil, false
 	}
 	return &Proc{name: name, addr: addr}, true
+}
+
+// OrdinalProc is OptionalProc for a function that the library exports by number only (XInputGetStateEx is ordinal 100 of
+// xinput1_4.dll): ok is false when it is not there.
+//
+// Flutter: no counterpart
+func (l *Library) OrdinalProc(ordinal uint16) (p *Proc, ok bool) {
+	addr, _, _ := syscall.SyscallN(procGetProcAddress.Addr(), l.handle, uintptr(ordinal))
+	if addr == 0 {
+		return nil, false
+	}
+	return &Proc{name: "#" + strconv.Itoa(int(ordinal)), addr: addr}, true
 }
 
 // Name is the name of the function.

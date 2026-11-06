@@ -119,6 +119,9 @@ type Platform struct {
 	accOnce sync.Once
 	acc     *uia.Bridge
 	accWin  *accWindows
+	// pads is the gamepad service, made by the first call of Services (gamepads_windows.go).
+	padsOnce sync.Once
+	pads     *padService
 	// clip is the clipboard, made by the first call of Clipboard.
 	clip *clipboard
 	// desk is the desktop services (tray, balloons, dialogs, URIs), made once by the first call of
@@ -198,6 +201,9 @@ func New(opts Options) (*Platform, error) {
 		p.icon = win32.LoadIcon(0, 32512 /* IDI_APPLICATION */)
 	}
 	if err := p.classes.register(windowClassName, p.icon, p.cursor); err != nil {
+		return fail(err)
+	}
+	if err := p.classes.register(padClassName, 0, 0); err != nil {
 		return fail(err)
 	}
 	if err := p.classes.register(serviceClassName, 0, 0); err != nil {

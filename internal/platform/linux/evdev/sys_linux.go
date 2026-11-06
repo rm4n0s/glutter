@@ -68,6 +68,44 @@ func monotonicNow() time.Duration {
 // eventSize is the size of the kernel's struct input_event: a timeval, then the type and code (16 bits each) and the value.
 var eventSize = int(unsafe.Sizeof(syscall.Timeval{})) + 8
 
+// ffEvent makes the input_event that plays an effect (value 1) or stops it (value 0): the type EV_FF, the id of the effect as the
+// code, and the time left at zero, which the kernel fills in.
+func ffEvent(id int16, value int32) []byte {
+	b := make([]byte, eventSize)
+	off := eventSize - 8
+	binary.NativeEndian.PutUint16(b[off:], evFF)
+	binary.NativeEndian.PutUint16(b[off+2:], uint16(id))
+	binary.NativeEndian.PutUint32(b[off+4:], uint32(value))
+	return b
+}
+
+func eviocsff() uintptr { return ioc(iocWrite, 'E', 0x80, unsafe.Sizeof(ffEffect{})) }
+
+// uploadEffect gives the effect to the device; the kernel writes the id it chose into the effect.
+func uploadEffect(fd int, e *ffEffect) error {
+	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), eviocsff(), uintptr(unsafe.Pointer(e))); errno != 0 {
+		return errors.NewErr(tagEvdevRumbleFailed, errno).SetMetadata("step", "upload")
+	}
+	return nil
+}
+
+// playEffect starts (value 1) or stops (value 0) an uploaded effect.
+func playEffect(fd int, id int16, value int32) error {
+	if _, err := syscall.Write(fd, ffEvent(id, value)); err != nil {
+		return errors.NewErr(tagEvdevRumbleFailed, err).SetMetadata("step", "play", "value", int(value))
+	}
+	return nil
+}
+
+// openWritable opens the event device for reading and writing, which force feedback needs.
+func openWritable(path string) (int, error) {
+	fd, err := syscall.Open(path, syscall.O_RDWR|syscall.O_NONBLOCK|syscall.O_CLOEXEC, 0)
+	if err != nil {
+		return -1, errors.NewErr(tagEvdevOpenFailed, err).SetMetadata("device", path)
+	}
+	return fd, nil
+}
+
 // parseEvents reads the events in a buffer that was read from a device. A partial event at the end is dropped.
 func parseEvents(buf []byte, out []inputEvent) []inputEvent {
 	tv := int(unsafe.Sizeof(syscall.Timeval{}))
@@ -122,6 +160,11 @@ type kernel struct {
 	keyState func(fd int) (bits, bool)
 	// setClock makes the device stamp its events with the monotonic clock.
 	setClock func(fd int) error
+	// openWritable opens a device for reading and writing, for a pad that can rumble; nil opens it as any other.
+	openWritable func(path string) (int, error)
+	// uploadEffect gives a force feedback effect to the device and sets its id; playEffect starts or stops it.
+	uploadEffect func(fd int, e *ffEffect) error
+	playEffect   func(fd int, id int16, value int32) error
 }
 
 // realKernel is the kernel of the machine.
@@ -135,7 +178,10 @@ func realKernel() kernel {
 			}
 			return buf, true
 		},
-		setClock: setMonotonicClock,
+		setClock:     setMonotonicClock,
+		openWritable: openWritable,
+		uploadEffect: uploadEffect,
+		playEffect:   playEffect,
 	}
 }
 
