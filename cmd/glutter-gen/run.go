@@ -29,6 +29,7 @@ var commands = map[string]func(args []string) error{
 	"copywith":     copywith.Run,
 	"errcheck":     errcheck.Run,
 	"icons":        icons.Run,
+	"gpushaders":   shaders.RunGPU,
 	"shaders":      shaders.Run,
 	"uintptrcheck": uintptrcheck.Run,
 }

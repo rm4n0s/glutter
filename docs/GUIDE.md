@@ -2,7 +2,7 @@
 
 Glutter has Flutter's framework API on its own engine, so what you know carries over: the
 widget tree, `BuildContext`, `setState`, `Theme.of`, `Navigator`, animation controllers,
-`CustomPaint`. This page shows fifteen things side by side, in Dart and in Go. The rules behind
+`CustomPaint`. This page shows sixteen things, most of them side by side, in Dart and in Go. The rules behind
 them are in [SPEC §12](SPEC.md#12-api-conventions-flutter--go); this is the short version.
 
 **The rules in one paragraph.** A widget is made by `NewX(required..., opts ...XOpts)`. The
@@ -883,6 +883,67 @@ func drawGrid(c *ui.Canvas, sheet *offscreen.GlyphSheet, metrics ui.FontMetrics,
 - **Calls and errors.** Call both on the UI thread. `NewGlyphSheet` fails with `GlyphClustersMissing` for an empty list and
   `GlyphPixelRatioInvalid` for a ratio that is not positive, `FontMetrics` with `FontMetricsUnsupported` when the text
   engine cannot measure (SPEC §9.9).
+
+## 16. Shaders for the GPU
+
+An app that draws with the GPU itself (package `gpu`) writes its shaders in WGSL, the language of WebGPU, and compiles
+them when it changes them, not when it runs. Put the files in a directory and generate:
+
+```text
+//go:generate go run github.com/rm4n0s/glutter/cmd/glutter-gen gpushaders ./shaders
+```
+
+For each `shaders/<name>.wgsl` the command writes `shaders/<name>.spv` and adds a variable to `shaders/shaders_gen.go`,
+named after the file (`blur_pass.wgsl` is `shaders.BlurPass`). It is a `*gpu.Shader` that holds the WGSL (the web takes
+it as it is), the SPIR-V (Vulkan, through `embed`), the HLSL for shader model 5.1 (Direct3D 12) and the reflection.
+Check the generated files in: building the app needs only Go. The generator needs `naga` 30.0.1
+(`cargo install naga-cli --version 30.0.1 --locked`); without it the command fails with `GPUShadersNagaMissing` and
+prints that line. A shader that naga refuses is `GPUShadersCompileFailed`, with naga's messages.
+
+- **A shader can include another.** A line `//#include "common.wgsl"` is replaced by the text of the file, which is
+  how shaders share a struct or a function.
+- **What a binding can be.** `var<uniform>`, `var<storage, read>` and `var<storage, read_write>`; `texture_2d`,
+  `texture_2d_array`, `texture_cube` and `texture_3d` of `f32` or `u32`; `texture_storage_2d`, `_2d_array` and `_3d` of
+  `rgba8unorm`, `rgba16float`, `r32float` and `r32uint` that are written; `sampler`. Anything else (a depth texture, a
+  multisampled texture, a comparison sampler, a texture of `i32`) is `GPUShadersBindingUnsupported`, with the name of the
+  variable. Entry points may be `@vertex`, `@fragment` and `@compute` (with a `@workgroup_size` of literals).
+- **The reflection** says what the pipeline needs to know, so that you do not write it twice:
+
+```go
+package main
+
+import "github.com/rm4n0s/glutter/gpu"
+
+// uniformSize is the bytes of the uniform buffer at a binding of an entry point, by the layout rules of WGSL.
+// For a storage buffer that ends in an array without a length, Size counts one element of the array.
+func uniformSize(s *gpu.Shader, entry string, group, binding int) (int, bool) {
+	e, ok := s.Entry(entry)
+	if !ok {
+		return 0, false
+	}
+	for _, b := range e.Bindings {
+		if b.Group == group && b.Binding == binding && b.Kind == gpu.BindingUniformBuffer {
+			return b.Size, true
+		}
+	}
+	return 0, false
+}
+
+func main() {}
+```
+
+  Each `gpu.EntryPoint` has its stage, its bindings (group, binding, kind, dimension, sample type, storage format, size),
+  the `@location` inputs of a vertex entry point with their types, and the workgroup size of a compute one.
+- **The first instance.** A vertex shader that reads `@builtin(instance_index)` or `@builtin(vertex_index)` says so
+  (`ReadsInstanceIndex`, `ReadsVertexIndex`). Direct3D 12 does not count the first instance or the first vertex of a draw
+  in them, so such a shader must be drawn with both at 0 (debug builds panic with `GPUFirstInstanceRead` otherwise).
+  Pass an offset in a uniform when you need one.
+- **Checks.** If `spirv-val` is installed, each module is validated with it (`GPUShadersSPIRVInvalid`). In a checkout of
+  Glutter with Wine installed, the HLSL of each entry point is compiled with the real `D3DCompile`
+  (`GPUShadersHLSLInvalid`); `-wine=off` skips it and `-wine=on` fails when it cannot run.
+- **In tests.** `go run github.com/rm4n0s/glutter/cmd/glutter-gen gpushaders -check ./shaders` writes nothing and fails
+  with `GPUShadersOutOfDate` when the checked-in files differ from a new generation, which keeps a forgotten
+  `go generate` out of the repository.
 
 ## For Flutter web developers
 

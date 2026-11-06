@@ -137,16 +137,16 @@ func TestParseErrors(t *testing.T) {
 		tag   string
 		route string
 	}{
-		{"a storage buffer", "@group(0) @binding(0) var<storage, read> b: array<f32>;\n@vertex fn vs() { _ = b; }", "ShadersUnsupportedBinding", "Parse.ShadersUnsupportedBinding"},
-		{"a texture of integers with signs", "@group(0) @binding(0) var t: texture_2d<i32>;\n@vertex fn vs() { _ = t; }", "ShadersUnsupportedBinding", "Parse.ShadersUnsupportedBinding"},
-		{"a depth texture", "@group(0) @binding(0) var t: texture_depth_2d;\n@vertex fn vs() { _ = t; }", "ShadersUnsupportedBinding", "Parse.ShadersUnsupportedBinding"},
-		{"a multisampled texture", "@group(0) @binding(0) var t: texture_multisampled_2d<f32>;\n@vertex fn vs() { _ = t; }", "ShadersUnsupportedBinding", "Parse.ShadersUnsupportedBinding"},
-		{"a storage texture", "@group(0) @binding(0) var t: texture_storage_2d<rgba8unorm, write>;\n@vertex fn vs() { _ = t; }", "ShadersUnsupportedBinding", "Parse.ShadersUnsupportedBinding"},
-		{"a comparison sampler", "@group(0) @binding(0) var s: sampler_comparison;\n@vertex fn vs() { _ = s; }", "ShadersUnsupportedBinding", "Parse.ShadersUnsupportedBinding"},
-		{"a compute entry point", "@compute @workgroup_size(1) fn cs() {}", "ShadersComputeEntry", "Parse.ShadersComputeEntry"},
-		{"no entry point", "fn helper() {}", "ShadersNoEntry", "Parse.ShadersNoEntry"},
-		{"two variables in one slot", "@group(0) @binding(0) var a: sampler;\n@group(0) @binding(0) var b: sampler;\n@vertex fn vs() {}", "ShadersBindingTwice", "Parse.ShadersBindingTwice"},
-		{"a body that is not closed", "@vertex fn vs() { if (true) {", "ShadersUnbalancedBraces", "Parse->functionBodies.ShadersUnbalancedBraces"},
+		{"a storage buffer", "@group(0) @binding(0) var<storage, read> b: array<f32>;\n@vertex fn vs() { _ = b; }", "ShadersUnsupportedBinding", "Parse->parse.ShadersUnsupportedBinding"},
+		{"a texture of integers with signs", "@group(0) @binding(0) var t: texture_2d<i32>;\n@vertex fn vs() { _ = t; }", "ShadersUnsupportedBinding", "Parse->parse.ShadersUnsupportedBinding"},
+		{"a depth texture", "@group(0) @binding(0) var t: texture_depth_2d;\n@vertex fn vs() { _ = t; }", "ShadersUnsupportedBinding", "Parse->parse.ShadersUnsupportedBinding"},
+		{"a multisampled texture", "@group(0) @binding(0) var t: texture_multisampled_2d<f32>;\n@vertex fn vs() { _ = t; }", "ShadersUnsupportedBinding", "Parse->parse.ShadersUnsupportedBinding"},
+		{"a storage texture", "@group(0) @binding(0) var t: texture_storage_2d<rgba8unorm, write>;\n@vertex fn vs() { _ = t; }", "ShadersUnsupportedBinding", "Parse->parse.ShadersUnsupportedBinding"},
+		{"a comparison sampler", "@group(0) @binding(0) var s: sampler_comparison;\n@vertex fn vs() { _ = s; }", "ShadersUnsupportedBinding", "Parse->parse.ShadersUnsupportedBinding"},
+		{"a compute entry point", "@compute @workgroup_size(1) fn cs() {}", "ShadersComputeEntry", "Parse->parse.ShadersComputeEntry"},
+		{"no entry point", "fn helper() {}", "ShadersNoEntry", "Parse->parse.ShadersNoEntry"},
+		{"two variables in one slot", "@group(0) @binding(0) var a: sampler;\n@group(0) @binding(0) var b: sampler;\n@vertex fn vs() {}", "ShadersBindingTwice", "Parse->parse.ShadersBindingTwice"},
+		{"a body that is not closed", "@vertex fn vs() { if (true) {", "ShadersUnbalancedBraces", "Parse->parse->functionBodies.ShadersUnbalancedBraces"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -281,7 +281,7 @@ func TestGenerateErrors(t *testing.T) {
 	}{
 		{"no shaders", map[string]string{}, &fakeNaga{t: t, version: "1"}, "ShadersNoShaders", "Generate.ShadersNoShaders"},
 		{"naga rejects a shader", map[string]string{"bad.wgsl": tinyShader}, &fakeNaga{t: t, version: "1", failOn: "bad.wgsl"}, "ShadersNagaFailed", "ShadersNagaFailed"},
-		{"a shader the parser rejects", map[string]string{"bad.wgsl": "fn helper() {}"}, &fakeNaga{t: t, version: "1"}, "ShadersNoEntry", "Generate->Parse.ShadersNoEntry"},
+		{"a shader the parser rejects", map[string]string{"bad.wgsl": "fn helper() {}"}, &fakeNaga{t: t, version: "1"}, "ShadersNoEntry", "Generate->compile->parse.ShadersNoEntry"},
 		{"a backquote in the WGSL", map[string]string{"bad.wgsl": tinyShader + "// a `quote`\n"}, &fakeNaga{t: t, version: "1"}, "ShadersBacktick", "Generate->render.ShadersBacktick"},
 	}
 	for _, tt := range tests {
@@ -504,11 +504,11 @@ func TestParseGPUErrors(t *testing.T) {
 		tag   string
 		route string
 	}{
-		{"no workgroup size", "@compute fn cs() {}", "ShadersWorkgroupSize", "Parse->workgroupSize.ShadersWorkgroupSize"},
-		{"a workgroup size that is a name", "@compute @workgroup_size(N) fn cs() {}", "ShadersWorkgroupSize", "Parse->workgroupSize.ShadersWorkgroupSize"},
-		{"a storage texture that is read", "@group(0) @binding(0) var t: texture_storage_2d<rgba8unorm, read>;\n@compute @workgroup_size(1) fn cs() { _ = t; }", "ShadersUnsupportedBinding", "Parse.ShadersUnsupportedBinding"},
-		{"a storage texture of another format", "@group(0) @binding(0) var t: texture_storage_2d<rg32float, write>;\n@compute @workgroup_size(1) fn cs() { _ = t; }", "ShadersUnsupportedBinding", "Parse.ShadersUnsupportedBinding"},
-		{"a workgroup variable binding", "@group(0) @binding(0) var<private> p: f32;\n@compute @workgroup_size(1) fn cs() { _ = p; }", "ShadersUnsupportedBinding", "Parse.ShadersUnsupportedBinding"},
+		{"no workgroup size", "@compute fn cs() {}", "ShadersWorkgroupSize", "Parse->parse->workgroupSize.ShadersWorkgroupSize"},
+		{"a workgroup size that is a name", "@compute @workgroup_size(N) fn cs() {}", "ShadersWorkgroupSize", "Parse->parse->workgroupSize.ShadersWorkgroupSize"},
+		{"a storage texture that is read", "@group(0) @binding(0) var t: texture_storage_2d<rgba8unorm, read>;\n@compute @workgroup_size(1) fn cs() { _ = t; }", "ShadersUnsupportedBinding", "Parse->parse.ShadersUnsupportedBinding"},
+		{"a storage texture of another format", "@group(0) @binding(0) var t: texture_storage_2d<rg32float, write>;\n@compute @workgroup_size(1) fn cs() { _ = t; }", "ShadersUnsupportedBinding", "Parse->parse.ShadersUnsupportedBinding"},
+		{"a workgroup variable binding", "@group(0) @binding(0) var<private> p: f32;\n@compute @workgroup_size(1) fn cs() { _ = p; }", "ShadersUnsupportedBinding", "Parse->parse.ShadersUnsupportedBinding"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -47,6 +47,8 @@ type Compiler interface {
 type Naga struct {
 	// Path is the command; "naga" when empty.
 	Path string
+	// App makes the errors those of glutter-gen gpushaders (GPUShadersNagaMissing, GPUShadersCompileFailed).
+	App bool
 }
 
 func (n Naga) path() string {
@@ -61,6 +63,9 @@ func (n Naga) path() string {
 func (n Naga) Version() (string, error) {
 	out, err := exec.Command(n.path(), "--version").Output()
 	if err != nil {
+		if n.App {
+			return "", errors.NewErr(tagGPUShadersNagaMissing, err).SetMetadata("command", n.path(), "install", nagaInstall)
+		}
 		return "", errors.NewErr(tagShadersNagaMissing, err).SetMetadata("command", n.path(),
 			"install", "cargo install naga-cli --locked")
 	}
@@ -77,6 +82,9 @@ func (n Naga) Version() (string, error) {
 func (n Naga) Compile(wgsl, spirv string) error {
 	out, err := exec.Command(n.path(), wgsl, spirv).CombinedOutput()
 	if err != nil {
+		if n.App {
+			return errors.NewErr(tagGPUShadersCompileFailed, err).SetMetadata("file", wgsl, "output", string(out))
+		}
 		return errors.NewErr(tagShadersNagaFailed, err).SetMetadata("file", wgsl, "output", string(out))
 	}
 	return nil
@@ -90,6 +98,9 @@ const hlslShaderModel = "51"
 func (n Naga) CompileHLSL(wgsl, hlsl string) error {
 	out, err := exec.Command(n.path(), wgsl, hlsl, "--shader-model", hlslShaderModel).CombinedOutput()
 	if err != nil {
+		if n.App {
+			return errors.NewErr(tagGPUShadersCompileFailed, err).SetMetadata("file", wgsl, "output", string(out))
+		}
 		return errors.NewErr(tagShadersNagaFailed, err).SetMetadata("file", wgsl, "output", string(out))
 	}
 	return nil
@@ -156,38 +167,12 @@ func Generate(pkg, srcDir, outDir string, naga Compiler, gpu bool) error {
 	hlsls := map[string]string{}
 	for _, file := range files {
 		name := strings.TrimSuffix(filepath.Base(file), ".wgsl")
-		src, err := expand(file, nil)
+		c, err := compile(file, tmp, filepath.Join(outDir, shadersDir, name+".spv"), naga, gpu, false)
 		if err != nil {
 			return err
-		}
-		mod, err := Parse(src, gpu)
-		if err != nil {
-			return wrapParse(err, file)
-		}
-		expanded := filepath.Join(tmp, filepath.Base(file))
-		if err := os.WriteFile(expanded, []byte(src), 0o644); err != nil {
-			return errors.NewErr(tagShadersWriteFailed, err).SetMetadata("file", expanded)
-		}
-		if err := naga.Compile(expanded, filepath.Join(outDir, shadersDir, name+".spv")); err != nil {
-			return err
-		}
-		hlslFile := filepath.Join(tmp, name+".hlsl")
-		if err := naga.CompileHLSL(expanded, hlslFile); err != nil {
-			return err
-		}
-		raw, err := os.ReadFile(hlslFile)
-		if err != nil {
-			return errors.NewErr(tagShadersReadFailed, err).SetMetadata("file", hlslFile)
-		}
-		hlsl, err := rewriteHLSL(string(raw), gpu)
-		if err != nil {
-			return wrapParse(err, file)
-		}
-		if err := checkHLSL(hlsl, mod); err != nil {
-			return wrapParse(err, file)
 		}
 		names = append(names, name)
-		mods[name], srcs[name], hlsls[name] = mod, src, hlsl
+		mods[name], srcs[name], hlsls[name] = c.mod, c.src, c.hlsl
 	}
 	code, err := render(pkg, version, names, mods, srcs, hlsls)
 	if err != nil {
@@ -198,6 +183,51 @@ func Generate(pkg, srcDir, outDir string, naga Compiler, gpu bool) error {
 		return errors.NewErr(tagShadersWriteFailed, err).SetMetadata("file", path)
 	}
 	return nil
+}
+
+// compiled is what compile makes of one WGSL file.
+type compiled struct {
+	mod  Module
+	src  string
+	hlsl string
+}
+
+// compile expands the includes of a WGSL file, reads its bindings and entry points, has naga write the
+// SPIR-V (to spv) and the HLSL, and rewrites and checks the HLSL (tmp is a directory for the files that
+// naga is given and the HLSL it writes). app is a shader of an app (glutter-gen gpushaders).
+func compile(file, tmp, spv string, naga Compiler, gpu, app bool) (compiled, error) {
+	name := strings.TrimSuffix(filepath.Base(file), ".wgsl")
+	src, err := expand(file, nil)
+	if err != nil {
+		return compiled{}, err
+	}
+	mod, err := parse(src, gpu, app)
+	if err != nil {
+		return compiled{}, wrapParse(err, file)
+	}
+	expanded := filepath.Join(tmp, filepath.Base(file))
+	if err := os.WriteFile(expanded, []byte(src), 0o644); err != nil {
+		return compiled{}, errors.NewErr(tagShadersWriteFailed, err).SetMetadata("file", expanded)
+	}
+	if err := naga.Compile(expanded, spv); err != nil {
+		return compiled{}, err
+	}
+	hlslFile := filepath.Join(tmp, name+".hlsl")
+	if err := naga.CompileHLSL(expanded, hlslFile); err != nil {
+		return compiled{}, err
+	}
+	raw, err := os.ReadFile(hlslFile)
+	if err != nil {
+		return compiled{}, errors.NewErr(tagShadersReadFailed, err).SetMetadata("file", hlslFile)
+	}
+	hlsl, err := rewriteHLSL(string(raw), gpu)
+	if err != nil {
+		return compiled{}, wrapParse(err, file)
+	}
+	if err := checkHLSL(hlsl, mod); err != nil {
+		return compiled{}, wrapParse(err, file)
+	}
+	return compiled{mod: mod, src: src, hlsl: hlsl}, nil
 }
 
 // includeLine is a line that includes another file, relative to the including file's directory.
@@ -336,6 +366,12 @@ func render(pkg, version string, names []string, mods map[string]Module, srcs, h
 
 // The tags of the errors that this file makes (rm4n0s/errors, R5).
 const (
+	// tagGPUShadersCompileFailed is the tag of the error of naga refusing the WGSL of an app's shader
+	// (glutter-gen gpushaders); the metadata are "file" and naga's messages in "output".
+	tagGPUShadersCompileFailed = "GPUShadersCompileFailed"
+	// tagGPUShadersNagaMissing is the tag of the error of gpushaders when naga is not installed; the
+	// metadata are the "command" and the "install" command.
+	tagGPUShadersNagaMissing     = "GPUShadersNagaMissing"
 	tagShadersBacktick           = "ShadersBacktick"
 	tagShadersBadFlags           = "ShadersBadFlags"
 	tagShadersFormatFailed       = "ShadersFormatFailed"

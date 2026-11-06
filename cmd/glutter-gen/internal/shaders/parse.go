@@ -35,6 +35,9 @@ type Binding struct {
 	// StorageFormat is the texel format of a storage texture, as the generated code spells it
 	// ("TextureFormatRGBA8Unorm").
 	StorageFormat string
+	// Size is the size in bytes of the type of a uniform or storage buffer (gpushaders only; 0 otherwise):
+	// by the layout rules of WGSL, with one element for an array that has no length.
+	Size int
 }
 
 // The dimensions of a texture binding, as explicit spells them (the zero value is "").
@@ -60,6 +63,8 @@ type Entry struct {
 	// ReadsInstanceIndex and ReadsVertexIndex say that a vertex entry point takes
 	// @builtin(instance_index) or @builtin(vertex_index).
 	ReadsInstanceIndex, ReadsVertexIndex bool
+	// Inputs are the @location inputs of a vertex entry point (gpushaders only).
+	Inputs []Input
 }
 
 // Module is what the generator reads from a WGSL file.
@@ -106,8 +111,14 @@ func stripComments(src string) string {
 // `var<storage, read>` and `var<storage, read_write>` buffers, `texture_storage_2d`, `_2d_array` and
 // `_3d` textures of rgba8unorm, rgba16float, r32float and r32uint that are written, and @compute entry
 // points with a literal @workgroup_size; the 2D renderer's own shaders have none of these.
-func Parse(src string, gpu bool) (Module, error) {
+func Parse(src string, gpu bool) (Module, error) { return parse(src, gpu, false) }
+
+// parse is Parse; app is the shaders of an app (glutter-gen gpushaders): it implies gpu, adds the sizes of
+// the buffers and the inputs of the vertex entry points, and gives the errors the tags of gpushaders.
+func parse(src string, gpu, app bool) (Module, error) {
 	src = stripComments(src)
+	gpu = gpu || app
+	lay := newLayouts(src)
 	var m Module
 	seen := map[[2]int]string{}
 	for _, d := range bindingDecl.FindAllStringSubmatch(src, -1) {
@@ -152,8 +163,19 @@ func Parse(src string, gpu bool) (Module, error) {
 			}
 			b.StorageFormat = storageFormats[m[2]]
 		default:
+			if app {
+				return Module{}, errors.New(tagGPUShadersBindingUnsupported, "only uniform buffers, storage buffers (read and read_write), sampled textures (texture_2d, texture_2d_array, texture_cube and texture_3d of f32 or u32), storage textures (texture_storage_2d, _2d_array and _3d of rgba8unorm, rgba16float, r32float and r32uint, write) and sampler can be bound (SPEC §27.3)",
+					"name", b.Name, "address_space", d[2], "type", typ)
+			}
 			return Module{}, errors.New(tagShadersUnsupportedBinding, "only uniform buffers, sampled textures (texture_2d, texture_2d_array, texture_cube and texture_3d of f32 or u32) and sampler can be bound (SPEC §9.3, §27.1); storage buffers and storage textures need -gpu",
 				"name", b.Name, "address_space", d[2], "type", typ)
+		}
+		if app && (b.Kind == KindUniform || b.Kind == KindStorageRO || b.Kind == KindStorage) {
+			size, err := lay.bindingSize(typ)
+			if err != nil {
+				return Module{}, err
+			}
+			b.Size = size
 		}
 		key := [2]int{group, binding}
 		if other, ok := seen[key]; ok {
@@ -196,6 +218,17 @@ func Parse(src string, gpu bool) (Module, error) {
 		if stage[1] == "vertex" {
 			entry.ReadsInstanceIndex = takesBuiltin(bodies[name], structs, "instance_index")
 			entry.ReadsVertexIndex = takesBuiltin(bodies[name], structs, "vertex_index")
+			if app {
+				head := bodies[name]
+				if i := strings.IndexByte(head, '{'); i >= 0 {
+					head = head[:i]
+				}
+				inputs, err := lay.inputs(head)
+				if err != nil {
+					return Module{}, err
+				}
+				entry.Inputs = inputs
+			}
 		}
 		reach := reachable(entry.Name, bodies)
 		for _, b := range m.Bindings {
@@ -332,10 +365,13 @@ func reachable(name string, bodies map[string]string) []string {
 
 // The tags of the errors that this file makes (rm4n0s/errors, R5).
 const (
-	tagShadersBindingTwice       = "ShadersBindingTwice"
-	tagShadersComputeEntry       = "ShadersComputeEntry"
-	tagShadersNoEntry            = "ShadersNoEntry"
-	tagShadersUnbalancedBraces   = "ShadersUnbalancedBraces"
-	tagShadersUnsupportedBinding = "ShadersUnsupportedBinding"
-	tagShadersWorkgroupSize      = "ShadersWorkgroupSize"
+	// tagGPUShadersBindingUnsupported is the tag of the error of a binding that an app's shader may not have
+	// (glutter-gen gpushaders, SPEC §27.3); the metadata are "name", "address_space" and "type".
+	tagGPUShadersBindingUnsupported = "GPUShadersBindingUnsupported"
+	tagShadersBindingTwice          = "ShadersBindingTwice"
+	tagShadersComputeEntry          = "ShadersComputeEntry"
+	tagShadersNoEntry               = "ShadersNoEntry"
+	tagShadersUnbalancedBraces      = "ShadersUnbalancedBraces"
+	tagShadersUnsupportedBinding    = "ShadersUnsupportedBinding"
+	tagShadersWorkgroupSize         = "ShadersWorkgroupSize"
 )

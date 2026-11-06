@@ -50,6 +50,7 @@ Before reporting a task as finished, run `gofmt`, `go vet ./...`, `golangci-lint
 
 ## Layout
 - Public packages at the repo root mirror Flutter's libraries: `foundation`, `scheduler`, `animation`, `physics`, `gestures`, `painting`, `rendering`, `semantics`, `services`, `widgets`, `material`
+- `gpu/` is the public GPU API of 1.10 (SPEC §27.2; `gpu/shader.go`, the type of the shaders that `glutter-gen gpushaders` makes, comes first). It names no OS or GPU-API type; its doc comments end with `// Flutter: no counterpart`
 - `ui/` is the engine API (Flutter's `dart:ui`): geometry, Canvas, Paint, Path, Scene, Paragraph, views, input events
 - `desktop/` holds desktop services Flutter leaves to plugins: system tray, notifications, file dialogs, open-URI
 - `gluttertest/` is the widget-testing package (Flutter's `flutter_test`)

@@ -350,8 +350,8 @@ func TestGenerateRefusesTheInstanceIndex(t *testing.T) {
 	n := withNaga(t)
 	err := Generate(defaultPackage, writeShaders(t, map[string]string{"inst.wgsl": instanceShader}), t.TempDir(), n, false)
 	appErr, ok := errors.FromError(err)
-	if !ok || appErr.Tag != tagShadersHLSLInstanceID || !appErr.HasRoute("Generate->rewriteHLSL.ShadersHLSLInstanceID") {
-		t.Fatalf("got %v, want ShadersHLSLInstanceID via Generate->rewriteHLSL", err)
+	if !ok || appErr.Tag != tagShadersHLSLInstanceID || !appErr.HasRoute("Generate->compile->rewriteHLSL.ShadersHLSLInstanceID") {
+		t.Fatalf("got %v, want ShadersHLSLInstanceID via Generate->compile->rewriteHLSL", err)
 	}
 	if appErr.Metadata["file"] == nil {
 		t.Error("the error does not name the file")
@@ -384,8 +384,8 @@ func TestGenerateHLSLErrors(t *testing.T) {
 	}{
 		{"naga's sampler heap in a form that is not known", func(string) string {
 			return "SamplerState nagaSamplerHeap[2048]: register(s0, space0);\nstatic const SamplerState s = nagaSamplerHeap[nagaGroup0SamplerIndexArray[0]+1];\n"
-		}, tagShadersHLSLUnexpected, "Generate->rewriteHLSL.ShadersHLSLUnexpected"},
-		{"a register that the WGSL does not have", func(s string) string { return s + "Texture2D<float4> extra : register(t9, space0);\n" }, tagShadersHLSLMismatch, "Generate->checkHLSL.ShadersHLSLMismatch"},
+		}, tagShadersHLSLUnexpected, "Generate->compile->rewriteHLSL.ShadersHLSLUnexpected"},
+		{"a register that the WGSL does not have", func(s string) string { return s + "Texture2D<float4> extra : register(t9, space0);\n" }, tagShadersHLSLMismatch, "Generate->compile->checkHLSL.ShadersHLSLMismatch"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
