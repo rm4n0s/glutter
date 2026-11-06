@@ -90,6 +90,11 @@ type Config struct {
 	// with that error. Start replaces Scene: a Scene is drawn only when Start is
 	// nil.
 	Start func(d *ui.PlatformDispatcher) error
+	// Stop, when set, is called once on the UI thread when the event loop has ended and the renderer and the
+	// device are still open: the framework takes its widgets down here, so that what their states hold (the
+	// resources of a GPU view) is released before the device is closed. It is called even when the loop ended
+	// with an error, and not when Start failed.
+	Stop func()
 
 	// The fields below are for the tests of this package: a platform that is not the
 	// real one (or a Wayland and an X11 that are not), and the renderer.
@@ -313,6 +318,9 @@ func Run(ctx context.Context, cfg Config) (err error) {
 	h.startAccessibility(ctx)
 	stage("accessibility started")
 	runErr := conn.Run(ctx, h)
+	if cfg.Stop != nil {
+		cfg.Stop()
+	}
 	h.release()
 	if runErr != nil {
 		return runErr

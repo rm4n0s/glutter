@@ -391,6 +391,7 @@ Each one uses only the public packages and has tests that run on a fake platform
 | [`custompaint`](examples/custompaint) | `CustomPaint` and the `Canvas` | ![](docs/implemented-proof-images/7.9-custompaint.png) |
 | [`todo`](examples/todo) | a `DataTable` of tasks; each row has a checkbox, an Edit button (a dialog) and a Delete button | ![](docs/implemented-proof-images/example-todo.png) |
 | [`svg`](examples/svg) | SVG pictures (package `svg`): icons with `currentColor` and a `ColorFilter`, a logo with gradients, text and a drop-shadow filter | ![](docs/implemented-proof-images/29.4-svg.png) |
+| [`gpu-triangle`](examples/gpu-triangle) | package `gpu`: a lit cube drawn by the program's own shader into a `gpu.View`, with depth and 4x multisampling, a slider and a switch | ![](docs/implemented-proof-images/30.6-gpu-triangle-linux.png) |
 
 ## Performance
 

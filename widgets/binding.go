@@ -971,6 +971,21 @@ func (b *WidgetsBinding) AttachToBuildOwner(root *RootWidget) {
 	}
 }
 
+// DetachRootWidget takes the app out of the tree: the root widget gets no child, so every element below it is
+// unmounted, every State is disposed and the render objects are detached. RunApp does it when the app ends, before
+// the renderer is closed, so that what a state holds (the targets of a GPU view, the resources an app made in
+// OnInit) is released while the device is still open. It does nothing when no widget is attached.
+//
+// Flutter: no counterpart
+func (b *WidgetsBinding) DetachRootWidget() {
+	if b.rootElement == nil {
+		return
+	}
+	b.AttachToBuildOwner(NewRootWidget(nil, RootWidgetOpts{DebugShortDescription: "[root]"}))
+	b.owner.BuildScope(b.rootElement, nil)
+	b.owner.FinalizeTree()
+}
+
 // Reassemble marks every element for a rebuild and every render object for
 // layout and paint, as after a hot reload.
 //

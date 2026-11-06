@@ -1045,6 +1045,52 @@ func main() {}
   (`tester.GPUDevice()` keeps what was encoded: `Calls()`, `Ops()`, `Logs()`; `Lose()` loses the device). Without
   the option the app has no GPU device, as with the software renderer.
 
+### A view of your own
+
+`gpu.NewView(onPaint, opts)` is a widget that owns a render target the size of its box in pixels and calls your function
+to draw into it. `examples/gpu-triangle` is a lit cube that turns, drawn this way.
+
+```go
+package main
+
+import (
+	"github.com/rm4n0s/glutter/gpu"
+	"github.com/rm4n0s/glutter/widgets"
+)
+
+func newView() *gpu.View {
+	return gpu.NewView(func(f *gpu.ViewFrame) {
+		// f.Color is the target (f.Resolve the texture it is resolved into when SampleCount is 4, f.Depth the depth).
+		pass := f.Encoder.BeginRenderPass(gpu.RenderPassDesc{ColorAttachments: []gpu.RenderPassColorAttachment{{
+			View: f.Color.View(), ClearValue: gpu.Color{A: 1},
+		}}})
+		// ... SetPipeline, SetBindGroup, Draw ...
+		pass.End() // the view finishes and submits f.Encoder when the function returns
+	}, gpu.ViewOpts{
+		DepthFormat: gpu.TextureFormatDepth32Float, // none by default
+		SampleCount: 4,                             // 1 by default
+		Continuous:  true,                          // draw at every frame; without it, draw when created, resized or marked
+		OnInit:      func(d *gpu.Device) { /* make buffers, pipelines */ },
+		OnDispose:   func() { /* release them */ },
+		Fallback:    widgets.NewText("This needs a GPU renderer."),
+	})
+}
+
+func main() { _ = newView() }
+```
+
+- **When it draws.** In the frame, after the widgets are painted and before the frame is shown. A view that is not
+  `Continuous` draws once when it appears, again when it is resized (or the device pixel ratio changes) and whenever
+  `Controller.MarkNeedsPaint()` asks; between those it costs nothing and schedules no frame.
+- **Size.** The targets are the box times the device pixel ratio, rounded: `f.Width` and `f.Height` are pixels,
+  `f.DevicePixelRatio` is the ratio. Size the box as any widget (`Expanded`, `SizedBox`, `AspectRatio`); the view
+  takes all the room it is given. A resize makes new targets, so do not keep `f.Color` between frames.
+- **Resources.** Make yours in `OnInit` and release them in `OnDispose`. `OnInit` runs again with the new device
+  after a loss, and `OnDispose` runs for the old one first. The app ending runs it too.
+- **Without a GPU.** On the OpenGL ES, WebGL and software renderers the view shows `Fallback`.
+- **Input.** The view is an ordinary box: wrap it in `Listener` or `GestureDetector`.
+- **Tests.** With `gluttertest.Opts{GPU: true}` the view draws on the recording device; check what the function encoded.
+
 ## For Flutter web developers
 
 If you know Flutter on the web, this is what is the same and what is not.

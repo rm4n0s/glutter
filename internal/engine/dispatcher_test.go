@@ -745,3 +745,28 @@ const (
 	tagEGLContextLost = "EGLContextLost"
 	tagStartFailed    = "StartFailed"
 )
+
+func TestStopRunsBeforeTheRendererIsClosed(t *testing.T) {
+	h, _ := newDispatcherHarness(t)
+	stopped, closedAtStop := 0, -1
+	h.cfg.Stop = func() {
+		stopped++
+		_, closedAtStop = h.r.snapshot()
+	}
+	done := h.run(t)
+	finish(t, h, done)
+	if stopped != 1 || closedAtStop != 0 {
+		t.Errorf("Stop ran %d times, with %d renderers closed; want once, before any is closed", stopped, closedAtStop)
+	}
+}
+
+func TestStopIsNotCalledWhenStartFails(t *testing.T) {
+	h, _ := newDispatcherHarness(t)
+	h.cfg.Start = func(*ui.PlatformDispatcher) error { return errors.New(tagStartFailed, "no") }
+	called := false
+	h.cfg.Stop = func() { called = true }
+	_ = Run(t.Context(), h.cfg)
+	if called {
+		t.Error("Stop ran although Start failed")
+	}
+}

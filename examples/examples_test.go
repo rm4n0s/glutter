@@ -27,7 +27,7 @@ func specExamples(t *testing.T) []string {
 		t.Fatal("SPEC.md has no section 19")
 	}
 	section, _, _ = strings.Cut(section, "\n## ")
-	names := regexp.MustCompile("`([a-z]+)`").FindAllStringSubmatch(section, -1)
+	names := regexp.MustCompile("`([a-z][a-z-]*)`").FindAllStringSubmatch(section, -1)
 	var out []string
 	for _, n := range names {
 		out = append(out, n[1])
@@ -45,7 +45,7 @@ func TestEveryExampleOfTheSpecExists(t *testing.T) {
 	readme := readFile(t, "..", "README.md")
 	rows := map[string]string{}
 	for _, line := range strings.Split(readme, "\n") {
-		if m := regexp.MustCompile("^\\| \\[`([a-z]+)`\\]\\(examples/").FindStringSubmatch(line); m != nil {
+		if m := regexp.MustCompile("^\\| \\[`([a-z][a-z-]*)`\\]\\(examples/").FindStringSubmatch(line); m != nil {
 			rows[m[1]] = line
 		}
 	}

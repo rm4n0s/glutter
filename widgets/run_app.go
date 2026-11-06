@@ -228,6 +228,7 @@ func RunWidgetContext(ctx context.Context, app Widget, opts ...RunAppOpts) error
 func run(parent context.Context, app Widget, wrap bool, o RunAppOpts, engineRun func(context.Context, engine.Config) error) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
+	var binding *WidgetsBinding
 	cfg := engine.Config{
 		Backend:  o.Backend,
 		Renderer: o.Renderer,
@@ -238,8 +239,15 @@ func run(parent context.Context, app Widget, wrap bool, o RunAppOpts, engineRun 
 			if err := loadFontSources(ctx, d, o.Fonts, o.Assets); err != nil {
 				return err
 			}
-			_, err := startApp(ctx, d, app, wrap, o)
+			var err error
+			binding, err = startApp(ctx, d, app, wrap, o)
 			return err
+		},
+		// The widgets come down while the device is open: a state may release GPU resources in Dispose.
+		Stop: func() {
+			if binding != nil {
+				binding.DetachRootWidget()
+			}
 		},
 	}
 	return engineRun(ctx, cfg)

@@ -178,3 +178,39 @@ func TestIsIdle(t *testing.T) {
 		t.Error("the app is idle with an animation running")
 	}
 }
+
+// disposeProbe is a stateful widget that counts its Dispose calls.
+type disposeProbe struct {
+	StatefulWidget
+	disposed *int
+}
+
+func (w *disposeProbe) CreateState() State { return &disposeProbeState{} }
+
+type disposeProbeState struct{ StateOf[*disposeProbe] }
+
+func (s *disposeProbeState) Build(BuildContext) Widget { return newLeaf() }
+func (s *disposeProbeState) Dispose()                  { *s.Widget().disposed++ }
+
+func TestDetachRootWidgetDisposesTheStates(t *testing.T) {
+	disposed := 0
+	b, _, err := startFake(t, &disposeProbe{StatefulWidget: NewStatefulWidgetBase(), disposed: &disposed}, false, RunAppOpts{}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b.Scheduler().HandleBeginFrame(foundation.Some(time.Duration(0)))
+	b.Scheduler().HandleDrawFrame()
+	b.DetachRootWidget()
+	if disposed != 1 {
+		t.Errorf("Dispose ran %d times, want once", disposed)
+	}
+	b.DetachRootWidget() // twice is fine
+	if disposed != 1 {
+		t.Errorf("Dispose ran %d times after the second detach", disposed)
+	}
+	empty, _, err := startFake(t, newLeaf(), false, RunAppOpts{}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	empty.DetachRootWidget() // before the first frame: nothing breaks
+}
