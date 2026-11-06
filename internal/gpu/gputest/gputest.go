@@ -224,3 +224,8 @@ func ShapeScenes() []ShapeScene {
 		}},
 	}
 }
+
+// ScenesTolerance is how far the picture of a scene of internal/scenetest (viewport3d, SPEC §27.12) on a backend may be from
+// its golden, which Vulkan on lavapipe made: the backends compile the shaders in their own ways and place the samples of the
+// multisampling in their own ways, so the edges differ a little.
+var ScenesTolerance = Tolerance{Over8Permille: 12, Over32Permille: 6, Over96: 40}

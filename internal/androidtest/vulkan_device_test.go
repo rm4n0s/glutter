@@ -3,14 +3,19 @@
 package androidtest
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"image"
+	"image/draw"
+	"image/png"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/rm4n0s/glutter/internal/androidtool"
+	"github.com/rm4n0s/glutter/internal/goldens"
 	"github.com/rm4n0s/glutter/internal/gpu/gputest"
 )
 
@@ -274,5 +279,74 @@ func TestVulkanRunsTheScenesOfTheExplicitDevice(t *testing.T) {
 	}
 	if ok < 76 {
 		t.Errorf("only %d parts of the scenes ran", ok)
+	}
+}
+
+// TestVulkanDrawsTheScenesOfThe3DView draws the scenes of the 3D view (internal/scenetest, step 30.9) through package gpu on the
+// emulator's Vulkan device with the validation layer on, and compares each picture with the golden that Vulkan on lavapipe made,
+// within gputest.ScenesTolerance (SPEC §27.12).
+func TestVulkanDrawsTheScenesOfThe3DView(t *testing.T) {
+	e := Shared(t, "glutter-37")
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
+	defer cancel()
+	// The validation layer is used when the owner has put it in .android-test/vvl; the pictures are compared either way.
+	var opts androidtool.BuildOptions
+	var extras map[string]string
+	validated := false
+	if dir, err := ValidationLayerDir(); err == nil {
+		opts, extras, validated = androidtool.BuildOptions{ValidationLayerDir: dir}, map[string]string{"GLUTTER_VULKAN_VALIDATION": "1"}, true
+	} else {
+		t.Logf("running without the validation layer: %s", Describe(err))
+	}
+	appID := installAppWith(ctx, t, e, "./examples/dev/android-viewport3d", opts)
+	if err := e.Launch(ctx, appID, extras); err != nil {
+		t.Fatal(Describe(err))
+	}
+	if err := e.WaitExit(ctx, appID, 4*time.Minute); err != nil {
+		log, _ := e.Log(ctx, appID)
+		t.Fatalf("%s\n%s", Describe(err), log)
+	}
+	files, err := e.PullAppDir(ctx, appID, "files/viewport3d")
+	if err != nil {
+		t.Fatal(Describe(err))
+	}
+	if _, ok := files["DONE"]; !ok {
+		log, _ := e.Log(ctx, appID)
+		t.Fatalf("the run did not finish (files: %d)\n%s", len(files), log)
+	}
+	if validated {
+		checkNoValidationErrors(t, files)
+	} else if dev := string(files["device.txt"]); !strings.Contains(dev, "vulkan:") {
+		t.Errorf("the run did not use Vulkan: %q", dev)
+	}
+	if msg := strings.TrimSpace(string(files["errors.txt"])); msg != "" {
+		t.Errorf("scenes failed:\n%s", msg)
+	}
+	compared := 0
+	for name, data := range files {
+		if !strings.HasSuffix(name, ".png") {
+			continue
+		}
+		got, err := png.Decode(bytes.NewReader(data))
+		if err != nil {
+			t.Errorf("%s: %v", name, err)
+			continue
+		}
+		want, err := goldens.ReadPNG(filepath.Join("..", "..", "viewport3d", "testdata", "goldens", name))
+		if err != nil {
+			t.Errorf("%s: %v", name, err)
+			continue
+		}
+		gotRGBA := image.NewRGBA(got.Bounds())
+		draw.Draw(gotRGBA, got.Bounds(), got, got.Bounds().Min, draw.Src)
+		if gotRGBA.Bounds() != want.Bounds() {
+			t.Errorf("%s: the picture is %v, the golden %v", name, gotRGBA.Bounds(), want.Bounds())
+			continue
+		}
+		gputest.ScenesTolerance.Check(t, name, gputest.DiffRect(gotRGBA, want, want.Bounds()))
+		compared++
+	}
+	if compared < 13 {
+		t.Errorf("only %d scenes were compared, want every one", compared)
 	}
 }

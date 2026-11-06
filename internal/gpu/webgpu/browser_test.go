@@ -3,16 +3,23 @@
 package webgpu_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
+	"image"
+	"image/draw"
+	"image/png"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/rm4n0s/errors"
+	"github.com/rm4n0s/glutter/internal/goldens"
 	"github.com/rm4n0s/glutter/internal/gpu/explicit/devicetest"
 	"github.com/rm4n0s/glutter/internal/gpu/gputest"
 	"github.com/rm4n0s/glutter/internal/proof"
@@ -496,6 +503,65 @@ func TestBrowserLoaderShowsAStartFailure(t *testing.T) {
 			if !strings.Contains(shown, want) {
 				t.Errorf("the page shows %q, want it to say %q", shown, want)
 			}
+		}
+	})
+}
+
+// TestBrowserViewport3DScenes draws the scenes of the 3D view (internal/scenetest, step 30.9) through package gpu on the
+// browser's WebGPU and compares each picture with the golden that Vulkan on lavapipe made, within gputest.ScenesTolerance
+// (SPEC §27.12); the browser reports no validation error.
+func TestBrowserViewport3DScenes(t *testing.T) {
+	eachBrowserWithWebGPU(t, func(t *testing.T, b webtest.Browser) {
+		var res struct {
+			Error      string   `json:"error"`
+			Renderer   string   `json:"renderer"`
+			Validation []string `json:"validation"`
+			Scenes     []struct {
+				Name  string `json:"name"`
+				PNG   string `json:"png"`
+				Error string `json:"error"`
+			} `json:"scenes"`
+		}
+		if err := json.Unmarshal(await(t, b, url.Values{"mode": {"viewport3d"}}, 5*time.Minute), &res); err != nil {
+			t.Fatal(err)
+		}
+		if res.Error != "" {
+			t.Fatal(res.Error)
+		}
+		t.Logf("%s draws the scenes on %q", b, res.Renderer)
+		if len(res.Validation) != 0 {
+			t.Errorf("the browser reported %d validation errors, the first: %s", len(res.Validation), res.Validation[0])
+		}
+		if len(res.Scenes) < 13 {
+			t.Errorf("the program drew %d scenes, want every one", len(res.Scenes))
+		}
+		for _, s := range res.Scenes {
+			if s.Error != "" {
+				t.Errorf("%s: %s", s.Name, s.Error)
+				continue
+			}
+			raw, err := base64.StdEncoding.DecodeString(s.PNG)
+			if err != nil {
+				t.Errorf("%s: %v", s.Name, err)
+				continue
+			}
+			got, err := png.Decode(bytes.NewReader(raw))
+			if err != nil {
+				t.Errorf("%s: %v", s.Name, err)
+				continue
+			}
+			want, err := goldens.ReadPNG(filepath.Join("..", "..", "..", "viewport3d", "testdata", "goldens", s.Name+".png"))
+			if err != nil {
+				t.Errorf("%s: %v", s.Name, err)
+				continue
+			}
+			gotRGBA := image.NewRGBA(got.Bounds())
+			draw.Draw(gotRGBA, got.Bounds(), got, got.Bounds().Min, draw.Src)
+			if gotRGBA.Bounds() != want.Bounds() {
+				t.Errorf("%s: the picture is %v, the golden %v", s.Name, gotRGBA.Bounds(), want.Bounds())
+				continue
+			}
+			gputest.ScenesTolerance.Check(t, s.Name, gputest.DiffRect(gotRGBA, want, want.Bounds()))
 		}
 	})
 }

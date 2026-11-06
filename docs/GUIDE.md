@@ -1173,8 +1173,9 @@ Package `vecmath` is the 3D math: vectors, quaternions, matrices, rays, planes, 
 as plain values that methods return (nothing allocates). Package `viewport3d` has the `Camera` of a CAD view and
 `Navigation`, the widget that moves it with the mouse, the touch screen, a trackpad and the keyboard. The camera orbits a
 target at a distance, and gives the GPU `float32` matrices taken relative to the eye, so that a scene 50 km wide with a
-detail of 0.1 mm draws without jitter. (The 3D view that draws meshes comes in a later step; the camera and the
-navigation work with any widget, such as a `gpu.View`.)
+detail of 0.1 mm draws without jitter. `viewport3d.NewView(scene, camera)` is the widget that draws a `Scene` as the
+camera sees it, inside a `Navigation`; the camera and the navigation also work with any other widget, such as a
+`gpu.View` of your own.
 
 ```go
 package main
@@ -1207,6 +1208,74 @@ func main() {
 	}
 }
 ```
+
+A scene is a flat list of items that you own and change: each item has a mesh, a material, a transform in `float64`, and
+the view draws again whenever the scene or the camera changes (an idle view costs nothing).
+
+```go
+package main
+
+import (
+	"log"
+
+	m "github.com/rm4n0s/glutter/material"
+	"github.com/rm4n0s/glutter/ui"
+	"github.com/rm4n0s/glutter/vecmath"
+	"github.com/rm4n0s/glutter/viewport3d"
+)
+
+// A square pyramid: five vertices and no normals, so it is drawn flat.
+func pyramid() *viewport3d.Mesh {
+	mesh, err := viewport3d.NewMesh(viewport3d.MeshData{
+		Positions: []float32{-1, 0, -1, 1, 0, -1, 1, 0, 1, -1, 0, 1, 0, 1.5, 0},
+		Indices16: []uint16{0, 1, 4, 1, 2, 4, 2, 3, 4, 3, 0, 4, 0, 3, 2, 0, 2, 1},
+	})
+	if err != nil {
+		log.Fatal(err) // viewport3d.TagMeshInvalid: the data does not make a mesh
+	}
+	return mesh
+}
+
+func main() {
+	scene := viewport3d.NewScene()
+	scene.SetStyle(viewport3d.SceneStyle{DisplayMode: viewport3d.DisplayModeShadedWithEdges})
+	mesh := pyramid()
+	steel := viewport3d.NewPhongMaterial(viewport3d.PhongOpts{Color: ui.NewColor(0xFFB8C4D0)})
+	for i := 0; i < 5; i++ {
+		// Items that share a mesh and a material are drawn by one instanced call.
+		at := vecmath.NewMat4Translation(vecmath.Vec3{X: float64(i) * 3})
+		scene.Add(viewport3d.NewItem(mesh, steel, viewport3d.ItemOpts{Transform: m.Some(at)}))
+	}
+	camera := viewport3d.NewCamera(viewport3d.CameraOpts{Up: vecmath.Vec3Y})
+	camera.SetStandardView(viewport3d.StandardViewIsometric)
+	camera.FitTo(scene.Bounds())
+
+	view := viewport3d.NewView(scene, camera) // 4x multisampling; the mouse and the touch move the camera
+	err := m.RunApp(m.NewMaterialApp(m.MaterialAppOpts{Home: m.NewScaffold(m.ScaffoldOpts{Body: view})}))
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+```
+
+- **Meshes.** `NewMesh(MeshData)` checks the data (`MeshInvalid`) and keeps it; the view uploads it once and `Release`
+  frees it. Positions are `float32` offsets from `MeshData.Origin`, a `float64` point: a part that sits 50 km from the
+  world's origin keeps its offsets small, and its items still draw without jitter. A mesh is triangles, lines
+  (`PrimitiveLines`, pairs of indices) or points (`PrimitivePoints`); normals, texture coordinates and colors are
+  optional, and a mesh of triangles without normals is drawn flat.
+- **Materials.** `NewUnlitMaterial` and `NewPhongMaterial` for triangles (a color, a texture, the vertex colors, double
+  sided, transparent), `NewLineMaterial` (a width in logical pixels, a dash pattern, anti-aliased) and `NewPointMaterial`
+  (round or square, a size in logical pixels). A color with alpha, or `Transparent`, makes an item transparent: such items
+  are drawn after the opaque ones, back to front. A change of a material, of an item or of the scene's style reaches the
+  views at once.
+- **Display modes and edges.** `SceneStyle.DisplayMode` is shaded, shaded with edges, wireframe or hidden line. The edges
+  are `FeatureEdges(mesh, angle)`: the boundary edges and those where two triangles meet at more than the angle (30° by
+  default); vertices at the same place count as one, so a mesh whose faces do not share vertices has its edges where they
+  meet. A smooth sphere has none. The light is at the camera, with up to four more directional lights and an ambient term
+  (`SceneStyle`).
+- **Your own view.** `viewport3d.NewRenderer(scene, camera)` is what the view uses: call `Init(device)` and `Dispose()`
+  from the `OnInit` and `OnDispose` of your own `gpu.View` (with a `Depth32Float` depth target) and `Draw(frame)` from
+  its paint function, to draw a scene and your own shaders in one view. `Renderer.Stats()` says what the last frame drew.
 
 - **The math.** Matrices are column-major, as WGSL reads them, and `a.Mul(b)` applies `b` first. The clip space is
   WebGPU's, and the projections are reversed-Z (`Perspective(fovY, aspect, near)` has the far plane at infinity): the

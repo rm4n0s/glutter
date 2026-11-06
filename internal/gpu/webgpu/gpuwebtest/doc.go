@@ -15,6 +15,8 @@
 //   - gpuapi: runs package gpu over the WebGPU device: a triangle drawn into a texture and read back,
 //     GPUDevice.destroy() under the app (the OnLost functions, the errors of the calls on the lost
 //     device), a triangle on the device that replaces it, and the leak report at the end
+//   - viewport3d: draws the scenes of internal/scenetest (the 3D view, step 30.9) through package gpu and posts each
+//     picture as a PNG, for the test to compare with the goldens of viewport3d
 //   - choose: runs a small Material app through the engine and reports the kind of context its
 //     canvas ended up with and what RunApp returned (the query parameter "poison" hides
 //     navigator.gpu, and "poisongl" makes getContext("webgl2") answer null)
