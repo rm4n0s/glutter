@@ -1349,6 +1349,57 @@ func main() {
 - **Selection.** `Item.SetSelected`, `Scene.Select`, `ClearSelection` and `Selection`. The outline is not hidden by what is in
   front of the item.
 
+**Overlays.** A scene draws an infinite grid (`SceneStyle.Grid`), and a view can show the axes of the camera, a view cube
+that goes to the standard views, and widgets that follow points of the world, over the picture.
+
+```go
+package main
+
+import (
+	"log"
+
+	m "github.com/rm4n0s/glutter/material"
+	"github.com/rm4n0s/glutter/vecmath"
+	"github.com/rm4n0s/glutter/viewport3d"
+)
+
+func main() {
+	scene := viewport3d.NewScene()
+	// A grid on the plane y = 0: a line every half unit, a stronger one every fifth.
+	scene.SetStyle(viewport3d.SceneStyle{Grid: viewport3d.GridStyle{Show: true, Spacing: 0.5, MajorEvery: 5}})
+	camera := viewport3d.NewCamera(viewport3d.CameraOpts{Up: vecmath.Vec3Y})
+	camera.SetStandardView(viewport3d.StandardViewIsometric)
+
+	view := viewport3d.NewView(scene, camera, viewport3d.ViewOpts{
+		Axes:     &viewport3d.AxesOpts{},     // the bottom left
+		ViewCube: &viewport3d.ViewCubeOpts{}, // the top right: tap a face, an edge or a corner
+		Children: []m.Widget{
+			// A label that follows a point of the world, centered above it. It is hidden while the point is behind the camera, outside
+			// the view, or, with HideWhenCovered, behind another item.
+			viewport3d.NewAnchored(vecmath.Vec3{Y: 1}, m.NewText("Origin"),
+				viewport3d.AnchoredOpts{Alignment: m.AlignmentBottomCenter, HideWhenCovered: true}),
+		},
+	})
+	err := m.RunApp(m.NewMaterialApp(m.MaterialAppOpts{Home: m.NewScaffold(m.ScaffoldOpts{Body: view})}))
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+```
+
+- **The grid.** It is on the plane through `Origin` that is perpendicular to `Normal` (+y by default; use `Vec3Z` in a world with
+  +z up). The lines are as wide at the horizon as they are near, fade with the distance (`FadeDistance`) and disappear where
+  they would be closer than a few pixels. Far from the origin it is as sharp as at the origin. It is drawn under transparent
+  items and over opaque ones, and is not picked.
+- **The view cube.** A face goes to the view that looks at it, an edge to the view between two faces and a corner to the view
+  between three, with the same animation as `AnimateTo` (`Duration` changes it); the target and the distance stay.
+  `Camera.ViewDirectionPose(dir)` is the pose of a view from any direction. The cube and the axes are widgets: `NewViewCube(camera)`
+  and `NewAxes(camera)` go anywhere, with or without a view.
+- **Anchored widgets.** The child of an `Anchored` has its natural size and is put on `Camera.Project(point)`; a widget in
+  `Children` that is not an `Anchored` fills the view. They get the pointer before the camera's navigation, and a hidden one is
+  neither painted, nor tapped, nor in the semantics tree. `View.Project(p)` gives the same point for a `CustomPainter` that draws
+  dimension lines over the view.
+
 - **The math.** Matrices are column-major, as WGSL reads them, and `a.Mul(b)` applies `b` first. The clip space is
   WebGPU's, and the projections are reversed-Z (`Perspective(fovY, aspect, near)` has the far plane at infinity): the
   depth is 1 at the near plane and 0 far away, so a pipeline tests `Greater` and clears the depth to 0.

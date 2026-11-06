@@ -9,6 +9,421 @@ import (
 	"github.com/rm4n0s/glutter/gpu"
 )
 
+//go:embed grid.spv
+var spirvGrid []byte
+
+// Grid is grid.wgsl.
+var Grid = &gpu.Shader{
+	Name: "grid",
+	WGSL: `// The grid of viewport3d (SPEC §27.8, "Overlays"): an infinite grid on a plane, with thin minor lines and thicker major ones that
+// fade away with the distance. One triangle covers the view; for each pixel the fragment shader meets the line of sight with the
+// plane, the way fs_cap of section.wgsl does, works out where that point is in the plane's own coordinates, and covers the pixel
+// by its distance to the nearest line of each kind, in pixels (the derivatives of the coordinates), so that the lines have the
+// same width everywhere and fade out where they come closer than a few pixels, instead of turning to noise.
+//
+// The plane's coordinates are the point's position in the plane's two axes, in float64 on the CPU for the eye's part: the
+// shader adds the eye's coordinates (reduced to the period of the major lines) to the position relative to the eye (D30), so a
+// grid 50 km from the origin has lines as sharp as one at the origin.
+//
+// The record is not an Item: it is seven vec4 (the size of an Item).
+
+// What the shaders of viewport3d share (SPEC §27.8): the frame's uniform data, the record of an item, and the section planes.
+
+struct Light {
+	// dir points to the light, in view space.
+	dir: vec4<f32>,
+	// color is the light's color times its intensity.
+	color: vec4<f32>,
+}
+
+struct Frame {
+	proj: mat4x4<f32>,
+	// lights are the light at the camera, then up to four directional ones; an unused one has a black color.
+	lights: array<Light, 5>,
+	ambient: vec4<f32>,
+	// viewport is the width and the height of the target in pixels, and their inverses.
+	viewport: vec4<f32>,
+	// params are the near plane's distance, the device pixel ratio and two unused numbers.
+	params: vec4<f32>,
+	// planes are the section planes in view space, relative to the eye (D30): a point p with dot(plane.xyz, p) + plane.w > 0 is
+	// cut away.
+	planes: array<vec4<f32>, 6>,
+	// section is the number of planes in x.
+	section: vec4<f32>,
+}
+
+@group(0) @binding(0) var<uniform> frame: Frame;
+
+// Item is the record of a line, a point or a picked item: the matrix that takes the mesh's positions to the view, relative to
+// the eye, a tint (the highlight of a selected item: its color, and the part of it that replaces the material's in a), and
+// numbers for the shader that reads it.
+struct Item {
+	mv: mat4x4<f32>,
+	tint: vec4<f32>,
+	params: vec4<f32>,
+	extra: vec4<f32>,
+}
+
+// section_clipped says whether a point of the view space is cut away by a section plane. skip is the plane to leave out (the
+// plane that a cap lies on), or -1.
+fn section_clipped(p: vec3<f32>, skip: i32) -> bool {
+	let count = i32(frame.section.x);
+	for (var i = 0; i < 6; i = i + 1) {
+		if (i >= count) {
+			break;
+		}
+		if (i == skip) {
+			continue;
+		}
+		let plane = frame.planes[i];
+		if (dot(plane.xyz, p) + plane.w > 0.0) {
+			return true;
+		}
+	}
+	return false;
+}
+
+// PickOut is what a pick pass writes for a pixel: the number of the item (from 1, 0 for nothing) and of the primitive in it, and
+// the depth.
+struct PickOut {
+	@location(0) ids: vec2<u32>,
+	@location(1) depth: f32,
+}
+
+struct GridItem {
+	// plane is the plane in view space: xyz its unit normal, w its distance (a point p is on it when dot(xyz, p) + w = 0).
+	plane: vec4<f32>,
+	// u and v are the plane's axes in view space; their w is the eye's coordinate along the axis, reduced to the major period.
+	u: vec4<f32>,
+	v: vec4<f32>,
+	// params are the spacing of the minor lines, how many of them make a major line, and the distances where the lines start to
+	// fade and where they are gone.
+	params: vec4<f32>,
+	minor: vec4<f32>,
+	major: vec4<f32>,
+	// extra has the width of the lines in pixels in x.
+	extra: vec4<f32>,
+}
+
+@group(1) @binding(0) var<uniform> item: GridItem;
+
+struct Full {
+	@builtin(position) clip: vec4<f32>,
+	@location(0) ndc: vec2<f32>,
+}
+
+@vertex
+fn vs_full(@builtin(vertex_index) i: u32) -> Full {
+	// One triangle that covers the view: (-1, -1), (3, -1) and (-1, 3).
+	let x = f32((i << 1u) & 2u);
+	let y = f32(i & 2u);
+	var o: Full;
+	o.ndc = vec2<f32>(x * 2.0 - 1.0, y * 2.0 - 1.0);
+	o.clip = vec4<f32>(o.ndc, 0.0, 1.0);
+	return o;
+}
+
+struct Gridded {
+	@location(0) color: vec4<f32>,
+	@builtin(frag_depth) depth: f32,
+}
+
+// cover is how much of the pixel a line covers: the distance in pixels of the coordinate from the nearest whole number, and the
+// width of the line. The line is gone where the cells are smaller than a few pixels.
+fn cover(coord: vec2<f32>, width: f32) -> f32 {
+	let fw = max(fwidth(coord), vec2<f32>(1.0e-6));
+	let dist = abs(fract(coord - 0.5) - 0.5) / fw;
+	let line = clamp(0.5 * width + 0.5 - dist, vec2<f32>(0.0), vec2<f32>(1.0));
+	// The size of a cell in pixels, along each axis.
+	let cell = 1.0 / fw;
+	let visible = clamp((cell - 3.0) / 5.0, vec2<f32>(0.0), vec2<f32>(1.0));
+	return max(line.x * visible.x, line.y * visible.y);
+}
+
+@fragment
+fn fs_grid(in: Full) -> Gridded {
+	var o: Gridded;
+	o.color = vec4<f32>(0.0);
+	o.depth = 0.0;
+	// The line of sight of the pixel: from the eye, or, in an orthographic view, parallel to the axis of the view.
+	var origin = vec3<f32>(0.0);
+	var dir = vec3<f32>(in.ndc.x / frame.proj[0][0], in.ndc.y / frame.proj[1][1], -1.0);
+	let ortho = frame.proj[3][3] > 0.5;
+	if (ortho) {
+		origin = vec3<f32>(dir.xy, 0.0);
+		dir = vec3<f32>(0.0, 0.0, -1.0);
+	}
+	let facing = dot(item.plane.xyz, dir);
+	// Everything below is worked out for every pixel, and the pixels that the plane does not reach are dropped at the end, so
+	// that the derivatives are taken in uniform control flow.
+	let ok = abs(facing) > 1.0e-9;
+	let t = select(0.0, -(item.plane.w + dot(item.plane.xyz, origin)) / facing, ok);
+	let p = origin + dir * t;
+	let hit = ok && t > 0.0;
+	let spacing = item.params.x;
+	let major_every = item.params.y;
+	let u = dot(p, item.u.xyz) + item.u.w;
+	let v = dot(p, item.v.xyz) + item.v.w;
+	let width = item.extra.x;
+	let minor_cover = cover(vec2<f32>(u, v) / spacing, width);
+	let major_cover = cover(vec2<f32>(u, v) / (spacing * major_every), 2.0 * width);
+	// Fade with the distance, and where the plane is seen edge on, where the lines would only be a haze.
+	var fade = 1.0;
+	if (!ortho) {
+		fade = 1.0 - smoothstep(item.params.z, item.params.w, length(p));
+	}
+	let edge_on = smoothstep(0.0, 0.2, abs(facing) / length(dir));
+	let a_minor = minor_cover * item.minor.a * fade * edge_on;
+	let a_major = major_cover * item.major.a * fade * edge_on;
+	// The major lines are over the minor ones.
+	let rgb = item.major.rgb * a_major + item.minor.rgb * a_minor * (1.0 - a_major);
+	let a = a_major + a_minor * (1.0 - a_major);
+	if (!hit || a < 0.003 || section_clipped(p, -1)) {
+		discard;
+	}
+	let k = frame.proj * vec4<f32>(p, 1.0);
+	o.depth = k.z / k.w;
+	o.color = vec4<f32>(rgb, a);
+	return o;
+}
+`,
+	SPIRV: spirvGrid,
+	HLSL: `struct Light {
+    float4 dir;
+    float4 color;
+};
+
+struct Frame {
+    row_major float4x4 proj;
+    Light lights[5];
+    float4 ambient;
+    float4 viewport;
+    float4 params;
+    float4 planes[6];
+    float4 section;
+};
+
+struct Item {
+    row_major float4x4 mv;
+    float4 tint;
+    float4 params;
+    float4 extra;
+};
+
+struct PickOut {
+    uint2 ids : LOC0;
+    float depth : LOC1;
+};
+
+struct GridItem {
+    float4 plane;
+    float4 u;
+    float4 v;
+    float4 params;
+    float4 minor;
+    float4 major;
+    float4 extra;
+};
+
+struct Full {
+    float4 clip_ : SV_Position;
+    float2 ndc : LOC0;
+};
+
+struct Gridded {
+    float4 color : SV_Target0;
+    float depth : SV_Depth;
+};
+
+cbuffer frame : register(b0, space0) { Frame frame; }
+cbuffer item : register(b0, space1) { GridItem item; }
+
+struct VertexOutput_vs_full {
+    float2 ndc : LOC0;
+    float4 clip_ : SV_Position;
+};
+
+struct FragmentInput_fs_grid {
+    float2 ndc_1 : LOC0;
+    float4 clip_1 : SV_Position;
+};
+
+int naga_f2i32(float value) {
+    return int(clamp(value, -2147483600.0, 2147483500.0));
+}
+
+bool section_clipped(float3 p, int skip)
+{
+    int i_1 = int(0);
+
+    float _e5 = frame.section.x;
+    int count = naga_f2i32(_e5);
+    uint2 loop_bound = uint2(4294967295u, 4294967295u);
+    bool loop_init = true;
+    while(true) {
+        if (all(loop_bound == uint2(0u, 0u))) { break; }
+        loop_bound -= uint2(loop_bound.y == 0u, 1u);
+        if (!loop_init) {
+            int _e28 = i_1;
+            i_1 = asint(asuint(_e28) + asuint(int(1)));
+        }
+        loop_init = false;
+        int _e9 = i_1;
+        if ((_e9 < int(6))) {
+        } else {
+            break;
+        }
+        {
+            int _e12 = i_1;
+            if ((_e12 >= count)) {
+                break;
+            }
+            int _e14 = i_1;
+            if ((_e14 == skip)) {
+                continue;
+            }
+            int _e18 = i_1;
+            float4 plane = frame.planes[_e18];
+            if (((dot(plane.xyz, p) + plane.w) > 0.0)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+float cover(float2 coord, float width)
+{
+    float2 _e2 = fwidth(coord);
+    float2 fw = max(_e2, (1e-6).xx);
+    float2 dist = (abs((frac((coord - (0.5).xx)) - (0.5).xx)) / fw);
+    float2 line_ = clamp(((((0.5 * width) + 0.5)).xx - dist), (0.0).xx, (1.0).xx);
+    float2 cell = ((1.0).xx / fw);
+    float2 visible = clamp(((cell - (3.0).xx) / (5.0).xx), (0.0).xx, (1.0).xx);
+    return max((line_.x * visible.x), (line_.y * visible.y));
+}
+
+VertexOutput_vs_full vs_full(uint i : SV_VertexID)
+{
+    Full o = (Full)0;
+
+    float x = float(((i << 1u) & 2u));
+    float y = float((i & 2u));
+    o.ndc = float2(((x * 2.0) - 1.0), ((y * 2.0) - 1.0));
+    float2 _e22 = o.ndc;
+    o.clip_ = float4(_e22, 0.0, 1.0);
+    Full _e26 = o;
+    Full full = _e26;
+    VertexOutput_vs_full full_1 = { full.ndc, full.clip_ };
+    return full_1;
+}
+
+Gridded fs_grid(FragmentInput_fs_grid fragmentinput_fs_grid)
+{
+    Full in_ = { fragmentinput_fs_grid.clip_1, fragmentinput_fs_grid.ndc_1 };
+    Gridded o_1 = (Gridded)0;
+    float3 origin = (0.0).xxx;
+    float3 dir = (float3)0;
+    bool local = (bool)0;
+    float fade = 1.0;
+    bool local_1 = (bool)0;
+    bool local_2 = (bool)0;
+
+    o_1.color = (0.0).xxxx;
+    o_1.depth = 0.0;
+    float _e16 = frame.proj[0].x;
+    float _e24 = frame.proj[1].y;
+    dir = float3((in_.ndc.x / _e16), (in_.ndc.y / _e24), -1.0);
+    float _e33 = frame.proj[3].w;
+    bool ortho = (_e33 > 0.5);
+    if (ortho) {
+        float3 _e36 = dir;
+        origin = float3(_e36.xy, 0.0);
+        dir = float3(0.0, 0.0, -1.0);
+    }
+    float4 _e46 = item.plane;
+    float3 _e48 = dir;
+    float facing = dot(_e46.xyz, _e48);
+    bool ok = (abs(facing) > 1e-9);
+    float _e56 = item.plane.w;
+    float4 _e59 = item.plane;
+    float3 _e61 = origin;
+    float t = (ok ? (-((_e56 + dot(_e59.xyz, _e61))) / facing) : 0.0);
+    float3 _e68 = origin;
+    float3 _e69 = dir;
+    float3 p_1 = (_e68 + (_e69 * t));
+    if (ok) {
+        local = (t > 0.0);
+    } else {
+        local = false;
+    }
+    bool hit = local;
+    float spacing = item.params.x;
+    float major_every = item.params.y;
+    float4 _e88 = item.u;
+    float _e94 = item.u.w;
+    float u = (dot(p_1, _e88.xyz) + _e94);
+    float4 _e98 = item.v;
+    float _e104 = item.v.w;
+    float v = (dot(p_1, _e98.xyz) + _e104);
+    float width_1 = item.extra.x;
+    const float _e113 = cover((float2(u, v) / (spacing).xx), width_1);
+    const float _e120 = cover((float2(u, v) / ((spacing * major_every)).xx), (2.0 * width_1));
+    if (!(ortho)) {
+        float _e127 = item.params.z;
+        float _e131 = item.params.w;
+        fade = (1.0 - smoothstep(_e127, _e131, length(p_1)));
+    }
+    float3 _e137 = dir;
+    float edge_on = smoothstep(0.0, 0.2, (abs(facing) / length(_e137)));
+    float _e146 = item.minor.w;
+    float _e148 = fade;
+    float a_minor = (((_e113 * _e146) * _e148) * edge_on);
+    float _e154 = item.major.w;
+    float _e156 = fade;
+    float a_major = (((_e120 * _e154) * _e156) * edge_on);
+    float4 _e161 = item.major;
+    float4 _e166 = item.minor;
+    float3 rgb = ((_e161.xyz * a_major) + ((_e166.xyz * a_minor) * (1.0 - a_major)));
+    float a = (a_major + (a_minor * (1.0 - a_major)));
+    if (!(!(hit))) {
+        local_1 = (a < 0.003);
+    } else {
+        local_1 = true;
+    }
+    bool _e184 = local_1;
+    if (!(_e184)) {
+        const bool _e189 = section_clipped(p_1, int(-1));
+        local_2 = _e189;
+    } else {
+        local_2 = true;
+    }
+    bool _e191 = local_2;
+    if (_e191) {
+        discard;
+    }
+    float4x4 _e194 = frame.proj;
+    float4 k = mul(float4(p_1, 1.0), _e194);
+    o_1.depth = (k.z / k.w);
+    o_1.color = float4(rgb, a);
+    Gridded _e204 = o_1;
+    Gridded gridded = _e204;
+    return gridded;
+}
+`,
+	Entries: []gpu.EntryPoint{
+		{Name: "vs_full", Stage: gpu.ShaderStageVertex, ReadsVertexIndex: true,
+			Bindings: []gpu.ShaderBinding{},
+		},
+		{Name: "fs_grid", Stage: gpu.ShaderStageFragment,
+			Bindings: []gpu.ShaderBinding{
+				{Name: "frame", Group: 0, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 384, Register: gpu.ShaderRegister{Class: "b", Space: 0, Index: 0}},
+				{Name: "item", Group: 1, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 112, Register: gpu.ShaderRegister{Class: "b", Space: 1, Index: 0}},
+			},
+		},
+	},
+}
+
 //go:embed line.spv
 var spirvLine []byte
 

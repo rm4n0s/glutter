@@ -84,6 +84,7 @@ func (s *sectionPageState) InitState() {
 	s.items = scenetest.Part()
 	s.names = map[*viewport3d.Item]string{s.items[0]: "box", s.items[1]: "cylinder", s.items[2]: "sphere"}
 	s.scene.Add(s.items...)
+	s.scene.SetStyle(s.style(true))
 	s.scene.SetSectionPlanes(cutPlane)
 	s.camera = scenetest.PartCamera(s.scene, 700, 500)
 	s.ctl = viewport3d.NewViewController()
@@ -118,10 +119,18 @@ func (s *sectionPageState) pick(at ui.Offset) {
 	})
 }
 
+// style is the style of the scene: the grid under the part, and the cap of the section when it is on.
+func (s *sectionPageState) style(cap bool) viewport3d.SceneStyle {
+	return viewport3d.SceneStyle{
+		Section: viewport3d.SectionStyle{NoCap: !cap},
+		Grid:    viewport3d.GridStyle{Show: true, Origin: vecmath.Vec3{Y: -0.5}, Spacing: 0.5, MajorEvery: 4},
+	}
+}
+
 func (s *sectionPageState) setCap(on bool) {
 	s.SetState(func() {
 		s.cap = on
-		s.scene.SetStyle(viewport3d.SceneStyle{Section: viewport3d.SectionStyle{NoCap: !on}})
+		s.scene.SetStyle(s.style(on))
 	})
 }
 
@@ -131,7 +140,12 @@ func (s *sectionPageState) Build(bc m.BuildContext) m.Widget {
 		viewport3d.NewView(s.scene, s.camera, viewport3d.ViewOpts{
 			Controller:     s.ctl,
 			SemanticsLabel: "A part cut by a plane",
-			Fallback:       m.NewCenter(m.NewText("This app needs a GPU renderer.")),
+			// The axes and the view cube turn with the camera; the label follows the sphere, and hides when something is in front.
+			Axes:     &viewport3d.AxesOpts{},
+			ViewCube: &viewport3d.ViewCubeOpts{},
+			Children: []m.Widget{viewport3d.NewAnchored(s.items[2].Bounds().Center().Add(vecmath.Vec3{Y: 0.5}), m.NewText("Sphere"),
+				viewport3d.AnchoredOpts{Alignment: m.AlignmentBottomCenter, HideWhenCovered: true})},
+			Fallback: m.NewCenter(m.NewText("This app needs a GPU renderer.")),
 		}),
 		m.GestureDetectorOpts{OnTapUp: func(d m.TapUpDetails) { s.pick(d.LocalPosition) }},
 	)

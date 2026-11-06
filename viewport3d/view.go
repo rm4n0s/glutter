@@ -4,6 +4,7 @@ import (
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/gpu"
+	"github.com/rm4n0s/glutter/painting"
 	"github.com/rm4n0s/glutter/ui"
 	"github.com/rm4n0s/glutter/vecmath"
 	"github.com/rm4n0s/glutter/widgets"
@@ -32,7 +33,21 @@ type ViewOpts struct {
 	Fallback widgets.Widget
 	// SemanticsLabel describes the view to assistive technology; the default is none.
 	SemanticsLabel string
+	// Children are widgets over the picture, in order: an Anchored follows a point of the world (NewAnchored), any other fills the
+	// view. The pointer reaches them before the navigation.
+	Children []widgets.Widget
+	// Axes shows the axes of the camera in a corner (NewAxes); nil shows none. AxesAlignment is the corner, the default being the
+	// bottom left.
+	Axes          *AxesOpts
+	AxesAlignment foundation.Opt[painting.Alignment]
+	// ViewCube shows the cube that goes to the standard views (NewViewCube); nil shows none. ViewCubeAlignment is the corner, the
+	// default being the top right.
+	ViewCube          *ViewCubeOpts
+	ViewCubeAlignment foundation.Opt[painting.Alignment]
 }
+
+// overlayMargin is the space between the axes or the view cube and the edge of the view, in logical pixels.
+const overlayMargin = 8.0
 
 // TagViewInvalid is the tag of the panic of NewView for arguments that are not valid (SPEC §27.8).
 const TagViewInvalid = "Viewport3DViewInvalid"
@@ -74,6 +89,12 @@ func NewView(scene *Scene, camera *Camera, opts ...ViewOpts) *View {
 // Flutter: no counterpart
 func (v *View) Scene() *Scene { return v.scene }
 
+// Project is the point of the view, in logical pixels, where a point of the world is drawn, and false when the point is behind
+// the camera (Camera.Project): for dimension lines and marks that a CustomPainter draws over the view.
+//
+// Flutter: no counterpart
+func (v *View) Project(p vecmath.Vec3) (ui.Offset, bool) { return v.camera.Project(p) }
+
 // Camera is the camera the view draws with.
 //
 // Flutter: no counterpart
@@ -101,6 +122,8 @@ type viewState struct {
 	scene                  *Scene
 	camera                 *Camera
 	sceneHandle, camHandle foundation.ListenerHandle
+	// anchors is the layer of the anchored children, when the view has overlays.
+	anchors anchorHost
 }
 
 // InitState makes the renderer and starts listening.
@@ -218,7 +241,23 @@ func (s *viewState) Build(bc widgets.BuildContext) widgets.Widget {
 		}
 		child = NewNavigation(w.camera, child, nav)
 	}
-	return child
+	layers := []widgets.Widget{child}
+	if a := w.o.Axes; a != nil {
+		corner := w.o.AxesAlignment.OrElse(painting.Alignment{X: -1, Y: 1})
+		// The axes are a picture: the pointer goes through them.
+		layers = append(layers, widgets.NewAlign(widgets.NewPadding(painting.NewEdgeInsetsAll(overlayMargin), widgets.NewIgnorePointer(NewAxes(w.camera, *a))),
+			widgets.AlignOpts{Alignment: corner}))
+	}
+	if c := w.o.ViewCube; c != nil {
+		corner := w.o.ViewCubeAlignment.OrElse(painting.Alignment{X: 1, Y: -1})
+		layers = append(layers, widgets.NewAlign(widgets.NewPadding(painting.NewEdgeInsetsAll(overlayMargin), NewViewCube(w.camera, *c)),
+			widgets.AlignOpts{Alignment: corner}))
+	}
+	layers = append(layers, w.o.Children...)
+	if len(layers) == 1 {
+		return child
+	}
+	return newAnchoredLayer(w.camera, &s.anchors, layers)
 }
 
 // pivotAt is the point of the scene under a point of the view, for the navigation: the first triangle of the scene that the line of
@@ -247,6 +286,10 @@ func (s *viewState) onDispose() {
 // paint draws the scene into the frame of the gpu.View.
 func (s *viewState) paint(f *gpu.ViewFrame) {
 	if s.renderer != nil {
+		if s.anchors.layer != nil {
+			// The anchored children that hide when covered ask for the depth in the frame that is about to be drawn.
+			s.anchors.layer.askDepth(s.renderer.Pick)
+		}
 		s.renderer.Draw(f)
 	}
 }

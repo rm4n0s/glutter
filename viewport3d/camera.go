@@ -779,6 +779,41 @@ func (c *Camera) StandardViewPose(v StandardView) CameraPose {
 	return pose
 }
 
+// ViewDirectionOrientation is the orientation of a view of the model from a direction (from the model to the viewer, in the
+// world; it need not be a unit vector) with the world's up upwards in the view, as the standard views have it. When the
+// direction is that of the up axis (the top and bottom views) the front of the model is downwards in the view, as in
+// StandardViewTop and StandardViewBottom. The view cube goes to its edges and corners with it. A direction with no length gives
+// the camera's own orientation.
+//
+// Flutter: no counterpart
+func (c *Camera) ViewDirectionOrientation(dir vecmath.Vec3) vecmath.Quat {
+	if dir.LengthSq() == 0 || !dir.IsFinite() {
+		return c.orientation
+	}
+	back := dir.Normalize()
+	screenUp := c.up
+	if math.Abs(back.Dot(c.up)) > 1-1e-9 {
+		// Seen along the up axis: the front is down in the view from above, and up in the view from below.
+		screenUp = c.front.Neg()
+		if back.Dot(c.up) < 0 {
+			screenUp = c.front
+		}
+	}
+	xAxis := screenUp.Cross(back).Normalize()
+	yAxis := back.Cross(xAxis)
+	return vecmath.NewQuatBasis(xAxis, yAxis, back)
+}
+
+// ViewDirectionPose is the pose of a view from a direction (ViewDirectionOrientation) of what the camera looks at: the same
+// target and distance.
+//
+// Flutter: no counterpart
+func (c *Camera) ViewDirectionPose(dir vecmath.Vec3) CameraPose {
+	pose := c.Pose()
+	pose.Orientation = c.ViewDirectionOrientation(dir)
+	return pose
+}
+
 // SetStandardView turns the camera to a standard view at once. AnimateTo(StandardViewPose(v), vsync) moves there instead.
 //
 // Flutter: no counterpart

@@ -42,6 +42,8 @@ type FrameStats struct {
 	// CapDraws is the number of caps drawn (one for each closed item and each plane that cuts it) and OutlineDraws the number of
 	// draws of the outlines of the cuts.
 	CapDraws, OutlineDraws int
+	// GridDraws is the number of grids drawn (0 or 1).
+	GridDraws int
 	// Pipelines is the number of pipelines the renderer has made.
 	Pipelines int
 }
@@ -58,7 +60,7 @@ type Renderer struct {
 	layers uint32
 
 	dev  *gpu.Device
-	mods struct{ mesh, line, point, section, pick, sel *gpu.ShaderModule }
+	mods struct{ mesh, line, point, section, pick, sel, grid *gpu.ShaderModule }
 	// pipes are the pipelines by key; a key whose pipeline failed has nil.
 	pipes        map[pipeKey]*gpu.RenderPipeline
 	corners      *gpu.Buffer
@@ -201,14 +203,14 @@ func (r *Renderer) Dispose() {
 	if r.white != nil {
 		r.white.Release()
 	}
-	for _, m := range []*gpu.ShaderModule{r.mods.mesh, r.mods.line, r.mods.point, r.mods.section, r.mods.pick, r.mods.sel} {
+	for _, m := range []*gpu.ShaderModule{r.mods.mesh, r.mods.line, r.mods.point, r.mods.section, r.mods.pick, r.mods.sel, r.mods.grid} {
 		if m != nil {
 			m.Release()
 		}
 	}
 	r.frameGroup, r.itemGroup, r.sectionGroup, r.uniforms, r.instances, r.corners, r.pointCorners, r.sampler, r.white = nil, nil, nil, nil, nil, nil, nil, nil, nil
 	r.uniformCap, r.instanceCap = 0, 0
-	r.mods.mesh, r.mods.line, r.mods.point, r.mods.section, r.mods.pick, r.mods.sel = nil, nil, nil, nil, nil, nil
+	r.mods.mesh, r.mods.line, r.mods.point, r.mods.section, r.mods.pick, r.mods.sel, r.mods.grid = nil, nil, nil, nil, nil, nil, nil
 	r.dev = nil
 }
 
@@ -539,6 +541,20 @@ func (r *Renderer) Draw(f *gpu.ViewFrame) {
 			records += planes * len(r.sect)
 		}
 	}
+	// The grid: a record, and a pipeline that gives the layout of the group of the records when nothing else does.
+	gridRecord := -1
+	if style.grid.show {
+		gk := base
+		gk.kind = pipeGrid
+		if gp := r.pipeline(gk); gp != nil {
+			gridRecord = records
+			records++
+			putGrid(r.ubytes, r.record(gridRecord), &style.grid, &rot, eye, dpr)
+			if sectionPipe == nil {
+				sectionPipe = gp
+			}
+		}
+	}
 	// The picks that wait for this frame: a pass for each, after the frame's own.
 	var picks *pickPlan
 	pickEnd := 0
@@ -606,7 +622,17 @@ func (r *Renderer) Draw(f *gpu.ViewFrame) {
 	var curMat *matGPU
 	var curMesh *meshGPU
 	var curPipe *gpu.RenderPipeline
-	for _, list := range [2][]int32{r.opaque, r.transp} {
+	for li, list := range [2][]int32{r.opaque, r.transp} {
+		if li == 1 {
+			// The caps, the outlines of the cuts and the grid, over the opaque faces and under the transparent ones.
+			if planes > 0 && len(r.sect) > 0 {
+				r.drawSections(pass, base, sectionBase, planes)
+			}
+			if gridRecord >= 0 {
+				r.drawGrid(pass, base, gridRecord)
+			}
+			curMat, curMesh, curPipe = nil, nil, nil
+		}
 		for i := 0; i < len(list); {
 			d := &r.items[list[i]]
 			count := 1
@@ -642,10 +668,6 @@ func (r *Renderer) Draw(f *gpu.ViewFrame) {
 			r.stats.Instances += count
 			i += count
 		}
-	}
-	// The caps and the outlines of the cuts, over the faces.
-	if planes > 0 && len(r.sect) > 0 {
-		r.drawSections(pass, base, sectionBase, planes)
 	}
 	// The edges, the lines and the points, over the faces.
 	var lastPipe *gpu.RenderPipeline

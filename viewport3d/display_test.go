@@ -117,3 +117,31 @@ func TestAPartFarFromTheOriginIsDrawnAsIfItWereAtTheOrigin(t *testing.T) {
 		t.Errorf("1 mm of the far part changed %d channels, by up to %d; want some change at the edges, by one sample at most", n, big)
 	}
 }
+
+func TestAGridFarFromTheOriginIsDrawnAsIfItWereAtTheOrigin(t *testing.T) {
+	// The grid's plane and the part are 50 km from the origin: the lines are worked out from the eye's coordinates in the plane in
+	// float64 (reduced to the major period), so the picture is the one at the origin (D30).
+	app, d := lavapipeApp(t)
+	render := func(c scenetest.Case) *image.RGBA {
+		img, err := scenetest.Render(d, waitFor(app), c)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return img
+	}
+	near, far := render(scenetest.GridPartAt("grid-near", vecmath.Vec3{})), render(scenetest.GridPartAt("grid-far", scenetest.FarOrigin))
+	differing, biggest := 0, 0
+	for i := range near.Pix {
+		diff := int(near.Pix[i]) - int(far.Pix[i])
+		if diff < 0 {
+			diff = -diff
+		}
+		if diff > 2 {
+			differing++
+		}
+		biggest = max(biggest, diff)
+	}
+	if differing > 0 {
+		t.Errorf("the grid 50 km away differs from the one at the origin: %d channels by more than 2, up to %d", differing, biggest)
+	}
+}

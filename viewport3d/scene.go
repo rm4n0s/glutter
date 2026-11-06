@@ -85,6 +85,8 @@ type SceneStyle struct {
 	Section SectionStyle
 	// Selection is how the selected items look (Item.SetSelected).
 	Selection SelectionStyle
+	// Grid is the infinite grid; none by default.
+	Grid GridStyle
 }
 
 const (
@@ -111,6 +113,7 @@ type resolvedStyle struct {
 	edgeWidth  float64
 	section    resolvedSection
 	selection  resolvedSelection
+	grid       resolvedGrid
 }
 
 // resolve fills in the defaults of the style.
@@ -142,6 +145,7 @@ func (s SceneStyle) resolve() resolvedStyle {
 	r.lights = s.Lights[:n]
 	r.section = s.Section.resolve(r.edgeColor, r.edgeWidth)
 	r.selection = s.Selection.resolve()
+	r.grid = s.Grid.resolve(r.background)
 	return r
 }
 

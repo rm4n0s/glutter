@@ -46,6 +46,8 @@ const (
 	// (select.go).
 	pipeMask
 	pipeSelect
+	// pipeGrid draws the grid (grid.go).
+	pipeGrid
 )
 
 // pipeKey is what tells the pipelines of a renderer apart.
@@ -97,6 +99,11 @@ func (r *Renderer) makePipeline(k pipeKey) (*gpu.RenderPipeline, error) {
 	}
 	if k.kind == pipeSelect {
 		if err := r.ensureSelectModule(); err != nil {
+			return nil, err
+		}
+	}
+	if k.kind == pipeGrid {
+		if err := r.ensureGridModule(); err != nil {
 			return nil, err
 		}
 	}
@@ -190,6 +197,13 @@ func (r *Renderer) makePipeline(k pipeKey) (*gpu.RenderPipeline, error) {
 		desc.Label = "viewport3d selection outline"
 		desc.Vertex = gpu.VertexState{Module: r.mods.sel, EntryPoint: "vs_full"}
 		desc.Fragment = gpu.FragmentState{Module: r.mods.sel, EntryPoint: "fs_outline", Targets: []gpu.ColorTargetState{target}}
+		desc.Primitive = gpu.PrimitiveState{CullMode: gpu.CullModeNone}
+	case pipeGrid:
+		// The grid is tested against the depth of the faces and writes none: the transparent items are drawn over it.
+		target.Blend = premult
+		desc.Label = "viewport3d grid"
+		desc.Vertex = gpu.VertexState{Module: r.mods.grid, EntryPoint: "vs_full"}
+		desc.Fragment = gpu.FragmentState{Module: r.mods.grid, EntryPoint: "fs_grid", Targets: []gpu.ColorTargetState{target}}
 		desc.Primitive = gpu.PrimitiveState{CullMode: gpu.CullModeNone}
 	case pipePickTri, pipePickLine, pipePickPoint:
 		// The pick pass writes the item and the primitive, and the depth value, with no blending.
@@ -291,6 +305,16 @@ func (r *Renderer) ensureSelectModule() error {
 	}
 	var err error
 	r.mods.sel, err = r.dev.NewShaderModule(shaders.Select)
+	return err
+}
+
+// ensureGridModule makes the module of the grid, when the first grid is drawn.
+func (r *Renderer) ensureGridModule() error {
+	if r.mods.grid != nil {
+		return nil
+	}
+	var err error
+	r.mods.grid, err = r.dev.NewShaderModule(shaders.Grid)
 	return err
 }
 

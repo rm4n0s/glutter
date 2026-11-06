@@ -274,8 +274,54 @@ func Cases() []Case {
 			cam.SetKind(viewport3d.ProjectionKindOrthographic)
 			return s, cam, nil
 		}},
+		gridCase("grid-iso", func(s *viewport3d.Scene) *viewport3d.Camera { return PartCamera(s, W, H) }),
+		gridCase("grid-low", func(s *viewport3d.Scene) *viewport3d.Camera {
+			// A low view: the grid goes to the horizon and fades.
+			cam := viewport3d.NewCamera(viewport3d.CameraOpts{Up: vecmath.Vec3Y, Target: vecmath.Vec3{Y: 0.3}, Distance: 9})
+			cam.SetViewportSize(ui.Size{Width: W, Height: H})
+			cam.SetStandardView(viewport3d.StandardViewFront)
+			cam.Orbit(0.6, 0.16)
+			return cam
+		}),
+		gridCase("grid-top", func(s *viewport3d.Scene) *viewport3d.Camera {
+			// From above, orthographic: the minor lines are 20 pixels apart, the major ones 200.
+			cam := viewport3d.NewCamera(viewport3d.CameraOpts{Up: vecmath.Vec3Y, Projection: viewport3d.ProjectionKindOrthographic})
+			cam.SetViewportSize(ui.Size{Width: W, Height: H})
+			cam.SetStandardView(viewport3d.StandardViewTop)
+			cam.SetDistance(0.5 * float64(H) / 20 / math.Tan(cam.FieldOfView()/2))
+			return cam
+		}),
 	}
 	return cases
+}
+
+// gridCase is the part on a grid in the plane y = -0.5, seen by the camera that the function makes.
+func gridCase(name string, camera func(*viewport3d.Scene) *viewport3d.Camera) Case {
+	return Case{Name: name, Width: W, Height: H, Build: func(d *gpu.Device) (*viewport3d.Scene, *viewport3d.Camera, func()) {
+		s := viewport3d.NewScene()
+		s.SetStyle(viewport3d.SceneStyle{DisplayMode: viewport3d.DisplayModeShadedWithEdges,
+			Grid: viewport3d.GridStyle{Show: true, Origin: vecmath.Vec3{Y: -0.5}, Spacing: 0.5, MajorEvery: 5, FadeDistance: 40}})
+		s.Add(Part()...)
+		return s, camera(s), nil
+	}}
+}
+
+// GridPartAt is the part on a grid, as the part of grid-iso is, but at a place: the part, the grid's plane and the camera's target are
+// moved by origin, so that with FarOrigin the picture is the one at the world's origin if the grid is exact (SPEC §27.8, D30).
+func GridPartAt(name string, origin vecmath.Vec3) Case {
+	return Case{Name: name, Width: W, Height: H, Build: func(d *gpu.Device) (*viewport3d.Scene, *viewport3d.Camera, func()) {
+		s := viewport3d.NewScene()
+		s.SetStyle(viewport3d.SceneStyle{DisplayMode: viewport3d.DisplayModeShadedWithEdges,
+			Grid: viewport3d.GridStyle{Show: true, Origin: origin.Add(vecmath.Vec3{Y: -0.5}), Spacing: 0.5, MajorEvery: 5, FadeDistance: 40}})
+		// Each item has the mesh's origin at the place and its vertices as offsets from it.
+		for _, it := range Part() {
+			data := it.Mesh().Data()
+			data.Origin = data.Origin.Add(origin)
+			s.Add(viewport3d.NewItem(mustMesh(data), it.Material(), viewport3d.ItemOpts{Transform: foundation.Some(it.Transform())}))
+		}
+		cam := PartCamera(s, W, H)
+		return s, cam, nil
+	}}
 }
 
 // FarOrigin is where the part of the far cases is: 50 km from the origin in each axis.
