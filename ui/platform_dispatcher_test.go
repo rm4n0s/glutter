@@ -641,3 +641,69 @@ const (
 	tagEGLContextLost = "EGLContextLost"
 	tagNotCalled      = "NotCalled"
 )
+
+// hostAsService is an optional interface that a host may have, for the tests of HostAs.
+type hostAsService interface{ Service() string }
+
+type namedServiceHost struct {
+	fakeHost
+	name string
+}
+
+func (h *namedServiceHost) Service() string { return h.name }
+
+func TestHostAs(t *testing.T) {
+	tests := []struct {
+		name string
+		host PlatformHost
+		want string
+		ok   bool
+	}{
+		{"a host that has the service", &namedServiceHost{name: "gpu"}, "gpu", true},
+		{"a host that does not", &fakeHost{}, "", false},
+		{"no host", nil, "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d := NewPlatformDispatcher(tt.host)
+			var s hostAsService
+			ok := d.HostAs(&s)
+			if ok != tt.ok {
+				t.Fatalf("HostAs = %v, want %v", ok, tt.ok)
+			}
+			if ok && s.Service() != tt.want {
+				t.Errorf("service = %q, want %q", s.Service(), tt.want)
+			}
+			if !ok && s != nil {
+				t.Errorf("a failed HostAs set the target to %v", s)
+			}
+		})
+	}
+}
+
+func TestHostAsPanicsForATargetThatIsNotAnInterface(t *testing.T) {
+	var notInterface string
+	var nilTarget *hostAsService
+	tests := []struct {
+		name   string
+		target any
+	}{
+		{"nil", nil},
+		{"not a pointer", hostAsService(nil)},
+		{"a pointer to a string", &notInterface},
+		{"a nil pointer", nilTarget},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			defer func() {
+				r := recover()
+				err, _ := r.(error)
+				appErr, ok := errors.FromError(err)
+				if !ok || appErr.Tag != "HostAsTargetInvalid" || !appErr.HasRoute("PlatformDispatcher.HostAs.HostAsTargetInvalid") {
+					t.Fatalf("recovered %v, want HostAsTargetInvalid via PlatformDispatcher.HostAs", r)
+				}
+			}()
+			NewPlatformDispatcher(&fakeHost{}).HostAs(tt.target)
+		})
+	}
+}

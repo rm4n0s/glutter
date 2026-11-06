@@ -62,13 +62,7 @@ func newVulkanRenderer(cfg *Config, log *slog.Logger) renderer {
 	if getenv == nil {
 		getenv = os.Getenv
 	}
-	opts := explicit.RendererOpts{
-		Background: ui.NewColor(developmentColor), HasBackground: true, Log: log,
-		Damage: !cfg.DisableDamage && getenv(DamageEnv) != "0", SkipUnsupported: cfg.SkipUnsupported,
-	}
-	if !cfg.DisableRasterCache && getenv(RasterCacheEnv) != "0" {
-		opts.RasterCacheAfter = rasterCacheAfter
-	}
+	opts := explicitOptions(cfg, getenv, log)
 	return explicit.NewRenderer(func(h gpu.SurfaceHandle) (explicit.Device, error) {
 		if err := checkAndroidVulkanSDK(android.SDKInt(), cfg.rendererNamed); err != nil {
 			return nil, err

@@ -120,3 +120,59 @@ const (
 	tagGPUOutOfMemory   = "GPUOutOfMemory"
 	tagVulkanDeviceLost = "VulkanDeviceLost"
 )
+
+// TestDeviceEventsTellTheOpenTheLossAndTheClose: OnDevice hears each device, in order, before the device is
+// closed (SPEC §27.2: package gpu lets go of what it made with a device that is lost).
+func TestDeviceEventsTellTheOpenTheLossAndTheClose(t *testing.T) {
+	scene := sceneOf(func(c *ui.Canvas) { c.DrawRect(ui.NewRectFromLTWH(0, 0, 10, 10), solid(0xFF000000)) })
+	type seen struct {
+		kind       explicit.DeviceEventKind
+		dev        explicit.Device
+		closedThen bool
+		err        error
+	}
+	var events []seen
+	rig := &lossRig{now: time.Unix(1000, 0)}
+	rig.r = explicit.NewRenderer(func(gpu.SurfaceHandle) (explicit.Device, error) {
+		d := fakedevice.New()
+		d.CompleteReadsOnSubmit = true
+		rig.devs = append(rig.devs, d)
+		return d, nil
+	}, explicit.RendererOpts{Now: func() time.Time { return rig.now }, OnDevice: func(e explicit.DeviceEvent) {
+		events = append(events, seen{e.Kind, e.Device, e.Device.(*fakedevice.Device).Closed(), e.Err})
+	}})
+	if _, err := rig.r.Draw(window, 32, 32, scene, false); err != nil {
+		t.Fatal(err)
+	}
+	rig.now = rig.now.Add(time.Minute)
+	rig.lose()
+	if _, err := rig.r.Draw(window, 32, 32, scene, false); err != nil {
+		t.Fatal(err)
+	}
+	rig.r.Close()
+	want := []struct {
+		kind explicit.DeviceEventKind
+		dev  int
+		err  bool
+	}{{explicit.DeviceOpened, 0, false}, {explicit.DeviceLost, 0, true}, {explicit.DeviceOpened, 1, false}, {explicit.DeviceClosed, 1, false}}
+	if len(events) != len(want) {
+		t.Fatalf("%d events %v, want %d", len(events), events, len(want))
+	}
+	for i, w := range want {
+		e := events[i]
+		if e.kind != w.kind || e.dev != explicit.Device(rig.devs[w.dev]) || (e.err != nil) != w.err {
+			t.Errorf("event %d = %v on device %v with error %v; want %v on device %d, error %v", i, e.kind, e.dev, e.err, w.kind, w.dev, w.err)
+		}
+		if e.closedThen {
+			t.Errorf("event %d (%v) came after the device was closed", i, e.kind)
+		}
+	}
+	// A renderer that never opened a device tells nothing when it closes.
+	events = nil
+	idle := explicit.NewRenderer(func(gpu.SurfaceHandle) (explicit.Device, error) { return fakedevice.New(), nil },
+		explicit.RendererOpts{OnDevice: func(e explicit.DeviceEvent) { events = append(events, seen{kind: e.Kind}) }})
+	idle.Close()
+	if len(events) != 0 {
+		t.Errorf("a renderer without a device told %v", events)
+	}
+}

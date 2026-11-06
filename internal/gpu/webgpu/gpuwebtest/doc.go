@@ -12,6 +12,9 @@
 //   - loss: destroys the GPUDevice under a running renderer, twice, and reports what the renderer
 //     did: the first loss is recovered on a device that was asked for without waiting, the second
 //     within ten seconds ends the frame with GPUDeviceLost
+//   - gpuapi: runs package gpu over the WebGPU device: a triangle drawn into a texture and read back,
+//     GPUDevice.destroy() under the app (the OnLost functions, the errors of the calls on the lost
+//     device), a triangle on the device that replaces it, and the leak report at the end
 //   - choose: runs a small Material app through the engine and reports the kind of context its
 //     canvas ended up with and what RunApp returned (the query parameter "poison" hides
 //     navigator.gpu, and "poisongl" makes getContext("webgl2") answer null)

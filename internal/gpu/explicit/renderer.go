@@ -44,6 +44,9 @@ type RendererOpts struct {
 	// it in LastFrame, instead of failing with GPUNotImplemented. The development
 	// examples use it to show what works.
 	SkipUnsupported bool
+	// OnDevice is told when the renderer opens its device, loses it and closes it (DeviceEvent), on the
+	// thread that calls Draw and Close. The engine gives it to package gpu (SPEC §27.2).
+	OnDevice func(DeviceEvent)
 }
 
 // Renderer is the renderer for the explicit APIs (SPEC §9.3): the engine's renderer on
@@ -174,7 +177,7 @@ func (r *Renderer) Draw(h gpu.SurfaceHandle, width, height int, scene *ui.Scene,
 	}
 	r.lost, r.lostAt = true, now
 	r.logInfo("the GPU device was lost, making it again", "err", err)
-	r.releaseDevice()
+	r.releaseDevice(DeviceLost, err)
 	img, err = r.draw(h, width, height, scene, capture)
 	if IsDevicePending(err) {
 		return nil, nil
@@ -256,6 +259,9 @@ func (r *Renderer) draw(h gpu.SurfaceHandle, width, height int, scene *ui.Scene,
 			return nil, err
 		}
 		r.dev, r.sampler, r.rotations = dev, sampler, rotations
+		if r.opts.OnDevice != nil {
+			r.opts.OnDevice(DeviceEvent{Kind: DeviceOpened, Device: dev})
+		}
 	}
 	w, err := r.window(h)
 	if err != nil {
@@ -583,13 +589,17 @@ func (r *Renderer) Close() {
 		return
 	}
 	r.closed = true
-	r.releaseDevice()
+	r.releaseDevice(DeviceClosed, nil)
 }
 
 // releaseDevice destroys everything that belongs to the device, the device included, and leaves
 // the renderer as it was before the first frame: the next frame opens a device again. Errors of
-// the destruction are the lost device's business and are ignored.
-func (r *Renderer) releaseDevice() {
+// the destruction are the lost device's business and are ignored. kind and err are what OnDevice is
+// told, before anything is destroyed.
+func (r *Renderer) releaseDevice(kind DeviceEventKind, err error) {
+	if r.dev != nil && r.opts.OnDevice != nil {
+		r.opts.OnDevice(DeviceEvent{Kind: kind, Device: r.dev, Err: err})
+	}
 	r.cacheSaved = false
 	for h := range r.windows {
 		r.Release(h)

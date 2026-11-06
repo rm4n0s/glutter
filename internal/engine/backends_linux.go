@@ -19,7 +19,6 @@ import (
 	"github.com/rm4n0s/glutter/internal/platform/linux/wayland"
 	"github.com/rm4n0s/glutter/internal/platform/linux/x11"
 	"github.com/rm4n0s/glutter/internal/text"
-	"github.com/rm4n0s/glutter/ui"
 )
 
 // This file chooses what Run uses on Linux: Wayland or X11 for the platform, OpenGL
@@ -62,13 +61,7 @@ func newVulkanRenderer(cfg *Config, log *slog.Logger) renderer {
 	if getenv == nil {
 		getenv = os.Getenv
 	}
-	opts := explicit.RendererOpts{
-		Background: ui.NewColor(developmentColor), HasBackground: true, Log: log,
-		Damage: !cfg.DisableDamage && getenv(DamageEnv) != "0", SkipUnsupported: cfg.SkipUnsupported,
-	}
-	if !cfg.DisableRasterCache && getenv(RasterCacheEnv) != "0" {
-		opts.RasterCacheAfter = rasterCacheAfter
-	}
+	opts := explicitOptions(cfg, getenv, log)
 	var pipelines vulkan.PipelineCache
 	if c := newShaderCache(cfg, getenv, log); c != nil {
 		pipelines = c

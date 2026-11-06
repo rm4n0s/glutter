@@ -112,8 +112,11 @@ type Config struct {
 	// the renderer read back after its Draw returned (a WebGPU read-back finishes in a later browser
 	// task, SPEC §9.5); Run sets both. webgpuOpen is the explicit device that the web's connectDisplay
 	// got before the platform installed its listeners (SPEC §23.3), or the error of why it has none.
-	post        func(func())
-	captured    func(*image.RGBA, error)
+	post     func(func())
+	captured func(*image.RGBA, error)
+	// gpuEvent is told by the explicit renderers when their device is opened, lost or closed (set by Run:
+	// the hub that package gpu watches, SPEC §27.2).
+	gpuEvent    func(explicit.DeviceEvent)
 	webgpuOpen  func(gpu.SurfaceHandle) (explicit.Device, error)
 	webgpuClose func()
 }
@@ -280,6 +283,8 @@ func Run(ctx context.Context, cfg Config) (err error) {
 		appID: wcfg.AppID, decorations: wcfg.Decorations, runStart: runStart, frameStats: getenv(FrameStatsEnv) == "1"}
 	cfg.renewSurface, cfg.redraw = h.renewSurface, h.redrawWindow
 	cfg.post, cfg.captured = conn.Post, h.onCapture
+	h.gpu.log, h.gpu.renderer = log, h.chosenRenderer
+	cfg.gpuEvent = h.gpu.notify
 	h.first = h.addWindow(win)
 	h.first.title = wcfg.Title
 	if cfg.newRenderer != nil {
@@ -394,6 +399,8 @@ type handler struct {
 	input inputQueue
 	// acc is the bridge to the assistive technologies of the platform, or nil.
 	acc platform.Accessibility
+	// gpu is the device of the renderer, for package gpu (SPEC §27.2).
+	gpu gpuHub
 
 	// clock measures the frames for the dispatcher's OnReportTimings.
 	clock frameClock
@@ -1448,6 +1455,7 @@ func (h *handler) release() {
 		h.r.Close()
 		h.r = nil
 	}
+	h.gpu.notify(explicit.DeviceEvent{Kind: explicit.HostEnded})
 }
 
 // The tags of the errors that this file makes (rm4n0s/errors, R5).

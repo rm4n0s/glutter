@@ -226,7 +226,7 @@ glutter/
   viewport3d/            the 3D view: camera, navigation, meshes, lines, edges, section planes, picking, overlays (§27.6)
   model/                 plain-Go 3D model data, with loaders in model/stl, model/obj, model/gltf, model/ply, model/threemf (§27.8)
   gamepad/ audio/ sensors/  gamepads, audio streams and motion sensors (§28)
-  gluttertest/           WidgetTester, finders, golden comparison (flutter_test)
+  gluttertest/           WidgetTester, finders, golden comparison (flutter_test); the recording GPU device (§27.12)
   internal/
     engine/              wires platform + gpu + text into the ui contracts
     platform/            Platform interface, shared types
@@ -251,6 +251,7 @@ glutter/
       soft/              pure-Go rasterizer (goldens, headless)
       shadercache/       pure Go: the directory of program binaries and pipeline caches that the drivers' compiles are kept in (§9.7)
     text/                paragraph layout, font collection, glyph outlines
+    gpuhost/             the device host of the tests of package gpu: gluttertest's recording device and the display and browser tests (§27.2)
     dbus/                pure Go (godbus): tray, notifications, portals, settings, AT-SPI2
   cmd/glutter-gen/       generators: Wayland protocols, key tables, re-exports, CopyWith, icons; and apicheck, the API conventions check
   cmd/glutter-web/       builds, serves and screenshots an app for the web (§23.1)
@@ -1985,7 +1986,7 @@ Flutter's `assert` checks become checks that exist only in debug builds (`founda
 | an optional positional parameter (`CatmullRomCurve(points, [tension])`, `FileImage(file, {scale})`, `Locale(language, [country])`) or a list of values (`LogicalKeySet(k1, [k2, ...])`) | a trailing variadic parameter of that type (`NewCatmullRomCurve(points, tension ...float64)`; at most one value is meaningful for an optional parameter), not an `XOpts` value; the `apicheck` rule `ctor-shape` allows it. The API review of step 18.1 also made `NewRouteInformation`, `NewDrivenScrollActivity`, `NewMultiFrameImageStreamCompleter` and `NewButtonStyleButtonBase` take `opts ...XOpts`, as every constructor does | Go has no optional positional parameters, and a struct for one value is heavy |
 | Constructors of Flutter classes with more than 6 required parameters (`ColorScheme` 9, `RawRadio` 8, `SelectionOverlay` 10, `TextSelectionOverlay`, `FixedExtentMetricsSnapshot`, `FixedPageMetrics` 7, `FrameTiming` 7) | they stay public with all required parameters positional: §12.1 asks for a review, and for these the friendlier form is the options struct or `CopyWith` of the object they build; `cmd/glutter-gen/apicheck.allow` lists them | the parameters are all required by Flutter and have no defaults |
 | `kElevationToShadow` and `kMaterialEdges` are `const` maps | `ElevationToShadow` and `MaterialEdges` are package variables that hold maps (the only exported variables that are not struct values, the rest of the table values like `Colors` being structs); they are read-only by contract | Go has no constant maps; `apicheck.allow` lists them |
-| Enums whose zero value is not `Unspecified` (`ScriptCategory`, `DatePickerMode`, `StretchMode`, `Decorations`, `ScrollPositionAlignmentPolicy`, `DiagonalDragBehavior`, `SemanticsRole` and the other `ui` semantics enums, `WindowKind`, `ColorSpace`, `Assertiveness`, and the enums that are results, events or states such as `StateLifecycle`, `RoutePopDisposition`, `RefreshIndicatorStatus`, `PathVerb`, `DropPhase`, `DayPeriod`) | the zero value is Flutter's default for the enum, so `Unspecified` would mean the same thing, or no options struct takes the enum (it is a result, an event or a state) | §12.3 wants `Unspecified` so that an options struct can tell "not given" from the first value; neither case arises. `apicheck.allow` lists them, with the reason |
+| Enums whose zero value is not `Unspecified` (`ScriptCategory`, `DatePickerMode`, `StretchMode`, `Decorations`, `ScrollPositionAlignmentPolicy`, `DiagonalDragBehavior`, `SemanticsRole` and the other `ui` semantics enums, `WindowKind`, `ColorSpace`, `Assertiveness`, and the enums that are results, events or states such as `StateLifecycle`, `RoutePopDisposition`, `RefreshIndicatorStatus`, `PathVerb`, `DropPhase`, `DayPeriod`, and package gpu's `CullMode`, `FrontFace`, `LoadOp`, `PrimitiveTopology`, `SampleType`, `StencilOperation`, `StoreOp` and `TextureDimension`) | the zero value is Flutter's (or, in `gpu`, WebGPU's) default for the enum, so `Unspecified` would mean the same thing, or no options struct takes the enum (it is a result, an event or a state) | §12.3 wants `Unspecified` so that an options struct can tell "not given" from the first value; neither case arises. `apicheck.allow` lists them, with the reason |
 | `EditableText.debugDeterministicCursor` is a static variable | `widgets.DebugOptions.DeterministicCursor`, read through the binding in debug builds | no global mutable state (§12.9) |
 | `kIsWeb` | `foundation.IsWeb`, a constant set by build tags | named like `DebugMode`; the framework reads it where Flutter reads `kIsWeb` |
 | Flutter web draws with CanvasKit or Skwasm (Skia on WebGL 2) | WebGPU through `explicit`, else WebGL 2 through `gles`, else `soft` into a 2D canvas (§9.6) | Glutter's renderers are its own; there is no Skia |
@@ -3322,7 +3323,7 @@ The design references are SDL 3's GPU API (zlib, D32) and the WebGPU specificati
 
 ### 27.2 The `gpu` package
 
-The names follow WebGPU, in Go form. A sketch; the details are decided in step 30.4:
+The names follow WebGPU, in Go form. The sketch below is the API as step 30.4 decided it (the list after the rules says what differs from the first sketch):
 
 ```go
 package gpu
@@ -3341,21 +3342,21 @@ func (d *Device) NewComputePipeline(desc ComputePipelineDesc) (*ComputePipeline,
 func (d *Device) NewBindGroup(desc BindGroupDesc) (*BindGroup, error)
 func (d *Device) NewQuerySet(desc QuerySetDesc) (*QuerySet, error)
 func (d *Device) NewCommandEncoder() *CommandEncoder
+func (d *Device) Resources() ResourceCounts                          // the live resources, for the memory tests
 func (d *Device) Queue() *Queue
 func (d *Device) OnLost(fn func(err error)) func()                  // returns the function that removes fn
 
 func (q *Queue) WriteBuffer(b *Buffer, offset int, data []byte)
 func (q *Queue) WriteTexture(dst TextureCopy, data []byte, layout DataLayout, size Extent3D)
-func (q *Queue) Submit(buffers ...*CommandBuffer)
+func (q *Queue) Submit(buffers ...*CommandBuffer) error
 func (q *Queue) OnSubmittedWorkDone(fn func())
 
 func (e *CommandEncoder) BeginRenderPass(desc RenderPassDesc) *RenderPass
-func (e *CommandEncoder) BeginComputePass() *ComputePass
+func (e *CommandEncoder) BeginComputePass(desc ComputePassDesc) *ComputePass
 func (e *CommandEncoder) CopyBufferToBuffer(src *Buffer, srcOffset int, dst *Buffer, dstOffset, size int)
 func (e *CommandEncoder) CopyBufferToTexture(src BufferCopy, dst TextureCopy, size Extent3D)
 func (e *CommandEncoder) CopyTextureToBuffer(src TextureCopy, dst BufferCopy, size Extent3D)
 func (e *CommandEncoder) CopyTextureToTexture(src, dst TextureCopy, size Extent3D)
-func (e *CommandEncoder) WriteTimestamp(q *QuerySet, index int)
 func (e *CommandEncoder) ResolveQuerySet(q *QuerySet, first, count int, dst *Buffer, offset int)
 func (e *CommandEncoder) Finish() *CommandBuffer
 
@@ -3369,6 +3370,18 @@ Rules:
 - **Device loss:** when the device is lost (a driver reset, a lost WebGPU device), the renderer makes a new device as §9.4 and §9.5 say. The old device's `OnLost` functions are called once, and every call on the old device and its resources then does nothing; the calls that return an error return `GPUDeviceLost`. `DeviceOf` gives the new device, and `gpu.View` calls its `OnInit` again.
 - **Errors and programmer errors:** a descriptor that cannot be made (a size of 0, a format a usage does not allow, a broken limit) is a returned error with the field in its metadata (`GPUInvalidDescriptor`, `GPULimitExceeded`). A misuse while encoding (a pass not ended, a bind group of another layout, a draw past a buffer's end) is a programmer error: in debug builds it panics (§14), and release builds skip the checks. The checks run on every backend through `fakedevice`, so they behave the same everywhere.
 - **Not in `gpu`:** swapchains (the windows are Glutter's), GLSL or SPIR-V written by the app, bindless resources, and ray tracing.
+- **Decided in step 30.4.**
+  - **The device.** `DeviceOf(bc)` and `DeviceOfBinding(b)` return the device of the renderer that draws the app's windows, shared with it: `explicit.Renderer` opens it at the first frame, so a call before that fails with `GPUDeviceNotReady` (a new tag), and `gles`, `soft` and the web's `webgl` and `canvas2d` renderers have none (`GPUUnavailable`). `OnDevice(b, fn)` calls `fn` from the event loop (never inside the call or a frame) with the device of the moment and with each device that replaces a lost one; it returns the function that stops the calls. The binding reaches the engine through `ui.PlatformDispatcher.HostAs(&iface)`, which sets the pointer to the dispatcher's host when the host implements the interface, so no public package imports `internal`: the engine's host implements `explicit.DeviceHost` (`GPUDevice`, `WatchGPUDevice`, `GPULogger`), and a binding without such a host (a tester made without `Opts.GPU`) gives `GPUUnavailable`. `explicit.RendererOpts.OnDevice` reports `DeviceOpened`, `DeviceLost` and `DeviceClosed` events, the last two before the old device is closed; the engine ends with `HostEnded`. `package gpu` keeps its state in the binding (`WidgetsBinding.Extension`), not in a package variable.
+  - **Threads.** `GPUWrongThread` is checked by every method that makes, releases or submits, with `foundation.UIThread.IsCurrent`, in debug builds only. The goroutine that prepares bytes writes them with `Queue.WriteBuffer` on the UI thread.
+  - **Lifetime.** Every resource but the encoder, the command buffer, the views and the layouts has `Release` (twice is fine). A buffer, texture, sampler, pipeline or query set is destroyed on the explicit device at `Release`; the explicit device frees it when the frames in flight are done (`FramesInFlight`, 2). A `TextureView` belongs to its texture and goes with it, a `BindGroupLayout` with its pipeline. A bind group is a list of resources: the explicit bind groups are made for each submission, from the pool of its frame, and are not freed one by one. `Device.Resources()` counts what was not released, and in debug builds each resource remembers the file and line that made it; when the device is closed because the app ends, each is logged at Warn with `GPUResourceLeaked`. A resource that is used after `Release` panics with `GPUResourceReleased` in debug builds.
+  - **Device loss.** The renderer's event makes the `Device` lost: `OnLost` functions run once, from the event loop, and every later call returns the one `GPUDeviceLost` error that the loss made (its route is the loss, not the call; the metadata `event` says `lost` or `closed`), or does nothing when it has no error to return (`Release`, `WriteBuffer`); `OnSubmittedWorkDone` and `Buffer.Read` still call their function, with the error. After the renderer made the new device, `DeviceOf` gives a new `*Device` and `OnDevice` functions run again; the app makes its resources again. `explicit` reports the loss to the owner of the device (`OnDevice`) before the old device is closed.
+  - **Descriptors and encoding.** A constructor validates its description whatever the build: the errors are `GPUInvalidDescriptor` and `GPULimitExceeded`, with the metadata `field`, `value`, `max` and `label`. The validations are the ones of the explicit device's `Check…` functions plus those of the WGSL reflection (a bind group's entries against the layout of its pipeline, a vertex layout against the vertex function's inputs, a storage format against the shader's declaration, a buffer range against the size WGSL gives the type). Encoding misuse is `GPUEncodingInvalid` (debug builds only, from `misuse`); release builds skip those checks and trust the program.
+  - **Commands.** A `CommandEncoder` only records. `Queue.Submit` runs the recorded commands of its command buffers on one explicit encoder (one `Begin` and one `Submit`), so a submission is a unit of the explicit device's two frame slots: submit once for each frame. It returns the error of the explicit device untouched. A bind group is made at the `SetBindGroup` of the submission, for the pipeline set then, and the groups set before `SetPipeline` are bound when the pipeline is set, if they fit it (a layout with the same bindings, kinds and dimensions). A uniform binding always takes a dynamic offset; `SetBindGroup` checks the count, the alignment and the range.
+  - **Writes.** `Queue.WriteBuffer` writes at once when no submission uses the buffer, and otherwise through a staging buffer that the next submission copies first, so a write never changes what an earlier submission reads. `WriteTexture` writes at once. `Buffer.Read` is a copy into a host buffer at the point of the submission; `done` runs from the event loop after the GPU finished and never inside the call, on every backend.
+  - **Timestamps.** A pass writes its begin and end timestamps (`PassTimestampWrites`); there is no `WriteTimestamp` on the encoder, since Direct3D 12 and Vulkan write them at the pass boundaries only.
+  - **Not copied.** `CopyTextureToTexture` copies 2D textures, arrays and cubes (layer by layer), not volumes; a volume is copied through a buffer. A depth texture is not copied or written.
+  - **Shaders.** `NewShaderModule(*Shader)` checks the reflection and caches the explicit form; the backend compiles at the first pipeline, and a compile failure is `GPUShaderCompileFailed` (the one place where `gpu` tags an error of the explicit device again, as §9.8 does for `D3D12LoadFailed`, because this section names the tag). The vertex and fragment functions of a pipeline are in one module.
+  - **The recording device.** `gluttertest.Opts{GPU: true}` gives the tester a `fakedevice` (`Tester.GPUDevice()`: the calls, `CompleteReads`, `Lose`, `EndApp`, the log); without it the tester has no GPU device, as with the software renderer. The display and browser tests use `internal/gpuhost`, the same host over a real device.
 
 ### 27.3 The app's shaders (`glutter-gen gpushaders`)
 
@@ -3543,12 +3556,12 @@ On lavapipe the numbers are measured and recorded, but they are not targets.
 ### 27.11 Errors
 
 Tags (each with a route test, §14.4):
-- **GPU:** `GPUUnavailable`, `GPUDeviceLost`, `GPUInvalidDescriptor`, `GPULimitExceeded` (the explicit device's), `GPUShaderCompileFailed`, `GPUOutOfMemory`, `GPUReadFailed`.
+- **GPU:** `GPUUnavailable`, `GPUDeviceNotReady`, `GPUDeviceLost`, `GPUInvalidDescriptor`, `GPULimitExceeded` (the explicit device's), `GPUShaderCompileFailed`, `GPUOutOfMemory`, `GPUReadFailed`.
 - **Pointer lock:** `PointerLockUnavailable`, `PointerLockDenied`.
 - **Loaders:** `STLInvalid`, `OBJInvalid`, `ModelReadFailed` (an I/O error, wrapped where it first appears).
 - **The generator:** `glutter-gen gpushaders` reports `GPUShadersNagaMissing`, `GPUShadersCompileFailed` and `GPUShadersBindingUnsupported`.
 
-Programmer errors (`GPUWrongThread`, `GPUFirstInstanceRead`, the encoding checks of §27.2) panic in debug builds, as §14 says.
+Programmer errors (`GPUWrongThread`, `GPUEncodingInvalid`, `GPUResourceReleased`, `GPUFirstInstanceRead`) panic in debug builds, as §14 says; `GPUResourceLeaked` is a warning in the log, not an error.
 
 ### 27.12 Testing
 

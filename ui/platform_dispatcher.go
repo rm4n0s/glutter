@@ -2,7 +2,9 @@ package ui
 
 import (
 	"context"
+	"fmt"
 	"math"
+	"reflect"
 	"slices"
 	"time"
 
@@ -504,6 +506,30 @@ func (d *PlatformDispatcher) Post(fn func()) {
 		return
 	}
 	d.host.Post(fn)
+}
+
+// HostAs finds in the host of the dispatcher (the engine) the interface that target points to: it sets *target
+// to the host and returns true when the host implements the interface, and returns false when it does not
+// (or there is no engine behind the dispatcher). It is how a package that is not the engine reaches an optional
+// service of the host without the host's type being public, as errors.As does for errors (package gpu gets the
+// device of the renderer so, SPEC §27.2). It panics with HostAsTargetInvalid when target is not a non-nil pointer
+// to an interface.
+//
+// Flutter: no counterpart
+func (d *PlatformDispatcher) HostAs(target any) bool {
+	v := reflect.ValueOf(target)
+	if v.Kind() != reflect.Pointer || v.IsNil() || v.Elem().Kind() != reflect.Interface {
+		panic(errors.New(tagHostAsTargetInvalid, "the target of HostAs is a non-nil pointer to an interface", "type", fmt.Sprintf("%T", target)))
+	}
+	if d.host == nil {
+		return false
+	}
+	h := reflect.ValueOf(d.host)
+	if !h.Type().Implements(v.Elem().Type()) {
+		return false
+	}
+	v.Elem().Set(h)
+	return true
 }
 
 // ActivateSystemCursor asks the engine to show the system cursor of the kind for
@@ -1009,4 +1035,7 @@ const (
 	tagFontLoadUnsupported  = "FontLoadUnsupported"
 	// tagFontMetricsUnsupported is PlatformDispatcher.FontMetrics on a text engine that cannot measure.
 	tagFontMetricsUnsupported = "FontMetricsUnsupported"
+	// tagHostAsTargetInvalid is the programmer error of PlatformDispatcher.HostAs with a target that is not a
+	// pointer to an interface; the metadata name the "type".
+	tagHostAsTargetInvalid = "HostAsTargetInvalid"
 )

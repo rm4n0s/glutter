@@ -98,6 +98,12 @@ type Opts struct {
 	//
 	// Flutter: flutter_test/lib/src/platform.dart TestPlatformDispatcher.nativeSpellCheckServiceDefinedTestValue
 	SpellChecker func(languageTag, text string) []ui.SpellCheckSpan
+	// GPU gives the fake platform a recording GPU device (Tester.GPUDevice), the device that gpu.DeviceOf returns, so
+	// that the test of an app that uses package gpu runs with no GPU. The device draws nothing and keeps the log of its
+	// calls. Without it the platform has no GPU device, as with the software renderer.
+	//
+	// Flutter: no counterpart
+	GPU bool
 }
 
 // spellCheckHost is the fake host with a spell checker.
@@ -130,6 +136,7 @@ type Tester struct {
 	View *ui.View
 
 	host      *renderhost.Host
+	gpu       *GPURecorder
 	d         *ui.PlatformDispatcher
 	start     time.Time
 	cfg       ui.ViewConfiguration
@@ -180,9 +187,16 @@ func New(tb TB, opts ...Opts) *Tester {
 	}
 	t := &Tester{tb: tb, host: &renderhost.Host{DiscardScenes: o.DiscardScenes}, Clock: fakeclock.New(time.Time{})}
 	t.start = t.Clock.Now()
-	if o.SpellChecker != nil {
+	switch {
+	case o.SpellChecker != nil && o.GPU:
+		t.gpu = newGPURecorder()
+		t.d = ui.NewPlatformDispatcher(&gpuSpellHost{&spellCheckHost{Host: t.host, check: o.SpellChecker}, t.gpu})
+	case o.SpellChecker != nil:
 		t.d = ui.NewPlatformDispatcher(&spellCheckHost{Host: t.host, check: o.SpellChecker})
-	} else {
+	case o.GPU:
+		t.gpu = newGPURecorder()
+		t.d = ui.NewPlatformDispatcher(&gpuHost{t.host, t.gpu})
+	default:
 		t.d = ui.NewPlatformDispatcher(t.host)
 	}
 	t.host.OnHiddenChanged = t.hiddenChanged
@@ -213,6 +227,9 @@ func New(tb TB, opts ...Opts) *Tester {
 		Painting:           po,
 	})
 	tb.Cleanup(t.checkNoErrorsLeft)
+	if t.gpu != nil {
+		tb.Cleanup(t.gpu.EndApp)
+	}
 	// Cleanups run last in, first out: the tree is unmounted before the errors
 	// that it reports are checked, and after the cleanups that the test registered.
 	tb.Cleanup(t.unmountTree)

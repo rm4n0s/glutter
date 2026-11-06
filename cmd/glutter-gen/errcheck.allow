@@ -33,3 +33,13 @@ error-rewrap widgets/localizations.go:localizationsState.load
 # read (SvgLoadFailed, with the "source"), and the bundle's error (AssetNotFound for Glutter's)
 # stays as the cause, so errors.Is still finds it.
 error-rewrap svg/loaders.go:assetSource.load
+
+# error-rewrap (R3): SPEC §27.11 names two tags of package gpu that an app matches on: a read that
+# failed is GPUReadFailed (Buffer.Read, with the explicit device's error as the cause) and a shader
+# that the backend cannot compile is GPUShaderCompileFailed (the pipeline constructors). The
+# explicit devices tag their failures first, with their own names (VulkanCallFailed,
+# ShaderModuleInvalid, D3D12ShaderCompileFailed); the public API must not leak those. Device
+# loss, memory and the pending device pass through untouched (passesBackendError).
+error-rewrap gpu/buffer.go:Buffer.Read
+error-rewrap gpu/pipeline.go:Device.NewRenderPipeline
+error-rewrap gpu/pipeline.go:Device.NewComputePipeline

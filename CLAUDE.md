@@ -25,7 +25,7 @@ Glutter is a cgo-free GUI toolkit for Go (Android, from 1.6, is the one exceptio
 - Build a Windows `.exe` with its manifest and icon (from step 28.14): `go run ./cmd/glutter-windows build ./examples/counter`; run it under Wine: `go run ./cmd/glutter-windows run -headless ./examples/counter`; a proof screenshot: `go run ./cmd/glutter-windows shot -o out.png ./examples/counter`
 - Run a Windows program under Wine, headless: `scripts/wine-exec.sh ./app.exe`; a screenshot of the X root: `scripts/wine-screenshot.sh out.png -- <command>`
 - Update golden images: `go test ./... -run Golden -update-goldens`, then review every changed PNG
-- Memory tests (from step 29.21): `go test -run Leaks ./material ./widgets ./gestures ./internal/gpu/... ./internal/platform/linux/wayland ./offscreen`; `LEAKTEST_SCALE=5` for a longer soak, `LEAKTEST_REPORT=file` for the numbers, `LEAKTEST_PROFILE=dir` for heap profiles (SPEC §15, "Memory over time"). Memory leaks are a priority: a leak found is fixed, with a test that fails before the fix
+- Memory tests (from step 29.21): `go test -run Leaks ./material ./widgets ./gestures ./internal/gpu/... ./internal/platform/linux/wayland ./offscreen ./gpu`; `LEAKTEST_SCALE=5` for a longer soak, `LEAKTEST_REPORT=file` for the numbers, `LEAKTEST_PROFILE=dir` for heap profiles (SPEC §15, "Memory over time"). Memory leaks are a priority: a leak found is fixed, with a test that fails before the fix
 - Vet: `go vet ./...`
 - Lint: `golangci-lint run`
 - Format: `gofmt -w .` (or `goimports -w .`)
@@ -50,7 +50,7 @@ Before reporting a task as finished, run `gofmt`, `go vet ./...`, `golangci-lint
 
 ## Layout
 - Public packages at the repo root mirror Flutter's libraries: `foundation`, `scheduler`, `animation`, `physics`, `gestures`, `painting`, `rendering`, `semantics`, `services`, `widgets`, `material`
-- `gpu/` is the public GPU API of 1.10 (SPEC §27.2; `gpu/shader.go`, the type of the shaders that `glutter-gen gpushaders` makes, comes first). It names no OS or GPU-API type; its doc comments end with `// Flutter: no counterpart`
+- `gpu/` is the public GPU API of 1.10 (SPEC §27.2): the device of the renderer (`DeviceOf`, `OnDevice`), buffers, textures, samplers, shader modules, pipelines, bind groups, command encoders and the queue; `gpu/shader.go` is the type of the shaders that `glutter-gen gpushaders` makes. It reaches the engine only through `ui.PlatformDispatcher.HostAs` and `internal/gpu/explicit.DeviceHost`. It names no OS or GPU-API type; its doc comments end with `// Flutter: no counterpart`. `internal/gpuhost` is the device host of its tests (`gluttertest`'s recording device, the display and browser tests); tests only
 - `ui/` is the engine API (Flutter's `dart:ui`): geometry, Canvas, Paint, Path, Scene, Paragraph, views, input events
 - `desktop/` holds desktop services Flutter leaves to plugins: system tray, notifications, file dialogs, open-URI
 - `gluttertest/` is the widget-testing package (Flutter's `flutter_test`)

@@ -307,6 +307,52 @@ func TestBrowserDeviceLost(t *testing.T) {
 	})
 }
 
+// TestBrowserGPUPackage runs package gpu over the WebGPU device (step 30.4): a triangle drawn into a texture and
+// read back (the read finishes in a task of the browser), then GPUDevice.destroy() under the app: the OnLost
+// function runs once, the calls on the lost device return GPUDeviceLost, the device that comes later draws the
+// triangle again, and a buffer that was not released is logged when the app ends.
+func TestBrowserGPUPackage(t *testing.T) {
+	eachBrowserWithWebGPU(t, func(t *testing.T, b webtest.Browser) {
+		var res struct {
+			Error      string   `json:"error"`
+			Triangle   [4]int   `json:"triangle"`
+			OnLost     int      `json:"onLost"`
+			AfterLoss  []string `json:"afterLoss"`
+			NewDevice  [4]int   `json:"newDevice"`
+			Leaked     bool     `json:"leaked"`
+			Validation []string `json:"validation"`
+		}
+		if err := json.Unmarshal(await(t, b, url.Values{"mode": {"gpuapi"}}, 2*time.Minute), &res); err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("%+v", res)
+		if res.Error != "" {
+			t.Fatal(res.Error)
+		}
+		want := [4]int{64, 128, 191, 255}
+		for name, got := range map[string][4]int{"the triangle": res.Triangle, "the triangle on the new device": res.NewDevice} {
+			for i := range want {
+				if d := got[i] - want[i]; d < -1 || d > 1 {
+					t.Errorf("%s left the pixel %v, want %v", name, got, want)
+					break
+				}
+			}
+		}
+		if res.OnLost != 1 {
+			t.Errorf("OnLost ran %d times, want once", res.OnLost)
+		}
+		if len(res.AfterLoss) != 2 || res.AfterLoss[0] != "GPUDeviceLost" || res.AfterLoss[1] != "GPUDeviceLost" {
+			t.Errorf("the calls on the lost device returned %v, want GPUDeviceLost twice", res.AfterLoss)
+		}
+		if !res.Leaked {
+			t.Error("the buffer that was not released was not logged when the app ended")
+		}
+		if len(res.Validation) != 0 {
+			t.Errorf("the browser reported validation errors: %v", res.Validation)
+		}
+	})
+}
+
 type chooseResult struct {
 	Error     string `json:"error"`
 	Canvases  int    `json:"canvases"`

@@ -20,6 +20,7 @@ func explicitOptions(cfg *Config, getenv func(string) string, log *slog.Logger) 
 	opts := explicit.RendererOpts{
 		Background: ui.NewColor(developmentColor), HasBackground: true, Log: log,
 		Damage: !cfg.DisableDamage && getenv(DamageEnv) != "0", SkipUnsupported: cfg.SkipUnsupported,
+		OnDevice: cfg.gpuEvent,
 	}
 	if !cfg.DisableRasterCache && getenv(RasterCacheEnv) != "0" {
 		opts.RasterCacheAfter = rasterCacheAfter

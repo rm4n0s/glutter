@@ -945,6 +945,99 @@ func main() {}
   with `GPUShadersOutOfDate` when the checked-in files differ from a new generation, which keeps a forgotten
   `go generate` out of the repository.
 
+## 17. Drawing with the GPU
+
+Package `gpu` gives an app the GPU device of the renderer that draws its windows: buffers, textures, samplers, pipelines
+made from the shaders of section 16, and commands. The names are WebGPU's, in Go form (`NewBuffer`, `NewRenderPipeline`,
+`CommandEncoder`, `Queue.Submit`). Everything is used on the UI thread; an app prepares bytes on any goroutine and writes
+them from the UI thread.
+
+```go
+package main
+
+import (
+	"github.com/rm4n0s/glutter/gpu"
+	"github.com/rm4n0s/glutter/widgets"
+)
+
+// drawOnce draws one triangle into a texture with the pipeline and returns the texture. The shader is one that
+// glutter-gen gpushaders made; the pipeline has no vertex buffer, as the vertex function builds the triangle.
+func drawOnce(d *gpu.Device, shader *gpu.Shader) (*gpu.Texture, error) {
+	module, err := d.NewShaderModule(shader)
+	if err != nil {
+		return nil, err
+	}
+	defer module.Release()
+	pipeline, err := d.NewRenderPipeline(gpu.RenderPipelineDesc{
+		Vertex:   gpu.VertexState{Module: module, EntryPoint: "vs_main"},
+		Fragment: gpu.FragmentState{Module: module, EntryPoint: "fs_main", Targets: []gpu.ColorTargetState{{Format: gpu.TextureFormatRGBA8Unorm}}},
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer pipeline.Release()
+	target, err := d.NewTexture(gpu.TextureDesc{
+		Size:   gpu.Extent3D{Width: 256, Height: 256},
+		Format: gpu.TextureFormatRGBA8Unorm,
+		Usage:  gpu.TextureUsageRenderAttachment | gpu.TextureUsageTextureBinding,
+	})
+	if err != nil {
+		return nil, err
+	}
+	encoder := d.NewCommandEncoder()
+	pass := encoder.BeginRenderPass(gpu.RenderPassDesc{ColorAttachments: []gpu.RenderPassColorAttachment{{
+		View: target.View(), ClearValue: gpu.Color{A: 1},
+	}}})
+	pass.SetPipeline(pipeline)
+	pass.Draw(3, 1, 0, 0)
+	pass.End()
+	if err := d.Queue().Submit(encoder.Finish()); err != nil {
+		target.Release()
+		return nil, err
+	}
+	return target, nil
+}
+
+// onDevice makes the resources of the app each time there is a device: at the first frame, and again after the
+// device was lost.
+func onDevice(b *widgets.WidgetsBinding, shader *gpu.Shader) {
+	var texture *gpu.Texture
+	gpu.OnDevice(b, func(d *gpu.Device) {
+		var err error
+		if texture, err = drawOnce(d, shader); err != nil {
+			return // GPUDeviceLost, GPUInvalidDescriptor, ...: the error says which
+		}
+		d.OnLost(func(error) { texture.Release() }) // forgets the texture: the device that had it is gone
+	})
+}
+
+func main() {}
+```
+
+- **Getting the device.** `gpu.DeviceOf(bc)` returns it, or `GPUUnavailable` when the app runs on the OpenGL ES,
+  WebGL or software renderer (an app that needs a GPU says so; one that can do without draws another way), or
+  `GPUDeviceNotReady` before the first frame, when the renderer has not opened its device. `gpu.OnDevice` is the
+  way that never meets the second: it calls your function from the event loop, with the device, and again with the
+  next one after a loss.
+- **Limits and features.** `d.Limits()` has the design limits that every backend honours (a texture of 8192, four
+  bind groups, 256 bytes between dynamic offsets and so on); `d.Features()` says whether timestamp queries exist.
+- **Errors you return, mistakes you panic on.** A description that cannot be made is a returned error with the field
+  in its metadata (`GPUInvalidDescriptor`, `GPULimitExceeded`). A mistake while recording (a draw with no pipeline, a
+  bind group of another layout, a draw past the end of a buffer, a pass not ended) panics with `GPUEncodingInvalid` in
+  debug builds and is skipped by release builds; the recording device of `gluttertest` runs the same checks.
+- **Release what you make.** Every buffer, texture, sampler, pipeline and bind group has `Release`; the GPU frees it
+  when the work that uses it is done. A debug build logs each resource that is alive when the app ends, with the line
+  that made it (`GPUResourceLeaked`).
+- **Reading back.** `Buffer.Read(offset, size, done)` calls `done` from the event loop after the GPU finished, never
+  inside the call: copy a texture into a buffer first (`CopyTextureToBuffer`, rows a multiple of
+  `Limits().BytesPerRowAlignment` apart), then read it. A web page cannot wait for the GPU, so the same code runs there.
+- **Device loss.** A driver reset or a lost WebGPU device calls the `OnLost` functions once; the old `Device` and its
+  resources then do nothing, and the calls that return an error return `GPUDeviceLost`. Make the resources again in
+  the `OnDevice` function.
+- **In tests.** `gluttertest.New(t, gluttertest.Opts{GPU: true})` gives the app a recording device
+  (`tester.GPUDevice()` keeps what was encoded: `Calls()`, `Ops()`, `Logs()`; `Lose()` loses the device). Without
+  the option the app has no GPU device, as with the software renderer.
+
 ## For Flutter web developers
 
 If you know Flutter on the web, this is what is the same and what is not.

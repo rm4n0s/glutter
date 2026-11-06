@@ -47,6 +47,8 @@ func run() error {
 		postResult(unavailable())
 	case "loss":
 		postResult(loss())
+	case "gpuapi":
+		postResult(gpuAPI())
 	case "choose":
 		return engineApp()
 	case "failstart":
@@ -54,7 +56,7 @@ func run() error {
 	case "switch":
 		return switchApp()
 	default:
-		return errors.New(tagGPUWebTestModeUnknown, "the query parameter mode is not probe, parity, scenes, unavailable, loss, choose, failstart or switch", "mode", mode)
+		return errors.New(tagGPUWebTestModeUnknown, "the query parameter mode is not probe, parity, scenes, unavailable, loss, gpuapi, choose, failstart or switch", "mode", mode)
 	}
 	// The result is posted by an asynchronous call: the program stays until the test has it, so
 	// that its ending is not taken for the program's failure.
@@ -655,4 +657,6 @@ const (
 	tagCaptureTimeout        = "CaptureTimeout"
 	tagCaptureWasSynchronous = "CaptureWasSynchronous"
 	tagGPUWebTestModeUnknown = "GPUWebTestModeUnknown"
+	// tagGPUWebTestReadTimeout is the read of a texture through package gpu that did not finish in time.
+	tagGPUWebTestReadTimeout = "GPUWebTestReadTimeout"
 )

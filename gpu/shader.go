@@ -1,11 +1,3 @@
-// Package gpu is the public GPU API of Glutter (SPEC §27.2): buffers, textures, samplers, WGSL shaders,
-// render and compute pipelines, command encoders and readback over the device of the explicit renderer.
-// This file holds the first part, the type of the shaders that glutter-gen gpushaders makes (SPEC §27.3);
-// the rest comes in step 30.4.
-//
-// The names follow WebGPU, in Go form. SDL 3's GPU API is the other design reference (D32).
-//
-// Flutter: no counterpart
 package gpu
 
 // ShaderStage is the stage of a shader entry point.
