@@ -56,6 +56,9 @@ type pendingRead struct {
 	done   func(*image.RGBA, error)
 	// doneBytes, when set, gets the bytes of the format and done is not used.
 	doneBytes func([]byte, int, error)
+	// doneRaw, when set, is a ReadBuffer: it gets the size bytes of the buffer and nothing else is used.
+	doneRaw func([]byte, error)
+	size    int
 }
 
 // initFrames makes the command pools, command buffers, fences and the first
@@ -116,6 +119,9 @@ const (
 	poolUniforms = 512
 	poolTextures = 2048
 	poolSamplers = 512
+	// poolStorageBuffers and poolStorageImages are the storage descriptors of a pool (step 30.2).
+	poolStorageBuffers = 1024
+	poolStorageImages  = 256
 )
 
 // addDescriptorPool adds a descriptor pool to the slot and makes it the current one.
@@ -124,8 +130,9 @@ func (d *Device) addDescriptorPool(s *frameSlot) error {
 	defer a.rewind(a.mark())
 	sizes := putSlice(a, []descriptorPoolSize{
 		{descriptorUniformDynamic, poolUniforms}, {descriptorSampledImage, poolTextures}, {descriptorSampler, poolSamplers},
+		{descriptorStorageBuffer, poolStorageBuffers}, {descriptorStorageImage, poolStorageImages},
 	})
-	info := put(a, descriptorPoolCreateInfo{sType: sTypeDescriptorPoolCreateInfo, maxSets: poolSets, poolSizeCount: 3, pPoolSizes: sizes})
+	info := put(a, descriptorPoolCreateInfo{sType: sTypeDescriptorPoolCreateInfo, maxSets: poolSets, poolSizeCount: 5, pPoolSizes: sizes})
 	out := a.out()
 	if err := check("vkCreateDescriptorPool", d.f.createDescriptorPool(d.dev, info, 0, out)); err != nil {
 		return err
@@ -215,7 +222,10 @@ type encoder struct {
 	slot  int
 	cb    commandBufferH
 	pass  *pass
+	cpass *computePass
 	reads []*pendingRead
+	// completes are the functions of OnComplete.
+	completes []func()
 	// acquired are the swapchain images this frame draws into.
 	acquired []acquiredImage
 }
@@ -310,7 +320,7 @@ func colorClear(f explicit.TextureFormat, c [4]float64) clearValue {
 // with TextureRenderTarget, 2D or a view made by Layer.
 func (e *encoder) BeginRenderPass(desc explicit.PassDesc) explicit.Pass {
 	d := e.d
-	if e.pass != nil {
+	if e.pass != nil || e.cpass != nil {
 		panic(errors.New(tagVulkanPassNotEnded, "BeginPass was called before the previous pass ended"))
 	}
 	a := d.arena
@@ -333,6 +343,7 @@ func (e *encoder) BeginRenderPass(desc explicit.PassDesc) explicit.Pass {
 	// own is the texture of a Texture that the loop above found to be this device's.
 	own := func(tex explicit.Texture) *texture { return tex.(*texture) }
 	d.limits.CheckPass(desc)
+	d.limits.CheckTimestamps(d.features, desc.Timestamps)
 	var first *texture
 	colors := make([]renderingAttachmentInfo, len(desc.Color))
 	for i, c := range desc.Color {
@@ -379,6 +390,7 @@ func (e *encoder) BeginRenderPass(desc explicit.PassDesc) explicit.Pass {
 	}
 	w, h := uint32(first.desc.Width), uint32(first.desc.Height)
 	info.renderArea = rect2D{extent: extent2D{w, h}}
+	timestamps := e.beginTimestamps(desc.Timestamps)
 	d.f.cmdBeginRendering(e.cb, put(a, info))
 	vp := put(a, viewport{width: float32(w), height: float32(h), maxDepth: 1})
 	d.f.cmdSetViewport(e.cb, 0, 1, vp)
@@ -387,7 +399,7 @@ func (e *encoder) BeginRenderPass(desc explicit.PassDesc) explicit.Pass {
 	if stencilRef {
 		d.f.cmdSetStencilReference(e.cb, stencilFrontAndBack, 0)
 	}
-	e.pass = &pass{e: e, target: first}
+	e.pass = &pass{e: e, target: first, timestamps: timestamps}
 	return e.pass
 }
 
@@ -496,7 +508,7 @@ func (e *encoder) Submit() error {
 	s.state = slotInflight
 	d.last = e.slot
 	d.next = (e.slot + 1) % framesInFlight
-	if len(e.reads) == 0 {
+	if len(e.reads) == 0 && len(e.completes) == 0 {
 		return nil
 	}
 	if err := d.waitSlot(s); err != nil {
@@ -513,11 +525,18 @@ func (e *encoder) Submit() error {
 	for _, rd := range e.reads {
 		d.finishRead(rd)
 	}
+	for _, fn := range e.completes {
+		fn()
+	}
 	return nil
 }
 
 // fail tells whoever asked for the read that it did not happen.
 func (rd *pendingRead) fail(err error) {
+	if rd.doneRaw != nil {
+		rd.doneRaw(nil, err)
+		return
+	}
 	if rd.doneBytes != nil {
 		rd.doneBytes(nil, 0, err)
 		return
@@ -528,6 +547,12 @@ func (rd *pendingRead) fail(err error) {
 // finishRead converts what the GPU copied into the buffer, calls done, and frees the
 // buffer.
 func (d *Device) finishRead(rd *pendingRead) {
+	if rd.doneRaw != nil {
+		out := bytesOf(rd.alloc.mapped(), rd.size)
+		d.destroyBuffer(rd.buffer, rd.alloc)
+		rd.doneRaw(out, nil)
+		return
+	}
 	w, h := rd.rect.Dx(), rd.rect.Dy()
 	bpp := rd.format.BytesPerPixel()
 	raw := readBytes(rd.alloc.mapped(), w*h*bpp)
@@ -556,9 +581,10 @@ func (d *Device) finishRead(rd *pendingRead) {
 
 // pass records the draws of one render pass.
 type pass struct {
-	e        *encoder
-	target   *texture
-	pipeline *pipeline
+	e          *encoder
+	target     *texture
+	pipeline   *pipeline
+	timestamps timestampWriter
 }
 
 var _ explicit.Pass = (*pass)(nil)
@@ -626,18 +652,29 @@ func (p *pass) SetStencilReference(ref uint32) {
 
 // Draw implements explicit.Pass.
 func (p *pass) Draw(vertices, instances, firstVertex, firstInstance int) {
+	p.checkFirstIndices(firstVertex, 0, firstInstance)
 	p.e.d.f.cmdDraw(p.e.cb, uint32(vertices), uint32(instances), uint32(firstVertex), uint32(firstInstance))
 }
 
 // DrawIndexed implements explicit.Pass.
 func (p *pass) DrawIndexed(indices, instances, firstIndex, baseVertex, firstInstance int) {
+	p.checkFirstIndices(0, baseVertex, firstInstance)
 	p.e.d.f.cmdDrawIndexed(p.e.cb, uint32(indices), uint32(instances), uint32(firstIndex), int32(baseVertex), uint32(firstInstance))
+}
+
+// checkFirstIndices is the rule of SPEC §27.1 for the draw: a shader that reads instance_index or
+// vertex_index is drawn from 0.
+func (p *pass) checkFirstIndices(firstVertex, baseVertex, firstInstance int) {
+	if p.pipeline != nil {
+		explicit.CheckFirstIndices(p.pipeline.vertex, firstVertex, baseVertex, firstInstance)
+	}
 }
 
 // End implements explicit.Pass.
 func (p *pass) End() {
 	d := p.e.d
 	d.f.cmdEndRendering(p.e.cb)
+	p.timestamps.end()
 	d.barrierAll(p.e.cb)
 	p.e.pass = nil
 }

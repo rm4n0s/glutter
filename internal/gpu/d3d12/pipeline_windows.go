@@ -14,11 +14,13 @@ import (
 
 // pipeline is a pipeline state object with the root signature it was made for.
 type pipeline struct {
-	d         *Device
-	desc      explicit.PipelineDesc
-	root      *rootSig
-	pso       win32.Object
-	topology  uint32 // the primitive topology the input assembler is set to
+	d        *Device
+	desc     explicit.PipelineDesc
+	root     *rootSig
+	pso      win32.Object
+	topology uint32 // the primitive topology the input assembler is set to
+	// vertex is the vertex entry point, for the rule about the first vertex and instance.
+	vertex    explicit.EntryPoint
 	destroyed bool
 }
 
@@ -161,7 +163,7 @@ func (d *Device) NewPipeline(desc explicit.PipelineDesc) (explicit.Pipeline, err
 	if err != nil {
 		return nil, err
 	}
-	p := &pipeline{d: d, desc: desc, root: rs, pso: pso, topology: primitiveTopology(desc.Topology)}
+	p := &pipeline{d: d, desc: desc, root: rs, pso: pso, topology: primitiveTopology(desc.Topology), vertex: vs}
 	d.pipes.live++
 	d.live[p] = func() { p.destroyed = true; d.pipes.live--; d.disown(p.pso) }
 	return p, nil

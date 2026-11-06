@@ -72,6 +72,7 @@ type vkFuncs struct {
 	createPipelineLayout        func(device, pInfo, pAllocator, pLayout uintptr) int32
 	destroyPipelineLayout       func(device uintptr, layout uint64, pAllocator uintptr)
 	createGraphicsPipelines     func(device uintptr, cache uint64, count uint32, pInfos, pAllocator, pPipelines uintptr) int32
+	createComputePipelines      func(device uintptr, cache uint64, count uint32, pInfos, pAllocator, pPipelines uintptr) int32
 	createPipelineCache         func(device, pInfo, pAllocator, pCache uintptr) int32
 	destroyPipelineCache        func(device uintptr, cache uint64, pAllocator uintptr)
 	getPipelineCacheData        func(device uintptr, cache uint64, pDataSize, pData uintptr) int32
@@ -98,6 +99,16 @@ type vkFuncs struct {
 	cmdSetStencilReference      func(cb uintptr, faceMask, reference uint32)
 	cmdDraw                     func(cb uintptr, vertices, instances, firstVertex, firstInstance uint32)
 	cmdDrawIndexed              func(cb uintptr, indices, instances, firstIndex uint32, vertexOffset int32, firstInstance uint32)
+	cmdDrawIndirect             func(cb uintptr, buffer, offset uint64, drawCount, stride uint32)
+	cmdDrawIndexedIndirect      func(cb uintptr, buffer, offset uint64, drawCount, stride uint32)
+	cmdDispatch                 func(cb uintptr, x, y, z uint32)
+	cmdDispatchIndirect         func(cb uintptr, buffer, offset uint64)
+	cmdCopyBuffer               func(cb uintptr, src, dst uint64, count uint32, pRegions uintptr)
+	createQueryPool             func(device, pInfo, pAllocator, pPool uintptr) int32
+	destroyQueryPool            func(device uintptr, pool uint64, pAllocator uintptr)
+	cmdResetQueryPool           func(cb uintptr, pool uint64, first, count uint32)
+	cmdWriteTimestamp2          func(cb uintptr, stage uint64, pool uint64, query uint32)
+	cmdCopyQueryPoolResults     func(cb uintptr, pool uint64, first, count uint32, dst, offset, stride uint64, flags uint32)
 	cmdCopyImage                func(cb uintptr, src uint64, srcLayout uint32, dst uint64, dstLayout uint32, count uint32, pRegions uintptr)
 	cmdCopyBufferToImage        func(cb uintptr, buffer, image uint64, layout, count uint32, pRegions uintptr)
 	cmdCopyImageToBuffer        func(cb uintptr, image uint64, layout uint32, buffer uint64, count uint32, pRegions uintptr)
@@ -195,6 +206,7 @@ func (f *vkFuncs) symbols() []symbol {
 		d(&f.createPipelineLayout, "vkCreatePipelineLayout"),
 		d(&f.destroyPipelineLayout, "vkDestroyPipelineLayout"),
 		d(&f.createGraphicsPipelines, "vkCreateGraphicsPipelines"),
+		d(&f.createComputePipelines, "vkCreateComputePipelines"),
 		d(&f.createPipelineCache, "vkCreatePipelineCache"),
 		d(&f.destroyPipelineCache, "vkDestroyPipelineCache"),
 		d(&f.getPipelineCacheData, "vkGetPipelineCacheData"),
@@ -221,6 +233,16 @@ func (f *vkFuncs) symbols() []symbol {
 		d(&f.cmdSetStencilReference, "vkCmdSetStencilReference"),
 		d(&f.cmdDraw, "vkCmdDraw"),
 		d(&f.cmdDrawIndexed, "vkCmdDrawIndexed"),
+		d(&f.cmdDrawIndirect, "vkCmdDrawIndirect"),
+		d(&f.cmdDrawIndexedIndirect, "vkCmdDrawIndexedIndirect"),
+		d(&f.cmdDispatch, "vkCmdDispatch"),
+		d(&f.cmdDispatchIndirect, "vkCmdDispatchIndirect"),
+		d(&f.cmdCopyBuffer, "vkCmdCopyBuffer"),
+		d(&f.createQueryPool, "vkCreateQueryPool"),
+		d(&f.destroyQueryPool, "vkDestroyQueryPool"),
+		d(&f.cmdResetQueryPool, "vkCmdResetQueryPool"),
+		d(&f.cmdWriteTimestamp2, "vkCmdWriteTimestamp2", "vkCmdWriteTimestamp2KHR"),
+		d(&f.cmdCopyQueryPoolResults, "vkCmdCopyQueryPoolResults"),
 		d(&f.cmdCopyImage, "vkCmdCopyImage"),
 		d(&f.cmdCopyBufferToImage, "vkCmdCopyBufferToImage"),
 		d(&f.cmdCopyImageToBuffer, "vkCmdCopyImageToBuffer"),

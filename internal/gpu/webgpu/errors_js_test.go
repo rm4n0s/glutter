@@ -71,19 +71,19 @@ func TestDeviceErrorRoutes(t *testing.T) {
 				Shader: unknown, VertexEntry: shader.Entries[0].Name, FragmentEntry: shader.Entries[1].Name,
 			})
 			return err
-		}, "WebGPUPipelineInvalid", "Device.NewPipeline.WebGPUPipelineInvalid"},
+		}, "WebGPUPipelineInvalid", "Device.NewPipeline->Device.moduleOf.WebGPUPipelineInvalid"},
 		{"bind group of a foreign pipeline", func() error {
 			return panicError(t, func() { _, _ = d.NewBindGroup(&pipeline{d: other}, 0, nil) })
 		}, "WebGPUForeignResource", "Device.NewBindGroup.WebGPUForeignResource"},
 		{"bind group the pipeline lacks", func() error {
 			_, err := d.NewBindGroup(&pipeline{d: d}, 0, nil)
 			return err
-		}, "WebGPUBindGroupInvalid", "Device.NewBindGroup.WebGPUBindGroupInvalid"},
+		}, "WebGPUBindGroupInvalid", "Device.NewBindGroup->Device.makeBindGroup.WebGPUBindGroupInvalid"},
 		{"binding the shader lacks", func() error {
 			_, err := d.NewBindGroup(&pipeline{d: d, layouts: []js.Value{{}}, bindings: []map[int]bindingPlan{{}}}, 0,
 				[]explicit.Binding{{Binding: 3}})
 			return err
-		}, "WebGPUBindGroupInvalid", "Device.NewBindGroup.WebGPUBindGroupInvalid"},
+		}, "WebGPUBindGroupInvalid", "Device.NewBindGroup->Device.makeBindGroup.WebGPUBindGroupInvalid"},
 		{"a texture of the wrong dimension for the binding", func() error {
 			p := &pipeline{d: d, layouts: []js.Value{{}}, bindings: []map[int]bindingPlan{{
 				3: {Binding: 3, Kind: explicit.BindingSampledTexture, Dimension: explicit.TextureDimCube},
@@ -91,7 +91,64 @@ func TestDeviceErrorRoutes(t *testing.T) {
 			flat := &texture{d: d, desc: explicit.TextureDesc{Width: 4, Height: 4, Format: explicit.TextureFormatRGBA8Unorm}.Normalized()}
 			_, err := d.NewBindGroup(p, 0, []explicit.Binding{{Binding: 3, Texture: flat}})
 			return err
-		}, "WebGPUTextureBindingMismatch", "Device.NewBindGroup.WebGPUTextureBindingMismatch"},
+		}, "WebGPUTextureBindingMismatch", "Device.NewBindGroup->Device.makeBindGroup.WebGPUTextureBindingMismatch"},
+		{"a storage texture of the wrong dimension for the binding", func() error {
+			p := &computePipeline{d: d, layouts: []js.Value{{}}, bindings: []map[int]bindingPlan{{
+				0: {Binding: 0, Kind: explicit.BindingStorageTexture, Dimension: explicit.TextureDim3D, StorageFormat: explicit.TextureFormatRGBA8Unorm},
+			}}}
+			flat := &texture{d: d, desc: explicit.TextureDesc{Width: 4, Height: 4, Format: explicit.TextureFormatRGBA8Unorm, Usage: explicit.TextureStorage}.Normalized()}
+			_, err := d.NewComputeBindGroup(p, 0, []explicit.Binding{{Binding: 0, Texture: flat}})
+			return err
+		}, "WebGPUTextureBindingMismatch", "Device.NewComputeBindGroup->Device.makeBindGroup.WebGPUTextureBindingMismatch"},
+		{"compute bind group of a foreign pipeline", func() error {
+			return panicError(t, func() { _, _ = d.NewComputeBindGroup(&computePipeline{d: other}, 0, nil) })
+		}, "WebGPUForeignResource", "Device.NewComputeBindGroup.WebGPUForeignResource"},
+		{"compute bind group the pipeline lacks", func() error {
+			_, err := d.NewComputeBindGroup(&computePipeline{d: d}, 0, nil)
+			return err
+		}, "WebGPUBindGroupInvalid", "Device.NewComputeBindGroup->Device.makeBindGroup.WebGPUBindGroupInvalid"},
+		{"compute pipeline without a shader", func() error {
+			_, err := d.NewComputePipeline(explicit.ComputePipelineDesc{})
+			return err
+		}, "WebGPUPipelineInvalid", "Device.NewComputePipeline.WebGPUPipelineInvalid"},
+		{"compute pipeline with an entry point the shader lacks", func() error {
+			_, err := d.NewComputePipeline(explicit.ComputePipelineDesc{Shader: shader, Entry: "nope"})
+			return err
+		}, "WebGPUPipelineInvalid", "Device.NewComputePipeline.WebGPUPipelineInvalid"},
+		{"compute pipeline with a shader that is not the renderer's", func() error {
+			cs := &explicit.Shader{Name: "unknown", Entries: []explicit.EntryPoint{{Name: "cs", Stage: explicit.ShaderStageCompute, WorkgroupSize: [3]int{1, 1, 1}}}}
+			_, err := d.NewComputePipeline(explicit.ComputePipelineDesc{Shader: cs, Entry: "cs"})
+			return err
+		}, "WebGPUPipelineInvalid", "Device.NewComputePipeline->Device.moduleOf.WebGPUPipelineInvalid"},
+		{"a query set on a device without timestamp queries", func() error {
+			_, err := d.NewQuerySet(2)
+			return err
+		}, "GPUQueryUnsupported", "Device.NewQuerySet.GPUQueryUnsupported"},
+		{"compute pass begun before the last one ended", func() error {
+			return panicError(t, func() { (&encoder{d: d, cpass: &computePass{}}).BeginComputePass(explicit.ComputePassDesc{}) })
+		}, "WebGPUPassNotEnded", "encoder.BeginComputePass.WebGPUPassNotEnded"},
+		{"compute pass begun in a render pass", func() error {
+			return panicError(t, func() { (&encoder{d: d, pass: &pass{}}).BeginComputePass(explicit.ComputePassDesc{}) })
+		}, "WebGPUPassNotEnded", "encoder.BeginComputePass.WebGPUPassNotEnded"},
+		{"foreign compute pipeline in a compute pass", func() error {
+			return panicError(t, func() { (&computePass{e: &encoder{d: d}}).SetPipeline(&computePipeline{d: other}) })
+		}, "WebGPUForeignResource", "computePass.SetPipeline.WebGPUForeignResource"},
+		{"foreign bind group in a compute pass", func() error {
+			return panicError(t, func() { (&computePass{e: &encoder{d: d}}).SetBindGroup(0, nil) })
+		}, "WebGPUForeignResource", "computePass.SetBindGroup.WebGPUForeignResource"},
+		{"copy of a foreign buffer", func() error {
+			return panicError(t, func() {
+				(&encoder{d: d}).CopyBuffer(&buffer{d: other, size: 8, usage: explicit.BufferCopySource}, 0, &buffer{d: d, size: 8, usage: explicit.BufferCopyDestination}, 0, 8)
+			})
+		}, "WebGPUForeignResource", "encoder.CopyBuffer.WebGPUForeignResource"},
+		{"read of a foreign buffer", func() error {
+			return panicError(t, func() {
+				(&encoder{d: d}).ReadBuffer(&buffer{d: other, size: 8, usage: explicit.BufferCopySource}, 0, 8, nil)
+			})
+		}, "WebGPUForeignResource", "encoder.ReadBuffer.WebGPUForeignResource"},
+		{"foreign 32 bit index buffer in a pass", func() error {
+			return panicError(t, func() { (&pass{e: &encoder{d: d}}).SetIndexBuffer32(&buffer{d: other}, 0) })
+		}, "WebGPUForeignResource", "pass.SetIndexBuffer32.WebGPUForeignResource"},
 		{"swapchain on a handle of another kind", func() error {
 			_, err := d.newSwapchain(gpu.SurfaceHandle{Kind: gpu.SurfaceKindWayland})
 			return err

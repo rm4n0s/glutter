@@ -26,6 +26,14 @@ func Scenes() []Scene {
 		{"topologies", topologies},
 		{"stencil and color write mask", stencilAndWriteMask},
 		{"vertex formats", vertexFormats},
+		{"compute squares a million numbers", computeSquares},
+		{"a storage texture is written and sampled", storageTexture},
+		{"indirect draws and dispatches", indirectCalls},
+		{"copies between buffers and textures", copies},
+		{"two encoders in order", twoEncoders},
+		{"instances", instances},
+		{"timestamps", timestamps},
+		{"a thousand frames of readback", manyReads},
 	}
 }
 

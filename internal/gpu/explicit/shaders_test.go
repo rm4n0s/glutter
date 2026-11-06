@@ -17,7 +17,7 @@ func TestGeneratedShaders(t *testing.T) {
 		entries []EntryPoint
 	}{
 		{ShaderBlit, "blit", []EntryPoint{
-			{Name: "vs_main", Stage: ShaderStageVertex, Bindings: []ShaderBinding{
+			{Name: "vs_main", Stage: ShaderStageVertex, ReadsVertexIndex: true, Bindings: []ShaderBinding{
 				{Name: "blit", Group: 0, Binding: 2, Kind: BindingUniformBuffer, Register: ShaderRegister{Class: "b", Space: 0, Index: 2}},
 			}},
 			{Name: "fs_main", Stage: ShaderStageFragment, Bindings: []ShaderBinding{
@@ -26,7 +26,7 @@ func TestGeneratedShaders(t *testing.T) {
 			}},
 		}},
 		{ShaderSolid, "solid", []EntryPoint{
-			{Name: "vs_main", Stage: ShaderStageVertex, Bindings: []ShaderBinding{
+			{Name: "vs_main", Stage: ShaderStageVertex, ReadsVertexIndex: true, Bindings: []ShaderBinding{
 				{Name: "frame", Group: 0, Binding: 0, Kind: BindingUniformBuffer, Register: ShaderRegister{Class: "b", Space: 0, Index: 0}},
 			}},
 			{Name: "fs_main", Stage: ShaderStageFragment, Bindings: []ShaderBinding{}},

@@ -61,3 +61,10 @@ const TagVulkanDeviceLost = "VulkanDeviceLost"
 //
 // Flutter: no counterpart
 const TagGPUDeviceLost = "GPUDeviceLost"
+
+// TagGPUQueryUnsupported is the tag of the error of NewQuerySet on a device without timestamp queries
+// (Features.TimestampQuery is false). The backends produce it; a caller that can do without
+// timestamps compares with it (SPEC §27.1).
+//
+// Flutter: no counterpart
+const TagGPUQueryUnsupported = "GPUQueryUnsupported"

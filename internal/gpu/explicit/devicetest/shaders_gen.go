@@ -9,6 +9,159 @@ import (
 	"github.com/rm4n0s/glutter/internal/gpu/explicit"
 )
 
+//go:embed shaders/compute.spv
+var spirvCompute []byte
+
+// ShaderCompute is shaders/compute.wgsl.
+//
+// Flutter: no counterpart
+var ShaderCompute = &explicit.Shader{
+	Name: "compute",
+	WGSL: `// Compute shaders of the device tests (SPEC §27.12, step 30.2): squares a million numbers, paints a
+// storage texture, and writes the arguments of indirect draws and dispatches.
+
+struct Params {
+	count: u32,
+	a: u32,
+	b: u32,
+	c: u32,
+}
+
+@group(0) @binding(0) var<uniform> params: Params;
+@group(0) @binding(1) var<storage, read> input: array<u32>;
+@group(0) @binding(2) var<storage, read_write> output: array<u32>;
+@group(1) @binding(0) var img: texture_storage_2d<rgba8unorm, write>;
+@group(1) @binding(1) var<storage, read_write> args: array<u32>;
+
+@compute @workgroup_size(64)
+fn cs_square(@builtin(global_invocation_id) id: vec3<u32>) {
+	if (id.x < params.count) {
+		output[id.x] = input[id.x] * input[id.x];
+	}
+}
+
+// Paints texel (x, y) of a texture of 4 by 4 with (x*60, y*60, 128, 255).
+@compute @workgroup_size(2, 2)
+fn cs_paint(@builtin(global_invocation_id) id: vec3<u32>) {
+	textureStore(img, vec2<i32>(id.xy), vec4<f32>(f32(id.x) * 60.0 / 255.0, f32(id.y) * 60.0 / 255.0, 128.0 / 255.0, 1.0));
+}
+
+// The arguments of DrawIndirect: 3 vertices, 1 instance, the first vertex 0 and the first instance 0.
+@compute @workgroup_size(1)
+fn cs_draw_args() {
+	args[0] = 3u;
+	args[1] = 1u;
+	args[2] = 0u;
+	args[3] = 0u;
+}
+
+// The arguments of DrawIndexedIndirect: 3 indices, 1 instance, the first index 0, the base vertex 0 and
+// the first instance 0.
+@compute @workgroup_size(1)
+fn cs_indexed_args() {
+	args[0] = 3u;
+	args[1] = 1u;
+	args[2] = 0u;
+	args[3] = 0u;
+	args[4] = 0u;
+}
+
+// The arguments of DispatchIndirect: params.a workgroups in x.
+@compute @workgroup_size(1)
+fn cs_dispatch_args() {
+	args[0] = params.a;
+	args[1] = 1u;
+	args[2] = 1u;
+}
+`,
+	SPIRV: spirvCompute,
+	HLSL: `struct Params {
+    uint count;
+    uint a;
+    uint b;
+    uint c;
+};
+
+cbuffer params : register(b0, space0) { Params params; }
+ByteAddressBuffer input : register(t1, space0);
+RWByteAddressBuffer output : register(u2, space0);
+RWTexture2D<unorm float4> img : register(u0, space1);
+RWByteAddressBuffer args : register(u1, space1);
+
+[numthreads(64, 1, 1)]
+void cs_square(uint3 id : SV_DispatchThreadID)
+{
+    uint _e4 = params.count;
+    if ((id.x < _e4)) {
+        uint _e12 = asuint(input.Load(id.x*4));
+        uint _e16 = asuint(input.Load(id.x*4));
+        output.Store(id.x*4, asuint((_e12 * _e16)));
+        return;
+    } else {
+        return;
+    }
+}
+
+[numthreads(2, 2, 1)]
+void cs_paint(uint3 id_1 : SV_DispatchThreadID)
+{
+    img[int2(id_1.xy)] = float4(((float(id_1.x) * 60.0) / 255.0), ((float(id_1.y) * 60.0) / 255.0), 0.5019608, 1.0);
+    return;
+}
+
+[numthreads(1, 1, 1)]
+void cs_draw_args()
+{
+    args.Store(0, asuint(3u));
+    args.Store(4, asuint(1u));
+    args.Store(8, asuint(0u));
+    args.Store(12, asuint(0u));
+    return;
+}
+
+[numthreads(1, 1, 1)]
+void cs_indexed_args()
+{
+    args.Store(0, asuint(3u));
+    args.Store(4, asuint(1u));
+    args.Store(8, asuint(0u));
+    args.Store(12, asuint(0u));
+    args.Store(16, asuint(0u));
+    return;
+}
+
+[numthreads(1, 1, 1)]
+void cs_dispatch_args()
+{
+    uint _e4 = params.a;
+    args.Store(0, asuint(_e4));
+    args.Store(4, asuint(1u));
+    args.Store(8, asuint(1u));
+    return;
+}
+`,
+	Entries: []explicit.EntryPoint{
+		{Name: "cs_square", Stage: explicit.ShaderStageCompute, WorkgroupSize: [3]int{64, 1, 1}, Bindings: []explicit.ShaderBinding{
+			{Name: "params", Group: 0, Binding: 0, Kind: explicit.BindingUniformBuffer, Register: explicit.ShaderRegister{Class: "b", Space: 0, Index: 0}},
+			{Name: "input", Group: 0, Binding: 1, Kind: explicit.BindingStorageBufferReadOnly, Register: explicit.ShaderRegister{Class: "t", Space: 0, Index: 1}},
+			{Name: "output", Group: 0, Binding: 2, Kind: explicit.BindingStorageBuffer, Register: explicit.ShaderRegister{Class: "u", Space: 0, Index: 2}},
+		}},
+		{Name: "cs_paint", Stage: explicit.ShaderStageCompute, WorkgroupSize: [3]int{2, 2, 1}, Bindings: []explicit.ShaderBinding{
+			{Name: "img", Group: 1, Binding: 0, Kind: explicit.BindingStorageTexture, StorageFormat: explicit.TextureFormatRGBA8Unorm, Register: explicit.ShaderRegister{Class: "u", Space: 1, Index: 0}},
+		}},
+		{Name: "cs_draw_args", Stage: explicit.ShaderStageCompute, WorkgroupSize: [3]int{1, 1, 1}, Bindings: []explicit.ShaderBinding{
+			{Name: "args", Group: 1, Binding: 1, Kind: explicit.BindingStorageBuffer, Register: explicit.ShaderRegister{Class: "u", Space: 1, Index: 1}},
+		}},
+		{Name: "cs_indexed_args", Stage: explicit.ShaderStageCompute, WorkgroupSize: [3]int{1, 1, 1}, Bindings: []explicit.ShaderBinding{
+			{Name: "args", Group: 1, Binding: 1, Kind: explicit.BindingStorageBuffer, Register: explicit.ShaderRegister{Class: "u", Space: 1, Index: 1}},
+		}},
+		{Name: "cs_dispatch_args", Stage: explicit.ShaderStageCompute, WorkgroupSize: [3]int{1, 1, 1}, Bindings: []explicit.ShaderBinding{
+			{Name: "params", Group: 0, Binding: 0, Kind: explicit.BindingUniformBuffer, Register: explicit.ShaderRegister{Class: "b", Space: 0, Index: 0}},
+			{Name: "args", Group: 1, Binding: 1, Kind: explicit.BindingStorageBuffer, Register: explicit.ShaderRegister{Class: "u", Space: 1, Index: 1}},
+		}},
+	},
+}
+
 //go:embed shaders/fill.spv
 var spirvFill []byte
 
@@ -99,10 +252,89 @@ Targets fs_four()
 }
 `,
 	Entries: []explicit.EntryPoint{
-		{Name: "vs_full", Stage: explicit.ShaderStageVertex, Bindings: []explicit.ShaderBinding{}},
+		{Name: "vs_full", Stage: explicit.ShaderStageVertex, ReadsVertexIndex: true, Bindings: []explicit.ShaderBinding{}},
 		{Name: "fs_float", Stage: explicit.ShaderStageFragment, Bindings: []explicit.ShaderBinding{}},
 		{Name: "fs_uint", Stage: explicit.ShaderStageFragment, Bindings: []explicit.ShaderBinding{}},
 		{Name: "fs_four", Stage: explicit.ShaderStageFragment, Bindings: []explicit.ShaderBinding{}},
+	},
+}
+
+//go:embed shaders/instance.spv
+var spirvInstance []byte
+
+// ShaderInstance is shaders/instance.wgsl.
+//
+// Flutter: no counterpart
+var ShaderInstance = &explicit.Shader{
+	Name: "instance",
+	WGSL: `// Two instances of a quad drawn as a triangle strip: instance 0 covers the left half of the target in
+// red, instance 1 the right half in green (the instance index, SPEC §27.1).
+
+struct VertexOut {
+	@builtin(position) pos: vec4<f32>,
+	@location(0) color: vec4<f32>,
+}
+
+@vertex
+fn vs_instance(@builtin(vertex_index) v: u32, @builtin(instance_index) i: u32) -> VertexOut {
+	var corner = array<vec2<f32>, 4>(vec2<f32>(0.0, 0.0), vec2<f32>(1.0, 0.0), vec2<f32>(0.0, 1.0), vec2<f32>(1.0, 1.0));
+	var out: VertexOut;
+	out.pos = vec4<f32>(-1.0 + corner[v].x + f32(i), -1.0 + 2.0 * corner[v].y, 0.0, 1.0);
+	out.color = select(vec4<f32>(0.0, 1.0, 0.0, 1.0), vec4<f32>(1.0, 0.0, 0.0, 1.0), i == 0u);
+	return out;
+}
+
+@fragment
+fn fs_instance(in: VertexOut) -> @location(0) vec4<f32> {
+	return in.color;
+}
+`,
+	SPIRV: spirvInstance,
+	HLSL: `struct VertexOut {
+    float4 pos : SV_Position;
+    float4 color : LOC0;
+};
+
+struct VertexOutput_vs_instance {
+    float4 color : LOC0;
+    float4 pos : SV_Position;
+};
+
+struct FragmentInput_fs_instance {
+    float4 color_1 : LOC0;
+    float4 pos_1 : SV_Position;
+};
+
+typedef float2 ret_Constructarray4_float2_[4];
+ret_Constructarray4_float2_ Constructarray4_float2_(float2 arg0, float2 arg1, float2 arg2, float2 arg3) {
+    float2 ret[4] = { arg0, arg1, arg2, arg3 };
+    return ret;
+}
+
+VertexOutput_vs_instance vs_instance(uint v : SV_VertexID, uint i : SV_InstanceID)
+{
+    float2 corner[4] = Constructarray4_float2_(float2(0.0, 0.0), float2(1.0, 0.0), float2(0.0, 1.0), float2(1.0, 1.0));
+    VertexOut out_ = (VertexOut)0;
+
+    float _e20 = corner[min(uint(v), 3u)].x;
+    float _e27 = corner[min(uint(v), 3u)].y;
+    out_.pos = float4(((-1.0 + _e20) + float(i)), (-1.0 + (2.0 * _e27)), 0.0, 1.0);
+    out_.color = ((i == 0u) ? float4(1.0, 0.0, 0.0, 1.0) : float4(0.0, 1.0, 0.0, 1.0));
+    VertexOut _e49 = out_;
+    VertexOut vertexout = _e49;
+    VertexOutput_vs_instance vertexout_1 = { vertexout.color, vertexout.pos };
+    return vertexout_1;
+}
+
+float4 fs_instance(FragmentInput_fs_instance fragmentinput_fs_instance) : SV_Target0
+{
+    VertexOut in_ = { fragmentinput_fs_instance.pos_1, fragmentinput_fs_instance.color_1 };
+    return in_.color;
+}
+`,
+	Entries: []explicit.EntryPoint{
+		{Name: "vs_instance", Stage: explicit.ShaderStageVertex, ReadsInstanceIndex: true, ReadsVertexIndex: true, Bindings: []explicit.ShaderBinding{}},
+		{Name: "fs_instance", Stage: explicit.ShaderStageFragment, Bindings: []explicit.ShaderBinding{}},
 	},
 }
 
@@ -286,7 +518,7 @@ float4 fs_float(FragmentInput_fs_float fragmentinput_fs_float) : SV_Target0
 }
 `,
 	Entries: []explicit.EntryPoint{
-		{Name: "vs_uv", Stage: explicit.ShaderStageVertex, Bindings: []explicit.ShaderBinding{}},
+		{Name: "vs_uv", Stage: explicit.ShaderStageVertex, ReadsVertexIndex: true, Bindings: []explicit.ShaderBinding{}},
 		{Name: "fs_cube", Stage: explicit.ShaderStageFragment, Bindings: []explicit.ShaderBinding{
 			{Name: "params", Group: 0, Binding: 0, Kind: explicit.BindingUniformBuffer, Register: explicit.ShaderRegister{Class: "b", Space: 0, Index: 0}},
 			{Name: "cubeTex", Group: 1, Binding: 0, Kind: explicit.BindingSampledTexture, Dimension: explicit.TextureDimCube, Register: explicit.ShaderRegister{Class: "t", Space: 1, Index: 0}},

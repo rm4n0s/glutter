@@ -140,7 +140,7 @@ func TestWineATextureBoundToTheWrongBindingFails(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := d.NewBindGroup(tt.p, 1, []explicit.Binding{{Binding: tt.binding, Texture: tt.tex}})
 			appErr, ok := errors.FromError(err)
-			if !ok || appErr.Tag != tagD3D12TextureBindingMismatch || !appErr.HasRoute("Device.NewBindGroup.D3D12TextureBindingMismatch") {
+			if !ok || appErr.Tag != tagD3D12TextureBindingMismatch || !appErr.HasRoute("Device.NewBindGroup->Device.makeBindGroup.D3D12TextureBindingMismatch") {
 				t.Fatalf("got %v, want D3D12TextureBindingMismatch via Device.NewBindGroup", err)
 			}
 		})
@@ -164,7 +164,7 @@ func TestWineALayerCannotBeSampled(t *testing.T) {
 	defer p.Destroy()
 	_, err = d.NewBindGroup(p, 1, []explicit.Binding{{Binding: 1, Texture: array.Layer(0, 1)}})
 	appErr, ok := errors.FromError(err)
-	if !ok || appErr.Tag != tagD3D12BindGroupInvalid || !appErr.HasRoute("Device.NewBindGroup.D3D12BindGroupInvalid") {
+	if !ok || appErr.Tag != tagD3D12BindGroupInvalid || !appErr.HasRoute("Device.NewBindGroup->Device.makeBindGroup.D3D12BindGroupInvalid") {
 		t.Fatalf("got %v, want D3D12BindGroupInvalid via Device.NewBindGroup", err)
 	}
 }

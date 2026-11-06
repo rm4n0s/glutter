@@ -137,7 +137,7 @@ float4 fs_main(FragmentInput_fs_main fragmentinput_fs_main) : SV_Target0
 }
 `,
 	Entries: []EntryPoint{
-		{Name: "vs_main", Stage: ShaderStageVertex, Bindings: []ShaderBinding{
+		{Name: "vs_main", Stage: ShaderStageVertex, ReadsVertexIndex: true, Bindings: []ShaderBinding{
 			{Name: "blit", Group: 0, Binding: 2, Kind: BindingUniformBuffer, Register: ShaderRegister{Class: "b", Space: 0, Index: 2}},
 		}},
 		{Name: "fs_main", Stage: ShaderStageFragment, Bindings: []ShaderBinding{
@@ -2040,7 +2040,7 @@ float4 fs_main(FragmentInput_fs_main fragmentinput_fs_main) : SV_Target0
 }
 `,
 	Entries: []EntryPoint{
-		{Name: "vs_main", Stage: ShaderStageVertex, Bindings: []ShaderBinding{}},
+		{Name: "vs_main", Stage: ShaderStageVertex, ReadsVertexIndex: true, Bindings: []ShaderBinding{}},
 		{Name: "fs_main", Stage: ShaderStageFragment, Bindings: []ShaderBinding{
 			{Name: "params", Group: 0, Binding: 1, Kind: BindingUniformBuffer, Register: ShaderRegister{Class: "b", Space: 0, Index: 1}},
 			{Name: "paint", Group: 0, Binding: 2, Kind: BindingUniformBuffer, Register: ShaderRegister{Class: "b", Space: 0, Index: 2}},
@@ -4030,7 +4030,7 @@ float4 fs_main(FragmentInput_fs_main fragmentinput_fs_main) : SV_Target0
 }
 `,
 	Entries: []EntryPoint{
-		{Name: "vs_main", Stage: ShaderStageVertex, Bindings: []ShaderBinding{
+		{Name: "vs_main", Stage: ShaderStageVertex, ReadsVertexIndex: true, Bindings: []ShaderBinding{
 			{Name: "frame", Group: 0, Binding: 0, Kind: BindingUniformBuffer, Register: ShaderRegister{Class: "b", Space: 0, Index: 0}},
 		}},
 		{Name: "fs_main", Stage: ShaderStageFragment, Bindings: []ShaderBinding{
@@ -5978,7 +5978,7 @@ float4 fs_main(FragmentInput_fs_main fragmentinput_fs_main) : SV_Target0
 }
 `,
 	Entries: []EntryPoint{
-		{Name: "vs_main", Stage: ShaderStageVertex, Bindings: []ShaderBinding{
+		{Name: "vs_main", Stage: ShaderStageVertex, ReadsVertexIndex: true, Bindings: []ShaderBinding{
 			{Name: "frame", Group: 0, Binding: 0, Kind: BindingUniformBuffer, Register: ShaderRegister{Class: "b", Space: 0, Index: 0}},
 		}},
 		{Name: "fs_main", Stage: ShaderStageFragment, Bindings: []ShaderBinding{
@@ -7685,7 +7685,7 @@ float4 fs_main(FragmentInput_fs_main fragmentinput_fs_main) : SV_Target0
 }
 `,
 	Entries: []EntryPoint{
-		{Name: "vs_main", Stage: ShaderStageVertex, Bindings: []ShaderBinding{
+		{Name: "vs_main", Stage: ShaderStageVertex, ReadsVertexIndex: true, Bindings: []ShaderBinding{
 			{Name: "frame", Group: 0, Binding: 0, Kind: BindingUniformBuffer, Register: ShaderRegister{Class: "b", Space: 0, Index: 0}},
 		}},
 		{Name: "fs_main", Stage: ShaderStageFragment, Bindings: []ShaderBinding{
@@ -10116,7 +10116,7 @@ float4 fs_main(FragmentInput_fs_main fragmentinput_fs_main) : SV_Target0
 }
 `,
 	Entries: []EntryPoint{
-		{Name: "vs_main", Stage: ShaderStageVertex, Bindings: []ShaderBinding{
+		{Name: "vs_main", Stage: ShaderStageVertex, ReadsVertexIndex: true, Bindings: []ShaderBinding{
 			{Name: "frame", Group: 0, Binding: 0, Kind: BindingUniformBuffer, Register: ShaderRegister{Class: "b", Space: 0, Index: 0}},
 		}},
 		{Name: "fs_main", Stage: ShaderStageFragment, Bindings: []ShaderBinding{
@@ -10256,7 +10256,7 @@ float4 fs_main(FragmentInput_fs_main fragmentinput_fs_main) : SV_Target0
 }
 `,
 	Entries: []EntryPoint{
-		{Name: "vs_main", Stage: ShaderStageVertex, Bindings: []ShaderBinding{
+		{Name: "vs_main", Stage: ShaderStageVertex, ReadsVertexIndex: true, Bindings: []ShaderBinding{
 			{Name: "frame", Group: 0, Binding: 0, Kind: BindingUniformBuffer, Register: ShaderRegister{Class: "b", Space: 0, Index: 0}},
 		}},
 		{Name: "fs_main", Stage: ShaderStageFragment, Bindings: []ShaderBinding{}},

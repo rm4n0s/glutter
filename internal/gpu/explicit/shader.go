@@ -7,7 +7,8 @@ import "strconv"
 // Flutter: no counterpart
 type ShaderStage int
 
-// The stages of the shaders of the explicit renderer. There is no compute in 1.1.
+// The stages of the shaders of the explicit renderer. The 2D renderer's shaders have no compute entry
+// point; those of glutter-gen shaders -gpu may (SPEC §27.1).
 const (
 	// ShaderStageUnspecified is the zero value: no stage.
 	//
@@ -21,6 +22,10 @@ const (
 	//
 	// Flutter: no counterpart
 	ShaderStageFragment
+	// ShaderStageCompute is an entry point marked @compute.
+	//
+	// Flutter: no counterpart
+	ShaderStageCompute
 )
 
 // String returns "vertex" or "fragment".
@@ -30,6 +35,8 @@ func (s ShaderStage) String() string {
 		return "vertex"
 	case ShaderStageFragment:
 		return "fragment"
+	case ShaderStageCompute:
+		return "compute"
 	}
 	return "unspecified"
 }
@@ -59,9 +66,23 @@ const (
 	//
 	// Flutter: no counterpart
 	BindingSampler
+	// BindingStorageBufferReadOnly is a `var<storage, read>`, bound at an offset that is a multiple
+	// of Limits.StorageOffsetAlignment. Any stage may read it.
+	//
+	// Flutter: no counterpart
+	BindingStorageBufferReadOnly
+	// BindingStorageBuffer is a `var<storage, read_write>`: a compute entry point only.
+	//
+	// Flutter: no counterpart
+	BindingStorageBuffer
+	// BindingStorageTexture is a `texture_storage_2d<format, write>` (or _2d_array or _3d, with
+	// ShaderBinding.StorageFormat): a compute entry point only.
+	//
+	// Flutter: no counterpart
+	BindingStorageTexture
 )
 
-// String returns "uniform", "texture" or "sampler".
+// String returns "uniform", "texture", "sampler", "storage-read", "storage" or "storage-texture".
 func (k BindingKind) String() string {
 	switch k {
 	case BindingUniformBuffer:
@@ -70,6 +91,12 @@ func (k BindingKind) String() string {
 		return "texture"
 	case BindingSampler:
 		return "sampler"
+	case BindingStorageBufferReadOnly:
+		return "storage-read"
+	case BindingStorageBuffer:
+		return "storage"
+	case BindingStorageTexture:
+		return "storage-texture"
 	}
 	return "unspecified"
 }
@@ -121,8 +148,9 @@ func (k TextureKind) Dimension() TextureDimension {
 //
 // Flutter: no counterpart
 type ShaderRegister struct {
-	// Class is the register class: "b" for a constant buffer (a uniform), "t" for a texture and "s"
-	// for a sampler.
+	// Class is the register class: "b" for a constant buffer (a uniform), "t" for a texture or a
+	// read-only storage buffer, "s" for a sampler and "u" for a writable storage buffer or a storage
+	// texture.
 	Class string
 	// Space is the register space, the group of the binding.
 	Space int
@@ -153,6 +181,8 @@ type ShaderBinding struct {
 	// texture can be bound to it, a float32 texture without float32-filterable too. A u32 texture
 	// is SampleTypeUint.
 	Sample SampleType
+	// StorageFormat is the texel format of a storage texture binding.
+	StorageFormat TextureFormat
 	// Register is where the HLSL binds the resource (Direct3D 12 only).
 	Register ShaderRegister
 }
@@ -168,6 +198,13 @@ type EntryPoint struct {
 	// Bindings are the resources the function reads, directly or through the
 	// functions it calls, sorted by group and binding.
 	Bindings []ShaderBinding
+	// WorkgroupSize is the @workgroup_size of a compute entry point (the missing dimensions are 1).
+	WorkgroupSize [3]int
+	// ReadsInstanceIndex and ReadsVertexIndex say that a vertex entry point reads
+	// @builtin(instance_index) or @builtin(vertex_index): Direct3D 12's SV_InstanceID and
+	// SV_VertexID leave out the first instance and the first vertex of a draw, so such a shader is
+	// drawn with a first instance, a first vertex and a base vertex of 0 only (SPEC §27.1).
+	ReadsInstanceIndex, ReadsVertexIndex bool
 }
 
 // Shader is one WGSL module with its SPIR-V. glutter-gen shaders makes the values

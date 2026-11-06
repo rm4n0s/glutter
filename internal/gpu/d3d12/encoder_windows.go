@@ -38,7 +38,7 @@ func (e *encoder) BeginPass(target explicit.Texture, load explicit.LoadOp, clear
 // that the standard library's calls pass on amd64 only (depthclear_windows_arm64.go).
 func (e *encoder) BeginRenderPass(desc explicit.PassDesc) explicit.Pass {
 	d := e.d
-	if e.pass != nil {
+	if e.inPass() {
 		panic(errors.New(tagD3D12PassNotEnded, "BeginPass was called before the previous pass ended"))
 	}
 	colors := make([]*texture, len(desc.Color))
@@ -64,21 +64,24 @@ func (e *encoder) BeginRenderPass(desc explicit.PassDesc) explicit.Pass {
 		panic(errors.New(tagD3D12TextureInvalid, "a pass needs an attachment"))
 	}
 	d.limits.CheckPass(desc)
-	d.tracker.begin()
+	d.limits.CheckTimestamps(d.features, desc.Timestamps)
+	timestamps := timestampsOf(d, desc.Timestamps)
+	d.opBegin()
 	for _, t := range colors {
 		if err := d.needTexture(t, stateRenderTarget); err != nil {
-			d.tracker.end()
+			d.opEnd()
 			panic(err)
 		}
 	}
 	if depth != nil {
 		if err := d.needTexture(depth, stateDepthWrite); err != nil {
-			d.tracker.end()
+			d.opEnd()
 			panic(err)
 		}
 	}
 	d.barrier(e.list)
-	p := &pass{e: e}
+	p := &pass{e: e, timestamps: timestamps}
+	p.timestamps.begin(e)
 	rtvs := make([]uintptr, len(colors))
 	for i, c := range desc.Color {
 		t := colors[i]
@@ -137,6 +140,8 @@ type pass struct {
 	// resolves are the multisampled attachments with the textures they are resolved into at End.
 	resolves []resolve
 	pipe     *pipeline
+	// timestamps are the queries the pass writes its times to.
+	timestamps passTimestamps
 	// topology is the primitive topology that the input assembler was set to in this pass; 0 for none yet.
 	topology uint32
 	// vertex holds the vertex buffers that were set, by slot; they are given to the input assembler
@@ -186,21 +191,39 @@ func (p *pass) SetPipeline(pl explicit.Pipeline) {
 // SetBindGroup implements explicit.Pass. The group must fit the group of the pipeline (the same
 // bindings), have been made for this frame, and come with one dynamic offset for each of its uniform
 // buffers. The textures it samples are put in the state PIXEL_SHADER_RESOURCE by one barrier before the
-// draw; the offsets are added to the addresses of the buffers and given as the root constant buffer
-// views; the tables are set from the group's block of the shader-visible heaps, switching the heaps
-// when the group is in another block than the one set (SPEC §9.8 "Descriptors").
+// draw; the offsets are added to the addresses of the buffers and given as the root constant buffer views;
+// the tables are set from the group's block of the shader-visible heaps, switching the heaps when the
+// group is in another block than the one set (SPEC §9.8 "Descriptors").
 func (p *pass) SetBindGroup(group int, g explicit.BindGroup, dynamicOffsets ...uint32) {
-	e := p.e
+	var root *rootSig
+	if p.pipe != nil {
+		root = p.pipe.root
+	}
+	p.e.setBindGroup(false, root, group, g, dynamicOffsets)
+}
+
+// rootCalls are the methods of the command list that set the root arguments of a graphics or a
+// compute pipeline.
+type rootCalls struct{ table, cbv, srv, uav int }
+
+var (
+	graphicsCalls = rootCalls{table: listSetRootTable, cbv: listSetRootCBV, srv: listSetRootSRV}
+	computeCalls  = rootCalls{table: listSetComputeRootTable, cbv: listSetComputeRootCBV, srv: listSetComputeRootSRV, uav: listSetComputeRootUAV}
+)
+
+// setBindGroup binds a group to the root signature of the graphics pipeline, or of the compute pipeline when
+// compute is set; root is the signature of the pipeline set, nil before SetPipeline.
+func (e *encoder) setBindGroup(compute bool, root *rootSig, group int, g explicit.BindGroup, dynamicOffsets []uint32) {
 	d := e.d
 	d.limits.CheckSetBindGroup(group, dynamicOffsets)
 	bg, ok := g.(*bindGroup)
 	if !ok || bg.d != d {
 		panic(errors.New(tagD3D12ForeignResource, "the resource was not made by this Direct3D 12 device", "resource", "bind group"))
 	}
-	if p.pipe == nil {
+	if root == nil {
 		panic(errors.New(tagD3D12BindGroupInvalid, "SetBindGroup was called before SetPipeline", "group", group))
 	}
-	plan := p.pipe.root.plan
+	plan := root.plan
 	if group < 0 || group >= len(plan.Groups) || group >= maxBindGroups {
 		panic(errors.New(tagD3D12BindGroupInvalid, "the pipeline has no such bind group", "group", group, "groups", len(plan.Groups)))
 	}
@@ -215,40 +238,77 @@ func (p *pass) SetBindGroup(group int, g explicit.BindGroup, dynamicOffsets ...u
 		panic(errors.New(tagD3D12BindGroupInvalid, "SetBindGroup needs one dynamic offset for each uniform buffer of the group",
 			"group", group, "offsets", len(dynamicOffsets), "uniforms", len(gp.Uniforms)))
 	}
+	sampled := statePixelShaderResource
+	if compute {
+		sampled = stateShaderResource
+	}
 	for _, t := range bg.textures {
 		if t == nil {
 			continue
 		}
-		if err := d.needTexture(t, statePixelShaderResource); err != nil {
+		if err := d.needTexture(t, sampled); err != nil {
+			panic(err)
+		}
+	}
+	for _, t := range bg.uavTex {
+		if err := d.needTexture(t, stateUnorderedAccess); err != nil {
+			panic(err)
+		}
+	}
+	for _, u := range bg.uses {
+		if err := d.needBuffer(u.b, u.state); err != nil {
 			panic(err)
 		}
 	}
 	d.barrier(e.list)
-	e.bound[group] = boundGroup{bg: bg, offs: append([]uint32(nil), dynamicOffsets...)}
-	e.bindTables(group)
-	for i, param := range gp.UniformParams {
-		e.list.Call(listSetRootCBV, uintptr(param), uintptr(bg.cbv[i]+uint64(dynamicOffsets[i])))
+	calls, bound := graphicsCalls, &e.bound
+	if compute {
+		calls, bound = computeCalls, &e.cbound
 	}
+	bound[group] = boundGroup{bg: bg, offs: append([]uint32(nil), dynamicOffsets...)}
+	e.bindTables(compute, group)
+	for i, param := range gp.UniformParams {
+		e.list.Call(calls.cbv, uintptr(param), uintptr(bg.cbv[i]+uint64(dynamicOffsets[i])))
+	}
+	for i, param := range gp.StorageROParams {
+		e.list.Call(calls.srv, uintptr(param), uintptr(bg.roAddr[i]))
+	}
+	for i, param := range gp.StorageRWParams {
+		e.list.Call(calls.uav, uintptr(param), uintptr(bg.rwAddr[i]))
+	}
+}
+
+// bound returns the bind group at index i of the two states: the groups of the graphics pipeline, then
+// those of the compute pipeline.
+func (e *encoder) boundAt(i int) *bindGroup {
+	if i < maxBindGroups {
+		return e.bound[i].bg
+	}
+	return e.cbound[i-maxBindGroups].bg
 }
 
 // bindTables sets the descriptor tables of the group that was just bound. The heaps are the latest
 // blocks of the slot; a group bound earlier that is in an older block is copied into the latest
 // one again (rehomed), since only one heap of each kind can be set; when the heaps change, every table of
-// the groups bound is set again.
-func (e *encoder) bindTables(group int) {
+// the groups bound is set again (the groups of both pipelines, the graphics one's first).
+func (e *encoder) bindTables(compute bool, group int) {
 	d := e.d
 	s := &d.slots[e.slot]
-	root := e.root.plan
-	dirty := [maxBindGroups]bool{}
+	const total = 2 * maxBindGroups
+	index := group
+	if compute {
+		index += maxBindGroups
+	}
+	dirty := [total]bool{}
 	home := func(i int) (v, smp int, has bool) {
-		b := e.bound[i].bg
+		b := e.boundAt(i)
 		if b == nil || !b.hasTables() {
 			return 0, 0, false
 		}
 		return b.vBlock, b.sBlock, true
 	}
-	rehome := func(i int) error { return e.bound[i].bg.place() }
-	moved, ok, err := settleBlocks(len(e.bound), home, func() (int, int) { return s.views.latest(), s.samplers.latest() }, rehome, maxBindGroups+1)
+	rehome := func(i int) error { return e.boundAt(i).place() }
+	moved, ok, err := settleBlocks(total, home, func() (int, int) { return s.views.latest(), s.samplers.latest() }, rehome, total+1)
 	if err != nil {
 		panic(err) // out of memory: a method without an error return cannot say it
 	}
@@ -257,8 +317,8 @@ func (e *encoder) bindTables(group int) {
 	}
 	copy(dirty[:], moved)
 	lv, ls := s.views.latest(), s.samplers.latest()
-	if bg := e.bound[group].bg; bg.hasTables() {
-		dirty[group] = true
+	if bg := e.boundAt(index); bg.hasTables() {
+		dirty[index] = true
 	}
 	if lv != e.viewHeap || ls != e.samplerHeap {
 		var heaps [2]uintptr
@@ -274,22 +334,33 @@ func (e *encoder) bindTables(group int) {
 		e.list.Call(listSetDescriptorHeaps, uintptr(n), uintptr(unsafe.Pointer(&heaps[0])))
 		runtime.KeepAlive(heaps)
 		e.viewHeap, e.samplerHeap = lv, ls
-		for g := range e.bound {
-			if b := e.bound[g].bg; b != nil && b.hasTables() {
-				dirty[g] = true
+		for i := range dirty {
+			if b := e.boundAt(i); b != nil && b.hasTables() {
+				dirty[i] = true
 			}
 		}
 	}
-	for g := range dirty {
-		if !dirty[g] || g >= len(root.Groups) {
+	for i := range dirty {
+		if !dirty[i] {
 			continue
 		}
-		b, gpg := e.bound[g].bg, root.Groups[g]
+		isCompute, g := i >= maxBindGroups, i%maxBindGroups
+		root, setTable := e.root, listSetRootTable
+		if isCompute {
+			root, setTable = e.croot, listSetComputeRootTable
+		}
+		if root == nil || g >= len(root.plan.Groups) {
+			continue
+		}
+		b, gpg := e.boundAt(i), root.plan.Groups[g]
 		if gpg.TextureParam >= 0 && b.vBlock >= 0 {
-			e.list.Call(listSetRootTable, uintptr(gpg.TextureParam), uintptr(s.views.gpuHandle(b.vBlock, b.vOffset)))
+			e.list.Call(setTable, uintptr(gpg.TextureParam), uintptr(s.views.gpuHandle(b.vBlock, b.vOffset)))
+		}
+		if gpg.StorageTexParam >= 0 && b.vBlock >= 0 {
+			e.list.Call(setTable, uintptr(gpg.StorageTexParam), uintptr(s.views.gpuHandle(b.vBlock, b.vOffset+len(b.srvSrc))))
 		}
 		if gpg.SamplerParam >= 0 && b.sBlock >= 0 {
-			e.list.Call(listSetRootTable, uintptr(gpg.SamplerParam), uintptr(s.samplers.gpuHandle(b.sBlock, b.sOffset)))
+			e.list.Call(setTable, uintptr(gpg.SamplerParam), uintptr(s.samplers.gpuHandle(b.sBlock, b.sOffset)))
 		}
 	}
 }
@@ -306,17 +377,36 @@ func (p *pass) SetVertexBuffer(slot int, b explicit.Buffer, offset int) {
 	if slot < 0 || slot >= len(p.vertex) || offset < 0 || offset > vb.size {
 		panic(errors.New(tagD3D12BindGroupInvalid, "the vertex buffer slot or offset is outside the limits", "slot", slot, "offset", offset, "size", vb.size))
 	}
+	p.use(vb, stateVertexConstant)
 	p.vertex[slot] = vertexBinding{va: vb.va + uint64(offset), size: vb.size - offset, set: true}
 	p.vertexDirty = true
 }
 
+// use puts a buffer in the default heap in the state a command of the pass needs, with its barrier; a
+// buffer in an upload heap is always readable.
+func (p *pass) use(b *buffer, st resState) {
+	if !b.gpu {
+		return
+	}
+	if err := p.e.d.needBuffer(b, st); err != nil {
+		panic(err)
+	}
+	p.e.d.barrier(p.e.list)
+}
+
 // SetIndexBuffer implements explicit.Pass: 16 bit indices from the offset to the end of the buffer.
 func (p *pass) SetIndexBuffer(b explicit.Buffer, offset int) {
+	p.setIndexBuffer(b, offset, dxgiFormatR16Uint)
+}
+
+// setIndexBuffer gives the input assembler indices of the format from the offset to the end of the buffer.
+func (p *pass) setIndexBuffer(b explicit.Buffer, offset int, format uint32) {
 	ib, ok := b.(*buffer)
 	if !ok || ib.d != p.e.d {
 		panic(errors.New(tagD3D12ForeignResource, "the resource was not made by this Direct3D 12 device", "resource", "buffer"))
 	}
-	view := d3d12IndexBufferView{BufferLocation: ib.va + uint64(offset), SizeInBytes: uint32(ib.size - offset), Format: dxgiFormatR16Uint}
+	p.use(ib, stateIndexBuffer)
+	view := d3d12IndexBufferView{BufferLocation: ib.va + uint64(offset), SizeInBytes: uint32(ib.size - offset), Format: format}
 	p.e.list.Call(listIASetIndexBuffer, uintptr(unsafe.Pointer(&view)))
 }
 
@@ -350,12 +440,14 @@ func (p *pass) flush(command string) {
 // Draw implements explicit.Pass: DrawInstanced.
 func (p *pass) Draw(vertices, instances, firstVertex, firstInstance int) {
 	p.flush("Draw")
+	explicit.CheckFirstIndices(p.pipe.vertex, firstVertex, 0, firstInstance)
 	p.e.list.Call(listDrawInstanced, uintptr(vertices), uintptr(instances), uintptr(firstVertex), uintptr(firstInstance))
 }
 
 // DrawIndexed implements explicit.Pass: DrawIndexedInstanced.
 func (p *pass) DrawIndexed(indices, instances, firstIndex, baseVertex, firstInstance int) {
 	p.flush("DrawIndexed")
+	explicit.CheckFirstIndices(p.pipe.vertex, 0, baseVertex, firstInstance)
 	p.e.list.Call(listDrawIndexedInstanced, uintptr(indices), uintptr(instances), uintptr(firstIndex), uintptr(uint32(int32(baseVertex))), uintptr(firstInstance))
 }
 
@@ -370,13 +462,14 @@ func (p *pass) SetStencilReference(ref uint32) {
 func (p *pass) End() {
 	e := p.e
 	d := e.d
-	d.tracker.end()
+	p.timestamps.end(e)
+	d.opEnd()
 	e.pass = nil
 	if len(p.resolves) == 0 {
 		return
 	}
-	d.tracker.begin()
-	defer d.tracker.end()
+	d.opBegin()
+	defer d.opEnd()
 	for _, r := range p.resolves {
 		if err := d.needTexture(r.src, stateResolveSource); err != nil {
 			panic(err)

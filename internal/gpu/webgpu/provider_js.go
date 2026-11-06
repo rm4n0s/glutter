@@ -30,7 +30,9 @@ type Provider struct {
 	devices map[int]*Device
 	nextID  int
 	reads   map[int]*readJob
-	handle  gpu.SurfaceHandle // the window the last device was opened for
+	// completions are the OnComplete functions that wait for the queue.
+	completions map[int]*completion
+	handle      gpu.SurfaceHandle // the window the last device was opened for
 	// delivered is closed over by Acquire to hear that the first request is answered.
 	delivered func()
 	job       int
@@ -47,6 +49,8 @@ type acquired struct {
 	description              string
 	fallback                 bool
 	float32Filterable        bool
+	// timestampQuery and indirectFirstInstance are the features of those names, when the adapter has them.
+	timestampQuery, indirectFirstInstance bool
 }
 
 // Acquire asks the browser for an adapter and a device, compiles every shader of the renderer on
@@ -62,7 +66,7 @@ func Acquire(ctx context.Context, o Options) (*Provider, error) {
 	if log == nil {
 		log = slog.Default()
 	}
-	p := &Provider{o: o, log: log, devices: map[int]*Device{}, reads: map[int]*readJob{}}
+	p := &Provider{o: o, log: log, devices: map[int]*Device{}, reads: map[int]*readJob{}, completions: map[int]*completion{}}
 	p.sup = &supply{request: p.request}
 	p.helper = js.Global().Get("Function").New(helperScript).Invoke()
 	callbacks := js.Global().Get("Object").New()
@@ -72,6 +76,8 @@ func Acquire(ctx context.Context, o Options) (*Provider, error) {
 	callbacks.Set("uncaptured", p.keep(func(args []js.Value) { p.onUncaptured(args[0].Int(), args[1].String()) }))
 	callbacks.Set("mapped", p.keep(func(args []js.Value) { p.onMapped(args[0].Int()) }))
 	callbacks.Set("mapFailed", p.keep(func(args []js.Value) { p.onMapFailed(args[0].Int(), args[1].String()) }))
+	callbacks.Set("workDone", p.keep(func(args []js.Value) { p.onWorkDone(args[0].Int(), "") }))
+	callbacks.Set("workFailed", p.keep(func(args []js.Value) { p.onWorkDone(args[0].Int(), args[1].String()) }))
 	p.helper.Call("init", callbacks)
 	p.codes = js.Global().Get("Object").New()
 	for _, s := range explicit.Shaders() {
@@ -158,6 +164,7 @@ func (p *Provider) onAcquired(_ int, r js.Value) {
 		adapter: r.Get("adapter"), device: r.Get("device"), modules: r.Get("modules"),
 		description: r.Get("description").String(), fallback: r.Get("fallback").Truthy(),
 		float32Filterable: r.Get("float32Filterable").Truthy(),
+		timestampQuery:    r.Get("timestampQuery").Truthy(), indirectFirstInstance: r.Get("indirectFirstInstance").Truthy(),
 	}, nil)
 	p.answered()
 }

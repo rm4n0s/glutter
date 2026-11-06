@@ -13,6 +13,8 @@ type Result struct {
 	Name string `json:"name"`
 	// Failures are the messages of the failures; empty when it passed.
 	Failures []string `json:"failures"`
+	// Skipped is why the part did not run, when it did not.
+	Skipped string `json:"skipped,omitempty"`
 }
 
 // Collector is a T that records the failures instead of reporting them to a test runner, for a
@@ -24,6 +26,7 @@ type Collector struct {
 	results *[]Result
 	failed  []string
 	fatal   bool
+	skipped string
 }
 
 // NewCollector returns the T for the scenes of a program, and the function that returns the results
@@ -35,8 +38,18 @@ func NewCollector() (*Collector, func() []Result) {
 	return &Collector{results: results}, func() []Result { return *results }
 }
 
-// fatalStop is what a Fatalf panics with to end the part that called it.
-type fatalStop struct{}
+// fatalStop is what a Fatalf panics with to end the part that called it, and skipStop what a Skipf
+// panics with.
+type (
+	fatalStop struct{}
+	skipStop  struct{}
+)
+
+// Skipf implements T.
+func (c *Collector) Skipf(format string, args ...any) {
+	c.skipped = fmt.Sprintf(format, args...)
+	panic(skipStop{})
+}
 
 // Helper implements T.
 func (c *Collector) Helper() {}
@@ -59,14 +72,16 @@ func (c *Collector) Run(name string, fn func(t T)) {
 	func() {
 		defer func() {
 			if r := recover(); r != nil {
-				if _, ok := r.(fatalStop); !ok {
+				switch r.(type) {
+				case fatalStop, skipStop:
+				default:
 					child.failed = append(child.failed, fmt.Sprintf("panic: %v", r))
 				}
 			}
 		}()
 		fn(child)
 	}()
-	*c.results = append(*c.results, Result{Name: child.name, Failures: child.failed})
+	*c.results = append(*c.results, Result{Name: child.name, Failures: child.failed, Skipped: child.skipped})
 	if len(child.failed) > 0 {
 		c.failed = append(c.failed, child.failed...)
 	}

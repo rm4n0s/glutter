@@ -16,6 +16,8 @@ type bindingPlan struct {
 	// the layout declares (SPEC §27.1).
 	Dimension explicit.TextureDimension
 	Sample    explicit.SampleType
+	// StorageFormat is the format a storage texture binding declares.
+	StorageFormat explicit.TextureFormat
 }
 
 // planLayouts returns the bind group layouts of a pipeline: one for each group from 0 to the
@@ -24,23 +26,33 @@ type bindingPlan struct {
 // dynamic offset, so the layouts are explicit; "auto" layouts cannot have dynamic offsets). A
 // group that nothing reads gets an empty layout, so that the group numbers stay what the shader says.
 func planLayouts(vs, fs explicit.EntryPoint) [][]bindingPlan {
+	return planStages(stagedEntry{vs, shaderVertex}, stagedEntry{fs, shaderFragment})
+}
+
+// stagedEntry is an entry point and the GPUShaderStage flag of its stage.
+type stagedEntry struct {
+	entry explicit.EntryPoint
+	stage int
+}
+
+// planStages is planLayouts for the entry points of any stages: the two of a render pipeline, or the
+// one of a compute pipeline.
+func planStages(entries ...stagedEntry) [][]bindingPlan {
 	type key struct{ group, binding int }
 	seen := map[key]*bindingPlan{}
 	highest := -1
-	add := func(e explicit.EntryPoint, stage int) {
-		for _, b := range e.Bindings {
+	for _, se := range entries {
+		for _, b := range se.entry.Bindings {
 			k := key{b.Group, b.Binding}
 			p := seen[k]
 			if p == nil {
-				p = &bindingPlan{Binding: b.Binding, Kind: b.Kind, Dimension: b.Dimension, Sample: b.Sample}
+				p = &bindingPlan{Binding: b.Binding, Kind: b.Kind, Dimension: b.Dimension, Sample: b.Sample, StorageFormat: b.StorageFormat}
 				seen[k] = p
 			}
-			p.Visibility |= stage
+			p.Visibility |= se.stage
 			highest = max(highest, b.Group)
 		}
 	}
-	add(vs, shaderVertex)
-	add(fs, shaderFragment)
 	groups := make([][]bindingPlan, highest+1)
 	for k, p := range seen {
 		groups[k.group] = append(groups[k.group], *p)

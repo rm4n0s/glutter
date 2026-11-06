@@ -88,7 +88,7 @@ float4 fs(FragmentInput_fs fragmentinput_fs) : SV_Target0
 `
 
 func TestRewriteHLSL(t *testing.T) {
-	got, err := rewriteHLSL(fixtureHLSL)
+	got, err := rewriteHLSL(fixtureHLSL, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,11 +118,11 @@ func TestRewriteHLSL(t *testing.T) {
 }
 
 func TestRewriteHLSLIsIdempotentOnItsOutput(t *testing.T) {
-	once, err := rewriteHLSL(fixtureHLSL)
+	once, err := rewriteHLSL(fixtureHLSL, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	twice, err := rewriteHLSL(once)
+	twice, err := rewriteHLSL(once, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +169,7 @@ func TestRewriteHLSLErrors(t *testing.T) {
 			if in == fixtureHLSL {
 				t.Fatal("the edit changed nothing")
 			}
-			_, err := rewriteHLSL(in)
+			_, err := rewriteHLSL(in, false)
 			appErr, ok := errors.FromError(err)
 			if !ok {
 				t.Fatalf("expected *errors.Error, got %T (%v)", err, err)
@@ -191,6 +191,9 @@ func TestBindingRegister(t *testing.T) {
 		{Binding{Name: "u", Group: 0, Binding: 2, Kind: KindUniform}, "b", 0, 2},
 		{Binding{Name: "t", Group: 1, Binding: 3, Kind: KindTexture}, "t", 1, 3},
 		{Binding{Name: "s", Group: 2, Binding: 0, Kind: KindSampler}, "s", 2, 0},
+		{Binding{Name: "r", Group: 0, Binding: 4, Kind: KindStorageRO}, "t", 0, 4},
+		{Binding{Name: "w", Group: 1, Binding: 1, Kind: KindStorage}, "u", 1, 1},
+		{Binding{Name: "i", Group: 3, Binding: 0, Kind: KindStorageTexture}, "u", 3, 0},
 	}
 	for _, tt := range tests {
 		class, space, index := tt.b.Register()
@@ -206,7 +209,7 @@ func TestCheckHLSL(t *testing.T) {
 @group(1) @binding(5) var s: sampler;
 @vertex fn vs() -> @builtin(position) vec4<f32> { return vec4<f32>(u.x); }
 @fragment fn fs() -> @location(0) vec4<f32> { return textureSample(t, s, vec2<f32>(0.0)); }`
-	m, err := Parse(wgsl)
+	m, err := Parse(wgsl, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -309,7 +312,7 @@ func TestFixtureIsWhatNagaWrites(t *testing.T) {
 func TestGenerateHLSLWithNaga(t *testing.T) {
 	n := withNaga(t)
 	out := t.TempDir()
-	if err := Generate(defaultPackage, writeShaders(t, map[string]string{"pair.wgsl": samplerShader}), out, n); err != nil {
+	if err := Generate(defaultPackage, writeShaders(t, map[string]string{"pair.wgsl": samplerShader}), out, n, false); err != nil {
 		t.Fatal(err)
 	}
 	code, err := os.ReadFile(filepath.Join(out, generated))
@@ -345,13 +348,29 @@ func TestGenerateHLSLWithNaga(t *testing.T) {
 // the draw (SPEC §9.8), so the value is a uniform.
 func TestGenerateRefusesTheInstanceIndex(t *testing.T) {
 	n := withNaga(t)
-	err := Generate(defaultPackage, writeShaders(t, map[string]string{"inst.wgsl": instanceShader}), t.TempDir(), n)
+	err := Generate(defaultPackage, writeShaders(t, map[string]string{"inst.wgsl": instanceShader}), t.TempDir(), n, false)
 	appErr, ok := errors.FromError(err)
 	if !ok || appErr.Tag != tagShadersHLSLInstanceID || !appErr.HasRoute("Generate->rewriteHLSL.ShadersHLSLInstanceID") {
 		t.Fatalf("got %v, want ShadersHLSLInstanceID via Generate->rewriteHLSL", err)
 	}
 	if appErr.Metadata["file"] == nil {
 		t.Error("the error does not name the file")
+	}
+}
+
+// With -gpu the instance index is allowed: the draw is checked instead (SPEC §27.1).
+func TestGenerateGPUAllowsTheInstanceIndex(t *testing.T) {
+	n := withNaga(t)
+	out := t.TempDir()
+	if err := Generate(defaultPackage, writeShaders(t, map[string]string{"inst.wgsl": instanceShader}), out, n, true); err != nil {
+		t.Fatal(err)
+	}
+	code, err := os.ReadFile(filepath.Join(out, generated))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(code), "ReadsInstanceIndex: true") {
+		t.Errorf("the generated file does not say that the entry point reads the instance index:\n%s", code)
 	}
 }
 
@@ -371,7 +390,7 @@ func TestGenerateHLSLErrors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			naga := &fakeNaga{t: t, version: "1", hlslEdit: tt.hlsl}
-			err := Generate(defaultPackage, writeShaders(t, map[string]string{"a.wgsl": tinyShader}), t.TempDir(), naga)
+			err := Generate(defaultPackage, writeShaders(t, map[string]string{"a.wgsl": tinyShader}), t.TempDir(), naga, false)
 			appErr, ok := errors.FromError(err)
 			if !ok || appErr.Tag != tt.tag || !appErr.HasRoute(tt.route) {
 				t.Fatalf("got %v, want %s via %s", err, tt.tag, tt.route)
@@ -387,7 +406,7 @@ func TestGenerateHLSLErrors(t *testing.T) {
 // group 0 without a space, the other groups with one, and the sampler heap for the samplers.
 func nagaStyleHLSL(t *testing.T, src string) string {
 	t.Helper()
-	m, err := Parse(src)
+	m, err := Parse(src, false)
 	if err != nil {
 		t.Fatal(err)
 	}

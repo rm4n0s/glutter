@@ -68,12 +68,16 @@ type layerProperties struct {
 	description           [maxNameSize]byte
 }
 
-// physicalDeviceLimits holds the two limits that the backend reads; the rest of
+// physicalDeviceLimits holds the four limits that the backend reads; the rest of
 // VkPhysicalDeviceLimits is padding.
 type physicalDeviceLimits struct {
-	maxImageDimension1D uint32
-	maxImageDimension2D uint32
-	_                   [62]uint64 // 8-byte aligned, as the struct is: it has VkDeviceSize members
+	maxImageDimension1D         uint32
+	maxImageDimension2D         uint32
+	_                           [51]uint64 // 8-byte aligned, as the struct is: it has VkDeviceSize members
+	_                           uint32
+	timestampComputeAndGraphics uint32
+	timestampPeriod             float32
+	_                           [76]byte
 }
 
 type physicalDeviceProperties struct {
@@ -670,6 +674,32 @@ type dependencyInfo struct {
 	imageMemoryBarrierCount  uint32
 	_                        uint32
 	pImageMemoryBarriers     uintptr
+}
+
+type bufferCopy struct {
+	srcOffset uint64
+	dstOffset uint64
+	size      uint64
+}
+
+type computePipelineCreateInfo struct {
+	sType              uint32
+	pNext              uintptr
+	flags              uint32
+	stage              pipelineShaderStageCreateInfo
+	layout             uint64
+	basePipelineHandle uint64
+	basePipelineIndex  int32
+	_                  uint32
+}
+
+type queryPoolCreateInfo struct {
+	sType              uint32
+	pNext              uintptr
+	flags              uint32
+	queryType          uint32
+	queryCount         uint32
+	pipelineStatistics uint32
 }
 
 type bufferImageCopy struct {

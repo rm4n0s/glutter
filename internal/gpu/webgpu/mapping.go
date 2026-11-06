@@ -4,28 +4,45 @@ import "github.com/rm4n0s/glutter/internal/gpu/explicit"
 
 // The usage flags of the WebGPU API (GPUBufferUsage and GPUTextureUsage), and the map mode.
 const (
-	bufferMapRead  = 0x0001
-	bufferCopySrc  = 0x0004
-	bufferCopyDst  = 0x0008
-	bufferIndex    = 0x0010
-	bufferVertex   = 0x0020
-	bufferUniform  = 0x0040
-	textureCopySrc = 0x01
-	textureCopyDst = 0x02
-	textureBinding = 0x04
-	textureStorage = 0x08
-	textureTarget  = 0x10
-	mapModeRead    = 1
+	bufferMapRead = 0x0001
+	bufferCopySrc = 0x0004
+	bufferCopyDst = 0x0008
+	bufferIndex   = 0x0010
+	bufferVertex  = 0x0020
+	bufferUniform = 0x0040
+	// bufferStorage, bufferIndirect and bufferQueryResolve are the flags of step 30.2.
+	bufferStorage      = 0x0080
+	bufferIndirect     = 0x0100
+	bufferQueryResolve = 0x0200
+	textureCopySrc     = 0x01
+	textureCopyDst     = 0x02
+	textureBinding     = 0x04
+	textureStorage     = 0x08
+	textureTarget      = 0x10
+	mapModeRead        = 1
 
-	// shaderVertex and shaderFragment are the GPUShaderStage flags of a binding's visibility.
+	// shaderVertex, shaderFragment and shaderCompute are the GPUShaderStage flags of a binding's visibility.
 	shaderVertex   = 0x1
 	shaderFragment = 0x2
+	shaderCompute  = 0x4
 )
 
 // bufferUsage returns the GPUBufferUsage flags of a buffer: every buffer can be written (the
-// queue's writeBuffer needs COPY_DST).
+// queue's writeBuffer needs COPY_DST); the copies and reads need BufferCopySource.
 func bufferUsage(u explicit.BufferUsage) int {
 	flags := bufferCopyDst
+	if u&explicit.BufferStorage != 0 {
+		flags |= bufferStorage
+	}
+	if u&explicit.BufferIndirect != 0 {
+		flags |= bufferIndirect
+	}
+	if u&explicit.BufferCopySource != 0 {
+		flags |= bufferCopySrc
+	}
+	if u&explicit.BufferQueryResolve != 0 {
+		flags |= bufferQueryResolve
+	}
 	if u&explicit.BufferVertex != 0 {
 		flags |= bufferVertex
 	}

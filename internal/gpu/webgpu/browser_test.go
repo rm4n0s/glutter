@@ -194,6 +194,9 @@ func TestBrowserScenes(t *testing.T) {
 		}
 		for _, r := range res.Results {
 			t.Run(r.Name, func(t *testing.T) {
+				if r.Skipped != "" {
+					t.Skip(r.Skipped)
+				}
 				for _, f := range r.Failures {
 					t.Error(f)
 				}

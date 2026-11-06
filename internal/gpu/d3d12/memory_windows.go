@@ -41,6 +41,25 @@ func (d *Device) createBuffer(heapType uint32, size int) (win32.Object, error) {
 	return d.own(win32.ObjectFromPtr(out)), nil
 }
 
+// createGPUBuffer makes a committed buffer in the default heap, in the state COMMON: a buffer that shaders
+// write (with the flag ALLOW_UNORDERED_ACCESS when uav is set), the destination of copies and of
+// resolved queries. The CPU cannot map it. It fails with GPUOutOfMemory and the other tags of check.
+func (d *Device) createGPUBuffer(size int, uav bool) (win32.Object, error) {
+	hp := heapProps(heapTypeDefault)
+	desc := bufferDesc(size)
+	if uav {
+		desc.Flags = resourceFlagAllowUAV
+	}
+	var out uintptr
+	if err := d.hr(d.dev, "ID3D12Device::CreateCommittedResource", deviceCreateCommittedResource,
+		uintptr(unsafe.Pointer(&hp)), 0, uintptr(unsafe.Pointer(&desc)), uintptr(resourceStateCommon), 0,
+		uintptr(unsafe.Pointer(&iidResource)), uintptr(unsafe.Pointer(&out))); err != nil {
+		return win32.Object{}, err
+	}
+	d.counts.bytes += int64(size)
+	return d.own(win32.ObjectFromPtr(out)), nil
+}
+
 // releaseBuffer releases a buffer that createBuffer made, of the size it was made with.
 func (d *Device) releaseBuffer(res win32.Object, size int) {
 	d.counts.bytes -= int64(size)

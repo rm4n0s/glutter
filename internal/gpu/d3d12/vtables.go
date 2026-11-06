@@ -33,6 +33,7 @@ const (
 	deviceCreateCommandQueue         = 8
 	deviceCreateCommandAllocator     = 9
 	deviceCreateGraphicsPipeline     = 10 // CreateGraphicsPipelineState
+	deviceCreateComputePipeline      = 11 // CreateComputePipelineState
 	deviceCreateCommandList          = 12
 	deviceCheckFeatureSupport        = 13
 	deviceCreateDescriptorHeap       = 14
@@ -40,6 +41,7 @@ const (
 	deviceCreateRootSignature        = 16
 	deviceCopyDescriptorsSimple      = 24
 	deviceCreateShaderResourceView   = 18
+	deviceCreateUnorderedAccessView  = 19
 	deviceCreateRenderTargetView     = 20
 	deviceCreateDepthStencilView     = 21
 	deviceCreateSampler              = 22
@@ -47,6 +49,8 @@ const (
 	deviceCreateFence                = 36
 	deviceGetDeviceRemovedReason     = 37
 	deviceGetCopyableFootprints      = 38
+	deviceCreateQueryHeap            = 39
+	deviceCreateCommandSignature     = 41
 )
 
 // The methods of ID3D12Device1 and ID3D12PipelineLibrary.
@@ -63,6 +67,7 @@ const (
 const (
 	queueExecuteCommandLists = 10
 	queueSignal              = 14
+	queueGetTimestampFreq    = 16 // GetTimestampFrequency
 	allocatorReset           = 8
 	fenceGetCompletedValue   = 8
 	fenceSetEventOnComplete  = 9 // SetEventOnCompletion
@@ -79,6 +84,7 @@ const (
 	listReset                 = 10
 	listDrawInstanced         = 12
 	listDrawIndexedInstanced  = 13
+	listDispatch              = 14
 	listCopyBufferRegion      = 15
 	listCopyTextureRegion     = 16
 	listResolveSubresource    = 19
@@ -89,15 +95,24 @@ const (
 	listSetPipelineState      = 25
 	listResourceBarrier       = 26
 	listSetDescriptorHeaps    = 28
+	listSetComputeRootSig     = 29 // SetComputeRootSignature
 	listSetRootSignature      = 30 // SetGraphicsRootSignature
+	listSetComputeRootTable   = 31 // SetComputeRootDescriptorTable
 	listSetRootTable          = 32 // SetGraphicsRootDescriptorTable
+	listSetComputeRootCBV     = 37 // SetComputeRootConstantBufferView
 	listSetRootCBV            = 38 // SetGraphicsRootConstantBufferView
+	listSetComputeRootSRV     = 39 // SetComputeRootShaderResourceView
+	listSetRootSRV            = 40 // SetGraphicsRootShaderResourceView
+	listSetComputeRootUAV     = 41 // SetComputeRootUnorderedAccessView
 	listIASetIndexBuffer      = 43
 	listIASetVertexBuffers    = 44
 	listOMSetRenderTargets    = 46
 	listClearDepthStencilView = 47
 	listClearRenderTargetView = 48
 	listDiscardResource       = 51
+	listEndQuery              = 53
+	listResolveQueryData      = 54
+	listExecuteIndirect       = 59
 )
 
 // The methods of ID3D12Debug and ID3D12InfoQueue.
@@ -130,5 +145,7 @@ var (
 	iidPipelineState       = win32.MustParseGUID("{765a30f3-f624-4c6f-a828-ace948622445}")
 	iidDevice1             = win32.MustParseGUID("{77acce80-638e-4e65-8895-c1f23386863e}")
 	iidPipelineLibrary     = win32.MustParseGUID("{c64226a8-9201-46af-b4cc-53fb9ff7414f}")
+	iidQueryHeap           = win32.MustParseGUID("{0d9658ae-ed45-469e-a61d-970ec583cab4}")
+	iidCommandSignature    = win32.MustParseGUID("{c36a797c-ec80-4f0a-8985-a7b2475082d1}")
 	iidDXGIDevice          = win32.MustParseGUID("{54ec77fa-1377-44e6-8c32-88fd5f44c84c}")
 )

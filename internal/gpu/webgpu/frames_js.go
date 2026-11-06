@@ -17,7 +17,10 @@ type encoder struct {
 	d     *Device
 	enc   js.Value
 	pass  *pass
+	cpass *computePass
 	reads []*readJob
+	// completes are the functions of OnComplete.
+	completes []func()
 }
 
 var _ explicit.Encoder = (*encoder)(nil)
@@ -51,7 +54,7 @@ func (e *encoder) BeginPass(target explicit.Texture, load explicit.LoadOp, clear
 // BeginRenderPass implements explicit.Encoder. The attachments must be textures of this device with
 // TextureRenderTarget, 2D or a view made by Layer.
 func (e *encoder) BeginRenderPass(desc explicit.PassDesc) explicit.Pass {
-	if e.pass != nil {
+	if e.pass != nil || e.cpass != nil {
 		panic(errors.New(tagWebGPUPassNotEnded, "BeginPass was called before the previous pass ended"))
 	}
 	attachments := make([]explicit.Texture, 0, 2*len(desc.Color)+1)
@@ -70,6 +73,7 @@ func (e *encoder) BeginRenderPass(desc explicit.PassDesc) explicit.Pass {
 		}
 	}
 	e.d.limits.CheckPass(desc)
+	e.d.limits.CheckTimestamps(e.d.features, desc.Timestamps)
 	var first *texture
 	colors := make([]any, len(desc.Color))
 	for i, c := range desc.Color {
@@ -87,6 +91,9 @@ func (e *encoder) BeginRenderPass(desc explicit.PassDesc) explicit.Pass {
 		colors[i] = att
 	}
 	passDesc := map[string]any{"colorAttachments": colors}
+	if w := timestampWrites(desc.Timestamps); w != nil {
+		passDesc["timestampWrites"] = w
+	}
 	if dp := desc.Depth; dp != nil {
 		t := dp.Target.(*texture)
 		if first == nil {
@@ -133,10 +140,17 @@ type readJob struct {
 	done   func(*image.RGBA, error)
 	// doneBytes, when set, gets the bytes of the format and done is not used.
 	doneBytes func([]byte, int, error)
+	// doneRaw, when set, is a ReadBuffer: it gets the size bytes of the buffer and nothing else is used.
+	doneRaw func([]byte, error)
+	size    int
 }
 
 // fail tells whoever asked for the read that it did not happen.
 func (j *readJob) fail(err error) {
+	if j.doneRaw != nil {
+		j.doneRaw(nil, err)
+		return
+	}
 	if j.doneBytes != nil {
 		j.doneBytes(nil, 0, err)
 		return
@@ -213,6 +227,9 @@ func (e *encoder) Submit() error {
 		p.mu.Unlock()
 		p.helper.Call("map", job.buffer, job.id)
 	}
+	for _, fn := range e.completes {
+		p.waitForQueue(d, fn)
+	}
 	return nil
 }
 
@@ -229,6 +246,11 @@ func (p *Provider) onMapped(id int) {
 	js.CopyBytesToGo(raw, view)
 	job.buffer.Call("unmap")
 	job.buffer.Call("destroy")
+	if job.doneRaw != nil {
+		data := raw[:job.size]
+		p.post(func() { job.doneRaw(data, nil) })
+		return
+	}
 	if job.doneBytes != nil {
 		rowBytes := job.rect.Dx() * job.format.BytesPerPixel()
 		data := packRows(raw, job.pitch, rowBytes, job.rect.Dy())
@@ -268,6 +290,14 @@ type pass struct {
 	p        js.Value
 	target   *texture
 	pipeline *pipeline
+}
+
+// checkFirstIndices is the rule of SPEC §27.1 for the draw: a shader that reads instance_index or
+// vertex_index is drawn from 0.
+func (p *pass) checkFirstIndices(firstVertex, baseVertex, firstInstance int) {
+	if p.pipeline != nil {
+		explicit.CheckFirstIndices(p.pipeline.vertex, firstVertex, baseVertex, firstInstance)
+	}
 }
 
 var _ explicit.Pass = (*pass)(nil)
@@ -333,11 +363,13 @@ func (p *pass) SetStencilReference(ref uint32) {
 
 // Draw implements explicit.Pass.
 func (p *pass) Draw(vertices, instances, firstVertex, firstInstance int) {
+	p.checkFirstIndices(firstVertex, 0, firstInstance)
 	p.p.Call("draw", vertices, instances, firstVertex, firstInstance)
 }
 
 // DrawIndexed implements explicit.Pass.
 func (p *pass) DrawIndexed(indices, instances, firstIndex, baseVertex, firstInstance int) {
+	p.checkFirstIndices(0, baseVertex, firstInstance)
 	p.p.Call("drawIndexed", indices, instances, firstIndex, baseVertex, firstInstance)
 }
 

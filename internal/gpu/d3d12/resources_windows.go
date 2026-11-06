@@ -11,14 +11,19 @@ import (
 	"github.com/rm4n0s/glutter/internal/platform/windows/win32"
 )
 
-// buffer is a committed buffer in an upload heap, mapped for good and written at once, in the state
-// GENERIC_READ (SPEC §9.8 "Memory").
+// buffer is a committed buffer (SPEC §9.8 "Memory"). One that only the CPU writes and the GPU reads is in an
+// upload heap, mapped for good and written at once, in the state GENERIC_READ. One that shaders write, or
+// that copies and queries write (BufferStorage, BufferCopyDestination, BufferQueryResolve), is in the
+// default heap: the CPU cannot map it, WriteBuffer goes through the staging ring, and the device tracks
+// its state like a texture's (gpu).
 type buffer struct {
 	d         *Device
 	res       win32.Object
-	ptr       uintptr
-	va        uint64 // the GPU virtual address, which a root constant buffer view names
+	ptr       uintptr // the mapping, 0 for a buffer in the default heap
+	va        uint64  // the GPU virtual address, which a root constant buffer view names
 	size      int
+	usage     explicit.BufferUsage
+	gpu       bool // in the default heap, with states
 	destroyed bool
 }
 
@@ -26,6 +31,9 @@ var _ explicit.Buffer = (*buffer)(nil)
 
 // Size implements explicit.Buffer.
 func (b *buffer) Size() int { return b.size }
+
+// Usage implements explicit.Buffer.
+func (b *buffer) Usage() explicit.BufferUsage { return b.usage }
 
 // Destroy implements explicit.Buffer: the buffer is released when the GPU is done with the frames that
 // may use it.
@@ -37,16 +45,31 @@ func (b *buffer) Destroy() {
 	d := b.d
 	delete(d.live, b)
 	d.counts.buffers--
-	d.retire(func() { d.releaseBuffer(b.res, b.allocated()) })
+	d.retire(func() {
+		if b.gpu {
+			d.btracker.forget(b)
+		}
+		d.releaseBuffer(b.res, b.allocated())
+	})
 }
 
 // allocated is the size of the resource: a buffer is never smaller than 4 bytes.
 func (b *buffer) allocated() int { return max(b.size, 4) }
 
-// NewBuffer implements explicit.Device. Every buffer, whatever its usage, is in an upload heap: the
-// uniform ring and the vertex and index data are written by the CPU at once (SPEC §9.8).
-func (d *Device) NewBuffer(size int, _ explicit.BufferUsage) (explicit.Buffer, error) {
+// inGPUHeap says whether a buffer with the usage is in the default heap: the GPU writes it.
+func inGPUHeap(usage explicit.BufferUsage) bool {
+	return usage&(explicit.BufferStorage|explicit.BufferCopyDestination|explicit.BufferQueryResolve) != 0
+}
+
+// NewBuffer implements explicit.Device. A buffer that only the CPU writes is in an upload heap: the
+// uniform ring and the vertex and index data are written by the CPU at once (SPEC §9.8); one that the GPU
+// writes is in the default heap.
+func (d *Device) NewBuffer(size int, usage explicit.BufferUsage) (explicit.Buffer, error) {
+	d.limits.CheckBuffer(size, usage)
 	n := max(size, 4)
+	if inGPUHeap(usage) {
+		return d.newGPUBuffer(n, size, usage)
+	}
 	res, err := d.createBuffer(heapTypeUpload, n)
 	if err != nil {
 		return nil, err
@@ -56,14 +79,34 @@ func (d *Device) NewBuffer(size int, _ explicit.BufferUsage) (explicit.Buffer, e
 		d.releaseBuffer(res, n)
 		return nil, err
 	}
-	b := &buffer{d: d, res: res, ptr: ptr, va: uint64(res.Call(resourceGPUAddress)), size: size}
+	b := &buffer{d: d, res: res, ptr: ptr, va: uint64(res.Call(resourceGPUAddress)), size: size, usage: usage}
 	d.counts.buffers++
 	d.live[b] = func() { b.destroyed = true; d.counts.buffers--; d.releaseBuffer(b.res, b.allocated()) }
 	return b, nil
 }
 
-// WriteBuffer implements explicit.Device: the memory is mapped, so the data is copied at once. The
-// upload heap is write-combined: the data is only written, never read back.
+// newGPUBuffer makes a buffer in the default heap, tracked in the state COMMON.
+func (d *Device) newGPUBuffer(n, size int, usage explicit.BufferUsage) (*buffer, error) {
+	res, err := d.createGPUBuffer(n, usage&explicit.BufferStorage != 0)
+	if err != nil {
+		return nil, err
+	}
+	b := &buffer{d: d, res: res, va: uint64(res.Call(resourceGPUAddress)), size: size, usage: usage, gpu: true}
+	d.btracker.add(b, 1)
+	d.counts.buffers++
+	d.live[b] = func() {
+		b.destroyed = true
+		d.counts.buffers--
+		d.btracker.forget(b)
+		d.releaseBuffer(b.res, b.allocated())
+	}
+	return b, nil
+}
+
+// WriteBuffer implements explicit.Device: the memory of a buffer in an upload heap is mapped, so the data
+// is copied at once; the upload heap is write-combined, so the data is only written, never read back. A
+// buffer in the default heap gets the data through the staging ring, by a command of the next frame (or of
+// the frame being recorded, between passes), as a texture does.
 func (d *Device) WriteBuffer(b explicit.Buffer, offset int, data []byte) {
 	db, ok := b.(*buffer)
 	if !ok || db.d != d {
@@ -72,7 +115,27 @@ func (d *Device) WriteBuffer(b explicit.Buffer, offset int, data []byte) {
 	if offset < 0 || offset+len(data) > db.size {
 		panic(errors.New(tagD3D12WriteOutOfRange, "the write is outside the buffer", "offset", offset, "bytes", len(data), "size", db.size))
 	}
-	copy(win32.Bytes(db.ptr+uintptr(offset), len(data)), data)
+	if !db.gpu {
+		copy(win32.Bytes(db.ptr+uintptr(offset), len(data)), data)
+		return
+	}
+	if len(data) == 0 {
+		return
+	}
+	res, off, p, err := d.stage(len(data))
+	if err != nil {
+		panic(err)
+	}
+	copy(win32.Bytes(p, len(data)), data)
+	d.inCommands(func(list win32.Object) {
+		d.opBegin()
+		defer d.opEnd()
+		if err := d.needBuffer(db, stateCopyDest); err != nil {
+			panic(err)
+		}
+		d.barrier(list)
+		list.Call(listCopyBufferRegion, db.res.Ptr(), uintptr(offset), res.Ptr(), uintptr(off), uintptr(len(data)))
+	})
 }
 
 // texture is a texture in a committed resource in the default heap. A texture made by Level or Layer
@@ -94,7 +157,11 @@ type texture struct {
 	// shader resource view of the levels and layers the texture covers, and the render target view or the
 	// depth-stencil view of its first level and layer.
 	srv, rtv, dsv int
-	destroyed     bool
+	// uav is the number of the unordered access view of the texture's first level (and all its layers or
+	// slices) in the same heap as the shader resource views, -1 when it is not TextureStorage or is a view
+	// that cannot be bound as a storage texture (a layer of an array, a cube).
+	uav       int
+	destroyed bool
 }
 
 var _ explicit.Texture = (*texture)(nil)
@@ -132,7 +199,7 @@ func (t *texture) Level(i int) explicit.Texture {
 	if desc.Kind == explicit.TextureKind3D {
 		desc.DepthOrLayers = max(desc.DepthOrLayers>>i, 1)
 	}
-	lv := &texture{d: t.d, desc: desc, res: t.res, root: t, base: i, srv: -1, rtv: -1, dsv: -1}
+	lv := &texture{d: t.d, desc: desc, res: t.res, root: t, base: i, srv: -1, rtv: -1, dsv: -1, uav: -1}
 	if err := t.d.createViews(lv); err != nil {
 		panic(err)
 	}
@@ -158,7 +225,7 @@ func (t *texture) Layer(level, layer int) explicit.Texture {
 	desc := t.desc
 	desc.Kind, desc.DepthOrLayers, desc.MipLevels = explicit.TextureKind2D, 1, 1
 	desc.Width, desc.Height = max(desc.Width>>level, 1), max(desc.Height>>level, 1)
-	lv := &texture{d: t.d, desc: desc, res: t.res, root: t, base: level, baseLayer: layer, srv: -1, rtv: -1, dsv: -1}
+	lv := &texture{d: t.d, desc: desc, res: t.res, root: t, base: level, baseLayer: layer, srv: -1, rtv: -1, dsv: -1, uav: -1}
 	if err := t.d.createViews(lv); err != nil {
 		panic(err)
 	}
@@ -248,7 +315,7 @@ func (d *Device) NewTexture(desc explicit.TextureDesc) (explicit.Texture, error)
 		uintptr(unsafe.Pointer(&iidResource)), uintptr(unsafe.Pointer(&out))); err != nil {
 		return nil, err
 	}
-	t := &texture{d: d, desc: desc, res: d.own(win32.ObjectFromPtr(out)), srv: -1, rtv: -1, dsv: -1}
+	t := &texture{d: d, desc: desc, res: d.own(win32.ObjectFromPtr(out)), srv: -1, rtv: -1, dsv: -1, uav: -1}
 	t.root = t
 	d.tracker.add(t, t.subresourceCount())
 	d.counts.bytes += textureBytes(desc)
@@ -303,6 +370,26 @@ func (d *Device) createViews(t *texture) error {
 			d.dev.Call(deviceCreateShaderResourceView, t.res.Ptr(), uintptr(unsafe.Pointer(&srv)), handle)
 		}
 	}
+	if t.desc.Usage&explicit.TextureStorage != 0 && t.desc.Kind != explicit.TextureKindCube && (!layered || t.desc.Kind != explicit.TextureKind2D) {
+		n, handle, err := d.cpu[1].alloc(d)
+		if err != nil {
+			return err
+		}
+		t.uav = n
+		switch t.desc.Kind {
+		case explicit.TextureKind2DArray:
+			uav := d3d12UnorderedAccessViewDescArray{Format: format, ViewDimension: uavDimensionTexture2DArray,
+				Texture2DArray: d3d12Tex2DArrayUAV{MipSlice: uint32(t.base), FirstArraySlice: uint32(t.baseLayer), ArraySize: uint32(t.desc.Layers())}}
+			d.dev.Call(deviceCreateUnorderedAccessView, t.res.Ptr(), 0, uintptr(unsafe.Pointer(&uav)), handle)
+		case explicit.TextureKind3D:
+			uav := d3d12UnorderedAccessViewDesc3D{Format: format, ViewDimension: uavDimensionTexture3D,
+				Texture3D: d3d12Tex3DUAV{MipSlice: uint32(t.base), WSize: uint32(max(t.desc.DepthOrLayers, 1))}}
+			d.dev.Call(deviceCreateUnorderedAccessView, t.res.Ptr(), 0, uintptr(unsafe.Pointer(&uav)), handle)
+		default:
+			uav := d3d12UnorderedAccessViewDesc{Format: format, ViewDimension: uavDimensionTexture2D, Texture2D: d3d12Tex2DUAV{MipSlice: uint32(t.base)}}
+			d.dev.Call(deviceCreateUnorderedAccessView, t.res.Ptr(), 0, uintptr(unsafe.Pointer(&uav)), handle)
+		}
+	}
 	if t.desc.Usage&explicit.TextureRenderTarget == 0 || t.desc.Kind != explicit.TextureKind2D {
 		return nil
 	}
@@ -352,6 +439,10 @@ func (d *Device) freeViews(t *texture) {
 	if t.srv >= 0 {
 		d.cpu[1].free(t.srv)
 		t.srv = -1
+	}
+	if t.uav >= 0 {
+		d.cpu[1].free(t.uav)
+		t.uav = -1
 	}
 	if t.rtv >= 0 {
 		d.cpu[0].free(t.rtv)
@@ -413,8 +504,8 @@ func (d *Device) WriteTexture(t explicit.Texture, level int, r image.Rectangle, 
 	}
 	sub := dt.sub() + level
 	d.inCommands(func(list win32.Object) {
-		d.tracker.begin()
-		defer d.tracker.end()
+		d.opBegin()
+		defer d.opEnd()
 		if err := d.tracker.need(dt.root, sub, stateCopyDest); err != nil {
 			panic(err)
 		}
@@ -480,8 +571,8 @@ func (d *Device) WriteTextureRegion(t explicit.Texture, region explicit.TextureR
 	}
 	mips := dt.mips()
 	d.inCommands(func(list win32.Object) {
-		d.tracker.begin()
-		defer d.tracker.end()
+		d.opBegin()
+		defer d.opEnd()
 		if !layered {
 			sub := dt.base + region.Level
 			if err := d.tracker.need(dt.root, sub, stateCopyDest); err != nil {
@@ -516,14 +607,36 @@ func (d *Device) own2texture(t explicit.Texture) *texture {
 	return dt
 }
 
-// barrier records the transitions the tracker collected as one ResourceBarrier call. A subresource of
+// opBegin starts an operation, a pass or a copy, in the trackers of the textures and of the buffers.
+func (d *Device) opBegin() {
+	d.tracker.begin()
+	d.btracker.begin()
+}
+
+// opEnd ends the operation that opBegin started.
+func (d *Device) opEnd() {
+	d.tracker.end()
+	d.btracker.end()
+}
+
+// needBuffer puts the buffer in the state; the transition is collected by the tracker and recorded by
+// barrier. A buffer in an upload heap stays in GENERIC_READ, which every use of one is.
+func (d *Device) needBuffer(b *buffer, st resState) error {
+	if !b.gpu {
+		return nil
+	}
+	return d.btracker.need(b, 0, st)
+}
+
+// barrier records the transitions the trackers collected as one ResourceBarrier call. A subresource of
 // a texture with a stencil is transitioned in both its planes, the depth one and the stencil one.
 func (d *Device) barrier(list win32.Object) {
 	ts := d.tracker.flush()
-	if len(ts) == 0 {
+	bts := d.btracker.flush()
+	if len(ts)+len(bts) == 0 {
 		return
 	}
-	bs := make([]d3d12ResourceBarrier, 0, len(ts))
+	bs := make([]d3d12ResourceBarrier, 0, len(ts)+len(bts))
 	for _, tr := range ts {
 		planes := 1
 		if tr.Res.desc.Format.HasStencil() {
@@ -535,7 +648,19 @@ func (d *Device) barrier(list win32.Object) {
 			}})
 		}
 	}
+	for _, tr := range bts {
+		bs = append(bs, d3d12ResourceBarrier{Type: barrierTypeTransition, Transition: d3d12TransitionBarrier{
+			Resource: tr.Res.res.Ptr(), Subresource: allSubresources, StateBefore: uint32(tr.Before), StateAfter: uint32(tr.After),
+		}})
+	}
 	list.Call(listResourceBarrier, uintptr(len(bs)), uintptr(unsafe.Pointer(&bs[0])))
+}
+
+// uavBarrier makes the writes of the dispatches before it to the unordered access views visible to the
+// dispatches after it: Direct3D 12 does not order them by itself. One barrier covers every resource.
+func (d *Device) uavBarrier(list win32.Object) {
+	b := d3d12ResourceBarrier{Type: barrierTypeUAV}
+	list.Call(listResourceBarrier, 1, uintptr(unsafe.Pointer(&b)))
 }
 
 // sampler is a sampler descriptor in a CPU-only heap (SPEC §9.8 "Descriptors"): a bind group copies

@@ -32,7 +32,9 @@ type Device struct {
 	limits explicit.Limits
 	calls  []Call
 	reads  []pendingRead
-	closed bool
+	// completions are the OnComplete functions of the submitted encoders that have not run.
+	completions []func()
+	closed      bool
 	// Err, when set, is what the next call that can fail returns, once.
 	Err error
 	// AcquireErrs are the errors that the next calls of Swapchain.Acquire return, one
@@ -159,6 +161,7 @@ func (d *Device) SetLimits(l explicit.Limits) { d.limits = l }
 // NewBuffer implements explicit.Device.
 func (d *Device) NewBuffer(size int, usage explicit.BufferUsage) (explicit.Buffer, error) {
 	d.record("NewBuffer", "size=%d usage=%d", size, usage)
+	d.limits.CheckBuffer(size, usage)
 	if err := d.fail(); err != nil {
 		return nil, err
 	}
@@ -217,6 +220,9 @@ func (d *Device) NewPipeline(desc explicit.PipelineDesc) (explicit.Pipeline, err
 func (d *Device) NewBindGroup(p explicit.Pipeline, group int, entries []explicit.Binding) (explicit.BindGroup, error) {
 	d.record("NewBindGroup", "group=%d entries=%d", group, len(entries))
 	d.limits.CheckBindGroup(group, entries)
+	if fp, ok := p.(*pipeline); ok && fp.desc.Shader != nil {
+		d.checkBindings(group, entries, fp.desc.Shader, fp.desc.VertexEntry, fp.desc.FragmentEntry)
+	}
 	if err := d.fail(); err != nil {
 		return nil, err
 	}
@@ -324,6 +330,10 @@ type pendingRead struct {
 	r         image.Rectangle
 	done      func(*image.RGBA, error)
 	doneBytes func([]byte, int, error)
+	// buf, off and size are a ReadBuffer, with doneBuf.
+	buf       *buffer
+	off, size int
+	doneBuf   func([]byte, error)
 }
 
 // CompleteReads runs the done function of every ReadTexture that is waiting, as the
@@ -335,12 +345,21 @@ func (d *Device) CompleteReads() {
 	reads := d.reads
 	d.reads = nil
 	for _, rd := range reads {
+		if rd.doneBuf != nil {
+			rd.doneBuf(append([]byte(nil), rd.buf.data[rd.off:rd.off+rd.size]...), nil)
+			continue
+		}
 		if rd.doneBytes != nil {
 			data, rowBytes := rd.src.readBytes(rd.r)
 			rd.doneBytes(data, rowBytes, nil)
 			continue
 		}
 		rd.done(rd.src.read(rd.r), nil)
+	}
+	done := d.completions
+	d.completions = nil
+	for _, fn := range done {
+		fn()
 	}
 }
 
@@ -351,7 +370,8 @@ type buffer struct {
 	destroyed bool
 }
 
-func (b *buffer) Size() int { return len(b.data) }
+func (b *buffer) Size() int                   { return len(b.data) }
+func (b *buffer) Usage() explicit.BufferUsage { return b.usage }
 func (b *buffer) Destroy() {
 	if !b.destroyed {
 		b.destroyed = true
@@ -605,7 +625,9 @@ func (s *swapchain) Destroy() { s.d.record("DestroySwapchain", "") }
 type encoder struct {
 	d         *Device
 	pass      *pass
+	cpass     *computePass
 	submitted bool
+	complete  []func()
 }
 
 func (e *encoder) BeginPass(target explicit.Texture, load explicit.LoadOp, clear ui.Color) explicit.Pass {
@@ -623,6 +645,7 @@ func (e *encoder) BeginPass(target explicit.Texture, load explicit.LoadOp, clear
 func (e *encoder) BeginRenderPass(desc explicit.PassDesc) explicit.Pass {
 	e.d.record("BeginRenderPass", "%s", passText(desc))
 	e.d.limits.CheckPass(desc)
+	e.d.limits.CheckTimestamps(e.d.Supported, desc.Timestamps)
 	if e.pass != nil && !e.pass.ended {
 		panic(errors.New(tagFakePassNotEnded, "BeginRenderPass was called before the previous pass ended"))
 	}
@@ -682,6 +705,7 @@ func (e *encoder) ReadTextureBytes(src explicit.Texture, r image.Rectangle, done
 func (e *encoder) Submit() error {
 	e.d.record("Submit", "")
 	e.submitted = true
+	e.d.completions = append(e.d.completions, e.complete...)
 	err := e.d.fail()
 	if e.d.CompleteReadsOnSubmit {
 		e.d.CompleteReads()
@@ -692,6 +716,7 @@ func (e *encoder) Submit() error {
 type pass struct {
 	d     *Device
 	ended bool
+	pipe  explicit.Pipeline
 }
 
 func (p *pass) SetPipeline(pl explicit.Pipeline) {
@@ -700,6 +725,19 @@ func (p *pass) SetPipeline(pl explicit.Pipeline) {
 		name = s.Name
 	}
 	p.d.record("SetPipeline", "shader=%s", name)
+	p.pipe = pl
+}
+
+// vertexEntry returns the vertex entry point of the pipeline that is set, if there is one.
+func (p *pass) vertexEntry() (explicit.EntryPoint, bool) {
+	if p.pipe == nil {
+		return explicit.EntryPoint{}, false
+	}
+	d := p.pipe.Desc()
+	if d.Shader == nil {
+		return explicit.EntryPoint{}, false
+	}
+	return d.Shader.Entry(d.VertexEntry)
 }
 
 func (p *pass) SetBindGroup(group int, g explicit.BindGroup, dynamicOffsets ...uint32) {
@@ -716,16 +754,36 @@ func (p *pass) SetIndexBuffer(b explicit.Buffer, offset int) {
 	p.d.record("SetIndexBuffer", "offset=%d", offset)
 }
 
+func (p *pass) SetIndexBuffer32(b explicit.Buffer, offset int) {
+	p.d.record("SetIndexBuffer32", "offset=%d", offset)
+}
+
 func (p *pass) SetScissor(r image.Rectangle) { p.d.record("SetScissor", "%v", r) }
 
 func (p *pass) SetStencilReference(ref uint32) { p.d.record("SetStencilReference", "%d", ref) }
 
 func (p *pass) Draw(vertices, instances, firstVertex, firstInstance int) {
 	p.d.record("Draw", "vertices=%d instances=%d firstVertex=%d firstInstance=%d", vertices, instances, firstVertex, firstInstance)
+	if e, ok := p.vertexEntry(); ok {
+		explicit.CheckFirstIndices(e, firstVertex, 0, firstInstance)
+	}
 }
 
 func (p *pass) DrawIndexed(indices, instances, firstIndex, baseVertex, firstInstance int) {
 	p.d.record("DrawIndexed", "indices=%d instances=%d firstIndex=%d baseVertex=%d firstInstance=%d", indices, instances, firstIndex, baseVertex, firstInstance)
+	if e, ok := p.vertexEntry(); ok {
+		explicit.CheckFirstIndices(e, 0, baseVertex, firstInstance)
+	}
+}
+
+func (p *pass) DrawIndirect(b explicit.Buffer, offset int) {
+	p.d.record("DrawIndirect", "offset=%d", offset)
+	p.d.limits.CheckIndirect(b, offset, 16)
+}
+
+func (p *pass) DrawIndexedIndirect(b explicit.Buffer, offset int) {
+	p.d.record("DrawIndexedIndirect", "offset=%d", offset)
+	p.d.limits.CheckIndirect(b, offset, 20)
 }
 
 func (p *pass) End() {

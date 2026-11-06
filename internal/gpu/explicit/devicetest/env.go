@@ -23,6 +23,10 @@ type Env struct {
 	// until they are (30 seconds at most). A device that waits for the GPU in Submit needs nothing;
 	// the fake device completes the reads, and WebGPU lets the browser's event loop run.
 	Settle func()
+	// Memory, when set, returns the bytes that the device holds outside the Go heap (C memory, GPU
+	// memory), so that the scene of many frames can tell that nothing grows. The Go heap is always
+	// counted.
+	Memory func() int64
 
 	cleanup []func()
 	pending atomic.Int64
@@ -39,6 +43,8 @@ type T interface {
 	Errorf(format string, args ...any)
 	// Fatalf records a failure and ends the scene.
 	Fatalf(format string, args ...any)
+	// Skipf ends the scene or the part without a failure: the device cannot do what it tests.
+	Skipf(format string, args ...any)
 	// Run runs fn as a part of the scene, with a name.
 	Run(name string, fn func(t T))
 }
@@ -250,4 +256,64 @@ func (e *Env) fillPipeline(t T, fragment string, targets ...explicit.ColorTarget
 func (e *Env) colorTarget(t T, w, h int, f explicit.TextureFormat) explicit.Texture {
 	t.Helper()
 	return e.texture(t, explicit.TextureDesc{Width: w, Height: h, Format: f, Usage: explicit.TextureRenderTarget | explicit.TextureCopySource | explicit.TextureSampled})
+}
+
+// computePipeline makes a compute pipeline of compute.wgsl that the scene destroys.
+func (e *Env) computePipeline(t T, entry string) explicit.ComputePipeline {
+	t.Helper()
+	p, err := e.Dev.NewComputePipeline(explicit.ComputePipelineDesc{Shader: ShaderCompute, Entry: entry})
+	if err != nil {
+		t.Fatalf("NewComputePipeline(%s): %v", entry, err)
+	}
+	e.cleanup = append(e.cleanup, p.Destroy)
+	return p
+}
+
+// computeGroup makes the bind group of a compute pipeline.
+func (e *Env) computeGroup(t T, p explicit.ComputePipeline, group int, entries ...explicit.Binding) explicit.BindGroup {
+	t.Helper()
+	g, err := e.Dev.NewComputeBindGroup(p, group, entries)
+	if err != nil {
+		t.Fatalf("NewComputeBindGroup(%s, %d): %v", p.Desc().Entry, group, err)
+	}
+	e.cleanup = append(e.cleanup, g.Destroy)
+	return g
+}
+
+// readBuffer asks for size bytes of a buffer from offset; the result is valid after Env.submit.
+func (e *Env) readBuffer(enc explicit.Encoder, b explicit.Buffer, offset, size int) *read {
+	res := &read{}
+	e.pending.Add(1)
+	enc.ReadBuffer(b, offset, size, func(data []byte, err error) {
+		res.data, res.err, res.done = data, err, true
+		e.pending.Add(-1)
+	})
+	return res
+}
+
+// onComplete asks for fn to run when the GPU has finished the encoder; Env.submit waits for it.
+func (e *Env) onComplete(enc explicit.Encoder, fn func()) {
+	e.pending.Add(1)
+	enc.OnComplete(func() {
+		fn()
+		e.pending.Add(-1)
+	})
+}
+
+// u32s packs the numbers as the bytes of a storage buffer.
+func u32s(v ...uint32) []byte {
+	out := make([]byte, 0, len(v)*4)
+	for _, n := range v {
+		out = binary.LittleEndian.AppendUint32(out, n)
+	}
+	return out
+}
+
+// toU32s unpacks the numbers of a storage buffer.
+func toU32s(b []byte) []uint32 {
+	out := make([]uint32, len(b)/4)
+	for i := range out {
+		out[i] = binary.LittleEndian.Uint32(b[i*4:])
+	}
+	return out
 }

@@ -17,6 +17,10 @@ const (
 	KindUniform Kind = "BindingUniformBuffer"
 	KindTexture Kind = "BindingSampledTexture"
 	KindSampler Kind = "BindingSampler"
+	// The kinds of step 30.2 (SPEC §27.1), which only a module generated with -gpu may have.
+	KindStorageRO      Kind = "BindingStorageBufferReadOnly"
+	KindStorage        Kind = "BindingStorageBuffer"
+	KindStorageTexture Kind = "BindingStorageTexture"
 )
 
 // Binding is one `@group(g) @binding(b) var` declaration of a module.
@@ -28,6 +32,9 @@ type Binding struct {
 	Dim string
 	// Sample is the sample type of a texture, as the generated code spells it ("" is SampleTypeFloat).
 	Sample string
+	// StorageFormat is the texel format of a storage texture, as the generated code spells it
+	// ("TextureFormatRGBA8Unorm").
+	StorageFormat string
 }
 
 // The dimensions of a texture binding, as explicit spells them (the zero value is "").
@@ -46,8 +53,13 @@ const (
 // Entry is an entry point of a module and the bindings it reads.
 type Entry struct {
 	Name     string
-	Stage    string // "Vertex" or "Fragment"
+	Stage    string // "Vertex", "Fragment" or "Compute"
 	Bindings []Binding
+	// WorkgroupSize is the @workgroup_size of a compute entry point, the missing dimensions 1.
+	WorkgroupSize [3]int
+	// ReadsInstanceIndex and ReadsVertexIndex say that a vertex entry point takes
+	// @builtin(instance_index) or @builtin(vertex_index).
+	ReadsInstanceIndex, ReadsVertexIndex bool
 }
 
 // Module is what the generator reads from a WGSL file.
@@ -65,8 +77,14 @@ var (
 	textureType = regexp.MustCompile(`^texture_(2d_array|2d|cube|3d)<(f32|u32)>$`)
 	groupAttr   = regexp.MustCompile(`@group\(\s*(\d+)\s*\)`)
 	bindAttr    = regexp.MustCompile(`@binding\(\s*(\d+)\s*\)`)
-	entryDecl   = regexp.MustCompile(`@(vertex|fragment|compute)\s+(?:@\w+(?:\([^)]*\))?\s+)*fn\s+(\w+)`)
-	fnDecl      = regexp.MustCompile(`\bfn\s+(\w+)\s*\(`)
+	// A function with its attributes before it, such as "@compute @workgroup_size(8, 8) fn main".
+	entryDecl     = regexp.MustCompile(`((?:@\w+(?:\([^)]*\))?\s*)+)fn\s+(\w+)`)
+	stageAttr     = regexp.MustCompile(`@(vertex|fragment|compute)\b`)
+	workgroupAttr = regexp.MustCompile(`@workgroup_size\(([^)]*)\)`)
+	structDecl    = regexp.MustCompile(`struct\s+(\w+)\s*\{([^}]*)\}`)
+	// A storage texture type: texture_storage_2d<rgba8unorm, write>.
+	storageTextureType = regexp.MustCompile(`^texture_storage_(2d_array|2d|3d)<(rgba8unorm|rgba16float|r32float|r32uint),write>$`)
+	fnDecl             = regexp.MustCompile(`\bfn\s+(\w+)\s*\(`)
 )
 
 // stripComments removes the comments of WGSL, keeping the line breaks.
@@ -81,9 +99,14 @@ func stripComments(src string) string {
 // `@group(g) @binding(b) var<uniform> x: T;`, `var t: texture_2d<f32>;` and
 // `var s: sampler;`, and the functions marked @vertex or @fragment. An entry point
 // reads a binding when its name is in the body of the entry point or of a function
-// it calls. A binding of another kind (a storage buffer, a texture of another type),
-// a compute entry point, or two declarations of one group and binding, is an error.
-func Parse(src string) (Module, error) {
+// it calls. A binding of another kind (a texture of another type), a compute entry
+// point, or two declarations of one group and binding, is an error.
+//
+// With gpu (glutter-gen shaders -gpu, the shaders of step 30.2 and later) the module may also have
+// `var<storage, read>` and `var<storage, read_write>` buffers, `texture_storage_2d`, `_2d_array` and
+// `_3d` textures of rgba8unorm, rgba16float, r32float and r32uint that are written, and @compute entry
+// points with a literal @workgroup_size; the 2D renderer's own shaders have none of these.
+func Parse(src string, gpu bool) (Module, error) {
 	src = stripComments(src)
 	var m Module
 	seen := map[[2]int]string{}
@@ -92,10 +115,11 @@ func Parse(src string) (Module, error) {
 		binding, _ := strconv.Atoi(bindAttr.FindStringSubmatch(d[1])[1])
 		b := Binding{Name: d[3], Group: group, Binding: binding}
 		typ := strings.Join(strings.Fields(d[4]), "")
+		space := strings.Join(strings.Fields(d[2]), "")
 		switch {
-		case d[2] == "uniform":
+		case space == "uniform":
 			b.Kind = KindUniform
-		case d[2] == "" && textureType.MatchString(typ):
+		case space == "" && textureType.MatchString(typ):
 			m := textureType.FindStringSubmatch(typ)
 			b.Kind = KindTexture
 			switch m[1] {
@@ -111,10 +135,24 @@ func Parse(src string) (Module, error) {
 			} else if !filteredRead(src, b.Name) {
 				b.Sample = sampleUnfilterable
 			}
-		case d[2] == "" && typ == "sampler":
+		case space == "" && typ == "sampler":
 			b.Kind = KindSampler
+		case gpu && (space == "storage" || space == "storage,read"):
+			b.Kind = KindStorageRO
+		case gpu && space == "storage,read_write":
+			b.Kind = KindStorage
+		case gpu && space == "" && storageTextureType.MatchString(typ):
+			m := storageTextureType.FindStringSubmatch(typ)
+			b.Kind = KindStorageTexture
+			switch m[1] {
+			case "2d_array":
+				b.Dim = dimArray
+			case "3d":
+				b.Dim = dim3D
+			}
+			b.StorageFormat = storageFormats[m[2]]
 		default:
-			return Module{}, errors.New(tagShadersUnsupportedBinding, "only uniform buffers, sampled textures (texture_2d, texture_2d_array, texture_cube and texture_3d of f32 or u32) and sampler can be bound (SPEC §9.3, §27.1)",
+			return Module{}, errors.New(tagShadersUnsupportedBinding, "only uniform buffers, sampled textures (texture_2d, texture_2d_array, texture_cube and texture_3d of f32 or u32) and sampler can be bound (SPEC §9.3, §27.1); storage buffers and storage textures need -gpu",
 				"name", b.Name, "address_space", d[2], "type", typ)
 		}
 		key := [2]int{group, binding}
@@ -134,11 +172,31 @@ func Parse(src string) (Module, error) {
 	if err != nil {
 		return Module{}, err
 	}
+	structs := map[string]string{}
+	for _, st := range structDecl.FindAllStringSubmatch(src, -1) {
+		structs[st[1]] = st[2]
+	}
 	for _, e := range entryDecl.FindAllStringSubmatch(src, -1) {
-		if e[1] == "compute" {
-			return Module{}, errors.New(tagShadersComputeEntry, "there is no compute in 1.1 (SPEC §9.3)", "entry", e[2])
+		stage := stageAttr.FindStringSubmatch(e[1])
+		if stage == nil {
+			continue
 		}
-		entry := Entry{Name: e[2], Stage: strings.ToUpper(e[1][:1]) + e[1][1:]}
+		name := e[2]
+		if stage[1] == "compute" && !gpu {
+			return Module{}, errors.New(tagShadersComputeEntry, "there is no compute in the 2D renderer's shaders; use -gpu (SPEC §9.3, §27.1)", "entry", name)
+		}
+		entry := Entry{Name: name, Stage: strings.ToUpper(stage[1][:1]) + stage[1][1:]}
+		if stage[1] == "compute" {
+			size, err := workgroupSize(e[1], name)
+			if err != nil {
+				return Module{}, err
+			}
+			entry.WorkgroupSize = size
+		}
+		if stage[1] == "vertex" {
+			entry.ReadsInstanceIndex = takesBuiltin(bodies[name], structs, "instance_index")
+			entry.ReadsVertexIndex = takesBuiltin(bodies[name], structs, "vertex_index")
+		}
 		reach := reachable(entry.Name, bodies)
 		for _, b := range m.Bindings {
 			re := regexp.MustCompile(`\b` + regexp.QuoteMeta(b.Name) + `\b`)
@@ -152,9 +210,60 @@ func Parse(src string) (Module, error) {
 		m.Entries = append(m.Entries, entry)
 	}
 	if len(m.Entries) == 0 {
-		return Module{}, errors.New(tagShadersNoEntry, "the module has no @vertex or @fragment function")
+		return Module{}, errors.New(tagShadersNoEntry, "the module has no @vertex, @fragment or @compute function")
 	}
 	return m, nil
+}
+
+// storageFormats maps the WGSL names of the formats of a storage texture to explicit's.
+var storageFormats = map[string]string{
+	"rgba8unorm":  "TextureFormatRGBA8Unorm",
+	"rgba16float": "TextureFormatRGBA16Float",
+	"r32float":    "TextureFormatR32Float",
+	"r32uint":     "TextureFormatR32Uint",
+}
+
+// workgroupSize reads the literal sizes of a @workgroup_size attribute among the attributes of an entry
+// point; the missing ones are 1. It fails with ShadersWorkgroupSize for a compute entry point without
+// the attribute and for a size that is not a literal (an override or a const: the generator could not
+// check the limits).
+func workgroupSize(attrs, entry string) ([3]int, error) {
+	m := workgroupAttr.FindStringSubmatch(attrs)
+	if m == nil {
+		return [3]int{}, errors.New(tagShadersWorkgroupSize, "a compute entry point needs @workgroup_size", "entry", entry)
+	}
+	size := [3]int{1, 1, 1}
+	parts := strings.Split(strings.TrimSuffix(strings.TrimSpace(m[1]), ","), ",")
+	if len(parts) > 3 {
+		return [3]int{}, errors.New(tagShadersWorkgroupSize, "@workgroup_size has at most three sizes", "entry", entry, "attribute", m[0])
+	}
+	for i, p := range parts {
+		n, err := strconv.Atoi(strings.TrimSpace(p))
+		if err != nil || n < 1 {
+			return [3]int{}, errors.New(tagShadersWorkgroupSize, "a workgroup size is a positive integer literal", "entry", entry, "attribute", m[0])
+		}
+		size[i] = n
+	}
+	return size, nil
+}
+
+// takesBuiltin reports whether the function (its signature and body) takes @builtin(name), directly
+// or in a struct it names.
+func takesBuiltin(fn string, structs map[string]string, name string) bool {
+	attr := regexp.MustCompile(`@builtin\(\s*` + name + `\s*\)`)
+	if attr.MatchString(fn) {
+		return true
+	}
+	head := fn
+	if i := strings.IndexByte(fn, '{'); i >= 0 {
+		head = fn[:i]
+	}
+	for st, body := range structs {
+		if regexp.MustCompile(`\b`+regexp.QuoteMeta(st)+`\b`).MatchString(head) && attr.MatchString(body) {
+			return true
+		}
+	}
+	return false
 }
 
 // filteredRead reports whether a texture may be read with a filter: its name is anywhere except as
@@ -228,4 +337,5 @@ const (
 	tagShadersNoEntry            = "ShadersNoEntry"
 	tagShadersUnbalancedBraces   = "ShadersUnbalancedBraces"
 	tagShadersUnsupportedBinding = "ShadersUnsupportedBinding"
+	tagShadersWorkgroupSize      = "ShadersWorkgroupSize"
 )

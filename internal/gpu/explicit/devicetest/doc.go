@@ -8,4 +8,4 @@
 // Flutter: no counterpart
 package devicetest
 
-//go:generate go run ../../../../cmd/glutter-gen shaders -dir . -package devicetest
+//go:generate go run ../../../../cmd/glutter-gen shaders -dir . -package devicetest -gpu

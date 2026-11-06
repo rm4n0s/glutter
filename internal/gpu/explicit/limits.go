@@ -43,6 +43,22 @@ type Limits struct {
 	// MaxColorAttachmentBytesPerSample is the budget of the color attachments of a pass, in the
 	// bytes of TextureFormat.RenderTargetPixelBytes added up.
 	MaxColorAttachmentBytesPerSample int
+	// MaxStorageBuffersPerStage and MaxStorageTexturesPerStage are how many storage resources of each
+	// kind one shader stage can read or write.
+	MaxStorageBuffersPerStage, MaxStorageTexturesPerStage int
+	// MaxStorageBindingSize is the largest storage buffer binding, in bytes.
+	MaxStorageBindingSize int
+	// StorageOffsetAlignment is what the offset of a storage binding is a multiple of, and the offset
+	// of ResolveQuerySet.
+	StorageOffsetAlignment int
+	// MaxBufferSize is the largest buffer, in bytes.
+	MaxBufferSize int
+	// MaxComputeInvocationsPerWorkgroup is the most threads of a workgroup (the product of the
+	// three sizes of @workgroup_size), and MaxComputeWorkgroupSize the most in each dimension.
+	MaxComputeInvocationsPerWorkgroup int
+	MaxComputeWorkgroupSize           [3]int
+	// MaxComputeWorkgroupsPerDimension is the most workgroups a dispatch runs in a dimension.
+	MaxComputeWorkgroupsPerDimension int
 }
 
 // DefaultLimits returns the design limits of SPEC §9.3.
@@ -65,6 +81,15 @@ func DefaultLimits() Limits {
 		MaxTextureArrayLayers:            256,
 		MaxColorAttachments:              4,
 		MaxColorAttachmentBytesPerSample: 32,
+
+		MaxStorageBuffersPerStage:         8,
+		MaxStorageTexturesPerStage:        4,
+		MaxStorageBindingSize:             128 << 20,
+		StorageOffsetAlignment:            256,
+		MaxBufferSize:                     256 << 20,
+		MaxComputeInvocationsPerWorkgroup: 256,
+		MaxComputeWorkgroupSize:           [3]int{256, 256, 64},
+		MaxComputeWorkgroupsPerDimension:  65535,
 	}
 }
 
@@ -287,21 +312,7 @@ func (l Limits) CheckPipeline(desc PipelineDesc) {
 		if !ok {
 			continue
 		}
-		var textures, samplers, uniforms int
-		for _, b := range entry.Bindings {
-			exceeded("bind group index", b.Group+1, l.MaxBindGroups)
-			switch b.Kind {
-			case BindingSampledTexture:
-				textures++
-			case BindingSampler:
-				samplers++
-			case BindingUniformBuffer:
-				uniforms++
-			}
-		}
-		exceeded("sampled textures per stage", textures, l.MaxSampledTexturesPerStage)
-		exceeded("samplers per stage", samplers, l.MaxSamplersPerStage)
-		exceeded("uniform buffers per stage", uniforms, l.MaxUniformBuffersPerStage)
+		l.checkStageBindings(entry)
 	}
 }
 
@@ -348,7 +359,7 @@ func (l Limits) checkPipelineState(desc PipelineDesc) {
 func (l Limits) CheckBindGroup(group int, entries []Binding) {
 	exceeded("bind group index", group+1, l.MaxBindGroups)
 	for _, e := range entries {
-		if e.Buffer != nil {
+		if e.Buffer != nil && e.Buffer.Usage()&BufferStorage == 0 {
 			size := e.Size
 			if size == 0 {
 				size = e.Buffer.Size() - e.Offset

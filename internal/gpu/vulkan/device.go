@@ -224,6 +224,7 @@ func openDevice(inst *instance, opts chooseOpts, h gpu.SurfaceHandle, log *slog.
 	d.alloc = newAllocator(memory{d}, newMemoryProps(props))
 
 	d.queryFormats(a)
+	d.queryTimestamps()
 
 	if err := d.initFrames(); err != nil {
 		d.Close() //nolint:errcheck // the error that matters is the one being returned
@@ -253,9 +254,27 @@ func (d *Device) queryFormats(a *arena) {
 	}
 }
 
+// queryTimestamps finds whether the queue can write timestamps (Features.TimestampQuery) and how
+// long a tick is. Without synchronization 2 there would be no vkCmdWriteTimestamp2, but the
+// device needs it anyway.
+func (d *Device) queryTimestamps() {
+	if int(d.family) >= len(d.info.TimestampValidBits) || d.info.TimestampValidBits[d.family] == 0 ||
+		!d.info.TimestampComputeAndGraphics || d.info.TimestampPeriod <= 0 {
+		return
+	}
+	d.features.TimestampQuery = true
+	d.features.TimestampPeriod = float64(d.info.TimestampPeriod)
+}
+
 // featureIndependentBlend is the index of independentBlend among the VkBool32 of
 // VkPhysicalDeviceFeatures.
 const featureIndependentBlend = 3
+
+// The indices of fullDrawIndexUint32 and drawIndirectFirstInstance among the same.
+const (
+	featureFullDrawIndexUint32       = 1
+	featureDrawIndirectFirstInstance = 10
+)
 
 // features2Bool reads the VkBool32 at the index of the features of a VkPhysicalDeviceFeatures2.
 func features2Bool(f *physicalDeviceFeatures2, index int) bool {
@@ -304,6 +323,9 @@ func (i *instance) describe(a *arena, index int, h physicalDeviceH) (physicalInf
 		APIVersion:          min(props.apiVersion, i.version),
 		MaxImageDimension2D: props.limits.maxImageDimension2D,
 		Extensions:          map[string]bool{},
+
+		TimestampComputeAndGraphics: props.limits.timestampComputeAndGraphics != 0,
+		TimestampPeriod:             props.limits.timestampPeriod,
 	}
 
 	count := a.out()
@@ -313,6 +335,7 @@ func (i *instance) describe(a *arena, index int, h physicalDeviceH) (physicalInf
 	f.getPhysicalDeviceQueueFamilyProps(h, count, qp)
 	for _, q := range readSlice[queueFamilyProperties](qp, int(u32(count))) {
 		info.QueueFlags = append(info.QueueFlags, q.queueFlags)
+		info.TimestampValidBits = append(info.TimestampValidBits, q.timestampValidBits)
 	}
 
 	if r := f.enumerateDeviceExtensionProps(h, 0, count, 0); r != resultSuccess {
@@ -344,6 +367,8 @@ func (i *instance) describe(a *arena, index int, h physicalDeviceH) (physicalInf
 	f2 := put(a, physicalDeviceFeatures2{sType: sTypePhysicalDeviceFeatures2, pNext: chain})
 	f.getPhysicalDeviceFeatures2(h, f2)
 	info.IndependentBlend = features2Bool((*physicalDeviceFeatures2)(dl.Pointer(f2)), featureIndependentBlend)
+	info.FullDrawIndexUint32 = features2Bool((*physicalDeviceFeatures2)(dl.Pointer(f2)), featureFullDrawIndexUint32)
+	info.DrawIndirectFirstInstance = features2Bool((*physicalDeviceFeatures2)(dl.Pointer(f2)), featureDrawIndirectFirstInstance)
 	if hasDR {
 		info.DynamicRendering = (*physicalDeviceDynamicRenderingFeatures)(dl.Pointer(dr)).dynamicRendering != 0
 	}
@@ -378,13 +403,18 @@ func (d *Device) createDevice(a *arena, windows bool) error {
 	}
 	s2 := put(a, physicalDeviceSynchronization2Features{sType: sTypePhysicalDeviceSynchronization2, synchronization2: 1})
 	dr := put(a, physicalDeviceDynamicRenderingFeatures{sType: sTypePhysicalDeviceDynamicRendering, pNext: s2, dynamicRendering: 1})
-	chain := dr
+	f2 := physicalDeviceFeatures2{sType: sTypePhysicalDeviceFeatures2, pNext: dr}
 	if d.info.IndependentBlend {
-		f2 := physicalDeviceFeatures2{sType: sTypePhysicalDeviceFeatures2, pNext: dr}
 		setFeatures2Bool(&f2, featureIndependentBlend)
-		chain = put(a, f2)
 		d.independentBlend = true
 	}
+	if d.info.FullDrawIndexUint32 {
+		setFeatures2Bool(&f2, featureFullDrawIndexUint32)
+	}
+	if d.info.DrawIndirectFirstInstance {
+		setFeatures2Bool(&f2, featureDrawIndirectFirstInstance)
+	}
+	chain := put(a, f2)
 	priority := put(a, float32(1))
 	queue := put(a, deviceQueueCreateInfo{sType: sTypeDeviceQueueCreateInfo, queueFamilyIndex: d.family, queueCount: 1, pQueuePriorities: priority})
 	info := put(a, deviceCreateInfo{

@@ -107,10 +107,11 @@ func Run(args []string) error {
 	dir := flags.String("dir", defaultDir, "the package directory with shaders/*.wgsl")
 	naga := flags.String("naga", defaultNaga, "the naga command")
 	pkg := flags.String("package", defaultPackage, "the name of the Go package of shaders_gen.go; another package than explicit imports it")
+	gpu := flags.Bool("gpu", false, "allow compute entry points, storage bindings and instance_index (SPEC §27.1)")
 	if err := flags.Parse(args); err != nil {
 		return errors.NewErr(tagShadersBadFlags, err).SetMetadata("args", args)
 	}
-	if err := Generate(*pkg, *dir, *dir, Naga{Path: *naga}); err != nil {
+	if err := Generate(*pkg, *dir, *dir, Naga{Path: *naga}, *gpu); err != nil {
 		return err
 	}
 	return removeStale(*dir)
@@ -121,10 +122,12 @@ func Run(args []string) error {
 // checked against the WGSL by checkHLSL). The files are the same for the same shaders and the same
 // naga, so a test can generate into a temporary directory and compare.
 //
+// gpu allows what the shaders of an app may have and the 2D renderer's may not (Parse).
+//
 // The generated file is in the Go package pkg. A package other than explicit gets the types of
 // explicit by their qualified names (a package of test shaders, which no program that is not a test
 // links).
-func Generate(pkg, srcDir, outDir string, naga Compiler) error {
+func Generate(pkg, srcDir, outDir string, naga Compiler, gpu bool) error {
 	files, err := filepath.Glob(filepath.Join(srcDir, shadersDir, "*.wgsl"))
 	if err != nil {
 		return errors.NewErr(tagShadersReadFailed, err).SetMetadata("dir", srcDir)
@@ -157,7 +160,7 @@ func Generate(pkg, srcDir, outDir string, naga Compiler) error {
 		if err != nil {
 			return err
 		}
-		mod, err := Parse(src)
+		mod, err := Parse(src, gpu)
 		if err != nil {
 			return wrapParse(err, file)
 		}
@@ -176,7 +179,7 @@ func Generate(pkg, srcDir, outDir string, naga Compiler) error {
 		if err != nil {
 			return errors.NewErr(tagShadersReadFailed, err).SetMetadata("file", hlslFile)
 		}
-		hlsl, err := rewriteHLSL(string(raw))
+		hlsl, err := rewriteHLSL(string(raw), gpu)
 		if err != nil {
 			return wrapParse(err, file)
 		}
@@ -294,7 +297,17 @@ func render(pkg, version string, names []string, mods map[string]Module, srcs, h
 		fmt.Fprintf(&b, "\n// Shader%s is shaders/%s.wgsl.\n//\n// Flutter: no counterpart\n", id, name)
 		fmt.Fprintf(&b, "var Shader%s = &%sShader{\n\tName: %q,\n\tWGSL: `%s`,\n\tSPIRV: spirv%s,\n\tHLSL: `%s`,\n\tEntries: []%sEntryPoint{\n", id, q, name, srcs[name], id, hlsls[name], q)
 		for _, e := range mods[name].Entries {
-			fmt.Fprintf(&b, "\t\t{Name: %q, Stage: %sShaderStage%s, Bindings: []%sShaderBinding{\n", e.Name, q, e.Stage, q)
+			extra := ""
+			if e.Stage == "Compute" {
+				extra += fmt.Sprintf(", WorkgroupSize: [3]int{%d, %d, %d}", e.WorkgroupSize[0], e.WorkgroupSize[1], e.WorkgroupSize[2])
+			}
+			if e.ReadsInstanceIndex {
+				extra += ", ReadsInstanceIndex: true"
+			}
+			if e.ReadsVertexIndex {
+				extra += ", ReadsVertexIndex: true"
+			}
+			fmt.Fprintf(&b, "\t\t{Name: %q, Stage: %sShaderStage%s%s, Bindings: []%sShaderBinding{\n", e.Name, q, e.Stage, extra, q)
 			for _, bd := range e.Bindings {
 				class, space, index := bd.Register()
 				extra := ""
@@ -303,6 +316,9 @@ func render(pkg, version string, names []string, mods map[string]Module, srcs, h
 				}
 				if bd.Sample != "" {
 					extra += ", Sample: " + q + bd.Sample
+				}
+				if bd.StorageFormat != "" {
+					extra += ", StorageFormat: " + q + bd.StorageFormat
 				}
 				fmt.Fprintf(&b, "\t\t\t{Name: %q, Group: %d, Binding: %d, Kind: %s%s%s, Register: %sShaderRegister{Class: %q, Space: %d, Index: %d}},\n",
 					bd.Name, bd.Group, bd.Binding, q, bd.Kind, extra, q, class, space, index)

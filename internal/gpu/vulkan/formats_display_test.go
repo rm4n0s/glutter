@@ -116,8 +116,8 @@ func TestATextureBoundToTheWrongBindingFails(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := d.NewBindGroup(tt.p, 1, []explicit.Binding{{Binding: tt.binding, Texture: tt.tex}})
 			appErr, ok := errors.FromError(err)
-			if !ok || appErr.Tag != tagVulkanTextureBindingMismatch || !appErr.HasRoute("Device.NewBindGroup.VulkanTextureBindingMismatch") {
-				t.Fatalf("got %v, want VulkanTextureBindingMismatch via Device.NewBindGroup", err)
+			if !ok || appErr.Tag != tagVulkanTextureBindingMismatch || !appErr.HasRoute("Device.NewBindGroup->Device.makeBindGroup.VulkanTextureBindingMismatch") {
+				t.Fatalf("got %v, want VulkanTextureBindingMismatch via Device.NewBindGroup->Device.makeBindGroup", err)
 			}
 		})
 	}

@@ -165,6 +165,8 @@ func TestTheSpecifiedLimitsAreTheDefaults(t *testing.T) {
 		UniformOffsetAlignment: 256, MaxUniformBindingSize: 65536, MaxTextureSize: 8192,
 		MaxVertexBuffers: 8, MaxVertexAttributes: 16, CopyRowPitchAlignment: 256,
 		MaxTextureSize3D: 2048, MaxTextureArrayLayers: 256, MaxColorAttachments: 4, MaxColorAttachmentBytesPerSample: 32,
+		MaxStorageBuffersPerStage: 8, MaxStorageTexturesPerStage: 4, MaxStorageBindingSize: 128 << 20, StorageOffsetAlignment: 256,
+		MaxBufferSize: 256 << 20, MaxComputeInvocationsPerWorkgroup: 256, MaxComputeWorkgroupSize: [3]int{256, 256, 64}, MaxComputeWorkgroupsPerDimension: 65535,
 	}
 	if got := New().Limits(); got != want {
 		t.Errorf("Limits = %+v, want %+v", got, want)

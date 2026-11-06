@@ -102,7 +102,7 @@ fn read(tex: texture_2d<f32>, p: vec2<f32>) -> vec4<f32> { return textureSampleL
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m, err := Parse(tt.src)
+			m, err := Parse(tt.src, false)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -117,7 +117,7 @@ func TestParseSortsBindings(t *testing.T) {
 	m, err := Parse(`@group(1) @binding(0) var a: sampler;
 @group(0) @binding(2) var b: sampler;
 @group(0) @binding(1) var c: sampler;
-@fragment fn fs() { _ = a; _ = b; _ = c; }`)
+@fragment fn fs() { _ = a; _ = b; _ = c; }`, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,7 +150,7 @@ func TestParseErrors(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := Parse(tt.src)
+			_, err := Parse(tt.src, false)
 			appErr, ok := errors.FromError(err)
 			if !ok {
 				t.Fatalf("expected *errors.Error, got %T (%v)", err, err)
@@ -224,7 +224,7 @@ func TestGenerate(t *testing.T) {
 	src := writeShaders(t, map[string]string{"blur_pass.wgsl": tinyShader, "solid.wgsl": tinyShader, "notes.txt": "ignored"})
 	out := t.TempDir()
 	naga := &fakeNaga{t: t, version: "9.8.7"}
-	if err := Generate(defaultPackage, src, out, naga); err != nil {
+	if err := Generate(defaultPackage, src, out, naga, false); err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(naga.calls, []string{"blur_pass.wgsl", "blur_pass.wgsl:hlsl", "solid.wgsl", "solid.wgsl:hlsl"}) {
@@ -262,7 +262,7 @@ func TestGenerate(t *testing.T) {
 	}
 	// The same input gives the same files.
 	out2 := t.TempDir()
-	if err := Generate(defaultPackage, src, out2, &fakeNaga{t: t, version: "9.8.7"}); err != nil {
+	if err := Generate(defaultPackage, src, out2, &fakeNaga{t: t, version: "9.8.7"}, false); err != nil {
 		t.Fatal(err)
 	}
 	code2, _ := os.ReadFile(filepath.Join(out2, generated))
@@ -286,7 +286,7 @@ func TestGenerateErrors(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := Generate(defaultPackage, writeShaders(t, tt.files), t.TempDir(), tt.naga)
+			err := Generate(defaultPackage, writeShaders(t, tt.files), t.TempDir(), tt.naga, false)
 			appErr, ok := errors.FromError(err)
 			if !ok {
 				t.Fatalf("expected *errors.Error, got %T (%v)", err, err)
@@ -363,7 +363,7 @@ func TestCheckedInFilesAreUpToDate(t *testing.T) {
 		t.Skipf("naga %s is installed, and the files were made with naga %s", version, m[1])
 	}
 	out := t.TempDir()
-	if err := Generate(defaultPackage, src, out, naga); err != nil {
+	if err := Generate(defaultPackage, src, out, naga, false); err != nil {
 		t.Fatal(err)
 	}
 	files, err := filepath.Glob(filepath.Join(out, "*", "*.spv"))
@@ -396,7 +396,7 @@ func TestIncludesAreExpanded(t *testing.T) {
 	})
 	out := t.TempDir()
 	naga := &fakeNaga{t: t, version: "1.0.0"}
-	if err := Generate(defaultPackage, src, out, naga); err != nil {
+	if err := Generate(defaultPackage, src, out, naga, false); err != nil {
 		t.Fatal(err)
 	}
 	// naga compiled the expanded text, once, for the shader and not for the includes.
@@ -429,10 +429,96 @@ func TestIncludeErrors(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := Generate(defaultPackage, writeShaders(t, tt.files), t.TempDir(), &fakeNaga{t: t, version: "1"})
+			err := Generate(defaultPackage, writeShaders(t, tt.files), t.TempDir(), &fakeNaga{t: t, version: "1"}, false)
 			appErr, ok := errors.FromError(err)
 			if !ok || appErr.Tag != tt.tag || !appErr.HasRoute("expand."+tt.tag) {
 				t.Errorf("got %v, want %s through expand", err, tt.tag)
+			}
+		})
+	}
+}
+
+func TestParseGPU(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		want []Entry
+	}{
+		{
+			name: "a compute entry point with storage buffers and a storage texture",
+			src: `@group(0) @binding(0) var<storage, read> input: array<u32>;
+@group(0) @binding(1) var<storage,read_write> output: array<u32>;
+@group(1) @binding(0) var img: texture_storage_2d<rgba8unorm, write>;
+@group(1) @binding(1) var<uniform> params: Params;
+@compute @workgroup_size(8, 4) fn cs(@builtin(global_invocation_id) id: vec3<u32>) {
+	output[id.x] = input[id.x] * params.k;
+	textureStore(img, vec2<i32>(0), vec4<f32>(1.0));
+}`,
+			want: []Entry{{Name: "cs", Stage: "Compute", WorkgroupSize: [3]int{8, 4, 1}, Bindings: []Binding{
+				{Name: "input", Group: 0, Binding: 0, Kind: KindStorageRO},
+				{Name: "output", Group: 0, Binding: 1, Kind: KindStorage},
+				{Name: "img", Group: 1, Binding: 0, Kind: KindStorageTexture, StorageFormat: "TextureFormatRGBA8Unorm"},
+				{Name: "params", Group: 1, Binding: 1, Kind: KindUniform},
+			}}},
+		},
+		{
+			name: "the workgroup size before the stage, a default storage buffer is read-only, 3d storage",
+			src: `@group(0) @binding(0) var<storage> data: array<f32>;
+@group(0) @binding(1) var vol: texture_storage_3d<r32float, write>;
+@workgroup_size(64) @compute fn cs() { _ = data[0]; textureStore(vol, vec3<i32>(0), vec4<f32>(1.0)); }`,
+			want: []Entry{{Name: "cs", Stage: "Compute", WorkgroupSize: [3]int{64, 1, 1}, Bindings: []Binding{
+				{Name: "data", Group: 0, Binding: 0, Kind: KindStorageRO},
+				{Name: "vol", Group: 0, Binding: 1, Kind: KindStorageTexture, Dim: dim3D, StorageFormat: "TextureFormatR32Float"},
+			}}},
+		},
+		{
+			name: "a vertex entry point that reads the instance and vertex indices, directly or in a struct",
+			src: `struct In { @builtin(vertex_index) v: u32, @location(0) p: vec2<f32> }
+@vertex fn vs_a(@builtin(instance_index) i: u32) -> @builtin(position) vec4<f32> { return vec4<f32>(f32(i)); }
+@vertex fn vs_b(in: In) -> @builtin(position) vec4<f32> { return vec4<f32>(f32(in.v)); }
+@vertex fn vs_c() -> @builtin(position) vec4<f32> { return vec4<f32>(0.0); }`,
+			want: []Entry{
+				{Name: "vs_a", Stage: "Vertex", ReadsInstanceIndex: true},
+				{Name: "vs_b", Stage: "Vertex", ReadsVertexIndex: true},
+				{Name: "vs_c", Stage: "Vertex"},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m, err := Parse(tt.src, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(m.Entries, tt.want) {
+				t.Errorf("entries = %+v\nwant     %+v", m.Entries, tt.want)
+			}
+		})
+	}
+}
+
+func TestParseGPUErrors(t *testing.T) {
+	tests := []struct {
+		name  string
+		src   string
+		tag   string
+		route string
+	}{
+		{"no workgroup size", "@compute fn cs() {}", "ShadersWorkgroupSize", "Parse->workgroupSize.ShadersWorkgroupSize"},
+		{"a workgroup size that is a name", "@compute @workgroup_size(N) fn cs() {}", "ShadersWorkgroupSize", "Parse->workgroupSize.ShadersWorkgroupSize"},
+		{"a storage texture that is read", "@group(0) @binding(0) var t: texture_storage_2d<rgba8unorm, read>;\n@compute @workgroup_size(1) fn cs() { _ = t; }", "ShadersUnsupportedBinding", "Parse.ShadersUnsupportedBinding"},
+		{"a storage texture of another format", "@group(0) @binding(0) var t: texture_storage_2d<rg32float, write>;\n@compute @workgroup_size(1) fn cs() { _ = t; }", "ShadersUnsupportedBinding", "Parse.ShadersUnsupportedBinding"},
+		{"a workgroup variable binding", "@group(0) @binding(0) var<private> p: f32;\n@compute @workgroup_size(1) fn cs() { _ = p; }", "ShadersUnsupportedBinding", "Parse.ShadersUnsupportedBinding"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := Parse(tt.src, true)
+			appErr, ok := errors.FromError(err)
+			if !ok {
+				t.Fatalf("expected *errors.Error, got %T (%v)", err, err)
+			}
+			if appErr.Tag != tt.tag || !appErr.HasRoute(tt.route) {
+				t.Errorf("got %s via %s, want %s via %s", appErr.Tag, appErr.Route(), tt.tag, tt.route)
 			}
 		})
 	}

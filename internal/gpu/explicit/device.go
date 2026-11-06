@@ -18,7 +18,7 @@ const (
 	//
 	// Flutter: no counterpart
 	BufferVertex BufferUsage = 1 << iota
-	// BufferIndex is a buffer of 16 bit indices.
+	// BufferIndex is a buffer of 16 or 32 bit indices (SetIndexBuffer, SetIndexBuffer32).
 	//
 	// Flutter: no counterpart
 	BufferIndex
@@ -26,6 +26,29 @@ const (
 	//
 	// Flutter: no counterpart
 	BufferUniform
+	// BufferStorage is a buffer that storage bindings read (var<storage, read>) or, in a compute
+	// shader, write (var<storage, read_write>), bound at a Binding.Offset that is a multiple of
+	// Limits.StorageOffsetAlignment.
+	//
+	// Flutter: no counterpart
+	BufferStorage
+	// BufferIndirect is a buffer of the arguments of DrawIndirect, DrawIndexedIndirect and
+	// DispatchIndirect, which a shader may have written (with BufferStorage).
+	//
+	// Flutter: no counterpart
+	BufferIndirect
+	// BufferCopySource is a buffer that the copies and ReadBuffer read.
+	//
+	// Flutter: no counterpart
+	BufferCopySource
+	// BufferCopyDestination is a buffer that the copies write.
+	//
+	// Flutter: no counterpart
+	BufferCopyDestination
+	// BufferQueryResolve is a buffer that ResolveQuerySet writes.
+	//
+	// Flutter: no counterpart
+	BufferQueryResolve
 )
 
 // TextureFormat is the pixel format of a texture. There are no sRGB formats:
@@ -126,6 +149,13 @@ type Features struct {
 	// Float32Filterable says that RGBA32Float and R32Float textures can be read with a filtering
 	// sampler (WebGPU's float32-filterable).
 	Float32Filterable bool
+	// TimestampQuery says that query sets can be made and passes can write timestamps into them
+	// (WebGPU's timestamp-query, Vulkan's timestampValidBits on the queue, Direct3D 12's timestamp
+	// queries).
+	TimestampQuery bool
+	// TimestampPeriod is the time of one tick of a timestamp, in nanoseconds; 1 on WebGPU, whose
+	// timestamps are nanoseconds. It is 0 when TimestampQuery is false.
+	TimestampPeriod float64
 }
 
 // SampleType is how a shader reads the texels of a texture (WebGPU's GPUTextureSampleType).
@@ -994,13 +1024,15 @@ func (d PipelineDesc) Samples() int {
 type Binding struct {
 	// Binding is the number of the shader's @binding.
 	Binding int
-	// Buffer, with Offset and Size, is a uniform buffer; Size 0 means up to the end.
+	// Buffer, with Offset and Size, is a uniform buffer or a storage buffer; Size 0 means up to the end.
+	// A uniform binding gets its offset from SetBindGroup too; a storage binding's Offset is a multiple of
+	// Limits.StorageOffsetAlignment.
 	Buffer Buffer
 	// Offset is where the binding starts in Buffer, in bytes.
 	Offset int
 	// Size is the size of the binding in bytes.
 	Size int
-	// Texture is a sampled texture.
+	// Texture is a sampled texture, or a storage texture (TextureStorage) for a storage binding.
 	Texture Texture
 	// Sampler is a sampler.
 	Sampler Sampler
@@ -1096,6 +1128,8 @@ type PassDesc struct {
 	Color []ColorAttachment
 	// Depth is the depth-stencil attachment; nil for none.
 	Depth *DepthAttachment
+	// Timestamps, when set, is where the pass writes its timestamps; it needs Features.TimestampQuery.
+	Timestamps *PassTimestamps
 }
 
 // Buffer is a GPU buffer.
@@ -1104,6 +1138,8 @@ type PassDesc struct {
 type Buffer interface {
 	// Size is the size in bytes.
 	Size() int
+	// Usage is what the buffer was made for.
+	Usage() BufferUsage
 	// Destroy releases the buffer. The GPU finishes the frames that use it first.
 	Destroy()
 }
@@ -1176,9 +1212,17 @@ type Device interface {
 	NewSampler(desc SamplerDesc) (Sampler, error)
 	// NewPipeline makes a pipeline from a generated shader.
 	NewPipeline(desc PipelineDesc) (Pipeline, error)
+	// NewComputePipeline makes a compute pipeline from the compute entry point of a generated shader.
+	NewComputePipeline(desc ComputePipelineDesc) (ComputePipeline, error)
 	// NewBindGroup makes the resources of the bind group number group of the
 	// pipeline.
 	NewBindGroup(p Pipeline, group int, entries []Binding) (BindGroup, error)
+	// NewComputeBindGroup makes the resources of the bind group number group of the compute
+	// pipeline.
+	NewComputeBindGroup(p ComputePipeline, group int, entries []Binding) (BindGroup, error)
+	// NewQuerySet makes a set of count timestamps; it fails with GPUQueryUnsupported when
+	// Features.TimestampQuery is false.
+	NewQuerySet(count int) (QuerySet, error)
 	// WriteBuffer copies data into the buffer at offset. The data is copied before
 	// the call returns.
 	WriteBuffer(b Buffer, offset int, data []byte)
@@ -1191,7 +1235,9 @@ type Device interface {
 	WriteTextureRegion(t Texture, region TextureRegion, data []byte, bytesPerRow, rowsPerImage int)
 	// NewSwapchain makes the swapchain of a window.
 	NewSwapchain(h gpu.SurfaceHandle) (Swapchain, error)
-	// Begin starts the commands of a frame; there is one encoder per frame.
+	// Begin starts an encoder: the commands of one submission. A frame may have several, one after
+	// the other (each ends with Submit before the next Begin); the GPU runs them in order on the
+	// device's one queue. The 2D renderer's frame is one encoder, submitted last.
 	Begin() (Encoder, error)
 	// Close releases the device and everything made with it.
 	Close() error
@@ -1218,7 +1264,30 @@ type Encoder interface {
 	// bytes of a pixel. It works for every format that CanBeCopied. done runs once the GPU has
 	// finished, never inside the frame that asked.
 	ReadTextureBytes(src Texture, r image.Rectangle, done func(data []byte, rowBytes int, err error))
-	// Submit sends the frame to the GPU.
+	// BeginComputePass starts a compute pass. The previous pass must have ended.
+	BeginComputePass(desc ComputePassDesc) ComputePass
+	// CopyBuffer copies size bytes of src, from srcOffset, to dst at dstOffset. The buffers have
+	// BufferCopySource and BufferCopyDestination; the offsets and the size are multiples of 4.
+	CopyBuffer(src Buffer, srcOffset int, dst Buffer, dstOffset, size int)
+	// CopyBufferToTexture copies the box region of a level of dst from the rows in src, laid out as
+	// layout says. The box is inside the level. Every texture can be the destination but a depth
+	// format and a multisampled texture.
+	CopyBufferToTexture(src Buffer, layout BufferLayout, dst Texture, region TextureRegion)
+	// CopyTextureToBuffer copies the box region of a level of src, a texture with TextureCopySource
+	// (or TextureRenderTarget) of a format that CanBeCopied, into dst as layout says.
+	CopyTextureToBuffer(src Texture, region TextureRegion, dst Buffer, layout BufferLayout)
+	// ReadBuffer reads size bytes of src from offset: done runs once the GPU has finished, never
+	// inside the frame that asked, with a copy of the bytes. src has BufferCopySource.
+	ReadBuffer(src Buffer, offset, size int, done func(data []byte, err error))
+	// ResolveQuerySet writes the count timestamps of set from first, as 64 bit unsigned integers
+	// in ticks (Features.TimestampPeriod), to dst at dstOffset, a multiple of
+	// Limits.StorageOffsetAlignment. dst has BufferQueryResolve.
+	ResolveQuerySet(set QuerySet, first, count int, dst Buffer, dstOffset int)
+	// OnComplete runs fn once the GPU has finished the work of this encoder, never inside the frame
+	// that asked: Submit runs it before it returns on a device that waits for the GPU, and a device
+	// that cannot (WebGPU) runs it later, on the UI thread. It must be called before Submit.
+	OnComplete(fn func())
+	// Submit sends the encoder's commands to the GPU.
 	Submit() error
 }
 
@@ -1234,8 +1303,10 @@ type Pass interface {
 	SetBindGroup(group int, g BindGroup, dynamicOffsets ...uint32)
 	// SetVertexBuffer binds a vertex buffer to a slot, starting at offset bytes.
 	SetVertexBuffer(slot int, b Buffer, offset int)
-	// SetIndexBuffer binds the index buffer, starting at offset bytes.
+	// SetIndexBuffer binds the index buffer of 16 bit indices, starting at offset bytes.
 	SetIndexBuffer(b Buffer, offset int)
+	// SetIndexBuffer32 binds the index buffer of 32 bit indices, starting at offset bytes.
+	SetIndexBuffer32(b Buffer, offset int)
 	// SetScissor limits the draws to the rectangle, in pixels of the target.
 	SetScissor(r image.Rectangle)
 	// SetStencilReference sets the reference value of the stencil tests and of StencilReplace; it
@@ -1245,6 +1316,14 @@ type Pass interface {
 	Draw(vertices, instances, firstVertex, firstInstance int)
 	// DrawIndexed draws indices, instances times.
 	DrawIndexed(indices, instances, firstIndex, baseVertex, firstInstance int)
+	// DrawIndirect draws with the arguments in b at offset: four 32 bit unsigned integers, the
+	// vertex count, the instance count, the first vertex and the first instance. b has BufferIndirect;
+	// offset is a multiple of 4. The first vertex and the first instance must be 0 for a shader that
+	// reads vertex_index or instance_index (the arguments cannot be checked by the CPU).
+	DrawIndirect(b Buffer, offset int)
+	// DrawIndexedIndirect draws with the arguments in b at offset: five 32 bit integers, the index
+	// count, the instance count, the first index, the base vertex (signed) and the first instance.
+	DrawIndexedIndirect(b Buffer, offset int)
 	// End finishes the pass.
 	End()
 }

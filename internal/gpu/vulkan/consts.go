@@ -34,6 +34,7 @@ const (
 	sTypeSubmitInfo                       = 4          // VK_STRUCTURE_TYPE_SUBMIT_INFO
 	sTypeMemoryAllocateInfo               = 5          // VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO
 	sTypeFenceCreateInfo                  = 8          // VK_STRUCTURE_TYPE_FENCE_CREATE_INFO
+	sTypeQueryPoolCreateInfo              = 11         // VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO
 	sTypeBufferCreateInfo                 = 12         // VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO
 	sTypeImageCreateInfo                  = 14         // VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO
 	sTypeImageViewCreateInfo              = 15         // VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO
@@ -49,6 +50,7 @@ const (
 	sTypePipelineColorBlendStateCreate    = 26         // VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO
 	sTypePipelineDynamicStateCreate       = 27         // VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO
 	sTypeGraphicsPipelineCreateInfo       = 28         // VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO
+	sTypeComputePipelineCreateInfo        = 29         // VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO
 	sTypePipelineLayoutCreateInfo         = 30         // VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO
 	sTypeSamplerCreateInfo                = 31         // VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO
 	sTypeDescriptorSetLayoutCreateInfo    = 32         // VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO
@@ -101,8 +103,10 @@ const (
 	bufferUsageTransferSrc = 0x00000001 // VK_BUFFER_USAGE_TRANSFER_SRC_BIT
 	bufferUsageTransferDst = 0x00000002 // VK_BUFFER_USAGE_TRANSFER_DST_BIT
 	bufferUsageUniform     = 0x00000010 // VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT
+	bufferUsageStorage     = 0x00000020 // VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
 	bufferUsageIndex       = 0x00000040 // VK_BUFFER_USAGE_INDEX_BUFFER_BIT
 	bufferUsageVertex      = 0x00000080 // VK_BUFFER_USAGE_VERTEX_BUFFER_BIT
+	bufferUsageIndirect    = 0x00000100 // VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT
 
 	sharingExclusive = 0 // VK_SHARING_MODE_EXCLUSIVE
 
@@ -183,10 +187,13 @@ const (
 const (
 	descriptorSampler        = 0 // VK_DESCRIPTOR_TYPE_SAMPLER
 	descriptorSampledImage   = 2 // VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
+	descriptorStorageImage   = 3 // VK_DESCRIPTOR_TYPE_STORAGE_IMAGE
+	descriptorStorageBuffer  = 7 // VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
 	descriptorUniformDynamic = 8 // VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC
 
 	stageVertex   = 0x00000001 // VK_SHADER_STAGE_VERTEX_BIT
 	stageFragment = 0x00000010 // VK_SHADER_STAGE_FRAGMENT_BIT
+	stageCompute  = 0x00000020 // VK_SHADER_STAGE_COMPUTE_BIT
 
 	vertexInputRateVertex   = 0 // VK_VERTEX_INPUT_RATE_VERTEX
 	vertexInputRateInstance = 1 // VK_VERTEX_INPUT_RATE_INSTANCE
@@ -235,7 +242,11 @@ const (
 
 	descriptorPoolFreeSet = 0x00000001 // VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT
 	indexTypeUint16       = 0          // VK_INDEX_TYPE_UINT16
+	indexTypeUint32       = 1          // VK_INDEX_TYPE_UINT32
 	pipelineBindGraphics  = 0          // VK_PIPELINE_BIND_POINT_GRAPHICS
+	pipelineBindCompute   = 1          // VK_PIPELINE_BIND_POINT_COMPUTE
+	queryTypeTimestamp    = 2          // VK_QUERY_TYPE_TIMESTAMP
+	queryResult64         = 0x00000001 // VK_QUERY_RESULT_64_BIT
 )
 
 // Commands.

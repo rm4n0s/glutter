@@ -102,7 +102,11 @@ type Device struct {
 	pending     []func(list win32.Object)
 	staging     staging
 	tracker     *stateTracker[*texture]
-	live        map[any]func() // what to destroy at Close: every resource that is not destroyed yet
+	btracker    *stateTracker[*buffer] // the buffers in the default heap
+	// sigs are the command signatures of ExecuteIndirect: a draw, an indexed draw and a dispatch, made when
+	// the first indirect call needs them.
+	sigs [3]win32.Object
+	live map[any]func() // what to destroy at Close: every resource that is not destroyed yet
 
 	cpu         [4]*cpuHeaps // render target views, shader resource views, samplers and depth-stencil views
 	debugErrors []string
@@ -195,7 +199,7 @@ func openWith(o Options, names entryNames, level uint32) (*Device, error) {
 	}
 	d := &Device{
 		log: log, getenv: getenv, libs: libs, limits: explicit.DefaultLimits(), last: -1,
-		tracker: newStateTracker[*texture](), live: map[any]func(){}, staging: staging{ring: newStagingRing(stagingSize)},
+		tracker: newStateTracker[*texture](), btracker: newStateTracker[*buffer](), live: map[any]func(){}, staging: staging{ring: newStagingRing(stagingSize)},
 		viewBlock: viewBlockSize, samplerBlock: samplerBlockSize, roots: map[string]*rootSig{}, dxbc: map[dxbcKey][]byte{},
 		cache: o.ShaderCache, noLib: o.noLibrary, makeLibrary: o.makeLibrary,
 	}
@@ -300,6 +304,7 @@ func (d *Device) openDevice(o Options, level uint32) error {
 	if err := d.createFence(); err != nil {
 		return err
 	}
+	d.queryTimestamps()
 	return d.createSlots()
 }
 

@@ -357,15 +357,15 @@ func TestWineBindGroupErrors(t *testing.T) {
 		entries []explicit.Binding
 		route   string
 	}{
-		{"a group the pipeline lacks", 3, []explicit.Binding{uni}, "Device.NewBindGroup.D3D12BindGroupInvalid"},
-		{"a binding the shader lacks", 0, []explicit.Binding{uni, {Binding: 7, Sampler: smp}}, "Device.NewBindGroup.D3D12BindGroupInvalid"},
-		{"a uniform without its entry", 0, []explicit.Binding{{Binding: 1, Sampler: smp}}, "Device.NewBindGroup.D3D12BindGroupInvalid"},
-		{"a uniform without its buffer", 0, []explicit.Binding{{Binding: 2}}, "Device.NewBindGroup.D3D12BindGroupInvalid"},
-		{"an offset that is not a multiple of 256", 0, []explicit.Binding{{Binding: 2, Buffer: ub, Offset: 100}}, "Device.NewBindGroup.D3D12BindGroupInvalid"},
-		{"an offset past the end", 0, []explicit.Binding{{Binding: 2, Buffer: ub, Offset: 2048}}, "Device.NewBindGroup.D3D12BindGroupInvalid"},
-		{"a texture binding without a texture", 0, []explicit.Binding{uni, {Binding: 0}}, "Device.NewBindGroup.D3D12BindGroupInvalid"},
-		{"a texture that is not sampled", 0, []explicit.Binding{uni, {Binding: 0, Texture: notSampled}}, "Device.NewBindGroup.D3D12BindGroupInvalid"},
-		{"a sampler binding without a sampler", 0, []explicit.Binding{uni, {Binding: 1}}, "Device.NewBindGroup.D3D12BindGroupInvalid"},
+		{"a group the pipeline lacks", 3, []explicit.Binding{uni}, "Device.NewBindGroup->Device.makeBindGroup.D3D12BindGroupInvalid"},
+		{"a binding the shader lacks", 0, []explicit.Binding{uni, {Binding: 7, Sampler: smp}}, "Device.NewBindGroup->Device.makeBindGroup.D3D12BindGroupInvalid"},
+		{"a uniform without its entry", 0, []explicit.Binding{{Binding: 1, Sampler: smp}}, "Device.NewBindGroup->Device.makeBindGroup.D3D12BindGroupInvalid"},
+		{"a uniform without its buffer", 0, []explicit.Binding{{Binding: 2}}, "Device.NewBindGroup->Device.makeBindGroup.D3D12BindGroupInvalid"},
+		{"an offset that is not a multiple of 256", 0, []explicit.Binding{{Binding: 2, Buffer: ub, Offset: 100}}, "Device.NewBindGroup->Device.makeBindGroup.D3D12BindGroupInvalid"},
+		{"an offset past the end", 0, []explicit.Binding{{Binding: 2, Buffer: ub, Offset: 2048}}, "Device.NewBindGroup->Device.makeBindGroup.D3D12BindGroupInvalid"},
+		{"a texture binding without a texture", 0, []explicit.Binding{uni, {Binding: 0}}, "Device.NewBindGroup->Device.makeBindGroup.D3D12BindGroupInvalid"},
+		{"a texture that is not sampled", 0, []explicit.Binding{uni, {Binding: 0, Texture: notSampled}}, "Device.NewBindGroup->Device.makeBindGroup.D3D12BindGroupInvalid"},
+		{"a sampler binding without a sampler", 0, []explicit.Binding{uni, {Binding: 1}}, "Device.NewBindGroup->Device.makeBindGroup.D3D12BindGroupInvalid"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -383,7 +383,7 @@ func TestWineBindGroupErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 	appErr := expectPanic(t, func() { _, _ = d.NewBindGroup(blit, 0, []explicit.Binding{{Binding: 2, Buffer: foreign}}) })
-	if appErr.Tag != tagD3D12ForeignResource || !appErr.HasRoute("Device.NewBindGroup.D3D12ForeignResource") {
+	if appErr.Tag != tagD3D12ForeignResource || !appErr.HasRoute("Device.NewBindGroup->Device.makeBindGroup->Device.makeBindGroup.func1.D3D12ForeignResource") {
 		t.Errorf("%s via %s", appErr.Tag, appErr.Route())
 	}
 	appErr = expectPanic(t, func() { _, _ = d.NewBindGroup(nil, 0, nil) })
@@ -446,27 +446,27 @@ func TestWinePassCommandErrors(t *testing.T) {
 	run(func(p explicit.Pass, bg explicit.BindGroup) {
 		wantPanic("Draw before SetPipeline", "pass.Draw->pass.flush.D3D12PipelineInvalid", tagD3D12PipelineInvalid, func() { p.Draw(3, 1, 0, 0) })
 		wantPanic("DrawIndexed before SetPipeline", "pass.DrawIndexed->pass.flush.D3D12PipelineInvalid", tagD3D12PipelineInvalid, func() { p.DrawIndexed(3, 1, 0, 0, 0) })
-		wantPanic("SetBindGroup before SetPipeline", "pass.SetBindGroup.D3D12BindGroupInvalid", tagD3D12BindGroupInvalid, func() { p.SetBindGroup(0, bg, 0) })
+		wantPanic("SetBindGroup before SetPipeline", "pass.SetBindGroup->encoder.setBindGroup.D3D12BindGroupInvalid", tagD3D12BindGroupInvalid, func() { p.SetBindGroup(0, bg, 0) })
 		wantPanic("a pipeline of another device", "pass.SetPipeline.D3D12ForeignResource", tagD3D12ForeignResource, func() { p.SetPipeline(nil) })
-		wantPanic("a bind group of another device", "pass.SetBindGroup.D3D12ForeignResource", tagD3D12ForeignResource, func() { p.SetBindGroup(0, nil) })
+		wantPanic("a bind group of another device", "pass.SetBindGroup->encoder.setBindGroup.D3D12ForeignResource", tagD3D12ForeignResource, func() { p.SetBindGroup(0, nil) })
 		wantPanic("a buffer of another device", "pass.SetVertexBuffer.D3D12ForeignResource", tagD3D12ForeignResource, func() { p.SetVertexBuffer(0, otherBuf, 0) })
-		wantPanic("an index buffer of another device", "pass.SetIndexBuffer.D3D12ForeignResource", tagD3D12ForeignResource, func() { p.SetIndexBuffer(otherBuf, 0) })
+		wantPanic("an index buffer of another device", "pass.SetIndexBuffer->pass.setIndexBuffer.D3D12ForeignResource", tagD3D12ForeignResource, func() { p.SetIndexBuffer(otherBuf, 0) })
 		wantPanic("a vertex buffer offset past the end", "pass.SetVertexBuffer.D3D12BindGroupInvalid", tagD3D12BindGroupInvalid, func() { p.SetVertexBuffer(0, s.inst, 1<<20) })
 		p.SetPipeline(blit)
-		wantPanic("a group the pipeline lacks", "pass.SetBindGroup.D3D12BindGroupInvalid", tagD3D12BindGroupInvalid, func() { p.SetBindGroup(3, bg, 0) })
-		wantPanic("the wrong number of dynamic offsets", "pass.SetBindGroup.D3D12BindGroupInvalid", tagD3D12BindGroupInvalid, func() { p.SetBindGroup(0, bg) })
-		wantPanic("too many dynamic offsets", "pass.SetBindGroup.D3D12BindGroupInvalid", tagD3D12BindGroupInvalid, func() { p.SetBindGroup(0, bg, 0, 0) })
-		wantPanic("a bind group for another group", "pass.SetBindGroup.D3D12BindGroupInvalid", tagD3D12BindGroupInvalid, func() { p.SetBindGroup(1, bg, 0) })
+		wantPanic("a group the pipeline lacks", "pass.SetBindGroup->encoder.setBindGroup.D3D12BindGroupInvalid", tagD3D12BindGroupInvalid, func() { p.SetBindGroup(3, bg, 0) })
+		wantPanic("the wrong number of dynamic offsets", "pass.SetBindGroup->encoder.setBindGroup.D3D12BindGroupInvalid", tagD3D12BindGroupInvalid, func() { p.SetBindGroup(0, bg) })
+		wantPanic("too many dynamic offsets", "pass.SetBindGroup->encoder.setBindGroup.D3D12BindGroupInvalid", tagD3D12BindGroupInvalid, func() { p.SetBindGroup(0, bg, 0, 0) })
+		wantPanic("a bind group for another group", "pass.SetBindGroup->encoder.setBindGroup.D3D12BindGroupInvalid", tagD3D12BindGroupInvalid, func() { p.SetBindGroup(1, bg, 0) })
 		p.SetBindGroup(0, bg, 0) // and the right way works
 	})
 	// A bind group of an earlier frame: its slot was reused or is another one.
 	run(func(p explicit.Pass, bg explicit.BindGroup) {
 		p.SetPipeline(blit)
-		wantPanic("a bind group of the frame before", "pass.SetBindGroup.D3D12BindGroupInvalid", tagD3D12BindGroupInvalid, func() { p.SetBindGroup(0, stale, 0) })
+		wantPanic("a bind group of the frame before", "pass.SetBindGroup->encoder.setBindGroup.D3D12BindGroupInvalid", tagD3D12BindGroupInvalid, func() { p.SetBindGroup(0, stale, 0) })
 	})
 	run(func(p explicit.Pass, bg explicit.BindGroup) {
 		p.SetPipeline(blit)
-		wantPanic("a bind group of two frames before", "pass.SetBindGroup.D3D12BindGroupInvalid", tagD3D12BindGroupInvalid, func() { p.SetBindGroup(0, stale, 0) })
+		wantPanic("a bind group of two frames before", "pass.SetBindGroup->encoder.setBindGroup.D3D12BindGroupInvalid", tagD3D12BindGroupInvalid, func() { p.SetBindGroup(0, stale, 0) })
 	})
 }
 
@@ -499,7 +499,7 @@ func TestWineSamplingThePassTargetIsAStateConflict(t *testing.T) {
 	p := e.BeginPass(tex, explicit.LoadClear, ui.Color{})
 	p.SetPipeline(blit)
 	appErr := expectPanic(t, func() { p.SetBindGroup(0, bg, 0) })
-	if appErr.Tag != tagD3D12StateConflict || !appErr.HasRoute("pass.SetBindGroup->Device.needTexture->stateTracker[...].need.D3D12StateConflict") {
+	if appErr.Tag != tagD3D12StateConflict || !appErr.HasRoute("pass.SetBindGroup->encoder.setBindGroup->Device.needTexture->stateTracker[...].need.D3D12StateConflict") {
 		t.Errorf("%s via %s", appErr.Tag, appErr.Route())
 	}
 	p.End()

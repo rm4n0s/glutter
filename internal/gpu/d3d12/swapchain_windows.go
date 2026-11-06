@@ -112,7 +112,7 @@ func (s *swapchain) makeBuffers(width, height int) error {
 			return err
 		}
 		desc := explicit.TextureDesc{Width: width, Height: height, Format: s.format.Texture, MipLevels: 1, Usage: explicit.TextureRenderTarget}.Normalized()
-		t := &texture{d: d, desc: desc, res: d.own(win32.ObjectFromPtr(out)), srv: -1, rtv: -1, dsv: -1}
+		t := &texture{d: d, desc: desc, res: d.own(win32.ObjectFromPtr(out)), srv: -1, rtv: -1, dsv: -1, uav: -1}
 		t.root = t
 		d.tracker.add(t, 1)
 		d.counts.bytes += textureBytes(desc)

@@ -4,7 +4,6 @@ package vulkan
 
 import (
 	"image"
-	"sort"
 	"time"
 
 	"github.com/rm4n0s/errors"
@@ -18,6 +17,7 @@ type buffer struct {
 	buffer    bufferH
 	alloc     allocation
 	size      int
+	usage     explicit.BufferUsage
 	destroyed bool
 }
 
@@ -25,6 +25,9 @@ var _ explicit.Buffer = (*buffer)(nil)
 
 // Size implements explicit.Buffer.
 func (b *buffer) Size() int { return b.size }
+
+// Usage implements explicit.Buffer.
+func (b *buffer) Usage() explicit.BufferUsage { return b.usage }
 
 // Destroy implements explicit.Buffer: the buffer is released when the GPU is done with
 // the frames that may use it.
@@ -69,6 +72,7 @@ func (d *Device) newHostBuffer(size uint64, usage uint32) (bufferH, allocation, 
 
 // NewBuffer implements explicit.Device.
 func (d *Device) NewBuffer(size int, usage explicit.BufferUsage) (explicit.Buffer, error) {
+	d.limits.CheckBuffer(size, usage)
 	var u uint32 = bufferUsageTransferDst | bufferUsageTransferSrc
 	if usage&explicit.BufferVertex != 0 {
 		u |= bufferUsageVertex
@@ -79,11 +83,17 @@ func (d *Device) NewBuffer(size int, usage explicit.BufferUsage) (explicit.Buffe
 	if usage&explicit.BufferUniform != 0 {
 		u |= bufferUsageUniform
 	}
+	if usage&explicit.BufferStorage != 0 {
+		u |= bufferUsageStorage
+	}
+	if usage&explicit.BufferIndirect != 0 {
+		u |= bufferUsageIndirect
+	}
 	buf, al, _, err := d.newHostBuffer(uint64(size), u)
 	if err != nil {
 		return nil, err
 	}
-	b := &buffer{d: d, buffer: buf, alloc: al, size: size}
+	b := &buffer{d: d, buffer: buf, alloc: al, size: size, usage: usage}
 	d.live[b] = func() { b.destroyed = true; d.destroyBuffer(b.buffer, b.alloc) }
 	return b, nil
 }
@@ -361,8 +371,8 @@ func (d *Device) NewTexture(desc explicit.TextureDesc) (explicit.Texture, error)
 	if err := check("vkBindImageMemory", d.f.bindImageMemory(d.dev, t.image, al.block.mem, al.offset)); err != nil {
 		return fail(err)
 	}
-	// An image can have a view only if it is sampled or drawn into.
-	if usage&(imageUsageSampled|imageUsageColor|imageUsageDepthStencil) != 0 {
+	// An image can have a view only if it is sampled, drawn into or a storage image.
+	if usage&(imageUsageSampled|imageUsageColor|imageUsageDepthStencil|imageUsageStorage) != 0 {
 		if t.view, err = d.newViewRange(viewSpec{image: t.image, format: format, typ: viewType(desc.Kind), aspect: formatAspect(desc.Format),
 			levels: uint32(desc.MipLevels), layers: uint32(desc.Layers())}); err != nil {
 			return fail(err)
@@ -422,7 +432,7 @@ func (d *Device) initLayout(t *texture) {
 // inCommands runs fn with a command buffer: the frame being recorded when it is outside
 // a pass, else the next frame's, at its start.
 func (d *Device) inCommands(fn func(cb commandBufferH)) {
-	if d.open != nil && d.open.pass == nil {
+	if d.open != nil && d.open.pass == nil && d.open.cpass == nil {
 		fn(d.open.cb)
 		return
 	}
@@ -629,6 +639,8 @@ type pipeline struct {
 	layout    pipelineLayoutH
 	setLayout []descriptorSetLayoutH
 	bindings  map[[2]int]explicit.ShaderBinding
+	// vertex is the vertex entry point, for the rule about the first vertex and instance.
+	vertex    explicit.EntryPoint
 	destroyed bool
 }
 
@@ -858,62 +870,19 @@ func (d *Device) NewPipeline(desc explicit.PipelineDesc) (explicit.Pipeline, err
 	if err != nil {
 		return nil, err
 	}
-	p := &pipeline{d: d, desc: desc, bindings: map[[2]int]explicit.ShaderBinding{}}
+	p := &pipeline{d: d, desc: desc, vertex: vs}
 	fail := func(err error) (explicit.Pipeline, error) {
 		p.release2()
 		return nil, err
 	}
 
-	// The bindings of each group, with the stages that read them.
-	type slot struct {
-		kind  explicit.BindingKind
-		stage uint32
+	lay, err := d.makeLayouts(desc.Shader, map[uint32]explicit.EntryPoint{stageVertex: vs, stageFragment: fs})
+	if err != nil {
+		return nil, err
 	}
-	groups := map[int]map[int]*slot{}
-	maxGroup := -1
-	for stage, entry := range map[uint32]explicit.EntryPoint{stageVertex: vs, stageFragment: fs} {
-		for _, b := range entry.Bindings {
-			if groups[b.Group] == nil {
-				groups[b.Group] = map[int]*slot{}
-			}
-			s := groups[b.Group][b.Binding]
-			if s == nil {
-				s = &slot{kind: b.Kind}
-				groups[b.Group][b.Binding] = s
-			}
-			s.stage |= stage
-			p.bindings[[2]int{b.Group, b.Binding}] = b
-			maxGroup = max(maxGroup, b.Group)
-		}
-	}
+	p.bindings, p.setLayout, p.layout = lay.bindings, lay.setLayouts, lay.layout
 	a := d.arena
 	defer a.rewind(a.mark())
-	for g := 0; g <= maxGroup; g++ {
-		var bs []descriptorSetLayoutBinding
-		numbers := make([]int, 0, len(groups[g]))
-		for n := range groups[g] {
-			numbers = append(numbers, n)
-		}
-		sort.Ints(numbers)
-		for _, n := range numbers {
-			s := groups[g][n]
-			bs = append(bs, descriptorSetLayoutBinding{binding: uint32(n), descriptorType: descriptorType(s.kind), descriptorCount: 1, stageFlags: s.stage})
-		}
-		info := put(a, descriptorSetLayoutCreateInfo{sType: sTypeDescriptorSetLayoutCreateInfo, bindingCount: uint32(len(bs)), pBindings: putSlice(a, bs)})
-		out := a.out()
-		if err := check("vkCreateDescriptorSetLayout", d.f.createDescriptorSetLayout(d.dev, info, 0, out)); err != nil {
-			return fail(err)
-		}
-		p.setLayout = append(p.setLayout, u64(out))
-	}
-	layoutInfo := put(a, pipelineLayoutCreateInfo{
-		sType: sTypePipelineLayoutCreateInfo, setLayoutCount: uint32(len(p.setLayout)), pSetLayouts: putSlice(a, p.setLayout),
-	})
-	out := a.out()
-	if err := check("vkCreatePipelineLayout", d.f.createPipelineLayout(d.dev, layoutInfo, 0, out)); err != nil {
-		return fail(err)
-	}
-	p.layout = u64(out)
 
 	var bindingDescs []vertexInputBindingDescription
 	var attrDescs []vertexInputAttributeDescription
@@ -1026,7 +995,7 @@ func (d *Device) NewPipeline(desc explicit.PipelineDesc) (explicit.Pipeline, err
 		pViewportState: viewportState, pRasterizationState: raster, pMultisampleState: multisample,
 		pDepthStencilState: depthState, pColorBlendState: colorBlend, pDynamicState: dynamic, layout: p.layout,
 	})
-	out = a.out()
+	out := a.out()
 	start := time.Now()
 	err = check("vkCreateGraphicsPipelines", d.f.createGraphicsPipelines(d.dev, d.pcache.handle, 1, info, 0, out))
 	d.pcache.took += time.Since(start)
@@ -1056,6 +1025,10 @@ func descriptorType(k explicit.BindingKind) uint32 {
 		return descriptorSampledImage
 	case explicit.BindingSampler:
 		return descriptorSampler
+	case explicit.BindingStorageBufferReadOnly, explicit.BindingStorageBuffer:
+		return descriptorStorageBuffer
+	case explicit.BindingStorageTexture:
+		return descriptorStorageImage
 	}
 	return descriptorUniformDynamic
 }
@@ -1081,8 +1054,14 @@ func (d *Device) NewBindGroup(p explicit.Pipeline, group int, entries []explicit
 	if !ok || vp.d != d {
 		panic(errors.New(tagVulkanForeignResource, "the resource was not made by this Vulkan device", "resource", "pipeline"))
 	}
-	if group < 0 || group >= len(vp.setLayout) {
-		return nil, errors.New(tagVulkanBindGroupInvalid, "the pipeline has no such bind group", "group", group, "groups", len(vp.setLayout))
+	return d.makeBindGroup(vp.setLayout, vp.bindings, group, entries)
+}
+
+// makeBindGroup makes the descriptor set of a group of a pipeline, a graphics or a compute pipeline,
+// from the layouts and the bindings it was made with.
+func (d *Device) makeBindGroup(setLayouts []descriptorSetLayoutH, bindings map[[2]int]explicit.ShaderBinding, group int, entries []explicit.Binding) (explicit.BindGroup, error) {
+	if group < 0 || group >= len(setLayouts) {
+		return nil, errors.New(tagVulkanBindGroupInvalid, "the pipeline has no such bind group", "group", group, "groups", len(setLayouts))
 	}
 	slot := d.next
 	if d.open != nil {
@@ -1093,20 +1072,21 @@ func (d *Device) NewBindGroup(p explicit.Pipeline, group int, entries []explicit
 	s := &d.slots[slot]
 	a := d.arena
 	defer a.rewind(a.mark())
-	set, err := d.allocateSet(s, vp.setLayout[group])
+	set, err := d.allocateSet(s, setLayouts[group])
 	if err != nil {
 		return nil, err
 	}
 	writes := make([]writeDescriptorSet, 0, len(entries))
 	for _, e := range entries {
-		sb, ok := vp.bindings[[2]int{group, e.Binding}]
+		sb, ok := bindings[[2]int{group, e.Binding}]
 		if !ok {
 			return nil, errors.New(tagVulkanBindGroupInvalid, "the shader has no such binding", "group", group, "binding", e.Binding)
 		}
+		d.limits.CheckBinding(sb, e)
 		kind := sb.Kind
 		w := writeDescriptorSet{sType: sTypeWriteDescriptorSet, dstSet: set, dstBinding: uint32(e.Binding), descriptorCount: 1, descriptorType: descriptorType(kind)}
 		switch kind {
-		case explicit.BindingUniformBuffer:
+		case explicit.BindingUniformBuffer, explicit.BindingStorageBufferReadOnly, explicit.BindingStorageBuffer:
 			b, ok := e.Buffer.(*buffer)
 			if !ok || b.d != d {
 				panic(errors.New(tagVulkanForeignResource, "the resource was not made by this Vulkan device", "resource", "buffer"))
@@ -1127,6 +1107,23 @@ func (d *Device) NewBindGroup(p explicit.Pipeline, group int, entries []explicit
 			if t.desc.Kind.Dimension() != sb.Dimension || !t.desc.Format.SampleType(d.features).Fits(sb.Sample) {
 				return nil, errors.New(tagVulkanTextureBindingMismatch, "the texture is not the dimension or sample type that the shader declares",
 					"group", group, "binding", e.Binding, "kind", int(t.desc.Kind), "dimension", int(sb.Dimension), "format", int(t.desc.Format), "sample", int(sb.Sample))
+			}
+			w.pImageInfo = put(a, descriptorImageInfo{imageView: t.view, imageLayout: layoutGeneral})
+		case explicit.BindingStorageTexture:
+			t, ok := e.Texture.(*texture)
+			if !ok || t.d != d {
+				panic(errors.New(tagVulkanForeignResource, "the resource was not made by this Vulkan device", "resource", "texture"))
+			}
+			if t.desc.Kind.Dimension() != sb.Dimension {
+				return nil, errors.New(tagVulkanTextureBindingMismatch, "the texture is not the dimension that the shader declares",
+					"group", group, "binding", e.Binding, "kind", int(t.desc.Kind), "dimension", int(sb.Dimension))
+			}
+			// A storage image is one mip level: the texture's own view has all of them.
+			if t.desc.MipLevels > 1 {
+				t = t.Level(0).(*texture)
+			}
+			if t.view == 0 {
+				return nil, errors.New(tagVulkanBindGroupInvalid, "the texture is not TextureStorage", "binding", e.Binding)
 			}
 			w.pImageInfo = put(a, descriptorImageInfo{imageView: t.view, imageLayout: layoutGeneral})
 		case explicit.BindingSampler:

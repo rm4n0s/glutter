@@ -272,7 +272,7 @@ func TestVulkanRunsTheScenesOfTheExplicitDevice(t *testing.T) {
 		}
 		t.Error(line)
 	}
-	if ok < 13 {
+	if ok < 76 {
 		t.Errorf("only %d parts of the scenes ran", ok)
 	}
 }

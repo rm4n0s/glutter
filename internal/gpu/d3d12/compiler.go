@@ -39,7 +39,7 @@ func CompileFlags(getenv func(string) string) uint32 {
 	return CompileOptimizationLevel3
 }
 
-// The compile targets of the backend: shader model 5.1, vertex and pixel (SPEC §9.8).
+// The compile targets of the backend: shader model 5.1, vertex, pixel and compute (SPEC §9.8).
 const (
 	// TargetVertex is the target of a vertex entry point.
 	//
@@ -49,6 +49,10 @@ const (
 	//
 	// Flutter: no counterpart
 	TargetPixel = "ps_5_1"
+	// TargetCompute is the target of a compute entry point (step 30.2).
+	//
+	// Flutter: no counterpart
+	TargetCompute = "cs_5_1"
 )
 
 // Backend turns HLSL into DXBC: D3DCompile of d3dcompiler_47.dll (CompilerDLL), or a stand-in in a test.

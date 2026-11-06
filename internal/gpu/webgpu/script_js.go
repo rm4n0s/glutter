@@ -8,12 +8,14 @@ package webgpu
 // the device or the read (the way internal/platform/web does for the clipboard). It returns the
 // object of its functions.
 //
-//   - request(codes, job): asks for an adapter, a device (with float32-filterable when the adapter
-//     has it) and the compiled WGSL modules, and calls acquired(job, result) or failed(job, tag,
-//     message); never waits for anyone
+//   - request(codes, job): asks for an adapter, a device (with float32-filterable, timestamp-query
+//     and indirect-first-instance when the adapter has them) and the compiled WGSL modules, and calls
+//     acquired(job, result) or failed(job, tag, message); never waits for anyone
 //   - watch(device, id): calls lost(id, reason, message) when the device is lost and
 //     uncaptured(id, message) for every error that no scope caught
 //   - map(buffer, id): calls mapped(id) or mapFailed(id, message) when the buffer is mapped
+//   - done(queue, id): calls workDone(id) or workFailed(id, message) when the queue has finished
+//     everything submitted so far
 //   - preferredFormat(): the format of the canvas
 const helperScript = `
 var cb = null;
@@ -28,8 +30,12 @@ h.request = function (codes, job) {
 		try { adapter = await gpu.requestAdapter(); } catch (e) { throw {tag: 'unavailable', msg: 'requestAdapter() failed: ' + e}; }
 		if (!adapter) { throw {tag: 'unavailable', msg: 'requestAdapter() answered null: the browser has no WebGPU adapter'}; }
 		var device;
-		var float32Filterable = !!(adapter.features && adapter.features.has('float32-filterable'));
-		try { device = await adapter.requestDevice(float32Filterable ? {requiredFeatures: ['float32-filterable']} : {}); } catch (e) { throw {tag: 'device', msg: 'requestDevice() failed: ' + e}; }
+		var wanted = ['float32-filterable', 'timestamp-query', 'indirect-first-instance'];
+		var features = wanted.filter(function (f) { return !!(adapter.features && adapter.features.has(f)); });
+		var float32Filterable = features.indexOf('float32-filterable') >= 0;
+		var timestampQuery = features.indexOf('timestamp-query') >= 0;
+		var indirectFirstInstance = features.indexOf('indirect-first-instance') >= 0;
+		try { device = await adapter.requestDevice(features.length > 0 ? {requiredFeatures: features} : {}); } catch (e) { throw {tag: 'device', msg: 'requestDevice() failed: ' + e}; }
 		var modules = {}, problems = [];
 		for (var name of Object.keys(codes)) {
 			var m = device.createShaderModule({label: name, code: codes[name]});
@@ -45,7 +51,7 @@ h.request = function (codes, job) {
 		}
 		var ai = adapter.info || {};
 		var description = [ai.vendor, ai.architecture, ai.device, ai.description].filter(Boolean).join(' ');
-		return {adapter: adapter, device: device, modules: modules, description: description, fallback: !!adapter.isFallbackAdapter, float32Filterable: float32Filterable};
+		return {adapter: adapter, device: device, modules: modules, description: description, fallback: !!adapter.isFallbackAdapter, float32Filterable: float32Filterable, timestampQuery: timestampQuery, indirectFirstInstance: indirectFirstInstance};
 	})().then(
 		function (r) { cb.acquired(job, r); },
 		function (e) { cb.failed(job, (e && e.tag) ? e.tag : 'device', (e && e.msg) ? e.msg : String(e)); }
@@ -60,6 +66,9 @@ h.watch = function (device, id) {
 };
 h.map = function (buffer, id) {
 	buffer.mapAsync(1).then(function () { cb.mapped(id); }, function (e) { cb.mapFailed(id, String(e)); });
+};
+h.done = function (queue, id) {
+	queue.onSubmittedWorkDone().then(function () { cb.workDone(id); }, function (e) { cb.workFailed(id, String(e)); });
 };
 return h;
 `

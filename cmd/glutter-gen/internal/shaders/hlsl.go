@@ -47,14 +47,17 @@ type register struct {
 	space, index int
 }
 
-// Register returns where HLSL binds the binding: constant buffers in b registers, textures in t
-// and samplers in s, the @binding as the register and the @group as the register space.
+// Register returns where HLSL binds the binding: constant buffers in b registers, textures and read-only
+// storage buffers in t, samplers in s, and writable storage buffers and storage textures in u, the @binding
+// as the register and the @group as the register space.
 func (b Binding) Register() (class string, space, index int) {
 	switch b.Kind {
 	case KindUniform:
 		class = "b"
-	case KindTexture:
+	case KindTexture, KindStorageRO:
 		class = "t"
+	case KindStorage, KindStorageTexture:
+		class = "u"
 	default:
 		class = "s"
 	}
@@ -66,8 +69,9 @@ func (b Binding) Register() (class string, space, index int) {
 // It fails with ShadersHLSLUnexpected when a line of naga's sampler machinery has another shape
 // than the one expected, when anything of that machinery is left, when a register has no space,
 // or when the shader reads SV_InstanceID (which does not include the first instance of a draw, so
-// a shader that needs the instance index takes it from a uniform: SPEC §9.8).
-func rewriteHLSL(src string) (string, error) {
+// a shader that needs the instance index takes it from a uniform: SPEC §9.8; with gpu it is allowed,
+// and the draw is checked instead: SPEC §27.1).
+func rewriteHLSL(src string, gpu bool) (string, error) {
 	if strings.Contains(src, "\r") {
 		return "", errors.New(tagShadersHLSLUnexpected, "the HLSL has a carriage return, which a raw string cannot hold")
 	}
@@ -114,7 +118,7 @@ func rewriteHLSL(src string) (string, error) {
 			return "", errors.New(tagShadersHLSLUnexpected, "naga's sampler machinery is left in the HLSL", "fragment", frag)
 		}
 	}
-	if instanceIDSemantics.MatchString(text) {
+	if !gpu && instanceIDSemantics.MatchString(text) {
 		return "", errors.New(tagShadersHLSLInstanceID, "a shader reads SV_InstanceID, which does not include the first instance of a draw: pass the value in a uniform (SPEC §9.8)")
 	}
 	if n, with := len(anyRegister.FindAllString(text, -1)), len(registerWithSpace.FindAllString(text, -1)); n != with {

@@ -659,6 +659,86 @@ type d3d12DiscardRegion struct {
 	NumSubresources  uint32  `c:"NumSubresources"`
 }
 
+// d3d12Tex2DUAV is the Go mirror of D3D12_TEX2D_UAV.
+type d3d12Tex2DUAV struct {
+	MipSlice   uint32 `c:"MipSlice"`
+	PlaneSlice uint32 `c:"PlaneSlice"`
+}
+
+// d3d12UnorderedAccessViewDesc is the Go mirror of D3D12_UNORDERED_ACCESS_VIEW_DESC with the Texture2D
+// variant, padded to the size of the union (whose largest member is the buffer's).
+type d3d12UnorderedAccessViewDesc struct {
+	Format        uint32        `c:"Format"`
+	ViewDimension uint32        `c:"ViewDimension"`
+	Texture2D     d3d12Tex2DUAV `c:"Texture2D"`
+	_             [24]byte
+}
+
+// d3d12Tex2DArrayUAV is the Go mirror of D3D12_TEX2D_ARRAY_UAV.
+type d3d12Tex2DArrayUAV struct {
+	MipSlice        uint32 `c:"MipSlice"`
+	FirstArraySlice uint32 `c:"FirstArraySlice"`
+	ArraySize       uint32 `c:"ArraySize"`
+	PlaneSlice      uint32 `c:"PlaneSlice"`
+}
+
+// d3d12UnorderedAccessViewDescArray is the Go mirror of D3D12_UNORDERED_ACCESS_VIEW_DESC with the
+// Texture2DArray variant, padded to the size of the union.
+type d3d12UnorderedAccessViewDescArray struct {
+	Format         uint32             `c:"Format"`
+	ViewDimension  uint32             `c:"ViewDimension"`
+	Texture2DArray d3d12Tex2DArrayUAV `c:"Texture2DArray"`
+	_              [16]byte
+}
+
+// d3d12Tex3DUAV is the Go mirror of D3D12_TEX3D_UAV.
+type d3d12Tex3DUAV struct {
+	MipSlice    uint32 `c:"MipSlice"`
+	FirstWSlice uint32 `c:"FirstWSlice"`
+	WSize       uint32 `c:"WSize"`
+}
+
+// d3d12UnorderedAccessViewDesc3D is the Go mirror of D3D12_UNORDERED_ACCESS_VIEW_DESC with the Texture3D
+// variant, padded to the size of the union.
+type d3d12UnorderedAccessViewDesc3D struct {
+	Format        uint32        `c:"Format"`
+	ViewDimension uint32        `c:"ViewDimension"`
+	Texture3D     d3d12Tex3DUAV `c:"Texture3D"`
+	_             [20]byte
+}
+
+// d3d12QueryHeapDesc is the Go mirror of D3D12_QUERY_HEAP_DESC.
+type d3d12QueryHeapDesc struct {
+	Type     uint32 `c:"Type"`
+	Count    uint32 `c:"Count"`
+	NodeMask uint32 `c:"NodeMask"`
+}
+
+// d3d12IndirectArgumentDesc is the Go mirror of D3D12_INDIRECT_ARGUMENT_DESC for the arguments that the
+// device uses (a draw, an indexed draw and a dispatch have no members): the type, padded to the size of
+// the union of the members the other types have.
+type d3d12IndirectArgumentDesc struct {
+	Type uint32 `c:"Type"`
+	_    [12]byte
+}
+
+// d3d12CommandSignatureDesc is the Go mirror of D3D12_COMMAND_SIGNATURE_DESC.
+type d3d12CommandSignatureDesc struct {
+	ByteStride       uint32         `c:"ByteStride"`
+	NumArgumentDescs uint32         `c:"NumArgumentDescs"`
+	ArgumentDescs    unsafe.Pointer `c:"pArgumentDescs"`
+	NodeMask         uint32         `c:"NodeMask"`
+}
+
+// d3d12ComputePipelineStateDesc is the Go mirror of D3D12_COMPUTE_PIPELINE_STATE_DESC.
+type d3d12ComputePipelineStateDesc struct {
+	RootSignature uintptr                  `c:"pRootSignature"`
+	CS            d3d12ShaderBytecode      `c:"CS"`
+	NodeMask      uint32                   `c:"NodeMask"`
+	CachedPSO     d3d12CachedPipelineState `c:"CachedPSO"`
+	Flags         uint32                   `c:"Flags"`
+}
+
 // The values of the enumerations and flags of the headers that the device uses; the layout test
 // checks each one.
 const (
@@ -711,18 +791,25 @@ const (
 	resourceFlagDenyShaderResource uint32 = 8
 
 	// D3D12_RESOURCE_STATES.
-	resourceStateCommon        uint32 = 0
-	resourceStateRenderTarget  uint32 = 0x4
-	resourceStateDepthWrite    uint32 = 0x10
-	resourceStatePixelShaderRS uint32 = 0x80
-	resourceStateCopyDest      uint32 = 0x400
-	resourceStateCopySource    uint32 = 0x800
-	resourceStateResolveDest   uint32 = 0x1000
-	resourceStateResolveSource uint32 = 0x2000
-	resourceStateGenericRead   uint32 = 0xAC3
+	resourceStateCommon           uint32 = 0
+	resourceStateVertexConstant   uint32 = 0x1 // VERTEX_AND_CONSTANT_BUFFER
+	resourceStateIndexBuffer      uint32 = 0x2
+	resourceStateRenderTarget     uint32 = 0x4
+	resourceStateUnorderedAccess  uint32 = 0x8
+	resourceStateDepthWrite       uint32 = 0x10
+	resourceStateNonPixelShaderRS uint32 = 0x40
+	resourceStatePixelShaderRS    uint32 = 0x80
+	resourceStateIndirectArgument uint32 = 0x200
+	resourceStateCopyDest         uint32 = 0x400
+	resourceStateCopySource       uint32 = 0x800
+	resourceStateResolveDest      uint32 = 0x1000
+	resourceStateResolveSource    uint32 = 0x2000
+	resourceStateGenericRead      uint32 = 0xAC3
 
-	// D3D12_RESOURCE_BARRIER_TYPE_TRANSITION and D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES.
+	// D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, D3D12_RESOURCE_BARRIER_TYPE_UAV and
+	// D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES.
 	barrierTypeTransition uint32 = 0
+	barrierTypeUAV        uint32 = 2
 	allSubresources       uint32 = 0xFFFFFFFF
 
 	// D3D12_TEXTURE_COPY_TYPE.
@@ -734,6 +821,17 @@ const (
 	descriptorHeapSampler uint32 = 1
 	descriptorHeapRTV     uint32 = 2
 	descriptorHeapDSV     uint32 = 3
+
+	// D3D12_UAV_DIMENSION_* (step 30.2), D3D12_QUERY_HEAP_TYPE_TIMESTAMP and D3D12_QUERY_TYPE_TIMESTAMP, and
+	// D3D12_INDIRECT_ARGUMENT_TYPE_DRAW, _DRAW_INDEXED and _DISPATCH.
+	uavDimensionTexture2D      uint32 = 4
+	uavDimensionTexture2DArray uint32 = 5
+	uavDimensionTexture3D      uint32 = 8
+	queryHeapTypeTimestamp     uint32 = 1
+	queryTypeTimestamp         uint32 = 2
+	indirectArgumentDraw       uint32 = 0
+	indirectArgumentDrawIdx    uint32 = 1
+	indirectArgumentDispatch   uint32 = 2
 
 	// D3D12_SRV_DIMENSION_*, D3D12_RTV_DIMENSION_* and D3D12_DSV_DIMENSION_*.
 	srvDimensionTexture2D      uint32 = 4
@@ -807,7 +905,10 @@ const (
 	// D3D_ROOT_SIGNATURE_VERSION_1 (SPEC §9.8 "Binding model").
 	rootParameterTable     uint32 = 0
 	rootParameterCBV       uint32 = 2
+	rootParameterSRV       uint32 = 3
+	rootParameterUAV       uint32 = 4
 	descriptorRangeSRV     uint32 = 0
+	descriptorRangeUAV     uint32 = 1
 	descriptorRangeSampler uint32 = 3
 	shaderVisibilityAll    uint32 = 0
 	shaderVisibilityVertex uint32 = 1
@@ -819,6 +920,10 @@ const (
 	rootFlagDenyHull         uint32 = 0x4
 	rootFlagDenyDomain       uint32 = 0x8
 	rootFlagDenyGeometry     uint32 = 0x10
+	// D3D12_ROOT_SIGNATURE_FLAG_DENY_VERTEX_SHADER_ROOT_ACCESS and _DENY_PIXEL_SHADER_ROOT_ACCESS: the root
+	// signature of a compute pipeline (step 30.2).
+	rootFlagDenyVertex uint32 = 0x2
+	rootFlagDenyPixel  uint32 = 0x20
 	// D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND, the offset that follows the range before.
 	descriptorRangeAppend uint32 = 0xFFFFFFFF
 	// D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE.

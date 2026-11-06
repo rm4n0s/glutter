@@ -21,10 +21,18 @@ type pendingRead struct {
 	format    explicit.TextureFormat
 	done      func(*image.RGBA, error)
 	doneBytes func(data []byte, rowBytes int, err error)
+	// doneRaw, when set, is a ReadBuffer: the readback buffer holds size bytes (layout.Size is its size) and
+	// nothing else is used.
+	doneRaw func(data []byte, err error)
+	size    int
 }
 
 // fail tells the read that it failed.
 func (rd *pendingRead) fail(err error) {
+	if rd.doneRaw != nil {
+		rd.doneRaw(nil, err)
+		return
+	}
 	if rd.doneBytes != nil {
 		rd.doneBytes(nil, 0, err)
 		return
@@ -38,7 +46,10 @@ type encoder struct {
 	slot  int
 	list  win32.Object
 	pass  *pass
+	cpass *computePass
 	reads []*pendingRead
+	// completes are the functions of OnComplete.
+	completes []func()
 
 	// The state of the command list, which lasts from pass to pass (the state of a Direct3D 12 command
 	// list does): the root signature and the pipeline state that were set, the groups that were bound
@@ -48,7 +59,15 @@ type encoder struct {
 	bound       [maxBindGroups]boundGroup
 	viewHeap    int // the block of the resource heap that was set, -1 for none
 	samplerHeap int
+	// croot, cpso and cbound are the same for the compute pipeline, which the list keeps apart; a compute
+	// pass starts with none.
+	croot  *rootSig
+	cpso   win32.Object
+	cbound [maxBindGroups]boundGroup
 }
+
+// inPass says whether a pass is open: the commands of a write or a copy made now wait for the next frame.
+func (e *encoder) inPass() bool { return e.pass != nil || e.cpass != nil }
 
 var _ explicit.Encoder = (*encoder)(nil)
 
@@ -90,7 +109,7 @@ func (d *Device) Begin() (explicit.Encoder, error) {
 func (e *encoder) CopyTexture(src explicit.Texture, r image.Rectangle, dst explicit.Texture, at image.Point) {
 	d := e.d
 	s, t := d.own2texture(src), d.own2texture(dst)
-	if e.pass != nil {
+	if e.inPass() {
 		panic(errors.New(tagD3D12PassNotEnded, "CopyTexture was called before the pass ended"))
 	}
 	if r.Empty() {
@@ -102,8 +121,8 @@ func (e *encoder) CopyTexture(src explicit.Texture, r image.Rectangle, dst expli
 			"src_rect", r.String(), "dst_rect", dstRect.String(), "src_width", s.desc.Width, "src_height", s.desc.Height,
 			"dst_width", t.desc.Width, "dst_height", t.desc.Height))
 	}
-	d.tracker.begin()
-	defer d.tracker.end()
+	d.opBegin()
+	defer d.opEnd()
 	if err := d.needTexture(s, stateCopySource); err != nil {
 		panic(err)
 	}
@@ -122,7 +141,7 @@ func (e *encoder) CopyTexture(src explicit.Texture, r image.Rectangle, dst expli
 func (e *encoder) ReadTexture(src explicit.Texture, r image.Rectangle, done func(*image.RGBA, error)) {
 	d := e.d
 	s := d.own2texture(src)
-	if e.pass != nil {
+	if e.inPass() {
 		panic(errors.New(tagD3D12PassNotEnded, "ReadTexture was called before the pass ended"))
 	}
 	d.limits.CheckRead(s.desc, false)
@@ -138,7 +157,7 @@ func (e *encoder) ReadTexture(src explicit.Texture, r image.Rectangle, done func
 func (e *encoder) ReadTextureBytes(src explicit.Texture, r image.Rectangle, done func(data []byte, rowBytes int, err error)) {
 	d := e.d
 	s := d.own2texture(src)
-	if e.pass != nil {
+	if e.inPass() {
 		panic(errors.New(tagD3D12PassNotEnded, "ReadTextureBytes was called before the pass ended"))
 	}
 	d.limits.CheckRead(s.desc, true)
@@ -163,8 +182,8 @@ func (e *encoder) read(s *texture, r image.Rectangle, rd *pendingRead) {
 		return
 	}
 	rd.res = res
-	d.tracker.begin()
-	defer d.tracker.end()
+	d.opBegin()
+	defer d.opEnd()
 	if err := d.needTexture(s, stateCopySource); err != nil {
 		panic(err)
 	}
@@ -188,7 +207,7 @@ func (e *encoder) Submit() error {
 	if d.open != e {
 		return errors.New(tagD3D12FrameNotOpen, "Submit was called on a frame that is not the one in progress")
 	}
-	if e.pass != nil {
+	if e.inPass() {
 		panic(errors.New(tagD3D12PassNotEnded, "Submit was called before the pass ended"))
 	}
 	s := &d.slots[e.slot]
@@ -208,7 +227,7 @@ func (e *encoder) Submit() error {
 	d.last = e.slot
 	d.next = (e.slot + 1) % framesInFlight
 	d.drainDebugMessages()
-	if len(e.reads) == 0 {
+	if len(e.reads) == 0 && len(e.completes) == 0 {
 		return d.checkRemoved()
 	}
 	if err := d.waitFor(s.fence); err != nil {
@@ -218,6 +237,9 @@ func (e *encoder) Submit() error {
 	d.recycle(e.slot)
 	for _, rd := range e.reads {
 		d.finishRead(rd)
+	}
+	for _, fn := range e.completes {
+		fn()
 	}
 	return nil
 }
@@ -237,6 +259,19 @@ func (d *Device) failReads(e *encoder, err error) error {
 // finishRead converts what the GPU copied into the readback buffer (BGRA to RGBA, R to a gray pixel as
 // the other backends do; ReadTextureBytes packs the rows as they are), calls done, and frees the buffer.
 func (d *Device) finishRead(rd *pendingRead) {
+	if rd.doneRaw != nil {
+		ptr, err := d.mapBuffer(rd.res, true, rd.layout.Size)
+		if err != nil {
+			d.releaseBuffer(rd.res, rd.layout.Size)
+			rd.fail(err)
+			return
+		}
+		out := append([]byte(nil), win32.Bytes(ptr, rd.size)...)
+		unmapBuffer(rd.res, 0)
+		d.releaseBuffer(rd.res, rd.layout.Size)
+		rd.doneRaw(out, nil)
+		return
+	}
 	w, h := rd.rect.Dx(), rd.rect.Dy()
 	bpp := rd.format.BytesPerPixel()
 	if rd.res.IsNil() {

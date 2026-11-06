@@ -45,6 +45,9 @@ func (p *Provider) newDevice(a *acquired) *Device {
 	for _, s := range explicit.Shaders() {
 		d.modules[s.Name] = a.modules.Get(s.Name)
 	}
+	if a.timestampQuery {
+		d.features.TimestampQuery, d.features.TimestampPeriod = true, 1 // WebGPU's timestamps are nanoseconds
+	}
 	d.dynamic = js.Global().Get("Uint32Array").New(16)
 	d.id = p.register(d)
 	p.helper.Call("watch", d.dev, d.id)
@@ -68,7 +71,7 @@ func (d *Device) Description() string {
 // Limits implements explicit.Device.
 func (d *Device) Limits() explicit.Limits { return d.limits }
 
-// Features implements explicit.Device: float32-filterable when the adapter has it.
+// Features implements explicit.Device: float32-filterable and timestamp-query when the adapter has them.
 func (d *Device) Features() explicit.Features { return d.features }
 
 // noteValidation records an error of the browser and logs it.
@@ -138,6 +141,7 @@ type buffer struct {
 	d         *Device
 	buf       js.Value
 	size      int
+	usage     explicit.BufferUsage
 	destroyed bool
 }
 
@@ -145,6 +149,9 @@ var _ explicit.Buffer = (*buffer)(nil)
 
 // Size implements explicit.Buffer.
 func (b *buffer) Size() int { return b.size }
+
+// Usage implements explicit.Buffer.
+func (b *buffer) Usage() explicit.BufferUsage { return b.usage }
 
 // Destroy implements explicit.Buffer: the buffer goes when the frame being recorded is submitted.
 func (b *buffer) Destroy() {
@@ -158,6 +165,7 @@ func (b *buffer) Destroy() {
 // NewBuffer implements explicit.Device. The browser's buffers are sized in multiples of four
 // bytes (queue.writeBuffer wants it), so the buffer is rounded up; Size is what was asked for.
 func (d *Device) NewBuffer(size int, usage explicit.BufferUsage) (explicit.Buffer, error) {
+	d.limits.CheckBuffer(size, usage)
 	if err := d.usable(); err != nil {
 		return nil, err
 	}
@@ -168,7 +176,7 @@ func (d *Device) NewBuffer(size int, usage explicit.BufferUsage) (explicit.Buffe
 	if err != nil {
 		return nil, err
 	}
-	return &buffer{d: d, buf: v, size: size}, nil
+	return &buffer{d: d, buf: v, size: size, usage: usage}, nil
 }
 
 // WriteBuffer implements explicit.Device: the bytes cross into JavaScript in one copy into the
@@ -406,6 +414,8 @@ type pipeline struct {
 	pipe     js.Value
 	layouts  []js.Value
 	bindings []map[int]bindingPlan
+	// vertex is the vertex entry point, for the rule about the first vertex and instance.
+	vertex explicit.EntryPoint
 }
 
 var _ explicit.Pipeline = (*pipeline)(nil)
@@ -425,10 +435,38 @@ func layoutEntry(b bindingPlan) map[string]any {
 		e["texture"] = map[string]any{"sampleType": sampleTypeName(b.Sample), "viewDimension": bindingDimensionName(b.Dimension)}
 	case explicit.BindingSampler:
 		e["sampler"] = map[string]any{"type": "filtering"}
+	case explicit.BindingStorageBufferReadOnly:
+		e["buffer"] = map[string]any{"type": "read-only-storage"}
+	case explicit.BindingStorageBuffer:
+		e["buffer"] = map[string]any{"type": "storage"}
+	case explicit.BindingStorageTexture:
+		e["storageTexture"] = map[string]any{"access": "write-only", "format": formatName(b.StorageFormat), "viewDimension": bindingDimensionName(b.Dimension)}
 	default:
 		e["buffer"] = map[string]any{"type": "uniform", "hasDynamicOffset": true}
 	}
 	return e
+}
+
+// moduleOf returns the GPUShaderModule of a shader: the renderer's were compiled at startup; a shader
+// that is not one of them (a test's, an app's) is compiled when it is first used, from its WGSL.
+func (d *Device) moduleOf(s *explicit.Shader) (js.Value, error) {
+	if module, ok := d.modules[s.Name]; ok && module.Truthy() {
+		return module, nil
+	}
+	if s.WGSL == "" {
+		return js.Value{}, errors.New(tagWebGPUPipelineInvalid, "the shader is not one of the renderer's and has no WGSL", "shader", s.Name)
+	}
+	if module, ok := d.extra[s]; ok {
+		return module, nil
+	}
+	v, err := tryCall("createShaderModule", func() js.Value {
+		return d.dev.Call("createShaderModule", map[string]any{"label": s.Name, "code": s.WGSL})
+	})
+	if err != nil {
+		return js.Value{}, err
+	}
+	d.extra[s] = v
+	return v, nil
 }
 
 // NewPipeline implements explicit.Device: the bind group layouts come from the bindings of the two
@@ -447,27 +485,13 @@ func (d *Device) NewPipeline(desc explicit.PipelineDesc) (explicit.Pipeline, err
 		return nil, errors.New(tagWebGPUPipelineInvalid, "the shader lacks the entry point",
 			"shader", desc.Shader.Name, "vertex", desc.VertexEntry, "fragment", desc.FragmentEntry)
 	}
-	module, ok := d.modules[desc.Shader.Name]
-	if !ok || !module.Truthy() {
-		// A shader that is not one of the renderer's (a test's, an app's) is compiled when it is first
-		// used, from its WGSL.
-		if desc.Shader.WGSL == "" {
-			return nil, errors.New(tagWebGPUPipelineInvalid, "the shader is not one of the renderer's and has no WGSL", "shader", desc.Shader.Name)
-		}
-		if module, ok = d.extra[desc.Shader]; !ok {
-			v, err := tryCall("createShaderModule", func() js.Value {
-				return d.dev.Call("createShaderModule", map[string]any{"label": desc.Shader.Name, "code": desc.Shader.WGSL})
-			})
-			if err != nil {
-				return nil, err
-			}
-			module = v
-			d.extra[desc.Shader] = v
-		}
+	module, err := d.moduleOf(desc.Shader)
+	if err != nil {
+		return nil, err
 	}
 	plan := planLayouts(vs, fs)
-	p := &pipeline{d: d, desc: desc, bindings: bindingsByNumber(plan)}
-	_, err := tryCall("createRenderPipeline", func() js.Value {
+	p := &pipeline{d: d, desc: desc, bindings: bindingsByNumber(plan), vertex: vs}
+	_, err = tryCall("createRenderPipeline", func() js.Value {
 		var layouts []any
 		for _, g := range plan {
 			entries := make([]any, len(g))
@@ -550,21 +574,28 @@ func (d *Device) NewBindGroup(p explicit.Pipeline, group int, entries []explicit
 	if !ok || vp.d != d {
 		panic(errors.New(tagWebGPUForeignResource, "the resource was not made by this WebGPU device", "resource", "pipeline"))
 	}
+	return d.makeBindGroup(vp.layouts, vp.bindings, group, entries)
+}
+
+// makeBindGroup makes the GPUBindGroup of a group of a pipeline, a render or a compute pipeline, from
+// the layouts and the bindings it was made with.
+func (d *Device) makeBindGroup(layouts []js.Value, bindings []map[int]bindingPlan, group int, entries []explicit.Binding) (explicit.BindGroup, error) {
 	if err := d.usable(); err != nil {
 		return nil, err
 	}
-	if group < 0 || group >= len(vp.layouts) {
-		return nil, errors.New(tagWebGPUBindGroupInvalid, "the pipeline has no such bind group", "group", group, "groups", len(vp.layouts))
+	if group < 0 || group >= len(layouts) {
+		return nil, errors.New(tagWebGPUBindGroupInvalid, "the pipeline has no such bind group", "group", group, "groups", len(layouts))
 	}
 	resources := make([]any, 0, len(entries))
 	for _, e := range entries {
-		plan, ok := vp.bindings[group][e.Binding]
+		plan, ok := bindings[group][e.Binding]
 		if !ok {
 			return nil, errors.New(tagWebGPUBindGroupInvalid, "the shader has no such binding", "group", group, "binding", e.Binding)
 		}
+		d.limits.CheckBinding(plan.shaderBinding(), e)
 		var resource any
 		switch plan.Kind {
-		case explicit.BindingUniformBuffer:
+		case explicit.BindingUniformBuffer, explicit.BindingStorageBufferReadOnly, explicit.BindingStorageBuffer:
 			b, ok := e.Buffer.(*buffer)
 			if !ok || b.d != d {
 				panic(errors.New(tagWebGPUForeignResource, "the resource was not made by this WebGPU device", "resource", "buffer"))
@@ -584,6 +615,20 @@ func (d *Device) NewBindGroup(p explicit.Pipeline, group int, entries []explicit
 					"group", group, "binding", e.Binding, "kind", int(t.desc.Kind), "dimension", int(plan.Dimension), "format", int(t.desc.Format), "sample", int(plan.Sample))
 			}
 			resource = t.view
+		case explicit.BindingStorageTexture:
+			t, ok := e.Texture.(*texture)
+			if !ok || t.d != d {
+				panic(errors.New(tagWebGPUForeignResource, "the resource was not made by this WebGPU device", "resource", "texture"))
+			}
+			if t.desc.Kind.Dimension() != plan.Dimension {
+				return nil, errors.New(tagWebGPUTextureBindingMismatch, "the texture is not the dimension that the shader declares",
+					"group", group, "binding", e.Binding, "kind", int(t.desc.Kind), "dimension", int(plan.Dimension))
+			}
+			// A storage texture is one mip level: the texture's own view has all of them.
+			if t.desc.MipLevels > 1 {
+				t = t.Level(0).(*texture)
+			}
+			resource = t.view
 		case explicit.BindingSampler:
 			s, ok := e.Sampler.(*sampler)
 			if !ok || s.d != d {
@@ -594,7 +639,7 @@ func (d *Device) NewBindGroup(p explicit.Pipeline, group int, entries []explicit
 		resources = append(resources, map[string]any{"binding": e.Binding, "resource": resource})
 	}
 	v, err := tryCall("createBindGroup", func() js.Value {
-		return d.dev.Call("createBindGroup", map[string]any{"layout": vp.layouts[group], "entries": resources})
+		return d.dev.Call("createBindGroup", map[string]any{"layout": layouts[group], "entries": resources})
 	})
 	if err != nil {
 		return nil, err
@@ -621,3 +666,9 @@ const (
 	tagWebGPUTextureInvalid         = "WebGPUTextureInvalid"
 	tagWebGPUWriteOutOfRange        = "WebGPUWriteOutOfRange"
 )
+
+// shaderBinding is the binding of the shader that the plan was made from, as far as the checks of a
+// bind group entry need it.
+func (b bindingPlan) shaderBinding() explicit.ShaderBinding {
+	return explicit.ShaderBinding{Binding: b.Binding, Kind: b.Kind, Dimension: b.Dimension, Sample: b.Sample, StorageFormat: b.StorageFormat}
+}

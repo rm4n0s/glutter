@@ -49,6 +49,26 @@ func TestPlanLayouts(t *testing.T) {
 	}
 }
 
+func TestPlanStagesOfAComputeEntry(t *testing.T) {
+	entry := entryOf(
+		explicit.ShaderBinding{Group: 0, Binding: 0, Kind: explicit.BindingUniformBuffer},
+		explicit.ShaderBinding{Group: 0, Binding: 1, Kind: explicit.BindingStorageBufferReadOnly},
+		explicit.ShaderBinding{Group: 0, Binding: 2, Kind: explicit.BindingStorageBuffer},
+		explicit.ShaderBinding{Group: 1, Binding: 0, Kind: explicit.BindingStorageTexture, StorageFormat: explicit.TextureFormatRGBA8Unorm, Dimension: explicit.TextureDim2DArray},
+	)
+	want := [][]bindingPlan{
+		{
+			{Binding: 0, Kind: explicit.BindingUniformBuffer, Visibility: shaderCompute},
+			{Binding: 1, Kind: explicit.BindingStorageBufferReadOnly, Visibility: shaderCompute},
+			{Binding: 2, Kind: explicit.BindingStorageBuffer, Visibility: shaderCompute},
+		},
+		{{Binding: 0, Kind: explicit.BindingStorageTexture, Visibility: shaderCompute, StorageFormat: explicit.TextureFormatRGBA8Unorm, Dimension: explicit.TextureDim2DArray}},
+	}
+	if got := planStages(stagedEntry{entry, shaderCompute}); !reflect.DeepEqual(got, want) {
+		t.Errorf("got  %+v\nwant %+v", got, want)
+	}
+}
+
 // TestPlanLayoutsOfTheGeneratedShaders plans every pipeline of the renderer's shaders: each group
 // of the plan lists the bindings of the entry points, and a uniform is read by the stage that the
 // shader says. The renderer's own use of them is in the browser tests.

@@ -171,7 +171,7 @@ func TestWinePipelineErrors(t *testing.T) {
 		{"a shader without HLSL", explicit.PipelineDesc{Shader: sh(nil, nil, ""), VertexEntry: "vs_main", FragmentEntry: "fs_main", Target: rgba}, tagD3D12PipelineInvalid, "Device.NewPipeline.D3D12PipelineInvalid"},
 		{"an entry point the shader lacks", explicit.PipelineDesc{Shader: explicit.ShaderBlit, VertexEntry: "vs_main", FragmentEntry: "fs_other", Target: rgba}, tagD3D12PipelineInvalid, "Device.NewPipeline.D3D12PipelineInvalid"},
 		{"no target format", explicit.PipelineDesc{Shader: explicit.ShaderBlit, VertexEntry: "vs_main", FragmentEntry: "fs_main"}, tagD3D12PipelineInvalid, "Device.NewPipeline.D3D12PipelineInvalid"},
-		{"a binding of two kinds", explicit.PipelineDesc{Shader: sh([]explicit.ShaderBinding{u}, []explicit.ShaderBinding{tx}, "x"), VertexEntry: "vs_main", FragmentEntry: "fs_main", Target: rgba}, tagD3D12PipelineInvalid, "Device.NewPipeline->planRoot.D3D12PipelineInvalid"},
+		{"a binding of two kinds", explicit.PipelineDesc{Shader: sh([]explicit.ShaderBinding{u}, []explicit.ShaderBinding{tx}, "x"), VertexEntry: "vs_main", FragmentEntry: "fs_main", Target: rgba}, tagD3D12PipelineInvalid, "Device.NewPipeline->planRoot->planRootOf.D3D12PipelineInvalid"},
 		{"HLSL that does not compile", explicit.PipelineDesc{Shader: sh(nil, nil, "this is not HLSL"), VertexEntry: "vs_main", FragmentEntry: "fs_main", Target: rgba}, TagD3D12ShaderCompileFailed, "Device.NewPipeline->Device.bytecode->Compiler.Compile.D3D12ShaderCompileFailed"},
 	}
 	for _, tt := range tests {

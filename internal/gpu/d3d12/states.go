@@ -9,7 +9,7 @@ import "github.com/rm4n0s/errors"
 // transitions into one ResourceBarrier.
 type resState uint32
 
-// The states of a texture.
+// The states of a texture or a buffer.
 const (
 	stateCommon              resState = resState(resourceStateCommon)
 	stateRenderTarget        resState = resState(resourceStateRenderTarget)
@@ -19,6 +19,14 @@ const (
 	stateDepthWrite          resState = resState(resourceStateDepthWrite)
 	stateResolveSource       resState = resState(resourceStateResolveSource)
 	stateResolveDest         resState = resState(resourceStateResolveDest)
+	// The states of step 30.2: a storage resource a shader writes, a buffer or a texture a shader of any
+	// stage reads (a storage buffer: the two shader resource states together), the arguments of an
+	// indirect call, and the buffers that the input assembler and the constant buffer views read.
+	stateUnorderedAccess resState = resState(resourceStateUnorderedAccess)
+	stateShaderResource  resState = resState(resourceStateNonPixelShaderRS | resourceStatePixelShaderRS)
+	stateIndirectArg     resState = resState(resourceStateIndirectArgument)
+	stateVertexConstant  resState = resState(resourceStateVertexConstant)
+	stateIndexBuffer     resState = resState(resourceStateIndexBuffer)
 )
 
 // String names a state for the messages of an error.
@@ -40,6 +48,16 @@ func (s resState) String() string {
 		return "RESOLVE_SOURCE"
 	case stateResolveDest:
 		return "RESOLVE_DEST"
+	case stateUnorderedAccess:
+		return "UNORDERED_ACCESS"
+	case stateShaderResource:
+		return "SHADER_RESOURCE"
+	case stateIndirectArg:
+		return "INDIRECT_ARGUMENT"
+	case stateVertexConstant:
+		return "VERTEX_AND_CONSTANT_BUFFER"
+	case stateIndexBuffer:
+		return "INDEX_BUFFER"
 	}
 	return "unknown state"
 }

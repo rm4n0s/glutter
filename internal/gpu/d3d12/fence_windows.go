@@ -190,7 +190,7 @@ func (d *Device) commandSlot() int {
 	switch {
 	case d.open == nil:
 		return d.next
-	case d.open.pass == nil:
+	case !d.open.inPass():
 		return d.open.slot
 	}
 	return (d.open.slot + 1) % framesInFlight
@@ -206,7 +206,7 @@ func (d *Device) retireWithNextFrame(fn func()) {
 // inCommands runs fn with the command list: the frame being recorded when it is outside a pass, else
 // the next frame's, at its start.
 func (d *Device) inCommands(fn func(list win32.Object)) {
-	if d.open != nil && d.open.pass == nil {
+	if d.open != nil && !d.open.inPass() {
 		fn(d.slots[d.open.slot].list)
 		return
 	}

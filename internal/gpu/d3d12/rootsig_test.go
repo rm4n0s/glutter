@@ -221,8 +221,8 @@ func TestPlanErrors(t *testing.T) {
 			if !ok {
 				t.Fatalf("expected *errors.Error, got %T (%v)", err, err)
 			}
-			if appErr.Tag != tagD3D12PipelineInvalid || !appErr.HasRoute("planRoot.D3D12PipelineInvalid") {
-				t.Errorf("got %s via %s, want D3D12PipelineInvalid via planRoot", appErr.Tag, appErr.Route())
+			if appErr.Tag != tagD3D12PipelineInvalid || !appErr.HasRoute("planRoot->planRootOf.D3D12PipelineInvalid") {
+				t.Errorf("got %s via %s, want D3D12PipelineInvalid via planRoot->planRootOf", appErr.Tag, appErr.Route())
 			}
 		})
 	}
@@ -237,5 +237,93 @@ func TestSamePlanForTheSameEntryTwice(t *testing.T) {
 	}
 	if len(plan.Params) != 1 || plan.Dwords != 2 {
 		t.Errorf("plan = %+v", plan)
+	}
+}
+
+// TestPlanOfAComputeEntry plans the bindings of the compute shader of the device tests by hand: the
+// uniform, a read-only and a writable storage buffer in group 0, and a storage texture and a writable
+// buffer in group 1.
+func TestPlanOfAComputeEntry(t *testing.T) {
+	cs := explicit.EntryPoint{Name: "cs", Stage: explicit.ShaderStageCompute, Bindings: []explicit.ShaderBinding{
+		{Name: "params", Group: 0, Binding: 0, Kind: explicit.BindingUniformBuffer},
+		{Name: "input", Group: 0, Binding: 1, Kind: explicit.BindingStorageBufferReadOnly},
+		{Name: "output", Group: 0, Binding: 2, Kind: explicit.BindingStorageBuffer},
+		{Name: "img", Group: 1, Binding: 0, Kind: explicit.BindingStorageTexture},
+		{Name: "args", Group: 1, Binding: 1, Kind: explicit.BindingStorageBuffer},
+	}}
+	plan, err := planRootCompute(cs, explicit.DefaultLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []rootParam{
+		{Kind: rootCBV, Group: 0, Binding: 0},
+		{Kind: rootSRV, Group: 0, Binding: 1},
+		{Kind: rootUAV, Group: 0, Binding: 2},
+		{Kind: rootUAV, Group: 1, Binding: 1},
+		{Kind: rootUAVTable, Group: 1, Bindings: []int{0}},
+	}
+	if !reflect.DeepEqual(plan.Params, want) {
+		t.Errorf("parameters\n got %+v\nwant %+v", plan.Params, want)
+	}
+	if plan.Dwords != 2*4+1 || !plan.Compute {
+		t.Errorf("Dwords = %d, Compute = %v, want 9 and true", plan.Dwords, plan.Compute)
+	}
+	g0, g1 := plan.Groups[0], plan.Groups[1]
+	if !reflect.DeepEqual(g0.StorageRO, []int{1}) || !reflect.DeepEqual(g0.StorageROParams, []int{1}) ||
+		!reflect.DeepEqual(g0.StorageRW, []int{2}) || !reflect.DeepEqual(g0.StorageRWParams, []int{2}) || g0.StorageTexParam != -1 {
+		t.Errorf("group 0 = %+v", g0)
+	}
+	if !reflect.DeepEqual(g1.StorageRW, []int{1}) || !reflect.DeepEqual(g1.StorageRWParams, []int{3}) ||
+		!reflect.DeepEqual(g1.StorageTextures, []int{0}) || g1.StorageTexParam != 4 {
+		t.Errorf("group 1 = %+v", g1)
+	}
+	if got, want := plan.Key(), "c:b0///r1/w2/|////w1/u0"; got != want {
+		t.Errorf("Key = %q, want %q", got, want)
+	}
+	graphics, err := planRoot(explicit.EntryPoint{Name: "vs"}, explicit.EntryPoint{Name: "fs"}, explicit.DefaultLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if graphics.Key() == plan.Key() || graphics.Compute {
+		t.Errorf("a graphics plan and a compute plan have the key %q and %q", graphics.Key(), plan.Key())
+	}
+
+	desc := plan.description()
+	if desc.Flags&rootFlagAllowInputLayout != 0 || desc.Flags&rootFlagDenyVertex == 0 || desc.Flags&rootFlagDenyPixel == 0 {
+		t.Errorf("the flags of a compute root signature are %#x", desc.Flags)
+	}
+	for i, wantType := range []uint32{rootParameterCBV, rootParameterSRV, rootParameterUAV, rootParameterUAV, rootParameterTable} {
+		if got := desc.Params[i].ParameterType; got != wantType {
+			t.Errorf("parameter %d has the type %d, want %d", i, got, wantType)
+		}
+	}
+	if got := desc.Params[1].Union[0]; got != 1|uint64(0)<<32 {
+		t.Errorf("the root SRV names %#x, want t1 in space 0", got)
+	}
+	if got := desc.Params[3].Union[0]; got != 1|uint64(1)<<32 {
+		t.Errorf("the root UAV names %#x, want u1 in space 1", got)
+	}
+	if r := desc.Ranges[4]; len(r) != 1 || r[0].RangeType != descriptorRangeUAV || r[0].BaseShaderRegister != 0 || r[0].RegisterSpace != 1 {
+		t.Errorf("the ranges of the storage texture table are %+v", r)
+	}
+}
+
+func TestOnlyComputeWritesStorage(t *testing.T) {
+	for _, kind := range []explicit.BindingKind{explicit.BindingStorageBuffer, explicit.BindingStorageTexture} {
+		fs := explicit.EntryPoint{Name: "fs", Bindings: []explicit.ShaderBinding{{Name: "x", Group: 0, Binding: 0, Kind: kind}}}
+		_, err := planRoot(explicit.EntryPoint{Name: "vs"}, fs, explicit.DefaultLimits())
+		appErr, ok := errors.FromError(err)
+		if !ok {
+			t.Fatalf("%v: expected *errors.Error, got %T (%v)", kind, err, err)
+		}
+		if appErr.Tag != tagD3D12PipelineInvalid || !appErr.HasRoute("planRoot->planRootOf.D3D12PipelineInvalid") {
+			t.Errorf("%v: got %s via %s", kind, appErr.Tag, appErr.Route())
+		}
+	}
+	// A read-only storage buffer is read by a draw.
+	fs := explicit.EntryPoint{Name: "fs", Bindings: []explicit.ShaderBinding{{Name: "x", Group: 0, Binding: 0, Kind: explicit.BindingStorageBufferReadOnly}}}
+	plan, err := planRoot(explicit.EntryPoint{Name: "vs"}, fs, explicit.DefaultLimits())
+	if err != nil || len(plan.Params) != 1 || plan.Params[0].Kind != rootSRV {
+		t.Errorf("a draw reads a storage buffer: %+v, %v", plan, err)
 	}
 }

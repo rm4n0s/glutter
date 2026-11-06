@@ -3,6 +3,7 @@
 package d3d12
 
 import (
+	"strconv"
 	"unsafe"
 
 	"github.com/rm4n0s/errors"
@@ -26,8 +27,23 @@ type bindGroup struct {
 	srvSrc   []uintptr  // the CPU handles the table is copied from; 0 for a null descriptor
 	smpSrc   []uintptr  // the same for the samplers; 0 for the default sampler
 
+	// The storage resources (step 30.2): the address of each read-only and each writable storage buffer, in
+	// binding order, and the storage textures with the CPU handles of their unordered access views. The
+	// descriptors of the storage textures follow those of the sampled textures in the heap, in one table.
+	roAddr, rwAddr []uint64
+	uavTex         []*texture
+	uavSrc         []uintptr
+	// uses are the buffers of the group with the state that SetBindGroup puts them in.
+	uses []bufferUse
+
 	// vBlock, vOffset and sBlock, sOffset are where the tables are in the slot's heaps (-1 for none).
 	vBlock, vOffset, sBlock, sOffset int
+}
+
+// bufferUse is a buffer a bind group names and the state its binding needs.
+type bufferUse struct {
+	b     *buffer
+	state resState
 }
 
 var _ explicit.BindGroup = (*bindGroup)(nil)
@@ -37,7 +53,9 @@ var _ explicit.BindGroup = (*bindGroup)(nil)
 func (b *bindGroup) Destroy() {}
 
 // hasTables says whether the group has a descriptor table.
-func (b *bindGroup) hasTables() bool { return len(b.srvSrc) > 0 || len(b.smpSrc) > 0 }
+func (b *bindGroup) hasTables() bool {
+	return len(b.srvSrc) > 0 || len(b.uavSrc) > 0 || len(b.smpSrc) > 0
+}
 
 // NewBindGroup implements explicit.Device: the descriptors of the textures and the samplers are copied
 // (CopyDescriptorsSimple) into the next block of the shader-visible heaps of the frame that is being
@@ -52,7 +70,31 @@ func (d *Device) NewBindGroup(p explicit.Pipeline, group int, entries []explicit
 	if !ok || pl.d != d {
 		panic(errors.New(tagD3D12ForeignResource, "the resource was not made by this Direct3D 12 device", "resource", "pipeline"))
 	}
-	plan := pl.root.plan
+	return d.makeBindGroup(pl.root, pipelineBindings(pl.desc.Shader, pl.desc.FragmentEntry, pl.desc.VertexEntry), group, entries)
+}
+
+// pipelineBindings finds the declaration of a binding in the named entry points of a shader.
+func pipelineBindings(sh *explicit.Shader, entries ...string) func(group, binding int) (explicit.ShaderBinding, bool) {
+	return func(group, binding int) (explicit.ShaderBinding, bool) {
+		for _, name := range entries {
+			entry, ok := sh.Entry(name)
+			if !ok {
+				continue
+			}
+			for _, b := range entry.Bindings {
+				if b.Group == group && b.Binding == binding {
+					return b, true
+				}
+			}
+		}
+		return explicit.ShaderBinding{}, false
+	}
+}
+
+// makeBindGroup makes the group of a pipeline, a graphics or a compute pipeline, from its root signature
+// and the declarations of the bindings in its entry points.
+func (d *Device) makeBindGroup(root *rootSig, declared func(group, binding int) (explicit.ShaderBinding, bool), group int, entries []explicit.Binding) (explicit.BindGroup, error) {
+	plan := root.plan
 	if group < 0 || group >= len(plan.Groups) {
 		return nil, errors.New(tagD3D12BindGroupInvalid, "the pipeline has no such bind group", "group", group, "groups", len(plan.Groups))
 	}
@@ -62,23 +104,57 @@ func (d *Device) NewBindGroup(p explicit.Pipeline, group int, entries []explicit
 		if !containsBinding(gp, e.Binding) {
 			return nil, errors.New(tagD3D12BindGroupInvalid, "the shader has no such binding", "group", group, "binding", e.Binding)
 		}
+		// An entry without its resource is an error that this device returns (D3D12BindGroupInvalid, below),
+		// as it always did; the other breaks of a rule are the debug panics of CheckBinding.
+		if sb, ok := declared(group, e.Binding); ok && (e.Buffer != nil || e.Texture != nil || e.Sampler != nil) {
+			d.limits.CheckBinding(sb, e)
+		}
 		byBinding[e.Binding] = e
 	}
 	bg := &bindGroup{d: d, group: group, shape: gp.Shape, vBlock: -1, sBlock: -1}
+	ownBuffer := func(e explicit.Binding) *buffer {
+		b, ok := e.Buffer.(*buffer)
+		if !ok || b.d != d {
+			panic(errors.New(tagD3D12ForeignResource, "the resource was not made by this Direct3D 12 device", "resource", "buffer"))
+		}
+		return b
+	}
 	for _, n := range gp.Uniforms {
 		e, ok := byBinding[n]
 		if !ok || e.Buffer == nil {
 			return nil, errors.New(tagD3D12BindGroupInvalid, "a uniform binding has no buffer", "group", group, "binding", n)
 		}
-		b, ok := e.Buffer.(*buffer)
-		if !ok || b.d != d {
-			panic(errors.New(tagD3D12ForeignResource, "the resource was not made by this Direct3D 12 device", "resource", "buffer"))
-		}
+		b := ownBuffer(e)
 		if e.Offset < 0 || e.Offset > b.size || e.Offset%d.limits.UniformOffsetAlignment != 0 {
 			return nil, errors.New(tagD3D12BindGroupInvalid, "the offset of a uniform binding must be inside the buffer and a multiple of 256",
 				"group", group, "binding", n, "offset", e.Offset, "size", b.size)
 		}
 		bg.cbv = append(bg.cbv, b.va+uint64(e.Offset))
+		bg.uses = append(bg.uses, bufferUse{b, stateVertexConstant})
+	}
+	storage := func(list []int, state resState) ([]uint64, error) {
+		var addrs []uint64
+		for _, n := range list {
+			e, ok := byBinding[n]
+			if !ok || e.Buffer == nil {
+				return nil, errors.New(tagD3D12BindGroupInvalid, "a storage binding has no buffer", "group", group, "binding", n)
+			}
+			b := ownBuffer(e)
+			if e.Offset < 0 || e.Offset >= max(b.size, 1) || e.Offset%4 != 0 {
+				return nil, errors.New(tagD3D12BindGroupInvalid, "the offset of a storage binding must be inside the buffer and a multiple of 4",
+					"group", group, "binding", n, "offset", e.Offset, "size", b.size)
+			}
+			addrs = append(addrs, b.va+uint64(e.Offset))
+			bg.uses = append(bg.uses, bufferUse{b, state})
+		}
+		return addrs, nil
+	}
+	var err error
+	if bg.roAddr, err = storage(gp.StorageRO, stateShaderResource); err != nil {
+		return nil, err
+	}
+	if bg.rwAddr, err = storage(gp.StorageRW, stateUnorderedAccess); err != nil {
+		return nil, err
 	}
 	for _, n := range gp.Textures {
 		var src uintptr
@@ -92,7 +168,7 @@ func (d *Device) NewBindGroup(p explicit.Pipeline, group int, entries []explicit
 				return nil, errors.New(tagD3D12BindGroupInvalid, "the texture is not TextureSampled, or is a layer of an array or a cube, which Direct3D 12 cannot sample as a 2D texture",
 					"group", group, "binding", n)
 			}
-			if sb, ok := textureBinding(pl, group, n); ok && (tex.desc.Kind.Dimension() != sb.Dimension || !tex.desc.Format.SampleType(d.features).Fits(sb.Sample)) {
+			if sb, ok := declared(group, n); ok && (tex.desc.Kind.Dimension() != sb.Dimension || !tex.desc.Format.SampleType(d.features).Fits(sb.Sample)) {
 				return nil, errors.New(tagD3D12TextureBindingMismatch, "the texture is not the dimension or sample type that the shader declares",
 					"group", group, "binding", n, "kind", int(tex.desc.Kind), "dimension", int(sb.Dimension), "format", int(tex.desc.Format), "sample", int(sb.Sample))
 			}
@@ -100,6 +176,28 @@ func (d *Device) NewBindGroup(p explicit.Pipeline, group int, entries []explicit
 		}
 		bg.textures = append(bg.textures, tex)
 		bg.srvSrc = append(bg.srvSrc, src)
+	}
+	for _, n := range gp.StorageTextures {
+		e, ok := byBinding[n]
+		if !ok || e.Texture == nil {
+			return nil, errors.New(tagD3D12BindGroupInvalid, "a storage texture binding has no texture", "group", group, "binding", n)
+		}
+		tex := d.own2texture(e.Texture)
+		if sb, ok := declared(group, n); ok && tex.desc.Kind.Dimension() != sb.Dimension {
+			return nil, errors.New(tagD3D12TextureBindingMismatch, "the texture is not the dimension that the shader declares",
+				"group", group, "binding", n, "kind", int(tex.desc.Kind), "dimension", int(sb.Dimension))
+		}
+		// A storage image is one mip level: the texture's own view has the first, so a texture with levels
+		// is bound at level 0 whatever view of it was named.
+		if tex.desc.MipLevels > 1 && tex.root == tex {
+			tex = tex.Level(0).(*texture)
+		}
+		if tex.uav < 0 {
+			return nil, errors.New(tagD3D12BindGroupInvalid, "the texture is not TextureStorage, or is a layer of an array or a cube, which Direct3D 12 cannot bind as a storage texture",
+				"group", group, "binding", n)
+		}
+		bg.uavTex = append(bg.uavTex, tex)
+		bg.uavSrc = append(bg.uavSrc, d.cpu[1].handle(tex.uav))
 	}
 	for _, n := range gp.Samplers {
 		var src uintptr
@@ -130,7 +228,7 @@ func (d *Device) NewBindGroup(p explicit.Pipeline, group int, entries []explicit
 
 // containsBinding says whether the group has a binding number, of any kind.
 func containsBinding(gp groupPlan, n int) bool {
-	for _, list := range [][]int{gp.Uniforms, gp.Textures, gp.Samplers} {
+	for _, list := range [][]int{gp.Uniforms, gp.Textures, gp.Samplers, gp.StorageRO, gp.StorageRW, gp.StorageTextures} {
 		for _, b := range list {
 			if b == n {
 				return true
@@ -148,8 +246,10 @@ func containsBinding(gp groupPlan, n int) bool {
 func (b *bindGroup) place() error {
 	d := b.d
 	s := &d.slots[b.slot]
-	if n := len(b.srvSrc); n > 0 {
-		key := tableKey(b.srvSrc)
+	// The table of the sampled textures and the table of the storage textures are one run of the heap,
+	// the first followed by the second, so that both are in the same block.
+	if n := len(b.srvSrc) + len(b.uavSrc); n > 0 {
+		key := tableKey(append(append([]uintptr(nil), b.srvSrc...), b.uavSrc...)) + "/" + strconv.Itoa(len(b.srvSrc))
 		block, off, ok := s.views.alloc.lookup(key)
 		if !ok {
 			var err error
@@ -163,6 +263,9 @@ func (b *bindGroup) place() error {
 				} else {
 					d.dev.Call(deviceCopyDescriptorsSimple, 1, dst, src, uintptr(descriptorHeapSRV))
 				}
+			}
+			for i, src := range b.uavSrc {
+				d.dev.Call(deviceCopyDescriptorsSimple, 1, s.views.cpuHandle(block, off+len(b.srvSrc)+i), src, uintptr(descriptorHeapSRV))
 			}
 			s.views.alloc.remember(key, block, off)
 		}
@@ -200,22 +303,6 @@ func (d *Device) createNullView(dst uintptr) {
 		Texture2D: d3d12Tex2DSRV{MipLevels: 1},
 	}
 	d.dev.Call(deviceCreateShaderResourceView, 0, uintptr(unsafe.Pointer(&srv)), dst)
-}
-
-// textureBinding finds the declaration of the texture at the binding in the entry points of the pipeline.
-func textureBinding(p *pipeline, group, binding int) (explicit.ShaderBinding, bool) {
-	for _, name := range []string{p.desc.FragmentEntry, p.desc.VertexEntry} {
-		entry, ok := p.desc.Shader.Entry(name)
-		if !ok {
-			continue
-		}
-		for _, b := range entry.Bindings {
-			if b.Group == group && b.Binding == binding && b.Kind == explicit.BindingSampledTexture {
-				return b, true
-			}
-		}
-	}
-	return explicit.ShaderBinding{}, false
 }
 
 // The tags of the errors that this file makes (rm4n0s/errors, R5).

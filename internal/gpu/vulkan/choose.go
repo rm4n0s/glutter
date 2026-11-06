@@ -50,10 +50,22 @@ type physicalInfo struct {
 	// IndependentBlend is the feature of that name: each color attachment of a pass has its own
 	// blend state and write mask.
 	IndependentBlend bool
+	// DrawIndirectFirstInstance and FullDrawIndexUint32 are the features of those names: an indirect
+	// draw may have a first instance, and 32 bit indices use the whole range. The device enables them
+	// when it has them (step 30.2).
+	DrawIndirectFirstInstance, FullDrawIndexUint32 bool
 	// QueueFlags are the flags of each queue family, by index.
 	QueueFlags []uint32
 	// MaxImageDimension2D is the largest texture.
 	MaxImageDimension2D uint32
+	// TimestampValidBits is timestampValidBits of each queue family, by index: 0 when its queues
+	// cannot write timestamps.
+	TimestampValidBits []uint32
+	// TimestampComputeAndGraphics is the limit of that name: every queue that can draw or compute
+	// writes timestamps.
+	TimestampComputeAndGraphics bool
+	// TimestampPeriod is the time of one tick of a timestamp, in nanoseconds.
+	TimestampPeriod float32
 }
 
 // chooseOpts are the rules of the choice.

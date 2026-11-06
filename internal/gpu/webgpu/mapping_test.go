@@ -17,6 +17,10 @@ func TestUsageFlags(t *testing.T) {
 		{"index", explicit.BufferIndex, bufferCopyDst | bufferIndex},
 		{"uniform", explicit.BufferUniform, bufferCopyDst | bufferUniform},
 		{"vertex and uniform", explicit.BufferVertex | explicit.BufferUniform, bufferCopyDst | bufferVertex | bufferUniform},
+		{"storage", explicit.BufferStorage, bufferCopyDst | bufferStorage},
+		{"the arguments of an indirect draw that a shader wrote", explicit.BufferStorage | explicit.BufferIndirect, bufferCopyDst | bufferStorage | bufferIndirect},
+		{"a buffer that is copied and read", explicit.BufferCopySource | explicit.BufferCopyDestination, bufferCopyDst | bufferCopySrc},
+		{"the timestamps", explicit.BufferQueryResolve | explicit.BufferCopySource, bufferCopyDst | bufferQueryResolve | bufferCopySrc},
 	}
 	for _, tt := range bufs {
 		if got := bufferUsage(tt.in); got != tt.want {
