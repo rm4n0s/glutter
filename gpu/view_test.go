@@ -1,6 +1,7 @@
 package gpu_test
 
 import (
+	"reflect"
 	"testing"
 	"time"
 
@@ -454,3 +455,31 @@ func TestTheFunctionsOfAfterSubmitDoNotRunWhenTheSubmissionFailed(t *testing.T) 
 type fakeErr string
 
 func (e fakeErr) Error() string { return string(e) }
+
+// TestADeviceLossDisposesTheLostDevicesStateBeforeTheNextInit checks the order of OnInit and OnDispose across a loss: the app's state
+// of the lost device is disposed before the state for the new one is made, and each OnInit has its OnDispose. The renderer opens the
+// new device at once, so the view hears about it before the event loop runs the disposal of the lost one; if that came last, it
+// would dispose the new state and the view would be left with none (step 30.13: a 3D view stayed empty after a loss).
+func TestADeviceLossDisposesTheLostDevicesStateBeforeTheNextInit(t *testing.T) {
+	ts := gluttertest.New(t, gluttertest.Opts{GPU: true})
+	rec := ts.GPUDevice()
+	var events []string
+	o := gpu.ViewOpts{Continuous: true,
+		OnInit:    func(*gpu.Device) { events = append(events, "init") },
+		OnDispose: func() { events = append(events, "dispose") }}
+	paint := func(f *gpu.ViewFrame) { drawNothing(f) }
+	ts.PumpWidget(sized(50, 50, gpu.NewView(paint, o)))
+	for i := 0; i < 3; i++ {
+		rec.Lose()
+		ts.Pump(16 * time.Millisecond)
+		ts.Pump(16 * time.Millisecond)
+	}
+	want := []string{"init", "dispose", "init", "dispose", "init", "dispose", "init"}
+	if !reflect.DeepEqual(events, want) {
+		t.Errorf("after three losses the calls were %v, want %v", events, want)
+	}
+	ts.PumpWidget(NewCenter(NewSizedBox(nil)))
+	if n := len(events); n == 0 || events[n-1] != "dispose" {
+		t.Errorf("the view that left the tree did not dispose the state of its device: %v", events)
+	}
+}

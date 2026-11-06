@@ -222,6 +222,23 @@ func (r *Renderer) Stats() FrameStats { return r.stats }
 // modelView computes the matrix that takes the vertices of an item (relative to its mesh's origin) to the view, in float64 with
 // the eye taken off the translation, and gives it as float32 (D30).
 func modelView(rot *vecmath.Mat4, eye vecmath.Vec3, model *vecmath.Mat4, out *[16]float32) {
+	// Both matrices are affine (the last row is 0, 0, 0, 1) for every item but a degenerate one: the product then needs the three
+	// upper rows only, which is 36 products instead of 64, and the bottom row is known.
+	if rot[3] == 0 && rot[7] == 0 && rot[11] == 0 && rot[15] == 1 && model[3] == 0 && model[7] == 0 && model[11] == 0 && model[15] == 1 {
+		tx, ty, tz := model[12]-eye.X, model[13]-eye.Y, model[14]-eye.Z
+		for c := 0; c < 3; c++ {
+			b0, b1, b2 := model[c*4], model[c*4+1], model[c*4+2]
+			out[c*4] = float32(rot[0]*b0 + rot[4]*b1 + rot[8]*b2)
+			out[c*4+1] = float32(rot[1]*b0 + rot[5]*b1 + rot[9]*b2)
+			out[c*4+2] = float32(rot[2]*b0 + rot[6]*b1 + rot[10]*b2)
+			out[c*4+3] = 0
+		}
+		out[12] = float32(rot[0]*tx + rot[4]*ty + rot[8]*tz + rot[12])
+		out[13] = float32(rot[1]*tx + rot[5]*ty + rot[9]*tz + rot[13])
+		out[14] = float32(rot[2]*tx + rot[6]*ty + rot[10]*tz + rot[14])
+		out[15] = 1
+		return
+	}
 	rel := *model
 	rel[12] -= eye.X
 	rel[13] -= eye.Y
@@ -230,6 +247,33 @@ func modelView(rot *vecmath.Mat4, eye vecmath.Vec3, model *vecmath.Mat4, out *[1
 	for i, v := range m {
 		out[i] = float32(v)
 	}
+}
+
+// frustumHoldsBox says whether the whole box is inside the frustum (all its corners are on the inner side of every plane). An empty
+// box is not.
+func frustumHoldsBox(f *vecmath.Frustum, b vecmath.Box3) bool {
+	if b.IsEmpty() {
+		return false
+	}
+	for i := range f.Planes {
+		pl := &f.Planes[i]
+		for c := 0; c < 8; c++ {
+			corner := vecmath.Vec3{X: b.Min.X, Y: b.Min.Y, Z: b.Min.Z}
+			if c&1 != 0 {
+				corner.X = b.Max.X
+			}
+			if c&2 != 0 {
+				corner.Y = b.Max.Y
+			}
+			if c&4 != 0 {
+				corner.Z = b.Max.Z
+			}
+			if pl.DistanceTo(corner) < 0 {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // ensureCapacity grows the uniform and instance buffers for the frame, and makes the bind groups that go with the uniforms.
@@ -363,12 +407,19 @@ func (r *Renderer) Draw(f *gpu.ViewFrame) {
 	}
 	records := 0
 	var mv [16]float32
+	// A scene that is wholly in view needs no test of its items. The last mesh and material are kept: a batch is many items that
+	// share them.
+	inView := frustumHoldsBox(&frustum, r.scene.Bounds())
+	var lastMesh *Mesh
+	var lastMeshGPU *meshGPU
+	var lastMaterial Material
+	var lastMatGPU *matGPU
 	for _, it := range r.scene.items {
 		if !it.visible || it.layers&r.layers == 0 {
 			r.stats.Hidden++
 			continue
 		}
-		if it.sphere.Radius > 0 && !frustum.IntersectsSphere(it.sphere) {
+		if !inView && it.sphere.Radius > 0 && !frustum.IntersectsSphere(it.sphere) {
 			r.stats.Culled++
 			continue
 		}
@@ -376,7 +427,10 @@ func (r *Renderer) Draw(f *gpu.ViewFrame) {
 		switch it.mesh.data.Primitive {
 		case PrimitiveTriangles:
 			if faces {
-				mesh := r.meshState(it.mesh)
+				if it.mesh != lastMesh {
+					lastMesh, lastMeshGPU = it.mesh, r.meshState(it.mesh)
+				}
+				mesh := lastMeshGPU
 				if mesh.pos == nil {
 					continue
 				}
@@ -388,7 +442,10 @@ func (r *Renderer) Draw(f *gpu.ViewFrame) {
 				if s == nil {
 					continue
 				}
-				mat := r.materialState(material, basePipe)
+				if material != lastMaterial {
+					lastMaterial, lastMatGPU = material, r.materialState(material, basePipe)
+				}
+				mat := lastMatGPU
 				if mat.group == nil {
 					continue
 				}
@@ -397,7 +454,10 @@ func (r *Renderer) Draw(f *gpu.ViewFrame) {
 				pk.noCull = s.doubleSided
 				blend := s.Transparent() && mode != DisplayModeHiddenLine
 				pk.blend = blend
-				d := drawItem{mesh: mesh, mat: mat, pk: pk, mv: mv}
+				// The item is built in its place in the list: it is large, and copying it twice shows in a frame of 10,000.
+				r.items = append(r.items, drawItem{mesh: mesh, mat: mat, pk: pk, mv: mv})
+				index := int32(len(r.items) - 1)
+				d := &r.items[index]
 				if it.selected {
 					d.selected, d.tint = true, tintOf(&style.selection)
 					if style.selection.outline {
@@ -406,8 +466,7 @@ func (r *Renderer) Draw(f *gpu.ViewFrame) {
 				}
 				if blend {
 					d.dist = it.sphere.Center.DistanceSqTo(eye)
-					r.items = append(r.items, d)
-					r.transp = append(r.transp, int32(len(r.items)-1))
+					r.transp = append(r.transp, index)
 				} else {
 					sig := uint64(pk.variant)
 					if pk.noCull {
@@ -417,8 +476,7 @@ func (r *Renderer) Draw(f *gpu.ViewFrame) {
 						sig |= 16
 					}
 					d.key = sig<<56 | uint64(mat.id&0xFFFFFF)<<32 | uint64(mesh.id)
-					r.items = append(r.items, d)
-					r.opaque = append(r.opaque, int32(len(r.items)-1))
+					r.opaque = append(r.opaque, index)
 				}
 				r.stats.Items++
 				if planes > 0 && mode != DisplayModeHiddenLine {
@@ -487,7 +545,10 @@ func (r *Renderer) Draw(f *gpu.ViewFrame) {
 	}
 
 	// The instances: the opaque ones sorted by batch, then the transparent ones back to front.
-	slices.SortFunc(r.opaque, func(a, b int32) int { return cmp.Compare(r.items[a].key, r.items[b].key) })
+	byKey := func(a, b int32) int { return cmp.Compare(r.items[a].key, r.items[b].key) }
+	if !slices.IsSortedFunc(r.opaque, byKey) { // a scene of one batch is sorted already
+		slices.SortFunc(r.opaque, byKey)
+	}
 	slices.SortFunc(r.transp, func(a, b int32) int { return cmp.Compare(r.items[b].dist, r.items[a].dist) })
 	n := len(r.opaque) + len(r.transp)
 	if need := n * instanceStride; len(r.ibytes) < need {
@@ -633,6 +694,9 @@ func (r *Renderer) Draw(f *gpu.ViewFrame) {
 			}
 			curMat, curMesh, curPipe = nil, nil, nil
 		}
+		var lastKey pipeKey
+		var lastKeyPipe *gpu.RenderPipeline
+		keyKnown := false
 		for i := 0; i < len(list); {
 			d := &r.items[list[i]]
 			count := 1
@@ -640,7 +704,10 @@ func (r *Renderer) Draw(f *gpu.ViewFrame) {
 			for j := i + 1; j < len(list) && !d.pk.blend && r.items[list[j]].key == d.key; j++ {
 				count++
 			}
-			pipe := r.pipeline(d.pk)
+			if !keyKnown || d.pk != lastKey {
+				lastKey, lastKeyPipe, keyKnown = d.pk, r.pipeline(d.pk), true
+			}
+			pipe := lastKeyPipe
 			if pipe == nil {
 				i += count
 				continue

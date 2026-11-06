@@ -16,7 +16,9 @@ func (d *Device) NewComputePipeline(desc explicit.ComputePipelineDesc) (explicit
 	if desc.Shader != nil {
 		name = desc.Shader.Name
 	}
-	d.record("NewComputePipeline", "shader=%s entry=%s", name, desc.Entry)
+	if !d.Quiet {
+		d.record("NewComputePipeline", "shader=%s entry=%s", name, desc.Entry)
+	}
 	d.limits.CheckComputePipeline(desc)
 	if err := d.fail(); err != nil {
 		return nil, err
@@ -27,7 +29,9 @@ func (d *Device) NewComputePipeline(desc explicit.ComputePipelineDesc) (explicit
 
 // NewComputeBindGroup implements explicit.Device.
 func (d *Device) NewComputeBindGroup(p explicit.ComputePipeline, group int, entries []explicit.Binding) (explicit.BindGroup, error) {
-	d.record("NewComputeBindGroup", "group=%d entries=%d", group, len(entries))
+	if !d.Quiet {
+		d.record("NewComputeBindGroup", "group=%d entries=%d", group, len(entries))
+	}
 	d.limits.CheckBindGroup(group, entries)
 	if cp, ok := p.(*computePipeline); ok && cp.desc.Shader != nil {
 		d.checkBindings(group, entries, cp.desc.Shader, cp.desc.Entry, "")
@@ -64,7 +68,9 @@ func (d *Device) checkBindings(group int, entries []explicit.Binding, sh *explic
 // NewQuerySet implements explicit.Device. It fails with GPUQueryUnsupported when Supported.TimestampQuery is
 // false.
 func (d *Device) NewQuerySet(count int) (explicit.QuerySet, error) {
-	d.record("NewQuerySet", "count=%d", count)
+	if !d.Quiet {
+		d.record("NewQuerySet", "count=%d", count)
+	}
 	if !d.Supported.TimestampQuery {
 		return nil, errors.New(tagGPUQueryUnsupported, "the device has no timestamp queries", "count", count)
 	}
@@ -98,7 +104,9 @@ func (q *querySet) Destroy()   { q.d.record("DestroyQuerySet", "") }
 
 // BeginComputePass implements explicit.Encoder.
 func (e *encoder) BeginComputePass(desc explicit.ComputePassDesc) explicit.ComputePass {
-	e.d.record("BeginComputePass", "timestamps=%t", desc.Timestamps != nil)
+	if !e.d.Quiet {
+		e.d.record("BeginComputePass", "timestamps=%t", desc.Timestamps != nil)
+	}
 	if (e.pass != nil && !e.pass.ended) || (e.cpass != nil && !e.cpass.ended) {
 		panic(errors.New(tagFakePassNotEnded, "BeginComputePass was called before the previous pass ended"))
 	}
@@ -109,7 +117,9 @@ func (e *encoder) BeginComputePass(desc explicit.ComputePassDesc) explicit.Compu
 
 // CopyBuffer implements explicit.Encoder. It copies the bytes the fake buffers keep.
 func (e *encoder) CopyBuffer(src explicit.Buffer, srcOffset int, dst explicit.Buffer, dstOffset, size int) {
-	e.d.record("CopyBuffer", "src_offset=%d dst_offset=%d size=%d", srcOffset, dstOffset, size)
+	if !e.d.Quiet {
+		e.d.record("CopyBuffer", "src_offset=%d dst_offset=%d size=%d", srcOffset, dstOffset, size)
+	}
 	e.d.limits.CheckCopyBuffer(src, srcOffset, dst, dstOffset, size)
 	s, ok1 := src.(*buffer)
 	t, ok2 := dst.(*buffer)
@@ -120,20 +130,26 @@ func (e *encoder) CopyBuffer(src explicit.Buffer, srcOffset int, dst explicit.Bu
 
 // CopyBufferToTexture implements explicit.Encoder. It records the call and checks it.
 func (e *encoder) CopyBufferToTexture(src explicit.Buffer, layout explicit.BufferLayout, dst explicit.Texture, region explicit.TextureRegion) {
-	e.d.record("CopyBufferToTexture", "layout=%+v region=%+v", layout, region)
+	if !e.d.Quiet {
+		e.d.record("CopyBufferToTexture", "layout=%+v region=%+v", layout, region)
+	}
 	e.d.limits.CheckBufferTexture(src, layout, dst.Desc(), region, true)
 }
 
 // CopyTextureToBuffer implements explicit.Encoder. It records the call and checks it.
 func (e *encoder) CopyTextureToBuffer(src explicit.Texture, region explicit.TextureRegion, dst explicit.Buffer, layout explicit.BufferLayout) {
-	e.d.record("CopyTextureToBuffer", "layout=%+v region=%+v", layout, region)
+	if !e.d.Quiet {
+		e.d.record("CopyTextureToBuffer", "layout=%+v region=%+v", layout, region)
+	}
 	e.d.limits.CheckBufferTexture(dst, layout, src.Desc(), region, false)
 }
 
 // ReadBuffer implements explicit.Encoder. done runs at CompleteReads, or at Submit when
 // CompleteReadsOnSubmit is set.
 func (e *encoder) ReadBuffer(src explicit.Buffer, offset, size int, done func(data []byte, err error)) {
-	e.d.record("ReadBuffer", "offset=%d size=%d", offset, size)
+	if !e.d.Quiet {
+		e.d.record("ReadBuffer", "offset=%d size=%d", offset, size)
+	}
 	e.d.limits.CheckReadBuffer(src, offset, size)
 	b, ok := src.(*buffer)
 	if !ok || offset < 0 || size < 0 || offset+size > len(b.data) {
@@ -144,13 +160,17 @@ func (e *encoder) ReadBuffer(src explicit.Buffer, offset, size int, done func(da
 
 // ResolveQuerySet implements explicit.Encoder. It records the call and checks it.
 func (e *encoder) ResolveQuerySet(set explicit.QuerySet, first, count int, dst explicit.Buffer, dstOffset int) {
-	e.d.record("ResolveQuerySet", "first=%d count=%d offset=%d", first, count, dstOffset)
+	if !e.d.Quiet {
+		e.d.record("ResolveQuerySet", "first=%d count=%d offset=%d", first, count, dstOffset)
+	}
 	e.d.limits.CheckResolveQuerySet(set, first, count, dst, dstOffset)
 }
 
 // OnComplete implements explicit.Encoder. fn runs when the encoder is submitted and the reads complete.
 func (e *encoder) OnComplete(fn func()) {
-	e.d.record("OnComplete", "")
+	if !e.d.Quiet {
+		e.d.record("OnComplete", "")
+	}
 	e.complete = append(e.complete, fn)
 }
 
@@ -161,29 +181,39 @@ type computePass struct {
 }
 
 func (p *computePass) SetPipeline(pl explicit.ComputePipeline) {
-	p.d.record("SetComputePipeline", "entry=%s", pl.Desc().Entry)
+	if !p.d.Quiet {
+		p.d.record("SetComputePipeline", "entry=%s", pl.Desc().Entry)
+	}
 	if cp, ok := pl.(*computePipeline); ok {
 		p.pipe = cp
 	}
 }
 
 func (p *computePass) SetBindGroup(group int, g explicit.BindGroup, dynamicOffsets ...uint32) {
-	p.d.record("SetComputeBindGroup", "group=%d offsets=%v", group, dynamicOffsets)
+	if !p.d.Quiet {
+		p.d.record("SetComputeBindGroup", "group=%d offsets=%v", group, dynamicOffsets)
+	}
 	p.d.limits.CheckSetBindGroup(group, dynamicOffsets)
 }
 
 func (p *computePass) Dispatch(x, y, z int) {
-	p.d.record("Dispatch", "%d %d %d", x, y, z)
+	if !p.d.Quiet {
+		p.d.record("Dispatch", "%d %d %d", x, y, z)
+	}
 	p.d.limits.CheckDispatch(x, y, z)
 }
 
 func (p *computePass) DispatchIndirect(b explicit.Buffer, offset int) {
-	p.d.record("DispatchIndirect", "offset=%d", offset)
+	if !p.d.Quiet {
+		p.d.record("DispatchIndirect", "offset=%d", offset)
+	}
 	p.d.limits.CheckIndirect(b, offset, 12)
 }
 
 func (p *computePass) End() {
-	p.d.record("EndComputePass", "")
+	if !p.d.Quiet {
+		p.d.record("EndComputePass", "")
+	}
 	p.ended = true
 }
 

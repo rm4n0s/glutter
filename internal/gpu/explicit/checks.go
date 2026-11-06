@@ -1,6 +1,9 @@
 package explicit
 
-import "github.com/rm4n0s/errors"
+import (
+	"github.com/rm4n0s/errors"
+	"github.com/rm4n0s/glutter/foundation"
+)
 
 // The checks of the calls of step 30.2 (SPEC §27.1): buffers, bindings, compute, indirect draws, copies
 // and queries. Like the other checks of this package, they panic in debug builds only (§14.2), and a
@@ -13,7 +16,9 @@ import "github.com/rm4n0s/errors"
 // Flutter: no counterpart
 func (l Limits) CheckBuffer(size int, usage BufferUsage) {
 	exceeded("buffer size", size, l.MaxBufferSize)
-	invalid(size >= 0, "a buffer has a size", "size", size)
+	if foundation.DebugMode && (size < 0) {
+		invalid(false, "a buffer has a size", "size", size)
+	}
 }
 
 // CheckBinding panics with GPUDescriptorInvalid in debug builds when an entry of a bind group does not
@@ -27,9 +32,13 @@ func (l Limits) CheckBuffer(size int, usage BufferUsage) {
 func (l Limits) CheckBinding(sb ShaderBinding, e Binding) {
 	switch sb.Kind {
 	case BindingUniformBuffer:
-		invalid(e.Buffer != nil && e.Buffer.Usage()&BufferUniform != 0, "a uniform binding has a buffer with BufferUniform", "binding", e.Binding)
+		if foundation.DebugMode && (e.Buffer == nil || e.Buffer.Usage()&BufferUniform == 0) {
+			invalid(false, "a uniform binding has a buffer with BufferUniform", "binding", e.Binding)
+		}
 	case BindingStorageBufferReadOnly, BindingStorageBuffer:
-		invalid(e.Buffer != nil && e.Buffer.Usage()&BufferStorage != 0, "a storage binding has a buffer with BufferStorage", "binding", e.Binding)
+		if foundation.DebugMode && (e.Buffer == nil || e.Buffer.Usage()&BufferStorage == 0) {
+			invalid(false, "a storage binding has a buffer with BufferStorage", "binding", e.Binding)
+		}
 		if e.Buffer == nil {
 			return
 		}
@@ -39,18 +48,28 @@ func (l Limits) CheckBinding(sb ShaderBinding, e Binding) {
 			size = e.Buffer.Size() - e.Offset
 		}
 		exceeded("storage binding size", size, l.MaxStorageBindingSize)
-		invalid(e.Offset >= 0 && e.Offset+size <= e.Buffer.Size() && size > 0, "a storage binding is inside its buffer",
-			"binding", e.Binding, "offset", e.Offset, "size", size, "buffer", e.Buffer.Size())
+		if foundation.DebugMode && (e.Offset < 0 || e.Offset+size > e.Buffer.Size() || size <= 0) {
+			invalid(false, "a storage binding is inside its buffer",
+				"binding", e.Binding, "offset", e.Offset, "size", size, "buffer", e.Buffer.Size())
+		}
 	case BindingStorageTexture:
-		invalid(e.Texture != nil && e.Texture.Desc().Usage&TextureStorage != 0, "a storage texture binding has a texture with TextureStorage", "binding", e.Binding)
+		if foundation.DebugMode && (e.Texture == nil || e.Texture.Desc().Usage&TextureStorage == 0) {
+			invalid(false, "a storage texture binding has a texture with TextureStorage", "binding", e.Binding)
+		}
 		if e.Texture != nil {
-			invalid(e.Texture.Desc().Format == sb.StorageFormat, "a storage texture has the format the shader declares",
-				"binding", e.Binding, "format", int(e.Texture.Desc().Format), "declared", int(sb.StorageFormat))
+			if foundation.DebugMode && (e.Texture.Desc().Format != sb.StorageFormat) {
+				invalid(false, "a storage texture has the format the shader declares",
+					"binding", e.Binding, "format", int(e.Texture.Desc().Format), "declared", int(sb.StorageFormat))
+			}
 		}
 	case BindingSampledTexture:
-		invalid(e.Texture != nil, "a texture binding has a texture", "binding", e.Binding)
+		if foundation.DebugMode && (e.Texture == nil) {
+			invalid(false, "a texture binding has a texture", "binding", e.Binding)
+		}
 	case BindingSampler:
-		invalid(e.Sampler != nil, "a sampler binding has a sampler", "binding", e.Binding)
+		if foundation.DebugMode && (e.Sampler == nil) {
+			invalid(false, "a sampler binding has a sampler", "binding", e.Binding)
+		}
 	}
 }
 
@@ -68,7 +87,9 @@ func (l Limits) CheckComputePipeline(desc ComputePipelineDesc) {
 	if !ok {
 		return // the backends return an error for a name the shader lacks
 	}
-	invalid(e.Stage == ShaderStageCompute, "the entry point of a compute pipeline is a compute entry point", "entry", desc.Entry, "stage", e.Stage.String())
+	if foundation.DebugMode && (e.Stage != ShaderStageCompute) {
+		invalid(false, "the entry point of a compute pipeline is a compute entry point", "entry", desc.Entry, "stage", e.Stage.String())
+	}
 	w := e.WorkgroupSize
 	for i, n := range w {
 		exceeded("workgroup size", n, l.MaxComputeWorkgroupSize[i])
@@ -95,7 +116,9 @@ func (l Limits) checkStageBindings(e EntryPoint) {
 			storageTextures++
 		}
 		if e.Stage != ShaderStageCompute {
-			invalid(b.Kind != BindingStorageBuffer && b.Kind != BindingStorageTexture, "only a compute entry point writes storage", "entry", e.Name, "binding", b.Name)
+			if foundation.DebugMode && (b.Kind == BindingStorageBuffer || b.Kind == BindingStorageTexture) {
+				invalid(false, "only a compute entry point writes storage", "entry", e.Name, "binding", b.Name)
+			}
 		}
 	}
 	exceeded("sampled textures per stage", textures, l.MaxSampledTexturesPerStage)
@@ -111,7 +134,9 @@ func (l Limits) checkStageBindings(e EntryPoint) {
 //
 // Flutter: no counterpart
 func (l Limits) CheckDispatch(x, y, z int) {
-	invalid(x >= 0 && y >= 0 && z >= 0, "a dispatch has no negative dimension", "x", x, "y", y, "z", z)
+	if foundation.DebugMode && (x < 0 || y < 0 || z < 0) {
+		invalid(false, "a dispatch has no negative dimension", "x", x, "y", y, "z", z)
+	}
 	exceeded("dispatch x", x, l.MaxComputeWorkgroupsPerDimension)
 	exceeded("dispatch y", y, l.MaxComputeWorkgroupsPerDimension)
 	exceeded("dispatch z", z, l.MaxComputeWorkgroupsPerDimension)
@@ -124,9 +149,15 @@ func (l Limits) CheckDispatch(x, y, z int) {
 //
 // Flutter: no counterpart
 func (l Limits) CheckIndirect(b Buffer, offset, size int) {
-	invalid(b.Usage()&BufferIndirect != 0, "the buffer of an indirect call has BufferIndirect")
-	invalid(offset >= 0 && offset%4 == 0, "the offset of an indirect call is a multiple of 4", "offset", offset)
-	invalid(offset+size <= b.Size(), "the arguments of an indirect call are inside the buffer", "offset", offset, "size", size, "buffer", b.Size())
+	if foundation.DebugMode && (b.Usage()&BufferIndirect == 0) {
+		invalid(false, "the buffer of an indirect call has BufferIndirect")
+	}
+	if foundation.DebugMode && (offset < 0 || offset%4 != 0) {
+		invalid(false, "the offset of an indirect call is a multiple of 4", "offset", offset)
+	}
+	if foundation.DebugMode && (offset+size > b.Size()) {
+		invalid(false, "the arguments of an indirect call are inside the buffer", "offset", offset, "size", size, "buffer", b.Size())
+	}
 }
 
 // CheckFirstIndices panics with GPUFirstInstanceRead in debug builds when a draw has a first instance,
@@ -153,13 +184,22 @@ func CheckFirstIndices(e EntryPoint, firstVertex, baseVertex, firstInstance int)
 //
 // Flutter: no counterpart
 func (l Limits) CheckCopyBuffer(src Buffer, srcOffset int, dst Buffer, dstOffset, size int) {
-	invalid(src.Usage()&BufferCopySource != 0, "the source of a copy has BufferCopySource")
-	invalid(dst.Usage()&BufferCopyDestination != 0, "the destination of a copy has BufferCopyDestination")
-	invalid(srcOffset%4 == 0 && dstOffset%4 == 0 && size%4 == 0, "the offsets and the size of a copy are multiples of 4",
-		"src_offset", srcOffset, "dst_offset", dstOffset, "size", size)
-	invalid(srcOffset >= 0 && dstOffset >= 0 && size >= 0 && srcOffset+size <= src.Size() && dstOffset+size <= dst.Size(),
-		"the ranges of a copy are inside the buffers", "src_offset", srcOffset, "dst_offset", dstOffset, "size", size, "src", src.Size(), "dst", dst.Size())
-	invalid(src != dst, "a buffer is not copied onto itself")
+	if foundation.DebugMode && (src.Usage()&BufferCopySource == 0) {
+		invalid(false, "the source of a copy has BufferCopySource")
+	}
+	if foundation.DebugMode && (dst.Usage()&BufferCopyDestination == 0) {
+		invalid(false, "the destination of a copy has BufferCopyDestination")
+	}
+	if foundation.DebugMode && (srcOffset%4 != 0 || dstOffset%4 != 0 || size%4 != 0) {
+		invalid(false, "the offsets and the size of a copy are multiples of 4",
+			"src_offset", srcOffset, "dst_offset", dstOffset, "size", size)
+	}
+	if foundation.DebugMode && (srcOffset < 0 || dstOffset < 0 || size < 0 || srcOffset+size > src.Size() || dstOffset+size > dst.Size()) {
+		invalid(false, "the ranges of a copy are inside the buffers", "src_offset", srcOffset, "dst_offset", dstOffset, "size", size, "src", src.Size(), "dst", dst.Size())
+	}
+	if foundation.DebugMode && (src == dst) {
+		invalid(false, "a buffer is not copied onto itself")
+	}
 }
 
 // CheckBufferTexture panics with GPUDescriptorInvalid in debug builds when a copy between a buffer and a
@@ -171,31 +211,57 @@ func (l Limits) CheckCopyBuffer(src Buffer, srcOffset int, dst Buffer, dstOffset
 func (l Limits) CheckBufferTexture(buf Buffer, layout BufferLayout, tex TextureDesc, region TextureRegion, toTexture bool) {
 	n := tex.Normalized()
 	if toTexture {
-		invalid(buf.Usage()&BufferCopySource != 0, "the source of a copy has BufferCopySource")
-		invalid(n.Format.CanBeWritten(), "a texture that is written has a format that can be written", "format", int(n.Format))
+		if foundation.DebugMode && (buf.Usage()&BufferCopySource == 0) {
+			invalid(false, "the source of a copy has BufferCopySource")
+		}
+		if foundation.DebugMode && !(n.Format.CanBeWritten()) {
+			invalid(false, "a texture that is written has a format that can be written", "format", int(n.Format))
+		}
 	} else {
-		invalid(buf.Usage()&BufferCopyDestination != 0, "the destination of a copy has BufferCopyDestination")
-		invalid(n.Usage&(TextureCopySource|TextureRenderTarget) != 0, "a texture that is read has TextureCopySource or TextureRenderTarget")
-		invalid(n.Format.CanBeCopied(), "a texture that is read has a format that can be copied", "format", int(n.Format))
+		if foundation.DebugMode && (buf.Usage()&BufferCopyDestination == 0) {
+			invalid(false, "the destination of a copy has BufferCopyDestination")
+		}
+		if foundation.DebugMode && (n.Usage&(TextureCopySource|TextureRenderTarget) == 0) {
+			invalid(false, "a texture that is read has TextureCopySource or TextureRenderTarget")
+		}
+		if foundation.DebugMode && !(n.Format.CanBeCopied()) {
+			invalid(false, "a texture that is read has a format that can be copied", "format", int(n.Format))
+		}
 	}
-	invalid(n.SampleCount == 1, "a multisampled texture is not copied", "samples", n.SampleCount)
+	if foundation.DebugMode && (n.SampleCount != 1) {
+		invalid(false, "a multisampled texture is not copied", "samples", n.SampleCount)
+	}
 	w, h, d := region.Size[0], region.Size[1], region.Size[2]
-	invalid(w > 0 && h > 0 && d > 0, "the box of a copy has a size", "size", region.Size)
-	invalid(region.Level >= 0 && region.Level < n.MipLevels, "the level of a copy exists", "level", region.Level, "levels", n.MipLevels)
+	if foundation.DebugMode && (w <= 0 || h <= 0 || d <= 0) {
+		invalid(false, "the box of a copy has a size", "size", region.Size)
+	}
+	if foundation.DebugMode && (region.Level < 0 || region.Level >= n.MipLevels) {
+		invalid(false, "the level of a copy exists", "level", region.Level, "levels", n.MipLevels)
+	}
 	lw, lh, depth := max(n.Width>>max(region.Level, 0), 1), max(n.Height>>max(region.Level, 0), 1), n.Layers()
 	if n.Kind == TextureKind3D {
 		depth = max(n.DepthOrLayers>>max(region.Level, 0), 1)
 	}
 	o := region.Origin
-	invalid(o[0] >= 0 && o[1] >= 0 && o[2] >= 0 && o[0]+w <= lw && o[1]+h <= lh && o[2]+d <= depth, "the box of a copy is inside the level",
-		"origin", region.Origin, "size", region.Size, "width", lw, "height", lh, "depth", depth)
+	if foundation.DebugMode && (o[0] < 0 || o[1] < 0 || o[2] < 0 || o[0]+w > lw || o[1]+h > lh || o[2]+d > depth) {
+		invalid(false, "the box of a copy is inside the level",
+			"origin", region.Origin, "size", region.Size, "width", lw, "height", lh, "depth", depth)
+	}
 	bpp := n.Format.BytesPerPixel()
-	invalid(layout.BytesPerRow%l.CopyRowPitchAlignment == 0 && layout.BytesPerRow >= w*bpp, "the rows of a copy are a multiple of CopyRowPitchAlignment apart and hold a row",
-		"bytes_per_row", layout.BytesPerRow, "row", w*bpp)
-	invalid(layout.RowsPerImage >= h, "the rows per image of a copy hold the box", "rows_per_image", layout.RowsPerImage, "height", h)
-	invalid(layout.Offset >= 0 && layout.Offset%4 == 0 && layout.Offset%max(bpp, 1) == 0, "the offset of a copy is a multiple of 4 and of the bytes of a pixel", "offset", layout.Offset)
+	if foundation.DebugMode && (layout.BytesPerRow%l.CopyRowPitchAlignment != 0 || layout.BytesPerRow < w*bpp) {
+		invalid(false, "the rows of a copy are a multiple of CopyRowPitchAlignment apart and hold a row",
+			"bytes_per_row", layout.BytesPerRow, "row", w*bpp)
+	}
+	if foundation.DebugMode && (layout.RowsPerImage < h) {
+		invalid(false, "the rows per image of a copy hold the box", "rows_per_image", layout.RowsPerImage, "height", h)
+	}
+	if foundation.DebugMode && (layout.Offset < 0 || layout.Offset%4 != 0 || layout.Offset%max(bpp, 1) != 0) {
+		invalid(false, "the offset of a copy is a multiple of 4 and of the bytes of a pixel", "offset", layout.Offset)
+	}
 	last := layout.Offset + layout.BytesPerRow*layout.RowsPerImage*(d-1) + layout.BytesPerRow*(h-1) + w*bpp
-	invalid(last <= buf.Size(), "the rows of a copy are inside the buffer", "end", last, "buffer", buf.Size())
+	if foundation.DebugMode && (last > buf.Size()) {
+		invalid(false, "the rows of a copy are inside the buffer", "end", last, "buffer", buf.Size())
+	}
 }
 
 // CheckReadBuffer panics with GPUDescriptorInvalid in debug builds when the buffer has no BufferCopySource
@@ -203,9 +269,15 @@ func (l Limits) CheckBufferTexture(buf Buffer, layout BufferLayout, tex TextureD
 //
 // Flutter: no counterpart
 func (l Limits) CheckReadBuffer(b Buffer, offset, size int) {
-	invalid(b.Usage()&BufferCopySource != 0, "a buffer that is read has BufferCopySource")
-	invalid(offset >= 0 && size >= 0 && offset+size <= b.Size(), "the range of a read is inside the buffer", "offset", offset, "size", size, "buffer", b.Size())
-	invalid(offset%4 == 0 && size%4 == 0, "the offset and the size of a read are multiples of 4", "offset", offset, "size", size)
+	if foundation.DebugMode && (b.Usage()&BufferCopySource == 0) {
+		invalid(false, "a buffer that is read has BufferCopySource")
+	}
+	if foundation.DebugMode && (offset < 0 || size < 0 || offset+size > b.Size()) {
+		invalid(false, "the range of a read is inside the buffer", "offset", offset, "size", size, "buffer", b.Size())
+	}
+	if foundation.DebugMode && (offset%4 != 0 || size%4 != 0) {
+		invalid(false, "the offset and the size of a read are multiples of 4", "offset", offset, "size", size)
+	}
 }
 
 // CheckTimestamps panics with GPUDescriptorInvalid in debug builds when a pass writes timestamps that
@@ -217,13 +289,21 @@ func (l Limits) CheckTimestamps(f Features, ts *PassTimestamps) {
 	if ts == nil {
 		return
 	}
-	invalid(f.TimestampQuery, "timestamps need Features.TimestampQuery")
-	invalid(ts.Set != nil, "a pass writes its timestamps into a query set")
+	if foundation.DebugMode && !(f.TimestampQuery) {
+		invalid(false, "timestamps need Features.TimestampQuery")
+	}
+	if foundation.DebugMode && (ts.Set == nil) {
+		invalid(false, "a pass writes its timestamps into a query set")
+	}
 	if ts.Set == nil {
 		return
 	}
-	invalid(ts.Begin < ts.Set.Count() && ts.End < ts.Set.Count(), "the timestamps of a pass are queries of the set", "begin", ts.Begin, "end", ts.End, "count", ts.Set.Count())
-	invalid(ts.Begin < 0 || ts.End < 0 || ts.Begin != ts.End, "the two timestamps of a pass are two queries")
+	if foundation.DebugMode && (ts.Begin >= ts.Set.Count() || ts.End >= ts.Set.Count()) {
+		invalid(false, "the timestamps of a pass are queries of the set", "begin", ts.Begin, "end", ts.End, "count", ts.Set.Count())
+	}
+	if foundation.DebugMode && (ts.Begin >= 0 && ts.End >= 0 && ts.Begin == ts.End) {
+		invalid(false, "the two timestamps of a pass are two queries")
+	}
 }
 
 // CheckResolveQuerySet panics with GPUDescriptorInvalid in debug builds when the queries are not in the
@@ -232,10 +312,16 @@ func (l Limits) CheckTimestamps(f Features, ts *PassTimestamps) {
 //
 // Flutter: no counterpart
 func (l Limits) CheckResolveQuerySet(set QuerySet, first, count int, dst Buffer, dstOffset int) {
-	invalid(first >= 0 && count >= 0 && first+count <= set.Count(), "the queries of a resolve are in the set", "first", first, "count", count, "set", set.Count())
-	invalid(dst.Usage()&BufferQueryResolve != 0, "the buffer of a resolve has BufferQueryResolve")
+	if foundation.DebugMode && (first < 0 || count < 0 || first+count > set.Count()) {
+		invalid(false, "the queries of a resolve are in the set", "first", first, "count", count, "set", set.Count())
+	}
+	if foundation.DebugMode && (dst.Usage()&BufferQueryResolve == 0) {
+		invalid(false, "the buffer of a resolve has BufferQueryResolve")
+	}
 	misaligned("query resolve offset", dstOffset, l.StorageOffsetAlignment)
-	invalid(dstOffset >= 0 && dstOffset+8*count <= dst.Size(), "the timestamps of a resolve fit the buffer", "offset", dstOffset, "count", count, "buffer", dst.Size())
+	if foundation.DebugMode && (dstOffset < 0 || dstOffset+8*count > dst.Size()) {
+		invalid(false, "the timestamps of a resolve fit the buffer", "offset", dstOffset, "count", count, "buffer", dst.Size())
+	}
 }
 
 // The tags of the errors that this file makes (rm4n0s/errors, R5).

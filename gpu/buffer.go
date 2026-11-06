@@ -20,6 +20,8 @@ type Buffer struct {
 	usage BufferUsage
 	// busy is the number of submissions that use the buffer and are not done.
 	busy int
+	// stamp is the stamp of the last replay that counted the buffer as busy (replay.markUsed).
+	stamp uint64
 }
 
 // validateBuffer checks a description. It fails with GPUInvalidDescriptor for a size of 0, no use or a use that
@@ -111,7 +113,7 @@ func (b *Buffer) Read(offset, size int, done func(data []byte, err error)) {
 		}
 		done(data, err)
 	}
-	err := d.queue.run(func(r *replay) {
+	err := d.queue.run(nil, func(r *replay) {
 		r.markUsed(b)
 		r.enc.ReadBuffer(b.exp, offset, size, finish)
 	})

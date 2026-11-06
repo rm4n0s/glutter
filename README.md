@@ -392,6 +392,7 @@ Each one uses only the public packages and has tests that run on a fake platform
 | [`todo`](examples/todo) | a `DataTable` of tasks; each row has a checkbox, an Edit button (a dialog) and a Delete button | ![](docs/implemented-proof-images/example-todo.png) |
 | [`svg`](examples/svg) | SVG pictures (package `svg`): icons with `currentColor` and a `ColorFilter`, a logo with gradients, text and a drop-shadow filter | ![](docs/implemented-proof-images/29.4-svg.png) |
 | [`gpu-triangle`](examples/gpu-triangle) | package `gpu` and `vecmath`: a lit cube drawn by the program's own shader into a `gpu.View`, with reversed-Z depth and 4x multisampling, a slider and a switch | ![](docs/implemented-proof-images/30.6-gpu-triangle-linux.png) |
+| [`cad`](examples/cad) | package `viewport3d` and `model`: a 3D viewer with an STL or OBJ opened from a dialog, navigation, the view cube and the grid, four display modes, a section plane on a slider, picks with a side panel, and a distance between two picks drawn as a dimension | ![](docs/implemented-proof-images/30.13-cad-linux.png) |
 
 ## Performance
 

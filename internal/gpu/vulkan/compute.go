@@ -455,7 +455,7 @@ func (p *pass) SetIndexBuffer32(b explicit.Buffer, offset int) {
 	if !ok || ib.d != p.e.d {
 		panic(errors.New(tagVulkanForeignResource, "the resource was not made by this Vulkan device", "resource", "buffer"))
 	}
-	p.e.d.f.cmdBindIndexBuffer(p.e.cb, ib.buffer, uint64(offset), indexTypeUint32)
+	p.setIndexBuffer(ib, offset, indexTypeUint32)
 }
 
 // DrawIndirect implements explicit.Pass.
@@ -466,6 +466,7 @@ func (p *pass) DrawIndirect(b explicit.Buffer, offset int) {
 	if !ok || ib.d != d {
 		panic(errors.New(tagVulkanForeignResource, "the resource was not made by this Vulkan device", "resource", "buffer"))
 	}
+	p.bindVertexBuffers()
 	d.f.cmdDrawIndirect(p.e.cb, ib.buffer, uint64(offset), 1, 16)
 }
 
@@ -477,6 +478,7 @@ func (p *pass) DrawIndexedIndirect(b explicit.Buffer, offset int) {
 	if !ok || ib.d != d {
 		panic(errors.New(tagVulkanForeignResource, "the resource was not made by this Vulkan device", "resource", "buffer"))
 	}
+	p.bindVertexBuffers()
 	d.f.cmdDrawIndexedIndirect(p.e.cb, ib.buffer, uint64(offset), 1, 20)
 }
 

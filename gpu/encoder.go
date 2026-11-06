@@ -16,18 +16,61 @@ import (
 // Flutter: no counterpart
 type CommandEncoder struct {
 	d    *Device
-	cmds []func(r *replay)
+	cmds []command
 	// pass says that a pass was begun and not ended.
 	pass bool
 	done bool
+	// renders and computes are the passes of the encoder, which go back to the queue's list with the encoder.
+	renders  []*RenderPass
+	computes []*ComputePass
+	// buf is the command buffer that Finish returns: it is part of the encoder, so that making one allocates nothing.
+	buf CommandBuffer
 }
 
-// NewCommandEncoder starts a list of commands (WebGPU's GPUDevice.createCommandEncoder).
+// command is a recorded command: a pass, or a function for the copies and the resolves.
+type command struct {
+	fn func(r *replay)
+	rp *RenderPass
+	cp *ComputePass
+}
+
+// NewCommandEncoder starts a list of commands (WebGPU's GPUDevice.createCommandEncoder). The encoder, its command buffer and its
+// passes are kept by the queue for the next encoder once the buffer is submitted, so a frame that records the same commands each
+// time allocates nothing: do not use an encoder, a pass or a command buffer after it was submitted.
 //
 // Flutter: no counterpart
 func (d *Device) NewCommandEncoder() *CommandEncoder {
 	d.assertThread("NewCommandEncoder")
-	return &CommandEncoder{d: d}
+	q := d.queue
+	if n := len(q.encoders); n > 0 {
+		e := q.encoders[n-1]
+		q.encoders[n-1] = nil
+		q.encoders = q.encoders[:n-1]
+		e.done, e.pass, e.buf.submitted = false, false, false
+		return e
+	}
+	e := &CommandEncoder{d: d}
+	e.buf = CommandBuffer{d: d, e: e}
+	return e
+}
+
+// recycle gives the encoder and its passes back to the queue, once the commands have run on the explicit encoder.
+func (e *CommandEncoder) recycle() {
+	q := e.d.queue
+	for _, p := range e.renders {
+		p.reset()
+		q.renders = append(q.renders, p)
+	}
+	for _, p := range e.computes {
+		p.reset()
+		q.computes = append(q.computes, p)
+	}
+	clear(e.renders)
+	clear(e.computes)
+	e.renders, e.computes = e.renders[:0], e.computes[:0]
+	clear(e.cmds)
+	e.cmds = e.cmds[:0]
+	q.encoders = append(q.encoders, e)
 }
 
 // CommandBuffer is the finished commands of an encoder (WebGPU's GPUCommandBuffer). It is submitted once.
@@ -35,14 +78,22 @@ func (d *Device) NewCommandEncoder() *CommandEncoder {
 // Flutter: no counterpart
 type CommandBuffer struct {
 	d         *Device
-	cmds      []func(r *replay)
+	e         *CommandEncoder
 	submitted bool
 }
 
 // replay runs the commands on the explicit encoder of a submission.
 func (cb *CommandBuffer) replay(r *replay) {
-	for _, c := range cb.cmds {
-		c(r)
+	for i := range cb.e.cmds {
+		c := &cb.e.cmds[i]
+		switch {
+		case c.rp != nil:
+			c.rp.runOn(r)
+		case c.cp != nil:
+			c.cp.runOn(r)
+		default:
+			c.fn(r)
+		}
 	}
 }
 
@@ -54,7 +105,7 @@ func (e *CommandEncoder) Finish() *CommandBuffer {
 	misuse(!e.done, "CommandEncoder.Finish", "an encoder is finished once")
 	misuse(!e.pass, "CommandEncoder.Finish", "the pass is ended before the encoder is finished")
 	e.done = true
-	return &CommandBuffer{d: e.d, cmds: e.cmds}
+	return &e.buf
 }
 
 // open checks that a command may be recorded now.
@@ -88,13 +139,13 @@ func (e *CommandEncoder) CopyBufferToBuffer(src *Buffer, srcOffset int, dst *Buf
 	if size == 0 {
 		return
 	}
-	e.cmds = append(e.cmds, func(r *replay) {
+	e.cmds = append(e.cmds, command{fn: func(r *replay) {
 		src.usable(call)
 		dst.usable(call)
 		r.markUsed(src)
 		r.markUsed(dst)
 		r.enc.CopyBuffer(src.exp, srcOffset, dst.exp, dstOffset, size)
-	})
+	}})
 }
 
 // copyBox checks the box of a copy between a buffer and a texture and returns the explicit region and layout. The
@@ -154,12 +205,12 @@ func (e *CommandEncoder) CopyBufferToTexture(src BufferCopy, dst TextureCopy, si
 		return
 	}
 	b, t := src.Buffer, dst.Texture
-	e.cmds = append(e.cmds, func(r *replay) {
+	e.cmds = append(e.cmds, command{fn: func(r *replay) {
 		b.usable(call)
 		t.usable(call)
 		r.markUsed(b)
 		r.enc.CopyBufferToTexture(b.exp, layout, t.exp, region)
-	})
+	}})
 }
 
 // CopyTextureToBuffer copies a box of a texture into rows in a buffer (WebGPU's
@@ -176,12 +227,12 @@ func (e *CommandEncoder) CopyTextureToBuffer(src TextureCopy, dst BufferCopy, si
 		return
 	}
 	b, t := dst.Buffer, src.Texture
-	e.cmds = append(e.cmds, func(r *replay) {
+	e.cmds = append(e.cmds, command{fn: func(r *replay) {
 		b.usable(call)
 		t.usable(call)
 		r.markUsed(b)
 		r.enc.CopyTextureToBuffer(t.exp, region, b.exp, layout)
-	})
+	}})
 }
 
 // subresource returns the explicit texture over one layer of one mip level.
@@ -229,13 +280,13 @@ func (e *CommandEncoder) CopyTextureToTexture(src, dst TextureCopy, size Extent3
 	}
 	rect := image.Rect(src.Origin.X, src.Origin.Y, src.Origin.X+size.Width, src.Origin.Y+size.Height)
 	at := image.Pt(dst.Origin.X, dst.Origin.Y)
-	e.cmds = append(e.cmds, func(r *replay) {
+	e.cmds = append(e.cmds, command{fn: func(r *replay) {
 		s.usable(call)
 		t.usable(call)
 		for _, c := range copies {
 			r.enc.CopyTexture(c.from, rect, c.to, at)
 		}
-	})
+	}})
 }
 
 // ResolveQuerySet writes count timestamps of the set from first, as 64 bit unsigned integers in ticks
@@ -258,10 +309,10 @@ func (e *CommandEncoder) ResolveQuerySet(q *QuerySet, first, count int, dst *Buf
 	if count == 0 {
 		return
 	}
-	e.cmds = append(e.cmds, func(r *replay) {
+	e.cmds = append(e.cmds, command{fn: func(r *replay) {
 		q.usable(call)
 		dst.usable(call)
 		r.markUsed(dst)
 		r.enc.ResolveQuerySet(q.exp, first, count, dst.exp, offset)
-	})
+	}})
 }

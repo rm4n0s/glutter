@@ -23,7 +23,7 @@ import (
 // drawRig is a tester with a recording GPU device and a view of 200 x 100 pixels that draws a scene with a Renderer, the way an
 // app that makes its own gpu.View does.
 type drawRig struct {
-	t     *testing.T
+	t     testing.TB
 	ts    *gluttertest.Tester
 	rec   *gluttertest.GPURecorder
 	r     *viewport3d.Renderer
@@ -33,15 +33,21 @@ type drawRig struct {
 	frame gpu.ViewFrame
 }
 
-func newDrawRig(t *testing.T, scene *viewport3d.Scene, cam *viewport3d.Camera) *drawRig {
+func newDrawRig(t testing.TB, scene *viewport3d.Scene, cam *viewport3d.Camera) *drawRig {
 	t.Helper()
 	return newDrawRigDepth(t, scene, cam, gpu.TextureFormatDepth32Float)
 }
 
 // newDrawRigDepth is newDrawRig with the depth format of the view: the caps of the section planes need a stencil.
-func newDrawRigDepth(t *testing.T, scene *viewport3d.Scene, cam *viewport3d.Camera, depth gpu.TextureFormat) *drawRig {
+func newDrawRigDepth(t testing.TB, scene *viewport3d.Scene, cam *viewport3d.Camera, depth gpu.TextureFormat) *drawRig {
 	t.Helper()
-	rig := &drawRig{t: t, ts: gluttertest.New(t, gluttertest.Opts{GPU: true}), scene: scene, cam: cam, ctl: gpu.NewViewController()}
+	return newDrawRigOpts(t, scene, cam, depth, gluttertest.Opts{GPU: true})
+}
+
+// newDrawRigOpts is newDrawRigDepth with the options of the tester: a memory test does not keep the scenes.
+func newDrawRigOpts(t testing.TB, scene *viewport3d.Scene, cam *viewport3d.Camera, depth gpu.TextureFormat, opts gluttertest.Opts) *drawRig {
+	t.Helper()
+	rig := &drawRig{t: t, ts: gluttertest.New(t, opts), scene: scene, cam: cam, ctl: gpu.NewViewController()}
 	rig.rec = rig.ts.GPUDevice()
 	rig.r = viewport3d.NewRenderer(scene, cam)
 	view := gpu.NewView(func(f *gpu.ViewFrame) { rig.frame = *f; rig.r.Draw(f) }, gpu.ViewOpts{
@@ -429,37 +435,6 @@ func TestReleasingAMeshOrAMaterialFreesItsGPUResources(t *testing.T) {
 	}
 }
 
-func TestASteadyFrameAllocatesOnlyWhatPackageGPURecordsWith(t *testing.T) {
-	// The renderer keeps the scratch of a frame and draws what has not changed with no new GPU resource, so what a steady frame
-	// allocates is the recording of package gpu (a closure and a copy of the offsets for each command, kept until the submit),
-	// which is the same for 20 items and for 400 that share a batch. (SPEC §27.8, "Decided in step 30.9".)
-	if raceEnabled {
-		t.Skip("the race detector changes what a call allocates")
-	}
-	measure := func(n int) float64 {
-		scene := viewport3d.NewScene()
-		mesh := scenetest.Box(0.1, 0.1, 0.1)
-		mat := viewport3d.NewPhongMaterial()
-		for i := 0; i < n; i++ {
-			scene.Add(viewport3d.NewItem(mesh, mat, at(float64(i%20)*0.2-2, float64(i/20)*0.2-2, 0)))
-		}
-		rig := newDrawRig(t, scene, frontCamera())
-		f := rig.frame
-		draw := func() {
-			f.Encoder = f.Device.NewCommandEncoder()
-			rig.r.Draw(&f)
-			f.Encoder.Finish()
-		}
-		draw()
-		return testing.AllocsPerRun(20, draw)
-	}
-	few, many := measure(20), measure(1600)
-	t.Logf("allocations of a frame: %v for 20 items, %v for 1600", few, many)
-	if many > few+2 {
-		t.Errorf("a frame of 1600 items allocates %v times, one of 20 items %v: it grows with the items", many, few)
-	}
-}
-
 func TestAViewThatGetsANewSceneDrawsIt(t *testing.T) {
 	box := scenetest.Box(1, 1, 1)
 	first, second := viewport3d.NewScene(), viewport3d.NewScene()
@@ -494,5 +469,27 @@ func TestAViewThatGetsANewSceneDrawsIt(t *testing.T) {
 	ts.Pump(16 * time.Millisecond)
 	if n := countCalls(rec.Calls(), "BeginRenderPass"); n != 0 {
 		t.Errorf("a change of the old scene made %d passes", n)
+	}
+}
+
+func TestTheViewDrawsAgainOnTheNewDeviceAfterALoss(t *testing.T) {
+	// The renderer is given the new device and must keep it: the disposal of the lost device's state comes before the new init
+	// (gpu.View), not after it, or the view would be empty for good (step 30.13).
+	scene := viewport3d.NewScene()
+	scene.Add(viewport3d.NewItem(scenetest.Box(1, 1, 1), viewport3d.NewPhongMaterial()))
+	ts := gluttertest.New(t, gluttertest.Opts{GPU: true})
+	rec := ts.GPUDevice()
+	ts.PumpWidget(NewCenter(NewSizedBox(viewport3d.NewView(scene, viewport3d.NewCamera(), viewport3d.ViewOpts{NoNavigation: true}),
+		SizedBoxOpts{Width: foundation.Some(200.0), Height: foundation.Some(100.0)})))
+	for i := 0; i < 3; i++ {
+		rec.Lose()
+		ts.Pump(16 * time.Millisecond)
+		ts.Pump(16 * time.Millisecond)
+		if n := countCalls(rec.Calls(), "BeginRenderPass"); n != 1 {
+			t.Fatalf("after loss %d the view drew %d passes on the new device, want 1", i+1, n)
+		}
+		if live := rec.Device().Live(); live.Buffers == 0 || live.Pipelines == 0 {
+			t.Errorf("after loss %d the new device holds %+v", i+1, live)
+		}
 	}
 }

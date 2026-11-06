@@ -151,11 +151,14 @@ func (s *viewState) DidUpdateWidget(old *View) {
 // Dispose stops listening and releases the renderer.
 func (s *viewState) Dispose() {
 	s.unlisten()
-	if s.renderer != nil {
-		s.renderer.Dispose()
+	renderer := s.renderer
+	if renderer != nil {
+		renderer.Dispose()
 		s.renderer = nil
 	}
-	if s.ctl != nil {
+	// A controller that was passed on to another view (the same widget in another place of the tree is a new state, made before this
+	// one is disposed) belongs to that view now.
+	if s.ctl != nil && s.ctl.renderer == renderer {
 		s.ctl.renderer = nil
 	}
 }

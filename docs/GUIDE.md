@@ -1475,6 +1475,23 @@ func main() {
   for the wheel, `StartTrackpadGesture`, `SendKeyEvent`, and, for the locked pointer, `MoveLockedMouse` and
   `PointerLocked`.
 
+- **A whole viewer.** `examples/cad` puts the chapter together in one file: a part made by code (`meshBuilder`, boxes, a
+  cylinder and a tube) or an STL or OBJ opened with the `desktop` file dialog (on the web, the built-in sample), the
+  navigation, the view cube and the grid, the four display modes, a section plane that a `Slider` moves, a pick (`ViewController.Pick`)
+  whose item and world point go to a side panel, and a distance between two picks that a `CustomPainter` draws over the view
+  from `Camera.Project`, with an `Anchored` label at its middle. Read it before you write your own.
+- **Speed.** A frame of a scene that did not change allocates nothing in `viewport3d` and `gpu` (the allocation test runs on the
+  recording device), and an idle view draws no frame. On a Radeon RX 6800M a part of a million triangles with its edges, 4x
+  multisampled at 1920x1080, draws at about 400 frames a second with 0.12 ms of CPU; 10,000 items that share a mesh cost 0.95 ms.
+  Items that share a mesh and a material are one draw, so give them the same `*Mesh` and `Material`; 10,000 items that each have
+  a mesh of their own cost about 20 ms of CPU, because each is three calls into the driver (`docs/PERFORMANCE.md`, "The 3D view").
+  `go test -run '^$' -bench 'Frame|Display' ./viewport3d` measures your machine (`GLUTTER_BENCH_GPU=hardware` with `-tags
+  glutter_display` for the GPU).
+- **Memory.** A model that is opened and closed 100 times, a view resized 1,000 times and a device that is lost over and over
+  leave the heap flat and nothing on the device (`go test -run Leaks ./gpu ./viewport3d`). Call `Uploaded.Release()` when you
+  take a model out of the scene: the meshes, the materials and the textures it made are released then, and `Scene.Remove` alone
+  does not release them.
+
 ## For Flutter web developers
 
 If you know Flutter on the web, this is what is the same and what is not.

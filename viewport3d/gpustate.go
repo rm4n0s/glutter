@@ -568,8 +568,9 @@ func putColor(b []byte, off int, c ui.Color) {
 
 // putMat writes a 4x4 matrix.
 func putMat(b []byte, off int, m *[16]float32) {
+	b = b[off : off+64 : off+64] // one bounds check for the 16 stores
 	for i, v := range m {
-		binary.LittleEndian.PutUint32(b[off+4*i:], math.Float32bits(v))
+		binary.LittleEndian.PutUint32(b[4*i:], math.Float32bits(v))
 	}
 }
 

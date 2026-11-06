@@ -159,6 +159,7 @@ This file breaks the milestones in `docs/SPEC.md` §18 into small steps. Each st
 | M29 SVG images (1.9), and the fixes of 1.9.1 to 1.9.9 | 29.1–29.41 | `svg` |
 | M30 3D and the GPU (1.10) | 30.1–30.14 | `gpu-triangle`, `cad` |
 | M31 Games (1.11) | 31.1–31.12 | `game3d` |
+| M32 The software renderer on Linux (1.12) | 32.1–32.4 | |
 
 ---
 
@@ -4099,6 +4100,72 @@ Every step that ports from SDL 3:
 2. `README.md`: "What is new in 1.11".
 3. The standard checks of rule 8, `apicheck` and `uintptrcheck`, and the suites of every environment as in 30.14, plus the Linux audio tests under `scripts/headless-audio.sh` and the virtual pad tests. A failure is fixed, or reported with its cause if it is the machine's.
 4. Merge, tag `step-31.12` and `v1.11.0`, and publish: `git push --follow-tags origin main`, which takes steps 31.1 to 31.12 and their tags to GitHub. Check with `git ls-remote --tags origin`.
+**Tests:** none of its own.
+**Proof:** none.
+**Manual checks:** none.
+
+---
+
+## M32: The software renderer on Linux (1.12)
+
+The owner asked on 2026-11-06 (a report from Emetos): Linux is very slow without a GPU, for example in a virtual machine (X11, "libEGL warning: DRI3 error: Could not get DRI3 device", `glxinfo` says "OpenGL renderer string: llvmpipe"). The cause, as the report found it with Glutter 1.9.9:
+- on Linux the renderer list is `vulkan`, `gles` (`internal/engine`, SPEC §9.6). With no GPU, `gles` runs on Mesa's llvmpipe and draws the whole frame every frame: the damage only goes to `eglSwapBuffersWithDamageKHR` (SPEC §9.1, "Damage"), so the CPU still rasterizes the whole window, about 13 ms a frame at 1280x800 on 32 threads, and far more in a VM with few virtual CPUs. Without DRI3 the X11 present is a CPU copy too;
+- the `soft` renderer redraws only the damaged rectangles (`offscreen.Surface`, SPEC §9.9) and is the fallback on Windows (`gdiwindow`), Android (`nativewindow`) and the web (`canvas2d`), but not on Linux.
+
+M32 adds `soft` to Linux and makes `auto` choose it when the machine has no GPU. Everything stays cgo-free and goes through purego like the rest of `internal/platform/linux`. SPEC §9.6, §9.9 and §25.5 (the same idea on Windows) are the design; a step that needs a decision they do not make asks for it (rule 7).
+
+### 32.1 `soft` on Wayland: `wl_shm`
+**Goal:** `GLUTTER_RENDERER=soft` draws on Wayland: the frame is rasterized by `soft` into a shared-memory buffer and only the damaged rectangles are rasterized and reported.
+**Read:** SPEC §9.1 ("Damage"), §9.3, §9.6, §9.9, §25.5 (`gdiwindow`), the Wayland part of §8 and §9.4; `internal/gpu/soft`, `internal/gpu/gdiwindow`, `internal/gpu/nativewindow`, `internal/platform/linux/wayland`.
+**Port from:** none (the `wl_shm`, `wl_shm_pool` and `wl_buffer` protocol of `wayland.xml`; `gdiwindow` for the structure).
+**Files:** `internal/gpu/shmwindow/` (a renderer like `gdiwindow`: `soft` into a buffer that the platform gives, with its damage), `internal/platform/linux/wayland` (the `wl_shm` pool, buffers with release tracking, `wl_surface.attach`, `damage_buffer` for each rectangle, `commit`; generated bindings through `go generate`), `internal/engine` (`backends_linux.go`: `soft` in the list of Linux renderers when asked for by name), tests, `docs/SPEC.md` (§9.6, §9.9), `docs/GUIDE.md`, `README.md`.
+**Tasks:**
+1. The `wl_shm` pool and its buffers, in the C memory that purego maps (an anonymous file or `memfd_create`, `mmap`); two or three buffers, one is never drawn into while the compositor holds it (`wl_buffer.release`); `ARGB8888` or `XRGB8888`; the scale of the surface (`wl_surface.set_buffer_scale`, or the viewporter when the compositor has it) as the GLES and Vulkan windows do.
+2. A renderer that draws with `soft` and `offscreen.Surface` semantics: only the damaged rectangles of the frame are rasterized, and the rectangles of the buffer that is reused (buffer age: the damage of the frames since that buffer was drawn) are added, so the pixels are right; the damage of a frame goes to `wl_surface.damage_buffer`.
+3. Resize, scale change, a lost buffer pool, the window hidden and shown, and several windows, each with its own pool.
+4. `GLUTTER_RENDERER=soft` on Linux chooses it; the log says so at Info level as it does for the other renderers.
+5. SPEC: the decisions (the buffer count, the buffer age, the formats).
+**Tests:** unit tests of the buffer pool and the damage with the buffer age (a table: damage sequences, a resize, a buffer that is not released yet), with the routes of every new error tag; the fake compositor of the tests has `wl_shm`.
+**Display tests (`glutter_display`, headless sway through `scripts/headless-wayland.sh`):** an example draws its first frame with `soft` on `wl_shm`; a blinking caret rasterizes and reports only its rectangle (counted); a resize; the picture equals the one of `offscreen`.
+**Proof:** `32.1-soft-wayland.png` (method B with `GLUTTER_RENDERER=soft`), looked at.
+**Manual checks:** a real Wayland session in a virtual machine.
+
+### 32.2 `soft` on X11: MIT-SHM and `XPutImage`
+**Goal:** `soft` draws on X11: the damaged rectangles go to the window with `XShmPutImage` (MIT-SHM), or with `XPutImage` when the server has no SHM (a remote display).
+**Read:** SPEC §9.1, §9.6, §9.9, the X11 part of §8; `internal/platform/linux/x11`, `internal/gpu/shmwindow` (32.1).
+**Port from:** none (the MIT-SHM extension protocol; the core protocol's `PutImage`).
+**Files:** `internal/platform/linux/x11` (the SHM extension: `shmget`, `shmat` and the segment attached to the server through the extension, `XShmPutImage` of each damaged rectangle, a completion event so that the segment is not written while the server reads it; the `XPutImage` path), `internal/gpu/shmwindow` (the shared part), `internal/engine`, tests, docs.
+**Tasks:**
+1. Detect the extension (`XShmQueryExtension`, and that the server is local: SHM needs a segment the server can attach), and use plain `XPutImage` otherwise; a log line at Info level says which.
+2. Draw only the damaged rectangles, and send only those; a frame with no damage sends nothing.
+3. Resize, scale, several windows, a window that is hidden and shown; the segments are detached and removed when the window closes, and when the app ends.
+4. The same decisions as 32.1 for the formats (the visual of the window: 24 or 32 bits, the byte order).
+**Tests:** unit tests of the damage and the choice of the path (a fake X server with and without the extension); routes of the new error tags.
+**Display tests (`glutter_display`, Xvfb through `scripts/headless-x11.sh`):** the first frame with SHM and with SHM turned off (`GLUTTER_X11_NOSHM=1`, a debug variable, listed in the example's header comment if an example uses it); a caret that blinks sends only its rectangle; a resize; the picture equals the one of `offscreen`.
+**Proof:** `32.2-soft-x11.png` (the Xvfb screenshot with `GLUTTER_RENDERER=soft`), looked at.
+**Manual checks:** a real X11 session in a virtual machine, and a remote X display (ssh -X) for the no-SHM path.
+
+### 32.3 `auto` chooses `soft` when there is no GPU, and the benchmark
+**Goal:** on a machine whose only renderers are software (a virtual machine), `auto` picks `soft` and the app is fast again.
+**Read:** SPEC §9.4, §9.6, §15; `internal/engine`; `internal/gpu/gles` (how the renderer and the GL string are known); `internal/gpu/vulkan` (the device type).
+**Port from:** none.
+**Files:** `internal/engine` (the choice, the log), `internal/gpu/gles` (the `GL_RENDERER` string and a `Software()` predicate), `internal/gpu/vulkan` (the device types it already has), `internal/engine` tests, benchmarks in `internal/engine` or `examples/editor`, `docs/SPEC.md` (§9.6), `docs/PERFORMANCE.md`.
+**Tasks:**
+1. In `auto` on Linux: try Vulkan; when it has no device or only a CPU device (lavapipe, SwiftShader), and when the GLES context's `GL_RENDERER` names a software rasterizer (`llvmpipe`, `softpipe`, `swrast`, `Software Rasterizer`), choose `soft` instead of `gles`; the list in the report is a start, and the check is a table in the code. `GLUTTER_RENDERER=gles` or `vulkan` still choose them by name, even on software. The decision is logged at Info level like the other tries, with the string that decided it.
+2. If the owner's report also asks to measure both on the first frames: do not (a measurement at start adds time to every start); the rule above decides, and SPEC §9.6 says why.
+3. A benchmark of an idle frame in which only a text caret blinks (the editor's frame of §15), `soft` against `gles` on llvmpipe, in the headless Wayland and X11 environments; the numbers go to `docs/PERFORMANCE.md`. The goal: at least several times less CPU for `soft`; if it is not, report it to the owner.
+**Tests:** a table of `GL_RENDERER` and device-type strings and the renderer that `auto` chooses (a fake GLES and a fake Vulkan); the route and log of the choice.
+**Display tests:** under `scripts/headless-wayland.sh` and `scripts/headless-x11.sh` with llvmpipe, `auto` chooses `soft` (the log is checked) and draws its first frame.
+**Proof:** none (32.1 and 32.2 have them).
+**Manual checks:** the Emetos app in a virtual machine without a GPU, before and after: the owner's feeling of speed.
+
+### 32.4 Release 1.12
+**Goal:** 1.12 is released with steps 32.1 to 32.3, so that Emetos can update its `go.mod`.
+**Tasks:**
+1. SPEC: the version paragraph of §1 (a 1.12 sentence: `soft` on Linux through `wl_shm` and MIT-SHM, and `auto` choosing it without a GPU) and a "Scope of 1.12" paragraph next to the others; §9.6 and §9.9 say what `soft` is on Linux.
+2. `README.md`: "What is new in 1.12", and the renderer names of the Linux section.
+3. The standard checks of rule 8, `apicheck`, `errcheck`, `uintptrcheck`, and the suites of every environment as in 30.14 (`go test -race -tags glutter_display` under `scripts/headless-wayland.sh` and `scripts/headless-x11.sh`, the browser, Android and Wine suites). A failure is fixed, or reported with its cause if it is the machine's.
+4. Merge, tag `step-32.4` and `v1.12.0`, and publish: `git push --follow-tags origin main`, which takes steps 32.1 to 32.4 and their tags to GitHub. Check with `git ls-remote --tags origin`.
 **Tests:** none of its own.
 **Proof:** none.
 **Manual checks:** none.

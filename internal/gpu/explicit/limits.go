@@ -179,24 +179,48 @@ func (l Limits) CheckTexture(desc TextureDesc) {
 	if n.Format == TextureFormatUnspecified || n.Width < 1 || n.Height < 1 || n.DepthOrLayers < 1 {
 		return // the backends return an error for a texture without a size or a format
 	}
-	invalid(n.Kind >= TextureKind2D && n.Kind <= TextureKind3D, "texture kind", "kind", int(n.Kind))
-	invalid(n.Usage&^n.Format.AllowedUsage() == 0, "texture usage for the format", "format", int(n.Format), "usage", int(n.Usage), "allowed", int(n.Format.AllowedUsage()))
-	invalid(n.MipLevels <= MipLevelsOf(n.Width, n.Height), "mip levels", "levels", n.MipLevels, "size_allows", MipLevelsOf(n.Width, n.Height))
+	if foundation.DebugMode && (n.Kind < TextureKind2D || n.Kind > TextureKind3D) {
+		invalid(false, "texture kind", "kind", int(n.Kind))
+	}
+	if foundation.DebugMode && n.Usage&^n.Format.AllowedUsage() != 0 {
+		invalid(false, "texture usage for the format", "format", int(n.Format), "usage", int(n.Usage), "allowed", int(n.Format.AllowedUsage()))
+	}
+	if foundation.DebugMode && n.MipLevels > MipLevelsOf(n.Width, n.Height) {
+		invalid(false, "mip levels", "levels", n.MipLevels, "size_allows", MipLevelsOf(n.Width, n.Height))
+	}
 	switch n.Kind {
 	case TextureKind2D:
-		invalid(n.DepthOrLayers == 1, "layers of a 2D texture", "layers", n.DepthOrLayers)
+		if foundation.DebugMode && n.DepthOrLayers != 1 {
+			invalid(false, "layers of a 2D texture", "layers", n.DepthOrLayers)
+		}
 	case TextureKindCube:
-		invalid(n.DepthOrLayers == 6, "layers of a cube", "layers", n.DepthOrLayers)
-		invalid(n.Width == n.Height, "cube faces are square", "width", n.Width, "height", n.Height)
+		if foundation.DebugMode && n.DepthOrLayers != 6 {
+			invalid(false, "layers of a cube", "layers", n.DepthOrLayers)
+		}
+		if foundation.DebugMode && n.Width != n.Height {
+			invalid(false, "cube faces are square", "width", n.Width, "height", n.Height)
+		}
 	case TextureKind3D:
-		invalid(n.Usage&TextureRenderTarget == 0, "a 3D texture cannot be drawn into")
-		invalid(!n.Format.IsDepthStencil(), "a 3D texture has no depth format")
+		if foundation.DebugMode && n.Usage&TextureRenderTarget != 0 {
+			invalid(false, "a 3D texture cannot be drawn into")
+		}
+		if foundation.DebugMode && n.Format.IsDepthStencil() {
+			invalid(false, "a 3D texture has no depth format")
+		}
 	}
-	invalid(n.SampleCount == 1 || n.SampleCount == 4, "sample count", "samples", n.SampleCount)
+	if foundation.DebugMode && (n.SampleCount != 1 && n.SampleCount != 4) {
+		invalid(false, "sample count", "samples", n.SampleCount)
+	}
 	if n.SampleCount > 1 {
-		invalid(n.Kind == TextureKind2D && n.MipLevels == 1, "a multisampled texture is one level of a 2D texture", "kind", int(n.Kind), "levels", n.MipLevels)
-		invalid(n.Usage&TextureRenderTarget != 0, "a multisampled texture is drawn into")
-		invalid(n.Usage&^TextureRenderTarget == 0, "a multisampled texture is only drawn into and resolved", "usage", int(n.Usage))
+		if foundation.DebugMode && (n.Kind != TextureKind2D || n.MipLevels != 1) {
+			invalid(false, "a multisampled texture is one level of a 2D texture", "kind", int(n.Kind), "levels", n.MipLevels)
+		}
+		if foundation.DebugMode && n.Usage&TextureRenderTarget == 0 {
+			invalid(false, "a multisampled texture is drawn into")
+		}
+		if foundation.DebugMode && n.Usage&^TextureRenderTarget != 0 {
+			invalid(false, "a multisampled texture is only drawn into and resolved", "usage", int(n.Usage))
+		}
 	}
 }
 
@@ -208,12 +232,19 @@ func (l Limits) CheckTexture(desc TextureDesc) {
 // Flutter: no counterpart
 func (l Limits) CheckRead(desc TextureDesc, bytes bool) {
 	n := desc.Normalized()
-	invalid(n.Usage&(TextureCopySource|TextureRenderTarget) != 0, "a texture that is read has TextureCopySource or TextureRenderTarget")
-	invalid(n.Format.CanBeCopied(), "a texture that is read has a format that can be copied", "format", int(n.Format))
-	invalid(n.Kind == TextureKind2D && n.SampleCount == 1, "a texture that is read is 2D with one sample (read a Layer of an array or a cube; resolve a multisampled one)", "kind", int(n.Kind), "samples", n.SampleCount)
+	if foundation.DebugMode && n.Usage&(TextureCopySource|TextureRenderTarget) == 0 {
+		invalid(false, "a texture that is read has TextureCopySource or TextureRenderTarget")
+	}
+	if foundation.DebugMode && !n.Format.CanBeCopied() {
+		invalid(false, "a texture that is read has a format that can be copied", "format", int(n.Format))
+	}
+	if foundation.DebugMode && (n.Kind != TextureKind2D || n.SampleCount != 1) {
+		invalid(false, "a texture that is read is 2D with one sample (read a Layer of an array or a cube; resolve a multisampled one)", "kind", int(n.Kind), "samples", n.SampleCount)
+	}
 	if !bytes {
-		invalid(n.Format.BytesPerPixel() <= 4 && !n.Format.IsDepthStencil() && n.Format.SampleType(Features{}) == SampleTypeFloat,
-			"ReadTexture converts the 8 bit formats; use ReadTextureBytes", "format", int(n.Format))
+		if foundation.DebugMode && (n.Format.BytesPerPixel() > 4 || n.Format.IsDepthStencil() || n.Format.SampleType(Features{}) != SampleTypeFloat) {
+			invalid(false, "ReadTexture converts the 8 bit formats; use ReadTextureBytes", "format", int(n.Format))
+		}
 	}
 }
 
@@ -224,16 +255,26 @@ func (l Limits) CheckRead(desc TextureDesc, bytes bool) {
 // Flutter: no counterpart
 func (l Limits) CheckLayer(desc TextureDesc, level, layer int) {
 	n := desc.Normalized()
-	invalid(n.Kind != TextureKind3D, "a 3D texture has no layers")
-	invalid(level >= 0 && level < n.MipLevels, "layer of a mip level the texture has", "level", level, "levels", n.MipLevels)
-	invalid(layer >= 0 && layer < n.Layers(), "a layer the texture has", "layer", layer, "layers", n.Layers())
+	if foundation.DebugMode && n.Kind == TextureKind3D {
+		invalid(false, "a 3D texture has no layers")
+	}
+	if foundation.DebugMode && (level < 0 || level >= n.MipLevels) {
+		invalid(false, "layer of a mip level the texture has", "level", level, "levels", n.MipLevels)
+	}
+	if foundation.DebugMode && (layer < 0 || layer >= n.Layers()) {
+		invalid(false, "a layer the texture has", "layer", layer, "layers", n.Layers())
+	}
 }
 
 // checkVertexAttribute panics with GPUDescriptorInvalid in debug builds when a vertex attribute's
 // format is unspecified or does not fit in the stride of its buffer.
 func checkVertexAttribute(stride int, a VertexAttribute) {
-	invalid(a.Format.Size() > 0, "vertex format", "location", a.Location)
-	invalid(a.Offset >= 0 && a.Offset+a.Format.Size() <= stride, "vertex attribute inside the stride", "location", a.Location, "offset", a.Offset, "size", a.Format.Size(), "stride", stride)
+	if foundation.DebugMode && a.Format.Size() <= 0 {
+		invalid(false, "vertex format", "location", a.Location)
+	}
+	if foundation.DebugMode && (a.Offset < 0 || a.Offset+a.Format.Size() > stride) {
+		invalid(false, "vertex attribute inside the stride", "location", a.Location, "offset", a.Offset, "size", a.Format.Size(), "stride", stride)
+	}
 }
 
 // CheckPass panics with GPULimitExceeded in debug builds when the pass has more color
@@ -249,42 +290,68 @@ func (l Limits) CheckPass(desc PassDesc) {
 	if !foundation.DebugMode {
 		return
 	}
-	invalid(len(desc.Color) > 0 || desc.Depth != nil, "a pass has an attachment")
+	if foundation.DebugMode && (len(desc.Color) <= 0 && desc.Depth == nil) {
+		invalid(false, "a pass has an attachment")
+	}
 	bytes := 0
 	var width, height, samples int
 	check := func(t Texture, what string) {
 		d := t.Desc()
-		invalid(d.Usage&TextureRenderTarget != 0, what+" is a render target")
-		invalid(d.Kind == TextureKind2D, what+" is a 2D texture (use Layer for a layer of an array or a cube)", "kind", int(d.Kind))
+		if foundation.DebugMode && d.Usage&TextureRenderTarget == 0 {
+			invalid(false, what+" is a render target")
+		}
+		if foundation.DebugMode && d.Kind != TextureKind2D {
+			invalid(false, what+" is a 2D texture (use Layer for a layer of an array or a cube)", "kind", int(d.Kind))
+		}
 		if width == 0 {
 			width, height, samples = d.Width, d.Height, d.SampleCount
 			return
 		}
-		invalid(d.Width == width && d.Height == height, "the attachments have one size", "width", d.Width, "height", d.Height, "want_width", width, "want_height", height)
-		invalid(d.SampleCount == samples, "the attachments have one sample count", "samples", d.SampleCount, "want", samples)
+		if foundation.DebugMode && (d.Width != width || d.Height != height) {
+			invalid(false, "the attachments have one size", "width", d.Width, "height", d.Height, "want_width", width, "want_height", height)
+		}
+		if foundation.DebugMode && d.SampleCount != samples {
+			invalid(false, "the attachments have one sample count", "samples", d.SampleCount, "want", samples)
+		}
 	}
 	for _, c := range desc.Color {
-		invalid(c.Target != nil, "a color attachment has a texture")
+		if foundation.DebugMode && c.Target == nil {
+			invalid(false, "a color attachment has a texture")
+		}
 		if c.Target == nil {
 			continue
 		}
 		d := c.Target.Desc()
-		invalid(!d.Format.IsDepthStencil(), "a color attachment has a color format", "format", int(d.Format))
+		if foundation.DebugMode && d.Format.IsDepthStencil() {
+			invalid(false, "a color attachment has a color format", "format", int(d.Format))
+		}
 		bytes += d.Format.RenderTargetPixelBytes()
 		check(c.Target, "a color attachment")
 		if c.Resolve != nil {
 			r := c.Resolve.Desc()
-			invalid(d.SampleCount > 1, "only a multisampled attachment is resolved")
-			invalid(r.SampleCount == 1 && r.Format == d.Format, "a resolve target has one sample and the format of its attachment", "format", int(r.Format), "samples", r.SampleCount)
-			invalid(r.Width == d.Width && r.Height == d.Height, "a resolve target has the size of its attachment", "width", r.Width, "height", r.Height, "want_width", d.Width, "want_height", d.Height)
-			invalid(r.Usage&TextureRenderTarget != 0 && r.Kind == TextureKind2D, "a resolve target is a 2D render target")
+			if foundation.DebugMode && d.SampleCount <= 1 {
+				invalid(false, "only a multisampled attachment is resolved")
+			}
+			if foundation.DebugMode && (r.SampleCount != 1 || r.Format != d.Format) {
+				invalid(false, "a resolve target has one sample and the format of its attachment", "format", int(r.Format), "samples", r.SampleCount)
+			}
+			if foundation.DebugMode && (r.Width != d.Width || r.Height != d.Height) {
+				invalid(false, "a resolve target has the size of its attachment", "width", r.Width, "height", r.Height, "want_width", d.Width, "want_height", d.Height)
+			}
+			if foundation.DebugMode && (r.Usage&TextureRenderTarget == 0 || r.Kind != TextureKind2D) {
+				invalid(false, "a resolve target is a 2D render target")
+			}
 		}
 	}
 	exceeded("color attachment bytes per sample", bytes, l.MaxColorAttachmentBytesPerSample)
 	if desc.Depth != nil {
-		invalid(desc.Depth.Target != nil, "the depth attachment has a texture")
+		if foundation.DebugMode && desc.Depth.Target == nil {
+			invalid(false, "the depth attachment has a texture")
+		}
 		if desc.Depth.Target != nil {
-			invalid(desc.Depth.Target.Desc().Format.IsDepthStencil(), "the depth attachment has a depth format", "format", int(desc.Depth.Target.Desc().Format))
+			if foundation.DebugMode && !desc.Depth.Target.Desc().Format.IsDepthStencil() {
+				invalid(false, "the depth attachment has a depth format", "format", int(desc.Depth.Target.Desc().Format))
+			}
 			check(desc.Depth.Target, "the depth attachment")
 		}
 	}
@@ -323,18 +390,26 @@ func (l Limits) checkPipelineState(desc PipelineDesc) {
 	if !foundation.DebugMode {
 		return
 	}
-	invalid(desc.ColorTargets == nil || (desc.Target == TextureFormatUnspecified && desc.Blend == BlendState{}), "ColorTargets replace Target and Blend")
+	if foundation.DebugMode && (desc.ColorTargets != nil && (desc.Target != TextureFormatUnspecified || desc.Blend != BlendState{})) {
+		invalid(false, "ColorTargets replace Target and Blend")
+	}
 	bytes := 0
 	for _, t := range targets {
 		if t.Format == TextureFormatUnspecified {
 			continue // the shaders and vertex layouts of tests have no target
 		}
-		invalid(t.Format.AllowedUsage()&TextureRenderTarget != 0 && !t.Format.IsDepthStencil(), "a color target has a renderable color format", "format", int(t.Format))
+		if foundation.DebugMode && (t.Format.AllowedUsage()&TextureRenderTarget == 0 || t.Format.IsDepthStencil()) {
+			invalid(false, "a color target has a renderable color format", "format", int(t.Format))
+		}
 		bytes += t.Format.RenderTargetPixelBytes()
 	}
 	exceeded("color target bytes per sample", bytes, l.MaxColorAttachmentBytesPerSample)
-	invalid(desc.Topology >= TopologyTriangleList && desc.Topology <= TopologyPointList, "topology", "topology", int(desc.Topology))
-	invalid(desc.Samples() == 1 || desc.Samples() == 4, "sample count", "samples", desc.SampleCount)
+	if foundation.DebugMode && (desc.Topology < TopologyTriangleList || desc.Topology > TopologyPointList) {
+		invalid(false, "topology", "topology", int(desc.Topology))
+	}
+	if foundation.DebugMode && (desc.Samples() != 1 && desc.Samples() != 4) {
+		invalid(false, "sample count", "samples", desc.SampleCount)
+	}
 	for _, vb := range desc.VertexBuffers {
 		for _, a := range vb.Attributes {
 			checkVertexAttribute(vb.Stride, a)
@@ -342,12 +417,18 @@ func (l Limits) checkPipelineState(desc PipelineDesc) {
 	}
 	ds := desc.DepthStencil
 	if ds.Format == TextureFormatUnspecified {
-		invalid(!ds.DepthWrite && ds.DepthBias == 0 && ds.DepthBiasSlopeScale == 0 && ds.DepthBiasClamp == 0, "a depth state needs a depth format")
+		if foundation.DebugMode && (ds.DepthWrite || ds.DepthBias != 0 || ds.DepthBiasSlopeScale != 0 || ds.DepthBiasClamp != 0) {
+			invalid(false, "a depth state needs a depth format")
+		}
 		return
 	}
-	invalid(ds.Format.IsDepthStencil(), "the depth-stencil state has a depth format", "format", int(ds.Format))
+	if foundation.DebugMode && !ds.Format.IsDepthStencil() {
+		invalid(false, "the depth-stencil state has a depth format", "format", int(ds.Format))
+	}
 	if ds.DepthBias != 0 || ds.DepthBiasSlopeScale != 0 || ds.DepthBiasClamp != 0 {
-		invalid(desc.Topology == TopologyTriangleList || desc.Topology == TopologyTriangleStrip, "only triangles have a depth bias", "topology", int(desc.Topology))
+		if foundation.DebugMode && (desc.Topology != TopologyTriangleList && desc.Topology != TopologyTriangleStrip) {
+			invalid(false, "only triangles have a depth bias", "topology", int(desc.Topology))
+		}
 	}
 }
 

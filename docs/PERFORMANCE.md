@@ -323,6 +323,27 @@ Other numbers of the same runs, for the record:
 3. **Idle CPU is the CPU time of the Wine processes of the prefix**, `utime+stime` from `/proc/<pid>/stat`: it counts Wine's own `wineserver`, `services.exe`, `winedevice.exe` and `explorer.exe` (0 to 2 ticks in 10 s) and not the `Xvfb` of the harness. Windows has no such processes, so the app's own row is the one that corresponds.
 4. **The `.exe` is large** for the same reasons as the APK (the program is a Go binary with the framework, the renderers, the shaders and two bundled fonts); no lever is applied and there is no target.
 
+## The 3D view (step 30.13)
+
+The targets of SPEC §27.10, measured with `go test -run '^$' -bench 'Frame|Display' ./viewport3d` (`bench_test.go` on the recording device, `display_bench_test.go` with `-tags glutter_display` on Vulkan: lavapipe, or the machine's GPU with `GLUTTER_BENCH_GPU=hardware`, always through `.claude/no-nvidia.sh`). The scenes are in `internal/scenetest/bench.go`: a stepped surface of 1,002,528 triangles with its edges (shaded with edges, 4x multisampling, 1920x1080), 10,000 items that share a mesh, and 10,000 items that each have a mesh of their own. "CPU" is the time that the UI thread spends running in `Draw`, `Finish` and `Submit` (the thread's own CPU time, so the wait for the GPU is not in it). Machine: AMD Ryzen 9 6900HX, AMD Radeon RX 6800M (RADV NAVI22), release build (`-tags glutter_release`); three runs each, the range is given.
+
+| What | Target | Measured on the RX 6800M | Met |
+|---|---|---|---|
+| 1,000,000 triangles with edges | 60 fps, 2 ms of CPU | 396 to 402 fps, 0.12 to 0.13 ms | yes |
+| 10,000 items of one mesh | 1 ms of CPU | 0.93 to 0.95 ms (a debug build: 0.98 to 1.02 ms) | yes, with little room |
+| 10,000 items of 10,000 meshes | 4 ms of CPU | 19.9 to 22.5 ms (35 to 39 fps) | **no** |
+| A steady frame allocates | nothing | 0 allocations on the recording device (`TestASteadyFrameAllocatesNothing`, 10 scenes); the Vulkan backend allocates 125 to 170 times for the scenes of one to 10,000 draws, and 3 for each separate draw | yes, on the recording device |
+| An idle view | no frame | no frame (the view tests of `gpu` and `viewport3d`) | yes |
+| A pick | its result in the next frame | the next frame (`TestAPickIsMadeInTheNextFrameAndAnsweredWhenTheGPUHasFinished`) | yes |
+
+On lavapipe (a CPU rasterizer, so the frame rate is the rasterizer's and the CPU time of `Submit` is in part its own; not targets): 4.6 fps for the million triangles, 29 fps for the instanced scene, 18 fps for the separate one.
+
+On the recording device (the work of the renderer and of package `gpu` only, release build): the million triangles 0.003 ms, the instanced scene 0.60 to 0.63 ms, the separate scene 3.2 to 4.2 ms, and a frame after the camera moved (10,000 instanced items, everything is worked out again) 0.71 ms.
+
+**What was changed for these numbers.** `gpu` records a frame in lists that it keeps (encoders, passes, replays, an operation as a struct, not a closure) and the checks that make metadata are made only when they fail, so that a steady frame allocates nothing; a buffer is counted busy by a stamp, not by a set. `viewport3d` computes the model-view matrix of an affine item with 36 products instead of 64, skips the test of the frustum when the scene is wholly in view, keeps the last mesh, material and pipeline of a batch, and skips the sort of a list that is sorted. The Vulkan backend calls the commands of a draw (bind pipeline, bind descriptor sets, bind vertex buffers, bind index buffer, set viewport, set scissor, set stencil reference, draw, draw indexed) through `purego.SyscallN`, which costs 180 ns and one allocation where `RegisterFunc`'s reflection costs 830 ns and seven; it binds the vertex buffers of a draw in one call for the slots that are next to each other, and does not bind an index buffer that is bound already. The separate scene went from 58 ms to 21 ms of CPU.
+
+**Target not met: 10,000 items of different meshes, 4 ms.** What is left is the price of the calls: an item with a mesh of its own is three calls into the driver (the vertex buffers, the index buffer, the draw), 30,000 in a frame, and each costs about 0.7 microseconds with the driver's own work, so a frame cannot be under 4 ms while each mesh is a buffer of its own. The ways to meet it are in the design, not in this step, and need the owner's decision: (1) one big vertex buffer and one big index buffer for the meshes of a scene (an arena in `viewport3d`), so that the draws need no binds, and (2) a multi-draw indirect call in `gpu` (`DrawIndexedIndirect` is one draw today), which makes the 10,000 draws one call. The target is not relaxed.
+
 ## Text: code-like paragraphs (step 22.6)
 
 A code view draws many short lines of monospace text, each in many styled spans. The

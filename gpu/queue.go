@@ -21,6 +21,14 @@ type Queue struct {
 	// pending are the writes to buffers that the GPU was still using when they were made: they are done by the next
 	// submission, at the start of its commands.
 	pending []pendingWrite
+	// The storage that a frame uses again, so that a steady frame allocates nothing: the replays that are not in flight, and
+	// the encoders and the passes of the command buffers that were submitted.
+	replays  []*replay
+	encoders []*CommandEncoder
+	renders  []*RenderPass
+	computes []*ComputePass
+	// stamp counts the uses of replays (replay.stamp).
+	stamp uint64
 }
 
 // pendingWrite is a write that waits for the next submission: staging holds the bytes.
@@ -31,17 +39,23 @@ type pendingWrite struct {
 	staging explicit.Buffer
 }
 
-// replay is the state of one submission while the commands of its command buffers run on the explicit encoder.
+// replay is the state of one submission while the commands of its command buffers run on the explicit encoder. A replay
+// goes back to the queue's list when the GPU has finished the submission (finish), and is made again from it.
 type replay struct {
 	d   *Device
+	q   *Queue
 	enc explicit.Encoder
 	// groups are the bind groups made for this submission, by bind group and the pipeline they are bound with.
 	groups map[groupKey]explicit.BindGroup
 	// used are the buffers that the commands use, which are busy until the submission is done.
-	used     map[*Buffer]struct{}
+	used []*Buffer
+	// stamp names this use of the replay: a buffer whose stamp is the same has been counted already (no set to look it up in).
+	stamp    uint64
 	released bool
 	// err is the first error of the commands: a bind group that could not be made.
 	err error
+	// finishFn is finish as a value, made once, so that handing it to the encoder allocates nothing.
+	finishFn func()
 }
 
 type groupKey struct {
@@ -51,54 +65,83 @@ type groupKey struct {
 
 // markUsed counts the buffer as busy until the submission is done.
 func (r *replay) markUsed(b *Buffer) {
-	if _, ok := r.used[b]; ok {
+	if b.stamp == r.stamp {
 		return
 	}
-	r.used[b] = struct{}{}
+	b.stamp = r.stamp
+	r.used = append(r.used, b)
 	b.busy++
 }
 
-// finish ends the busy time of the buffers; it may be called twice.
+// finish ends the busy time of the buffers and gives the replay back to the queue; it may be called twice.
 func (r *replay) finish() {
 	if r.released {
 		return
 	}
 	r.released = true
-	for b := range r.used {
+	for _, b := range r.used {
 		b.busy--
 	}
+	clear(r.used)
+	r.used = r.used[:0]
+	clear(r.groups)
+	r.enc, r.err = nil, nil
+	r.q.replays = append(r.q.replays, r)
 }
 
-// run makes one submission: the pending writes, then fn's commands. It returns the error of the explicit device
-// (Begin and Submit), untouched.
-func (q *Queue) run(fn func(r *replay)) error {
+// takeReplay is a replay from the queue's list, or a new one.
+func (q *Queue) takeReplay(enc explicit.Encoder) *replay {
+	var r *replay
+	if n := len(q.replays); n > 0 {
+		r = q.replays[n-1]
+		q.replays[n-1] = nil
+		q.replays = q.replays[:n-1]
+	} else {
+		r = &replay{d: q.d, q: q, groups: map[groupKey]explicit.BindGroup{}}
+		r.finishFn = r.finish
+	}
+	q.stamp++
+	r.enc, r.released, r.stamp = enc, false, q.stamp
+	return r
+}
+
+// run makes one submission: the pending writes, then the commands of the command buffers, then fn's. It returns the error of
+// the explicit device (Begin and Submit), untouched.
+func (q *Queue) run(cbs []*CommandBuffer, fn func(r *replay)) error {
 	d := q.d
 	enc, err := d.dev.Begin()
 	if err != nil {
 		return err
 	}
-	r := &replay{d: d, enc: enc, groups: map[groupKey]explicit.BindGroup{}, used: map[*Buffer]struct{}{}}
+	r := q.takeReplay(enc)
 	q.flushPending(r)
-	fn(r)
-	enc.OnComplete(r.finish)
+	for _, cb := range cbs {
+		cb.replay(r)
+	}
+	if fn != nil {
+		fn(r)
+	}
+	// What the commands could not do is read before the submission: it may be finished (and the replay used again) inside Submit.
+	cmdErr := r.err
+	enc.OnComplete(r.finishFn)
 	if err := enc.Submit(); err != nil {
 		r.finish()
 		return err
 	}
-	return r.err
+	return cmdErr
 }
 
 // flushPending copies the staged writes into their buffers, in the order they were made.
 func (q *Queue) flushPending(r *replay) {
-	pending := q.pending
-	q.pending = nil
-	for _, w := range pending {
+	for i, w := range q.pending {
 		if !w.dst.released {
 			r.markUsed(w.dst)
 			r.enc.CopyBuffer(w.staging, 0, w.dst.exp, w.offset, w.size)
 		}
 		w.staging.Destroy()
+		q.pending[i] = pendingWrite{}
 	}
+	q.pending = q.pending[:0]
 }
 
 // WriteBuffer writes data into the buffer at offset (WebGPU's GPUQueue.writeBuffer). The data is copied before the
@@ -115,8 +158,14 @@ func (q *Queue) WriteBuffer(b *Buffer, offset int, data []byte) {
 	misuse(b != nil && b.d == d, "Queue.WriteBuffer", "the buffer was made by this device")
 	b.usable("Queue.WriteBuffer")
 	misuse(b.usage&BufferUsageCopyDst != 0, "Queue.WriteBuffer", "the buffer has BufferUsageCopyDst")
-	misuse(offset >= 0 && offset%4 == 0 && len(data)%4 == 0, "Queue.WriteBuffer", "the offset and the length of a write are multiples of 4", "offset", offset, "length", len(data))
-	misuse(offset+len(data) <= b.size, "Queue.WriteBuffer", "the write is inside the buffer", "offset", offset, "length", len(data), "size", b.size)
+	// The metadata is made only for a write that is wrong: a frame writes its instances here, and boxing the numbers of a good
+	// one would allocate.
+	if foundation.DebugMode && (offset < 0 || offset%4 != 0 || len(data)%4 != 0) {
+		misuse(false, "Queue.WriteBuffer", "the offset and the length of a write are multiples of 4", "offset", offset, "length", len(data))
+	}
+	if foundation.DebugMode && (offset+len(data) > b.size) {
+		misuse(false, "Queue.WriteBuffer", "the write is inside the buffer", "offset", offset, "length", len(data), "size", b.size)
+	}
 	if b.busy == 0 {
 		d.dev.WriteBuffer(b.exp, offset, data)
 		return
@@ -182,11 +231,12 @@ func (q *Queue) Submit(buffers ...*CommandBuffer) error {
 		misuse(!cb.submitted, "Queue.Submit", "a command buffer is submitted once")
 		cb.submitted = true
 	}
-	return q.run(func(r *replay) {
-		for _, cb := range buffers {
-			cb.replay(r)
-		}
-	})
+	err := q.run(buffers, nil)
+	// The commands have run on the explicit encoder: the encoders and passes can be used again.
+	for _, cb := range buffers {
+		cb.e.recycle()
+	}
+	return err
 }
 
 // OnSubmittedWorkDone calls fn, on the UI thread from the event loop, once the GPU has finished everything that was
@@ -201,7 +251,7 @@ func (q *Queue) OnSubmittedWorkDone(fn func()) {
 		return
 	}
 	inCall := true
-	err := q.run(func(r *replay) {
+	err := q.run(nil, func(r *replay) {
 		r.enc.OnComplete(func() {
 			if inCall {
 				d.post(fn)
@@ -233,6 +283,10 @@ func (d *Device) logError(msg string, err error) {
 
 // misuse panics with GPUEncodingInvalid in debug builds when ok is false: a programmer error of the use of the API
 // (SPEC §27.2). The release builds skip the check. what names the rule, call the entry point, and kv are metadata.
+//
+// A check that has metadata (or a message that is made at run time) is written
+// `if foundation.DebugMode && !(ok) { misuse(false, call, what, kv...) }` in the code that a frame runs: the arguments are made
+// only for a check that failed, as boxing the numbers of one that passed is an allocation, and a steady frame allocates nothing.
 func misuse(ok bool, call, what string, kv ...any) {
 	if foundation.DebugMode && !ok {
 		panic(errors.New(TagGPUEncodingInvalid, "gpu: "+call+": "+what, append([]any{"call", call, "what", what}, kv...)...))

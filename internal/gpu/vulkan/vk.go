@@ -292,7 +292,48 @@ func (f *vkFuncs) bind(lv level, resolve resolver) error {
 
 // bindFunc makes the function pointer fptr (a pointer to a func field) call the C
 // function at addr.
-func bindFunc(fptr any, addr uintptr) { purego.RegisterFunc(fptr, addr) }
+//
+// The commands that a frame makes for each draw call through purego.SyscallN, which costs a fifth of what RegisterFunc's
+// reflection does (180 ns against 830 ns, and one allocation against seven; the 10,000 draws of 10,000 meshes of SPEC §27.10 are
+// 30,000 calls). The others are bound with RegisterFunc.
+func bindFunc(fptr any, addr uintptr) {
+	switch p := fptr.(type) {
+	case *func(cb uintptr, bindPoint uint32, pipeline uint64):
+		*p = func(cb uintptr, bindPoint uint32, pipeline uint64) {
+			purego.SyscallN(addr, cb, uintptr(bindPoint), uintptr(pipeline))
+		}
+	case *func(cb uintptr, bindPoint uint32, layout uint64, first, count uint32, pSets uintptr, dynCount uint32, pDyn uintptr):
+		*p = func(cb uintptr, bindPoint uint32, layout uint64, first, count uint32, pSets uintptr, dynCount uint32, pDyn uintptr) {
+			purego.SyscallN(addr, cb, uintptr(bindPoint), uintptr(layout), uintptr(first), uintptr(count), pSets, uintptr(dynCount), pDyn)
+		}
+	case *func(cb uintptr, first, count uint32, pBuffers, pOffsets uintptr):
+		*p = func(cb uintptr, first, count uint32, pBuffers, pOffsets uintptr) {
+			purego.SyscallN(addr, cb, uintptr(first), uintptr(count), pBuffers, pOffsets)
+		}
+	case *func(cb uintptr, buffer, offset uint64, indexType uint32):
+		*p = func(cb uintptr, buffer, offset uint64, indexType uint32) {
+			purego.SyscallN(addr, cb, uintptr(buffer), uintptr(offset), uintptr(indexType))
+		}
+	case *func(cb uintptr, first, count uint32, pRects uintptr): // viewports and scissors
+		*p = func(cb uintptr, first, count uint32, pRects uintptr) {
+			purego.SyscallN(addr, cb, uintptr(first), uintptr(count), pRects)
+		}
+	case *func(cb uintptr, faceMask, reference uint32):
+		*p = func(cb uintptr, faceMask, reference uint32) {
+			purego.SyscallN(addr, cb, uintptr(faceMask), uintptr(reference))
+		}
+	case *func(cb uintptr, vertices, instances, firstVertex, firstInstance uint32):
+		*p = func(cb uintptr, vertices, instances, firstVertex, firstInstance uint32) {
+			purego.SyscallN(addr, cb, uintptr(vertices), uintptr(instances), uintptr(firstVertex), uintptr(firstInstance))
+		}
+	case *func(cb uintptr, indices, instances, firstIndex uint32, vertexOffset int32, firstInstance uint32):
+		*p = func(cb uintptr, indices, instances, firstIndex uint32, vertexOffset int32, firstInstance uint32) {
+			purego.SyscallN(addr, cb, uintptr(indices), uintptr(instances), uintptr(firstIndex), uintptr(uint32(vertexOffset)), uintptr(firstInstance))
+		}
+	default:
+		purego.RegisterFunc(fptr, addr)
+	}
+}
 
 // loadLibrary opens libvulkan.so.1 (GLUTTER_VULKAN_LIBRARY overrides it, SPEC §9.4),
 // binds vkGetInstanceProcAddr and the global functions. A library that cannot be loaded

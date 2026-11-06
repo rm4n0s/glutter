@@ -2,6 +2,7 @@ package gpu
 
 import (
 	"github.com/rm4n0s/errors"
+	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/internal/gpu/explicit"
 )
 
@@ -165,9 +166,13 @@ func (g *BindGroup) Release() {
 // check panics in debug builds when the group cannot be bound at the dynamic offsets: the count, the alignment, and
 // the ranges that the offsets move must stay inside their buffers.
 func (g *BindGroup) check(call string, offsets []uint32) {
+	if !foundation.DebugMode {
+		return
+	}
 	l := g.layout
-	misuse(len(offsets) == l.dynamicCount(), call, "SetBindGroup takes one dynamic offset for each uniform buffer of the group",
-		"offsets", len(offsets), "uniform_buffers", l.dynamicCount())
+	if len(offsets) != l.dynamicCount() {
+		misuse(false, call, "SetBindGroup takes one dynamic offset for each uniform buffer of the group", "offsets", len(offsets), "uniform_buffers", l.dynamicCount())
+	}
 	i := 0
 	for _, b := range g.buffers {
 		if !b.uniform {
@@ -178,9 +183,13 @@ func (g *BindGroup) check(call string, offsets []uint32) {
 		}
 		off := int(offsets[i])
 		i++
-		misuse(off%g.d.limits.UniformOffsetAlignment == 0, call, "a dynamic offset is a multiple of Limits.MinUniformBufferOffsetAlignment", "offset", off)
-		misuse(b.offset+off+b.size <= b.buf.size, call, "the range of a uniform binding moved by its dynamic offset is inside the buffer",
-			"offset", b.offset+off, "size", b.size, "buffer", b.buf.size)
+		if off%g.d.limits.UniformOffsetAlignment != 0 {
+			misuse(false, call, "a dynamic offset is a multiple of Limits.MinUniformBufferOffsetAlignment", "offset", off)
+		}
+		if b.offset+off+b.size > b.buf.size {
+			misuse(false, call, "the range of a uniform binding moved by its dynamic offset is inside the buffer",
+				"offset", b.offset+off, "size", b.size, "buffer", b.buf.size)
+		}
 	}
 }
 

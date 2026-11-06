@@ -58,8 +58,14 @@ type Device struct {
 	Supported explicit.Features
 	// Quiet stops the device from keeping the log of its calls and the copies of the buffer
 	// writes, so that a benchmark of the renderer counts what the renderer allocates and not
-	// what the log does.
+	// what the log does. A quiet device also uses one encoder and one pass again and again, so
+	// that its own calls allocate nothing (a frame that is checked for allocations is not
+	// counted for what the fake needs to run it).
 	Quiet bool
+
+	quietEncoder encoder
+	quietPass    pass
+	spare        []func()
 
 	live Live
 }
@@ -160,7 +166,9 @@ func (d *Device) SetLimits(l explicit.Limits) { d.limits = l }
 
 // NewBuffer implements explicit.Device.
 func (d *Device) NewBuffer(size int, usage explicit.BufferUsage) (explicit.Buffer, error) {
-	d.record("NewBuffer", "size=%d usage=%d", size, usage)
+	if !d.Quiet {
+		d.record("NewBuffer", "size=%d usage=%d", size, usage)
+	}
 	d.limits.CheckBuffer(size, usage)
 	if err := d.fail(); err != nil {
 		return nil, err
@@ -173,9 +181,13 @@ func (d *Device) NewBuffer(size int, usage explicit.BufferUsage) (explicit.Buffe
 // keeps the pixels of its layers, which Layer and WriteTextureRegion give access to.
 func (d *Device) NewTexture(desc explicit.TextureDesc) (explicit.Texture, error) {
 	if desc.Kind == explicit.TextureKindUnspecified && desc.DepthOrLayers == 0 && desc.SampleCount == 0 {
-		d.record("NewTexture", "%dx%d format=%d levels=%d usage=%d", desc.Width, desc.Height, desc.Format, desc.MipLevels, desc.Usage)
+		if !d.Quiet {
+			d.record("NewTexture", "%dx%d format=%d levels=%d usage=%d", desc.Width, desc.Height, desc.Format, desc.MipLevels, desc.Usage)
+		}
 	} else {
-		d.record("NewTexture", "%dx%d format=%d levels=%d usage=%d kind=%d depth_or_layers=%d samples=%d", desc.Width, desc.Height, desc.Format, desc.MipLevels, desc.Usage, desc.Kind, desc.DepthOrLayers, desc.SampleCount)
+		if !d.Quiet {
+			d.record("NewTexture", "%dx%d format=%d levels=%d usage=%d kind=%d depth_or_layers=%d samples=%d", desc.Width, desc.Height, desc.Format, desc.MipLevels, desc.Usage, desc.Kind, desc.DepthOrLayers, desc.SampleCount)
+		}
 	}
 	d.limits.CheckTexture(desc)
 	if err := d.fail(); err != nil {
@@ -193,7 +205,9 @@ func (d *Device) NewTexture(desc explicit.TextureDesc) (explicit.Texture, error)
 
 // NewSampler implements explicit.Device.
 func (d *Device) NewSampler(desc explicit.SamplerDesc) (explicit.Sampler, error) {
-	d.record("NewSampler", "%+v", desc)
+	if !d.Quiet {
+		d.record("NewSampler", "%+v", desc)
+	}
 	if err := d.fail(); err != nil {
 		return nil, err
 	}
@@ -207,7 +221,9 @@ func (d *Device) NewPipeline(desc explicit.PipelineDesc) (explicit.Pipeline, err
 	if desc.Shader != nil {
 		name = desc.Shader.Name
 	}
-	d.record("NewPipeline", "shader=%s vertex=%s fragment=%s buffers=%d target=%d%s", name, desc.VertexEntry, desc.FragmentEntry, len(desc.VertexBuffers), desc.Target, stateText(desc))
+	if !d.Quiet {
+		d.record("NewPipeline", "shader=%s vertex=%s fragment=%s buffers=%d target=%d%s", name, desc.VertexEntry, desc.FragmentEntry, len(desc.VertexBuffers), desc.Target, stateText(desc))
+	}
 	d.limits.CheckPipeline(desc)
 	if err := d.fail(); err != nil {
 		return nil, err
@@ -218,7 +234,9 @@ func (d *Device) NewPipeline(desc explicit.PipelineDesc) (explicit.Pipeline, err
 
 // NewBindGroup implements explicit.Device.
 func (d *Device) NewBindGroup(p explicit.Pipeline, group int, entries []explicit.Binding) (explicit.BindGroup, error) {
-	d.record("NewBindGroup", "group=%d entries=%d", group, len(entries))
+	if !d.Quiet {
+		d.record("NewBindGroup", "group=%d entries=%d", group, len(entries))
+	}
 	d.limits.CheckBindGroup(group, entries)
 	if fp, ok := p.(*pipeline); ok && fp.desc.Shader != nil {
 		d.checkBindings(group, entries, fp.desc.Shader, fp.desc.VertexEntry, fp.desc.FragmentEntry)
@@ -231,7 +249,9 @@ func (d *Device) NewBindGroup(p explicit.Pipeline, group int, entries []explicit
 
 // WriteBuffer implements explicit.Device.
 func (d *Device) WriteBuffer(b explicit.Buffer, offset int, data []byte) {
-	d.record("WriteBuffer", "offset=%d bytes=%d", offset, len(data))
+	if !d.Quiet {
+		d.record("WriteBuffer", "offset=%d bytes=%d", offset, len(data))
+	}
 	var usage explicit.BufferUsage
 	if fb, ok := b.(*buffer); ok {
 		usage = fb.usage
@@ -246,7 +266,9 @@ func (d *Device) WriteBuffer(b explicit.Buffer, offset int, data []byte) {
 
 // WriteTexture implements explicit.Device. It keeps the pixels of every level.
 func (d *Device) WriteTexture(t explicit.Texture, level int, r image.Rectangle, data []byte, stride int) {
-	d.record("WriteTexture", "level=%d rect=%v bytes=%d stride=%d", level, r, len(data), stride)
+	if !d.Quiet {
+		d.record("WriteTexture", "level=%d rect=%v bytes=%d stride=%d", level, r, len(data), stride)
+	}
 	ft, ok := t.(*texture)
 	if !ok {
 		return
@@ -264,7 +286,9 @@ func (d *Device) WriteTexture(t explicit.Texture, level int, r image.Rectangle, 
 // into their layers, and of a 3D texture into its slices (kept as one image of Width x Height x
 // Depth rows).
 func (d *Device) WriteTextureRegion(t explicit.Texture, region explicit.TextureRegion, data []byte, bytesPerRow, rowsPerImage int) {
-	d.record("WriteTextureRegion", "region=%+v bytes=%d bytesPerRow=%d rowsPerImage=%d", region, len(data), bytesPerRow, rowsPerImage)
+	if !d.Quiet {
+		d.record("WriteTextureRegion", "region=%+v bytes=%d bytesPerRow=%d rowsPerImage=%d", region, len(data), bytesPerRow, rowsPerImage)
+	}
 	ft, ok := t.(*texture)
 	if !ok || ft.bpp == 0 {
 		return
@@ -301,7 +325,9 @@ func (d *Device) writeRows(ft *texture, r image.Rectangle, data []byte, stride i
 
 // NewSwapchain implements explicit.Device.
 func (d *Device) NewSwapchain(h gpu.SurfaceHandle) (explicit.Swapchain, error) {
-	d.record("NewSwapchain", "kind=%s", h.Kind)
+	if !d.Quiet {
+		d.record("NewSwapchain", "kind=%s", h.Kind)
+	}
 	if err := d.fail(); err != nil {
 		return nil, err
 	}
@@ -310,16 +336,27 @@ func (d *Device) NewSwapchain(h gpu.SurfaceHandle) (explicit.Swapchain, error) {
 
 // Begin implements explicit.Device.
 func (d *Device) Begin() (explicit.Encoder, error) {
-	d.record("Begin", "")
+	if !d.Quiet {
+		d.record("Begin", "")
+	}
 	if err := d.fail(); err != nil {
 		return nil, err
+	}
+	if d.Quiet {
+		e := &d.quietEncoder
+		e.d, e.pass, e.cpass, e.submitted = d, nil, nil, false
+		clear(e.complete)
+		e.complete = e.complete[:0]
+		return e, nil
 	}
 	return &encoder{d: d}, nil
 }
 
 // Close implements explicit.Device.
 func (d *Device) Close() error {
-	d.record("Close", "")
+	if !d.Quiet {
+		d.record("Close", "")
+	}
 	d.closed = true
 	return d.fail()
 }
@@ -357,10 +394,13 @@ func (d *Device) CompleteReads() {
 		rd.done(rd.src.read(rd.r), nil)
 	}
 	done := d.completions
-	d.completions = nil
+	d.completions = d.spare[:0]
 	for _, fn := range done {
 		fn()
 	}
+	// The list that was run is the next one's storage, so that a device that is checked for allocations makes none here.
+	clear(done)
+	d.spare = done[:0]
 }
 
 type buffer struct {
@@ -571,7 +611,9 @@ type swapchain struct {
 }
 
 func (s *swapchain) Configure(width, height int) error {
-	s.d.record("Configure", "%dx%d", width, height)
+	if !s.d.Quiet {
+		s.d.record("Configure", "%dx%d", width, height)
+	}
 	if err := s.d.fail(); err != nil {
 		return err
 	}
@@ -595,7 +637,9 @@ func (s *swapchain) PreRotation() explicit.Rotation { return s.d.Rotation }
 func (s *swapchain) Stale() bool { return s.stale }
 
 func (s *swapchain) Acquire() (explicit.Texture, error) {
-	s.d.record("Acquire", "")
+	if !s.d.Quiet {
+		s.d.record("Acquire", "")
+	}
 	if len(s.d.AcquireErrs) > 0 {
 		err := s.d.AcquireErrs[0]
 		s.d.AcquireErrs = s.d.AcquireErrs[1:]
@@ -613,7 +657,9 @@ func (s *swapchain) Acquire() (explicit.Texture, error) {
 }
 
 func (s *swapchain) Present(damage []image.Rectangle) error {
-	s.d.record("Present", "damage=%v", damage)
+	if !s.d.Quiet {
+		s.d.record("Present", "damage=%v", damage)
+	}
 	if s.d.StaleOnce {
 		s.d.StaleOnce, s.stale = false, true
 	}
@@ -631,35 +677,51 @@ type encoder struct {
 }
 
 func (e *encoder) BeginPass(target explicit.Texture, load explicit.LoadOp, clear ui.Color) explicit.Pass {
-	e.d.record("BeginPass", "target=%v load=%d clear=%v", target.Desc().Format, load, clear)
+	if !e.d.Quiet {
+		e.d.record("BeginPass", "target=%v load=%d clear=%v", target.Desc().Format, load, clear)
+	}
 	if e.pass != nil && !e.pass.ended {
 		panic(errors.New(tagFakePassNotEnded, "BeginPass was called before the previous pass ended"))
 	}
 	if t, ok := target.(*texture); ok && (load == explicit.LoadClear || load == explicit.LoadDontCare) {
 		t.fill(clear)
 	}
-	e.pass = &pass{d: e.d}
+	e.pass = e.newPass()
 	return e.pass
 }
 
 func (e *encoder) BeginRenderPass(desc explicit.PassDesc) explicit.Pass {
-	e.d.record("BeginRenderPass", "%s", passText(desc))
+	if !e.d.Quiet {
+		e.d.record("BeginRenderPass", "%s", passText(desc))
+	}
 	e.d.limits.CheckPass(desc)
 	e.d.limits.CheckTimestamps(e.d.Supported, desc.Timestamps)
 	if e.pass != nil && !e.pass.ended {
 		panic(errors.New(tagFakePassNotEnded, "BeginRenderPass was called before the previous pass ended"))
 	}
 	for _, c := range desc.Color {
-		if t, ok := c.Target.(*texture); ok && (c.Load == explicit.LoadClear || c.Load == explicit.LoadDontCare) {
+		// A quiet device keeps no pixels of a clear: building the bytes of one is an allocation.
+		if t, ok := c.Target.(*texture); ok && !e.d.Quiet && (c.Load == explicit.LoadClear || c.Load == explicit.LoadDontCare) {
 			t.fillBytes(encodeColor(t.desc.Format, c.Clear))
 		}
 	}
-	e.pass = &pass{d: e.d}
+	e.pass = e.newPass()
 	return e.pass
 }
 
+// newPass is the pass of a new BeginRenderPass: a quiet device keeps one.
+func (e *encoder) newPass() *pass {
+	if e.d.Quiet {
+		e.d.quietPass = pass{d: e.d}
+		return &e.d.quietPass
+	}
+	return &pass{d: e.d}
+}
+
 func (e *encoder) CopyTexture(src explicit.Texture, r image.Rectangle, dst explicit.Texture, at image.Point) {
-	e.d.record("CopyTexture", "rect=%v at=%v", r, at)
+	if !e.d.Quiet {
+		e.d.record("CopyTexture", "rect=%v at=%v", r, at)
+	}
 	s, ok1 := src.(*texture)
 	t, ok2 := dst.(*texture)
 	if !ok1 || !ok2 || s.pix == nil || t.pix == nil || s.bpp != t.bpp {
@@ -687,7 +749,9 @@ func (e *encoder) CopyTexture(src explicit.Texture, r image.Rectangle, dst expli
 }
 
 func (e *encoder) ReadTexture(src explicit.Texture, r image.Rectangle, done func(*image.RGBA, error)) {
-	e.d.record("ReadTexture", "rect=%v", r)
+	if !e.d.Quiet {
+		e.d.record("ReadTexture", "rect=%v", r)
+	}
 	if t, ok := src.(*texture); ok {
 		e.d.limits.CheckRead(t.desc, false)
 		e.d.reads = append(e.d.reads, pendingRead{src: t, r: r, done: done})
@@ -695,7 +759,9 @@ func (e *encoder) ReadTexture(src explicit.Texture, r image.Rectangle, done func
 }
 
 func (e *encoder) ReadTextureBytes(src explicit.Texture, r image.Rectangle, done func([]byte, int, error)) {
-	e.d.record("ReadTextureBytes", "rect=%v", r)
+	if !e.d.Quiet {
+		e.d.record("ReadTextureBytes", "rect=%v", r)
+	}
 	if t, ok := src.(*texture); ok {
 		e.d.limits.CheckRead(t.desc, true)
 		e.d.reads = append(e.d.reads, pendingRead{src: t, r: r, doneBytes: done})
@@ -703,7 +769,9 @@ func (e *encoder) ReadTextureBytes(src explicit.Texture, r image.Rectangle, done
 }
 
 func (e *encoder) Submit() error {
-	e.d.record("Submit", "")
+	if !e.d.Quiet {
+		e.d.record("Submit", "")
+	}
 	e.submitted = true
 	e.d.completions = append(e.d.completions, e.complete...)
 	err := e.d.fail()
@@ -724,7 +792,9 @@ func (p *pass) SetPipeline(pl explicit.Pipeline) {
 	if s := pl.Desc().Shader; s != nil {
 		name = s.Name
 	}
-	p.d.record("SetPipeline", "shader=%s", name)
+	if !p.d.Quiet {
+		p.d.record("SetPipeline", "shader=%s", name)
+	}
 	p.pipe = pl
 }
 
@@ -741,53 +811,79 @@ func (p *pass) vertexEntry() (explicit.EntryPoint, bool) {
 }
 
 func (p *pass) SetBindGroup(group int, g explicit.BindGroup, dynamicOffsets ...uint32) {
-	p.d.record("SetBindGroup", "group=%d offsets=%v", group, dynamicOffsets)
+	if !p.d.Quiet {
+		p.d.record("SetBindGroup", "group=%d offsets=%v", group, dynamicOffsets)
+	}
 	p.d.limits.CheckSetBindGroup(group, dynamicOffsets)
 }
 
 func (p *pass) SetVertexBuffer(slot int, b explicit.Buffer, offset int) {
-	p.d.record("SetVertexBuffer", "slot=%d offset=%d", slot, offset)
+	if !p.d.Quiet {
+		p.d.record("SetVertexBuffer", "slot=%d offset=%d", slot, offset)
+	}
 	p.d.limits.CheckSetVertexBuffer(slot)
 }
 
 func (p *pass) SetIndexBuffer(b explicit.Buffer, offset int) {
-	p.d.record("SetIndexBuffer", "offset=%d", offset)
+	if !p.d.Quiet {
+		p.d.record("SetIndexBuffer", "offset=%d", offset)
+	}
 }
 
 func (p *pass) SetIndexBuffer32(b explicit.Buffer, offset int) {
-	p.d.record("SetIndexBuffer32", "offset=%d", offset)
+	if !p.d.Quiet {
+		p.d.record("SetIndexBuffer32", "offset=%d", offset)
+	}
 }
 
-func (p *pass) SetScissor(r image.Rectangle) { p.d.record("SetScissor", "%v", r) }
+func (p *pass) SetScissor(r image.Rectangle) {
+	if !p.d.Quiet {
+		p.d.record("SetScissor", "%v", r)
+	}
+}
 
-func (p *pass) SetStencilReference(ref uint32) { p.d.record("SetStencilReference", "%d", ref) }
+func (p *pass) SetStencilReference(ref uint32) {
+	if !p.d.Quiet {
+		p.d.record("SetStencilReference", "%d", ref)
+	}
+}
 
 func (p *pass) Draw(vertices, instances, firstVertex, firstInstance int) {
-	p.d.record("Draw", "vertices=%d instances=%d firstVertex=%d firstInstance=%d", vertices, instances, firstVertex, firstInstance)
+	if !p.d.Quiet {
+		p.d.record("Draw", "vertices=%d instances=%d firstVertex=%d firstInstance=%d", vertices, instances, firstVertex, firstInstance)
+	}
 	if e, ok := p.vertexEntry(); ok {
 		explicit.CheckFirstIndices(e, firstVertex, 0, firstInstance)
 	}
 }
 
 func (p *pass) DrawIndexed(indices, instances, firstIndex, baseVertex, firstInstance int) {
-	p.d.record("DrawIndexed", "indices=%d instances=%d firstIndex=%d baseVertex=%d firstInstance=%d", indices, instances, firstIndex, baseVertex, firstInstance)
+	if !p.d.Quiet {
+		p.d.record("DrawIndexed", "indices=%d instances=%d firstIndex=%d baseVertex=%d firstInstance=%d", indices, instances, firstIndex, baseVertex, firstInstance)
+	}
 	if e, ok := p.vertexEntry(); ok {
 		explicit.CheckFirstIndices(e, 0, baseVertex, firstInstance)
 	}
 }
 
 func (p *pass) DrawIndirect(b explicit.Buffer, offset int) {
-	p.d.record("DrawIndirect", "offset=%d", offset)
+	if !p.d.Quiet {
+		p.d.record("DrawIndirect", "offset=%d", offset)
+	}
 	p.d.limits.CheckIndirect(b, offset, 16)
 }
 
 func (p *pass) DrawIndexedIndirect(b explicit.Buffer, offset int) {
-	p.d.record("DrawIndexedIndirect", "offset=%d", offset)
+	if !p.d.Quiet {
+		p.d.record("DrawIndexedIndirect", "offset=%d", offset)
+	}
 	p.d.limits.CheckIndirect(b, offset, 20)
 }
 
 func (p *pass) End() {
-	p.d.record("EndPass", "")
+	if !p.d.Quiet {
+		p.d.record("EndPass", "")
+	}
 	p.ended = true
 }
 

@@ -585,7 +585,19 @@ type pass struct {
 	target     *texture
 	pipeline   *pipeline
 	timestamps timestampWriter
+	// The vertex buffers are bound when a draw needs them, not when they are set: a mesh sets one for each of its attributes, and
+	// the slots that are next to each other and changed go to Vulkan in one call (a call crosses purego, which costs). pending has a
+	// bit for each slot that was set and not yet bound. The index buffer that is bound already is not bound again.
+	vbuf    [maxVertexSlots]bufferH
+	voff    [maxVertexSlots]uint64
+	pending uint32
+	ibuf    bufferH
+	ioff    uint64
+	itype   uint32
 }
+
+// maxVertexSlots is explicit.Limits.MaxVertexBuffers.
+const maxVertexSlots = 8
 
 var _ explicit.Pass = (*pass)(nil)
 
@@ -622,9 +634,36 @@ func (p *pass) SetVertexBuffer(slot int, b explicit.Buffer, offset int) {
 	if !ok || vb.d != d {
 		panic(errors.New(tagVulkanForeignResource, "the resource was not made by this Vulkan device", "resource", "buffer"))
 	}
+	if p.vbuf[slot] == vb.buffer && p.voff[slot] == uint64(offset) && p.pending&(1<<slot) == 0 {
+		return // bound already
+	}
+	p.vbuf[slot], p.voff[slot] = vb.buffer, uint64(offset)
+	p.pending |= 1 << slot
+}
+
+// bindVertexBuffers binds the vertex buffers that were set since the last draw, one call for each run of slots that are next to each
+// other.
+func (p *pass) bindVertexBuffers() {
+	if p.pending == 0 {
+		return
+	}
+	d := p.e.d
 	a := d.arena
-	defer a.rewind(a.mark())
-	d.f.cmdBindVertexBuffers(p.e.cb, uint32(slot), 1, putSlice(a, []bufferH{vb.buffer}), putSlice(a, []uint64{uint64(offset)}))
+	for first := 0; first < maxVertexSlots; {
+		if p.pending&(1<<first) == 0 {
+			first++
+			continue
+		}
+		end := first
+		for end < maxVertexSlots && p.pending&(1<<end) != 0 {
+			end++
+		}
+		mark := a.mark()
+		d.f.cmdBindVertexBuffers(p.e.cb, uint32(first), uint32(end-first), putSlice(a, p.vbuf[first:end]), putSlice(a, p.voff[first:end]))
+		a.rewind(mark)
+		first = end
+	}
+	p.pending = 0
 }
 
 // SetIndexBuffer implements explicit.Pass.
@@ -633,7 +672,16 @@ func (p *pass) SetIndexBuffer(b explicit.Buffer, offset int) {
 	if !ok || ib.d != p.e.d {
 		panic(errors.New(tagVulkanForeignResource, "the resource was not made by this Vulkan device", "resource", "buffer"))
 	}
-	p.e.d.f.cmdBindIndexBuffer(p.e.cb, ib.buffer, uint64(offset), indexTypeUint16)
+	p.setIndexBuffer(ib, offset, indexTypeUint16)
+}
+
+// setIndexBuffer binds an index buffer, unless it is the one that is bound.
+func (p *pass) setIndexBuffer(ib *buffer, offset int, indexType uint32) {
+	if p.ibuf == ib.buffer && p.ioff == uint64(offset) && p.itype == indexType {
+		return
+	}
+	p.ibuf, p.ioff, p.itype = ib.buffer, uint64(offset), indexType
+	p.e.d.f.cmdBindIndexBuffer(p.e.cb, ib.buffer, uint64(offset), indexType)
 }
 
 // SetScissor implements explicit.Pass. The rectangle is clipped to the target.
@@ -653,12 +701,14 @@ func (p *pass) SetStencilReference(ref uint32) {
 // Draw implements explicit.Pass.
 func (p *pass) Draw(vertices, instances, firstVertex, firstInstance int) {
 	p.checkFirstIndices(firstVertex, 0, firstInstance)
+	p.bindVertexBuffers()
 	p.e.d.f.cmdDraw(p.e.cb, uint32(vertices), uint32(instances), uint32(firstVertex), uint32(firstInstance))
 }
 
 // DrawIndexed implements explicit.Pass.
 func (p *pass) DrawIndexed(indices, instances, firstIndex, baseVertex, firstInstance int) {
 	p.checkFirstIndices(0, baseVertex, firstInstance)
+	p.bindVertexBuffers()
 	p.e.d.f.cmdDrawIndexed(p.e.cb, uint32(indices), uint32(instances), uint32(firstIndex), int32(baseVertex), uint32(firstInstance))
 }
 

@@ -180,8 +180,10 @@ type viewState struct {
 	s *viewSurface
 	// dev is the device the view draws on, nil when it has none.
 	dev *Device
-	// inited says that OnInit ran for dev and OnDispose has not.
-	inited bool
+	// inited says that OnInit ran for dev and OnDispose has not. owed says that the device of an OnInit was lost and OnDispose has
+	// not run for it yet: it runs from the event loop, or before the next OnInit, whichever comes first, so that an OnDispose never
+	// follows the OnInit of the device that replaced the lost one (it would take that device's state).
+	inited, owed bool
 	// unavailable says that the app has no GPU device at all; lostOnce that the view had a device that was lost.
 	unavailable, lostOnce bool
 	cancelDevice          func()
@@ -244,6 +246,7 @@ func (s *viewState) useDevice(d *Device) {
 	s.unavailable = false
 	s.s.useDevice(d)
 	s.removeLost = d.OnLost(func(error) { s.onLost(d) })
+	s.disposeOwed()
 	if f := s.Widget().o.OnInit; f != nil {
 		f(d)
 	}
@@ -262,12 +265,15 @@ func (s *viewState) onLost(d *Device) {
 	s.removeLost = nil
 	s.s.useDevice(nil)
 	s.syncTicker()
+	if s.inited {
+		s.inited, s.owed = false, true
+	}
 	b := widgets.WidgetsBindingOf(s.Context())
 	b.PlatformDispatcher().Post(func() {
 		if !s.Mounted() {
 			return
 		}
-		s.disposeApp()
+		s.disposeOwed()
 		s.SetState(func() {})
 	})
 	b.Scheduler().AddPostFrameCallback(func(time.Duration) { s.recheck() })
@@ -281,6 +287,17 @@ func (s *viewState) recheck() {
 	_, err := DeviceOfBinding(widgets.WidgetsBindingOf(s.Context()))
 	if appErr, ok := errors.FromError(err); ok && appErr.Tag == TagGPUUnavailable && !s.unavailable {
 		s.SetState(func() { s.unavailable = true })
+	}
+}
+
+// disposeOwed calls OnDispose for the OnInit of a device that was lost, if that has not been done.
+func (s *viewState) disposeOwed() {
+	if !s.owed {
+		return
+	}
+	s.owed = false
+	if f := s.Widget().o.OnDispose; f != nil {
+		f()
 	}
 }
 
@@ -329,6 +346,7 @@ func (s *viewState) Dispose() {
 	if s.ctrl != nil {
 		s.ctrl.s = nil
 	}
+	s.disposeOwed()
 	s.disposeApp()
 	s.s.close()
 }
