@@ -1400,6 +1400,58 @@ func main() {
   neither painted, nor tapped, nor in the semantics tree. `View.Project(p)` gives the same point for a `CustomPainter` that draws
   dimension lines over the view.
 
+- **Models.** `stl.Load(ctx, fsys, name)` and `obj.Load(ctx, fsys, name)` (and `Decode` for a reader) read a file into a
+  `model.Model`: meshes, materials, images and a tree of nodes, as plain Go with no GPU. `viewport3d.Upload` makes the
+  meshes, the materials, the textures and the items of it on a device; add the items to a scene and release the result when
+  the scene no longer shows them.
+
+```go
+package main
+
+import (
+	"context"
+	"log"
+	"os"
+
+	"github.com/rm4n0s/glutter/gpu"
+	"github.com/rm4n0s/glutter/model/obj"
+	"github.com/rm4n0s/glutter/viewport3d"
+)
+
+// show reads models/name and puts it in the scene. Call it on the UI thread with the device of the view (gpu.OnDevice).
+func show(ctx context.Context, device *gpu.Device, scene *viewport3d.Scene, camera *viewport3d.Camera, name string) (*viewport3d.Uploaded, error) {
+	// The material library and the images of the file are read from the same directory. Float64 keeps the digits of a model
+	// that is far from its origin; without it the positions are float32.
+	m, err := obj.Load(ctx, os.DirFS("models"), name, obj.Options{Float64: true})
+	if err != nil {
+		return nil, err // obj.TagOBJInvalid (with "line" and "reason"), or model.TagModelReadFailed
+	}
+	up, err := viewport3d.Upload(ctx, device, m, viewport3d.UploadOpts{FirstPickID: 1}) // pick ids 1, 2, ... for the parts
+	if err != nil {
+		return nil, err
+	}
+	scene.Add(up.Items()...)
+	camera.FitTo(up.Bounds)
+	return up, nil // up.Parts say which node and mesh of the model an item is made of
+}
+
+func main() {
+	if _, err := os.Stat("models"); err != nil {
+		log.Println("no models directory:", err)
+	}
+	_ = show
+}
+```
+
+- **STL.** Binary and ASCII are told apart by the size, not the header. Vertices that are equal are welded, and a normal is
+  smooth across an edge unless its two faces differ by more than `CreaseAngle` (30° by default); `Flat: true` keeps every
+  triangle's own normal and `WeldTolerance` welds vertices that are close. Binary files may give a color for each triangle (the
+  VisCAM and SolidView convention); the mesh then has vertex colors, and `Upload` makes a material that uses them.
+- **OBJ.** Polygons are cut into triangles, `o` and `g` make the nodes, `usemtl` splits a node into a mesh for each material,
+  and `l` and `p` make meshes of lines and points. The `mtllib` file is read through the same `fs.FS`: `Kd`, `Ks`, `Ns`, `d`
+  and `map_Kd` are used, and a library or an image that is not there leaves the default material and one line in the `slog`
+  log. The texture coordinate `v` is turned, as the model's origin is at the top left.
+
 - **The math.** Matrices are column-major, as WGSL reads them, and `a.Mul(b)` applies `b` first. The clip space is
   WebGPU's, and the projections are reversed-Z (`Perspective(fovY, aspect, near)` has the far plane at infinity): the
   depth is 1 at the near plane and 0 far away, so a pipeline tests `Greater` and clears the depth to 0.

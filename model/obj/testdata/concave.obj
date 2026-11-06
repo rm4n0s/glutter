@@ -1,0 +1,8 @@
+# an L-shaped polygon in the plane z = 0, seen from +z it turns counter-clockwise; its area is 3
+v 0 0 0
+v 2 0 0
+v 2 1 0
+v 1 1 0
+v 1 2 0
+v 0 2 0
+f -6 -5 -4 -3 -2 -1
