@@ -1167,6 +1167,70 @@ func main() { _ = newLook() }
 - **Tests.** `gluttertest` has `FailPointerLock(err)` (the next `Lock` fails), `EndPointerLock(view)` (the platform ends the
   lock), `MoveLockedMouse(delta)` and `PointerLocked(view)` for the fake platform.
 
+## 19. 3D math and a camera
+
+Package `vecmath` is the 3D math: vectors, quaternions, matrices, rays, planes, boxes, spheres and frustums in `float64`,
+as plain values that methods return (nothing allocates). Package `viewport3d` has the `Camera` of a CAD view and
+`Navigation`, the widget that moves it with the mouse, the touch screen, a trackpad and the keyboard. The camera orbits a
+target at a distance, and gives the GPU `float32` matrices taken relative to the eye, so that a scene 50 km wide with a
+detail of 0.1 mm draws without jitter. (The 3D view that draws meshes comes in a later step; the camera and the
+navigation work with any widget, such as a `gpu.View`.)
+
+```go
+package main
+
+import (
+	"log"
+
+	m "github.com/rm4n0s/glutter/material"
+	"github.com/rm4n0s/glutter/vecmath"
+	"github.com/rm4n0s/glutter/viewport3d"
+)
+
+func main() {
+	camera := viewport3d.NewCamera(viewport3d.CameraOpts{Distance: 8})
+	// What the camera shows: the near plane and "fit" are made from it.
+	scene := vecmath.NewBox3(vecmath.Vec3{X: -1, Y: -1, Z: -1}, vecmath.Vec3{X: 1, Y: 1, Z: 1})
+	camera.SetBounds(scene)
+	camera.AddListener(func() {
+		// The picture changes: draw again. A model matrix is in float64 and goes to the GPU relative to the eye.
+		world := vecmath.NewMat4Translation(vecmath.Vec3{X: 50000})
+		_ = camera.ModelViewProjection(world) // [16]float32, for a uniform buffer
+	})
+
+	view := viewport3d.NewNavigation(camera, m.NewSizedBoxExpand(m.NewText("drag to orbit")), viewport3d.NavigationOpts{
+		LockPointer: true, // an orbit with the mouse hides the cursor, and does not stop at the screen's edge
+	})
+	err := m.RunApp(m.NewMaterialApp(m.MaterialAppOpts{Home: m.NewScaffold(m.ScaffoldOpts{Body: view})}))
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+```
+
+- **The math.** Matrices are column-major, as WGSL reads them, and `a.Mul(b)` applies `b` first. The clip space is
+  WebGPU's, and the projections are reversed-Z (`Perspective(fovY, aspect, near)` has the far plane at infinity): the
+  depth is 1 at the near plane and 0 far away, so a pipeline tests `Greater` and clears the depth to 0.
+  `Mat4.Float32()` and `Vec3.Float32()` go to the GPU, `Mat4.Matrix4()` to a `Canvas`. `Inverse` says when a matrix is
+  singular.
+- **The camera.** `Orbit`, `Pan`, `Zoom`, `ZoomAt` (keeps the point under a pixel where it is), `Roll`, `FitTo(box)`,
+  `SetStandardView(viewport3d.StandardViewTop)` and `AnimateTo(pose, vsync)` (a move of 300 ms on a ticker provider, such
+  as the `TickerProvider` a `State` embeds) change it, and its listeners are told. `Ray(at)`, `Project(p)` and
+  `Unproject(at, depth)` go between a point of the view in logical pixels and the world. A perspective and an
+  orthographic camera show what is at the target at the same size, so `SetKind` does not make the model jump.
+- **The navigation.** The defaults: the left button orbits (around the point under the pointer when `PivotAt` knows it,
+  else the target); the middle button, or Shift with the left, pans; the wheel zooms toward the pointer; a double click
+  fits the scene; a trackpad's pinch zooms; one finger orbits and two pan, pinch and twist; the arrows orbit and `+` and
+  `-` zoom. Every binding is an option of `NavigationOpts` (`LeftDrag: viewport3d.NavigationActionPan`, `Wheel:
+  viewport3d.NavigationActionNone`, ...), and so are the speeds. The recognizers are in the gesture arena, so a button or
+  a drag of a parent, and a `ListView` around the view, win and lose as for any two recognizers: inside a vertical list a
+  finger that moves along the list scrolls it, and one that moves across it orbits the view.
+- **Keys.** The keys are `Shortcuts` and `Actions` of the intents `OrbitIntent`, `ZoomIntent`, `PanIntent`, `FitIntent`
+  and `StandardViewIntent`; `NavigationOpts.Shortcuts` replaces the keys, and `Actions` replaces what an intent does.
+- **Tests.** Navigation is a widget, so `gluttertest` drives it: `StartGesture` with a mouse or touch `Kind`, `ScrollAt`
+  for the wheel, `StartTrackpadGesture`, `SendKeyEvent`, and, for the locked pointer, `MoveLockedMouse` and
+  `PointerLocked`.
+
 ## For Flutter web developers
 
 If you know Flutter on the web, this is what is the same and what is not.

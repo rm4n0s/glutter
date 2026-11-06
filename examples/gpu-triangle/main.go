@@ -3,7 +3,7 @@
 // turns the multisampling on and off. The view draws at every frame (Continuous). The program uses only the public
 // packages: gpu for the device, the buffers and the pipelines, and material for the page. The cube is drawn with
 // Blinn-Phong shading by shaders/cube.wgsl, which `glutter-gen gpushaders` turned into shaders/shaders_gen.go; the
-// few lines of matrix math are in this file.
+// matrices come from package vecmath (float64, reversed-Z).
 //
 // Run it with: go run ./examples/gpu-triangle
 //
@@ -34,6 +34,7 @@ import (
 	"github.com/rm4n0s/glutter/gpu"
 	m "github.com/rm4n0s/glutter/material"
 	"github.com/rm4n0s/glutter/services"
+	"github.com/rm4n0s/glutter/vecmath"
 )
 
 func main() {
@@ -234,7 +235,7 @@ func (c *cube) variantFor(samples int) (*variant, error) {
 		}}},
 		Fragment:     gpu.FragmentState{Module: c.module, EntryPoint: "fs_main", Targets: []gpu.ColorTargetState{{Format: gpu.TextureFormatRGBA8Unorm}}},
 		Primitive:    gpu.PrimitiveState{CullMode: gpu.CullModeBack},
-		DepthStencil: &gpu.DepthStencilState{Format: gpu.TextureFormatDepth32Float, DepthWriteEnabled: true},
+		DepthStencil: &gpu.DepthStencilState{Format: gpu.TextureFormatDepth32Float, DepthWriteEnabled: true, DepthCompare: gpu.CompareFunctionGreater},
 		Multisample:  gpu.MultisampleState{Count: samples},
 	})
 	if err != nil {
@@ -290,7 +291,7 @@ func (c *cube) paint(f *gpu.ViewFrame) {
 	}
 	pass := f.Encoder.BeginRenderPass(gpu.RenderPassDesc{
 		ColorAttachments:       []gpu.RenderPassColorAttachment{color},
-		DepthStencilAttachment: &gpu.RenderPassDepthStencilAttachment{View: f.Depth.View(), DepthClearValue: 1},
+		DepthStencilAttachment: &gpu.RenderPassDepthStencilAttachment{View: f.Depth.View(), DepthClearValue: 0},
 	})
 	pass.SetPipeline(v.pipeline)
 	pass.SetBindGroup(0, v.group, 0)
@@ -336,81 +337,22 @@ func floatBytes(floats []float32) []byte {
 }
 
 // sceneUniforms returns the bytes of the Scene struct of cube.wgsl for the angle of the cube and its tilt (the pitch
-// of the mouse look).
+// of the mouse look). The matrices are made in float64 by package vecmath: a projection with reversed-Z and the far
+// plane at infinity (the depth of the pipeline compares Greater, and the pass clears it to 0), in WebGPU's clip space.
 func sceneUniforms(angle, pitch, aspect float64) []byte {
 	// A narrow view (a phone held upright) has a narrow field of view across: the camera backs off to keep the cube in.
-	back := float32(math.Max(1, 0.85/aspect))
-	eye := [3]float32{0, 1.6 * back, 4.6 * back}
-	model := mul(rotateX(float32(pitch)), mul(rotateY(float32(angle)), rotateX(0.5)))
-	view := lookAt(eye, [3]float32{0, 0, 0}, [3]float32{0, 1, 0})
-	proj := perspective(math.Pi/4, float32(aspect), 0.1, 50)
-	mvp := mul(proj, mul(view, model))
+	back := math.Max(1, 0.85/aspect)
+	eye := vecmath.Vec3{Y: 1.6 * back, Z: 4.6 * back}
+	model := vecmath.NewMat4RotationX(pitch).Mul(vecmath.NewMat4RotationY(angle)).Mul(vecmath.NewMat4RotationX(0.5))
+	view := vecmath.LookAt(eye, vecmath.Vec3Zero, vecmath.Vec3Y)
+	proj := vecmath.Perspective(math.Pi/4, aspect, 0.1)
+	mvp := proj.Mul(view).Mul(model).Float32()
+	modelF := model.Float32()
 	floats := make([]float32, 0, sceneBytes/4)
 	floats = append(floats, mvp[:]...)
-	floats = append(floats, model[:]...)
+	floats = append(floats, modelF[:]...)
 	floats = append(floats, 0.5, 0.8, 0.6, 0) // towards the light
-	floats = append(floats, eye[0], eye[1], eye[2], 0)
+	floats = append(floats, float32(eye.X), float32(eye.Y), float32(eye.Z), 0)
 	floats = append(floats, 0.62, 0.62, 0.62, 1) // the color of the cube, which each face leans away from
 	return floatBytes(floats)
-}
-
-// --- matrices: column-major 4x4, as WGSL reads them; the clip space is WebGPU's, with z from 0 to 1 ---------------
-
-type mat4 [16]float32
-
-func mul(a, b mat4) mat4 {
-	var r mat4
-	for col := 0; col < 4; col++ {
-		for row := 0; row < 4; row++ {
-			var s float32
-			for k := 0; k < 4; k++ {
-				s += a[k*4+row] * b[col*4+k]
-			}
-			r[col*4+row] = s
-		}
-	}
-	return r
-}
-
-func rotateY(a float32) mat4 {
-	s, c := float32(math.Sin(float64(a))), float32(math.Cos(float64(a)))
-	return mat4{c, 0, -s, 0, 0, 1, 0, 0, s, 0, c, 0, 0, 0, 0, 1}
-}
-
-func rotateX(a float32) mat4 {
-	s, c := float32(math.Sin(float64(a))), float32(math.Cos(float64(a)))
-	return mat4{1, 0, 0, 0, 0, c, s, 0, 0, -s, c, 0, 0, 0, 0, 1}
-}
-
-func perspective(fovy float64, aspect, near, far float32) mat4 {
-	f := float32(1 / math.Tan(fovy/2))
-	return mat4{
-		f / aspect, 0, 0, 0,
-		0, f, 0, 0,
-		0, 0, far / (near - far), -1,
-		0, 0, near * far / (near - far), 0,
-	}
-}
-
-func lookAt(eye, center, up [3]float32) mat4 {
-	z := normalize([3]float32{eye[0] - center[0], eye[1] - center[1], eye[2] - center[2]})
-	x := normalize(cross(up, z))
-	y := cross(z, x)
-	return mat4{
-		x[0], y[0], z[0], 0,
-		x[1], y[1], z[1], 0,
-		x[2], y[2], z[2], 0,
-		-dot(x, eye), -dot(y, eye), -dot(z, eye), 1,
-	}
-}
-
-func cross(a, b [3]float32) [3]float32 {
-	return [3]float32{a[1]*b[2] - a[2]*b[1], a[2]*b[0] - a[0]*b[2], a[0]*b[1] - a[1]*b[0]}
-}
-
-func dot(a, b [3]float32) float32 { return a[0]*b[0] + a[1]*b[1] + a[2]*b[2] }
-
-func normalize(a [3]float32) [3]float32 {
-	l := float32(math.Sqrt(float64(dot(a, a))))
-	return [3]float32{a[0] / l, a[1] / l, a[2] / l}
 }
