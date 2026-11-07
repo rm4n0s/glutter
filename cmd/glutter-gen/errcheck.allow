@@ -10,6 +10,12 @@
 # the table. The other converters (eglError) were inlined.
 error-helper internal/gpu/vulkan/check.go:vkError
 
+# error-helper (R4): hresultError turns the HRESULT of a method of the audio client into one of four tags with a switch (a format
+# that is not taken, a microphone that is not allowed, a device that is gone, any other failure), like win32.HResultError does for the
+# other COM calls; about fifteen calls of the WASAPI backend use it. The route of such an error has the frame hresultError; the
+# switch is the table of the numbers of AUDCLNT_E_*, which inlined at each call would be repeated.
+error-helper internal/platform/windows/wasapi/com_windows.go:hresultError
+
 # error-rewrap (R3): the public tags of SPEC §14.1 (FileChooserUnavailable,
 # NotificationsUnavailable, TrayUnavailable, TrayRegisterFailed) are what an app matches on
 # when the portal or the service is missing. internal/dbus tags its failures first

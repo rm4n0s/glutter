@@ -17,6 +17,7 @@ import (
 	"github.com/rm4n0s/glutter/internal/platform/windows/ime"
 	"github.com/rm4n0s/glutter/internal/platform/windows/ole"
 	"github.com/rm4n0s/glutter/internal/platform/windows/uia"
+	"github.com/rm4n0s/glutter/internal/platform/windows/wasapi"
 	"github.com/rm4n0s/glutter/internal/platform/windows/win32"
 	"github.com/rm4n0s/glutter/ui"
 )
@@ -122,6 +123,9 @@ type Platform struct {
 	// pads is the gamepad service, made by the first call of Services (gamepads_windows.go).
 	padsOnce sync.Once
 	pads     *padService
+	// audio is the audio service (WASAPI), made by the first call of Services (audio_windows.go).
+	audioOnce sync.Once
+	audio     *wasapi.Service
 	// clip is the clipboard, made by the first call of Clipboard.
 	clip *clipboard
 	// desk is the desktop services (tray, balloons, dialogs, URIs), made once by the first call of
@@ -468,6 +472,9 @@ func (p *Platform) teardown() {
 	}
 	if p.acc != nil {
 		p.acc.Close() // the providers are dropped before their windows go
+	}
+	if p.audio != nil {
+		p.audio.Close() // the devices that the app left open end before the process does
 	}
 	for _, w := range p.sortedWindows() {
 		w.Close()

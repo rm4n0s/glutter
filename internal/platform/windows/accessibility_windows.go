@@ -54,8 +54,9 @@ func (a *accWindows) ClientRect(view ui.ViewID) (x, y, width, height float64, ok
 
 // windowsServices is the platform.Services of Windows: the accessibility bridge and the gamepads.
 type windowsServices struct {
-	acc  *uia.Bridge
-	pads platform.Gamepads
+	acc   *uia.Bridge
+	pads  platform.Gamepads
+	audio platform.Audio
 }
 
 var _ platform.Services = windowsServices{}
@@ -71,8 +72,8 @@ func (s windowsServices) Accessibility() platform.Accessibility {
 // Gamepads implements platform.Services.
 func (s windowsServices) Gamepads() platform.Gamepads { return s.pads }
 
-// Audio implements platform.Services: the backend of Windows (WASAPI) is step 31.6's.
-func (s windowsServices) Audio() platform.Audio { return nil }
+// Audio implements platform.Services: WASAPI (SPEC §28.3).
+func (s windowsServices) Audio() platform.Audio { return s.audio }
 
 // Services returns the services of the platform: the UI Automation bridge (SPEC §25.11) and the gamepads
 // (SPEC §28.2). They are made on the first call. When the COM objects of the providers cannot be made the
@@ -93,7 +94,7 @@ func (p *Platform) Services() platform.Services {
 		}
 		p.acc = uia.NewBridge(env, p.accWin, p.log)
 	})
-	return windowsServices{acc: p.acc, pads: p.gamepads()}
+	return windowsServices{acc: p.acc, pads: p.gamepads(), audio: p.audioService()}
 }
 
 // accessibilityAdd tells the bridge that a window exists.
