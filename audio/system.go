@@ -121,7 +121,8 @@ func (s *System) OpenPlayback(ctx context.Context, opts ...DeviceOpts) (*Device,
 }
 
 // OpenCapture opens a capture device, as OpenPlayback does a playback one. It also fails with AudioCapturePermissionDenied when
-// the user does not allow the recording.
+// the user does not allow the recording. Where the system asks the user (Android, the web) the call waits for the answer, until ctx
+// ends: call it from a goroutine that is not the UI one.
 //
 // Flutter: no counterpart
 func (s *System) OpenCapture(ctx context.Context, opts ...DeviceOpts) (*Device, error) {
@@ -153,7 +154,7 @@ func (s *System) open(ctx context.Context, kind DeviceKind, opts []DeviceOpts) (
 	d.notifier.SetUIThread(s.thread)
 	d.notifier.SetErrorReporter(s.report)
 	d.gain.Store(math32Bits1)
-	pause := o.PauseInBackground.OrElse(false)
+	pause := o.PauseInBackground.OrElse(foundation.DefaultTargetPlatform() == foundation.TargetPlatformAndroid)
 	plat, err := s.plat.Open(ctx, platform.AudioKind(kind), platform.AudioOpenOptions{ID: o.ID, Format: o.Format.platform(), BufferFrames: o.BufferFrames, PauseInBackground: pause}, d)
 	if err != nil {
 		return nil, err

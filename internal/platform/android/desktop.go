@@ -269,13 +269,29 @@ func (b *bridge) desktopLinkFor() *desktopLink {
 	return b.link
 }
 
+// linkOf returns the link of the process, made over the host the first time (the desktop services and the permission to record
+// share it).
+func (b *bridge) linkOf(h host) *desktopLink {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.linkLocked(h)
+}
+
+// linkLocked is linkOf with b.mu held.
+func (b *bridge) linkLocked(h host) *desktopLink {
+	if b.link == nil {
+		b.link = newDesktopLink(h)
+	}
+	return b.link
+}
+
 // desktopServices returns the desktop services of the process, made over the host the first time.
 func (b *bridge) desktopServices(h host) mobile.Services {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.desktop == nil {
-		b.link = newDesktopLink(h)
-		b.desktop = mobile.NewDesktop(b.link, b.link, nil)
+		link := b.linkLocked(h)
+		b.desktop = mobile.NewDesktop(link, link, nil)
 	}
 	return b.desktop
 }

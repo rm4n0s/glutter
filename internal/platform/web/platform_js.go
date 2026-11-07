@@ -44,8 +44,9 @@ type Platform struct {
 	lock lockState
 	text *textInput
 	clip *navigatorClipboard
-	// pads is the gamepad service (gamepads_js.go), made by the first call of Services.
-	pads *padService
+	// pads is the gamepad service (gamepads_js.go), made by the first call of Services, and audio the audio service (audio_js.go).
+	pads  *padService
+	audio *webAudio
 	// devEvents is the script of GLUTTER_DEV_EVENTS, in debug builds; devStarted says it was
 	// started.
 	devEvents  []DevEvent
@@ -264,16 +265,12 @@ func (p *Platform) Settings() platform.Settings {
 	return SettingsOf(prefs)
 }
 
-// Services returns the services of the web: the gamepads (SPEC §28.2). The web has no other services of the engine yet
-// (SPEC §23.7), and a browser without the Gamepad API has none, so the value is nil there.
+// Services returns the services of the web: the gamepads (SPEC §28.2), nil in a browser without the Gamepad API, and the audio
+// (SPEC §28.3). The web has no other services of the engine yet (SPEC §23.7).
 //
 // Flutter: no counterpart
 func (p *Platform) Services() platform.Services {
-	pads := p.gamepads()
-	if pads == nil {
-		return nil
-	}
-	return webServices{pads: pads}
+	return webServices{pads: p.gamepads(), audio: p.audioService()}
 }
 
 // Close takes the canvas out of the page and releases the callbacks. The platform is not
@@ -285,6 +282,10 @@ func (p *Platform) Close() error {
 		p.win.Close()
 	}
 	p.removeListeners()
+	if p.audio != nil {
+		p.audio.Close()
+		p.audio = nil
+	}
 	for _, f := range p.funcs {
 		f.Release()
 	}

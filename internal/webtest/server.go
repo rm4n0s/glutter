@@ -52,8 +52,9 @@ type Server struct {
 	shots   chan []byte
 	results chan Result
 
-	mu    sync.Mutex
-	pages map[string][]byte
+	mu         sync.Mutex
+	pages      map[string][]byte
+	unisolated bool
 }
 
 // NewServer starts a server for the build in dir (the directory webtool.Build wrote). Close
@@ -86,6 +87,15 @@ func newServer(files http.Handler) *Server {
 		if ok {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			w.Header().Set("Cache-Control", "no-store")
+			// The pages of a test are cross-origin isolated like the pages of glutter-web serve (the audio of the web shares memory
+			// with its worklet then), unless the test asks for a page that is not.
+			s.mu.Lock()
+			isolated := !s.unisolated
+			s.mu.Unlock()
+			if isolated {
+				w.Header().Set("Cross-Origin-Opener-Policy", "same-origin")
+				w.Header().Set("Cross-Origin-Embedder-Policy", "require-corp")
+			}
 			_, _ = w.Write(page) // the browser went away: nothing to report
 			return
 		}
@@ -103,6 +113,18 @@ func (s *Server) AddPage(path string, html []byte) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.pages[path] = html
+}
+
+// SetIsolated says whether the pages that AddPage serves are cross-origin isolated (the COOP and COEP headers, as glutter-web serve
+// sends them); they are by default. A page that is not shows the app in a browser that gives it no shared memory (the audio worklet
+// then gets its frames by messages, SPEC §28.3). The files of the build are served with the headers either way: the page that
+// embeds the app decides.
+//
+// Flutter: no counterpart
+func (s *Server) SetIsolated(on bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.unisolated = !on
 }
 
 // takeScreenshot is the handler of ScreenshotPath: it keeps the PNG that is posted.

@@ -16,6 +16,17 @@ error-helper internal/gpu/vulkan/check.go:vkError
 # switch is the table of the numbers of AUDCLNT_E_*, which inlined at each call would be repeated.
 error-helper internal/platform/windows/wasapi/com_windows.go:hresultError
 
+# error-helper (R4): resultError turns the result of a function of AAudio into one of three tags with a switch (a rate, a format or an
+# argument that the device does not take; the loss of the device; any other failure), with the name of the function, the number and
+# AAudio's own text as the metadata; about ten calls of the Android backend use it. The route of such an error has the frame
+# resultError; the switch is the table of the numbers of AAUDIO_ERROR_*, which inlined at each call would be repeated.
+error-helper internal/platform/android/aaudio/service.go:resultError
+
+# error-rewrap (R3): aaudio.Permissions is an interface of this package that the platform implements over the link to the activity, so
+# the error of RecordAudio (a prompt that no activity could show, a context that ended) is tagged with the link's names; what an app
+# matches on is AudioCapturePermissionDenied (SPEC §28.3), and the link's error stays as the cause, so errors.Is still finds it.
+error-rewrap internal/platform/android/aaudio/service.go:Service.Open
+
 # error-rewrap (R3): the public tags of SPEC §14.1 (FileChooserUnavailable,
 # NotificationsUnavailable, TrayUnavailable, TrayRegisterFailed) are what an app matches on
 # when the portal or the service is missing. internal/dbus tags its failures first

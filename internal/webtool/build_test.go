@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/rm4n0s/errors"
+	"github.com/rm4n0s/glutter/internal/platform/web"
 )
 
 func TestBuild(t *testing.T) {
@@ -23,7 +24,7 @@ func TestBuild(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
-	for _, name := range []string{"index.html", "wasm_exec.js", "app.wasm", "app.wasm.gz"} {
+	for _, name := range []string{"index.html", "wasm_exec.js", "app.wasm", "app.wasm.gz", web.AudioWorkletFile} {
 		if _, err := os.Stat(filepath.Join(out, name)); err != nil {
 			t.Errorf("the build lacks %s: %v", name, err)
 		}
@@ -62,6 +63,16 @@ func TestBuild(t *testing.T) {
 	got, err := os.ReadFile(filepath.Join(out, "wasm_exec.js"))
 	if err != nil || !bytes.Equal(got, want) {
 		t.Errorf("wasm_exec.js is not the one of GOROOT (err %v)", err)
+	}
+	// The audio worklet is the one the toolkit embeds, and it registers the processors that the platform opens by name.
+	worklet, err := os.ReadFile(filepath.Join(out, web.AudioWorkletFile))
+	if err != nil || string(worklet) != AudioWorkletJS() {
+		t.Errorf("%s is not the embedded worklet (err %v)", web.AudioWorkletFile, err)
+	}
+	for _, name := range []string{web.AudioPlaybackProcessor, web.AudioCaptureProcessor} {
+		if !strings.Contains(string(worklet), `registerProcessor("`+name+`"`) {
+			t.Errorf("the worklet does not register %q", name)
+		}
 	}
 	index, err := os.ReadFile(filepath.Join(out, "index.html"))
 	if err != nil {

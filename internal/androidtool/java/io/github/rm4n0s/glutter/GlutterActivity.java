@@ -135,6 +135,7 @@ public class GlutterActivity extends Activity {
       int requestCode, String[] permissions, int[] grantResults) {
     super.onRequestPermissionsResult(requestCode, permissions, grantResults);
     DesktopServices.permissionResult(requestCode, grantResults);
+    AudioPermission.permissionResult(requestCode, grantResults);
   }
 
   @Override
@@ -293,14 +294,16 @@ public class GlutterActivity extends Activity {
    * clipboard (textinput.go, 8 to 13, and 25 and 26 for the HTML; {@link TextInput}), of back navigation (back.go, 14
    * and 15; {@link BackNavigation}), of accessibility (accessibility.go, 16 to 18; {@link
    * GlutterAccessibility}), of the spell checker (spellcheck.go, 24; {@link SpellCheck}), of the gamepads' rumble (gamepads.go, 28; {@link GamepadInput}) or of the desktop services (desktop.go, 19 to 23: a URI, the
-   * notifications; {@link DesktopServices}) or the pointer capture (pointerlock.go, 27), done on the main thread. {@code bytes} is the
+   * notifications; {@link DesktopServices}), of the pointer capture (pointerlock.go, 27) or of the permission to record (audio.go, 29
+   * and 30; {@link AudioPermission}), done on the main thread. {@code bytes} is the
    * operation's text as UTF-8, or, for the semantics update (16) and the notification (22), a binary
    * payload.
    */
   static void command(
       final int op, final long a, final long b, final long c, final long d, final byte[] bytes) {
     final boolean desktop = op >= DesktopServices.OP_OPEN && op <= DesktopServices.OP_CANCEL;
-    final boolean binary = op == GlutterAccessibility.OP_SEMANTICS || desktop;
+    final boolean audioPermission = op == AudioPermission.OP_STATUS || op == AudioPermission.OP_REQUEST;
+    final boolean binary = op == GlutterAccessibility.OP_SEMANTICS || desktop || audioPermission;
     final String s = binary ? null : new String(bytes, StandardCharsets.UTF_8);
     MAIN.post(
         new Runnable() {
@@ -312,6 +315,10 @@ public class GlutterActivity extends Activity {
               if (context != null) {
                 DesktopServices.command(current, context, op, a, b, c, d, bytes);
               }
+              return;
+            }
+            if (audioPermission) {
+              AudioPermission.command(current, appContext, op, a);
               return;
             }
             if (current == null) {

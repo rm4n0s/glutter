@@ -675,3 +675,32 @@ Check, and record the answers for each of: GNOME (Wayland), KDE (Wayland), an X1
 5. Does Alt+Tab (and, on the web, Escape) end the lock, and does the pointer come back at once? Does the lock need L again afterwards?
 
 Answers: _(not yet recorded)_
+
+## 31.6 Audio on Windows, Android and the web
+
+**Status:** pending
+
+`examples/dev/android-audio` plays a 440 Hz tone through the public `audio` package (and, on Android, through a device of the platform too, which it logs); `GLUTTER_AUDIO_CAPTURE=1` also opens a recording. Run it on each of the systems below and record the answers.
+
+**On a Windows PC**: `go run ./cmd/glutter-windows run ./examples/dev/android-audio`.
+
+1. Does the tone play, with no click, gap or crackle for a minute?
+2. Plug in headphones (or a USB headset) while it plays and choose them as the default device in the sound settings: does the tone move to them within a second or two, without the app restarting? Back again?
+3. Unplug the headphones: does the tone go on from the speakers?
+4. With `set GLUTTER_AUDIO_CAPTURE=1` in `cmd` first: does the app record (the log shows `audio capture frames=` growing), and does Windows' microphone privacy setting, when it is off, give `audio capture failed err=AudioCapturePermissionDenied` and not a hang?
+
+**On a phone** (`go run ./cmd/glutter-android run -permission android.permission.RECORD_AUDIO ./examples/dev/android-audio`, with `-env GLUTTER_AUDIO_CAPTURE=1` for the recording):
+
+5. Does the tone play with no gap for a minute? What is the latency with a loopback (a recording of the speaker next to the screen's tap)? The target is 30 ms; the log's `buffer` and `burst` are the stream's own numbers.
+6. Press Home: does the tone stop at once, and go on when the app is shown again? Does it stop when a call or an alarm takes the audio focus, and go on after?
+7. With the recording: does the first start show the system's question? Does "Don't allow" give `audio capture failed err=AudioCapturePermissionDenied` and the tone play on?
+8. Plug in headphones (wired or Bluetooth) while it plays: does the tone move to them?
+
+**On the web** (`go run ./cmd/glutter-web serve ./examples/dev/android-audio`, then the address it prints), in Chrome, in Firefox and in Safari Technology Preview:
+
+9. Does the page stay silent until the first click or key, and then play the tone with no gap? (The moment that the sound starts is what a headless test cannot show: it cannot make the gesture that the browser trusts.)
+10. Does it play in a tab that the browser puts in the background, as far as that browser allows? Does it come back at once when the tab is shown?
+11. With the recording (`?GLUTTER_AUDIO_CAPTURE=1` on the address): does the browser ask for the microphone, and does "Block" give `AudioCapturePermissionDenied`?
+12. In the browser's console: is `crossOriginIsolated` true on the served page (and does the sound play the same on a server that sends no such headers)?
+
+Answers: _(not yet recorded)_

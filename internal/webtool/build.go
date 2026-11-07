@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/rm4n0s/errors"
+	"github.com/rm4n0s/glutter/internal/platform/web"
 )
 
 // BuildOptions are the parameters of Build.
@@ -49,7 +50,7 @@ type BuildResult struct {
 
 // Build builds the package for js/wasm with the standard Go toolchain (TinyGo is not
 // supported, D18) and writes the directory that any static web server can serve
-// (SPEC §23.1): index.html, wasm_exec.js (copied from $(go env GOROOT)/lib/wasm, which must
+// (SPEC §23.1): index.html, glutter-audio-worklet.js (the audio worklet, SPEC §28.3), wasm_exec.js (copied from $(go env GOROOT)/lib/wasm, which must
 // match the Go that builds), app.wasm and app.wasm.gz. It fails with WebBuildFailed when the
 // go command fails (its output is in the error's metadata) and with WebWriteFailed when a
 // file cannot be written.
@@ -83,6 +84,10 @@ func Build(ctx context.Context, o BuildOptions) (*BuildResult, error) {
 	}
 	if err := os.WriteFile(filepath.Join(o.OutDir, "wasm_exec.js"), execJS, 0o644); err != nil {
 		return nil, errors.NewErr(tagWebWriteFailed, err).SetMetadata("path", filepath.Join(o.OutDir, "wasm_exec.js"))
+	}
+	audioPath := filepath.Join(o.OutDir, web.AudioWorkletFile)
+	if err := os.WriteFile(audioPath, []byte(AudioWorkletJS()), 0o644); err != nil {
+		return nil, errors.NewErr(tagWebWriteFailed, err).SetMetadata("path", audioPath)
 	}
 	title := o.Title
 	if title == "" {

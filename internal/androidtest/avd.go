@@ -21,6 +21,9 @@ type AVD struct {
 	Package string
 	// API is the Android API level of the image, such as "37".
 	API string
+	// Audio gives the device an audio output and input. The emulator runs with -no-audio, so the sound goes nowhere (the guest has the
+	// hardware and the host side is a null device); the other devices have no audio hardware, which keeps their boot as it was.
+	Audio bool
 }
 
 // AVDs are the devices the device tests use (SPEC §24.13), by name.
@@ -35,6 +38,8 @@ var AVDs = map[string]AVD{
 	"glutter-37":     {Name: "glutter-37", Package: "system-images;android-37.2;google_apis_ps16k;x86_64", API: "37"},
 	"glutter-37-16k": {Name: "glutter-37-16k", Package: "system-images;android-37.2;google_apis_ps16k;x86_64", API: "37"},
 	"glutter-26":     {Name: "glutter-26", Package: "system-images;android-26;google_apis;x86_64", API: "26"},
+	// glutter-37-audio is glutter-37 with audio hardware (step 31.6).
+	"glutter-37-audio": {Name: "glutter-37-audio", Package: "system-images;android-37.2;google_apis_ps16k;x86_64", API: "37", Audio: true},
 }
 
 // sysdir is the image's directory below the SDK: "system-images/android-37.2/google_apis_ps16k/x86_64/".
@@ -45,6 +50,14 @@ func (a AVD) tag() string { return strings.Split(a.Package, ";")[2] }
 
 // target is "android-37.2".
 func (a AVD) target() string { return strings.Split(a.Package, ";")[1] }
+
+// yesNo is the value of a flag of config.ini.
+func yesNo(b bool) string {
+	if b {
+		return "yes"
+	}
+	return "no"
+}
 
 // avdConfig is config.ini of a virtual device: a Pixel-like phone with a 1080x2400 screen,
 // 420 dpi and touch, the keyboard off (so that the soft keyboard shows), no SD card and no
@@ -58,8 +71,8 @@ func (a AVD) avdConfig() string {
 		"avd.ini.encoding":          "UTF-8",
 		"disk.dataPartition.size":   "6G",
 		"hw.accelerometer":          "yes",
-		"hw.audioInput":             "no",
-		"hw.audioOutput":            "no",
+		"hw.audioInput":             yesNo(a.Audio),
+		"hw.audioOutput":            yesNo(a.Audio),
 		"hw.battery":                "yes",
 		"hw.camera.back":            "none",
 		"hw.camera.front":           "none",

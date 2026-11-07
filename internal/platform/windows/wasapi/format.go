@@ -89,12 +89,6 @@ func chooseFormat(want, mix platform.AudioFormat) platform.AudioFormat {
 	return f
 }
 
-// mixFormatOf is the format of the engine's mix format, which GetMixFormat returned: the first words of a WAVEFORMATEX, read by
-// the caller.
-func mixFormatOf(channels uint16, rate uint32) platform.AudioFormat {
-	return platform.AudioFormat{Rate: int(rate), Channels: int(channels)}
-}
-
 // periodFrames is the period that IAudioClient3 is asked for: the frames the app wants (the engine's smallest period when it wants
 // none), rounded to a multiple of the fundamental period, which is all that InitializeSharedAudioStream takes, and kept between the
 // smallest and the largest. A fundamental of 0 (an engine that says nothing) leaves the number as it is.

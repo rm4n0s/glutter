@@ -95,6 +95,13 @@ func TestHandler(t *testing.T) {
 			if got := res.Header.Get("Cache-Control"); got != "no-store" {
 				t.Errorf("Cache-Control %q, want no-store", got)
 			}
+			// The page is cross-origin isolated, so that the audio worklet can share a ring with it (SPEC §28.3).
+			if got := res.Header.Get("Cross-Origin-Opener-Policy"); got != "same-origin" {
+				t.Errorf("Cross-Origin-Opener-Policy %q, want same-origin", got)
+			}
+			if got := res.Header.Get("Cross-Origin-Embedder-Policy"); got != "require-corp" {
+				t.Errorf("Cross-Origin-Embedder-Policy %q, want require-corp", got)
+			}
 			body, err := io.ReadAll(res.Body)
 			if err != nil {
 				t.Fatal(err)
@@ -169,6 +176,9 @@ func TestCachingHandlerLetsTheBrowserKeepTheFiles(t *testing.T) {
 				tc.h.ServeHTTP(rec, req)
 				if rec.Code != 200 || rec.Header().Get("Cache-Control") != tc.cacheControl {
 					t.Errorf("%s: status %d, Cache-Control %q, want 200 and %q", path, rec.Code, rec.Header().Get("Cache-Control"), tc.cacheControl)
+				}
+				if rec.Header().Get("Cross-Origin-Opener-Policy") != "same-origin" || rec.Header().Get("Cross-Origin-Embedder-Policy") != "require-corp" {
+					t.Errorf("%s: the page is not cross-origin isolated: %v", path, rec.Header())
 				}
 			}
 			req := httptest.NewRequest("GET", "/app.wasm", nil)

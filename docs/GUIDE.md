@@ -1630,8 +1630,9 @@ a device are mixed, converted to the device's format and clipped for you. Glutte
 (Ogg Vorbis, MP3, Opus) are not in Glutter: decode them yourself and put the samples. Flutter has no audio of its own, so this
 package is Glutter's. On Linux the sound goes through PulseAudio (which PipeWire serves on current desktops), or through ALSA
 where no PulseAudio server answers (`GLUTTER_AUDIO_BACKEND=pulse` or `alsa` picks one); nothing is loaded until the app lists or
-opens a device, and an app never starts a sound server. Where there is no backend yet (Windows, Android and the web arrive with
-the next step of 1.11) `audio.Of(bc).Available()` is false outside the tests and every open fails with `AudioUnavailable`.
+opens a device, and an app never starts a sound server. On Windows it is WASAPI (shared mode, the default device followed when
+the user changes it), on Android AAudio, and on the web an AudioWorklet that `glutter-web` puts in the build. Where the system has no
+sound (or a browser has no audio worklet) `audio.Of(bc).Available()` is false and every open fails with `AudioUnavailable`.
 
 ```go
 package main
@@ -1692,6 +1693,18 @@ func main() { _ = &beeper{} }
   the list or the default changes. `Device.State()` is running, paused (`Pause`/`Resume`), suspended (a browser lets a page
   make sound only after a click or a key: the device runs by itself afterwards, and `Device.AddListener` tells you), lost
   (unplugged) or closed. A `Put` on a lost device fails with `AudioDeviceLost`.
+- **Android.** A recording needs the permission `android.permission.RECORD_AUDIO` in the manifest: build with
+  `glutter-android build -permission android.permission.RECORD_AUDIO` (an app that only plays must not ask for it). The first
+  `OpenCapture` shows the system's question and waits for the answer; a refusal is `AudioCapturePermissionDenied`. Playback
+  pauses when the app is hidden and goes on when it is shown (`DeviceOpts.PauseInBackground`, true by default there).
+- **The web.** The page must be served from `https` or `localhost`, and `glutter-web serve` and `build` give you
+  `glutter-audio-worklet.js` next to `index.html` (a deploy needs both files). A browser lets a page make sound only after a
+  click, a touch or a key, so a device opens as `Suspended` and runs by itself at the first one. `glutter-web serve` sends the
+  headers that make the page cross-origin isolated (`Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Embedder-Policy:
+  require-corp`), and then the app and the worklet share memory; a site that cannot send them still plays, with a little more
+  work for the page (the frames travel as messages). The buffer is 100 ms (`DeviceOpts.BufferFrames` changes it). `OpenCapture`
+  waits for the user's answer to the browser's question: call it from a goroutine that is not the UI one. A page plays on the
+  browser's default output.
 - **WAV files.** `wav.Decode(ctx, r)` gives `Audio{Format, Samples}` for PCM of 8, 16, 24 and 32 bits and float, ready for
   `Put`; `Format` is the format to make the stream with. A file that is not one gives `WAVInvalid` with a message.
 - **Tests.** `gluttertest` has `tester.Audio()`: a speaker and a microphone that are the defaults, `AddDevice`, `RemoveDevice`,

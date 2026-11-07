@@ -46,6 +46,8 @@ type Platform struct {
 	a11y *accessibility
 	// pads is the gamepad service (gamepads.go).
 	pads *padService
+	// audio is the audio service, made by the first call of Services (audio.go).
+	audio audioState
 	// lock is the pointer lock, or nil; mouseX and mouseY are where the mouse was last seen, in physical
 	// pixels, when mouseSeen (pointerlock.go).
 	lock           *pointerLock
@@ -166,6 +168,7 @@ func (p *Platform) metricsChanged() {
 func (p *Platform) lifecycleChanged() {
 	_, lifecycle, focused := p.b.snapshotAll()
 	p.handler.OnLifecycle(lifecycle.appState(focused))
+	p.audioLifecycle(!lifecycle.visible())
 	if lifecycle.visible() {
 		p.frames.request()
 	}
@@ -231,12 +234,17 @@ func (p *Platform) settingsChanged() {
 // The desktop services of step 25.12 are not part of it.
 //
 // Flutter: no counterpart
-func (p *Platform) Services() platform.Services { return services{a: p.a11y, pads: p.pads} }
+func (p *Platform) Services() platform.Services {
+	return services{a: p.a11y, pads: p.pads, audio: p.audioService()}
+}
 
 // Close releases the platform. The host belongs to the process, so there is nothing to release.
 //
 // Flutter: no counterpart
-func (p *Platform) Close() error { return nil }
+func (p *Platform) Close() error {
+	p.closeAudio()
+	return nil
+}
 
 // The tags of the errors that this file makes (rm4n0s/errors, R5).
 const (

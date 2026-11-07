@@ -26,6 +26,7 @@ var contentTypes = map[string]string{
 // Handler serves the directory of a web build (SPEC §23.1): index.html for "/", every file
 // with its type (app.wasm as application/wasm, which instantiateStreaming needs), and, to a
 // browser that accepts gzip, app.wasm.gz in place of app.wasm with Content-Encoding gzip.
+// The pages are cross-origin isolated (the COOP and COEP headers), which the audio worklet's shared ring needs (SPEC §28.3).
 // Nothing outside the directory is reachable, and nothing is cached by the browser, so a new
 // build is the one that loads.
 //
@@ -75,6 +76,9 @@ func handler(dir, cacheControl string) http.Handler {
 		w.Header().Set("Content-Type", typ)
 		w.Header().Set("Cache-Control", cacheControl)
 		w.Header().Add("Vary", "Accept-Encoding")
+		// Cross-origin isolation: the page may share memory with the audio worklet (a SharedArrayBuffer ring, SPEC §28.3).
+		w.Header().Set("Cross-Origin-Opener-Policy", "same-origin")
+		w.Header().Set("Cross-Origin-Embedder-Policy", "require-corp")
 		if encoding != "" {
 			w.Header().Set("Content-Encoding", encoding)
 		}

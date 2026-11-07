@@ -376,7 +376,7 @@ func mixFormat(client win32.Object) (platform.AudioFormat, win32.HRESULT) {
 	}
 	defer win32.CoTaskMemFree(wf)
 	head := win32.View[waveHead](wf)
-	return mixFormatOf(head.Channels, head.Rate), win32.SOK
+	return platform.AudioFormat{Rate: int(head.Rate), Channels: int(head.Channels)}, win32.SOK
 }
 
 // Open opens a device and starts the thread that serves it; it returns when the device is ready. It fails with AudioUnavailable
@@ -413,7 +413,9 @@ func (s *Service) Open(ctx context.Context, kind platform.AudioKind, opts platfo
 		return d, nil
 	case <-ctx.Done():
 		go func() {
-			<-d.ready
+			if err := <-d.ready; err != nil {
+				s.log.Debug("audio: a device that nobody waits for did not open", "err", err)
+			}
 			if err := d.Close(); err != nil {
 				s.log.Debug("audio: a device that nobody waits for could not be closed", "err", err)
 			}

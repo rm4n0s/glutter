@@ -383,6 +383,31 @@ func TestStreamOfAnotherFormatIsConverted(t *testing.T) {
 	}
 }
 
+func TestPauseInBackgroundIsOnForAndroidByDefault(t *testing.T) {
+	tests := []struct {
+		name     string
+		platform foundation.Opt[foundation.TargetPlatform]
+		opts     audio.DeviceOpts
+		want     bool
+	}{
+		{"the default of the machine", foundation.None[foundation.TargetPlatform](), audio.DeviceOpts{}, false},
+		{"Android", foundation.Some(foundation.TargetPlatformAndroid), audio.DeviceOpts{}, true},
+		{"Android, said no", foundation.Some(foundation.TargetPlatformAndroid), audio.DeviceOpts{PauseInBackground: foundation.Some(false)}, false},
+		{"iOS", foundation.Some(foundation.TargetPlatformIOS), audio.DeviceOpts{}, false},
+		{"Linux, said yes", foundation.Some(foundation.TargetPlatformLinux), audio.DeviceOpts{PauseInBackground: foundation.Some(true)}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			foundation.SetDebugDefaultTargetPlatformOverride(tt.platform)
+			t.Cleanup(func() { foundation.SetDebugDefaultTargetPlatformOverride(foundation.None[foundation.TargetPlatform]()) })
+			_, _, _, td := setup(t, tt.opts)
+			if td.PauseInBackground() != tt.want {
+				t.Errorf("the backend got PauseInBackground %v, want %v", td.PauseInBackground(), tt.want)
+			}
+		})
+	}
+}
+
 func TestDeviceFormatFollowsTheOptions(t *testing.T) {
 	_, _, dev, td := setup(t, audio.DeviceOpts{Format: audio.Format{Rate: 44100, Channels: 1}, BufferFrames: 512, PauseInBackground: foundation.Some(true)})
 	if dev.Format() != (audio.Format{Rate: 44100, Channels: 1}) || td.Format() != dev.Format() {

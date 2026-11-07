@@ -13,6 +13,15 @@ import (
 //go:embed loader.js
 var loaderJS string
 
+//go:embed audio_worklet.js
+var audioWorkletJS string
+
+// AudioWorkletJS is the JavaScript of the audio worklet (SPEC §28.3): Build writes it as glutter-audio-worklet.js next to index.html,
+// and the page loads it with audioWorklet.addModule when the app opens its first audio device.
+//
+// Flutter: no counterpart
+func AudioWorkletJS() string { return audioWorkletJS }
+
 // LoaderJS is the JavaScript of the loader that index.html contains.
 //
 // Flutter: no counterpart (flutter_bootstrap.js)
