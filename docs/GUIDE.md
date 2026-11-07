@@ -1628,8 +1628,10 @@ func main() { _ = newPadView() }
 `audio.Of(bc)` is the sound of the app. Open a device, make a stream for each sound, and put samples into it: the streams of
 a device are mixed, converted to the device's format and clipped for you. Glutter reads WAV files (`audio/wav`); other codecs
 (Ogg Vorbis, MP3, Opus) are not in Glutter: decode them yourself and put the samples. Flutter has no audio of its own, so this
-package is Glutter's. The backends of the systems arrive with the next steps of 1.11; until then `audio.Of(bc).Available()` is
-false outside the tests and every open fails with `AudioUnavailable`.
+package is Glutter's. On Linux the sound goes through PulseAudio (which PipeWire serves on current desktops), or through ALSA
+where no PulseAudio server answers (`GLUTTER_AUDIO_BACKEND=pulse` or `alsa` picks one); nothing is loaded until the app lists or
+opens a device, and an app never starts a sound server. Where there is no backend yet (Windows, Android and the web arrive with
+the next step of 1.11) `audio.Of(bc).Available()` is false outside the tests and every open fails with `AudioUnavailable`.
 
 ```go
 package main

@@ -16,12 +16,13 @@ import (
 )
 
 // Services are the optional capabilities that the Linux backends share: the
-// accessibility bridge (AT-SPI2 over D-Bus, SPEC §8.10) and the gamepads (evdev, SPEC §28.2).
+// accessibility bridge (AT-SPI2 over D-Bus, SPEC §8.10), the gamepads (evdev, SPEC §28.2) and the audio (PulseAudio and ALSA, SPEC §28.3).
 //
 // Flutter: no counterpart
 type Services struct {
 	bridge *atspi.Bridge
 	pads   *evdev.Service
+	audio  *audioChoice
 }
 
 // NewServices makes the services of a backend. post runs a function on its UI thread.
@@ -32,7 +33,7 @@ type Services struct {
 //
 // Flutter: no counterpart
 func NewServices(post func(func())) *Services {
-	return &Services{pads: evdev.New(evdev.Opts{Post: post, Logger: slog.Default(), DisableHID: os.Getenv("GLUTTER_GAMEPAD_HID") == "0"}), bridge: atspi.New(atspi.Options{
+	return &Services{audio: audioFromEnv(), pads: evdev.New(evdev.Opts{Post: post, Logger: slog.Default(), DisableHID: os.Getenv("GLUTTER_GAMEPAD_HID") == "0"}), bridge: atspi.New(atspi.Options{
 		AppName: filepath.Base(os.Args[0]),
 		Post:    post,
 		OpenSession: func(ctx context.Context) (dbus.Bus, error) {
@@ -60,8 +61,13 @@ func (s *Services) Gamepads() platform.Gamepads {
 	return s.pads
 }
 
-// Audio returns the audio service, or nil: the backends of Linux (PulseAudio and ALSA) are step 31.5's.
-func (s *Services) Audio() platform.Audio { return nil }
+// Audio returns the audio service: PulseAudio, then ALSA (SPEC §28.3). Nothing is loaded or connected until it is used.
+func (s *Services) Audio() platform.Audio {
+	if s == nil || s.audio == nil {
+		return nil
+	}
+	return s.audio
+}
 
 // bridgeAdapter gives the bridge the types of the platform interface.
 type bridgeAdapter struct{ *atspi.Bridge }
