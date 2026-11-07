@@ -302,10 +302,18 @@ func (r *Renderer) makePipeline(k pipeKey) (*gpu.RenderPipeline, error) {
 	default:
 		target.Blend = premult
 		desc.Label = "viewport3d points"
-		desc.Vertex = gpu.VertexState{Module: r.mods.point, EntryPoint: "vs_main", Buffers: []gpu.VertexBufferLayout{
+		buffers := []gpu.VertexBufferLayout{
 			{ArrayStride: 12, PerInstance: true, Attributes: []gpu.VertexAttribute{{ShaderLocation: 0, Format: gpu.VertexFormatFloat32x3, Offset: 0}}},
 			{ArrayStride: 8, Attributes: []gpu.VertexAttribute{{ShaderLocation: 1, Format: gpu.VertexFormatFloat32x2, Offset: 0}}},
-		}}
+		}
+		entry := "vs_main"
+		if k.variant&4 != 0 {
+			// The points have colors: one for each point, from a buffer of its own.
+			entry = "vs_color"
+			buffers = append(buffers, gpu.VertexBufferLayout{ArrayStride: 4, PerInstance: true,
+				Attributes: []gpu.VertexAttribute{{ShaderLocation: 3, Format: gpu.VertexFormatUnorm8x4, Offset: 0}}})
+		}
+		desc.Vertex = gpu.VertexState{Module: r.mods.point, EntryPoint: entry, Buffers: buffers}
 		desc.Fragment = gpu.FragmentState{Module: r.mods.point, EntryPoint: "fs_main", Targets: []gpu.ColorTargetState{target}}
 	}
 	desc.DepthStencil = depth
@@ -543,6 +551,20 @@ func (r *Renderer) uploadMesh(m *Mesh) *meshGPU {
 		}
 		g.pos, err = r.newBuffer("viewport3d points", floatBytes(nil, pos), gpu.BufferUsageVertex)
 		g.count = len(pos) / 3
+		if err == nil && len(d.Colors) != 0 {
+			// One color for each point, in the order of the points (the vertices that the indices name).
+			colors := d.Colors
+			if m.indexed {
+				colors = make([]byte, 0, 4*m.IndexCount())
+				for i := 0; i < m.IndexCount(); i++ {
+					v := m.index(i)
+					colors = append(colors, d.Colors[4*v:4*v+4]...)
+				}
+			}
+			if g.colors, err = r.newBuffer("viewport3d point colors", colors, gpu.BufferUsageVertex); err == nil {
+				g.variant |= 4
+			}
+		}
 	default:
 		if g.pos, err = r.newBuffer("viewport3d positions", floatBytes(nil, d.Positions), gpu.BufferUsageVertex); err != nil {
 			fail("positions")

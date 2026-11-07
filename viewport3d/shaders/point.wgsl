@@ -20,22 +20,31 @@ struct VOut {
 	@location(1) view_pos: vec3<f32>,
 	// index is the number of the point in its mesh, which the picking reports.
 	@location(2) @interpolate(flat) index: f32,
+	// tint is the color of the point in the mesh (white when the mesh has none).
+	@location(3) @interpolate(flat) tint: vec4<f32>,
 }
 
 @vertex
 fn vs_main(@location(0) p: vec3<f32>, @location(1) corner: vec2<f32>) -> VOut {
-	return vertex_point(p, corner, 0.0);
+	return vertex_point(p, corner, 0.0, vec4<f32>(1.0));
+}
+
+// vs_color is vs_main for a mesh whose points have colors (the material's VertexColors).
+@vertex
+fn vs_color(@location(0) p: vec3<f32>, @location(1) corner: vec2<f32>, @location(3) color: vec4<f32>) -> VOut {
+	return vertex_point(p, corner, 0.0, color);
 }
 
 // vs_pick is vs_main for the picking: the point also has its number.
 @vertex
 fn vs_pick(@location(0) p: vec3<f32>, @location(1) corner: vec2<f32>, @location(2) index: f32) -> VOut {
-	return vertex_point(p, corner, index);
+	return vertex_point(p, corner, index, vec4<f32>(1.0));
 }
 
-fn vertex_point(p: vec3<f32>, corner: vec2<f32>, index: f32) -> VOut {
+fn vertex_point(p: vec3<f32>, corner: vec2<f32>, index: f32, tint: vec4<f32>) -> VOut {
 	var o: VOut;
 	o.index = index;
+	o.tint = tint;
 	o.clip = vec4<f32>(2.0, 2.0, 2.0, 1.0);
 	let v = item.mv * vec4<f32>(p, 1.0);
 	if (-v.z < frame.params.x) {
@@ -62,8 +71,8 @@ fn fs_main(in: VOut) -> @location(0) vec4<f32> {
 	} else {
 		cover = clamp(half_size + 0.5 - length(in.local), 0.0, 1.0);
 	}
-	let rgb = mix(point.color.rgb, item.tint.rgb, item.tint.a);
-	let a = point.color.a * cover;
+	let rgb = mix(point.color.rgb * in.tint.rgb, item.tint.rgb, item.tint.a);
+	let a = point.color.a * in.tint.a * cover;
 	return vec4<f32>(rgb * a, a);
 }
 

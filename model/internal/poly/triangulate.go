@@ -1,4 +1,6 @@
-package obj
+// Package poly cuts the polygons of a model file into triangles (a fan when the polygon is convex, ear clipping when it is not); the
+// loaders of OBJ and PLY share it.
+package poly
 
 import "math"
 
@@ -6,20 +8,20 @@ import "math"
 // time that grows with the cube of it in the worst case.
 const maxEarClipping = 2048
 
-// triangulator cuts polygons into triangles. It keeps its work arrays between polygons.
-type triangulator struct {
+// Triangulator cuts polygons into triangles. It keeps its work arrays between polygons.
+type Triangulator struct {
 	u, v   []float64 // the corners in the plane of the polygon
 	next   []int     // the corner after each corner, in the ring that is left
 	prev   []int
 	remain int
 }
 
-// cut appends the triangles of the polygon to out, as numbers of its corners: a triangle is three consecutive numbers, in the
+// Cut appends the triangles of the polygon to out, as numbers of its corners: a triangle is three consecutive numbers, in the
 // winding of the polygon. pos are the positions of all the vertices of the file, three numbers each, and corners the vertices of
 // the polygon in them. A convex polygon is cut as a fan from its first corner; a concave one by ear clipping on the plane that is
 // the most face-on to the polygon. A polygon with no area is cut as a fan too, and the triangles that have none are the business of
 // the renderer.
-func (tr *triangulator) cut(pos []float64, corners []int32, out []int32) []int32 {
+func (tr *Triangulator) Cut(pos []float64, corners []int32, out []int32) []int32 {
 	n := len(corners)
 	if n == 3 {
 		return append(out, 0, 1, 2)
@@ -129,7 +131,7 @@ func fan(out []int32, n int) []int32 {
 
 // isEar says whether the corner i makes a triangle with its neighbours that turns the right way and has no other corner of the
 // ring inside it.
-func (tr *triangulator) isEar(i int, orient float64) bool {
+func (tr *Triangulator) isEar(i int, orient float64) bool {
 	p, q := tr.prev[i], tr.next[i]
 	ax, ay := tr.u[p], tr.v[p]
 	bx, by := tr.u[i], tr.v[i]

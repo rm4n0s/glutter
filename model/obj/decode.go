@@ -8,6 +8,7 @@ import (
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/model"
 	"github.com/rm4n0s/glutter/model/internal/parse"
+	"github.com/rm4n0s/glutter/model/internal/poly"
 	"github.com/rm4n0s/glutter/model/internal/vtx"
 )
 
@@ -65,7 +66,7 @@ type decoder struct {
 	corners []corner
 	cpos    []int32
 	tris    []int32
-	tr      triangulator
+	tr      poly.Triangulator
 }
 
 func decode(ctx context.Context, data []byte, o Options) (*model.Model, error) {
@@ -327,7 +328,7 @@ func (d *decoder) face(rest []byte) error {
 	for _, c := range d.corners {
 		d.cpos = append(d.cpos, c.v)
 	}
-	d.tris = d.tr.cut(d.pos, d.cpos, d.tris[:0])
+	d.tris = d.tr.Cut(d.pos, d.cpos, d.tris[:0])
 	for _, k := range d.tris {
 		b.idx = append(b.idx, d.add(b, d.corners[k]))
 	}

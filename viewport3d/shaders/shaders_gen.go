@@ -3875,22 +3875,31 @@ struct VOut {
 	@location(1) view_pos: vec3<f32>,
 	// index is the number of the point in its mesh, which the picking reports.
 	@location(2) @interpolate(flat) index: f32,
+	// tint is the color of the point in the mesh (white when the mesh has none).
+	@location(3) @interpolate(flat) tint: vec4<f32>,
 }
 
 @vertex
 fn vs_main(@location(0) p: vec3<f32>, @location(1) corner: vec2<f32>) -> VOut {
-	return vertex_point(p, corner, 0.0);
+	return vertex_point(p, corner, 0.0, vec4<f32>(1.0));
+}
+
+// vs_color is vs_main for a mesh whose points have colors (the material's VertexColors).
+@vertex
+fn vs_color(@location(0) p: vec3<f32>, @location(1) corner: vec2<f32>, @location(3) color: vec4<f32>) -> VOut {
+	return vertex_point(p, corner, 0.0, color);
 }
 
 // vs_pick is vs_main for the picking: the point also has its number.
 @vertex
 fn vs_pick(@location(0) p: vec3<f32>, @location(1) corner: vec2<f32>, @location(2) index: f32) -> VOut {
-	return vertex_point(p, corner, index);
+	return vertex_point(p, corner, index, vec4<f32>(1.0));
 }
 
-fn vertex_point(p: vec3<f32>, corner: vec2<f32>, index: f32) -> VOut {
+fn vertex_point(p: vec3<f32>, corner: vec2<f32>, index: f32, tint: vec4<f32>) -> VOut {
 	var o: VOut;
 	o.index = index;
+	o.tint = tint;
 	o.clip = vec4<f32>(2.0, 2.0, 2.0, 1.0);
 	let v = item.mv * vec4<f32>(p, 1.0);
 	if (-v.z < frame.params.x) {
@@ -3917,8 +3926,8 @@ fn fs_main(in: VOut) -> @location(0) vec4<f32> {
 	} else {
 		cover = clamp(half_size + 0.5 - length(in.local), 0.0, 1.0);
 	}
-	let rgb = mix(point.color.rgb, item.tint.rgb, item.tint.a);
-	let a = point.color.a * cover;
+	let rgb = mix(point.color.rgb * in.tint.rgb, item.tint.rgb, item.tint.a);
+	let a = point.color.a * in.tint.a * cover;
 	return vec4<f32>(rgb * a, a);
 }
 
@@ -3981,6 +3990,7 @@ struct VOut {
     float2 local : LOC0;
     float3 view_pos : LOC1;
     nointerpolation float index : LOC2;
+    nointerpolation float4 tint : LOC3;
 };
 
 cbuffer frame : register(b0, space0) { Frame frame; }
@@ -3991,35 +4001,47 @@ struct VertexOutput_vs_main {
     float2 local : LOC0;
     float3 view_pos : LOC1;
     nointerpolation float index_2 : LOC2;
+    nointerpolation float4 tint_1 : LOC3;
     float4 clip_ : SV_Position;
 };
 
-struct VertexOutput_vs_pick {
+struct VertexOutput_vs_color {
     float2 local_1 : LOC0;
     float3 view_pos_1 : LOC1;
     nointerpolation float index_3 : LOC2;
+    nointerpolation float4 tint_2 : LOC3;
     float4 clip_1 : SV_Position;
 };
 
-struct FragmentInput_fs_main {
+struct VertexOutput_vs_pick {
     float2 local_2 : LOC0;
     float3 view_pos_2 : LOC1;
     nointerpolation float index_4 : LOC2;
+    nointerpolation float4 tint_3 : LOC3;
     float4 clip_2 : SV_Position;
 };
 
-struct FragmentInput_fs_pick {
+struct FragmentInput_fs_main {
     float2 local_3 : LOC0;
     float3 view_pos_3 : LOC1;
     nointerpolation float index_5 : LOC2;
+    nointerpolation float4 tint_4 : LOC3;
     float4 clip_3 : SV_Position;
+};
+
+struct FragmentInput_fs_pick {
+    float2 local_4 : LOC0;
+    float3 view_pos_4 : LOC1;
+    nointerpolation float index_6 : LOC2;
+    nointerpolation float4 tint_5 : LOC3;
+    float4 clip_4 : SV_Position;
 };
 
 int naga_f2i32(float value) {
     return int(clamp(value, -2147483600.0, 2147483500.0));
 }
 
-bool section_clipped(float3 p_2, int skip)
+bool section_clipped(float3 p_3, int skip)
 {
     int i = int(0);
 
@@ -4051,7 +4073,7 @@ bool section_clipped(float3 p_2, int skip)
             }
             int _e18 = i;
             float4 plane = frame.planes[_e18];
-            if (((dot(plane.xyz, p_2) + plane.w) > 0.0)) {
+            if (((dot(plane.xyz, p_3) + plane.w) > 0.0)) {
                 return true;
             }
         }
@@ -4059,54 +4081,63 @@ bool section_clipped(float3 p_2, int skip)
     return false;
 }
 
-VOut vertex_point(float3 p_3, float2 corner_2, float index_1)
+VOut vertex_point(float3 p_4, float2 corner_3, float index_1, float4 tint)
 {
     VOut o_1 = (VOut)0;
 
     o_1.index = index_1;
+    o_1.tint = tint;
     o_1.clip_ = float4(2.0, 2.0, 2.0, 1.0);
-    float4x4 _e13 = item.mv;
-    float4 v = mul(float4(p_3, 1.0), _e13);
-    float _e22 = frame.params.x;
-    if ((-(v.z) < _e22)) {
-        VOut _e24 = o_1;
-        VOut vout = _e24;
+    float4x4 _e15 = item.mv;
+    float4 v = mul(float4(p_4, 1.0), _e15);
+    float _e24 = frame.params.x;
+    if ((-(v.z) < _e24)) {
+        VOut _e26 = o_1;
+        VOut vout = _e26;
         return vout;
     }
-    float4x4 _e27 = frame.proj;
-    float4 k = mul(v, _e27);
-    float _e32 = point_.params.x;
-    float _e38 = frame.params.y;
-    float half_size = (((0.5 * _e32) * _e38) + 1.0);
-    float4 _e45 = frame.viewport;
-    float2 offset = ((corner_2 * half_size) / (0.5 * _e45.xy));
+    float4x4 _e29 = frame.proj;
+    float4 k = mul(v, _e29);
+    float _e34 = point_.params.x;
+    float _e40 = frame.params.y;
+    float half_size = (((0.5 * _e34) * _e40) + 1.0);
+    float4 _e47 = frame.viewport;
+    float2 offset = ((corner_3 * half_size) / (0.5 * _e47.xy));
     o_1.clip_ = float4((k.xy + (offset * k.w)), k.z, k.w);
-    o_1.local = (corner_2 * half_size);
+    o_1.local = (corner_3 * half_size);
     o_1.view_pos = v.xyz;
-    VOut _e62 = o_1;
-    VOut vout_1 = _e62;
+    VOut _e64 = o_1;
+    VOut vout_1 = _e64;
     return vout_1;
 }
 
 VertexOutput_vs_main vs_main(float3 p : LOC0, float2 corner : LOC1)
 {
-    VOut _e3 = vertex_point(p, corner, 0.0);
-    VOut vout_2 = _e3;
-    VertexOutput_vs_main vout_2_ = { vout_2.local, vout_2.view_pos, vout_2.index, vout_2.clip_ };
+    VOut _e5 = vertex_point(p, corner, 0.0, (1.0).xxxx);
+    VOut vout_2 = _e5;
+    VertexOutput_vs_main vout_2_ = { vout_2.local, vout_2.view_pos, vout_2.index, vout_2.tint, vout_2.clip_ };
     return vout_2_;
 }
 
-VertexOutput_vs_pick vs_pick(float3 p_1 : LOC0, float2 corner_1 : LOC1, float index : LOC2)
+VertexOutput_vs_color vs_color(float3 p_1 : LOC0, float2 corner_1 : LOC1, float4 color : LOC3)
 {
-    VOut _e3 = vertex_point(p_1, corner_1, index);
-    VOut vout_3 = _e3;
-    VertexOutput_vs_pick vout_3_ = { vout_3.local, vout_3.view_pos, vout_3.index, vout_3.clip_ };
+    VOut _e4 = vertex_point(p_1, corner_1, 0.0, color);
+    VOut vout_3 = _e4;
+    VertexOutput_vs_color vout_3_ = { vout_3.local, vout_3.view_pos, vout_3.index, vout_3.tint, vout_3.clip_ };
     return vout_3_;
+}
+
+VertexOutput_vs_pick vs_pick(float3 p_2 : LOC0, float2 corner_2 : LOC1, float index : LOC2)
+{
+    VOut _e5 = vertex_point(p_2, corner_2, index, (1.0).xxxx);
+    VOut vout_4 = _e5;
+    VertexOutput_vs_pick vout_4_ = { vout_4.local, vout_4.view_pos, vout_4.index, vout_4.tint, vout_4.clip_ };
+    return vout_4_;
 }
 
 float4 fs_main(FragmentInput_fs_main fragmentinput_fs_main) : SV_Target0
 {
-    VOut in_ = { fragmentinput_fs_main.clip_2, fragmentinput_fs_main.local_2, fragmentinput_fs_main.view_pos_2, fragmentinput_fs_main.index_4 };
+    VOut in_ = { fragmentinput_fs_main.clip_3, fragmentinput_fs_main.local_3, fragmentinput_fs_main.view_pos_3, fragmentinput_fs_main.index_5, fragmentinput_fs_main.tint_4 };
     float cover = 0.0;
 
     const bool _e3 = section_clipped(in_.view_pos, int(-1));
@@ -4123,12 +4154,12 @@ float4 fs_main(FragmentInput_fs_main fragmentinput_fs_main) : SV_Target0
         cover = clamp(((half_size_1 + 0.5) - length(in_.local)), 0.0, 1.0);
     }
     float4 _e52 = point_.color;
-    float4 _e56 = item.tint;
-    float _e61 = item.tint.w;
-    float3 rgb = lerp(_e52.xyz, _e56.xyz, _e61);
-    float _e66 = point_.color.w;
-    float _e67 = cover;
-    float a = (_e66 * _e67);
+    float4 _e59 = item.tint;
+    float _e64 = item.tint.w;
+    float3 rgb = lerp((_e52.xyz * in_.tint.xyz), _e59.xyz, _e64);
+    float _e69 = point_.color.w;
+    float _e73 = cover;
+    float a = ((_e69 * in_.tint.w) * _e73);
     return float4((rgb * a), a);
 }
 
@@ -4138,7 +4169,7 @@ uint naga_f2u32(float value) {
 
 PickOut fs_pick(FragmentInput_fs_pick fragmentinput_fs_pick)
 {
-    VOut in_1 = { fragmentinput_fs_pick.clip_3, fragmentinput_fs_pick.local_3, fragmentinput_fs_pick.view_pos_3, fragmentinput_fs_pick.index_5 };
+    VOut in_1 = { fragmentinput_fs_pick.clip_4, fragmentinput_fs_pick.local_4, fragmentinput_fs_pick.view_pos_4, fragmentinput_fs_pick.index_6, fragmentinput_fs_pick.tint_5 };
     float cover_1 = 0.0;
     PickOut o = (PickOut)0;
 
@@ -4172,6 +4203,18 @@ PickOut fs_pick(FragmentInput_fs_pick fragmentinput_fs_pick)
 			Inputs: []gpu.VertexInput{
 				{Name: "p", Location: 0, Type: gpu.ShaderTypeFloat32x3},
 				{Name: "corner", Location: 1, Type: gpu.ShaderTypeFloat32x2},
+			},
+			Bindings: []gpu.ShaderBinding{
+				{Name: "frame", Group: 0, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 384, Register: gpu.ShaderRegister{Class: "b", Space: 0, Index: 0}},
+				{Name: "point", Group: 1, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 32, Register: gpu.ShaderRegister{Class: "b", Space: 1, Index: 0}},
+				{Name: "item", Group: 2, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 112, Register: gpu.ShaderRegister{Class: "b", Space: 2, Index: 0}},
+			},
+		},
+		{Name: "vs_color", Stage: gpu.ShaderStageVertex,
+			Inputs: []gpu.VertexInput{
+				{Name: "p", Location: 0, Type: gpu.ShaderTypeFloat32x3},
+				{Name: "corner", Location: 1, Type: gpu.ShaderTypeFloat32x2},
+				{Name: "color", Location: 3, Type: gpu.ShaderTypeFloat32x4},
 			},
 			Bindings: []gpu.ShaderBinding{
 				{Name: "frame", Group: 0, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 384, Register: gpu.ShaderRegister{Class: "b", Space: 0, Index: 0}},

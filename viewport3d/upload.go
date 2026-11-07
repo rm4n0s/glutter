@@ -180,6 +180,8 @@ func Upload(ctx context.Context, device *gpu.Device, m *model.Model, opts ...Upl
 		prim model.Primitive
 		// moves is whether the mesh has a skin or morph targets: with no material, only a PBR one can move it.
 		moves bool
+		// colors is whether the mesh has vertex colors, which a mesh of points shows only with a material that says so.
+		colors bool
 	}
 	materials := map[matKey]Material{}
 	textures := map[*model.Image]*gpu.Texture{}
@@ -224,7 +226,7 @@ func Upload(ctx context.Context, device *gpu.Device, m *model.Model, opts ...Upl
 		return sm, nil
 	}
 	material := func(mm *model.Mesh) (Material, error) {
-		key := matKey{mm.Material, mm.Primitive, mm.Joints != nil || len(mm.MorphTargets) > 0}
+		key := matKey{mm.Material, mm.Primitive, mm.Joints != nil || len(mm.MorphTargets) > 0, mm.Primitive == model.PrimitivePoints && mm.Colors != nil}
 		if mat, ok := materials[key]; ok {
 			return mat, nil
 		}
@@ -235,7 +237,7 @@ func Upload(ctx context.Context, device *gpu.Device, m *model.Model, opts ...Upl
 		case model.PrimitiveLines:
 			mat = NewLineMaterial(LineOpts{Color: color})
 		case model.PrimitivePoints:
-			mat = NewPointMaterial(PointOpts{Color: color})
+			mat = NewPointMaterial(PointOpts{Color: color, VertexColors: mm.Colors != nil})
 		default:
 			if mm.Material != nil && mm.Material.PBR {
 				pm, err := pbrMaterial(mm, texture, sampler)

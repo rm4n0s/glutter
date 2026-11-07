@@ -88,6 +88,14 @@ func TestASteadyFrameAllocatesNothing(t *testing.T) {
 				viewport3d.NewItem(scenetest.Points([3]float32{0, 0, 0}, [3]float32{0.5, 0.5, 0}), viewport3d.NewPointMaterial(viewport3d.PointOpts{Size: 6})),
 			}, viewport3d.SceneStyle{}
 		}, nil, gpu.TextureFormatDepth32Float},
+		{"a cloud of points with colors", func() ([]*viewport3d.Item, viewport3d.SceneStyle) {
+			mesh, err := viewport3d.NewMesh(viewport3d.MeshData{Primitive: viewport3d.PrimitivePoints, Positions: []float32{0, 0, 0, 1, 0, 0, 0, 1, 0},
+				Colors: []byte{255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			return []*viewport3d.Item{viewport3d.NewItem(mesh, viewport3d.NewPointMaterial(viewport3d.PointOpts{VertexColors: true, Size: 5}))}, viewport3d.SceneStyle{}
+		}, nil, gpu.TextureFormatDepth32Float},
 		{"PBR items, shaded with edges", func() ([]*viewport3d.Item, viewport3d.SceneStyle) {
 			mesh, metal := scenetest.Sphere(0.4, 24, 12), viewport3d.NewPBRMaterial(viewport3d.PBROpts{Metallic: foundation.Some(1.0)})
 			return []*viewport3d.Item{

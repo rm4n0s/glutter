@@ -1409,6 +1409,14 @@ func main() {
   cameras, lights and scenes (`gltf.TagGLTFInvalid`, with the JSON pointer of the failure in `path` and a `reason`;
   `gltf.TagGLTFExtensionUnsupported` for a required extension that is not read, such as Draco or KTX2). A model that came from
   glTF has `Material.PBR` set; `Upload` makes a `viewport3d.PBRMaterial` of it (see "PBR, lighting and animation" below).
+  `ply.Load(ctx, fsys, name)` reads PLY files (ASCII, and binary in both byte orders; positions, normals, colors, texture
+  coordinates and polygons, which it cuts into triangles). A PLY file with no faces is a point cloud: its mesh is of points,
+  and when it has colors `Upload` makes a `viewport3d.PointMaterial` with `VertexColors`, so the cloud shows its own colors
+  (set `PointOpts.Size` for the size of a point). `threemf.Load(ctx, fsys, name)` reads 3MF files: objects, components with
+  their transforms, build items, the base materials and color groups of the materials extension, and the unit of the file in
+  `Model.Units` (positions are not scaled). Textures, beam lattices, slices and the production extension are not read; a
+  file that requires one fails with `threemf.TagThreeMFInvalid` (`ply.TagPLYInvalid` is the error of a PLY file), whose
+  `reason` says what is wrong. `Options.MaxModelBytes` limits what a 3MF file may unpack to.
 
 ```go
 package main

@@ -406,9 +406,10 @@ const (
 // Flutter: no counterpart
 type PointMaterial struct {
 	materialCore
-	color ui.Color
-	size  float64
-	shape PointShape
+	color        ui.Color
+	size         float64
+	shape        PointShape
+	vertexColors bool
 }
 
 // PointOpts are the optional parameters of NewPointMaterial.
@@ -421,6 +422,9 @@ type PointOpts struct {
 	Size float64
 	// Shape is round or square; the default is round.
 	Shape PointShape
+	// VertexColors multiplies the color by the colors of the mesh's points (MeshData.Colors), as a scanned cloud has them; a mesh
+	// without colors is drawn in the color alone.
+	VertexColors bool
 }
 
 // NewPointMaterial creates a point material.
@@ -428,7 +432,7 @@ type PointOpts struct {
 // Flutter: no counterpart
 func NewPointMaterial(opts ...PointOpts) *PointMaterial {
 	o := firstOpts(opts)
-	m := &PointMaterial{color: o.Color, size: o.Size, shape: o.Shape}
+	m := &PointMaterial{color: o.Color, size: o.Size, shape: o.Shape, vertexColors: o.VertexColors}
 	if m.color == (ui.Color{}) {
 		m.color = defaultPointColor
 	}
@@ -469,6 +473,21 @@ func (m *PointMaterial) Size() float64 { return m.size }
 func (m *PointMaterial) SetSize(s float64) {
 	if s > 0 && m.size != s {
 		m.size = s
+		m.changed()
+	}
+}
+
+// VertexColors says whether the colors of the mesh's points multiply the color.
+//
+// Flutter: no counterpart
+func (m *PointMaterial) VertexColors() bool { return m.vertexColors }
+
+// SetVertexColors changes whether the colors of the mesh's points are used. A mesh without colors is drawn in the color alone.
+//
+// Flutter: no counterpart
+func (m *PointMaterial) SetVertexColors(on bool) {
+	if m.vertexColors != on {
+		m.vertexColors = on
 		m.changed()
 	}
 }

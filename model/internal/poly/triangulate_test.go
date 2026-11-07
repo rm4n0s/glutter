@@ -1,4 +1,4 @@
-package obj
+package poly
 
 import (
 	"math"
@@ -18,7 +18,7 @@ func polygonArea(pos []float64, corners []int32) float64 {
 
 func TestTriangulateCoversThePolygon(t *testing.T) {
 	rng := rand.New(rand.NewSource(7))
-	var tr triangulator
+	var tr Triangulator
 	tests := []struct {
 		name  string
 		shape func(n int) []float64 // the positions of the corners, in order
@@ -51,7 +51,7 @@ func TestTriangulateCoversThePolygon(t *testing.T) {
 					corners[i] = int32(i)
 				}
 				want := polygonArea(pos, corners)
-				tris := tr.cut(pos, corners, nil)
+				tris := tr.Cut(pos, corners, nil)
 				if len(tris) != 3*(count-2) {
 					t.Fatalf("%d corners gave %d triangles, want %d", count, len(tris)/3, count-2)
 				}
@@ -101,7 +101,7 @@ func comb(n int) []float64 {
 func TestTriangulateInAnyPlane(t *testing.T) {
 	// The L-shaped polygon of testdata/concave.obj, turned about two axes and moved: the triangles still cover its area.
 	l := [][3]float64{{0, 0, 0}, {2, 0, 0}, {2, 1, 0}, {1, 1, 0}, {1, 2, 0}, {0, 2, 0}}
-	var tr triangulator
+	var tr Triangulator
 	for _, angles := range [][2]float64{{0, 0}, {0.7, 0}, {0, 1.2}, {2.5, 0.4}, {math.Pi / 2, math.Pi / 2}} {
 		var pos []float64
 		for _, p := range l {
@@ -111,7 +111,7 @@ func TestTriangulateInAnyPlane(t *testing.T) {
 			pos = append(pos, x+3, y-2, z2+5)
 		}
 		corners := []int32{0, 1, 2, 3, 4, 5}
-		tris := tr.cut(pos, corners, nil)
+		tris := tr.Cut(pos, corners, nil)
 		if len(tris) != 12 {
 			t.Fatalf("angles %v: %d triangles", angles, len(tris)/3)
 		}
@@ -130,15 +130,15 @@ func TestTriangulateInAnyPlane(t *testing.T) {
 }
 
 func TestTriangulateDegenerateAndHugePolygons(t *testing.T) {
-	var tr triangulator
+	var tr Triangulator
 	// No area: a fan, with as many triangles as any polygon.
 	line := []float64{0, 0, 0, 1, 0, 0, 2, 0, 0, 3, 0, 0, 4, 0, 0}
-	if got := len(tr.cut(line, []int32{0, 1, 2, 3, 4}, nil)); got != 9 {
+	if got := len(tr.Cut(line, []int32{0, 1, 2, 3, 4}, nil)); got != 9 {
 		t.Errorf("a polygon on a line gave %d numbers, want 9", got)
 	}
 	// A polygon that crosses itself (a bow tie) still gives n-2 triangles.
 	bow := []float64{0, 0, 0, 2, 2, 0, 2, 0, 0, 0, 2, 0}
-	if got := len(tr.cut(bow, []int32{0, 1, 2, 3}, nil)); got != 6 {
+	if got := len(tr.Cut(bow, []int32{0, 1, 2, 3}, nil)); got != 6 {
 		t.Errorf("a bow tie gave %d numbers, want 6", got)
 	}
 	// Beyond the size for ear clipping it is a fan, and it is quick.
@@ -147,7 +147,7 @@ func TestTriangulateDegenerateAndHugePolygons(t *testing.T) {
 	for i := range corners {
 		corners[i] = int32(i)
 	}
-	if got := len(tr.cut(pos, corners, nil)); got != 3*(len(corners)-2) {
+	if got := len(tr.Cut(pos, corners, nil)); got != 3*(len(corners)-2) {
 		t.Errorf("a huge polygon gave %d numbers", got)
 	}
 }

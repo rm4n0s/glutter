@@ -146,8 +146,9 @@ type lineDraw struct {
 	instanceCnt int
 	// buf is the buffer that holds the instances: the segments, or the positions of the points.
 	buf *gpu.Buffer
-	// corners is the buffer of the quad's corners.
+	// corners is the buffer of the quad's corners, and colors the colors of the points (nil for none).
 	corners *gpu.Buffer
+	colors  *gpu.Buffer
 	edge    bool
 }
 
@@ -568,15 +569,20 @@ func (r *Renderer) Draw(f *gpu.ViewFrame) {
 		case PrimitivePoints:
 			pk := base
 			pk.kind = pipePoints
-			if pointPipe = r.pipeline(pk); pointPipe == nil {
-				continue
-			}
 			pts := r.meshState(it.mesh)
 			if pts.pos == nil || pts.count == 0 {
 				continue
 			}
+			// A material that takes the colors of the points, and a mesh that has them, make the pipeline that reads them.
+			var colors *gpu.Buffer
+			if pm, ok := it.material.(*PointMaterial); ok && pm.vertexColors && pts.colors != nil {
+				pk.variant, colors = 4, pts.colors
+			}
+			if pointPipe = r.pipeline(pk); pointPipe == nil {
+				continue
+			}
 			mat := r.materialState(it.material, pointPipe)
-			r.lines = append(r.lines, lineDraw{mesh: pts, mat: mat, pk: pk, record: records, instanceCnt: pts.count, buf: pts.pos, corners: r.pointCorners})
+			r.lines = append(r.lines, lineDraw{mesh: pts, mat: mat, pk: pk, record: records, instanceCnt: pts.count, buf: pts.pos, corners: r.pointCorners, colors: colors})
 			r.writeRecord(records, &mv, r.lineTint(it, style))
 			records++
 			r.stats.Items++
@@ -825,6 +831,9 @@ func (r *Renderer) Draw(f *gpu.ViewFrame) {
 		pass.SetBindGroup(2, r.itemGroup, uint32(itemBase+l.record*uniformAlign))
 		pass.SetVertexBuffer(0, l.buf, 0)
 		pass.SetVertexBuffer(1, l.corners, 0)
+		if l.colors != nil {
+			pass.SetVertexBuffer(2, l.colors, 0)
+		}
 		pass.Draw(6, l.instanceCnt, 0, 0)
 		r.stats.Draws++
 		if l.edge {

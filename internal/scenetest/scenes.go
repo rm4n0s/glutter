@@ -293,6 +293,7 @@ func Cases() []Case {
 		}),
 	}
 	cases = append(cases, pbrCases()...)
+	cases = append(cases, cloudCases()...)
 	return cases
 }
 
