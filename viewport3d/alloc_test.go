@@ -88,6 +88,31 @@ func TestASteadyFrameAllocatesNothing(t *testing.T) {
 				viewport3d.NewItem(scenetest.Points([3]float32{0, 0, 0}, [3]float32{0.5, 0.5, 0}), viewport3d.NewPointMaterial(viewport3d.PointOpts{Size: 6})),
 			}, viewport3d.SceneStyle{}
 		}, nil, gpu.TextureFormatDepth32Float},
+		{"PBR items, shaded with edges", func() ([]*viewport3d.Item, viewport3d.SceneStyle) {
+			mesh, metal := scenetest.Sphere(0.4, 24, 12), viewport3d.NewPBRMaterial(viewport3d.PBROpts{Metallic: foundation.Some(1.0)})
+			return []*viewport3d.Item{
+				viewport3d.NewItem(mesh, viewport3d.NewPBRMaterial()), viewport3d.NewItem(mesh, metal, at(1, 0, 0)), viewport3d.NewItem(mesh, metal, at(-1, 0, 0)),
+			}, viewport3d.SceneStyle{DisplayMode: viewport3d.DisplayModeShadedWithEdges}
+		}, nil, gpu.TextureFormatDepth32Float},
+		{"PBR items with a shadow, and a Phong item that casts one", func() ([]*viewport3d.Item, viewport3d.SceneStyle) {
+			return []*viewport3d.Item{
+				viewport3d.NewItem(scenetest.Box(2, 0.1, 2), viewport3d.NewPBRMaterial(), at(0, -0.6, 0)),
+				viewport3d.NewItem(scenetest.Box(0.5, 0.5, 0.5), viewport3d.NewPBRMaterial()),
+				viewport3d.NewItem(scenetest.Sphere(0.3, 16, 8), steel, at(0.8, 0, 0)),
+			}, viewport3d.SceneStyle{Lights: []viewport3d.DirectionalLight{{Direction: vecmath.Vec3{X: 1, Y: 1, Z: 0.3}}}, Shadow: viewport3d.ShadowStyle{Enabled: true}}
+		}, nil, gpu.TextureFormatDepth32Float},
+		{"a skinned item, one with morph targets, a transparent one, and the sections", func() ([]*viewport3d.Item, viewport3d.SceneStyle) {
+			skin := viewport3d.NewSkin([]vecmath.Mat4{vecmath.Mat4Identity(), vecmath.NewMat4Translation(vecmath.Vec3{X: -1})})
+			skin.SetJointWorld(1, vecmath.NewMat4Translation(vecmath.Vec3{X: 1}).Mul(vecmath.NewMat4RotationZ(0.6)))
+			bar := viewport3d.NewItem(scenetest.SkinnedBar(), viewport3d.NewPBRMaterial())
+			bar.SetSkin(skin)
+			ball := viewport3d.NewItem(scenetest.MorphSphere(0.4, 16, 8), viewport3d.NewPBRMaterial(), at(0, 1, 0))
+			ball.SetMorphWeights([]float32{0.5})
+			glass := viewport3d.NewPBRMaterial(viewport3d.PBROpts{Color: ui.NewColor(0x80FF8040), AlphaMode: viewport3d.AlphaModeBlend})
+			return []*viewport3d.Item{bar, ball, viewport3d.NewItem(scenetest.Box(1, 1, 1), glass, at(0.5, 0.2, 0.5))}, viewport3d.SceneStyle{}
+		}, func(s *viewport3d.Scene, _ []*viewport3d.Item) {
+			s.SetSectionPlanes(vecmath.NewPlaneFromPointNormal(vecmath.Vec3{X: 0.1}, vecmath.Vec3{X: 1, Z: 1}.Normalize()))
+		}, gpu.TextureFormatDepth24PlusStencil8},
 		{"transparent items", func() ([]*viewport3d.Item, viewport3d.SceneStyle) {
 			glass := viewport3d.NewPhongMaterial(viewport3d.PhongOpts{Color: ui.NewColor(0x80FF8040)})
 			return []*viewport3d.Item{

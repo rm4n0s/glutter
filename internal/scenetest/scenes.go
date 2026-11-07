@@ -292,6 +292,7 @@ func Cases() []Case {
 			return cam
 		}),
 	}
+	cases = append(cases, pbrCases()...)
 	return cases
 }
 

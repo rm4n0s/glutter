@@ -59,6 +59,32 @@ type MeshData struct {
 	// Indices16 or Indices32 index the vertices; at most one of them is set. Without indices the vertices are taken in order.
 	Indices16 []uint16
 	Indices32 []uint32
+
+	// The attributes below are read by PBRMaterial only (SPEC §28.5); the other materials ignore them.
+
+	// Tangents are x, y, z and w for each vertex: the direction of the u axis of the texture, and the sign (1 or -1) of the
+	// bitangent; optional. Without them a normal texture takes its frame from the derivatives of the position and the texture
+	// coordinates.
+	Tangents []float32
+	// TexCoords1 are the second set of u and v for each vertex; optional.
+	TexCoords1 []float32
+	// Joints are the four joints that move each vertex, as positions in the Skin of the item, and Weights their four weights
+	// (which add up to 1); both optional, and together (a mesh with them is skinned when its item has a Skin).
+	Joints  []uint16
+	Weights []float32
+	// MorphTargets are the shapes that the mesh moves towards, added to its vertices with the weights of the item
+	// (Item.SetMorphWeights); optional.
+	MorphTargets []MorphTarget
+}
+
+// MorphTarget is one morph target of a mesh: the change of each vertex at a weight of 1.
+//
+// Flutter: no counterpart
+type MorphTarget struct {
+	// Positions are the changes of x, y and z of each vertex, or nil for none.
+	Positions []float32
+	// Normals are the changes of the normal of each vertex, or nil for none.
+	Normals []float32
 }
 
 // Mesh is geometry that is uploaded to the GPU once and shared by its items (SPEC §27.8). Its CPU data stays, so that the
@@ -118,6 +144,12 @@ func (m *Mesh) validate() error {
 		return errors.New(TagMeshInvalid, "the texture coordinates are not one for each vertex", "primitive", prim, "texCoords", len(d.TexCoords), "vertices", n)
 	case len(d.Colors) != 0 && len(d.Colors) != 4*n:
 		return errors.New(TagMeshInvalid, "the colors are not one for each vertex", "primitive", prim, "colors", len(d.Colors), "vertices", n)
+	case len(d.Tangents) != 0 && len(d.Tangents) != 4*n:
+		return errors.New(TagMeshInvalid, "the tangents are not one for each vertex", "primitive", prim, "tangents", len(d.Tangents), "vertices", n)
+	case len(d.TexCoords1) != 0 && len(d.TexCoords1) != 2*n:
+		return errors.New(TagMeshInvalid, "the second texture coordinates are not one for each vertex", "primitive", prim, "texCoords1", len(d.TexCoords1), "vertices", n)
+	case (len(d.Joints) != 0 || len(d.Weights) != 0) && (len(d.Joints) != 4*n || len(d.Weights) != 4*n):
+		return errors.New(TagMeshInvalid, "the joints and the weights are four for each vertex, both", "primitive", prim, "joints", len(d.Joints), "weights", len(d.Weights), "vertices", n)
 	case len(d.Indices16) != 0 && len(d.Indices32) != 0:
 		return errors.New(TagMeshInvalid, "a mesh has indices of 16 bits or of 32 bits, not both", "primitive", prim)
 	case !d.Origin.IsFinite():
@@ -126,6 +158,11 @@ func (m *Mesh) validate() error {
 	for _, v := range d.Positions {
 		if math.IsNaN(float64(v)) || math.IsInf(float64(v), 0) {
 			return errors.New(TagMeshInvalid, "a position is not finite", "primitive", prim)
+		}
+	}
+	for i, t := range d.MorphTargets {
+		if (len(t.Positions) != 0 && len(t.Positions) != 3*n) || (len(t.Normals) != 0 && len(t.Normals) != 3*n) {
+			return errors.New(TagMeshInvalid, "a morph target does not have a change for each vertex", "primitive", prim, "target", i, "positions", len(t.Positions), "normals", len(t.Normals), "vertices", n)
 		}
 	}
 	count := n
@@ -276,3 +313,13 @@ func (m *Mesh) Release() {
 //
 // Flutter: no counterpart
 const TagMeshInvalid = "MeshInvalid"
+
+// Skinned says whether the mesh has joints and weights.
+//
+// Flutter: no counterpart
+func (m *Mesh) Skinned() bool { return len(m.data.Joints) != 0 }
+
+// MorphTargetCount is the number of morph targets.
+//
+// Flutter: no counterpart
+func (m *Mesh) MorphTargetCount() int { return len(m.data.MorphTargets) }

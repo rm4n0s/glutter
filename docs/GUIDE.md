@@ -1408,7 +1408,7 @@ func main() {
   files, with materials of the metallic-roughness model and their textures, skins, morph targets, animations (as data),
   cameras, lights and scenes (`gltf.TagGLTFInvalid`, with the JSON pointer of the failure in `path` and a `reason`;
   `gltf.TagGLTFExtensionUnsupported` for a required extension that is not read, such as Draco or KTX2). A model that came from
-  glTF has `Material.PBR` set; `Upload` shows its base color until the PBR material of step 31.9.
+  glTF has `Material.PBR` set; `Upload` makes a `viewport3d.PBRMaterial` of it (see "PBR, lighting and animation" below).
 
 ```go
 package main
@@ -1456,6 +1456,63 @@ func main() {
   and `l` and `p` make meshes of lines and points. The `mtllib` file is read through the same `fs.FS`: `Kd`, `Ks`, `Ns`, `d`
   and `map_Kd` are used, and a library or an image that is not there leaves the default material and one line in the `slog`
   log. The texture coordinate `v` is turned, as the model's origin is at the top left.
+
+- **PBR, lighting and animation.** `viewport3d.NewPBRMaterial(viewport3d.PBROpts{...})` is glTF's metallic-roughness
+  material: `Color`, `Metallic`, `Roughness`, `Emissive`, the five textures (`BaseColorTexture`, `MetallicRoughnessTexture`,
+  `NormalTexture`, `OcclusionTexture`, `EmissiveTexture`, each a `PBRTexture` with an optional sampler, texture coordinate set
+  and `TextureTransform`), `AlphaMode`, `DoubleSided`, `VertexColors` and `Unlit`. A scene with a PBR item is drawn into a float
+  target and tone mapped over the view: `SceneStyle.ToneMapping` (`ToneMappingNeutral` by default, or `ToneMappingACES`) and
+  `Exposure`. The light is the style's directional lights, the headlight and the environment: `SceneStyle.Environment` is
+  `viewport3d.NewEnvironment(cube)` of a cube texture of yours (`RGBA16Float` for radiance above 1, or `RGBA8Unorm` for sRGB
+  colors; it must live as long as the scene uses it), and without one the view makes a neutral studio; the renderer prefilters it
+  once. `SceneStyle.Shadow` (`ShadowStyle{Enabled: true}`) turns on one shadow map for the first directional light (`Light` is
+  an index in `Lights`; `Size` 2048 by default), fitted to the scene's bounds so that it does not shimmer when the camera moves.
+  `Upload` of a glTF model plays animations through `viewport3d.NewAnimation(model.Animations[0])`: `Sample(t, pose)` writes
+  the value of every channel at `t` seconds into a `Pose` that you keep and reuse (looping is yours), and `up.SetPose(pose)`
+  moves the nodes, the skins and the morph weights. A mesh that you build yourself is skinned with `MeshData.Joints` and
+  `Weights` and `item.SetSkin(viewport3d.NewSkin(inverseBindMatrices))` (then `skin.SetJointWorld(i, m)`), and morphed with
+  `MeshData.MorphTargets` and `item.SetMorphWeights(w)`.
+
+```go
+package main
+
+import (
+	"time"
+
+	"github.com/rm4n0s/glutter/foundation"
+	"github.com/rm4n0s/glutter/model"
+	"github.com/rm4n0s/glutter/vecmath"
+	"github.com/rm4n0s/glutter/viewport3d"
+)
+
+// play shows what Animation.Sample gives at the time since the start, looping, in a model that Upload made.
+func play(up *viewport3d.Uploaded, m *model.Model, pose *viewport3d.Pose, since time.Duration) {
+	anim := viewport3d.NewAnimation(m.Animations[0])
+	t := float32(since.Seconds())
+	if d := anim.Duration(); d > 0 {
+		for t >= d {
+			t -= d
+		}
+	}
+	anim.Sample(t, pose) // writes into the pose: nothing is allocated when the pose is reused
+	up.SetPose(pose)
+}
+
+// lit is a scene with a shadow and a PBR sphere of rough gold, tone mapped with ACES.
+func lit(sphere *viewport3d.Mesh) *viewport3d.Scene {
+	scene := viewport3d.NewScene()
+	scene.SetStyle(viewport3d.SceneStyle{
+		Lights:      []viewport3d.DirectionalLight{{Direction: vecmath.Vec3{X: -0.6, Y: 1, Z: 0.35}}},
+		Shadow:      viewport3d.ShadowStyle{Enabled: true},
+		ToneMapping: viewport3d.ToneMappingACES,
+	})
+	gold := viewport3d.NewPBRMaterial(viewport3d.PBROpts{Metallic: foundation.Some(1.0), Roughness: foundation.Some(0.4)})
+	scene.Add(viewport3d.NewItem(sphere, gold))
+	return scene
+}
+
+func main() { _, _ = play, lit }
+```
 
 - **The math.** Matrices are column-major, as WGSL reads them, and `a.Mul(b)` applies `b` first. The clip space is
   WebGPU's, and the projections are reversed-Z (`Perspective(fovY, aspect, near)` has the far plane at infinity): the

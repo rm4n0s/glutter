@@ -87,6 +87,17 @@ type SceneStyle struct {
 	Selection SelectionStyle
 	// Grid is the infinite grid; none by default.
 	Grid GridStyle
+	// Environment is the light of the sky for the PBR materials; nil is the neutral studio that the renderer makes (SPEC §28.5).
+	Environment *Environment
+	// EnvironmentIntensity multiplies the light of the environment; the default is 1.
+	EnvironmentIntensity foundation.Opt[float64]
+	// Shadow is the directional shadow map of the PBR materials.
+	Shadow ShadowStyle
+	// ToneMapping is the curve that turns the float image of the PBR materials into colors; the default is the Khronos PBR
+	// Neutral one.
+	ToneMapping ToneMapping
+	// Exposure multiplies the radiance before the tone mapping; the default is 1.
+	Exposure foundation.Opt[float64]
 }
 
 const (
@@ -114,6 +125,11 @@ type resolvedStyle struct {
 	section    resolvedSection
 	selection  resolvedSelection
 	grid       resolvedGrid
+	// environment is the scene's environment, and envIntensity the strength of its light.
+	environment  *Environment
+	envIntensity float64
+	shadow       resolvedShadow
+	tone         resolvedTone
 }
 
 // resolve fills in the defaults of the style.
@@ -146,6 +162,9 @@ func (s SceneStyle) resolve() resolvedStyle {
 	r.section = s.Section.resolve(r.edgeColor, r.edgeWidth)
 	r.selection = s.Selection.resolve()
 	r.grid = s.Grid.resolve(r.background)
+	r.environment, r.envIntensity = s.Environment, s.EnvironmentIntensity.OrElse(1)
+	r.shadow = s.Shadow.resolve()
+	r.tone = resolveTone(s.ToneMapping, s.Exposure)
 	return r
 }
 
@@ -168,6 +187,10 @@ type Item struct {
 	pickID    uint32
 	layers    uint32
 	selected  bool
+	// skin and morphWeights are the skeleton and the morph target weights of a mesh that has joints or morph targets
+	// (PBRMaterial).
+	skin         *Skin
+	morphWeights []float32
 
 	// model is the transform of the mesh's vertices: the item's transform after the translation to the mesh's origin.
 	model vecmath.Mat4
@@ -196,8 +219,8 @@ type ItemOpts struct {
 // Flutter: no counterpart
 const TagItemInvalid = "ItemInvalid"
 
-// NewItem creates an item that draws the mesh with the material. A mesh of triangles takes an UnlitMaterial or a
-// PhongMaterial, a mesh of lines a LineMaterial and a mesh of points a PointMaterial.
+// NewItem creates an item that draws the mesh with the material. A mesh of triangles takes an UnlitMaterial, a
+// PhongMaterial or a PBRMaterial, a mesh of lines a LineMaterial and a mesh of points a PointMaterial.
 //
 // Flutter: no counterpart
 func NewItem(mesh *Mesh, material Material, opts ...ItemOpts) *Item {
@@ -354,6 +377,59 @@ func (it *Item) SetLayers(l uint32) {
 	}
 }
 
+// Skin is the skeleton that moves the vertices of the item's mesh, or nil.
+//
+// Flutter: no counterpart
+func (it *Item) Skin() *Skin { return it.skin }
+
+// SetSkin gives the item a skeleton, or none (nil). The mesh must have Joints and Weights to be skinned, and its joints must be
+// below the skin's JointCount. The items of one skin are drawn again whenever the skin changes.
+//
+// Flutter: no counterpart
+func (it *Item) SetSkin(s *Skin) {
+	if it.skin == s {
+		return
+	}
+	if it.scene != nil {
+		if it.skin != nil {
+			it.scene.releaseListenable(it.skin)
+		}
+		if s != nil {
+			it.scene.retainListenable(s)
+		}
+	}
+	it.skin = s
+	it.changed(true)
+}
+
+// MorphWeights are the weights of the mesh's morph targets for this item (a copy), or nil for all 0.
+//
+// Flutter: no counterpart
+func (it *Item) MorphWeights() []float32 { return append([]float32(nil), it.morphWeights...) }
+
+// SetMorphWeights sets the weight of each morph target of the mesh, from the first; missing weights are 0 and extra ones are ignored.
+//
+// Flutter: no counterpart
+func (it *Item) SetMorphWeights(w []float32) {
+	if slicesEqual(it.morphWeights, w) {
+		return
+	}
+	it.morphWeights = append(it.morphWeights[:0], w...)
+	it.changed(false)
+}
+
+func slicesEqual(a, b []float32) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
 // Bounds is the box of the item in the world, in float64: the mesh's bounds under the item's transform.
 //
 // Flutter: no counterpart
@@ -381,7 +457,7 @@ type Scene struct {
 	// planes are the section planes (section.go).
 	planes []vecmath.Plane
 	// materials counts the items that use each material, and keeps the one listener that the scene has on it.
-	materials map[Material]*materialListener
+	materials map[foundation.Listenable]*materialListener
 }
 
 // materialListener is the scene's listener on a material, and the number of items that use the material.
@@ -394,7 +470,7 @@ type materialListener struct {
 //
 // Flutter: no counterpart
 func NewScene() *Scene {
-	s := &Scene{materials: map[Material]*materialListener{}, bounds: vecmath.EmptyBox3()}
+	s := &Scene{materials: map[foundation.Listenable]*materialListener{}, bounds: vecmath.EmptyBox3()}
 	s.rs = s.style.resolve()
 	return s
 }
@@ -413,6 +489,9 @@ func (s *Scene) Add(items ...*Item) {
 		it.scene = s
 		s.items = append(s.items, it)
 		s.retainMaterial(it.material)
+		if it.skin != nil {
+			s.retainListenable(it.skin)
+		}
 	}
 	s.boundsValid = false
 	s.NotifyListeners()
@@ -438,6 +517,9 @@ func (s *Scene) remove(it *Item) {
 		s.items = slices.Delete(s.items, i, i+1)
 	}
 	s.releaseMaterial(it.material)
+	if it.skin != nil {
+		s.releaseListenable(it.skin)
+	}
 	it.scene = nil
 }
 
@@ -447,6 +529,9 @@ func (s *Scene) remove(it *Item) {
 func (s *Scene) Clear() {
 	for _, it := range s.items {
 		s.releaseMaterial(it.material)
+		if it.skin != nil {
+			s.releaseListenable(it.skin)
+		}
 		it.scene = nil
 	}
 	s.items = s.items[:0]
@@ -498,7 +583,13 @@ func (s *Scene) itemChanged(boundsChanged bool) {
 }
 
 // retainMaterial counts an item's use of a material, and listens to it while any item uses it.
-func (s *Scene) retainMaterial(m Material) {
+func (s *Scene) retainMaterial(m Material) { s.retainListenable(m) }
+
+// releaseMaterial is the end of an item's use of a material.
+func (s *Scene) releaseMaterial(m Material) { s.releaseListenable(m) }
+
+// retainListenable counts an item's use of a material or a skin, and listens to it while any item uses it.
+func (s *Scene) retainListenable(m foundation.Listenable) {
 	l := s.materials[m]
 	if l == nil {
 		l = &materialListener{handle: m.AddListener(s.NotifyListeners)}
@@ -507,8 +598,8 @@ func (s *Scene) retainMaterial(m Material) {
 	l.count++
 }
 
-// releaseMaterial is the end of an item's use of a material.
-func (s *Scene) releaseMaterial(m Material) {
+// releaseListenable is the end of an item's use of a material or a skin.
+func (s *Scene) releaseListenable(m foundation.Listenable) {
 	l := s.materials[m]
 	if l == nil {
 		return

@@ -9,6 +9,532 @@ import (
 	"github.com/rm4n0s/glutter/gpu"
 )
 
+//go:embed env.spv
+var spirvEnv []byte
+
+// Env is env.wgsl.
+var Env = &gpu.Shader{
+	Name: "env",
+	WGSL: `// The environment of viewport3d's image-based lighting (SPEC §28.5), made by compute passes: the neutral default sky, the
+// prefiltered specular levels (GGX, importance sampled; one level for each roughness) and the diffuse irradiance. Each entry
+// point writes one level of a cube, as a texture array of six layers (a storage binding cannot take a cube), which the renderer
+// copies into the cube that the material samples.
+//
+// A texel of a face is a direction by the table of faces of OpenGL, Vulkan, Direct3D and WebGPU, which the hardware uses to
+// sample a cube: +x, -x, +y, -y, +z, -z are the layers 0 to 5.
+
+struct Params {
+	// size: x the size of the level that is written, y the roughness, z the number of samples, w the size of the source's first level.
+	size: vec4<f32>,
+	// options: x 1 when the source is 8 bit sRGB, y the strength of the sky.
+	options: vec4<f32>,
+}
+
+@group(0) @binding(0) var<uniform> params: Params;
+@group(0) @binding(1) var src: texture_cube<f32>;
+@group(0) @binding(2) var samp: sampler;
+@group(0) @binding(3) var dst: texture_storage_2d_array<rgba16float, write>;
+
+const PI: f32 = 3.14159265358979;
+
+// face_direction is the direction of the texel (x, y) of a face of a cube of the given size. (The texel comes as i32: Wine's
+// d3dcompiler_47 turns f32 of a component of the thread's id, a u32, into a wrong value, and f32 of an i32 into the right one.)
+fn face_direction(face: u32, x: i32, y: i32, size: f32) -> vec3<f32> {
+	let u = 2.0 * (f32(x) + 0.5) / size - 1.0;
+	let v = 2.0 * (f32(y) + 0.5) / size - 1.0;
+	var d = vec3<f32>(0.0);
+	switch face {
+		case 0u: { d = vec3<f32>(1.0, -v, -u); }
+		case 1u: { d = vec3<f32>(-1.0, -v, u); }
+		case 2u: { d = vec3<f32>(u, 1.0, v); }
+		case 3u: { d = vec3<f32>(u, -1.0, -v); }
+		case 4u: { d = vec3<f32>(u, -v, 1.0); }
+		default: { d = vec3<f32>(-u, -v, -1.0); }
+	}
+	return normalize(d);
+}
+
+fn srgb_to_linear(c: vec3<f32>) -> vec3<f32> {
+	let lo = c / 12.92;
+	let hi = pow((c + vec3<f32>(0.055)) / 1.055, vec3<f32>(2.4));
+	return select(hi, lo, c <= vec3<f32>(0.04045));
+}
+
+fn source(d: vec3<f32>, lod: f32) -> vec3<f32> {
+	var c = textureSampleLevel(src, samp, d, lod).rgb;
+	if (params.options.x > 0.5) {
+		c = srgb_to_linear(c);
+	}
+	return c;
+}
+
+// radical_inverse is the Van der Corput sequence of i, and hammersley the point i of n of the Hammersley set.
+fn hammersley(i: u32, n: u32) -> vec2<f32> {
+	var bits = i;
+	bits = (bits << 16u) | (bits >> 16u);
+	bits = ((bits & 0x55555555u) << 1u) | ((bits & 0xAAAAAAAAu) >> 1u);
+	bits = ((bits & 0x33333333u) << 2u) | ((bits & 0xCCCCCCCCu) >> 2u);
+	bits = ((bits & 0x0F0F0F0Fu) << 4u) | ((bits & 0xF0F0F0F0u) >> 4u);
+	bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
+	return vec2<f32>(f32(i) / f32(n), f32(bits) * 2.3283064365386963e-10);
+}
+
+// The sky is a neutral studio: a gradient from a dark floor through a bright horizon to a pale zenith, a large soft box that
+// is the key light, and a weaker fill from the other side. It is in linear units (the box is far above 1: the specular
+// highlights of a smooth surface show it).
+fn sky(d: vec3<f32>) -> vec3<f32> {
+	let up = d.y;
+	let floor_color = vec3<f32>(0.10, 0.10, 0.11);
+	let horizon = vec3<f32>(0.62, 0.64, 0.67);
+	let zenith = vec3<f32>(0.75, 0.80, 0.90);
+	var c = mix(horizon, zenith, smoothstep(0.0, 1.0, up));
+	// (smoothstep needs its first edge below its second one: the result is not defined otherwise, and Direct3D gives NaNs.)
+	c = mix(c, floor_color, 1.0 - smoothstep(-0.45, 0.0, up));
+	let key_dir = normalize(vec3<f32>(0.55, 0.75, 0.45));
+	let key = pow(max(dot(d, key_dir), 0.0), 24.0);
+	let fill_dir = normalize(vec3<f32>(-0.7, 0.35, -0.5));
+	let fill = pow(max(dot(d, fill_dir), 0.0), 10.0);
+	return (c + vec3<f32>(1.0, 0.97, 0.92) * key * 6.0 + vec3<f32>(0.75, 0.85, 1.0) * fill * 0.8) * params.options.y;
+}
+
+// cs_sky writes the default sky.
+@compute @workgroup_size(8, 8, 1)
+fn cs_sky(@builtin(global_invocation_id) id: vec3<u32>) {
+	let size = u32(params.size.x);
+	if (id.x >= size || id.y >= size) {
+		return;
+	}
+	let d = face_direction(id.z, i32(id.x), i32(id.y), params.size.x);
+	textureStore(dst, vec2<i32>(i32(id.x), i32(id.y)), i32(id.z), vec4<f32>(sky(d), 1.0));
+}
+
+// cs_specular prefilters the source for the roughness of the params: GGX importance sampling with the view and the normal
+// both along the direction of the texel, and the level of the source taken from the solid angle of a sample (Krivanek and
+// Colbert, "Real-time Shading with Filtered Importance Sampling").
+@compute @workgroup_size(8, 8, 1)
+fn cs_specular(@builtin(global_invocation_id) id: vec3<u32>) {
+	let size = u32(params.size.x);
+	if (id.x >= size || id.y >= size) {
+		return;
+	}
+	let n = face_direction(id.z, i32(id.x), i32(id.y), params.size.x);
+	let roughness = params.size.y;
+	let count = u32(params.size.z);
+	let a = roughness * roughness;
+	let a2 = a * a;
+	var up = vec3<f32>(0.0, 1.0, 0.0);
+	if (abs(n.y) > 0.999) {
+		up = vec3<f32>(1.0, 0.0, 0.0);
+	}
+	let tx = normalize(cross(up, n));
+	let ty = cross(n, tx);
+	let texel_solid_angle = 4.0 * PI / (6.0 * params.size.w * params.size.w);
+	if (a2 < 1.0e-6) {
+		// A mirror: the source as it is.
+		textureStore(dst, vec2<i32>(i32(id.x), i32(id.y)), i32(id.z), vec4<f32>(source(n, 0.0), 1.0));
+		return;
+	}
+	var color = vec3<f32>(0.0);
+	var weight = 0.0;
+	for (var i = 0u; i < count; i = i + 1u) {
+		let xi = hammersley(i, count);
+		let phi = 2.0 * PI * xi.x;
+		let cos_t = sqrt((1.0 - xi.y) / (1.0 + (a2 - 1.0) * xi.y));
+		let sin_t = sqrt(max(1.0 - cos_t * cos_t, 0.0));
+		let h = tx * (sin_t * cos(phi)) + ty * (sin_t * sin(phi)) + n * cos_t;
+		let l = 2.0 * dot(n, h) * h - n;
+		let nl = dot(n, l);
+		if (nl > 0.0) {
+			let nh = max(dot(n, h), 0.0);
+			let d = nh * nh * (a2 - 1.0) + 1.0;
+			let pdf = a2 / (PI * d * d) / 4.0;
+			let sample_solid_angle = 1.0 / (f32(count) * pdf + 1.0e-4);
+			let lod = max(0.5 * log2(sample_solid_angle / texel_solid_angle) + 1.0, 0.0);
+			color = color + source(l, lod) * nl;
+			weight = weight + nl;
+		}
+	}
+	textureStore(dst, vec2<i32>(i32(id.x), i32(id.y)), i32(id.z), vec4<f32>(color / max(weight, 1.0e-4), 1.0));
+}
+
+// cs_irradiance convolves the source with the cosine over the hemisphere of each texel: the irradiance divided by pi.
+@compute @workgroup_size(8, 8, 1)
+fn cs_irradiance(@builtin(global_invocation_id) id: vec3<u32>) {
+	let size = u32(params.size.x);
+	if (id.x >= size || id.y >= size) {
+		return;
+	}
+	let n = face_direction(id.z, i32(id.x), i32(id.y), params.size.x);
+	var up = vec3<f32>(0.0, 1.0, 0.0);
+	if (abs(n.y) > 0.999) {
+		up = vec3<f32>(1.0, 0.0, 0.0);
+	}
+	let tx = normalize(cross(up, n));
+	let ty = cross(n, tx);
+	let steps = u32(params.size.z);
+	let dphi = 2.0 * PI / f32(steps);
+	let dtheta = 0.5 * PI / f32(steps / 2u);
+	var sum = vec3<f32>(0.0);
+	var total = 0.0;
+	for (var i = 0u; i < steps; i = i + 1u) {
+		let phi = (f32(i) + 0.5) * dphi;
+		for (var j = 0u; j < steps / 2u; j = j + 1u) {
+			let theta = (f32(j) + 0.5) * dtheta;
+			let d = tx * (sin(theta) * cos(phi)) + ty * (sin(theta) * sin(phi)) + n * cos(theta);
+			let w = cos(theta) * sin(theta);
+			// The irradiance is smooth: the source is read from a coarse level.
+			sum = sum + source(d, 3.0) * w;
+			total = total + w;
+		}
+	}
+	textureStore(dst, vec2<i32>(i32(id.x), i32(id.y)), i32(id.z), vec4<f32>(sum / total, 1.0));
+}
+`,
+	SPIRV: spirvEnv,
+	HLSL: `struct Params {
+    float4 size;
+    float4 options;
+};
+
+static const float PI = 3.1415927;
+
+cbuffer params : register(b0, space0) { Params params; }
+TextureCube<float4> src : register(t1, space0);
+SamplerState samp : register(s2, space0);
+RWTexture2DArray<float4> dst_ : register(u3, space0);
+
+float3 face_direction(uint face, int x, int y, float size)
+{
+    float3 d = (0.0).xxx;
+
+    float u = (((2.0 * (float(x) + 0.5)) / size) - 1.0);
+    float v = (((2.0 * (float(y) + 0.5)) / size) - 1.0);
+    switch(face) {
+        case 0u: {
+            d = float3(1.0, -(v), -(u));
+            break;
+        }
+        case 1u: {
+            d = float3(-1.0, -(v), u);
+            break;
+        }
+        case 2u: {
+            d = float3(u, 1.0, v);
+            break;
+        }
+        case 3u: {
+            d = float3(u, -1.0, -(v));
+            break;
+        }
+        case 4u: {
+            d = float3(u, -(v), 1.0);
+            break;
+        }
+        default: {
+            d = float3(-(u), -(v), -1.0);
+            break;
+        }
+    }
+    float3 _e42 = d;
+    return normalize(_e42);
+}
+
+float3 srgb_to_linear(float3 c)
+{
+    float3 lo = (c / (12.92).xxx);
+    float3 hi = pow(((c + (0.055).xxx) / (1.055).xxx), (2.4).xxx);
+    return ((c <= (0.04045).xxx) ? lo : hi);
+}
+
+float3 source(float3 d_1, float lod)
+{
+    float3 c_1 = (float3)0;
+
+    float4 _e4 = src.SampleLevel(samp, d_1, lod);
+    c_1 = _e4.xyz;
+    float _e10 = params.options.x;
+    if ((_e10 > 0.5)) {
+        float3 _e13 = c_1;
+        const float3 _e14 = srgb_to_linear(_e13);
+        c_1 = _e14;
+    }
+    float3 _e15 = c_1;
+    return _e15;
+}
+
+float2 hammersley(uint i_2, uint n)
+{
+    uint bits = (uint)0;
+
+    bits = i_2;
+    uint _e3 = bits;
+    uint _e6 = bits;
+    bits = ((_e3 << 16u) | (_e6 >> 16u));
+    uint _e10 = bits;
+    uint _e15 = bits;
+    bits = (((_e10 & 1431655765u) << 1u) | ((_e15 & 2863311530u) >> 1u));
+    uint _e21 = bits;
+    uint _e26 = bits;
+    bits = (((_e21 & 858993459u) << 2u) | ((_e26 & 3435973836u) >> 2u));
+    uint _e32 = bits;
+    uint _e37 = bits;
+    bits = (((_e32 & 252645135u) << 4u) | ((_e37 & 4042322160u) >> 4u));
+    uint _e43 = bits;
+    uint _e48 = bits;
+    bits = (((_e43 & 16711935u) << 8u) | ((_e48 & 4278255360u) >> 8u));
+    uint _e57 = bits;
+    return float2((float(i_2) / float(n)), (float(_e57) * 2.3283064e-10));
+}
+
+float3 sky(float3 d_2)
+{
+    float3 c_2 = (float3)0;
+
+    float up_2 = d_2.y;
+    float3 floor_color = float3(0.1, 0.1, 0.11);
+    float3 horizon = float3(0.62, 0.64, 0.67);
+    float3 zenith = float3(0.75, 0.8, 0.9);
+    c_2 = lerp(horizon, zenith, smoothstep(0.0, 1.0, up_2));
+    float3 _e19 = c_2;
+    c_2 = lerp(_e19, floor_color, (1.0 - smoothstep(-0.45, 0.0, up_2)));
+    float3 key_dir = float3(0.5323273, 0.7259008, 0.4355405);
+    float key = pow(max(dot(d_2, key_dir), 0.0), 24.0);
+    float3 fill_dir = float3(-0.7537347, 0.37686735, -0.53838193);
+    float fill = pow(max(dot(d_2, fill_dir), 0.0), 10.0);
+    float3 _e44 = c_2;
+    float _e64 = params.options.y;
+    return (((_e44 + ((float3(1.0, 0.97, 0.92) * key) * 6.0)) + ((float3(0.75, 0.85, 1.0) * fill) * 0.8)) * _e64);
+}
+
+uint naga_f2u32(float value) {
+    return uint(clamp(value, 0.0, 4294967000.0));
+}
+
+[numthreads(8, 8, 1)]
+void cs_sky(uint3 id : SV_DispatchThreadID)
+{
+    bool local = (bool)0;
+
+    float _e4 = params.size.x;
+    uint size_1 = naga_f2u32(_e4);
+    if (!((id.x >= size_1))) {
+        local = (id.y >= size_1);
+    } else {
+        local = true;
+    }
+    bool _e14 = local;
+    if (_e14) {
+        return;
+    }
+    float _e23 = params.size.x;
+    const float3 _e24 = face_direction(id.z, int(id.x), int(id.y), _e23);
+    const float3 _e33 = sky(_e24);
+    dst_[int3(int2(int(id.x), int(id.y)), int(id.z))] = float4(_e33, 1.0);
+    return;
+}
+
+[numthreads(8, 8, 1)]
+void cs_specular(uint3 id_1 : SV_DispatchThreadID)
+{
+    bool local_1 = (bool)0;
+    float3 up = float3(0.0, 1.0, 0.0);
+    float3 color = (0.0).xxx;
+    float weight = 0.0;
+    uint i = 0u;
+
+    float _e4 = params.size.x;
+    uint size_2 = naga_f2u32(_e4);
+    if (!((id_1.x >= size_2))) {
+        local_1 = (id_1.y >= size_2);
+    } else {
+        local_1 = true;
+    }
+    bool _e14 = local_1;
+    if (_e14) {
+        return;
+    }
+    float _e23 = params.size.x;
+    const float3 _e24 = face_direction(id_1.z, int(id_1.x), int(id_1.y), _e23);
+    float roughness = params.size.y;
+    float _e32 = params.size.z;
+    uint count = naga_f2u32(_e32);
+    float a = (roughness * roughness);
+    float a2_ = (a * a);
+    if ((abs(_e24.y) > 0.999)) {
+        up = float3(1.0, 0.0, 0.0);
+    }
+    float3 _e49 = up;
+    float3 tx = normalize(cross(_e49, _e24));
+    float3 ty = cross(_e24, tx);
+    float _e57 = params.size.w;
+    float _e63 = params.size.w;
+    float texel_solid_angle = (12.566371 / ((6.0 * _e57) * _e63));
+    if ((a2_ < 1e-6)) {
+        const float3 _e77 = source(_e24, 0.0);
+        dst_[int3(int2(int(id_1.x), int(id_1.y)), int(id_1.z))] = float4(_e77, 1.0);
+        return;
+    }
+    uint2 loop_bound = uint2(4294967295u, 4294967295u);
+    bool loop_init = true;
+    while(true) {
+        if (all(loop_bound == uint2(0u, 0u))) { break; }
+        loop_bound -= uint2(loop_bound.y == 0u, 1u);
+        if (!loop_init) {
+            uint _e163 = i;
+            i = (_e163 + 1u);
+        }
+        loop_init = false;
+        uint _e87 = i;
+        if ((_e87 < count)) {
+        } else {
+            break;
+        }
+        {
+            uint _e89 = i;
+            const float2 _e90 = hammersley(_e89, count);
+            float phi = (6.2831855 * _e90.x);
+            float cos_t = sqrt(((1.0 - _e90.y) / (1.0 + ((a2_ - 1.0) * _e90.y))));
+            float sin_t = sqrt(max((1.0 - (cos_t * cos_t)), 0.0));
+            float3 h = (((tx * (sin_t * cos(phi))) + (ty * (sin_t * sin(phi)))) + (_e24 * cos_t));
+            float3 l = (((2.0 * dot(_e24, h)) * h) - _e24);
+            float nl = dot(_e24, l);
+            if ((nl > 0.0)) {
+                float nh = max(dot(_e24, h), 0.0);
+                float d_3 = (((nh * nh) * (a2_ - 1.0)) + 1.0);
+                float pdf = ((a2_ / ((PI * d_3) * d_3)) / 4.0);
+                float sample_solid_angle = (1.0 / ((float(count) * pdf) + 0.0001));
+                float lod_1 = max(((0.5 * log2((sample_solid_angle / texel_solid_angle))) + 1.0), 0.0);
+                float3 _e157 = color;
+                const float3 _e158 = source(l, lod_1);
+                color = (_e157 + (_e158 * nl));
+                float _e161 = weight;
+                weight = (_e161 + nl);
+            }
+        }
+    }
+    float3 _e174 = color;
+    float _e175 = weight;
+    dst_[int3(int2(int(id_1.x), int(id_1.y)), int(id_1.z))] = float4((_e174 / (max(_e175, 0.0001)).xxx), 1.0);
+    return;
+}
+
+uint naga_div(uint lhs, uint rhs) {
+    return lhs / (rhs == 0u ? 1u : rhs);
+}
+
+[numthreads(8, 8, 1)]
+void cs_irradiance(uint3 id_2 : SV_DispatchThreadID)
+{
+    bool local_2 = (bool)0;
+    float3 up_1 = float3(0.0, 1.0, 0.0);
+    float3 sum = (0.0).xxx;
+    float total = 0.0;
+    uint i_1 = 0u;
+    uint j = (uint)0;
+
+    float _e4 = params.size.x;
+    uint size_3 = naga_f2u32(_e4);
+    if (!((id_2.x >= size_3))) {
+        local_2 = (id_2.y >= size_3);
+    } else {
+        local_2 = true;
+    }
+    bool _e14 = local_2;
+    if (_e14) {
+        return;
+    }
+    float _e23 = params.size.x;
+    const float3 _e24 = face_direction(id_2.z, int(id_2.x), int(id_2.y), _e23);
+    if ((abs(_e24.y) > 0.999)) {
+        up_1 = float3(1.0, 0.0, 0.0);
+    }
+    float3 _e38 = up_1;
+    float3 tx_1 = normalize(cross(_e38, _e24));
+    float3 ty_1 = cross(_e24, tx_1);
+    float _e45 = params.size.z;
+    uint steps = naga_f2u32(_e45);
+    float dphi = (6.2831855 / float(steps));
+    float dtheta = (1.5707964 / float(naga_div(steps, 2u)));
+    uint2 loop_bound_1 = uint2(4294967295u, 4294967295u);
+    bool loop_init_1 = true;
+    while(true) {
+        if (all(loop_bound_1 == uint2(0u, 0u))) { break; }
+        loop_bound_1 -= uint2(loop_bound_1.y == 0u, 1u);
+        if (!loop_init_1) {
+            uint _e105 = i_1;
+            i_1 = (_e105 + 1u);
+        }
+        loop_init_1 = false;
+        uint _e62 = i_1;
+        if ((_e62 < steps)) {
+        } else {
+            break;
+        }
+        {
+            uint _e64 = i_1;
+            float phi_1 = ((float(_e64) + 0.5) * dphi);
+            j = 0u;
+            uint2 loop_bound_2 = uint2(4294967295u, 4294967295u);
+            bool loop_init_2 = true;
+            while(true) {
+                if (all(loop_bound_2 == uint2(0u, 0u))) { break; }
+                loop_bound_2 -= uint2(loop_bound_2.y == 0u, 1u);
+                if (!loop_init_2) {
+                    uint _e102 = j;
+                    j = (_e102 + 1u);
+                }
+                loop_init_2 = false;
+                uint _e71 = j;
+                if ((_e71 < naga_div(steps, 2u))) {
+                } else {
+                    break;
+                }
+                {
+                    uint _e75 = j;
+                    float theta = ((float(_e75) + 0.5) * dtheta);
+                    float3 d_4 = (((tx_1 * (sin(theta) * cos(phi_1))) + (ty_1 * (sin(theta) * sin(phi_1)))) + (_e24 * cos(theta)));
+                    float w = (cos(theta) * sin(theta));
+                    float3 _e95 = sum;
+                    const float3 _e97 = source(d_4, 3.0);
+                    sum = (_e95 + (_e97 * w));
+                    float _e100 = total;
+                    total = (_e100 + w);
+                }
+            }
+        }
+    }
+    float3 _e116 = sum;
+    float _e117 = total;
+    dst_[int3(int2(int(id_2.x), int(id_2.y)), int(id_2.z))] = float4((_e116 / (_e117).xxx), 1.0);
+    return;
+}
+`,
+	Entries: []gpu.EntryPoint{
+		{Name: "cs_sky", Stage: gpu.ShaderStageCompute, WorkgroupSize: [3]int{8, 8, 1},
+			Bindings: []gpu.ShaderBinding{
+				{Name: "params", Group: 0, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 32, Register: gpu.ShaderRegister{Class: "b", Space: 0, Index: 0}},
+				{Name: "dst", Group: 0, Binding: 3, Kind: gpu.BindingStorageTexture, Dimension: gpu.TextureDim2DArray, StorageFormat: "rgba16float", Register: gpu.ShaderRegister{Class: "u", Space: 0, Index: 3}},
+			},
+		},
+		{Name: "cs_specular", Stage: gpu.ShaderStageCompute, WorkgroupSize: [3]int{8, 8, 1},
+			Bindings: []gpu.ShaderBinding{
+				{Name: "params", Group: 0, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 32, Register: gpu.ShaderRegister{Class: "b", Space: 0, Index: 0}},
+				{Name: "src", Group: 0, Binding: 1, Kind: gpu.BindingSampledTexture, Dimension: gpu.TextureDimCube, Register: gpu.ShaderRegister{Class: "t", Space: 0, Index: 1}},
+				{Name: "samp", Group: 0, Binding: 2, Kind: gpu.BindingSampler, Register: gpu.ShaderRegister{Class: "s", Space: 0, Index: 2}},
+				{Name: "dst", Group: 0, Binding: 3, Kind: gpu.BindingStorageTexture, Dimension: gpu.TextureDim2DArray, StorageFormat: "rgba16float", Register: gpu.ShaderRegister{Class: "u", Space: 0, Index: 3}},
+			},
+		},
+		{Name: "cs_irradiance", Stage: gpu.ShaderStageCompute, WorkgroupSize: [3]int{8, 8, 1},
+			Bindings: []gpu.ShaderBinding{
+				{Name: "params", Group: 0, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 32, Register: gpu.ShaderRegister{Class: "b", Space: 0, Index: 0}},
+				{Name: "src", Group: 0, Binding: 1, Kind: gpu.BindingSampledTexture, Dimension: gpu.TextureDimCube, Register: gpu.ShaderRegister{Class: "t", Space: 0, Index: 1}},
+				{Name: "samp", Group: 0, Binding: 2, Kind: gpu.BindingSampler, Register: gpu.ShaderRegister{Class: "s", Space: 0, Index: 2}},
+				{Name: "dst", Group: 0, Binding: 3, Kind: gpu.BindingStorageTexture, Dimension: gpu.TextureDim2DArray, StorageFormat: "rgba16float", Register: gpu.ShaderRegister{Class: "u", Space: 0, Index: 3}},
+			},
+		},
+	},
+}
+
 //go:embed grid.spv
 var spirvGrid []byte
 
@@ -1875,6 +2401,1135 @@ float4 fs_mask(FragmentInput_fs_mask fragmentinput_fs_mask) : SV_Target0
 	},
 }
 
+//go:embed pbr.spv
+var spirvPbr []byte
+
+// Pbr is pbr.wgsl.
+var Pbr = &gpu.Shader{
+	Name: "pbr",
+	WGSL: `// The PBR metallic-roughness material of viewport3d (SPEC §28.5): the BRDF of the glTF 2.0 specification (appendix B: GGX
+// distribution, the height-correlated Smith visibility, Schlick's Fresnel and a Lambert diffuse), the scene's directional
+// lights, image-based lighting from the prefiltered environment (split sum, with the analytic fit of the BRDF's table by
+// Karis), one directional shadow map, normal, occlusion and emissive maps, skinning and morph targets in the vertex shader.
+//
+// A mesh of this material has one vertex buffer of a fixed layout (position, normal, tangent, two texture coordinates, color,
+// joints and weights; what the mesh lacks is zero, and the item's flags say what it has), so there is one vertex function. The
+// shader writes linear radiance, premultiplied by the alpha: the renderer draws the frame into a float target and tonemap.wgsl
+// makes the colors of the display (SPEC §28.5, "Decided in step 31.9").
+//
+// The positions are float32 relative to the mesh's origin; the instance's matrix takes them to the view space, whose origin is
+// the eye (D30). Skin matrices are in the mesh's space (the renderer makes them in float64 relative to the item).
+
+// What the shaders of viewport3d share (SPEC §27.8): the frame's uniform data, the record of an item, and the section planes.
+
+struct Light {
+	// dir points to the light, in view space.
+	dir: vec4<f32>,
+	// color is the light's color times its intensity.
+	color: vec4<f32>,
+}
+
+struct Frame {
+	proj: mat4x4<f32>,
+	// lights are the light at the camera, then up to four directional ones; an unused one has a black color.
+	lights: array<Light, 5>,
+	ambient: vec4<f32>,
+	// viewport is the width and the height of the target in pixels, and their inverses.
+	viewport: vec4<f32>,
+	// params are the near plane's distance, the device pixel ratio and two unused numbers.
+	params: vec4<f32>,
+	// planes are the section planes in view space, relative to the eye (D30): a point p with dot(plane.xyz, p) + plane.w > 0 is
+	// cut away.
+	planes: array<vec4<f32>, 6>,
+	// section is the number of planes in x.
+	section: vec4<f32>,
+}
+
+@group(0) @binding(0) var<uniform> frame: Frame;
+
+// Item is the record of a line, a point or a picked item: the matrix that takes the mesh's positions to the view, relative to
+// the eye, a tint (the highlight of a selected item: its color, and the part of it that replaces the material's in a), and
+// numbers for the shader that reads it.
+struct Item {
+	mv: mat4x4<f32>,
+	tint: vec4<f32>,
+	params: vec4<f32>,
+	extra: vec4<f32>,
+}
+
+// section_clipped says whether a point of the view space is cut away by a section plane. skip is the plane to leave out (the
+// plane that a cap lies on), or -1.
+fn section_clipped(p: vec3<f32>, skip: i32) -> bool {
+	let count = i32(frame.section.x);
+	for (var i = 0; i < 6; i = i + 1) {
+		if (i >= count) {
+			break;
+		}
+		if (i == skip) {
+			continue;
+		}
+		let plane = frame.planes[i];
+		if (dot(plane.xyz, p) + plane.w > 0.0) {
+			return true;
+		}
+	}
+	return false;
+}
+
+// PickOut is what a pick pass writes for a pixel: the number of the item (from 1, 0 for nothing) and of the primitive in it, and
+// the depth.
+struct PickOut {
+	@location(0) ids: vec2<u32>,
+	@location(1) depth: f32,
+}
+
+struct TexSlot {
+	// a is the first row of the texture coordinate transform (m00, m01, tx) and the set of coordinates (0 or 1) in w; b is the
+	// second row (m10, m11, ty) and in w 1 when the material has the texture.
+	a: vec4<f32>,
+	b: vec4<f32>,
+}
+
+struct Material {
+	// color is the base color factor, linear, with the alpha.
+	color: vec4<f32>,
+	// factors are the metallic factor, the roughness factor, the scale of the normal and the strength of the occlusion.
+	factors: vec4<f32>,
+	// emissive is the emitted radiance, linear.
+	emissive: vec4<f32>,
+	// flags: x the alpha mode (0 opaque, 1 mask, 2 blend), y the cutoff, z the bits 1 unlit and 2 vertex colors.
+	flags: vec4<f32>,
+	// slots are the textures: base color, metallic-roughness, normal, occlusion, emissive.
+	slots: array<TexSlot, 5>,
+}
+
+@group(1) @binding(0) var<uniform> material: Material;
+@group(1) @binding(1) var tex_base: texture_2d<f32>;
+@group(1) @binding(2) var tex_mr: texture_2d<f32>;
+@group(1) @binding(3) var tex_normal: texture_2d<f32>;
+@group(1) @binding(4) var tex_occlusion: texture_2d<f32>;
+@group(1) @binding(5) var tex_emissive: texture_2d<f32>;
+@group(1) @binding(6) var samp_base: sampler;
+@group(1) @binding(7) var samp_mr: sampler;
+@group(1) @binding(8) var samp_normal: sampler;
+@group(1) @binding(9) var samp_occlusion: sampler;
+@group(1) @binding(10) var samp_emissive: sampler;
+
+struct PBRFrame {
+	// shadow_vp takes a position of the view space (the eye is the origin) to the clip space of the shadow map.
+	shadow_vp: mat4x4<f32>,
+	// view_to_world turns a direction of the view space into the world's.
+	view_to_world: mat4x4<f32>,
+	// params: x the strength of the environment's light, y the index in the frame's lights of the light that casts the shadow (-1:
+	// none), z the depth
+	// bias, w the offset along the normal, in the units of the view space.
+	params: vec4<f32>,
+	// shadow: x the strength of the shadow, y the size of the map in texels, z unused, w unused.
+	shadow: vec4<f32>,
+	// env: x the last mip level of the specular cube.
+	env: vec4<f32>,
+}
+
+@group(2) @binding(0) var<uniform> pf: PBRFrame;
+@group(2) @binding(1) var env_spec: texture_cube<f32>;
+@group(2) @binding(2) var env_irr: texture_cube<f32>;
+@group(2) @binding(3) var env_samp: sampler;
+@group(2) @binding(4) var shadow_map: texture_2d<f32>;
+@group(2) @binding(5) var<storage, read> joint_matrices: array<mat4x4<f32>>;
+@group(2) @binding(6) var<storage, read> morph_weights: array<f32>;
+// morph_deltas are, for each vertex and each target, the change of the position and of the normal (xyz of two vec4).
+@group(3) @binding(0) var<storage, read> morph_deltas: array<vec4<f32>>;
+
+// The bits of what a mesh has, in the instance's last number.
+const HAS_NORMAL: u32 = 1u;
+const HAS_TANGENT: u32 = 2u;
+const HAS_UV0: u32 = 4u;
+const HAS_UV1: u32 = 8u;
+const SKINNED: u32 = 32u;
+
+const PI: f32 = 3.14159265358979;
+
+struct VOut {
+	@builtin(position) clip: vec4<f32>,
+	@location(0) view_pos: vec3<f32>,
+	@location(1) normal: vec3<f32>,
+	@location(2) tangent: vec4<f32>,
+	@location(3) uv0: vec2<f32>,
+	@location(4) uv1: vec2<f32>,
+	@location(5) color: vec4<f32>,
+	// tint is the color of a selected item, and in a the part of it that replaces the material's.
+	@location(6) tint: vec4<f32>,
+	@location(7) @interpolate(flat) flags: f32,
+}
+
+@vertex
+fn vs_pbr(@builtin(vertex_index) vertex: u32,
+	@location(0) p: vec3<f32>, @location(1) n: vec3<f32>, @location(2) t: vec4<f32>,
+	@location(3) uv0: vec2<f32>, @location(4) uv1: vec2<f32>, @location(5) c: vec4<f32>,
+	@location(6) joints: vec4<u32>, @location(7) weights: vec4<f32>,
+	@location(8) m0: vec4<f32>, @location(9) m1: vec4<f32>, @location(10) m2: vec4<f32>, @location(11) m3: vec4<f32>,
+	@location(12) tint: vec4<f32>, @location(13) extra: vec4<f32>) -> VOut {
+	let flags = u32(extra.w);
+	var pos = p;
+	var nrm = n;
+	var tan = t.xyz;
+
+	// Morph targets: the weights of the item, and the changes of this vertex.
+	let targets = u32(extra.z);
+	if (targets > 0u) {
+		let wbase = u32(extra.y);
+		for (var k = 0u; k < targets; k = k + 1u) {
+			let w = morph_weights[wbase + k];
+			if (w != 0.0) {
+				let i = (vertex * targets + k) * 2u;
+				pos = pos + w * morph_deltas[i].xyz;
+				nrm = nrm + w * morph_deltas[i + 1u].xyz;
+			}
+		}
+	}
+
+	// Skinning: the four joints' matrices, blended by the weights.
+	if ((flags & SKINNED) != 0u) {
+		let jb = u32(extra.x);
+		let skin = joint_matrices[jb + joints.x] * weights.x + joint_matrices[jb + joints.y] * weights.y +
+			joint_matrices[jb + joints.z] * weights.z + joint_matrices[jb + joints.w] * weights.w;
+		pos = (skin * vec4<f32>(pos, 1.0)).xyz;
+		nrm = (skin * vec4<f32>(nrm, 0.0)).xyz;
+		tan = (skin * vec4<f32>(tan, 0.0)).xyz;
+	}
+
+	let mv = mat4x4<f32>(m0, m1, m2, m3);
+	let vp = mv * vec4<f32>(pos, 1.0);
+	var o: VOut;
+	o.view_pos = vp.xyz;
+	o.clip = frame.proj * vp;
+	o.normal = (mv * vec4<f32>(nrm, 0.0)).xyz;
+	o.tangent = vec4<f32>((mv * vec4<f32>(tan, 0.0)).xyz, t.w);
+	o.uv0 = uv0;
+	o.uv1 = uv1;
+	o.color = c;
+	o.tint = tint;
+	o.flags = extra.w;
+	return o;
+}
+
+// srgb_to_linear decodes the sRGB transfer function.
+fn srgb_to_linear(c: vec3<f32>) -> vec3<f32> {
+	let lo = c / 12.92;
+	let hi = pow((c + vec3<f32>(0.055)) / 1.055, vec3<f32>(2.4));
+	return select(hi, lo, c <= vec3<f32>(0.04045));
+}
+
+// slot_uv is the texture coordinates of a slot of the material: the set it reads, then its transform.
+fn slot_uv(i: i32, uv0: vec2<f32>, uv1: vec2<f32>) -> vec2<f32> {
+	let s = material.slots[i];
+	var uv = uv0;
+	if (s.a.w > 0.5) {
+		uv = uv1;
+	}
+	return vec2<f32>(s.a.x * uv.x + s.a.y * uv.y + s.a.z, s.b.x * uv.x + s.b.y * uv.y + s.b.z);
+}
+
+// slot_has is 1 when the material has the texture of the slot.
+fn slot_has(i: i32) -> bool {
+	return material.slots[i].b.w > 0.5;
+}
+
+fn distribution_ggx(nh: f32, alpha: f32) -> f32 {
+	let a2 = alpha * alpha;
+	let d = nh * nh * (a2 - 1.0) + 1.0;
+	return a2 / (PI * d * d);
+}
+
+fn visibility_smith_ggx(nl: f32, nv: f32, alpha: f32) -> f32 {
+	let a2 = alpha * alpha;
+	let gv = nl * sqrt(nv * nv * (1.0 - a2) + a2);
+	let gl = nv * sqrt(nl * nl * (1.0 - a2) + a2);
+	let s = gv + gl;
+	if (s > 0.0) {
+		return 0.5 / s;
+	}
+	return 0.0;
+}
+
+// shadow_visibility is the part of the light that reaches a position of the view space: 1 where the shadow map has no shadow.
+fn shadow_visibility(view_pos: vec3<f32>, n: vec3<f32>) -> f32 {
+	let p = view_pos + n * pf.params.w;
+	let c = pf.shadow_vp * vec4<f32>(p, 1.0);
+	let size = pf.shadow.y;
+	let uv = vec2<f32>(c.x * 0.5 + 0.5, 0.5 - c.y * 0.5);
+	let coord = uv * size;
+	let depth = c.z - pf.params.z;
+	if (uv.x < 0.0 || uv.y < 0.0 || uv.x >= 1.0 || uv.y >= 1.0 || c.z > 1.0) {
+		return 1.0;
+	}
+	// A 3 by 3 filter of comparisons, so that the edge of a shadow is not made of texels.
+	let base = vec2<i32>(floor(coord));
+	let top = i32(size) - 1;
+	var lit = 0.0;
+	for (var dy = -1; dy <= 1; dy = dy + 1) {
+		for (var dx = -1; dx <= 1; dx = dx + 1) {
+			let q = clamp(base + vec2<i32>(dx, dy), vec2<i32>(0), vec2<i32>(top));
+			let stored = textureLoad(shadow_map, q, 0).x;
+			if (depth <= stored) {
+				lit = lit + 1.0;
+			}
+		}
+	}
+	return mix(1.0, lit / 9.0, pf.shadow.x);
+}
+
+@fragment
+fn fs_pbr(in: VOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f32> {
+	let flags = u32(in.flags);
+
+	// Derivatives and sampling are taken where the control flow is uniform, then selected.
+	let dp_dx = dpdx(in.view_pos);
+	let dp_dy = dpdy(in.view_pos);
+	let uv_base = slot_uv(0, in.uv0, in.uv1);
+	let uv_mr = slot_uv(1, in.uv0, in.uv1);
+	let uv_normal = slot_uv(2, in.uv0, in.uv1);
+	let uv_occlusion = slot_uv(3, in.uv0, in.uv1);
+	let uv_emissive = slot_uv(4, in.uv0, in.uv1);
+	let duv_dx = dpdx(uv_normal);
+	let duv_dy = dpdy(uv_normal);
+	let t_base = textureSample(tex_base, samp_base, uv_base);
+	let t_mr = textureSample(tex_mr, samp_mr, uv_mr);
+	let t_normal = textureSample(tex_normal, samp_normal, uv_normal);
+	let t_occlusion = textureSample(tex_occlusion, samp_occlusion, uv_occlusion);
+	let t_emissive = textureSample(tex_emissive, samp_emissive, uv_emissive);
+	if (section_clipped(in.view_pos, -1)) {
+		discard;
+	}
+
+	var base = material.color;
+	let bits = u32(material.flags.z);
+	if ((bits & 2u) != 0u) {
+		base = base * vec4<f32>(srgb_to_linear(in.color.rgb), in.color.a);
+	}
+	if (slot_has(0)) {
+		base = base * vec4<f32>(srgb_to_linear(t_base.rgb), t_base.a);
+	}
+	let mode = u32(material.flags.x);
+	var alpha = base.a;
+	if (mode == 0u) {
+		alpha = 1.0;
+	} else if (mode == 1u && alpha < material.flags.y) {
+		discard;
+	}
+	let tint = vec4<f32>(srgb_to_linear(in.tint.rgb), in.tint.a);
+
+	// An unlit material shows its color.
+	if ((bits & 1u) != 0u) {
+		let c = mix(base.rgb, tint.rgb, tint.a);
+		return vec4<f32>(c * alpha, alpha);
+	}
+
+	var metallic = material.factors.x;
+	var roughness = material.factors.y;
+	if (slot_has(1)) {
+		roughness = roughness * t_mr.g;
+		metallic = metallic * t_mr.b;
+	}
+	metallic = clamp(metallic, 0.0, 1.0);
+	roughness = clamp(roughness, 0.045, 1.0);
+	var occlusion = 1.0;
+	if (slot_has(3)) {
+		occlusion = 1.0 + material.factors.w * (t_occlusion.r - 1.0);
+	}
+	var emissive = material.emissive.rgb;
+	if (slot_has(4)) {
+		emissive = emissive * srgb_to_linear(t_emissive.rgb);
+	}
+
+	// The shading frame. A mesh with no normals is flat, shaded as seen from the camera; a back face of a double sided material is
+	// lit as seen from behind.
+	let v = normalize(-in.view_pos);
+	var n = in.normal;
+	// sign is -1 for the back face of a double sided material, which is shaded as seen from behind: the frame turns with it.
+	var sign = 1.0;
+	var bitangent_geom = vec3<f32>(0.0);
+	if ((flags & HAS_NORMAL) == 0u) {
+		n = normalize(cross(dp_dx, dp_dy));
+		if (dot(n, v) < 0.0) {
+			n = -n;
+		}
+	} else {
+		n = normalize(n);
+		bitangent_geom = cross(n, normalize(in.tangent.xyz)) * in.tangent.w;
+		if (!front) {
+			n = -n;
+			sign = -1.0;
+		}
+	}
+	if (slot_has(2)) {
+		var tangent: vec3<f32>;
+		var bitangent: vec3<f32>;
+		if ((flags & HAS_TANGENT) != 0u) {
+			tangent = normalize(in.tangent.xyz) * sign;
+			bitangent = bitangent_geom * sign;
+		} else {
+			// The frame from the derivatives of the position and of the texture coordinates: the tangent points the way that u grows
+			// on the surface (solving dp = T du + B dv for T), made orthogonal to the normal; the bitangent is the cross product of the
+			// normal and the tangent, as the reference viewer of glTF has it (the green channel of a normal map points up in the
+			// image, towards smaller v).
+			let det = duv_dx.x * duv_dy.y - duv_dy.x * duv_dx.y;
+			var t = (dp_dx * duv_dy.y - dp_dy * duv_dx.y) * select(1.0, -1.0, det < 0.0);
+			t = t - n * dot(n, t);
+			tangent = t * inverseSqrt(max(dot(t, t), 1.0e-20));
+			bitangent = cross(n, tangent);
+		}
+		var tn = t_normal.xyz * 2.0 - vec3<f32>(1.0);
+		tn = vec3<f32>(tn.xy * material.factors.z, tn.z);
+		n = normalize(tangent * tn.x + bitangent * tn.y + n * tn.z);
+	}
+
+	let nv = clamp(abs(dot(n, v)), 1.0e-4, 1.0);
+	let f0 = mix(vec3<f32>(0.04), base.rgb, metallic);
+	let diffuse_color = base.rgb * (1.0 - metallic);
+	let alpha_r = roughness * roughness;
+
+	// The lights: the one at the camera, then the scene's directional lights. A light of intensity 1 gives a white surface that
+	// faces it its color, as in the Blinn-Phong material, so the BRDF is scaled by pi.
+	var color = vec3<f32>(0.0);
+	for (var i = 0; i < 5; i = i + 1) {
+		let l = normalize(frame.lights[i].dir.xyz);
+		let nl = dot(n, l);
+		if (nl > 0.0) {
+			let h = normalize(l + v);
+			let nh = clamp(dot(n, h), 0.0, 1.0);
+			let vh = clamp(dot(v, h), 0.0, 1.0);
+			let fresnel = f0 + (vec3<f32>(1.0) - f0) * pow(1.0 - vh, 5.0);
+			let spec = fresnel * distribution_ggx(nh, alpha_r) * visibility_smith_ggx(nl, nv, alpha_r);
+			let diff = (vec3<f32>(1.0) - fresnel) * diffuse_color / PI;
+			var visible = 1.0;
+			if (i == i32(pf.params.y)) {
+				visible = shadow_visibility(in.view_pos, n);
+			}
+			color = color + (diff + spec) * frame.lights[i].color.rgb * nl * PI * visible;
+		}
+	}
+
+	// Image-based lighting: the irradiance for the diffuse part and the prefiltered environment for the specular part, with the
+	// fit of the split-sum table by Karis (Mobile Graphics, SIGGRAPH 2014).
+	let nw = (pf.view_to_world * vec4<f32>(n, 0.0)).xyz;
+	let rw = (pf.view_to_world * vec4<f32>(reflect(-v, n), 0.0)).xyz;
+	let irradiance = textureSampleLevel(env_irr, env_samp, nw, 0.0).rgb;
+	let prefiltered = textureSampleLevel(env_spec, env_samp, rw, roughness * pf.env.x).rgb;
+	let c0 = vec4<f32>(-1.0, -0.0275, -0.572, 0.022);
+	let c1 = vec4<f32>(1.0, 0.0425, 1.04, -0.04);
+	let r = roughness * c0 + c1;
+	let a004 = min(r.x * r.x, exp2(-9.28 * nv)) * r.x + r.y;
+	let ab = vec2<f32>(-1.04, 1.04) * a004 + r.zw;
+	let ibl = irradiance * diffuse_color + prefiltered * (f0 * ab.x + vec3<f32>(ab.y));
+	color = color + ibl * occlusion * pf.params.x + emissive;
+
+	color = mix(color, tint.rgb, tint.a);
+	return vec4<f32>(color * alpha, alpha);
+}
+`,
+	SPIRV: spirvPbr,
+	HLSL: `struct Light {
+    float4 dir;
+    float4 color;
+};
+
+struct Frame {
+    row_major float4x4 proj;
+    Light lights[5];
+    float4 ambient;
+    float4 viewport;
+    float4 params;
+    float4 planes[6];
+    float4 section;
+};
+
+struct Item {
+    row_major float4x4 mv;
+    float4 tint;
+    float4 params;
+    float4 extra;
+};
+
+struct PickOut {
+    uint2 ids : LOC0;
+    float depth : LOC1;
+};
+
+struct TexSlot {
+    float4 a;
+    float4 b;
+};
+
+struct Material {
+    float4 color;
+    float4 factors;
+    float4 emissive;
+    float4 flags;
+    TexSlot slots[5];
+};
+
+struct PBRFrame {
+    row_major float4x4 shadow_vp;
+    row_major float4x4 view_to_world;
+    float4 params;
+    float4 shadow;
+    float4 env;
+};
+
+struct VOut {
+    float4 clip_ : SV_Position;
+    float3 view_pos : LOC0;
+    float3 normal : LOC1;
+    float4 tangent : LOC2;
+    float2 uv0_ : LOC3;
+    float2 uv1_ : LOC4;
+    float4 color : LOC5;
+    float4 tint : LOC6;
+    nointerpolation float flags : LOC7;
+};
+
+static const uint HAS_NORMAL = 1u;
+static const uint HAS_TANGENT = 2u;
+static const uint HAS_UV0_ = 4u;
+static const uint HAS_UV1_ = 8u;
+static const uint SKINNED = 32u;
+static const float PI = 3.1415927;
+
+cbuffer frame : register(b0, space0) { Frame frame; }
+cbuffer material : register(b0, space1) { Material material; }
+Texture2D<float4> tex_base : register(t1, space1);
+Texture2D<float4> tex_mr : register(t2, space1);
+Texture2D<float4> tex_normal : register(t3, space1);
+Texture2D<float4> tex_occlusion : register(t4, space1);
+Texture2D<float4> tex_emissive : register(t5, space1);
+SamplerState samp_base : register(s6, space1);
+SamplerState samp_mr : register(s7, space1);
+SamplerState samp_normal : register(s8, space1);
+SamplerState samp_occlusion : register(s9, space1);
+SamplerState samp_emissive : register(s10, space1);
+cbuffer pf : register(b0, space2) { PBRFrame pf; }
+TextureCube<float4> env_spec : register(t1, space2);
+TextureCube<float4> env_irr : register(t2, space2);
+SamplerState env_samp : register(s3, space2);
+Texture2D<float4> shadow_map : register(t4, space2);
+ByteAddressBuffer joint_matrices : register(t5, space2);
+ByteAddressBuffer morph_weights : register(t6, space2);
+ByteAddressBuffer morph_deltas : register(t0, space3);
+
+struct VertexOutput_vs_pbr {
+    float3 view_pos_1 : LOC0;
+    float3 normal : LOC1;
+    float4 tangent_1 : LOC2;
+    float2 uv0_2 : LOC3;
+    float2 uv1_2 : LOC4;
+    float4 color_1 : LOC5;
+    float4 tint_1 : LOC6;
+    nointerpolation float flags : LOC7;
+    float4 clip_ : SV_Position;
+};
+
+struct FragmentInput_fs_pbr {
+    float3 view_pos_2 : LOC0;
+    float3 normal_1 : LOC1;
+    float4 tangent_2 : LOC2;
+    float2 uv0_3 : LOC3;
+    float2 uv1_3 : LOC4;
+    float4 color_2 : LOC5;
+    float4 tint_2 : LOC6;
+    nointerpolation float flags_1 : LOC7;
+    float4 clip_1 : SV_Position;
+    bool front_1 : SV_IsFrontFace;
+};
+
+int naga_f2i32(float value) {
+    return int(clamp(value, -2147483600.0, 2147483500.0));
+}
+
+bool section_clipped(float3 p_1, int skip)
+{
+    int i_1 = int(0);
+
+    float _e5 = frame.section.x;
+    int count = naga_f2i32(_e5);
+    uint2 loop_bound = uint2(4294967295u, 4294967295u);
+    bool loop_init = true;
+    while(true) {
+        if (all(loop_bound == uint2(0u, 0u))) { break; }
+        loop_bound -= uint2(loop_bound.y == 0u, 1u);
+        if (!loop_init) {
+            int _e28 = i_1;
+            i_1 = asint(asuint(_e28) + asuint(int(1)));
+        }
+        loop_init = false;
+        int _e9 = i_1;
+        if ((_e9 < int(6))) {
+        } else {
+            break;
+        }
+        {
+            int _e12 = i_1;
+            if ((_e12 >= count)) {
+                break;
+            }
+            int _e14 = i_1;
+            if ((_e14 == skip)) {
+                continue;
+            }
+            int _e18 = i_1;
+            float4 plane = frame.planes[_e18];
+            if (((dot(plane.xyz, p_1) + plane.w) > 0.0)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+float3 srgb_to_linear(float3 c_1)
+{
+    float3 lo = (c_1 / (12.92).xxx);
+    float3 hi = pow(((c_1 + (0.055).xxx) / (1.055).xxx), (2.4).xxx);
+    return ((c_1 <= (0.04045).xxx) ? lo : hi);
+}
+
+float2 slot_uv(int i_2, float2 uv0_1, float2 uv1_1)
+{
+    float2 uv = (float2)0;
+
+    TexSlot s = material.slots[i_2];
+    uv = uv0_1;
+    if ((s.a.w > 0.5)) {
+        uv = uv1_1;
+    }
+    float _e15 = uv.x;
+    float _e20 = uv.y;
+    float _e29 = uv.x;
+    float _e34 = uv.y;
+    return float2((((s.a.x * _e15) + (s.a.y * _e20)) + s.a.z), (((s.b.x * _e29) + (s.b.y * _e34)) + s.b.z));
+}
+
+bool slot_has(int i_3)
+{
+    float _e6 = material.slots[i_3].b.w;
+    return (_e6 > 0.5);
+}
+
+float distribution_ggx(float nh, float alpha_1)
+{
+    float a2_ = (alpha_1 * alpha_1);
+    float d = (((nh * nh) * (a2_ - 1.0)) + 1.0);
+    return (a2_ / ((PI * d) * d));
+}
+
+float visibility_smith_ggx(float nl, float nv, float alpha_2)
+{
+    float a2_1 = (alpha_2 * alpha_2);
+    float gv = (nl * sqrt((((nv * nv) * (1.0 - a2_1)) + a2_1)));
+    float gl = (nv * sqrt((((nl * nl) * (1.0 - a2_1)) + a2_1)));
+    float s_1 = (gv + gl);
+    if ((s_1 > 0.0)) {
+        return (0.5 / s_1);
+    }
+    return 0.0;
+}
+
+int2 naga_f2i32(float2 value) {
+    return int2(clamp(value, -2147483600.0, 2147483500.0));
+}
+
+float shadow_visibility(float3 view_pos, float3 n_2)
+{
+    bool local_1 = (bool)0;
+    bool local_2 = (bool)0;
+    bool local_3 = (bool)0;
+    bool local_4 = (bool)0;
+    float lit_ = 0.0;
+    int dy = int(-1);
+    int dx = (int)0;
+
+    float _e5 = pf.params.w;
+    float3 p_2 = (view_pos + (n_2 * _e5));
+    float4x4 _e10 = pf.shadow_vp;
+    float4 c_2 = mul(float4(p_2, 1.0), _e10);
+    float size = pf.shadow.y;
+    float2 uv_1 = float2(((c_2.x * 0.5) + 0.5), (0.5 - (c_2.y * 0.5)));
+    float2 coord = (uv_1 * size);
+    float _e34 = pf.params.z;
+    float depth = (c_2.z - _e34);
+    if (!((uv_1.x < 0.0))) {
+        local_1 = (uv_1.y < 0.0);
+    } else {
+        local_1 = true;
+    }
+    bool _e46 = local_1;
+    if (!(_e46)) {
+        local_2 = (uv_1.x >= 1.0);
+    } else {
+        local_2 = true;
+    }
+    bool _e54 = local_2;
+    if (!(_e54)) {
+        local_3 = (uv_1.y >= 1.0);
+    } else {
+        local_3 = true;
+    }
+    bool _e62 = local_3;
+    if (!(_e62)) {
+        local_4 = (c_2.z > 1.0);
+    } else {
+        local_4 = true;
+    }
+    bool _e70 = local_4;
+    if (_e70) {
+        return 1.0;
+    }
+    int2 base_1 = naga_f2i32(floor(coord));
+    int top = asint(asuint(naga_f2i32(size)) - asuint(int(1)));
+    uint2 loop_bound_1 = uint2(4294967295u, 4294967295u);
+    bool loop_init_1 = true;
+    while(true) {
+        if (all(loop_bound_1 == uint2(0u, 0u))) { break; }
+        loop_bound_1 -= uint2(loop_bound_1.y == 0u, 1u);
+        if (!loop_init_1) {
+            int _e108 = dy;
+            dy = asint(asuint(_e108) + asuint(int(1)));
+        }
+        loop_init_1 = false;
+        int _e81 = dy;
+        if ((_e81 <= int(1))) {
+        } else {
+            break;
+        }
+        {
+            dx = int(-1);
+            uint2 loop_bound_2 = uint2(4294967295u, 4294967295u);
+            bool loop_init_2 = true;
+            while(true) {
+                if (all(loop_bound_2 == uint2(0u, 0u))) { break; }
+                loop_bound_2 -= uint2(loop_bound_2.y == 0u, 1u);
+                if (!loop_init_2) {
+                    int _e105 = dx;
+                    dx = asint(asuint(_e105) + asuint(int(1)));
+                }
+                loop_init_2 = false;
+                int _e86 = dx;
+                if ((_e86 <= int(1))) {
+                } else {
+                    break;
+                }
+                {
+                    int _e89 = dx;
+                    int _e90 = dy;
+                    int2 q = clamp(asint(asuint(base_1) + asuint(int2(_e89, _e90))), (int(0)).xx, (top).xx);
+                    float4 _e99 = shadow_map.Load(int3(q, int(0)));
+                    float stored = _e99.x;
+                    if ((depth <= stored)) {
+                        float _e102 = lit_;
+                        lit_ = (_e102 + 1.0);
+                    }
+                }
+            }
+        }
+    }
+    float _e111 = lit_;
+    float _e117 = pf.shadow.x;
+    return lerp(1.0, (_e111 / 9.0), _e117);
+}
+
+uint naga_f2u32(float value) {
+    return uint(clamp(value, 0.0, 4294967000.0));
+}
+
+VertexOutput_vs_pbr vs_pbr(uint vertex : SV_VertexID, float3 p : LOC0, float3 n : LOC1, float4 t : LOC2, float2 uv0_ : LOC3, float2 uv1_ : LOC4, float4 c : LOC5, uint4 joints : LOC6, float4 weights : LOC7, float4 m0_ : LOC8, float4 m1_ : LOC9, float4 m2_ : LOC10, float4 m3_ : LOC11, float4 tint : LOC12, float4 extra : LOC13)
+{
+    float3 pos = (float3)0;
+    float3 nrm = (float3)0;
+    float3 tan_ = (float3)0;
+    uint k = 0u;
+    VOut o = (VOut)0;
+
+    uint flags_2 = naga_f2u32(extra.w);
+    pos = p;
+    nrm = n;
+    tan_ = t.xyz;
+    uint targets = naga_f2u32(extra.z);
+    if ((targets > 0u)) {
+        uint wbase = naga_f2u32(extra.y);
+        uint2 loop_bound_3 = uint2(4294967295u, 4294967295u);
+        bool loop_init_3 = true;
+        while(true) {
+            if (all(loop_bound_3 == uint2(0u, 0u))) { break; }
+            loop_bound_3 -= uint2(loop_bound_3.y == 0u, 1u);
+            if (!loop_init_3) {
+                uint _e59 = k;
+                k = (_e59 + 1u);
+            }
+            loop_init_3 = false;
+            uint _e29 = k;
+            if ((_e29 < targets)) {
+            } else {
+                break;
+            }
+            {
+                uint _e32 = k;
+                float w = asfloat(morph_weights.Load((wbase + _e32)*4));
+                if ((w != 0.0)) {
+                    uint _e39 = k;
+                    uint i_4 = (((vertex * targets) + _e39) * 2u);
+                    float3 _e43 = pos;
+                    float4 _e46 = asfloat(morph_deltas.Load4(i_4*16));
+                    pos = (_e43 + (w * _e46.xyz));
+                    float3 _e50 = nrm;
+                    float4 _e55 = asfloat(morph_deltas.Load4((i_4 + 1u)*16));
+                    nrm = (_e50 + (w * _e55.xyz));
+                }
+            }
+        }
+    }
+    if (((flags_2 & SKINNED) != 0u)) {
+        uint jb = naga_f2u32(extra.x);
+        float4x4 _e72 = float4x4(asfloat(joint_matrices.Load4((jb + joints.x)*64+0)), asfloat(joint_matrices.Load4((jb + joints.x)*64+16)), asfloat(joint_matrices.Load4((jb + joints.x)*64+32)), asfloat(joint_matrices.Load4((jb + joints.x)*64+48)));
+        float4x4 _e79 = float4x4(asfloat(joint_matrices.Load4((jb + joints.y)*64+0)), asfloat(joint_matrices.Load4((jb + joints.y)*64+16)), asfloat(joint_matrices.Load4((jb + joints.y)*64+32)), asfloat(joint_matrices.Load4((jb + joints.y)*64+48)));
+        float4x4 _e87 = float4x4(asfloat(joint_matrices.Load4((jb + joints.z)*64+0)), asfloat(joint_matrices.Load4((jb + joints.z)*64+16)), asfloat(joint_matrices.Load4((jb + joints.z)*64+32)), asfloat(joint_matrices.Load4((jb + joints.z)*64+48)));
+        float4x4 _e95 = float4x4(asfloat(joint_matrices.Load4((jb + joints.w)*64+0)), asfloat(joint_matrices.Load4((jb + joints.w)*64+16)), asfloat(joint_matrices.Load4((jb + joints.w)*64+32)), asfloat(joint_matrices.Load4((jb + joints.w)*64+48)));
+        float4x4 skin = (((mul(weights.x, _e72) + mul(weights.y, _e79)) + mul(weights.z, _e87)) + mul(weights.w, _e95));
+        float3 _e99 = pos;
+        pos = mul(float4(_e99, 1.0), skin).xyz;
+        float3 _e104 = nrm;
+        nrm = mul(float4(_e104, 0.0), skin).xyz;
+        float3 _e109 = tan_;
+        tan_ = mul(float4(_e109, 0.0), skin).xyz;
+    }
+    float4x4 mv = float4x4(m0_, m1_, m2_, m3_);
+    float3 _e115 = pos;
+    float4 vp = mul(float4(_e115, 1.0), mv);
+    o.view_pos = vp.xyz;
+    float4x4 _e125 = frame.proj;
+    o.clip_ = mul(vp, _e125);
+    float3 _e128 = nrm;
+    o.normal = mul(float4(_e128, 0.0), mv).xyz;
+    float3 _e134 = tan_;
+    o.tangent = float4(mul(float4(_e134, 0.0), mv).xyz, t.w);
+    o.uv0_ = uv0_;
+    o.uv1_ = uv1_;
+    o.color = c;
+    o.tint = tint;
+    o.flags = extra.w;
+    VOut _e147 = o;
+    VOut vout = _e147;
+    VertexOutput_vs_pbr vout_1 = { vout.view_pos, vout.normal, vout.tangent, vout.uv0_, vout.uv1_, vout.color, vout.tint, vout.flags, vout.clip_ };
+    return vout_1;
+}
+
+float4 fs_pbr(FragmentInput_fs_pbr fragmentinput_fs_pbr) : SV_Target0
+{
+    VOut in_ = { fragmentinput_fs_pbr.clip_1, fragmentinput_fs_pbr.view_pos_2, fragmentinput_fs_pbr.normal_1, fragmentinput_fs_pbr.tangent_2, fragmentinput_fs_pbr.uv0_3, fragmentinput_fs_pbr.uv1_3, fragmentinput_fs_pbr.color_2, fragmentinput_fs_pbr.tint_2, fragmentinput_fs_pbr.flags_1 };
+    bool front = fragmentinput_fs_pbr.front_1;
+    float4 base = (float4)0;
+    float alpha = (float)0;
+    bool local = (bool)0;
+    float metallic = (float)0;
+    float roughness = (float)0;
+    float occlusion = 1.0;
+    float3 emissive = (float3)0;
+    float3 n_1 = (float3)0;
+    float sign_ = 1.0;
+    float3 bitangent_geom = (0.0).xxx;
+    float3 tangent = (float3)0;
+    float3 bitangent = (float3)0;
+    float3 t_1 = (float3)0;
+    float3 tn = (float3)0;
+    float3 color = (0.0).xxx;
+    int i = int(0);
+    float visible = (float)0;
+
+    uint flags_3 = naga_f2u32(in_.flags);
+    float3 dp_dx = ddx(in_.view_pos);
+    float3 dp_dy = ddy(in_.view_pos);
+    const float2 _e11 = slot_uv(int(0), in_.uv0_, in_.uv1_);
+    const float2 _e15 = slot_uv(int(1), in_.uv0_, in_.uv1_);
+    const float2 _e19 = slot_uv(int(2), in_.uv0_, in_.uv1_);
+    const float2 _e23 = slot_uv(int(3), in_.uv0_, in_.uv1_);
+    const float2 _e27 = slot_uv(int(4), in_.uv0_, in_.uv1_);
+    float2 duv_dx = ddx(_e19);
+    float2 duv_dy = ddy(_e19);
+    float4 t_base = tex_base.Sample(samp_base, _e11);
+    float4 t_mr = tex_mr.Sample(samp_mr, _e15);
+    float4 t_normal = tex_normal.Sample(samp_normal, _e19);
+    float4 t_occlusion = tex_occlusion.Sample(samp_occlusion, _e23);
+    float4 t_emissive = tex_emissive.Sample(samp_emissive, _e27);
+    const bool _e47 = section_clipped(in_.view_pos, int(-1));
+    if (_e47) {
+        discard;
+    }
+    float4 _e50 = material.color;
+    base = _e50;
+    float _e55 = material.flags.z;
+    uint bits = naga_f2u32(_e55);
+    if (((bits & 2u) != 0u)) {
+        float4 _e61 = base;
+        const float3 _e64 = srgb_to_linear(in_.color.xyz);
+        base = (_e61 * float4(_e64, in_.color.w));
+    }
+    const bool _e70 = slot_has(int(0));
+    if (_e70) {
+        float4 _e71 = base;
+        const float3 _e73 = srgb_to_linear(t_base.xyz);
+        base = (_e71 * float4(_e73, t_base.w));
+    }
+    float _e80 = material.flags.x;
+    uint mode = naga_f2u32(_e80);
+    float _e83 = base.w;
+    alpha = _e83;
+    if ((mode == 0u)) {
+        alpha = 1.0;
+    } else {
+        if ((mode == 1u)) {
+            float _e92 = alpha;
+            float _e96 = material.flags.y;
+            local = (_e92 < _e96);
+        } else {
+            local = false;
+        }
+        bool _e99 = local;
+        if (_e99) {
+            discard;
+        }
+    }
+    const float3 _e102 = srgb_to_linear(in_.tint.xyz);
+    float4 tint_3 = float4(_e102, in_.tint.w);
+    if (((bits & 1u) != 0u)) {
+        float4 _e110 = base;
+        float3 c_3 = lerp(_e110.xyz, tint_3.xyz, tint_3.w);
+        float _e115 = alpha;
+        float _e117 = alpha;
+        return float4((c_3 * _e115), _e117);
+    }
+    float _e122 = material.factors.x;
+    metallic = _e122;
+    float _e127 = material.factors.y;
+    roughness = _e127;
+    const bool _e130 = slot_has(int(1));
+    if (_e130) {
+        float _e131 = roughness;
+        roughness = (_e131 * t_mr.y);
+        float _e134 = metallic;
+        metallic = (_e134 * t_mr.z);
+    }
+    float _e137 = metallic;
+    metallic = clamp(_e137, 0.0, 1.0);
+    float _e141 = roughness;
+    roughness = clamp(_e141, 0.045, 1.0);
+    const bool _e148 = slot_has(int(3));
+    if (_e148) {
+        float _e152 = material.factors.w;
+        occlusion = (1.0 + (_e152 * (t_occlusion.x - 1.0)));
+    }
+    float4 _e161 = material.emissive;
+    emissive = _e161.xyz;
+    const bool _e165 = slot_has(int(4));
+    if (_e165) {
+        float3 _e166 = emissive;
+        const float3 _e168 = srgb_to_linear(t_emissive.xyz);
+        emissive = (_e166 * _e168);
+    }
+    float3 v = normalize(-(in_.view_pos));
+    n_1 = in_.normal;
+    if (((flags_3 & HAS_NORMAL) == 0u)) {
+        n_1 = normalize(cross(dp_dx, dp_dy));
+        float3 _e186 = n_1;
+        if ((dot(_e186, v) < 0.0)) {
+            float3 _e190 = n_1;
+            n_1 = -(_e190);
+        }
+    } else {
+        float3 _e192 = n_1;
+        n_1 = normalize(_e192);
+        float3 _e194 = n_1;
+        bitangent_geom = (cross(_e194, normalize(in_.tangent.xyz)) * in_.tangent.w);
+        if (!(front)) {
+            float3 _e203 = n_1;
+            n_1 = -(_e203);
+            sign_ = -1.0;
+        }
+    }
+    const bool _e207 = slot_has(int(2));
+    if (_e207) {
+        if (((flags_3 & HAS_TANGENT) != 0u)) {
+            float _e217 = sign_;
+            tangent = (normalize(in_.tangent.xyz) * _e217);
+            float3 _e219 = bitangent_geom;
+            float _e220 = sign_;
+            bitangent = (_e219 * _e220);
+        } else {
+            float det = ((duv_dx.x * duv_dy.y) - (duv_dy.x * duv_dx.y));
+            t_1 = (((dp_dx * duv_dy.y) - (dp_dy * duv_dx.y)) * ((det < 0.0) ? -1.0 : 1.0));
+            float3 _e241 = t_1;
+            float3 _e242 = n_1;
+            float3 _e243 = n_1;
+            float3 _e244 = t_1;
+            t_1 = (_e241 - (_e242 * dot(_e243, _e244)));
+            float3 _e248 = t_1;
+            float3 _e249 = t_1;
+            float3 _e250 = t_1;
+            tangent = (_e248 * rsqrt(max(dot(_e249, _e250), 1e-20)));
+            float3 _e256 = n_1;
+            float3 _e257 = tangent;
+            bitangent = cross(_e256, _e257);
+        }
+        tn = ((t_normal.xyz * 2.0) - (1.0).xxx);
+        float3 _e266 = tn;
+        float _e271 = material.factors.z;
+        float _e274 = tn.z;
+        tn = float3((_e266.xy * _e271), _e274);
+        float3 _e276 = tangent;
+        float _e278 = tn.x;
+        float3 _e280 = bitangent;
+        float _e282 = tn.y;
+        float3 _e285 = n_1;
+        float _e287 = tn.z;
+        n_1 = normalize((((_e276 * _e278) + (_e280 * _e282)) + (_e285 * _e287)));
+    }
+    float3 _e291 = n_1;
+    float nv_1 = clamp(abs(dot(_e291, v)), 0.0001, 1.0);
+    float4 _e299 = base;
+    float _e301 = metallic;
+    float3 f0_ = lerp((0.04).xxx, _e299.xyz, _e301);
+    float4 _e303 = base;
+    float _e305 = metallic;
+    float3 diffuse_color = (_e303.xyz * (1.0 - _e305));
+    float _e309 = roughness;
+    float _e310 = roughness;
+    float alpha_r = (_e309 * _e310);
+    uint2 loop_bound_4 = uint2(4294967295u, 4294967295u);
+    bool loop_init_4 = true;
+    while(true) {
+        if (all(loop_bound_4 == uint2(0u, 0u))) { break; }
+        loop_bound_4 -= uint2(loop_bound_4.y == 0u, 1u);
+        if (!loop_init_4) {
+            int _e391 = i;
+            i = asint(asuint(_e391) + asuint(int(1)));
+        }
+        loop_init_4 = false;
+        int _e317 = i;
+        if ((_e317 < int(5))) {
+        } else {
+            break;
+        }
+        {
+            int _e322 = i;
+            float4 _e325 = frame.lights[_e322].dir;
+            float3 l = normalize(_e325.xyz);
+            float3 _e328 = n_1;
+            float nl_1 = dot(_e328, l);
+            if ((nl_1 > 0.0)) {
+                float3 h = normalize((l + v));
+                float3 _e334 = n_1;
+                float nh_1 = clamp(dot(_e334, h), 0.0, 1.0);
+                float vh = clamp(dot(v, h), 0.0, 1.0);
+                float3 fresnel = (f0_ + (((1.0).xxx - f0_) * pow((1.0 - vh), 5.0)));
+                const float _e352 = distribution_ggx(nh_1, alpha_r);
+                const float _e354 = visibility_smith_ggx(nl_1, nv_1, alpha_r);
+                float3 spec = ((fresnel * _e352) * _e354);
+                float3 diff = ((((1.0).xxx - fresnel) * diffuse_color) / (3.1415927).xxx);
+                visible = 1.0;
+                int _e365 = i;
+                float _e369 = pf.params.y;
+                if ((_e365 == naga_f2i32(_e369))) {
+                    float3 _e373 = n_1;
+                    const float _e374 = shadow_visibility(in_.view_pos, _e373);
+                    visible = _e374;
+                }
+                float3 _e375 = color;
+                int _e379 = i;
+                float4 _e382 = frame.lights[_e379].color;
+                float _e388 = visible;
+                color = (_e375 + (((((diff + spec) * _e382.xyz) * nl_1) * PI) * _e388));
+            }
+        }
+    }
+    float4x4 _e396 = pf.view_to_world;
+    float3 _e397 = n_1;
+    float3 nw = mul(float4(_e397, 0.0), _e396).xyz;
+    float4x4 _e404 = pf.view_to_world;
+    float3 _e406 = n_1;
+    float3 rw = mul(float4(reflect(-(v), _e406), 0.0), _e404).xyz;
+    float4 _e415 = env_irr.SampleLevel(env_samp, nw, 0.0);
+    float3 irradiance = _e415.xyz;
+    float _e419 = roughness;
+    float _e423 = pf.env.x;
+    float4 _e425 = env_spec.SampleLevel(env_samp, rw, (_e419 * _e423));
+    float3 prefiltered = _e425.xyz;
+    float4 c0_ = float4(-1.0, -0.0275, -0.572, 0.022);
+    float4 c1_ = float4(1.0, 0.0425, 1.04, -0.04);
+    float _e437 = roughness;
+    float4 r = ((_e437 * c0_) + c1_);
+    float a004_ = ((min((r.x * r.x), exp2((-9.28 * nv_1))) * r.x) + r.y);
+    float2 ab = ((float2(-1.04, 1.04) * a004_) + r.zw);
+    float3 ibl = ((irradiance * diffuse_color) + (prefiltered * ((f0_ * ab.x) + (ab.y).xxx)));
+    float3 _e465 = color;
+    float _e466 = occlusion;
+    float _e471 = pf.params.x;
+    float3 _e474 = emissive;
+    color = ((_e465 + ((ibl * _e466) * _e471)) + _e474);
+    float3 _e476 = color;
+    color = lerp(_e476, tint_3.xyz, tint_3.w);
+    float3 _e480 = color;
+    float _e481 = alpha;
+    float _e483 = alpha;
+    return float4((_e480 * _e481), _e483);
+}
+`,
+	Entries: []gpu.EntryPoint{
+		{Name: "vs_pbr", Stage: gpu.ShaderStageVertex, ReadsVertexIndex: true,
+			Inputs: []gpu.VertexInput{
+				{Name: "p", Location: 0, Type: gpu.ShaderTypeFloat32x3},
+				{Name: "n", Location: 1, Type: gpu.ShaderTypeFloat32x3},
+				{Name: "t", Location: 2, Type: gpu.ShaderTypeFloat32x4},
+				{Name: "uv0", Location: 3, Type: gpu.ShaderTypeFloat32x2},
+				{Name: "uv1", Location: 4, Type: gpu.ShaderTypeFloat32x2},
+				{Name: "c", Location: 5, Type: gpu.ShaderTypeFloat32x4},
+				{Name: "joints", Location: 6, Type: gpu.ShaderTypeUint32x4},
+				{Name: "weights", Location: 7, Type: gpu.ShaderTypeFloat32x4},
+				{Name: "m0", Location: 8, Type: gpu.ShaderTypeFloat32x4},
+				{Name: "m1", Location: 9, Type: gpu.ShaderTypeFloat32x4},
+				{Name: "m2", Location: 10, Type: gpu.ShaderTypeFloat32x4},
+				{Name: "m3", Location: 11, Type: gpu.ShaderTypeFloat32x4},
+				{Name: "tint", Location: 12, Type: gpu.ShaderTypeFloat32x4},
+				{Name: "extra", Location: 13, Type: gpu.ShaderTypeFloat32x4},
+			},
+			Bindings: []gpu.ShaderBinding{
+				{Name: "frame", Group: 0, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 384, Register: gpu.ShaderRegister{Class: "b", Space: 0, Index: 0}},
+				{Name: "joint_matrices", Group: 2, Binding: 5, Kind: gpu.BindingStorageBufferReadOnly, Size: 64, Register: gpu.ShaderRegister{Class: "t", Space: 2, Index: 5}},
+				{Name: "morph_weights", Group: 2, Binding: 6, Kind: gpu.BindingStorageBufferReadOnly, Size: 4, Register: gpu.ShaderRegister{Class: "t", Space: 2, Index: 6}},
+				{Name: "morph_deltas", Group: 3, Binding: 0, Kind: gpu.BindingStorageBufferReadOnly, Size: 16, Register: gpu.ShaderRegister{Class: "t", Space: 3, Index: 0}},
+			},
+		},
+		{Name: "fs_pbr", Stage: gpu.ShaderStageFragment,
+			Bindings: []gpu.ShaderBinding{
+				{Name: "frame", Group: 0, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 384, Register: gpu.ShaderRegister{Class: "b", Space: 0, Index: 0}},
+				{Name: "material", Group: 1, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 224, Register: gpu.ShaderRegister{Class: "b", Space: 1, Index: 0}},
+				{Name: "tex_base", Group: 1, Binding: 1, Kind: gpu.BindingSampledTexture, Register: gpu.ShaderRegister{Class: "t", Space: 1, Index: 1}},
+				{Name: "tex_mr", Group: 1, Binding: 2, Kind: gpu.BindingSampledTexture, Register: gpu.ShaderRegister{Class: "t", Space: 1, Index: 2}},
+				{Name: "tex_normal", Group: 1, Binding: 3, Kind: gpu.BindingSampledTexture, Register: gpu.ShaderRegister{Class: "t", Space: 1, Index: 3}},
+				{Name: "tex_occlusion", Group: 1, Binding: 4, Kind: gpu.BindingSampledTexture, Register: gpu.ShaderRegister{Class: "t", Space: 1, Index: 4}},
+				{Name: "tex_emissive", Group: 1, Binding: 5, Kind: gpu.BindingSampledTexture, Register: gpu.ShaderRegister{Class: "t", Space: 1, Index: 5}},
+				{Name: "samp_base", Group: 1, Binding: 6, Kind: gpu.BindingSampler, Register: gpu.ShaderRegister{Class: "s", Space: 1, Index: 6}},
+				{Name: "samp_mr", Group: 1, Binding: 7, Kind: gpu.BindingSampler, Register: gpu.ShaderRegister{Class: "s", Space: 1, Index: 7}},
+				{Name: "samp_normal", Group: 1, Binding: 8, Kind: gpu.BindingSampler, Register: gpu.ShaderRegister{Class: "s", Space: 1, Index: 8}},
+				{Name: "samp_occlusion", Group: 1, Binding: 9, Kind: gpu.BindingSampler, Register: gpu.ShaderRegister{Class: "s", Space: 1, Index: 9}},
+				{Name: "samp_emissive", Group: 1, Binding: 10, Kind: gpu.BindingSampler, Register: gpu.ShaderRegister{Class: "s", Space: 1, Index: 10}},
+				{Name: "pf", Group: 2, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 176, Register: gpu.ShaderRegister{Class: "b", Space: 2, Index: 0}},
+				{Name: "env_spec", Group: 2, Binding: 1, Kind: gpu.BindingSampledTexture, Dimension: gpu.TextureDimCube, Register: gpu.ShaderRegister{Class: "t", Space: 2, Index: 1}},
+				{Name: "env_irr", Group: 2, Binding: 2, Kind: gpu.BindingSampledTexture, Dimension: gpu.TextureDimCube, Register: gpu.ShaderRegister{Class: "t", Space: 2, Index: 2}},
+				{Name: "env_samp", Group: 2, Binding: 3, Kind: gpu.BindingSampler, Register: gpu.ShaderRegister{Class: "s", Space: 2, Index: 3}},
+				{Name: "shadow_map", Group: 2, Binding: 4, Kind: gpu.BindingSampledTexture, Sample: gpu.SampleTypeUnfilterableFloat, Register: gpu.ShaderRegister{Class: "t", Space: 2, Index: 4}},
+			},
+		},
+	},
+}
+
 //go:embed pick.spv
 var spirvPick []byte
 
@@ -3683,6 +5338,420 @@ float4 fs_outline(FragmentInput_fs_outline fragmentinput_fs_outline) : SV_Target
 				{Name: "frame", Group: 0, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 384, Register: gpu.ShaderRegister{Class: "b", Space: 0, Index: 0}},
 				{Name: "item", Group: 1, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 112, Register: gpu.ShaderRegister{Class: "b", Space: 1, Index: 0}},
 				{Name: "mask", Group: 1, Binding: 1, Kind: gpu.BindingSampledTexture, Sample: gpu.SampleTypeUnfilterableFloat, Register: gpu.ShaderRegister{Class: "t", Space: 1, Index: 1}},
+			},
+		},
+	},
+}
+
+//go:embed shadow.spv
+var spirvShadow []byte
+
+// Shadow is shadow.wgsl.
+var Shadow = &gpu.Shader{
+	Name: "shadow",
+	WGSL: `// The shadow map of viewport3d (SPEC §28.5): the items seen from the light, as depth. The matrix of an instance takes the item's
+// positions straight to the clip space of the light (an orthographic projection fitted to the scene), so the shader needs no
+// frame data. The depth is written as a color of a float target (the depth formats cannot be sampled, SPEC §27.2) and read with
+// textureLoad by pbr.wgsl. The skin and the morph targets of an item are applied as in the PBR vertex shader.
+
+@group(0) @binding(0) var<storage, read> joint_matrices: array<mat4x4<f32>>;
+@group(0) @binding(1) var<storage, read> morph_weights: array<f32>;
+@group(1) @binding(0) var<storage, read> morph_deltas: array<vec4<f32>>;
+
+struct VOut {
+	@builtin(position) clip: vec4<f32>,
+	@location(0) depth: f32,
+}
+
+const SKINNED: u32 = 32u;
+
+// vs_shadow_simple is for the meshes of the other materials: positions only.
+@vertex
+fn vs_shadow_simple(@location(0) p: vec3<f32>,
+	@location(8) m0: vec4<f32>, @location(9) m1: vec4<f32>, @location(10) m2: vec4<f32>, @location(11) m3: vec4<f32>) -> VOut {
+	var o: VOut;
+	o.clip = mat4x4<f32>(m0, m1, m2, m3) * vec4<f32>(p, 1.0);
+	o.depth = o.clip.z;
+	return o;
+}
+
+// vs_shadow_full is for the meshes of the PBR material, with the vertex layout of pbr.wgsl.
+@vertex
+fn vs_shadow_full(@builtin(vertex_index) vertex: u32, @location(0) p: vec3<f32>, @location(6) joints: vec4<u32>, @location(7) weights: vec4<f32>,
+	@location(8) m0: vec4<f32>, @location(9) m1: vec4<f32>, @location(10) m2: vec4<f32>, @location(11) m3: vec4<f32>,
+	@location(13) extra: vec4<f32>) -> VOut {
+	var pos = p;
+	let targets = u32(extra.z);
+	if (targets > 0u) {
+		let wbase = u32(extra.y);
+		for (var k = 0u; k < targets; k = k + 1u) {
+			let w = morph_weights[wbase + k];
+			if (w != 0.0) {
+				pos = pos + w * morph_deltas[(vertex * targets + k) * 2u].xyz;
+			}
+		}
+	}
+	if ((u32(extra.w) & SKINNED) != 0u) {
+		let jb = u32(extra.x);
+		let skin = joint_matrices[jb + joints.x] * weights.x + joint_matrices[jb + joints.y] * weights.y +
+			joint_matrices[jb + joints.z] * weights.z + joint_matrices[jb + joints.w] * weights.w;
+		pos = (skin * vec4<f32>(pos, 1.0)).xyz;
+	}
+	var o: VOut;
+	o.clip = mat4x4<f32>(m0, m1, m2, m3) * vec4<f32>(pos, 1.0);
+	o.depth = o.clip.z;
+	return o;
+}
+
+@fragment
+fn fs_shadow(in: VOut) -> @location(0) f32 {
+	return in.depth;
+}
+`,
+	SPIRV: spirvShadow,
+	HLSL: `struct VOut {
+    float4 clip_ : SV_Position;
+    float depth : LOC0;
+};
+
+static const uint SKINNED = 32u;
+
+ByteAddressBuffer joint_matrices : register(t0, space0);
+ByteAddressBuffer morph_weights : register(t1, space0);
+ByteAddressBuffer morph_deltas : register(t0, space1);
+
+struct VertexOutput_vs_shadow_simple {
+    float depth : LOC0;
+    float4 clip_ : SV_Position;
+};
+
+struct VertexOutput_vs_shadow_full {
+    float depth_1 : LOC0;
+    float4 clip_1 : SV_Position;
+};
+
+struct FragmentInput_fs_shadow {
+    float depth_2 : LOC0;
+    float4 clip_2 : SV_Position;
+};
+
+VertexOutput_vs_shadow_simple vs_shadow_simple(float3 p : LOC0, float4 m0_ : LOC8, float4 m1_ : LOC9, float4 m2_ : LOC10, float4 m3_ : LOC11)
+{
+    VOut o = (VOut)0;
+
+    o.clip_ = mul(float4(p, 1.0), float4x4(m0_, m1_, m2_, m3_));
+    float _e14 = o.clip_.z;
+    o.depth = _e14;
+    VOut _e15 = o;
+    VOut vout = _e15;
+    VertexOutput_vs_shadow_simple vout_1 = { vout.depth, vout.clip_ };
+    return vout_1;
+}
+
+uint naga_f2u32(float value) {
+    return uint(clamp(value, 0.0, 4294967000.0));
+}
+
+VertexOutput_vs_shadow_full vs_shadow_full(uint vertex : SV_VertexID, float3 p_1 : LOC0, uint4 joints : LOC6, float4 weights : LOC7, float4 m0_1 : LOC8, float4 m1_1 : LOC9, float4 m2_1 : LOC10, float4 m3_1 : LOC11, float4 extra : LOC13)
+{
+    float3 pos = (float3)0;
+    uint k = 0u;
+    VOut o_1 = (VOut)0;
+
+    pos = p_1;
+    uint targets = naga_f2u32(extra.z);
+    if ((targets > 0u)) {
+        uint wbase = naga_f2u32(extra.y);
+        uint2 loop_bound = uint2(4294967295u, 4294967295u);
+        bool loop_init = true;
+        while(true) {
+            if (all(loop_bound == uint2(0u, 0u))) { break; }
+            loop_bound -= uint2(loop_bound.y == 0u, 1u);
+            if (!loop_init) {
+                uint _e39 = k;
+                k = (_e39 + 1u);
+            }
+            loop_init = false;
+            uint _e18 = k;
+            if ((_e18 < targets)) {
+            } else {
+                break;
+            }
+            {
+                uint _e21 = k;
+                float w = asfloat(morph_weights.Load((wbase + _e21)*4));
+                if ((w != 0.0)) {
+                    float3 _e27 = pos;
+                    uint _e30 = k;
+                    float4 _e35 = asfloat(morph_deltas.Load4((((vertex * targets) + _e30) * 2u)*16));
+                    pos = (_e27 + (w * _e35.xyz));
+                }
+            }
+        }
+    }
+    if (((naga_f2u32(extra.w) & SKINNED) != 0u)) {
+        uint jb = naga_f2u32(extra.x);
+        float4x4 _e54 = float4x4(asfloat(joint_matrices.Load4((jb + joints.x)*64+0)), asfloat(joint_matrices.Load4((jb + joints.x)*64+16)), asfloat(joint_matrices.Load4((jb + joints.x)*64+32)), asfloat(joint_matrices.Load4((jb + joints.x)*64+48)));
+        float4x4 _e61 = float4x4(asfloat(joint_matrices.Load4((jb + joints.y)*64+0)), asfloat(joint_matrices.Load4((jb + joints.y)*64+16)), asfloat(joint_matrices.Load4((jb + joints.y)*64+32)), asfloat(joint_matrices.Load4((jb + joints.y)*64+48)));
+        float4x4 _e69 = float4x4(asfloat(joint_matrices.Load4((jb + joints.z)*64+0)), asfloat(joint_matrices.Load4((jb + joints.z)*64+16)), asfloat(joint_matrices.Load4((jb + joints.z)*64+32)), asfloat(joint_matrices.Load4((jb + joints.z)*64+48)));
+        float4x4 _e77 = float4x4(asfloat(joint_matrices.Load4((jb + joints.w)*64+0)), asfloat(joint_matrices.Load4((jb + joints.w)*64+16)), asfloat(joint_matrices.Load4((jb + joints.w)*64+32)), asfloat(joint_matrices.Load4((jb + joints.w)*64+48)));
+        float4x4 skin = (((mul(weights.x, _e54) + mul(weights.y, _e61)) + mul(weights.z, _e69)) + mul(weights.w, _e77));
+        float3 _e81 = pos;
+        pos = mul(float4(_e81, 1.0), skin).xyz;
+    }
+    float3 _e89 = pos;
+    o_1.clip_ = mul(float4(_e89, 1.0), float4x4(m0_1, m1_1, m2_1, m3_1));
+    float _e96 = o_1.clip_.z;
+    o_1.depth = _e96;
+    VOut _e97 = o_1;
+    VOut vout_2 = _e97;
+    VertexOutput_vs_shadow_full vout_2_ = { vout_2.depth, vout_2.clip_ };
+    return vout_2_;
+}
+
+float fs_shadow(FragmentInput_fs_shadow fragmentinput_fs_shadow) : SV_Target0
+{
+    VOut in_ = { fragmentinput_fs_shadow.clip_2, fragmentinput_fs_shadow.depth_2 };
+    return in_.depth;
+}
+`,
+	Entries: []gpu.EntryPoint{
+		{Name: "vs_shadow_simple", Stage: gpu.ShaderStageVertex,
+			Inputs: []gpu.VertexInput{
+				{Name: "p", Location: 0, Type: gpu.ShaderTypeFloat32x3},
+				{Name: "m0", Location: 8, Type: gpu.ShaderTypeFloat32x4},
+				{Name: "m1", Location: 9, Type: gpu.ShaderTypeFloat32x4},
+				{Name: "m2", Location: 10, Type: gpu.ShaderTypeFloat32x4},
+				{Name: "m3", Location: 11, Type: gpu.ShaderTypeFloat32x4},
+			},
+			Bindings: []gpu.ShaderBinding{},
+		},
+		{Name: "vs_shadow_full", Stage: gpu.ShaderStageVertex, ReadsVertexIndex: true,
+			Inputs: []gpu.VertexInput{
+				{Name: "p", Location: 0, Type: gpu.ShaderTypeFloat32x3},
+				{Name: "joints", Location: 6, Type: gpu.ShaderTypeUint32x4},
+				{Name: "weights", Location: 7, Type: gpu.ShaderTypeFloat32x4},
+				{Name: "m0", Location: 8, Type: gpu.ShaderTypeFloat32x4},
+				{Name: "m1", Location: 9, Type: gpu.ShaderTypeFloat32x4},
+				{Name: "m2", Location: 10, Type: gpu.ShaderTypeFloat32x4},
+				{Name: "m3", Location: 11, Type: gpu.ShaderTypeFloat32x4},
+				{Name: "extra", Location: 13, Type: gpu.ShaderTypeFloat32x4},
+			},
+			Bindings: []gpu.ShaderBinding{
+				{Name: "joint_matrices", Group: 0, Binding: 0, Kind: gpu.BindingStorageBufferReadOnly, Size: 64, Register: gpu.ShaderRegister{Class: "t", Space: 0, Index: 0}},
+				{Name: "morph_weights", Group: 0, Binding: 1, Kind: gpu.BindingStorageBufferReadOnly, Size: 4, Register: gpu.ShaderRegister{Class: "t", Space: 0, Index: 1}},
+				{Name: "morph_deltas", Group: 1, Binding: 0, Kind: gpu.BindingStorageBufferReadOnly, Size: 16, Register: gpu.ShaderRegister{Class: "t", Space: 1, Index: 0}},
+			},
+		},
+		{Name: "fs_shadow", Stage: gpu.ShaderStageFragment,
+			Bindings: []gpu.ShaderBinding{},
+		},
+	},
+}
+
+//go:embed tonemap.spv
+var spirvTonemap []byte
+
+// Tonemap is tonemap.wgsl.
+var Tonemap = &gpu.Shader{
+	Name: "tonemap",
+	WGSL: `// The tone mapping of viewport3d (SPEC §28.5): the frame was drawn as linear radiance into a float target (the PBR materials
+// make values above 1), and this pass turns it into the colors of the display: the exposure, a curve (the Khronos PBR Neutral
+// tone mapper, which leaves the colors below 0.8 as they are, or the ACES fit of Stephen Hill), and the sRGB transfer function.
+// The input is premultiplied by the alpha; the output is too.
+
+struct Tone {
+	// params: x the exposure, y the curve (0 none, 1 PBR Neutral, 2 ACES).
+	params: vec4<f32>,
+}
+
+@group(0) @binding(0) var<uniform> tone: Tone;
+@group(0) @binding(1) var hdr: texture_2d<f32>;
+
+@vertex
+fn vs_full(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+	let x = f32((i << 1u) & 2u);
+	let y = f32(i & 2u);
+	return vec4<f32>(x * 2.0 - 1.0, 1.0 - y * 2.0, 0.0, 1.0);
+}
+
+// neutral is the Khronos PBR Neutral tone mapper (github.com/KhronosGroup/ToneMapping): the colors under about 0.76 keep
+// their value, and the brighter ones are compressed towards white and desaturated.
+fn neutral(color: vec3<f32>) -> vec3<f32> {
+	let start_compression = 0.8 - 0.04;
+	let desaturation = 0.15;
+	let x = min(color.r, min(color.g, color.b));
+	var offset = 0.04;
+	if (x < 0.08) {
+		offset = x - 6.25 * x * x;
+	}
+	var c = color - vec3<f32>(offset);
+	let peak = max(c.r, max(c.g, c.b));
+	if (peak < start_compression) {
+		return c;
+	}
+	let d = 1.0 - start_compression;
+	let new_peak = 1.0 - d * d / (peak + d - start_compression);
+	c = c * (new_peak / peak);
+	let g = 1.0 - 1.0 / (desaturation * (peak - new_peak) + 1.0);
+	return mix(c, vec3<f32>(new_peak), g);
+}
+
+fn rrt_and_odt_fit(v: vec3<f32>) -> vec3<f32> {
+	let a = v * (v + vec3<f32>(0.0245786)) - vec3<f32>(0.000090537);
+	let b = v * (0.983729 * v + vec3<f32>(0.4329510)) + vec3<f32>(0.238081);
+	return a / b;
+}
+
+// aces is the fit of the ACES reference rendering transform and output transform by Stephen Hill (BakingLab).
+fn aces(color: vec3<f32>) -> vec3<f32> {
+	let input_mat = mat3x3<f32>(vec3<f32>(0.59719, 0.07600, 0.02840), vec3<f32>(0.35458, 0.90834, 0.13383), vec3<f32>(0.04823, 0.01566, 0.83777));
+	let output_mat = mat3x3<f32>(vec3<f32>(1.60475, -0.10208, -0.00327), vec3<f32>(-0.53108, 1.10813, -0.07276), vec3<f32>(-0.07367, -0.00605, 1.07602));
+	return clamp(output_mat * rrt_and_odt_fit(input_mat * color), vec3<f32>(0.0), vec3<f32>(1.0));
+}
+
+fn linear_to_srgb(c: vec3<f32>) -> vec3<f32> {
+	let lo = c * 12.92;
+	let hi = 1.055 * pow(c, vec3<f32>(1.0 / 2.4)) - vec3<f32>(0.055);
+	return select(hi, lo, c <= vec3<f32>(0.0031308));
+}
+
+@fragment
+fn fs_tonemap(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+	let px = textureLoad(hdr, vec2<i32>(pos.xy), 0);
+	var rgb = vec3<f32>(0.0);
+	if (px.a > 0.0) {
+		rgb = max(px.rgb / px.a, vec3<f32>(0.0));
+	}
+	rgb = rgb * tone.params.x;
+	let mode = u32(tone.params.y);
+	if (mode == 1u) {
+		rgb = neutral(rgb);
+	} else if (mode == 2u) {
+		// The fit is made for an exposure that is 1/0.6 of the one of the other curves.
+		rgb = aces(rgb / 0.6);
+	}
+	rgb = linear_to_srgb(clamp(rgb, vec3<f32>(0.0), vec3<f32>(1.0)));
+	return vec4<f32>(rgb * px.a, px.a);
+}
+`,
+	SPIRV: spirvTonemap,
+	HLSL: `struct Tone {
+    float4 params;
+};
+
+cbuffer tone : register(b0, space0) { Tone tone; }
+Texture2D<float4> hdr : register(t1, space0);
+
+struct FragmentInput_fs_tonemap {
+    float4 pos_1 : SV_Position;
+};
+
+float3 neutral(float3 color)
+{
+    float offset = 0.04;
+    float3 c = (float3)0;
+
+    float x = min(color.x, min(color.y, color.z));
+    if ((x < 0.08)) {
+        offset = (x - ((6.25 * x) * x));
+    }
+    float _e16 = offset;
+    c = (color - (_e16).xxx);
+    float _e21 = c.x;
+    float _e23 = c.y;
+    float _e25 = c.z;
+    float peak = max(_e21, max(_e23, _e25));
+    if ((peak < 0.76)) {
+        float3 _e29 = c;
+        return _e29;
+    }
+    float d = (1.0 - 0.76);
+    float new_peak = (1.0 - ((d * d) / ((peak + d) - 0.76)));
+    float3 _e38 = c;
+    c = (_e38 * (new_peak / peak));
+    float g = (1.0 - (1.0 / ((0.15 * (peak - new_peak)) + 1.0)));
+    float3 _e49 = c;
+    return lerp(_e49, (new_peak).xxx, g);
+}
+
+float3 rrt_and_odt_fit(float3 v)
+{
+    float3 a = ((v * (v + (0.0245786).xxx)) - (9.0537e-5).xxx);
+    float3 b = ((v * ((0.983729 * v) + (0.432951).xxx)) + (0.238081).xxx);
+    return (a / b);
+}
+
+float3 aces(float3 color_1)
+{
+    float3x3 input_mat = float3x3(float3(0.59719, 0.076, 0.0284), float3(0.35458, 0.90834, 0.13383), float3(0.04823, 0.01566, 0.83777));
+    float3x3 output_mat = float3x3(float3(1.60475, -0.10208, -0.00327), float3(-0.53108, 1.10813, -0.07276), float3(-0.07367, -0.00605, 1.07602));
+    const float3 _e28 = rrt_and_odt_fit(mul(color_1, input_mat));
+    return clamp(mul(_e28, output_mat), (0.0).xxx, (1.0).xxx);
+}
+
+float3 linear_to_srgb(float3 c_1)
+{
+    float3 lo = (c_1 * 12.92);
+    float3 hi = ((1.055 * pow(c_1, (0.41666666).xxx)) - (0.055).xxx);
+    return ((c_1 <= (0.0031308).xxx) ? lo : hi);
+}
+
+float4 vs_full(uint i : SV_VertexID) : SV_Position
+{
+    float x_1 = float(((i << 1u) & 2u));
+    float y = float((i & 2u));
+    return float4(((x_1 * 2.0) - 1.0), (1.0 - (y * 2.0)), 0.0, 1.0);
+}
+
+int2 naga_f2i32(float2 value) {
+    return int2(clamp(value, -2147483600.0, 2147483500.0));
+}
+
+uint naga_f2u32(float value) {
+    return uint(clamp(value, 0.0, 4294967000.0));
+}
+
+float4 fs_tonemap(FragmentInput_fs_tonemap fragmentinput_fs_tonemap) : SV_Target0
+{
+    float4 pos = fragmentinput_fs_tonemap.pos_1;
+    float3 rgb = (0.0).xxx;
+
+    float4 px = hdr.Load(int3(naga_f2i32(pos.xy), int(0)));
+    if ((px.w > 0.0)) {
+        rgb = max((px.xyz / (px.w).xxx), (0.0).xxx);
+    }
+    float3 _e19 = rgb;
+    float _e23 = tone.params.x;
+    rgb = (_e19 * _e23);
+    float _e28 = tone.params.y;
+    uint mode = naga_f2u32(_e28);
+    if ((mode == 1u)) {
+        float3 _e32 = rgb;
+        const float3 _e33 = neutral(_e32);
+        rgb = _e33;
+    } else {
+        if ((mode == 2u)) {
+            float3 _e36 = rgb;
+            const float3 _e40 = aces((_e36 / (0.6).xxx));
+            rgb = _e40;
+        }
+    }
+    float3 _e41 = rgb;
+    const float3 _e47 = linear_to_srgb(clamp(_e41, (0.0).xxx, (1.0).xxx));
+    rgb = _e47;
+    float3 _e48 = rgb;
+    return float4((_e48 * px.w), px.w);
+}
+`,
+	Entries: []gpu.EntryPoint{
+		{Name: "vs_full", Stage: gpu.ShaderStageVertex, ReadsVertexIndex: true,
+			Bindings: []gpu.ShaderBinding{},
+		},
+		{Name: "fs_tonemap", Stage: gpu.ShaderStageFragment,
+			Bindings: []gpu.ShaderBinding{
+				{Name: "tone", Group: 0, Binding: 0, Kind: gpu.BindingUniformBuffer, Size: 16, Register: gpu.ShaderRegister{Class: "b", Space: 0, Index: 0}},
+				{Name: "hdr", Group: 0, Binding: 1, Kind: gpu.BindingSampledTexture, Sample: gpu.SampleTypeUnfilterableFloat, Register: gpu.ShaderRegister{Class: "t", Space: 0, Index: 1}},
 			},
 		},
 	},

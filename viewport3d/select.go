@@ -178,6 +178,7 @@ func (r *Renderer) drawMask(f *gpu.ViewFrame) {
 		}
 		k := d.pk
 		k.kind, k.blend, k.samples, k.color, k.depth = pipeMask, false, 1, gpu.TextureFormatRGBA8Unorm, gpu.TextureFormatUnspecified
+		k.variant = d.mesh.variant // a PBR item's key has none: the mask reads the mesh's own buffers
 		pipe := r.pipeline(k)
 		if pipe == nil {
 			continue

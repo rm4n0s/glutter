@@ -60,7 +60,7 @@ type Renderer struct {
 	layers uint32
 
 	dev  *gpu.Device
-	mods struct{ mesh, line, point, section, pick, sel, grid *gpu.ShaderModule }
+	mods struct{ mesh, line, point, section, pick, sel, grid, pbr, shadow, tone, env *gpu.ShaderModule }
 	// pipes are the pipelines by key; a key whose pipeline failed has nil.
 	pipes        map[pipeKey]*gpu.RenderPipeline
 	corners      *gpu.Buffer
@@ -92,8 +92,11 @@ type Renderer struct {
 	items  []drawItem
 	opaque []int32
 	transp []int32
-	lines  []lineDraw
-	sect   []sectionDraw
+	// popaque and ptransp are the items of PBR materials, drawn into the float target (pbrdraw.go).
+	popaque []int32
+	ptransp []int32
+	lines   []lineDraw
+	sect    []sectionDraw
 	// selItems are the selected items that have faces, for the outline of the selection.
 	selItems []*Item
 	colors   [1]gpu.RenderPassColorAttachment
@@ -107,6 +110,11 @@ type Renderer struct {
 	// picks are the picks that wait for the next frame (pick.go).
 	picks         []pickRequest
 	warnedStencil bool
+
+	// pbr is what the PBR materials need: the environment, the shadow map, the float target and the skins. pending are the resources
+	// that the commands of the last frame name, which are let go of when the next frame starts.
+	pbr     pbrState
+	pending []releaser
 }
 
 // drawItem is an item of triangles in the frame's draw list.
@@ -124,6 +132,9 @@ type drawItem struct {
 	// selected is whether the item is selected, and tint the highlight that its instance carries (rgb, and how much of it).
 	selected bool
 	tint     [4]float32
+	// pbr says that the item has a PBR material, whose instance carries extra (the numbers of its skin and morph targets, pbrExtra).
+	pbr   bool
+	extra [4]float32
 }
 
 // lineDraw is a draw of line segments or points: the edges of a mesh, an item of lines, or an item of points.
@@ -175,6 +186,8 @@ func (r *Renderer) Init(d *gpu.Device) {
 func (r *Renderer) Dispose() {
 	r.failPicks()
 	r.releaseMask()
+	r.pbr.release(r)
+	r.releasePending()
 	for len(r.meshes) > 0 {
 		r.forgetMesh(r.meshes[len(r.meshes)-1])
 	}
@@ -203,7 +216,7 @@ func (r *Renderer) Dispose() {
 	if r.white != nil {
 		r.white.Release()
 	}
-	for _, m := range []*gpu.ShaderModule{r.mods.mesh, r.mods.line, r.mods.point, r.mods.section, r.mods.pick, r.mods.sel, r.mods.grid} {
+	for _, m := range []*gpu.ShaderModule{r.mods.mesh, r.mods.line, r.mods.point, r.mods.section, r.mods.pick, r.mods.sel, r.mods.grid, r.mods.pbr, r.mods.shadow, r.mods.tone, r.mods.env} {
 		if m != nil {
 			m.Release()
 		}
@@ -211,6 +224,7 @@ func (r *Renderer) Dispose() {
 	r.frameGroup, r.itemGroup, r.sectionGroup, r.uniforms, r.instances, r.corners, r.pointCorners, r.sampler, r.white = nil, nil, nil, nil, nil, nil, nil, nil, nil
 	r.uniformCap, r.instanceCap = 0, 0
 	r.mods.mesh, r.mods.line, r.mods.point, r.mods.section, r.mods.pick, r.mods.sel, r.mods.grid = nil, nil, nil, nil, nil, nil, nil
+	r.mods.pbr, r.mods.shadow, r.mods.tone, r.mods.env = nil, nil, nil, nil
 	r.dev = nil
 }
 
@@ -344,6 +358,7 @@ func (r *Renderer) Draw(f *gpu.ViewFrame) {
 	if r.dev == nil {
 		return
 	}
+	r.releasePending()
 	if f.Depth == nil {
 		if !r.warnedDepth {
 			r.warnedDepth = true
@@ -385,6 +400,12 @@ func (r *Renderer) Draw(f *gpu.ViewFrame) {
 	r.edges.SetWidth(style.edgeWidth)
 
 	r.items, r.opaque, r.transp, r.lines, r.sect, r.selItems = r.items[:0], r.opaque[:0], r.transp[:0], r.lines[:0], r.sect[:0], r.selItems[:0]
+	r.popaque, r.ptransp = r.popaque[:0], r.ptransp[:0]
+	r.pbr.reset()
+	dc := drawCtx{style: style, base: base, eye: eye, planes: len(r.scene.planes)}
+	if faces && style.shadow.enabled && mode != DisplayModeHiddenLine {
+		dc.shadowOn = r.shadowSetup(style)
+	}
 	// The section planes cut the faces, the lines and the points; the caps need a stencil in the depth target.
 	planes := len(r.scene.planes)
 	capsOK := style.section.cap
@@ -395,6 +416,7 @@ func (r *Renderer) Draw(f *gpu.ViewFrame) {
 			slog.Warn("viewport3d: the view has no stencil, so the sections have no caps: give gpu.ViewOpts the DepthFormat Depth24PlusStencil8 (viewport3d.NewView does)")
 		}
 	}
+	dc.capsOK = capsOK
 	// linePipe and pointPipe give the layouts of the groups of lines and points; each draw looks up the pipeline of its own key.
 	var linePipe, pointPipe *gpu.RenderPipeline
 	needLine := func() *gpu.RenderPipeline {
@@ -419,14 +441,28 @@ func (r *Renderer) Draw(f *gpu.ViewFrame) {
 			r.stats.Hidden++
 			continue
 		}
-		if !inView && it.sphere.Radius > 0 && !frustum.IntersectsSphere(it.sphere) {
+		// A skinned item or one with morph targets moves out of the box of its mesh at rest: it is never culled by it.
+		if !inView && it.sphere.Radius > 0 && it.skin == nil && len(it.morphWeights) == 0 && !frustum.IntersectsSphere(it.sphere) {
 			r.stats.Culled++
 			continue
 		}
 		modelView(&rot, eye, &it.model, &mv)
 		switch it.mesh.data.Primitive {
 		case PrimitiveTriangles:
-			if faces {
+			// An item of a PBR material is drawn into the float target (pbrdraw.go); its edges are drawn as the others'.
+			pbrItem := false
+			if faces && mode != DisplayModeHiddenLine {
+				if pm, ok := it.material.(*PBRMaterial); ok {
+					pbrItem = true
+					if it.mesh != lastMesh {
+						lastMesh, lastMeshGPU = it.mesh, r.meshState(it.mesh)
+					}
+					if lastMeshGPU.pos != nil {
+						r.addPBRItem(it, pm, lastMeshGPU, &mv, &dc)
+					}
+				}
+			}
+			if faces && !pbrItem {
 				if it.mesh != lastMesh {
 					lastMesh, lastMeshGPU = it.mesh, r.meshState(it.mesh)
 				}
@@ -479,6 +515,9 @@ func (r *Renderer) Draw(f *gpu.ViewFrame) {
 					r.opaque = append(r.opaque, index)
 				}
 				r.stats.Items++
+				if dc.shadowOn && !blend {
+					r.addCaster(it, mesh, false, [4]float32{})
+				}
 				if planes > 0 && mode != DisplayModeHiddenLine {
 					sd := sectionDraw{mesh: it.mesh, g: mesh, mv: mv}
 					if capsOK && !blend && it.mesh.Closed() {
@@ -550,18 +589,42 @@ func (r *Renderer) Draw(f *gpu.ViewFrame) {
 		slices.SortFunc(r.opaque, byKey)
 	}
 	slices.SortFunc(r.transp, func(a, b int32) int { return cmp.Compare(r.items[b].dist, r.items[a].dist) })
-	n := len(r.opaque) + len(r.transp)
+	r.sortPBR()
+	pbrItems := len(r.popaque) + len(r.ptransp)
+	if pbrItems == 0 {
+		dc.shadowOn = false
+	}
+	casters := 0
+	if dc.shadowOn {
+		casters = len(r.pbr.simple) + len(r.pbr.full)
+	}
+	n := len(r.opaque) + len(r.transp) + pbrItems + casters
 	if need := n * instanceStride; len(r.ibytes) < need {
 		r.ibytes = slices.Grow(r.ibytes[:0], need)[:need]
 	}
 	next := int32(0)
-	for _, list := range [2][]int32{r.opaque, r.transp} {
+	for _, list := range [4][]int32{r.opaque, r.transp, r.popaque, r.ptransp} {
 		for _, i := range list {
-			putMat(r.ibytes, int(next)*instanceStride, &r.items[i].mv)
-			t := &r.items[i].tint
-			putVec4(r.ibytes, int(next)*instanceStride+64, t[0], t[1], t[2], t[3])
-			r.items[i].instance = next
+			d := &r.items[i]
+			putMat(r.ibytes, int(next)*instanceStride, &d.mv)
+			putVec4(r.ibytes, int(next)*instanceStride+64, d.tint[0], d.tint[1], d.tint[2], d.tint[3])
+			if d.pbr {
+				putVec4(r.ibytes, int(next)*instanceStride+80, d.extra[0], d.extra[1], d.extra[2], d.extra[3])
+			}
+			d.instance = next
 			next++
+		}
+	}
+	if dc.shadowOn {
+		for _, list := range [2][]shadowCaster{r.pbr.simple, r.pbr.full} {
+			for i := range list {
+				c := &list[i]
+				putMat(r.ibytes, int(next)*instanceStride, &c.mv)
+				putVec4(r.ibytes, int(next)*instanceStride+64, 0, 0, 0, 0)
+				putVec4(r.ibytes, int(next)*instanceStride+80, c.extra[0], c.extra[1], c.extra[2], c.extra[3])
+				c.instance = next
+				next++
+			}
 		}
 	}
 
@@ -667,17 +730,23 @@ func (r *Renderer) Draw(f *gpu.ViewFrame) {
 		r.releaseMask()
 	}
 
-	bg := style.background
-	clearColor := gpu.Color{R: float64(bg.R * bg.A), G: float64(bg.G * bg.A), B: float64(bg.B * bg.A), A: float64(bg.A)}
-	r.colors[0] = gpu.RenderPassColorAttachment{View: f.Color.View(), ClearValue: clearColor}
+	bg := clearColor(style.background)
+	// The PBR items are drawn first, with their tone mapping over the background; the pass below then draws the other items over
+	// them and loads what is there.
+	loadOp := gpu.LoadOpClear
+	if pbrItems > 0 && r.drawPBR(f, &dc, &rot, bg) {
+		loadOp = gpu.LoadOpLoad
+	}
+	r.colors[0] = gpu.RenderPassColorAttachment{View: f.Color.View(), LoadOp: loadOp, ClearValue: bg}
 	if f.Resolve != nil {
 		r.colors[0].ResolveTarget = f.Resolve.View()
 		r.colors[0].StoreOp = gpu.StoreOpDiscard
 	}
 	pass := f.Encoder.BeginRenderPass(gpu.RenderPassDesc{
-		Label:                  "viewport3d",
-		ColorAttachments:       r.colors[:],
-		DepthStencilAttachment: &gpu.RenderPassDepthStencilAttachment{View: f.Depth.View(), DepthClearValue: 0, StencilClearValue: 0},
+		Label:            "viewport3d",
+		ColorAttachments: r.colors[:],
+		DepthStencilAttachment: &gpu.RenderPassDepthStencilAttachment{View: f.Depth.View(), DepthLoadOp: loadOp, StencilLoadOp: loadOp,
+			DepthClearValue: 0, StencilClearValue: 0},
 	})
 	pass.SetBindGroup(0, r.frameGroup, 0)
 	var curMat *matGPU

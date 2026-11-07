@@ -17,7 +17,12 @@ const (
 	lineUniformSize    = 64
 	pointUniformSize   = 32
 	itemUniformSize    = 112
-	instanceStride     = 80
+	// matUniformMax is the room for the uniform data of any material (the PBR one is the largest).
+	matUniformMax = 256
+	// instanceStride is the size of an instance: the model-view matrix (64 bytes), the tint (16) and four numbers of the PBR
+	// shader (the first joint of the item's skin in the joint matrices, the first of its morph weights, the number of its morph
+	// targets and the flags of what the mesh has).
+	instanceStride = 96
 	// uniformAlign is the alignment of the offsets of the uniform buffers (the largest that a backend asks for).
 	uniformAlign = 256
 	// frameSectionOffset is where the section planes are in the frame's data, then their number.
@@ -48,6 +53,12 @@ const (
 	pipeSelect
 	// pipeGrid draws the grid (grid.go).
 	pipeGrid
+	// pipePBR draws the faces of the PBR material, pipeShadowSimple and pipeShadowFull the items into the shadow map (the second
+	// for the meshes of the PBR material), and pipeTonemap the float target into the view's (pbrdraw.go).
+	pipePBR
+	pipeShadowSimple
+	pipeShadowFull
+	pipeTonemap
 )
 
 // pipeKey is what tells the pipelines of a renderer apart.
@@ -104,6 +115,11 @@ func (r *Renderer) makePipeline(k pipeKey) (*gpu.RenderPipeline, error) {
 	}
 	if k.kind == pipeGrid {
 		if err := r.ensureGridModule(); err != nil {
+			return nil, err
+		}
+	}
+	if k.kind >= pipePBR {
+		if err := r.ensurePBRModules(); err != nil {
 			return nil, err
 		}
 	}
@@ -205,6 +221,52 @@ func (r *Renderer) makePipeline(k pipeKey) (*gpu.RenderPipeline, error) {
 		desc.Vertex = gpu.VertexState{Module: r.mods.grid, EntryPoint: "vs_full"}
 		desc.Fragment = gpu.FragmentState{Module: r.mods.grid, EntryPoint: "fs_grid", Targets: []gpu.ColorTargetState{target}}
 		desc.Primitive = gpu.PrimitiveState{CullMode: gpu.CullModeNone}
+	case pipePBR:
+		target.Blend = gpu.BlendState{}
+		if k.blend {
+			target.Blend = premult
+		}
+		depth.DepthWriteEnabled = !k.blend
+		cull := gpu.CullModeBack
+		if k.noCull {
+			cull = gpu.CullModeNone
+		}
+		desc.Label = "viewport3d pbr"
+		desc.Vertex = gpu.VertexState{Module: r.mods.pbr, EntryPoint: "vs_pbr", Buffers: pbrLayouts()}
+		desc.Fragment = gpu.FragmentState{Module: r.mods.pbr, EntryPoint: "fs_pbr", Targets: []gpu.ColorTargetState{target}}
+		desc.Primitive = gpu.PrimitiveState{CullMode: cull}
+	case pipeShadowSimple, pipeShadowFull:
+		// The shadow map: depth as a color, tested against a depth buffer, drawn from the light so with no culling (a thin
+		// surface casts a shadow from both sides).
+		desc.Label = "viewport3d shadow"
+		depth.DepthWriteEnabled = true
+		depth.DepthCompare = gpu.CompareFunctionLess
+		instance := gpu.VertexBufferLayout{ArrayStride: instanceStride, PerInstance: true, Attributes: []gpu.VertexAttribute{
+			{ShaderLocation: 8, Format: gpu.VertexFormatFloat32x4, Offset: 0}, {ShaderLocation: 9, Format: gpu.VertexFormatFloat32x4, Offset: 16},
+			{ShaderLocation: 10, Format: gpu.VertexFormatFloat32x4, Offset: 32}, {ShaderLocation: 11, Format: gpu.VertexFormatFloat32x4, Offset: 48},
+		}}
+		if k.kind == pipeShadowSimple {
+			desc.Vertex = gpu.VertexState{Module: r.mods.shadow, EntryPoint: "vs_shadow_simple", Buffers: []gpu.VertexBufferLayout{
+				{ArrayStride: 12, Attributes: []gpu.VertexAttribute{{ShaderLocation: 0, Format: gpu.VertexFormatFloat32x3}}}, instance}}
+		} else {
+			instance.Attributes = append(instance.Attributes, gpu.VertexAttribute{ShaderLocation: 13, Format: gpu.VertexFormatFloat32x4, Offset: 80})
+			desc.Vertex = gpu.VertexState{Module: r.mods.shadow, EntryPoint: "vs_shadow_full", Buffers: []gpu.VertexBufferLayout{
+				{ArrayStride: pbrVertexStride, Attributes: []gpu.VertexAttribute{
+					{ShaderLocation: 0, Format: gpu.VertexFormatFloat32x3, Offset: 0},
+					{ShaderLocation: 6, Format: gpu.VertexFormatUint16x4, Offset: 60},
+					{ShaderLocation: 7, Format: gpu.VertexFormatFloat32x4, Offset: 68},
+				}}, instance}}
+		}
+		desc.Fragment = gpu.FragmentState{Module: r.mods.shadow, EntryPoint: "fs_shadow", Targets: []gpu.ColorTargetState{{Format: gpu.TextureFormatR32Float}}}
+		desc.Primitive = gpu.PrimitiveState{CullMode: gpu.CullModeNone}
+	case pipeTonemap:
+		// The tone mapping draws over the whole target, over the background: no depth; the image is premultiplied.
+		target.Blend = premult
+		desc.Label = "viewport3d tone mapping"
+		desc.Vertex = gpu.VertexState{Module: r.mods.tone, EntryPoint: "vs_full"}
+		desc.Fragment = gpu.FragmentState{Module: r.mods.tone, EntryPoint: "fs_tonemap", Targets: []gpu.ColorTargetState{target}}
+		desc.Primitive = gpu.PrimitiveState{CullMode: gpu.CullModeNone}
+		return r.dev.NewRenderPipeline(desc)
 	case pipePickTri, pipePickLine, pipePickPoint:
 		// The pick pass writes the item and the primitive, and the depth value, with no blending.
 		targets := []gpu.ColorTargetState{{Format: gpu.TextureFormatRG32Uint}, {Format: gpu.TextureFormatR32Float}}
@@ -408,11 +470,30 @@ type meshGPU struct {
 	pointIDs *gpu.Buffer
 	// count is the number of indices (or vertices), segments or points to draw.
 	count int
+
+	// The rest is made when the mesh is first drawn with a PBR material (pbrdraw.go): its vertices in one buffer of the layout of the
+	// PBR shader, the changes of the morph targets, and the groups that name them.
+	full       *gpu.Buffer
+	deltas     *gpu.Buffer
+	fullFailed bool
+	// flags are the bits of what the mesh has (pbrHasNormal and the others), targets the number of its morph targets, joints whether it
+	// has joints and weights, and maxJoint the highest joint with a weight.
+	flags    uint32
+	targets  int
+	joints   bool
+	maxJoint int
+	// morphGroup and morphShadow are the groups of deltas for the layouts of the PBR and the shadow pipelines.
+	morphGroup, morphShadow *gpu.BindGroup
 }
 
 // release frees the buffers of the mesh.
 func (g *meshGPU) release() {
-	for _, b := range []*gpu.Buffer{g.pos, g.normals, g.uvs, g.colors, g.index, g.segments, g.corners, g.pointIDs} {
+	for _, grp := range []*gpu.BindGroup{g.morphGroup, g.morphShadow} {
+		if grp != nil {
+			grp.Release()
+		}
+	}
+	for _, b := range []*gpu.Buffer{g.pos, g.normals, g.uvs, g.colors, g.index, g.segments, g.corners, g.pointIDs, g.full, g.deltas} {
 		if b != nil {
 			b.Release()
 		}
@@ -535,10 +616,12 @@ type matGPU struct {
 	buf     *gpu.Buffer
 	group   *gpu.BindGroup
 	version uint64
-	// texture is the texture the group was made with.
+	// texture is the texture the group was made with, and texs and samps those of the slots of a PBR material.
 	texture *gpu.Texture
+	texs    [pbrSlots]*gpu.Texture
+	samps   [pbrSlots]*gpu.Sampler
 	// bytes are the uniforms that the buffer holds.
-	bytes [lineUniformSize]byte
+	bytes [matUniformMax]byte
 	// pipe is the pipeline whose layout the group was made for, which keeps the layout's owner alive.
 	pipe *gpu.RenderPipeline
 }
@@ -586,12 +669,14 @@ func surfaceOf(m Material) *surfaceMaterial {
 }
 
 // uniformsOf writes the uniform data of a material into dst and returns the size.
-func uniformsOf(m Material, dst *[lineUniformSize]byte) int {
+func uniformsOf(m Material, dst *[matUniformMax]byte) int {
 	switch x := m.(type) {
 	case *UnlitMaterial:
 		return surfaceUniforms(&x.surfaceMaterial, dst)
 	case *PhongMaterial:
 		return surfaceUniforms(&x.surfaceMaterial, dst)
+	case *PBRMaterial:
+		return pbrUniforms(x, dst)
 	case *LineMaterial:
 		return lineUniforms(x.color, x.width, x.dashes, &x.stipple, x.pull, dst)
 	case *PointMaterial:
@@ -607,7 +692,7 @@ func uniformsOf(m Material, dst *[lineUniformSize]byte) int {
 }
 
 // surfaceUniforms writes the data of a material of triangles.
-func surfaceUniforms(m *surfaceMaterial, dst *[lineUniformSize]byte) int {
+func surfaceUniforms(m *surfaceMaterial, dst *[matUniformMax]byte) int {
 	b := dst[:]
 	putColor(b, 0, m.color)
 	spec := m.specular
@@ -625,7 +710,7 @@ func surfaceUniforms(m *surfaceMaterial, dst *[lineUniformSize]byte) int {
 
 // lineUniforms writes the data of a line material: the color, the width, the number and the sum of the dash lengths, the
 // pull towards the camera, and the pattern.
-func lineUniforms(c ui.Color, width float64, dashes int, pattern *[maxStipple]float64, pull float32, dst *[lineUniformSize]byte) int {
+func lineUniforms(c ui.Color, width float64, dashes int, pattern *[maxStipple]float64, pull float32, dst *[matUniformMax]byte) int {
 	b := dst[:]
 	sum := 0.0
 	for i := 0; i < dashes; i++ {
@@ -667,15 +752,23 @@ func (r *Renderer) refreshMaterial(g *matGPU, m Material, pipe *gpu.RenderPipeli
 	if g.group != nil && g.version == m.core().version {
 		return // nothing changed since the last frame
 	}
-	var data [lineUniformSize]byte
+	var data [matUniformMax]byte
 	size := uniformsOf(m, &data)
 	var tex *gpu.Texture
+	var texs [pbrSlots]*gpu.Texture
+	var samps [pbrSlots]*gpu.Sampler
+	pm, _ := m.(*PBRMaterial)
 	if s := surfaceOf(m); s != nil {
 		tex = s.texture
 	}
+	if pm != nil {
+		for i := range pm.tex {
+			texs[i], samps[i] = pm.tex[i].Texture, pm.tex[i].Sampler
+		}
+	}
 	if g.buf == nil {
 		var err error
-		if g.buf, err = r.dev.NewBuffer(gpu.BufferDesc{Label: "viewport3d material", Size: lineUniformSize, Usage: gpu.BufferUsageUniform | gpu.BufferUsageCopyDst}); err != nil {
+		if g.buf, err = r.dev.NewBuffer(gpu.BufferDesc{Label: "viewport3d material", Size: matUniformMax, Usage: gpu.BufferUsageUniform | gpu.BufferUsageCopyDst}); err != nil {
 			slog.Error("viewport3d: a material could not be made", "err", err)
 			return
 		}
@@ -684,13 +777,26 @@ func (r *Renderer) refreshMaterial(g *matGPU, m Material, pipe *gpu.RenderPipeli
 		r.dev.Queue().WriteBuffer(g.buf, 0, data[:])
 		g.bytes = data
 	}
-	if g.group == nil || g.texture != tex {
+	if g.group == nil || g.texture != tex || g.texs != texs || g.samps != samps {
 		if g.group != nil {
 			g.group.Release()
 			g.group = nil
 		}
 		entries := []gpu.BindGroupEntry{{Binding: 0, Buffer: g.buf, Size: size}}
-		if surfaceOf(m) != nil {
+		switch {
+		case pm != nil:
+			for i := range texs {
+				view := r.white.View()
+				if texs[i] != nil {
+					view = texs[i].View()
+				}
+				smp := r.sampler
+				if samps[i] != nil {
+					smp = samps[i]
+				}
+				entries = append(entries, gpu.BindGroupEntry{Binding: 1 + i, TextureView: view}, gpu.BindGroupEntry{Binding: 1 + pbrSlots + i, Sampler: smp})
+			}
+		case surfaceOf(m) != nil:
 			view := r.white.View()
 			if tex != nil {
 				view = tex.View()
@@ -702,7 +808,7 @@ func (r *Renderer) refreshMaterial(g *matGPU, m Material, pipe *gpu.RenderPipeli
 			slog.Error("viewport3d: a material could not be made", "err", err)
 			return
 		}
-		g.group, g.texture, g.pipe = group, tex, pipe
+		g.group, g.texture, g.texs, g.samps, g.pipe = group, tex, texs, samps, pipe
 	}
 	g.version = m.core().version
 }
