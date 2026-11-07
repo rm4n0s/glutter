@@ -48,9 +48,25 @@ func processStart() (time.Time, bool) { return linux.ProcessStart() }
 
 // rendererCandidates are the renderers of Linux in the order auto tries them: vulkan, then gles
 // (SPEC §9.6). A Vulkan whose only device is a CPU (lavapipe) does not count: it is used only
-// when asked for by name, so auto then uses GLES.
+// when asked for by name, so auto then uses GLES. soft, which draws on the CPU into the window's
+// shared memory, is used only when asked for by name.
 func rendererCandidates() []rendererCandidate {
-	return []rendererCandidate{{Name: "vulkan", New: newVulkanRenderer}, {Name: "gles", New: newGLESRenderer}}
+	return []rendererCandidate{
+		{Name: "vulkan", New: newVulkanRenderer},
+		{Name: "gles", New: newGLESRenderer},
+		{Name: "soft", New: newSoftWindowRenderer, Skip: func(*Config) bool { return true }},
+	}
+}
+
+// newSoftWindowRenderer makes the software renderer of the Linux desktop, over the pixel buffers
+// of the windows (Wayland's wl_shm).
+func newSoftWindowRenderer(cfg *Config, log *slog.Logger) renderer {
+	return newSHMRenderer(func(h gpu.SurfaceHandle) (gpu.PixelTarget, bool) {
+		if cfg.pixelTarget == nil {
+			return nil, false
+		}
+		return cfg.pixelTarget(h)
+	}, log)
 }
 
 // newVulkanRenderer makes the explicit renderer over a Vulkan device, which it opens at the

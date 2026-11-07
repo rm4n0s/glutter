@@ -49,7 +49,7 @@ type Config struct {
 	// GLUTTER_BACKEND environment variable.
 	Backend string
 	// Renderer, when not empty, is "auto", or the name of the renderer to use
-	// ("vulkan" or "gles" on Linux, "d3d12" or "soft" on Windows), and overrides the GLUTTER_RENDERER environment
+	// ("vulkan", "gles" or "soft" on Linux, "d3d12" or "soft" on Windows), and overrides the GLUTTER_RENDERER environment
 	// variable. Empty means "auto": the first candidate of the OS that presents its
 	// first frame. A renderer asked for by name never falls back (SPEC §9.6).
 	Renderer string
@@ -114,6 +114,10 @@ type Config struct {
 	// goroutine (a renderer that made its resources again after the GPU took them away).
 	renewSurface func(gpu.SurfaceHandle)
 	redraw       func(gpu.SurfaceHandle)
+	// pixelTarget finds the window that a surface handle names as a gpu.PixelTarget, for the
+	// software renderer of the Linux desktop (SPEC §9.6); Run sets it, and the window must be
+	// of a platform that shows pixels the renderer writes (the Wayland and X11 backends).
+	pixelTarget func(gpu.SurfaceHandle) (gpu.PixelTarget, bool)
 	// post runs a function on the UI thread (the platform's Post), and captured receives a frame that
 	// the renderer read back after its Draw returned (a WebGPU read-back finishes in a later browser
 	// task, SPEC §9.5); Run sets both. webgpuOpen is the explicit device that the web's connectDisplay
@@ -289,7 +293,7 @@ func Run(ctx context.Context, cfg Config) (err error) {
 
 	h := &handler{cfg: &cfg, log: log, conn: conn, shot: shot, cancel: cancel, windows: map[ui.ViewID]*window{},
 		appID: wcfg.AppID, decorations: wcfg.Decorations, runStart: runStart, frameStats: getenv(FrameStatsEnv) == "1"}
-	cfg.renewSurface, cfg.redraw = h.renewSurface, h.redrawWindow
+	cfg.renewSurface, cfg.redraw, cfg.pixelTarget = h.renewSurface, h.redrawWindow, h.pixelTargetOf
 	cfg.post, cfg.captured = conn.Post, h.onCapture
 	h.gpu.log, h.gpu.renderer = log, h.chosenRenderer
 	h.gpu.textures = explicit.NewTextureRegistry()
@@ -803,6 +807,16 @@ func (h *handler) renewSurface(sh gpu.SurfaceHandle) {
 			r.RenewSurface()
 		}
 	}
+}
+
+// pixelTargetOf finds the window of the handle as a gpu.PixelTarget, when its platform has one.
+func (h *handler) pixelTargetOf(sh gpu.SurfaceHandle) (gpu.PixelTarget, bool) {
+	w := h.windowOfSurface(sh)
+	if w == nil {
+		return nil, false
+	}
+	t, ok := w.Window.(gpu.PixelTarget)
+	return t, ok
 }
 
 // redrawWindow asks for a frame of the window of the handle. It may be called from any

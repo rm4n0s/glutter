@@ -122,6 +122,13 @@ func TestDisplayVulkanByNameMayUseTheCPUDevice(t *testing.T) {
 	}
 }
 
+func TestDisplaySoftByNameDrawsIntoSharedMemory(t *testing.T) {
+	line := chosenRenderer(t, map[string]string{"GLUTTER_RENDERER": "soft"})
+	if !strings.Contains(line, "soft: shared memory (wl_shm)") {
+		t.Errorf("the app used %q, want soft over wl_shm", line)
+	}
+}
+
 // lavapipeICD is lavapipe's driver file for the architecture of this test, or "" when
 // it is not installed. A machine with Mesa's 32-bit drivers too has lvp_icd.i686.json,
 // which sorts first and which a 64-bit process cannot load.

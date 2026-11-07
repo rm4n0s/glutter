@@ -133,10 +133,18 @@ type window struct {
 	buffer *shmBuffer   // on display
 	old    []*shmBuffer // replaced, waiting for the compositor to release them
 
-	// The EGL path: the wl_egl_window that the renderer draws into. Zero in
-	// shared-memory mode.
+	// shmFill is whether the window draws a solid color itself, through wl_shm (Options.ShmFill).
+	// Otherwise a renderer draws: through EGL or Vulkan into the surface, or, for the software
+	// renderer, into the buffers of pixelPool (pixels.go).
+	shmFill bool
+	// The EGL path: the wl_egl_window that the renderer draws into. Zero in shared-memory mode, and
+	// when libwayland-egl is not there (Vulkan and the software renderer do not need it).
 	egl       *waylandEGL
 	eglWindow uintptr
+	// pixelPool is the wl_shm buffers of the software renderer, made at its first frame, and
+	// pixelCur the one that AcquirePixels gave and PresentPixels has not shown yet.
+	pixelPool *pixelPool
+	pixelCur  *poolSlot
 
 	// Frame pacing (SPEC §8.11): at most one frame callback is in flight, and a
 	// request that arrives meanwhile waits for it. A suspended window renders
@@ -204,10 +212,12 @@ func (p *Platform) NewWindow(cfg platform.WindowConfig) (platform.Window, error)
 	if !p.opts.ShmFill {
 		var err error
 		if egl, err = loadWaylandEGL(); err != nil {
-			return nil, err
+			// Only the GLES renderer needs it: Vulkan and the software renderer draw without.
+			slog.Default().Debug("libwayland-egl is not available; the window has no EGL native window", "err", err)
+			egl = nil
 		}
 	}
-	w := &window{p: p, id: p.nextView, cfg: cfg, egl: egl}
+	w := &window{p: p, id: p.nextView, cfg: cfg, egl: egl, shmFill: p.opts.ShmFill}
 	p.nextView++
 
 	w.width, w.height = int32(cfg.Size.Width), int32(cfg.Size.Height)
@@ -406,6 +416,7 @@ func (w *window) hide() {
 		w.buffer = nil
 	}
 	w.mapped = false
+	w.pixelCur = nil
 	w.states = WindowStates{}
 	if w.focusReported {
 		w.reportFocus(false) // a window off the screen has no focus
@@ -576,7 +587,7 @@ func (w *window) onSurfaceConfigure(serial uint32) {
 		w.frameRequested = true
 	}
 
-	if w.egl != nil {
+	if !w.shmFill {
 		// The renderer draws into the wl_egl_window, and its swap is the commit.
 		// So resize the native window, acknowledge, and render the new size at
 		// once, without waiting for a frame callback: the first commit after the
@@ -776,10 +787,13 @@ func (w *window) applyScale() {
 	}
 }
 
-// resizeBuffer sizes the wl_egl_window for the logical size and the scale.
+// resizeBuffer sizes the wl_egl_window, when there is one, for the logical size and the scale. The
+// buffers of the software renderer are made at the size of each frame.
 func (w *window) resizeBuffer() {
 	w.applyScale()
-	w.egl.resize(w.eglWindow, w.physW, w.physH, 0, 0)
+	if w.eglWindow != 0 {
+		w.egl.resize(w.eglWindow, w.physW, w.physH, 0, 0)
+	}
 }
 
 // scaleChanged runs when something that decides the scale changed. The window draws
@@ -794,12 +808,12 @@ func (w *window) scaleChanged() {
 	}
 	scale, fractional := w.effectiveScale()
 	if scale == w.scale {
-		if fractional != w.viewportUsed && w.egl != nil {
+		if fractional != w.viewportUsed && !w.shmFill {
 			w.applyScale()
 		}
 		return
 	}
-	if w.egl != nil {
+	if !w.shmFill {
 		w.resizeBuffer()
 		w.reportMetrics()
 		w.renderNow()
@@ -835,12 +849,13 @@ func (w *window) States() WindowStates { return w.states }
 func (w *window) ID() ui.ViewID { return w.id }
 
 // NativeSurface returns the handle for the renderer: the wl_display, the
-// wl_egl_window (for EGL) and the wl_surface (for Vulkan). In shared-memory mode there is nothing to render into, and the
-// handle is empty.
+// wl_egl_window (for EGL, zero when libwayland-egl is missing) and the wl_surface (for Vulkan; the software renderer
+// finds the window by it, and the window is its gpu.PixelTarget). In shared-memory mode there is nothing to render into,
+// and the handle is empty.
 //
 // Flutter: no counterpart
 func (w *window) NativeSurface() gpu.SurfaceHandle {
-	if w.eglWindow == 0 {
+	if w.shmFill {
 		return gpu.SurfaceHandle{}
 	}
 	return gpu.SurfaceHandle{
@@ -903,12 +918,12 @@ func (w *window) onFrameDone() {
 // a frame. When no frame is in flight, the frame is rendered on the next pass of
 // the loop, not inside this call; otherwise it waits for the frame callback of
 // the frame in flight. The handler must present exactly one frame per OnFrame,
-// or no callback arrives and no further frame follows. Shared-memory windows
-// ignore the request.
+// or no callback arrives and no further frame follows. Windows that fill
+// themselves through wl_shm ignore the request.
 //
 // Flutter: no counterpart
 func (w *window) RequestFrame() {
-	if w.closed || w.egl == nil {
+	if w.closed || w.shmFill {
 		return
 	}
 	w.frameRequested = true
@@ -956,7 +971,7 @@ func (w *window) SetSize(size ui.Size) {
 		return
 	}
 	w.width, w.height = width, height
-	if w.egl != nil {
+	if !w.shmFill {
 		if w.configures == 0 || w.hidden || w.remapping {
 			return // the first configure (after a show) draws at this size
 		}
@@ -1100,6 +1115,10 @@ func (w *window) destroy() {
 		}
 	}
 	w.old, w.buffer = nil, nil
+	if w.pixelPool != nil {
+		w.pixelPool.close()
+		w.pixelPool, w.pixelCur = nil, nil
+	}
 	w.freeIconBuffers()
 }
 

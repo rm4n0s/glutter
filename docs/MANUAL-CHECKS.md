@@ -751,3 +751,17 @@ Coin Run (`examples/game3d`) is played with a pad, the keyboard, a locked mouse 
 **In Chrome and Firefox** (`go run ./cmd/glutter-web serve ./examples/game3d`): the same 1 to 5. Does the page play sound after the first click (the browsers' rule), is the delay under 120 ms, and does a click lock the mouse (Esc gives it back, and the game pauses)? Does a pad that you press a button of show up (the browsers report a pad only after a press)?
 
 Answers: _(not yet recorded)_
+
+## 32.1 `soft` on Wayland: `wl_shm`
+
+**Status:** pending
+
+`GLUTTER_RENDERER=soft` draws the app on the CPU into `wl_shm` buffers and redraws only what changed. It is chosen by name only until step 32.3, so run each command with the variable. On a **real Wayland session in a virtual machine with no GPU** (GNOME or KDE under GNOME Boxes, virt-manager or VirtualBox: `glxinfo -B` says `llvmpipe`), from a checkout of Glutter:
+
+1. `GLUTTER_RENDERER=soft go run ./examples/gallery`: does the window open with the same picture as without the variable, and does the log say `renderer chosen renderer="soft: shared memory (wl_shm)"`? Is it as smooth as the same app with `GLUTTER_RENDERER=gles` or smoother (move the mouse over the buttons, scroll the list, switch the pages)?
+2. `GLUTTER_RENDERER=soft go run ./examples/editor`: click in the text and type. Does the caret blink with no flicker or tear, and does the CPU use (`top`) stay low while it blinks and nothing else happens (compare with `GLUTTER_RENDERER=gles`)?
+3. Resize the window by its edge, maximize it and restore it: is every size drawn at once, with no strip of the old picture or of black? Move it to a monitor with another scale, or change the scale in the settings: is the picture sharp at the new scale (a fractional scale included)?
+4. `GLUTTER_RENDERER=soft go run ./examples/multiwindow` (open and close windows) and the tray example (hide the window and show it again): does every window draw, and does a window that is shown again show the whole picture, not the one from before it was hidden?
+5. Does the app, left running for a few minutes, keep its memory flat (`top`, the `RES` column, or `GLUTTER_FRAME_STATS=1`)?
+
+Answers: _(not yet recorded)_

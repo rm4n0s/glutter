@@ -15,8 +15,30 @@ func TestLinuxAutoTriesVulkanThenGLES(t *testing.T) {
 	for _, c := range rendererCandidates() {
 		names = append(names, c.Name)
 	}
-	if got := strings.Join(names, ","); got != "vulkan,gles" {
-		t.Errorf("candidates %q, want vulkan,gles (SPEC §9.6)", got)
+	if got := strings.Join(names, ","); got != "vulkan,gles,soft" {
+		t.Errorf("candidates %q, want vulkan,gles,soft (SPEC §9.6)", got)
+	}
+}
+
+// TestSoftIsUsedOnLinuxByNameOnly checks that auto leaves the software renderer out and a name
+// chooses it (step 32.1; step 32.3 makes auto choose it when there is no GPU).
+func TestSoftIsUsedOnLinuxByNameOnly(t *testing.T) {
+	cfg := &Config{}
+	auto, err := newChooser(cfg, quiet(), "auto", rendererCandidates())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, cand := range auto.cand {
+		if cand.Name == "soft" && !cand.Skip(cfg) {
+			t.Error("auto would try soft")
+		}
+	}
+	named, err := newChooser(cfg, quiet(), "soft", rendererCandidates())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(named.cand) != 1 || named.cand[0].Name != "soft" || !named.named {
+		t.Errorf("candidates of the name soft: %+v, named %v", named.cand, named.named)
 	}
 }
 

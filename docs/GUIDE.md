@@ -1087,7 +1087,9 @@ func main() { _ = newView() }
   takes all the room it is given. A resize makes new targets, so do not keep `f.Color` between frames.
 - **Resources.** Make yours in `OnInit` and release them in `OnDispose`. `OnInit` runs again with the new device
   after a loss, and `OnDispose` runs for the old one first. The app ending runs it too.
-- **Without a GPU.** On the OpenGL ES, WebGL and software renderers the view shows `Fallback`.
+- **Without a GPU.** On the OpenGL ES, WebGL and software renderers the view shows `Fallback`. (On a Linux machine
+  without a GPU, `GLUTTER_RENDERER=soft` draws the whole app on the CPU into the window's shared memory and
+  redraws only what changed, which is much cheaper than OpenGL on llvmpipe; on Wayland from 1.12.)
 - **Input.** The view is an ordinary box: wrap it in `Listener` or `GestureDetector`.
 - **Tests.** With `gluttertest.Opts{GPU: true}` the view draws on the recording device; check what the function encoded.
 

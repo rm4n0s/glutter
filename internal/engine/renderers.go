@@ -15,7 +15,7 @@ import (
 
 // RendererEnv is the environment variable that chooses the renderer, as
 // Config.Renderer does (SPEC §9.6): "auto" (the default), or the name of a renderer.
-// Linux has "vulkan" and "gles"; the web has "webgpu", "webgl" and "soft"; Windows has "d3d12" and "soft".
+// Linux has "vulkan", "gles" and "soft"; the web has "webgpu", "webgl" and "soft"; Windows has "d3d12" and "soft".
 //
 // Flutter: no counterpart
 const RendererEnv = "GLUTTER_RENDERER"
