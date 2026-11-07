@@ -1404,6 +1404,11 @@ func main() {
   `model.Model`: meshes, materials, images and a tree of nodes, as plain Go with no GPU. `viewport3d.Upload` makes the
   meshes, the materials, the textures and the items of it on a device; add the items to a scene and release the result when
   the scene no longer shows them.
+  `gltf.Load(ctx, fsys, name)` reads `.gltf` (its buffers and images from the same directory, or `data:` URIs) and `.glb`
+  files, with materials of the metallic-roughness model and their textures, skins, morph targets, animations (as data),
+  cameras, lights and scenes (`gltf.TagGLTFInvalid`, with the JSON pointer of the failure in `path` and a `reason`;
+  `gltf.TagGLTFExtensionUnsupported` for a required extension that is not read, such as Draco or KTX2). A model that came from
+  glTF has `Material.PBR` set; `Upload` shows its base color until the PBR material of step 31.9.
 
 ```go
 package main

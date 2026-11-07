@@ -1,0 +1,19 @@
+Sample models of Khronos' glTF-Sample-Assets (https://github.com/KhronosGroup/glTF-Sample-Assets), copied unchanged.
+Every model here is licensed Creative Commons Zero v1.0 Universal (public domain), as the "Legal" section of its README says; the line of each follows.
+
+Triangle: &copy; 2017, Public. [Creative Commons Zero v1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/legalcode) - Marco Hutter (https://github.com/javagl/) for Everything
+TriangleWithoutIndices: &copy; 2017, Public. [Creative Commons Zero v1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/legalcode) - Marco Hutter (https://github.com/javagl/) for Everything
+SimpleSkin: &copy; 2017, Public. [Creative Commons Zero v1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/legalcode) - Marco Hutter (https://github.com/javagl/) for Everything
+SimpleMorph: &copy; 2017, Public. [Creative Commons Zero v1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/legalcode) - Marco Hutter (https://github.com/javagl/) for Everything
+AnimatedTriangle: &copy; 2017, Public. [Creative Commons Zero v1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/legalcode) - Marco Hutter (https://github.com/javagl/) for Everything
+MeshoptCubeTest: &copy; 2025, Public. [Creative Commons Zero v1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/legalcode) - Arseny Kapoulkine for Everything
+Cameras: &copy; 2017, Public. [Creative Commons Zero v1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/legalcode) - Marco Hutter (https://github.com/javagl/) for Everything
+TextureTransformTest: &copy; 2018, Microsoft. [Creative Commons Zero v1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/legalcode) - Microsoft for Everything
+InterpolationTest: &copy; 2017, Public. [Creative Commons Zero v1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/legalcode) - Khronos for Everything
+MultipleScenes: &copy; 2017, Public. [Creative Commons Zero v1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/legalcode) - Public for Everything
+MeshPrimitiveModes: &copy; 2023, Public. [Creative Commons Zero v1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/legalcode) - Marco Hutter (https://github.com/javagl/) for Everything
+AnimatedMorphCube: &copy; 2017, Public. [Creative Commons Zero v1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/legalcode) - Microsoft for Everything
+SimpleMeshes: &copy; 2017, Public. [Creative Commons Zero v1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/legalcode) - Marco Hutter (https://github.com/javagl/) for Everything
+BoxVertexColors: &copy; 2023, Public. [Creative Commons Zero v1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/legalcode) - Marco Hutter (https://github.com/javagl/) for Everything
+SimpleTexture: &copy; 2017, Public. [Creative Commons Zero v1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/legalcode) - Marco Hutter (https://github.com/javagl/) for Everything
+SimpleInstancing: &copy; 2023, Public. [Creative Commons Zero v1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/legalcode) - Marco Hutter (https://github.com/javagl/) for Everything

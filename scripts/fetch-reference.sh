@@ -58,6 +58,13 @@ SDL_DIR="$REF/sdl"
 SDL_TAG="release-3.4.20"
 SDL_PATHS=(include src/gpu src/joystick src/audio src/sensor test)
 
+# meshoptimizer (MIT), the reference of the decoder of EXT_meshopt_compression in model/gltf (SPEC §28.5, step 31.8): the vertex and
+# index codecs and the filters, ported to Go in internal/meshopt, with the test vectors of its own tests.
+MESHOPT_URL="https://github.com/zeux/meshoptimizer"
+MESHOPT_DIR="$REF/meshoptimizer"
+MESHOPT_TAG="v1.3"
+MESHOPT_PATHS=(src demo)
+
 MCU_URL="https://github.com/material-foundation/material-color-utilities"
 MCU_DIR="$REF/material-color-utilities"
 MCU_PATHS=(dart)
@@ -161,6 +168,30 @@ ensure_sdl() {
   fi
 }
 
+# write_meshopt_version appends the meshoptimizer lines to reference/VERSION.
+write_meshopt_version() {
+  {
+    echo "meshoptimizer_repository=$MESHOPT_URL"
+    echo "meshoptimizer_tag=$MESHOPT_TAG"
+    echo "meshoptimizer_commit=$(git -C "$MESHOPT_DIR" rev-parse HEAD)"
+    echo "meshoptimizer_date=$(commit_date "$MESHOPT_DIR")"
+  } >>"$VERSION_FILE"
+}
+
+# ensure_meshopt COMMIT clones meshoptimizer at MESHOPT_TAG when it is missing, then pins to COMMIT when one is recorded.
+ensure_meshopt() {
+  local commit="$1"
+  if [[ ! -d "$MESHOPT_DIR/.git" ]]; then
+    log "Cloning $MESHOPT_URL ($MESHOPT_TAG) into $MESHOPT_DIR"
+    clone_sparse "$MESHOPT_URL" "$MESHOPT_DIR" "$MESHOPT_TAG" "${MESHOPT_PATHS[@]}"
+  else
+    git -C "$MESHOPT_DIR" sparse-checkout set "${MESHOPT_PATHS[@]}"
+  fi
+  if [[ -n "$commit" ]]; then
+    pin_commit "$MESHOPT_DIR" "$commit"
+  fi
+}
+
 mkdir -p "$REF"
 
 if [[ -f "$VERSION_FILE" ]]; then
@@ -196,6 +227,12 @@ if [[ -f "$VERSION_FILE" ]]; then
     # An older reference/VERSION: record the pinned SDL 3.
     write_sdl_version
   fi
+  meshopt_commit="$(read_version meshoptimizer_commit)"
+  ensure_meshopt "$meshopt_commit"
+  if [[ -z "$meshopt_commit" ]]; then
+    # An older reference/VERSION: record the pinned meshoptimizer.
+    write_meshopt_version
+  fi
 else
   ensure_repo "$FLUTTER_URL" "$FLUTTER_DIR" "$FLUTTER_BRANCH" "" "${FLUTTER_PATHS[@]}" "${FLUTTER_OPTIONAL_PATHS[@]}"
   ensure_repo "$MCU_URL" "$MCU_DIR" "" "" "${MCU_PATHS[@]}"
@@ -218,6 +255,8 @@ else
   write_svg_version
   ensure_sdl ""
   write_sdl_version
+  ensure_meshopt ""
+  write_meshopt_version
 fi
 
 # Every sparse path must exist; Flutter reorganizes its repository sometimes.
@@ -248,6 +287,12 @@ done
 for p in "${SDL_PATHS[@]}" LICENSE.txt; do
   if [[ ! -e "$SDL_DIR/$p" ]]; then
     log "error: missing in reference/sdl: $p"
+    missing=1
+  fi
+done
+for p in "${MESHOPT_PATHS[@]}" LICENSE.md; do
+  if [[ ! -e "$MESHOPT_DIR/$p" ]]; then
+    log "error: missing in reference/meshoptimizer: $p"
     missing=1
   fi
 done

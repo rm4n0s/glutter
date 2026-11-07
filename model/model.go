@@ -1,6 +1,7 @@
-// Package model is the plain Go data of a 3D model that a loader reads from a file (SPEC §27.9): meshes, materials, images and a
-// tree of nodes with float64 transforms. It has no GPU and no window, so a test can check it as it is. The loaders are in
-// model/stl and model/obj, and viewport3d.Upload makes the meshes, the materials and the items of a scene from it.
+// Package model is the plain Go data of a 3D model that a loader reads from a file (SPEC §27.9, §28.5): meshes, materials, textures,
+// images and a tree of nodes with float64 transforms, and for the formats that have them skins, morph targets, animations, cameras,
+// lights and scenes (as data: viewport3d plays them). It has no GPU and no window, so a test can check it as it is. The loaders are
+// in model/stl, model/obj and model/gltf, and viewport3d.Upload makes the meshes, the materials and the items of a scene from it.
 package model
 
 import (
@@ -51,10 +52,24 @@ type Mesh struct {
 	Positions64 []float64
 	// Normals are x, y and z of each vertex, of length 1; nil when the file has none (the renderer shades flat).
 	Normals []float32
+	// Tangents are x, y, z and w of each vertex: the direction of the u axis of the texture and the sign of the bitangent (w is 1 or
+	// -1); nil when the file has none (a normal texture then needs them made).
+	Tangents []float32
 	// TexCoords are u and v of each vertex; nil when the file has none.
 	TexCoords []float32
+	// TexCoords1 are the second set of u and v of each vertex (glTF's TEXCOORD_1); nil when the file has none.
+	TexCoords1 []float32
 	// Colors are red, green, blue and alpha of each vertex, not premultiplied; nil when the file has none.
 	Colors []byte
+	// Joints are the four joints of each vertex that move it, as positions in Skin.Joints of the node that has the mesh (glTF's
+	// JOINTS_0), and Weights the four weights of those joints (WEIGHTS_0), which add up to 1; both nil for a mesh that is not
+	// skinned. Further sets of four (JOINTS_1) are left out by the loaders, with a note.
+	Joints  []uint16
+	Weights []float32
+	// MorphTargets are the shapes that the mesh moves towards; MorphWeights are the weights that they have at rest, one for each
+	// (nil is all 0). A node's MorphWeights replace them.
+	MorphTargets []MorphTarget
+	MorphWeights []float32
 	// Indices are the vertices of the primitives: 3, 2 or 1 for each, by Primitive.
 	Indices []uint32
 	// Material is the material of the mesh, or nil for the default.
@@ -138,15 +153,32 @@ type Material struct {
 	// BaseColor is the color, red, green, blue and alpha from 0 to 1, not premultiplied. The zero value (all four 0) stands for the
 	// default, an opaque light gray; use Color to read it.
 	BaseColor [4]float32
-	// BaseColorImage is the image that the color is multiplied by, or nil.
+	// BaseColorImage is the image that the color is multiplied by, or nil. A loader that gives BaseColorTexture sets this to its image
+	// too, for the renderers that do not read textures with samplers.
 	BaseColorImage *Image
 	// Specular is the color of the highlight (the Ks of an MTL file) and Shininess its exponent (the Ns).
 	Specular  [3]float32
 	Shininess float32
-	// Metallic and Roughness are the metallic-roughness values of a physically based material (from glTF, §28.5), from 0 to 1.
+	// PBR is true for a material of the metallic-roughness model (from glTF, §28.5), which a loader fills in full: Metallic and
+	// Roughness, the factors, and the textures. It is false for the Phong materials of the other loaders, which have Specular and
+	// Shininess.
+	PBR bool
+	// Metallic and Roughness are the metallic-roughness values of a physically based material, from 0 to 1. glTF's defaults are 1
+	// and 1, which its loader sets: the zero values here are values like the others.
 	Metallic, Roughness float32
-	// Emissive is the color that the material gives out.
+	// Emissive is the color that the material gives out, with the strength of KHR_materials_emissive_strength multiplied in (so it
+	// may be above 1).
 	Emissive [3]float32
+	// Unlit says that the material is not lit: its color is the pixel's (KHR_materials_unlit).
+	Unlit bool
+	// BaseColorTexture multiplies BaseColor (and the vertex colors) in sRGB, and MetallicRoughnessTexture has the roughness in its
+	// green channel and the metalness in its blue one, multiplied by Roughness and Metallic. NormalTexture has tangent space
+	// normals, scaled by NormalScale; OcclusionTexture has the occlusion in its red channel, blended by OcclusionStrength; and
+	// EmissiveTexture multiplies Emissive in sRGB. Each is nil for none.
+	BaseColorTexture, MetallicRoughnessTexture, NormalTexture, OcclusionTexture, EmissiveTexture *TextureRef
+	// NormalScale is the scale of the x and y of the normals of NormalTexture, and OcclusionStrength the strength of the
+	// occlusion; glTF's defaults are 1 and 1, which its loader sets.
+	NormalScale, OcclusionStrength float32
 	// AlphaMode and AlphaCutoff say how the alpha is used.
 	AlphaMode   AlphaMode
 	AlphaCutoff float32
@@ -159,11 +191,11 @@ type Material struct {
 // Flutter: no counterpart
 var DefaultColor = [4]float32{0.78, 0.8, 0.82, 1}
 
-// Color is the base color, or the default when the material has none (all four numbers 0).
+// Color is the base color, or the default when the material has none (all four numbers 0; a PBR material always has its own).
 //
 // Flutter: no counterpart
 func (m *Material) Color() [4]float32 {
-	if m == nil || m.BaseColor == ([4]float32{}) {
+	if m == nil || (!m.PBR && m.BaseColor == ([4]float32{})) {
 		return DefaultColor
 	}
 	return m.BaseColor
@@ -196,6 +228,16 @@ type Node struct {
 	Meshes []*Mesh
 	// Children are nodes in the coordinates of this one.
 	Children []*Node
+	// TRS is the transform as a translation, a rotation and a scale when the file gave it so (it is what animations change), and
+	// Transform is its matrix; nil for a node whose file gave a matrix (animations do not change those).
+	TRS *TRS
+	// Skin is the skeleton that moves the vertices of the node's meshes, or nil.
+	Skin *Skin
+	// Camera and Light are the camera and the light that the node carries, or nil. They look along the -z of the node.
+	Camera *Camera
+	Light  *Light
+	// MorphWeights are the weights of the morph targets of the node's meshes, or nil to use those of each mesh.
+	MorphWeights []float32
 }
 
 // NewNode makes a node with the identity transform.
@@ -219,12 +261,23 @@ type Units struct {
 type Model struct {
 	// Name is the name in the file, or empty.
 	Name string
-	// Nodes are the top of the tree.
+	// Nodes are the top of the tree: the nodes of the default scene.
 	Nodes []*Node
-	// Meshes, Materials and Images are every one of the model, each once; the nodes and the meshes point to them.
+	// Meshes, Materials, Textures and Images are every one of the model, each once; the nodes and the meshes point to them. A mesh of
+	// a glTF file is one Mesh for each of its primitives.
 	Meshes    []*Mesh
 	Materials []*Material
+	Textures  []*Texture
 	Images    []*Image
+	// Skins, Cameras and Lights are every one of the model, and Animations are its animations (glTF, §28.5).
+	Skins      []*Skin
+	Cameras    []*Camera
+	Lights     []*Light
+	Animations []*Animation
+	// Scenes are the scenes of the file, and DefaultScene the one that Nodes is; nil when the file has none (Nodes are then its nodes
+	// that no node has as a child).
+	Scenes       []*Scene
+	DefaultScene *Scene
 	// Units are the units of the positions, when the file says.
 	Units Units
 }

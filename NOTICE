@@ -55,6 +55,16 @@ SDL 3 (zlib)
   Copyright (C) 1997-2026 Sam Lantinga <slouken@libsdl.org>
   License text: third_party/sdl/LICENSE
 
+meshoptimizer (MIT)
+  The decoders of EXT_meshopt_compression in internal/meshopt (vertex buffers,
+  index buffers, index sequences and the vertex filters) are ported from
+  meshoptimizer's src/vertexcodec.cpp, src/indexcodec.cpp and
+  src/vertexfilter.cpp. The code is translated to Go and changed, and each
+  ported file says so and names the meshoptimizer file it comes from.
+  https://github.com/zeux/meshoptimizer
+  Copyright (c) 2016-2026 Arseny Kapoulkine
+  License text: third_party/meshoptimizer/LICENSE
+
 material-color-utilities (Apache-2.0)
   The Material 3 color algorithms are ported from
   https://github.com/material-foundation/material-color-utilities
