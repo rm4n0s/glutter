@@ -1599,8 +1599,7 @@ func main() { _ = newPadView() }
 - **PlayStation, Switch Pro and Bluetooth Xbox pads** have a HID driver on Linux and Windows. It gives what the system's own
   driver does not show: the light, the trigger motors, the touchpad (`Pad.Touchpads()`, `Pad.Touches()` and
   `Pad.AddTouchListener(fn)`: fingers with a position from 0 to 1 and a pressure), the battery (`Pad.Battery()` and
-  `Pad.Power()` also say whether the pad charges or is full) and, for the next version of Glutter's `sensors`, the gyroscope
-  and accelerometer. A pad that cannot be reached this way works as any other pad. **On Linux** that means the user must be
+  `Pad.Power()` also say whether the pad charges or is full) and the gyroscope and accelerometer (`Pad.OpenSensor`, section 22). A pad that cannot be reached this way works as any other pad. **On Linux** that means the user must be
   allowed to open `/dev/hidraw*`; on a desktop the seat's rules may not give hidraw access for every pad, and then the log says
   once (`slog`, Info) that a pad is read through its event device, and a udev rule in
   `/etc/udev/rules.d/71-glutter-gamepads.rules` gives the access:
@@ -1712,6 +1711,73 @@ func main() { _ = &beeper{} }
   plays the audio thread: `Pull(frames, chunk)` runs the callback and returns what would have been heard, `Push(frames)` is
   what a microphone recorded, and `Lose`, `Suspend` and `Unsuspend` change the state. Nothing plays by itself, so a test says
   when and for how long.
+
+## 22. Motion sensors
+
+`sensors.Of(bc)` gives the accelerometer and the gyroscope of a phone, of a browser on a phone, and of a gamepad that has
+them. Flutter has none in its framework (the `sensors_plus` plugin does it); the names here are Glutter's. A reading is three
+numbers on SDL's axes for a device in its natural orientation: x to the right, y up, z out of the screen. The accelerometer
+reads in m/s² **with gravity**, so a phone that lies flat on its back reads about 9.8 on z; the gyroscope reads in rad/s,
+counterclockwise as seen from the positive end of an axis.
+
+```go
+package main
+
+import (
+	"context"
+
+	m "github.com/rm4n0s/glutter/material"
+	"github.com/rm4n0s/glutter/sensors"
+)
+
+type tilt struct {
+	gravity [3]float64
+}
+
+// start opens the accelerometer; update is called on the UI thread, once a frame, with the newest reading.
+func (t *tilt) start(bc m.BuildContext, update func()) {
+	sys := sensors.Of(bc)
+	if !sys.Has(sensors.Accelerometer) {
+		return // a desktop, or a phone without one
+	}
+	// Open may wait for the user (a browser on iOS asks), so it is not called on the UI goroutine.
+	go func() {
+		accel, err := sys.Open(context.Background(), sensors.Accelerometer, sensors.Opts{Rate: 60})
+		if err != nil {
+			return // sensors: SensorUnavailable, SensorPermissionDenied, SensorOpenFailed
+		}
+		accel.AddListener(func(batch []sensors.Reading) {
+			t.gravity = batch[len(batch)-1].Values // all the readings since the last frame, oldest first
+			update()
+		})
+	}()
+}
+
+func main() { _ = &tilt{} }
+```
+
+- **Batches.** The listeners of a sensor are called once a frame, on the UI thread, with every reading that came since the last
+  frame (oldest first; the slice is yours only during the call). A sensor at 200 readings a second on a 60 Hz screen gives about
+  3 or 4 readings to each call; `Latest()` gives the newest reading at once, from any goroutine. A sensor with no listener makes
+  no frames. While the app is hidden no frame runs, and the sensor keeps the newest 4096 readings (`Dropped()` counts the rest).
+- **Rate.** `Opts.Rate` is the readings a second that you would like; the default is 60 (or the sensor's slowest allowed rate).
+  `Sensor.Rate()` is what the sensor was set to, and 0 where the system does not say (a browser). Android 12 and later give an
+  app at most 200 Hz unless its manifest has `HIGH_SAMPLING_RATE_SENSORS` (`glutter-android build -permission
+  android.permission.HIGH_SAMPLING_RATE_SENSORS`).
+- **Errors.** `Open` fails with `SensorUnavailable` (`platform.TagSensorUnavailable`: the desktop, a device without the sensor,
+  a page that is not served over https or from localhost), `SensorPermissionDenied` (the user refused) or `SensorOpenFailed`.
+  `Has(kind)` is false where the device has no such sensor; a browser cannot know before its first reading and says yes.
+- **On the web** the browser sends `devicemotion` events at its own rate. Safari on iOS asks the user first, and only in the
+  answer to a tap: the first `Open` waits for the first click or touch, asks, and goes on with the answer; Chrome and Firefox ask
+  nothing. A phone's browser vibrates for `HapticFeedback` (`navigator.vibrate`, 5 to 50 ms for the five kinds); a desktop's
+  does nothing.
+- **A gamepad's sensors** are the same type: `pad.OpenSensor(sensors.Gyroscope)` turns the pad's sensors on (they cost battery,
+  so a pad reports them only while one is open) and returns a `*sensors.Sensor`; closing the last one turns them off. Call
+  both on the UI thread. It fails with `GamepadSensorsUnavailable` for a pad that has none.
+- **Tests.** `gluttertest` has `tester.Sensors()`: `SetAvailable`, `SetDenied` and `FailOpen`, and the sensors that the app
+  opened (`Open(kind)` gives a `TestSensor` with `Send` and `SendValues`). The readings reach the listeners in the next
+  `Pump`. For a pad, `PadSpec{Sensors: true}` and `TestPad.Sensor(kind, x, y, z)`. On the Android emulator the virtual sensors
+  are set with `adb emu sensor set acceleration 0:9.81:0` and `adb emu sensor set gyroscope 1:0:0`.
 
 ## For Flutter web developers
 

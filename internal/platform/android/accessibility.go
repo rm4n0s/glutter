@@ -88,9 +88,10 @@ func (a *accessibility) isClosed() bool {
 //
 // Flutter: no counterpart
 type services struct {
-	a     *accessibility
-	pads  *padService
-	audio platform.Audio
+	a       *accessibility
+	pads    *padService
+	audio   platform.Audio
+	sensors platform.Sensors
 }
 
 var _ platform.Services = services{}
@@ -108,6 +109,9 @@ func (s services) Gamepads() platform.Gamepads {
 
 // Audio implements platform.Services: AAudio (SPEC §28.3), nil where there is none.
 func (s services) Audio() platform.Audio { return s.audio }
+
+// Sensors implements platform.Services: the sensor manager of the NDK (SPEC §28.4), nil where there is none.
+func (s services) Sensors() platform.Sensors { return s.sensors }
 
 // Start gives the bridge the host, and tells it at once whether a screen reader runs. The bridge
 // stops when ctx ends or Close is called. Unlike the desktops, Android has no service to wait

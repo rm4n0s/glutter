@@ -284,13 +284,6 @@ func (a *webAudio) moduleSettled(state moduleState, reason string) {
 	}
 }
 
-// moduleIs is the state of the module.
-func (a *webAudio) moduleIs() moduleState {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	return a.module
-}
-
 // Devices lists the devices of a kind: the browser's list (which it gives only asynchronously, and without names before the user
 // allowed a microphone), or the default device.
 //

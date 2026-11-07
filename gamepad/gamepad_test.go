@@ -12,7 +12,9 @@ import (
 	"github.com/rm4n0s/glutter/gluttertest"
 	"github.com/rm4n0s/glutter/internal/gamepaddb"
 	"github.com/rm4n0s/glutter/internal/pads"
+	"github.com/rm4n0s/glutter/internal/platform"
 	"github.com/rm4n0s/glutter/material"
+	"github.com/rm4n0s/glutter/sensors"
 	"github.com/rm4n0s/glutter/services"
 	"github.com/rm4n0s/glutter/ui"
 	"github.com/rm4n0s/glutter/widgets"
@@ -560,5 +562,64 @@ func TestTheTriggersAreKeysFromHalfTheirTravel(t *testing.T) {
 	}
 	if !reflect.DeepEqual(keys, want) {
 		t.Errorf("keys = %q, want %q", keys, want)
+	}
+}
+
+func TestAPadsSensorsAreSensorsOfTheSensorsPackage(t *testing.T) {
+	ts, pads := app(t)
+	pad := ts.ConnectPad(gluttertest.PadSpec{Name: "Motion", Sensors: true})
+	plain := ts.ConnectPad(gluttertest.PadSpec{Name: "Plain"})
+	p, q := pads.Pads()[0], pads.Pads()[1]
+	if !p.HasSensors() || p.SensorRate() != 250 || q.HasSensors() {
+		t.Fatalf("HasSensors = %v and %v, rate %v", p.HasSensors(), q.HasSensors(), p.SensorRate())
+	}
+	_ = plain
+
+	if _, err := q.OpenSensor(sensors.Gyroscope); err == nil {
+		t.Fatal("a pad with no sensors opened one")
+	} else if appErr, ok := errors.FromError(err); !ok || appErr.Tag != platform.TagGamepadSensorsUnavailable {
+		t.Fatalf("OpenSensor of a plain pad: %v", err)
+	}
+
+	gyro, err := p.OpenSensor(sensors.Gyroscope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !pad.SensorsOn() || gyro.Kind() != sensors.Gyroscope || gyro.Rate() != 250 {
+		t.Errorf("sensors on %v, kind %v, rate %v", pad.SensorsOn(), gyro.Kind(), gyro.Rate())
+	}
+	accel, err := p.OpenSensor(sensors.Accelerometer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var gyroGot, accelGot []sensors.Reading
+	gyro.AddListener(func(r []sensors.Reading) { gyroGot = append(gyroGot, r...) })
+	accel.AddListener(func(r []sensors.Reading) { accelGot = append(accelGot, r...) })
+
+	pad.Sensor(sensors.Gyroscope, 0.5, -1, 2)
+	pad.Sensor(sensors.Accelerometer, 0, 0, 9.8)
+	pad.Sensor(sensors.Gyroscope, 1, 1, 1)
+	ts.Pump(16 * time.Millisecond)
+	if len(gyroGot) != 2 || len(accelGot) != 1 {
+		t.Fatalf("the gyroscope got %d readings and the accelerometer %d, want 2 and 1", len(gyroGot), len(accelGot))
+	}
+	if gyroGot[0].Values != [3]float64{0.5, -1, 2} || accelGot[0].Values != [3]float64{0, 0, float64(float32(9.8))} {
+		t.Errorf("values %v and %v", gyroGot[0].Values, accelGot[0].Values)
+	}
+	if r, ok := gyro.Latest(); !ok || r.Values != [3]float64{1, 1, 1} {
+		t.Errorf("Latest = %v, %v", r, ok)
+	}
+
+	// The pad's sensors stay on while one is open, and go off with the last.
+	if err := gyro.Close(); err != nil || !pad.SensorsOn() {
+		t.Errorf("after the first Close: %v, sensors on %v", err, pad.SensorsOn())
+	}
+	if err := accel.Close(); err != nil || pad.SensorsOn() {
+		t.Errorf("after the last Close: %v, sensors on %v", err, pad.SensorsOn())
+	}
+	pad.Sensor(sensors.Gyroscope, 3, 3, 3)
+	ts.Pump(16 * time.Millisecond)
+	if len(gyroGot) != 2 {
+		t.Error("a closed sensor of a pad was called")
 	}
 }

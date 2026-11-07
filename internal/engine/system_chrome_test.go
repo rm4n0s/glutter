@@ -58,3 +58,27 @@ func TestSystemChromeGoesToTheWindowThatCanDoIt(t *testing.T) {
 		t.Errorf("the window was asked %v, want %v", got, want)
 	}
 }
+
+// vibratingWindow is a window that can only vibrate, as the web's: it controls nothing else of the system's interface.
+type vibratingWindow struct {
+	platform.Window
+	kinds []ui.HapticFeedbackKind
+}
+
+func (w *vibratingWindow) PerformHapticFeedback(k ui.HapticFeedbackKind) {
+	w.kinds = append(w.kinds, k)
+}
+
+// TestHapticFeedbackNeedsOnlyAWindowThatVibrates: the haptics of a window that has no other control of the system's bars (the
+// web's navigator.vibrate) are reached, and the other calls of the dispatcher still do nothing for it (SPEC §28.4, step 31.7).
+func TestHapticFeedbackNeedsOnlyAWindowThatVibrates(t *testing.T) {
+	e := newWindowsEngine(t)
+	w := &vibratingWindow{Window: e.h.windowOf(ui.ImplicitViewID).Window}
+	e.h.windowOf(ui.ImplicitViewID).Window = w
+	e.d.PerformHapticFeedback(ui.HapticFeedbackHeavyImpact)
+	e.d.PerformHapticFeedback(ui.HapticFeedbackLightImpact)
+	e.d.SetPreferredOrientations([]ui.DeviceOrientation{ui.DeviceOrientationPortraitUp}) // nothing, and no panic
+	if want := []ui.HapticFeedbackKind{ui.HapticFeedbackHeavyImpact, ui.HapticFeedbackLightImpact}; !reflect.DeepEqual(w.kinds, want) {
+		t.Errorf("the window vibrated for %v, want %v", w.kinds, want)
+	}
+}

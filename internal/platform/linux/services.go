@@ -69,6 +69,9 @@ func (s *Services) Audio() platform.Audio {
 	return s.audio
 }
 
+// Sensors returns nil: the Linux desktop has no motion sensors service (SPEC §28.4); a pad's sensors are the gamepad service's.
+func (s *Services) Sensors() platform.Sensors { return nil }
+
 // bridgeAdapter gives the bridge the types of the platform interface.
 type bridgeAdapter struct{ *atspi.Bridge }
 

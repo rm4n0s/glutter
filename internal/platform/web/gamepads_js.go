@@ -243,10 +243,11 @@ func (s *padService) SetLED(id platform.PadID, r, g, b uint8) error {
 	return errors.New(platform.TagGamepadLEDUnavailable, "the browser cannot set the light of a pad", "pad", int64(id))
 }
 
-// webServices is the platform.Services of the web: the gamepads and the audio.
+// webServices is the platform.Services of the web: the gamepads, the audio and the motion sensors.
 type webServices struct {
-	pads  platform.Gamepads
-	audio platform.Audio
+	pads    platform.Gamepads
+	audio   platform.Audio
+	sensors platform.Sensors
 }
 
 var _ platform.Services = webServices{}
@@ -259,6 +260,9 @@ func (s webServices) Gamepads() platform.Gamepads { return s.pads }
 
 // Audio implements platform.Services: the audio worklet (audio_js.go).
 func (s webServices) Audio() platform.Audio { return s.audio }
+
+// Sensors implements platform.Services: DeviceMotionEvent (sensors_js.go).
+func (s webServices) Sensors() platform.Sensors { return s.sensors }
 
 // tagWebRumbleFailed is the tag of the error of a rumble that the browser refused (rm4n0s/errors, R5).
 const tagWebRumbleFailed = "WebRumbleFailed"

@@ -7,6 +7,7 @@ import (
 	"github.com/rm4n0s/glutter/internal/gamepaddb"
 	"github.com/rm4n0s/glutter/internal/pads"
 	"github.com/rm4n0s/glutter/internal/platform"
+	"github.com/rm4n0s/glutter/sensors"
 	"github.com/rm4n0s/glutter/ui"
 )
 
@@ -32,6 +33,9 @@ type PadSpec struct {
 	Rumble, RumbleTriggers, LED bool
 	// Touchpads is the number of touchpads of the pad; TestPad.Touch moves fingers on them.
 	Touchpads int
+	// Sensors gives the pad a gyroscope and an accelerometer at 250 readings a second; TestPad.Sensor makes readings arrive, and
+	// the app gets them while one of the pad's sensors is open (Pad.OpenSensor).
+	Sensors bool
 }
 
 // PadRumble is a request that the app made to a test pad to rumble or to set its light.
@@ -76,10 +80,15 @@ func (t *Tester) ConnectPad(spec ...PadSpec) *TestPad {
 	if s.GUID == "" {
 		guid = gamepaddb.NewGUIDForName(s.Name)
 	}
+	var sensorRate float32
+	if s.Sensors {
+		sensorRate = 250
+	}
 	raw := s.Axes > 0 || s.Buttons > 0 || s.Hats > 0 || s.Mapping != ""
 	info := platform.PadInfo{
 		Name: s.Name, GUID: guid, Axes: s.Axes, Buttons: s.Buttons, Hats: s.Hats, Mapping: s.Mapping, Standard: !raw,
 		Rumble: s.Rumble, RumbleTriggers: s.RumbleTriggers, LED: s.LED, Battery: -1, Touchpads: s.Touchpads,
+		Sensors: s.Sensors, SensorRate: sensorRate,
 	}
 	p := &TestPad{t: t, raw: raw, spec: s}
 	p.id = t.padsvc.Connect(info)
@@ -213,6 +222,26 @@ func (p *TestPad) Touch(touchpad, finger int, down bool, x, y float64) {
 	p.t.padsvc.SendTouch(platform.PadTouch{Pad: p.id, Time: p.t.Elapsed(), Touchpad: touchpad, Finger: finger, Down: down, X: float32(x), Y: float32(y), Pressure: pressure})
 	p.t.host.RunPosted()
 }
+
+// Sensor makes a reading of one of the pad's sensors arrive: the gyroscope in rad/s or the accelerometer in m/s², on the pad's axes. The
+// app gets it only while a sensor of the pad is open.
+//
+// Flutter: no counterpart
+func (p *TestPad) Sensor(kind sensors.Kind, x, y, z float64) {
+	p.t.adopt()
+	k := platform.PadGyroscope
+	if kind == sensors.Accelerometer {
+		k = platform.PadAccelerometer
+	}
+	now := p.t.Elapsed()
+	p.t.padsvc.SendSensor(platform.PadSensor{Pad: p.id, Time: now, SensorTime: now, Kind: k, Values: [3]float32{float32(x), float32(y), float32(z)}})
+	p.t.host.RunPosted()
+}
+
+// SensorsOn says whether the app has turned the pad's sensors on.
+//
+// Flutter: no counterpart
+func (p *TestPad) SensorsOn() bool { return p.t.padsvc.SensorsOn(p.id) }
 
 // SetBattery makes the pad report its battery: the charge from 0 to 1, and whether it is being charged.
 //

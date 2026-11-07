@@ -86,6 +86,7 @@ func TestMain(m *testing.M) {
 	cleanupDesktopSite()
 	cleanupPadSite()
 	cleanupAudioSite()
+	cleanupSensorSite()
 	os.Exit(code)
 }
 

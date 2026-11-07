@@ -48,6 +48,8 @@ type Platform struct {
 	pads *padService
 	// audio is the audio service, made by the first call of Services (audio.go).
 	audio audioState
+	// sensors is the motion sensors service, made by the first call of Services (sensors.go).
+	sensors sensorState
 	// lock is the pointer lock, or nil; mouseX and mouseY are where the mouse was last seen, in physical
 	// pixels, when mouseSeen (pointerlock.go).
 	lock           *pointerLock
@@ -235,7 +237,7 @@ func (p *Platform) settingsChanged() {
 //
 // Flutter: no counterpart
 func (p *Platform) Services() platform.Services {
-	return services{a: p.a11y, pads: p.pads, audio: p.audioService()}
+	return services{a: p.a11y, pads: p.pads, audio: p.audioService(), sensors: p.sensorService()}
 }
 
 // Close releases the platform. The host belongs to the process, so there is nothing to release.
@@ -243,6 +245,7 @@ func (p *Platform) Services() platform.Services {
 // Flutter: no counterpart
 func (p *Platform) Close() error {
 	p.closeAudio()
+	p.closeSensors()
 	return nil
 }
 

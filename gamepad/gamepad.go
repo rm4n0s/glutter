@@ -22,6 +22,7 @@ import (
 	"github.com/rm4n0s/glutter/internal/gamepaddb"
 	"github.com/rm4n0s/glutter/internal/pads"
 	"github.com/rm4n0s/glutter/internal/platform"
+	"github.com/rm4n0s/glutter/sensors"
 	"github.com/rm4n0s/glutter/ui"
 	"github.com/rm4n0s/glutter/widgets"
 )
@@ -438,6 +439,10 @@ type Battery struct {
 // Flutter: no counterpart
 type Pad struct {
 	p *pads.Pad
+	b *widgets.WidgetsBinding
+	// sensorUsers is how many of the pad's sensors that OpenSensor made are open; the pad's sensors are on while there is one. The
+	// UI thread alone touches it.
+	sensorUsers int
 }
 
 // ID is the platform's number of the pad.
@@ -602,6 +607,52 @@ func (p *Pad) SetLED(c ui.Color) error {
 	return p.p.SetLED(uint8(c.R*255+0.5), uint8(c.G*255+0.5), uint8(c.B*255+0.5))
 }
 
+// HasSensors says whether the pad has a gyroscope and an accelerometer (the PlayStation pads and the Switch Pro controller do, when
+// the system lets the app read them: SPEC §28.2).
+//
+// Flutter: no counterpart
+func (p *Pad) HasSensors() bool { return p.p.HasSensors() }
+
+// SensorRate is how many readings a second each sensor of the pad makes, or 0 when the pad does not say.
+//
+// Flutter: no counterpart
+func (p *Pad) SensorRate() float64 { return float64(p.p.SensorRate()) }
+
+// OpenSensor opens one of the pad's sensors as a sensors.Sensor, with the axes of the pad lying flat with its sticks up (x to the
+// right, y up, z out of its face) in m/s² and rad/s. The pad reports its sensors only while one is open, which saves its battery.
+// It fails with GamepadSensorsUnavailable (platform.TagGamepadSensorsUnavailable) when the pad has none or the system cannot turn them
+// on. Call it, and Close of the sensor, on the UI thread.
+//
+// Flutter: no counterpart
+func (p *Pad) OpenSensor(kind sensors.Kind) (*sensors.Sensor, error) {
+	if p.sensorUsers == 0 {
+		if err := p.p.EnableSensors(true); err != nil {
+			return nil, err
+		}
+	}
+	p.sensorUsers++
+	want := platform.PadGyroscope
+	if kind == sensors.Accelerometer {
+		want = platform.PadAccelerometer
+	}
+	var removeListener func()
+	feed := sensors.NewFeed(p.b, kind, float64(p.p.SensorRate()), func() error {
+		removeListener()
+		p.sensorUsers--
+		if p.sensorUsers == 0 {
+			return p.p.EnableSensors(false)
+		}
+		return nil
+	})
+	removeListener = p.p.AddSensorListener(func(r pads.SensorReading) {
+		if r.Kind != want {
+			return
+		}
+		feed.Put(sensors.Reading{Timestamp: r.Time, Values: [3]float64{float64(r.Values[0]), float64(r.Values[1]), float64(r.Values[2])}})
+	})
+	return feed.Sensor(), nil
+}
+
 func strength(v float64) uint16 {
 	switch {
 	case v <= 0 || v != v:
@@ -634,6 +685,7 @@ const (
 // Flutter: no counterpart
 type Gamepads struct {
 	foundation.ChangeNotifier
+	b      *widgets.WidgetsBinding
 	m      *pads.Manager
 	byPad  map[*pads.Pad]*Pad
 	remove func()
@@ -652,7 +704,7 @@ func Of(bc widgets.BuildContext) *Gamepads { return ForBinding(widgets.WidgetsBi
 // Flutter: no counterpart
 func ForBinding(b *widgets.WidgetsBinding) *Gamepads {
 	return b.Extension(gamepadsKey{}, func() any {
-		g := &Gamepads{byPad: map[*pads.Pad]*Pad{}}
+		g := &Gamepads{b: b, byPad: map[*pads.Pad]*Pad{}}
 		g.SetErrorReporter(b.ErrorReporter())
 		g.SetUIThread(b.UIThread())
 		var host pads.Host
@@ -694,7 +746,7 @@ func (g *Gamepads) Pads() []*Pad {
 	for i, p := range list {
 		w := g.byPad[p]
 		if w == nil {
-			w = &Pad{p: p}
+			w = &Pad{p: p, b: g.b}
 			g.byPad[p] = w
 		}
 		out[i] = w

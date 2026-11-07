@@ -704,3 +704,30 @@ Answers: _(not yet recorded)_
 12. In the browser's console: is `crossOriginIsolated` true on the served page (and does the sound play the same on a server that sends no such headers)?
 
 Answers: _(not yet recorded)_
+
+## 31.7 Motion sensors and haptics
+
+**Status:** pending
+
+`examples/dev/android-sensors` shows the latest readings of the accelerometer and the gyroscope, logs them twice a second, and has an arrow that points where gravity pulls on the screen. Run it on each of the systems below and record the answers.
+
+**On a phone** (`go run ./cmd/glutter-android run ./examples/dev/android-sensors`):
+
+1. Lay the phone flat on its back: does the accelerometer read about 9.8 on z and about 0 on x and y? Hold it upright: 9.8 on y? On its left side: x about -9.8?
+2. Tilt the phone: does the arrow turn with your hand and stay pointing at the floor? Is it smooth (a reading about every frame), with no jumps?
+3. Turn the phone about its long axis (a quarter turn in a second): does the gyroscope show about 1.5 rad/s on y while you turn, with the right sign (counterclockwise seen from the top of the phone is positive)?
+4. Press Home and come back: do the readings go on, and does the log's `dropped` stay 0 for a few seconds in the app?
+5. The log's `readings` and `frames`: at the default 60 Hz is `readings` about the same as `frames` (one reading to each call)?
+
+**On the web** (`go run ./cmd/glutter-web serve ./examples/dev/android-sensors`, the address it prints opened on a phone: it needs https or `localhost`, so use `adb reverse tcp:PORT tcp:PORT` and open `http://localhost:PORT` in the phone's Chrome, or serve over https):
+
+6. Chrome on Android: do the same numbers as in 1 to 3 appear, with the same signs?
+7. Safari on an iPhone (over https): does the first tap show the system's question, and do the numbers move after "Allow"? Is the sign of the accelerometer the same as on Android (gravity on +z when the phone lies on its back)? Safari has reported the opposite sign in older versions; if it does, say so, the toolkit does not correct it yet.
+8. Firefox on Android: do the numbers appear without a question?
+9. The vibration: tap the page of the example (a heavy impact) and press it long (a light one), in the phone's Chrome and in the app on Android: does the phone vibrate for a moment, and less for the long press?
+
+**A gamepad** (DualSense, DualShock 4 or Switch Pro over Bluetooth on Linux with the hidraw access of the guide):
+
+10. With a small program that calls `pad.OpenSensor(sensors.Gyroscope)` and prints the readings: do the numbers follow the pad when you turn it, at about 250 a second for a DualSense? Does the pad stop reporting (the battery) when the sensor is closed?
+
+Answers: _(not yet recorded)_

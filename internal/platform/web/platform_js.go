@@ -47,6 +47,8 @@ type Platform struct {
 	// pads is the gamepad service (gamepads_js.go), made by the first call of Services, and audio the audio service (audio_js.go).
 	pads  *padService
 	audio *webAudio
+	// sensors is the motion sensors service (sensors_js.go), made by the first call of Services.
+	sensors *webSensors
 	// devEvents is the script of GLUTTER_DEV_EVENTS, in debug builds; devStarted says it was
 	// started.
 	devEvents  []DevEvent
@@ -266,11 +268,11 @@ func (p *Platform) Settings() platform.Settings {
 }
 
 // Services returns the services of the web: the gamepads (SPEC §28.2), nil in a browser without the Gamepad API, and the audio
-// (SPEC §28.3). The web has no other services of the engine yet (SPEC §23.7).
+// (SPEC §28.3) and the motion sensors (SPEC §28.4). The web has no other services of the engine yet (SPEC §23.7).
 //
 // Flutter: no counterpart
 func (p *Platform) Services() platform.Services {
-	return webServices{pads: p.gamepads(), audio: p.audioService()}
+	return webServices{pads: p.gamepads(), audio: p.audioService(), sensors: p.sensorService()}
 }
 
 // Close takes the canvas out of the page and releases the callbacks. The platform is not
@@ -285,6 +287,10 @@ func (p *Platform) Close() error {
 	if p.audio != nil {
 		p.audio.Close()
 		p.audio = nil
+	}
+	if p.sensors != nil {
+		p.sensors.Close()
+		p.sensors = nil
 	}
 	for _, f := range p.funcs {
 		f.Release()

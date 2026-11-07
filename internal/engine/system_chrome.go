@@ -47,7 +47,12 @@ func (h *handler) SetSystemUIChangeCallback(fn func(visible bool)) {
 
 // PerformHapticFeedback gives haptic feedback (ui.SystemChromeHost).
 func (h *handler) PerformHapticFeedback(kind ui.HapticFeedbackKind) {
-	if c := h.systemChrome(); c != nil {
+	w := h.windowOf(ui.ImplicitViewID)
+	if w == nil {
+		return
+	}
+	// A window that can vibrate and nothing else (the web's) is enough: it need not control the system's bars.
+	if c, ok := w.Window.(interface{ PerformHapticFeedback(ui.HapticFeedbackKind) }); ok {
 		c.PerformHapticFeedback(kind)
 	}
 }

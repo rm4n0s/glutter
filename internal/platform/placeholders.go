@@ -12,4 +12,6 @@ type Services interface {
 	Gamepads() Gamepads
 	// Audio returns the audio service (SPEC §28.3), or nil when the platform has none.
 	Audio() Audio
+	// Sensors returns the motion sensors service (SPEC §28.4), or nil when the platform has none.
+	Sensors() Sensors
 }

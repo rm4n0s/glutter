@@ -131,6 +131,7 @@ type services struct {
 	a *Accessibility
 	g *Gamepads
 	u *Audio
+	s *Sensors
 }
 
 func (s services) Accessibility() platform.Accessibility { return s.a }
@@ -138,6 +139,8 @@ func (s services) Accessibility() platform.Accessibility { return s.a }
 func (s services) Gamepads() platform.Gamepads { return s.g }
 
 func (s services) Audio() platform.Audio { return s.u }
+
+func (s services) Sensors() platform.Sensors { return s.s }
 
 // Accessibility is the fake accessibility bridge, which Services gives the engine.
 //

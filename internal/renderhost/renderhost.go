@@ -29,6 +29,8 @@ type Host struct {
 	Pads *pads.Manager
 	// AudioService is the audio service of the fake app, or nil: the host implements platform.AudioHost with it.
 	AudioService platform.Audio
+	// SensorService is the motion sensors service of the fake app, or nil: the host implements platform.SensorsHost with it.
+	SensorService platform.Sensors
 
 	mu     sync.Mutex
 	posted []func()
@@ -484,7 +486,10 @@ func (h *Host) PadManager() *pads.Manager { return h.Pads }
 // Audio implements platform.AudioHost: the audio service of the fake app, nil when the test has none.
 func (h *Host) Audio() platform.Audio { return h.AudioService }
 
-// AddReleaseHook implements platform.AudioHost: fn runs when RunReleaseHooks does, as the engine's runs when the app ends.
+// Sensors implements platform.SensorsHost: the motion sensors service of the fake app, nil when the test has none.
+func (h *Host) Sensors() platform.Sensors { return h.SensorService }
+
+// AddReleaseHook implements platform.AudioHost and platform.SensorsHost: fn runs when RunReleaseHooks does, as the engine's runs when the app ends.
 func (h *Host) AddReleaseHook(fn func()) {
 	h.mu.Lock()
 	h.releaseHooks = append(h.releaseHooks, fn)

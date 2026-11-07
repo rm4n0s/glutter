@@ -140,6 +140,7 @@ type Tester struct {
 	host      *renderhost.Host
 	padsvc    *fake.Gamepads
 	audiosvc  *fake.Audio
+	sensorsvc *fake.Sensors
 	gpu       *GPURecorder
 	d         *ui.PlatformDispatcher
 	start     time.Time
@@ -194,6 +195,8 @@ func New(tb TB, opts ...Opts) *Tester {
 	t.padsvc = fake.NewGamepads(t.host.Post)
 	t.audiosvc = fake.NewAudio()
 	t.host.AudioService = t.audiosvc
+	t.sensorsvc = fake.NewSensors()
+	t.host.SensorService = t.sensorsvc
 	tb.Cleanup(t.host.RunReleaseHooks)
 	t.host.Pads = pads.New(t.padsvc, pads.Opts{Keys: t.padKey})
 	if err := t.host.Pads.Start(); err != nil {
