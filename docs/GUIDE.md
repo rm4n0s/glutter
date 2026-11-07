@@ -1849,6 +1849,129 @@ func main() { _ = &tilt{} }
   `Pump`. For a pad, `PadSpec{Sensors: true}` and `TestPad.Sensor(kind, x, y, z)`. On the Android emulator the virtual sensors
   are set with `adb emu sensor set acceleration 0:9.81:0` and `adb emu sensor set gyroscope 1:0:0`.
 
+## 23. A game, from the pieces
+
+`examples/game3d` (Coin Run) is a small 3D game that uses chapters 18 to 22 together: a skinned character that runs and jumps
+through a glTF level with PBR materials and a shadow, played with a pad, the keyboard, a locked mouse or a phone's touch, with
+music and effects, rumble on a hit and a Material pause menu. Its files: `world.go` (the rules, with no window, no GPU and no
+sound, so a table test plays the game), `stage.go` (the scene, the character and the camera: it shows what the world holds),
+`sound.go`, `assets.go` (what is built into the program) and `main.go` (the page). `internal/genassets` makes the character, the
+level and the sounds from numbers, so they are public domain; a game of yours loads its own files the same way.
+
+The frame is a ticker. A `view` with `Continuous: true` draws at every frame, and the state's ticker plays the game, with the
+time since the last frame (a frame that took long is cut short, so that a window that was dragged does not throw the
+character):
+
+```go
+package main
+
+import (
+	"math"
+
+	"github.com/rm4n0s/glutter/gamepad"
+	m "github.com/rm4n0s/glutter/material"
+	"github.com/rm4n0s/glutter/services"
+	"github.com/rm4n0s/glutter/vecmath"
+	"github.com/rm4n0s/glutter/viewport3d"
+)
+
+type player struct {
+	pads      *gamepad.Gamepads
+	keyboard  *services.HardwareKeyboard
+	list      []*gamepad.Pad // reused, so that a frame allocates nothing
+	pos       vecmath.Vec3
+	character *viewport3d.Uploaded // what viewport3d.Upload made of the character's glTF file
+	run       *viewport3d.Animation
+	pose      *viewport3d.Pose
+	clock     float64
+}
+
+func newPlayer(bc m.BuildContext) *player {
+	b := m.WidgetsBindingOf(bc)
+	return &player{pads: gamepad.ForBinding(b), keyboard: b.Keyboard(), pose: viewport3d.NewPose()}
+}
+
+// frame is called by a ticker once a frame, with the seconds since the last one.
+func (p *player) frame(dt float64) {
+	x, z := 0.0, 0.0
+	if p.keyboard.IsLogicalKeyPressed(services.LogicalKeyboardKeyKeyW) { // the keys that are down now: no key handler to keep
+		z--
+	}
+	if p.keyboard.IsLogicalKeyPressed(services.LogicalKeyboardKeyKeyS) {
+		z++
+	}
+	p.list = p.pads.AppendPads(p.list[:0]) // Pads() makes a slice each time
+	for _, pad := range p.list {
+		st := pad.State()
+		lx, ly := gamepad.ApplyStickDeadZone(st.Axis(gamepad.LeftX), st.Axis(gamepad.LeftY), 0.18)
+		x, z = x+lx, z+ly
+	}
+	p.pos = p.pos.Add(vecmath.Vec3{X: x, Z: z}.Scale(5 * dt))
+	p.clock += dt
+	p.pose.Clear() // a pose keeps what the last animation set
+	p.run.Sample(float32(math.Mod(p.clock, float64(p.run.Duration()))), p.pose)
+	p.character.SetPose(p.pose)
+	p.character.SetTransform(vecmath.NewMat4Translation(p.pos)) // the whole model, in the world
+}
+
+func main() { _ = newPlayer }
+```
+
+- **Input.** The sticks and the held keys are read in the frame; the discrete actions (pause, a menu) are key events, which a pad makes
+  too (chapter 20): Start is `GameButtonStart`, B is `GameButtonB`, the D-pad is the arrows and A activates the focused button, so
+  a Material menu works with a pad and no code of yours. A pad's jump is the press of a button in this frame, not the button's
+  state (a held button is not a second jump). The mouse is locked by a click (`PointerLockOf(bc).Lock(ViewOf(bc))`; chapter 18); the
+  lock ends by itself when the window loses the focus, and then the game pauses. Touch is a `Listener` that tells which half of the
+  view a finger began in: the left one moves, the right one looks.
+- **The model.** `viewport3d.Upload` of a glTF file gives items; `Uploaded.SetTransform` moves the whole model and `SetPose` shows a
+  pose of an animation (chapter 19). The pose of an animation and a jump are the app's choice (the example's `world` picks
+  `idle`, `run`, `jump` or `hit` from what the character does); there are no blend trees. A coin is an item of the level that
+  the game turns and hides.
+- **Sound.** Open the device once and keep it. A looping music is a callback stream (the function that fills `out` runs on the
+  audio thread and touches nothing of the app); an effect is a stream of its own, started again with `Clear` and `Put`:
+
+```go
+package main
+
+import (
+	"context"
+
+	"github.com/rm4n0s/glutter/audio"
+	"github.com/rm4n0s/glutter/audio/wav"
+	m "github.com/rm4n0s/glutter/material"
+)
+
+func startMusic(ctx context.Context, bc m.BuildContext, loop *wav.Audio) (*audio.Device, error) {
+	dev, err := audio.Of(bc).OpenPlayback(ctx)
+	if err != nil {
+		return nil, err // AudioUnavailable: a program with no sound plays on
+	}
+	pos := 0
+	music := dev.NewCallbackStream(loop.Format, func(out []float32) {
+		for i := range out {
+			out[i] = loop.Samples[pos]
+			if pos++; pos == len(loop.Samples) {
+				pos = 0
+			}
+		}
+	})
+	music.SetGain(0.3)
+	return dev, nil
+}
+
+func main() { _ = startMusic }
+```
+
+- **A hit** makes `pad.Rumble(0.9, 0.7, 350*time.Millisecond)` on every pad that `CanRumble`, and
+  `HapticFeedback().HeavyImpact()` on a phone.
+- **Tests.** The rules are a plain Go type: `world_test.go` plays frames of it. The page is tested with `gluttertest`: `ConnectPad`,
+  `SetAxis`, `Tap(gamepad.Start)`, `Rumbles()`, `SendKeyDownEvent`, `MoveLockedMouse`, `EndPointerLock`, and the sound that reaches
+  the device (`tester.Audio().Playback().Pull(frames, chunk)`), with `Opts{GPU: true}` for the view.
+- **Speed.** The renderer draws a frame of the example at 1920x1080 with 4x multisampling in under 2 ms on a Radeon RX 6800M (the
+  target of SPEC §28.6 is 60 frames a second); the program's own part of a frame (input, rules, animation, sync) takes about 0.4 ms and
+  allocates nothing, and a frame of the renderer with a moving skinned item, turning items and a moving camera allocates nothing
+  (`viewport3d`'s `TestAFrameOfMovingThingsAllocatesNothing`).
+
 ## For Flutter web developers
 
 If you know Flutter on the web, this is what is the same and what is not.

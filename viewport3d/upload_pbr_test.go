@@ -175,6 +175,40 @@ func TestSetPoseMovesTheItemsTheSkinsAndTheWeights(t *testing.T) {
 	}
 }
 
+// TestSetTransformMovesTheWholeModel checks Uploaded.SetTransform: the items and the joints follow the transform of the model, with
+// the pose that SetPose showed last, and the transform does not allocate.
+func TestSetTransformMovesTheWholeModel(t *testing.T) {
+	rig := newDrawRig(t, viewport3d.NewScene(), frontCamera())
+	m, _, _, _ := poseModel()
+	u, err := viewport3d.Upload(context.Background(), rig.frame.Device, m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer u.Release()
+	skin := u.Parts[0].Item.Skin()
+	at := func(x, y, z float64) vecmath.Mat4 { return vecmath.NewMat4Translation(vecmath.Vec3{X: x, Y: y, Z: z}) }
+	pose := viewport3d.NewPose()
+	viewport3d.NewAnimation(m.Animations[0]).Sample(1, pose)
+	u.SetPose(pose)
+	u.SetTransform(at(0, 5, -3))
+	if got := u.Parts[0].Item.Transform(); got != at(10, 5, -3) {
+		t.Errorf("the item is at %v, want (10, 5, -3)", got.Translation())
+	}
+	if got := skin.JointWorld(1); got != at(11, 7, -3) {
+		t.Errorf("the joint is at %v: the pose (up 2) and the transform (5, -3) are both there, want (11, 7, -3)", got.Translation())
+	}
+	if got := u.Parts[1].Item.Transform(); got != at(0, 5, -3) {
+		t.Errorf("the ball is at %v, want (0, 5, -3)", got.Translation())
+	}
+	u.SetTransform(vecmath.Mat4Identity())
+	if got := skin.JointWorld(1); got != at(11, 2, 0) {
+		t.Errorf("after the identity the joint is at %v, want (11, 2, 0)", got.Translation())
+	}
+	if got := testing.AllocsPerRun(100, func() { u.SetTransform(at(1, 2, 3)); u.SetPose(pose) }); got != 0 {
+		t.Errorf("SetTransform and SetPose allocate %v times", got)
+	}
+}
+
 // TestSampleModelsPlayTheirAnimations loads CC0 models of the Khronos group, uploads them and plays their animations at a few times:
 // the skin of SimpleSkin bends, the weights of AnimatedMorphCube change, and every pose is made without a message of the log.
 func TestSampleModelsPlayTheirAnimations(t *testing.T) {

@@ -732,6 +732,24 @@ func (g *Gamepads) changed() {
 	g.NotifyListeners()
 }
 
+// AppendPads appends the connected pads that have a mapping, in the order they were connected, to dst and returns the extended slice,
+// as Pads would give them, but with no allocation when dst has room: a game that reads its pads at every frame keeps one slice and
+// calls dst = AppendPads(dst[:0]).
+//
+// Flutter: no counterpart
+func (g *Gamepads) AppendPads(dst []*Pad) []*Pad {
+	for i, n := 0, g.m.Count(); i < n; i++ {
+		p := g.m.At(i)
+		w := g.byPad[p]
+		if w == nil {
+			w = &Pad{p: p, b: g.b}
+			g.byPad[p] = w
+		}
+		dst = append(dst, w)
+	}
+	return dst
+}
+
 // Available says whether the platform has a gamepad service at all.
 //
 // Flutter: no counterpart
@@ -741,17 +759,7 @@ func (g *Gamepads) Available() bool { return g.m.Available() }
 //
 // Flutter: no counterpart
 func (g *Gamepads) Pads() []*Pad {
-	list := g.m.Pads()
-	out := make([]*Pad, len(list))
-	for i, p := range list {
-		w := g.byPad[p]
-		if w == nil {
-			w = &Pad{p: p, b: g.b}
-			g.byPad[p] = w
-		}
-		out[i] = w
-	}
-	return out
+	return g.AppendPads(make([]*Pad, 0, g.m.Count()))
 }
 
 // AddMappings adds mappings in the community's format (the lines of SDL's gamecontrollerdb.txt: "GUID,name,a:b0,b:b1,...,

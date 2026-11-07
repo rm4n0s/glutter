@@ -344,6 +344,23 @@ On the recording device (the work of the renderer and of package `gpu` only, rel
 
 **Target not met: 10,000 items of different meshes, 4 ms.** What is left is the price of the calls: an item with a mesh of its own is three calls into the driver (the vertex buffers, the index buffer, the draw), 30,000 in a frame, and each costs about 0.7 microseconds with the driver's own work, so a frame cannot be under 4 ms while each mesh is a buffer of its own. The ways to meet it are in the design, not in this step, and need the owner's decision: (1) one big vertex buffer and one big index buffer for the meshes of a scene (an arena in `viewport3d`), so that the draws need no binds, and (2) a multi-draw indirect call in `gpu` (`DrawIndexedIndirect` is one draw today), which makes the 10,000 draws one call. The target is not relaxed.
 
+## Games (step 31.11)
+
+The targets of SPEC §28.6, measured on the Ryzen 9 6900HX with the Radeon RX 6800M (RADV), through `.claude/no-nvidia.sh`. The numbers are in the table of "Decided in step 31.11" of that section; how to run them:
+
+| What | Command |
+|---|---|
+| A frame of `examples/game3d` at 1920x1080 | `.claude/no-nvidia.sh -- env GLUTTER_BENCH_GPU=hardware go test -tags glutter_display -run '^$' -bench DisplayGame -benchtime 300x ./viewport3d` (704 fps, 0.36 ms of CPU) |
+| The program's own part of a frame | `go test -run '^$' -bench Tick ./examples/game3d` (0.43 ms, 0 allocations) |
+| Reading two pads in a frame | `go test -run '^$' -bench ReadPads ./gamepad` (0.3 µs, 0 allocations) |
+| The mixing of a game's streams, 10 ms of 48 kHz stereo | `go test -run '^$' -bench Mix ./audio` (0.14 ms, 0 allocations) |
+| The latency of the output on Linux | `scripts/headless-audio.sh -- go test -tags glutter_audio -run TestLiveOutputLatency -v ./internal/platform/linux/pulse` (median 19 ms) |
+| Ten minutes of sound while the UI draws | `GLUTTER_AUDIO_SOAK=600 scripts/headless-audio.sh -- go test -p 1 -tags glutter_audio -run TestLiveNoGapWhileDrawing -v ./internal/platform/linux/pulse` |
+
+**Target not met: ten minutes of sound with no gap.** In four runs of 600 s with the software renderer drawing 60 frames a second, the recording of the monitor had one or two glitches each (a block of exactly 128 frames, at a multiple of 128 frames; the test now logs where the jumps are), though the monitor got every frame, the server ran out of frames 0 times and the handler was never kept waiting more than 8.4 ms; runs of 90 s have none. The logs of the server are empty. It is reported to the owner: the cause (the recording of the monitor, or the null sink's graph, at the private server's 128-frame quantum) was not found, and the test is not changed to pass.
+
+What was changed for the numbers: `Gamepads.AppendPads` (a frame of a game no longer makes a slice of the pads), and the pad's listeners are no longer copied for each event (`internal/pads`).
+
 ## Text: code-like paragraphs (step 22.6)
 
 A code view draws many short lines of monospace text, each in many styled spans. The

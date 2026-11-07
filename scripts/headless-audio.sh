@@ -14,6 +14,7 @@
 #   GLUTTER_AUDIO_SERVER_RUNTIME  the runtime directory, for tests that stop and start the server
 #                           again (see below)
 # The names of the devices are glutter_sink (its monitor is glutter_sink.monitor) and glutter_source.
+# HEADLESS_AUDIO_LOGS=<dir> copies the logs to <dir> when the run ends.
 # The output of the three programs goes to <runtime>/*.log, which is printed when the server does not
 # start. Every program runs in its own process group (setsid) and the groups are killed at the end.
 #
@@ -69,6 +70,10 @@ cleanup() {
     while read -r pid; do
       [[ -n "$pid" ]] && stop_group "$pid"
     done <"$runtime/pulse.pids"
+  fi
+  # HEADLESS_AUDIO_LOGS=<dir> keeps the logs of the three programs there (to look for an xrun after a long run).
+  if [[ -n "${HEADLESS_AUDIO_LOGS:-}" ]]; then
+    mkdir -p "$HEADLESS_AUDIO_LOGS" && cp "$runtime"/*.log "$HEADLESS_AUDIO_LOGS"/ 2>/dev/null || true
   fi
   rm -rf "$runtime"
 }

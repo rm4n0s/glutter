@@ -710,6 +710,23 @@ func TestMixDoesNotAllocate(t *testing.T) {
 			_ = a.Put(make([]float32, 44100*10))
 			_ = b.Put(make([]float32, 22050*6*10))
 		}},
+		{"the streams of a game: a looping music and three effects", func(dev *audio.Device) {
+			// 22.05 kHz mono on a 48 kHz stereo device, as examples/game3d plays.
+			loop, pos := make([]float32, 22050), 0
+			dev.NewCallbackStream(audio.Format{Rate: 22050, Channels: 1}, func(out []float32) {
+				for i := range out {
+					out[i] = loop[pos]
+					if pos++; pos == len(loop) {
+						pos = 0
+					}
+				}
+			}).SetGain(0.3)
+			for i := 0; i < 3; i++ {
+				st := dev.NewStream(audio.Format{Rate: 22050, Channels: 1})
+				st.SetGain(0.8)
+				_ = st.Put(make([]float32, 22050*10))
+			}
+		}},
 		{"callback streams", func(dev *audio.Device) {
 			dev.NewCallbackStream(audio.Format{Rate: 32000, Channels: 2}, func(out []float32) {
 				for i := range out {
@@ -732,5 +749,33 @@ func TestMixDoesNotAllocate(t *testing.T) {
 				t.Errorf("%v allocations for a callback", got)
 			}
 		})
+	}
+}
+
+// BenchmarkMix is the callback of a playback device with the streams of a game (a looping music and three effects, 22.05 kHz mono, on
+// a 48 kHz stereo device) for a buffer of 10 ms.
+func BenchmarkMix(b *testing.B) {
+	ts := gluttertest.New(b)
+	dev, err := audio.ForBinding(ts.Binding).OpenPlayback(context.Background())
+	if err != nil {
+		b.Fatal(err)
+	}
+	loop, pos := make([]float32, 22050), 0
+	dev.NewCallbackStream(audio.Format{Rate: 22050, Channels: 1}, func(out []float32) {
+		for i := range out {
+			out[i] = loop[pos]
+			if pos++; pos == len(loop) {
+				pos = 0
+			}
+		}
+	})
+	for i := 0; i < 3; i++ {
+		_ = dev.NewStream(audio.Format{Rate: 22050, Channels: 1}).Put(make([]float32, 22050*1000))
+	}
+	td := ts.Audio().Playback()
+	buf := make([]float32, 480*2)
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		td.PullInto(buf)
 	}
 }

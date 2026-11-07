@@ -143,6 +143,21 @@ func (m *Manager) Pads() []*Pad {
 	return append([]*Pad(nil), m.pads...)
 }
 
+// Count is the number of connected pads that have a mapping, and At the pad that came i-th: a loop over them allocates nothing.
+//
+// Flutter: no counterpart
+func (m *Manager) Count() int {
+	if m == nil {
+		return 0
+	}
+	return len(m.pads)
+}
+
+// At returns the i-th connected pad that has a mapping (0 to Count()-1).
+//
+// Flutter: no counterpart
+func (m *Manager) At(i int) *Pad { return m.pads[i] }
+
 // SetKeyEvents turns the key events of the pads on or off. They are on at first, when the manager was given a function for them.
 //
 // Flutter: no counterpart

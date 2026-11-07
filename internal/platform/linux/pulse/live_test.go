@@ -116,6 +116,7 @@ type recording struct {
 	prev    float32
 	have    bool
 	jumps   int
+	jumpAt  []int // the frames at which the jumps were, to see whether they are in the middle or at an end
 	peak    float32
 	skip    int // frames at the start that are not checked
 	maxStep float32
@@ -145,6 +146,7 @@ func (r *recording) Capture(in []float32) {
 			r.maxStep = max(r.maxStep, d)
 			if d > stepLimit {
 				r.jumps++
+				r.jumpAt = append(r.jumpAt, r.frames)
 			}
 		}
 		r.prev, r.have = v, true
@@ -653,7 +655,7 @@ func TestLiveNoGapWhileDrawing(t *testing.T) {
 	t.Logf("%v: drew %d frames (%d took longer than 1/60 s), the handler was called %d times (the longest gap %v), the monitor got %d frames (want about %.0f), %d jumps (largest step %.4f), the server ran out of frames %d times",
 		elapsed.Round(time.Second), frames, slow, h.fills-startFills, h.maxGap, got, want, rec.jumps, rec.maxStep, underruns)
 	if rec.jumps != 0 {
-		t.Errorf("%d jumps in the recording of the tone: samples were lost", rec.jumps)
+		t.Errorf("%d jumps in the recording of the tone (at the frames %v of %d): samples were lost", rec.jumps, rec.jumpAt, rec.frames)
 	}
 	if math.Abs(float64(got)-want) > want*0.01 {
 		t.Errorf("the monitor got %d frames in %v, want %.0f (a gap makes fewer)", got, elapsed, want)
@@ -663,5 +665,120 @@ func TestLiveNoGapWhileDrawing(t *testing.T) {
 	}
 	if st := h.states; len(st) != 0 {
 		t.Errorf("states %v", st)
+	}
+}
+
+// burst is a playback handler of silence that, when it is armed, writes a burst of full-scale samples into the next buffer it fills
+// and notes when that call ended: the moment the burst left the program.
+type burst struct {
+	mu       sync.Mutex
+	armed    bool
+	wrote    time.Time
+	channels int
+}
+
+func (b *burst) Fill(out []float32) {
+	for i := range out {
+		out[i] = 0
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.armed && b.wrote.IsZero() {
+		for i := 0; i < 64*b.channels && i < len(out); i++ {
+			out[i] = 0.8
+		}
+		b.wrote = time.Now()
+	}
+}
+
+func (b *burst) Capture([]float32)                {}
+func (b *burst) StateChanged(platform.AudioState) {}
+
+// monitorStamp is a capture handler that notes when the first sample above a threshold arrived.
+type monitorStamp struct {
+	mu   sync.Mutex
+	at   time.Time
+	seen bool
+}
+
+func (m *monitorStamp) Fill([]float32)                   {}
+func (m *monitorStamp) StateChanged(platform.AudioState) {}
+func (m *monitorStamp) Capture(in []float32) {
+	now := time.Now()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.seen {
+		return
+	}
+	for _, v := range in {
+		if v > 0.4 || v < -0.4 {
+			m.seen, m.at = true, now
+			return
+		}
+	}
+}
+
+// TestLiveOutputLatency measures the time from the end of the handler's call that wrote an impulse to the arrival of the impulse in
+// the recording of the monitor of the null sink (SPEC §28.6: at most 30 ms on Linux). The monitor's own buffers are in the number,
+// so it is an upper bound of the latency of the output: the speaker is not further than that. GLUTTER_AUDIO_LATENCY_TRIALS is the
+// number of impulses (20 by default).
+func TestLiveOutputLatency(t *testing.T) {
+	requireServer(t)
+	trials := 20
+	if v := os.Getenv("GLUTTER_AUDIO_LATENCY_TRIALS"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 {
+			t.Fatalf("GLUTTER_AUDIO_LATENCY_TRIALS=%q is not a number", v)
+		}
+		trials = n
+	}
+	svc := pulse.New(pulse.Options{})
+	defer svc.Close()
+	var got []time.Duration
+	for i := 0; i < trials; i++ {
+		stamp := &monitorStamp{}
+		monitor, err := svc.Open(context.Background(), platform.AudioCapture, platform.AudioOpenOptions{ID: "glutter_sink.monitor", Format: stereo}, stamp)
+		if err != nil {
+			t.Fatal(err)
+		}
+		h := &burst{channels: 2}
+		dev, err := svc.Open(context.Background(), platform.AudioPlayback, platform.AudioOpenOptions{Format: stereo}, h)
+		if err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(300 * time.Millisecond) // both run, with silence
+		h.mu.Lock()
+		h.armed = true
+		h.mu.Unlock()
+		eventually(t, "the impulse in the monitor", 3*time.Second, func() bool {
+			stamp.mu.Lock()
+			defer stamp.mu.Unlock()
+			return stamp.seen
+		})
+		h.mu.Lock()
+		wrote := h.wrote
+		h.mu.Unlock()
+		stamp.mu.Lock()
+		got = append(got, stamp.at.Sub(wrote))
+		stamp.mu.Unlock()
+		if err := dev.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if err := monitor.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sorted := append([]time.Duration(nil), got...)
+	for i := range sorted {
+		for j := i + 1; j < len(sorted); j++ {
+			if sorted[j] < sorted[i] {
+				sorted[i], sorted[j] = sorted[j], sorted[i]
+			}
+		}
+	}
+	median, worst := sorted[len(sorted)/2], sorted[len(sorted)-1]
+	t.Logf("latency from the handler to the monitor over %d impulses: median %v, worst %v, best %v", len(got), median.Round(time.Millisecond), worst.Round(time.Millisecond), sorted[0].Round(time.Millisecond))
+	if median > 30*time.Millisecond {
+		t.Errorf("the median latency is %v, the target of SPEC §28.6 is 30 ms", median)
 	}
 }

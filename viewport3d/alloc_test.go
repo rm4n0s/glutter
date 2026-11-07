@@ -1,6 +1,7 @@
 package viewport3d_test
 
 import (
+	"math"
 	"runtime"
 	"testing"
 
@@ -189,5 +190,59 @@ func TestFramesThatDifferShareTheRecycledStorage(t *testing.T) {
 	scene.Add(items[0])
 	if got := draw(); got != base {
 		t.Errorf("after it was added again the frame drew %d, want %d", got, base)
+	}
+}
+
+// TestAFrameOfMovingThingsAllocatesNothing is the allocation test of a game's frame (SPEC §28.6): in each frame the camera moves, a
+// skinned item (a character) is moved and its joints get new matrices, and a dozen small items (coins) turn, with a shadow cast on
+// PBR materials. Nothing in the frame allocates: the changes of the scene, the skin's joints and the renderer's draw.
+func TestAFrameOfMovingThingsAllocatesNothing(t *testing.T) {
+	if raceEnabled {
+		t.Skip("the race detector changes what a call allocates")
+	}
+	if runtime.GOARCH == "wasm" && foundation.DebugMode {
+		t.Skip("a debug build on wasm allocates in the check of the UI thread")
+	}
+	at := func(x, y, z float64) viewport3d.ItemOpts {
+		return viewport3d.ItemOpts{Transform: foundation.Some(vecmath.NewMat4Translation(vecmath.Vec3{X: x, Y: y, Z: z}))}
+	}
+	scene := viewport3d.NewScene()
+	ground := viewport3d.NewItem(scenetest.Box(6, 0.2, 6), viewport3d.NewPBRMaterial(), at(0, -0.6, 0))
+	skin := viewport3d.NewSkin([]vecmath.Mat4{vecmath.Mat4Identity(), vecmath.NewMat4Translation(vecmath.Vec3{X: -1})})
+	bar := viewport3d.NewItem(scenetest.SkinnedBar(), viewport3d.NewPBRMaterial())
+	bar.SetSkin(skin)
+	coinMesh, gold := scenetest.Sphere(0.1, 8, 4), viewport3d.NewPBRMaterial(viewport3d.PBROpts{Metallic: foundation.Some(0.6)})
+	coins := make([]*viewport3d.Item, 12)
+	for i := range coins {
+		coins[i] = viewport3d.NewItem(coinMesh, gold)
+	}
+	scene.Add(ground, bar)
+	scene.Add(coins...)
+	scene.SetStyle(viewport3d.SceneStyle{Lights: []viewport3d.DirectionalLight{{Direction: vecmath.Vec3{X: 1, Y: 1, Z: 0.3}}}, Shadow: viewport3d.ShadowStyle{Enabled: true}})
+	cam := frontCamera()
+	rig := newDrawRig(t, scene, cam)
+	still := steadyFrame(t, rig)
+	joints := []vecmath.Mat4{vecmath.Mat4Identity(), vecmath.Mat4Identity()}
+	angle := 0.0
+	moving := func() {
+		angle += 0.05
+		bar.SetTransform(vecmath.NewMat4Translation(vecmath.Vec3{X: math.Sin(angle), Z: math.Cos(angle)}).Mul(vecmath.NewMat4RotationY(angle)))
+		joints[1] = vecmath.NewMat4Translation(vecmath.Vec3{X: 1}).Mul(vecmath.NewMat4RotationZ(0.4 * math.Sin(3*angle)))
+		skin.SetJoints(joints)
+		for i, c := range coins {
+			c.SetTransform(vecmath.NewMat4Translation(vecmath.Vec3{X: float64(i)*0.3 - 1.6, Y: 0.5 + 0.1*math.Sin(angle+float64(i)), Z: -1}).Mul(vecmath.NewMat4RotationY(angle)))
+		}
+		cam.SetTarget(vecmath.Vec3{X: 0.2 * math.Sin(angle)})
+		cam.SetOrientation(vecmath.NewQuatAxisAngle(vecmath.Vec3{Y: 1}, 0.2*math.Sin(angle)))
+		still()
+	}
+	for i := 0; i < 8; i++ { // the scratch grows to what the moving frame needs
+		moving()
+	}
+	if got := testing.AllocsPerRun(100, moving); got != 0 {
+		t.Errorf("a frame of moving things allocates %v times, want 0", got)
+	}
+	if st := rig.r.Stats(); st.Draws == 0 {
+		t.Errorf("the frame drew nothing: %+v", st)
 	}
 }

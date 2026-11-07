@@ -7,6 +7,7 @@ import (
 	"github.com/rm4n0s/glutter/audio"
 	"github.com/rm4n0s/glutter/gluttertest"
 	"github.com/rm4n0s/glutter/internal/leaktest"
+	"github.com/rm4n0s/glutter/widgets"
 )
 
 // TestLeaksStreamsAndDevices runs devices and streams for a long time (SPEC §15, "Memory over time"): the live heap and the
@@ -95,5 +96,35 @@ func TestLeaksStreamsAndDevices(t *testing.T) {
 			sys := audio.ForBinding(tester.Binding)
 			leaktest.Run(t, "audio/"+tt.name, func() func() { return tt.setup(t, tester, sys) })
 		})
+	}
+}
+
+// TestLeaksAThousandStreamsOpenedAndClosed opens a stream of a device, plays it and closes it 1,000 times (4,000 in the second run;
+// step 31.11, SPEC §28.6): the heap and the goroutines stay flat and the device is left with no stream.
+func TestLeaksAThousandStreamsOpenedAndClosed(t *testing.T) {
+	ts := gluttertest.New(t, gluttertest.Opts{DiscardScenes: true})
+	ts.PumpWidget(widgets.NewSizedBox(nil))
+	sys := audio.ForBinding(ts.Binding)
+	dev, err := sys.OpenPlayback(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	td := ts.Audio().Playback()
+	piece := make([]float32, 220)
+	buf := make([]float32, 2*480)
+	leaktest.Run(t, "audio/a thousand streams", func() func() {
+		return func() {
+			st := dev.NewStream(audio.Format{Rate: 22050, Channels: 1})
+			_ = st.Put(piece)
+			td.PullInto(buf)
+			st.Close()
+			cb := dev.NewCallbackStream(audio.Format{Rate: 22050, Channels: 1}, func(out []float32) {})
+			td.PullInto(buf)
+			cb.Close()
+			td.PullInto(buf)
+		}
+	}, leaktest.Opts{N: 1000, Warmup: 50})
+	if err := dev.Close(); err != nil {
+		t.Fatal(err)
 	}
 }

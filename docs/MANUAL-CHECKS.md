@@ -731,3 +731,23 @@ Answers: _(not yet recorded)_
 10. With a small program that calls `pad.OpenSensor(sensors.Gyroscope)` and prints the readings: do the numbers follow the pad when you turn it, at about 250 a second for a DualSense? Does the pad stop reporting (the battery) when the sensor is closed?
 
 Answers: _(not yet recorded)_
+
+## 31.11 `examples/game3d`, performance and memory
+
+**Status:** pending
+
+Coin Run (`examples/game3d`) is played with a pad, the keyboard, a locked mouse or the touch. Run it on each of the systems below and record the answers.
+
+**On Linux** (`go run ./examples/game3d`, on the AMD GPU, not the eGPU), **on a Windows PC** (`go run ./cmd/glutter-windows run ./examples/game3d`) **and on a phone** (`go run ./cmd/glutter-android run ./examples/game3d`, with a pad over Bluetooth or USB, and with the touch only):
+
+1. Does the game open in a few seconds, with the character, the level, the coins and the shadow? Is the frame rate 60 or the display's (the target of SPEC §28.6 is 60 at 1920x1080 on the owner's machine)? Does it stay smooth while you run, turn the camera and jump, with no hitch when a coin is picked up or a sound starts?
+2. With each pad you have (Xbox, DualSense, Switch Pro, a generic one): does the left stick run, the right stick turn the camera, A jump, Start open the pause menu? In the menu, do the D-pad and A choose and press the buttons, and B (or Start) close it?
+3. Rumble: touch the lava (the orange tiles): does the pad rumble for about a third of a second, on every pad that has motors, and the phone vibrate?
+4. The keyboard: W A S D (or the arrows for the camera), Space, Esc. The mouse: does a click in the window lock it (the cursor goes), does moving it turn the camera smoothly, and does Esc (or Alt+Tab) give it back and open the menu?
+5. The sound: is the music steady, with no gaps or clicks, for a few minutes? Do the coin, the jump and the hit sound at once when they happen (the latency you can hear)? Is the music quieter in the pause menu, and does the switch of the menu turn it off? With a loopback cable or a phone recording the screen and the speaker: is the delay from a button to its sound under 30 ms on Linux and Windows, 20 ms on the phone?
+6. The touch (phone, no pad): does a drag on the left half run, one on the right half turn the camera, and does the round button jump?
+7. Collect all twelve coins: does "You win!" show, and "Play again" start over? Lose all three hearts: does "Game over" show?
+
+**In Chrome and Firefox** (`go run ./cmd/glutter-web serve ./examples/game3d`): the same 1 to 5. Does the page play sound after the first click (the browsers' rule), is the delay under 120 ms, and does a click lock the mouse (Esc gives it back, and the game pauses)? Does a pad that you press a button of show up (the browsers report a pad only after a press)?
+
+Answers: _(not yet recorded)_

@@ -2,6 +2,7 @@ package gamepad_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/rm4n0s/glutter/gamepad"
 	"github.com/rm4n0s/glutter/gluttertest"
@@ -86,4 +87,29 @@ func TestLeaksMappingsAddedAgain(t *testing.T) {
 			}
 		}
 	}, leaktest.Opts{N: 200, Warmup: 20})
+}
+
+// TestLeaksAThousandPadsComeAndGo connects and removes a pad 1,000 times (and 4,000 in the second run), each with a listener, a press,
+// an axis and a rumble request (step 31.11, SPEC §28.6): the heap and the goroutines stay flat and no pad is left.
+func TestLeaksAThousandPadsComeAndGo(t *testing.T) {
+	ts, pads := leakRig(t)
+	spec := gluttertest.PadSpec{Name: "Standard", Rumble: true}
+	leaktest.Run(t, "gamepad/a thousand pads", func() func() {
+		return func() {
+			tp := ts.ConnectPad(spec)
+			remove := tp.Pad().AddListener(func(gamepad.Event) {})
+			tp.Press(gamepad.South)
+			tp.SetAxis(gamepad.LeftX, 0.5)
+			if err := tp.Pad().Rumble(0.5, 0.5, 10*time.Millisecond); err != nil {
+				t.Fatal(err)
+			}
+			tp.Release(gamepad.South)
+			remove()
+			tp.Disconnect()
+			ts.ClearLogs()
+			if n := len(pads.Pads()); n != 0 {
+				t.Fatalf("%d pads are left after one was removed", n)
+			}
+		}
+	}, leaktest.Opts{N: 1000, Warmup: 50, Counters: map[string]func() int{"pads": func() int { return len(pads.Pads()) }}})
 }

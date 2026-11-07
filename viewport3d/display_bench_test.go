@@ -3,10 +3,13 @@
 package viewport3d_test
 
 import (
+	"context"
 	"io"
 	"log/slog"
+	"math"
 	"os"
 	"runtime"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -15,6 +18,9 @@ import (
 	"github.com/rm4n0s/glutter/internal/gpu/vulkan"
 	"github.com/rm4n0s/glutter/internal/gpuhost"
 	"github.com/rm4n0s/glutter/internal/scenetest"
+	"github.com/rm4n0s/glutter/model/gltf"
+	"github.com/rm4n0s/glutter/ui"
+	"github.com/rm4n0s/glutter/vecmath"
 	"github.com/rm4n0s/glutter/viewport3d"
 )
 
@@ -73,9 +79,17 @@ func threadCPU(b *testing.B) time.Duration {
 
 func benchDisplay(b *testing.B, scene *viewport3d.Scene, cam *viewport3d.Camera) {
 	b.Helper()
+	benchDisplayWith(b, func(*gpu.Device) (*viewport3d.Scene, *viewport3d.Camera, func()) { return scene, cam, nil })
+}
+
+// benchDisplayWith is benchDisplay for a scene that needs the device to be made (a model uploaded to it): setup returns the scene, the
+// camera and a function that changes the scene before each frame (nil when nothing changes).
+func benchDisplayWith(b *testing.B, setup func(d *gpu.Device) (*viewport3d.Scene, *viewport3d.Camera, func())) {
+	b.Helper()
 	runtime.LockOSThread() // threadCPU measures this thread
 	b.Cleanup(runtime.UnlockOSThread)
 	app, d := benchDevice(b)
+	scene, cam, each := setup(d)
 	size := gpu.Extent3D{Width: benchWidth, Height: benchHeight, DepthOrArrayLayers: 1}
 	must := func(t *gpu.Texture, err error) *gpu.Texture {
 		if err != nil {
@@ -99,6 +113,9 @@ func benchDisplay(b *testing.B, scene *viewport3d.Scene, cam *viewport3d.Camera)
 	})
 	inFlight := 0
 	frame := func() time.Duration {
+		if each != nil {
+			each()
+		}
 		start := threadCPU(b)
 		f := gpu.ViewFrame{Device: d, Encoder: d.NewCommandEncoder(), Color: color, Resolve: resolve, Depth: depth, Width: benchWidth, Height: benchHeight,
 			DevicePixelRatio: 1, Time: time.Second}
@@ -159,4 +176,64 @@ func BenchmarkDisplay10000InstancedItems(b *testing.B) {
 func BenchmarkDisplay10000SeparateItems(b *testing.B) {
 	scene, cam := scenetest.SeparateScene(benchWidth, benchHeight)
 	benchDisplay(b, scene, cam)
+}
+
+// BenchmarkDisplayGame draws a frame of examples/game3d (SPEC §28.6: at least 60 frames a second on the owner's machine): the level
+// (PBR, a shadow) and the skinned character, which moves, and the coins, which turn, in every frame, with the camera behind. Its models
+// are the files that the example embeds.
+func BenchmarkDisplayGame(b *testing.B) {
+	benchDisplayWith(b, func(d *gpu.Device) (*viewport3d.Scene, *viewport3d.Camera, func()) {
+		assets := os.DirFS("../examples/game3d/assets")
+		ctx := context.Background()
+		levelModel, err := gltf.Load(ctx, assets, "level.glb")
+		if err != nil {
+			b.Fatal(err)
+		}
+		charModel, err := gltf.Load(ctx, assets, "character.glb")
+		if err != nil {
+			b.Fatal(err)
+		}
+		level, err := viewport3d.Upload(ctx, d, levelModel)
+		if err != nil {
+			b.Fatal(err)
+		}
+		character, err := viewport3d.Upload(ctx, d, charModel)
+		if err != nil {
+			b.Fatal(err)
+		}
+		b.Cleanup(func() {
+			level.Release()
+			character.Release()
+		})
+		scene := viewport3d.NewScene()
+		scene.Add(level.Items()...)
+		scene.Add(character.Items()...)
+		scene.SetStyle(viewport3d.SceneStyle{
+			Lights: []viewport3d.DirectionalLight{{Direction: vecmath.Vec3{X: -0.45, Y: 1, Z: 0.3}, Intensity: 1.8}},
+			Shadow: viewport3d.ShadowStyle{Enabled: true, Size: 2048},
+		})
+		cam := viewport3d.NewCamera(viewport3d.CameraOpts{Distance: 7, FieldOfView: 0.8, Near: 0.1, Target: vecmath.Vec3{X: -7, Y: 2.8, Z: -7}})
+		cam.SetViewportSize(ui.Size{Width: benchWidth, Height: benchHeight})
+		cam.SetOrientation(vecmath.NewQuatAxisAngle(vecmath.Vec3{Y: 1}, 3.6).Mul(vecmath.NewQuatAxisAngle(vecmath.Vec3{X: 1}, -0.36)))
+		run := viewport3d.NewAnimation(charModel.Animations[1])
+		pose := viewport3d.NewPose()
+		var coins []*viewport3d.Item
+		for _, p := range level.Parts {
+			if strings.HasPrefix(p.Node.Name, "Coin") {
+				coins = append(coins, p.Item)
+			}
+		}
+		t := 0.0
+		return scene, cam, func() {
+			t += 1.0 / 60
+			pose.Clear()
+			run.Sample(float32(math.Mod(t, float64(run.Duration()))), pose)
+			character.SetPose(pose)
+			character.SetTransform(vecmath.NewMat4Translation(vecmath.Vec3{X: -7, Y: 1.4, Z: -7}))
+			for i, c := range coins {
+				c.SetTransform(vecmath.NewMat4Translation(vecmath.Vec3{X: float64(i), Y: 1, Z: 0}).Mul(vecmath.NewMat4RotationY(t)))
+			}
+			cam.SetTarget(vecmath.Vec3{X: -7 + 0.1*math.Sin(t), Y: 2.8, Z: -7})
+		}
+	})
 }

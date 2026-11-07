@@ -66,8 +66,9 @@ type Uploaded struct {
 	nodes  []uploadNode
 	skins  []uploadSkin
 	worlds []vecmath.Mat4
-	// root is the transform of the whole model (UploadOpts.Transform).
+	// root is the transform of the whole model (UploadOpts.Transform), and pose the one that SetPose last showed.
 	root vecmath.Mat4
+	pose *Pose
 }
 
 // uploadNode is a node of the tree of an Uploaded.
@@ -123,6 +124,24 @@ func (u *Uploaded) Release() {
 //
 // Flutter: no counterpart
 func (u *Uploaded) SetPose(p *Pose) {
+	u.pose = p
+	u.apply()
+}
+
+// SetTransform moves the whole model: t is the transform of the model in the world, which UploadOpts.Transform sets when the model
+// is uploaded, and is applied after the nodes' (Uploaded.Bounds stays in the model's own coordinates). The items and the skeletons
+// follow it, with the pose that SetPose last showed. A game moves a character this way, one call for each frame it moves, and then
+// shows the pose of its animation (SetPose).
+//
+// Flutter: no counterpart
+func (u *Uploaded) SetTransform(t vecmath.Mat4) {
+	u.root = t
+	u.apply()
+}
+
+// apply puts the pose of the model in the items and the skeletons.
+func (u *Uploaded) apply() {
+	p := u.pose
 	for i := range u.nodes {
 		n := &u.nodes[i]
 		local := p.Matrix(n.node)

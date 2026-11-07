@@ -1,0 +1,6 @@
+The files in this directory (character.glb, level.glb, music.wav, coin.wav, jump.wav and hit.wav) were made by
+../internal/genassets from numbers: no recording, scan or model of anyone else is in them. The same program makes the same bytes
+each time (go generate ./examples/game3d).
+
+To the extent possible under law, the author has dedicated them to the public domain under the Creative Commons Zero v1.0
+Universal license: https://creativecommons.org/publicdomain/zero/1.0/legalcode

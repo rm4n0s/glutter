@@ -330,10 +330,16 @@ func (p *Platform) turn() {
 	p.scheduleVsync()
 }
 
-// pump dispatches every message in the thread's queue.
+// maxMessagesPerTurn is the most messages that one turn of the loop dispatches. Frames that take longer than the display's interval
+// (a game on Direct3D 12 over a software rasterizer, as under Wine) make the next frame's messages arrive while the last ones are
+// handled, so a loop that goes on until the queue is empty never comes back to look at the context and the posted functions: the
+// app would not end when it was asked to. The messages that are left are for the next turn, which does not wait for them.
+const maxMessagesPerTurn = 256
+
+// pump dispatches the messages in the thread's queue, at most maxMessagesPerTurn of them.
 func (p *Platform) pump() {
 	var m win32.Msg
-	for !p.quit && win32.PeekMessage(&m, 0, 0, 0, win32.PMRemove) {
+	for n := 0; n < maxMessagesPerTurn && !p.quit && win32.PeekMessage(&m, 0, 0, 0, win32.PMRemove); n++ {
 		win32.TranslateMessage(&m)
 		win32.DispatchMessage(&m)
 	}

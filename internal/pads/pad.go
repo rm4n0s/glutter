@@ -333,7 +333,9 @@ func (p *Pad) AxisChanged(t int64, a gamepaddb.Axis, v int16) {
 const triggerThreshold = 16384
 
 func (p *Pad) emit(e Event) {
-	for _, l := range append([]padListener(nil), p.listeners...) {
+	// No copy: a removal makes a new slice (see AddListener) and an addition lands past the length that the loop took, so a listener
+	// that adds or removes listeners changes nothing for this event.
+	for _, l := range p.listeners {
 		l.fn(e)
 	}
 }

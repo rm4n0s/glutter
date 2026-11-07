@@ -400,6 +400,7 @@ Each one uses only the public packages and has tests that run on a fake platform
 | [`svg`](examples/svg) | SVG pictures (package `svg`): icons with `currentColor` and a `ColorFilter`, a logo with gradients, text and a drop-shadow filter | ![](docs/implemented-proof-images/29.4-svg.png) |
 | [`gpu-triangle`](examples/gpu-triangle) | package `gpu` and `vecmath`: a lit cube drawn by the program's own shader into a `gpu.View`, with reversed-Z depth and 4x multisampling, a slider and a switch | ![](docs/implemented-proof-images/30.6-gpu-triangle-linux.png) |
 | [`cad`](examples/cad) | package `viewport3d` and `model`: a 3D viewer with an STL or OBJ opened from a dialog, navigation, the view cube and the grid, four display modes, a section plane on a slider, picks with a side panel, and a distance between two picks drawn as a dimension | ![](docs/implemented-proof-images/30.13-cad-linux.png) |
+| [`game3d`](examples/game3d) | packages `gamepad`, `audio`, `viewport3d`, `model/gltf` and `widgets.PointerLock` together: Coin Run, a skinned character that runs and jumps through a glTF level with PBR materials and a shadow, played with a pad, the keyboard, a locked mouse or touch, with music, effects, rumble on a hit and a Material pause menu that a pad drives | ![](docs/implemented-proof-images/31.11-game3d-linux.png) |
 
 ## Performance
 
