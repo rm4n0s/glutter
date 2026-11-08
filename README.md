@@ -198,6 +198,12 @@ func startView(parent *m.WidgetsBinding, root m.Widget, send func(pixels []byte,
 }
 ```
 
+**What is new in 1.12.** Linux without a GPU.
+- **The `soft` renderer on Linux.** `GLUTTER_RENDERER=soft` draws the app on the CPU into the window's shared memory (`wl_shm` on Wayland, MIT-SHM on X11, `XPutImage` over a remote display or with `GLUTTER_X11_NOSHM=1`) and rasterizes and sends only the rectangles that changed. In a virtual machine whose OpenGL is llvmpipe, OpenGL rasterizes the whole window for every frame.
+- **`auto` chooses it when there is no GPU.** Vulkan first, then OpenGL ES, then `soft`; OpenGL ES gives up when its `GL_RENDERER` is llvmpipe, softpipe, swrast, a software rasterizer or SwiftShader, and the log says which string decided. A name (`GLUTTER_RENDERER=gles`) is never second-guessed. An X11 window made for `soft` never initializes EGL, so Mesa's `DRI3 error` line does not appear.
+- **Speed.** An idle editor with a blinking caret takes about 4 ms of CPU for each second with `soft` on Wayland and X11, against 190 to 460 ms with OpenGL ES on llvmpipe (`docs/PERFORMANCE.md`).
+- **Fixes.** The event loop of Linux no longer starves the display connection, the posted functions and the input when frames take longer than the display's interval (it ran the timers that a frame set for "at once" one after the other), which also helped OpenGL ES on a rasterizer on the CPU.
+
 **What is new in 1.11.** Games.
 - **The package `gamepad`.** `gamepad.Of(bc).Pads()` (or `AppendPads`, which allocates nothing) gives the connected pads, each with the same buttons and axes whatever it is (Xbox, PlayStation, Switch, generic), from SDL 3's table of mappings and your own lines; listeners and the state to poll; rumble, lights, battery, touchpads and sensors where the pad has them. Linux (evdev, hotplug, force feedback), Windows (XInput and Raw Input HID), browsers and Android. The pads also make key events (the D-pad is the arrows, A activates the focused widget, Start is `GameButtonStart`), so a Material menu works with a pad and no code of yours.
 - **The package `audio`.** Playback and capture devices (PulseAudio and ALSA, WASAPI, AAudio, Web Audio) with streams of any rate, channel count and speed that are converted and mixed for you, callback streams, WAV files in `audio/wav`, and a device that follows the system's default. `sensors` gives a phone's or a pad's accelerometer and gyroscope; browsers vibrate for haptic feedback.
