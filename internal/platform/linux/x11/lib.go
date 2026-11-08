@@ -15,6 +15,7 @@ const (
 	libXi      = "libXi.so.6"
 	libXrandr  = "libXrandr.so.2"
 	libXcursor = "libXcursor.so.1"
+	libXext    = "libXext.so.6"
 )
 
 // X11 constants from X.h, Xlib.h and Xutil.h.
@@ -35,6 +36,13 @@ const (
 	substructureNotifyMask  = 1 << 19
 	substructureRedirMask   = 1 << 20
 	visualIDMask            = 0x1 // VisualIDMask
+	visualScreenMask        = 0x2 // VisualScreenMask
+	visualDepthMask         = 0x4 // VisualDepthMask
+	visualClassMask         = 0x8 // VisualClassMask
+	trueColor               = 4   // TrueColor
+	zPixmap                 = 2   // ZPixmap
+	lsbFirst                = 0   // LSBFirst
+	shmCompletion           = 0   // ShmCompletion, the one event of MIT-SHM
 	allocNone               = 0   // AllocNone
 	propModeReplace         = 0   // PropModeReplace
 	xaPrimary               = 1   // XA_PRIMARY
@@ -120,6 +128,16 @@ type xlib struct {
 	grabPointer          func(display uintptr, window uint64, ownerEvents int32, eventMask uint32, pointerMode, keyboardMode int32, confineTo, cursor, time uint64) int32
 	ungrabPointer        func(display uintptr, time uint64) int32
 	warpPointer          func(display uintptr, src, dest uint64, srcX, srcY int32, srcWidth, srcHeight uint32, destX, destY int32) int32
+
+	// What the window needs to show the pixels of the software renderer (SPEC §9.6).
+	displayString func(display uintptr) uintptr
+	defaultVisual func(display uintptr, screen int32) uintptr
+	defaultDepth  func(display uintptr, screen int32) int32
+	createGC      func(display uintptr, drawable, mask uint64, values uintptr) uintptr
+	freeGC        func(display, gc uintptr) int32
+	createImage   func(display, visual uintptr, depth uint32, format, offset int32, data uintptr, width, height uint32, bitmapPad, bytesPerLine int32) uintptr
+	putImage      func(display uintptr, drawable uint64, gc, image uintptr, srcX, srcY, dstX, dstY int32, width, height uint32) int32
+	destroyImage  func(image uintptr) int32
 }
 
 // loadXlib opens libX11 and libX11-xcb and binds the functions. It fails with
@@ -185,6 +203,14 @@ func loadXlib() (*xlib, error) {
 		{&l.grabPointer, "XGrabPointer"},
 		{&l.ungrabPointer, "XUngrabPointer"},
 		{&l.warpPointer, "XWarpPointer"},
+		{&l.displayString, "XDisplayString"},
+		{&l.defaultVisual, "XDefaultVisual"},
+		{&l.defaultDepth, "XDefaultDepth"},
+		{&l.createGC, "XCreateGC"},
+		{&l.freeGC, "XFreeGC"},
+		{&l.createImage, "XCreateImage"},
+		{&l.putImage, "XPutImage"},
+		{&l.destroyImage, "XDestroyImage"},
 	} {
 		if err := x11.Bind(b.fptr, b.symbol); err != nil {
 			return nil, err
@@ -192,6 +218,72 @@ func loadXlib() (*xlib, error) {
 	}
 	if err := xcb.Bind(&l.getXCBConnection, "XGetXCBConnection"); err != nil {
 		return nil, err
+	}
+	return l, nil
+}
+
+// xext holds the functions of libXext's MIT-SHM, with which the software renderer shows pixels
+// that the server reads from shared memory.
+type xext struct {
+	queryExtension func(display uintptr) int32
+	getEventBase   func(display uintptr) int32
+	attach         func(display, info uintptr) int32
+	detach         func(display, info uintptr) int32
+	createImage    func(display, visual uintptr, depth uint32, format int32, data, info uintptr, width, height uint32) uintptr
+	putImage       func(display uintptr, drawable uint64, gc, image uintptr, srcX, srcY, dstX, dstY int32, width, height uint32, sendEvent int32) int32
+}
+
+func loadXext() (*xext, error) {
+	lib, err := dl.Open(libXext, "libXext.so")
+	if err != nil {
+		return nil, err
+	}
+	l := new(xext)
+	for _, b := range []struct {
+		fptr   any
+		symbol string
+	}{
+		{&l.queryExtension, "XShmQueryExtension"},
+		{&l.getEventBase, "XShmGetEventBase"},
+		{&l.attach, "XShmAttach"},
+		{&l.detach, "XShmDetach"},
+		{&l.createImage, "XShmCreateImage"},
+		{&l.putImage, "XShmPutImage"},
+	} {
+		if err := lib.Bind(b.fptr, b.symbol); err != nil {
+			return nil, err
+		}
+	}
+	return l, nil
+}
+
+// sysv holds the functions of libc that make a segment of System V shared memory, which MIT-SHM
+// shares with the X server.
+type sysv struct {
+	shmget func(key int32, size uintptr, flags int32) int32
+	shmat  func(id int32, addr uintptr, flags int32) uintptr
+	shmdt  func(addr uintptr) int32
+	shmctl func(id, cmd int32, buf uintptr) int32
+}
+
+func loadSysv() (*sysv, error) {
+	lib, err := dl.Open("libc.so.6", "libc.so")
+	if err != nil {
+		return nil, err
+	}
+	l := new(sysv)
+	for _, b := range []struct {
+		fptr   any
+		symbol string
+	}{
+		{&l.shmget, "shmget"},
+		{&l.shmat, "shmat"},
+		{&l.shmdt, "shmdt"},
+		{&l.shmctl, "shmctl"},
+	} {
+		if err := lib.Bind(b.fptr, b.symbol); err != nil {
+			return nil, err
+		}
 	}
 	return l, nil
 }
@@ -305,4 +397,6 @@ var (
 	loadXiOnce      = sync.OnceValues(loadXi)
 	loadXrandrOnce  = sync.OnceValues(loadXrandr)
 	loadXcursorOnce = sync.OnceValues(loadXcursor)
+	loadXextOnce    = sync.OnceValues(loadXext)
+	loadSysvOnce    = sync.OnceValues(loadSysv)
 )

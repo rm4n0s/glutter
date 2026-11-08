@@ -104,9 +104,12 @@ type Config struct {
 	// rendererNamed is set by Run when the renderer was asked for by name: a CPU Vulkan
 	// device (lavapipe) is then allowed (SPEC §9.4).
 	rendererNamed bool
-	connectors    map[string]func() (connection, error)        // replaces the choice of backends_<goos>.go (key ""), or the Wayland ("wayland") or X11 ("x11") backend of the Linux desktop
-	newRenderer   func(cfg *Config, log *slog.Logger) renderer // replaces the choice of the renderer
-	candidates    func() []rendererCandidate                   // replaces the list of backends_<goos>.go
+	// pixelWindows is set by Run when the software renderer was asked for by name: the X11 windows
+	// are then made for pixels, and EGL is not asked for a visual (SPEC §9.6).
+	pixelWindows bool
+	connectors   map[string]func() (connection, error)        // replaces the choice of backends_<goos>.go (key ""), or the Wayland ("wayland") or X11 ("x11") backend of the Linux desktop
+	newRenderer  func(cfg *Config, log *slog.Logger) renderer // replaces the choice of the renderer
+	candidates   func() []rendererCandidate                   // replaces the list of backends_<goos>.go
 	// renewSurface and redraw are set by Run, for the renderers: renewSurface replaces the
 	// native surface of the window that the handle names by a new one (the web's canvas keeps
 	// the first kind of context it was asked for, so a renderer that follows a failed one
@@ -244,6 +247,7 @@ func Run(ctx context.Context, cfg Config) (err error) {
 			return err
 		}
 		cfg.rendererNamed = choice.named
+		cfg.pixelWindows = choice.asksFor("soft")
 	}
 
 	stage := func(name string) {

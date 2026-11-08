@@ -6,6 +6,7 @@ import (
 	"image"
 
 	"github.com/rm4n0s/glutter/internal/gpu"
+	"github.com/rm4n0s/glutter/internal/platform/linux/pixelpool"
 	"github.com/rm4n0s/glutter/internal/platform/linux/wayland/wl"
 )
 
@@ -15,14 +16,20 @@ import (
 
 var _ gpu.PixelTarget = (*window)(nil)
 
-// pixels is the memory of the buffer (poolBuffer).
-func (b *shmBuffer) pixels() []byte { return b.data }
+// poolBuffer is a shmBuffer as a buffer of the pool.
+type poolBuffer struct{ *shmBuffer }
+
+// Pixels is the memory of the buffer.
+func (b poolBuffer) Pixels() []byte { return b.data }
+
+// Free gives the buffer back.
+func (b poolBuffer) Free() { b.free() }
 
 // pixelPoolOf returns the buffer pool of the window, made at the first frame.
-func (w *window) pixelPoolOf() *pixelPool {
+func (w *window) pixelPoolOf() *pixelpool.Pool {
 	if w.pixelPool == nil {
 		shm := w.p.sess.shm
-		w.pixelPool = newPixelPool(func(width, height int, release func()) (poolBuffer, error) {
+		w.pixelPool = pixelpool.New(func(width, height int, release func()) (pixelpool.Buffer, error) {
 			b, err := newShmBufferFormat(shm, int32(width), int32(height), wl.WlShmFormatXrgb8888, func([]byte) {}, func(*shmBuffer) {
 				if !w.closed {
 					release()
@@ -31,7 +38,7 @@ func (w *window) pixelPoolOf() *pixelPool {
 			if err != nil {
 				return nil, err // not b: a nil *shmBuffer in the interface would not be nil
 			}
-			return b, nil
+			return poolBuffer{b}, nil
 		})
 	}
 	return w.pixelPool
@@ -43,13 +50,13 @@ func (w *window) pixelPoolOf() *pixelPool {
 // Flutter: no counterpart
 func (w *window) AcquirePixels(width, height int) (gpu.PixelBuffer, error) {
 	pool := w.pixelPoolOf()
-	slot, age, err := pool.acquire(width, height)
+	slot, age, err := pool.Acquire(width, height)
 	if err != nil {
 		return gpu.PixelBuffer{}, err
 	}
 	w.pixelCur = slot
 	return gpu.PixelBuffer{
-		Pix: slot.buf.pixels(), Stride: 4 * width, Width: width, Height: height,
+		Pix: slot.Buf.Pixels(), Stride: 4 * width, Width: width, Height: height,
 		Format: gpu.PixelFormatBGRX8888, Age: age,
 	}, nil
 }
@@ -71,17 +78,17 @@ func (w *window) PresentPixels(damage []image.Rectangle) error {
 		w.surface.Commit()
 		return nil
 	}
-	w.note("commit", int32(slot.width), int32(slot.height))
-	b := slot.buf.(*shmBuffer)
+	w.note("commit", int32(slot.Width), int32(slot.Height))
+	b := slot.Buf.(poolBuffer)
 	w.surface.Attach(b.buffer, 0, 0)
 	if len(damage) == 0 {
-		damage = []image.Rectangle{image.Rect(0, 0, slot.width, slot.height)}
+		damage = []image.Rectangle{image.Rect(0, 0, slot.Width, slot.Height)}
 	}
 	for _, r := range damage {
 		w.surface.DamageBuffer(int32(r.Min.X), int32(r.Min.Y), int32(r.Dx()), int32(r.Dy()))
 	}
 	w.surface.Commit()
-	w.pixelPool.present(slot)
+	w.pixelPool.Present(slot)
 	w.mapped = true
 	return nil
 }

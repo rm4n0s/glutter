@@ -1089,7 +1089,7 @@ func main() { _ = newView() }
   after a loss, and `OnDispose` runs for the old one first. The app ending runs it too.
 - **Without a GPU.** On the OpenGL ES, WebGL and software renderers the view shows `Fallback`. (On a Linux machine
   without a GPU, `GLUTTER_RENDERER=soft` draws the whole app on the CPU into the window's shared memory and
-  redraws only what changed, which is much cheaper than OpenGL on llvmpipe; on Wayland from 1.12.)
+  redraws only what changed, which is much cheaper than OpenGL on llvmpipe; on Wayland and X11 from 1.12.)
 - **Input.** The view is an ordinary box: wrap it in `Listener` or `GestureDetector`.
 - **Tests.** With `gluttertest.Opts{GPU: true}` the view draws on the recording device; check what the function encoded.
 

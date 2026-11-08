@@ -42,6 +42,32 @@ func TestSoftIsUsedOnLinuxByNameOnly(t *testing.T) {
 	}
 }
 
+// TestOnlySoftByNameMakesPixelWindows checks which choices have the X11 windows made for pixels (step
+// 32.2): the name soft, and no other choice, so that the others still ask EGL for a visual.
+func TestOnlySoftByNameMakesPixelWindows(t *testing.T) {
+	tests := []struct {
+		want string
+		soft bool
+	}{
+		{"soft", true},
+		{"", false},
+		{"auto", false},
+		{"gles", false},
+		{"vulkan", false},
+	}
+	for _, tt := range tests {
+		t.Run("renderer "+tt.want, func(t *testing.T) {
+			c, err := newChooser(&Config{}, quiet(), tt.want, rendererCandidates())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := c.asksFor("soft"); got != tt.soft {
+				t.Errorf("asksFor(soft) = %v, want %v", got, tt.soft)
+			}
+		})
+	}
+}
+
 // noVulkan is a Config whose Vulkan library cannot be loaded.
 func noVulkan() *Config {
 	return &Config{Getenv: func(k string) string {

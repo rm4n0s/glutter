@@ -281,9 +281,21 @@ func (l *Loop) armTimer() error {
 
 // runTimers runs the timers that are due, in deadline order.
 func (l *Loop) runTimers() error {
-	for len(l.timers) > 0 && !l.timers[0].when.After(time.Now()) {
-		t := l.timers[0]
+	// Only the timers that are due now run in this pass: a timer that a callback sets for "at once" (a
+	// frame that took longer than the interval asks for the next frame with a delay of zero) waits for
+	// the next pass, which first handles the events of the display and the posted functions. Without
+	// this a renderer that is slower than the frame rate (llvmpipe) would starve them, and the
+	// completions of MIT-SHM, the input and the resizes would wait for the end of the run.
+	now := time.Now()
+	var due []*Timer
+	for len(l.timers) > 0 && !l.timers[0].when.After(now) {
+		due = append(due, l.timers[0])
 		l.timers = l.timers[1:]
+	}
+	for _, t := range due {
+		if !t.live {
+			continue // an earlier callback of this pass stopped it
+		}
 		t.live = false
 		t.fn()
 	}

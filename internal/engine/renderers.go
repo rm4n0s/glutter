@@ -140,6 +140,11 @@ func newChooser(cfg *Config, log *slog.Logger, want string, cands []rendererCand
 		"value", want, "available", strings.Join(have, ","))
 }
 
+// asksFor says whether the renderer was asked for by that name.
+func (c *chooser) asksFor(name string) bool {
+	return c.named && len(c.cand) == 1 && c.cand[0].Name == name
+}
+
 // Draw draws with the renderer that was chosen. The first call tries the candidates:
 // one is kept once it has presented its first frame; if its Draw fails, the error is
 // logged once at Info level, the renderer is closed, and the next candidate is tried

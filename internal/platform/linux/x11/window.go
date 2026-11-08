@@ -29,6 +29,12 @@ type window struct {
 	cfg platform.WindowConfig
 
 	colormap uint64 // 0 when the window uses the parent's visual
+	// visual and depth are what the window shows pixels in (an XImage is made for them): 0 while the
+	// window has its parent's visual, and the default visual of the screen when the first buffer
+	// is asked for. pix is what the window keeps for the software renderer (pixels.go).
+	visual uintptr
+	depth  int32
+	pix    *pixelState
 
 	// width and height are the size of the content, in pixels.
 	width, height int32
@@ -125,6 +131,9 @@ func (p *Platform) NewWindow(cfg platform.WindowConfig) (platform.Window, error)
 // the window gets its parent's visual (depth 0 and visual 0 are CopyFromParent).
 func (w *window) chooseVisual() (visual uintptr, depth int32) {
 	p := w.p
+	if p.pixelWindows {
+		return w.pixelVisual()
+	}
 	id, err := p.visualFor(p.display)
 	if err != nil {
 		slog.Warn("EGL has no visual for X11, so the window cannot be drawn with OpenGL", "err", err)
@@ -143,7 +152,37 @@ func (w *window) chooseVisual() (visual uintptr, depth int32) {
 	defer p.x.free(list)
 	info := view[xVisualInfo](list)
 	w.colormap = p.x.createColormap(p.display, p.root, info.visual, allocNone)
+	w.visual, w.depth = info.visual, info.depth
 	return info.visual, info.depth
+}
+
+// pixelVisual finds the visual of a window that shows pixels: 24-bit TrueColor, with a pixel in the
+// order blue, green, red, which is what the software renderer writes (SPEC §9.6). It needs a colormap
+// of its own. A screen with no such visual gets the default one, and the first frame then fails
+// with X11PixelFormatUnsupported.
+func (w *window) pixelVisual() (visual uintptr, depth int32) {
+	p := w.p
+	template := dl.Calloc(1, 64)
+	count := dl.Calloc(1, 4)
+	defer dl.Free(template)
+	defer dl.Free(count)
+	t := view[xVisualInfo](template)
+	t.screen, t.depth, t.class = p.screen, 24, trueColor
+	list := p.x.getVisualInfo(p.display, visualScreenMask|visualDepthMask|visualClassMask, template, count)
+	if list == 0 {
+		slog.Warn("the X server has no 24-bit TrueColor visual: the window keeps the default one")
+		return 0, 0
+	}
+	defer p.x.free(list)
+	for _, info := range unsafe.Slice(view[xVisualInfo](list), int(*view[int32](count))) {
+		if info.redMask == 0xFF0000 && info.greenMask == 0xFF00 && info.blueMask == 0xFF {
+			w.colormap = p.x.createColormap(p.display, p.root, info.visual, allocNone)
+			w.visual, w.depth = info.visual, info.depth
+			return info.visual, info.depth
+		}
+	}
+	slog.Warn("the X server has no 24-bit TrueColor visual in the order blue, green, red: the window keeps the default one")
+	return 0, 0
 }
 
 func (w *window) freeColormap() {
@@ -387,6 +426,7 @@ func (w *window) onExpose() {
 func (w *window) onDestroyedByServer() {
 	w.closed = true
 	w.cancelFrame()
+	w.closePixels()
 	w.freeColormap()
 	delete(w.p.windows, w.xid)
 	if len(w.p.windows) == 0 {
@@ -720,6 +760,7 @@ func (w *window) Close() {
 		w.p.input.windowClosed(w)
 	}
 	w.p.xdnd.windowClosed(w)
+	w.closePixels()
 	w.p.x.destroyWindow(w.p.display, w.xid)
 	w.freeColormap()
 	delete(w.p.windows, w.xid)

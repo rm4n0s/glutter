@@ -31,6 +31,8 @@ type SoftStats struct {
 	Sizes [][2]int
 	// Mismatches lists the frames whose buffer was not what a whole redraw of the scene gives.
 	Mismatches []string
+	// Describe is the name of the renderer once it drew, as the log says it.
+	Describe string
 }
 
 // CheckSoftRenderer replaces the renderer of cfg by the software renderer of the Linux desktop with
@@ -68,6 +70,14 @@ func (t *checkTarget) AcquirePixels(w, h int) (gpu.PixelBuffer, error) {
 	return b, err
 }
 
+// PixelPath forwards what the window says of how its pixels reach the display server.
+func (t *checkTarget) PixelPath() string {
+	if p, ok := t.inner.(pixelPather); ok {
+		return p.PixelPath()
+	}
+	return ""
+}
+
 func (t *checkTarget) PresentPixels(d []image.Rectangle) error {
 	t.stats.Presents = append(t.stats.Presents, append([]image.Rectangle(nil), d...))
 	if t.cur != nil {
@@ -91,6 +101,7 @@ func (r *checkedSoft) Draw(h gpu.SurfaceHandle, width, height int, scene *ui.Sce
 		return img, err
 	}
 	r.stats.Frames++
+	r.stats.Describe = r.inner.Describe()
 	ref := image.NewRGBA(image.Rect(0, 0, width, height))
 	for i := 0; i < len(ref.Pix); i += 4 {
 		ref.Pix[i], ref.Pix[i+1], ref.Pix[i+2], ref.Pix[i+3] = 0x67, 0x50, 0xA4, 0xFF // developmentColor

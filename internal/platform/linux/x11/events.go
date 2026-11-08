@@ -16,6 +16,10 @@ func (p *Platform) handleEvent() {
 		p.monitorsChanged() // an output or a CRTC changed
 		return
 	}
+	if p.shm != nil && p.shm.on && any.typ == p.shm.eventBase+shmCompletion {
+		p.onShmCompletion(view[xShmCompletionEvent](p.event).shmseg)
+		return
+	}
 	switch any.typ {
 	case genericEvent:
 		p.handleGenericEvent()

@@ -20,12 +20,16 @@ import (
 	"github.com/rm4n0s/glutter/ui"
 )
 
-// These tests run the software renderer of the Linux desktop on a real Wayland compositor
-// (scripts/headless-wayland.sh, step 32.1): it draws into wl_shm buffers, and a blinking caret
+// These tests run the software renderer of the Linux desktop on a real display server: on a
+// Wayland compositor (scripts/headless-wayland.sh, step 32.1), where it draws into wl_shm buffers,
+// and on an X server (scripts/headless-x11.sh, step 32.2), where it draws into shared memory sent
+// with MIT-SHM or, with GLUTTER_X11_NOSHM=1, into memory sent with XPutImage. A blinking caret
 // rasterizes and reports only its own tiles. The app is a process of its own, as in the other
 // display tests. The checked renderer (engine.CheckSoftRenderer) compares the memory of the
 // buffer on display with a whole redraw of each scene.
 
+// softChildEnv names the backend ("wayland" or "x11") that the child app uses; it is empty in a
+// normal run.
 const softChildEnv = "GLUTTER_SOFT_CHILD"
 
 const (
@@ -36,11 +40,11 @@ const (
 	softResizeAt = 9
 )
 
-// TestDisplaySoftChild is the app, started by TestDisplaySoftOnWayland; it prints what the
+// TestDisplaySoftChild is the app, started by runSoftApp; it prints what the
 // renderer asked of the window as one JSON line. It does nothing in a normal run.
 func TestDisplaySoftChild(t *testing.T) {
 	if os.Getenv(softChildEnv) == "" {
-		t.Skip("run by TestDisplaySoftOnWayland")
+		t.Skip("run by TestDisplaySoftOnWayland and TestDisplaySoftOnX11")
 	}
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -75,7 +79,7 @@ func TestDisplaySoftChild(t *testing.T) {
 	var end func()
 	frame := 0
 	cfg := engine.Config{
-		Backend:  "wayland",
+		Backend:  os.Getenv(softChildEnv),
 		Renderer: "soft",
 		Window:   platform.WindowConfig{Title: "soft", AppID: "dev.glutter.soft", Size: ui.Size{Width: softW, Height: softH}},
 		Hooks:    engine.Hooks{Window: func(w platform.Window, stop func()) { win, end = w, stop }},
@@ -112,11 +116,42 @@ func TestDisplaySoftOnWayland(t *testing.T) {
 	if os.Getenv("WAYLAND_DISPLAY") == "" {
 		t.Skip("there is no Wayland compositor (run under scripts/headless-wayland.sh)")
 	}
+	checkSoftStats(t, runSoftApp(t, "wayland"), 1)
+}
+
+func TestDisplaySoftOnX11(t *testing.T) {
+	if os.Getenv("DISPLAY") == "" {
+		t.Skip("there is no X server (run under scripts/headless-x11.sh)")
+	}
+	for _, tt := range []struct {
+		name string
+		env  []string
+		path string
+	}{
+		{"with MIT-SHM", nil, "MIT-SHM"},
+		{"with XPutImage", []string{"GLUTTER_X11_NOSHM=1"}, "XPutImage"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			stats := runSoftApp(t, "x11", tt.env...)
+			// An X server keeps nothing of a window: the expose that follows the map has the second frame drawn
+			// whole too.
+			checkSoftStats(t, stats, 2)
+			if !strings.Contains(stats.Describe, tt.path) {
+				t.Errorf("the renderer is %q, want a name with %s", stats.Describe, tt.path)
+			}
+		})
+	}
+}
+
+// runSoftApp starts the child app on the backend and returns what its renderer saw.
+func runSoftApp(t *testing.T, backend string, env ...string) engine.SoftStats {
+	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run", "^TestDisplaySoftChild$", "-test.count=1", "-test.v")
 	cmd.WaitDelay = 5 * time.Second
-	cmd.Env = append(os.Environ(), softChildEnv+"=1", "GLUTTER_BACKEND=wayland")
+	cmd.Env = append(os.Environ(), softChildEnv+"="+backend, "GLUTTER_BACKEND="+backend)
+	cmd.Env = append(cmd.Env, env...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("the app failed: %v\n%s", err, out)
@@ -134,8 +169,15 @@ func TestDisplaySoftOnWayland(t *testing.T) {
 	if !found {
 		t.Fatalf("the app did not print its stats:\n%s", out)
 	}
-	t.Logf("%d frames, %d buffers acquired, presentations %v, sizes %v", stats.Frames, stats.Acquires, stats.Presents, stats.Sizes)
+	t.Logf("%s: %d frames, %d buffers acquired, presentations %v, sizes %v", stats.Describe, stats.Frames, stats.Acquires, stats.Presents, stats.Sizes)
+	return stats
+}
 
+// checkSoftStats checks what the renderer asked of the window: the buffer on display was a whole
+// redraw in every frame, the first frames (leading of them) and the resize are whole, and a blinking
+// caret reports its own tiles and nothing else.
+func checkSoftStats(t *testing.T, stats engine.SoftStats, leading int) {
+	t.Helper()
 	if len(stats.Mismatches) != 0 {
 		t.Errorf("the buffer on display was not a whole redraw of the scene:\n%s", strings.Join(stats.Mismatches, "\n"))
 	}
@@ -156,8 +198,8 @@ func TestDisplaySoftOnWayland(t *testing.T) {
 			grew = true
 			continue
 		}
-		if i == 0 || (stats.Frames > softResizeAt && i >= softResizeAt-1 && i <= softResizeAt+1) {
-			continue // the first frame, and the frames around the resize
+		if i < leading || (stats.Frames > softResizeAt && i >= softResizeAt-1 && i <= softResizeAt+1) {
+			continue // the first frames, and the frames around the resize
 		}
 		area := 0
 		for _, r := range d {

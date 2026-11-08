@@ -294,7 +294,7 @@ func TestPixelBufferFailureRoute(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected *errors.Error, got %T", err)
 	}
-	if !appErr.HasRoute("window.AcquirePixels->pixelPool.acquire->window.pixelPoolOf.func1->newShmBufferFormat.ShmBufferFailed") {
+	if !appErr.HasRoute("window.AcquirePixels->Pool.Acquire->window.pixelPoolOf.func1->newShmBufferFormat.ShmBufferFailed") {
 		t.Errorf("unexpected failure path: %s", appErr.Route())
 	}
 }

@@ -95,6 +95,27 @@ type Platform struct {
 	// visualFor returns the X visual that EGL wants for windows on the display;
 	// tests replace it.
 	visualFor func(display uintptr) (uint32, error)
+
+	// pixelWindows is Options.PixelWindows. shm is what is known of MIT-SHM (nil until the first
+	// window shows pixels), shmSegs the release function of each segment that the server has, by
+	// its XID. loadExt and loadSysv load the libraries of MIT-SHM; tests replace them.
+	pixelWindows bool
+	shm          *shmState
+	shmSegs      map[uint64]func()
+	loadExt      func() (*xext, error)
+	loadSysv     func() (*sysv, error)
+}
+
+// Options are the optional parameters of New.
+//
+// Flutter: no counterpart
+type Options struct {
+	// PixelWindows says that the windows are drawn by the software renderer, which sends pixels
+	// (gpu.PixelTarget): they get a 24-bit TrueColor visual of their own choice and EGL is not
+	// asked for one, so the library is not loaded and the display is not initialized for it.
+	// Without it a window takes the visual that EGL wants, and shows pixels when that visual's
+	// layout allows.
+	PixelWindows bool
 }
 
 var _ platform.Platform = (*Platform)(nil)
@@ -103,10 +124,19 @@ var _ platform.Platform = (*Platform)(nil)
 // the keyboard and pointer input. It fails with LibraryLoadFailed when libX11 is
 // missing and X11OpenDisplayFailed when the display cannot be opened. Without libXi or
 // without XInput2 on the server there is no keyboard and pointer input (a warning
-// is logged). Close releases the connection.
+// is logged). Close releases the connection. More than one options value panics with
+// MultipleOptions.
 //
 // Flutter: no counterpart
-func New(name string) (*Platform, error) {
+func New(name string, opts ...Options) (*Platform, error) {
+	var o Options
+	switch len(opts) {
+	case 0:
+	case 1:
+		o = opts[0]
+	default:
+		panic(errors.New(tagMultipleOptions, "New takes at most one Options value", "count", len(opts)))
+	}
 	x, err := loadXlibOnce()
 	if err != nil {
 		return nil, err
@@ -136,6 +166,10 @@ func New(name string) (*Platform, error) {
 		windows: map[uint64]*window{},
 
 		visualFor: gles.X11Visual,
+
+		pixelWindows: o.PixelWindows,
+		loadExt:      loadXextOnce,
+		loadSysv:     loadSysvOnce,
 	}
 	p.src = &connSource{p: p}
 	p.atoms = p.internAtoms()
@@ -382,6 +416,7 @@ func (p *Platform) dispatchEvents() (handled bool) {
 
 // The tags of the errors that this file makes (rm4n0s/errors, R5).
 const (
+	tagMultipleOptions        = "MultipleOptions"
 	tagPlatformAlreadyRunning = "PlatformAlreadyRunning"
 	tagX11OpenDisplayFailed   = "X11OpenDisplayFailed"
 )

@@ -435,3 +435,54 @@ func TestSyscallFailures(t *testing.T) {
 const (
 	tagSourceFailed = "SourceFailed"
 )
+
+// TestATimerSetForAtOnceWaitsForTheNextPass checks that a callback that sets a timer with a delay of
+// zero (a frame slower than the frame interval asks for the next one so) does not make the pass run
+// that timer too: the events of the display and the posted functions come first (step 32.2: with
+// llvmpipe the frames were slower than the interval, and the completions of MIT-SHM never arrived).
+func TestATimerSetForAtOnceWaitsForTheNextPass(t *testing.T) {
+	l := newTestLoop(t)
+	var order []string
+	if _, err := l.AfterFunc(-time.Millisecond, func() {
+		order = append(order, "first")
+		if _, err := l.AfterFunc(0, func() { order = append(order, "again") }); err != nil {
+			t.Error(err)
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.runTimers(); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(order, []string{"first"}) {
+		t.Fatalf("one pass ran %v, want only the timer that was due when it began", order)
+	}
+	time.Sleep(time.Millisecond)
+	if err := l.runTimers(); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(order, []string{"first", "again"}) {
+		t.Errorf("the next pass ran %v, want the timer set for at once", order)
+	}
+}
+
+func TestATimerStoppedByAnEarlierCallbackOfTheSamePassDoesNotRun(t *testing.T) {
+	l := newTestLoop(t)
+	var ran []string
+	var second *Timer
+	if _, err := l.AfterFunc(-2*time.Millisecond, func() {
+		ran = append(ran, "first")
+		if !second.Stop() {
+			ran = append(ran, "stop-failed")
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	second, _ = l.AfterFunc(-time.Millisecond, func() { ran = append(ran, "second") })
+	if err := l.runTimers(); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(ran, []string{"first"}) {
+		t.Errorf("ran %v, want only the first", ran)
+	}
+}

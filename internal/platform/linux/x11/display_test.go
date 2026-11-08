@@ -206,11 +206,17 @@ func startDisplay(t *testing.T, cfg platform.WindowConfig) *x11Env {
 // for the window's map request.
 func startDisplayWith(t *testing.T, cfg platform.WindowConfig, before func(*Platform)) *x11Env {
 	t.Helper()
+	return startDisplayOptions(t, cfg, Options{}, before)
+}
+
+// startDisplayOptions is startDisplayWith with the options of the platform.
+func startDisplayOptions(t *testing.T, cfg platform.WindowConfig, opts Options, before func(*Platform)) *x11Env {
+	t.Helper()
 	if os.Getenv("DISPLAY") == "" {
 		t.Skip("DISPLAY is not set: run the X11 display tests under scripts/headless-x11.sh")
 	}
 	t.Setenv("LC_ALL", "en_US.UTF-8")
-	p, err := New("")
+	p, err := New("", opts)
 	if err != nil {
 		if appErr, ok := errors.FromError(err); ok {
 			t.Fatalf("could not connect to the X server: %s %v", appErr.Tag, appErr.Metadata)

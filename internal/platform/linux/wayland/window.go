@@ -10,6 +10,7 @@ import (
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/internal/gpu"
 	"github.com/rm4n0s/glutter/internal/platform"
+	"github.com/rm4n0s/glutter/internal/platform/linux/pixelpool"
 	"github.com/rm4n0s/glutter/internal/platform/linux/wayland/decor"
 	"github.com/rm4n0s/glutter/internal/platform/linux/wayland/wl"
 	"github.com/rm4n0s/glutter/ui"
@@ -143,8 +144,8 @@ type window struct {
 	eglWindow uintptr
 	// pixelPool is the wl_shm buffers of the software renderer, made at its first frame, and
 	// pixelCur the one that AcquirePixels gave and PresentPixels has not shown yet.
-	pixelPool *pixelPool
-	pixelCur  *poolSlot
+	pixelPool *pixelpool.Pool
+	pixelCur  *pixelpool.Slot
 
 	// Frame pacing (SPEC §8.11): at most one frame callback is in flight, and a
 	// request that arrives meanwhile waits for it. A suspended window renders
@@ -1116,7 +1117,7 @@ func (w *window) destroy() {
 	}
 	w.old, w.buffer = nil, nil
 	if w.pixelPool != nil {
-		w.pixelPool.close()
+		w.pixelPool.Close()
 		w.pixelPool, w.pixelCur = nil, nil
 	}
 	w.freeIconBuffers()

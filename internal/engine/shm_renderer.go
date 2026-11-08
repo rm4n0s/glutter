@@ -20,7 +20,13 @@ type shmRenderer struct {
 	surfaces  map[gpu.SurfaceHandle]gpu.Surface
 	kind      gpu.SurfaceKind
 	announced bool
+	// target is the first window's target, which may say how it sends its pixels (pixelPather).
+	target gpu.PixelTarget
 }
+
+// pixelPather is a gpu.PixelTarget that can say how its pixels reach the display server: "MIT-SHM"
+// or "XPutImage" on X11. The answer is known once the first buffer was asked for.
+type pixelPather interface{ PixelPath() string }
 
 func newSHMRenderer(targets func(gpu.SurfaceHandle) (gpu.PixelTarget, bool), log *slog.Logger) *shmRenderer {
 	return &shmRenderer{log: log, targets: targets, surfaces: map[gpu.SurfaceHandle]gpu.Surface{}}
@@ -32,7 +38,12 @@ func (r *shmRenderer) Describe() string {
 	case gpu.SurfaceKindWayland:
 		return "soft: shared memory (wl_shm)"
 	case gpu.SurfaceKindX11:
-		return "soft: shared memory (X11)"
+		if p, ok := r.target.(pixelPather); ok {
+			if path := p.PixelPath(); path != "" {
+				return "soft: " + path + " (X11)"
+			}
+		}
+		return "soft: X11 pixels"
 	}
 	return "soft: shared memory"
 }
@@ -49,6 +60,9 @@ func (r *shmRenderer) Draw(h gpu.SurfaceHandle, width, height int, scene *ui.Sce
 		}
 		r.surfaces[h] = surface
 		r.kind = h.Kind
+		if r.target == nil {
+			r.target, _ = r.targets(h)
+		}
 		if !r.announced {
 			r.announced = true
 			r.log.Info("software renderer ready", "presents", r.Describe())

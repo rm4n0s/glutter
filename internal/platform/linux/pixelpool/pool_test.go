@@ -1,6 +1,6 @@
 //go:build linux && !android
 
-package wayland
+package pixelpool
 
 import (
 	"testing"
@@ -8,18 +8,18 @@ import (
 	"github.com/rm4n0s/errors"
 )
 
-// fakeBuffer is a poolBuffer that counts how often it was freed.
+// fakeBuffer is a Buffer that counts how often it was freed.
 type fakeBuffer struct {
 	data  []byte
 	freed int
 }
 
-func (b *fakeBuffer) pixels() []byte { return b.data }
-func (b *fakeBuffer) free()          { b.freed++ }
+func (b *fakeBuffer) Pixels() []byte { return b.data }
+func (b *fakeBuffer) Free()          { b.freed++ }
 
-// fakePool is a pixelPool over fakeBuffers that remembers them and their release functions.
+// fakePool is a Pool over fakeBuffers that remembers them and their release functions.
 type fakePool struct {
-	*pixelPool
+	*Pool
 	made     []*fakeBuffer
 	releases []func()
 	fail     error
@@ -27,7 +27,7 @@ type fakePool struct {
 
 func newFakePool() *fakePool {
 	f := &fakePool{}
-	f.pixelPool = newPixelPool(func(width, height int, release func()) (poolBuffer, error) {
+	f.Pool = New(func(width, height int, release func()) (Buffer, error) {
 		if f.fail != nil {
 			return nil, f.fail
 		}
@@ -95,18 +95,18 @@ func TestPixelPoolBuffersAndAges(t *testing.T) {
 				for _, n := range st.release {
 					f.releases[n]()
 				}
-				slot, age, err := f.acquire(st.width, st.height)
+				slot, age, err := f.Acquire(st.width, st.height)
 				if err != nil {
 					t.Fatalf("step %d: acquire: %v", i, err)
 				}
-				if got := slot.buf.(*fakeBuffer); got != f.made[st.wantBuffer] {
+				if got := slot.Buf.(*fakeBuffer); got != f.made[st.wantBuffer] {
 					t.Errorf("step %d: got buffer %d, want %d", i, indexOfBuffer(f.made, got), st.wantBuffer)
 				}
 				if age != st.wantAge {
 					t.Errorf("step %d: age = %d, want %d", i, age, st.wantAge)
 				}
 				if !st.skipPresent {
-					f.present(slot)
+					f.Present(slot)
 				}
 			}
 			if len(f.made) != tt.made {
@@ -127,18 +127,18 @@ func indexOfBuffer(all []*fakeBuffer, b *fakeBuffer) int {
 
 func TestPixelPoolFreesWhatIsNotNeeded(t *testing.T) {
 	f := newFakePool()
-	a, _, _ := f.acquire(4, 4)
-	f.present(a)
-	b, _, _ := f.acquire(4, 4)
-	f.present(b)
+	a, _, _ := f.Acquire(4, 4)
+	f.Present(a)
+	b, _, _ := f.Acquire(4, 4)
+	f.Present(b)
 	// A resize: the buffer that is idle is freed when the new size is asked for, and the one
 	// that the compositor holds is freed when it lets go.
 	f.releases[0]()
-	c, _, err := f.acquire(8, 8)
+	c, _, err := f.Acquire(8, 8)
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.present(c)
+	f.Present(c)
 	if f.made[0].freed != 1 || f.made[1].freed != 0 {
 		t.Errorf("freed = %d and %d after the resize, want 1 and 0", f.made[0].freed, f.made[1].freed)
 	}
@@ -146,8 +146,8 @@ func TestPixelPoolFreesWhatIsNotNeeded(t *testing.T) {
 	if f.made[1].freed != 1 {
 		t.Errorf("the buffer of the old size was freed %d times when released, want 1", f.made[1].freed)
 	}
-	f.close()
-	f.close()
+	f.Close()
+	f.Close()
 	if f.made[2].freed < 1 {
 		t.Error("close did not free the buffer in use")
 	}
@@ -157,11 +157,11 @@ func TestPixelPoolFreesWhatIsNotNeeded(t *testing.T) {
 func TestPixelPoolKeepsAtMostThreeIdleBuffers(t *testing.T) {
 	f := newFakePool()
 	for i := 0; i < 5; i++ {
-		s, _, err := f.acquire(4, 4)
+		s, _, err := f.Acquire(4, 4)
 		if err != nil {
 			t.Fatal(err)
 		}
-		f.present(s)
+		f.Present(s)
 	}
 	for _, r := range f.releases {
 		r()
@@ -170,40 +170,43 @@ func TestPixelPoolKeepsAtMostThreeIdleBuffers(t *testing.T) {
 	for _, b := range f.made {
 		freed += b.freed
 	}
-	if freed != 2 || len(f.slots) != keepPoolBuffers {
-		t.Errorf("%d buffers freed and %d kept, want 2 and %d", freed, len(f.slots), keepPoolBuffers)
+	if freed != 2 || len(f.slots) != keepBuffers {
+		t.Errorf("%d buffers freed and %d kept, want 2 and %d", freed, len(f.slots), keepBuffers)
 	}
 }
 
 func TestPixelPoolExhaustedRoute(t *testing.T) {
 	f := newFakePool()
-	for i := 0; i < maxPoolBuffers; i++ {
-		s, _, err := f.acquire(4, 4)
+	for i := 0; i < maxBuffers; i++ {
+		s, _, err := f.Acquire(4, 4)
 		if err != nil {
 			t.Fatalf("acquire %d: %v", i, err)
 		}
-		f.present(s)
+		f.Present(s)
 	}
-	_, _, err := f.acquire(4, 4)
+	_, _, err := f.Acquire(4, 4)
 	appErr, ok := errors.FromError(err)
 	if !ok {
 		t.Fatalf("expected *errors.Error, got %T", err)
 	}
-	if !appErr.HasRoute("pixelPool.acquire.ShmPoolExhausted") {
+	if !appErr.HasRoute("Pool.Acquire.ShmPoolExhausted") {
 		t.Errorf("unexpected failure path: %s", appErr.Route())
 	}
 }
 
 func TestPixelPoolBufferFailureIsReturnedAndRetried(t *testing.T) {
 	f := newFakePool()
-	f.fail = errors.New(tagShmBufferFailed, "no memory", "op", "mmap")
-	if _, _, err := f.acquire(4, 4); err == nil {
+	f.fail = errors.New(tagTestBufferFailed, "no memory", "op", "mmap")
+	if _, _, err := f.Acquire(4, 4); err == nil {
 		t.Fatal("acquire succeeded with no memory")
-	} else if appErr, ok := errors.FromError(err); !ok || appErr.Tag != tagShmBufferFailed {
-		t.Fatalf("got %v, want ShmBufferFailed", err)
+	} else if appErr, ok := errors.FromError(err); !ok || appErr.Tag != tagTestBufferFailed {
+		t.Fatalf("got %v, want TestBufferFailed", err)
 	}
 	f.fail = nil
-	if _, _, err := f.acquire(4, 4); err != nil {
+	if _, _, err := f.Acquire(4, 4); err != nil {
 		t.Fatalf("acquire after the memory came back: %v", err)
 	}
 }
+
+// tagTestBufferFailed is the tag of the error that the fake memory gives.
+const tagTestBufferFailed = "TestBufferFailed"

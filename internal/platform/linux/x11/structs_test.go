@@ -65,6 +65,18 @@ func TestStructLayouts(t *testing.T) {
 		"visual": 0, "visualID": 8, "screen": 16, "depth": 20, "class": 24, "redMask": 32, "greenMask": 40, "blueMask": 48,
 		"colormapSize": 56, "bitsPerRGB": 60,
 	}, xVisualInfo{})
+	layouttest.AssertLayout(t, "XImage", 136, map[string]uintptr{
+		"width": 0, "height": 4, "xoffset": 8, "format": 12, "data": 16, "byteOrder": 24, "bitmapUnit": 28,
+		"bitmapBitOrder": 32, "bitmapPad": 36, "depth": 40, "bytesPerLine": 44, "bitsPerPixel": 48,
+		"redMask": 56, "greenMask": 64, "blueMask": 72, "obdata": 80,
+	}, xImage{})
+	layouttest.AssertLayout(t, "XShmSegmentInfo", 32, map[string]uintptr{
+		"shmseg": 0, "shmid": 8, "shmaddr": 16, "readOnly": 24,
+	}, xShmSegmentInfo{})
+	layouttest.AssertLayout(t, "XShmCompletionEvent", 64, map[string]uintptr{
+		"typ": 0, "serial": 8, "sendEvent": 16, "display": 24, "drawable": 32, "majorCode": 40, "minorCode": 44,
+		"shmseg": 48, "offset": 56,
+	}, xShmCompletionEvent{})
 	layouttest.AssertLayout(t, "XSizeHints", 80, map[string]uintptr{
 		"flags": 0, "x": 8, "y": 12, "width": 16, "height": 20, "minWidth": 24, "minHeight": 28, "maxWidth": 32,
 		"maxHeight": 36, "widthInc": 40, "heightInc": 44, "minAspect": 48, "maxAspect": 56, "baseWidth": 64,

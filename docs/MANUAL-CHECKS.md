@@ -765,3 +765,19 @@ Answers: _(not yet recorded)_
 5. Does the app, left running for a few minutes, keep its memory flat (`top`, the `RES` column, or `GLUTTER_FRAME_STATS=1`)?
 
 Answers: _(not yet recorded)_
+
+## 32.2 `soft` on X11: MIT-SHM and `XPutImage`
+
+**Status:** pending
+
+`GLUTTER_RENDERER=soft` on X11 draws the app on the CPU and sends only the damaged rectangles to the X server: with MIT-SHM (shared memory) when the server is on the same machine, with `XPutImage` otherwise. It is chosen by name only until step 32.3, so run each command with the variable and with `GLUTTER_BACKEND=x11`. On a **real X11 session in a virtual machine with no GPU** (an X11 session of GNOME, KDE or Xfce: `glxinfo -B` says `llvmpipe`), from a checkout of Glutter:
+
+1. `GLUTTER_BACKEND=x11 GLUTTER_RENDERER=soft go run ./examples/gallery`: does the window open with the same picture as without `GLUTTER_RENDERER`? Does the log say `X11 pixels go to the server through shared memory path=MIT-SHM` and `renderer chosen renderer="soft: MIT-SHM (X11)"`, and is there no `libEGL warning: DRI3 error` line? Is it as smooth as `GLUTTER_RENDERER=gles` or smoother (move the mouse over the buttons, scroll the list, switch the pages)?
+2. `GLUTTER_BACKEND=x11 GLUTTER_RENDERER=soft go run ./examples/editor`: click in the text and type. Does the caret blink with no flicker, and does the CPU use (`top`) stay low while it blinks and nothing else happens (compare with `GLUTTER_RENDERER=gles`)?
+3. Resize the window by its edge, maximize it and restore it, then change the scale in the settings: is every size drawn at once, with no strip of the old picture or of black, and is the picture sharp at the new scale? Cover the window with another one and uncover it: is the whole picture back at once?
+4. `GLUTTER_X11_NOSHM=1` with the same commands: the log says `X11 pixels go to the server in requests path=XPutImage`, and the app looks the same. Is it noticeably slower than with MIT-SHM (it should be a little, on a large window)?
+5. **A remote X display** (`ssh -X other-machine`, then `GLUTTER_BACKEND=x11 GLUTTER_RENDERER=soft go run ./examples/gallery` there, or a program that runs on another machine with `DISPLAY` set to your screen): does the log say `path=XPutImage reason="the display is not on this machine"`, and does the window draw correctly, with a caret that blinks and does not make the connection busy?
+6. `GLUTTER_BACKEND=x11 GLUTTER_RENDERER=soft go run ./examples/multiwindow` (open and close windows) and the tray example (hide the window and show it again): does every window draw, and does a window that is shown again show the whole picture? After the app ends, `ipcs -m` shows no segment of it.
+7. Does the app, left running for a few minutes, keep its memory flat (`top`, the `RES` column, or `GLUTTER_FRAME_STATS=1`)?
+
+Answers: _(not yet recorded)_

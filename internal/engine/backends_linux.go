@@ -59,7 +59,7 @@ func rendererCandidates() []rendererCandidate {
 }
 
 // newSoftWindowRenderer makes the software renderer of the Linux desktop, over the pixel buffers
-// of the windows (Wayland's wl_shm).
+// of the windows (Wayland's wl_shm, X11's MIT-SHM or XPutImage).
 func newSoftWindowRenderer(cfg *Config, log *slog.Logger) renderer {
 	return newSHMRenderer(func(h gpu.SurfaceHandle) (gpu.PixelTarget, bool) {
 		if cfg.pixelTarget == nil {
@@ -110,7 +110,7 @@ func (c *Config) x11Connector() func() (linux.Connection, error) {
 		if c.ShmFill {
 			return nil, errors.New(tagShmFillUnsupported, "the shared-memory mode is for Wayland only")
 		}
-		p, err := x11.New("")
+		p, err := x11.New("", x11.Options{PixelWindows: c.pixelWindows})
 		if err != nil {
 			return nil, err
 		}

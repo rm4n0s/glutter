@@ -239,6 +239,53 @@ type xVisualInfo struct {
 	bitsPerRGB   int32
 }
 
+// xImage is XImage, of which the code reads the size, the layout of a pixel and the masks, and
+// sets data.
+type xImage struct {
+	width, height  int32
+	xoffset        int32
+	format         int32
+	data           uintptr
+	byteOrder      int32
+	bitmapUnit     int32
+	bitmapBitOrder int32
+	bitmapPad      int32
+	depth          int32
+	bytesPerLine   int32
+	bitsPerPixel   int32
+	_              int32
+	redMask        uint64
+	greenMask      uint64
+	blueMask       uint64
+	obdata         uintptr
+	_              [48]byte // the functions of the image
+}
+
+// xShmSegmentInfo is XShmSegmentInfo: a segment of shared memory that the X server attaches.
+type xShmSegmentInfo struct {
+	shmseg   uint64
+	shmid    int32
+	_        int32
+	shmaddr  uintptr
+	readOnly int32
+	_        int32
+}
+
+// xShmCompletionEvent is XShmCompletionEvent: the server has read the segment of a request.
+type xShmCompletionEvent struct {
+	typ       int32
+	_         int32
+	serial    uint64
+	sendEvent int32
+	_         int32
+	display   uintptr
+	drawable  uint64
+	majorCode int32
+	minorCode int32
+	shmseg    uint64
+	offset    uint64
+}
+
 // xSizeHints is XSizeHints.
 type xSizeHints struct {
 	flags                 int64
