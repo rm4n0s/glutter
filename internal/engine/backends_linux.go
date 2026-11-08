@@ -46,15 +46,17 @@ func screenshotPath(value string, _ func(string) string) string { return value }
 // processStart is when the process started, if the system says.
 func processStart() (time.Time, bool) { return linux.ProcessStart() }
 
-// rendererCandidates are the renderers of Linux in the order auto tries them: vulkan, then gles
-// (SPEC §9.6). A Vulkan whose only device is a CPU (lavapipe) does not count: it is used only
-// when asked for by name, so auto then uses GLES. soft, which draws on the CPU into the window's
-// shared memory, is used only when asked for by name.
+// rendererCandidates are the renderers of Linux in the order auto tries them (SPEC §9.6): vulkan, then
+// gles, then soft. A Vulkan whose only device is a CPU (lavapipe) does not count: it is used only when asked
+// for by name, so auto goes on to GLES. A GLES whose GL_RENDERER names a rasterizer on the CPU (llvmpipe,
+// the OpenGL of a virtual machine with no GPU) does not count either, and auto goes on to soft, which draws
+// into the window's shared memory and redraws only what changed; GLES by name still uses it. soft is the
+// last: with a GPU nothing reaches it, and without libEGL or a usable context it is what is left.
 func rendererCandidates() []rendererCandidate {
 	return []rendererCandidate{
 		{Name: "vulkan", New: newVulkanRenderer},
 		{Name: "gles", New: newGLESRenderer},
-		{Name: "soft", New: newSoftWindowRenderer, Skip: func(*Config) bool { return true }},
+		{Name: "soft", New: newSoftWindowRenderer},
 	}
 }
 
@@ -198,7 +200,9 @@ func (m *fontconfigMatcher) Close() { m.cfg.Close() }
 
 // newGLESRenderer makes the OpenGL ES renderer of Linux, over EGL.
 func newGLESRenderer(cfg *Config, log *slog.Logger) renderer {
-	return newGLRenderer("gles", gles.NewRenderer, true, cfg, log)
+	r := newGLRenderer("gles", gles.NewRenderer, true, cfg, log).(*glesRenderer)
+	r.rejectSoftware = !cfg.rendererNamed
+	return r
 }
 
 // The tags of the errors that this file makes (rm4n0s/errors, R5).

@@ -13,6 +13,7 @@ Glutter is a cgo-free GUI toolkit for Go (Android, from 1.6, is the one exceptio
 - Test the cgo-free path: `CGO_ENABLED=0 go test ./...`
 - Test one package: `go test ./widgets -run TestName -v`
 - Tests that need a real display/GPU: `go test -race -tags glutter_display ./...`
+- The display tests under one X server (from step 32.2): `scripts/headless-x11.sh -- go test -p 1 -race -tags glutter_display ./internal/engine ./internal/platform/linux/x11 ./internal/gpu/shmwindow`; `-p 1` because the tests of the `x11` package change the `Xft.dpi` of the server, which every other client of it (the apps that the `engine` tests start) sees, and a run of the packages side by side failed once in about twenty.
 - Web build and checks (from step 19.1): `GOOS=js GOARCH=wasm go build ./...`, `GOOS=js GOARCH=wasm go vet ./...`, `scripts/test-wasm.sh` (unit tests under Node)
 - Tests in a headless browser: `go test -tags glutter_browser ./...` (SPEC §17)
 - Run an example on the web: `go run ./cmd/glutter-web serve ./examples/counter`

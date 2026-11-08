@@ -361,6 +361,25 @@ The targets of SPEC §28.6, measured on the Ryzen 9 6900HX with the Radeon RX 68
 
 What was changed for the numbers: `Gamepads.AppendPads` (a frame of a game no longer makes a slice of the pads), and the pad's listeners are no longer copied for each event (`internal/pads`).
 
+## The software renderer on Linux (step 32.3)
+
+The goal of M32: on a machine with no GPU an idle app whose only change is a blinking text caret must cost at least several times less CPU with `soft` than with `gles` (Mesa's llvmpipe), which is what the Emetos report found slow (SPEC §9.6, "Decided in step 32.3"). The app is `examples/editor` (a release build), whose caret blinks twice a second; each case runs 4 seconds to settle and 20 seconds of measurement, three times. The CPU time is the user and system time of the whole process (every thread, llvmpipe's included) from `/proc/<pid>/stat`, so it is what `top` shows. The display is a headless Sway (pixman, 1280x800, the window 820x460) or Xvfb, and the GL is llvmpipe (LLVM 23.1.2, 256 bits) on both: the machine has 16 threads, so a virtual machine with a few CPUs pays more for `gles`, not less. The machine is the Ryzen 9 6900HX of "Games", through `.claude/no-nvidia.sh`, 2026-11-08.
+
+```
+.claude/no-nvidia.sh -- scripts/perf-soft.sh -s 20 -r 3
+```
+
+| Display | Renderer | CPU, % of one thread | CPU, ms for each second | Frames a second |
+|---|---|---|---|---|
+| Wayland | `gles` (llvmpipe) | 45.4, 46.2, 46.0 | 454, 462, 460 | 2.0 to 2.3 |
+| Wayland | `soft` (`wl_shm`) | 0.4, 0.4, 0.3 | 4, 4, 4 | 2.0 |
+| X11 | `gles` (llvmpipe) | 19.1, 19.1, 19.1 | 192, 191, 192 | 2.0 to 2.1 |
+| X11 | `soft` (MIT-SHM) | 0.3, 0.5, 0.5 | 4, 5, 4 | 2.0 |
+
+`soft` costs about 4 ms of CPU for each second of blinking, which is 2 ms for each frame (the build of the frame, the rasterization of one 64x64 tile and the copy of it), where `gles` on llvmpipe costs 90 to 230 ms for each frame: **100 times less on Wayland and 45 times less on X11**, far beyond the goal of several times, so nothing is reported to the owner. Wayland's `gles` is dearer than X11's, probably because the headless Sway has no GPU buffers and Mesa then copies each frame through `wl_shm` (not measured apart). The frames of the framework are the same in both (`GLUTTER_FRAME_STATS=1`: build 0.1 to 0.2 ms, raster of `soft` 0.25 to 0.6 ms for a caret frame).
+
+What these numbers do not say: a frame that changes a large part of the window (a scroll, an animation of the whole page) is rasterized by `soft` on one thread with no vectorized pipeline of a GPU, so it can cost more than llvmpipe's threads on a machine with many CPUs; the damage keeps that to the part that changed. The first frame of `soft` is the whole window (about 9 ms for the editor's 820x460). The cold start of `auto` on such a machine has the Vulkan try and one GLES context that is opened and closed again (SPEC §9.6); `GLUTTER_RENDERER=soft` skips both.
+
 ## Text: code-like paragraphs (step 22.6)
 
 A code view draws many short lines of monospace text, each in many styled spans. The

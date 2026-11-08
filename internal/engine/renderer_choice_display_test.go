@@ -17,15 +17,29 @@ import (
 )
 
 // These tests run the engine in a headless Wayland compositor (scripts/headless-wayland.sh) and
-// check which renderer it chooses (SPEC §9.6, step 20.7): Vulkan where it works, GLES where it
-// does not, and never a CPU Vulkan device unless Vulkan was asked for by name.
+// check which renderer it chooses (SPEC §9.6, steps 20.7 and 32.3): Vulkan where it works, GLES where it
+// does not, never a CPU Vulkan device unless Vulkan was asked for by name, and soft where the only GL is a
+// rasterizer on the CPU.
 
 // Each case runs in a process of its own: Mesa's EGL on Wayland does not survive a second display
 // connection of the same process reliably (its wl_shm and callback ids collided in about one run
 // in three when the cases ran under the load of the other display tests), and an app has one
 // connection anyway.
 
-// choiceChildEnv makes the test binary run only the child, which is the app of a case.
+// displayBackend is the display server that the tests run on: "wayland" under scripts/headless-wayland.sh,
+// "x11" under scripts/headless-x11.sh, and "" when there is none.
+func displayBackend() string {
+	switch {
+	case os.Getenv("WAYLAND_DISPLAY") != "":
+		return "wayland"
+	case os.Getenv("DISPLAY") != "":
+		return "x11"
+	}
+	return ""
+}
+
+// choiceChildEnv makes the test binary run only the child, which is the app of a case; its value is the
+// backend of the display server.
 const choiceChildEnv = "GLUTTER_CHOICE_CHILD"
 
 // TestDisplayChoiceChild is the app of a case, started by chosenRenderer; it prints what the log
@@ -37,7 +51,7 @@ func TestDisplayChoiceChild(t *testing.T) {
 	runtime.LockOSThread() // the EGL context belongs to one thread, as it does for RunApp on the main thread
 	defer runtime.UnlockOSThread()
 	t.Setenv("GLUTTER_SCREENSHOT", filepath.Join(t.TempDir(), "shot.png"))
-	t.Setenv("GLUTTER_BACKEND", "wayland")
+	t.Setenv("GLUTTER_BACKEND", os.Getenv(choiceChildEnv))
 	log, buf := recordingLog()
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
@@ -58,6 +72,11 @@ func TestDisplayChoiceChild(t *testing.T) {
 		t.Fatalf("Run: %v\n%s", err, buf.String())
 	}
 	for _, line := range strings.Split(buf.String(), "\n") {
+		if strings.Contains(line, "renderer not usable") {
+			fmt.Println("TRIED: " + line) // what auto gave up on, and why
+		}
+	}
+	for _, line := range strings.Split(buf.String(), "\n") {
 		if strings.Contains(line, "renderer chosen") {
 			fmt.Println("CHOSEN: " + line)
 			return
@@ -70,8 +89,9 @@ func TestDisplayChoiceChild(t *testing.T) {
 // with the environment, and returns what its log says about the renderer.
 func chosenRenderer(t *testing.T, env map[string]string) string {
 	t.Helper()
-	if os.Getenv("WAYLAND_DISPLAY") == "" {
-		t.Skip("there is no Wayland compositor (run under scripts/headless-wayland.sh)")
+	backend := displayBackend()
+	if backend == "" {
+		t.Skip("there is no display server (run under scripts/headless-wayland.sh or scripts/headless-x11.sh)")
 	}
 	icd := lavapipeICD()
 	if icd == "" {
@@ -81,7 +101,7 @@ func chosenRenderer(t *testing.T, env map[string]string) string {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run", "^TestDisplayChoiceChild$", "-test.count=1")
 	cmd.WaitDelay = 5 * time.Second
-	cmd.Env = append(os.Environ(), choiceChildEnv+"=1")
+	cmd.Env = append(os.Environ(), choiceChildEnv+"="+backend)
 	for k, v := range env {
 		if v == "lavapipe" {
 			v = icd
@@ -92,26 +112,46 @@ func chosenRenderer(t *testing.T, env map[string]string) string {
 	if err != nil {
 		t.Fatalf("the app failed: %v\n%s", err, out)
 	}
+	var tried []string
 	for _, line := range strings.Split(string(out), "\n") {
+		if rest, ok := strings.CutPrefix(line, "TRIED: "); ok {
+			tried = append(tried, rest)
+		}
 		if rest, ok := strings.CutPrefix(line, "CHOSEN: "); ok {
-			return rest
+			// The line that chose the renderer, after the lines of those that were given up.
+			return strings.Join(append(tried, rest), "\n")
 		}
 	}
 	t.Fatalf("the app did not say which renderer it chose:\n%s", out)
 	return ""
 }
 
-func TestDisplayWithoutVulkanAnAppFallsBackToGLES(t *testing.T) {
+// The compositor of these tests is headless with the pixman renderer, and the X server is Xvfb, so the GL
+// that the app finds is Mesa's llvmpipe, a rasterizer on the CPU: auto does not use it (SPEC §9.6, step
+// 32.3) and draws with soft.
+
+func TestDisplayWithoutVulkanAnAppFallsBackToSoftOnSoftwareGL(t *testing.T) {
 	line := chosenRenderer(t, map[string]string{"VK_DRIVER_FILES": "/nonexistent/icd.json", "GLUTTER_RENDERER": "auto"})
-	if !strings.Contains(line, "gles") {
-		t.Errorf("the app used %q, want gles", line)
+	if !strings.Contains(line, "renderer chosen") || !strings.Contains(line, `renderer="soft:`) {
+		t.Errorf("the app used %q, want soft", line)
+	}
+	// What decided: the GLES that auto tried was llvmpipe, and the log says so.
+	if !strings.Contains(line, "renderer=gles") || !strings.Contains(line, "llvmpipe") || !strings.Contains(line, "tag=SoftwareRenderer") {
+		t.Errorf("the log does not say that gles was given up for llvmpipe:\n%s", line)
 	}
 }
 
 func TestDisplayAutoNeverUsesACPUVulkanDevice(t *testing.T) {
 	line := chosenRenderer(t, map[string]string{"VK_DRIVER_FILES": "lavapipe", "GLUTTER_RENDERER": "auto"})
-	if !strings.Contains(line, "gles") || strings.Contains(line, "vulkan") {
-		t.Errorf("the app used %q, want gles", line)
+	if !strings.Contains(line, `renderer="soft:`) || strings.Contains(line, `renderer="vulkan`) {
+		t.Errorf("the app used %q, want soft", line)
+	}
+}
+
+func TestDisplayGLESByNameStillUsesLlvmpipe(t *testing.T) {
+	line := chosenRenderer(t, map[string]string{"VK_DRIVER_FILES": "/nonexistent/icd.json", "GLUTTER_RENDERER": "gles"})
+	if !strings.Contains(line, `renderer="gles: llvmpipe`) || strings.Contains(line, "SoftwareRenderer") {
+		t.Errorf("the app used %q, want gles on llvmpipe", line)
 	}
 }
 
@@ -124,8 +164,13 @@ func TestDisplayVulkanByNameMayUseTheCPUDevice(t *testing.T) {
 
 func TestDisplaySoftByNameDrawsIntoSharedMemory(t *testing.T) {
 	line := chosenRenderer(t, map[string]string{"GLUTTER_RENDERER": "soft"})
-	if !strings.Contains(line, "soft: shared memory (wl_shm)") {
-		t.Errorf("the app used %q, want soft over wl_shm", line)
+	// On Wayland the pixels go through wl_shm, on X11 through MIT-SHM (step 32.2).
+	want := "soft: MIT-SHM (X11)"
+	if displayBackend() == "wayland" {
+		want = "soft: shared memory (wl_shm)"
+	}
+	if !strings.Contains(line, want) {
+		t.Errorf("the app used %q, want %q", line, want)
 	}
 }
 

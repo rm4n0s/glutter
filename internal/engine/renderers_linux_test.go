@@ -20,18 +20,17 @@ func TestLinuxAutoTriesVulkanThenGLES(t *testing.T) {
 	}
 }
 
-// TestSoftIsUsedOnLinuxByNameOnly checks that auto leaves the software renderer out and a name
-// chooses it (step 32.1; step 32.3 makes auto choose it when there is no GPU).
-func TestSoftIsUsedOnLinuxByNameOnly(t *testing.T) {
+// TestSoftIsTheLastRendererOfAutoOnLinux checks that auto tries soft after vulkan and gles (step 32.3), and
+// that a name chooses it alone.
+func TestSoftIsTheLastRendererOfAutoOnLinux(t *testing.T) {
 	cfg := &Config{}
 	auto, err := newChooser(cfg, quiet(), "auto", rendererCandidates())
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, cand := range auto.cand {
-		if cand.Name == "soft" && !cand.Skip(cfg) {
-			t.Error("auto would try soft")
-		}
+	last := auto.cand[len(auto.cand)-1]
+	if last.Name != "soft" || (last.Skip != nil && last.Skip(cfg)) {
+		t.Errorf("the last candidate of auto is %+v, want soft and not skipped", last)
 	}
 	named, err := newChooser(cfg, quiet(), "soft", rendererCandidates())
 	if err != nil {
@@ -39,6 +38,49 @@ func TestSoftIsUsedOnLinuxByNameOnly(t *testing.T) {
 	}
 	if len(named.cand) != 1 || named.cand[0].Name != "soft" || !named.named {
 		t.Errorf("candidates of the name soft: %+v, named %v", named.cand, named.named)
+	}
+}
+
+// TestGLESRejectsASoftwareRasterizerOnlyInAuto checks that the gles of Linux gives up on llvmpipe and the
+// like when it was not asked for by name, so that auto goes on to soft (step 32.3).
+func TestGLESRejectsASoftwareRasterizerOnlyInAuto(t *testing.T) {
+	for _, named := range []bool{false, true} {
+		cfg := &Config{rendererNamed: named}
+		r, ok := newGLESRenderer(cfg, quiet()).(*glesRenderer)
+		if !ok {
+			t.Fatalf("newGLESRenderer made a %T", newGLESRenderer(cfg, quiet()))
+		}
+		if r.rejectSoftware == named {
+			t.Errorf("rendererNamed = %v: rejectSoftware = %v", named, r.rejectSoftware)
+		}
+	}
+}
+
+// TestAutoGoesFromVulkanAndGLESToSoft checks the choice and its log: a Vulkan with only a CPU device and a
+// GLES on llvmpipe both fail with their own tags, soft is chosen, and the log says what decided each.
+func TestAutoGoesFromVulkanAndGLESToSoft(t *testing.T) {
+	handle := gpu.SurfaceHandle{Kind: gpu.SurfaceKindFake, Window: 1}
+	cands, made := fakeCandidates("a", "b")
+	cands[0].Name, cands[1].Name, cands[2].Name = "vulkan", "gles", "soft"
+	log, buf := recordingLog()
+	c, err := newChooser(&Config{}, log, "auto", cands)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Draw(handle, 10, 10, nil, false); err != nil {
+		t.Fatal(err)
+	}
+	if got := c.Describe(); !strings.Contains(got, "c: device of") {
+		t.Errorf("auto chose %q, want the last candidate", got)
+	}
+	if len(*made) != 3 {
+		t.Errorf("%d renderers were made, want 3", len(*made))
+	}
+	out := buf.String()
+	for _, want := range []string{"renderer not usable, trying the next", "renderer=vulkan", "renderer=gles", "renderer chosen"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the log lacks %q:\n%s", want, out)
+		}
 	}
 }
 

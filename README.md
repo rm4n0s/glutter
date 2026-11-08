@@ -297,11 +297,13 @@ at-spi2-core for accessibility (screen readers such as Orca). SPEC §16 has the 
 `GLUTTER_RENDERER=auto|vulkan|gles|soft` chooses the renderer (`RunAppOpts.Renderer` does the same).
 `soft` draws on the CPU into shared memory and redraws only what changed, which is the fast way on a
 machine with no GPU (a virtual machine whose OpenGL is llvmpipe); on Wayland (`wl_shm`) and X11 (MIT-SHM,
-or `XPutImage` on a remote display) it is there from 1.12 by name, and `auto` does not choose it yet.
-`GLUTTER_X11_NOSHM=1` turns MIT-SHM off, so that the pixels go with `XPutImage`.
+or `XPutImage` on a remote display) it is there from 1.12. `GLUTTER_X11_NOSHM=1` turns MIT-SHM off, so
+that the pixels go with `XPutImage`.
 The default is `auto`: Vulkan first, then OpenGL ES when there is no Vulkan loader, no driver
-that can present to the window, or only a software device (llvmpipe, lavapipe); each fallback is
-logged once at Info level with its error. A name never falls back, and is the only way to use a
+that can present to the window, or only a software device (llvmpipe, lavapipe), and `soft` when
+there is no GPU at all (the OpenGL ES context is Mesa's llvmpipe, softpipe or swrast, or there is no
+OpenGL ES); each fallback is logged once at Info level with its error, and the error of OpenGL ES
+names the string that decided. A name never falls back, and is the only way to use a
 software Vulkan device. The log line `renderer chosen` names the renderer and the GPU. If the
 GPU is lost, Glutter makes its resources again once and draws the frame again; a second loss
 within ten seconds ends the app with `VulkanDeviceLost`. `GLUTTER_VULKAN_DEVICE=<index or part of

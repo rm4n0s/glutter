@@ -781,3 +781,17 @@ Answers: _(not yet recorded)_
 7. Does the app, left running for a few minutes, keep its memory flat (`top`, the `RES` column, or `GLUTTER_FRAME_STATS=1`)?
 
 Answers: _(not yet recorded)_
+
+## 32.3 `auto` chooses `soft` when there is no GPU
+
+**Status:** pending
+
+On a machine with no GPU `GLUTTER_RENDERER` unset (or `auto`) now draws with the software renderer, which redraws only what changed. On a **virtual machine with no GPU** (the one of the Emetos report: `glxinfo -B` says `llvmpipe`), Wayland and X11 both, from a checkout of Glutter:
+
+1. `go run ./examples/gallery` with no environment variable: does the log say `renderer not usable, trying the next renderer=gles ... renderer=llvmpipe ... tag=SoftwareRenderer` and then `renderer chosen renderer="soft: ..."`? Does the window look the same as with `GLUTTER_RENDERER=gles`, and is it noticeably quicker (move the mouse over the buttons, scroll the list, resize the window)?
+2. `go run ./examples/editor`, click in the text and leave the caret blinking: how much CPU does `top` show for the process, with the default and with `GLUTTER_RENDERER=gles`? (`docs/PERFORMANCE.md` has the numbers of the headless run: the VM's should be several times lower with the default.)
+3. **The Emetos app**, before (Glutter 1.11, or `GLUTTER_RENDERER=gles`) and after (1.12, default): is the app fast again? Is there any difference in the picture (text, shadows, clipping)? Is the first window slower to appear than before?
+4. On a machine **with a GPU**: the default still chooses Vulkan (`renderer chosen renderer="vulkan: ..."`), and `GLUTTER_RENDERER=gles` still chooses OpenGL ES; nothing mentions `SoftwareRenderer`.
+5. `GLUTTER_RENDERER=gles` on the VM: it still runs on llvmpipe (slow, as before), because a name is never second-guessed.
+
+Answers: _(not yet recorded)_

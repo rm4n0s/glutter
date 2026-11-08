@@ -42,6 +42,11 @@ type RendererOpts struct {
 	// ProgramCache keeps the binaries of the shader programs between runs (SPEC §9.7); none compiles every
 	// program of every run. The web has no program binaries and ignores it.
 	ProgramCache ProgramCache
+	// RejectSoftware makes the first Attach fail with SoftwareRenderer, after it closes the context,
+	// when GL_RENDERER names a rasterizer on the CPU (Software): the engine's auto then goes on to the
+	// software renderer, which redraws only what changed (SPEC §9.6, step 32.3). A renderer that was
+	// asked for by name does not set it.
+	RejectSoftware bool
 }
 
 // Renderer is the GPU renderer: a gpu.Renderer that draws with OpenGL ES 3.0.
@@ -64,6 +69,7 @@ type Renderer struct {
 	opened     time.Duration // how long opening the context took
 	cacheAfter int           // RendererOpts.RasterCacheAfter
 	damage     bool          // RendererOpts.Damage
+	reject     bool          // RendererOpts.RejectSoftware
 	closed     bool
 	// beforePresent, when set, runs after a frame is drawn and before it is
 	// presented, while its pixels can still be read back (tests).
@@ -108,6 +114,7 @@ func newRenderer(open func(gpu.SurfaceHandle) (*Context, *Surface, error), opts 
 		cache:      cache,
 		cacheAfter: after,
 		damage:     len(opts) == 1 && opts[0].Damage,
+		reject:     len(opts) == 1 && opts[0].RejectSoftware,
 		open:       open,
 		surfaces:   map[*glSurface]struct{}{},
 		skip:       len(opts) == 1 && opts[0].SkipUnsupported,
@@ -153,7 +160,9 @@ func (r *Renderer) DeviceName() string {
 
 // Attach starts drawing into the native window of h. The first call opens the
 // GL context (see Open for its failures) and so creates the device; later calls
-// add a surface to the same context. It fails with RendererClosed after Close.
+// add a surface to the same context. It fails with RendererClosed after Close, and with
+// SoftwareRenderer, with the context closed, when RendererOpts.RejectSoftware is set and GL_RENDERER names
+// a rasterizer on the CPU.
 //
 // Flutter: no counterpart
 func (r *Renderer) Attach(h gpu.SurfaceHandle) (gpu.Surface, error) {
@@ -168,6 +177,11 @@ func (r *Renderer) Attach(h gpu.SurfaceHandle) (gpu.Surface, error) {
 			return nil, err
 		}
 		r.opened = time.Since(start)
+		if name := ctx.Device().Caps().Renderer; r.reject && Software(name) {
+			first.Destroy()
+			ctx.Close()
+			return nil, errors.New(tagSoftwareRenderer, "the GL renderer is a rasterizer on the CPU", "renderer", name)
+		}
 		r.ctx, s = ctx, first
 		if r.programs != nil {
 			ctx.Device().SetProgramCache(r.programs)
@@ -433,5 +447,6 @@ const (
 	tagRendererNotAttached    = "RendererNotAttached"
 	tagRendererSizeInvalid    = "RendererSizeInvalid"
 	tagRendererSurfaceInvalid = "RendererSurfaceInvalid"
+	tagSoftwareRenderer       = "SoftwareRenderer"
 	tagWebGLContextLost       = "WebGLContextLost"
 )

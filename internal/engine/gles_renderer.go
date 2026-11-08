@@ -26,6 +26,9 @@ type glesRenderer struct {
 	skip   bool
 	cache  bool // the raster cache is on
 	damage bool // frames tell the compositor what changed
+	// rejectSoftware makes the first frame fail, with the context closed, when GL_RENDERER names a
+	// rasterizer on the CPU, so that auto goes on to the software renderer (SPEC §9.6).
+	rejectSoftware bool
 	// programs keeps the program binaries between runs (nil when the cache is off).
 	programs gles.ProgramCache
 	renderer *gles.Renderer
@@ -81,7 +84,7 @@ func (r *glesRenderer) Draw(h gpu.SurfaceHandle, width, height int, scene *ui.Sc
 	if r.renderer == nil {
 		opts := gles.RendererOpts{
 			Background: ui.NewColor(developmentColor), HasBackground: true, SkipUnsupported: r.skip,
-			Damage: r.damage,
+			Damage: r.damage, RejectSoftware: r.rejectSoftware,
 		}
 		if r.cache {
 			opts.RasterCacheAfter = rasterCacheAfter
