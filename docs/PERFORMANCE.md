@@ -358,6 +358,215 @@ The same benchmarks on the Mac of step 33.9 (an Apple M6, unified memory, macOS 
 
 **Allocations on Metal.** Every message to Metal goes through purego's `objc.Send`, whose arguments are `...any`, and each argument that is not a pointer is boxed: that is where the allocations are. A frame of the million-triangle scene sends about 500 messages. Typed senders for the hot calls (the draws, `setVertexBuffer:`, `setBindGroup`) would remove most of them; they are not made in this step, since the targets of §27.10 about allocation are those of the renderer and of package `gpu`, which hold on the recording device.
 
+## macOS (step 33.15)
+
+`scripts/perf-macos.sh` (`glutter-macos perf`, SPEC §15 and §29.1), release builds made by `glutter-macos` as signed bundles (`-tags glutter_release`, `-ldflags=-s -w`; the navigation run is a debug build, which `GLUTTER_DEV_EVENTS` needs), Metal, 2026-11-09. **One machine:** a Mac18,5 with an Apple M6 (12 cores, 12-core GPU, unified memory, 24 GB), macOS 27.2, a 2560 x 1440 display that refreshes at 120 Hz, nothing else running. The apps are accessory apps (`GLUTTER_MACOS_ACCESSORY=1`, `GLUTTER_DISPLAYLINK=cv`, so that they never take the focus), each in a process of its own; the CPU time and the resident memory are `ps`'s for that process, over a window that begins 5 s after the start. The first start of each measurement has an empty shader cache (`XDG_CACHE_HOME` is a new directory) and is also the first start of a binary that macOS has never run, which most likely costs it a check by the system before the program begins (the difference between "since Run" and "since process start" in the table; the cause was not isolated). These are the numbers of this Mac: they are for noticing regressions between steps, and the targets of SPEC §15 that this section proposes are confirmed by the owner on other Macs (`docs/MANUAL-CHECKS.md`, 33.15).
+
+| What | Measured | Target (SPEC §15) |
+|---|---|---|
+| Idle CPU, counter and gallery home page, no input | 0.0 % and 0.1 % of one core | ~0 %: met |
+| Frame rate, gallery data page with its indicators animating | 120.4 a second (119 to 121 over 14 s), 1 frame in 1,685 over 16 ms | the display's refresh rate: met |
+| Frame rate, a full rebuild of the buttons page in every frame | 120.4 a second, build 2.10 ms (worst 31 ms), 1 frame in 1,686 over 16 ms | the display's refresh rate: met |
+| Debug build, scrolling, three page changes and the theme (dev events, 10 s of frames) | 64 a second on average with the pauses of the script between the moves, 8 frames in 641 over 16 ms (1.2 %), build 1.28 ms | not a target (a debug build) |
+| Cold start to the first frame, warm shader cache, `since_run` (counter, gallery) | 143 ms and 163 ms medians of 4 starts (the first run of the same measurement: 139 and 136 ms) | < 150 ms: met for the counter, 13 ms over for the gallery in the second run |
+| Cold start, empty shader cache, since the process began (the first start of a new binary) | 680 ms and 760 ms (196 and 188 ms of it since `Run`) | proposed: < 1 s |
+| Resident memory 10 s after the start, counter and gallery | 193 MB and 227 MB (233 MB animating, 318 MB for the debug build that scrolls) | < 60 MB: **not met** (see below); proposed for macOS: < 250 MB and < 300 MB |
+| Size of the executable (counter, gallery), release | 24.5 MB (arm64) and 26.1 MB (amd64), 50.5 MB universal; 34.7, 37.3 and 72.0 MB | recorded |
+
+**Targets not met.** The resident memory is three times the target of SPEC §15 (which is the 2020 laptop's, with a driver that is not Metal's). The Go runtime is a part of it (`go_sys_mb` in the log is 90 to 130 MB in these runs); the rest is what a Metal app maps: the frameworks, the Metal device and its shader library, the drawables and the IOSurfaces of the window. Which part is which has not been measured (`vmmap` on the counter would say); the proposed target for macOS is a guess from these numbers, and the exception is item 4 of "Exceptions that need the user's approval". **The raster side.** The "raster" time of an animation at 120 frames a second is 8.15 ms on average (6.24 ms for the rebuilding page): about the length of a frame at 120 Hz, which is what it takes when the renderer waits for the next drawable (the display's rhythm) and is not the cost of drawing; the CPU of the process (40 % and 47 % of one core while animating) is the better number for the work a frame takes. A GPU time per frame (a Metal counter set) is not measured.
+
+**Memory over time** (SPEC §15). The memory tests of the darwin packages carry `glutter_display` (`go test -tags glutter_display -run TestLeaks ./internal/platform/macos ./internal/gpu/metal`): windows opened and closed (with a frame each), window resizes, input method sessions, and Metal buffers, textures and a frame that copies and reads, each compared at N and 4N steps with `internal/leaktest`. Besides the Go heap and the goroutines they compare the handles of the Objective-C registry, the blocks of C memory, the C callbacks of the process (counted by package `dl`: they are never freed, so a scenario that made one for each step would wear them out), the resident memory (a growth of more than 24 MB between N and 4N is a failure) and, for Metal, `currentAllocatedSize` of the device. None grows. `LEAKTEST_SCALE=5` makes the soak five times longer.
+
+### Reports of `scripts/perf-macos.sh -m -u`
+
+### counter (release)
+
+#### glutter-macos perf
+
+- **app**: ./examples/counter
+- **build**: release (-tags glutter_release, stripped)
+- **where**: macOS 27.2, arm64
+- **renderer**: metal: Apple M6
+
+##### Executable
+
+| file | MB |
+|---|---|
+| arm64+amd64 | 50.55 |
+| slice amd64 | 26.06 |
+| slice arm64 | 24.47 |
+
+##### Start to the first frame
+
+| shader cache | starts | since Run median (ms) | since process median (ms) | whole run median (ms) | worst since Run (ms) |
+|---|---|---|---|---|---|
+| empty | 1 | 196.0 | 680.0 | 743.4 | 196.0 |
+| warm | 4 | 143.0 | 150.0 | 204.1 | 150.0 |
+
+##### Window of 10 s
+
+| what | value |
+|---|---|
+| CPU of the process (percent of one core) | 0.0 |
+| resident memory at the end (MB) | 185.4 |
+
+### gallery, home page (release)
+
+#### glutter-macos perf
+
+- **app**: ./examples/gallery
+- **build**: release (-tags glutter_release, stripped)
+- **where**: macOS 27.2, arm64
+- **renderer**: metal: Apple M6
+
+##### Executable
+
+| file | MB |
+|---|---|
+| arm64+amd64 | 72.03 |
+| slice amd64 | 37.27 |
+| slice arm64 | 34.74 |
+
+##### Start to the first frame
+
+| shader cache | starts | since Run median (ms) | since process median (ms) | whole run median (ms) | worst since Run (ms) |
+|---|---|---|---|---|---|
+| empty | 1 | 188.0 | 760.0 | 844.0 | 188.0 |
+| warm | 4 | 163.0 | 170.0 | 232.5 | 173.0 |
+
+##### Window of 10 s
+
+| what | value |
+|---|---|
+| CPU of the process (percent of one core) | 0.0 |
+| resident memory at the end (MB) | 227.1 |
+
+### gallery, an animation with no input (release)
+
+#### glutter-macos perf
+
+- **app**: ./examples/gallery
+- **build**: release (-tags glutter_release, stripped)
+- **where**: macOS 27.2, arm64
+- **renderer**: metal: Apple M6
+- **environment**: GLUTTER_GALLERY_PAGE=data GLUTTER_GALLERY_ANIMATE=1
+
+##### Executable
+
+| file | MB |
+|---|---|
+| arm64+amd64 | 72.01 |
+| slice amd64 | 37.27 |
+| slice arm64 | 34.72 |
+
+##### Start to the first frame
+
+| shader cache | starts | since Run median (ms) | since process median (ms) | whole run median (ms) | worst since Run (ms) |
+|---|---|---|---|---|---|
+| empty | 1 | 246.0 | 0.0 | 5792.7 | 246.0 |
+
+##### Window of 10 s
+
+| what | value |
+|---|---|
+| CPU of the process (percent of one core) | 40.3 |
+| resident memory at the end (MB) | 233.0 |
+
+##### Frames (the seconds that had a frame)
+
+| what | value |
+|---|---|
+| seconds, frames | 14, 1685 |
+| frames a second: mean, lowest, highest | 120.4, 119, 121 |
+| build: average, worst (ms) | 0.17, 30.97 |
+| raster: average, worst (ms) | 8.15, 18.82 |
+| frames over 16 ms | 1 (0.1%) |
+| Go heap: highest, last; from the system (MB) | 86, 80; 126 |
+
+### gallery, a full rebuild in every frame (release)
+
+#### glutter-macos perf
+
+- **app**: ./examples/gallery
+- **build**: release (-tags glutter_release, stripped)
+- **where**: macOS 27.2, arm64
+- **renderer**: metal: Apple M6
+- **environment**: GLUTTER_GALLERY_PAGE=buttons GLUTTER_GALLERY_REBUILD=1
+
+##### Executable
+
+| file | MB |
+|---|---|
+| arm64+amd64 | 72.01 |
+| slice amd64 | 37.27 |
+| slice arm64 | 34.72 |
+
+##### Start to the first frame
+
+| shader cache | starts | since Run median (ms) | since process median (ms) | whole run median (ms) | worst since Run (ms) |
+|---|---|---|---|---|---|
+| empty | 1 | 178.0 | 0.0 | 5775.6 | 178.0 |
+
+##### Window of 10 s
+
+| what | value |
+|---|---|
+| CPU of the process (percent of one core) | 47.3 |
+| resident memory at the end (MB) | 232.6 |
+
+##### Frames (the seconds that had a frame)
+
+| what | value |
+|---|---|
+| seconds, frames | 14, 1686 |
+| frames a second: mean, lowest, highest | 120.4, 119, 121 |
+| build: average, worst (ms) | 2.10, 31.20 |
+| raster: average, worst (ms) | 6.24, 26.70 |
+| frames over 16 ms | 1 (0.1%) |
+| Go heap: highest, last; from the system (MB) | 92, 89; 118 |
+
+### gallery, scrolling, changing pages and the theme (debug build: dev events)
+
+#### glutter-macos perf
+
+- **app**: ./examples/gallery
+- **build**: debug
+- **where**: macOS 27.2, arm64
+- **renderer**: metal: Apple M6
+- **environment**: GLUTTER_DEV_EVENTS=wait:1s;wheel:650,400,0,150;wait:40ms;wheel:650,400,0,150;wait:40ms;wheel:650,400,0,150;wait:40ms;wheel:650,400,0,150;wait:300ms;wheel:650,400,0,-300;wait:40ms;wheel:650,400,0,-300;wait:300ms;tap:100,482;wait:1200ms;wheel:650,400,0,150;wait:40ms;wheel:650,400,0,150;wait:40ms;wheel:650,400,0,150;wait:40ms;wheel:650,400,0,150;wait:300ms;wheel:650,400,0,-300;wait:40ms;wheel:650,400,0,-300;wait:300ms;tap:100,526;wait:1200ms;wheel:650,400,0,150;wait:40ms;wheel:650,400,0,150;wait:40ms;wheel:650,400,0,150;wait:40ms;wheel:650,400,0,150;wait:300ms;wheel:650,400,0,-300;wait:40ms;wheel:650,400,0,-300;wait:300ms;tap:100,218;wait:1200ms;wheel:650,400,0,150;wait:40ms;wheel:650,400,0,150;wait:40ms;wheel:650,400,0,150;wait:40ms;wheel:650,400,0,150;wait:300ms;wheel:650,400,0,-300;wait:40ms;wheel:650,400,0,-300;wait:300ms;tap:1072,28;wait:1200ms;tap:1072,28;wait:1200ms;tap:100,86;wait:1200ms;wait:1s
+
+##### Executable
+
+| file | MB |
+|---|---|
+| arm64+amd64 | 106.42 |
+| slice amd64 | 54.86 |
+| slice arm64 | 51.55 |
+
+##### Start to the first frame
+
+| shader cache | starts | since Run median (ms) | since process median (ms) | whole run median (ms) | worst since Run (ms) |
+|---|---|---|---|---|---|
+| empty | 1 | 204.0 | 0.0 | 13348.1 | 204.0 |
+
+##### Window of 18 s
+
+| what | value |
+|---|---|
+| CPU of the process (percent of one core) | 11.9 |
+| resident memory at the end (MB) | 318.1 |
+
+##### Frames (the seconds that had a frame)
+
+| what | value |
+|---|---|
+| seconds, frames | 10, 641 |
+| frames a second: mean, lowest, highest | 64.1, 4, 88 |
+| build: average, worst (ms) | 1.28, 32.31 |
+| raster: average, worst (ms) | 7.22, 14.21 |
+| frames over 16 ms | 8 (1.2%) |
+| Go heap: highest, last; from the system (MB) | 158, 110; 200 |
+
 ## Games (step 31.11)
 
 The targets of SPEC §28.6, measured on the Ryzen 9 6900HX with the Radeon RX 6800M (RADV), through `.claude/no-nvidia.sh`. The numbers are in the table of "Decided in step 31.11" of that section; how to run them:
@@ -617,9 +826,12 @@ available during this work, so they are **pending approval**.
    `Paint` (pointers for the shader and filters) is a change of the `ui` API and of the
    layout of every op; it is not done here.
 
+4. **Resident memory on macOS, 193 MB (counter) against 60 MB.** The Go runtime asks the system for 90 to 130 MB (`go_sys_mb`); the rest is what a Metal app maps (see "macOS (step 33.15)"). The target is the 2020 laptop's; it needs the owner's decision (a target for macOS of 250 MB for the counter is proposed in SPEC §15) and, to get lower, a measurement of what the process maps with `vmmap`.
+
 ## Pending
 
 - Windows: the same numbers on the owner's PC (Task Manager and `GLUTTER_FRAME_STATS=1`, `docs/MANUAL-CHECKS.md` 28.15), the allocations of an animation-only frame (`go test -bench -benchmem`), and the confirmation of the proposed targets of SPEC §15 ("Windows"); `scripts/perf-windows.sh` is Wine's table until then (see "Windows (step 28.15)").
+- macOS: the same numbers on another Mac, an Intel one in particular (`scripts/perf-macos.sh`), what the resident memory is made of (`vmmap`), the GPU time of a frame, and the confirmation of the proposed targets of SPEC §15 ("macOS"); see "macOS (step 33.15)".
 - Android: the same numbers on the owner's phone (`scripts/perf-android.sh -d <serial>`), and the frame rate of the gallery there (see "Android (step 26.5)"); the targets of SPEC §15 are proposed from the emulator until then.
 - Text: the benchmarks of steps 22.6 and 22.10 were not run under `GOOS=js`. A page where one line changed still costs 14 lines (see "Text: the cache of shaped runs"): the next step would be to skip the builder and the analysis for a line whose content is the same as the last frame's, which only the caller knows.
 - The web table: measure the targets again with a real display, and Firefox on a GPU (the Firefox numbers here are Mesa's software rasterizer). The two targets that are not met (sizes, late frames) need the user's decision (see "Targets not met" under Web).

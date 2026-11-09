@@ -57,7 +57,7 @@ func connectDisplay(cfg *Config, getenv func(string) string, log *slog.Logger) (
 func screenshotPath(value string, _ func(string) string) string { return value }
 
 // processStart says it does not know when the process started.
-func processStart() (time.Time, bool) { return time.Time{}, false }
+func processStart() (time.Time, bool) { return macos.ProcessStart() }
 
 // rendererCandidates are the renderers of macOS in the order auto tries them: metal, then soft, drawn into
 // IOSurfaces that the window's layer shows. gles and vulkan are RendererUnavailable (SPEC §29.5).

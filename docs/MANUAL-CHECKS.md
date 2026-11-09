@@ -1001,3 +1001,39 @@ The tests have no pad and never record: the elements, the values, the HID driver
 8. **Latency**: a loopback or a hand clap and the monitor: the output is within about 30 ms (the target of SPEC §28.6); a 5.1 or 7.1 device plays the channels in the order of its outputs.
 
 Answers: _(not yet recorded)_
+
+## 33.15 The bundle and the tool (macOS)
+
+**Status:** pending
+
+The tests build every example as a signed bundle, run it, and `codesign --verify` it; what they cannot show is what Finder, the Dock and Gatekeeper do with it.
+
+1. **The gallery from Finder**: `go run ./cmd/glutter-macos build -release -o ~/Desktop/Gallery.app ./examples/gallery`, then open it with a double click. macOS warns that the app is from an unidentified developer (it is signed ad hoc: that is expected); Control-click, Open, Open (or System Settings, Privacy & Security, Open Anyway) starts it. The Dock shows its icon (Glutter's "G" in a rounded square, with the margin of macOS icons) and the menu bar says "Gallery"; Cmd+Q quits it; \`Get Info\` shows the version 1.0.0.
+2. **A bundle made for the other kind of Mac**: with \`-universal\`, the same \`.app\` opens on an Intel Mac and on an Apple silicon one (\`file Gallery.app/Contents/MacOS/Gallery\` says two architectures); on an Intel Mac the first frame is drawn by Metal (managed memory) and the numbers of \`scripts/perf-macos.sh\` are recorded.
+3. **The microphone**: a bundle with \`-usage NSMicrophoneUsageDescription="..."\` that records asks with that text (see 33.14, item 7); built with \`-hardened\` it asks as well.
+4. **Notifications** from the bundle (33.12, item 4) are checked here with the bundle of the tray example: \`go run ./cmd/glutter-macos build -o Tray.app ./examples/tray\`, opened from Finder (a notification needs the bundle to be started by Launch Services).
+5. **The numbers on your Mac**: \`scripts/perf-macos.sh -m -u\` and the table of "macOS (step 33.15)" in \`docs/PERFORMANCE.md\`; the proposed targets of SPEC §15 ("macOS") are confirmed, or changed, from them (the resident memory of 193 MB against the 60 MB of the desktop target is the open question).
+
+Answers: _(not yet recorded)_
+
+## M33: everything to check on a Mac, in one list
+
+The checks of the steps 33.2 to 33.15 are in their own sections above; this is the order to do them in, from one session, on a Mac with a trackpad, a microphone, headphones, a pad and a second display if there is one. Build the gallery bundle once (\`go run ./cmd/glutter-macos build -release -o Gallery.app ./examples/gallery\`) and use \`go run ./cmd/glutter-macos run ./examples/<name>\` for the rest; \`GLUTTER_FRAME_STATS=1\` and \`GLUTTER_RENDERER=metal|soft\` are environment variables. Say which Mac and which macOS the answers come from, and record them in each section.
+
+| Section | What only a person can see |
+|---|---|
+| 33.2 | the window, its resizing and the Retina scale; a second display with another scale |
+| 33.3 | a trackpad's scroll with momentum, pinch and rotate, a tablet's pressure, the cursors |
+| 33.4 | the keyboard layouts (dead keys, a non-Latin layout), Cmd shortcuts, key repeat |
+| 33.5 | the IMEs of Chinese, Japanese and Korean, the emoji picker, the pasteboard with other apps |
+| 33.6 | dark mode and the accent colour following the system, the fonts of the system, quit and the Dock menu |
+| 33.7 | the menu bar, the application menu, shortcuts shown in the items |
+| 33.8, 33.9 | Metal on this GPU: the gallery and \`examples/cad\` drawn right, a ProMotion display at its rate |
+| 33.10 | several windows, the full screen, window dragging by its background, the double-click on the title bar; **the owner's desktop screenshot of the multi-window example** (not yet taken) |
+| 33.11 | drag and drop with Finder and other apps |
+| 33.12 | the tray icon in light and dark menu bars, notifications from a bundle, the file dialogs, opening a link |
+| 33.13 | VoiceOver and the Accessibility Inspector |
+| 33.14 | a pad (generic, DualShock 4, DualSense, Switch Pro), the sound and its devices, the microphone |
+| 33.15 | the bundle from Finder, its Dock icon and Gatekeeper's warning, the numbers on another Mac |
+
+A failure found here is a bug of the step that the section names: it is fixed on a branch of its own before 1.13 is announced to anyone.

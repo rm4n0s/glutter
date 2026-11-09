@@ -31,7 +31,10 @@ func main() {
 }
 
 const usage = `usage:
-  glutter-macos shot [-env GLUTTER_X=v]... [-front] [-timeout d] -o file.png <package>`
+  glutter-macos build [-o App.app] [-name n] [-id dev.x.y] [-version v] [-icon file.png] [-universal] [-hardened] [-release] [-usage KEY=text]... <package>
+  glutter-macos run [build flags] [-env GLUTTER_X=v]... <package>
+  glutter-macos shot [-env GLUTTER_X=v]... [-front] [-bundle [build flags]] [-timeout d] -o file.png <package>
+  glutter-macos perf [build flags] [-starts n] [-seconds n] [-settle d] [-env GLUTTER_X=v]... [-renderer r] [-format text|markdown] [-o file] <package>`
 
 // run does what the command line asks. stdout gets what the commands print.
 func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
@@ -39,8 +42,14 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		return errors.New(tagMacOSUsage, usage)
 	}
 	switch args[0] {
+	case "build":
+		return runBuild(ctx, args[1:], stdout, stderr)
+	case "run":
+		return runRun(ctx, args[1:], stdout, stderr)
 	case "shot":
 		return runShot(ctx, args[1:], stdout, stderr)
+	case "perf":
+		return runPerf(ctx, args[1:], stdout, stderr)
 	case "help", "-h", "-help", "--help":
 		if _, err := fmt.Fprintln(stdout, usage); err != nil {
 			return errors.NewErr(tagMacOSUsage, err)
