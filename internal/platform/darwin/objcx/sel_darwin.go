@@ -26,6 +26,24 @@ func Sel(name string) objc.SEL {
 	return sel
 }
 
+// selGetName is sel_getName of the Objective-C runtime.
+var selGetName = sync.OnceValue(func() func(objc.SEL) uintptr {
+	lib, err := dl.Open("/usr/lib/libobjc.A.dylib")
+	if err != nil {
+		panic(err)
+	}
+	var f func(objc.SEL) uintptr
+	if err := lib.Bind(&f, "sel_getName"); err != nil {
+		panic(err)
+	}
+	return f
+})
+
+// SelName returns the name of a selector, such as the one that doCommandBySelector: gets.
+//
+// Flutter: no counterpart
+func SelName(s objc.SEL) string { return dl.GoString(selGetName()(s)) }
+
 // foundation loads Foundation once: the classes of NSString and the like exist in the process only
 // after it. A system without it cannot run Glutter, so a failure panics with the tagged error.
 var foundation = sync.OnceValue(func() *dl.Lib {

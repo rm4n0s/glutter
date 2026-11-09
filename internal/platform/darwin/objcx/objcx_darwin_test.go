@@ -412,3 +412,11 @@ func TestCallbackCountStaysUnderTheLimit(t *testing.T) {
 }
 
 func osPid() int { return os.Getpid() }
+
+func TestSelNameIsTheNameOfTheSelector(t *testing.T) {
+	for _, name := range []string{"moveLeft:", "deleteWordBackward:", "noop:", "init", "setMarkedText:selectedRange:replacementRange:"} {
+		if got := SelName(Sel(name)); got != name {
+			t.Errorf("SelName(Sel(%q)) = %q", name, got)
+		}
+	}
+}

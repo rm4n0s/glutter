@@ -20,13 +20,21 @@ import (
 // that text and the selection the keys end in shows (GLUTTER_DEV_TEXT and GLUTTER_DEV_SELECT), pixel for
 // pixel. Every script ends with a selection: a caret blinks, and two runs would show it in different phases.
 // Typing comes with the text input (step 33.5). Run it with `go test -tags glutter_display ./examples/editor`.
-func TestMacOSScriptedKeysMoveTheSelection(t *testing.T) {
+// macEditor returns a function that runs the editor on macOS (an accessory app, through glutter-macos shot)
+// with the given environment and returns the frame it saved, 2 seconds after the start. Each run has a data
+// directory and a pasteboard of its own (GLUTTER_DEV_PASTEBOARD), so that a test never reads or changes the
+// clipboard of the user.
+func macEditor(t *testing.T) func(name string, env ...string) *image.RGBA {
+	t.Helper()
 	dir := t.TempDir()
-	run := func(name string, env ...string) *image.RGBA {
+	return func(name string, env ...string) *image.RGBA {
 		t.Helper()
 		out := filepath.Join(dir, strings.ReplaceAll(name, " ", "-")+".png")
+		unique := filepath.Base(out)
 		args := []string{"run", "../../cmd/glutter-macos", "shot", "-timeout", "2m",
-			"-env", "GLUTTER_SCREENSHOT_AFTER=2s", "-env", "GLUTTER_RASTER_CACHE=0", "-env", "GLUTTER_DEV_DATA_DIR=" + filepath.Join(dir, "data-"+filepath.Base(out))}
+			"-env", "GLUTTER_SCREENSHOT_AFTER=2s", "-env", "GLUTTER_RASTER_CACHE=0",
+			"-env", "GLUTTER_DEV_DATA_DIR=" + filepath.Join(dir, "data-"+unique),
+			"-env", "GLUTTER_DEV_PASTEBOARD=glutter-test-" + unique + "-" + filepath.Base(dir)}
 		for _, e := range env {
 			args = append(args, "-env", e)
 		}
@@ -43,6 +51,10 @@ func TestMacOSScriptedKeysMoveTheSelection(t *testing.T) {
 		}
 		return img
 	}
+}
+
+func TestMacOSScriptedKeysMoveTheSelection(t *testing.T) {
+	run := macEditor(t)
 	const hello = "Hello world"
 	area := image.Rect(16, 36, 480, 412) // the text area of the 820 x 460 window, without the status bar
 	tests := []struct {

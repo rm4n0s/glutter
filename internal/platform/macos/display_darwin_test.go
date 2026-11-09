@@ -38,6 +38,8 @@ type recorder struct {
 	// platform.SyncInputHandler, as the engine's handler is).
 	keys       []ui.KeyData
 	keyHandled bool
+	// texts are the events of the input method that OnTextInputSync heard.
+	texts []ui.TextInputEvent
 }
 
 func (r *recorder) OnPointer(data []ui.PointerData) {
@@ -53,7 +55,20 @@ func (r *recorder) OnKeySync(d ui.KeyData) bool {
 	return r.keyHandled
 }
 func (r *recorder) OnPointerSync(data []ui.PointerData) { r.OnPointer(data) }
-func (r *recorder) OnTextInputSync(ui.TextInputEvent)   {}
+func (r *recorder) OnTextInputSync(e ui.TextInputEvent) {
+	r.mu.Lock()
+	r.texts = append(r.texts, e)
+	r.mu.Unlock()
+}
+
+// takeTexts returns the text input events heard since the last call.
+func (r *recorder) takeTexts() []ui.TextInputEvent {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := r.texts
+	r.texts = nil
+	return out
+}
 
 // takeKeys returns the key events heard since the last call.
 func (r *recorder) takeKeys() []ui.KeyData {

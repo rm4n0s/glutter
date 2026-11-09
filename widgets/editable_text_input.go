@@ -391,6 +391,21 @@ func (s *EditableTextState) PerformPrivateCommand(action string, data map[string
 	}
 }
 
+// PerformSelector does what a command of the Cocoa text system asks, by the name of its selector
+// ("moveLeft:"): the intent that IntentForMacOSSelector gives for it is invoked in the focused node.
+// A selector that is not known does nothing.
+//
+// Flutter: widgets/editable_text.dart EditableTextState.performSelector
+func (s *EditableTextState) PerformSelector(selectorName string) {
+	intent := IntentForMacOSSelector(selectorName)
+	if intent == nil {
+		return
+	}
+	if node := PrimaryFocus(s.Context()); node != nil && node.Context() != nil {
+		ActionsInvoke(node.Context(), intent)
+	}
+}
+
 // InsertContent is not supported: the field has no content insertion
 // configuration.
 //
@@ -650,12 +665,6 @@ func (s *EditableTextState) InsertTextPlaceholder(ui.Size) {}
 //
 // Flutter: widgets/editable_text.dart EditableTextState.removeTextPlaceholder
 func (s *EditableTextState) RemoveTextPlaceholder() {}
-
-// PerformSelector does nothing: the selectors are those of the macOS input
-// method.
-//
-// Flutter: widgets/editable_text.dart EditableTextState.performSelector
-func (s *EditableTextState) PerformSelector(string) {}
 
 // ShowToolbar is called by the input method to show the toolbar.
 //

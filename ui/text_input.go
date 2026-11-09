@@ -251,4 +251,9 @@ type TextInputEvent struct {
 	// PreeditCursorBegin and PreeditCursorEnd are the selection inside Preedit,
 	// in UTF-8 byte offsets. Both -1 means the input method hides the cursor.
 	PreeditCursorBegin, PreeditCursorEnd int
+	// Selector is a command of the Cocoa text system that the input method of macOS asks of the field,
+	// by the name of its selector ("moveLeft:", "deleteWordBackward:"). An event that has a selector has
+	// none of the other fields: the framework turns the selector into an intent
+	// (widgets.IntentForMacOSSelector) and does it in the focused node.
+	Selector string
 }

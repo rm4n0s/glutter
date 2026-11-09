@@ -734,3 +734,15 @@ func TestTextSelectionDelegateDefaults(t *testing.T) {
 	ctl.RequestAutofill()
 	ctl.FinishAutofillContext(false)
 }
+
+func TestTextInputEventWithASelectorIsAPerformSelector(t *testing.T) {
+	ti := services.NewTextInput()
+	client := newFakeClient(services.TextEditingValueEmpty)
+	ti.Attach(client, services.NewTextInputConfiguration())
+	ti.HandleTextInput(ui.TextInputEvent{Selector: "moveWordLeft:"})
+	if want := []string{"performSelector moveWordLeft:"}; !reflect.DeepEqual(client.calls, want) {
+		t.Errorf("calls = %q, want %q", client.calls, want)
+	}
+	// Without a client, the event is ignored.
+	services.NewTextInput().HandleTextInput(ui.TextInputEvent{Selector: "moveLeft:"})
+}

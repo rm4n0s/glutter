@@ -25,16 +25,12 @@ const (
 // moves its focus into the window's route in the frame after the focus event.
 const devKeyFocusDelay = 150 * time.Millisecond
 
-// focusForDevKeys gives the first window the keyboard focus when a script has key steps and the window is not
+// focusForDevKeys gives the first window the keyboard focus when a script has key or text steps and the window is not
 // the key window, and says whether it did: an accessory app never takes the focus from the user's apps, and
 // the framework sends keys to the focused view only. The script waits a moment, as a user would.
 func (p *Platform) focusForDevKeys() bool {
-	hasKeys := false
-	for _, ev := range p.devEvents {
-		hasKeys = hasKeys || ev.Kind == "key"
-	}
 	w := p.devWindow()
-	if !hasKeys || w == nil || w.closed || w.activated {
+	if !hasTextSteps(p.devEvents) || w == nil || w.closed || w.activated {
 		return false
 	}
 	w.keyChanged(true)

@@ -69,6 +69,8 @@ type window struct {
 	initial platform.WindowState
 	// sleepAssertion is the IOPMAssertion that KeepScreenOn holds, 0 when none.
 	sleepAssertion uint32
+	// text is the text input of the window: the document that the input method reads (textinput.go).
+	text textInput
 	// frameInterval_ is the time between two ticks of the link, in seconds, as the last tick said.
 	frameInterval_ float64
 }
@@ -333,9 +335,6 @@ func (w *window) orderFront() {
 		w.ns.Send(sel("orderFront:"), objc.ID(0))
 	}
 }
-
-// SetTextInput does nothing until step 33.5.
-func (w *window) SetTextInput(ui.TextInputState) {}
 
 // RequestFrame asks for OnFrame at the next tick of the display link (SPEC §29.3): requests merge, and the
 // link runs only while a frame is wanted.
@@ -711,7 +710,7 @@ func (p *Platform) startDevEvents() {
 func (p *Platform) runDevEvents(i int) {
 	for ; i < len(p.devEvents); i++ {
 		ev := p.devEvents[i]
-		if p.runDevPointer(ev) || p.runDevKey(ev) {
+		if p.runDevPointer(ev) || p.runDevKey(ev) || p.runDevText(ev) {
 			continue
 		}
 		if ev.Kind == "wait" {

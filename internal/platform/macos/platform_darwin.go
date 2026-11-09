@@ -140,6 +140,15 @@ func New(opts Options) (*Platform, error) {
 		class("NSWindow").Send(sel("setAllowsAutomaticWindowTabbing:"), false)
 	})
 	p.kb = newKeyboard(p)
+	p.clip.p = p
+	if foundation.DebugMode {
+		if name := p.getenv(DevPasteboardEnv); name != "" {
+			ns := objcx.NewString(name)
+			p.clip.pb = objcx.Retain(class("NSPasteboard").Send(sel("pasteboardWithName:"), ns))
+			p.clip.named = true
+			objcx.Release(ns)
+		}
+	}
 	// The run loop's own pieces: one source for Post, one timer for the heap.
 	p.source = cf.NewSource(func() { p.guard(p.runPosted) })
 	p.source.AddTo(cf.MainRunLoop(), cf.CommonModes())
@@ -317,6 +326,13 @@ func (p *Platform) Close() error {
 }
 
 func (p *Platform) teardown() {
+	if p.clip.pb != 0 {
+		if p.clip.named {
+			p.clip.pb.Send(sel("releaseGlobally"))
+		}
+		objcx.Release(p.clip.pb)
+		p.clip.pb = 0
+	}
 	if p.kb != nil {
 		p.kb.close()
 		p.kb = nil

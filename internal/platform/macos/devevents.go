@@ -2,6 +2,7 @@ package macos
 
 import (
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -16,13 +17,24 @@ import (
 // Flutter: no counterpart
 const DevEventsEnv = "GLUTTER_DEV_EVENTS"
 
+// DevPasteboardEnv is the environment variable with the name of a pasteboard that debug builds use instead
+// of the general one, so that a test or a proof that copies and pastes never reads or changes the clipboard
+// of the user (SPEC §29.7). It is read only in debug builds (foundation.DebugMode).
+//
+// Flutter: no counterpart
+const DevPasteboardEnv = "GLUTTER_DEV_PASTEBOARD"
+
 // DevEvent is one step of a dev events script.
 //
 // Flutter: no counterpart
 type DevEvent struct {
 	// Kind is the name of the step: "wait", "move", "tap", "wheel", "key", or one of the pieces that "pan" is
-	// made of: "panbegin", "panstep" and "panend" (text and compose come with step 33.5).
+	// made of: "panbegin", "panstep" and "panend"; "text", "compose" and "composing" are the input method.
 	Kind string
+	// Text is the text of a "text" step, and Steps are the pieces of a "compose" or "composing" step, each
+	// the marked text of an update of the input method.
+	Text  string
+	Steps []string
 	// Key is the physical key of a "key" step, in Flutter's names (KeyA, Digit1, Enter, ArrowLeft), and Mods
 	// the modifiers that are down while it is pressed: a "+"-joined subset of shift, control, alt and meta, in
 	// that order.
@@ -48,6 +60,12 @@ type DevEvent struct {
 //	                  are Flutter's physical keys: KeyA to KeyZ, Digit0 to Digit9, Enter, Tab, Space,
 //	                  Backspace, Delete, Escape, ArrowLeft, ArrowRight, ArrowUp, ArrowDown, Home, End,
 //	                  PageUp, PageDown, and F1 to F12
+//	text:Hello        types the text as an input method does when it composes nothing: one
+//	                  insertText: for each character (the blanks are typed; \n and the other control
+//	                  characters type nothing; no ";")
+//	compose:a,b,c     an input method composes a, then b, then c (setMarkedText: each), commits c
+//	                  (insertText:) and ends the composition
+//	composing:a,b,c   the same, but the composition stays (a later compose: goes on with it)
 //	pan:x,y,dx,dy[,d] a two-finger scroll of the trackpad at the place, with its phases: dx and dy are the
 //	                  total scroll in points (positive moves the content down and to the right, as the
 //	                  trackpad does), spread over the duration d (100ms when it is left out) in steps of
@@ -92,6 +110,19 @@ func ParseDevEvents(script string) ([]DevEvent, error) {
 				return nil, err
 			}
 			events = append(events, ev)
+		case "text":
+			// The blanks of the text are the text: only the step's own leading blanks go.
+			_, args, _ = strings.Cut(strings.TrimLeft(raw, " \t\r\n"), ":")
+			if args == "" {
+				return nil, errors.New(TagMacOSDevEventsInvalid, "text takes the text to type", "step", step)
+			}
+			events = append(events, DevEvent{Kind: name, Text: args})
+		case "compose", "composing":
+			pieces := strings.Split(args, ",")
+			if args == "" || slices.Contains(pieces, "") {
+				return nil, errors.New(TagMacOSDevEventsInvalid, "compose and composing take the pieces a,b,c", "step", step)
+			}
+			events = append(events, DevEvent{Kind: name, Steps: pieces})
 		case "pan":
 			pan, err := parsePan(args, step)
 			if err != nil {
@@ -99,7 +130,7 @@ func ParseDevEvents(script string) ([]DevEvent, error) {
 			}
 			events = append(events, pan...)
 		default:
-			return nil, errors.New(TagMacOSDevEventsInvalid, "the step is not wait, move, tap, wheel, pan or key (text and compose come with step 33.5)", "step", step)
+			return nil, errors.New(TagMacOSDevEventsInvalid, "the step is not wait, move, tap, wheel, pan, key, text, compose or composing", "step", step)
 		}
 	}
 	return events, nil

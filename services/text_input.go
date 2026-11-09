@@ -616,6 +616,10 @@ func (t *TextInput) HandleTextInput(event ui.TextInputEvent) {
 	if t.currentConnection == nil {
 		return
 	}
+	if event.Selector != "" {
+		t.HandlePerformSelectors(t.currentConnection.id, []string{event.Selector})
+		return
+	}
 	t.platform.handleEvent(event)
 }
 

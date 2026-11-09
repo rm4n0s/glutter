@@ -3,9 +3,11 @@
 package macos
 
 import (
+	"context"
 	"testing"
 
 	"github.com/rm4n0s/errors"
+	"github.com/rm4n0s/glutter/ui"
 )
 
 func TestNewOffTheMainThreadFails(t *testing.T) {
@@ -48,17 +50,21 @@ func TestClassesOfThePlatformCountTheirCallbacks(t *testing.T) {
 	}
 }
 
-func TestClipboardFailsUntilItIsConnected(t *testing.T) {
+func TestClipboardHasNoPrimarySelection(t *testing.T) {
 	var c clipboard
-	var got error
-	c.SetText(nil, "x", func(err error) { got = err }) //nolint:staticcheck // the stub ignores the context
-	appErr, ok := errors.FromError(got)
-	if !ok || appErr.Tag != TagClipboardUnavailable {
-		t.Errorf("SetText: %v", got)
-	}
-	var text string
-	c.GetText(nil, func(s string, ok bool, err error) { text, got = s, err }) //nolint:staticcheck // as above
-	if appErr, ok := errors.FromError(got); !ok || appErr.Tag != TagClipboardUnavailable || text != "" {
-		t.Errorf("GetText: %v %q", got, text)
+	var setErr, getErr error
+	c.SetContent(context.Background(), ui.ClipboardKindPrimary, ui.ClipboardContent{Text: "x", HasText: true}, func(err error) { setErr = err })
+	c.GetContent(context.Background(), ui.ClipboardKindPrimary, ui.ClipboardFormatText, func(_ ui.ClipboardContent, err error) { getErr = err })
+	for name, tc := range map[string]struct {
+		err   error
+		route string
+	}{
+		"SetContent": {setErr, "clipboard.SetContent.ClipboardPrimaryUnavailable"},
+		"GetContent": {getErr, "clipboard.GetContent.ClipboardPrimaryUnavailable"},
+	} {
+		appErr, ok := errors.FromError(tc.err)
+		if !ok || appErr.Tag != tagClipboardPrimaryUnavailable || !appErr.HasRoute(tc.route) {
+			t.Errorf("%s: got %v (route %v), want %s", name, tc.err, appErr, tc.route)
+		}
 	}
 }

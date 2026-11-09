@@ -75,7 +75,7 @@ func (s *system) registerClasses() error {
 		return err
 	}
 	if s.view, err = objcx.RegisterClass(objcx.ClassDef{
-		Name: "View", Super: "NSView",
+		Name: "View", Super: "NSView", Protocols: []string{"NSTextInputClient"},
 		Methods: append([]objcx.Method{
 			{Name: "acceptsFirstResponder", Fn: func(objc.ID, objc.SEL) bool { return true }},
 			{Name: "acceptsFirstMouse:", Fn: func(objc.ID, objc.SEL, objc.ID) bool { return true }},
@@ -91,7 +91,7 @@ func (s *system) registerClasses() error {
 					w.p.guard(func() { w.linkFired(link) })
 				}
 			}},
-		}, append(viewMethods(), keyMethods()...)...),
+		}, append(append(viewMethods(), keyMethods()...), textMethods()...)...),
 	}); err != nil {
 		return err
 	}

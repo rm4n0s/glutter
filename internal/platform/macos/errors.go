@@ -11,8 +11,6 @@ const (
 	TagMacOSWindowCreateFailed = "MacOSWindowCreateFailed"
 	// TagMacOSDevEventsInvalid is the tag of the error of a GLUTTER_DEV_EVENTS script that cannot be read.
 	TagMacOSDevEventsInvalid = "MacOSDevEventsInvalid"
-	// TagClipboardUnavailable is the tag of the error of a clipboard that this build cannot reach.
-	TagClipboardUnavailable = "ClipboardUnavailable"
 	// TagIdleInhibitUnavailable is the tag of the error of a power assertion that the system refused.
 	TagIdleInhibitUnavailable = "IdleInhibitUnavailable"
 	// TagMacOSDragUnavailable is the tag of the error of StartDrag before drag and drop exists.

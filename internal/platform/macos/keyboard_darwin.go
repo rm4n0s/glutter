@@ -121,6 +121,14 @@ type keyboard struct {
 	upMonitor objc.ID
 	upBlock   objc.Block
 	observing bool
+
+	// equivalent is the event that performKeyEquivalent: is handling: the input context must know that a key
+	// came as a key equivalent (Flutter's isKeyEquivalent mark of the event).
+	equivalent objc.ID
+	// produced says that the input context made output (text or a command) for the event it is handling;
+	// prevFlags are the modifier flags of the last event that went to it.
+	produced  bool
+	prevFlags uint64
 }
 
 // newKeyboard makes the keyboard of the platform: it reads the layout and listens to the input source.
@@ -292,7 +300,19 @@ func nsString(id objc.ID) string {
 // Flutter: FlutterKeyboardManager.mm handleEvent, performProcessEvent, dispatchTextEvent
 func (w *window) keyEvent(ev objc.ID, kind int, redispatch bool) {
 	k := w.p.kb
-	if k.resp.handle(w.keyEventOf(ev, kind)) {
+	// While an input method composes, it has the first look at the keys (Backspace edits the composition,
+	// Enter and Escape end it, the arrows move inside it): the shortcuts of the framework see them when it
+	// does not take them. Without a composition the framework goes first, as Flutter's does.
+	if redispatch && kind == keyKindDown && w.text.hasMarked() && k.textKey(w, ev, kind) {
+		return
+	}
+	ke := w.keyEventOf(ev, kind)
+	if w.text.enabled && kind == keyKindDown {
+		// A text field takes its text from the input context (the key may be a dead key, or a start of a
+		// composition), not from the character of the key, which the framework would type itself.
+		ke.characters = ""
+	}
+	if k.resp.handle(ke) {
 		return
 	}
 	if redispatch {
@@ -306,6 +326,9 @@ func (w *window) keyEvent(ev objc.ID, kind int, redispatch bool) {
 //
 // Flutter: FlutterKeyboardManager.mm dispatchTextEvent
 func (k *keyboard) dispatchText(w *window, ev objc.ID, kind int) {
+	if k.textKey(w, ev, kind) {
+		return
+	}
 	next := send[objc.ID](w.view, "nextResponder")
 	if next == 0 || k.dispatching != 0 {
 		return
@@ -329,6 +352,8 @@ func (w *window) performKeyEquivalent(self, ev objc.ID) bool {
 	if send[objc.ID](w.ns, "firstResponder") != w.view || k.dispatching == ev {
 		return objc.SendSuper[bool](self, sel("performKeyEquivalent:"), ev)
 	}
+	k.equivalent = ev
+	defer func() { k.equivalent = 0 }()
 	w.keyEvent(ev, keyKindDown, true)
 	return true
 }

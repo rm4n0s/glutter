@@ -845,3 +845,22 @@ Keys reach the framework as Flutter's macOS embedder reports them: the physical 
 11. **CapsLock**: press it twice: the app shows no stuck CapsLock key (a widget that shows `HardwareKeyboard.instance.lockModesEnabled` shows the light's state).
 
 Answers: _(not yet recorded)_
+
+## 33.5 Text input, IMEs and the pasteboard (macOS)
+
+**Status:** pending
+
+A text field takes its text from the input method of macOS through `NSTextInputClient`: the tests call its methods in the order that an input method does (`text`, `compose` and `composing` of `GLUTTER_DEV_EVENTS`), and the pasteboard is tested on a pasteboard of its own. What only the real input methods and the real clipboard show is here. In `go run ./examples/editor`, with each of these input sources (System Settings, Keyboard, Text Input, Input Sources):
+
+1. **Pinyin** (Simplified): type `nihao`: the letters are underlined as you type, the candidate window opens just under the caret (not at a corner of the screen, and it follows the caret when the text wraps or scrolls), `Space` or a digit picks a candidate and the underline goes, `Backspace` shortens the composition, `Escape` cancels it, and `Return` commits the letters as typed.
+2. **Japanese** (Kotoeri or Hiragana): type `nihongo`, `Space` converts and moves through the candidates with the arrows, `Return` commits. In the middle of a line, the composition is where the caret is and the text after it moves. Does the candidate window follow the caret when you scroll the editor?
+3. **Korean** (2-Set): type `hangul`: the syllable changes as you type and the next syllable starts without losing the first.
+4. **The accent menu**: hold `e` (with `ApplePressAndHoldEnabled` on, the default): the menu shows over the caret; picking `é` with its number or the mouse replaces the `e` that was typed. With the setting off (`defaults write -g ApplePressAndHoldEnabled -bool false`, then restart the app) the key repeats instead.
+5. **Dead keys**: on the US layout `Option+E` then `e` gives `é`; on a German layout `´` then `a` gives `á`, and `´` then `Space` gives `´`.
+6. **Emoji and symbols**: `Ctrl+Cmd+Space` opens the viewer, and picking an emoji types it into the field at the caret.
+7. **Dictation** (the shortcut of System Settings, Keyboard, Dictation): speak a few words: they appear in the field, underlined while they are recognized.
+8. **Reconversion**: select a word that you typed in Japanese and press the conversion key: the input method reads the text around the caret and offers other candidates.
+9. **The window**: click into another field of the app, or into another window, while a composition is going on: the composition ends (committed or dropped, as in TextEdit) and the next key types normally.
+10. **The pasteboard**: copy text in the editor (`Cmd+C`) and paste it into TextEdit; copy text in TextEdit and paste it into the editor (`Cmd+V`); copy an image in Preview and paste into an app that reads images; copy files in the Finder and paste them in an app that reads `ClipboardFormatURIList`. Does `Cmd+X` cut? Is a long text (a megabyte) pasted without a pause?
+
+Answers: _(not yet recorded)_

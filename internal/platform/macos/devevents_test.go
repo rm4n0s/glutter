@@ -1,6 +1,7 @@
 package macos
 
 import (
+	"reflect"
 	"slices"
 	"testing"
 	"time"
@@ -28,7 +29,15 @@ func TestParseDevEvents(t *testing.T) {
 		{"tap with a word", "tap:a,b", nil, TagMacOSDevEventsInvalid},
 		{"wheel with three numbers", "wheel:1,2,3", nil, TagMacOSDevEventsInvalid},
 		{"a number that is not finite", "move:NaN,1", nil, TagMacOSDevEventsInvalid},
-		{"a step that comes later", "text:abc", nil, TagMacOSDevEventsInvalid},
+		{"text", "text:Hello", []DevEvent{{Kind: "text", Text: "Hello"}}, ""},
+		{"text keeps its blanks", "wait:1ms;  text:  a b ", []DevEvent{{Kind: "wait", Wait: time.Millisecond}, {Kind: "text", Text: "  a b "}}, ""},
+		{"text with a colon", "text:a:b", []DevEvent{{Kind: "text", Text: "a:b"}}, ""},
+		{"no text", "text:", nil, TagMacOSDevEventsInvalid},
+		{"compose", "compose:に,にほ,日本", []DevEvent{{Kind: "compose", Steps: []string{"に", "にほ", "日本"}}}, ""},
+		{"composing", "composing:ㅎ,하", []DevEvent{{Kind: "composing", Steps: []string{"ㅎ", "하"}}}, ""},
+		{"compose with an empty piece", "compose:a,,b", nil, TagMacOSDevEventsInvalid},
+		{"compose with nothing", "compose:", nil, TagMacOSDevEventsInvalid},
+		{"a step that is not known", "swipe:1,2", nil, TagMacOSDevEventsInvalid},
 		{"a key", "key:KeyA", []DevEvent{{Kind: "key", Key: "KeyA"}}, ""},
 		{"a key with a modifier", "key:KeyC,meta", []DevEvent{{Kind: "key", Key: "KeyC", Mods: "meta"}}, ""},
 		{"modifiers are sorted and cleaned", "key: ArrowLeft , Meta + shift", []DevEvent{{Kind: "key", Key: "ArrowLeft", Mods: "shift+meta"}}, ""},
@@ -52,7 +61,7 @@ func TestParseDevEvents(t *testing.T) {
 				}
 				return
 			}
-			if err != nil || !slices.Equal(got, tt.want) {
+			if err != nil || !slices.EqualFunc(got, tt.want, func(a, b DevEvent) bool { return reflect.DeepEqual(a, b) }) {
 				t.Errorf("got %v, %v; want %v", got, err, tt.want)
 			}
 		})
