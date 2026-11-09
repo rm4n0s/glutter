@@ -70,6 +70,27 @@ This file breaks the milestones in `docs/SPEC.md` §18 into small steps. Each st
    GOOS=windows GOARCH=arm64 go build ./...   # from step 28.1 on (build only: there is no arm64 Wine here)
    scripts/test-windows.sh               # from step 28.1 on: the unit tests of the packages that build for Windows, under Wine
    ```
+   **On a Mac** (from step 33.1 on; the Mac has no Wine, no headless Wayland and no Linux display), run instead:
+   ```sh
+   test -z "$(gofmt -l .)"
+   go vet ./...
+   golangci-lint run
+   go test -race ./...
+   CGO_ENABLED=0 go build ./...
+   CGO_ENABLED=0 go test ./...
+   go run ./cmd/glutter-gen errcheck -allow cmd/glutter-gen/errcheck.allow
+   go run ./cmd/glutter-gen uintptrcheck -allow cmd/glutter-gen/uintptrcheck.allow
+   GOOS=darwin GOARCH=amd64 go build ./...
+   GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build ./... && GOOS=linux GOARCH=amd64 go vet ./...
+   GOOS=js GOARCH=wasm go build ./... && GOOS=js GOARCH=wasm go vet ./...
+   scripts/test-wasm.sh                  # needs Node
+   GOOS=windows GOARCH=amd64 go build ./... && GOOS=windows GOARCH=amd64 go vet ./... && GOOS=windows GOARCH=arm64 go build ./...
+   GOOS=windows golangci-lint run        # amd64 and arm64, with and without --build-tags glutter_wine
+   scripts/check-android.sh              # when ANDROID_HOME is set; otherwise say it was skipped
+   scripts/check-ios.sh                  # from step 35.1 on
+   ```
+   `scripts/test-windows.sh`, the Wine tests, the Linux display tests and the emulator tests are not run on a Mac: the step says so in `docs/IMPLEMENTED.md`, and the owner runs the full list above on the Linux machine before the milestone is published (SPEC §21). Display tests of a darwin step run on the Mac: `go test -race -tags glutter_display <packages>` (SPEC §29.13).
+   If the step lists **Simulator tests**, run them too: `go test -p 1 -tags glutter_ios <packages>` (SPEC §30.11). They boot the Simulator of `.ios-test/` themselves and shut it down.
    If the step lists **Display tests**, run them too: `go test -race -tags glutter_display <packages>`. They run under a headless compositor (step 1.5) unless the step says otherwise.
    If the step lists **Browser tests**, run them too: `go test -tags glutter_browser <packages>` (SPEC §17).
    If the step lists **Device tests**, run them too: `go test -tags glutter_android <packages>` (SPEC §24.13). They start the emulator themselves and stop it; run them one package at a time (`-p 1`), since one emulator needs 2–4 GB of memory.
@@ -112,6 +133,8 @@ This file breaks the milestones in `docs/SPEC.md` §18 into small steps. Each st
 | **D. Browser capture** (from step 21.1) | anything drawn by an app on the web | `go run ./cmd/glutter-web shot -browser chromium\|firefox [-renderer r] -o docs/implemented-proof-images/<file>.png <package>`: builds the app for js/wasm, opens it in a headless browser with a temporary profile, and saves the frame the app reads back and posts (SPEC §23.8). `GLUTTER_DEV_*` values are given as URL query parameters with `-query` |
 | **E. Android capture** (from step 25.3) | anything drawn by an app on Android | `go run ./cmd/glutter-android shot [-avd glutter-37] [-renderer r] [-env GLUTTER_X=v]... -o docs/implemented-proof-images/<file>.png <package>`: builds the APK, starts the emulator if no device is given, runs the app with `GLUTTER_SCREENSHOT=1` and pulls the frame the app saved (SPEC §24.13). `-screen` captures the device's whole screen instead (status bar, keyboard, notifications). The emulator is stopped afterwards |
 | **F. Wine capture** (from step 28.2) | anything drawn by an app on Windows | `GOOS=windows go build -o <app>.exe <package>`, then `GLUTTER_SCREENSHOT=docs/implemented-proof-images/<file>.png scripts/wine-exec.sh ./<app>.exe`: the app saves its own frame under Wine on a headless Xvfb and exits (SPEC §25.13); from step 28.14 `go run ./cmd/glutter-windows shot -o <file.png> <package>` does both. For what lies outside the app's window (the tray, a dialog, several windows), `scripts/wine-screenshot.sh <file.png> -- <command...>` saves the root window of the Xvfb. Wine's fonts, its DXGI and its dialogs are not Windows', so a proof shows that the app draws, not what a PC's screen looks like; that is the manual checks |
+| **G. macOS self-capture** (from step 33.2) | anything drawn by an app on macOS | `go run ./cmd/glutter-macos shot -o docs/implemented-proof-images/<file>.png <package>`: runs the app on the Mac with `GLUTTER_SCREENSHOT`, and the app saves its own frame and exits (SPEC §29.13); no screen-recording permission is needed. What is outside the app's view (the menu bar, the tray, a banner) is method C (user desktop) |
+| **H. iOS Simulator capture** (from step 35.2) | anything drawn by an app on iOS | `go run ./cmd/glutter-ios shot [-device iphone\|ipad] -o docs/implemented-proof-images/<file>.png <package>`: builds for the Simulator, runs the app with `GLUTTER_SCREENSHOT=1` in the private device set and copies the frame it saved; `-screen` takes `simctl io screenshot` for the status bar and the keyboard (SPEC §30.11) |
 
 ### Examples
 
@@ -160,6 +183,9 @@ This file breaks the milestones in `docs/SPEC.md` §18 into small steps. Each st
 | M30 3D and the GPU (1.10) | 30.1–30.14 | `gpu-triangle`, `cad` |
 | M31 Games (1.11) | 31.1–31.12 | `game3d` |
 | M32 The software renderer on Linux (1.12) | 32.1–32.4 | |
+| M33 macOS (1.13) | 33.1–33.16 | every example on macOS, `tray` and `multiwindow` included |
+| M34 Cupertino (1.14) | 34.1–34.10 | `cupertino` |
+| M35 iOS (1.15) | 35.1–35.9 | every example but `multiwindow` and `tray` on the iOS Simulator |
 
 ---
 
@@ -4169,3 +4195,442 @@ M32 adds `soft` to Linux and makes `auto` choose it when the machine has no GPU.
 **Tests:** none of its own.
 **Proof:** none.
 **Manual checks:** none.
+
+## M33: macOS (1.13)
+
+The owner asked on 2026-11-09 for macOS "like in Flutter", drawn with Metal (D33), followed by Cupertino (M34) and iOS (M35) in the order of D38. Release 1.13 is the platform layer (the app and the run loop, windows and displays, the mouse, the trackpad and tablets, the keyboard, text input and IMEs, the pasteboard, cursors, settings, fonts, lifecycle, menus), the desktop services (tray, notifications, file dialogs, open URI), drag and drop, NSAccessibility, gamepads and audio, the packaging of an `.app`, and a Metal renderer that also carries the `gpu` package and the 3D view. Every example that runs on Linux runs on macOS, `tray` and `multiwindow` included.
+
+The steps are developed on the owner's Mac (Apple silicon, macOS 27, the Command Line Tools; no Xcode is needed for M33). Rule 8 has a list "On a Mac" for what runs there; the Linux, Wine and Android checks are run on the Linux machine before the milestone is published (SPEC §21). Before 33.1 there is no Flutter macOS embedder in `reference/`: **step 33.1 adds `engine/src/flutter/shell/platform/darwin` to the fetch and checks every "Port from" path below**, and corrects this plan where a file is named differently or is missing. The steps that open windows list **Display tests** (real windows on the Mac, SPEC §29.13), the visible ones a **Proof** of method G, and what a test cannot show is a **Manual check**, collected in `docs/MANUAL-CHECKS.md` by 33.15. Step order: the plumbing (33.1), the platform with `soft` (33.2 to 33.7), Metal (33.8, 33.9), the rest of the desktop (33.10 to 33.14), the packaging and every example (33.15), the release (33.16).
+
+### 33.1 macOS groundwork
+**Goal:** the module's tests pass on a Mac, a program can call AppKit (frameworks, Objective-C classes made in Go, blocks), Go's mirrors of C structures are checked against the SDK headers, and the checks of a Mac are one list.
+**Read:** SPEC §29 (the introduction, "Build tags"), §29.2, §29.13, §6.3 (rules 2, 6, 7 and 11), §8.1, §14.4, §17, D33, D34, D38, CLAUDE.md ("Don't": processes, files outside the project).
+**Port from:** none (the plumbing is Glutter's).
+**Files:** `internal/engine/backends_darwin.go`, `backends_other.go`, `foundation/host_darwin.go`, `foundation/web_other.go`, `internal/gpu/surface.go` (`SurfaceKindMetalLayer`), `internal/platform/darwin/` (`doc.go`, `dl/`, `objcx/`, `cf/`, `layouttest/`), `internal/platform/macos/doc.go`, `cmd/glutter-gen/internal/errcheck`, `scripts/fetch-reference.sh`, `docs/IMPLEMENTATION.md` (rule 8), the packages whose tests fail on a Mac.
+**Tasks:**
+1. Make `go test ./...` and `CGO_ENABLED=0 go test ./...` pass on a Mac. On 2026-11-09 five packages failed there: `cmd/glutter-gen/internal/errcheck` (the Android pass fails without the NDK instead of being skipped), `cmd/glutter-gen/internal/reexport` (`the working directory is gone`: macOS keeps a removed working directory usable differently), `internal/platform/windows/win32/layouttest` (the host-compiler fixture expects mingw's message and gets the Apple clang's), `internal/text` (`TestScanMatcher` expects the Linux cache directory; `TestFallback` finds a font for U+10FFFD in the Mac's fonts), `material/internal/mcu` (`TestSchemeCorrectness` on arm64: the contrast falls short, most likely fused multiply-add, which Go uses on arm64 and not on amd64; compare with the reference's values and make the code compute as the reference does with explicit `float64()` conversions, which stop the fusion). Fix each cause, never the expectation alone; a test that is only meaningful on Linux gets a `linux` tag with the reason.
+2. `backends_darwin.go` (`darwin && !ios`): `Run` fails with `BackendUnavailable` until 33.2, no renderer candidates and no font matcher until 33.6 and 33.8; `backends_other.go` becomes `!linux && !js && !windows && !darwin`; `foundation/host_darwin.go` (the host platform is `TargetPlatformMacOS`) and `web_other.go`.
+3. `internal/platform/darwin/dl`: frameworks loaded by absolute path from `/System/Library/Frameworks` (`MacOSFrameworkMissing` with the path), the symbol table pattern of `linux/dl`, and C blocks counted as `linux/dl` counts them (`LiveBlocks`).
+4. `internal/platform/darwin/objcx`: helpers over purego's `objc` (selectors registered once, `NSString` to and from Go strings, `NSArray`, `NSNumber`, `NSURL`, `NSError` to a tagged error), the class registry of SPEC §29.2 (classes with the `Glutter` prefix and the process id, the ivar that holds a Go handle, the handle table, `MacOSClassRegistrationFailed`), autorelease pools (`WithPool(func())`), blocks made once and reused, and a counter of the callbacks made so far with a test that fails above 1,500.
+5. `internal/platform/darwin/cf`: Core Foundation strings, dictionaries, the run loop, version-0 sources and timers, with `CFRelease` rules written down in the package doc.
+6. The layout-test harness (SPEC §29.2): it writes a C file of `_Static_assert`s from a Go mirror and compiles it with `xcrun clang -fsyntax-only -isysroot $(xcrun --show-sdk-path)`; it skips with `xcode-select --install` when the tools are missing, and on Linux. The first mirrors checked are `CGPoint`, `CGSize`, `CGRect`, `NSEdgeInsets`, `NSRange`, `CVTimeStamp`.
+7. `scripts/fetch-reference.sh`: add `engine/src/flutter/shell/platform/darwin` at the pinned commit, and run it. Then check every Flutter file named in SPEC §29, §30 and in the "Port from" lines of M33 and M35; where one is missing or has another name, fix the SPEC and this plan in the same commit, and tell the manager.
+8. `glutter-gen errcheck`: a `darwin/arm64` pass (and later `ios/arm64`, step 35.1); the test of the whole module passes on a machine with no NDK (the Android pass skips with a note, as the Wine pass does without Wine).
+9. Rule 8 of this file gains the list "On a Mac" (below), and the proof methods G (this milestone) and H (M35) are added to the table. Tell the manager the lines that CLAUDE.md needs (the Mac commands, the layout, the build tags, the purego `objc` rules, the testing note); the manager edits CLAUDE.md.
+**Tests:** `go list -deps` of `examples/counter` for `GOOS=darwin` has no package of `internal/platform/linux`, `windows`, `android` or `web`, and the lists of the other targets are unchanged (extend `TestBuildsHaveTheirOwnBackends`); `NSString` round trips (ASCII, BMP, surrogate pairs, an embedded NUL, an empty string); the class registry (a class made twice with the same name fails with the tag, a handle that is gone is not found); a block called back by `dispatch_sync_f`-free code (`NSArray enumerateObjectsUsingBlock:`); the pool drains (an object autoreleased inside `WithPool` is freed: `retainCount` through a weak reference); the layout harness over a fixture mirror, right and wrong; route tests of every new tag.
+**Proof:** none.
+**Done when:** the default "Done when", and the checks "On a Mac" pass, `go test ./...` included.
+
+### 33.2 The app, the run loop and windows with `soft`
+**Goal:** `examples/counter` shows its first frame in an `NSWindow`, drawn by `soft` into IOSurfaces; windows open, resize live, move between displays and scales, minimize, zoom, go full screen, hide and close; an idle app sleeps.
+**Read:** SPEC §29.3, §29.4, §29.5 (`soft` into the window), §13, §8.4, §8.7, §8.11 ("Frame pacing", "Resizing and scaling"), §9.6.
+**Port from:** `shell/platform/darwin/macos/framework/Source/FlutterViewController.mm` (the view, `viewDidChangeBackingProperties`, the layout), `FlutterView.mm`, `FlutterDisplayLink.mm`, `FlutterVSyncWaiter.mm`, `FlutterAppDelegate.mm`, `FlutterRunLoop.mm` (if the pinned commit has it), `FlutterWindowController.mm` (the multi-window code of the pinned commit, if it has it).
+**Files:** `internal/platform/macos/` (`platform_darwin.go`, `loop_darwin.go`, `window_darwin.go`, `view_darwin.go`, `displays_darwin.go`, `displaylink_darwin.go`, plain-Go `timers.go`, `pacer.go`, `winstyle.go`, `geometry.go`), `internal/platform/darwin/` (`iosurface_darwin.go`, the pixel target), `internal/engine/backends_darwin.go`.
+**Tasks:**
+1. Process start: the main thread locked in `init`, `NSApplication` with the activation policy of SPEC §29.1 (regular; accessory under the display tests), the app delegate, `MacOSNotMainThread`.
+2. `Post` through the version-0 run loop source in the common modes, the timer heap on one `CFRunLoopTimer`, `Run` and its end.
+3. Frames: the display link of SPEC §29.3 (the `NSView` one on macOS 14+, `CVDisplayLink` before, both behind one interface with the plain-Go pacer separate), `RequestFrame` with the merging rules of the other platforms, the link stopped while no frame is wanted.
+4. `NewWindow` (SPEC §29.4): the styles from `WindowConfig` (`winstyle.go`, plain Go), sizes in points, the backing scale and its changes, the constraints, the states (minimize, zoom, native full screen, restore), hidden windows and the first show after the first frame, the title, close requests, live resize drawn before `setFrameSize:` returns, `OnViewFocus` and `OnKeyboardFocus`, `KeepScreenOn` through `IOPMAssertion`.
+5. `Displays()` and `OnDisplaysChanged`, with frames flipped to the top-left origin (`geometry.go`, plain Go).
+6. `soft` into the window: the IOSurface `gpu.PixelTarget` of SPEC §29.5 (a pool of at most 8, `IOSurfaceIsInUse`, the buffer age), shown as the layer's contents; `internal/gpu/shmwindow` is reused unchanged.
+7. The engine's macOS list: the backend `appkit`, the renderer names `auto`, `metal` and `soft` with `metal` still `RendererUnavailable` and `auto` = `soft`; settings with defaults (33.6), the pasteboard failing with `ClipboardUnavailable` (33.5), no services (33.12).
+8. `GLUTTER_DEV_EVENTS` (`wait` here; `move`, `tap`, `wheel` in 33.3, `key`, `text`, `compose` in 33.4 and 33.5) and `GLUTTER_SCREENSHOT` through the engine; `cmd/glutter-macos shot` in its first form (it runs `go run` with the variable and waits for the file; the bundle comes in 33.15), so proof method G works from this step on.
+**Tests:** table tests of the plain-Go parts: the pacer (a link that fires late, twice, not at all while no frame is wanted), the timer heap, the frame-request merging, the style from the config (resizable or not, decorated or not, dialog, modal, borderless), the flipped geometry on two displays of different heights and scales, the frame size of a content size at scale 1 and 2, the pixel pool over a fake IOSurface (age, in-use buffers skipped, a new size).
+**Display tests:** a window opens and the handler gets `OnMetrics` with its size and scale; `setFrame:` to a new size gives a new `OnMetrics` and a frame at that size before it returns; the constraints hold; minimize, zoom, full screen and restore report their states; `SetHidden` removes and restores the window and asks for no frame while hidden; a `Post` from another goroutine runs while a menu is tracking (a menu opened with `popUpMenuPositioningItem:` and closed by a timer) and during a live resize driven by the test; an idle app wakes up fewer than 2 times a second after its last frame; `pgrep` shows no test app after the test.
+**Proof:** G, `33.2-macos-counter-soft.png`: `examples/counter`, drawn by `soft`.
+**Manual checks:** the counter with `go run ./examples/counter` from Terminal: the window opens without a white flash and is in front; resize it by a corner, the content follows the pointer without stretching; zoom (green button with Option), full screen (green button) and back, minimize to the Dock and back; drag it to a second display with another scale if there is one; `Cmd+Q` quits; the app's name in the menu bar is the executable's. Record the answers.
+
+### 33.3 Mouse, trackpad, tablets and cursors
+**Goal:** pointer input on macOS as Flutter's embedder delivers it, the trackpad's pan and zoom included, and the cursors of `SystemMouseCursors`.
+**Read:** SPEC §29.6 (mouse, scrolling, tablets, cursors), §8.5, §8.11 ("Input"), §12.10.
+**Port from:** `FlutterViewController.mm` (`mouseEntered:`, `mouseDown:`…, `scrollWheel:`, `magnifyWithEvent:`, `rotateWithEvent:`, `touchesBeganWithEvent:`, `dispatchMouseEvent:phase:`, the gesture state), `FlutterMouseCursorPlugin.mm`.
+**Files:** `internal/platform/macos/` (`mouse.go`, `scroll.go`, `gesture.go`, `tablet.go`, `cursor.go`, `devevents.go`, and the `_darwin.go` glue).
+**Tasks:**
+1. The mouse state machine (plain Go): buttons to Flutter's bits, add, hover, down, move, up and remove, the tracking area, a drag outside the window (AppKit keeps sending the drags to the view), Control-click as the secondary button (Flutter's rule).
+2. Scrolling: notched wheels in lines with Flutter's scale; precise deltas as pan/zoom from the phases, the momentum phase dropped, `PointerScrollInertiaCancel` on a touch during the framework's ballistic scroll; pinch and rotate joining the pan/zoom gesture (Flutter's `_panZoom` state).
+3. Tablets: pressure, tilt, rotation, the eraser end, proximity as add and remove.
+4. Cursors: `NSCursor` for each name of `SystemMouseCursors` with Flutter's table; the ones without a public cursor fall back as Flutter does (a `// Deviation:` comment and a §12.10 row only if Glutter differs from Flutter); `MouseCursorNone`.
+5. `GLUTTER_DEV_EVENTS`: `move`, `tap`, `wheel` and `pan` (a trackpad scroll with phases), posted to the app as `NSEvent`s.
+**Tests:** the relevant cases of `FlutterViewControllerTest.mm` as table tests of the plain-Go conversions (the pointer events of a click, a drag, a trackpad scroll with momentum, a pinch, a pinch while scrolling, the inertia cancel, the mouse leaving with a button down); the wheel scale; the tablet conversion; the cursor table covers every name of `SystemMouseCursors`.
+**Display tests:** posted events click the counter's button three times and the count is 3; a posted trackpad scroll moves `examples/scrolling` and its fling continues in the framework; `NSCursor.currentCursor` over a text field and over a button is the I-beam and the pointing hand.
+**Proof:** G, `33.3-macos-scrolling.png`: `examples/scrolling` after a scripted trackpad scroll.
+**Manual checks:** a mouse with a wheel and side buttons; the trackpad: two-finger scroll with momentum and a touch that stops it, pinch and rotate in the gallery's `InteractiveViewer`, a force click; a tablet if there is one; the cursors in the gallery. Record the answers.
+
+### 33.4 Keyboard
+**Goal:** keys on macOS as Flutter's embedder reports them, on any layout, with the Command shortcuts and the macOS text editing shortcuts.
+**Read:** SPEC §29.6 (keyboard), §29.12, §8.5 (keyboard), §11.1 and §12.10 (the `DefaultTextEditingShortcuts` row).
+**Port from:** `FlutterKeyboardManager.mm`, `FlutterEmbedderKeyResponder.mm`, `FlutterKeyboardLayout.mm` (or where the pinned commit has the layout code), `KeyCodeMap.g.mm` and the data in `dev/tools/gen_keycodes/data` (`macos_key_code_map`, the macOS columns of `physical_key_data.g.json` and `logical_key_data.g.json`, `layout_goals.json`); `default_text_editing_shortcuts.dart` (`_macShortcuts`), `intentForMacOSSelector`.
+**Files:** `cmd/glutter-gen/internal/keys` (`-macos-out`), `internal/platform/macos/` (`keyboard.go`, `keymap_gen.go`, `layout.go`, and the glue with `UCKeyTranslate` and the text input source), `widgets/default_text_editing_shortcuts.go`, `material/widgets_reexport_gen.go` if it changes.
+**Tasks:**
+1. The generated tables for macOS (physical from the key code, logical for the keys that are not characters).
+2. The embedder responder: down, up and repeat, the synthesized events for modifiers and CapsLock, the events of keys that went down in another app, the order with the text input client (the manager's redispatch).
+3. The logical key of a character key from the current layout, rebuilt when the input source changes (`kTISNotifySelectedKeyboardInputSourceChanged`), as Flutter's layout code does; the layout data is read through the Carbon calls in `internal/platform/darwin`.
+4. `DefaultTextEditingShortcuts` and the selectors of `doCommandBySelector:` (`intentForMacOSSelector`) for `TargetPlatformMacOS`, if any of Flutter's are missing.
+5. `GLUTTER_DEV_EVENTS`: `key`.
+**Tests:** the cases of `FlutterEmbedderKeyResponderTest.mm` and `FlutterKeyboardManagerTest.mm` as table tests (a key, a repeat, Shift and CapsLock, a modifier released in another app, a dead key, a non-Latin layout giving Latin logical keys for shortcuts, the Fn key); the shortcut table for macOS against Flutter's.
+**Display tests:** posted key events type into a `TextField` of `examples/editor` and `Cmd+A`, `Cmd+C`, `Option+Left` act as on macOS.
+**Proof:** none (33.5 shows text).
+**Manual checks:** the editor with a US, a German, a French (AZERTY) and a Russian layout: letters, `Cmd+Z`, `Cmd+Shift+Z`, `Option+Backspace`, `Cmd+Left`, `Ctrl+A` and `Ctrl+E` (Emacs bindings), the Fn and Globe key. Record the answers.
+
+### 33.5 Text input, IMEs and the pasteboard
+**Goal:** text fields take text from every input method of macOS, show the composing text and put the candidate window and the accent menu at the caret; copy and paste work with other apps.
+**Read:** SPEC §29.7, §8.6, §11 (text editing), §12.10.
+**Port from:** `FlutterTextInputPlugin.mm`, `FlutterTextInputSemanticsObject.mm` (if it exists), `FlutterViewController.mm` (`keyDown:` with `interpretKeyEvents:`), `FlutterPlatformPlugin` clipboard code (where the pinned commit has it).
+**Files:** `internal/platform/macos/` (`textinput.go` plain Go for the ranges and the UTF-16 offsets, `textinput_darwin.go`, `pasteboard_darwin.go`, `devevents.go`).
+**Tasks:**
+1. `NSTextInputClient` on the `GlutterView` (SPEC §29.7): the marked text and its selected range, `insertText:replacementRange:`, `firstRectForCharacterRange:actualRange:` in screen coordinates from `SetTextInput`, `characterIndexForPoint:`, `attributedSubstringForProposedRange:` for the IMEs that read the text, UTF-16 offsets to and from the framework's.
+2. `doCommandBySelector:` to the intents, press-and-hold (the accent menu needs `ApplePressAndHoldEnabled` respected and the marked text path), the Emoji & Symbols viewer, the dictation path.
+3. The pasteboard: plain text, a change count so that a read of an unchanged pasteboard is cheap.
+4. `GLUTTER_DEV_EVENTS`: `text` and `compose` (an input method simulated by calling the view's `NSTextInputClient` methods in order, as the real one does).
+**Tests:** the UTF-16 range conversions (emoji, combining marks, a replacement range at the end, an empty marked text that ends the composition); the cases of `FlutterTextInputPluginTest.mm` that are about the state and the ranges, as table tests.
+**Display tests:** the scripted composition of a Japanese word and of a Korean syllable gives the composing region and then the committed text in `examples/editor`; `firstRectForCharacterRange:` is within the window near the caret; copy in the app and read `NSPasteboard` in the test, and the reverse.
+**Proof:** G, `33.5-macos-editor-ime.png`: `examples/editor` with a composing Japanese word underlined.
+**Manual checks:** Pinyin, Japanese (Kotoeri) with the candidate window at the caret, Korean, the accent menu (hold `e`), the emoji viewer (`Ctrl+Cmd+Space`), dictation; copy and paste with TextEdit both ways. Record the answers.
+
+### 33.6 Settings, fonts, lifecycle and quit
+**Goal:** an app follows the Mac's appearance and accessibility settings as they change, draws with San Francisco and finds fallback fonts through Core Text, reports its lifecycle, and `Cmd+Q` asks the app before quitting.
+**Read:** SPEC §29.8 (settings, fonts, lifecycle and quit), §10, §13, §8.8.
+**Port from:** `FlutterViewController.mm` / `FlutterEngine.mm` (`sendUserLocales`, `updateDisplayConfig`, the appearance observation, `applicationShouldTerminate`, the lifecycle notifications), `FlutterAppLifecycleDelegate.mm`.
+**Files:** `internal/platform/macos/` (`settings.go`, `settings_darwin.go`, `lifecycle_darwin.go`), `internal/platform/darwin/coretext_darwin.go`, `internal/text/darwinfonts/` (plain Go), `internal/text` (the `sbix` emoji, if not drawn yet), `internal/engine/backends_darwin.go` (`SystemFontMatcher`).
+**Tasks:**
+1. The settings of SPEC §29.8, observed (`effectiveAppearance` by key-value observation, `NSWorkspaceAccessibilityDisplayOptionsDidChangeNotification`, `NSSystemColorsDidChangeNotification`, `NSCurrentLocaleDidChangeNotification`) and turned into `OnSettings`.
+2. Fonts: the Core Text matcher (the system UI font by its file URL, families by name, the fallback for a character, `.ttc` indexes), the default family; `sbix` color glyphs drawn if `internal/text` does not draw them yet (Apple Color Emoji), with goldens over a small `sbix` test font made by `fonttest`.
+3. Lifecycle: active, inactive, hidden as Flutter's macOS mapping, and the exit request of `applicationShouldTerminate:` with `NSTerminateLater` and the reply.
+**Tests:** the settings conversion (dark and light, the accent color to a `ui.Color`, each accessibility flag); the matcher over a fake Core Text (a family, a missing family, a fallback, a collection); the lifecycle mapping (activate, deactivate, hide, unhide, minimize all, a window closed while hidden); the exit request answered yes and no.
+**Display tests:** switching the app's appearance (`NSApp.appearance`, not the system's) gives `OnSettings` with the brightness; the default font of a `Text` is the system font's file; a Han character and an emoji find fonts; a scripted `terminate:` asks the app, which answers no and stays, then yes and ends.
+**Proof:** G, `33.6-macos-gallery-dark.png`: `examples/gallery` in dark mode with San Francisco and an emoji.
+**Manual checks:** System Settings: dark and light while the gallery runs, the accent color, Reduce Motion, Increase Contrast; the Dock's Quit and a logout with an app that asks to save. Record the answers.
+
+### 33.7 Menus
+**Goal:** `PlatformMenuBar` puts the app's menus in the macOS menu bar, and an app without one gets the default menu bar of Flutter's macOS template.
+**Read:** SPEC §29.8 ("Menus"), §11 (the `PlatformMenuBar` row of §12.10).
+**Port from:** `FlutterMenuPlugin.mm`; `packages/flutter/lib/src/widgets/platform_menu_bar.dart` (the delegate and `PlatformProvidedMenuItem`); the default `MainMenu.xib` of Flutter's macOS template (`packages/flutter_tools/templates/app_shared/macos.tmpl/Runner/Base.lproj/MainMenu.xib`, fetched for this step if it is not in `reference/`).
+**Files:** `internal/platform/macos/` (`menu.go` plain Go, `menu_darwin.go`), `widgets/platform_menu_bar.go` (the platform delegate, if it needs a hook), `internal/platform` (the menu host interface, if there is none yet).
+**Tasks:**
+1. The menu host: the tree of `PlatformMenu`s to `NSMenu` items with key equivalents from the shortcuts, enabled state, the selection callback on the UI thread, the provided items to the standard selectors.
+2. The default menu bar (app, Edit, Window) and the Edit items routed to the focused text field as intents.
+**Tests:** the shortcut to key-equivalent table (Command, Option, Control, Shift, function keys, arrows); the tree conversion with dividers and submenus; the provided items.
+**Display tests:** the app's menu items are in `NSApp.mainMenu` with their key equivalents; `performActionForItemAtIndex:` on an item calls its callback; the default Edit menu's Paste pastes into a focused field.
+**Proof:** C (user desktop), `33.7-macos-menu.png`: the owner opens the File menu of `examples/menus` (or the gallery's menu page) and saves a screenshot.
+**Manual checks:** the menus with the keyboard (`Ctrl+F2`), the shortcuts, the Help menu's search finding an item. Record the answers.
+
+### 33.8 The Metal device
+**Goal:** the explicit renderer draws on Metal: `metal` matches the `soft` goldens within the tolerance, `auto` chooses it, and the shaders are MSL generated from the WGSL.
+**Read:** SPEC §29.5, §9.3, §9.6, §9.7, §9.8 (how `d3d12` became an `explicit.Device`), D20, D33.
+**Port from:** none for the device (the design is `d3d12`'s); Flutter's `FlutterMetalLayer.mm` for the layer's settings.
+**Files:** `internal/gpu/metal/` (`device_darwin.go`, `resources_darwin.go`, `pipeline_darwin.go`, `swapchain_darwin.go`, `readback_darwin.go`, plain-Go `bindings.go`, `formats.go`), `cmd/glutter-gen/internal/shaders` (the MSL output with the binding map), `internal/gpu/explicit/shaders_gen.go` (regenerated), `internal/engine/backends_darwin.go`, `internal/gpu/gputest` (the Metal pass).
+**Tasks:**
+1. `glutter-gen shaders` writes MSL 2.4 with naga (D20) and the binding map of SPEC §29.5; a test on a Mac compiles every MSL with `newLibraryWithSource:` and checks the reflected indexes against the map.
+2. The device: `MTLCreateSystemDefaultDevice` (`GLUTTER_METAL_DEVICE`), the queue, buffers (shared on unified memory, managed with `didModifyRange:` otherwise), textures and their uploads, samplers, render pipelines from the explicit renderer's descriptors, render passes, readback; `MetalDeviceUnavailable`, `MetalShaderCompileFailed`, `MetalPipelineFailed`.
+3. The swap chain over `CAMetalLayer` (SPEC §29.5), the size and scale changes, `presentsWithTransaction` during a live resize, `MetalDrawableTimeout` when `nextDrawable` returns nil.
+4. The pipeline cache as `MTLBinaryArchive`s in the shader cache of §9.7.
+5. The engine: `metal` is a candidate, `auto` is `metal` then `soft`; the startup log names the device (`metal: Apple M4 Pro`).
+**Tests:** the binding map rule (every WGSL binding of the explicit shaders gets a unique Metal index per kind); the format table; the managed-memory upload path over a fake (dirty ranges merged); the renderer's tests over `explicit/fakedevice` stay green.
+**Display tests:** (with `MTL_DEBUG_LAYER=1`) every golden of `internal/gpu` drawn by `metal` matches `soft` within `gputest.Tolerance`; a window resized live keeps presenting; the second start of an app compiles no pipeline (the archive is used); `auto` picks `metal`.
+**Proof:** G, `33.8-macos-gallery-metal.png`: `examples/gallery` drawn by `metal`.
+**Manual checks:** the gallery with `GLUTTER_FRAME_STATS=1` on the Mac's display: frame times within §15; a ProMotion display at 120 Hz if there is one. Record the answers.
+
+### 33.9 The `gpu` package and the 3D view on Metal
+**Goal:** what 1.10 and 1.11 added to the explicit device works on Metal, so `examples/gpu-triangle`, `examples/cad` and `examples/game3d` run on a Mac.
+**Read:** SPEC §27 (all), §28.5, §29.5, D29, D31.
+**Port from:** none.
+**Files:** `internal/gpu/metal/` (depth, multisampling, the extra formats, storage buffers, compute, indirect draws, timestamps if the explicit device uses them), `cmd/glutter-gen/internal/shaders` (`gpushaders` writes MSL too), the generated shader files of `gpu`, `viewport3d` and the examples (regenerated).
+**Tasks:**
+1. Depth and stencil, multisample targets and resolves, `RGBA16Float` and the other formats of §27.1, storage buffers, compute pipelines and dispatches, indirect draws, readback of any target.
+2. `glutter-gen gpushaders` emits MSL with the binding map; every app shader in the module is regenerated, and the Mac test compiles them all.
+3. The rules of §9.8 for shaders (a thread id turned into a float through `i32`, no linear filter on a cube) hold for MSL; any Metal-specific rule found is written in SPEC §29.5.
+**Tests:** the device tests of `internal/gpu/explicit/devicetest` run against `metal` on a Mac (they are the conformance suite of an explicit device).
+**Display tests:** `gpu`'s and `viewport3d`'s display tests run on `metal` with validation, and their goldens match within the tolerance; the benchmarks of `viewport3d` and `game3d` run and meet §27.10 and §28.6 on the Mac.
+**Proof:** G, `33.9-macos-cad.png` (`examples/cad`) and `33.9-macos-game3d.png` (`examples/game3d`).
+**Manual checks:** `game3d` with a pad if there is one (after 33.14) and with the keyboard: smooth at the display's rate. Record the answers.
+
+### 33.10 More windows and decorations
+**Goal:** `examples/multiwindow` runs on a Mac: several windows, dialog and modal windows, app-drawn decorations with the traffic lights kept, and the macOS conventions for the last window.
+**Read:** SPEC §29.4, §8.7, §14 (the window rows of §12.10).
+**Port from:** `FlutterWindowController.mm` and the windowing code of the pinned commit, if it has them (Flutter's multi-window API); otherwise none.
+**Files:** `internal/platform/macos/` (`window_darwin.go`, `decorations.go`, `modal_darwin.go`).
+**Tasks:**
+1. Child windows for dialogs, modal windows with the parent disabled, the order and the focus when one closes.
+2. `DecorationsApp`: the full-size content view with a transparent title bar, the title bar's height as padding in `ViewMetrics.Window`, `PerformWindowAction` (move by dragging the app's title area through `performWindowDragWithEvent:`, zoom on a double click as the system setting says).
+3. `QuitOnLastWindowClosed`, the Dock icon's click reopening a hidden window (`applicationShouldHandleReopen:hasVisibleWindows:`).
+**Tests:** the decoration geometry (the traffic lights' area at each scale), the modal state machine (open, nested, close in another order).
+**Display tests:** `multiwindow`'s windows open, a modal blocks its parent's input, closing the last window ends `Run` (and not, when the option says so), the app-drawn title area drags the window.
+**Proof:** C (user desktop), `33.10-macos-multiwindow.png`: the owner runs `examples/multiwindow` and saves a screenshot of its windows.
+**Manual checks:** Mission Control and Spaces with several windows, a window in full screen with a dialog, Stage Manager. Record the answers.
+
+### 33.11 Drag and drop
+**Goal:** files, URLs and text dropped from Finder and other apps reach the app, and `StartDrag` drags out of it.
+**Read:** SPEC §29.9 ("Drag and drop"), §8.7 (drops), §25.10 (for the contract the other desktops keep).
+**Port from:** none in Flutter's embedder (plugins do this); the contract is Glutter's §8.7.
+**Files:** `internal/platform/macos/` (`dnd.go` plain Go, `dnd_darwin.go`).
+**Tasks:**
+1. `NSDraggingDestination` on the view: enter, update with the position, exit, perform; the pasteboard's file URLs, URLs and strings to `DropEvent`; the operation the app accepts.
+2. `StartDrag`: an `NSDraggingSession` with `NSPasteboardItem`s and the drag image from the data, the end reported to the app.
+**Tests:** the conversion of pasteboard types to `DropEvent` (one file, several, a URL, text, a type the app does not take).
+**Display tests:** a drag simulated through the destination protocol delivers the files to the app; a `StartDrag` puts the items on the dragging pasteboard.
+**Proof:** none.
+**Manual checks:** drop files from Finder onto the gallery's drop page, drag text out of the app into TextEdit. Record the answers.
+
+### 33.12 Tray, notifications, file dialogs and open URI
+**Goal:** `examples/tray` and the services of `desktop` work on a Mac.
+**Read:** SPEC §29.9, §8.9 (the contract of the services), §25.9.
+**Port from:** none (Flutter leaves these to plugins).
+**Files:** `internal/platform/macos/` (`tray_darwin.go`, `notify_darwin.go`, `filedialog_darwin.go`, `openuri_darwin.go`, plain-Go `filters.go`), `desktop` if a doc comment changes.
+**Tasks:**
+1. The tray (`NSStatusItem`, template image, the menu, the click), removed when the app ends.
+2. Notifications through `UNUserNotificationCenter` with the authorization, the actions as categories and the response; `NotificationsUnavailable` without a bundle.
+3. File dialogs (`NSOpenPanel`, `NSSavePanel`) with the filters as `UTType`s, multiple selection, folders, the default name and folder, run with `beginWithCompletionHandler:` so the UI keeps drawing.
+4. Open URI with `NSWorkspace`.
+**Tests:** the filter conversion (extensions, MIME types, "all files"); the tray menu conversion; the notification request built from `desktop.Notification`.
+**Display tests:** the tray item exists in `NSStatusBar` with its menu; a file dialog opened by the test is answered by the test through the panel's `ok:` and returns the file; without a bundle `Notify` fails with the tag.
+**Proof:** C (user desktop), `33.12-macos-tray.png`: the owner runs `examples/tray` and saves a screenshot of the menu bar with its icon and menu open.
+**Manual checks:** the tray icon in light and dark menu bars, a notification from the bundled tray app (after 33.15, or with a bundle made by hand) with its button, the file dialogs from the gallery, opening a link. Record the answers.
+
+### 33.13 Accessibility
+**Goal:** VoiceOver reads and drives the gallery: roles, labels, values, actions, text fields, focus and the changes.
+**Read:** SPEC §29.10, §25.11, §8.10, §11 (semantics).
+**Port from:** `AccessibilityBridgeMac.mm`, `FlutterPlatformNodeDelegateMac.mm`, `FlutterTextInputSemanticsObject.mm`; `third_party/accessibility/ax/platform/ax_platform_node_mac.mm` (`AXPlatformNodeCocoa`) and what it uses.
+**Files:** `internal/platform/macos/a11y/` (plain-Go model and the `_darwin.go` element class), the shared model with `internal/platform/windows/uia` where it is the same code, moved to `internal/platform/axmodel` if both need it.
+**Tasks:**
+1. The element class (one Go-made `NSAccessibilityElement` subclass) and the tree from the semantics updates, with stable ids.
+2. Roles, labels, values, hints, states, the actions (press, increment, decrement, scroll, show menu), text fields (value, selected range, the insertion point, `AXSelectedTextChanged`).
+3. The notifications: focus, value, layout, the announcements of the framework.
+**Tests:** the role and action tables against Chromium's; the tree updates (insert, remove, move a node) give the right notifications.
+**Display tests:** the tree read back through the view's `accessibilityChildren` matches the gallery's semantics; `accessibilityPerformPress` on a button presses it; a text field's value and selection are readable and settable.
+**Proof:** none.
+**Manual checks:** VoiceOver (`Cmd+F5`) through the gallery: buttons, switches, sliders, a text field (typing and moving the caret), a list, a dialog; the Accessibility Inspector on the same. Record the answers.
+
+### 33.14 Gamepads and audio
+**Goal:** pads and audio streams work on a Mac with the APIs of 1.11.
+**Read:** SPEC §29.11, §28.2, §28.3, §28.8, D32.
+**Port from:** SDL 3's `src/joystick/darwin/SDL_iokitjoystick.c`, `src/hidapi/mac/hid.c` (for the HID transport), `src/audio/coreaudio/SDL_coreaudio.m`; the SDL-name rule applies.
+**Files:** `internal/platform/macos/iokit/` (the `Gamepads` backend and the HID `Transport`), `internal/platform/darwin/coreaudio/` (the `Audio` backend, shared with iOS from 35.10), their plain-Go parts and tests.
+**Tasks:**
+1. The IOKit HID manager on the main run loop, matching and removal, raw reports to `internal/gamepadhid` and the mapping table, output reports for rumble and lights.
+2. Core Audio: `AudioQueue` output and capture at the stream's format, the device list and its changes, the default device following the system's, `CoreAudioFailed`.
+**Tests:** the HID value decoding (tables of reports); the Core Audio format conversion (`AudioStreamBasicDescription` from `audio` formats, with its layout test); the device-change state machine over a fake.
+**Display tests:** (tag `glutter_audio` too) a stream plays a sine into the default output and its callback keeps time; the HID manager starts and stops with no pad.
+**Proof:** none.
+**Manual checks:** an Xbox, a DualSense and a Switch Pro pad over Bluetooth and USB in `game3d` and the gallery's pad page, with rumble; sound out of the speakers and headphones while switching between them; the microphone of the bundled app. Record the answers.
+
+### 33.15 `glutter-macos`, every example, performance and memory
+**Goal:** an app is packaged as a signed `.app` (universal if asked), every example runs on a Mac, the performance targets of §15 are measured, and a long run does not grow.
+**Read:** SPEC §29.1, §29.13, §15 (all), §19.
+**Port from:** none.
+**Files:** `cmd/glutter-macos/`, `internal/mactool/`, `examples/*` (fixes only), `examples/macos_test.go` (`glutter_display`), `docs/MANUAL-CHECKS.md`, `docs/PERFORMANCE.md`, the leak tests of the darwin packages.
+**Tasks:**
+1. `glutter-macos build|run|shot|perf` as SPEC §29.1 says: the plist, the `.icns` writer, the fat Mach-O writer, ad-hoc signing with the entitlements, the bundled run.
+2. `TestEveryExampleDrawsItsFirstFrameOnMacOS`: each example bundled and run with `GLUTTER_SCREENSHOT`, its frame not empty.
+3. The §15 measurements on the Mac (cold start, frame times of the gallery and the scrolling benchmark, memory) into `docs/PERFORMANCE.md`; the autorelease and C-block counts in the memory tests of `internal/platform/macos` and `internal/gpu/metal` (`LEAKTEST_SCALE` soak of open and close windows, resizes, IME sessions).
+4. `docs/MANUAL-CHECKS.md` gets the section of M33 from the manual checks of 33.2 to 33.14.
+**Tests:** `internal/mactool`: the plist (keys, escaping), the `.icns` (the sizes and the header, read back), the fat Mach-O (read back by `debug/macho`), the bundle layout.
+**Display tests:** every example's first frame; `codesign --verify` passes on a built bundle.
+**Proof:** G, `33.15-macos-examples.png` is not one image: the step saves `33.15-macos-<example>.png` for `counter`, `gallery`, `editor`, `svg`, `cad` and `game3d`.
+**Manual checks:** the bundled gallery opened from Finder (Gatekeeper's warning for an ad-hoc signed app is expected), its Dock icon and name. Record the answers.
+
+### 33.16 Release 1.13
+**Goal:** macOS is documented and released.
+**Read:** SPEC §29, §18; `docs/GUIDE.md`; `README.md`.
+**Files:** `README.md`, `docs/GUIDE.md` (building and signing for macOS, notarization by the owner), `docs/SPEC.md` (§29's "Decided in step …" notes are complete), `NOTICE` (Chromium's code for NSAccessibility if new files were ported), `docs/IMPLEMENTED.md`.
+**Tasks:**
+1. The README's platform table and the guide's macOS chapter.
+2. The checks "On a Mac" all pass; the owner runs rule 8 on the Linux machine (SPEC §21) and its result is recorded; a failure there is fixed before the release.
+3. The release tag `v1.13.0` and the milestone published (rule 12).
+**Proof:** none.
+
+## M34: Cupertino (1.14)
+
+The owner asked on 2026-11-09 for "the macOS and iOS theme": Flutter's `cupertino` library, ported as the package `cupertino` (D37, SPEC §31). It is plain Go over `widgets`, so every step is tested on any host with `gluttertest` and goldens drawn by `soft`; the visible steps add pages to `examples/cupertino`, shown on macOS with proof method G. The tests are ported from `packages/flutter/test/cupertino`. Step order: the foundation (34.1), navigation (34.2, 34.3), controls (34.4), text (34.5), overlays (34.6), pickers (34.7), lists and forms (34.8), material's adaptive widgets (34.9), the example, performance and the release (34.10).
+
+### 34.1 The package, colors, theme, icons and localizations
+**Goal:** `cupertino` exists, re-exports `widgets`, and has the colors, the theme, the text theme, the icons and the localizations that every other Cupertino widget needs.
+**Read:** SPEC §31 (all), §12 (all), §12.11, D37.
+**Port from:** `cupertino/colors.dart`, `constants.dart`, `icons.dart`, `icon_theme_data.dart`, `interface_level.dart`, `theme.dart`, `text_theme.dart`, `localizations.dart`, `debug.dart`; the `cupertino_icons` package (its font and its code point map, fetched by `scripts/fetch-reference.sh` at a pinned version).
+**Files:** `cupertino/` (`doc.go`, the files above, `widgets_reexport_gen.go`), `cupertino/fonts/CupertinoIcons.ttf`, `third_party/cupertino_icons/LICENSE`, `NOTICE`, `cmd/glutter-gen/internal/reexport` (a second target), `cmd/glutter-gen/internal/icons` (`-cupertino`), `scripts/fetch-reference.sh`, `internal/text` or `internal/engine` (the `CupertinoSystemText` and `CupertinoSystemDisplay` family names, SPEC §31.2).
+**Tasks:**
+1. List the files of `lib/src/cupertino` at the pinned commit and fix SPEC §31.1 and this milestone where they differ.
+2. The re-export of `widgets` (generated, as `material`'s), and `glutter-gen apicheck` covering the package.
+3. Colors with `CupertinoDynamicColor.resolve` (brightness, high contrast, interface level), the theme and its inheritance (`CupertinoTheme.of`, `NoDefaultCupertinoThemeData`, `resolveFrom`), the text theme with Flutter's styles, `CupertinoIcons` with the bundled font, `DefaultCupertinoLocalizations` (English).
+4. The system family names of SPEC §31.2 (Core Text on macOS from 33.6; the default family elsewhere).
+**Tests:** `colors_test.dart`, `theme_test.dart`, `text_theme_test.dart`, `icon_theme_data_test.dart`, `localizations_test.dart`, `interface_level_test.dart` (the relevant cases as table tests); the icon map is complete; the font is linked only when an icon is used (`go list`-based test of a program without icons).
+**Proof:** A, `34.1-cupertino-colors.png`: a scene of the system colors in light, dark and high contrast, and a row of icons.
+
+### 34.2 `CupertinoApp`, routes and page transitions
+**Goal:** a Cupertino app with Cupertino routes: the parallax page transition with the back swipe, full-screen dialogs, modal popups and sheets.
+**Read:** SPEC §31.1, §31.6, §11.1 (the navigator).
+**Port from:** `cupertino/app.dart`, `route.dart`, `sheet.dart`, `page_scaffold.dart`.
+**Files:** `cupertino/` (those files), `examples/cupertino/` (its first form).
+**Tasks:** the app and the router form; `CupertinoPageRoute` and `CupertinoPageTransition` (the parallax, the shadow, the back swipe gesture from the left edge and its fling), the full-screen dialog transition, `CupertinoModalPopupRoute` and `showCupertinoModalPopup`, `CupertinoDialogRoute` and `showCupertinoDialog`, `CupertinoSheetRoute`, `CupertinoPageScaffold`.
+**Tests:** `app_test.dart`, `route_test.dart`, `sheet_test.dart`, `scaffold_test.dart` (the relevant cases); goldens of the transition at 0.3 and 0.7 and of a sheet.
+**Proof:** G, `34.2-cupertino-route.png`: `examples/cupertino` in the middle of a back swipe (`GLUTTER_DEV_EVENTS`).
+
+### 34.3 Navigation bars and tabs
+**Goal:** the navigation bar, the large-title sliver bar that collapses as it scrolls, the transitions between the bars of two routes, and the tab bar and tab scaffold.
+**Read:** SPEC §31.1, §31.5.
+**Port from:** `cupertino/nav_bar.dart`, `bottom_tab_bar.dart`, `tab_scaffold.dart`, `tab_view.dart`.
+**Files:** `cupertino/` (those files), `examples/cupertino/`.
+**Tasks:** `CupertinoNavigationBar` (with the middle, the leading back button and its label), `CupertinoSliverNavigationBar` (the large title, the search field form if the pinned commit has it), the hero-like flight of the bars between routes, `CupertinoTabBar`, `CupertinoTabScaffold`, `CupertinoTabController`, `CupertinoTabView` (a navigator per tab).
+**Tests:** `nav_bar_test.dart`, `nav_bar_transition_test.dart`, `bottom_tab_bar_test.dart`, `tab_scaffold_test.dart`, `tab_test.dart` (the relevant cases); goldens of the large title expanded and collapsed and of the transition in flight.
+**Proof:** G, `34.3-cupertino-tabs.png`: the example's tab scaffold with a large title.
+
+### 34.4 Buttons and controls
+**Goal:** the Cupertino buttons, switch, checkbox, radio, slider, activity indicator and the two segmented controls.
+**Read:** SPEC §31.1.
+**Port from:** `cupertino/button.dart`, `switch.dart`, `checkbox.dart`, `radio.dart`, `slider.dart`, `activity_indicator.dart`, `segmented_control.dart`, `sliding_segmented_control.dart`, `thumb_painter.dart`.
+**Files:** `cupertino/` (those files), `examples/cupertino/`.
+**Tasks:** each widget with its states, its haptic feedback calls (on platforms that have them), its semantics and its keyboard behavior on the desktop.
+**Tests:** the test files of each (the relevant cases); goldens of each in light and dark, enabled and disabled.
+**Proof:** G, `34.4-cupertino-controls.png`.
+
+### 34.5 Text fields and text selection
+**Goal:** Cupertino text fields and the Cupertino text selection on iOS and macOS: handles, toolbars, magnifier and the spell check toolbar.
+**Read:** SPEC §31.1, §31.6, §11 (text editing), §12.10 (the text selection rows).
+**Port from:** `cupertino/text_field.dart`, `search_field.dart`, `text_form_field_row.dart`, `text_selection.dart`, `text_selection_toolbar.dart`, `text_selection_toolbar_button.dart`, `desktop_text_selection.dart`, `desktop_text_selection_toolbar.dart`, `desktop_text_selection_toolbar_button.dart`, `adaptive_text_selection_toolbar.dart`, `magnifier.dart`, `spell_check_suggestions_toolbar.dart`.
+**Files:** `cupertino/` (those files), `examples/cupertino/`.
+**Tasks:** `CupertinoTextField` (the placeholder, the clear button, the prefix and suffix, the iOS caret and selection behavior), `CupertinoSearchTextField`, `CupertinoTextFormFieldRow`, `cupertinoTextSelectionControls` and the desktop ones, the toolbars with their paging, `CupertinoTextMagnifier`, the spell check suggestions toolbar.
+**Tests:** the test files of each (the relevant cases, including the iOS selection gestures of `text_field_test.dart` under `TargetPlatformIOS` and the macOS ones under `TargetPlatformMacOS`); goldens of the toolbar and the magnifier.
+**Proof:** G, `34.5-cupertino-text.png`: a field with a selection and the toolbar.
+
+### 34.6 Dialogs, action sheets and context menus
+**Goal:** alert dialogs, action sheets, the popup surface and the context menu with its preview.
+**Read:** SPEC §31.1.
+**Port from:** `cupertino/dialog.dart`, `context_menu.dart`, `context_menu_action.dart`.
+**Files:** `cupertino/` (those files), `examples/cupertino/`.
+**Tasks:** `CupertinoAlertDialog`, `CupertinoDialogAction`, `CupertinoActionSheet`, `CupertinoActionSheetAction`, `CupertinoPopupSurface` (the blur), `CupertinoContextMenu` (the long press, the preview's lift, the actions) and `CupertinoContextMenuAction`.
+**Tests:** `dialog_test.dart`, `action_sheet_test.dart`, `context_menu_test.dart`, `context_menu_action_test.dart` (the relevant cases); goldens.
+**Proof:** G, `34.6-cupertino-dialogs.png`: an action sheet over the example.
+
+### 34.7 Pickers
+**Goal:** the wheel picker, the date picker in its modes and the timer picker.
+**Read:** SPEC §31.1, §31.5, §11.1 (`ListWheelScrollView`).
+**Port from:** `cupertino/picker.dart`, `date_picker.dart`.
+**Files:** `cupertino/` (those files), `examples/cupertino/`.
+**Tasks:** `CupertinoPicker` (the magnifier, the selection overlay, looping), `CupertinoDatePicker` (time, date, date and time, month and year; the English formats of the localizations), `CupertinoTimerPicker`.
+**Tests:** `picker_test.dart`, `date_picker_test.dart` (the relevant cases); goldens.
+**Proof:** G, `34.7-cupertino-pickers.png`.
+
+### 34.8 Lists, forms, refresh and scrollbar
+**Goal:** list and form sections, list tiles, the expansion tile, the pull-to-refresh sliver and the Cupertino scrollbar.
+**Read:** SPEC §31.1.
+**Port from:** `cupertino/list_section.dart`, `list_tile.dart`, `form_section.dart`, `form_row.dart`, `expansion_tile.dart` (if present), `refresh.dart`, `scrollbar.dart`.
+**Files:** `cupertino/` (those files), `examples/cupertino/`.
+**Tasks:** each widget with its inset-grouped and base forms, the refresh control's states and its indicator, the scrollbar's thickness and the drag of its thumb.
+**Tests:** the test files of each (the relevant cases); goldens.
+**Proof:** G, `34.8-cupertino-lists.png`: a settings-like page of inset-grouped sections.
+
+### 34.9 Material's adaptive widgets
+**Goal:** `material` picks Cupertino where Flutter does, and the deviations that existed for want of a Cupertino library are gone.
+**Read:** SPEC §31.3, §31.6, §12.10 (every row that says "Glutter has no Cupertino library").
+**Port from:** the adaptive constructors and the platform branches in `material/switch.dart`, `checkbox.dart`, `radio.dart`, `slider.dart`, `progress_indicator.dart`, `refresh_indicator.dart`, `dialog.dart`, `scrollbar.dart`, `list_tile.dart`, `text_field.dart`, `selectable_text.dart`, `magnifier.dart`, `page_transitions_theme.dart`, `theme.dart` (`MaterialBasedCupertinoThemeData`), `adaptive_text_selection_toolbar.dart`, `text_selection.dart`.
+**Files:** the `material` files that have the deviations (found with `grep -rn "no Cupertino" material`), their tests, SPEC §12.10.
+**Tasks:** remove each deviation, port the branch, change the tests that expected the Material widget on iOS and macOS back to Flutter's expectations, and remove the §12.10 rows.
+**Tests:** the iOS and macOS cases of the material tests that were left out for want of Cupertino (each file's header comment names them).
+**Proof:** G, `34.9-material-adaptive-macos.png`: `examples/gallery` on macOS with an adaptive switch and dialog.
+
+### 34.10 `examples/cupertino`, performance, memory and release 1.14
+**Goal:** the Cupertino gallery is complete and runs on every platform of 1.13, the targets of §31.5 are met, and 1.14 is released.
+**Read:** SPEC §31.4, §31.5, §15, §19.
+**Files:** `examples/cupertino/`, `cupertino` benchmarks and leak tests, `docs/PERFORMANCE.md`, `README.md`, `docs/GUIDE.md` (a Cupertino chapter), `docs/IMPLEMENTED.md`.
+**Tasks:** the example's last pages and its dark mode switch; the benchmarks of the transition, the collapsing bar and the picker; the memory tests; the guide; on a Mac, the example on macOS and in the browser; the owner's run of rule 8 on Linux (the example under Wine and on the emulator included); the release tag `v1.14.0` and the milestone published.
+**Proof:** G, `34.10-cupertino-gallery-macos.png`; D, `34.10-cupertino-gallery-web.png` (Chromium).
+
+## M35: iOS (1.15)
+
+iOS after Cupertino (D38). It needs Xcode (the full app, not only the Command Line Tools): **M35 starts only when `xcode-select -p` points into `Xcode.app` and an iOS Simulator runtime is installed**; step 35.1 stops and asks the owner otherwise, with the commands (`xcode-select -s /Applications/Xcode.app`, `xcodebuild -downloadPlatform iOS`). Running on a device needs the owner's Apple developer team: the steps' manual checks on a device say so, and the automated tests use the Simulator only (SPEC §30.11). The steps that render or take input list **Simulator tests** (`go test -p 1 -tags glutter_ios <packages>`) and a **Proof** of method H.
+
+### 35.1 iOS groundwork and `glutter-ios`
+**Goal:** the module builds and vets for iOS, a Go program becomes an `.app` that runs in the Simulator, and the Simulator tests have their harness.
+**Read:** SPEC §30 (introduction, "Build tags"), §30.1, §30.11, D35, D36, §24.1 (how Android's cgo is fenced), §29.2.
+**Port from:** none.
+**Files:** `internal/engine/backends_ios.go`, `foundation/host_ios.go`, `internal/platform/ios/` (`doc.go`, `main_ios.go` with the cgo entry), `cmd/glutter-ios/`, `internal/iostool/`, `internal/iostest/`, `scripts/check-ios.sh`, `.gitignore` (`.ios-test/`), `cmd/glutter-gen/internal/errcheck` (the `ios/arm64` pass), CLAUDE.md lines through the manager.
+**Tasks:**
+1. Check Xcode and the Simulator runtime (stop and ask otherwise).
+2. `GOOS=ios` builds and vets for the device and the Simulator (`scripts/check-ios.sh`); the macOS-only files carry `!ios`; `backends_ios.go` fails with `BackendUnavailable` until 35.2.
+3. The cgo entry of SPEC §30.2 in `main_ios.go` (`UIApplicationMain` with the Go-made delegate classes), and nothing else in C.
+4. `glutter-ios build|run|shot` (SPEC §30.1) for the Simulator; a device build with `-team` and `-profile` (checked by building only).
+5. `internal/iostest`: the private device set in `.ios-test/devices`, an iPhone and an iPad created on first use, boot, install, launch, log, screenshot, shutdown, `Leftovers`.
+**Tests:** `go list -deps` for `GOOS=ios` has no package of the other platforms; the plist and bundle layout of `internal/iostool`; the `simctl` command lines over a fake runner.
+**Simulator tests:** a tiny app built by the test starts in the Simulator and its log line arrives; nothing stays booted.
+**Proof:** none.
+
+### 35.2 The scene, the view and frames with `soft`
+**Goal:** `examples/counter` shows its first frame in the Simulator, drawn by `soft`, with the safe area, rotation and the lifecycle.
+**Read:** SPEC §30.2, §30.3, §30.8, §29.3, §29.5 (the IOSurface target), §13.
+**Port from:** `FlutterViewController.mm` (iOS: `viewDidLayoutSubviews`, `viewSafeAreaInsetsDidChange`, the keyboard frame notifications, `surfaceUpdated`), `FlutterView.mm`, `vsync_waiter_ios.mm`, `FlutterAppDelegate.mm`, `FlutterSceneDelegate.m`, `FlutterSceneLifeCycle.mm` (if present).
+**Files:** `internal/platform/ios/` (`platform_ios.go`, `scene_ios.go`, `view_ios.go`, `displaylink_ios.go`, plain-Go `metrics.go`, `lifecycle.go`), `internal/engine/backends_ios.go`.
+**Tasks:** the app and scene delegates, the view controller and the `GlutterView`, `Post` and timers (shared with macOS through `internal/platform/darwin`), the `CADisplayLink` with the frame rate range, `ViewMetrics` with the safe area and the keyboard insets, rotation and `SetPreferredOrientations`, the lifecycle of SPEC §30.8, frames stopped in the background, `soft` through the IOSurface target.
+**Tests:** the metrics conversion (the notch, the home indicator, a rotation, the keyboard frame in each orientation); the lifecycle mapping.
+**Simulator tests:** the counter's first frame (self-capture); a rotation gives new metrics; the app sent to the background asks for no frame and comes back.
+**Proof:** H, `35.2-ios-counter-soft.png` (iPhone).
+
+### 35.3 Metal on iOS
+**Goal:** `metal` draws on iOS (the Simulator and devices), with no GPU work in the background.
+**Read:** SPEC §29.5, §30.2 ("Background").
+**Files:** `internal/gpu/metal/` (the files become `darwin` and get the iOS differences: no managed memory, the Simulator's limits), `internal/engine/backends_ios.go`.
+**Tasks:** `metal` on iOS with `auto` = `metal` then `soft`; the Simulator's Metal limits handled (or written in SPEC §30 as known differences); the wait for the last command buffer at the background transition.
+**Simulator tests:** the `internal/gpu` goldens drawn by `metal` match `soft` within the tolerance on the Simulator; a background transition during an animation commits no command buffer after `sceneDidEnterBackground:` returns.
+**Proof:** H, `35.3-ios-gallery-metal.png`.
+**Manual checks:** on a device (with the owner's team): the gallery at 120 Hz on a ProMotion iPhone or iPad. Record the answers.
+
+### 35.4 Touch, the Pencil, the pointer and hardware keys
+**Goal:** input on iOS as Flutter's embedder delivers it.
+**Read:** SPEC §30.4, §8.5.
+**Port from:** `FlutterViewController.mm` (iOS: `touchesBegan:`…, `dispatchTouches:`, the hover and scroll recognizers, `pressesBegan:`), `FlutterKeyboardManager.mm`, `FlutterEmbedderKeyResponder.mm` (iOS), `KeyCodeMap.g.mm` (iOS) and the iOS data of `gen_keycodes`.
+**Files:** `internal/platform/ios/` (`touch.go`, `pencil.go`, `pointer_ios.go`, `keyboard.go`, `keymap_gen.go`), `cmd/glutter-gen/internal/keys` (`-ios-out`).
+**Tasks:** touches with stable ids and coalesced samples, the Pencil's values and hover, the iPad pointer's hover and scroll as pan/zoom, pinch and rotate, hardware key events and the iOS tables; `GLUTTER_DEV_EVENTS` (taps and drags through the Simulator's input, keys through the responder).
+**Tests:** the cases of the iOS `FlutterViewControllerTest.mm` and `FlutterEmbedderKeyResponderTest.mm` that are about the conversions, as table tests.
+**Simulator tests:** taps on the counter count; a drag scrolls `examples/scrolling` and bounces at the end; hardware keys typed into a field.
+**Proof:** H, `35.4-ios-scrolling.png`.
+**Manual checks:** on a device: multi-touch in `InteractiveViewer`, the Pencil's pressure and hover on an iPad, a trackpad and a Magic Keyboard on an iPad. Record the answers.
+
+### 35.5 Text input and the soft keyboard
+**Goal:** text fields take text from the soft keyboard and from IMEs, with the keyboard's type, the insets and autocorrection.
+**Read:** SPEC §30.5, §30.3 (the keyboard insets), §8.6, §11.
+**Port from:** `FlutterTextInputPlugin.mm` (`FlutterTextInputView`, `FlutterTextPosition`, `FlutterTextRange`, the configuration), `FlutterTextInputDelegate.h`.
+**Files:** `internal/platform/ios/` (`textinput.go` plain Go, `textinput_ios.go`).
+**Tasks:** the `UITextInput` view of SPEC §30.5, the configuration (keyboard type, return key, capitalization, autocorrect, smart punctuation, secure entry, content type), show and hide, the composing text of IMEs, the floating cursor, the keyboard insets animated.
+**Tests:** the ranges and positions (UTF-16 offsets, emoji, marked text), the configuration conversion; the relevant cases of `FlutterTextInputPluginTest.mm`.
+**Simulator tests:** a field focused shows the keyboard and the view's insets grow; text typed through the Simulator's keyboard reaches the field; a scripted marked-text sequence (Japanese) composes and commits.
+**Proof:** H with `-screen`, `35.5-ios-editor-keyboard.png`: `examples/editor` with the soft keyboard up.
+**Manual checks:** on a device: the QWERTY keyboard with autocorrection and suggestions, Japanese and Chinese input, dictation, the space-bar cursor, a password field with AutoFill. Record the answers.
+
+### 35.6 System UI and services
+**Goal:** status bar style, orientations, haptics, the clipboard, open URL, notifications and spell check on iOS.
+**Read:** SPEC §30.3 ("System UI"), §30.6.
+**Port from:** `FlutterPlatformPlugin.mm` (system chrome, haptics, clipboard, `SystemSound`), `FlutterSpellCheckPlugin.mm`.
+**Files:** `internal/platform/ios/` (`systemui_ios.go`, `haptics_ios.go`, `pasteboard_ios.go`, `services_ios.go`, `spellcheck_ios.go`).
+**Tasks:** each service of SPEC §30.3 and §30.6, with the clipboard asynchronous (the paste prompt) and `FileChooserUnavailable` for the file dialogs.
+**Tests:** the conversions (overlay style, orientation masks, haptic kinds); the spell check result conversion.
+**Simulator tests:** copy and paste between the app and the test (`simctl pbcopy`/`pbpaste`), a misspelled word underlined, the status bar style changes with the app's.
+**Proof:** H with `-screen`, `35.6-ios-gallery-statusbar.png`.
+**Manual checks:** on a device: haptics of each kind, the paste prompt, a notification with an action. Record the answers.
+
+### 35.7 VoiceOver, Dynamic Type and the settings
+**Goal:** VoiceOver reads and drives the gallery, and the app follows Dynamic Type and the accessibility settings.
+**Read:** SPEC §30.7, §29.10.
+**Port from:** `accessibility_bridge.mm`, `SemanticsObject.mm`, `SemanticsObjectTest.mm`, `accessibility_bridge_test.mm`; the settings code of `FlutterViewController.mm` (`onUserSettingsChanged`, `textScaleFactor`, `_platformBrightness`).
+**Files:** `internal/platform/ios/a11y/`, `internal/platform/ios/settings_ios.go`.
+**Tasks:** the elements and containers, traits, actions, scrolling, announcements and screen changes; the settings of SPEC §30.7 with the Dynamic Type scale.
+**Tests:** the trait and action tables; the tree updates; the content size category to text scale table (iOS 17's nonlinear scale).
+**Simulator tests:** the accessibility tree read back from the view (`accessibilityElements`) matches the gallery's semantics; a Dynamic Type change (`simctl ui <device> content_size`) gives a new text scale; dark mode (`simctl ui appearance dark`) gives the brightness.
+**Proof:** H, `35.7-ios-gallery-largetext.png`: the gallery at the largest accessibility size.
+**Manual checks:** on a device: VoiceOver through the gallery, the rotor, three-finger scrolling. Record the answers.
+
+### 35.8 Gamepads, audio and Core Motion
+**Goal:** pads, audio streams and the motion sensors on iOS with the APIs of 1.11.
+**Read:** SPEC §30.9, §28.2 to §28.4.
+**Port from:** SDL 3's `src/joystick/apple/SDL_mfijoystick.m`, `src/audio/coreaudio/SDL_coreaudio.m` (the iOS session parts), `src/sensor/coremotion/SDL_coremotionsensor.m`; the SDL-name rule applies.
+**Files:** `internal/platform/ios/` (`gamecontroller_ios.go`, `audiosession_ios.go`, `coremotion_ios.go`), `internal/platform/darwin/coreaudio` (shared).
+**Tasks:** the Game Controller backend with rumble and lights, Core Audio with the session and interruptions, Core Motion at the asked rate.
+**Tests:** the controller element mapping to the standard layout; the session state machine (interruption begin and end, a route change); the sensor conversion.
+**Simulator tests:** a stream plays (the Simulator's audio output) and keeps time; Core Motion reports unavailable sensors as the Simulator does, with the tag.
+**Proof:** none.
+**Manual checks:** on a device: a pad in `game3d`, sound with a call interrupting it, the accelerometer in the sensors page. Record the answers.
+
+### 35.9 Every example on iOS, performance, memory and release 1.15
+**Goal:** every example but `multiwindow` and `tray` runs on the Simulator, the iOS performance and memory are measured, and 1.15 is released.
+**Read:** SPEC §30.10, §30.11, §15, §19.
+**Files:** `examples/ios_test.go` (`glutter_ios`), `examples/*` (fixes only), `docs/PERFORMANCE.md`, `docs/MANUAL-CHECKS.md` (the iOS section), `README.md`, `docs/GUIDE.md` (an iOS chapter: Xcode, the Simulator, signing for a device), `docs/IMPLEMENTED.md`.
+**Tasks:** `TestEveryExampleDrawsItsFirstFrameOnIOS`; the framework's iOS behaviors checked on the Simulator (bouncing, the back swipe, the selection handles and magnifier); the cold start and frame times on the Simulator (recorded as such) and on a device (the owner's numbers); the memory tests; the guide; the owner's run of rule 8 on Linux; the release tag `v1.15.0` and the milestone published.
+**Proof:** H, `35.9-ios-<example>.png` for `counter`, `gallery`, `cupertino`, `editor` and `game3d`, on the iPhone, and `35.9-ios-gallery-ipad.png`.
+**Manual checks:** on a device: the whole iOS section of `docs/MANUAL-CHECKS.md`.
