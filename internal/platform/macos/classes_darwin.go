@@ -135,7 +135,7 @@ func (s *system) registerClasses() error {
 					w.p.guard(func() { w.linkFired(link) })
 				}
 			}},
-		}, append(append(append(append(viewMethods(), keyMethods()...), textMethods()...), editMethods()...), dropMethods()...)...),
+		}, append(append(append(append(append(viewMethods(), keyMethods()...), textMethods()...), editMethods()...), dropMethods()...), accessibilityMethods()...)...),
 	}); err != nil {
 		return err
 	}

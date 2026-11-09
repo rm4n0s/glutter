@@ -79,8 +79,9 @@ type Platform struct {
 	accessory bool
 	// quitOnLastClose is Options.QuitOnLastWindowClosed with its default.
 	quitOnLastClose bool
-	// deskState has the desktop services (desktop_darwin.go).
+	// deskState has the desktop services (desktop_darwin.go) and a11yState the accessibility bridge (a11y_darwin.go).
 	deskState
+	a11yState
 	// performDrag moves a window by the press that is down (dragWindow); the tests replace it, since a scripted press
 	// is not a button that is really down.
 	performDrag func(w *window, ev objc.ID)
@@ -350,7 +351,6 @@ func (p *Platform) Wakes() uint64 { return p.wakes.Load() }
 func (p *Platform) Clipboard() platform.Clipboard { return &p.clip }
 
 // Services returns nil: macOS has no desktop services until step 33.12.
-func (p *Platform) Services() platform.Services { return nil }
 
 // Close releases the loop's source and timer and closes the windows that are left. It is for the thread
 // that made the platform.

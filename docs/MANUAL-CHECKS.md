@@ -972,3 +972,16 @@ The panels are views of another process, which a test cannot press (only cancel)
 
 Answers: _(not yet recorded)_
 
+## 33.13 Accessibility (macOS)
+
+**Status:** pending
+
+The tests read the tree through the view's accessibility properties and send the actions by hand. VoiceOver and the Accessibility Inspector are what the elements are for.
+
+1. **VoiceOver** (Cmd+F5) through the gallery (`go run ./examples/gallery`): the window is announced with its title; buttons are read with their labels and as buttons, a switch as a switch with on or off, a slider with its value (and Control+Option+Up and Down change it), a check box with its state, a text field with its label, its text and the caret as you type and move it, a list and its items; VO+Space presses a button and toggles a switch; a dialog is read when it opens; the live region of a snackbar is announced.
+2. **Accessibility Inspector** on the same windows (Xcode, Open Developer Tool): the hierarchy has the roles and labels, the frames of the elements are on the controls, the actions listed for a button are `AXPress`, and Press works from the Inspector.
+3. **Focus**: tab through the controls with VoiceOver on: the VoiceOver cursor follows the focus ring and the other way round when a control takes the focus by a click.
+4. **Two windows**: with a second window open, VoiceOver reads the right tree for each; closing a window leaves no ghost element.
+
+Answers: _(not yet recorded)_
+

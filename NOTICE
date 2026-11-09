@@ -31,8 +31,9 @@ Chromium accessibility code, as forked in Flutter (BSD-3-Clause)
   accessibility library that Flutter forks from Chromium
   (engine/src/flutter/third_party/accessibility/ax/platform: ax_platform_node_win.cc,
   ax_fragment_root_win.cc, ax_platform_node_textprovider_win.cc and
-  ax_platform_node_textrangeprovider_win.cc). Ported code carries "// Flutter:"
-  references to those files.
+  ax_platform_node_textrangeprovider_win.cc). The role, action and value tables
+  of internal/platform/macos/a11y follow ax_platform_node_mac.mm of the same
+  library. Ported code carries "// Flutter:" references to those files.
   Copyright 2015 The Chromium Authors. All rights reserved.
   License text: third_party/chromium/LICENSE
 
