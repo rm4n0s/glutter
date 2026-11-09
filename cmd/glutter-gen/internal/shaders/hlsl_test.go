@@ -328,10 +328,14 @@ func TestGenerateHLSLWithNaga(t *testing.T) {
 		"SamplerState s1_ : register(s5, space1);",
 		"VertexOutput_vs_main vs_main(uint vi : SV_VertexID)",
 		"HLSL: `",
-		`{Name: "u", Group: 0, Binding: 2, Kind: BindingUniformBuffer, Register: ShaderRegister{Class: "b", Space: 0, Index: 2}}`,
-		`{Name: "t1", Group: 1, Binding: 3, Kind: BindingSampledTexture, Register: ShaderRegister{Class: "t", Space: 1, Index: 3}}`,
-		`{Name: "s1", Group: 1, Binding: 5, Kind: BindingSampler, Register: ShaderRegister{Class: "s", Space: 1, Index: 5}}`,
+		`{Name: "u", Group: 0, Binding: 2, Kind: BindingUniformBuffer, Register: ShaderRegister{Class: "b", Space: 0, Index: 2}, MetalIndex: 0}`,
+		`{Name: "t1", Group: 1, Binding: 3, Kind: BindingSampledTexture, Register: ShaderRegister{Class: "t", Space: 1, Index: 3}, MetalIndex: 1}`,
+		`{Name: "s1", Group: 1, Binding: 5, Kind: BindingSampler, Register: ShaderRegister{Class: "s", Space: 1, Index: 5}, MetalIndex: 1}`,
 		"HLSL for shader model 5.1",
+		"MSL: `",
+		"constant U& u [[buffer(0)]]",
+		"metal::sampler s1_ [[sampler(1)]]",
+		"[[texture(1)]]",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the generated file lacks %q", want)

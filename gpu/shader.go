@@ -244,6 +244,10 @@ type ShaderBinding struct {
 	Size int
 	// Register is where the HLSL binds the resource.
 	Register ShaderRegister
+	// MetalIndex is where the MSL binds the resource: the index in the argument table of its class
+	// (buffer, texture or sampler), the place of the binding among those of the module of its class in
+	// the order of group and binding (SPEC §29.5).
+	MetalIndex int
 }
 
 // VertexInput is an `@location(n)` input of a vertex entry point.
@@ -280,9 +284,9 @@ type EntryPoint struct {
 	ReadsInstanceIndex, ReadsVertexIndex bool
 }
 
-// Shader is one WGSL module with its SPIR-V, its HLSL and its reflection. glutter-gen gpushaders makes the
+// Shader is one WGSL module with its SPIR-V, its HLSL, its MSL and its reflection. glutter-gen gpushaders makes the
 // values of this type in shaders_gen.go (D31, SPEC §27.3): WebGPU takes the WGSL, Vulkan the SPIR-V and
-// Direct3D 12 the HLSL. An app does not make one by hand.
+// Direct3D 12 the HLSL and Metal the MSL. An app does not make one by hand.
 //
 // Flutter: no counterpart
 type Shader struct {
@@ -295,6 +299,9 @@ type Shader struct {
 	// HLSL is what naga made from the WGSL for shader model 5.1, with every binding at the register of
 	// ShaderBinding.Register: one file with every entry point.
 	HLSL string
+	// MSL is what naga made from the WGSL for Metal Shading Language 2.4, with every resource at the index of
+	// ShaderBinding.MetalIndex: one file with every entry point.
+	MSL string
 	// Entries are the entry points of the module.
 	Entries []EntryPoint
 }

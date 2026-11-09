@@ -900,3 +900,19 @@ The tests build the menus and choose their items by calling AppKit's own methods
 
 Answers: _(not yet recorded)_
 
+
+## 33.8 The Metal device (macOS)
+
+**Status:** pending
+
+The tests draw through Metal with the validation layer on and compare every proof scene with the software renderer, but a test has no display to look at, no ProMotion refresh and no second GPU.
+
+1. **Frame times**: run `GLUTTER_FRAME_STATS=1 go run ./examples/gallery` (or `GLUTTER_FRAME_STATS=1 go run ./cmd/glutter-macos shot ./examples/gallery`, not `-o`: it prints the frame numbers) on the Mac's own display, scroll a long page (Lists & cards), and read the frame times the log prints: they are within the budgets of §15 (the 99th percentile under the frame time of the display). Record the Mac, the display and the numbers.
+2. **ProMotion**: on a Mac with a ProMotion display (or an external 120 Hz one), the same run shows 120 frames a second while a page scrolls, and the scrolling is smooth to the eye.
+3. **Live resize**: drag the window's corner for several seconds: the content follows the window's edge with no stripe of the old size and no flicker (the present is made with `presentsWithTransaction` during the resize).
+4. **The log**: the start of the run says `renderer chosen renderer="metal: <your GPU>"`; `GLUTTER_RENDERER=soft` says `soft`.
+5. **Second start**: run the gallery twice with `GLUTTER_SHADER_CACHE` unset: the second start's first frame is not slower than the first's (the pipelines come from `~/Library/Caches/glutter/shaders/metal-*.archive`).
+6. **A Mac with two GPUs** (an Intel MacBook Pro with an integrated and a discrete GPU), if there is one: `GLUTTER_METAL_DEVICE=lowpower` names the integrated GPU in the log and the gallery draws as with the default one; on a Mac with a discrete GPU the managed-memory path is used, which only that hardware shows.
+7. **Moving between displays**: drag the window between a Retina display and a display of scale 1 (or the other way): the content stays sharp and the right size after the move.
+
+Answers: _(not yet recorded)_

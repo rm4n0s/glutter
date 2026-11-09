@@ -30,7 +30,7 @@ type gpuWatcher struct {
 }
 
 // explicitRenderers are the renderers whose device package gpu can use.
-var explicitRenderers = []string{"vulkan", "webgpu", "d3d12"}
+var explicitRenderers = []string{"vulkan", "webgpu", "d3d12", "metal"}
 
 // hasDevice says whether the renderer that is in use is one with a device: false when the engine chose GLES,
 // WebGL or the software renderer.

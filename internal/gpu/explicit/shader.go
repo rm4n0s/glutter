@@ -185,7 +185,19 @@ type ShaderBinding struct {
 	StorageFormat TextureFormat
 	// Register is where the HLSL binds the resource (Direct3D 12 only).
 	Register ShaderRegister
+	// MetalIndex is where the MSL binds the resource (Metal only): the index in the argument table of its
+	// class, buffer for uniform and storage buffers, texture for sampled and storage textures, sampler for
+	// samplers. It is the place of the binding among the bindings of the module of its class, in the order
+	// of group and binding (SPEC §29.5).
+	MetalIndex int
 }
+
+// MetalVertexBufferBase is the index of the first vertex buffer in Metal's buffer argument table: the
+// vertex buffer of slot s is bound at MetalVertexBufferBase+s, above the indexes of the buffers that a
+// shader binds (a shader has at most MetalVertexBufferBase of them; SPEC §29.5).
+//
+// Flutter: no counterpart
+const MetalVertexBufferBase = 16
 
 // EntryPoint is a function of a shader that a pipeline stage runs.
 //
@@ -222,6 +234,9 @@ type Shader struct {
 	// binding at `register(<class>B, spaceG)` (ShaderBinding.Register): one file with every entry
 	// point, under the names they have in the WGSL. Direct3D 12 compiles it with D3DCompile.
 	HLSL string
+	// MSL is the Metal Shading Language 2.4 that naga writes for the module, with the resources bound at
+	// the indexes of ShaderBinding.MetalIndex (Metal only).
+	MSL string
 	// Entries are the entry points of the module.
 	Entries []EntryPoint
 }

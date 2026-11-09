@@ -26,14 +26,15 @@ type ShaderModule struct {
 // toExplicit makes the explicit form of a shader. The names of the storage formats are WGSL's here; a name that
 // is not one of the four fails with ok false.
 func toExplicit(s *Shader) (exp *explicit.Shader, bad string) {
-	exp = &explicit.Shader{Name: s.Name, WGSL: s.WGSL, SPIRV: s.SPIRV, HLSL: s.HLSL, Entries: make([]explicit.EntryPoint, len(s.Entries))}
+	exp = &explicit.Shader{Name: s.Name, WGSL: s.WGSL, SPIRV: s.SPIRV, HLSL: s.HLSL, MSL: s.MSL, Entries: make([]explicit.EntryPoint, len(s.Entries))}
 	for i, e := range s.Entries {
 		ee := explicit.EntryPoint{Name: e.Name, Stage: explicit.ShaderStage(e.Stage), WorkgroupSize: e.WorkgroupSize,
 			ReadsInstanceIndex: e.ReadsInstanceIndex, ReadsVertexIndex: e.ReadsVertexIndex, Bindings: make([]explicit.ShaderBinding, len(e.Bindings))}
 		for j, b := range e.Bindings {
 			sb := explicit.ShaderBinding{Name: b.Name, Group: b.Group, Binding: b.Binding, Kind: explicit.BindingKind(b.Kind),
 				Dimension: explicit.TextureDimension(b.Dimension), Sample: explicit.SampleType(b.Sample),
-				Register: explicit.ShaderRegister{Class: b.Register.Class, Space: b.Register.Space, Index: b.Register.Index}}
+				Register:   explicit.ShaderRegister{Class: b.Register.Class, Space: b.Register.Space, Index: b.Register.Index},
+				MetalIndex: b.MetalIndex}
 			if b.Kind == BindingStorageTexture {
 				f, ok := storageFormats[b.StorageFormat]
 				if !ok {

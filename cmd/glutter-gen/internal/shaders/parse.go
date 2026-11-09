@@ -38,6 +38,29 @@ type Binding struct {
 	// Size is the size in bytes of the type of a uniform or storage buffer (gpushaders only; 0 otherwise):
 	// by the layout rules of WGSL, with one element for an array that has no length.
 	Size int
+	// MetalIndex is the index of the binding in the Metal argument table of its class (MetalClass): the
+	// place of the binding among the bindings of the module of its class, in the order of group and binding
+	// (SPEC §29.5).
+	MetalIndex int
+}
+
+// The classes of Metal's argument tables.
+const (
+	metalBuffer  = "buffer"
+	metalTexture = "texture"
+	metalSampler = "sampler"
+)
+
+// MetalClass is the argument table that the binding is in: buffer for the uniform and storage buffers,
+// texture for the sampled and storage textures, sampler for the samplers.
+func (b Binding) MetalClass() string {
+	switch b.Kind {
+	case KindUniform, KindStorageRO, KindStorage:
+		return metalBuffer
+	case KindTexture, KindStorageTexture:
+		return metalTexture
+	}
+	return metalSampler
 }
 
 // The dimensions of a texture binding, as explicit spells them (the zero value is "").
@@ -189,6 +212,13 @@ func parse(src string, gpu, app bool) (Module, error) {
 		a, b := m.Bindings[i], m.Bindings[j]
 		return a.Group < b.Group || (a.Group == b.Group && a.Binding < b.Binding)
 	})
+
+	next := map[string]int{}
+	for i := range m.Bindings {
+		class := m.Bindings[i].MetalClass()
+		m.Bindings[i].MetalIndex = next[class]
+		next[class]++
+	}
 
 	bodies, err := functionBodies(src)
 	if err != nil {

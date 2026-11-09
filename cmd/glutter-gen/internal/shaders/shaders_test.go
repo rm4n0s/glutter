@@ -72,9 +72,9 @@ fn middle() -> f32 { return inner(); }
 }`,
 			want: []Entry{{Name: "fs", Stage: "Fragment", Bindings: []Binding{
 				{Name: "a", Group: 0, Binding: 0, Kind: KindTexture, Dim: dimArray},
-				{Name: "c", Group: 0, Binding: 1, Kind: KindTexture, Dim: dimCube},
-				{Name: "v", Group: 0, Binding: 2, Kind: KindTexture, Dim: dim3D},
-				{Name: "u", Group: 0, Binding: 3, Kind: KindTexture, Sample: sampleUint},
+				{Name: "c", Group: 0, Binding: 1, Kind: KindTexture, Dim: dimCube, MetalIndex: 1},
+				{Name: "v", Group: 0, Binding: 2, Kind: KindTexture, Dim: dim3D, MetalIndex: 2},
+				{Name: "u", Group: 0, Binding: 3, Kind: KindTexture, Sample: sampleUint, MetalIndex: 3},
 				{Name: "s", Group: 0, Binding: 4, Kind: KindSampler},
 			}}},
 		},
@@ -169,6 +169,8 @@ type fakeNaga struct {
 	calls   []string
 	// hlslEdit, when set, changes the HLSL that CompileHLSL writes (nagaStyleHLSL of the WGSL).
 	hlslEdit func(string) string
+	// mslEdit, when set, changes the MSL that CompileMSL writes (nagaStyleMSL of the WGSL).
+	mslEdit func(string) string
 	// t is the test, for nagaStyleHLSL.
 	t *testing.T
 }
@@ -201,6 +203,20 @@ func (f *fakeNaga) CompileHLSL(wgsl, hlsl string) error {
 	return os.WriteFile(hlsl, []byte(text), 0o644)
 }
 
+// CompileMSL writes the MSL that naga would write for the WGSL (nagaStyleMSL), edited by mslEdit.
+func (f *fakeNaga) CompileMSL(wgsl, msl string) error {
+	f.calls = append(f.calls, filepath.Base(wgsl)+":msl")
+	src, err := os.ReadFile(wgsl)
+	if err != nil {
+		return err
+	}
+	text := nagaStyleMSL(f.t, string(src))
+	if f.mslEdit != nil {
+		text = f.mslEdit(text)
+	}
+	return os.WriteFile(msl, []byte(text), 0o644)
+}
+
 func writeShaders(t *testing.T, files map[string]string) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -227,8 +243,8 @@ func TestGenerate(t *testing.T) {
 	if err := Generate(defaultPackage, src, out, naga, false); err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(naga.calls, []string{"blur_pass.wgsl", "blur_pass.wgsl:hlsl", "solid.wgsl", "solid.wgsl:hlsl"}) {
-		t.Errorf("naga ran on %v, want each shader once for the SPIR-V and once for the HLSL, in order", naga.calls)
+	if !reflect.DeepEqual(naga.calls, []string{"blur_pass.wgsl", "blur_pass.wgsl:hlsl", "blur_pass.wgsl:msl", "solid.wgsl", "solid.wgsl:hlsl", "solid.wgsl:msl"}) {
+		t.Errorf("naga ran on %v, want each shader once for the SPIR-V, once for the HLSL and once for the MSL, in order", naga.calls)
 	}
 	for _, name := range []string{"blur_pass", "solid"} {
 		spv, err := os.ReadFile(filepath.Join(out, shadersDir, name+".spv"))
@@ -250,9 +266,11 @@ func TestGenerate(t *testing.T) {
 		"//go:embed shaders/blur_pass.spv",
 		"var ShaderBlurPass = &Shader{",
 		"var ShaderSolid = &Shader{",
-		`{Name: "u", Group: 0, Binding: 0, Kind: BindingUniformBuffer, Register: ShaderRegister{Class: "b", Space: 0, Index: 0}}`,
+		`{Name: "u", Group: 0, Binding: 0, Kind: BindingUniformBuffer, Register: ShaderRegister{Class: "b", Space: 0, Index: 0}, MetalIndex: 0}`,
 		`{Name: "fs_main", Stage: ShaderStageFragment, Bindings: []ShaderBinding{}}`,
 		"HLSL: `cbuffer u : register(b0, space0) { T u; }",
+		"MSL: `",
+		"constant T& u [[buffer(0)]]",
 		"float4 vs_main()",
 		"// Flutter: no counterpart",
 	} {
@@ -404,15 +422,15 @@ func TestIncludesAreExpanded(t *testing.T) {
 	if err != nil || !bytes.Contains(spv, []byte("struct U { x: f32 }\nconst K: f32 = 2.0;\n@group")) || bytes.Contains(spv, []byte("#include")) {
 		t.Errorf("the compiled text: %v\n%s", err, spv)
 	}
-	if !reflect.DeepEqual(naga.calls, []string{"main.wgsl", "main.wgsl:hlsl"}) {
+	if !reflect.DeepEqual(naga.calls, []string{"main.wgsl", "main.wgsl:hlsl", "main.wgsl:msl"}) {
 		t.Errorf("naga ran on %v", naga.calls)
 	}
 	code, _ := os.ReadFile(filepath.Join(out, generated))
-	if !strings.Contains(string(code), "const K: f32 = 2.0;") || strings.Contains(string(code), "#include") {
+	if !strings.Contains(string(code), "const K: f32 = 2.0;") || strings.Contains(string(code), "//#include") {
 		t.Errorf("the generated file does not hold the expanded text:\n%s", code)
 	}
 	// The bindings of an included file count for the entry points that use them.
-	if !strings.Contains(string(code), `{Name: "u", Group: 0, Binding: 0, Kind: BindingUniformBuffer, Register: ShaderRegister{Class: "b", Space: 0, Index: 0}}`) {
+	if !strings.Contains(string(code), `{Name: "u", Group: 0, Binding: 0, Kind: BindingUniformBuffer, Register: ShaderRegister{Class: "b", Space: 0, Index: 0}, MetalIndex: 0}`) {
 		t.Error("the binding is missing")
 	}
 }
@@ -456,9 +474,9 @@ func TestParseGPU(t *testing.T) {
 }`,
 			want: []Entry{{Name: "cs", Stage: "Compute", WorkgroupSize: [3]int{8, 4, 1}, Bindings: []Binding{
 				{Name: "input", Group: 0, Binding: 0, Kind: KindStorageRO},
-				{Name: "output", Group: 0, Binding: 1, Kind: KindStorage},
+				{Name: "output", Group: 0, Binding: 1, Kind: KindStorage, MetalIndex: 1},
 				{Name: "img", Group: 1, Binding: 0, Kind: KindStorageTexture, StorageFormat: "TextureFormatRGBA8Unorm"},
-				{Name: "params", Group: 1, Binding: 1, Kind: KindUniform},
+				{Name: "params", Group: 1, Binding: 1, Kind: KindUniform, MetalIndex: 2},
 			}}},
 		},
 		{

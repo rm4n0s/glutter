@@ -3,9 +3,12 @@
 package engine_test
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
 	"os"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -42,7 +45,47 @@ func macEnv(k string) string {
 	return os.Getenv(k)
 }
 
+// syncBuffer is a log destination that the engine and the test both use.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
 func TestDisplayRunDrawsWithSoftAndEndsWhenCancelled(t *testing.T) {
+	runDrawsUntilCancelled(t, "soft", "soft")
+}
+
+// TestDisplayAutoChoosesMetal runs the engine with the renderer on auto: on a Mac that has a Metal device the
+// first candidate works, and the log names the device (SPEC §29.5).
+func TestDisplayAutoChoosesMetal(t *testing.T) {
+	log := runDrawsUntilCancelled(t, "", "metal: ")
+	if !strings.Contains(log, "renderer chosen") {
+		t.Errorf("the log does not say which renderer was chosen:\n%s", log)
+	}
+}
+
+// TestDisplayMetalByName runs the engine with the renderer asked for by name.
+func TestDisplayMetalByName(t *testing.T) {
+	runDrawsUntilCancelled(t, "metal", "metal: ")
+}
+
+// runDrawsUntilCancelled runs the engine with a window and the renderer, until a frame was drawn and a few more,
+// and checks that the log names the renderer that was chosen (want is a part of it). It returns the log.
+func runDrawsUntilCancelled(t *testing.T, renderer, want string) string {
+	t.Helper()
+	logs := &syncBuffer{}
 	scene := gputest.CanvasScene(func(c *ui.Canvas) {
 		c.DrawRect(ui.NewRectFromLTWH(10, 10, 50, 30), gputest.FillPaint(0xFF3366CC))
 	})
@@ -64,8 +107,10 @@ func TestDisplayRunDrawsWithSoftAndEndsWhenCancelled(t *testing.T) {
 	var err error
 	mainthread.Do(func() {
 		err = engine.Run(ctx, engine.Config{
-			Getenv: macEnv,
-			Window: platform.WindowConfig{Title: "engine on macOS", Size: ui.Size{Width: 200, Height: 100}},
+			Getenv:   macEnv,
+			Renderer: renderer,
+			Logger:   slog.New(slog.NewTextHandler(logs, &slog.HandlerOptions{Level: slog.LevelInfo})),
+			Window:   platform.WindowConfig{Title: "engine on macOS", Size: ui.Size{Width: 200, Height: 100}},
 			Scene: func(ui.Size, float64) *ui.Scene {
 				once.Do(func() { close(drew) })
 				return scene
@@ -91,6 +136,10 @@ func TestDisplayRunDrawsWithSoftAndEndsWhenCancelled(t *testing.T) {
 	if got := metrics[0].PhysicalSize; got.Width < 200 || got.Height < 100 {
 		t.Errorf("physical size = %v, want at least 200 x 100", got)
 	}
+	if !strings.Contains(logs.String(), want) {
+		t.Errorf("the log does not name the renderer (%q):\n%s", want, logs.String())
+	}
+	return logs.String()
 }
 
 func TestDisplayRendererNames(t *testing.T) {
@@ -99,9 +148,10 @@ func TestDisplayRendererNames(t *testing.T) {
 		renderer string
 		wantTag  string
 	}{
-		{"metal is not there yet", "metal", "RendererUnavailable"},
 		{"gles is never on macOS", "gles", "RendererUnavailable"},
 		{"vulkan is never on macOS", "vulkan", "RendererUnavailable"},
+		{"d3d12 is not on macOS", "d3d12", "RendererUnavailable"},
+		{"webgpu is not on macOS", "webgpu", "RendererUnavailable"},
 		{"a name that is no renderer", "bogus", "RendererUnknown"},
 	}
 	for _, tt := range tests {

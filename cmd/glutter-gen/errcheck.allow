@@ -65,3 +65,9 @@ error-rewrap gpu/pipeline.go:Device.NewComputePipeline
 # (io.ReadFull, io.LimitReader, io.CopyN): a tagged error would hide the end of the file from them. The error of the
 # context and the error of the reader go through as they are, and Decode tags what ends the read where it first appears.
 error-untagged audio/wav/wav.go:ctxReader.Read
+
+# error-helper (R4): errorForCode turns the MTLCommandBufferError code of a command buffer that failed into one of three tags with a
+# switch (the device is gone, the GPU is out of memory, any other failure), as vkError does for a VkResult; the frames and the
+# readbacks of a device all end in it. The route of such an error has the frame errorForCode; the table of the codes is the thing
+# that inlined at each place would be repeated, and a test checks each of its routes.
+error-helper internal/gpu/metal/encoder_darwin.go:errorForCode

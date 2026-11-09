@@ -34,20 +34,22 @@ func TestBackendNamesOnMacOS(t *testing.T) {
 	}
 }
 
-func TestMacOSRenderersAreSoftOnlyForNow(t *testing.T) {
+func TestMacOSRenderersAreMetalThenSoft(t *testing.T) {
 	cands := rendererCandidates()
-	if len(cands) != 1 || cands[0].Name != "soft" {
-		t.Fatalf("candidates = %v, want only soft", cands)
+	if len(cands) != 2 || cands[0].Name != "metal" || cands[1].Name != "soft" {
+		t.Fatalf("candidates = %v, want metal then soft", cands)
 	}
-	for _, name := range []string{"metal", "gles", "vulkan", "d3d12", "webgpu", "webgl"} {
+	for _, name := range []string{"gles", "vulkan", "d3d12", "webgpu", "webgl"} {
 		_, err := newChooser(&Config{}, quiet(), name, cands)
 		appErr, ok := errors.FromError(err)
 		if !ok || appErr.Tag != "RendererUnavailable" || !appErr.HasRoute("newChooser.RendererUnavailable") {
 			t.Errorf("%s: err = %v, want RendererUnavailable", name, err)
 		}
 	}
-	if _, err := newChooser(&Config{}, quiet(), "soft", cands); err != nil {
-		t.Errorf("soft: %v", err)
+	for _, name := range []string{"metal", "soft", "auto", ""} {
+		if _, err := newChooser(&Config{}, quiet(), name, cands); err != nil {
+			t.Errorf("%q: %v", name, err)
+		}
 	}
 	_, err := newChooser(&Config{}, quiet(), "bogus", cands)
 	if appErr, ok := errors.FromError(err); !ok || appErr.Tag != "RendererUnknown" {
