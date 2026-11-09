@@ -191,7 +191,7 @@ func TestNewChooserErrors(t *testing.T) {
 		tag   string
 		route string
 	}{
-		{"an unknown value", "metal", cands, "RendererUnknown", "newChooser.RendererUnknown"},
+		{"an unknown value", "quartz", cands, "RendererUnknown", "newChooser.RendererUnknown"},
 		{"a value with another case", "GLES", cands, "RendererUnknown", "newChooser.RendererUnknown"},
 		{"a known renderer this OS does not have", "webgpu", cands, "RendererUnavailable", "newChooser.RendererUnavailable"},
 		{"a known renderer that is not in the list", "webgl", cands, "RendererUnavailable", "newChooser.RendererUnavailable"},
@@ -269,8 +269,8 @@ func TestRunRendererErrors(t *testing.T) {
 		tag   string
 		route string
 	}{
-		{"an unknown value in the option", nil, "metal", "RendererUnknown", "Run->newChooser.RendererUnknown"},
-		{"an unknown value in the environment", map[string]string{RendererEnv: "metal"}, "", "RendererUnknown", "Run->newChooser.RendererUnknown"},
+		{"an unknown value in the option", nil, "quartz", "RendererUnknown", "Run->newChooser.RendererUnknown"},
+		{"an unknown value in the environment", map[string]string{RendererEnv: "quartz"}, "", "RendererUnknown", "Run->newChooser.RendererUnknown"},
 		{"a known renderer the OS does not have", nil, "webgpu", "RendererUnavailable", "Run->newChooser.RendererUnavailable"},
 		{"d3d12 is a name of Glutter, not an unknown one", nil, "d3d12", "RendererUnavailable", "Run->newChooser.RendererUnavailable"},
 	}

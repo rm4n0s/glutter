@@ -37,6 +37,8 @@ func (r *shmRenderer) Describe() string {
 	switch r.kind {
 	case gpu.SurfaceKindWayland:
 		return "soft: shared memory (wl_shm)"
+	case gpu.SurfaceKindMetalLayer:
+		return "soft: IOSurface"
 	case gpu.SurfaceKindX11:
 		if p, ok := r.target.(pixelPather); ok {
 			if path := p.PixelPath(); path != "" {

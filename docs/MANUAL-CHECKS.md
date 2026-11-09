@@ -795,3 +795,19 @@ On a machine with no GPU `GLUTTER_RENDERER` unset (or `auto`) now draws with the
 5. `GLUTTER_RENDERER=gles` on the VM: it still runs on llvmpipe (slow, as before), because a name is never second-guessed.
 
 Answers: _(not yet recorded)_
+
+## 33.2 The app, the run loop and windows with `soft` (macOS)
+
+**Status:** pending
+
+On a Mac, `go run ./examples/counter` opens an `NSWindow` drawn by the software renderer into IOSurfaces. The display tests run an accessory app that never takes the focus and ticks its frames with `CVDisplayLink`, so they cannot show what the screen shows: the first show, the traffic lights, `CADisplayLink` on a screen that is awake, full screen and a second display.
+
+1. `go run ./examples/counter` from Terminal: does the window open in front of the other windows, with no white flash before the counter appears?
+2. Resize it by a corner, slowly and quickly: does the content follow the pointer with no stretched or stale strip at the edge, and is the text sharp on a Retina display?
+3. Zoom it (green button with Option held), then full screen (green button alone) and back; minimize it to the Dock and bring it back: does it draw at once each time, with the right size?
+4. If there is a second display with another scale (a Retina laptop screen and an external one), drag the window from one to the other: does it redraw sharp at the new scale as it crosses, and does the counter still react to a click (clicks come with step 33.3; until then only the drawing counts)?
+5. Press `Cmd+Q`: does the app end? Is the app's name in the menu bar the name of the executable (`counter`)? Does `Cmd+H` hide it?
+6. Leave the counter alone for a minute: does Activity Monitor show close to 0 % CPU and few "Idle wake ups" for it?
+
+Answers: _(not yet recorded)_
+

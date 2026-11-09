@@ -10,14 +10,48 @@ import (
 	"github.com/rm4n0s/errors"
 )
 
-func TestRunHasNoMacOSBackendYet(t *testing.T) {
-	err := Run(context.Background(), Config{Logger: quiet()})
-	appErr, ok := errors.FromError(err)
-	if !ok {
-		t.Fatalf("expected *errors.Error, got %T (%v)", err, err)
+func TestBackendNamesOnMacOS(t *testing.T) {
+	tests := []struct {
+		name    string
+		backend string
+		tag     string
+	}{
+		{"wayland is not on macOS", "wayland", "BackendUnavailable"},
+		{"x11 is not on macOS", "x11", "BackendUnavailable"},
+		{"an unknown backend", "quartz", "BackendUnknown"},
 	}
-	if appErr.Tag != "BackendUnavailable" || !appErr.HasRoute("Run->connectDisplay.BackendUnavailable") {
-		t.Errorf("got %s via %s, want BackendUnavailable via Run->connectDisplay", appErr.Tag, appErr.Route())
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := Run(context.Background(), Config{Logger: quiet(), Backend: tt.backend})
+			appErr, ok := errors.FromError(err)
+			if !ok {
+				t.Fatalf("expected *errors.Error, got %T (%v)", err, err)
+			}
+			if appErr.Tag != tt.tag || !appErr.HasRoute("Run->connectDisplay."+tt.tag) {
+				t.Errorf("got %s via %s, want %s via Run->connectDisplay", appErr.Tag, appErr.Route(), tt.tag)
+			}
+		})
+	}
+}
+
+func TestMacOSRenderersAreSoftOnlyForNow(t *testing.T) {
+	cands := rendererCandidates()
+	if len(cands) != 1 || cands[0].Name != "soft" {
+		t.Fatalf("candidates = %v, want only soft", cands)
+	}
+	for _, name := range []string{"metal", "gles", "vulkan", "d3d12", "webgpu", "webgl"} {
+		_, err := newChooser(&Config{}, quiet(), name, cands)
+		appErr, ok := errors.FromError(err)
+		if !ok || appErr.Tag != "RendererUnavailable" || !appErr.HasRoute("newChooser.RendererUnavailable") {
+			t.Errorf("%s: err = %v, want RendererUnavailable", name, err)
+		}
+	}
+	if _, err := newChooser(&Config{}, quiet(), "soft", cands); err != nil {
+		t.Errorf("soft: %v", err)
+	}
+	_, err := newChooser(&Config{}, quiet(), "bogus", cands)
+	if appErr, ok := errors.FromError(err); !ok || appErr.Tag != "RendererUnknown" {
+		t.Errorf("bogus: err = %v, want RendererUnknown", err)
 	}
 }
 

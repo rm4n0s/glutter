@@ -27,6 +27,8 @@ type funcs struct {
 	stringGetLength       func(Ref) int64
 	stringGetBytes        func(s Ref, r Range, encoding uint32, lossByte uint8, isExternal bool, buf unsafe.Pointer, maxBuf int64, used *int64) int64
 
+	numberCreate func(alloc Ref, typ int64, value unsafe.Pointer) Ref
+
 	dictionaryCreate   func(alloc Ref, keys, values unsafe.Pointer, n int64, keyCB, valueCB uintptr) Ref
 	dictionaryGetValue func(d, key Ref) Ref
 	dictionaryGetCount func(d Ref) int64
@@ -65,6 +67,7 @@ var table = sync.OnceValue(func() *funcs {
 		{&f.retain, "CFRetain"}, {&f.release, "CFRelease"},
 		{&f.stringCreateWithBytes, "CFStringCreateWithBytes"}, {&f.stringGetLength, "CFStringGetLength"},
 		{&f.stringGetBytes, "CFStringGetBytes"},
+		{&f.numberCreate, "CFNumberCreate"},
 		{&f.dictionaryCreate, "CFDictionaryCreate"}, {&f.dictionaryGetValue, "CFDictionaryGetValue"},
 		{&f.dictionaryGetCount, "CFDictionaryGetCount"},
 		{&f.runLoopGetMain, "CFRunLoopGetMain"}, {&f.runLoopGetCurrent, "CFRunLoopGetCurrent"},
@@ -105,6 +108,16 @@ var table = sync.OnceValue(func() *funcs {
 	}
 	return f
 })
+
+// kCFNumberSInt64Type is Core Foundation's 64-bit signed integer number type.
+const kCFNumberSInt64Type = 4
+
+// NewNumber makes a CFNumber of the integer (+1: release it).
+//
+// Flutter: no counterpart
+func NewNumber(v int64) Ref {
+	return table().numberCreate(0, kCFNumberSInt64Type, unsafe.Pointer(&v))
+}
 
 // Retain adds a reference to the object and returns it. 0 stays 0.
 //

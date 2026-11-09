@@ -171,7 +171,7 @@ func TestWindowsRendererNamesOtherThanTheirOwnAreUnavailable(t *testing.T) {
 		{"vulkan is not on Windows", "vulkan", "RendererUnavailable"},
 		{"webgpu is not on Windows", "webgpu", "RendererUnavailable"},
 		{"webgl is not on Windows", "webgl", "RendererUnavailable"},
-		{"a name nobody has", "metal", "RendererUnknown"},
+		{"a name nobody has", "quartz", "RendererUnknown"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

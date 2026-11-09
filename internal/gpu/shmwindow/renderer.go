@@ -79,7 +79,8 @@ func (s *surface) Destroy() {
 }
 
 // Attach starts drawing into the window that the handle names, which must be of kind
-// gpu.SurfaceKindWayland or gpu.SurfaceKindX11 and have a target. It fails with RendererClosed
+// gpu.SurfaceKindWayland, gpu.SurfaceKindX11 or gpu.SurfaceKindMetalLayer (the layer of a macOS window,
+// which shows IOSurfaces, SPEC §29.5) and have a target. It fails with RendererClosed
 // after Close, with SurfaceKindUnsupported for another kind and with PixelTargetMissing for a
 // window with no target.
 //
@@ -88,8 +89,8 @@ func (r *Renderer) Attach(h gpu.SurfaceHandle) (gpu.Surface, error) {
 	if r.closed {
 		return nil, errors.New(tagRendererClosed, "the renderer was closed")
 	}
-	if h.Kind != gpu.SurfaceKindWayland && h.Kind != gpu.SurfaceKindX11 {
-		return nil, errors.New(tagSurfaceKindUnsupported, "shmwindow draws into a Wayland or an X11 window only", "kind", string(h.Kind))
+	if h.Kind != gpu.SurfaceKindWayland && h.Kind != gpu.SurfaceKindX11 && h.Kind != gpu.SurfaceKindMetalLayer {
+		return nil, errors.New(tagSurfaceKindUnsupported, "shmwindow draws into a Wayland window, an X11 window or a macOS layer only", "kind", string(h.Kind))
 	}
 	t, ok := r.targets(h)
 	if !ok || t == nil {
