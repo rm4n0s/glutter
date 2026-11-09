@@ -53,7 +53,7 @@ var frameworks = []string{"AppKit", "QuartzCore", "CoreGraphics", "IOKit", "Core
 // system is what the process shares: the loaded frameworks, the classes that Go implements and the C
 // functions of the backend.
 type system struct {
-	appDelegate, window, windowDelegate, view, settingsObserver, menuTarget, menuDelegate *objcx.RegisteredClass
+	appDelegate, window, windowDelegate, view, settingsObserver, menuTarget, menuDelegate, dragSource *objcx.RegisteredClass
 
 	// pthreadMainNP is pthread_main_np: nonzero on the main thread.
 	pthreadMainNP func() int32

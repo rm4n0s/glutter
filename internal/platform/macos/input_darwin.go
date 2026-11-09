@@ -280,4 +280,5 @@ func (w *window) configureInput() {
 	w.view.Send(sel("addTrackingArea:"), area)
 	objcx.Release(area)
 	w.view.Send(sel("setAllowedTouchTypes:"), touchTypeMaskIndirect)
+	w.registerDrops()
 }

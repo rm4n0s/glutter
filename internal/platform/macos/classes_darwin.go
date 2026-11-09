@@ -76,6 +76,11 @@ func (s *system) registerClasses() error {
 	if s.menuDelegate, err = objcx.RegisterClass(delegateDef); err != nil {
 		return err
 	}
+	if s.dragSource, err = objcx.RegisterClass(objcx.ClassDef{
+		Name: "DragSource", Super: "NSObject", Protocols: []string{"NSDraggingSource"}, Methods: dragSourceMethods(),
+	}); err != nil {
+		return err
+	}
 	if s.window, err = objcx.RegisterClass(objcx.ClassDef{
 		Name: "Window", Super: "NSWindow",
 		Methods: []objcx.Method{
@@ -130,7 +135,7 @@ func (s *system) registerClasses() error {
 					w.p.guard(func() { w.linkFired(link) })
 				}
 			}},
-		}, append(append(append(viewMethods(), keyMethods()...), textMethods()...), editMethods()...)...),
+		}, append(append(append(append(viewMethods(), keyMethods()...), textMethods()...), editMethods()...), dropMethods()...)...),
 	}); err != nil {
 		return err
 	}

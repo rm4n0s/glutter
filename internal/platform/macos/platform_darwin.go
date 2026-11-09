@@ -85,6 +85,14 @@ type Platform struct {
 	// testEvent, when set by a test, is the current event: the events that the tests send to a view are not
 	// dispatched by NSApp, which has none then.
 	testEvent func() objc.ID
+	// drag is the drag that the app started and that has not ended; dragMask is what its source allows (dnd_darwin.go).
+	drag     *dragSession
+	dragMask uint64
+	// beginDrag begins the dragging session; the tests replace it, since a session of the system follows the real
+	// mouse.
+	beginDrag func(w *window, items, ev, source objc.ID)
+	// testDragLocation, when set by a test, is the place of a drag: a fake NSDraggingInfo cannot return the NSPoint.
+	testDragLocation func(info objc.ID) nsPoint
 	// testDoubleClick, when set by a test, is the setting of the double click on a title bar.
 	testDoubleClick func() string
 	// modals are the modal windows that are open and the windows they block (modal.go).
@@ -159,6 +167,7 @@ func New(opts Options) (*Platform, error) {
 	p.accessory = opts.Accessory
 	p.quitOnLastClose = opts.QuitOnLastWindowClosed.OrElse(true)
 	p.performDrag = dragWindow
+	p.beginDrag = beginDragSession
 	p.base = s.mediaTime()
 	p.handle = objcx.NewHandle(p)
 	objcx.WithPool(func() {

@@ -46,6 +46,31 @@ type recorder struct {
 	denyClose bool
 	// denyViews are the views whose close request is refused.
 	denyViews map[ui.ViewID]bool
+	// dropAccept is the action that OnDrop accepts; drops and dragEnds are what it and OnDragEnd heard.
+	dropAccept ui.DropActions
+	drops      []ui.DropEvent
+	dragEnds   []ui.DragResult
+}
+
+func (r *recorder) OnDrop(ev ui.DropEvent) ui.DropActions {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.drops = append(r.drops, ev)
+	return r.dropAccept
+}
+
+func (r *recorder) OnDragEnd(res ui.DragResult) {
+	r.mu.Lock()
+	r.dragEnds = append(r.dragEnds, res)
+	r.mu.Unlock()
+}
+
+func (r *recorder) takeDrops() []ui.DropEvent {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := r.drops
+	r.drops = nil
+	return out
 }
 
 func (r *recorder) OnSettings(s platform.Settings) {
@@ -626,7 +651,7 @@ func TestSoftFrameShowsUpRightWayUp(t *testing.T) {
 	})
 }
 
-func TestRunTwiceFailsAndTheDragComesLater(t *testing.T) {
+func TestRunTwiceFails(t *testing.T) {
 	h := &recorder{}
 	runApp(t, Options{}, h, func(s *session) {
 		w := s.newWindow(platform.WindowConfig{Size: ui.Size{Width: 200, Height: 100}})
@@ -636,11 +661,6 @@ func TestRunTwiceFailsAndTheDragComesLater(t *testing.T) {
 			appErr, ok := errors.FromError(err)
 			if !ok || appErr.Tag != TagPlatformAlreadyRunning || !appErr.HasRoute("Platform.Run."+TagPlatformAlreadyRunning) {
 				t.Errorf("a second Run: %v", err)
-			}
-			err = w.StartDrag(ui.DragRequest{})
-			appErr, ok = errors.FromError(err)
-			if !ok || appErr.Tag != TagMacOSDragUnavailable || !appErr.HasRoute("window.StartDrag."+TagMacOSDragUnavailable) {
-				t.Errorf("StartDrag: %v", err)
 			}
 		})
 		s.onUI(w.Close)

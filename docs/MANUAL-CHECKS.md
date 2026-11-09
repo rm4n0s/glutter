@@ -944,3 +944,18 @@ The display tests run in an accessory app, whose windows never take the keys, ne
 6. **Spaces, Mission Control and Stage Manager**: a window and its dialog on a second Space; Mission Control shows the dialog with its window; full screen on a window with a dialog open (the dialog stays over it); Stage Manager with two windows of the app.
 
 Answers: _(not yet recorded)_
+
+## 33.11 Drag and drop (macOS)
+
+**Status:** pending
+
+The tests call the destination and the source by hand: the real drag follows the mouse of the user, which a test must not move.
+
+1. **Files in**: `go run ./examples/multiwindow`, drag one file, then several, from Finder onto "Drop here": the paths are shown; the cursor shows the copy badge with Option held and the no-drop cursor over a window that has a dialog open.
+2. **Text and links in**: select text in TextEdit or Safari and drag it onto "Drop here": it is shown; drag a link from Safari: the URL is shown.
+3. **Text out**: drag "Drag me" out of the window into TextEdit: its text lands in the document; into a Finder window: the file or the text clipping lands there; the drag image follows the pointer and goes back when the drop is refused.
+4. **Between windows of the app**: drag "Drag me" from one window onto the "Drop here" of another: it is known as the app's own drag.
+5. **Escape** during a drag cancels it, and the pointer works normally afterwards (a click on a button in the window right after).
+
+Answers: _(not yet recorded)_
+

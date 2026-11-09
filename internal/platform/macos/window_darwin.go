@@ -28,6 +28,8 @@ const maxContentSize = 1e7
 //
 // Flutter: shell/platform/darwin/macos/framework/Source/FlutterViewController.mm FlutterViewController
 type window struct {
+	// drop is the drag that is over the window (dnd_darwin.go).
+	drop   dropState
 	p      *Platform
 	id     ui.ViewID
 	cfg    platform.WindowConfig
@@ -415,11 +417,6 @@ func (w *window) displayID() (uint32, bool) {
 		return 0, false
 	}
 	return uint32(screenID(screen)), true
-}
-
-// StartDrag fails until step 33.11 has drag and drop.
-func (w *window) StartDrag(ui.DragRequest) error {
-	return errors.New(TagMacOSDragUnavailable, "drag and drop from a window comes with step 33.11")
 }
 
 // PerformWindowAction does what the title bar of the app asks (SPEC §29.4). A move is AppKit's own, started

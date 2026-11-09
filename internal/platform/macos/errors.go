@@ -13,6 +13,4 @@ const (
 	TagMacOSDevEventsInvalid = "MacOSDevEventsInvalid"
 	// TagIdleInhibitUnavailable is the tag of the error of a power assertion that the system refused.
 	TagIdleInhibitUnavailable = "IdleInhibitUnavailable"
-	// TagMacOSDragUnavailable is the tag of the error of StartDrag before drag and drop exists.
-	TagMacOSDragUnavailable = "MacOSDragUnavailable"
 )
