@@ -961,10 +961,14 @@ type RawScrollbarSubclass interface {
 	EnableGestures() bool
 	// UpdateScrollbarPainter overrides RawScrollbarState.UpdateScrollbarPainter.
 	UpdateScrollbarPainter()
+	// HandleThumbPress overrides RawScrollbarState.HandleThumbPress.
+	HandleThumbPress()
 	// HandleThumbPressStart overrides RawScrollbarState.HandleThumbPressStart.
 	HandleThumbPressStart(localPosition ui.Offset)
 	// HandleThumbPressEnd overrides RawScrollbarState.HandleThumbPressEnd.
 	HandleThumbPressEnd(localPosition ui.Offset, velocity gestures.Velocity)
+	// HandleTrackTapDown overrides RawScrollbarState.HandleTrackTapDown.
+	HandleTrackTapDown(details gestures.TapDownDetails)
 	// HandleHover overrides RawScrollbarState.HandleHover.
 	HandleHover(event *gestures.PointerHoverEvent)
 	// HandleHoverExit overrides RawScrollbarState.HandleHoverExit.
@@ -1592,7 +1596,9 @@ func (s *RawScrollbarState) handleScrollNotification(notification ScrollNotifica
 	return false
 }
 
-func (s *RawScrollbarState) handleThumbDragDown(gestures.DragDownDetails) { s.HandleThumbPress() }
+func (s *RawScrollbarState) handleThumbDragDown(gestures.DragDownDetails) {
+	s.virtual().HandleThumbPress()
+}
 
 func (s *RawScrollbarState) globalToScrollbar(offset ui.Offset) ui.Offset {
 	return s.scrollbarBox().GlobalToLocal(offset, nil)
@@ -1664,7 +1670,7 @@ func (s *RawScrollbarState) thumbAndTrackGestures() map[reflect.Type]GestureReco
 	factories[f.RecognizerType()] = f
 	tap := NewGestureRecognizerFactoryWithHandlers(
 		func() *trackTapRecognizer { return newTrackTapRecognizer(binding, s) },
-		func(r *trackTapRecognizer) { r.OnTapDown = s.HandleTrackTapDown })
+		func(r *trackTapRecognizer) { r.OnTapDown = s.virtual().HandleTrackTapDown })
 	factories[tap.RecognizerType()] = tap
 	return factories
 }

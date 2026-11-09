@@ -10595,6 +10595,11 @@ func ScrollableRecommendDeferredLoadingForContext(bc widgets.BuildContext, opts 
 // Flutter: widgets.dart ScrollableState
 type ScrollableState = widgets.ScrollableState
 
+// ScrollableWidgetBuilder is widgets.ScrollableWidgetBuilder.
+//
+// Flutter: widgets.dart ScrollableWidgetBuilder
+type ScrollableWidgetBuilder = widgets.ScrollableWidgetBuilder
+
 // ScrollbarOrientation is widgets.ScrollbarOrientation.
 //
 // Flutter: widgets.dart ScrollbarOrientation
@@ -11491,6 +11496,11 @@ type StaticDelegate = widgets.StaticDelegate
 //
 // Flutter: widgets.dart StaticSelectionContainerDelegate
 type StaticSelectionContainerDelegate = widgets.StaticSelectionContainerDelegate
+
+// StatusBarTapObserver is widgets.StatusBarTapObserver.
+//
+// Flutter: widgets.dart StatusBarTapObserver
+type StatusBarTapObserver = widgets.StatusBarTapObserver
 
 // StreamBuilder is widgets.StreamBuilder.
 //

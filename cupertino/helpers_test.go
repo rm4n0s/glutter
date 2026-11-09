@@ -7,6 +7,7 @@ import (
 	"github.com/rm4n0s/glutter/cupertino"
 	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/gluttertest"
+	"github.com/rm4n0s/glutter/painting"
 	"github.com/rm4n0s/glutter/ui"
 )
 
@@ -65,4 +66,53 @@ func requireErrorTagFromPanic(t *testing.T, v any, tag string) *errors.Error {
 		t.Fatalf("panic value is %T (%v), want an error", v, v)
 	}
 	return requireErrorTag(t, err, tag)
+}
+
+// recoverError runs f and returns the error that it panics with, or nil.
+func recoverError(f func()) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			e, ok := r.(error)
+			if !ok {
+				panic(r)
+			}
+			err = e
+		}
+	}()
+	f()
+	return nil
+}
+
+// testTheme is a theme whose text is Roboto: the text engine of the tests has no other font, so the system
+// font of the Cupertino theme lays out text with no width.
+func testTheme(opts ...cupertino.CupertinoThemeDataOpts) *cupertino.CupertinoThemeData {
+	var o cupertino.CupertinoThemeDataOpts
+	if len(opts) > 0 {
+		o = opts[0]
+	}
+	if o.TextTheme == nil {
+		o.TextTheme = cupertino.NewCupertinoTextThemeData(cupertino.CupertinoTextThemeDataOpts{TextStyle: &painting.TextStyle{FontFamily: "Roboto",
+			FontSize: foundation.Some(17.0), Color: foundation.Some(ui.NewColor(0xFF000000))}})
+	}
+	return cupertino.NewCupertinoThemeData(o)
+}
+
+// testApp is a CupertinoApp whose text is Roboto, unless the options have a theme, and that shows no debug banner.
+func testApp(opts cupertino.CupertinoAppOpts) *cupertino.CupertinoApp {
+	if opts.Theme == nil {
+		opts.Theme = testTheme()
+	}
+	if !opts.DebugShowCheckedModeBanner.IsSome() {
+		opts.DebugShowCheckedModeBanner = foundation.Some(false)
+	}
+	return cupertino.NewCupertinoApp(opts)
+}
+
+// useAndroid makes Android the target platform of the test, as the tests of Flutter have it: a scroll view
+// then uses the primary scroll controller of the context, and the desktop gets no scrollbar of its own.
+func useAndroid(t *testing.T) {
+	t.Helper()
+	skipUnlessDebug(t) // the platform override is a debug-only feature
+	foundation.SetDebugDefaultTargetPlatformOverride(foundation.Some(foundation.TargetPlatformAndroid))
+	t.Cleanup(func() { foundation.SetDebugDefaultTargetPlatformOverride(foundation.None[foundation.TargetPlatform]()) })
 }

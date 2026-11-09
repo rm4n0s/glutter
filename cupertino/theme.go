@@ -23,14 +23,6 @@ func NewCupertinoTheme(data *CupertinoThemeData, child widgets.Widget, opts ...w
 	return &CupertinoTheme{widgets.NewStatelessWidgetBase(firstOf(opts)), data, child}
 }
 
-func firstOf[T any](opts []T) T {
-	var zero T
-	if len(opts) > 0 {
-		return opts[0]
-	}
-	return zero
-}
-
 // Data is the theme that the widget applies.
 //
 // Flutter: cupertino/theme.dart CupertinoTheme.data

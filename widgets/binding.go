@@ -642,6 +642,30 @@ func (b *WidgetsBinding) RemoveObserver(observer WidgetsBindingObserver) bool {
 	return true
 }
 
+// StatusBarTapObserver is an observer that wants to know when the user taps the status bar (on iOS, the
+// gesture that scrolls a page to its top). A WidgetsBindingObserver that has the method is called by
+// HandleStatusBarTap.
+//
+// Flutter: widgets/binding.dart WidgetsBindingObserver.handleStatusBarTap
+type StatusBarTapObserver interface {
+	// HandleStatusBarTap is called when the user taps the status bar.
+	//
+	// Flutter: widgets/binding.dart WidgetsBindingObserver.handleStatusBarTap
+	HandleStatusBarTap()
+}
+
+// HandleStatusBarTap tells the observers that have a HandleStatusBarTap method that the user tapped the
+// status bar. The engine of a platform that has such a gesture (iOS) calls it.
+//
+// Flutter: widgets/binding.dart WidgetsBinding.handleStatusBarTap
+func (b *WidgetsBinding) HandleStatusBarTap() {
+	for _, o := range slices.Clone(b.observers) {
+		if h, ok := o.(StatusBarTapObserver); ok {
+			h.HandleStatusBarTap()
+		}
+	}
+}
+
 // notifyObservers calls the method on a copy of the list of observers. A panic
 // in an observer is reported and the others are still called.
 func (b *WidgetsBinding) notifyObservers(name string, call func(WidgetsBindingObserver)) {

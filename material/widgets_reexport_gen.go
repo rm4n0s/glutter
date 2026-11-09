@@ -3010,6 +3010,11 @@ type IconData = widgets.IconData
 // Flutter: widgets.dart IconDataOpts
 type IconDataOpts = widgets.IconDataOpts
 
+// IconFont is widgets.IconFont.
+//
+// Flutter: widgets.dart IconFont
+type IconFont = widgets.IconFont
+
 // IconOpts is widgets.IconOpts.
 //
 // Flutter: widgets.dart IconOpts
@@ -9846,6 +9851,18 @@ type RequestFocusAction = widgets.RequestFocusAction
 // Flutter: widgets.dart RequestFocusIntent
 type RequestFocusIntent = widgets.RequestFocusIntent
 
+// ResolvableColor is widgets.ResolvableColor.
+//
+// Flutter: widgets.dart ResolvableColor
+type ResolvableColor = widgets.ResolvableColor
+
+// ResolveColorValue is widgets.ResolveColorValue.
+//
+// Flutter: widgets.dart ResolveColorValue
+func ResolveColorValue(c ui.ColorValue, bc widgets.BuildContext) ui.Color {
+	return widgets.ResolveColorValue(c, bc)
+}
+
 // RichText is widgets.RichText.
 //
 // Flutter: widgets.dart RichText
@@ -10575,6 +10592,11 @@ func ScrollableRecommendDeferredLoadingForContext(bc widgets.BuildContext, opts 
 //
 // Flutter: widgets.dart ScrollableState
 type ScrollableState = widgets.ScrollableState
+
+// ScrollableWidgetBuilder is widgets.ScrollableWidgetBuilder.
+//
+// Flutter: widgets.dart ScrollableWidgetBuilder
+type ScrollableWidgetBuilder = widgets.ScrollableWidgetBuilder
 
 // ScrollbarOrientation is widgets.ScrollbarOrientation.
 //
@@ -11472,6 +11494,11 @@ type StaticDelegate = widgets.StaticDelegate
 //
 // Flutter: widgets.dart StaticSelectionContainerDelegate
 type StaticSelectionContainerDelegate = widgets.StaticSelectionContainerDelegate
+
+// StatusBarTapObserver is widgets.StatusBarTapObserver.
+//
+// Flutter: widgets.dart StatusBarTapObserver
+type StatusBarTapObserver = widgets.StatusBarTapObserver
 
 // StreamBuilder is widgets.StreamBuilder.
 //
@@ -16616,6 +16643,11 @@ const ColorSpaceExtendedSRGB = ui.ColorSpaceExtendedSRGB
 //
 // Flutter: dart:ui ColorSpaceSRGB
 const ColorSpaceSRGB = ui.ColorSpaceSRGB
+
+// ColorValue is ui.ColorValue.
+//
+// Flutter: dart:ui ColorValue
+type ColorValue = ui.ColorValue
 
 // ColorWithValuesOpts is ui.ColorWithValuesOpts.
 //

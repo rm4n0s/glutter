@@ -69,7 +69,7 @@ func InitScrollPositionWithSingleContext(p *ScrollPositionWithSingleContext, sel
 		p.CorrectPixels(o.InitialPixels.OrElse(0))
 	}
 	if p.activity == nil {
-		p.GoIdle()
+		p.delegate().GoIdle()
 	}
 }
 
@@ -90,19 +90,22 @@ func (p *ScrollPositionWithSingleContext) SetPixels(newPixels float64) float64 {
 // Flutter: widgets/scroll_position_with_single_context.dart ScrollPositionWithSingleContext.absorb
 func (p *ScrollPositionWithSingleContext) Absorb(other ScrollPosition) {
 	p.ScrollPositionBase.Absorb(other)
-	o, ok := other.(*ScrollPositionWithSingleContext)
+	single, ok := other.(interface {
+		singleContext() *ScrollPositionWithSingleContext
+	})
 	if !ok {
-		p.GoIdle()
+		p.delegate().GoIdle()
 		return
 	}
-	p.activity.UpdateDelegate(p)
+	o := single.singleContext()
+	p.activity.UpdateDelegate(p.delegate())
 	p.userScrollDirection = o.userScrollDirection
 	if foundation.DebugMode && p.currentDrag != nil {
 		panic(errors.New(tagScrollPositionDragInvalid, "the scroll position has a drag already"))
 	}
 	if o.currentDrag != nil {
 		p.currentDrag = o.currentDrag
-		p.currentDrag.UpdateDelegate(p)
+		p.currentDrag.UpdateDelegate(p.delegate())
 		o.currentDrag = nil
 	}
 }
@@ -124,7 +127,7 @@ func (p *ScrollPositionWithSingleContext) BeginActivity(newActivity ScrollActivi
 	if isNil(newActivity) {
 		return
 	}
-	if foundation.DebugMode && newActivity.Delegate() != ScrollActivityDelegate(p) {
+	if foundation.DebugMode && newActivity.Delegate() != p.delegate() {
 		panic(errors.New(tagScrollActivityDelegateInvalid, "the delegate of the new activity must be the position that begins it"))
 	}
 	p.ScrollPositionBase.BeginActivity(newActivity)
@@ -150,10 +153,26 @@ func (p *ScrollPositionWithSingleContext) ApplyUserOffset(delta float64) {
 	p.SetPixels(p.Pixels() - p.physics.ApplyPhysicsToUserOffset(p, delta))
 }
 
+// singleContext is the position itself: the position of a type that embeds this one has it too, so
+// that Absorb sees one as a ScrollPositionWithSingleContext, as Dart's `is` does.
+func (p *ScrollPositionWithSingleContext) singleContext() *ScrollPositionWithSingleContext { return p }
+
+// delegate is the outer position, which is the delegate of the activities: a type that embeds this one
+// and overrides ApplyUserOffset, GoBallistic or GoIdle then sees the calls of its activities, as Dart's
+// virtual dispatch does.
+func (p *ScrollPositionWithSingleContext) delegate() ScrollActivityDelegate {
+	if d, ok := p.self.(ScrollActivityDelegate); ok {
+		return d
+	}
+	return p
+}
+
 // GoIdle starts an idle activity.
 //
 // Flutter: widgets/scroll_position_with_single_context.dart ScrollPositionWithSingleContext.goIdle
-func (p *ScrollPositionWithSingleContext) GoIdle() { p.BeginActivity(NewIdleScrollActivity(p)) }
+func (p *ScrollPositionWithSingleContext) GoIdle() {
+	p.self.BeginActivity(NewIdleScrollActivity(p.delegate()))
+}
 
 // GoBallistic starts a ballistic activity with the simulation of the physics, or
 // an idle one if there is none.
@@ -168,9 +187,9 @@ func (p *ScrollPositionWithSingleContext) GoBallistic(velocity float64) {
 	}
 	simulation := p.physics.CreateBallisticSimulation(p.self, velocity)
 	if !isNil(simulation) {
-		p.BeginActivity(NewBallisticScrollActivity(p, simulation, p.context.Vsync(), p.self.ShouldIgnorePointer(), p.post))
+		p.self.BeginActivity(NewBallisticScrollActivity(p.delegate(), simulation, p.context.Vsync(), p.self.ShouldIgnorePointer(), p.post))
 	} else {
-		p.GoIdle()
+		p.delegate().GoIdle()
 	}
 }
 
@@ -204,9 +223,9 @@ func (p *ScrollPositionWithSingleContext) AnimateTo(to float64, duration time.Du
 		p.self.JumpTo(to)
 		return scheduler.NewTickerFutureComplete()
 	}
-	activity := NewDrivenScrollActivity(p, DrivenScrollActivityOpts{
+	activity := NewDrivenScrollActivity(p.delegate(), DrivenScrollActivityOpts{
 		From: p.Pixels(), To: to, Duration: duration, Curve: curve, Vsync: p.context.Vsync(), Post: p.post})
-	p.BeginActivity(activity)
+	p.self.BeginActivity(activity)
 	return activity.Done()
 }
 
@@ -215,7 +234,7 @@ func (p *ScrollPositionWithSingleContext) AnimateTo(to float64, duration time.Du
 //
 // Flutter: widgets/scroll_position_with_single_context.dart ScrollPositionWithSingleContext.jumpTo
 func (p *ScrollPositionWithSingleContext) JumpTo(value float64) {
-	p.GoIdle()
+	p.delegate().GoIdle()
 	if p.Pixels() != value {
 		oldPixels := p.Pixels()
 		p.self.ForcePixels(value)
@@ -223,7 +242,7 @@ func (p *ScrollPositionWithSingleContext) JumpTo(value float64) {
 		p.self.DidUpdateScrollPositionBy(p.Pixels() - oldPixels)
 		p.self.DidEndScroll()
 	}
-	p.GoBallistic(0)
+	p.delegate().GoBallistic(0)
 }
 
 // PointerScroll scrolls by a pointer scroll event, as a jump of delta pixels
@@ -235,12 +254,12 @@ func (p *ScrollPositionWithSingleContext) PointerScroll(delta float64) {
 	// (or similar) change should be made in
 	// _NestedScrollCoordinator.pointerScroll.
 	if delta == 0 {
-		p.GoBallistic(0)
+		p.delegate().GoBallistic(0)
 		return
 	}
 	targetPixels := math.Min(math.Max(p.Pixels()+delta, p.MinScrollExtent()), p.MaxScrollExtent())
 	if targetPixels != p.Pixels() {
-		p.GoIdle()
+		p.delegate().GoIdle()
 		if -delta > 0 {
 			p.UpdateUserScrollDirection(rendering.ScrollDirectionForward)
 		} else {
@@ -254,7 +273,7 @@ func (p *ScrollPositionWithSingleContext) PointerScroll(delta float64) {
 		p.self.DidStartScroll()
 		p.self.DidUpdateScrollPositionBy(targetPixels - oldPixels)
 		p.self.DidEndScroll()
-		p.GoBallistic(0)
+		p.delegate().GoBallistic(0)
 	}
 }
 
@@ -262,7 +281,7 @@ func (p *ScrollPositionWithSingleContext) PointerScroll(delta float64) {
 //
 // Flutter: widgets/scroll_position_with_single_context.dart ScrollPositionWithSingleContext.jumpToWithoutSettling
 func (p *ScrollPositionWithSingleContext) JumpToWithoutSettling(value float64) {
-	p.GoIdle()
+	p.delegate().GoIdle()
 	if p.Pixels() != value {
 		oldPixels := p.Pixels()
 		p.self.ForcePixels(value)
@@ -277,8 +296,8 @@ func (p *ScrollPositionWithSingleContext) JumpToWithoutSettling(value float64) {
 // Flutter: widgets/scroll_position_with_single_context.dart ScrollPositionWithSingleContext.hold
 func (p *ScrollPositionWithSingleContext) Hold(holdCancelCallback func()) ScrollHoldController {
 	previousVelocity := p.activity.Velocity()
-	holdActivity := NewHoldScrollActivity(p, holdCancelCallback)
-	p.BeginActivity(holdActivity)
+	holdActivity := NewHoldScrollActivity(p.delegate(), holdCancelCallback)
+	p.self.BeginActivity(holdActivity)
 	p.heldPreviousVelocity = previousVelocity
 	return holdActivity
 }
@@ -288,12 +307,12 @@ func (p *ScrollPositionWithSingleContext) Hold(holdCancelCallback func()) Scroll
 //
 // Flutter: widgets/scroll_position_with_single_context.dart ScrollPositionWithSingleContext.drag
 func (p *ScrollPositionWithSingleContext) Drag(details gestures.DragStartDetails, dragCancelCallback func()) gestures.Drag {
-	drag := NewScrollDragController(p, details, ScrollDragControllerOpts{
+	drag := NewScrollDragController(p.delegate(), details, ScrollDragControllerOpts{
 		OnDragCanceled:               dragCancelCallback,
 		CarriedVelocity:              foundation.Some(p.physics.CarriedMomentum(p.heldPreviousVelocity)),
 		MotionStartDistanceThreshold: p.physics.DragStartDistanceMotionThreshold(),
 	})
-	p.BeginActivity(NewDragScrollActivity(p, drag))
+	p.self.BeginActivity(NewDragScrollActivity(p.delegate(), drag))
 	if foundation.DebugMode && p.currentDrag != nil {
 		panic(errors.New(tagScrollPositionDragInvalid, "the scroll position has a drag already"))
 	}

@@ -321,3 +321,15 @@ func (s *materialScrollbarState) HandleHoverExit(event *gestures.PointerExitEven
 //
 // Flutter: material/scrollbar.dart _MaterialScrollbarState.dispose
 func (s *materialScrollbarState) BeforeDispose() { s.hoverAnimation.Dispose() }
+
+// HandleThumbPress is the one of the base.
+//
+// Flutter: widgets/scrollbar.dart RawScrollbarState.handleThumbPress
+func (s *materialScrollbarState) HandleThumbPress() { s.base.HandleThumbPress() }
+
+// HandleTrackTapDown is the one of the base.
+//
+// Flutter: widgets/scrollbar.dart RawScrollbarState.handleTrackTapDown
+func (s *materialScrollbarState) HandleTrackTapDown(details gestures.TapDownDetails) {
+	s.base.HandleTrackTapDown(details)
+}

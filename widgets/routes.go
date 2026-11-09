@@ -2150,6 +2150,11 @@ type RawDialogRouteOpts struct {
 	NoBarrierColor bool
 	// BarrierLabel is the semantic label of the barrier.
 	BarrierLabel string
+	// Simulation creates the simulation that drives the transition instead of a curve over the duration
+	// (CupertinoDialogRoute drives it with a spring); nil runs the controller for the duration.
+	//
+	// Flutter: widgets/routes.dart TransitionRoute.createSimulation (a subclass overrides it)
+	Simulation func(forward bool) physics.Simulation
 	// TransitionDuration is the duration of the transition; the default is 200 ms.
 	TransitionDuration foundation.Opt[time.Duration]
 	// TransitionBuilder builds the transition of the dialog; the default is a
@@ -2172,6 +2177,7 @@ type RawDialogRoute struct {
 	transitionDuration time.Duration
 	transitionBuilder  RouteTransitionsBuilder
 	fullscreenDialog   bool
+	simulation         func(forward bool) physics.Simulation
 }
 
 // NewRawDialogRoute creates a dialog route.
@@ -2187,6 +2193,7 @@ func NewRawDialogRoute(pageBuilder RoutePageBuilder, opts ...RawDialogRouteOpts)
 		transitionDuration: o.TransitionDuration.OrElse(200 * time.Millisecond),
 		transitionBuilder:  o.TransitionBuilder,
 		fullscreenDialog:   o.FullscreenDialog,
+		simulation:         o.Simulation,
 	}
 	if !o.BarrierColor.IsSome() && !o.NoBarrierColor {
 		r.barrierColor = foundation.Some(ui.NewColor(0x80000000))
@@ -2219,6 +2226,17 @@ func (r *RawDialogRoute) TransitionDuration() time.Duration { return r.transitio
 //
 // Flutter: widgets/routes.dart RawDialogRoute.fullscreenDialog
 func (r *RawDialogRoute) FullscreenDialog() bool { return r.fullscreenDialog }
+
+// CreateSimulation is the simulation of RawDialogRouteOpts.Simulation, or none: the controller then runs for
+// the transition duration.
+//
+// Flutter: widgets/routes.dart TransitionRoute.createSimulation
+func (r *RawDialogRoute) CreateSimulation(forward bool) physics.Simulation {
+	if r.simulation == nil {
+		return r.PopupRouteBase.CreateSimulation(forward)
+	}
+	return r.simulation(forward)
+}
 
 // BuildPage builds the page with the page builder, in a semantics scope.
 //
