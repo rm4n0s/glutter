@@ -13,6 +13,7 @@ import (
 	"github.com/rm4n0s/glutter/internal/gpu/shadercache"
 	"github.com/rm4n0s/glutter/internal/platform/macos"
 	"github.com/rm4n0s/glutter/internal/text"
+	"github.com/rm4n0s/glutter/internal/text/darwinfonts"
 )
 
 // This file is what Run uses on macOS (GOOS=darwin, not iOS): the AppKit platform, the renderers (the
@@ -73,11 +74,26 @@ func newSoftWindowRenderer(cfg *Config, log *slog.Logger) renderer {
 	}, log)
 }
 
-// SystemFontMatcher returns nil: the text.Collection scans the font directories (step 33.6 adds the
-// Core Text matcher).
+// SystemFontMatcher returns the font matcher of macOS (SPEC §29.8): the fonts that Core Text lists, read
+// with go-text, the system UI font (San Francisco) by the file that Core Text names, the generic
+// families (sans-serif is San Francisco, serif Times, monospace Menlo) and the font that Core Text
+// chooses for a character that the font of the request lacks. When Core Text or its fonts cannot be
+// read it logs why and returns nil, so that the text.Collection scans the font directories.
 //
 // Flutter: no counterpart
-func SystemFontMatcher(context.Context, *slog.Logger) text.Matcher { return nil }
+func SystemFontMatcher(ctx context.Context, log *slog.Logger) text.Matcher {
+	opts, err := macos.FontOptions(ctx, log)
+	if err == nil {
+		var m *darwinfonts.Matcher
+		if m, err = darwinfonts.New(opts); err == nil {
+			return m
+		}
+	}
+	if log != nil {
+		log.Info("the fonts of this Mac could not be read through Core Text; the font directories are scanned instead", "err", err)
+	}
+	return nil
+}
 
 // The tags of the errors that this file makes (rm4n0s/errors, R5).
 const (

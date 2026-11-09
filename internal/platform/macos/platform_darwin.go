@@ -70,6 +70,13 @@ type Platform struct {
 	clip     clipboard
 	// kb is the keyboard: the responder of the key events and the layout (keyboard_darwin.go).
 	kb *keyboard
+	// watch reads the system settings and watches them (settings_darwin.go).
+	watch *settingsWatch
+	// lc remembers the lifecycle state that was reported; appHidden says the app is hidden (Command+H);
+	// ending says the loop has ended (lifecycle_darwin.go).
+	lc        lifecycleTracker
+	appHidden bool
+	ending    bool
 
 	// ptr is the state machine of the mouse, the trackpad and the pen of every window (mouse.go).
 	ptr *pointerMachine
@@ -140,6 +147,10 @@ func New(opts Options) (*Platform, error) {
 		class("NSWindow").Send(sel("setAllowsAutomaticWindowTabbing:"), false)
 	})
 	p.kb = newKeyboard(p)
+	if foundation.DebugMode {
+		p.applyDevAppearance()
+	}
+	p.watch = newSettingsWatch(p)
 	p.clip.p = p
 	if foundation.DebugMode {
 		if name := p.getenv(DevPasteboardEnv); name != "" {
@@ -196,7 +207,7 @@ func (p *Platform) Run(ctx context.Context, h platform.Handler) error {
 	}()
 	p.handler = h
 	defer func() { p.handler = nil }()
-	p.quit = false
+	p.quit, p.ending = false, false
 	defer context.AfterFunc(ctx, func() { p.Post(p.stopLoop) })()
 
 	// The windows made before Run report their size, draw their first frame and show themselves.
@@ -204,6 +215,8 @@ func (p *Platform) Run(ctx context.Context, h platform.Handler) error {
 	if ctx.Err() == nil {
 		objcx.WithPool(func() { p.app.Send(sel("run")) })
 	}
+	p.ending = true
+	p.updateLifecycle()
 	if rec := p.panicked; rec != nil {
 		p.panicked = nil
 		p.log.Error("the handler panicked in a callback from AppKit", "panic", rec.value, "stack", string(rec.stack))
@@ -295,15 +308,6 @@ func (p *Platform) Wakes() uint64 { return p.wakes.Load() }
 // Clipboard returns the pasteboard, which fails with ClipboardUnavailable until step 33.5.
 func (p *Platform) Clipboard() platform.Clipboard { return &p.clip }
 
-// Settings returns the system settings: light, no accent, the locale en-US, until step 33.6 reads them.
-func (p *Platform) Settings() platform.Settings {
-	return platform.Settings{
-		PlatformBrightness: ui.BrightnessLight,
-		TextScaleFactor:    1,
-		Locales:            []ui.Locale{ui.NewLocale("en", "US")},
-	}
-}
-
 // Services returns nil: macOS has no desktop services until step 33.12.
 func (p *Platform) Services() platform.Services { return nil }
 
@@ -333,6 +337,10 @@ func (p *Platform) teardown() {
 		objcx.Release(p.clip.pb)
 		p.clip.pb = 0
 	}
+	if p.watch != nil {
+		p.watch.close()
+		p.watch = nil
+	}
 	if p.kb != nil {
 		p.kb.close()
 		p.kb = nil
@@ -356,16 +364,16 @@ func (p *Platform) teardown() {
 // newTestPlatformOnly is for the tests: the number of windows.
 func (p *Platform) windowCount() int { return len(p.windows) }
 
-// requestQuit is Cmd+Q, the Dock's Quit and a logout (SPEC §29.8): the windows are asked to close like
-// the user's close button does, and the app ends when they all did. The framework's exit request
-// replaces this in step 33.6.
+// requestQuit is Cmd+Q, the Dock's Quit and a logout (SPEC §29.8): the windows are asked to close in the
+// order they were made, as the user's close button asks, and each one that agrees is closed at once, as a
+// document app closes its documents when it quits. A window that refuses (the framework's exit request is
+// cancelled) stops the quit and stays, with the windows that did not come yet; the app ends when the last
+// window is closed.
 func (p *Platform) requestQuit() {
 	for _, w := range p.sortedWindows() {
 		if p.handler != nil && !p.handler.OnCloseRequest(w.id) {
 			return
 		}
-	}
-	for _, w := range p.sortedWindows() {
 		w.Close()
 	}
 	if len(p.windows) == 0 {

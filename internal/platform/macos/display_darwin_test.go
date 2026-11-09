@@ -40,6 +40,36 @@ type recorder struct {
 	keyHandled bool
 	// texts are the events of the input method that OnTextInputSync heard.
 	texts []ui.TextInputEvent
+	// settings and lifecycle are what OnSettings and OnLifecycle heard; denyClose makes OnCloseRequest say no.
+	settings  []platform.Settings
+	lifecycle []ui.AppLifecycleState
+	denyClose bool
+	// denyViews are the views whose close request is refused.
+	denyViews map[ui.ViewID]bool
+}
+
+func (r *recorder) OnSettings(s platform.Settings) {
+	r.mu.Lock()
+	r.settings = append(r.settings, s)
+	r.mu.Unlock()
+}
+
+func (r *recorder) OnLifecycle(state ui.AppLifecycleState) {
+	r.mu.Lock()
+	r.lifecycle = append(r.lifecycle, state)
+	r.mu.Unlock()
+}
+
+func (r *recorder) settingsHeard() []platform.Settings {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]platform.Settings(nil), r.settings...)
+}
+
+func (r *recorder) lifecycleHeard() []ui.AppLifecycleState {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]ui.AppLifecycleState(nil), r.lifecycle...)
 }
 
 func (r *recorder) OnPointer(data []ui.PointerData) {
@@ -111,11 +141,12 @@ func (r *recorder) OnViewFocus(_ ui.ViewID, focused bool) {
 	r.mu.Unlock()
 }
 
-func (r *recorder) OnCloseRequest(ui.ViewID) bool {
+func (r *recorder) OnCloseRequest(view ui.ViewID) bool {
 	r.mu.Lock()
 	r.closeReq++
+	deny := r.denyClose || r.denyViews[view]
 	r.mu.Unlock()
-	return true
+	return !deny
 }
 
 func (r *recorder) metricsSnapshot() []platform.ViewMetrics {

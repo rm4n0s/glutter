@@ -323,6 +323,7 @@ func (w *window) SetHidden(hidden bool) bool {
 		}
 	})
 	w.updateLink()
+	w.p.updateLifecycle()
 	return true
 }
 
@@ -512,6 +513,7 @@ func (w *window) finishClose() {
 	w.cv = nil
 	w.pool.Close()
 	delete(w.p.windows, w.id)
+	w.p.updateLifecycle()
 	w.ns.Send(sel("setDelegate:"), objc.ID(0))
 	if w.cfg.HasParent {
 		if parent, ok := w.p.windows[w.cfg.Parent]; ok {
@@ -634,6 +636,7 @@ func (w *window) reportFocus(focused bool) {
 	if kh, ok := h.(platform.KeyboardFocusHandler); ok {
 		kh.OnKeyboardFocus(w.id, focused)
 	}
+	w.p.updateLifecycle()
 }
 
 // stateChanged is a change of the minimized, zoomed or full-screen state.
@@ -643,6 +646,7 @@ func (w *window) stateChanged() {
 	if !w.shown {
 		return
 	}
+	w.p.updateLifecycle()
 	w.reportMetrics()
 	w.updateLink()
 	if w.canDraw() {
@@ -673,6 +677,7 @@ func (w *window) firstShow() {
 		w.activated = send[bool](w.ns, "isKeyWindow")
 		w.reportFocus(w.activated)
 	}
+	p.updateLifecycle()
 	p.startDevEvents()
 }
 

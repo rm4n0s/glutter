@@ -18,7 +18,7 @@
 // GLUTTER_GALLERY_REBUILD=1 builds the whole app again in every frame (scripts/perf-web.sh measures the
 // frames of a full rebuild with it). On the web they are query parameters (?GLUTTER_GALLERY_PAGE=data).
 // Serve it with: go run ./cmd/glutter-web serve ./examples/gallery. In debug builds: GLUTTER_DEV_PAGE=<slug>
-// does the same, GLUTTER_DEV_THEME=dark starts in dark mode, and
+// does the same, GLUTTER_DEV_THEME=dark starts in dark mode (system: it follows the system's appearance), and
 // GLUTTER_DEV_SNACKBAR=1 shows a snack bar when the first page opens, and
 // GLUTTER_DEV_OPEN_MENU=file/recent opens those menus of the Menus page, and
 // GLUTTER_DEV_TEXT_FIELDS=focus,validate focuses a field and validates the form
@@ -214,8 +214,13 @@ func devPage(getenv func(string) string, pages []Page) int {
 // devThemeMode is dark when GLUTTER_DEV_THEME is "dark" in a debug build, and
 // light otherwise.
 func devThemeMode(getenv func(string) string) m.ThemeMode {
-	if foundation.DebugMode && getenv("GLUTTER_DEV_THEME") == "dark" {
-		return m.ThemeModeDark
+	if foundation.DebugMode {
+		switch getenv("GLUTTER_DEV_THEME") {
+		case "dark":
+			return m.ThemeModeDark
+		case "system":
+			return m.ThemeModeSystem
+		}
 	}
 	return m.ThemeModeLight
 }

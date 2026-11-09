@@ -92,6 +92,14 @@ var testGlyphs = []struct {
 // font (cmap, head, maxp), the ones that give the advances and the line (hhea, hmtx) and the
 // bitmap tables.
 func buildCBDTFont(strikes []testStrike) []byte {
+	tables := testBaseTables()
+	tables["CBLC"], tables["CBDT"] = buildBitmapTables(strikes)
+	return buildSfnt(tables)
+}
+
+// testBaseTables are the tables that every test font has (head, hhea, maxp, hmtx, cmap, post): the
+// four glyphs of the file's comment, 'A' and U+1F600 to U+1F601 in the cmap, every advance one em.
+func testBaseTables() map[string][]byte {
 	numGlyphs := 4
 
 	var head be
@@ -152,12 +160,9 @@ func buildCBDTFont(strikes []testStrike) []byte {
 	post.u32(0x00030000)
 	post.raw(make([]byte, 28))
 
-	cblc, cbdt := buildBitmapTables(strikes)
-
-	return buildSfnt(map[string][]byte{
+	return map[string][]byte{
 		"head": head, "hhea": hhea, "maxp": maxp, "hmtx": hmtx, "cmap": cmap, "post": post,
-		"CBLC": cblc, "CBDT": cbdt,
-	})
+	}
 }
 
 // buildBitmapTables makes CBLC and CBDT. Each strike has two index subtables: glyphs 1 to 2 in

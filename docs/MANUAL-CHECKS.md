@@ -864,3 +864,21 @@ A text field takes its text from the input method of macOS through `NSTextInputC
 10. **The pasteboard**: copy text in the editor (`Cmd+C`) and paste it into TextEdit; copy text in TextEdit and paste it into the editor (`Cmd+V`); copy an image in Preview and paste into an app that reads images; copy files in the Finder and paste them in an app that reads `ClipboardFormatURIList`. Does `Cmd+X` cut? Is a long text (a megabyte) pasted without a pause?
 
 Answers: _(not yet recorded)_
+
+## 33.6 Settings, fonts, lifecycle and quit (macOS)
+
+**Status:** pending
+
+The tests read the real settings and fonts and drive the lifecycle and the quit by calling the platform's own methods (an app that is not active never gets the real events, and a test must not hide the user's apps). What only a real session shows is here. In `go run ./examples/gallery` with `GLUTTER_DEV_THEME=system` (a debug build; the gallery's own Light, System and Dark toggle on its home page does the same), and in `go run ./examples/editor`:
+
+1. **Dark mode**: with the system appearance Auto, switch System Settings, Appearance between Light and Dark (and the Auto time of day if you want to wait for it): the gallery changes its theme within a moment, with no restart, and the app's title bar follows.
+2. **Accent color**: change the accent color in System Settings, Appearance: a component that uses the system accent follows (the gallery does not use it; the check is that no restart is needed and nothing breaks).
+3. **Accessibility**: turn *Reduce motion* and *Increase contrast* on and off (System Settings, Accessibility, Display): the gallery's animations stop and start (a progress indicator, the page transitions) without a restart.
+4. **Language and region**: add a language, move it first, and turn the *24-hour time* on and off (System Settings, General, Language & Region): the time picker of the gallery's Dialogs page shows the 24-hour dial or the AM/PM one the next time it opens.
+5. **Fonts**: the text of the gallery is San Francisco (the `a`, `g` and `1` match the Finder's), bold text is bold, and the text field of the Text fields page takes Chinese, Japanese and Korean text with the right glyphs, and an emoji in color (try 😀 👍🏽 🇬🇷 and a family emoji). Does text in Zapfino, Menlo and Times (the editor has no picker: use `GLUTTER_DEV_TEXT` with the family in a small example) look like the system's own?
+6. **Hide**: press `Cmd+H` and bring the app back from the Dock: animations pause while it is hidden (watch the CPU in Activity Monitor: an idle hidden app uses none) and resume.
+7. **Minimize**: minimize the window to the Dock and bring it back: the same.
+8. **Another app in front**: click another app: the caret of the focused field stops blinking and the app goes inactive (the gallery's focus rings go); coming back resumes.
+9. **Quit**: `Cmd+Q` quits an app that has one window. In `go run ./examples/multiwindow`, `Cmd+Q` closes the windows one after the other. With an app that cancels the exit request (`AppLifecycleListener.OnExitRequested` returning cancel) the app stays and the windows that were asked before the refusing one are closed. The Dock's right-click Quit and a logout do the same.
+
+Answers: _(not yet recorded)_

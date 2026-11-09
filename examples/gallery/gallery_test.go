@@ -283,6 +283,7 @@ func TestDevThemeMode(t *testing.T) {
 		{"", m.ThemeModeLight},
 		{"light", m.ThemeModeLight},
 		{"dark", m.ThemeModeDark},
+		{"system", m.ThemeModeSystem},
 		{"DARK", m.ThemeModeLight},
 	}
 	for _, tc := range tests {

@@ -46,6 +46,20 @@ func cbdtEngine(t *testing.T, strikes []testStrike, onErr func(error)) *Engine {
 	return e
 }
 
+// cbdtEngineOf is an engine with Roboto and the font data as the family cbdtFamily; a font error fails the test.
+func cbdtEngineOf(t *testing.T, data []byte) *Engine {
+	t.Helper()
+	c := text.NewCollection(text.CollectionOpts{Matcher: noSystemFonts{}})
+	if err := fonts.Register(c); err != nil {
+		t.Fatal(err)
+	}
+	e := NewEngine(context.Background(), c, EngineOpts{OnFontError: func(err error) { t.Errorf("font error: %v", err) }})
+	if err := e.LoadFontFromList(data, cbdtFamily); err != nil {
+		t.Fatalf("LoadFontFromList: %v", err)
+	}
+	return e
+}
+
 // imageRectOf returns the image and the rectangles of the OpDrawImageRect that a picture draws.
 func imageRectOf(t *testing.T, pic *ui.Picture) ui.OpDrawImageRect {
 	t.Helper()

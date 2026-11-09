@@ -29,9 +29,32 @@ func (s *system) registerClasses() error {
 			}},
 			{Name: "applicationShouldTerminateAfterLastWindowClosed:", Fn: func(objc.ID, objc.SEL, objc.ID) bool { return false }},
 			{Name: "applicationSupportsSecureRestorableState:", Fn: func(objc.ID, objc.SEL, objc.ID) bool { return true }},
+			{Name: "applicationDidHide:", Fn: func(self objc.ID, _ objc.SEL, _ objc.ID) {
+				if p := platformOf(self); p != nil {
+					p.guard(func() { p.setAppHidden(true) })
+				}
+			}},
+			{Name: "applicationDidUnhide:", Fn: func(self objc.ID, _ objc.SEL, _ objc.ID) {
+				if p := platformOf(self); p != nil {
+					p.guard(func() { p.setAppHidden(false) })
+				}
+			}},
 			{Name: "applicationDidChangeScreenParameters:", Fn: func(self objc.ID, _ objc.SEL, _ objc.ID) {
 				if p := platformOf(self); p != nil {
 					p.guard(p.displaysChanged)
+				}
+			}},
+		},
+	}); err != nil {
+		return err
+	}
+	if s.settingsObserver, err = objcx.RegisterClass(objcx.ClassDef{
+		Name: "SettingsObserver", Super: "NSObject",
+		Methods: []objcx.Method{
+			// KVO of NSApp.effectiveAppearance (settings_darwin.go).
+			{Name: "observeValueForKeyPath:ofObject:change:context:", Fn: func(self objc.ID, _ objc.SEL, _, _, _, _ objc.ID) {
+				if p := platformOf(self); p != nil && !p.closed && p.watch != nil {
+					p.guard(p.watch.changed)
 				}
 			}},
 		},
