@@ -344,6 +344,20 @@ On the recording device (the work of the renderer and of package `gpu` only, rel
 
 **Target not met: 10,000 items of different meshes, 4 ms.** What is left is the price of the calls: an item with a mesh of its own is three calls into the driver (the vertex buffers, the index buffer, the draw), 30,000 in a frame, and each costs about 0.7 microseconds with the driver's own work, so a frame cannot be under 4 ms while each mesh is a buffer of its own. The ways to meet it are in the design, not in this step, and need the owner's decision: (1) one big vertex buffer and one big index buffer for the meshes of a scene (an arena in `viewport3d`), so that the draws need no binds, and (2) a multi-draw indirect call in `gpu` (`DrawIndexedIndirect` is one draw today), which makes the 10,000 draws one call. The target is not relaxed.
 
+## The 3D view on Metal (step 33.9)
+
+The same benchmarks on the Mac of step 33.9 (an Apple M6, unified memory, macOS 27.2; the validation layer off), with `go test -tags glutter_display -run '^$' -bench Display -benchtime 100x ./viewport3d` (`display_bench_test.go` with `bench_darwin_test.go`: the CPU time of a frame is the time of the calling thread, `clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)`, at 1920 x 1080 with 4x multisampling):
+
+| What | Target (§27.10) | Measured on the Apple M6 | Met |
+|---|---|---|---|
+| 1,000,000 triangles with edges | 60 fps, 2 ms of CPU | 156 fps, 0.04 ms | yes (the 400 fps of the Linux row is that machine's number, not a target) |
+| 10,000 items of one mesh | 1 ms of CPU | 0.25 ms (742 fps) | yes |
+| 10,000 items of 10,000 meshes | 4 ms of CPU | 13.0 ms (55 fps) | **no**, as on Linux (19.9 to 22.5 ms there): the price of the calls |
+| The game scene (`examples/game3d`) | 60 fps | 425 fps, 0.17 ms | yes |
+| A steady frame allocates | nothing | 0 allocations on the recording device; the Metal backend allocates 400 to 500 times (about 11 to 15 KB) for a frame of one to 10,000 instanced draws, and 36 for each separate draw | yes on the recording device; no on Metal |
+
+**Allocations on Metal.** Every message to Metal goes through purego's `objc.Send`, whose arguments are `...any`, and each argument that is not a pointer is boxed: that is where the allocations are. A frame of the million-triangle scene sends about 500 messages. Typed senders for the hot calls (the draws, `setVertexBuffer:`, `setBindGroup`) would remove most of them; they are not made in this step, since the targets of §27.10 about allocation are those of the renderer and of package `gpu`, which hold on the recording device.
+
 ## Games (step 31.11)
 
 The targets of SPEC §28.6, measured on the Ryzen 9 6900HX with the Radeon RX 6800M (RADV), through `.claude/no-nvidia.sh`. The numbers are in the table of "Decided in step 31.11" of that section; how to run them:

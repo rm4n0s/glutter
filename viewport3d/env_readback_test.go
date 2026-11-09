@@ -1,4 +1,4 @@
-//go:build (linux && glutter_display) || (windows && glutter_wine)
+//go:build (linux && glutter_display) || (darwin && !ios && glutter_display) || (windows && glutter_wine)
 
 package viewport3d_test
 

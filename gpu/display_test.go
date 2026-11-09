@@ -1,67 +1,24 @@
-//go:build linux && glutter_display
+//go:build (linux || (darwin && !ios)) && glutter_display
 
 package gpu_test
 
 import (
 	"encoding/binary"
 	"image/color"
-	"io"
-	"log/slog"
-	"os"
-	"runtime"
-	"strings"
 	"testing"
 
 	"github.com/rm4n0s/glutter/gpu"
 	"github.com/rm4n0s/glutter/internal/gpu/explicit/devicetest"
-	"github.com/rm4n0s/glutter/internal/gpu/vulkan"
 	"github.com/rm4n0s/glutter/internal/gpuhost"
 )
 
-// These tests need Vulkan but no display: they run on Mesa's lavapipe, with the validation layer on, and fail on any
-// validation error (SPEC §9.4, §17).
-
-// openLavapipe opens lavapipe with validation, and checks at the end of the test that the layer reported nothing.
-func openLavapipe(t *testing.T) *vulkan.Device {
-	t.Helper()
-	arch := map[string]string{"amd64": "x86_64", "arm64": "aarch64", "386": "i686"}[runtime.GOARCH]
-	icd := "/usr/share/vulkan/icd.d/lvp_icd." + arch + ".json"
-	if _, err := os.Stat(icd); err != nil {
-		t.Skip("Mesa's lavapipe is not installed (sudo dnf install mesa-vulkan-drivers)")
-	}
-	if _, err := os.Stat("/usr/share/vulkan/explicit_layer.d/VkLayer_khronos_validation.json"); err != nil {
-		t.Skip("the validation layer is not installed (sudo dnf install vulkan-validation-layers)")
-	}
-	t.Setenv("VK_DRIVER_FILES", icd)
-	d, err := vulkan.Open(vulkan.Options{AllowCPU: true, Validation: true, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if errs := d.ValidationErrors(); len(errs) > 0 {
-			t.Errorf("the validation layer reported %d errors:\n%s", len(errs), strings.Join(errs, "\n"))
-		}
-		if err := d.Close(); err != nil {
-			t.Error(err)
-		}
-	})
-	return d
-}
-
-// lavapipeApp is an app whose GPU device is lavapipe.
-func lavapipeApp(t *testing.T) (*gpuhost.App, *gpu.Device) {
-	t.Helper()
-	app := gpuhost.NewBinding(t, openLavapipe(t))
-	d, err := gpu.DeviceOfBinding(app.Binding)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return app, d
-}
+// These tests need a GPU but no window: they run on Mesa's lavapipe with the validation layer on (Linux) and on Metal with
+// its API validation on (macOS), and fail on any validation error (SPEC §9.4, §17, §29.5). The device is opened by
+// device_linux_test.go and device_darwin_test.go.
 
 // TestTriangleThroughGPU draws a triangle that covers a texture through package gpu and reads it back.
 func TestTriangleThroughGPU(t *testing.T) {
-	app, d := lavapipeApp(t)
+	app, d := deviceApp(t)
 	m := must(d.NewShaderModule(gpuhost.ShaderOf(devicetest.ShaderFill)))
 	pipe := must(d.NewRenderPipeline(gpu.RenderPipelineDesc{
 		Vertex:   gpu.VertexState{Module: m, EntryPoint: "vs_full"},
@@ -112,7 +69,7 @@ func abs(v int) int {
 
 // TestComputeThroughGPU squares numbers with a compute shader, with a uniform buffer and storage buffers.
 func TestComputeThroughGPU(t *testing.T) {
-	app, d := lavapipeApp(t)
+	app, d := deviceApp(t)
 	m := must(d.NewShaderModule(gpuhost.ShaderOf(devicetest.ShaderCompute)))
 	pipe := must(d.NewComputePipeline(gpu.ComputePipelineDesc{Module: m, EntryPoint: "cs_square"}))
 	const n = 1000
@@ -158,11 +115,11 @@ func TestComputeThroughGPU(t *testing.T) {
 
 // TestLossAndLeaksOnAGPU loses the device of the app and ends it, with a buffer that was not released.
 func TestLossAndLeaksOnAGPU(t *testing.T) {
-	app, d := lavapipeApp(t)
+	app, d := deviceApp(t)
 	buf := must(d.NewBuffer(gpu.BufferDesc{Label: "leaky", Size: 64, Usage: gpu.BufferUsageVertex}))
 	lost := 0
 	d.OnLost(func(error) { lost++ })
-	app.Host.Replace(openLavapipe(t))
+	app.Host.Replace(openDevice(t))
 	app.RunPosted()
 	if lost != 1 || !d.IsLost() {
 		t.Errorf("OnLost ran %d times, lost %v", lost, d.IsLost())

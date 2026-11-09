@@ -1,22 +1,17 @@
-//go:build linux && glutter_display
+//go:build (linux || (darwin && !ios)) && glutter_display
 
 package viewport3d_test
 
 import (
 	"context"
-	"io"
-	"log/slog"
 	"math"
 	"os"
 	"runtime"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
 	"github.com/rm4n0s/glutter/gpu"
-	"github.com/rm4n0s/glutter/internal/gpu/vulkan"
-	"github.com/rm4n0s/glutter/internal/gpuhost"
 	"github.com/rm4n0s/glutter/internal/scenetest"
 	"github.com/rm4n0s/glutter/model/gltf"
 	"github.com/rm4n0s/glutter/ui"
@@ -24,7 +19,7 @@ import (
 	"github.com/rm4n0s/glutter/viewport3d"
 )
 
-// The benchmarks of SPEC §27.10 on a real Vulkan device, at 1920 x 1080 with 4x multisampling. They draw the frames of the scenes of
+// The benchmarks of SPEC §27.10 on a real device (Vulkan on Linux, Metal on macOS; bench_linux_test.go and bench_darwin_test.go open it), at 1920 x 1080 with 4x multisampling. They draw the frames of the scenes of
 // package scenetest and report the CPU time of a frame (the time that the UI thread's thread spends running in Draw, Finish and
 // Submit, without the time it waits for the GPU or the driver's threads) and the frame rate
 // (frames a second with at most two in flight, so that the GPU's time is in it). By default the device is Mesa's lavapipe, a CPU
@@ -37,45 +32,6 @@ const (
 	benchWidth  = 1920
 	benchHeight = 1080
 )
-
-func benchDevice(b *testing.B) (*gpuhost.App, *gpu.Device) {
-	b.Helper()
-	hardware := os.Getenv("GLUTTER_BENCH_GPU") == "hardware"
-	opts := vulkan.Options{AllowCPU: !hardware, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
-	if !hardware {
-		arch := map[string]string{"amd64": "x86_64", "arm64": "aarch64", "386": "i686"}[runtime.GOARCH]
-		icd := "/usr/share/vulkan/icd.d/lvp_icd." + arch + ".json"
-		if _, err := os.Stat(icd); err != nil {
-			b.Skip("Mesa's lavapipe is not installed (sudo dnf install mesa-vulkan-drivers)")
-		}
-		b.Setenv("VK_DRIVER_FILES", icd)
-	}
-	vk, err := vulkan.Open(opts)
-	if err != nil {
-		b.Fatal(err)
-	}
-	b.Cleanup(func() {
-		if err := vk.Close(); err != nil {
-			b.Error(err)
-		}
-	})
-	b.Logf("device: %s", vk.DeviceName())
-	app := gpuhost.NewBinding(b, vk)
-	d, err := gpu.DeviceOfBinding(app.Binding)
-	if err != nil {
-		b.Fatal(err)
-	}
-	return app, d
-}
-
-// threadCPU is the CPU time that the calling thread has used (user and system): a thread that waits for the GPU does not use any.
-func threadCPU(b *testing.B) time.Duration {
-	var ru syscall.Rusage
-	if err := syscall.Getrusage(1, &ru); err != nil { // RUSAGE_THREAD
-		b.Fatal(err)
-	}
-	return time.Duration(ru.Utime.Nano() + ru.Stime.Nano())
-}
 
 func benchDisplay(b *testing.B, scene *viewport3d.Scene, cam *viewport3d.Camera) {
 	b.Helper()

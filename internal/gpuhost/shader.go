@@ -16,13 +16,14 @@ var storageNames = map[explicit.TextureFormat]string{
 //
 // Flutter: no counterpart
 func ShaderOf(s *explicit.Shader) *gpu.Shader {
-	out := &gpu.Shader{Name: s.Name, WGSL: s.WGSL, SPIRV: s.SPIRV, HLSL: s.HLSL}
+	out := &gpu.Shader{Name: s.Name, WGSL: s.WGSL, SPIRV: s.SPIRV, HLSL: s.HLSL, MSL: s.MSL}
 	for _, e := range s.Entries {
 		ge := gpu.EntryPoint{Name: e.Name, Stage: gpu.ShaderStage(e.Stage), WorkgroupSize: e.WorkgroupSize,
 			ReadsInstanceIndex: e.ReadsInstanceIndex, ReadsVertexIndex: e.ReadsVertexIndex}
 		for _, b := range e.Bindings {
 			gb := gpu.ShaderBinding{Name: b.Name, Group: b.Group, Binding: b.Binding, Kind: gpu.BindingKind(b.Kind), Dimension: gpu.TextureDimension(b.Dimension),
-				Sample: gpu.SampleType(b.Sample), Register: gpu.ShaderRegister{Class: b.Register.Class, Space: b.Register.Space, Index: b.Register.Index}}
+				Sample: gpu.SampleType(b.Sample), Register: gpu.ShaderRegister{Class: b.Register.Class, Space: b.Register.Space, Index: b.Register.Index},
+				MetalIndex: b.MetalIndex}
 			if b.Kind == explicit.BindingStorageTexture {
 				gb.StorageFormat = storageNames[b.StorageFormat]
 			}

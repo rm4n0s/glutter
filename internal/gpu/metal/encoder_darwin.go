@@ -213,8 +213,8 @@ func (e *encoder) blit(fn func(blit objc.ID)) {
 func (e *encoder) OnComplete(fn func()) { e.completes = append(e.completes, fn) }
 
 // Submit implements explicit.Encoder: the writes that wait are recorded, the command buffer is committed, and
-// the frames the GPU has finished are handled. A frame with reads waits for the GPU, so that the reads are
-// delivered here (SPEC §9.8, as Direct3D 12's does).
+// the frames the GPU has finished are handled. A frame with reads or functions of OnComplete waits for the GPU, so
+// that they run here (the contract of OnComplete, as Vulkan's and Direct3D 12's Submit keep it).
 func (e *encoder) Submit() error {
 	d := e.d
 	if d.open != e {
@@ -230,7 +230,7 @@ func (e *encoder) Submit() error {
 	d.inflight = append(d.inflight, rec)
 	d.stats.Frames++
 	call(e.cb, "commit")
-	if len(rec.reads) > 0 {
+	if len(rec.reads) > 0 || len(rec.completes) > 0 {
 		for !rec.finishedOK {
 			d.waitOne()
 		}

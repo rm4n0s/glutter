@@ -916,3 +916,16 @@ The tests draw through Metal with the validation layer on and compare every proo
 7. **Moving between displays**: drag the window between a Retina display and a display of scale 1 (or the other way): the content stays sharp and the right size after the move.
 
 Answers: _(not yet recorded)_
+
+## 33.9 The `gpu` package and the 3D view on Metal (macOS)
+
+**Status:** pending
+
+The tests draw the scenes of the 3D view on Metal with the validation layer on and compare them with the goldens of Linux, but a test does not orbit a model with a trackpad or play a game.
+
+1. **CAD viewer**: `go run ./examples/cad`: orbit with the mouse (drag) and with the trackpad (two-finger drag, pinch to zoom, two-finger scroll to pan), the view cube and the standard views, picking a face, a section plane with its cap, the edges and wireframe modes: the model follows the fingers smoothly at the display's rate, with no flicker.
+2. **Game**: `go run ./examples/game3d` with the keyboard (WASD, Space, the arrows, Esc to pause): the character moves and jumps and the picture is smooth at the display's rate (120 Hz on a ProMotion display). With a gamepad, after step 33.14.
+3. **Resizing**: resize the window of both apps with the mouse: the 3D view resizes with it, sharp, with no stripe of the old size.
+4. **Retina and scale 1**: move the window to a display of the other scale: the 3D view stays sharp.
+
+Answers: _(not yet recorded)_

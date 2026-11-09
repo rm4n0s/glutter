@@ -17,8 +17,8 @@
 // frame as one command buffer. The CPU never touches a buffer or a texture: a write is copied into staging memory
 // (shared on unified memory, managed with didModifyRange: otherwise) and a blit puts it in place before the next
 // pass, a read is a blit into a readback buffer that is delivered when the frame has finished, so that the order of
-// the commands is the order of the calls. A frame that has reads waits for the GPU in Submit, as Direct3D 12's
-// does; the others are handled at the next Begin or Submit, or by Settle.
+// the commands is the order of the calls. A frame that has reads or functions of OnComplete waits for the GPU in
+// Submit, as Vulkan's and Direct3D 12's do; the others are handled at the next Begin or Submit, or by Settle.
 //
 // The swap chain (NewSwapchain) is a CAMetalLayer that covers the layer of the window's view: BGRA8Unorm, at most
 // three drawables, display sync on, framebufferOnly unless Options.Readback asks for the contents, and a drawable

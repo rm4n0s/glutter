@@ -149,7 +149,9 @@ func (a *archive) save() {
 	var e objc.ID
 	objcx.WithPool(func() {
 		if !sendBool(a.obj, "serializeToURL:error:", objcx.NewFileURL(tmp), ptr(&e)) {
-			a.d.log.Warn("the pipeline archive was not saved", "path", a.path, "output", description(e))
+			// An archive that cannot be written out would fail at every start: it is dropped, and the next start makes it again.
+			a.d.log.Warn("the pipeline archive was not saved, and is removed so that the next start makes it again", "path", a.path, "output", description(e))
+			_ = os.Remove(a.path)
 			tmp = ""
 		}
 	})
@@ -278,7 +280,11 @@ func (d *Device) NewPipeline(desc explicit.PipelineDesc) (explicit.Pipeline, err
 // compiling it otherwise (and adding it to the archive). It returns the output of Metal for a failure.
 func (d *Device) makeRenderState(rd objc.ID, desc explicit.PipelineDesc) (objc.ID, string) {
 	var e objc.ID
-	if a := d.archive; a != nil {
+	// A pipeline without a fragment function (a shadow pass) cannot be serialized: the archiver refuses it ("expecting
+	// 'fragment' stage in pipeline"), and one such pipeline would lose the whole archive at save. It is compiled at each start,
+	// which is cheap.
+	archived := d.archive != nil && desc.FragmentEntry != ""
+	if a := d.archive; archived {
 		call(rd, "setBinaryArchives:", a.list())
 		if a.loaded {
 			if st := call(d.dev, "newRenderPipelineStateWithDescriptor:options:reflection:error:", rd, pipelineFailOnArchiveMiss, uintptr(0), ptr(&e)); st != 0 {
@@ -292,7 +298,7 @@ func (d *Device) makeRenderState(rd objc.ID, desc explicit.PipelineDesc) (objc.I
 		return 0, description(e)
 	}
 	d.stats.PipelinesCompiled++
-	if a := d.archive; a != nil {
+	if a := d.archive; archived {
 		var ae objc.ID
 		if sendBool(a.obj, "addRenderPipelineFunctionsWithDescriptor:error:", rd, ptr(&ae)) {
 			a.dirty = true
@@ -438,4 +444,23 @@ func (d *Device) makeComputeState(cd objc.ID, desc explicit.ComputePipelineDesc)
 // timestamp queries (Features.TimestampQuery is false). It fails with GPUQueryUnsupported.
 func (d *Device) NewQuerySet(count int) (explicit.QuerySet, error) {
 	return nil, errors.New(explicit.TagGPUQueryUnsupported, "the Metal backend has no timestamp queries", "count", count)
+}
+
+// CompileShader compiles the MSL of a shader with Metal's compiler and finds the functions of its entry points,
+// as the first pipeline that uses the shader does, and returns the error that pipeline would get
+// (MetalShaderCompileFailed, MetalPipelineFailed). The tests of the packages that have generated shaders (the 3D view,
+// the examples) use it to check that every MSL is accepted (SPEC §29.5).
+//
+// Flutter: no counterpart
+func (d *Device) CompileShader(name, msl string, entries ...string) error {
+	lib, err := d.library(&explicit.Shader{Name: name, MSL: msl})
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if _, err := lib.function(e); err != nil {
+			return err
+		}
+	}
+	return nil
 }
