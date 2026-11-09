@@ -91,8 +91,17 @@ func testTheme(opts ...cupertino.CupertinoThemeDataOpts) *cupertino.CupertinoThe
 		o = opts[0]
 	}
 	if o.TextTheme == nil {
-		o.TextTheme = cupertino.NewCupertinoTextThemeData(cupertino.CupertinoTextThemeDataOpts{TextStyle: &painting.TextStyle{FontFamily: "Roboto",
-			FontSize: foundation.Some(17.0), Color: foundation.Some(ui.NewColor(0xFF000000))}})
+		roboto := func(size float64, weight ui.FontWeight, color ui.Color) *painting.TextStyle {
+			return &painting.TextStyle{FontFamily: "Roboto", FontSize: foundation.Some(size), FontWeight: weight, Color: foundation.Some(color)}
+		}
+		black := ui.NewColor(0xFF000000)
+		o.TextTheme = cupertino.NewCupertinoTextThemeData(cupertino.CupertinoTextThemeDataOpts{
+			TextStyle:              &painting.TextStyle{FontFamily: "Roboto", FontSize: foundation.Some(17.0), Color: foundation.Some(black)},
+			NavTitleTextStyle:      roboto(17, ui.FontWeightW600, black),
+			NavLargeTitleTextStyle: roboto(34, ui.FontWeightW700, black),
+			NavActionTextStyle:     roboto(17, ui.FontWeightW400, ui.NewColor(0xFF007AFF)),
+			TabLabelTextStyle:      roboto(10, ui.FontWeightW500, ui.NewColor(0xFF999999)),
+		})
 	}
 	return cupertino.NewCupertinoThemeData(o)
 }

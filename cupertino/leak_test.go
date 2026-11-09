@@ -171,3 +171,79 @@ func TestSheetIsFreedAfterItsRouteIsPopped(t *testing.T) {
 		}
 	}
 }
+
+// TestLeaksNavigation is the memory test of the navigation bars and the tabs (step 34.3): the flights of the
+// bars on a push, a pop and a swipe back, the sliver bar that scrolls, and the tab scaffold that switches tabs
+// and pushes pages in a tab.
+func TestLeaksNavigation(t *testing.T) {
+	barPage := func(title string) func(widgets.BuildContext) widgets.Widget {
+		return func(widgets.BuildContext) widgets.Widget {
+			return cupertino.NewCupertinoPageScaffold(widgets.NewText("PAGE"), cupertino.CupertinoPageScaffoldOpts{
+				NavigationBar: cupertino.NewCupertinoNavigationBar(cupertino.CupertinoNavigationBarOpts{Middle: widgets.NewText(title)})})
+		}
+	}
+	tests := []struct {
+		name string
+		step func(tb testing.TB) (*gluttertest.Tester, func())
+	}{
+		{"push and pop a page with a bar", func(tb testing.TB) (*gluttertest.Tester, func()) {
+			ts := gluttertest.New(tb, gluttertest.Opts{Size: ui.Size{Width: 800, Height: 600}, DiscardScenes: true})
+			var bc widgets.BuildContext
+			ts.PumpWidget(testApp(cupertino.CupertinoAppOpts{Home: widgets.NewBuilder(func(c widgets.BuildContext) widgets.Widget {
+				bc = c
+				return barPage("Home")(c)
+			})}))
+			ts.PumpAndSettle()
+			return ts, func() {
+				widgets.NavigatorPush(bc, cupertino.NewCupertinoPageRoute(barPage("Next")))
+				ts.PumpAndSettle()
+				widgets.NavigatorPop(bc)
+				ts.PumpAndSettle()
+			}
+		}},
+		{"push a page with a bar and swipe it back", func(tb testing.TB) (*gluttertest.Tester, func()) {
+			ts := gluttertest.New(tb, gluttertest.Opts{Size: ui.Size{Width: 800, Height: 600}, DiscardScenes: true})
+			var bc widgets.BuildContext
+			ts.PumpWidget(testApp(cupertino.CupertinoAppOpts{Home: widgets.NewBuilder(func(c widgets.BuildContext) widgets.Widget {
+				bc = c
+				return barPage("Home")(c)
+			})}))
+			ts.PumpAndSettle()
+			return ts, func() {
+				widgets.NavigatorPush(bc, cupertino.NewCupertinoPageRoute(barPage("Next")))
+				ts.PumpAndSettle()
+				ts.DragFrom(ui.Offset{Dx: 5, Dy: 300}, ui.Offset{Dx: 500})
+				ts.PumpAndSettle()
+			}
+		}},
+		{"switch the tabs and push a page in a tab", func(tb testing.TB) (*gluttertest.Tester, func()) {
+			ts := gluttertest.New(tb, gluttertest.Opts{Size: ui.Size{Width: 800, Height: 600}, DiscardScenes: true})
+			ts.PumpWidget(testApp(cupertino.CupertinoAppOpts{Home: cupertino.NewCupertinoTabScaffold(cupertino.NewCupertinoTabBar(tabItems("One", "Two")),
+				func(_ widgets.BuildContext, i int) widgets.Widget {
+					return cupertino.NewCupertinoTabView(cupertino.CupertinoTabViewOpts{Builder: func(widgets.BuildContext) widgets.Widget {
+						return barPage("Tab")(nil)
+					}})
+				})}))
+			ts.PumpAndSettle()
+			return ts, func() {
+				ts.Tap(gluttertest.ByText("Two"))
+				ts.PumpAndSettle()
+				nav := widgets.NavigatorOf(ts.Element(gluttertest.ByType[*cupertino.CupertinoNavigationBar]()))
+				nav.Push(cupertino.NewCupertinoPageRoute(barPage("Pushed")))
+				ts.PumpAndSettle()
+				nav.Pop()
+				ts.PumpAndSettle()
+				ts.Tap(gluttertest.ByText("One"))
+				ts.PumpAndSettle()
+			}
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			leaktest.Run(t, "cupertino/navigation/"+tt.name, func() func() {
+				ts, step := tt.step(t)
+				return func() { step(); ts.ClearLogs() }
+			}, leaktest.Opts{N: 25, SlackObjects: 150})
+		})
+	}
+}

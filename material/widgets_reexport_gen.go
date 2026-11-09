@@ -805,6 +805,16 @@ type BlockSemantics = widgets.BlockSemantics
 // Flutter: widgets.dart BlockSemanticsOpts
 type BlockSemanticsOpts = widgets.BlockSemanticsOpts
 
+// BottomNavigationBarItem is widgets.BottomNavigationBarItem.
+//
+// Flutter: widgets.dart BottomNavigationBarItem
+type BottomNavigationBarItem = widgets.BottomNavigationBarItem
+
+// BottomNavigationBarItemOpts is widgets.BottomNavigationBarItemOpts.
+//
+// Flutter: widgets.dart BottomNavigationBarItemOpts
+type BottomNavigationBarItemOpts = widgets.BottomNavigationBarItemOpts
+
 // BouncingScrollPhysics is widgets.BouncingScrollPhysics.
 //
 // Flutter: widgets.dart BouncingScrollPhysics
@@ -3015,6 +3025,13 @@ type IconDataOpts = widgets.IconDataOpts
 // Flutter: widgets.dart IconFont
 type IconFont = widgets.IconFont
 
+// IconFontEnsure is widgets.IconFontEnsure.
+//
+// Flutter: widgets.dart IconFontEnsure
+func IconFontEnsure(bc widgets.BuildContext, icon widgets.IconData) {
+	widgets.IconFontEnsure(bc, icon)
+}
+
 // IconOpts is widgets.IconOpts.
 //
 // Flutter: widgets.dart IconOpts
@@ -5178,6 +5195,13 @@ func NewBorderRadiusTween(begin foundation.Opt[painting.BorderRadius], end found
 // Flutter: widgets.dart NewBorderTween
 func NewBorderTween(begin foundation.Opt[painting.Border], end foundation.Opt[painting.Border]) *animation.Tween[foundation.Opt[painting.Border]] {
 	return widgets.NewBorderTween(begin, end)
+}
+
+// NewBottomNavigationBarItem is widgets.NewBottomNavigationBarItem.
+//
+// Flutter: widgets.dart NewBottomNavigationBarItem
+func NewBottomNavigationBarItem(icon widgets.Widget, opts ...widgets.BottomNavigationBarItemOpts) widgets.BottomNavigationBarItem {
+	return widgets.NewBottomNavigationBarItem(icon, opts...)
 }
 
 // NewBouncingScrollPhysics is widgets.NewBouncingScrollPhysics.

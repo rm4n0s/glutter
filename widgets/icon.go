@@ -666,3 +666,10 @@ func (w *Icon) Build(bc BuildContext) Widget {
 	}
 	return NewSemantics(NewExcludeSemantics(NewSizedBox(NewCenter(glyph), SizedBoxOpts{Width: foundation.Some(size), Height: foundation.Some(size)})), SemanticsOpts{Label: label})
 }
+
+// IconFontEnsure loads the font of an icon into the text engine of the binding of the context, once, for a
+// widget that draws the glyph of an icon as text instead of with an Icon (the back chevron of the Cupertino
+// navigation bar). It does nothing for an icon with no Font.
+//
+// Flutter: no counterpart
+func IconFontEnsure(bc BuildContext, icon IconData) { ensureIconFont(bc, icon.Font) }

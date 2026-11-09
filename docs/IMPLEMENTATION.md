@@ -4467,16 +4467,16 @@ The owner asked on 2026-11-09 for "the macOS and iOS theme": Flutter's `cupertin
 ### 34.3 Navigation bars and tabs
 **Goal:** the navigation bar, the large-title sliver bar that collapses as it scrolls, the transitions between the bars of two routes, and the tab bar and tab scaffold.
 **Read:** SPEC §31.1, §31.5.
-**Port from:** `cupertino/nav_bar.dart`, `bottom_tab_bar.dart`, `tab_scaffold.dart`, `tab_view.dart`.
+**Port from:** `cupertino/nav_bar.dart`, `bottom_tab_bar.dart`, `tab_scaffold.dart`, `tab_view.dart`, and, because the back button and the Cancel button of the bars are `CupertinoButton`s, `button.dart` (with `CupertinoButtonSize` and the maps of `constants.dart`) and `cupertino_focus_halo.dart` (moved here from step 34.4; their tests, `button_test.dart` and `cupertino_focus_halo_test.dart`, are ported here too).
 **Files:** `cupertino/` (those files), `examples/cupertino/`.
-**Tasks:** `CupertinoNavigationBar` (with the middle, the leading back button and its label), `CupertinoSliverNavigationBar` (the large title, the search field form if the pinned commit has it), the hero-like flight of the bars between routes, `CupertinoTabBar`, `CupertinoTabScaffold`, `CupertinoTabController`, `CupertinoTabView` (a navigator per tab).
+**Tasks:** `CupertinoButton` (plain, tinted, filled), `CupertinoFocusHalo`, `CupertinoNavigationBar` (with the middle, the leading back button and its label), `CupertinoSliverNavigationBar` (the large title, the search field form if the pinned commit has it), the hero-like flight of the bars between routes, `CupertinoTabBar`, `CupertinoTabScaffold`, `CupertinoTabController`, `CupertinoTabView` (a navigator per tab).
 **Tests:** `nav_bar_test.dart`, `nav_bar_transition_test.dart`, `bottom_tab_bar_test.dart`, `tab_scaffold_test.dart`, `tab_test.dart` (the relevant cases); goldens of the large title expanded and collapsed and of the transition in flight.
 **Proof:** G, `34.3-cupertino-tabs.png`: the example's tab scaffold with a large title.
 
 ### 34.4 Buttons and controls
-**Goal:** the Cupertino buttons, switch, checkbox, radio, slider, activity indicator and the two segmented controls.
+**Goal:** the Cupertino switch, checkbox, radio, slider, activity indicator and the two segmented controls.
 **Read:** SPEC §31.1.
-**Port from:** `cupertino/button.dart` (with the button-size maps of `constants.dart`: `kCupertinoButtonPadding`, `kCupertinoButtonSizeBorderRadius`, `kCupertinoButtonMinSize`, which need `CupertinoButtonSize`), `switch.dart`, `checkbox.dart`, `radio.dart`, `slider.dart`, `activity_indicator.dart`, `segmented_control.dart`, `sliding_segmented_control.dart`, `thumb_painter.dart`, `cupertino_focus_halo.dart` (`CupertinoFocusHalo`, 144 lines; the pinned commit has it and §31.1 did not list it; the test is `cupertino_focus_halo_test.dart`).
+**Port from:** `cupertino/switch.dart`, `checkbox.dart`, `radio.dart`, `slider.dart`, `activity_indicator.dart`, `segmented_control.dart`, `sliding_segmented_control.dart`, `thumb_painter.dart` (`button.dart` and `cupertino_focus_halo.dart` were done in step 34.3).
 **Files:** `cupertino/` (those files), `examples/cupertino/`.
 **Tasks:** each widget with its states, its haptic feedback calls (on platforms that have them), its semantics and its keyboard behavior on the desktop.
 **Tests:** the test files of each (the relevant cases); goldens of each in light and dark, enabled and disabled.

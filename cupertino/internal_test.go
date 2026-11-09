@@ -39,3 +39,16 @@ func TestStartPopGestureOfARouteThatDoesNotAllowIt(t *testing.T) {
 func TestHitTestableAtOriginOfAnUnmountedStatusBar(t *testing.T) {
 	requireRoute(t, func() { hitTestableAtOrigin(widgets.NewGlobalKey[widgets.State]()) }, "hitTestableAtOrigin.CupertinoStatusBarNotMounted")
 }
+
+func TestNavBarLargeTitleMissing(t *testing.T) {
+	// A large title that no one gives and the route does not have: the components cannot be made.
+	requireRoute(t, func() {
+		createNavBarLargeTitle(nil, navBarComponentsOpts{keys: newNavBarComponentsKeys(), large: true})
+	}, "createNavBarLargeTitle.NavigationBarLargeTitleMissing")
+}
+
+func TestNavBarLargeTitleStyleMissing(t *testing.T) {
+	requireRoute(t, func() {
+		newTransitionableNavigationBar(transitionableNavigationBarOpts{componentsKeys: newNavBarComponentsKeys(), largeExpanded: true})
+	}, "newTransitionableNavigationBar.NavigationBarLargeTitleStyleMissing")
+}
