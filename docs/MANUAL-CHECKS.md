@@ -929,3 +929,18 @@ The tests draw the scenes of the 3D view on Metal with the validation layer on a
 4. **Retina and scale 1**: move the window to a display of the other scale: the 3D view stays sharp.
 
 Answers: _(not yet recorded)_
+
+## 33.10 Windows and decorations (macOS)
+
+**Status:** pending
+
+The display tests run in an accessory app, whose windows never take the keys, never go to another Space and are never dragged by a real mouse button, so these need a person at a Mac.
+
+1. **Modal dialog**: `go run ./examples/multiwindow`, press "Open dialog": the dialog opens over the window and the window behind takes no click, no scroll and no key (clicking it brings the dialog forward); Command+W closes the dialog (not the window behind); the window behind has the keys again and is in front. Open two dialogs from a dialog and close them in both orders.
+2. **Close button of the blocked window**: with the dialog open, the red button of the window behind does nothing.
+3. **App-drawn title bar**: in an app that sets `DecorationsApp`, drag the bar: the window follows the mouse and the buttons of the app on the bar still work; the traffic lights are not covered by the app's content.
+4. **Double click on the bar**: set "Double-click a window's title bar to" in System Settings, Desktop & Dock to Zoom, Minimize and Do Nothing, and double-click the bar that the app draws: it zooms, minimizes or does nothing; the Zoom button of the bar always zooms.
+5. **Dock**: minimize a window, click the Dock icon: it comes back. With `QuitOnLastWindowClosed` false (an app with a tray icon), close the last window: the app stays in the Dock and the menu bar; Command+Q ends it.
+6. **Spaces, Mission Control and Stage Manager**: a window and its dialog on a second Space; Mission Control shows the dialog with its window; full screen on a window with a dialog open (the dialog stays over it); Stage Manager with two windows of the app.
+
+Answers: _(not yet recorded)_

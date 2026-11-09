@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -240,5 +241,74 @@ func TestDisplayCursorOverATextFieldAndAButton(t *testing.T) {
 	}
 	if len(seen) == 0 || seen[len(seen)-1] != "arrowCursor" {
 		t.Errorf("the cursors the app showed, in order: %v; want the arrow at the end", seen)
+	}
+}
+
+// TestDisplayQuitOnLastWindowClosed closes the only window with a scripted key (the hook closes it, as the user's
+// close button does) and looks at whether Run ends by itself: it does by default, and it does not when
+// Config.QuitOnLastWindowClosed is false, which keeps the app in the Dock (SPEC §29.4).
+func TestDisplayQuitOnLastWindowClosed(t *testing.T) {
+	tests := []struct {
+		name     string
+		quit     foundation.Opt[bool]
+		wantEnds bool
+	}{
+		{"default", foundation.Opt[bool]{}, true},
+		{"true", foundation.Some(true), true},
+		{"false", foundation.Some(false), false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var win platform.Window
+			var closed atomic.Bool
+			var cancelled atomic.Bool
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			go func() {
+				// The cancel is the end that the test forces when Run does not end by itself.
+				select {
+				case <-time.After(6 * time.Second):
+					cancelled.Store(true)
+					cancel()
+				case <-ctx.Done():
+				}
+			}()
+			env := func(k string) string {
+				if k == "GLUTTER_DEV_EVENTS" {
+					return "wait:300ms;key:KeyA"
+				}
+				return macEnv(k)
+			}
+			var err error
+			mainthread.Do(func() {
+				err = engine.Run(ctx, engine.Config{
+					Getenv:                 env,
+					Renderer:               "soft",
+					Logger:                 slog.New(slog.NewTextHandler(&syncBuffer{}, nil)),
+					Window:                 platform.WindowConfig{Title: "quit", Size: ui.Size{Width: 200, Height: 100}},
+					QuitOnLastWindowClosed: tc.quit,
+					Scene: func(ui.Size, float64) *ui.Scene {
+						return gputest.CanvasScene(func(c *ui.Canvas) {})
+					},
+					Hooks: engine.Hooks{
+						Window: func(w platform.Window, _ func()) { win = w },
+						Key: func(ui.KeyData) {
+							if closed.CompareAndSwap(false, true) && win != nil {
+								win.Close()
+							}
+						},
+					},
+				})
+			})
+			if err != nil {
+				t.Fatalf("Run: %v", err)
+			}
+			if !closed.Load() {
+				t.Fatal("the script never pressed the key that closes the window")
+			}
+			if ended := !cancelled.Load(); ended != tc.wantEnds {
+				t.Errorf("Run ended by itself = %v, want %v", ended, tc.wantEnds)
+			}
+		})
 	}
 }

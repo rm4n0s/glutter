@@ -29,6 +29,14 @@ func (s *system) registerClasses() error {
 			}},
 			{Name: "applicationShouldTerminateAfterLastWindowClosed:", Fn: func(objc.ID, objc.SEL, objc.ID) bool { return false }},
 			{Name: "applicationSupportsSecureRestorableState:", Fn: func(objc.ID, objc.SEL, objc.ID) bool { return true }},
+			// The click on the Dock icon of the running app brings back the windows that were minimized or
+			// hidden; AppKit's own answer (YES) would open a new document, which the app has no idea of.
+			{Name: "applicationShouldHandleReopen:hasVisibleWindows:", Fn: func(self objc.ID, _ objc.SEL, _ objc.ID, _ bool) bool {
+				if p := platformOf(self); p != nil {
+					p.guard(p.reopen)
+				}
+				return false
+			}},
 			{Name: "applicationDidHide:", Fn: func(self objc.ID, _ objc.SEL, _ objc.ID) {
 				if p := platformOf(self); p != nil {
 					p.guard(func() { p.setAppHidden(true) })
@@ -72,8 +80,9 @@ func (s *system) registerClasses() error {
 		Name: "Window", Super: "NSWindow",
 		Methods: []objcx.Method{
 			// A borderless window answers NO by default; the app's windows always take the keys.
-			{Name: "canBecomeKeyWindow", Fn: func(objc.ID, objc.SEL) bool { return true }},
-			{Name: "canBecomeMainWindow", Fn: func(objc.ID, objc.SEL) bool { return true }},
+			// A window with a modal window over it is not asked (modal.go).
+			{Name: "canBecomeKeyWindow", Fn: func(self objc.ID, _ objc.SEL) bool { w := windowOf(self); return w == nil || !w.blocked() }},
+			{Name: "canBecomeMainWindow", Fn: func(self objc.ID, _ objc.SEL) bool { w := windowOf(self); return w == nil || !w.blocked() }},
 		},
 	}); err != nil {
 		return err

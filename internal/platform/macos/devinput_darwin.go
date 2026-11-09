@@ -17,10 +17,11 @@ import (
 
 // The NSEventType values of the events that are made.
 const (
-	eventTypeLeftMouseDown uint64 = 1
-	eventTypeLeftMouseUp   uint64 = 2
-	eventTypeMouseMoved    uint64 = 5
-	eventTypeMouseEntered  uint64 = 8
+	eventTypeLeftMouseDown    uint64 = 1
+	eventTypeLeftMouseUp      uint64 = 2
+	eventTypeLeftMouseDragged uint64 = 6
+	eventTypeMouseMoved       uint64 = 5
+	eventTypeMouseEntered     uint64 = 8
 )
 
 // The CGEvent fields of a scroll wheel event that the scripts set.

@@ -97,6 +97,11 @@ func (p *Platform) NewWindow(cfg platform.WindowConfig) (win platform.Window, er
 	}
 	p.nextView++
 	p.windows[w.id] = w
+	if w.style.Modal {
+		if parent, ok := p.windows[cfg.Parent]; ok {
+			p.openModal(w, parent)
+		}
+	}
 	if p.handler != nil { // a window made while Run is going shows itself after the call returns
 		p.Post(p.showNewWindows)
 	}
@@ -417,13 +422,30 @@ func (w *window) StartDrag(ui.DragRequest) error {
 	return errors.New(TagMacOSDragUnavailable, "drag and drop from a window comes with step 33.11")
 }
 
-// PerformWindowAction does what the title bar of the app asks. Moves, resizes and the menu need the input
-// events that come with step 33.3.
+// PerformWindowAction does what the title bar of the app asks (SPEC §29.4). A move is AppKit's own, started
+// from the press that is down. A resize from a chosen edge and the window menu have no counterpart on macOS
+// (the edges of the window resize it, and there is no window menu), so they do nothing. The maximize and the
+// restore that come from a double click on the bar do what the system setting "Double-click a window's title
+// bar to" says.
 func (w *window) PerformWindowAction(action ui.WindowAction) {
 	if w.closed {
 		return
 	}
+	if k := action.Kind; k == ui.WindowActionMaximize || k == ui.WindowActionRestore {
+		var ok bool
+		if action.Kind, ok = w.titleBarAction(k); !ok {
+			return
+		}
+	}
 	switch action.Kind {
+	case ui.WindowActionMove:
+		if !w.blocked() {
+			w.startMove()
+		}
+	case ui.WindowActionActivate:
+		if !w.blocked() {
+			w.activate()
+		}
 	case ui.WindowActionMinimize:
 		w.SetState(platform.WindowStateMinimized)
 	case ui.WindowActionMaximize:
@@ -487,6 +509,10 @@ func (w *window) Close() {
 
 // shouldClose is windowShouldClose: the user's close button asks the handler.
 func (w *window) shouldClose() bool {
+	if w.blocked() { // a window with a modal window over it cannot be closed by the user
+		w.redirectToModal()
+		return false
+	}
 	if w.p.handler == nil {
 		return true
 	}
@@ -514,6 +540,7 @@ func (w *window) finishClose() {
 	w.cv = nil
 	w.pool.Close()
 	delete(w.p.windows, w.id)
+	w.p.closedModal(w)
 	w.p.updateLifecycle()
 	w.ns.Send(sel("setDelegate:"), objc.ID(0))
 	if w.cfg.HasParent {
@@ -521,7 +548,7 @@ func (w *window) finishClose() {
 			parent.ns.Send(sel("removeChildWindow:"), w.ns)
 		}
 	}
-	if len(w.p.windows) == 0 && w.p.handler != nil {
+	if len(w.p.windows) == 0 && w.p.handler != nil && w.p.quitOnLastClose {
 		w.p.Post(w.p.stopLoop)
 	}
 	objcx.Release(w.delegate)
@@ -558,7 +585,7 @@ func (w *window) reportMetrics() {
 		// The title bar is the part of the window that the content layout rectangle leaves out.
 		frame := send[nsRect](w.ns, "frame")
 		layout := send[nsRect](w.ns, "contentLayoutRect")
-		m.ViewPadding.Top = math.Max(0, frame.Size.Height-layout.Size.Height) * w.scale
+		m.ViewPadding.Top = titleBarPadding(boxRect{W: frame.Size.Width, H: frame.Size.Height}, boxRect{W: layout.Size.Width, H: layout.Size.Height}, w.scale)
 	}
 	if id, ok := w.displayID(); ok {
 		m.Display = foundation.Some(int(id))
@@ -614,6 +641,10 @@ func (w *window) didChangeScreen() {
 
 // keyChanged is the window becoming or no longer being the key window: the focus of the view and of the keyboard.
 func (w *window) keyChanged(key bool) {
+	if key && w.blocked() { // the keys of a window with a modal window over it go to that one
+		w.redirectToModal()
+		return
+	}
 	w.activated = key
 	if !key && w.p.kb != nil {
 		// The keys that are down go up in another window or app: the framework is told now, and does not

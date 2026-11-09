@@ -65,6 +65,10 @@ type Config struct {
 	// cache of Vulkan, SPEC §9.7); the default is $XDG_CACHE_HOME/glutter/shaders. GLUTTER_SHADER_CACHE=0 turns
 	// the cache off whatever this says.
 	ShaderCacheDir string
+	// QuitOnLastWindowClosed says that Run returns when the last window is closed. None means true, as on
+	// Linux and Windows. On macOS, false keeps the app running in the Dock without a window, which is the
+	// convention of an app with a tray icon and of a document app (SPEC §29.4); other platforms ignore it.
+	QuitOnLastWindowClosed foundation.Opt[bool]
 	// ShmFill is a development aid: on Wayland the window draws a solid color
 	// through wl_shm and never asks the engine for a frame. X11 has no such mode.
 	ShmFill bool

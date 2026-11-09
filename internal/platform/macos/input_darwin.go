@@ -3,6 +3,8 @@
 package macos
 
 import (
+	"strings"
+
 	"github.com/ebitengine/purego/objc"
 	"github.com/rm4n0s/glutter/internal/platform"
 	"github.com/rm4n0s/glutter/internal/platform/darwin/objcx"
@@ -36,9 +38,16 @@ const (
 // viewEvent registers a method of the view that takes an NSEvent and calls fn on the window of the view,
 // under the platform's guard; the data that the call made goes to the handler afterwards.
 func viewEvent(name string, fn func(w *window, ev objc.ID)) objcx.Method {
+	isDown := strings.Contains(name, "ouseDown:")
 	return objcx.Method{Name: name, Fn: func(self objc.ID, _ objc.SEL, ev objc.ID) {
 		w := windowOf(self)
 		if w == nil || w.closed {
+			return
+		}
+		if w.blocked() { // a window with a modal window over it takes no input; a press brings the modal window forward
+			if isDown {
+				w.p.guard(w.redirectToModal)
+			}
 			return
 		}
 		w.p.guard(func() {

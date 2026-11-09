@@ -32,6 +32,9 @@ type Options struct {
 	// Accessory makes the app an accessory app: no Dock icon, no menu bar, never activated. The display
 	// tests use it so that they never take the focus from the user's apps (SPEC §29.13).
 	Accessory bool
+	// QuitOnLastWindowClosed says that Run returns when the last window is closed; None means true. When it
+	// is false the app stays running in the Dock with no window (SPEC §29.4).
+	QuitOnLastWindowClosed foundation.Opt[bool]
 }
 
 // Platform is the AppKit backend of platform.Platform: the app and its run loop on the main thread,
@@ -74,6 +77,18 @@ type Platform struct {
 	menus *menuBar
 	// accessory says the app is an accessory app (Options.Accessory).
 	accessory bool
+	// quitOnLastClose is Options.QuitOnLastWindowClosed with its default.
+	quitOnLastClose bool
+	// performDrag moves a window by the press that is down (dragWindow); the tests replace it, since a scripted press
+	// is not a button that is really down.
+	performDrag func(w *window, ev objc.ID)
+	// testEvent, when set by a test, is the current event: the events that the tests send to a view are not
+	// dispatched by NSApp, which has none then.
+	testEvent func() objc.ID
+	// testDoubleClick, when set by a test, is the setting of the double click on a title bar.
+	testDoubleClick func() string
+	// modals are the modal windows that are open and the windows they block (modal.go).
+	modals modalStack
 	// watch reads the system settings and watches them (settings_darwin.go).
 	watch *settingsWatch
 	// lc remembers the lifecycle state that was reported; appHidden says the app is hidden (Command+H);
@@ -142,6 +157,8 @@ func New(opts Options) (*Platform, error) {
 		p.getenv = os.Getenv
 	}
 	p.accessory = opts.Accessory
+	p.quitOnLastClose = opts.QuitOnLastWindowClosed.OrElse(true)
+	p.performDrag = dragWindow
 	p.base = s.mediaTime()
 	p.handle = objcx.NewHandle(p)
 	objcx.WithPool(func() {

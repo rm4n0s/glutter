@@ -257,7 +257,7 @@ func (p *Platform) sendKey(d ui.KeyData) bool {
 func keyMethods() []objcx.Method {
 	keyMethod := func(name string, kind int) objcx.Method {
 		return objcx.Method{Name: name, Fn: func(self objc.ID, _ objc.SEL, ev objc.ID) {
-			if w := windowOf(self); w != nil && !w.closed {
+			if w := windowOf(self); w != nil && !w.closed && !w.blocked() {
 				w.p.guard(func() { w.keyEvent(ev, kind, true) })
 			}
 		}}

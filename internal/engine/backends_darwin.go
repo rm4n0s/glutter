@@ -45,7 +45,7 @@ func connectDisplay(cfg *Config, getenv func(string) string, log *slog.Logger) (
 	default:
 		return nil, errors.New(tagBackendUnknown, "the backend must be appkit on macOS", "value", name)
 	}
-	p, err := macos.New(macos.Options{Logger: log, Getenv: getenv, Accessory: getenv(accessoryEnv) == "1"})
+	p, err := macos.New(macos.Options{Logger: log, Getenv: getenv, Accessory: getenv(accessoryEnv) == "1", QuitOnLastWindowClosed: cfg.QuitOnLastWindowClosed})
 	if err != nil {
 		return nil, err
 	}

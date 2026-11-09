@@ -308,6 +308,7 @@ func buildDefaultMenu(name string) objc.ID {
 	add(view, "Enter Full Screen", "toggleFullScreen:", "f", menuMaskCommand|menuMaskControl)
 
 	window := sub(add(menu, "Window", "", "", 0), "Window")
+	add(window, "Close Window", "performClose:", "w", menuMaskCommand)
 	add(window, "Minimize", "performMiniaturize:", "m", menuMaskCommand)
 	add(window, "Zoom", "performZoom:", "", 0)
 	sep(window)
