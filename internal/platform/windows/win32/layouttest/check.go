@@ -131,17 +131,29 @@ func runCommand(ctx context.Context, argv []string) ([]byte, int, error) {
 }
 
 var (
+	// gcc writes: static assertion failed: "RECT.left: offset"
 	failedAssertion = regexp.MustCompile(`static assertion failed: "([^"]*)"`)
-	missingHeader   = regexp.MustCompile(`fatal error: ([^:\s]+): No such file or directory`)
+	// clang writes: static assertion failed due to requirement 'sizeof(RECT) == 16': RECT: size
+	failedAssertionClang = regexp.MustCompile(`(?m)static assertion failed due to requirement '.*': (.+)$`)
+	// gcc writes: fatal error: d3d13.h: No such file or directory
+	missingHeader = regexp.MustCompile(`fatal error: ([^:\s]+): No such file or directory`)
+	// clang writes: fatal error: 'd3d13.h' file not found
+	missingHeaderClang = regexp.MustCompile(`fatal error: '([^']+)' file not found`)
 )
 
-// parseOutput reads the compiler's messages: the messages of the assertions that failed, and the
-// header it did not find.
+// parseOutput reads the compiler's messages: the messages of the assertions that failed (in the
+// wording of gcc and of clang, which the host of the fixture test may be), and the header it did
+// not find.
 func parseOutput(out []byte) (failed []string, header string) {
 	for _, m := range failedAssertion.FindAllSubmatch(out, -1) {
 		failed = append(failed, string(m[1]))
 	}
+	for _, m := range failedAssertionClang.FindAllSubmatch(out, -1) {
+		failed = append(failed, string(m[1]))
+	}
 	if m := missingHeader.FindSubmatch(out); m != nil {
+		header = string(m[1])
+	} else if m := missingHeaderClang.FindSubmatch(out); m != nil {
 		header = string(m[1])
 	}
 	return failed, header

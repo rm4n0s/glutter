@@ -3,7 +3,9 @@
 #
 # Usage: scripts/fetch-reference.sh   (from anywhere; works relative to the repo root)
 #
-# First run: clones the `stable` branch of flutter/flutter, the
+# First run: clones the `stable` branch of flutter/flutter (or, when GLUTTER_FLUTTER_COMMIT is set to a full commit hash,
+# that commit: the pinned Flutter of SPEC §25 is 3.47.7, abaf9c523780a608bd46686fd5e53740a07077f8, and a machine that
+# starts from nothing sets it so that it ports from the same sources as the others), the
 # material-color-utilities repository, Skia (at Flutter's pinned revision), flutter_svg (at the commit pinned
 # below) and SDL 3 (at the release tag pinned below) into reference/, then records the exact commits in reference/VERSION.
 # Later runs: reference/VERSION exists, so exactly the recorded commits are
@@ -29,6 +31,7 @@ FLUTTER_PATHS=(
   engine/src/flutter/shell/platform/android
   engine/src/flutter/shell/platform/windows
   engine/src/flutter/shell/platform/common
+  engine/src/flutter/shell/platform/darwin
   engine/src/flutter/impeller/renderer/backend/vulkan
 )
 # Directories that Windows steps port from if the pinned commit has them (SPEC §25): the C++
@@ -83,7 +86,8 @@ clone_sparse() {
   shift 3
   local branch_args=()
   [[ -n "$branch" ]] && branch_args=(--branch "$branch")
-  git clone --quiet --depth 1 --filter=blob:none --sparse "${branch_args[@]}" "$url" "$dir"
+  # ${arr[@]+"${arr[@]}"}: the empty array is "unbound" under set -u in bash 3.2, which is the bash of macOS.
+  git clone --quiet --depth 1 --filter=blob:none --sparse ${branch_args[@]+"${branch_args[@]}"} "$url" "$dir"
   git -C "$dir" sparse-checkout set "$@"
 }
 
@@ -234,7 +238,7 @@ if [[ -f "$VERSION_FILE" ]]; then
     write_meshopt_version
   fi
 else
-  ensure_repo "$FLUTTER_URL" "$FLUTTER_DIR" "$FLUTTER_BRANCH" "" "${FLUTTER_PATHS[@]}" "${FLUTTER_OPTIONAL_PATHS[@]}"
+  ensure_repo "$FLUTTER_URL" "$FLUTTER_DIR" "$FLUTTER_BRANCH" "${GLUTTER_FLUTTER_COMMIT:-}" "${FLUTTER_PATHS[@]}" "${FLUTTER_OPTIONAL_PATHS[@]}"
   ensure_repo "$MCU_URL" "$MCU_DIR" "" "" "${MCU_PATHS[@]}"
   skia_commit="$(sed -n "s/^[[:space:]]*'skia_revision': '\([0-9a-f]*\)'.*/\1/p" "$FLUTTER_DIR/DEPS" | head -n 1)"
   ensure_repo "$SKIA_URL" "$SKIA_DIR" "" "$skia_commit" "${SKIA_PATHS[@]}"

@@ -12,7 +12,8 @@ import (
 // TestBuildsHaveTheirOwnBackends lists what an app imports on each target (SPEC §24 and §25,
 // "Build tags"): Linux has the Wayland and X11 backends, Android has none of the desktop backends
 // (only the purego loader dl, which the gles and vulkan renderers share), the web has neither, and
-// Windows has none of the Linux, Android or web backends (SPEC §6.3 rules 2 and 7). It needs no NDK
+// Windows has none of the Linux, Android or web backends, and macOS has none of the Linux, Windows,
+// Android or web ones (SPEC §6.3 rules 2 and 7, §29). It needs no NDK
 // and no Wine: go list does not compile. The tests run go on the host, so they are not built for
 // Windows, where the unit tests run under Wine (scripts/test-windows.sh).
 func TestBuildsHaveTheirOwnBackends(t *testing.T) {
@@ -27,12 +28,14 @@ func TestBuildsHaveTheirOwnBackends(t *testing.T) {
 		none         []string // prefixes below internal/platform/ that must not be there
 		onlyDL       bool     // internal/platform/linux/ may only hold dl
 	}{
-		{name: "linux", goos: "linux", goarch: "amd64", want: []string{"linux", "linux/wayland", "linux/x11", "linux/fontconfig"}, none: []string{"web", "android"}},
-		{name: "js", goos: "js", goarch: "wasm", want: []string{"web"}, none: []string{"linux/", "android"}},
-		{name: "android/arm64", goos: "android", goarch: "arm64", none: []string{"web"}, onlyDL: true},
-		{name: "android/amd64", goos: "android", goarch: "amd64", none: []string{"web"}, onlyDL: true},
-		{name: "windows/amd64", goos: "windows", goarch: "amd64", want: []string{"windows", "windows/win32"}, none: []string{"linux", "android", "web"}},
-		{name: "windows/arm64", goos: "windows", goarch: "arm64", want: []string{"windows", "windows/win32"}, none: []string{"linux", "android", "web"}},
+		{name: "linux", goos: "linux", goarch: "amd64", want: []string{"linux", "linux/wayland", "linux/x11", "linux/fontconfig"}, none: []string{"web", "android", "darwin", "macos"}},
+		{name: "js", goos: "js", goarch: "wasm", want: []string{"web"}, none: []string{"linux/", "android", "darwin", "macos"}},
+		{name: "android/arm64", goos: "android", goarch: "arm64", none: []string{"web", "darwin", "macos"}, onlyDL: true},
+		{name: "android/amd64", goos: "android", goarch: "amd64", none: []string{"web", "darwin", "macos"}, onlyDL: true},
+		{name: "windows/amd64", goos: "windows", goarch: "amd64", want: []string{"windows", "windows/win32"}, none: []string{"linux", "android", "web", "darwin", "macos"}},
+		{name: "windows/arm64", goos: "windows", goarch: "arm64", want: []string{"windows", "windows/win32"}, none: []string{"linux", "android", "web", "darwin", "macos"}},
+		{name: "darwin/arm64", goos: "darwin", goarch: "arm64", none: []string{"linux", "windows", "android", "web"}},
+		{name: "darwin/amd64", goos: "darwin", goarch: "amd64", none: []string{"linux", "windows", "android", "web"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -91,7 +94,9 @@ func TestAppsWithDesktopServicesImportNoForeignBackend(t *testing.T) {
 		{name: "linux", goos: "linux", goarch: "amd64", none: []string{"android"}},
 		{name: "js", goos: "js", goarch: "wasm", none: []string{"linux/", "android"}},
 		{name: "android/arm64", goos: "android", goarch: "arm64", none: []string{"linux/wayland", "linux/x11", "linux/xkb", "linux/ime", "linux/input", "linux/fontconfig"}},
-		{name: "windows/amd64", goos: "windows", goarch: "amd64", none: []string{"linux", "android"}},
+		{name: "windows/amd64", goos: "windows", goarch: "amd64", none: []string{"linux", "android", "darwin", "macos"}},
+		// The plain Go of the web's services comes with package desktop on every desktop (as on Linux).
+		{name: "darwin/arm64", goos: "darwin", goarch: "arm64", none: []string{"linux", "windows", "android"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

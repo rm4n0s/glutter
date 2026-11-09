@@ -29,7 +29,10 @@ gobin="$(command -v go)"
 
 args=("$@")
 if [[ ${#args[@]} -eq 0 ]]; then
-  mapfile -t args < <(GOOS=js GOARCH=wasm go list ./... | grep -v -e '/cmd/' -e '/docs$' -e '/internal/webtool$' -e '/internal/webtest$' -e '/internal/wintool$')
+  # A loop, not mapfile: the bash of macOS is 3.2, which has no mapfile.
+  while IFS= read -r pkg; do
+    args+=("$pkg")
+  done < <(GOOS=js GOARCH=wasm go list ./... | grep -v -e '/cmd/' -e '/docs$' -e '/internal/webtool$' -e '/internal/webtest$' -e '/internal/wintool$')
 fi
 
 exec env -i \

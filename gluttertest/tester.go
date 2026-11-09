@@ -163,6 +163,7 @@ type Tester struct {
 // Flutter: flutter_test/lib/src/binding.dart TestWidgetsFlutterBinding.ensureInitialized
 func New(tb TB, opts ...Opts) *Tester {
 	tb.Helper()
+	pinApplePlatform(tb)
 	var o Opts
 	if len(opts) > 0 {
 		o = opts[0]

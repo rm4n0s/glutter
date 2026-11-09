@@ -21,6 +21,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -121,9 +122,17 @@ var AndroidPass = Pass{GOOS: "android", GOARCH: "arm64"}
 // Flutter: no counterpart.
 var WindowsPass = Pass{GOOS: "windows", GOARCH: "amd64", Tags: []string{"glutter_wine"}}
 
+// DarwinPass is the build for macOS with the tags of the display and audio tests, so that the
+// *_darwin.go files and the tests that open real windows are read (SPEC §29.13). It needs no
+// toolchain besides the go command: macOS is built without cgo.
+//
+// Flutter: no counterpart.
+var DarwinPass = Pass{GOOS: "darwin", GOARCH: "arm64", Tags: []string{"glutter_display", "glutter_audio"}}
+
 // DefaultPasses are the builds that together cover every file of the module: Linux, the
 // web, Linux with the tags of the display, browser and Wine tests (the host-side tests that start
-// Wine), Android (SPEC §24.13) and Windows with the tag of the Wine tests (SPEC §25.13).
+// Wine), Android (SPEC §24.13), Windows with the tag of the Wine tests (SPEC §25.13) and macOS
+// with the tags of the display and audio tests (SPEC §29.13).
 //
 // Flutter: no counterpart.
 var DefaultPasses = []Pass{
@@ -132,6 +141,21 @@ var DefaultPasses = []Pass{
 	{GOOS: "linux", GOARCH: "amd64", Tags: []string{"glutter_display", "glutter_browser", "glutter_wine"}},
 	AndroidPass,
 	WindowsPass,
+	DarwinPass,
+}
+
+// WithoutAndroid returns the passes with the Android one left out: for a machine that has no
+// NDK, where the *_android.go files cannot be read (the owner's Linux machine runs them, SPEC §21).
+//
+// Flutter: no counterpart.
+func WithoutAndroid(passes []Pass) []Pass {
+	out := make([]Pass, 0, len(passes))
+	for _, p := range passes {
+		if p.GOOS != "android" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // androidMinSDK is the API level of the NDK's clang (SPEC §24.1, D24).
@@ -160,7 +184,7 @@ func ndkClang(getenv func(string) string, goarch string) (string, error) {
 	if !ok {
 		return "", errors.New(TagErrCheckAndroidNDKNotFound, "no NDK clang is known for this architecture", "goarch", goarch)
 	}
-	cc := filepath.Join(ndk, "toolchains", "llvm", "prebuilt", "linux-x86_64", "bin", fmt.Sprintf("%s%d-clang", triple, androidMinSDK))
+	cc := filepath.Join(ndk, "toolchains", "llvm", "prebuilt", ndkHostTag(), "bin", fmt.Sprintf("%s%d-clang", triple, androidMinSDK))
 	if ndk == "" {
 		return "", errors.New(TagErrCheckAndroidNDKNotFound, "the Android NDK was not found; set ANDROID_NDK_HOME or ANDROID_HOME",
 			"install", `sdkmanager "ndk;30.0.16248370"`)
@@ -172,17 +196,27 @@ func ndkClang(getenv func(string) string, goarch string) (string, error) {
 	return cc, nil
 }
 
+// ndkHostTag is the name of the NDK's prebuilt directory for the machine that runs the check: the
+// NDK ships x86_64 programs for Linux and universal ones (named darwin-x86_64) for macOS.
+func ndkHostTag() string {
+	if runtime.GOOS == "darwin" {
+		return "darwin-x86_64"
+	}
+	return "linux-x86_64"
+}
+
 // Run is the subcommand. It prints the violations that the allow file does not list and
 // fails with ErrCheckViolations when there are some.
 //
 // Flutter: no counterpart.
-func Run(args []string) error { return run(args, os.Stdout) }
+func Run(args []string) error { return run(args, os.Stdout, DefaultPasses) }
 
-func run(args []string, stdout io.Writer) error {
+func run(args []string, stdout io.Writer, passes []Pass) error {
 	flags := flag.NewFlagSet("errcheck", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	root := flags.String("root", ".", "root directory of the module")
 	allowPath := flags.String("allow", "", "file that lists the accepted violations, one \"rule file:Func\" per line, with # comments")
+	skipAndroid := flags.Bool("skip-android", false, "leave out the Android pass, for a machine that has no NDK (the Linux machine runs it)")
 	if err := flags.Parse(args); err != nil {
 		return errors.NewErr(tagErrCheckBadFlags, err).SetMetadata("args", args)
 	}
@@ -193,7 +227,13 @@ func run(args []string, stdout io.Writer) error {
 			return err
 		}
 	}
-	found, err := CheckModule(context.Background(), *root, DefaultPasses)
+	if *skipAndroid {
+		passes = WithoutAndroid(passes)
+		if _, err := fmt.Fprintln(stdout, "errcheck: the Android pass is left out (-skip-android)"); err != nil {
+			return errors.NewErr(tagErrCheckWriteFailed, err)
+		}
+	}
+	found, err := CheckModule(context.Background(), *root, passes)
 	if err != nil {
 		return err
 	}

@@ -22,8 +22,13 @@ import (
 func withPlatform(t *testing.T, p foundation.TargetPlatform) {
 	t.Helper()
 	skipUnlessDebug(t)
+	prev, prevChosen := foundation.DebugDefaultTargetPlatformOverride(), platformChosen
 	foundation.SetDebugDefaultTargetPlatformOverride(foundation.Some(p))
-	t.Cleanup(func() { foundation.SetDebugDefaultTargetPlatformOverride(foundation.None[foundation.TargetPlatform]()) })
+	platformChosen = true
+	t.Cleanup(func() {
+		foundation.SetDebugDefaultTargetPlatformOverride(prev)
+		platformChosen = prevChosen
+	})
 }
 
 func TestMenuShortcutLabel(t *testing.T) {

@@ -430,6 +430,11 @@ func TestRunErrors(t *testing.T) {
 		if err := os.Remove(gone); err != nil {
 			t.Skip("cannot remove the working directory here")
 		}
+		if _, err := os.Getwd(); err == nil {
+			// macOS answers Getwd with the old path for a directory that was removed, so the
+			// failure that this case is about cannot happen there.
+			t.Skip("os.Getwd still answers for a removed working directory on this OS")
+		}
 		err := Run([]string{"-target", target})
 		appErr, ok := errors.FromError(err)
 		if !ok || !appErr.HasRoute("Run.ReexportGetwdFailed") {

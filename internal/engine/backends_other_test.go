@@ -1,4 +1,4 @@
-//go:build !linux && !js && !windows
+//go:build !linux && !js && !windows && !(darwin && !ios)
 
 package engine
 

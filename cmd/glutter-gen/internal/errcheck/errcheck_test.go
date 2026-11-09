@@ -331,6 +331,8 @@ func prefix() string { return "p" }
 }
 
 func TestRunReportsAndAccepts(t *testing.T) {
+	// One pass is enough for the fixture, and the test must not need an NDK.
+	passes := []Pass{{GOOS: "linux", GOARCH: "amd64"}}
 	root := fixtureModule(t, map[string]string{"fix/fix.go": violations})
 	allowDir := t.TempDir()
 	write := func(name, content string) string {
@@ -357,7 +359,7 @@ func TestRunReportsAndAccepts(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var out bytes.Buffer
-			err := run(tt.args, &out)
+			err := run(tt.args, &out, passes)
 			appErr, ok := errors.FromError(err)
 			if !ok {
 				t.Fatalf("expected *errors.Error, got %T: %v", err, err)
@@ -385,7 +387,7 @@ func TestRunReportsAndAccepts(t *testing.T) {
 		}
 		allow := write("all", strings.Join(lines, "\n")+"\n")
 		var out bytes.Buffer
-		if err := run([]string{"-root", root, "-allow", allow}, &out); err != nil {
+		if err := run([]string{"-root", root, "-allow", allow}, &out, passes); err != nil {
 			t.Fatalf("run failed: %v\n%s", err, out.String())
 		}
 		if !strings.Contains(out.String(), "0 violations") {
@@ -420,12 +422,7 @@ func TestTheModuleKeepsTheErrorRules(t *testing.T) {
 		// Without an NDK the *_android.go files cannot be read; scripts/check-android.sh and
 		// the errcheck command fail in that case (SPEC §24.13).
 		t.Logf("the Android pass is left out: %v", err)
-		passes = nil
-		for _, p := range DefaultPasses {
-			if p.GOOS != "android" {
-				passes = append(passes, p)
-			}
-		}
+		passes = WithoutAndroid(DefaultPasses)
 	}
 	vs, err := CheckModule(context.Background(), root, passes)
 	if err != nil {
@@ -452,7 +449,7 @@ func TestNDKClang(t *testing.T) {
 	tree := func(t *testing.T, versions ...string) string {
 		home := t.TempDir()
 		for _, v := range versions {
-			bin := filepath.Join(home, "ndk", v, "toolchains", "llvm", "prebuilt", "linux-x86_64", "bin")
+			bin := filepath.Join(home, "ndk", v, "toolchains", "llvm", "prebuilt", ndkHostTag(), "bin")
 			if err := os.MkdirAll(bin, 0o755); err != nil {
 				t.Fatal(err)
 			}
@@ -469,13 +466,13 @@ func TestNDKClang(t *testing.T) {
 		wantEnd string // the end of the clang's path
 		wantErr bool
 	}{
-		{name: "the newest NDK of the SDK", goarch: "arm64", wantEnd: filepath.Join("ndk", "30.0.1", "toolchains", "llvm", "prebuilt", "linux-x86_64", "bin", "aarch64-linux-android26-clang"),
+		{name: "the newest NDK of the SDK", goarch: "arm64", wantEnd: filepath.Join("ndk", "30.0.1", "toolchains", "llvm", "prebuilt", ndkHostTag(), "bin", "aarch64-linux-android26-clang"),
 			env: func(t *testing.T) map[string]string {
 				return map[string]string{"ANDROID_HOME": tree(t, "29.0.9", "30.0.1")}
 			}},
 		{name: "ANDROID_SDK_ROOT is used when ANDROID_HOME is not set", goarch: "arm64", wantEnd: "aarch64-linux-android26-clang",
 			env: func(t *testing.T) map[string]string { return map[string]string{"ANDROID_SDK_ROOT": tree(t, "30.0.1")} }},
-		{name: "ANDROID_NDK_HOME wins", goarch: "arm64", wantEnd: filepath.Join("pinned", "toolchains", "llvm", "prebuilt", "linux-x86_64", "bin", "aarch64-linux-android26-clang"),
+		{name: "ANDROID_NDK_HOME wins", goarch: "arm64", wantEnd: filepath.Join("pinned", "toolchains", "llvm", "prebuilt", ndkHostTag(), "bin", "aarch64-linux-android26-clang"),
 			env: func(t *testing.T) map[string]string {
 				home := tree(t, "30.0.1")
 				pinned := filepath.Join(home, "pinned")
@@ -560,6 +557,7 @@ func TestDefaultPassesCoverEveryBuild(t *testing.T) {
 		{"the host-side Wine tests", "linux", "amd64", "glutter_wine"},
 		{"Android", "android", "arm64", ""},
 		{"Windows with the Wine tests", "windows", "amd64", "glutter_wine"},
+		{"macOS with the display tests", "darwin", "arm64", "glutter_display"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -573,5 +571,55 @@ func TestDefaultPassesCoverEveryBuild(t *testing.T) {
 			}
 			t.Errorf("no default pass for %s/%s with the tag %q", tt.goos, tt.goarch, tt.tag)
 		})
+	}
+}
+
+// TestWithoutAndroid checks that only the Android pass is left out of a list.
+func TestWithoutAndroid(t *testing.T) {
+	got := WithoutAndroid(DefaultPasses)
+	if len(got) != len(DefaultPasses)-1 {
+		t.Fatalf("len = %d, want %d", len(got), len(DefaultPasses)-1)
+	}
+	for _, p := range got {
+		if p.GOOS == "android" {
+			t.Errorf("the Android pass is still there: %+v", p)
+		}
+	}
+	if len(DefaultPasses) != len(WithoutAndroid(append(WithoutAndroid(DefaultPasses), AndroidPass)))+1 {
+		t.Error("WithoutAndroid of a list that has one Android pass should drop exactly one")
+	}
+}
+
+// TestRunSkipAndroid checks that -skip-android lets the command run on a machine with no NDK, says
+// so, and still reports the violations of the other passes; without the flag the same machine fails
+// with ErrCheckAndroidNDKNotFound.
+func TestRunSkipAndroid(t *testing.T) {
+	t.Setenv("ANDROID_NDK_HOME", "")
+	t.Setenv("ANDROID_HOME", "")
+	t.Setenv("ANDROID_SDK_ROOT", "")
+	root := fixtureModule(t, map[string]string{"fix/fix.go": violations})
+	passes := []Pass{{GOOS: "linux", GOARCH: "amd64"}, AndroidPass}
+
+	var out bytes.Buffer
+	err := run([]string{"-root", root, "-skip-android"}, &out, passes)
+	appErr, ok := errors.FromError(err)
+	if !ok {
+		t.Fatalf("expected *errors.Error, got %T: %v", err, err)
+	}
+	if appErr.Tag != tagErrCheckViolations || !appErr.HasRoute("run."+tagErrCheckViolations) {
+		t.Errorf("tag %q, route %s", appErr.Tag, appErr.Route())
+	}
+	if !strings.Contains(out.String(), "the Android pass is left out") || !strings.Contains(out.String(), "[error-helper] helper") {
+		t.Errorf("output = %q", out.String())
+	}
+
+	out.Reset()
+	err = run([]string{"-root", root}, &out, passes)
+	appErr, ok = errors.FromError(err)
+	if !ok {
+		t.Fatalf("expected *errors.Error, got %T: %v", err, err)
+	}
+	if !appErr.HasRoute("run->CheckModule->checkPass->ndkClang." + TagErrCheckAndroidNDKNotFound) {
+		t.Errorf("unexpected failure path: %s", appErr.Route())
 	}
 }

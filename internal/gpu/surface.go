@@ -37,6 +37,12 @@ const (
 	//
 	// Flutter: no counterpart
 	SurfaceKindWin32 SurfaceKind = "win32"
+	// SurfaceKindMetalLayer is the CAMetalLayer of a macOS or iOS view (SPEC §29.5). Window is the
+	// layer, retained by the platform for as long as the window lives; Display and Surface are zero.
+	// Only the Metal backend looks inside.
+	//
+	// Flutter: no counterpart
+	SurfaceKindMetalLayer SurfaceKind = "metal"
 	// SurfaceKindFake is the surface of the scripted test platform. No GPU
 	// backend renders into it.
 	//

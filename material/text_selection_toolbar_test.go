@@ -57,7 +57,7 @@ func (w *toolbarTestBox) Build(widgets.BuildContext) widgets.Widget {
 // the compact one of the desktop) changes how many fit in the toolbar.
 func newToolbarTester(t *testing.T, opts ...gluttertest.Opts) *gluttertest.Tester {
 	t.Helper()
-	if foundation.DebugDefaultTargetPlatformOverride().IsNone() {
+	if p := foundation.DebugDefaultTargetPlatformOverride(); p.IsNone() || (applePinned && !platformChosen) {
 		withPlatform(t, foundation.TargetPlatformAndroid)
 	}
 	var o gluttertest.Opts

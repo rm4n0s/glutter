@@ -144,8 +144,8 @@ type CollectionOpts struct {
 	// Matcher decides the fallback order. When nil, the Collection scans the system
 	// font directories with go-text's fontscan, and keeps its index in CacheDir.
 	Matcher Matcher
-	// CacheDir is where the fontscan index is kept. It defaults to
-	// $XDG_CACHE_HOME/glutter/fonts (~/.cache/glutter/fonts).
+	// CacheDir is where the fontscan index is kept. It defaults to glutter/fonts in the user's cache
+	// directory (os.UserCacheDir: $XDG_CACHE_HOME or ~/.cache on Linux, ~/Library/Caches on macOS).
 	CacheDir string
 	// Logger receives the non-fatal problems fontscan finds (fonts it cannot read).
 	// It defaults to a logger that discards them.

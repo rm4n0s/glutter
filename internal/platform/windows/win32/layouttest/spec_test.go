@@ -105,6 +105,8 @@ func TestParseOutput(t *testing.T) {
 		{"nothing", "", nil, ""},
 		{"two assertions", "layout.c:5:1: error: static assertion failed: \"RECT: size\"\nlayout.c:6:1: error: static assertion failed: \"RECT.top: offset\"\n", []string{"RECT: size", "RECT.top: offset"}, ""},
 		{"a missing header", "layout.c:2:10: fatal error: d3d13.h: No such file or directory\n", nil, "d3d13.h"},
+		{"two assertions in clang's words", "layout.c:5:16: error: static assertion failed due to requirement 'sizeof(RECT) == 8': RECT: size\n    5 | _Static_assert(sizeof(RECT) == 8, \"RECT: size\");\nlayout.c:6:16: error: static assertion failed due to requirement 'offsetof(RECT, top) == 4': RECT.top: offset\n", []string{"RECT: size", "RECT.top: offset"}, ""},
+		{"a missing header in clang's words", "layout.c:2:10: fatal error: 'd3d13.h' file not found\n", nil, "d3d13.h"},
 		{"another error", "layout.c:5:1: error: unknown type name 'FOO'\n", nil, ""},
 	}
 	for _, tt := range tests {

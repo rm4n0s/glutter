@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/go-text/typesetting/font"
@@ -162,7 +163,20 @@ func (s *scanMatcher) Fallback(ctx context.Context, family string, weight int, i
 	}
 	fam, _ := s.fm.FontMetadata(face.Font)
 	loc := s.fm.FontLocation(face.Font)
+	if isPlaceholderFont(loc.File) {
+		return FontFile{}, false, nil
+	}
 	return FontFile{Path: loc.File, Index: int(loc.Index), Family: fam}, true, nil
+}
+
+// isPlaceholderFont says whether the font file is one whose glyphs only stand for a missing
+// glyph: Apple's Last Resort font (LastResort.otf, in /System/Library/Fonts) has a placeholder
+// for every code point, assigned or not, so it would "cover" any character. A character that no
+// real font has is reported as not found, as on Linux, and the framework draws the missing glyph
+// of the font that it asked for.
+func isPlaceholderFont(file string) bool {
+	base := filepath.Base(file)
+	return strings.EqualFold(strings.TrimSuffix(base, filepath.Ext(base)), "LastResort")
 }
 
 // Covers implements Coverer from the footprints of the scan, which keep the runes of every font (the

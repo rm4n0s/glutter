@@ -314,8 +314,13 @@ func TestScanMatcher(t *testing.T) {
 			t.Errorf("Face(%+v): %v", f, err)
 		}
 	}
-	// The index is kept in $XDG_CACHE_HOME/glutter/fonts.
-	matches, _ := filepath.Glob(filepath.Join(os.Getenv("XDG_CACHE_HOME"), "glutter", "fonts", "font_index_v*.cache"))
+	// The index is kept in the default cache directory, which differs by OS (fontscan builds its index
+	// once for the whole process, so a directory of the test's own would not be used).
+	cacheDir, err := defaultCacheDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	matches, _ := filepath.Glob(filepath.Join(cacheDir, "font_index_v*.cache"))
 	if len(matches) == 0 {
 		t.Error("the font index was not written to the cache directory")
 	}

@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -89,15 +90,20 @@ func TestChooserLogsTheParts(t *testing.T) {
 
 func TestNewShaderCache(t *testing.T) {
 	tmp := t.TempDir()
+	// XDG_CACHE_HOME is the base on Linux, LocalAppData on Windows, and ~/Library/Caches (under HOME) on
+	// macOS (defaultShaderCacheDir).
+	envDir := filepath.Join(tmp, "glutter", "shaders")
+	if runtime.GOOS == "darwin" {
+		envDir = filepath.Join(tmp, "Library", "Caches", "glutter", "shaders")
+	}
 	tests := []struct {
 		name    string
 		cfgDir  string
 		env     map[string]string
 		wantDir string // "" for no cache
 	}{
-		{"the config's directory", filepath.Join(tmp, "cfg"), map[string]string{"XDG_CACHE_HOME": "/x", "LocalAppData": "/x"}, filepath.Join(tmp, "cfg")},
-		// XDG_CACHE_HOME is the base on Linux and LocalAppData on Windows (defaultShaderCacheDir).
-		{"the environment's", "", map[string]string{"XDG_CACHE_HOME": tmp, "LocalAppData": tmp}, filepath.Join(tmp, "glutter", "shaders")},
+		{"the config's directory", filepath.Join(tmp, "cfg"), map[string]string{"XDG_CACHE_HOME": "/x", "LocalAppData": "/x", "HOME": "/x"}, filepath.Join(tmp, "cfg")},
+		{"the environment's", "", map[string]string{"XDG_CACHE_HOME": tmp, "LocalAppData": tmp, "HOME": tmp}, envDir},
 		{"turned off beats the config", filepath.Join(tmp, "cfg"), map[string]string{"GLUTTER_SHADER_CACHE": "0"}, ""},
 		{"no place for it", "", map[string]string{}, ""},
 	}

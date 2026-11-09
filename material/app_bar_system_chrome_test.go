@@ -22,8 +22,9 @@ import (
 func useAndroid(t *testing.T) {
 	t.Helper()
 	skipUnlessDebug(t) // the platform override is a debug-only feature
+	prev := foundation.DebugDefaultTargetPlatformOverride()
 	foundation.SetDebugDefaultTargetPlatformOverride(foundation.Some(foundation.TargetPlatformAndroid))
-	t.Cleanup(func() { foundation.SetDebugDefaultTargetPlatformOverride(foundation.None[foundation.TargetPlatform]()) })
+	t.Cleanup(func() { foundation.SetDebugDefaultTargetPlatformOverride(prev) })
 }
 
 // Ported from packages/flutter/test/material/app_bar_test.dart: the cases that read

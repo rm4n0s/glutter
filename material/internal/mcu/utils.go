@@ -207,7 +207,9 @@ func LabFromArgb(argb uint32) [3]float64 {
 	fx := labF(x / whitePointD65[0])
 	fy := labF(y / whitePointD65[1])
 	fz := labF(z / whitePointD65[2])
-	return [3]float64{116.0*fy - 16, 500.0 * (fx - fy), 200.0 * (fy - fz)}
+	// float64() makes the product round before the subtraction, as in the reference: without it Go on
+	// arm64 (and any CPU with fused multiply-add) rounds once, and a tone can differ by a step.
+	return [3]float64{float64(116.0*fy) - 16, 500.0 * (fx - fy), 200.0 * (fy - fz)}
 }
 
 // ArgbFromLstar converts an L* value to the ARGB representation of the grayscale
@@ -224,7 +226,7 @@ func ArgbFromLstar(lstar float64) uint32 {
 // Flutter: material-color-utilities utils/color_utils.dart ColorUtils.lstarFromArgb
 func LstarFromArgb(argb uint32) float64 {
 	y := XyzFromArgb(argb)[1]
-	return 116.0*labF(y/100.0) - 16.0
+	return float64(116.0*labF(y/100.0)) - 16.0 // float64(): no fused multiply-add, as in LstarFromY
 }
 
 // YFromLstar converts an L* value to a Y value: both measure luminance, L*
@@ -239,7 +241,10 @@ func YFromLstar(lstar float64) float64 {
 //
 // Flutter: material-color-utilities utils/color_utils.dart ColorUtils.lstarFromY
 func LstarFromY(y float64) float64 {
-	return labF(y/100.0)*116.0 - 16.0
+	// float64() stops the compiler from fusing the multiply and the subtraction into one rounding
+	// (arm64 does it, amd64 does not): the reference rounds twice, and the contrast of the monochrome
+	// scheme at level 0.5 depends on it (found with `bisect -compile=fma`, step 33.1).
+	return float64(labF(y/100.0)*116.0) - 16.0
 }
 
 // Linearized linearizes an RGB component: 0 <= rgbComponent <= 255 becomes

@@ -78,7 +78,7 @@ This file breaks the milestones in `docs/SPEC.md` §18 into small steps. Each st
    go test -race ./...
    CGO_ENABLED=0 go build ./...
    CGO_ENABLED=0 go test ./...
-   go run ./cmd/glutter-gen errcheck -allow cmd/glutter-gen/errcheck.allow
+   go run ./cmd/glutter-gen errcheck -allow cmd/glutter-gen/errcheck.allow -skip-android   # drop -skip-android when ANDROID_HOME is set
    go run ./cmd/glutter-gen uintptrcheck -allow cmd/glutter-gen/uintptrcheck.allow
    GOOS=darwin GOARCH=amd64 go build ./...
    GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build ./... && GOOS=linux GOARCH=amd64 go vet ./...
@@ -4224,7 +4224,7 @@ The steps are developed on the owner's Mac (Apple silicon, macOS 27, the Command
 ### 33.2 The app, the run loop and windows with `soft`
 **Goal:** `examples/counter` shows its first frame in an `NSWindow`, drawn by `soft` into IOSurfaces; windows open, resize live, move between displays and scales, minimize, zoom, go full screen, hide and close; an idle app sleeps.
 **Read:** SPEC §29.3, §29.4, §29.5 (`soft` into the window), §13, §8.4, §8.7, §8.11 ("Frame pacing", "Resizing and scaling"), §9.6.
-**Port from:** `shell/platform/darwin/macos/framework/Source/FlutterViewController.mm` (the view, `viewDidChangeBackingProperties`, the layout), `FlutterView.mm`, `FlutterDisplayLink.mm`, `FlutterVSyncWaiter.mm`, `FlutterAppDelegate.mm`, `FlutterRunLoop.mm` (if the pinned commit has it), `FlutterWindowController.mm` (the multi-window code of the pinned commit, if it has it).
+**Port from:** `shell/platform/darwin/macos/framework/Source/FlutterViewController.mm` (the view, `viewDidChangeBackingProperties`, the layout), `FlutterView.mm`, `FlutterDisplayLink.mm`, `FlutterVSyncWaiter.mm`, `FlutterAppDelegate.mm`, `FlutterRunLoop.swift` (if the pinned commit has it), `FlutterWindowController.mm` (the multi-window code of the pinned commit, if it has it).
 **Files:** `internal/platform/macos/` (`platform_darwin.go`, `loop_darwin.go`, `window_darwin.go`, `view_darwin.go`, `displays_darwin.go`, `displaylink_darwin.go`, plain-Go `timers.go`, `pacer.go`, `winstyle.go`, `geometry.go`), `internal/platform/darwin/` (`iosurface_darwin.go`, the pixel target), `internal/engine/backends_darwin.go`.
 **Tasks:**
 1. Process start: the main thread locked in `init`, `NSApplication` with the activation policy of SPEC §29.1 (regular; accessory under the display tests), the app delegate, `MacOSNotMainThread`.
@@ -4556,7 +4556,7 @@ iOS after Cupertino (D38). It needs Xcode (the full app, not only the Command Li
 ### 35.2 The scene, the view and frames with `soft`
 **Goal:** `examples/counter` shows its first frame in the Simulator, drawn by `soft`, with the safe area, rotation and the lifecycle.
 **Read:** SPEC §30.2, §30.3, §30.8, §29.3, §29.5 (the IOSurface target), §13.
-**Port from:** `FlutterViewController.mm` (iOS: `viewDidLayoutSubviews`, `viewSafeAreaInsetsDidChange`, the keyboard frame notifications, `surfaceUpdated`), `FlutterView.mm`, `vsync_waiter_ios.mm`, `FlutterAppDelegate.mm`, `FlutterSceneDelegate.m`, `FlutterSceneLifeCycle.mm` (if present).
+**Port from:** `FlutterViewController.mm` (iOS: `viewDidLayoutSubviews`, `viewSafeAreaInsetsDidChange`, the keyboard frame notifications, `surfaceUpdated`), `FlutterView.mm`, `vsync_waiter_ios.mm`, `FlutterAppDelegate.mm`, `FlutterSceneDelegate.mm`, `FlutterSceneLifeCycle.mm` (if present).
 **Files:** `internal/platform/ios/` (`platform_ios.go`, `scene_ios.go`, `view_ios.go`, `displaylink_ios.go`, plain-Go `metrics.go`, `lifecycle.go`), `internal/engine/backends_ios.go`.
 **Tasks:** the app and scene delegates, the view controller and the `GlutterView`, `Post` and timers (shared with macOS through `internal/platform/darwin`), the `CADisplayLink` with the frame rate range, `ViewMetrics` with the safe area and the keyboard insets, rotation and `SetPreferredOrientations`, the lifecycle of SPEC §30.8, frames stopped in the background, `soft` through the IOSurface target.
 **Tests:** the metrics conversion (the notch, the home indicator, a rotation, the keyboard frame in each orientation); the lifecycle mapping.
