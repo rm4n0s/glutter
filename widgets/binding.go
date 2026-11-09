@@ -225,6 +225,7 @@ type WidgetsBinding struct {
 	chrome       *services.SystemChrome
 	haptic       *services.HapticFeedback
 	browserMenu  *services.BrowserContextMenu
+	menuDelegate PlatformMenuDelegate
 	clipboard    *services.Clipboard
 	textInput    *services.TextInput
 	focusManager *FocusManager
@@ -380,6 +381,7 @@ func NewWidgetsBinding(ctx context.Context, d *ui.PlatformDispatcher, opts ...Wi
 	b.chrome = services.NewSystemChrome(d)
 	b.haptic = services.NewHapticFeedback(d)
 	b.browserMenu = services.NewBrowserContextMenu(d)
+	b.menuDelegate = NewDefaultPlatformMenuDelegate(b)
 	b.clipboard = services.NewClipboard(d)
 	b.textInput = services.NewTextInput(services.TextInputOpts{Backend: d, Post: d.Post})
 	d.OnTextInput = b.textInput.HandleTextInput
@@ -591,6 +593,18 @@ func (b *WidgetsBinding) HapticFeedback() *services.HapticFeedback { return b.ha
 //
 // Flutter: services/browser_context_menu.dart BrowserContextMenu
 func (b *WidgetsBinding) BrowserContextMenu() *services.BrowserContextMenu { return b.browserMenu }
+
+// PlatformMenuDelegate is the delegate that PlatformMenuBar uses to put its menus in the platform's menu
+// bar; it is a DefaultPlatformMenuDelegate unless SetPlatformMenuDelegate replaced it.
+//
+// Flutter: widgets/binding.dart WidgetsBinding.platformMenuDelegate
+func (b *WidgetsBinding) PlatformMenuDelegate() PlatformMenuDelegate { return b.menuDelegate }
+
+// SetPlatformMenuDelegate replaces the delegate that PlatformMenuBar uses, which tests do to see the menus.
+// The menus that the old delegate has set stay where they are.
+//
+// Flutter: widgets/binding.dart WidgetsBinding.platformMenuDelegate=
+func (b *WidgetsBinding) SetPlatformMenuDelegate(d PlatformMenuDelegate) { b.menuDelegate = d }
 
 // Clipboard is the system clipboard; see services.Clipboard.
 //

@@ -105,7 +105,18 @@ func IntentForMacOSSelector(selectorName string) Intent {
 }
 
 // macSelectorIntents makes the intent of each selector; a function, so that every call has its own intent.
+//
+// Deviation: the first six, the commands of the Edit menu that AppKit sends to the first responder (cut:, copy:,
+// paste:, selectAll:, undo:, redo:), are Glutter's: Flutter's template menu reaches them some other way
+// (SPEC §12.10).
 var macSelectorIntents = map[string]func() Intent{
+	"cut:":       func() Intent { return NewCopySelectionTextIntentCut(services.SelectionChangedCauseKeyboard) },
+	"copy:":      func() Intent { return NewCopySelectionTextIntentCopy() },
+	"paste:":     func() Intent { return PasteTextIntent{Cause: services.SelectionChangedCauseKeyboard} },
+	"selectAll:": func() Intent { return SelectAllTextIntent{Cause: services.SelectionChangedCauseKeyboard} },
+	"undo:":      func() Intent { return UndoTextIntent{Cause: services.SelectionChangedCauseKeyboard} },
+	"redo:":      func() Intent { return RedoTextIntent{Cause: services.SelectionChangedCauseKeyboard} },
+
 	"deleteBackward:":          func() Intent { return NewDeleteCharacterIntent(false) },
 	"deleteWordBackward:":      func() Intent { return NewDeleteToNextWordBoundaryIntent(false) },
 	"deleteToBeginningOfLine:": func() Intent { return NewDeleteToLineBreakIntent(false) },

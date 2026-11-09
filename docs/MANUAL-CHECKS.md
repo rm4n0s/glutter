@@ -882,3 +882,21 @@ The tests read the real settings and fonts and drive the lifecycle and the quit 
 9. **Quit**: `Cmd+Q` quits an app that has one window. In `go run ./examples/multiwindow`, `Cmd+Q` closes the windows one after the other. With an app that cancels the exit request (`AppLifecycleListener.OnExitRequested` returning cancel) the app stays and the windows that were asked before the refusing one are closed. The Dock's right-click Quit and a logout do the same.
 
 Answers: _(not yet recorded)_
+
+## 33.7 Menus (macOS)
+
+**Status:** pending
+
+The tests build the menus and choose their items by calling AppKit's own methods (`performActionForItemAtIndex:`, the delegate's `menuWillOpen:`); they cannot show the menu bar or press keys in it. In `go run ./examples/gallery`, page Menus (the section PlatformMenuBar; the app is the one in front), and in `go run ./examples/editor` (default menu bar):
+
+1. **The menu bar**: the menus are `<app>`, File and View, and the app menu has About, Services, Hide, Hide Others, Show All and Quit with the shortcuts that other apps have (`Cmd+H`, `Opt+Cmd+H`, `Cmd+Q`).
+2. **Choosing**: File, New (or `Cmd+N`) writes *New* in the line "Last chosen"; the same for Open, Save and Save As (`Shift+Cmd+S`) and View, Reset zoom (`Cmd+0`). "Disabled item" is grey and does nothing. After you open File, is "opened" counted (the demo does not show it; only that nothing breaks)?
+3. **The keyboard**: `Ctrl+F2` focuses the menu bar, the arrows move through the menus and `Return` chooses; the first letters of an item, typed in an open menu, jump to it.
+4. **Help search**: Help menu, type "Save": the search finds File, Save and highlights it (the Help menu is AppKit's).
+5. **Dividers**: Save and Save As are between two dividers in File; no menu starts or ends with a divider.
+6. **Services and the standard items**: Services has the services of other apps; Hide and Hide Others hide windows; About shows the standard panel with the app's name; Quit asks the exit request and quits.
+7. **The default menu bar** (the editor has no PlatformMenuBar): Edit, Cut, Copy and Paste work in the editor's text field with the mouse as with `Cmd+X`, `Cmd+C` and `Cmd+V`; Undo and Redo too; Select All selects. Window, Minimize and Zoom act on the window and the Window menu lists the windows (open `go run ./examples/multiwindow`); Enter Full Screen works.
+8. **Leaving the bar**: go to a page without the PlatformMenuBar section's page (leave the Menus page): the menu bar is the default one again (Edit, View, Window, Help).
+
+Answers: _(not yet recorded)_
+

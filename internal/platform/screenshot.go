@@ -19,3 +19,14 @@ type ExitController interface {
 	// CanExit says whether the app may end Run when it asks to exit.
 	CanExit() bool
 }
+
+// ScriptWaiter is implemented by a Platform that runs a script of synthetic events (GLUTTER_DEV_EVENTS in
+// debug builds), so that the self-capture of the engine waits for the script to end before it takes the
+// frame: a capture that only counted time took the frame before the script's keys had come when the machine
+// was busy.
+//
+// Flutter: no counterpart
+type ScriptWaiter interface {
+	// ScriptPending says that a script was given and has not run its last step yet.
+	ScriptPending() bool
+}

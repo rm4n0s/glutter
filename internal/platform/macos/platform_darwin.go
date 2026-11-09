@@ -70,6 +70,10 @@ type Platform struct {
 	clip     clipboard
 	// kb is the keyboard: the responder of the key events and the layout (keyboard_darwin.go).
 	kb *keyboard
+	// menus is the menu bar (menu_darwin.go).
+	menus *menuBar
+	// accessory says the app is an accessory app (Options.Accessory).
+	accessory bool
 	// watch reads the system settings and watches them (settings_darwin.go).
 	watch *settingsWatch
 	// lc remembers the lifecycle state that was reported; appHidden says the app is hidden (Command+H);
@@ -97,9 +101,16 @@ type Platform struct {
 
 	devEvents  []DevEvent
 	devStarted bool
+	// devDone says the script ran its last step.
+	devDone bool
+	// framesDrawn counts the frames that the handler was asked for since New (the scripts wait for one).
+	framesDrawn uint64
 }
 
-var _ platform.Platform = (*Platform)(nil)
+var (
+	_ platform.Platform     = (*Platform)(nil)
+	_ platform.ScriptWaiter = (*Platform)(nil)
+)
 
 // panicRecord keeps a panic of the handler that was recovered at the boundary of a callback from AppKit,
 // so that Run can raise it again outside of AppKit's frames.
@@ -130,6 +141,7 @@ func New(opts Options) (*Platform, error) {
 	if p.getenv == nil {
 		p.getenv = os.Getenv
 	}
+	p.accessory = opts.Accessory
 	p.base = s.mediaTime()
 	p.handle = objcx.NewHandle(p)
 	objcx.WithPool(func() {
@@ -141,11 +153,12 @@ func New(opts Options) (*Platform, error) {
 		p.app.Send(sel("setActivationPolicy:"), policy)
 		p.delegate = s.appDelegate.New(p.handle)
 		p.app.Send(sel("setDelegate:"), p.delegate)
-		if !opts.Accessory {
-			p.app.Send(sel("setMainMenu:"), buildMainMenu(processName()))
-		}
 		class("NSWindow").Send(sel("setAllowsAutomaticWindowTabbing:"), false)
 	})
+	p.menus = newMenuBar(p)
+	if !opts.Accessory {
+		p.menus.installDefault()
+	}
 	p.kb = newKeyboard(p)
 	if foundation.DebugMode {
 		p.applyDevAppearance()
@@ -340,6 +353,10 @@ func (p *Platform) teardown() {
 	if p.watch != nil {
 		p.watch.close()
 		p.watch = nil
+	}
+	if p.menus != nil {
+		p.menus.close()
+		p.menus = nil
 	}
 	if p.kb != nil {
 		p.kb.close()

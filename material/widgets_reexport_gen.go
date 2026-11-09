@@ -1570,6 +1570,11 @@ func DefaultErrorReporter(logger *slog.Logger) foundation.ErrorReporter {
 	return widgets.DefaultErrorReporter(logger)
 }
 
+// DefaultPlatformMenuDelegate is widgets.DefaultPlatformMenuDelegate.
+//
+// Flutter: widgets.dart DefaultPlatformMenuDelegate
+type DefaultPlatformMenuDelegate = widgets.DefaultPlatformMenuDelegate
+
 // DefaultScrollNotificationPredicate is widgets.DefaultScrollNotificationPredicate.
 //
 // Flutter: widgets.dart DefaultScrollNotificationPredicate
@@ -4433,6 +4438,11 @@ func MenuControllerMaybeOf(bc widgets.BuildContext) *widgets.MenuController {
 	return widgets.MenuControllerMaybeOf(bc)
 }
 
+// MenuItemSerializableIDGenerator is widgets.MenuItemSerializableIDGenerator.
+//
+// Flutter: widgets.dart MenuItemSerializableIDGenerator
+type MenuItemSerializableIDGenerator = widgets.MenuItemSerializableIDGenerator
+
 // MenuSerializableShortcut is widgets.MenuSerializableShortcut.
 //
 // Flutter: widgets.dart MenuSerializableShortcut
@@ -5436,6 +5446,13 @@ func NewDecoratedBoxTransition(decoration animation.Animation[painting.Decoratio
 // Flutter: widgets.dart NewDecorationTween
 func NewDecorationTween(begin painting.Decoration, end painting.Decoration) *animation.Tween[painting.Decoration] {
 	return widgets.NewDecorationTween(begin, end)
+}
+
+// NewDefaultPlatformMenuDelegate is widgets.NewDefaultPlatformMenuDelegate.
+//
+// Flutter: widgets.dart NewDefaultPlatformMenuDelegate
+func NewDefaultPlatformMenuDelegate(b *widgets.WidgetsBinding) *widgets.DefaultPlatformMenuDelegate {
+	return widgets.NewDefaultPlatformMenuDelegate(b)
 }
 
 // NewDefaultSelectionStyle is widgets.NewDefaultSelectionStyle.
@@ -6948,6 +6965,41 @@ func NewPlaceholder(child widgets.Widget, opts ...widgets.PlaceholderOpts) *widg
 // Flutter: widgets.dart NewPlainScrollPhysics
 func NewPlainScrollPhysics(parent widgets.ScrollPhysics) *widgets.PlainScrollPhysics {
 	return widgets.NewPlainScrollPhysics(parent)
+}
+
+// NewPlatformMenu is widgets.NewPlatformMenu.
+//
+// Flutter: widgets.dart NewPlatformMenu
+func NewPlatformMenu(label string, menus []widgets.PlatformMenuItem, opts ...widgets.PlatformMenuOpts) *widgets.PlatformMenu {
+	return widgets.NewPlatformMenu(label, menus, opts...)
+}
+
+// NewPlatformMenuBar is widgets.NewPlatformMenuBar.
+//
+// Flutter: widgets.dart NewPlatformMenuBar
+func NewPlatformMenuBar(menus []widgets.PlatformMenuItem, opts ...widgets.PlatformMenuBarOpts) *widgets.PlatformMenuBar {
+	return widgets.NewPlatformMenuBar(menus, opts...)
+}
+
+// NewPlatformMenuItem is widgets.NewPlatformMenuItem.
+//
+// Flutter: widgets.dart NewPlatformMenuItem
+func NewPlatformMenuItem(label string, opts ...widgets.PlatformMenuItemOpts) *widgets.PlatformMenuItemBase {
+	return widgets.NewPlatformMenuItem(label, opts...)
+}
+
+// NewPlatformMenuItemGroup is widgets.NewPlatformMenuItemGroup.
+//
+// Flutter: widgets.dart NewPlatformMenuItemGroup
+func NewPlatformMenuItemGroup(members []widgets.PlatformMenuItem) *widgets.PlatformMenuItemGroup {
+	return widgets.NewPlatformMenuItemGroup(members)
+}
+
+// NewPlatformProvidedMenuItem is widgets.NewPlatformProvidedMenuItem.
+//
+// Flutter: widgets.dart NewPlatformProvidedMenuItem
+func NewPlatformProvidedMenuItem(typ widgets.PlatformProvidedMenuItemType, opts ...widgets.PlatformProvidedMenuItemOpts) *widgets.PlatformProvidedMenuItem {
+	return widgets.NewPlatformProvidedMenuItem(typ, opts...)
 }
 
 // NewPlatformRouteInformationProvider is widgets.NewPlatformRouteInformationProvider.
@@ -9056,6 +9108,138 @@ type PlaceholderOpts = widgets.PlaceholderOpts
 //
 // Flutter: widgets.dart PlainScrollPhysics
 type PlainScrollPhysics = widgets.PlainScrollPhysics
+
+// PlatformMenu is widgets.PlatformMenu.
+//
+// Flutter: widgets.dart PlatformMenu
+type PlatformMenu = widgets.PlatformMenu
+
+// PlatformMenuBar is widgets.PlatformMenuBar.
+//
+// Flutter: widgets.dart PlatformMenuBar
+type PlatformMenuBar = widgets.PlatformMenuBar
+
+// PlatformMenuBarOpts is widgets.PlatformMenuBarOpts.
+//
+// Flutter: widgets.dart PlatformMenuBarOpts
+type PlatformMenuBarOpts = widgets.PlatformMenuBarOpts
+
+// PlatformMenuDelegate is widgets.PlatformMenuDelegate.
+//
+// Flutter: widgets.dart PlatformMenuDelegate
+type PlatformMenuDelegate = widgets.PlatformMenuDelegate
+
+// PlatformMenuItem is widgets.PlatformMenuItem.
+//
+// Flutter: widgets.dart PlatformMenuItem
+type PlatformMenuItem = widgets.PlatformMenuItem
+
+// PlatformMenuItemBase is widgets.PlatformMenuItemBase.
+//
+// Flutter: widgets.dart PlatformMenuItemBase
+type PlatformMenuItemBase = widgets.PlatformMenuItemBase
+
+// PlatformMenuItemGroup is widgets.PlatformMenuItemGroup.
+//
+// Flutter: widgets.dart PlatformMenuItemGroup
+type PlatformMenuItemGroup = widgets.PlatformMenuItemGroup
+
+// PlatformMenuItemOpts is widgets.PlatformMenuItemOpts.
+//
+// Flutter: widgets.dart PlatformMenuItemOpts
+type PlatformMenuItemOpts = widgets.PlatformMenuItemOpts
+
+// PlatformMenuOpts is widgets.PlatformMenuOpts.
+//
+// Flutter: widgets.dart PlatformMenuOpts
+type PlatformMenuOpts = widgets.PlatformMenuOpts
+
+// PlatformProvidedMenuItem is widgets.PlatformProvidedMenuItem.
+//
+// Flutter: widgets.dart PlatformProvidedMenuItem
+type PlatformProvidedMenuItem = widgets.PlatformProvidedMenuItem
+
+// PlatformProvidedMenuItemHasMenu is widgets.PlatformProvidedMenuItemHasMenu.
+//
+// Flutter: widgets.dart PlatformProvidedMenuItemHasMenu
+func PlatformProvidedMenuItemHasMenu(menu widgets.PlatformProvidedMenuItemType) bool {
+	return widgets.PlatformProvidedMenuItemHasMenu(menu)
+}
+
+// PlatformProvidedMenuItemOpts is widgets.PlatformProvidedMenuItemOpts.
+//
+// Flutter: widgets.dart PlatformProvidedMenuItemOpts
+type PlatformProvidedMenuItemOpts = widgets.PlatformProvidedMenuItemOpts
+
+// PlatformProvidedMenuItemType is widgets.PlatformProvidedMenuItemType.
+//
+// Flutter: widgets.dart PlatformProvidedMenuItemType
+type PlatformProvidedMenuItemType = widgets.PlatformProvidedMenuItemType
+
+// PlatformProvidedMenuItemTypeAbout is widgets.PlatformProvidedMenuItemTypeAbout.
+//
+// Flutter: widgets.dart PlatformProvidedMenuItemTypeAbout
+const PlatformProvidedMenuItemTypeAbout = widgets.PlatformProvidedMenuItemTypeAbout
+
+// PlatformProvidedMenuItemTypeArrangeWindowsInFront is widgets.PlatformProvidedMenuItemTypeArrangeWindowsInFront.
+//
+// Flutter: widgets.dart PlatformProvidedMenuItemTypeArrangeWindowsInFront
+const PlatformProvidedMenuItemTypeArrangeWindowsInFront = widgets.PlatformProvidedMenuItemTypeArrangeWindowsInFront
+
+// PlatformProvidedMenuItemTypeHide is widgets.PlatformProvidedMenuItemTypeHide.
+//
+// Flutter: widgets.dart PlatformProvidedMenuItemTypeHide
+const PlatformProvidedMenuItemTypeHide = widgets.PlatformProvidedMenuItemTypeHide
+
+// PlatformProvidedMenuItemTypeHideOtherApplications is widgets.PlatformProvidedMenuItemTypeHideOtherApplications.
+//
+// Flutter: widgets.dart PlatformProvidedMenuItemTypeHideOtherApplications
+const PlatformProvidedMenuItemTypeHideOtherApplications = widgets.PlatformProvidedMenuItemTypeHideOtherApplications
+
+// PlatformProvidedMenuItemTypeMinimizeWindow is widgets.PlatformProvidedMenuItemTypeMinimizeWindow.
+//
+// Flutter: widgets.dart PlatformProvidedMenuItemTypeMinimizeWindow
+const PlatformProvidedMenuItemTypeMinimizeWindow = widgets.PlatformProvidedMenuItemTypeMinimizeWindow
+
+// PlatformProvidedMenuItemTypeQuit is widgets.PlatformProvidedMenuItemTypeQuit.
+//
+// Flutter: widgets.dart PlatformProvidedMenuItemTypeQuit
+const PlatformProvidedMenuItemTypeQuit = widgets.PlatformProvidedMenuItemTypeQuit
+
+// PlatformProvidedMenuItemTypeServicesSubmenu is widgets.PlatformProvidedMenuItemTypeServicesSubmenu.
+//
+// Flutter: widgets.dart PlatformProvidedMenuItemTypeServicesSubmenu
+const PlatformProvidedMenuItemTypeServicesSubmenu = widgets.PlatformProvidedMenuItemTypeServicesSubmenu
+
+// PlatformProvidedMenuItemTypeShowAllApplications is widgets.PlatformProvidedMenuItemTypeShowAllApplications.
+//
+// Flutter: widgets.dart PlatformProvidedMenuItemTypeShowAllApplications
+const PlatformProvidedMenuItemTypeShowAllApplications = widgets.PlatformProvidedMenuItemTypeShowAllApplications
+
+// PlatformProvidedMenuItemTypeStartSpeaking is widgets.PlatformProvidedMenuItemTypeStartSpeaking.
+//
+// Flutter: widgets.dart PlatformProvidedMenuItemTypeStartSpeaking
+const PlatformProvidedMenuItemTypeStartSpeaking = widgets.PlatformProvidedMenuItemTypeStartSpeaking
+
+// PlatformProvidedMenuItemTypeStopSpeaking is widgets.PlatformProvidedMenuItemTypeStopSpeaking.
+//
+// Flutter: widgets.dart PlatformProvidedMenuItemTypeStopSpeaking
+const PlatformProvidedMenuItemTypeStopSpeaking = widgets.PlatformProvidedMenuItemTypeStopSpeaking
+
+// PlatformProvidedMenuItemTypeToggleFullScreen is widgets.PlatformProvidedMenuItemTypeToggleFullScreen.
+//
+// Flutter: widgets.dart PlatformProvidedMenuItemTypeToggleFullScreen
+const PlatformProvidedMenuItemTypeToggleFullScreen = widgets.PlatformProvidedMenuItemTypeToggleFullScreen
+
+// PlatformProvidedMenuItemTypeUnspecified is widgets.PlatformProvidedMenuItemTypeUnspecified.
+//
+// Flutter: widgets.dart PlatformProvidedMenuItemTypeUnspecified
+const PlatformProvidedMenuItemTypeUnspecified = widgets.PlatformProvidedMenuItemTypeUnspecified
+
+// PlatformProvidedMenuItemTypeZoomWindow is widgets.PlatformProvidedMenuItemTypeZoomWindow.
+//
+// Flutter: widgets.dart PlatformProvidedMenuItemTypeZoomWindow
+const PlatformProvidedMenuItemTypeZoomWindow = widgets.PlatformProvidedMenuItemTypeZoomWindow
 
 // PlatformRouteInformationProvider is widgets.PlatformRouteInformationProvider.
 //

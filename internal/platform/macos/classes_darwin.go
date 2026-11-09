@@ -61,6 +61,13 @@ func (s *system) registerClasses() error {
 	}); err != nil {
 		return err
 	}
+	targetDef, delegateDef := menuClasses()
+	if s.menuTarget, err = objcx.RegisterClass(targetDef); err != nil {
+		return err
+	}
+	if s.menuDelegate, err = objcx.RegisterClass(delegateDef); err != nil {
+		return err
+	}
 	if s.window, err = objcx.RegisterClass(objcx.ClassDef{
 		Name: "Window", Super: "NSWindow",
 		Methods: []objcx.Method{
@@ -114,7 +121,7 @@ func (s *system) registerClasses() error {
 					w.p.guard(func() { w.linkFired(link) })
 				}
 			}},
-		}, append(append(viewMethods(), keyMethods()...), textMethods()...)...),
+		}, append(append(append(viewMethods(), keyMethods()...), textMethods()...), editMethods()...)...),
 	}); err != nil {
 		return err
 	}
@@ -149,37 +156,4 @@ func (p *Platform) didFinishLaunching() {
 	if send[int64](p.app, "activationPolicy") == activationPolicyRegular {
 		p.app.Send(sel("activateIgnoringOtherApps:"), true)
 	}
-}
-
-// buildMainMenu makes the main menu of an app that has none of its own: the application menu with Hide,
-// Hide Others, Show All and Quit (the Edit and Window menus come with step 33.6).
-func buildMainMenu(name string) objc.ID {
-	menu := class("NSMenu").Send(sel("alloc")).Send(sel("init"))
-	appItem := class("NSMenuItem").Send(sel("alloc")).Send(sel("init"))
-	menu.Send(sel("addItem:"), appItem)
-	appMenu := class("NSMenu").Send(sel("alloc")).Send(sel("init"))
-	add := func(title, action, key string, mask uint64) {
-		t, k := objcx.NewString(title), objcx.NewString(key)
-		item := class("NSMenuItem").Send(sel("alloc")).Send(sel("initWithTitle:action:keyEquivalent:"), t, sel(action), k)
-		if mask != 0 {
-			item.Send(sel("setKeyEquivalentModifierMask:"), mask)
-		}
-		appMenu.Send(sel("addItem:"), item)
-		objcx.Release(t)
-		objcx.Release(k)
-		objcx.Release(item)
-	}
-	const (
-		maskCommand = uint64(1 << 20)
-		maskOption  = uint64(1 << 19)
-	)
-	add("Hide "+name, "hide:", "h", maskCommand)
-	add("Hide Others", "hideOtherApplications:", "h", maskCommand|maskOption)
-	add("Show All", "unhideAllApplications:", "", 0)
-	appMenu.Send(sel("addItem:"), class("NSMenuItem").Send(sel("separatorItem")))
-	add("Quit "+name, "terminate:", "q", maskCommand)
-	appItem.Send(sel("setSubmenu:"), appMenu)
-	objcx.Release(appMenu)
-	objcx.Release(appItem)
-	return objcx.Autorelease(menu)
 }

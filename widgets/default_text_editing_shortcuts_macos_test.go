@@ -126,6 +126,12 @@ func TestIntentForMacOSSelector(t *testing.T) {
 		selector string
 		want     Intent
 	}{
+		{"cut:", NewCopySelectionTextIntentCut(services.SelectionChangedCauseKeyboard)},
+		{"copy:", NewCopySelectionTextIntentCopy()},
+		{"paste:", PasteTextIntent{Cause: services.SelectionChangedCauseKeyboard}},
+		{"selectAll:", SelectAllTextIntent{Cause: services.SelectionChangedCauseKeyboard}},
+		{"undo:", UndoTextIntent{Cause: services.SelectionChangedCauseKeyboard}},
+		{"redo:", RedoTextIntent{Cause: services.SelectionChangedCauseKeyboard}},
 		{"deleteBackward:", NewDeleteCharacterIntent(false)},
 		{"deleteWordBackward:", NewDeleteToNextWordBoundaryIntent(false)},
 		{"deleteToBeginningOfLine:", NewDeleteToLineBreakIntent(false)},

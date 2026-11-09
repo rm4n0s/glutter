@@ -566,6 +566,17 @@ func (h *handler) PlatformService(name string) any {
 	return nil
 }
 
+// SetPlatformMenus gives the menus of the app to the platform's menu bar, when it has one
+// (ui.PlatformMenuHost, platform.MenuBar).
+func (h *handler) SetPlatformMenus(menus []ui.PlatformMenuItemData, handler ui.PlatformMenuHandler) bool {
+	bar, ok := h.conn.(platform.MenuBar)
+	if !ok {
+		return false
+	}
+	bar.SetMenus(menus, handler)
+	return true
+}
+
 // LockPointer locks the pointer to the window of the view (ui.PointerLockHost).
 func (h *handler) LockPointer(view ui.ViewID) error {
 	w, ok := h.windows[view]
@@ -609,6 +620,7 @@ func (h *handler) pointerLockEnded(w *window) {
 
 var (
 	_ ui.PointerLockHost          = (*handler)(nil)
+	_ ui.PlatformMenuHost         = (*handler)(nil)
 	_ platform.PointerLockHandler = (*handler)(nil)
 )
 
@@ -1390,18 +1402,14 @@ func (h *handler) draw(w *window, scene *ui.Scene) error {
 		h.armed = true
 		if h.shot.After() == 0 {
 			if h.disp.IsIdle != nil {
-				h.waitIdle(time.Now().Add(h.idleMax()))
+				h.afterScript(time.Now().Add(h.scriptMax()), func() { h.waitIdle(time.Now().Add(h.idleMax())) })
 				return nil
 			}
-			h.captureDue = true
-			h.first.RequestFrame()
+			h.afterScript(time.Now().Add(h.scriptMax()), h.requestCapture)
 			return nil
 		}
 		time.AfterFunc(h.shot.After(), func() {
-			h.conn.Post(func() {
-				h.captureDue = true
-				h.first.RequestFrame()
-			})
+			h.conn.Post(func() { h.afterScript(time.Now().Add(h.scriptMax()), h.requestCapture) })
 		})
 	}
 	return nil
@@ -1445,6 +1453,36 @@ func (h *handler) onCapture(img *image.RGBA, err error) {
 	if h.shot != nil && img != nil {
 		_ = h.finishScreenshot(img) // finishScreenshot reports its own failure through h.fail
 	}
+}
+
+// requestCapture asks for the frame that is read back as the screenshot.
+func (h *handler) requestCapture() {
+	h.captureDue = true
+	h.first.RequestFrame()
+}
+
+// scriptMax is how long the self-capture waits for the platform's script of events to end.
+func (h *handler) scriptMax() time.Duration {
+	if h.cfg.idleMax > 0 {
+		return h.cfg.idleMax
+	}
+	return 30 * time.Second
+}
+
+// afterScript runs fn once the platform's script of events (platform.ScriptWaiter) has ended, or at the
+// deadline; at once when the platform has none. It asks from the event loop, as waitIdle does.
+func (h *handler) afterScript(deadline time.Time, fn func()) {
+	sw, ok := h.conn.(platform.ScriptWaiter)
+	if !ok || !sw.ScriptPending() {
+		fn()
+		return
+	}
+	if !time.Now().Before(deadline) {
+		h.log.Warn("the script of events had not ended after waiting; capturing the window anyway", "waited", h.scriptMax())
+		fn()
+		return
+	}
+	time.AfterFunc(20*time.Millisecond, func() { h.conn.Post(func() { h.afterScript(deadline, fn) }) })
 }
 
 // idleMax is how long the self-capture waits for the app to become idle.

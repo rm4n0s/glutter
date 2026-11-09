@@ -25,6 +25,13 @@ const (
 // moves its focus into the window's route in the frame after the focus event.
 const devKeyFocusDelay = 150 * time.Millisecond
 
+// devKeyFocusLimit is the longest that the script waits for a frame after the focus, and devKeyFocusPoll how
+// often it looks.
+const (
+	devKeyFocusLimit = time.Second
+	devKeyFocusPoll  = 20 * time.Millisecond
+)
+
 // focusForDevKeys gives the first window the keyboard focus when a script has key or text steps and the window is not
 // the key window, and says whether it did: an accessory app never takes the focus from the user's apps, and
 // the framework sends keys to the focused view only. The script waits a moment, as a user would.

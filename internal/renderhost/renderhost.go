@@ -119,6 +119,14 @@ type Host struct {
 	// PointerLocks counts the calls of LockPointer that succeeded, and PointerUnlocks the
 	// calls of UnlockPointer.
 	PointerLocks, PointerUnlocks int
+	// NoMenuBar makes the host a platform without a menu bar: SetPlatformMenus reports false and
+	// keeps nothing.
+	NoMenuBar bool
+	// PlatformMenus are the menus that the framework last set in the menu bar, MenuSets counts the
+	// calls of SetPlatformMenus, and MenuHandler is the handler of the last call.
+	PlatformMenus []ui.PlatformMenuItemData
+	MenuSets      int
+	MenuHandler   ui.PlatformMenuHandler
 
 	nextView ui.ViewID
 	byView   map[ui.ViewID][]*ui.Scene
@@ -341,6 +349,19 @@ func (h *Host) SetWindowContentType(view ui.ViewID, contentType ui.ContentType) 
 		h.ContentTypes = map[ui.ViewID]ui.ContentType{}
 	}
 	h.ContentTypes[view] = contentType
+}
+
+// SetPlatformMenus keeps the menus and the handler, as a platform with a menu bar does
+// (ui.PlatformMenuHost); with NoMenuBar it does nothing and reports false.
+func (h *Host) SetPlatformMenus(menus []ui.PlatformMenuItemData, handler ui.PlatformMenuHandler) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.NoMenuBar {
+		return false
+	}
+	h.PlatformMenus, h.MenuHandler = menus, handler
+	h.MenuSets++
+	return true
 }
 
 // LockPointer keeps the lock of the view; it fails with LockPointerErr when that is set

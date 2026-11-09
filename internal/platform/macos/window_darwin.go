@@ -384,6 +384,7 @@ func (w *window) fireTick(target float64) {
 	h := w.p.handler
 	if h != nil && w.frames.take(w.canDraw()) {
 		h.OnFrame(w.id, w.p.frameTime(target))
+		w.p.framesDrawn++
 	}
 	if !w.closed {
 		w.updateLink()
@@ -574,6 +575,7 @@ func (w *window) renderNow() {
 	}
 	w.frames.clear()
 	h.OnFrame(w.id, w.p.frameTime(w.p.s.mediaTime()))
+	w.p.framesDrawn++
 	w.updateLink()
 }
 
@@ -705,11 +707,32 @@ func (p *Platform) startDevEvents() {
 	}
 	p.devStarted = true
 	if p.focusForDevKeys() {
-		p.addTimer(time.Now().Add(devKeyFocusDelay), func() { p.runDevEvents(0) })
+		p.waitForFrameAfterFocus(time.Now().Add(devKeyFocusLimit), p.framesDrawn)
 		return
 	}
 	p.runDevEvents(0)
 }
+
+// waitForFrameAfterFocus starts the script once a frame was drawn after the window got the focus, and not
+// before devKeyFocusDelay has passed: the framework moves its focus into the window's route in the frame after
+// the focus event, and keys that came before would be lost. It starts anyway at the limit, for an app that
+// draws no frame then. A fixed delay alone lost the keys of a script when the machine was busy.
+func (p *Platform) waitForFrameAfterFocus(limit time.Time, framesBefore uint64) {
+	start := time.Now().Add(devKeyFocusDelay)
+	var poll func()
+	poll = func() {
+		if p.framesDrawn > framesBefore || !time.Now().Before(limit) {
+			p.runDevEvents(0)
+			return
+		}
+		p.addTimer(time.Now().Add(devKeyFocusPoll), poll)
+	}
+	p.addTimer(start, poll)
+}
+
+// ScriptPending says that a script of GLUTTER_DEV_EVENTS was given and has not run its last step yet
+// (platform.ScriptWaiter): the engine's self-capture waits for it.
+func (p *Platform) ScriptPending() bool { return len(p.devEvents) > 0 && !p.devDone }
 
 // runDevEvents runs the steps from index i; a wait arms a timer for the rest.
 func (p *Platform) runDevEvents(i int) {
@@ -724,6 +747,7 @@ func (p *Platform) runDevEvents(i int) {
 			return
 		}
 	}
+	p.devDone = true
 }
 
 // AcquirePixels gives a buffer of the size that nothing reads now (gpu.PixelTarget, SPEC §29.5): an

@@ -17,6 +17,7 @@ func buildMenusPage(bc m.BuildContext) m.Widget {
 	return m.NewListView([]m.Widget{
 		top(section(bc, "MenuBar", NewMenuBarDemo()), section(bc, "MenuAnchor", NewMenuAnchorDemo())),
 		top(section(bc, "PopupMenuButton", NewPopupMenuDemo()), section(bc, "DropdownButton", NewDropdownDemo())),
+		top(section(bc, "PlatformMenuBar", NewPlatformMenuBarDemo())),
 		m.NewSizedBox(nil, m.SizedBoxOpts{Height: m.Some(200.0)}),
 	})
 }
