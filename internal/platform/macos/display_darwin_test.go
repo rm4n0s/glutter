@@ -33,6 +33,22 @@ type recorder struct {
 	focus    []bool
 	closeReq int
 	onFrame  func(view ui.ViewID)
+	pointers []ui.PointerData
+}
+
+func (r *recorder) OnPointer(data []ui.PointerData) {
+	r.mu.Lock()
+	r.pointers = append(r.pointers, data...)
+	r.mu.Unlock()
+}
+
+// takePointers returns the pointer data heard since the last call.
+func (r *recorder) takePointers() []ui.PointerData {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := r.pointers
+	r.pointers = nil
+	return out
 }
 
 func (r *recorder) OnMetrics(_ ui.ViewID, m platform.ViewMetrics) {

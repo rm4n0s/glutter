@@ -69,6 +69,19 @@ type Platform struct {
 	closed   bool
 	clip     clipboard
 
+	// ptr is the state machine of the mouse, the trackpad and the pen of every window (mouse.go).
+	ptr *pointerMachine
+	// ctrlClick says that the primary button that is down was a Control-click, made the secondary button.
+	ctrlClick bool
+	// The pen of a tablet that is in range: its device id, whether it is the eraser end, and its buttons.
+	penDevice     int
+	penEraser     bool
+	stylusButtons int
+	// cursors are the NSCursors that were asked for, kept for the life of the platform; blankCursor is the
+	// transparent one of MouseCursorNone.
+	cursors     map[string]objc.ID
+	blankCursor objc.ID
+
 	// wakes counts what woke the loop (a posted function, a timer, a tick), for the tests that look for
 	// an idle app.
 	wakes atomic.Uint64
@@ -101,7 +114,7 @@ func New(opts Options) (*Platform, error) {
 	if s.pthreadMainNP() == 0 {
 		return nil, errors.New(TagMacOSNotMainThread, "AppKit works only on the main thread of the process: call Run from main")
 	}
-	p := &Platform{log: opts.Logger, getenv: opts.Getenv, s: s, start: time.Now(), windows: map[ui.ViewID]*window{}}
+	p := &Platform{log: opts.Logger, getenv: opts.Getenv, s: s, start: time.Now(), windows: map[ui.ViewID]*window{}, ptr: newPointerMachine(), penDevice: stylusDeviceBase}
 	if p.log == nil {
 		p.log = slog.Default()
 	}

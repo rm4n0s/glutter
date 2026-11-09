@@ -811,3 +811,18 @@ On a Mac, `go run ./examples/counter` opens an `NSWindow` drawn by the software 
 
 Answers: _(not yet recorded)_
 
+## 33.3 Mouse, trackpad, tablets and cursors (macOS)
+
+**Status:** pending
+
+The pointer input of the view is Flutter's: the mouse with its buttons and its enter and exit, a notched wheel as scroll signals, the trackpad as the pan and zoom gesture with the momentum left to the framework, pinch and rotate, and the cursors of `SystemMouseCursors`. The tests send real `NSEvent`s made by the platform; what only hardware shows is below.
+
+1. **A mouse with a wheel and side buttons**: in `go run ./examples/gallery`, does the wheel scroll the lists by about the same as in other apps? With Shift held, does it scroll sideways? Do the back and forward buttons arrive (try a widget that shows pointer buttons)? Does a right click open the context menu of a text field, and a Control-click too?
+2. **The trackpad**: two-finger scroll in `go run ./examples/scrolling` (the first tab): does the list follow the fingers, continue after you lift them, and stop when you put a finger on the trackpad? Is the fling about as long as in a native app?
+3. **Pinch and rotate** on the trackpad in the gallery's `InteractiveViewer`: does the picture zoom and turn under the fingers, and does a pinch together with a scroll (two fingers moving apart and sideways) act as one gesture?
+4. **A force click** on the trackpad: nothing special happens, and the click is an ordinary click.
+5. **A tablet**, if there is one (a Wacom or an iPad with Sidecar and an Apple Pencil): does a stroke in a drawing widget get the pressure and the lean, and does the eraser end draw as an eraser (`PointerDeviceKind.invertedStylus`)?
+6. **The cursors** in the gallery: the I-beam over text, the arrow over buttons (as in Flutter on a desktop), the pointing hand over links that ask for it, the resize arrows at the edges of a split view; does the cursor go back to the arrow when you leave the window and come in again?
+
+Answers: _(not yet recorded)_
+

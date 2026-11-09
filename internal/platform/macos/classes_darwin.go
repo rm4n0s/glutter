@@ -76,7 +76,7 @@ func (s *system) registerClasses() error {
 	}
 	if s.view, err = objcx.RegisterClass(objcx.ClassDef{
 		Name: "View", Super: "NSView",
-		Methods: []objcx.Method{
+		Methods: append([]objcx.Method{
 			{Name: "acceptsFirstResponder", Fn: func(objc.ID, objc.SEL) bool { return true }},
 			{Name: "acceptsFirstMouse:", Fn: func(objc.ID, objc.SEL, objc.ID) bool { return true }},
 			{Name: "isOpaque", Fn: func(objc.ID, objc.SEL) bool { return true }},
@@ -85,7 +85,7 @@ func (s *system) registerClasses() error {
 					w.p.guard(func() { w.linkFired(link) })
 				}
 			}},
-		},
+		}, viewMethods()...),
 	}); err != nil {
 		return err
 	}

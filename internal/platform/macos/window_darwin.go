@@ -35,6 +35,10 @@ type window struct {
 	handle objcx.Handle
 
 	ns, view, delegate, layer objc.ID
+	// nsCursor is the cursor that the view shows over itself, 0 for the default.
+	nsCursor objc.ID
+	// devInside says that the dev events have made the mouse enter the window.
+	devInside bool
 
 	title string
 	// minSize and maxSize are the content size constraints in points (0 is no limit): AppKit holds them for
@@ -133,6 +137,7 @@ func (w *window) create(size ui.Size) error {
 	w.layer.Send(sel("setContentsGravity:"), grav)
 	objcx.Release(grav)
 	ns.Send(sel("setContentView:"), w.view)
+	w.configureInput()
 
 	w.delegate = s.windowDelegate.New(w.handle)
 	ns.Send(sel("setDelegate:"), w.delegate)
@@ -329,9 +334,6 @@ func (w *window) orderFront() {
 	}
 }
 
-// SetCursor does nothing until step 33.3.
-func (w *window) SetCursor(platform.MouseCursor) {}
-
 // SetTextInput does nothing until step 33.5.
 func (w *window) SetTextInput(ui.TextInputState) {}
 
@@ -497,6 +499,8 @@ func (w *window) finishClose() {
 	if w.closed {
 		return
 	}
+	w.p.ptr.cancelView(w.id, w.p.frameTime(w.p.s.mediaTime()))
+	w.p.flushPointers()
 	w.closed = true
 	if w.sleepAssertion != 0 {
 		w.p.s.pmRelease(w.sleepAssertion)
@@ -698,6 +702,9 @@ func (p *Platform) startDevEvents() {
 func (p *Platform) runDevEvents(i int) {
 	for ; i < len(p.devEvents); i++ {
 		ev := p.devEvents[i]
+		if p.runDevPointer(ev) {
+			continue
+		}
 		if ev.Kind == "wait" {
 			next := i + 1
 			p.addTimer(time.Now().Add(ev.Wait), func() { p.runDevEvents(next) })
