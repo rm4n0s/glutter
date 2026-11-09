@@ -7,13 +7,14 @@
 Glutter is a GUI toolkit for Go that has **Flutter's framework API**: widgets, rendering,
 gestures, animation and Material 3. It runs on its own engine: a Wayland and X11 platform
 layer and a Vulkan renderer with an OpenGL ES 3.0 fallback (on Windows, Win32 through the standard library and
-Direct3D 12), with the system libraries called through
+Direct3D 12; on macOS, AppKit and Metal), with the system libraries called through
 [purego](https://github.com/ebitengine/purego), and text layout on
 [go-text](https://github.com/go-text/typesetting). **There is no cgo**: `CGO_ENABLED=0 go build`
 makes the app, and Go is all you need to build it.
 
-Linux desktop comes first, then the web (`GOOS=js GOARCH=wasm`), Android and Windows (`GOOS=windows`, Direct3D 12; version 1.8).
-Every part that depends on the operating system or the GPU sits behind an internal interface, so macOS and iOS can be
+Linux desktop comes first, then the web (`GOOS=js GOARCH=wasm`), Android, Windows (`GOOS=windows`, Direct3D 12; version 1.8)
+and macOS (`GOOS=darwin`, Metal; version 1.13).
+Every part that depends on the operating system or the GPU sits behind an internal interface, so iOS can be
 added later.
 
 | | |
@@ -197,6 +198,9 @@ func startView(parent *m.WidgetsBinding, root m.Widget, send func(pixels []byte,
 	})
 }
 ```
+
+**What is new in 1.13.** macOS.
+- **macOS** (the "macOS" section below): AppKit and Metal through purego, no cgo, on Apple silicon and Intel, from macOS 12: windows and several windows, the mouse, trackpad and tablets, the keyboard and input methods, the pasteboard, menus, drag and drop, the tray, notifications, file dialogs, VoiceOver, gamepads, audio, the `gpu` package and the 3D view on Metal, and `glutter-macos`, which makes a signed `.app`. Every example draws on a Mac.
 
 **What is new in 1.12.** Linux without a GPU.
 - **The `soft` renderer on Linux.** `GLUTTER_RENDERER=soft` draws the app on the CPU into the window's shared memory (`wl_shm` on Wayland, MIT-SHM on X11, `XPutImage` over a remote display or with `GLUTTER_X11_NOSHM=1`) and rasterizes and sends only the rectangles that changed. In a virtual machine whose OpenGL is llvmpipe, OpenGL rasterizes the whole window for every frame.
@@ -399,6 +403,28 @@ scripts/perf-windows.sh -m                                     # sizes, start, C
 **What Windows lacks:** notifications with buttons and a place in the notification center (a notification is a tray balloon with one action, a click: real toasts need a registered app identity), the snap layouts of the maximize button for an app that draws its own title bar (`WindowDecoration`; Aero Snap by dragging works), `DirectManipulation` (a precision touchpad scrolls by its wheel messages, without inertia of its own, and a pinch is Control plus wheel), TSF-only input (reconversion, the handwriting panel), the clipboard's primary selection, and plugins and platform channels (call Win32 through your own `syscall` code, or use the standard library). SPEC §25 has the list and the reasons; [docs/GUIDE.md](docs/GUIDE.md) has a note for Flutter Windows developers.
 
 Every example builds for `windows/amd64` and `windows/arm64` and runs on Windows, `multiwindow` and `tray` included (`examples/examples_test.go` builds them, and a Wine test draws the first frame of each). A release build of the counter is an `.exe` of 25 MiB and the gallery 36 MiB (amd64); [docs/PERFORMANCE.md](docs/PERFORMANCE.md) has the numbers, which are Wine's and not a GPU's, and the targets that the owner still has to confirm on a PC.
+
+## macOS
+
+Glutter runs on macOS 12 (Monterey) and later, on Apple silicon and Intel, and it is the same Go program: `GOOS=darwin CGO_ENABLED=0 go build` makes a Mach-O file with no `.dylib` next to it. AppKit, Foundation, Core Foundation, Core Graphics, Core Text, QuartzCore, IOSurface, IOKit, Core Audio and Metal are called through purego and its `objc` package (no cgo, no Objective-C, no Xcode), frames are drawn with Metal (the same shaders as the other targets, compiled to Metal Shading Language by naga when Glutter is built) and fall back to the software renderer drawn into IOSurfaces.
+
+**What to install:** Go 1.27, and nothing else, to build and run: `go run ./examples/counter` works on a Mac as it does on Linux. To make an app bundle, signed, you need the `codesign` that every Mac has; the Command Line Tools are enough, Xcode is not needed. To work on Glutter itself, `naga` 30.0.1 (`cargo install naga-cli --version 30.0.1`) makes the shaders again, and a clone of the repository runs the macOS checks of `docs/IMPLEMENTATION.md`.
+
+```sh
+go run ./cmd/glutter-macos build -o Gallery.app ./examples/gallery            # a signed bundle, with its plist and icon
+go run ./cmd/glutter-macos build -release -universal -o App.app ./your/app    # one executable for arm64 and amd64
+go run ./cmd/glutter-macos run ./examples/gallery                             # builds the bundle, starts it, shows its log
+go run ./cmd/glutter-macos shot -bundle -o gallery.png ./examples/gallery     # the frame the app draws, with no screen recording
+scripts/perf-macos.sh -m                                                      # size, start, CPU, frames, memory
+```
+
+`build` writes `<App>.app/Contents` with the `Info.plist` (the identifier from `-id`, the version, the minimum system, a high-resolution app, the microphone's usage string and any `-usage KEY=text`), the icon (`-icon logo.png`, a square PNG of at least 16 pixels, made into an `.icns`), and the executable (`-universal` writes one with two slices, in pure Go, no `lipo`), and signs the bundle ad hoc with `codesign`. `-hardened` turns the hardened runtime on, which a notarized app needs. **Signing with a Developer ID and notarization are yours**, not the tool's: [docs/GUIDE.md](docs/GUIDE.md) has the commands. An app that is only ad-hoc signed makes Gatekeeper warn about an unidentified developer when it was downloaded.
+
+**What works:** everything of the framework, Material 3 with the system font, the mouse, the trackpad (scrolling with momentum, pinch, rotation) and tablets, the keyboard (every layout, dead keys, Cmd shortcuts), input methods (Chinese, Japanese and Korean), the pasteboard (text, HTML, files, images), the system's settings (dark mode, accent, text size, reduced motion), several windows, full screen, the menu bar, drag and drop with other apps, the tray (a status item), notifications from a bundle, file dialogs, VoiceOver (through `NSAccessibility`), gamepads (IOKit, with the HID drivers of PlayStation, Switch and Xbox pads), audio playback and capture (Core Audio), the `gpu` package and the 3D view on Metal.
+
+**What macOS lacks:** the pointer lock (`widgets.PointerLock`; `examples/game3d` is played there with the keyboard, a pad or the mouse without it), the Dock icon's menu and badge, the rumble of a generic pad (only the pads that have a HID driver rumble), motion sensors (there are none on a Mac but a pad's), plugins and platform channels (call AppKit through your own `objc` code, or use the standard library), an installer or notarization, and the Mac App Store's sandbox (an app that is sandboxed needs entitlements that the tool does not write). SPEC §29 has the list and the reasons; [docs/GUIDE.md](docs/GUIDE.md) has a note for Flutter macOS developers.
+
+Every example builds as a signed bundle and draws its first frame with Metal (`examples/macos_test.go`, `-tags glutter_display`), `multiwindow` and `tray` included. A release build of the counter is an executable of 24 MiB for arm64 and the gallery 35 MiB; on the Apple M6 of [docs/PERFORMANCE.md](docs/PERFORMANCE.md) a warm start takes about 150 ms to the first frame, the gallery animates at the display's 120 frames a second with about 40% of a core, and an idle app uses no CPU. The resident memory (193 MB for the counter) is above the target of the desktop and is an open question there.
 
 ## Examples
 

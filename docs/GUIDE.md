@@ -2122,6 +2122,73 @@ If you build Flutter apps for Windows, this is how a Glutter app becomes an `.ex
 - **Unsigned.** There is no installer, MSIX or code signing: the first start of an unsigned `.exe`
   makes SmartScreen ask once. Signing is the app author's.
 
+## For Flutter macOS developers
+
+If you build Flutter apps for macOS, this is how a Glutter app becomes an `.app`.
+
+- **Build and run.** There is no `flutter build macos` and no `macos/` folder with a Swift runner or an Xcode project:
+  `go run ./cmd/glutter-macos build ./your/app` makes `app.app`, a signed bundle, and needs only Go and the
+  `codesign` of the Command Line Tools. `-o` names the bundle, `-name`, `-id` and `-version` set what the Dock, the
+  bundle identifier and Finder's Get Info show, `-release` strips the program and builds with `glutter_release`,
+  and `-universal` makes one executable for Apple silicon and Intel (a Mac builds both by itself, no `lipo`).
+  `run` builds the bundle in a temporary directory and starts it with its log on your terminal, `shot -bundle -o
+  file.png` saves the frame the app draws (no screen recording permission: the app saves its own frame), and
+  `perf` measures it. A plain `GOOS=darwin CGO_ENABLED=0 go build` also gives a program that runs, but it is not in
+  a bundle, so it has no identifier, no icon of its own and no notifications.
+- **The plist.** The tool writes the `Info.plist` that Flutter keeps in `macos/Runner/Info.plist`: the bundle
+  identifier (`-id dev.example.app`; `dev.glutter.<name>` without it), the name, the version
+  (`CFBundleShortVersionString` and `CFBundleVersion`), the icon, macOS 12 as the minimum, `NSHighResolutionCapable`,
+  and the usage string of the microphone. Another usage string (`NSCameraUsageDescription`, `NSLocationUsageDescription`
+  and the rest) is `-usage KEY="text"`, repeatable; macOS shows it the first time the app asks.
+- **The icon.** `-icon logo.png` takes a square PNG of at least 16 pixels, and the tool scales it to the ten sizes of an
+  `.icns` file (16 to 1024 pixels). Give a PNG of 1024 pixels so that the large sizes are sharp, with the margin that
+  macOS icons have (an icon that fills its square looks larger than the others in the Dock). Without `-icon` the icon is
+  Glutter's.
+- **Signing, notarizing and Gatekeeper.** The tool signs ad hoc (`codesign --sign -`), which gives the bundle a
+  signature that binds its plist and resources to the program; that is enough to run an app you built on your own Mac,
+  and an app that someone downloads is stopped by Gatekeeper once ("an unidentified developer": Control-click, Open).
+  To ship to others, sign with your Developer ID and notarize it, which are yours to do and need an Apple Developer
+  account. Build with `-hardened` (the hardened runtime, with the entitlement of the microphone), then:
+  ```sh
+  codesign --force --sign "Developer ID Application: Your Name (TEAMID)" --options runtime --timestamp \
+      --entitlements entitlements.plist App.app          # entitlements.plist: com.apple.security.device.audio-input, if you record
+  ditto -c -k --keepParent App.app App.zip
+  xcrun notarytool submit App.zip --keychain-profile "notary" --wait
+  xcrun stapler staple App.app
+  ```
+  The Mac App Store needs the App Sandbox and a provisioning profile, which this tool does not make.
+- **Frames and displays.** A window follows its display: on macOS 14 and later the view's `CADisplayLink` gives
+  the display's own rate (120 frames a second on a ProMotion Mac), on macOS 12 and 13 a `CVDisplayLink` does; a window
+  on a second display with another scale is redrawn at that scale. The renderer is Metal (`GLUTTER_RENDERER=metal`),
+  and `soft` draws into IOSurfaces on a Mac that has no Metal device (a virtual machine without GPU passthrough).
+- **No plugins.** A Flutter macOS app reaches the system through plugins (Swift or Objective-C code and the plugin
+  registrant) and platform channels. A Glutter app is one Go program and has neither: use the standard library, call
+  AppKit yourself through `github.com/ebitengine/purego/objc` (`objc.GetClass("NSSound").Send(...)`; a Go callback cannot
+  return a structure such as an `NSRect`, and a callback is made once and found by its context), or use `desktop` for what
+  Flutter leaves to plugins (the file dialogs, notifications, the tray, `OpenURI`). Where your code must differ, ask
+  `foundation.DefaultTargetPlatform() == foundation.TargetPlatformMacOS`, as in Flutter, and never `runtime.GOOS`.
+  The framework takes Flutter's macOS branches by itself: the Command key for shortcuts, the macOS text editing
+  shortcuts, the bouncing scroll physics of a trackpad.
+- **The menu bar.** `PlatformMenuBar` is the menu bar of the app (Flutter's own widget), and the application menu that
+  macOS expects (About, Services, Hide, Hide Others, Show All, Quit) is made for it, so `Cmd+Q` and `Cmd+H` work. An app run
+  with `go run` (no bundle) has the name of its program in the menu bar. The Dock icon's menu and badge, and the pointer
+  lock (`widgets.PointerLock`), are not done on macOS.
+- **Notifications and the microphone need a bundle.** `desktop` notifications use `UNUserNotificationCenter`, which
+  needs a bundle identifier: from a bundle that Finder or `open` started they work (and ask the user once); from
+  `go run` they fail with `NotificationsUnavailable`, which says why. The first recording asks for the microphone with
+  the bundle's usage string; an app that is not in a bundle is asked about as the terminal that started it.
+- **Gamepads and sound.** `gamepad` reads pads through IOKit, and a PlayStation, Switch Pro or Xbox pad over Bluetooth
+  through its own HID driver (the light, the touchpad, the motion sensors, the trigger motors); the rumble of a generic
+  pad is not done. `audio` plays and records through Core Audio, follows the system's default device when it changes,
+  and reports a device you named as lost when it is unplugged.
+- **What a Flutter macOS app has that Glutter does not (yet).** The App Sandbox and the Mac App Store (an app is shipped
+  as a notarized `.app` or a disk image of your own), a Touch Bar, Handoff and iCloud, the share sheet, the native
+  `NSTextView` features that Flutter's text field does not have either, and platform views (`AppKitView`).
+- **Testing and measuring.** The repository's tests run the whole platform on a Mac with `-tags glutter_display`
+  (real windows, never taking your focus: they are accessory apps, with Metal's validation layer on). `scripts/perf-macos.sh`
+  measures a bundle on your Mac; the numbers are that machine's, and `docs/PERFORMANCE.md` has the ones of the Mac that
+  made the first table.
+
 ## What is not the same
 
 - **No `const` widgets.** Go has no const constructors. Build a widget once and reuse it
