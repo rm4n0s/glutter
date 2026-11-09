@@ -11,6 +11,29 @@ import (
 // Flutter: no counterpart
 func Ptr[T any](v T) *T { return &v }
 
+// ColorValue is a Color or a value that stands for one and can answer with the
+// Color it draws as when nobody resolves it: Dart's Color is a class that other
+// classes implement (CupertinoDynamicColor does), but Color here is a plain struct,
+// so the parameters that take "a Color, or a color that depends on the context" are
+// of this interface type, and nil is Dart's null. A Color is a ColorValue; so is
+// cupertino.CupertinoDynamicColor, which a Cupertino widget resolves against the
+// theme, the contrast and the interface level of its context.
+//
+// Flutter: ui/painting.dart Color (the interface that CupertinoDynamicColor implements)
+type ColorValue interface {
+	// EffectiveColor is the color to draw when the value is not resolved: the Color
+	// itself, or the color a dynamic color has resolved to (its light color before
+	// it is resolved).
+	//
+	// Flutter: ui/painting.dart Color.toARGB32 (a dynamic color forwards the Color members to its effective color)
+	EffectiveColor() Color
+}
+
+// EffectiveColor is the color itself, which makes every Color a ColorValue.
+//
+// Flutter: ui/painting.dart Color
+func (c Color) EffectiveColor() Color { return c }
+
 // Color is an immutable color value, with float32 alpha, red, green and blue
 // components in a color space. In the sRGB space the components are from 0 to
 // 1; in the extended sRGB space they can be outside that range.

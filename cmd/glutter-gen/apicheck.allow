@@ -7,6 +7,12 @@
 # ctor-size: Flutter's constructors have this many required parameters (SPEC §12.1 says such
 # constructors are reviewed one by one; these were, and the friendlier forms are the
 # options structs or CopyWith).
+ctor-size cupertino.NewCupertinoDynamicColor
+ctor-size cupertino.NewFixedExtentMetricsSnapshot
+ctor-size cupertino.NewFixedPageMetrics
+ctor-size cupertino.NewRawRadio
+ctor-size cupertino.NewSelectionOverlay
+ctor-size cupertino.NewTextSelectionOverlay
 ctor-size material.NewColorScheme
 ctor-size material.NewFixedExtentMetricsSnapshot
 ctor-size material.NewFixedPageMetrics

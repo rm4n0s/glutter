@@ -32,8 +32,59 @@ type IconData struct {
 	//
 	// Flutter: widgets/icon_data.dart IconData.matchTextDirection
 	MatchTextDirection bool
+	// Font is the font file of the glyph when the app has not loaded it: the Icon
+	// widget loads it into the text engine of its binding the first time it builds
+	// an icon with this field, under IconFont.Family, which is FontFamily with
+	// "packages/<FontPackage>/" in front when there is a package. The icons of a
+	// font that the binary does not otherwise need (CupertinoIcons) use it, so the
+	// font is in the binary only when the app imports the package that has the
+	// icons. nil for the icons of a font the engine already has.
+	//
+	// Flutter: no counterpart (Flutter loads the fonts of the pubspec at startup)
+	Font *IconFont
 
 	fontFamilyFallback string
+}
+
+// IconFont is a font file that an Icon loads when it first builds an icon that
+// names it (IconData.Font). It is a read-only value, usually a package variable of
+// the package that holds the icons.
+//
+// Flutter: no counterpart (Flutter loads the fonts of the pubspec at startup)
+type IconFont struct {
+	// Family is the family name the font is loaded under: the name a TextStyle
+	// resolves for the icons, "packages/<package>/<family>" for the icons of a package.
+	Family string
+	// Data returns the content of the TrueType or OpenType file. The caller must not
+	// change the bytes.
+	Data func() []byte
+}
+
+// iconFontsKey is the key of the set of the icon fonts that a binding has loaded.
+type iconFontsKey struct{}
+
+// iconFontSet is what iconFontsKey keeps in a binding: the fonts it has loaded.
+type iconFontSet struct{ loaded map[*IconFont]struct{} }
+
+// ensureIconFont loads the font into the text engine of the binding of bc, once
+// for each binding. A failure is reported to the binding's error reporter and not
+// tried again, as the glyphs then draw with the fallback of the engine.
+func ensureIconFont(bc BuildContext, f *IconFont) {
+	if f == nil || f.Data == nil {
+		return
+	}
+	b := MaybeWidgetsBindingOf(bc)
+	if b == nil {
+		return
+	}
+	set := b.Extension(iconFontsKey{}, func() any { return &iconFontSet{loaded: map[*IconFont]struct{}{}} }).(*iconFontSet)
+	if _, ok := set.loaded[f]; ok {
+		return
+	}
+	set.loaded[f] = struct{}{}
+	if err := b.d.LoadFontFromList(f.Data(), f.Family); err != nil {
+		b.report(err)
+	}
 }
 
 // IconDataOpts are the optional parameters of NewIconData.
@@ -95,6 +146,38 @@ type IconThemeData struct {
 	opacity          foundation.Opt[float64]
 	shadows          []ui.Shadow
 	applyTextScaling foundation.Opt[bool]
+	// colorValue is the color when it depends on the context (a ResolvableColor); color
+	// then holds the one it has when nobody resolves it.
+	colorValue ui.ColorValue
+}
+
+// ResolvableColor is a ui.ColorValue that depends on the context: cupertino's
+// CupertinoDynamicColor, which is another color in dark mode, in high contrast and on an
+// elevated interface. Resolve methods such as IconThemeData.Resolve ask it for the
+// color of a context.
+//
+// Flutter: cupertino/colors.dart CupertinoDynamicColor.resolveFrom
+type ResolvableColor interface {
+	ui.ColorValue
+	// ResolveColor is the color that the value has in the context.
+	//
+	// Flutter: cupertino/colors.dart CupertinoDynamicColor.resolveFrom
+	ResolveColor(bc BuildContext) ui.Color
+}
+
+// ResolveColorValue is the color that c has in the context: the resolved color of a
+// ResolvableColor, the color of any other value, and the zero Color for nil.
+//
+// Flutter: cupertino/colors.dart CupertinoDynamicColor.resolve
+func ResolveColorValue(c ui.ColorValue, bc BuildContext) ui.Color {
+	switch v := c.(type) {
+	case nil:
+		return ui.Color{}
+	case ResolvableColor:
+		return v.ResolveColor(bc)
+	default:
+		return v.EffectiveColor()
+	}
 }
 
 // IconThemeDataOpts are the optional parameters of NewIconThemeData and the
@@ -114,6 +197,11 @@ type IconThemeDataOpts struct {
 	OpticalSize foundation.Opt[float64]
 	// Color is the default color of icons.
 	Color foundation.Opt[ui.Color]
+	// ColorValue is the default color of icons when it depends on the context (a
+	// ResolvableColor such as a CupertinoDynamicColor); it takes the place of Color, and
+	// Resolve gives the color it has in a context. This is the Color of
+	// CupertinoIconThemeData, which is a Color in Dart.
+	ColorValue ui.ColorValue
 	// Opacity is the opacity applied to the color, clamped to 0 to 1.
 	Opacity foundation.Opt[float64]
 	// Shadows are the shadows painted behind icons.
@@ -130,7 +218,12 @@ type IconThemeDataOpts struct {
 func NewIconThemeData(opts ...IconThemeDataOpts) IconThemeData {
 	o := firstOpts(opts)
 	assertIconFont("IconThemeDataInvalid", o.Fill, o.Weight, o.OpticalSize)
-	return IconThemeData{o.Size, o.Fill, o.Weight, o.Grade, o.OpticalSize, o.Color, o.Opacity, o.Shadows, o.ApplyTextScaling}
+	color := o.Color
+	if o.ColorValue != nil {
+		color = foundation.Some(o.ColorValue.EffectiveColor())
+	}
+	return IconThemeData{size: o.Size, fill: o.Fill, weight: o.Weight, grade: o.Grade, opticalSize: o.OpticalSize, color: color,
+		opacity: o.Opacity, shadows: o.Shadows, applyTextScaling: o.ApplyTextScaling, colorValue: o.ColorValue}
 }
 
 // NewIconThemeDataFallback creates the data that is used when there is no
@@ -138,8 +231,9 @@ func NewIconThemeData(opts ...IconThemeDataOpts) IconThemeData {
 //
 // Flutter: widgets/icon_theme_data.dart IconThemeData.fallback
 func NewIconThemeDataFallback() IconThemeData {
-	return IconThemeData{foundation.Some(24.0), foundation.Some(0.0), foundation.Some(400.0), foundation.Some(0.0), foundation.Some(48.0),
-		foundation.Some(ui.NewColor(0xFF000000)), foundation.Some(1.0), nil, foundation.Some(false)}
+	return IconThemeData{size: foundation.Some(24.0), fill: foundation.Some(0.0), weight: foundation.Some(400.0), grade: foundation.Some(0.0),
+		opticalSize: foundation.Some(48.0), color: foundation.Some(ui.NewColor(0xFF000000)), opacity: foundation.Some(1.0),
+		applyTextScaling: foundation.Some(false)}
 }
 
 func assertIconFont(tag string, fill, weight, opticalSize foundation.Opt[float64]) {
@@ -222,8 +316,16 @@ func (d IconThemeData) CopyWith(o IconThemeDataOpts) IconThemeData {
 	if o.Shadows != nil {
 		shadows = o.Shadows
 	}
+	// A color of o replaces the one of d, whether either depends on the context or not.
+	color, colorValue := d.color, d.colorValue
+	switch {
+	case o.ColorValue != nil:
+		color, colorValue = foundation.None[ui.Color](), o.ColorValue
+	case o.Color.IsSome():
+		color, colorValue = o.Color, nil
+	}
 	return NewIconThemeData(IconThemeDataOpts{Size: orSome(o.Size, d.size), Fill: orSome(o.Fill, d.fill), Weight: orSome(o.Weight, d.weight),
-		Grade: orSome(o.Grade, d.grade), OpticalSize: orSome(o.OpticalSize, d.opticalSize), Color: orSome(o.Color, d.color),
+		Grade: orSome(o.Grade, d.grade), OpticalSize: orSome(o.OpticalSize, d.opticalSize), Color: color, ColorValue: colorValue,
 		Opacity: orSome(o.Opacity, d.opacity), Shadows: shadows, ApplyTextScaling: orSome(o.ApplyTextScaling, d.applyTextScaling)})
 }
 
@@ -236,14 +338,24 @@ func (d IconThemeData) Merge(other *IconThemeData) IconThemeData {
 		return d
 	}
 	return d.CopyWith(IconThemeDataOpts{Size: other.size, Fill: other.fill, Weight: other.weight, Grade: other.grade,
-		OpticalSize: other.opticalSize, Color: other.color, Opacity: other.Opacity(), Shadows: other.shadows, ApplyTextScaling: other.applyTextScaling})
+		OpticalSize: other.opticalSize, Color: other.color, ColorValue: other.colorValue, Opacity: other.Opacity(), Shadows: other.shadows, ApplyTextScaling: other.applyTextScaling})
 }
 
-// Resolve is the data itself; subclasses in Flutter use the context to resolve
-// theme dependent values.
+// Resolve is the data with the color that depends on the context (ColorValue) resolved
+// in it; without one it is the data itself. Flutter's CupertinoIconThemeData is the
+// subclass that does it for a CupertinoDynamicColor.
 //
 // Flutter: widgets/icon_theme_data.dart IconThemeData.resolve
-func (d IconThemeData) Resolve(BuildContext) IconThemeData { return d }
+func (d IconThemeData) Resolve(bc BuildContext) IconThemeData {
+	r, ok := d.colorValue.(ResolvableColor)
+	if !ok {
+		return d
+	}
+	resolved := d
+	resolved.color = foundation.Some(r.ResolveColor(bc))
+	resolved.colorValue = nil
+	return resolved
+}
 
 // IsConcrete is whether every property is set (the shadows may be absent).
 //
@@ -258,7 +370,7 @@ func (d IconThemeData) IsConcrete() bool {
 // Flutter: widgets/icon_theme_data.dart IconThemeData.operator ==
 func (d IconThemeData) Equal(o IconThemeData) bool {
 	return d.size == o.size && d.fill == o.fill && d.weight == o.weight && d.grade == o.grade && d.opticalSize == o.opticalSize &&
-		d.color == o.color && d.Opacity() == o.Opacity() && slices.Equal(d.shadows, o.shadows) && d.applyTextScaling == o.applyTextScaling
+		d.color == o.color && d.colorValue == o.colorValue && d.Opacity() == o.Opacity() && slices.Equal(d.shadows, o.shadows) && d.applyTextScaling == o.applyTextScaling
 }
 
 func lerpOptDouble(a, b foundation.Opt[float64], t float64) foundation.Opt[float64] {
@@ -507,6 +619,7 @@ func (w *Icon) Build(bc BuildContext) Widget {
 		size = MediaQueryTextScalerOf(bc).Scale(size)
 	}
 	label := o.SemanticLabel
+	ensureIconFont(bc, w.icon.Font)
 	if w.icon.IsZero() {
 		return NewSemantics(NewSizedBox(nil, SizedBoxOpts{Width: foundation.Some(size), Height: foundation.Some(size)}), SemanticsOpts{Label: label})
 	}

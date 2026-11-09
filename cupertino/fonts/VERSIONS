@@ -1,0 +1,7 @@
+# Pins of the bundled font. The file is the one of the cupertino_icons package; scripts/fetch-reference.sh clones it
+# (reference/cupertino_icons) and the font and the license are copied from there.
+cupertino_icons_repository=https://github.com/flutter/packages
+cupertino_icons_path=third_party/packages/cupertino_icons (file assets/CupertinoIcons.ttf and LICENSE, renamed CupertinoIcons-LICENSE.txt)
+cupertino_icons_commit=59b7e185598c193e1b86d2f221ff47ac6d7725f5
+cupertino_icons_version=2.0.0
+67c44fe9183b002e79dde7f6977e2988661c9a3e4a3c5fce968787efdbed823c  CupertinoIcons.ttf

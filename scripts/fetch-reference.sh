@@ -54,6 +54,14 @@ FLUTTER_SVG_DIR="$REF/flutter_svg"
 FLUTTER_SVG_COMMIT="6ed5a9d2831ac88869a6490aac701366acad1b59"
 FLUTTER_SVG_PATHS=(packages/flutter_svg/lib packages/flutter_svg/test)
 
+# cupertino_icons (MIT), the font and the code points of cupertino.CupertinoIcons (SPEC §31.2, step 34.1): the package is
+# in flutter/packages (third_party/packages/cupertino_icons, version 2.0.0). glutter-gen icons -cupertino reads the font's
+# map from Flutter's cupertino/icons.dart; the font file and its license are copied into cupertino/fonts and third_party.
+CUPERTINO_ICONS_URL="https://github.com/flutter/packages"
+CUPERTINO_ICONS_DIR="$REF/cupertino_icons"
+CUPERTINO_ICONS_COMMIT="59b7e185598c193e1b86d2f221ff47ac6d7725f5"
+CUPERTINO_ICONS_PATHS=(third_party/packages/cupertino_icons)
+
 # SDL 3 (zlib), the reference of the packages gpu, gamepad, audio and sensors (SPEC §27, §28, D32): the shape of the GPU
 # descriptors, the gamepad mappings, the audio backends and the sensors. Nothing is imported or vendored from it.
 SDL_URL="https://github.com/libsdl-org/SDL"
@@ -157,6 +165,16 @@ write_svg_version() {
   } >>"$VERSION_FILE"
 }
 
+# write_cupertino_icons_version appends the cupertino_icons lines to reference/VERSION.
+write_cupertino_icons_version() {
+  {
+    echo "cupertino_icons_repository=$CUPERTINO_ICONS_URL"
+    echo "cupertino_icons_commit=$(git -C "$CUPERTINO_ICONS_DIR" rev-parse HEAD)"
+    echo "cupertino_icons_date=$(commit_date "$CUPERTINO_ICONS_DIR")"
+    echo "cupertino_icons_version=$(sed -n 's/^version: *//p' "$CUPERTINO_ICONS_DIR/third_party/packages/cupertino_icons/pubspec.yaml" | head -n 1)"
+  } >>"$VERSION_FILE"
+}
+
 # ensure_sdl COMMIT clones SDL 3 at SDL_TAG (a shallow clone of the tag) when it is missing, then pins to COMMIT when
 # one is recorded.
 ensure_sdl() {
@@ -225,6 +243,12 @@ if [[ -f "$VERSION_FILE" ]]; then
     # An older reference/VERSION: record the pinned flutter_svg.
     write_svg_version
   fi
+  cupertino_icons_commit="$(read_version cupertino_icons_commit)"
+  ensure_repo "$CUPERTINO_ICONS_URL" "$CUPERTINO_ICONS_DIR" "" "${cupertino_icons_commit:-$CUPERTINO_ICONS_COMMIT}" "${CUPERTINO_ICONS_PATHS[@]}"
+  if [[ -z "$cupertino_icons_commit" ]]; then
+    # An older reference/VERSION: record the pinned cupertino_icons.
+    write_cupertino_icons_version
+  fi
   sdl_commit="$(read_version sdl_commit)"
   ensure_sdl "$sdl_commit"
   if [[ -z "$sdl_commit" ]]; then
@@ -257,6 +281,8 @@ else
     echo "skia_date=$(commit_date "$SKIA_DIR")"
   } >"$VERSION_FILE"
   write_svg_version
+  ensure_repo "$CUPERTINO_ICONS_URL" "$CUPERTINO_ICONS_DIR" "" "$CUPERTINO_ICONS_COMMIT" "${CUPERTINO_ICONS_PATHS[@]}"
+  write_cupertino_icons_version
   ensure_sdl ""
   write_sdl_version
   ensure_meshopt ""
@@ -285,6 +311,12 @@ done
 for p in "${FLUTTER_SVG_PATHS[@]}" LICENSE; do
   if [[ ! -e "$FLUTTER_SVG_DIR/$p" ]]; then
     log "error: missing in reference/flutter_svg: $p"
+    missing=1
+  fi
+done
+for p in third_party/packages/cupertino_icons/assets/CupertinoIcons.ttf third_party/packages/cupertino_icons/LICENSE; do
+  if [[ ! -e "$CUPERTINO_ICONS_DIR/$p" ]]; then
+    log "error: missing in reference/cupertino_icons: $p"
     missing=1
   fi
 done

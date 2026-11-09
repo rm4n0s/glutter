@@ -1,4 +1,5 @@
-// Package icons implements the `glutter-gen icons` subcommand, which generates the Material icon constants.
+// Package icons implements the `glutter-gen icons` subcommand, which generates the Material icon constants and, with
+// -cupertino, the CupertinoIcons.
 //
 // Flutter: no counterpart.
 package icons
@@ -22,6 +23,9 @@ const (
 	defaultReference = "reference/flutter"
 	defaultOut       = "material/icons_gen.go"
 	iconsFile        = "packages/flutter/lib/src/material/icons.dart"
+
+	defaultCupertinoOut = "cupertino/icons_gen.go"
+	cupertinoIconsFile  = "packages/flutter/lib/src/cupertino/icons.dart"
 )
 
 // Icon is one icon read from icons.dart.
@@ -38,32 +42,45 @@ type Icon struct {
 	MatchTextDirection bool
 }
 
+// cupertinoIconRE matches the constants of CupertinoIcons: the family and the package are the constants of the class.
+var cupertinoIconRE = regexp.MustCompile(`static const IconData (\w+) = IconData\(\s*(0x[0-9a-fA-F]+),\s*fontFamily: iconFont,\s*fontPackage: iconFontPackage,?\s*(matchTextDirection: true,)?\s*\);`)
+
 var iconRE = regexp.MustCompile(`static const IconData (\w+) = IconData\(\s*(0x[0-9a-fA-F]+),\s*fontFamily: 'MaterialIcons',?\s*(matchTextDirection: true,)?\s*\);`)
 
-// Run executes `glutter-gen icons [-reference dir] [-out file]` with the
+// Run executes `glutter-gen icons [-cupertino] [-reference dir] [-out file]` with the
 // arguments that follow the subcommand name. It reads the Material icon
 // constants of icons.dart in the Flutter checkout of the reference directory and
-// writes material/icons_gen.go, which holds the read-only Icons value.
+// writes material/icons_gen.go, which holds the read-only Icons value; with
+// -cupertino it reads the constants of cupertino/icons.dart and writes
+// cupertino/icons_gen.go, which holds the read-only CupertinoIcons value.
 //
-// Flutter: material/icons.dart Icons
+// Flutter: material/icons.dart Icons and cupertino/icons.dart CupertinoIcons
 func Run(args []string) error {
 	flags := flag.NewFlagSet("icons", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	reference := flags.String("reference", defaultReference, "directory with the Flutter sources (see scripts/fetch-reference.sh)")
-	out := flags.String("out", defaultOut, "file to write the icons to")
+	out := flags.String("out", "", "file to write the icons to (default material/icons_gen.go, cupertino/icons_gen.go with -cupertino)")
+	cupertino := flags.Bool("cupertino", false, "generate CupertinoIcons from cupertino/icons.dart instead of the Material icons")
 	if err := flags.Parse(args); err != nil {
 		return errors.NewErr(tagIconsBadFlags, err).SetMetadata("args", args)
 	}
-	path := filepath.Join(*reference, iconsFile)
+	file, dest, parse, generate := iconsFile, defaultOut, Parse, Generate
+	if *cupertino {
+		file, dest, parse, generate = cupertinoIconsFile, defaultCupertinoOut, ParseCupertino, GenerateCupertino
+	}
+	if *out == "" {
+		*out = dest
+	}
+	path := filepath.Join(*reference, file)
 	src, err := os.ReadFile(path)
 	if err != nil {
 		return errors.NewErr(tagIconsReadFailed, err).SetMetadata("file", path)
 	}
-	icons, err := Parse(string(src))
+	icons, err := parse(string(src))
 	if err != nil {
 		return err
 	}
-	code, err := Generate(icons)
+	code, err := generate(icons)
 	if err != nil {
 		return err
 	}
@@ -87,6 +104,37 @@ func Parse(src string) ([]Icon, error) {
 	var icons []Icon
 	seen := map[string]string{}
 	for _, m := range iconRE.FindAllStringSubmatch(src, -1) {
+		cp, err := strconv.ParseInt(m[2], 0, 32)
+		if err != nil {
+			return nil, errors.NewErr(tagIconsBadCodePoint, err).SetMetadata("icon", m[1])
+		}
+		goName := goName(m[1])
+		if other, dup := seen[goName]; dup {
+			return nil, errors.New(tagIconsDuplicateName, "two icons have the same Go name", "name", goName, "icons", []string{other, m[1]})
+		}
+		seen[goName] = m[1]
+		icons = append(icons, Icon{DartName: m[1], GoName: goName, CodePoint: int(cp), MatchTextDirection: m[3] != ""})
+	}
+	if want := strings.Count(src, "static const IconData "); len(icons) != want {
+		return nil, errors.New(tagIconsUnparsed, "some icon constants do not match the expected form", "parsed", len(icons), "found", want)
+	}
+	if len(icons) == 0 {
+		return nil, errors.New(tagIconsNone, "no icon constants found")
+	}
+	return icons, nil
+}
+
+// ParseCupertino reads the icon constants of the text of cupertino/icons.dart: the legacy names and the names of the
+// SF Symbols, which are all in the class CupertinoIcons.
+//
+// Flutter: cupertino/icons.dart CupertinoIcons
+func ParseCupertino(src string) ([]Icon, error) {
+	if i := strings.Index(src, "abstract final class CupertinoIcons"); i >= 0 {
+		src = src[i:]
+	}
+	var icons []Icon
+	seen := map[string]string{}
+	for _, m := range cupertinoIconRE.FindAllStringSubmatch(src, -1) {
 		cp, err := strconv.ParseInt(m[2], 0, 32)
 		if err != nil {
 			return nil, errors.NewErr(tagIconsBadCodePoint, err).SetMetadata("icon", m[1])
@@ -139,6 +187,30 @@ func Generate(icons []Icon) ([]byte, error) {
 			mirror = ", MatchTextDirection: true"
 		}
 		fmt.Fprintf(&b, "// %s is the Material icon %q.\n//\n// Flutter: material/icons.dart Icons.%s\nfunc (IconSet) %s() widgets.IconData {\n\treturn widgets.IconData{CodePoint: %#x, FontFamily: MaterialIconsFamily%s}\n}\n\n", ic.GoName, ic.DartName, ic.DartName, ic.GoName, ic.CodePoint, mirror)
+	}
+	code, err := format.Source(b.Bytes())
+	if err != nil {
+		return nil, errors.NewErr(tagIconsFormatFailed, err)
+	}
+	return code, nil
+}
+
+// GenerateCupertino writes the Go source of CupertinoIcons: a read-only value whose methods are the icons, each an
+// IconData of the CupertinoIcons font, which an Icon loads the first time it builds one (widgets.IconFont).
+//
+// Flutter: cupertino/icons.dart CupertinoIcons
+func GenerateCupertino(icons []Icon) ([]byte, error) {
+	var b bytes.Buffer
+	b.WriteString("// Code generated by glutter-gen icons -cupertino; DO NOT EDIT.\n\n")
+	b.WriteString("package cupertino\n\nimport \"github.com/rm4n0s/glutter/widgets\"\n\n")
+	b.WriteString("// CupertinoIconSet holds the Cupertino icons, as methods, for the reason that IconSet of package material does.\n//\n// Flutter: cupertino/icons.dart CupertinoIcons\ntype CupertinoIconSet struct{}\n\n")
+	b.WriteString("// CupertinoIcons holds the Cupertino icons: the glyphs of the CupertinoIcons font of the cupertino_icons package.\n// It is read-only. The font is loaded into the text engine of an app when an Icon first builds one of the icons.\n//\n// Flutter: cupertino/icons.dart CupertinoIcons\nvar CupertinoIcons CupertinoIconSet\n\n")
+	for _, ic := range icons {
+		mirror := ""
+		if ic.MatchTextDirection {
+			mirror = ", MatchTextDirection: true"
+		}
+		fmt.Fprintf(&b, "// %s is the Cupertino icon %q.\n//\n// Flutter: cupertino/icons.dart CupertinoIcons.%s\nfunc (CupertinoIconSet) %s() widgets.IconData {\n\treturn widgets.IconData{CodePoint: %#x, FontFamily: CupertinoIconsFont, FontPackage: CupertinoIconsFontPackage, Font: cupertinoIconFont%s}\n}\n\n", ic.GoName, ic.DartName, ic.DartName, ic.GoName, ic.CodePoint, mirror)
 	}
 	code, err := format.Source(b.Bytes())
 	if err != nil {

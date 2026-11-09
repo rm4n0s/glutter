@@ -160,6 +160,11 @@ func TestMatchOfAnAliasAndItsAliases(t *testing.T) {
 	if !slices.Equal(got, []string{SystemUIFamily, "Helvetica Neue"}) {
 		t.Errorf("Aliases(segoe ui) = %v", got)
 	}
+	for _, name := range []string{"CupertinoSystemText", "CupertinoSystemDisplay"} {
+		if got, _ := m.Aliases(ctx, name); !slices.Equal(got, []string{SystemUIFamily}) {
+			t.Errorf("Aliases(%s) = %v, want the system UI font", name, got)
+		}
+	}
 	if got, _ := m.Aliases(ctx, "Menlo"); len(got) != 0 {
 		t.Errorf("Aliases(Menlo) = %v", got)
 	}

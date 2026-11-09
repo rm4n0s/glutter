@@ -74,12 +74,17 @@ var aliases = map[string][]string{
 	"sf pro text":        {SystemUIFamily},
 	"sf pro display":     {SystemUIFamily},
 	"sf ui text":         {SystemUIFamily},
-	"segoe ui":           {SystemUIFamily, "Helvetica Neue"},
-	"ms shell dlg":       {"Helvetica Neue", "Helvetica"},
-	"ms shell dlg 2":     {"Helvetica Neue", "Helvetica"},
-	"consolas":           {"Menlo", "Monaco"},
-	"times":              {"Times New Roman"},
-	"courier":            {"Courier New"},
+	// The families of the Cupertino text styles (SPEC §31.2): Flutter's iOS engine maps them to San
+	// Francisco Text and Display; the system UI font is both here, at the optical size that its file
+	// has by default.
+	"cupertinosystemtext":    {SystemUIFamily},
+	"cupertinosystemdisplay": {SystemUIFamily},
+	"segoe ui":               {SystemUIFamily, "Helvetica Neue"},
+	"ms shell dlg":           {"Helvetica Neue", "Helvetica"},
+	"ms shell dlg 2":         {"Helvetica Neue", "Helvetica"},
+	"consolas":               {"Menlo", "Monaco"},
+	"times":                  {"Times New Roman"},
+	"courier":                {"Courier New"},
 }
 
 // langKey reduces a BCP 47 tag to what the chain tells apart: "ja", "ko", "zh-Hans" or "zh-Hant" (a Chinese

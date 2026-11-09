@@ -110,6 +110,15 @@ ships with the font in the Flutter SDK: Creative Commons Attribution 4.0)
   its code points are the ones of Flutter's Icons. The pins are in
   material/fonts/VERSIONS.
 
+cupertino_icons (MIT)
+  The CupertinoIcons font of the cupertino_icons package (version 2.0.0, from
+  https://github.com/flutter/packages, third_party/packages/cupertino_icons) is
+  embedded in cupertino/fonts together with its license
+  (CupertinoIcons-LICENSE.txt); the code points of cupertino.CupertinoIcons are
+  those of Flutter's cupertino/icons.dart. The pin is in cupertino/fonts/VERSIONS.
+  Copyright (c) 2016 Vladimir Kharlampidi
+  License text: third_party/cupertino_icons/LICENSE
+
 Wayland protocol XML (MIT)
   Kept next to the generated Wayland bindings in
   internal/platform/linux/wayland/protocols, with the licenses of the

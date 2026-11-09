@@ -26,7 +26,7 @@ import (
 // Flutter: no counterpart.
 var DefaultPackages = []string{
 	"foundation", "scheduler", "animation", "physics", "gestures", "painting", "rendering",
-	"semantics", "services", "widgets", "material", "ui", "desktop", "gluttertest", "svg", "gpu", "vecmath", "viewport3d", "gamepad",
+	"semantics", "services", "widgets", "material", "cupertino", "ui", "desktop", "gluttertest", "svg", "gpu", "vecmath", "viewport3d", "gamepad",
 }
 
 // The rules, as they are named in a report and in an allow file.

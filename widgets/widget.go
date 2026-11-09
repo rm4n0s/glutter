@@ -213,6 +213,8 @@ type widgetDescription struct{ w Widget }
 func (d *widgetDescription) ToStringShort() string { return WidgetToStringShort(d.w) }
 
 func (d *widgetDescription) DebugFillProperties(p *foundation.DiagnosticPropertiesBuilder) {
+	// Flutter: widgets/framework.dart Widget.debugFillProperties draws a widget densely.
+	p.DefaultDiagnosticsTreeStyle = foundation.DiagnosticsTreeStyleDense
 	if dd, ok := d.w.(foundation.Diagnosticable); ok {
 		dd.DebugFillProperties(p)
 	}

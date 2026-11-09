@@ -4476,7 +4476,7 @@ The owner asked on 2026-11-09 for "the macOS and iOS theme": Flutter's `cupertin
 ### 34.4 Buttons and controls
 **Goal:** the Cupertino buttons, switch, checkbox, radio, slider, activity indicator and the two segmented controls.
 **Read:** SPEC §31.1.
-**Port from:** `cupertino/button.dart`, `switch.dart`, `checkbox.dart`, `radio.dart`, `slider.dart`, `activity_indicator.dart`, `segmented_control.dart`, `sliding_segmented_control.dart`, `thumb_painter.dart`.
+**Port from:** `cupertino/button.dart` (with the button-size maps of `constants.dart`: `kCupertinoButtonPadding`, `kCupertinoButtonSizeBorderRadius`, `kCupertinoButtonMinSize`, which need `CupertinoButtonSize`), `switch.dart`, `checkbox.dart`, `radio.dart`, `slider.dart`, `activity_indicator.dart`, `segmented_control.dart`, `sliding_segmented_control.dart`, `thumb_painter.dart`, `cupertino_focus_halo.dart` (`CupertinoFocusHalo`, 144 lines; the pinned commit has it and §31.1 did not list it; the test is `cupertino_focus_halo_test.dart`).
 **Files:** `cupertino/` (those files), `examples/cupertino/`.
 **Tasks:** each widget with its states, its haptic feedback calls (on platforms that have them), its semantics and its keyboard behavior on the desktop.
 **Tests:** the test files of each (the relevant cases); goldens of each in light and dark, enabled and disabled.
@@ -4494,7 +4494,7 @@ The owner asked on 2026-11-09 for "the macOS and iOS theme": Flutter's `cupertin
 ### 34.6 Dialogs, action sheets and context menus
 **Goal:** alert dialogs, action sheets, the popup surface and the context menu with its preview.
 **Read:** SPEC §31.1.
-**Port from:** `cupertino/dialog.dart`, `context_menu.dart`, `context_menu_action.dart`.
+**Port from:** `cupertino/dialog.dart`, `context_menu.dart`, `context_menu_action.dart`, `menu_anchor.dart` (`CupertinoMenuAnchor`, `CupertinoMenuItem`, `CupertinoMenuDivider`: 3040 lines, which the pinned commit has and §31.1 did not list; the test is `menu_anchor_test.dart`; it is the last piece of the step and the largest one).
 **Files:** `cupertino/` (those files), `examples/cupertino/`.
 **Tasks:** `CupertinoAlertDialog`, `CupertinoDialogAction`, `CupertinoActionSheet`, `CupertinoActionSheetAction`, `CupertinoPopupSurface` (the blur), `CupertinoContextMenu` (the long press, the preview's lift, the actions) and `CupertinoContextMenuAction`.
 **Tests:** `dialog_test.dart`, `action_sheet_test.dart`, `context_menu_test.dart`, `context_menu_action_test.dart` (the relevant cases); goldens.
@@ -4512,7 +4512,7 @@ The owner asked on 2026-11-09 for "the macOS and iOS theme": Flutter's `cupertin
 ### 34.8 Lists, forms, refresh and scrollbar
 **Goal:** list and form sections, list tiles, the expansion tile, the pull-to-refresh sliver and the Cupertino scrollbar.
 **Read:** SPEC §31.1.
-**Port from:** `cupertino/list_section.dart`, `list_tile.dart`, `form_section.dart`, `form_row.dart`, `expansion_tile.dart` (if present), `refresh.dart`, `scrollbar.dart`.
+**Port from:** `cupertino/list_section.dart`, `list_tile.dart`, `form_section.dart`, `form_row.dart`, `expansion_tile.dart` (present at the pinned commit), `refresh.dart`, `scrollbar.dart`.
 **Files:** `cupertino/` (those files), `examples/cupertino/`.
 **Tasks:** each widget with its inset-grouped and base forms, the refresh control's states and its indicator, the scrollbar's thickness and the drag of its thumb.
 **Tests:** the test files of each (the relevant cases); goldens.
