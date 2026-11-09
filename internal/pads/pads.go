@@ -204,6 +204,8 @@ func (m *Manager) Table() *gamepaddb.Table {
 		sections = [][]string{gamepaddb.Linux}
 	case "Windows":
 		sections = [][]string{gamepaddb.XInput, gamepaddb.WGI, gamepaddb.DInput}
+	case "Mac OS X":
+		sections = [][]string{gamepaddb.MacOS}
 	case "Android":
 		sections = [][]string{gamepaddb.Android}
 	case "Web":

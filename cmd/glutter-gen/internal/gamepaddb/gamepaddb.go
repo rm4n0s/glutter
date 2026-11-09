@@ -86,12 +86,13 @@ var sectionOf = map[string]string{
 	"SDL_JOYSTICK_WGI":        "WGI",
 	"SDL_JOYSTICK_DINPUT":     "DInput",
 	"SDL_JOYSTICK_LINUX":      "Linux",
+	"SDL_PLATFORM_MACOS":      "MacOS",
 	"SDL_PLATFORM_ANDROID":    "Android",
 	"SDL_JOYSTICK_EMSCRIPTEN": "Web",
 }
 
 // sectionOrder is the order of the variables in the generated file.
-var sectionOrder = []string{"XInput", "WGI", "DInput", "Linux", "Android", "Web"}
+var sectionOrder = []string{"XInput", "WGI", "DInput", "Linux", "MacOS", "Android", "Web"}
 
 var (
 	ifRE      = regexp.MustCompile(`^#\s*(?:ifdef|if defined\()\s*([A-Z0-9_]+)`)
@@ -209,6 +210,7 @@ func generateMappings(sections map[string][]string) ([]byte, error) {
 		"WGI":     "WGI are the mappings of the pads that Windows.Gaming.Input knows",
 		"DInput":  "DInput are the mappings of the pads that DirectInput and the raw HID of Windows know",
 		"Linux":   "Linux are the mappings of the pads of the evdev joystick layer of Linux",
+		"MacOS":   "MacOS are the mappings of the pads that the IOKit HID layer of macOS gives (the platform \"Mac OS X\")",
 		"Android": "Android are the mappings of the pads of Android (by the GUID that the Android backend makes)",
 		"Web":     "Web are the mappings that the browser's pads use when the browser's own mapping is not \"standard\"",
 	}

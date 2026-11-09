@@ -985,3 +985,19 @@ The tests read the tree through the view's accessibility properties and send the
 
 Answers: _(not yet recorded)_
 
+## 33.14 Gamepads and audio (macOS)
+
+**Status:** pending
+
+The tests have no pad and never record: the elements, the values, the HID drivers and the queues are tested over fakes, and a real output plays an inaudible sine. A person with a pad and a microphone checks the rest.
+
+1. **A generic pad** (a USB or Bluetooth one that macOS shows as a HID game pad): `go run ./examples/dev/pad-hid` shows the pad when it is plugged in and removes it when it is unplugged; the buttons, sticks, triggers and the d-pad are in the right places of the standard layout (the SDL table for "Mac OS X" has its GUID or the automatic mapping is used); pressing a button moves the focus of a Material app (the key events of pads).
+2. **A DualShock 4 or DualSense and a Switch Pro** over Bluetooth: the pad is seen once (with the HID driver: the light, the rumble, the touchpad and the sensors work in `examples/dev/pad-hid`); pressing the PS button does not open anything of the system that the app does not expect. Unplugging or switching the pad off removes it; connecting it again adds it again.
+3. **Coin Run** (`go run ./examples/game3d`) with a pad: it is played with the pad, rumbles on a hit, and the pause menu is driven by the pad's key events.
+4. **Rumble of a generic pad**: refused with `GamepadRumbleUnavailable` (SDL plays it through the Force Feedback framework, which is not done); the app goes on.
+5. **Audio output**: `examples/game3d` and `go run ./examples/dev/android-audio` (a tone through the public audio package, with its log of the stats) play sound on the speakers; a pause and a resume are heard as such; unplugging the headphones moves the sound to the speakers (the default device is followed) with no crash; plugging in an USB or Bluetooth device and making it the default moves the sound there.
+6. **A named device**: opening a device by its `ID` from `audio.System.Devices` and then unplugging it makes the stream `Lost` once.
+7. **Capture**: the first recording asks for the microphone (from the app bundle of step 33.15 it uses the bundle's usage string; from `go run` it asks about the terminal); allowed, `GLUTTER_AUDIO_CAPTURE=1 go run ./examples/dev/android-audio` logs the frames that arrive; refused, `Open` fails with `AudioCapturePermissionDenied` and the app goes on. Changing the default input while recording moves the recording to the new input.
+8. **Latency**: a loopback or a hand clap and the monitor: the output is within about 30 ms (the target of SPEC §28.6); a 5.1 or 7.1 device plays the channels in the order of its outputs.
+
+Answers: _(not yet recorded)_

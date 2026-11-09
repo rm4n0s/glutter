@@ -54,6 +54,7 @@ func TestParseMappings(t *testing.T) {
 		"WGI":     {"03000000491900001904000000007700,Amazon Luna Controller,a:b0,b:b1,", `030000007e0500000920000000007701,Nintendo "Pro" Controller,a:b0,`},
 		"DInput":  {"03000000d11800000094000000007700,DInput Pad,a:b0,"},
 		"Linux":   {"03000000d11800000094000000010000,Linux Pad,a:b0,"},
+		"MacOS":   {"03000000c82d00000090000001000000,Mac Pad,a:b0,"},
 		"Android": {"05000000d11800000094000000010000,Android Pad,a:b0,"},
 		"Web":     {"default,*,a:b0,"},
 	}

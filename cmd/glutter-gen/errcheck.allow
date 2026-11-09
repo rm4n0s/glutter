@@ -27,6 +27,17 @@ error-helper internal/platform/android/aaudio/service.go:resultError
 # matches on is AudioCapturePermissionDenied (SPEC §28.3), and the link's error stays as the cause, so errors.Is still finds it.
 error-rewrap internal/platform/android/aaudio/service.go:Service.Open
 
+# error-helper (R4): statusError turns the OSStatus of a call of Core Audio into one of three tags with a switch (a format or an argument
+# that the device does not take, any other failure to open it, and CoreAudioFailed for the calls that do not open a device), with the
+# name of the call and the number as the metadata; about fifteen calls of the macOS backend use it. The route of such an error has the
+# frame statusError; the switch is the table of the numbers of the errors of AudioQueue, which inlined at each call would be repeated.
+error-helper internal/platform/darwin/coreaudio/library_darwin.go:statusError
+
+# error-rewrap (R3): coreaudio.Permissions is an interface of this package that the platform implements over AVFoundation, so the error
+# of Microphone (a prompt that could not be shown, a context that ended) is tagged with the names of the audio service; what an app matches
+# on is AudioCapturePermissionDenied (SPEC §28.3), and the error of the permission stays as the cause, so errors.Is still finds it.
+error-rewrap internal/platform/darwin/coreaudio/service_darwin.go:Service.Open
+
 # error-rewrap (R3): the public tags of SPEC §14.1 (FileChooserUnavailable,
 # NotificationsUnavailable, TrayUnavailable, TrayRegisterFailed) are what an app matches on
 # when the portal or the service is missing. internal/dbus tags its failures first

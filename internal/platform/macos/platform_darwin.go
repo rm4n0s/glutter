@@ -371,6 +371,9 @@ func (p *Platform) Close() error {
 }
 
 func (p *Platform) teardown() {
+	if p.pads != nil {
+		p.pads.Stop()
+	}
 	if p.desk != nil {
 		p.desk.closeServices()
 	}

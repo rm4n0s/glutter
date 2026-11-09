@@ -7,8 +7,10 @@ import (
 
 	"github.com/ebitengine/purego/objc"
 	"github.com/rm4n0s/glutter/internal/platform"
+	"github.com/rm4n0s/glutter/internal/platform/darwin/coreaudio"
 	"github.com/rm4n0s/glutter/internal/platform/darwin/objcx"
 	"github.com/rm4n0s/glutter/internal/platform/macos/a11y"
+	"github.com/rm4n0s/glutter/internal/platform/macos/iokit"
 	"github.com/rm4n0s/glutter/ui"
 )
 
@@ -32,32 +34,46 @@ func (h a11yHost) ViewObjects(view ui.ViewID) (nsView, nsWindow objc.ID, scale f
 // Guard runs fn under the platform's guard.
 func (h a11yHost) Guard(fn func()) { h.p.guard(fn) }
 
-// macServices is platform.Services of macOS: the bridge of accessibility; the gamepads and the audio come with step
-// 33.14, and there are no motion sensors on a Mac (SPEC §29.11).
+// macServices is platform.Services of macOS: the bridge of accessibility, the gamepads (package iokit) and the audio (package coreaudio); there
+// are no motion sensors on a Mac (SPEC §29.11).
 type macServices struct {
-	acc platform.Accessibility
+	acc   platform.Accessibility
+	pads  platform.Gamepads
+	audio platform.Audio
 }
 
 var _ platform.Services = macServices{}
 
 func (s macServices) Accessibility() platform.Accessibility { return s.acc }
-func (s macServices) Gamepads() platform.Gamepads           { return nil }
-func (s macServices) Audio() platform.Audio                 { return nil }
+func (s macServices) Gamepads() platform.Gamepads           { return s.pads }
+func (s macServices) Audio() platform.Audio                 { return s.audio }
 func (s macServices) Sensors() platform.Sensors             { return nil }
 
 // a11yState is the platform's field for accessibility.
 type a11yState struct {
 	accOnce sync.Once
 	acc     *a11y.Bridge
+	// pads is the gamepad service (SPEC §29.11), made with the services.
+	padsOnce sync.Once
+	pads     *iokit.Service
+	// audio is the audio service (SPEC §29.11), made with the services.
+	audioOnce sync.Once
+	audio     *coreaudio.Service
 }
 
-// Services returns the services of the platform: the accessibility bridge (SPEC §29.10). It is made at the first
+// Services returns the services of the platform: the accessibility bridge (SPEC §29.10) the gamepads and the audio (SPEC §29.11). It is made at the first
 // call, which is the engine's.
 //
 // Flutter: no counterpart
 func (p *Platform) Services() platform.Services {
 	p.accOnce.Do(func() { p.acc = a11y.NewBridge(a11yHost{p}, p.log) })
-	return macServices{acc: p.acc}
+	p.padsOnce.Do(func() {
+		p.pads = iokit.New(iokit.Options{Manager: iokit.NewManager(p.Post, iokit.ManagerOptions{Guard: p.guard}), Post: p.Post, Logger: p.log})
+	})
+	p.audioOnce.Do(func() {
+		p.audio = coreaudio.New(coreaudio.Options{Permissions: coreaudio.NewPermissions(), Log: p.log})
+	})
+	return macServices{acc: p.acc, pads: p.pads, audio: p.audio}
 }
 
 // accessibilityMethods are the methods of the view that make it the parent of the root element: the first question of
