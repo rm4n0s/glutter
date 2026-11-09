@@ -959,3 +959,16 @@ The tests call the destination and the source by hand: the real drag follows the
 
 Answers: _(not yet recorded)_
 
+## 33.12 Tray, notifications, file dialogs and open URI (macOS)
+
+**Status:** pending
+
+The panels are views of another process, which a test cannot press (only cancel), the notification center works only from an application bundle, and a status item is a thing the user looks at.
+
+1. **Tray**: `go run ./examples/tray`: the icon is in the menu bar, a template image that follows the light and dark menu bar; the tooltip shows on hover; the menu opens with its items, the check marks, the disabled item and the submenu, and each item does what the example says; the icon goes when the app ends; with no menu a click calls the primary action and a right click the secondary one.
+2. **File dialogs**: in an app that opens files (the editor example): open one file, several, a folder; save with a name and a type filter (the panel adds the extension); Cancel; the app goes on drawing while the panel is open.
+3. **Open URI**: a link that opens `https://` opens the default browser; `mailto:` opens the mail app; a `file:` URI of a picture opens Preview; a `.app` or `.sh` file URI is refused.
+4. **Notifications**, from an app bundle built by step 33.15 (`glutter-macos`): the first notification asks for the permission; allowed, it shows as a banner with its buttons; the buttons and the click call the app; the notification goes after its timeout; replacing one changes it in place; with the permission refused, `Notify` fails with `NotificationsUnavailable` and the app goes on. With `go run` it fails with that tag and says why.
+
+Answers: _(not yet recorded)_
+

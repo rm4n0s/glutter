@@ -43,9 +43,11 @@ type services struct {
 	// posts notifications with the notification manager (SPEC §24.11). With it, the session bus is never
 	// tried.
 	android androidDesktop
-	// windows, set on Windows only, does what the desktop does there: it opens URIs with ShellExecuteEx, shows
-	// notifications as tray balloons, puts the icon in the notification area and shows the item dialogs (SPEC
-	// §25.9). With it, the session bus is never tried.
+	// windows, set on Windows and on macOS (the name is the first one's), does what the desktop does there: on
+	// Windows it opens URIs with ShellExecuteEx, shows notifications as tray balloons, puts the icon in the
+	// notification area and shows the item dialogs (SPEC §25.9); on macOS it opens URIs with NSWorkspace, shows
+	// notifications through UserNotifications, puts the icon in the menu bar and shows the open and save panels
+	// (SPEC §29.9). With it, the session bus is never tried.
 	windows windowsDesktop
 }
 
@@ -93,6 +95,10 @@ func (s *services) connect(ctx context.Context, tag string) (dbus.Bus, error) {
 		return nil, errors.NewErr(tag, &errors.Error{Tag: "DBusUnavailableOnWeb", Message: "a web page has no session bus: D-Bus is never tried on the web"})
 	}
 	if s.windows != nil {
+		if n, ok := s.windows.(interface{ DesktopName() string }); ok && n.DesktopName() == "macOS" {
+			// The cause is a sentinel, so that an app can still match DBusUnavailableOnMacOS (SPEC §14.1).
+			return nil, errors.NewErr(tag, &errors.Error{Tag: "DBusUnavailableOnMacOS", Message: macOSReason(tag)})
+		}
 		// The cause is a sentinel, so that an app can still match DBusUnavailableOnWindows (SPEC §14.1).
 		return nil, errors.NewErr(tag, &errors.Error{Tag: "DBusUnavailableOnWindows", Message: windowsReason(tag)})
 	}

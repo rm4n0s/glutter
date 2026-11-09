@@ -401,6 +401,35 @@ func TestTheBusIsNeverTriedOnWindows(t *testing.T) {
 	}
 }
 
+// macFake is a fake of the platform's services that says it is macOS's.
+type macFake struct{ fakeWindows }
+
+func (*macFake) DesktopName() string { return "macOS" }
+
+// TestTheBusIsNeverTriedOnMacOS is the same for the services of macOS, which have the interface of Windows' and
+// say their name: the cause is DBusUnavailableOnMacOS.
+func TestTheBusIsNeverTriedOnMacOS(t *testing.T) {
+	_, bc := app(t)
+	desktop.UseBusOpener(bc, func(context.Context) (dbus.Bus, error) {
+		t.Error("macOS tried the session bus")
+		return nil, errors.New(tagDBusConnectFailed, "must not be called")
+	})
+	desktop.UseWindows(bc, &macFake{})
+	for _, tag := range []string{"TrayUnavailable", "FileChooserUnavailable", "NotificationsUnavailable", "DBusConnectFailed"} {
+		t.Run(tag, func(t *testing.T) {
+			err := desktop.ConnectForTest(context.Background(), bc, tag)
+			appErr := tagged(t, err, tag)
+			inner, ok := errors.FromError(appErr.OriginalErr)
+			if !ok || inner.Tag != "DBusUnavailableOnMacOS" {
+				t.Errorf("the cause is %v, want DBusUnavailableOnMacOS", appErr.OriginalErr)
+			}
+			if !appErr.HasRoute("services.connect." + tag) {
+				t.Errorf("route %s", appErr.Route())
+			}
+		})
+	}
+}
+
 // TestTheWindowsServicesComeFromThePlatform: the binding gets the services of Windows from the engine, by the
 // name of the service, only when what the engine hands out has a tray and file dialogs; Android's services
 // are not taken for them.

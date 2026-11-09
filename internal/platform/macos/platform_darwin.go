@@ -79,6 +79,8 @@ type Platform struct {
 	accessory bool
 	// quitOnLastClose is Options.QuitOnLastWindowClosed with its default.
 	quitOnLastClose bool
+	// deskState has the desktop services (desktop_darwin.go).
+	deskState
 	// performDrag moves a window by the press that is down (dragWindow); the tests replace it, since a scripted press
 	// is not a button that is really down.
 	performDrag func(w *window, ev objc.ID)
@@ -369,6 +371,9 @@ func (p *Platform) Close() error {
 }
 
 func (p *Platform) teardown() {
+	if p.desk != nil {
+		p.desk.closeServices()
+	}
 	if p.clip.pb != 0 {
 		if p.clip.named {
 			p.clip.pb.Send(sel("releaseGlobally"))
