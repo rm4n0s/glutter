@@ -826,3 +826,22 @@ The pointer input of the view is Flutter's: the mouse with its buttons and its e
 
 Answers: _(not yet recorded)_
 
+## 33.4 Keyboard (macOS)
+
+**Status:** pending
+
+Keys reach the framework as Flutter's macOS embedder reports them: the physical key from the key code, the logical key from the character of the layout (or the key of the US layout where the layout has no Latin one), the left and right modifiers, CapsLock as a tap, and the Command shortcuts and the macOS text editing bindings. The tests press the keys with real `NSEvent`s made by the scripts (`key:Name,mods` of `GLUTTER_DEV_EVENTS`); what only a real keyboard shows is here. Text itself (typing, accents, input methods) comes with step 33.5, so the answers below are about keys that move the caret, select and delete. In `go run ./examples/editor` (type with the text input of step 33.5 once it is there; until then press the keys on the text that you load with `GLUTTER_DEV_TEXT="Hello world"` in a debug build), with each of these layouts (System Settings, Keyboard, Text Input, Input Sources): **US**, **German**, **French (AZERTY)** and **Russian**:
+
+1. **Shortcuts on every layout**: `Cmd+A` selects everything, `Cmd+Left` and `Cmd+Right` go to the start and the end of the line, `Option+Left` and `Option+Right` by a word, `Cmd+Up` and `Cmd+Down` to the start and the end of the text. On the French layout the key with `Q` on its cap is the one that `Cmd+A` uses on a US keyboard: does `Cmd+A` work on the key labeled `A` (the logical key follows the character) and, on the Russian layout, on the key labeled `Ф` (a key with no Latin character takes the logical key of the US layout)?
+2. **Shift**: `Shift+Left` and `Shift+Right` extend the selection by a character, `Option+Shift+Left` by a word, `Cmd+Shift+Left` to the start of the line. Does a second `Shift+Right` after `Shift+Left` shrink it, as in a native text field?
+3. **Deleting**: `Backspace` and `Fn+Backspace` (forward delete), `Option+Backspace` (a word), `Cmd+Backspace` (to the start of the line), and the same with Shift.
+4. **Emacs keys** (`Ctrl+A`, `Ctrl+E`, `Ctrl+F`, `Ctrl+B`, `Ctrl+N`, `Ctrl+P`, `Ctrl+T`): do they act as in a TextEdit window (start and end of the line, a character, a line, transpose)?
+5. **Undo**: `Cmd+Z` undoes and `Cmd+Shift+Z` redoes (once there is text to undo, step 33.5).
+6. **The Fn and Globe key**: the Globe key opens the emoji viewer or switches the layout as the system settings say, and the framework sees no stuck key afterwards (press a letter: it types normally).
+7. **Modifiers pressed in another app**: hold `Shift` in another app, click into the window of the app and release `Shift` outside it: does the app act as if `Shift` were down? (It must not: the window is told at the first event that the key is up.) Do the same with `Cmd` held while switching with `Cmd+Tab`.
+8. **A held key**: hold a letter, then `Cmd+Tab` away and back: the letter does not repeat in the window without you holding it.
+9. **Changing the layout while the app runs** (`Ctrl+Space` or the menu bar flag): press `Cmd+A` again on the new layout. Does it still select everything?
+10. **Keys that the framework does not take reach the menus**: in an app that has no widget for the key, `Cmd+H` hides the app, `Cmd+Q` quits it (the window asks to close first), and a letter makes the system's beep (as in a native app that does not take the key) rather than nothing, a crash or a stuck key. `Cmd+Tab`, `Cmd+Space` and `Cmd+Q` while a text field has the focus still work. (A test cannot make this: a synthesized key does not go through the key window of an app that is not active.)
+11. **CapsLock**: press it twice: the app shows no stuck CapsLock key (a widget that shows `HardwareKeyboard.instance.lockModesEnabled` shows the light's state).
+
+Answers: _(not yet recorded)_

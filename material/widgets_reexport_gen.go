@@ -3486,6 +3486,13 @@ type Intent = widgets.Intent
 // Flutter: widgets.dart IntentBase
 type IntentBase = widgets.IntentBase
 
+// IntentForMacOSSelector is widgets.IntentForMacOSSelector.
+//
+// Flutter: widgets.dart IntentForMacOSSelector
+func IntentForMacOSSelector(selectorName string) widgets.Intent {
+	return widgets.IntentForMacOSSelector(selectorName)
+}
+
 // IntentTypeOf is widgets.IntentTypeOf.
 //
 // Flutter: widgets.dart IntentTypeOf

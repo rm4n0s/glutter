@@ -68,6 +68,8 @@ type Platform struct {
 	panicked *panicRecord
 	closed   bool
 	clip     clipboard
+	// kb is the keyboard: the responder of the key events and the layout (keyboard_darwin.go).
+	kb *keyboard
 
 	// ptr is the state machine of the mouse, the trackpad and the pen of every window (mouse.go).
 	ptr *pointerMachine
@@ -137,6 +139,7 @@ func New(opts Options) (*Platform, error) {
 		}
 		class("NSWindow").Send(sel("setAllowsAutomaticWindowTabbing:"), false)
 	})
+	p.kb = newKeyboard(p)
 	// The run loop's own pieces: one source for Post, one timer for the heap.
 	p.source = cf.NewSource(func() { p.guard(p.runPosted) })
 	p.source.AddTo(cf.MainRunLoop(), cf.CommonModes())
@@ -314,6 +317,10 @@ func (p *Platform) Close() error {
 }
 
 func (p *Platform) teardown() {
+	if p.kb != nil {
+		p.kb.close()
+		p.kb = nil
+	}
 	if p.timer != nil {
 		p.timer.Close()
 		p.timer = nil

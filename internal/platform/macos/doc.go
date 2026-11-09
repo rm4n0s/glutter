@@ -7,4 +7,6 @@
 // The helpers that macOS and iOS share are in internal/platform/darwin.
 //
 // Flutter: engine/src/flutter/shell/platform/darwin/macos/framework/Source
+//
+//go:generate go run ../../../cmd/glutter-gen keys -reference ../../../reference/flutter -out "" -macos-out keymap_gen.go
 package macos

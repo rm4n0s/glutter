@@ -34,12 +34,34 @@ type recorder struct {
 	closeReq int
 	onFrame  func(view ui.ViewID)
 	pointers []ui.PointerData
+	// keys are the key events that OnKeySync heard, which it answers with keyHandled (the recorder is a
+	// platform.SyncInputHandler, as the engine's handler is).
+	keys       []ui.KeyData
+	keyHandled bool
 }
 
 func (r *recorder) OnPointer(data []ui.PointerData) {
 	r.mu.Lock()
 	r.pointers = append(r.pointers, data...)
 	r.mu.Unlock()
+}
+
+func (r *recorder) OnKeySync(d ui.KeyData) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.keys = append(r.keys, d)
+	return r.keyHandled
+}
+func (r *recorder) OnPointerSync(data []ui.PointerData) { r.OnPointer(data) }
+func (r *recorder) OnTextInputSync(ui.TextInputEvent)   {}
+
+// takeKeys returns the key events heard since the last call.
+func (r *recorder) takeKeys() []ui.KeyData {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := r.keys
+	r.keys = nil
+	return out
 }
 
 // takePointers returns the pointer data heard since the last call.

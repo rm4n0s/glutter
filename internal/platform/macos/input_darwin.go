@@ -42,6 +42,7 @@ func viewEvent(name string, fn func(w *window, ev objc.ID)) objcx.Method {
 			return
 		}
 		w.p.guard(func() {
+			w.p.kb.syncModifiers(w, ev)
 			fn(w, ev)
 			w.p.flushPointers()
 		})

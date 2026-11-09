@@ -64,6 +64,8 @@ type system struct {
 	pmRelease func(id uint32) int32
 	// The CVDisplayLink functions, which macOS 12 and 13 use for the frames (SPEC §29.3).
 	cv cvFuncs
+	// kb are the functions of the keyboard layout (keyboard_darwin.go).
+	kb kbFuncs
 }
 
 var sys = sync.OnceValues(func() (*system, error) {
@@ -101,6 +103,9 @@ var sys = sync.OnceValues(func() (*system, error) {
 		return nil, err
 	}
 	if err := s.cv.bind(); err != nil {
+		return nil, err
+	}
+	if err := s.kb.bind(); err != nil {
 		return nil, err
 	}
 	if err := s.registerClasses(); err != nil {

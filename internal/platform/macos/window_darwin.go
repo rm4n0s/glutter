@@ -612,6 +612,11 @@ func (w *window) didChangeScreen() {
 // keyChanged is the window becoming or no longer being the key window: the focus of the view and of the keyboard.
 func (w *window) keyChanged(key bool) {
 	w.activated = key
+	if !key && w.p.kb != nil {
+		// The keys that are down go up in another window or app: the framework is told now, and does not
+		// keep them pressed.
+		w.p.kb.resp.releaseAll(w.p.frameTime(w.p.s.mediaTime()))
+	}
 	w.reportFocus(key)
 	if w.shown {
 		w.reportMetrics() // WindowInfo.Activated
@@ -695,6 +700,10 @@ func (p *Platform) startDevEvents() {
 		return
 	}
 	p.devStarted = true
+	if p.focusForDevKeys() {
+		p.addTimer(time.Now().Add(devKeyFocusDelay), func() { p.runDevEvents(0) })
+		return
+	}
 	p.runDevEvents(0)
 }
 
@@ -702,7 +711,7 @@ func (p *Platform) startDevEvents() {
 func (p *Platform) runDevEvents(i int) {
 	for ; i < len(p.devEvents); i++ {
 		ev := p.devEvents[i]
-		if p.runDevPointer(ev) {
+		if p.runDevPointer(ev) || p.runDevKey(ev) {
 			continue
 		}
 		if ev.Kind == "wait" {

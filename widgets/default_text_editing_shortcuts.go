@@ -9,8 +9,9 @@ import (
 // of the text editing intents (a Shortcuts widget), for the text fields below it.
 // Actions for the intents are provided by the text fields.
 //
-// Deviation: only the Linux and Windows bindings are ported (SPEC §12.10); every
-// target platform but Windows uses the Linux ones.
+// Deviation: the Linux, Windows and macOS bindings are ported (SPEC §12.10); iOS uses the macOS ones, as in
+// Flutter, and Android and Fuchsia use the Linux ones. The bindings that give the keys to the input method
+// (Flutter's disabling shortcuts) are not ported yet.
 //
 // Flutter: widgets/default_text_editing_shortcuts.dart DefaultTextEditingShortcuts
 type DefaultTextEditingShortcuts struct {
@@ -39,13 +40,16 @@ func (w *DefaultTextEditingShortcuts) Build(BuildContext) Widget {
 }
 
 // DefaultTextEditingShortcutMap returns the default text editing bindings of the
-// current platform: the Windows bindings when the target platform is Windows, the
-// Linux bindings on every other (see DefaultTextEditingShortcuts).
+// current platform: the Windows bindings when the target platform is Windows, the macOS bindings when it is
+// macOS or iOS, the Linux bindings on every other (see DefaultTextEditingShortcuts).
 //
 // Flutter: widgets/default_text_editing_shortcuts.dart DefaultTextEditingShortcuts._shortcuts
 func DefaultTextEditingShortcutMap() ShortcutMap {
-	if foundation.DefaultTargetPlatform() == foundation.TargetPlatformWindows {
+	switch foundation.DefaultTargetPlatform() {
+	case foundation.TargetPlatformWindows:
 		return windowsShortcutMap()
+	case foundation.TargetPlatformMacOS, foundation.TargetPlatformIOS:
+		return macShortcutMap()
 	}
 	m := make(ShortcutMap, 0, 160)
 	m = append(m, commonTextShortcuts()...)

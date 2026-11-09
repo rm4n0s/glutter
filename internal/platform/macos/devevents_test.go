@@ -28,7 +28,15 @@ func TestParseDevEvents(t *testing.T) {
 		{"tap with a word", "tap:a,b", nil, TagMacOSDevEventsInvalid},
 		{"wheel with three numbers", "wheel:1,2,3", nil, TagMacOSDevEventsInvalid},
 		{"a number that is not finite", "move:NaN,1", nil, TagMacOSDevEventsInvalid},
-		{"a step that comes later", "key:A", nil, TagMacOSDevEventsInvalid},
+		{"a step that comes later", "text:abc", nil, TagMacOSDevEventsInvalid},
+		{"a key", "key:KeyA", []DevEvent{{Kind: "key", Key: "KeyA"}}, ""},
+		{"a key with a modifier", "key:KeyC,meta", []DevEvent{{Kind: "key", Key: "KeyC", Mods: "meta"}}, ""},
+		{"modifiers are sorted and cleaned", "key: ArrowLeft , Meta + shift", []DevEvent{{Kind: "key", Key: "ArrowLeft", Mods: "shift+meta"}}, ""},
+		{"all the modifiers", "key:F5,alt+control+meta+shift", []DevEvent{{Kind: "key", Key: "F5", Mods: "shift+control+alt+meta"}}, ""},
+		{"a key that is not known", "key:KeyAA", nil, TagMacOSDevEventsInvalid},
+		{"a lower case letter is not a name", "key:a", nil, TagMacOSDevEventsInvalid},
+		{"a modifier that is not known", "key:KeyA,hyper", nil, TagMacOSDevEventsInvalid},
+		{"no key", "key:", nil, TagMacOSDevEventsInvalid},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -38,7 +46,8 @@ func TestParseDevEvents(t *testing.T) {
 				if !ok || appErr.Tag != tt.wantTag {
 					t.Fatalf("err = %v, want tag %s", err, tt.wantTag)
 				}
-				if !appErr.HasRoute("ParseDevEvents." + tt.wantTag) {
+				// The route is ParseDevEvents.<tag>, or goes through the helper that reads the step.
+				if !appErr.HasRoute("ParseDevEvents") || !appErr.HasRoute("."+tt.wantTag) {
 					t.Errorf("route = %s", appErr.Route())
 				}
 				return
@@ -88,6 +97,45 @@ func TestParsePanMakesTheStepsOfAGesture(t *testing.T) {
 	for _, bad := range []string{"pan:1,2,3", "pan:1,2,3,4,soon", "pan:1,2,3,4,0s", "pan:1,2,3,4,-5ms", "pan:a,b,c,d"} {
 		if _, err := ParseDevEvents(bad); err == nil {
 			t.Errorf("%q was accepted", bad)
+		}
+	}
+}
+
+func TestDevKeyTable(t *testing.T) {
+	tests := []struct {
+		name        string
+		code        uint16
+		char, shift string
+	}{
+		{"KeyA", 0x00, "a", "A"},
+		{"KeyZ", 0x06, "z", "Z"},
+		{"KeyM", 0x2e, "m", "M"},
+		{"Digit1", 0x12, "1", "!"},
+		{"Digit0", 0x1d, "0", ")"},
+		{"Enter", 0x24, "\r", "\r"},
+		{"Space", 0x31, " ", " "},
+		{"ArrowLeft", 0x7b, "\uf702", "\uf702"},
+		{"F1", 0x7a, "\uf704", "\uf704"},
+		{"F12", 0x6f, "\uf70f", "\uf70f"},
+		{"PageDown", 0x79, "\uf72d", "\uf72d"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			k, ok := devKeyByName(tt.name)
+			if !ok || k.code != tt.code || k.char != tt.char || k.shift != tt.shift {
+				t.Errorf("devKeyByName(%q) = %+v, %v; want code %#x, %q, %q", tt.name, k, ok, tt.code, tt.char, tt.shift)
+			}
+		})
+	}
+	// Every key has its own key code, and every key code is one that the table of physical keys knows.
+	seen := map[uint16]string{}
+	for name, k := range devKeyTable {
+		if other, dup := seen[k.code]; dup {
+			t.Errorf("%s and %s have the key code %#x", name, other, k.code)
+		}
+		seen[k.code] = name
+		if _, ok := keyCodeToPhysicalKey[k.code]; !ok {
+			t.Errorf("%s: the key code %#x is not in the table of physical keys", name, k.code)
 		}
 	}
 }

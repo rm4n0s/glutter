@@ -37,10 +37,14 @@ func eachPlatform(t *testing.T, test func(t *testing.T)) {
 	}
 }
 
-// sendUndoRedo presses Control+Z, with Shift to redo: the shortcut of the
-// Linux bindings, which every platform uses.
+// sendUndoRedo presses the shortcut of undo, with Shift to redo: Command+Z on macOS and iOS, and
+// Control+Z on the other platforms, as the tests of Flutter's undo_history_test.dart do.
 func sendUndoRedo(ts *gluttertest.Tester, redo bool) {
-	ts.SendKeyDownEvent(services.LogicalKeyboardKeyControl)
+	modifier := services.LogicalKeyboardKeyControl
+	if p := foundation.DefaultTargetPlatform(); p == foundation.TargetPlatformMacOS || p == foundation.TargetPlatformIOS {
+		modifier = services.LogicalKeyboardKeyMeta
+	}
+	ts.SendKeyDownEvent(modifier)
 	if redo {
 		ts.SendKeyDownEvent(services.LogicalKeyboardKeyShift)
 	}
@@ -48,7 +52,7 @@ func sendUndoRedo(ts *gluttertest.Tester, redo bool) {
 	if redo {
 		ts.SendKeyUpEvent(services.LogicalKeyboardKeyShift)
 	}
-	ts.SendKeyUpEvent(services.LogicalKeyboardKeyControl)
+	ts.SendKeyUpEvent(modifier)
 	ts.Pump()
 }
 

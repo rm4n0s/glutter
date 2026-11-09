@@ -80,12 +80,18 @@ func (s *system) registerClasses() error {
 			{Name: "acceptsFirstResponder", Fn: func(objc.ID, objc.SEL) bool { return true }},
 			{Name: "acceptsFirstMouse:", Fn: func(objc.ID, objc.SEL, objc.ID) bool { return true }},
 			{Name: "isOpaque", Fn: func(objc.ID, objc.SEL) bool { return true }},
+			{Name: "performKeyEquivalent:", Fn: func(self objc.ID, _ objc.SEL, ev objc.ID) (handled bool) {
+				if w := windowOf(self); w != nil && !w.closed {
+					w.p.guard(func() { handled = w.performKeyEquivalent(self, ev) })
+				}
+				return handled
+			}},
 			{Name: "displayLinkFired:", Fn: func(self objc.ID, _ objc.SEL, link objc.ID) {
 				if w := windowOf(self); w != nil {
 					w.p.guard(func() { w.linkFired(link) })
 				}
 			}},
-		}, viewMethods()...),
+		}, append(viewMethods(), keyMethods()...)...),
 	}); err != nil {
 		return err
 	}

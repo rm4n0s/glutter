@@ -291,8 +291,8 @@ func TestWindowsTextShortcuts(t *testing.T) {
 	}
 }
 
-// TestDefaultTextEditingShortcutMapByPlatform checks that Windows has its own map and the other
-// platforms keep the Linux one.
+// TestDefaultTextEditingShortcutMapByPlatform checks that Windows and macOS have their own maps, that iOS
+// has macOS's, and that the other platforms keep the Linux one.
 func TestDefaultTextEditingShortcutMapByPlatform(t *testing.T) {
 	skipUnlessDebug(t)
 	count := func(p foundation.TargetPlatform) int {
@@ -301,10 +301,14 @@ func TestDefaultTextEditingShortcutMapByPlatform(t *testing.T) {
 		return len(DefaultTextEditingShortcutMap())
 	}
 	linux := count(foundation.TargetPlatformLinux)
-	for _, p := range []foundation.TargetPlatform{foundation.TargetPlatformAndroid, foundation.TargetPlatformMacOS, foundation.TargetPlatformIOS, foundation.TargetPlatformFuchsia} {
+	for _, p := range []foundation.TargetPlatform{foundation.TargetPlatformAndroid, foundation.TargetPlatformFuchsia} {
 		if got := count(p); got != linux {
 			t.Errorf("%v has %d shortcuts, the Linux map %d", p, got, linux)
 		}
+	}
+	mac, ios := count(foundation.TargetPlatformMacOS), count(foundation.TargetPlatformIOS)
+	if mac != ios || mac == linux {
+		t.Errorf("macOS has %d shortcuts and iOS %d, Linux %d: want macOS and iOS the same, and not Linux's", mac, ios, linux)
 	}
 	if got := count(foundation.TargetPlatformWindows); got >= linux {
 		t.Errorf("Windows has %d shortcuts, Linux %d: the Windows map has no numpad shortcuts", got, linux)
