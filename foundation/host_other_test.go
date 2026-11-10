@@ -1,4 +1,4 @@
-//go:build !windows && !(darwin && !ios)
+//go:build !windows && !ios && !(darwin && !ios)
 
 package foundation
 

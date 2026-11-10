@@ -1,4 +1,4 @@
-//go:build !(js && wasm) && !android && !windows && !(darwin && !ios)
+//go:build !(js && wasm) && !android && !windows && !ios && !(darwin && !ios)
 
 package foundation
 
@@ -9,5 +9,5 @@ const IsWeb = false
 
 // hostTargetPlatform is the platform the framework runs on: Linux on the desktop. The web asks the
 // browser (web_js.go); Android, Windows and macOS have a file of their own (host_android.go, host_windows.go,
-// host_darwin.go). iOS has none until step 35.1, so a GOOS=ios build compiles with this default.
+// host_darwin.go). iOS has host_ios.go.
 func hostTargetPlatform() TargetPlatform { return TargetPlatformLinux }

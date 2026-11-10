@@ -58,3 +58,4 @@ go.work.sum
 
 # The temporary copy of a package that glutter-windows builds (internal/wintool, SPEC §25.1)
 _glutterwin-*/
+.ios-test/

@@ -22,11 +22,13 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/rm4n0s/errors"
+	"github.com/rm4n0s/glutter/internal/iostool"
 )
 
 // errorsPath is the import path of the errors package.
@@ -129,10 +131,17 @@ var WindowsPass = Pass{GOOS: "windows", GOARCH: "amd64", Tags: []string{"glutter
 // Flutter: no counterpart.
 var DarwinPass = Pass{GOOS: "darwin", GOARCH: "arm64", Tags: []string{"glutter_display", "glutter_audio"}}
 
+// IOSPass is the build for iOS, with the tag of the Simulator tests. The module is built with cgo and Xcode's clang there (SPEC §30,
+// D35), so that the *_ios.go files of internal/platform/ios and the tests that start the Simulator are read. A machine with no Xcode
+// leaves it out and says so (WithoutIOS).
+//
+// Flutter: no counterpart.
+var IOSPass = Pass{GOOS: "ios", GOARCH: "arm64", Tags: []string{"glutter_ios"}}
+
 // DefaultPasses are the builds that together cover every file of the module: Linux, the
 // web, Linux with the tags of the display, browser and Wine tests (the host-side tests that start
-// Wine), Android (SPEC §24.13), Windows with the tag of the Wine tests (SPEC §25.13) and macOS
-// with the tags of the display and audio tests (SPEC §29.13).
+// Wine), Android (SPEC §24.13), Windows with the tag of the Wine tests (SPEC §25.13), macOS
+// with the tags of the display and audio tests (SPEC §29.13) and iOS with the tag of the Simulator tests (SPEC §30.11).
 //
 // Flutter: no counterpart.
 var DefaultPasses = []Pass{
@@ -142,6 +151,21 @@ var DefaultPasses = []Pass{
 	AndroidPass,
 	WindowsPass,
 	DarwinPass,
+	IOSPass,
+}
+
+// WithoutIOS returns the passes with the iOS one left out: for a machine that has no Xcode, where the *_ios.go files cannot be read
+// (the Mac runs them).
+//
+// Flutter: no counterpart.
+func WithoutIOS(passes []Pass) []Pass {
+	out := make([]Pass, 0, len(passes))
+	for _, p := range passes {
+		if p.GOOS != "ios" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // WithoutAndroid returns the passes with the Android one left out: for a machine that has no
@@ -231,6 +255,14 @@ func run(args []string, stdout io.Writer, passes []Pass) error {
 		passes = WithoutAndroid(passes)
 		if _, err := fmt.Fprintln(stdout, "errcheck: the Android pass is left out (-skip-android)"); err != nil {
 			return errors.NewErr(tagErrCheckWriteFailed, err)
+		}
+	}
+	if slices.ContainsFunc(passes, func(p Pass) bool { return p.GOOS == "ios" }) {
+		if _, err := iostool.CheckXcode(context.Background(), nil); err != nil {
+			passes = WithoutIOS(passes)
+			if _, err := fmt.Fprintln(stdout, "errcheck: the iOS pass is left out (no Xcode: the Mac runs it)"); err != nil {
+				return errors.NewErr(tagErrCheckWriteFailed, err)
+			}
 		}
 	}
 	found, err := CheckModule(context.Background(), *root, passes)
@@ -358,6 +390,13 @@ func checkPass(ctx context.Context, root string, pass Pass) ([]Violation, error)
 			return nil, err
 		}
 		cmd.Env = append(cmd.Env, "CGO_ENABLED=1", "CC="+cc)
+	}
+	if pass.GOOS == "ios" {
+		tc, err := iostool.CheckXcode(ctx, nil)
+		if err != nil {
+			return nil, err
+		}
+		cmd.Env = append(cmd.Env, iostool.Env(tc, true)...)
 	}
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr

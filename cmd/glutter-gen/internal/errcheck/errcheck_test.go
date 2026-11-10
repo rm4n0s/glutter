@@ -623,3 +623,27 @@ func TestRunSkipAndroid(t *testing.T) {
 		t.Errorf("unexpected failure path: %s", appErr.Route())
 	}
 }
+
+// TestWithoutIOS checks that only the iOS pass is left out of a list, and that the default passes have it with the tag of the
+// Simulator tests, so that the *_ios.go files are read.
+func TestWithoutIOS(t *testing.T) {
+	got := WithoutIOS(DefaultPasses)
+	if len(got) != len(DefaultPasses)-1 {
+		t.Fatalf("%d passes, want one less than %d", len(got), len(DefaultPasses))
+	}
+	for _, p := range got {
+		if p.GOOS == "ios" {
+			t.Errorf("the iOS pass is still there: %+v", p)
+		}
+	}
+	if IOSPass.GOOS != "ios" || IOSPass.GOARCH != "arm64" || len(IOSPass.Tags) != 1 || IOSPass.Tags[0] != "glutter_ios" {
+		t.Errorf("IOSPass = %+v", IOSPass)
+	}
+	found := false
+	for _, p := range DefaultPasses {
+		found = found || p.GOOS == "ios"
+	}
+	if !found {
+		t.Error("the default passes have no iOS pass")
+	}
+}
