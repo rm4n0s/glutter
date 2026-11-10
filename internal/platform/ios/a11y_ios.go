@@ -542,31 +542,10 @@ func (b *a11yBridge) scrollFromFocus(d a11y.ScrollDirection) bool {
 	return (&a11yElement{b: b, ref: b.focused}).scroll(d, true)
 }
 
-// a11yServices is platform.Services of iOS: the accessibility bridge; the gamepads, the audio and the sensors come with step 35.8.
-type a11yServices struct {
-	acc platform.Accessibility
-}
-
-var _ platform.Services = a11yServices{}
-
-func (s a11yServices) Accessibility() platform.Accessibility { return s.acc }
-func (s a11yServices) Gamepads() platform.Gamepads           { return nil }
-func (s a11yServices) Audio() platform.Audio                 { return nil }
-func (s a11yServices) Sensors() platform.Sensors             { return nil }
-
 // a11yState is the platform's field for the bridge.
 type a11yState struct {
 	accOnce sync.Once
 	acc     *a11yBridge
-}
-
-// Services returns the services of the platform: the accessibility bridge (SPEC §30.7). It is made at the first call, which is the
-// engine's.
-//
-// Flutter: no counterpart
-func (p *Platform) Services() platform.Services {
-	p.accOnce.Do(func() { p.acc = newA11yBridge(p) })
-	return a11yServices{acc: p.acc}
 }
 
 // accessibilityMethods are the methods of the view that make it the container of the elements.

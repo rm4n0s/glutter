@@ -27,15 +27,28 @@ type Options struct {
 	Permissions Permissions
 	// Log gets what cannot be returned (nil discards it).
 	Log *slog.Logger
+	// Session makes the system ready for a stream (the AVAudioSession of iOS: its category and its activation); nil means that none is
+	// needed (macOS, tests).
+	Session Session
+}
+
+// Session is the audio session of a platform that has one: iOS makes an app say what its audio is for before it plays or records.
+//
+// Flutter: no counterpart
+type Session interface {
+	// Activate sets the session up for a stream of the kind and makes it active. It is called before a stream is opened, and again when an
+	// interruption ended. The errors it gives are returned by Open as they are.
+	Activate(kind platform.AudioKind) error
 }
 
 // Service is the Core Audio backend: it implements platform.Audio.
 //
 // Flutter: no counterpart
 type Service struct {
-	perm Permissions
-	log  *slog.Logger
-	load func() (*library, error)
+	session Session
+	perm    Permissions
+	log     *slog.Logger
+	load    func() (*library, error)
 
 	mu      sync.Mutex
 	lib     *library
@@ -56,7 +69,7 @@ func New(opts Options) *Service {
 	if log == nil {
 		log = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
-	return &Service{perm: opts.Permissions, log: log, load: loadLibrary, devices: map[*device]struct{}{}}
+	return &Service{perm: opts.Permissions, session: opts.Session, log: log, load: loadLibrary, devices: map[*device]struct{}{}}
 }
 
 // getLib loads Core Audio on first use and starts to listen to the system object. It fails with AudioUnavailable when Core Audio
@@ -70,6 +83,9 @@ func (s *Service) getLib() (*library, error) {
 			return nil, err
 		}
 		s.lib = lib
+	}
+	if !s.listening && s.lib.routeOnly {
+		s.listening = true // the route has nothing to listen to: the devices are always the default ones
 	}
 	if !s.listening {
 		s.handle = register(s)
@@ -129,6 +145,9 @@ func (s *Service) forget(d *device) {
 
 // records reads the devices of the system. A failure is CoreAudioFailed.
 func (s *Service) records(lib *library) ([]DeviceRecord, error) {
+	if lib.routeOnly {
+		return routeRecords(), nil
+	}
 	ids, err := lib.objects(systemObject, PropertyAddress{Selector: selDevices, Scope: scopeGlobal})
 	if err != nil {
 		return nil, err
@@ -151,6 +170,12 @@ func (s *Service) records(lib *library) ([]DeviceRecord, error) {
 
 // defaultObject is the AudioObjectID of the default device of a kind, or 0.
 func (s *Service) defaultObject(lib *library, kind platform.AudioKind) uint32 {
+	if lib.routeOnly {
+		if kind == platform.AudioCapture {
+			return routeInputObject
+		}
+		return routeOutputObject
+	}
 	sel := selDefaultOutput
 	if kind == platform.AudioCapture {
 		sel = selDefaultInput
@@ -215,6 +240,11 @@ func (s *Service) Open(ctx context.Context, kind platform.AudioKind, opts platfo
 			return nil, errors.New(platform.TagAudioCapturePermissionDenied, "the user did not allow the app to record", "permission", "microphone")
 		}
 	}
+	if s.session != nil {
+		if err := s.session.Activate(kind); err != nil {
+			return nil, err
+		}
+	}
 	format := opts.Format
 	if format.Rate == 0 {
 		format.Rate = 48000
@@ -229,7 +259,7 @@ func (s *Service) Open(ctx context.Context, kind platform.AudioKind, opts platfo
 		}
 	}
 	d := &device{svc: s, lib: lib, kind: kind, h: h, opts: opts, format: format}
-	if opts.ID != "" {
+	if opts.ID != "" && !lib.routeOnly {
 		for _, r := range recs {
 			if r.UID == opts.ID {
 				d.object = r.Object
@@ -325,4 +355,80 @@ func (l *library) channels(obj, scope uint32) int {
 		return 0
 	}
 	return ChannelCount(buf[:size])
+}
+
+// The made-up devices of a system that has only the route (iOS): the AudioObjectIDs and UIDs that stand for the output and the input of
+// the current route. The system routes the audio, so no queue is bound to them.
+const (
+	routeOutputObject uint32 = 1
+	routeInputObject  uint32 = 2
+	// RouteOutputID and RouteInputID are the IDs of the output and the input of a system that has only the route.
+	//
+	// Flutter: no counterpart
+	RouteOutputID = "route-output"
+	// RouteInputID is the ID of the input of the route.
+	//
+	// Flutter: no counterpart
+	RouteInputID = "route-input"
+)
+
+// routeRecords are the devices of a system that has only the route: one output and one input.
+func routeRecords() []DeviceRecord {
+	return []DeviceRecord{
+		{Object: routeOutputObject, UID: RouteOutputID, Name: "Output", OutChannels: 2},
+		{Object: routeInputObject, UID: RouteInputID, Name: "Input", InChannels: 1},
+	}
+}
+
+// Interrupt tells the service that the system interrupted its audio (a call, an alarm, Siri) or ended the interruption, as
+// AVAudioSession's interruption notification does. When it began, the devices that run are paused and the app is told (AudioPaused); when
+// it ended and the system says that the audio should go on (resume), the session is made active again and the devices that the
+// interruption paused run again (AudioRunning); the devices that the app paused itself stay paused, and so do all of them when the system
+// does not say to resume. It may be called from any thread.
+//
+// Flutter: no counterpart
+func (s *Service) Interrupt(began, resume bool) {
+	s.mu.Lock()
+	list := make([]*device, 0, len(s.devices))
+	for d := range s.devices {
+		list = append(list, d)
+	}
+	session := s.session
+	s.mu.Unlock()
+	reactivated := map[platform.AudioKind]bool{}
+	for _, d := range list {
+		if !began && resume && session != nil && d.wasInterrupted() && !reactivated[d.kind] {
+			reactivated[d.kind] = true
+			if err := session.Activate(d.kind); err != nil {
+				s.log.Error("the audio session could not be made active again", "err", err)
+			}
+		}
+		d.interrupt(began, resume)
+	}
+}
+
+// RouteLost tells the service that the device that the audio went to is gone (the headphones were unplugged: AVAudioSession's
+// route change with the reason "old device unavailable"): the playback devices that run are paused, as Apple's guidelines say, and
+// the app resumes them when it wants.
+//
+// Flutter: no counterpart
+func (s *Service) RouteLost() {
+	s.mu.Lock()
+	list := make([]*device, 0, len(s.devices))
+	for d := range s.devices {
+		if d.kind == platform.AudioPlayback {
+			list = append(list, d)
+		}
+	}
+	s.mu.Unlock()
+	for _, d := range list {
+		d.mu.Lock()
+		running := d.running
+		d.mu.Unlock()
+		if running {
+			if err := d.Pause(); err != nil {
+				s.log.Error("the audio device could not be paused when its route was lost", "err", err)
+			}
+		}
+	}
 }

@@ -17,6 +17,11 @@ package serviceslines
 //	spell:locale:text           the misspelled words of the text
 //	haptic, sound               every kind of haptic feedback and of system sound
 //	settings                    prints the settings
+//	audio                       plays a stream of 48 kHz stereo for 1.5 s and says how many frames it asked for in that time
+//	interrupt:began|ended       a synthetic interruption of the audio session (AVAudioSession's own notification), for the stream
+//	                            that the step audio left open; the states the stream goes through are printed
+//	sensor:accel|gyro           opens the sensor; the Simulator has none: its error is printed
+//	pads                        starts the pad service and prints the pads that are connected a moment later
 //	open:uri                    opens the URI
 //	notify                      shows a notification (the permission prompt is not answered: the call ends with its context)
 const StepsEnv = "GLUTTER_IOS_SERVICES"
@@ -33,6 +38,10 @@ const (
 	// "brightness=<light|dark> scale=<text scale> font17=<the scaled size of a 17 point font> bold=<bool> motion=<bool>
 	// contrast=<bool> voiceover=<bool> h24=<bool> locale=<the first locale>".
 	Settings = "GLUTTER_IOS_SERVICES settings"
+	// Audio is the line of the audio stream's counts: "frames=<n> rate=<r> elapsed=<ms> devices=<n>"; State the line of a state that the
+	// stream was told: "<paused|running|lost>".
+	Audio = "GLUTTER_IOS_SERVICES audio"
+	State = "GLUTTER_IOS_SERVICES audio state"
 	// Done is the line after the last step.
 	Done = "GLUTTER_IOS_SERVICES done"
 )

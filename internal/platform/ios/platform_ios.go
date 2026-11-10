@@ -42,7 +42,7 @@ type system struct {
 	playSound func(uint32)
 	// view is the class of the view of a window, scene the class of the delegate of the scene, textView, textPos and textRange the
 	// classes of the text input (textinput_ios.go), and keyboard the class of the observer of the keyboard's frame.
-	view, scene, textView, textPos, textRange, keyboard, viewController, settingsObserver *objcx.RegisteredClass
+	view, scene, textView, textPos, textRange, keyboard, viewController, settingsObserver, audioObserver, padObserver *objcx.RegisteredClass
 	// a11y is the class of the accessibility elements, the values of the traits and the posting function (a11y_ios.go).
 	a11y *a11yClasses
 	// access are the C functions of UIKit that say how the accessibility switches are (settings_ios.go).
@@ -85,6 +85,9 @@ type Platform struct {
 
 	deskState
 	a11yState
+	servicesState
+	// padSvc is the gamepad service (gamecontroller_ios.go), made at the first use.
+	padSvc *padService
 
 	// settingsObserver is the observer of the notifications of the settings; settingsLast is what was read last and settingsHave says it
 	// was read (settings_ios.go).
@@ -196,6 +199,12 @@ func (p *Platform) load() (*system, error) {
 		return nil, err
 	}
 	if s.a11y, err = loadA11y(); err != nil {
+		return nil, err
+	}
+	if s.audioObserver, err = registerAudioObserver(); err != nil {
+		return nil, err
+	}
+	if s.padObserver, err = registerPadObserver(); err != nil {
 		return nil, err
 	}
 	return s, nil
@@ -340,6 +349,11 @@ func (p *Platform) Close() error {
 	})
 	p.stopObservingKeyboard()
 	p.stopObservingSettings()
+	p.stopAudio()
+	p.motion.close()
+	if p.padSvc != nil {
+		p.padSvc.Stop()
+	}
 	if p.desk != nil {
 		p.desk.closeServices()
 	}

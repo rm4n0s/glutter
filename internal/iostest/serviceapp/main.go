@@ -8,6 +8,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"strings"
 	"sync"
@@ -21,6 +22,63 @@ import (
 	"github.com/rm4n0s/glutter/ui"
 )
 
+// stream is the audio handler of the app: a sine wave that counts the frames it was asked for, and says the states it is told.
+type stream struct {
+	mu     sync.Mutex
+	frames int
+	phase  float64
+	rate   float64
+	chans  int
+}
+
+func (s *stream) Fill(out []float32) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n := len(out) / s.chans
+	for i := 0; i < n; i++ {
+		v := float32(0.1 * math.Sin(s.phase))
+		s.phase += 2 * math.Pi * 440 / s.rate
+		for c := 0; c < s.chans; c++ {
+			out[i*s.chans+c] = v
+		}
+	}
+	s.frames += n
+}
+
+func (s *stream) Capture([]float32) {}
+
+func (s *stream) StateChanged(st platform.AudioState) {
+	name := "other"
+	switch st {
+	case platform.AudioPaused:
+		name = "paused"
+	case platform.AudioRunning:
+		name = "running"
+	case platform.AudioLost:
+		name = "lost"
+	}
+	fmt.Printf("%s %s\n", serviceslines.State, name)
+}
+
+func (s *stream) count() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.frames
+}
+
+// padLog says the pads that connect.
+type padLog struct{}
+
+func (padLog) PadAdded(i platform.PadInfo) {
+	fmt.Printf("%s pad added name=%q standard=%v\n", serviceslines.Step, i.Name, i.Standard)
+}
+func (padLog) PadRemoved(id platform.PadID) {
+	fmt.Printf("%s pad removed %d\n", serviceslines.Step, id)
+}
+func (padLog) PadEvents(e []platform.PadEvent) {
+	fmt.Printf("%s pad events %d\n", serviceslines.Step, len(e))
+}
+
 type handler struct {
 	platform.NopHandler
 	p       *ios.Platform
@@ -28,6 +86,11 @@ type handler struct {
 	started bool
 	// pending counts the steps that finish on a goroutine of their own (open, notify, paste): the last line waits for them.
 	pending sync.WaitGroup
+	// audio is the device that the step audio left open, with its stream.
+	audio       platform.AudioDevice
+	audioStream *stream
+	// audioReady is closed when audio is set: the interruption steps wait for it.
+	audioReady chan struct{}
 }
 
 // OnSettings prints the settings that the system changed to.
@@ -165,6 +228,37 @@ func (h *handler) run(step string) {
 			chrome.PlaySystemSound(k)
 		}
 		say(step, "done")
+	case "audio":
+		h.pending.Add(1)
+		go h.playAudio(step)
+	case "interrupt":
+		h.pending.Add(1)
+		go func() {
+			defer h.pending.Done()
+			select {
+			case <-h.audioReady:
+			case <-time.After(15 * time.Second):
+				say(step, "err=nodevice")
+				return
+			}
+			h.p.Post(func() {
+				h.p.SendAudioInterruption(arg == "began")
+				say(step, "done")
+			})
+			// The device's state changes arrive after the notification: the last line waits for them.
+			time.Sleep(500 * time.Millisecond)
+		}()
+	case "sensor":
+		kind := platform.SensorAccelerometer
+		if arg == "gyro" {
+			kind = platform.SensorGyroscope
+		}
+		sens := h.p.Services().Sensors()
+		_, err := sens.Open(context.Background(), kind, platform.SensorOpenOptions{}, sensorSink{})
+		say(step, fmt.Sprintf("available=%v err=%s", sens.Available(kind), tagOf(err)))
+	case "pads":
+		pads := h.p.Services().Gamepads()
+		say(step, "mapping="+pads.MappingPlatform()+" err="+tagOf(pads.Start(padLog{})))
 	case "open":
 		h.pending.Add(1)
 		go func() {
@@ -187,6 +281,34 @@ func (h *handler) run(step string) {
 	}
 }
 
+// sensorSink is a sensor handler that wants nothing.
+type sensorSink struct{}
+
+func (sensorSink) SensorReadings([]platform.SensorReading) {}
+
+// playAudio plays a stream for a while and says how many frames were asked for, and leaves the device open for the interruption steps.
+func (h *handler) playAudio(step string) {
+	defer h.pending.Done()
+	audio := h.p.Services().Audio()
+	devices, err := audio.Devices(platform.AudioPlayback)
+	if err != nil {
+		say(step, "err="+tagOf(err))
+		return
+	}
+	st := &stream{rate: 48000, chans: 2}
+	start := time.Now()
+	dev, err := audio.Open(context.Background(), platform.AudioPlayback, platform.AudioOpenOptions{Format: platform.AudioFormat{Rate: 48000, Channels: 2}}, st)
+	if err != nil {
+		say(step, "err="+tagOf(err))
+		return
+	}
+	time.Sleep(1500 * time.Millisecond)
+	elapsed := time.Since(start)
+	fmt.Printf("%s frames=%d rate=%d elapsed=%d devices=%d\n", serviceslines.Audio, st.count(), dev.Format().Rate, elapsed.Milliseconds(), len(devices))
+	h.audio, h.audioStream = dev, st
+	close(h.audioReady)
+}
+
 func main() {
 	p, err := ios.New(ios.Options{})
 	if err != nil {
@@ -203,7 +325,7 @@ func main() {
 			p.Post(w.RequestFrame)
 		}
 	}()
-	h := &handler{p: p, w: w}
+	h := &handler{p: p, w: w, audioReady: make(chan struct{})}
 	if err := p.Run(context.Background(), h); err != nil {
 		fmt.Fprintln(os.Stderr, "serviceapp:", err)
 		os.Exit(1)

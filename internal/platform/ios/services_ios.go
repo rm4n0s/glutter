@@ -9,6 +9,7 @@ import (
 	"github.com/ebitengine/purego/objc"
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/internal/platform"
+	"github.com/rm4n0s/glutter/internal/platform/darwin/coreaudio"
 	"github.com/rm4n0s/glutter/internal/platform/darwin/notify"
 	"github.com/rm4n0s/glutter/internal/platform/darwin/objcx"
 	"github.com/rm4n0s/glutter/internal/platform/darwin/openuri"
@@ -112,6 +113,40 @@ func (d *desktop) ShowNotification(ctx context.Context, spec mobile.Notification
 func (d *desktop) CloseNotification(_ context.Context, id uint32) error {
 	d.notes.Close(id)
 	return nil
+}
+
+// iosServices is platform.Services of iOS: the accessibility bridge (SPEC §30.7), the gamepads, the audio and the motion sensors (§30.9).
+type iosServices struct {
+	acc   platform.Accessibility
+	pads  platform.Gamepads
+	audio platform.Audio
+	sens  platform.Sensors
+}
+
+var _ platform.Services = iosServices{}
+
+func (s iosServices) Accessibility() platform.Accessibility { return s.acc }
+func (s iosServices) Gamepads() platform.Gamepads           { return s.pads }
+func (s iosServices) Audio() platform.Audio                 { return s.audio }
+func (s iosServices) Sensors() platform.Sensors             { return s.sens }
+
+// servicesState are the fields of the platform for the audio service (the other services have their own).
+type servicesState struct {
+	audioOnce     sync.Once
+	audio         *coreaudio.Service
+	audioPolicy   *sessionPolicy
+	audioObserver objc.ID
+	// motion is the motion sensors service (coremotion_ios.go), made empty and loaded at the first use.
+	motion coreMotion
+}
+
+// Services returns the services of the platform: the accessibility bridge, the gamepads, the audio and the sensors. They are made at the
+// first call, which is the engine's; the audio and the sensors start their work when an app opens a stream or a sensor.
+//
+// Flutter: no counterpart
+func (p *Platform) Services() platform.Services {
+	p.accOnce.Do(func() { p.acc = newA11yBridge(p) })
+	return iosServices{acc: p.acc, audio: p.audioService(), sens: &p.motion, pads: p.pads()}
 }
 
 // closeServices ends the services with the platform: the timers of the notifications stop.

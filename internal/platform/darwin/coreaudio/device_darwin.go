@@ -35,11 +35,13 @@ type device struct {
 	silent atomic.Bool
 	closed atomic.Bool
 
-	mu        sync.Mutex
-	queue     uintptr
-	running   bool // what the app wants: running or paused
-	lost      bool
-	listening bool
+	mu      sync.Mutex
+	queue   uintptr
+	running bool // what the app wants: running or paused
+	// interrupted says that the system's interruption paused the device (and the app did not): it is the one that runs again after it.
+	interrupted bool
+	lost        bool
+	listening   bool
 }
 
 var _ platform.AudioDevice = (*device)(nil)
@@ -62,7 +64,7 @@ func (d *device) build() error {
 	if status != 0 {
 		return statusError(call, status, true)
 	}
-	if uid := d.opts.ID; uid != "" {
+	if uid := d.opts.ID; uid != "" && !d.lib.routeOnly {
 		s := cf.NewString(uid)
 		status = d.lib.setProperty(q, queueCurrentDev, unsafe.Pointer(&s), 8)
 		cf.Release(s)
@@ -249,6 +251,52 @@ func (d *device) Resume() error {
 	}
 	d.h.StateChanged(platform.AudioRunning)
 	return nil
+}
+
+// wasInterrupted says that the system's interruption paused the device.
+func (d *device) wasInterrupted() bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.interrupted
+}
+
+// interrupt is the system's interruption beginning or ending for this device (Service.Interrupt). A device that is lost or closed does
+// nothing; one that the app paused is not paused again and not resumed.
+func (d *device) interrupt(began, resume bool) {
+	d.mu.Lock()
+	if d.lost || d.closed.Load() || d.queue == 0 {
+		d.mu.Unlock()
+		return
+	}
+	if began {
+		if !d.running {
+			d.mu.Unlock()
+			return
+		}
+		d.interrupted, d.running = true, false
+		d.silent.Store(true)
+		d.lib.pause(d.queue)
+		d.mu.Unlock()
+		d.h.StateChanged(platform.AudioPaused)
+		return
+	}
+	if !d.interrupted {
+		d.mu.Unlock()
+		return
+	}
+	d.interrupted = false
+	if !resume {
+		d.mu.Unlock()
+		return
+	}
+	d.running = true
+	err := d.startLocked(false)
+	d.mu.Unlock()
+	if err != nil {
+		d.svc.log.Error("the audio device could not run again after the interruption", "err", err)
+		return
+	}
+	d.h.StateChanged(platform.AudioRunning)
 }
 
 // usable says whether the device can be paused or resumed: one that is lost or closed cannot. d.mu is held.

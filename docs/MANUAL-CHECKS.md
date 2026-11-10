@@ -1105,3 +1105,16 @@ On an iPhone and an iPad, with `examples/gallery` and `examples/counter`:
 8. **The 24-hour clock.** Settings > General > Date & Time > 24-Hour Time changes the format of a time picker.
 
 Record the answers here when they are known.
+
+## 35.8 Gamepads, audio and Core Motion (iOS)
+
+On an iPhone with a paired controller (a DualSense, a DualShock 4, an Xbox or a MFi pad), with `examples/game3d` and `examples/dev/` sensors page where it exists:
+
+1. **A pad in `game3d`.** Connect the pad (Settings > Bluetooth) before and after the app starts: Coin Run takes it in both cases; the left stick moves, the bottom face button jumps, Menu pauses; disconnecting it in the middle of a run stops the movement without a crash.
+2. **Rumble and light.** A coin or a hit rumbles a pad that has haptics (a DualSense, an Xbox pad; the Simulator cannot show it); the light of a DualShock or a DualSense takes the color the app sets; a pad with neither says so with the tags and the game goes on.
+3. **Sound with a call.** Play the game's music; an incoming call (or an alarm) pauses the sound; hanging up (or dismissing it) resumes it where it should resume; a call that the user declines does the same.
+4. **Routes.** Plug in or connect headphones: the sound follows; pull them out: the sound pauses and the app resumes it when the player asks; the silent switch does not mute a playback stream.
+5. **Capture.** A page that opens the microphone asks for the permission once; with it the category is play and record and the speaker still plays (the loudspeaker is not forced to the receiver).
+6. **Accelerometer and gyroscope.** In the sensors page: at rest on a table the accelerometer reads about +9.8 on Z; tilting the phone to the right gives a positive X; the gyroscope reads about 0 at rest and turns with the phone; the readings arrive at 60 Hz, and at 100 Hz when asked; closing the page stops the updates.
+
+Record the answers here when they are known.

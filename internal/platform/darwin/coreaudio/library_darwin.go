@@ -30,6 +30,10 @@ type library struct {
 	stop        func(queue uintptr, immediate bool) int32
 	dispose     func(queue uintptr, immediate bool) int32
 
+	// routeOnly says that the system has no AudioObject API for the devices (iOS): there is one output and one input, the ones of the
+	// current route, and the list and the listeners are made up (service_darwin.go).
+	routeOnly bool
+
 	// outputCB, inputCB and listenerCB are the C function pointers of the callbacks; they find their object by the context.
 	outputCB, inputCB, listenerCB uintptr
 }
@@ -45,18 +49,26 @@ var loadLibrary = sync.OnceValues(func() (*library, error) {
 		return nil, errors.NewErr(platform.TagAudioUnavailable, err)
 	}
 	l := new(library)
-	for _, b := range []struct {
+	type binding struct {
 		lib    *dl.Lib
 		fptr   any
 		symbol string
-	}{
-		{ca, &l.getPropertyDataSize, "AudioObjectGetPropertyDataSize"}, {ca, &l.getPropertyData, "AudioObjectGetPropertyData"},
-		{ca, &l.addListener, "AudioObjectAddPropertyListener"}, {ca, &l.removeListener, "AudioObjectRemovePropertyListener"},
+	}
+	// iOS has the CoreAudio framework but not its AudioObject functions: the devices are those of the route (SPEC §30.9).
+	l.routeOnly = !ca.Has("AudioObjectGetPropertyData")
+	var objects []binding
+	if !l.routeOnly {
+		objects = []binding{
+			{ca, &l.getPropertyDataSize, "AudioObjectGetPropertyDataSize"}, {ca, &l.getPropertyData, "AudioObjectGetPropertyData"},
+			{ca, &l.addListener, "AudioObjectAddPropertyListener"}, {ca, &l.removeListener, "AudioObjectRemovePropertyListener"},
+		}
+	}
+	for _, b := range append(objects, []binding{
 		{at, &l.newOutput, "AudioQueueNewOutput"}, {at, &l.newInput, "AudioQueueNewInput"},
 		{at, &l.setProperty, "AudioQueueSetProperty"}, {at, &l.allocBuffer, "AudioQueueAllocateBuffer"},
 		{at, &l.enqueue, "AudioQueueEnqueueBuffer"}, {at, &l.start, "AudioQueueStart"}, {at, &l.pause, "AudioQueuePause"},
 		{at, &l.stop, "AudioQueueStop"}, {at, &l.dispose, "AudioQueueDispose"},
-	} {
+	}...) {
 		if err := b.lib.Bind(b.fptr, b.symbol); err != nil {
 			return nil, errors.NewErr(platform.TagAudioUnavailable, err).SetMetadata("symbol", b.symbol)
 		}
