@@ -146,6 +146,33 @@ func (s Simctl) Screenshot(ctx context.Context, udid, file string) error {
 	return err
 }
 
+// Pbpaste is the text of the device's pasteboard: what `simctl pbpaste` prints.
+//
+// Flutter: no counterpart
+func (s Simctl) Pbpaste(ctx context.Context, udid string) (string, error) {
+	out, err := s.run(ctx, "pbpaste", udid)
+	return string(out), err
+}
+
+// Pbcopy makes text the content of the device's pasteboard (`simctl pbcopy`, which reads its standard input). It is for a test that
+// copies something as another program would; it fails with IOSCommandFailed when xcrun cannot run and with IOSSimctlFailed when simctl
+// says no.
+//
+// Flutter: no counterpart
+func (s Simctl) Pbcopy(ctx context.Context, udid, text string) error {
+	cmd := exec.CommandContext(ctx, "xcrun", s.Args("pbcopy", udid)...)
+	cmd.Stdin = strings.NewReader(text)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		var exit *exec.ExitError
+		if stdErrors.As(err, &exit) {
+			return errors.New(tagIOSSimctlFailed, "simctl says no", "subcommand", "pbcopy", "exit", exit.ExitCode(), "output", string(out))
+		}
+		return errors.NewErr(tagIOSCommandFailed, err).SetMetadata("program", "xcrun", "arguments", "simctl pbcopy")
+	}
+	return nil
+}
+
 // Container is the directory of the data of the app (what the app sees as its home).
 //
 // Flutter: no counterpart

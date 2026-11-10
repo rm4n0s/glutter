@@ -38,9 +38,11 @@ type Options struct {
 type system struct {
 	// mediaTime is CACurrentMediaTime: seconds on the clock that CADisplayLink timestamps use.
 	mediaTime func() float64
+	// playSound is AudioServicesPlaySystemSound: the vibration and the sounds of the system (haptics_ios.go).
+	playSound func(uint32)
 	// view is the class of the view of a window, scene the class of the delegate of the scene, textView, textPos and textRange the
 	// classes of the text input (textinput_ios.go), and keyboard the class of the observer of the keyboard's frame.
-	view, scene, textView, textPos, textRange, keyboard *objcx.RegisteredClass
+	view, scene, textView, textPos, textRange, keyboard, viewController *objcx.RegisteredClass
 }
 
 // Platform is the UIKit backend of platform.Platform: the app and its run loop on the main thread, the scene with its windows, the
@@ -76,6 +78,11 @@ type Platform struct {
 	// ended says the app is ending: the lifecycle is Detached.
 	ended  bool
 	closed bool
+
+	deskState
+
+	// checker is the UITextChecker of the spell check, 0 until the first check (spellcheck_ios.go).
+	checker objc.ID
 
 	// handle is the platform's handle for the objects of UIKit that find it (the keyboard observer), and observer that object.
 	handle   objcx.Handle
@@ -162,6 +169,12 @@ func (p *Platform) load() (*system, error) {
 		return nil, err
 	}
 	if s.keyboard, err = registerKeyboardObserver(); err != nil {
+		return nil, err
+	}
+	if s.viewController, err = registerViewController(); err != nil {
+		return nil, err
+	}
+	if err := loadAudioToolbox(s); err != nil {
 		return nil, err
 	}
 	return s, nil
@@ -263,8 +276,13 @@ func (p *Platform) Wakes() uint64 { return p.wakes.Load() }
 // Flutter: no counterpart
 func (p *Platform) FramesDrawn() uint64 { return p.framesDrawn }
 
-// Clipboard returns the pasteboard, which fails with IOSClipboardUnavailable until step 35.6.
-func (p *Platform) Clipboard() platform.Clipboard { return pasteboard{} }
+// Clipboard returns the pasteboard of the app: UIPasteboard's general one, with the reads on goroutines of their own (the paste prompt)
+// and the answers on the UI thread (SPEC §30.6).
+//
+// Flutter: shell/platform/darwin/ios/framework/Source/FlutterPlatformPlugin.mm
+func (p *Platform) Clipboard() platform.Clipboard {
+	return pasteboard{post: p.Post, back: uiPasteboard{}}
+}
 
 // Settings is what the platform knows of the user's settings until step 35.7: a light theme, the default text scale and English.
 func (p *Platform) Settings() platform.Settings {
@@ -308,6 +326,11 @@ func (p *Platform) Close() error {
 		p.scenes = map[objc.ID]activation{}
 	})
 	p.stopObservingKeyboard()
+	if p.desk != nil {
+		p.desk.closeServices()
+	}
+	objcx.Release(p.checker)
+	p.checker = 0
 	objcx.DropHandle(p.handle)
 	if p.timer != nil {
 		p.timer.Close()

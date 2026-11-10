@@ -9,7 +9,9 @@ import (
 
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/internal/platform"
+	"github.com/rm4n0s/glutter/internal/platform/darwin/notify"
 	"github.com/rm4n0s/glutter/internal/platform/darwin/objcx"
+	"github.com/rm4n0s/glutter/internal/platform/darwin/openuri"
 	"github.com/rm4n0s/glutter/internal/platform/mobile"
 )
 
@@ -26,7 +28,7 @@ type desktop struct {
 	p   *Platform
 	log *slog.Logger
 	// notes is the life of the notifications over the center (notify.go).
-	notes *notifier
+	notes *notify.Notifier
 	// openURL opens a URL on the UI thread; the tests replace it, since opening opens a program.
 	openURL func(uri string) (ok bool, reason string)
 
@@ -48,7 +50,12 @@ var (
 func (p *Platform) Desktop() mobile.Services {
 	p.deskOnce.Do(func() {
 		d := &desktop{p: p, log: p.log}
-		d.notes = newNotifier(newCenter(p))
+		d.notes = notify.New(notify.NewCenter(func() *notify.Notifier {
+			if p.desk == nil {
+				return nil
+			}
+			return p.desk.notes
+		}))
 		d.openURL = d.workspaceOpen
 		p.desk = d
 	})
@@ -81,13 +88,13 @@ func (d *desktop) workspaceOpen(uri string) (ok bool, reason string) {
 	return ok, reason
 }
 
-// OpenURI opens the URI with NSWorkspace (SPEC §29.9). The checks of checkOpenURI come first, because opening a
+// OpenURI opens the URI with NSWorkspace (SPEC §29.9). The checks of openuri.Check come first, because opening a
 // file: URI also launches programs. A URI that has no program, or that NSWorkspace refuses, is OpenURIUnavailable
 // with the reason.
 //
 // Flutter: no counterpart (url_launcher_macos: launchUrl)
 func (d *desktop) OpenURI(ctx context.Context, uri string) error {
-	if err := checkOpenURI(uri); err != nil {
+	if err := openuri.Check(uri); err != nil {
 		return err
 	}
 	type result struct {
@@ -115,7 +122,7 @@ func (d *desktop) OpenURI(ctx context.Context, uri string) error {
 //
 // Flutter: no counterpart (flutter_local_notifications_darwin)
 func (d *desktop) ShowNotification(ctx context.Context, spec mobile.NotificationSpec) (uint32, error) {
-	return d.notes.show(ctx, spec)
+	return d.notes.Show(ctx, spec)
 }
 
 // CloseNotification takes the notification off the screen and calls its OnClose with CloseByApp. Closing one that is
@@ -123,13 +130,13 @@ func (d *desktop) ShowNotification(ctx context.Context, spec mobile.Notification
 //
 // Flutter: no counterpart
 func (d *desktop) CloseNotification(_ context.Context, id uint32) error {
-	d.notes.close(id)
+	d.notes.Close(id)
 	return nil
 }
 
 // closeServices ends the services with the platform: the tray icon goes, the timers stop.
 func (d *desktop) closeServices() {
-	d.notes.shutdown()
+	d.notes.Shutdown()
 	if d.tray != nil {
 		d.tray.Close()
 	}
@@ -140,3 +147,6 @@ type deskState struct {
 	deskOnce sync.Once
 	desk     *desktop
 }
+
+// The tag of the error that this file makes (rm4n0s/errors, R5); package desktop matches it by value.
+const tagOpenURIUnavailable = "OpenURIUnavailable"

@@ -1076,3 +1076,17 @@ On an iPhone and an iPad, with a field of `examples/gallery` (the text field pag
 7. **A hardware keyboard** typing into a field: the letters arrive, and the shortcuts still reach the framework.
 
 Record the answers here when they are known.
+
+## 35.6 System UI and services (iOS)
+
+On an iPhone and an iPad, with `examples/gallery`:
+
+1. **Haptics.** The gallery's haptic buttons (or a `HapticFeedback` call): light, medium and heavy impact, the selection tick and the vibration each feel different on an iPhone; an iPad (no Taptic Engine) does nothing and does not fail.
+2. **The paste prompt.** Copy text in another app, then paste into a field of the app: iOS 16 and later asks "Allow Paste"; the app keeps drawing while the prompt is up (the read waits on a goroutine), "Allow" pastes the text, and "Don't Allow" gives an empty paste with the `PasteDenied` error in the log.
+3. **The status bar and the home indicator.** `SetSystemUIOverlayStyle` with a dark status bar bar gives white icons; the immersive modes hide the status bar and the home indicator hides itself after a moment; edge to edge brings them back.
+4. **Orientations.** `SetPreferredOrientations` with landscape only turns an upright phone to landscape and keeps it there.
+5. **Notifications.** The first notification shows the permission prompt; after "Allow" the banner shows with its action buttons, a tap on the banner and on an action reach the callbacks (also from the lock screen and when the app was in the background), and a dismissal reaches `OnClosed`.
+6. **Opening a URI.** An `https:` URI opens Safari, a `mailto:` URI the Mail composer, a `tel:` URI the dialer (on an iPhone); a scheme that no app handles fails with `OpenURIUnavailable`.
+7. **Spell check.** A text field with spell check on underlines a misspelled word, and a tap on it offers the suggestions of `UITextChecker`.
+
+Record the answers here when they are known.

@@ -39,9 +39,10 @@ type services struct {
 	// web, set on the web only, does what the desktop does there: it opens URIs with window.open
 	// and shows notifications with the Notifications API. With it, the session bus is never tried.
 	web webDesktop
-	// android, set on Android only, does what the desktop does there: it opens URIs with an intent and
-	// posts notifications with the notification manager (SPEC §24.11). With it, the session bus is never
-	// tried.
+	// android, set on Android and on iOS (the name is the first one's), does what the desktop does there: on Android it
+	// opens URIs with an intent and posts notifications with the notification manager (SPEC §24.11); on iOS it opens
+	// URIs with UIApplication and posts notifications through UserNotifications (SPEC §30.6). With it, the session bus
+	// is never tried.
 	android androidDesktop
 	// windows, set on Windows and on macOS (the name is the first one's), does what the desktop does there: on
 	// Windows it opens URIs with ShellExecuteEx, shows notifications as tray balloons, puts the icon in the
@@ -103,6 +104,10 @@ func (s *services) connect(ctx context.Context, tag string) (dbus.Bus, error) {
 		return nil, errors.NewErr(tag, &errors.Error{Tag: "DBusUnavailableOnWindows", Message: windowsReason(tag)})
 	}
 	if s.android != nil {
+		if n, ok := s.android.(interface{ DesktopName() string }); ok && n.DesktopName() == "iOS" {
+			// The cause is a sentinel, so that an app can still match DBusUnavailableOnIOS (SPEC §14.1, §30.6).
+			return nil, errors.NewErr(tag, &errors.Error{Tag: "DBusUnavailableOnIOS", Message: iosReason(tag)})
+		}
 		// The cause is a sentinel, so that an app can still match DBusUnavailableOnAndroid (SPEC §14.1).
 		return nil, errors.NewErr(tag, &errors.Error{Tag: "DBusUnavailableOnAndroid", Message: androidReason(tag)})
 	}

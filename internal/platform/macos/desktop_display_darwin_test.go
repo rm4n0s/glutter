@@ -14,6 +14,7 @@ import (
 	"github.com/ebitengine/purego/objc"
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/internal/platform"
+	"github.com/rm4n0s/glutter/internal/platform/darwin/notify"
 	"github.com/rm4n0s/glutter/internal/platform/darwin/objcx"
 	"github.com/rm4n0s/glutter/internal/platform/mobile"
 	"github.com/rm4n0s/glutter/ui"
@@ -65,9 +66,9 @@ func TestOpenURIGoesThroughTheWorkspace(t *testing.T) {
 		}
 		// The checks come first: nothing blocked reaches the workspace.
 		for uri, route := range map[string]string{
-			"javascript:alert(1)":        "checkOpenURI." + tagOpenURISchemeBlocked,
-			"":                           "checkOpenURI." + tagOpenURIInvalid,
-			"file:///Applications/X.app": "checkOpenURI." + tagOpenURISchemeBlocked,
+			"javascript:alert(1)":        "Check.OpenURISchemeBlocked",
+			"":                           "Check.OpenURIInvalid",
+			"file:///Applications/X.app": "Check.OpenURISchemeBlocked",
 		} {
 			err := d.OpenURI(ctx, uri)
 			if appErr, ok := errors.FromError(err); !ok || !appErr.HasRoute(route) {
@@ -103,12 +104,12 @@ func TestNotificationsWithoutABundleAreUnavailable(t *testing.T) {
 	h := &recorder{}
 	runApp(t, Options{}, h, func(s *session) {
 		d := s.desktop()
-		if bundleID() != "" {
+		if notify.BundleID() != "" {
 			t.Skip("the test binary is in a bundle with an identifier")
 		}
 		_, err := d.ShowNotification(context.Background(), mobile.NotificationSpec{Title: "x"})
 		appErr, ok := errors.FromError(err)
-		if !ok || appErr.Tag != tagNotificationsUnavailable || !appErr.HasRoute("notifier.show."+tagNotificationsUnavailable) {
+		if !ok || appErr.Tag != "NotificationsUnavailable" || !appErr.HasRoute("Notifier.Show.NotificationsUnavailable") {
 			t.Errorf("ShowNotification = %v, want NotificationsUnavailable", err)
 		}
 		if err := d.CloseNotification(context.Background(), 99); err != nil {

@@ -152,6 +152,47 @@ func ArrayCount(id objc.ID) int { return int(objc.Send[uint64](id, Sel("count"))
 // Flutter: no counterpart
 func ArrayAt(id objc.ID, i int) objc.ID { return id.Send(Sel("objectAtIndex:"), uint64(i)) }
 
+// NewDictionary makes an NSDictionary of the keys and the objects (+1: release it; the dictionary copies its keys and retains its
+// objects). The two slices have the same length.
+//
+// Flutter: no counterpart
+func NewDictionary(keys, objects []objc.ID) objc.ID {
+	foundation()
+	if len(keys) == 0 {
+		return objc.ID(MustClass("NSDictionary")).Send(Sel("alloc")).Send(Sel("init"))
+	}
+	return objc.ID(MustClass("NSDictionary")).Send(Sel("alloc")).Send(Sel("initWithObjects:forKeys:count:"),
+		unsafe.Pointer(&objects[0]), unsafe.Pointer(&keys[0]), uint64(len(keys)))
+}
+
+// NewData makes an NSData that copies the bytes (+1: release it).
+//
+// Flutter: no counterpart
+func NewData(b []byte) objc.ID {
+	foundation()
+	var p unsafe.Pointer
+	if len(b) > 0 {
+		p = unsafe.Pointer(unsafe.SliceData(b))
+	}
+	return objc.ID(MustClass("NSData")).Send(Sel("alloc")).Send(Sel("initWithBytes:length:"), p, uint64(len(b)))
+}
+
+// DataBytes copies the bytes of an NSData; nil for no data or an empty one.
+//
+// Flutter: no counterpart
+func DataBytes(data objc.ID) []byte {
+	if data == 0 {
+		return nil
+	}
+	n := int(objc.Send[uint64](data, Sel("length")))
+	if n == 0 {
+		return nil
+	}
+	b := make([]byte, n)
+	data.Send(Sel("getBytes:length:"), unsafe.Pointer(unsafe.SliceData(b)), uint64(n))
+	return b
+}
+
 // NewFileURL makes a file NSURL for the path (+1: release it).
 //
 // Flutter: no counterpart

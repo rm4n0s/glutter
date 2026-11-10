@@ -144,7 +144,7 @@ type SpellCheckBackend interface {
 }
 
 // DefaultSpellCheckService is the spell check service that uses the spell
-// checker of the platform: Android's TextServicesManager. It keeps the last
+// checker of the platform: Android's TextServicesManager and iOS's UITextChecker. It keeps the last
 // results to merge them with the next ones when only the spell checker's
 // answer changed.
 //
@@ -174,18 +174,21 @@ var _ SpellCheckService = (*DefaultSpellCheckService)(nil)
 func (s *DefaultSpellCheckService) LastSavedResults() *SpellCheckResults { return s.lastSavedResults }
 
 // DefaultSpellCheckServiceSupportsSpellCheck says whether the platform has a spell
-// checker that the service can ask: the target platform is Android and the engine has a spell
-// checker.
+// checker that the service can ask: the target platform is Android or iOS and the engine has a
+// spell checker.
 //
 // Deviation: Flutter's engine sets PlatformDispatcher.nativeSpellCheckServiceDefined
-// on Android and iOS; Glutter has the spell checker on Android only, and the
-// dispatcher says whether the host has one, so Linux and the web keep spell check
+// on Android and iOS; Glutter has the spell checker on those two, and the
+// dispatcher says whether the host has one, so Linux, the web and macOS keep spell check
 // off as in Flutter (SPEC §12.10).
 //
 // Flutter: services/spell_check.dart DefaultSpellCheckService.supportsSpellCheck
 func DefaultSpellCheckServiceSupportsSpellCheck(backend SpellCheckBackend) bool {
-	return foundation.DefaultTargetPlatform() == foundation.TargetPlatformAndroid &&
-		backend != nil && backend.SpellCheckSupported()
+	switch foundation.DefaultTargetPlatform() {
+	case foundation.TargetPlatformAndroid, foundation.TargetPlatformIOS:
+		return backend != nil && backend.SpellCheckSupported()
+	}
+	return false
 }
 
 // DefaultSpellCheckServiceMergeResults merges two lists of spans that are sorted

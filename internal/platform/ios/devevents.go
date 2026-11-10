@@ -16,6 +16,11 @@ import (
 // Flutter: no counterpart
 const DevEventsEnv = "GLUTTER_DEV_EVENTS"
 
+// ChromeLogLine is the message of the line that the dev events step "chrome" logs.
+//
+// Flutter: no counterpart
+const ChromeLogLine = "ios chrome"
+
 // TagIOSDevEventsInvalid is the tag of the error of a GLUTTER_DEV_EVENTS script that cannot be read.
 //
 // Flutter: no counterpart
@@ -25,7 +30,7 @@ const TagIOSDevEventsInvalid = "IOSDevEventsInvalid"
 //
 // Flutter: no counterpart
 type DevEvent struct {
-	// Kind is the name of the step: "wait", "tap", "drag", "key", "text", "compose", "composing", "keyboard" or "keyboardhide".
+	// Kind is the name of the step: "wait", "tap", "drag", "key", "text", "compose", "composing", "keyboard", "keyboardhide" or "chrome".
 	Kind string
 	// Wait is how long to wait, for "wait", and how long a "drag" takes.
 	Wait time.Duration
@@ -54,6 +59,8 @@ type DevEvent struct {
 //	composing:a,b,c       the same, but the composition stays (a later compose: goes on with it)
 //	keyboard:h            the soft keyboard comes up, h points high (UIKit's frame notification, with a keyboard's duration)
 //	keyboardhide          the soft keyboard goes down
+//	chrome                logs what UIKit has of the system UI of the window (the status bar's style and visibility, the home indicator,
+//	                      the supported orientations), as the line "ios chrome"
 //	key:Name[,mods]       presses and releases a key of a hardware keyboard with the modifiers (shift, control, alt, meta, joined by "+")
 //	                      pressed before it and released after it: key:KeyC,meta is Command+C. The names are Flutter's physical keys:
 //	                      KeyA to KeyZ, Digit0 to Digit9, Enter, Tab, Space, Backspace, Delete, Escape, ArrowLeft, ArrowRight, ArrowUp,
@@ -70,7 +77,7 @@ func ParseDevEvents(script string) ([]DevEvent, error) {
 		if step == "" {
 			continue
 		}
-		if step == "keyboardhide" {
+		if step == "keyboardhide" || step == "chrome" {
 			events = append(events, DevEvent{Kind: step})
 			continue
 		}

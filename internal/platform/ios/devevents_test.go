@@ -28,7 +28,7 @@ func TestParseDevEvents(t *testing.T) {
 }
 
 func TestParseTextDevEvents(t *testing.T) {
-	got, err := ParseDevEvents("text: a 😀;compose:に,にほ,日本;composing:x;keyboard:300;keyboardhide")
+	got, err := ParseDevEvents("text: a 😀;compose:に,にほ,日本;composing:x;keyboard:300;keyboardhide;chrome")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,6 +38,7 @@ func TestParseTextDevEvents(t *testing.T) {
 		{Kind: "composing", Steps: []string{"x"}},
 		{Kind: "keyboard", Height: 300},
 		{Kind: "keyboardhide"},
+		{Kind: "chrome"},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("events = %+v\nwant     %+v", got, want)

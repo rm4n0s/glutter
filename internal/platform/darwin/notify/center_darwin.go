@@ -1,6 +1,6 @@
-//go:build darwin && !ios
+//go:build darwin
 
-package macos
+package notify
 
 import (
 	"context"
@@ -14,7 +14,7 @@ import (
 	"github.com/rm4n0s/glutter/internal/platform/mobile"
 )
 
-// The glue of the notifications (SPEC §29.9): center is notifyBackend over UNUserNotificationCenter, whose rules
+// The glue of the notifications (SPEC §29.9, §30.6): Center is Backend over UNUserNotificationCenter, whose rules
 // are in notify.go. The center needs a bundle with an identifier: without one, the class itself raises an exception,
 // so nothing of it is touched (Ready).
 
@@ -30,37 +30,43 @@ const (
 	unDefaultActionID, unDismissActionID = "com.apple.UNNotificationDefaultActionIdentifier", "com.apple.UNNotificationDismissActionIdentifier"
 )
 
-// center is the notification center of the app.
-type center struct {
-	p *Platform
-	// notes receives the responses of the user; it is set by the desktop.
-	notes func() *notifier
+// Center is the notification center of the app: Backend over UNUserNotificationCenter, on macOS and on iOS.
+//
+// Flutter: no counterpart
+type Center struct {
+	// notes receives the responses of the user.
+	notes func() *Notifier
 
 	once     sync.Once
 	loadErr  error
 	delegate objc.ID
 }
 
-func newCenter(p *Platform) *center {
-	c := &center{p: p}
-	c.notes = func() *notifier {
-		if p.desk == nil {
-			return nil
-		}
-		return p.desk.notes
-	}
-	return c
-}
+// NewCenter makes the center. notes gives it the notifier that the responses of the user go to, which may not exist
+// yet when the center is made; it returns nil while there is none.
+//
+// Flutter: no counterpart
+func NewCenter(notes func() *Notifier) *Center { return &Center{notes: notes} }
 
-// bundleID is the identifier of the main bundle, "" for a program that is not in one.
-func bundleID() string {
+func class(name string) objc.ID { return objc.ID(objcx.MustClass(name)) }
+
+func sel(name string) objc.SEL { return objcx.Sel(name) }
+
+func send[T any](id objc.ID, name string, args ...any) T { return objc.Send[T](id, sel(name), args...) }
+
+// BundleID is the identifier of the main bundle, "" for a program that is not in one.
+//
+// Flutter: no counterpart
+func BundleID() string {
 	return objcx.String(class("NSBundle").Send(sel("mainBundle")).Send(sel("bundleIdentifier")))
 }
 
 // Ready says whether notifications can be shown.
-func (c *center) Ready() (bool, string) {
-	if bundleID() == "" {
-		return false, "the program is not in an application bundle with an identifier, which UserNotifications needs; build one with glutter-macos"
+//
+// Flutter: no counterpart
+func (c *Center) Ready() (bool, string) {
+	if BundleID() == "" {
+		return false, "the program is not in an application bundle with an identifier, which UserNotifications needs; build one with glutter-macos or glutter-ios"
 	}
 	c.once.Do(func() { _, c.loadErr = dl.OpenFramework("UserNotifications") })
 	if c.loadErr != nil {
@@ -70,7 +76,7 @@ func (c *center) Ready() (bool, string) {
 }
 
 // handle returns the center, and sets the delegate the first time.
-func (c *center) handle() objc.ID {
+func (c *Center) handle() objc.ID {
 	cn := class("UNUserNotificationCenter").Send(sel("currentNotificationCenter"))
 	if c.delegate == 0 {
 		cls, err := notificationDelegateClass()
@@ -92,7 +98,7 @@ var notificationDelegateClass = sync.OnceValues(func() (*objcx.RegisteredClass, 
 				_, _ = objc.InvokeBlock[struct{}](objc.Block(handler), uint64(unPresentBanner|unPresentList|unPresentSound))
 			}},
 			{Name: "userNotificationCenter:didReceiveNotificationResponse:withCompletionHandler:", Fn: func(self objc.ID, _ objc.SEL, _, resp, handler objc.ID) {
-				if c, ok := objcx.LookupAs[*center](objcx.HandleOf(self)); ok {
+				if c, ok := objcx.LookupAs[*Center](objcx.HandleOf(self)); ok {
 					if n := c.notes(); n != nil {
 						action := objcx.String(send[objc.ID](resp, "actionIdentifier"))
 						ident := objcx.String(send[objc.ID](send[objc.ID](send[objc.ID](resp, "notification"), "request"), "identifier"))
@@ -102,7 +108,7 @@ var notificationDelegateClass = sync.OnceValues(func() (*objcx.RegisteredClass, 
 						case unDismissActionID:
 							action = ""
 						}
-						n.response(ident, action)
+						n.Response(ident, action)
 					}
 				}
 				_, _ = objc.InvokeBlock[struct{}](objc.Block(handler))
@@ -140,7 +146,9 @@ func await(ctx context.Context, start func(blk objc.Block)) (errText string, err
 
 // Authorize asks for the permission to show alerts, sounds and badges; the system answers at once when the user
 // decided before.
-func (c *center) Authorize(ctx context.Context) (bool, error) {
+//
+// Flutter: no counterpart
+func (c *Center) Authorize(ctx context.Context) (bool, error) {
 	cn := c.handle()
 	type reply struct{ granted bool }
 	ch := make(chan reply, 1)
@@ -158,7 +166,9 @@ func (c *center) Authorize(ctx context.Context) (bool, error) {
 }
 
 // SetCategories gives the center the categories, each with its buttons.
-func (c *center) SetCategories(cats []notifyCategory) error {
+//
+// Flutter: no counterpart
+func (c *Center) SetCategories(cats []Category) error {
 	cn := c.handle()
 	objcx.WithPool(func() {
 		var objs []objc.ID
@@ -189,7 +199,9 @@ func (c *center) SetCategories(cats []notifyCategory) error {
 }
 
 // Add shows the request: the center replaces the notification that has its identifier.
-func (c *center) Add(ctx context.Context, r notifyRequest) error {
+//
+// Flutter: no counterpart
+func (c *Center) Add(ctx context.Context, r Request) error {
 	cn := c.handle()
 	var req objc.ID
 	objcx.WithPool(func() {
@@ -237,7 +249,7 @@ func (c *center) Add(ctx context.Context, r notifyRequest) error {
 
 // attach adds the picture of the notification as an attachment, when the file can be read; a file that cannot
 // be is left out, as the notification does not depend on it.
-func (c *center) attach(content objc.ID, path string) {
+func (c *Center) attach(content objc.ID, path string) {
 	if _, err := os.Stat(path); err != nil {
 		return
 	}
@@ -253,7 +265,9 @@ func (c *center) attach(content objc.ID, path string) {
 }
 
 // Remove takes the notification off the screen and out of the center.
-func (c *center) Remove(identifier string) {
+//
+// Flutter: no counterpart
+func (c *Center) Remove(identifier string) {
 	cn := c.handle()
 	objcx.WithPool(func() {
 		id := objcx.NewString(identifier)

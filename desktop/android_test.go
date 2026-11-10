@@ -314,3 +314,43 @@ func (h *serviceHost) PlatformService(name string) any {
 const (
 	tagOpenURIUnavailable = "OpenURIUnavailable"
 )
+
+// fakeIOS is the desktop of iOS: the interface of Android's, with the name that package desktop uses to say iOS in its errors.
+type fakeIOS struct{ fakeAndroid }
+
+func (*fakeIOS) DesktopName() string { return "iOS" }
+
+// TestTheOtherServicesAreUnavailableOnIOS: on iOS the file dialogs and the tray return their Unavailable tags without trying D-Bus, and
+// the cause says iOS (SPEC §30.6).
+func TestTheOtherServicesAreUnavailableOnIOS(t *testing.T) {
+	ts, bc := app(t)
+	desktop.UseBusOpener(bc, func(context.Context) (dbus.Bus, error) {
+		t.Error("iOS tried the session bus")
+		return nil, errors.New(tagDBusConnectFailed, "must not be called")
+	})
+	desktop.UseAndroid(bc, &fakeIOS{})
+	calls := map[string]func() error{
+		"OpenFiles": func() error { _, err := desktop.OpenFiles(context.Background(), bc); return err },
+		"SaveFile":  func() error { _, err := desktop.SaveFile(context.Background(), bc); return err },
+	}
+	for name, call := range calls {
+		t.Run(name, func(t *testing.T) {
+			err := inGoroutine(t, ts, call)
+			appErr := tagged(t, err, "FileChooserUnavailable")
+			inner, ok := errors.FromError(appErr.OriginalErr)
+			if !ok || inner.Tag != "DBusUnavailableOnIOS" || !strings.Contains(inner.Message, "file dialogs are not available on iOS") {
+				t.Errorf("the cause is %v, want DBusUnavailableOnIOS saying the file dialogs are not available", appErr.OriginalErr)
+			}
+		})
+	}
+	t.Run("tray", func(t *testing.T) {
+		ts.PumpWidget(trayTree(ui.WindowIcon{Name: "x"}, desktop.SystemTrayOpts{}))
+		var err error
+		waitFor(t, ts, "the error", func() bool { err = ts.TakeError(); return err != nil })
+		appErr := tagged(t, err, "TrayUnavailable")
+		inner, ok := errors.FromError(appErr.OriginalErr)
+		if !ok || inner.Tag != "DBusUnavailableOnIOS" || !strings.Contains(inner.Message, "no system tray") {
+			t.Errorf("the cause is %v, want DBusUnavailableOnIOS saying there is no system tray", appErr.OriginalErr)
+		}
+	})
+}

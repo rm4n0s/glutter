@@ -36,6 +36,11 @@ type window struct {
 
 	title string
 
+	// chrome is what the app asked of the status bar, the home indicator and the orientations (systemui_ios.go), and chromeCallback the
+	// function of SetSystemUIChangeCallback.
+	chrome         chrome
+	chromeCallback func(visible bool)
+
 	frames loop.FrameRequests
 	pacer  loop.LinkPacer
 	pool   *darwin.SurfacePool
@@ -108,7 +113,7 @@ func (w *window) create() {
 	w.layer.Send(sel("setContentsScale:"), w.screenScale())
 	w.view.Send(sel("setMultipleTouchEnabled:"), true)
 	w.addRecognizers()
-	w.vc = class("UIViewController").Send(sel("alloc")).Send(sel("init"))
+	w.vc = s.viewController.New(w.handle)
 	w.vc.Send(sel("setView:"), w.view)
 	w.pool = darwin.NewSurfacePool(8, func(width, height int) (darwin.Surface, error) {
 		surf, err := darwin.NewIOSurface(width, height)

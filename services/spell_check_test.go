@@ -221,7 +221,9 @@ func TestDefaultSpellCheckServiceSupportsSpellCheck(t *testing.T) {
 		{"Android without one", foundation.TargetPlatformAndroid, false, false, false},
 		{"Android without a backend", foundation.TargetPlatformAndroid, true, true, false},
 		{"Linux with a spell checker", foundation.TargetPlatformLinux, true, false, false},
-		{"iOS with a spell checker", foundation.TargetPlatformIOS, true, false, false},
+		{"iOS with a spell checker", foundation.TargetPlatformIOS, true, false, true},
+		{"iOS without one", foundation.TargetPlatformIOS, false, false, false},
+		{"macOS with a spell checker", foundation.TargetPlatformMacOS, true, false, false},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

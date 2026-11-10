@@ -1,4 +1,6 @@
-package macos
+// Package openuri is the check that comes before a URI is opened on macOS and iOS (SPEC §29.9, §30.6): the part of opening that
+// is plain Go, so that its tests run on any host.
+package openuri
 
 import (
 	"net/url"
@@ -9,8 +11,7 @@ import (
 	"github.com/rm4n0s/glutter/internal/platform/mobile"
 )
 
-// This file is the plain-Go part of opening a URI (SPEC §29.9): the checks that come before NSWorkspace, which also
-// launches programs.
+// The checks come before NSWorkspace (macOS) and UIApplication (iOS), which also launch programs.
 
 // launchExtensions are the types of file whose file: URI OpenURI refuses: NSWorkspace would run them or open them
 // with the program that runs them (an application bundle, a script, an installer).
@@ -21,11 +22,11 @@ var launchExtensions = map[string]bool{
 	".exe": true, ".bat": true, ".cmd": true, ".ps1": true, ".js": true, ".vbs": true, ".prefpane": true, ".saver": true,
 }
 
-// checkOpenURI is the validation before the URI is opened (SPEC §29.9), after Linux's and Windows': an empty URI,
+// Check is the validation before the URI is opened (SPEC §29.9, §30.6), after Linux's and Windows': an empty URI,
 // or one with a control character, is OpenURIInvalid; a URI with no scheme is OpenURIInvalid; the schemes
 // javascript: and vbscript:, and a file: URI of a program, a script, an installer or an application bundle are
-// OpenURISchemeBlocked. Anything else goes to NSWorkspace.
-func checkOpenURI(uri string) error {
+// OpenURISchemeBlocked. Anything else goes to the system.
+func Check(uri string) error {
 	if uri == "" || strings.IndexFunc(uri, func(r rune) bool { return r < 0x20 || r == 0x7f }) >= 0 {
 		return errors.New(tagOpenURIInvalid, "a URI is not empty and has no control character", "uri", uri)
 	}
@@ -60,5 +61,4 @@ func fileURIName(raw string) string {
 const (
 	tagOpenURIInvalid       = "OpenURIInvalid"
 	tagOpenURISchemeBlocked = "OpenURISchemeBlocked"
-	tagOpenURIUnavailable   = "OpenURIUnavailable"
 )

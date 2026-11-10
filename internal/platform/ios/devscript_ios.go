@@ -77,6 +77,8 @@ func (p *Platform) runDevEvents(i int) {
 			w.devKeyboard(ev.Height)
 		case "keyboardhide":
 			w.devKeyboard(0)
+		case "chrome":
+			w.logChrome()
 		}
 	}
 	p.devDone = true
