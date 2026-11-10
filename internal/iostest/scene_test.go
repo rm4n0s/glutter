@@ -236,7 +236,7 @@ func TestCounterDrawsItsFirstFrame(t *testing.T) {
 
 // capture runs the installed counter with the renderer, saves its first frame in the container and returns the app's output with the
 // decoded frame.
-func capture(t *testing.T, h *iostest.Harness, dev iostool.Device, id, renderer string) ([]string, *image.RGBA) {
+func capture(t *testing.T, h *iostest.Harness, dev iostool.Device, id, renderer string, env ...string) ([]string, *image.RGBA) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
@@ -244,31 +244,27 @@ func capture(t *testing.T, h *iostest.Harness, dev iostool.Device, id, renderer 
 	if err != nil {
 		t.Fatalf("container: %v", err)
 	}
-	shot := filepath.Join(container, "Documents", renderer+".png")
+	shot := filepath.Join(container, "Documents", fmt.Sprintf("%s-%d.png", renderer, time.Now().UnixNano()))
 	_ = os.Remove(shot)
-	app, err := h.Launch(ctx, dev.UDID, id, "GLUTTER_SCREENSHOT="+shot, "GLUTTER_RENDERER="+renderer)
+	app, err := h.Launch(ctx, dev.UDID, id, append([]string{"GLUTTER_SCREENSHOT=" + shot, "GLUTTER_RENDERER=" + renderer}, env...)...)
 	if err != nil {
 		t.Fatalf("launch: %v", err)
 	}
+	// The app writes the file and then exits: it is read until it decodes whole.
+	var img image.Image
 	deadline := time.Now().Add(2 * time.Minute)
 	for {
-		if info, err := os.Stat(shot); err == nil && info.Size() > 0 {
-			time.Sleep(300 * time.Millisecond)
-			break
+		if f, err := os.Open(shot); err == nil {
+			img, err = png.Decode(f)
+			_ = f.Close()
+			if err == nil {
+				break
+			}
 		}
 		if time.Now().After(deadline) {
 			t.Fatalf("the app did not save its frame; output:\n%s", strings.Join(app.Output(), "\n"))
 		}
 		time.Sleep(200 * time.Millisecond)
-	}
-	f, err := os.Open(shot)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer f.Close()
-	img, err := png.Decode(f)
-	if err != nil {
-		t.Fatalf("the saved frame: %v", err)
 	}
 	rgba := image.NewRGBA(img.Bounds())
 	draw.Draw(rgba, rgba.Bounds(), img, img.Bounds().Min, draw.Src)

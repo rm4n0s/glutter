@@ -1,4 +1,4 @@
-package android
+package pointerconv
 
 import (
 	"testing"
@@ -428,7 +428,7 @@ func TestPointerConverter(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			c := newPointerConverter()
+			c := New()
 			if tc.views != nil {
 				views := map[ui.ViewID]bool{}
 				for _, v := range tc.views {
@@ -444,7 +444,7 @@ func TestPointerConverter(t *testing.T) {
 // TestPointerConverterPacketsKeepTheState checks that the state is kept between packets: the
 // converter of the platform sees one packet per event.
 func TestPointerConverterPacketsKeepTheState(t *testing.T) {
-	c := newPointerConverter()
+	c := New()
 	var got []ui.PointerData
 	got = append(got, c.Convert([]ui.PointerData{pcTouch(pcDown, 0, 0, 0, 1)})...)
 	got = append(got, c.Convert([]ui.PointerData{pcTouch(pcMove, 0, 2, 2, 1)})...)
@@ -508,14 +508,14 @@ func TestPointerConverterSignals(t *testing.T) {
 				}(),
 				pcw(pcHover, 2, 0, false, 10, 20, 0, 0, 0).withSignal(kind, 30, 40),
 			}
-			pcCheck(t, newPointerConverter().Convert(in), want)
+			pcCheck(t, New().Convert(in), want)
 		})
 	}
 }
 
 // TestPointerConverterIsNotGlobal checks that two converters do not share the identifiers.
 func TestPointerConverterIsNotGlobal(t *testing.T) {
-	a, b := newPointerConverter(), newPointerConverter()
+	a, b := New(), New()
 	a.Convert([]ui.PointerData{pcTouch(pcDown, 0, 0, 0, 1)})
 	got := b.Convert([]ui.PointerData{pcTouch(pcDown, 0, 0, 0, 1)})
 	if len(got) != 2 || got[1].PointerIdentifier != 1 {

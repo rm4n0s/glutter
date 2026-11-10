@@ -8,6 +8,7 @@ import (
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/internal/gpu"
 	"github.com/rm4n0s/glutter/internal/platform"
+	"github.com/rm4n0s/glutter/internal/platform/pointerconv"
 	"github.com/rm4n0s/glutter/ui"
 )
 
@@ -28,7 +29,7 @@ type Platform struct {
 	frames  frameRequests
 	// touch and conv turn motion events into pointer data (motion.go).
 	touch *touchProcessor
-	conv  *pointerConverter
+	conv  *pointerconv.Converter
 	keys  *keyboardManager
 	// text is the text field that has the focus (textinput.go); clipboard is the clipboard
 	// (clipboard.go).
@@ -65,7 +66,7 @@ func newPlatform(b *bridge, h host, log *slog.Logger) *Platform {
 	if log == nil {
 		log = slog.Default()
 	}
-	p := &Platform{b: b, host: h, log: log, touch: newTouchProcessor(), conv: newPointerConverter(), keys: newKeyboardManager()}
+	p := &Platform{b: b, host: h, log: log, touch: newTouchProcessor(), conv: pointerconv.New(), keys: newKeyboardManager()}
 	p.a11y = newAccessibility(p)
 	p.pads = newPadService(h)
 	return p

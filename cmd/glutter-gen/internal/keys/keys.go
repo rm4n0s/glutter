@@ -27,7 +27,7 @@ const (
 )
 
 // Run executes `glutter-gen keys [-reference dir] [-out file] [-services-out file]
-// [-web-out file] [-android-out file] [-windows-out file] [-macos-out file]` with the arguments that follow the subcommand name. It reads
+// [-web-out file] [-android-out file] [-windows-out file] [-macos-out file] [-ios-out file]` with the arguments that follow the subcommand name. It reads
 // Flutter's key data (physical_key_data.g.json, logical_key_data.g.json,
 // layout_goals.json, synonyms.json and web_logical_location_mapping.json under
 // dev/tools/gen_keycodes/data of the Flutter checkout in the reference directory)
@@ -38,7 +38,7 @@ const (
 // and the tables of the Windows platform (scan codes, virtual keys and the layout goals) to
 // the Windows file, and the tables of the macOS platform (key codes and the layout goals) to the macOS file.
 // An empty file name skips that file; the services file is written by default
-// only when the platform file is, and the web, Android, Windows and macOS files only when they are named.
+// only when the platform file is, and the web, Android, Windows, macOS and iOS files only when they are named.
 //
 // Flutter: dev/tools/gen_keycodes
 func Run(args []string) error {
@@ -51,6 +51,7 @@ func Run(args []string) error {
 	androidOut := flags.String("android-out", "", "file to write the tables of the Android platform to (empty: none)")
 	windowsOut := flags.String("windows-out", "", "file to write the tables of the Windows platform to (empty: none)")
 	macosOut := flags.String("macos-out", "", "file to write the tables of the macOS platform to (empty: none)")
+	iosOut := flags.String("ios-out", "", "file to write the tables of the iOS platform to (empty: none)")
 	if err := flags.Parse(args); err != nil {
 		return errors.NewErr(tagKeysBadFlags, err).SetMetadata("args", args)
 	}
@@ -103,6 +104,15 @@ func Run(args []string) error {
 			return err
 		}
 		if err := writeIfChanged(*macosOut, code); err != nil {
+			return err
+		}
+	}
+	if *iosOut != "" {
+		code, err := generateIOS(src, pinnedFlutter(*reference))
+		if err != nil {
+			return err
+		}
+		if err := writeIfChanged(*iosOut, code); err != nil {
 			return err
 		}
 	}

@@ -9,6 +9,8 @@
 // that a program that calls it builds everywhere.
 //
 // Flutter: shell/platform/darwin/ios/framework/Source/FlutterAppDelegate.mm FlutterAppDelegate
+//
+//go:generate go run ../../../cmd/glutter-gen keys -reference ../../../reference/flutter -out "" -ios-out keymap_gen.go
 package ios
 
 const (

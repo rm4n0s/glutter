@@ -1,4 +1,4 @@
-package android
+package pointerconv
 
 import "github.com/rm4n0s/glutter/ui"
 
@@ -21,7 +21,7 @@ type pointerState struct {
 	viewID   ui.ViewID
 }
 
-// pointerConverter turns the raw pointer data of the Android input (change, kind, device, position,
+// Converter turns the raw pointer data of a touch input (Android, iOS) (change, kind, device, position,
 // no identifier and no delta) into the data the framework needs: it gives each contact a pointer
 // identifier, works out the deltas, and keeps the order the framework checks by synthesizing the
 // add before a hover or a down, the hover before a down at another place, the move before an up at
@@ -37,7 +37,7 @@ type pointerState struct {
 // move, up, pan update or pan end for a device the converter has not seen is dropped.
 //
 // Flutter: lib/ui/window/pointer_data_packet_converter.cc PointerDataPacketConverter
-type pointerConverter struct {
+type Converter struct {
 	states map[int]pointerState
 	// pointer is the last pointer identifier given; the identifiers start at 1.
 	pointer int
@@ -45,21 +45,21 @@ type pointerConverter struct {
 	viewExists func(ui.ViewID) bool
 }
 
-// newPointerConverter makes a converter that has seen no pointer.
+// New makes a converter that has seen no pointer.
 //
 // Flutter: lib/ui/window/pointer_data_packet_converter.cc PointerDataPacketConverter.PointerDataPacketConverter
-func newPointerConverter() *pointerConverter {
-	return &pointerConverter{states: map[int]pointerState{}}
+func New() *Converter {
+	return &Converter{states: map[int]pointerState{}}
 }
 
-func (c *pointerConverter) hasView(id ui.ViewID) bool {
+func (c *Converter) hasView(id ui.ViewID) bool {
 	return c.viewExists == nil || c.viewExists(id)
 }
 
 // Convert converts a packet of raw data to the data for the framework, in order.
 //
 // Flutter: lib/ui/window/pointer_data_packet_converter.cc PointerDataPacketConverter.Convert
-func (c *pointerConverter) Convert(in []ui.PointerData) []ui.PointerData {
+func (c *Converter) Convert(in []ui.PointerData) []ui.PointerData {
 	out := make([]ui.PointerData, 0, len(in))
 	for _, d := range in {
 		out = c.convertPointerData(d, out)
@@ -71,7 +71,7 @@ func (c *pointerConverter) Convert(in []ui.PointerData) []ui.PointerData {
 // copy of the state, as the C++ does, and stores it back only where the C++ does.
 //
 // Flutter: lib/ui/window/pointer_data_packet_converter.cc PointerDataPacketConverter.ConvertPointerData
-func (c *pointerConverter) convertPointerData(d ui.PointerData, out []ui.PointerData) []ui.PointerData {
+func (c *Converter) convertPointerData(d ui.PointerData, out []ui.PointerData) []ui.PointerData {
 	// Ignores pointer events with an invalid view ID.
 	if !c.hasView(d.ViewID) {
 		return out
@@ -274,7 +274,7 @@ func (c *pointerConverter) convertPointerData(d ui.PointerData, out []ui.Pointer
 // ignored.
 //
 // Flutter: lib/ui/window/pointer_data_packet_converter.cc PointerDataPacketConverter.ConvertPointerData
-func (c *pointerConverter) convertSignal(d ui.PointerData, out []ui.PointerData) []ui.PointerData {
+func (c *Converter) convertSignal(d ui.PointerData, out []ui.PointerData) []ui.PointerData {
 	switch d.SignalKind {
 	case ui.PointerSignalKindScroll, ui.PointerSignalKindScrollInertiaCancel, ui.PointerSignalKindScale:
 	default:
@@ -317,7 +317,7 @@ func (c *pointerConverter) convertSignal(d ui.PointerData, out []ui.PointerData)
 
 // stateOrSynthesizeAdd returns the state of the device of d; if there is none, it adds the device
 // with a synthesized add event, appended to out.
-func (c *pointerConverter) stateOrSynthesizeAdd(d ui.PointerData, out []ui.PointerData) (pointerState, []ui.PointerData) {
+func (c *Converter) stateOrSynthesizeAdd(d ui.PointerData, out []ui.PointerData) (pointerState, []ui.PointerData) {
 	if state, ok := c.states[d.Device]; ok {
 		return state, out
 	}
@@ -332,7 +332,7 @@ func (c *pointerConverter) stateOrSynthesizeAdd(d ui.PointerData, out []ui.Point
 // ensurePointerState starts the state of the device of d, at its position.
 //
 // Flutter: lib/ui/window/pointer_data_packet_converter.cc PointerDataPacketConverter.EnsurePointerState
-func (c *pointerConverter) ensurePointerState(d ui.PointerData) pointerState {
+func (c *Converter) ensurePointerState(d ui.PointerData) pointerState {
 	state := pointerState{physicalX: d.PhysicalX, physicalY: d.PhysicalY, viewID: d.ViewID}
 	c.states[d.Device] = state
 	return state
@@ -341,7 +341,7 @@ func (c *pointerConverter) ensurePointerState(d ui.PointerData) pointerState {
 // updateDeltaAndState sets the deltas of d from the state and moves the state to d.
 //
 // Flutter: lib/ui/window/pointer_data_packet_converter.cc PointerDataPacketConverter.UpdateDeltaAndState
-func (c *pointerConverter) updateDeltaAndState(d *ui.PointerData, state *pointerState) {
+func (c *Converter) updateDeltaAndState(d *ui.PointerData, state *pointerState) {
 	d.PhysicalDeltaX = d.PhysicalX - state.physicalX
 	d.PhysicalDeltaY = d.PhysicalY - state.physicalY
 	d.PanDeltaX = d.PanX - state.panX
@@ -366,7 +366,7 @@ func locationNeedsUpdate(d ui.PointerData, state pointerState) bool {
 // state first gets a new one.
 //
 // Flutter: lib/ui/window/pointer_data_packet_converter.cc PointerDataPacketConverter.UpdatePointerIdentifier
-func (c *pointerConverter) updatePointerIdentifier(d *ui.PointerData, state *pointerState, startNewPointer bool) {
+func (c *Converter) updatePointerIdentifier(d *ui.PointerData, state *pointerState, startNewPointer bool) {
 	if startNewPointer {
 		c.pointer++
 		state.pointerIdentifier = c.pointer

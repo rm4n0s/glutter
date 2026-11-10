@@ -15,7 +15,7 @@ import (
 func registerView() (*objcx.RegisteredClass, error) {
 	return objcx.RegisterClass(objcx.ClassDef{
 		Name: "View", Super: "UIView",
-		Methods: []objcx.Method{
+		Methods: append(inputMethods(), []objcx.Method{
 			{Name: "isOpaque", Fn: func(objc.ID, objc.SEL) bool { return true }},
 			{Name: "layoutSubviews", Fn: func(self objc.ID, _ objc.SEL) {
 				if w := windowOf(self); w != nil {
@@ -27,7 +27,7 @@ func registerView() (*objcx.RegisteredClass, error) {
 					w.p.guard(func() { w.linkFired(link) })
 				}
 			}},
-		},
+		}...),
 	})
 }
 

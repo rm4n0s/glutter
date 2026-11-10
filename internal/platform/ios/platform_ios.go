@@ -13,12 +13,14 @@ import (
 	"time"
 
 	"github.com/ebitengine/purego/objc"
+	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/internal/platform"
 	"github.com/rm4n0s/glutter/internal/platform/darwin"
 	"github.com/rm4n0s/glutter/internal/platform/darwin/cf"
 	"github.com/rm4n0s/glutter/internal/platform/darwin/dl"
 	"github.com/rm4n0s/glutter/internal/platform/darwin/loop"
 	"github.com/rm4n0s/glutter/internal/platform/darwin/objcx"
+	"github.com/rm4n0s/glutter/internal/platform/pointerconv"
 	"github.com/rm4n0s/glutter/ui"
 )
 
@@ -74,13 +76,26 @@ type Platform struct {
 	ended  bool
 	closed bool
 
+	// touch, conv and keys turn the touches, the pointer and the keys into the events of the framework (input_ios.go).
+	touch *touchTracker
+	conv  *pointerconv.Converter
+	keys  *keyResponder
+
+	// devEvents is the script of GLUTTER_DEV_EVENTS; devStarted says it began and devDone that its last step ran.
+	devEvents  []DevEvent
+	devStarted bool
+	devDone    bool
+
 	// wakes counts what woke the loop (a posted function, a timer, a tick), for the tests that look for an idle app.
 	wakes atomic.Uint64
 	// framesDrawn counts the frames that the handler was asked for since New.
 	framesDrawn uint64
 }
 
-var _ platform.Platform = (*Platform)(nil)
+var (
+	_ platform.Platform     = (*Platform)(nil)
+	_ platform.ScriptWaiter = (*Platform)(nil)
+)
 
 // New starts the platform: it loads the frameworks, registers the classes that Go implements (the view and the scene delegate) and adds
 // the source and the timer of the loop to the main run loop. It does not need the main thread yet (Run does) and nothing is on the
@@ -101,6 +116,15 @@ func New(opts Options) (*Platform, error) {
 	}
 	p.s = s
 	p.base = s.mediaTime()
+	p.touch, p.conv = newTouchTracker(), pointerconv.New()
+	p.keys = newKeyResponder(p.sendKey)
+	if foundation.DebugMode {
+		if script := p.getenv(DevEventsEnv); script != "" {
+			if p.devEvents, err = ParseDevEvents(script); err != nil {
+				return nil, err
+			}
+		}
+	}
 	// The run loop's own pieces: one source for Post, one timer for the heap.
 	p.source = cf.NewSource(func() { p.guard(p.runPosted) })
 	p.source.AddTo(cf.MainRunLoop(), cf.CommonModes())

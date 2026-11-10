@@ -1048,3 +1048,16 @@ The checks of the steps 33.2 to 33.15 are in their own sections above; this is t
 | 33.15 | the bundle from Finder, its Dock icon and Gatekeeper's warning, the numbers on another Mac |
 
 A failure found here is a bug of the step that the section names: it is fixed on a branch of its own before 1.13 is announced to anyone.
+
+
+## 35.4 Touch, the Pencil, the pointer and hardware keys (iOS)
+
+What the Simulator tests cannot do (the headless Simulator takes no real touch; a script gives the view's conversion its touches). Do these on an iPhone and an iPad, with the Simulator's own window for the first two.
+
+1. **Real touches.** Run `go run ./cmd/glutter-ios run ./examples/counter` (a Simulator window) and click the button: the counter counts. Run `./examples/scrolling` and drag the list with the mouse: it scrolls with the iOS physics and bounces at both ends.
+2. **Multi-touch.** On a device or with Option held in the Simulator, pinch and rotate in an `InteractiveViewer` (`examples/gallery`, the page of that name).
+3. **The Pencil** on an iPad: the pressure of a stroke changes its width in a drawing widget; hover (iPad Pro M2 or later) shows the hover state. Hover is known not to be delivered as the stylus's yet.
+4. **A trackpad or mouse** on an iPad: hover highlights buttons, two-finger scroll scrolls with momentum, pinch zooms.
+5. **A hardware keyboard** (Magic Keyboard, or the Mac's keyboard in the Simulator): arrows move focus, Tab walks the focus, Cmd+C and the others reach shortcuts, a key that is held does not repeat (UIKit does not repeat it; note whether it should).
+
+Record the answers here when they are known.

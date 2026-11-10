@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rm4n0s/glutter/internal/platform/pointerconv"
 	"github.com/rm4n0s/glutter/ui"
 )
 
@@ -585,23 +586,36 @@ func TestTouchProcessorPansAreKeptByDevice(t *testing.T) {
 // the platform does: a touch gets its identifier, the remove after the up, and an add before the
 // next contact.
 func TestTouchProcessorThroughTheConverter(t *testing.T) {
-	p, c := newTouchProcessor(), newPointerConverter()
+	p, c := newTouchProcessor(), pointerconv.New()
 	var out []ui.PointerData
 	feed := func(ev motionEvent) { out = append(out, c.Convert(p.OnTouchEvent(ev))...) }
 	feed(tpEv(actionDown, tpSourceTouchscreen, 0, tpPtr(0, toolTypeFinger, 5, 6)))
 	feed(tpEv(actionMove, tpSourceTouchscreen, 0, tpPtr(0, toolTypeFinger, 8, 6)))
 	feed(tpEv(actionUp, tpSourceTouchscreen, 0, tpPtr(0, toolTypeFinger, 8, 6)))
 	feed(tpEv(actionDown, tpSourceTouchscreen, 0, tpPtr(0, toolTypeFinger, 1, 1)))
-	w := func(change ui.PointerChange, pid int, synth bool, x, y, dx, dy float64) pcWant {
-		return pcw(change, 1, pid, synth, x, y, dx, dy, 0).withPan(0, 0, 0, 0, 1)
+	type want struct {
+		change       ui.PointerChange
+		pid          int
+		synth        bool
+		x, y, dx, dy float64
 	}
-	pcCheck(t, out, []pcWant{
-		w(pcAdd, 0, true, 5, 6, 0, 0),
-		w(pcDown, 1, false, 5, 6, 0, 0),
-		w(pcMove, 1, false, 8, 6, 3, 0),
-		w(pcUp, 1, false, 8, 6, 0, 0),
-		w(pcRemove, 0, false, 8, 6, 0, 0),
-		w(pcAdd, 0, true, 1, 1, 0, 0),
-		w(pcDown, 2, false, 1, 1, 0, 0),
-	})
+	wants := []want{
+		{ui.PointerChangeAdd, 0, true, 5, 6, 0, 0},
+		{ui.PointerChangeDown, 1, false, 5, 6, 0, 0},
+		{ui.PointerChangeMove, 1, false, 8, 6, 3, 0},
+		{ui.PointerChangeUp, 1, false, 8, 6, 0, 0},
+		{ui.PointerChangeRemove, 0, false, 8, 6, 0, 0},
+		{ui.PointerChangeAdd, 0, true, 1, 1, 0, 0},
+		{ui.PointerChangeDown, 2, false, 1, 1, 0, 0},
+	}
+	if len(out) != len(wants) {
+		t.Fatalf("got %d data, want %d", len(out), len(wants))
+	}
+	for i, w := range wants {
+		g := out[i]
+		have := want{g.Change, g.PointerIdentifier, g.Synthesized, g.PhysicalX, g.PhysicalY, g.PhysicalDeltaX, g.PhysicalDeltaY}
+		if have != w {
+			t.Errorf("data %d = %+v, want %+v", i, have, w)
+		}
+	}
 }

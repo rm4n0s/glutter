@@ -50,6 +50,9 @@ type window struct {
 	// The pacing of the frames: the display link ticks, or a timer does when the link never has (a Simulator that no screen is
 	// attached to: SPEC §30.3). linkTicked says the link ticked once; useTimer says the frames follow the timer; frameTimer and
 	// watchdog are the timers of the platform's heap that are armed, 0 for none.
+	// The sessions of the trackpad's gestures (pointer.go).
+	scrollSession, pinchSession, rotateSession panZoom
+
 	linkTicked, useTimer bool
 	timerOn              bool
 	frameTimer, watchdog loop.TimerID
@@ -66,7 +69,8 @@ var (
 //
 // Flutter: shell/platform/darwin/ios/framework/Source/FlutterViewController.mm FlutterViewController
 func (p *Platform) NewWindow(cfg platform.WindowConfig) (platform.Window, error) {
-	w := &window{p: p, id: p.nextView, cfg: cfg, title: cfg.Title}
+	w := &window{p: p, id: p.nextView, cfg: cfg, title: cfg.Title,
+		scrollSession: panZoom{device: deviceScroll}, pinchSession: panZoom{device: devicePinch}, rotateSession: panZoom{device: deviceRotate}}
 	objcx.WithPool(func() { w.create() })
 	p.nextView++
 	p.windows[w.id] = w
@@ -90,6 +94,8 @@ func (w *window) create() {
 	w.layer.Send(sel("setContentsGravity:"), grav)
 	objcx.Release(grav)
 	w.layer.Send(sel("setContentsScale:"), w.screenScale())
+	w.view.Send(sel("setMultipleTouchEnabled:"), true)
+	w.addRecognizers()
 	w.vc = class("UIViewController").Send(sel("alloc")).Send(sel("init"))
 	w.vc.Send(sel("setView:"), w.view)
 	w.pool = darwin.NewSurfacePool(8, func(width, height int) (darwin.Surface, error) {
@@ -391,6 +397,10 @@ func (w *window) layout() {
 // Activated flag) follow.
 func (w *window) activationChanged(active bool) {
 	w.active = active
+	if !active {
+		// The keys that are down go up in another app, or while the app switcher shows: the framework is told now.
+		w.p.keys.releaseAll(w.now())
+	}
 	h := w.p.handler
 	if h == nil || w.closed {
 		return
@@ -414,6 +424,7 @@ func (w *window) firstShow() {
 	objcx.WithPool(func() {
 		w.uiw.Send(sel("makeKeyAndVisible"))
 		w.view.Send(sel("layoutIfNeeded"))
+		w.view.Send(sel("becomeFirstResponder")) // the hardware keyboard's presses come to the first responder
 	})
 	w.shown = true
 	w.reportMetrics(true)
@@ -428,6 +439,7 @@ func (w *window) firstShow() {
 		}
 	}
 	p.updateLifecycle()
+	p.startDevEvents()
 }
 
 // Close takes the window off the screen and releases it. The app goes on: an iOS app does not end with its last window.
