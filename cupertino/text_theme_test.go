@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/rm4n0s/glutter/cupertino"
+	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/painting"
 	"github.com/rm4n0s/glutter/ui"
 )
@@ -68,5 +69,24 @@ func TestCupertinoTextThemeCopyWithKeepsWhatItIsNotGiven(t *testing.T) {
 	}
 	if base.Equal(copied) || !base.Equal(base.CopyWith(cupertino.CupertinoTextThemeDataOpts{})) {
 		t.Error("equality is wrong")
+	}
+}
+
+// TestCupertinoTextStylesFallBackToRobotoOnTheWeb: the web has no system fonts, so the text styles of the library name
+// the bundled Roboto as their fallback there (SPEC §31.2); the other platforms have the machine's font.
+func TestCupertinoTextStylesFallBackToRobotoOnTheWeb(t *testing.T) {
+	theme := cupertino.NewCupertinoThemeData().TextTheme()
+	for name, style := range map[string]*painting.TextStyle{
+		"text": theme.TextStyle(), "nav title": theme.NavTitleTextStyle(), "large title": theme.NavLargeTitleTextStyle(),
+		"action": theme.ActionTextStyle(), "picker": theme.PickerTextStyle(),
+	} {
+		got := style.FontFamilyFallback()
+		if foundation.IsWeb {
+			if len(got) != 1 || got[0] != "Roboto" {
+				t.Errorf("%s: fallback = %v, want [Roboto]", name, got)
+			}
+		} else if len(got) != 0 {
+			t.Errorf("%s: fallback = %v, want none off the web", name, got)
+		}
 	}
 }

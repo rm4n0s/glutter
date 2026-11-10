@@ -46,14 +46,23 @@ func NewMyApp() *MyApp { return &MyApp{} }
 
 // Build builds the CupertinoApp.
 func (a *MyApp) Build(c.BuildContext) c.Widget {
-	// The engine paints what no widget covers with a development color: black stands behind the app, as the
-	// root of an iOS app does, so that the gap above a sheet is black.
-	return c.NewColoredBox(c.NewColor(0xFF000000), c.NewCupertinoApp(c.CupertinoAppOpts{
-		Title:                      "Cupertino",
-		Theme:                      c.NewCupertinoThemeData(c.CupertinoThemeDataOpts{Brightness: c.BrightnessLight}),
-		DebugShowCheckedModeBanner: c.Some(false),
-		Home:                       newHomePage(),
-	}))
+	// The state of the settings lives here, so that it stays when the theme changes and the tabs build again.
+	settings := &settingsState{}
+	return c.NewStatefulBuilder(func(_ c.BuildContext, setState c.StateSetter) c.Widget {
+		brightness := c.BrightnessLight
+		if settings.dark {
+			brightness = c.BrightnessDark
+		}
+		setDark := func(dark bool) { setState(func() { settings.dark = dark }) }
+		// The engine paints what no widget covers with a development color: black stands behind the app, as the
+		// root of an iOS app does, so that the gap above a sheet is black.
+		return c.NewColoredBox(c.NewColor(0xFF000000), c.NewCupertinoApp(c.CupertinoAppOpts{
+			Title:                      "Cupertino",
+			Theme:                      c.NewCupertinoThemeData(c.CupertinoThemeDataOpts{Brightness: brightness}),
+			DebugShowCheckedModeBanner: c.Some(false),
+			Home:                       newHomePage(settings, setDark),
+		}))
+	})
 }
 
 // row is a line of the list: text that taps.
@@ -73,7 +82,7 @@ func page(title, text string) c.Widget {
 			c.NewSizedBox(nil, c.SizedBoxOpts{Height: c.Some(12.0)}),
 			c.NewText(text, c.TextOpts{Style: textTheme.TextStyle()}),
 		}, c.ColumnOpts{CrossAxisAlignment: c.CrossAxisAlignmentStart}))))
-	}))
+	}), c.CupertinoPageScaffoldOpts{NavigationBar: c.NewCupertinoNavigationBar(c.CupertinoNavigationBarOpts{Middle: c.NewText(title)})})
 }
 
 // tabBar is the tab bar of the app: three tabs with an icon and a label.
@@ -88,14 +97,14 @@ func tabBar() *c.CupertinoTabBar {
 }
 
 // newHomePage is the tab scaffold, the home of the app.
-func newHomePage() c.Widget {
+func newHomePage(settings *settingsState, setDark func(bool)) c.Widget {
 	return c.NewCupertinoTabScaffold(tabBar(), func(_ c.BuildContext, index int) c.Widget {
 		return c.NewCupertinoTabView(c.CupertinoTabViewOpts{
 			DefaultTitle: c.Some([]string{"Settings", "Controls", "Text", "Popups", "Pickers"}[index]),
 			Builder: func(bc c.BuildContext) c.Widget {
 				switch index {
 				case 0:
-					return homeTab(bc)
+					return homeTab(bc, settings, setDark)
 				case 1:
 					return controlsTab()
 				case 2:
@@ -118,8 +127,7 @@ func settingsIcon(color c.CupertinoDynamicColor, icon c.IconData) c.Widget {
 // homeTab is the settings page of the first tab (step 34.8): a pull to refresh control above inset grouped sections
 // of list tiles (a row that taps, a switch, additional info and chevrons), an expansion tile and a form section with
 // text rows, all under the sliver bar with a large title.
-func homeTab(bc c.BuildContext) c.Widget {
-	st := &settingsState{airplane: false}
+func homeTab(bc c.BuildContext, st *settingsState, setDark func(bool)) c.Widget {
 	return c.NewStatefulBuilder(func(_ c.BuildContext, setState c.StateSetter) c.Widget {
 		tile := func(title string, icon c.IconData, color c.CupertinoDynamicColor, info string, onTap func()) c.Widget {
 			var additional c.Widget
@@ -140,6 +148,11 @@ func homeTab(bc c.BuildContext) c.Widget {
 					return page("A sheet", "Drag down to dismiss it.")
 				}})
 			}),
+			tile("Show a fullscreen page", c.CupertinoIcons.Rectangle(), c.CupertinoColors.SystemPurple, "", func() {
+				c.NavigatorPush(bc, c.NewCupertinoPageRoute(func(c.BuildContext) c.Widget {
+					return page("A fullscreen page", "It slides up from the bottom, and its bar has a close button.")
+				}, c.CupertinoPageRouteOpts{PageRouteOpts: c.PageRouteOpts{FullscreenDialog: true}}))
+			}),
 			tile("Show a popup", c.CupertinoIcons.ChatBubble(), c.CupertinoColors.SystemGreen, "", func() {
 				c.ShowCupertinoModalPopup(bc, func(c.BuildContext) c.Widget {
 					return c.NewColoredBox(c.CupertinoColors.SystemBackground.Color, c.NewSizedBox(page("A popup", "Tap outside to dismiss it."),
@@ -155,6 +168,11 @@ func homeTab(bc c.BuildContext) c.Widget {
 				tile("Wi-Fi", c.CupertinoIcons.Wifi(), c.CupertinoColors.SystemBlue, "Not Connected", func() {}),
 				tile("Bluetooth", c.CupertinoIcons.Bluetooth(), c.CupertinoColors.SystemBlue, "On", func() {}),
 			}})
+		appearance := c.NewCupertinoListSectionInsetGrouped(c.CupertinoListSectionOpts{Header: c.NewText("Appearance"), Children: []c.Widget{
+			c.NewCupertinoListTileNotched(c.NewText("Dark Mode"), c.CupertinoListTileOpts{
+				Leading:  settingsIcon(c.CupertinoColors.SystemIndigo, c.CupertinoIcons.MoonFill()),
+				Trailing: c.NewCupertinoSwitch(st.dark, setDark)}),
+		}})
 		more := c.NewCupertinoListSectionInsetGrouped(c.CupertinoListSectionOpts{Header: c.NewText("More"), NotHasLeading: true, Children: []c.Widget{
 			c.NewCupertinoExpansionTile(c.NewText("Advanced"), c.NewPadding(c.NewEdgeInsetsSymmetric(8, 20), c.NewText("The content of the tile fades in under its title."))),
 		}})
@@ -169,20 +187,20 @@ func homeTab(bc c.BuildContext) c.Widget {
 				}}),
 			c.NewCupertinoTextFormFieldRow(c.CupertinoTextFormFieldRowOpts{Prefix: c.NewText("Email"), Placeholder: c.Some("example@mail.com")}),
 		}, c.CupertinoFormSectionOpts{Header: c.NewText("Account")})
-		return c.NewCupertinoPageScaffold(c.NewCustomScrollView([]c.Widget{
+		return c.NewCupertinoPageScaffold(c.NewCupertinoScrollbar(c.NewCustomScrollView([]c.Widget{
 			c.NewCupertinoSliverNavigationBar(c.CupertinoSliverNavigationBarOpts{LargeTitle: c.NewText("Settings")}),
 			c.NewCupertinoSliverRefreshControl(c.CupertinoSliverRefreshControlOpts{OnRefresh: func() <-chan struct{} {
 				done := make(chan struct{})
 				go func() { time.Sleep(1500 * time.Millisecond); close(done) }()
 				return done
 			}}),
-			c.NewSliverToBoxAdapter(c.NewColumn([]c.Widget{navigation, connections, more, form})),
-		}, c.CustomScrollViewOpts{Physics: c.NewBouncingScrollPhysics(c.BouncingScrollPhysicsOpts{Parent: c.NewAlwaysScrollableScrollPhysics(nil)})}))
+			c.NewSliverToBoxAdapter(c.NewColumn([]c.Widget{navigation, connections, appearance, more, form})),
+		}, c.CustomScrollViewOpts{Physics: c.NewBouncingScrollPhysics(c.BouncingScrollPhysicsOpts{Parent: c.NewAlwaysScrollableScrollPhysics(nil)})})))
 	})
 }
 
 // settingsState is the state of the settings page.
-type settingsState struct{ airplane bool }
+type settingsState struct{ airplane, dark bool }
 
 // listTab is a tab with a long list under a sliver bar.
 func listTab(title, label string, count int) c.Widget {

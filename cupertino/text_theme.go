@@ -22,9 +22,23 @@ const (
 )
 
 // cupertinoTextStyle makes one of the constant text styles of text_theme.dart.
+// cupertinoFontFamilyFallback is what a Cupertino text style falls back to when the machine has no family of that name:
+// on the web, which has no system fonts and would draw no text at all, the bundled Roboto, the default family of the
+// platforms that are not Apple's (SPEC §31.2); on the others, nothing (the machine's default font). It is read-only.
+//
+// Flutter: no counterpart
+var cupertinoFontFamilyFallback = webFontFamilyFallback()
+
+func webFontFamilyFallback() []string {
+	if foundation.IsWeb {
+		return []string{"Roboto"}
+	}
+	return nil
+}
+
 func cupertinoTextStyle(family string, size float64, weight ui.FontWeight, letterSpacing float64, color ui.ColorValue, decoration foundation.Opt[ui.TextDecoration]) *painting.TextStyle {
 	return painting.NewTextStyle(painting.TextStyleOpts{
-		Inherit: foundation.Some(false), FontFamily: family, FontSize: foundation.Some(size), FontWeight: weight,
+		Inherit: foundation.Some(false), FontFamily: family, FontFamilyFallback: cupertinoFontFamilyFallback, FontSize: foundation.Some(size), FontWeight: weight,
 		LetterSpacing: foundation.Some(letterSpacing), Color: foundation.Some(color.EffectiveColor()), Decoration: decoration,
 	})
 }

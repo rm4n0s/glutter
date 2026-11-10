@@ -170,8 +170,12 @@ func Run(tb testing.TB, name string, setup func() (step func()), opts ...Opts) R
 	if g := grow(res.AfterN.HeapAlloc, res.After4N.HeapAlloc); g > slackB {
 		tb.Errorf("%s: the live heap grew by %d bytes from %d to %d steps (slack %d)", name, g, o.N, 4*o.N, slackB)
 	}
-	if g := grow(res.AfterN.HeapInuse, res.After4N.HeapInuse); g > slackB {
-		tb.Errorf("%s: the heap in use grew by %d bytes from %d to %d steps (slack %d)", name, g, o.N, 4*o.N, slackB)
+	// The spans in use hold the live objects and the gaps between them, which the runtime fills and empties
+	// with the timing of the collector: on a heap of 20 MB the number moves by 700 KB from one run to the next with
+	// the live bytes and objects flat (they are what shows a leak), so its slack is 4% of the heap, not 2%.
+	slackInuse := o.SlackBytes + res.AfterN.HeapInuse/25
+	if g := grow(res.AfterN.HeapInuse, res.After4N.HeapInuse); g > slackInuse {
+		tb.Errorf("%s: the heap in use grew by %d bytes from %d to %d steps (slack %d)", name, g, o.N, 4*o.N, slackInuse)
 	}
 	if g := grow(res.AfterN.HeapObjects, res.After4N.HeapObjects); g > slackO {
 		tb.Errorf("%s: the live objects grew by %d from %d to %d steps (slack %d)", name, g, o.N, 4*o.N, slackO)

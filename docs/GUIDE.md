@@ -1975,6 +1975,68 @@ func main() { _ = startMusic }
   allocates nothing, and a frame of the renderer with a moving skinned item, turning items and a moving camera allocates nothing
   (`viewport3d`'s `TestAFrameOfMovingThingsAllocatesNothing`).
 
+## 24. The Cupertino look
+
+Package `cupertino` is Flutter's `cupertino` library: the widgets of iOS and macOS, ported file by file and drawn the same
+on every platform. It is plain Go over `widgets`, imported as `c` (it re-exports `widgets`, as `material` does, so a Cupertino
+app imports only it):
+
+```go
+package main
+
+import (
+	"log"
+
+	c "github.com/rm4n0s/glutter/cupertino"
+)
+
+func main() {
+	err := c.RunApp(c.NewCupertinoApp(c.CupertinoAppOpts{
+		Title: "Settings",
+		Theme: c.NewCupertinoThemeData(c.CupertinoThemeDataOpts{Brightness: c.BrightnessLight}),
+		Home: c.NewCupertinoPageScaffold(c.NewCustomScrollView([]c.Widget{
+			c.NewCupertinoSliverNavigationBar(c.CupertinoSliverNavigationBarOpts{LargeTitle: c.NewText("Settings")}),
+			c.NewSliverToBoxAdapter(c.NewCupertinoListSectionInsetGrouped(c.CupertinoListSectionOpts{
+				Header: c.NewText("Connections"),
+				Children: []c.Widget{
+					c.NewCupertinoListTileNotched(c.NewText("Airplane Mode"), c.CupertinoListTileOpts{
+						Trailing: c.NewCupertinoSwitch(false, func(bool) {}),
+					}),
+				},
+			})),
+		})),
+	}))
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+```
+
+- **What is there.** Everything of Flutter's `cupertino` at the pinned commit: `CupertinoApp` and `CupertinoApp.router`, the page route
+  with the parallax slide and the back swipe, the sheet, the modal popup and the dialog routes, the tab scaffold with a navigator
+  for each tab, the navigation bars (with the large title that collapses and flies between two routes), the button, the switch,
+  checkbox, radio, slider, activity indicators and both segmented controls, the text field, the search field and the form rows,
+  the list sections and tiles, the expansion tile, the pull to refresh sliver, the alert dialog, the action sheet, the context menu
+  and the menu anchor, the pickers (the wheel, the date and time picker, the countdown timer), the scrollbar, the text selection
+  with its handles, toolbars and magnifier, and the colors (`CupertinoColors`, `CupertinoDynamicColor`, which resolves by brightness,
+  contrast and interface level) and `CupertinoIcons`. `examples/cupertino` shows each of them on the pages of a tab scaffold, with a
+  dark mode switch.
+- **The font.** The text styles name the families `CupertinoSystemText` and `CupertinoSystemDisplay`. On macOS and iOS they are San
+  Francisco, found through Core Text; San Francisco is never bundled. Elsewhere the machine's default font draws, and on the web
+  (which has no system fonts) the bundled Roboto does.
+- **Material and Cupertino together.** `material` imports `cupertino` (never the other way), so a Material app has the adaptive
+  widgets of Flutter: `m.NewSwitchAdaptive`, `NewCheckboxAdaptive`, `NewRadioAdaptive`, `NewSliderAdaptive`,
+  `NewCircularProgressIndicatorAdaptive`, `NewRefreshIndicatorAdaptive`, `NewAlertDialogAdaptive` with `ShowAdaptiveDialog`, and the
+  adaptive scrollbar, list tiles and text selection toolbar look like iOS when the theme's platform is iOS or macOS and like Material
+  elsewhere. `Theme` also gives the widgets below it a `CupertinoTheme` made from the Material theme
+  (`m.MaterialBasedCupertinoThemeData`, with `ThemeData.CupertinoOverrideTheme` to change it), and a `TextField` on iOS or macOS takes the
+  cursor and selection of that theme, its Cupertino handles and toolbar, and the spell check of iOS.
+- **Tests.** `gluttertest` runs a Cupertino app as any other. The goldens of the package use Go Mono for the two system families, so
+  that they are the same on every host, and `foundation.SetDebugDefaultTargetPlatformOverride` picks the platform of a test.
+- **Speed.** A frame of the page transition takes about 60 microseconds of the UI thread on average (the first one, which builds
+  the page, about 2 ms), a frame of the large title collapsing 25 microseconds, and a frame of a flinging picker 40 microseconds
+  (`cupertino/bench_test.go`, `docs/PERFORMANCE.md`).
+
 ## For Flutter web developers
 
 If you know Flutter on the web, this is what is the same and what is not.

@@ -15,7 +15,7 @@ import (
 )
 
 func dialogTextStyle(family string, size, weight float64, height, letterSpacing foundation.Opt[float64]) *painting.TextStyle {
-	return painting.NewTextStyle(painting.TextStyleOpts{FontFamily: family, Inherit: foundation.Some(false), FontSize: foundation.Some(size),
+	return painting.NewTextStyle(painting.TextStyleOpts{FontFamily: family, FontFamilyFallback: cupertinoFontFamilyFallback, Inherit: foundation.Some(false), FontSize: foundation.Some(size),
 		FontWeight: ui.FontWeight(int(weight)), Height: height, LetterSpacing: letterSpacing, TextBaseline: ui.TextBaselineAlphabetic})
 }
 

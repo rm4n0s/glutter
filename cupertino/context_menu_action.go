@@ -83,7 +83,7 @@ const contextMenuActionButtonHeight = 43.0
 
 var (
 	contextMenuActionPressedColor = NewCupertinoDynamicColorWithBrightness(ui.NewColor(0xFFDDDDDD), ui.NewColor(0xFF3F3F40))
-	contextMenuActionStyle        = painting.NewTextStyle(painting.TextStyleOpts{FontFamily: CupertinoSystemTextFamily, Inherit: foundation.Some(false),
+	contextMenuActionStyle        = painting.NewTextStyle(painting.TextStyleOpts{FontFamily: CupertinoSystemTextFamily, FontFamilyFallback: cupertinoFontFamilyFallback, Inherit: foundation.Some(false),
 		FontSize: foundation.Some(16.0), FontWeight: ui.FontWeightW400, Color: foundation.Some(ui.Color(CupertinoColors.Black)), TextBaseline: ui.TextBaselineAlphabetic})
 )
 

@@ -1016,6 +1016,17 @@ The tests build every example as a signed bundle, run it, and `codesign --verify
 
 Answers: _(not yet recorded)_
 
+## 34.10 The Cupertino gallery and the release of 1.14
+
+What only a person (or the Linux machine) can do; the results of the Mac are in `docs/IMPLEMENTED.md`.
+
+1. **Rule 8 on the Linux machine**: the Linux, Wine and Android suites of `docs/IMPLEMENTATION.md` rule 8, which a Mac cannot run. A failure is a bug of the step that caused it, fixed before the tag `v1.14.0` (and `v1.13.0`, which waits for the same run) is made and the milestone is published.
+2. **`examples/cupertino` on Linux, under Wine and on the Android emulator** (`go run ./examples/cupertino`, `go run ./cmd/glutter-windows run -headless ./examples/cupertino`, `go run ./cmd/glutter-android run ./examples/cupertino`): the five tabs, the dark mode switch on the Settings tab, a push, a sheet, a fullscreen page and a popup, the pull to refresh, and the text (the machine's default font draws where macOS has San Francisco).
+3. **The web proof with Chromium**: `go run ./cmd/glutter-web shot -browser chromium -width 390 -height 760 -o docs/implemented-proof-images/34.10-cupertino-gallery-web.png ./examples/cupertino` (the image in the repository was taken from the built-in browser of the Claude app, a Chromium; there is no Chromium on the Mac of this step). Say which renderer it drew with.
+4. **On the Mac**: a pull to refresh with the trackpad (the dev events have no drag), the back swipe from the left edge, the large title collapsing, the pickers with a mouse wheel and a trackpad, and the context menu on a long press.
+
+Answers: _(not yet recorded)_
+
 ## M33: everything to check on a Mac, in one list
 
 The checks of the steps 33.2 to 33.15 are in their own sections above; this is the order to do them in, from one session, on a Mac with a trackpad, a microphone, headphones, a pad and a second display if there is one. Build the gallery bundle once (\`go run ./cmd/glutter-macos build -release -o Gallery.app ./examples/gallery\`) and use \`go run ./cmd/glutter-macos run ./examples/<name>\` for the rest; \`GLUTTER_FRAME_STATS=1\` and \`GLUTTER_RENDERER=metal|soft\` are environment variables. Say which Mac and which macOS the answers come from, and record them in each section.
