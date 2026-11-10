@@ -736,3 +736,16 @@ func TestCloseButtonAsksTheHandler(t *testing.T) {
 		})
 	})
 }
+
+func TestPostAfterTheAppEndedIsDropped(t *testing.T) {
+	// A goroutine that outlives the app (the watcher of a signal posts its last function when the context of Run ends) may Post
+	// after the platform is closed: that must neither panic (the source of the run loop is gone) nor run the function.
+	var p *Platform
+	runApp(t, Options{}, &recorder{}, func(s *session) { p = s.p })
+	ran := false
+	p.Post(func() { ran = true })
+	p.Post(func() { ran = true })
+	if ran {
+		t.Error("a function posted after the platform closed ran")
+	}
+}

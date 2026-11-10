@@ -284,11 +284,18 @@ func (p *Platform) stopLoop() {
 // posted them.
 //
 // Flutter: shell/platform/darwin/macos/framework/Source/FlutterRunLoop.swift FlutterRunLoop performBlock
+//
+// After the platform is closed a Post does nothing: the function is dropped, as the Linux platforms drop it. A goroutine that
+// outlives the app (a signal watcher posting its last function when the context of Run ends) may Post then.
 func (p *Platform) Post(fn func()) {
 	p.mu.Lock()
+	if p.source == nil {
+		p.mu.Unlock()
+		return
+	}
 	p.posted = append(p.posted, fn)
-	p.mu.Unlock()
 	p.source.Signal()
+	p.mu.Unlock()
 	cf.WakeUp(cf.MainRunLoop())
 }
 
@@ -401,9 +408,13 @@ func (p *Platform) teardown() {
 		p.timer.Close()
 		p.timer = nil
 	}
-	if p.source != nil {
-		p.source.Close()
-		p.source = nil
+	p.mu.Lock()
+	src := p.source
+	p.source = nil // a Post from now on is dropped
+	p.posted = nil
+	p.mu.Unlock()
+	if src != nil {
+		src.Close()
 	}
 	if p.delegate != 0 {
 		p.app.Send(sel("setDelegate:"), objc.ID(0))

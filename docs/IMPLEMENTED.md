@@ -6118,3 +6118,14 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Checks:** gofmt, vet, `go test -race ./...`, `CGO_ENABLED=0 go test ./...`, `scripts/test-wasm.sh`, builds and vet for windows amd64 and arm64, linux amd64 and arm64, js/wasm and cgo-free, apicheck 0 with 61 accepted, errcheck `-skip-android` 0 with 21 accepted, uintptrcheck 0 with 1 accepted, `scripts/check-ios.sh`, the macOS display tests. The first full run found that a plain test used a helper of a darwin file (vet for the other platforms and iOS failed): fixed. Not run here: the Linux-only tests, the Android pass of errcheck, Wine, `golangci-lint` (step 36.2).
 - **Proof:** none. **Manual checks:** `docs/MANUAL-CHECKS.md`, 37.3. **No pad with force feedback was connected to this Mac:** the rumble itself (that the motors turn, and whether a sine of one second feels like a rumble) is not seen; the framework's calls are checked against fakes and the real library is only loaded.
 - **Deviations and follow-ups:** the two motors are one actuator (SDL's choice); the duration is the caller's where SDL plays an effect of its maximum length and stops it from outside; the triggers' motors are not done (SDL has none either).
+
+## 38.1 A `Post` after the macOS platform closed
+
+- **Date:** 2026-11-10
+- **Branch:** fix/macos-post-after-close
+- **Summary:** `Platform.Post` of the macOS platform drops the function when the platform is closed and signals its run loop source under the lock; `close` clears the source and the queue under the same lock first. Found by Emetos on macOS: the goroutine that watches the context of `Run` posted a last function after the teardown and read a nil source.
+- **Tests:** `TestPostAfterTheAppEndedIsDropped`, which panics with a nil dereference without the change and passes with it.
+- **Checks:** gofmt, vet, `go test -race ./...` (152 packages ok), `CGO_ENABLED=0` tests of the macOS platform, the macOS display test of the package, builds for windows amd64, linux amd64 and js/wasm, apicheck 0 with 61 accepted, errcheck `-skip-android` 0 with 21 accepted. Not run on this Mac (as in step 36.2): the Linux-only tests, Android errcheck, Wine, golangci-lint.
+- **Proof:** none. **Manual checks:** none.
+- **Deviations and follow-ups:** none.
+

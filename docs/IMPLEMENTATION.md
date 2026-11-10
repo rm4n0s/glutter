@@ -188,6 +188,7 @@ This file breaks the milestones in `docs/SPEC.md` §18 into small steps. Each st
 | M35 iOS (1.15) | 35.1–35.9 | every example but `multiwindow` and `tray` on the iOS Simulator |
 | M36 Fixes (1.15.1), and the Linux run of 1.13 to 1.15.1 | 36.1–36.2 |
 | M37 macOS and iOS gaps (after 1.15.1) | 37.1–37.4 | the counter on macOS | `game3d` (a pad), any other example (no pad is touched) |
+| M38 Fixes found by the apps on macOS (1.16.1) | 38.1 | none | none |
 
 ---
 
@@ -4742,3 +4743,13 @@ The owner asked on 2026-11-10 to finish macOS and iOS support without stopping. 
 ### 37.4 The system's Chinese font (PingFang, `hvgl`): investigated, not done
 **Goal:** Chinese text on macOS and iOS in the system's own font.
 **Outcome (2026-11-10):** not done, and the reason is recorded so that it is a decision and not a gap that was forgotten. PingFang is in Apple's `hvgl` format, which no document in `reference/`, in the module cache or in the SPEC describes and which go-text cannot read; decoding a private Apple format from its files would be reverse engineering with no specification to port from. The only public way to get those glyphs is Core Text (`CTFontCreatePathForGlyph`, `CTFontGetAdvancesForGlyphs`), and Glutter's text layout is built on go-text's `font.Face` throughout (`shaping.HarfbuzzShaper`, `Face.GlyphDataOutline`, the glyph atlas keys): a Core Text face would need its own shaping, metrics, outline and cache path in `internal/text/layout`, a second text engine for one script. Han text already works: the fallback chain picks Hiragino Sans GB, Heiti or Songti (SPEC §29.8, `internal/text/darwinfonts/chain.go`), which look different from PingFang. If the owner wants the system face, the work is a Core Text backed run in `internal/text/layout` (the shaping of Han needs only advances and the cmap), a step of its own.
+
+## M38: Fixes found by the apps on macOS (1.16.1)
+
+### 38.1 A `Post` after the macOS platform closed
+**Goal:** `WidgetsBinding.Post` (and `PlatformDispatcher.Post`) from a goroutine that outlives the app does nothing on macOS, as it does on Linux, and does not crash.
+**Why:** Emetos on macOS died with a nil pointer dereference at exit: the goroutine that turns the end of the context of `Run` into a quit posts one more function, and by then `Platform.close` had set the run loop source to nil (`p.source.Signal()` read it without the lock).
+**Read:** SPEC §29.3; `internal/platform/macos/platform_darwin.go` (`Post`, `runPosted`, `close`), `internal/platform/darwin/cf` (`Source`).
+**Tasks:** (done in the step) `Post` takes the lock, drops the function when the source is gone and signals under the lock; `close` takes the source and the queue away under the same lock before it closes the source.
+**Tests:** `TestPostAfterTheAppEndedIsDropped` (display test; panics before the fix).
+**Proof:** none. **Manual checks:** none.
