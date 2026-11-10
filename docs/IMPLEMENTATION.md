@@ -4753,3 +4753,13 @@ The owner asked on 2026-11-10 to finish macOS and iOS support without stopping. 
 **Tasks:** (done in the step) `Post` takes the lock, drops the function when the source is gone and signals under the lock; `close` takes the source and the queue away under the same lock before it closes the source.
 **Tests:** `TestPostAfterTheAppEndedIsDropped` (display test; panics before the fix).
 **Proof:** none. **Manual checks:** none.
+
+## M39: The title bar of an app on macOS (1.16.2)
+
+### 39.1 `WindowDecoration` leaves the window buttons to macOS
+**Goal:** an app that draws its own title bar (`DecorationsApp` with `WindowDecoration`) has one set of window buttons on macOS, the traffic lights, in the middle of its bar, and nothing of the bar is under them.
+**Why:** Emetos on macOS showed the traffic lights at the left over its menu button and first workspace tab (their clicks went to the traffic lights) and the bar's own minimize, maximize and close at the right (the owner's report, 2026-11-10).
+**Read:** SPEC §8.2, §12.10 (`WindowDecoration`), §29.4; `widgets/window_decoration.go`, `internal/platform/macos/{decorations.go,window_darwin.go,winstyle.go}`; Electron's `shell/browser/ui/cocoa/window_buttons_proxy.mm` for the placing of the buttons.
+**Tasks:** (done in the step) `ui.WindowInfo.SystemButtons`, `ui.WindowActionTitleBarHeight` with `WindowAction.Height`; the macOS window reports the area of its traffic lights and centers them in the height it is told, again after AppKit's own layout; `WindowDecoration` draws no buttons, border or resize strips where the system has its buttons, starts after them, tells its height and takes the title bar's top padding from its child.
+**Tests:** `TestTrafficLightY`; the display tests `TestSystemButtonsOfAWindowWhoseAppDrawsTheTitleBar` and `TestSystemButtonsAreEmptyWhereTheSystemDrawsTheTitleBar`; the widget tests `TestWindowDecorationLeavesTheButtonsToTheSystem`, `TestWindowDecorationTellsTheHeightOfItsBar` and `TestWindowDecorationTakesTheTitleBarPaddingFromTheChild`.
+**Proof:** none (a screenshot that the app takes of itself has no traffic lights in it). **Manual checks:** `docs/MANUAL-CHECKS.md`, 39.1.

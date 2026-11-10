@@ -67,3 +67,20 @@ func TestTitleDoubleClick(t *testing.T) {
 		}
 	}
 }
+
+func TestTrafficLightY(t *testing.T) {
+	tests := []struct {
+		name               string
+		bar, button, wantY float64
+	}{
+		{"AppKit's own bar", 28, 14, 7},
+		{"a higher bar of the app", 40, 14, 13},
+		{"an odd height", 35, 16, 9.5},
+		{"a bar lower than the button", 10, 14, 0},
+	}
+	for _, tc := range tests {
+		if got := trafficLightY(tc.bar, tc.button); got != tc.wantY {
+			t.Errorf("%s: trafficLightY(%v, %v) = %v, want %v", tc.name, tc.bar, tc.button, got, tc.wantY)
+		}
+	}
+}

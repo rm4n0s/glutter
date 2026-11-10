@@ -40,6 +40,9 @@ type window struct {
 	ns, view, delegate, layer objc.ID
 	// nsCursor is the cursor that the view shows over itself, 0 for the default.
 	nsCursor objc.ID
+	// barHeight is the height in points of the title bar that the app draws, once it has told it
+	// (WindowActionTitleBarHeight); 0 leaves the traffic lights where AppKit put them.
+	barHeight float64
 	// devInside says that the dev events have made the mouse enter the window.
 	devInside bool
 
@@ -212,7 +215,10 @@ func (w *window) SetTitle(title string) {
 		return
 	}
 	w.title = title
-	objcx.WithPool(func() { w.setTitleText(title) })
+	objcx.WithPool(func() {
+		w.setTitleText(title)
+		w.layoutTrafficLights()
+	})
 }
 
 // SetSize asks for a new content size in points: the window is resized now, which reports the new metrics
@@ -456,6 +462,8 @@ func (w *window) PerformWindowAction(action ui.WindowAction) {
 		w.SetState(platform.WindowStateNormal)
 	case ui.WindowActionClose:
 		objcx.WithPool(func() { w.ns.Send(sel("performClose:"), objc.ID(0)) })
+	case ui.WindowActionTitleBarHeight:
+		w.setTitleBarHeight(action.Height)
 	}
 }
 
@@ -559,13 +567,93 @@ func (w *window) finishClose() {
 // info is the WindowInfo for the engine.
 func (w *window) info() ui.WindowInfo {
 	return ui.WindowInfo{
-		Decoration:   w.style.decoration(),
-		Capabilities: w.style.capabilities(),
-		Title:        w.title,
-		Maximized:    send[bool](w.ns, "isZoomed") && !w.fullscreen,
-		Fullscreen:   w.fullscreen,
-		Activated:    w.activated,
-		Minimized:    w.miniaturized,
+		Decoration:    w.style.decoration(),
+		Capabilities:  w.style.capabilities(),
+		Title:         w.title,
+		Maximized:     send[bool](w.ns, "isZoomed") && !w.fullscreen,
+		Fullscreen:    w.fullscreen,
+		Activated:     w.activated,
+		Minimized:     w.miniaturized,
+		SystemButtons: w.systemButtons(),
+	}
+}
+
+// The NSWindowButton values of the buttons that every titled window has.
+const (
+	windowButtonClose       uint64 = 0
+	windowButtonMiniaturize uint64 = 1
+	windowButtonZoom        uint64 = 2
+)
+
+// trafficLights are the close, minimize and zoom buttons of the window that exist and are shown.
+func (w *window) trafficLights() []objc.ID {
+	var out []objc.ID
+	for _, kind := range []uint64{windowButtonClose, windowButtonMiniaturize, windowButtonZoom} {
+		if b := send[objc.ID](w.ns, "standardWindowButton:", kind); b != 0 && !send[bool](b, "isHidden") {
+			out = append(out, b)
+		}
+	}
+	return out
+}
+
+// systemButtons is WindowInfo.SystemButtons: the area of the traffic lights over the content of a window whose
+// title bar the app draws (SPEC §29.4), in logical pixels of the view. It is empty for the other windows and
+// in fullscreen, where the title bar is the system's and hides with the menu bar.
+func (w *window) systemButtons() ui.Rect {
+	if !w.style.FullSizeContent || w.fullscreen || w.ns == 0 {
+		return ui.Rect{}
+	}
+	height := send[nsRect](w.view, "bounds").Size.Height
+	var boxes []boxRect
+	for _, b := range w.trafficLights() {
+		r := send[nsRect](b, "convertRect:toView:", send[nsRect](b, "bounds"), w.view)
+		boxes = append(boxes, boxRect{X: r.Origin.X, Y: r.Origin.Y, W: r.Size.Width, H: r.Size.Height})
+	}
+	return trafficLightArea(boxes, height, 1)
+}
+
+// layoutTrafficLights puts the traffic lights in the middle of the title bar that the app draws, whose height
+// WindowActionTitleBarHeight told (SPEC §29.4): the container of AppKit's title bar gets the height of the
+// app's bar and each button the middle of it, at the place along the bar that AppKit gave it (which follows
+// the direction of the user's language). AppKit lays its title bar out again when the window is resized, gets
+// another title or leaves fullscreen, so this runs before the metrics are reported.
+//
+// Flutter: no counterpart (Electron's shell/browser/ui/cocoa/window_buttons_proxy.mm does the same)
+func (w *window) layoutTrafficLights() {
+	if !w.style.FullSizeContent || w.fullscreen || w.barHeight <= 0 || w.ns == 0 {
+		return
+	}
+	lights := w.trafficLights()
+	if len(lights) == 0 {
+		return
+	}
+	bar := send[objc.ID](lights[0], "superview")
+	if bar == 0 {
+		return
+	}
+	container := send[objc.ID](bar, "superview")
+	if container == 0 {
+		return
+	}
+	frame := send[nsRect](container, "frame")
+	frame.Size.Height = w.barHeight
+	frame.Origin.Y = send[nsRect](w.ns, "frame").Size.Height - w.barHeight
+	container.Send(sel("setFrame:"), frame)
+	for _, b := range lights {
+		f := send[nsRect](b, "frame")
+		b.Send(sel("setFrameOrigin:"), nsPoint{X: f.Origin.X, Y: trafficLightY(w.barHeight, f.Size.Height)})
+	}
+}
+
+// setTitleBarHeight is WindowActionTitleBarHeight: the traffic lights move to the middle of the app's bar and
+// the framework is told where they are now.
+func (w *window) setTitleBarHeight(height float64) {
+	if !w.style.FullSizeContent || height <= 0 || height == w.barHeight {
+		return
+	}
+	w.barHeight = height
+	if w.shown {
+		objcx.WithPool(w.reportMetrics)
 	}
 }
 
@@ -575,6 +663,7 @@ func (w *window) reportMetrics() {
 	if h == nil || w.closed {
 		return
 	}
+	w.layoutTrafficLights()
 	bounds := send[nsRect](w.view, "bounds")
 	w.scale = send[float64](w.ns, "backingScaleFactor")
 	px := physicalSize(ui.Size{Width: bounds.Size.Width, Height: bounds.Size.Height}, w.scale)

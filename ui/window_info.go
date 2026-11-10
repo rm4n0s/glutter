@@ -96,6 +96,15 @@ type WindowInfo struct {
 	// Tiled is whether the compositor tiles the window: its edges touch other
 	// windows or the screen, so it has no borders to resize from.
 	Tiled bool
+	// SystemButtons is the area, in logical pixels of the view with the origin at
+	// its top left, of the window buttons that the system draws over the content
+	// of a window whose title bar the app draws: the close, minimize and zoom
+	// buttons of macOS. The system also draws the border of such a window and
+	// resizes it from its edges, so the title bar of the app leaves the area free
+	// and draws no buttons, border or resize strips of its own. It is empty
+	// where the app draws the buttons (Linux, Windows) and while the window is
+	// fullscreen.
+	SystemButtons Rect
 }
 
 // ResizeEdge is an edge or a corner of a window that the user can drag to
@@ -189,6 +198,13 @@ const (
 	//
 	// Flutter: widgets/_window.dart RegularWindowController.activate
 	WindowActionActivate
+	// WindowActionTitleBarHeight tells the platform how high the title bar that
+	// the app draws is (WindowAction.Height). A platform that keeps its own window
+	// buttons over that bar (WindowInfo.SystemButtons) centers them in it; the
+	// others ignore it.
+	//
+	// Flutter: no counterpart
+	WindowActionTitleBarHeight
 )
 
 // WindowAction is a request of a title bar that the app draws.
@@ -202,6 +218,9 @@ type WindowAction struct {
 	// Position is where WindowActionShowMenu opens the menu, in logical pixels of
 	// the window.
 	Position Offset
+	// Height is the height of the title bar of WindowActionTitleBarHeight, in
+	// logical pixels.
+	Height float64
 }
 
 // WindowHost is what the engine implements to carry out the actions of a title

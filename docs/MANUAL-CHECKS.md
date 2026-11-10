@@ -1169,3 +1169,15 @@ Needs a pad that macOS lists as force feedback and that no HID driver of Glutter
 5. A pad that has no force feedback says `CanRumble() == false` and `Rumble` returns `GamepadRumbleUnavailable`.
 
 Answers: _(not yet recorded)_
+
+## 39.1 The title bar of an app on macOS
+
+An app that draws its own title bar with `WindowDecoration` (Emetos, or `GLUTTER_DECORATIONS=app go run ./examples/counter`), on a Mac.
+
+1. The window has one set of window buttons: the red, yellow and green ones at the left. The bar draws no minimize, maximize or close of its own at the right, and no line around the window.
+2. The three buttons are in the middle of the bar's height, and the first widget of the bar (the menu button of Emetos) starts to the right of them, with nothing under them.
+3. Resize the window from an edge and from a corner, give it another title, make it fullscreen with the green button and leave fullscreen: the buttons are in the middle of the bar again each time.
+4. Drag the empty part of the bar: the window moves. Double-click it: the window zooms (or does what "Double-click a window's title bar to" says).
+5. With the system language set to one written from right to left (Arabic, Hebrew): the buttons are at the right, and the bar ends before them.
+
+Answers: _(not yet recorded)_

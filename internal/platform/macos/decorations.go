@@ -57,6 +57,14 @@ func trafficLightArea(buttons []boxRect, barHeight, scale float64) ui.Rect {
 	return area
 }
 
+// trafficLightY is where the bottom of a window button goes in a title bar of the app's height, so that the
+// button is in the middle of the bar: the buttons of AppKit sit in the middle of its own title bar (28 or 32
+// points), which is rarely the height of the bar that the app draws. It is never negative (a bar lower than
+// the buttons keeps them at its bottom).
+func trafficLightY(barHeight, buttonHeight float64) float64 {
+	return math.Max(0, (barHeight-buttonHeight)/2)
+}
+
 // The values of the system setting "Double-click a window's title bar to" (AppleActionOnDoubleClick).
 const (
 	doubleClickZoom     = "Maximize"

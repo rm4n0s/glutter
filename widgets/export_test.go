@@ -10,7 +10,7 @@ func (s *NavigatorState) ForceUnlockHistory() { s.debugLocked = false }
 // so that a test can put it under another text direction (the bar of a
 // WindowDecoration has its own, left to right).
 func NewWindowBarForTest(gap, title Widget, leading, actions []Widget, height float64) Widget {
-	return newWindowBar(gap, title, leading, actions, height)
+	return newWindowBar(gap, title, leading, actions, height, windowDecorationGap)
 }
 
 // OverlayChildModelLen is the number of locations in the child model of the overlay entry that

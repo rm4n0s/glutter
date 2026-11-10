@@ -564,3 +564,132 @@ func TestWindowDecorationLeadingKeepsKeyedState(t *testing.T) {
 		t.Errorf("states made = %d, want 2 (a reorder keeps them)", inits)
 	}
 }
+
+// systemInfo is the window of an app that draws its title bar where the system
+// keeps its window buttons over it, as macOS does: the buttons are 9 pixels
+// from the left edge and 60 wide.
+func systemInfo() ui.WindowInfo {
+	info := appInfo()
+	info.SystemButtons = ui.NewRectFromLTRB(9, 9, 69, 23)
+	return info
+}
+
+func TestWindowDecorationLeavesTheButtonsToTheSystem(t *testing.T) {
+	leading := NewSizedBox(NewText("menu"), SizedBoxOpts{Width: foundation.Some(30.0)})
+	action := NewSizedBox(NewText("act"), SizedBoxOpts{Width: foundation.Some(20.0)})
+	tests := []struct {
+		name                    string
+		buttons                 ui.Rect
+		wantLeading, wantAction float64
+	}{
+		// The bar starts 12 pixels after the buttons, and ends at the edge.
+		{"buttons at the start", ui.NewRectFromLTRB(9, 9, 69, 23), 69 + 12, 800 - 20},
+		// Written from right to left, the buttons are at the end: the bar starts at the gap and ends 12
+		// pixels before them.
+		{"buttons at the end", ui.NewRectFromLTRB(731, 9, 791, 23), 12, 731 - 12 - 20},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			info := systemInfo()
+			info.SystemButtons = tt.buttons
+			ts, body := windowDecorationApp(t, info)
+			ts.PumpWidget(NewWindowDecoration(body, WindowDecorationOpts{Leading: []Widget{leading}, Actions: []Widget{action}}))
+			if got := ts.TopLeft(gluttertest.ByText("menu")).Dx; got != tt.wantLeading {
+				t.Errorf("the leading widget starts at %v, want %v", got, tt.wantLeading)
+			}
+			if got := ts.TopLeft(gluttertest.ByText("act")).Dx; got != tt.wantAction {
+				t.Errorf("the action starts at %v, want %v", got, tt.wantAction)
+			}
+			for _, label := range []string{"Close", "Maximize", "Minimize"} {
+				if ts.Exists(gluttertest.BySemanticsLabel(label)) {
+					t.Errorf("the bar draws a %s button", label)
+				}
+			}
+			// The platform is told the height of the bar once, after the frame; that is all it is asked.
+			ts.Pump()
+			ts.Pump()
+			got := ts.WindowActions()
+			if len(got) != 1 || got[0].Kind != ui.WindowActionTitleBarHeight || got[0].Height != 40 {
+				t.Fatalf("actions = %+v, want the height of the bar once", got)
+			}
+			// No button where the decoration has its own, and no resize strip: the system has the frame.
+			ts.TapAt(ui.Offset{Dx: 800 - 23, Dy: 20})
+			ts.PumpAndSettle()
+			ts.StartGesture(ui.Offset{Dx: 797, Dy: 597}).Up()
+			ts.StartGesture(ui.Offset{Dx: 2, Dy: 300}).Up()
+			if got := ts.WindowActions(); len(got) != 1 {
+				t.Errorf("actions = %+v, want no more than the height", got)
+			}
+			// The space next to the buttons of the system still moves the window.
+			ts.DragFrom(ui.Offset{Dx: 400, Dy: 20}, ui.Offset{Dx: 50, Dy: 10})
+			if got := ts.WindowActions(); len(got) != 2 || got[1].Kind != ui.WindowActionMove {
+				t.Errorf("actions = %+v, want a move after the height", got)
+			}
+		})
+	}
+}
+
+func TestWindowDecorationTellsTheHeightOfItsBar(t *testing.T) {
+	ts, body := windowDecorationApp(t, systemInfo())
+	height := 36.0
+	var rebuild StateSetter
+	ts.PumpWidget(NewStatefulBuilder(func(_ BuildContext, setState StateSetter) Widget {
+		rebuild = setState
+		return NewWindowDecoration(body, WindowDecorationOpts{Height: foundation.Some(height)})
+	}))
+	ts.Pump()
+	if got := ts.WindowActions(); len(got) != 1 || got[0].Height != 36 {
+		t.Fatalf("actions = %+v, want the height 36", got)
+	}
+	// The same height is not told again; another one is.
+	rebuild(func() {})
+	ts.Pump()
+	ts.Pump()
+	if got := ts.WindowActions(); len(got) != 1 {
+		t.Fatalf("actions after a rebuild = %+v", got)
+	}
+	rebuild(func() { height = 48 })
+	ts.Pump()
+	ts.Pump()
+	if got := ts.WindowActions(); len(got) != 2 || got[1].Kind != ui.WindowActionTitleBarHeight || got[1].Height != 48 {
+		t.Errorf("actions = %+v, want the height 48 after 36", got)
+	}
+
+	// A bar whose buttons the app draws tells nothing.
+	other, body := windowDecorationApp(t, appInfo())
+	other.PumpWidget(NewWindowDecoration(body))
+	other.Pump()
+	if got := other.WindowActions(); len(got) != 0 {
+		t.Errorf("actions without buttons of the system = %+v", got)
+	}
+}
+
+func TestWindowDecorationTakesTheTitleBarPaddingFromTheChild(t *testing.T) {
+	tests := []struct {
+		name    string
+		info    ui.WindowInfo
+		wantTop float64
+	}{
+		{"the bar covers the title bar of the system", systemInfo(), 0},
+		{"fullscreen has no bar", func() ui.WindowInfo { i := appInfo(); i.Fullscreen = true; return i }(), 28},
+		{"another decoration", ui.WindowInfo{Decoration: ui.DecorationServerSide}, 28},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ts := gluttertest.New(t, gluttertest.Opts{Size: ui.Size{Width: 800, Height: 600}})
+			ts.SetViewConfiguration(func(c *ui.ViewConfiguration) {
+				c.Window = tt.info
+				c.ViewPadding.Top = 28 * c.DevicePixelRatio
+				c.Padding.Top = 28 * c.DevicePixelRatio
+			})
+			top := -1.0
+			ts.PumpWidget(NewWindowDecoration(NewBuilder(func(bc BuildContext) Widget {
+				top = MediaQueryPaddingOf(bc).Top
+				return NewSizedBox(nil)
+			})))
+			if top != tt.wantTop {
+				t.Errorf("the top padding of the child is %v, want %v", top, tt.wantTop)
+			}
+		})
+	}
+}

@@ -2,6 +2,7 @@ package widgets
 
 import (
 	"math"
+	"time"
 
 	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/gestures"
@@ -56,6 +57,13 @@ type WindowDecorationOpts struct {
 // draws the title bar (the window is decorated by the compositor or by libdecor,
 // or has none) it shows the child alone, so an app can place it without checking.
 //
+// Where the system keeps its own window buttons over the bar (macOS:
+// WindowInfo.SystemButtons is not empty) the bar draws no buttons, the window
+// has no border or resize strips of the decoration (the system draws the frame
+// and resizes it), the bar starts after the buttons of the system, which it
+// asks the platform to center in its height (WindowActionTitleBarHeight), and
+// the child has no top padding left for the title bar (SPEC §29.4).
+//
 // The default RunApp wraps the app in one when the window needs it; an app that
 // sets WindowConfig.Decorations to DecorationsApp places its own.
 //
@@ -88,6 +96,10 @@ type windowDecorationState struct {
 	// childKey keeps the state of the child when the decoration appears or goes
 	// away, because the compositor tells the mode only after the first frame.
 	childKey *GlobalKey[State]
+	// toldHeight is the height of the bar that the platform was told for
+	// toldView, so that it is told once.
+	toldHeight float64
+	toldView   *ui.View
 }
 
 func (s *windowDecorationState) InitState() {
@@ -125,7 +137,7 @@ func windowDecorationColors(dark bool) (background, foreground, border ui.Color)
 func (s *windowDecorationState) Build(bc BuildContext) Widget {
 	w := s.Widget()
 	view := MaybeViewOf(bc)
-	child := NewKeyedSubtree(w.child, WidgetOpts{Key: s.key()})
+	var child Widget = NewKeyedSubtree(w.child, WidgetOpts{Key: s.key()})
 	if view == nil || view.Window().Decoration != ui.DecorationApp {
 		return child
 	}
@@ -138,10 +150,19 @@ func (s *windowDecorationState) Build(bc BuildContext) Widget {
 	}
 	height := w.o.Height.OrElse(windowDecorationBarHeight)
 	edge := w.o.ResizeBorder.OrElse(windowDecorationResize)
-	resizable := !info.Maximized && !info.Fullscreen && !info.Tiled
+	// The system draws the frame of a window whose buttons it keeps, and resizes it.
+	system := !info.SystemButtons.IsEmpty()
+	resizable := !info.Maximized && !info.Fullscreen && !info.Tiled && !system
 
 	var body Widget = child
 	if !info.Fullscreen {
+		if system {
+			s.tellBarHeight(bc, view, height)
+			// The top padding of the view is the title bar of the system, which the bar covers.
+			if mq, ok := MediaQueryMaybeOf(bc); ok && mq.Padding.Top > 0 {
+				child = NewMediaQueryRemovePadding(bc, RemoveSides{Top: true}, child)
+			}
+		}
 		// The bar is above the app, so it has the direction and the text style of its own.
 		bar := NewDirectionality(ui.TextDirectionLTR, NewDefaultTextStyle(painting.NewTextStyle(painting.TextStyleOpts{
 			Color: foundation.Some(fg), FontSize: foundation.Some(14.0), Decoration: foundation.Some(ui.TextDecorationNone), FontWeight: ui.FontWeightW500}),
@@ -149,7 +170,7 @@ func (s *windowDecorationState) Build(bc BuildContext) Widget {
 		body = NewColumn([]Widget{bar, NewExpanded(child)}, ColumnOpts{CrossAxisAlignment: rendering.CrossAxisAlignmentStretch})
 	}
 	stack := []Widget{NewPositionedFill(body)}
-	if !info.Maximized && !info.Fullscreen {
+	if !info.Maximized && !info.Fullscreen && !system {
 		stack = append(stack, NewPositionedFill(NewIgnorePointer(NewDecoratedBox(
 			painting.NewBoxDecoration(painting.BoxDecorationOpts{Border: painting.NewBorderAll(painting.BorderSideOpts{Color: foundation.Some(border)})}),
 			NewSizedBoxExpand(nil)))))
@@ -158,6 +179,22 @@ func (s *windowDecorationState) Build(bc BuildContext) Widget {
 		stack = append(stack, resizeHandles(view, edge)...)
 	}
 	return NewStack(stack, StackOpts{Fit: rendering.StackFitExpand, TextDirection: ui.TextDirectionLTR})
+}
+
+// tellBarHeight tells the platform the height of the bar after the frame, once
+// for a view and a height: the platform centers its window buttons in the bar
+// and reports their new place, which is a change of the metrics that must not
+// arrive while the tree is being built.
+func (s *windowDecorationState) tellBarHeight(bc BuildContext, view *ui.View, height float64) {
+	if s.toldView == view && s.toldHeight == height {
+		return
+	}
+	s.toldView, s.toldHeight = view, height
+	WidgetsBindingOf(bc).Scheduler().AddPostFrameCallback(func(time.Duration) {
+		if !view.Destroyed() {
+			view.PerformWindowAction(ui.WindowAction{Kind: ui.WindowActionTitleBarHeight, Height: height})
+		}
+	})
 }
 
 func (s *windowDecorationState) key() foundation.Key {
@@ -201,12 +238,24 @@ func newWindowTitleBar(view *ui.View, info ui.WindowInfo, o WindowDecorationOpts
 		title = NewText(info.Title, TextOpts{MaxLines: foundation.Some(1), Overflow: painting.TextOverflowEllipsis})
 	}
 	buttons := []Widget{}
-	if info.Capabilities.Minimize {
+	// The room that the buttons of the system take: at the start of the bar, or at
+	// its end where the language of the user is written from right to left.
+	system := !info.SystemButtons.IsEmpty()
+	gapWidth, endWidth := windowDecorationGap, 0.0
+	if system {
+		width := view.PhysicalSize().Width / view.DevicePixelRatio()
+		if info.SystemButtons.Center().Dx <= width/2 {
+			gapWidth += info.SystemButtons.Right
+		} else {
+			endWidth = math.Max(0, width-info.SystemButtons.Left) + windowDecorationGap
+		}
+	}
+	if !system && info.Capabilities.Minimize {
 		buttons = append(buttons, newWindowButton(windowGlyphMinimize, fg, ui.NewColor(0x1F000000), height, "Minimize", func() {
 			view.PerformWindowAction(ui.WindowAction{Kind: ui.WindowActionMinimize})
 		}))
 	}
-	if info.Capabilities.Maximize {
+	if !system && info.Capabilities.Maximize {
 		glyph, label, kind := windowGlyphMaximize, "Maximize", ui.WindowActionMaximize
 		if info.Maximized {
 			glyph, label, kind = windowGlyphRestore, "Restore", ui.WindowActionRestore
@@ -215,9 +264,11 @@ func newWindowTitleBar(view *ui.View, info ui.WindowInfo, o WindowDecorationOpts
 			view.PerformWindowAction(ui.WindowAction{Kind: kind})
 		}))
 	}
-	buttons = append(buttons, newWindowButton(windowGlyphClose, fg, ui.NewColor(0xFFC42B1C), height, "Close", func() {
-		view.PerformWindowAction(ui.WindowAction{Kind: ui.WindowActionClose})
-	}))
+	if !system {
+		buttons = append(buttons, newWindowButton(windowGlyphClose, fg, ui.NewColor(0xFFC42B1C), height, "Close", func() {
+			view.PerformWindowAction(ui.WindowAction{Kind: ui.WindowActionClose})
+		}))
+	}
 
 	// Only the draggable area has the gestures of the window: the gap before the
 	// Leading widgets and the title with the space around it. Leading and Actions
@@ -243,9 +294,12 @@ func newWindowTitleBar(view *ui.View, info ui.WindowInfo, o WindowDecorationOpts
 			},
 		})
 	}
-	gap := drag(NewSizedBox(nil, SizedBoxOpts{Width: foundation.Some(windowDecorationGap), Height: foundation.Some(height)}))
+	if endWidth > 0 {
+		buttons = append(buttons, drag(NewSizedBox(nil, SizedBoxOpts{Width: foundation.Some(endWidth), Height: foundation.Some(height)})))
+	}
+	gap := drag(NewSizedBox(nil, SizedBoxOpts{Width: foundation.Some(gapWidth), Height: foundation.Some(height)}))
 	draggable := drag(NewAlign(title, AlignOpts{Alignment: painting.AlignmentCenterLeft}))
-	row := NewContainer(newWindowBar(gap, draggable, o.Leading, o.Actions, height), ContainerOpts{Height: foundation.Some(height)})
+	row := NewContainer(newWindowBar(gap, draggable, o.Leading, o.Actions, height, gapWidth), ContainerOpts{Height: foundation.Some(height)})
 	return NewSizedBox(NewColoredBox(bg, NewRow([]Widget{NewExpanded(row), NewRow(buttons)})), SizedBoxOpts{Height: foundation.Some(height)})
 }
 
@@ -258,12 +312,15 @@ type windowBar struct {
 	gap, title       Widget
 	leading, actions []Widget
 	height           float64
+	// gapWidth is the width of the gap: 12 pixels, after the window buttons of
+	// the system when it keeps them at the start of the bar.
+	gapWidth float64
 }
 
 // newWindowBar creates the bar from the gap, the draggable area (the title with
 // its gestures), the Leading and the Actions widgets.
-func newWindowBar(gap, title Widget, leading, actions []Widget, height float64) Widget {
-	return &windowBar{StatelessWidget: NewStatelessWidgetBase(), gap: gap, title: title, leading: leading, actions: actions, height: height}
+func newWindowBar(gap, title Widget, leading, actions []Widget, height, gapWidth float64) Widget {
+	return &windowBar{StatelessWidget: NewStatelessWidgetBase(), gap: gap, title: title, leading: leading, actions: actions, height: height, gapWidth: gapWidth}
 }
 
 type windowBarSlot int
@@ -279,7 +336,7 @@ func (w *windowBar) Build(bc BuildContext) Widget {
 	d := &windowBarLayout{
 		MultiChildLayoutDelegateBase: rendering.NewMultiChildLayoutDelegateBase(nil),
 		textDirection:                DirectionalityOf(bc),
-		gap:                          windowDecorationGap,
+		gap:                          w.gapWidth,
 	}
 	children := []Widget{NewLayoutId(windowBarSlotGap, w.gap)}
 	if len(w.leading) > 0 {
