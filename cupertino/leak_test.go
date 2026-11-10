@@ -517,3 +517,68 @@ func TestLeaksPickers(t *testing.T) {
 		})
 	}
 }
+
+// TestLeaksLists mounts and unmounts the lists of step 34.8: the page of sections, the expansion tile (expanded and
+// collapsed again, with the overlay of the fade), the form rows with a text field, and the refresh control (pulled, refreshing and
+// done).
+func TestLeaksLists(t *testing.T) {
+	skipUnlessDebug(t)
+	if runtime.GOOS == "js" {
+		t.Skip("the runs take longer than the test timeout under Node; the host runs them")
+	}
+	tests := []struct {
+		name string
+		page func() widgets.Widget
+		use  func(ts *gluttertest.Tester)
+	}{
+		{"sections", func() widgets.Widget { return widgets.NewSingleChildScrollView(listsPage()) }, func(ts *gluttertest.Tester) {
+			ts.Tap(gluttertest.ByText("Wi-Fi"))
+			ts.Pump()
+		}},
+		{"expansion tile", func() widgets.Widget {
+			return expansionTile("Title", "Content")
+		}, func(ts *gluttertest.Tester) {
+			ts.Tap(gluttertest.ByText("Title"))
+			ts.Pump(300 * time.Millisecond)
+			ts.PumpAndSettle()
+			ts.Tap(gluttertest.ByText("Title"))
+			ts.PumpAndSettle()
+		}},
+		{"text form row", func() widgets.Widget {
+			return widgets.NewForm(cupertino.NewCupertinoFormSection([]widgets.Widget{
+				cupertino.NewCupertinoTextFormFieldRow(cupertino.CupertinoTextFormFieldRowOpts{Prefix: widgets.NewText("Name"),
+					AutovalidateMode: widgets.AutovalidateModeAlways,
+					Validator:        func(v foundation.Opt[string]) foundation.Opt[string] { return str("Error") }})}))
+		}, func(ts *gluttertest.Tester) {
+			ts.EnterText(gluttertest.ByType[*cupertino.CupertinoTextField](), "Soup")
+			ts.Pump()
+		}},
+		{"refresh control", func() widgets.Widget {
+			return widgets.NewCustomScrollView([]widgets.Widget{
+				cupertino.NewCupertinoSliverRefreshControl(cupertino.CupertinoSliverRefreshControlOpts{OnRefresh: func() <-chan struct{} {
+					done := make(chan struct{})
+					close(done)
+					return done
+				}}), refreshList(10)})
+		}, func(ts *gluttertest.Tester) {
+			ts.Drag(gluttertest.ByText("0"), ui.Offset{Dy: 150})
+			ts.PumpAndSettle()
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			leaktest.Run(t, "cupertino/lists/"+tt.name, func() func() {
+				ts := gluttertest.New(t, gluttertest.Opts{Size: ui.Size{Width: 400, Height: 700}, DiscardScenes: true, Fonts: []gluttertest.Font{
+					{Family: cupertino.CupertinoSystemTextFamily, Data: gomono.TTF}, {Family: cupertino.CupertinoSystemDisplayFamily, Data: gomono.TTF}}})
+				return func() {
+					ts.PumpWidget(testApp(cupertino.CupertinoAppOpts{Home: cupertino.NewCupertinoPageScaffold(tt.page())}))
+					ts.Pump()
+					tt.use(ts)
+					ts.PumpWidget(testApp(cupertino.CupertinoAppOpts{Home: widgets.NewSizedBox(nil)}))
+					ts.PumpAndSettle()
+					ts.ClearLogs()
+				}
+			}, leaktest.Opts{N: 50, Warmup: 100})
+		})
+	}
+}
