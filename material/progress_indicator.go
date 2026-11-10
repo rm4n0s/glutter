@@ -8,6 +8,7 @@ package material
 
 import (
 	"fmt"
+	"github.com/rm4n0s/glutter/cupertino"
 	"math"
 	"time"
 
@@ -491,10 +492,8 @@ func NewCircularProgressIndicator(opts ...CircularProgressIndicatorOpts) *Circul
 }
 
 // NewCircularProgressIndicatorAdaptive creates a circular progress indicator
-// that is a Cupertino one on iOS and macOS in Flutter.
-//
-// Deviation: Glutter has no Cupertino library, so the indicator is the Material
-// one on every platform (SPEC §12.10).
+// that is a CupertinoActivityIndicator on iOS and macOS (partially revealed to the value, when it has one) and the
+// Material one on the other platforms.
 //
 // Flutter: material/progress_indicator.dart CircularProgressIndicator.adaptive
 func NewCircularProgressIndicatorAdaptive(opts ...CircularProgressIndicatorOpts) *CircularProgressIndicator {
@@ -611,11 +610,28 @@ func (s *circularProgressIndicatorState) buildAnimation(bc widgets.BuildContext)
 
 func (s *circularProgressIndicatorState) Build(bc widgets.BuildContext) widgets.Widget {
 	return widgets.NewBuilder(func(bc widgets.BuildContext) widgets.Widget {
+		if s.Widget().adaptive && isCupertinoPlatform(bc) {
+			return s.buildCupertinoIndicator()
+		}
 		if s.Widget().effectiveValue().IsSome() {
 			return s.buildMaterialIndicator(bc, 0, 0, 0, 0)
 		}
 		return s.buildAnimation(bc)
 	})
+}
+
+// buildCupertinoIndicator is the indicator of an adaptive one on iOS and macOS: the background color is the color of its
+// ticks.
+//
+// Flutter: material/progress_indicator.dart _CircularProgressIndicatorState._buildCupertinoIndicator
+func (s *circularProgressIndicatorState) buildCupertinoIndicator() widgets.Widget {
+	w := s.Widget()
+	tick := optColorValue(w.backgroundColor)
+	if v, ok := w.effectiveValue().Get(); ok {
+		return cupertino.NewCupertinoActivityIndicatorPartiallyRevealed(cupertino.CupertinoActivityIndicatorPartiallyRevealedOpts{
+			Key: w.o.Key, Color: tick, Progress: foundation.Some(v)})
+	}
+	return cupertino.NewCupertinoActivityIndicator(cupertino.CupertinoActivityIndicatorOpts{Key: w.o.Key, Color: tick})
 }
 
 const (

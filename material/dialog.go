@@ -7,6 +7,7 @@
 package material
 
 import (
+	"github.com/rm4n0s/glutter/cupertino"
 	"time"
 
 	"github.com/rm4n0s/errors"
@@ -296,6 +297,16 @@ type AlertDialogOpts struct {
 	// Scrollable makes the title and the content scroll together, with the
 	// actions fixed at the bottom.
 	Scrollable bool
+	// ScrollController is the controller of the scroll of the content of the CupertinoAlertDialog that an adaptive
+	// alert dialog builds on iOS and macOS; the other dialogs ignore it.
+	ScrollController widgets.ScrollController
+	// ActionScrollController is the controller of the scroll of the actions of that CupertinoAlertDialog.
+	ActionScrollController widgets.ScrollController
+	// InsetAnimationDuration is how long the dialog takes to move for the keyboard, for that CupertinoAlertDialog; the
+	// default is 100 ms.
+	InsetAnimationDuration foundation.Opt[time.Duration]
+	// InsetAnimationCurve is the curve of that movement; the default is Curves.Decelerate.
+	InsetAnimationCurve animation.Curve
 }
 
 // AlertDialog is a Material Design alert dialog: it informs the user about
@@ -305,7 +316,8 @@ type AlertDialogOpts struct {
 // Flutter: material/dialog.dart AlertDialog
 type AlertDialog struct {
 	widgets.StatelessWidget
-	o AlertDialogOpts
+	o        AlertDialogOpts
+	adaptive bool
 }
 
 // NewAlertDialog creates an alert dialog.
@@ -316,18 +328,26 @@ func NewAlertDialog(opts ...AlertDialogOpts) *AlertDialog {
 	return &AlertDialog{StatelessWidget: widgets.NewStatelessWidgetBase(widgets.WidgetOpts{Key: o.Key}), o: o}
 }
 
-// NewAlertDialogAdaptive creates an alert dialog that adapts to the platform.
-//
-// Deviation: Glutter has no Cupertino library, so the dialog is the Material
-// one on every platform, including iOS and macOS (SPEC §12.10).
+// NewAlertDialogAdaptive creates an alert dialog that adapts to the platform: on iOS and macOS it builds a
+// CupertinoAlertDialog with the title, content and actions (the other parameters are ignored), and on the other
+// platforms the Material one. It is usually the child of ShowAdaptiveDialog.
 //
 // Flutter: material/dialog.dart AlertDialog.adaptive
-func NewAlertDialogAdaptive(opts ...AlertDialogOpts) *AlertDialog { return NewAlertDialog(opts...) }
+func NewAlertDialogAdaptive(opts ...AlertDialogOpts) *AlertDialog {
+	w := NewAlertDialog(opts...)
+	w.adaptive = true
+	return w
+}
 
 // Build builds the dialog.
 //
 // Flutter: material/dialog.dart AlertDialog.build
 func (w *AlertDialog) Build(bc widgets.BuildContext) widgets.Widget {
+	if w.adaptive && isCupertinoPlatform(bc) {
+		return cupertino.NewCupertinoAlertDialog(cupertino.CupertinoAlertDialogOpts{Title: w.o.Title, Content: w.o.Content, Actions: w.o.Actions,
+			ScrollController: w.o.ScrollController, ActionScrollController: w.o.ActionScrollController,
+			InsetAnimationDuration: w.o.InsetAnimationDuration, InsetAnimationCurve: w.o.InsetAnimationCurve})
+	}
 	DebugCheckHasMaterialLocalizations(bc)
 	o := w.o
 	theme := ThemeOf(bc)

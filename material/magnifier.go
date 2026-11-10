@@ -1,6 +1,7 @@
 package material
 
 import (
+	"github.com/rm4n0s/glutter/cupertino"
 	"time"
 
 	"github.com/rm4n0s/errors"
@@ -30,18 +31,17 @@ var (
 	})
 )
 
-// adaptiveMagnifierBuilder builds the TextMagnifier of Android and nothing on
-// the other platforms.
-//
-// Deviation: Flutter builds a CupertinoTextMagnifier on iOS; there is no
-// Cupertino library, so iOS builds nothing (SPEC §12.10).
+// adaptiveMagnifierBuilder builds the CupertinoTextMagnifier on iOS, the TextMagnifier of Android on Android and
+// nothing on the other platforms.
 //
 // Flutter: material/magnifier.dart TextMagnifier.adaptiveMagnifierConfiguration
-func adaptiveMagnifierBuilder(_ widgets.BuildContext, _ *widgets.MagnifierController, magnifierInfo *foundation.ValueNotifier[widgets.MagnifierInfo]) widgets.Widget {
+func adaptiveMagnifierBuilder(_ widgets.BuildContext, controller *widgets.MagnifierController, magnifierInfo *foundation.ValueNotifier[widgets.MagnifierInfo]) widgets.Widget {
 	switch foundation.DefaultTargetPlatform() {
+	case foundation.TargetPlatformIOS:
+		return cupertino.NewCupertinoTextMagnifier(controller, magnifierInfo)
 	case foundation.TargetPlatformAndroid:
 		return NewTextMagnifier(magnifierInfo)
-	case foundation.TargetPlatformIOS, foundation.TargetPlatformFuchsia, foundation.TargetPlatformLinux,
+	case foundation.TargetPlatformFuchsia, foundation.TargetPlatformLinux,
 		foundation.TargetPlatformMacOS, foundation.TargetPlatformWindows:
 		return nil
 	}
@@ -49,13 +49,12 @@ func adaptiveMagnifierBuilder(_ widgets.BuildContext, _ *widgets.MagnifierContro
 }
 
 // TextMagnifierAdaptiveMagnifierConfiguration is a TextMagnifierConfiguration
-// that returns a TextMagnifier on Android and nil on all other platforms, and
-// shows the editing handles only on iOS (where it builds nothing, see the
-// deviation of the builder). The same value is returned for the same platform.
+// that returns a CupertinoTextMagnifier on iOS, a TextMagnifier on Android and nil on all other platforms, and
+// shows the editing handles only on iOS. The same value is returned for the same platform.
 //
 // Deviation: Flutter's is a static field, whose shouldDisplayHandlesInMagnifier
 // is set when it is first read; this is a function that reads the platform each
-// time, and there is no CupertinoTextMagnifier for iOS (SPEC §12.10).
+// time (SPEC §12.10).
 //
 // Flutter: material/magnifier.dart TextMagnifier.adaptiveMagnifierConfiguration
 func TextMagnifierAdaptiveMagnifierConfiguration() *widgets.TextMagnifierConfiguration {

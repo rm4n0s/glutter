@@ -1,6 +1,7 @@
 package material
 
 import (
+	"github.com/rm4n0s/glutter/cupertino"
 	"time"
 
 	"github.com/rm4n0s/glutter/animation"
@@ -315,18 +316,15 @@ func (b FadeForwardsPageTransitionsBuilder) BuildTransitions(_ widgets.PageRoute
 // Flutter: material/page_transitions_theme.dart PageTransitionsTheme.new
 type PageTransitionsThemeOpts struct {
 	// Builders are the builders of the transitions of each platform; the default
-	// is a PredictiveBackPageTransitionsBuilder for Android and a
+	// is a PredictiveBackPageTransitionsBuilder for Android, a
+	// cupertino.CupertinoPageTransitionsBuilder for iOS and macOS and a
 	// ZoomPageTransitionsBuilder for Linux and Windows. A platform without a
-	// builder uses ZoomPageTransitionsBuilder.
+	// builder uses cupertino.CupertinoPageTransitionsBuilder on iOS and ZoomPageTransitionsBuilder on the others.
 	Builders map[foundation.TargetPlatform]widgets.PageTransitionsBuilder
 }
 
 // PageTransitionsTheme defines the page transitions of each platform used by a
 // PageRoute that Material makes.
-//
-// Deviation: Flutter's defaults include CupertinoPageTransitionsBuilder for iOS
-// and macOS; Glutter has no Cupertino library, so those two platforms have no
-// default builder and use the zoom transition.
 //
 // Flutter: material/page_transitions_theme.dart PageTransitionsTheme
 type PageTransitionsTheme struct {
@@ -336,6 +334,8 @@ type PageTransitionsTheme struct {
 func defaultPageTransitionBuilders() map[foundation.TargetPlatform]widgets.PageTransitionsBuilder {
 	return map[foundation.TargetPlatform]widgets.PageTransitionsBuilder{
 		foundation.TargetPlatformAndroid: NewPredictiveBackPageTransitionsBuilder(),
+		foundation.TargetPlatformIOS:     cupertino.CupertinoPageTransitionsBuilder{},
+		foundation.TargetPlatformMacOS:   cupertino.CupertinoPageTransitionsBuilder{},
 		foundation.TargetPlatformWindows: NewZoomPageTransitionsBuilder(),
 		foundation.TargetPlatformLinux:   NewZoomPageTransitionsBuilder(),
 	}
@@ -359,11 +359,14 @@ func (t *PageTransitionsTheme) Builders() map[foundation.TargetPlatform]widgets.
 	return t.builders
 }
 
-// builderFor is the builder of the platform: the one of the theme, or the zoom
-// transition.
+// builderFor is the builder of the platform: the one of the theme, or the Cupertino transition on iOS and the
+// zoom transition on the others.
 func (t *PageTransitionsTheme) builderFor(platform foundation.TargetPlatform) widgets.PageTransitionsBuilder {
 	if b, ok := t.builders[platform]; ok && b != nil {
 		return b
+	}
+	if platform == foundation.TargetPlatformIOS {
+		return cupertino.CupertinoPageTransitionsBuilder{}
 	}
 	return NewZoomPageTransitionsBuilder()
 }

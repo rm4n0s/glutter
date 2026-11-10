@@ -7,6 +7,7 @@
 package material
 
 import (
+	"github.com/rm4n0s/glutter/cupertino"
 	"strings"
 
 	"github.com/rm4n0s/glutter/foundation"
@@ -22,11 +23,8 @@ import (
 // On Android it is the Material TextSelectionToolbar with its overflow menu and
 // TextSelectionToolbarTextButtons; on Fuchsia it is the desktop toolbar with
 // TextSelectionToolbarTextButtons; on Linux and Windows it is the desktop
-// toolbar.
-//
-// Deviation: Glutter has no Cupertino library, so iOS and macOS get the toolbar
-// and the buttons of the desktop, with the labels of the Material localizations
-// (SPEC §12.10).
+// toolbar; on iOS it is the CupertinoTextSelectionToolbar and on macOS the
+// CupertinoDesktopTextSelectionToolbar.
 //
 // Flutter: material/adaptive_text_selection_toolbar.dart AdaptiveTextSelectionToolbar
 type AdaptiveTextSelectionToolbar struct {
@@ -112,6 +110,10 @@ func AdaptiveTextSelectionToolbarGetButtonLabel(bc widgets.BuildContext, buttonI
 	if label, ok := buttonItem.Label.Get(); ok {
 		return label
 	}
+	switch ThemeOf(bc).Platform {
+	case foundation.TargetPlatformIOS, foundation.TargetPlatformMacOS:
+		return cupertino.CupertinoTextSelectionToolbarButtonGetButtonLabel(bc, buttonItem)
+	}
 	DebugCheckHasMaterialLocalizations(bc)
 	l := MaterialLocalizationsOf(bc)
 	switch buttonItem.Type {
@@ -139,16 +141,21 @@ func AdaptiveTextSelectionToolbarGetButtonLabel(bc widgets.BuildContext, buttonI
 
 // AdaptiveTextSelectionToolbarGetAdaptiveButtons returns the buttons of the
 // items for the platform of the theme: TextSelectionToolbarTextButtons on
-// Android and Fuchsia, and the buttons of the desktop toolbar on the other
-// platforms.
-//
-// Deviation: iOS and macOS get the buttons of the desktop toolbar, since there
-// is no Cupertino library (SPEC §12.10).
+// Android and Fuchsia, Cupertino buttons on iOS and macOS, and the buttons of the
+// desktop toolbar on Linux and Windows.
 //
 // Flutter: material/adaptive_text_selection_toolbar.dart AdaptiveTextSelectionToolbar.getAdaptiveButtons
 func AdaptiveTextSelectionToolbarGetAdaptiveButtons(bc widgets.BuildContext, buttonItems []widgets.ContextMenuButtonItem) []widgets.Widget {
 	buttons := make([]widgets.Widget, 0, len(buttonItems))
 	switch ThemeOf(bc).Platform {
+	case foundation.TargetPlatformIOS:
+		for _, item := range buttonItems {
+			buttons = append(buttons, cupertino.NewCupertinoTextSelectionToolbarButtonButtonItem(item))
+		}
+	case foundation.TargetPlatformMacOS:
+		for _, item := range buttonItems {
+			buttons = append(buttons, cupertino.NewCupertinoDesktopTextSelectionToolbarButtonText(item.OnPressed, AdaptiveTextSelectionToolbarGetButtonLabel(bc, item)))
+		}
 	case foundation.TargetPlatformFuchsia, foundation.TargetPlatformAndroid:
 		for i, item := range buttonItems {
 			buttons = append(buttons, NewTextSelectionToolbarTextButton(
@@ -177,8 +184,13 @@ func (w *AdaptiveTextSelectionToolbar) Build(bc widgets.BuildContext) widgets.Wi
 		return widgets.NewSizedBoxShrink(nil)
 	}
 
-	if ThemeOf(bc).Platform == foundation.TargetPlatformAndroid {
+	switch ThemeOf(bc).Platform {
+	case foundation.TargetPlatformIOS:
+		return cupertino.NewCupertinoTextSelectionToolbar(w.anchors.PrimaryAnchor, w.anchors.SecondaryAnchor.OrElse(w.anchors.PrimaryAnchor), children)
+	case foundation.TargetPlatformAndroid:
 		return NewTextSelectionToolbar(w.anchors.PrimaryAnchor, w.anchors.SecondaryAnchor.OrElse(w.anchors.PrimaryAnchor), children)
+	case foundation.TargetPlatformMacOS:
+		return cupertino.NewCupertinoDesktopTextSelectionToolbar(w.anchors.PrimaryAnchor, children)
 	}
 	return NewDesktopTextSelectionToolbar(w.anchors.PrimaryAnchor, children)
 }

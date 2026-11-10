@@ -7,6 +7,7 @@
 package material
 
 import (
+	"github.com/rm4n0s/glutter/cupertino"
 	"math"
 
 	"github.com/rm4n0s/errors"
@@ -49,6 +50,36 @@ func firstOptColor(colors ...foundation.Opt[ui.Color]) foundation.Opt[ui.Color] 
 
 // toggleableMouseCursor is the cursor of a Checkbox, Radio or Switch: the cursor of
 // the widget, then of the theme, then the adaptive clickable one.
+// cupertinoMouseCursor is the cursor of a Material widget as the state property that a Cupertino widget takes, or nil
+// for none.
+func cupertinoMouseCursor(widgetCursor services.MouseCursor) widgets.WidgetStateProperty[services.MouseCursor] {
+	switch c := widgetCursor.(type) {
+	case nil:
+		return nil
+	case widgets.WidgetStateProperty[services.MouseCursor]:
+		return c
+	}
+	return widgets.NewWidgetStatePropertyAll(widgetCursor)
+}
+
+// optColorValue is the color of an option as the color value that Cupertino options take: nil when it is not set.
+func optColorValue(c foundation.Opt[ui.Color]) ui.ColorValue {
+	if v, ok := c.Get(); ok {
+		return v
+	}
+	return nil
+}
+
+// isCupertinoPlatform is whether the platform of the theme in the context is iOS or macOS, which the adaptive widgets
+// give their Cupertino looks.
+func isCupertinoPlatform(bc widgets.BuildContext) bool {
+	switch ThemeOf(bc).Platform {
+	case foundation.TargetPlatformIOS, foundation.TargetPlatformMacOS:
+		return true
+	}
+	return false
+}
+
 func toggleableMouseCursor(widgetCursor services.MouseCursor, themeCursor widgets.WidgetStateProperty[services.MouseCursor]) widgets.WidgetStateProperty[services.MouseCursor] {
 	return widgets.WidgetStatePropertyResolveWith(func(states widgets.WidgetStates) services.MouseCursor {
 		if widgetCursor != nil {
@@ -164,15 +195,13 @@ type CheckboxOpts struct {
 // keep its own value: the widget calls OnChanged and shows the Value that it
 // gets.
 //
-// Deviation: the adaptive constructor builds the Material checkbox on iOS and
-// macOS too, as there is no Cupertino library (SPEC §12.10).
-//
 // Flutter: material/checkbox.dart Checkbox
 type Checkbox struct {
 	widgets.StatefulWidget
 	value     foundation.Opt[bool]
 	onChanged func(value foundation.Opt[bool])
 	o         CheckboxOpts
+	adaptive  bool
 }
 
 // NewCheckbox creates the widget. A nil onChanged disables the checkbox. In
@@ -188,13 +217,14 @@ func NewCheckbox(value foundation.Opt[bool], onChanged func(value foundation.Opt
 	return &Checkbox{StatefulWidget: widgets.NewStatefulWidgetBase(widgets.WidgetOpts{Key: o.Key}), value: value, onChanged: onChanged, o: o}
 }
 
-// NewCheckboxAdaptive creates a checkbox that adapts to the platform.
-//
-// Deviation: it is the same as NewCheckbox (SPEC §12.10).
+// NewCheckboxAdaptive creates a checkbox that adapts to the platform: on iOS and macOS it builds a CupertinoCheckbox
+// (which ignores the parameters that only the Material checkbox has), and on the other platforms the Material one.
 //
 // Flutter: material/checkbox.dart Checkbox.adaptive
 func NewCheckboxAdaptive(value foundation.Opt[bool], onChanged func(value foundation.Opt[bool]), opts ...CheckboxOpts) *Checkbox {
-	return NewCheckbox(value, onChanged, opts...)
+	w := NewCheckbox(value, onChanged, opts...)
+	w.adaptive = true
+	return w
 }
 
 // Value is whether the checkbox is checked: none is the mixed value.
@@ -261,6 +291,12 @@ func (s *checkboxState) widgetFillColor() widgets.WidgetStateProperty[foundation
 
 func (s *checkboxState) Build(bc widgets.BuildContext) widgets.Widget {
 	w := s.Widget()
+	if w.adaptive && isCupertinoPlatform(bc) {
+		return cupertino.NewCupertinoCheckbox(w.value, w.onChanged, cupertino.CupertinoCheckboxOpts{
+			Tristate: w.o.Tristate, MouseCursor: cupertinoMouseCursor(w.o.MouseCursor), ActiveColor: optColorValue(w.o.ActiveColor),
+			CheckColor: optColorValue(w.o.CheckColor), FocusColor: optColorValue(w.o.FocusColor), FocusNode: w.o.FocusNode, Autofocus: w.o.Autofocus,
+			Side: w.o.Side, StateSide: w.o.StateSide, Shape: w.o.Shape, SemanticLabel: w.o.SemanticLabel})
+	}
 	DebugCheckHasMaterial(bc)
 	checkboxTheme := CheckboxThemeOf(bc)
 	defaults := newCheckboxDefaults(bc)

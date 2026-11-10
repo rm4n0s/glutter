@@ -7,6 +7,7 @@
 package material
 
 import (
+	"github.com/rm4n0s/glutter/cupertino"
 	"math"
 	"time"
 
@@ -209,11 +210,9 @@ func NewRefreshIndicator(onRefresh RefreshCallback, child widgets.Widget, opts .
 	return newRefreshIndicator(onRefresh, child, firstOpts(opts), refreshIndicatorMaterial)
 }
 
-// NewRefreshIndicatorAdaptive creates an indicator that is a Cupertino one on
-// iOS and macOS in Flutter.
-//
-// Deviation: Glutter has no Cupertino library, so the indicator is the Material
-// one on every platform (SPEC §12.10).
+// NewRefreshIndicatorAdaptive creates an indicator that shows a CupertinoActivityIndicator on iOS and macOS (the
+// Material one has the same pull and the same positions; it is not the CupertinoSliverRefreshControl, whose structure
+// differs) and the Material progress indicator on the other platforms.
 //
 // Flutter: material/refresh_indicator.dart RefreshIndicator.adaptive
 func NewRefreshIndicatorAdaptive(onRefresh RefreshCallback, child widgets.Widget, opts ...RefreshIndicatorOpts) *RefreshIndicator {
@@ -536,6 +535,9 @@ func (s *RefreshIndicatorState) Build(bc widgets.BuildContext) widgets.Widget {
 								}
 								if w.kind == refreshIndicatorNoSpinner {
 									return widgets.NewContainer(nil)
+								}
+								if w.kind == refreshIndicatorAdaptive && isCupertinoPlatform(bc) {
+									return cupertino.NewCupertinoActivityIndicator(cupertino.CupertinoActivityIndicatorOpts{Color: optColorValue(w.o.Color)})
 								}
 								return NewRefreshProgressIndicator(RefreshProgressIndicatorOpts{SemanticsLabel: label, SemanticsValue: w.o.SemanticsValue, Value: value,
 									ValueColor: s.valueColor, BackgroundColor: w.o.BackgroundColor, StrokeWidth: foundation.Some(w.o.StrokeWidth.OrElse(RefreshProgressIndicatorDefaultStrokeWidth)),

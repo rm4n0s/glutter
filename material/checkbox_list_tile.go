@@ -140,8 +140,6 @@ func NewCheckboxListTile(value foundation.Opt[bool], onChanged func(foundation.O
 // NewCheckboxListTileAdaptive creates a list tile with a checkbox that adapts to
 // the platform.
 //
-// Deviation: it is the same as NewCheckboxListTile (SPEC §12.10).
-//
 // Flutter: material/checkbox_list_tile.dart CheckboxListTile.adaptive
 func NewCheckboxListTileAdaptive(value foundation.Opt[bool], onChanged func(foundation.Opt[bool]), opts ...CheckboxListTileOpts) *CheckboxListTile {
 	return newCheckboxListTile(value, onChanged, true, opts)

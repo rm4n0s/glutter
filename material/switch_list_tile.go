@@ -105,6 +105,8 @@ type SwitchListTileOpts struct {
 	MinTileHeight foundation.Opt[float64]
 	// HoverColor is the color of the tile when a pointer hovers over it.
 	HoverColor foundation.Opt[ui.Color]
+	// ApplyCupertinoTheme is the ApplyCupertinoTheme of the switch of an adaptive tile.
+	ApplyCupertinoTheme foundation.Opt[bool]
 	// InternalAddSemanticForOnTap gives the tile the semantics of a button.
 	InternalAddSemanticForOnTap bool
 }
@@ -117,6 +119,7 @@ type SwitchListTile struct {
 	value     bool
 	onChanged func(bool)
 	o         SwitchListTileOpts
+	adaptive  bool
 }
 
 // NewSwitchListTile creates a list tile with a switch. A nil onChanged disables
@@ -140,11 +143,13 @@ func NewSwitchListTile(value bool, onChanged func(bool), opts ...SwitchListTileO
 // NewSwitchListTileAdaptive creates a list tile with a switch that adapts to the
 // platform.
 //
-// Deviation: it is the same as NewSwitchListTile (SPEC §12.10).
+// Its switch is NewSwitchAdaptive.
 //
 // Flutter: material/switch_list_tile.dart SwitchListTile.adaptive
 func NewSwitchListTileAdaptive(value bool, onChanged func(bool), opts ...SwitchListTileOpts) *SwitchListTile {
-	return NewSwitchListTile(value, onChanged, opts...)
+	w := NewSwitchListTile(value, onChanged, opts...)
+	w.adaptive = true
+	return w
 }
 
 // Build builds the tile.
@@ -152,14 +157,18 @@ func NewSwitchListTileAdaptive(value bool, onChanged func(bool), opts ...SwitchL
 // Flutter: material/switch_list_tile.dart SwitchListTile.build
 func (w *SwitchListTile) Build(bc widgets.BuildContext) widgets.Widget {
 	o := w.o
-	control := widgets.NewExcludeFocus(NewSwitch(w.value, w.onChanged, SwitchOpts{
+	newSwitch := NewSwitch
+	if w.adaptive {
+		newSwitch = NewSwitchAdaptive
+	}
+	control := widgets.NewExcludeFocus(newSwitch(w.value, w.onChanged, SwitchOpts{
 		ActiveColor: o.ActiveColor, ActiveThumbColor: o.ActiveThumbColor, ActiveThumbImage: o.ActiveThumbImage,
 		InactiveThumbImage: o.InactiveThumbImage, MaterialTapTargetSize: firstNonZero(o.MaterialTapTargetSize, MaterialTapTargetSizeShrinkWrap),
 		ActiveTrackColor: o.ActiveTrackColor, InactiveTrackColor: o.InactiveTrackColor, InactiveThumbColor: o.InactiveThumbColor,
 		Autofocus: o.Autofocus, OnFocusChange: o.OnFocusChange, OnActiveThumbImageError: o.OnActiveThumbImageError,
 		OnInactiveThumbImageError: o.OnInactiveThumbImageError, ThumbColor: o.ThumbColor, TrackColor: o.TrackColor,
 		TrackOutlineColor: o.TrackOutlineColor, ThumbIcon: o.ThumbIcon, DragStartBehavior: o.DragStartBehavior,
-		MouseCursor: o.MouseCursor, SplashRadius: o.SplashRadius, OverlayColor: o.OverlayColor,
+		MouseCursor: o.MouseCursor, SplashRadius: o.SplashRadius, OverlayColor: o.OverlayColor, ApplyCupertinoTheme: o.ApplyCupertinoTheme,
 	}))
 	listTileTheme := ListTileThemeOf(bc)
 	affinity := firstNonZero(o.ControlAffinity, listTileTheme.ControlAffinity, ListTileControlAffinityPlatform)

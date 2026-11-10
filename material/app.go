@@ -1,6 +1,7 @@
 package material
 
 import (
+	"github.com/rm4n0s/glutter/cupertino"
 	"time"
 
 	"github.com/rm4n0s/errors"
@@ -282,9 +283,9 @@ type MaterialApp struct {
 }
 
 func materialLocalizationsDelegates(user []widgets.LocalizationsDelegate) []widgets.LocalizationsDelegate {
-	out := make([]widgets.LocalizationsDelegate, 0, len(user)+1)
+	out := make([]widgets.LocalizationsDelegate, 0, len(user)+2)
 	out = append(out, user...)
-	return append(out, DefaultMaterialLocalizationsDelegate)
+	return append(out, DefaultMaterialLocalizationsDelegate, cupertino.DefaultCupertinoLocalizationsDelegate)
 }
 
 // NewMaterialApp creates an app that uses a Navigator, with the home page, the

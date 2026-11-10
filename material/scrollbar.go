@@ -7,6 +7,7 @@
 package material
 
 import (
+	"github.com/rm4n0s/glutter/cupertino"
 	"time"
 
 	"github.com/rm4n0s/glutter/animation"
@@ -63,9 +64,8 @@ type Scrollbar struct {
 
 // NewScrollbar creates a scrollbar around the child.
 //
-// Deviation: on iOS Flutter builds a CupertinoScrollbar; Glutter has no
-// Cupertino library, so the Material scrollbar is built on every platform
-// (SPEC §12.10).
+// On iOS (not on macOS, as in Flutter) it builds a CupertinoScrollbar, which has no track, no hover and no way to
+// be dragged by a mouse, and whose thickness and radius are the ones that are set, or the Cupertino defaults.
 //
 // Flutter: material/scrollbar.dart Scrollbar.new
 func NewScrollbar(child widgets.Widget, opts ...ScrollbarOpts) *Scrollbar {
@@ -83,6 +83,15 @@ func (w *Scrollbar) Child() widgets.Widget { return w.child }
 // Flutter: material/scrollbar.dart Scrollbar.build
 func (w *Scrollbar) Build(bc widgets.BuildContext) widgets.Widget {
 	o := w.o
+	if ThemeOf(bc).Platform == foundation.TargetPlatformIOS {
+		return cupertino.NewCupertinoScrollbar(w.child, cupertino.CupertinoScrollbarOpts{
+			ThumbVisibility:        foundation.Some(o.ThumbVisibility.OrElse(false)),
+			Thickness:              foundation.Some(o.Thickness.OrElse(cupertino.CupertinoScrollbarDefaultThickness)),
+			ThicknessWhileDragging: foundation.Some(o.Thickness.OrElse(cupertino.CupertinoScrollbarDefaultThicknessWhileDragging)),
+			Radius:                 foundation.Some(o.Radius.OrElse(ui.NewRadiusCircular(1.5))),
+			RadiusWhileDragging:    foundation.Some(o.Radius.OrElse(ui.NewRadiusCircular(4.0))),
+			Controller:             o.Controller, NotificationPredicate: o.NotificationPredicate, ScrollbarOrientation: o.ScrollbarOrientation})
+	}
 	return widgets.NewRawScrollbar(w.child, widgets.RawScrollbarOpts{
 		Controller:            o.Controller,
 		ThumbVisibility:       o.ThumbVisibility,

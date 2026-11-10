@@ -7,6 +7,7 @@
 package material
 
 import (
+	"github.com/rm4n0s/glutter/cupertino"
 	"math"
 	"time"
 
@@ -78,6 +79,10 @@ type SwitchOpts struct {
 	OnFocusChange func(focused bool)
 	// Autofocus asks for the focus when the switch is built.
 	Autofocus bool
+	// ApplyCupertinoTheme makes the CupertinoSwitch look of an adaptive switch on iOS and macOS use the primary color of
+	// the Cupertino theme for its track (the default is the ApplyThemeToAll of the CupertinoOverrideTheme of the theme,
+	// or false). It is ignored by the Material look.
+	ApplyCupertinoTheme foundation.Opt[bool]
 	// Padding is the padding around the switch.
 	Padding painting.EdgeInsetsGeometry
 }
@@ -86,16 +91,13 @@ type SwitchOpts struct {
 // on or off. It does not keep its own value: the widget calls OnChanged and shows
 // the value that it gets.
 //
-// Deviation: the adaptive constructor builds the Material switch on iOS and macOS
-// too, and the thumb images work with the Material look only; there is no
-// Cupertino library (SPEC §12.10).
-//
 // Flutter: material/switch.dart Switch
 type Switch struct {
 	widgets.StatelessWidget
 	value     bool
 	onChanged func(value bool)
 	o         SwitchOpts
+	adaptive  bool
 }
 
 // NewSwitch creates the widget. A nil onChanged disables the switch. In debug
@@ -112,13 +114,15 @@ func NewSwitch(value bool, onChanged func(value bool), opts ...SwitchOpts) *Swit
 	return &Switch{StatelessWidget: widgets.NewStatelessWidgetBase(widgets.WidgetOpts{Key: o.Key}), value: value, onChanged: onChanged, o: o}
 }
 
-// NewSwitchAdaptive creates a switch that adapts to the platform.
-//
-// Deviation: it is the same as NewSwitch (SPEC §12.10).
+// NewSwitchAdaptive creates a switch that adapts to the platform: on iOS and macOS it has the look of a CupertinoSwitch
+// (the green track, the white thumb that grows while it is pressed, its shadow, the focus outline; ActiveColor is the
+// color of its track, and the switch theme does not apply to it), and on the other platforms the Material one.
 //
 // Flutter: material/switch.dart Switch.adaptive
 func NewSwitchAdaptive(value bool, onChanged func(value bool), opts ...SwitchOpts) *Switch {
-	return NewSwitch(value, onChanged, opts...)
+	w := NewSwitch(value, onChanged, opts...)
+	w.adaptive = true
+	return w
 }
 
 // Value is whether the switch is on.
@@ -134,6 +138,10 @@ func (w *Switch) OnChanged() func(value bool) { return w.onChanged }
 func (w *Switch) switchSize(bc widgets.BuildContext) ui.Size {
 	theme := ThemeOf(bc)
 	switchTheme := SwitchThemeOf(bc)
+	if w.adaptive && isCupertinoPlatform(bc) {
+		// The adaptation of the switch theme (_SwitchThemeAdaptation) gives iOS and macOS an empty theme.
+		switchTheme = SwitchThemeData{}
+	}
 	defaults := newSwitchDefaults(bc)
 	config := newSwitchConfig(bc)
 	tapTarget := w.o.MaterialTapTargetSize
@@ -161,11 +169,18 @@ func (w *Switch) switchSize(bc widgets.BuildContext) ui.Size {
 //
 // Flutter: material/switch.dart Switch.build
 func (w *Switch) Build(bc widgets.BuildContext) widgets.Widget {
+	// An adaptive switch gives ActiveColor to the thumb on the Material platforms and to the track on iOS and macOS.
+	effectiveActiveThumbColor, effectiveActiveTrackColor := w.o.ActiveColor, foundation.None[ui.Color]()
+	if w.adaptive && isCupertinoPlatform(bc) {
+		effectiveActiveThumbColor, effectiveActiveTrackColor = foundation.None[ui.Color](), w.o.ActiveColor
+	}
 	return &materialSwitch{
 		StatefulWidget: widgets.NewStatefulWidgetBase(),
 		value:          w.value, onChanged: w.onChanged, size: w.switchSize(bc),
 		o:                w.o,
-		activeThumbColor: firstOptColor(w.o.ActiveThumbColor, w.o.ActiveColor),
+		adaptive:         w.adaptive,
+		activeThumbColor: firstOptColor(w.o.ActiveThumbColor, effectiveActiveThumbColor),
+		activeTrackColor: firstOptColor(w.o.ActiveTrackColor, effectiveActiveTrackColor),
 	}
 }
 
@@ -190,7 +205,9 @@ type materialSwitch struct {
 	onChanged        func(value bool)
 	size             ui.Size
 	o                SwitchOpts
+	adaptive         bool
 	activeThumbColor foundation.Opt[ui.Color]
+	activeTrackColor foundation.Opt[ui.Color]
 }
 
 func (w *materialSwitch) CreateState() widgets.State { return &materialSwitchState{} }
@@ -212,7 +229,12 @@ func (s *materialSwitchState) DidUpdateWidget(old *materialSwitch) {
 	if old.value != s.Widget().value {
 		position := s.Position()
 		if position.Value() == 0.0 || position.Value() == 1.0 {
-			s.updateCurve()
+			if s.isCupertino() {
+				position.Curve = animation.Curves.Linear
+				position.ReverseCurve = animation.Curves.Linear
+			} else {
+				s.updateCurve()
+			}
 		}
 		s.AnimateToValue()
 	}
@@ -233,6 +255,11 @@ func (s *materialSwitchState) ToggleableValue() foundation.Opt[bool] {
 	return foundation.Some(s.Widget().value)
 }
 func (s *materialSwitchState) ToggleableTristate() bool { return false }
+
+// isCupertino is whether the switch is an adaptive one on iOS or macOS, which has the look of the CupertinoSwitch.
+func (s *materialSwitchState) isCupertino() bool {
+	return s.Widget().adaptive && isCupertinoPlatform(s.Context())
+}
 
 func (s *materialSwitchState) updateCurve() {
 	position := s.Position()
@@ -262,7 +289,7 @@ func (s *materialSwitchState) widgetTrackColor() widgets.WidgetStateProperty[fou
 	return widgets.WidgetStatePropertyResolveWith(func(states widgets.WidgetStates) foundation.Opt[ui.Color] {
 		w := s.Widget()
 		if states.Has(widgets.WidgetStateSelected) {
-			return w.o.ActiveTrackColor
+			return w.activeTrackColor
 		}
 		return w.o.InactiveTrackColor
 	})
@@ -270,6 +297,9 @@ func (s *materialSwitchState) widgetTrackColor() widgets.WidgetStateProperty[fou
 
 func (s *materialSwitchState) trackInnerLength() float64 {
 	config := newSwitchConfig(s.Context())
+	if s.isCupertino() {
+		config = newSwitchConfigCupertino(s.Context())
+	}
 	trackInnerStart := config.trackHeight / 2.0
 	trackInnerEnd := config.trackWidth - trackInnerStart
 	return trackInnerEnd - trackInnerStart
@@ -327,6 +357,22 @@ func (s *materialSwitchState) Build(bc widgets.BuildContext) widgets.Widget {
 	switchTheme := SwitchThemeOf(bc)
 	switchConfig := newSwitchConfig(bc)
 	defaults := newSwitchDefaults(bc)
+	isCupertino := s.isCupertino()
+	applyCupertinoTheme := false
+	disabledOpacity := 1.0
+	cupertinoPrimaryColor := theme.ColorScheme.Primary()
+	if override := theme.CupertinoOverrideTheme; override != nil && override.PrimaryColor() != nil {
+		cupertinoPrimaryColor = cupertino.CupertinoDynamicColorResolve(override.PrimaryColor(), bc)
+	}
+	if isCupertino {
+		// The adaptation of the switch theme gives iOS and macOS an empty theme.
+		switchTheme = SwitchThemeData{}
+		applyCupertinoTheme = w.o.ApplyCupertinoTheme.OrElse(theme.CupertinoOverrideTheme != nil && theme.CupertinoOverrideTheme.ApplyThemeToAll().OrElse(false))
+		disabledOpacity = 0.5
+		switchConfig = newSwitchConfigCupertino(bc)
+		defaults = newSwitchDefaultsCupertino(bc)
+		s.ReactionController().Duration = foundation.Some(200 * time.Millisecond)
+	}
 	s.PositionController().Duration = foundation.Some(time.Duration(switchConfig.toggleDuration) * time.Millisecond)
 
 	states := s.States()
@@ -342,8 +388,12 @@ func (s *materialSwitchState) Build(bc widgets.BuildContext) widgets.Widget {
 	effectiveInactiveThumbColor := inactiveThumbColor.OrElse(defaults.thumbColor(inactiveStates))
 
 	var effectiveActiveTrackColor ui.Color
+	themeTrackColor := optColorOf(switchTheme.TrackColor, activeStates)
+	if applyCupertinoTheme {
+		themeTrackColor = foundation.Some(cupertinoPrimaryColor)
+	}
 	if c, ok := firstOptColor(optColorOf(w.o.TrackColor, activeStates), s.widgetTrackColor().Resolve(activeStates),
-		optColorOf(switchTheme.TrackColor, activeStates)).Get(); ok {
+		themeTrackColor).Get(); ok {
 		effectiveActiveTrackColor = c
 	} else if c, ok := s.widgetThumbColor().Resolve(activeStates).Get(); ok {
 		effectiveActiveTrackColor = c.WithAlpha(0x80)
@@ -387,8 +437,12 @@ func (s *materialSwitchState) Build(bc widgets.BuildContext) widgets.Widget {
 	}
 
 	focusedStates := states.With(widgets.WidgetStateFocused)
+	var cupertinoFocusColor foundation.Opt[ui.Color]
+	if applyCupertinoTheme {
+		cupertinoFocusColor = foundation.Some(painting.NewHSLColorFromColor(cupertinoPrimaryColor.WithOpacity(0.80)).WithLightness(0.69).WithSaturation(0.835).ToColor())
+	}
 	effectiveFocusOverlayColor := firstOptColor(optColorOf(w.o.OverlayColor, focusedStates), w.o.FocusColor,
-		optColorOf(switchTheme.OverlayColor, focusedStates), defaults.overlayColor(focusedStates))
+		optColorOf(switchTheme.OverlayColor, focusedStates), cupertinoFocusColor, defaults.overlayColor(focusedStates))
 	hoveredStates := states.With(widgets.WidgetStateHovered)
 	effectiveHoverOverlayColor := firstOptColor(optColorOf(w.o.OverlayColor, hoveredStates), w.o.HoverColor,
 		optColorOf(switchTheme.OverlayColor, hoveredStates), defaults.overlayColor(hoveredStates))
@@ -426,6 +480,10 @@ func (s *materialSwitchState) Build(bc widgets.BuildContext) widgets.Widget {
 			if c := switchTheme.MouseCursor.Resolve(st); c != nil {
 				return c
 			}
+		}
+		if defaults.basicCursor {
+			// The default of the Cupertino look is the basic cursor, as there is no web here.
+			return services.SystemMouseCursors.Basic
 		}
 		return widgets.WidgetStateMouseCursorClickable.Resolve(st)
 	})
@@ -493,10 +551,10 @@ func (s *materialSwitchState) Build(bc widgets.BuildContext) widgets.Widget {
 		iconTheme:                 iconTheme,
 		thumbShadow:               switchConfig.thumbShadow,
 		transitionalThumbSize:     switchConfig.transitionalThumbSize,
+		isCupertino:               isCupertino,
 	})
 	p.setPositionController(s.PositionController())
 
-	disabledOpacity := 1.0
 	var opacity float64 = 1
 	if w.onChanged == nil {
 		opacity = disabledOpacity
@@ -550,6 +608,7 @@ type switchPainterValues struct {
 	iconTheme                 widgets.IconThemeData
 	thumbShadow               []painting.BoxShadow
 	transitionalThumbSize     ui.Size
+	isCupertino               bool
 }
 
 // switchPainter paints the track, the thumb and the icon of a Switch.
@@ -572,6 +631,7 @@ type switchPainter struct {
 	stopPressAnimation         bool
 	pressedInactiveThumbRadius foundation.Opt[float64]
 	pressedActiveThumbRadius   foundation.Opt[float64]
+	pressedThumbExtension      float64
 }
 
 // iconEqual says whether two icons are the same widget for the painter.
@@ -595,7 +655,7 @@ func switchPainterValuesEqual(a, b switchPainterValues) bool {
 		a.trackHeight == b.trackHeight && a.trackWidth == b.trackWidth &&
 		a.activeIconColor == b.activeIconColor && a.inactiveIconColor == b.inactiveIconColor &&
 		a.activeIcon == b.activeIcon && a.inactiveIcon == b.inactiveIcon && a.iconTheme.Equal(b.iconTheme) &&
-		foundation.ValuesEqual(a.thumbShadow, b.thumbShadow) && a.transitionalThumbSize == b.transitionalThumbSize
+		foundation.ValuesEqual(a.thumbShadow, b.thumbShadow) && a.transitionalThumbSize == b.transitionalThumbSize && a.isCupertino == b.isCupertino
 }
 
 func (p *switchPainter) setPositionController(c *animation.AnimationController) {
@@ -615,8 +675,12 @@ func (p *switchPainter) createDefaultThumbDecoration(color ui.Color, image paint
 	if image != nil {
 		source = painting.NewDecorationImage(image, painting.DecorationImageOpts{OnError: onError})
 	}
+	shadows := p.v.thumbShadow
+	if p.v.isCupertino {
+		shadows = nil
+	}
 	return painting.NewShapeDecoration(painting.NewStadiumBorder(), painting.ShapeDecorationOpts{
-		Color: foundation.Some(color), Image: source, Shadows: p.v.thumbShadow})
+		Color: foundation.Some(color), Image: source, Shadows: shadows})
 }
 
 func (p *switchPainter) handleDecorationChanged() {
@@ -641,6 +705,10 @@ func (p *switchPainter) Paint(canvas *ui.Canvas, size ui.Size) {
 	p.stopPressAnimation = reaction.Status() == animation.AnimationStatusReverse && !p.stopPressAnimation
 
 	if !p.stopPressAnimation {
+		p.pressedThumbExtension = 0
+		if v.isCupertino {
+			p.pressedThumbExtension = reaction.Value() * 7
+		}
 		if reaction.Status() == animation.AnimationStatusCompleted {
 			p.pressedInactiveThumbRadius = foundation.Some(ui.LerpDouble(v.inactiveThumbRadius, v.pressedThumbRadius, reaction.Value()))
 			p.pressedActiveThumbRadius = foundation.Some(ui.LerpDouble(v.activeThumbRadius, v.pressedThumbRadius, reaction.Value()))
@@ -656,6 +724,10 @@ func (p *switchPainter) Paint(canvas *ui.Canvas, size ui.Size) {
 	}
 	radius := func(r foundation.Opt[float64], def float64) ui.Size {
 		x := r.OrElse(def)
+		if v.isCupertino {
+			// The thumb of the Cupertino look stretches while it is pressed.
+			return ui.Size{Width: x*2 + p.pressedThumbExtension, Height: x * 2}
+		}
 		return ui.Size{Width: x * 2, Height: x * 2}
 	}
 	inactiveThumbSize := radius(p.pressedInactiveThumbRadius, v.inactiveThumbRadius)
@@ -680,7 +752,16 @@ func (p *switchPainter) Paint(canvas *ui.Canvas, size ui.Size) {
 	}
 
 	var thumbSize ui.Size
-	if reaction.Status() == animation.AnimationStatusCompleted {
+	if v.isCupertino {
+		if reaction.Status() == animation.AnimationStatusCompleted {
+			r := p.pressedInactiveThumbRadius.OrElse(v.inactiveThumbRadius)
+			thumbSize = ui.Size{Width: r*2 + p.pressedThumbExtension, Height: r * 2}
+		} else {
+			t := position.Value()
+			thumbSize = ui.Size{Width: inactiveThumbSize.Width + (activeThumbSize.Width-inactiveThumbSize.Width)*t,
+				Height: inactiveThumbSize.Height + (activeThumbSize.Height-inactiveThumbSize.Height)*t}
+		}
+	} else if reaction.Status() == animation.AnimationStatusCompleted {
 		thumbSize = ui.Size{Width: v.pressedThumbRadius * 2, Height: v.pressedThumbRadius * 2}
 	} else if position.Status() == animation.AnimationStatusDismissed || position.Status() == animation.AnimationStatusForward {
 		thumbSize = thumbSizeAnimation(true)
@@ -736,8 +817,8 @@ func (p *switchPainter) Paint(canvas *ui.Canvas, size ui.Size) {
 func (p *switchPainter) computeThumbPaintOffset(trackPaintOffset ui.Offset, thumbSize ui.Size, visualPosition float64) ui.Offset {
 	trackRadius := p.v.trackHeight / 2
 	additionalThumbRadius := thumbSize.Height/2 - trackRadius
-	horizontalProgress := visualPosition * p.v.trackInnerLength
-	thumbHorizontalOffset := trackPaintOffset.Dx + trackRadius - thumbSize.Width/2 + horizontalProgress
+	horizontalProgress := visualPosition * (p.v.trackInnerLength - p.pressedThumbExtension)
+	thumbHorizontalOffset := trackPaintOffset.Dx + trackRadius + p.pressedThumbExtension/2 - thumbSize.Width/2 + horizontalProgress
 	thumbVerticalOffset := trackPaintOffset.Dy - additionalThumbRadius
 	return ui.Offset{Dx: thumbHorizontalOffset, Dy: thumbVerticalOffset}
 }
@@ -756,6 +837,33 @@ func (p *switchPainter) paintTrackWith(canvas *ui.Canvas, paint *ui.Paint, track
 		outlinePaint.SetColor(c)
 		canvas.DrawRRect(ui.NewRRectFromRectAndRadius(outlineRect, ui.NewRadiusCircular(trackRadius)), outlinePaint)
 	}
+
+	if v.isCupertino {
+		trackRRect := ui.NewRRectFromRectAndRadius(trackRect, ui.NewRadiusCircular(trackRadius))
+		if p.IsFocused() {
+			focusPaint := ui.NewPaint()
+			focusPaint.SetStyle(ui.PaintingStyleStroke)
+			focusPaint.SetColor(p.FocusColor())
+			focusPaint.SetStrokeWidth(switchCupertinoFocusTrackOutline)
+			canvas.DrawRRect(trackRRect.Inflate(1.75), focusPaint)
+		}
+		// What follows (the reaction and the thumb) stays inside the track.
+		canvas.ClipRRect(trackRRect)
+	}
+}
+
+// paintCupertinoThumbShadowAndBorder paints the shadow and the faint border of the thumb of the Cupertino look.
+//
+// Flutter: material/switch.dart _SwitchPainter._paintCupertinoThumbShadowAndBorder
+func (p *switchPainter) paintCupertinoThumbShadowAndBorder(canvas *ui.Canvas, thumbPaintOffset ui.Offset, thumbSize ui.Size) {
+	bounds := ui.NewRRectFromLTRBR(thumbPaintOffset.Dx, thumbPaintOffset.Dy, thumbPaintOffset.Dx+thumbSize.Width, thumbPaintOffset.Dy+thumbSize.Height,
+		ui.NewRadiusCircular(thumbSize.Height/2.0))
+	for _, shadow := range p.v.thumbShadow {
+		canvas.DrawRRect(bounds.Shift(shadow.Offset), shadow.ToPaint())
+	}
+	border := ui.NewPaint()
+	border.SetColor(ui.NewColor(0x0A000000))
+	canvas.DrawRRect(bounds.Inflate(0.5), border)
 }
 
 func (p *switchPainter) paintThumbWith(thumbPaintOffset ui.Offset, canvas *ui.Canvas, currentValue float64, thumbColor ui.Color,
@@ -771,6 +879,9 @@ func (p *switchPainter) paintThumbWith(thumbPaintOffset ui.Offset, canvas *ui.Ca
 			p.cachedThumbPainter.Dispose()
 		}
 		p.cachedThumbPainter = p.createDefaultThumbDecoration(thumbColor, thumbImage, thumbErrorListener).CreateBoxPainter(p.handleDecorationChanged)
+	}
+	if v.isCupertino {
+		p.paintCupertinoThumbShadowAndBorder(canvas, thumbPaintOffset, thumbSize)
 	}
 	p.cachedThumbPainter.Paint(canvas, thumbPaintOffset, v.configuration.CopyWith(painting.ImageConfigurationCopy{Size: foundation.Some(thumbSize)}))
 
@@ -888,6 +999,67 @@ func newSwitchConfig(bc widgets.BuildContext) switchConfig {
 	return c
 }
 
+// switchCupertinoFocusTrackOutline is the width of the outline of the track of a focused Cupertino switch.
+//
+// Flutter: material/switch.dart _kCupertinoFocusTrackOutline
+const switchCupertinoFocusTrackOutline = 3.5
+
+// newSwitchConfigCupertino is the measures and the animation of the Cupertino look of a Switch.
+//
+// Flutter: material/switch.dart _SwitchConfigCupertino
+func newSwitchConfigCupertino(bc widgets.BuildContext) switchConfig {
+	colors := ThemeOf(bc).ColorScheme
+	c := switchConfig{
+		activeThumbRadius: 14.0, inactiveThumbRadius: 14.0, pressedThumbRadius: 14.0, thumbRadiusWithIcon: 14.0,
+		thumbShadow: []painting.BoxShadow{
+			{Color: ui.NewColor(0x26000000), Offset: ui.Offset{Dy: 3}, BlurRadius: 8.0},
+			{Color: ui.NewColor(0x0F000000), Offset: ui.Offset{Dy: 3}, BlurRadius: 1.0}},
+		trackHeight: 31.0, trackWidth: 51.0, switchWidth: 60.0,
+		// The thumb size at the middle of the track: hand coded from the animation specs.
+		transitionalThumbSize: ui.Size{Width: 28, Height: 28},
+		// Hand coded by comparing with CupertinoSwitch.
+		toggleDuration: 140,
+		switchMinSize:  ui.Size{Width: MinInteractiveDimension - 8.0, Height: MinInteractiveDimension - 8.0},
+	}
+	c.switchHeight = c.switchMinSize.Height + 8.0
+	c.switchHeightCollapsed = c.switchMinSize.Height
+	c.iconColor = func(s widgets.WidgetStates) ui.Color {
+		if s.Has(widgets.WidgetStateDisabled) {
+			return colors.OnSurface().WithOpacity(0.38)
+		}
+		return colors.OnPrimaryContainer()
+	}
+	return c
+}
+
+// newSwitchDefaultsCupertino are the default values of the Cupertino look of a Switch.
+//
+// Flutter: material/switch.dart _SwitchDefaultsCupertino
+func newSwitchDefaultsCupertino(bc widgets.BuildContext) switchDefaults {
+	transparent := foundation.Some(ui.NewColor(0x00000000))
+	green := cupertino.CupertinoDynamicColorResolve(cupertino.CupertinoColors.SystemGreen, bc)
+	return switchDefaults{
+		thumbColor: func(widgets.WidgetStates) ui.Color { return Colors.White },
+		trackColor: func(s widgets.WidgetStates) ui.Color {
+			if s.Has(widgets.WidgetStateSelected) {
+				return green
+			}
+			return cupertino.CupertinoDynamicColorResolve(cupertino.CupertinoColors.SecondarySystemFill, bc)
+		},
+		trackOutlineColor: func(widgets.WidgetStates) foundation.Opt[ui.Color] { return transparent },
+		trackOutlineWidth: func(widgets.WidgetStates) foundation.Opt[float64] { return foundation.None[float64]() },
+		overlayColor: func(s widgets.WidgetStates) foundation.Opt[ui.Color] {
+			if s.Has(widgets.WidgetStateFocused) {
+				return foundation.Some(painting.NewHSLColorFromColor(green.WithOpacity(0.80)).WithLightness(0.69).WithSaturation(0.835).ToColor())
+			}
+			return transparent
+		},
+		splashRadius: 0.0,
+		basicCursor:  true,
+		padding:      painting.EdgeInsetsZero,
+	}
+}
+
 // switchDefaults are the default values of a Switch.
 //
 // Flutter: material/switch.dart _SwitchDefaultsM2, _SwitchDefaultsM3
@@ -899,6 +1071,8 @@ type switchDefaults struct {
 	overlayColor      func(states widgets.WidgetStates) foundation.Opt[ui.Color]
 	splashRadius      float64
 	padding           painting.EdgeInsetsGeometry
+	// basicCursor makes the default cursor the basic one, where the Material looks have the clickable one.
+	basicCursor bool
 }
 
 func newSwitchDefaults(bc widgets.BuildContext) switchDefaults {

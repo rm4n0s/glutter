@@ -7,6 +7,7 @@
 package material
 
 import (
+	"github.com/rm4n0s/glutter/cupertino"
 	"math"
 	"time"
 
@@ -32,11 +33,8 @@ const (
 	// textSelectionToolbarScreenPadding is the minimum space between the toolbar
 	// and the edges of the screen.
 	//
-	// Deviation: Flutter reads CupertinoTextSelectionToolbar.kToolbarScreenPadding,
-	// which has the same value; there is no Cupertino library (SPEC §12.10).
-	//
 	// Flutter: cupertino/text_selection_toolbar.dart CupertinoTextSelectionToolbar.kToolbarScreenPadding
-	textSelectionToolbarScreenPadding = 8.0
+	textSelectionToolbarScreenPadding = cupertino.CupertinoTextSelectionToolbarScreenPadding
 	// textSelectionToolbarOverflowDuration is the duration of the change of the
 	// size of the toolbar when the overflow menu opens or closes. It was eyeballed
 	// on a Pixel 2 emulator running Android API 28.

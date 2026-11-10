@@ -25,7 +25,7 @@ func buildDialogsPage(bc m.BuildContext) m.Widget {
 const devOpenDelay = 400 * time.Millisecond
 
 // devOpen is the dialog that GLUTTER_DEV_OPEN asks to open, in a debug build:
-// alert, simple, fullscreen, datepicker, daterange, datepickerinput,
+// alert, simple, fullscreen, adaptive, datepicker, daterange, datepickerinput,
 // timepicker or timepickerinput.
 func devOpen(getenv func(string) string) string {
 	if !foundation.DebugMode {
@@ -76,6 +76,8 @@ func (s *dialogDemosState) InitState() {
 		open = s.showSimple
 	case "fullscreen":
 		open = s.showFullscreen
+	case "adaptive":
+		open = s.showAdaptive
 	default:
 		return
 	}
@@ -101,6 +103,21 @@ func (s *dialogDemosState) showAlert() {
 		})
 	})
 	awaitResult(s.Context(), s.Mounted, ch, func(v string) { s.setResult("AlertDialog: " + orNone(v)) })
+}
+
+// showAdaptive shows an adaptive alert dialog: a Material one, and a Cupertino one on iOS and macOS.
+func (s *dialogDemosState) showAdaptive() {
+	ch := m.ShowAdaptiveDialog[string](s.Context(), func(bc m.BuildContext) m.Widget {
+		return m.NewAlertDialogAdaptive(m.AlertDialogOpts{
+			Title:   m.NewText("Allow notifications?"),
+			Content: m.NewText("The dialog follows the platform of the theme."),
+			Actions: []m.Widget{
+				m.NewTextButton(func() { m.NavigatorPop(bc, "Don't allow") }, m.NewText("Don't allow")),
+				m.NewTextButton(func() { m.NavigatorPop(bc, "Allow") }, m.NewText("Allow")),
+			},
+		})
+	})
+	awaitResult(s.Context(), s.Mounted, ch, func(v string) { s.setResult("Adaptive: " + orNone(v)) })
 }
 
 func (s *dialogDemosState) showSimple() {
@@ -141,6 +158,7 @@ func (s *dialogDemosState) Build(bc m.BuildContext) m.Widget {
 			demoButton(bc, "AlertDialog", s.showAlert),
 			demoButton(bc, "SimpleDialog", s.showSimple),
 			demoButton(bc, "Fullscreen", s.showFullscreen),
+			demoButton(bc, "Adaptive", s.showAdaptive),
 		}, m.WrapOpts{Spacing: 8, RunSpacing: 8}),
 		m.NewSizedBox(nil, m.SizedBoxOpts{Height: m.Some(12.0)}),
 		m.NewText("Result: "+s.result, m.TextOpts{Style: m.ThemeOf(bc).TextTheme.BodyMedium}),

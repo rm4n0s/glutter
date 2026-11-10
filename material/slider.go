@@ -14,6 +14,7 @@ import (
 
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/animation"
+	"github.com/rm4n0s/glutter/cupertino"
 	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/gestures"
 	"github.com/rm4n0s/glutter/painting"
@@ -88,15 +89,13 @@ type SliderOpts struct {
 // values by moving a thumb along a track. It does not keep its own value: the
 // widget calls OnChanged and shows the value that it gets.
 //
-// Deviation: the adaptive constructor builds the Material slider on iOS and macOS
-// too, as there is no Cupertino library (SPEC §12.10).
-//
 // Flutter: material/slider.dart Slider
 type Slider struct {
 	widgets.StatefulWidget
 	value     float64
 	onChanged func(value float64)
 	o         SliderOpts
+	adaptive  bool
 }
 
 // NewSlider creates the widget. A nil onChanged disables the slider. In debug
@@ -123,15 +122,17 @@ func NewSlider(value float64, onChanged func(value float64), opts ...SliderOpts)
 	return &Slider{StatefulWidget: widgets.NewStatefulWidgetBase(widgets.WidgetOpts{Key: o.Key}), value: value, onChanged: onChanged, o: o}
 }
 
-// NewSliderAdaptive creates a slider that adapts to the platform.
-//
-// Deviation: it is the same as NewSlider (SPEC §12.10).
+// NewSliderAdaptive creates a slider that adapts to the platform: on iOS and macOS it builds a CupertinoSlider (with
+// a white thumb unless ThumbColor is set; it ignores the parameters that only the Material slider has), and on the
+// other platforms the Material one.
 //
 // Flutter: material/slider.dart Slider.adaptive
 func NewSliderAdaptive(value float64, onChanged func(value float64), opts ...SliderOpts) *Slider {
 	o := firstOpts(opts)
 	o.Padding = nil
-	return NewSlider(value, onChanged, o)
+	w := NewSlider(value, onChanged, o)
+	w.adaptive = true
+	return w
 }
 
 // Value is the currently selected value.
@@ -405,7 +406,25 @@ func (s *sliderState) unlerp(value float64) float64 {
 func (s *sliderState) Build(bc widgets.BuildContext) widgets.Widget {
 	DebugCheckHasMaterial(bc)
 	widgets.DebugCheckHasMediaQuery(bc)
+	if s.Widget().adaptive && isCupertinoPlatform(bc) {
+		return s.buildCupertinoSlider()
+	}
 	return s.buildMaterialSlider(bc)
+}
+
+// buildCupertinoSlider builds the CupertinoSlider of an adaptive slider on iOS and macOS. The render box of a slider has a
+// fixed height but takes up the available width, so the CupertinoSlider is wrapped to keep the same size.
+//
+// Flutter: material/slider.dart _SliderState._buildCupertinoSlider
+func (s *sliderState) buildCupertinoSlider() widgets.Widget {
+	w := s.Widget()
+	var thumb ui.ColorValue = cupertino.CupertinoColors.White
+	if c, ok := w.o.ThumbColor.Get(); ok {
+		thumb = c
+	}
+	return widgets.NewSizedBox(cupertino.NewCupertinoSlider(w.value, w.onChanged, cupertino.CupertinoSliderOpts{
+		OnChangeStart: w.o.OnChangeStart, OnChangeEnd: w.o.OnChangeEnd, Min: w.o.Min, Max: w.o.Max, Divisions: w.o.Divisions,
+		ActiveColor: optColorValue(w.o.ActiveColor), ThumbColor: thumb}), widgets.SizedBoxOpts{Width: foundation.Some(math.Inf(1))})
 }
 
 func (s *sliderState) buildMaterialSlider(bc widgets.BuildContext) widgets.Widget {

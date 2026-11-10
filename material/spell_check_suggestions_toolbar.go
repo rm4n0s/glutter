@@ -58,8 +58,8 @@ const (
 // spell check suggestions for a misspelled word, and a delete button, as the
 // Android toolbar of the system does.
 //
-// Deviation: it is also the toolbar of iOS and macOS, as there is no Cupertino
-// library (SPEC §12.10).
+// It is the toolbar of the platforms other than iOS and macOS, which get the
+// CupertinoSpellCheckSuggestionsToolbar.
 //
 // Flutter: material/spell_check_suggestions_toolbar.dart SpellCheckSuggestionsToolbar
 type SpellCheckSuggestionsToolbar struct {

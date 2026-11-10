@@ -8,6 +8,7 @@ package material_test
 
 import (
 	"context"
+	"github.com/rm4n0s/glutter/cupertino"
 	"reflect"
 	"slices"
 	"testing"
@@ -28,9 +29,8 @@ import (
 // Material toolbar, and the two cases of material/text_field_test.dart about the
 // defaults of the spell check of a TextField. The offsets of the spans are UTF-8
 // bytes (SPEC §12.10). The cases that run with Cupertino in Flutter (iOS) run with
-// the Material toolbar here, as there is no Cupertino library. Not ported: 'replacing
-// puts cursor at the end of the word' and the cases about 'No Replacements Found',
-// which are about the Cupertino toolbar (CupertinoSpellCheckSuggestionsToolbar).
+// the Material toolbar here, as they use the toolbar through the EditableText with the
+// Material builder; the Cupertino toolbar has its own tests in package cupertino.
 
 const (
 	// Vertical position at which to anchor the toolbar for testing.
@@ -538,9 +538,8 @@ func TestEditableTextMisspelledSelectionColor(t *testing.T) {
 }
 
 func TestTextFieldBuildsTheDefaultSpellCheckToolbarOfThePlatform(t *testing.T) {
-	// Flutter builds a CupertinoSpellCheckSuggestionsToolbar on iOS and macOS; here
-	// every platform builds the Material one.
-	for _, platform := range []foundation.TargetPlatform{foundation.TargetPlatformAndroid, foundation.TargetPlatformIOS, foundation.TargetPlatformLinux} {
+	// iOS and macOS build a CupertinoSpellCheckSuggestionsToolbar, the others the Material one.
+	for _, platform := range []foundation.TargetPlatform{foundation.TargetPlatformAndroid, foundation.TargetPlatformIOS, foundation.TargetPlatformMacOS, foundation.TargetPlatformLinux} {
 		t.Run(platform.String(), func(t *testing.T) {
 			withPlatform(t, platform)
 			ts := newToolbarTester(t)
@@ -554,8 +553,13 @@ func TestTextFieldBuildsTheDefaultSpellCheckToolbarOfThePlatform(t *testing.T) {
 			ts.Pump()
 			state := editableState(ts)
 			state.SetSpellCheckResults(&services.SpellCheckResults{SpellCheckedText: "", SuggestionSpans: []services.SuggestionSpan{span(0, 0, "something")}})
-			if _, ok := TextFieldDefaultSpellCheckSuggestionsToolbarBuilder(builderContext, state).(*SpellCheckSuggestionsToolbar); !ok {
-				t.Errorf("the toolbar is a %T, want *SpellCheckSuggestionsToolbar", TextFieldDefaultSpellCheckSuggestionsToolbarBuilder(builderContext, state))
+			built := TextFieldDefaultSpellCheckSuggestionsToolbarBuilder(builderContext, state)
+			if platform == foundation.TargetPlatformIOS || platform == foundation.TargetPlatformMacOS {
+				if _, ok := built.(*cupertino.CupertinoSpellCheckSuggestionsToolbar); !ok {
+					t.Errorf("the toolbar is a %T, want *cupertino.CupertinoSpellCheckSuggestionsToolbar", built)
+				}
+			} else if _, ok := built.(*SpellCheckSuggestionsToolbar); !ok {
+				t.Errorf("the toolbar is a %T, want *SpellCheckSuggestionsToolbar", built)
 			}
 		})
 	}
@@ -566,12 +570,14 @@ func TestTextFieldBuildsTheDefaultSpellCheckConfiguration(t *testing.T) {
 		name         string
 		platform     foundation.TargetPlatform
 		spellChecker bool
+		cupertino    bool
 	}{
 		// The default service is the platform's spell checker, on Android.
-		{"Android with the default service", foundation.TargetPlatformAndroid, true},
+		{"Android with the default service", foundation.TargetPlatformAndroid, true, false},
 		// Elsewhere the field needs a service of its own.
-		{"iOS with a service", foundation.TargetPlatformIOS, false},
-		{"Linux with a service", foundation.TargetPlatformLinux, false},
+		{"iOS with a service", foundation.TargetPlatformIOS, false, true},
+		{"macOS with a service", foundation.TargetPlatformMacOS, false, true},
+		{"Linux with a service", foundation.TargetPlatformLinux, false, false},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -590,11 +596,17 @@ func TestTextFieldBuildsTheDefaultSpellCheckConfiguration(t *testing.T) {
 			if !config.SpellCheckEnabled() {
 				t.Fatal("spell check is disabled")
 			}
-			if !config.MisspelledTextStyle().Equal(TextFieldMaterialMisspelledTextStyle) {
-				t.Errorf("misspelled text style = %v, want the Material one", config.MisspelledTextStyle())
-			}
-			if config.MisspelledSelectionColor().IsSome() {
+			wantStyle, wantBuilder := TextFieldMaterialMisspelledTextStyle, TextFieldDefaultSpellCheckSuggestionsToolbarBuilder
+			if tc.cupertino {
+				wantStyle = cupertino.CupertinoTextFieldMisspelledTextStyle
+				if c, ok := config.MisspelledSelectionColor().Get(); !ok || c != cupertino.CupertinoTextFieldMisspelledSelectionColor {
+					t.Errorf("misspelled selection color = %v, want the Cupertino one", config.MisspelledSelectionColor())
+				}
+			} else if config.MisspelledSelectionColor().IsSome() {
 				t.Errorf("misspelled selection color = %v, want none", config.MisspelledSelectionColor())
+			}
+			if !config.MisspelledTextStyle().Equal(wantStyle) {
+				t.Errorf("misspelled text style = %v, want %v", config.MisspelledTextStyle(), wantStyle)
 			}
 			if tc.spellChecker {
 				if _, ok := config.SpellCheckService().(*services.DefaultSpellCheckService); !ok {
@@ -604,7 +616,10 @@ func TestTextFieldBuildsTheDefaultSpellCheckConfiguration(t *testing.T) {
 				t.Errorf("service = %T, want the one given", config.SpellCheckService())
 			}
 			got := reflect.ValueOf(config.SpellCheckSuggestionsToolbarBuilder()).Pointer()
-			if want := reflect.ValueOf(TextFieldDefaultSpellCheckSuggestionsToolbarBuilder).Pointer(); got != want {
+			if tc.cupertino {
+				wantBuilder = cupertino.CupertinoTextFieldDefaultSpellCheckSuggestionsToolbarBuilder
+			}
+			if want := reflect.ValueOf(wantBuilder).Pointer(); got != want {
 				t.Error("the toolbar builder is not the default one")
 			}
 		})

@@ -10,6 +10,7 @@ import (
 	"strconv"
 
 	"github.com/rm4n0s/errors"
+	"github.com/rm4n0s/glutter/cupertino"
 	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/gestures"
 	"github.com/rm4n0s/glutter/painting"
@@ -425,14 +426,15 @@ var TextFieldMaterialMisspelledTextStyle = painting.NewTextStyle(painting.TextSt
 })
 
 // TextFieldDefaultSpellCheckSuggestionsToolbarBuilder is the default builder of the
-// spell check suggestions toolbar of a TextField: the Material
-// SpellCheckSuggestionsToolbar.
-//
-// Deviation: Flutter builds the Cupertino toolbar on iOS and macOS; there is no
-// Cupertino library, so every platform gets the Material toolbar (SPEC §12.10).
+// spell check suggestions toolbar of a TextField: the Cupertino toolbar on iOS and
+// macOS, and the Material SpellCheckSuggestionsToolbar on the other platforms.
 //
 // Flutter: material/text_field.dart TextField.defaultSpellCheckSuggestionsToolbarBuilder
-func TextFieldDefaultSpellCheckSuggestionsToolbarBuilder(_ widgets.BuildContext, editableTextState *widgets.EditableTextState) widgets.Widget {
+func TextFieldDefaultSpellCheckSuggestionsToolbarBuilder(bc widgets.BuildContext, editableTextState *widgets.EditableTextState) widgets.Widget {
+	switch ThemeOf(bc).Platform {
+	case foundation.TargetPlatformIOS, foundation.TargetPlatformMacOS:
+		return cupertino.NewCupertinoSpellCheckSuggestionsToolbarEditableText(editableTextState)
+	}
 	return NewSpellCheckSuggestionsToolbarEditableText(editableTextState)
 }
 
@@ -440,9 +442,6 @@ func TextFieldDefaultSpellCheckSuggestionsToolbarBuilder(_ widgets.BuildContext,
 // the given one has had any missing values replaced with their defaults for the
 // Android platform: the Material misspelled text style and the Material toolbar. A
 // nil or disabled configuration gives the disabled one.
-//
-// Deviation: it is used on every platform, as there is no Cupertino configuration
-// to infer on iOS and macOS (SPEC §12.10).
 //
 // Flutter: material/text_field.dart TextField.inferAndroidSpellCheckConfiguration
 func TextFieldInferAndroidSpellCheckConfiguration(configuration *widgets.SpellCheckConfiguration) *widgets.SpellCheckConfiguration {
@@ -960,17 +959,33 @@ func (s *textFieldState) Build(bc widgets.BuildContext) widgets.Widget {
 		}
 		handleDidLoseAccessibilityFocus = func() { focusNode.Unfocus() }
 	}
-	// Deviation: the Apple platforms get the Material colors instead of the
-	// ones of the Cupertino theme, which is not ported.
+	cupertinoCursorOrDefault := func() ui.Color {
+		if s.hasError() {
+			return s.errorColor()
+		}
+		if c, ok := w.o.CursorColor.Get(); ok {
+			return c
+		}
+		if c, ok := selectionStyle.CursorColor().Get(); ok {
+			return c
+		}
+		return cupertino.CupertinoDynamicColorResolve(cupertino.CupertinoThemeOf(bc).PrimaryColor(), bc)
+	}
+	cupertinoSelectionOrDefault := func() ui.Color {
+		if c, ok := selectionStyle.SelectionColor().Get(); ok {
+			return c
+		}
+		return cupertino.CupertinoDynamicColorResolve(cupertino.CupertinoThemeOf(bc).PrimaryColor(), bc).WithOpacity(0.40)
+	}
 	switch theme.Platform {
 	case foundation.TargetPlatformIOS:
 		s.forcePressEnabled = true
 		if textSelectionControls == nil {
-			textSelectionControls = MaterialTextSelectionHandleControls
+			textSelectionControls = cupertino.CupertinoTextSelectionHandleControls
 		}
 		paintCursorAboveText = true
 		cursorOpacityAnimates = foundation.Some(cursorOpacityAnimates.OrElse(true))
-		cursorColor, selectionColor = cursorOrDefault(), selectionOrDefault()
+		cursorColor, selectionColor = cupertinoCursorOrDefault(), cupertinoSelectionOrDefault()
 		if cursorRadius.IsNone() {
 			cursorRadius = foundation.Some(ui.NewRadiusCircular(2.0))
 		}
@@ -979,11 +994,11 @@ func (s *textFieldState) Build(bc widgets.BuildContext) widgets.Widget {
 	case foundation.TargetPlatformMacOS:
 		s.forcePressEnabled = false
 		if textSelectionControls == nil {
-			textSelectionControls = DesktopTextSelectionHandleControls
+			textSelectionControls = cupertino.CupertinoDesktopTextSelectionHandleControls
 		}
 		paintCursorAboveText = true
 		cursorOpacityAnimates = foundation.Some(cursorOpacityAnimates.OrElse(false))
-		cursorColor, selectionColor = cursorOrDefault(), selectionOrDefault()
+		cursorColor, selectionColor = cupertinoCursorOrDefault(), cupertinoSelectionOrDefault()
 		if cursorRadius.IsNone() {
 			cursorRadius = foundation.Some(ui.NewRadiusCircular(2.0))
 		}
@@ -1032,7 +1047,13 @@ func (s *textFieldState) Build(bc widgets.BuildContext) widgets.Widget {
 	// Set configuration as disabled if not otherwise specified. If specified,
 	// ensure that configuration uses the correct style for misspelled words for
 	// the current platform, unless a custom style is specified.
-	spellCheckConfiguration := TextFieldInferAndroidSpellCheckConfiguration(w.o.SpellCheckConfiguration)
+	var spellCheckConfiguration *widgets.SpellCheckConfiguration
+	switch theme.Platform {
+	case foundation.TargetPlatformIOS, foundation.TargetPlatformMacOS:
+		spellCheckConfiguration = cupertino.CupertinoTextFieldInferIOSSpellCheckConfiguration(w.o.SpellCheckConfiguration)
+	default:
+		spellCheckConfiguration = TextFieldInferAndroidSpellCheckConfiguration(w.o.SpellCheckConfiguration)
+	}
 	var editable widgets.Widget = widgets.NewRepaintBoundary(widgets.NewEditableText(controller, focusNode, style, cursorColor, ui.NewColor(0xFF8E8E93),
 		widgets.EditableTextOpts{
 			Key:                            s.editableTextKey,

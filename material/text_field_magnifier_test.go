@@ -1,6 +1,7 @@
 package material_test
 
 import (
+	"github.com/rm4n0s/glutter/cupertino"
 	"testing"
 	"time"
 
@@ -19,12 +20,10 @@ import (
 
 // These tests port the groups 'magnifier builder' and 'magnifier' of
 // packages/flutter/test/material/text_field_test.dart, and the case of
-// text_form_field_test.dart that passes the configuration through. The cases that
-// build a CupertinoTextMagnifier (the defaults on iOS, and 'Can double tap and
+// text_form_field_test.dart that passes the configuration through. 'Can double tap and
 // drag to show, unshow, and update magnifier', which is for iOS only and uses
-// CupertinoTextMagnifier's hideBelowThreshold) are not ported: there is no
-// Cupertino library (SPEC §12.10). The iOS variants of the others run on the
-// Material TextField, which has no floating cursor (not ported either).
+// CupertinoTextMagnifier's hideBelowThreshold, is not ported. The iOS variants of the
+// others run on the Material TextField, which has no floating cursor (not ported).
 
 // fakeMagnifier is a magnifier configuration whose magnifier is a Container with a
 // key, and the info it was last given.
@@ -107,8 +106,7 @@ func TestTextFieldMagnifierBuilder(t *testing.T) {
 			want     bool
 		}{
 			{"should build Magnifier on Android", foundation.TargetPlatformAndroid, true},
-			// iOS builds a CupertinoTextMagnifier in Flutter, which is not ported.
-			{"should build nothing on iOS (no CupertinoTextMagnifier)", foundation.TargetPlatformIOS, false},
+			{"should build CupertinoTextMagnifier on iOS", foundation.TargetPlatformIOS, false},
 			{"should build nothing on Fuchsia", foundation.TargetPlatformFuchsia, false},
 			{"should build nothing on Linux", foundation.TargetPlatformLinux, false},
 			{"should build nothing on macOS", foundation.TargetPlatformMacOS, false},
@@ -127,6 +125,9 @@ func TestTextFieldMagnifierBuilder(t *testing.T) {
 				built := editableText.MagnifierConfiguration().MagnifierBuilder()(bc, widgets.NewMagnifierController(), magnifierInfo)
 				if _, ok := built.(*TextMagnifier); ok != tt.want {
 					t.Errorf("built %T, want a TextMagnifier: %v", built, tt.want)
+				}
+				if _, ok := built.(*cupertino.CupertinoTextMagnifier); ok != (tt.platform == foundation.TargetPlatformIOS) {
+					t.Errorf("built %T, want a CupertinoTextMagnifier on iOS only", built)
 				}
 			})
 		}

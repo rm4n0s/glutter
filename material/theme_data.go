@@ -4,6 +4,7 @@ import (
 	"reflect"
 
 	"github.com/rm4n0s/errors"
+	"github.com/rm4n0s/glutter/cupertino"
 	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/painting"
 	"github.com/rm4n0s/glutter/rendering"
@@ -12,7 +13,7 @@ import (
 )
 
 // Deviation: Flutter's ThemeData also holds the component themes (appBarTheme,
-// buttonTheme...), adaptations, cupertinoOverrideTheme, inputDecorationTheme,
+// buttonTheme...), adaptations, inputDecorationTheme,
 // pageTransitionsTheme, scrollbarTheme and splashFactory. The step that ports
 // each of them adds its field to ThemeData and to ThemeDataOpts (SPEC §12.10).
 
@@ -320,6 +321,9 @@ type ThemeDataOpts struct {
 	// PageTransitionsTheme is the transitions of the pages that Material makes;
 	// the default is the one of NewPageTransitionsTheme.
 	PageTransitionsTheme *PageTransitionsTheme
+	// CupertinoOverrideTheme overrides the properties of the CupertinoTheme that the Theme gives its subtree, which
+	// are otherwise derived from this theme (MaterialBasedCupertinoThemeData); the default is none.
+	CupertinoOverrideTheme *cupertino.NoDefaultCupertinoThemeData
 	// CarouselViewTheme is the theme of the CarouselView widgets.
 	CarouselViewTheme CarouselViewThemeData
 	// DataTableTheme is the theme of the DataTable widgets.
@@ -501,6 +505,8 @@ type ThemeData struct {
 	Typography *Typography
 	// PageTransitionsTheme is the transitions of the pages that Material makes.
 	PageTransitionsTheme *PageTransitionsTheme
+	// CupertinoOverrideTheme overrides the properties of the CupertinoTheme that the Theme gives its subtree.
+	CupertinoOverrideTheme *cupertino.NoDefaultCupertinoThemeData
 	// CarouselViewTheme is the theme of the CarouselView widgets.
 	CarouselViewTheme CarouselViewThemeData
 	// DataTableTheme is the theme of the DataTable widgets.
@@ -828,6 +834,7 @@ func NewThemeData(opts ...ThemeDataOpts) *ThemeData {
 		Typography:       typography,
 
 		PageTransitionsTheme:      pageTransitionsTheme,
+		CupertinoOverrideTheme:    o.CupertinoOverrideTheme,
 		CarouselViewTheme:         o.CarouselViewTheme,
 		DataTableTheme:            o.DataTableTheme,
 		ProgressIndicatorTheme:    o.ProgressIndicatorTheme,
@@ -947,6 +954,7 @@ type ThemeDataCopy struct {
 	TextTheme                 foundation.Opt[*TextTheme]
 	Typography                foundation.Opt[*Typography]
 	PageTransitionsTheme      foundation.Opt[*PageTransitionsTheme]
+	CupertinoOverrideTheme    foundation.Opt[*cupertino.NoDefaultCupertinoThemeData]
 	CarouselViewTheme         foundation.Opt[CarouselViewThemeData]
 	DataTableTheme            foundation.Opt[DataTableThemeData]
 	ProgressIndicatorTheme    foundation.Opt[ProgressIndicatorThemeData]
@@ -1039,6 +1047,7 @@ func (d *ThemeData) CopyWith(c ThemeDataCopy) *ThemeData {
 	out.TextTheme = c.TextTheme.OrElse(d.TextTheme)
 	out.Typography = c.Typography.OrElse(d.Typography)
 	out.PageTransitionsTheme = c.PageTransitionsTheme.OrElse(d.PageTransitionsTheme)
+	out.CupertinoOverrideTheme = c.CupertinoOverrideTheme.OrElse(d.CupertinoOverrideTheme)
 	out.CarouselViewTheme = c.CarouselViewTheme.OrElse(d.CarouselViewTheme)
 	out.DataTableTheme = c.DataTableTheme.OrElse(d.DataTableTheme)
 	out.ProgressIndicatorTheme = c.ProgressIndicatorTheme.OrElse(d.ProgressIndicatorTheme)
@@ -1341,6 +1350,7 @@ func ThemeDataLerp(a, b *ThemeData, t float64) *ThemeData {
 	out.UseMaterial3 = src.UseMaterial3
 	out.SplashFactory = src.SplashFactory
 	out.PageTransitionsTheme = src.PageTransitionsTheme
+	out.CupertinoOverrideTheme = src.CupertinoOverrideTheme
 	for _, f := range themeColorFields {
 		*f.get(out) = lerpColor(*f.get(a), *f.get(b), t)
 	}
@@ -1360,7 +1370,7 @@ func (d *ThemeData) Equal(other *ThemeData) bool {
 	if d.ApplyElevationOverlayColor != other.ApplyElevationOverlayColor || d.MaterialTapTargetSize != other.MaterialTapTargetSize ||
 		d.Platform != other.Platform || d.UseMaterial3 != other.UseMaterial3 || !foundation.ValuesEqual(d.SplashFactory, other.SplashFactory) || d.VisualDensity != other.VisualDensity ||
 		!d.ColorScheme.Equal(other.ColorScheme) || !d.IconTheme.Equal(other.IconTheme) || !d.PrimaryIconTheme.Equal(other.PrimaryIconTheme) ||
-		!d.PrimaryTextTheme.Equal(other.PrimaryTextTheme) || !d.TextTheme.Equal(other.TextTheme) || !d.Typography.Equal(other.Typography) || !d.PageTransitionsTheme.Equal(other.PageTransitionsTheme) || !d.AppBarTheme.Equal(other.AppBarTheme) || !d.BannerTheme.Equal(other.BannerTheme) || !d.BottomAppBarTheme.Equal(other.BottomAppBarTheme) || !d.SnackBarTheme.Equal(other.SnackBarTheme) || !d.DrawerTheme.Equal(other.DrawerTheme) || !d.BottomSheetTheme.Equal(other.BottomSheetTheme) || !d.NavigationBarTheme.Equal(other.NavigationBarTheme) || !d.NavigationRailTheme.Equal(other.NavigationRailTheme) || !d.NavigationDrawerTheme.Equal(other.NavigationDrawerTheme) || !d.TabBarTheme.Equal(other.TabBarTheme) || !d.TextButtonTheme.Equal(other.TextButtonTheme) || !d.ElevatedButtonTheme.Equal(other.ElevatedButtonTheme) || !d.FilledButtonTheme.Equal(other.FilledButtonTheme) || !d.OutlinedButtonTheme.Equal(other.OutlinedButtonTheme) || !d.IconButtonTheme.Equal(other.IconButtonTheme) || !d.FloatingActionButtonTheme.Equal(other.FloatingActionButtonTheme) || !d.SegmentedButtonTheme.Equal(other.SegmentedButtonTheme) || !d.ActionIconTheme.Equal(other.ActionIconTheme) || !d.MenuTheme.Equal(other.MenuTheme) || !d.MenuBarTheme.Equal(other.MenuBarTheme) || !d.MenuButtonTheme.Equal(other.MenuButtonTheme) || !d.PopupMenuTheme.Equal(other.PopupMenuTheme) || !d.InputDecorationTheme.Equal(other.InputDecorationTheme) || !d.TextSelectionTheme.Equal(other.TextSelectionTheme) || !d.DropdownMenuTheme.Equal(other.DropdownMenuTheme) || !d.CheckboxTheme.Equal(other.CheckboxTheme) || !d.RadioTheme.Equal(other.RadioTheme) || !d.SwitchTheme.Equal(other.SwitchTheme) || !d.SliderTheme.Equal(other.SliderTheme) || !d.ChipTheme.Equal(other.ChipTheme) || !d.SearchBarTheme.Equal(other.SearchBarTheme) || !d.SearchViewTheme.Equal(other.SearchViewTheme) || !d.DialogTheme.Equal(other.DialogTheme) || !d.DatePickerTheme.Equal(other.DatePickerTheme) || !d.TimePickerTheme.Equal(other.TimePickerTheme) || !d.CardTheme.Equal(other.CardTheme) || !d.DividerTheme.Equal(other.DividerTheme) || !d.TooltipTheme.Equal(other.TooltipTheme) || !d.BadgeTheme.Equal(other.BadgeTheme) || !d.ExpansionTileTheme.Equal(other.ExpansionTileTheme) || !d.ListTileTheme.Equal(other.ListTileTheme) || !d.ScrollbarTheme.Equal(other.ScrollbarTheme) || !d.ProgressIndicatorTheme.Equal(other.ProgressIndicatorTheme) || !d.DataTableTheme.Equal(other.DataTableTheme) || !d.CarouselViewTheme.Equal(other.CarouselViewTheme) {
+		!d.PrimaryTextTheme.Equal(other.PrimaryTextTheme) || !d.TextTheme.Equal(other.TextTheme) || !d.Typography.Equal(other.Typography) || !d.PageTransitionsTheme.Equal(other.PageTransitionsTheme) || !cupertinoOverrideEqual(d.CupertinoOverrideTheme, other.CupertinoOverrideTheme) || !d.AppBarTheme.Equal(other.AppBarTheme) || !d.BannerTheme.Equal(other.BannerTheme) || !d.BottomAppBarTheme.Equal(other.BottomAppBarTheme) || !d.SnackBarTheme.Equal(other.SnackBarTheme) || !d.DrawerTheme.Equal(other.DrawerTheme) || !d.BottomSheetTheme.Equal(other.BottomSheetTheme) || !d.NavigationBarTheme.Equal(other.NavigationBarTheme) || !d.NavigationRailTheme.Equal(other.NavigationRailTheme) || !d.NavigationDrawerTheme.Equal(other.NavigationDrawerTheme) || !d.TabBarTheme.Equal(other.TabBarTheme) || !d.TextButtonTheme.Equal(other.TextButtonTheme) || !d.ElevatedButtonTheme.Equal(other.ElevatedButtonTheme) || !d.FilledButtonTheme.Equal(other.FilledButtonTheme) || !d.OutlinedButtonTheme.Equal(other.OutlinedButtonTheme) || !d.IconButtonTheme.Equal(other.IconButtonTheme) || !d.FloatingActionButtonTheme.Equal(other.FloatingActionButtonTheme) || !d.SegmentedButtonTheme.Equal(other.SegmentedButtonTheme) || !d.ActionIconTheme.Equal(other.ActionIconTheme) || !d.MenuTheme.Equal(other.MenuTheme) || !d.MenuBarTheme.Equal(other.MenuBarTheme) || !d.MenuButtonTheme.Equal(other.MenuButtonTheme) || !d.PopupMenuTheme.Equal(other.PopupMenuTheme) || !d.InputDecorationTheme.Equal(other.InputDecorationTheme) || !d.TextSelectionTheme.Equal(other.TextSelectionTheme) || !d.DropdownMenuTheme.Equal(other.DropdownMenuTheme) || !d.CheckboxTheme.Equal(other.CheckboxTheme) || !d.RadioTheme.Equal(other.RadioTheme) || !d.SwitchTheme.Equal(other.SwitchTheme) || !d.SliderTheme.Equal(other.SliderTheme) || !d.ChipTheme.Equal(other.ChipTheme) || !d.SearchBarTheme.Equal(other.SearchBarTheme) || !d.SearchViewTheme.Equal(other.SearchViewTheme) || !d.DialogTheme.Equal(other.DialogTheme) || !d.DatePickerTheme.Equal(other.DatePickerTheme) || !d.TimePickerTheme.Equal(other.TimePickerTheme) || !d.CardTheme.Equal(other.CardTheme) || !d.DividerTheme.Equal(other.DividerTheme) || !d.TooltipTheme.Equal(other.TooltipTheme) || !d.BadgeTheme.Equal(other.BadgeTheme) || !d.ExpansionTileTheme.Equal(other.ExpansionTileTheme) || !d.ListTileTheme.Equal(other.ListTileTheme) || !d.ScrollbarTheme.Equal(other.ScrollbarTheme) || !d.ProgressIndicatorTheme.Equal(other.ProgressIndicatorTheme) || !d.DataTableTheme.Equal(other.DataTableTheme) || !d.CarouselViewTheme.Equal(other.CarouselViewTheme) {
 		return false
 	}
 	for _, f := range themeColorFields {
@@ -1422,6 +1432,7 @@ func (d *ThemeData) DebugFillProperties(properties *foundation.DiagnosticPropert
 	properties.Add(foundation.NewDiagnosticsProperty("textTheme", d.TextTheme, dbg(def.TextTheme)))
 	properties.Add(foundation.NewDiagnosticsProperty("typography", d.Typography, dbg(def.Typography)))
 	properties.Add(foundation.NewDiagnosticsProperty("pageTransitionsTheme", d.PageTransitionsTheme, dbg(def.PageTransitionsTheme)))
+	properties.Add(foundation.NewDiagnosticsProperty("cupertinoOverrideTheme", d.CupertinoOverrideTheme, dbg(def.CupertinoOverrideTheme)))
 	properties.Add(foundation.NewDiagnosticsProperty("carouselViewTheme", d.CarouselViewTheme, dbg(def.CarouselViewTheme)))
 	properties.Add(foundation.NewDiagnosticsProperty("dataTableTheme", d.DataTableTheme, dbg(def.DataTableTheme)))
 	properties.Add(foundation.NewDiagnosticsProperty("progressIndicatorTheme", d.ProgressIndicatorTheme, dbg(def.ProgressIndicatorTheme)))
@@ -1475,3 +1486,11 @@ const (
 	tagThemeDataSeedConflict       = "ThemeDataSeedConflict"
 	tagVisualDensityOutOfRange     = "VisualDensityOutOfRange"
 )
+
+// cupertinoOverrideEqual is whether two override themes are the same, nil being equal to nil.
+func cupertinoOverrideEqual(a, b *cupertino.NoDefaultCupertinoThemeData) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return a.Equal(b)
+}

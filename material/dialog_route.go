@@ -7,6 +7,7 @@
 package material
 
 import (
+	"github.com/rm4n0s/glutter/cupertino"
 	"time"
 
 	"github.com/rm4n0s/errors"
@@ -158,20 +159,17 @@ func ShowDialog[T any](bc widgets.BuildContext, builder widgets.WidgetBuilder, o
 }
 
 // ShowAdaptiveDialog displays either a Material or a Cupertino dialog depending
-// on the platform.
-//
-// Deviation: Glutter has no Cupertino library; the dialog is the Material one,
-// and it is not dismissible by a tap on the barrier on iOS and macOS, as
-// Flutter's Cupertino dialog is (SPEC §12.10).
+// on the platform: on iOS and macOS it is ShowCupertinoDialog, which is not dismissed by a tap on the barrier unless
+// BarrierDismissible says so (the barrier color, UseSafeArea, the traversal edge behavior, the animation style and
+// FullscreenDialog are ignored there), and on the other platforms ShowDialog, which is.
 //
 // Flutter: material/dialog.dart showAdaptiveDialog
 func ShowAdaptiveDialog[T any](bc widgets.BuildContext, builder widgets.WidgetBuilder, opts ...ShowDialogOpts) <-chan T {
 	o := firstOpts(opts)
-	if o.BarrierDismissible.IsNone() {
-		switch ThemeOf(bc).Platform {
-		case foundation.TargetPlatformIOS, foundation.TargetPlatformMacOS:
-			o.BarrierDismissible = foundation.Some(false)
-		}
+	if isCupertinoPlatform(bc) {
+		return convertChan[T](cupertino.ShowCupertinoDialog(bc, builder, cupertino.CupertinoDialogRouteOpts{
+			BarrierDismissible: o.BarrierDismissible.OrElse(false), BarrierLabel: optString(o.BarrierLabel),
+			NotUseRootNavigator: !o.UseRootNavigator.OrElse(true), RouteSettings: o.RouteSettings, RequestFocus: o.RequestFocus}))
 	}
 	return convertChan[T](showDialogAny(bc, builder, o))
 }

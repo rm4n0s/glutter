@@ -7,6 +7,7 @@
 package material_test
 
 import (
+	"github.com/rm4n0s/glutter/cupertino"
 	"testing"
 
 	"github.com/rm4n0s/glutter/foundation"
@@ -21,10 +22,6 @@ import (
 // These tests port material/adaptive_text_selection_toolbar_test.dart. Dart's
 // TargetPlatformVariant.all() runs a test once for each platform; here every
 // platform is a subtest.
-//
-// Deviation: there is no Cupertino library, so iOS and macOS get the toolbar
-// and the buttons of the desktop (SPEC §12.10); where the Dart test expects a
-// Cupertino toolbar, these tests expect the desktop one.
 
 var allTargetPlatforms = []foundation.TargetPlatform{
 	foundation.TargetPlatformAndroid, foundation.TargetPlatformIOS, foundation.TargetPlatformFuchsia,
@@ -40,11 +37,6 @@ func forAllPlatforms(t *testing.T, test func(t *testing.T, platform foundation.T
 			test(t, platform)
 		})
 	}
-}
-
-// usesMaterialToolbar is whether the platform has the Material toolbar.
-func usesMaterialToolbar(platform foundation.TargetPlatform) bool {
-	return platform == foundation.TargetPlatformAndroid
 }
 
 // usesMaterialButtons is whether the buttons are TextSelectionToolbarTextButtons.
@@ -68,12 +60,21 @@ func TestAdaptiveTextSelectionToolbarBuildsTheRightToolbarOnEachPlatform(t *test
 				widgets.TextSelectionToolbarAnchors{}))})}))
 
 		expectCount(t, ts, gluttertest.ByText(buttonText), 1, "buttons")
-		material, desktop := 0, 1
-		if usesMaterialToolbar(platform) {
-			material, desktop = 1, 0
+		material, desktop, ios, macos := 0, 0, 0, 0
+		switch platform {
+		case foundation.TargetPlatformAndroid:
+			material = 1
+		case foundation.TargetPlatformIOS:
+			ios = 1
+		case foundation.TargetPlatformMacOS:
+			macos = 1
+		default:
+			desktop = 1
 		}
 		expectCount(t, ts, gluttertest.ByType[*TextSelectionToolbar](), material, "TextSelectionToolbars")
 		expectCount(t, ts, gluttertest.ByType[*DesktopTextSelectionToolbar](), desktop, "DesktopTextSelectionToolbars")
+		expectCount(t, ts, gluttertest.ByType[*cupertino.CupertinoTextSelectionToolbar](), ios, "CupertinoTextSelectionToolbars")
+		expectCount(t, ts, gluttertest.ByType[*cupertino.CupertinoDesktopTextSelectionToolbar](), macos, "CupertinoDesktopTextSelectionToolbars")
 	})
 }
 
@@ -118,9 +119,14 @@ func TestAdaptiveTextSelectionToolbarCanBuildFromEditableTextState(t *testing.T)
 		}
 		expectCount(t, ts, gluttertest.ByText("Paste"), 1, "Paste")
 
-		if usesMaterialButtons(platform) {
+		switch {
+		case platform == foundation.TargetPlatformIOS:
+			expectCount(t, ts, gluttertest.ByType[*cupertino.CupertinoTextSelectionToolbarButton](), 1, "CupertinoTextSelectionToolbarButtons")
+		case platform == foundation.TargetPlatformMacOS:
+			expectCount(t, ts, gluttertest.ByType[*cupertino.CupertinoDesktopTextSelectionToolbarButton](), 1, "CupertinoDesktopTextSelectionToolbarButtons")
+		case usesMaterialButtons(platform):
 			expectCount(t, ts, gluttertest.ByType[*TextSelectionToolbarTextButton](), 1, "TextSelectionToolbarTextButtons")
-		} else {
+		default:
 			expectCount(t, ts, gluttertest.ByType[*DesktopTextSelectionToolbarButton](), 1, "DesktopTextSelectionToolbarButtons")
 		}
 	})
@@ -162,7 +168,40 @@ func TestAdaptiveTextSelectionToolbarCanBuildForEditableTextFromRawParameters(t 
 			for _, label := range []string{"Cut", "Copy", "Paste", "Select all", "Look Up", "Search Web", "Share"} {
 				expectCount(t, ts, gluttertest.ByText(label), 1, label)
 			}
-		default: // Linux and Windows, and iOS and macOS (see the deviation above).
+		case platform == foundation.TargetPlatformIOS:
+			// The pages of the Cupertino toolbar: the first one has the buttons that fit,
+			// the others are behind the next chevron.
+			seen := map[string]bool{}
+			collect := func() {
+				for _, label := range []string{"Cut", "Copy", "Paste", "Select All", "Look Up", "Search Web", "Share..."} {
+					if ts.Exists(gluttertest.ByText(label)) {
+						seen[label] = true
+					}
+				}
+			}
+			collect()
+			chevron := gluttertest.ByPredicate("a chevron", func(w widgets.Widget) bool {
+				c, ok := w.(*widgets.CustomPaint)
+				return ok && c.Painter() != nil && foundation.RuntimeTypeName(c.Painter()) == "cupertinoChevronPainter"
+			})
+			if !ts.Exists(chevron) {
+				t.Fatal("the buttons do not overflow onto a second page")
+			}
+			// Only the next chevron is on the first page; the pages after it have a back one.
+			for i := 0; i < 5 && ts.Count(chevron) == 1 && (i == 0 || len(seen) < 7); i++ {
+				ts.TapAt(ts.Center(chevron))
+				ts.PumpAndSettle()
+				collect()
+			}
+			if len(seen) != 7 {
+				t.Errorf("the pages show %v, want the seven labels", seen)
+			}
+		case platform == foundation.TargetPlatformMacOS:
+			expectCount(t, ts, gluttertest.ByType[*cupertino.CupertinoDesktopTextSelectionToolbarButton](), 8, "CupertinoDesktopTextSelectionToolbarButtons")
+			for _, label := range []string{"Cut", "Copy", "Paste", "Select All", "Look Up", "Search Web", "Share..."} {
+				expectCount(t, ts, gluttertest.ByText(label), 1, label)
+			}
+		default: // Linux and Windows.
 			expectCount(t, ts, gluttertest.ByType[*DesktopTextSelectionToolbarButton](), 8, "DesktopTextSelectionToolbarButtons")
 			for _, label := range []string{"Cut", "Copy", "Paste", "Select all", "Look Up", "Search Web", "Share", "Scan text"} {
 				expectCount(t, ts, gluttertest.ByText(label), 1, label)
@@ -266,12 +305,21 @@ func TestAdaptiveTextSelectionToolbarGetAdaptiveButtonsPerPlatform(t *testing.T)
 		}))})}))
 
 		expectCount(t, ts, gluttertest.ByText(buttonText), 1, "buttons")
-		material, desktop := 0, 1
-		if usesMaterialButtons(platform) {
-			material, desktop = 1, 0
+		material, desktop, ios, macos := 0, 0, 0, 0
+		switch {
+		case platform == foundation.TargetPlatformIOS:
+			ios = 1
+		case platform == foundation.TargetPlatformMacOS:
+			macos = 1
+		case usesMaterialButtons(platform):
+			material = 1
+		default:
+			desktop = 1
 		}
 		expectCount(t, ts, gluttertest.ByType[*TextSelectionToolbarTextButton](), material, "TextSelectionToolbarTextButtons")
 		expectCount(t, ts, gluttertest.ByType[*DesktopTextSelectionToolbarButton](), desktop, "DesktopTextSelectionToolbarButtons")
+		expectCount(t, ts, gluttertest.ByType[*cupertino.CupertinoTextSelectionToolbarButton](), ios, "CupertinoTextSelectionToolbarButtons")
+		expectCount(t, ts, gluttertest.ByType[*cupertino.CupertinoDesktopTextSelectionToolbarButton](), macos, "CupertinoDesktopTextSelectionToolbarButtons")
 	})
 }
 

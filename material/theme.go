@@ -1,6 +1,7 @@
 package material
 
 import (
+	"github.com/rm4n0s/glutter/cupertino"
 	"time"
 
 	"github.com/rm4n0s/glutter/animation"
@@ -18,8 +19,8 @@ const ThemeAnimationDuration = 200 * time.Millisecond
 // Theme applies a theme to descendant widgets. A theme describes the colors and
 // typographic choices of an application.
 //
-// Deviation: Flutter's Theme also provides a CupertinoTheme; it does not exist
-// in Glutter.
+// Like Flutter's, a Theme also provides a CupertinoTheme to its subtree: the one of the closest CupertinoTheme above
+// it, or one that is derived from the Material data (MaterialBasedCupertinoThemeData).
 //
 // Flutter: material/theme.dart Theme
 type Theme struct {
@@ -58,6 +59,8 @@ func ThemeOf(bc widgets.BuildContext) *ThemeData {
 	var theme *ThemeData
 	if inherited, ok := widgets.DependOn[*inheritedMaterialTheme](bc); ok {
 		theme = inherited.theme.data
+	} else if cupertinoTheme, ok := widgets.DependOn[*cupertino.InheritedCupertinoTheme](bc); ok {
+		theme = cupertinoBasedMaterialTheme(cupertinoTheme.Theme().Data().ResolveFrom(bc), bc)
 	} else {
 		theme = fallbackTheme()
 	}
@@ -131,7 +134,75 @@ func (w *Theme) Build(bc widgets.BuildContext) widgets.Widget {
 		SelectionColor: firstOpt(selection.SelectionColor, selectionStyle.SelectionColor()),
 		CursorColor:    firstOpt(selection.CursorColor, selectionStyle.CursorColor()),
 	}))
-	return newInheritedMaterialTheme(w, child)
+	return newInheritedMaterialTheme(w, cupertino.NewCupertinoTheme(w.inheritedCupertinoThemeData(bc), child))
+}
+
+// inheritedCupertinoThemeData is the CupertinoTheme data below the Theme: the one above it when there is one, and
+// otherwise the one derived from the Material data, resolved in the context.
+//
+// Flutter: material/theme.dart Theme._inheritedCupertinoThemeData
+func (w *Theme) inheritedCupertinoThemeData(bc widgets.BuildContext) *cupertino.CupertinoThemeData {
+	if inherited, ok := widgets.DependOn[*cupertino.InheritedCupertinoTheme](bc); ok {
+		return inherited.Theme().Data().ResolveFrom(bc)
+	}
+	return MaterialBasedCupertinoThemeData(w.data).ResolveFrom(bc)
+}
+
+// MaterialBasedCupertinoThemeData is the CupertinoThemeData that a Theme gives the Cupertino widgets below it when
+// no CupertinoTheme is above it: its brightness, primary color, primary contrasting color, scaffold background and
+// selection handle color come from the Material theme unless its CupertinoOverrideTheme sets them.
+//
+// Deviation: Flutter's is a subclass of CupertinoThemeData that defers those getters to the Material theme; this is a
+// CupertinoThemeData whose properties are set to the values that the getters return (SPEC §12.10).
+//
+// Flutter: material/theme_data.dart MaterialBasedCupertinoThemeData
+func MaterialBasedCupertinoThemeData(materialTheme *ThemeData) *cupertino.CupertinoThemeData {
+	override := materialTheme.CupertinoOverrideTheme
+	if override == nil {
+		override = cupertino.NewNoDefaultCupertinoThemeData()
+	}
+	brightness := override.Brightness()
+	if brightness == ui.BrightnessUnspecified {
+		brightness = materialTheme.Brightness()
+	}
+	pick := func(override ui.ColorValue, material ui.Color) ui.ColorValue {
+		if override != nil {
+			return override
+		}
+		return material
+	}
+	handle := override.SelectionHandleColor()
+	if handle == nil {
+		if c, ok := materialTheme.TextSelectionTheme.SelectionHandleColor.Get(); ok {
+			handle = c
+		}
+	}
+	return cupertino.NewCupertinoThemeData(cupertino.CupertinoThemeDataOpts{
+		Brightness:              brightness,
+		PrimaryColor:            pick(override.PrimaryColor(), materialTheme.ColorScheme.Primary()),
+		PrimaryContrastingColor: pick(override.PrimaryContrastingColor(), materialTheme.ColorScheme.OnPrimary()),
+		TextTheme:               override.TextTheme(),
+		BarBackgroundColor:      override.BarBackgroundColor(),
+		ScaffoldBackgroundColor: pick(override.ScaffoldBackgroundColor(), materialTheme.ScaffoldBackgroundColor),
+		SelectionHandleColor:    handle,
+		ApplyThemeToAll:         override.ApplyThemeToAll(),
+	})
+}
+
+// cupertinoBasedMaterialTheme is the Material theme with a color scheme that is made from the colors of a
+// CupertinoThemeData: what ThemeOf gives when there is a CupertinoTheme and no Theme.
+//
+// Flutter: material/theme_data.dart CupertinoBasedMaterialThemeData
+func cupertinoBasedMaterialTheme(data *cupertino.CupertinoThemeData, bc widgets.BuildContext) *ThemeData {
+	brightness := data.Brightness()
+	if brightness == ui.BrightnessUnspecified {
+		brightness = ui.BrightnessLight
+	}
+	primary := cupertino.CupertinoDynamicColorResolve(data.PrimaryColor(), bc)
+	return NewThemeData(ThemeDataOpts{ColorScheme: ColorSchemeFromSeed(primary, ColorSchemeFromSeedOpts{
+		Brightness: brightness,
+		Overrides: ColorSchemeVariantOpts{Primary: foundation.Some(primary),
+			OnPrimary: foundation.Some(cupertino.CupertinoDynamicColorResolve(data.PrimaryContrastingColor(), bc))}})})
 }
 
 // DebugFillProperties adds the data.

@@ -1,6 +1,7 @@
 package material_test
 
 import (
+	"github.com/rm4n0s/glutter/cupertino"
 	"testing"
 	"time"
 
@@ -16,8 +17,7 @@ import (
 
 // These tests are ported from packages/flutter/test/material/magnifier_test.dart.
 // flutter_test runs on Android, so the tests that do not name a platform run on
-// it. The CupertinoTextMagnifier of iOS is not ported (SPEC §12.10): the case of
-// iOS checks that nothing is built there.
+// it.
 
 var (
 	magnifierReasonableTextField = ui.NewRectFromLTRB(50, 100, 200, 100)
@@ -104,14 +104,15 @@ func TestAdaptiveMagnifierControllerBuilder(t *testing.T) {
 		platform foundation.TargetPlatform
 		// want is true when the builder builds a TextMagnifier.
 		want bool
+		// wantCupertino is true when it builds a CupertinoTextMagnifier.
+		wantCupertino bool
 	}{
-		{"should return a TextEditingMagnifier on Android", foundation.TargetPlatformAndroid, true},
-		// Flutter builds a CupertinoTextMagnifier on iOS, which is not ported.
-		{"builds nothing on iOS (CupertinoTextMagnifier is not ported)", foundation.TargetPlatformIOS, false},
-		{"should return null on Fuchsia", foundation.TargetPlatformFuchsia, false},
-		{"should return null on Linux", foundation.TargetPlatformLinux, false},
-		{"should return null on macOS", foundation.TargetPlatformMacOS, false},
-		{"should return null on Windows", foundation.TargetPlatformWindows, false},
+		{"should return a TextEditingMagnifier on Android", foundation.TargetPlatformAndroid, true, false},
+		{"should return a CupertinoTextMagnifier on iOS", foundation.TargetPlatformIOS, false, true},
+		{"should return null on Fuchsia", foundation.TargetPlatformFuchsia, false, false},
+		{"should return null on Linux", foundation.TargetPlatformLinux, false, false},
+		{"should return null on macOS", foundation.TargetPlatformMacOS, false, false},
+		{"should return null on Windows", foundation.TargetPlatformWindows, false, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -129,7 +130,10 @@ func TestAdaptiveMagnifierControllerBuilder(t *testing.T) {
 			if _, isTextMagnifier := builtWidget.(*TextMagnifier); isTextMagnifier != tt.want {
 				t.Errorf("built %T, want a TextMagnifier: %v", builtWidget, tt.want)
 			}
-			if !tt.want && builtWidget != nil {
+			if _, isCupertino := builtWidget.(*cupertino.CupertinoTextMagnifier); isCupertino != tt.wantCupertino {
+				t.Errorf("built %T, want a CupertinoTextMagnifier: %v", builtWidget, tt.wantCupertino)
+			}
+			if !tt.want && !tt.wantCupertino && builtWidget != nil {
 				t.Errorf("built %T, want nothing", builtWidget)
 			}
 		})

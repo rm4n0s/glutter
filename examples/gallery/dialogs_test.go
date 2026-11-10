@@ -38,6 +38,7 @@ func TestDialogsDevOpen(t *testing.T) {
 		{"alert", "alert", "Discard draft?", ""},
 		{"simple", "simple", "Choose an account", ""},
 		{"fullscreen", "fullscreen", "New event", ""},
+		{"adaptive", "adaptive", "Allow notifications?", ""},
 		{"date picker", "datepicker", "Select a date", "gallery-date-picker"},
 		{"date picker input", "datepickerinput", "Select a date", ""},
 		{"date range picker", "daterange", "Select range", "gallery-date-range-picker"},
@@ -93,6 +94,11 @@ func TestDialogsResults(t *testing.T) {
 			ts.PumpAndSettle()
 			ts.Tap(gluttertest.ByText("Save"))
 		}, "Result: Fullscreen: Saved"},
+		{"adaptive", func(ts *gluttertest.Tester) {
+			ts.Tap(gluttertest.ByText("Adaptive"))
+			ts.PumpAndSettle()
+			ts.Tap(gluttertest.ByText("Allow"))
+		}, "Result: Adaptive: Allow"},
 		{"date", func(ts *gluttertest.Tester) {
 			ts.Tap(gluttertest.ByText("Date"))
 			ts.PumpAndSettle()

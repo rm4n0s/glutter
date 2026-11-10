@@ -131,8 +131,6 @@ func NewRadioListTile[T comparable](value T, opts ...RadioListTileOpts[T]) *Radi
 // NewRadioListTileAdaptive creates a list tile with a radio that adapts to the
 // platform.
 //
-// Deviation: it is the same as NewRadioListTile (SPEC §12.10).
-//
 // Flutter: material/radio_list_tile.dart RadioListTile.adaptive
 func NewRadioListTileAdaptive[T comparable](value T, opts ...RadioListTileOpts[T]) *RadioListTile[T] {
 	w := NewRadioListTile(value, opts...)

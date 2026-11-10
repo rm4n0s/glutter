@@ -9,6 +9,7 @@ package material
 import (
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/animation"
+	"github.com/rm4n0s/glutter/cupertino"
 	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/painting"
 	"github.com/rm4n0s/glutter/services"
@@ -62,6 +63,9 @@ type RadioOpts[T comparable] struct {
 	FocusNode *widgets.FocusNode
 	// Autofocus asks for the focus when the radio is built.
 	Autofocus bool
+	// UseCupertinoCheckmarkStyle makes the CupertinoRadio of an adaptive radio show a check mark in place of the
+	// inner circle; it is used only by NewRadioAdaptive, on iOS and macOS.
+	UseCupertinoCheckmarkStyle bool
 	// Enabled says whether the radio responds to input; the default is whether it
 	// has an OnChanged, a GroupRegistry or a RadioGroup above.
 	Enabled foundation.Opt[bool]
@@ -82,14 +86,12 @@ type RadioOpts[T comparable] struct {
 // Radio is a Material Design radio button: it lets the user select one option of
 // a set. Put the radios below a RadioGroup, which keeps the selected value.
 //
-// Deviation: the adaptive constructor builds the Material radio on iOS and macOS
-// too, as there is no Cupertino library (SPEC §12.10).
-//
 // Flutter: material/radio.dart Radio
 type Radio[T comparable] struct {
 	widgets.StatefulWidget
-	value T
-	o     RadioOpts[T]
+	value    T
+	o        RadioOpts[T]
+	adaptive bool
 }
 
 // NewRadio creates the widget.
@@ -100,13 +102,15 @@ func NewRadio[T comparable](value T, opts ...RadioOpts[T]) *Radio[T] {
 	return &Radio[T]{StatefulWidget: widgets.NewStatefulWidgetBase(widgets.WidgetOpts{Key: o.Key}), value: value, o: o}
 }
 
-// NewRadioAdaptive creates a radio that adapts to the platform.
-//
-// Deviation: it is the same as NewRadio (SPEC §12.10).
+// NewRadioAdaptive creates a radio that adapts to the platform: on iOS and macOS it builds a CupertinoRadio (which
+// ignores the colors that only the Material radio has, and uses UseCupertinoCheckmarkStyle), and on the other platforms
+// the Material one.
 //
 // Flutter: material/radio.dart Radio.adaptive
 func NewRadioAdaptive[T comparable](value T, opts ...RadioOpts[T]) *Radio[T] {
-	return NewRadio(value, opts...)
+	w := NewRadio(value, opts...)
+	w.adaptive = true
+	return w
 }
 
 // Value is the value that this radio stands for.
@@ -174,6 +178,12 @@ func (s *radioState[T]) Build(bc widgets.BuildContext) widgets.Widget {
 		}
 	}
 	DebugCheckHasMaterial(bc)
+	if w.adaptive && isCupertinoPlatform(bc) {
+		return cupertino.NewCupertinoRadio(w.value, cupertino.CupertinoRadioOpts[T]{
+			GroupValue: w.o.GroupValue, OnChanged: w.o.OnChanged, MouseCursor: cupertinoMouseCursor(w.o.MouseCursor), Toggleable: w.o.Toggleable,
+			ActiveColor: optColorValue(w.o.ActiveColor), FocusColor: optColorValue(w.o.FocusColor), FocusNode: s.focusNode(), Autofocus: w.o.Autofocus,
+			UseCheckmarkStyle: w.o.UseCupertinoCheckmarkStyle, GroupRegistry: s.effectiveRegistry(), Enabled: foundation.Some(s.enabled())})
+	}
 	radioTheme := RadioThemeOf(bc)
 	cursor := toggleableMouseCursor(w.o.MouseCursor, radioTheme.MouseCursor)
 	return widgets.NewRawRadio(w.value, cursor, w.o.Toggleable, s.focusNode(), w.o.Autofocus,

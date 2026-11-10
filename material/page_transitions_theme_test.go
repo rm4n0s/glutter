@@ -16,8 +16,7 @@ import (
 )
 
 // These tests are ported from packages/flutter/test/material/page_transitions_theme_test.dart.
-// There are no Cupertino builders and no snapshots in Glutter, so the cases about
-// them are not ported; the tests of the 800 ms of FadeForwardsPageTransitionsBuilder
+// There are no snapshots in Glutter, so the cases about them are not ported; the tests of the 800 ms of FadeForwardsPageTransitionsBuilder
 // ('default duration is 800ms' and 'Animation duration changes accordingly when
 // page transition builder changes') are not ported either, as the pinned Flutter
 // source has 450 ms (kTransitionMilliseconds) and the tests disagree with it. The
@@ -448,14 +447,13 @@ func TestPageTransitionsThemeAndroid(t *testing.T) {
 	fadeForwards := transitionWidget("fadeForwardsPageTransition")
 	pushB := func() map[string]widgets.WidgetBuilder { return pushBRoutes() }
 
-	// Default PageTransitionsTheme platform. Deviation: iOS and macOS have no
-	// builder, as there is no Cupertino library.
+	// Default PageTransitionsTheme platform: every platform but Fuchsia has a builder (the Cupertino one on iOS and macOS).
 	t.Run("Default PageTransitionsTheme platform", func(t *testing.T) {
 		ts := gluttertest.New(t)
 		ts.PumpWidget(NewMaterialApp(MaterialAppOpts{Home: widgets.NewText("home")}))
 		theme := ThemeOf(ts.Element(gluttertest.ByText("home"))).PageTransitionsTheme
 		for p := foundation.TargetPlatformAndroid; p <= foundation.TargetPlatformWindows; p++ {
-			want := p == foundation.TargetPlatformAndroid || p == foundation.TargetPlatformLinux || p == foundation.TargetPlatformWindows
+			want := p != foundation.TargetPlatformFuchsia
 			if got := theme.Builders()[p] != nil; got != want {
 				t.Errorf("theme builder for %v is set: %v, want %v", p, got, want)
 			}
