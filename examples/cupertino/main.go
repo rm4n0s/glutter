@@ -78,7 +78,8 @@ func tabBar() *c.CupertinoTabBar {
 		return c.NewBottomNavigationBarItem(c.NewIcon(icon), c.BottomNavigationBarItemOpts{Label: label})
 	}
 	return c.NewCupertinoTabBar([]c.BottomNavigationBarItem{
-		item(c.CupertinoIcons.Home(), "Home"), item(c.CupertinoIcons.SliderHorizontal3(), "Controls"), item(c.CupertinoIcons.Settings(), "Settings"),
+		item(c.CupertinoIcons.Home(), "Home"), item(c.CupertinoIcons.SliderHorizontal3(), "Controls"),
+		item(c.CupertinoIcons.TextCursor(), "Text"), item(c.CupertinoIcons.Settings(), "Settings"),
 	})
 }
 
@@ -86,13 +87,15 @@ func tabBar() *c.CupertinoTabBar {
 func newHomePage() c.Widget {
 	return c.NewCupertinoTabScaffold(tabBar(), func(_ c.BuildContext, index int) c.Widget {
 		return c.NewCupertinoTabView(c.CupertinoTabViewOpts{
-			DefaultTitle: c.Some([]string{"Home", "Controls", "Settings"}[index]),
+			DefaultTitle: c.Some([]string{"Home", "Controls", "Text", "Settings"}[index]),
 			Builder: func(bc c.BuildContext) c.Widget {
 				switch index {
 				case 0:
 					return homeTab(bc)
 				case 1:
 					return controlsTab()
+				case 2:
+					return textTab()
 				}
 				return listTab("Settings", "Setting", 12)
 			},
@@ -136,6 +139,30 @@ func listTab(title, label string, count int) c.Widget {
 		c.NewCupertinoSliverNavigationBar(c.CupertinoSliverNavigationBarOpts{LargeTitle: c.NewText(title)}),
 		c.NewSliverList(c.NewSliverChildListDelegate(rows)),
 	}))
+}
+
+// textTab is the page of the text: the fields in a list under the sliver bar. The first field has a selected word.
+func textTab() c.Widget {
+	return c.NewStatefulBuilder(func(_ c.BuildContext, _ c.StateSetter) c.Widget {
+		pad := func(w c.Widget) c.Widget { return c.NewPadding(c.NewEdgeInsetsSymmetric(6, 16), w) }
+		icon := func(d c.IconData) c.Widget {
+			return c.NewPadding(c.NewEdgeInsetsSymmetric(0, 6), c.NewIcon(d, c.IconOpts{Color: c.Some(c.CupertinoColors.SystemGrey.Color)}))
+		}
+		rows := []c.Widget{
+			pad(c.NewCupertinoSearchTextField()),
+			pad(c.NewCupertinoTextField(c.CupertinoTextFieldOpts{Placeholder: c.Some("Name"), Prefix: icon(c.CupertinoIcons.PersonCropCircleFill()),
+				ClearButtonMode: c.OverlayVisibilityModeEditing})),
+			pad(c.NewCupertinoTextField(c.CupertinoTextFieldOpts{Placeholder: c.Some("Password"), ObscureText: true, Prefix: icon(c.CupertinoIcons.LockFill()),
+				ClearButtonMode: c.OverlayVisibilityModeEditing})),
+			pad(c.NewCupertinoTextField(c.CupertinoTextFieldOpts{Controller: c.NewTextEditingController("Double tap a word to select it"),
+				Placeholder: c.Some("Notes"), MaxLines: c.Some(4), MinLines: c.Some(3), Padding: c.NewEdgeInsetsAll(10)})),
+			pad(c.NewCupertinoTextFieldBorderless(c.CupertinoTextFieldOpts{Placeholder: c.Some("A field with no border")})),
+		}
+		return c.NewCupertinoPageScaffold(c.NewCustomScrollView([]c.Widget{
+			c.NewCupertinoSliverNavigationBar(c.CupertinoSliverNavigationBarOpts{LargeTitle: c.NewText("Text")}),
+			c.NewSliverList(c.NewSliverChildListDelegate(rows)),
+		}))
+	})
 }
 
 // controlsState is what the controls of the second tab show.

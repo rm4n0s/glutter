@@ -48,3 +48,6 @@ func lerpOptDouble(a, b foundation.Opt[float64], t float64) foundation.Opt[float
 func rectFromOffsetAndSize(o ui.Offset, s ui.Size) ui.Rect {
 	return ui.NewRectFromLTWH(o.Dx, o.Dy, s.Width, s.Height)
 }
+
+// ptrColor is the address of a copy of the color, for the options that take a *ui.Color.
+func ptrColor(c ui.Color) *ui.Color { return &c }

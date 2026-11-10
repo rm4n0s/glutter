@@ -10,6 +10,7 @@ import (
 	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/gluttertest"
 	"github.com/rm4n0s/glutter/internal/leaktest"
+	"github.com/rm4n0s/glutter/painting"
 	"github.com/rm4n0s/glutter/ui"
 	"github.com/rm4n0s/glutter/widgets"
 )
@@ -312,6 +313,65 @@ func TestLeaksControls(t *testing.T) {
 					ts.ClearLogs()
 				}
 			}, leaktest.Opts{N: 25, SlackObjects: 150})
+		})
+	}
+}
+
+// TestLeaksText mounts, uses and unmounts the text fields of step 34.5: a field with the clear button, a search
+// field, and a field whose selection shows the handles and the toolbar, on iOS (the pager of the toolbar, the
+// magnifier and the controllers of the animations are what could stay). The warm-up is long on purpose: the live
+// objects of these scenarios dip by about 300 at the first measure and come back, as the longer runs show
+// (LEAKTEST_SCALE=20 grows by 30 objects from 4000 to 16000 steps), so a short warm-up compares a dip with its
+// recovery.
+func TestLeaksText(t *testing.T) {
+	skipUnlessDebug(t)
+	foundation.SetDebugDefaultTargetPlatformOverride(foundation.Some(foundation.TargetPlatformIOS))
+	t.Cleanup(func() { foundation.SetDebugDefaultTargetPlatformOverride(foundation.None[foundation.TargetPlatform]()) })
+	tests := []struct {
+		name string
+		page func() widgets.Widget
+		use  func(ts *gluttertest.Tester)
+	}{
+		{"text field and clear button", func() widgets.Widget {
+			return cupertino.NewCupertinoTextField(cupertino.CupertinoTextFieldOpts{Placeholder: foundation.Some("name"),
+				ClearButtonMode: cupertino.OverlayVisibilityModeEditing, Prefix: widgets.NewText("P")})
+		}, func(ts *gluttertest.Tester) {
+			ts.EnterText(gluttertest.ByType[*cupertino.CupertinoTextField](), "text")
+			ts.Pump()
+			ts.Tap(gluttertest.ByIcon(cupertino.CupertinoIcons.ClearThickCircled()))
+			ts.Pump(time.Second)
+		}},
+		{"search field", func() widgets.Widget {
+			return cupertino.NewCupertinoSearchTextField()
+		}, func(ts *gluttertest.Tester) {
+			ts.EnterText(gluttertest.ByType[*cupertino.CupertinoSearchTextField](), "query")
+			ts.Pump()
+			ts.Tap(gluttertest.ByIcon(cupertino.CupertinoIcons.XmarkCircleFill()))
+			ts.Pump(time.Second)
+		}},
+		{"selection with the handles and the toolbar", func() widgets.Widget {
+			return widgets.NewPadding(painting.NewEdgeInsetsAll(20), cupertino.NewCupertinoTextField(cupertino.CupertinoTextFieldOpts{
+				Controller: widgets.NewTextEditingController("one two three four five six seven eight nine ten")}))
+		}, func(ts *gluttertest.Tester) {
+			ts.LongPress(gluttertest.ByType[*cupertino.CupertinoTextField]())
+			ts.PumpAndSettle()
+			ts.TapAt(ui.Offset{Dx: 700, Dy: 500})
+			ts.PumpAndSettle()
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			leaktest.Run(t, "cupertino/text/"+tt.name, func() func() {
+				ts := gluttertest.New(t, gluttertest.Opts{Size: ui.Size{Width: 800, Height: 600}, DiscardScenes: true})
+				return func() {
+					ts.PumpWidget(testApp(cupertino.CupertinoAppOpts{Home: cupertino.NewCupertinoPageScaffold(widgets.NewCenter(tt.page()))}))
+					ts.Pump()
+					tt.use(ts)
+					ts.PumpWidget(testApp(cupertino.CupertinoAppOpts{Home: widgets.NewSizedBox(nil)}))
+					ts.PumpAndSettle()
+					ts.ClearLogs()
+				}
+			}, leaktest.Opts{N: 200, Warmup: 700})
 		})
 	}
 }

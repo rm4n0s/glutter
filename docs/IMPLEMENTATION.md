@@ -4485,9 +4485,9 @@ The owner asked on 2026-11-09 for "the macOS and iOS theme": Flutter's `cupertin
 ### 34.5 Text fields and text selection
 **Goal:** Cupertino text fields and the Cupertino text selection on iOS and macOS: handles, toolbars, magnifier and the spell check toolbar.
 **Read:** SPEC §31.1, §31.6, §11 (text editing), §12.10 (the text selection rows).
-**Port from:** `cupertino/text_field.dart`, `search_field.dart`, `text_form_field_row.dart`, `text_selection.dart`, `text_selection_toolbar.dart`, `text_selection_toolbar_button.dart`, `desktop_text_selection.dart`, `desktop_text_selection_toolbar.dart`, `desktop_text_selection_toolbar_button.dart`, `adaptive_text_selection_toolbar.dart`, `magnifier.dart`, `spell_check_suggestions_toolbar.dart`.
+**Port from:** `cupertino/text_field.dart`, `search_field.dart`, `text_selection.dart`, `text_selection_toolbar.dart`, `text_selection_toolbar_button.dart`, `desktop_text_selection.dart`, `desktop_text_selection_toolbar.dart`, `desktop_text_selection_toolbar_button.dart`, `adaptive_text_selection_toolbar.dart`, `magnifier.dart`, `spell_check_suggestions_toolbar.dart`.
 **Files:** `cupertino/` (those files), `examples/cupertino/`.
-**Tasks:** `CupertinoTextField` (the placeholder, the clear button, the prefix and suffix, the iOS caret and selection behavior), `CupertinoSearchTextField`, `CupertinoTextFormFieldRow`, `cupertinoTextSelectionControls` and the desktop ones, the toolbars with their paging, `CupertinoTextMagnifier`, the spell check suggestions toolbar.
+**Tasks:** `CupertinoTextField` (the placeholder, the clear button, the prefix and suffix, the iOS caret and selection behavior), `CupertinoSearchTextField`, `cupertinoTextSelectionControls` and the desktop ones, the toolbars with their paging, `CupertinoTextMagnifier`, the spell check suggestions toolbar.
 **Tests:** the test files of each (the relevant cases, including the iOS selection gestures of `text_field_test.dart` under `TargetPlatformIOS` and the macOS ones under `TargetPlatformMacOS`); goldens of the toolbar and the magnifier.
 **Proof:** G, `34.5-cupertino-text.png`: a field with a selection and the toolbar.
 
@@ -4512,7 +4512,7 @@ The owner asked on 2026-11-09 for "the macOS and iOS theme": Flutter's `cupertin
 ### 34.8 Lists, forms, refresh and scrollbar
 **Goal:** list and form sections, list tiles, the expansion tile, the pull-to-refresh sliver and the Cupertino scrollbar.
 **Read:** SPEC §31.1.
-**Port from:** `cupertino/list_section.dart`, `list_tile.dart`, `form_section.dart`, `form_row.dart`, `expansion_tile.dart` (present at the pinned commit), `refresh.dart`, `scrollbar.dart`.
+**Port from:** `cupertino/list_section.dart`, `list_tile.dart`, `form_section.dart`, `form_row.dart`, `text_form_field_row.dart` (moved here from step 34.5, which has no `CupertinoFormRow` to build it on), `expansion_tile.dart` (present at the pinned commit), `refresh.dart`, `scrollbar.dart`.
 **Files:** `cupertino/` (those files), `examples/cupertino/`.
 **Tasks:** each widget with its inset-grouped and base forms, the refresh control's states and its indicator, the scrollbar's thickness and the drag of its thumb.
 **Tests:** the test files of each (the relevant cases); goldens.
