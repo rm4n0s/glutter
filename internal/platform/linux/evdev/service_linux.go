@@ -36,6 +36,10 @@ type Opts struct {
 	PollEvery time.Duration
 	// DisableHID turns the HID drivers off: every pad is read through its event device.
 	DisableHID bool
+	// Asleep starts the service with its extras asleep (EnableExtras wakes them): it only reads. No hidraw node is opened and no
+	// driver runs, so nothing is written to a pad, and a pad that can rumble is opened read only and opened again for writing at
+	// its first rumble (SPEC §28.2, "Decided in step 36.1").
+	Asleep bool
 	// HidDevDir is the directory of the hidraw nodes ("/dev" when empty). OpenHID opens the transport of a HID driver at a path;
 	// nil opens the hidraw node. Tests use both.
 	HidDevDir string
@@ -65,6 +69,7 @@ type Service struct {
 	// The HID drivers (SPEC §28.2): a pad that has one is read through its hidraw node and not its event device. hid holds the
 	// pads that are served so, which the UI thread asks to rumble and the goroutine of the loop adds and removes under hidMu.
 	noHID   bool
+	asleep  atomic.Bool
 	hidDir  string
 	openHID func(path string) (gamepadhid.Transport, error)
 	hidMu   sync.RWMutex
@@ -85,6 +90,20 @@ type ffPad struct {
 	fd int
 	// effect is the id of the effect that was uploaded, -1 before the first rumble.
 	effect int16
+	// lazy says that fd is -1 until the first rumble, which opens path for writing; fd is then the pad's own descriptor, and the
+	// one that ends it closes it (the descriptor that reads the pad is the loop's).
+	lazy bool
+	path string
+}
+
+// closeFF forgets the force feedback state of a pad and closes the descriptor that is its own. It is called under ffMu.
+func (s *Service) closeFF(id platform.PadID) {
+	if p := s.ff[id]; p != nil {
+		if p.lazy && p.fd >= 0 {
+			_ = syscall.Close(p.fd) // the pad is gone or the run is over
+		}
+		delete(s.ff, id)
+	}
 }
 
 // New makes the service. It does nothing until Start.
@@ -108,7 +127,25 @@ func New(opts Opts) *Service {
 	if s.log == nil {
 		s.log = slog.New(slog.DiscardHandler)
 	}
+	s.asleep.Store(opts.Asleep)
 	return s
+}
+
+var _ platform.PadExtras = (*Service)(nil)
+
+// EnableExtras implements platform.PadExtras: the HID drivers wake. The pads that are open and have a driver are let go and
+// looked at again, which starts their drivers (the handler is told of each as removed and added, once); a pad that cannot have
+// one stays as it is. Called before Start, it makes the service start awake.
+func (s *Service) EnableExtras() {
+	if !s.asleep.Swap(false) {
+		return
+	}
+	// Under the lock: Stop takes the run away under it before it closes the descriptors that hidTell writes to.
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.cur != nil {
+		s.cur.hidTell(hidEvent{wake: true})
+	}
 }
 
 var _ platform.Gamepads = (*Service)(nil)
@@ -155,6 +192,13 @@ func (s *Service) Rumble(id platform.PadID, low, high uint16, d time.Duration) e
 	p := s.ff[id]
 	if p == nil {
 		return errors.New(platform.TagGamepadRumbleUnavailable, "the pad has no force feedback or is not there", "pad", int64(id))
+	}
+	if p.lazy && p.fd < 0 {
+		fd, err := s.k.openWritable(p.path)
+		if err != nil {
+			return errors.New(platform.TagGamepadRumbleUnavailable, "the pad cannot be opened for writing", "pad", int64(id), "device", p.path)
+		}
+		p.fd = fd
 	}
 	if d <= 0 || (low == 0 && high == 0) {
 		if p.effect < 0 {
@@ -249,6 +293,8 @@ type hidEvent struct {
 	pad    *hidPad
 	failed bool
 	err    error
+	// wake says that the extras were woken (EnableExtras): the loop looks again at the pads that are open.
+	wake bool
 }
 
 type retry struct {
@@ -263,8 +309,9 @@ type padDevice struct {
 	fd     int
 	dec    *decoder
 	events []inputEvent
-	// rumble says that the pad can play force feedback effects.
-	rumble bool
+	// rumble says that the pad can play force feedback effects, and lazy that it was opened read only and is opened for writing at
+	// its first rumble.
+	rumble, lazy bool
 }
 
 // pollFallback is how often the directory is looked at when inotify is not there.
@@ -383,7 +430,7 @@ func (r *run) loop() {
 	defer func() {
 		r.s.ffMu.Lock()
 		for _, d := range r.devices {
-			delete(r.s.ff, d.id)
+			r.s.closeFF(d.id)
 			_ = syscall.Close(d.fd) // the end of the run
 		}
 		r.s.ffMu.Unlock()
@@ -611,7 +658,11 @@ func (r *run) consider(node string) {
 	r.byPath[node] = d
 	if d.rumble {
 		r.s.ffMu.Lock()
-		r.s.ff[d.id] = &ffPad{fd: d.fd, effect: -1}
+		if d.lazy {
+			r.s.ff[d.id] = &ffPad{fd: -1, effect: -1, lazy: true, path: d.path}
+		} else {
+			r.s.ff[d.id] = &ffPad{fd: d.fd, effect: -1}
+		}
 		r.s.ffMu.Unlock()
 	}
 	ev := syscall.EpollEvent{Events: syscall.EPOLLIN, Fd: int32(d.fd)}
@@ -651,14 +702,18 @@ func (r *run) open(node string, c *caps) (*padDevice, platform.PadInfo, error) {
 	// A pad that can rumble is opened for writing too, which force feedback needs; where the user may not write to it, the pad
 	// is read only and cannot rumble.
 	canRumble := c.FF.has(ffRumble) && r.s.k.openWritable != nil
+	// Asleep, the pad is only read, and the first rumble opens it for writing: it can rumble if the user may write to it.
+	lazy := canRumble && r.s.asleep.Load()
 	fd, err := -1, error(nil)
-	if canRumble {
+	if lazy {
+		canRumble = r.s.k.writable == nil || r.s.k.writable(path)
+	} else if canRumble {
 		if fd, err = r.s.k.openWritable(path); err != nil {
 			r.s.log.Debug("a gamepad is read only, so it cannot rumble", "device", path, "err", err)
 			canRumble = false
 		}
 	}
-	if !canRumble {
+	if lazy || !canRumble {
 		fd, err = syscall.Open(path, syscall.O_RDONLY|syscall.O_NONBLOCK|syscall.O_CLOEXEC, 0)
 	}
 	if err != nil {
@@ -703,7 +758,7 @@ func (r *run) open(node string, c *caps) (*padDevice, platform.PadInfo, error) {
 		Rumble:  canRumble,
 		Battery: -1,
 	}
-	return &padDevice{id: id, path: path, fd: fd, dec: newDecoder(id, l), rumble: canRumble}, info, nil
+	return &padDevice{id: id, path: path, fd: fd, dec: newDecoder(id, l), rumble: canRumble, lazy: lazy && canRumble}, info, nil
 }
 
 // readDevice reads the events that are waiting on a device and decodes them into batch.
@@ -752,7 +807,7 @@ func (r *run) drop(d *padDevice) {
 	delete(r.seen, filepath.Base(d.path))
 	_ = syscall.EpollCtl(r.epfd, syscall.EPOLL_CTL_DEL, d.fd, nil) // closing the descriptor removes it anyway
 	r.s.ffMu.Lock()
-	delete(r.s.ff, d.id)
+	r.s.closeFF(d.id)
 	_ = syscall.Close(d.fd) // the device is gone or given up
 	r.s.ffMu.Unlock()
 	id := d.id

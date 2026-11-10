@@ -74,6 +74,9 @@ type Opts struct {
 	// every pad is read through Raw Input. DisableDrivers does the same when the transport is there.
 	OpenHID        func(path string) (gamepadhid.Transport, error)
 	DisableDrivers bool
+	// Asleep starts the service with its drivers asleep (EnableExtras wakes them): every pad is read through XInput or Raw
+	// Input, and nothing is written to a pad, until the app uses package gamepad (SPEC §28.2, "Decided in step 36.1").
+	Asleep bool
 	// PollEvery is how often the XInput pads are read while there is one (8 ms when zero); ScanEvery how often the empty slots
 	// are looked at and the HID devices listed when Windows has told of nothing (2 s when zero).
 	PollEvery, ScanEvery time.Duration
@@ -98,6 +101,8 @@ type Service struct {
 
 	// drivers are the pads that HID drivers serve (drivers.go).
 	drivers driverDevices
+	// asleep says that the drivers are asleep (Opts.Asleep, EnableExtras).
+	asleep atomic.Bool
 }
 
 var (
@@ -119,7 +124,29 @@ func New(opts Opts) *Service {
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
 	}
-	return &Service{opts: opts, log: log, slots: map[platform.PadID]uint32{}, timers: map[platform.PadID]*time.Timer{}}
+	s := &Service{opts: opts, log: log, slots: map[platform.PadID]uint32{}, timers: map[platform.PadID]*time.Timer{}}
+	s.asleep.Store(opts.Asleep)
+	return s
+}
+
+var _ platform.PadExtras = (*Service)(nil)
+
+// EnableExtras implements platform.PadExtras: the HID drivers wake. The pads that Raw Input serves and that have a driver are let
+// go (the handler is told they are removed) and the next look at the devices starts their drivers and adds them. Called before
+// Start, it makes the service start awake.
+func (s *Service) EnableExtras() {
+	if !s.asleep.Swap(false) {
+		return
+	}
+	s.mu.Lock()
+	r := s.cur
+	s.mu.Unlock()
+	if r != nil {
+		select {
+		case r.upgrade <- struct{}{}:
+		default:
+		}
+	}
 }
 
 // MappingPlatform implements platform.Gamepads.
@@ -134,7 +161,7 @@ func (s *Service) Start(h platform.PadHandler) error {
 	}
 	r := &run{
 		s: s, h: h, stop: make(chan struct{}), done: make(chan struct{}),
-		wake: make(chan struct{}, 1), reports: make(chan hidReports, 256),
+		wake: make(chan struct{}, 1), upgrade: make(chan struct{}, 1), reports: make(chan hidReports, 256),
 		xi: map[uint32]*xinputPad{}, hid: map[uintptr]*hidPad{},
 		drv: map[uintptr]*drvPad{}, drvFailed: map[uintptr]bool{}, drvEvents: make(chan drvEvent, 16),
 	}
@@ -293,11 +320,13 @@ type hidPad struct {
 
 // run is one Start of the service; its goroutine owns the pads.
 type run struct {
-	s       *Service
-	h       platform.PadHandler
-	stop    chan struct{}
-	done    chan struct{}
-	wake    chan struct{}
+	s    *Service
+	h    platform.PadHandler
+	stop chan struct{}
+	done chan struct{}
+	wake chan struct{}
+	// upgrade asks the loop to let go of the pads that a driver can serve now (EnableExtras).
+	upgrade chan struct{}
 	reports chan hidReports
 	stopped atomic.Bool
 
@@ -339,6 +368,9 @@ func (r *run) loop() {
 			return
 		case ev := <-r.drvEvents:
 			r.driverEvent(ev)
+		case <-r.upgrade:
+			r.upgradeDrivers()
+			r.scanHID()
 		case <-r.wake:
 			r.scanXInput()
 			r.scanHID()

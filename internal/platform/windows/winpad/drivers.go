@@ -68,20 +68,47 @@ func (d *driverDevices) remove(id platform.PadID) {
 	d.mu.Unlock()
 }
 
+// driverInfo says whether a driver serves a device, and gives the description the driver starts with.
+func (r *run) driverInfo(d HIDDevice) (gamepadhid.DeviceInfo, bool) {
+	info := gamepadhid.DeviceInfo{Vendor: d.Vendor, Product: d.Product, Version: d.Version, Bus: busOf(d.Path), Path: d.Path}
+	model := gamepadhid.ModelOf(info)
+	if model == gamepadhid.ModelNone {
+		return info, false
+	}
+	if model == gamepadhid.ModelXboxOneBluetooth && r.s.opts.XInput != nil {
+		// XInput serves the Xbox pads, with its own rumble and battery.
+		return info, false
+	}
+	return info, true
+}
+
+// upgradeDrivers is the wake-up of the drivers: each pad that Raw Input serves and that a driver can serve is let go, and the
+// handler is told it is removed; the look at the devices that follows starts its driver, or reads it through Raw Input again.
+func (r *run) upgradeDrivers() {
+	opts := &r.s.opts
+	if opts.OpenHID == nil || opts.DisableDrivers {
+		return
+	}
+	for handle, p := range r.hid {
+		if _, ok := r.driverInfo(p.dev); !ok {
+			continue
+		}
+		delete(r.hid, handle)
+		opts.HID.Release(p.dev)
+		id := p.id
+		r.deliver(func(h platform.PadHandler) { h.PadRemoved(id) })
+	}
+}
+
 // tryDriver starts the driver of a device if it has one, and reports whether the pad is served so, at least for now: the driver
 // starts on a goroutine and tells the loop if it fails, which sends the pad back to Raw Input.
 func (r *run) tryDriver(d HIDDevice) bool {
 	opts := &r.s.opts
-	if opts.OpenHID == nil || opts.DisableDrivers || r.drvFailed[d.Handle] {
+	if opts.OpenHID == nil || opts.DisableDrivers || r.s.asleep.Load() || r.drvFailed[d.Handle] {
 		return false
 	}
-	info := gamepadhid.DeviceInfo{Vendor: d.Vendor, Product: d.Product, Version: d.Version, Bus: busOf(d.Path), Path: d.Path}
-	model := gamepadhid.ModelOf(info)
-	if model == gamepadhid.ModelNone {
-		return false
-	}
-	if model == gamepadhid.ModelXboxOneBluetooth && opts.XInput != nil {
-		// XInput serves the Xbox pads, with its own rumble and battery.
+	info, ok := r.driverInfo(d)
+	if !ok {
 		return false
 	}
 	tr, err := opts.OpenHID(d.Path)

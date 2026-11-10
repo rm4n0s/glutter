@@ -187,6 +187,19 @@ type PadSensorControl interface {
 	SetPadSensors(id PadID, on bool) error
 }
 
+// PadExtras is implemented by the Gamepads of a backend that has more than it needs to read the buttons and axes: the HID
+// drivers of Linux and Windows, which write to the pads (the enhanced mode, the light, the rumble reports). A service of this
+// kind starts asleep: it only reads, and writes to no pad, until EnableExtras is called (SPEC §28.2, "Decided in step 36.1").
+// A backend that has no extras does not implement it.
+//
+// Flutter: no counterpart
+type PadExtras interface {
+	// EnableExtras wakes the extras. It may be called before Start, which makes the service start awake, and again, which does
+	// nothing. A pad that a driver serves from now on is told to the handler as removed and added again, once, when it moves
+	// from its event device (or Raw Input) to its driver.
+	EnableExtras()
+}
+
 // Gamepads is the gamepad service of a platform.
 //
 // Flutter: no counterpart

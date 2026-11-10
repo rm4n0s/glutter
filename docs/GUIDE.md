@@ -1647,6 +1647,20 @@ func main() { _ = newPadView() }
   shortcuts activate the focused button with it), the D-pad is the arrow keys (the focus moves), the shoulders and
   triggers, Start, Back and Guide are the other game-button keys. Only the window that has the focus gets them. A game that
   reads the pads itself calls `gamepad.Of(bc).SetKeyEvents(false)`. Flutter does this on Android only (SPEC §12.10).
+- **Turning the pads off, or starting them late.** By default the service starts with the app, so that a pad moves the focus,
+  but it only reads: nothing is written to a pad (no light, no enhanced mode) until the app first calls `gamepad.Of(bc)`. An
+  app that wants no pad at all sets `RunAppOpts.Gamepads` to `"off"`: no goroutine, no watch on `/dev/input`, no device
+  opened, no pad key events, and `Available()` is false. `"ondemand"` starts nothing until the app first uses the package.
+  `GLUTTER_GAMEPADS=off` (or `ondemand`, or `auto`) in the environment overrides the option for one run of any app. A
+  PlayStation, Switch Pro or Bluetooth Xbox pad that has a HID driver disconnects and connects again once, when the app first
+  uses the package (it moves from its event device to its driver); `"ondemand"` has no such step.
+
+```go
+func runWithoutPads(app m.Widget) error {
+	return m.RunApp(app, m.RunAppOpts{Gamepads: "off"})
+}
+```
+
 - **A pad that nothing is known of.** A pad that has no mapping in the table, and that does not follow the Linux Gamepad
   Specification, is not in `Pads()`. `AddMappings` takes lines in the community's format (the lines of SDL's
   `gamecontrollerdb.txt`, `GUID,name,a:b0,b:b1,...,platform:Linux`; `Pad.GUID()` is the GUID to put at the start) and the pad
@@ -1664,7 +1678,7 @@ func main() { _ = newPadView() }
   instances are used up, new pads are looked for every two seconds.
 - **Rumble.** `Pad.Rumble(low, high, d)` makes the pad's two motors turn for `d` (low and high are the strengths from 0
   to 1 of the heavy and the light motor; a duration of 0 stops them) and `Pad.CanRumble()` says whether the pad can. It works
-  on Linux (force feedback: the pad's node must be writable, which the seat's rules give with the read access), on Windows for
+  on Linux (force feedback: the pad's node must be writable, which the seat's rules give with the read access; it is opened for writing at the first rumble), on Windows for
   the Xbox pads (XInput), on the web where the browser has `vibrationActuator` (Chrome and Edge; at most 5 seconds), and on
   Android 12 and later; everywhere else it returns `GamepadRumbleUnavailable`. `Pad.RumbleTriggers(left, right, d)` turns the
   motors in the triggers (`CanRumbleTriggers()`: the DualSense and the Xbox One and Series pads over Bluetooth) and
@@ -1679,8 +1693,8 @@ func main() { _ = newPadView() }
   `KERNEL=="hidraw*", ATTRS{idVendor}=="054c", MODE="0660", TAG+="uaccess"` (Sony), the same with `057e` (Nintendo) and `045e`
   (Microsoft), and for pads that are connected over Bluetooth `KERNELS=="0005:054C:*", MODE="0660", TAG+="uaccess"` (and
   `0005:057E:*`, `0005:045E:*`); then `sudo udevadm control --reload && sudo udevadm trigger`. **On Windows** there is nothing to
-  do; XInput keeps serving Xbox pads while it is there. `GLUTTER_GAMEPAD_HID=0` in the environment turns the drivers off, and
-  every pad is read the old way.
+  do; XInput keeps serving Xbox pads while it is there. The drivers start when the app first uses package `gamepad`, not
+  with the app. `GLUTTER_GAMEPAD_HID=0` in the environment turns the drivers off, and every pad is read the old way.
 - **On Windows** Xbox pads and the others that Windows serves through XInput are read at 125 Hz while they are connected (no
   work is done for an empty slot), and every other game controller through Raw Input and the HID parser, so a generic USB
   pad needs the line of the table that SDL has for it (`AddMappings` for a pad it does not know). A pad that only reports

@@ -155,6 +155,11 @@ type RunAppOpts struct {
 	// renderer is RendererUnknown, and one that this OS or build lacks is
 	// RendererUnavailable (SPEC §9.6).
 	Renderer string
+	// Gamepads is the gamepad mode: "auto" (the default), "ondemand" or "off". In "auto" a pad moves the focus of the app, as key
+	// events, but the service only reads the pads until the app uses package gamepad, and nothing is written to a pad; "ondemand"
+	// starts nothing until the app uses it; "off" never starts the service. GLUTTER_GAMEPADS overrides it. A value that is no
+	// mode is GamepadsModeUnknown (SPEC §28.2).
+	Gamepads string
 	// ErrorReporter receives the errors the framework recovers from or reports
 	// (SPEC §14.2). The default logs each one, as JSON, through Logger.
 	ErrorReporter foundation.ErrorReporter
@@ -232,6 +237,7 @@ func run(parent context.Context, app Widget, wrap bool, o RunAppOpts, engineRun 
 	cfg := engine.Config{
 		Backend:  o.Backend,
 		Renderer: o.Renderer,
+		Gamepads: o.Gamepads,
 		Window:   o.platformWindow(),
 		Logger:   o.Logger,
 		Start: func(d *ui.PlatformDispatcher) error {

@@ -88,6 +88,9 @@ type Config struct {
 	// the window changed (eglSwapBuffersWithDamage). GLUTTER_DAMAGE set to "0" does
 	// the same.
 	DisableDamage bool
+	// Gamepads is the gamepad mode: "auto" (the default, also when empty), "ondemand" or "off" (GamepadsAuto, GamepadsOnDemand and
+	// GamepadsOff). GLUTTER_GAMEPADS overrides it. A value that is no mode is GamepadsModeUnknown (SPEC §28.2).
+	Gamepads string
 	// Start, when set, is called once on the UI thread, after the first window
 	// exists and the dispatcher knows its view, the settings and the displays,
 	// and before the event loop runs. The framework attaches itself to the
@@ -231,6 +234,10 @@ func Run(ctx context.Context, cfg Config) (err error) {
 	if log == nil {
 		log = slog.Default()
 	}
+	padMode, err := gamepadModeOf(cfg.Gamepads, getenv, log)
+	if err != nil {
+		return err
+	}
 	shot, err := ScreenshotFromEnv(getenv)
 	if err != nil {
 		return err
@@ -303,7 +310,7 @@ func Run(ctx context.Context, cfg Config) (err error) {
 	defer cancel()
 
 	h := &handler{cfg: &cfg, log: log, conn: conn, shot: shot, cancel: cancel, windows: map[ui.ViewID]*window{},
-		appID: wcfg.AppID, decorations: wcfg.Decorations, runStart: runStart, frameStats: getenv(FrameStatsEnv) == "1"}
+		appID: wcfg.AppID, decorations: wcfg.Decorations, runStart: runStart, padMode: padMode, frameStats: getenv(FrameStatsEnv) == "1"}
 	cfg.renewSurface, cfg.redraw, cfg.pixelTarget = h.renewSurface, h.redrawWindow, h.pixelTargetOf
 	cfg.post, cfg.captured = conn.Post, h.onCapture
 	h.gpu.log, h.gpu.renderer = log, h.chosenRenderer
@@ -443,7 +450,9 @@ type handler struct {
 	// runStart is when Run began, for the log of the first frame; firstLogged is set
 	// once it was logged. frameStats asks for a line of frame statistics every second
 	// (FrameStatsEnv).
-	runStart    time.Time
+	runStart time.Time
+	// padMode is the gamepad mode of the run (Config.Gamepads and GLUTTER_GAMEPADS).
+	padMode     string
 	firstLogged bool
 	drewOnce    bool
 	// texturesLogged says that the log told about texture layers that this renderer cannot draw (SPEC §27.4).
@@ -1619,5 +1628,6 @@ const (
 	tagDecorationsUnknown     = "DecorationsUnknown"
 	tagIdleInhibitUnavailable = "IdleInhibitUnavailable"
 	tagScreenshotUnsupported  = "ScreenshotUnsupported"
+	tagGamepadsModeUnknown    = "GamepadsModeUnknown"
 	tagViewNotFound           = "ViewNotFound"
 )

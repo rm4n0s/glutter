@@ -30,10 +30,11 @@ type Services struct {
 // there: it never starts one.
 //
 // GLUTTER_GAMEPAD_HID=0 turns the HID drivers of the gamepads off, so that every pad is read through its event device (SPEC §28.2).
+// The gamepad service starts asleep: it only reads the pads, until the app uses package gamepad (platform.PadExtras).
 //
 // Flutter: no counterpart
 func NewServices(post func(func())) *Services {
-	return &Services{audio: audioFromEnv(), pads: evdev.New(evdev.Opts{Post: post, Logger: slog.Default(), DisableHID: os.Getenv("GLUTTER_GAMEPAD_HID") == "0"}), bridge: atspi.New(atspi.Options{
+	return &Services{audio: audioFromEnv(), pads: evdev.New(evdev.Opts{Post: post, Logger: slog.Default(), DisableHID: os.Getenv("GLUTTER_GAMEPAD_HID") == "0", Asleep: true}), bridge: atspi.New(atspi.Options{
 		AppName: filepath.Base(os.Args[0]),
 		Post:    post,
 		OpenSession: func(ctx context.Context) (dbus.Bus, error) {

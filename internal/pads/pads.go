@@ -23,6 +23,9 @@ import (
 // Flutter: no counterpart
 type Host interface {
 	PadManager() *Manager
+	// UsePads says that the app uses package gamepad: the host starts a manager that waits for it, and wakes the extras of the
+	// service (SPEC §28.2, "Decided in step 36.1"). It is called on the UI thread, and may be called again.
+	UsePads()
 }
 
 // Key is a key event that a pad makes (SPEC §28.2, "Pads as keys").
@@ -61,6 +64,7 @@ type Manager struct {
 
 	table   *gamepaddb.Table
 	started bool
+	awake   bool
 	// pads are the connected pads that have a mapping, in the order they were connected.
 	pads []*Pad
 	byID map[platform.PadID]*Pad
@@ -108,6 +112,23 @@ func (m *Manager) Start() error {
 	}
 	m.started = true
 	return nil
+}
+
+// Wake says that the app uses package gamepad. It starts the manager if it is not started (the mode that waits for the app) and
+// wakes the extras of the platform service, if it has any (platform.PadExtras): until then the service only reads. Waking a
+// manager that is awake does nothing.
+//
+// Flutter: no counterpart
+func (m *Manager) Wake() error {
+	if m == nil || m.awake || m.plat == nil {
+		return nil
+	}
+	m.awake = true
+	// Before Start, so that the first look at the devices already has the extras.
+	if ex, ok := m.plat.(platform.PadExtras); ok {
+		ex.EnableExtras()
+	}
+	return m.Start()
 }
 
 // Stop ends the search and lets go of every pad.

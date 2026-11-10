@@ -623,3 +623,19 @@ func TestAPadsSensorsAreSensorsOfTheSensorsPackage(t *testing.T) {
 		t.Error("a closed sensor of a pad was called")
 	}
 }
+
+func TestTheFirstUseOfThePackageWakesTheExtrasOnce(t *testing.T) {
+	ts := gluttertest.New(t)
+	ts.PumpWidget(widgets.NewSizedBox(nil))
+	if n := ts.PadExtrasWoken(); n != 0 {
+		t.Fatalf("the extras were woken %d times before the app used package gamepad", n)
+	}
+	gamepad.ForBinding(ts.Binding)
+	if n := ts.PadExtrasWoken(); n != 1 {
+		t.Fatalf("after the first use the extras were woken %d times, want 1", n)
+	}
+	gamepad.ForBinding(ts.Binding).Pads()
+	if n := ts.PadExtrasWoken(); n != 1 {
+		t.Errorf("a second use woke the extras again: %d", n)
+	}
+}

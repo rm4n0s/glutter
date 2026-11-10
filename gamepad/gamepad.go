@@ -709,6 +709,8 @@ func ForBinding(b *widgets.WidgetsBinding) *Gamepads {
 		g.SetUIThread(b.UIThread())
 		var host pads.Host
 		if b.PlatformDispatcher().HostAs(&host) {
+			// The app uses the pads from here on: the service that waited for it starts, and its extras wake (SPEC §28.2).
+			host.UsePads()
 			g.m = host.PadManager()
 		}
 		if g.m != nil {

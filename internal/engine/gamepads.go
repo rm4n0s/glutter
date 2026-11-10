@@ -1,16 +1,60 @@
 package engine
 
 import (
+	"log/slog"
 	"time"
 
+	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/internal/pads"
 	"github.com/rm4n0s/glutter/ui"
 )
 
-// startGamepads starts the pad manager when the platform has a gamepad service (SPEC §28.2). It runs for the app whether or
-// not the app uses package gamepad, because the pads make key events (the buttons as game-button keys and the D-pad as
-// arrows), which give every app focus traversal and activation with a pad.
+// GamepadsEnv is the environment variable that sets the gamepad mode of a run: "auto", "ondemand" or "off". It overrides
+// Config.Gamepads, so a user can turn the pads off for one run of any app (SPEC §28.2, "Decided in step 36.1").
+const GamepadsEnv = "GLUTTER_GAMEPADS"
+
+// The modes of Config.Gamepads.
+const (
+	// GamepadsAuto (the empty value is the same) starts the gamepad service with the app, so that a pad moves the focus of every
+	// app, but the service only reads: nothing is written to a pad until the app uses package gamepad.
+	GamepadsAuto = "auto"
+	// GamepadsOnDemand starts nothing until the app first uses package gamepad; until then there are no pad key events.
+	GamepadsOnDemand = "ondemand"
+	// GamepadsOff never starts the service: there are no pads and no pad key events.
+	GamepadsOff = "off"
+)
+
+// gamepadModeOf finds the mode of a run: the environment variable wins over the option, and a value of it that is no mode is
+// logged and ignored (the option decides). An option that is no mode fails with GamepadsModeUnknown.
+func gamepadModeOf(option string, getenv func(string) string, log *slog.Logger) (string, error) {
+	mode := GamepadsAuto
+	switch option {
+	case "", GamepadsAuto, GamepadsOnDemand, GamepadsOff:
+		if option != "" {
+			mode = option
+		}
+	default:
+		return "", errors.New(tagGamepadsModeUnknown, "the gamepad mode is not auto, ondemand or off", "mode", option)
+	}
+	switch v := getenv(GamepadsEnv); v {
+	case "":
+	case GamepadsAuto, GamepadsOnDemand, GamepadsOff:
+		mode = v
+	default:
+		log.Info("the gamepad mode of the environment is not auto, ondemand or off, so it is ignored", "variable", GamepadsEnv, "value", v)
+	}
+	return mode, nil
+}
+
+// startGamepads makes the pad manager when the platform has a gamepad service and the mode allows it (SPEC §28.2). In the
+// default mode it also starts it: the pads make key events (the buttons as game-button keys and the D-pad as arrows), which give
+// every app focus traversal and activation with a pad, whether or not the app uses package gamepad. The service only reads
+// until the app uses the package (UsePads). The mode that waits for the app leaves the manager unstarted, and "off" makes none.
 func (h *handler) startGamepads() {
+	if h.padMode == GamepadsOff {
+		h.log.Info("the gamepads are off", "variable", GamepadsEnv)
+		return
+	}
 	svc := h.conn.Services()
 	if svc == nil {
 		return
@@ -19,8 +63,23 @@ func (h *handler) startGamepads() {
 	if service == nil {
 		return
 	}
-	h.pads = pads.New(service, pads.Opts{Keys: h.padKey, Logger: h.log, Getenv: h.cfg.Getenv})
+	getenv := h.cfg.Getenv
+	h.pads = pads.New(service, pads.Opts{Keys: h.padKey, Logger: h.log, Getenv: getenv})
+	if h.padMode == GamepadsOnDemand {
+		return
+	}
 	if err := h.pads.Start(); err != nil {
+		h.log.Info("there are no gamepads", "err", err)
+		h.pads = nil
+	}
+}
+
+// UsePads implements pads.Host: package gamepad is used, so the manager that waited starts and the extras of the service wake.
+func (h *handler) UsePads() {
+	if h.pads == nil {
+		return
+	}
+	if err := h.pads.Wake(); err != nil {
 		h.log.Info("there are no gamepads", "err", err)
 		h.pads = nil
 	}

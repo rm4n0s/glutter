@@ -162,6 +162,9 @@ type kernel struct {
 	setClock func(fd int) error
 	// openWritable opens a device for reading and writing, for a pad that can rumble; nil opens it as any other.
 	openWritable func(path string) (int, error)
+	// writable says whether the user may write to a device, without opening it: a service whose extras are asleep opens a pad read
+	// only and opens it again for writing at the first rumble. nil means it may.
+	writable func(path string) bool
 	// uploadEffect gives a force feedback effect to the device and sets its id; playEffect starts or stops it.
 	uploadEffect func(fd int, e *ffEffect) error
 	playEffect   func(fd int, id int16, value int32) error
@@ -180,6 +183,7 @@ func realKernel() kernel {
 		},
 		setClock:     setMonotonicClock,
 		openWritable: openWritable,
+		writable:     func(path string) bool { return syscall.Access(path, 2) == nil },
 		uploadEffect: uploadEffect,
 		playEffect:   playEffect,
 	}

@@ -21,6 +21,9 @@ type Gamepads struct {
 	nextID  platform.PadID
 	rumbles []Rumble
 	started int
+	// extras counts the wake-ups of the extras (platform.PadExtras), and extrasAtStart is how many there were when the service
+	// was last started.
+	wakeups, wakeupsAtStart int
 	// sensors holds the pads whose sensors are on.
 	sensors map[platform.PadID]bool
 }
@@ -66,6 +69,7 @@ func (g *Gamepads) Start(h platform.PadHandler) error {
 	g.mu.Lock()
 	g.handler = h
 	g.started++
+	g.wakeupsAtStart = g.wakeups
 	infos := g.sortedInfos()
 	g.mu.Unlock()
 	g.post(func() {
@@ -81,6 +85,34 @@ func (g *Gamepads) Stop() {
 	g.mu.Lock()
 	g.handler = nil
 	g.mu.Unlock()
+}
+
+var _ platform.PadExtras = (*Gamepads)(nil)
+
+// EnableExtras implements platform.PadExtras: it counts the call, as the Linux and Windows services' wake-up would be one.
+func (g *Gamepads) EnableExtras() {
+	g.mu.Lock()
+	g.wakeups++
+	g.mu.Unlock()
+}
+
+// Extras returns how many times the extras were woken, and ExtrasAtStart how many times they had been when the service was last
+// started (0 for a service that started asleep, 1 for one that started awake).
+//
+// Flutter: no counterpart
+func (g *Gamepads) Extras() int {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.wakeups
+}
+
+// ExtrasAtStart is documented with Extras.
+//
+// Flutter: no counterpart
+func (g *Gamepads) ExtrasAtStart() int {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.wakeupsAtStart
 }
 
 // Starts returns how many times the service was started.

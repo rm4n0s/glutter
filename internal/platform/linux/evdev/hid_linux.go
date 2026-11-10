@@ -31,7 +31,7 @@ func busOf(bus uint16) gamepadhid.Bus {
 // tryHID starts the HID driver of the pad of an event node if there is one. It reports whether the pad is served so, at least for
 // now: the driver starts on a goroutine, and tells the loop if it fails, which sends the pad back to its event device.
 func (r *run) tryHID(node string, c *caps) bool {
-	if r.s.noHID || r.hidFailed[node] {
+	if r.s.noHID || r.s.asleep.Load() || r.hidFailed[node] {
 		return false
 	}
 	info := gamepadhid.DeviceInfo{Vendor: c.ID.Vendor, Product: c.ID.Product, Version: c.ID.Version, Bus: busOf(c.ID.Bus), Name: c.Name}
@@ -109,6 +109,10 @@ func (r *run) hidEventsDue() {
 }
 
 func (r *run) hidEvent(ev hidEvent) {
+	if ev.wake {
+		r.upgradeHID()
+		return
+	}
 	hp := ev.pad
 	if r.hidpads[hp.node] != hp {
 		// The pad was dropped already (its node went away).
@@ -142,4 +146,33 @@ func (r *run) closeHID(hp *hidPad) {
 	r.s.hidMu.Unlock()
 	hp.dev.Close()
 	hp.bridge.Remove()
+}
+
+// upgradeHID is the wake-up of the extras: each open pad that has a driver and a hidraw node is let go, which tells the handler it
+// is removed, and looked at again, which starts its driver. A pad whose driver cannot start is read through its event device
+// again, with a new id, as a pad that was plugged in again.
+func (r *run) upgradeHID() {
+	if r.s.noHID {
+		return
+	}
+	nodes := make([]string, 0, len(r.byPath))
+	for node := range r.byPath {
+		nodes = append(nodes, node)
+	}
+	for _, node := range nodes {
+		c, ok := probe(dirFiles(filepath.Join(r.s.sysDir, node)))
+		if !ok || !r.hasDriver(node, &c) {
+			continue
+		}
+		if d := r.byPath[node]; d != nil {
+			r.drop(d)
+		}
+		r.consider(node)
+	}
+}
+
+// hasDriver says whether a pad has a HID driver and a hidraw node to run it on.
+func (r *run) hasDriver(node string, c *caps) bool {
+	info := gamepadhid.DeviceInfo{Vendor: c.ID.Vendor, Product: c.ID.Product, Version: c.ID.Version, Bus: busOf(c.ID.Bus), Name: c.Name}
+	return gamepadhid.ModelOf(info) != gamepadhid.ModelNone && hidrawOf(r.s.sysDir, node) != ""
 }

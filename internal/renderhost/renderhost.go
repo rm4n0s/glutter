@@ -504,6 +504,13 @@ func (h *Host) RequestAppExit() { h.mu.Lock(); h.ExitRequests++; h.mu.Unlock() }
 // PadManager implements pads.Host: the manager of the gamepads of the fake app, nil when the test has none.
 func (h *Host) PadManager() *pads.Manager { return h.Pads }
 
+// UsePads implements pads.Host: it wakes the manager of the fake app, as the engine's does.
+func (h *Host) UsePads() {
+	if h.Pads != nil {
+		_ = h.Pads.Wake() // a fake service starts without failing
+	}
+}
+
 // Audio implements platform.AudioHost: the audio service of the fake app, nil when the test has none.
 func (h *Host) Audio() platform.Audio { return h.AudioService }
 

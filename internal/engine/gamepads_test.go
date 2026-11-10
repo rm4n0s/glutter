@@ -1,10 +1,13 @@
 package engine
 
 import (
+	"log/slog"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/rm4n0s/errors"
+	"github.com/rm4n0s/glutter/internal/pads"
 	"github.com/rm4n0s/glutter/internal/platform"
 	"github.com/rm4n0s/glutter/internal/platform/fake"
 	"github.com/rm4n0s/glutter/ui"
@@ -103,3 +106,151 @@ func TestThePadManagerIsFoundThroughTheHost(t *testing.T) {
 		t.Errorf("the service was started %d times", h.c.Gamepads().Starts())
 	}
 }
+
+// padsRun runs the engine in a gamepad mode, with the dispatcher kept so that the test can say that the app uses the pads, and
+// returns what the service saw. use is called on the UI thread once the engine has started.
+type padsRun struct {
+	h    *harness
+	disp chan *ui.PlatformDispatcher
+	done <-chan error
+}
+
+func startPadsRun(t *testing.T, option string, env map[string]string) *padsRun {
+	t.Helper()
+	e := map[string]string{"DISPLAY": ":0"}
+	for k, v := range env {
+		e[k] = v
+	}
+	r := &padsRun{h: newHarness(t, e), disp: make(chan *ui.PlatformDispatcher, 1)}
+	r.h.cfg.Gamepads = option
+	r.h.cfg.Start = func(d *ui.PlatformDispatcher) error { r.disp <- d; return nil }
+	r.done = r.h.run(t)
+	return r
+}
+
+// use says, on the UI thread, that the app uses package gamepad: what gamepad.ForBinding does.
+func (r *padsRun) use(t *testing.T) {
+	t.Helper()
+	d := <-r.disp
+	r.disp <- d
+	ran := make(chan struct{})
+	r.h.c.Post(func() {
+		var host pads.Host
+		if d.HostAs(&host) {
+			host.UsePads()
+		}
+		close(ran)
+	})
+	<-ran
+}
+
+func (r *padsRun) managerIsNil(t *testing.T) bool {
+	t.Helper()
+	d := <-r.disp
+	r.disp <- d
+	var isNil bool
+	ran := make(chan struct{})
+	r.h.c.Post(func() {
+		var host pads.Host
+		isNil = !d.HostAs(&host) || host.PadManager() == nil
+		close(ran)
+	})
+	<-ran
+	return isNil
+}
+
+func (r *padsRun) stop(t *testing.T) {
+	t.Helper()
+	r.h.stopEngine(t)
+	if err := result(t, r.done); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestTheGamepadModes(t *testing.T) {
+	tests := []struct {
+		name            string
+		option          string
+		env             map[string]string
+		startsAtOnce    int  // the starts of the service before the app uses the pads
+		managerAtOnce   bool // there is a manager before the app uses the pads
+		startsAfterUse  int
+		extrasAfterUse  int
+		extrasAtStart   int // how many wake-ups there were when the service started, after the use
+		managerAfterUse bool
+	}{
+		{"auto by default: it starts, asleep, and wakes at the first use", "", nil, 1, true, 1, 1, 0, true},
+		{"auto by name", "auto", nil, 1, true, 1, 1, 0, true},
+		{"on demand starts nothing until the use, and then starts awake", "ondemand", nil, 0, true, 1, 1, 1, true},
+		{"off never starts it", "off", nil, 0, false, 0, 0, 0, false},
+		{"the variable wins: off", "auto", map[string]string{GamepadsEnv: "off"}, 0, false, 0, 0, 0, false},
+		{"the variable wins: on demand", "", map[string]string{GamepadsEnv: "ondemand"}, 0, true, 1, 1, 1, true},
+		{"the variable wins: auto", "off", map[string]string{GamepadsEnv: "auto"}, 1, true, 1, 1, 0, true},
+		{"a variable that is no mode is ignored", "off", map[string]string{GamepadsEnv: "yes"}, 0, false, 0, 0, 0, false},
+		{"a variable that is no mode leaves auto", "", map[string]string{GamepadsEnv: "yes"}, 1, true, 1, 1, 0, true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			r := startPadsRun(t, tc.option, tc.env)
+			pads := r.h.c.Gamepads()
+			// The engine starts the gamepads after the framework starts: wait for the framework, then give it time to not start them.
+			d := <-r.disp
+			r.disp <- d
+			if tc.startsAtOnce > 0 {
+				waitFor(t, func() bool { return pads.Starts() == tc.startsAtOnce })
+			} else {
+				time.Sleep(100 * time.Millisecond)
+			}
+			if got := pads.Starts(); got != tc.startsAtOnce {
+				t.Errorf("before the use the service was started %d times, want %d", got, tc.startsAtOnce)
+			}
+			if got := pads.Extras(); got != 0 {
+				t.Errorf("before the use the extras were woken %d times, want 0", got)
+			}
+			r.use(t)
+			r.use(t) // the second use changes nothing
+			if got := pads.Starts(); got != tc.startsAfterUse {
+				t.Errorf("after the use the service was started %d times, want %d", got, tc.startsAfterUse)
+			}
+			if got := pads.Extras(); got != tc.extrasAfterUse {
+				t.Errorf("after the use the extras were woken %d times, want %d", got, tc.extrasAfterUse)
+			}
+			if tc.startsAfterUse > 0 && pads.ExtrasAtStart() != tc.extrasAtStart {
+				t.Errorf("the service started after %d wake-ups, want %d", pads.ExtrasAtStart(), tc.extrasAtStart)
+			}
+			if nilAfter := r.managerIsNil(t); nilAfter == tc.managerAfterUse {
+				t.Errorf("a manager after the use is %v, want %v", !nilAfter, tc.managerAfterUse)
+			}
+			r.stop(t)
+		})
+	}
+}
+
+func TestAnUnknownGamepadModeIsAnError(t *testing.T) {
+	h := newHarness(t, map[string]string{"DISPLAY": ":0"})
+	h.cfg.Gamepads = "sometimes"
+	err := <-h.run(t)
+	appErr, ok := errors.FromError(err)
+	if !ok || appErr.Tag != "GamepadsModeUnknown" || !appErr.HasRoute("gamepadModeOf.GamepadsModeUnknown") {
+		t.Fatalf("error %v, want GamepadsModeUnknown from gamepadModeOf", err)
+	}
+	if h.c.Gamepads().Starts() != 0 {
+		t.Error("the service started although the mode is unknown")
+	}
+}
+
+func TestGamepadModeOfLogsAnUnknownVariable(t *testing.T) {
+	var logged string
+	log := slog.New(slog.NewTextHandler(writerFunc(func(p []byte) { logged += string(p) }), nil))
+	mode, err := gamepadModeOf("off", func(string) string { return "banana" }, log)
+	if err != nil || mode != GamepadsOff {
+		t.Fatalf("mode %q, %v; want off", mode, err)
+	}
+	if logged == "" {
+		t.Error("an unknown value of the variable was not logged")
+	}
+}
+
+type writerFunc func([]byte)
+
+func (f writerFunc) Write(p []byte) (int, error) { f(p); return len(p), nil }

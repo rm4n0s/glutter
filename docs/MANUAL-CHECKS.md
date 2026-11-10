@@ -1134,3 +1134,15 @@ What only a person (or the Linux machine) can do; the results of the Mac and the
 
 Answers: _(not yet recorded)_
 
+## 36.1 Gamepads start when they are wanted
+
+What only a real pad (and the Linux machine) can show. The unit tests of the Linux service run only on Linux: run them first (`go test ./internal/platform/linux/evdev`), with the rest of rule 8.
+
+1. **`strace`** of `examples/counter` on Linux, before and after (record both): `strace -f -e trace=openat,inotify_add_watch go run ./examples/counter 2>&1 | grep -E "input|hidraw"`. Before the step `/dev/input` is watched and the event nodes of the pads are opened (and `/dev/hidraw*` for a PlayStation, Switch Pro or Bluetooth Xbox pad); after it, by default, the event nodes are opened read only and no hidraw node is opened, and with `GLUTTER_GAMEPADS=off` neither is.
+2. **A PlayStation 4 or 5 pad over Bluetooth, with the udev rule for hidraw** (`docs/GUIDE.md`): `examples/counter` leaves the light bar as the pad had it (it changed before); `examples/gallery` is moved with the pad's D-pad and South button (the keys still work in `auto`).
+3. **`examples/dev/pad-hid` and `examples/game3d`** still get the light, the rumble and the touchpad; the pad disconnects and connects once when the app starts to use the package (the log shows `gamepad connected` twice), and the app's own listener sees that.
+4. **`GLUTTER_GAMEPADS=off go run ./examples/game3d`** has no pad and no keys from one; `GLUTTER_GAMEPADS=ondemand go run ./examples/gallery` has no pad keys, and `game3d` with it plays with the pad and has the light at once, with no reconnection.
+5. **Rumble of an Xbox 360 or other evdev pad without a driver**: the first rumble works (the device is opened for writing then), and a pad whose node the user may not write to says `CanRumble() == false`.
+6. **On Windows**, with a PlayStation pad: the same as 2 and 3 (the Xbox pads through XInput are unchanged).
+
+Answers: _(not yet recorded)_

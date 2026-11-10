@@ -39,7 +39,7 @@ var _ platform.Gamepads = (*padService)(nil)
 func (p *Platform) gamepads() platform.Gamepads {
 	p.padsOnce.Do(func() {
 		opts := winpad.Opts{Post: p.Post, Clock: p.pointerClock, Logger: p.log, HID: newRawInputHID(p.log), OpenHID: openHIDTransport,
-			DisableDrivers: os.Getenv("GLUTTER_GAMEPAD_HID") == "0"}
+			DisableDrivers: os.Getenv("GLUTTER_GAMEPAD_HID") == "0", Asleep: true}
 		x, err := win32.LoadXInput()
 		if err != nil {
 			p.log.Info("XInput is not available, so the Xbox pads are read through HID", "err", err)

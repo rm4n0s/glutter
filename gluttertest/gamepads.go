@@ -277,3 +277,9 @@ func (p *TestPad) Rumbles() []PadRumble {
 	}
 	return out
 }
+
+// PadExtrasWoken says how many times the extras of the fake gamepad service were woken: the first use of package gamepad in the
+// tree's binding wakes them once, as it wakes the HID drivers of a real service (SPEC §28.2, "Decided in step 36.1").
+//
+// Flutter: no counterpart
+func (t *Tester) PadExtrasWoken() int { return t.padsvc.Extras() }

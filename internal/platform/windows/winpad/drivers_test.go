@@ -419,3 +419,75 @@ const (
 	tagFakeDeviceGone      = "FakeDeviceGone"
 	tagFakeAccessDenied    = "FakeAccessDenied"
 )
+
+// asleepPS4 is a service whose drivers are asleep, with a DualShock 4 on USB that Raw Input can read.
+func asleepPS4(t *testing.T) (*Service, *recorder, *opener) {
+	t.Helper()
+	buttons, values := flightPad()
+	h := &fakeHID{desc: map[uintptr]HIDDescription{7: {Name: "Wireless Controller", Buttons: buttons, Values: values, MaxItems: 12}}}
+	h.set(ds4Device(7, ds4USBPath))
+	o := &opener{}
+	r := newRecorder()
+	s := New(Opts{Post: r.post, HID: h, OpenHID: o.open, PollEvery: 2 * time.Millisecond, ScanEvery: 20 * time.Millisecond, Asleep: true})
+	return s, r, o
+}
+
+func TestAnAsleepServiceStartsNoDriver(t *testing.T) {
+	s, r, o := asleepPS4(t)
+	if err := s.Start(r); err != nil {
+		t.Fatal(err)
+	}
+	defer s.Stop()
+	r.wait(t, "the pad", func() bool { return len(r.added) == 1 })
+	if r.added[0].Standard {
+		t.Errorf("a driver serves the pad although the drivers are asleep: %+v", r.added[0])
+	}
+	if o.transport(ds4USBPath) != nil {
+		t.Error("the device was opened for a driver although the drivers are asleep")
+	}
+}
+
+func TestWakingTheDriversMovesAPadToItsDriver(t *testing.T) {
+	s, r, o := asleepPS4(t)
+	if err := s.Start(r); err != nil {
+		t.Fatal(err)
+	}
+	defer s.Stop()
+	r.wait(t, "the pad", func() bool { return len(r.added) == 1 })
+	before := r.added[0]
+	s.EnableExtras()
+	s.EnableExtras() // the second does nothing
+	r.wait(t, "the pad moves to its driver", func() bool { return len(r.added) == 2 && len(r.gone) == 1 })
+	if r.gone[0] != before.ID {
+		t.Errorf("the pad that was removed is %d, want %d", r.gone[0], before.ID)
+	}
+	if after := r.added[1]; !after.Standard || after.Path != ds4USBPath || after.ID == before.ID || !after.LED {
+		t.Errorf("the pad after the wake-up = %+v", after)
+	}
+	if o.transport(ds4USBPath) == nil {
+		t.Error("the device was not opened for its driver after the wake-up")
+	}
+}
+
+func TestWakingTheDriversBeforeStartStartsAwake(t *testing.T) {
+	s, r, o := asleepPS4(t)
+	s.EnableExtras()
+	if err := s.Start(r); err != nil {
+		t.Fatal(err)
+	}
+	defer s.Stop()
+	r.wait(t, "the pad", func() bool { return len(r.added) == 1 })
+	if !r.added[0].Standard || o.transport(ds4USBPath) == nil {
+		t.Errorf("the driver did not start although the drivers were woken before Start: %+v", r.added[0])
+	}
+	if len(r.gone) != 0 {
+		t.Errorf("a pad was removed: %v", r.gone)
+	}
+}
+
+func TestWakingAServiceThatIsNotRunningIsHarmless(t *testing.T) {
+	s, _, _ := asleepPS4(t)
+	s.EnableExtras()
+	s.Stop()
+	s.EnableExtras()
+}

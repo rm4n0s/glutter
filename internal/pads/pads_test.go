@@ -296,3 +296,36 @@ func (namedService) Rumble(platform.PadID, uint16, uint16, time.Duration) error 
 }
 func (namedService) RumbleTriggers(platform.PadID, uint16, uint16, time.Duration) error { return nil }
 func (namedService) SetLED(platform.PadID, uint8, uint8, uint8) error                   { return nil }
+
+func TestWake(t *testing.T) {
+	t.Run("before Start, the service starts awake", func(t *testing.T) {
+		svc := fake.NewGamepads(func(fn func()) { fn() })
+		m := New(svc, Opts{})
+		if err := m.Wake(); err != nil {
+			t.Fatal(err)
+		}
+		if svc.Starts() != 1 || svc.Extras() != 1 || svc.ExtrasAtStart() != 1 {
+			t.Errorf("starts %d, wake-ups %d, wake-ups at the start %d; want 1, 1, 1", svc.Starts(), svc.Extras(), svc.ExtrasAtStart())
+		}
+	})
+	t.Run("after Start, the service that was asleep wakes once", func(t *testing.T) {
+		r := newRig(t, false)
+		if r.svc.Extras() != 0 {
+			t.Fatalf("Start woke the extras: %d", r.svc.Extras())
+		}
+		_ = r.m.Wake()
+		_ = r.m.Wake()
+		if r.svc.Starts() != 1 || r.svc.Extras() != 1 || r.svc.ExtrasAtStart() != 0 {
+			t.Errorf("starts %d, wake-ups %d, at the start %d; want 1, 1, 0", r.svc.Starts(), r.svc.Extras(), r.svc.ExtrasAtStart())
+		}
+	})
+	t.Run("a manager that is nil or has no service", func(t *testing.T) {
+		var nilM *Manager
+		if err := nilM.Wake(); err != nil {
+			t.Error(err)
+		}
+		if err := New(nil, Opts{}).Wake(); err != nil {
+			t.Error(err)
+		}
+	})
+}

@@ -67,6 +67,7 @@ func (s *pageState) DidChangeDependencies() {
 		s.status = "this platform has no gamepads"
 		return
 	}
+	host.UsePads()
 	s.mgr = host.PadManager()
 	attach := func() {
 		for _, p := range s.mgr.Pads() {
