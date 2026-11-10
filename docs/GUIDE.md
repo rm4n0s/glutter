@@ -2237,6 +2237,22 @@ If you build Flutter apps for macOS, this is how a Glutter app becomes an `.app`
   the display's own rate (120 frames a second on a ProMotion Mac), on macOS 12 and 13 a `CVDisplayLink` does; a window
   on a second display with another scale is redrawn at that scale. The renderer is Metal (`GLUTTER_RENDERER=metal`),
   and `soft` draws into IOSurfaces on a Mac that has no Metal device (a virtual machine without GPU passthrough).
+  A `CADisplayLink` gives no tick to a window on a display that is asleep, which is how a Mac looks through Screen
+  Sharing with its own monitor off; since 1.16.3 the link is watched, and a `CVDisplayLink` paces the frames while it
+  is silent, so the app draws and answers clicks there too. `GLUTTER_DISPLAYLINK=cv` or `ca` uses one of the two
+  only, to find which one a problem belongs to. A screenshot that the app takes of itself (`GLUTTER_SCREENSHOT`,
+  `glutter-macos shot`) shows what the app draws and not what macOS draws over it (the window buttons), and with it
+  the frames come from the `CVDisplayLink` alone unless `GLUTTER_DISPLAYLINK=auto` is set: it proves the drawing,
+  not that a person can use the window.
+- **Your own title bar.** With `WindowConfig.Decorations` set to `m.DecorationsApp`, a macOS window has no title bar of
+  the system but keeps the system's red, yellow and green buttons at its top left (top right in a right-to-left
+  language). `m.NewWindowDecoration` knows: it draws no buttons, border or resize strips of its own there (macOS
+  resizes the window), starts its `Leading` widgets after the buttons, and tells the window how high its bar is so
+  that the buttons sit in the middle of it. A bar that you draw without `WindowDecoration` does the same with two
+  things: `m.ViewOf(bc).Window().SystemButtons` is the area the buttons take, in logical pixels of the view (empty
+  where the system has none, so the same code runs on Linux and Windows), and
+  `view.PerformWindowAction(ui.WindowAction{Kind: ui.WindowActionTitleBarHeight, Height: h})`, sent after a frame,
+  centers them in a bar of that height. In full screen macOS hides the buttons and the area is empty.
 - **No plugins.** A Flutter macOS app reaches the system through plugins (Swift or Objective-C code and the plugin
   registrant) and platform channels. A Glutter app is one Go program and has neither: use the standard library, call
   AppKit yourself through `github.com/ebitengine/purego/objc` (`objc.GetClass("NSSound").Send(...)`; a Go callback cannot
@@ -2254,8 +2270,9 @@ If you build Flutter apps for macOS, this is how a Glutter app becomes an `.app`
   `go run` they fail with `NotificationsUnavailable`, which says why. The first recording asks for the microphone with
   the bundle's usage string; an app that is not in a bundle is asked about as the terminal that started it.
 - **Gamepads and sound.** `gamepad` reads pads through IOKit, and a PlayStation, Switch Pro or Xbox pad over Bluetooth
-  through its own HID driver (the light, the touchpad, the motion sensors, the trigger motors); the rumble of a generic
-  pad is not done. `audio` plays and records through Core Audio, follows the system's default device when it changes,
+  through its own HID driver (the light, the touchpad, the motion sensors, the trigger motors); a pad that no HID
+  driver serves rumbles through the Force Feedback framework since 1.16 (written after SDL's, and tested against a fake
+  of the framework: tell us if yours does not). `audio` plays and records through Core Audio, follows the system's default device when it changes,
   and reports a device you named as lost when it is unplugged.
 - **What a Flutter macOS app has that Glutter does not (yet).** The App Sandbox and the Mac App Store (an app is shipped
   as a notarized `.app` or a disk image of your own), a Touch Bar, Handoff and iCloud, the share sheet, the native
@@ -2354,7 +2371,8 @@ If you build Flutter apps for iOS, this is how a Glutter app becomes an `.app` f
   (`examples/multiwindow` does).
 - **Your own title bar.** Set `WindowConfig.Decorations` to `m.DecorationsApp` and put
   `m.NewWindowDecoration(child, m.WindowDecorationOpts{Title: ..., Leading: ..., Actions: ...})` around your
-  app. It draws the title, the window buttons and the resize edges.
+  app. It draws the title, the window buttons and the resize edges. On macOS the window buttons and the resizing
+  are the system's, at the left of the bar ("For Flutter macOS developers" above).
   - Only the title and the empty space around it move the window, maximize it on a double click and open the
     window menu on a right click. The `Leading` and `Actions` widgets get their own gestures, so tabs in the bar
     can be dragged, double-clicked and right-clicked like any widget.
