@@ -186,7 +186,7 @@ This file breaks the milestones in `docs/SPEC.md` §18 into small steps. Each st
 | M33 macOS (1.13) | 33.1–33.16 | every example on macOS, `tray` and `multiwindow` included |
 | M34 Cupertino (1.14) | 34.1–34.10 | `cupertino` |
 | M35 iOS (1.15) | 35.1–35.9 | every example but `multiwindow` and `tray` on the iOS Simulator |
-| M36 Fixes (1.15.1) | 36.1 | `game3d` (a pad), any other example (no pad is touched) |
+| M36 Fixes (1.15.1), and the Linux run of 1.13 to 1.15.1 | 36.1–36.2 | `game3d` (a pad), any other example (no pad is touched) |
 
 ---
 
@@ -4673,3 +4673,27 @@ Fixes found after M35, one step each. A fix step that closes a patch version is 
 - the leak soak of step 31.11 passes in each mode, and `go test -race` passes.
 **Proof:** none (no picture changes). Record in `docs/IMPLEMENTED.md` the `strace -f -e trace=openat,inotify_add_watch` of `examples/counter` on Linux before and after: before, `/dev/input` is watched and the event nodes opened; after, with `GLUTTER_GAMEPADS=off`, neither.
 **Manual checks:** with a real PlayStation 4 or 5 pad on Bluetooth and a udev rule for hidraw: `examples/counter` leaves the light bar as the pad had it (it changed before); `examples/dev/pad-hid` and `game3d` still get the light, rumble and touchpad; `GLUTTER_GAMEPADS=off go run ./examples/game3d` has no pad and no keys from one; a pad moves focus in `examples/gallery` in `Auto`. Record the answers.
+
+### 36.2 The Linux run: what the Mac could not check, and the release tags
+**Goal:** the checks that need the Linux machine pass for everything since 1.12 (M33 to M36), the Linux tests of step 36.1 are run and fixed where they fail, and the releases 1.13.0, 1.14.0, 1.15.0 and 1.15.1 are tagged and published. This step is for the Linux machine: a Mac cannot do it.
+**Why:** M33 to M36 were built on a Mac. The owner had the work pushed on 2026-11-10, before the Linux run, and asked for this step. What was not run there: the unit tests of `internal/platform/linux/evdev` (they have the `linux` build tag; 36.1 added `asleep_linux_test.go`, compiled and vetted with `GOOS=linux` but never executed, and its first version of the lazy open had a bug found only by reading), the Android pass of errcheck (no NDK), `scripts/test-windows.sh` and the Wine tests (no Wine), the Linux display, audio and browser tests, and `golangci-lint`.
+**Read:** rule 8 of this file, CLAUDE.md ("Commands", "Tags"), `docs/MANUAL-CHECKS.md` (sections 35.9 and 36.1), the 36.1 entry of `docs/IMPLEMENTED.md`.
+**Tasks:**
+1. Pull `main` and its tags. `go build ./...`, `CGO_ENABLED=0 go build ./...`, `go vet ./...`, `gofmt -l .` and `golangci-lint run` are clean.
+2. `go test -race ./...` on Linux. **First** `go test -race -count=1 ./internal/platform/linux/evdev ./internal/pads ./internal/engine ./gamepad`, which holds the code of 36.1 that has never run: a failure there is a bug of 36.1, fixed with a test in a commit on a branch `fix/step-36.2-<what>` (never a changed expectation without a reason in `IMPLEMENTED.md`).
+3. The rest of rule 8: the Wayland and X11 display tests (`scripts/headless-wayland.sh`, `scripts/headless-x11.sh`, CLAUDE.md "Commands"), the audio tests (`scripts/headless-audio.sh`), the web checks (`scripts/test-wasm.sh`, `-tags glutter_browser`), the Android check and emulator tests (`scripts/check-android.sh`), `glutter-gen errcheck` without `-skip-android`, apicheck and uintptrcheck, `scripts/test-windows.sh` and the Wine tests, and the memory tests.
+4. The 36.1 checks of `docs/MANUAL-CHECKS.md` that a Linux machine can do: the `strace` of `examples/counter` before (`git stash` or the commit `eaa5682`) and after, with `GLUTTER_GAMEPADS=off` and by default, recorded in `IMPLEMENTED.md`; and, with a real pad when there is one, items 2 to 5.
+5. A failure that is not 36.1's is a bug of the step that caused it (`git log -S` finds it): it is fixed in a branch of its own with a test that fails before the fix, merged and tagged `step-36.2-<n>`.
+6. When everything passes: make the release tags on the commits that finished each version, without asking (CLAUDE.md, "Tags"):
+   ```
+   git tag -a v1.13.0 -m "Glutter 1.13: macOS" f466f2e23b8f977a47953499eb76e118b8b36450
+   git tag -a v1.14.0 -m "Glutter 1.14: Cupertino" 386258b8272d9c38f45f6ea6bab06f048e82a00a
+   git tag -a v1.15.0 -m "Glutter 1.15: iOS" eaa56822edb945ce5dd7a92caf066ade84cfa390
+   git tag -a v1.15.1 -m "Glutter 1.15.1: gamepads on demand" 7b768c7
+   git push --follow-tags origin main
+   ```
+   (Use the full hash of `step-36.1` for the last.) If a fix of task 5 changed what a version contains, tag the version on the commit that has the fix instead, and say so in `IMPLEMENTED.md`.
+7. `docs/IMPLEMENTED.md` has the 36.2 entry with a Checks line written after the runs (what passed, what failed and was fixed, what was not run), and `docs/MANUAL-CHECKS.md` section 35.9 item 1 is marked done.
+**Tests:** none new, unless a failure needs one.
+**Proof:** none.
+**Manual checks:** the pad checks of 36.1 items 2 to 5, and of 35.9, which need hardware; the answers are recorded in `docs/MANUAL-CHECKS.md` when known.
