@@ -347,8 +347,16 @@ func (b *RendererBinding) Reassemble() {
 // Deviation: Flutter's RelayoutWhenSystemFontsChangeMixin listens to the global
 // PaintingBinding.systemFonts when it attaches; here the binding walks the trees.
 //
+// Deviation: a font can be loaded the first time a widget uses it, which is in the middle of a frame (a build that a
+// layout callback makes, such as the build of the content of an overlay); the walk then waits for the end of the
+// frame, because a render object must not be marked while layout is going on (SPEC §12.10).
+//
 // Flutter: rendering/object.dart RelayoutWhenSystemFontsChangeMixin
 func (b *RendererBinding) HandleSystemFontsChange() {
+	if b.scheduler.SchedulerPhase() == scheduler.SchedulerPhasePersistentCallbacks {
+		b.scheduler.AddPostFrameCallback(func(time.Duration) { b.HandleSystemFontsChange() })
+		return
+	}
 	var visitor RenderObjectVisitor
 	visitor = func(child RenderObject) {
 		if o, ok := child.(interface{ SystemFontsDidChange() }); ok {

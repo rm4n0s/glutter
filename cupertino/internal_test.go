@@ -6,6 +6,7 @@ import (
 
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/foundation"
+	"github.com/rm4n0s/glutter/rendering"
 	"github.com/rm4n0s/glutter/widgets"
 )
 
@@ -63,4 +64,10 @@ func TestSearchFieldScrollOpacity(t *testing.T) {
 			t.Errorf("opacity(%v, %v) = %v, want %v", tc.current, tc.max, got, tc.want)
 		}
 	}
+}
+
+func TestAlertDialogActionsWidthUnboundedRoute(t *testing.T) {
+	requireRoute(t, func() {
+		(&renderAlertDialogActionsLayout{}).hasValidConstraints(rendering.NewBoxConstraints(rendering.BoxConstraintsOpts{MaxHeight: foundation.Some(100.0)}))
+	}, "hasValidConstraints.CupertinoAlertDialogActionsWidthUnbounded")
 }

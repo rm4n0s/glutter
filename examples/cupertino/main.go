@@ -14,7 +14,9 @@
 // scrolls; a pushed page flies its bar from the large title to the back label. The second tab shows the controls
 // of step 34.4: a switch, a checkbox, radios, a slider, activity indicators and the two segmented controls. As the
 // other controls of the library (M34) come with the later steps, the rows of the lists are text under a
-// GestureDetector.
+// GestureDetector. The fourth tab, Popups (step 34.6), shows an alert dialog, an action sheet, a context menu that
+// opens when its card is pressed and held, and a menu that grows from a button (and from a long press that swipes
+// over its items).
 package main
 
 import (
@@ -79,7 +81,7 @@ func tabBar() *c.CupertinoTabBar {
 	}
 	return c.NewCupertinoTabBar([]c.BottomNavigationBarItem{
 		item(c.CupertinoIcons.Home(), "Home"), item(c.CupertinoIcons.SliderHorizontal3(), "Controls"),
-		item(c.CupertinoIcons.TextCursor(), "Text"), item(c.CupertinoIcons.Settings(), "Settings"),
+		item(c.CupertinoIcons.TextCursor(), "Text"), item(c.CupertinoIcons.ChatBubble(), "Popups"), item(c.CupertinoIcons.Settings(), "Settings"),
 	})
 }
 
@@ -87,7 +89,7 @@ func tabBar() *c.CupertinoTabBar {
 func newHomePage() c.Widget {
 	return c.NewCupertinoTabScaffold(tabBar(), func(_ c.BuildContext, index int) c.Widget {
 		return c.NewCupertinoTabView(c.CupertinoTabViewOpts{
-			DefaultTitle: c.Some([]string{"Home", "Controls", "Text", "Settings"}[index]),
+			DefaultTitle: c.Some([]string{"Home", "Controls", "Text", "Popups", "Settings"}[index]),
 			Builder: func(bc c.BuildContext) c.Widget {
 				switch index {
 				case 0:
@@ -96,6 +98,8 @@ func newHomePage() c.Widget {
 					return controlsTab()
 				case 2:
 					return textTab()
+				case 3:
+					return popupsTab(bc)
 				}
 				return listTab("Settings", "Setting", 12)
 			},
@@ -215,4 +219,61 @@ func controlsTab() c.Widget {
 			c.NewSliverList(c.NewSliverChildListDelegate(rows)),
 		}))
 	})
+}
+
+// popupsTab is the page of the popups of step 34.6: an alert dialog, an action sheet, a context menu that opens
+// when its card is pressed and held, and a menu that grows from a button.
+func popupsTab(bc c.BuildContext) c.Widget {
+	dismiss := func(bc c.BuildContext) func() { return func() { c.NavigatorOf(bc).Pop() } }
+	card := c.NewContainer(c.NewCenter(c.NewText("Press and hold me", c.TextOpts{Style: c.NewTextStyle(c.TextStyleOpts{Color: c.Some(c.NewColor(0xFFFFFFFF))})})),
+		c.ContainerOpts{Width: c.Some(220.0), Height: c.Some(90.0), Decoration: c.NewBoxDecoration(c.BoxDecorationOpts{
+			Color: c.Some(c.CupertinoColors.SystemOrange.Color), BorderRadius: c.NewBorderRadiusCircular(12)})})
+	anchor := func(controller *c.MenuController) c.Widget {
+		return c.NewCupertinoMenuAnchor([]c.Widget{
+			c.NewCupertinoMenuItem(c.NewText("Share"), c.CupertinoMenuItemOpts{OnPressed: func() {}, Leading: c.NewIcon(c.CupertinoIcons.Share())}),
+			c.NewCupertinoMenuItem(c.NewText("Copy link"), c.CupertinoMenuItemOpts{OnPressed: func() {}, Leading: c.NewIcon(c.CupertinoIcons.DocOnDoc()),
+				Subtitle: c.NewText("To the clipboard")}),
+			c.NewCupertinoMenuDivider(),
+			c.NewCupertinoMenuItem(c.NewText("Delete"), c.CupertinoMenuItemOpts{OnPressed: func() {}, IsDestructiveAction: true, Leading: c.NewIcon(c.CupertinoIcons.Delete())}),
+		}, c.CupertinoMenuAnchorOpts{Controller: controller, EnableLongPressToOpen: true, Child: c.NewCupertinoButtonFilled(func() {
+			if controller.IsOpen() {
+				controller.Close()
+			} else {
+				controller.Open()
+			}
+		}, c.NewText("Menu"))})
+	}
+	controller := c.NewMenuController()
+	rows := []c.Widget{
+		row("Show an alert dialog", func() {
+			c.ShowCupertinoDialog(bc, func(bc c.BuildContext) c.Widget {
+				return c.NewCupertinoAlertDialog(c.CupertinoAlertDialogOpts{Title: c.NewText("Delete the photo?"), Content: c.NewText("It is removed from all of your devices."),
+					Actions: []c.Widget{
+						c.NewCupertinoDialogAction(c.NewText("Keep"), c.CupertinoDialogActionOpts{IsDefaultAction: true, OnPressed: dismiss(bc)}),
+						c.NewCupertinoDialogAction(c.NewText("Delete"), c.CupertinoDialogActionOpts{IsDestructiveAction: true, OnPressed: dismiss(bc)}),
+					}})
+			})
+		}),
+		row("Show an action sheet", func() {
+			c.ShowCupertinoModalPopup(bc, func(bc c.BuildContext) c.Widget {
+				return c.NewCupertinoActionSheet(c.CupertinoActionSheetOpts{Title: c.NewText("Favorite dessert"), Message: c.NewText("Select the best dessert from the options below."),
+					Actions: []c.Widget{
+						c.NewCupertinoActionSheetAction(dismiss(bc), c.NewText("Profiteroles"), c.CupertinoActionSheetActionOpts{IsDefaultAction: true}),
+						c.NewCupertinoActionSheetAction(dismiss(bc), c.NewText("Cannolis")),
+						c.NewCupertinoActionSheetAction(dismiss(bc), c.NewText("Trifle"), c.CupertinoActionSheetActionOpts{IsDestructiveAction: true}),
+					},
+					CancelButton: c.NewCupertinoActionSheetAction(dismiss(bc), c.NewText("Cancel"))})
+			})
+		}),
+		c.NewPadding(c.NewEdgeInsetsSymmetric(12, 20), c.NewCupertinoContextMenu([]c.Widget{
+			c.NewCupertinoContextMenuAction(c.NewText("Copy"), c.CupertinoContextMenuActionOpts{IsDefaultAction: true, TrailingIcon: c.Some(c.CupertinoIcons.DocOnDoc())}),
+			c.NewCupertinoContextMenuAction(c.NewText("Share"), c.CupertinoContextMenuActionOpts{TrailingIcon: c.Some(c.CupertinoIcons.Share())}),
+			c.NewCupertinoContextMenuAction(c.NewText("Delete"), c.CupertinoContextMenuActionOpts{IsDestructiveAction: true, TrailingIcon: c.Some(c.CupertinoIcons.Delete())}),
+		}, card)),
+		c.NewPadding(c.NewEdgeInsetsSymmetric(12, 20), c.NewAlign(anchor(controller), c.AlignOpts{Alignment: c.AlignmentCenterLeft})),
+	}
+	return c.NewCupertinoPageScaffold(c.NewCustomScrollView([]c.Widget{
+		c.NewCupertinoSliverNavigationBar(c.CupertinoSliverNavigationBarOpts{LargeTitle: c.NewText("Popups")}),
+		c.NewSliverList(c.NewSliverChildListDelegate(rows)),
+	}))
 }

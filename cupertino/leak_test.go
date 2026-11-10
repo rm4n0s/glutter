@@ -6,6 +6,8 @@ import (
 	"time"
 	"weak"
 
+	"golang.org/x/image/font/gofont/gomono"
+
 	"github.com/rm4n0s/glutter/cupertino"
 	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/gluttertest"
@@ -372,6 +374,98 @@ func TestLeaksText(t *testing.T) {
 					ts.ClearLogs()
 				}
 			}, leaktest.Opts{N: 200, Warmup: 700})
+		})
+	}
+}
+
+// TestLeaksPopups opens and closes the alert dialog, the action sheet, the context menu and the menu of an anchor,
+// and a swipe over the menu, and leaves the app: the objects must be as many at the end as at the start (step 34.6).
+func TestLeaksPopups(t *testing.T) {
+	skipUnlessDebug(t)
+	if runtime.GOOS == "js" {
+		t.Skip("500 runs of four popups take longer than the test timeout under Node; the host runs them")
+	}
+	tests := []struct {
+		name string
+		page func(controller *widgets.MenuController) widgets.Widget
+		use  func(ts *gluttertest.Tester, controller *widgets.MenuController)
+	}{
+		{"alert dialog", func(*widgets.MenuController) widgets.Widget {
+			return widgets.NewBuilder(func(bc widgets.BuildContext) widgets.Widget {
+				return cupertino.NewCupertinoButton(func() {
+					cupertino.ShowCupertinoDialog(bc, func(bc widgets.BuildContext) widgets.Widget {
+						return cupertino.NewCupertinoAlertDialog(cupertino.CupertinoAlertDialogOpts{Title: widgets.NewText("Title"), Content: widgets.NewText("Content"),
+							Actions: []widgets.Widget{cupertino.NewCupertinoDialogAction(widgets.NewText("OK"), cupertino.CupertinoDialogActionOpts{OnPressed: func() { widgets.NavigatorOf(bc).Pop() }})}})
+					})
+				}, widgets.NewText("Go"))
+			})
+		}, func(ts *gluttertest.Tester, _ *widgets.MenuController) {
+			ts.Tap(gluttertest.ByText("Go"))
+			ts.PumpAndSettle()
+			ts.Tap(gluttertest.ByText("OK"))
+			ts.PumpAndSettle()
+		}},
+		{"action sheet", func(*widgets.MenuController) widgets.Widget {
+			return widgets.NewBuilder(func(bc widgets.BuildContext) widgets.Widget {
+				return cupertino.NewCupertinoButton(func() {
+					cupertino.ShowCupertinoModalPopup(bc, func(bc widgets.BuildContext) widgets.Widget {
+						return cupertino.NewCupertinoActionSheet(cupertino.CupertinoActionSheetOpts{Title: widgets.NewText("Title"),
+							Actions:      []widgets.Widget{cupertino.NewCupertinoActionSheetAction(func() { widgets.NavigatorOf(bc).Pop() }, widgets.NewText("One"))},
+							CancelButton: cupertino.NewCupertinoActionSheetAction(func() { widgets.NavigatorOf(bc).Pop() }, widgets.NewText("Cancel"))})
+					})
+				}, widgets.NewText("Go"))
+			})
+		}, func(ts *gluttertest.Tester, _ *widgets.MenuController) {
+			ts.Tap(gluttertest.ByText("Go"))
+			ts.PumpAndSettle()
+			ts.Tap(gluttertest.ByText("One"))
+			ts.PumpAndSettle()
+		}},
+		{"context menu", func(*widgets.MenuController) widgets.Widget {
+			return cupertino.NewCupertinoContextMenu([]widgets.Widget{cupertino.NewCupertinoContextMenuAction(widgets.NewText("Copy"))},
+				widgets.NewContainer(widgets.NewText("Child"), widgets.ContainerOpts{Width: foundation.Some(200.0), Height: foundation.Some(80.0)}))
+		}, func(ts *gluttertest.Tester, _ *widgets.MenuController) {
+			g := ts.StartGesture(ts.Center(gluttertest.ByText("Child")))
+			ts.PumpAndSettle()
+			g.Up()
+			ts.PumpAndSettle()
+			ts.TapAt(ui.Offset{Dx: 1, Dy: 1})
+			ts.PumpAndSettle()
+		}},
+		{"menu anchor with a swipe", func(controller *widgets.MenuController) widgets.Widget {
+			return cupertino.NewCupertinoMenuAnchor([]widgets.Widget{
+				cupertino.NewCupertinoMenuItem(widgets.NewText("One"), cupertino.CupertinoMenuItemOpts{OnPressed: func() {}}),
+				cupertino.NewCupertinoMenuItem(widgets.NewText("Two"), cupertino.CupertinoMenuItemOpts{OnPressed: func() {}})},
+				cupertino.CupertinoMenuAnchorOpts{Controller: controller, Child: widgets.NewText("Anchor")})
+		}, func(ts *gluttertest.Tester, controller *widgets.MenuController) {
+			controller.Open()
+			ts.PumpAndSettle()
+			g := ts.StartGesture(ts.Center(gluttertest.ByText("One")))
+			ts.Pump()
+			g.MoveTo(ts.Center(gluttertest.ByText("Two")))
+			ts.Pump(100 * time.Millisecond)
+			g.MoveTo(ui.Offset{Dx: 5, Dy: 500})
+			ts.Pump(300 * time.Millisecond)
+			g.Cancel()
+			controller.Close()
+			ts.PumpAndSettle()
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			leaktest.Run(t, "cupertino/popups/"+tt.name, func() func() {
+				ts := gluttertest.New(t, gluttertest.Opts{Size: ui.Size{Width: 800, Height: 600}, DiscardScenes: true, Fonts: []gluttertest.Font{
+					{Family: cupertino.CupertinoSystemTextFamily, Data: gomono.TTF}, {Family: cupertino.CupertinoSystemDisplayFamily, Data: gomono.TTF}}})
+				return func() {
+					controller := widgets.NewMenuController()
+					ts.PumpWidget(testApp(cupertino.CupertinoAppOpts{Home: cupertino.NewCupertinoPageScaffold(widgets.NewCenter(tt.page(controller)))}))
+					ts.Pump()
+					tt.use(ts, controller)
+					ts.PumpWidget(testApp(cupertino.CupertinoAppOpts{Home: widgets.NewSizedBox(nil)}))
+					ts.PumpAndSettle()
+					ts.ClearLogs()
+				}
+			}, leaktest.Opts{N: 100, Warmup: 400})
 		})
 	}
 }
