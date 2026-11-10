@@ -25,10 +25,16 @@ const TagIOSDevEventsInvalid = "IOSDevEventsInvalid"
 //
 // Flutter: no counterpart
 type DevEvent struct {
-	// Kind is the name of the step: "wait", "tap", "drag" or "key".
+	// Kind is the name of the step: "wait", "tap", "drag", "key", "text", "compose", "composing", "keyboard" or "keyboardhide".
 	Kind string
 	// Wait is how long to wait, for "wait", and how long a "drag" takes.
 	Wait time.Duration
+	// Text is the text of a "text" step, and Steps are the pieces of a "compose" or "composing" step, each the marked text of an update of
+	// the input method.
+	Text  string
+	Steps []string
+	// Height is the height in points of the keyboard of a "keyboard" step.
+	Height float64
 	// X, Y are the place of a "tap" and the start of a "drag", in points from the top left of the view; X2, Y2 are the end of a "drag".
 	X, Y, X2, Y2 float64
 	// Key is the physical key of a "key" step, in Flutter's names (KeyA, Digit1, Enter, ArrowLeft), and Mods the modifiers that are down while
@@ -42,12 +48,19 @@ type DevEvent struct {
 //	tap:x,y               touches the place (points from the top left of the view) and lifts the finger
 //	drag:x,y,x2,y2[,d]    puts a finger at the first place, moves it to the second in steps of 16 ms over the duration d (200ms when it is
 //	                      left out) and lifts it
+//	text:Hello            types the text as a keyboard does that composes nothing: one insertText: for each character (the blanks are
+//	                      typed; the control characters type nothing; no ";")
+//	compose:a,b,c         an input method composes a, then b, then c (setMarkedText: each), commits c (insertText:) and ends the composition
+//	composing:a,b,c       the same, but the composition stays (a later compose: goes on with it)
+//	keyboard:h            the soft keyboard comes up, h points high (UIKit's frame notification, with a keyboard's duration)
+//	keyboardhide          the soft keyboard goes down
 //	key:Name[,mods]       presses and releases a key of a hardware keyboard with the modifiers (shift, control, alt, meta, joined by "+")
 //	                      pressed before it and released after it: key:KeyC,meta is Command+C. The names are Flutter's physical keys:
 //	                      KeyA to KeyZ, Digit0 to Digit9, Enter, Tab, Space, Backspace, Delete, Escape, ArrowLeft, ArrowRight, ArrowUp,
 //	                      ArrowDown, Home, End, PageUp, PageDown, and F1 to F12
 //
-// A step that is not known, or has the wrong arguments, fails with IOSDevEventsInvalid.
+// The text steps need a text field with the focus (the input view is the first responder). A step that is not known, or has the wrong
+// arguments, fails with IOSDevEventsInvalid.
 //
 // Flutter: no counterpart
 func ParseDevEvents(script string) ([]DevEvent, error) {
@@ -55,6 +68,10 @@ func ParseDevEvents(script string) ([]DevEvent, error) {
 	for _, raw := range strings.Split(script, ";") {
 		step := strings.TrimSpace(raw)
 		if step == "" {
+			continue
+		}
+		if step == "keyboardhide" {
+			events = append(events, DevEvent{Kind: step})
 			continue
 		}
 		name, args, ok := strings.Cut(step, ":")
@@ -101,8 +118,26 @@ func ParseDevEvents(script string) ([]DevEvent, error) {
 				}
 			}
 			events = append(events, DevEvent{Kind: name, Key: key, Mods: mods})
+		case "text":
+			// The blanks of the text are the text: only the step's own leading blanks go.
+			_, args, _ = strings.Cut(strings.TrimLeft(raw, " \t\r\n"), ":")
+			if args == "" {
+				return nil, errors.New(TagIOSDevEventsInvalid, "text takes the text to type", "step", step)
+			}
+			events = append(events, DevEvent{Kind: name, Text: args})
+		case "compose", "composing":
+			if strings.TrimSpace(args) == "" {
+				return nil, errors.New(TagIOSDevEventsInvalid, "compose takes the marked texts, separated by commas", "step", step)
+			}
+			events = append(events, DevEvent{Kind: name, Steps: strings.Split(args, ",")})
+		case "keyboard":
+			h, err := strconv.ParseFloat(strings.TrimSpace(args), 64)
+			if err != nil || h <= 0 {
+				return nil, errors.New(TagIOSDevEventsInvalid, "keyboard takes the height in points", "step", step)
+			}
+			events = append(events, DevEvent{Kind: name, Height: h})
 		default:
-			return nil, errors.New(TagIOSDevEventsInvalid, "the step is not one of wait, tap, drag and key", "step", step)
+			return nil, errors.New(TagIOSDevEventsInvalid, "the step is not one of wait, tap, drag, key, text, compose, composing, keyboard and keyboardhide", "step", step)
 		}
 	}
 	return events, nil

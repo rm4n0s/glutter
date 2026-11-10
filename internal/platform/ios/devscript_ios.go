@@ -2,10 +2,22 @@
 
 package ios
 
-import "time"
+import (
+	"time"
+
+	"github.com/ebitengine/purego/objc"
+	"github.com/rm4n0s/glutter/internal/platform/darwin"
+	"github.com/rm4n0s/glutter/internal/platform/darwin/objcx"
+)
 
 // devTouchID is the identity of the touch that a script makes: no UITouch has it.
 const devTouchID uintptr = 0xd00d
+
+// devFocusLimit is how long a text step of a script waits for a text field to have the focus, and devFocusPoll how often it looks.
+const (
+	devFocusLimit = 10 * time.Second
+	devFocusPoll  = 50 * time.Millisecond
+)
 
 // devFrame is the time between the steps of a drag of a script.
 const devFrame = 16 * time.Millisecond
@@ -17,6 +29,7 @@ func (p *Platform) startDevEvents() {
 		return
 	}
 	p.devStarted = true
+	p.devBegan = time.Now()
 	p.addTimer(time.Now().Add(300*time.Millisecond), func() { p.runDevEvents(0) })
 }
 
@@ -48,6 +61,22 @@ func (p *Platform) runDevEvents(i int) {
 			return
 		case "key":
 			w.devKey(ev)
+		case "text", "compose", "composing":
+			// The text goes to a field that has the focus: the script waits for one (the framework gives the focus in a frame of its own),
+			// and types into none after the limit.
+			if !w.text.enabled && time.Since(p.devBegan) < devFocusLimit {
+				p.addTimer(time.Now().Add(devFocusPoll), func() { p.runDevEvents(i) })
+				return
+			}
+			if ev.Kind == "text" {
+				w.devText(ev.Text)
+			} else {
+				w.devCompose(ev.Steps, ev.Kind == "compose")
+			}
+		case "keyboard":
+			w.devKeyboard(ev.Height)
+		case "keyboardhide":
+			w.devKeyboard(0)
 		}
 	}
 	p.devDone = true
@@ -131,4 +160,57 @@ func splitMods(mods string) []string {
 		}
 	}
 	return out
+}
+
+// devText types the text as UIKit does for a keyboard that composes nothing: one insertText: on the text input view for each character.
+func (w *window) devText(text string) {
+	if w.inputView == 0 {
+		return
+	}
+	for _, r := range text {
+		if r < 0x20 || r == 0x7f {
+			continue // the control characters type nothing
+		}
+		s := objcx.NewString(string(r))
+		w.inputView.Send(sel("insertText:"), s)
+		objcx.Release(s)
+	}
+}
+
+// devCompose is an input method composing: setMarkedText:selectedRange: on the text input view for each step, with the caret at its end,
+// and then insertText: with the last one when the composition is committed.
+func (w *window) devCompose(steps []string, commit bool) {
+	if w.inputView == 0 {
+		return
+	}
+	for _, step := range steps {
+		s := objcx.NewString(step)
+		w.inputView.Send(sel("setMarkedText:selectedRange:"), s, uint64(u16Len(step)), uint64(0))
+		objcx.Release(s)
+	}
+	if commit && len(steps) > 0 {
+		s := objcx.NewString(steps[len(steps)-1])
+		w.inputView.Send(sel("insertText:"), s)
+		objcx.Release(s)
+	}
+}
+
+// devKeyboard posts the notification that UIKit posts when the keyboard comes up to the height in points (0 sends it down), with the
+// duration of a keyboard's animation, as the system would: the platform's observer takes it from there.
+func (w *window) devKeyboard(height float64) {
+	screen := class("UIScreen").Send(sel("mainScreen"))
+	b := send[darwin.CGRect](screen, "bounds")
+	y := b.Size.Height - height
+	frame := darwin.CGRect{Origin: darwin.CGPoint{X: 0, Y: y}, Size: darwin.CGSize{Width: b.Size.Width, Height: height}}
+	value := class("NSValue").Send(sel("valueWithCGRect:"), frame)
+	frameKey, durKey := objcx.NewString("UIKeyboardFrameEndUserInfoKey"), objcx.NewString("UIKeyboardAnimationDurationUserInfoKey")
+	duration := objcx.NewNumberFloat(0.25)
+	dict := class("NSMutableDictionary").Send(sel("dictionary"))
+	dict.Send(sel("setObject:forKey:"), value, frameKey)
+	dict.Send(sel("setObject:forKey:"), duration, durKey)
+	name := objcx.NewString(keyboardNotification)
+	class("NSNotificationCenter").Send(sel("defaultCenter")).Send(sel("postNotificationName:object:userInfo:"), name, objc.ID(0), dict)
+	for _, o := range []objc.ID{frameKey, durKey, duration, name} {
+		objcx.Release(o)
+	}
 }

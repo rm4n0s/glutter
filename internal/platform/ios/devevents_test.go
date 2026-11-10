@@ -27,9 +27,26 @@ func TestParseDevEvents(t *testing.T) {
 	}
 }
 
+func TestParseTextDevEvents(t *testing.T) {
+	got, err := ParseDevEvents("text: a 😀;compose:に,にほ,日本;composing:x;keyboard:300;keyboardhide")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []DevEvent{
+		{Kind: "text", Text: " a 😀"},
+		{Kind: "compose", Steps: []string{"に", "にほ", "日本"}},
+		{Kind: "composing", Steps: []string{"x"}},
+		{Kind: "keyboard", Height: 300},
+		{Kind: "keyboardhide"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("events = %+v\nwant     %+v", got, want)
+	}
+}
+
 func TestParseDevEventsErrors(t *testing.T) {
 	for _, script := range []string{
-		"tap", "wait:soon", "wait:-1s", "tap:1", "tap:a,b", "drag:1,2,3", "drag:1,2,3,4,0s", "drag:1,2,3,4,x", "key:Nope", "key:KeyA,hyper", "jump:1,2",
+		"tap", "wait:soon", "wait:-1s", "tap:1", "tap:a,b", "drag:1,2,3", "drag:1,2,3,4,0s", "drag:1,2,3,4,x", "key:Nope", "key:KeyA,hyper", "jump:1,2", "text:", "compose:", "keyboard:", "keyboard:0", "keyboard:tall",
 	} {
 		_, err := ParseDevEvents(script)
 		appErr, ok := errors.FromError(err)

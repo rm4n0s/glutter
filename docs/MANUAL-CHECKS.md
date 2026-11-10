@@ -1061,3 +1061,18 @@ What the Simulator tests cannot do (the headless Simulator takes no real touch; 
 5. **A hardware keyboard** (Magic Keyboard, or the Mac's keyboard in the Simulator): arrows move focus, Tab walks the focus, Cmd+C and the others reach shortcuts, a key that is held does not repeat (UIKit does not repeat it; note whether it should).
 
 Record the answers here when they are known.
+
+
+## 35.5 Text input and the soft keyboard (iOS)
+
+On an iPhone and an iPad, with a field of `examples/gallery` (the text field page) and `examples/editor`:
+
+1. **The QWERTY keyboard.** Type with autocorrection and suggestions on: the suggestion bar offers words, a tap on one replaces the word, and the correction keeps the caret.
+2. **Japanese and Chinese.** Add the keyboards (Kana, Pinyin): the composition underlines, the candidates choose, the commit lands in the field.
+3. **Dictation.** The microphone key dictates into the field.
+4. **The space-bar cursor** (long press on the space bar): known not to move the framework's caret yet (SPEC §30, "Decided in step 35.5").
+5. **A password field** with AutoFill: the keyboard offers the saved password; the text is secure and has no suggestions.
+6. **The keyboard's insets.** The app moves above the keyboard as it comes, with the keyboard's own curve; on an iPad with the floating keyboard it does not move.
+7. **A hardware keyboard** typing into a field: the letters arrive, and the shortcuts still reach the framework.
+
+Record the answers here when they are known.

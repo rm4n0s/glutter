@@ -38,8 +38,9 @@ type Options struct {
 type system struct {
 	// mediaTime is CACurrentMediaTime: seconds on the clock that CADisplayLink timestamps use.
 	mediaTime func() float64
-	// view is the class of the view of a window, scene the class of the delegate of the scene.
-	view, scene *objcx.RegisteredClass
+	// view is the class of the view of a window, scene the class of the delegate of the scene, textView, textPos and textRange the
+	// classes of the text input (textinput_ios.go), and keyboard the class of the observer of the keyboard's frame.
+	view, scene, textView, textPos, textRange, keyboard *objcx.RegisteredClass
 }
 
 // Platform is the UIKit backend of platform.Platform: the app and its run loop on the main thread, the scene with its windows, the
@@ -76,6 +77,10 @@ type Platform struct {
 	ended  bool
 	closed bool
 
+	// handle is the platform's handle for the objects of UIKit that find it (the keyboard observer), and observer that object.
+	handle   objcx.Handle
+	observer objc.ID
+
 	// touch, conv and keys turn the touches, the pointer and the keys into the events of the framework (input_ios.go).
 	touch *touchTracker
 	conv  *pointerconv.Converter
@@ -85,6 +90,8 @@ type Platform struct {
 	devEvents  []DevEvent
 	devStarted bool
 	devDone    bool
+	// devBegan is when the script began.
+	devBegan time.Time
 
 	// wakes counts what woke the loop (a posted function, a timer, a tick), for the tests that look for an idle app.
 	wakes atomic.Uint64
@@ -116,6 +123,8 @@ func New(opts Options) (*Platform, error) {
 	}
 	p.s = s
 	p.base = s.mediaTime()
+	p.handle = objcx.NewHandle(p)
+	p.observeKeyboard()
 	p.touch, p.conv = newTouchTracker(), pointerconv.New()
 	p.keys = newKeyResponder(p.sendKey)
 	if foundation.DebugMode {
@@ -147,6 +156,12 @@ func (p *Platform) load() (*system, error) {
 		return nil, err
 	}
 	if s.scene, err = registerPlatformSceneDelegate(p); err != nil {
+		return nil, err
+	}
+	if s.textView, s.textPos, s.textRange, err = registerText(); err != nil {
+		return nil, err
+	}
+	if s.keyboard, err = registerKeyboardObserver(); err != nil {
 		return nil, err
 	}
 	return s, nil
@@ -292,6 +307,8 @@ func (p *Platform) Close() error {
 		}
 		p.scenes = map[objc.ID]activation{}
 	})
+	p.stopObservingKeyboard()
+	objcx.DropHandle(p.handle)
 	if p.timer != nil {
 		p.timer.Close()
 		p.timer = nil

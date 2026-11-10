@@ -31,8 +31,9 @@ type handler struct {
 
 func (h *handler) OnMetrics(_ ui.ViewID, m platform.ViewMetrics) {
 	h.size = m.PhysicalSize
-	fmt.Printf("%s %dx%d scale=%g padding=%g,%g,%g,%g\n", scenelines.Metrics, int(m.PhysicalSize.Width), int(m.PhysicalSize.Height),
-		m.DevicePixelRatio, m.ViewPadding.Left, m.ViewPadding.Top, m.ViewPadding.Right, m.ViewPadding.Bottom)
+	fmt.Printf("%s %dx%d scale=%g padding=%g,%g,%g,%g insets=%g,%g,%g,%g\n", scenelines.Metrics, int(m.PhysicalSize.Width), int(m.PhysicalSize.Height),
+		m.DevicePixelRatio, m.ViewPadding.Left, m.ViewPadding.Top, m.ViewPadding.Right, m.ViewPadding.Bottom,
+		m.ViewInsets.Left, m.ViewInsets.Top, m.ViewInsets.Right, m.ViewInsets.Bottom)
 }
 
 func (h *handler) OnLifecycle(state ui.AppLifecycleState) {

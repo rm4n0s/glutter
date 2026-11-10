@@ -8,7 +8,7 @@ import "github.com/rm4n0s/glutter/ui"
 
 // The lines of the app; each is followed by its values.
 const (
-	// Metrics is the line of a change of the metrics: "<WxH in pixels> scale=<s> padding=<l>,<t>,<r>,<b>".
+	// Metrics is the line of a change of the metrics: "<WxH in pixels> scale=<s> padding=<l>,<t>,<r>,<b> insets=<l>,<t>,<r>,<b>".
 	Metrics = "GLUTTER_IOS_SCENE metrics"
 	// Frame is the line of a frame: "<n> <WxH of the buffer>".
 	Frame = "GLUTTER_IOS_SCENE frame"

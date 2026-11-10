@@ -50,6 +50,18 @@ type window struct {
 	// The pacing of the frames: the display link ticks, or a timer does when the link never has (a Simulator that no screen is
 	// attached to: SPEC §30.3). linkTicked says the link ticked once; useTimer says the frames follow the timer; frameTimer and
 	// watchdog are the timers of the platform's heap that are armed, 0 for none.
+	// text is the document of the focused text field as UIKit sees it (textinput.go), inputView the hidden UITextInput view that UIKit
+	// types into (made at the first field), inputDelegate the object that UIKit gave it to tell about changes, and tokenizer the
+	// tokenizer of the view.
+	text                                textInput
+	inputView, inputDelegate, tokenizer objc.ID
+	// inset is the bottom inset of the keyboard in physical pixels as it is shown now; insetAnim animates it, and insetTimer is the timer
+	// of the animation (keyboard_ios.go).
+	inset      float64
+	insetTo    float64
+	insetAnim  insetAnimation
+	insetTimer loop.TimerID
+
 	// The sessions of the trackpad's gestures (pointer.go).
 	scrollSession, pinchSession, rotateSession panZoom
 
@@ -190,9 +202,6 @@ func (w *window) SetHidden(hidden bool) bool {
 
 // SetCursor ignores the cursor: there is none until the pointer of iPadOS (step 35.4).
 func (w *window) SetCursor(platform.MouseCursor) {}
-
-// SetTextInput ignores the text input until step 35.5.
-func (w *window) SetTextInput(ui.TextInputState) {}
 
 // PerformWindowAction does nothing: an iOS window has no title bar.
 func (w *window) PerformWindowAction(ui.WindowAction) {}
@@ -359,6 +368,7 @@ func (w *window) metrics() platform.ViewMetrics {
 		PhysicalSize:     physicalSize(ui.Size{Width: bounds.Size.Width, Height: bounds.Size.Height}, scale),
 		DevicePixelRatio: scale,
 		ViewPadding:      viewPadding(edgeInsets{Top: insets.Top, Left: insets.Left, Bottom: insets.Bottom, Right: insets.Right}, scale),
+		ViewInsets:       ui.ViewPadding{Bottom: w.inset},
 		Display:          foundation.Some(0),
 		Window:           ui.WindowInfo{Title: w.title, Fullscreen: true, Activated: w.active},
 	}
@@ -424,7 +434,13 @@ func (w *window) firstShow() {
 	objcx.WithPool(func() {
 		w.uiw.Send(sel("makeKeyAndVisible"))
 		w.view.Send(sel("layoutIfNeeded"))
-		w.view.Send(sel("becomeFirstResponder")) // the hardware keyboard's presses come to the first responder
+		// The hardware keyboard's presses come to the first responder; a field that asked for the focus before the window was on the
+		// screen (an autofocus) gets the soft keyboard now, which it could not have then.
+		if w.text.enabled {
+			w.showKeyboard()
+		} else {
+			w.view.Send(sel("becomeFirstResponder"))
+		}
 	})
 	w.shown = true
 	w.reportMetrics(true)
@@ -461,6 +477,12 @@ func (w *window) Close() {
 			w.uiw = 0
 		}
 	})
+	w.closeInput()
+	if w.insetTimer != 0 {
+		w.p.timers.Cancel(w.insetTimer)
+		w.insetTimer = 0
+		w.p.rearm()
+	}
 	w.pool.Close()
 	delete(w.p.windows, w.id)
 	objcx.Release(w.vc)
