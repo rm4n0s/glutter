@@ -4729,3 +4729,12 @@ The owner asked on 2026-11-10 to finish macOS and iOS support without stopping. 
 **Tests:** `settingsOf` on both platforms, the engine's conversion, `MediaQuery` (aspects, copy, from the view), the Cupertino bars and popup with the setting on and off and turned on while shown.
 **Proof:** none.
 **Manual checks:** `docs/MANUAL-CHECKS.md`, 37.2: the three switches in System Settings and Settings.
+
+### 37.3 The rumble of a macOS pad that no HID driver serves
+**Goal:** a pad read through its HID elements rumbles with the Force Feedback framework, as SDL's iokit joystick does.
+**Why:** SPEC §29.11 left it out; such a pad failed with `GamepadRumbleUnavailable`.
+**Read:** SPEC §28.2, §29.11; `internal/platform/macos/iokit/service.go`, `device_darwin.go`; SDL 3's `src/joystick/darwin/SDL_iokitjoystick.c` (`DARWIN_JoystickRumble`, `CreateRumbleEffectData`).
+**Port from:** SDL's iokit joystick (the SDL-name rule applies: no SDL identifier is used).
+**Tasks:** (done in the step) `ff.go` (the strengths, the duration, the effect structs and the rumble over an `ffAPI`), `ff_darwin.go` (the framework's calls with `dl`, the device's IOService and the UUID), the service (`PadInfo.Rumble`, the lazy open at the first rumble, the closing with the pad and the service), the layout of `FFEFFECT` and `FFPERIODIC` checked with the C compiler.
+**Tests:** the layout, the strengths and durations, the rumble's calls in order over a fake, each failure's tag and route, the service (once opened, closed with the pad and the service, no force feedback, an error of opening returned untouched), the real framework loads, the device over a fake table.
+**Proof:** none. **Manual checks:** `docs/MANUAL-CHECKS.md`, 37.3 (a pad with force feedback on a Mac).

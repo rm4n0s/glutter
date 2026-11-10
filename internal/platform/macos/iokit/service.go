@@ -84,8 +84,8 @@ type Options struct {
 // gamepadhid has a driver for its model, through its HID reports, which gives the light, the touchpad, the motion sensors and
 // the trigger motors that the elements do not. Its methods and the callbacks of the manager all run on the UI thread.
 //
-// Deviation: the rumble of a pad read through its elements is not supported (SDL plays the effects of the Force Feedback
-// framework); only the pads with a HID driver rumble.
+// The rumble of a pad read through its elements is the Force Feedback framework's (step 37.3, after SDL's iokit joystick): one
+// sine effect that the two motors' strengths set; the pads that a HID driver serves rumble through it.
 //
 // Flutter: no counterpart
 type Service struct {
@@ -140,6 +140,8 @@ type pad struct {
 	bridge *gamepadhid.Bridge
 	// announced says that the handler has been told about the pad.
 	announced bool
+	// ff is the rumble of a pad that is read through its elements and has force feedback; it is made at the first rumble.
+	ff ForceFeedback
 }
 
 // Start implements platform.Gamepads.
@@ -170,6 +172,9 @@ func (s *Service) Stop() {
 	for dev, p := range r.pads {
 		if p.hid != nil {
 			p.hid.Close()
+		}
+		if p.ff != nil {
+			p.ff.Close()
 		}
 		dev.Release()
 	}
@@ -292,6 +297,9 @@ func (r *run) addRaw(p *pad, info DeviceInfo) {
 		Hats:    len(p.layout.Hats),
 		Battery: -1,
 	}
+	if ff, ok := p.dev.(ForceFeedbacker); ok && ff.HasForceFeedback() {
+		pi.Rumble = true
+	}
 	p.announced = true
 	r.h.PadAdded(pi)
 	var events []platform.PadEvent
@@ -370,6 +378,10 @@ func (r *run) removed(dev Device) {
 	delete(r.pads, dev)
 	delete(r.byID, p.id)
 	delete(r.noDriver, dev)
+	if p.ff != nil {
+		p.ff.Close()
+		p.ff = nil
+	}
 	switch {
 	case p.hid != nil:
 		p.hid.Close()
@@ -395,7 +407,21 @@ func (s *Service) Rumble(id platform.PadID, low, high uint16, d time.Duration) e
 	if dev := s.hidOf(id); dev != nil {
 		return dev.Rumble(low, high, d)
 	}
-	return errors.New(platform.TagGamepadRumbleUnavailable, "only the pads that have a HID driver rumble on macOS", "pad", int64(id))
+	if r := s.cur; r != nil {
+		if p := r.byID[id]; p != nil && p.layout != nil {
+			if ff, ok := p.dev.(ForceFeedbacker); ok && ff.HasForceFeedback() {
+				if p.ff == nil {
+					rumble, err := ff.OpenForceFeedback()
+					if err != nil {
+						return err
+					}
+					p.ff = rumble
+				}
+				return p.ff.Play(low, high, d)
+			}
+		}
+	}
+	return errors.New(platform.TagGamepadRumbleUnavailable, "the pad has no HID driver and no force feedback", "pad", int64(id))
 }
 
 // RumbleTriggers implements platform.Gamepads.

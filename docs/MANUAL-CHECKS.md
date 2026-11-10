@@ -1157,3 +1157,15 @@ What only a person with the system's settings can do.
 4. **iPad** (Split View): the same, in a window that is not the whole screen.
 
 Answers: _(not yet recorded)_
+
+## 37.3 The rumble of a macOS pad through the Force Feedback framework
+
+Needs a pad that macOS lists as force feedback and that no HID driver of Glutter serves (not a PlayStation 4 or 5, Switch Pro or Bluetooth Xbox pad): a generic USB pad with motors, a Logitech Rumblepad or Dual Action, a wired Xbox 360 clone.
+
+1. Plug it in and run `go run ./examples/dev/pad-hid` (or `examples/game3d`): the pad is listed, and `CanRumble()` is true. Record the pad's name and its vendor and product numbers.
+2. Press the button that rumbles (`game3d` rumbles on a hit): the pad vibrates for about the time the app asks (`Rumble(0.5, 0.5, 200 ms)` is a short pulse). Record whether it feels like a rumble or like a one-second wave (SDL's sine has a period of one second); if it is a wave, the period of the effect is the thing to change.
+3. Two rumbles at once: the second changes the first (no pile-up), and a rumble of strength 0 stops the motors at once.
+4. Unplug the pad while it rumbles: nothing hangs, the pad is removed, and plugging it in again rumbles again.
+5. A pad that has no force feedback says `CanRumble() == false` and `Rumble` returns `GamepadRumbleUnavailable`.
+
+Answers: _(not yet recorded)_
