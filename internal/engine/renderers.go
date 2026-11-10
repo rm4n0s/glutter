@@ -280,6 +280,14 @@ func (c *chooser) Invalidate(h gpu.SurfaceHandle) {
 	}
 }
 
+// Suspend waits for the GPU work of the renderer that was chosen, when it can (suspender), and says whether it waited.
+func (c *chooser) Suspend() bool {
+	if s, ok := c.cur.(suspender); ok {
+		return s.Suspend()
+	}
+	return false
+}
+
 // Close implements renderer.
 func (c *chooser) Close() {
 	if c.cur != nil {

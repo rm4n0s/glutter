@@ -598,6 +598,27 @@ func (r *Renderer) Close() {
 	r.releaseDevice(DeviceClosed, nil)
 }
 
+// IdleWaiter is implemented by a Device that can wait for the GPU to finish the work that was committed (Metal's, which an iOS app
+// needs before it enters the background).
+//
+// Flutter: no counterpart
+type IdleWaiter interface {
+	// WaitIdle returns when the GPU has nothing left to do for the app.
+	WaitIdle()
+}
+
+// Suspend waits for the GPU to finish what was committed, when the device can say so (IdleWaiter), so that the app can go to the
+// background with no GPU work left, and says whether it waited. The next frame goes on as before.
+//
+// Flutter: no counterpart
+func (r *Renderer) Suspend() bool {
+	if w, ok := r.dev.(IdleWaiter); ok {
+		w.WaitIdle()
+		return true
+	}
+	return false
+}
+
 // releaseDevice destroys everything that belongs to the device, the device included, and leaves
 // the renderer as it was before the first frame: the next frame opens a device again. Errors of
 // the destruction are the lost device's business and are ignored. kind and err are what OnDevice is

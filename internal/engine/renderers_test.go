@@ -467,3 +467,44 @@ func TestChooserSwitchesWhenTheChosenRendererGivesUp(t *testing.T) {
 const (
 	tagOther = "Other"
 )
+
+// suspendingRenderer is a renderer that can wait for the GPU (suspender).
+type suspendingRenderer struct {
+	*fakeRenderer
+	suspended int
+}
+
+func (r *suspendingRenderer) Suspend() bool { r.suspended++; return true }
+
+func TestChooserSuspendsTheRendererThatWasChosen(t *testing.T) {
+	var made *suspendingRenderer
+	cands := []rendererCandidate{{Name: "soft", New: func(*Config, *slog.Logger) renderer {
+		made = &suspendingRenderer{fakeRenderer: &fakeRenderer{}}
+		return made
+	}}}
+	c, err := newChooser(&Config{}, quiet(), "", cands)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Suspend() {
+		t.Error("Suspend said it waited before a renderer was chosen")
+	}
+	if _, err := c.Draw(gpu.SurfaceHandle{Kind: gpu.SurfaceKindFake, Window: 1}, 4, 4, nil, false); err != nil {
+		t.Fatal(err)
+	}
+	if !c.Suspend() || made.suspended != 1 {
+		t.Errorf("Suspend = waited %d times, want the chosen renderer asked once", made.suspended)
+	}
+	// A renderer that cannot wait is not asked, and says it did not.
+	plain, _ := fakeCandidates()
+	p, err := newChooser(&Config{}, quiet(), "", plain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.Draw(gpu.SurfaceHandle{Kind: gpu.SurfaceKindFake, Window: 1}, 4, 4, nil, false); err != nil {
+		t.Fatal(err)
+	}
+	if p.Suspend() {
+		t.Error("a renderer that cannot wait for the GPU said it waited")
+	}
+}

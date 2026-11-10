@@ -168,6 +168,9 @@ type renderer interface {
 	Close()
 }
 
+// suspender is implemented by a renderer that must finish its GPU work before the app goes to the background (explicit.Renderer).
+type suspender interface{ Suspend() bool }
+
 // DecorationsEnv is the environment variable that chooses how the title bar of
 // the first window is made: "auto" (the default), "app", or "libdecor" (libdecor
 // even where the compositor has title bars of its own, to try it).
@@ -1031,6 +1034,12 @@ func (h *handler) OnSettings(s platform.Settings) {
 
 func (h *handler) OnLifecycle(state ui.AppLifecycleState) {
 	h.platformLifecycle = true
+	if s, ok := h.r.(suspender); ok && (state == ui.AppLifecycleStatePaused || state == ui.AppLifecycleStateHidden) {
+		// The app is leaving the screen: no GPU work may be left to do when this call returns.
+		if s.Suspend() {
+			h.log.Info("the GPU work was waited for before the app left the screen", "state", state)
+		}
+	}
 	h.disp.SetAppLifecycleState(state)
 }
 

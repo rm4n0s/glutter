@@ -1,4 +1,4 @@
-//go:build darwin && !ios
+//go:build darwin
 
 package metal
 
@@ -130,7 +130,7 @@ func Open(opts Options) (*Device, error) {
 		return nil, errors.New(TagMetalDeviceUnavailable, "this Mac has no Metal device")
 	}
 	d.name = objcx.String(call(d.dev, "name"))
-	d.unif = sendBool(d.dev, "hasUnifiedMemory")
+	d.unif = sendBool(d.dev, "hasUnifiedMemory") || !managedStorageAvailable
 	d.queue = call(d.dev, "newCommandQueue")
 	if d.queue == 0 {
 		release(d.dev)

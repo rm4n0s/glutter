@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/rm4n0s/glutter/internal/gpu"
+	"github.com/rm4n0s/glutter/internal/gpu/explicit"
+	"github.com/rm4n0s/glutter/internal/gpu/metal"
 	"github.com/rm4n0s/glutter/internal/gpu/shadercache"
 	"github.com/rm4n0s/glutter/internal/platform/darwin"
 	"github.com/rm4n0s/glutter/internal/platform/ios"
@@ -36,10 +38,32 @@ func screenshotPath(value string, _ func(string) string) string { return value }
 // processStart says it does not know when the process started.
 func processStart() (time.Time, bool) { return time.Time{}, false }
 
-// rendererCandidates are the renderers of iOS in the order auto tries them: soft, drawn into IOSurfaces that the window's layer
-// shows. gles, vulkan and metal are RendererUnavailable until step 35.3 (SPEC §30.5).
+// rendererCandidates are the renderers of iOS in the order auto tries them: metal, then soft, drawn into IOSurfaces that the window's
+// layer shows. gles and vulkan are RendererUnavailable (SPEC §30.5).
 func rendererCandidates() []rendererCandidate {
-	return []rendererCandidate{{Name: "soft", New: newSoftWindowRenderer}}
+	return []rendererCandidate{
+		{Name: "metal", New: newMetalRenderer},
+		{Name: "soft", New: newSoftWindowRenderer},
+	}
+}
+
+// newMetalRenderer makes the explicit renderer over a Metal device, which it opens at the first frame (SPEC §9.8, §30.5): the default
+// device of the phone or of the Simulator, with the binary archive of its pipelines in the shader cache directory. A device without
+// Metal fails the first frame with MetalDeviceUnavailable, which moves auto on to soft.
+func newMetalRenderer(cfg *Config, log *slog.Logger) renderer {
+	getenv := configGetenv(cfg)
+	opts := explicitOptions(cfg, getenv, log)
+	dev := metal.Options{Logger: log, Getenv: getenv, Readback: getenv(ScreenshotEnv) != ""}
+	if c := newShaderCache(cfg, getenv, log); c != nil {
+		dev.ShaderCacheDir = c.Dir()
+	}
+	return explicit.NewRenderer(func(gpu.SurfaceHandle) (explicit.Device, error) {
+		d, err := metal.Open(dev)
+		if err != nil {
+			return nil, err
+		}
+		return d, nil
+	}, opts)
 }
 
 // newSoftWindowRenderer makes the software renderer over the IOSurfaces of the windows.

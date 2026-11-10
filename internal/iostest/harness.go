@@ -187,6 +187,18 @@ func (l *Launched) Output() []string {
 	return append([]string(nil), l.output...)
 }
 
+// Ended says whether the app has ended (it exited, crashed or was terminated).
+//
+// Flutter: no counterpart
+func (l *Launched) Ended() bool {
+	select {
+	case <-l.done:
+		return true
+	default:
+		return false
+	}
+}
+
 // WaitFor waits until the app has printed a line that contains the text, and returns the line; it fails with IOSSimulatorFailed,
 // with the output so far, when the time is out or the app ends first.
 //

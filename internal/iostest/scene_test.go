@@ -5,6 +5,8 @@ package iostest_test
 import (
 	"context"
 	"fmt"
+	"image"
+	"image/draw"
 	"image/png"
 	"os"
 	"os/exec"
@@ -229,5 +231,136 @@ func TestCounterDrawsItsFirstFrame(t *testing.T) {
 	}
 	if len(colors) < 8 {
 		t.Errorf("the frame has %d colors: it is blank", len(colors))
+	}
+}
+
+// capture runs the installed counter with the renderer, saves its first frame in the container and returns the app's output with the
+// decoded frame.
+func capture(t *testing.T, h *iostest.Harness, dev iostool.Device, id, renderer string) ([]string, *image.RGBA) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	container, err := h.Simctl.Container(ctx, dev.UDID, id)
+	if err != nil {
+		t.Fatalf("container: %v", err)
+	}
+	shot := filepath.Join(container, "Documents", renderer+".png")
+	_ = os.Remove(shot)
+	app, err := h.Launch(ctx, dev.UDID, id, "GLUTTER_SCREENSHOT="+shot, "GLUTTER_RENDERER="+renderer)
+	if err != nil {
+		t.Fatalf("launch: %v", err)
+	}
+	deadline := time.Now().Add(2 * time.Minute)
+	for {
+		if info, err := os.Stat(shot); err == nil && info.Size() > 0 {
+			time.Sleep(300 * time.Millisecond)
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the app did not save its frame; output:\n%s", strings.Join(app.Output(), "\n"))
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	f, err := os.Open(shot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	img, err := png.Decode(f)
+	if err != nil {
+		t.Fatalf("the saved frame: %v", err)
+	}
+	rgba := image.NewRGBA(img.Bounds())
+	draw.Draw(rgba, rgba.Bounds(), img, img.Bounds().Min, draw.Src)
+	app.Stop()
+	return app.Output(), rgba
+}
+
+// TestMetalDrawsLikeSoftOnTheSimulator runs the counter with `metal` and with `soft` and compares the two first frames: metal is the
+// renderer that the engine chose (its log says so), and its pixels are those of soft within the tolerance of the other platforms
+// (SPEC §9.8, §30.5, §30.11). The frame of metal is the proof of the step.
+func TestMetalDrawsLikeSoftOnTheSimulator(t *testing.T) {
+	h := iostest.New(t)
+	dev, res := installed(t, h, "./examples/counter")
+	out, metalImg := capture(t, h, dev, res.Info.ID, "metal")
+	if !strings.Contains(strings.Join(out, "\n"), `renderer="metal`) {
+		t.Fatalf("metal was not the renderer; output:\n%s", strings.Join(out, "\n"))
+	}
+	_, softImg := capture(t, h, dev, res.Info.ID, "soft")
+	if metalImg.Bounds() != softImg.Bounds() {
+		t.Fatalf("the frames differ in size: metal %v, soft %v", metalImg.Bounds(), softImg.Bounds())
+	}
+	bad, max := 0, 0
+	for i := 0; i < len(metalImg.Pix); i++ {
+		d := int(metalImg.Pix[i]) - int(softImg.Pix[i])
+		if d < 0 {
+			d = -d
+		}
+		if d > max {
+			max = d
+		}
+		if d > 8 {
+			bad++
+		}
+	}
+	// The renderers antialias and blur a little differently: a small share of the channels may be off by more than 8.
+	if share := float64(bad) / float64(len(metalImg.Pix)); share > 0.01 {
+		t.Errorf("%.2f%% of the channels differ by more than 8 (the largest difference is %d)", share*100, max)
+	}
+	if dir := os.Getenv("GLUTTER_IOS_PROOF_DIR"); dir != "" {
+		if f, err := os.Create(filepath.Join(dir, "metal.png")); err == nil {
+			_ = png.Encode(f, metalImg)
+			_ = f.Close()
+		}
+	}
+}
+
+// TestMetalWaitsForTheGPUBeforeTheBackground runs an app that animates for ever with `metal` and sends it to the background by opening
+// Settings: the engine says that it waited for the GPU work before the app left the screen, no frame is drawn while the app is in the
+// background, the app is still running afterwards (iOS ends an app that has GPU work to do there), and its frames go on when it comes
+// back (SPEC §30.2, §30.11).
+func TestMetalWaitsForTheGPUBeforeTheBackground(t *testing.T) {
+	h := iostest.New(t)
+	dev, res := installed(t, h, "./internal/iostest/spinner")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	app, err := h.Launch(ctx, dev.UDID, res.Info.ID, "GLUTTER_RENDERER=metal", "GLUTTER_FRAME_STATS=1")
+	if err != nil {
+		t.Fatalf("launch: %v", err)
+	}
+	const stats = `INFO frames renderer="metal`
+	deadline := time.Now().Add(time.Minute)
+	for count(app, stats) < 2 && time.Now().Before(deadline) {
+		time.Sleep(100 * time.Millisecond)
+	}
+	if count(app, stats) < 2 {
+		t.Fatalf("the spinner did not draw with metal; output:\n%s", strings.Join(app.Output(), "\n"))
+	}
+	open := func(id string) {
+		t.Helper()
+		if out, err := exec.CommandContext(ctx, "xcrun", h.Simctl.LaunchArgs(dev.UDID, id, false)...).CombinedOutput(); err != nil {
+			t.Fatalf("launching %s: %v\n%s", id, err, out)
+		}
+	}
+	open("com.apple.Preferences")
+	if _, err := app.WaitFor("the GPU work was waited for before the app left the screen", time.Minute); err != nil {
+		t.Fatalf("the wait: %v", err)
+	}
+	before := count(app, stats)
+	time.Sleep(3 * time.Second)
+	if after := count(app, stats); after > before+1 { // the line that was due when the app left
+		t.Errorf("%d seconds of frames were drawn in the background", after-before)
+	}
+	if app.Ended() {
+		t.Fatalf("the app ended in the background; output:\n%s", strings.Join(app.Output(), "\n"))
+	}
+	open(res.Info.ID)
+	resumed := count(app, stats)
+	deadline = time.Now().Add(time.Minute)
+	for count(app, stats) < resumed+2 && time.Now().Before(deadline) {
+		time.Sleep(100 * time.Millisecond)
+	}
+	if count(app, stats) < resumed+2 {
+		t.Errorf("the frames did not go on when the app came back; output:\n%s", strings.Join(app.Output(), "\n"))
 	}
 }

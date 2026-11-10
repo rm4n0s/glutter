@@ -66,3 +66,35 @@ func TestScenesOnTheManagedPath(t *testing.T) {
 	d.unif = false
 	devicetest.Run(gotest.Wrap(t), &devicetest.Env{Dev: d, Pixels: true, Settle: d.Settle})
 }
+
+// TestWaitIdleLeavesNoFrameInFlight submits frames and calls WaitIdle: nothing is left in flight, and the functions that were
+// waiting for the frames have run (what an app that enters the background needs, SPEC §30.2).
+func TestWaitIdleLeavesNoFrameInFlight(t *testing.T) {
+	d := openTestDevice(t, Options{})
+	a, err := d.NewBuffer(256, explicit.BufferCopySource|explicit.BufferCopyDestination)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Destroy()
+	b, err := d.NewBuffer(256, explicit.BufferCopySource|explicit.BufferCopyDestination)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Destroy()
+	read := 0
+	for i := 0; i < 3; i++ {
+		enc, err := d.Begin()
+		if err != nil {
+			t.Fatal(err)
+		}
+		enc.CopyBuffer(a, 0, b, 0, 256)
+		enc.ReadBuffer(b, 0, 256, func([]byte, error) { read++ })
+		if err := enc.Submit(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	d.WaitIdle()
+	if len(d.inflight) != 0 || read != 3 {
+		t.Errorf("after WaitIdle %d frames are in flight and %d of 3 reads were answered", len(d.inflight), read)
+	}
+}

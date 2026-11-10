@@ -1,4 +1,4 @@
-//go:build darwin && !ios
+//go:build darwin
 
 package metal
 
@@ -100,6 +100,21 @@ func (d *Device) Settle() {
 	if len(d.inflight) > 0 {
 		d.waitOne()
 	}
+}
+
+// WaitIdle waits until the GPU has finished everything that was committed on the device's queue: the frames, and the command
+// buffers that present them. The queue is serial, so a command buffer committed after them and waited for ends when they have. An
+// app that goes to the background calls it before it returns from the transition (iOS ends an app that has GPU work to do in the
+// background; SPEC §30.2).
+//
+// Flutter: no counterpart
+func (d *Device) WaitIdle() {
+	d.waitAll()
+	objcx.WithPool(func() {
+		cb := call(d.queue, "commandBuffer")
+		call(cb, "commit")
+		call(cb, "waitUntilCompleted")
+	})
 }
 
 // waitOne waits for the oldest frame and finishes it.
