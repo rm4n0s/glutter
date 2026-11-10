@@ -541,6 +541,15 @@ func (m *pointerMachine) send(st *pointerState, change ui.PointerChange, in poin
 			m.pendingExit = false
 			m.removeState(st, in.x, in.y, in.time)
 		}
+	case ui.PointerChangeRemove:
+		// The pointer is gone: what comes next from the device is a new pointer, which is added first
+		// (FlutterViewController's MouseState.Reset). Keeping the state made a mouse that left the window and
+		// came back send its hovers and clicks with no add, and the framework drops those.
+		st.added, st.down = false, false
+		delete(m.states, pointerKey{st.kind, st.device})
+		if st.kind == ui.PointerDeviceKindMouse {
+			m.pendingExit = false
+		}
 	}
 }
 

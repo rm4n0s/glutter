@@ -4763,3 +4763,22 @@ The owner asked on 2026-11-10 to finish macOS and iOS support without stopping. 
 **Tasks:** (done in the step) `ui.WindowInfo.SystemButtons`, `ui.WindowActionTitleBarHeight` with `WindowAction.Height`; the macOS window reports the area of its traffic lights and centers them in the height it is told, again after AppKit's own layout; `WindowDecoration` draws no buttons, border or resize strips where the system has its buttons, starts after them, tells its height and takes the title bar's top padding from its child.
 **Tests:** `TestTrafficLightY`; the display tests `TestSystemButtonsOfAWindowWhoseAppDrawsTheTitleBar` and `TestSystemButtonsAreEmptyWhereTheSystemDrawsTheTitleBar`; the widget tests `TestWindowDecorationLeavesTheButtonsToTheSystem`, `TestWindowDecorationTellsTheHeightOfItsBar` and `TestWindowDecorationTakesTheTitleBarPaddingFromTheChild`.
 **Proof:** none (a screenshot that the app takes of itself has no traffic lights in it). **Manual checks:** `docs/MANUAL-CHECKS.md`, 39.1.
+
+## M40: A Mac that is used from another computer (1.16.3)
+
+### 40.1 A mouse that leaves the window and comes back is added again
+**Goal:** the pointer data of a mouse that left a macOS window and came back start with an add, as Flutter's embedder sends them.
+**Why:** found while tracing the owner's dead clicks in Emetos (2026-11-10): after `mouseExited:` the state machine sent the remove but kept the pointer as added, so the hovers and clicks that followed had no add before them (`FlutterViewController` resets its `MouseState` after a remove). The framework took them here, but the order was wrong.
+**Read:** SPEC §29.6; `internal/platform/macos/mouse.go` (`exited`, `send`, `removeState`); `FlutterViewController.mm` `dispatchMouseEvent:phase:`.
+**Tasks:** (done in the step) a remove that `send` sends resets the state of the pointer (it is deleted, and a waiting exit is dropped).
+**Tests:** the rows of `TestMouseSequences` for a mouse that leaves and comes back (by an enter, by a move, by a click, many times, a second exit, after a drag that ended outside); they fail before the change.
+**Proof:** none. **Manual checks:** none.
+
+### 40.2 Frames when the view's display link is silent
+**Goal:** a macOS app draws and answers input when the Mac's own screen is asleep and somebody looks at it through Screen Sharing.
+**Why:** the owner uses the Mac through Screen Sharing with its monitor asleep. The view's `CADisplayLink` (macOS 14 and later) does not tick for a window on a display that sleeps, so after its first frame Emetos drew nothing and handled no click (the pointer data arrived; nothing ran, because no frame came). The self-captures that were the proof of the port used `CVDisplayLink`, which ticks, so they never showed it.
+**Read:** SPEC §29.3; `internal/platform/macos/displaylink_darwin.go`, `internal/platform/darwin/loop/pacer.go`; Flutter's `FlutterDisplayLink.mm` (a `CVDisplayLink` on every version).
+**Tasks:** `loop.LinkWatch` (plain Go: a link that was started and did not tick within the watch interval gives way to the fallback, a tick of it takes the pacing back, and the next start goes to the fallback at once while it is silent); the macOS window's link is the view's `CADisplayLink` watched by a timer, with a `CVDisplayLink` made at the first silence; `GLUTTER_DISPLAYLINK=ca` stays the view's link alone and `cv` the `CVDisplayLink` alone; SPEC §29.3.
+**Tests:** `TestLinkWatch...` (the table of the state machine); a display test that asks for frames with the default link and gets them whether the screen is awake or asleep.
+**Proof:** none. **Manual checks:** `docs/MANUAL-CHECKS.md`, 40.2.
+

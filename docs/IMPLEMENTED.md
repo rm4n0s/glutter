@@ -6140,3 +6140,14 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Proof:** none: the screenshot that an app takes of itself has no traffic lights, and this Mac gives no permission to record the screen. Checked in Emetos built on this change with real clicks posted through the window server: its menu button, now to the right of the traffic lights, opens the menu; before the change the same place was under the yellow button.
 - **Manual checks:** `docs/MANUAL-CHECKS.md`, 39.1 (the look of the traffic lights in the bar, fullscreen and back, a right-to-left language).
 - **Deviations and follow-ups:** in fullscreen `WindowDecoration` draws no bar on any platform, so an app that keeps widgets in its bar loses them there (unchanged by this step).
+
+## 40.1 A mouse that leaves the window and comes back is added again
+
+- **Date:** 2026-11-10
+- **Branch:** fix/macos-mouse-returns
+- **Summary:** `pointerMachine.send` resets the state of a pointer when it sends its remove (the state is deleted and a waiting exit is dropped), as `FlutterViewController` resets its `MouseState`. Before, `mouseExited:` sent the remove and kept the pointer as added, so a mouse that came back sent hovers and clicks with no add before them.
+- **Tests:** six new rows of `TestMouseSequences` (back by an enter, by a move, by a click, three times in a row, a second exit that says nothing, back after a drag that ended outside); five of them fail without the change.
+- **Checks:** gofmt, vet, `go test -race ./internal/platform/macos`, the macOS display tests of the mouse, the input and the modal windows. The full checks are those of step 40.2, which is published with it.
+- **Proof:** none. **Manual checks:** none.
+- **Deviations and follow-ups:** none. This was not the cause of the dead clicks that started the search (step 40.2 is).
+

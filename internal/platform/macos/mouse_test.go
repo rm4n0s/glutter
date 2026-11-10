@@ -95,6 +95,44 @@ func TestMouseSequences(t *testing.T) {
 			m.entered(at(5, 5, 0))
 			m.exited(at(-3, 5, 1))
 		}, []summary{{change: add}, {change: remove}}},
+		{"a mouse that left and comes back is added again", func(m *pointerMachine) {
+			m.entered(at(5, 5, 0))
+			m.exited(at(-3, 5, 1))
+			m.entered(at(4, 5, 2))
+			m.buttonDown(at(6, 5, 3), buttonPrimary)
+			m.buttonUp(at(6, 5, 4), buttonPrimary)
+		}, []summary{{change: add}, {change: remove}, {change: add}, {change: down, buttons: buttonPrimary}, {change: up}}},
+		{"it is added again by a move when AppKit says no enter", func(m *pointerMachine) {
+			m.entered(at(5, 5, 0))
+			m.exited(at(-3, 5, 1))
+			m.moved(at(4, 5, 2))
+		}, []summary{{change: add}, {change: remove}, {change: add}, {change: hover}}},
+		{"and by a click", func(m *pointerMachine) {
+			m.entered(at(5, 5, 0))
+			m.exited(at(-3, 5, 1))
+			m.buttonDown(at(6, 5, 2), buttonPrimary)
+			m.buttonUp(at(6, 5, 3), buttonPrimary)
+		}, []summary{{change: add}, {change: remove}, {change: add}, {change: down, buttons: buttonPrimary}, {change: up}}},
+		{"it leaves and comes back many times", func(m *pointerMachine) {
+			for i := 0; i < 3; i++ {
+				m.entered(at(5, 5, i))
+				m.exited(at(-3, 5, i))
+			}
+		}, []summary{{change: add}, {change: remove}, {change: add}, {change: remove}, {change: add}, {change: remove}}},
+		{"a second exit with no enter between says nothing", func(m *pointerMachine) {
+			m.entered(at(5, 5, 0))
+			m.exited(at(-3, 5, 1))
+			m.exited(at(-3, 5, 2))
+		}, []summary{{change: add}, {change: remove}}},
+		{"after a drag that ended outside, the mouse that comes back is added again", func(m *pointerMachine) {
+			m.entered(at(5, 5, 0))
+			m.buttonDown(at(5, 5, 1), buttonPrimary)
+			m.exited(at(-3, 5, 2))
+			m.buttonUp(at(-9, 5, 3), buttonPrimary)
+			m.entered(at(4, 5, 4))
+			m.buttonDown(at(6, 5, 5), buttonPrimary)
+			m.buttonUp(at(6, 5, 6), buttonPrimary)
+		}, []summary{{change: add}, {change: down, buttons: 1}, {change: up}, {change: remove}, {change: add}, {change: down, buttons: 1}, {change: up}}},
 		{"a middle button and the back and forward buttons", func(m *pointerMachine) {
 			m.entered(at(5, 5, 0))
 			m.buttonDown(at(5, 5, 1), buttonMiddle|buttonBack|buttonForward)
