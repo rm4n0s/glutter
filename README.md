@@ -13,8 +13,9 @@ Direct3D 12; on macOS, AppKit and Metal), with the system libraries called throu
 makes the app, and Go is all you need to build it.
 
 Linux desktop comes first, then the web (`GOOS=js GOARCH=wasm`), Android, Windows (`GOOS=windows`, Direct3D 12; version 1.8)
-macOS (`GOOS=darwin`, Metal; version 1.13) and the Cupertino look of iOS and macOS (package `cupertino`; version 1.14).
-Every part that depends on the operating system or the GPU sits behind an internal interface, so iOS can be
+macOS (`GOOS=darwin`, Metal; version 1.13), the Cupertino look of iOS and macOS (package `cupertino`; version 1.14)
+and iOS (`GOOS=ios`, UIKit and Metal; version 1.15).
+Every part that depends on the operating system or the GPU sits behind an internal interface, so more platforms can be
 added later.
 
 | | |
@@ -202,6 +203,9 @@ func startView(parent *m.WidgetsBinding, root m.Widget, send func(pixels []byte,
 **What is new in 1.14.** The Cupertino look.
 - **Package `cupertino`**: Flutter's `cupertino` library, file by file, drawn the same on every platform: `CupertinoApp`, the page route with the parallax slide and the back swipe, sheets, popups and dialogs, the tab scaffold, the navigation bars with the large title that collapses and flies between routes, the controls, the text and search fields and form rows, list sections and tiles, the expansion tile, the pull to refresh, alert dialogs, action sheets, context menus and menu anchors, the pickers, the scrollbar, text selection with its handles, toolbars and magnifier, `CupertinoColors` and `CupertinoDynamicColor`, and `CupertinoIcons`. San Francisco is used on macOS (and iOS) through Core Text and is never bundled; elsewhere the default font draws.
 - **Material's adaptive widgets** are Flutter's: the switch, checkbox, radio, slider, progress and refresh indicators, scrollbar, alert dialog, list tiles, page transitions, text field, text selection toolbar and magnifier take the Cupertino look when the theme's platform is iOS or macOS, and `Theme` gives its subtree a `CupertinoTheme` made from the Material one. Chapter 24 of [docs/GUIDE.md](docs/GUIDE.md) shows them.
+
+**What is new in 1.15.** iOS.
+- **iOS** (the "iOS" section below): UIKit and Metal, on the Simulator and on a device, from iOS 15: touch, the Pencil, the pointer and hardware keyboards, the soft keyboard and input methods, the pasteboard, haptics, notifications, the spell checker, VoiceOver and Dynamic Type, game controllers, audio with the audio session, Core Motion, and `glutter-ios`, which makes a signed `.app`. Every example but `multiwindow` and `tray` draws on the Simulator. Unlike every other target, iOS needs cgo (the Go linker has to link UIKit with Xcode's clang): the library stays cgo-free, and the cgo is in the `internal/platform/ios` files that end in `_ios.go`.
 
 **What is new in 1.13.** macOS.
 - **macOS** (the "macOS" section below): AppKit and Metal through purego, no cgo, on Apple silicon and Intel, from macOS 12: windows and several windows, the mouse, trackpad and tablets, the keyboard and input methods, the pasteboard, menus, drag and drop, the tray, notifications, file dialogs, VoiceOver, gamepads, audio, the `gpu` package and the 3D view on Metal, and `glutter-macos`, which makes a signed `.app`. Every example draws on a Mac.
@@ -429,6 +433,30 @@ scripts/perf-macos.sh -m                                                      # 
 **What macOS lacks:** the pointer lock (`widgets.PointerLock`; `examples/game3d` is played there with the keyboard, a pad or the mouse without it), the Dock icon's menu and badge, the rumble of a generic pad (only the pads that have a HID driver rumble), motion sensors (there are none on a Mac but a pad's), plugins and platform channels (call AppKit through your own `objc` code, or use the standard library), an installer or notarization, and the Mac App Store's sandbox (an app that is sandboxed needs entitlements that the tool does not write). SPEC §29 has the list and the reasons; [docs/GUIDE.md](docs/GUIDE.md) has a note for Flutter macOS developers.
 
 Every example builds as a signed bundle and draws its first frame with Metal (`examples/macos_test.go`, `-tags glutter_display`), `multiwindow` and `tray` included. A release build of the counter is an executable of 24 MiB for arm64 and the gallery 35 MiB; on the Apple M6 of [docs/PERFORMANCE.md](docs/PERFORMANCE.md) a warm start takes about 150 ms to the first frame, the gallery animates at the display's 120 frames a second with about 40% of a core, and an idle app uses no CPU. The resident memory (193 MB for the counter) is above the target of the desktop and is an open question there.
+
+
+## iOS
+
+Glutter runs on iOS 15 and later, on the iPhone and the iPad, in the Simulator and on a device. It is the same Go program, with one difference from every other target: `GOOS=ios` needs cgo, because Go's external linker has to link the UIKit program with the `clang` of Xcode; a Glutter library file never contains `import "C"`, and only the `*_ios.go` files of `internal/platform/ios` do. UIKit, Core Animation, Metal, Core Text, Core Audio, Core Motion, Game Controller, Core Haptics and User Notifications are called through purego and its `objc` package, and frames are drawn with Metal (the same shaders as the other targets) into a `CAMetalLayer`.
+
+**What to install:** Go 1.27 and the full Xcode (not only the Command Line Tools: the iOS SDK and the Simulator's runtime are in it; `xcode-select -s /Applications/Xcode.app/Contents/Developer`). To run on a device, an Apple Developer team and a provisioning profile.
+
+```sh
+go run ./cmd/glutter-ios run ./examples/gallery                              # builds for the Simulator, installs, launches, shows the log
+go run ./cmd/glutter-ios run -device ipad ./examples/gallery                 # the same on an iPad Simulator
+go run ./cmd/glutter-ios shot -o gallery.png ./examples/gallery              # the frame the app draws, with no screen capture
+go run ./cmd/glutter-ios build -sim -o Gallery.app ./examples/gallery        # a bundle for the Simulator, signed ad hoc
+go run ./cmd/glutter-ios build -team ABCDE12345 -profile app.mobileprovision -o Gallery.app ./examples/gallery   # for a device
+scripts/check-ios.sh                                                         # build and vet the module for the device and the Simulator
+```
+
+`build` writes `<App>.app` with the `Info.plist` (the identifier from `-id`, the version, iOS 15 as the minimum, a launch screen that is a dictionary so that no storyboard is compiled, the scene manifest, the orientations of `-orientations`, the usage strings of `-usage KEY=text`), the icons as PNG files (`-icon logo.png`, a square PNG of at least 167 pixels), the executable, and signs it. **Signing a device build** needs `-team` and `-profile` (a development profile that has the device and the app's identifier); `-identity` names the certificate (`Apple Development` by default). The tool does not make profiles, upload to App Store Connect or notarize: Xcode's organizer and `xcrun altool` do that with the `.app` this tool makes.
+
+**What works:** everything of the framework, Material 3 and the Cupertino library with the system font, touch with multi-touch, the Apple Pencil (pressure, tilt and azimuth), the pointer of an iPad, hardware keyboards, the soft keyboard (the insets, the keyboard types, autocorrect, input methods that compose), the pasteboard (text, HTML, images, URLs), the system's settings (dark mode, Dynamic Type, Bold Text, Reduce Motion, Increase Contrast, the 24-hour clock, languages), VoiceOver, Switch Control and Voice Control, haptics, notifications, spell check, game controllers (with rumble and the light), audio through the audio session (interruptions, routes), the accelerometer and gyroscope, the `gpu` package and the 3D view on Metal, safe areas, rotation and the status bar. The framework takes Flutter's iOS branches: bouncing scroll physics, the Cupertino page transition with the back swipe, the Cupertino text selection with its handles and magnifier.
+
+**What iOS lacks:** several windows (an iPad's second scene), the tray and the file dialogs (`desktop.OpenFiles` says `FileChooserUnavailable`: the document picker gives URLs, not paths), drag and drop between apps, the pointer lock (`widgets.PointerLock`), plugins and platform channels (call UIKit through your own `objc` code, or use the standard library), the trigger motors of a controller, the device motion (gravity and attitude: the `sensors` package has the two raw kinds), app extensions, widgets and Live Activities, and platform views (`UiKitView`). A background app is not drawn (iOS ends an app that has GPU work in the background).
+
+Every example but `multiwindow` and `tray` is built as a bundle for the Simulator and draws its first frame with Metal (`examples/ios_test.go`, `-tags glutter_ios`), and the framework's behaviors on iOS are checked on the Simulator: the bounce of a list, the back swipe from the left edge, a double tap and a long press on a field. A release build of the counter is an executable of 24 MB and the gallery 35 MB; on the Simulator of [docs/PERFORMANCE.md](docs/PERFORMANCE.md) (an Apple M6 Mac, so the Mac's numbers) the first frame comes 130 to 160 ms after `Run`, an idle app uses no CPU, and an animation that runs for a minute keeps its memory flat. What only a phone shows (ProMotion, the Pencil, haptics, VoiceOver, the real keyboard, notifications, background behavior, the memory limit) is the list in `docs/MANUAL-CHECKS.md`.
 
 ## Examples
 

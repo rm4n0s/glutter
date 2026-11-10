@@ -2251,6 +2251,62 @@ If you build Flutter apps for macOS, this is how a Glutter app becomes an `.app`
   measures a bundle on your Mac; the numbers are that machine's, and `docs/PERFORMANCE.md` has the ones of the Mac that
   made the first table.
 
+## For Flutter iOS developers
+
+If you build Flutter apps for iOS, this is how a Glutter app becomes an `.app` for the Simulator and for a device.
+
+- **Build and run.** There is no `flutter build ios` and no `ios/` folder with a Swift runner or an Xcode project:
+  `go run ./cmd/glutter-ios build ./your/app` makes `app.app`, and `run` builds one for the Simulator, installs it on a
+  device of the Simulator (an iPhone by default, `-device ipad` for an iPad), launches it and shows its log on your
+  terminal. `shot -o file.png` saves the frame the app draws. You need the full Xcode (the SDK and the Simulator's
+  runtime are in it), not an Xcode project. `run` and `shot` use your own Simulator devices (`-set dir` takes a device set
+  of another directory, which is what the repository's tests do, so that they never touch yours).
+- **Cgo.** Unlike every other target of Glutter, `GOOS=ios` needs cgo: Go links an iOS program with Xcode's `clang`,
+  and the tool sets `CGO_ENABLED=1`, the SDK and the target for you. Your own code stays Go and needs no C compiler of its
+  own; `go build ./...` for iOS (`scripts/check-ios.sh`) does what `GOOS=ios CGO_ENABLED=1 CC=... go build` does.
+- **The plist.** The tool writes what `ios/Runner/Info.plist` has in Flutter: the identifier (`-id dev.example.app`;
+  `dev.glutter.<name>` without it), the name, the version, iOS 15 as the minimum, a launch screen as a dictionary, the
+  scene manifest, `UISupportedInterfaceOrientations` (`-orientations portrait,landscape-left`), and
+  `CADisableMinimumFrameDurationOnPhone`, so that a ProMotion phone runs at 120 frames a second. A usage string
+  is `-usage NSCameraUsageDescription="text"`, repeatable: iOS shows it the first time the app asks, and an app with no
+  string for a sensor is ended by the system when it asks.
+- **The icon.** `-icon logo.png` takes a square PNG of at least 167 pixels; the tool writes the sizes that iOS reads (no
+  asset catalog, so no `actool`). Give a PNG of 1024 pixels with no transparency: iOS rounds the corners itself.
+- **Signing for a device.** The Simulator takes an ad hoc signature. A device needs your team and a provisioning profile
+  that has the device and the app's identifier (make it in Xcode or at developer.apple.com):
+  ```sh
+  go run ./cmd/glutter-ios build -team ABCDE12345 -profile Gallery.mobileprovision -id dev.example.gallery -o Gallery.app ./examples/gallery
+  xcrun devicectl device install app --device <UDID> Gallery.app
+  ```
+  `-identity` names the certificate (`Apple Development` by default); a build for the App Store is signed with a
+  distribution identity and profile, and uploading it (Transporter or `xcrun altool`) is yours to do.
+- **Frames and the background.** A `CADisplayLink` gives the display's rate and Metal draws (`GLUTTER_RENDERER=soft`
+  draws on the CPU into IOSurfaces). iOS ends an app that commits GPU work while it is in the background, so Glutter draws no
+  frame there and waits for the GPU before the app leaves the screen. `AppLifecycleState` follows the state of the app's
+  scene, as in Flutter's embedding.
+- **No plugins.** A Flutter iOS app reaches the system through plugins (Swift or Objective-C, the plugin registrant) and
+  platform channels. A Glutter app is one Go program and has neither: use the standard library, call UIKit yourself
+  through `github.com/ebitengine/purego/objc`, or use what the framework gives: `services.Clipboard`, `HapticFeedback`,
+  `SystemSound`, `SystemChrome` (the status bar's style, the orientations, the home indicator), spell check, `desktop`
+  notifications and `OpenURI`, `gamepad`, `audio` and `sensors`. Where your code must differ, ask
+  `foundation.DefaultTargetPlatform() == foundation.TargetPlatformIOS`, as in Flutter, and never `runtime.GOOS`.
+- **The soft keyboard and the text.** A field gets the soft keyboard and its insets as in Flutter (`MediaQuery`'s
+  `viewInsets`), with the keyboard type and the action of `TextInputConfiguration`, autocorrect and the spell check, the
+  composing of Chinese, Japanese and Korean input methods, a hardware keyboard, and Cupertino's selection handles and
+  magnifier. iOS asks the user before an app pastes what another app copied, so a read of the clipboard can wait for the
+  user: it is asynchronous and never blocks the UI.
+- **Dynamic Type and accessibility.** The text scale is the user's Dynamic Type size (Flutter's table of sizes, so
+  `MediaQuery.textScaler` is what a Flutter iOS app sees, and a font scales as `UIFontMetrics` scales it). VoiceOver,
+  Switch Control and Voice Control read a tree of elements made from the semantics, with traits, values, hints, custom
+  actions and the adjust, scroll and escape gestures.
+- **What a Flutter iOS app has that Glutter does not (yet).** Several scenes on an iPad, drag and drop between apps,
+  platform views (`UiKitView`), the share sheet, widgets and Live Activities, background tasks and push notifications,
+  the document picker, and Xcode's tools for a Flutter project (`flutter run` with hot reload).
+- **Testing and measuring.** The repository's tests run on the Simulator with `-tags glutter_ios`
+  (`go test -p 1 -tags glutter_ios ./internal/iostest ./examples`): they start and shut down their own devices and leave
+  none booted. `docs/PERFORMANCE.md` has the numbers of the Simulator, and `docs/MANUAL-CHECKS.md` the list of what only
+  a phone shows.
+
 ## What is not the same
 
 - **No `const` widgets.** Go has no const constructors. Build a widget once and reuse it

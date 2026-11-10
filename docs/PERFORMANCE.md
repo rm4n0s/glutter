@@ -843,6 +843,22 @@ available during this work, so they are **pending approval**.
 
 4. **Resident memory on macOS, 193 MB (counter) against 60 MB.** The Go runtime asks the system for 90 to 130 MB (`go_sys_mb`); the rest is what a Metal app maps (see "macOS (step 33.15)"). The target is the 2020 laptop's; it needs the owner's decision (a target for macOS of 250 MB for the counter is proposed in SPEC §15) and, to get lower, a measurement of what the process maps with `vmmap`.
 
+## iOS (step 35.9)
+
+`go test -p 1 -tags glutter_ios -run 'TestSimulatorPerformance|TestAnimatingAppMemoryStaysFlat' -v ./internal/iostest` (`internal/iostest/perf_test.go`; `GLUTTER_IOS_PERF_REPORT=<file>` writes the table), release builds made by `glutter-ios` for the Simulator (`-tags glutter_release`, stripped, ad hoc signed), Metal, 2026-11-10. **On the Simulator only, and on the machine of the macOS section (the Apple M6 Mac, macOS 27.2, an iPhone Simulator of iOS 27.2).** A Simulator app is a process of the Mac that draws with the Mac's GPU, so these are the Mac's numbers for a Glutter iOS app, not an iPhone's: they are for noticing regressions between steps, and the numbers of a phone (ProMotion, the A-series CPU, jetsam) are the owner's (`docs/MANUAL-CHECKS.md`, 35.9). The Simulator booted by the harness has no screen, so its display links do not fire and the frames are paced by the timer that the engine falls back to after 300 ms (SPEC §30.2): the frame rate below is that timer's (about 53 frames a second), not the display's. The CPU time and the resident memory are `ps`'s for the app's process, over a window of 10 s that begins 3 s after the first frame; "since process start" is not known on iOS (the engine reads it from the process table of Linux and macOS only).
+
+| App | Executable | Start to the first frame (wall, since Run, since process start) | Memory at 3 s and at 13 s | CPU in 10 s | Frames a second (mean, min, max) | Build and raster (mean) | Frames over 16 ms |
+|---|---|---|---|---|---|---|---|
+| counter | 24.0 MB | 1.6s, 160ms, not known | 199 MB and 199 MB | 0 % | 0.0, 0, 0 | 0s and 0s | 0.0 % |
+| gallery | 34.7 MB | 430ms, 143ms, not known | 220 MB and 218 MB | 0 % | 0.0, 0, 0 | 0s and 0s | 0.0 % |
+| animations | 19.4 MB | 390ms, 133ms, not known | 218 MB and 221 MB | 10 % | 52.7, 48, 55 | 110µs and 880µs | 0.0 % |
+
+The first row's wall time of 1.6 s is the first launch of an app on a Simulator that the harness has just booted (the system starts the app's services then); the later rows are 0.4 s from the command to the line of the first frame, of which the engine's own time from `Run` to the frame is 130 to 160 ms. The executables are 24 MB (counter), 35 MB (gallery) and 19 MB (animations: no Material). An idle app draws nothing and uses no CPU, as on the other platforms; the animation takes 10 % of a core for 53 frames a second, of which 0.11 ms is the build and 0.88 ms the renderer's calls (the Metal drawable's wait is not in them at this pacing).
+
+**Memory over time.** `TestAnimatingAppMemoryStaysFlat` runs an app that animates for ever (`internal/iostest/spinner`) for 60 s (`GLUTTER_IOS_SOAK=<seconds>` for a longer one) and reads the resident memory every 5 s after the first 15: 195 MB at 15 s, then 195, 193, 192, 192, 191, 191, 191, 191, 191, 191, 191 and 191 MB (it goes down by the 4 MB that the first seconds map and the system gives back), and the Go heap of the app's statistics does not grow; the test fails for a growth of 30 MB in the resident memory or 10 MB in the heap. The framework's own memory tests (`TestLeaks*` of the packages, `LEAKTEST_SCALE=5`) run on the Mac, where the framework and the shared Darwin code are the same.
+
+**Targets not met.** The resident memory of 199 to 221 MB is more than three times the 60 MB of SPEC §15, for the reasons of the macOS section (the Go runtime's 90 to 130 MB and what a Metal app maps); on a phone jetsam's limit for an app is in the gigabytes, so it is not a risk, but the number on a phone is the owner's. The frame rate on a ProMotion phone (120 frames a second with `CADisableMinimumFrameDurationOnPhone`) and the cold start of a never-run app on a device are not measured.
+
 ## Pending
 
 - Windows: the same numbers on the owner's PC (Task Manager and `GLUTTER_FRAME_STATS=1`, `docs/MANUAL-CHECKS.md` 28.15), the allocations of an animation-only frame (`go test -bench -benchmem`), and the confirmation of the proposed targets of SPEC §15 ("Windows"); `scripts/perf-windows.sh` is Wine's table until then (see "Windows (step 28.15)").
@@ -855,3 +871,4 @@ available during this work, so they are **pending approval**.
 - Run `GLUTTER_RENDERER=gles scripts/perf.sh` and `GLUTTER_RENDERER=vulkan scripts/perf.sh` (a headless compositor cannot present GPU buffers: use the benchmarks of the gallery with `GLUTTER_FRAME_STATS=1` on the desktop) on a machine with a GPU, and record the comparison of step 20.7.
 - Measure again on the reference hardware (Iris Xe, 1920×1080 at 1.25): the cold start,
   the memory and the raster time.
+- iOS: the same numbers on an iPhone and an iPad (Xcode's Instruments or `devicectl`, the frame rate of the gallery and the animation with ProMotion, the cold start of an app the system has never run, the memory against the system's limit), what the resident memory is made of (`vmmap`), and the GPU time of a frame (`docs/MANUAL-CHECKS.md`, 35.9).
