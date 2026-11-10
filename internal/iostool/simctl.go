@@ -173,6 +173,17 @@ func (s Simctl) Pbcopy(ctx context.Context, udid, text string) error {
 	return nil
 }
 
+// UI changes a setting of the device's interface with `simctl ui`: "appearance" with light or dark, "content_size" with the name of a
+// Dynamic Type size (extra-small, small, medium, large, extra-large, extra-extra-large, extra-extra-extra-large, accessibility-medium,
+// accessibility-large, accessibility-extra-large, accessibility-extra-extra-large, accessibility-extra-extra-extra-large), or
+// "increase_contrast" with enabled or disabled. It fails with IOSSimctlFailed when simctl says no.
+//
+// Flutter: no counterpart
+func (s Simctl) UI(ctx context.Context, udid string, args ...string) error {
+	_, err := s.run(ctx, "ui", append([]string{udid}, args...)...)
+	return err
+}
+
 // Container is the directory of the data of the app (what the app sees as its home).
 //
 // Flutter: no counterpart

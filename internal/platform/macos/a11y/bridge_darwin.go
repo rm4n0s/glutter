@@ -144,7 +144,7 @@ func (b *Bridge) Close() {
 // RootElement is the element of the root of the view's tree, 0 while the view has none: it is what the view's
 // accessibilityChildren has.
 func (b *Bridge) RootElement(view ui.ViewID) objc.ID {
-	if e := b.elems[NodeRef{view, RootID}]; e != nil {
+	if e := b.elems[NodeRef{View: view, ID: RootID}]; e != nil {
 		return e.obj
 	}
 	return 0
@@ -299,7 +299,7 @@ func (b *Bridge) sync(ref NodeRef) {
 
 	setString(obj, "setAccessibilityRole:", Role(n))
 	setString(obj, "setAccessibilitySubrole:", Subrole(n))
-	setString(obj, "setAccessibilityLabel:", b.model.Label(n))
+	setString(obj, "setAccessibilityLabel:", LabelOf(b.model, n))
 	setString(obj, "setAccessibilityHelp:", Help(n))
 	setString(obj, "setAccessibilityIdentifier:", Identifier(n))
 	obj.Send(sel("setAccessibilityEnabled:"), Enabled(n))

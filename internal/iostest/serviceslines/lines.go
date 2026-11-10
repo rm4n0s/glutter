@@ -16,6 +16,7 @@ package serviceslines
 //	paste                       reads the text of the clipboard
 //	spell:locale:text           the misspelled words of the text
 //	haptic, sound               every kind of haptic feedback and of system sound
+//	settings                    prints the settings
 //	open:uri                    opens the URI
 //	notify                      shows a notification (the permission prompt is not answered: the call ends with its context)
 const StepsEnv = "GLUTTER_IOS_SERVICES"
@@ -28,6 +29,10 @@ const (
 	Step = "GLUTTER_IOS_SERVICES step"
 	// Ready is the line that says the app is waiting for its steps.
 	Ready = "GLUTTER_IOS_SERVICES ready"
+	// Settings is the line of the settings: at the start, for the step "settings" and at each change of them. Its values are
+	// "brightness=<light|dark> scale=<text scale> font17=<the scaled size of a 17 point font> bold=<bool> motion=<bool>
+	// contrast=<bool> voiceover=<bool> h24=<bool> locale=<the first locale>".
+	Settings = "GLUTTER_IOS_SERVICES settings"
 	// Done is the line after the last step.
 	Done = "GLUTTER_IOS_SERVICES done"
 )

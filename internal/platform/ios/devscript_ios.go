@@ -79,6 +79,10 @@ func (p *Platform) runDevEvents(i int) {
 			w.devKeyboard(0)
 		case "chrome":
 			w.logChrome()
+		case "a11y":
+			p.logA11y(w)
+		case "a11y-activate":
+			p.activateA11y(w, ev.Text)
 		}
 	}
 	p.devDone = true

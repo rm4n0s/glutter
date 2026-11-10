@@ -42,7 +42,11 @@ type system struct {
 	playSound func(uint32)
 	// view is the class of the view of a window, scene the class of the delegate of the scene, textView, textPos and textRange the
 	// classes of the text input (textinput_ios.go), and keyboard the class of the observer of the keyboard's frame.
-	view, scene, textView, textPos, textRange, keyboard, viewController *objcx.RegisteredClass
+	view, scene, textView, textPos, textRange, keyboard, viewController, settingsObserver *objcx.RegisteredClass
+	// a11y is the class of the accessibility elements, the values of the traits and the posting function (a11y_ios.go).
+	a11y *a11yClasses
+	// access are the C functions of UIKit that say how the accessibility switches are (settings_ios.go).
+	access accessibilityFlags
 }
 
 // Platform is the UIKit backend of platform.Platform: the app and its run loop on the main thread, the scene with its windows, the
@@ -80,6 +84,13 @@ type Platform struct {
 	closed bool
 
 	deskState
+	a11yState
+
+	// settingsObserver is the observer of the notifications of the settings; settingsLast is what was read last and settingsHave says it
+	// was read (settings_ios.go).
+	settingsObserver objc.ID
+	settingsLast     settingsInput
+	settingsHave     bool
 
 	// checker is the UITextChecker of the spell check, 0 until the first check (spellcheck_ios.go).
 	checker objc.ID
@@ -132,6 +143,7 @@ func New(opts Options) (*Platform, error) {
 	p.base = s.mediaTime()
 	p.handle = objcx.NewHandle(p)
 	p.observeKeyboard()
+	p.observeSettings()
 	p.touch, p.conv = newTouchTracker(), pointerconv.New()
 	p.keys = newKeyResponder(p.sendKey)
 	if foundation.DebugMode {
@@ -175,6 +187,15 @@ func (p *Platform) load() (*system, error) {
 		return nil, err
 	}
 	if err := loadAudioToolbox(s); err != nil {
+		return nil, err
+	}
+	if s.settingsObserver, err = registerSettingsObserver(); err != nil {
+		return nil, err
+	}
+	if s.access, err = loadAccessibilityFlags(); err != nil {
+		return nil, err
+	}
+	if s.a11y, err = loadA11y(); err != nil {
 		return nil, err
 	}
 	return s, nil
@@ -284,14 +305,6 @@ func (p *Platform) Clipboard() platform.Clipboard {
 	return pasteboard{post: p.Post, back: uiPasteboard{}}
 }
 
-// Settings is what the platform knows of the user's settings until step 35.7: a light theme, the default text scale and English.
-func (p *Platform) Settings() platform.Settings {
-	return platform.Settings{PlatformBrightness: ui.BrightnessLight, TextScaleFactor: 1, Locales: []ui.Locale{{LanguageCode: "en", CountryCode: "US"}}}
-}
-
-// Services returns nil: iOS has no services until step 35.6.
-func (p *Platform) Services() platform.Services { return nil }
-
 // Displays are the screens of the device: the main screen, in points.
 func (p *Platform) Displays() []platform.Display {
 	var out []platform.Display
@@ -326,8 +339,12 @@ func (p *Platform) Close() error {
 		p.scenes = map[objc.ID]activation{}
 	})
 	p.stopObservingKeyboard()
+	p.stopObservingSettings()
 	if p.desk != nil {
 		p.desk.closeServices()
+	}
+	if p.acc != nil {
+		p.acc.Close()
 	}
 	objcx.Release(p.checker)
 	p.checker = 0

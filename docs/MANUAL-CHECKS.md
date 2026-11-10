@@ -1090,3 +1090,18 @@ On an iPhone and an iPad, with `examples/gallery`:
 7. **Spell check.** A text field with spell check on underlines a misspelled word, and a tap on it offers the suggestions of `UITextChecker`.
 
 Record the answers here when they are known.
+
+## 35.7 VoiceOver, Dynamic Type and the settings (iOS)
+
+On an iPhone and an iPad, with `examples/gallery` and `examples/counter`:
+
+1. **VoiceOver.** Turn it on (Settings > Accessibility > VoiceOver): swiping right reads the elements in order (the app bar's buttons and title, the heading and its text, the mode segments with "selected", the seed colors, the cards); a double tap on a segment or a card activates it; the counter's button reads "Increment, button" and a double tap adds one and VoiceOver reads the new number.
+2. **Adjustable.** A slider (the gallery's page of sliders) reads "adjustable" and a swipe up or down changes it and reads the new value.
+3. **Scrolling.** Three-finger swipes scroll a long page (the gallery's pages) up, down, left and right. The native "page 2 of 5" announcement is not done (SPEC §30.7).
+4. **Rotor.** The Headings rotor jumps between the headings (header trait) and the Links rotor between links; containers and the list rotor are not done.
+5. **Switch Control and Voice Control.** "Tap Increment" with Voice Control presses the counter's button; Switch Control scans the elements and presses them.
+6. **Dynamic Type.** Settings > Display & Text Size > Larger Text: the text of the gallery follows the slider while the app runs, with no restart, and the layout still works at the largest accessibility size (the proof image of the step); Bold Text makes the text bold, Reduce Motion stops the animations, Increase Contrast gives the high contrast scheme.
+7. **Dark mode and locales.** The Control Center's dark mode switch changes the gallery at once; adding a language in Settings > General > Language & Region changes the app's locales.
+8. **The 24-hour clock.** Settings > General > Date & Time > 24-Hour Time changes the format of a time picker.
+
+Record the answers here when they are known.

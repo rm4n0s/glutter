@@ -394,6 +394,9 @@ func (w *window) reportMetrics(force bool) bool {
 		w.layer.Send(sel("setContentsScale:"), m.DevicePixelRatio)
 	}
 	h.OnMetrics(w.id, m)
+	if w.p.acc != nil {
+		w.p.acc.refreshFrames(w)
+	}
 	return true
 }
 

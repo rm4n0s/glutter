@@ -162,12 +162,12 @@ func Subrole(n *Node) string {
 	return ""
 }
 
-// Label is the label of a node, which is what VoiceOver reads first (AXDescription, accessibilityLabel): its label;
+// LabelOf is the label of a node, which is what VoiceOver reads first (AXDescription, accessibilityLabel): its label;
 // the root has the title of the window when it has no label; a node with no label has its value, unless the value
 // is shown as the value (a text field's text, a slider's value), and then its hint.
 //
 // Flutter: shell/platform/common/flutter_platform_node_delegate.cc FlutterPlatformNodeDelegate::GetName
-func (m *Model) Label(n *Node) string {
+func LabelOf(m *Model, n *Node) string {
 	if n == nil {
 		return ""
 	}

@@ -132,9 +132,16 @@ func TestClipboardRoundTrip(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	out, err := h.Simctl.Pbpaste(ctx, udid)
-	if err != nil {
-		t.Fatalf("pbpaste: %v", err)
+	// The Simulator's pasteboard reaches simctl a moment after the app wrote it, so the read waits for it.
+	var out string
+	for deadline := time.Now().Add(15 * time.Second); ; time.Sleep(500 * time.Millisecond) {
+		var err error
+		if out, err = h.Simctl.Pbpaste(ctx, udid); err != nil {
+			t.Fatalf("pbpaste: %v", err)
+		}
+		if strings.TrimSpace(out) == "second" || time.Now().After(deadline) {
+			break
+		}
 	}
 	if strings.TrimSpace(out) != "second" {
 		t.Errorf("simctl pbpaste = %q, want the last text the app copied", out)

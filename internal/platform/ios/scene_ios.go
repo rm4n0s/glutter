@@ -15,7 +15,12 @@ import (
 func registerView() (*objcx.RegisteredClass, error) {
 	return objcx.RegisterClass(objcx.ClassDef{
 		Name: "View", Super: "UIView",
-		Methods: append(inputMethods(), []objcx.Method{
+		Methods: append(append(inputMethods(), accessibilityMethods()...), []objcx.Method{
+			{Name: "traitCollectionDidChange:", Fn: func(self objc.ID, _ objc.SEL, _ objc.ID) {
+				if w := windowOf(self); w != nil && !w.p.closed {
+					w.p.guard(w.p.settingsChanged)
+				}
+			}},
 			{Name: "isOpaque", Fn: func(objc.ID, objc.SEL) bool { return true }},
 			{Name: "layoutSubviews", Fn: func(self objc.ID, _ objc.SEL) {
 				if w := windowOf(self); w != nil {

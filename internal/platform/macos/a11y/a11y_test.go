@@ -84,7 +84,7 @@ func TestLabelHelpAndValue(t *testing.T) {
 	m.Apply(0, update(node(0, nil, 1)))
 	m.SetWindow(0, "My window", true)
 	root := m.Root(0)
-	if got := m.Label(root); got != "My window" {
+	if got := LabelOf(m, root); got != "My window" {
 		t.Errorf("the root is named %q", got)
 	}
 	n := func(f func(n *ui.SemanticsNodeUpdate)) *Node { return &Node{SemanticsNodeUpdate: node(1, f)} }
@@ -116,7 +116,7 @@ func TestLabelHelpAndValue(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := m.Label(tc.node); got != tc.label {
+			if got := LabelOf(m, tc.node); got != tc.label {
 				t.Errorf("label = %q, want %q", got, tc.label)
 			}
 			if got := Help(tc.node); got != tc.help {
@@ -328,7 +328,7 @@ func TestTreeUpdatesGiveTheRightChanges(t *testing.T) {
 	if _, ok := find(cs, ChangeChildren, 0); !ok {
 		t.Errorf("the parent of a removed node did not change its children: %v", kinds(cs))
 	}
-	if m.Node(NodeRef{7, 1}) != nil {
+	if m.Node(NodeRef{View: 7, ID: 1}) != nil {
 		t.Error("the removed node is still in the model")
 	}
 	// A node that was cut off (its parent drops it and its child with it): both go.
@@ -433,7 +433,7 @@ func TestFramesFollowTheTransforms(t *testing.T) {
 			u.Rect = ui.NewRectFromLTWH(0, 0, 20, 10)
 			u.Transform = translate(10, 30)
 		})))
-	child := m.Node(NodeRef{1, 1})
+	child := m.Node(NodeRef{View: 1, ID: 1})
 	if got, want := m.Extents(child), (Rect{X: 20, Y: 60, Width: 40, Height: 20}); got != want {
 		t.Errorf("extents = %+v, want %+v", got, want)
 	}

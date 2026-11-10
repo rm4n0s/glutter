@@ -30,12 +30,33 @@ type handler struct {
 	pending sync.WaitGroup
 }
 
+// OnSettings prints the settings that the system changed to.
+func (h *handler) OnSettings(s platform.Settings) { h.printSettings(s) }
+
+func (h *handler) printSettings(s platform.Settings) {
+	brightness := "light"
+	if s.PlatformBrightness == ui.BrightnessDark {
+		brightness = "dark"
+	}
+	font17 := 17.0
+	if s.ScaleFontSize != nil {
+		font17 = s.ScaleFontSize(17)
+	}
+	locale := ""
+	if len(s.Locales) > 0 {
+		locale = s.Locales[0].String()
+	}
+	fmt.Printf("%s brightness=%s scale=%.4f font17=%.2f bold=%v motion=%v contrast=%v voiceover=%v h24=%v locale=%s\n", serviceslines.Settings,
+		brightness, s.TextScaleFactor, font17, s.BoldText, s.DisableAnimations, s.HighContrast, s.AccessibleNavigation, s.AlwaysUse24HourFormat, locale)
+}
+
 func (h *handler) OnFrame(_ ui.ViewID, _ time.Duration) {
 	if h.started {
 		return
 	}
 	h.started = true
 	steps := strings.Split(os.Getenv(serviceslines.StepsEnv), ";")
+	h.printSettings(h.p.Settings())
 	fmt.Println(serviceslines.Ready)
 	go func() {
 		for _, s := range steps {
@@ -96,6 +117,9 @@ func (h *handler) run(step string) {
 		default:
 			chrome.SetPreferredOrientations(nil)
 		}
+		say(step, "done")
+	case "settings":
+		h.printSettings(h.p.Settings())
 		say(step, "done")
 	case "report":
 		h.p.ReportChrome()

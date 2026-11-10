@@ -21,6 +21,15 @@ const DevEventsEnv = "GLUTTER_DEV_EVENTS"
 // Flutter: no counterpart
 const ChromeLogLine = "ios chrome"
 
+// A11yLogLines are the messages of the lines that the dev events steps "a11y" and "a11y-activate" log.
+//
+// Flutter: no counterpart
+const (
+	A11yElementsLogLine = "ios a11y elements"
+	A11yElementLogLine  = "ios a11y element"
+	A11yActivateLogLine = "ios a11y activate"
+)
+
 // TagIOSDevEventsInvalid is the tag of the error of a GLUTTER_DEV_EVENTS script that cannot be read.
 //
 // Flutter: no counterpart
@@ -30,7 +39,7 @@ const TagIOSDevEventsInvalid = "IOSDevEventsInvalid"
 //
 // Flutter: no counterpart
 type DevEvent struct {
-	// Kind is the name of the step: "wait", "tap", "drag", "key", "text", "compose", "composing", "keyboard", "keyboardhide" or "chrome".
+	// Kind is the name of the step: "wait", "tap", "drag", "key", "text", "compose", "composing", "keyboard", "keyboardhide", "chrome", "a11y" or "a11y-activate".
 	Kind string
 	// Wait is how long to wait, for "wait", and how long a "drag" takes.
 	Wait time.Duration
@@ -59,6 +68,10 @@ type DevEvent struct {
 //	composing:a,b,c       the same, but the composition stays (a later compose: goes on with it)
 //	keyboard:h            the soft keyboard comes up, h points high (UIKit's frame notification, with a keyboard's duration)
 //	keyboardhide          the soft keyboard goes down
+//	a11y                  logs the accessibility elements of the first window as UIKit has them: the line "ios a11y elements" with their
+//	                      number and a line "ios a11y element" for each, with its label, value, hint, traits and frame
+//	a11y-activate:label   activates the element whose label is the text, as VoiceOver's double tap does (accessibilityActivate), and logs the
+//	                      line "ios a11y activate" with the answer
 //	chrome                logs what UIKit has of the system UI of the window (the status bar's style and visibility, the home indicator,
 //	                      the supported orientations), as the line "ios chrome"
 //	key:Name[,mods]       presses and releases a key of a hardware keyboard with the modifiers (shift, control, alt, meta, joined by "+")
@@ -77,7 +90,7 @@ func ParseDevEvents(script string) ([]DevEvent, error) {
 		if step == "" {
 			continue
 		}
-		if step == "keyboardhide" || step == "chrome" {
+		if step == "keyboardhide" || step == "chrome" || step == "a11y" {
 			events = append(events, DevEvent{Kind: step})
 			continue
 		}
@@ -86,6 +99,8 @@ func ParseDevEvents(script string) ([]DevEvent, error) {
 			return nil, errors.New(TagIOSDevEventsInvalid, "a step must be name:arguments", "step", step)
 		}
 		switch name {
+		case "a11y-activate":
+			events = append(events, DevEvent{Kind: name, Text: args})
 		case "wait":
 			d, err := time.ParseDuration(args)
 			if err != nil || d < 0 {
