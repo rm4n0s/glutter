@@ -385,7 +385,7 @@ The three benchmarks of SPEC §31.5 (`cupertino/bench_test.go`), the UI thread's
 | Debug build, scrolling, three page changes and the theme (dev events, 10 s of frames) | 64 a second on average with the pauses of the script between the moves, 8 frames in 641 over 16 ms (1.2 %), build 1.28 ms | not a target (a debug build) |
 | Cold start to the first frame, warm shader cache, `since_run` (counter, gallery) | 143 ms and 163 ms medians of 4 starts (the first run of the same measurement: 139 and 136 ms) | < 150 ms: met for the counter, 13 ms over for the gallery in the second run |
 | Cold start, empty shader cache, since the process began (the first start of a new binary) | 680 ms and 760 ms (196 and 188 ms of it since `Run`) | proposed: < 1 s |
-| Resident memory 10 s after the start, counter and gallery | 193 MB and 227 MB (233 MB animating, 318 MB for the debug build that scrolls) | < 60 MB: **not met** (see below); proposed for macOS: < 250 MB and < 300 MB |
+| Resident memory 10 s after the start, counter and gallery | 193 MB and 227 MB (233 MB animating, 318 MB for the debug build that scrolls); **after step 37.1: 139 MB and 159 MB** (`ps`), the counter's footprint 78 MB (`footprint`) | < 60 MB: **not met** (see below); proposed for macOS: < 250 MB and < 300 MB: met |
 | Size of the executable (counter, gallery), release | 24.5 MB (arm64) and 26.1 MB (amd64), 50.5 MB universal; 34.7, 37.3 and 72.0 MB | recorded |
 
 **Targets not met.** The resident memory is three times the target of SPEC §15 (which is the 2020 laptop's, with a driver that is not Metal's). The Go runtime is a part of it (`go_sys_mb` in the log is 90 to 130 MB in these runs); the rest is what a Metal app maps: the frameworks, the Metal device and its shader library, the drawables and the IOSurfaces of the window. Which part is which has not been measured (`vmmap` on the counter would say); the proposed target for macOS is a guess from these numbers, and the exception is item 4 of "Exceptions that need the user's approval". **The raster side.** The "raster" time of an animation at 120 frames a second is 8.15 ms on average (6.24 ms for the rebuilding page): about the length of a frame at 120 Hz, which is what it takes when the renderer waits for the next drawable (the display's rhythm) and is not the cost of drawing; the CPU of the process (40 % and 47 % of one core while animating) is the better number for the work a frame takes. A GPU time per frame (a Metal counter set) is not measured.
@@ -841,7 +841,7 @@ available during this work, so they are **pending approval**.
    `Paint` (pointers for the shader and filters) is a change of the `ui` API and of the
    layout of every op; it is not done here.
 
-4. **Resident memory on macOS, 193 MB (counter) against 60 MB.** The Go runtime asks the system for 90 to 130 MB (`go_sys_mb`); the rest is what a Metal app maps (see "macOS (step 33.15)"). The target is the 2020 laptop's; it needs the owner's decision (a target for macOS of 250 MB for the counter is proposed in SPEC §15) and, to get lower, a measurement of what the process maps with `vmmap`.
+4. **Resident memory on macOS, 139 MB (counter) against 60 MB** (193 MB before step 37.1, which found the biggest part, below). The Go runtime asks the system for 90 to 130 MB (`go_sys_mb`); the rest is what a Metal app maps (see "macOS (step 33.15)"). The target is the 2020 laptop's; it needs the owner's decision (a target for macOS of 250 MB for the counter is proposed in SPEC §15) and, to get lower, a measurement of what the process maps with `vmmap`.
 
 ## iOS (step 35.9)
 
@@ -872,3 +872,16 @@ The first row's wall time of 1.6 s is the first launch of an app on a Simulator 
 - Measure again on the reference hardware (Iris Xe, 1920×1080 at 1.25): the cold start,
   the memory and the raster time.
 - iOS: the same numbers on an iPhone and an iPad (Xcode's Instruments or `devicectl`, the frame rate of the gallery and the animation with ProMotion, the cold start of an app the system has never run, the memory against the system's limit), what the resident memory is made of (`vmmap`), and the GPU time of a frame (`docs/MANUAL-CHECKS.md`, 35.9).
+
+## macOS memory (step 37.1)
+
+`vmmap -summary`, `footprint` and a heap profile of the counter (release build, 2026-11-10, the Mac of the macOS section). The counter's footprint was 121 to 148 MB (the Go heap about 100 MB dirty, the rest the system's frameworks, Metal and the window). A heap profile of the live heap after a collection (41 MB) said that 90 % of it was `go-text`'s `newGvar`: the system font `/System/Library/Fonts/SFNS.ttf`, a variable font of 7.8 MB, is parsed for the first text, and `font.NewFont` unpacked the deltas of the 'gvar' table of every glyph. `third_party/typesetting` now unpacks a glyph's data the first time the glyph is drawn with variations (SPEC D39); the same outlines come out.
+
+| | Before | After |
+|---|---|---|
+| Go heap at the first frame (`go_heap_mb`) | 60 MB | 15 MB |
+| Go memory from the system (`go_sys_mb`) | 104 MB | 39 MB |
+| Footprint of the counter, 12 s after the start (`footprint`) | 121 MB (148 MB in the first run) | 78 MB |
+| Resident memory at the end of the 10 s window (`ps`), counter and gallery | 193 MB and 227 MB | 139 MB and 159 MB |
+
+`debug.FreeOSMemory()` after the start was tried and takes 5 MB more (73 MB): not done. What is left is the system's: the frameworks Metal and AppKit map, the window's surfaces (`IOSurface`, `IOAccelerator`) and about 15 MB of `malloc`. The 60 MB target of SPEC §15 stays the Linux laptop's; for macOS the proposed 250 MB and 300 MB are met by a wide margin. On the iOS Simulator the animating app went from 195 MB to 183 MB (`TestAnimatingAppMemoryStaysFlat`, still flat: 181 to 183 MB over 60 s), and the counter, gallery and animations rows of the table above from 199, 220 and 218 MB at 3 s to 182, 218 and 200 MB (a gain of 2 to 18 MB, not 60: an iOS Simulator app carries more of the system than a macOS one, and the gallery's text is mostly Roboto, which is small). Linux, when `fontconfig` gives a variable font: not measured here.

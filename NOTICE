@@ -77,7 +77,8 @@ ebitengine/purego (Apache-2.0)
   Copyright 2022 The Ebitengine Authors
 
 go-text/typesetting (Unlicense OR BSD-3-Clause)
-  Go dependency, used for text shaping and layout.
+  Go dependency, used for text shaping and layout. Glutter uses a changed copy of v0.3.4 (third_party/typesetting, see its
+  GLUTTER.md): the 'gvar' table of a variable font is read one glyph at a time.
   https://github.com/go-text/typesetting
 
 golang.org/x/image (BSD-3-Clause)

@@ -186,7 +186,8 @@ This file breaks the milestones in `docs/SPEC.md` §18 into small steps. Each st
 | M33 macOS (1.13) | 33.1–33.16 | every example on macOS, `tray` and `multiwindow` included |
 | M34 Cupertino (1.14) | 34.1–34.10 | `cupertino` |
 | M35 iOS (1.15) | 35.1–35.9 | every example but `multiwindow` and `tray` on the iOS Simulator |
-| M36 Fixes (1.15.1), and the Linux run of 1.13 to 1.15.1 | 36.1–36.2 | `game3d` (a pad), any other example (no pad is touched) |
+| M36 Fixes (1.15.1), and the Linux run of 1.13 to 1.15.1 | 36.1–36.2 |
+| M37 macOS and iOS gaps (after 1.15.1) | 37.1 | the counter on macOS | `game3d` (a pad), any other example (no pad is touched) |
 
 ---
 
@@ -4697,3 +4698,21 @@ Fixes found after M35, one step each. A fix step that closes a patch version is 
 **Tests:** none new, unless a failure needs one.
 **Proof:** none.
 **Manual checks:** the pad checks of 36.1 items 2 to 5, and of 35.9, which need hardware; the answers are recorded in `docs/MANUAL-CHECKS.md` when known.
+
+## M37: macOS and iOS gaps
+
+The owner asked on 2026-11-10 to finish macOS and iOS support without stopping. Every step of M33 to M35 is done; what was left out is listed in the "Deviations and follow-ups" of their `docs/IMPLEMENTED.md` entries, and the owner chose from it the gaps to close (the others stay as they are: the accessibility settings, the Force Feedback rumble of macOS pads and the system's Chinese font). One step each.
+
+### 37.1 The memory of a macOS (and iOS) app
+**Goal:** find what the counter's memory on macOS is made of, and lower the part that Glutter owns, with a test that keeps it low.
+**Why:** `docs/PERFORMANCE.md` listed the 193 MB resident memory of the counter on macOS as a target not met (exception 4) and left a measurement with `vmmap` open.
+**Read:** SPEC §10, §15, D33; `docs/PERFORMANCE.md` ("macOS (step 33.15)"); `internal/text` (`parseFont`, `Collection.load`).
+**Tasks:** (done in the step)
+1. `footprint`, `vmmap -summary` and a heap profile of a release counter (a copy of the example that writes `pprof`'s heap after a collection).
+2. Fix what the profile shows: `go-text`'s `font.NewFont` unpacked the 'gvar' deltas of every glyph of the 7.8 MB system font (31 MB). `third_party/typesetting` (a copy of v0.3.4 through a `replace`, SPEC D39) unpacks a glyph's data when it is first drawn with variations.
+3. Check that no outline changed: a program that hashes the outlines of every glyph of `Roboto-Variable.ttf` and `SFNS.ttf` at four settings of the axes gives the same value with the module and with the copy.
+4. `internal/text.TestVariableOutlinesAreReadOnDemand` (the weight moves the outline, a second draw and a second face agree, goroutines on one font agree under `-race`) and `TestOpeningAVariableFontKeepsLittle` (opening Roboto-Variable holds less than twice its file; 11.4 MB with the module, a fraction with the copy).
+5. `docs/PERFORMANCE.md` ("macOS memory (step 37.1)": the table before and after, and what is left), SPEC D39, NOTICE and `third_party/typesetting/GLUTTER.md`.
+**Tests:** the two above; the whole suite with its goldens (text is drawn with variable fonts in most of them).
+**Proof:** none (no picture changes).
+**Manual checks:** none.

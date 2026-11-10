@@ -12,3 +12,7 @@ require (
 )
 
 require golang.org/x/sys v0.49.0 // indirect
+
+// A copy of go-text/typesetting v0.3.4 that parses the 'gvar' table of a variable font one glyph at a time, when the glyph is
+// first drawn with variations, instead of every glyph when the font is opened (SPEC §10, step 37.1; third_party/typesetting).
+replace github.com/go-text/typesetting => ./third_party/typesetting

@@ -163,6 +163,7 @@ Glutter is a GUI toolkit for Go that reproduces Flutter's framework API on its o
 | D36 | **iOS 15 is the minimum**, on arm64 devices and arm64 Simulators | Chosen when M35 was planned (2026-11-09), not yet confirmed by the owner. Scenes, `UILaunchScreen` in the plist (no storyboard to compile), `preferredFrameRateRange` for ProMotion and the pointer APIs of iPadOS are there. §30 |
 | D37 | **Cupertino (1.14) is the public package `cupertino`**, a port of Flutter's `cupertino` library with the rules of `material`; it re-exports `widgets`, and `material` imports it for its adaptive widgets | The owner asked for it on 2026-11-09. San Francisco is used through Core Text on Apple platforms and never bundled; the `CupertinoIcons` font (MIT) is bundled as the Material icons are. §31 |
 | D38 | **The Apple milestones come in this order: macOS (M33, 1.13), Cupertino (M34, 1.14), iOS (M35, 1.15)** | Chosen when they were planned (2026-11-09), not yet confirmed by the owner. macOS can be built and tested on the development Mac with no new tools; Cupertino is plain Go, testable anywhere, and an iOS app needs it; iOS needs Xcode, which the owner installs before M35. |
+| D39 | **go-text/typesetting is used from a copy in `third_party/typesetting` (v0.3.4, a `replace` in `go.mod`) that has one change: the `gvar` table of a variable font is read one glyph at a time** | Decided on 2026-11-10 (step 37.1) after measuring the counter on macOS: the system font `SFNS.ttf` is a variable font of 7.8 MB, and `font.NewFont` unpacked the deltas of all its glyphs, 31 MB of the 41 MB that the app held after a collection. The copy keeps the bytes of the table and unpacks a glyph on its first draw with variations; the outlines are the same (hashed for every glyph of `Roboto-Variable.ttf` and `SFNS.ttf` at four settings of the axes). The counter's Go heap at the first frame went from 60 MB to 15 MB and its footprint from 121 MB to 78 MB. Rejected: loading the font without `gvar` (the weight axis, which every Material title uses, needs it), a smaller font (the system font is the macOS and iOS look), and `debug.FreeOSMemory()` after the start (5 MB). The patch is in `third_party/typesetting/GLUTTER.md`; to go back, delete the `replace` and the directory. Updating go-text means copying the new version and applying the same change (the test `internal/text.TestOpeningAVariableFontKeepsLittle` fails without it). §10, §15 |
 
 ## 5. Size estimate
 
@@ -2727,7 +2728,7 @@ On the web (1.1) every example except `multiwindow` and `tray` builds and runs (
 |---|---|---|
 | Glutter | BSD-3-Clause | |
 | Flutter framework (API, algorithms and tests ported from it) | BSD-3-Clause | `third_party/flutter/LICENSE` plus a NOTICE entry; ported files carry `// Flutter:` references |
-| go-text/typesetting | Unlicense OR BSD-3-Clause | Go dependency |
+| go-text/typesetting | Unlicense OR BSD-3-Clause | Go dependency, as a changed copy in `third_party/typesetting` (D39) with a NOTICE entry |
 | golang.org/x/image | BSD-3-Clause | Go dependency (WebP, BMP) |
 | golang.org/x/text | BSD-3-Clause | Go dependency that go-text already requires; `internal/text/layout` uses its `unicode/bidi` class table for UAX #9 (§12.10), added in step 4.4. Flagged for review |
 | godbus/dbus/v5 | BSD-2-Clause | Go dependency (D-Bus) |
