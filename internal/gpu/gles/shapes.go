@@ -260,9 +260,14 @@ func (b *frameBuilder) draw(c gpu.Command) (bool, error) {
 	if c.Clip.IsEmpty() {
 		return true, nil
 	}
-	m := c.Transform.Storage()
-	if m[3] != 0 || m[7] != 0 || m[15] != 1 {
-		return false, b.unsupported("perspective transform")
+	if gpu.HasPerspective(&c.Transform) {
+		// The atlases are keyed by a linear transform: the shape is drawn with the affine map that agrees with the
+		// projective one at its center (SPEC §9.12).
+		t, ok := gpu.AffinePerspective(c.Op, &c.Transform)
+		if !ok {
+			return false, b.unsupported("perspective transform")
+		}
+		c.Transform = t
 	}
 	switch c.Op.(type) {
 	case ui.OpDrawPath, ui.OpDrawArc, ui.OpDrawImage, ui.OpDrawImageRect, ui.OpDrawImageNine, ui.OpDrawAtlas, ui.OpDrawVertices:

@@ -324,7 +324,7 @@ type renderObjectSemantics struct {
 
 	parentInSemanticsTree *renderObjectSemantics
 
-	currentTreeShapeToken              *struct{}
+	currentTreeShapeToken              *treeShapeToken
 	firstAncestorNodeWithCleanGeometry *renderObjectSemantics
 }
 
@@ -374,7 +374,14 @@ func (s *renderObjectSemantics) geometryDirty() bool {
 
 // computeAncestorInfo finds the closest ancestor semantics node with clean
 // geometry; the token says whether the tree changed shape since the last time.
-func (s *renderObjectSemantics) computeAncestorInfo(token *struct{}) {
+// treeShapeToken identifies one flush of the semantics: the cache of computeAncestorInfo is valid while the token
+// is the same. It has a field because Go gives all pointers to zero-size values the same address, so that a token
+// of type struct{} would never change and the cache would never be invalidated.
+//
+// Flutter: rendering/object.dart PipelineOwner.flushSemantics treeShapeToken (an Object)
+type treeShapeToken struct{ _ byte }
+
+func (s *renderObjectSemantics) computeAncestorInfo(token *treeShapeToken) {
 	if token == s.currentTreeShapeToken {
 		return
 	}

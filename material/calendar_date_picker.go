@@ -47,12 +47,6 @@ const (
 	daysPerWeek                          = 7
 )
 
-// SelectableDayPredicate is the signature of a function that says whether a day
-// can be selected in a date picker.
-//
-// Flutter: material/calendar_date_picker.dart SelectableDayPredicate
-type SelectableDayPredicate func(day time.Time) bool
-
 // textScaleFactorOf is the scale factor of the text scaler of the context
 // (clamped to maxScale), as the date pickers measure it: by scaling a font size
 // of 14.

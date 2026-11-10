@@ -404,11 +404,11 @@ func (p *PipelineOwner) FlushSemantics() {
 	}
 
 	// The token invalidates the cache of the closest ancestor with clean geometry.
-	treeShapeToken := new(struct{})
+	token := new(treeShapeToken)
 	var ensure orderedSet[*renderObjectSemantics]
 	for _, node := range nodesToProcessGeometry {
 		sem := node.AsRenderObject().semantics()
-		sem.computeAncestorInfo(treeShapeToken)
+		sem.computeAncestorInfo(token)
 		if sem.firstAncestorNodeWithCleanGeometry != nil {
 			ensure.add(sem.firstAncestorNodeWithCleanGeometry)
 		}
@@ -421,7 +421,7 @@ func (p *PipelineOwner) FlushSemantics() {
 
 	for i := len(nodesToProcess) - 1; i >= 0; i-- {
 		sem := nodesToProcess[i].AsRenderObject().semantics()
-		sem.computeAncestorInfo(treeShapeToken)
+		sem.computeAncestorInfo(token)
 		var targets []*renderObjectSemantics
 		if sem.geometryDirty() {
 			if sem.firstAncestorNodeWithCleanGeometry != nil {

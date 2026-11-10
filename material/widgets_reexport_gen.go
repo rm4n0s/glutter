@@ -10682,6 +10682,11 @@ type SelectIntent = widgets.SelectIntent
 // Flutter: widgets.dart SelectableButtonItemsCallbacks
 type SelectableButtonItemsCallbacks = widgets.SelectableButtonItemsCallbacks
 
+// SelectableDayPredicate is widgets.SelectableDayPredicate.
+//
+// Flutter: widgets.dart SelectableDayPredicate
+type SelectableDayPredicate = widgets.SelectableDayPredicate
+
 // SelectableRegion is widgets.SelectableRegion.
 //
 // Flutter: widgets.dart SelectableRegion

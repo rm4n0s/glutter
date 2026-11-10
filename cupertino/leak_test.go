@@ -469,3 +469,51 @@ func TestLeaksPopups(t *testing.T) {
 		})
 	}
 }
+
+// TestLeaksPickers drags a wheel, the date picker in two modes and the timer picker, and builds the tree again (N and 4N).
+func TestLeaksPickers(t *testing.T) {
+	skipUnlessDebug(t)
+	if runtime.GOOS == "js" {
+		t.Skip("the runs of the pickers take longer than the test timeout under Node; the host runs them")
+	}
+	today := time.Date(2019, 1, 1, 4, 12, 0, 0, time.Local)
+	tests := []struct {
+		name   string
+		picker func() widgets.Widget
+		drag   string
+	}{
+		{"wheel", func() widgets.Widget {
+			return widgets.NewSizedBox(cupertino.NewCupertinoPicker(32, func(int) {}, []widgets.Widget{
+				widgets.NewText("A"), widgets.NewText("B"), widgets.NewText("C"), widgets.NewText("D")}), widgets.SizedBoxOpts{Width: foundation.Some(200.0), Height: foundation.Some(216.0)})
+		}, "B"},
+		{"date and time", func() widgets.Widget {
+			return widgets.NewSizedBox(cupertino.NewCupertinoDatePicker(func(time.Time) {}, cupertino.CupertinoDatePickerOpts{InitialDateTime: foundation.Some(today)}),
+				widgets.SizedBoxOpts{Width: foundation.Some(500.0), Height: foundation.Some(216.0)})
+		}, "12"},
+		{"date", func() widgets.Widget {
+			return widgets.NewSizedBox(cupertino.NewCupertinoDatePicker(func(time.Time) {}, cupertino.CupertinoDatePickerOpts{
+				Mode: cupertino.CupertinoDatePickerModeDate, InitialDateTime: foundation.Some(today)}), widgets.SizedBoxOpts{Width: foundation.Some(500.0), Height: foundation.Some(216.0)})
+		}, "2019"},
+		{"timer", func() widgets.Widget {
+			return widgets.NewSizedBox(cupertino.NewCupertinoTimerPicker(func(time.Duration) {}, cupertino.CupertinoTimerPickerOpts{
+				InitialTimerDuration: 5*time.Hour + 17*time.Minute + 19*time.Second}), widgets.SizedBoxOpts{Width: foundation.Some(400.0), Height: foundation.Some(216.0)})
+		}, "17"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			leaktest.Run(t, "cupertino/pickers/"+tt.name, func() func() {
+				ts := gluttertest.New(t, gluttertest.Opts{Size: ui.Size{Width: 800, Height: 600}, DiscardScenes: true, Fonts: []gluttertest.Font{
+					{Family: cupertino.CupertinoSystemTextFamily, Data: gomono.TTF}, {Family: cupertino.CupertinoSystemDisplayFamily, Data: gomono.TTF}}})
+				return func() {
+					ts.PumpWidget(testApp(cupertino.CupertinoAppOpts{Home: cupertino.NewCupertinoPageScaffold(widgets.NewCenter(tt.picker()))}))
+					ts.Pump()
+					ts.Drag(gluttertest.First(gluttertest.ByText(tt.drag)), ui.Offset{Dy: -40})
+					ts.PumpAndSettle()
+					ts.PumpWidget(testApp(cupertino.CupertinoAppOpts{Home: widgets.NewSizedBox(nil)}))
+					ts.PumpAndSettle()
+					ts.ClearLogs()
+				}
+			}, leaktest.Opts{N: 50, Warmup: 100})
+		})
+	}
+}

@@ -242,11 +242,19 @@ func TestUnsupportedFeatures(t *testing.T) {
 		feature string
 		draw    func(c *ui.Canvas)
 	}{
-		{"a perspective transform", "perspective transform", func(c *ui.Canvas) {
+		// A shape under a perspective is drawn with its affine approximation (SPEC §9.12); what has no bounds to
+		// take the center of, and a shape behind the camera, are not.
+		{"a perspective transform on an operation without bounds", "perspective transform", func(c *ui.Canvas) {
 			m := ui.NewMatrix4Identity()
 			m.SetEntry(3, 0, 0.001)
 			c.Transform(m)
-			c.DrawRect(ui.NewRectFromLTWH(0, 0, 10, 10), solid(0xFF000000))
+			c.DrawColor(ui.NewColor(0xFF000000), ui.BlendModeSrcOver)
+		}},
+		{"a shape behind the camera", "perspective transform", func(c *ui.Canvas) {
+			m := ui.NewMatrix4Identity()
+			m.SetEntry(3, 0, -1)
+			c.Transform(m)
+			c.DrawRect(ui.NewRectFromLTWH(10, 0, 10, 10), solid(0xFF000000))
 		}},
 		{"a gradient with more than 32 colors", "gradient with more than 32 colors", func(c *ui.Canvas) {
 			colors := make([]ui.Color, 40)

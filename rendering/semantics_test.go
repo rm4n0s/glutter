@@ -319,6 +319,32 @@ func TestMarkNeedsSemanticsUpdateAsksAllObjectsBetweenBoundaries(t *testing.T) {
 	}
 }
 
+// A semantics boundary that is a relayout boundary has its geometry cleared when it is marked, and the flush of
+// the semantics must make it again from the closest ancestor that is clean. The token that tells the flushes
+// apart once was a pointer to a value of size zero, which has the same address in every flush, so the ancestors
+// that the first flush found were reused by the next ones and the node was never assembled again (the semantics
+// of a CupertinoPicker stayed on the first item).
+func TestMarkedRelayoutBoundaryBoundaryIsAssembledAgain(t *testing.T) {
+	h, _ := withSemantics(t)
+	inner := newSemNode(nil)
+	inner.boundary, inner.label = true, "first"
+	middle := newSemNode(inner)
+	root := newSemNode(middle)
+	root.tap, root.boundary = true, true
+	layout(t, h, root, atPhase(layoutOpts{}, phaseComposite))
+	if got := inner.DebugSemantics().Label(); got != "first" {
+		t.Fatalf("label = %q, want first", got)
+	}
+	for _, label := range []string{"second", "third"} {
+		inner.label = label
+		inner.MarkNeedsSemanticsUpdate()
+		h.Pump()
+		if got := inner.DebugSemantics().Label(); got != label {
+			t.Errorf("label after the change = %q, want %q", got, label)
+		}
+	}
+}
+
 func TestMergeSemanticsMergesDescendants(t *testing.T) {
 	h, _ := withSemantics(t)
 	a := annotated(newSemNode(nil), "a", false)

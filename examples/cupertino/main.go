@@ -22,6 +22,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"time"
 
 	c "github.com/rm4n0s/glutter/cupertino"
 )
@@ -81,7 +82,7 @@ func tabBar() *c.CupertinoTabBar {
 	}
 	return c.NewCupertinoTabBar([]c.BottomNavigationBarItem{
 		item(c.CupertinoIcons.Home(), "Home"), item(c.CupertinoIcons.SliderHorizontal3(), "Controls"),
-		item(c.CupertinoIcons.TextCursor(), "Text"), item(c.CupertinoIcons.ChatBubble(), "Popups"), item(c.CupertinoIcons.Settings(), "Settings"),
+		item(c.CupertinoIcons.TextCursor(), "Text"), item(c.CupertinoIcons.ChatBubble(), "Popups"), item(c.CupertinoIcons.Clock(), "Pickers"),
 	})
 }
 
@@ -89,7 +90,7 @@ func tabBar() *c.CupertinoTabBar {
 func newHomePage() c.Widget {
 	return c.NewCupertinoTabScaffold(tabBar(), func(_ c.BuildContext, index int) c.Widget {
 		return c.NewCupertinoTabView(c.CupertinoTabViewOpts{
-			DefaultTitle: c.Some([]string{"Home", "Controls", "Text", "Popups", "Settings"}[index]),
+			DefaultTitle: c.Some([]string{"Home", "Controls", "Text", "Popups", "Pickers"}[index]),
 			Builder: func(bc c.BuildContext) c.Widget {
 				switch index {
 				case 0:
@@ -101,7 +102,7 @@ func newHomePage() c.Widget {
 				case 3:
 					return popupsTab(bc)
 				}
-				return listTab("Settings", "Setting", 12)
+				return pickersTab()
 			},
 		})
 	})
@@ -276,4 +277,42 @@ func popupsTab(bc c.BuildContext) c.Widget {
 		c.NewCupertinoSliverNavigationBar(c.CupertinoSliverNavigationBarOpts{LargeTitle: c.NewText("Popups")}),
 		c.NewSliverList(c.NewSliverChildListDelegate(rows)),
 	}))
+}
+
+// pickersTab is the page of the pickers of step 34.7: the date and time picker, the countdown timer picker and a wheel,
+// each with a line that shows what it reports.
+func pickersTab() c.Widget {
+	return c.NewCupertinoPageScaffold(c.NewCustomScrollView([]c.Widget{
+		c.NewCupertinoSliverNavigationBar(c.CupertinoSliverNavigationBarOpts{LargeTitle: c.NewText("Pickers")}),
+		c.NewSliverToBoxAdapter(c.NewBuilder(func(bc c.BuildContext) c.Widget { return pickersContent(bc) })),
+	}))
+}
+
+func pickersContent(bc c.BuildContext) c.Widget {
+	chosen := time.Date(2026, time.November, 10, 9, 41, 0, 0, time.Local)
+	var timer time.Duration = 25 * time.Minute
+	fruit := "Cherry"
+	fruits := []string{"Apple", "Banana", "Cherry", "Date", "Elderberry", "Fig"}
+	fruitItems := make([]c.Widget, len(fruits))
+	for i, f := range fruits {
+		fruitItems[i] = c.NewCenter(c.NewText(f))
+	}
+	fruitController := c.NewFixedExtentScrollController(c.FixedExtentScrollControllerOpts{InitialItem: 2})
+	return c.NewStatefulBuilder(func(bc c.BuildContext, setState c.StateSetter) c.Widget {
+		caption := func(text string) c.Widget {
+			return c.NewPadding(c.NewEdgeInsetsSymmetric(8, 20), c.NewText(text, c.TextOpts{Style: c.CupertinoThemeOf(bc).TextTheme().TextStyle()}))
+		}
+		return c.NewColumn([]c.Widget{
+			caption("Date and time: " + chosen.Format("Mon Jan 2, 3:04 PM")),
+			c.NewSizedBox(c.NewCupertinoDatePicker(func(d time.Time) { setState(func() { chosen = d }) },
+				c.CupertinoDatePickerOpts{InitialDateTime: c.Some(chosen), ShowTimeSeparator: true}), c.SizedBoxOpts{Height: c.Some(180.0)}),
+			caption(fmt.Sprintf("Timer: %v", timer)),
+			c.NewSizedBox(c.NewCupertinoTimerPicker(func(d time.Duration) { setState(func() { timer = d }) },
+				c.CupertinoTimerPickerOpts{Mode: c.CupertinoTimerPickerModeHM, InitialTimerDuration: timer}), c.SizedBoxOpts{Height: c.Some(180.0)}),
+			caption("Fruit: " + fruit),
+			c.NewSizedBox(c.NewCupertinoPicker(32, func(i int) { setState(func() { fruit = fruits[i] }) }, fruitItems, c.CupertinoPickerOpts{
+				UseMagnifier: true, Magnification: c.Some(1.2), Squeeze: c.Some(1.25),
+				ScrollController: fruitController}), c.SizedBoxOpts{Height: c.Some(150.0)}),
+		})
+	})
 }

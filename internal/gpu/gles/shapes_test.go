@@ -381,11 +381,19 @@ func TestBuildUnsupported(t *testing.T) {
 		{"stroked superellipse", "stroked superellipse", func(c *ui.Canvas) {
 			c.DrawRSuperellipse(ui.NewRSuperellipseFromRectXY(rect, 8, 8), linePaint(0xFF000000, 2, ui.StrokeCapButt, ui.StrokeJoinMiter))
 		}},
-		{"perspective", "perspective transform", func(c *ui.Canvas) {
+		// A shape under a perspective is drawn with its affine approximation (SPEC §9.12); what has no bounds to
+		// take the center of, and a shape behind the camera, are not.
+		{"perspective on an operation without bounds", "perspective transform", func(c *ui.Canvas) {
 			m := ui.NewMatrix4Identity()
 			m.SetEntry(3, 0, 0.001)
 			c.Transform(m)
-			c.DrawRect(rect, solidPaint(0xFF000000))
+			c.DrawColor(ui.NewColor(0xFF000000), ui.BlendModeSrcOver)
+		}},
+		{"a shape behind the camera", "perspective transform", func(c *ui.Canvas) {
+			m := ui.NewMatrix4Identity()
+			m.SetEntry(3, 0, -1)
+			c.Transform(m)
+			c.DrawRect(ui.NewRectFromLTWH(10, 0, 10, 10), solidPaint(0xFF000000))
 		}},
 		{"clip shape", "clip shape", func(c *ui.Canvas) {
 			c.ClipRRect(ui.NewRRectFromRectXY(rect, 8, 8))
