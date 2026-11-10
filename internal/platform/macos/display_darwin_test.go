@@ -749,3 +749,38 @@ func TestPostAfterTheAppEndedIsDropped(t *testing.T) {
 		t.Error("a function posted after the platform closed ran")
 	}
 }
+
+// TestFramesComeWhetherOrNotTheViewsDisplayLinkTicks asks for frames with the link that an app gets (the
+// view's CADisplayLink, watched): on a screen that is on they come from it, and on a screen that is asleep
+// (a Mac used through Screen Sharing, a locked session) from the CVDisplayLink that takes over.
+func TestFramesComeWhetherOrNotTheViewsDisplayLinkTicks(t *testing.T) {
+	h := &recorder{}
+	runApp(t, Options{Getenv: linkEnvOf("")}, h, func(s *session) {
+		w := s.newWindow(platform.WindowConfig{Size: ui.Size{Width: 300, Height: 200}})
+		s.waitFor("the first frame", 5*time.Second, func() bool { return h.frameCount() > 0 })
+		var watched *watchedLink
+		s.onUI(func() { watched, _ = w.link.(*watchedLink) })
+		if watched == nil {
+			t.Skip("this macOS has no CADisplayLink for a view: the link is a CVDisplayLink already")
+		}
+		for i := 0; i < 5; i++ {
+			before := h.frameCount()
+			s.onUI(w.RequestFrame)
+			if !s.waitFor("a frame for the request", 3*time.Second, func() bool { return h.frameCount() > before }) {
+				return
+			}
+		}
+		var fallback, made bool
+		s.onUI(func() { fallback, made = watched.watch.Fallback(), watched.cv != nil })
+		t.Logf("the frames came from the fallback: %v (a CVDisplayLink was made: %v)", fallback, made)
+		// An idle window has no link running and no watch timer armed.
+		if !waitQuiet(time.Second, func() bool {
+			var idle bool
+			s.onUI(func() { idle = !w.pacer.Running() && !watched.armed && (watched.cv == nil || !watched.cv.running) })
+			return idle
+		}) {
+			t.Error("the links or the watch timer still run with no frame wanted")
+		}
+		s.onUI(w.Close)
+	})
+}

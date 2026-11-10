@@ -1181,3 +1181,14 @@ An app that draws its own title bar with `WindowDecoration` (Emetos, or `GLUTTER
 5. With the system language set to one written from right to left (Arabic, Hebrew): the buttons are at the right, and the bar ends before them.
 
 Answers: _(not yet recorded)_
+
+## 40.2 Frames when the Mac's own screen is asleep
+
+A Mac with macOS 14 or later, used from another computer through Screen Sharing, with its own monitor asleep or off (or with no monitor).
+
+1. Start any example (`go run ./examples/counter`) on the Mac from the other computer: the window draws, the button counts when clicked, and the hover of the pointer shows. Before step 40.2 the window drew its first frame and nothing after it.
+2. Wake the Mac's monitor while the app runs and animate something (keep clicking): it goes on smoothly (the view's display link takes the pacing back); let the monitor sleep again: it goes on after a pause of about a tenth of a second.
+3. With the monitor on and nobody connected from outside, an app is as before (the view's display link, the display's refresh rate).
+
+Answers: _(not yet recorded)_
+

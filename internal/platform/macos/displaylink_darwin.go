@@ -4,6 +4,7 @@ package macos
 
 import (
 	"sync"
+	"time"
 
 	"github.com/ebitengine/purego/objc"
 	"github.com/rm4n0s/errors"
@@ -29,8 +30,14 @@ type frameLink interface {
 }
 
 // linkEnv is the environment variable that picks the display link, for the tests: "cv" is CVDisplayLink
-// even where CADisplayLink exists, "ca" is the view's CADisplayLink even for a self-capture.
+// even where CADisplayLink exists, "ca" is the view's CADisplayLink alone, with no fallback, even for a
+// self-capture.
 const linkEnv = "GLUTTER_DISPLAYLINK"
+
+// linkWatchInterval is how long the view's display link may stay silent before the fallback paces the
+// frames: several frames of the slowest display, and short enough that the first click of a window on a
+// sleeping display does not feel late.
+const linkWatchInterval = 120 * time.Millisecond
 
 // newFrameLink makes the link of the window, with fire called on the main thread with the target time
 // of the tick in seconds of the clock of CACurrentMediaTime.
@@ -41,11 +48,130 @@ func (w *window) newFrameLink(fire func(target float64)) (frameLink, error) {
 	}
 	// A self-capture (GLUTTER_SCREENSHOT) uses CVDisplayLink as well: it ticks whether or not the window is
 	// visible, so a proof can be taken while the screen is asleep or locked (SPEC §29.13).
-	useCV := w.p.getenv(linkEnv) == "cv" || (w.p.getenv(linkEnv) == "" && w.p.getenv("GLUTTER_SCREENSHOT") != "")
+	env := w.p.getenv(linkEnv)
+	useCV := env == "cv" || (env == "" && w.p.getenv("GLUTTER_SCREENSHOT") != "")
 	if !useCV && objc.Send[bool](w.view, sel("respondsToSelector:"), sel("displayLinkWithTarget:selector:")) {
-		return newCADisplayLink(w, fire), nil
+		if env == "ca" {
+			return newCADisplayLink(w, fire), nil
+		}
+		return newWatchedLink(s, w, fire), nil
 	}
 	return newCVDisplayLink(s, w, fire)
+}
+
+// watchedLink is the link of a window on macOS 14 and later: the view's CADisplayLink, watched, and a
+// CVDisplayLink that paces the frames while the first is silent (loop.LinkWatch). CADisplayLink does not
+// tick for a window on a display that sleeps; a Mac that is used through Screen Sharing with its own
+// screen asleep shows exactly that window to somebody, and without frames the app would neither draw nor
+// run what its input started. The CVDisplayLink is made at the first silence, so a Mac whose screen is on
+// never has one.
+type watchedLink struct {
+	s     *system
+	w     *window
+	fire  func(float64)
+	ca    *caLink
+	cv    *cvLink
+	watch loop.LinkWatch
+	// timer is the timer of the watch interval; armed says it is set.
+	timer loop.TimerID
+	armed bool
+}
+
+func newWatchedLink(s *system, w *window, fire func(float64)) *watchedLink {
+	l := &watchedLink{s: s, w: w, fire: fire}
+	l.ca = newCADisplayLink(w, l.preferredTick)
+	return l
+}
+
+// preferredTick is a tick of the view's link: it paces the frames, and the fallback stops if it ran.
+func (l *watchedLink) preferredTick(target float64) {
+	if l.watch.Tick() && l.cv != nil {
+		l.cv.setRunning(false)
+	}
+	l.arm()
+	l.fire(target)
+}
+
+// fallbackTick is a tick of the CVDisplayLink: a frame only while it paces.
+func (l *watchedLink) fallbackTick(target float64) {
+	if l.watch.Fallback() {
+		l.fire(target)
+	}
+}
+
+// arm sets the timer of the watch interval while the view's link runs and paces, and takes it away
+// otherwise.
+func (l *watchedLink) arm() {
+	want := l.watch.Watching()
+	if want == l.armed {
+		return
+	}
+	if !want {
+		l.w.p.timers.Cancel(l.timer)
+		l.w.p.rearm()
+		l.armed = false
+		return
+	}
+	l.armed = true
+	l.timer = l.w.p.addTimer(time.Now().Add(linkWatchInterval), l.check)
+}
+
+// check runs when a watch interval has passed: a silent link gives way to the fallback.
+func (l *watchedLink) check() {
+	l.armed = false
+	if l.w.closed {
+		return
+	}
+	if l.watch.Check() {
+		l.startFallback()
+	}
+	l.arm()
+}
+
+// startFallback runs the CVDisplayLink, which is made the first time. When it cannot be made the view's
+// link stays the only one, as before.
+func (l *watchedLink) startFallback() {
+	if l.cv == nil {
+		cv, err := newCVDisplayLink(l.s, l.w, l.fallbackTick)
+		if err != nil {
+			l.w.p.log.Warn("no fallback for a display link that does not tick", "err", err)
+			return
+		}
+		l.cv = cv
+	}
+	l.cv.setRunning(true)
+}
+
+func (l *watchedLink) setRunning(run bool) {
+	l.ca.setRunning(run)
+	if run {
+		if l.watch.Start() {
+			l.startFallback()
+		}
+	} else {
+		l.watch.Stop()
+		if l.cv != nil {
+			l.cv.setRunning(false)
+		}
+	}
+	l.arm()
+}
+
+func (l *watchedLink) screenChanged() {
+	if l.cv != nil {
+		l.cv.screenChanged()
+	}
+}
+
+func (l *watchedLink) close() {
+	if l.armed {
+		l.w.p.timers.Cancel(l.timer)
+		l.armed = false
+	}
+	l.ca.close()
+	if l.cv != nil {
+		l.cv.close()
+	}
 }
 
 // caLink is a CADisplayLink of the view (macOS 14 and later): it follows the window to another display
