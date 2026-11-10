@@ -3,8 +3,9 @@
 // cgo there, so the files that name the frameworks to link carry `import "C"`; nothing else is in C).
 //
 // Step 35.1 has the entry: Main calls UIApplicationMain on the main thread with a delegate class and a scene delegate class that Go
-// implements, and calls back when the app has launched and a scene has connected. The view, the frames, the input and the rest
-// come with the later steps of M35. On every other operating system the package has Main too, which fails with IOSUnavailable, so
+// implements, and calls back when the app has launched and a scene has connected. Step 35.2 has the platform: New, Run, Post, the
+// scene and its windows (a GlutterView in a view controller in a UIWindow), the frames of a CADisplayLink, the metrics with the
+// safe area, rotation and the lifecycle. The input and the rest come with the later steps of M35. On every other operating system the package has Main too, which fails with IOSUnavailable, so
 // that a program that calls it builds everywhere.
 //
 // Flutter: shell/platform/darwin/ios/framework/Source/FlutterAppDelegate.mm FlutterAppDelegate

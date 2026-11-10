@@ -1,23 +1,23 @@
-package macos
+package loop
 
 import (
 	"container/heap"
 	"time"
 )
 
-// timerID names a timer of a timerHeap, to cancel it.
-type timerID uint64
+// TimerID names a timer of a Timers, to cancel it.
+type TimerID uint64
 
 // timerItem is one armed timer.
 type timerItem struct {
-	id    timerID
+	id    TimerID
 	at    time.Time
 	seq   uint64 // the order of arming, to run the timers of one instant in that order
 	fn    func()
 	index int
 }
 
-// timerQueue is the ordered storage of timerHeap, for container/heap.
+// timerQueue is the ordered storage of Timers, for container/heap.
 type timerQueue []*timerItem
 
 func (q timerQueue) Len() int { return len(q) }
@@ -45,23 +45,25 @@ func (q *timerQueue) Pop() any {
 	return it
 }
 
-// timerHeap is the platform's own heap of timers (SPEC §29.3): one CFRunLoopTimer is set to the
+// Timers is the platform's own heap of timers (SPEC §29.3): one CFRunLoopTimer is set to the
 // earliest deadline (SetNextFire) and the heap runs what is due when it fires. It belongs to the UI
 // thread, so it needs no lock.
 //
 // Flutter: shell/platform/darwin/macos/framework/Source/FlutterRunLoop.swift FlutterRunLoop (its
 // scheduled blocks run in the main run loop)
-type timerHeap struct {
+type Timers struct {
 	q    timerQueue
-	byID map[timerID]*timerItem
-	next timerID
+	byID map[TimerID]*timerItem
+	next TimerID
 	seq  uint64
 }
 
-// add arms fn to run at the time and returns the id to cancel it with.
-func (h *timerHeap) add(at time.Time, fn func()) timerID {
+// Add arms fn to run at the time and returns the id to cancel it with.
+//
+// Flutter: no counterpart
+func (h *Timers) Add(at time.Time, fn func()) TimerID {
 	if h.byID == nil {
-		h.byID = map[timerID]*timerItem{}
+		h.byID = map[TimerID]*timerItem{}
 	}
 	h.next++
 	h.seq++
@@ -71,8 +73,10 @@ func (h *timerHeap) add(at time.Time, fn func()) timerID {
 	return it.id
 }
 
-// cancel disarms a timer and reports whether it was still armed.
-func (h *timerHeap) cancel(id timerID) bool {
+// Cancel disarms a timer and reports whether it was still armed.
+//
+// Flutter: no counterpart
+func (h *Timers) Cancel(id TimerID) bool {
 	it, ok := h.byID[id]
 	if !ok {
 		return false
@@ -82,19 +86,23 @@ func (h *timerHeap) cancel(id timerID) bool {
 	return true
 }
 
-// deadline is when the earliest timer is due; ok is false when none is armed, which makes the
+// Deadline is when the earliest timer is due; ok is false when none is armed, which makes the
 // loop wait for ever.
-func (h *timerHeap) deadline() (at time.Time, ok bool) {
+//
+// Flutter: no counterpart
+func (h *Timers) Deadline() (at time.Time, ok bool) {
 	if len(h.q) == 0 {
 		return time.Time{}, false
 	}
 	return h.q[0].at, true
 }
 
-// runDue runs the timers that are due at now, the earliest first and those of one instant in the
+// RunDue runs the timers that are due at now, the earliest first and those of one instant in the
 // order they were armed, and returns how many ran. A function may arm and cancel timers; one it
 // arms for a time that is already due also runs.
-func (h *timerHeap) runDue(now time.Time) int {
+//
+// Flutter: no counterpart
+func (h *Timers) RunDue(now time.Time) int {
 	n := 0
 	for len(h.q) > 0 && !h.q[0].at.After(now) {
 		it := heap.Pop(&h.q).(*timerItem)
@@ -105,10 +113,12 @@ func (h *timerHeap) runDue(now time.Time) int {
 	return n
 }
 
-// waitFor is how long the loop may wait from now: the time to the earliest timer (0 when it is
+// WaitFor is how long the loop may wait from now: the time to the earliest timer (0 when it is
 // due), and false when none is armed.
-func (h *timerHeap) waitFor(now time.Time) (d time.Duration, ok bool) {
-	at, ok := h.deadline()
+//
+// Flutter: no counterpart
+func (h *Timers) WaitFor(now time.Time) (d time.Duration, ok bool) {
+	at, ok := h.Deadline()
 	if !ok {
 		return 0, false
 	}

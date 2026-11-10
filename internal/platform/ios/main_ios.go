@@ -3,16 +3,22 @@
 package ios
 
 /*
-#cgo LDFLAGS: -framework UIKit -framework Foundation -framework QuartzCore
+#cgo LDFLAGS: -framework UIKit -framework Foundation -framework QuartzCore -framework IOSurface
 */
 import "C"
 
 import (
+	"runtime"
+
 	"github.com/ebitengine/purego/objc"
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/internal/platform/darwin/dl"
 	"github.com/rm4n0s/glutter/internal/platform/darwin/objcx"
 )
+
+// init locks the main goroutine, which runs the init functions of the program, to the main thread of the process (the thread that the
+// runtime started on): UIKit works only there, and a program that links this package calls Main or Platform.Run from main.
+func init() { runtime.LockOSThread() }
 
 // Main runs UIApplicationMain on the calling thread, which must be the main thread of the process (a program's main function, whose
 // thread package mainthread locked), with a delegate class and a scene delegate class that Go implements. It does not return while
@@ -20,6 +26,11 @@ import (
 //
 // Flutter: shell/platform/darwin/ios/framework/Source/FlutterAppDelegate.mm FlutterAppDelegate
 func Main(o MainOptions) error {
+	return launch(o.DidFinishLaunching, func() (*objcx.RegisteredClass, error) { return registerSceneDelegate(o) })
+}
+
+// launch is Main with the scene delegate class made by the caller: package ios's own platform has one of its own (scene_ios.go).
+func launch(didFinish func(), registerScene func() (*objcx.RegisteredClass, error)) error {
 	uikit, err := dl.OpenFramework("UIKit")
 	if err != nil {
 		return err
@@ -39,11 +50,11 @@ func Main(o MainOptions) error {
 	if err := uikit.Bind(&uiApplicationMain, "UIApplicationMain"); err != nil {
 		return err
 	}
-	scene, err := registerSceneDelegate(o)
+	scene, err := registerScene()
 	if err != nil {
 		return err
 	}
-	app, err := registerAppDelegate(o, scene)
+	app, err := registerAppDelegate(didFinish, scene)
 	if err != nil {
 		return err
 	}
@@ -59,13 +70,13 @@ func Main(o MainOptions) error {
 // with the scene delegate (the manifest of the Info.plist has no configurations, so UIKit asks).
 //
 // Flutter: shell/platform/darwin/ios/framework/Source/FlutterAppDelegate.mm FlutterAppDelegate
-func registerAppDelegate(o MainOptions, scene *objcx.RegisteredClass) (*objcx.RegisteredClass, error) {
+func registerAppDelegate(didFinish func(), scene *objcx.RegisteredClass) (*objcx.RegisteredClass, error) {
 	return objcx.RegisterClass(objcx.ClassDef{
 		Name: "AppDelegate", Super: "UIResponder",
 		Methods: []objcx.Method{
 			{Name: "application:didFinishLaunchingWithOptions:", Fn: func(objc.ID, objc.SEL, objc.ID, objc.ID) bool {
-				if o.DidFinishLaunching != nil {
-					o.DidFinishLaunching()
+				if didFinish != nil {
+					didFinish()
 				}
 				return true
 			}},

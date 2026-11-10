@@ -518,7 +518,7 @@ func TestRequestFrameIsAnsweredByTheDisplayLink(t *testing.T) {
 		}
 		var running bool
 		time.Sleep(200 * time.Millisecond)
-		s.onUI(func() { running = w.pacer.running })
+		s.onUI(func() { running = w.pacer.Running() })
 		if running {
 			t.Error("the display link still runs when no frame is wanted")
 		}

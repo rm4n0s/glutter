@@ -1,4 +1,4 @@
-//go:build !linux && !js && !windows && !(darwin && !ios)
+//go:build !linux && !js && !windows && !darwin
 
 package engine
 

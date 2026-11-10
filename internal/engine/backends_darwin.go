@@ -13,6 +13,7 @@ import (
 	"github.com/rm4n0s/glutter/internal/gpu/explicit"
 	"github.com/rm4n0s/glutter/internal/gpu/metal"
 	"github.com/rm4n0s/glutter/internal/gpu/shadercache"
+	"github.com/rm4n0s/glutter/internal/platform/darwin"
 	"github.com/rm4n0s/glutter/internal/platform/macos"
 	"github.com/rm4n0s/glutter/internal/text"
 	"github.com/rm4n0s/glutter/internal/text/darwinfonts"
@@ -106,7 +107,7 @@ func newSoftWindowRenderer(cfg *Config, log *slog.Logger) renderer {
 //
 // Flutter: no counterpart
 func SystemFontMatcher(ctx context.Context, log *slog.Logger) text.Matcher {
-	opts, err := macos.FontOptions(ctx, log)
+	opts, err := darwin.FontOptions(ctx, log)
 	if err == nil {
 		var m *darwinfonts.Matcher
 		if m, err = darwinfonts.New(opts); err == nil {

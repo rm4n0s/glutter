@@ -1,6 +1,6 @@
-//go:build darwin && !ios
+//go:build darwin
 
-package macos
+package darwin
 
 import (
 	"context"
@@ -8,12 +8,13 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/rm4n0s/glutter/internal/platform/darwin"
+	"github.com/ebitengine/purego/objc"
+
 	"github.com/rm4n0s/glutter/internal/platform/darwin/objcx"
 	"github.com/rm4n0s/glutter/internal/text/darwinfonts"
 )
 
-// FontOptions reads the fonts of the Mac for darwinfonts.New (SPEC §29.8): the faces of the files that Core
+// FontOptions reads the fonts of the Mac or the iPhone for darwinfonts.New (SPEC §29.8): the faces of the files that Core
 // Text lists (read with go-text, and kept in a file of the user's cache directory between runs), the system
 // UI font, Core Text's choice of a font for a character, and the user's first language. A file that cannot
 // be read is logged and left out. It fails with the loader's errors when Core Text is missing.
@@ -23,7 +24,7 @@ func FontOptions(ctx context.Context, log *slog.Logger) (darwinfonts.Options, er
 	if log == nil {
 		log = slog.Default()
 	}
-	ct, err := darwin.OpenCoreText()
+	ct, err := OpenCoreText()
 	if err != nil {
 		return darwinfonts.Options{}, err
 	}
@@ -72,8 +73,12 @@ func FontOptions(ctx context.Context, log *slog.Logger) (darwinfonts.Options, er
 
 // userLocale is the first of the user's preferred languages (a BCP 47 tag), "" when there is none.
 func userLocale() (tag string) {
+	cls, err := objcx.Class("NSLocale")
+	if err != nil {
+		return "" // no Foundation class, no locale: the fonts are read without one
+	}
 	objcx.WithPool(func() {
-		langs := class("NSLocale").Send(sel("preferredLanguages"))
+		langs := objc.ID(cls).Send(objcx.Sel("preferredLanguages"))
 		if objcx.ArrayCount(langs) > 0 {
 			tag = objcx.String(objcx.ArrayAt(langs, 0))
 		}

@@ -17,6 +17,7 @@ import (
 	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/internal/platform"
 	"github.com/rm4n0s/glutter/internal/platform/darwin/cf"
+	"github.com/rm4n0s/glutter/internal/platform/darwin/loop"
 	"github.com/rm4n0s/glutter/internal/platform/darwin/objcx"
 	"github.com/rm4n0s/glutter/ui"
 )
@@ -65,7 +66,7 @@ type Platform struct {
 	handler  platform.Handler
 	windows  map[ui.ViewID]*window
 	nextView ui.ViewID
-	timers   timerHeap
+	timers   loop.Timers
 	// quit says the loop ends: the last window closed, or a panic is on its way out.
 	quit     bool
 	panicked *panicRecord
@@ -307,13 +308,13 @@ func (p *Platform) runPosted() {
 // runTimers runs the timers of the heap that are due and sets the run loop timer to the next deadline.
 func (p *Platform) runTimers() {
 	p.wakes.Add(1)
-	objcx.WithPool(func() { p.timers.runDue(time.Now()) })
+	objcx.WithPool(func() { p.timers.RunDue(time.Now()) })
 	p.rearm()
 }
 
 // rearm sets the run loop timer to the earliest deadline of the heap, or stops it when none is armed.
 func (p *Platform) rearm() {
-	if at, ok := p.timers.deadline(); ok {
+	if at, ok := p.timers.Deadline(); ok {
 		p.timer.SetNextFire(at)
 	} else {
 		p.timer.Disarm()
@@ -321,8 +322,8 @@ func (p *Platform) rearm() {
 }
 
 // addTimer arms fn to run on the UI thread at the time and returns the id to cancel it with.
-func (p *Platform) addTimer(at time.Time, fn func()) timerID {
-	id := p.timers.add(at, fn)
+func (p *Platform) addTimer(at time.Time, fn func()) loop.TimerID {
+	id := p.timers.Add(at, fn)
 	p.rearm()
 	return id
 }

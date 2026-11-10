@@ -1,4 +1,4 @@
-package macos
+package loop
 
 import (
 	"sync"
@@ -8,36 +8,36 @@ import (
 func TestFrameRequestsMergeAndWaitForADrawableWindow(t *testing.T) {
 	tests := []struct {
 		name    string
-		steps   func(f *frameRequests) []bool
+		steps   func(f *FrameRequests) []bool
 		want    []bool
 		wanting bool
 	}{
-		{"requests while wanted are one frame", func(f *frameRequests) []bool {
-			f.request()
-			f.request()
-			f.request()
-			return []bool{f.take(true), f.take(true)}
+		{"requests while wanted are one frame", func(f *FrameRequests) []bool {
+			f.Request()
+			f.Request()
+			f.Request()
+			return []bool{f.Take(true), f.Take(true)}
 		}, []bool{true, false}, false},
-		{"a request during the frame asks for the next", func(f *frameRequests) []bool {
-			f.request()
-			first := f.take(true)
-			f.request() // made while the frame is drawn
-			return []bool{first, f.take(true), f.take(true)}
+		{"a request during the frame asks for the next", func(f *FrameRequests) []bool {
+			f.Request()
+			first := f.Take(true)
+			f.Request() // made while the frame is drawn
+			return []bool{first, f.Take(true), f.Take(true)}
 		}, []bool{true, true, false}, false},
-		{"a minimized window keeps its request", func(f *frameRequests) []bool {
-			f.request()
-			return []bool{f.take(false), f.take(false), f.take(true)}
+		{"a minimized window keeps its request", func(f *FrameRequests) []bool {
+			f.Request()
+			return []bool{f.Take(false), f.Take(false), f.Take(true)}
 		}, []bool{false, false, true}, false},
-		{"clear drops the request", func(f *frameRequests) []bool {
-			f.request()
-			f.clear()
-			return []bool{f.take(true)}
+		{"clear drops the request", func(f *FrameRequests) []bool {
+			f.Request()
+			f.Clear()
+			return []bool{f.Take(true)}
 		}, []bool{false}, false},
-		{"no request, no frame", func(f *frameRequests) []bool { return []bool{f.take(true)} }, []bool{false}, false},
+		{"no request, no frame", func(f *FrameRequests) []bool { return []bool{f.Take(true)} }, []bool{false}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var f frameRequests
+			var f FrameRequests
 			got := tt.steps(&f)
 			if len(got) != len(tt.want) {
 				t.Fatalf("got %v, want %v", got, tt.want)
@@ -52,7 +52,7 @@ func TestFrameRequestsMergeAndWaitForADrawableWindow(t *testing.T) {
 }
 
 func TestLinkPacerRunsTheLinkOnlyWhileAFrameIsWanted(t *testing.T) {
-	var p linkPacer
+	var p LinkPacer
 	type step struct {
 		wanted      bool
 		start, stop bool
@@ -66,31 +66,34 @@ func TestLinkPacerRunsTheLinkOnlyWhileAFrameIsWanted(t *testing.T) {
 		{true, true, false},   // wanted again
 	}
 	for i, s := range steps {
-		start, stop := p.update(s.wanted)
+		start, stop := p.Update(s.wanted)
 		if start != s.start || stop != s.stop {
 			t.Errorf("step %d (wanted %v) = start %v stop %v, want %v %v", i, s.wanted, start, stop, s.start, s.stop)
+		}
+		if p.Running() != s.wanted {
+			t.Errorf("step %d: Running() = %v after wanted = %v", i, p.Running(), s.wanted)
 		}
 	}
 }
 
 func TestTickGateDropsTheTicksOfASlowLoop(t *testing.T) {
-	var g tickGate
-	if !g.offer() {
+	var g TickGate
+	if !g.Offer() {
 		t.Fatal("the first tick is refused")
 	}
 	for i := 0; i < 5; i++ {
-		if g.offer() {
+		if g.Offer() {
 			t.Fatal("a tick passed while the last one waits")
 		}
 	}
-	g.done()
-	if !g.offer() {
+	g.Done()
+	if !g.Offer() {
 		t.Error("the tick after done is refused")
 	}
 }
 
 func TestTickGateFromManyThreadsPostsOnce(t *testing.T) {
-	var g tickGate
+	var g TickGate
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	passed := 0
@@ -98,7 +101,7 @@ func TestTickGateFromManyThreadsPostsOnce(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if g.offer() {
+			if g.Offer() {
 				mu.Lock()
 				passed++
 				mu.Unlock()

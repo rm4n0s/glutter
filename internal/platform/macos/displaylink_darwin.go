@@ -8,6 +8,7 @@ import (
 	"github.com/ebitengine/purego/objc"
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/internal/platform/darwin/dl"
+	"github.com/rm4n0s/glutter/internal/platform/darwin/loop"
 	"github.com/rm4n0s/glutter/internal/platform/darwin/objcx"
 )
 
@@ -127,7 +128,7 @@ type cvLink struct {
 	w       *window
 	link    uintptr
 	running bool
-	gate    tickGate
+	gate    loop.TickGate
 	fire    func(float64)
 }
 
@@ -176,11 +177,11 @@ func (c *cvLink) close() {
 
 // offer is called on the link's thread: a tick goes to the main thread unless one waits there.
 func (c *cvLink) offer() {
-	if !c.gate.offer() {
+	if !c.gate.Offer() {
 		return
 	}
 	c.w.p.Post(func() {
-		c.gate.done()
+		c.gate.Done()
 		if c.link != 0 {
 			c.fire(c.s.mediaTime() + c.w.frameInterval())
 		}

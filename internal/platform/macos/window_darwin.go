@@ -14,6 +14,7 @@ import (
 	"github.com/rm4n0s/glutter/internal/gpu"
 	"github.com/rm4n0s/glutter/internal/platform"
 	"github.com/rm4n0s/glutter/internal/platform/darwin"
+	"github.com/rm4n0s/glutter/internal/platform/darwin/loop"
 	"github.com/rm4n0s/glutter/internal/platform/darwin/objcx"
 	"github.com/rm4n0s/glutter/ui"
 )
@@ -49,8 +50,8 @@ type window struct {
 	// scale is the backing scale factor the metrics last reported.
 	scale float64
 
-	frames frameRequests
-	pacer  linkPacer
+	frames loop.FrameRequests
+	pacer  loop.LinkPacer
 	link   frameLink
 	// onLinkFire is the function that a CADisplayLink's target method calls; cv is the CVDisplayLink, when
 	// that is the link (displaylink_darwin.go).
@@ -350,7 +351,7 @@ func (w *window) RequestFrame() {
 	if w.closed {
 		return
 	}
-	w.frames.request()
+	w.frames.Request()
 	w.updateLink()
 }
 
@@ -366,7 +367,7 @@ func (w *window) updateLink() {
 	if w.link == nil {
 		return
 	}
-	start, stop := w.pacer.update(w.frames.wanted && w.canDraw())
+	start, stop := w.pacer.Update(w.frames.Wanted() && w.canDraw())
 	switch {
 	case start:
 		w.link.setRunning(true)
@@ -389,7 +390,7 @@ func (w *window) linkFired(link objc.ID) {
 func (w *window) fireTick(target float64) {
 	w.p.wakes.Add(1)
 	h := w.p.handler
-	if h != nil && w.frames.take(w.canDraw()) {
+	if h != nil && w.frames.Take(w.canDraw()) {
 		h.OnFrame(w.id, w.p.frameTime(target))
 		w.p.framesDrawn++
 	}
@@ -597,7 +598,7 @@ func (w *window) renderNow() {
 	if h == nil || w.closed || !w.shown || w.hidden {
 		return
 	}
-	w.frames.clear()
+	w.frames.Clear()
 	h.OnFrame(w.id, w.p.frameTime(w.p.s.mediaTime()))
 	w.p.framesDrawn++
 	w.updateLink()

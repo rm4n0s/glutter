@@ -19,7 +19,7 @@ func main() {
 			err := ios.Main(ios.MainOptions{})
 			tag, route := "", false
 			if appErr, ok := errors.FromError(err); ok {
-				tag, route = appErr.Tag, appErr.HasRoute("Main."+ios.TagIOSNotMainThread)
+				tag, route = appErr.Tag, appErr.HasRoute("Main->launch."+ios.TagIOSNotMainThread)
 			}
 			fmt.Printf("%s tag=%s route=%v\n", hellolines.NotMainThread, tag, route)
 			os.Exit(0)

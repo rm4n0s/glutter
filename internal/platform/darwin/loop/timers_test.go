@@ -1,4 +1,4 @@
-package macos
+package loop
 
 import (
 	"slices"
@@ -24,12 +24,12 @@ func TestTimerHeapRunsDueTimersInOrder(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var h timerHeap
+			var h Timers
 			var got []int
 			for i, at := range tt.arm {
-				h.add(ms(at), func() { got = append(got, i) })
+				h.Add(ms(at), func() { got = append(got, i) })
 			}
-			n := h.runDue(ms(tt.now))
+			n := h.RunDue(ms(tt.now))
 			if !slices.Equal(got, tt.want) || n != len(tt.want) {
 				t.Errorf("ran %v (%d), want %v", got, n, tt.want)
 			}
@@ -39,57 +39,57 @@ func TestTimerHeapRunsDueTimersInOrder(t *testing.T) {
 
 func TestTimerHeapCancelAndDeadline(t *testing.T) {
 	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	var h timerHeap
-	if _, ok := h.deadline(); ok {
+	var h Timers
+	if _, ok := h.Deadline(); ok {
 		t.Fatal("an empty heap has a deadline")
 	}
-	if _, ok := h.waitFor(base); ok {
+	if _, ok := h.WaitFor(base); ok {
 		t.Fatal("an empty heap says how long to wait: the loop must wait for ever")
 	}
 	ran := map[string]bool{}
-	a := h.add(base.Add(10*time.Millisecond), func() { ran["a"] = true })
-	b := h.add(base.Add(30*time.Millisecond), func() { ran["b"] = true })
-	if at, ok := h.deadline(); !ok || !at.Equal(base.Add(10*time.Millisecond)) {
+	a := h.Add(base.Add(10*time.Millisecond), func() { ran["a"] = true })
+	b := h.Add(base.Add(30*time.Millisecond), func() { ran["b"] = true })
+	if at, ok := h.Deadline(); !ok || !at.Equal(base.Add(10*time.Millisecond)) {
 		t.Errorf("deadline = %v, %v", at, ok)
 	}
-	if d, ok := h.waitFor(base); !ok || d != 10*time.Millisecond {
+	if d, ok := h.WaitFor(base); !ok || d != 10*time.Millisecond {
 		t.Errorf("waitFor = %v, %v", d, ok)
 	}
-	if d, _ := h.waitFor(base.Add(time.Second)); d != 0 {
+	if d, _ := h.WaitFor(base.Add(time.Second)); d != 0 {
 		t.Errorf("waitFor of a due timer = %v, want 0", d)
 	}
-	if !h.cancel(a) {
+	if !h.Cancel(a) {
 		t.Error("cancel of an armed timer is false")
 	}
-	if h.cancel(a) {
+	if h.Cancel(a) {
 		t.Error("cancel of a cancelled timer is true")
 	}
-	if at, _ := h.deadline(); !at.Equal(base.Add(30 * time.Millisecond)) {
+	if at, _ := h.Deadline(); !at.Equal(base.Add(30 * time.Millisecond)) {
 		t.Errorf("deadline after the cancel = %v", at)
 	}
-	h.runDue(base.Add(time.Second))
+	h.RunDue(base.Add(time.Second))
 	if ran["a"] || !ran["b"] {
 		t.Errorf("ran = %v, want only b", ran)
 	}
-	if h.cancel(b) {
+	if h.Cancel(b) {
 		t.Error("cancel of a timer that ran is true")
 	}
 }
 
 func TestTimerHeapFunctionsMayArmTimers(t *testing.T) {
 	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	var h timerHeap
+	var h Timers
 	var got []string
-	h.add(base, func() {
+	h.Add(base, func() {
 		got = append(got, "first")
-		h.add(base, func() { got = append(got, "second, due already") })
-		h.add(base.Add(time.Hour), func() { got = append(got, "later") })
+		h.Add(base, func() { got = append(got, "second, due already") })
+		h.Add(base.Add(time.Hour), func() { got = append(got, "later") })
 	})
-	h.runDue(base)
+	h.RunDue(base)
 	if !slices.Equal(got, []string{"first", "second, due already"}) {
 		t.Errorf("ran %v", got)
 	}
-	if _, ok := h.deadline(); !ok {
+	if _, ok := h.Deadline(); !ok {
 		t.Error("the timer for later is gone")
 	}
 }
