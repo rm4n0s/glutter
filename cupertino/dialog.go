@@ -341,8 +341,13 @@ func (w *CupertinoPopupSurface) Build(bc widgets.BuildContext) widgets.Widget {
 	brightness, ok := CupertinoThemeMaybeBrightnessOf(bc)
 	filter := w.buildFilter(brightness, ok)
 	contents := w.child
+	reduced := widgets.MediaQueryReduceTransparencyOf(bc)
 	if w.IsSurfacePainted() {
-		contents = widgets.NewColoredBox(CupertinoDynamicColorResolve(dialogColor, bc), contents)
+		contents = widgets.NewColoredBox(reduceTransparency(bc, CupertinoDynamicColorResolve(dialogColor, bc)), contents)
+	}
+	if reduced {
+		// Less transparency: no blur and no saturation of what is behind, and an opaque surface.
+		return widgets.NewClipRSuperellipse(contents, widgets.ClipRSuperellipseOpts{BorderRadius: painting.NewBorderRadiusCircular(13)})
 	}
 	return widgets.NewClipRSuperellipse(widgets.NewBackdropFilter(filter, contents),
 		widgets.ClipRSuperellipseOpts{BorderRadius: painting.NewBorderRadiusCircular(13)})

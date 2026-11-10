@@ -22,6 +22,9 @@ type settingsInput struct {
 	BoldText, ReduceMotion, IncreaseContrast, ReduceTransparency bool
 	// OnOffLabels is Settings > Accessibility > On/Off Labels.
 	OnOffLabels bool
+	// DifferentiateWithoutColor is Settings > Accessibility > Display & Text Size > Differentiate Without Color
+	// (UIAccessibilityShouldDifferentiateWithoutColor).
+	DifferentiateWithoutColor bool
 	// VoiceOver and SwitchControl say that the assistive technology is running; SpeakScreen that Speak Screen is on.
 	VoiceOver, SwitchControl, SpeakScreen bool
 	// TimeFormat is the date format of the template "j" in the current locale (hour only), such as "h a" or "HH".
@@ -44,8 +47,8 @@ const (
 //   - the locales are the preferred languages, en-US when there are none;
 //   - the 24-hour clock is a time format of the current locale with no am/pm marker.
 //
-// Reduce Transparency and On/Off Labels have no field in platform.Settings (as on macOS), and the settings of motion, contrast and
-// bold text are what the framework's MediaQuery has.
+// Reduce transparency, differentiate without color and on/off labels are the switches of the same names (AccessibilityFeatures
+// and MediaQuery have them).
 //
 // Flutter: shell/platform/darwin/ios/framework/Source/FlutterViewController.mm onUserSettingsChanged, AccessibilityFeatures.swift flags
 func settingsOf(in settingsInput) platform.Settings {
@@ -56,9 +59,11 @@ func settingsOf(in settingsInput) platform.Settings {
 		BoldText:              in.BoldText,
 		DisableAnimations:     in.ReduceMotion,
 		HighContrast:          in.IncreaseContrast,
-		AccessibleNavigation:  in.VoiceOver || in.SwitchControl,
-		FontAntialiasing:      platform.FontAntialiasingGrayscale,
-		UIFontFamily:          systemUIFont, UIFontSize: systemUIFontSize,
+		OnOffSwitchLabels:     in.OnOffLabels,
+		ReduceTransparency:    in.ReduceTransparency, DifferentiateWithoutColor: in.DifferentiateWithoutColor,
+		AccessibleNavigation: in.VoiceOver || in.SwitchControl,
+		FontAntialiasing:     platform.FontAntialiasingGrayscale,
+		UIFontFamily:         systemUIFont, UIFontSize: systemUIFontSize,
 	}
 	if in.Dark {
 		s.PlatformBrightness = ui.BrightnessDark

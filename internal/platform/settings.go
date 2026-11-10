@@ -31,6 +31,12 @@ type Settings struct {
 	DisableAnimations bool
 	// HighContrast is whether the user asked for high contrast.
 	HighContrast bool
+	// OnOffSwitchLabels is whether the user asked for labels on switches (iOS: On/Off Labels).
+	OnOffSwitchLabels bool
+	// ReduceTransparency is whether the user asked for less transparency and blur.
+	ReduceTransparency bool
+	// DifferentiateWithoutColor is whether the user asked that color is not the only way things are told apart.
+	DifferentiateWithoutColor bool
 	// AccessibleNavigation is whether an assistive technology, such as a screen reader, is in
 	// use (AccessibilityFeatures.AccessibleNavigation).
 	AccessibleNavigation bool

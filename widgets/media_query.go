@@ -105,6 +105,8 @@ const (
 	aspectInvertColors
 	aspectHighContrast
 	aspectOnOffSwitchLabels
+	aspectReduceTransparency
+	aspectDifferentiateWithoutColor
 	aspectDisableAnimations
 	aspectBoldText
 	aspectNavigationMode
@@ -186,6 +188,19 @@ type MediaQueryData struct {
 	//
 	// Flutter: widgets/media_query.dart MediaQueryData.onOffSwitchLabels
 	OnOffSwitchLabels bool
+	// ReduceTransparency is whether the user asked for less transparency and blur. The Cupertino bars and sheets draw opaque
+	// when it is on.
+	//
+	// Deviation: Flutter has no such setting (SPEC §12.10).
+	//
+	// Flutter: no counterpart
+	ReduceTransparency bool
+	// DifferentiateWithoutColor is whether the user asked that color is not the only way things are told apart.
+	//
+	// Deviation: Flutter has no such setting (SPEC §12.10).
+	//
+	// Flutter: no counterpart
+	DifferentiateWithoutColor bool
 	// DisableAnimations is whether the platform is requesting that animations be
 	// disabled or reduced as much as possible.
 	//
@@ -248,6 +263,10 @@ type MediaQueryDataOpts struct {
 	HighContrast bool
 	// OnOffSwitchLabels says that the user asked for labels on switches.
 	OnOffSwitchLabels bool
+	// ReduceTransparency says that the user asked for less transparency and blur.
+	ReduceTransparency bool
+	// DifferentiateWithoutColor says that the user asked that color is not the only way things are told apart.
+	DifferentiateWithoutColor bool
 	// DisableAnimations says that animations should be off or reduced.
 	DisableAnimations bool
 	// BoldText says that the user asked for bold text.
@@ -274,6 +293,7 @@ func NewMediaQueryData(opts ...MediaQueryDataOpts) MediaQueryData {
 		Padding: o.Padding, ViewInsets: o.ViewInsets, SystemGestureInsets: o.SystemGestureInsets, ViewPadding: o.ViewPadding,
 		AlwaysUse24HourFormat: o.AlwaysUse24HourFormat, AccessibleNavigation: o.AccessibleNavigation, InvertColors: o.InvertColors,
 		HighContrast: o.HighContrast, OnOffSwitchLabels: o.OnOffSwitchLabels, DisableAnimations: o.DisableAnimations,
+		ReduceTransparency: o.ReduceTransparency, DifferentiateWithoutColor: o.DifferentiateWithoutColor,
 		BoldText: o.BoldText, NavigationMode: o.NavigationMode, SupportsShowingSystemContextMenu: o.SupportsShowingSystemContextMenu,
 		DisplayCornerRadii: o.DisplayCornerRadii,
 	}
@@ -317,7 +337,8 @@ func NewMediaQueryDataFromView(view *ui.View, platformData *MediaQueryData) Medi
 		SystemGestureInsets:  painting.NewEdgeInsetsFromViewPadding(view.SystemGestureInsets(), ratio),
 		AccessibleNavigation: features.AccessibleNavigation, InvertColors: features.InvertColors,
 		DisableAnimations: features.DisableAnimations, BoldText: features.BoldText, HighContrast: features.HighContrast,
-		OnOffSwitchLabels:     features.OnOffSwitchLabels,
+		OnOffSwitchLabels:  features.OnOffSwitchLabels,
+		ReduceTransparency: features.ReduceTransparency, DifferentiateWithoutColor: features.DifferentiateWithoutColor,
 		AlwaysUse24HourFormat: d.AlwaysUse24HourFormat(),
 		NavigationMode:        NavigationModeTraditional,
 		GestureSettings:       gestures.NewDeviceGestureSettingsFromView(view),
@@ -331,6 +352,8 @@ func NewMediaQueryDataFromView(view *ui.View, platformData *MediaQueryData) Medi
 		data.BoldText = p.BoldText
 		data.HighContrast = p.HighContrast
 		data.OnOffSwitchLabels = p.OnOffSwitchLabels
+		data.ReduceTransparency = p.ReduceTransparency
+		data.DifferentiateWithoutColor = p.DifferentiateWithoutColor
 		data.AlwaysUse24HourFormat = p.AlwaysUse24HourFormat
 		data.NavigationMode = p.NavigationMode
 		data.SupportsShowingSystemContextMenu = p.SupportsShowingSystemContextMenu
@@ -364,6 +387,8 @@ type MediaQueryDataCopyOpts struct {
 	AlwaysUse24HourFormat            foundation.Opt[bool]
 	HighContrast                     foundation.Opt[bool]
 	OnOffSwitchLabels                foundation.Opt[bool]
+	ReduceTransparency               foundation.Opt[bool]
+	DifferentiateWithoutColor        foundation.Opt[bool]
 	DisableAnimations                foundation.Opt[bool]
 	InvertColors                     foundation.Opt[bool]
 	AccessibleNavigation             foundation.Opt[bool]
@@ -410,6 +435,12 @@ func (d MediaQueryData) CopyWith(o MediaQueryDataCopyOpts) MediaQueryData {
 	}
 	if v, ok := o.OnOffSwitchLabels.Get(); ok {
 		d.OnOffSwitchLabels = v
+	}
+	if v, ok := o.ReduceTransparency.Get(); ok {
+		d.ReduceTransparency = v
+	}
+	if v, ok := o.DifferentiateWithoutColor.Get(); ok {
+		d.DifferentiateWithoutColor = v
 	}
 	if v, ok := o.DisableAnimations.Get(); ok {
 		d.DisableAnimations = v
@@ -549,6 +580,7 @@ func (d MediaQueryData) Equal(o MediaQueryData) bool {
 		d.Padding == o.Padding && d.ViewPadding == o.ViewPadding && d.ViewInsets == o.ViewInsets &&
 		d.SystemGestureInsets == o.SystemGestureInsets && d.AlwaysUse24HourFormat == o.AlwaysUse24HourFormat &&
 		d.HighContrast == o.HighContrast && d.OnOffSwitchLabels == o.OnOffSwitchLabels &&
+		d.ReduceTransparency == o.ReduceTransparency && d.DifferentiateWithoutColor == o.DifferentiateWithoutColor &&
 		d.DisableAnimations == o.DisableAnimations && d.InvertColors == o.InvertColors &&
 		d.AccessibleNavigation == o.AccessibleNavigation && d.BoldText == o.BoldText &&
 		d.NavigationMode == o.NavigationMode && d.GestureSettings == o.GestureSettings &&
@@ -575,6 +607,8 @@ func (d MediaQueryData) String() string {
 		"accessibleNavigation: " + fmt.Sprint(d.AccessibleNavigation),
 		"highContrast: " + fmt.Sprint(d.HighContrast),
 		"onOffSwitchLabels: " + fmt.Sprint(d.OnOffSwitchLabels),
+		"reduceTransparency: " + fmt.Sprint(d.ReduceTransparency),
+		"differentiateWithoutColor: " + fmt.Sprint(d.DifferentiateWithoutColor),
 		"disableAnimations: " + fmt.Sprint(d.DisableAnimations),
 		"invertColors: " + fmt.Sprint(d.InvertColors),
 		"boldText: " + fmt.Sprint(d.BoldText),
@@ -689,6 +723,10 @@ func (w *MediaQuery) UpdateShouldNotifyDependent(old Widget, dependencies *Aspec
 			return n.HighContrast != o.HighContrast
 		case aspectOnOffSwitchLabels:
 			return n.OnOffSwitchLabels != o.OnOffSwitchLabels
+		case aspectReduceTransparency:
+			return n.ReduceTransparency != o.ReduceTransparency
+		case aspectDifferentiateWithoutColor:
+			return n.DifferentiateWithoutColor != o.DifferentiateWithoutColor
 		case aspectDisableAnimations:
 			return n.DisableAnimations != o.DisableAnimations
 		case aspectBoldText:
@@ -1027,6 +1065,43 @@ func MediaQueryOnOffSwitchLabelsOf(bc BuildContext) bool {
 func MediaQueryMaybeOnOffSwitchLabelsOf(bc BuildContext) (value, ok bool) {
 	d, ok := mediaQueryMaybeOf(bc, aspectOnOffSwitchLabels)
 	return d.OnOffSwitchLabels, ok
+}
+
+// MediaQueryReduceTransparencyOf is whether the user asked for less transparency and blur; false when there is no MediaQuery.
+//
+// Deviation: Flutter has no such setting (SPEC §12.10).
+//
+// Flutter: no counterpart
+func MediaQueryReduceTransparencyOf(bc BuildContext) bool {
+	d, ok := mediaQueryMaybeOf(bc, aspectReduceTransparency)
+	return ok && d.ReduceTransparency
+}
+
+// MediaQueryMaybeReduceTransparencyOf is the setting; false in ok when there is no MediaQuery.
+//
+// Flutter: no counterpart
+func MediaQueryMaybeReduceTransparencyOf(bc BuildContext) (value, ok bool) {
+	d, ok := mediaQueryMaybeOf(bc, aspectReduceTransparency)
+	return d.ReduceTransparency, ok
+}
+
+// MediaQueryDifferentiateWithoutColorOf is whether the user asked that color is not the only way things are told apart; false
+// when there is no MediaQuery.
+//
+// Deviation: Flutter has no such setting (SPEC §12.10).
+//
+// Flutter: no counterpart
+func MediaQueryDifferentiateWithoutColorOf(bc BuildContext) bool {
+	d, ok := mediaQueryMaybeOf(bc, aspectDifferentiateWithoutColor)
+	return ok && d.DifferentiateWithoutColor
+}
+
+// MediaQueryMaybeDifferentiateWithoutColorOf is the setting; false in ok when there is no MediaQuery.
+//
+// Flutter: no counterpart
+func MediaQueryMaybeDifferentiateWithoutColorOf(bc BuildContext) (value, ok bool) {
+	d, ok := mediaQueryMaybeOf(bc, aspectDifferentiateWithoutColor)
+	return d.DifferentiateWithoutColor, ok
 }
 
 // MediaQueryDisableAnimationsOf is whether animations should be off or reduced.

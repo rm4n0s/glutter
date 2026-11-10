@@ -1146,3 +1146,14 @@ What only a real pad (and the Linux machine) can show. The unit tests of the Lin
 6. **On Windows**, with a PlayStation pad: the same as 2 and 3 (the Xbox pads through XInput are unchanged).
 
 Answers: _(not yet recorded)_
+
+## 37.2 Reduce Transparency, Differentiate Without Color and On/Off Labels
+
+What only a person with the system's settings can do.
+
+1. **macOS**: in `examples/cupertino` (a navigation bar and a tab bar over a scrolling list) turn on System Settings > Accessibility > Display > Reduce transparency while the app runs: the bars become solid at once, with nothing blurred behind them, and a dialog or popup is solid; turn it off and the blur returns. Record whether the change needs a frame of input to show.
+2. **macOS**: Differentiate without color: the log line of the app (`GLUTTER_...` is not needed) is not changed; an app that reads `MediaQueryDifferentiateWithoutColorOf` sees it change. `examples/dev` has no page for it: write one line in a scratch app, or read `ts` of a test.
+3. **iOS**: Settings > Accessibility > Display & Text Size > Reduce Transparency, Differentiate Without Color and On/Off Labels with `examples/cupertino` open in the foreground: the bars turn solid; the `CupertinoSwitch` shows I and O marks with On/Off Labels; each change arrives without leaving the app.
+4. **iPad** (Split View): the same, in a window that is not the whole screen.
+
+Answers: _(not yet recorded)_

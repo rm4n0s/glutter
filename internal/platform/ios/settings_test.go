@@ -66,6 +66,15 @@ func TestSettingsOf(t *testing.T) {
 			t.Errorf("locales: %v", s.Locales)
 		}
 	})
+	t.Run("reduce transparency, differentiate without color and on/off labels", func(t *testing.T) {
+		s := settingsOf(settingsInput{ReduceTransparency: true, DifferentiateWithoutColor: true, OnOffLabels: true})
+		if !s.ReduceTransparency || !s.DifferentiateWithoutColor || !s.OnOffSwitchLabels || s.HighContrast || s.BoldText {
+			t.Errorf("settings: %+v", s)
+		}
+		if s := settingsOf(settingsInput{}); s.ReduceTransparency || s.DifferentiateWithoutColor || s.OnOffSwitchLabels {
+			t.Errorf("nothing on gave %+v", s)
+		}
+	})
 	t.Run("switch control is accessible navigation, speak screen is not", func(t *testing.T) {
 		if !settingsOf(settingsInput{SwitchControl: true}).AccessibleNavigation {
 			t.Error("Switch Control is not accessible navigation")

@@ -21,9 +21,10 @@ type settingsInput struct {
 	// Accent is NSColor.controlAccentColor converted to sRGB, each channel in 0...1.
 	AccentRed, AccentGreen, AccentBlue float64
 	HasAccent                          bool
-	// ReduceMotion is NSWorkspace.accessibilityDisplayShouldReduceMotion and IncreaseContrast is
-	// accessibilityDisplayShouldIncreaseContrast.
-	ReduceMotion, IncreaseContrast bool
+	// ReduceMotion is NSWorkspace.accessibilityDisplayShouldReduceMotion, IncreaseContrast is
+	// accessibilityDisplayShouldIncreaseContrast, ReduceTransparency is accessibilityDisplayShouldReduceTransparency and
+	// DifferentiateWithoutColor is accessibilityDisplayShouldDifferentiateWithoutColor.
+	ReduceMotion, IncreaseContrast, ReduceTransparency, DifferentiateWithoutColor bool
 	// DoubleClickSeconds is NSEvent.doubleClickInterval.
 	DoubleClickSeconds float64
 	// BlinkOnMillis and BlinkOffMillis are the user defaults NSTextInsertionPointBlinkPeriodOn and
@@ -50,14 +51,14 @@ const (
 // settingsOf turns what was read into the settings the engine takes:
 //   - the brightness is dark in a dark appearance;
 //   - the accent color is the system accent color (Appearance in System Settings), opaque;
-//   - reduced motion is Reduce motion and high contrast is Increase contrast of Accessibility;
+//   - reduced motion is Reduce motion, high contrast is Increase contrast, and reduce transparency and differentiate without
+//     color are the switches of the same names, all of Accessibility > Display;
 //   - the locales are the preferred languages, en-US when there are none;
 //   - the 24-hour clock is a time format of the current locale with no am/pm marker;
 //   - the caret blinks at the period that the user's defaults name, never when both are 0;
 //   - the double-click time is the system's.
 //
-// The text scale is 1: macOS has no system text size setting (SPEC §29.8). Reduce transparency and
-// Differentiate without color have no field in platform.Settings.
+// The text scale is 1: macOS has no system text size setting (SPEC §29.8). macOS has no On/Off Labels switch.
 //
 // Flutter: shell/platform/darwin/macos/framework/Source/FlutterEngine.mm FlutterEngine onSettingsChanged
 func settingsOf(in settingsInput) platform.Settings {
@@ -67,8 +68,9 @@ func settingsOf(in settingsInput) platform.Settings {
 		AlwaysUse24HourFormat: is24HourFormat(in.TimeFormat),
 		DisableAnimations:     in.ReduceMotion,
 		HighContrast:          in.IncreaseContrast,
-		FontAntialiasing:      platform.FontAntialiasingGrayscale,
-		UIFontFamily:          systemUIFont, UIFontSize: systemUIFontSize,
+		ReduceTransparency:    in.ReduceTransparency, DifferentiateWithoutColor: in.DifferentiateWithoutColor,
+		FontAntialiasing: platform.FontAntialiasingGrayscale,
+		UIFontFamily:     systemUIFont, UIFontSize: systemUIFontSize,
 		MonospaceFontFamily: monospaceFont, MonospaceFontSize: monospaceFontSize,
 	}
 	if in.Dark {

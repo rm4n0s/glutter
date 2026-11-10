@@ -136,6 +136,7 @@ func TestMediaQueryDataFromViewUsesThePlatformData(t *testing.T) {
 	platform := NewMediaQueryData(MediaQueryDataOpts{
 		TextScaler: painting.NewTextScalerLinear(1234), PlatformBrightness: ui.BrightnessDark, AccessibleNavigation: true,
 		InvertColors: true, DisableAnimations: true, BoldText: true, HighContrast: true, OnOffSwitchLabels: true,
+		ReduceTransparency: true, DifferentiateWithoutColor: true,
 		AlwaysUse24HourFormat: true, NavigationMode: NavigationModeDirectional, SupportsShowingSystemContextMenu: true,
 	})
 	data := NewMediaQueryDataFromView(ts.View, &platform)
@@ -157,6 +158,8 @@ func TestMediaQueryDataFromViewUsesThePlatformData(t *testing.T) {
 		{"boldText", data.BoldText, true},
 		{"highContrast", data.HighContrast, true},
 		{"onOffSwitchLabels", data.OnOffSwitchLabels, true},
+		{"reduceTransparency", data.ReduceTransparency, true},
+		{"differentiateWithoutColor", data.DifferentiateWithoutColor, true},
 		{"alwaysUse24HourFormat", data.AlwaysUse24HourFormat, true},
 		{"navigationMode", data.NavigationMode, NavigationModeDirectional},
 		{"supportsShowingSystemContextMenu", data.SupportsShowingSystemContextMenu, true},
@@ -442,6 +445,8 @@ var aspectCases = []aspectCase{
 	{"invertColors", func(bc BuildContext) { MediaQueryInvertColorsOf(bc) }, MediaQueryDataCopyOpts{InvertColors: foundation.Some(true)}, nil},
 	{"highContrast", func(bc BuildContext) { MediaQueryHighContrastOf(bc) }, MediaQueryDataCopyOpts{HighContrast: foundation.Some(true)}, nil},
 	{"onOffSwitchLabels", func(bc BuildContext) { MediaQueryOnOffSwitchLabelsOf(bc) }, MediaQueryDataCopyOpts{OnOffSwitchLabels: foundation.Some(true)}, nil},
+	{"reduceTransparency", func(bc BuildContext) { MediaQueryReduceTransparencyOf(bc) }, MediaQueryDataCopyOpts{ReduceTransparency: foundation.Some(true)}, nil},
+	{"differentiateWithoutColor", func(bc BuildContext) { MediaQueryDifferentiateWithoutColorOf(bc) }, MediaQueryDataCopyOpts{DifferentiateWithoutColor: foundation.Some(true)}, nil},
 	{"disableAnimations", func(bc BuildContext) { MediaQueryDisableAnimationsOf(bc) }, MediaQueryDataCopyOpts{DisableAnimations: foundation.Some(true)}, nil},
 	{"boldText", func(bc BuildContext) { MediaQueryBoldTextOf(bc) }, MediaQueryDataCopyOpts{BoldText: foundation.Some(true)}, nil},
 	{"navigationMode", func(bc BuildContext) { MediaQueryNavigationModeOf(bc) }, MediaQueryDataCopyOpts{NavigationMode: foundation.Some(NavigationModeDirectional)}, nil},

@@ -69,6 +69,19 @@ type AccessibilityFeatures struct {
 	//
 	// Flutter: ui/window.dart AccessibilityFeatures.onOffSwitchLabels
 	OnOffSwitchLabels bool
+	// ReduceTransparency is whether the user asked for less transparency and blur (Reduce transparency on macOS and iOS).
+	//
+	// Deviation: Flutter has no such feature (SPEC §12.10).
+	//
+	// Flutter: no counterpart
+	ReduceTransparency bool
+	// DifferentiateWithoutColor is whether the user asked that color is not the only way an app tells things apart (Differentiate
+	// without color on macOS and iOS).
+	//
+	// Deviation: Flutter has no such feature (SPEC §12.10).
+	//
+	// Flutter: no counterpart
+	DifferentiateWithoutColor bool
 }
 
 // String describes the features that are on, such as
@@ -88,6 +101,8 @@ func (f AccessibilityFeatures) String() string {
 		{"reduceMotion", f.ReduceMotion},
 		{"highContrast", f.HighContrast},
 		{"onOffSwitchLabels", f.OnOffSwitchLabels},
+		{"reduceTransparency", f.ReduceTransparency},
+		{"differentiateWithoutColor", f.DifferentiateWithoutColor},
 	} {
 		if e.on {
 			on = append(on, e.name)

@@ -160,6 +160,8 @@ func readSettings(p *Platform) (in settingsInput) {
 		ws := class("NSWorkspace").Send(sel("sharedWorkspace"))
 		in.ReduceMotion = send[bool](ws, "accessibilityDisplayShouldReduceMotion")
 		in.IncreaseContrast = send[bool](ws, "accessibilityDisplayShouldIncreaseContrast")
+		in.ReduceTransparency = send[bool](ws, "accessibilityDisplayShouldReduceTransparency")
+		in.DifferentiateWithoutColor = send[bool](ws, "accessibilityDisplayShouldDifferentiateWithoutColor")
 
 		in.DoubleClickSeconds = send[float64](class("NSEvent"), "doubleClickInterval")
 

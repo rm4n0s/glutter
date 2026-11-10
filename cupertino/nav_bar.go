@@ -262,7 +262,21 @@ func effectiveBackgroundAndBorder(bc widgets.BuildContext, automaticBackgroundVi
 			effectiveBackground = *lerped
 		}
 	}
-	return effectiveBackground, effectiveBorder
+	return reduceTransparency(bc, effectiveBackground), effectiveBorder
+}
+
+// reduceTransparency makes the color of a bar or a popup opaque when the user asked for less transparency (Reduce transparency
+// of macOS and iOS, MediaQuery.ReduceTransparency): the bars then have no blur behind them either, which wrapWithBackground
+// decides from the alpha of the color.
+//
+// Deviation: Flutter does not read the setting (SPEC §12.10).
+//
+// Flutter: no counterpart
+func reduceTransparency(bc widgets.BuildContext, c ui.Color) ui.Color {
+	if widgets.MediaQueryReduceTransparencyOf(bc) {
+		return c.WithAlpha(0xFF)
+	}
+	return c
 }
 
 func (s *cupertinoNavigationBarState) Build(bc widgets.BuildContext) widgets.Widget {

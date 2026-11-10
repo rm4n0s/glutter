@@ -4140,6 +4140,13 @@ func MediaQueryDevicePixelRatioOf(bc widgets.BuildContext) float64 {
 	return widgets.MediaQueryDevicePixelRatioOf(bc)
 }
 
+// MediaQueryDifferentiateWithoutColorOf is widgets.MediaQueryDifferentiateWithoutColorOf.
+//
+// Flutter: widgets.dart MediaQueryDifferentiateWithoutColorOf
+func MediaQueryDifferentiateWithoutColorOf(bc widgets.BuildContext) bool {
+	return widgets.MediaQueryDifferentiateWithoutColorOf(bc)
+}
+
 // MediaQueryDisableAnimationsOf is widgets.MediaQueryDisableAnimationsOf.
 //
 // Flutter: widgets.dart MediaQueryDisableAnimationsOf
@@ -4208,6 +4215,13 @@ func MediaQueryMaybeBoldTextOf(bc widgets.BuildContext) (bool, bool) {
 // Flutter: widgets.dart MediaQueryMaybeDevicePixelRatioOf
 func MediaQueryMaybeDevicePixelRatioOf(bc widgets.BuildContext) (float64, bool) {
 	return widgets.MediaQueryMaybeDevicePixelRatioOf(bc)
+}
+
+// MediaQueryMaybeDifferentiateWithoutColorOf is widgets.MediaQueryMaybeDifferentiateWithoutColorOf.
+//
+// Flutter: widgets.dart MediaQueryMaybeDifferentiateWithoutColorOf
+func MediaQueryMaybeDifferentiateWithoutColorOf(bc widgets.BuildContext) (bool, bool) {
+	return widgets.MediaQueryMaybeDifferentiateWithoutColorOf(bc)
 }
 
 // MediaQueryMaybeDisableAnimationsOf is widgets.MediaQueryMaybeDisableAnimationsOf.
@@ -4301,6 +4315,13 @@ func MediaQueryMaybePlatformBrightnessOf(bc widgets.BuildContext) (ui.Brightness
 	return widgets.MediaQueryMaybePlatformBrightnessOf(bc)
 }
 
+// MediaQueryMaybeReduceTransparencyOf is widgets.MediaQueryMaybeReduceTransparencyOf.
+//
+// Flutter: widgets.dart MediaQueryMaybeReduceTransparencyOf
+func MediaQueryMaybeReduceTransparencyOf(bc widgets.BuildContext) (bool, bool) {
+	return widgets.MediaQueryMaybeReduceTransparencyOf(bc)
+}
+
 // MediaQueryMaybeSizeOf is widgets.MediaQueryMaybeSizeOf.
 //
 // Flutter: widgets.dart MediaQueryMaybeSizeOf
@@ -4390,6 +4411,13 @@ func MediaQueryPaddingOf(bc widgets.BuildContext) painting.EdgeInsets {
 // Flutter: widgets.dart MediaQueryPlatformBrightnessOf
 func MediaQueryPlatformBrightnessOf(bc widgets.BuildContext) ui.Brightness {
 	return widgets.MediaQueryPlatformBrightnessOf(bc)
+}
+
+// MediaQueryReduceTransparencyOf is widgets.MediaQueryReduceTransparencyOf.
+//
+// Flutter: widgets.dart MediaQueryReduceTransparencyOf
+func MediaQueryReduceTransparencyOf(bc widgets.BuildContext) bool {
+	return widgets.MediaQueryReduceTransparencyOf(bc)
 }
 
 // MediaQuerySizeOf is widgets.MediaQuerySizeOf.

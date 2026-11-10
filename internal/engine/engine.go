@@ -1021,6 +1021,8 @@ func PlatformConfiguration(s platform.Settings) ui.PlatformConfiguration {
 			ReduceMotion:         s.DisableAnimations,
 			HighContrast:         s.HighContrast,
 			BoldText:             s.BoldText,
+			OnOffSwitchLabels:    s.OnOffSwitchLabels,
+			ReduceTransparency:   s.ReduceTransparency, DifferentiateWithoutColor: s.DifferentiateWithoutColor,
 		},
 		AlwaysUse24HourFormat: s.AlwaysUse24HourFormat,
 		ScaleFontSize:         s.ScaleFontSize,

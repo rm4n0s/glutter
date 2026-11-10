@@ -30,6 +30,10 @@ func TestSettingsOf(t *testing.T) {
 		{"accessibility", settingsInput{ReduceMotion: true, IncreaseContrast: true}, func(s platform.Settings) bool {
 			return s.DisableAnimations && s.HighContrast
 		}},
+		{"reduce transparency and differentiate without color", settingsInput{ReduceTransparency: true, DifferentiateWithoutColor: true}, func(s platform.Settings) bool {
+			return s.ReduceTransparency && s.DifferentiateWithoutColor && !s.OnOffSwitchLabels && !s.HighContrast
+		}},
+		{"nothing on", settingsInput{}, func(s platform.Settings) bool { return !s.ReduceTransparency && !s.DifferentiateWithoutColor }},
 		{"12 hour", settingsInput{TimeFormat: "h a"}, func(s platform.Settings) bool { return !s.AlwaysUse24HourFormat }},
 		{"24 hour", settingsInput{TimeFormat: "HH"}, func(s platform.Settings) bool { return s.AlwaysUse24HourFormat }},
 		{"locales", settingsInput{Languages: []string{"el-GR", "zh-Hans-CN", "", "C", "sr-Latn-RS"}}, func(s platform.Settings) bool {

@@ -524,6 +524,8 @@ func TestPlatformConfigurationConversion(t *testing.T) {
 		{"empty", platform.Settings{}, ui.PlatformConfiguration{}},
 		{"accessibility", platform.Settings{DisableAnimations: true, HighContrast: true},
 			ui.PlatformConfiguration{AccessibilityFeatures: ui.AccessibilityFeatures{DisableAnimations: true, ReduceMotion: true, HighContrast: true}}},
+		{"labels, transparency and color", platform.Settings{OnOffSwitchLabels: true, ReduceTransparency: true, DifferentiateWithoutColor: true},
+			ui.PlatformConfiguration{AccessibilityFeatures: ui.AccessibilityFeatures{OnOffSwitchLabels: true, ReduceTransparency: true, DifferentiateWithoutColor: true}}},
 		{"a screen reader", platform.Settings{AccessibleNavigation: true},
 			ui.PlatformConfiguration{AccessibilityFeatures: ui.AccessibilityFeatures{AccessibleNavigation: true}}},
 		{"desktop fonts", platform.Settings{UIFontFamily: "Cantarell", UIFontSize: 11, MonospaceFontFamily: "Adwaita Mono", MonospaceFontSize: 12},

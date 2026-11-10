@@ -131,7 +131,7 @@ func (w *CupertinoTabBar) PreferredSize() ui.Size {
 //
 // Flutter: cupertino/bottom_tab_bar.dart CupertinoTabBar.opaque
 func (w *CupertinoTabBar) Opaque(bc widgets.BuildContext) bool {
-	return CupertinoDynamicColorResolve(w.backgroundOrTheme(bc), bc).Alpha() == 0xFF
+	return reduceTransparency(bc, CupertinoDynamicColorResolve(w.backgroundOrTheme(bc), bc)).Alpha() == 0xFF
 }
 
 func (w *CupertinoTabBar) backgroundOrTheme(bc widgets.BuildContext) ui.ColorValue {
@@ -150,7 +150,7 @@ var tabBarDefaultBorderColor = NewCupertinoDynamicColorWithBrightness(ui.NewColo
 func (w *CupertinoTabBar) Build(bc widgets.BuildContext) widgets.Widget {
 	widgets.DebugCheckHasMediaQuery(bc)
 	bottomPadding := widgets.MediaQueryViewPaddingOf(bc).Bottom
-	backgroundColor := CupertinoDynamicColorResolve(w.backgroundOrTheme(bc), bc)
+	backgroundColor := reduceTransparency(bc, CupertinoDynamicColorResolve(w.backgroundOrTheme(bc), bc))
 
 	var border painting.BoxBorder
 	switch {

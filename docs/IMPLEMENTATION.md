@@ -187,7 +187,7 @@ This file breaks the milestones in `docs/SPEC.md` §18 into small steps. Each st
 | M34 Cupertino (1.14) | 34.1–34.10 | `cupertino` |
 | M35 iOS (1.15) | 35.1–35.9 | every example but `multiwindow` and `tray` on the iOS Simulator |
 | M36 Fixes (1.15.1), and the Linux run of 1.13 to 1.15.1 | 36.1–36.2 |
-| M37 macOS and iOS gaps (after 1.15.1) | 37.1 | the counter on macOS | `game3d` (a pad), any other example (no pad is touched) |
+| M37 macOS and iOS gaps (after 1.15.1) | 37.1–37.4 | the counter on macOS | `game3d` (a pad), any other example (no pad is touched) |
 
 ---
 
@@ -4716,3 +4716,16 @@ The owner asked on 2026-11-10 to finish macOS and iOS support without stopping. 
 **Tests:** the two above; the whole suite with its goldens (text is drawn with variable fonts in most of them).
 **Proof:** none (no picture changes).
 **Manual checks:** none.
+
+### 37.2 The display accessibility switches of macOS and iOS
+**Goal:** Reduce Transparency, Differentiate Without Color and On/Off Labels reach the framework, and the Cupertino bars and popups follow Reduce Transparency.
+**Why:** SPEC §29.8 and §30.7 listed them as read and not used (no field in `platform.Settings`).
+**Read:** SPEC §29.8, §30.7, §12.10; `internal/platform/macos/settings*.go`, `internal/platform/ios/settings*.go`, `internal/engine/engine.go` (`PlatformConfiguration`), `widgets/media_query.go`, `cupertino/nav_bar.go`, `bottom_tab_bar.go`, `dialog.go`.
+**Tasks:** (done in the step)
+1. `platform.Settings` gets `OnOffSwitchLabels`, `ReduceTransparency` and `DifferentiateWithoutColor`; `ui.AccessibilityFeatures` gets the last two; `MediaQueryData`, its options, copy options, aspects, equality, diagnostics and `MediaQuery...Of` functions follow; the engine fills them (and `onOffSwitchLabels`, which it never did); the generated re-exports of `material` and `cupertino` are regenerated.
+2. macOS reads `accessibilityDisplayShouldReduceTransparency` and `accessibilityDisplayShouldDifferentiateWithoutColor`; iOS passes on what it read and reads `UIAccessibilityShouldDifferentiateWithoutColor` with its notification.
+3. Reduce Transparency makes the color of the Cupertino navigation bars, the tab bar and the popup surfaces opaque and takes their blur away.
+4. SPEC §12.10 row, §29.8, §30.7 and "Decided in step 37.2"; `docs/MANUAL-CHECKS.md` 37.2.
+**Tests:** `settingsOf` on both platforms, the engine's conversion, `MediaQuery` (aspects, copy, from the view), the Cupertino bars and popup with the setting on and off and turned on while shown.
+**Proof:** none.
+**Manual checks:** `docs/MANUAL-CHECKS.md`, 37.2: the three switches in System Settings and Settings.

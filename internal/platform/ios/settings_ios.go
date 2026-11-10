@@ -24,6 +24,7 @@ var settingsNotifications = []string{
 	"UIAccessibilityDarkerSystemColorsStatusDidChangeNotification",
 	"UIAccessibilityReduceTransparencyStatusDidChangeNotification",
 	"UIAccessibilityOnOffSwitchLabelsDidChangeNotification",
+	"UIAccessibilityShouldDifferentiateWithoutColorDidChangeNotification",
 	"NSCurrentLocaleDidChangeNotification",
 }
 
@@ -32,7 +33,7 @@ const dateTemplateHourOnly = "j"
 
 // accessibilityFlags are the C functions of UIKit that say how the accessibility switches are.
 type accessibilityFlags struct {
-	voiceOver, switchControl, speakScreen, boldText, reduceMotion, darkerColors, reduceTransparency, onOffLabels func() bool
+	voiceOver, switchControl, speakScreen, boldText, reduceMotion, darkerColors, reduceTransparency, onOffLabels, differentiate func() bool
 }
 
 // loadAccessibilityFlags binds the functions.
@@ -51,6 +52,7 @@ func loadAccessibilityFlags() (accessibilityFlags, error) {
 		&f.darkerColors:       "UIAccessibilityDarkerSystemColorsEnabled",
 		&f.reduceTransparency: "UIAccessibilityIsReduceTransparencyEnabled",
 		&f.onOffLabels:        "UIAccessibilityIsOnOffSwitchLabelsEnabled",
+		&f.differentiate:      "UIAccessibilityShouldDifferentiateWithoutColor",
 	} {
 		if err := uikit.Bind(fn, name); err != nil {
 			return f, err
@@ -104,6 +106,7 @@ func (p *Platform) readSettings() (in settingsInput) {
 		in.IncreaseContrast = f.darkerColors() || send[int64](traits, "accessibilityContrast") == accessibilityContrastHigh
 		in.Category = objcx.String(send[objc.ID](class("UIApplication").Send(sel("sharedApplication")), "preferredContentSizeCategory"))
 		in.BoldText, in.ReduceMotion, in.ReduceTransparency, in.OnOffLabels = f.boldText(), f.reduceMotion(), f.reduceTransparency(), f.onOffLabels()
+		in.DifferentiateWithoutColor = f.differentiate()
 		in.VoiceOver, in.SwitchControl, in.SpeakScreen = f.voiceOver(), f.switchControl(), f.speakScreen()
 
 		tmpl := objcx.NewString(dateTemplateHourOnly)
