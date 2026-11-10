@@ -648,3 +648,9 @@ func (p *ToggleablePainter) ShouldRepaint(rendering.CustomPainter) bool { return
 //
 // Flutter: widgets/toggleable.dart ToggleablePainter.hitTest
 func (p *ToggleablePainter) HitTest(ui.Offset) foundation.Opt[bool] { return foundation.None[bool]() }
+
+// Value is the value of the widget that the mixin belongs to: none is the mixed value. A builder that paints the
+// widget from the state of its toggle (a radio's RadioBuilder) reads it here.
+//
+// Flutter: widgets/toggleable.dart ToggleableStateMixin.value
+func (m *ToggleableStateMixin) Value() foundation.Opt[bool] { return m.owner.ToggleableValue() }

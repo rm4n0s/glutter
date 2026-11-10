@@ -247,3 +247,71 @@ func TestLeaksNavigation(t *testing.T) {
 		})
 	}
 }
+
+// TestLeaksControls is the memory test of the controls (step 34.4): each scenario mounts the controls, uses them
+// and takes them out of the tree, so a controller, a ticker, a focus node, a recognizer or a registration that a
+// control does not release shows as growth.
+func TestLeaksControls(t *testing.T) {
+	type pick int
+	tests := []struct {
+		name string
+		page func(value *int) widgets.Widget
+		use  func(ts *gluttertest.Tester)
+	}{
+		{"checkbox, switch, radio and slider", func(value *int) widgets.Widget {
+			return widgets.NewStatefulBuilder(func(_ widgets.BuildContext, setState widgets.StateSetter) widgets.Widget {
+				return widgets.NewRadioGroup(func(v foundation.Opt[pick]) { setState(func() { *value = int(v.OrElse(0)) }) },
+					widgets.NewColumn([]widgets.Widget{
+						cupertino.NewCupertinoCheckbox(foundation.Some(*value%2 == 0), func(foundation.Opt[bool]) { setState(func() { *value++ }) }),
+						cupertino.NewCupertinoSwitch(*value%2 == 0, func(bool) { setState(func() { *value++ }) }),
+						cupertino.NewCupertinoRadio(pick(1)), cupertino.NewCupertinoRadio(pick(2)),
+						cupertino.NewCupertinoSlider(0.5, func(float64) {}),
+						cupertino.NewCupertinoActivityIndicator(),
+					}, widgets.ColumnOpts{MainAxisSize: 1}), widgets.RadioGroupOpts[pick]{GroupValue: foundation.Some(pick(*value % 3))})
+			})
+		}, func(ts *gluttertest.Tester) {
+			ts.Tap(gluttertest.ByType[*cupertino.CupertinoCheckbox]())
+			ts.Tap(gluttertest.ByType[*cupertino.CupertinoSwitch]())
+			ts.Pump(time.Second) // the activity indicator spins forever: nothing settles
+			ts.Drag(gluttertest.ByType[*cupertino.CupertinoSlider](), ui.Offset{Dx: 30})
+			ts.Pump(time.Second)
+		}},
+		{"segmented controls", func(value *int) widgets.Widget {
+			return widgets.NewStatefulBuilder(func(_ widgets.BuildContext, setState widgets.StateSetter) widgets.Widget {
+				labels := []string{"A", "B", "C"}
+				return widgets.NewColumn([]widgets.Widget{
+					cupertino.NewCupertinoSegmentedControl(func(string) { setState(func() { *value++ }) }, segments(labels...),
+						cupertino.CupertinoSegmentedControlOpts[string]{GroupValue: foundation.Some(labels[*value%3])}),
+					cupertino.NewCupertinoSlidingSegmentedControl(func(string) { setState(func() { *value++ }) }, segments(labels...),
+						cupertino.CupertinoSlidingSegmentedControlOpts[string]{GroupValue: foundation.Some(labels[*value%3])}),
+				}, widgets.ColumnOpts{MainAxisSize: 1})
+			})
+		}, func(ts *gluttertest.Tester) {
+			ts.Tap(gluttertest.ByType[*cupertino.CupertinoSegmentedControl[string]]())
+			ts.PumpAndSettle()
+			ts.Tap(gluttertest.ByType[*cupertino.CupertinoSlidingSegmentedControl[string]]())
+			ts.PumpAndSettle()
+			ts.Drag(gluttertest.ByType[*cupertino.CupertinoSlidingSegmentedControl[string]](), ui.Offset{Dx: 60})
+			ts.PumpAndSettle()
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			leaktest.Run(t, "cupertino/controls/"+tt.name, func() func() {
+				ts := gluttertest.New(t, gluttertest.Opts{Size: ui.Size{Width: 800, Height: 600}, DiscardScenes: true})
+				value := 0
+				mount := func() {
+					ts.PumpWidget(testApp(cupertino.CupertinoAppOpts{Home: cupertino.NewCupertinoPageScaffold(widgets.NewCenter(tt.page(&value)))}))
+					ts.Pump()
+				}
+				return func() {
+					mount()
+					tt.use(ts)
+					ts.PumpWidget(testApp(cupertino.CupertinoAppOpts{Home: widgets.NewSizedBox(nil)}))
+					ts.PumpAndSettle()
+					ts.ClearLogs()
+				}
+			}, leaktest.Opts{N: 25, SlackObjects: 150})
+		})
+	}
+}
