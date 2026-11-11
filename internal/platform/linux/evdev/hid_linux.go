@@ -64,18 +64,25 @@ func (r *run) tryHID(node string, c *caps) bool {
 		OnFailed: func(err error) { r.hidTell(hidEvent{pad: hp, failed: true, err: err}) },
 		OnLost:   func() { r.hidTell(hidEvent{pad: hp}) },
 	}
+	// The pad is in s.hid before its driver can announce it, so that an app that rumbles it as soon as it is added finds it: the driver
+	// starts on a goroutine of its own, and Start does not wait for it.
+	r.s.hidMu.Lock()
 	dev, ok := gamepadhid.Start(info, tr, hp.bridge, gamepadhid.Options{Clock: monotonicNow, Logger: r.s.log})
+	if ok {
+		hp.dev = dev
+		r.s.hid[hp.id] = hp
+	}
+	r.s.hidMu.Unlock()
 	if !ok {
 		if err := tr.Close(); err != nil {
 			r.s.log.Debug("a hidraw node did not close cleanly", "device", info.Path, "err", err)
 		}
 		return false
 	}
-	hp.dev = dev
 	r.hidpads[node] = hp
-	r.s.hidMu.Lock()
-	r.s.hid[hp.id] = hp
-	r.s.hidMu.Unlock()
+	if r.s.hidStarted != nil {
+		r.s.hidStarted()
+	}
 	return true
 }
 

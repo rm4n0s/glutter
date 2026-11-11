@@ -74,6 +74,8 @@ type Service struct {
 	openHID func(path string) (gamepadhid.Transport, error)
 	hidMu   sync.RWMutex
 	hid     map[platform.PadID]*hidPad
+	// hidStarted, when a test sets it, is called by the goroutine of the loop after a HID driver started and before the loop goes on.
+	hidStarted func()
 }
 
 // hidPad is a pad that a HID driver serves.

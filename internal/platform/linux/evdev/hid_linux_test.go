@@ -173,6 +173,39 @@ func waitWrites(t *testing.T, f *fakeHID, n int) {
 	}
 }
 
+// TestHIDPadRumblesAsSoonAsItIsAdded holds the loop right after the driver started: the driver announces the pad on its own
+// goroutine, so the app can rumble it before the loop goes on, and the pad must already be the service's (step 36.2: under load
+// TestHIDPadIsServedByItsDriver found a pad that was announced and not yet registered).
+func TestHIDPadRumblesAsSoonAsItIsAdded(t *testing.T) {
+	modes(t, func(t *testing.T, base *fixture) {
+		f := &hidFixture{fixture: base, opened: map[string]*fakeHID{}}
+		f.hidDir = filepath.Join(filepath.Dir(f.dev), "hid")
+		f.s.hidDir = f.hidDir
+		f.s.openHID = func(path string) (gamepadhid.Transport, error) {
+			f.mu.Lock()
+			defer f.mu.Unlock()
+			tr := newFakeHID()
+			f.opened[filepath.Base(path)] = tr
+			return tr, nil
+		}
+		release := make(chan struct{})
+		var once sync.Once
+		f.s.hidStarted = func() { <-release }
+		defer once.Do(func() { close(release) })
+		f.writeSysfs("event0", dualShock4Usb())
+		f.writeNode("event0")
+		f.withHidraw("event0", "hidraw3")
+		if err := f.s.Start(f.h); err != nil {
+			t.Fatal(err)
+		}
+		f.h.wait(t, "the pad", func() bool { return len(f.h.added) == 1 })
+		if err := f.s.Rumble(f.h.added[0].ID, 0xFFFF, 0, time.Minute); err != nil {
+			t.Errorf("the pad that was just added cannot rumble: %v", err)
+		}
+		once.Do(func() { close(release) })
+	})
+}
+
 func TestHIDPadIsServedByItsDriver(t *testing.T) {
 	modes(t, func(t *testing.T, base *fixture) {
 		f := &hidFixture{fixture: base, opened: map[string]*fakeHID{}}
