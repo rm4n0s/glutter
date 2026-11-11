@@ -20,9 +20,11 @@ func TestParseStat(t *testing.T) {
 	}{
 		{"a plain process", "123 (chrome) S 1 456 456 0 -1 4194560 100 0 0 0 70 30 0 0 20 0 1 0 1000 1000 100 18446744073709551615", 456, 100, true},
 		{"a name with blanks and parentheses", "9 (Web Content (x) y) R 1 777 777 0 -1 4194560 100 0 0 0 5 6 0 0 20 0 1 0 1000", 777, 11, true},
+		{"children it waited for", "9 (firefox) S 1 9 9 0 -1 0 0 0 0 0 5 6 30 4 20", 9, 45, true},
 		{"too few fields", "9 (x) S 1 2", 0, 0, false},
+		{"no time of the children", "9 (x) S 1 9 9 0 -1 0 0 0 0 0 5 6", 0, 0, false},
 		{"no name", "9 x S 1 2 3", 0, 0, false},
-		{"a field that is not a number", "9 (x) S 1 pg 3 0 -1 0 0 0 0 0 a b 0", 0, 0, false},
+		{"a field that is not a number", "9 (x) S 1 pg 3 0 -1 0 0 0 0 0 a b 0 0", 0, 0, false},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -81,7 +83,27 @@ func TestGroupCPUTime(t *testing.T) {
 			}
 		})
 	}
-	_, err := groupCPUTime(filepath.Join(dir, "missing"), []int{10})
+	// A content process that ends in the window takes its time away from the group; its parent, which
+	// waited for it, now has that time as the time of its children (found in step 36.2: Firefox's idle
+	// CPU came out as -500ms).
+	before, err := groupCPUTime(fakeProc(t, map[string]string{
+		"10": "10 (firefox) S 1 10 10 0 -1 0 0 0 0 0 100 50 0 0",
+		"11": "11 (Web Content) S 10 10 10 0 -1 0 0 0 0 0 40 10 0 0", // 50 ticks
+	}), []int{10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, err := groupCPUTime(fakeProc(t, map[string]string{
+		"10": "10 (firefox) S 1 10 10 0 -1 0 0 0 0 0 101 50 42 10", // the content process's 52 ticks
+	}), []int{10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after-before != 30*time.Millisecond {
+		t.Errorf("the CPU time went from %v to %v when a process ended, want 30ms more", before, after)
+	}
+
+	_, err = groupCPUTime(filepath.Join(dir, "missing"), []int{10})
 	appErr, ok := errors.FromError(err)
 	if !ok || appErr.Tag != tagBrowserCPUUnavailable || !appErr.HasRoute("groupCPUTime.BrowserCPUUnavailable") {
 		t.Errorf("a missing /proc gave %v", err)

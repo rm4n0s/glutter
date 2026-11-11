@@ -137,27 +137,30 @@ func groupCPUTime(proc string, groups []int) (time.Duration, error) {
 }
 
 // parseStat reads the process group and the user plus system time in ticks from the text of
-// /proc/<pid>/stat. The name of the command, in parentheses, may hold blanks and parentheses, so
-// the fields are counted from the last closing parenthesis.
+// /proc/<pid>/stat, with the time of the children that the process waited for: a browser's content
+// process that ends between two readings would otherwise take its time out of the sum, which then
+// goes down (step 36.2). The name of the command, in parentheses, may hold blanks and parentheses,
+// so the fields are counted from the last closing parenthesis.
 func parseStat(stat string) (pgrp, ticks int, ok bool) {
 	end := strings.LastIndex(stat, ")")
 	if end < 0 {
 		return 0, 0, false
 	}
-	// After the name: state ppid pgrp session tty_nr tpgid flags minflt cminflt majflt cmajflt utime stime.
+	// After the name: state ppid pgrp session tty_nr tpgid flags minflt cminflt majflt cmajflt utime
+	// stime cutime cstime.
 	fields := strings.Fields(stat[end+1:])
-	if len(fields) < 13 {
+	if len(fields) < 15 {
 		return 0, 0, false
 	}
-	vals := make([]int, 0, 3)
-	for _, i := range []int{2, 11, 12} {
+	vals := make([]int, 0, 5)
+	for _, i := range []int{2, 11, 12, 13, 14} {
 		v, err := strconv.Atoi(fields[i])
 		if err != nil {
 			return 0, 0, false
 		}
 		vals = append(vals, v)
 	}
-	return vals[0], vals[1] + vals[2], true
+	return vals[0], vals[1] + vals[2] + vals[3] + vals[4], true
 }
 
 // The tags of the errors that this file makes (rm4n0s/errors, R5).
